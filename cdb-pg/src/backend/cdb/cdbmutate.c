@@ -21,6 +21,7 @@
 #include "nodes/makefuncs.h"	/* for makeVar() */
 #include "parser/parse_expr.h"	/* for expr_type() */
 #include "parser/parse_oper.h"	/* for compatible_oper_opid() */
+#include "utils/relcache.h"     /* RelationGetPartitioningKey() */
 
 #include "cdb/cdbllize.h"
 #include "cdb/cdbmutate.h"
@@ -43,7 +44,12 @@ static bool motion_expr_walker(Node *node, char *not_used);
 #ifdef UNUSED
 static List *makeMotionTargetList(Plan *arg);
 #endif   /* UNUSED */
-static bool doesUpdateAffectPartitionCols(MppPolicy * policy, List *rte);
+
+static bool
+doesUpdateAffectPartitionCols(Plan         *plan,
+                              Query        *query,
+                              int           nattrs,
+                              AttrNumber   *attrs);
 static bool hasCtid(Plan *plan);
 static bool has_ctid_outside_tlist_walker(Node *node, void* unused);
 
@@ -75,13 +81,33 @@ static bool has_ctid_outside_tlist_walker(Node *node, void* unused);
 Plan *
 apply_motion(Plan *plan, Query *query)
 {
-	Plan	   *result;
-	ApplyMotionState state;
+	Plan	           *result;
+    MppPolicy          *targetPolicy = NULL;
+    MppPolicyType       targetPolicyType = POLICYTYPE_ENTRY;
+	ApplyMotionState    state;
 
 	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
     state.sliceDepth = 0;
 
 	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
+
+	/* Does query have a target relation?  (INSERT/DELETE/UPDATE) */
+    if (query->resultRelation > 0)
+    {
+	    RangeTblEntry  *rte;
+        Relation        relation;
+
+        rte = rt_fetch(query->resultRelation, query->rtable);
+	    Assert(rte->rtekind == RTE_RELATION);
+
+        /* Get a copy of the rel's MppPolicy from the relcache. */
+        relation = relation_open(rte->relid, NoLock);
+        targetPolicy = RelationGetPartitioningKey(relation);
+        relation_close(relation, NoLock);
+
+        if (targetPolicy)
+            targetPolicyType = targetPolicy->ptype;
+    }
 
 	switch (query->commandType)
 	{
@@ -114,18 +140,12 @@ apply_motion(Plan *plan, Query *query)
 			 * relation in order.
 			 */
 			{
-				RangeTblEntry *rte;
-				MppPolicy  *policy;
-
 				/*
 				 * TODO Are we sure the INSERT target isn't an inheritance
 				 * set? Should we check, or would it work fine anyway?
 				 */
-				rte = rt_fetch(query->resultRelation, query->rtable);
-				Assert(rte->rtekind == RTE_RELATION);
-				policy = get_table_policy(rte->relid);
 
-				switch (policy->ptype)
+				switch (targetPolicyType)
 				{
 					case POLICYTYPE_PARTITIONED:
 						/*
@@ -166,8 +186,8 @@ apply_motion(Plan *plan, Query *query)
 
 						remove_flow_ordering(plan->flow); /* No need to preserve order on INSERT. */
 						plan->flow->hashExpr = getExprListFromTargetList(plan->targetlist,
-                                                                         policy->nattrs,
-                                                                         policy->attrs,
+                                                                         targetPolicy->nattrs,
+                                                                         targetPolicy->attrs,
                                                                          true);
 						break;
 
@@ -227,66 +247,62 @@ apply_motion(Plan *plan, Query *query)
 			 * flow is a singleton on the entry database.
 			 */
 			{
-				RangeTblEntry *rte;
-				MppPolicy  *policy;
+				/* Distributed target table? */
+                if (targetPolicyType == POLICYTYPE_PARTITIONED)
+                {
+					/*
+					 * Make sure we are not updating any of the partitioning columns
+					 */
+					if (query->commandType == CMD_UPDATE &&
+						doesUpdateAffectPartitionCols(plan,
+                                                      query,
+                                                      targetPolicy->nattrs,
+                                                      targetPolicy->attrs))
+					{
+						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+										errmsg("Cannot parallelize an UPDATE that involves the partitioning columns")
+										));
+					}
+					if (plan->flow->flotype != FLOW_PARTITIONED)
+					{
+						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+								 errmsg("Cannot parallelize that %s yet",
+										query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
+										));
+					}
+                }
 
-				rte = rt_fetch(query->resultRelation, query->rtable);
-				Assert(rte->rtekind == RTE_RELATION);
-				policy = get_table_policy(rte->relid);
-
-				switch (policy->ptype)
-				{
-					case POLICYTYPE_PARTITIONED:
-						/*
-						 * Make sure we are not updating any of the partitioning columns
-						 */
-						if (query->commandType == CMD_UPDATE &&
-							doesUpdateAffectPartitionCols(policy, plan->targetlist))
-						{
-							ereport(ERROR, (
-										errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-											errmsg("Cannot parallelize an update that involves the partitioning columns")
-											));
-						}
-						if (plan->flow->flotype != FLOW_PARTITIONED)
-						{
-							ereport(ERROR, (
-										errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-									 errmsg("Cannot parallelize that %s yet",
-											query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
-											));
-						}
-
-						break;
-
-					case POLICYTYPE_ENTRY:
-						if (plan->flow->flotype == FLOW_PARTITIONED
-							|| plan->flow->flotype == FLOW_REPLICATED
-							|| (plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1)
-							)
-						{
-							ereport(ERROR, (
-										errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-									 errmsg("Cannot parallelize that %s yet",
-											query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
-											));
-						}
-						/*
-						* Source is, presumably, a dispatcher singleton.
-						*/
-						plan->flow->req_move = MOVEMENT_NONE;
-						break;
-					default:
-						Assert(false);
-						break;
-				}
-			}
+                /* Target table is not distributed.  Must be in entry db. */
+                else
+                {
+					if (plan->flow->flotype == FLOW_PARTITIONED
+						|| plan->flow->flotype == FLOW_REPLICATED
+						|| (plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1)
+						)
+					{
+						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+								 errmsg("Cannot parallelize that %s yet",
+										query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
+										));
+					}
+					/*
+					* Source is, presumably, a dispatcher singleton.
+					*/
+					plan->flow->req_move = MOVEMENT_NONE;
+					break;
+                }
+            }
 			break;
 
 		default:
-			Assert(false);		/* Never see non-DML in here! */
-			return NULL;
+			Insist(0);		/* Never see non-DML in here! */
 	}
+			
+    if (targetPolicy)
+    {
+        pfree(targetPolicy);
+        targetPolicy = NULL;
+    }
 
 	result = (Plan *) apply_motion_mutator((Node *) plan, &state);
 
@@ -1179,13 +1195,15 @@ makeMotionTargetList(Plan *arg)
 }
 #endif   /* UNUSED */
 
+
 /*
- * doesUpdateAffectPartitionCols:
- * This checks to see whether an update query's target list
- * shows that
+ * isAnyColChangedByUpdate
  */
-bool
-doesUpdateAffectPartitionCols(MppPolicy * policy, List *targetlist)
+static bool
+isAnyColChangedByUpdate(Index       targetvarno,
+                        List       *targetlist,
+                        int         nattrs,
+                        AttrNumber *attrs)
 {
 	/*
 	 * Want to test whether an update statement possibly changes the
@@ -1196,31 +1214,72 @@ doesUpdateAffectPartitionCols(MppPolicy * policy, List *targetlist)
 	 * For each partitioning column, the TargetListEntry for that varattno
 	 * should be just a Var node with the same varattno.
 	 */
-	int			i;
+	int     i;
 
-	Assert(policy != NULL);
-	Assert(targetlist != NIL);
-	Assert(policy->ptype == POLICYTYPE_PARTITIONED);
-	Assert(policy->nattrs > 0);
-
-	for (i = 0; i < policy->nattrs; i++)
+	for (i = 0; i < nattrs; i++)
 	{
-		AttrNumber	colno = policy->attrs[i];
-		TargetEntry *entry = get_tle_by_resno(targetlist, colno);
-		Var		   *var;
+		TargetEntry    *tle = get_tle_by_resno(targetlist, attrs[i]);
+		Var		       *var;
 
-		Assert(entry != NULL);
-		if (nodeTag(entry->expr) != T_Var)
+		Insist(tle);
+
+		if (!IsA(tle->expr, Var))
 			return true;
 
-		var = (Var *) entry->expr;
-		if (var->varnoold != 1 ||
-            var->varoattno != colno)
+		var = (Var *)tle->expr;
+		if (var->varnoold != targetvarno ||
+            var->varoattno != attrs[i])
 			return true;
 	}
 
 	return false;
-}
+}                               /* isAnyColChangedByUpdate */
+
+
+/*
+ * doesUpdateAffectPartitionCols
+ */
+bool
+doesUpdateAffectPartitionCols(Plan         *plan,
+                              Query        *query,
+                              int           nattrs,
+                              AttrNumber   *attrs)
+{
+    Append     *append;
+    ListCell   *rticell;
+    ListCell   *plancell;
+
+    /*
+     * Single target relation?
+     */
+    if (query->resultRelations == NIL)
+        return isAnyColChangedByUpdate(query->resultRelation,
+                                       plan->targetlist,
+                                       nattrs,
+                                       attrs);
+
+    /*
+     * Multiple target relations (inheritance)...
+     * Plan should have an Append node on top, with a subplan per target.
+     */
+    append = (Append *)plan;
+
+	Insist(IsA(append, Append) &&
+	       append->isTarget &&
+           list_length(append->appendplans) == list_length(query->resultRelations));
+
+    forboth(rticell, query->resultRelations,
+            plancell, append->appendplans)
+    {
+        int     rti = lfirst_int(rticell);
+        Plan   *subplan = (Plan *)lfirst(plancell);
+
+        if (isAnyColChangedByUpdate(rti, subplan->targetlist, nattrs, attrs))
+            return true;
+    }
+
+    return false;
+}                               /* doesUpdateAffectPartitionCols */
 
 
 /* ----------------------------------------------------------------

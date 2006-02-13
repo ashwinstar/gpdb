@@ -28,12 +28,12 @@
 #include "parser/parse_oper.h"	/* for compatible_oper_opid() */
 #include "nodes/makefuncs.h"	/* for makeVar() */
 #include "nodes/value.h"		/* for makeString() */
+#include "utils/relcache.h"     /* RelationGetPartitioningKey() */
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbplan.h"
 #include "cdb/cdbpullup.h"
 #include "cdb/cdbllize.h"
-#include "cdb/cdbcat.h"
 #include "cdb/cdbagg.h"
 #include "cdb/cdbmutate.h"
 
@@ -1607,31 +1607,32 @@ initPlanProfile(PlanProfile * context, Query *query, bool useExecutorVarFormat)
 		case CMD_INSERT:
 		case CMD_UPDATE:
 		case CMD_DELETE:
-			if (query->resultRelation <= 0 || query->resultRelations != NIL)
-				elog(ERROR, "Unexpected relation specified as target of "
-                     "modification. Target must be a single result relation "
-                     "without inheritance.");
-			else
 			{
 				/*
 				 * Since this is a data modification command, include the
 				 * result relation in the summary of relations touched.
 				 */
 				Oid			reloid;
-				RangeTblEntry *rte;
-				MppPolicy  *policy;
+                Relation    relation;
+				MppPolicy  *policy = NULL;
 
-				Assert(query->resultRelation <= list_length(localRangeTable(context)));
-				rte = rt_fetch(query->resultRelation, localRangeTable(context));
-				Assert(rte->rtekind == RTE_RELATION);
-				reloid = rte->relid;
-				policy = get_table_policy(reloid);
+                /* Get Oid of target relation. */
+                Insist(query->resultRelation > 0 &&
+				       query->resultRelation <= list_length(localRangeTable(context)));
+				reloid = getrelid(query->resultRelation, localRangeTable(context));
 
-				if (policy->ptype == POLICYTYPE_PARTITIONED)
+                /* Get a copy of the rel's MppPolicy from the relcache. */
+                relation = relation_open(reloid, NoLock);
+                policy = RelationGetPartitioningKey(relation);
+                relation_close(relation, NoLock);
+
+                /* Tell caller if target rel is distributed. */
+				if (policy &&
+                    policy->ptype == POLICYTYPE_PARTITIONED)
 					context->resultSegments = true;
-				else if (policy->ptype != POLICYTYPE_ENTRY)
-				    elog(ERROR, "Unexpected data distribution policy.");
-				pfree(policy);	/* Or should we cache this? */
+
+                if (policy)
+				    pfree(policy);	
 			}
 			break;
 
