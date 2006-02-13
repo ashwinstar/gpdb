@@ -138,6 +138,7 @@ void
 cdbdisp_dispatchCommand(const char                 *szCommand,
                         bool                        cancelOnError,
                         bool						startTransaction,
+                        bool						dispatchToMirrors,
                         struct CdbDispatchResults **pPrimaryResults,    /* OUT */
                         struct CdbDispatchResults **pMirrorResults);    /* OUT */
 

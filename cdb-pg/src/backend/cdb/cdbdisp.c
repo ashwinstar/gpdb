@@ -582,6 +582,7 @@ cdbdisp_dispatchRMCommand(const char *szCommand,
 	CdbDispatchResults *mirrorResults;
 	CdbDispatchResult *dispatchResult;
 	PGresult  **resultSets = NULL;
+	bool		dispatchToMirrors = true;
 	int			nslots;
 	int			nresults = 0;
 	int			i;
@@ -590,7 +591,8 @@ cdbdisp_dispatchRMCommand(const char *szCommand,
 	bool		startTransaction = false;
 
 	/* Launch the command.	Don't cancel on error. */
-	cdbdisp_dispatchCommand(szCommand, false, startTransaction, &primaryResults, &mirrorResults);
+	cdbdisp_dispatchCommand(szCommand, false, startTransaction, dispatchToMirrors, 
+			&primaryResults, &mirrorResults);
 
 	/* Wait for all QEs to finish.	Don't cancel. */
 	CdbCheckDispatchResult(false);
@@ -681,6 +683,7 @@ void
 cdbdisp_dispatchCommand(const char                 *szCommand,
                         bool                        cancelOnError,
                         bool						startTransaction,
+                        bool						dispatchToMirrors,
                         struct CdbDispatchResults **pPrimaryResults,    /* OUT */
                         struct CdbDispatchResults **pMirrorResults)     /* OUT */
 {
@@ -736,7 +739,7 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
     *pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
     cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, txnOptions, primaryGang, *pPrimaryResults, -1);
 
-	if (mirrorGang)
+	if (dispatchToMirrors && mirrorGang)
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
         cdbdisp_dispatchToGang(szCommand, szSnapshotInfo,  txnOptions, mirrorGang, *pMirrorResults, -1);
@@ -1590,6 +1593,7 @@ CdbDoCommand(const char *szCommand,
 {
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;
+	bool				dispatchToMirrors = true;
 
 	if (startTransaction)
 	{
@@ -1603,7 +1607,7 @@ CdbDoCommand(const char *szCommand,
 
 	
 	
-	cdbdisp_dispatchCommand(szCommand, cancelOnError, startTransaction,
+	cdbdisp_dispatchCommand(szCommand, cancelOnError, startTransaction, dispatchToMirrors,
 							&primaryResults, &mirrorResults);
 
 	/*
@@ -2320,6 +2324,7 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	int			szCommand_len;
 	Query	   *q = makeNode(Query);
 	StringInfoData buffer;
+	bool 		dispatchToMirrors = true;
 
 	/* mark the dtx as dirty */
 	setCurrentDtxDirty();
@@ -2360,7 +2365,7 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	pfree(szCommand);
 
 	cdbdisp_dispatchCommand(buffer.data, cancelOnError, startTransaction,
-							pPrimaryResults, pMirrorResults);
+							dispatchToMirrors,pPrimaryResults, pMirrorResults);
 
 	pfree(buffer.data);
 }	/* cdbdisp_dispatchUtilityStatement */
@@ -2378,7 +2383,7 @@ CdbDispatchUtilityStatement(struct Node *stmt)
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;
 	bool	startTransaction = true;
-
+	
 	/* Start a global transaction and reconfigure the cluster if needed. */
 	cdbdisp_startDtxTransaction();
 

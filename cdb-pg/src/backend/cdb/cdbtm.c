@@ -785,7 +785,7 @@ execCommand(StringInfo errbuf)
 	SegmentDatabaseDescriptor **failedSegDB = NULL;
 	int			numOfFailed = 0;
 	int			ret = DTX_OK;
-
+	bool	dispatchToMirrors = true;
 	
 	switch (currentGxact->state)
 	{
@@ -820,6 +820,11 @@ execCommand(StringInfo errbuf)
 			cmd = cmdbuf;
 			break;
 		case DTX_STATE_1P_COMMIT:
+			/* In the case of a 1P commit being sent out, we don't need to
+			 * dispatch a commit to the mirrors since they never received
+			 * a statement to begin a txn
+			 */
+			dispatchToMirrors = false;
 			cmd = "COMMIT";
 			break;
 		case DTX_STATE_2P_COMMIT:
@@ -861,8 +866,10 @@ execCommand(StringInfo errbuf)
                                             formatDtxState(currentGxact->state)) ));
 	}
 	
+	
 	/* Dispatch command to all primary and mirror segdbs. */
-    cdbdisp_dispatchCommand(cmd, false, false,&primaryResults, &mirrorResults);
+    cdbdisp_dispatchCommand(cmd, false, false, dispatchToMirrors, 
+    		&primaryResults, &mirrorResults);
 
 	/*
      * Wait for completion.  Don't cancel.
@@ -1610,7 +1617,7 @@ abortRMInDoubtTransactions(HTAB *htab)
 		
 		elog( DEBUG3, "Aborting in-doubt transaction with GID: %s", entry->gid );
 		
-		cdbdisp_dispatchCommand(cmd, false, false, &primaryResults, &mirrorResults);
+		cdbdisp_dispatchCommand(cmd, false, false, true, &primaryResults, &mirrorResults);
 	
 		/*
 		 * Wait for completion.  Don't cancel.
