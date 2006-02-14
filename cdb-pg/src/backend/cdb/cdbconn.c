@@ -109,12 +109,10 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
 
     appendPQExpBuffer(&buffer, "user=%s ", username);
 
-
     /*
      * Call libpq to connect
      */
     segdbDesc->conn = PQconnectdb(buffer.data);
-
 
     /* Build whoami string to identify the QE for use in messages. */
     cdbconn_setSliceIndex(segdbDesc, -1);
@@ -122,7 +120,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
     /*
      * Check for connection failure.
      */
-    if ( PQstatus(segdbDesc->conn) == CONNECTION_BAD )
+    if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
     {
         if (!segdbDesc->errcode)
             segdbDesc->errcode = ERRCODE_MPP_INTERCONNECTION_ERROR;
@@ -142,7 +140,6 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
         PQfinish(segdbDesc->conn);
         segdbDesc->conn = NULL;
     }
-
     /*
      * Successfully connected.
      */

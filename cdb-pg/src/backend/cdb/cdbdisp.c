@@ -463,15 +463,18 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor *** failedSegDB,
 	 */
 	for (i = 0; i < threadCount; i++)
 	{							/* loop over threads */
+		int pthread_err = 0;
+		
 		pParms = &dispatchCommandParmsAr[i];
 		Assert(pParms != NULL);
 
 		elog(DEBUG4, "CheckDispatchResult: Joining to thread %d of %d",
 			 i + 1, threadCount);
 
-		if (0 != pthread_join(pParms->thread, NULL))
-			elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d of %d",
-				 i + 1, threadCount);
+		pthread_err = pthread_join(pParms->thread, NULL);
+		if (pthread_err != 0)
+			elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (0x%x) of %d (returned %d errno %d (cmd %s))",
+				 i + 1, pParms->thread, threadCount, pthread_err, errno, pParms->szCommand);
 
 		/*
 		 * Examine the CdbDispatchResult objects containing the results
