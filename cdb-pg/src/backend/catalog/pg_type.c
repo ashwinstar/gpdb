@@ -25,6 +25,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+
 
 /* ----------------------------------------------------------------
  *		TypeShellMake
@@ -146,7 +148,7 @@ TypeShellMake(const char *typeName, Oid typeNamespace)
  * ----------------------------------------------------------------
  */
 Oid
-TypeCreate(const char *typeName,
+TypeCreateWithOid(const char *typeName,
 		   Oid typeNamespace,
 		   Oid relationOid,		/* only for 'c'atalog types */
 		   char relationKind,	/* ditto */
@@ -167,7 +169,8 @@ TypeCreate(const char *typeName,
 		   char storage,
 		   int32 typeMod,
 		   int32 typNDims,		/* Array dimensions for baseType */
-		   bool typeNotNull)
+		   bool typeNotNull,
+		   Oid newtypeOid)
 {
 	Relation	pg_type_desc;
 	Oid			typeObjectId;
@@ -308,6 +311,10 @@ TypeCreate(const char *typeName,
 		tup = heap_formtuple(RelationGetDescr(pg_type_desc),
 							 values,
 							 nulls);
+		
+		if (Mpp_role == MPP_ROLE_EXECUTE)				 
+			if (newtypeOid != InvalidOid)
+				HeapTupleSetOid(tup, newtypeOid);
 
 		typeObjectId = simple_heap_insert(pg_type_desc, tup);
 	}
@@ -342,6 +349,49 @@ TypeCreate(const char *typeName,
 	heap_close(pg_type_desc, RowExclusiveLock);
 
 	return typeObjectId;
+}
+
+Oid TypeCreate(const char *typeName,
+		   Oid typeNamespace,
+		   Oid relationOid,
+		   char relationKind,
+		   int16 internalSize,
+		   char typeType,
+		   char typDelim,
+		   Oid inputProcedure,
+		   Oid outputProcedure,
+		   Oid receiveProcedure,
+		   Oid sendProcedure,
+		   Oid analyzeProcedure,
+		   Oid elementType,
+		   Oid baseType,
+		   const char *defaultTypeValue,
+		   char *defaultTypeBin,
+		   bool passedByValue,
+		   char alignment,
+		   char storage,
+		   int32 typeMod,
+		   int32 typNDims,
+		   bool typeNotNull)
+{
+	return TypeCreateWithOid(typeName,typeNamespace,relationOid,relationKind,internalSize,
+		   typeType,
+		   typDelim,
+		   inputProcedure,
+		   outputProcedure,
+		   receiveProcedure,
+		   sendProcedure,
+		   analyzeProcedure,
+		   elementType,
+		   baseType,
+		   defaultTypeValue,
+		   defaultTypeBin,
+		   passedByValue,
+		   alignment,
+		   storage,
+		   typeMod,
+		   typNDims,
+		   typeNotNull,InvalidOid);
 }
 
 /*

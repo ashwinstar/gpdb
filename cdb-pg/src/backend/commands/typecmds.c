@@ -782,10 +782,9 @@ DefineDomain(CreateDomainStmt *stmt)
 	 * Have TypeCreate do all the real work.
 	 */
 	domainoid =
-		TypeCreate(domainName,	/* type name */
+		TypeCreateWithOid(domainName,	/* type name */
 				   domainNamespace,		/* namespace */
-				   stmt->domainOid,		/* preassigned type oid (none here) */
-				   //InvalidOid,	/* relation oid (n/a here) */
+				   InvalidOid,	/* relation oid (n/a here) */
 				   0,			/* relation kind (ditto) */
 				   internalLength,		/* internal size */
 				   'd',			/* type-type (domain type) */
@@ -804,7 +803,8 @@ DefineDomain(CreateDomainStmt *stmt)
 				   storage,		/* TOAST strategy */
 				   stmt->typename->typmod,		/* typeMod value */
 				   typNDims,	/* Array dimensions for base type */
-				   typNotNull); /* Type NOT NULL */
+				   typNotNull,	/* Type NOT NULL */
+				   stmt->domainOid); 
 
 	stmt->domainOid = domainoid;
 	/*
@@ -841,7 +841,6 @@ DefineDomain(CreateDomainStmt *stmt)
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-		elog(ERROR,"not yet working after 8.1 merge");
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }

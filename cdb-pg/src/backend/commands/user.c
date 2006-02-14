@@ -1377,12 +1377,6 @@ AddRoleMems(const char *rolename, Oid roleid,
 	 */
 	heap_close(pg_authmem_rel, NoLock);
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	elog(ERROR,"Not yet working after 8.1. merge");
-		//if (strcmp(tag, "ALTER ROLE") == 0)
-		//{
-		//	CdbDispatchUtilityStatement((Node *) stmt);
-		//}
 }
 
 /*
@@ -1499,9 +1493,5 @@ DelRoleMems(const char *rolename, Oid roleid,
 	 */
 	heap_close(pg_authmem_rel, NoLock);
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-		elog(ERROR,"Not yet working after 8.1 merge");
-		//CdbDispatchUtilityStatement((Node *) stmt);
-	}
+
 }

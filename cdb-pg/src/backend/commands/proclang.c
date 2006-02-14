@@ -231,6 +231,12 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 		/* ok, create it */
 		create_proc_lang(languageName, handlerOid, valOid, stmt->pltrusted);
 	}
+	
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 }
 
 /*
@@ -296,12 +302,6 @@ create_proc_lang(const char *languageName,
 
 	heap_close(rel, RowExclusiveLock);
 
-
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-		elog(ERROR,"Not yet working after 8.1 merge");
-		//CdbDispatchUtilityStatement((Node *) stmt);
-	}
 }
 
 /*
