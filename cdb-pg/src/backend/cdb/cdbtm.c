@@ -174,6 +174,21 @@ startDtxTransaction(bool dispatchBegin)
 			}
 		}
 	}
+	/* this happens when the user explictly calls BEGIN and for certain
+	 * utility statements (like COPY) we need to make sure we kick off
+	 * the begin even though the currentGxact is not null
+	 */
+	else if (dispatchBegin && !txnBegan)
+	{
+		StringInfoData errMessage;
+			
+		if (execCommand(&errMessage) != DTX_OK)
+		{
+			ereport(ERROR, (errmsg("Global transaction failed on command \"BEGIN %s\" due to error: %s",
+							currentGxact->gid, errMessage.data)));
+		}
+	}
+		
 	Assert(currentGxact->infomask == 0);
 	return ret;
 }
@@ -887,7 +902,6 @@ execCommand(StringInfo errbuf)
         cdbdisp_destroyDispatchResults(primaryResults);
         cdbdisp_destroyDispatchResults(mirrorResults);
     }
-
     /* Trouble */
     else
     {
