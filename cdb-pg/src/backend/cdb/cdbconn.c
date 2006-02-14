@@ -75,7 +75,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
 {
     CdbComponentDatabaseInfo   *q = segdbDesc->segment_database_info;
     PQExpBufferData             buffer;
-    char * 						username = GetUserNameFromId(GetUserId());
+    char * 						username = GetUserNameFromId(GetSessionUserId());
 
     /*
      * We use PQExpBufferData instead of StringInfoData
