@@ -396,7 +396,8 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 static void
 initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *dbName, PQExpBuffer buffer, bool utility)
 {
-	char * 						username = GetUserNameFromId(GetUserId());
+	char *username = GetUserNameFromId(GetSessionUserId());
+
 	initPQExpBuffer(buffer);
 
 	/*
@@ -432,8 +433,6 @@ initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *dbName, PQExpBuffer bu
 	appendPQExpBuffer(buffer, "port=%u ", q->port);
 	appendPQExpBuffer(buffer, "dbname=%s ", dbName);
 	appendPQExpBuffer(buffer, "user=%s ", username);
-
-
 }
 
 /* set seg db states */
