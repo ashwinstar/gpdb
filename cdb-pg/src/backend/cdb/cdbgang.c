@@ -868,8 +868,8 @@ thread_DoConnect(void *arg)
 		}
 		
 		/*
-		 * I wonder if this really works, or if this gets overridden as part of the login processing?
-		 */
+		 * Role cannot be set this way, becaused in 8.1.3 the string is truncated to 64 chars.
+		 * 
 		if (role_string != NULL && role_string[0]=='x')
 		{
 			char * endptr;
@@ -878,6 +878,7 @@ thread_DoConnect(void *arg)
 			if (savedoid != 0 && savedoid == GetCurrentRoleId())
 					appendPQExpBuffer(&buffer," -c role=%s",role_string);
 		}
+		*/
 		
 		if (superuser())
 		{
@@ -954,7 +955,8 @@ thread_DoConnect(void *arg)
 			}
 			
 			/*
-			 * session_authorization can't be set until AFTER login
+			 * session_authorization can't be set until AFTER login, and anyway in 8.1.3, the string
+			 * gets truncated to 64 chars before being used, so this can't work.
 			 * 
 			if (session_authorization_string != NULL && session_authorization_string[0] == 'x')
 			{
