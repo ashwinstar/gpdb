@@ -701,17 +701,30 @@ addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 static void *
 thread_DoConnect(void *arg)
 {
-	DoConnectParms *pParms = (DoConnectParms *) arg;
-	SegmentDatabaseDescriptor **segdbDescPtrArray = pParms->segdbDescPtrArray;
-	int			db_count = pParms->db_count;
-
-	int			i;
-	int start;
-	int j;
-	int end;
+	DoConnectParms *pParms;
+	SegmentDatabaseDescriptor **segdbDescPtrArray;
+	int			db_count;
+	int			i,
+				j,
+				start,
+				end;
 
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbComponentDatabaseInfo *q;
+
+	sigset_t	workermask;
+
+	/*
+	 * We are not capable of handling signals -- we're inside the postgres
+	 * imagine, the outcome of receiving a signal is that we longjmp() out and
+	 * start running lots and lots of non-threadsafe code
+	 */
+	sigfillset(&workermask);
+	pthread_sigmask(SIG_BLOCK, &workermask, NULL);
+
+	pParms = (DoConnectParms *) arg;
+	segdbDescPtrArray = pParms->segdbDescPtrArray;
+	db_count = pParms->db_count;
 
 	/*
 	 * The pParms contains an array of SegmentDatabaseDescriptors

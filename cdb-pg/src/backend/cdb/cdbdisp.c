@@ -463,8 +463,8 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor *** failedSegDB,
 	 */
 	for (i = 0; i < threadCount; i++)
 	{							/* loop over threads */
-		int pthread_err = 0;
-		
+		int			pthread_err = 0;
+
 		pParms = &dispatchCommandParmsAr[i];
 		Assert(pParms != NULL);
 
@@ -474,7 +474,9 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor *** failedSegDB,
 		pthread_err = pthread_join(pParms->thread, NULL);
 		if (pthread_err != 0)
 			elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (0x%x) of %d (returned %d attempting to join to 0x%x)",
-				 i + 1, (unsigned int)pParms->thread, threadCount, pthread_err, (unsigned int)pthread_self());
+				 i + 1, (unsigned int) pParms->thread, threadCount, pthread_err, (unsigned int) pthread_self());
+
+		pParms->thread = (pthread_t) 0;
 
 		/*
 		 * Examine the CdbDispatchResult objects containing the results
@@ -542,8 +544,8 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor *** failedSegDB,
 				pfree(pParms->szCommand);
 				pParms->szCommand = NULL;
 			}
-			
-			if( pParms->szSnapshot)
+
+			if (pParms->szSnapshot)
 			{
 				pfree(pParms->szSnapshot);
 				pParms->szSnapshot = NULL;
@@ -1002,12 +1004,23 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
 void *
 thread_DispatchCommand(void *arg)
 {
+	sigset_t	workermask;
 	DispatchCommandParms *pParms = (DispatchCommandParms *) arg;
-	int			db_count = pParms->db_count;
+	int			db_count;
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbDispatchResult *dispatchResult;
 	int			timeoutCounter = 0;
 	int			i;
+
+	/*
+	 * We are not capable of handling signals -- we're inside the postgres
+	 * imagine, the outcome of receiving a signal is that we longjmp() out and
+	 * start running lots and lots of non-threadsafe code
+	 */
+	sigfillset(&workermask);
+	pthread_sigmask(SIG_BLOCK, &workermask, NULL);
+
+	db_count = pParms->db_count;
 
 	/*
 	 * The pParms contains an array of SegmentDatabaseDescriptors
