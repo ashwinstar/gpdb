@@ -2840,7 +2840,19 @@ CopyFromDispatch(CopyState cstate)
 						h_oid = attr[h_attnum - 1]->atttypid;
 
 					if (nulls[h_attnum - 1] != 'n')
-						cdbhash(cdbHash, h_key, h_oid);
+					{
+						PG_TRY();
+						{
+							cdbhash(cdbHash, h_key, h_oid);
+						}
+						PG_CATCH();
+						{
+							/* clean up and re-throw error */
+							cdbCopyEnd(cdbCopy);
+							PG_RE_THROW();
+						}
+						PG_END_TRY();					
+					}
 					else
 						cdbhashnull(cdbHash);
 				}
