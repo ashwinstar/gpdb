@@ -572,12 +572,6 @@ DefineRelation_int(CreateStmt *stmt,
 								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 								 errmsg("Datatype is not yet supported by Bizgres MPP")));
 
-				if (colDef->typename->arrayBounds != NIL)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-							 errmsg("Array Datatypes are not yet supported by Bizgres MPP")));
-
-
 			}
 
 		}
@@ -3267,11 +3261,6 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					errmsg("Datatype is not yet supported by Bizgres MPP")));
-
-			if (colDef->typename->arrayBounds != NIL)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("Array Datatypes are not yet supported by Bizgres MPP")));
 
 		}
 

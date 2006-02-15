@@ -609,12 +609,6 @@ DefineDomain(CreateDomainStmt *stmt)
 					errmsg("Datatype is not yet supported by Bizgres MPP")));
 
 
-			if (stmt->typename->arrayBounds != NIL)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("Array Datatypes are not yet supported by Bizgres MPP")));
-
-
 		}
 	}
 
