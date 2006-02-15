@@ -67,6 +67,8 @@
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbtm.h"
 
+#include <pthread.h>
+
 #include "pgstat.h"
 
 extern int	optind;
@@ -140,6 +142,8 @@ static PreparedStatement *unnamed_stmt_pstmt = NULL;
 
 
 static bool EchoQuery = false;	/* default don't echo */
+
+pthread_t main_tid = (pthread_t)0;
 
 /*
  * people who want to use EOF should #define DONTUSENEWLINE in
@@ -2295,6 +2299,14 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
     else
         pts = "Process";
 
+	if (!pthread_equal(main_tid, pthread_self()))
+	{
+		write_stderr("\nUnexpected internal error: %s %d received signal %s in worker thread 0x%x (forwarding signal to main thread)\n\n",
+					 pts, MyProcPid, signame, (unsigned int)pthread_self());
+		pthread_kill(main_tid, postgres_signal_arg);
+		pthread_exit(NULL);
+	}
+
     write_stderr("\nUnexpected internal error: %s %d received signal %s\n\n",
                  pts, MyProcPid, signame);
 
@@ -2952,7 +2964,11 @@ PostgresMain(int argc, char *argv[], const char *username)
 
     /*
      * CDB: Catch program error signals.
+	 * 
+	 * Save our main thread-id for comparison during signals.
      */
+	main_tid = pthread_self();
+
 #ifdef SIGILL
     pqsignal(SIGILL, CdbProgramErrorHandler);
 #endif
