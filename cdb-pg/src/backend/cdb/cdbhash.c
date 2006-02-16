@@ -18,6 +18,7 @@
 #include "catalog/pg_type.h"
 #include "utils/numeric.h"
 #include "utils/timestamp.h"
+#include "utils/array.h"
 #include "utils/date.h"
 #include "utils/datetime.h"
 #include "fmgr.h"
@@ -155,6 +156,7 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	bool		bool_buf;
 	Name		namebuf;
 	uint32		nanbuf;
+	ArrayType  *arrbuf;
 
 	/*
 	 * Select the hash to be performed according to the field type we are adding to the
@@ -321,8 +323,7 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 
 		case TIMEOID:			/* hh:mm:ss, ANSI SQL time */
 			timebuf = DatumGetTimeADT(datum);
-			\
-				buf = &timebuf;
+			buf = &timebuf;
 			len = sizeof(timebuf);
 			break;
 
@@ -362,7 +363,19 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			len = sizeof(bool_buf);
 			break;
 
-		
+		/*
+		 * ANYARRAY is a pseudo-type. We use it to include
+		 * any of the array types (OIDs 1007-1033 in pg_type.h).
+		 * caller needs to be sure the type is ANYARRAYOID
+		 * before calling cdbhash on an array (INSERT and COPY do so).
+		 */
+		case ANYARRAYOID:
+					
+			arrbuf = DatumGetArrayTypeP(datum);
+			len = VARSIZE(arrbuf) - VARHDRSZ;
+			buf = VARDATA(arrbuf);
+			break;
+			
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_YET),

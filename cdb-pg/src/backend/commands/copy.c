@@ -2826,19 +2826,18 @@ CopyFromDispatch(CopyState cstate)
 														 * cdb policy */
 					h_key = values[h_attnum - 1];		/* value of this attr			   */
 					
-					/* data data type of this attribute. If it's a domain type 
-					 * get the type of the base (parent) type. NOTE - we don't
-					 * really need this if conditional. Instead we can just call
-					 * getBaseType() even if it's not a domain type. However, this
-					 * is a very performance sensitive part of the code. We rather
-					 * have a conditional penalty than going through getBaseType 
-					 * every single time when usually we don't need to...
+					/* 
+					 * get the data type of this attribute. If it's 
+					 * a domain type get the base type, if it's an 
+					 * array type use anyarray, or else just use as is.
 					 */
 					if (get_typtype(attr[h_attnum - 1]->atttypid) == 'd')
 						h_oid = getBaseType(attr[h_attnum - 1]->atttypid);
+					else if(attr[h_attnum - 1]->attndims > 0)
+						h_oid = ANYARRAYOID;
 					else
 						h_oid = attr[h_attnum - 1]->atttypid;
-
+					
 					if (nulls[h_attnum - 1] != 'n')
 					{
 						PG_TRY();
