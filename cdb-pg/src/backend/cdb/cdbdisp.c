@@ -45,6 +45,9 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbtm.h"
 
+#ifndef MIN
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#endif
 
 /*
  * Parameter structure for the DispatchCommand threads
@@ -231,6 +234,11 @@ cdbdisp_startDtxTransaction(void)
  * NB: This function should return normally even if there is an error.
  * It should not longjmp out via elog(ERROR, ...), ereport(ERROR, ...),
  * PG_THROW, CHECK_FOR_INTERRUPTS, etc.
+ *
+ * Note: the maxSlices argument is used to allocate the parameter
+ * blocks for dispatch, it should be set to the maximum number of
+ * slices in a plan. For dispatch of single commands (ie most uses of
+ * cdbdisp_dispatchToGang()), setting it to 1 is fine.
  */
 void
 cdbdisp_dispatchToGang(const char                  *szCommand,
@@ -238,15 +246,15 @@ cdbdisp_dispatchToGang(const char                  *szCommand,
 					   int							txnOptions,
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,
-                       int                          sliceIndex)
+                       int                          sliceIndex,
+                       unsigned int                 maxSlices)
 {
 	SegmentDatabaseDescriptor *segdbDesc;
-	int			i;
-	int			max_threads;
-	int			segdbs_in_thread_pool = 0;
-	int			x;
-	int			newThreads = 0;
-	
+	int	i,
+		max_threads,
+		segdbs_in_thread_pool = 0,
+		x,
+		newThreads = 0;	
 
 	Assert(Mpp_role == MPP_ROLE_DISPATCH &&
 		   gp &&
@@ -280,20 +288,35 @@ cdbdisp_dispatchToGang(const char                  *szCommand,
 
 		if (threadCount == 0)
 		{
+			/* the maximum number of command parameter blocks we'll possibly need is
+			 * one for each slice on the primary and mirror gangs. Set the minimum
+			 * just to be safe */
+			int paramCount = max_threads * 2 * MIN(maxSlices, 5);
+
 			dispatchCommandParmsAr =
-				(DispatchCommandParms *) palloc0((max_threads) * 20 *
-											   sizeof(DispatchCommandParms));
-			dispatchCommandParmsArSize = max_threads * 20;
+				(DispatchCommandParms *) palloc0(paramCount *
+												 sizeof(DispatchCommandParms));
+			dispatchCommandParmsArSize = paramCount;
 		}
 		else
 		{
+			/* Only reallocate when we need to. There is a race here:
+			 * we know that we have threads running using the
+			 * dispatchCommandParamsAr! If we reallocate we
+			 * potentially yank it out from under them! */
 			if (dispatchCommandParmsArSize < (threadCount + max_threads))
+			{
 				elog(LOG, "BUG: Reallocating dispatchCommandParmsAr");
 
-			dispatchCommandParmsAr =
-				(DispatchCommandParms *) repalloc(dispatchCommandParmsAr, (threadCount + max_threads) *
-											   sizeof(DispatchCommandParms));
-			memset(dispatchCommandParmsAr + threadCount, 0, max_threads * sizeof(DispatchCommandParms));
+				dispatchCommandParmsAr =
+					(DispatchCommandParms *) repalloc(dispatchCommandParmsAr,
+													  (threadCount + max_threads) *
+													  sizeof(DispatchCommandParms));
+				memset(dispatchCommandParmsAr + threadCount, 0,
+					   max_threads * sizeof(DispatchCommandParms));
+
+				dispatchCommandParmsArSize = threadCount + max_threads;
+			}
 		}
 
 		MemoryContextSwitchTo(oldContext);
@@ -742,12 +765,12 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
      * Dispatch the command.
      */
     *pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-    cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, txnOptions, primaryGang, *pPrimaryResults, -1);
+    cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, txnOptions, primaryGang, *pPrimaryResults, -1, 1);
 
 	if (dispatchToMirrors && mirrorGang)
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-        cdbdisp_dispatchToGang(szCommand, szSnapshotInfo,  txnOptions, mirrorGang, *pMirrorResults, -1);
+        cdbdisp_dispatchToGang(szCommand, szSnapshotInfo,  txnOptions, mirrorGang, *pMirrorResults, -1, 1);
     }
 
     pfree(szSnapshotInfo);
@@ -818,7 +841,6 @@ cdbdisp_finishCommand(struct CdbDispatchResults * primaryResults,
 	/* not reached */
 }	/* cdbdisp_finishCommand */
 
-
 /*
  * cdbdisp_handleError
  *
@@ -837,8 +859,10 @@ void
 cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
 				    struct CdbDispatchResults  *mirrorResults)
 {
-    int     qderrcode = elog_geterrcode();
+    int     qderrcode;
     bool    useQeError = false;
+
+    qderrcode = elog_geterrcode();
 
     /* If cdbdisp_dispatchToGang() wasn't called, don't wait. */
     if (!primaryResults &&
@@ -900,10 +924,6 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
     }
 }                               /* cdbdisp_handleError */
 
-
-
-
-
 void
 cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
                         bool                        cancelOnError,
@@ -911,14 +931,15 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
                         struct CdbDispatchResults **pPrimaryResults,    /* OUT */
                         struct CdbDispatchResults **pMirrorResults)     /* OUT */
 {
-	Gang   *primaryGang;
-    Gang   *mirrorGang;
-    List * readerGangs ;
-    ListCell * le;
+	Gang		*primaryGang,
+				*mirrorGang;
+    List		*readerGangs;
+    ListCell	*le;
     
-    int     nsegdb = getMPPSegmentCount();
-	char *szSnapshotInfo;
-	int		txnOptions;
+    int			nsegdb = getMPPSegmentCount();
+	char		*szSnapshotInfo;
+	int			txnOptions,
+				gangCount;
 	
     elog(DEBUG3, "cdbdisp_dispatchCommandToAllGangs: %.50s", szCommand);
 
@@ -938,8 +959,10 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
 	if (mirrorGang &&
 		(mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))
 	{
-		elog(LOG, "Some segments are down: MIRROR nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, mirrorGang->segdb_count, mirrorGang->size);
-		elog(LOG, "                        PRIMARYnsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, primaryGang->segdb_count, primaryGang->size);
+		elog(LOG, "Some segments are down: MIRROR nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d",
+			 nsegdb, mirrorGang->segdb_count, mirrorGang->size);
+		elog(LOG, "                       PRIMARY nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d",
+			 nsegdb, primaryGang->segdb_count, primaryGang->size);
 		elog(LOG, "Some segments are down.  Dispatching command %.50s to remaining segments only", szCommand);
 
 		if (strncmp(szCommand, "BEGIN ", 6) != 0 &&
@@ -965,20 +988,21 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
 	/*
      * Dispatch the command.
      */
-    *pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb * (1 + list_length(readerGangs)), 0, cancelOnError);
-    cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, txnOptions, primaryGang, *pPrimaryResults, -1);
+	gangCount = 1 + list_length(readerGangs);
+    *pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb * gangCount, 0, cancelOnError);
+    cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, txnOptions, primaryGang, *pPrimaryResults, -1, gangCount);
 
 	if (mirrorGang)
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-        cdbdisp_dispatchToGang(szCommand, szSnapshotInfo,  txnOptions, mirrorGang, *pMirrorResults, -1);
+        cdbdisp_dispatchToGang(szCommand, szSnapshotInfo,  txnOptions, mirrorGang, *pMirrorResults, -1, gangCount);
     }
     
     
-    foreach(le,readerGangs)
+    foreach(le, readerGangs)
     {
     	Gang  *rg = lfirst(le);
-    	cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, txnOptions, rg, *pPrimaryResults, -1);
+    	cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, txnOptions, rg, *pPrimaryResults, -1, gangCount);
     }
 
     pfree(szSnapshotInfo);
@@ -1004,23 +1028,11 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
 void *
 thread_DispatchCommand(void *arg)
 {
-	sigset_t	workermask;
-	DispatchCommandParms *pParms = (DispatchCommandParms *) arg;
-	int			db_count;
-	SegmentDatabaseDescriptor *segdbDesc;
-	CdbDispatchResult *dispatchResult;
-	int			timeoutCounter = 0;
-	int			i;
-
-	/*
-	 * We are not capable of handling signals -- we're inside the postgres
-	 * imagine, the outcome of receiving a signal is that we longjmp() out and
-	 * start running lots and lots of non-threadsafe code
-	 */
-	sigfillset(&workermask);
-	pthread_sigmask(SIG_BLOCK, &workermask, NULL);
-
-	db_count = pParms->db_count;
+	DispatchCommandParms		*pParms = (DispatchCommandParms *) arg;
+	SegmentDatabaseDescriptor	*segdbDesc;
+	CdbDispatchResult			*dispatchResult;
+	int							i, db_count = pParms->db_count;
+	int							timeoutCounter = 0;
 
 	/*
 	 * The pParms contains an array of SegmentDatabaseDescriptors
@@ -1034,7 +1046,6 @@ thread_DispatchCommand(void *arg)
                          i + 1, db_count);
 
 		dispatchResult = pParms->dispatchResultPtrArray[i];
-
 
         dispatchResult->hasDispatched = false;
         dispatchResult->requestedCancel = false;
@@ -2214,7 +2225,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 						       txnOptions,
                                primaryGang,
                                *pPrimaryResults,
-                               slice->sliceIndex);
+                               slice->sliceIndex, sliceLim);
 
 
 		/*
@@ -2227,7 +2238,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
             					   txnOptions,
                                    mirrorGang,
                                    *pMirrorResults,
-                                   slice->sliceIndex);
+                                   slice->sliceIndex, sliceLim);
 		}
 
 		/* Empty the buffer for reuse. */

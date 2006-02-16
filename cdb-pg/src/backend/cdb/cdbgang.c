@@ -712,16 +712,6 @@ thread_DoConnect(void *arg)
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbComponentDatabaseInfo *q;
 
-	sigset_t	workermask;
-
-	/*
-	 * We are not capable of handling signals -- we're inside the postgres
-	 * imagine, the outcome of receiving a signal is that we longjmp() out and
-	 * start running lots and lots of non-threadsafe code
-	 */
-	sigfillset(&workermask);
-	pthread_sigmask(SIG_BLOCK, &workermask, NULL);
-
 	pParms = (DoConnectParms *) arg;
 	segdbDescPtrArray = pParms->segdbDescPtrArray;
 	db_count = pParms->db_count;
@@ -763,8 +753,7 @@ thread_DoConnect(void *arg)
 			appendPQExpBuffer(&buffer," -c mpp_is_primary=false");
 			
 			
-		/* user-settable GUC variables */
-		
+		/* user-settable GUC variables */		
 				
 		/*
 		 * It doesn't seem to work to quote the entire search path,
@@ -777,7 +766,7 @@ thread_DoConnect(void *arg)
 		start = 0;									/* start */
 		end = strlen(namespace_search_path);		/* end */
 		if ((namespace_search_path[0] == '\"' && namespace_search_path[strlen(namespace_search_path)-1]=='\"') ||
-			(namespace_search_path[0] == '\'' && namespace_search_path[strlen(namespace_search_path)-1]=='\'') )
+			(namespace_search_path[0] == '\'' && namespace_search_path[strlen(namespace_search_path)-1]=='\''))
 		{
 			start = 1;
 			end = strlen(namespace_search_path)-1;

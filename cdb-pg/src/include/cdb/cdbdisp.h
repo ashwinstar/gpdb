@@ -69,7 +69,8 @@ cdbdisp_dispatchToGang(const char                  *szCommand,
 					   int							txnOptions,
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,
-                       int                          sliceIndex);
+                       int                          sliceIndex,
+                       unsigned int                 maxSlices);
 
 /*
  * CdbCheckDispatchResult:

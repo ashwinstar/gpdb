@@ -143,7 +143,7 @@ static PreparedStatement *unnamed_stmt_pstmt = NULL;
 
 static bool EchoQuery = false;	/* default don't echo */
 
-pthread_t main_tid = (pthread_t)0;
+static pthread_t main_tid = (pthread_t)0;
 
 /*
  * people who want to use EOF should #define DONTUSENEWLINE in
@@ -2259,6 +2259,15 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
     char       *signame;
     char       *pts = "process";
 
+	if (Mpp_role == MPP_ROLE_DISPATCH &&
+		!pthread_equal(main_tid, pthread_self()))
+	{
+		write_stderr("\nUnexpected internal error: QD %d received signal %s in worker thread 0x%x (forwarding signal to main thread)\n\n",
+					 MyProcPid, signame, (unsigned int)pthread_self());
+		pthread_kill(main_tid, postgres_signal_arg);
+		pthread_exit(NULL);
+	}
+
     PG_SETMASK(&BlockSig);
 #ifdef SIGILL
     pqsignal(SIGILL, SIG_DFL);
@@ -2298,14 +2307,6 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
         pts = "QE process";
     else
         pts = "Process";
-
-	if (!pthread_equal(main_tid, pthread_self()))
-	{
-		write_stderr("\nUnexpected internal error: %s %d received signal %s in worker thread 0x%x (forwarding signal to main thread)\n\n",
-					 pts, MyProcPid, signame, (unsigned int)pthread_self());
-		pthread_kill(main_tid, postgres_signal_arg);
-		pthread_exit(NULL);
-	}
 
     write_stderr("\nUnexpected internal error: %s %d received signal %s\n\n",
                  pts, MyProcPid, signame);
