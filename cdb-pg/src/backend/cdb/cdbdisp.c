@@ -578,6 +578,7 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor *** failedSegDB,
 		}
 		pfree(dispatchCommandParmsAr);
 		dispatchCommandParmsAr = NULL;
+		dispatchCommandParmsArSize = 0;
 	}
 
 	/* Reset dispatcher state. */
