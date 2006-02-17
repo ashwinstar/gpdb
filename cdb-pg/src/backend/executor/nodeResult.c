@@ -34,6 +34,7 @@
  *		plan normally and pass back the results.
  *
  *
+ * Portions Copyright (c) 2005-2006, Greenplum Inc.
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -86,6 +87,11 @@ ExecResult(ResultState *node)
 		node->rs_checkqual = false;
 		if (!qualResult)
 		{
+            /* CDB: Tell source QEs that we don't need their results. */
+            if (!node->rs_done &&
+                node->ps.lefttree)
+                ExecSquelchNode(node->ps.lefttree);
+
 			node->rs_done = true;
 			return NULL;
 		}
