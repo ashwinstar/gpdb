@@ -546,7 +546,7 @@ DefineRelation_int(CreateStmt *stmt,
 						strcmp(n, "tinterval") == 0 ||
 						strcmp(n, "int2vector") == 0 ||
 						strcmp(n, "regproc") == 0 ||
-						strcmp(n, "vector") == 0 ||
+						strcmp(n, "oidvector") == 0 ||
 						strcmp(n, "lseg") == 0 ||
 						strcmp(n, "polygon") == 0 ||
 						strcmp(n, "line") == 0 ||
@@ -3224,7 +3224,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 					strcmp(n, "tinterval") == 0 ||
 					strcmp(n, "int2vector") == 0 ||
 					strcmp(n, "regproc") == 0 ||
-					strcmp(n, "vector") == 0 ||
+					strcmp(n, "oidvector") == 0 ||
 					strcmp(n, "lseg") == 0 ||
 					strcmp(n, "polygon") == 0 ||
 					strcmp(n, "line") == 0 ||
