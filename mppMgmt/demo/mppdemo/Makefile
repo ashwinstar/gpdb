@@ -6,7 +6,7 @@
 #
 # VARIABLES
 #
-MASTER_PORT=11007
+MASTER_PORT=5432
 PORT_BASE=10000
 
 all: clean check cluster probe
