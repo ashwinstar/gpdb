@@ -388,7 +388,10 @@ GetNewRelFileNode(Oid reltablespace, bool relisshared, Relation pg_class)
 	
 	if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
-		elog(WARNING,"Calling GetNewRelFileNode in EXECUTE mode.  New relOid = %d", rnode.relNode );
+		if (pg_class)
+			elog(WARNING,"Calling GetNewRelFileNode (with pg_class) in EXECUTE mode.  New relOid = %d", rnode.relNode );
+		else
+			elog(DEBUG1,"Calling GetNewRelFileNode in EXECUTE mode.  New relOid = %d", rnode.relNode );
 	}
 
 	return rnode.relNode;
