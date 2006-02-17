@@ -523,7 +523,7 @@ cdbanalyze_get_columnstats(Relation rel, VacAttrStats * stats)
 	appendStringInfo(&buffer, ",stavalues1, stavalues2, stavalues3,stavalues4 ");
 	appendStringInfo(&buffer, ",reltuples ");
 
-	appendStringInfo(&buffer, " from pg_statistic JOIN pg_class ON relfilenode=starelid ");
+	appendStringInfo(&buffer, " from pg_statistic JOIN pg_class ON pg_class.oid=pg_statistic.oid ");
 	appendStringInfo(&buffer, " where relname='%s' and relnamespace=%u and staattnum=%hd", relname, namespace, (stats->attr->attnum));
 
 	
