@@ -2262,8 +2262,8 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
 	if (Mpp_role == MPP_ROLE_DISPATCH &&
 		!pthread_equal(main_tid, pthread_self()))
 	{
-		write_stderr("\nUnexpected internal error: QD %d received signal %s in worker thread 0x%x (forwarding signal to main thread)\n\n",
-					 MyProcPid, signame, (unsigned int)pthread_self());
+		write_stderr("\nUnexpected internal error: QD %d received signal %d in worker thread 0x%x (forwarding signal to main thread)\n\n",
+					 MyProcPid, postgres_signal_arg, (unsigned int)pthread_self());
 		pthread_kill(main_tid, postgres_signal_arg);
 		pthread_exit(NULL);
 	}
