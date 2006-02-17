@@ -294,7 +294,7 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 			
 		if (isnull)
 			ereport(NOTICE, (errcode(ERRCODE_MPP_COMMAND_ERROR),
-				   errmsg("NULL returned instead of statistics from segment databases."),
+				   errmsg("NULL returned instead of column statistics from segment databases."),
 						  errdetail("Segment db catalog query : %s",
 									sqlstmt->data )));
 			
