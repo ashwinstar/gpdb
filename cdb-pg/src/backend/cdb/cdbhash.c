@@ -17,6 +17,7 @@
 #include "utils/builtins.h"
 #include "catalog/pg_type.h"
 #include "utils/numeric.h"
+#include "utils/inet.h"
 #include "utils/timestamp.h"
 #include "utils/array.h"
 #include "utils/date.h"
@@ -46,6 +47,7 @@
 /* local function declarations */
 uint32		fnv1_32_buf(void *buf, size_t len, uint32 hashval);
 uint32		fnv1a_32_buf(void *buf, size_t len, uint32 hashval);
+int			inet_getkey(inet *addr, unsigned char *inet_key, int key_size);
 int			ignoreblanks(char *data, int len);
 int			ispowof2(int numsegs);
 
@@ -135,6 +137,7 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 
 	void	   *buf = NULL;		/* pointer to the data */
 	size_t		len = 0;		/* length for the data buffer */
+	
 	int64		intbuf;			/* an 8 byte buffer for all integer sizes */
 	BpChar	   *bp;				/* a variable length struct (varlena) for
 								 * blank padded strings */
@@ -152,11 +155,19 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	TimeADT		timebuf;
 	TimeTzADT  *timetzptr;
 	Interval   *intervalptr;
+	
 	Numeric		num;
 	bool		bool_buf;
 	Name		namebuf;
 	uint32		nanbuf;
+	
 	ArrayType  *arrbuf;
+	inet		 *inetptr; /* inet/cidr */
+	unsigned char inet_hkey[sizeof(inet_struct)];
+	macaddr		*macptr; /* MAC address */
+	
+	//int2vector *i2vec_buf;
+	//oidvector  *oidvec_buf;
 
 	/*
 	 * Select the hash to be performed according to the field type we are adding to the
@@ -246,7 +257,20 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			}
 
 			break;
-
+		
+		/* UNCOMMENT THESE WHEN MPP-474 IS FIXED.
+		case INT2VECTOROID:
+			i2vec_buf = (int2vector *) DatumGetPointer(datum);
+			len = i2vec_buf->dim1 * sizeof(int2);
+			buf = (void *)i2vec_buf->values;
+			break;
+		
+		case OIDVECTOROID:	
+			oidvec_buf = (oidvector *) DatumGetPointer(datum);
+			len = oidvec_buf->dim1 * sizeof(Oid);
+			buf = oidvec_buf->values;
+			break;
+		*/	
 			/*
 			 * ====== CHARACTER TYPES =======
 			 */
@@ -328,12 +352,14 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			break;
 
 		case TIMETZOID: /* time with time zone */
+			
 			/*
 			 * will not compare to TIMEOID on equal values.
 			 * Postgres never attempts to compare the two as well.
 			 */
 			timetzptr = DatumGetTimeTzADTP(datum);
 			buf = (unsigned char *) timetzptr;
+			
 			/*
 			 * Specify hash length as sizeof(double) + sizeof(int4), not as
 			 * sizeof(TimeTzADT), so that any garbage pad bytes in the structure
@@ -354,6 +380,24 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			break;
 
 			/*
+			 * ======= NETWORK TYPES ========
+			 */
+		case INETOID:
+		case CIDROID:
+			
+			inetptr = DatumGetInetP(datum);
+			len = inet_getkey(inetptr, inet_hkey, sizeof(inet_hkey)); /* fill-in inet_key & get len */
+			buf = inet_hkey;
+			break;
+		
+		case MACADDROID:
+			
+			macptr = DatumGetMacaddrP(datum);
+			len = sizeof(macaddr);
+			buf = (unsigned char *) macptr;
+			break;
+			
+			/*
 			 * ======= other types =======
 			 */
 
@@ -369,7 +413,7 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 		 * caller needs to be sure the type is ANYARRAYOID
 		 * before calling cdbhash on an array (INSERT and COPY do so).
 		 */
-		case ANYARRAYOID:
+		case ANYARRAYOID:	
 					
 			arrbuf = DatumGetArrayTypeP(datum);
 			len = VARSIZE(arrbuf) - VARHDRSZ;
@@ -433,14 +477,6 @@ cdbhashreduce(CdbHash *h)
 
 	return result;
 }
-
-
-/*================================================================
- *
- * HASH EXECUTION FOR ALL TYPES
- *
- *================================================================
- */
 
 
 /*
@@ -517,6 +553,36 @@ fnv1a_32_buf(void *buf, size_t len, uint32 hval)
 
 	/* return our new hash value */
 	return hval;
+}
+
+/*
+ * Support function for hashing on inet/cidr (see network.c)
+ *
+ * Since network_cmp considers only ip_family, ip_bits, and ip_addr,
+ * only these fields may be used in the hash; in particular don't use type.
+ */
+int inet_getkey(inet *addr, unsigned char *inet_key, int key_size)
+{
+	int			addrsize;
+	
+	switch (((inet_struct *)VARDATA(addr))->family)
+	{
+		case PGSQL_AF_INET:
+			addrsize = 4;
+			break;
+		case PGSQL_AF_INET6:
+			addrsize = 16;
+			break;
+		default:
+			addrsize = 0;
+	}
+	
+	Assert(addrsize + 2 <= key_size);
+	inet_key[0] = ((inet_struct *)VARDATA(addr))->family;
+	inet_key[1] = ((inet_struct *)VARDATA(addr))->bits;
+	memcpy(inet_key + 2, ((inet_struct *)VARDATA(addr))->ipaddr, addrsize);
+	
+	return (addrsize + 2);
 }
 
 /*================================================================

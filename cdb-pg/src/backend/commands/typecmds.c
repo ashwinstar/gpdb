@@ -574,11 +574,9 @@ DefineDomain(CreateDomainStmt *stmt)
 					strcmp(n, "bit") == 0 ||
 					strcmp(n, "box") == 0 ||
 					strcmp(n, "circle") == 0 ||
-					strcmp(n, "inet") == 0 ||
 					strcmp(n, "abstime") == 0 ||
 					strcmp(n, "reltime") == 0 ||
 					strcmp(n, "tinterval") == 0 ||
-					strcmp(n, "bytea") == 0 ||
 					strcmp(n, "int2vector") == 0 ||
 					strcmp(n, "regproc") == 0 ||
 					strcmp(n, "vector") == 0 ||
@@ -587,22 +585,11 @@ DefineDomain(CreateDomainStmt *stmt)
 					strcmp(n, "line") == 0 ||
 					strcmp(n, "unknown") == 0 ||
 					strcmp(n, "cash") == 0 ||
-					strcmp(n, "macaddr") == 0 ||
-					strcmp(n, "cidr") == 0 ||
-					strcmp(n, "int4array") == 0 ||
 					strcmp(n, "aclitem") == 0 ||
 					strcmp(n, "varbit") == 0 ||
-					strcmp(n, "record") == 0 ||
-					strcmp(n, "any") == 0 ||
-					strcmp(n, "anyarray") == 0 ||
-					strcmp(n, "void") == 0 ||
-					strcmp(n, "opaque") == 0 ||
 					strcmp(n, "money") == 0 ||
 					strcmp(n, "anyelement") == 0 ||
-					strcmp(n, "cstring") == 0 ||
 					strcmp(n, "smgr") == 0 ||
-					strcmp(n, "serial") == 0 ||
-					strcmp(n, "bigserial") == 0 ||
 					strcmp(n, "point") == 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),

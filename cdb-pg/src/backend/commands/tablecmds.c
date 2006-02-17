@@ -541,7 +541,6 @@ DefineRelation_int(CreateStmt *stmt,
 						strcmp(n, "bit") == 0 ||
 						strcmp(n, "box") == 0 ||
 						strcmp(n, "circle") == 0 ||
-						strcmp(n, "inet") == 0 ||
 						strcmp(n, "abstime") == 0 ||
 						strcmp(n, "reltime") == 0 ||
 						strcmp(n, "tinterval") == 0 ||
@@ -553,19 +552,10 @@ DefineRelation_int(CreateStmt *stmt,
 						strcmp(n, "line") == 0 ||
 						strcmp(n, "unknown") == 0 ||
 						strcmp(n, "cash") == 0 ||
-						strcmp(n, "macaddr") == 0 ||
-						strcmp(n, "cidr") == 0 ||
-						strcmp(n, "int4array") == 0 ||
 						strcmp(n, "aclitem") == 0 ||
 						strcmp(n, "varbit") == 0 ||
-						strcmp(n, "record") == 0 ||
-						strcmp(n, "any") == 0 ||
-						strcmp(n, "anyarray") == 0 ||
-						strcmp(n, "void") == 0 ||
-						strcmp(n, "opaque") == 0 ||
 						strcmp(n, "money") == 0 ||
 						strcmp(n, "anyelement") == 0 ||
-						strcmp(n, "cstring") == 0 ||
 						strcmp(n, "smgr") == 0 ||
 						strcmp(n, "point") == 0)
 						ereport(ERROR,
@@ -3223,15 +3213,12 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 
 			if (v)
 				n = v->val.str;
-
-
-
+			
 			if (n)
 				if (strcmp(n, "path") == 0 ||
 					strcmp(n, "bit") == 0 ||
 					strcmp(n, "box") == 0 ||
 					strcmp(n, "circle") == 0 ||
-					strcmp(n, "inet") == 0 ||
 					strcmp(n, "abstime") == 0 ||
 					strcmp(n, "reltime") == 0 ||
 					strcmp(n, "tinterval") == 0 ||
@@ -3243,19 +3230,10 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 					strcmp(n, "line") == 0 ||
 					strcmp(n, "unknown") == 0 ||
 					strcmp(n, "cash") == 0 ||
-					strcmp(n, "macaddr") == 0 ||
-					strcmp(n, "cidr") == 0 ||
-					strcmp(n, "int4array") == 0 ||
 					strcmp(n, "aclitem") == 0 ||
 					strcmp(n, "varbit") == 0 ||
-					strcmp(n, "record") == 0 ||
-					strcmp(n, "any") == 0 ||
-					strcmp(n, "anyarray") == 0 ||
-					strcmp(n, "void") == 0 ||
-					strcmp(n, "opaque") == 0 ||
 					strcmp(n, "money") == 0 ||
 					strcmp(n, "anyelement") == 0 ||
-					strcmp(n, "cstring") == 0 ||
 					strcmp(n, "smgr") == 0 ||
 					strcmp(n, "point") == 0)
 					ereport(ERROR,
