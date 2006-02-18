@@ -537,13 +537,14 @@ void SeqServerLoop(void)
 		if (FD_ISSET(listenerFd, &rrset))
 		{
 			elog(DEBUG3, "seqserver: accepting an Incoming Connection ");
+            addrlen = sizeof(addr);
 			if ((newsockfd = accept(listenerFd, (struct sockaddr *) & addr, &addrlen)) < 0)
 			{
 				/*
 				 * TODO: would be nice to read the errno and try and provide
 				 * more useful info as to why this happened.
 				 */
-				elog(INFO, "seqserver: error during accept() call (error:%d)", errno);
+				elog(LOG, "seqserver: error during accept() call (error:%d)", errno);
 			}
 			
 			/* make socket non-blocking BEFORE we connect. */

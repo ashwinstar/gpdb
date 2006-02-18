@@ -2965,7 +2965,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 
     /*
      * CDB: Catch program error signals.
-	 * 
+	 *
 	 * Save our main thread-id for comparison during signals.
      */
 	main_tid = pthread_self();
