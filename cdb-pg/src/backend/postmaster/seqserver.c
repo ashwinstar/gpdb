@@ -194,13 +194,13 @@ sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool is
 	 */
 	
 	/* dbid */
-	netval_32 = htons(dbid);
+	netval_32 = htonl(dbid);
 	memcpy(&request[0], &netval_32, 4);
 	/* tablespace id */
-	netval_32 = htons(tablespaceid);
+	netval_32 = htonl(tablespaceid);
 	memcpy(&request[4], &netval_32, 4);
 	/* seq oid */
-	netval_32 = htons(seq_oid);
+	netval_32 = htonl(seq_oid);
 	memcpy(&request[8], &netval_32, 4);
 	/* is temp */
 	memcpy(&request[12], &isTemp, 2 );
@@ -208,6 +208,7 @@ sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool is
 	netval_16 = htons(qd_pid);
 	memcpy(&request[14], &netval_16, 2 );
 	
+	 
 	
 	/*
 	 * write the request
