@@ -532,6 +532,11 @@ index_create(Oid heapRelationId,
 	if (!OidIsValid(indexRelationId))
 		indexRelationId = GetNewRelFileNode(tableSpaceId, shared_relation,
 											pg_class);
+	else							  
+		if (Mpp_role == MPP_ROLE_EXECUTE)
+		{
+			CheckNewRelFileNodeIsOk(indexRelationId, tableSpaceId, shared_relation, pg_class);
+		}
 
 	/*
 	 * create the index relation's relcache entry and physical disk file. (If
@@ -1120,15 +1125,17 @@ setNewRelfilenode(Relation relation)
 	/* Can't change for shared tables or indexes */
 	Assert(!relation->rd_rel->relisshared);
 	
-	if (Mpp_role == MPP_ROLE_EXECUTE)
-	{
-		elog(WARNING,"setNewRelfilenode called in EXECUTE mode");
-	}
+	
 
 	/* Allocate a new relfilenode */
 	newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
 									   relation->rd_rel->relisshared,
 									   NULL);
+									   
+	if (Mpp_role == MPP_ROLE_EXECUTE)
+	{
+		elog(DEBUG1,"setNewRelfilenode called in EXECUTE mode, newrelfilenode=%d",newrelfilenode);
+	}
 
 	/*
 	 * Find the pg_class tuple for the given relation.	This is not used
@@ -1196,8 +1203,12 @@ setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode)
 		   relation->rd_rel->relkind == RELKIND_INDEX);
 	/* Can't change for shared tables or indexes */
 	Assert(!relation->rd_rel->relisshared);
+	
+	elog(DEBUG3,"setNewRelfilenodeToOid called.  newrelfilenode = %d",newrelfilenode);
 
-
+	CheckNewRelFileNodeIsOk(newrelfilenode, relation->rd_rel->reltablespace,
+									   relation->rd_rel->relisshared,
+									   NULL);
 	/*
 	 * Find the pg_class tuple for the given relation.	This is not used
 	 * during bootstrap, so okay to use heap_update always.

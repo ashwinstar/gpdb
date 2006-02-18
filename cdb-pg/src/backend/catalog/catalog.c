@@ -396,3 +396,77 @@ GetNewRelFileNode(Oid reltablespace, bool relisshared, Relation pg_class)
 
 	return rnode.relNode;
 }
+
+
+bool
+CheckNewRelFileNodeIsOk(Oid newOid, Oid reltablespace, bool relisshared, Relation pg_class)
+{
+	RelFileNode rnode;
+	char	   *rpath;
+	int			fd;
+	bool		collides;
+	
+	
+	if (pg_class)
+	{
+		Oid			oidIndex;
+		Relation	indexrel;
+		IndexScanDesc scan;
+		ScanKeyData key;
+	
+		Assert(!IsBootstrapProcessingMode());
+		Assert(pg_class->rd_rel->relhasoids);
+	
+		/* The relcache will cache the identity of the OID index for us */
+		oidIndex = RelationGetOidIndex(pg_class);
+	
+		Assert(OidIsValid(oidIndex));
+		
+		indexrel = index_open(oidIndex);
+		
+		ScanKeyInit(&key,
+					(AttrNumber) 1,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(newOid));
+
+		scan = index_beginscan(pg_class, indexrel, SnapshotDirty, 1, &key);
+
+		collides = HeapTupleIsValid(index_getnext(scan, ForwardScanDirection));
+
+		index_endscan(scan);
+		
+		index_close(indexrel);
+		
+		if (collides)
+			elog(ERROR,"QE tried to re-use and OID already allocated in pg_class when creating an object.  Oid = %d", newOid );	
+		
+	}
+
+	/* This should match RelationInitPhysicalAddr */
+	rnode.spcNode = reltablespace ? reltablespace : MyDatabaseTableSpace;
+	rnode.dbNode = relisshared ? InvalidOid : MyDatabaseId;
+	
+	rnode.relNode = newOid;
+	
+	/* Check for existing file of same name */
+	rpath = relpath(rnode);
+	fd = BasicOpenFile(rpath, O_RDONLY | PG_BINARY, 0);
+
+	if (fd >= 0)
+	{
+		/* definite collision */
+		close(fd);
+		collides = true;
+	}
+	else
+		collides = false;
+
+	pfree(rpath);
+	
+	if (collides)
+		elog(ERROR,"QE tried to re-use a relfilenode already in use.  refilenode = %d", newOid );	
+
+
+	return !collides;
+}
+

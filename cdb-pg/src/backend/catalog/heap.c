@@ -61,6 +61,8 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+
 
 static void AddNewRelationTuple(Relation pg_class_desc,
 					Relation new_rel_desc,
@@ -703,6 +705,11 @@ heap_create_with_catalog(const char *relname,
 	if (!OidIsValid(relid))
 		relid = GetNewRelFileNode(reltablespace, shared_relation,
 								  pg_class_desc);
+	else							  
+		if (Mpp_role == MPP_ROLE_EXECUTE)
+		{
+			CheckNewRelFileNodeIsOk(relid, reltablespace, shared_relation, pg_class_desc);
+		}
 
 	/*
 	 * Create the relcache entry (mostly dummy at this point) and the physical
