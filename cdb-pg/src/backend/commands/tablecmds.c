@@ -727,7 +727,6 @@ ExecuteTruncate(TruncateStmt *stmt)
 {
 	List	   *relations = stmt->relations;
 	List	   *rels = NIL;
-	List	   *newOidsList = NIL;
 	ListCell   *cell;
 
 
@@ -789,112 +788,46 @@ ExecuteTruncate(TruncateStmt *stmt)
 	/*
 	 * OK, truncate each table.
 	 */
-	if (Mpp_role != MPP_ROLE_EXECUTE)
-	{
-		foreach(cell, rels)
-		{
-			Relation	rel = lfirst(cell);
-			Oid			heap_relid;
-			Oid			toast_relid;
-			Oid 		newOid;
-			Oid			newToastOid = InvalidOid;
-	
-			/*
-			 * Create a new empty storage file for the relation, and assign it as
-			 * the relfilenode value.	The old storage file is scheduled for
-			 * deletion at commit.
-			 */
-			newOid = setNewRelfilenode(rel);
-	
-			heap_relid = RelationGetRelid(rel);			/* The old relOid of the relation */
-			
-			toast_relid = rel->rd_rel->reltoastrelid;
-	
-			heap_close(rel, NoLock);
-	
-			/*
-			 * The same for the toast table, if any.
-			 */
-			if (OidIsValid(toast_relid))
-			{
-				rel = relation_open(toast_relid, AccessExclusiveLock);
-				newToastOid = setNewRelfilenode(rel);
-				toast_relid = RelationGetRelid(rel);  	
-				heap_close(rel, NoLock);
-			}
-			
-			newOidsList = lappend_oid(newOidsList, newOid);
-			newOidsList = lappend_oid(newOidsList, newToastOid);
-			
-			Assert(newOidsList != NIL);
-	
-			/*
-			 * Reconstruct the indexes to match, and we're done.
-			 */
-			reindex_relation(heap_relid, true);
-		}
-	}
-	else
-	{
-		ListCell *newOid;
-		newOidsList = stmt->newOidsList;
-		Assert(stmt->newOidsList!=NIL);
-		
-		newOid = list_head(stmt->newOidsList);
-		
-		
 
-		foreach(cell, rels)
+	foreach(cell, rels)
+	{
+		Relation	rel = lfirst(cell);
+		Oid			heap_relid;
+		Oid			toast_relid;
+
+
+		/*
+		 * Create a new empty storage file for the relation, and assign it as
+		 * the relfilenode value.	The old storage file is scheduled for
+		 * deletion at commit.
+		 */
+		setNewRelfilenode(rel);
+
+		heap_relid = RelationGetRelid(rel);
+		
+		toast_relid = rel->rd_rel->reltoastrelid;
+
+		heap_close(rel, NoLock);
+
+		/*
+		 * The same for the toast table, if any.
+		 */
+		if (OidIsValid(toast_relid))
 		{
-			Relation	rel = lfirst(cell);
-			Oid			heap_relid = lfirst_oid(newOid);
-			Oid			toast_relid = InvalidOid;
-			
-			newOid = lnext(newOid);
-			
-			elog(DEBUG1, "special truncate code, old Oid = %d, new oid %d ", RelationGetRelid(rel), heap_relid);
-			
-			Assert(heap_relid != InvalidOid);
-	
-			/*
-			 * Create a new empty storage file for the relation, and assign it as
-			 * the relfilenode value.	The old storage file is scheduled for
-			 * deletion at commit.
-			 */
-			setNewRelfilenodeToOid(rel, heap_relid);
-			
-			toast_relid = rel->rd_rel->reltoastrelid;				/* Old toast Oid */
-	
+			rel = relation_open(toast_relid, AccessExclusiveLock);
+			setNewRelfilenode(rel); 	
 			heap_close(rel, NoLock);
-	
-			/*
-			 * The same for the toast table, if any.
-			 */
-			if (OidIsValid(toast_relid))
-			{
-				rel = relation_open(toast_relid, AccessExclusiveLock);
-				toast_relid = lfirst_oid(newOid);				/* new toast Oid */
-				Assert(toast_relid != InvalidOid);
-				
-				setNewRelfilenodeToOid(rel, toast_relid);
-				
-				heap_close(rel, NoLock);
-			}
-			
-			if (newOid != NULL)
-				newOid = lnext(newOid);
-	
-			/*
-			 * Reconstruct the indexes to match, and we're done.
-			 */
-			reindex_relation(RelationGetRelid(rel), true);
 		}
+
+		/*
+		 * Reconstruct the indexes to match, and we're done.
+		 */
+		reindex_relation(heap_relid, true);
 	}
+	
 	
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-		stmt->newOidsList = newOidsList;
-		Assert(stmt->newOidsList != NIL);
 		
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
