@@ -3,6 +3,7 @@
  * sequence.c
  *	  PostgreSQL sequences support code.
  *
+ * Portions Copyright (c) 2005-2006, Greenplum Inc.
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -22,6 +23,7 @@
 #include "commands/tablecmds.h"
 #include "commands/sequence.h"
 #include "miscadmin.h"
+#include "storage/smgr.h"               /* RelationCloseSmgr -> smgrclose */
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/resowner.h"
@@ -31,6 +33,9 @@
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
+#include "cdb/ml_ipc.h"
+
+#include "postmaster/seqserver.h"
 
 
 /*
@@ -84,9 +89,23 @@ static SeqTableData *last_used_seq = NULL;
 static int64 nextval_internal(Oid relid);
 static void acquire_share_lock(Relation seqrel, SeqTable seq);
 static void init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel);
-static Form_pg_sequence read_info(SeqTable elm, Relation rel, Buffer *buf);
+static Form_pg_sequence read_info(Relation rel, Buffer *buf);
 static void init_params(List *options, Form_pg_sequence new, bool isInit);
 static void do_setval(Oid relid, int64 next, bool iscalled);
+
+static void
+cdb_sequence_nextval(Relation   seqrel,
+                     int64     *plast,
+                     int64     *pcached,
+                     int64     *pincrement);
+static void
+cdb_sequence_nextval_proxy(Oid      tablespaceid,
+                           Oid      dbid,
+                           Oid      relid,
+                           bool     istemp,
+                           int64   *plast,
+                           int64   *pcached,
+                           int64   *pincrement);
 
 /*
  * DefineSequence
@@ -120,7 +139,7 @@ DefineSequence(CreateSeqStmt *seq)
 	 * Create relation (and fill *null & *value)
 	 */
 	stmt->relOid = 0;
-	 
+	
 	if (shouldDispatch)
 	{
 		
@@ -367,7 +386,8 @@ AlterSequence(AlterSeqStmt *stmt)
 					   stmt->sequence->relname);
 
 	/* lock page' buffer and read tuple into new sequence structure */
-	seq = read_info(elm, seqrel, &buf);
+	seq = read_info(seqrel, &buf);
+	elm->increment = seq->increment_by;
 	page = BufferGetPage(buf);
 
 	/* Copy old values of options into workspace */
@@ -452,6 +472,51 @@ nextval_internal(Oid relid)
 {
 	SeqTable	elm;
 	Relation	seqrel;
+															
+	/* open and AccessShareLock sequence */
+	init_sequence(relid, &elm, &seqrel);
+
+	if (elm->last != elm->cached)		/* some numbers were cached */
+	{
+		last_used_seq = elm;
+		elm->last += elm->increment;
+		relation_close(seqrel, NoLock);
+		return elm->last;
+	}
+
+	if (pg_class_aclcheck(elm->relid, GetUserId(), ACL_UPDATE) != ACLCHECK_OK)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied for sequence %s",
+						RelationGetRelationName(seqrel))));
+
+    /* Update the sequence object. */
+    if (Mpp_role == MPP_ROLE_EXECUTE)
+        cdb_sequence_nextval_proxy(seqrel->rd_node.spcNode,
+                                   seqrel->rd_node.dbNode,
+                                   relid,
+                                   seqrel->rd_istemp,
+                                   &elm->last,
+                                   &elm->cached,
+                                   &elm->increment);
+    else
+        cdb_sequence_nextval(seqrel,
+                             &elm->last,
+                             &elm->cached,
+                             &elm->increment);
+	last_used_seq = elm;
+
+    relation_close(seqrel, NoLock);
+	return elm->last;
+}
+
+
+void
+cdb_sequence_nextval(Relation   seqrel,
+                     int64     *plast,
+                     int64     *pcached,
+                     int64     *pincrement)
+{
 	Buffer		buf;
 	Page		page;
 	Form_pg_sequence seq;
@@ -463,35 +528,12 @@ nextval_internal(Oid relid)
 				fetch,
 				last;
 	int64		result,
-				next,
+                next,
 				rescnt = 0;
 	bool		logit = false;
-															 
-	if (Mpp_role == MPP_ROLE_EXECUTE  && !Mpp_is_primary)
-	{
-		elog(ERROR,"nextval() cannot be used in this statement when mirroring is active");
-	}
-		
-
-	/* open and AccessShareLock sequence */
-	init_sequence(relid, &elm, &seqrel);
-
-	if (pg_class_aclcheck(elm->relid, GetUserId(), ACL_UPDATE) != ACLCHECK_OK)
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("permission denied for sequence %s",
-						RelationGetRelationName(seqrel))));
-
-	if (elm->last != elm->cached)		/* some numbers were cached */
-	{
-		last_used_seq = elm;
-		elm->last += elm->increment;
-		relation_close(seqrel, NoLock);
-		return elm->last;
-	}
-
-	/* lock page' buffer and read tuple */
-	seq = read_info(elm, seqrel, &buf);
+															
+    /* lock page' buffer and read tuple */
+	seq = read_info(seqrel, &buf);
 	page = BufferGetPage(buf);
 
 	last = next = result = seq->last_value;
@@ -602,11 +644,10 @@ nextval_internal(Oid relid)
 	log -= fetch;				/* adjust for any unfetched numbers */
 	Assert(log >= 0);
 
-	/* save info in local cache */
-	elm->last = result;			/* last returned number */
-	elm->cached = last;			/* last fetched number */
-
-	last_used_seq = elm;
+    /* set results for caller */
+    *plast = result;            /* last returned number */
+    *pcached = last;            /* last fetched number */
+	*pincrement = incby;
 
 	START_CRIT_SECTION();
 
@@ -638,14 +679,6 @@ nextval_internal(Oid relid)
 
 		PageSetLSN(page, recptr);
 		PageSetTLI(page, ThisTimeLineID);
-		
-		/* MPP.  since sequences is the only xlog activity Reader QEs are 
-		 *       allowed to do.  when this happens here we'll mark it as
-		 *	     such in xact.c so we can detect if an xlog occurs that is
-		 *       not due to a sequence.  (of course you could get away with
-		 *       it if you updated a sequence and did something bad)
-		 */
-		SetXactSeqXlog();  /*xact.c*/ 
 	}
 
 	/* update on-disk data */
@@ -658,11 +691,8 @@ nextval_internal(Oid relid)
 	LockBuffer(buf, BUFFER_LOCK_UNLOCK);
 
 	WriteBuffer(buf);
+}                               /* cdb_sequence_nextval */
 
-	relation_close(seqrel, NoLock);
-
-	return result;
-}
 
 Datum
 currval_oid(PG_FUNCTION_ARGS)
@@ -672,7 +702,14 @@ currval_oid(PG_FUNCTION_ARGS)
 	SeqTable	elm;
 	Relation	seqrel;
 
-														 
+	/* For now, strictly forbidden on MPP. */
+	if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+				 errmsg("currval() not supported")));
+	}
+	
 	if (Mpp_role == MPP_ROLE_EXECUTE  && !Mpp_is_primary)
 	{
 		elog(ERROR,"currval() cannot be used in this statement when mirroring is active");
@@ -705,6 +742,14 @@ lastval(PG_FUNCTION_ARGS)
 {
 	Relation	seqrel;
 	int64		result;
+
+	/* For now, strictly forbidden on MPP. */
+	if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+				 errmsg("lastval() not supported")));
+	}
 
 	if (last_used_seq == NULL)
 		ereport(ERROR,
@@ -758,6 +803,13 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	Buffer		buf;
 	Form_pg_sequence seq;
 
+	if (Mpp_role == MPP_ROLE_EXECUTE)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+				 errmsg("setval() not supported in this context")));
+	}
+	
 	/* open and AccessShareLock sequence */
 	init_sequence(relid, &elm, &seqrel);
 
@@ -768,7 +820,8 @@ do_setval(Oid relid, int64 next, bool iscalled)
 						RelationGetRelationName(seqrel))));
 
 	/* lock page' buffer and read tuple */
-	seq = read_info(elm, seqrel, &buf);
+	seq = read_info(seqrel, &buf);
+	elm->increment = seq->increment_by;
 
 	if ((next < seq->min_value) || (next > seq->max_value))
 	{
@@ -967,7 +1020,7 @@ init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel)
 
 /* Given an opened relation, lock the page buffer and find the tuple */
 static Form_pg_sequence
-read_info(SeqTable elm, Relation rel, Buffer *buf)
+read_info(Relation rel, Buffer *buf)
 {
 	PageHeader	page;
 	ItemId		lp;
@@ -990,8 +1043,6 @@ read_info(SeqTable elm, Relation rel, Buffer *buf)
 	tuple.t_data = (HeapTupleHeader) PageGetItem((Page) page, lp);
 
 	seq = (Form_pg_sequence) GETSTRUCT(&tuple);
-
-	elm->increment = seq->increment_by;
 
 	return seq;
 }
@@ -1258,3 +1309,112 @@ seq_desc(char *buf, uint8 xl_info, char *rec)
 	sprintf(buf + strlen(buf), "rel %u/%u/%u",
 			xlrec->node.spcNode, xlrec->node.dbNode, xlrec->node.relNode);
 }
+
+
+/*
+ * Initialize a pseudo relcache entry with just enough info to call bufmgr.
+ */
+static void
+cdb_sequence_relation_init(Relation seqrel,
+                           Oid      tablespaceid,
+                           Oid      dbid,
+                           Oid      relid,
+                           bool     istemp)
+{
+    /* See RelationBuildDesc in relcache.c */
+    memset(seqrel, 0, sizeof(*seqrel));
+
+    seqrel->rd_smgr = NULL;
+    seqrel->rd_refcnt = 99;
+
+    seqrel->rd_id = relid;
+    seqrel->rd_istemp = istemp;
+
+	seqrel->rd_rel = (Form_pg_class)palloc0(CLASS_TUPLE_SIZE);
+    sprintf(seqrel->rd_rel->relname.data, "pg_class.oid=%d", relid);
+
+    /* as in RelationInitPhysicalAddr... */
+    seqrel->rd_node.spcNode = tablespaceid;
+    seqrel->rd_node.dbNode = dbid;
+    seqrel->rd_node.relNode = relid;
+}                               /* cdb_sequence_relation_init */
+
+/*
+ * Clean up pseudo relcache entry.
+ */
+static void
+cdb_sequence_relation_term(Relation seqrel)
+{
+    /* Close the file. */
+    RelationCloseSmgr(seqrel);
+
+    if (seqrel->rd_rel)
+        pfree(seqrel->rd_rel);
+}                               /* cdb_sequence_relation_term */
+
+
+
+/*
+ * CDB: forward a nextval request from qExec to the sequence server
+ */
+void
+cdb_sequence_nextval_proxy(Oid      tablespaceid,
+                           Oid      dbid,
+                           Oid      relid,
+                           bool     istemp,
+                           int64   *plast,
+                           int64   *pcached,
+                           int64   *pincrement)
+{
+
+    if (!Mpp_is_primary)
+        elog(ERROR,"nextval() cannot be used in this statement when mirroring is active");
+
+    
+    sendSequenceRequest(GetSeqServerFD(),
+    					dbid, 
+    					tablespaceid, 
+    					relid, 
+    					istemp, 
+    					mpp_session_id,
+    					plast,
+    					pcached,
+    					pincrement);
+
+    
+   
+}                               /* cdb_sequence_server_nextval */
+
+
+/*
+ * CDB: nextval entry point called by sequence server
+ */
+void
+cdb_sequence_nextval_server(Oid    tablespaceid,
+                            Oid    dbid,
+                            Oid    relid,
+                            bool   istemp,
+                            int64 *plast,
+                            int64 *pcached,
+                            int64 *pincrement)
+{
+    RelationData    fakerel;
+	Relation	    seqrel = &fakerel;
+
+    *plast = 0;
+    *pcached = 0;
+    *pincrement = 0;
+
+    /* Build a pseudo relcache entry with just enough info to call bufmgr. */
+    seqrel = &fakerel;
+    cdb_sequence_relation_init(seqrel, tablespaceid, dbid, relid, istemp);
+
+    /* CDB TODO: Catch errors. */
+
+    /* Update the sequence object. */
+    cdb_sequence_nextval(seqrel, plast, pcached, pincrement);
+
+    /* Cleanup. */
+    cdb_sequence_relation_term(seqrel);
+}                               /* cdb_sequence_server_nextval */
+

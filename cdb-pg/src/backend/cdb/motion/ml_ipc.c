@@ -148,6 +148,12 @@ int			listenerFd;
  */
 struct sockaddr_in serv_addr;
 
+
+/* Socket file descriptor for the sequence server. */
+int			seqserverFd;
+char		*seqServerHost;
+int			seqServerPort;
+
 /* Use an array to store our motion-layer-state table. */
 int			mlsSize = 0;
 MotionLayerState *mlsStates = NULL;
@@ -186,6 +192,7 @@ static MotionLayerState *createMotionState(int16 motNodeID, int numConns);
 static inline MotionLayerState *getMotionState(int16 motNodeID);
 static MotionLayerState *removeMotionState(int16 motNodeID);
 
+static void setupSeqServerConnection(char *hostname, int port );
 static MotionLayerState *startConnections(Slice * mySlice, int *highsock, fd_set *wset, int *connsStarted);
 static void setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, fd_set *wset);
 static void sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn);
@@ -222,6 +229,7 @@ InitMotionLayerIPC(void)
 	tval.tv_usec = 500000;
 
 	activated = false;
+	seqserverFd = -1;
 
 	elog(DEBUG1, "Setting Up Interconnect Listener Port...");
 	Mpp_listener_port = listenerSetup();
@@ -609,6 +617,27 @@ flushIncomingData(int fd)
 	} while (bytes > 0);
 }
 
+/* Returns the fd of the socket that connects to the seqserver.  This value
+ * is -1 if it has not been setup.
+ */
+int GetSeqServerFD(void)
+{
+	/* setup connection to seq server if needed.
+	 * The interconnect is responsible for maintaining the connection although
+	 * it actually doesn't use the socket directly.  sequence.c does to obtain
+	 * sequence values from the seqserver.  TeardownInterconnect() is responsible
+	 * for closing the socket.
+	 *
+	 */
+	if (seqServerHost == NULL)
+		elog( ERROR, "Invalid Sequence Access.  Slice table did not specify a seqserver.");
+	
+	if (seqserverFd == -1)
+		setupSeqServerConnection(seqServerHost, seqServerPort );
+		
+	return seqserverFd;
+}
+
 /* See ml_ipc.h */
 void
 SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
@@ -658,10 +687,16 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	sliceTable = mySliceTable;
 	sliceId = mySliceId;
 
+
+	/*Sequence Server Information */
+	seqServerHost = mySliceTable->seqServerHost;
+	seqServerPort = mySliceTable->seqServerPort;
+	
+	
 	FD_ZERO(&rset);
 	FD_ZERO(&wset);
 	FD_SET(listenerFd, &rset);
-	highsock = listenerFd;
+	highsock = listenerFd;		
 
 	elog(DEBUG3, "Interconnect Activating Routes");
 
@@ -1091,6 +1126,15 @@ TeardownInterconnect(bool forceEOS)
 		}
 	}
 
+
+	/* If we setup a connection to the seqserver then we need to disconnect
+	 */
+	if (seqserverFd != -1)
+	{
+		close(seqserverFd);
+		seqserverFd = -1;
+	}
+	 
 	/*
 	 * If there are clients waiting on our listener; we *must*
 	 * disconnect them; otherwise we'll be out of sync with the client
@@ -1325,6 +1369,70 @@ removeMotionState(int16 motNodeID)
 	return pEntry;
 }
 
+
+static void
+setupSeqServerConnection(char *seqServerHost, int seqServerPort )
+{
+	int  n;
+	struct sockaddr_in addr;	
+	
+	
+	/* 
+	 * open a connection to the sequence server
+	 */
+	seqserverFd = socket(AF_INET, SOCK_STREAM, 0);
+	
+	
+	addr.sin_family = AF_INET;
+
+	if ((n = inet_pton(AF_INET, seqServerHost, &addr.sin_addr)) < 1)
+	{
+		if (n == 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
+				 errmsg("Interconnect Error: Could not parse remote seqserver"
+						"address: '%s'", seqServerHost),
+					   errdetail("inet_pton() unable to parse address: '%s'",
+								 seqServerHost)));
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
+			 errmsg("Interconnect Error: System error occured during parsing"
+				 " of remote seqserver address: '%s'", seqServerHost),
+							errdetail("inet_pton()  (errno: %d) unable to parse address: '%s'",
+									  errno, seqServerHost)));
+		}
+	}
+
+	addr.sin_port = htons(seqServerPort);
+
+
+	if ((n = connect(seqserverFd, (struct sockaddr *) & addr, sizeof(addr))) < 0)
+	{
+		
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
+						errmsg("Interconnect Error: Could not connect() to seqserver: %s", strerror(errno)),
+		   errdetail("error during connect() call (error:%d) to outgoing", errno)));
+	
+	}
+	
+	/* make socket non-blocking BEFORE we connect. */
+	if (!pg_set_noblock(seqserverFd))
+	{
+		/*
+		 * TODO: would be nice to read the errno and try and provide
+		 * more useful info as to why this happened.
+		 */
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+						errmsg("Interconnect Error: Could not set seqserver socket"
+						"to non-blocking mode"),
+			 errdetail("error during fcntl() call (error:%d) for sockfd: %d",
+					   errno, seqserverFd)));
+	}
+	
+	
+}
 
 /* Function startConnections() is used to initially kick-off any outgoing
  * connections for mySlice.

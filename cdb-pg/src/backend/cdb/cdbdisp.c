@@ -1293,6 +1293,9 @@ dispatchCommand(CdbDispatchResult  *dispatchResult,
 	/*
 	 * Submit the command asynchronously.
 	 */
+	//JGE 
+	write_stderr("TXNOPTIONS AT DISPATCH: %d", txnOptions );
+	
 	if (0 == PQsendMppQuery(conn, szCommand,szSnapshot,txnOptions))
 	{
 		/* Note the error. */
@@ -2526,21 +2529,12 @@ generateTxnOptions( bool shouldStart )
 	{
 		options |= MPP_OPT_AUTOBEGIN;
 	
-		switch (XactIsoLevel)
-		{
-			case XACT_READ_UNCOMMITTED:
-				options |= MPP_OPT_READ_UNCOMMITTED;	
-				break;
-			case XACT_READ_COMMITTED:
-				options |= MPP_OPT_READ_COMMITTED;			
-				break;
-			case XACT_REPEATABLE_READ:
-				options |= MPP_OPT_REPEATABLE_READ;
-				break;
-			case XACT_SERIALIZABLE:
-				options |= MPP_OPT_SERIALIZABLE;
-				break;
-		}
+		if (XactIsoLevel == XACT_READ_COMMITTED)
+			options |= MPP_OPT_READ_COMMITTED;
+		else if (XactIsoLevel == MPP_OPT_REPEATABLE_READ)
+			options |= MPP_OPT_REPEATABLE_READ;
+		else if (XactIsoLevel == MPP_OPT_SERIALIZABLE)
+			options |= MPP_OPT_SERIALIZABLE;
 		
 		/* at this point we've decided that are going to begin a transaction. 
 		 * so we need to let the DTM know this so that if anything bad happens

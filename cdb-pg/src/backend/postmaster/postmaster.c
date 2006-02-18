@@ -96,6 +96,7 @@
 #include "bootstrap/bootstrap.h"
 #include "catalog/pg_control.h"
 #include "catalog/pg_database.h"
+#include "cdb/cdbvars.h"
 #include "commands/async.h"
 #include "lib/dllist.h"
 #include "libpq/auth.h"
@@ -110,6 +111,7 @@
 #include "postmaster/fork_process.h"
 #include "postmaster/pgarch.h"
 #include "postmaster/postmaster.h"
+#include "postmaster/seqserver.h"
 #include "postmaster/syslogger.h"
 #include "storage/bufmgr.h"
 #include "storage/fd.h"
@@ -151,9 +153,9 @@ static Dllist *BackendList;
 #ifdef EXEC_BACKEND
 /* 
  * Number of entries in the backend table. Twice the number of backends,
- * plus four other subprocesses (stats, bgwriter, autovac, logger). 
+ * plus five other subprocesses (stats, bgwriter, autovac, logger, seqserver). 
  */
-#define NUM_BACKENDARRAY_ELEMS (2*MaxBackends + 4)
+#define NUM_BACKENDARRAY_ELEMS (2*MaxBackends + 5)
 static Backend *ShmemBackendArray;
 #endif
 
@@ -214,6 +216,7 @@ static pid_t StartupPID = 0,
 			AutoVacPID = 0,
 			PgArchPID = 0,
 			PgStatPID = 0,
+			SeqServerPID = 0,
 			SysLoggerPID = 0;
 
 /* Startup/shutdown state */
@@ -371,6 +374,8 @@ static void ShmemBackendArrayRemove(pid_t pid);
 
 static bool SyncMaster = false;
 
+/* if we are a QD postmaster or not */
+static bool Mpp_entry_postmaster = false;
 /*
  * MPPSyncMaster main entry point
  */
@@ -458,7 +463,7 @@ PostmasterMain(int argc, char *argv[])
 
 	opterr = 1;
 
-	while ((opt = getopt(argc, argv, "A:a:B:b:c:D:d:Fh:ik:lm:MN:no:p:Ss-:")) != -1)
+	while ((opt = getopt(argc, argv, "A:a:B:b:c:D:d:EFh:ik:lm:MN:no:p:Ss-:")) != -1)
 	{
 		switch (opt)
 		{
@@ -483,6 +488,9 @@ PostmasterMain(int argc, char *argv[])
 				break;
 			case 'd':
 				set_debug_options(atoi(optarg), PGC_POSTMASTER, PGC_S_ARGV);
+				break;
+			case 'E':
+				Mpp_entry_postmaster = true;
 				break;
 			case 'F':
 				SetConfigOption("fsync", "false", PGC_POSTMASTER, PGC_S_ARGV);
@@ -1295,6 +1303,11 @@ ServerLoop(void)
 		if (PgStatPID == 0 &&
 			StartupPID == 0 && !FatalError && Shutdown == NoShutdown && !SyncMaster)
 			PgStatPID = pgstat_start();
+		
+		/* MPP: If we have lost the sequence Server, try to start a new one */
+		if (SeqServerPID == 0 && Mpp_entry_postmaster &&
+			StartupPID == 0 && !FatalError && Shutdown == NoShutdown && !SyncMaster)
+			SeqServerPID = seqserver_start();
 
 		/*
 		 * Touch the socket and lock file every 58 minutes, to ensure that
@@ -1855,6 +1868,8 @@ SIGHUP_handler(SIGNAL_ARGS)
 			kill(AutoVacPID, SIGHUP);
 		if (PgArchPID != 0)
 			kill(PgArchPID, SIGHUP);
+		if (SeqServerPID != 0)
+			kill(SeqServerPID, SIGHUP);		
 		if (SysLoggerPID != 0)
 			kill(SysLoggerPID, SIGHUP);
 		/* PgStatPID does not currently need SIGHUP */
@@ -1931,6 +1946,9 @@ pmdie(SIGNAL_ARGS)
 			/* Tell pgarch to shut down too; nothing left for it to do */
 			if (PgArchPID != 0)
 				kill(PgArchPID, SIGQUIT);
+			/* Tell seqserver to shut down too; nothing left for it to do */
+			if (SeqServerPID != 0)
+				kill(SeqServerPID, SIGQUIT);
 			/* Tell pgstat to shut down too; nothing left for it to do */
 			if (PgStatPID != 0)
 				kill(PgStatPID, SIGQUIT);
@@ -1981,6 +1999,9 @@ pmdie(SIGNAL_ARGS)
 			/* Tell pgarch to shut down too; nothing left for it to do */
 			if (PgArchPID != 0)
 				kill(PgArchPID, SIGQUIT);
+			/* Tell seqserver to shut down too; nothing left for it to do */
+			if (SeqServerPID != 0)
+				kill(SeqServerPID, SIGQUIT);
 			/* Tell pgstat to shut down too; nothing left for it to do */
 			if (PgStatPID != 0)
 				kill(PgStatPID, SIGQUIT);
@@ -2004,6 +2025,8 @@ pmdie(SIGNAL_ARGS)
 				kill(AutoVacPID, SIGQUIT);
 			if (PgArchPID != 0)
 				kill(PgArchPID, SIGQUIT);
+			if (SeqServerPID != 0)
+				kill(SeqServerPID, SIGQUIT);
 			if (PgStatPID != 0)
 				kill(PgStatPID, SIGQUIT);
 			if (DLGetHead(BackendList))
@@ -2117,6 +2140,8 @@ reaper(SIGNAL_ARGS)
 					PgArchPID = pgarch_start();
 				if (PgStatPID == 0)
 					PgStatPID = pgstat_start();
+				if (SeqServerPID == 0 && Mpp_entry_postmaster )
+					SeqServerPID = seqserver_start();
 			}
 
 			continue;
@@ -2188,6 +2213,22 @@ reaper(SIGNAL_ARGS)
 		}
 
 		/*
+		 * MPP: Was it the SequenceServer? If so, just try to start a new one;
+		 * no need to force reset of the rest of the system. (If fail, we'll
+		 * try again in future cycles of the main loop.)
+		 */
+		if (SeqServerPID != 0 && pid == SeqServerPID && Mpp_entry_postmaster )
+		{
+			SeqServerPID = 0;
+			if (exitstatus != 0)
+				LogChildExit(LOG, _("seqserver process"),
+							 pid, exitstatus);
+			if (StartupPID == 0 && !FatalError && Shutdown == NoShutdown)
+				SeqServerPID = seqserver_start();
+			continue;
+		}
+		 
+		/*
 		 * Was it the statistics collector?  If so, just try to start a new
 		 * one; no need to force reset of the rest of the system.  (If fail,
 		 * we'll try again in future cycles of the main loop.)
@@ -2256,6 +2297,9 @@ reaper(SIGNAL_ARGS)
 		/* Tell pgarch to shut down too; nothing left for it to do */
 		if (PgArchPID != 0)
 			kill(PgArchPID, SIGQUIT);
+		/* Tell seqserver to shut down too; nothing left for it to do */
+		if (SeqServerPID != 0)
+			kill(SeqServerPID, SIGQUIT);
 		/* Tell pgstat to shut down too; nothing left for it to do */
 		if (PgStatPID != 0)
 			kill(PgStatPID, SIGQUIT);
@@ -2411,6 +2455,17 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 								 "SIGQUIT",
 								 (int) PgArchPID)));
 		kill(PgArchPID, SIGQUIT);
+	}
+	
+	/* Force a power-cyle of the seqserver process too */
+	/* (Shouldn't be necessary, but just for luck) */
+	if (SeqServerPID != 0 && !FatalError)
+	{
+		ereport(DEBUG2,
+				(errmsg_internal("sending %s to process %d",
+								 "SIGQUIT",
+								 (int) SeqServerPID)));
+		kill(SeqServerPID, SIGQUIT);
 	}
 
 	/* Force a power-cycle of the pgstat processes too */
@@ -3248,8 +3303,9 @@ SubPostmasterMain(int argc, char *argv[])
 	 * to do this before going any further to ensure that we can attach at the
 	 * same address the postmaster used.
 	 */
-	if (strcmp(argv[1], "-forkbackend") == 0 ||
-		strcmp(argv[1], "-forkautovac") == 0 ||
+	if (strcmp(argv[1], "-forkbackend") == 0   ||
+		strcmp(argv[1], "-forkautovac") == 0   ||
+		strcmp(argv[1], "-forkseqserver") == 0 ||
 		strcmp(argv[1], "-forkboot") == 0)
 		PGSharedMemoryReAttach();
 

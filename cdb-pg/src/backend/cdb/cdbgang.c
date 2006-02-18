@@ -1744,3 +1744,46 @@ gangsExist(void)
 			allocatedReaderGangs1 != NIL ||
 			availableReaderGangs1 != NIL);
 }
+
+
+/*
+ * SetSeqServerInfo:  Adds sequence server information to the
+ * supplied SliceTable (assumed uninitialized).
+ *
+ * NOTE: Though not strictly gang-related, the function lives 
+ * here to gain access to the interesting static variables.
+ */
+void
+SetSeqServerInfo(QueryDesc *queryDesc)
+{
+	CdbComponentDatabaseInfo *qdinfo;
+	struct hostent *lookup;
+	EState	   *estate = queryDesc->estate;
+	SliceTable *sliceTable = estate->es_sliceTable;
+
+	Assert( IsA(sliceTable, SliceTable) && sliceTable->seqServerHost == NULL);
+	
+	if (Mpp_role != MPP_ROLE_DISPATCH || !Mpp_is_primary)
+	{
+		elog(FATAL, "SetSeqServerInfo: unsupported request");
+	}
+
+	qdinfo = &(getComponentDatabases()->entry_db_info[0]);
+
+	Assert(qdinfo->segindex == -1 && qdinfo->isprimary);
+
+	if (qd_hostip == NULL)
+	{
+		lookup = gethostbyname(qdinfo->hostname);
+
+		if (lookup == NULL)
+		{
+			elog(FATAL, "gethostbyname() failed for host '%s'", qdinfo->hostname);
+		}
+		qd_hostip = strdup(inet_ntoa(*(struct in_addr *)(lookup->h_addr_list[0])));
+		/* XXX: we're going to leak this ? */
+	}
+
+	sliceTable->seqServerHost = pstrdup(qd_hostip);
+	sliceTable->seqServerPort = seqServerCtl->seqServerPort;
+}

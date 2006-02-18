@@ -12,8 +12,9 @@
 #define _CDBGANG_H_
 
 #include "nodes/primnodes.h"
+#include "nodes/execnodes.h"
 #include "cdb/cdbutil.h"
-
+#include "executor/execdesc.h"
 
 /*
  * A gang represents a single worker on each connected segDB
@@ -56,5 +57,8 @@ getSegmentDescriptorFromGang(const Gang *gp, int seg);
 
 bool
 reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB);
+
+extern void
+SetSeqServerInfo(QueryDesc *queryDesc);
 
 #endif   /* _CDBGANG_H_ */

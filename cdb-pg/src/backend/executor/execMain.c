@@ -64,6 +64,7 @@
 #include "cdb/ml_ipc.h"
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbtm.h"
+#include "cdb/cdbgang.h"
 
 extern bool isFtsReadOnlySet(void);
 extern void FtsEvaluateTransientState(void);
@@ -257,6 +258,10 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 			 * been filled in in the slice table.)
 			 */
 			AssignGangs(queryDesc, 0);
+			
+			/* Add sequence server info to the plan's SliceTable. */
+			SetSeqServerInfo(queryDesc);
+
 		}
 	}
 

@@ -3,6 +3,7 @@
  * sequence.h
  *	  prototypes for sequence.c.
  *
+ * Portions Copyright (c) 2006, Greenplum Inc.
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -105,5 +106,17 @@ extern void seq_desc(char *buf, uint8 xl_info, char *rec);
 #endif   /* INT64_IS_BUSTED */
 
 #define SEQ_MINVALUE	(-SEQ_MAXVALUE)
+
+/*
+ * CDB: nextval entry point called by sequence server
+ */
+void
+cdb_sequence_nextval_server(Oid    tablespaceid,
+                            Oid    dbid,
+                            Oid    relid,
+                            bool   istemp,
+                            int64 *plast,
+                            int64 *pcached,
+                            int64 *pincrement);
 
 #endif   /* SEQUENCE_H */

@@ -1091,6 +1091,8 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 	table->nSubplans = nSubplans;
 	table->nextInitPlan = 1 + nMotions;
 	table->slices = NIL;
+	table->seqServerHost = NULL;
+	table->seqServerPort = -1;
 
 	n = 1 + nMotions + nSubplans;
 	for (i = 0; i < n; i++)

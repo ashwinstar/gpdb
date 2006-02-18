@@ -304,7 +304,7 @@ PROCESS_STARTUP () {
 		fi
 		export PGPORT=${MASTER_PORT}
 		export PGPATH=${APP_PATH}
-		$PG_CTL $WAIT  -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT " start -m $MODE  
+		$PG_CTL $WAIT  -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -E -p $MASTER_PORT " start -m $MODE  
 		ERROR_CHK $? "startup Master instance" 2
 		RET_TEXT=`$PG_CTL status -D $MASTER_DATA_DIRECTORY`
 		RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`

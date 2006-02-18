@@ -75,12 +75,12 @@ typedef enum
  *						   10 repeatable-read
  *						   11 serializable
  */
-#define MPP_OPT_AUTOBEGIN         0x001   /* auto-explicitly start a transaction. */
-#define MPP_OPT_READ_COMMITTED    0x000   /* iso level to read-committed 
+#define MPP_OPT_AUTOBEGIN         0x0001   /* auto-explicitly start a transaction. */
+#define MPP_OPT_READ_COMMITTED    0x0002   /* iso level to read-committed 
 											(only useful with autobegin) */
-#define MPP_OPT_READ_UNCOMMITTED  0x002
-#define MPP_OPT_REPEATABLE_READ   0x004
-#define MPP_OPT_SERIALIZABLE 	  0x006
+#define MPP_OPT_READ_UNCOMMITTED  0x0004
+#define MPP_OPT_REPEATABLE_READ   0x0006
+#define MPP_OPT_SERIALIZABLE 	  0x0008
 
 
 

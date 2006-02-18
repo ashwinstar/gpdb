@@ -149,6 +149,10 @@ extern bool Mpp_is_writer;
  *
  * This run time parameter indicates a unique id to identify a particular user
  * session throughout the entire MPP array.
+ *
+ * NOTE: the seqserver (and sequence) code expects that this is the QD PID
+ *		 (as it is today).  changing this session id to be something different
+ *		 will require modifying code.
  */
 extern int mpp_session_id; ;
 
@@ -302,5 +306,17 @@ extern MppMpp MppIdentity;
  * Interconnect connections from other Motion nodes.
  */
 extern int	Mpp_listener_port;
+
+
+
+/* SequenceServer information to be shared with everyone */
+typedef struct SeqServerControlBlock
+{
+	int4		seqServerPort;
+}	SeqServerControlBlock;
+
+extern SeqServerControlBlock *seqServerCtl;
+
+
 
 #endif   /* CDBVARS_H */

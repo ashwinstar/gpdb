@@ -150,6 +150,7 @@ int
 startDtxTransaction(bool dispatchBegin)
 {
 	int			ret = DTX_OK;
+	
 		
 	if (Mpp_role != MPP_ROLE_DISPATCH)
 		return DTX_OK;

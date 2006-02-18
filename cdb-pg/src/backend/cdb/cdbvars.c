@@ -72,6 +72,10 @@ int			currentSliceId = UNSET_SLICE_ID;	/* used by elog to show the
 												 * current slice the process
 												 * is executing. */
 
+
+SeqServerControlBlock *seqServerCtl;
+
+
 /*
  * MPP Optimizer GUCs
  */

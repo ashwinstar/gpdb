@@ -428,6 +428,8 @@ typedef struct SliceTable
 	int nSubplans;		/* The number of subplan slices allocated */
 	int localSlice;		/* Index of the slice to execute. */
  	List *slices;		/* List of slices */
+	char *seqServerHost;	/* If non-null, sequence server host name. */
+	int seqServerPort;		/* If seqServerHost non-null, sequence server port. */
 	
 } SliceTable;
 

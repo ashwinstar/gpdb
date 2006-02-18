@@ -2122,20 +2122,8 @@ quickdie(SIGNAL_ARGS)
 {
 	PG_SETMASK(&BlockSig);
 
-	/*
-	 * Ideally this should be ereport(FATAL), but then we'd not get control
-	 * back...
-	 */
-	ereport(WARNING,
-			(errcode(ERRCODE_CRASH_SHUTDOWN),
-			 errmsg("terminating connection because of crash of another server process"),
-	errdetail("The postmaster has commanded this server process to roll back"
-			  " the current transaction and exit, because another"
-			  " server process exited abnormally and possibly corrupted"
-			  " shared memory."),
-			 errhint("In a moment you should be able to reconnect to the"
-					 " database and repeat your command.")));
-
+	elog( DEBUG3, "seqserver is shutting down");
+	
 	/*
 	 * DO NOT proc_exit() -- we're here because shared memory may be
 	 * corrupted, so we don't want to try to clean up our transaction. Just
