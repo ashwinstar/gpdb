@@ -348,9 +348,6 @@ sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool is
 	*pcached    = readInt64(&response[8]);
 	*pincrement = readInt64(&response[16]);
 
-		
-	elog( INFO, "JGE plast: %ld  pcached: %ld  pincrement: %ld", 
-				*plast, *pcached, *pincrement );
 				
 }
  
