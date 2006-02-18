@@ -1293,9 +1293,6 @@ dispatchCommand(CdbDispatchResult  *dispatchResult,
 	/*
 	 * Submit the command asynchronously.
 	 */
-	//JGE 
-	if (DEBUG4 >= log_min_messages)
-	    write_stderr("    TXNOPTIONS AT DISPATCH: %d\n", txnOptions );
 	
 	if (0 == PQsendMppQuery(conn, szCommand,szSnapshot,txnOptions))
 	{
