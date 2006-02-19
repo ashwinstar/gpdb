@@ -5,7 +5,7 @@
  * 		QEs.
  *
  *
- * Copyright (c) 2005-2006, greenplum inc
+ * Copyright (c) 2006, greenplum inc
  *
  * $Id$
  *
@@ -56,15 +56,15 @@
 #define LISTEN_BACKLOG 64
 #define getInt16(pNetData)	  ntohs(*((int16 *)(pNetData)))
 #define getInt32(pNetData)	  ntohl(*((int32 *)(pNetData)))
-#define getOid(pNetData)	  
+#define getOid(pNetData)	
 
 
 
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
  */
- 
- 
+
+
 #ifdef EXEC_BACKEND
 static pid_t seqserver_forkexec(void);
 #endif
@@ -96,7 +96,7 @@ uint8 *outputBuff;
 /*=========================================================================
  * VISIBLE FUNCTIONS
  */
- 
+
 int SeqServerShmemSize(void)
 {
 	
@@ -153,17 +153,15 @@ seqserver_start(void)
 	}
 
 	/* shouldn't get here */
-	return 0;
-
 }
 
 
 
-/* 
+/*
  * Used by clients to seqeuence server to send a Sequence Request
  */
 void
-sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool isTemp, 
+sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool isTemp,
 					int16 qd_pid, int64   *plast, int64   *pcached,
 					int64   *pincrement)
 {	
@@ -177,19 +175,19 @@ sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool is
 	int32  netval_32;
 	
 	/* request message */
-	int reqlen = sizeof(NextValRequest);
-	uint8 request[reqlen];
+	uint8   request[sizeof(NextValRequest)];
+	int     reqlen = sizeof(request);
 	
 	/* response message */
-	int resplen = sizeof(NextValResponse);
-	uint8 response[resplen];
+	uint8   response[sizeof(NextValResponse)];
+	int     resplen = sizeof(response);
 	
 	
 	if (sockfd == -1)
 		elog( ERROR, "Lost Connection to seqserver");
 	
 	
-	/* 
+	/*
 	 * send the sequence request to the sequence server
 	 */
 	
@@ -208,11 +206,11 @@ sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool is
 	netval_16 = htons(qd_pid);
 	memcpy(&request[14], &netval_16, 2 );
 	
-	 
+	
 	
 	/*
 	 * write the request
-	 */	 
+	 */	
 	while( bytesWritten < reqlen )
 	{
 		
@@ -253,9 +251,9 @@ sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool is
 						saved_err = errno;
 
 						ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
-										errmsg("Error: Could not write()  message to seqserver: %s", 
+										errmsg("Error: Could not write()  message to seqserver: %s",
 										strerror(errno)),
-										errdetail("error during write() call (error:%d) to seqserver on sockfd: %d ", 
+										errdetail("error during write() call (error:%d) to seqserver on sockfd: %d ",
 													errno, sockfd)));
 						return;
 					}
@@ -266,9 +264,9 @@ sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool is
 			else
 			{
 				ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
-								errmsg("Error: Could not write()  message to seqserver: %s", 
+								errmsg("Error: Could not write()  message to seqserver: %s",
 								strerror(errno)),
-								errdetail("error during write() call (error:%d) to seqserver on sockfd: %d ", 
+								errdetail("error during write() call (error:%d) to seqserver on sockfd: %d ",
 											errno, sockfd)));
 				return;							
 			}
@@ -280,7 +278,7 @@ sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool is
 	
 	
 	
-	/* 
+	/*
 	 * read the response
 	 */	
 	while( bytesRead < resplen )
@@ -351,14 +349,14 @@ sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool is
 
 				
 }
- 
+
 
 
 
 /*=========================================================================
  * HELPER FUNCTIONS
  */
- 
+
 
 #ifdef EXEC_BACKEND
 /*
@@ -392,8 +390,8 @@ NON_EXEC_STATIC void
 SeqServerMain(int argc, char *argv[])
 {
 	sigjmp_buf	local_sigjmp_buf;
- 
- 
+
+
 	IsUnderPostmaster = true;
 	am_seqserver = true;
 	
@@ -438,8 +436,13 @@ SeqServerMain(int argc, char *argv[])
 	/* Early initialization */
 	BaseInit();
 
-	InitProcess();
-	
+	/* See InitPostgres()... */
+    InitProcess();	
+	InitBufferPoolBackend();
+	InitXLOGAccess();
+
+	SetProcessingMode(NormalProcessing);
+
 	/*
 	 * If an exception is encountered, processing resumes here.
 	 *
@@ -469,7 +472,7 @@ SeqServerMain(int argc, char *argv[])
 	/* set up a listener port and put it in shmem*/
 	seqServerCtl->seqServerPort = listenerSetup();
 	
-	/* 
+	/*
 	 * setup scratch buffers
 	 */
 	inputBuff = palloc( sizeof(NextValRequest) );	
@@ -598,7 +601,7 @@ void SeqServerLoop(void)
 }
 
 
-/* 
+/*
  * Used by sequenceServer to process incoming Sequence Requests
  */
 static bool
@@ -677,8 +680,8 @@ processSequenceRequest( int sockfd )
 	}
 	
 	
-	/* 
-	 * process what we've read 
+	/*
+	 * process what we've read
 	 */
 	nextValRequest.dbid    	    = getInt32(inputBuff);
 	nextValRequest.tablespaceid = getInt32(inputBuff+4);
@@ -688,11 +691,11 @@ processSequenceRequest( int sockfd )
 	
 	
 	elog( DEBUG5, "Received nextval request for dbid: %ld tablespaceid: %ld seqoid: "
-				  "%ld isTemp: %s qidPid: %d", 
-				  (long int)nextValRequest.dbid, 
+				  "%ld isTemp: %s qidPid: %d",
+				  (long int)nextValRequest.dbid,
 				  (long int)nextValRequest.tablespaceid,
-				  (long int)nextValRequest.seq_oid, 
-				  nextValRequest.isTemp?"true":"false", 
+				  (long int)nextValRequest.seq_oid,
+				  nextValRequest.isTemp?"true":"false",
 				  nextValRequest.qd_pid);
 	
 	
@@ -706,11 +709,11 @@ processSequenceRequest( int sockfd )
                 	            &plast,
                     	        &pcached,
                         	    &pincrement);
-	 
-	 
+	
+	
 	/*
 	 * Send the response
-	 */ 
+	 */
 	sendInt64(outputBuff, plast);
 	sendInt64(outputBuff+8, pcached);
 	sendInt64(outputBuff+16, pincrement);
@@ -770,7 +773,7 @@ processSequenceRequest( int sockfd )
 			{
 				elog( DEBUG3, "Error: Could not write() message from client."
 							  "(error:%d). Closing connection.", sockfd);
-				return false;			  
+				return false;			
 			}
 		}
 		else
@@ -785,8 +788,8 @@ processSequenceRequest( int sockfd )
 
 /* listenerSetup
  *
- * Sets up a listener on a system-picked port.  Returns the port that the 
- * system port.  
+ * Sets up a listener on a system-picked port.  Returns the port that the
+ * system port.
  */
 static int
 listenerSetup(void)
