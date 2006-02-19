@@ -1131,6 +1131,7 @@ TeardownInterconnect(bool forceEOS)
 	 */
 	if (seqserverFd != -1)
 	{
+		shutdown(seqserverFd, SHUT_RDWR);
 		close(seqserverFd);
 		seqserverFd = -1;
 	}
