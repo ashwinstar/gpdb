@@ -78,6 +78,7 @@ USAGE () {
 	$ECHO "      -f, display full size information [default:-display total only]"
 	$ECHO "      -a, <database name> alternative database name [default ${QD_DBNAME}]"
 	$ECHO "      -i, obtain index size for <table name> [default:- table size]"
+	$ECHO "      -n, <schema name> used where have duplicate table names in different schema"
 	$ECHO "      -x, <database name> name of database to obtain size data [default ${QD_DBNAME}]"
 	$ECHO
 	$ECHO "      Connection options:"
@@ -95,19 +96,33 @@ GET_DB_OID_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	DB_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_database where datname='${QD_DBNAME}';"`
 	ERROR_CHK $? "obtain database OID from $QD_DBNAME database" 2
+	LOG_MSG "[INFO]:-Obtained database OID value $DB_OID"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_TABLE_OID_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	if [ `$ECHO $TABLE_NAME|$GREP -c .` -ne 0 ];then
-		TABLE_NAME_NO_SCHEMA=`$ECHO $TABLE_NAME|$CUT -d. -f2`
-		LOG_MSG "[INFO]:-Stripped off schema name"
+	if [ x"" != x"$SCHEMA_NAME" ]; then
+		#Schema name has been supplied
+		#Get schema oid
+		SCHEMA_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_namespace where nspname='${SCHEMA_NAME}';"`
+		ERROR_CHK $? "obtain schema oid value" 2
+		if [ x"" == x"$SCHEMA_OID" ]; then
+			ERROR_EXIT "[FATAL]:-Schema $SCHEMA_NAME does not exist";fi
+		#Get table oid
+		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$TABLE_NAME' and relnamespace=${SCHEMA_OID};"`
+		ERROR_CHK $? "obtain table oid value" 2
 	else
-		TABLE_NAME_NO_SCHEMA=$TABLE_NAME
+		#No schema name supplied, make sure no duplicate tables
+		TABLE_NAME_COUNT=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from pg_class where relname='${TABLE_NAME}';"`
+		case $TABLE_NAME_COUNT in
+			0) ERROR_EXIT "[FATAL]:-Could not locate $TABLE_NAME in pg_class" 2 ;;
+			1) ;;
+			*) ERROR_EXIT "[FATAL]:-Duplicates found for $TABLE_NAME in pg_class, use -n <schema name> option" 2 ;;
+		esac
+		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='${TABLE_NAME}';"`
+		ERROR_CHK $? "obtain access to pg_class table in $QD_DBNAME" 2	
 	fi
-	TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select relfilenode from pg_class where relname='${TABLE_NAME_NO_SCHEMA}'"`
-	ERROR_CHK $? "obtain table OID for $TABLE_NAME_NO_SCHEMA table in database $QD_DBNAME" 2	
 	LOG_MSG "[INFO]:-Obtained OID value $TABLE_OID"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -146,15 +161,25 @@ SEND_TABLE_SIZE_REQUEST () {
 	LINECOUNT=0
 	for I in "${QE_ARRAY[@]}"
 	do
-		QE_HOST=`$ECHO $I|$CUT -d'|' -f1`
-		QE_DIR=`$ECHO $I|$CUT -d'|' -f2`
-		QE_TABLE=${QE_DIR}/base/${DB_OID}/${TABLE_OID}
+		SET_VAR
+		QE_TABLE_OID=`$TRUSTED_SHELL -n $QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" psql -p $QE_PORT $QD_DBNAME -A -t -c\"select relfilenode from pg_class where oid=$TABLE_OID ;\""`
+		ERROR_CHK $? "obtain QE table oid info" 2
+		LOG_MSG "[INFO]:-Processing $QE_HOST post $QE_PORT Table OID $QE_TABLE_OID"
+		QE_TABLE=${QE_DIR}/base/${DB_OID}/${QE_TABLE_OID}
 		QE_BASE_DIR=`$BASENAME $QE_DIR`
-		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} $DU_TXT ${QE_TABLE}*"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
+		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} $DU_TXT ${QE_TABLE}"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
+		((LINECOUNT=$LINECOUNT+1))
+		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} $DU_TXT ${QE_TABLE}.* 2>/dev/null"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE  &
 		((LINECOUNT=$LINECOUNT+1))
 	done	
 	WAIT_COMPLETE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+SET_VAR () {
+	QE_HOST=`$ECHO $I|$CUT -d'|' -f1`
+	QE_DIR=`$ECHO $I|$CUT -d'|' -f2`
+	QE_PORT=`$ECHO $I|$CUT -d'|' -f3`
 }
 
 SEND_INDEX_SIZE_REQUEST () {
@@ -164,13 +189,15 @@ SEND_INDEX_SIZE_REQUEST () {
 	LINECOUNT=0
 	for I in "${QE_ARRAY[@]}"
 	do
-		QE_HOST=`$ECHO $I|$CUT -d'|' -f1`
-		QE_DIR=`$ECHO $I|$CUT -d'|' -f2`
-		QE_BASE_DIR=`$BASENAME $QE_DIR`
-		for IDX in "${INDEX_OID[@]}"
+		SET_VAR
+###		for IDX in "${INDEX_OID[@]}"
+		for IDX in `$TRUSTED_SHELL -n $QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" psql -p $QE_PORT $QD_DBNAME -A -t -c\"select indexrelid from pg_index where indrelid=${TABLE_OID};\""` 
 		do
+			LOG_MSG "[INFO]:-Processing $QE_HOST post $QE_PORT Index OID $IDX"
 			QE_INDEX=${QE_DIR}/base/${DB_OID}/$IDX
-			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} $DU_TXT ${QE_INDEX}*"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
+			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} $DU_TXT ${QE_INDEX}"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
+			((LINECOUNT=$LINECOUNT+1))
+			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} $DU_TXT ${QE_INDEX}.* 2>/dev/null"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
 			((LINECOUNT=$LINECOUNT+1))
 		done
 	done
@@ -235,7 +262,7 @@ DISPLAY_SIZE () {
 trap '$RM -f $TMPFILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 CHK_DB_QD_SET
 if [ $# -ne 0 ]; then
-	while getopts ":fvt:'?'ql:d:s:a:ix:" opt;do
+	while getopts ":fvt:'?'ql:d:s:a:ix:n:" opt;do
 	case $opt in
 		v ) VERSION_INFO ;;
 		t ) TABLE_NAME=$OPTARG ;;
@@ -248,6 +275,7 @@ if [ $# -ne 0 ]; then
 		a ) ALT_DBNAME=$OPTARG ;;
 		i ) SIZE_TYPE=1 ;;
 		x ) SIZE_DB=$OPTARG ;;
+		n ) SCHEMA_NAME=$OPTARG ;;
 		* ) USAGE ;;
 		esac
 	done
