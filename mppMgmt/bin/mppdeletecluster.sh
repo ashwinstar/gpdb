@@ -9,7 +9,7 @@
 #	Release stat:-		Greenplum Co Internal
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
 #                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Calculates table skew on a per node basis
+#	Brief descn:-		Deletes an MPP array.
 #******************************************************************************
 # Update History
 #******************************************************************************
