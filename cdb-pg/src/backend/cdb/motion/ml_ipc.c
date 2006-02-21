@@ -1324,6 +1324,9 @@ getMotionState(int16 motNodeID)
 {
 	MotionLayerState *pEntry = NULL;
 
+	if (motNodeID < 1)
+		return NULL;
+
 	if (motNodeID > mlsSize || !mlsStates[motNodeID - 1].valid)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
@@ -1635,6 +1638,7 @@ sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn)
 #ifdef AMS_VERBOSE_LOGGING
 	print_connection(conn->sockfd, "send register message");
 #endif
+
 	/* motNodeId */
 	netval = htons(pEntry->motNodeId);
 	memcpy(msg + 0, &netval, 2);
@@ -1763,6 +1767,13 @@ readRegisterMessage(MotionConn * conn, int *incoming_count)
 #endif
 
 	pEntry = getMotionState(msg.motNodeId);
+
+	if (pEntry == NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+						errmsg("Interconnect Error: invalid conn for (mnId=%d,routeId=%d,%d)",
+							   msg.motNodeId, msg.srcRouteId, (pEntry->conns + msg.srcRouteId)->sockfd)));
+	}
 
 	/*
 	 * store the MotionConn in the right slot, make sure no one is
