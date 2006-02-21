@@ -1771,8 +1771,8 @@ readRegisterMessage(MotionConn * conn, int *incoming_count)
 	if (pEntry == NULL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("Interconnect Error: invalid conn for (mnId=%d,routeId=%d,%d)",
-							   msg.motNodeId, msg.srcRouteId, (pEntry->conns + msg.srcRouteId)->sockfd)));
+						errmsg("Interconnect Error: invalid conn for (mnId=%d,routeId=%d)",
+							   msg.motNodeId, msg.srcRouteId)));
 	}
 
 	/*
