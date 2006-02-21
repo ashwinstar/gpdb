@@ -179,8 +179,13 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 		instid = (MppIdentity.segindex == -1) ? 1 : 0;	/* dispatch node */
 		segid = MppIdentity.dbid;
 		
-		/* dump schema only for entry db, and data only for segment db */
-		pszDataOption = (instid == 1) ? "-s" : "-a";
+		/* 
+		 * dump schema and data for entry db, and data only for segment db.
+		 * why dump data for entry db? because that will include statements
+		 * to update the sequence tables (last values). As for actual data -
+		 * there isn't any, so we will just dump empty COPY statements...
+		 */
+		pszDataOption = (instid == 1) ? "  " : "-a";
 		
 		sprintf(pszKeyParm, "%s_%d_%d_%s", pszBackupKey, instid, segid, pszPassThroughCredentials);
 
@@ -201,7 +206,7 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 			+ 2 + 1				/* -U */
 			+ strlen(pszUserName) + 1	/* pszUserName */
 			+ strlen(pszPassThroughParameters) + 1
-			+ 2 + 1				/* -s or -a */
+			+ 2 + 1				/* "  " or "-a" */
 			+ strlen(pszDBName) + 1
 			+ 1 + 1				/* > */
 			+ strlen(pszBackupFileName)

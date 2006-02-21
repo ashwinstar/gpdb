@@ -7167,7 +7167,8 @@ dumpTable(Archive *fout, TableInfo *tbinfo)
 
 	if (tbinfo->dump)
 	{
-		if (tbinfo->relkind == RELKIND_SEQUENCE)
+		/* dump sequence definition only to the master segment */
+		if (tbinfo->relkind == RELKIND_SEQUENCE && g_role == ROLE_MASTER)
 			dumpSequence(fout, tbinfo);
 		else if (!dataOnly)
 			dumpTableSchema(fout, tbinfo);
