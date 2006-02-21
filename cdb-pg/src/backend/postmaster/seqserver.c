@@ -152,7 +152,9 @@ seqserver_start(void)
 			return (int) SeqServerPID;
 	}
 
+	
 	/* shouldn't get here */
+	return 0;
 }
 
 
