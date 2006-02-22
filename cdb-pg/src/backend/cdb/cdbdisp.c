@@ -154,6 +154,7 @@ typedef struct
 {
 	bool		single_row_insert;
 	Node	   *nextval_replacement;
+	Oid 		nextval_sequence;
 }	pre_dispatch_function_evaluation_context;
 
 static Node *pre_dispatch_function_evaluation_mutator(Node *node,
@@ -1747,6 +1748,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 		
 		if (!has_nonconst_input)
 		{
+			Oid sequenceoid = 0;
 
 			func_tuple = SearchSysCache(PROCOID,
 										ObjectIdGetDatum(funcid),
@@ -1785,7 +1787,16 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 			 * Ok, we have a function that is STABLE (or IMMUTABLE), with constant args.
 			 * Let's try to evaluate it.
 			 */
+				
+				
+			if (funcid == 1574)  /* nextval */
+			{
+				sequenceoid = 0;
+				Const * arg1 = lfirst(list_head(args));
+				if (arg1->consttype == REGCLASSOID)
+					sequenceoid = DatumGetObjectId(arg1->constvalue);
 
+			}
 
 			/*
 			 * The targetlist happens in multiple places in the plan tree, but we don't
@@ -1797,7 +1808,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 			 * once in this single row insert.
 			 */
 
-			if (funcid == 1574 && context->nextval_replacement != NULL)
+			if (funcid == 1574 && context->nextval_replacement != NULL  && context->nextval_sequence == sequenceoid)
 				return context->nextval_replacement;
 
 			newexpr = makeNode(FuncExpr);
@@ -1859,7 +1870,10 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 			 * If we just executed nextval(), save the result
 			 */
 			if (funcid == 1574 && context->nextval_replacement == NULL && simple)
+			{
 				context->nextval_replacement = (Node *) simple;
+				context->nextval_sequence = sequenceoid;
+			}
 			
 			elog(DEBUG3," simplified");
 
@@ -2042,11 +2056,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		 * The Query tree doesn't have to be mutated here, since it isn't used during
 		 * the execution.
 		 */
-		/*
-		  queryDesc->parsetree = (Query *)query_tree_mutator((Node *)queryDesc->parsetree,
-		  pre_dispatch_function_evaluation_mutator,
-		  &pcontext);
-		*/
+
 
 		queryDesc->plantree = (Plan *) plan_tree_mutator((Node *) queryDesc->plantree,
 									pre_dispatch_function_evaluation_mutator,
