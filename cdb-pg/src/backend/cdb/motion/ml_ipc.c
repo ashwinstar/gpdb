@@ -1593,12 +1593,6 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 						  cdbProc->listenerPort)));
 		}
 
-		opt = 1;
-		if (setsockopt(conn->sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-		{
-			elog(ERROR, "Interconnect: failed to set SO_REUSEADDR on outbound port");
-		}
-
 		memset(&addr, 0, sizeof(addr));
 		addr.sin_family = AF_INET;
 
@@ -1673,7 +1667,7 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 		 */
 		if ((n = connect(conn->sockfd, (struct sockaddr *) & addr, sizeof(addr))) < 0)
 		{
-			if (errno == EADDRNOTAVAIL)
+			if (errno == EADDRNOTAVAIL || errno == EADDRINUSE)
 			{
 				elog(DEBUG5, "retrying connect");
 				close(conn->sockfd);
