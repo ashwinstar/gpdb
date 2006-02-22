@@ -652,7 +652,7 @@ GetSeqServerFD(void)
 
 /* See ml_ipc.h */
 void
-SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
+SetupInterconnect(SliceTable * mySliceTable, int mySliceId, int numMotionNodes)
 {
 	int			i,
 				n,
@@ -687,6 +687,24 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 		 (long int) snapTime.tv_sec, (long int) snapTime.tv_usec);
 #endif
 
+
+	/* we setup the sequence server regardless if we have motion nodes
+	 * or not
+	 */
+	 
+	/* Sequence Server Information */
+	elog( DEBUG3, "setting seqserver info");
+	if (mySliceTable != NULL)
+	{
+		seqServerHost = mySliceTable->seqServerHost;
+		seqServerPort = mySliceTable->seqServerPort;
+	}
+	
+	/* if no motion nodes we are done */
+	if (numMotionNodes == 0)
+		return;
+	
+	
 	/*
 	 * The assert only happens when we are compiled with --enable-cassert.
 	 * So, let's report the error even if we are a production build.
@@ -967,7 +985,7 @@ forceEosToPeer(int16 motNodeID, int16 targetRoute)
  * adding errors!).
  */
 void
-TeardownInterconnect(bool forceEOS)
+TeardownInterconnect(bool forceEOS, int numMotionNodes)
 {
 	ListCell   *cell;
 	MotionLayerState *pEntry;
@@ -976,6 +994,21 @@ TeardownInterconnect(bool forceEOS)
 	MotionConn *conn;
 
 	elog(DEBUG3, "Interconnect cleanup.");
+	
+	/*
+	 * If we setup a connection to the seqserver then we need to disconnect
+	 */
+	if (seqserverFd != -1)
+	{
+		elog( DEBUG3, "tearing down seqserver connection");
+		shutdown(seqserverFd, SHUT_RDWR);
+		close(seqserverFd);
+		seqserverFd = -1;
+	}
+	
+	if (numMotionNodes == 0)
+		return;
+	
 	Assert(sliceTable != NULL);
 
 	mySlice = (Slice *) list_nth(sliceTable->slices, sliceId);
@@ -1141,15 +1174,7 @@ TeardownInterconnect(bool forceEOS)
 	}
 
 
-	/*
-	 * If we setup a connection to the seqserver then we need to disconnect
-	 */
-	if (seqserverFd != -1)
-	{
-		shutdown(seqserverFd, SHUT_RDWR);
-		close(seqserverFd);
-		seqserverFd = -1;
-	}
+	
 
 	/*
 	 * If there are clients waiting on our listener; we *must*

@@ -957,7 +957,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 
     struct CdbDispatchResults  *primaryResults = NULL;
 	bool		        shouldDispatch = false;
-    volatile bool       shouldTeardownInterconnect = false;
+    volatile int		numMotionNodes = 0;
 
 	if (Mpp_role == MPP_ROLE_DISPATCH &&
 		planstate != NULL &&
@@ -1032,8 +1032,11 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			/*
 			 * Set up the interconnect for execution of the initplan root slice.
 			 */
-            shouldTeardownInterconnect = true;
-			SetupInterconnect(queryDesc->estate->es_sliceTable, queryDesc->estate->es_sliceTable->localSlice);
+            numMotionNodes = queryDesc->planstate->plan->nMotionNodes;
+            
+			SetupInterconnect( queryDesc->estate->es_sliceTable, 
+							   queryDesc->estate->es_sliceTable->localSlice,
+							   numMotionNodes );
 		}
 
 
@@ -1175,12 +1178,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
         }
 
         /* Clean up the interconnect. */
-        if (shouldTeardownInterconnect)
-        {
-            shouldTeardownInterconnect = false;
-            TeardownInterconnect(false);    /* following success on QD */
-        }
-
+        TeardownInterconnect(false,numMotionNodes);
+        
     }
 	PG_CATCH();
 	{
@@ -1196,9 +1195,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
          * Clean up the interconnect.
          * CDB TODO: Is this needed following failure on QD?
          */
-        if (shouldTeardownInterconnect)
-			TeardownInterconnect(true);		
-
+        TeardownInterconnect(true,numMotionNodes);
+        
         PG_RE_THROW();
 	}
 	PG_END_TRY();

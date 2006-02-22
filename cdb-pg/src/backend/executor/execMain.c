@@ -310,7 +310,7 @@ ExecutorRun(QueryDesc *queryDesc,
 	 * PG_CATCH block should be declared 'volatile'. (setjmp shenanigans)
 	 */
 	bool		shouldDispatch;
-	volatile bool shouldSetupInterconnect = false;
+	volatile int  numMotionNodes = 0;
     CdbDispatchResults *primaryResults = NULL;
     CdbDispatchResults *mirrorResults = NULL;
 
@@ -534,13 +534,11 @@ ExecutorRun(QueryDesc *queryDesc,
 			MotionState *motionState = (estate->es_slice_map[estate->es_cur_slice_idx]);
 
 			Assert(IsA(motionState->ps.plan, Motion));
-
-			/* activate the connections, if needed */
-			if (((PlanState *) motionState)->plan->nMotionNodes > 0)
-			{
-				shouldSetupInterconnect = true;
-				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
-			}
+			
+			numMotionNodes = ((PlanState *) motionState)->plan->nMotionNodes;
+			
+			SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx, numMotionNodes);
+			
 
 			result = ExecutePlan(estate,
 								 (PlanState *) motionState,
@@ -552,12 +550,9 @@ ExecutorRun(QueryDesc *queryDesc,
 		else
 		{
 			/* Run a root slice. */
-
-			if (queryDesc->planstate->plan->nMotionNodes > 0)
-			{
-				shouldSetupInterconnect = true;
-				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
-			}
+			numMotionNodes = queryDesc->planstate->plan->nMotionNodes;
+			SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx, numMotionNodes);
+			
 
 			result = ExecutePlan(estate,
 								 queryDesc->planstate,
@@ -594,11 +589,8 @@ ExecutorRun(QueryDesc *queryDesc,
         }
 
         /* Clean up the interconnect. */
-        if (shouldSetupInterconnect)
-        {
-            shouldSetupInterconnect = false;
-            TeardownInterconnect(false);
-        }
+		TeardownInterconnect(false, numMotionNodes);
+        
 
     }
 	PG_CATCH();
@@ -612,9 +604,8 @@ ExecutorRun(QueryDesc *queryDesc,
             cdbdisp_handleError(primaryResults, mirrorResults);
 
 		/* Clean up the interconnect. */
-		if (shouldSetupInterconnect)
-			TeardownInterconnect(true);
-
+		TeardownInterconnect(true, numMotionNodes);
+		
         /* Clean up our own motion layer. */
 		if (Mpp_role != MPP_ROLE_UTILITY)
 			ResetMotionLayer(true);
