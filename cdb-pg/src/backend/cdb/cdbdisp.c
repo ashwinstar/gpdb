@@ -292,7 +292,7 @@ cdbdisp_dispatchToGang(const char                  *szCommand,
 			/* the maximum number of command parameter blocks we'll possibly need is
 			 * one for each slice on the primary and mirror gangs. Set the minimum
 			 * just to be safe */
-			int paramCount = max_threads * 2 * MIN(maxSlices, 5);
+			int paramCount = max_threads * 4 * MIN(maxSlices, 5);
 
 			dispatchCommandParmsAr =
 				(DispatchCommandParms *) palloc0(paramCount *
@@ -314,7 +314,8 @@ cdbdisp_dispatchToGang(const char                  *szCommand,
 													  (threadCount + max_threads) *
 													  sizeof(DispatchCommandParms));
 				memset(dispatchCommandParmsAr + threadCount, 0,
-					   max_threads * sizeof(DispatchCommandParms));
+					   (threadCount + max_threads - dispatchCommandParmsArSize) *
+					   sizeof(DispatchCommandParms));
 
 				dispatchCommandParmsArSize = threadCount + max_threads;
 			}
