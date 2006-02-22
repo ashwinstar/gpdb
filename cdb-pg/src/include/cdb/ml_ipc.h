@@ -66,7 +66,7 @@ extern int  GetSeqServerFD(void);
  *	 mySliceId - the index of the slice in the slicetable that we are a member of.
  *
  */
-extern void SetupInterconnect(SliceTable * mySliceTable, int mySliceId, int numMotionNodes);
+extern void SetupInterconnect(SliceTable * mySliceTable, int mySliceId);
 
 /* The TeardownInterconnect() function should be called at the end of executing
  * a DML statement to close down all TCP socket resources that were setup during
@@ -78,7 +78,14 @@ extern void SetupInterconnect(SliceTable * mySliceTable, int mySliceId, int numM
  *		 statement termination we can force an end-of-stream notification.
  *
  */
-extern void TeardownInterconnect(bool forceEOS, int numMotionNodes);
+extern void TeardownInterconnect(bool forceEOS);
+
+
+
+extern void SetupSequenceServer(SliceTable *mySliceTable);
+
+extern void TeardownSequenceServer(void);
+
 
 /* Sends a tuple chunk from the Postgres process to the local AMS process via
  * IPC.  This function does not block; if the IPC channel cannot accept the

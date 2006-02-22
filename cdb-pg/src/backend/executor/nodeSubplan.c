@@ -957,7 +957,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 
     struct CdbDispatchResults  *primaryResults = NULL;
 	bool		        shouldDispatch = false;
-    volatile int		numMotionNodes = 0;
+	volatile	bool shouldTeardownInterconnect = false;
 
 	if (Mpp_role == MPP_ROLE_DISPATCH &&
 		planstate != NULL &&
@@ -1022,6 +1022,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
              */
             cdbdisp_startDtxTransaction();
 
+		
 			/*
 			 * This call returns after launching the threads that send the
              * command to the appropriate segdbs.  It does not wait for them
@@ -1029,14 +1030,17 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			 */
 			cdbdisp_dispatchPlan(queryDesc, true, &primaryResults, NULL);
 
+
+			SetupSequenceServer(queryDesc->estate->es_sliceTable);
+			
 			/*
 			 * Set up the interconnect for execution of the initplan root slice.
 			 */
-            numMotionNodes = queryDesc->planstate->plan->nMotionNodes;
-            
+			shouldTeardownInterconnect = true; 
 			SetupInterconnect( queryDesc->estate->es_sliceTable, 
-							   queryDesc->estate->es_sliceTable->localSlice,
-							   numMotionNodes );
+							   queryDesc->estate->es_sliceTable->localSlice);
+							   
+				   
 		}
 
 
@@ -1177,8 +1181,15 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
             cdbdisp_finishCommand(pr, NULL);
         }
 
+		/* teardown the sequence server */
+		TeardownSequenceServer();
+		
         /* Clean up the interconnect. */
-        TeardownInterconnect(false,numMotionNodes);
+        if (shouldTeardownInterconnect)
+        {
+        	shouldTeardownInterconnect = false;
+	        TeardownInterconnect(false); /* following success on QD */
+	    }
         
     }
 	PG_CATCH();
@@ -1190,12 +1201,17 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		 */
 		if (primaryResults)
             cdbdisp_handleError(primaryResults, NULL);
-
+		
+		/* teardown the sequence server */
+		TeardownSequenceServer();
+		
+		
         /*
          * Clean up the interconnect.
          * CDB TODO: Is this needed following failure on QD?
          */
-        TeardownInterconnect(true,numMotionNodes);
+        if (shouldTeardownInterconnect)
+			TeardownInterconnect(true);  
         
         PG_RE_THROW();
 	}

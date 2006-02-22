@@ -310,8 +310,8 @@ ExecutorRun(QueryDesc *queryDesc,
 	 * PG_CATCH block should be declared 'volatile'. (setjmp shenanigans)
 	 */
 	bool		shouldDispatch;
-	volatile int  numMotionNodes = 0;
-    CdbDispatchResults *primaryResults = NULL;
+	volatile  bool shouldSetupInterconnect = false;
+	CdbDispatchResults *primaryResults = NULL;
     CdbDispatchResults *mirrorResults = NULL;
 
 	/* sanity checks */
@@ -535,10 +535,14 @@ ExecutorRun(QueryDesc *queryDesc,
 
 			Assert(IsA(motionState->ps.plan, Motion));
 			
-			numMotionNodes = ((PlanState *) motionState)->plan->nMotionNodes;
+			SetupSequenceServer(estate->es_sliceTable);
 			
-			SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx, numMotionNodes);
-			
+			/* activate the connections, if needed */
+			if (((PlanState *) motionState)->plan->nMotionNodes > 0) 
+			{			
+				shouldSetupInterconnect = true;
+				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
+			}
 
 			result = ExecutePlan(estate,
 								 (PlanState *) motionState,
@@ -549,9 +553,15 @@ ExecutorRun(QueryDesc *queryDesc,
 		}
 		else
 		{
-			/* Run a root slice. */
-			numMotionNodes = queryDesc->planstate->plan->nMotionNodes;
-			SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx, numMotionNodes);
+			if (estate->es_sliceTable != NULL)
+				SetupSequenceServer(estate->es_sliceTable);
+			
+			/* Run a root slice. */		
+			if (queryDesc->planstate->plan->nMotionNodes > 0)
+			{
+				shouldSetupInterconnect = true;
+				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
+			}
 			
 
 			result = ExecutePlan(estate,
@@ -588,9 +598,16 @@ ExecutorRun(QueryDesc *queryDesc,
             cdbdisp_finishCommand(pr, mr);
         }
 
+		/* Teardown the Sequence Server */
+		TeardownSequenceServer();
+		
         /* Clean up the interconnect. */
-		TeardownInterconnect(false, numMotionNodes);
-        
+        if (shouldSetupInterconnect)
+        {	
+        	shouldSetupInterconnect = false;
+			TeardownInterconnect(false);
+		}
+		
 
     }
 	PG_CATCH();
@@ -603,8 +620,12 @@ ExecutorRun(QueryDesc *queryDesc,
 		if (primaryResults)
             cdbdisp_handleError(primaryResults, mirrorResults);
 
+		/* teardown the sequence server. */
+		TeardownSequenceServer();
+		
 		/* Clean up the interconnect. */
-		TeardownInterconnect(true, numMotionNodes);
+		if (shouldSetupInterconnect)
+			TeardownInterconnect(true);
 		
         /* Clean up our own motion layer. */
 		if (Mpp_role != MPP_ROLE_UTILITY)

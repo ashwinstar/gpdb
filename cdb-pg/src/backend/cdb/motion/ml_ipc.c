@@ -650,9 +650,38 @@ GetSeqServerFD(void)
 	return seqserverFd;
 }
 
+
+
+void 
+SetupSequenceServer(SliceTable *mySliceTable)
+{
+	if( mySliceTable != NULL )
+	{
+		seqServerHost = mySliceTable->seqServerHost;
+		seqServerPort = mySliceTable->seqServerPort;
+	}
+}
+
+void 
+TeardownSequenceServer(void)
+{
+	/*
+	 * If we setup a connection to the seqserver then we need to disconnect
+	 */
+	if (seqserverFd != -1)
+	{
+		elog(DEBUG3, "tearing down seqserver connection");
+		shutdown(seqserverFd, SHUT_RDWR);
+		close(seqserverFd);
+		seqserverFd = -1;
+	}
+}
+
+
+
 /* See ml_ipc.h */
 void
-SetupInterconnect(SliceTable * mySliceTable, int mySliceId, int numMotionNodes)
+SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 {
 	int			i,
 				n,
@@ -686,24 +715,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId, int numMotionNodes)
 	elog(DEBUG1, "SetupInterconnect: time is %ld.%ld",
 		 (long int) snapTime.tv_sec, (long int) snapTime.tv_usec);
 #endif
-
-
-	/*
-	 * we setup the sequence server regardless if we have motion nodes or not
-	 */
-
-	/* Sequence Server Information */
-	elog(DEBUG3, "setting seqserver info");
-	if (mySliceTable != NULL)
-	{
-		seqServerHost = mySliceTable->seqServerHost;
-		seqServerPort = mySliceTable->seqServerPort;
-	}
-
-	/* if no motion nodes we are done */
-	if (numMotionNodes == 0)
-		return;
-
+	
 
 	/*
 	 * The assert only happens when we are compiled with --enable-cassert.
@@ -985,7 +997,7 @@ forceEosToPeer(int16 motNodeID, int16 targetRoute)
  * adding errors!).
  */
 void
-TeardownInterconnect(bool forceEOS, int numMotionNodes)
+TeardownInterconnect(bool forceEOS)
 {
 	ListCell   *cell;
 	MotionLayerState *pEntry;
@@ -995,20 +1007,7 @@ TeardownInterconnect(bool forceEOS, int numMotionNodes)
 
 	elog(DEBUG3, "Interconnect cleanup.");
 
-	/*
-	 * If we setup a connection to the seqserver then we need to disconnect
-	 */
-	if (seqserverFd != -1)
-	{
-		elog(DEBUG3, "tearing down seqserver connection");
-		shutdown(seqserverFd, SHUT_RDWR);
-		close(seqserverFd);
-		seqserverFd = -1;
-	}
-
-	if (numMotionNodes == 0)
-		return;
-
+	
 	Assert(sliceTable != NULL);
 
 	mySlice = (Slice *) list_nth(sliceTable->slices, sliceId);
