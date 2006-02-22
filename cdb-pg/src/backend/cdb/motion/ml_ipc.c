@@ -1566,9 +1566,7 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 				saved_err;
 	int			retrycount = 0;
 
-#ifdef __linux__
 	int			opt;
-#endif
 
 	conn->pBuff = palloc(Mpp_max_packet_size);
 	conn->msgSize = PACKET_HEADER_SIZE;
@@ -1603,7 +1601,6 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 		 * Mac, avoid it. Linux is our important production platform, this
 		 * code reduces our "TCP port churn" problem.
 		 */
-#ifdef __linux__
 		opt = 1;
 		if (setsockopt(conn->sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
 		{
@@ -1614,7 +1611,6 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 								   cdbProc->contentid, cdbProc->listenerAddr,
 									  cdbProc->listenerPort)));
 		}
-#endif
 
 		memset(&addr, 0, sizeof(addr));
 		addr.sin_family = AF_INET;
@@ -1623,7 +1619,7 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 		 * we can run out of ports if we aren't careful, so we try to reuse
 		 * them as much as possible
 		 */
-		if (retrycount == MAX_BIND_RETRIES)
+		if (retrycount == 0 || retrycount == MAX_BIND_RETRIES)
 			addr.sin_port = 0;
 		else
 			addr.sin_port = htons(nextOutboundPort);
@@ -1698,10 +1694,11 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 		{
 			if (errno == EADDRNOTAVAIL || errno == EADDRINUSE)
 			{
-				elog(DEBUG5, "retrying connect");
+				elog(DEBUG5, "retrying connect port %d %d errno %d", nextOutboundPort, retrycount, errno);
 				close(conn->sockfd);
 
 				retrycount++;
+				nextOutboundPort++;
 				conn->sockfd = -1;
 				continue;
 			}
