@@ -1614,7 +1614,7 @@ static struct config_int ConfigureNamesInt[] =
 
 		},
 		&mpp_connections_per_thread,
-		4, 1, INT_MAX, assign_mpp_connections_per_thread, show_mpp_connections_per_thread
+		64, 1, INT_MAX, assign_mpp_connections_per_thread, show_mpp_connections_per_thread
 	},
 	
 	{
