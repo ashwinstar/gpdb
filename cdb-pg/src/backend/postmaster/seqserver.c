@@ -537,6 +537,17 @@ void SeqServerLoop(void)
 			continue;
 		}
 		
+		
+		if (n < 0)
+		{
+			/* this may be a little severe, but if we error on select() 
+			 * we'll just go ahead and blow up.  This will result in the 
+			 * postmaster re-spawning a new process. 
+			 */
+			elog(ERROR,"Error during select() call (error:%d).", errno);
+			break;	
+		}
+		
 		elog(DEBUG5, "seqserver select() returned %d ready sockets", n);
 
 		/* is it someone tickling our listener port? */
