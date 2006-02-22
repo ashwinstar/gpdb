@@ -365,9 +365,10 @@ SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 	for (i = 0; i < pEntry->numConns; i++)
 	{
 		conn = pEntry->conns + i;
-		flushBuffer(conn, motNodeID);
+		if (conn->sockfd >= 0)
+			flushBuffer(conn, motNodeID);
 
-		if (conn->hasMirrorConn)
+		if (conn->hasMirrorConn && conn->mirrorConn->sockfd >= 0)
 			flushBuffer(conn->mirrorConn, motNodeID);
 	}
 
@@ -1534,13 +1535,11 @@ static void
 setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, fd_set *wset)
 {
 	struct sockaddr_in addr;
-	bool		bound = false;
 	int			n,
 				saved_err,
-				opt,
-				bindtries = 0;
+				opt;
+	int			retrycount = 0;
 
-	conn->sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	conn->pBuff = palloc(Mpp_max_packet_size);
 	conn->msgSize = PACKET_HEADER_SIZE;
 	conn->tupleCount = 0;
@@ -1550,36 +1549,39 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 	conn->remoteContentId = cdbProc->contentid;
 	conn->hasMirrorConn = false;
 
-	if (conn->sockfd < 0)
+	do
 	{
-		/*
-		 * TODO: would be nice to read the errno and try and provide
-		 * more useful info as to why this happened.
-		 */
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-						errmsg("Interconnect Error: Could not create outbound socket: %s", strerror(errno)),
+
+		conn->sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+		if (conn->sockfd < 0)
+		{
+			/*
+			 * TODO: would be nice to read the errno and try and provide
+			 * more useful info as to why this happened.
+			 */
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+							errmsg("Interconnect Error: Could not create outbound socket: %s", strerror(errno)),
 				errdetail("error during socket() call (error:%d) to outgoing"
 						  "CdbProcess with contentId=%d at: '%s':%d", errno,
 						  cdbProc->contentid, cdbProc->listenerAddr,
 						  cdbProc->listenerPort)));
-	}
+		}
 
-	opt = 1;
-	if (setsockopt(conn->sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-	{
-		elog(ERROR, "Interconnect: failed to set SO_REUSEADDR on outbound port");
-	}
+		opt = 1;
+		if (setsockopt(conn->sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+		{
+			elog(ERROR, "Interconnect: failed to set SO_REUSEADDR on outbound port");
+		}
 
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin_family = AF_INET;
 
-	/*
-	 * we can run out of ports if we aren't careful, so we try to reuse them
-	 * as much as possible
-	 */
-	do
-	{
-		if (bindtries == MAX_BIND_RETRIES)
+		/*
+		 * we can run out of ports if we aren't careful, so we try to reuse
+		 * them as much as possible
+		 */
+		if (retrycount == MAX_BIND_RETRIES)
 			addr.sin_port = 0;
 		else
 			addr.sin_port = htons(nextOutboundPort);
@@ -1587,80 +1589,93 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 		if (bind(conn->sockfd, (struct sockaddr *) & addr, sizeof(addr)) < 0)
 		{
 			saved_err = errno;
-			elog(LOG, "Interconnect: bind failed for port %d (retry count %d)",
-				 nextOutboundPort, bindtries);
-			bindtries++;
+
+			retrycount++;
 			nextOutboundPort++;
-			if (bindtries > MAX_BIND_RETRIES)
+			if (retrycount > MAX_BIND_RETRIES)
 			{
-				elog(ERROR, "Interconnect: failed to bind outbound connection %s",
-					 strerror(saved_err));
+				elog(ERROR, "Interconnect: failed to bind outbound connection %s (retries %d time)",
+					 strerror(saved_err), retrycount);
 			}
+			close(conn->sockfd);
+			conn->sockfd = -1;
 			continue;
 		}
-		bound = true;
-	} while (!bound);
 
-	/* make socket non-blocking BEFORE we connect. */
-	if (!pg_set_noblock(conn->sockfd))
-	{
-		/*
-		 * TODO: would be nice to read the errno and try and provide
-		 * more useful info as to why this happened.
-		 */
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-						errmsg("Interconnect Error: Could not set outbound socket to non-blocking mode"),
+		/* make socket non-blocking BEFORE we connect. */
+		if (!pg_set_noblock(conn->sockfd))
+		{
+			/*
+			 * TODO: would be nice to read the errno and try and provide
+			 * more useful info as to why this happened.
+			 */
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+							errmsg("Interconnect Error: Could not set outbound socket to non-blocking mode"),
 			 errdetail("error during fcntl() call (error:%d) for sockfd: %d",
 					   errno, conn->sockfd)));
-	}
+		}
 
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin_family = AF_INET;
 
-	if ((n = inet_pton(AF_INET, cdbProc->listenerAddr, &addr.sin_addr)) < 1)
-	{
-		if (n == 0)
+		if ((n = inet_pton(AF_INET, cdbProc->listenerAddr, &addr.sin_addr)) < 1)
 		{
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+			if (n == 0)
+			{
+				ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 				 errmsg("Interconnect Error: Could not parse remote listener"
 						"address: '%s'", cdbProc->listenerAddr),
 					   errdetail("inet_pton() unable to parse address: '%s'",
 								 cdbProc->listenerAddr)));
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-			 errmsg("Interconnect Error: System error occured during parsing"
+			}
+			else
+			{
+				ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+								errmsg("Interconnect Error: System error occured during parsing"
 				 " of remote listener address: '%s'", cdbProc->listenerAddr),
-							errdetail("inet_pton()  (errno: %d) unable to parse address: '%s'",
-									  errno, cdbProc->listenerAddr)));
+								errdetail("inet_pton()  (errno: %d) unable to parse address: '%s'",
+										  errno, cdbProc->listenerAddr)));
+			}
 		}
-	}
 
-	addr.sin_port = htons(cdbProc->listenerPort);
+		addr.sin_port = htons(cdbProc->listenerPort);
 
-	/*
-	 * Since our socket is set to non-blocking, then connect can
-	 * return immediately with an error of EINPROGRESS but the TCP
-	 * connection is still continuing to be made.  we will later use
-	 * select() to find out when its actually done.
-	 */
-	if ((n = connect(conn->sockfd, (struct sockaddr *) & addr, sizeof(addr))) < 0)
-	{
-		if (errno != EINPROGRESS)
+		/*
+		 * Since our socket is set to non-blocking, then connect can
+		 * return immediately with an error of EINPROGRESS but the TCP
+		 * connection is still continuing to be made.  we will later use
+		 * select() to find out when its actually done.
+		 */
+		if ((n = connect(conn->sockfd, (struct sockaddr *) & addr, sizeof(addr))) < 0)
 		{
-			/*
-			 * TODO: would be nice to read the errno and try and
-			 * provide more useful info as to why this happened.
-			 */
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-							errmsg("Interconnect Error: Could not connect() to remote destination: %s", strerror(errno)),
-			   errdetail("error during connect() call (error:%d) to outgoing"
-						 "CdbProcess with contentId=%d at: '%s':%d", errno,
-						 cdbProc->contentid, cdbProc->listenerAddr,
-						 cdbProc->listenerPort)));
+			if (errno == EADDRNOTAVAIL)
+			{
+				elog(DEBUG5, "retrying connect");
+				close(conn->sockfd);
+
+				retrycount++;
+				conn->sockfd = -1;
+				continue;
+			}
+			if (errno != EINPROGRESS)
+			{
+				/*
+				 * TODO: would be nice to read the errno and try and
+				 * provide more useful info as to why this happened.
+				 */
+				ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+								errmsg("Interconnect Error: Could not connect() to remote destination: %d, %s", errno, strerror(errno)),
+				errdetail("error during connect() call (error:%d) to outgoing"
+						  "CdbProcess with contentId=%d at: '%s':%d", errno,
+						  cdbProc->contentid, cdbProc->listenerAddr,
+						  cdbProc->listenerPort)));
+			}
 		}
-	}
+
+	} while (conn->sockfd == -1);
+
+	if (retrycount != 0)
+		elog(DEBUG2, "setupoutgoing: retried %d times", retrycount);
 
 	FD_SET(conn->sockfd, wset);
 
