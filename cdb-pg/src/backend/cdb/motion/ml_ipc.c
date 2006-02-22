@@ -1561,8 +1561,7 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 {
 	struct sockaddr_in addr;
 	int			n,
-				saved_err,
-				opt;
+		saved_err;
 	int			retrycount = 0;
 
 	conn->pBuff = palloc(Mpp_max_packet_size);
