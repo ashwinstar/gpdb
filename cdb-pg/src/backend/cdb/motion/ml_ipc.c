@@ -688,23 +688,23 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId, int numMotionNodes)
 #endif
 
 
-	/* we setup the sequence server regardless if we have motion nodes
-	 * or not
+	/*
+	 * we setup the sequence server regardless if we have motion nodes or not
 	 */
-	 
+
 	/* Sequence Server Information */
-	elog( DEBUG3, "setting seqserver info");
+	elog(DEBUG3, "setting seqserver info");
 	if (mySliceTable != NULL)
 	{
 		seqServerHost = mySliceTable->seqServerHost;
 		seqServerPort = mySliceTable->seqServerPort;
 	}
-	
+
 	/* if no motion nodes we are done */
 	if (numMotionNodes == 0)
 		return;
-	
-	
+
+
 	/*
 	 * The assert only happens when we are compiled with --enable-cassert.
 	 * So, let's report the error even if we are a production build.
@@ -994,21 +994,21 @@ TeardownInterconnect(bool forceEOS, int numMotionNodes)
 	MotionConn *conn;
 
 	elog(DEBUG3, "Interconnect cleanup.");
-	
+
 	/*
 	 * If we setup a connection to the seqserver then we need to disconnect
 	 */
 	if (seqserverFd != -1)
 	{
-		elog( DEBUG3, "tearing down seqserver connection");
+		elog(DEBUG3, "tearing down seqserver connection");
 		shutdown(seqserverFd, SHUT_RDWR);
 		close(seqserverFd);
 		seqserverFd = -1;
 	}
-	
+
 	if (numMotionNodes == 0)
 		return;
-	
+
 	Assert(sliceTable != NULL);
 
 	mySlice = (Slice *) list_nth(sliceTable->slices, sliceId);
@@ -1067,6 +1067,8 @@ TeardownInterconnect(bool forceEOS, int numMotionNodes)
 	 * peer-registration step. With these we have to worry about
 	 * "in-flight" data.
 	 */
+
+	/* Phase-1 of outbound */
 	if (mySlice->parentIndex != -1)
 	{
 		/* cleanup a Sending motion node. */
@@ -1102,7 +1104,8 @@ TeardownInterconnect(bool forceEOS, int numMotionNodes)
 
 	/*
 	 * cleanup all of our Receiving Motion nodes, these get closed
-	 * immediately
+	 * immediately (the receiver know for real if they want to shut
+	 * down -- they aren't going to be processing any more data).
 	 */
 	foreach(cell, mySlice->children)
 	{
@@ -1174,7 +1177,6 @@ TeardownInterconnect(bool forceEOS, int numMotionNodes)
 	}
 
 
-	
 
 	/*
 	 * If there are clients waiting on our listener; we *must*
@@ -1561,8 +1563,12 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 {
 	struct sockaddr_in addr;
 	int			n,
-		saved_err;
+				saved_err;
 	int			retrycount = 0;
+
+#ifdef __linux__
+	int			opt;
+#endif
 
 	conn->pBuff = palloc(Mpp_max_packet_size);
 	conn->msgSize = PACKET_HEADER_SIZE;
@@ -1592,6 +1598,24 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 						  cdbProc->listenerPort)));
 		}
 
+		/*
+		 * Use of SO_REUSEADDR breaks things pretty catastrophically on the
+		 * Mac, avoid it. Linux is our important production platform, this
+		 * code reduces our "TCP port churn" problem.
+		 */
+#ifdef __linux__
+		opt = 1;
+		if (setsockopt(conn->sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+							errmsg("Interconnect Error: Could set SO_REUSEADDR on socket: %s", strerror(errno)),
+							errdetail("error during setsockopt() call (error:%d) before connect to "
+						   "CdbProcess with contentId=%d at: '%s':%d", errno,
+								   cdbProc->contentid, cdbProc->listenerAddr,
+									  cdbProc->listenerPort)));
+		}
+#endif
+
 		memset(&addr, 0, sizeof(addr));
 		addr.sin_family = AF_INET;
 
@@ -1612,8 +1636,14 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 			nextOutboundPort++;
 			if (retrycount > MAX_BIND_RETRIES)
 			{
-				elog(ERROR, "Interconnect: failed to bind outbound connection %s (retries %d time)",
-					 strerror(saved_err), retrycount);
+				ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+								errmsg("Interconnect Error: Could not bind outbound port: %s (too many TIME_WAIT)",
+									   strerror(saved_err)),
+						 errdetail("retried %d times to outgoing CdbProcess "
+								   "with contentId=%d at: '%s':%d",
+								   retrycount, cdbProc->contentid,
+							   cdbProc->listenerAddr, cdbProc->listenerPort),
+								errhint("Try setting a sysctl to reduce TIME_WAIT: (on linux: '/sbin/sysctl -w net.ipv4.tcp_tw_recycle=1'")));
 			}
 			close(conn->sockfd);
 			conn->sockfd = -1;
