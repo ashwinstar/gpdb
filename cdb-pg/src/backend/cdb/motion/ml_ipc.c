@@ -152,7 +152,7 @@ int			listenerFd;
 static uint16 nextOutboundPort;
 
 /* Socket file descriptor for the sequence server. */
-int			seqserverFd;
+int			seqserverFd = -1;
 char	   *seqServerHost;
 int			seqServerPort;
 
