@@ -22,6 +22,7 @@
 #include "utils/array.h"
 #include "utils/date.h"
 #include "utils/datetime.h"
+#include "utils/varbit.h"
 #include "fmgr.h"
 #include "cdb/cdbhash.h"
 
@@ -166,6 +167,8 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	unsigned char inet_hkey[sizeof(inet_struct)];
 	macaddr		*macptr; /* MAC address */
 	
+	VarBit		*vbitptr;
+	
 	//int2vector *i2vec_buf;
 	//oidvector  *oidvec_buf;
 
@@ -175,9 +178,9 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	 */
 	switch (type)
 	{
-			/*
-			 * ======= NUMERIC TYPES ========
-			 */
+		/*
+		 * ======= NUMERIC TYPES ========
+		 */
 		case INT2OID:			/* -32 thousand to 32 thousand, 2-byte storage */
 			intbuf = (int64) DatumGetInt16(datum);		/* cast to 8 byte before
 														 * hashing */
@@ -271,9 +274,9 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			buf = oidvec_buf->values;
 			break;
 		*/	
-			/*
-			 * ====== CHARACTER TYPES =======
-			 */
+		/*
+		 * ====== CHARACTER TYPES =======
+		 */
 		case CHAROID:			/* char(1), single character */
 		case BPCHAROID: /* char(n), blank-padded string, fixed storage
 								 * length */
@@ -324,9 +327,9 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 				len = ignoreblanks((char *) buf, len);
 			break;
 
-			/*
-			 * ====== DATE/TIME TYPES ======
-			 */
+		/*
+		 * ====== DATE/TIME TYPES ======
+		 */
 		case TIMESTAMPOID:		/* date and time */
 			tsbuf = DatumGetTimestamp(datum);
 			buf = &tsbuf;
@@ -379,9 +382,9 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			len = sizeof(intervalptr->time) + sizeof(intervalptr->month);
 			break;
 
-			/*
-			 * ======= NETWORK TYPES ========
-			 */
+		/*
+		 * ======= NETWORK TYPES ========
+		 */
 		case INETOID:
 		case CIDROID:
 			
@@ -397,10 +400,26 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			buf = (unsigned char *) macptr;
 			break;
 			
+		/*
+		 * ======== BIT STRINGS ========
+		 */
+		case BITOID:
+		case VARBITOID:
+			
 			/*
-			 * ======= other types =======
+			 * Note that these are essentially strings.
+			 * we don't need to worry about '10' and '010'
+			 * to compare, b/c they will not, by design.
+			 * (see SQL standard, and varbit.c)
 			 */
-
+			vbitptr = DatumGetVarBitP(datum);
+			len = VARBITBYTES(vbitptr);
+			buf = (char *) VARBITS(vbitptr);
+			break;
+			
+		/*
+		 * ======= other types =======
+		 */
 		case BOOLOID:			/* boolean, 'true'/'false' */
 			bool_buf = DatumGetBool(datum);
 			buf = &bool_buf;

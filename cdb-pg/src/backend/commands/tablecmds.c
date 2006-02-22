@@ -538,7 +538,6 @@ DefineRelation_int(CreateStmt *stmt,
 
 				if (n)
 					if (strcmp(n, "path") == 0 ||
-						strcmp(n, "bit") == 0 ||
 						strcmp(n, "box") == 0 ||
 						strcmp(n, "circle") == 0 ||
 						strcmp(n, "abstime") == 0 ||
@@ -553,7 +552,6 @@ DefineRelation_int(CreateStmt *stmt,
 						strcmp(n, "unknown") == 0 ||
 						strcmp(n, "cash") == 0 ||
 						strcmp(n, "aclitem") == 0 ||
-						strcmp(n, "varbit") == 0 ||
 						strcmp(n, "money") == 0 ||
 						strcmp(n, "anyelement") == 0 ||
 						strcmp(n, "smgr") == 0 ||
@@ -3149,7 +3147,6 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 			
 			if (n)
 				if (strcmp(n, "path") == 0 ||
-					strcmp(n, "bit") == 0 ||
 					strcmp(n, "box") == 0 ||
 					strcmp(n, "circle") == 0 ||
 					strcmp(n, "abstime") == 0 ||
@@ -3164,7 +3161,6 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 					strcmp(n, "unknown") == 0 ||
 					strcmp(n, "cash") == 0 ||
 					strcmp(n, "aclitem") == 0 ||
-					strcmp(n, "varbit") == 0 ||
 					strcmp(n, "money") == 0 ||
 					strcmp(n, "anyelement") == 0 ||
 					strcmp(n, "smgr") == 0 ||
