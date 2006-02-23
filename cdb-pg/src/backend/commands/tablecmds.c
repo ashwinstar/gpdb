@@ -338,6 +338,18 @@ DefineRelation_int(CreateStmt *stmt,
 	 */
 	StrNCpy(relname, stmt->relation->relname, NAMEDATALEN);
 
+
+	/* We can't support Temp objects until we fix MPP-475.
+	 * 
+	 * Until then we'll simply state that we don't handle temp objects
+	 */
+	if( stmt->relation->istemp)
+	{
+		ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_YET),
+						errmsg("Bizgres MPP support for TEMP objects is not available yet.")
+						));
+	}
+
 	/*
 	 * Check consistency of arguments
 	 */
