@@ -88,6 +88,7 @@ apply_motion(Plan *plan, Query *query)
 
 	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
     state.sliceDepth = 0;
+	state.parent_is_subplan = false;
 
 	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
 
@@ -365,13 +366,44 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     int     numInputSegs;
     int     saveSliceDepth;
     bool    sendToSecondary = false;    /* always for now */
+	bool	parent_is_subplan = false;
 
 	if (node == NULL)
 		return NULL;
+	
+	/* Notice whether we are the plan of a SubPlan. */
+	parent_is_subplan = context->parent_is_subplan;
+	context->parent_is_subplan = false;
+	Assert ( !parent_is_subplan || is_plan_node(node) );
 
     /* An expression node might have subtrees containing plans to be mutated. */
     if (!is_plan_node(node))
-        return plan_tree_mutator(node, apply_motion_mutator, context);
+	{
+		if ( IsA(node, SubPlan) )
+		{
+			SubPlan *subplan = (SubPlan*)node;
+			SubPlan *newsub;
+			
+			newsub = makeNode(SubPlan);
+			memcpy(newsub, node, sizeof(SubPlan));
+			
+			newsub->exprs = (List*) apply_motion_mutator((Node*)subplan->exprs, context);
+			newsub->paramIds = (List*) apply_motion_mutator((Node*)subplan->paramIds, context);
+			
+			context->parent_is_subplan = true; /* Flag entry from SubPlan */
+			newsub->plan = (Plan*) apply_motion_mutator((Node*)subplan->plan, context);
+			
+			newsub->rtable = (List*) apply_motion_mutator((Node*)subplan->rtable, context);
+			newsub->setParam = (List*) apply_motion_mutator((Node*)subplan->setParam, context);
+			newsub->parParam = (List*) apply_motion_mutator((Node*)subplan->parParam, context);
+			newsub->args = (List*) apply_motion_mutator((Node*)subplan->args, context);
+			return (Node*)newsub;
+		}
+		else
+		{
+			return plan_tree_mutator(node, apply_motion_mutator, context);
+		}
+	}
 
     plan = (Plan *)node;
     flow = plan->flow;
@@ -428,7 +460,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
         if (motion->motionType == MOTIONTYPE_FIXED &&
             motion->numOutputSegs == 1 &&
             motion->outputSegIdx[0] >= 0 &&
-            context->sliceDepth == 0)
+            ( context->sliceDepth == 0 || parent_is_subplan ))
         {
             if (flow)
             {
@@ -476,7 +508,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 
             /* If top slice is a singleton, let it execute on qDisp. */
             if (flow->segindex >= 0 &&
-                context->sliceDepth == 0)
+                ( context->sliceDepth == 0 || parent_is_subplan ))
                 flow->segindex = -1;
 
             if (flow->numSortCols > 0)

@@ -1073,6 +1073,23 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 				prm->value = BoolGetDatum(true);
 				prm->isnull = false;
 				found = true;
+
+				if ( shouldDispatch ) 
+				{
+					/* Tell MPP we're done with this plan. */
+					ExecSquelchNode(planstate);
+					
+					/* TODO Figure out why the above causes later failure of ExecMotion
+					 *      (actually, in heap_formtuple in addChuckToSorter) on the
+					 *      statement
+					 
+					 *        select * from product where exists (select * from sale);
+					 */
+					ereport(ERROR,
+							(errcode(ERRCODE_MPP_FEATURE_NOT_YET),
+							 errmsg("EXISTS not currently supported in parallel queries")));
+				}
+
 				break;
 			}
 
