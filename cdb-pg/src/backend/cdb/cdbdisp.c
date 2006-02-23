@@ -154,8 +154,6 @@ static int generateTxnOptions( bool shouldStart );
 typedef struct
 {
 	bool		single_row_insert;
-	Node	   *nextval_replacement;
-	Oid 		nextval_sequence;
 }	pre_dispatch_function_evaluation_context;
 
 static Node *pre_dispatch_function_evaluation_mutator(Node *node,
@@ -1814,8 +1812,6 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 			 * once in this single row insert.
 			 */
 
-			if (funcid == 1574 && context->nextval_replacement != NULL  && context->nextval_sequence == sequenceoid)
-				return context->nextval_replacement;
 
 			newexpr = makeNode(FuncExpr);
 			newexpr->funcid = funcid;
@@ -1871,15 +1867,6 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 										resultTypByVal);
 
 
-
-			/*
-			 * If we just executed nextval(), save the result
-			 */
-			if (funcid == 1574 && context->nextval_replacement == NULL && simple)
-			{
-				context->nextval_replacement = (Node *) simple;
-				context->nextval_sequence = sequenceoid;
-			}
 			
 			elog(DEBUG3," simplified");
 
@@ -2064,7 +2051,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 */
 
 	pcontext.single_row_insert = false;
-	pcontext.nextval_replacement = NULL;
 
 	if (queryDesc->operation == CMD_INSERT)
 	{
