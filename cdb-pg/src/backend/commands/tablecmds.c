@@ -343,7 +343,7 @@ DefineRelation_int(CreateStmt *stmt,
 	 * 
 	 * Until then we'll simply state that we don't handle temp objects
 	 */
-	if( stmt->relation->istemp)
+	if( Mpp_role == MPP_ROLE_DISPATCH && stmt->relation->istemp)
 	{
 		ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_YET),
 						errmsg("Bizgres MPP support for TEMP objects is not available yet.")
