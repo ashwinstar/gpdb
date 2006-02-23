@@ -18,6 +18,7 @@
 #include "cdb/cdbtmlog.h"
 #include "miscadmin.h"
 #include "storage/shmem.h"
+#include "storage/ipc.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"      /* cdbdisp_dumpDispatchResults() */
 #include "cdb/cdbvars.h"
@@ -359,6 +360,16 @@ condRollbackDtxTransaction(void)
 	{
 		return DTX_ERR_PROTO;
 	}
+	
+	
+	/* if the process is in the middle of blowing up... then we 
+	 * don't do anything here.  we can resolve any in-doubt transactions
+	 * later.
+	 */
+	if (proc_exit_inprogress)
+		return DTX_OK;
+	
+	
 	ereport(DEBUG2,
 			(errmsg("condRollbackDtxTransaction:  %s", currentGxact->gid)));
 

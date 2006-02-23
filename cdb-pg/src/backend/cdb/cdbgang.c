@@ -19,6 +19,7 @@
 #include "miscadmin.h"			/* MyDatabaseId */
 #include "commands/dbcommands.h"	/* get_database_name() */
 #include "storage/proc.h"  			/*MyProc*/
+#include "storage/ipc.h"
 #include "utils/memutils.h"
 
 #include "catalog/namespace.h"
@@ -1362,6 +1363,14 @@ cleanupGang(Gang *gp)
 	
 	if (gp->active)
 		elog(DEBUG2, "cleanupGang called on a gang that is active");
+	
+	
+	/* if the process is in the middle of blowing up... then we 
+	 * don't do anything here.  making libpq and other calls can 
+	 * definitely result in things getting HUNG.
+	 */
+	if (proc_exit_inprogress)
+		return;
 		
 	/*
 	 * Loop through the segment_database_descriptors array and, for each
