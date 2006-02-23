@@ -2053,27 +2053,16 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		queryDesc->operation == CMD_UPDATE ||
 		queryDesc->operation == CMD_DELETE)
 	{
-		List * temp = 0;
 		/*
 		 * The Query tree doesn't have to be mutated here, since it isn't used during
 		 * the execution.
 		 */
-		
-		if (IsA(queryDesc->plantree,Motion))
-		{
-			/*
-			 * don't do the top-level Motion node's targetList... It's never used.
-			 */
-			temp = queryDesc->plantree->targetlist;
-			queryDesc->plantree->targetlist = 0;
-		}
+
 
 		queryDesc->plantree = (Plan *) plan_tree_mutator((Node *) queryDesc->plantree,
 									pre_dispatch_function_evaluation_mutator,
 														 &pcontext);
 
-		if (temp != 0)
-			queryDesc->plantree->targetlist = temp;
 
 	}
 
