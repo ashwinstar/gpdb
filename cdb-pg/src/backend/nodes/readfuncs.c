@@ -660,13 +660,14 @@ _readAConst(void)
 	READ_LOCALS(A_Const);
 
 	token = pg_strtok(&length);	
+	token = debackslash(token,length);
 	local_node->val.type = T_String;
 	
 	if (token[0] == '"')
 	{
 		local_node->val.val.str = palloc(length - 1);
-		strncpy(local_node->val.val.str , token+1, length-2);
-		local_node->val.val.str[length-2] = '\0';
+		strncpy(local_node->val.val.str , token+1, strlen(token)-2);
+		local_node->val.val.str[strlen(token)-2] = '\0';
 	}
 	else if (length > 2 && (token[0] == 'b'|| token[0] == 'B') && (token[1] == '\'' || token[1] == '"'))
 	{
