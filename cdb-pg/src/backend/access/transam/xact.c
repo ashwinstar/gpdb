@@ -1555,8 +1555,13 @@ StartTransaction(void)
 						
 						count++;
 						
-						if (count % 1000 == 0)
-							elog( ERROR, "Reader qExec timed out waiting for Writer to set the shared snapshot xid");
+						if (count % 10000 == 0)
+						{
+							ereport(ERROR,
+								(errmsg("Reader qExec timed out waiting for Writer to set the shared snapshot."),
+								 errdetail("We are waiting for the shared snapshot to have XID: %d but the value is currently: %d",
+								 			QDSentXID, SharedLocalSnapshotSlot->QDxid )));
+						}
 					}	
 				}
 			}			
