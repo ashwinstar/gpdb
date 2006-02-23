@@ -1696,6 +1696,9 @@ static Node *
 pre_dispatch_function_evaluation_mutator(Node *node,
 						  pre_dispatch_function_evaluation_context * context)
 {
+	List * savetargets = NIL;
+	Node * newNode = 0;
+	
 	if (node == NULL)
 		return NULL;
 	if (IsA(node, Param))
@@ -1725,6 +1728,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 
 		Oid			funcid;
 		HeapTuple	func_tuple;
+
 
 		/*
 		 * Reduce constants in the FuncExpr's arguments.  We know args is
@@ -1933,8 +1937,30 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 	 * plan_tree_mutator, which will copy the node unchanged but try to
 	 * simplify its arguments (if any) using this routine.
 	 */
-	return plan_tree_mutator(node, pre_dispatch_function_evaluation_mutator,
-							 (void *) context);
+	 
+	savetargets = NIL;
+		
+	if (is_plan_node(node) &&
+		!is_projection_capable_plan((Plan *)node))
+	{
+		/*
+		 * don't do targetlists in nodes where the targetlist isn't used.  Hide them from the mutator
+		 */
+		savetargets = ((Plan *)node)->targetlist;
+		((Plan *)node)->targetlist = NIL;
+	}
+
+	newNode =  plan_tree_mutator(node, pre_dispatch_function_evaluation_mutator,
+													 (void *) context);
+
+	if (savetargets != NIL)
+	{
+		((Plan *)node)->targetlist = savetargets;
+		((Plan *)newNode)->targetlist = savetargets;
+	}
+			
+		
+	return newNode;
 }
 
 
@@ -2054,35 +2080,17 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		queryDesc->operation == CMD_UPDATE ||
 		queryDesc->operation == CMD_DELETE)
 	{
-		List * temp = 0;
-		Plan * newPlan = 0;
+
 		/*
 		 * The Query tree doesn't have to be mutated here, since it isn't used during
 		 * the execution.
 		 */
 		
-		if (is_plan_node((Node *)queryDesc->plantree) &&
-			!is_projection_capable_plan(queryDesc->plantree))
-		{
-			/*
-			 * don't do the top-level Motion node's targetList... It's never used.
-			 */
-			temp = queryDesc->plantree->targetlist;
-			queryDesc->plantree->targetlist = 0;
-		}
+	
 
-		newPlan = (Plan *) plan_tree_mutator((Node *) queryDesc->plantree,
+		queryDesc->plantree = (Plan *) plan_tree_mutator((Node *) queryDesc->plantree,
 									pre_dispatch_function_evaluation_mutator,
 														 &pcontext);
-
-		if (temp != 0)
-		{
-			queryDesc->plantree->targetlist = temp;
-			newPlan->targetlist = temp;
-		}
-			
-		queryDesc->plantree = newPlan;
-
 
 	}
 
