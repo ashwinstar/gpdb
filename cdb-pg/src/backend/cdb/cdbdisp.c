@@ -44,6 +44,7 @@
 #include "cdb/cdbsubplan.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbtm.h"
+#include "cdb/cdbllize.h"
 
 #ifndef MIN
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
@@ -1792,8 +1793,8 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 				
 			if (funcid == 1574)  /* nextval */
 			{
-				sequenceoid = 0;
 				Const * arg1 = lfirst(list_head(args));
+				sequenceoid = 0;
 				if (arg1->consttype == REGCLASSOID)
 					sequenceoid = DatumGetObjectId(arg1->constvalue);
 
@@ -2053,15 +2054,34 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		queryDesc->operation == CMD_UPDATE ||
 		queryDesc->operation == CMD_DELETE)
 	{
+		List * temp = 0;
+		Plan * newPlan = 0;
 		/*
 		 * The Query tree doesn't have to be mutated here, since it isn't used during
 		 * the execution.
 		 */
+		
+		if (is_plan_node((Node *)queryDesc->plantree) &&
+			!is_projection_capable_plan(queryDesc->plantree))
+		{
+			/*
+			 * don't do the top-level Motion node's targetList... It's never used.
+			 */
+			temp = queryDesc->plantree->targetlist;
+			queryDesc->plantree->targetlist = 0;
+		}
 
-
-		queryDesc->plantree = (Plan *) plan_tree_mutator((Node *) queryDesc->plantree,
+		newPlan = (Plan *) plan_tree_mutator((Node *) queryDesc->plantree,
 									pre_dispatch_function_evaluation_mutator,
 														 &pcontext);
+
+		if (temp != 0)
+		{
+			queryDesc->plantree->targetlist = temp;
+			newPlan->targetlist = temp;
+		}
+			
+		queryDesc->plantree = newPlan;
 
 
 	}
