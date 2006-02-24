@@ -141,9 +141,16 @@ writeTmLogRecord(TmLogRecord * record)
 		offset = lseek(logFileFD, 0, SEEK_END);
 	}
 
+
+	/* Handle lseek() errors. */
+	if (offset < 0)
+	{
+		int savedError = errno;	
+		elog(ERROR, "Failure to write to the tmlog. (errno: %s)", strerror(savedError));
+	}
+
 	record->header.thisFileNo = logFileNo;
 	record->header.thisOffset = offset;
-	Assert(record->header.thisOffset != -1);
 
 	len = sizeof(TmLogRecordHeader);
 	if (record->header.numberOfParticipants != 0)
