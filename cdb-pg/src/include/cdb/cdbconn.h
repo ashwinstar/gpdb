@@ -58,6 +58,7 @@ typedef struct SegmentDatabaseDescriptor
      * NB: Use malloc/free, not palloc/pfree, for the items below.
      */
     char                   *dbname;         /* database name */
+    char                   *username;         /* user name */
     int4		            motionListener; /* interconnect listener port */
     char                   *whoami;         /* QE identifier for msgs */
 

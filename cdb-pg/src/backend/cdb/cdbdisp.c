@@ -1448,7 +1448,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 			if (!dispatchResult->stillRunning)
 				continue;
 
-			if (!FtsTestConnection(segdbDesc->segment_database_info, segdbDesc->dbname))
+			if (!FtsTestConnection(segdbDesc->segment_database_info, segdbDesc->username, segdbDesc->dbname))
 			{
 				/* Note the error. */
 				cdbdisp_appendMessage(dispatchResult, DEBUG1,

@@ -1565,8 +1565,6 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 				saved_err;
 	int			retrycount = 0;
 
-	int			opt;
-
 	conn->pBuff = palloc(Mpp_max_packet_size);
 	conn->msgSize = PACKET_HEADER_SIZE;
 	conn->tupleCount = 0;
@@ -1593,22 +1591,6 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 						  "CdbProcess with contentId=%d at: '%s':%d", errno,
 						  cdbProc->contentid, cdbProc->listenerAddr,
 						  cdbProc->listenerPort)));
-		}
-
-		/*
-		 * Use of SO_REUSEADDR breaks things pretty catastrophically on the
-		 * Mac, avoid it. Linux is our important production platform, this
-		 * code reduces our "TCP port churn" problem.
-		 */
-		opt = 1;
-		if (setsockopt(conn->sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-		{
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-							errmsg("Interconnect Error: Could set SO_REUSEADDR on socket: %s", strerror(errno)),
-							errdetail("error during setsockopt() call (error:%d) before connect to "
-						   "CdbProcess with contentId=%d at: '%s':%d", errno,
-								   cdbProc->contentid, cdbProc->listenerAddr,
-									  cdbProc->listenerPort)));
 		}
 
 		memset(&addr, 0, sizeof(addr));
@@ -1638,7 +1620,7 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 								   "with contentId=%d at: '%s':%d",
 								   retrycount, cdbProc->contentid,
 							   cdbProc->listenerAddr, cdbProc->listenerPort),
-								errhint("Try setting a sysctl to reduce TIME_WAIT: (on linux: '/sbin/sysctl -w net.ipv4.tcp_tw_recycle=1'")));
+								errhint("Try setting a sysctl to reduce TIME_WAIT: (on linux: '/sbin/sysctl -w net.ipv4.tcp_tw_recycle=1')")));
 			}
 			close(conn->sockfd);
 			conn->sockfd = -1;

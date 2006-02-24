@@ -39,12 +39,12 @@ static PQExpBuffer entryBuffer = NULL;
 static PGconn *entryConn = NULL;
 static int	localFtsSyncCount = -1;
 static bool InReConfigure = false;
-static char *currDbName;
+static char *currDbName=NULL;
 
 static struct FtsQDMirrorInfo *ftsQDMirrorInfo=NULL;
 
 static void CdbShutdown(void);
-static void initPQConnectionBuffer(CdbComponentDatabaseInfo *, char *, PQExpBuffer, bool);
+static void initPQConnectionBuffer(CdbComponentDatabaseInfo *, char *, char *, PQExpBuffer, bool);
 static void markSegDBTransientState(int, bool);
 static void markSegDBPersistentState(int, bool);
 
@@ -136,10 +136,11 @@ FtsReConnectDB(void *failedDB)
 }
 
 /*
- * Test-Connection
+ * Test-Connection: This is called from the threaded context inside the
+ * dispatcher: ONLY CALL THREADSAFE FUNCTIONS -- elog() is NOT threadsafe.
  */
 bool
-FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *dbName)
+FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *username, char *dbName)
 {
    	PGconn		*conn;
 	bool		ret = true;
@@ -148,7 +149,7 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *dbName)
 
 	/* XXX: this connects in UTILITY mode, are UTILITY mode errors
 	 * different from EXECUTE mode ? */
-	initPQConnectionBuffer(failedDBInfo, dbName, buffer, true);
+	initPQConnectionBuffer(failedDBInfo, username, dbName, buffer, true);
 
 	conn = PQconnectdb(buffer->data);
 
@@ -161,8 +162,12 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *dbName)
 		} 
 		else if (PQstatus(conn) != CONNECTION_BAD)
 		{
-			elog(LOG, "FTS: test connection status unknown, dbid %d dbname %s error message %s (%d)",
-				 failedDBInfo->dbid, dbName, PQerrorMessage(conn), PQstatus(conn));
+			if (LOG >= log_min_messages)
+			{
+				/* Don't use elog, it's not thread-safe */
+				write_stderr("FTS: test connection status unknown, dbid %d dbname %s error message %s (%d)",
+							 failedDBInfo->dbid, dbName, PQerrorMessage(conn), PQstatus(conn));
+			}
 			ret = true;
 			break;
 		}
@@ -170,10 +175,12 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *dbName)
 		errorMsg = PQerrorMessage(conn);
 		if (errorMsg == NULL)
 		{
-			elog(LOG, "FTS: test connection can't parse error message");
+			if (LOG >= log_min_messages)
+				write_stderr("FTS: test connection can't parse error message");
 		}
 
-		elog(DEBUG3, "FtsTestConnection: connection failed with message (%s)", errorMsg);
+		if (DEBUG3 >= log_min_messages)
+			write_stderr("FtsTestConnection: connection failed with message (%s)", errorMsg);
 
 		/* If we get a network error (do we really need a
 		 * comprehensive list here ?) or a "FATAL" database error,
@@ -192,7 +199,8 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *dbName)
 			strstr(errorMsg, "could not ") == NULL)
 		{
 			/* non-fatal connection errors are ignored */
-			elog(DEBUG3, "FtsTestConnection: nonfatal error, ignoring (%d, %s)", PQsocket(conn), errorMsg);
+			if (DEBUG3 >= log_min_messages)
+				write_stderr("FtsTestConnection: nonfatal error, ignoring (%d, %s)", PQsocket(conn), errorMsg);
 			ret = true;
 			break;
 		}
@@ -205,9 +213,9 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *dbName)
 		}
 
 		/* This is a real failure for which a reconfigure may be warranted */
-
-		elog(LOG, "FTS: test connection failed, dbid %d dbname %s error message %s",
-			 failedDBInfo->dbid, dbName, PQerrorMessage(conn));
+		if (LOG >= log_min_messages)
+			write_stderr("FTS: test connection failed, dbid %d dbname %s error message %s",
+						 failedDBInfo->dbid, dbName, PQerrorMessage(conn));
 		ret = false;
 	} while (0);
 
@@ -326,7 +334,7 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
         if (PQstatus((segdbDesc + i)->conn) != CONNECTION_OK)
         {
 			elog(DEBUG2, "FtsHandleGangConnectionFailure: looking for real fault on segment %d", i);
-            if (!FtsTestConnection((segdbDesc + i)->segment_database_info, (segdbDesc + i)->dbname))
+            if (!FtsTestConnection((segdbDesc + i)->segment_database_info, NULL, (segdbDesc + i)->dbname))
 			{
 				elog(DEBUG2, "found fault with segment %d", i);
 				realFaultFound = true; 
@@ -368,7 +376,7 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 	for (i = 0; i < size; i++)
 	{
 		if (PQstatus((segdbDesc + i)->conn) != CONNECTION_OK &&
-			!FtsTestConnection((segdbDesc + i)->segment_database_info, (segdbDesc + i)->dbname))
+			!FtsTestConnection((segdbDesc + i)->segment_database_info, NULL, (segdbDesc + i)->dbname))
 			markSegDBStatus((segdbDesc + i)->segment_database_info->dbid, false);
 	}
 	if (gangsExist())
@@ -393,10 +401,18 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 	return false;
 }
 
+/*
+ * If calling from a thread it is illegal to leave username or dbName NULL.
+ */
 static void
-initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *dbName, PQExpBuffer buffer, bool utility)
+initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName, PQExpBuffer buffer, bool utility)
 {
-	char *username = GetUserNameFromId(GetSessionUserId());
+	char *user = username;
+
+	/* Username, like dbname (see below) must be passed in as an argument if
+	 * calling from a pthread_create()ed thread */
+	if (user == NULL)
+		user = GetUserNameFromId(GetSessionUserId());
 
 	initPQExpBuffer(buffer);
 
@@ -432,7 +448,7 @@ initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *dbName, PQExpBuffer bu
 
 	appendPQExpBuffer(buffer, "port=%u ", q->port);
 	appendPQExpBuffer(buffer, "dbname=%s ", dbName);
-	appendPQExpBuffer(buffer, "user=%s ", username);
+	appendPQExpBuffer(buffer, "user=%s ", user);
 }
 
 /* set seg db states */
@@ -546,7 +562,7 @@ markSegDBPersistentState(int dbid, bool state)
 		 * initialize libpq connection buffer, we only need to initialize it
 		 * once
 		 */
-		initPQConnectionBuffer(q, NULL, entryBuffer, true);
+		initPQConnectionBuffer(q, NULL, NULL, entryBuffer, true);
 	}
 
 	/*
@@ -762,7 +778,7 @@ FtsEvaluateTransientState(void)
 				segDbInfo = cdb_component_dbs->segment_db_info + j;
 				if (segDbInfo->dbid == dbid)
 				{
-					if (!FtsTestConnection(segDbInfo, NULL))
+					if (!FtsTestConnection(segDbInfo, NULL, NULL))
 					{
 						/* reconnect failed, keep current state */
 						LWLockRelease(ftsControlLock);
@@ -816,7 +832,7 @@ FtsDumpQDMirrorInfo(void)
 	}
 
 	elog(LOG, "QD mirror active name (%s:%d), port %d",
-		 ftsQDMirrorInfo->name, strlen(ftsQDMirrorInfo->name), ftsQDMirrorInfo->port);
+		 ftsQDMirrorInfo->name, (int)strlen(ftsQDMirrorInfo->name), ftsQDMirrorInfo->port);
 	return;
 }
 

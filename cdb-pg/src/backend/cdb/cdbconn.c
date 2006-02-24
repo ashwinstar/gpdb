@@ -26,12 +26,18 @@ cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor        *segdbDesc,
                               struct CdbComponentDatabaseInfo  *cdbinfo,
                               const char                       *dbname)
 {
+	char *tmp;
+
     memset(segdbDesc, 0, sizeof(*segdbDesc));
 
     /* Segment db info */
     segdbDesc->segment_database_info = cdbinfo;
     segdbDesc->segindex = cdbinfo->segindex;
     segdbDesc->dbname = dbname ? strdup(dbname) : NULL;
+
+	tmp = GetUserNameFromId(GetSessionUserId());
+    segdbDesc->username = strdup(tmp);
+	pfree(tmp);
 
     /* Connection info */
     segdbDesc->conn = NULL;
@@ -59,6 +65,12 @@ cdbconn_termSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc)
         segdbDesc->dbname = NULL;
     }
 
+	if (segdbDesc->username)
+	{
+		free(segdbDesc->username);
+		segdbDesc->username = NULL;
+	}
+
     /* Free connection info. */
     if (segdbDesc->whoami)
     {
@@ -75,7 +87,6 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
 {
     CdbComponentDatabaseInfo   *q = segdbDesc->segment_database_info;
     PQExpBufferData             buffer;
-    char * 						username = GetUserNameFromId(GetSessionUserId());
 
     /*
      * We use PQExpBufferData instead of StringInfoData
@@ -107,7 +118,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
     if (segdbDesc->dbname)
         appendPQExpBuffer(&buffer, "dbname=%s ", segdbDesc->dbname);
 
-    appendPQExpBuffer(&buffer, "user=%s ", username);
+    appendPQExpBuffer(&buffer, "user=%s ", segdbDesc->username);
 
     /*
      * Call libpq to connect
