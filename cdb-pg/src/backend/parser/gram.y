@@ -592,6 +592,7 @@ CreateRoleStmt:
 					n->stmt_type = ROLESTMT_ROLE;
 					n->role = $3;
 					n->options = $5;
+					n->roleOid = 0;
 					$$ = (Node *)n;
 				}
 		;
@@ -726,6 +727,7 @@ CreateUserStmt:
 					n->stmt_type = ROLESTMT_USER;
 					n->role = $3;
 					n->options = $5;
+					n->roleOid = 0;
 					$$ = (Node *)n;
 				}
 		;
@@ -856,6 +858,7 @@ CreateGroupStmt:
 					n->stmt_type = ROLESTMT_GROUP;
 					n->role = $3;
 					n->options = $5;
+					n->roleOid = 0;
 					$$ = (Node *)n;
 				}
 		;

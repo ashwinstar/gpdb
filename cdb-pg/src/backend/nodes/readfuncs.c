@@ -573,6 +573,7 @@ _readCreateRoleStmt(void)
 	READ_ENUM_FIELD(stmt_type, RoleStmtType);
 	READ_STRING_FIELD(role);
 	READ_NODE_FIELD(options);
+	READ_OID_FIELD(roleOid);
 
 	READ_DONE();
 }

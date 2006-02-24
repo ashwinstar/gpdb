@@ -1358,6 +1358,7 @@ _equalCreateRoleStmt(CreateRoleStmt *a, CreateRoleStmt *b)
 	COMPARE_SCALAR_FIELD(stmt_type);
 	COMPARE_STRING_FIELD(role);
 	COMPARE_NODE_FIELD(options);
+	COMPARE_SCALAR_FIELD(roleOid);
 
 	return true;
 }

@@ -342,10 +342,18 @@ CreateRole(CreateRoleStmt *stmt)
 
 	tuple = heap_formtuple(pg_authid_dsc, new_record, new_record_nulls);
 
+
+	if (stmt->roleOid != InvalidOid)
+		/* force tuple to have the desired OID */
+		HeapTupleSetOid(tuple, stmt->roleOid);
+	
 	/*
 	 * Insert new record in the pg_authid table
 	 */
 	roleid = simple_heap_insert(pg_authid_rel, tuple);
+	
+	stmt->roleOid = roleid;
+	
 	CatalogUpdateIndexes(pg_authid_rel, tuple);
 
 	/*

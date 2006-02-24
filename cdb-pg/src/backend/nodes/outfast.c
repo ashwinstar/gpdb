@@ -1557,6 +1557,7 @@ _outCreateRoleStmt(StringInfo str, CreateRoleStmt *node)
 	WRITE_ENUM_FIELD(stmt_type, RoleStmtType);
 	WRITE_STRING_FIELD(role);
 	WRITE_NODE_FIELD(options);
+	WRITE_OID_FIELD(roleOid);
 
 }
 
