@@ -676,7 +676,8 @@ heap_create_with_catalog(const char *relname,
 						 bool oidislocal,
 						 int oidinhcount,
 						 OnCommitAction oncommit,
-						 bool allow_system_table_mods)
+						 bool allow_system_table_mods,
+						 Oid comptypeOid)
 {
 	Relation	pg_class_desc;
 	Relation	new_rel_desc;
@@ -734,10 +735,39 @@ heap_create_with_catalog(const char *relname,
 	 * NOTE: we could get a unique-index failure here, in case the same name
 	 * has already been used for a type.
 	 */
+	if (comptypeOid == InvalidOid)
 	new_type_oid = AddNewRelationType(relname,
 									  relnamespace,
 									  relid,
 									  relkind);
+	else
+	{
+		new_type_oid = TypeCreateWithOid(relname,	/* type name */
+				   relnamespace,		/* type namespace */
+				   relid, /* relation oid */
+				   relkind,	/* relation kind */
+				   -1,			/* internal size (varlena) */
+				   'c',			/* type-type (complex) */
+				   ',',			/* default array delimiter */
+				   F_RECORD_IN, /* input procedure */
+				   F_RECORD_OUT,	/* output procedure */
+				   F_RECORD_RECV,		/* receive procedure */
+				   F_RECORD_SEND,		/* send procedure */
+				   InvalidOid,	/* analyze procedure - default */
+				   InvalidOid,	/* array element type - irrelevant */
+				   InvalidOid,	/* domain base type - irrelevant */
+				   NULL,		/* default value - none */
+				   NULL,		/* default binary representation */
+				   false,		/* passed by reference */
+				   'd',			/* alignment - must be the largest! */
+				   'x',			/* fully TOASTable */
+				   -1,			/* typmod */
+				   0,			/* array dimensions for typBaseType */
+				   false,
+				   comptypeOid);		/* Type NOT NULL */
+				   
+		Assert(new_type_oid == comptypeOid);
+	}
 
 	/*
 	 * now create an entry in pg_class for the relation.

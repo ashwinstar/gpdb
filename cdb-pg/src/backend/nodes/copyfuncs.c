@@ -1934,6 +1934,7 @@ _copyCreateStmt(CreateStmt *from)
 	COPY_STRING_FIELD(tablespacename);
 	COPY_NODE_FIELD(distributedBy);
 	COPY_SCALAR_FIELD(relOid);
+	COPY_SCALAR_FIELD(comptypeOid);
 	COPY_SCALAR_FIELD(toastOid);
 	COPY_SCALAR_FIELD(relKind);
 	COPY_POINTER_FIELD(policy,sizeof(MppPolicy) + from->policy->nattrs*sizeof(from->policy->attrs[0]));
@@ -1982,7 +1983,6 @@ _copyTruncateStmt(TruncateStmt *from)
 	TruncateStmt *newnode = makeNode(TruncateStmt);
 
 	COPY_NODE_FIELD(relations);
-	COPY_NODE_FIELD(newOidsList);
 
 	return newnode;
 }

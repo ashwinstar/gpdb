@@ -534,7 +534,6 @@ _readTruncateStmt(void)
 	READ_LOCALS(TruncateStmt);
 
 	READ_NODE_FIELD(relations);
-	READ_NODE_FIELD(newOidsList);
 
 	READ_DONE();
 }
@@ -1439,6 +1438,7 @@ _readCreateStmt(void)
 	READ_STRING_FIELD(tablespacename);
 	READ_NODE_FIELD(distributedBy);
 	READ_OID_FIELD(relOid);
+	READ_OID_FIELD(comptypeOid);
 	READ_OID_FIELD(toastOid);
 	READ_CHAR_FIELD(relKind);
 	local_node->policy = NULL;

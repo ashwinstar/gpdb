@@ -998,6 +998,7 @@ typedef struct CreateStmt
 	char	   *tablespacename; /* table space to use, or NULL */
 	List       *distributedBy;   /* what columns we distribute the data by */
 	Oid         relOid;			/* create table with this relOid */
+	Oid         comptypeOid;			/* create table with this composite type Oid */
 	Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
 	char	    relKind;         /* CDB: force relkind to this */
 	MppPolicy  *policy;
@@ -1314,7 +1315,6 @@ typedef struct TruncateStmt
 {
 	NodeTag		type;
 	List	   *relations;		/* relations (RangeVars) to be truncated */
-	List 	   *newOidsList;
 } TruncateStmt;
 
 /* ----------------------

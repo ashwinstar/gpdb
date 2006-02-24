@@ -139,6 +139,8 @@ DefineSequence(CreateSeqStmt *seq)
 	 * Create relation (and fill *null & *value)
 	 */
 	stmt->relOid = 0;
+	stmt->comptypeOid = 0;
+	stmt->toastOid = 0;
 	
 	if (shouldDispatch)
 	{

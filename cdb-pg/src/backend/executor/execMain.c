@@ -1244,7 +1244,8 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 												  true,
 												  0,
 												  ONCOMMIT_NOOP,
-												  allowSystemTableMods);
+												  allowSystemTableMods,
+												  0);
 
 		FreeTupleDesc(tupdesc);
 

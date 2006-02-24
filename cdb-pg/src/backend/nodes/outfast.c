@@ -1442,6 +1442,7 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_STRING_FIELD(tablespacename);
 	WRITE_NODE_FIELD(distributedBy);
 	WRITE_OID_FIELD(relOid);
+	WRITE_OID_FIELD(comptypeOid);
 	WRITE_OID_FIELD(toastOid);
 	WRITE_CHAR_FIELD(relKind);
 }
@@ -1522,7 +1523,6 @@ _outTruncateStmt(StringInfo str, TruncateStmt *node)
 	WRITE_NODE_TYPE("TRUNCATESTMT");
 
 	WRITE_NODE_FIELD(relations);
-	WRITE_NODE_FIELD(newOidsList);
 	
 }
 

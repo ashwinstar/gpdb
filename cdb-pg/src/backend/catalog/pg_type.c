@@ -311,10 +311,9 @@ TypeCreateWithOid(const char *typeName,
 		tup = heap_formtuple(RelationGetDescr(pg_type_desc),
 							 values,
 							 nulls);
-		
-		if (Mpp_role == MPP_ROLE_EXECUTE)				 
-			if (newtypeOid != InvalidOid)
-				HeapTupleSetOid(tup, newtypeOid);
+						 
+		if (newtypeOid != InvalidOid)
+			HeapTupleSetOid(tup, newtypeOid);
 
 		typeObjectId = simple_heap_insert(pg_type_desc, tup);
 	}

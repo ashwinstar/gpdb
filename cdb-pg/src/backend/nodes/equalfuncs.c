@@ -871,6 +871,8 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 	COMPARE_STRING_FIELD(tablespacename);
 	COMPARE_NODE_FIELD(distributedBy);
 	COMPARE_SCALAR_FIELD(relOid);
+	COMPARE_SCALAR_FIELD(comptypeOid);
+	COMPARE_SCALAR_FIELD(toastOid);
 	COMPARE_SCALAR_FIELD(relKind);
 
 	return true;
@@ -909,7 +911,6 @@ static bool
 _equalTruncateStmt(TruncateStmt *a, TruncateStmt *b)
 {
 	COMPARE_NODE_FIELD(relations);
-	COMPARE_NODE_FIELD(newOidsList);
 
 	return true;
 }

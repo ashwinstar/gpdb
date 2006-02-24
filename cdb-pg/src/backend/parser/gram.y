@@ -1694,6 +1694,8 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $11;
 					n->distributedBy = $12;
 					n->relOid = 0;
+					n->comptypeOid = 0;
+					n->toastOid = 0;
 					n->relKind = RELKIND_RELATION;
 					n->policy = 0;
 					
@@ -1716,6 +1718,8 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $12;
 					n->distributedBy = $13;
 					n->relOid = 0;
+					n->comptypeOid = 0;
+					n->toastOid = 0;
 					n->relKind = RELKIND_RELATION;
 					n->policy = 0;
 					
@@ -2890,7 +2894,6 @@ TruncateStmt:
 				{
 					TruncateStmt *n = makeNode(TruncateStmt);
 					n->relations = $3;
-					n->newOidsList = NIL;
 					$$ = (Node *)n;
 				}
 		;

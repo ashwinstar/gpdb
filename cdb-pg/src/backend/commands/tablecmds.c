@@ -489,6 +489,7 @@ DefineRelation_int(CreateStmt *stmt,
 	{
 		Oid			toastRelationId = InvalidOid;
 		Relation	pg_class_desc;
+		Oid 		comptypeOid = InvalidOid;
 	
 		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 	
@@ -500,12 +501,15 @@ DefineRelation_int(CreateStmt *stmt,
 		 */
 	
 		relationId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+		
+		comptypeOid = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
 									
 		toastRelationId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
 									
 		heap_close(pg_class_desc, RowExclusiveLock);
 		
 		stmt->relOid = relationId;
+		stmt->comptypeOid = comptypeOid;
 		stmt->toastOid = toastRelationId;
 		stmt->relKind = relkind;
 		stmt->relation->schemaname = get_namespace_name(namespaceId);
@@ -609,7 +613,8 @@ DefineRelation_int(CreateStmt *stmt,
 										  localHasOids,
 										  parentOidCount,
 										  stmt->oncommit,
-										  allowSystemTableMods);
+										  allowSystemTableMods,
+										  stmt->comptypeOid);
 
 	StoreCatalogInheritance(relationId, inheritOids);
 
@@ -6263,7 +6268,8 @@ AlterTableCreateToastTableWithOid(Oid relOid, bool silent, Oid newOid)
 										   true,
 										   0,
 										   ONCOMMIT_NOOP,
-										   true);
+										   true,
+										   0);
 
 	/* make the toast relation visible, else index creation will fail */
 	CommandCounterIncrement();

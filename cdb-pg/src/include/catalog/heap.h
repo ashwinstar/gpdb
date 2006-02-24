@@ -54,7 +54,8 @@ extern Oid heap_create_with_catalog(const char *relname,
 						 bool oidislocal,
 						 int oidinhcount,
 						 OnCommitAction oncommit,
-						 bool allow_system_table_mods);
+						 bool allow_system_table_mods,
+						 Oid comptypeOid);
 
 extern void heap_drop_with_catalog(Oid relid);
 
