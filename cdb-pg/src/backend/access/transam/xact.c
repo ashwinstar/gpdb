@@ -1557,10 +1557,16 @@ StartTransaction(void)
 						
 						if (count % 10000 == 0)
 						{
-							ereport(ERROR,
+							/* FATAL seems pretty bad... but once we get out of sync with
+							 * the writer qExec we really need to die
+							 */
+							ereport(FATAL,
 								(errmsg("Reader qExec timed out waiting for Writer to set the shared snapshot."),
-								 errdetail("We are waiting for the shared snapshot to have XID: %d but the value is currently: %d",
-								 			QDSentXID, SharedLocalSnapshotSlot->QDxid )));
+								 errdetail("We are waiting for the shared snapshot to have XID: %d but the value "
+								 		   "is currently: %d. Our slotindex is: %d \n"
+								 		   "Dump of all sharedsnapshots in shmem: %s",
+								 			QDSentXID, SharedLocalSnapshotSlot->QDxid,
+								 			SharedLocalSnapshotSlot->slotindex, SharedSnapshotDump() )));
 						}
 					}	
 				}
