@@ -601,9 +601,11 @@ make_fromexpr_rel(PlannerInfo *root, FromExpr *from)
 		 * Consider the different orders in which we could join the rels,
 		 * using either GEQO or regular optimizer.
 		 */
+/* MPP does not support geqo
 		if (enable_geqo && levels_needed >= geqo_threshold)
 			return geqo(root, levels_needed, initial_rels);
 		else
+*/		
 			return make_one_rel_by_joins(root, levels_needed, initial_rels);
 	}
 }
