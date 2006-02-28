@@ -1472,6 +1472,27 @@ _readCreateSeqStmt(void)
 	READ_DONE();
 }
 
+static AlterSeqStmt *
+_readAlterSeqStmt(void)
+{
+	READ_LOCALS(AlterSeqStmt);
+	READ_NODE_FIELD(sequence);
+	READ_NODE_FIELD(options);
+
+	READ_DONE();
+}
+
+static ClusterStmt *
+_readClusterStmt(void)
+{
+	READ_LOCALS(ClusterStmt);
+
+	READ_NODE_FIELD(relation);
+	READ_STRING_FIELD(indexname);
+	
+	READ_DONE();
+}
+
 static CreatedbStmt *
 _readCreatedbStmt(void)
 {
@@ -2276,6 +2297,7 @@ static ParseNodeInfo infoAr[] =
 	{"ALTERDOMAINSTMT", (ReadFn)_readAlterDomainStmt},
 	{"ALTERROLESETSTMT", (ReadFn)_readAlterRoleSetStmt},
 	{"ALTERROLESTMT", (ReadFn)_readAlterRoleStmt},
+	{"ALTERSEQSTMT", (ReadFn)_readAlterSeqStmt},
 	{"ALTERTABLECMD", (ReadFn)_readAlterTableCmd},
 	{"ALTERTABLESTMT", (ReadFn)_readAlterTableStmt},
 	{"APPEND", (ReadFn)_readAppend},
@@ -2291,6 +2313,7 @@ static ParseNodeInfo infoAr[] =
 	{"CASE", (ReadFn)_readCaseExpr},
 	{"CASETESTEXPR", (ReadFn)_readCaseTestExpr},
 	{"CDBPROCESS", (ReadFn)_readCdbProcess},
+	{"CLUSTERSTMT", (ReadFn)_readClusterStmt},
 	{"COALESCE", (ReadFn)_readCoalesceExpr},
 	{"COERCETODOMAIN", (ReadFn)_readCoerceToDomain},
 	{"COERCETODOMAINVALUE", (ReadFn)_readCoerceToDomainValue},

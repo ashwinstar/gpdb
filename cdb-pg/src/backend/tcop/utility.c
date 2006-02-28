@@ -940,7 +940,6 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_AlterSeqStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
 			AlterSequence((AlterSeqStmt *) parsetree);
 			break;
 
@@ -1021,10 +1020,6 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_ClusterStmt:
-		/*
-		 * cluster changes the OID of tables to be different on every QE
-		 */
-			CdbSentry(CDB_REJECT, parsetree, NULL);
 			cluster((ClusterStmt *) parsetree);
 			break;
 

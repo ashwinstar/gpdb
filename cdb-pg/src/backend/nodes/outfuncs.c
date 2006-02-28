@@ -1608,6 +1608,23 @@ _outCreateSeqStmt(StringInfo str, CreateSeqStmt *node)
 }
 
 static void
+_outAlterSeqStmt(StringInfo str, AlterSeqStmt *node)
+{
+	WRITE_NODE_TYPE("ALTERSEQSTMT");
+	WRITE_NODE_FIELD(sequence);
+	WRITE_NODE_FIELD(options);
+}
+
+static void
+_outClusterStmt(StringInfo str, ClusterStmt *node)
+{
+	WRITE_NODE_TYPE("CLUSTERSTMT");
+
+	WRITE_NODE_FIELD(relation);
+	WRITE_STRING_FIELD(indexname);
+}
+
+static void
 _outCreatedbStmt(StringInfo str, CreatedbStmt *node)
 {
 	WRITE_NODE_TYPE("CREATEDBSTMT");
@@ -1910,6 +1927,7 @@ _outQuery(StringInfo str, Query *node)
 			case T_DeclareCursorStmt:
 			case T_VacuumStmt:
 			case T_CreateSeqStmt:
+			case T_AlterSeqStmt:
 			case T_CreatedbStmt:
 			case T_AlterDatabaseSetStmt:
 			case T_DropdbStmt:
@@ -2705,6 +2723,12 @@ _outNode(StringInfo str, void *obj)
 
 			case T_CreateSeqStmt:
 				_outCreateSeqStmt(str, obj);
+				break;
+			case T_AlterSeqStmt:
+				_outAlterSeqStmt(str, obj);
+				break;
+			case T_ClusterStmt:
+				_outClusterStmt(str, obj);
 				break;
 			case T_CreatedbStmt:
 				_outCreatedbStmt(str, obj);
