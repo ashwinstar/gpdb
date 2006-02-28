@@ -256,6 +256,9 @@ oidvectorrecv(PG_FUNCTION_ARGS)
 	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
 	oidvector  *result;
 
+	/* This call will not work: array_recv() expects a valid
+	 * fcinfo->flinfo structure, which is not provided by
+	 * DirectFuntionCall3 */
 	result = (oidvector *)
 		DatumGetPointer(DirectFunctionCall3(array_recv,
 											PointerGetDatum(buf),

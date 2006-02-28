@@ -1174,6 +1174,8 @@ array_recv(PG_FUNCTION_ARGS)
 	 * conversion proc, only once per series of calls, assuming the element
 	 * type doesn't change underneath us.
 	 */
+	Assert(fcinfo->flinfo != NULL);
+
 	my_extra = (ArrayMetaState *) fcinfo->flinfo->fn_extra;
 	if (my_extra == NULL)
 	{

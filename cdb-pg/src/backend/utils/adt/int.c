@@ -214,11 +214,15 @@ int2vectorrecv(PG_FUNCTION_ARGS)
 	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
 	int2vector *result;
 
+	/* This call will not work: array_recv() expects a valid
+	 * fcinfo->flinfo structure, which is not provided by
+	 * DirectFuntionCall3 */
 	result = (int2vector *)
 		DatumGetPointer(DirectFunctionCall3(array_recv,
 											PointerGetDatum(buf),
 											ObjectIdGetDatum(INT2OID),
 											Int32GetDatum(-1)));
+
 	/* sanity checks: int2vector must be 1-D, no nulls */
 	if (result->ndim != 1 ||
 		result->flags != 0 ||

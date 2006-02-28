@@ -351,6 +351,8 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 				break;
 			case BPCHAROID:
 			case VARCHAROID:
+			case INT2VECTOROID: /* postgres serialization logic broken, use our own */
+			case OIDVECTOROID: /* postgres serialization logic broken, use our own */
 			case ANYARRAYOID:
 				{
 					text	   *pText = DatumGetTextP(attr);
@@ -528,6 +530,8 @@ DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup)
 
 			case BPCHAROID:
 			case VARCHAROID:
+			case INT2VECTOROID: /* postgres serialization logic broken, use our own */
+			case OIDVECTOROID: /* postgres serialization logic broken, use our own */
 			case ANYARRAYOID:
 				{
 					text	   *pText;
