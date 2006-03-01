@@ -169,8 +169,8 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	
 	VarBit		*vbitptr;
 	
-	//int2vector *i2vec_buf;
-	//oidvector  *oidvec_buf;
+	int2vector *i2vec_buf;
+	oidvector  *oidvec_buf;
 
 	/*
 	 * Select the hash to be performed according to the field type we are adding to the
@@ -261,19 +261,6 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 
 			break;
 		
-		/* UNCOMMENT THESE WHEN MPP-474 IS FIXED.
-		case INT2VECTOROID:
-			i2vec_buf = (int2vector *) DatumGetPointer(datum);
-			len = i2vec_buf->dim1 * sizeof(int2);
-			buf = (void *)i2vec_buf->values;
-			break;
-		
-		case OIDVECTOROID:	
-			oidvec_buf = (oidvector *) DatumGetPointer(datum);
-			len = oidvec_buf->dim1 * sizeof(Oid);
-			buf = oidvec_buf->values;
-			break;
-		*/	
 		/*
 		 * ====== CHARACTER TYPES =======
 		 */
@@ -437,6 +424,18 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			arrbuf = DatumGetArrayTypeP(datum);
 			len = VARSIZE(arrbuf) - VARHDRSZ;
 			buf = VARDATA(arrbuf);
+			break;
+			
+		case INT2VECTOROID:
+			i2vec_buf = (int2vector *) DatumGetPointer(datum);
+			len = i2vec_buf->dim1 * sizeof(int2);
+			buf = (void *)i2vec_buf->values;
+			break;
+			
+		case OIDVECTOROID:	
+			oidvec_buf = (oidvector *) DatumGetPointer(datum);
+			len = oidvec_buf->dim1 * sizeof(Oid);
+			buf = oidvec_buf->values;
 			break;
 			
 		default:

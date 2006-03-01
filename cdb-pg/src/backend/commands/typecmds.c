@@ -576,9 +576,7 @@ DefineDomain(CreateDomainStmt *stmt)
 					strcmp(n, "abstime") == 0 ||
 					strcmp(n, "reltime") == 0 ||
 					strcmp(n, "tinterval") == 0 ||
-					strcmp(n, "int2vector") == 0 ||
 					strcmp(n, "regproc") == 0 ||
-					strcmp(n, "oidvector") == 0 ||
 					strcmp(n, "lseg") == 0 ||
 					strcmp(n, "polygon") == 0 ||
 					strcmp(n, "line") == 0 ||
