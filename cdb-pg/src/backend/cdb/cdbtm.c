@@ -109,7 +109,7 @@ static const int transitionState[8][8] =
  * FUNCTIONS PROTOTYPES
  */
 static const char *formatDtxState(DtxState state);
-static int	execCommand(StringInfo errbuf);
+static int	execDtxCommand(StringInfo errbuf);
 static void	initGxact(TMGXACT * gxact);
 static TMGXACT *allocGxact(void);
 
@@ -117,7 +117,6 @@ static void	releaseGxact(void);
 static void writeToTmLog( TMGXACT *gxact, DtxState state );
 static void	updateDtxState(DtxState state);
 static void	generateGID(char *gid);
-
 
 static void	recoverTM(void);
 static bool recoverInDoubtTransactions(void);
@@ -169,7 +168,7 @@ startDtxTransaction(bool dispatchBegin)
 		{
 			StringInfoData errMessage;
 			
-			if (execCommand(&errMessage) != DTX_OK)
+			if (execDtxCommand(&errMessage) != DTX_OK)
 			{
 				ereport(ERROR, (errmsg("Global transaction failed on command \"BEGIN %s\" due to error: %s",
 								currentGxact->gid, errMessage.data)));
@@ -184,7 +183,7 @@ startDtxTransaction(bool dispatchBegin)
 	{
 		StringInfoData errMessage;
 			
-		if (execCommand(&errMessage) != DTX_OK)
+		if (execDtxCommand(&errMessage) != DTX_OK)
 		{
 			ereport(ERROR, (errmsg("Global transaction failed on command \"BEGIN %s\" due to error: %s",
 							currentGxact->gid, errMessage.data)));
@@ -303,7 +302,7 @@ condCommitDtxTransaction(bool onephase)
 		/* one phase commit case */
 		updateDtxState(DTX_STATE_1P_COMMIT);
 
-		if (execCommand(&errMessage) != DTX_OK)
+		if (execDtxCommand(&errMessage) != DTX_OK)
 		{
 			ereport(ERROR,
 					(errmsg("Global transaction failed on command \"COMMIT %s\" due to error: %s",
@@ -316,7 +315,7 @@ condCommitDtxTransaction(bool onephase)
 		updateDtxState(DTX_STATE_PREPARED);
 
 		/* send prepare to all RM */
-		if (execCommand(&errMessage) != DTX_OK)
+		if (execDtxCommand(&errMessage) != DTX_OK)
 		{
 			ereport(ERROR,
 					(errmsg("Global transaction failed on command \"PREPARE TRANSACTION %s\" due to error: %s",
@@ -332,7 +331,7 @@ condCommitDtxTransaction(bool onephase)
 		
 		/* send phase 2 commit to all RM */
 		updateDtxState(DTX_STATE_2P_COMMIT);
-		if (execCommand(&errMessage) != DTX_OK)
+		if (execDtxCommand(&errMessage) != DTX_OK)
 		{
 			ereport(ERROR,
 					(errmsg("Global transaction failed on command \"COMMIT PREPARED %s\" due to error: %s",
@@ -388,7 +387,7 @@ condRollbackDtxTransaction(void)
 
 	/* send rollback to all RM */
 	if (previous_state == DTX_STATE_ROLLBACK ||
-		(ret = execCommand(&errMessage)) != DTX_OK)
+		(ret = execDtxCommand(&errMessage)) != DTX_OK)
 	{
 		char	   *gid = currentGxact->gid;
 
@@ -804,7 +803,7 @@ formatDtxState(DtxState state)
  * execute a transaction command on all QE
  */
 int
-execCommand(StringInfo errbuf)
+execDtxCommand(StringInfo errbuf)
 {
 	char		*cmd=NULL, cmdbuf[100];
 	struct CdbDispatchResults  *primaryResults = NULL;
@@ -813,6 +812,17 @@ execCommand(StringInfo errbuf)
 	int			numOfFailed = 0;
 	int			ret = DTX_OK;
 	bool	dispatchToMirrors = true;
+
+	if (!txnBegan && currentGxact->state != DTX_STATE_IN_PROGRESS)
+	{
+		/* We have not issued a DTM command, BEGIN. We wind up in this
+		 * situation when we've got a global transaction, but haven't
+		 * executed any statements which touch the segment DBs. Since
+		 * we haven't issued a BEGIN, issuing a
+		 * PREPARE/ROLLBACK/COMMIT now will just confuse things. We're
+		 * done. */
+		return DTX_OK;
+	}
 	
 	switch (currentGxact->state)
 	{
@@ -877,7 +887,7 @@ execCommand(StringInfo errbuf)
 		 }
 		 else if ((currentGxact->infomask & GXACT_STATUS_PERSISTENT) == 0) //?????? Bad way to check if we've prepared?
 		 {
-		 	elog( DEBUG3, "execCommand about to issue a ROLLBACK command with currState = DTX_STATE_ROLLBACK");
+		 	elog( DEBUG3, "execDtxCommand about to issue a ROLLBACK command with currState = DTX_STATE_ROLLBACK");
 			cmd ="ROLLBACK";
 		 }
 		 else
@@ -1733,7 +1743,7 @@ recoverRollbackedDtx(void)
 	updateDtxState(DTX_STATE_ROLLBACK);
 	
 	/* ignore the error during recovery */
-	execCommand(NULL);
+	execDtxCommand(NULL);
 	
 	updateDtxState(DTX_STATE_ROLLBACK_DONE);
 }
@@ -1748,7 +1758,7 @@ recoverRollbackedDtx(void)
  * COMMIT the transaction.  
  *
  * TODO: this function doesn't actually check that the transaction gets
- *       committed everywhere.  the execCommand(NULL) basically ignores any 
+ *       committed everywhere.  the execDtxCommand(NULL) basically ignores any 
  *		 error handling.  It does this now because the DTM doesn't actually 
  *		 keep track of which participants are still in-doubt about the
  *		 transaction.  This really needs to be fixed so that we can get airtight
@@ -1761,7 +1771,7 @@ recoverCommittedDtx(void)
 			(errmsg("recovery: commit phase 2 DtxTransaction:  %s", currentGxact->gid)));
 			
 	/* ignore the error during recovery */
-	execCommand(NULL);
+	execDtxCommand(NULL);
 	updateDtxState(DTX_STATE_COMMIT_DONE);
 }
 
@@ -1792,7 +1802,7 @@ resolveInDoubtDtx(void)
         {
             /*resolve this */
             currentGxact = shmGxactArray[i];
-            execCommand(NULL);
+            execDtxCommand(NULL);
             /* remove gxact either rollback is successful or xact is not prepared. */
             updateDtxState(DTX_STATE_ROLLBACK_DONE);
         }
