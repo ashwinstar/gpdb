@@ -48,6 +48,7 @@ static void *thread_DoConnect(void *arg);
 static Gang *createGang(GangType type, int size, int content);
 
 static void disconnectAndDestroyGang(Gang *gp);
+static void disconnectAndDestroyAllReaderGangs(void);
 
 static Gang *buildGangDefinition(GangType type, int size, int content);
 
@@ -1481,6 +1482,17 @@ disconnectAndDestroyGang(Gang *gp)
 	}
 
 
+	/* when we get rid of a writer gang we MUST also get rid of the
+	 * reader gang due to the shared local snapshot code that is
+	 * shared between readers and writers.
+	 */
+	if( gp->type == GANGTYPE_MIRROR_WRITER &&
+		gp->type == GANGTYPE_PRIMARY_WRITER )
+	{
+		disconnectAndDestroyAllReaderGangs();
+	}
+	
+	
 	/*
 	 * Discard the segment array and the cluster descriptor
 	 */
@@ -1560,14 +1572,11 @@ freeGangs(void)
 
 }
 
-
 void
-disconnectAndDestroyAllGangs(void)
+disconnectAndDestroyAllReaderGangs(void)
 {
 	Gang	   *gp;
-
-	elog(DEBUG3, "disconnectAndDestroyAllGangs");
-
+	
 	if (allocatedReaderGangsN != NIL)
 	{
 		gp = linitial(allocatedReaderGangsN);
@@ -1624,6 +1633,19 @@ disconnectAndDestroyAllGangs(void)
 	availableReaderGangsN = NIL;
 	allocatedReaderGangs1 = NIL;
 	availableReaderGangs1 = NIL;
+}
+
+
+
+void
+disconnectAndDestroyAllGangs(void)
+{
+	
+
+	elog(DEBUG3, "disconnectAndDestroyAllGangs");
+
+	disconnectAndDestroyAllReaderGangs();
+	
 
 	disconnectAndDestroyGang(primaryWriterGang);
 	primaryWriterGang = NULL;
@@ -1695,6 +1717,21 @@ reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB)
 
 	Assert(PQstatus(failedDB->conn) != CONNECTION_BAD);
 
+
+	/* If we've made it this far, then that means our re-connection attempts
+	 * are successful.  now, we need to blow away all of the reader gangs
+	 * in case this is a writer gang member.  The reason we need to do this
+	 * is because of shared snapshots.  A reader qExec can't be used after its
+	 * writer qExec dies.
+	 *
+	 * TODO: try and determine if we are a member of a reader or writer gang.
+	 * 		 then we'd only have to do the following if we were a writer gang.
+	 *
+	 */	 
+	disconnectAndDestroyAllReaderGangs();
+	
+	
+	
 	return true;
 }
 
