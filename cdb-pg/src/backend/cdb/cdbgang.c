@@ -414,6 +414,8 @@ buildGangDefinition(GangType type, int size, int content)
 	int			last_segindex = -1;
 	int			i;
 
+	char		*username = GetUserNameFromId(GetSessionUserId());
+
 	MemoryContext oldContext;
 	MemoryContext permanentContext = TopMemoryContext;
 
@@ -472,6 +474,7 @@ buildGangDefinition(GangType type, int size, int content)
 	{
 		MemoryContextSwitchTo(oldContext);
 		elog(ERROR, "building Gang:  MPP schema not populated");
+		pfree(username);
 		return NULL;
 	}
 	
@@ -541,6 +544,7 @@ buildGangDefinition(GangType type, int size, int content)
 				}
 				else
 				{
+					pfree(username);
 					return NULL;
 				}
 			}
@@ -595,7 +599,8 @@ buildGangDefinition(GangType type, int size, int content)
 
 					cdbconn_initSegmentDescriptor(segdbDesc,
 												  p,
-												  myDatabaseName);
+												  myDatabaseName,
+												  username);
 
 					seg_count++;
 					if (type == GANGTYPE_READER && size == 1)
@@ -639,11 +644,13 @@ buildGangDefinition(GangType type, int size, int content)
 		{
 			disableFTS();
 			mirroringNotConfigured = true;
+			pfree(username);
 			return NULL;
 		}
 	}
 
 	newGangDefinition->size = seg_count;
+	pfree(username);
 	return newGangDefinition;
 }
 

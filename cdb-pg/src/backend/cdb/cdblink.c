@@ -156,7 +156,6 @@ getMPPSegmentCount(void)
 void
 buildMirrorQDDefinition(void)
 {
-	char						*dbname;
 	CdbComponentDatabases		*cdb_component_dbs;
 
 	if (!isQDMirroringEnabled())
@@ -225,15 +224,9 @@ buildMirrorQDDefinition(void)
 			return;
 		}
 
-		/* create connection descriptor */
-		dbname = get_database_name(MyDatabaseId);
-
 		cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
 		memset(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
-		cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb, dbname);
-
-		pfree(dbname);
-		dbname = NULL;
+		cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb, NULL, NULL);
 
 		/* connect to mirrored QD */
 		if (!cdblink_connectQD(cdb_mirrored_entry_db))
@@ -323,7 +316,7 @@ buildQDMirrorFromShmem(void)
 
 	cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
 	memset(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
-	cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, &mirrorDb, NULL);
+	cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, &mirrorDb, NULL, NULL);
 
 	/* connect to mirrored QD */
 	if (!cdblink_connectQD(cdb_mirrored_entry_db))

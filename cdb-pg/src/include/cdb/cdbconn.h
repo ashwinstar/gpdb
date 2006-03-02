@@ -69,7 +69,8 @@ typedef struct SegmentDatabaseDescriptor
 void
 cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor        *segdbDesc,
                               struct CdbComponentDatabaseInfo  *cdbinfo,
-                              const char                       *dbname);
+                              const char                       *dbname,
+                              const char                       *user);
 
 
 /* Free all memory owned by a segment descriptor. */

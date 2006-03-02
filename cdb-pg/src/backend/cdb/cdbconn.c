@@ -24,20 +24,16 @@
 void
 cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor        *segdbDesc,
                               struct CdbComponentDatabaseInfo  *cdbinfo,
-                              const char                       *dbname)
+                              const char                       *dbname,
+                              const char                       *user)
 {
-	char *tmp;
-
     memset(segdbDesc, 0, sizeof(*segdbDesc));
 
     /* Segment db info */
     segdbDesc->segment_database_info = cdbinfo;
     segdbDesc->segindex = cdbinfo->segindex;
     segdbDesc->dbname = dbname ? strdup(dbname) : NULL;
-
-	tmp = GetUserNameFromId(GetSessionUserId());
-    segdbDesc->username = strdup(tmp);
-	pfree(tmp);
+	segdbDesc->username = user ? strdup(user) : NULL;
 
     /* Connection info */
     segdbDesc->conn = NULL;
