@@ -134,11 +134,11 @@ CHK_PARAMS () {
 				ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		fi
 		#Make sure that MASTER_DATA_DIRECTORY is not set
-		if [ x"$MASTER_DATA_DIRECTORY" != x"" ];then
-                        LOG_MSG "[FATAL]:-MASTER_DATA_DIRECTORY environment value is set"
-                        LOG_MSG "[FATAL]:-Value is $MASTER_DATA_DIRECTORY this needs to be unset"
-                        ERROR_EXIT "[FATAL]:-Unable to continue" 2
-                fi
+		##if [ x"$MASTER_DATA_DIRECTORY" != x"" ];then
+                 ##       LOG_MSG "[FATAL]:-MASTER_DATA_DIRECTORY environment value is set"
+                  ##      LOG_MSG "[FATAL]:-Value is $MASTER_DATA_DIRECTORY this needs to be unset"
+                   ##     ERROR_EXIT "[FATAL]:-Unable to continue" 2
+                ##fi
 		#Check that we can see initdb
 		if [ x"$INITDB" = x"" ] || [ ! -x $INITDB ];then
 			ERROR_EXIT "[FATAL]:-Unable to locate initdb" 99
