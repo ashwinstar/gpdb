@@ -66,7 +66,7 @@ USAGE () {
 	$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
 	$ECHO
 	$ECHO "      Delete options:"
-	$ECHO "      -d, master database data directory to be deleted along with all segment instances [mandatory]"
+	$ECHO "      -d, <Master database directory> directory to be deleted along with all segment instances [mandatory]"
 	$ECHO "      -f, force deletion, ignore any database backup files"
 	$ECHO
         $ECHO "      Return codes:"
