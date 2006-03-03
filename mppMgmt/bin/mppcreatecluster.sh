@@ -164,7 +164,9 @@ CHK_PARAMS () {
 		#Source the cluster configuration file
 		LOG_MSG "[INFO]:-Reading MPP configuration file $CLUSTER_CONFIG"
 		. $CLUSTER_CONFIG
-
+		if [ x"" != x"$MACHINE_LIST_FILE_ALT" ];then
+                        MACHINE_LIST_FILE=$MACHINE_LIST_FILE_ALT
+                fi
 		#Check for required definitions in the CLUSTER_CONFIG file
 		if [ x"" = x"$PORT_BASE" ]; then
 				ERROR_EXIT "[FATAL]:-PORT_BASE not specified in $CLUSTER_CONFIG file, is this the correct cluster configuration file." 2
@@ -403,6 +405,9 @@ GET_HOST_ID () {
 CREATE_QE_ARRAY () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		. $CLUSTER_CONFIG
+		if [ x"" != x"$MACHINE_LIST_FILE_ALT" ];then
+                        MACHINE_LIST_FILE=$MACHINE_LIST_FILE_ALT
+                fi
 		if [ `$CAT ${MACHINE_LIST_FILE}|$GREP -c "${MASTER_HOSTNAME}\$"` -eq 0 ]; then
 				declare -a MACHINE_LIST=(`$CAT $MACHINE_LIST_FILE`)
 		else
@@ -490,6 +495,9 @@ CREATE_QE_ARRAY () {
 DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		. $CLUSTER_CONFIG
+		if [ x"" != x"$MACHINE_LIST_FILE_ALT" ];then
+                        MACHINE_LIST_FILE=$MACHINE_LIST_FILE_ALT
+                fi
 		if [ `$CAT ${MACHINE_LIST_FILE}|$GREP -c "${MASTER_HOSTNAME}\$"` -eq 0 ]; then
 				declare -a MACHINE_LIST=(`$CAT $MACHINE_LIST_FILE`)
 		else
@@ -881,8 +889,8 @@ CREATE_STANDBY_QD () {
 		START_QD_PRODUCTION
 	else
 		LOG_MSG "[INFO]:-Starting initialization of standby QD $STANDBY_HOSTNAME"
-		$INIT_STANDBY_PROG -s $STANDBY_HOSTNAME -a $START_SYNC
-		RET_CODE=$?
+		export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}0;$INIT_STANDBY_PROG -s $STANDBY_HOSTNAME -a $START_SYNC
+		RETCODE=$?
 		case $RETCODE in
 			0) LOG_MSG "[INFO]:-Successfully completed standby QD initialization" ;;
 			1) LOG_MSG "[WARN]:-Non-fatal issue with standby QD initialization, check mppstate.sh -f output" ;;
@@ -931,7 +939,7 @@ while getopts ":v'?'aiqc:l:p:m:h:o:s:" opt
 				c ) CLUSTER_CONFIG=$OPTARG ;;
 				l ) LOG_DIR=$OPTARG ;;
 				p ) PG_CONF_ADD_FILE=$OPTARG ;;
-				h ) MACHINE_LIST_FILE=$OPTARG ;;
+				h ) MACHINE_LIST_FILE_ALT=$OPTARG ;;
 				m ) MAX_QD_CONNECTIONS=$OPTARG ;;
 				o ) QD_ONLY=1 ;;
 				s ) STANDBY_HOSTNAME=$OPTARG ;;
