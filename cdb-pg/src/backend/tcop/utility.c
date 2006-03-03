@@ -1192,7 +1192,10 @@ ProcessUtility(Node *parsetree,
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						 errmsg("must be superuser to do CHECKPOINT")));
-			CdbSentry(CDB_WARN, parsetree, NULL);
+			if (Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				CdbDoCommand("CHECKPOINT", false, false);
+			}
 			RequestCheckpoint(true, false);
 			break;
 
