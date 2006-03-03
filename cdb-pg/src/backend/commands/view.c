@@ -110,6 +110,7 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 	createStmt->relOid = viewOid;
 	createStmt->comptypeOid = 0;
 	createStmt->toastOid = 0;
+	createStmt->toastIndexOid = 0;
 	/*
 	 * create a list of ColumnDef nodes based on the names and types of the
 	 * (non-junk) targetlist items from the view's SELECT list.

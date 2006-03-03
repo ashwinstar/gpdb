@@ -1699,6 +1699,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->relOid = 0;
 					n->comptypeOid = 0;
 					n->toastOid = 0;
+					n->toastIndexOid = 0;
 					n->relKind = RELKIND_RELATION;
 					n->policy = 0;
 					
@@ -1723,6 +1724,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->relOid = 0;
 					n->comptypeOid = 0;
 					n->toastOid = 0;
+					n->toastIndexOid = 0;
 					n->relKind = RELKIND_RELATION;
 					n->policy = 0;
 					

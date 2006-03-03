@@ -628,7 +628,7 @@ ProcessUtility(Node *parsetree,
 				
 				elog(DEBUG1,"CreateStmt: rel Oid %d toast Oid %d",relOid, ((CreateStmt *) parsetree)->toastOid);
 		
-				AlterTableCreateToastTableWithOid(relOid, true, ((CreateStmt *) parsetree)->toastOid);
+				AlterTableCreateToastTableWithOid(relOid, true, ((CreateStmt *) parsetree)->toastOid, ((CreateStmt *) parsetree)->toastIndexOid);
 			}
 			break;
 

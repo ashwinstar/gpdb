@@ -1434,6 +1434,7 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_OID_FIELD(relOid);
 	WRITE_OID_FIELD(comptypeOid);
 	WRITE_OID_FIELD(toastOid);
+	WRITE_OID_FIELD(toastIndexOid);
 	WRITE_CHAR_FIELD(relKind);
 }
 

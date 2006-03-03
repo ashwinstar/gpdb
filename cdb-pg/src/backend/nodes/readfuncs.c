@@ -1441,6 +1441,7 @@ _readCreateStmt(void)
 	READ_OID_FIELD(relOid);
 	READ_OID_FIELD(comptypeOid);
 	READ_OID_FIELD(toastOid);
+	READ_OID_FIELD(toastIndexOid);
 	READ_CHAR_FIELD(relKind);
 	local_node->policy = NULL;
 

@@ -873,6 +873,7 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 	COMPARE_SCALAR_FIELD(relOid);
 	COMPARE_SCALAR_FIELD(comptypeOid);
 	COMPARE_SCALAR_FIELD(toastOid);
+	COMPARE_SCALAR_FIELD(toastIndexOid);
 	COMPARE_SCALAR_FIELD(relKind);
 
 	return true;

@@ -141,6 +141,7 @@ DefineSequence(CreateSeqStmt *seq)
 	stmt->relOid = 0;
 	stmt->comptypeOid = 0;
 	stmt->toastOid = 0;
+	stmt->toastIndexOid = 0;
 	
 	if (shouldDispatch)
 	{

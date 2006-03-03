@@ -1936,6 +1936,7 @@ _copyCreateStmt(CreateStmt *from)
 	COPY_SCALAR_FIELD(relOid);
 	COPY_SCALAR_FIELD(comptypeOid);
 	COPY_SCALAR_FIELD(toastOid);
+	COPY_SCALAR_FIELD(toastIndexOid);
 	COPY_SCALAR_FIELD(relKind);
 	COPY_POINTER_FIELD(policy,sizeof(MppPolicy) + from->policy->nattrs*sizeof(from->policy->attrs[0]));
 

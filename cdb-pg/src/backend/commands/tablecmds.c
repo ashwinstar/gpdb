@@ -490,6 +490,7 @@ DefineRelation_int(CreateStmt *stmt,
 		Oid			toastRelationId = InvalidOid;
 		Relation	pg_class_desc;
 		Oid 		comptypeOid = InvalidOid;
+		Oid			toastIndexId = InvalidOid;
 	
 		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 	
@@ -505,12 +506,15 @@ DefineRelation_int(CreateStmt *stmt,
 		comptypeOid = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
 									
 		toastRelationId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+		
+		toastIndexId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
 									
 		heap_close(pg_class_desc, RowExclusiveLock);
 		
 		stmt->relOid = relationId;
 		stmt->comptypeOid = comptypeOid;
 		stmt->toastOid = toastRelationId;
+		stmt->toastIndexOid = toastIndexId;
 		stmt->relKind = relkind;
 		stmt->relation->schemaname = get_namespace_name(namespaceId);
 		
@@ -526,6 +530,7 @@ DefineRelation_int(CreateStmt *stmt,
 	{
 		stmt->relOid = InvalidOid;
 		stmt->toastOid = InvalidOid;
+		stmt->toastIndexOid = InvalidOid;
 	}
 
 
@@ -6138,11 +6143,11 @@ ATExecEnableDisableTrigger(Relation rel, char *trigname,
 void
 AlterTableCreateToastTable(Oid relOid, bool silent)
 {
-	AlterTableCreateToastTableWithOid(relOid,silent,InvalidOid);
+	AlterTableCreateToastTableWithOid(relOid,silent,InvalidOid,InvalidOid);
 }
 
 void
-AlterTableCreateToastTableWithOid(Oid relOid, bool silent, Oid newOid)
+AlterTableCreateToastTableWithOid(Oid relOid, bool silent, Oid newOid, Oid newIndexOid)
 {
 	Relation	rel;
 	HeapTuple	reltup;
@@ -6295,7 +6300,7 @@ AlterTableCreateToastTableWithOid(Oid relOid, bool silent, Oid newOid)
 	classObjectId[0] = OID_BTREE_OPS_OID;
 	classObjectId[1] = INT4_BTREE_OPS_OID;
 
-	toast_idxid = index_create(toast_relid, toast_idxname, InvalidOid,
+	toast_idxid = index_create(toast_relid, toast_idxname, newIndexOid,
 							   indexInfo,
 							   BTREE_AM_OID,
 							   rel->rd_rel->reltablespace,
