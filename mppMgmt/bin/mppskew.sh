@@ -54,6 +54,7 @@ CUR_DATE=`$DATE +%Y%m%d`
 MASTER_HOSTNAME=`hostname`
 EXIT_STATUS=0
 FULL_DISPLAY=0
+DISTRIB=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -81,9 +82,11 @@ USAGE () {
 	$ECHO "      -t, <table name> [mandatory]"
 	$ECHO "      -a, <database name> alternative database name [default ${QD_DBNAME}]"
 	$ECHO "      -f, display full results output [default summary]"
+	$ECHO "      -c, display distribution columns for table, do not compute skew"
+	$ECHO "      -n, <schema name> used where have duplicate table names in different schema"
 	$ECHO
 	$ECHO "      Connection options:"
-        $ECHO "      -d, <head database directory> name of alternative head database to connect [optional]"
+        $ECHO "      -d, <head database directory> name of alternative QD database to connect [optional]"
         $ECHO
         $ECHO "      Return codes:"
         $ECHO "      0 No problems encountered with requested operation"
@@ -93,6 +96,39 @@ USAGE () {
         exit $EXIT_STATUS
 }
 
+GET_DISTRIB_INFO () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	if [ x"" != x"$SCHEMA_NAME" ]; then
+		SCHEMA_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_namespace where nspname='${SCHEMA_NAME}';"`
+		ERROR_CHK $? "obtain schema oid value" 2
+		LOG_MSG "[INFO]:-Obtaining OID for $TARGETTBL on QD"
+		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$TARGETTBL' and relnamespace=${SCHEMA_OID};"`
+		ERROR_CHK $? "obtain table oid value" 2
+	else
+		TABLE_NAME_COUNT=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from pg_class where relname='${TARGETTBL}';"`
+		case $TABLE_NAME_COUNT in
+                        0) ERROR_EXIT "[FATAL]:-Could not locate $TARGETTBL in pg_class" 2 ;;
+                        1) ;;
+                        *) ERROR_EXIT "[FATAL]:-Duplicates found for $TARGETTBL in pg_class, use -n <schema name> option" 2 ;;
+                esac
+		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$TARGETTBL';"`
+		ERROR_CHK $? "obtain table oid value" 2
+	fi
+	TOTAL_COLS=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select max(attnum) from pg_attribute where attrelid=${TABLE_OID};"`
+	ERROR_CHK $? "obtain table column count" 2
+	LOG_MSG "[INFO]:-Distribution columns for $TARGETTBL"
+	LOG_MSG "[INFO]:-------------------------------------------"
+	COLNUM=0
+	for ATT_NUM in `echo $DISTRIB_COLS|$TR -d '{'|$TR -d '}'|$TR ',' ' '`
+	do
+		DIS_COL_NAME=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select attname from pg_attribute where attrelid=${TABLE_OID} and attnum=${ATT_NUM};"`
+		((COLNUM=$COLNUM+1))
+		LOG_MSG "[INFO]:-Distribution column $COLNUM at DDL position $ATT_NUM is named $DIS_COL_NAME"
+	done
+	LOG_MSG "[INFO]:-Total columns in $TARGETTBL  $TOTAL_COLS"
+	LOG_MSG "[INFO]:-------------------------------------------"
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
 GET_NODE_COUNT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	SCHEMA=`$ECHO $TARGETTBL|$CUT -d. -f1`
@@ -102,8 +138,6 @@ GET_NODE_COUNT () {
 	ERROR_CHK $? "obtain number of segment instances" 2
 	if [ $NUM_SEGMENTS = 1 ];then
 		ERROR_EXIT "[FATAL]:-Only one node in cluster, skew not applicable" 2;fi 
-##		$PSQL -p $MASTER_PORT $QD_DBNAME -t -A -F"," -c"select a.hostname, b.port, b.datadir from mpp_configuration where content <> -1 and isprimary='t' ;" > $NODELIST
-##		ERROR_CHK $? "obtaib list of active segments" 2
 		$PSQL -p $MASTER_PORT $QD_DBNAME -t -A -F"," -c"select hostname, port, datadir from mpp_configuration where content <> -1 and isprimary='t' ;" > $NODELIST
 		ERROR_CHK $? "obtain list of active segments" 2
 	LOG_MSG  "[INFO]:-Sending request to nodes.."
@@ -151,21 +185,11 @@ GET_NODE_COUNT () {
 			MinHost=$Host
 		fi
 	done < $TMPFILE
-	##MaxSkew=`$SORT $TMPFILE|$TAIL -1|$CUT -d'|' -f1`
-	##MaxSeg=`$SORT $TMPFILE|$TAIL -1|$CUT -d'|' -f2`
-	##MaxHost=`$SORT $TMPFILE|$TAIL -1|$CUT -d'|' -f3`
-	##MinSkew=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f1`
-	##MinSeg=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f2`
-	##MinHost=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f3`
-	##MinTime=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$HEAD -1|$CUT -d"|" -f1`
-	##MinTimeHost=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$HEAD -1|$CUT -d"|" -f2`
-	##MinTimeSeg=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$HEAD -1|$CUT -d"|" -f3`
-	##MaxTime=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$TAIL -1|$CUT -d"|" -f1`
-	##MaxTimeHost=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$TAIL -1|$CUT -d"|" -f2`
-	##MaxTimeSeg=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$TAIL -1|$CUT -d"|" -f3`
 	let RecDiff=$MaxSkew-$MinSkew
 	LOG_MSG "-------------------------------------------------------------------"
 	LOG_MSG "[INFO]:-Table of results for Table $TARGETTBL in database $QD_DBNAME"
+	LOG_MSG "-------------------------------------------------------------------"
+	LOG_MSG "[INFO]:-Distribution columns = $DISTRIB_COLS"
 	LOG_MSG "-------------------------------------------------------------------"
 	LOG_MSG "[INFO]:-Total records = $REC_COUNT"
 	LOG_MSG "-------------------------------------------------------------------"
@@ -180,8 +204,6 @@ GET_NODE_COUNT () {
 	LOG_MSG "[INFO]:-Record count variance is $RecDiff records"
 	LOG_MSG "-------------------------------------------------------------------"
 	LOG_MSG "[INFO]:-Response result"
-##	LOG_MSG "[INFO]:-Fastest host $MinTimeHost segment $MinTimeSeg responded in $MinTime"
-##	LOG_MSG "[INFO]:-Slowest host $MaxTimeHost segment $MaxTimeSeg responded in $MaxTime" 
 	while read LINE
 	do
 		Host=`$ECHO $LINE|$CUT -d '|' -f3`
@@ -200,7 +222,7 @@ GET_NODE_COUNT () {
 trap '$RM -f $TMPFILE $NODELIST;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 CHK_DB_QD_SET
 if [ $# -ne 0 ];then
-        while getopts ":a:vqft:'?'d:l:" opt;do
+        while getopts ":a:vn:cqft:'?'d:l:" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
                 t ) TARGETTBL=$OPTARG ;;
@@ -208,7 +230,9 @@ if [ $# -ne 0 ];then
                 d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
 		l ) LOG_DIR=$OPTARG ;;
 		a ) ALT_DBNAME=$OPTARG ;;
+		c ) DISTRIB=1 ;;
 		f ) FULL_DISPLAY=1 ;;
+		n ) SCHEMA_NAME=$OPTARG ;;
 		q ) unset VERBOSE ;;
                 * ) UNKNOWN_OPTION ;;
         esac
@@ -230,15 +254,23 @@ CHK_DB_RUNNING
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 if [ $TARGETTBL ];then
-GET_QD_DB_NAME
-if [ x"" != x"$ALT_DBNAME" ];then
-        QD_DBNAME=$ALT_DBNAME
-fi
-CHK_EXISTS_TABLE $TARGETTBL $MASTER_PORT $QD_DBNAME
-if [ $EXISTS -ne 0 ];then
-	ERROR_EXIT "ERROR:-Table $TARGETTBL does not exist" 2;fi
-GET_NODE_COUNT
+	GET_QD_DB_NAME
+	if [ x"" != x"$ALT_DBNAME" ];then
+        	QD_DBNAME=$ALT_DBNAME
+	fi
+	CHK_EXISTS_TABLE $TARGETTBL $MASTER_PORT $QD_DBNAME
+	GET_DISTRIB_COLS $TARGETTBL $MASTER_PORT $QD_DBNAME
+	if [ $EXISTS -ne 0 ];then
+		ERROR_EXIT "ERROR:-Table $TARGETTBL does not exist" 2
+	else
+		if [ $DISTRIB -eq 1 ];then
+			GET_DISTRIB_INFO
+		else
+		GET_NODE_COUNT
+		fi
+	fi
 else
-	USAGE;fi
+	USAGE
+fi
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS
