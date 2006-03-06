@@ -1228,7 +1228,10 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 		tupdesc = CreateTupleDescCopy(tupType);
 		
 		/*
+		 * We can't do the create table here for MPP systems.
 		 * This would build a table with different OIDS on every QE... Bad
+		 * It would also fail to build the table on the QD, which is very bad.
+		 * Finally, it wouldn't create the tables on the mirror node, which is also bad.
 		 */
 		if (Mpp_role == MPP_ROLE_EXECUTE)
 			elog(ERROR,"SELECT INTO not working in EXECUTE mode yet");
