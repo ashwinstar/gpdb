@@ -1324,8 +1324,8 @@ createMotionState(int16 motNodeID, int numConns)
 
 	if (pEntry->valid)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("Interconect Error: A HTAB entry for motion node %d already exists.", motNodeID),
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+						errmsg("Interconnect Error: A HTAB entry for motion node %d already exists.", motNodeID),
 						errdetail("conns %p numConns %d first sock %d highreadsock %d", pEntry->conns, pEntry->numConns, pEntry->conns[0].sockfd, pEntry->highReadSock)));
 	}
 
@@ -1370,8 +1370,8 @@ getMotionState(int16 motNodeID)
 
 	if (motNodeID > mlsSize || !mlsStates[motNodeID - 1].valid)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-		errmsg("Interconect Error: Unexpected Motion Node Id: %d.  This means"
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		errmsg("Interconnect Error: Unexpected Motion Node Id: %d.  This means"
 			   " a motion node that wasn't setup is requesting interconnect"
 			   " resources.", motNodeID)));
 	}
@@ -1401,8 +1401,8 @@ removeMotionState(int16 motNodeID)
 
 	if (motNodeID > mlsSize || !mlsStates[motNodeID - 1].valid)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("Interconect Error: Unexpected Motion Node Id: %d. During remove.",
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+						errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove.",
 							   motNodeID)));
 	}
 	else
@@ -1872,7 +1872,7 @@ readRegisterMessage(MotionConn * conn, int *incoming_count)
 	pEntry = getMotionState(msg.motNodeId);
 	if (pEntry == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 		  errmsg("Interconnect Error: invalid conn for (mnId=%d,routeId=%d)",
 				 msg.motNodeId, msg.srcRouteId)));
 	}
@@ -1883,7 +1883,7 @@ readRegisterMessage(MotionConn * conn, int *incoming_count)
 	 */
 	if ((pEntry->conns + msg.srcRouteId)->sockfd != -1)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Already a conn for (mnId=%d,routeId=%d,%d)",
 							   msg.motNodeId, msg.srcRouteId, (pEntry->conns + msg.srcRouteId)->sockfd),
 		  errdetail("Should not have a non-NULL connection in that slot.")));
@@ -2442,7 +2442,7 @@ findCdbProcess(RegisterMessage * msg)
 
 	if (list_length(sliceTable->slices) < msg->motNodeId)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 			   errmsg("Interconnect Error: Received a Register Message with "
 					  "unknown motion Node ID: %d", msg->motNodeId),
 				  errdetail("Could not find a Slice in our slice table with "
