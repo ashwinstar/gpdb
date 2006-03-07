@@ -808,6 +808,10 @@ cdbdisp_finishCommand(struct CdbDispatchResults * primaryResults,
 	if (!errorcode && mirrorResults)
 		errorcode = mirrorResults->errcode;
 
+	/* It looks like everything went fine, did we get a user
+	 * cancellation ? */
+	CHECK_FOR_INTERRUPTS();
+
 	if (!errorcode)
 	{
 		cdbdisp_destroyDispatchResults(primaryResults);
