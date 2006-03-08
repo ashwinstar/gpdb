@@ -609,6 +609,7 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor *** failedSegDB,
  */
 struct pg_result **				/* returns ptr to array of PGresult ptrs */
 cdbdisp_dispatchRMCommand(const char *szCommand,
+						  bool dispatchToMirrors,
 						  StringInfo errmsgbuf)
 {
 	CdbDispatchResults *gangResults;
@@ -616,7 +617,6 @@ cdbdisp_dispatchRMCommand(const char *szCommand,
 	CdbDispatchResults *mirrorResults;
 	CdbDispatchResult *dispatchResult;
 	PGresult  **resultSets = NULL;
-	bool		dispatchToMirrors = true;
 	int			nslots;
 	int			nresults = 0;
 	int			i;
@@ -1639,8 +1639,6 @@ CdbDoCommand(const char *szCommand,
 
 	}
 
-	
-	
 	cdbdisp_dispatchCommand(szCommand, cancelOnError, startTransaction, dispatchToMirrors,
 							&primaryResults, &mirrorResults);
 
@@ -1669,7 +1667,6 @@ CdbDoCommandOnAllGangs(const char *szCommand,
 		/* mark this txn as dirty */
 		setCurrentDtxDirty();
 	}
-
 	
 	cdbdisp_dispatchCommandToAllGangs(szCommand, cancelOnError, startTransaction,
 							&primaryResults, &mirrorResults);

@@ -92,7 +92,8 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor   ***failedSegDB,
 
 /*
  * cdbdisp_dispatchRMCommand:
- * Sends a non-cancelable command to all segment dbs, primary and mirror.
+ * Sends a non-cancelable command to all segment dbs, primary (and mirrors
+ * if requested).
  *
  * Returns a malloc'ed array containing the PGresult objects thus
  * produced; the caller must PQclear() them and free() the array.
@@ -104,6 +105,7 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor   ***failedSegDB,
  */
 struct pg_result **             /* returns ptr to array of PGresult ptrs */
 cdbdisp_dispatchRMCommand(const char   *szCommand,
+						  bool			dispatchToMirrors,
                           StringInfo    errmsgbuf);
 
 /*--------------------------------------------------------------------*/

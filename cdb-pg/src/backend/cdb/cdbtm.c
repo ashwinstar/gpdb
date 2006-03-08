@@ -805,25 +805,14 @@ formatDtxState(DtxState state)
 int
 execDtxCommand(StringInfo errbuf)
 {
-	char		*cmd=NULL, cmdbuf[100];
-	struct CdbDispatchResults  *primaryResults = NULL;
-	struct CdbDispatchResults  *mirrorResults = NULL;
-	SegmentDatabaseDescriptor **failedSegDB = NULL;
+	char		*cmdStatus, *cmd=NULL, cmdbuf[100];
 	int			numOfFailed = 0;
-	int			ret = DTX_OK;
-	bool	dispatchToMirrors = true;
+	int			i, ret = DTX_OK;
+	bool		dispatchToMirrors = true;
 
-	if (!txnBegan && currentGxact->state != DTX_STATE_IN_PROGRESS)
-	{
-		/* We have not issued a DTM command, BEGIN. We wind up in this
-		 * situation when we've got a global transaction, but haven't
-		 * executed any statements which touch the segment DBs. Since
-		 * we haven't issued a BEGIN, issuing a
-		 * PREPARE/ROLLBACK/COMMIT now will just confuse things. We're
-		 * done. */
-		return DTX_OK;
-	}
-	
+	struct pg_result **results = NULL;
+	ExecStatusType resultStatus;
+
 	switch (currentGxact->state)
 	{
 		case DTX_STATE_IN_PROGRESS:
@@ -853,10 +842,14 @@ execDtxCommand(StringInfo errbuf)
 			
 			break;
 		case DTX_STATE_PREPARED:
+			if (!txnBegan)
+				return DTX_OK;
 			sprintf(cmdbuf, "PREPARE TRANSACTION '%s'", currentGxact->gid);
 			cmd = cmdbuf;
 			break;
 		case DTX_STATE_1P_COMMIT:
+			if (!txnBegan)
+				return DTX_OK;
 			/* In the case of a 1P commit being sent out, we don't need to
 			 * dispatch a commit to the mirrors since they never received
 			 * a statement to begin a txn
@@ -865,6 +858,8 @@ execDtxCommand(StringInfo errbuf)
 			cmd = "COMMIT";
 			break;
 		case DTX_STATE_2P_COMMIT:
+			if (!txnBegan)
+				return DTX_OK;
 			sprintf(cmdbuf, "COMMIT PREPARED '%s'", currentGxact->gid);
 			cmd = cmdbuf;
 			break;
@@ -902,87 +897,51 @@ execDtxCommand(StringInfo errbuf)
                                             currentGxact->gid,
                                             formatDtxState(currentGxact->state)) ));
 	}
-	
-	
-	/* Dispatch command to all primary and mirror segdbs. */
-    cdbdisp_dispatchCommand(cmd, false, false, dispatchToMirrors, 
-    		&primaryResults, &mirrorResults);
+ 
+	initStringInfo(errbuf);	
+	results = cdbdisp_dispatchRMCommand(cmd, dispatchToMirrors, errbuf);
 
-	/*
-     * Wait for completion.  Don't cancel.
-     * CDB TODO: Eliminate the CdbCheckDispatchResultInt() interface and
-     * instead build the failedSegDB list from the CdbDispatchResults.
-     */
-    CdbCheckDispatchResultInt(&failedSegDB, &numOfFailed, false);
+	Assert(results != NULL);
+	for (i=0; results[i] != NULL; i++)
+	{
+		resultStatus = PQresultStatus(results[i]);
+		if (resultStatus != PGRES_COMMAND_OK &&
+			resultStatus != PGRES_TUPLES_OK)
+		{
+			numOfFailed++;
+		}
+		else
+		{
+			/* success ? If an error happened during a transaction
+			 * which hasn't already been caught when we try a
+			 * prepare we'll get a rollback from our prepare ON
+			 * ONE SEGMENT: so we go look at the status, otherwise we could
+			 * issue a COMMIT when we don't want to! */
+			cmdStatus = PQcmdStatus(results[i]);
 
-    /* Success */
-    if (primaryResults &&
-        !primaryResults->errcode &&
-        !(mirrorResults && mirrorResults->errcode) &&
-        numOfFailed == 0)
-    {
-        cdbdisp_destroyDispatchResults(primaryResults);
-        cdbdisp_destroyDispatchResults(mirrorResults);
-    }
+			elog(DEBUG3, "DTM: status message cmd '%s' [%d] result '%s'", cmd, i, cmdStatus);
+			if (strncmp(cmdStatus, cmd, strlen(cmdStatus)) != 0)
+			{
+				/* failed */
+				numOfFailed++;
+			}
+		}
+	}
+
+	/* Now we clean up the results array. */
+	cleanRMResultSets(results);
+
+	if (numOfFailed == 0)
+	{
+		/* everything went swell. */
+		return DTX_OK;
+	}
     /* Trouble */
     else
     {
-		/*
-         * Format & free the CdbDispatchResults.
-         * If no errors from primary gang, display errors from mirror gang.
-         */
-        if (errbuf)
-        {
-            initStringInfo(errbuf);	
-            if (!cdbdisp_dumpDispatchResults(primaryResults, errbuf, false) &&
-                !cdbdisp_dumpDispatchResults(mirrorResults, errbuf, false))
-                appendStringInfoString(errbuf, "Segment db connection(s) lost");
-        }
-        cdbdisp_destroyDispatchResults(primaryResults);
-        cdbdisp_destroyDispatchResults(mirrorResults);
-
 		switch (currentGxact->state)
 		{
-#if 0							
-			/* query plan contains gang info, so no way to retry now. */
 			case DTX_STATE_IN_PROGRESS:
-				for (i = 0; i < numOfFailed; i++)
-				{
-					SegmentDatabaseDescriptor *segDB = failedSegDB[i];
-
-					if (PQstatus(segDB->conn) != CONNECTION_OK)
-					{
-						retry = false;
-						break;
-					}
-				}
-
-				if (retry)
-				{
-					/*dispatch command */
-						CdbDispatchCommandIntEnumeration(cmdbuf, failedSegDB, numOfFailed, false, NULL);
-					results = CdbCheckDispatchResult();
-				}
-				if (!results->success)
-				{
-					updateDtxState(DTX_STATE_ABORT);
-					ret = DTX_ERR_COMM;
-				}
-				break;
-#endif
-			case DTX_STATE_IN_PROGRESS:
-                updateDtxState(DTX_STATE_ABORT);
-                if (numOfFailed > 0)
-                {
-                    /*
-                     * Attempt to re-establish broken connections.
-                     *   NB: Gang and SegmentDatabaseDescriptor objects could be
-                     *   destroyed by this; treat pointers to them as invalid afterwards.
-                     */
-                    FtsHandleNetFailure(failedSegDB, numOfFailed);
-                }
-				ret = DTX_ERR_COMM;
-				break;
 			case DTX_STATE_PREPARED:
 			case DTX_STATE_ROLLBACK:
 			case DTX_STATE_1P_COMMIT:
@@ -1000,11 +959,6 @@ execDtxCommand(StringInfo errbuf)
                                                 formatDtxState(currentGxact->state)) ));
 		}
 	}
-
-	
-	/* Free the broken connection list. */
-	if (failedSegDB)
-		pfree(failedSegDB);
 
 	return ret;
 }
@@ -1193,8 +1147,7 @@ updateDtxState(DtxState state)
 			 */
 			getTmLock();
 			flushTmLogFile(currentGxact->fileno, currentGxact->offset);
-			releaseTmLock();
-			
+			releaseTmLock();			
 			
 			break;
 		
@@ -1221,9 +1174,7 @@ updateDtxState(DtxState state)
 			break;
 			
 		case DTX_STATE_ABORT:  /* something bad happened during PREPARE */
-		
-		
-			 
+
 			if (isDirty)
 				writeToTmLog(gxact,state);
 			
@@ -1522,7 +1473,8 @@ recoverInDoubtTransactions(void)
 HTAB *
 gatherRMInDoubtTransactions(void)
 {
-	PGresult 	  **pgresultSets = NULL;
+	bool		dispatchToMirrors = true;
+	PGresult	**pgresultSets = NULL;
     StringInfoData  errmsgbuf;
 	const char	   *cmdbuf = "select gid from pg_prepared_xacts";
 	PGresult      **rs;
@@ -1535,12 +1487,10 @@ gatherRMInDoubtTransactions(void)
 	int j,rows;
 	bool found;
 	
-
     initStringInfo(&errmsgbuf);
     
-
 	/* call to all QE to get in-doubt transactions */
-    pgresultSets = cdbdisp_dispatchRMCommand(cmdbuf, &errmsgbuf);
+    pgresultSets = cdbdisp_dispatchRMCommand(cmdbuf, dispatchToMirrors, &errmsgbuf);
 
     /* display error messages */
     if (errmsgbuf.len > 0)
@@ -1610,7 +1560,7 @@ gatherRMInDoubtTransactions(void)
 		}		
     }
     
-    cleanRMResultSets(pgresultSets);	
+    cleanRMResultSets(pgresultSets);
 
 	return htab;
 }
