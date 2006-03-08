@@ -1,64 +1,86 @@
 COMMAND NAME: mppskew.sh
 
-Shows the distribution of table data and response times for segment instances.
+Shows data distribution information for a Bizgres MPP table.
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+mppskew.sh -t <table_name> [-n <schema_name>] [-a <database_name>] 
+[-c] [-d <data_directory>] [-f] [-l <logfile_directory>]
+
+mppskew.sh [-? | -v]
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The mppskew.sh script can be used to determine if table data is 
+equally distributed across all of the active segments. 
+mppskew.sh reports the following information:
+
+* The total number of records in the specified table.
+
+* The number of records on each segment.
+
+* The variance of records between segments.
+
+* The segments with the fastest and slowest response times.
+
+* The distribution key column names.
 
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
-mppskew.sh -t <table_name> [-a <database_name>] [-d <data_directory>] 
-[-f] [-l <logfile_directory>]
-
-mppskew.sh [-? | -v]
-
-
-*****************************************************
-DESCRIPTION
-*****************************************************
-
-The mppskew.sh script can be used to determine if table data is equally 
-distributed across all of the active segments. mppskew.sh reports the 
-following information:
-
-* The total number of records in the specified table.
-* The number of records on each segment.
-* The variance of records between segments.
-* The segments with the fastest and slowest response times.
-
-
-*****************************************************
-OPTIONS
-*****************************************************
-
 -t <table_name>
 
 Required. The table for which you want to see the data distribution.
+
+
+-n <schema_name>
+
+Optional. The name of the schema where the table resides.
+
 
 -a <database_name>
 
 Optional. The database name.
 
+
+-c
+
+Optional. Show the names of the distribution key columns only 
+(do not compute data skew).
+
+
 -d <data_directory>
 
-Optional. The master host data directory. If not specified, the value 
-set for $MASTER_DATA_DIRECTORY will be used.
+Optional. The master host data directory. If not specified, 
+the value set for $MASTER_DATA_DIRECTORY will be used.
+
 
 -f
 
-Optional. Displays the full data skew results instead of the summary results.
+Optional. Displays the full data skew results instead of the 
+summary results.
 
--l logfile_directory
+
+-l <logfile_directory>
 
 The directory to write the log file. Defaults to ~/mppAdminLogs.
+
 
 -?
 
 Displays the online help.
 
+
 -v
 
-Displays the version, status, last updated date, and check sum of this script.
+Displays the version, status, last updated date, and check sum 
+of this script.
 
 
 *****************************************************
@@ -70,9 +92,17 @@ Show the data distribution for a given table:
 mppskew.sh -t bigtable1
 
 
-Show the data distribution for a given table in a given database:
 
-mppskew.sh -t bigtable1 -a mppdb
+Show the data distribution for a given table in a given 
+schema in a given database:
+
+mppskew.sh -t bigtable1 -n myschema -a mppdb
+
+
+
+Show the names of the distribution key columns only for the given table:
+
+mppskew.sh -t bigtable1 -c
 
 
 *****************************************************
