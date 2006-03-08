@@ -585,6 +585,10 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor *** failedSegDB,
 	/* Reset dispatcher state. */
 	pleaseCancel = false;
 	threadCount = 0;
+
+	/* It looks like everything went fine, make sure we don't miss a
+	 * user cancellation ? */
+	CHECK_FOR_INTERRUPTS();
 }	/* cdbdisp_checkDispatchResults */
 
 
@@ -807,10 +811,6 @@ cdbdisp_finishCommand(struct CdbDispatchResults * primaryResults,
 	errorcode = primaryResults->errcode;
 	if (!errorcode && mirrorResults)
 		errorcode = mirrorResults->errcode;
-
-	/* It looks like everything went fine, did we get a user
-	 * cancellation ? */
-	CHECK_FOR_INTERRUPTS();
 
 	if (!errorcode)
 	{
