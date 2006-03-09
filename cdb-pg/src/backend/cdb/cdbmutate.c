@@ -261,7 +261,7 @@ apply_motion(Plan *plan, Query *query)
                                                       targetPolicy->attrs))
 					{
 						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-										errmsg("Cannot parallelize an UPDATE that involves the partitioning columns")
+										errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns")
 										));
 					}
 					if (plan->flow->flotype != FLOW_PARTITIONED)
