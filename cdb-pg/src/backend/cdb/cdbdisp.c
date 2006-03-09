@@ -587,9 +587,13 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor *** failedSegDB,
 	threadCount = 0;
 
 	/* It looks like everything went fine, make sure we don't miss a
-	 * user cancellation ? */
-	CHECK_FOR_INTERRUPTS();
-}	/* cdbdisp_checkDispatchResults */
+	 * user cancellation ? 
+	 *
+	 * The cancelUnfinishedWork argument is true when we're handling
+	 * an error, false when we are doing "normal work" */
+	if (!cancelUnfinishedWork)
+		CHECK_FOR_INTERRUPTS();
+}	/* cdbdisp_checkDispatchResult */
 
 
 /*--------------------------------------------------------------------*/
