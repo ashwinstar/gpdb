@@ -528,6 +528,19 @@ _readDropStmt(void)
 	READ_DONE();
 }
 
+static DropPropertyStmt *
+_readDropPropertyStmt(void)
+{
+	READ_LOCALS(DropPropertyStmt);
+
+	READ_NODE_FIELD(relation);
+	READ_STRING_FIELD(property);
+	READ_ENUM_FIELD(removeType,ObjectType);
+	READ_ENUM_FIELD(behavior,DropBehavior);
+
+	READ_DONE();
+}
+
 static TruncateStmt *
 _readTruncateStmt(void)
 {
@@ -2333,6 +2346,7 @@ static ParseNodeInfo infoAr[] =
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DEFELEM", (ReadFn)_readDefElem},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
+	{"DROPPROPSTMT", (ReadFn)_readDropPropertyStmt},
 	{"DROPROLESTMT", (ReadFn)_readDropRoleStmt},
 	{"DROPSTMT", (ReadFn)_readDropStmt},
 	{"FIELDSELECT", (ReadFn)_readFieldSelect},

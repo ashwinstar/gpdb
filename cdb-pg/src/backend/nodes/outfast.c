@@ -1519,6 +1519,18 @@ _outDropStmt(StringInfo str, DropStmt *node)
 }
 
 static void
+_outDropPropertyStmt(StringInfo str, DropPropertyStmt *node)
+{
+	WRITE_NODE_TYPE("DROPPROPSTMT");
+
+	WRITE_NODE_FIELD(relation);
+	WRITE_STRING_FIELD(property);
+	WRITE_ENUM_FIELD(removeType, ObjectType);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
+
+}
+
+static void
 _outTruncateStmt(StringInfo str, TruncateStmt *node)
 {
 	WRITE_NODE_TYPE("TRUNCATESTMT");
@@ -1917,6 +1929,7 @@ _outQuery(StringInfo str, Query *node)
 		{
 			case T_CreateStmt:
 			case T_DropStmt:
+			case T_DropPropertyStmt:
 			case T_TruncateStmt:
 			case T_AlterTableStmt:
 			case T_AlterTableCmd:
@@ -2704,6 +2717,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_DropStmt:
 				_outDropStmt(str, obj);
+				break;
+			case T_DropPropertyStmt:
+				_outDropPropertyStmt(str, obj);
 				break;
 			case T_TruncateStmt:
 				_outTruncateStmt(str, obj);

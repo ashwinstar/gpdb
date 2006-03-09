@@ -1126,13 +1126,11 @@ ProcessUtility(Node *parsetree,
 				switch (stmt->removeType)
 				{
 					case OBJECT_RULE:
-						CdbSentry(CDB_REJECT, parsetree, NULL);
 						/* RemoveRewriteRule checks permissions */
 						RemoveRewriteRule(relId, stmt->property,
 										  stmt->behavior);
 						break;
 					case OBJECT_TRIGGER:
-						CdbSentry(CDB_REJECT, parsetree, NULL);
 						/* DropTrigger checks permissions */
 						DropTrigger(relId, stmt->property,
 									stmt->behavior);
@@ -1141,6 +1139,10 @@ ProcessUtility(Node *parsetree,
 						elog(ERROR, "unrecognized object type: %d",
 							 (int) stmt->removeType);
 						break;
+				}
+				if (Mpp_role == MPP_ROLE_DISPATCH)
+				{
+					CdbDispatchUtilityStatement((Node *) parsetree);
 				}
 			}
 			break;
