@@ -1,8 +1,14 @@
 #!/bin/bash
 #	Filename:-		mpp_bash_functions.sh
+<<<<<<< mpp_bash_functions.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Updated:-		$Date$
+=======
+#	Version:-		$Revision$
+#	Updated:-		$Date$
+#	Updated:-		$Date$
+>>>>>>> 1.64
 #	Status:-		MPP Conversion SE Co Internal	
 #	Author:-		G L Coombe (Greenplum)
 #	Contact:-		gcoombe@greenplum.com
@@ -382,6 +388,12 @@ CHK_EXISTS_TABLE () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+GET_DISTRIB_COLS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	DISTRIB_COLS=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;$PSQL -p $2 $3 -A -t -c"select attrnums from  mpp_distribution_policy  where localoid in (select oid from pg_class where relname='${1}');"`
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 CHK_FILE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		FILENAME=$1
@@ -445,13 +457,19 @@ CHK_DB_RUNNING () {
 		if [ ! -f $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[FATAL]:-No $MASTER_DATA_DIRECTORY/$PG_PID file" 2
 		fi		
+		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 		export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" > /dev/null 2>&1
 		if [ $? -ne 0 ];then
+<<<<<<< mpp_bash_functions.sh
+			LOG_MSG "[FATAL]:-Have a postmaster.pid file for QD instance on port $MASTER_PORT"
+			ERROR_EXIT "[FATAL]:-However, error reported on test access to QD instance."
+=======
 			LOG_MSG "[FATAL]:-Have a postmaster.pid file for QD instance on port $MASTER_PORT"
 			LOG_MSG "[FATAL]:-However, error reported on test psql access to QD instance"
 			LOG_MSG "[INFO]:-Check ps output for a postmaster process on the above port"
 			LOG_MSG "[INFO]:-Check the master postgres logfile for errors"
 			ERROR_EXIT "[FATAL]:-Unable to continue"
+>>>>>>> 1.64
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
