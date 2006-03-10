@@ -76,6 +76,9 @@ static void locate_grouping_columns(PlannerInfo *root,
 						AttrNumber *groupColIdx);
 static List *postprocess_setop_tlist(List *new_tlist, List *orig_tlist);
 
+/* MPP with the parallelizer does not tolerate this optimization well. */
+static const bool disable_min_max_optimization = TRUE;
+
 
 /*****************************************************************************
  *
@@ -851,9 +854,17 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		 * path ... but we had to do it anyway to be able to tell which way is
 		 * cheaper.
 		 */
-		result_plan = optimize_minmax_aggregates(root,
-												 tlist,
-												 best_path);
+		if ( disable_min_max_optimization )
+		{
+			result_plan = NULL;
+		}
+		else
+		{
+			result_plan = optimize_minmax_aggregates(root,
+													 tlist,
+													 best_path);
+		}
+		
 		if (result_plan != NULL)
 		{
 			/*
