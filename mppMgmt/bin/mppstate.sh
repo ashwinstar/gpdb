@@ -49,6 +49,7 @@ TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 QD_NAME=`hostname`
 EXIT_STATUS=0
+TLINES=10
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -81,6 +82,10 @@ USAGE () {
 		$ECHO "      -p, List MPP database ports"
 		$ECHO "      -n, List instance log file names"
 		$ECHO "      -e, Display end of each segment instance log file"
+		$ECHO "          Additiona log display options"
+		$ECHO "          -r, <number> Recall <number> of lines of log, with -e option"
+		$ECHO "          default is to display $TLINES lines from log to screen"
+		$ECHO "          -g, <string> Search for <string> in log, enclose space separated words within \" \""
 		$ECHO "      -b, Display a brief MPP cluster status summary"
 		$ECHO "      -i, Display system version information"
 		$ECHO "      -f, Display details of fail-over master host if configured"
@@ -454,7 +459,6 @@ LIST_MPP_PORTS () {
 }
 
 LIST_MPP_LOGS () {
-###		LOG_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select hostname, datadir from mpp_configuration where content=-1 ;" 2>|/dev/null`)
 		LOG_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select hostname, datadir from mpp_configuration where content<>-1 ;" 2>|/dev/null`)
 		ERROR_CHK $? "obtain log assignments" 2
 		LOG_MSG "[INFO]:-Segment instance MPP database instance log file names"
@@ -463,9 +467,13 @@ LIST_MPP_LOGS () {
 				HOST=`$ECHO $LOGCHK|$CUT -d"|" -f1`
 				DIR=`$ECHO $LOGCHK|$CUT -d"|" -f2`
 				if [ $TAIL_LOGS ]; then
-						LOG_MSG "[INFO]:-$HOST $DIR log file tail START---------------"
-						$ECHO
-						$TRUSTED_SHELL $HOST "$TAIL ${DIR}.log"|$TEE -a $LOG_FILE
+					LOG_MSG "[INFO]:-$HOST $DIR log file tail START---------------"
+					$ECHO "$HOST Logfile name ${DIR}.log"
+					if [ x'' == x'$GREP_STRING' ];then
+						$TRUSTED_SHELL $HOST "$TAIL -$TLINES ${DIR}.log"|$TEE -a $LOG_FILE
+					else
+						$TRUSTED_SHELL $HOST "$TAIL -$TLINES ${DIR}.log|$GREP '$GREP_STRING'"|$TEE -a $LOG_FILE
+					fi
 						$ECHO
 						LOG_MSG "[INFO]:-$HOST $DIR log file tail END-----------------"
 				else
@@ -513,7 +521,7 @@ NOT_ACTIVE () {
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 SELECT=1
 if [ $# -ne 0 ]; then
-		while getopts ":vtbl:d:nieqsmcpf'?'" opt;do
+		while getopts ":vtbl:d:nieqsmcpf'?'r:g:" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -530,7 +538,9 @@ if [ $# -ne 0 ]; then
 						f ) SELECT=8 ;;
 						e ) TAIL_LOGS=1 
 						    SELECT=5 ;;
+						r ) TLINES=$OPTARG ;;
 						l ) LOG_DIR=$OPTARG ;;
+						g ) GREP_STRING=$OPTARG ;;
 						* ) UNKNOWN_OPTION ;;
 				esac
 		done	
