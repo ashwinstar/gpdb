@@ -1,14 +1,8 @@
 #!/bin/bash
 #	Filename:-		mpp_bash_functions.sh
-<<<<<<< mpp_bash_functions.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Updated:-		$Date$
-=======
-#	Version:-		$Revision$
-#	Updated:-		$Date$
-#	Updated:-		$Date$
->>>>>>> 1.64
 #	Status:-		MPP Conversion SE Co Internal	
 #	Author:-		G L Coombe (Greenplum)
 #	Contact:-		gcoombe@greenplum.com
@@ -460,16 +454,11 @@ CHK_DB_RUNNING () {
 		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 		export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" > /dev/null 2>&1
 		if [ $? -ne 0 ];then
-<<<<<<< mpp_bash_functions.sh
-			LOG_MSG "[FATAL]:-Have a postmaster.pid file for QD instance on port $MASTER_PORT"
-			ERROR_EXIT "[FATAL]:-However, error reported on test access to QD instance."
-=======
 			LOG_MSG "[FATAL]:-Have a postmaster.pid file for QD instance on port $MASTER_PORT"
 			LOG_MSG "[FATAL]:-However, error reported on test psql access to QD instance"
 			LOG_MSG "[INFO]:-Check ps output for a postmaster process on the above port"
 			LOG_MSG "[INFO]:-Check the master postgres logfile for errors"
 			ERROR_EXIT "[FATAL]:-Unable to continue"
->>>>>>> 1.64
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
