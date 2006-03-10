@@ -88,9 +88,7 @@ struct timeval tval;
 
 
 static bool am_seqserver = false;
-int outputBuffLength = sizeof(NextValResponse);
 uint8 *inputBuff;
-uint8 *outputBuff;
 
 
 /*=========================================================================
@@ -163,9 +161,15 @@ seqserver_start(void)
  * Used by clients to seqeuence server to send a Sequence Request
  */
 void
-sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool isTemp,
-					int16 qd_pid, int64   *plast, int64   *pcached,
-					int64   *pincrement)
+sendSequenceRequest(int     sockfd, 
+                    Oid     dbid, 
+                    Oid     tablespaceid, 								 
+                    Oid     seq_oid, 
+                    bool    isTemp, 
+                    int     session_id,
+					int64  *plast, 
+                    int64  *pcached,
+			 		int64  *pincrement)
 {	
 	int		n;
 	int    bytesWritten = 0;
@@ -173,42 +177,27 @@ sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool is
 	int			saved_err;
 	fd_set		rset,wset;
 	
-	int16 netval_16;
-	int32  netval_32;
-	
 	/* request message */
-	uint8   request[sizeof(NextValRequest)];
+    NextValRequest  request;
 	int     reqlen = sizeof(request);
 	
 	/* response message */
-	uint8   response[sizeof(NextValResponse)];
+    NextValResponse response;
 	int     resplen = sizeof(response);
 	
 	
 	if (sockfd == -1)
 		elog( ERROR, "Lost Connection to seqserver");
-	
-	
+		
 	/*
 	 * send the sequence request to the sequence server
 	 */
-	
-	/* dbid */
-	netval_32 = htonl(dbid);
-	memcpy(&request[0], &netval_32, 4);
-	/* tablespace id */
-	netval_32 = htonl(tablespaceid);
-	memcpy(&request[4], &netval_32, 4);
-	/* seq oid */
-	netval_32 = htonl(seq_oid);
-	memcpy(&request[8], &netval_32, 4);
-	/* is temp */
-	memcpy(&request[12], &isTemp, 2 );
-	/* QD pid */
-	netval_16 = htons(qd_pid);
-	memcpy(&request[14], &netval_16, 2 );
-	
-	
+    memset(&request, 0, sizeof(request));	
+	request.dbid = htonl(dbid);
+	request.tablespaceid = htonl(tablespaceid);
+	request.seq_oid = htonl(seq_oid);
+	request.isTemp = htonl(isTemp);
+    request.session_id = htonl(session_id);
 	
 	/*
 	 * write the request
@@ -218,7 +207,7 @@ sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool is
 		
 		CHECK_FOR_INTERRUPTS();
 					
-		n = write(sockfd, &request[bytesWritten], reqlen - bytesWritten);
+		n = write(sockfd, ((char *)&request)+bytesWritten, reqlen - bytesWritten);
 		saved_err = errno;
 	
 		if (n == 0)
@@ -288,7 +277,7 @@ sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool is
 		
 		CHECK_FOR_INTERRUPTS();
 			
-		n = read(sockfd, &response[bytesRead], resplen - bytesRead);
+		n = read(sockfd, ((char *)&response)+bytesRead, resplen - bytesRead);
 		saved_err = errno;
 		
 		if (n == 0)
@@ -343,13 +332,9 @@ sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, Oid seq_oid, bool is
 			bytesRead += n;
 	}
 	
-
-	
-	*plast      = readInt64((uint8 *)&response[0]);
-	*pcached    = readInt64(&response[8]);
-	*pincrement = readInt64(&response[16]);
-
-				
+	*plast      = readInt64((uint8 *)&response.plast);
+	*pcached    = readInt64((uint8 *)&response.pcached);
+	*pincrement = readInt64((uint8 *)&response.pincrement);
 }
 
 
@@ -478,7 +463,6 @@ SeqServerMain(int argc, char *argv[])
 	 * setup scratch buffers
 	 */
 	inputBuff = palloc( sizeof(NextValRequest) );	
-	outputBuff = palloc( outputBuffLength );
 	
 	
 	/* main loop */
@@ -621,6 +605,7 @@ static bool
 processSequenceRequest( int sockfd )
 {
 	NextValRequest nextValRequest;
+    NextValResponse response;
 	int			saved_err;
 	fd_set		rset,wset;
 	int64 plast;
@@ -631,6 +616,7 @@ processSequenceRequest( int sockfd )
 	int bytesRead = 0;
 	int bytesWritten = 0;
 	int reqlen = sizeof(NextValRequest);
+    int outputBuffLength = sizeof(NextValResponse);
 	
 	
 	/* Read in the incoming request message */
@@ -696,20 +682,20 @@ processSequenceRequest( int sockfd )
 	/*
 	 * process what we've read
 	 */
-	nextValRequest.dbid    	    = getInt32(inputBuff);
-	nextValRequest.tablespaceid = getInt32(inputBuff+4);
-	nextValRequest.seq_oid      = getInt32(inputBuff+8);
-	memcpy( &nextValRequest.isTemp, inputBuff+12, 2 );
-	nextValRequest.qd_pid       = getInt16(inputBuff+14);
-	
+    memcpy(&nextValRequest, inputBuff, sizeof(nextValRequest));
+	nextValRequest.dbid    	    = ntohl(nextValRequest.dbid);
+	nextValRequest.tablespaceid = ntohl(nextValRequest.tablespaceid);
+	nextValRequest.seq_oid      = ntohl(nextValRequest.seq_oid);
+	nextValRequest.isTemp       = ntohl(nextValRequest.isTemp);
+    nextValRequest.session_id   = ntohl(nextValRequest.session_id);
 	
 	elog( DEBUG5, "Received nextval request for dbid: %ld tablespaceid: %ld seqoid: "
-				  "%ld isTemp: %s qidPid: %d",
+				  "%ld isTemp: %s session_id: %ld",
 				  (long int)nextValRequest.dbid,
 				  (long int)nextValRequest.tablespaceid,
 				  (long int)nextValRequest.seq_oid,
 				  nextValRequest.isTemp?"true":"false",
-				  nextValRequest.qd_pid);
+				  (long)nextValRequest.session_id);
 	
 	
 	/*
@@ -727,11 +713,9 @@ processSequenceRequest( int sockfd )
 	/*
 	 * Send the response
 	 */
-	sendInt64(outputBuff, plast);
-	sendInt64(outputBuff+8, pcached);
-	sendInt64(outputBuff+16, pincrement);
-
-	
+	sendInt64((uint8 *)&response.plast, plast);
+	sendInt64((uint8 *)&response.pcached, pcached);
+	sendInt64((uint8 *)&response.pincrement, pincrement);
 
 	/*
 	 * Write the response
@@ -741,7 +725,7 @@ processSequenceRequest( int sockfd )
 		
 		CHECK_FOR_INTERRUPTS();
 					
-		n = write(sockfd, outputBuff + bytesWritten, outputBuffLength - bytesWritten);
+		n = write(sockfd, ((uint8 *)&response)+bytesWritten, outputBuffLength - bytesWritten);
 		saved_err = errno;
 	
 		if (n == 0)

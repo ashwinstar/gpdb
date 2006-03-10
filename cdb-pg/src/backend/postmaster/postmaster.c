@@ -32,6 +32,7 @@
  *	  clients.
  *
  *
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -126,6 +127,7 @@
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 
+#include "cdb/cdbgang.h"                /* cdbgang_parse_mppqeid_params */
 #include "cdb/cdblogsync.h"
 
 #ifdef EXEC_BACKEND
@@ -151,9 +153,9 @@ typedef struct bkend
 static Dllist *BackendList;
 
 #ifdef EXEC_BACKEND
-/* 
+/*
  * Number of entries in the backend table. Twice the number of backends,
- * plus five other subprocesses (stats, bgwriter, autovac, logger, seqserver). 
+ * plus five other subprocesses (stats, bgwriter, autovac, logger, seqserver).
  */
 #define NUM_BACKENDARRAY_ELEMS (2*MaxBackends + 5)
 static Backend *ShmemBackendArray;
@@ -701,7 +703,7 @@ PostmasterMain(int argc, char *argv[])
 	 */
 	CreateDataDirLockFile(true);
 
-	/*
+    /*
 	 * If timezone is not set, determine what the OS uses.  (In theory this
 	 * should be done during GUC initialization, but because it can take as
 	 * much as several seconds, we delay it until after we've created the
@@ -709,6 +711,12 @@ PostmasterMain(int argc, char *argv[])
 	 * expect the pidfile to appear quickly.)
 	 */
 	pg_timezone_initialize();
+
+	/*
+	 * Remember postmaster startup time
+     * CDB: Moved this code up from below for use in error message headers.
+	 */
+	PgStartTime = GetCurrentTimestamp();
 
 	/*
 	 * Initialize SSL library, if specified.
@@ -923,7 +931,7 @@ PostmasterMain(int argc, char *argv[])
 	/*
 	 * If enabled, start up syslogger collection subprocess
 	 */
-    if ( !SyncMaster ) 
+    if ( !SyncMaster )
 	   SysLoggerPID = SysLogger_Start();
 
 	/*
@@ -952,10 +960,12 @@ PostmasterMain(int argc, char *argv[])
     if ( !SyncMaster )
 	   StartupPID = StartupDataBase();
 
+#if 0                   /* CDB: This code has been moved to an earlier point. */
 	/*
 	 * Remember postmaster startup time
 	 */
 	PgStartTime = GetCurrentTimestamp();
+#endif
 
 	/*
 	 * Initialize the autovacuum daemon
@@ -1176,7 +1186,7 @@ ServerLoop(void)
 	last_touch_time = time(NULL);
 
 	nSockets = initMasks(&readmask);
-    
+
     /* initialize tm sync */
     if ( SyncMaster )
         cdb_init_log_sync();
@@ -1370,6 +1380,7 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 	void	   *buf;
 	ProtocolVersion proto;
 	MemoryContext oldcontext;
+    char       *mppqeid = NULL;
 
 	if (pq_getbytes((char *) &len, 4) == EOF)
 	{
@@ -1520,6 +1531,8 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 				port->user_name = pstrdup(valptr);
 			else if (strcmp(nameptr, "options") == 0)
 				port->cmdline_options = pstrdup(valptr);
+			else if (strcmp(nameptr, "mppqeid") == 0)
+				mppqeid = valptr;
 			else
 			{
 				/* Assume it's a generic GUC option */
@@ -1603,6 +1616,12 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 		port->database_name[NAMEDATALEN - 1] = '\0';
 	if (strlen(port->user_name) >= NAMEDATALEN)
 		port->user_name[NAMEDATALEN - 1] = '\0';
+
+    /*
+     * CDB: Process "mppqeid" parameter string for qExec startup.
+     */
+    if (mppqeid)
+        cdbgang_parse_mppqeid_params(port, mppqeid);
 
 	/*
 	 * Done putting stuff in TopMemoryContext.
@@ -2038,8 +2057,8 @@ pmdie(SIGNAL_ARGS)
 	PG_SETMASK(&UnBlockSig);
 
 	errno = save_errno;
-    
-    /* for CdbSyncMaster */                         
+
+    /* for CdbSyncMaster */
     if (SyncMaster)
     {
         shmem_exit(0);
@@ -2227,7 +2246,7 @@ reaper(SIGNAL_ARGS)
 				SeqServerPID = seqserver_start();
 			continue;
 		}
-		 
+		
 		/*
 		 * Was it the statistics collector?  If so, just try to start a new
 		 * one; no need to force reset of the rest of the system.  (If fail,

@@ -149,10 +149,6 @@ extern bool Mpp_is_writer;
  *
  * This run time parameter indicates a unique id to identify a particular user
  * session throughout the entire MPP array.
- *
- * NOTE: the seqserver (and sequence) code expects that this is the QD PID
- *		 (as it is today).  changing this session id to be something different
- *		 will require modifying code.
  */
 extern int mpp_session_id; ;
 
@@ -175,6 +171,14 @@ extern bool Debug_print_prelim_plan;
  */
 extern bool Debug_print_slice_table;
 
+
+/*
+ * mpp_command_count
+ *
+ * This GUC is 0 at the beginning of a client session and
+ * increments for each command received from the client.
+ */
+extern int mpp_command_count;
 
 /*
  * Parameter mpp_connections_per_thread

@@ -9,6 +9,7 @@
  *	  more likely to break across PostgreSQL releases than code that uses
  *	  only the official API.
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -266,6 +267,7 @@ struct pg_conn
 #ifdef KRB5
 	char	   *krbsrvname;		/* Kerberos service name */
 #endif
+    char       *mppqeid;        /* MPP: session id & startup info for qExec */
 
 	/* Optional file to write trace info to */
 	FILE	   *Pfdebug;

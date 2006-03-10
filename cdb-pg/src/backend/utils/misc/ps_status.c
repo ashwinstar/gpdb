@@ -7,7 +7,7 @@
  *
  * $PostgreSQL: pgsql/src/backend/utils/misc/ps_status.c,v 1.26.2.1 2005/11/22 18:23:25 momjian Exp $
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  * various details abducted from various places
  *--------------------------------------------------------------------
@@ -95,7 +95,9 @@ static size_t ps_buffer_size;	/* space determined at run time */
 
 static size_t ps_buffer_fixed_size;		/* size of the constant prefix */
 
-static char ps_username[64];            /*CDB*/
+static size_t   ps_host_info_size;		/*CDB*/
+static char     ps_host_info[64];       /*CDB*/
+static char     ps_username[64];        /*CDB*/
 
 /* save the original argv[] location here */
 static int	save_argc;
@@ -289,15 +291,22 @@ init_ps_display(const char *username, const char *dbname,
 	 * line
 	 */
 	snprintf(ps_buffer, ps_buffer_size,
-			 "%s %s %s ",
-			 username, dbname, host_info);
+			 "%s %s ",
+			 username, dbname);
 #else
 	snprintf(ps_buffer, ps_buffer_size,
-			 "postgres: %s %s %s ",
-			 username, dbname, host_info);
+			 "postgres: %s %s ",
+			 username, dbname);
 #endif
 
-	ps_buffer_fixed_size = strlen(ps_buffer);
+    ps_buffer_fixed_size = strlen(ps_buffer);
+
+    /* CDB */
+    StrNCpy(ps_host_info, host_info, sizeof(ps_host_info));
+    ps_host_info_size = snprintf(ps_buffer + ps_buffer_fixed_size,
+                                 ps_buffer_size - ps_buffer_fixed_size,
+                                 "%s ", host_info);
+    ps_buffer_fixed_size += ps_host_info_size;
 
 #ifdef WIN32
 	pgwin32_update_ident(ps_buffer);
@@ -314,6 +323,9 @@ init_ps_display(const char *username, const char *dbname,
 void
 set_ps_display(const char *activity)
 {
+    char   *cp = ps_buffer + ps_buffer_fixed_size;
+    char   *ep = ps_buffer + ps_buffer_size;
+
 #ifndef PS_USE_NONE
 	/* no ps display for stand-alone backend */
 	if (!IsUnderPostmaster)
@@ -325,21 +337,36 @@ set_ps_display(const char *activity)
 		return;
 #endif
 
-    /* Update ps_buffer to contain both fixed part and activity */
+    /* Drop the remote host and port from the fixed prefix. */
+    if (ps_host_info_size > 0)
+    {
+        ps_buffer_fixed_size -= ps_host_info_size;
+        cp -= ps_host_info_size;
+        ps_host_info_size = 0;
+    }
+
+    /* Add client session's global id. */
+    if (mpp_session_id > 0)
+        cp += snprintf(cp, ep-cp, "con%d ", mpp_session_id);
+
+    /* Add host and port.  (Not very useful for qExecs, so skip.) */
+    if (Mpp_role != MPP_ROLE_EXECUTE &&
+        ps_host_info[0] != '\0')
+        cp += snprintf(cp, ep-cp, "%s ", ps_host_info);
+
+    /* Which segment is accessed by this qExec? */
     if (Mpp_role == MPP_ROLE_EXECUTE &&
         Mpp_segment >= 0)
-    {
-        char   *cp = ps_buffer + ps_buffer_fixed_size;
-        char   *ep = ps_buffer + ps_buffer_size - ps_buffer_fixed_size;
-
-        cp += snprintf(cp, ep-cp, "%s%d %s",
+        cp += snprintf(cp, ep-cp, "%s%d ",
                        Mpp_is_primary ? "seg" : "mir",
-                       Mpp_segment,
-                       activity);
-    }
-    else
-        StrNCpy(ps_buffer + ps_buffer_fixed_size, activity,
-                ps_buffer_size - ps_buffer_fixed_size);
+                       Mpp_segment);
+
+    /* Add count of commands received from client session. */
+    if (mpp_command_count > 0)
+        cp += snprintf(cp, ep-cp, "cmd%d ", mpp_command_count);
+
+    /* Append caller's activity string. */
+    StrNCpy(cp, activity, ep-cp);
 
 	/* Transmit new setting to kernel, if necessary */
 

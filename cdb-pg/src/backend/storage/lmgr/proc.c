@@ -3,6 +3,7 @@
  * proc.c
  *	  routines to manage per-process shared memory data structure
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -204,6 +205,7 @@ void
 InitProcess(void)
 {
 	SHMEM_OFFSET myOffset;
+    int     mppLocalProcessSerial;
 
 	/* use volatile pointer to prevent code rearrangement */
 	volatile PROC_HDR *procglobal = ProcGlobal;
@@ -235,6 +237,7 @@ InitProcess(void)
 	{
 		MyProc = (PGPROC *) MAKE_PTR(myOffset);
 		procglobal->freeProcs = MyProc->links.next;
+        mppLocalProcessSerial = ++procglobal->mppLocalProcessCounter;
 		SpinLockRelease(ProcStructLock);
 	}
 	else
@@ -250,7 +253,7 @@ InitProcess(void)
 				 errmsg("sorry, too many clients already")));
 	}
 
-	/*
+    /*
 	 * Initialize all fields of MyProc, except for the semaphore which was
 	 * prepared for us by InitProcGlobal.
 	 */
@@ -269,7 +272,23 @@ InitProcess(void)
 	MyProc->waitProcLock = NULL;
 	SHMQueueInit(&(MyProc->procLocks));
 
-	/*
+    /* 
+     * mppLocalProcessSerial uniquely identifies this backend process among
+     * all those that our parent postmaster process creates over its lifetime. 
+     */
+    MyProc->mppLocalProcessSerial = mppLocalProcessSerial;
+
+    /* 
+     * A nonzero mpp_session_id uniquely identifies an MPP client session 
+     * over the lifetime of the entry postmaster process.  A qDisp passes
+     * its mpp_session_id down to all of its qExecs.  If this is a qExec,
+     * we have already received the mpp_session_id from the qDisp.
+     */
+    if (Mpp_role == MPP_ROLE_DISPATCH)
+        mpp_session_id = mppLocalProcessSerial;
+    MyProc->mppSessionId = mpp_session_id;
+
+    /*
 	 * Add our PGPROC to the PGPROC array in shared memory.
 	 */
 	ProcArrayAdd(MyProc);
@@ -358,6 +377,8 @@ InitDummyProcess(int proctype)
 	MyProc->xmin = InvalidTransactionId;
 	MyProc->databaseId = MyDatabaseId;
 	MyProc->roleId = InvalidOid;
+    MyProc->mppLocalProcessSerial = 0;
+    MyProc->mppSessionId = 0;
 	MyProc->lwWaiting = false;
 	MyProc->lwExclusive = false;
 	MyProc->lwWaitLink = NULL;
@@ -528,7 +549,10 @@ ProcKill(int code, Datum arg)
 		
 	SpinLockAcquire(ProcStructLock);
 
-	/* Return PGPROC structure (and semaphore) to freelist */
+    MyProc->mppLocalProcessSerial = 0;
+    MyProc->mppSessionId = 0;
+
+    /* Return PGPROC structure (and semaphore) to freelist */
 	MyProc->links.next = procglobal->freeProcs;
 	procglobal->freeProcs = MAKE_OFFSET(MyProc);
 

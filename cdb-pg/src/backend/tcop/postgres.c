@@ -91,7 +91,6 @@ LogStmtLevel log_statement = LOGSTMT_NONE;
 /* GUC variable for maximum stack depth (measured in kilobytes) */
 int			max_stack_depth = 2048;
 
-
 /* ----------------
  *		private variables
  * ----------------
@@ -2925,6 +2924,12 @@ PostgresMain(int argc, char *argv[], const char *username)
 			proc_exit(1);
 		/* If timezone is not set, determine what the OS uses */
 		pg_timezone_initialize();
+
+        /*
+	     * Remember stand-alone backend startup time.
+         * CDB: Moved this up from below for use in error message headers.
+         */
+	    PgStartTime = GetCurrentTimestamp();
 	}
 
 	/*
@@ -3146,11 +3151,13 @@ PostgresMain(int argc, char *argv[], const char *username)
 										   ALLOCSET_DEFAULT_INITSIZE,
 										   ALLOCSET_DEFAULT_MAXSIZE);
 
-	/*
-	 * Remember stand-alone backend startup time
-	 */
+#if 0                   /* CDB: This code has been moved to an earlier point. */
+    /*
+	 * Remember stand-alone backend startup time.
+     */
 	if (!IsUnderPostmaster)
 		PgStartTime = GetCurrentTimestamp();
+#endif
 
 	/*
 	 * POSTGRES main processing loop begins here
@@ -3269,6 +3276,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 		initStringInfo(&input_message);
 
+        if (Mpp_role == MPP_ROLE_EXECUTE)
+            mpp_command_count = 0;
+
 		/*
 		 * (1) If we've reached idle state, tell the frontend we're ready for
 		 * a new query.
@@ -3342,7 +3352,10 @@ PostgresMain(int argc, char *argv[], const char *username)
 				{
 					const char *query_string;
 
-					query_string = pq_getmsgstring(&input_message);
+                    if (Mpp_role != MPP_ROLE_EXECUTE)
+                        mpp_command_count++;
+
+                    query_string = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
 
 					exec_simple_query(query_string);
@@ -3360,7 +3373,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 					SnapshotInfo *snapInfo;
 					int 	txnOptions;
 
-
+					/* get the client command serial# */
+					mpp_command_count = pq_getmsgint(&input_message, 4);
+										
 					/* read in the snapshot info */
 					snapshot_string = pq_getmsgstring(&input_message);
 
@@ -3421,7 +3436,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 						
 					}
 					
-					
 					/* get the query string and kick off processing. */
 					query_string = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
@@ -3441,7 +3455,10 @@ PostgresMain(int argc, char *argv[], const char *username)
 					int			numParams;
 					Oid		   *paramTypes = NULL;
 
-					stmt_name = pq_getmsgstring(&input_message);
+                    if (Mpp_role != MPP_ROLE_EXECUTE)
+                        mpp_command_count++;
+
+                    stmt_name = pq_getmsgstring(&input_message);
 					query_string = pq_getmsgstring(&input_message);
 					numParams = pq_getmsgint(&input_message, 2);
 					if (numParams > 0)
@@ -3471,6 +3488,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 				
 			case 'B':			/* bind */
 
+                if (Mpp_role != MPP_ROLE_EXECUTE)
+                    mpp_command_count++;
+
 				/*
 				 * this message is complex enough that it seems best to put
 				 * the field extraction out-of-line
@@ -3483,6 +3503,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 					const char *portal_name;
 					int			max_rows;
 
+                    if (Mpp_role != MPP_ROLE_EXECUTE)
+                        mpp_command_count++;
+
 					portal_name = pq_getmsgstring(&input_message);
 					max_rows = pq_getmsgint(&input_message, 4);
 					pq_getmsgend(&input_message);
@@ -3492,6 +3515,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 				break;
 
 			case 'F':			/* fastpath function call */
+                if (Mpp_role != MPP_ROLE_EXECUTE)
+                    mpp_command_count++;
+
 				/* Tell the collector what we're doing */
 				pgstat_report_activity("<FASTPATH> function call");
 

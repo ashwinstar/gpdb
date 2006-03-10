@@ -3,6 +3,7 @@
  * fe-exec.c
  *	  functions related to sending a query down to the backend
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -636,7 +637,7 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
 }
 
 
-/* Special MPP-only method for executing SQL statements.  Specifies a global 
+/* Special MPP-only method for executing SQL statements.  Specifies a global
  * transaction context that the statement should be executed within.
  *
  * This should *ONLY* ever be used by the MPP Query Dispatcher and NEVER (EVER)
@@ -647,9 +648,14 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
  * flags    - specifies additional processing instructions to the remote server.
  *			  e.g.  Auto explicitly start a transaction before executing this
  *		      statement.
+ * mpp_command_count - Client request serial# to be passed to the qExec.
  */
 int
-PQsendMppQuery(PGconn *conn, const char *query, const char *snapshotInfo, int flags)
+PQsendMppQuery(PGconn      *conn,
+               const char  *query,
+               const char  *snapshotInfo,
+               int          flags,
+               int          mpp_command_count)
 {
         if (!PQsendQueryStart(conn))
             return 0;
@@ -660,17 +666,18 @@ PQsendMppQuery(PGconn *conn, const char *query, const char *snapshotInfo, int fl
                               libpq_gettext("command string is a null pointer\n"));
             return 0;
         }
-        
+
         if (!snapshotInfo)
         {
         	printfPQExpBuffer(&conn->errorMessage,
         					  "snapshotInfo string is a null pointer\n");
-        	return 0;				  
+        	return 0;				
         }
-        
+
 
         /* construct the outgoing MppQuery message */
-        if (pqPutMsgStart('M', false, conn) < 0 ||     
+        if (pqPutMsgStart('M', false, conn) < 0 ||
+                pqPutInt(mpp_command_count, 4, conn ) < 0 ||
                 pqPuts(snapshotInfo, conn ) < 0 ||
                 pqPutInt(flags, 4, conn ) < 0 ||
                 pqPuts(query, conn) < 0 ||

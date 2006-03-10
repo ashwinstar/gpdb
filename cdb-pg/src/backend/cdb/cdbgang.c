@@ -3,7 +3,7 @@
  * cdbgang.c
  *	  Query Executor Factory for gangs of QEs
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -44,6 +44,7 @@ extern char	   *session_authorization_string;
  *	thread_DoConnect is the thread proc used to perform the connection to one of the qExecs.
  */
 static void *thread_DoConnect(void *arg);
+static void  build_mppqeid_params(PQExpBuffer buf);
 
 static Gang *createGang(GangType type, int size, int content);
 
@@ -751,11 +752,15 @@ thread_DoConnect(void *arg)
 		/*
 		 * Build the connection string
 		 */
+        build_mppqeid_params(&buffer);
+
+        appendPQExpBufferStr(&buffer, "options='");
+
+        if (pParms->type != GANGTYPE_READER)
+            appendPQExpBufferStr(&buffer, "-c mpp_is_writer=true ");
+
 		appendPQExpBuffer(&buffer,
-						  "options='-c mpp_session_role=EXECUTE %s -c mpp_session_id=%d "
-						  "-c mpp_segment=%d -c mpp_max_packet_size=%d" ,
-						  (pParms->type!=GANGTYPE_READER)?"-c mpp_is_writer=true":"",
-						  MyProc->pid,
+						  "-c mpp_segment=%d -c mpp_max_packet_size=%d",
 						  q->segindex, Mpp_max_packet_size);
 						
 		if (!q->isprimary)
@@ -766,7 +771,7 @@ thread_DoConnect(void *arg)
 				
 		/*
 		 * It doesn't seem to work to quote the entire search path,
-		 * so we need to remove any spaces so it's treated as one parameter. 
+		 * so we need to remove any spaces so it's treated as one parameter.
 		 * and remove any quotes surrounding the whole thing.
 		 *
 		 */
@@ -880,7 +885,7 @@ thread_DoConnect(void *arg)
 		
 		/*
 		 * Role cannot be set this way, becaused in 8.1.3 the string is truncated to 64 chars.
-		 * 
+		 *
 		if (role_string != NULL && role_string[0]=='x')
 		{
 			char * endptr;
@@ -910,7 +915,7 @@ thread_DoConnect(void *arg)
 					appendPQExpBuffer(&buffer," -c log_min_messages=LOG"); break;
 				case INFO:
 					appendPQExpBuffer(&buffer," -c log_min_messages=INFO"); break;
-				 
+				
 				case WARNING:
 					appendPQExpBuffer(&buffer," -c log_min_messages=WARNING"); break;
 				case ERROR:
@@ -925,16 +930,16 @@ thread_DoConnect(void *arg)
 			if (Log_error_verbosity != PGERROR_DEFAULT)
 			{
 				if (Log_error_verbosity == PGERROR_VERBOSE)
-					appendPQExpBuffer(&buffer," -c log_error_verbosity=verbose"); 
+					appendPQExpBuffer(&buffer," -c log_error_verbosity=verbose");
 				if (Log_error_verbosity == PGERROR_TERSE)
-					appendPQExpBuffer(&buffer," -c log_error_verbosity=terse"); 
+					appendPQExpBuffer(&buffer," -c log_error_verbosity=terse");
 			}
 			
 			if (log_duration)
-				appendPQExpBuffer(&buffer," -c log_duration=true"); 
+				appendPQExpBuffer(&buffer," -c log_duration=true");
 				
 			if (log_min_duration_statement >= 0)
-				appendPQExpBuffer(&buffer," -c log_min_duration_statement=%d",log_min_duration_statement); 
+				appendPQExpBuffer(&buffer," -c log_min_duration_statement=%d",log_min_duration_statement);
 				
 				
 			switch(log_min_error_statement)
@@ -968,7 +973,7 @@ thread_DoConnect(void *arg)
 			/*
 			 * session_authorization can't be set until AFTER login, and anyway in 8.1.3, the string
 			 * gets truncated to 64 chars before being used, so this can't work.
-			 * 
+			 *
 			if (session_authorization_string != NULL && session_authorization_string[0] == 'x')
 			{
 				char * endptr;
@@ -982,7 +987,7 @@ thread_DoConnect(void *arg)
 			*/
 	
 			if (mpp_set_read_only)
-				appendPQExpBuffer(&buffer," -c mpp_set_read_only=true"); 
+				appendPQExpBuffer(&buffer," -c mpp_set_read_only=true");
 		}
 
 		appendPQExpBuffer(&buffer, "' ");
@@ -1005,6 +1010,101 @@ thread_DoConnect(void *arg)
 
 	return (NULL);
 }	/* thread_DoConnect */
+
+
+/*
+ * build_mppqeid_params
+ *
+ * Called from the qDisp process to create the "mppqeid" parameter string
+ * to be passed to a qExec that is being started.  NB: Can be called in a
+ * thread, so mustn't use palloc/elog/ereport/etc.
+ */
+void
+build_mppqeid_params(PQExpBuffer buf)
+{
+    appendPQExpBufferStr(buf, "mppqeid=");
+
+    appendPQExpBuffer(buf, "%d;", mpp_session_id);
+
+#ifdef HAVE_INT64_TIMESTAMP
+    appendPQExpBuffer(buf, INT64_FORMAT ";", PgStartTime);
+#else
+    appendPQExpBuffer(buf, "%.14a;", PgStartTime);
+#endif
+
+    /* change last semicolon to space */
+    Assert(buf->data[buf->len-1] == ';');
+    buf->data[buf->len-1] = ' ';
+}                               /* build_mppqeid_params */
+
+
+/*
+ * cdbgang_parse_mppqeid_params
+ *
+ * Called very early in backend initialization, to interpret the "mppqeid"
+ * parameter value that a qExec receives from its qDisp.
+ *
+ * At this point, client authentication has not been done; the backend
+ * command line options have not been processed; GUCs have the settings
+ * inherited from the postmaster; etc; so don't try to do too much in here.
+ */
+static bool mppqeid_next_param(char **cpp, char **npp)
+{
+    *cpp = *npp;
+    if (!*cpp)
+        return false;
+
+    *npp = strchr(*npp, ';');
+    if (*npp)
+    {
+        **npp = '\0';
+        ++*npp;
+    }
+    return true;
+}
+
+void
+cdbgang_parse_mppqeid_params(struct Port *port, const char* mppqeid_value)
+{
+    char   *mppqeid = pstrdup(mppqeid_value);
+    char   *cp;
+    char   *np = mppqeid;
+
+    /* The presence of an mppqeid string means this backend is a qExec. */
+   	SetConfigOption("mpp_session_role", "execute",
+					PGC_POSTMASTER, PGC_S_OVERRIDE);
+
+    /* mpp_session_id */
+    if (mppqeid_next_param(&cp, &np))
+        SetConfigOption("mpp_session_id", cp,
+					    PGC_POSTMASTER, PGC_S_OVERRIDE);
+
+    /* PgStartTime */
+    if (mppqeid_next_param(&cp, &np))
+    {
+#ifdef HAVE_INT64_TIMESTAMP
+        if (!scanint8(cp, true, &PgStartTime))
+            goto bad;
+#else
+        PgStartTime = strtod(cp, NULL);
+#endif
+    }
+
+    /* Too few items, or too many? */
+    if (!cp || np)
+        goto bad;
+
+    if (mpp_session_id <= 0 ||
+        PgStartTime <= 0)
+       goto bad;
+
+    pfree(mppqeid);
+    return;
+
+bad:
+    elog(FATAL, "QE dispatched with invalid option: 'mppqeid=%s'", mppqeid_value);
+}                               /* cdbgang_parse_mppqeid_params */
+
 
 
 /*
@@ -1373,8 +1473,8 @@ cleanupGang(Gang *gp)
 		elog(DEBUG2, "cleanupGang called on a gang that is active");
 	
 	
-	/* if the process is in the middle of blowing up... then we 
-	 * don't do anything here.  making libpq and other calls can 
+	/* if the process is in the middle of blowing up... then we
+	 * don't do anything here.  making libpq and other calls can
 	 * definitely result in things getting HUNG.
 	 */
 	if (proc_exit_inprogress)
@@ -1734,7 +1834,7 @@ reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB)
 	 * TODO: try and determine if we are a member of a reader or writer gang.
 	 * 		 then we'd only have to do the following if we were a writer gang.
 	 *
-	 */	 
+	 */	
 	disconnectAndDestroyAllReaderGangs();
 	
 	
@@ -1803,7 +1903,7 @@ gangsExist(void)
  * SetSeqServerInfo:  Adds sequence server information to the
  * supplied SliceTable (assumed uninitialized).
  *
- * NOTE: Though not strictly gang-related, the function lives 
+ * NOTE: Though not strictly gang-related, the function lives
  * here to gain access to the interesting static variables.
  */
 void

@@ -1605,7 +1605,16 @@ static struct config_int ConfigureNamesInt[] =
         DEFAULT_PACKET_SIZE, MIN_PACKET_SIZE, MAX_PACKET_SIZE, NULL, NULL
 	},
 	
-	
+	{
+		{"mpp_command_count", PGC_INTERNAL, CLIENT_CONN,
+			gettext_noop("Shows the number of commands received from the client in this session."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&mpp_command_count,
+		0, 0, INT_MAX, NULL, NULL
+	},
+		
 	{
 		{"mpp_connections_per_thread", PGC_SUSET, UNGROUPED,
 			gettext_noop("Sets the number of client connections handled in each thread."),
@@ -1639,7 +1648,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 	
 	{
-		{"mpp_session_id", PGC_BACKEND, UNGROUPED,
+		{"mpp_session_id", PGC_BACKEND, CLIENT_CONN,
 			gettext_noop("Global ID used to uniquely identify a particular session in an MPP array"),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE

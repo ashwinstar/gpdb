@@ -68,7 +68,7 @@ typedef struct DispatchCommandParms
 	
 	/*
 	 * options for controlling certain behavior
-	 * on the remote backend before query processing. Like 
+	 * on the remote backend before query processing. Like
 	 * explicitly opening a transaction.
 	 */
 	int			txnOptions;
@@ -135,12 +135,12 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 static int
 fillSliceVector(SliceTable * sliceTable, int sliceIndex, Slice **sliceVector,
                 int len, int next);
-                
+
 static void
 cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
                         bool                        cancelOnError,
                         bool						startTransaction,
-                        struct CdbDispatchResults **pPrimaryResults,    
+                        struct CdbDispatchResults **pPrimaryResults,
                         struct CdbDispatchResults **pMirrorResults);
 
 
@@ -587,7 +587,7 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor *** failedSegDB,
 	threadCount = 0;
 
 	/* It looks like everything went fine, make sure we don't miss a
-	 * user cancellation ? 
+	 * user cancellation ?
 	 *
 	 * The cancelUnfinishedWork argument is true when we're handling
 	 * an error, false when we are doing "normal work" */
@@ -629,7 +629,7 @@ cdbdisp_dispatchRMCommand(const char *szCommand,
 	bool		startTransaction = false;
 
 	/* Launch the command.	Don't cancel on error. */
-	cdbdisp_dispatchCommand(szCommand, false, startTransaction, dispatchToMirrors, 
+	cdbdisp_dispatchCommand(szCommand, false, startTransaction, dispatchToMirrors,
 			&primaryResults, &mirrorResults);
 
 	/* Wait for all QEs to finish.	Don't cancel. */
@@ -945,7 +945,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
 				*mirrorGang;
     List		*readerGangs;
     ListCell	*le;
-    
+
     int			nsegdb = getMPPSegmentCount();
 	char		*szSnapshotInfo;
 	int			txnOptions,
@@ -1007,8 +1007,8 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
         cdbdisp_dispatchToGang(szCommand, szSnapshotInfo,  txnOptions, mirrorGang, *pMirrorResults, -1, gangCount);
     }
-    
-    
+
+
     foreach(le, readerGangs)
     {
     	Gang  *rg = lfirst(le);
@@ -1303,7 +1303,7 @@ dispatchCommand(CdbDispatchResult  *dispatchResult,
 	 * Submit the command asynchronously.
 	 */
 	
-	if (0 == PQsendMppQuery(conn, szCommand,szSnapshot,txnOptions))
+	if (0 == PQsendMppQuery(conn,szCommand,szSnapshot,txnOptions,mpp_command_count))
 	{
 		/* Note the error. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
@@ -1929,7 +1929,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 	 * plan_tree_mutator, which will copy the node unchanged but try to
 	 * simplify its arguments (if any) using this routine.
 	 */
-	 
+	
 	savetargets = NIL;
 		
 	if (is_plan_node(node) &&
@@ -2528,7 +2528,7 @@ serializeSnapshot(void)
 	}
 	else
 	{
-		/* basically this should mean that we have an Abort in progress and 
+		/* basically this should mean that we have an Abort in progress and
 		 * so can't and don't need to send a serialized snapshot.  so we'll
 		 * send "NONE".
 		 */
@@ -2543,8 +2543,8 @@ serializeSnapshot(void)
  * segdb QE process to perform any needed transaction commands before or
  * after the statement.
  *
- * shouldStart - specifies whether this statement even wants a transaction to 
- *				 be started.  Certain utility statements dont want to be in a 
+ * shouldStart - specifies whether this statement even wants a transaction to
+ *				 be started.  Certain utility statements dont want to be in a
  *				 distributed transaction.
  */
 static int
@@ -2564,9 +2564,9 @@ generateTxnOptions( bool shouldStart )
 		else if (XactIsoLevel == MPP_OPT_SERIALIZABLE)
 			options |= MPP_OPT_SERIALIZABLE;
 		
-		/* at this point we've decided that are going to begin a transaction. 
+		/* at this point we've decided that are going to begin a transaction.
 		 * so we need to let the DTM know this so that if anything bad happens
-		 * it can react. 
+		 * it can react.
 		 */
 		setTxnBegan();
 		

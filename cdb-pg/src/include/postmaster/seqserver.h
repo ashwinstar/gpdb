@@ -14,6 +14,7 @@
 #ifndef SEQSERVER_H
 #define SEQSERVER_H
 
+#include <stdint.h>             /* uint32_t (C99) */
 
 
 /* TODO: eventually we may want different requests to the sequence server
@@ -24,11 +25,11 @@
 typedef struct NextValRequest
 {
 
-	Oid 	dbid;
-	Oid		tablespaceid;	
-	Oid     seq_oid;
-	bool	isTemp;
-	int16   qd_pid;
+	uint32_t    dbid;
+	uint32_t    tablespaceid;	
+	uint32_t    seq_oid;
+	uint32_t    isTemp;
+	uint32_t    session_id;
 }	NextValRequest;
 
 
@@ -47,10 +48,16 @@ extern int	seqserver_start(void);
 
 
 /* used to call nextval on a sequence by going through the seqserver*/
-extern void sendSequenceRequest(int sockfd, Oid dbid, Oid tablespaceid, 
-								 Oid seq_oid, bool isTemp, int16 qd_pid,
-								 int64   *plast, int64   *pcached,
-			 					 int64   *pincrement);
+extern void 
+sendSequenceRequest(int     sockfd, 
+                    Oid     dbid, 
+                    Oid     tablespaceid, 								 
+                    Oid     seq_oid, 
+                    bool    isTemp, 
+                    int     session_id,
+					int64  *plast, 
+                    int64  *pcached,
+			 		int64  *pincrement);
 
 
 

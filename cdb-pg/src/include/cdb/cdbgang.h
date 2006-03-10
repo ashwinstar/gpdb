@@ -2,7 +2,7 @@
  *
  * cdbgang.h
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -15,6 +15,8 @@
 #include "nodes/execnodes.h"
 #include "cdb/cdbutil.h"
 #include "executor/execdesc.h"
+
+struct Port;                    /* #include "libpq/libpq-be.h" */
 
 /*
  * A gang represents a single worker on each connected segDB
@@ -60,5 +62,18 @@ reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB);
 
 extern void
 SetSeqServerInfo(QueryDesc *queryDesc);
+
+/*
+ * cdbgang_parse_mppqeid_params
+ *
+ * Called very early in backend initialization, to interpret the "mppqeid"
+ * parameter value that a qExec receives from its qDisp.
+ *
+ * At this point, client authentication has not been done; the backend
+ * command line options have not been processed; GUCs have the settings
+ * inherited from the postmaster; etc; so don't try to do too much in here.
+ */
+void
+cdbgang_parse_mppqeid_params(struct Port *port, const char* mppqeid_value);
 
 #endif   /* _CDBGANG_H_ */

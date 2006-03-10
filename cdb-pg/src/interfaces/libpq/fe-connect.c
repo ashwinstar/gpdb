@@ -3,6 +3,7 @@
  * fe-connect.c
  *	  functions related to setting up a connection to the backend
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -179,6 +180,10 @@ static const PQconninfoOption PQconninfoOptions[] = {
 	{"krbsrvname", "PGKRBSRVNAME", PG_KRB_SRVNAM, NULL,
 	"Kerberos-service-name", "", 20},
 #endif
+
+    /* CDB: qExec wants some info from qDisp before GUCs are processed */
+    {"mppqeid", NULL, "", NULL,
+	"MPP-Debug-qeid", "D", 40},
 
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,
@@ -409,6 +414,8 @@ connectOptions1(PGconn *conn, const char *conninfo)
 	tmp = conninfo_getval(connOptions, "krbsrvname");
 	conn->krbsrvname = tmp ? strdup(tmp) : NULL;
 #endif
+	tmp = conninfo_getval(connOptions, "mppqeid");
+	conn->mppqeid = tmp ? strdup(tmp) : NULL;
 
 	/*
 	 * Free the option info - all is in conn now
@@ -1906,6 +1913,9 @@ freePGconn(PGconn *conn)
 	if (conn->krbsrvname)
 		free(conn->krbsrvname);
 #endif
+    if (conn->mppqeid)          /* CDB */
+        free(conn->mppqeid);
+
 	/* Note that conn->Pfdebug is not ours to close or free */
 	pg_freeaddrinfo_all(conn->addrlist_family, conn->addrlist);
 	notify = conn->notifyHead;

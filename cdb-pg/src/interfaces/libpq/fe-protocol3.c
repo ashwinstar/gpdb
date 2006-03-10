@@ -1511,6 +1511,17 @@ build_startup_packet(const PGconn *conn, char *packet,
 		packet_len += strlen(conn->pgoptions) + 1;
 	}
 
+	/* CDB: Add qExec startup data */
+	if (conn->mppqeid && conn->mppqeid[0])
+	{
+		if (packet)
+			strcpy(packet + packet_len, "mppqeid");
+		packet_len += strlen("mppqeid") + 1;
+		if (packet)
+			strcpy(packet + packet_len, conn->mppqeid);
+		packet_len += strlen(conn->mppqeid) + 1;
+	}
+
 	/* Add any environment-driven GUC settings needed */
 	for (next_eo = options; next_eo->envName; next_eo++)
 	{
@@ -1530,7 +1541,7 @@ build_startup_packet(const PGconn *conn, char *packet,
 		}
 	}
 
-	/* Add trailing terminator */
+    /* Add trailing terminator */
 	if (packet)
 		packet[packet_len] = '\0';
 	packet_len++;

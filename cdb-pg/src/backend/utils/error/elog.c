@@ -1639,6 +1639,7 @@ log_line_prefix(StringInfo buf)
 
 	int			format_len;
 	int			i;
+    int         j;
 
 	/*
 	 * This is one of the few places where we'd rather not inherit a static
@@ -1833,15 +1834,22 @@ log_line_prefix(StringInfo buf)
                         appendBinaryStringInfo(buf, uname, sp - uname);
                     else
                         appendStringInfoString(buf, uname);
+                    break;
                 }
-                else if (Mpp_role == MPP_ROLE_DISPATCH)
-                    appendStringInfo(buf, "qd");
-				else if (Mpp_role == MPP_ROLE_EXECUTE)
-                    appendStringInfo(buf, "%s%d",
+                j = buf->len;
+                if (mpp_session_id > 0)
+                    appendStringInfo(buf, "con%d ", mpp_session_id);
+                if (mpp_command_count > 0)
+                    appendStringInfo(buf, "cmd%d ", mpp_command_count);
+				if (Mpp_role == MPP_ROLE_EXECUTE)
+                    appendStringInfo(buf, "%s%d ",
                                      Mpp_is_primary ? "seg" : "mir",
                                      Mpp_segment);
                 if (currentSliceId > 0)
-                    appendStringInfo(buf, " slice%d", currentSliceId);
+                    appendStringInfo(buf, "slice%d ", currentSliceId);
+                if (j < buf->len &&
+                    buf->data[buf->len - 1] == ' ')
+                    buf->len--;
 				break;
 			case 'P':
 				if( Mpp_role == MPP_ROLE_EXECUTE )

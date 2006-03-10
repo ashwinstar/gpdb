@@ -4,6 +4,7 @@
  *	  This file contains definitions for structures and
  *	  externs for functions used by frontend postgres applications.
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -335,7 +336,11 @@ extern PGresult *PQexecPrepared(PGconn *conn,
  *
  * See cdbtm.h for valid flag values.
  */
-extern int PQsendMppQuery(PGconn *conn, const char *query, const char *snapshotInfo, int flags);
+extern int PQsendMppQuery(PGconn       *conn,
+                          const char   *query,
+                          const char   *snapshotInfo,
+                          int           flags,
+                          int           mpp_command_count);
 
 
 /* Interface for multiple-result or asynchronous queries */

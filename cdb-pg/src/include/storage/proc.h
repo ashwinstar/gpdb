@@ -4,6 +4,7 @@
  *	  per-process shared memory data structures
  *
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -72,6 +73,8 @@ struct PGPROC
 	int			pid;			/* This backend's process id, or 0 */
 	Oid			databaseId;		/* OID of database this backend is using */
 	Oid			roleId;			/* OID of role using this backend */
+    int         mppSessionId;   /* serial num of the qDisp process */
+    int         mppLocalProcessSerial;  /* this backend's PGPROC serial num */
 
 	/* Info about LWLock the process is currently waiting for, if any. */
 	bool		lwWaiting;		/* true if waiting for an LW lock */
@@ -107,6 +110,9 @@ typedef struct PROC_HDR
 	SHMEM_OFFSET freeProcs;
 	/* Current shared estimate of appropriate spins_per_delay value */
 	int			spins_per_delay;
+
+    /* Counter for assigning mppLocalProcessSerial numbers */
+    int         mppLocalProcessCounter;
 } PROC_HDR;
 
 
