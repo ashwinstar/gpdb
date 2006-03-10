@@ -82,7 +82,7 @@ USAGE () {
 		$ECHO "      -p, List MPP database ports"
 		$ECHO "      -n, List instance log file names"
 		$ECHO "      -e, Display end of each segment instance log file"
-		$ECHO "          Additiona log display options"
+		$ECHO "          Additional log display options"
 		$ECHO "          -r, <number> Recall <number> of lines of log, with -e option"
 		$ECHO "          default is to display $TLINES lines from log to screen"
 		$ECHO "          -g, <string> Search for <string> in log, enclose space separated words within \" \""
