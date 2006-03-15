@@ -3,7 +3,7 @@
  * nodeMotion.c
  *	  Routines to handle moving tuples around in MPP.
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -595,7 +595,6 @@ MotionState *
 ExecInitMotion(Motion * node, EState *estate)
 {
 	MotionState *motionstate;
-	int			i;
 	TupleDesc	tupDesc;
 	Slice	   *parentSlice;
 	Slice	   *thisSlice;
@@ -710,8 +709,7 @@ ExecInitMotion(Motion * node, EState *estate)
     elog(DEBUG3, "Motion node %d is %s%s %s in slice %d",
 		 node->motionID,
          (node->sendSorted ? "sorted " : ""),
-		 (node->motionType == MOTIONTYPE_HASH ?
-            (node->hashToSelfOnly ? "cull" : "hash") :
+		 (node->motionType == MOTIONTYPE_HASH ? "hash" :
           node->numOutputSegs == 0 ? "broadcast" :
           node->numOutputSegs == 1 ? "gather" :
           "unknown"),
@@ -747,23 +745,6 @@ ExecInitMotion(Motion * node, EState *estate)
 		 */
 		motionstate->cdbhash = makeCdbHash(node->numHashSegs, HASH_FNV_1);
 
-		/*
-		 * Create bit vector of masks if this is a "deep-six" hash motion node
-		 */
-		if (node->hashToSelfOnly)
-		{
-			Assert(!node->sendSorted);
-
-			motionstate->hashSegIdxMask = palloc0(node->numHashSegs * sizeof(bool));
-			for (i = 0; i < node->numHashSegs; i++)
-			{
-				if (node->hashSegIdx[i] == Mpp_segment)
-					motionstate->hashSegIdxMask[i] = true;
-				else
-					motionstate->hashSegIdxMask[i] = false;
-			}
-		}
-
 #ifdef MEASURE_MOTION_TIME
 		/*
 		 * Create buckets to hold counts of tuples hashing to each
@@ -772,27 +753,6 @@ ExecInitMotion(Motion * node, EState *estate)
 		motionstate->numTuplesByHashSegIdx = (int *) palloc0(node->numHashSegs * sizeof(int));
 #endif
     }
-    else if (node->motionType == MOTIONTYPE_FIXED &&
-             !motionstate->isReceiver)
-	{
-		/*
-		 * Create bit vector of masks if this is a "deep-six" fixed motion node
-		 */
-		if (node->fixedToSelfOnly)
-		{
-			Assert(node->numOutputSegs > 0);
-			Assert(!node->sendSorted);
-
-			motionstate->fixedSegIdxMask = palloc0(node->numOutputSegs * sizeof(bool));
-			for (i = 0; i < node->numOutputSegs; i++)
-			{
-				if (node->outputSegIdx[i] == Mpp_segment)
-					motionstate->fixedSegIdxMask[i] = true;
-				else
-					motionstate->fixedSegIdxMask[i] = false;
-			}
-		}
-	}
 
 	/* Merge Receive: Set up the key comparator and priority queue. */
     if (node->sendSorted &&
@@ -926,18 +886,6 @@ ExecEndMotion(MotionState * node)
 		node->numTuplesByHashSegIdx = NULL;
 	}
 #endif /* MEASURE_MOTION_TIME */
-
-	if (node->hashSegIdxMask != NULL)
-    {
-        pfree(node->hashSegIdxMask);
-        node->hashSegIdxMask = NULL;
-    }
-
-    if (node->fixedSegIdxMask != NULL)
-    {
-        pfree(node->fixedSegIdxMask);
-        node->fixedSegIdxMask = NULL;
-    }
 
 	/* Merge Receive: Free the priority queue and associated structures. */
     if (node->tupleheap != NULL)
@@ -1196,28 +1144,14 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 		else
 			/* Fixed Motion. */
 		{
-			AssertState(motion->outputSegIdx != NULL);
-
-			/* TODO:  We can only support one output-segment right now! */
-			AssertState(motion->numOutputSegs == 1);
-
-			if (node->fixedSegIdxMask != NULL && !node->fixedSegIdxMask[0])
-			{
-				/* this tuple will be deep-sixed. */
-				node->numTuplesToDeepSix++;
-				return;
-			}
-			else
-			{
-				/*
-				 * Actually, since we can only send to a single output segment
-				 * here, we are guarantted that we only have a single
-				 * targetRoute setup that we could possibly send to.  So we
-				 * can cheat and just fix the targetRoute to 0 (the 1st
-				 * route).
-				 */
-				targetRoute = 0;
-			}
+			/*
+			 * Actually, since we can only send to a single output segment
+			 * here, we are guarantted that we only have a single
+			 * targetRoute setup that we could possibly send to.  So we
+			 * can cheat and just fix the targetRoute to 0 (the 1st
+			 * route).
+			 */
+			targetRoute = 0;
 		}
 	}
 	else
@@ -1238,13 +1172,6 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 
 		if (node->numTuplesByHashSegIdx != NULL)
 		    node->numTuplesByHashSegIdx[hval]++;
-
-		if (node->hashSegIdxMask != NULL && !node->hashSegIdxMask[hval])
-		{
-			/* this tuple will be deep-sixed! */
-			node->numTuplesToDeepSix++;
-			return;
-		}
 	}
 
 	/* send the tuple out. */

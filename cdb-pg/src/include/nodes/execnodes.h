@@ -4,7 +4,7 @@
  *	  definitions for executor state nodes
  *
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -1486,8 +1486,6 @@ typedef struct MotionState
 	bool				stopRequested;      /* set when we want transfer to stop */
 	List				*hashExprState;		/* state struct used for evaluating the hash expressions */
 	CdbHash				*cdbhash;			/* hash api object */
-	bool				*hashSegIdxMask;	/* for hash motion, a bit vector indicating whether motion to that segIdx has been turned off */
-	bool				*fixedSegIdxMask;	/* for fixed motion, a bit vector indicating whether motion to that segIdx has been turned off */
 	struct CdbHeap		*tupleheap;			/* data structure for match merge in sorted motion node */
 	int					routeIdNext;		/* for a sorted motion node, the routeId to get next (same as the routeId last returned ) */
 	bool				tupleheapReady;		/* for a sorted motion node, false until we have a tuple from each source segindex */

@@ -81,18 +81,17 @@ cdbagg_prescan(Agg *agg, bool useExecutorVarFormat)
     CdbAggExprAnalysis analysis;
 
 	/* Argument is a prescanned plan. */
-	Assert(child->flow && child->flow->flotype != FLOW_UNDEFINED);
+	Assert(child->flow);
+    Assert(child->flow->flotype == FLOW_PARTITIONED ||
+           child->flow->flotype == FLOW_SINGLETON);
 
 	/* Sorted aggregation assumes ordered input & produces ordered result. */
 	if (agg->aggstrategy == AGG_SORTED)
         sorted = true;
 
-    /*
-     * If source is replicated or already on dispatcher, leave it
-     * where it is and do 1-stage serial aggregation there.
-     */
-    if ( child->flow->flotype == FLOW_REPLICATED ||
-         (child->flow->flotype == FLOW_SINGLETON && child->flow->segindex < 0) )
+    /* If source is on dispatcher, do 1-stage serial aggregation there. */
+    if (child->flow->flotype == FLOW_SINGLETON &&
+        child->flow->segindex < 0)
     {
         agg->plan.flow = pull_up_Flow((Plan *)agg, child, sorted);
         return true;            /* success */

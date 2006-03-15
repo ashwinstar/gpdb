@@ -4,7 +4,7 @@
  *	  definitions for query plan nodes
  *
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -541,12 +541,10 @@ typedef struct Motion
 	int			*hashSegIdx;		/* array of segindex values to hash to */
 	List		*hashExpr;			/* list of hash expressions */
 	List		*hashDataTypes;	    /* list of hash expr data type oids */
-	bool		hashToSelfOnly;		/* if true, only pass tuple when it hashes to same node ("deep-six the rest") */
 	
 	/* The following field is only used when motionType == MOTIONTYPE_FIXED */
 	int			numOutputSegs;		/* number of segindexes in outputSegIdx array (0 means broadcast to all) */	
 	int			*outputSegIdx;		/* array of output segindexes */
-	bool		fixedToSelfOnly;	/* if true, only pass tuple when it outputSegIdx value is to same node ("deep-six the rest") */
 
 	/* The following field is only used when sendSorted == true */
 	int			numSortCols;		/* number of sort key columns */

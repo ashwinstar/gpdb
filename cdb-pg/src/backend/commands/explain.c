@@ -606,10 +606,7 @@ explain_outNode(StringInfo str,
 				switch (pMotion->motionType)
 				{
 					case MOTIONTYPE_HASH:
-						if (pMotion->hashToSelfOnly)
-							pname = "Cull Motion";
-						else
-							pname = "Redistribute Motion";
+						pname = "Redistribute Motion";
 						break;
 					case MOTIONTYPE_FIXED:
 						if (pMotion->numOutputSegs == 0)

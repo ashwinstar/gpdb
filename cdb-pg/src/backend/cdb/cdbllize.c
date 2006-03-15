@@ -589,22 +589,13 @@ prescan_walker(Node *node, PlanProfile * context)
 				Plan	   *plan = (Plan *) node;
 				Plan	   *child = outerPlan(node);
 
-				if (child != NULL)
-				{
-					/* Might scan child, so inherit flow characteristics. */
-					plan->flow = pull_up_Flow(plan, plan->lefttree, false);
+                /* If there is a child, inherit its flow characteristics. */
+                if (child)
+					plan->flow = pull_up_Flow(plan, plan->lefttree, true);
 
-					/*
-					 * We aren't sure the partitioning attributes are in our
-					 * targetlist, so we shouldn't claim they are.
-					 */
-					plan->flow->hashExpr = NIL;
-				}
+                /* Result is a constant 1-row table. Evaluate on a single QE. */
 				else
-				{
-					/* Treat Var-free target list as replicated. */
-					plan->flow = makeFlow(FLOW_REPLICATED);
-				}
+					plan->flow = makeFlow(FLOW_SINGLETON);
 			}
 			goto return_false;
 
@@ -617,7 +608,7 @@ prescan_walker(Node *node, PlanProfile * context)
 				/* Flow is same as leftree's Flow. */
 				Plan	   *plan = (Plan *) node;
 
-				plan->flow = pull_up_Flow(plan, plan->lefttree, false);
+				plan->flow = pull_up_Flow(plan, plan->lefttree, true);
 			}
 			goto return_false;
 
@@ -809,41 +800,27 @@ prescan_walker(Node *node, PlanProfile * context)
 			/* First prescan children */
 			if (plan_tree_walker(node, prescan_walker, context))
 				goto return_true;
-			if (finished)
-				goto return_false;
-
+			if (!finished)
 			{
-				Plan	   *plan = (Plan *) node;
-				Plan	   *child = outerPlan(node);
+				Plan   *plan = (Plan *)node;
 
-				Assert(child != NULL && child->flow != NULL);
+				/* Start with same flow characteristics as subplan. */
+				plan->flow = pull_up_Flow(plan, plan->lefttree, true);
 
-				if (child->flow->flotype == FLOW_REPLICATED
-					|| child->flow->flotype == FLOW_SINGLETON)
+    			/* Deal with partitioned LIMIT and OFFSET.	*/
+				if (plan->flow->flotype == FLOW_PARTITIONED)
 				{
-					/* No motion required so inherit flow characteristics. */
-					plan->flow = pull_up_Flow(plan, child, true);
-					goto return_false;
+				    /*
+				     * Specify restructuring.  The resulting flow will retain
+                     * any sort specified in the input plan, but will become
+				     * singleton.  The restructuring is flagged by the xform
+				     * movement request.
+				     */
+                    plan->flow->flotype = FLOW_SINGLETON;
+                    plan->flow->segindex = 0;
+                    plan->flow->hashExpr = NIL;
+                    plan->flow->req_xform = MOVEMENT_LIM_RESTRUCT;
 				}
-			}
-
-			/* Deal with partitioned LIMIT and OFFSET.	*/
-			{
-				Limit	   *limit = (Limit *) node;
-
-				/*
-				 * Specify restructuring.  The resulting flow will retain any
-				 * sort specified in the input plan, but will become
-				 * singleton.  The restructuring is flagged by the xform
-				 * movement request.
-				 */
-				limit->plan.flow = pull_up_Flow((Plan *) limit, limit->plan.lefttree, true);
-
-				limit->plan.flow->flotype = FLOW_SINGLETON;
-				limit->plan.flow->req_move = MOVEMENT_NONE;
-				limit->plan.flow->segindex = 0;
-				limit->plan.flow->hashExpr = NIL;
-				limit->plan.flow->req_xform = MOVEMENT_LIM_RESTRUCT;
 			}
 			goto return_false;
 
@@ -1073,7 +1050,7 @@ prescan_append(Plan *plan, PlanProfile * context)
 				break;
 
             default:
-                Assert(0);
+                Insist(0);
 		}
 
 		/*
@@ -1768,17 +1745,15 @@ repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hash
 {
     Movement    req_move = MOVEMENT_REPARTITION;
 
-    Assert(plan->flow && plan->flow->flotype != FLOW_UNDEFINED);
+    Assert(plan->flow);
+    Assert(plan->flow->flotype == FLOW_PARTITIONED ||
+           plan->flow->flotype == FLOW_SINGLETON);
     Assert(!live || list_length(hashExpr) > 0);
 
     /* Already partitioned on the given hashExpr?  Do nothing. */
     if (hashExpr &&
         equal(hashExpr, plan->flow->hashExpr))
         return true;
-
-    /* Deep six? */
-    if (plan->flow->flotype == FLOW_REPLICATED)
-        req_move = MOVEMENT_REP2PARTITIONED;
 
     return adjustPlanFlow(plan, live, stable, rescannable, req_move, hashExpr);
 }
@@ -1815,7 +1790,10 @@ adjustPlanFlow(Plan        *plan,
      * no longer have a proper description of the flow from the Plan node
      * into the proposed Motion operator.  Refuse further adjustments.
      */
-    if (flow->req_move != MOVEMENT_NONE || flow->req_xform != MOVEMENT_NONE)
+    if (flow->req_move != MOVEMENT_NONE)
+        return false;
+    if (flow->req_xform != MOVEMENT_NONE &&
+        flow->req_xform != MOVEMENT_LIM_RESTRUCT)
         return false;
 
     /* Tuples cannot be sent from QD to QEs via Motion nodes (for now). */
@@ -1848,8 +1826,19 @@ adjustPlanFlow(Plan        *plan,
 	switch (plan->type)
 	{
 		case T_Sort:
-            /* If order doesn't matter, why is there a Sort here? */
-            Assert(stable);
+            if (!stable && live)
+            {
+                /*
+                 * Q: If order doesn't matter, why is there a Sort here?
+                 * A: Could be INSERT...SELECT...ORDER BY; each QE in the
+                 * inserting gang will sort its own partition locally.  Weird,
+                 * but could be used for clustering.  But note it in the debug
+                 * log; some caller might specify stable = false by mistake.
+                 */
+                ereport(DEBUG4, (errmsg("adjustPlanFlow stable=false applied "
+                                        "to Sort operator; req_move=%d",
+                                        req_move) ));
+            }
 
 			if (req_move == MOVEMENT_FOCUS)
 			{
@@ -1974,7 +1963,6 @@ adjustPlanFlow(Plan        *plan,
             break;
 
         case MOVEMENT_REPARTITION:
-        case MOVEMENT_REP2PARTITIONED:
             flow->flotype = FLOW_PARTITIONED;
             flow->hashExpr = copyObject(hashExpr);
             flow->segindex = 0;

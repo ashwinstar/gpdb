@@ -80,16 +80,21 @@ extern Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary,
 				int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators);
 extern Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary,
 				    int numInputSegs, List *hashExpr);
+
+#if UNUSED
 extern Motion *make_sorted_hashed_motion(Plan *lefttree, bool sendToSecondary,
 						   int numInputSegs, List *hashExpr,
 				int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators);
+#endif /*UNUSED*/
+
 extern Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary,
                                      int numInputSegs);
+
+#if UNUSED
 extern Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary,
 				 int numInputSegs,
                  int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators);
-extern void setHashToSelfOnly(Motion *motion);
-extern void setFixedToSelfOnly(Motion *motion);
+#endif /*UNUSED*/
 
 extern int *makeDefaultSegIdxArray(int numSegs);
 

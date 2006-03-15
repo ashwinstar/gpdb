@@ -5,9 +5,9 @@
 *	  an intervening Motion node.  The main entry point is the function
 *	  apply_limit_motion.
 *
+* Portions Copyright (c) 2005-2006, Greenplum Inc
 * Portions Copyright (c) 1996-2003, PostgreSQL Global Development Group
 * Portions Copyright (c) 1994, Regents of the University of California
-* Portions Copyright (c) 2005, Greenplum Inc
 *
 *
 * IDENTIFICATION
@@ -78,11 +78,9 @@ apply_limit_motion(Plan *plan, ApplyMotionState * state)
 		   plan != NULL
 		   && IsA(plan, Limit)
 		   && plan->flow->req_xform == MOVEMENT_LIM_RESTRUCT
-           && plan->flow->flotype == FLOW_SINGLETON
 		   && plan->lefttree != NULL
 		   && plan->lefttree->flow != NULL
 		   && plan->lefttree->flow->flotype == FLOW_PARTITIONED
-		   && plan->righttree == NULL
 		);
 
 	limit = (Limit *) plan;
@@ -165,6 +163,11 @@ apply_limit_motion(Plan *plan, ApplyMotionState * state)
 						  errmsg("LIMIT/OFFSET of unordered result.")
 						  ));
 	}
+
+    /* Verify that the correct output flow type was set during prescan. */
+    Assert(  (plan->flow->flotype == plan->lefttree->flow->flotype &&
+              plan->flow->base_flotype == FLOW_UNDEFINED)
+          || plan->flow->base_flotype == plan->lefttree->flow->flotype);
 
 	assignMotionID((Node *) plan->lefttree, state, NULL);
 

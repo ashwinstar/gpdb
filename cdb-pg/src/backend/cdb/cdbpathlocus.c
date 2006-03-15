@@ -225,21 +225,7 @@ cdbpathlocus_from_subquery(struct PlannerInfo   *root,
                 CdbPathLocus_MakeSingleQE(&locus);
             break;
         case FLOW_REPLICATED:
-            /* Locus could have been either 'replicated' or 'general'.
-             * If replicated, the plan node should have been marked
-             * DISPATCH_PARALLEL by create_plan().
-             */
-            switch (plan->dispatch)
-            {
-                case DISPATCH_PARALLEL:
-                    CdbPathLocus_MakeReplicated(&locus);
-                    break;
-                case DISPATCH_UNDETERMINED:
-                    CdbPathLocus_MakeGeneral(&locus);
-                    break;
-                default:
-                    Assert(false);
-            }
+            CdbPathLocus_MakeReplicated(&locus);
             break;
         case FLOW_PARTITIONED:
         {

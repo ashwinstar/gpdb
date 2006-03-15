@@ -54,15 +54,6 @@ static bool hasCtid(Plan *plan);
 static bool has_ctid_outside_tlist_walker(Node *node, void* unused);
 
 
-#define remove_flow_ordering(flow) \
-	if (flow) { \
-		(flow)->numSortCols = 0; \
-		if ( (flow)->sortColIdx ) pfree((flow)->sortColIdx); \
-		(flow)->sortColIdx = NULL; \
-		if ( (flow)->sortOperators ) pfree((flow)->sortOperators); \
-		(flow)->sortOperators = NULL; \
-	}
-
 /* ------------------------------------------------------------------------- *
  * Function apply_motion() and apply_motion_mutator() add motion nodes to
  * a top-level Plan tree as directed by the Flow nodes in the plan.
@@ -91,6 +82,7 @@ apply_motion(Plan *plan, Query *query)
 	state.parent_is_subplan = false;
 
 	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
+    Assert(plan->flow && plan->flow->flotype != FLOW_REPLICATED);
 
 	/* Does query have a target relation?  (INSERT/DELETE/UPDATE) */
     if (query->resultRelation > 0)
@@ -134,105 +126,49 @@ apply_motion(Plan *plan, Query *query)
 			break;
 
 		case CMD_INSERT:
-			/*
-			 * Make sure the top level flow is partitioned on the partitioning
-			 * key of the target relation.	Since this is an INSERT command,
-			 * the target list will correspond to the attributes of the target
-			 * relation in order.
-			 */
 			{
-				/*
-				 * TODO Are we sure the INSERT target isn't an inheritance
-				 * set? Should we check, or would it work fine anyway?
-				 */
-
 				switch (targetPolicyType)
 				{
 					case POLICYTYPE_PARTITIONED:
-						/*
-						* Deal with the source of the INSERT based on its flow
-						* characteristics.
-						*/
-						if (plan->flow->flotype == FLOW_PARTITIONED
-							|| (plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1)
-							)
-						{
-							/*
-							* Source is partitioned or singleton on a segment.
-							* Refocus.
-							*/
-							plan->flow->req_move = MOVEMENT_REPARTITION;
-                            if (plan->flow->base_flotype == FLOW_UNDEFINED)
-                                plan->flow->base_flotype = plan->flow->flotype;
-						}
-						else if (plan->flow->flotype == FLOW_REPLICATED)
-						{
-							/*
-							* Source is replicated over segments. Apply "deep-six".
-							*/
-							plan->flow->req_move = MOVEMENT_REP2PARTITIONED;
-                            if (plan->flow->base_flotype == FLOW_UNDEFINED)
-                                plan->flow->base_flotype = plan->flow->flotype;
-						}
-						else
-						{
-							/*
-							* Source is, presumably, a dispatcher singleton.
-							*/
-							ereport(ERROR, (
-										errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-								 errmsg("Cannot parallelize that INSERT yet")
-											));
-						}
+                    {
+                        List   *hashExpr;
 
-						remove_flow_ordering(plan->flow); /* No need to preserve order on INSERT. */
-						plan->flow->hashExpr = getExprListFromTargetList(plan->targetlist,
-                                                                         targetPolicy->nattrs,
-                                                                         targetPolicy->attrs,
-                                                                         true);
-						break;
+			            /*
+			             * Make sure the top level flow is partitioned on the
+                         * partitioning key of the target relation.	Since this
+                         * is an INSERT command, the target list will correspond
+                         * to the attributes of the target relation in order.
+			             */
+                        hashExpr = getExprListFromTargetList(plan->targetlist,
+                                                             targetPolicy->nattrs,
+                                                             targetPolicy->attrs,
+                                                             true);
+                        if (!repartitionPlan(plan, true, false, false, hashExpr))
+                            ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+                                            errmsg("Cannot parallelize that INSERT yet")
+                                    ));
+                        break;
+                    }
 
 					case POLICYTYPE_ENTRY:
-						/*
-						* Deal with the source of the INSERT based on its flow
-						* characteristics.
-						*/
-						if (plan->flow->flotype == FLOW_PARTITIONED
-							|| (plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1)
-							)
-						{
-							/*
-							* Source is partitioned or singleton on a segment.
-							* Refocus.
-							*/
-							plan->flow->req_move = MOVEMENT_FOCUS;
-                            if (plan->flow->base_flotype == FLOW_UNDEFINED)
-                                plan->flow->base_flotype = plan->flow->flotype;
-							plan->flow->segindex = -1;
-						}
-						else if (plan->flow->flotype == FLOW_REPLICATED)
-						{
-							/*
-							* Source is replicated over segments.
-							* We cannot currently handle insert into a local table
-							* from a replicated flow.
-							*/
-							ereport(ERROR, (
-										errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-								 errmsg("Cannot parallelize that INSERT yet")
-											));
-						}
-						else
-						{
-							/*
-							* Source is, presumably, a dispatcher singleton.
-							*/
-							plan->flow->req_move = MOVEMENT_NONE;
-						}
+                        /* All's well if query result is already on the QD. */
+                        if (plan->flow->flotype == FLOW_SINGLETON &&
+                            plan->flow->segindex < 0)
+                            break;
+
+			            /*
+                         * Query result needs to be brought back to the QD.
+                         * Ask for motion to a single QE.  Later, apply_motion
+                         * will override that to bring it to the QD instead.
+                         */
+                        if (!focusPlan(plan, true, false, false))
+							ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+								            errmsg("Cannot parallelize that INSERT yet")
+									));
 						break;
+
 					default:
-						Assert(false);
-						break;
+						Insist(0);
 				}
 			}
 			break;
@@ -537,33 +473,21 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
             break;
 
         case MOVEMENT_BROADCAST:
-            Assert(flow->numSortCols == 0);
-
             newnode = (Node *) make_broadcast_motion(plan, sendToSecondary,
                                                      numInputSegs);
-
             /* Assign unique node number to the new node. */
             assignMotionID(newnode, context, NULL);
             break;
 
         case MOVEMENT_REPARTITION:
-        case MOVEMENT_REP2PARTITIONED:
-            Assert(flow->hashExpr != NULL);
-            Assert(flow->numSortCols == 0);
-
             newnode = (Node *)make_hashed_motion(plan,
                                                  sendToSecondary,
                                                  numInputSegs,
                                                  flow->hashExpr
                                                  );
-
             /* Assign unique node number to the new node. */
             assignMotionID(newnode, context, NULL);
-
-            if (flow->req_move == MOVEMENT_REP2PARTITIONED)
-                setHashToSelfOnly((Motion *) newnode);
             break;
-
 
         case MOVEMENT_NONE:
             /* Update flow if reassigning singleton top slice to qDisp. */
@@ -576,7 +500,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
             break;
 
         default:
-            Assert(false);
+            Insist(0);
             break;
     }
 
@@ -681,9 +605,6 @@ make_motion(Plan       *lefttree,
 
     node->numInputSegs = numInputSegs;
     node->inputSegIdx = NULL;
-
-	node->hashToSelfOnly = false;
-	node->fixedToSelfOnly = false;
 
 	node->hashExpr = hashExpr;
 	node->hashDataTypes = hashDataTypes;
@@ -829,52 +750,6 @@ make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary,
 }
 #endif /*UNUSED*/
 
-/*
- * setHashToSelfOnly
- * This enables "deep-sixing" of hash motion, whereby
- * a tuple is only passed along if it hashes to its own segindex.
- * This implements "replicated to partitioned" motion.
- *
- * The motion node must already have been created,
- * it must of course be a hash motion node,
- * and it must not be sorted (Currently sorted hash motion ins not permitted anyway).
- */
-void
-setHashToSelfOnly(Motion * motion)
-{
-	Assert(motion != NULL);
-	Assert(motion->motionType == MOTIONTYPE_HASH);
-	Assert(motion->numHashSegs > 0);
-	Assert(motion->hashSegIdx != NULL);
-	Assert(!motion->sendSorted);
-
-	motion->hashToSelfOnly = true;
-}
-
-#if UNUSED
-/*
- * setFixedToSelfOnly
- * This enables "deep-sixing" of fixed motion, whereby
- * a tuple is only passed along if its destination is its own segindex.
- * This implements "replicated to singleton" motion.
- *
- * The motion node must already have been created,
- * it must of course be a fixed motion node,
- * and it must not be sorted,
- * and it must not be a broadcast fixed motion node.
- */
-void
-setFixedToSelfOnly(Motion * motion)
-{
-	Assert(motion != NULL);
-	Assert(motion->motionType == MOTIONTYPE_FIXED);
-	Assert(motion->numOutputSegs > 0);
-	Assert(motion->outputSegIdx != NULL);
-	Assert(!motion->sendSorted);
-
-	motion->fixedToSelfOnly = true;
-}
-#endif /*UNUSED*/
 
 /* --------------------------------------------------------------------
  * makeDefaultSegIdxArray -- creates an int array with numSegs elements,

@@ -3,7 +3,7 @@
  * outfuncs.c
  *	  Output functions for Postgres tree nodes.
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -20,7 +20,7 @@
  *
  *    N.B. Faster variants of these functions (producing illegible output)
  *         are supplied in outfast.c for use in MPP serialization.  The
- *         function in this file are intended to produce legible output.  
+ *         function in this file are intended to produce legible output.
  *
  *-------------------------------------------------------------------------
  */
@@ -617,13 +617,11 @@ _outMotion(StringInfo str, Motion *node)
 
 	WRITE_NODE_FIELD(hashExpr);
 	WRITE_NODE_FIELD(hashDataTypes);
-	WRITE_BOOL_FIELD(hashToSelfOnly);
 
 	WRITE_INT_FIELD(numOutputSegs);
 	appendStringInfoLiteral(str, " :outputSegIdx");
 	for (i = 0; i < node->numOutputSegs; i++)
 		appendStringInfo(str, " %d", node->outputSegIdx[i]);
-	WRITE_BOOL_FIELD(fixedToSelfOnly);
 
 	WRITE_INT_FIELD(numSortCols);
 	appendStringInfoLiteral(str, " :sortColIdx");
@@ -1286,7 +1284,6 @@ _outCdbMotionPath(StringInfo str, CdbMotionPath *node)
     WRITE_NODE_TYPE("MOTIONPATH");
 
     _outPathInfo(str, &node->path);
-    WRITE_BOOL_FIELD(hashToSelfOnly);
 
     WRITE_NODE_FIELD(subpath);
 }

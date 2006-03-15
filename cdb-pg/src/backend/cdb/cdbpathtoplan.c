@@ -43,8 +43,12 @@ cdbpathtoplan_create_flow(PlannerInfo    *root,
         flow = makeFlow(FLOW_SINGLETON);
         flow->segindex = 0;
     }
-    else if (CdbPathLocus_IsReplicated(path->locus) ||
-             CdbPathLocus_IsGeneral(path->locus))
+    else if (CdbPathLocus_IsGeneral(path->locus))
+    {
+        flow = makeFlow(FLOW_SINGLETON);
+        flow->segindex = 0;
+    }
+    else if (CdbPathLocus_IsReplicated(path->locus))
     {
         flow = makeFlow(FLOW_REPLICATED);
     }
@@ -155,10 +159,6 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
     }
     else
         Insist(0);
-
-    /* Should sender discard rows that hash to other partitions? */
-    if (path->hashToSelfOnly)
-        setHashToSelfOnly(motion);
 
     return motion;
 }                               /* cdbpathtoplan_create_motion_plan */

@@ -61,7 +61,6 @@ cdbpath_create_motion_path(PlannerInfo     *root,
     Cost                motioncost;
     double              recvrows;
     double              sendrows;
-    bool                hashToSelfOnly = false;
 
     /* No motion needed if subpath locus is exactly as requested. */
     if (CdbPathLocus_IsEqual(subpath->locus, locus))
@@ -74,29 +73,29 @@ cdbpath_create_motion_path(PlannerInfo     *root,
         if (CdbPathLocus_IsRoot(subpath->locus))
             return NULL;
 
+        /* No motion if singleQE-->root.  qDisp's slice will include subpath. */
+        if (CdbPathLocus_IsSingleQE(subpath->locus))
+            return subpath;
+
         /* No motion needed if subpath can run anywhere giving same output. */
         if (CdbPathLocus_IsGeneral(subpath->locus))
             return subpath;
 
         /* replicated-->bottleneck would give redundant copies of the rows. */
         if (CdbPathLocus_IsReplicated(subpath->locus))
-            return NULL;
+            goto invalid_motion_request;
 
         /* Fail if caller wants no motion. */
         if (require_existing_order &&
             !pathkeys)
             return NULL;
 
-        /* If the motion is 1-to-1, the rows will remain in the same order. */
-        if (CdbPathLocus_IsBottleneck(subpath->locus))
-            pathkeys = subpath->pathkeys;
-
         /* Must be partitioned-->bottleneck.
          *  If caller gave pathkeys, they'll be used for Merge Receive.
          *  If no pathkeys, Union Receive will arbitrarily interleave
          *  the rows from the subpath partitions in no special order.
          */
-        else if (!CdbPathLocus_IsPartitioned(subpath->locus))
+        if (!CdbPathLocus_IsPartitioned(subpath->locus))
             goto invalid_motion_request;
     }
 
@@ -119,33 +118,6 @@ cdbpath_create_motion_path(PlannerInfo     *root,
 
         /* Each qExec receives a subset of the rows, with ordering preserved. */
         pathkeys = subpath->pathkeys;
-    }
-
-    /* Does subpath produce same multiset of rows on every qExec of its gang? */
-    else if (CdbPathLocus_IsGeneral(subpath->locus) ||
-             CdbPathLocus_IsReplicated(subpath->locus))
-    {
-        /* No motion needed if caller wants replicated data. */
-        if (CdbPathLocus_IsReplicated(locus))
-            return subpath;
-
-        /* Must be general-->partitioned or replicated-->partitioned */
-        if (!CdbPathLocus_IsPartitioned(locus))
-            goto invalid_motion_request;
-
-        /* Fail if caller wants no motion. */
-        if (require_existing_order &&
-            !pathkeys)
-            return NULL;
-
-        /* Since the motion is 1-to-1, the rows remain in the same order. */
-        pathkeys = subpath->pathkeys;
-
-        /* Tell each qExec to filter on the hash key, passing rows that
-         * belong to its own partition and discarding rows that belong
-         * to other partitions.  Rows don't move (not far, anyway).
-         */
-        hashToSelfOnly = true;
     }
 
     /* Redistributing partitioned subpath output from one gang to another? */
@@ -172,6 +144,37 @@ cdbpath_create_motion_path(PlannerInfo     *root,
          */
         pathkeys = NIL;
     }
+
+    /* If subplan uses no tables, it can run on qDisp or a singleton qExec. */
+    else if (CdbPathLocus_IsGeneral(subpath->locus))
+    {
+        /* No motion needed if general-->replicated. */
+        if (CdbPathLocus_IsReplicated(locus))
+            return subpath;
+
+        /* Must be general-->partitioned. */
+        if (!CdbPathLocus_IsPartitioned(locus))
+            goto invalid_motion_request;
+
+        /* Fail if caller wants no motion. */
+        if (require_existing_order &&
+            !pathkeys)
+            return NULL;
+
+        /* Since the motion is 1-to-many, the rows remain in the same order. */
+        pathkeys = subpath->pathkeys;
+    }
+
+    /* Does subpath produce same multiset of rows on every qExec of its gang? */
+    else if (CdbPathLocus_IsReplicated(subpath->locus))
+    {
+        /* No-op if replicated-->replicated. */
+        if (CdbPathLocus_IsReplicated(locus))
+            return subpath;
+
+        /* Other destinations aren't used or supported at present. */
+        goto invalid_motion_request;
+    }
     else
         goto invalid_motion_request;
 
@@ -188,7 +191,6 @@ cdbpath_create_motion_path(PlannerInfo     *root,
      * MPP TODO: A less heavy-handed solution is needed.
      */
     if (pathkeys &&
-        !hashToSelfOnly &&
         subpath->motionHazard)
     {
         MaterialPath *mtlpath = create_material_path(subpath->parent, subpath);
@@ -204,7 +206,6 @@ cdbpath_create_motion_path(PlannerInfo     *root,
     pathnode->path.locus = locus;
     pathnode->path.pathkeys = pathkeys;
     pathnode->subpath = subpath;
-    pathnode->hashToSelfOnly = hashToSelfOnly;
 
     /* Cost of motion */
     cost_per_row = (mpp_motion_cost_per_row > 0.0)
@@ -234,7 +235,7 @@ invalid_motion_request:
 /*
  * cdbpath_partkeyitem_eq_constant
  */
-static __inline__ bool
+static inline bool
 cdbpath_partkeyitem_eq_constant(CdbLocusType   locustype,
                                  List          *partkeyitem)
 {

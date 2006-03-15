@@ -3,7 +3,7 @@
  * outfast.c
  *	  Fast output functions for Postgres tree nodes.
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -12,9 +12,9 @@
  *	  $PostgreSQL: pgsql/src/backend/nodes/outfuncs.c,v 1.261.2.1 2005/11/14 23:54:34 tgl Exp $
  *
  * NOTES
- *	  Every node type that can appear in an MPP serialized query or plan 
+ *	  Every node type that can appear in an MPP serialized query or plan
  *    tree must have an output function defined here.  Further it must write
- *    a form suitable for the corresponding input function in readfuncs.c 
+ *    a form suitable for the corresponding input function in readfuncs.c
  *    which must also exist.
  *
  *     By design, the only user of these fast variants is the function
@@ -23,9 +23,9 @@
  *    This file is based on outfuncs.c, however, it is optimized for speed
  *    at the expense legibility.  Because of its origin, it contains output
  *    functions for node types not needed in serialization.  Eventually,
- *    these may be removed.  It would also be possible for the format 
- *    written by these functions to diverge from the more legible output 
- *    written by the functions in outfuncs.c, but this would require 
+ *    these may be removed.  It would also be possible for the format
+ *    written by these functions to diverge from the more legible output
+ *    written by the functions in outfuncs.c, but this would require
  *    corresponding changes on the receiving end (e.g. readfast.c, etc.)
  *
  *-------------------------------------------------------------------------
@@ -627,13 +627,11 @@ _outMotion(StringInfo str, Motion *node)
 
 	WRITE_LIST_FIELD(hashExpr);
 	WRITE_LIST_FIELD(hashDataTypes);
-	WRITE_BOOL_FIELD(hashToSelfOnly);
 
 	WRITE_INT_FIELD(numOutputSegs);
 	appendStringInfoLiteral(str, " :outputSegIdx");
 	for (i = 0; i < node->numOutputSegs; i++)
 		appendStringInfo(str, " %d", node->outputSegIdx[i]);
-	WRITE_BOOL_FIELD(fixedToSelfOnly);
 
 	WRITE_INT_FIELD(numSortCols);
 	appendStringInfoLiteral(str, " :sortColIdx");
@@ -1296,7 +1294,6 @@ _outCdbMotionPath(StringInfo str, CdbMotionPath *node)
     WRITE_NODE_TYPE("MOTIONPATH");
 
     _outPathInfo(str, &node->path);
-    WRITE_BOOL_FIELD(hashToSelfOnly);
 
     WRITE_NODE_FIELD(subpath);
 }

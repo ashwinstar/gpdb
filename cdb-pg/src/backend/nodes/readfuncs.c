@@ -3,7 +3,7 @@
  * readfuncs.c
  *	  Reader functions for Postgres tree nodes.
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -2037,11 +2037,9 @@ _readMotion(void)
 
 	READ_NODE_FIELD(hashExpr);
 	READ_NODE_FIELD(hashDataTypes);
-	READ_BOOL_FIELD(hashToSelfOnly);
 
 	READ_INT_FIELD(numOutputSegs);
 	READ_INT_ARRAY(outputSegIdx, numOutputSegs, int);
-	READ_BOOL_FIELD(fixedToSelfOnly);
 
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
