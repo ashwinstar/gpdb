@@ -1804,7 +1804,6 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 				sequenceoid = 0;
 				if (arg1->consttype == REGCLASSOID)
 					sequenceoid = DatumGetObjectId(arg1->constvalue);
-
 			}
 
 			/*
@@ -1871,9 +1870,6 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 										const_val, const_is_null,
 										resultTypByVal);
 
-
-			
-			elog(DEBUG3," simplified");
 
 			if (simple)			/* successfully simplified it */
 				return (Node *) simple;
@@ -2072,16 +2068,33 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		queryDesc->operation == CMD_DELETE)
 	{
 
+		List * savetargets = NIL;
 		/*
 		 * The Query tree doesn't have to be mutated here, since it isn't used during
 		 * the execution.
 		 */
-		
-	
+		 
+		savetargets = NIL;
+		 
+		if (is_plan_node((Node *)queryDesc->plantree) &&
+			!is_projection_capable_plan((Plan *)queryDesc->plantree))
+		{
+			/*
+			 * don't do targetlists in nodes where the targetlist isn't used.  Hide them from the mutator
+			 */
+			savetargets = queryDesc->plantree->targetlist;
+			queryDesc->plantree->targetlist = NIL;
+		}
+
 
 		queryDesc->plantree = (Plan *) plan_tree_mutator((Node *) queryDesc->plantree,
 									pre_dispatch_function_evaluation_mutator,
 														 &pcontext);
+														 
+		if (savetargets != NIL)
+		{
+			((Plan *)queryDesc->plantree)->targetlist = savetargets;
+		}
 
 	}
 
