@@ -2069,6 +2069,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	{
 
 		List * savetargets = NIL;
+		Plan * oldplan = NULL;
 		/*
 		 * The Query tree doesn't have to be mutated here, since it isn't used during
 		 * the execution.
@@ -2084,6 +2085,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			 */
 			savetargets = queryDesc->plantree->targetlist;
 			queryDesc->plantree->targetlist = NIL;
+			oldplan = queryDesc->plantree;
 		}
 
 
@@ -2093,7 +2095,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 														 
 		if (savetargets != NIL)
 		{
-			((Plan *)queryDesc->plantree)->targetlist = savetargets;
+			queryDesc->plantree->targetlist = savetargets;
+			oldplan->targetlist = savetargets;
 		}
 
 	}
