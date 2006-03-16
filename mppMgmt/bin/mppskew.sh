@@ -86,7 +86,7 @@ USAGE () {
 	$ECHO "      -n, <schema name> used where have duplicate table names in different schema"
 	$ECHO
 	$ECHO "      Connection options:"
-        $ECHO "      -d, <head database directory> name of alternative QD database to connect [optional]"
+        $ECHO "      -d, <master database directory> name of alternative master database to connect [optional]"
         $ECHO
         $ECHO "      Return codes:"
         $ECHO "      0 No problems encountered with requested operation"
