@@ -149,9 +149,9 @@ GET_NODE_COUNT () {
 	SEG_PORT=`$ECHO $NodeInfo|$CUT -d, -f2`
 	SEG_DIR=`$ECHO $NodeInfo|$CUT -d, -f3`
 	SEG_NAME=`$BASENAME $SEG_DIR`
-	ACCESS_TEST=`$TRUSTED_SHELL $SEG_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c\"select version();\""`
+	ACCESS_TEST=`$TRUSTED_SHELL $SEG_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c\"select version();\""`
 	ERROR_CHK $? "test access to $SEG_PORT $QD_DBNAME on $SEG_HOST" 2
-	$TRUSTED_SHELL -n $SEG_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH; time env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c'select count(*),'\''$SEG_NAME'\'','\''$SEG_HOST'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[:alnum:]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}' >> $TMPFILE &
+	$TRUSTED_SHELL -n $SEG_HOST "${EXPORT_LIB_PATH}; time env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c'select count(*),'\''$SEG_NAME'\'','\''$SEG_HOST'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[:alnum:]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}' >> $TMPFILE &
 	ERROR_CHK $? "send request to $SEG_HOST port $SEG_PORT" 2
 	let SEGCOUNT=$SEGCOUNT+1
 	done

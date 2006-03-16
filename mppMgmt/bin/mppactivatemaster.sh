@@ -57,7 +57,6 @@ ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 FORCE_ACTIVATE=0
 unset START_MPPSYNC
-MPP_TBL=mpp.mpp
 START_PROG=$MPPSTART
 STOP_PROG=$MPPSTOP
 REMOTE_START_PROG=$MPPSTART
@@ -137,7 +136,7 @@ CHECK_PARAM () {
 	#Obtain the fail-back master data directory
 	FAILBACK_MASTER_DATA_DIRECTORY=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir from mpp_configuration where dbid in ($FAILBACK_MASTER_DBID);"`
 	ERROR_CHK $? "obtain fail-back master data directory" 2
-	#Check to ensure that we have an entry for FAILBACK_MASTER_HOSTNAME in mpp.host table
+	#Check to ensure that we have an entry for FAILBACK_MASTER_HOSTNAME in mpp_configuration table
 	FAILBACK_MASTER_HOSTID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select 1 from mpp_configuration where hostname='${FAILBACK_MASTER_HOSTNAME}';"`
 	ERROR_CHK $? "obtain fail-back master hostid" 2
 	#Check that we are not trying to re-activate on the standby host

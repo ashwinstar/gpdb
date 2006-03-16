@@ -56,7 +56,6 @@ ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 FORCE_ACTIVATE=0
 unset START_MPPSYNC
-MPP_TBL=mpp.mpp
 START_PROG=$MPPSTART
 STOP_PROG=$MPPSTOP
 #******************************************************************************

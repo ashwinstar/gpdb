@@ -627,7 +627,7 @@ CREATE_QD_DB () {
 			LOG_MSG "[INFO]:-Path correct for plpgsql.so, skipping edit"
 		fi
 		LOG_MSG "[INFO]:-Initializing Master Postgres instance $MPP_DIR"
-		export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH
+		$EXPORT_LIB_PATH
 		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR"
 		BACKOUT_COMMAND "$RM -Rf $MPP_DIR"
 		BACKOUT_COMMAND "$ECHO Removing Master data directory files"
@@ -688,7 +688,7 @@ CREATE_QD_DB () {
 		BACKOUT_COMMAND "$ECHO \"Removing Master lock files\""
 		BACKOUT_COMMAND "$RM -f ${MPP_DIR}.log"
 		BACKOUT_COMMAND "$ECHO Removing Master log file"
-		BACKOUT_COMMAND "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=$MPP_PORT;$PG_CTL -D $MPP_DIR stop"
+		BACKOUT_COMMAND "$EXPORT_LIB_PATH;export PGPORT=$MPP_PORT;$PG_CTL -D $MPP_DIR stop"
 		BACKOUT_COMMAND "$ECHO \"Stopping Master instance\""
 		LOG_MSG "[INFO]:-Compleleted starting the Master in admin mode"
 		$SLEEP 2
@@ -762,10 +762,10 @@ UPDATE_MPP () {
 		TYPE=$7
 		U_HOST=$8
 		if [ $TYPE -eq 0 ]; then
-				export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
+				$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
 				ERROR_CHK $? "add $U_DBID to Master mpp_mpp" 2
 		else
-				RUN_COMMAND_REMOTE $U_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $MPP_TBL (mppname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
+				RUN_COMMAND_REMOTE $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $MPP_TBL (mppname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
 		fi	
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to update mpp system table" 2
@@ -809,7 +809,7 @@ PROCESS_QE () {
 			LOG_MSG "[INFO]:-Path correct for plpgsql.so, skipping edit"
 		fi
 
-		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;$INITDB -E $ENCODING -D $MPP_DIR"
+		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB -E $ENCODING -D $MPP_DIR"
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
 		LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
@@ -849,16 +849,16 @@ PROCESS_QE () {
 			fi
 		done
 		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
-		$TRUSTED_SHELL ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start"
+		$TRUSTED_SHELL ${MPP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start"
 		if [ $? -ne 0 ]; then
 			BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-			BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+			BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 			$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
 			ERROR_EXIT "[FATAL]:-Failed to start segment Mirror instance database" 2
 		fi	
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
 		BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $MPP_HOSTNAME\""
 }
 
@@ -898,7 +898,7 @@ CREATE_STANDBY_QD () {
 		esac
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${STANDBY_HOSTNAME} \"$RM -Rf ${QD_DIR}\""
 		BACKOUT_COMMAND "$ECHO \"Removing standby directory ${QD_DIR} on $STANDBY_HOSTNAME\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL $STANDBY_HOSTNAME \"export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${MASTER_PORT}; $PG_CTL -w -D ${MASTER_DIRECTORY}/${SEG_PREFIX}0 -l ${MASTER_DIRECTORY}/${SEG_PREFIX}0.log -o \"-i -p ${MASTER_PORT}\" -m immediate  stop\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL $STANDBY_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${MASTER_PORT}; $PG_CTL -w -D ${MASTER_DIRECTORY}/${SEG_PREFIX}0 -l ${MASTER_DIRECTORY}/${SEG_PREFIX}0.log -o \"-i -p ${MASTER_PORT}\" -m immediate  stop\""
 		BACKOUT_COMMAND "$ECHO \"Stopping standby instance on $STANDBY_HOSTNAME\""
 	fi 
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -1005,9 +1005,9 @@ LOG_MSG "[INFO]:-------------------------------------------------------"
 if [ `strings $INITDB|$GREP -c "$MPP_LIBRARY_PATH"` -eq 0 ];then
 LOG_MSG "[INFO]:-To access database via psql you will need to add the below"
 LOG_MSG "[INFO]:-library path $MPP_LIBRARY_PATH"
-LOG_MSG "[INFO]:-to the LD_LIBRARY_PATH environment variable"
+LOG_MSG "[INFO]:-to the ${LIB_TYPE} environment variable"
 LOG_MSG "[INFO]:-For example the below command can be used"
-LOG_MSG "[INFO]:-export LD_LIBRARY_PATH=$MPP_LIBRARY_PATH:\$LD_LIBRARY_PATH"
+LOG_MSG "[INFO]:-export ${LIB_TYPE}=$MPP_LIBRARY_PATH:\$${LIB_TYPE}"
 LOG_MSG "[INFO]:-This should be set in users startup environment file i.e. .bashrc"
 fi
 LOG_MSG "[INFO]:-To access the mpp scripts for this cluster:"
