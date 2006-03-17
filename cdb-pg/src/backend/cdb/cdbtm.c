@@ -963,7 +963,7 @@ execDtxCommand(void)
 
 
 /* initialize a global transaction context */
-void
+static void
 initGxact(TMGXACT * gxact)
 {
 	generateGID(gxact->gid);
@@ -977,7 +977,7 @@ initGxact(TMGXACT * gxact)
 /*
  * allocate a global transaction context from share memory.
  */
-TMGXACT *
+static TMGXACT *
 allocGxact(void)
 {
 	TMGXACT    *gxact;
@@ -1003,7 +1003,7 @@ allocGxact(void)
 /*
  * release global transaction to share memory
  */
-void
+static void
 releaseGxact(void)
 {
 	int			i;
@@ -1035,7 +1035,7 @@ releaseGxact(void)
  * Writes the current state of the transaction to the dtm log file. This
  * DOES NOT guarantee those records are sync'd to disk.
  */
-void
+static void
 writeToTmLog( TMGXACT *gxact, DtxState state )
 {
 	TmLogRecord record = {{0, 0, "", TM_LOG_XACT, 0, 0}};
@@ -1057,7 +1057,7 @@ writeToTmLog( TMGXACT *gxact, DtxState state )
  * This function manages all dtx state transistions and writes/flushes to 
  * the logs as necessary.
  */
-void
+static void
 updateDtxState(DtxState state)
 {
 	TMGXACT    *gxact = currentGxact;
@@ -1234,7 +1234,7 @@ updateDtxState(DtxState state)
 
 
 /* generate global transaction id */
-void
+static void
 generateGID(char *gid)
 {
 	time_t		t = time(NULL);
@@ -1262,7 +1262,7 @@ generateGID(char *gid)
  * The remaining in-doubt transactions that remain (ones the DTM doesn't know
  * about) are all ABORTed.
  */
-void
+static void
 recoverTM(void)
 {
 
@@ -1317,7 +1317,7 @@ recoverTM(void)
  * Go through all in-doubt transactions that the DTM knows about and 
  * resolve them. 
  */
-bool
+static bool
 recoverInDoubtTransactions(void)
 {
 	int i;
@@ -1468,7 +1468,7 @@ recoverInDoubtTransactions(void)
  * of which seg db's have which transactions in-doubt.  It currently doesn't 
  * need to due to the way we handle this information later.
  */
-HTAB *
+static HTAB *
 gatherRMInDoubtTransactions(void)
 {
 	bool		dispatchToMirrors = true;
@@ -1570,7 +1570,7 @@ gatherRMInDoubtTransactions(void)
  * across all of the QEs by sending a ROLLBACK PREPARED.  
  *
  */ 
-void
+static void
 abortRMInDoubtTransactions(HTAB *htab)
 {
 	struct CdbDispatchResults  *primaryResults = NULL;
@@ -1622,7 +1622,7 @@ abortRMInDoubtTransactions(HTAB *htab)
  * Searches the provided htab to see if it contains an InDoubtDtx
  * with the same dtx global id (gid) as the one provided.
  */
-bool
+static bool
 checkRMs(HTAB *htab, char *gid)
 {
 	InDoubtDtx *dtx;
@@ -1642,7 +1642,7 @@ checkRMs(HTAB *htab, char *gid)
  * Used during TM recovery to remove the in-doubt transaction in the provided
  * htab that has the same gid as the one provided.
  */
-void
+static void
 removeInDoubtTransaction(HTAB *htab, char *gid )
 {
 	bool found;
@@ -1657,7 +1657,7 @@ removeInDoubtTransaction(HTAB *htab, char *gid )
  * cleanRMResultSets: 
  * Goes the set of PGresults passed in and clears and frees them.  
  */
-void
+static void
 cleanRMResultSets(PGresult **pgresultSets)
 {
 	/* TODO: need to handle multiple dbs in a segment case */
@@ -1682,7 +1682,7 @@ cleanRMResultSets(PGresult **pgresultSets)
  *
  * The TODO: below in recoverCommittedDtx also applies to this. 
  */
-void
+static void
 recoverRollbackedDtx(void)
 {
 	ereport(DEBUG2,
@@ -1712,7 +1712,7 @@ recoverRollbackedDtx(void)
  *		 transaction.  This really needs to be fixed so that we can get airtight
  *		 state tracking for distributed transactions.  
  */
-void
+static void
 recoverCommittedDtx(void)
 {
 	ereport(DEBUG2,
@@ -1729,7 +1729,7 @@ recoverCommittedDtx(void)
  * legacy function for resolving in doubt transactions. Only used for checking 
  * and resolving in-doubt transactions at transaction start time. 
  */
-void
+static void
 resolveInDoubtDtx(void)
 {
     int         i;
@@ -1767,7 +1767,7 @@ resolveInDoubtDtx(void)
  * used to log the current state (according to the DTM) of all the
  * global distributed transactions that are still active (in shmem).
  */
-void
+static void
 dumpAllDtx(void)
 {
     int i;
@@ -1781,7 +1781,7 @@ dumpAllDtx(void)
 }
 
 
-void
+static void
 dumpRMOnlyDtx(HTAB *htab, StringInfoData *buff)
 {
 	HASH_SEQ_STATUS status;
