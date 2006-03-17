@@ -32,7 +32,8 @@ typedef struct ApplyMotionState
 {
 	int			nextMotionID;
     int         sliceDepth;
-	bool		parent_is_subplan;
+    int         numInitPlanMotionNodes;
+    bool		parent_is_subplan;
 
 	/*
 	 * TODO Finish the mutator which will eventually need some state: At a

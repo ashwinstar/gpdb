@@ -79,6 +79,7 @@ apply_motion(Plan *plan, Query *query)
 
 	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
     state.sliceDepth = 0;
+    state.numInitPlanMotionNodes = 0;
 	state.parent_is_subplan = false;
 
 	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
@@ -243,7 +244,7 @@ apply_motion(Plan *plan, Query *query)
 
 	result = (Plan *) apply_motion_mutator((Node *) plan, &state);
 
-	result->nMotionNodes = state.nextMotionID - 1;
+	Assert(result->nMotionNodes == state.nextMotionID - 1);
 
 	/* Last minute check for MPP badness. */
 	if (query->commandType == CMD_DELETE ||
@@ -253,8 +254,9 @@ apply_motion(Plan *plan, Query *query)
 
 		/*
 		 * Currently, we only support update or delete involving 1 gang
+         * (not counting Init Plans).
 		 */
-		if (result->nMotionNodes > 0)
+		if (result->nMotionNodes > state.numInitPlanMotionNodes)
 		{
 			ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
 					        errmsg("Cannot parallelize that %s yet", cmd),
@@ -300,6 +302,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     Plan   *plan;
     Flow   *flow;
     int     numInputSegs;
+    int     saveNextMotionID;
     int     saveSliceDepth;
     bool    sendToSecondary = false;    /* always for now */
 	bool	parent_is_subplan = false;
@@ -344,6 +347,8 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     plan = (Plan *)node;
     flow = plan->flow;
 
+    saveNextMotionID = context->nextMotionID;
+
     /* Descending into a subquery or a new slice? */
     saveSliceDepth = context->sliceDepth;
     if (IsA(node, Query))
@@ -380,6 +385,22 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     plan = (Plan *)newnode;
     flow = plan->flow;
 
+    /* Keep track of the number of Motion nodes found in Init Plans. */
+    if (plan->initPlan)
+    {
+        ListCell   *cell;
+        SubPlan    *subplan;
+        int         nMotion = 0;
+
+        foreach(cell, plan->initPlan)
+        {
+            subplan = (SubPlan *)lfirst(cell);
+            Assert(IsA(subplan, SubPlan));
+            nMotion += subplan->plan->nMotionNodes;
+        }
+        context->numInitPlanMotionNodes += nMotion;
+    }
+
     /* Pre-existing Motion nodes must be renumbered. */
     if (IsA(newnode, Motion))
     {
@@ -406,7 +427,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
             }
             motion->outputSegIdx[0] = -1;
         }
-        return newnode;
+        goto done;
     }
 
     /*
@@ -414,7 +435,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
      * finished by the planner.
      */
     if (!flow)
-        return newnode;
+        goto done;
 
     Assert(IsA(flow, Flow));
 
@@ -504,6 +525,8 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
             break;
     }
 
+done:
+    ((Plan *)newnode)->nMotionNodes = context->nextMotionID - saveNextMotionID;
 	return newnode;
 }                               /* apply_motion_mutator */
 
