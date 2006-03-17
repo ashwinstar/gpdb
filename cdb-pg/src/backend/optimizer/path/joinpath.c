@@ -3,7 +3,7 @@
  * joinpath.c
  *	  Routines to find all possible paths for processing a set of joins
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -289,6 +289,7 @@ sort_inner_and_outer(PlannerInfo *root,
 									   restrictlist,
 									   merge_pathkeys,
 									   cur_mergeclauses,
+                                       mergeclause_list,
 									   outerkeys,
 									   innerkeys));
 	}
@@ -536,6 +537,7 @@ match_unsorted_outer(PlannerInfo *root,
 									   restrictlist,
 									   merge_pathkeys,
 									   mergeclauses,
+                                       mergeclause_list,    /*CDB*/
 									   NIL,
 									   innersortkeys));
 
@@ -599,6 +601,7 @@ match_unsorted_outer(PlannerInfo *root,
 											   restrictlist,
 											   merge_pathkeys,
 											   newclauses,
+                                               mergeclause_list,    /*CDB*/
 											   NIL,
 											   NIL));
 				cheapest_total_inner = innerpath;
@@ -642,6 +645,7 @@ match_unsorted_outer(PlannerInfo *root,
 												   restrictlist,
 												   merge_pathkeys,
 												   newclauses,
+                                                   mergeclause_list,    /*CDB*/
 												   NIL,
 												   NIL));
 				}

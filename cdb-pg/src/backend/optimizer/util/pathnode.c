@@ -1283,6 +1283,11 @@ create_nestloop_path(PlannerInfo *root,
  * 'pathkeys' are the path keys of the new join path
  * 'mergeclauses' are the RestrictInfo nodes to use as merge clauses
  *		(this should be a subset of the restrict_clauses list)
+ * 'allmergeclauses' are the RestrictInfo nodes that are of the form
+ *      required of merge clauses (equijoin between outer and inner rel).
+ *      Consists of the ones to be used for merging ('mergeclauses') plus
+ *      any others in 'restrict_clauses' that are to be applied after the
+ *      merge.  We use them for motion planning.  (CDB)
  * 'outersortkeys' are the sort varkeys for the outer relation
  *      or NIL to use existing ordering
  * 'innersortkeys' are the sort varkeys for the inner relation
@@ -1297,6 +1302,7 @@ create_mergejoin_path(PlannerInfo *root,
 					  List *restrict_clauses,
 					  List *pathkeys,
 					  List *mergeclauses,
+                      List *allmergeclauses,    /*CDB*/
 					  List *outersortkeys,
 					  List *innersortkeys)
 {
@@ -1329,7 +1335,7 @@ create_mergejoin_path(PlannerInfo *root,
                                          jointype,
                                          &outer_path,       /* INOUT */
                                          &inner_path,       /* INOUT */
-                                         mergeclauses,
+                                         allmergeclauses,
                                          outermotionkeys,
                                          innermotionkeys,
                                          outersortkeys == NIL,
