@@ -126,11 +126,15 @@ writeTmLogRecord(TmLogRecord * record)
 {
 	int			offset, len;
 
-	if (logFileNo != *shmLatestLogFileNo)
+	if (logFileFD == -1 ||
+		logFileNo != *shmLatestLogFileNo)
 	{
-		/* log file is incremented */
+		/* switch log files */
 		closeTmLogFile();
-		openTmLogFile(*shmLatestLogFileNo);
+		if (!openTmLogFile(*shmLatestLogFileNo))
+		{
+			elog(ERROR, "writeTmLogRecord: could not open logfile");
+		}
 	}
 
 	offset = lseek(logFileFD, 0, SEEK_END);
@@ -141,12 +145,11 @@ writeTmLogRecord(TmLogRecord * record)
 		offset = lseek(logFileFD, 0, SEEK_END);
 	}
 
-
 	/* Handle lseek() errors. */
 	if (offset < 0)
 	{
 		int savedError = errno;	
-		elog(ERROR, "Failure to write to the tmlog. (errno: %s)", strerror(savedError));
+		elog(ERROR, "Failure to write to the tmlog. (errno: %s fd %d)", strerror(savedError), logFileFD);
 	}
 
 	record->header.thisFileNo = logFileNo;
