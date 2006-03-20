@@ -536,8 +536,6 @@ DefineRelation_int(CreateStmt *stmt,
 
 	if (shouldDispatch)
 	{
-
-
 		/*
 		 * Check to see if we support the datatypes
 		 */
@@ -586,24 +584,15 @@ DefineRelation_int(CreateStmt *stmt,
 
 		elog(DEBUG4, "shouldDispatch = true, relOid = %d, schemaname %s ", relationId, stmt->relation->schemaname);
 
-		if (shouldDispatch)
-		{
-            /* Start a global transaction and reconfigure the cluster if needed. */
-            cdbdisp_startDtxTransaction();
-
-            /* Dispatch the statement tree to all primary and mirror segdbs.
-             * Doesn't wait for the QEs to finish execution.
-             */
-            cdbdisp_dispatchUtilityStatement((Node *)stmt,
-                                             true,      /* cancelOnError */
-                                             true,      /* startTransaction */
-                                             pPrimaryResults,
-                                             pMirrorResults);
-		}
+		/* Start a global transaction and reconfigure the cluster if needed. 
+		 * 
+		 * We defer the dispatch of the utility command until after
+		 * heap_create_with_catalog(), because that call will *wait*
+		 * for any other transactions touching this new relation,
+		 * which can cause a non-local deadlock if we've already
+		 * dispatched */
+		cdbdisp_startDtxTransaction();
 	}
-
-
-
 
 	relationId = heap_create_with_catalog(relname,
 										  namespaceId,
@@ -619,9 +608,20 @@ DefineRelation_int(CreateStmt *stmt,
 										  allowSystemTableMods,
 										  stmt->comptypeOid);
 
+	/* It is now safe to dispatch */
+	if (shouldDispatch)
+	{
+		/* Dispatch the statement tree to all primary and mirror segdbs.
+		 * Doesn't wait for the QEs to finish execution.
+		 */
+		cdbdisp_dispatchUtilityStatement((Node *)stmt,
+										 true,      /* cancelOnError */
+										 true,      /* startTransaction */
+										 pPrimaryResults,
+										 pMirrorResults);
+	}
+
 	StoreCatalogInheritance(relationId, inheritOids);
-
-
 
 	/*
 	 * We must bump the command counter to make the newly-created relation
