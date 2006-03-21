@@ -4500,7 +4500,7 @@ CopyReadBinaryAttribute(CopyState cstate, int column_no, FmgrInfo *flinfo, Oid t
 	int32		fld_size;
 	Datum		result;
 
-	if(!CopyGetInt32(cstate, &fld_size));
+	if(!CopyGetInt32(cstate, &fld_size))
 		ereport(ERROR,
 				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 				 errmsg("unexpected EOF in COPY data")));
