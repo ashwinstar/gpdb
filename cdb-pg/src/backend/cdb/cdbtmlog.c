@@ -37,8 +37,6 @@ extern int	errno;
 #define TmLogFilePath(path, seqno) \
 	snprintf(path, MAXPGPATH, "%s/%08X", dtm_dir, seqno)
 
-
-
 static TmLogFileControlBlock tmLogFileHeader = {TM_FILE_MAGIC, 0, 0, {0}};
 static int	currentOffset = -1;
 static int	logFileFD = -1,
@@ -445,7 +443,11 @@ initTmLog(char *dir)
 		if (*clde->d_name == '.')
 			continue;
 
-		sscanf(clde->d_name, "%d", &id);
+		/* WARNING WARNING WARNING: This absolutely must match the
+		 * format string in the TmLogFilePath() macro at the top of
+		 * this file: the files we're trying to find in this loop are
+		 * the files produced by that macro. See MPP-551. */
+		sscanf(clde->d_name, "%X", &id);
 		if (id > file1)
 		{
 			file2 = file1;
