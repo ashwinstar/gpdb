@@ -38,6 +38,8 @@
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 
+#include "cdb/cdbvars.h"
+#include "cdb/cdbsetop.h"
 
 typedef struct
 {
@@ -186,6 +188,7 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 							  NIL,
 							  rtr->rtindex,
 							  subplan);
+		mark_passthru_locus(plan, FALSE, FALSE); /* CDB: no hash/sort keys */
 
 		/*
 		 * We don't bother to determine the subquery's output ordering since
@@ -235,6 +238,7 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 												 refnames_tlist),
 							NULL,
 							plan);
+			mark_passthru_locus(plan, FALSE, FALSE); /* CDB */
 		}
 		return plan;
 	}
@@ -258,6 +262,7 @@ generate_union_plan(SetOperationStmt *op, PlannerInfo *root,
 	List	   *planlist;
 	List	   *tlist;
 	Plan	   *plan;
+	MppSetOpType optype = PSETOP_NONE; /* CDB */
 
 	/*
 	 * If plain UNION, tell children to fetch all tuples.
@@ -285,6 +290,13 @@ generate_union_plan(SetOperationStmt *op, PlannerInfo *root,
 						   recurse_union_children(op->rarg, root,
 												  tuple_fraction,
 												  op, refnames_tlist));
+	
+	/* CDB: Decide on approach, condition argument plans to suit. */
+	if ( Mpp_role == MPP_ROLE_DISPATCH )
+	{
+		optype = choose_setop_type(planlist);
+		adjust_setop_arguments(planlist, optype);
+	}
 
 	/*
 	 * Generate tlist for Append plan node.
@@ -300,6 +312,7 @@ generate_union_plan(SetOperationStmt *op, PlannerInfo *root,
 	 * Append the child results together.
 	 */
 	plan = (Plan *) make_append(planlist, false, tlist);
+	mark_append_locus(plan, optype); /* CDB: Mark the plan result locus. */
 
 	/*
 	 * For UNION ALL, we just need the Append plan.  For UNION, need to add
@@ -312,8 +325,15 @@ generate_union_plan(SetOperationStmt *op, PlannerInfo *root,
 		sortList = addAllTargetsToSortList(NULL, NIL, tlist, false);
 		if (sortList)
 		{
+			if ( optype == PSETOP_PARALLEL_PARTITIONED )
+			{
+				/* CDB: Hash motion to collocate non-distinct tuples. */
+				plan = (Plan *) make_motion_hash_all_targets(root, plan);
+			}
 			plan = (Plan *) make_sort_from_sortclauses(root, sortList, plan);
+			mark_sort_locus(plan); /* CDB */
 			plan = (Plan *) make_unique(plan, sortList);
+			mark_passthru_locus(plan, TRUE, TRUE); /* CDB */
 		}
 		*sortClauses = sortList;
 	}
@@ -339,6 +359,7 @@ generate_nonunion_plan(SetOperationStmt *op, PlannerInfo *root,
 			   *planlist,
 			   *child_sortclauses;
 	SetOpCmd	cmd;
+	MppSetOpType optype = PSETOP_NONE; /* CDB */
 
 	/* Recurse on children, ensuring their outputs are marked */
 	lplan = recurse_set_operations(op->larg, root,
@@ -353,6 +374,13 @@ generate_nonunion_plan(SetOperationStmt *op, PlannerInfo *root,
 								   &child_sortclauses);
 	planlist = list_make2(lplan, rplan);
 
+	/* CDB: Decide on approach, condition argument plans to suit. */
+	if ( Mpp_role == MPP_ROLE_DISPATCH )
+	{
+		optype = choose_setop_type(planlist);
+		adjust_setop_arguments(planlist, optype);
+	}
+	
 	/*
 	 * Generate tlist for Append plan node.
 	 *
@@ -369,6 +397,7 @@ generate_nonunion_plan(SetOperationStmt *op, PlannerInfo *root,
 	 * Append the child results together.
 	 */
 	plan = (Plan *) make_append(planlist, false, tlist);
+	mark_append_locus(plan, optype); /* CDB: Mark the plan result locus. */
 
 	/*
 	 * Sort the child results, then add a SetOp plan node to generate the
@@ -381,8 +410,16 @@ generate_nonunion_plan(SetOperationStmt *op, PlannerInfo *root,
 		*sortClauses = NIL;
 		return plan;
 	}
+	
+	if ( optype == PSETOP_PARALLEL_PARTITIONED )
+	{
+		/* CDB: Collocate non-distinct tuples prior to sort. */
+		plan = (Plan *) make_motion_hash_all_targets(root, plan);
+	}
 
 	plan = (Plan *) make_sort_from_sortclauses(root, sortList, plan);
+	mark_sort_locus(plan); /* CDB */
+	
 	switch (op->op)
 	{
 		case SETOP_INTERSECT:
@@ -398,6 +435,7 @@ generate_nonunion_plan(SetOperationStmt *op, PlannerInfo *root,
 			break;
 	}
 	plan = (Plan *) make_setop(cmd, plan, sortList, list_length(op->colTypes) + 1);
+	mark_passthru_locus(plan, TRUE, TRUE); /* CDB */
 
 	*sortClauses = sortList;
 

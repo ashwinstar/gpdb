@@ -225,7 +225,6 @@ static int	max_identifier_length;
 static int	block_size;
 static bool integer_datetimes;
 static bool standard_conforming_strings;
-static bool enable_agg_restruct;            /* CDB: no longer used */
 
 
 

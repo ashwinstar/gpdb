@@ -793,6 +793,7 @@ _copyAggref(Aggref *from)
 	COPY_SCALAR_FIELD(agglevelsup);
 	COPY_SCALAR_FIELD(aggstar);
 	COPY_SCALAR_FIELD(aggdistinct);
+	COPY_SCALAR_FIELD(aggstage);
 
 	return newnode;
 }

@@ -400,11 +400,18 @@ count_agg_clauses_walker(Node *node, AggClauseCounts *counts)
 		HeapTuple	aggTuple;
 		Form_pg_aggregate aggform;
 		Oid			aggtranstype;
+		Oid			aggprelimfn;
 
 		Assert(aggref->agglevelsup == 0);
 		counts->numAggs++;
 		if (aggref->aggdistinct)
+		{
 			counts->numDistinctAggs++;
+			if ( counts->numDistinctAggs == 1 ) /* CDB */
+				counts->distinctExpr = aggref->target;
+			else
+				counts->distinctExpr = NULL;
+		}
 
 		inputType = exprType((Node *) aggref->target);
 
@@ -417,7 +424,14 @@ count_agg_clauses_walker(Node *node, AggClauseCounts *counts)
 				 aggref->aggfnoid);
 		aggform = (Form_pg_aggregate) GETSTRUCT(aggTuple);
 		aggtranstype = aggform->aggtranstype;
+		aggprelimfn = aggform->aggprelimfn;
 		ReleaseSysCache(aggTuple);
+		
+		/* CDB wants to know whether the function can do 2-stage aggregation */
+		if ( aggprelimfn == InvalidOid )
+		{
+			counts->missing_prelimfunc = true; /* Nope! */
+		}
 
 		/* resolve actual type of transition state, if polymorphic */
 		if (aggtranstype == ANYARRAYOID || aggtranstype == ANYELEMENTOID)

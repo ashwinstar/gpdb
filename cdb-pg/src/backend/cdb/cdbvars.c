@@ -84,6 +84,7 @@ SeqServerControlBlock *seqServerCtl;
 
 double      mpp_motion_cost_per_row = 0;
 int         mpp_segments_for_planner = 0;
+bool		enable_agg_restruct = TRUE;
 
 
 /*

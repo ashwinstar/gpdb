@@ -1290,3 +1290,17 @@ SS_make_initplan_from_plan(PlannerInfo *root, Plan *plan,
 
 	return prm;
 }
+
+/* MPP */
+bool has_correlation_params(List *planner_param_items)
+{
+	ListCell *c;
+	
+	foreach (c, planner_param_items)
+	{
+		PlannerParamItem *pli = (PlannerParamItem*)lfirst(c);
+		if ( IsA(pli->item,Var) || IsA(pli->item,Aggref) )
+			return TRUE;
+	}
+	return FALSE;
+}

@@ -175,6 +175,7 @@ _equalAggref(Aggref *a, Aggref *b)
 	COMPARE_SCALAR_FIELD(agglevelsup);
 	COMPARE_SCALAR_FIELD(aggstar);
 	COMPARE_SCALAR_FIELD(aggdistinct);
+	COMPARE_SCALAR_FIELD(aggstage);
 
 	return true;
 }

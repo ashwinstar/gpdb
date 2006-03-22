@@ -45,6 +45,8 @@
 #include "cdb/cdbpath.h"        /* cdbpath_segments */
 #include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() */
 #include "cdb/cdbvars.h"
+#include "cdb/cdbgroup.h" /* grouping_planner extensions */
+#include "cdb/cdbsetop.h" /* motion utilities */
 
 ParamListInfo PlannerBoundParamList = NULL;		/* current boundParams */
 
@@ -75,9 +77,6 @@ static void locate_grouping_columns(PlannerInfo *root,
 						List *sub_tlist,
 						AttrNumber *groupColIdx);
 static List *postprocess_setop_tlist(List *new_tlist, List *orig_tlist);
-
-/* MPP with the parallelizer does not tolerate this optimization well. */
-static const bool disable_min_max_optimization = TRUE;
 
 
 /*****************************************************************************
@@ -158,15 +157,19 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	/* executor wants to know total number of Params used overall */
 	result_plan->nParamExec = list_length(PlannerParamList);
 
+	if ( Mpp_role == MPP_ROLE_DISPATCH )
+	{
+		bool uses_correlation = has_correlation_params(PlannerParamList);
+		
+		result_plan = cdbparallelize(result_plan, parse, 
+									isCursor, cursorOptions, 
+									boundParams, uses_correlation);
+	}
+
 	/* restore state for outer planner, if any */
 	PlannerQueryLevel = save_PlannerQueryLevel;
 	PlannerParamList = save_PlannerParamList;
 	PlannerBoundParamList = save_PlannerBoundParamList;
-
-	if ( Mpp_role == MPP_ROLE_DISPATCH )
-	{
-		result_plan = cdbparallelize(result_plan, parse, isCursor, cursorOptions, boundParams);
-	}
 	
 	return result_plan;
 }
@@ -672,7 +675,11 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	List	   *sort_pathkeys;
     Path       *best_path = NULL;
 	double		dNumGroups = 0;
-
+	double		motion_cost_per_row  = 
+						(mpp_motion_cost_per_row > 0.0) ?
+						mpp_motion_cost_per_row :
+						2.0 * cpu_tuple_cost;
+	
 	/* Tweak caller-supplied tuple_fraction if have LIMIT/OFFSET */
 	if (parse->limitCount || parse->limitOffset)
 		tuple_fraction = preprocess_limit(root, tuple_fraction,
@@ -847,33 +854,61 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
             best_path = sorted_path;
             /* elog(DEBUG1, "Path chosen: ordered"); CDB*/
 		}
-
-		/*
-		 * Check to see if it's possible to optimize MIN/MAX aggregates. If
-		 * so, we will forget all the work we did so far to choose a "regular"
-		 * path ... but we had to do it anyway to be able to tell which way is
-		 * cheaper.
+		
+		/* CDB:  For now, we either 
+		 * - construct a general parallel plan, 
+		 * - let the sequential planner handle the situation, or 
+		 * - construct a sequential plan using the mix-max index optimization.  
+		 *
+		 * Eventually we should add a parallel version of the min-max 
+		 * optimization.  For now, it's either-or. 
 		 */
-		if ( disable_min_max_optimization )
+		if ( Mpp_role == MPP_ROLE_DISPATCH )
 		{
-			result_plan = NULL;
+			result_plan = cdb_grouping_planner(root,
+											&agg_counts,
+											tlist,
+											best_path,
+											cheapest_path,
+											use_hashed_grouping,
+											tuple_fraction,
+											dNumGroups,
+											&current_pathkeys);
+			if ( result_plan != NULL && result_plan->flow->numSortCols == 0 )
+			{
+				/*
+				 * cdb_grouping_planner generated the full plan, with the
+				 * the right tlist.  And it has no sort order
+				 */
+				current_pathkeys = NIL;
+			}
 		}
-		else
+		else /* Not MPP_ROLE_DISPATCH */
 		{
+			/*
+			 * Check to see if it's possible to optimize MIN/MAX aggregates. 
+			 * If so, we will forget all the work we did so far to choose a 
+			 * "regular" path ... but we had to do it anyway to be able to 
+			 * tell which way is cheaper.
+			 */
 			result_plan = optimize_minmax_aggregates(root,
 													 tlist,
 													 best_path);
+			if (result_plan != NULL)
+			{
+				/*
+				 * optimize_minmax_aggregates generated the full plan, with the
+				 * right tlist, and it has no sort order.
+				 */
+				current_pathkeys = NIL;
+
+				/* CDB: No need for flow, since this case occurs only outside
+				 * outside the QD (MPP dispatch role). */
+			}
+
 		}
 		
-		if (result_plan != NULL)
-		{
-			/*
-			 * optimize_minmax_aggregates generated the full plan, with the
-			 * right tlist, and it has no sort order.
-			 */
-			current_pathkeys = NIL;
-		}
-		else
+		if (result_plan == NULL)
 		{
 			/*
 			 * Normal case --- create a plan according to query_planner's
@@ -881,6 +916,15 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			 */
 			result_plan = create_plan(root, best_path);
 			current_pathkeys = best_path->pathkeys;
+
+			if ( Mpp_role == MPP_ROLE_DISPATCH )
+			{
+				/* Decorate the top node of the plan with a Flow node. */
+				result_plan->flow = cdbpathtoplan_create_flow(root,
+															  best_path,
+															  current_pathkeys,
+															  result_plan);
+			}
 
 			/*
 			 * create_plan() returns a plan with just a "flat" tlist of
@@ -900,6 +944,10 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				{
 					result_plan = (Plan *) make_result(sub_tlist, NULL,
 													   result_plan);
+					if ( Mpp_role == MPP_ROLE_DISPATCH )
+					{
+						mark_passthru_locus(result_plan, true, true);
+					}
 				}
 				else
 				{
@@ -909,6 +957,10 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 					 */
 					result_plan->targetlist = sub_tlist;
 				}
+					if ( Mpp_role == MPP_ROLE_DISPATCH )
+					{
+						adapt_flow_to_targetlist(result_plan);
+					}
 
 				/*
 				 * Also, account for the cost of evaluation of the sub_tlist.
@@ -945,17 +997,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 										groupColIdx);
 			}
 
-			/*
-             * CDB: Decorate the top node of the plan with a Flow node.
-             *
-             * The Flow node lets the post-parallelizer know that the plan
-             * from here downward is 'finished' (already parallelized), and
-             * describes some characteristics of the plan and its output.
-             */
-            result_plan->flow = cdbpathtoplan_create_flow(root,
-                                                          best_path,
-                                                          current_pathkeys,
-                                                          result_plan);
 
 			/*
 			 * Insert AGG or GROUP node if needed, plus an explicit sort step
@@ -977,6 +1018,12 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												result_plan);
 				/* Hashed aggregation produces randomly-ordered results */
 				current_pathkeys = NIL;
+
+				if ( Mpp_role == MPP_ROLE_DISPATCH )
+				{
+					mark_passthru_locus(result_plan, true, true);
+					adapt_flow_to_targetlist(result_plan);
+				}
 			}
 			else if (parse->hasAggs)
 			{
@@ -994,6 +1041,11 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 													 groupColIdx,
 													 result_plan);
 						current_pathkeys = group_pathkeys;
+
+						if ( Mpp_role == MPP_ROLE_DISPATCH )
+						{
+							mark_sort_locus(result_plan);
+						}
 					}
 					aggstrategy = AGG_SORTED;
 
@@ -1018,6 +1070,12 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												numGroups,
 												agg_counts.numAggs,
 												result_plan);
+
+				if ( Mpp_role == MPP_ROLE_DISPATCH )
+				{
+					mark_passthru_locus(result_plan, true, true);
+					adapt_flow_to_targetlist(result_plan);
+				}
 			}
 			else if (parse->groupClause)
 			{
@@ -1036,6 +1094,10 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												 groupColIdx,
 												 result_plan);
 					current_pathkeys = group_pathkeys;
+					if ( Mpp_role == MPP_ROLE_DISPATCH )
+					{
+						mark_sort_locus(result_plan);
+					}
 				}
 
 				result_plan = (Plan *) make_group(root,
@@ -1046,6 +1108,10 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												  dNumGroups,
 												  result_plan);
 				/* The Group node won't change sort ordering */
+				if ( Mpp_role == MPP_ROLE_DISPATCH )
+				{
+					mark_passthru_locus(result_plan, true, true);
+				}
 			}
 			else if (root->hasHavingQual)
 			{
@@ -1064,13 +1130,54 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				result_plan = (Plan *) make_result(tlist,
 												   parse->havingQual,
 												   NULL);
+				/* CDB: TODO mark this as General locus? */
 			}
 		}						/* end of non-minmax-aggregate case */
 	}							/* end of if (setOperations) */
 
+	/*
+	 * MPP: If there's a DISTINCT clause and we're not collocated on the
+	 * key, we need to redistribute.
+	 *
+	 * TODO: There may be cases where it would pay to insert a preliminary
+	 * Unique node prior to redistribution (to reduce the number of rows we 
+	 * move around). We don't pursue that at the moment.
+	 */
+	 if ( Mpp_role == MPP_ROLE_DISPATCH && parse->distinctClause != NULL)
+	 {
+		Assert( result_plan->flow );
+		
+		if ( result_plan->flow->flotype == FLOW_PARTITIONED )
+		{
+			List *distinctExprs = NIL;
+			ListCell *cell;
+		
+			/* Regard input as strewn.  Redistribute on distinct keys. */
+			foreach(cell, parse->distinctClause)
+			{
+				SortClause *sortcl = (SortClause *) lfirst(cell);
+				TargetEntry *tle = get_sortgroupclause_tle(sortcl, result_plan->targetlist);
+				distinctExprs = lappend(distinctExprs, tle->expr);
+			}
+			result_plan = (Plan*)make_motion_hash(root, result_plan, distinctExprs);
+			result_plan->total_cost += motion_cost_per_row * result_plan->plan_rows;
+			
+			current_pathkeys = NULL; /* Any pre-existing order now lost. */
+		}
+		else if ( result_plan->flow->flotype == FLOW_SINGLETON )
+			; /* Already collocated. */
+		else
+		{
+			ereport(ERROR, (
+				errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				errmsg("unexpected input locus to distinct") ));
+		}
+	 }
+
     /*
 	 * If we were not able to make the plan come out in the right order, add
-	 * an explicit sort step.
+	 * an explicit sort step.  Note that, if we going to add a Unique node,
+	 *  the sort_pathkeys will have the distinct keys as a prefix.
 	 */
 	if (parse->sortClause)
 	{
@@ -1081,6 +1188,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 										   parse->sortClause,
 										   result_plan);
 			current_pathkeys = sort_pathkeys;
+			mark_sort_locus(result_plan);
 		}
 	}
 
@@ -1090,6 +1198,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	if (parse->distinctClause)
 	{
 		result_plan = (Plan *) make_unique(result_plan, parse->distinctClause);
+		mark_passthru_locus(result_plan, TRUE, TRUE);
 
 		/*
 		 * If there was grouping or aggregation, leave plan_rows as-is (ie,

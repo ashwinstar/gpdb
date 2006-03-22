@@ -34,6 +34,7 @@
 #include "cdb/cdbplan.h"
 #include "cdb/cdbpullup.h"
 #include "cdb/cdbllize.h"
+#include "cdb/cdbcat.h"
 #include "cdb/cdbagg.h"
 #include "cdb/cdbmutate.h"
 
@@ -211,7 +212,8 @@ cdbparallelize(Plan *plan,
 			   Query *query,
 			   bool isCursor,
 			   int cursorOptions,
-			   ParamListInfo boundParams
+			   ParamListInfo boundParams,
+			   bool uses_correlation
 )
 {
 	PlanProfile profile;		
@@ -247,6 +249,20 @@ cdbparallelize(Plan *plan,
 	{
 		plan->dispatch = DISPATCH_SEQUENTIAL;
 		return plan;
+	}
+	
+	/*
+	 * The plan refers to managed tables, so we can't allow it to use
+	 * correlation.  (This may be more severe that necessary, however,
+	 * we haven't done the work to discover "safe" uses, so we just
+	 * disallow them all.)
+	 */
+	if ( uses_correlation )
+	{
+		ereport(ERROR, (
+				errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+				errmsg("No, no, no. Don't use correlation!")
+		));
 	}
 
 	/* Save the global count of PARAM_EXEC from the top plan node. */

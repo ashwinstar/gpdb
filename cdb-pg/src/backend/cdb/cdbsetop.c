@@ -1,0 +1,555 @@
+/*-------------------------------------------------------------------------
+ *
+ * cdbsetop.c
+ *	  Routines to aid in planning set-operation queries for parallel
+ *    execution.  This is, essentially, an extension of the file
+ *    optimizer/prep/prepunion.c, although some functions are not
+ *    externalized.
+ *
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2005, greenplum inc
+ *
+ *
+ * IDENTIFICATION
+ *	  $Id$
+ *
+ *-------------------------------------------------------------------------
+ */
+#include "postgres.h"
+
+#include "catalog/pg_type.h"
+#include "nodes/makefuncs.h"
+
+#include "cdb/cdblink.h" /* getMPPSegmentCount */
+#include "cdb/cdbllize.h"
+#include "cdb/cdbmutate.h"
+#include "cdb/cdbsetop.h"
+
+#include "optimizer/tlist.h" /* tlist_member */
+#include "parser/parse_expr.h" /* exprType and exprTypmod */
+
+static Flow *copyFlow(Flow *model_flow, bool withExprs, bool withSort);
+static List *makeHashExprsFromNonjunkTargets(List *targetList);
+
+#define ARRAYCOPY(to, from, sz) \
+	do { \
+		Size	_size = (sz); \
+		(to) = palloc(_size); \
+		memcpy((to), (from), _size); \
+	} while (0)
+
+/*
+ * Function: choose_setop_type
+ *
+ * Decide what type of plan to use for a set operation based on the loci of
+ * the node list input to the set operation.
+ *
+ * See the comments in cdbsetop.h for discussion of types of setop plan.
+ */
+MppSetOpType choose_setop_type(List *planlist)
+{
+	ListCell *cell;
+	Plan *subplan = NULL;
+	FlowType subplan_type;
+	bool ok_partitioned = TRUE;
+	bool ok_replicated = TRUE;
+	bool ok_single_qd = TRUE;
+	bool ok_single_qe = TRUE;
+	
+	foreach(cell, planlist)
+	{
+		subplan = (Plan*)lfirst(cell);		
+		Assert(is_plan_node((Node*)subplan));
+		subplan_type = (subplan->flow? subplan->flow->flotype: FLOW_UNDEFINED);
+		switch ( subplan_type )
+		{
+		case FLOW_PARTITIONED:
+			ok_replicated = FALSE;
+			break;
+		case FLOW_SINGLETON:
+			if ( subplan->flow->segindex == -1 )
+			{
+				ok_partitioned = ok_replicated = ok_single_qe = FALSE;
+			}
+			else
+			{
+				ok_replicated = FALSE;
+			}
+			break;
+		case FLOW_REPLICATED:
+			break;
+		default:
+			return PSETOP_NONE;
+		}
+	}
+	
+	if ( ok_replicated )
+		return PSETOP_PARALLEL_REPLICATED;
+	else if ( ok_partitioned )
+		return PSETOP_PARALLEL_PARTITIONED;
+	else if ( ok_single_qd )
+		return PSETOP_SEQUENTIAL_QD;
+	else if ( ok_single_qe )
+		return PSETOP_SEQUENTIAL_QE;
+	
+	return PSETOP_NONE;
+}
+
+
+void adjust_setop_arguments(List *planlist, MppSetOpType setop_type)
+{
+	ListCell *cell;
+	Plan *subplan;
+	Plan *adjusted_plan;
+	FlowType subplan_type;
+	
+	foreach ( cell, planlist )
+	{
+		subplan = (Plan*)lfirst(cell);
+		Assert(is_plan_node((Node*)subplan));
+		subplan_type = (subplan->flow? subplan->flow->flotype: FLOW_UNDEFINED);
+	
+		adjusted_plan = subplan;
+		switch ( setop_type )
+		{
+		case PSETOP_PARALLEL_PARTITIONED:
+			switch ( subplan_type )
+			{
+			case FLOW_PARTITIONED:
+				break;
+			case FLOW_SINGLETON:
+				Assert( subplan->flow->segindex == 0 );
+				break;
+			case FLOW_REPLICATED:
+				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					errmsg("unexpected replicated intermediate result"),
+					errdetail("argument to set operation may not be replicated") ));
+				break;
+			default:
+				ereport(ERROR, (
+					errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					errmsg("unexpected argument locus to set operation") ));
+				break;
+			}
+			break;
+			
+		case PSETOP_SEQUENTIAL_QD:
+			switch ( subplan_type )
+			{
+			case FLOW_PARTITIONED:
+				/* Gather to QD. */
+				adjusted_plan = (Plan*)make_motion_gather_to_QD(subplan, false);				
+				break;
+			case FLOW_SINGLETON:
+				if ( subplan->flow->segindex == 0 )
+				{
+					/* Gather to QD. */
+					adjusted_plan = (Plan*)make_motion_gather_to_QD(subplan, false);				
+				}
+				else
+				{
+					Assert( subplan->flow->segindex == -1 );
+				}
+				break;
+			case FLOW_REPLICATED:
+				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					errmsg("unexpected replicated intermediate result"),
+					errdetail("argument to set operation may not be replicated") ));
+				break;
+			default:
+				/* Can't happen! */
+				ereport(ERROR, (
+					errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					errmsg("unexpected argument locus to set operation") ));
+				break;
+			}
+			break;
+			
+		case PSETOP_SEQUENTIAL_QE:
+			switch ( subplan_type )
+			{
+			case FLOW_PARTITIONED:
+				/* Gather to QE.  No need to keep ordering. */
+				adjusted_plan = (Plan*)make_motion_gather_to_QE(subplan, false);				
+				break;
+			case FLOW_SINGLETON:
+				Assert( subplan->flow->segindex != -1 );
+				break;
+			case FLOW_REPLICATED:
+				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					errmsg("unexpected replicated intermediate result"),
+					errdetail("argument to set operation may not be replicated") ));
+				break;
+			default:
+				/* Can't happen! */
+				ereport(ERROR, (
+					errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					errmsg("unexpected argument locus to set operation") ));
+				break;
+			}
+			break;
+			
+		case PSETOP_PARALLEL_REPLICATED:
+			/* Only when all args are replicated. */
+			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				errmsg("unexpected replicated intermediate result"),
+				errdetail("argument to set operation may not be replicated") ));
+			break;
+			
+		default:
+			/* Can't happen! */
+			ereport(ERROR, (
+				errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				errmsg("unexpected arguments to set operation") ));
+			break;
+		}
+		
+		/* If we made changes, inject them into the argument list. */
+		if ( subplan != adjusted_plan )
+		{
+			subplan = adjusted_plan;
+			cell->data.ptr_value = subplan;
+		}
+	}
+	
+	return;
+}
+
+
+/*
+ * Copy a Flow node.  Only the declarative part is preserved.  Not, e.g.,
+ * any required movement or transformation.  Hash information is preserved 
+ * only if withExprs is true. Sort specifications are preserved only
+ * if withSort is true.
+ *
+ * A NULL result indicates either a NULL argument or a problem.
+ */
+Flow *copyFlow(Flow *model_flow, bool withExprs, bool withSort)
+{
+	Flow *new_flow = NULL;
+	
+	if (model_flow == NULL)
+		return NULL;
+
+	new_flow = makeFlow(model_flow->flotype);
+
+	if (model_flow->flotype == FLOW_PARTITIONED)
+	{
+		/* Copy hash attribute definitions, if wanted and available. */
+		if (withExprs && model_flow->hashExpr != NULL)
+		{
+			new_flow->hashExpr = copyObject(model_flow->hashExpr);
+		}
+	}
+	else if (model_flow->flotype == FLOW_SINGLETON)
+	{
+		/* Propagate segment definition. */
+		new_flow->segindex = model_flow->segindex;
+	}
+	else if (model_flow->flotype != FLOW_REPLICATED)
+	{
+		/* Clean up and give up. This isn't one of our blessed types. */
+		pfree(new_flow);
+		return NULL;
+	}
+
+	/* Propogate sort attributes, if wanted and available. */
+	if (withSort && model_flow->numSortCols > 0)
+	{
+		new_flow->numSortCols = model_flow->numSortCols;
+		ARRAYCOPY(
+			new_flow->sortColIdx, 
+			model_flow->sortColIdx, 
+			model_flow->numSortCols * sizeof(AttrNumber) );
+		ARRAYCOPY(
+			new_flow->sortOperators, 
+			model_flow->sortOperators, 
+			model_flow->numSortCols * sizeof(Oid) );
+	}
+
+	return new_flow;
+}
+
+
+/*
+ * make_motion_gather_to_QD
+ *		Add a Motion node atop the given subplan to gather the tuples
+ *      from an input gang to the QD. This motion should only be applied to
+ *      a non-replicated, non-root subplan.
+ */
+Motion* make_motion_gather_to_QD(Plan *subplan, bool keep_ordering)
+{
+	return make_motion_gather(subplan, -1, keep_ordering);
+}
+
+/*
+ * make_motion_gather_to_QE
+ *		Add a Motion node atop the given subplan to gather tuples to
+ *      a single QE. This motion should only be applied to a partitioned
+ *      subplan.
+ */
+Motion* make_motion_gather_to_QE(Plan *subplan, bool keep_ordering)
+{
+	return make_motion_gather(subplan, 0, keep_ordering);
+}	
+
+/*
+ * make_motion_gather
+ *		Add a Motion node atop the given subplan to gather tuples to
+ *      a single process. This motion should only be applied to a partitioned
+ *      subplan.
+ */
+Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
+{
+	Motion *motion;
+	Flow *flow;
+	int numInputSegs;				
+
+	Assert(subplan->flow != NULL);
+	Assert(subplan->flow->flotype == FLOW_PARTITIONED);
+	Assert(segindex == 0 || segindex == -1);
+	
+	numInputSegs =  (subplan->flow->flotype == FLOW_SINGLETON) ? 1 : getMPPSegmentCount();
+	
+	flow = makeFlow(FLOW_SINGLETON);
+	flow->segindex = segindex;
+	
+	if ( keep_ordering && subplan->flow->numSortCols > 0 )
+	{
+		Flow *f = subplan->flow;
+		int i;
+		int n = f->numSortCols;
+		flow->numSortCols = n;
+		flow->sortColIdx = palloc(n * sizeof(AttrNumber));
+		flow->sortOperators = palloc (n * sizeof(Oid));
+		for ( i = 0; i < n; i++ )
+		{
+			flow->sortColIdx[i] = f->sortColIdx[i];
+			flow->sortOperators[i] = f->sortOperators[i];
+		}
+		
+		motion = make_sorted_union_motion(
+			subplan, 
+			false, /* sendToSecondary */
+			numInputSegs,
+			segindex,
+			flow->numSortCols, /* Motion and Flow can share arrays. */
+			flow->sortColIdx,
+			flow->sortOperators);
+			
+		motion->plan.flow = flow;
+	}
+	else
+	{
+		motion = make_union_motion(
+			subplan, 
+			false, /* sendToSecondary */
+			numInputSegs,
+			segindex);
+		motion->plan.flow = flow;
+	}
+	
+	return motion;
+}
+
+/*
+ * make_motion_hash_all_targets
+ *		Add a Motion node atop the given subplan to hash collocate
+ *      tuples non-distinct on the non-junk attributes.  This motion
+ *      should only be applied to a non-replicated, non-root subplan.
+ */
+Motion* make_motion_hash_all_targets(PlannerInfo *root, Plan *subplan)
+{
+	List *hashexprs = makeHashExprsFromNonjunkTargets(subplan->targetlist);	
+	return make_motion_hash(root, subplan, hashexprs);
+}
+
+/*
+ * make_motion_hash
+ *		Add a Motion node atop the given subplan to hash collocate
+ *      tuples non-distinct on the values of the hash expressions.  This 
+ *      motion should only be applied to a non-replicated, non-root subplan.
+ */
+Motion* make_motion_hash(PlannerInfo *root, Plan *subplan, List *hashexprs)
+{
+	Motion *motion;
+	Flow *flow;
+	int numInputSegs;
+	
+	Assert(subplan->flow != NULL);
+	
+	numInputSegs =  (subplan->flow->flotype == FLOW_SINGLETON) ? 1 : getMPPSegmentCount();
+	
+	flow = makeFlow(FLOW_PARTITIONED);
+	flow->hashExpr = hashexprs;
+	
+	motion = make_hashed_motion(
+		subplan, 
+		false, /* sendToSecondary */
+		numInputSegs,
+		hashexprs);
+	motion->plan.flow = flow;
+	
+	return motion;
+}
+
+/*
+ * makeHashExprsFromNonjunkTargets
+ *		Make a list of hash expressions over all non-resjunk targets in 
+ *		the targetlist are in the given target list.  This will align
+ *		with the sort attributes used as input to a SetOp or Unique
+ *		operator.
+ *
+ * Returns the newly allocate expression list for a Motion node.
+ */
+List *makeHashExprsFromNonjunkTargets(List *targetlist)
+{
+	ListCell   *cell;
+	List *hashlist = NIL;
+
+	foreach(cell, targetlist)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(cell);
+
+		if (!tle->resjunk)
+		{
+			hashlist = lappend(hashlist, copyObject(tle->expr));
+		}
+	}
+	return hashlist;
+
+}
+
+/*
+ *     Marks an Append plan with its locus based on the set operation
+ *     type determined during examination of the arguments.
+ */
+void mark_append_locus(Plan *plan, MppSetOpType optype)
+{
+	switch ( optype  )
+	{
+	case PSETOP_PARALLEL_PARTITIONED:
+		mark_plan_strewn(plan);
+		break;
+	case PSETOP_PARALLEL_REPLICATED:
+		mark_plan_replicated(plan);
+		break;
+	case PSETOP_SEQUENTIAL_QD:
+		mark_plan_root(plan);
+		break;
+	case PSETOP_SEQUENTIAL_QE:
+		mark_plan_singleQE(plan);
+	case PSETOP_NONE:
+		break;
+	}
+}
+
+void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
+{
+	Flow *flow;
+	Plan *subplan = NULL;
+	bool is_subquery = IsA(plan, SubqueryScan);
+
+	Assert( is_plan_node((Node*)plan) && plan->flow == NULL );
+	
+	if ( is_subquery )
+	{
+		subplan = ((SubqueryScan*)plan)->subplan;
+	}
+	else
+	{
+		subplan = plan->lefttree;
+	}
+	
+	Assert( subplan != NULL && subplan->flow != NULL );
+	
+	flow = copyFlow(subplan->flow, with_hash && !is_subquery, with_sort);
+	
+	
+	if ( is_subquery && with_hash && flow->flotype == FLOW_PARTITIONED )
+	{
+		ListCell *c;
+		TargetEntry *tle;
+		List *hash = NIL;
+		Index i = 0;
+		
+		foreach( c, subplan->flow->hashExpr )
+		{
+			tle = tlist_member((Node*)lfirst(c), subplan->targetlist);
+			if ( tle == NULL || tle->resno != ++i )
+			{
+				ereport(ERROR, (
+					errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					errmsg("unexpected subplan hash expression") ));
+			}
+			hash = lappend(hash, makeVar(1, i, 
+										exprType((Node*)tle->expr), 
+										exprTypmod((Node*)tle->expr), 0));
+		}
+		flow->hashExpr = hash;
+	}
+
+	flow->req_move = flow->req_xform = MOVEMENT_NONE;
+	flow->base_flotype = flow->flotype;
+	
+	plan->flow = flow;
+}
+
+
+void mark_sort_locus(Plan *plan)
+{
+	Flow *flow;
+	Sort *sort;
+
+	Assert( 
+		plan != NULL && 
+		IsA(plan,Sort) && 
+		plan->flow == NULL && 
+		plan->lefttree->flow != NULL 
+	);
+	
+	sort = (Sort*)plan;
+	flow = (Flow*)copyObject(plan->lefttree->flow);
+	flow->req_move = flow->req_xform = MOVEMENT_NONE;
+	flow->base_flotype = flow->flotype;
+	flow->numSortCols = sort->numCols;
+	ARRAYCOPY(
+		flow->sortColIdx, 
+		sort->sortColIdx, 
+		sort->numCols * sizeof(sort->sortColIdx[0])
+	);
+	ARRAYCOPY(
+		flow->sortOperators, 
+		sort->sortOperators, 
+		sort->numCols * sizeof(sort->sortOperators[0])
+	);
+	
+	plan->flow = flow;
+}	
+
+void mark_plan_strewn(Plan* plan)
+{
+	Assert( is_plan_node((Node*)plan) && plan->flow == NULL );
+	plan->flow = makeFlow(FLOW_PARTITIONED);
+}
+
+void mark_plan_replicated(Plan* plan)
+{
+	Assert( is_plan_node((Node*)plan) && plan->flow == NULL );
+	plan->flow = makeFlow(FLOW_REPLICATED);
+}
+
+void mark_plan_root(Plan* plan)
+{
+	Assert( is_plan_node((Node*)plan) && plan->flow == NULL );
+	plan->flow = makeFlow(FLOW_SINGLETON);
+	plan->flow->segindex = -1;
+}
+
+void mark_plan_singleQE(Plan* plan)
+{
+	Assert( is_plan_node((Node*)plan) && plan->flow == NULL );
+	plan->flow = makeFlow(FLOW_SINGLETON);
+	plan->flow->segindex = 0;
+}

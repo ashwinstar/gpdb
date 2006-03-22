@@ -810,6 +810,7 @@ _readAggref(void)
 	READ_UINT_FIELD(agglevelsup);
 	READ_BOOL_FIELD(aggstar);
 	READ_BOOL_FIELD(aggdistinct);
+	READ_ENUM_FIELD(aggstage, AggStage);
 
 	READ_DONE();
 }

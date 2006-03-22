@@ -26,6 +26,8 @@ typedef struct
 	int			numAggs;		/* total number of aggregate calls */
 	int			numDistinctAggs;	/* number that use DISTINCT */
 	Size		transitionSpace;	/* for pass-by-ref transition data */
+	Expr	   *distinctExpr;	/* CDB: pointer to sole DISTINCT agg target */
+	bool		missing_prelimfunc; /* CDB: any agg func w/o a prelim func? */
 } AggClauseCounts;
 
 

@@ -23,20 +23,17 @@
 #include "nodes/params.h"
 #include "cdb/cdbplan.h"
 
-extern Plan *
-			cdbparallelize(Plan *plan, Query *query, bool isCursor, int cursorOptions, ParamListInfo boundParams);
+extern Plan *cdbparallelize(Plan *plan, Query *query,
+							bool isCursor, int cursorOptions, 
+							ParamListInfo boundParams, bool uses_correlation);
 
-extern Plan *
-			cdbparallelize_subquery(Plan *plan, Query *query);
+extern Plan *cdbparallelize_subquery(Plan *plan, Query *query);
 
-extern bool
-			is_plan_node(Node *node);
+extern bool is_plan_node(Node *node);
 
-extern Flow *
-			makeFlow(FlowType flotype);
+extern Flow *makeFlow(FlowType flotype);
 
-extern Flow *
-			pull_up_Flow(Plan *plan, Plan *subplan, bool withSort);
+extern Flow *pull_up_Flow(Plan *plan, Plan *subplan, bool withSort);
 
 bool focusPlan(Plan *plan, bool live, bool stable, bool rescannable);
 bool broadcastPlan(Plan *plan, bool live, bool stable, bool rescannable);

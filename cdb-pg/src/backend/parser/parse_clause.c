@@ -1536,6 +1536,7 @@ transformDistinctClause(ParseState *pstate, List *distinctlist,
  * See addTargetToSortList for info about pstate and resolveUnknown inputs.
  *
  * Returns the updated ORDER BY list.
+ * May modify targetlist in place even when resolveUnknown is FALSE. 
  */
 List *
 addAllTargetsToSortList(ParseState *pstate, List *sortlist,
@@ -1568,6 +1569,7 @@ addAllTargetsToSortList(ParseState *pstate, List *sortlist,
  * otherwise.
  *
  * Returns the updated ORDER BY list.
+ * May modify targetlist entry in place even when resolveUnknown is FALSE. 
  */
 List *
 addTargetToSortList(ParseState *pstate, TargetEntry *tle,

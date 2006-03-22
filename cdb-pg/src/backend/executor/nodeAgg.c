@@ -1258,8 +1258,23 @@ ExecInitAgg(Agg *node, EState *estate)
 			aclcheck_error(aclresult, ACL_KIND_PROC,
 						   get_func_name(aggref->aggfnoid));
 
-		peraggstate->transfn_oid = transfn_oid = aggform->aggtransfn;
-		peraggstate->finalfn_oid = finalfn_oid = aggform->aggfinalfn;
+		switch ( aggref->aggstage) /* MPP */
+		{
+		case AGGSTAGE_NORMAL: /* Single-stage aggregation */
+			peraggstate->transfn_oid = transfn_oid = aggform->aggtransfn;
+			peraggstate->finalfn_oid = finalfn_oid = aggform->aggfinalfn;
+			break;
+			
+		case AGGSTAGE_PARTIAL: /* Two-stage aggregation - preliminary stage */
+			peraggstate->transfn_oid = transfn_oid = aggform->aggtransfn;
+			peraggstate->finalfn_oid = finalfn_oid = InvalidOid;
+			break;
+			
+		case AGGSTAGE_FINAL: /* Two-stage aggregation - final stage */
+			peraggstate->transfn_oid = transfn_oid = aggform->aggprelimfn;
+			peraggstate->finalfn_oid = finalfn_oid = aggform->aggfinalfn;
+			break;
+		}
 
 		/* Check that aggregate owner has permission to call component fns */
 		{

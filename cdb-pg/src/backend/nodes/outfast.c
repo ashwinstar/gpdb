@@ -727,6 +727,7 @@ _outAggref(StringInfo str, Aggref *node)
 	WRITE_UINT_FIELD(agglevelsup);
 	WRITE_BOOL_FIELD(aggstar);
 	WRITE_BOOL_FIELD(aggdistinct);
+	WRITE_ENUM_FIELD(aggstage,AggStage);
 }
 
 static void

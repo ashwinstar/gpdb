@@ -171,6 +171,16 @@ typedef struct Param
 	Oid			paramtype;		/* PG_TYPE OID of parameter's datatype */
 } Param;
 
+/* AggStage enumeration indicates how the executor should handle an
+ * Aggref node.
+ */
+typedef enum AggStage
+{
+	AGGSTAGE_NORMAL = 0,
+	AGGSTAGE_PARTIAL, /* First (lower, earlier) stage of 2-stage aggregation. */
+	AGGSTAGE_FINAL /* Second (upper, later) stage of 2-stage aggregation. */
+} AggStage;
+
 /*
  * Aggref
  */
@@ -183,6 +193,7 @@ typedef struct Aggref
 	Index		agglevelsup;	/* > 0 if agg belongs to outer query */
 	bool		aggstar;		/* TRUE if argument was really '*' */
 	bool		aggdistinct;	/* TRUE if it's agg(DISTINCT ...) */
+	AggStage	aggstage;		/* MPP: 2-stage? If so, which stage */
 } Aggref;
 
 /* ----------------

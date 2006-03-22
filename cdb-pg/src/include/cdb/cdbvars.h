@@ -286,6 +286,12 @@ extern double   mpp_motion_cost_per_row;
  */
 extern int      mpp_segments_for_planner;
 
+/*
+ * Unlike some other enable... vars, enable_agg_restruct is not cost based. 
+ * When set to false, the planner will not use two-stage aggregation.
+ */
+extern bool enable_agg_restruct;
+
 
 /* --------------------------------------------------------------------------------------------------
  * Structure for row of mpp.mpp table

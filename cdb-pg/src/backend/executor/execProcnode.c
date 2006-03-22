@@ -111,6 +111,7 @@
 #include "cdb/cdbvars.h"
 
 #ifdef CDB_TRACE_EXECUTOR
+#include "nodes/print.h"
 static void ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result);
 #endif   /* CDB_TRACE_EXECUTOR */
 
@@ -945,6 +946,9 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 	else
 	{
 		elog(DEBUG4, "CDB_TRACE_EXECUTOR: Return from %s%s with %s tuple.", nameTag, extraTag, willReturnTuple ? "a" : "no");
+		if ( willReturnTuple )
+			print_slot(result);
+			fflush(stdout);
 	}
 
 	return;
