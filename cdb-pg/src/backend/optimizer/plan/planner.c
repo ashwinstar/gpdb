@@ -1188,7 +1188,10 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 										   parse->sortClause,
 										   result_plan);
 			current_pathkeys = sort_pathkeys;
-			mark_sort_locus(result_plan);
+			if ( Mpp_role == MPP_ROLE_DISPATCH )
+			{
+				mark_sort_locus(result_plan);
+			}
 		}
 	}
 
@@ -1198,8 +1201,11 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	if (parse->distinctClause)
 	{
 		result_plan = (Plan *) make_unique(result_plan, parse->distinctClause);
-		mark_passthru_locus(result_plan, TRUE, TRUE);
-
+		if ( Mpp_role == MPP_ROLE_DISPATCH )
+		{
+			mark_passthru_locus(result_plan, TRUE, TRUE);
+		}
+		
 		/*
 		 * If there was grouping or aggregation, leave plan_rows as-is (ie,
 		 * assume the result was already mostly unique).  If not, use the

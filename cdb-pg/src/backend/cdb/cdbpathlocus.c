@@ -21,6 +21,7 @@
 #include "optimizer/tlist.h"    /* tlist_member() */
 #include "parser/parse_expr.h"  /* exprType() and exprTypmod() */
 
+#include "cdb/cdbvars.h"
 #include "cdb/cdbpathlocus.h"   /* me */
 
 
@@ -168,6 +169,13 @@ cdbpathlocus_from_baserel(struct PlannerInfo   *root,
 {
     CdbPathLocus result;
     MppPolicy   *policy = rel->cdbpolicy;
+	
+	if ( Mpp_role != MPP_ROLE_DISPATCH )
+	{
+		CdbPathLocus_MakeRoot(&result);
+		return result;
+	}
+
 
     if (policy &&
         policy->ptype == POLICYTYPE_PARTITIONED)
@@ -205,6 +213,12 @@ cdbpathlocus_from_subquery(struct PlannerInfo   *root,
     Plan           *plan = rel->subplan;
     Flow           *flow = plan->flow;
 
+	if ( Mpp_role != MPP_ROLE_DISPATCH )
+	{
+		CdbPathLocus_MakeRoot(&locus);
+		return locus;
+	}
+	
     CdbPathLocus_MakeNull(&locus);
 
     /* Absence of a Flow node means the plan contains operators
