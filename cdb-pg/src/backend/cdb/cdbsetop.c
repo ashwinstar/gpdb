@@ -25,6 +25,7 @@
 #include "cdb/cdbllize.h"
 #include "cdb/cdbmutate.h"
 #include "cdb/cdbsetop.h"
+#include "cdb/cdbvars.h"
 
 #include "optimizer/tlist.h" /* tlist_member */
 #include "parser/parse_expr.h" /* exprType and exprTypmod */
@@ -56,6 +57,8 @@ MppSetOpType choose_setop_type(List *planlist)
 	bool ok_replicated = TRUE;
 	bool ok_single_qd = TRUE;
 	bool ok_single_qe = TRUE;
+	
+	Assert( Mpp_role == MPP_ROLE_DISPATCH );
 	
 	foreach(cell, planlist)
 	{
@@ -120,6 +123,11 @@ void adjust_setop_arguments(List *planlist, MppSetOpType setop_type)
 				break;
 			case FLOW_SINGLETON:
 				Assert( subplan->flow->segindex == 0 );
+				/* The setop itself will run on an N-gang, so we need to
+				 * arrange for the singleton input to be separately dispatched
+				 * to a 1-gang and collect its result on one of our N QEs.
+				 * Hence ... */
+				adjusted_plan = (Plan *)make_motion_hash_all_targets(NULL, subplan);
 				break;
 			case FLOW_REPLICATED:
 				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),

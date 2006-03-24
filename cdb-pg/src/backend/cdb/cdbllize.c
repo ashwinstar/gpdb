@@ -261,7 +261,7 @@ cdbparallelize(Plan *plan,
 	{
 		ereport(ERROR, (
 				errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-				errmsg("No, no, no. Don't use correlation!")
+				errmsg("Correlated subqueries not yet supported.")
 		));
 	}
 

@@ -188,7 +188,10 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 							  NIL,
 							  rtr->rtindex,
 							  subplan);
-		mark_passthru_locus(plan, FALSE, FALSE); /* CDB: no hash/sort keys */
+		if ( Mpp_role == MPP_ROLE_DISPATCH )
+		{
+			mark_passthru_locus(plan, FALSE, FALSE); /* CDB: no hash/sort keys */
+		}
 
 		/*
 		 * We don't bother to determine the subquery's output ordering since
@@ -238,7 +241,10 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 												 refnames_tlist),
 							NULL,
 							plan);
-			mark_passthru_locus(plan, FALSE, FALSE); /* CDB */
+			if ( Mpp_role == MPP_ROLE_DISPATCH )
+			{
+				mark_passthru_locus(plan, FALSE, FALSE); /* CDB */
+			}
 		}
 		return plan;
 	}
