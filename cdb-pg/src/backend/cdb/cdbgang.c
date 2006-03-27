@@ -1123,7 +1123,31 @@ static Gang *mirrorWriterGang = NULL;
 
 List * getAllReaderGangs()
 {
-	return list_concat(availableReaderGangsN,list_concat(availableReaderGangs1,list_concat(allocatedReaderGangsN,allocatedReaderGangs1)));
+	List		*res=NIL;
+    ListCell	*le;
+
+	/* using list_concat() here will destructively modify the lists!
+	 *
+	   res = list_concat(availableReaderGangsN, list_concat(availableReaderGangs1, list_concat(allocatedReaderGangsN, allocatedReaderGangs1)));
+	*/
+	foreach(le, availableReaderGangsN)
+    {
+		res = lappend(res, lfirst(le));
+	}
+	foreach(le, availableReaderGangs1)
+    {
+		res = lappend(res, lfirst(le));
+	}
+	foreach(le, allocatedReaderGangsN)
+    {
+		res = lappend(res, lfirst(le));
+	}
+	foreach(le, allocatedReaderGangs1)
+    {
+		res = lappend(res, lfirst(le));
+	}
+
+	return res;
 }
 
 Gang *
