@@ -246,7 +246,12 @@ DefineSequence(CreateSeqStmt *seq)
 		CdbDispatchUtilityStatement((Node *)seq);
 	}
 
-	rel = heap_open(seqoid, AccessExclusiveLock);
+    /*
+     * Open and lock the new sequence.  (This lock is redundant; an
+     * AccessExclusiveLock was acquired above by DefineRelation and
+     * won't be released until end of transaction.)
+     */
+    rel = heap_open(seqoid, AccessExclusiveLock);
 	tupDesc = RelationGetDescr(rel);
 
 	/* Initialize first page of relation with special magic number */
@@ -1361,19 +1366,19 @@ cdb_sequence_nextval_proxy(Oid      tablespaceid,
     if (!Mpp_is_primary)
         elog(ERROR,"nextval() cannot be used in this statement when mirroring is active");
 
-    
+
     sendSequenceRequest(GetSeqServerFD(),
-    					dbid, 
-    					tablespaceid, 
-    					relid, 
-    					istemp, 
+    					dbid,
+    					tablespaceid,
+    					relid,
+    					istemp,
     					mpp_session_id,
     					plast,
     					pcached,
     					pincrement);
 
-    
-   
+
+
 }                               /* cdb_sequence_server_nextval */
 
 

@@ -3,6 +3,7 @@
  * parse_relation.c
  *	  parser support routines dealing with relations
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -37,7 +38,7 @@ bool		add_missing_from;
 static RangeTblEntry *scanNameSpaceForRefname(ParseState *pstate,
 						const char *refname);
 static RangeTblEntry *scanNameSpaceForRelid(ParseState *pstate, Oid relid);
-static bool isLockedRel(ParseState *pstate, char *refname);
+static void lockSourceRel(Relation srcrel, ParseState *pstate, char *refname);
 static void expandRelation(Oid relid, Alias *eref,
 			   int rtindex, int sublevels_up,
 			   bool include_dropped,
@@ -617,7 +618,6 @@ addRangeTableEntry(ParseState *pstate,
 {
 	RangeTblEntry *rte = makeNode(RangeTblEntry);
 	char	   *refname = alias ? alias->aliasname : relation->relname;
-	LOCKMODE	lockmode;
 	Relation	rel;
 
 	rte->rtekind = RTE_RELATION;
@@ -629,8 +629,8 @@ addRangeTableEntry(ParseState *pstate,
 	 * to a rel in a statement, be careful to get the right access level
 	 * depending on whether we're doing SELECT FOR UPDATE/SHARE.
 	 */
-	lockmode = isLockedRel(pstate, refname) ? RowShareLock : AccessShareLock;
-	rel = heap_openrv(relation, lockmode);
+	rel = heap_openrv(relation, NoLock);        /*CDB*/
+	lockSourceRel(rel, pstate, refname);        /*CDB*/
 	rte->relid = RelationGetRelid(rel);
 
 	/*
@@ -980,8 +980,8 @@ addRangeTableEntryForJoin(ParseState *pstate,
 /*
  * Has the specified refname been selected FOR UPDATE/FOR SHARE?
  */
-static bool
-isLockedRel(ParseState *pstate, char *refname)
+static void
+lockSourceRel(Relation srcrel, ParseState *pstate, char *refname)
 {
 	/* Outer loop to check parent query levels as well as this one */
 	while (pstate != NULL)
@@ -991,7 +991,7 @@ isLockedRel(ParseState *pstate, char *refname)
 			if (pstate->p_locking_clause->lockedRels == NIL)
 			{
 				/* all tables used in query */
-				return true;
+				break;
 			}
 			else
 			{
@@ -1003,13 +1003,23 @@ isLockedRel(ParseState *pstate, char *refname)
 					char	   *rname = strVal(lfirst(l));
 
 					if (strcmp(refname, rname) == 0)
-						return true;
+						break;
 				}
 			}
 		}
 		pstate = pstate->parentParseState;
 	}
-	return false;
+	
+    /* Default: Don't let the relation definition be changed by other xacts. */
+    if (pstate == NULL)
+        CdbLockRelation(srcrel, AccessShareLock, false);
+
+    /* User wants result rows to be locked FOR UPDATE or FOR SHARE. */
+    else
+        CdbLockRelation(srcrel,
+                        pstate->p_locking_clause->forUpdate ? RowExclusiveLock
+                                                            : RowShareLock,
+                        pstate->p_locking_clause->nowait);
 }
 
 /*

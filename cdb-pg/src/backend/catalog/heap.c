@@ -3,6 +3,7 @@
  * heap.c
  *	  code to create and destroy POSTGRES heap relations
  *
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -58,6 +59,7 @@
 #include "utils/fmgroids.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"             /* CDB: GetMemoryChunkContext */
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
@@ -676,6 +678,7 @@ heap_create_with_catalog(const char *relname,
 						 bool oidislocal,
 						 int oidinhcount,
 						 OnCommitAction oncommit,
+                         const struct MppPolicy *policy,
 						 bool allow_system_table_mods,
 						 Oid comptypeOid)
 {
@@ -706,7 +709,7 @@ heap_create_with_catalog(const char *relname,
 	if (!OidIsValid(relid))
 		relid = GetNewRelFileNode(reltablespace, shared_relation,
 								  pg_class_desc);
-	else							  
+	else							
 		if (Mpp_role == MPP_ROLE_EXECUTE)
 		{
 			CheckNewRelFileNodeIsOk(relid, reltablespace, shared_relation, pg_class_desc);
@@ -765,7 +768,7 @@ heap_create_with_catalog(const char *relname,
 				   0,			/* array dimensions for typBaseType */
 				   false,
 				   comptypeOid);		/* Type NOT NULL */
-				   
+				
 		Assert(new_type_oid == comptypeOid);
 	}
 
@@ -826,6 +829,19 @@ heap_create_with_catalog(const char *relname,
 	 */
 	if (oncommit != ONCOMMIT_NOOP)
 		register_on_commit_action(relid, oncommit);
+
+	/*
+     * CDB: If caller gave us a distribution policy, store the distribution
+     * key column list in the mpp_distribution_policy catalog and attach a
+     * copy to the relcache entry.
+     */
+    if (policy &&
+        Mpp_role == MPP_ROLE_DISPATCH)
+    {
+        Assert(relkind == RELKIND_RELATION);
+        new_rel_desc->rd_cdbpolicy = MppPolicyCopy(GetMemoryChunkContext(new_rel_desc), policy);
+        MppPolicyStore(relid, policy);
+    }
 
 	/*
 	 * ok, the relation has been cataloged, so close our relations and return

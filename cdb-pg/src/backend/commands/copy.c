@@ -3,6 +3,7 @@
  * copy.c
  *		Implements the COPY utility command.
  *
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -45,13 +46,10 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
-#include "utils/relcache.h"
-#include "utils/syscache.h"
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdblink.h"
 #include "cdb/cdbcopy.h"
-#include "cdb/cdbcat.h"
 #include "cdb/cdbhash.h"
 
 #define ISOCTAL(c) (((c) >= '0') && ((c) <= '7'))
@@ -188,7 +186,7 @@ typedef struct CopyStateData
 
 typedef CopyStateData *CopyState;
 
-static const char BinarySignature[11] = "PGCOPY\n\377\r\n\0";
+static const char BinarySignature[] = "PGCOPY\n\377\r\n";   /* 11 bytes total */
 
 /* non-export function prototypes */
 static void DoCopyTo(CopyState cstate);
@@ -215,7 +213,7 @@ static bool DetectLineEnd(CopyState cstate, size_t bytesread);
 static void SendCopyBegin(CopyState cstate);
 static void ReceiveCopyBegin(CopyState cstate);
 static void SendCopyEnd(CopyState cstate);
-static void CopySendData(CopyState cstate, void *databuf, int datasize);
+static void CopySendData(CopyState cstate, const void *databuf, int datasize);
 static void CopySendString(CopyState cstate, const char *str);
 static void CopySendChar(CopyState cstate, char c);
 static void CopySendEndOfRow(CopyState cstate);
@@ -363,7 +361,7 @@ SendCopyEnd(CopyState cstate)
  *----------
  */
 static void
-CopySendData(CopyState cstate, void *databuf, int datasize)
+CopySendData(CopyState cstate, const void *databuf, int datasize)
 {
 	if(!cstate->is_copy_in) /* copy out */
 	{
@@ -388,10 +386,10 @@ CopySendData(CopyState cstate, void *databuf, int datasize)
 			case COPY_NEW_FE:
 				appendBinaryStringInfo(cstate->fe_msgbuf, (char *) databuf, datasize);
 				
-				/* 
-				 * in the dispatcher we receive chunks of whole rows with row endings. 
-				 * We don't want to use CopySendEndOfRow() b/c it adds row endings and 
-				 * also b/c it's intended for a single row at a time. Therefore we need 
+				/*
+				 * in the dispatcher we receive chunks of whole rows with row endings.
+				 * We don't want to use CopySendEndOfRow() b/c it adds row endings and
+				 * also b/c it's intended for a single row at a time. Therefore we need
 				 * to flush the data buf here instead.
 				 */
 				if (Mpp_role == MPP_ROLE_DISPATCH)
@@ -904,8 +902,12 @@ DoCopy(const CopyStmt *stmt)
 
 	/*
 	 * Open and lock the relation, using the appropriate lock type.
+     *
+     * CDB: The proper lock mode depends on whether the relation is local or
+     * distributed.  That info is obtained by heap_openrv().  Therefore we
+     * use CdbLockRelation() instead of getting the lock from heap_openrv().
 	 */
-	cstate->rel = heap_openrv(relation, (is_from ? RowExclusiveLock : AccessShareLock));
+	cstate->rel = heap_openrv(relation, NoLock);
 
 	/* check read-only transaction */
 	if (XactReadOnly && is_from && !isTempNamespace(RelationGetNamespace(cstate->rel)))
@@ -926,7 +928,9 @@ DoCopy(const CopyStmt *stmt)
 				 errhint("Anyone can COPY to stdout or from stdin. "
 						 "psql's \\copy command also works for anyone.")));
 
-	/*
+    CdbLockRelation(cstate->rel, (is_from ? RowExclusiveLock : AccessShareLock), false);
+
+    /*
 	 * Don't allow COPY w/ OIDs to or from a table without them
 	 */
 	if (cstate->oids && !cstate->rel->rd_rel->relhasoids)
@@ -1228,11 +1232,11 @@ CopyToExec(CopyState cstate)
 
 		if (cstate->binary)
 			getTypeBinaryOutputInfo(attr[attnum - 1]->atttypid,
-									&out_func_oid,  
+									&out_func_oid,
 									&isvarlena[attnum - 1]);
 		else
 			getTypeOutputInfo(attr[attnum - 1]->atttypid,
-							  &out_func_oid, 
+							  &out_func_oid,
 							  &isvarlena[attnum - 1]);
 		fmgr_info(out_func_oid, &out_functions[attnum - 1]);
 
@@ -1254,7 +1258,7 @@ CopyToExec(CopyState cstate)
 									  ALLOCSET_DEFAULT_INITSIZE,
 									  ALLOCSET_DEFAULT_MAXSIZE);
 
-	/* 
+	/*
 	 * MPP: the code that prints a binary header or table header
 	 * was removed from here. This is done on the dispatcher, once.
 	 */
@@ -1263,7 +1267,7 @@ CopyToExec(CopyState cstate)
 	if (cstate->binary)
 	{
 		/*
-		 * We don't want binary header in exec mode. it's 
+		 * We don't want binary header in exec mode. it's
 		 * taken care of in the dispatcher code.
 		 */
 		if (Mpp_role == MPP_ROLE_UTILITY)
@@ -1272,7 +1276,7 @@ CopyToExec(CopyState cstate)
 			int32		tmp;
 			
 			/* Signature */
-			CopySendData(cstate, (char *) BinarySignature, 11);
+			CopySendData(cstate, BinarySignature, sizeof(BinarySignature));
 			/* Flags field */
 			tmp = 0;
 			if (cstate->oids)
@@ -1579,7 +1583,7 @@ CopyToDispatch(CopyState cstate)
 		int32		tmp;
 		
 		/* Signature */
-		CopySendData(cstate, (char *) BinarySignature, 11);
+		CopySendData(cstate, BinarySignature, sizeof(BinarySignature));
 		/* Flags field */
 		tmp = 0;
 		if (cstate->oids)
@@ -1595,8 +1599,8 @@ CopyToDispatch(CopyState cstate)
 		 * For non-binary copy, we need to convert null_print to client
 		 * encoding, because it will be sent directly with CopySendString.
 		 */
-		/* 
-		 * MPP: in here we only care about this if we need to print the 
+		/*
+		 * MPP: in here we only care about this if we need to print the
 		 * header. We rely on the segdb server copy out to do the conversion
 		 * before sending the data rows out. We don't need to repeat it here
 		 */
@@ -1671,7 +1675,7 @@ CopyToDispatch(CopyState cstate)
 		ereport(ERROR,
 				(errcode(ERRCODE_IO_ERROR),
 				 errmsg("%s", cdbcopy_err.data)));
-						  
+						
 	if (cstate->binary)
 	{
 		/* Generate trailer for a binary copy */
@@ -1804,8 +1808,8 @@ CopyFromDispatch(CopyState cstate)
 	TupleDesc	tupDesc;
 	Form_pg_attribute *attr;
 	AttrNumber	num_phys_attrs,
-				attr_count, 
-				extra_attr_count, /* count extra attributes we add in the dispatcher COPY 
+				attr_count,
+				extra_attr_count, /* count extra attributes we add in the dispatcher COPY
 							         usually non constant defaults we pre-evaluate in here */
 				num_defaults;
 	FmgrInfo   *in_functions;
@@ -1944,18 +1948,18 @@ CopyFromDispatch(CopyState cstate)
 		else
 			force_notnull[attnum - 1] = false;
 
-		/* 
+		/*
 		 * Fetch the output function and typioparam info. We need it
-		 * for handling default functions on the dispatcher COPY, if 
+		 * for handling default functions on the dispatcher COPY, if
 		 * there are any.
 		 */
 		if (cstate->binary)
 			getTypeBinaryOutputInfo(attr[attnum - 1]->atttypid,
-									&out_func_oid,  
+									&out_func_oid,
 									&isvarlena[attnum - 1]);
 		else
 			getTypeOutputInfo(attr[attnum - 1]->atttypid,
-							  &out_func_oid, 
+							  &out_func_oid,
 							  &isvarlena[attnum - 1]);
 		fmgr_info(out_func_oid, &out_functions[attnum - 1]);
 		
@@ -2021,13 +2025,11 @@ CopyFromDispatch(CopyState cstate)
 	/*
 	 * get the CDB policy for this table and prepare for hashing.
 	 */
-	policy = get_table_policy(cstate->rel->rd_id);
+	policy = cstate->rel->rd_cdbpolicy;
 	
-	if (policy->ptype != POLICYTYPE_PARTITIONED)
-		ereport(ERROR,
-				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				 errmsg("Unexpected MppPolicyType: %d.", policy->ptype)));
-	
+	Insist(policy &&
+           policy->ptype == POLICYTYPE_PARTITIONED &&
+           policy->nattrs > 0);
 	
 	p_nattrs = policy->nattrs;	/* number of partitioning keys */
 	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1);		/* Create hash API
@@ -2064,7 +2066,7 @@ CopyFromDispatch(CopyState cstate)
 		is_first_col = false;
 	}
 	
-	/* 
+	/*
 	 * In order to maintain consistency between the primary and mirror segment data, we
 	 * want to evaluate all table columns that are not participating in this COPY command
 	 * and have a non-constant default values on the dispatcher. If we let them evaluate
@@ -2073,9 +2075,9 @@ CopyFromDispatch(CopyState cstate)
 	 * we have to evaluate it on the dispatcher only too, so that it wouldn't hash as a null
 	 * and inserted as a default value on the segment databases.
 	 *
-	 * Therefore, we include these columns in the column list for the executor COPY. 
-	 * The default values will be evaluated on the dispatcher COPY and the results for 
-	 * the added columns will be appended to each data row that is shipped to the segments.	 
+	 * Therefore, we include these columns in the column list for the executor COPY.
+	 * The default values will be evaluated on the dispatcher COPY and the results for
+	 * the added columns will be appended to each data row that is shipped to the segments.	
 	 */
 	extra_attr_count = 0;
 	
@@ -2107,7 +2109,7 @@ CopyFromDispatch(CopyState cstate)
 			else
 				appendStringInfo(&cdbcopy_cmd, ",%s", NameStr(attr[defmap[i]]->attname));
 			
-			extra_attr_count++; 
+			extra_attr_count++;
 			is_first_col = false;			
 		}
 	}
@@ -2243,18 +2245,19 @@ CopyFromDispatch(CopyState cstate)
 	else
 	{
 		/* Read and verify binary header */
-		char		readSig[11];
+		char		readSig[sizeof(BinarySignature)];
 		int32		tmp;
 		StringInfoData header_buf;
 
 		initStringInfo(&header_buf);
 
 		/* Signature */
-		CopyGetData(cstate, readSig, 11);
+		CopyGetData(cstate, readSig, sizeof(readSig));
 
-		appendBinaryStringInfo(&header_buf, readSig, 11);
+		appendBinaryStringInfo(&header_buf, readSig, sizeof(readSig));
 
-		if (cstate->fe_eof || memcmp(readSig, BinarySignature, 11) != 0)
+		if (cstate->fe_eof ||
+            memcmp(readSig, BinarySignature, sizeof(BinarySignature)) != 0)
 		{
 			appendStringInfo(&cdbcopy_err, "COPY file signature not recognized");
 			cdbCopy->data_errors = true;
@@ -2265,7 +2268,7 @@ CopyFromDispatch(CopyState cstate)
 			/* Flags field */
 			if(!CopyGetInt32(cstate, &tmp))
 			   appendStringInfo(&cdbcopy_err, "invalid COPY file header (missing flags)");
-			   
+			
 			appendBinaryStringInfo(&header_buf, (char *) &tmp, sizeof(int32));
 
 			file_has_oids = (tmp & (1 << 16)) != 0;
@@ -2277,7 +2280,8 @@ CopyFromDispatch(CopyState cstate)
 			}
 		}
 
-		if (!cdbCopy->data_errors)
+		tmp = 0;
+        if (!cdbCopy->data_errors)
 		{
 			/* Header extension length */
 			if (!CopyGetInt32(cstate, &tmp) ||
@@ -2702,8 +2706,8 @@ CopyFromDispatch(CopyState cstate)
 						}
 						PG_END_TRY();
 												
-						/* 
-						 * prepare to concatinate next value: 
+						/*
+						 * prepare to concatinate next value:
 						 * remove eol characters from end of line buf
 						 */
 						if(!cstate->binary)
@@ -2717,7 +2721,7 @@ CopyFromDispatch(CopyState cstate)
 							}
 							else
 							{
-								uint32		null_marker = -1; /* null marker */
+								int32		null_marker = -1; /* null marker */
 								appendBinaryStringInfo(&cstate->line_buf, (char *) &null_marker, sizeof(null_marker));
 							}
 						}
@@ -2728,7 +2732,7 @@ CopyFromDispatch(CopyState cstate)
 							if (!cstate->binary)
 							{
 								appendStringInfo(&cstate->line_buf, "%c", cstate->delim[0]); /* write the delimiter */
-												 
+												
 								string = DatumGetCString(FunctionCall3(&out_functions[defmap[i]],
 																	   values[defmap[i]],
 																	   ObjectIdGetDatum(typioparams[defmap[i]]),
@@ -2826,9 +2830,9 @@ CopyFromDispatch(CopyState cstate)
 														 * cdb policy */
 					h_key = values[h_attnum - 1];		/* value of this attr			   */
 					
-					/* 
-					 * get the data type of this attribute. If it's 
-					 * a domain type get the base type, if it's an 
+					/*
+					 * get the data type of this attribute. If it's
+					 * a domain type get the base type, if it's an
 					 * array type use anyarray, or else just use as is.
 					 */
 					if (get_typtype(attr[h_attnum - 1]->atttypid) == 'd')
@@ -3121,12 +3125,12 @@ CopyFromExec(CopyState cstate)
 	else
 	{
 		/* Read and verify binary header */
-		char		readSig[11];
+		char		readSig[sizeof(BinarySignature)];
 		int32		tmp;
 		
 		/* Signature */
-		if (CopyGetData(cstate, readSig, 11) != 11 ||
-			memcmp(readSig, BinarySignature, 11) != 0)
+		if (CopyGetData(cstate, readSig, sizeof(readSig)) != sizeof(readSig) ||
+			memcmp(readSig, BinarySignature, sizeof(BinarySignature)) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 					 errmsg("COPY file signature not recognized")));
@@ -4568,7 +4572,7 @@ CopyReadBinaryAttribute(CopyState cstate, int column_no, FmgrInfo *flinfo, Oid t
  *----------
  */
 static void
-CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets, 
+CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 					  int num_phys_attrs, Form_pg_attribute *attr)
 {
 	char		delimc = cstate->delim[0];

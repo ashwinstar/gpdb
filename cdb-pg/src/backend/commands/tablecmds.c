@@ -330,7 +330,10 @@ DefineRelation_int(CreateStmt *stmt,
 	int			i;
 	AttrNumber	attnum;
 
-	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode() && relkind != RELKIND_SEQUENCE && relkind != RELKIND_VIEW;
+	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH &&
+                                 IsNormalProcessingMode() &&
+                                 relkind != RELKIND_SEQUENCE &&
+                                 relkind != RELKIND_VIEW;
 
 	/*
 	 * Truncate relname to appropriate length (probably a waste of time, as
@@ -340,7 +343,7 @@ DefineRelation_int(CreateStmt *stmt,
 
 
 	/* We can't support Temp objects until we fix MPP-475.
-	 * 
+	 *
 	 * Until then we'll simply state that we don't handle temp objects
 	 */
 	if( Mpp_role == MPP_ROLE_DISPATCH && stmt->relation->istemp)
@@ -485,7 +488,7 @@ DefineRelation_int(CreateStmt *stmt,
 	}
 
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (shouldDispatch)
 	{
 		Oid			toastRelationId = InvalidOid;
 		Relation	pg_class_desc;
@@ -509,20 +512,17 @@ DefineRelation_int(CreateStmt *stmt,
 		
 		toastIndexId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
 									
-		heap_close(pg_class_desc, RowExclusiveLock);
+		heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
 		
 		stmt->relOid = relationId;
 		stmt->comptypeOid = comptypeOid;
 		stmt->toastOid = toastRelationId;
 		stmt->toastIndexOid = toastIndexId;
 		stmt->relKind = relkind;
-		stmt->relation->schemaname = get_namespace_name(namespaceId);
-		
-		
+		stmt->relation->schemaname = get_namespace_name(namespaceId);	
 	}
 	else if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
-		elog(DEBUG1, "CdbRole Execute of CREATE TABLE, relationid %d", stmt->relOid);
 		Assert(stmt->relOid != 0);
 		relationId = stmt->relOid;
 	}
@@ -533,8 +533,13 @@ DefineRelation_int(CreateStmt *stmt,
 		stmt->toastIndexOid = InvalidOid;
 	}
 
-
-	if (shouldDispatch)
+    if (stmt->relOid)
+        elog(DEBUG4, "DefineRelation relOid=%d schemaname=%s shouldDispatch=%d",
+             stmt->relOid,
+             stmt->relation->schemaname ? stmt->relation->schemaname : "",
+             shouldDispatch);
+	
+    if (shouldDispatch)
 	{
 		/*
 		 * Check to see if we support the datatypes
@@ -552,8 +557,6 @@ DefineRelation_int(CreateStmt *stmt,
 
 				if (v)
 					n = v->val.str;
-
-
 
 				if (n)
 					if (strcmp(n, "path") == 0 ||
@@ -582,10 +585,8 @@ DefineRelation_int(CreateStmt *stmt,
 		}
 
 
-		elog(DEBUG4, "shouldDispatch = true, relOid = %d, schemaname %s ", relationId, stmt->relation->schemaname);
-
-		/* Start a global transaction and reconfigure the cluster if needed. 
-		 * 
+		/* Start a global transaction and reconfigure the cluster if needed.
+		 *
 		 * We defer the dispatch of the utility command until after
 		 * heap_create_with_catalog(), because that call will *wait*
 		 * for any other transactions touching this new relation,
@@ -605,6 +606,7 @@ DefineRelation_int(CreateStmt *stmt,
 										  localHasOids,
 										  parentOidCount,
 										  stmt->oncommit,
+                                          stmt->policy,             /*CDB*/
 										  allowSystemTableMods,
 										  stmt->comptypeOid);
 
@@ -689,23 +691,6 @@ DefineRelation_int(CreateStmt *stmt,
 	 * visible to anyone else anyway, until commit).
 	 */
 	relation_close(rel, NoLock);
-
-	if (*pPrimaryResults)
-	{
-
-		if (Mpp_role == MPP_ROLE_DISPATCH && stmt != 0 && relkind == RELKIND_RELATION)
-		{
-			/* dispatch node needs to update policy */
-
-			MppPolicy  *policy = stmt->policy;
-
-			if (policy)
-				set_table_policy(relationId, policy);
-			else
-				elog(NOTICE, "Table created in dispatch mode has no distribution policy");
-		}
-	}
-
 
 	return relationId;
 }
@@ -3808,8 +3793,7 @@ ATExecDropColumn(Relation rel, const char *colName,
 
 	ReleaseSysCache(tuple);
 	
-	policy = get_table_policy(RelationGetRelid(rel));
-
+	policy = rel->rd_cdbpolicy;
 	if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
 	{
 		int			ia = 0;
@@ -3818,16 +3802,11 @@ ATExecDropColumn(Relation rel, const char *colName,
 		{
 			if (attnum == policy->attrs[ia])
 			{
-				
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("You cannot drop a column that is used for the distribution of the table")));
-
 			}
-
-
 		}
-		
 	}
 
 	/*
@@ -6269,6 +6248,7 @@ AlterTableCreateToastTableWithOid(Oid relOid, bool silent, Oid newOid, Oid newIn
 										   true,
 										   0,
 										   ONCOMMIT_NOOP,
+                                           NULL,                    /*CDB*/
 										   true,
 										   0);
 

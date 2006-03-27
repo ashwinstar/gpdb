@@ -3,8 +3,8 @@
  * cdbexec.c
  *	  The MPP command MPPEXEC (modelled on PostgreSQL EXECUTE)
  *
+ * Copyright (c) 2005-2006, Greenplum Inc.
  * Copyright (c) 2002-2004, PostgreSQL Global Development Group
- * Copyright (c) 2005, Greenplum Inc.
  *
  * IDENTIFICATION
  *	  $Id$
@@ -41,6 +41,7 @@ CdbExecQuery(CdbExecStmt * stmt, DestReceiver *dest, char *completionTag)
 	Query	   *query = NULL;
 	Plan	   *plan = NULL;
 	SliceTable *sliceTable = NULL;
+    Slice      *slice = NULL;
 	ParamListInfo paramLI = NULL;
 	MemoryContext oldctx = NULL,
 				qctx;
@@ -49,6 +50,7 @@ CdbExecQuery(CdbExecStmt * stmt, DestReceiver *dest, char *completionTag)
 	ListCell   *pc;
 	char	   *cstr = NULL;
 	EState	   *estate = NULL;
+	Portal		portal;
 
 	/* tcop shouldn't call unless the role is right! */
 	Assert(Mpp_role == MPP_ROLE_EXECUTE);
@@ -65,18 +67,72 @@ CdbExecQuery(CdbExecStmt * stmt, DestReceiver *dest, char *completionTag)
 	cstr = strVal(stmt->ser_query);
 	Assert(cstr != NULL);
 	query = (Query *) deserializeNode(cstr);
-	pfree(cstr);
 
-	if (stmt->ser_sliceinfo != NULL)
+    if (!query ||
+        !IsA(query, Query))
+        elog(ERROR, "MPPEXEC: received invalid query");
+    if (query->commandType != CMD_UTILITY &&
+        query->commandType != CMD_SELECT &&
+        query->commandType != CMD_INSERT &&
+        query->commandType != CMD_UPDATE &&
+        query->commandType != CMD_DELETE)
+        elog(ERROR, "MPPEXEC: received invalid query");
+
+    pfree(cstr);
+
+	/*
+	 * Deserialize the slice table.
+	 */
+    if (stmt->ser_sliceinfo != NULL)
 	{
 		Assert(IsA(stmt->ser_sliceinfo, String));
 		cstr = strVal(stmt->ser_sliceinfo);
 		Assert(cstr != NULL);
-		sliceTable = (SliceTable *) deserializeNode(cstr);
-		pfree(cstr);
-	}
 
-	if (query->commandType != CMD_UTILITY)
+        sliceTable = (SliceTable *) deserializeNode(cstr);
+
+        if (!sliceTable ||
+            !IsA(sliceTable, SliceTable) ||
+            sliceTable->localSlice < 0 ||
+            sliceTable->localSlice >= list_length(sliceTable->slices))
+            elog(ERROR, "MPPEXEC: received invalid slice table");
+
+        slice = (Slice *)list_nth(sliceTable->slices, sliceTable->localSlice);
+        Insist(IsA(slice, Slice));
+
+        pfree(cstr);
+
+        /* Set global sliceid variable for elog. */
+        currentSliceId = sliceTable->localSlice;
+
+        /* Force commandType to SELECT if not a root slice. */
+        if (sliceTable->localSlice != slice->rootIndex)
+        {
+            ListCell       *rtcell;
+            RangeTblEntry  *rte;
+            AclMode         removeperms = ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_SELECT_FOR_UPDATE;
+
+            /* Just reading, so don't check INS/DEL/UPD permissions. */
+            foreach(rtcell, query->rtable)
+            {
+                rte = (RangeTblEntry *)lfirst(rtcell);
+                if (rte->rtekind == RTE_RELATION &&
+                    0 != (rte->requiredPerms & removeperms))
+                    rte->requiredPerms &= ~removeperms;
+            }
+
+            query->commandType = CMD_SELECT;
+            query->into = NULL;
+            query->resultRelation = 0;
+            query->resultRelations = NIL;
+            query->rowMarks = NIL;
+        }
+    }
+
+    /*
+     * Deserialize the query execution plan.
+     */
+    if (query->commandType != CMD_UTILITY)
 	{
 		Assert(stmt->ser_plan != NULL && IsA(stmt->ser_plan, String));
 		cstr = strVal(stmt->ser_plan);
@@ -130,47 +186,40 @@ CdbExecQuery(CdbExecStmt * stmt, DestReceiver *dest, char *completionTag)
 	{
 		plan = NULL;
 		paramLI = NULL;
-		elog(DEBUG2, "mppexec received a utility command\n");
 	}
 
-	{
-		/*
-		 * Create a new portal to run the query in
-		 */
-		List	   *query_list = list_make1(query);
-		List	   *plan_list = list_make1(plan);
-		const char *commandTag = CreateQueryTag(query);
+	/*
+	 * Create a new portal to run the query in
+	 */
+	portal = CreateNewPortal();
 
-		Portal		portal = CreateNewPortal();
-
-		PortalDefineQuery(portal,
-						  "",
-						  commandTag,
-						  query_list,
-						  plan_list,
-						  qctx);
+	PortalDefineQuery(portal,
+					  "",
+					  CreateQueryTag(query),
+					  list_make1(query),
+					  list_make1(plan),
+					  qctx);
 
 
-		/*
-		 * Start the portal.  Note that ExecutorStart is called in here for
-		 * SELECT, but deferred until PortalRun for other DML.
-		 */
-		PortalStart(portal, paramLI, ActiveSnapshot);
+	/*
+	 * Start the portal.  Note that ExecutorStart is called in here for
+	 * SELECT, but deferred until PortalRun for other DML.
+	 */
+	PortalStart(portal, paramLI, ActiveSnapshot);
 
-		/*
-		 * Run the portal to completion. */
-		(void) PortalRun(portal, FETCH_ALL, dest, dest, completionTag);
+	/*
+	 * Run the portal to completion. */
+	(void) PortalRun(portal, FETCH_ALL, dest, dest, completionTag);
 
 
-		PortalDrop(portal, false);
+	PortalDrop(portal, false);
 
-		if (estate)
-			FreeExecutorState(estate);
+	if (estate)
+		FreeExecutorState(estate);
 
-		/* Restore state prior to return. */
-		if (paramLI != NULL)
-			pfree(paramLI);		/* Maybe should let context free it. */
-	}
+	/* Restore state prior to return. */
+	if (paramLI != NULL)
+		pfree(paramLI);		/* Maybe should let context free it. */
 
 	if (oldctx)
 		MemoryContextSwitchTo(oldctx);

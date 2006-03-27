@@ -3,7 +3,7 @@
  * cdbcat.c
  *	  Provides routines for reading info from mpp schema tables
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -27,38 +27,43 @@ static void extract_INT2OID_array(Datum array_datum, int *lenp, int16 **vecp);
 /*
  * MppPolicyCopy -- Return a copy of a MppPolicy object.
  *
- * The copy is palloc'ed in the caller's context.
+ * The copy is palloc'ed in the specified context.
  */
 MppPolicy *
-MppPolicyCopy(const MppPolicy *src)
+MppPolicyCopy(MemoryContext mcxt, const MppPolicy *src)
 {
 	MppPolicy  *tgt;
 	size_t		nb;
 
 	if (!src)
 		return NULL;
-	nb = sizeof(*src) + src->nattrs * sizeof(src->attrs[0]);
-	tgt = (MppPolicy *) palloc(nb);
+	nb = sizeof(*src) - sizeof(src->attrs) + src->nattrs * sizeof(src->attrs[0]);
+   	tgt = (MppPolicy *)MemoryContextAlloc(mcxt, nb);
 	memcpy(tgt, src, nb);
 	return tgt;
-}	/* MppPolicyCopy */
+}	                            /* MppPolicyCopy */
 
 /*
- * Returns the policy of a table as determined from the mpp_distribution_policy table
- * in a MppPolicy structure allocated in the current memory context.
+ * MppPolicyFetch
+ *
+ * Looks up a given Oid in the mpp_distribution_policy table.
+ * If found, returns an MppPolicy object (palloc'd in the specified
+ * context) containing the info from the mpp_distribution_policy row.
+ * Else returns NULL.
  *
  * The caller is responsible for passing in a valid relation oid.  This
  * function does not check and assigns a policy of type POLICYTYPE_ENTRY
- * for any oid not found in .policy.
+ * for any oid not found in mpp_distribution_policy.
  */
 MppPolicy *
-get_table_policy(Oid tbloid)
+MppPolicyFetch(MemoryContext mcxt, Oid tbloid)
 {
 	MppPolicy  *policy = NULL;	/* The result */
 	Relation	mpp_policy_rel;
 	ScanKeyData policy_key[1];
 	SysScanDesc mpp_policy_scan;
 	HeapTuple	mpp_policy_tuple = NULL;
+	size_t		nb;
 
 	/*
 	 * Skip if qExec or utility mode.
@@ -69,12 +74,6 @@ get_table_policy(Oid tbloid)
 	/*
 	 * We need to read the mpp_distribution_policy table
 	 */
-
-	
-	/*
-	 * Then, open the table and and find the oid of the index
-	 */
-	 
 	mpp_policy_rel = heap_open(MppPolicyRelationId, AccessShareLock);
 
 	/*
@@ -85,12 +84,12 @@ get_table_policy(Oid tbloid)
 
 	/*
 	 * Begin the scan
-	 */						 
-	mpp_policy_scan = systable_beginscan(mpp_policy_rel, 
-										 MppPolicyLocalOidIndexId, 
+	 */						
+	mpp_policy_scan = systable_beginscan(mpp_policy_rel,
+										 MppPolicyLocalOidIndexId,
 										 true,
-										 SnapshotNow, 
-										 1, 
+										 SnapshotNow,
+										 1,
 										 policy_key);
 
 	/*
@@ -104,7 +103,6 @@ get_table_policy(Oid tbloid)
 		int			i,
 					nattrs = 0;
 		int16	   *attrnums = NULL;
-		size_t		sz;
 
 		/*
 		 * Get the attributes on which to partition.
@@ -114,8 +112,9 @@ get_table_policy(Oid tbloid)
 		extract_INT2OID_array(attr, &nattrs, &attrnums);
 		Assert(nattrs >= 0);
 
-		sz = sizeof(MppPolicy) + nattrs * sizeof(policy->attrs[0]);
-		policy = (MppPolicy *) palloc(sz);
+		/* Create an MppPolicy object. */
+	    nb = sizeof(*policy) - sizeof(policy->attrs) + nattrs * sizeof(policy->attrs[0]);
+    	policy = (MppPolicy *)MemoryContextAlloc(mcxt, nb);
 		policy->ptype = POLICYTYPE_PARTITIONED;
 		policy->nattrs = nattrs;
 		for (i = 0; i < nattrs; i++)
@@ -133,15 +132,14 @@ get_table_policy(Oid tbloid)
 	/* Interpret absence of a valid policy row as POLICYTYPE_ENTRY */
 	if (policy == NULL)
 	{
-		policy = palloc(sizeof(MppPolicy));
+	    nb = sizeof(*policy) - sizeof(policy->attrs);
+    	policy = (MppPolicy *)MemoryContextAlloc(mcxt, nb);
 		policy->ptype = POLICYTYPE_ENTRY;
 		policy->nattrs = 0;
 	}
 
 	return policy;
-}
-
-
+}                               /* MppPolicyFetch */
 
 
 /*
@@ -172,15 +170,9 @@ extract_INT2OID_array(Datum array_datum, int *lenp, int16 **vecp)
  *
  */
 void
-set_table_policy(Oid tbloid, MppPolicy *policy)
+MppPolicyStore(Oid tbloid, const MppPolicy *policy)
 {
-
 	Relation	mpp_policy_rel;
-
-	/*
-	 * Oid				 mpp_policy_index_oid; ScanKeyData	   policy_key[1];
-	 * SysScanDesc	   mpp_policy_scan;
-	 */
 	HeapTuple	mpp_policy_tuple = NULL;
 
 	ArrayType  *attrnums;
@@ -188,15 +180,13 @@ set_table_policy(Oid tbloid, MppPolicy *policy)
 	char		nulls[2];
 	Datum		values[2];
 
+	Insist(policy->nattrs > 0 &&
+           policy->ptype == POLICYTYPE_PARTITIONED);
 
-
-	Assert(policy->nattrs >= 0);
-	Assert(policy->ptype == POLICYTYPE_PARTITIONED);
-
-
+    /*
+     * Open and lock the mpp_distribution_policy catalog.
+     */
 	mpp_policy_rel = heap_open(MppPolicyRelationId, RowExclusiveLock);
-
-
 
 	/*
 	 * Convert C arrays into Postgres arrays.
@@ -217,7 +207,6 @@ set_table_policy(Oid tbloid, MppPolicy *policy)
 		attrnums = NULL;
 	}
 
-
 	nulls[0] = ' ';
 	nulls[1] = ' ';
 	values[0] = ObjectIdGetDatum(tbloid);
@@ -234,14 +223,10 @@ set_table_policy(Oid tbloid, MppPolicy *policy)
 	/* update catalog indexes */
 	CatalogUpdateIndexes(mpp_policy_rel, mpp_policy_tuple);
 
-
-	heap_close(mpp_policy_rel, RowExclusiveLock);
-
-
-
-
-
-
-
-
-}
+	/*
+     * Close the mpp_distribution_policy relcache entry without unlocking.
+     * We have updated the catalog: consequently the lock must be held until
+     * end of transaction.
+     */
+    heap_close(mpp_policy_rel, NoLock);
+}                               /* MppPolicyStore */

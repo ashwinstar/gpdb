@@ -3,6 +3,7 @@
  * rewriteHandler.c
  *		Primary module of query rewriter.
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -105,7 +106,6 @@ AcquireRewriteLocks(Query *parsetree)
 	{
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(l);
 		Relation	rel;
-		LOCKMODE	lockmode;
 		List	   *newaliasvars;
 		Index		curinputvarno;
 		RangeTblEntry *curinputrte;
@@ -127,16 +127,31 @@ AcquireRewriteLocks(Query *parsetree)
 				 * just grab AccessShareLock because then the executor would
 				 * be trying to upgrade the lock, leading to possible
 				 * deadlocks.
+                 *
+                 * CDB: The proper lock mode depends on whether the relation is
+                 * local or distributed, which is discovered by heap_open().
+                 * Therefore we don't ask heap_open() to acquire the lock.
+                 * Instead call CdbLockRelation() on return from heap_open().
 				 */
-				if (rt_index == parsetree->resultRelation)
-					lockmode = RowExclusiveLock;
-				else if (list_member_int(parsetree->rowMarks, rt_index))
-					lockmode = RowShareLock;
-				else
-					lockmode = AccessShareLock;
+				rel = heap_open(rte->relid, NoLock);
+				
+                /* Target of INSERT/UPDATE/DELETE? */
+                if (rt_index == parsetree->resultRelation)
+                    CdbLockRelation(rel, RowExclusiveLock, false);
 
-				rel = heap_open(rte->relid, lockmode);
-				heap_close(rel, NoLock);
+                /* FOR UPDATE/SHARE? */
+				else if (list_member_int(parsetree->rowMarks, rt_index))
+                    CdbLockRelation(rel,
+                                    parsetree->forUpdate ? RowExclusiveLock
+                                                         : RowShareLock,
+                                    parsetree->rowNoWait);
+
+                /* Ordinary source relation */
+				else
+                    CdbLockRelation(rel, AccessShareLock, false);
+
+                /* Close the relcache entry without releasing the lock. */
+                heap_close(rel, NoLock);
 				break;
 
 			case RTE_JOIN:

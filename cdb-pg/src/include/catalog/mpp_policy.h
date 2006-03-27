@@ -1,3 +1,18 @@
+/*-------------------------------------------------------------------------
+ *
+ * mpp_policy.h
+ *	  definitions for the mpp_distribution_policy catalog table
+ *
+ * Copyright (c) 2005-2006, greenplum inc
+ *
+ * IDENTIFICATION
+ *	  $Id$
+ *
+ * NOTES
+ *
+ *-------------------------------------------------------------------------
+ */
+
 #ifndef _MPP_POLICY_H_
 #define _MPP_POLICY_H_
 
@@ -45,26 +60,37 @@ struct MppPolicy
 
 	/* These fields apply to POLICYTYPE_PARTITIONED. */
 	int			nattrs;
-	AttrNumber	attrs[0];		/* the first of nattrs attribute numbers.  */
+	AttrNumber	attrs[1];		/* the first of nattrs attribute numbers.  */
 } MppPolicy;
 
 /*
  * MppPolicyCopy -- Return a copy of a MppPolicy object.
  *
- * The copy is palloc'ed in the caller's context.
+ * The copy is palloc'ed in the specified context.
  */
 MppPolicy *
-			MppPolicyCopy(const MppPolicy *src);
+MppPolicyCopy(MemoryContext mcxt, const MppPolicy *src);
 
 /*
- * get_table_policy: returns a palloc'd MppPolicy for a table oid.
+ * MppPolicyFetch
+ *
+ * Looks up a given Oid in the mpp_distribution_policy table.
+ * If found, returns an MppPolicy object (palloc'd in the specified
+ * context) containing the info from the mpp_distribution_policy row.
+ * Else returns NULL.
+ *
+ * The caller is responsible for passing in a valid relation oid.  This
+ * function does not check and assigns a policy of type POLICYTYPE_ENTRY
+ * for any oid not found in mpp_distribution_policy.
  */
-extern MppPolicy *get_table_policy(Oid tbloid);
+MppPolicy *
+MppPolicyFetch(MemoryContext mcxt, Oid tbloid);
 
 /*
- * set_table_policy: sets the MppPolicy for a table.
+ * MppPolicyStore: sets the MppPolicy for a table.
  */
-extern void set_table_policy(Oid tbloid, MppPolicy *policy);
+void
+MppPolicyStore(Oid tbloid, const MppPolicy *policy);
 
 
 #endif /*_MPP_POLICY_H_*/

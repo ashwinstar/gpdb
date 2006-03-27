@@ -11,6 +11,7 @@
  * executor relies on this to find the tuple to be replaced/deleted.
  *
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -23,6 +24,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "catalog/mpp_policy.h"     /* CDB: POLICYTYPE_PARTITIONED */
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/prep.h"
@@ -132,8 +134,21 @@ preprocess_targetlist(PlannerInfo *root, List *tlist)
 			Var		   *var;
 			char	   *resname;
 			TargetEntry *tle;
+            RangeTblEntry  *rte;
+            Relation    relation;
+            bool        isdistributed = false;
 
-			var = makeVar(rti,
+            /* CDB: Don't try to fetch CTIDs for distributed relation. */
+            rte = rt_fetch(rti, parse->rtable);
+            relation = heap_open(rte->relid, NoLock);
+            if (relation->rd_cdbpolicy &&
+                relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
+                isdistributed = true;
+            heap_close(relation, NoLock);
+            if (isdistributed)
+                continue;
+
+            var = makeVar(rti,
 						  SelfItemPointerAttributeNumber,
 						  TIDOID,
 						  -1,

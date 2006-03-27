@@ -93,15 +93,7 @@ static void initResultRelInfo(ResultRelInfo *resultRelInfo,
 				  Index resultRelationIndex,
 				  List *rangeTable,
 				  CmdType operation,
-				  bool doInstrument,
- /*
-  * Added the following parameter for CDB,
-  * so that when the relation is opened for insert, update or delete,
-  * and the Mpp_role is MPP_ROLE_DISPATCH,
-  * and the plan dispatch type is DISPATCH_PARALLEL,
-  * the lock type passed to heap_open is set to ExclusiveLock instead of RowExclusiveLock.
-  */
-				  bool shouldDispatch);
+				  bool doInstrument);
 static TupleTableSlot *ExecutePlan(EState *estate, PlanState *planstate,
 			CmdType operation,
 			long numberTuples,
@@ -110,10 +102,8 @@ static TupleTableSlot *ExecutePlan(EState *estate, PlanState *planstate,
 static void ExecSelect(TupleTableSlot *slot,
 		   DestReceiver *dest,
 		   EState *estate);
-static void ExecInsert(TupleTableSlot *slot, ItemPointer tupleid,
-		   EState *estate);
-static void ExecDelete(TupleTableSlot *slot, ItemPointer tupleid,
-		   EState *estate);
+static void ExecInsert(TupleTableSlot *slot, EState *estate);
+static void ExecDelete(ItemPointer tupleid, EState *estate);
 static void ExecUpdate(TupleTableSlot *slot, ItemPointer tupleid,
 		   EState *estate);
 static TupleTableSlot *EvalPlanQualNext(EState *estate);
@@ -217,22 +207,20 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 		 */
 		estate->es_slice_map = (MotionState **) palloc0((1 + queryDesc->plantree->nMotionNodes) * sizeof(MotionState *));
 
-		/* Set up slice table, if one is available at this point. */
+        /* qDisp should have sent us a slice table via MPPEXEC */
 		if (queryDesc->plantree != NULL && queryDesc->plantree->sliceTable != NULL)
 		{
-			SliceTable *sliceTable;
-			Slice	   *slice;
+        	SliceTable *sliceTable;
+        	Slice	   *slice;
 
-			/* From the QD via MPPEXEC! */
-			sliceTable = (SliceTable *) queryDesc->plantree->sliceTable;
+            sliceTable = (SliceTable *)queryDesc->plantree->sliceTable;
+            Assert(IsA(sliceTable, SliceTable));
+            slice = (Slice *)list_nth(sliceTable->slices, sliceTable->localSlice);
+            Assert(IsA(slice, Slice));
+
 			estate->es_sliceTable = sliceTable;
 			estate->es_cur_slice_idx = sliceTable->localSlice;
-			slice = list_nth(sliceTable->slices, sliceTable->localSlice);
-			Assert(IsA(slice, Slice));
-			estate->es_cur_root_idx = ((Slice *) slice)->rootIndex;
-
-			/* set our global sliceid variable for elog. */
-			currentSliceId = estate->es_cur_slice_idx;
+			estate->es_cur_root_idx = slice->rootIndex;
 		}
 	}
 
@@ -303,7 +291,6 @@ ExecutorRun(QueryDesc *queryDesc,
 	DestReceiver *dest;
 	TupleTableSlot *result = NULL;
 	MemoryContext oldcontext;
-	RangeTblEntry *rte = NULL;
 
 	/*
 	 * Any local vars that are set in the PG_TRY block and examined in the
@@ -383,13 +370,12 @@ ExecutorRun(QueryDesc *queryDesc,
 				);
 		}
 
-		elog(DEBUG1,
-			 "Segment %d (%s) executing slice %d under root %d.",
-			 Mpp_segment,
-			 (Mpp_is_primary ? "primary" : "mirror"),
-			 estate->es_cur_slice_idx,
-			 estate->es_cur_root_idx
-			);
+		ereport(DEBUG3, (errmsg("Segment %d (%s) executing slice %d under root %d",
+			                    Mpp_segment,
+			                    (Mpp_is_primary ? "primary" : "mirror"),
+			                    estate->es_cur_slice_idx,
+			                    estate->es_cur_root_idx)
+			    ));
 	}
 
 	/*
@@ -407,11 +393,7 @@ ExecutorRun(QueryDesc *queryDesc,
 
 		if (shouldDispatch)
 		{
-			bool		bChangedQueryTree = false;
-			CmdType		origCmdType = (CmdType) NULL;
-			RTEKind		origRTEKind = (RTEKind) NULL;
-
-			/*
+            /*
 			 * First, see whether we need to pre-execute any initPlan subplans.
 			 */
 			if (queryDesc->plantree->nParamExec > 0)
@@ -427,38 +409,6 @@ ExecutorRun(QueryDesc *queryDesc,
 														   queryDesc->params,
 									   queryDesc->estate->es_param_exec_vals,
 											queryDesc->plantree->nParamExec);
-
-			}
-
-			/*
-			 * Hack for insert selects into local tables
-			 */
-			if (queryDesc->parsetree->commandType == CMD_INSERT)
-			{
-				MppPolicy  *policy;
-
-				rte = rt_fetch(queryDesc->parsetree->resultRelation, queryDesc->parsetree->rtable);
-				Assert(rte->rtekind == RTE_RELATION);
-				policy = get_table_policy(rte->relid);
-				Assert(policy != NULL);
-
-				if (policy->ptype == POLICYTYPE_ENTRY)
-				{
-					/*
-					 * The query tree references the target table.	Since it is a local table,
-					 * it may not exist on the qExecs. Even though no rows will ever be inserted
-					 * on the qExecs into the target table, the Executor there would insist on the table existing.
-					 * To get around this, we reset the command type to select, and the retkind to function.
-					 * With these changes, the qExec executors don't check the existence of the relation.
-					 */
-					origCmdType = queryDesc->parsetree->commandType;
-					queryDesc->parsetree->commandType = CMD_SELECT;
-					origRTEKind = rte->rtekind;
-					rte->rtekind = RTE_FUNCTION;
-					bChangedQueryTree = true;
-				}
-
-				pfree(policy);
 			}
 
             /*
@@ -473,18 +423,6 @@ ExecutorRun(QueryDesc *queryDesc,
              * dispatched.
 			 */
 			cdbdisp_dispatchPlan(queryDesc, true, &primaryResults, &mirrorResults);
-
-			if (bChangedQueryTree)
-			{
-				/*
-				 * If we hacked the query tree before serialization, we set
-				 * the original values back here, before we start running the wrong
-				 * thing here on the dispatcher.
-				 */
-				queryDesc->parsetree->commandType = origCmdType;
-				Assert(rte != NULL);
-				rte->rtekind = origRTEKind;
-			}
 		}
 
 		/*
@@ -538,7 +476,7 @@ ExecutorRun(QueryDesc *queryDesc,
 			SetupSequenceServer(estate->es_sliceTable);
 			
 			/* activate the connections, if needed */
-			if (((PlanState *) motionState)->plan->nMotionNodes > 0) 
+			if (((PlanState *) motionState)->plan->nMotionNodes > 0)
 			{			
 				shouldSetupInterconnect = true;
 				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
@@ -563,7 +501,6 @@ ExecutorRun(QueryDesc *queryDesc,
 				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
 			}
 			
-
 			result = ExecutePlan(estate,
 								 queryDesc->planstate,
 								 operation,
@@ -805,16 +742,17 @@ ExecCheckRTEPerms(RangeTblEntry *rte)
 /*
  * This function is used to check if the current statement will perform any writes.
  * It is used to enforce:
- *  (1) read-only mode (both fts and transcation isolation level read only) 
- *      as well as 
+ *  (1) read-only mode (both fts and transcation isolation level read only)
+ *      as well as
  *  (2) to keep track of when a distributed transaction becomes
- *      "dirty" and will require 2pc. 
+ *      "dirty" and will require 2pc.
  Check that the query does not imply any writes to non-temp tables.
  */
 static void
 ExecCheckXactReadOnly(Query *parsetree)
 {
 	ListCell   *l;
+    int         rti;
 
 	/*
 	 * CREATE TABLE AS or SELECT INTO?
@@ -825,11 +763,14 @@ ExecCheckXactReadOnly(Query *parsetree)
 		goto fail;
 
 	/* Fail if write permissions are requested on any non-temp table */
+    rti = 0;
 	foreach(l, parsetree->rtable)
 	{
 		RangeTblEntry *rte = lfirst(l);
 
-		if (rte->rtekind == RTE_SUBQUERY)
+		rti++;
+
+        if (rte->rtekind == RTE_SUBQUERY)
 		{
 			ExecCheckXactReadOnly(rte->subquery);
 			continue;
@@ -844,9 +785,13 @@ ExecCheckXactReadOnly(Query *parsetree)
 		if (isTempNamespace(get_rel_namespace(rte->relid)))
 			continue;
 
+        /* CDB: Allow SELECT FOR SHARE/UPDATE */
+        if ((rte->requiredPerms & ~(ACL_SELECT | ACL_SELECT_FOR_UPDATE)) == 0 &&
+            list_member_int(parsetree->rowMarks, rti))
+            continue;
+
 		goto fail;
 	}
-
 	return;
 
 fail:
@@ -895,18 +840,18 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 	 * rangetable here --- subplan RTEs will be checked during
 	 * ExecInitSubPlan().
 	 */
-	 
+	
 	if (operation == CMD_SELECT && (Mpp_role == MPP_ROLE_EXECUTE || (shouldDispatch && cdbpathlocus_querysegmentcatalogs)))
 	{
 		/*
 		 * We don't check the rights here, so we can query pg_statistic even if we are a non-privileged user.
-		 * This shouldn't cause a problem, because "cdbpathlocus_querysegmentcatalogs" can only be true if we 
+		 * This shouldn't cause a problem, because "cdbpathlocus_querysegmentcatalogs" can only be true if we
 		 * are doing special catalog queries for ANALYZE.  Otherwise, the QD will execute the normal access right
 		 * check.  This does open a security hole, as it's possible for a hacker to connect to a segdb with MPP_ROLE_EXECUTE,
-		 * (at least, in theory, although it isn't easy) and then do a query.  But all they can see is 
-		 * pg_statistic and pg_class, and pg_class is normally readable by everyone.  
+		 * (at least, in theory, although it isn't easy) and then do a query.  But all they can see is
+		 * pg_statistic and pg_class, and pg_class is normally readable by everyone.
 		 */
-		 
+		
 		ListCell   *l;
 
 		foreach(l, parseTree->rtable)
@@ -922,7 +867,7 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 			if (rte->relid == StatisticRelationId || rte->relid == RelationRelationId)
 			{
 				/*
-				 * Ignore access rights check on pg_statistic and pg_class, so 
+				 * Ignore access rights check on pg_statistic and pg_class, so
 				 * the QD can retreive the statistics from the QEs.
 				 */
 			}
@@ -972,8 +917,7 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 								  lfirst_int(l),
 								  rangeTable,
 								  operation,
-								  estate->es_instrument,
-								  shouldDispatch);
+								  estate->es_instrument);
 				resultRelInfo++;
 			}
 		}
@@ -988,8 +932,7 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 							  parseTree->resultRelation,
 							  rangeTable,
 							  operation,
-							  estate->es_instrument,
-							  shouldDispatch);
+							  estate->es_instrument);
 		}
 
 		estate->es_result_relations = resultRelInfos;
@@ -1038,7 +981,17 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 			Relation	relation;
 			execRowMark *erm;
 
-			relation = heap_open(relid, RowShareLock);
+            /* CDB: On QD, lock whole table in S or X mode, if distributed. */
+			relation = heap_open(relid, NoLock);
+            if (CdbLockRelation(relation,
+                                parseTree->forUpdate ? RowExclusiveLock
+                                                     : RowShareLock,
+                                parseTree->rowNoWait))
+            {
+                heap_close(relation, NoLock);
+                continue;
+            }
+
 			erm = (execRowMark *) palloc(sizeof(execRowMark));
 			erm->relation = relation;
 			erm->rti = rti;
@@ -1247,6 +1200,7 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 												  true,
 												  0,
 												  ONCOMMIT_NOOP,
+                                                  NULL,                 /*CDB*/
 												  allowSystemTableMods,
 												  0);
 
@@ -1294,37 +1248,21 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 /*
  * Initialize ResultRelInfo data for one result relation
  */
-/*
- * Added the shouldDispatch parameter for MPP.
- * This is true iff the Mpp_role is MPP_ROLE_DISPATCH,
- * and the plan dispatch type is DISPATCH_PARALLEL.
- * When true, the lock type passed to heap_open is set to
- * ExclusiveLock instead of RowExclusiveLock.
-*/
-
 static void
 initResultRelInfo(ResultRelInfo *resultRelInfo,
 				  Index resultRelationIndex,
 				  List *rangeTable,
 				  CmdType operation,
-				  bool doInstrument,
-				  bool shouldDispatch)
+				  bool doInstrument)
 {
 	Oid			resultRelationOid;
 	Relation	resultRelationDesc;
-	LOCKMODE    lockMode;
 	
 	resultRelationOid = getrelid(resultRelationIndex, rangeTable);
 	
-	if( Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer )
-		lockMode = NoLock;  /*no need to lock at all if we are a reader qExec.*/
-		else if( shouldDispatch )
-		lockMode = ExclusiveLock;
-	else
-		lockMode = RowExclusiveLock;
-	
-	
-	resultRelationDesc = heap_open(resultRelationOid, lockMode);
+	/* CDB: QD must acquire X lock on whole relation if distributed. */
+    resultRelationDesc = heap_open(resultRelationOid, NoLock);
+    CdbLockRelation(resultRelationDesc, RowExclusiveLock, false);
 	
 	switch (resultRelationDesc->rd_rel->relkind)
 	{
@@ -1763,12 +1701,12 @@ lnext:	;
 				break;
 
 			case CMD_INSERT:
-				ExecInsert(slot, tupleid, estate);
+				ExecInsert(slot, estate);
 				result = NULL;
 				break;
 
 			case CMD_DELETE:
-				ExecDelete(slot, tupleid, estate);
+				ExecDelete(tupleid, estate);
 				result = NULL;
 				break;
 
@@ -1871,9 +1809,7 @@ ExecSelect(TupleTableSlot *slot,
  * ----------------------------------------------------------------
  */
 static void
-ExecInsert(TupleTableSlot *slot,
-		   ItemPointer tupleid,
-		   EState *estate)
+ExecInsert(TupleTableSlot *slot, EState *estate)
 {
 	HeapTuple	tuple;
 	ResultRelInfo *resultRelInfo;
@@ -1962,9 +1898,7 @@ ExecInsert(TupleTableSlot *slot,
  * ----------------------------------------------------------------
  */
 static void
-ExecDelete(TupleTableSlot *slot,
-		   ItemPointer tupleid,
-		   EState *estate)
+ExecDelete(ItemPointer tupleid, EState *estate)
 {
 	ResultRelInfo *resultRelInfo;
 	Relation	resultRelationDesc;

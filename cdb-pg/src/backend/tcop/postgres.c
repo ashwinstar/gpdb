@@ -3276,6 +3276,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 		initStringInfo(&input_message);
 
+        /* Reset elog globals */
+        currentSliceId = UNSET_SLICE_ID;
         if (Mpp_role == MPP_ROLE_EXECUTE)
             mpp_command_count = 0;
 

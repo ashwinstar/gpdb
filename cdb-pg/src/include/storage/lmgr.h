@@ -4,6 +4,7 @@
  *	  POSTGRES lock manager definitions.
  *
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -84,5 +85,14 @@ extern void LockSharedObject(Oid classid, Oid objid, uint16 objsubid,
 				 LOCKMODE lockmode);
 extern void UnlockSharedObject(Oid classid, Oid objid, uint16 objsubid,
 				   LOCKMODE lockmode);
+
+/*
+ * CdbLockRelation -- Lock a relation for reading or updating.
+ *
+ * CDB: Returns true if decided to use a stronger lock mode than requested, to
+ * serialize access to a distributed relation.
+ */
+bool
+CdbLockRelation(Relation relation, LOCKMODE reqmode, bool nowait);
 
 #endif   /* LMGR_H */

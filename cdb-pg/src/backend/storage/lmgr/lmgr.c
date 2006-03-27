@@ -3,6 +3,7 @@
  * lmgr.c
  *	  POSTGRES lock manager code
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -19,10 +20,13 @@
 #include "access/transam.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
+#include "catalog/mpp_policy.h"     /* CDB: POLICYTYPE_PARTiITIONED */
 #include "miscadmin.h"
 #include "storage/lmgr.h"
 #include "storage/procarray.h"
 #include "utils/inval.h"
+#include "utils/lsyscache.h"        /* CDB: get_rel_name() */
+
 
 
 /*
@@ -200,6 +204,49 @@ ConditionalLockRelation(Relation relation, LOCKMODE lockmode)
 
 	return true;
 }
+
+
+/*
+ * CdbLockRelation -- Lock a relation for reading or updating.
+ *
+ * CDB: Returns true if decided to use a stronger lock mode than requested, to
+ * serialize access to a distributed relation.
+ */
+bool
+CdbLockRelation(Relation relation, LOCKMODE reqmode, bool nowait)
+{
+    LOCKMODE    lockmode = reqmode;
+
+    /*
+     * CDB: Lock whole relation if distributed.  Because we don't yet have
+     * distributed deadlock detection, we want any deadlocks to occur locally
+     * on the qDisp.  And because of the way we do mirroring of UPDATE and
+     * DELETE, write access is serialized at the qDisp to ensure that writes
+     * happen in the same order on primary and mirror qExecs.
+	 */
+    if (relation->rd_cdbpolicy &&
+        relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
+    {
+        if (lockmode == RowShareLock)
+            lockmode = ShareLock;
+        else if (lockmode == RowExclusiveLock)
+            lockmode = ExclusiveLock;
+    }
+
+    if (nowait)
+    {
+		if (!ConditionalLockRelation(relation, lockmode))
+			ereport(ERROR, (errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+					        errmsg("could not obtain lock on relation \"%s\"",
+							       get_rel_name(relation->rd_id))
+                    ));
+    }
+    else
+        LockRelation(relation, lockmode);
+
+    return lockmode != reqmode;         /* true if escalated to S or X mode */
+}                                       /* CdbLockRelation */
+
 
 /*
  *		UnlockRelation

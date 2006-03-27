@@ -3,7 +3,7 @@
  * relcache.c
  *	  POSTGRES relation descriptor cache code
  *
- * Portions Copyright (c) 2005, Greenplum Inc.
+ * Portions Copyright (c) 2005-2006, Greenplum Inc.
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -786,7 +786,10 @@ RelationBuildDesc(Oid targetRelId, Relation oldrelation)
     /*
      * initialize MPP partitioning info
      */
-    relation->rd_cdbpolicy = NULL;
+    if (relation->rd_rel->relkind == RELKIND_RELATION &&
+        !IsSystemRelation(relation))
+        relation->rd_cdbpolicy = MppPolicyFetch(CacheMemoryContext, targetRelId);
+
     relation->rd_cdbDefaultStatsWarningIssued = false;
 
 	/*
@@ -2528,19 +2531,13 @@ CheckConstraintFetch(Relation relation)
  * RelationGetPartitioningKey -- get MppPolicy struct for distributed relation
  *
  * Returns a copy of the relation's MppPolicy object, palloc'd in
- * the caller's context.  Celler should pfree() it.  If NULL is
+ * the caller's context.  Caller should pfree() it.  If NULL is
  * returned, relation should be accessed locally.
  */
 MppPolicy*
 RelationGetPartitioningKey(Relation relation)
 {
-    if (!relation->rd_cdbpolicy)
-    {
-      MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
-      relation->rd_cdbpolicy = get_table_policy(relation->rd_id);
-      MemoryContextSwitchTo(oldcxt);
-    }
-    return MppPolicyCopy(relation->rd_cdbpolicy);
+    return MppPolicyCopy(CurrentMemoryContext, relation->rd_cdbpolicy);
 }                                       /* RelationGetPartitioningKey */
 
 

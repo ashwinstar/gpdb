@@ -3,6 +3,7 @@
  * analyze.c
  *	  transform the parse tree into a query tree
  *
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -774,7 +775,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 		
 		Oid			relId = RangeVarGetRelid(parent, false);
 
-		MppPolicy  *oldTablePolicy = get_table_policy(relId);
+		MppPolicy  *oldTablePolicy = MppPolicyFetch(CurrentMemoryContext, relId);
 
 		if (oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
 		{
@@ -835,7 +836,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 						InhRelation *e = (InhRelation *) element;
 						Oid			relId = RangeVarGetRelid(e->relation, false);
 
-						MppPolicy  *oldTablePolicy = get_table_policy(relId);
+						MppPolicy  *oldTablePolicy = MppPolicyFetch(CurrentMemoryContext, relId);
 
 						if (oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
 						{

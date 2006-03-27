@@ -3,6 +3,7 @@
  * parse_clause.c
  *	  handle clauses in parser
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -153,8 +154,12 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	 *
 	 * analyze.c will eventually do the corresponding heap_close(), but *not*
 	 * release the lock.
+     *
+     * CDB: Acquire ExclusiveLock if it is a distributed relation.
 	 */
-	pstate->p_target_relation = heap_openrv(relation, RowExclusiveLock);
+	pstate->p_target_relation = heap_openrv(relation, NoLock);
+
+    CdbLockRelation(pstate->p_target_relation, RowExclusiveLock, false);
 
 	/*
 	 * Now build an RTE.
@@ -1536,7 +1541,7 @@ transformDistinctClause(ParseState *pstate, List *distinctlist,
  * See addTargetToSortList for info about pstate and resolveUnknown inputs.
  *
  * Returns the updated ORDER BY list.
- * May modify targetlist in place even when resolveUnknown is FALSE. 
+ * May modify targetlist in place even when resolveUnknown is FALSE.
  */
 List *
 addAllTargetsToSortList(ParseState *pstate, List *sortlist,
@@ -1569,7 +1574,7 @@ addAllTargetsToSortList(ParseState *pstate, List *sortlist,
  * otherwise.
  *
  * Returns the updated ORDER BY list.
- * May modify targetlist entry in place even when resolveUnknown is FALSE. 
+ * May modify targetlist entry in place even when resolveUnknown is FALSE.
  */
 List *
 addTargetToSortList(ParseState *pstate, TargetEntry *tle,

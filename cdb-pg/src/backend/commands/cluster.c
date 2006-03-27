@@ -6,6 +6,7 @@
  * There is hardly anything left of Paul Brown's original implementation...
  *
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
@@ -370,7 +371,7 @@ check_index_is_clusterable(Relation OldHeap, Oid indexOid, bool recheck)
 						 ? errhint("You may be able to work around this by marking column \"%s\" NOT NULL, or use ALTER TABLE ... SET WITHOUT CLUSTER to remove the cluster specification from the table.",
 								   NameStr(OldHeap->rd_att->attrs[colno - 1]->attname))
 						 : errhint("You may be able to work around this by marking column \"%s\" NOT NULL.",
-								   NameStr(OldHeap->rd_att->attrs[colno - 1]->attname))));						 
+								   NameStr(OldHeap->rd_att->attrs[colno - 1]->attname))));						
 		}
 		else if (colno < 0)
 		{
@@ -589,6 +590,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace)
 										  true,
 										  0,
 										  ONCOMMIT_NOOP,
+                                          NULL,                         /*CDB*/
 										  allowSystemTableMods
 										  ,0);
 
