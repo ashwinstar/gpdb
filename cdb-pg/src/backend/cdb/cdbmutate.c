@@ -22,6 +22,7 @@
 #include "parser/parse_expr.h"	/* for expr_type() */
 #include "parser/parse_oper.h"	/* for compatible_oper_opid() */
 #include "utils/relcache.h"     /* RelationGetPartitioningKey() */
+#include "optimizer/tlist.h"	/* get_sortgroupclause_tle() */
 
 #include "cdb/cdbllize.h"
 #include "cdb/cdbmutate.h"
@@ -118,6 +119,30 @@ apply_motion(Plan *plan, Query *query)
                  */
                 if (query->sortClause)
                 {
+					/* Since some node above the sort may have projected,
+					 * we need to ralign the sort specifications. */
+					ListCell *cell;
+					TargetEntry *tle;
+					SortClause *sortcl;
+					int i = 0, n = list_length(query->sortClause);
+					Assert( n == plan->flow->numSortCols);
+					foreach (cell, query->sortClause)
+					{
+						sortcl = (SortClause*)lfirst(cell);
+						/* this will issue an error if not found */
+						tle = get_sortgroupclause_tle(sortcl, plan->targetlist);
+						if ( tle->resno != plan->flow->sortColIdx[i] )
+						{
+							ereport(DEBUG4, (
+								errmsg("cdbmutate realigned top-level Sort "
+								       "operator %d column index: old = %d, new = %d",
+									    i, plan->flow->sortColIdx[i], tle->resno) ));
+										
+							plan->flow->sortColIdx[i] = tle->resno;
+						}
+						i++;
+					}
+					 
                     Insist(focusPlan(plan, true, true, false));
                     Insist(plan->flow->numSortCols > 0);
                 }
