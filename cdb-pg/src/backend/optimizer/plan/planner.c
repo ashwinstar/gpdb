@@ -1220,11 +1220,60 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	 */
 	if (parse->limitCount || parse->limitOffset)
 	{
+		if ( Mpp_role == MPP_ROLE_DISPATCH && result_plan->flow->flotype == FLOW_PARTITIONED )
+		{
+			Node *precount = copyObject(parse->limitCount);
+			int precount_est = count_est;
+			
+			/* If the input is ordered, make sure each QE contributes enough
+			 * of its rows to cover both offset and count. */
+			if ( current_pathkeys )
+			{
+				if ( precount == NULL )
+				{
+					precount = copyObject(parse->limitOffset);
+					precount_est = offset_est;
+				}
+				else if ( parse->limitOffset != NULL )
+				{
+					precount = (Node*)make_op(NULL, 
+											  list_make1(makeString(pstrdup("+"))), 
+											  copyObject(parse->limitOffset), 
+											  precount);
+					precount_est += offset_est;
+				}
+			}
+			else
+			{
+				ereport(WARNING, (
+					  errcode(ERRCODE_WARNING),
+					  errmsg("LIMIT/OFFSET applied to unordered result.")
+					  ));
+			}
+			
+			/* Do prelimary LIMIT on the partitioned results.  */
+			result_plan = (Plan *) make_limit(result_plan,
+											  NULL,
+											  precount,
+											  0,
+											  precount_est);
+			mark_passthru_locus(result_plan, TRUE, TRUE);
+			
+			/* Focus on QE with merge to preserve order, prior to final LIMIT. */
+			result_plan = (Plan*)make_motion_gather_to_QE(result_plan, TRUE);
+			result_plan->total_cost += motion_cost_per_row * result_plan->plan_rows;
+		}
+		
 		result_plan = (Plan *) make_limit(result_plan,
 										  parse->limitOffset,
 										  parse->limitCount,
 										  offset_est,
 										  count_est);
+		
+		if ( Mpp_role == MPP_ROLE_DISPATCH )
+		{
+			mark_passthru_locus(result_plan, TRUE, TRUE);
+		}
 	}
 
 	/*
