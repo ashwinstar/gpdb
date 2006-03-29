@@ -55,6 +55,8 @@ static Gang *buildGangDefinition(GangType type, int size, int content);
 
 static void cleanupGang(Gang *gp);
 
+static bool gangOK(Gang * gp);
+
 /*
  * Points to the result of getCdbComponentDatabases()
  */
@@ -105,7 +107,7 @@ static char *myDatabaseName = NULL;
  * creates a new gang by logging on a session to each segDB involved
  *
  */
-Gang *
+static Gang *
 createGang(GangType type, int size, int content)
 {
 	Gang	   *newGangDefinition;
@@ -400,7 +402,7 @@ createGang(GangType type, int size, int content)
  *	It then converts this to a Gang structure and initializes
  *	all the non-connection related fields.
  */
-Gang *
+static Gang *
 buildGangDefinition(GangType type, int size, int content)
 {
 	Gang	   *newGangDefinition = NULL;
@@ -1019,7 +1021,7 @@ thread_DoConnect(void *arg)
  * to be passed to a qExec that is being started.  NB: Can be called in a
  * thread, so mustn't use palloc/elog/ereport/etc.
  */
-void
+static void
 build_mppqeid_params(PQExpBuffer buf)
 {
     appendPQExpBufferStr(buf, "mppqeid=");
@@ -1317,8 +1319,14 @@ allocateGang(GangType type, int size, int content)
         			 (type == GANGTYPE_PRIMARY_WRITER) ? "primary" : "mirror");
     }
 
-    if (gp != NULL)
-    	gp->allocated = true;
+	if (gp != NULL)
+	{
+		gp->allocated = true;
+
+		/* sanity check the gang -- should this be an error ? */
+		if (!gangOK(gp))
+			elog(WARNING, "allocateGang returning a BAD gang");
+	}
 
 	return gp;
 }
@@ -1483,7 +1491,7 @@ getCdbProcessesForQD(int isPrimary)
 }
 
 
-void
+static void
 cleanupGang(Gang *gp)
 {
 	int			i;
@@ -1563,7 +1571,7 @@ cleanupGang(Gang *gp)
 }
 
 
-void
+static void
 disconnectAndDestroyGang(Gang *gp)
 {
 	int			i;
@@ -1703,7 +1711,7 @@ freeGangs(void)
 
 }
 
-void
+static void
 disconnectAndDestroyAllReaderGangs(void)
 {
 	Gang	   *gp;
@@ -1786,6 +1794,28 @@ disconnectAndDestroyAllGangs(void)
 	elog(DEBUG3, "disconnectAndDestroyAllGangs done");
 }
 
+static bool
+gangOK(Gang * gp)
+{
+	int			i;
+
+	if (gp == NULL)
+		return false;
+
+	/*
+	 * Loop through the segment_database_descriptors array looking for
+	 * invalid connections
+	 */
+	for (i = 0; i < gp->size; i++)
+	{
+		SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
+
+		if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
+			return false;
+	}
+
+	return true;
+}
 
 bool
 reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB)
