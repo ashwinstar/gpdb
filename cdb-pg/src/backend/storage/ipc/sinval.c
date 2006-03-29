@@ -26,6 +26,8 @@
 #include "storage/sinvaladt.h"
 #include "utils/inval.h"
 
+#include "cdb/cdbvars.h"		/* Mpp_is_writer */
+#include "cdb/cdbgang.h"
 
 /*
  * Because backends sitting idle will not be reading sinval events, we
@@ -345,6 +347,19 @@ ProcessCatchupEvent(void)
 	else
 	{
 		elog(DEBUG4, "ProcessCatchupEvent outside transaction");
+
+		/*
+		 * MPP-523: if we get a Catchup notification, the QEs
+		 * (including readers!) will try to start their own local
+		 * transactions -- this wreaks havoc with our SharedSnapshot
+		 * code. So we disconnectAndDestroy our existing gangs, let
+		 * them sort themselves out ... and will recreate gangs for
+		 * our next query.
+		 */
+		if (Mpp_role == MPP_ROLE_DISPATCH)
+		{
+			disconnectAndDestroyAllGangs();
+		}
 		StartTransactionCommand();
 		CommitTransactionCommand();
 	}

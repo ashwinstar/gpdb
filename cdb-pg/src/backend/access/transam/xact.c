@@ -1525,6 +1525,11 @@ StartTransaction(void)
 			{
 				bool done = false;
 				int count = 0;
+
+				/* Should this be an error ? */
+				if (TransactionIdPrecedes(QDSentXID, SharedLocalSnapshotSlot->QDxid))
+					elog(LOG, "Reader gang waiting for old xid: current: %d waiting on %d",
+						 QDSentXID, SharedLocalSnapshotSlot->QDxid);
 						
 				while(!done)
 				{
