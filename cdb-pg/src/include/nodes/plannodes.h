@@ -105,10 +105,11 @@ typedef struct Plan
 	DispatchMethod dispatch;
 	
 	/*
-	 * CDB: Now many motion nodes are there in the Plan.  Another plan
-	 * tree global significant only in the root node.
+	 * CDB: Now many motion nodes are there in the Plan.  How many init plans?
+	 * Additional plan tree global significant only in the root node.
 	 */
 	 int nMotionNodes;
+	 int nInitPlans;
 	
 	 /*
 	  * CDB: This allows the slice table to accompany the plan as it

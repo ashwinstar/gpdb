@@ -183,21 +183,7 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	if (Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
 	{
 		/* Set up blank slice table to be filled in during InitPlan. */
-
-		/*
-		 * We know that, if this query is to dispatched in parallel, then
-		 * it can't contain any correlated sub-queries.  Therefore, any
-		 * PARAM_EXEC style parameters will correspond to single-valued
-		 * initPlans which is the number of slice tree roots we'll need.
-		 * Otherwise, the slice table won't be used for dispatch, so don't
-		 * put extra roots in it, even if there are some subplans.
-		 *
-		 * TODO -- EITHER decide to live with this baroque justification
-		 *		   OR clean up the determination of the number of extra roots
-		 *		  needed, e.g., by actually counting initplans during
-		 *		  cdb_apply_motion() and noting it in the top plan node.
-		 */
-		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nParamExec);
+		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nInitPlans);
 	}
 	else if (Mpp_role == MPP_ROLE_EXECUTE)
 	{

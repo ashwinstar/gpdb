@@ -91,6 +91,7 @@ CopyPlanFields(Plan *from, Plan *newnode)
 	COPY_NODE_FIELD(flow);
 	COPY_SCALAR_FIELD(dispatch);
 	COPY_SCALAR_FIELD(nMotionNodes);
+	COPY_SCALAR_FIELD(nInitPlans);
 	COPY_NODE_FIELD(sliceTable);
 }
 

@@ -80,6 +80,7 @@ apply_motion(Plan *plan, Query *query)
 
 	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
     state.sliceDepth = 0;
+    state.numInitPlans = 0;
     state.numInitPlanMotionNodes = 0;
 	state.parent_is_subplan = false;
 
@@ -421,6 +422,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
         {
             subplan = (SubPlan *)lfirst(cell);
             Assert(IsA(subplan, SubPlan));
+			context->numInitPlans++;
             nMotion += subplan->plan->nMotionNodes;
         }
         context->numInitPlanMotionNodes += nMotion;
@@ -552,6 +554,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 
 done:
     ((Plan *)newnode)->nMotionNodes = context->nextMotionID - saveNextMotionID;
+    ((Plan *)newnode)->nInitPlans = context->numInitPlans;
 	return newnode;
 }                               /* apply_motion_mutator */
 

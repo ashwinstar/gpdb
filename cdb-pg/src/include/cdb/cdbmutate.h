@@ -32,6 +32,7 @@ typedef struct ApplyMotionState
 {
 	int			nextMotionID;
     int         sliceDepth;
+    int         numInitPlans;
     int         numInitPlanMotionNodes;
     bool		parent_is_subplan;
 

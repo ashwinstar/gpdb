@@ -2221,6 +2221,7 @@ void readPlanInfo(Plan *local_node)
 	READ_NODE_FIELD(flow);
 	READ_ENUM_FIELD(dispatch, DispatchMethod);
 	READ_INT_FIELD(nMotionNodes);
+	READ_INT_FIELD(nInitPlans);
 	READ_NODE_FIELD(sliceTable);
 
     READ_NODE_FIELD(lefttree);
