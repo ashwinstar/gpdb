@@ -1222,48 +1222,46 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	{
 		if ( Mpp_role == MPP_ROLE_DISPATCH && result_plan->flow->flotype == FLOW_PARTITIONED )
 		{
+			/* Note max result size.  May be unspecified. */
 			Node *precount = copyObject(parse->limitCount);
 			int precount_est = count_est;
 			
-			/* If the input is ordered, make sure each QE contributes enough
-			 * of its rows to cover both offset and count. */
-			if ( current_pathkeys )
+			/* If the input is ordered and count was specified, add offset
+			 * to each QEs requested contribution. */			
+			if ( current_pathkeys && precount && parse->limitOffset )
 			{
-				if ( precount == NULL )
-				{
-					precount = copyObject(parse->limitOffset);
-					precount_est = offset_est;
-				}
-				else if ( parse->limitOffset != NULL )
-				{
-					precount = (Node*)make_op(NULL, 
-											  list_make1(makeString(pstrdup("+"))), 
-											  copyObject(parse->limitOffset), 
-											  precount);
-					precount_est += offset_est;
-				}
-			}
-			else
-			{
-				ereport(WARNING, (
-					  errcode(ERRCODE_WARNING),
-					  errmsg("LIMIT/OFFSET applied to unordered result.")
-					  ));
+				precount = (Node*)make_op(NULL, 
+										  list_make1(makeString(pstrdup("+"))), 
+										  copyObject(parse->limitOffset), 
+										  precount);
+				precount_est += offset_est;
 			}
 			
-			/* Do prelimary LIMIT on the partitioned results.  */
-			result_plan = (Plan *) make_limit(result_plan,
-											  NULL,
-											  precount,
-											  0,
-											  precount_est);
-			mark_passthru_locus(result_plan, TRUE, TRUE);
+			if ( precount != NULL )
+			{
+				/* Add a prelimary LIMIT on the partitioned results. This
+				 * may reduce the amount of work done on the QEs.  */
+				result_plan = (Plan *) make_limit(result_plan,
+												  NULL,
+												  precount,
+												  0,
+												  precount_est);
+				mark_passthru_locus(result_plan, TRUE, TRUE);
+			}
 			
-			/* Focus on QE with merge to preserve order, prior to final LIMIT. */
-			result_plan = (Plan*)make_motion_gather_to_QE(result_plan, TRUE);
+			/* Focus on QE [merge to preserve order], prior to final LIMIT. */
+			result_plan = (Plan*)make_motion_gather_to_QE(result_plan, current_pathkeys != NIL);
 			result_plan->total_cost += motion_cost_per_row * result_plan->plan_rows;
 		}
-		
+			
+		if ( current_pathkeys == NIL )
+		{
+			ereport(WARNING, (
+				  errcode(ERRCODE_WARNING),
+				  errmsg("LIMIT/OFFSET applied to unordered result.")
+				  ));
+		}
+			
 		result_plan = (Plan *) make_limit(result_plan,
 										  parse->limitOffset,
 										  parse->limitCount,
