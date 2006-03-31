@@ -77,7 +77,7 @@ TransactionId RecentGlobalXmin = InvalidTransactionId;
  * running in EXECUTE mode.
  */
 Snapshot  QDSentSnapshot = &QDSentSnapshotData;
-TransactionId QDSentXID;
+TransactionId QDSentXID = InvalidTransactionId;
 
 /* MPP Shared Snapshot. */
 typedef struct SharedSnapshotStruct

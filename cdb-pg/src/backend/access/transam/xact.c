@@ -1474,8 +1474,11 @@ StartTransaction(void)
 	 * have one writer since writers need to hold a lock on their
 	 * own XID so that others can wait for them to be finished.
 	 *
+	 * If we're an executor and don't have a valid QDSentXID, then
+	 * we're starting a purely-local transaction.
+	 *
 	 */
-	if (Mpp_role == MPP_ROLE_EXECUTE)
+	if (Mpp_role == MPP_ROLE_EXECUTE && QDSentXID != InvalidTransactionId)
 	{
 		if (Mpp_is_writer)
 		{
@@ -1580,6 +1583,10 @@ StartTransaction(void)
 	}
 	else
 	{
+		/* MPP: we're the dispatcher, utility-mode or a QE starting a
+		 * pure-local transaction without any synchronization to
+		 * segmates! (e.g. CatchupInterruptHandler) */
+
 		/*
 		 * generate a new transaction id
 		 */
@@ -1826,6 +1833,15 @@ CommitTransaction(void)
 	s->subTransactionId = InvalidSubTransactionId;
 	s->nestingLevel = 0;
 	s->childXids = NIL;
+
+	/* To make sure that we're able to check that we've gotten a new
+	 * QD xid, when we finish with one, we set it to
+	 * InvalidTransactionId. This is especially important for
+	 * Reader-gangs, but shouldn't the primary-writer any harm */
+	if (Mpp_role == MPP_ROLE_EXECUTE)
+	{
+		QDSentXID = InvalidTransactionId;
+	}
 
 	/*
 	 * done with commit processing, set current transaction state back to
