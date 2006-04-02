@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- This script was automatically generated using Macrovision's InstallAnywhere 7.1 Enterprise, Build 2781
      STATUS: Fully Functional LICENSED Edition
-     DATE:   Thu Oct 27 18:09:46 PDT 2005 -->
+     DATE:   Fri Mar 31 13:01:05 PST 2006 -->
 <InstallAnywhere_Deployment_Project increments="4295">
 	<!-- ** DO NOT EDIT ** Essential authorization and configuration data ** DO NOT EDIT ** -->
 	<essentialScriptInfo>
@@ -10,7 +10,7 @@
 		<scriptID>12,42,11,77,81,49,57,51,55,75,55,90,77,89,71,70</scriptID>
 		<buildID>3,13,71,76,105,110,117,120,44,32,50,46,52,46,50,49,45,50,55,46,69,76,44,32,97,109,100,54,52,59,32,74,97,118,97,32,49,46,53,46,48,95,48,53,44,32,83,117,110,32,77,105,99,114,111,115,121,115,116,101,109,115,32,73,110,99,46,44,32,104,116,116,112,58,47,47,106,97,118,97,46,115,117,110,46,99,111,109,47,59,32,101,110,44,32,85,110,107,110,111,119,110,59,32,85,84,70,45,56</buildID>
 		<!-- The authorizationID may change between project saves and builds.  This does not effect the integrity of the project, nor do changes in this value represent changes in the actual InstallAnywhere project. -->
-		<authorizationID>1,0,0,0,51,-63,-16,-96,80,112,117,98,89,98,113,97,113,65,81,86,58,65,67,66,70,65,64,69,66,69,48,63,71,5,2,4,1,37,100,7,1,0,0</authorizationID>
+		<authorizationID>1,0,0,0,83,17,-16,-64,80,112,117,98,89,98,113,97,113,65,81,86,58,65,67,66,70,65,64,69,66,69,48,63,71,5,2,2,8,43,98,10,1,0,0</authorizationID>
 	</essentialScriptInfo>
 	<installationObjects uniqueObjects="179">
 		<object class="com.zerog.ia.installer.Installer" objectID="089e8853af36">
@@ -2309,7 +2309,7 @@ For your convenience, a file called bizgres_path.sh has been placed in the top l
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.project.build.last.date]]></string>
-						<string><![CDATA[October 27, 2005 6:09:44 PM PDT]]></string>
+						<string><![CDATA[March 31, 2006 1:01:03 PM PST]]></string>
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.build.platform.windows.vm]]></string>
@@ -2381,7 +2381,7 @@ For your convenience, a file called bizgres_path.sh has been placed in the top l
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.project.save.last.date]]></string>
-						<string><![CDATA[October 27, 2005 6:09:44 PM PDT]]></string>
+						<string><![CDATA[March 31, 2006 1:01:03 PM PST]]></string>
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.build.options.optimization.platform.cdrom]]></string>
@@ -3183,7 +3183,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>55465433</long>
+												<long>58851831</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -3198,7 +3198,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/MACOS-10_4/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/MACOS-10_4/usr/local/bizgres-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -3210,7 +3210,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_0_18-1-0_8_1]]></string>
+												<string><![CDATA[bizgres-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="16280503a0d7">
@@ -3338,7 +3338,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>55330438</long>
+												<long>49608940</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -3353,7 +3353,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -3365,7 +3365,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_0_18-1-0_8_1]]></string>
+												<string><![CDATA[bizgres-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="16280932a0d7">
@@ -3504,7 +3504,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>52908004</long>
+												<long>55491406</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -3519,7 +3519,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -3531,7 +3531,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_0_18-1-0_8_1]]></string>
+												<string><![CDATA[bizgres-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="16bdf175a0db">
@@ -4239,7 +4239,7 @@ kernel.shmall = 4000000000]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>4311</long>
+												<long>4315</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -4886,7 +4886,7 @@ kern.sysv.shmmax=268435456]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>47876792</long>
+												<long>49750521</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -4901,7 +4901,7 @@ kern.sysv.shmmax=268435456]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -4913,7 +4913,7 @@ kern.sysv.shmmax=268435456]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_0_18-1-0_8_1]]></string>
+												<string><![CDATA[bizgres-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="e0925ad5ab67">
