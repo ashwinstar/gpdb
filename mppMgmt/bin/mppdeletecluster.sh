@@ -96,7 +96,7 @@ CHECK_PARAM () {
 
 OBTAIN_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MASTER_DATA_DIRECTORY=$DELETE_MASTER_DATA_DIRECTORY
+	export MASTER_DATA_DIRECTORY=$DELETE_MASTER_DATA_DIRECTORY
 	GET_QE_DETAILS
 	if [ $EXIT_STATUS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Unable to obtain details of segment instances" 2;fi
@@ -192,7 +192,7 @@ DELETE_CLUSTER () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Closing down cluster"
 	if [ -f $STOP_PROG ];then
-		$STOP_PROG -zqaf
+		$STOP_PROG -zqai -d $MASTER_DATA_DIRECTORY
 	else
 		ERROR_EXIT "[FATAL]:-Unable to locate $STOP_PROG" 2
 	fi
