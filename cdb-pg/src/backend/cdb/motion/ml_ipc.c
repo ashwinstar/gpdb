@@ -137,6 +137,8 @@ typedef struct RegisterMessage
 	int16		srcRouteId;
 	int16		srcContentId;
 	int32		srcListenerPort;
+	int16		sessionId;
+	int16		cmdCount;
 #ifdef AMS_VERBOSE_LOGGING
 	int32		srcPid;
 #endif
@@ -805,9 +807,16 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 
 		if (interconnect_setup_timeout != 0 &&
 			(stopTime.tv_sec - startTime.tv_sec) > interconnect_setup_timeout)
+		{
 			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 					   errmsg("Aborting activating_routes.... TIMEOUT (%lu)",
 							  stopTime.tv_sec - startTime.tv_sec)));
+
+			elog_node_display(ERROR,
+                                                          "local slice table",
+                                                          sliceTable,
+                                                          Debug_pretty_print);
+		}
 
 		memcpy(&rrset, &rset, sizeof(fd_set));
 		memcpy(&wwset, &wset, sizeof(fd_set));
@@ -827,6 +836,11 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 				errmsg("Interconnect error setting up: %s", strerror(errno)),
 				errdetail("error during select() call (error:%d).", errno)));
+
+			elog_node_display(ERROR,
+                                                          "local slice table",
+                                                          sliceTable,
+                                                          Debug_pretty_print);
 		}
 
 		elog(DEBUG5, "select() returned %d ready sockets", n);
@@ -1735,7 +1749,7 @@ sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn)
 #ifdef AMS_VERBOSE_LOGGING
 	print_connection(conn->sockfd, "send register message");
 #endif
-
+	
 	/* motNodeId */
 	netval = htons(pEntry->motNodeId);
 	memcpy(msg + 0, &netval, 2);
@@ -1751,6 +1765,14 @@ sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn)
 	/* srcListenerPort */
 	netval2 = htonl(listenerPort);
 	memcpy(msg + 6, &netval2, 4);
+
+	/* sessionId */
+	netval = htons(mpp_session_id);
+	memcpy(msg + 10, &netval, 2);
+
+	/* cmdCount */
+	netval = htons(mpp_command_count);
+	memcpy(msg + 12, &netval, 2);
 
 #ifdef AMS_VERBOSE_LOGGING
 	/* srcPid */
@@ -1860,6 +1882,8 @@ readRegisterMessage(MotionConn * conn, int *incoming_count)
 	msg.srcRouteId = getInt16(buff + 2);
 	msg.srcContentId = getInt16(buff + 4);
 	msg.srcListenerPort = getInt32(buff + 6);
+	msg.sessionId = getInt16(buff + 10);
+	msg.cmdCount = getInt16(buff + 12);
 
 #ifdef AMS_VERBOSE_LOGGING
 	msg.srcPid = getInt32(buff + 10);
@@ -1868,6 +1892,21 @@ readRegisterMessage(MotionConn * conn, int *incoming_count)
 		 "srcContentId: %d, srcListenerPort: %d srcPid: %d",
 		 msg.motNodeId, msg.srcRouteId, msg.srcContentId, msg.srcListenerPort, msg.srcPid);
 #endif
+
+	if (mpp_session_id != msg.sessionId || mpp_command_count != msg.cmdCount)
+	{
+
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		  errmsg("Authentication Failed: local/remote session id (%d/%d), local/remote cmd count(%d/%d). "
+			"Received  RegisterMessage {motNodeId:%d, srcRouteId:%d, srcContentId:%d, srcListenerPort:%d, sessionId:%d, cmdCount:%d}",
+				mpp_session_id,msg.sessionId, mpp_command_count,msg.cmdCount,
+				msg.motNodeId, msg.srcRouteId, msg.srcContentId, msg.srcListenerPort,
+						msg.sessionId, msg.cmdCount,
+			errdetail("The sessionID and/or command count of the registering remote QE differs with that of the local QE"))));
+
+
+	}
+
 
 	pEntry = getMotionState(msg.motNodeId);
 	if (pEntry == NULL)
