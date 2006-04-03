@@ -102,7 +102,7 @@ cdb_sync_command(const char *cmd)
 	parseCmd(cmd);
 
 	getTmLock();
-	
+
 	switch (cmdtype)
 	{
 		case SYNC_XLOG:
@@ -151,18 +151,20 @@ cdb_sync_tmlog(void)
 					/* XXX: mirror advanced beyond primary ??? */
 					ereport(ERROR,
 							(errcode_for_file_access(),
-							 errmsg("QDSYNC: pdboff: %d, mdboff: %d, resync required.",
-									woffset, tmlogfileoffset)));
+					errmsg("QDSYNC: pdboff: %d, mdboff: %d, resync required.",
+						   woffset, tmlogfileoffset)));
 				}
 				else
 				{
-					/* primary advanced beyond mirror, this indicates
-					 * that the mirror has failed at some point ? So
-					 * we'll resync the entire log */
+					/*
+					 * primary advanced beyond mirror, this indicates that the
+					 * mirror has failed at some point ? So we'll resync the
+					 * entire log
+					 */
 					ereport(ERROR,
 							(errcode_for_file_access(),
-							 errmsg("QDSYNC: pdboff: %d, mdboff: %d, resync required.",
-									0, woffset)));
+					errmsg("QDSYNC: pdboff: %d, mdboff: %d, resync required.",
+						   0, woffset)));
 				}
 			}
 		}
@@ -220,8 +222,8 @@ cdb_sync_xlog(void)
 static void
 getCmdArgs(const char *cmdArgs)
 {
-	char *pos;
-	int len;
+	char	   *pos;
+	int			len;
 
 	do
 	{

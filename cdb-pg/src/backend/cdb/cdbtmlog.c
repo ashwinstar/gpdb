@@ -2,7 +2,7 @@
  *	cdbtmlog.c
  *-------------------------------------------------------------------------
  */
- 
+
 #define PROVIDE_64BIT_CRC
 #include "postgres.h"
 
@@ -122,7 +122,8 @@ readTmLogRecordNext(int offset)
 void
 writeTmLogRecord(TmLogRecord * record)
 {
-	int			offset, len;
+	int			offset,
+				len;
 
 	if (logFileFD == -1 ||
 		logFileNo != *shmLatestLogFileNo)
@@ -146,7 +147,8 @@ writeTmLogRecord(TmLogRecord * record)
 	/* Handle lseek() errors. */
 	if (offset < 0)
 	{
-		int savedError = errno;	
+		int			savedError = errno;
+
 		elog(ERROR, "Failure to write to the tmlog. (errno: %s fd %d)", strerror(savedError), logFileFD);
 	}
 
@@ -230,7 +232,7 @@ checkPointTm(void)
 
 	/* flush tm log file */
 	flushTmLogFile(record->header.thisFileNo, record->header.thisOffset);
-	
+
 	/* deallocate record */
 	pfree(record);
 
@@ -346,19 +348,20 @@ switchTmLogFile(void)
 void
 flushTmLogFile(int fileno, int offset)
 {
-	int ret;
-		
-	/* if our record is already flushed then we no-op.
-	 * When the system gets busy this allows other users processes to flush
-	 * our records and shoud result in overall better throughput.
+	int			ret;
+
+	/*
+	 * if our record is already flushed then we no-op. When the system gets
+	 * busy this allows other users processes to flush our records and shoud
+	 * result in overall better throughput.
 	 */
 	if (*shmLastFlushedFileNo == fileno && *shmLastFlushedFileOffset > offset)
 	{
 		/* no-op... we're already flushed. */
 		return;
 	}
-	
-	
+
+
 	ret = pg_fdatasync(logFileFD);
 
 	if (ret != 0)
@@ -368,16 +371,17 @@ flushTmLogFile(int fileno, int offset)
 				 errmsg("could not fsync tm log file \"%d\": %m",
 						logFileNo)));
 	}
-	
-		
-	/* we've actually flushed a few more bytes then just offset 
-	 * since that is just the beginning of the last record we've flushed.
-	 * but for our purposes this is ok.  Eventually, this tmlog 
-	 * implementation needs to be re-worked quite a bit. 
+
+
+	/*
+	 * we've actually flushed a few more bytes then just offset since that is
+	 * just the beginning of the last record we've flushed. but for our
+	 * purposes this is ok.  Eventually, this tmlog implementation needs to be
+	 * re-worked quite a bit.
 	 */
-    *shmLastFlushedFileNo = fileno;
-	*shmLastFlushedFileOffset = offset; 
-							
+	*shmLastFlushedFileNo = fileno;
+	*shmLastFlushedFileOffset = offset;
+
 }
 
 /* remove useless tm log file */
@@ -443,10 +447,12 @@ initTmLog(char *dir)
 		if (*clde->d_name == '.')
 			continue;
 
-		/* WARNING WARNING WARNING: This absolutely must match the
-		 * format string in the TmLogFilePath() macro at the top of
-		 * this file: the files we're trying to find in this loop are
-		 * the files produced by that macro. See MPP-551. */
+		/*
+		 * WARNING WARNING WARNING: This absolutely must match the format
+		 * string in the TmLogFilePath() macro at the top of this file: the
+		 * files we're trying to find in this loop are the files produced by
+		 * that macro. See MPP-551.
+		 */
 		sscanf(clde->d_name, "%X", &id);
 		if (id > file1)
 		{
@@ -491,7 +497,7 @@ initTmLog(char *dir)
 }
 
 /*
- * Scans the pg_dtm directory and reads 
+ * Scans the pg_dtm directory and reads
  */
 void
 recoverTmLog(void)
@@ -547,7 +553,7 @@ validateLogFileControlBlock(TmLogFileControlBlock * header)
 static pg_crc64
 calculateCRC(void *buf, int len)
 {
-	pg_crc64		calc_crc;
+	pg_crc64	calc_crc;
 
 	INIT_CRC64(calc_crc);
 	COMP_CRC64(calc_crc, buf, len);
@@ -605,22 +611,22 @@ write_to_mirror(void *buf, int offset, int len)
 	{
 		mirrorQDInited = true;
 		write_to_mirror(NULL, offset, 0);
-		}
+	}
 
- 	if (snprintf(cmd, sizeof(cmd), "tmlog %08x %d %d", logFileNo, offset, len) >= sizeof(cmd))
+	if (snprintf(cmd, sizeof(cmd), "tmlog %08x %d %d", logFileNo, offset, len) >= sizeof(cmd))
 	{
 		elog(ERROR, "write_to_mirror: can't format command, buffer too short");
-			return;
+		return;
 	}
 	write_qd_sync(cmd, buf, len);
 }
 
-static char		tmlogbuf[8000];
+static char tmlogbuf[8000];
 
 bool
 resync_tmlog_to_mirror(int startoff, int stopoff)
 {
-	char   		cmd[50];
+	char		cmd[50];
 	int			len,
 				loffset;
 
@@ -633,7 +639,7 @@ resync_tmlog_to_mirror(int startoff, int stopoff)
 	Insist(len >= 0);
 	while (len != 0)
 	{
-		int		read_len = sizeof(tmlogbuf);
+		int			read_len = sizeof(tmlogbuf);
 
 		if (len < sizeof(tmlogbuf))
 			read_len = len;
@@ -647,8 +653,8 @@ resync_tmlog_to_mirror(int startoff, int stopoff)
 		/* write to sync agent */
 		if (snprintf(cmd, sizeof(cmd), "tmlog %08x %d %d resync", logFileNo, loffset, read_len) >= sizeof(cmd))
 		{
-		   	elog(ERROR, "Can't format command for qd_sync");
-		   	return false;
+			elog(ERROR, "Can't format command for qd_sync");
+			return false;
 		}
 		elog(DEBUG4, "calling write_qd_sync: %s", cmd);
 		write_qd_sync(cmd, tmlogbuf, read_len);

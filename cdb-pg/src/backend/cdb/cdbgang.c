@@ -18,7 +18,7 @@
 #include "libpq-fe.h"
 #include "miscadmin.h"			/* MyDatabaseId */
 #include "commands/dbcommands.h"	/* get_database_name() */
-#include "storage/proc.h"  			/*MyProc*/
+#include "storage/proc.h"		/* MyProc */
 #include "storage/ipc.h"
 #include "utils/memutils.h"
 
@@ -28,8 +28,8 @@
 extern int	CommitDelay;
 extern int	CommitSiblings;
 extern char *default_tablespace;
-extern char	   *role_string;
-extern char	   *session_authorization_string;
+extern char *role_string;
+extern char *session_authorization_string;
 
 #include "cdb/cdbconn.h"		/* SegmentDatabaseDescriptor */
 #include "cdb/cdbfts.h"
@@ -44,16 +44,16 @@ extern char	   *session_authorization_string;
  *	thread_DoConnect is the thread proc used to perform the connection to one of the qExecs.
  */
 static void *thread_DoConnect(void *arg);
-static void  build_mppqeid_params(PQExpBuffer buf);
+static void build_mppqeid_params(PQExpBuffer buf);
 
 static Gang *createGang(GangType type, int size, int content);
 
-static void disconnectAndDestroyGang(Gang *gp);
+static void disconnectAndDestroyGang(Gang * gp);
 static void disconnectAndDestroyAllReaderGangs(void);
 
 static Gang *buildGangDefinition(GangType type, int size, int content);
 
-static void cleanupGang(Gang *gp);
+static void cleanupGang(Gang * gp);
 
 static bool gangOK(Gang * gp);
 
@@ -81,9 +81,9 @@ typedef struct DoConnectParms
 	 */
 	SegmentDatabaseDescriptor **segdbDescPtrArray;
 
-	/*type of gang.*/
-	GangType type;
-	
+	/* type of gang. */
+	GangType	type;
+
 	/*
 	 * The pthread_t thread handle.
 	 */
@@ -182,7 +182,7 @@ createGang(GangType type, int size, int content)
 	doConnectParmsAr = (DoConnectParms *)
 		palloc0(max_threads * sizeof(DoConnectParms));
 	segdbs_in_thread_pool = 0;
-	
+
 	newGangDefinition->active = true;
 
 	/*
@@ -223,10 +223,10 @@ createGang(GangType type, int size, int content)
 	for (i = 0; i < threadCount; i++)
 	{
 		DoConnectParms *pParms = &doConnectParmsAr[i];
-		
+
 		/* set the gangType. */
 		pParms->type = type;
-		
+
 		elog(DEBUG2, "createGang Creating thread %d of %d for libpq connections",
 			 i + 1, threadCount);
 
@@ -267,7 +267,7 @@ createGang(GangType type, int size, int content)
 		pfree(doConnectParmsAr);
 		doConnectParmsAr = NULL;
 	}
-	
+
 	newGangDefinition->active = false;
 
 	/*
@@ -302,7 +302,7 @@ createGang(GangType type, int size, int content)
 			ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
 							  errmsg("%s", segdbDesc->error_message.data)));
 			if (segdbDesc->errcode == 0 && segdbDesc->error_message.len == 0)
-				elog(ERROR,"Connection is null, but no error code or error message, for segDB %d", i);
+				elog(ERROR, "Connection is null, but no error code or error message, for segDB %d", i);
 			Assert(segdbDesc->errcode != 0 &&
 				   segdbDesc->error_message.len > 0);
 			segdbDesc->errcode = 0;
@@ -417,7 +417,7 @@ buildGangDefinition(GangType type, int size, int content)
 	int			last_segindex = -1;
 	int			i;
 
-	char		*username = GetUserNameFromId(GetSessionUserId());
+	char	   *username = GetUserNameFromId(GetSessionUserId());
 
 	MemoryContext oldContext;
 	MemoryContext permanentContext = TopMemoryContext;
@@ -480,7 +480,7 @@ buildGangDefinition(GangType type, int size, int content)
 		pfree(username);
 		return NULL;
 	}
-	
+
 	/* if mirroring is not configured */
 	if (cdb_component_dbs->total_segment_dbs == cdb_component_dbs->total_segments)
 	{
@@ -734,8 +734,8 @@ thread_DoConnect(void *arg)
 	 */
 	for (i = 0; i < db_count; i++)
 	{
-		
-		char temp[256];
+
+		char		temp[256];
 		PQExpBufferData buffer;
 
 		segdbDesc = segdbDescPtrArray[i];
@@ -754,23 +754,23 @@ thread_DoConnect(void *arg)
 		/*
 		 * Build the connection string
 		 */
-        build_mppqeid_params(&buffer);
+		build_mppqeid_params(&buffer);
 
-        appendPQExpBufferStr(&buffer, "options='");
+		appendPQExpBufferStr(&buffer, "options='");
 
-        if (pParms->type != GANGTYPE_READER)
-            appendPQExpBufferStr(&buffer, "-c mpp_is_writer=true ");
+		if (pParms->type != GANGTYPE_READER)
+			appendPQExpBufferStr(&buffer, "-c mpp_is_writer=true ");
 
 		appendPQExpBuffer(&buffer,
 						  "-c mpp_segment=%d -c mpp_max_packet_size=%d",
 						  q->segindex, Mpp_max_packet_size);
-						
+
 		if (!q->isprimary)
-			appendPQExpBuffer(&buffer," -c mpp_is_primary=false");
-			
-			
-		/* user-settable GUC variables */		
-				
+			appendPQExpBuffer(&buffer, " -c mpp_is_primary=false");
+
+
+		/* user-settable GUC variables */
+
 		/*
 		 * It doesn't seem to work to quote the entire search path,
 		 * so we need to remove any spaces so it's treated as one parameter.
@@ -779,66 +779,78 @@ thread_DoConnect(void *arg)
 		 */
 		temp[0] = '\0';
 		j = 0;
-		start = 0;									/* start */
-		end = strlen(namespace_search_path);		/* end */
-		if ((namespace_search_path[0] == '\"' && namespace_search_path[strlen(namespace_search_path)-1]=='\"') ||
-			(namespace_search_path[0] == '\'' && namespace_search_path[strlen(namespace_search_path)-1]=='\''))
+		start = 0;				/* start */
+		end = strlen(namespace_search_path);	/* end */
+		if ((namespace_search_path[0] == '\"' && namespace_search_path[strlen(namespace_search_path) - 1] == '\"') ||
+			(namespace_search_path[0] == '\'' && namespace_search_path[strlen(namespace_search_path) - 1] == '\''))
 		{
 			start = 1;
-			end = strlen(namespace_search_path)-1;
+			end = strlen(namespace_search_path) - 1;
 		}
-		for (;start<end;start++)
+		for (; start < end; start++)
 		{
 			if (namespace_search_path[start] != ' ')
 				temp[j++] = namespace_search_path[start];
 		}
 		temp[j] = '\0';
 
-		appendPQExpBuffer(&buffer," -c search_path=%s",temp);
+		appendPQExpBuffer(&buffer, " -c search_path=%s", temp);
 
-		switch(client_min_messages)
+		switch (client_min_messages)
 		{
 			case DEBUG5:
-				appendPQExpBuffer(&buffer," -c client_min_messages=DEBUG5"); break;
+				appendPQExpBuffer(&buffer, " -c client_min_messages=DEBUG5");
+				break;
 			case DEBUG4:
-				appendPQExpBuffer(&buffer," -c client_min_messages=DEBUG4"); break;
+				appendPQExpBuffer(&buffer, " -c client_min_messages=DEBUG4");
+				break;
 			case DEBUG3:
-				appendPQExpBuffer(&buffer," -c client_min_messages=DEBUG3"); break;
+				appendPQExpBuffer(&buffer, " -c client_min_messages=DEBUG3");
+				break;
 			case DEBUG2:
-				appendPQExpBuffer(&buffer," -c client_min_messages=DEBUG2"); break;
+				appendPQExpBuffer(&buffer, " -c client_min_messages=DEBUG2");
+				break;
 			case DEBUG1:
-				appendPQExpBuffer(&buffer," -c client_min_messages=DEBUG1"); break;
+				appendPQExpBuffer(&buffer, " -c client_min_messages=DEBUG1");
+				break;
 			case LOG:
-				appendPQExpBuffer(&buffer," -c client_min_messages=LOG"); break;
+				appendPQExpBuffer(&buffer, " -c client_min_messages=LOG");
+				break;
 			case INFO:
-				appendPQExpBuffer(&buffer," -c client_min_messages=INFO"); break;
+				appendPQExpBuffer(&buffer, " -c client_min_messages=INFO");
+				break;
 			case NOTICE:
-				appendPQExpBuffer(&buffer," -c client_min_messages=NOTICE"); break;
+				appendPQExpBuffer(&buffer, " -c client_min_messages=NOTICE");
+				break;
 			case WARNING:
-				appendPQExpBuffer(&buffer," -c client_min_messages=WARNING"); break;
+				appendPQExpBuffer(&buffer, " -c client_min_messages=WARNING");
+				break;
 			case ERROR:
-				appendPQExpBuffer(&buffer," -c client_min_messages=ERROR"); break;
+				appendPQExpBuffer(&buffer, " -c client_min_messages=ERROR");
+				break;
 			case FATAL:
-				appendPQExpBuffer(&buffer," -c client_min_messages=FATAL"); break;
+				appendPQExpBuffer(&buffer, " -c client_min_messages=FATAL");
+				break;
 			case PANIC:
-				appendPQExpBuffer(&buffer," -c client_min_messages=PANIC"); break;
-			default: ;
-		}	
-		
-		appendPQExpBuffer(&buffer," -c work_mem=%d",work_mem);
-		appendPQExpBuffer(&buffer," -c maintenance_work_mem=%d",maintenance_work_mem);
-		appendPQExpBuffer(&buffer," -c temp_buffers=%d",num_temp_buffers);
-		
+				appendPQExpBuffer(&buffer, " -c client_min_messages=PANIC");
+				break;
+			default:;
+		}
+
+		appendPQExpBuffer(&buffer, " -c work_mem=%d", work_mem);
+		appendPQExpBuffer(&buffer, " -c maintenance_work_mem=%d", maintenance_work_mem);
+		appendPQExpBuffer(&buffer, " -c temp_buffers=%d", num_temp_buffers);
+
 		if (StatementTimeout != 0)
-			appendPQExpBuffer(&buffer," -c statement_timeout=%d",StatementTimeout);
+			appendPQExpBuffer(&buffer, " -c statement_timeout=%d", StatementTimeout);
 		if (CommitDelay != 0)
-			appendPQExpBuffer(&buffer," -c commit_delay=%d",CommitDelay);
+			appendPQExpBuffer(&buffer, " -c commit_delay=%d", CommitDelay);
 		if (CommitSiblings != 5)
-			appendPQExpBuffer(&buffer," -c commit_siblings=%d",CommitSiblings);
+			appendPQExpBuffer(&buffer, " -c commit_siblings=%d", CommitSiblings);
 		if (interconnect_setup_timeout != 10)
-			appendPQExpBuffer(&buffer," -c mpp_interconnect_setup_timeout=%d",interconnect_setup_timeout);
-		
-		appendPQExpBuffer(&buffer," -c DateStyle=");	
+			appendPQExpBuffer(&buffer, " -c mpp_interconnect_setup_timeout=%d", interconnect_setup_timeout);
+
+		appendPQExpBuffer(&buffer, " -c DateStyle=");
 		switch (DateStyle)
 		{
 			case USE_ISO_DATES:
@@ -866,25 +878,25 @@ thread_DoConnect(void *arg)
 				appendPQExpBuffer(&buffer, ",MDY");
 				break;
 		}
-		
-		if (strcmp(show_timezone(),"unknown")!=0)
+
+		if (strcmp(show_timezone(), "unknown") != 0)
 		{
-			appendPQExpBuffer(&buffer," -c TimeZone=%s",show_timezone());
+			appendPQExpBuffer(&buffer, " -c TimeZone=%s", show_timezone());
 		}
-			
+
 		if (DefaultXactIsoLevel != XACT_READ_COMMITTED)
 		{
 			if (DefaultXactIsoLevel == XACT_SERIALIZABLE)
-				appendPQExpBuffer(&buffer," -c default_transaction_isolation=serializable");
+				appendPQExpBuffer(&buffer, " -c default_transaction_isolation=serializable");
 
 		}
 		if (XactIsoLevel != XACT_READ_COMMITTED)
 		{
 			if (XactIsoLevel == XACT_SERIALIZABLE)
-				appendPQExpBuffer(&buffer," -c transaction_isolation=serializable");
+				appendPQExpBuffer(&buffer, " -c transaction_isolation=serializable");
 
 		}
-		
+
 		/*
 		 * Role cannot be set this way, becaused in 8.1.3 the string is truncated to 64 chars.
 		 *
@@ -897,81 +909,103 @@ thread_DoConnect(void *arg)
 					appendPQExpBuffer(&buffer," -c role=%s",role_string);
 		}
 		*/
-		
+
 		if (superuser())
 		{
 			/* some super-user settable gucs */
-			switch(log_min_messages)
+			switch (log_min_messages)
 			{
 				case DEBUG5:
-					appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG5"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_messages=DEBUG5");
+					break;
 				case DEBUG4:
-					appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG4"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_messages=DEBUG4");
+					break;
 				case DEBUG3:
-					appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG3"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_messages=DEBUG3");
+					break;
 				case DEBUG2:
-					appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG2"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_messages=DEBUG2");
+					break;
 				case DEBUG1:
-					appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG1"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_messages=DEBUG1");
+					break;
 				case LOG:
-					appendPQExpBuffer(&buffer," -c log_min_messages=LOG"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_messages=LOG");
+					break;
 				case INFO:
-					appendPQExpBuffer(&buffer," -c log_min_messages=INFO"); break;
-				
+					appendPQExpBuffer(&buffer, " -c log_min_messages=INFO");
+					break;
+
 				case WARNING:
-					appendPQExpBuffer(&buffer," -c log_min_messages=WARNING"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_messages=WARNING");
+					break;
 				case ERROR:
-					appendPQExpBuffer(&buffer," -c log_min_messages=ERROR"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_messages=ERROR");
+					break;
 				case FATAL:
-					appendPQExpBuffer(&buffer," -c log_min_messages=FATAL"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_messages=FATAL");
+					break;
 				case PANIC:
-					appendPQExpBuffer(&buffer," -c log_min_messages=PANIC"); break;
-				default: ;
+					appendPQExpBuffer(&buffer, " -c log_min_messages=PANIC");
+					break;
+				default:;
 			}
-			
+
 			if (Log_error_verbosity != PGERROR_DEFAULT)
 			{
 				if (Log_error_verbosity == PGERROR_VERBOSE)
-					appendPQExpBuffer(&buffer," -c log_error_verbosity=verbose");
+					appendPQExpBuffer(&buffer, " -c log_error_verbosity=verbose");
 				if (Log_error_verbosity == PGERROR_TERSE)
-					appendPQExpBuffer(&buffer," -c log_error_verbosity=terse");
+					appendPQExpBuffer(&buffer, " -c log_error_verbosity=terse");
 			}
-			
+
 			if (log_duration)
-				appendPQExpBuffer(&buffer," -c log_duration=true");
-				
+				appendPQExpBuffer(&buffer, " -c log_duration=true");
+
 			if (log_min_duration_statement >= 0)
-				appendPQExpBuffer(&buffer," -c log_min_duration_statement=%d",log_min_duration_statement);
-				
-				
-			switch(log_min_error_statement)
+				appendPQExpBuffer(&buffer, " -c log_min_duration_statement=%d", log_min_duration_statement);
+
+
+			switch (log_min_error_statement)
 			{
 				case DEBUG5:
-					appendPQExpBuffer(&buffer," -c log_min_error_statement=DEBUG5"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_error_statement=DEBUG5");
+					break;
 				case DEBUG4:
-					appendPQExpBuffer(&buffer," -c log_min_error_statement=DEBUG4"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_error_statement=DEBUG4");
+					break;
 				case DEBUG3:
-					appendPQExpBuffer(&buffer," -c log_min_error_statement=DEBUG3"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_error_statement=DEBUG3");
+					break;
 				case DEBUG2:
-					appendPQExpBuffer(&buffer," -c log_min_error_statement=DEBUG2"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_error_statement=DEBUG2");
+					break;
 				case DEBUG1:
-					appendPQExpBuffer(&buffer," -c log_min_error_statement=DEBUG1"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_error_statement=DEBUG1");
+					break;
 				case LOG:
-					appendPQExpBuffer(&buffer," -c log_min_error_statement=LOG"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_error_statement=LOG");
+					break;
 				case INFO:
-					appendPQExpBuffer(&buffer," -c log_min_error_statement=INFO"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_error_statement=INFO");
+					break;
 				case NOTICE:
-					appendPQExpBuffer(&buffer," -c log_min_error_statement=NOTICE"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_error_statement=NOTICE");
+					break;
 				case WARNING:
-					appendPQExpBuffer(&buffer," -c log_min_error_statement=WARNING"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_error_statement=WARNING");
+					break;
 				case ERROR:
-					appendPQExpBuffer(&buffer," -c log_min_error_statement=ERROR"); break;
+					appendPQExpBuffer(&buffer, " -c log_min_error_statement=ERROR");
+					break;
 				case FATAL:
-					appendPQExpBuffer(&buffer," -c log_min_error_statement=FATAL"); break;
-				
-				default: ;
+					appendPQExpBuffer(&buffer, " -c log_min_error_statement=FATAL");
+					break;
+
+				default:;
 			}
-			
+
 			/*
 			 * session_authorization can't be set until AFTER login, and anyway in 8.1.3, the string
 			 * gets truncated to 64 chars before being used, so this can't work.
@@ -980,16 +1014,16 @@ thread_DoConnect(void *arg)
 			{
 				char * endptr;
 				Oid savedoid = (Oid) strtoul(session_authorization_string + NAMEDATALEN + 1, &endptr, 10);
-	
+
 				if (savedoid != 0)
 					appendPQExpBuffer(&buffer," -c session_authorization=%s",session_authorization_string);
 			}
-			
+
 			*
 			*/
-	
+
 			if (mpp_set_read_only)
-				appendPQExpBuffer(&buffer," -c mpp_set_read_only=true");
+				appendPQExpBuffer(&buffer, " -c mpp_set_read_only=true");
 		}
 
 		appendPQExpBuffer(&buffer, "' ");
@@ -1024,20 +1058,20 @@ thread_DoConnect(void *arg)
 static void
 build_mppqeid_params(PQExpBuffer buf)
 {
-    appendPQExpBufferStr(buf, "mppqeid=");
+	appendPQExpBufferStr(buf, "mppqeid=");
 
-    appendPQExpBuffer(buf, "%d;", mpp_session_id);
+	appendPQExpBuffer(buf, "%d;", mpp_session_id);
 
 #ifdef HAVE_INT64_TIMESTAMP
-    appendPQExpBuffer(buf, INT64_FORMAT ";", PgStartTime);
+	appendPQExpBuffer(buf, INT64_FORMAT ";", PgStartTime);
 #else
-    appendPQExpBuffer(buf, "%.14a;", PgStartTime);
+	appendPQExpBuffer(buf, "%.14a;", PgStartTime);
 #endif
 
-    /* change last semicolon to space */
-    Assert(buf->data[buf->len-1] == ';');
-    buf->data[buf->len-1] = ' ';
-}                               /* build_mppqeid_params */
+	/* change last semicolon to space */
+	Assert(buf->data[buf->len - 1] == ';');
+	buf->data[buf->len - 1] = ' ';
+}	/* build_mppqeid_params */
 
 
 /*
@@ -1050,62 +1084,63 @@ build_mppqeid_params(PQExpBuffer buf)
  * command line options have not been processed; GUCs have the settings
  * inherited from the postmaster; etc; so don't try to do too much in here.
  */
-static bool mppqeid_next_param(char **cpp, char **npp)
+static bool
+mppqeid_next_param(char **cpp, char **npp)
 {
-    *cpp = *npp;
-    if (!*cpp)
-        return false;
+	*cpp = *npp;
+	if (!*cpp)
+		return false;
 
-    *npp = strchr(*npp, ';');
-    if (*npp)
-    {
-        **npp = '\0';
-        ++*npp;
-    }
-    return true;
+	*npp = strchr(*npp, ';');
+	if (*npp)
+	{
+		**npp = '\0';
+		++*npp;
+	}
+	return true;
 }
 
 void
-cdbgang_parse_mppqeid_params(struct Port *port, const char* mppqeid_value)
+cdbgang_parse_mppqeid_params(struct Port *port, const char *mppqeid_value)
 {
-    char   *mppqeid = pstrdup(mppqeid_value);
-    char   *cp;
-    char   *np = mppqeid;
+	char	   *mppqeid = pstrdup(mppqeid_value);
+	char	   *cp;
+	char	   *np = mppqeid;
 
-    /* The presence of an mppqeid string means this backend is a qExec. */
-   	SetConfigOption("mpp_session_role", "execute",
+	/* The presence of an mppqeid string means this backend is a qExec. */
+	SetConfigOption("mpp_session_role", "execute",
 					PGC_POSTMASTER, PGC_S_OVERRIDE);
 
-    /* mpp_session_id */
-    if (mppqeid_next_param(&cp, &np))
-        SetConfigOption("mpp_session_id", cp,
-					    PGC_POSTMASTER, PGC_S_OVERRIDE);
+	/* mpp_session_id */
+	if (mppqeid_next_param(&cp, &np))
+		SetConfigOption("mpp_session_id", cp,
+						PGC_POSTMASTER, PGC_S_OVERRIDE);
 
-    /* PgStartTime */
-    if (mppqeid_next_param(&cp, &np))
-    {
+	/* PgStartTime */
+	if (mppqeid_next_param(&cp, &np))
+	{
 #ifdef HAVE_INT64_TIMESTAMP
-        if (!scanint8(cp, true, &PgStartTime))
-            goto bad;
+		if (!scanint8(cp, true, &PgStartTime))
+			goto bad;
 #else
-        PgStartTime = strtod(cp, NULL);
+		PgStartTime = strtod(cp, NULL);
 #endif
-    }
+	}
 
-    /* Too few items, or too many? */
-    if (!cp || np)
-        goto bad;
+	/* Too few items, or too many? */
+	if (!cp || np)
+		goto bad;
 
-    if (mpp_session_id <= 0 ||
-        PgStartTime <= 0)
-       goto bad;
+	if (mpp_session_id <= 0 ||
+		PgStartTime <= 0)
+		goto bad;
 
-    pfree(mppqeid);
-    return;
+	pfree(mppqeid);
+	return;
 
 bad:
-    elog(FATAL, "QE dispatched with invalid option: 'mppqeid=%s'", mppqeid_value);
-}                               /* cdbgang_parse_mppqeid_params */
+	elog(FATAL, "QE dispatched with invalid option: 'mppqeid=%s'", mppqeid_value);
+}	/* cdbgang_parse_mppqeid_params */
 
 
 
@@ -1123,29 +1158,33 @@ static List *availableReaderGangs1 = NIL;
 static Gang *primaryWriterGang = NULL;
 static Gang *mirrorWriterGang = NULL;
 
-List * getAllReaderGangs()
+List *
+getAllReaderGangs()
 {
-	List		*res=NIL;
-    ListCell	*le;
+	List	   *res = NIL;
+	ListCell   *le;
 
-	/* using list_concat() here will destructively modify the lists!
+	/*
+	 * using list_concat() here will destructively modify the lists!
 	 *
-	   res = list_concat(availableReaderGangsN, list_concat(availableReaderGangs1, list_concat(allocatedReaderGangsN, allocatedReaderGangs1)));
-	*/
+	 * res = list_concat(availableReaderGangsN,
+	 * list_concat(availableReaderGangs1, list_concat(allocatedReaderGangsN,
+	 * allocatedReaderGangs1)));
+	 */
 	foreach(le, availableReaderGangsN)
-    {
+	{
 		res = lappend(res, lfirst(le));
 	}
 	foreach(le, availableReaderGangs1)
-    {
+	{
 		res = lappend(res, lfirst(le));
 	}
 	foreach(le, allocatedReaderGangsN)
-    {
+	{
 		res = lappend(res, lfirst(le));
 	}
 	foreach(le, allocatedReaderGangs1)
-    {
+	{
 		res = lappend(res, lfirst(le));
 	}
 
@@ -1297,7 +1336,7 @@ allocateGang(GangType type, int size, int content)
 
 		default:
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-                            errmsg_internal("problem in allocateGang") ));
+							errmsg_internal("problem in allocateGang")));
 			break;
 	}
 
@@ -1313,11 +1352,11 @@ allocateGang(GangType type, int size, int content)
 
 	MemoryContextSwitchTo(oldContext);
 	if (gp == NULL)
-    {
-        if (type != GANGTYPE_MIRROR_WRITER || !mirroringNotConfigured)
-        		elog(ERROR, "No %s gang allocated",
-        			 (type == GANGTYPE_PRIMARY_WRITER) ? "primary" : "mirror");
-    }
+	{
+		if (type != GANGTYPE_MIRROR_WRITER || !mirroringNotConfigured)
+			elog(ERROR, "No %s gang allocated",
+				 (type == GANGTYPE_PRIMARY_WRITER) ? "primary" : "mirror");
+	}
 
 	if (gp != NULL)
 	{
@@ -1332,7 +1371,7 @@ allocateGang(GangType type, int size, int content)
 }
 
 struct SegmentDatabaseDescriptor *
-getSegmentDescriptorFromGang(const Gang *gp, int seg)
+getSegmentDescriptorFromGang(const Gang * gp, int seg)
 {
 
 	int			i;
@@ -1350,7 +1389,7 @@ getSegmentDescriptorFromGang(const Gang *gp, int seg)
 }
 
 List *
-getCdbProcessList(Gang *gang)
+getCdbProcessList(Gang * gang)
 {
 	int			i;
 	List	   *list = NIL;
@@ -1472,7 +1511,7 @@ getCdbProcessesForQD(int isPrimary)
 		{
 			elog(FATAL, "gethostbyname() failed for host '%s'", qdinfo->hostname);
 		}
-		qd_hostip = strdup(inet_ntoa(*(struct in_addr *)(lookup->h_addr_list[0])));
+		qd_hostip = strdup(inet_ntoa(*(struct in_addr *) (lookup->h_addr_list[0])));
 		/* XXX: we're going to leak this ? */
 	}
 
@@ -1492,7 +1531,7 @@ getCdbProcessesForQD(int isPrimary)
 
 
 static void
-cleanupGang(Gang *gp)
+cleanupGang(Gang * gp)
 {
 	int			i;
 
@@ -1500,18 +1539,19 @@ cleanupGang(Gang *gp)
 		return;
 
 	elog(DEBUG5, "cleanupGang");
-	
+
 	if (gp->active)
 		elog(DEBUG2, "cleanupGang called on a gang that is active");
-	
-	
-	/* if the process is in the middle of blowing up... then we
-	 * don't do anything here.  making libpq and other calls can
-	 * definitely result in things getting HUNG.
+
+
+	/*
+	 * if the process is in the middle of blowing up... then we don't do
+	 * anything here.  making libpq and other calls can definitely result in
+	 * things getting HUNG.
 	 */
 	if (proc_exit_inprogress)
 		return;
-		
+
 	/*
 	 * Loop through the segment_database_descriptors array and, for each
 	 * SegmentDatabaseDescriptor:
@@ -1564,7 +1604,7 @@ cleanupGang(Gang *gp)
 		cdbconn_setSliceIndex(segdbDesc, -1);
 
 	}
-	
+
 	gp->allocated = false;
 
 	elog(DEBUG5, "cleanupGang done");
@@ -1572,7 +1612,7 @@ cleanupGang(Gang *gp)
 
 
 static void
-disconnectAndDestroyGang(Gang *gp)
+disconnectAndDestroyGang(Gang * gp)
 {
 	int			i;
 
@@ -1580,12 +1620,12 @@ disconnectAndDestroyGang(Gang *gp)
 		return;
 
 	elog(DEBUG5, "disconnectAndDestroyGang");
-	
+
 	if (gp->active ||
-        gp->allocated)
-        elog(DEBUG2, "Warning: disconnectAndDestroyGang called on an %s gang",
-             gp->active ? "active" : "allocated");		
-	
+		gp->allocated)
+		elog(DEBUG2, "Warning: disconnectAndDestroyGang called on an %s gang",
+			 gp->active ? "active" : "allocated");
+
 	/*
 	 * Loop through the segment_database_descriptors array and, for each
 	 * SegmentDatabaseDescriptor:
@@ -1602,12 +1642,12 @@ disconnectAndDestroyGang(Gang *gp)
 		if (segdbDesc->conn && PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 		{
 			PGTransactionStatusType status =
-				PQtransactionStatus(segdbDesc->conn);
-				
+			PQtransactionStatus(segdbDesc->conn);
+
 			elog(DEBUG2,
 				 "Finishing connection with %s; transaction status %d",
 				 segdbDesc->whoami, status);
-				
+
 			if (status == PQTRANS_ACTIVE)
 				PQrequestCancel(segdbDesc->conn);
 
@@ -1621,17 +1661,18 @@ disconnectAndDestroyGang(Gang *gp)
 	}
 
 
-	/* when we get rid of a writer gang we MUST also get rid of the
-	 * reader gang due to the shared local snapshot code that is
-	 * shared between readers and writers.
+	/*
+	 * when we get rid of a writer gang we MUST also get rid of the reader
+	 * gang due to the shared local snapshot code that is shared between
+	 * readers and writers.
 	 */
-	if( gp->type == GANGTYPE_MIRROR_WRITER &&
-		gp->type == GANGTYPE_PRIMARY_WRITER )
+	if (gp->type == GANGTYPE_MIRROR_WRITER &&
+		gp->type == GANGTYPE_PRIMARY_WRITER)
 	{
 		disconnectAndDestroyAllReaderGangs();
 	}
-	
-	
+
+
 	/*
 	 * Discard the segment array and the cluster descriptor
 	 */
@@ -1715,7 +1756,7 @@ static void
 disconnectAndDestroyAllReaderGangs(void)
 {
 	Gang	   *gp;
-	
+
 	if (allocatedReaderGangsN != NIL)
 	{
 		gp = linitial(allocatedReaderGangsN);
@@ -1779,12 +1820,12 @@ disconnectAndDestroyAllReaderGangs(void)
 void
 disconnectAndDestroyAllGangs(void)
 {
-	
+
 
 	elog(DEBUG3, "disconnectAndDestroyAllGangs");
 
 	disconnectAndDestroyAllReaderGangs();
-	
+
 
 	disconnectAndDestroyGang(primaryWriterGang);
 	primaryWriterGang = NULL;
@@ -1831,7 +1872,7 @@ reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB)
 	{
 		ereport(LOG, (errcode(failedDB->errcode),
 					  errmsg("Segment db connection error: %s",
-						     failedDB->error_message.data) ));
+							 failedDB->error_message.data)));
 		failedDB->errcode = 0;
 		resetPQExpBuffer(&failedDB->error_message);
 	}
@@ -1879,20 +1920,21 @@ reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB)
 	Assert(PQstatus(failedDB->conn) != CONNECTION_BAD);
 
 
-	/* If we've made it this far, then that means our re-connection attempts
-	 * are successful.  now, we need to blow away all of the reader gangs
-	 * in case this is a writer gang member.  The reason we need to do this
-	 * is because of shared snapshots.  A reader qExec can't be used after its
+	/*
+	 * If we've made it this far, then that means our re-connection attempts
+	 * are successful.	now, we need to blow away all of the reader gangs in
+	 * case this is a writer gang member.  The reason we need to do this is
+	 * because of shared snapshots.  A reader qExec can't be used after its
 	 * writer qExec dies.
 	 *
 	 * TODO: try and determine if we are a member of a reader or writer gang.
-	 * 		 then we'd only have to do the following if we were a writer gang.
+	 * then we'd only have to do the following if we were a writer gang.
 	 *
-	 */	
+	 */
 	disconnectAndDestroyAllReaderGangs();
-	
-	
-	
+
+
+
 	return true;
 }
 
@@ -1968,8 +2010,8 @@ SetSeqServerInfo(QueryDesc *queryDesc)
 	EState	   *estate = queryDesc->estate;
 	SliceTable *sliceTable = estate->es_sliceTable;
 
-	Assert( IsA(sliceTable, SliceTable) && sliceTable->seqServerHost == NULL);
-	
+	Assert(IsA(sliceTable, SliceTable) && sliceTable->seqServerHost == NULL);
+
 	if (Mpp_role != MPP_ROLE_DISPATCH || !Mpp_is_primary)
 	{
 		elog(FATAL, "SetSeqServerInfo: unsupported request");
@@ -1987,7 +2029,7 @@ SetSeqServerInfo(QueryDesc *queryDesc)
 		{
 			elog(FATAL, "gethostbyname() failed for host '%s'", qdinfo->hostname);
 		}
-		qd_hostip = strdup(inet_ntoa(*(struct in_addr *)(lookup->h_addr_list[0])));
+		qd_hostip = strdup(inet_ntoa(*(struct in_addr *) (lookup->h_addr_list[0])));
 		/* XXX: we're going to leak this ? */
 	}
 
