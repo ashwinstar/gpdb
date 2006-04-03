@@ -614,7 +614,9 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor *** failedSegDB,
 struct pg_result **				/* returns ptr to array of PGresult ptrs */
 cdbdisp_dispatchRMCommand(const char *szCommand,
 						  bool dispatchToMirrors,
-						  StringInfo errmsgbuf)
+						  StringInfo errmsgbuf,
+						  int *numresults)
+
 {
 	CdbDispatchResults *gangResults;
 	CdbDispatchResults *primaryResults;
@@ -624,6 +626,7 @@ cdbdisp_dispatchRMCommand(const char *szCommand,
 	int			nslots;
 	int			nresults = 0;
 	int			i;
+	int			totalResultCount=0;
 	
 	/* never want to start a global transaction for these */
 	bool		startTransaction = false;
@@ -648,6 +651,8 @@ cdbdisp_dispatchRMCommand(const char *szCommand,
 	gangResults = primaryResults;
 	if (gangResults)
 	{
+		totalResultCount = gangResults->resultCount;
+
 		for (i = 0; i < gangResults->resultCount; ++i)
 		{
 			dispatchResult = &gangResults->resultArray[i];
@@ -667,6 +672,7 @@ cdbdisp_dispatchRMCommand(const char *szCommand,
 	gangResults = mirrorResults;
 	if (gangResults)
 	{
+		totalResultCount += gangResults->resultCount;
 		for (i = 0; i < gangResults->resultCount; ++i)
 		{
 			dispatchResult = &gangResults->resultArray[i];
@@ -685,6 +691,10 @@ cdbdisp_dispatchRMCommand(const char *szCommand,
 	/* Put a stopper at the end of the array. */
 	Assert(nresults < nslots);
 	resultSets[nresults] = NULL;
+
+	/* If our caller is interested, tell them how many sets we're returning. */
+	if (numresults != NULL)
+		*numresults = totalResultCount;
 
 	return resultSets;
 }	/* cdbdisp_dispatchRMCommand */
@@ -1214,16 +1224,9 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 	CdbDispatchResults *gangResults = dispatchResult->meleeResults;
 
-	/* Don't dispatch to a QE that is not connected. */
-	if (!segdbDesc->conn)
-	{
-		if (DEBUG3 >= log_min_messages)
-			write_stderr("Command not sent to %s; no connection.\n",
-					     segdbDesc->whoami);
-		return false;
-	}
-
-	/* Lost the connection? */
+	/* Don't dispatch to a QE that is not connected. Note, that PQstatus() correctly
+	 * handles the case where segdbDesc->conn is NULL, and we *definitely* want to 
+	 * produce an error for that case. */
 	if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
 	{
 		char	   *msg = PQerrorMessage(segdbDesc->conn);

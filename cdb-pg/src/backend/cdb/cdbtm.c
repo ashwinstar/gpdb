@@ -270,7 +270,6 @@ condStartDtxTransaction(void)
 	return DTX_OK;
 }
 
-
 /* marks the current Distrubuted Transaction as "dirty", meaning that actual
  * work has been performed and we'll need to use 2pc on commit and log to our
  * tmlog.
@@ -293,8 +292,7 @@ condCommitDtxTransaction(bool onephase)
 	{
 		return DTX_ERR_PROTO;
 	}
-	ereport(DEBUG2,
-			(errmsg("condCommitDtxTransaction:  %s", currentGxact->gid)));
+	elog(DEBUG2, "condCommitDtxTransaction:  %s", currentGxact->gid);
 
 	if (onephase)
 	{
@@ -822,6 +820,7 @@ execDtxCommand(void)
 				cmdbuf[100];
 	int			numOfFailed = 0;
 	int			i,
+				resultCount,
 				ret = DTX_OK;
 	bool		dispatchToMirrors = true;
 
@@ -920,15 +919,20 @@ execDtxCommand(void)
 	}
 
 	initStringInfo(&errbuf);
-	results = cdbdisp_dispatchRMCommand(cmd, dispatchToMirrors, &errbuf);
+	results = cdbdisp_dispatchRMCommand(cmd, dispatchToMirrors, &errbuf, &resultCount);
 
 	if (errbuf.len > 0)
-		ereport(DEBUG2, (errmsg("DTM error"),
+		ereport(DEBUG2, (errmsg("DTM error (gathered %d results)", resultCount),
 						 errdetail("%s", errbuf.data)));
 
 	Assert(results != NULL);
-	for (i = 0; results[i] != NULL; i++)
+	if (results == NULL)
 	{
+		numOfFailed++; /* If we got no results, we need to treat it as an error! */
+	}
+	for (i = 0; i < resultCount; i++)
+	{
+		/* note: PQresultStatus() is smart enough to deal with results[i] == NULL */
 		resultStatus = PQresultStatus(results[i]);
 		if (resultStatus != PGRES_COMMAND_OK &&
 			resultStatus != PGRES_TUPLES_OK)
@@ -1546,7 +1550,7 @@ gatherRMInDoubtTransactions(void)
 	initStringInfo(&errmsgbuf);
 
 	/* call to all QE to get in-doubt transactions */
-	pgresultSets = cdbdisp_dispatchRMCommand(cmdbuf, dispatchToMirrors, &errmsgbuf);
+	pgresultSets = cdbdisp_dispatchRMCommand(cmdbuf, dispatchToMirrors, &errmsgbuf, NULL);
 
 	/* display error messages */
 	if (errmsgbuf.len > 0)

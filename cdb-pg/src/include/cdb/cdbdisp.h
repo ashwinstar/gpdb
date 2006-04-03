@@ -106,7 +106,8 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor   ***failedSegDB,
 struct pg_result **             /* returns ptr to array of PGresult ptrs */
 cdbdisp_dispatchRMCommand(const char   *szCommand,
 						  bool			dispatchToMirrors,
-                          StringInfo    errmsgbuf);
+                          StringInfo    errmsgbuf,
+                          int			*numresults);
 
 /*--------------------------------------------------------------------*/
 
