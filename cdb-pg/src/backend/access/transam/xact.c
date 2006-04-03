@@ -48,7 +48,7 @@
 
 #include "cdb/cdbgang.h"
 #include "cdb/cdbtm.h"
-#include "cdb/cdbvars.h"  /*Mpp_is_writer*/
+#include "cdb/cdbvars.h" /* Mpp_role, Mpp_is_writer*/
 
 /*
  *	User-tweakable parameters
@@ -63,16 +63,16 @@ int			CommitDelay = 0;	/* precommit delay in microseconds */
 int			CommitSiblings = 5; /* # concurrent xacts needed to sleep */
 
 
-/* MPP-specific 
+/* MPP-specific
  *
- * 
+ *
 
 routine for marking when a sequence makes a mark in the xlog.  we need
  * to keep track of this because sequences are the only reason a reader should
  * ever write to the xlog during commit.  As a result, we keep track of such
  * and will complain loudly if its violated.
  */
-bool seqXlogWrite;
+bool		seqXlogWrite;
 
 /*
  *	transaction states - transaction state from server perspective
@@ -214,7 +214,7 @@ typedef struct SubXactCallbackItem
 	struct SubXactCallbackItem *next;
 	SubXactCallback callback;
 	void	   *arg;
-} SubXactCallbackItem;
+}	SubXactCallbackItem;
 
 static SubXactCallbackItem *SubXact_callbacks = NULL;
 
@@ -702,19 +702,20 @@ RecordTransactionCommit(void)
 		/* Safety check in case our assumption is ever broken. */
 		if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer && !seqXlogWrite)
 		{
-			/* we better only do really minor things on the reader that 
-			 * result in writing to the xlog here at commit.  for now
-			 * sequences should be the only one
+			/*
+			 * we better only do really minor things on the reader that result
+			 * in writing to the xlog here at commit.  for now sequences
+			 * should be the only one
 			 */
 			ereport(ERROR,
 					(errmsg("Reader qExec had local changes to commit!"),
-					 errdetail("A Reader qExec tried to commit local changes.  "
-					 		   "Only the single Writer qExec can do so. "),
+				  errdetail("A Reader qExec tried to commit local changes.  "
+							"Only the single Writer qExec can do so. "),
 					 errhint("This is most likely the result of a feature being turned "
-					 		 "on that violates the single WRITER principle")));		
-						  
+						   "on that violates the single WRITER principle")));
+
 		}
-		
+
 		/* Tell bufmgr and smgr to prepare for commit */
 		BufmgrCommit();
 
@@ -1360,22 +1361,22 @@ AtSubCleanup_Memory(void)
  *
  * DOH: this totally ignores subtransactions for now!
  */
-void 
+void
 SetSharedTransactionId(void)
-{	
-	Assert( SharedLocalSnapshotSlot != NULL );
-	
-	if( Mpp_is_writer )
+{
+	Assert(SharedLocalSnapshotSlot != NULL);
+
+	if (Mpp_is_writer)
 	{
-		elog( DEBUG5, "qExec WRITER setting shared xid to: %d", TopTransactionStateData.transactionId );
+		elog(DEBUG5, "qExec WRITER setting shared xid to: %d", TopTransactionStateData.transactionId);
 		SharedLocalSnapshotSlot->xid = TopTransactionStateData.transactionId;
-	}		
+	}
 	else
 	{
-		TopTransactionStateData.transactionId = SharedLocalSnapshotSlot->xid;			
+		TopTransactionStateData.transactionId = SharedLocalSnapshotSlot->xid;
 		currentCommandId = SharedLocalSnapshotSlot->snapshot.curcid;
-		
-		elog( DEBUG5, "qExec READER setting local xid to: %d", TopTransactionStateData.transactionId );
+
+		elog(DEBUG5, "qExec READER setting local xid to: %d", TopTransactionStateData.transactionId);
 	}
 }
 
@@ -1421,7 +1422,7 @@ StartTransaction(void)
 	s->state = TRANS_START;
 	s->transactionId = InvalidTransactionId;	/* until assigned */
 
-	
+
 	/*
 	 * Make sure we've freed any old snapshot, and reset xact state variables
 	 */
@@ -1429,9 +1430,9 @@ StartTransaction(void)
 	XactIsoLevel = DefaultXactIsoLevel;
 	XactReadOnly = DefaultXactReadOnly;
 	seqXlogWrite = false;
-		
-    /* set read only by fts, if any fts action is read only */ 
-    FtsCondSetTxnReadOnly(&XactReadOnly);
+
+	/* set read only by fts, if any fts action is read only */
+	FtsCondSetTxnReadOnly(&XactReadOnly);
 
 	/*
 	 * reinitialize within-transaction counters
@@ -1446,36 +1447,39 @@ StartTransaction(void)
 	AtStart_Memory();
 	AtStart_ResourceOwner();
 
-	
-	
-	/* MPP currently doesn't support SERIALIZABLE transactions.  it would be nice
-	 * to check it at GUC time or during the BEGIN stmt processing, but at GUC
-	 * time we haven't set up whether we are in MPP mode or not.  So instead we'll
-	 * check the isolation level here and if its SERIALIZABLE we'll error out.
+
+
+	/*
+	 * MPP currently doesn't support SERIALIZABLE transactions.  it would be
+	 * nice to check it at GUC time or during the BEGIN stmt processing, but
+	 * at GUC time we haven't set up whether we are in MPP mode or not.  So
+	 * instead we'll check the isolation level here and if its SERIALIZABLE
+	 * we'll error out.
 	 *
 	 * @see also variable.c assign_XactIsoLevel()
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE) 
+	if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE)
 	{
-		if (XactIsoLevel == XACT_REPEATABLE_READ)	
+		if (XactIsoLevel == XACT_REPEATABLE_READ)
 			elog(ERROR, "Bizgres MPP does not support REPEATABLE READ transactions.");
-		else if( XactIsoLevel == XACT_SERIALIZABLE)
-			elog(ERROR, "Bizgres MPP does not support SERIALIZABLE transactions.");	
+		else if (XactIsoLevel == XACT_SERIALIZABLE)
+			elog(ERROR, "Bizgres MPP does not support SERIALIZABLE transactions.");
 	}
-	
 
 
-	/* MPP Modification 
-	 * 
-	 * only the writer should get an xid the normal way. 
+
+	/*
+	 * MPP Modification
 	 *
-	 * Don't take out this lock if we are in MPP EXECUTE 
-	 * mode AND we aren't the "writer".  Actually this is only safe if we only
-	 * have one writer since writers need to hold a lock on their
-	 * own XID so that others can wait for them to be finished.
+	 * only the writer should get an xid the normal way.
 	 *
-	 * If we're an executor and don't have a valid QDSentXID, then
-	 * we're starting a purely-local transaction.
+	 * Don't take out this lock if we are in MPP EXECUTE mode AND we aren't the
+	 * "writer".  Actually this is only safe if we only have one writer since
+	 * writers need to hold a lock on their own XID so that others can wait
+	 * for them to be finished.
+	 *
+	 * If we're an executor and don't have a valid QDSentXID, then we're starting
+	 * a purely-local transaction.
 	 *
 	 */
 	if (Mpp_role == MPP_ROLE_EXECUTE && QDSentXID != InvalidTransactionId)
@@ -1486,26 +1490,26 @@ StartTransaction(void)
 			 * generate a new transaction id
 			 */
 			s->transactionId = GetNewTransactionId(false);
-			
-			
+
+
 			/*
 			 * TODO:  the "writer" will eventually need to take out a lock on the global
-	 		 *		  XID here too when we get around to having a global snapshot used.
-	 		 */
-	 		XactLockTableInsert(s->transactionId); 
-	 		
+			 *		  XID here too when we get around to having a global snapshot used.
+			 */
+			XactLockTableInsert(s->transactionId);
+
 			/*
 			 * set now()
 			 */
 			xactStartTimestamp = GetCurrentTimestamp();
 
-			
-			/* NOTE: this is a bit hackish.
-			 * 		 It appears as though StartTransaction() gets called during
-			 * 		 connection setup before we even have time to setup our
-			 *		 shared snapshot slot. 
+
+			/*
+			 * NOTE: this is a bit hackish. It appears as though
+			 * StartTransaction() gets called during connection setup before
+			 * we even have time to setup our shared snapshot slot.
 			 */
-			if( SharedLocalSnapshotSlot != NULL )
+			if (SharedLocalSnapshotSlot != NULL)
 			{
 				SharedLocalSnapshotSlot->xid = s->transactionId;
 				SharedLocalSnapshotSlot->QDxid = QDSentXID;
@@ -1516,35 +1520,40 @@ StartTransaction(void)
 		}
 		else
 		{
-			/* we want to get our XID from the shared snapshot and not generate
-			 * one ourselves 
+			/*
+			 * we want to get our XID from the shared snapshot and not
+			 * generate one ourselves
 			 */
-			
-			if( SharedLocalSnapshotSlot == NULL )
-			{	
+
+			if (SharedLocalSnapshotSlot == NULL)
+			{
 				s->transactionId = GetNewTransactionId(false);
 			}
 			else
 			{
-				bool done = false;
-				int count = 0;
+				bool		done = false;
+				int			count = 0;
 
-				/* Should this be an error ? */
+				/*
+				 * If we're waiting on an old transaction, let's exit quickly
+				 * instead of timing out.
+				 */
 				if (TransactionIdPrecedes(QDSentXID, SharedLocalSnapshotSlot->QDxid))
-					elog(LOG, "Reader gang waiting for old xid: current: %d waiting on %d",
+					elog(ERROR, "Reader gang waiting for old xid: current: %d waiting on %d",
 						 QDSentXID, SharedLocalSnapshotSlot->QDxid);
-						
-				while(!done)
+
+				while (!done)
 				{
-					Assert( QDSentSnapshot != NULL );
-					Assert( SharedLocalSnapshotSlot != NULL );
-					
-					
-					/* If the QDxid in the SharedLocalSnapshotSlot is the same one
-					 * that the QD sent us... then we know we are both on the same
-					 * page.
+					Assert(QDSentSnapshot != NULL);
+					Assert(SharedLocalSnapshotSlot != NULL);
+
+
+					/*
+					 * If the QDxid in the SharedLocalSnapshotSlot is the same
+					 * one that the QD sent us... then we know we are both on
+					 * the same page.
 					 */
-					if ( QDSentXID == SharedLocalSnapshotSlot->QDxid)
+					if (QDSentXID == SharedLocalSnapshotSlot->QDxid)
 					{
 						s->transactionId = SharedLocalSnapshotSlot->xid;
 						xactStartTimestamp = SharedLocalSnapshotSlot->startTimestamp;
@@ -1552,48 +1561,54 @@ StartTransaction(void)
 					}
 					else
 					{
-						/* didn't find it.  we'll sleep for a small amount of time and then
-						 * try again. 
+						/*
+						 * didn't find it.  we'll sleep for a small amount of
+						 * time and then try again.
 						 *
-						 * TODO: is there a semaphore or something better we can do here.
+						 * TODO: is there a semaphore or something better we can
+						 * do here.
 						 */
-						pg_usleep( /*microseconds*/ 2000);
-						
+						pg_usleep( /* microseconds */ 2000);
+
 						CHECK_FOR_INTERRUPTS();
-						
+
 						count++;
-						
+
 						if (count % 10000 == 0)
 						{
-							/* FATAL seems pretty bad... but once we get out of sync with
-							 * the writer qExec we really need to die
+							/*
+							 * FATAL seems pretty bad... but once we get out
+							 * of sync with the writer qExec we really need to
+							 * die
 							 */
 							ereport(FATAL,
-								(errmsg("Reader qExec timed out waiting for Writer to set the shared snapshot."),
-								 errdetail("We are waiting for the shared snapshot to have XID: %d but the value "
-								 		   "is currently: %d. Our slotindex is: %d \n"
-								 		   "Dump of all sharedsnapshots in shmem: %s",
-								 			QDSentXID, SharedLocalSnapshotSlot->QDxid,
-								 			SharedLocalSnapshotSlot->slotindex, SharedSnapshotDump() )));
+									(errmsg("Reader qExec timed out waiting for Writer to set the shared snapshot."),
+									 errdetail("We are waiting for the shared snapshot to have XID: %d but the value "
+								  "is currently: %d. Our slotindex is: %d \n"
+								  "Dump of all sharedsnapshots in shmem: %s",
+								   QDSentXID, SharedLocalSnapshotSlot->QDxid,
+											   SharedLocalSnapshotSlot->slotindex, SharedSnapshotDump())));
 						}
-					}	
+					}
 				}
-			}			
+			}
 		}
 	}
 	else
 	{
-		/* MPP: we're the dispatcher, utility-mode or a QE starting a
-		 * pure-local transaction without any synchronization to
-		 * segmates! (e.g. CatchupInterruptHandler) */
+		/*
+		 * MPP: we're the dispatcher, utility-mode or a QE starting a
+		 * pure-local transaction without any synchronization to segmates!
+		 * (e.g. CatchupInterruptHandler)
+		 */
 
 		/*
 		 * generate a new transaction id
 		 */
 		s->transactionId = GetNewTransactionId(false);
-		
+
 		XactLockTableInsert(s->transactionId);
-		
+
 		/*
 		 * set now()
 		 */
@@ -1702,16 +1717,16 @@ CommitTransaction(void)
 	 */
 	AtEOXact_UpdateFlatFiles(true);
 
-    /* commit all QE
-     * commit should have been called from ProcessUtility,
-     * need to be done before s->state is set to commit.
-     * 
-     * we did not put QD transaction as part of global transaction
-     * this may need to be fixed in the future, otherwise a small 
-     * window may exist causing QD got rollback.
-     */
-    commitDtxTransaction();
-    
+	/*
+	 * commit all QE commit should have been called from ProcessUtility, need
+	 * to be done before s->state is set to commit.
+	 *
+	 * we did not put QD transaction as part of global transaction this may need
+	 * to be fixed in the future, otherwise a small window may exist causing
+	 * QD got rollback.
+	 */
+	commitDtxTransaction();
+
 	/* Prevent cancel/die interrupt while cleaning up */
 	HOLD_INTERRUPTS();
 
@@ -1834,10 +1849,12 @@ CommitTransaction(void)
 	s->nestingLevel = 0;
 	s->childXids = NIL;
 
-	/* To make sure that we're able to check that we've gotten a new
-	 * QD xid, when we finish with one, we set it to
-	 * InvalidTransactionId. This is especially important for
-	 * Reader-gangs, but shouldn't the primary-writer any harm */
+	/*
+	 * To make sure that we're able to check that we've gotten a new QD xid,
+	 * when we finish with one, we set it to InvalidTransactionId. This is
+	 * especially important for Reader-gangs, but shouldn't the primary-writer
+	 * any harm
+	 */
 	if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
 		QDSentXID = InvalidTransactionId;
@@ -1850,7 +1867,7 @@ CommitTransaction(void)
 	s->state = TRANS_DEFAULT;
 
 	RESUME_INTERRUPTS();
-	
+
 	freeGangs();
 }
 
@@ -2198,11 +2215,11 @@ AbortTransaction(void)
 	 * State remains TRANS_ABORT until CleanupTransaction().
 	 */
 	RESUME_INTERRUPTS();
-    
-    /* abort all QE as cleanup process, ignore all errors */
-    rollbackDtxTransaction();
-    
-    freeGangs();
+
+	/* abort all QE as cleanup process, ignore all errors */
+	rollbackDtxTransaction();
+
+	freeGangs();
 }
 
 /*
