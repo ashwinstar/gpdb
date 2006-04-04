@@ -807,16 +807,9 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 
 		if (interconnect_setup_timeout != 0 &&
 			(stopTime.tv_sec - startTime.tv_sec) > interconnect_setup_timeout)
-		{
 			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 					   errmsg("Aborting activating_routes.... TIMEOUT (%lu)",
 							  stopTime.tv_sec - startTime.tv_sec)));
-
-			elog_node_display(ERROR,
-                                                          "local slice table",
-                                                          sliceTable,
-                                                          Debug_pretty_print);
-		}
 
 		memcpy(&rrset, &rset, sizeof(fd_set));
 		memcpy(&wwset, &wset, sizeof(fd_set));
@@ -836,11 +829,6 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 				errmsg("Interconnect error setting up: %s", strerror(errno)),
 				errdetail("error during select() call (error:%d).", errno)));
-
-			elog_node_display(ERROR,
-                                                          "local slice table",
-                                                          sliceTable,
-                                                          Debug_pretty_print);
 		}
 
 		elog(DEBUG5, "select() returned %d ready sockets", n);
@@ -1029,6 +1017,12 @@ TeardownInterconnect(bool forceEOS)
 	/* multi-phase shutdown, mark all as shutdown */
 	elog(DEBUG3, "Interconnect cleanup state: %s (setup %s)",
 		 forceEOS ? "force" : "normal", activated ? "completed" : "exited");
+
+	/* if setup did not complete; or we're in the "force" argument is
+	 * set, pretty-print the slicetable */
+	if (!activated)
+		elog_node_display(DEBUG1, "local slice table",
+						  sliceTable, true);
 
 	/*
 	 * phase 1 mark all sockets (senders and receivers) with
