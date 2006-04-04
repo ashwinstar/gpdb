@@ -15,6 +15,8 @@
 #include "utils/hsearch.h"
 #include "miscadmin.h"
 
+#include "nodes/print.h"
+
 #include "cdb/tupchunklist.h"
 #include "cdb/ml_ipc.h"
 #include "cdb/cdbmotion.h"
@@ -1891,14 +1893,13 @@ readRegisterMessage(MotionConn * conn, int *incoming_count)
 	{
 
 		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-		  errmsg("Authentication Failed: local/remote session id (%d/%d), local/remote cmd count(%d/%d). "
-			"Received  RegisterMessage {motNodeId:%d, srcRouteId:%d, srcContentId:%d, srcListenerPort:%d, sessionId:%d, cmdCount:%d}",
-				mpp_session_id,msg.sessionId, mpp_command_count,msg.cmdCount,
-				msg.motNodeId, msg.srcRouteId, msg.srcContentId, msg.srcListenerPort,
-						msg.sessionId, msg.cmdCount,
-			errdetail("The sessionID and/or command count of the registering remote QE differs with that of the local QE"))));
-
-
+						errmsg("sessionID and/or command count mismatch during remote QE registration"),
+						errdetail("Authentication Failed: local/remote session id (%d/%d), local/remote cmd count(%d/%d). "
+								  "Received  RegisterMessage {motNodeId:%d, srcRouteId:%d, "
+								  "srcContentId:%d, srcListenerPort:%d, sessionId:%d, cmdCount:%d}",
+								  mpp_session_id, msg.sessionId, mpp_command_count, msg.cmdCount,
+								  msg.motNodeId, msg.srcRouteId, msg.srcContentId, msg.srcListenerPort,
+								  msg.sessionId, msg.cmdCount)));
 	}
 
 
