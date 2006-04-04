@@ -1773,7 +1773,7 @@ sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn)
 #ifdef AMS_VERBOSE_LOGGING
 	/* srcPid */
 	netval2 = htonl(getpid());
-	memcpy(msg + 10, &netval2, 4);
+	memcpy(msg + 14, &netval2, 4);
 #endif
 
 	/*
@@ -1882,7 +1882,7 @@ readRegisterMessage(MotionConn * conn, int *incoming_count)
 	msg.cmdCount = getInt16(buff + 12);
 
 #ifdef AMS_VERBOSE_LOGGING
-	msg.srcPid = getInt32(buff + 10);
+	msg.srcPid = getInt32(buff + 14);
 
 	elog(DEBUG3, "Read a Register Message: (motNodeID: %d, srcRouteId: %d, "
 		 "srcContentId: %d, srcListenerPort: %d srcPid: %d",
