@@ -15,14 +15,13 @@
 #include "utils/hsearch.h"
 #include "miscadmin.h"
 
-#include "nodes/print.h"
-
 #include "cdb/tupchunklist.h"
 #include "cdb/ml_ipc.h"
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
 
 #include <fcntl.h>
+#include <limits.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/time.h>
@@ -39,6 +38,10 @@
 #define SHUT_WR SD_SEND
 #endif
 
+/*
+#define AMS_VERBOSE_LOGGING
+*/
+
 /*=========================================================================
  * STRUCTS
  */
@@ -49,15 +52,22 @@
   * result if it is too low.
   */
 #define LISTEN_BACKLOG 64
-
 #define MAX_BIND_RETRIES 12
-
-#ifndef MAX
-#define MAX(x, y) (x) > (y) ? (x) : (y)
-#endif
+#define CONNECT_RETRY_MS    5000
 
 #define getInt16(pNetData)	  ntohs(*((int16 *)(pNetData)))
 #define getInt32(pNetData)	  ntohl(*((int32 *)(pNetData)))
+
+typedef enum MotionConnState
+{
+    mcsNull,
+    mcsAccepted,
+    mcsSetupOutgoingConnection,
+    mcsConnecting,
+    mcsRecvRegMsg,
+    mcsSendRegMsg,
+    mcsStarted,
+} MotionConnState;
 
 /* Structure used for keeping track of a pt-to-pt connection between two
  * Cdb Entities (either QE or QD).
@@ -86,12 +96,14 @@ typedef struct MotionConn
 
 	bool		stillActive;
 
-	char	   *remoteHost;
-	int			remotePort;
-	int			remoteContentId;
+    MotionConnState state;
 
-	bool		hasMirrorConn;
-	struct MotionConn *mirrorConn;
+    int         wakeup_ms;
+
+    CdbProcess *cdbProc;
+    int			remoteContentId;
+    char        remoteHostAndPort[64];
+    char        localHostAndPort[64];
 
 }	MotionConn;
 
@@ -100,20 +112,13 @@ typedef struct MotionConn
  */
 typedef struct MotionLayerState
 {
-	int16		motNodeId;
+	int         motNodeId;
+	bool		valid;
 
-	int			numConns;
-
-	MotionConn *conns;
-
-	int			numMirrorConns;
-
-	MotionConn *mirrorConns;	/* only used by the sender.  the receiver has
-								 * no concept of whether its a mirror or not.
-								 * so it always stores its connections in
-								 * conns. */
-
-	int			myRouteId;
+	/* Connection array: first the primaries, then the mirrors (if needed) */
+    MotionConn *conns;
+	int			numConns;               /* all, including mirrors if present */
+    int         numPrimaryConns;        /* does not include mirrors */
 
 	/*
 	 * used for receiving. to select() from a set of interesting MotionConns
@@ -125,26 +130,37 @@ typedef struct MotionLayerState
 
 	/* highest file descriptor in the readSet. */
 	int			highReadSock;
-	int			scanStart;
+    int         scanStart;
 
-	bool		valid;
+    /* slice table entries */
+    Slice      *sendSlice;
+    Slice      *recvSlice;
+
+    /* setup info */
+    int         outgoingPortRetryCount;
+
 }	MotionLayerState;
 
-/*DOH: include a routeId and move away from using contentId and
- *	   isPrimary for validation.  use ip address and port instead.
+
+/*
+ * Registration message
+ *
+ * Upon making a connection, the sender sends a registration message to
+ * identify itself to the receiver.  A lot of the fields are just there
+ * for validity checking.
  */
 typedef struct RegisterMessage
 {
-	int16		motNodeId;
-	int16		srcRouteId;
-	int16		srcContentId;
+	int32       msgBytes;
+    int32       recvSliceIndex;
+    int32       sendSliceIndex;
+	int32       srcContentId;
 	int32		srcListenerPort;
-	int16		sessionId;
-	int16		cmdCount;
-#ifdef AMS_VERBOSE_LOGGING
 	int32		srcPid;
-#endif
+    int32       srcSessionId;
+    int32       srcCommandCount;
 }	RegisterMessage;
+
 
 /*=========================================================================
  * GLOBAL STATE VARIABLES
@@ -153,11 +169,9 @@ typedef struct RegisterMessage
 /* Socket file descriptor for the listener. */
 int			listenerFd;
 
-static uint16 nextOutboundPort;
-
 /* Socket file descriptor for the sequence server. */
 int			seqserverFd = -1;
-char	   *seqServerHost;
+char		*seqServerHost;
 int			seqServerPort;
 
 /* Use an array to store our motion-layer-state table. */
@@ -166,11 +180,14 @@ MotionLayerState *mlsStates = NULL;
 
 #define MLS_INITIAL_SIZE (10)
 
-/* TCP port the Interconnect listens on for incoming connections from other
- * remote Interconnect entities.  The listenerPort is assigned at process startup
- * and is set by ListenerSetup().
+/*
+ * Outgoing port assignment
+ *
+ * To reserve a port number for outgoing connections, we open a dummy
+ * listening socket.  Nobody connects to this socket.
  */
-int			listenerPort;
+int         portReservationFd = -1;
+int         outgoingPort = 0;
 
 /* our timeout value for select() and other socket operations. */
 struct timeval tval;
@@ -192,34 +209,65 @@ bool		teardownActive = false;
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
  */
-static int	listenerSetup(void);
+static void setupListeningSocket(int backlog, int *listenerSocketFd, int *listenerPort);
 
-static MotionLayerState *createMotionState(int16 motNodeID, int numConns);
-static inline MotionLayerState *getMotionState(int16 motNodeID);
+static MotionLayerState *createMotionState(Slice *sendSlice, Slice *recvSlice,
+                                           int numPrimaryConns, int numMirrorConns);
+static inline MotionLayerState *getMotionState(int motNodeID);
 static MotionLayerState *removeMotionState(int16 motNodeID);
 
 static void setupSeqServerConnection(char *hostname, int port);
-static MotionLayerState *startConnections(Slice * mySlice, int *highsock, fd_set *wset, int *connsStarted);
-static void setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, fd_set *wset);
+
+static MotionLayerState *startOutgoingConnections(Slice *sendSlice, int *pOutgoingCount);
+static void setupOutgoingConnection(MotionLayerState *pEntry, MotionConn *conn);
+static void updateOutgoingConnection(MotionLayerState *pEntry, MotionConn *conn, int errnoSave);
+static int  getOutgoingPort(MotionLayerState *pEntry);
+static void zapOutgoingPort(MotionLayerState *pEntry);
+
 static void sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn);
-static void readRegisterMessage(MotionConn * in_conn, int *incoming_count);
-static void acceptIncomingConnection(fd_set *rset, int *highsock);
+static bool readRegisterMessage(MotionConn *conn);
+static MotionConn *acceptIncomingConnection(void);
 
 static bool sendChunk(MotionConn * conn, TupleChunkListItem tcItem, int16 motionId);
 static inline void readPacket(MotionConn * conn);
 static inline int doBroadcast(MotionLayerState * pEntry, TupleChunkListItem tcItem);
-static int	findMyRouteId(Slice * slice);
-static CdbProcess *findCdbProcess(RegisterMessage * msg);
 
 static bool flushBuffer(MotionConn * conn, int16 motionId);
-void		dumpEntryConnections(MotionLayerState * pEntry);
 
-void		print_connection(int fd, const char *msg);
+static void	dumpEntryConnections(int elevel, MotionLayerState *pEntry);
+static void	print_connection(int fd, const char *msg);
+static void format_fd_set(StringInfo buf, int nfds, fd_set *fds, char* pfx, char *sfx);
+static char *format_sockaddr(struct sockaddr *sa, char* buf, int bufsize);
 
 static void waitOnSocketDone(int);
 static void flushListenerBacklog(void);
 
 static inline TupleChunkListItem RecvTupleChunk(MotionConn * conn);
+
+
+/*=========================================================================
+ * INLINE FUNCTIONS
+ */
+
+static inline int
+timeval_delta_ms(struct timeval t1, struct timeval t0)
+{
+    int tdiff = (t1.tv_usec - t0.tv_usec + 500) / 1000;
+
+    if (t1.tv_sec != t0.tv_sec)
+        tdiff += 1000 * (t1.tv_sec - t0.tv_sec);
+    return  tdiff;
+}
+
+static inline int
+gettime_elapsed_ms(struct timeval t0)
+{
+    struct timeval  t1;
+
+    gettimeofday(&t1, NULL);
+    return timeval_delta_ms(t1, t0);
+}
+
 
 /*=========================================================================
  * VISIBLE FUNCTIONS
@@ -237,8 +285,10 @@ InitMotionLayerIPC(void)
 	activated = false;
 	seqserverFd = -1;
 
-	elog(DEBUG1, "Setting Up Interconnect Listener Port...");
-	Mpp_listener_port = listenerSetup();
+	/* Listen for connections from qExecs. */
+	setupListeningSocket(LISTEN_BACKLOG, &listenerFd, &Mpp_listener_port);
+
+    elog(LOG, "Interconnect listening on tcp port %d", Mpp_listener_port);
 }
 
 
@@ -252,13 +302,17 @@ CleanUpMotionLayerIPC(void)
 #endif
 
 	/* close down the Interconnect listener socket. */
-	shutdown(listenerFd, SHUT_RDWR);
-	close(listenerFd);
+    if (listenerFd >= 0)
+        close(listenerFd);
+
+    if (portReservationFd >= 0)
+        close(portReservationFd);
 
 	/* be safe and reset global state variables. */
 	activated = false;
-	listenerPort = -1;
+	Mpp_listener_port = 0;
 	listenerFd = -1;
+    portReservationFd = -1;
 	sliceTable = NULL;
 	sliceId = -1;
 
@@ -281,7 +335,7 @@ SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcIte
 	ML_CHECK_FOR_INTERRUPTS();
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "SendTupleChunkToAMS(motNodeID: %d, targetRoute: %d)", motNodeID, targetRoute);
+	elog(DEBUG5, "SendTupleChunkToAMS(motNodeID: %d, targetRoute: %d)", motNodeID, targetRoute);
 #endif
 
 	/*
@@ -289,14 +343,13 @@ SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcIte
 	 * them.
 	 */
 	pEntry = getMotionState(motNodeID);
-	Assert(pEntry != NULL);
 
 	currItem = tcItem;
 
 	for (currItem = tcItem; currItem != NULL; currItem = currItem->p_next)
 	{
 #ifdef AMS_VERBOSE_LOGGING
-		elog(DEBUG3, "SendTupleChunkToAMS: chunk length %d", currItem->chunk_length);
+		elog(DEBUG5, "SendTupleChunkToAMS: chunk length %d", currItem->chunk_length);
 #endif
 
 		if (targetRoute == BROADCAST_SEGIDX)
@@ -315,12 +368,6 @@ SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcIte
 				if (!conn->stillActive)
 					recount = 1;
 			}
-			if (conn->hasMirrorConn && conn->mirrorConn->stillActive)
-			{
-				sendChunk(conn->mirrorConn, currItem, motNodeID);
-				if (conn->mirrorConn->stillActive)
-					recount = 1;
-			}
 		}
 	}
 
@@ -332,8 +379,6 @@ SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcIte
 	{
 		conn = pEntry->conns + i;
 		if (conn->stillActive)
-			break;
-		if (conn->hasMirrorConn && conn->mirrorConn->stillActive)
 			break;
 	}
 
@@ -356,11 +401,10 @@ SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 	ML_CHECK_FOR_INTERRUPTS();
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "SendEosToAMS() Entering");
+	elog(DEBUG5, "SendEosToAMS() Entering");
 #endif
 
 	pEntry = getMotionState(motNodeID);
-	Assert(pEntry != NULL);
 
 	/* we want to add our tcItem onto each of the outgoing buffers */
 	doBroadcast(pEntry, tcItem);
@@ -369,15 +413,13 @@ SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 	for (i = 0; i < pEntry->numConns; i++)
 	{
 		conn = pEntry->conns + i;
-		if (conn->sockfd >= 0)
+		if (conn->sockfd >= 0 &&
+            conn->state == mcsStarted)
 			flushBuffer(conn, motNodeID);
-
-		if (conn->hasMirrorConn && conn->mirrorConn->sockfd >= 0)
-			flushBuffer(conn->mirrorConn, motNodeID);
 	}
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "SendEosToAMS() Leaving");
+	elog(DEBUG5, "SendEosToAMS() Leaving");
 #endif
 }
 
@@ -386,7 +428,7 @@ TupleChunkListItem
 RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 {
 	MotionLayerState *pEntry;
-	MotionNodeEntry *pMNEntry;
+	MotionNodeEntry  *pMNEntry;
 	MotionConn *conn;
 	TupleChunkListItem tcItem;
 	fd_set		rset;
@@ -402,7 +444,6 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 #endif
 
 	pEntry = getMotionState(motNodeID);
-	Assert(pEntry != NULL);
 	pMNEntry = getMotionNodeEntry(motNodeID, "RecvTupleChunkFromAny");
 
 	do
@@ -423,7 +464,9 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 		{
 			conn = pEntry->conns + i;
 
-			if (FD_ISSET(conn->sockfd, &rset) && conn->recvBytes != 0)
+			if (conn->sockfd >= 0 &&
+                FD_ISSET(conn->sockfd, &rset) &&
+                conn->recvBytes != 0)
 			{
 				/* we have data on this socket, let's short-circuit our select */
 				FD_ZERO(&rset);
@@ -442,8 +485,9 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 			if (errno == EINTR)
 				continue;
 			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-							errmsg("Interconnect error receiving an incoming packet: %s", strerror(errno)),
-			  errdetail("error during select() call (error:%d).\n", errno)));
+							errmsg("Interconnect error receiving an incoming packet."),
+			                errdetail("%m%s", "select")
+                    ));
 		}
 #ifdef AMS_VERBOSE_LOGGING
 		elog(DEBUG5, "RecvTupleChunkFromAny() select() returned %d ready sockets", n);
@@ -454,7 +498,7 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 	 * We scan the file descriptors starting from where we left off in the
 	 * last call (don't continually poll the first when others may be ready!).
 	 */
-	index = pEntry->scanStart;
+    index = pEntry->scanStart;
 	for (i = 0; i < pEntry->numConns; i++, index++)
 	{
 		/*
@@ -472,10 +516,11 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 		}
 #endif
 
-		if (FD_ISSET(conn->sockfd, &rset))
+		if (conn->sockfd >= 0 &&
+            FD_ISSET(conn->sockfd, &rset))
 		{
 #ifdef AMS_VERBOSE_LOGGING
-			elog(DEBUG3, "RecvTupleChunkFromAny() (fd %d) %d/%d", conn->sockfd, motNodeID, index);
+			elog(DEBUG5, "RecvTupleChunkFromAny() (fd %d) %d/%d", conn->sockfd, motNodeID, index);
 #endif
 			tcItem = RecvTupleChunk(conn);
 
@@ -508,11 +553,10 @@ RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 	ML_CHECK_FOR_INTERRUPTS();
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "RecvTupleChunkFrom(motNodID=%d, srcRoute=%d)", motNodeID, srcRoute);
+	elog(DEBUG5, "RecvTupleChunkFrom(motNodID=%d, srcRoute=%d)", motNodeID, srcRoute);
 #endif
 
 	pEntry = getMotionState(motNodeID);
-	Assert(pEntry != NULL);
 	conn = pEntry->conns + srcRoute;
 
 	return RecvTupleChunk(conn);
@@ -531,7 +575,7 @@ RecvTupleChunk(MotionConn * conn)
 	readPacket(conn);
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "read packet recv bytes %d msgsize %d", conn->recvBytes, conn->msgSize);
+	elog(DEBUG5, "read packet recv bytes %d msgsize %d", conn->recvBytes, conn->msgSize);
 #endif
 
 	/* go through and form us some TupleChunks. */
@@ -553,7 +597,7 @@ RecvTupleChunk(MotionConn * conn)
 		 */
 		tcItem = (TupleChunkListItem) palloc0(sizeof(TupleChunkListItemData));
 
-		tcItem->chunk_length = tcSize;
+        tcItem->chunk_length = tcSize;
 		tcItem->inplace = (char *) (conn->msgPos + bytesProcessed);
 
 		bytesProcessed += tcSize;
@@ -574,7 +618,7 @@ RecvTupleChunk(MotionConn * conn)
 	if (conn->recvBytes != 0)
 	{
 #ifdef AMS_VERBOSE_LOGGING
-		elog(DEBUG3, "residual message %d bytes", conn->recvBytes);
+		elog(DEBUG5, "residual message %d bytes", conn->recvBytes);
 #endif
 		conn->msgPos += conn->msgSize;
 	}
@@ -595,11 +639,10 @@ DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 	Insist(activated);
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "DeregisterReadInterest(%d, %d)", motNodeID, srcRoute);
+	elog(DEBUG4, "DeregisterReadInterest(%d, %d)", motNodeID, srcRoute);
 #endif
 
 	pEntry = getMotionState(motNodeID);
-	Assert(pEntry != NULL);
 	conn = pEntry->conns + srcRoute;
 
 	/*
@@ -656,7 +699,7 @@ GetSeqServerFD(void)
 
 
 
-void 
+void
 SetupSequenceServer(SliceTable *mySliceTable)
 {
 	if( mySliceTable != NULL )
@@ -666,7 +709,7 @@ SetupSequenceServer(SliceTable *mySliceTable)
 	}
 }
 
-void 
+void
 TeardownSequenceServer(void)
 {
 	/*
@@ -674,7 +717,7 @@ TeardownSequenceServer(void)
 	 */
 	if (seqserverFd != -1)
 	{
-		elog(DEBUG3, "tearing down seqserver connection");
+		elog(DEBUG4, "tearing down seqserver connection");
 		shutdown(seqserverFd, SHUT_RDWR);
 		close(seqserverFd);
 		seqserverFd = -1;
@@ -688,44 +731,23 @@ void
 SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 {
 	int			i,
-				n,
-				highsock = 0;
-	fd_set		rset,
-				rrset;
-	fd_set		wset,
-				wwset;
+				n;
 	ListCell   *cell;
 	Slice	   *mySlice;
 	Slice	   *aSlice;
-	MotionLayerState *pEntry;
-
-#ifdef AMS_VERBOSE_LOGGING
-	struct timeval snapTime;
-#endif
-
-	struct timeval startTime;
-	struct timeval stopTime;
-
+    MotionConn *conn;
 	int			incoming_count = 0;
 	int			outgoing_count = 0;
 	int			expectedTotalIncoming = 0;
 	int			expectedTotalOutgoing = 0;
+    int         iteration = 0;
+	struct timeval  startTime;
+    StringInfoData  logbuf;
 
 	/* we can have at most one of these. */
 	MotionLayerState *sendingMotionState = NULL;
 
-#ifdef AMS_VERBOSE_LOGGING
-	gettimeofday(&snapTime, NULL);
-	elog(DEBUG1, "SetupInterconnect: time is %ld.%ld",
-		 (long int) snapTime.tv_sec, (long int) snapTime.tv_usec);
-#endif
-	
-
-	/*
-	 * The assert only happens when we are compiled with --enable-cassert.
-	 * So, let's report the error even if we are a production build.
-	 */
-	Insist(!activated && !mlsStates);
+	Insist(!activated && !mlsStates && mySliceTable);
 
 	mlsSize = MLS_INITIAL_SIZE;
 	mlsStates = palloc0(MLS_INITIAL_SIZE * sizeof(MotionLayerState));
@@ -733,157 +755,289 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	sliceTable = mySliceTable;
 	sliceId = mySliceId;
 
-	nextOutboundPort = MAX(1025, (listenerPort + (100 * sliceId)));
-
-	/* Sequence Server Information */
-	seqServerHost = mySliceTable->seqServerHost;
-	seqServerPort = mySliceTable->seqServerPort;
-
-
-	FD_ZERO(&rset);
-	FD_ZERO(&wset);
-	FD_SET(listenerFd, &rset);
-	highsock = listenerFd;
-
-	elog(DEBUG3, "Interconnect Activating Routes");
-
-	Insist(mySliceTable);
-
 	mySlice = (Slice *) list_nth(sliceTable->slices, mySliceId);
 
-	if (mySlice->parentIndex != -1)
-	{
-		elog(DEBUG5, "--Setting up SENDING motion node: %d...starting Connections",
-			 mySlice->sliceIndex);
+    Assert(mySlice &&
+           IsA(mySlice, Slice) &&
+           mySlice->sliceIndex == mySliceId);
 
-		/* can only have at most one sender. */
-		Assert(sendingMotionState == NULL);
+  	gettimeofday(&startTime, NULL);
 
-		/* MotionEntry created inside of startConnections. */
-		pEntry = startConnections(mySlice, &highsock, &wset, &expectedTotalOutgoing);
-
-		pEntry->myRouteId = findMyRouteId(list_nth(sliceTable->slices, mySlice->sliceIndex));
-
-		sendingMotionState = pEntry;
-	}
+    /* Initiate outgoing connections. */
+    if (mySlice->parentIndex != -1)
+		sendingMotionState = startOutgoingConnections(mySlice, &expectedTotalOutgoing);
 
 	/* now we'll do some setup for each of our Receiving Motion Nodes. */
 	foreach(cell, mySlice->children)
 	{
 		int			numProcs;
 		int			childId = lfirst_int(cell);
+	    MotionLayerState *pEntry;
 
-		elog(DEBUG5, "--Setting up RECEIVING motion node: %d", childId);
+#ifdef AMS_VERBOSE_LOGGING
+		elog(DEBUG5, "Setting up RECEIVING motion node %d", childId);
+#endif
 
 		aSlice = (Slice *) list_nth(sliceTable->slices, childId);
 		numProcs = list_length(aSlice->primaryProcesses);
 
-		pEntry = createMotionState(childId, numProcs);
+		pEntry = createMotionState(aSlice, mySlice, numProcs, 0);
 
 		/* let cdbmotion now how many receivers to expect. */
 		setExpectedReceivers(childId, numProcs);
 
-		pEntry->myRouteId = 0;	/* DOH:    do i need this for receivers? */
-
 		expectedTotalIncoming += pEntry->numConns;
 	}
 
-	elog(DEBUG1, "SetupInterconnect: expecting %d incoming", expectedTotalIncoming);
-	gettimeofday(&startTime, NULL);
-	stopTime = startTime;
+    ereport(DEBUG4, (errmsg("SetupInterconnect+0ms: Activating "
+                            "%d incoming, %d outgoing routes.  "
+                            "Listening on port=%d sockfd=%d",
+                            expectedTotalIncoming, expectedTotalOutgoing,
+                            Mpp_listener_port, listenerFd)
+                     ));
 
 	/*
-	 * now we have kicked off all of the sends.  so we will just sit back
-	 * and do some select()'s and process any outgoing connection or
-	 * incoming connection as they complete.
+     * Loop until all connections are completed or time limit is exceeded.
 	 */
-	do
-	{
-		struct timeval timeout = tval;
+	while (outgoing_count < expectedTotalOutgoing ||
+           incoming_count < expectedTotalIncoming)
+	{                           /* select() loop */
+		struct timeval  timeout;
+        fd_set          rset, wset, eset;
+	    int			    highsock = -1;
+        int             elapsed_ms = 0;
+        int             timeout_ms = 20*60*1000;
+        int             outgoing_fail_count = 0;
+        int             elevel;
 
-		/*
-		 * since we might be here for a bit, we should probably check for
-		 * any interrupts that come in.
+        iteration++;
+
+        FD_ZERO(&rset);
+	    FD_ZERO(&wset);
+	    FD_ZERO(&eset);
+
+        /* Expecting any new inbound connections? */
+        if (incoming_count < expectedTotalIncoming)
+        {
+            Insist(listenerFd >= 0);
+            FD_SET(listenerFd, &rset);
+            highsock = listenerFd;
+        }
+
+        /* Inbound connections awaiting registration message */
+        foreach(cell, incompleteConns)
+        {
+			conn = (MotionConn *)lfirst(cell);
+            Insist(conn->state == mcsRecvRegMsg && conn->sockfd >= 0);
+            FD_SET(conn->sockfd, &rset);
+            highsock = Max(highsock, conn->sockfd);
+        }
+
+        /* Outgoing connections */
+        outgoing_count = 0;
+        n = sendingMotionState ? sendingMotionState->numConns : 0;
+        for (i = 0; i < n; i++)
+		{                       /* loop to set up outgoing connections */
+			conn = &sendingMotionState->conns[i];
+
+            /* Time to cancel incomplete connect() and retry? */
+            if (conn->state == mcsConnecting &&
+                conn->wakeup_ms > 0 &&
+                conn->wakeup_ms <= elapsed_ms + 20)
+            {
+                ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                              errmsg("Interconnect timeout: Connection "
+                                     "to seg%d %s from local port %s was not "
+                                     "complete after %d ms.  Will retry.",
+                                     conn->remoteContentId,
+                                     conn->remoteHostAndPort,
+                                     conn->localHostAndPort,
+                                     CONNECT_RETRY_MS)
+                        ));
+                zapOutgoingPort(sendingMotionState);
+                conn->state = mcsSetupOutgoingConnection;
+            }
+
+            /* Time to connect? */
+            if (conn->state == mcsSetupOutgoingConnection &&
+                conn->wakeup_ms <= elapsed_ms + 20)
+            {
+                setupOutgoingConnection(sendingMotionState, conn);
+                switch (conn->state)
+                {
+                    case mcsSetupOutgoingConnection:
+                        /* Retry failed connection after awhile. */
+                        conn->wakeup_ms = (iteration - 1) * 1000 + elapsed_ms;
+                        break;
+                    case mcsConnecting:
+                        /* Set time limit for connect() to complete. */
+                        conn->wakeup_ms = CONNECT_RETRY_MS + elapsed_ms;
+                        break;
+                    default:
+                        conn->wakeup_ms = 0;
+                        break;
+                }
+            }
+
+            /* What events are we watching for? */
+            switch (conn->state)
+            {
+                case mcsNull:
+                    break;
+                case mcsSetupOutgoingConnection:
+                    outgoing_fail_count++;
+                    break;
+                case mcsConnecting:
+                    Insist(conn->sockfd >= 0);
+                    FD_SET(conn->sockfd, &wset);
+                    FD_SET(conn->sockfd, &eset);
+                    highsock = Max(highsock, conn->sockfd);
+                    break;
+                case mcsSendRegMsg:
+                    Insist(conn->sockfd >= 0);
+                    FD_SET(conn->sockfd, &wset);
+                    highsock = Max(highsock, conn->sockfd);
+                    break;
+                case mcsStarted:
+                    outgoing_count++;
+                    break;
+                default:
+                    Insist(0);
+            }
+
+            if (conn->wakeup_ms > 0)
+                timeout_ms = Min(timeout_ms, conn->wakeup_ms - elapsed_ms);
+        }                       /* loop to set up outgoing connections */
+
+        /* Break out of select() loop if completed all connections. */
+        if (outgoing_count == expectedTotalOutgoing &&
+            incoming_count == expectedTotalIncoming)
+            break;
+
+        /*
+         * Been here long?  Bail if mpp_interconnect_setup_timeout exceeded.
+         */
+        if (interconnect_setup_timeout > 0)
+        {
+            int to = interconnect_setup_timeout * 1000;
+
+            if (to <= elapsed_ms + 20)
+                ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                                errmsg("Interconnect timeout: Unable to "
+                                       "complete setup of all connections "
+                                       "within time limit."),
+                                errdetail("Completed %d of %d incoming and "
+                                          "%d of %d outgoing connections.  "
+                                          "mpp_interconnect_setup_timeout = %d "
+                                          "seconds.",
+                                          incoming_count, expectedTotalIncoming,
+                                          outgoing_count, expectedTotalOutgoing,
+                                          interconnect_setup_timeout)
+                        ));
+            timeout_ms = Min(timeout_ms, to - elapsed_ms);
+        }
+
+        /*
+         * If no socket events to wait for, loop to retry after a pause.
+         */
+        if (highsock < 0)
+        {
+            if (timeout_ms > 0 ||
+                iteration > 2)
+                ereport(DEBUG4, (errmsg("SetupInterconnect+%dms:   pause %dms   "
+                                        "outgoing_fail=%d iteration=%d",
+                                        elapsed_ms, timeout_ms,
+                                        outgoing_fail_count, iteration)
+                        ));
+
+            /* Shouldn't be in this loop unless we have some work to do. */
+            Insist(outgoing_fail_count > 0);
+
+            /* Wait until earliest wakeup time or overall timeout. */
+            if (timeout_ms > 0)
+            {
+                ML_CHECK_FOR_INTERRUPTS();
+                pg_usleep(timeout_ms * 1000);
+                ML_CHECK_FOR_INTERRUPTS();
+            }
+
+            /* Back to top of loop and look again. */
+            elapsed_ms = gettime_elapsed_ms(startTime);
+            continue;
+        }
+
+        /*
+		 * Wait for socket events.
 		 */
+        if (timeout_ms > 0)
+        {
+            timeout.tv_sec = timeout_ms / 1000;
+            timeout.tv_usec = (timeout_ms - (timeout.tv_sec * 1000)) * 1000;
+            Assert(timeout_ms == timeout.tv_sec*1000 + timeout.tv_usec/1000);
+        }
+        else
+            timeout.tv_sec = timeout.tv_usec = 0;
+
+#ifdef AMS_VERBOSE_LOGGING
+        elevel = DEBUG5;
+        if (elevel >= log_min_messages)
+        {
+            initStringInfo(&logbuf);
+            format_fd_set(&logbuf, highsock+1, &rset, "r={", "} ");
+            format_fd_set(&logbuf, highsock+1, &wset, "w={", "} ");
+            format_fd_set(&logbuf, highsock+1, &eset, "e={", "}");
+            elapsed_ms = gettime_elapsed_ms(startTime);
+            ereport(elevel, (errmsg("SetupInterconnect+%dms:   select()  "
+                                    "Interest: %s.  timeout=%dms "
+                                    "outgoing_fail=%d iteration=%d",
+                                    elapsed_ms, logbuf.data, timeout_ms,
+                                    outgoing_fail_count, iteration)
+                    ));
+            pfree(logbuf.data);
+            memset(&logbuf, 0, sizeof(logbuf));
+        }
+#endif
+
+		ML_CHECK_FOR_INTERRUPTS();
+        n = select(highsock + 1, &rset, &wset, &eset, &timeout);
 		ML_CHECK_FOR_INTERRUPTS();
 
-		if (interconnect_setup_timeout != 0 &&
-			(stopTime.tv_sec - startTime.tv_sec) > interconnect_setup_timeout)
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-					   errmsg("Aborting activating_routes.... TIMEOUT (%lu)",
-							  stopTime.tv_sec - startTime.tv_sec)));
+        elapsed_ms = gettime_elapsed_ms(startTime);
 
-		memcpy(&rrset, &rset, sizeof(fd_set));
-		memcpy(&wwset, &wset, sizeof(fd_set));
+        /*
+         * Log the select() if requested.
+         */
+        elevel = (n == expectedTotalIncoming + expectedTotalOutgoing)
+                 ? DEBUG5 : DEBUG4;
+        if (elevel >= log_min_messages)
+        {
+            int errnoSave = errno;
 
-		n = select(highsock + 1, &rrset, &wwset, NULL, &timeout);
-		if (n == 0)
-		{
-			/* timeout: Have we been here too long ? */
-			gettimeofday(&stopTime, NULL);
+            initStringInfo(&logbuf);
+            if (n > 0)
+            {
+                appendStringInfo(&logbuf, "result=%d  Ready: ", n);
+                format_fd_set(&logbuf, highsock+1, &rset, "r={", "} ");
+                format_fd_set(&logbuf, highsock+1, &wset, "w={", "} ");
+                format_fd_set(&logbuf, highsock+1, &eset, "e={", "}");
+            }
+            else
+                appendStringInfoString(&logbuf, n < 0 ? "error" : "timeout");
+            ereport(elevel, (errmsg("SetupInterconnect+%dms:   select()  %s",
+                                    elapsed_ms, logbuf.data) ));
+            pfree(logbuf.data);
+            memset(&logbuf, 0, sizeof(logbuf));
+            errno = errnoSave;
+        }
 
-			continue;
-		}
 		if (n < 0)
 		{
 			if (errno == EINTR)
 				continue;
 			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-				errmsg("Interconnect error setting up: %s", strerror(errno)),
-				errdetail("error during select() call (error:%d).", errno)));
+				            errmsg("Interconnect error: %m%s", "select")
+                    ));
 		}
-
-		elog(DEBUG5, "select() returned %d ready sockets", n);
-
-		/* is it someone tickling our listener port? */
-		if (FD_ISSET(listenerFd, &rrset))
-		{
-			elog(DEBUG4, "accepting an Incoming Connection ");
-			acceptIncomingConnection(&rset, &highsock);
-			n--;
-		}
-		if (!n)
-			continue;
-
-		/* check our outgoing connections. */
-		if (outgoing_count < expectedTotalOutgoing)
-		{
-			for (i = 0; i < sendingMotionState->numConns; i++)
-			{
-				MotionConn *conn = sendingMotionState->conns + i;
-
-				if (FD_ISSET(conn->sockfd, &wwset))
-				{
-					elog(DEBUG4, "Sending a register message to sockfd: %d", conn->sockfd);
-					sendRegisterMessage(sendingMotionState, conn);
-
-					/* no longer interested in this for now. */
-					FD_CLR(conn->sockfd, &wset);
-
-					outgoing_count++;
-					if (--n == 0)
-						break;	/* leave for loop */
-				}
-
-				if (conn->hasMirrorConn)
-				{
-					if (FD_ISSET(conn->mirrorConn->sockfd, &wwset))
-					{
-						elog(DEBUG4, "Sending a register message to sockfd: %d", conn->mirrorConn->sockfd);
-						sendRegisterMessage(sendingMotionState, conn->mirrorConn);
-
-						/* no longer interested in this for now. */
-						FD_CLR(conn->mirrorConn->sockfd, &wset);
-
-						outgoing_count++;
-						if (--n == 0)
-							break;		/* leave for loop */
-					}
-				}
-			}
-		}
-		if (!n)
-			continue;
 
 		/*
 		 * check our connections that are accepted'd but no register
@@ -895,9 +1049,11 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 		 * list as we go.
 		 */
 		cell = list_head(incompleteConns);
-		while (cell != NULL)
+		while (n > 0 &&
+               incoming_count < expectedTotalIncoming &&
+               cell != NULL)
 		{
-			MotionConn *conn = (MotionConn *) lfirst(cell);
+			conn = (MotionConn *) lfirst(cell);
 
 			/*
 			 * we'll get the next cell ready now in case we need to delete
@@ -905,20 +1061,99 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 			 */
 			cell = lnext(cell);
 
-			if (FD_ISSET(conn->sockfd, &rrset))
+			if (FD_ISSET(conn->sockfd, &rset))
 			{
-				elog(DEBUG4, "conn # %d has data!", conn->sockfd);
+                n--;
+                if (readRegisterMessage(conn))
+                {
+                    incompleteConns = list_delete_ptr(incompleteConns, conn);
+                    incoming_count++;
 
-				readRegisterMessage(conn, &incoming_count);
-				FD_CLR(conn->sockfd, &rset);
-				incompleteConns = list_delete_ptr(incompleteConns, conn);
+                    /* Free temporary MotionConn storage. */
+                    pfree(conn);
+                }
 			}
 		}
 
-		elog(DEBUG3, "%d of %d outgoing conns and %d of %d incoming conns completed",
-			 outgoing_count, expectedTotalOutgoing, incoming_count, expectedTotalIncoming);
-	}
-	while ((outgoing_count != expectedTotalOutgoing) || (incoming_count != expectedTotalIncoming));
+        /*
+         * Someone tickling our listener port?  Accept pending connections.
+         */
+        if (FD_ISSET(listenerFd, &rset))
+		{
+			n--;
+            while ((conn = acceptIncomingConnection()) != NULL)
+            {
+                /* Try to read the Register message without waiting. */
+                if (readRegisterMessage(conn))
+                {
+                    incoming_count++;
+                    pfree(conn);
+                }
+
+                /* We'll try again when more data arrives on the socket. */
+                else
+                    incompleteConns = lappend(incompleteConns, conn);
+            }
+		}
+
+		/*
+         * Check our outgoing connections.
+         */
+        i = 0;
+        while (n > 0 &&
+               outgoing_count < expectedTotalOutgoing &&
+		       i < sendingMotionState->numConns)
+		{                       /* loop to check outgoing connections */
+			conn = &sendingMotionState->conns[i++];
+            switch (conn->state)
+            {
+                case mcsConnecting:
+                    /* Has connect() succeeded or failed? */
+                    if (FD_ISSET(conn->sockfd, &wset) ||
+                        FD_ISSET(conn->sockfd, &eset))
+                    {
+                        n--;
+                        updateOutgoingConnection(sendingMotionState, conn, -1);
+                        switch (conn->state)
+                        {
+                            case mcsSetupOutgoingConnection:
+                                /* Failed.  Wait awhile before retrying. */
+                                conn->wakeup_ms = (iteration - 1) * 1000 + elapsed_ms;
+                                break;
+                            case mcsSendRegMsg:
+                                /* Connected, but reg msg not fully sent. */
+                                conn->wakeup_ms = 0;
+                                break;
+                            case mcsStarted:
+                                /* Connected, sent reg msg, ready to rock. */
+                                outgoing_count++;
+                                break;
+                            default:
+                                Insist(0);
+                        }
+                    }
+                    break;
+
+                case mcsSendRegMsg:
+                    /* Ready to continue sending? */
+                    if (FD_ISSET(conn->sockfd, &wset))
+                    {
+                        n--;
+                        sendRegisterMessage(sendingMotionState, conn);
+                        if (conn->state == mcsStarted)
+                            outgoing_count++;
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+
+		}                       /* loop to check outgoing connections */
+
+        /* By now we have dealt with all the events reported by select(). */
+        Insist(n == 0);
+	}                           /* select() loop */
 
 	/*
 	 * if everything really got setup properly then we shouldn't have
@@ -933,12 +1168,12 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	 */
 	if (list_length(incompleteConns) != 0)
 	{
-		elog(DEBUG1, "Incomplete connections after known connections done, cleaning %d",
+		elog(DEBUG2, "Incomplete connections after known connections done, cleaning %d",
 			 list_length(incompleteConns));
 
 		while ((cell = list_head(incompleteConns)) != NULL)
 		{
-			MotionConn *conn = (MotionConn *) lfirst(cell);
+			conn = (MotionConn *) lfirst(cell);
 
 			if (conn->sockfd != -1)
 			{
@@ -950,20 +1185,22 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 
 			incompleteConns = list_delete_ptr(incompleteConns, conn);
 
-			pfree(conn->pBuff);
+			if (conn->pBuff)
+                pfree(conn->pBuff);
 			pfree(conn);
 		}
 	}
 
 	activated = true;
-	elog(DEBUG3, "FINISHED ACTIVATING ROUTES. (out: %d , in: %d)", outgoing_count, incoming_count);
 
-#ifdef AMS_VERBOSE_LOGGING
-	gettimeofday(&snapTime, NULL);
-	elog(DEBUG1, "exiting SetupInterconnect @%d time is %ld.%ld",
-		 __LINE__, (long int) snapTime.tv_sec, (long int) snapTime.tv_usec);
-#endif
-}
+    ereport(DEBUG3, (errmsg("SetupInterconnect+%dms: Ready.  "
+                            "Activated %d incoming, "
+                            "%d outgoing routes.",
+                            gettime_elapsed_ms(startTime),
+                            incoming_count, outgoing_count)
+                     ));
+}                               /* SetupInterconnect */
+
 
 /*
  * Move this out to separate stack frame, so that we don't have to mark
@@ -974,7 +1211,7 @@ forceEosToPeer(int16 motNodeID, int16 targetRoute)
 {
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "forceEosToPeer(%d, %d)", motNodeID, targetRoute);
+	elog(DEBUG5, "forceEosToPeer(%d, %d)", motNodeID, targetRoute);
 #endif
 
 	teardownActive = true;
@@ -1009,22 +1246,15 @@ TeardownInterconnect(bool forceEOS)
 	Slice	   *mySlice;
 	MotionConn *conn;
 
-	elog(DEBUG3, "Interconnect cleanup.");
+	/* multi-phase shutdown, mark all as shutdown */
+	ereport(DEBUG3, (errmsg("Interconnect cleanup state: %s; setup was %s",
+		                    forceEOS ? "force" : "normal",
+                            activated ? "completed" : "exited")
+            ));
 
-	
 	Assert(sliceTable != NULL);
 
 	mySlice = (Slice *) list_nth(sliceTable->slices, sliceId);
-
-	/* multi-phase shutdown, mark all as shutdown */
-	elog(DEBUG3, "Interconnect cleanup state: %s (setup %s)",
-		 forceEOS ? "force" : "normal", activated ? "completed" : "exited");
-
-	/* if setup did not complete; or we're in the "force" argument is
-	 * set, pretty-print the slicetable */
-	if (!activated)
-		elog_node_display(DEBUG1, "local slice table",
-						  sliceTable, true);
 
 	/*
 	 * phase 1 mark all sockets (senders and receivers) with
@@ -1076,38 +1306,27 @@ TeardownInterconnect(bool forceEOS)
 	 * peer-registration step. With these we have to worry about
 	 * "in-flight" data.
 	 */
-
-	/* Phase-1 of outbound */
 	if (mySlice->parentIndex != -1)
 	{
-		/* cleanup a Sending motion node. */
-		elog(DEBUG3, "shutdown outgoing connections for motion id: %d",
+#ifdef AMS_VERBOSE_LOGGING
+        /* cleanup a Sending motion node. */
+		elog(DEBUG5, "shutdown outgoing connections for motion id: %d",
 			 mySlice->sliceIndex);
+#endif
 
 		pEntry = getMotionState(mySlice->sliceIndex);
-		Assert(pEntry != NULL);
 
 		for (i = 0; i < pEntry->numConns; i++)
 		{
 			conn = pEntry->conns + i;
-
-			if (conn == NULL)
-				continue;
 
 			if (forceEOS)
 			{
 				forceEosToPeer(mySlice->sliceIndex, i);
 			}
 
-			if (conn->sockfd != -1)
-			{
-				shutdown(conn->sockfd, SHUT_WR);
-			}
-
-			if (conn->hasMirrorConn && conn->mirrorConn->sockfd != -1)
-			{
-				shutdown(conn->mirrorConn->sockfd, SHUT_WR);
-			}
+			if (conn->sockfd >= 0)
+                shutdown(conn->sockfd, SHUT_WR);
 		}
 	}
 
@@ -1124,7 +1343,9 @@ TeardownInterconnect(bool forceEOS)
 		aSlice = (Slice *) list_nth(sliceTable->slices, childId);
 
 		pEntry = removeMotionState(aSlice->sliceIndex);
-		elog(DEBUG3, "close down connections for motion Id: %d", pEntry->motNodeId);
+#ifdef AMS_VERBOSE_LOGGING
+		elog(DEBUG4, "close down connections for motion Id: %d", pEntry->motNodeId);
+#endif
 
 		/*
 		 * receivers know that they no longer care about data from
@@ -1135,10 +1356,7 @@ TeardownInterconnect(bool forceEOS)
 		{
 			conn = pEntry->conns + i;
 
-			if (conn == NULL)
-				continue;
-
-			if (conn->sockfd != -1)
+			if (conn->sockfd >= 0)
 			{
 				flushIncomingData(conn->sockfd);
 				shutdown(conn->sockfd, SHUT_WR);
@@ -1156,36 +1374,26 @@ TeardownInterconnect(bool forceEOS)
 	if (mySlice->parentIndex != -1)
 	{
 		/* cleanup a Sending motion node. */
-		elog(DEBUG3, "close outgoing connections for motion id: %d",
+#ifdef AMS_VERBOSE_LOGGING
+		elog(DEBUG4, "close outgoing connections for motion id: %d",
 			 mySlice->sliceIndex);
+#endif
+
 		pEntry = removeMotionState(mySlice->sliceIndex);
 
 		for (i = 0; i < pEntry->numConns; i++)
 		{
 			conn = pEntry->conns + i;
 
-			if (conn == NULL)
-				continue;
-
-			if (conn->sockfd != -1)
+			if (conn->sockfd >= 0)
 			{
 				if (!forceEOS)
 					waitOnSocketDone(conn->sockfd);
 				close(conn->sockfd);
 				conn->sockfd = -1;
 			}
-
-			if (conn->hasMirrorConn && conn->mirrorConn->sockfd != -1)
-			{
-				if (!forceEOS)
-					waitOnSocketDone(conn->mirrorConn->sockfd);
-				close(conn->mirrorConn->sockfd);
-				conn->mirrorConn->sockfd = -1;
-			}
 		}
 	}
-
-
 
 	/*
 	 * If there are clients waiting on our listener; we *must*
@@ -1205,7 +1413,7 @@ TeardownInterconnect(bool forceEOS)
 	activated = false;
 	sliceTable = NULL;
 
-	elog(DEBUG3, "TeardownInterconnect successful");
+	ereport(DEBUG4, (errmsg("TeardownInterconnect successful") ));
 }
 
 
@@ -1213,88 +1421,69 @@ TeardownInterconnect(bool forceEOS)
  * HELPER FUNCTIONS
  */
 
-/* listenerSetup
- *
- * Returns a system assigned TCP port that will be used to "listen" for
- * incoming connections from other postgres ml_ipc layers LATER during
- * query initialization.
- *
- * This port is used for the duration of this process and should never change.
- *
- * RETURNS
- *	  System picked TCP port that listener is using.
+/*
+ * setupListeningSocket
  */
-static int
-listenerSetup(void)
+void
+setupListeningSocket(int backlog, int *listenerSocketFd, int *listenerPort)
 {
-	struct sockaddr_in addr;
-	socklen_t	addrlen;
+	struct sockaddr_in  saddr;
+	socklen_t           saddrlen;
+    int                 errnoSave;
+    int                 fd = -1;
+    const char         *fun;
 
-	if ((listenerFd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-	{
-		/*
-		 * TODO: would be nice to read the errno and try and provide
-		 * more useful info as to why this happened.
-		 */
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-						errmsg("Interconnect Error: Could not setup listener socket: %s", strerror(errno)),
-				errdetail("error during socket() call (error:%d).", errno)));
-	}
+    *listenerSocketFd = -1;
+    *listenerPort = 0;
 
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_addr.s_addr = INADDR_ANY;
-	addr.sin_port = htons(0);	/* system picks port */
+    fun = "socket";
+    if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+        goto error;
+
+    /* Make socket non-blocking. */
+    fun = "fcntl(O_NONBLOCK)";
+    if (!pg_set_noblock(fd))
+        goto error;
+
+	memset(&saddr, 0, sizeof(saddr));
+	saddr.sin_family = AF_INET;
+	saddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	saddr.sin_port = htons(0);	/* system picks port */
 
 	/*
 	 * we let the system pick the TCP port here so we don't have to
 	 * manage port resources ourselves.
 	 */
-	if (bind(listenerFd, (struct sockaddr *) & addr, sizeof(addr)) < 0)
-	{
-		/*
-		 * TODO: would be nice to read the errno and try and provide
-		 * more useful info as to why this happened.
-		 */
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-			   errmsg("Interconnect Error: Could not setup listener socket"),
-				  errdetail("error during bind() call (error:%d).", errno)));
+    fun = "bind";
+	if (bind(fd, (struct sockaddr *) &saddr, sizeof(saddr)) < 0)
+        goto error;
 
-	}
+    fun = "listen";
+    if (listen(fd, backlog) < 0)
+        goto error;
 
-	if (listen(listenerFd, LISTEN_BACKLOG) < 0)
-	{
-		/*
-		 * TODO: would be nice to read the errno and try and provide
-		 * more useful info as to why this happened.
-		 */
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-						errmsg("Interconnect Error: Could not setup listener socket: %s", strerror(errno)),
-				errdetail("error during listen() call (error:%d).", errno)));
-	}
+    /* Get the listening socket's port number. */
+    saddrlen = sizeof(struct sockaddr_in);
+    fun = "getsockname";
+    if (getsockname(fd, (struct sockaddr *) &saddr, &saddrlen) < 0)
+        goto error;
+	
+    /* Give results to caller. */
+    *listenerSocketFd = fd;
+    *listenerPort = ntohs(saddr.sin_port);
+	return;
 
+error:
+    errnoSave = errno;
+    if (fd >= 0)
+        close(fd);
+    errno = errnoSave;
+    ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+					errmsg("Interconnect Error: Could not set up listener socket."),
+			        errdetail("%m%s", fun)
+            ));
+}                               /* setupListeningSocket */
 
-	addrlen = sizeof(struct sockaddr_in);
-
-	if (getsockname(listenerFd, (struct sockaddr *) & addr, &addrlen) < 0)
-	{
-		/*
-		 * TODO: would be nice to read the errno and try and provide
-		 * more useful info as to why this happened.
-		 */
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-						errmsg("Interconnect Error: Could not setup listener socket: %s", strerror(errno)),
-		   errdetail("error during getsockname() call (error:%d).", errno)));
-	}
-
-
-	/* display which port was chosen by the system. */
-	listenerPort = ntohs(addr.sin_port);
-
-	elog(DEBUG1, "Interconnect listener on port: %d", listenerPort);
-
-	return listenerPort;
-}
 
 /* Function createMotionState() is used to create a MotionLayerState struct and
  * place it in the hashtab hashtable based on the motNodeID.
@@ -1303,22 +1492,34 @@ listenerSetup(void)
  *
  *	 motNodeID - motion node ID for this MotionState.
  *
- *	 numConns  - number of connections for this motion node. These could be all
- *				 incoming or outgoing connections depending on if this is a
- *				 Sending or Receiving motion node (motNodeID).
+ *	 numPrimaryConns  - number of primary connections for this motion node.
+ *               All are incoming if this is a receiving motion node.
+ *               All are outgoing if this is a sending motion node.
+ *
+ *   numMirrorConns - number of mirror connections (always 0 if receiving).
  *
  * RETURNS
  *	 An empty and initialized MotionState struct for the given motion node. If
  *	 a MotionState struct is already registered for the motNodeID an ERROR is
  *	 thrown.
  */
-static MotionLayerState *
-createMotionState(int16 motNodeID, int numConns)
+MotionLayerState *
+createMotionState(Slice *sendSlice, Slice *recvSlice, int numPrimaryConns, int numMirrorConns)
 {
 	MotionLayerState *pEntry;
+    int         motNodeID;
 	int			i;
 
-	if (motNodeID > mlsSize)
+    Assert(numMirrorConns == 0 || numMirrorConns == numPrimaryConns);
+    Assert(recvSlice &&
+           IsA(recvSlice, Slice) &&
+           recvSlice->sliceIndex >= 0);
+    Assert(sendSlice &&
+           IsA(sendSlice, Slice) &&
+           sendSlice->sliceIndex > 0);
+
+    motNodeID = sendSlice->sliceIndex;
+    if (motNodeID > mlsSize)
 	{
 		/* increase size of our table */
 		MotionLayerState *newTable;
@@ -1342,15 +1543,29 @@ createMotionState(int16 motNodeID, int numConns)
 	pEntry->valid = true;
 
 	pEntry->motNodeId = motNodeID;
-	pEntry->numConns = numConns;
+    pEntry->numConns = numPrimaryConns + numMirrorConns;
+	pEntry->numPrimaryConns = numPrimaryConns;
 	pEntry->highReadSock = 0;
-	pEntry->scanStart = 0;
-	pEntry->conns = palloc0(pEntry->numConns * sizeof(MotionConn));
+    pEntry->scanStart = 0;
+    pEntry->sendSlice = sendSlice;
+    pEntry->recvSlice = recvSlice;
+    pEntry->outgoingPortRetryCount = 0;
 
-	for (i = 0; i < numConns; i++)
-	{
-		pEntry->conns[i].sockfd = -1;
-	}
+	pEntry->conns = palloc0(pEntry->numConns * sizeof(pEntry->conns[0]));
+
+	for (i = 0; i < pEntry->numConns; i++)
+    {
+        MotionConn *conn = &pEntry->conns[i];
+
+        /* Initialize MotionConn entry. */
+        conn->state = mcsNull;
+        conn->sockfd = -1;
+        conn->msgSize = 0;
+        conn->tupleCount = 0;
+        conn->stillActive = false;
+        conn->wakeup_ms = 0;
+        conn->cdbProc = NULL;
+    }
 
 	FD_ZERO(&(pEntry->readSet));
 
@@ -1371,23 +1586,26 @@ createMotionState(int16 motNodeID, int numConns)
  *	 The MotionLayerState struct for the given motNodeID.
  */
 static inline MotionLayerState *
-getMotionState(int16 motNodeID)
+getMotionState(int motNodeID)
 {
 	MotionLayerState *pEntry = NULL;
 
-	if (motNodeID < 1)
-		return NULL;
-
-	if (motNodeID > mlsSize || !mlsStates[motNodeID - 1].valid)
+	if (motNodeID > 0 &&
+        motNodeID <= mlsSize &&
+        mlsStates &&
+        mlsStates[motNodeID-1].motNodeId == motNodeID &&
+        mlsStates[motNodeID-1].valid)
+    {
+        pEntry = &mlsStates[motNodeID - 1];
+    }
+    else
 	{
 		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 		errmsg("Interconnect Error: Unexpected Motion Node Id: %d.  This means"
 			   " a motion node that wasn't setup is requesting interconnect"
 			   " resources.", motNodeID)));
+        /* not reached */
 	}
-	else
-		pEntry = &mlsStates[motNodeID - 1];
-
 	return pEntry;
 }
 
@@ -1426,18 +1644,18 @@ removeMotionState(int16 motNodeID)
 
 
 static void
-setupSeqServerConnection(char *seqServerHost, int seqServerPort)
+setupSeqServerConnection(char *seqServerHost, int seqServerPort )
 {
-	int			n;
-	struct sockaddr_in addr;
-
-
+	int  n;
+	struct sockaddr_in addr;	
+	
+	
 	/*
 	 * open a connection to the sequence server
 	 */
 	seqserverFd = socket(AF_INET, SOCK_STREAM, 0);
-
-
+	
+	
 	addr.sin_family = AF_INET;
 
 	if ((n = inet_pton(AF_INET, seqServerHost, &addr.sin_addr)) < 1)
@@ -1445,8 +1663,8 @@ setupSeqServerConnection(char *seqServerHost, int seqServerPort)
 		if (n == 0)
 		{
 			ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
-				errmsg("Interconnect Error: Could not parse remote seqserver"
-					   "address: '%s'", seqServerHost),
+				 errmsg("Interconnect Error: Could not parse remote seqserver"
+						"address: '%s'", seqServerHost),
 					   errdetail("inet_pton() unable to parse address: '%s'",
 								 seqServerHost)));
 		}
@@ -1454,7 +1672,7 @@ setupSeqServerConnection(char *seqServerHost, int seqServerPort)
 		{
 			ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
 			 errmsg("Interconnect Error: System error occured during parsing"
-					" of remote seqserver address: '%s'", seqServerHost),
+				 " of remote seqserver address: '%s'", seqServerHost),
 							errdetail("inet_pton()  (errno: %d) unable to parse address: '%s'",
 									  errno, seqServerHost)));
 		}
@@ -1462,34 +1680,24 @@ setupSeqServerConnection(char *seqServerHost, int seqServerPort)
 
 	addr.sin_port = htons(seqServerPort);
 
-
 	if ((n = connect(seqserverFd, (struct sockaddr *) & addr, sizeof(addr))) < 0)
-	{
-
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
-						errmsg("Interconnect Error: Could not connect() to seqserver: %s", strerror(errno)),
-						errdetail("error during connect() call (error:%d) to outgoing", errno)));
-
-	}
-
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+						errmsg("Interconnect Error: Could not connect to seqserver."),
+		                errdetail("%m%s", "connect")
+                ));
+	
 	/* make socket non-blocking BEFORE we connect. */
 	if (!pg_set_noblock(seqserverFd))
-	{
-		/*
-		 * TODO: would be nice to read the errno and try and provide
-		 * more useful info as to why this happened.
-		 */
 		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-				  errmsg("Interconnect Error: Could not set seqserver socket"
-						 "to non-blocking mode"),
-			 errdetail("error during fcntl() call (error:%d) for sockfd: %d",
-					   errno, seqserverFd)));
-	}
-
-
+						errmsg("Interconnect Error: Could not set seqserver socket"
+						       "to non-blocking mode."),
+			            errdetail("%m%s sockfd=%d", "fcntl", seqserverFd)
+                ));
+	
 }
 
-/* Function startConnections() is used to initially kick-off any outgoing
+
+/* Function startOutgoingConnections() is used to initially kick-off any outgoing
  * connections for mySlice.
  *
  * This should not be called for root slices (i.e. QD ones) since they don't
@@ -1499,229 +1707,360 @@ setupSeqServerConnection(char *seqServerHost, int seqServerPort)
  *
  *	 mySlice  - Slice that this process is a member of.
  *
- *	 highsock - Current highest valued socket filedescriptor (used for select())
- *
- *	 wset	  - fd_set for writes (used for select())
- *
- *	 connsStarted - tell caller how many connections are expected
- *
  * RETURNS
  *	 Initialized MotionLayerState for the Sending Motion Node Id.
  */
-static MotionLayerState *
-startConnections(Slice * mySlice, int *highsock, fd_set *wset, int *connsStarted)
+MotionLayerState *
+startOutgoingConnections(Slice *sendSlice, int *pOutgoingCount)
 {
 	MotionLayerState *pEntry;
-	MotionConn *conn;
+    MotionConn *conn;
+    ListCell   *cell;
 	Slice	   *recvSlice;
-	int			i,
-				motNodeId;
-	CdbProcess *cdbProc;
+    CdbProcess *cdbProc;
 
+    *pOutgoingCount = 0;
 
-	/* for sending motion nodes... motionNodeId = sliceIndex. */
-	motNodeId = mySlice->sliceIndex;
+	recvSlice = (Slice *) list_nth(sliceTable->slices, sendSlice->parentIndex);
 
-#ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "Interconnect - Starting Outgoing Connections (I'm slice %d parent is %d)",
-		 mySlice->sliceIndex, mySlice->parentIndex);
-#endif
+	ereport(DEBUG5, (errmsg("Setting up SENDING motion node %d",
+		                    sendSlice->sliceIndex)
+            ));
 
-	recvSlice = (Slice *) list_nth(sliceTable->slices, mySlice->parentIndex);
-
-	Assert(recvSlice->mirrorProcesses == NIL || (list_length(recvSlice->primaryProcesses) == list_length(recvSlice->mirrorProcesses)));
-
-	pEntry = createMotionState(motNodeId, list_length(recvSlice->primaryProcesses));
+	pEntry = createMotionState(sendSlice,
+                               recvSlice,
+                               list_length(recvSlice->primaryProcesses),
+                               list_length(recvSlice->mirrorProcesses));
 
 	/*
-	 * Setup an outgoing socket to the right place for each of our
-	 * outbound connections for the primary Connections.
+	 * Setup a MotionConn entry for each of our outbound connections.
+     * Request a connection to each receiving backend's listening port.
+     * NB: Some mirrors could be down & have no CdbProcess entry.
 	 */
-	for (i = 0; i < pEntry->numConns; i++)
+    conn = pEntry->conns;
+
+    foreach(cell, recvSlice->primaryProcesses)
 	{
-		conn = pEntry->conns + i;
-		conn->sockfd = -1;
-
-		cdbProc = (CdbProcess *) list_nth(recvSlice->primaryProcesses, i);
-
-		setupOutgoingConnection(conn, cdbProc, highsock, wset);
-		(*connsStarted)++;
-
-		/* setup mirror connection if not null */
-		if (recvSlice->mirrorProcesses != NIL)
+        cdbProc = (CdbProcess *)lfirst(cell);
+        if (cdbProc)
 		{
-			cdbProc = (CdbProcess *) list_nth(recvSlice->mirrorProcesses, i);
-			if (cdbProc != NULL)
-			{
-				conn->mirrorConn = palloc(sizeof(MotionConn));
-
-				conn->mirrorConn->sockfd = -1;
-				conn->hasMirrorConn = true;
-
-				setupOutgoingConnection(conn->mirrorConn, cdbProc, highsock, wset);
-				(*connsStarted)++;
-			}
+            conn->cdbProc = cdbProc;
+            conn->pBuff = palloc(Mpp_max_packet_size);
+            conn->state = mcsSetupOutgoingConnection;
+            (*pOutgoingCount)++;
 		}
+        conn++;
 	}
 
-	return pEntry;
-}
-
-static void
-setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, fd_set *wset)
-{
-	struct sockaddr_in addr;
-	int			n,
-				saved_err;
-	int			retrycount = 0;
-
-	conn->pBuff = palloc(Mpp_max_packet_size);
-	conn->msgSize = PACKET_HEADER_SIZE;
-	conn->tupleCount = 0;
-	conn->stillActive = true;
-	conn->remoteHost = cdbProc->listenerAddr;
-	conn->remotePort = cdbProc->listenerPort;
-	conn->remoteContentId = cdbProc->contentid;
-	conn->hasMirrorConn = false;
-
-	do
+	foreach(cell, recvSlice->mirrorProcesses)
 	{
-
-		conn->sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
-		if (conn->sockfd < 0)
+        cdbProc = (CdbProcess *)lfirst(cell);
+        if (cdbProc)
 		{
-			/*
-			 * TODO: would be nice to read the errno and try and provide
-			 * more useful info as to why this happened.
-			 */
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-							errmsg("Interconnect Error: Could not create outbound socket: %s", strerror(errno)),
-				errdetail("error during socket() call (error:%d) to outgoing"
-						  "CdbProcess with contentId=%d at: '%s':%d", errno,
-						  cdbProc->contentid, cdbProc->listenerAddr,
-						  cdbProc->listenerPort)));
+            conn->cdbProc = cdbProc;
+            conn->pBuff = palloc(Mpp_max_packet_size);
+            conn->state = mcsSetupOutgoingConnection;
+            (*pOutgoingCount)++;
 		}
+        conn++;
+	}
 
-		memset(&addr, 0, sizeof(addr));
-		addr.sin_family = AF_INET;
+    return pEntry;
+}                               /* startOutgoingConnections */
 
-		/*
-		 * we can run out of ports if we aren't careful, so we try to reuse
-		 * them as much as possible
-		 */
-		if (retrycount == 0 || retrycount == MAX_BIND_RETRIES)
-			addr.sin_port = 0;
-		else
-			addr.sin_port = htons(nextOutboundPort);
 
-		if (bind(conn->sockfd, (struct sockaddr *) & addr, sizeof(addr)) < 0)
-		{
-			saved_err = errno;
+/*
+ * setupOutgoingConnection
+ *
+ * Called by SetupInterconnect when conn->state == mcsSetupOutgoingConnection.
+ *
+ * On return, state is:
+ *      mcsSetupOutgoingConnection if failed and caller should retry.
+ *      mcsConnecting if non-blocking connect() is pending.  Caller should
+ *          send registration message when socket becomes write-ready.
+ *      mcsSendRegMsg or mcsStarted if connect() completed successfully.
+ */
+void
+setupOutgoingConnection(MotionLayerState *pEntry, MotionConn *conn)
+{
+    CdbProcess         *cdbProc = conn->cdbProc;
+	struct sockaddr_in  saddr;
+    int                 sockopt;
+	int                 n;
+#if 0   /* port number conservation not working yet */
+    int                 outgoingPort;
+#endif
 
-			retrycount++;
-			nextOutboundPort++;
-			if (retrycount > MAX_BIND_RETRIES)
-			{
-				ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect Error: Could not bind outbound port: %s (too many TIME_WAIT)",
-									   strerror(saved_err)),
-						 errdetail("retried %d times to outgoing CdbProcess "
-								   "with contentId=%d at: '%s':%d",
-								   retrycount, cdbProc->contentid,
-							   cdbProc->listenerAddr, cdbProc->listenerPort),
-								errhint("Try setting a sysctl to reduce TIME_WAIT: (on linux: '/sbin/sysctl -w net.ipv4.tcp_tw_recycle=1')")));
-			}
-			close(conn->sockfd);
-			conn->sockfd = -1;
-			continue;
-		}
+    Assert(conn->cdbProc);
+    Assert(conn->state == mcsSetupOutgoingConnection);
 
-		/* make socket non-blocking BEFORE we connect. */
-		if (!pg_set_noblock(conn->sockfd))
-		{
-			/*
-			 * TODO: would be nice to read the errno and try and provide
-			 * more useful info as to why this happened.
-			 */
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-							errmsg("Interconnect Error: Could not set outbound socket to non-blocking mode"),
-			 errdetail("error during fcntl() call (error:%d) for sockfd: %d",
-					   errno, conn->sockfd)));
-		}
+    conn->wakeup_ms = 0;
+    conn->remoteContentId = cdbProc->contentid;
 
-		memset(&addr, 0, sizeof(addr));
-		addr.sin_family = AF_INET;
+    snprintf(conn->remoteHostAndPort, sizeof(conn->remoteHostAndPort),
+             "%s:%d", cdbProc->listenerAddr, cdbProc->listenerPort);
 
-		if ((n = inet_pton(AF_INET, cdbProc->listenerAddr, &addr.sin_addr)) < 1)
-		{
-			if (n == 0)
-			{
-				ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-				 errmsg("Interconnect Error: Could not parse remote listener"
-						"address: '%s'", cdbProc->listenerAddr),
-					   errdetail("inet_pton() unable to parse address: '%s'",
-								 cdbProc->listenerAddr)));
-			}
-			else
-			{
-				ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect Error: System error occured during parsing"
-				 " of remote listener address: '%s'", cdbProc->listenerAddr),
-								errdetail("inet_pton()  (errno: %d) unable to parse address: '%s'",
-										  errno, cdbProc->listenerAddr)));
-			}
-		}
+    /* Might be retrying due to connection failure etc.  Close old socket. */
+    if (conn->sockfd >= 0)
+    {
+        close(conn->sockfd);
+        conn->sockfd = -1;
+    }
 
-		addr.sin_port = htons(cdbProc->listenerPort);
+    /*
+     * Create a socket.
+     */
+    conn->sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (conn->sockfd < 0)
+	    ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+			            errmsg("Interconnect error setting up outgoing "
+                               "connection."),
+			            errdetail("%m%s", "socket")
+                ));
 
-		/*
-		 * Since our socket is set to non-blocking, then connect can
-		 * return immediately with an error of EINPROGRESS but the TCP
-		 * connection is still continuing to be made.  we will later use
-		 * select() to find out when its actually done.
-		 */
-		if ((n = connect(conn->sockfd, (struct sockaddr *) & addr, sizeof(addr))) < 0)
-		{
-			if (errno == EADDRNOTAVAIL || errno == EADDRINUSE)
-			{
-				elog(DEBUG5, "retrying connect port %d %d errno %d", nextOutboundPort, retrycount, errno);
-				close(conn->sockfd);
+    /* make socket non-blocking BEFORE we connect. */
+    if (!pg_set_noblock(conn->sockfd))
+    {
+        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+			            errmsg("Interconnect error setting up outgoing "
+                               "connection."),
+		                errdetail("%m%s", "fcntl(O_NONBLOCK)")
+                ));
+    }
 
-				retrycount++;
-				nextOutboundPort++;
-				conn->sockfd = -1;
-				continue;
-			}
-			if (errno != EINPROGRESS)
-			{
-				/*
-				 * TODO: would be nice to read the errno and try and
-				 * provide more useful info as to why this happened.
-				 */
-				ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect Error: Could not connect() to remote destination: %d, %s", errno, strerror(errno)),
-				errdetail("error during connect() call (error:%d) to outgoing"
-						  "CdbProcess with contentId=%d at: '%s':%d", errno,
-						  cdbProc->contentid, cdbProc->listenerAddr,
-						  cdbProc->listenerPort)));
-			}
-		}
+    /* Allow bind() to succeed even if the port is in TIME_WAIT state. */
+    sockopt = 1;
+    if (setsockopt(conn->sockfd, SOL_SOCKET, SO_REUSEADDR,
+                   &sockopt, sizeof(sockopt)) < 0)
+	    ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+			            errmsg("Interconnect error setting up outgoing "
+                               "connection."),
+		                errdetail("%m%s", "setsockopt(SO_REUSEADDR)")
+                ));
 
-	} while (conn->sockfd == -1);
+#if 0   /* port number conservation not working yet */
+    /*
+     * we can run out of ports if we aren't careful, so we try to reuse
+     * them as much as possible
+     */
+    outgoingPort = getOutgoingPort(pEntry);
+    snprintf(conn->localHostAndPort, sizeof(conn->localHostAndPort),
+             "tcp:%d", outgoingPort);
 
-	if (retrycount != 0)
-		elog(DEBUG2, "setupoutgoing: retried %d times", retrycount);
+    memset(&saddr, 0, sizeof(saddr));
+    saddr.sin_family = AF_INET;
+    saddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    saddr.sin_port = htons(outgoingPort);
 
-	FD_SET(conn->sockfd, wset);
+    if (bind(conn->sockfd, (struct sockaddr *) &saddr, sizeof(saddr)) < 0)
+    {
+        /* Should never get EADDRINUSE because we know it's our port. */
+        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+			            errmsg("Interconnect error setting up outgoing "
+                               "connection."),
+                        errdetail("Could not bind to local port %s. %m%s",
+                                  conn->localHostAndPort,
+                                  "bind")
+                ));
+    }
+#endif
 
-	if (conn->sockfd > *highsock)
-		*highsock = conn->sockfd;
+    /*
+     * Get ipaddr to connect to.
+     */
+    memset(&saddr, 0, sizeof(saddr));
+    saddr.sin_family = AF_INET;
 
-	elog(DEBUG4, "Interconnect started outgoing connection to CdbProcess with contentId=%d "
-	"to: '%s':%d with sockfd: %d", cdbProc->contentid, cdbProc->listenerAddr,
-		 cdbProc->listenerPort, conn->sockfd);
-}
+    if ((n = inet_pton(AF_INET, cdbProc->listenerAddr, &saddr.sin_addr)) < 1)
+    {
+	    if (n == 0)
+	    {
+		    ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+			     errmsg("Interconnect Error: Could not parse remote listener"
+					    "address: '%s'", cdbProc->listenerAddr),
+				       errdetail("inet_pton() unable to parse address: '%s'",
+							     cdbProc->listenerAddr)));
+	    }
+	    else
+	    {
+		    ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		     errmsg("Interconnect Error: System error occured during parsing"
+			     " of remote listener address '%s'", cdbProc->listenerAddr),
+						    errdetail("%m%s", "inet_pton")
+                    ));
+	    }
+    }
+
+    saddr.sin_port = htons(cdbProc->listenerPort);
+
+    format_sockaddr((struct sockaddr *) &saddr, conn->remoteHostAndPort,
+                    sizeof(conn->remoteHostAndPort));
+
+    ereport(DEBUG5, (errmsg("Connecting to seg%d %s pid=%d sockfd=%d",
+                            conn->remoteContentId,
+                            conn->remoteHostAndPort,
+                            conn->cdbProc->pid,
+                            conn->sockfd)
+                     ));
+
+    /*
+     * Initiate the connection.
+     */
+    for (;;)
+    {                           /* connect() EINTR retry loop */
+        ML_CHECK_FOR_INTERRUPTS();
+
+        n = connect(conn->sockfd, (struct sockaddr *) &saddr, sizeof(saddr));
+	
+        /* Non-blocking socket never connects immediately, but check anyway. */
+        if (n == 0)
+        {
+            sendRegisterMessage(pEntry, conn);
+            return;
+        }
+	
+        /* Retry if a signal was received. */
+        if (errno == EINTR)
+            continue;
+
+        /* Normal case: select() will tell us when connection is made. */
+        if (errno == EINPROGRESS ||
+            errno == EWOULDBLOCK)
+        {
+            conn->state = mcsConnecting;
+            return;
+        }
+
+        /* connect() failed.  Log the error.  Caller should retry. */
+        updateOutgoingConnection(pEntry, conn, errno);
+        return;
+    }                           /* connect() EINTR retry loop */
+}                               /* setupOutgoingConnection */
+
+
+/*
+ * updateOutgoingConnection
+ *
+ * Called when connect() succeeds or fails.
+ */
+void
+updateOutgoingConnection(MotionLayerState *pEntry, MotionConn *conn, int errnoSave)
+{
+    socklen_t   sizeoferrno = sizeof(errnoSave);
+
+    /* Get errno value indicating success or failure. */
+    if (errnoSave == -1 &&
+        getsockopt(conn->sockfd, SOL_SOCKET, SO_ERROR,
+                   &errnoSave, &sizeoferrno))
+    {
+        /* getsockopt failed */
+        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                        errmsg("Interconnect could not connect to seg%d %s",
+                               conn->remoteContentId,
+                               conn->remoteHostAndPort),
+                        errdetail("%m%s sockfd=%d",
+                                  "getsockopt(SO_ERROR)",
+                                  conn->sockfd)
+                ));
+    }
+
+    switch (errnoSave)
+    {
+        /* Success!  Advance to next state. */
+        case 0:
+            sendRegisterMessage(pEntry, conn);
+            return;
+
+#if 0   /* port number conservation not working yet */
+        /* An old connection between same endpoints might be in TIME_WAIT. */
+        case EADDRINUSE:
+        case EINVAL:
+        case ECONNREFUSED:
+            errno = errnoSave;
+            ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		                  errmsg("Interconnect could not connect to seg%d %s from "
+                                 "local port %s; will try another port. %m%s",
+                                 conn->remoteContentId,
+                                 conn->remoteHostAndPort,
+                                 conn->localHostAndPort,
+                                 "connect")
+                    ));
+
+            /* Try a different port number for the next connection attempt. */
+            zapOutgoingPort(pEntry);
+            break;
+#endif
+
+        default:
+            errno = errnoSave;
+            ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		                  errmsg("Interconnect could not connect to seg%d %s "
+                                 "pid=%d; "
+                                 "will retry. %m%s",
+                                 conn->remoteContentId,
+                                 conn->remoteHostAndPort,
+                                 conn->cdbProc->pid,
+                                 "connect")
+                    ));
+            break;
+    }
+
+    /* Tell caller to close the socket and try again. */
+    conn->state = mcsSetupOutgoingConnection;
+}                               /* updateOutgoingConnection */
+
+
+/*
+ * getOutgoingPort
+ *
+ * Returns port number for an outgoing connection.
+ */
+static int
+getOutgoingPort(MotionLayerState *pEntry)
+{
+    int oldPortReservationFd = portReservationFd;
+
+    /* Already got a port number?  Keep using it. */
+    if (outgoingPort)
+        return outgoingPort;
+
+    /* Reserve new port number.  There will be no connections to this socket. */
+    setupListeningSocket(0, &portReservationFd, &outgoingPort);
+
+    /* Close dummy listening socket that reserved our old outgoing port#. */
+    if (oldPortReservationFd >= 0)
+    {
+        close(oldPortReservationFd);
+        pEntry->outgoingPortRetryCount++;
+    }
+
+    ereport(DEBUG3, (errmsg("Outgoing connections will use tcp port %d",
+                            outgoingPort) ));
+    return outgoingPort;
+}                               /* getOutgoingPort */
+
+
+/*
+ * zapOutgoingPort
+ *
+ * Abandon the current outgoing port reservation.
+ */
+static void
+zapOutgoingPort(MotionLayerState *pEntry)
+{
+    /* Tell getOutgoingPort() to pick a new port number. */
+    outgoingPort = 0;
+
+    /* Bail if too many retries. */
+    if (pEntry->outgoingPortRetryCount >= MAX_BIND_RETRIES)
+    {
+        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                        errmsg("Interconnect Error: Connection setup abandoned "
+                               "after %d retries.",
+                               pEntry->outgoingPortRetryCount)
+                ));
+    }
+}                               /* zapOutgoingPort */
 
 
 /* Function sendRegisterMessage() used to send a Register message to the
@@ -1731,88 +2070,114 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
  *
  *	 pEntry - MotionLayerState.
  *	 conn	- MotionConn to send message out on.
+ *
+ * Called by SetupInterconnect when conn->state == mcsSetupOutgoingConnection.
+ *
+ * On return, state is:
+ *      mcsSendRegMsg if registration message has not been completely sent.
+ *          Caller should retry when socket becomes write-ready.
+ *      mcsStarted if registration message has been sent.  Caller can start
+ *          sending data.
  */
 static void
 sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn)
 {
-	int			n;
-	int16		netval;
-	int32		netval2;
-	RegisterMessage regMsg;
-	int			msglen = sizeof(RegisterMessage);
-	uint8	   *msg = (uint8 *) &regMsg;
+    int     bytesToSend;
+    int     bytesSent;
 
-#ifdef AMS_VERBOSE_LOGGING
-	print_connection(conn->sockfd, "send register message");
-#endif
-	
-	/* motNodeId */
-	netval = htons(pEntry->motNodeId);
-	memcpy(msg + 0, &netval, 2);
+    if (conn->state != mcsSendRegMsg)
+    {
+	    RegisterMessage        *regMsg = (RegisterMessage *)conn->pBuff;
+        struct sockaddr_storage localAddr;
+        socklen_t               addrsize;
 
-	/* srcRouteId */
-	netval = htons(pEntry->myRouteId);
-	memcpy(msg + 2, &netval, 2);
+        Assert(conn->cdbProc &&
+               conn->pBuff &&
+               sizeof(*regMsg) <= Mpp_max_packet_size);
+        Assert(pEntry->recvSlice &&
+               pEntry->sendSlice &&
+               IsA(pEntry->recvSlice, Slice) &&
+               IsA(pEntry->sendSlice, Slice));
 
-	/* srcContentId */
-	netval = htons(Mpp_segment);
-	memcpy(msg + 4, &netval, 2);
+        /* Save local host and port for log messages. */
+        addrsize = sizeof(localAddr);
+	    if (getsockname(conn->sockfd, (struct sockaddr *)&localAddr, &addrsize))
+	    {
+            ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		                    errmsg("Interconnect error after making connection."),
+			                errdetail("%m%s sockfd=%d remote=%s",
+					                  "getsockname",
+                                      conn->sockfd,
+                                      conn->remoteHostAndPort)
+                    ));
+	    }
+        format_sockaddr((struct sockaddr *)&localAddr, conn->localHostAndPort,
+                        sizeof(conn->localHostAndPort));
 
-	/* srcListenerPort */
-	netval2 = htonl(listenerPort);
-	memcpy(msg + 6, &netval2, 4);
+        ereport(DEBUG3, (errmsg("Interconnect sending registration message to "
+                                "seg%d pid=%d remote=%s "
+                                "from local=%s sockfd=%d: "
+                                "recvSlice=%d sendSlice=%d "
+                                "srcContentId=%d",
+                                conn->remoteContentId,
+                                conn->cdbProc->pid,
+                                conn->remoteHostAndPort,
+                                conn->localHostAndPort,
+                                conn->sockfd,
+                                pEntry->recvSlice->sliceIndex,
+                                pEntry->sendSlice->sliceIndex,
+                                Mpp_segment)
+                ));
 
-	/* sessionId */
-	netval = htons(mpp_session_id);
-	memcpy(msg + 10, &netval, 2);
+        regMsg->msgBytes = htonl(sizeof(*regMsg));
+        regMsg->recvSliceIndex = htonl(pEntry->recvSlice->sliceIndex);
+        regMsg->sendSliceIndex = htonl(pEntry->sendSlice->sliceIndex);
+        regMsg->srcContentId = htonl(Mpp_segment);
+        regMsg->srcListenerPort = htonl(Mpp_listener_port);
+        regMsg->srcPid = htonl(MyProcPid);
+        regMsg->srcSessionId = htonl(mpp_session_id);
+        regMsg->srcCommandCount = htonl(mpp_command_count);
 
-	/* cmdCount */
-	netval = htons(mpp_command_count);
-	memcpy(msg + 12, &netval, 2);
+        conn->state = mcsSendRegMsg;
+        conn->msgPos = conn->pBuff;
+        conn->msgSize = sizeof(*regMsg);
+    }
 
-#ifdef AMS_VERBOSE_LOGGING
-	/* srcPid */
-	netval2 = htonl(getpid());
-	memcpy(msg + 14, &netval2, 4);
-#endif
+    /* Send as much as we can. */
+    for (;;)
+    {
+	    bytesToSend = conn->pBuff + conn->msgSize - conn->msgPos;
+        bytesSent = write(conn->sockfd, conn->msgPos, bytesToSend);
+        if (bytesSent == bytesToSend)
+            break;
+        else if (bytesSent >= 0)
+            conn->msgPos += bytesSent;
+        else if (errno == EWOULDBLOCK)
+            return;                     /* call me again to send the rest */
+        else if (errno == EINTR)
+            ML_CHECK_FOR_INTERRUPTS();
+        else
+        {
+            ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                            errmsg("Interconnect error writing registration "
+                                   "message to seg%d at %s",
+                                   conn->remoteContentId,
+                                   conn->remoteHostAndPort),
+                            errdetail("%m%s pid=%d sockfd=%d local=%s",
+                                      "write",
+                                      conn->cdbProc->pid,
+                                      conn->sockfd,
+                                      conn->localHostAndPort)
+                    ));
+        }
+    }
 
-	/*
-	 * Since our message is very small and we should have at least
-	 * some dedicated TCP buffer space.  so we should be able to use a
-	 * single blocking send() call to write it out.
-	 */
-	while ((n = write(conn->sockfd, msg, msglen)) < 0)
-	{
-		if (errno == EINTR)
-		{
-			ML_CHECK_FOR_INTERRUPTS();
-			continue;
-		}
-		else
-			break;
-	}
-
-	if (n < 0)
-	{
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-						errmsg("Interconnect Error: Could not write() Register message to remote destination: %s", strerror(errno)),
-		errdetail("error during write() call (error:%d) to remote destination"
-				  "'%s':%d with contentid = %d", errno, conn->remoteHost,
-				  conn->remotePort, conn->remoteContentId)));
-	}
-
-	if (n != msglen)
-	{
-		elog(DEBUG3, "n = %d", n);
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-			 errmsg("Interconnect Error: Could not write() complete Register"
-					"message to remote destination"),
-						errdetail("sent: %d of %d bytes during write() call to remote destination"
-				  "'%s':%d with contentid = %d", n, msglen, conn->remoteHost,
-								  conn->remotePort, conn->remoteContentId)));
-	}
-}
-
+    /* Sent it all. */
+    conn->state = mcsStarted;
+    conn->msgPos = NULL;
+	conn->msgSize = PACKET_HEADER_SIZE;
+    conn->stillActive = true;
+}                               /* sendRegisterMessage */
 
 
 /* Function readRegisterMessage() reads a "Register" message off of the conn
@@ -1822,212 +2187,346 @@ sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn)
  * PARAMETERS
  *
  *	 conn - MotionConn to read the register messagefrom.
- *	 incoming_count - ptr to number of incoming connections that have been set
- *					  up so far.
  *
+ * Returns true if message has been received; or false if caller must retry
+ * when socket becomes read-ready.
  */
-static void
-readRegisterMessage(MotionConn * conn, int *incoming_count)
+static bool
+readRegisterMessage(MotionConn *conn)
 {
-	MotionLayerState *pEntry;
-	MotionConn *newConn;
-	RegisterMessage msg;
-	int			n;
-	int			bytesRead = 0;
-	CdbProcess *proc;
+    int     bytesToReceive;
+    int     bytesReceived;
+    int     iconn;
+    RegisterMessage    *regMsg;
+	RegisterMessage     msg;
+	MotionConn         *newConn;
+    MotionLayerState   *pEntry;
+	CdbProcess         *cdbproc;
 
-	int			msgSize = sizeof(RegisterMessage);
-	RegisterMessage regMsg;
-	uint8	   *buff = (uint8 *) &regMsg;
+    /* Get ready to receive the Register message. */
+    if (conn->state != mcsRecvRegMsg)
+    {
+        conn->state = mcsRecvRegMsg;
+        conn->msgSize = sizeof(*regMsg);
+        conn->msgPos = conn->pBuff;
 
-#ifdef AMS_VERBOSE_LOGGING
-	print_connection(conn->sockfd, "register message on");
-#endif
+        Assert(conn->pBuff &&
+               sizeof(*regMsg) <= Mpp_max_packet_size);
+    }
 
-	/* loop till we read in the entire RegisterMessage. */
-	while (bytesRead < msgSize)
-	{
-		/* see if user canceled and stuff like that */
-		ML_CHECK_FOR_INTERRUPTS();
-
-		n = read(conn->sockfd, buff + bytesRead, msgSize - bytesRead);
-		if (n < 0)
+    /* Receive all that is available, up to the expected message size. */
+    for (;;)
+    {
+	    bytesToReceive = conn->pBuff + conn->msgSize - conn->msgPos;
+        bytesReceived = read(conn->sockfd, conn->msgPos, bytesToReceive);
+        if (bytesReceived == bytesToReceive)
+            break;
+        else if (bytesReceived > 0)
+            conn->msgPos += bytesReceived;
+ 		else if (bytesReceived == 0)
 		{
-			/* register msg is small, just spin don't poll */
-			if (errno == EWOULDBLOCK || errno == EINTR)
-				continue;
-
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-			  errmsg("Interconnect Error: Could not read() Register message "
-					 "from remote destination"),
-				  errdetail("error during read() call (error:%d) from remote"
-							"sockfd = %d", errno, conn->sockfd)));
+            ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                            errmsg("Interconnect error reading register message "
+                                   "from %s: connection closed",
+                                   conn->remoteHostAndPort),
+                            errdetail("read() sockfd=%d local=%s",
+                                      conn->sockfd, conn->localHostAndPort)
+                            ));
 		}
-		if (n == 0)
-		{
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-			  errmsg("Interconnect Error: Could not read() Register message "
-					 "from remote destination: connection closed")));
-		}
+        else if (errno == EWOULDBLOCK)
+            return false;       /* call me again to receive the rest */
+        else if (errno == EINTR)
+            ML_CHECK_FOR_INTERRUPTS();
+        else
+        {
+            ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                            errmsg("Interconnect error reading register message "
+                                   "from %s", conn->remoteHostAndPort),
+                            errdetail("%m%s sockfd=%d local=%s",
+                                      "read",
+                                      conn->sockfd,
+                                      conn->localHostAndPort)
+                    ));
+        }
+    }
 
-		bytesRead += n;
-		Assert(bytesRead <= (int) sizeof(RegisterMessage));
-	}
+    /*
+     * Got the whole message.  Convert fields to native byte order.
+     */
+    regMsg = (RegisterMessage *)conn->pBuff;
+    msg.msgBytes = ntohl(regMsg->msgBytes);
+    msg.recvSliceIndex = ntohl(regMsg->recvSliceIndex);
+    msg.sendSliceIndex = ntohl(regMsg->sendSliceIndex);
+    msg.srcContentId = ntohl(regMsg->srcContentId);
+    msg.srcListenerPort = ntohl(regMsg->srcListenerPort);
+    msg.srcPid = ntohl(regMsg->srcPid);
+    msg.srcSessionId = ntohl(regMsg->srcSessionId);
+    msg.srcCommandCount = ntohl(regMsg->srcCommandCount);
 
-	msg.motNodeId = getInt16(buff + 0);
-	msg.srcRouteId = getInt16(buff + 2);
-	msg.srcContentId = getInt16(buff + 4);
-	msg.srcListenerPort = getInt32(buff + 6);
-	msg.sessionId = getInt16(buff + 10);
-	msg.cmdCount = getInt16(buff + 12);
+    /* Check for valid message format. */
+    if (msg.msgBytes != sizeof(*regMsg))
+    {
+        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                        errmsg("Interconnect error reading register message "
+                               "from %s: format not recognized",
+                               conn->remoteHostAndPort),
+                        errdetail("msgBytes=%d expected=%d sockfd=%d local=%s",
+                                  msg.msgBytes, sizeof(*regMsg),
+                                  conn->sockfd, conn->localHostAndPort)
+                        ));
+    }
 
-#ifdef AMS_VERBOSE_LOGGING
-	msg.srcPid = getInt32(buff + 14);
+    /*
+     * Find state info for the specified Motion node.  The sender's slice
+     * number equals the motion node id.  (Don't use this ptr until after
+     * the bounds are checked, just below.)
+     */
+    pEntry = &mlsStates[msg.sendSliceIndex-1];
 
-	elog(DEBUG3, "Read a Register Message: (motNodeID: %d, srcRouteId: %d, "
-		 "srcContentId: %d, srcListenerPort: %d srcPid: %d",
-		 msg.motNodeId, msg.srcRouteId, msg.srcContentId, msg.srcListenerPort, msg.srcPid);
-#endif
+    /* Verify that the message pertains to one of our receiving Motion nodes. */
+    if (msg.sendSliceIndex > 0 &&
+        msg.sendSliceIndex <= mlsSize &&
+        msg.sendSliceIndex == pEntry->motNodeId &&
+        pEntry->valid &&
+        msg.recvSliceIndex == sliceId &&
+        msg.srcContentId >= 0 &&
+        msg.srcSessionId == mpp_session_id &&
+        msg.srcCommandCount == mpp_command_count)
+    {
+        ereport(DEBUG3, (errmsg("Interconnect got registration message "
+                                "from %s sockfd=%d: recvSlice=%d sendSlice=%d "
+                                "srcContentId=%d srcPid=%d",
+                                conn->remoteHostAndPort, conn->sockfd,
+                                msg.recvSliceIndex, msg.sendSliceIndex,
+                                msg.srcContentId, msg.srcPid)
+                ));
+    }
+    else
+    {
+        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                        errmsg("Interconnect error: Invalid registration "
+                               "message received from %s.",
+                               conn->remoteHostAndPort),
+                        errdetail("sendSlice=%d recvSlice=%d srcContentId=%d "
+                                  "srcPid=%d srcListenerPort=%d "
+                                  "srcSessionId=%d srcCommandCount=%d",
+                                  msg.sendSliceIndex, msg.recvSliceIndex,
+                                  msg.srcContentId, msg.srcPid,
+                                  msg.srcListenerPort, msg.srcSessionId,
+                                  msg.srcCommandCount)
+                ));
+    }
 
-	if (mpp_session_id != msg.sessionId || mpp_command_count != msg.cmdCount)
-	{
+    /*
+     * Find and verify the CdbProcess node for the sending process.
+     */
+    if (list_length(pEntry->sendSlice->primaryProcesses) == 1)
+        iconn = 0;
+    else
+        iconn = msg.srcContentId;
 
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-						errmsg("sessionID and/or command count mismatch during remote QE registration"),
-						errdetail("Authentication Failed: local/remote session id (%d/%d), local/remote cmd count(%d/%d). "
-								  "Received  RegisterMessage {motNodeId:%d, srcRouteId:%d, "
-								  "srcContentId:%d, srcListenerPort:%d, sessionId:%d, cmdCount:%d}",
-								  mpp_session_id, msg.sessionId, mpp_command_count, msg.cmdCount,
-								  msg.motNodeId, msg.srcRouteId, msg.srcContentId, msg.srcListenerPort,
-								  msg.sessionId, msg.cmdCount)));
-	}
+    cdbproc = (CdbProcess *)list_nth(pEntry->sendSlice->primaryProcesses, iconn);
 
+    if (msg.srcContentId != cdbproc->contentid ||
+        msg.srcListenerPort != cdbproc->listenerPort ||
+        msg.srcPid != cdbproc->pid)
+    {
+        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                        errmsg("Interconnect error: Invalid registration "
+                               "message received from %s.",
+                               conn->remoteHostAndPort),
+                        errdetail("sendSlice=%d srcContentId=%d "
+                                  "srcPid=%d srcListenerPort=%d",
+                                  msg.sendSliceIndex, msg.srcContentId,
+                                  msg.srcPid, msg.srcListenerPort)
+                ));
+    }
 
-	pEntry = getMotionState(msg.motNodeId);
-	if (pEntry == NULL)
-	{
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-		  errmsg("Interconnect Error: invalid conn for (mnId=%d,routeId=%d)",
-				 msg.motNodeId, msg.srcRouteId)));
-	}
-
-	/*
-	 * store the MotionConn in the right slot, make sure no one is
-	 * there.
+    /*
+	 * Allocate MotionConn slot corresponding to sender's position in the
+     * sending slice's CdbProc list.
 	 */
-	if ((pEntry->conns + msg.srcRouteId)->sockfd != -1)
+	newConn = &pEntry->conns[iconn];
+	
+    if (newConn->sockfd != -1 ||
+        newConn->state != mcsNull)
 	{
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-						errmsg("Interconnect Error: Already a conn for (mnId=%d,routeId=%d,%d)",
-							   msg.motNodeId, msg.srcRouteId, (pEntry->conns + msg.srcRouteId)->sockfd),
-		  errdetail("Should not have a non-NULL connection in that slot.")));
+        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                        errmsg("Interconnect error: Duplicate registration "
+                               "message received from %s.",
+                               conn->remoteHostAndPort),
+                        errdetail("Already accepted registration from %s for "
+                                  "sendSlice=%d srcContentId=%d "
+                                  "srcPid=%d srcListenerPort=%d",
+                                  newConn->remoteHostAndPort,
+                                  msg.sendSliceIndex, msg.srcContentId,
+                                  msg.srcPid, msg.srcListenerPort)
+                ));
 	}
 
+    /* Copy caller's temporary MotionConn to its assigned slot. */
+    *newConn = *conn;
 
-	/* find and validate our RegisterMessage based on the CdbProcess. */
-	proc = findCdbProcess(&msg);
+    newConn->cdbProc = cdbproc;
+    newConn->remoteContentId = msg.srcContentId;
 
-	newConn = pEntry->conns + msg.srcRouteId;
+    /*
+     * The caller's MotionConn object is no longer valid.
+     */
+    memset(conn, 0, sizeof(*conn));
+    conn->state = mcsNull;
 
-	newConn->sockfd = conn->sockfd;
-	newConn->pBuff = palloc(Mpp_max_packet_size);
-	newConn->msgSize = 0;
-	newConn->recvBytes = 0;
-	newConn->msgPos = 0;
-	newConn->tupleCount = 0;
-	newConn->stillActive = true;
-	newConn->remoteHost = proc->listenerAddr;
-	newConn->remotePort = msg.srcListenerPort;
-	newConn->remoteContentId = msg.srcContentId;
-	newConn->hasMirrorConn = false;
+    /*
+     * Prepare to begin reading tuples.
+     */
+    newConn->state = mcsStarted;
+    newConn->msgPos = NULL;
+    newConn->msgSize = 0;
+    newConn->stillActive = true;
 
-	FD_SET(newConn->sockfd, &(pEntry->readSet));
+    FD_SET(newConn->sockfd, &(pEntry->readSet));
 
 	if (newConn->sockfd > pEntry->highReadSock)
 		pEntry->highReadSock = newConn->sockfd;
 
 #ifdef AMS_VERBOSE_LOGGING
-	dumpEntryConnections(pEntry);
+	dumpEntryConnections(DEBUG4, pEntry);
 #endif
 
-	(*incoming_count)++;
-}
+    return true;
+}                               /* readRegisterMessage */
 
-/* Function acceptIncomingConnection() is used to accept() and setup an
- * incoming connection on the Interconnect Listener socket.
+
+/*
+ * acceptIncomingConnection
  *
- * This function should not be called unless we know we have a connection
- * waiting (by using select() or something).  We add the MotionConn created
- * for the socket to the incompleteConns list since we don't know anything about
- * the connection until we receive the "Register" message.
- *
- * PARAMETERS:
- *
- *	rset - readset so we can register readinterest in the new socket once we
- *		   accept() it.
- *
- *	highsock - ptr to highest socket filedescriptor. (needed for select())
- *
+ * accept() a connection request that is pending on the listening socket.
+ * Returns a newly palloc'ed MotionConn object; or NULL if the listening
+ * socket does not have any pending connection requests.
  */
-static void
-acceptIncomingConnection(fd_set *rset, int *highsock)
+MotionConn *
+acceptIncomingConnection(void)
 {
 	int			newsockfd;
-	struct sockaddr_in addr;
-	socklen_t	addrlen;
+    socklen_t   addrsize;
 	MotionConn *conn;
+	struct sockaddr_storage remoteAddr;
+	struct sockaddr_storage localAddr;
 
-	memset(&addr, 0, sizeof(addr));
-	addrlen = sizeof(addr);
+    /*
+     * Accept a connection.
+     */
+    for (;;)
+    {                           /* loop until success or EWOULDBLOCK */
+	    memset(&remoteAddr, 0, sizeof(remoteAddr));
+	    addrsize = sizeof(remoteAddr);
+	    newsockfd = accept(listenerFd, (struct sockaddr *)&remoteAddr, &addrsize);	
+	    if (newsockfd >= 0)
+            break;
 
-	if ((newsockfd = accept(listenerFd, (struct sockaddr *) & addr, &addrlen)) < 0)
-	{
-		/*
-		 * TODO: would be nice to read the errno and try and provide
-		 * more useful info as to why this happened.
-		 */
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-					 errmsg("Interconnect error accepting a new connection"),
-				 errdetail("error during accept() call (error:%d)", errno)));
-	}
+        switch (errno)
+        {
+        	case EINTR:
+                /* A signal arrived.  Loop to retry the accept(). */
+                break;
 
+        	case EWOULDBLOCK:
+                /* Connection request queue is empty.  Normal return. */
+        		return NULL;
 
-	/* make socket non-blocking BEFORE we connect. */
-	if (!pg_set_noblock(newsockfd))
-	{
-		/*
-		 * TODO: would be nice to read the errno and try and provide
-		 * more useful info as to why this happened.
-		 */
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-						errmsg("Interconnect Error: Could not set outbound socket to non-blocking mode"),
-			 errdetail("error during fcntl() call (error:%d) for sockfd: %d",
-					   errno, newsockfd)));
-	}
+            case EBADF:
+            case EFAULT:
+            case EINVAL:
+            case ENOTSOCK:
+            case EOPNOTSUPP:
+                /* Shouldn't get these errors unless there is a bug. */
+                ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                                errmsg("Interconnect error on listener port %d",
+                                       Mpp_listener_port),
+			                    errdetail("%m%s sockfd=%d",
+                                          "accept",
+                                          listenerFd)
+                        ));
+                break;          /* not reached */
+            case ENOMEM:
+            case ENFILE:
+            case EMFILE:
+            case ENOBUFS:
+                /* Out of resources. */
+                ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                                errmsg("Interconnect error on listener port %d",
+                                       Mpp_listener_port),
+			                    errdetail("%m%s sockfd=%d",
+                                          "accept",
+                                          listenerFd)
+                        ));
+                break;          /* not reached */
+        	default:
+                /* Network problem, connection aborted, etc.  Continue. */
+                ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                              errmsg("Interconnect connection request not "
+                                     "completed on listener port %d",
+                                      Mpp_listener_port),
+			                  errdetail("%m%s sockfd=%d",
+                                        "accept",
+                                        listenerFd)
+                        ));
+        }                       /* switch (errno) */
+    }                           /* loop until success or EWOULDBLOCK */
 
+    /*
+     * Create a MotionConn object to hold the connection state.
+     */
+    conn = palloc0(sizeof(MotionConn));
+    conn->sockfd = newsockfd;
+    conn->pBuff = palloc(Mpp_max_packet_size);
+    conn->msgSize = 0;
+    conn->recvBytes = 0;
+    conn->msgPos = 0;
+    conn->tupleCount = 0;
+    conn->stillActive = false;
+    conn->state = mcsAccepted;
+    conn->remoteContentId = -2;
 
-	FD_SET(newsockfd, rset);
+    /* Save remote and local host:port strings for error messages. */
+    format_sockaddr((struct sockaddr *)&remoteAddr, conn->remoteHostAndPort,
+                    sizeof(conn->remoteHostAndPort));
+    addrsize = sizeof(localAddr);
+    if (getsockname(newsockfd, (struct sockaddr *)&localAddr, &addrsize))
+    {
+        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                        errmsg("Interconnect error after accepting connection."),
+	                    errdetail("%m%s sockfd=%d remote=%s",
+			                      "getsockname",
+                                  newsockfd,
+                                  conn->remoteHostAndPort)
+                ));
+    }
+    format_sockaddr((struct sockaddr *)&localAddr, conn->localHostAndPort,
+                    sizeof(conn->localHostAndPort));
 
-	if (newsockfd > *highsock)
-		*highsock = newsockfd;
+    /* make socket non-blocking */
+    if (!pg_set_noblock(newsockfd))
+    {
+        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                        errmsg("Interconnect error after accepting connection."),
+	                    errdetail("%m%s sockfd=%d remote=%s local=%s",
+                                  "fcntl(O_NONBLOCK)",
+                                  newsockfd,
+                                  conn->remoteHostAndPort,
+                                  conn->localHostAndPort)
+                ));
+    }
 
-	conn = palloc(sizeof(MotionConn));
-	conn->sockfd = newsockfd;
-	conn->pBuff = palloc(Mpp_max_packet_size);
-	conn->msgSize = 0;
-	conn->recvBytes = 0;
-	conn->msgPos = 0;
-	conn->tupleCount = 0;
-	conn->stillActive = true;
-	conn->remoteHost = "unknown";
-	conn->remotePort = -1;
-	conn->remoteContentId = -2;
+    ereport(DEBUG4, (errmsg("Interconnect got incoming connection "
+                            "to local=%s from remote=%s.  sockfd=%d",
+                            conn->localHostAndPort,
+                            conn->remoteHostAndPort,
+                            newsockfd)
+                     ));
+    return conn;
+}                               /* acceptIncomingConnection */
 
-	if (incompleteConns == NIL)
-		incompleteConns = list_make1(conn);
-	else
-		incompleteConns = lappend(incompleteConns, conn);
-}
 
 /* The Function sendChunk() is used to send a tcItem to a single
  * destination. Tuples often are *very small* we aggregate in our
@@ -2044,7 +2543,7 @@ sendChunk(MotionConn * conn, TupleChunkListItem tcItem, int16 motionId)
 	Assert(conn->msgSize > 0);
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "sendChunk: msgSize %d this chunk length %d", conn->msgSize, tcItem->chunk_length);
+	elog(DEBUG5, "sendChunk: msgSize %d this chunk length %d", conn->msgSize, tcItem->chunk_length);
 #endif
 
 	if (conn->msgSize + tcItem->chunk_length > Mpp_max_packet_size)
@@ -2092,7 +2591,7 @@ flushBuffer(MotionConn * conn, int16 motionId)
 		struct timeval snapTime;
 
 		gettimeofday(&snapTime, NULL);
-		elog(DEBUG3, "----sending chunk @%s.%d time is %ld.%d",
+		elog(DEBUG5, "----sending chunk @%s.%d time is %ld.%ld",
 			 __FILE__, __LINE__, snapTime.tv_sec, snapTime.tv_usec);
 	}
 #endif
@@ -2149,7 +2648,7 @@ flushBuffer(MotionConn * conn, int16 motionId)
 					FD_SET(conn->sockfd, &wset);
 					FD_SET(conn->sockfd, &rset);
 					n = select(conn->sockfd + 1, &rset, &wset, NULL, &timeout);
-					pMNEntry->sel_wr_wait += (tval.tv_sec - timeout.tv_sec) * 1000000 + (tval.tv_usec - timeout.tv_usec);
+					pMNEntry->sel_wr_wait += (tval.tv_sec - timeout.tv_sec)*1000000 +(tval.tv_usec - timeout.tv_usec);
 					if (n < 0)
 					{
 						if (errno == EINTR)
@@ -2170,9 +2669,10 @@ flushBuffer(MotionConn * conn, int16 motionId)
 						ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 										errmsg("Interconnect error writing an outgoing packet"),
 						 errdetail("error during select() call (error:%d).\n"
-							"For Remote Connection: contentId=%d at '%s':%d",
-							  errno, conn->remoteContentId, conn->remoteHost,
-								   conn->remotePort)));
+							"For Remote Connection: contentId=%d at %s",
+							  errno, conn->remoteContentId,
+                              conn->remoteHostAndPort)
+                              ));
 					}
 
 					/*
@@ -2205,11 +2705,12 @@ flushBuffer(MotionConn * conn, int16 motionId)
 					return false;
 				}
 				ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-					 errmsg("Interconnect error writing an outgoing packet"),
-						  errdetail("error during write() call (error:%d).\n"
-							"For Remote Connection: contentId=%d at '%s':%d",
-							  errno, conn->remoteContentId, conn->remoteHost,
-									conn->remotePort)));
+								errmsg("Interconnect error writing an outgoing packet"),
+								errdetail("error during write() call (error:%d).\n"
+										  "For Remote Connection: contentId=%d at %s",
+										  errno, conn->remoteContentId,
+                                          conn->remoteHostAndPort)
+				                ));
 			}
 		}
 		else
@@ -2251,7 +2752,7 @@ readPacket(MotionConn * conn)
 	fd_set		rset;
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "readpacket: (fd %d) (max %d) outstanding bytes %d", conn->sockfd, Mpp_max_packet_size, conn->recvBytes);
+	elog(DEBUG5, "readpacket: (fd %d) (max %d) outstanding bytes %d", conn->sockfd, Mpp_max_packet_size, conn->recvBytes);
 #endif
 
 	/* do we have a complete message waiting to be processed ? */
@@ -2262,7 +2763,7 @@ readPacket(MotionConn * conn)
 		if (conn->recvBytes >= conn->msgSize)
 		{
 #ifdef AMS_VERBOSE_LOGGING
-			elog(DEBUG3, "readpacket: returning previously read data (%d)", conn->recvBytes);
+			elog(DEBUG5, "readpacket: returning previously read data (%d)", conn->recvBytes);
 #endif
 			return;
 		}
@@ -2279,11 +2780,14 @@ readPacket(MotionConn * conn)
 	conn->msgPos = conn->pBuff;
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "readpacket: %s on previous call msgSize %d", gotHeader ? "got header" : "no header", conn->msgSize);
+	elog(DEBUG5, "readpacket: %s on previous call msgSize %d", gotHeader ? "got header" : "no header", conn->msgSize);
 #endif
 
 	while (!gotPacket && bytesRead < Mpp_max_packet_size)
 	{
+		/* see if user canceled and stuff like that */
+		ML_CHECK_FOR_INTERRUPTS();
+
 		/*
 		 * we read at the end of the buffer, we've eliminated any
 		 * slack above
@@ -2291,14 +2795,9 @@ readPacket(MotionConn * conn)
 		if ((n = read(conn->sockfd, conn->pBuff + bytesRead,
 					  Mpp_max_packet_size - bytesRead)) < 0)
 		{
-			int			saved_err = errno;
-
-			/* see if user canceled and stuff like that */
-			ML_CHECK_FOR_INTERRUPTS();
-
-			if (saved_err == EINTR)
+			if (errno == EINTR)
 				continue;
-			if (saved_err == EWOULDBLOCK)
+			if (errno == EWOULDBLOCK)
 			{
 				do
 				{
@@ -2314,15 +2813,13 @@ readPacket(MotionConn * conn)
 						continue;
 					else if (n < 0)
 					{
-						saved_err = errno;
-						ML_CHECK_FOR_INTERRUPTS();
-
 						ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-										errmsg("Interconnect error reading an incoming packet"),
-						 errdetail("error during select() call (error:%d).\n"
-						   "From Remote Connection: contentId=%d at '%s':%d",
-						  saved_err, conn->remoteContentId, conn->remoteHost,
-								   conn->remotePort)));
+										errmsg("Interconnect error reading an incoming packet."),
+						                errdetail("%m%s from seg%d at %s",
+						                          "select",
+                                                  conn->remoteContentId,
+                                                  conn->remoteHostAndPort)
+						        ));
 					}
 				}
 				while (n < 1);
@@ -2330,26 +2827,25 @@ readPacket(MotionConn * conn)
 			else
 			{
 				ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-					 errmsg("Interconnect error reading an incoming packet"),
-						   errdetail("error during read() call (error:%d).\n"
-						   "From Remote Connection: contentId=%d at '%s':%d",
-						  saved_err, conn->remoteContentId, conn->remoteHost,
-									 conn->remotePort)));
+					            errmsg("Interconnect error reading an incoming packet."),
+						        errdetail("%m%s from seg%d at %s",
+						                  "read",
+                                          conn->remoteContentId,
+                                          conn->remoteHostAndPort)
+						));
 			}
 		}
 		else if (n == 0)
 		{
 #ifdef AMS_VERBOSE_LOGGING
-			elog(DEBUG3, "readpacket(); breaking in while (fd %d) recvBytes %d msgSize %d", conn->sockfd, conn->recvBytes, conn->msgSize);
+			elog(DEBUG5, "readpacket(); breaking in while (fd %d) recvBytes %d msgSize %d", conn->sockfd, conn->recvBytes, conn->msgSize);
 			print_connection(conn->sockfd, "interconnect error on");
 #endif
-			ML_CHECK_FOR_INTERRUPTS();
-
 			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 				errmsg("Interconnect error: connection closed prematurely."),
-				 errdetail("from Remote Connection: contentId=%d at '%s':%d",
-						   conn->remoteContentId, conn->remoteHost,
-						   conn->remotePort)));
+				 errdetail("from Remote Connection: contentId=%d at %s",
+						   conn->remoteContentId, conn->remoteHostAndPort)
+					));
 			break;
 		}
 		else
@@ -2369,7 +2865,7 @@ readPacket(MotionConn * conn)
 		}
 	}
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "readpacket: got %d bytes", conn->recvBytes);
+	elog(DEBUG5, "readpacket: got %d bytes", conn->recvBytes);
 #endif
 }
 
@@ -2397,149 +2893,41 @@ doBroadcast(MotionLayerState * pEntry, TupleChunkListItem tcItem)
 			if (!conn->stillActive)
 				inactive++;
 		}
-
-		if (conn->hasMirrorConn && conn->mirrorConn->stillActive)
-		{
-			sendChunk(conn->mirrorConn, tcItem, pEntry->motNodeId);
-			if (!conn->mirrorConn->stillActive)
-				inactive++;
-		}
 	}
 
 	return inactive;
 }
 
 
-/* Function findMyRouteId() is used to search through the given slice and find
- * the position in the slice->primaryProcesses list where "we" are located at.
- * This is done by matching up the contentid and listenerPort.
- *
- * PARAMETERS
- *
- *	 slice - Slice to search through.
- *
- * RETURN
- *	 An int which is "our" position in the slice->primaryProcesses list.
- */
-static int
-findMyRouteId(Slice * slice)
-{
-	ListCell   *cell;
-	int			id = 0;
-
-	foreach(cell, slice->primaryProcesses)
-	{
-		CdbProcess *proc = (CdbProcess *) lfirst(cell);
-
-#ifdef AMS_VERBOSE_LOGGING
-		elog(DEBUG3, "Checking if CdbProc is our own: segid: (ours is %d ==  CdbProc's is %d) "
-			 " listenerPort:  (ours is %d == CdbProc's is %d)",
-			 Mpp_segment, proc->contentid,
-			 listenerPort, proc->listenerPort);
-#endif
-
-		if (proc->contentid == Mpp_segment &&
-			proc->listenerPort == listenerPort)
-			return id;
-
-		id++;
-	}
-
-	/* DOH: dump more info here */
-	elog(ERROR, "Could not find my CdbProcess in slice #: %d", slice->sliceIndex);
-
-	return -1;
-}
-
-
-
-/* Function findCdbProcess() takes the info in the RegisterMessage and looks up
- * the CdbProcess that corresponds to it.  Part of the reason for doing this is
- * to verify that the RegisterMessage is a valid one.
- *
- * PARAMETERS
- *
- *	 msg - RegisterMessage that contains the info of which CdbProcess we are
- *			looking for.
- *
- * RETURNS
- *	 The CdbProcess that matches with the info in the RegisterMessage.
- */
-static CdbProcess *
-findCdbProcess(RegisterMessage * msg)
-{
-	CdbProcess *proc = NULL;
-	Slice	   *slice;
-	ListCell   *cell;
-	int			count = 0;
-	bool		found = false;
-
-	if (list_length(sliceTable->slices) < msg->motNodeId)
-	{
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-			   errmsg("Interconnect Error: Received a Register Message with "
-					  "unknown motion Node ID: %d", msg->motNodeId),
-				  errdetail("Could not find a Slice in our slice table with "
-							"motion node ID: %d", msg->motNodeId)));
-	}
-
-
-	slice = (Slice *) list_nth(sliceTable->slices, msg->motNodeId);
-
-
-	foreach(cell, slice->primaryProcesses)
-	{
-		proc = (CdbProcess *) lfirst(cell);
-
-		if (count == msg->srcRouteId && proc->contentid == msg->srcContentId &&
-			proc->listenerPort == msg->srcListenerPort)
-		{
-			found = true;
-		}
-
-		count++;
-	}
-
-
-	if (!found)
-	{
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-			   errmsg("Interconnect Error: Received a Register Message from "
-					  "unknown CdbProcess"),
-			errdetail("Received register message from: (mnId=%d, routeId=%d,"
-					  "contentId=%d, listenerPort=%d) but was unable to find"
-					  " a matching CdbProcess in our sliceTable.",
-					  msg->motNodeId, msg->srcRouteId, msg->srcContentId,
-					  msg->srcListenerPort)));
-	}
-
-	return proc;
-}
-
 void
-dumpEntryConnections(MotionLayerState * pEntry)
+dumpEntryConnections(int elevel, MotionLayerState *pEntry)
 {
 	int			i;
+    MotionConn *conn;
 
-	elog(DEBUG3, "----------------pEntry motNodeID: %d conn dump------------------", pEntry->motNodeId);
-	for (i = 0; i < pEntry->numConns; i++)
+    if (elevel < log_min_messages)
+        return;
+
+    for (i = 0; i < pEntry->numConns; i++)
 	{
-		MotionConn *conn = pEntry->conns + i;
-
-		elog(DEBUG3, "conn#%d (sockfd=%d, remote host= '%s' port=%d, contentId: %d)",
-			 i, conn->sockfd, conn->remoteHost, conn->remotePort, conn->remoteContentId);
-
-		if (conn->hasMirrorConn)
-		{
-			conn = conn->mirrorConn;
-			elog(DEBUG3, "conn#%d MIRROR (sockfd=%d, remote host= '%s' port=%d, contentId: %d)",
-				 i, conn->sockfd, conn->remoteHost, conn->remotePort, conn->remoteContentId);
-
-		}
-
+		conn = &pEntry->conns[i];
+        if (conn->sockfd == -1 &&
+            conn->state == mcsNull)
+            elog(elevel, "... motNodeId=%d conns[%d]:         not connected",
+                         pEntry->motNodeId, i);
+        else
+            elog(elevel, "... motNodeId=%d conns[%d]:  "
+                         "%s%d pid=%d sockfd=%d remote=%s local=%s",
+		                 pEntry->motNodeId, i,
+                         (i < pEntry->numPrimaryConns) ? "seg" : "mir",
+                         conn->remoteContentId,
+                         conn->cdbProc ? conn->cdbProc->pid : 0,
+                         conn->sockfd,
+                         conn->remoteHostAndPort,
+                         conn->localHostAndPort);
 	}
-	elog(DEBUG3, "----------------------------------------------------------------");
 }
+
 
 /* declared in cdbmotion.h */
 /* Function SendStopMessage() sends a short "cancel" message to all motion-nodes
@@ -2563,10 +2951,9 @@ doSendStopMessage(int16 motNodeID)
 	ssize_t		written;
 
 	pEntry = getMotionState(motNodeID);
-	Assert(pEntry != NULL);
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "sending stop message from slice %d to node %d", sliceId, motNodeID);
+	elog(DEBUG5, "sending stop message from slice %d to node %d", sliceId, motNodeID);
 #endif
 
 	/*
@@ -2577,7 +2964,8 @@ doSendStopMessage(int16 motNodeID)
 	{
 		conn = pEntry->conns + i;
 
-		if (FD_ISSET(conn->sockfd, &pEntry->readSet))
+		if (conn->sockfd >= 0 &&
+            FD_ISSET(conn->sockfd, &pEntry->readSet))
 		{
 			/* someone is trying to send stuff to us, let's stop 'em */
 			while ((written = write(conn->sockfd, &m, sizeof(m))) < 0)
@@ -2597,7 +2985,7 @@ doSendStopMessage(int16 motNodeID)
 				 * how can this happen ? the kernel buffer should be
 				 * empty in the send direction
 				 */
-				elog(LOG, "SendStopMessage: failed on write %d", errno);
+				elog(LOG, "SendStopMessage: failed on write.  %m");
 			}
 		}
 		/* CRITICAL TO AVOID DEADLOCK */
@@ -2616,20 +3004,75 @@ print_connection(int fd, const char *msg)
 	len = sizeof(remote);
 	if (getpeername(fd, (struct sockaddr *) & remote, &len) < 0)
 	{
-		elog(errlevel, "print_connection(%d, %s): can't get peername err: %s",
-			 fd, msg, strerror(errno));
+		elog(errlevel, "print_connection(%d, %s): can't get peername err: %m",
+			 fd, msg);
 	}
 
 	len = sizeof(local);
 	if (getsockname(fd, (struct sockaddr *) & local, &len) < 0)
 	{
-		elog(errlevel, "print_connection(%d, %s): can't get localname err: %s",
-			 fd, msg, strerror(errno));
+		elog(errlevel, "print_connection(%d, %s): can't get localname err: %m",
+			 fd, msg);
 	}
 
 	elog(DEBUG2, "%s: w/ports (%d/%d)",
 		 msg, ntohs(local.sin_port), ntohs(remote.sin_port));
 }
+
+
+void
+format_fd_set(StringInfo buf, int nfds, fd_set *fds, char* pfx, char *sfx)
+{
+    int     i;
+
+    appendStringInfoString(buf, pfx);
+    for (i = 1; i < nfds; i++)
+    {
+        if (FD_ISSET(i, fds))
+            appendStringInfo(buf, "%d,", i);
+    }
+    if (buf->len > 0 &&
+        buf->data[buf->len-1] == ',')
+        truncateStringInfo(buf, buf->len - 1);
+    appendStringInfoString(buf, sfx);
+}
+
+
+char *
+format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
+{
+    /* Save remote host:port string for error messages. */
+    if (sa->sa_family == AF_INET)
+    {
+        struct sockaddr_in *sin = (struct sockaddr_in *)sa;
+        unsigned            s_addr = ntohl(sin->sin_addr.s_addr);
+
+        snprintf(buf, bufsize, "%d.%d.%d.%d:%d",
+                 (s_addr >> 24)&0xff,
+                 (s_addr >> 16)&0xff,
+                 (s_addr >> 8)&0xff,
+                 s_addr&0xff,
+                 ntohs(sin->sin_port));
+    }
+#ifdef HAVE_IPV6
+    else if (sa->sa_family == AF_INET6)
+    {
+        struct sockaddr_in6    *sin6 = (struct sockaddr_in6 *)sa;
+
+        if (bufsize > 8)
+        {
+            inet_ntop(AF_INET6, &sin6->sin6_addr, buf, bufsize - 8);
+            buf += strlen(buf);
+        }
+        snprintf(buf, 8, ":%d", ntohs(sin6->sin6_port));
+    }
+#endif
+    else
+        snprintf(buf, bufsize, "?host?:?port?");
+
+    return buf;
+}                               /* format_sockaddr */
+
 
 static void
 flushListenerBacklog(void)
@@ -2661,7 +3104,7 @@ flushListenerBacklog(void)
 				newfd = accept(listenerFd, (struct sockaddr *) & peer, &peerlen);
 				if (newfd < 0)
 				{
-					elog(DEBUG1, "flushListenerBacklog: %s during accept", strerror(errno));
+					elog(DEBUG2, "flushListenerBacklog: %m%s", "accept");
 					continue;
 				}
 				/* shutdown this socket */
@@ -2673,7 +3116,7 @@ flushListenerBacklog(void)
 		else if (pendingConn < 0 && errno != EINTR)
 		{
 			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-							errmsg("%m during listener cleanup")));
+                            errmsg("%m during listener cleanup") ));
 		}
 
 		/*
@@ -2768,7 +3211,7 @@ waitOnSocketDone(int fd)
 		 * Something unexpected, but probably not horrible warn and
 		 * return
 		 */
-		elog(LOG, "TeardownInterconnect: waitOnSocketDone recv errno=%d)", errno);
+		elog(LOG, "TeardownInterconnect: waitOnSocketDone %m%s", "recv");
 		break;
 	}
 
