@@ -53,7 +53,7 @@ static void disconnectAndDestroyAllReaderGangs(void);
 
 static Gang *buildGangDefinition(GangType type, int size, int content);
 
-static void cleanupGang(Gang * gp);
+static bool cleanupGang(Gang * gp);
 
 static bool gangOK(Gang * gp);
 
@@ -1529,20 +1529,27 @@ getCdbProcessesForQD(int isPrimary)
 	return list;
 }
 
-
-static void
+/*
+ * cleanupGang():
+ *
+ * A return value of "true" means that the gang was intact (or NULL).
+ *
+ * A return value of false, means that a problem was detected and the
+ * gang has been disconnected (and so should not be put back onto the
+ * available list).
+ */
+static bool
 cleanupGang(Gang * gp)
 {
 	int			i;
 
 	if (gp == NULL)
-		return;
+		return true;
 
 	elog(DEBUG5, "cleanupGang");
 
 	if (gp->active)
 		elog(DEBUG2, "cleanupGang called on a gang that is active");
-
 
 	/*
 	 * if the process is in the middle of blowing up... then we don't do
@@ -1550,7 +1557,7 @@ cleanupGang(Gang * gp)
 	 * things getting HUNG.
 	 */
 	if (proc_exit_inprogress)
-		return;
+		return true;
 
 	/*
 	 * Loop through the segment_database_descriptors array and, for each
@@ -1559,15 +1566,13 @@ cleanupGang(Gang * gp)
 	 */
 	for (i = 0; i < gp->size; i++)
 	{
-
-
 		SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
 
 		/*
 		 * TODO: Perform cancellation of "still running" queries
 		 */
-
-		if (segdbDesc->conn && PQstatus(segdbDesc->conn) == CONNECTION_OK)
+		/* PQstatus() is smart enough to handle NULL */
+		if (PQstatus(segdbDesc->conn) == CONNECTION_OK)
 		{
 
 			PGresult   *pRes;
@@ -1590,24 +1595,29 @@ cleanupGang(Gang * gp)
 				retry++;
 				if (retry > 20)
 				{
-					elog(LOG, "freeGang called when a gang member is still busy, and waiting didn't help, trying to destroy the gang");
+					elog(LOG, "cleanupGang called when a gang member is still busy, waiting didn't help, trying to destroy the gang");
 					disconnectAndDestroyGang(gp);
-					elog(FATAL, "freeGang called when a gang member is still busy.  Fatal error.");
-					return;
+					elog(FATAL, "cleanupGang called when a gang member is still busy.  Fatal error.");
+					return false;
 				}
-
-			};
-
+			}
+		}
+		else
+		{
+			/* something happened to this gang, disconnect instead of sending it back onto our lists! */
+			elog(LOG, "cleanupGang: lost connection with gang member. Disconnecting");
+			disconnectAndDestroyGang(gp);
+			return false;
 		}
 
 		/* QE is no longer associated with a slice. */
 		cdbconn_setSliceIndex(segdbDesc, -1);
-
 	}
 
 	gp->allocated = false;
 
 	elog(DEBUG5, "cleanupGang done");
+	return true;
 }
 
 
@@ -1689,7 +1699,12 @@ disconnectAndDestroyGang(Gang * gp)
 
 }
 
-
+/*
+ * Be careful when moving gangs onto the available list, if
+ * cleanupGang() tells us that the gang has a problem, the gang has
+ * been free()ed and we should discard it -- otherwise it is good as
+ * far as we can tell.
+ */
 void
 freeGangs(void)
 {
@@ -1700,11 +1715,22 @@ freeGangs(void)
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
-	elog(DEBUG4, "freeGangs: allocatedReaderGangsN %d, availableReaderGangsN %d",
-	 list_length(allocatedReaderGangsN), list_length(availableReaderGangsN));
+	elog(DEBUG4, "freeGangs: allocated-N %d, available-N %d allocated-1 %d available-1 %d",
+		 list_length(allocatedReaderGangsN), list_length(availableReaderGangsN),
+		 list_length(allocatedReaderGangs1), list_length(availableReaderGangs1));
 
-	cleanupGang(primaryWriterGang);
-	cleanupGang(mirrorWriterGang);
+	if (!cleanupGang(primaryWriterGang))
+	{
+		disconnectAndDestroyAllGangs();
+		elog(ERROR, "freeGangs: Bad PRIMARY WRITER gang");
+		return;
+	}
+	if (!cleanupGang(mirrorWriterGang))
+	{
+		disconnectAndDestroyAllGangs();
+		elog(ERROR, "freeGangs: Bad MIRROR WRITER gang");
+		return;
+	}
 
 	if (allocatedReaderGangsN != NIL)
 	{
@@ -1715,8 +1741,11 @@ freeGangs(void)
 		while (gp != NULL)
 		{
 			elog(DEBUG5, "Returning an N gang to the available list");
-			cleanupGang(gp);
-			availableReaderGangsN = lappend(availableReaderGangsN, gp);
+
+			/* we only return the gang to the available list if it is good */
+			if (cleanupGang(gp))
+				availableReaderGangsN = lappend(availableReaderGangsN, gp);
+
 			allocatedReaderGangsN = list_delete_first(allocatedReaderGangsN);
 			if (allocatedReaderGangsN != NIL)
 				gp = linitial(allocatedReaderGangsN);
@@ -1734,8 +1763,12 @@ freeGangs(void)
 		while (gp != NULL)
 		{
 			elog(DEBUG5, "Returning a 1 gang to the available list");
-			cleanupGang(gp);
-			availableReaderGangs1 = lappend(availableReaderGangs1, gp);
+
+			/* we only return the gang to the available list if it is good */
+			if (cleanupGang(gp))
+			{
+				availableReaderGangs1 = lappend(availableReaderGangs1, gp);
+			}
 			allocatedReaderGangs1 = list_delete_first(allocatedReaderGangs1);
 			if (allocatedReaderGangs1 != NIL)
 				gp = linitial(allocatedReaderGangs1);
@@ -1746,10 +1779,9 @@ freeGangs(void)
 
 	MemoryContextSwitchTo(oldContext);
 
-	elog(DEBUG4, "freeGangs done: allocatedReaderGangsN %d, availableReaderGangsN %d",
-		 list_length(allocatedReaderGangsN),
-		 list_length(availableReaderGangsN));
-
+	elog(DEBUG4, "freeGangs: done allocated-N %d, available-N %d allocated-1 %d available-1 %d",
+		 list_length(allocatedReaderGangsN), list_length(availableReaderGangsN),
+		 list_length(allocatedReaderGangs1), list_length(availableReaderGangs1));
 }
 
 static void
@@ -1816,16 +1848,12 @@ disconnectAndDestroyAllReaderGangs(void)
 }
 
 
-
 void
 disconnectAndDestroyAllGangs(void)
 {
-
-
 	elog(DEBUG3, "disconnectAndDestroyAllGangs");
 
 	disconnectAndDestroyAllReaderGangs();
-
 
 	disconnectAndDestroyGang(primaryWriterGang);
 	primaryWriterGang = NULL;
