@@ -351,9 +351,11 @@ errfinish(int dummy,...)
 	int			elevel = edata->elevel;
 	MemoryContext oldcontext;
 	ErrorContextCallback *econtext;
+    int         saved_errno;            /*CDB*/
 
 	recursion_depth++;
 	CHECK_STACK_DEPTH();
+    saved_errno = edata->saved_errno;   /*CDB*/
 
 	/*
 	 * Do processing in ErrorContext, which we hope has enough reserved space
@@ -490,6 +492,7 @@ errfinish(int dummy,...)
 	}
 
 	/* We reach here if elevel <= WARNING. OK to return to caller. */
+    errno = saved_errno;                /*CDB*/
 }
 
 
@@ -687,6 +690,7 @@ errmsg(const char *fmt,...)
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
+    errno = edata->saved_errno; /*CDB*/
 	return 0;					/* return value does not matter */
 }
 
@@ -713,6 +717,7 @@ errmsg_internal(const char *fmt,...)
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
+    errno = edata->saved_errno; /*CDB*/
 	return 0;					/* return value does not matter */
 }
 
@@ -734,6 +739,7 @@ errdetail(const char *fmt,...)
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
+    errno = edata->saved_errno; /*CDB*/
 	return 0;					/* return value does not matter */
 }
 
@@ -755,6 +761,7 @@ errhint(const char *fmt,...)
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
+    errno = edata->saved_errno; /*CDB*/
 	return 0;					/* return value does not matter */
 }
 
@@ -780,6 +787,7 @@ errcontext(const char *fmt,...)
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
+    errno = edata->saved_errno; /*CDB*/
 	return 0;					/* return value does not matter */
 }
 
@@ -861,6 +869,7 @@ internalerrquery(const char *query)
 	if (query)
 		edata->internalquery = MemoryContextStrdup(ErrorContext, query);
 
+    errno = edata->saved_errno; /*CDB*/
 	return 0;					/* return value does not matter */
 }
 
@@ -2302,6 +2311,13 @@ send_message_to_frontend(ErrorData *edata)
  * We must replace %m with the appropriate strerror string, since vsnprintf
  * won't know what to do with it.
  *
+ * CDB: "%m%s" expands to the strerror string along with the decimal errno,
+ * embedding the %s in the message.  Note there is no space between the
+ * %m and %s.  For example,
+ *      errmsg("System error: %m%s; retry in %d sec", "bind", 15)
+ * produces something like this (assuming errno == EADDRINUSE):
+ *      "System error: Address already in use (bind errno 98); retry in 15 sec"
+ *
  * The result is a palloc'd string.
  */
 static char *
@@ -2333,6 +2349,11 @@ expand_fmt_string(const char *fmt, ErrorData *edata)
 						appendStringInfoCharMacro(&buf, '%');
 					appendStringInfoCharMacro(&buf, *cp2);
 				}
+                if (cp[1] == '%' && cp[2] == 's')   /*CDB: "%m%s" */
+                {
+                    appendStringInfo(&buf, " (%%s errno %d)", edata->saved_errno);
+                    cp += 2;
+                }
 			}
 			else
 			{
