@@ -2271,7 +2271,7 @@ readRegisterMessage(MotionConn *conn)
                                "from %s: format not recognized",
                                conn->remoteHostAndPort),
                         errdetail("msgBytes=%d expected=%d sockfd=%d local=%s",
-                                  msg.msgBytes, sizeof(*regMsg),
+                                  msg.msgBytes, (int)sizeof(*regMsg),
                                   conn->sockfd, conn->localHostAndPort)
                         ));
     }
