@@ -1675,7 +1675,7 @@ CREATE VIEW element_types AS
            CAST(null AS cardinal_number) AS maximum_cardinality,
            CAST('a' || x.objdtdid AS sql_identifier) AS dtd_identifier
 
-    FROM pg_namespace n, pg_type aty, pg_namespace nbt, pg_type bt,
+    FROM pg_namespace n, pg_type at, pg_namespace nbt, pg_type bt,
          (
            /* columns */
            SELECT c.relnamespace, CAST(c.relname AS sql_identifier),
@@ -1712,9 +1712,9 @@ CREATE VIEW element_types AS
          ) AS x (objschema, objname, objtype, objdtdid, objtypeid)
 
     WHERE n.oid = x.objschema
-          AND aty.oid = x.objtypeid
-          AND (aty.typelem <> 0 AND aty.typlen = -1)
-          AND aty.typelem = bt.oid
+          AND at.oid = x.objtypeid
+          AND (at.typelem <> 0 AND at.typlen = -1)
+          AND at.typelem = bt.oid
           AND nbt.oid = bt.typnamespace
 
           AND (n.nspname, x.objname, x.objtype, x.objdtdid) IN

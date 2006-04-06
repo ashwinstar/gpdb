@@ -7856,13 +7856,6 @@ target_el:	a_expr AS ColLabel
 					$$->indirection = NIL;
 					$$->val = (Node *)$1;
 				}
-			| c_expr ColId
-				{
-					$$ = makeNode(ResTarget);
-					$$->name = $2;
-					$$->indirection = NIL;
-					$$->val = (Node *)$1;
-				}
 			| '*'
 				{
 					ColumnRef *n = makeNode(ColumnRef);
@@ -8190,6 +8183,7 @@ unreserved_keyword:
 			| ALTER
 			| ASSERTION
 			| ASSIGNMENT
+			| AT
 			| BACKWARD
 			| BEFORE
 			| BEGIN_P
@@ -8218,6 +8212,7 @@ unreserved_keyword:
 			| CURSOR
 			| CYCLE
 			| DATABASE
+			| DAY_P
 			| DEALLOCATE
 			| DECLARE
 			| DEFAULTS
@@ -8250,6 +8245,7 @@ unreserved_keyword:
 			| HANDLER
 			| HEADER
 			| HOLD
+			| HOUR_P
 			| IMMEDIATE
 			| IMMUTABLE
 			| IMPLICIT_P
@@ -8278,8 +8274,10 @@ unreserved_keyword:
 			| LOGIN_P
 			| MATCH
 			| MAXVALUE
+			| MINUTE_P
 			| MINVALUE
 			| MODE
+			| MONTH_P
 			| MOVE
 			| NAMES
 			| NEXT
@@ -8296,6 +8294,7 @@ unreserved_keyword:
 			| OBJECT_P
 			| OF
 			| OIDS
+			| OPERATOR
 			| OPTION
 			| OWNER
 			| PARTIAL
@@ -8328,6 +8327,7 @@ unreserved_keyword:
 			| SAVEPOINT
 			| SCHEMA
 			| SCROLL
+			| SECOND_P
 			| SECURITY
 			| SEQUENCE
 			| SERIALIZABLE
@@ -8370,8 +8370,11 @@ unreserved_keyword:
 			| VARYING
 			| VIEW
 			| VOLATILE
+			| WITH
+			| WITHOUT
 			| WORK
 			| WRITE
+			| YEAR_P
 			| ZONE
 		;
 
@@ -8387,7 +8390,10 @@ unreserved_keyword:
  */
 col_name_keyword:
 			  BIGINT
+			| BIT
 			| BOOLEAN_P
+			| CHAR_P
+			| CHARACTER
 			| COALESCE
 			| CONVERT
 			| DEC
@@ -8402,12 +8408,14 @@ col_name_keyword:
 			| INTERVAL
 			| LEAST
 			| NATIONAL
+			| NCHAR
 			| NONE
 			| NULLIF
 			| NUMERIC
 			| OUT_P
 			| OVERLAY
 			| POSITION
+			| PRECISION
 			| REAL
 			| ROW
 			| SETOF
@@ -8431,15 +8439,12 @@ col_name_keyword:
  * - thomas 2000-11-28
  */
 func_name_keyword:
-			  AT
-			| AUTHORIZATION
+			  AUTHORIZATION
 			| BETWEEN
 			| BINARY
 			| CROSS
-			| DAY_P
 			| FREEZE
 			| FULL
-			| HOUR_P
 			| ILIKE
 			| INNER_P
 			| IS
@@ -8447,21 +8452,13 @@ func_name_keyword:
 			| JOIN
 			| LEFT
 			| LIKE
-			| MINUTE_P
-			| MONTH_P
 			| NATURAL
 			| NOTNULL
-			| OPERATOR
 			| OUTER_P
 			| OVERLAPS
-			| PRECISION
 			| RIGHT
-			| SECOND_P
 			| SIMILAR
 			| VERBOSE
-			| WITH
-			| WITHOUT
-			| YEAR_P
 		;
 
 /* Reserved keyword --- these keywords are usable only as a ColLabel.
@@ -8480,12 +8477,9 @@ reserved_keyword:
 			| AS
 			| ASC
 			| ASYMMETRIC
-			| BIT
 			| BOTH
 			| CASE
 			| CAST
-			| CHAR_P
-			| CHARACTER
 			| CHECK
 			| COLLATE
 			| COLUMN
@@ -8519,7 +8513,6 @@ reserved_keyword:
 			| LIMIT
 			| LOCALTIME
 			| LOCALTIMESTAMP
-			| NCHAR
 			| NEW
 			| NOT
 			| NULL_P
