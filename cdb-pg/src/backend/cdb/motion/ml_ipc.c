@@ -743,6 +743,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
     int         iteration = 0;
 	struct timeval  startTime;
     StringInfoData  logbuf;
+	int             elapsed_ms = 0;
 
 	/* we can have at most one of these. */
 	MotionLayerState *sendingMotionState = NULL;
@@ -805,7 +806,6 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 		struct timeval  timeout;
         fd_set          rset, wset, eset;
 	    int			    highsock = -1;
-        int             elapsed_ms = 0;
         int             timeout_ms = 20*60*1000;
         int             outgoing_fail_count = 0;
         int             elevel;
