@@ -348,6 +348,11 @@ ProcessCatchupEvent(void)
 	{
 		elog(DEBUG4, "ProcessCatchupEvent outside transaction");
 
+		if (Mpp_role == MPP_ROLE_DISPATCH)
+		{
+			disconnectAndDestroyAllGangs();
+		}
+
 		StartTransactionCommand();
 		CommitTransactionCommand();
 	}
