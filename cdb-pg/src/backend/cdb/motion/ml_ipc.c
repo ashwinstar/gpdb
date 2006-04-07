@@ -11,6 +11,7 @@
 #include "postgres.h"
 
 #include "nodes/pg_list.h"
+#include "nodes/print.h"
 #include "utils/memutils.h"
 #include "utils/hsearch.h"
 #include "miscadmin.h"
@@ -240,7 +241,6 @@ static void format_fd_set(StringInfo buf, int nfds, fd_set *fds, char* pfx, char
 static char *format_sockaddr(struct sockaddr *sa, char* buf, int bufsize);
 
 static void waitOnSocketDone(int);
-static void flushListenerBacklog(void);
 
 static inline TupleChunkListItem RecvTupleChunk(MotionConn * conn);
 
@@ -1252,7 +1252,13 @@ TeardownInterconnect(bool forceEOS)
                             activated ? "completed" : "exited")
             ));
 
-	Assert(sliceTable != NULL);
+	Insist(sliceTable != NULL);
+
+	/* if setup did not complete; or we're in the "force" argument is
+	 * set, pretty-print the slicetable */
+	if (!activated)
+		elog_node_display(DEBUG1, "local slice table",
+						  sliceTable, true);
 
 	mySlice = (Slice *) list_nth(sliceTable->slices, sliceId);
 
@@ -1401,7 +1407,7 @@ TeardownInterconnect(bool forceEOS)
 	 * (we may accept them on a subsequent query!)
 	 */
 	if (listenerFd != -1)
-		flushListenerBacklog();
+		flushInterconnectListenerBacklog();
 
 	if (mlsStates != NULL)
 	{
@@ -3074,8 +3080,8 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
 }                               /* format_sockaddr */
 
 
-static void
-flushListenerBacklog(void)
+void
+flushInterconnectListenerBacklog(void)
 {
 	int			pendingConn,
 				newfd,
@@ -3098,13 +3104,14 @@ flushListenerBacklog(void)
 			for (i = 0; i < pendingConn; i++)
 			{
 #ifdef AMS_VERBOSE_LOGGING
-				elog(DEBUG3, "flushListenerBacklog(): accepting and closing client conn");
+				elog(DEBUG3, "flushInterconnectListenerBacklog(): accepting and closing client conn");
 #endif
+
 				peerlen = sizeof(peer);
 				newfd = accept(listenerFd, (struct sockaddr *) & peer, &peerlen);
 				if (newfd < 0)
 				{
-					elog(DEBUG2, "flushListenerBacklog: %m%s", "accept");
+					elog(DEBUG2, "flushInterconnectListenerBacklog: %m%s", "accept");
 					continue;
 				}
 				/* shutdown this socket */
