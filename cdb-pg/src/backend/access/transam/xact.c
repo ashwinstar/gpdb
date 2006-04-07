@@ -1487,18 +1487,6 @@ StartTransaction(void)
 	{
 		if (Mpp_is_writer)
 		{
-			/* Shared-snapshot synchronization time is our only
-			 * opportunity to synchronize segmates before a query gets
-			 * rolling -- the interconnect requires such
-			 * sychronization because there are cases where a reader
-			 * gang can setup the interconnect, but the writer gang
-			 * may have exited before setting up the interconnect
-			 * (e.g. permission problem on target table in an
-			 * insert). This is our change to get everybody back in
-			 * sync.
-			 */
-			flushInterconnectListenerBacklog();
-
 			/*
 			 * generate a new transaction id
 			 */
