@@ -1124,7 +1124,7 @@ static void
 test_buffers(void)
 {
 	char		cmd[MAXPGPATH];
-	static const int bufs[] = {1000, 900, 800, 700, 600, 500,
+	static const int bufs[] = {16000, 8000, 1000, 900, 800, 700, 600, 500,
 	400, 300, 200, 100, 50};
 	static const int len = sizeof(bufs) / sizeof(int);
 	int			i,
