@@ -1089,7 +1089,7 @@ static void
 test_connections(void)
 {
 	char		cmd[MAXPGPATH];
-	static const int conns[] = {100, 50, 40, 30, 20, 10};
+	static const int conns[] = {200, 100, 50, 40, 30, 20, 10};
 	static const int len = sizeof(conns) / sizeof(int);
 	int			i,
 				status;
