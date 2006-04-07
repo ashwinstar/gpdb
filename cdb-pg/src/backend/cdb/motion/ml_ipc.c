@@ -1069,7 +1069,9 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
                 if (readRegisterMessage(conn))
                 {
                     incompleteConns = list_delete_ptr(incompleteConns, conn);
-                    incoming_count++;
+
+					if (conn->sockfd != -1)
+						incoming_count++;
 
                     /* Free temporary MotionConn storage. */
                     pfree(conn);
@@ -1088,7 +1090,8 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
                 /* Try to read the Register message without waiting. */
                 if (readRegisterMessage(conn))
                 {
-                    incoming_count++;
+					if (conn->sockfd != -1)
+						incoming_count++;
                     pfree(conn);
                 }
 
@@ -2137,14 +2140,14 @@ sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn)
                                 Mpp_segment)
                 ));
 
-        regMsg->msgBytes = htonl(sizeof(*regMsg));
-        regMsg->recvSliceIndex = htonl(pEntry->recvSlice->sliceIndex);
-        regMsg->sendSliceIndex = htonl(pEntry->sendSlice->sliceIndex);
-        regMsg->srcContentId = htonl(Mpp_segment);
-        regMsg->srcListenerPort = htonl(Mpp_listener_port);
-        regMsg->srcPid = htonl(MyProcPid);
-        regMsg->srcSessionId = htonl(mpp_session_id);
-        regMsg->srcCommandCount = htonl(mpp_command_count);
+        regMsg->msgBytes = sizeof(*regMsg);
+        regMsg->recvSliceIndex = pEntry->recvSlice->sliceIndex;
+        regMsg->sendSliceIndex = pEntry->sendSlice->sliceIndex;
+        regMsg->srcContentId = Mpp_segment;
+        regMsg->srcListenerPort = Mpp_listener_port;
+        regMsg->srcPid = MyProcPid;
+        regMsg->srcSessionId = mpp_session_id;
+        regMsg->srcCommandCount = mpp_command_count;
 
         conn->state = mcsSendRegMsg;
         conn->msgPos = conn->pBuff;
@@ -2262,14 +2265,14 @@ readRegisterMessage(MotionConn *conn)
      * Got the whole message.  Convert fields to native byte order.
      */
     regMsg = (RegisterMessage *)conn->pBuff;
-    msg.msgBytes = ntohl(regMsg->msgBytes);
-    msg.recvSliceIndex = ntohl(regMsg->recvSliceIndex);
-    msg.sendSliceIndex = ntohl(regMsg->sendSliceIndex);
-    msg.srcContentId = ntohl(regMsg->srcContentId);
-    msg.srcListenerPort = ntohl(regMsg->srcListenerPort);
-    msg.srcPid = ntohl(regMsg->srcPid);
-    msg.srcSessionId = ntohl(regMsg->srcSessionId);
-    msg.srcCommandCount = ntohl(regMsg->srcCommandCount);
+    msg.msgBytes = regMsg->msgBytes;
+    msg.recvSliceIndex = regMsg->recvSliceIndex;
+    msg.sendSliceIndex = regMsg->sendSliceIndex;
+    msg.srcContentId = regMsg->srcContentId;
+    msg.srcListenerPort = regMsg->srcListenerPort;
+    msg.srcPid = regMsg->srcPid;
+    msg.srcSessionId = regMsg->srcSessionId;
+    msg.srcCommandCount = regMsg->srcCommandCount;
 
     /* Check for valid message format. */
     if (msg.msgBytes != sizeof(*regMsg))
@@ -2299,7 +2302,7 @@ readRegisterMessage(MotionConn *conn)
         msg.recvSliceIndex == sliceId &&
         msg.srcContentId >= 0 &&
         msg.srcSessionId == mpp_session_id &&
-		msg.srcSessionId <= mpp_command_count)
+		msg.srcCommandCount <= mpp_command_count)
     {
 		if (msg.srcCommandCount < mpp_command_count)
 		{
@@ -2312,6 +2315,9 @@ readRegisterMessage(MotionConn *conn)
 			shutdown(conn->sockfd, SHUT_RDWR);
 			close(conn->sockfd);
 			conn->sockfd = -1;
+
+			pfree(conn->pBuff);
+
  			return true;
 		}
 		else
@@ -2334,11 +2340,11 @@ readRegisterMessage(MotionConn *conn)
                                conn->remoteHostAndPort),
                         errdetail("sendSlice=%d recvSlice=%d srcContentId=%d "
                                   "srcPid=%d srcListenerPort=%d "
-                                  "srcSessionId=%d srcCommandCount=%d",
+                                  "srcSessionId=%d srcCommandCount=%d valid=%d motnode=%d",
                                   msg.sendSliceIndex, msg.recvSliceIndex,
                                   msg.srcContentId, msg.srcPid,
                                   msg.srcListenerPort, msg.srcSessionId,
-                                  msg.srcCommandCount)
+                                  msg.srcCommandCount, pEntry->valid,pEntry->motNodeId)
                 ));
 	}
 
