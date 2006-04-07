@@ -602,22 +602,32 @@ explain_outNode(StringInfo str,
 		case T_Motion:
 			{
 				Motion	   *pMotion = (Motion *) plan;
+                int         nSenders = pMotion->numInputSegs;
+                int         nReceivers = pMotion->numOutputSegs;
 
 				switch (pMotion->motionType)
 				{
 					case MOTIONTYPE_HASH:
-						pname = "Redistribute Motion";
+                        nReceivers = pMotion->numHashSegs;
+					    pname = "Redistribute Motion";
 						break;
 					case MOTIONTYPE_FIXED:
-						if (pMotion->numOutputSegs == 0)
-							pname = "Broadcast Motion";
+                        nReceivers = pMotion->numOutputSegs;
+						if (nReceivers == 0)
+                        {
+                            pname = "Broadcast Motion";
+                            nReceivers = getMPPSegmentCount();
+                        }
 						else
-							pname = "Gather Motion";
+                            pname = "Gather Motion";
 						break;
 					default:
 						pname = "Motion ???";
 						break;
 				}
+                appendStringInfo(str, "%s %d:%d  (slice%d)", pname,
+                                 nSenders, nReceivers, pMotion->motionID);
+                pname = "";
 			}
 
 			break;
