@@ -242,6 +242,8 @@ static char *format_sockaddr(struct sockaddr *sa, char* buf, int bufsize);
 
 static void waitOnSocketDone(int);
 
+static void flushInterconnectListenerBacklog(void);
+
 static inline TupleChunkListItem RecvTupleChunk(MotionConn * conn);
 
 
@@ -2200,7 +2202,7 @@ sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn)
 static bool
 readRegisterMessage(MotionConn *conn)
 {
-    int     bytesToReceive;
+   	int     bytesToReceive;
     int     bytesReceived;
     int     iconn;
     RegisterMessage    *regMsg;
@@ -2297,19 +2299,36 @@ readRegisterMessage(MotionConn *conn)
         msg.recvSliceIndex == sliceId &&
         msg.srcContentId >= 0 &&
         msg.srcSessionId == mpp_session_id &&
-        msg.srcCommandCount == mpp_command_count)
+		msg.srcSessionId <= mpp_command_count)
     {
-        ereport(DEBUG3, (errmsg("Interconnect got registration message "
-                                "from %s sockfd=%d: recvSlice=%d sendSlice=%d "
-                                "srcContentId=%d srcPid=%d",
-                                conn->remoteHostAndPort, conn->sockfd,
-                                msg.recvSliceIndex, msg.sendSliceIndex,
-                                msg.srcContentId, msg.srcPid)
-                ));
+		if (msg.srcCommandCount < mpp_command_count)
+		{
+			/* This is an old connection, which can be safely
+			 * ignored. We get this kind of stuff for cases in which
+			 * one gang participating in the interconnect exited a
+			 * query before calling SetupInterconnect(). Later queries
+			 * wind up receiving their registration messages. */
+			elog(LOG, "Received invalid, old registration message: will ignore");
+			shutdown(conn->sockfd, SHUT_RDWR);
+			close(conn->sockfd);
+			conn->sockfd = -1;
+ 			return true;
+		}
+		else
+		{
+			/* message looks good */
+			ereport(DEBUG3, (errmsg("Interconnect got registration message "
+									"from %s sockfd=%d: recvSlice=%d sendSlice=%d "
+									"srcContentId=%d srcPid=%d",
+									conn->remoteHostAndPort, conn->sockfd,
+									msg.recvSliceIndex, msg.sendSliceIndex,
+									msg.srcContentId, msg.srcPid)
+						));
+		}
     }
     else
-    {
-        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+	{
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
                         errmsg("Interconnect error: Invalid registration "
                                "message received from %s.",
                                conn->remoteHostAndPort),
@@ -2321,7 +2340,7 @@ readRegisterMessage(MotionConn *conn)
                                   msg.srcListenerPort, msg.srcSessionId,
                                   msg.srcCommandCount)
                 ));
-    }
+	}
 
     /*
      * Find and verify the CdbProcess node for the sending process.
@@ -3080,7 +3099,7 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
 }                               /* format_sockaddr */
 
 
-void
+static void
 flushInterconnectListenerBacklog(void)
 {
 	int			pendingConn,

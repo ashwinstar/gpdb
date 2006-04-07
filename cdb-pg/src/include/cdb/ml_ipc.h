@@ -162,11 +162,4 @@ extern void DeregisterReadInterest(int16 motNodeID, int16 srcRoute);
  */
 extern void doSendStopMessage(int16 motNodeID);
 
-/*
- * There are some cases where the interconnect hasn't actually been
- * setup on some gangs, but has on others ... to handle an error in
- * such a situation we need to clean out the backlog.
- */
-extern void flushInterconnectListenerBacklog(void);
-
 #endif   /* ML_IPC_H */
