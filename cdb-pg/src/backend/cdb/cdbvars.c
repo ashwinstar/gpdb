@@ -64,6 +64,11 @@ int			mpp_connections_per_thread; /* How many libpq connections are
 int			Mpp_segment = UNDEF_SEGMENT;		/* What content this QE is
 												 * handling. */
 
+/*
+ * TCP port the Interconnect listens on for incoming connections from other
+ * backends.  Assigned by initMotionLayerIPC() at process startup.  This port
+ * is used for the duration of this process and should never change.
+ */
 int			Mpp_listener_port;
 
 int			Mpp_max_packet_size;	/* max Interconnect packet size */

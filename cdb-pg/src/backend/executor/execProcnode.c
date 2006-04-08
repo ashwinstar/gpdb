@@ -7,7 +7,7 @@
  *	 ExecProcNode, or ExecEndNode on its subnodes and do the appropriate
  *	 processing.
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -262,45 +262,11 @@ ExecInitNode(Plan *node, EState *estate)
 	{
 		SubPlan    *subplan = (SubPlan *) lfirst(l);
 		SubPlanState *sstate;
-		int			prior_es_cur_slice_idx;
-		int			prior_es_cur_root_idx;
 
 		Assert(IsA(subplan, SubPlan));
 		sstate = ExecInitExprInitPlan(subplan, result);
 
-		/*
-		 * MPP Slice Plan:	QD must initialize the global slice table.
-		 */
-		prior_es_cur_slice_idx = estate->es_cur_slice_idx;		/* save */
-		prior_es_cur_root_idx = estate->es_cur_root_idx;		/* save */
-
-		if (Mpp_role == MPP_ROLE_DISPATCH && estate->es_sliceTable != NULL)
-		{
-			MemoryContext oldcxt;
-			int			idx;
-			Slice	   *thisSlice;
-
-			oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
-			idx = estate->es_sliceTable->nextInitPlan++;
-
-			Assert(idx < list_length(estate->es_sliceTable->slices));
-
-			estate->es_cur_slice_idx = idx;
-			estate->es_cur_root_idx = idx;
-			thisSlice = (Slice *) list_nth(estate->es_sliceTable->slices, idx);
-
-			Assert(thisSlice->sliceIndex == -1);
-
-			thisSlice->sliceIndex = idx;
-			thisSlice->rootIndex = idx;
-
-			MemoryContextSwitchTo(oldcxt);
-		}
-
 		ExecInitSubPlan(sstate, estate);
-
-		estate->es_cur_slice_idx = prior_es_cur_slice_idx;		/* restore */
-		estate->es_cur_root_idx = prior_es_cur_root_idx;		/* restore */
 
 		subps = lappend(subps, sstate);
 	}

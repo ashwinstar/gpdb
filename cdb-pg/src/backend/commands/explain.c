@@ -35,6 +35,7 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 
+#include "cdb/cdblink.h"        /* getMPPSegmentCount() */
 #include "cdb/cdbpullup.h"      /* cdbpullup_targetlist() */
 
 
@@ -884,15 +885,16 @@ explain_outNode(StringInfo str,
 		List	   *saved_rtable = es->rtable;
 		ListCell   *lst;
 
-		for (i = 0; i < indent; i++)
-			appendStringInfo(str, "  ");
-		appendStringInfo(str, "  InitPlan\n");
 		foreach(lst, planstate->initPlan)
 		{
 			SubPlanState *sps = (SubPlanState *) lfirst(lst);
 			SubPlan    *sp = (SubPlan *) sps->xprstate.expr;
 
-			es->rtable = sp->rtable;
+		    for (i = 0; i < indent; i++)
+			    appendStringInfo(str, "  ");
+		    appendStringInfo(str, "  InitPlan  (slice%d)\n", sp->qDispSliceId);
+
+            es->rtable = sp->rtable;
 			for (i = 0; i < indent; i++)
 				appendStringInfo(str, "  ");
 			appendStringInfo(str, "    ->  ");

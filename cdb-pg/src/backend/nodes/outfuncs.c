@@ -591,12 +591,10 @@ _outMotion(StringInfo str, Motion *node)
 
 	WRITE_NODE_TYPE("MOTION");
 
-	_outPlanInfo(str, (Plan *) node);
-
+	WRITE_INT_FIELD(motionID);	
 	WRITE_ENUM_FIELD(motionType, MotionType);
 	WRITE_BOOL_FIELD(sendToSecondary);
 	WRITE_BOOL_FIELD(sendSorted);
-	WRITE_INT_FIELD(motionID);	
 
     WRITE_INT_FIELD(numInputSegs);
     if (node->numInputSegs > 0)
@@ -632,6 +630,8 @@ _outMotion(StringInfo str, Motion *node)
 	appendStringInfoLiteral(str, " :sortOperators");
 	for (i = 0; i < node->numSortCols; i++)
 		appendStringInfo(str, " %u", node->sortOperators[i]);
+
+    _outPlanInfo(str, (Plan *) node);
 }
 
 /*****************************************************************************
@@ -826,6 +826,7 @@ _outSubPlan(StringInfo str, SubPlan *node)
 {
 	WRITE_NODE_TYPE("SUBPLAN");
 
+    WRITE_INT_FIELD(qDispSliceId);  /*CDB*/
 	WRITE_ENUM_FIELD(subLinkType, SubLinkType);
 	WRITE_BOOL_FIELD(useOr);
 	WRITE_NODE_FIELD(exprs);
@@ -2357,7 +2358,6 @@ _outSliceTable(StringInfo str, SliceTable *node)
 {
 	WRITE_NODE_TYPE("SLICETABLE");
 	WRITE_INT_FIELD(nMotions);
-	WRITE_INT_FIELD(nextInitPlan);
 	WRITE_INT_FIELD(nSubplans);
 	WRITE_INT_FIELD(localSlice);
 	WRITE_NODE_FIELD(slices); /* List of int */

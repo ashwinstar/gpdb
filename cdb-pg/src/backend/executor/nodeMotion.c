@@ -285,8 +285,7 @@ execMotionSender(MotionState * node)
 	}
 
     Assert(node->stopRequested ||
-           node->numTuplesFromChild == node->numTuplesToAMS +
-                                                node->numTuplesToDeepSix);
+           node->numTuplesFromChild == node->numTuplesToAMS);
 
 	/* nothing else to send out, so we return NULL up the tree. */
 	return NULL;
@@ -318,8 +317,7 @@ execMotionUnsortedReceiver(MotionState * node)
 		elog(DEBUG4, "motionID=%d saw END_OF_STREAM", motion->motionID);
         Assert(node->numTuplesFromAMS == node->numTuplesToParent &&
                node->numTuplesFromChild == 0 &&
-               node->numTuplesToAMS == 0 &&
-               node->numTuplesToDeepSix == 0);
+               node->numTuplesToAMS == 0);
 		return NULL;
 	}
 
@@ -466,8 +464,7 @@ execMotionSortedReceiver(MotionState * node)
     {
         Assert(node->numTuplesFromAMS == node->numTuplesToParent &&
                node->numTuplesFromChild == 0 &&
-               node->numTuplesToAMS == 0 &&
-               node->numTuplesToDeepSix == 0);
+               node->numTuplesToAMS == 0);
         return NULL;
     }
 
@@ -596,16 +593,17 @@ ExecInitMotion(Motion * node, EState *estate)
 {
 	MotionState *motionstate;
 	TupleDesc	tupDesc;
-	Slice	   *parentSlice;
-	Slice	   *thisSlice;
-	int			prior_es_cur_slice_idx;
-	int			prior_es_cur_root_idx;
+	Slice	   *sendSlice;
+    Slice      *recvSlice;
+    Slice      *thisSlice = NULL;
+    Slice      *thatSlice = NULL;
+    SliceTable *sliceTable = estate->es_sliceTable;
+	int			prior_es_cur_slice_idx = estate->es_cur_slice_idx;	/* save */
+	int			prior_es_cur_root_idx = estate->es_cur_root_idx;	/* save */
 
-	AssertState(Mpp_role != MPP_ROLE_UTILITY);
-    Assert(node->numInputSegs > 0);
-
-	prior_es_cur_slice_idx = estate->es_cur_slice_idx;	/* save */
-	prior_es_cur_root_idx = estate->es_cur_root_idx;	/* save */
+	Assert(0 < node->motionID &&
+           node->motionID <= sliceTable->nMotions &&
+           node->numInputSegs > 0);
 
 	/*
 	 * create state structure
@@ -615,48 +613,87 @@ ExecInitMotion(Motion * node, EState *estate)
 	motionstate->ps.state = estate;
     motionstate->hashExprState = NULL;
     motionstate->cdbhash = NULL;
+    motionstate->isSender = false;
+    motionstate->isReceiver = false;
 
-	/*
-	 *	MPP  Slice Plan:
-	 *	 QD must initialize the global slice table.
-	 *	 QE must fill in map from motionID to MotionState node.
-	 */
+    /* Look up the sending gang's slice table entry. */
+    sendSlice = (Slice *)list_nth(sliceTable->slices, node->motionID);
+
+    Assert(IsA(sendSlice, Slice) &&
+           sendSlice->sliceIndex == node->motionID);
+
+	/* QD must fill in the global slice table. */
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-		MemoryContext oldcxt;
+		MemoryContext oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
 
-		oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
+        /* Sending slice table entry hasn't been filled in yet. */
+        Assert(sendSlice->rootIndex == -1 &&
+               sendSlice->gangSize == 0);
 
-		parentSlice = (Slice *) list_nth(estate->es_sliceTable->slices, estate->es_cur_slice_idx);
+        /* Look up the receiving (parent) gang's slice table entry. */
+        recvSlice = (Slice *)list_nth(sliceTable->slices, estate->es_cur_slice_idx);
 
-		Assert(IsA(parentSlice, Slice));
-		Assert(parentSlice->sliceIndex == estate->es_cur_slice_idx);
-		Assert(0 < node->motionID && node->motionID <= estate->es_sliceTable->nMotions);
+		Assert(IsA(recvSlice, Slice) &&
+               recvSlice->sliceIndex == estate->es_cur_slice_idx);
+        Assert(recvSlice->rootIndex == 0 ||
+               (recvSlice->rootIndex > sliceTable->nMotions &&
+                recvSlice->rootIndex < list_length(sliceTable->slices)));
 
-		thisSlice = (Slice *) list_nth(estate->es_sliceTable->slices, node->motionID);
-
-		Assert(IsA(thisSlice, Slice));
-		Assert(thisSlice->sliceIndex == -1);
-
-		thisSlice->sliceIndex = node->motionID;
-		thisSlice->rootIndex = parentSlice->rootIndex;
+        /* Sending slice becomes a child of receiving slice. */
+        recvSlice->children = lappend_int(recvSlice->children, sendSlice->sliceIndex);
+		sendSlice->parentIndex = estate->es_cur_slice_idx;
+        sendSlice->rootIndex = recvSlice->rootIndex;
 
 		/* The gang beneath a Motion will be a reader. */
-		thisSlice->gangType = GANGTYPE_READER;
-        thisSlice->gangSize = node->numInputSegs;
+		sendSlice->gangType = GANGTYPE_READER;
+        sendSlice->gangSize = node->numInputSegs;
 
-		thisSlice->parentIndex = estate->es_cur_slice_idx;
-		parentSlice->children = lappend_int(parentSlice->children, thisSlice->sliceIndex);
+        /* QD is always the receiver for any Motion nodes that it executes. */
+        if (node->motionType == MOTIONTYPE_FIXED &&
+            node->numOutputSegs == 1 &&
+            node->outputSegIdx[0] == -1)
+        {
+            motionstate->isReceiver = true;
+            thisSlice = recvSlice;
+            thatSlice = sendSlice;
+        }
 
-		estate->es_cur_slice_idx = thisSlice->sliceIndex;
+		estate->es_cur_slice_idx = sendSlice->sliceIndex;
 
 		MemoryContextSwitchTo(oldcxt);
 	}
-	else if (Mpp_role == MPP_ROLE_EXECUTE)
+
+    /* QE must fill in map from motionID to MotionState node. */
+	else
 	{
+        Insist(Mpp_role == MPP_ROLE_EXECUTE);
 		Assert(estate->es_slice_map != NULL && estate->es_slice_map[0] == NULL);
+
 		estate->es_slice_map[node->motionID] = motionstate;
+
+        /* Look up the receiving (parent) gang's slice table entry. */
+        recvSlice = (Slice *)list_nth(sliceTable->slices, sendSlice->parentIndex);
+
+	    /* Will we execute the receiving or sending side of this Motion node? */
+	    if (recvSlice->sliceIndex == sliceTable->localSlice)
+        {
+            motionstate->isReceiver = true;
+            thisSlice = recvSlice;
+            thatSlice = sendSlice;
+        }
+        else if (sendSlice->sliceIndex == sliceTable->localSlice)
+        {
+            motionstate->isSender = true;
+            thisSlice = sendSlice;
+            thatSlice = recvSlice;
+        }
+
+        /* TODO: If neither sending nor receiving, don't bother to initialize. */
 	}
+
+    motionstate->sendSlice = sendSlice;
+    motionstate->recvSlice = recvSlice;
 
     motionstate->tupleheapReady = false;
 	motionstate->sentEndOfStream = false;
@@ -670,11 +707,10 @@ ExecInitMotion(Motion * node, EState *estate)
 	motionstate->numTuplesToAMS = 0;
 	motionstate->numTuplesFromAMS = 0;
 	motionstate->numTuplesToParent = 0;
-	motionstate->numTuplesToDeepSix = 0;
 
 	motionstate->stopRequested = false;
 
-	/*
+    /*
 	 * Miscellaneous initialization
 	 *
 	 * create expression context for node
@@ -701,21 +737,20 @@ ExecInitMotion(Motion * node, EState *estate)
 	estate->es_cur_slice_idx = prior_es_cur_slice_idx;
 	estate->es_cur_root_idx = prior_es_cur_root_idx;
 
-	if (motionstate->ps.state->es_cur_slice_idx == node->motionID)
-		motionstate->isReceiver = false;
-	else
-		motionstate->isReceiver = true;
-
-    elog(DEBUG3, "Motion node %d is %s%s %s in slice %d",
-		 node->motionID,
-         (node->sendSorted ? "sorted " : ""),
-		 (node->motionType == MOTIONTYPE_HASH ? "hash" :
-          node->numOutputSegs == 0 ? "broadcast" :
-          node->numOutputSegs == 1 ? "gather" :
-          "unknown"),
-         motionstate->isReceiver ? "receiver" : "sender",
-         motionstate->ps.state->es_cur_slice_idx
-         );
+    if (thisSlice)
+        ereport(DEBUG3, (errmsg("Motion node %d in slice%d is %s%s %s (slice%d %s)",
+		                        node->motionID,
+                                thisSlice->sliceIndex,
+                                (node->sendSorted ? "sorted " : ""),
+		                        (node->motionType == MOTIONTYPE_HASH ? "hash" :
+                                 node->numOutputSegs == 0 ? "broadcast" :
+                                 node->numOutputSegs == 1 ? "gather" :
+                                 "unknown"),
+                                (motionstate->isReceiver ? "receiver" : "sender"),
+                                thatSlice->sliceIndex,
+                                (motionstate->isReceiver ? "is sender"
+                                                         : "is receiver") )
+                ));
 
 	/*
 	 * initialize tuple type.  no need to initialize projection info
@@ -726,7 +761,7 @@ ExecInitMotion(Motion * node, EState *estate)
     tupDesc = ExecGetResultType(&motionstate->ps);
 
 	if (node->motionType == MOTIONTYPE_HASH &&
-        !motionstate->isReceiver)
+        motionstate->isSender)
 	{
 		int			nkeys;
 
@@ -840,15 +875,13 @@ ExecEndMotion(MotionState * node)
 			 "\tnumTuplesFromChild: %d\n"
 			 "\tnumTuplesFromAMS: %d\n"
 			 "\tnumTuplesToAMS: %d\n"
-			 "\tnumTuplesToParent: %d\n"
-			 "\tnumTuplesToDeepSix: %d\n",
+			 "\tnumTuplesToParent: %d\n",
 			 motNodeID,
 			 motionTimeSec,
 			 node->numTuplesFromChild,
 			 node->numTuplesFromAMS,
 			 node->numTuplesToAMS,
-			 node->numTuplesToParent,
-			 node->numTuplesToDeepSix
+			 node->numTuplesToParent
 			);
 	}
 	else
@@ -862,15 +895,13 @@ ExecEndMotion(MotionState * node)
 			 "\t Percentage of time sending:      %2.2f%% \n"
 			 "Counters: \n"
 			 "\tnumTuplesFromChild: %d\n"
-			 "\tnumTuplesToAMS: %d\n"
-			 "\tnumTuplesToDeepSix: %d\n",
+			 "\tnumTuplesToAMS: %d\n",
 			 motNodeID,
 			 otherTimeSec,
 			 motionTimeSec,
 			 (double) (motionTimeSec / (otherTimeSec + motionTimeSec)) * 100,
 			 node->numTuplesFromChild,
-			 node->numTuplesToAMS,
-			 node->numTuplesToDeepSix
+			 node->numTuplesToAMS
 			);
 	}
 

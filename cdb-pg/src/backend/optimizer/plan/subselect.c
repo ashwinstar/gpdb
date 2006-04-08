@@ -3,7 +3,7 @@
  * subselect.c
  *	  Planning routines for subselects and parameters.
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -302,6 +302,7 @@ make_subplan(SubLink *slink, List *lefthand, bool isTopQual)
 	 */
 	node->subLinkType = slink->subLinkType;
 	node->useOr = slink->useOr;
+    node->qDispSliceId = 0;             /*CDB*/
 	node->exprs = NIL;
 	node->paramIds = NIL;
 	node->useHashTable = false;
@@ -1261,6 +1262,7 @@ SS_make_initplan_from_plan(PlannerInfo *root, Plan *plan,
 	 */
 	node = makeNode(SubPlan);
 	node->subLinkType = EXPR_SUBLINK;
+    node->qDispSliceId = 0;             /*CDB*/
 	node->plan = plan;
 	node->plan_id = PlannerPlanId++;	/* Assign unique ID to this SubPlan */
 

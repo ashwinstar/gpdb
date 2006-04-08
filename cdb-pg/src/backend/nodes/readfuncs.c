@@ -985,6 +985,7 @@ _readSubPlan(void)
 {
 	READ_LOCALS(SubPlan);
 
+    READ_INT_FIELD(qDispSliceId);   /*CDB*/
 	READ_ENUM_FIELD(subLinkType, SubLinkType);
 	READ_BOOL_FIELD(useOr);
 	READ_NODE_FIELD(exprs);
@@ -2023,12 +2024,10 @@ _readMotion(void)
 {
 	READ_LOCALS(Motion);
 
-	readPlanInfo((Plan *)local_node);
-
+	READ_INT_FIELD(motionID);
 	READ_ENUM_FIELD(motionType, MotionType);
 	READ_BOOL_FIELD(sendToSecondary);
 	READ_BOOL_FIELD(sendSorted);
-	READ_INT_FIELD(motionID);
 	
     READ_INT_FIELD(numInputSegs);
     READ_INT_ARRAY_OR_NULL(inputSegIdx, numInputSegs, int);
@@ -2045,6 +2044,8 @@ _readMotion(void)
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
 	READ_OID_ARRAY(sortOperators, numSortCols);
+
+	readPlanInfo((Plan *)local_node);
 
 	READ_DONE();
 }
@@ -2161,7 +2162,6 @@ _readSliceTable(void)
 	READ_LOCALS(SliceTable);
 	
 	READ_INT_FIELD(nMotions);
-	READ_INT_FIELD(nextInitPlan);
 	READ_INT_FIELD(nSubplans);
 	READ_INT_FIELD(localSlice);
 	READ_NODE_FIELD(slices); /* List of Slice* */

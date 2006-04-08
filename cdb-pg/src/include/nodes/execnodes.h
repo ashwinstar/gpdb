@@ -424,7 +424,6 @@ typedef struct SliceTable
 	NodeTag type;
 	
 	int nMotions;		/* The number Motion nodes in the entire plan */
-	int nextInitPlan;	/* Next available subplan slice index */
 	int nSubplans;		/* The number of subplan slices allocated */
 	int localSlice;		/* Index of the slice to execute. */
  	List *slices;		/* List of slices */
@@ -1481,7 +1480,8 @@ typedef struct LimitState
 typedef struct MotionState
 {
 	PlanState			ps;					/* its first field is NodeTag */
-	bool				isReceiver;			/* if this is a receiving motion node (else a sender) */
+	bool				isReceiver;			/* true => we receive via this Motion node */
+    bool                isSender;           /* true => we send via this Motion node */
     bool				sentEndOfStream;    /* set when end-of-stream has successfully been sent */
 	bool				stopRequested;      /* set when we want transfer to stop */
 	List				*hashExprState;		/* state struct used for evaluating the hash expressions */
@@ -1496,7 +1496,6 @@ typedef struct MotionState
 	int			numTuplesToAMS;		/* Number of tuples from child that were sent to AMS */
 	int			numTuplesFromAMS;	/* Number of tuples received from AMS */
 	int			numTuplesToParent;	/* Number of tuples either from child or AMS that were sent to parent */
-	int			numTuplesToDeepSix;	/* Number of tuples that were not passed on due to hashSegIdxMask or fixedSegIdxMask being true*/
 	int			*numTuplesByHashSegIdx; /* Distribution of number of tuples from child by hash seg index */
 	
 	struct timeval otherTime;  /* time accumulator used in sending motion node to keep track of time
@@ -1510,6 +1509,8 @@ typedef struct MotionState
 								 */
 		
     Oid                *outputFunArray;     /* output functions for each column (debug only) */
+    Slice              *sendSlice;          /* sending slice */
+    Slice              *recvSlice;          /* receiving slice */
 } MotionState;
 
 #endif   /* EXECNODES_H */

@@ -179,11 +179,13 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	/*
 	 * Handling of the Slice table depends on context.
 	 */
-	currentSliceId = UNSET_SLICE_ID;
 	if (Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
 	{
 		/* Set up blank slice table to be filled in during InitPlan. */
 		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nInitPlans);
+
+		/* set our global sliceid variable for elog. */
+		currentSliceId = estate->es_cur_slice_idx;
 	}
 	else if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
@@ -207,6 +209,9 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 			estate->es_sliceTable = sliceTable;
 			estate->es_cur_slice_idx = sliceTable->localSlice;
 			estate->es_cur_root_idx = slice->rootIndex;
+
+			/* set our global sliceid variable for elog. */
+			currentSliceId = estate->es_cur_slice_idx;
 		}
 	}
 
@@ -242,12 +247,7 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	MemoryContextSwitchTo(oldcontext);
 
 	if (Debug_print_slice_table && Mpp_role == MPP_ROLE_DISPATCH)
-	{
-		elog_node_display(DEBUG1,
-						  "global (QD) slice table",
-						  estate->es_sliceTable,
-						  Debug_pretty_print);
-	}
+		elog_node_display(DEBUG3, "slice table", estate->es_sliceTable, true);
 }
 
 /* ----------------------------------------------------------------
@@ -286,6 +286,7 @@ ExecutorRun(QueryDesc *queryDesc,
 	volatile  bool shouldSetupInterconnect = false;
 	CdbDispatchResults *primaryResults = NULL;
     CdbDispatchResults *mirrorResults = NULL;
+    Slice              *currentSlice;
 
 	/* sanity checks */
 	Assert(queryDesc != NULL);
@@ -298,6 +299,17 @@ ExecutorRun(QueryDesc *queryDesc,
 	 * Switch into per-query memory context
 	 */
 	oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
+
+	/*
+     * CDB: Update global slice id for log messages.
+     */
+    currentSlice = getCurrentSlice(estate);
+    if (currentSlice)
+    {
+        if (Mpp_role == MPP_ROLE_EXECUTE ||
+            sliceRunsOnQD(currentSlice))
+            currentSliceId = currentSlice->sliceIndex;
+    }
 
 	/*
 	 * extract information from the query descriptor and the query feature.
@@ -344,21 +356,15 @@ ExecutorRun(QueryDesc *queryDesc,
 
 			/* Patch Motion node so it looks like a top node. */
 			motionstate->ps.plan->nMotionNodes = estate->es_sliceTable->nMotions;
-			motionstate->ps.plan->nParamExec = estate->es_sliceTable->nextInitPlan - estate->es_sliceTable->nMotions - 1;
+			motionstate->ps.plan->nParamExec = estate->es_sliceTable->nSubplans;
 		}
 
 		if (Debug_print_slice_table)
-		{
-			elog_node_display(DEBUG1,
-							  "local slice table",
-							  estate->es_sliceTable,
-							  Debug_pretty_print
-				);
-		}
+			elog_node_display(DEBUG4, "slice table", estate->es_sliceTable, true);
 
-		ereport(DEBUG3, (errmsg("Segment %d (%s) executing slice %d under root %d",
+		ereport(DEBUG4, (errmsg("%s%d executing slice%d under root slice%d",
+			                    (Mpp_is_primary ? "seg" : "mir"),
 			                    Mpp_segment,
-			                    (Mpp_is_primary ? "primary" : "mirror"),
 			                    estate->es_cur_slice_idx,
 			                    estate->es_cur_root_idx)
 			    ));
@@ -436,7 +442,7 @@ ExecutorRun(QueryDesc *queryDesc,
 		{
 			result = NULL;
 		}
-		else if (Mpp_role == MPP_ROLE_DISPATCH && sliceRunsOnQE(getCurrentSlice(estate)))
+		else if (Mpp_role == MPP_ROLE_DISPATCH && sliceRunsOnQE(currentSlice))
 		{
 			result = NULL;
 		}
@@ -477,8 +483,7 @@ ExecutorRun(QueryDesc *queryDesc,
 		}
 		else
 		{
-			if (estate->es_sliceTable != NULL)
-				SetupSequenceServer(estate->es_sliceTable);
+			SetupSequenceServer(estate->es_sliceTable);
 			
 			/* Run a root slice. */		
 			if (queryDesc->planstate->plan->nMotionNodes > 0)
@@ -507,7 +512,7 @@ ExecutorRun(QueryDesc *queryDesc,
             CdbCheckDispatchResult(false);	
 
             /* If top slice was delegated to QEs, get num of rows processed. */
-            if (sliceRunsOnQE(getCurrentSlice(estate)))
+            if (sliceRunsOnQE(currentSlice))
                 estate->es_processed +=
                     cdbdisp_sumCmdTuples(pr, estate->es_cur_slice_idx);
 
@@ -553,8 +558,6 @@ ExecutorRun(QueryDesc *queryDesc,
         /* Clean up our own motion layer. */
 		if (Mpp_role != MPP_ROLE_UTILITY)
 			ResetMotionLayer(true);
-
-		currentSliceId = UNSET_SLICE_ID;
 
 		PG_RE_THROW();
 	}
@@ -612,8 +615,6 @@ ExecutorEnd(QueryDesc *queryDesc)
 	 * everything the executor has allocated.
 	 */
 	FreeExecutorState(estate);
-
-	currentSliceId = UNSET_SLICE_ID;	/* CDB */
 
 	/* Reset queryDesc fields that no longer point to anything */
 	queryDesc->tupDesc = NULL;

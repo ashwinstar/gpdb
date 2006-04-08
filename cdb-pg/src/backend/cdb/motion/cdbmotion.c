@@ -4,7 +4,7 @@
  *		Access into the motion-layer in order to send and receive tuples
  *		within a motion node ID within a particular process group id.
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * IDENTIFICATION
  *		  $Id$
@@ -223,7 +223,7 @@ void
 ResetMotionLayer(bool flushCommLayer)
 {
 	/* Emit statistics to log */
-	if (DEBUG1 >= log_min_messages)
+	if (DEBUG3 >= log_min_messages)
 		elog(DEBUG1, "ResetMotionLayer(): dumping stats\n"
 			 "      Sent: %9u chunks %9u total bytes %9u tuple bytes\n"
 			 "  Received: %9u chunks %9u total bytes %9u tuple bytes; "
@@ -762,8 +762,10 @@ EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 
 	pMNEntry = getMotionNodeEntry(motNodeID, "EndMotionLayerNode");
 
-	elog(DEBUG4, "Cleaning up Motion Layer details for motion node %d.",
+#ifdef AMS_VERBOSE_LOGGING
+	elog(DEBUG5, "Cleaning up Motion Layer details for motion node %d.",
 		 motNodeID);
+#endif
 
 	/*
 	 * Iterate through all entries in the motion layer's chunk-sort map, to
@@ -788,8 +790,10 @@ EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 				 pMNEntry->stat_tuples_available_hwm);
 		}
 
-		elog(DEBUG4, "Cleaning up chunk-sorter entry [src=%d,mn=%d].",
+#ifdef AMS_VERBOSE_LOGGING
+        elog(DEBUG5, "Cleaning up chunk-sorter entry [src=%d,mn=%d].",
 			 ChunkSorterKey_route(pCSEntry->key), ChunkSorterKey_id(pCSEntry->key));
+#endif
 
 		/*
 		 * If we weren't stopped and haven't gotten the end-of-stream yet,
@@ -808,7 +812,7 @@ EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 			}
 			else
 			{
-				elog(WARNING, "Motion layer node %d cleanup - did not receive"
+				elog(LOG, "Motion layer node %d cleanup - did not receive"
 					 " end-of-stream from sender %d.", motNodeID,
 					 ChunkSorterKey_route(pCSEntry->key));
 			}
@@ -821,7 +825,7 @@ EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 
 			if (pCSEntry->chunk_list.num_chunks > 0)
 			{
-				elog(WARNING, "Motion layer node %d cleanup - there are still"
+				elog(LOG, "Motion layer node %d cleanup - there are still"
 					 " %d chunks enqueued from sender %d.", motNodeID,
 					 pCSEntry->chunk_list.num_chunks,
 					 ChunkSorterKey_route(pCSEntry->key));
@@ -849,10 +853,14 @@ EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 	pMNEntry->cleanedUp = true;
 
 	/* Clean up the motion-node entry, then remove it from the hash table. */
-	elog(DEBUG1, "Motion Node %d Statistics:\n"
+    if (pMNEntry->stat_total_sends ||
+        pMNEntry->stat_total_recvs ||
+        pMNEntry->sel_rd_wait ||
+        pMNEntry->sel_wr_wait)
+	elog(DEBUG3, "Motion Node %d Statistics:\n"
 		 "    Sending:   %9u attempts %9u chunks sent %9u tuple bytes %9u total bytes\n"
 		 "    Receiving: %9u attempts %9u chunks rcvd %9u tuple bytes %9u total bytes\n"
-		 "    Read wait: %9u usec	            Write wait: %9u usec",
+		 "    Read wait: %9u usec	              Write wait: %9u usec",
 		 motNodeID,
 		 pMNEntry->stat_total_sends,
 		 pMNEntry->stat_total_chunks_sent,
@@ -865,8 +873,6 @@ EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 		 pMNEntry->sel_rd_wait,
 		 pMNEntry->sel_wr_wait
 		);
-
-	elog(DEBUG4, "Cleaning up motion-node entry %d.", motNodeID);
 
 	CleanupSerTupInfo(&pMNEntry->ser_tup_info);
 	FreeTupleDesc(pMNEntry->tuple_desc);
@@ -951,7 +957,7 @@ getChunkSorterEntry(MotionNodeEntry * motNodeEntry,
 		 * initializes the key).
 		 */
 
-		elog(DEBUG4, "Tuple chunk sorter allocated new HTAB entry for"
+		elog(DEBUG5, "Tuple chunk sorter allocated new HTAB entry for"
 			 " [src=%d,mn=%d].", srcRoute, motNodeID);
 
 		chunkSorterEntry->chunk_list.serialized_data_length = 0;
@@ -968,7 +974,7 @@ getChunkSorterEntry(MotionNodeEntry * motNodeEntry,
 		 */
 		if (motNodeEntry->preserve_order)
 		{
-			elog(DEBUG4, "Motion node %d is order-preserving.  Creating"
+			elog(DEBUG5, "Motion node %d is order-preserving.  Creating"
 				 " tuple-store for entry [src=%d,mn=%d].", motNodeID,
 				 srcRoute, motNodeID);
 
@@ -979,7 +985,7 @@ getChunkSorterEntry(MotionNodeEntry * motNodeEntry,
 		}
 		else
 		{
-			elog(DEBUG4, "Motion node %d is not order-preserving.  Using"
+			elog(DEBUG5, "Motion node %d is not order-preserving.  Using"
 				 " shared tuple-store for entry [src=%d,mn=%d].", motNodeID,
 				 srcRoute, motNodeID);
 

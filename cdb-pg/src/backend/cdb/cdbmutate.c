@@ -74,15 +74,16 @@ Plan *
 apply_motion(Plan *plan, Query *query)
 {
 	Plan	           *result;
+    ListCell           *cell;
     MppPolicy          *targetPolicy = NULL;
     MppPolicyType       targetPolicyType = POLICYTYPE_ENTRY;
 	ApplyMotionState    state;
 
-	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
+    /* Initialize mutator context. */
+    state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
     state.sliceDepth = 0;
-    state.numInitPlans = 0;
     state.numInitPlanMotionNodes = 0;
-	state.parent_is_subplan = false;
+    state.initPlans = NIL;
 
 	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
     Assert(plan->flow && plan->flow->flotype != FLOW_REPLICATED);
@@ -143,7 +144,7 @@ apply_motion(Plan *plan, Query *query)
 						}
 						i++;
 					}
-					 
+					
                     Insist(focusPlan(plan, true, true, false));
                     Insist(plan->flow->numSortCols > 0);
                 }
@@ -271,6 +272,16 @@ apply_motion(Plan *plan, Query *query)
 	result = (Plan *) apply_motion_mutator((Node *) plan, &state);
 
 	Assert(result->nMotionNodes == state.nextMotionID - 1);
+    Assert(result->nInitPlans == list_length(state.initPlans));
+
+    /* Assign slice numbers to the initplans. */
+    foreach(cell, state.initPlans)
+    {
+        SubPlan    *subplan = (SubPlan *)lfirst(cell);
+
+        Assert(IsA(subplan, SubPlan) && subplan->qDispSliceId == 0);
+        subplan->qDispSliceId = state.nextMotionID++;
+    }
 
 	/* Last minute check for MPP badness. */
 	if (query->commandType == CMD_DELETE ||
@@ -329,51 +340,49 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     Flow   *flow;
     int     numInputSegs;
     int     saveNextMotionID;
+    int     saveNumInitPlans;
     int     saveSliceDepth;
     bool    sendToSecondary = false;    /* always for now */
-	bool	parent_is_subplan = false;
 
 	if (node == NULL)
 		return NULL;
 	
-	/* Notice whether we are the plan of a SubPlan. */
-	parent_is_subplan = context->parent_is_subplan;
-	context->parent_is_subplan = false;
-	Assert ( !parent_is_subplan || is_plan_node(node) );
+    /* Mutate SubPlan manually cause plan_tree_mutator won't visit its plan. */
+    if ( IsA(node, SubPlan) )
+	{
+		SubPlan *subplan = (SubPlan*)node;
+		SubPlan *newsub;
+		
+        /* For now, the top slice of a SubPlan always executes on the qDisp. */
+        saveSliceDepth = context->sliceDepth;
+        context->sliceDepth = 0;
+
+		newsub = makeNode(SubPlan);
+		memcpy(newsub, node, sizeof(SubPlan));
+		
+		newsub->exprs = (List*) apply_motion_mutator((Node*)subplan->exprs, context);
+		newsub->plan = (Plan*) apply_motion_mutator((Node*)subplan->plan, context);
+		newsub->rtable = (List*) apply_motion_mutator((Node*)subplan->rtable, context);
+		newsub->args = (List*) apply_motion_mutator((Node*)subplan->args, context);
+
+        /* An IntList isn't interesting to mutate; just copy them. */
+		newsub->paramIds = (List *)copyObject(subplan->paramIds);
+		newsub->setParam = (List *)copyObject(subplan->setParam);
+		newsub->parParam = (List *)copyObject(subplan->parParam);
+
+        context->sliceDepth = saveSliceDepth;
+		return (Node*)newsub;
+	}
 
     /* An expression node might have subtrees containing plans to be mutated. */
     if (!is_plan_node(node))
-	{
-		if ( IsA(node, SubPlan) )
-		{
-			SubPlan *subplan = (SubPlan*)node;
-			SubPlan *newsub;
-			
-			newsub = makeNode(SubPlan);
-			memcpy(newsub, node, sizeof(SubPlan));
-			
-			newsub->exprs = (List*) apply_motion_mutator((Node*)subplan->exprs, context);
-			newsub->paramIds = (List*) apply_motion_mutator((Node*)subplan->paramIds, context);
-			
-			context->parent_is_subplan = true; /* Flag entry from SubPlan */
-			newsub->plan = (Plan*) apply_motion_mutator((Node*)subplan->plan, context);
-			
-			newsub->rtable = (List*) apply_motion_mutator((Node*)subplan->rtable, context);
-			newsub->setParam = (List*) apply_motion_mutator((Node*)subplan->setParam, context);
-			newsub->parParam = (List*) apply_motion_mutator((Node*)subplan->parParam, context);
-			newsub->args = (List*) apply_motion_mutator((Node*)subplan->args, context);
-			return (Node*)newsub;
-		}
-		else
-		{
-			return plan_tree_mutator(node, apply_motion_mutator, context);
-		}
-	}
+		return plan_tree_mutator(node, apply_motion_mutator, context);
 
     plan = (Plan *)node;
     flow = plan->flow;
 
     saveNextMotionID = context->nextMotionID;
+    saveNumInitPlans = list_length(context->initPlans);
 
     /* Descending into a subquery or a new slice? */
     saveSliceDepth = context->sliceDepth;
@@ -411,7 +420,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     plan = (Plan *)newnode;
     flow = plan->flow;
 
-    /* Keep track of the number of Motion nodes found in Init Plans. */
+    /* Make one big list of all of the initplans. */
     if (plan->initPlan)
     {
         ListCell   *cell;
@@ -422,9 +431,11 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
         {
             subplan = (SubPlan *)lfirst(cell);
             Assert(IsA(subplan, SubPlan));
-			context->numInitPlans++;
             nMotion += subplan->plan->nMotionNodes;
+            context->initPlans = lappend(context->initPlans, subplan);
         }
+
+        /* Keep track of the number of Motion nodes found in Init Plans. */
         context->numInitPlanMotionNodes += nMotion;
     }
 
@@ -444,7 +455,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
         if (motion->motionType == MOTIONTYPE_FIXED &&
             motion->numOutputSegs == 1 &&
             motion->outputSegIdx[0] >= 0 &&
-            ( context->sliceDepth == 0 || parent_is_subplan ))
+            context->sliceDepth == 0)
         {
             if (flow)
             {
@@ -492,7 +503,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 
             /* If top slice is a singleton, let it execute on qDisp. */
             if (flow->segindex >= 0 &&
-                ( context->sliceDepth == 0 || parent_is_subplan ))
+                context->sliceDepth == 0)
                 flow->segindex = -1;
 
             if (flow->numSortCols > 0)
@@ -553,8 +564,15 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     }
 
 done:
-    ((Plan *)newnode)->nMotionNodes = context->nextMotionID - saveNextMotionID;
-    ((Plan *)newnode)->nInitPlans = context->numInitPlans;
+    /*
+     * Label the Plan node with the number of Motion nodes and Init Plans
+     * in this subtree, inclusive of the node itself.  This info is used
+     * only in the top node of a query or subquery.  Someday, find a better
+     * place to keep it.
+     */
+    plan = (Plan *)newnode;
+    plan->nMotionNodes = context->nextMotionID - saveNextMotionID;
+    plan->nInitPlans = list_length(context->initPlans) - saveNumInitPlans;
 	return newnode;
 }                               /* apply_motion_mutator */
 

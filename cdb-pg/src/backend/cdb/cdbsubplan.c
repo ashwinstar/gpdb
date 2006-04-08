@@ -4,7 +4,7 @@
  *	  Provides routines for preprocessing initPlan subplans
  *		and executing queries with initPlans
  *
- * Copyright (c) 2003-2005, Greenplum
+ * Copyright (c) 2003-2006, Greenplum
  *
  *-------------------------------------------------------------------------
  */
@@ -14,6 +14,7 @@
 #include "cdb/cdbplan.h"
 #include "cdb/cdbllize.h"
 #include "cdb/cdbsubplan.h"
+#include "cdb/cdbvars.h"                /* currentSliceId */
 #include "cdb/ml_ipc.h"
 
 typedef struct ParamWalkerContext
@@ -64,14 +65,17 @@ preprocess_initplans(QueryDesc *queryDesc)
 	Plan	   *plan = queryDesc->plantree;
 	EState	   *estate = queryDesc->estate;
 	int			originalRoot,
+                originalSlice,
 				rootIndex;
 
 	if (plan->nParamExec == 0)
 		return;
 
 	originalPli = queryDesc->params;
-	Assert(queryDesc->estate->es_sliceTable->localSlice == 0);
 	originalRoot = queryDesc->estate->es_cur_root_idx;
+    originalSlice = queryDesc->estate->es_cur_slice_idx;
+	Assert(originalSlice == 0 &&
+           queryDesc->estate->es_sliceTable->localSlice == originalSlice);
 
 	/*
 	 * Loop through the estate->es_param_exec_vals. This array has an element
@@ -106,6 +110,11 @@ preprocess_initplans(QueryDesc *queryDesc)
 
 		if (sps != NULL)
 		{
+            SubPlan    *subplan = (SubPlan *)sps->xprstate.expr;
+
+            Assert(IsA(subplan, SubPlan) &&
+                   subplan->qDispSliceId > 0);
+
 			sps->planstate->plan->nParamExec = plan->nParamExec;
 			sps->planstate->plan->nMotionNodes = plan->nMotionNodes;
 			sps->planstate->plan->dispatch = DISPATCH_PARALLEL;
@@ -113,9 +122,13 @@ preprocess_initplans(QueryDesc *queryDesc)
 			/*
 			 * Adjust for the slice to execute on the QD.
 			 */
-			rootIndex = 1 + queryDesc->estate->es_sliceTable->nMotions + i;
-			queryDesc->estate->es_sliceTable->localSlice = rootIndex;
+			rootIndex = subplan->qDispSliceId;
 			queryDesc->estate->es_cur_root_idx = rootIndex;		/* ! */
+            queryDesc->estate->es_cur_slice_idx = rootIndex;
+			queryDesc->estate->es_sliceTable->localSlice = rootIndex;
+
+			/* set our global sliceid variable for elog. */
+			currentSliceId = rootIndex;
 
 			/*
 			 * This runs the SubPlan and puts the answer back into prm->value.
@@ -126,8 +139,10 @@ preprocess_initplans(QueryDesc *queryDesc)
 		}
 
 		queryDesc->params = originalPli;
-		queryDesc->estate->es_sliceTable->localSlice = 0;		/* Original value. */
 		queryDesc->estate->es_cur_root_idx = originalRoot;
+		queryDesc->estate->es_cur_slice_idx = originalSlice;
+		queryDesc->estate->es_sliceTable->localSlice = originalSlice;
+		currentSliceId = originalSlice;
 
 		pfree(augmentedPli);
 	}

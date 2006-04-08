@@ -1225,7 +1225,7 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 	CdbDispatchResults *gangResults = dispatchResult->meleeResults;
 
 	/* Don't dispatch to a QE that is not connected. Note, that PQstatus() correctly
-	 * handles the case where segdbDesc->conn is NULL, and we *definitely* want to 
+	 * handles the case where segdbDesc->conn is NULL, and we *definitely* want to
 	 * produce an error for that case. */
 	if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
 	{
@@ -2037,7 +2037,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	Assert(sliceTbl != NULL);
 	Assert(rootIdx == 0
 		   || (rootIdx > sliceTbl->nMotions
-			   && rootIdx < sliceTbl->nextInitPlan));
+			   && rootIdx <= sliceTbl->nMotions + sliceTbl->nSubplans));
 
 	/*
 	 * Keep old value so we can restore it.  We use this field as a parameter.
@@ -2077,9 +2077,9 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		 * The Query tree doesn't have to be mutated here, since it isn't used during
 		 * the execution.
 		 */
-		 
+		
 		savetargets = NIL;
-		 
+		
 		if (is_plan_node((Node *)queryDesc->plantree) &&
 			!is_projection_capable_plan((Plan *)queryDesc->plantree))
 		{
@@ -2095,7 +2095,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		queryDesc->plantree = (Plan *) plan_tree_mutator((Node *) queryDesc->plantree,
 									pre_dispatch_function_evaluation_mutator,
 														 &pcontext);
-														 
+														
 		if (savetargets != NIL)
 		{
 			queryDesc->plantree->targetlist = savetargets;

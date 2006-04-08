@@ -1089,7 +1089,6 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 	table = makeNode(SliceTable);
 	table->nMotions = nMotions;
 	table->nSubplans = nSubplans;
-	table->nextInitPlan = 1 + nMotions;
 	table->slices = NIL;
 	table->seqServerHost = NULL;
 	table->seqServerPort = -1;
@@ -1099,8 +1098,8 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 	{
 		slice = makeNode(Slice);
 
-		slice->sliceIndex = -1;
-		slice->rootIndex = -1;
+		slice->sliceIndex = i;
+        slice->rootIndex = (i > 0 && i <= nMotions) ? -1 : i;
 		slice->gangType = GANGTYPE_UNALLOCATED;
 		slice->gangSize = 0;
 		slice->primaryGang = NULL;
@@ -1112,10 +1111,6 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 
 		table->slices = lappend(table->slices, slice);
 	}
-
-	slice = (Slice *) linitial(table->slices);
-	slice->sliceIndex = 0;
-	slice->rootIndex = 0;
 
 	estate->es_sliceTable = table;
 	estate->es_cur_root_idx = 0;
@@ -1161,9 +1156,6 @@ InitRootSlices(QueryDesc *queryDesc)
 			{
 				case CMD_SELECT:
 					Assert(slice->gangType == GANGTYPE_UNALLOCATED && slice->gangSize == 0);
-
-					/* Set our global sliceid variable for elog. */
-					currentSliceId = 0;
 					break;
 
 				case CMD_INSERT:
@@ -1171,7 +1163,6 @@ InitRootSlices(QueryDesc *queryDesc)
 				case CMD_DELETE:
 					slice->gangType = GANGTYPE_PRIMARY_WRITER;
 					slice->gangSize = getMPPSegmentCount();
-					currentSliceId = UNSET_SLICE_ID;
 					break;
 
 				default:

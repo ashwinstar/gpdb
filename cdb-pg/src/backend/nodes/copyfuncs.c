@@ -927,6 +927,7 @@ _copySubPlan(SubPlan *from)
 
 	COPY_SCALAR_FIELD(subLinkType);
 	COPY_SCALAR_FIELD(useOr);
+    COPY_SCALAR_FIELD(qDispSliceId);    /*CDB*/
 	COPY_NODE_FIELD(exprs);
 	COPY_NODE_FIELD(paramIds);
 	COPY_NODE_FIELD(plan);
@@ -2729,7 +2730,6 @@ _copySliceTable(SliceTable *from)
 	SliceTable *newnode = makeNode(SliceTable);
 	
 	COPY_SCALAR_FIELD(nMotions);
-	COPY_SCALAR_FIELD(nextInitPlan);
 	COPY_SCALAR_FIELD(nSubplans);
 	COPY_SCALAR_FIELD(localSlice);
 	COPY_NODE_FIELD(slices);

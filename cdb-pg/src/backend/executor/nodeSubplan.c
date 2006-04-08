@@ -732,12 +732,25 @@ ExecInitSubPlan(SubPlanState *node, EState *estate)
 	sp_estate->es_instrument = estate->es_instrument;
 
 	/*
-	 * "Loan" the global slice table and map to the subplan EState.  The
+     * "Loan" the global slice table and map to the subplan EState.  The
 	 * global state is already set up by the code that called up, e.g., if
 	 * this is an initPlan subplan, then the current slice will be a root.
 	 */
-	sp_estate->es_cur_root_idx = estate->es_cur_root_idx;
-	sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
+    if (subplan->qDispSliceId > 0)
+    {
+        sp_estate->es_cur_root_idx = subplan->qDispSliceId;
+	    sp_estate->es_cur_slice_idx = subplan->qDispSliceId;
+
+        Assert(estate->es_sliceTable != NULL &&
+               subplan->qDispSliceId > estate->es_sliceTable->nMotions &&
+               subplan->qDispSliceId <= estate->es_sliceTable->nMotions +
+                                            estate->es_sliceTable->nSubplans);
+    }
+    else
+    {
+	    sp_estate->es_cur_root_idx = estate->es_cur_root_idx;
+	    sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
+    }
 	sp_estate->es_sliceTable = estate->es_sliceTable;
 	sp_estate->es_slice_map = estate->es_slice_map;
 
@@ -1002,8 +1015,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		queryDesc->estate = CreateExecutorState();
 		queryDesc->estate->es_sliceTable = gbl_queryDesc->estate->es_sliceTable;
 		queryDesc->estate->es_cur_root_idx = gbl_queryDesc->estate->es_cur_root_idx;
+		queryDesc->estate->es_cur_slice_idx = gbl_queryDesc->estate->es_cur_slice_idx;
 		queryDesc->estate->es_param_exec_vals = gbl_queryDesc->estate->es_param_exec_vals;
-
 	}
 
 	/*
@@ -1036,11 +1049,11 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			/*
 			 * Set up the interconnect for execution of the initplan root slice.
 			 */
-			shouldTeardownInterconnect = true; 
-			SetupInterconnect( queryDesc->estate->es_sliceTable, 
+			shouldTeardownInterconnect = true;
+			SetupInterconnect( queryDesc->estate->es_sliceTable,
 							   queryDesc->estate->es_sliceTable->localSlice);
-							   
-				   
+							
+				
 		}
 
 
@@ -1074,7 +1087,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 				prm->isnull = false;
 				found = true;
 
-				if (shouldDispatch) 
+				if (shouldDispatch)
 				{
 					/* Tell MPP we're done with this plan. */
 					ExecSquelchNode(planstate);
@@ -1197,7 +1210,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
         	shouldTeardownInterconnect = false;
 	        TeardownInterconnect(false); /* following success on QD */
 	    }
-        
+
     }
 	PG_CATCH();
 	{
@@ -1218,8 +1231,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
          * CDB TODO: Is this needed following failure on QD?
          */
         if (shouldTeardownInterconnect)
-			TeardownInterconnect(true);  
-        
+			TeardownInterconnect(true);
+
         PG_RE_THROW();
 	}
 	PG_END_TRY();

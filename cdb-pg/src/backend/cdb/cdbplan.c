@@ -3,7 +3,7 @@
  * cdbplan.c
  *	  Provides routines supporting plan tree manipulation.
  *
- * Copyright (c) 2004, Greenplum
+ * Copyright (c) 2004-2006, Greenplum
  *
  * IDENTIFICATION
  *	  $Id$
@@ -987,12 +987,14 @@ plan_tree_mutator(Node *node,
 				FLATCOPY(newnode, subplan, SubPlan);
 
 				MUTATE(newnode->exprs, subplan->exprs, List *);
-				MUTATE(newnode->paramIds, subplan->paramIds, List *);
 				MUTATE(newnode->plan, subplan->plan, Plan *);
 				MUTATE(newnode->rtable, subplan->rtable, List *);
-				MUTATE(newnode->setParam, subplan->setParam, List *);
-				MUTATE(newnode->parParam, subplan->parParam, List *);
 				MUTATE(newnode->args, subplan->args, List *);
+
+                /* An IntList isn't interesting to mutate; just copy. */
+				newnode->paramIds = (List *)copyObject(subplan->paramIds);
+				newnode->setParam = (List *)copyObject(subplan->setParam);
+				newnode->parParam = (List *)copyObject(subplan->parParam);
 
 				return (Node *) newnode;
 			}

@@ -442,7 +442,8 @@ typedef struct SubPlan
 	SubLinkType subLinkType;	/* EXISTS, ALL, ANY, MULTIEXPR, EXPR */
 	bool		useOr;			/* TRUE to combine column results with "OR"
 								 * not "AND" */
-	/* The combining operators, transformed to executable expressions: */
+    int         qDispSliceId;   /* CDB: slice# of initplan's root slice, or 0 */
+    /* The combining operators, transformed to executable expressions: */
 	List	   *exprs;			/* list of OpExpr expression trees */
 	List	   *paramIds;		/* IDs of Params embedded in the above */
 	/* Note: paramIds has a one-to-one correspondence to the exprs list */

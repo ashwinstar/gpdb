@@ -1252,7 +1252,7 @@ TeardownInterconnect(bool forceEOS)
 	MotionConn *conn;
 
 	/* multi-phase shutdown, mark all as shutdown */
-	ereport(DEBUG3, (errmsg("Interconnect cleanup state: %s; setup was %s",
+	ereport(DEBUG4, (errmsg("Interconnect cleanup state: %s; setup was %s",
 		                    forceEOS ? "force" : "normal",
                             activated ? "completed" : "exited")
             ));
@@ -1262,7 +1262,7 @@ TeardownInterconnect(bool forceEOS)
 	/* if setup did not complete; or we're in the "force" argument is
 	 * set, pretty-print the slicetable */
 	if (!activated)
-		elog_node_display(DEBUG1, "local slice table",
+		elog_node_display(DEBUG5, "local slice table",
 						  sliceTable, true);
 
 	mySlice = (Slice *) list_nth(sliceTable->slices, sliceId);
@@ -1355,7 +1355,7 @@ TeardownInterconnect(bool forceEOS)
 
 		pEntry = removeMotionState(aSlice->sliceIndex);
 #ifdef AMS_VERBOSE_LOGGING
-		elog(DEBUG4, "close down connections for motion Id: %d", pEntry->motNodeId);
+		elog(DEBUG5, "close down connections for motion Id: %d", pEntry->motNodeId);
 #endif
 
 		/*
@@ -1386,7 +1386,7 @@ TeardownInterconnect(bool forceEOS)
 	{
 		/* cleanup a Sending motion node. */
 #ifdef AMS_VERBOSE_LOGGING
-		elog(DEBUG4, "close outgoing connections for motion id: %d",
+		elog(DEBUG5, "close outgoing connections for motion id: %d",
 			 mySlice->sliceIndex);
 #endif
 
@@ -1424,7 +1424,7 @@ TeardownInterconnect(bool forceEOS)
 	activated = false;
 	sliceTable = NULL;
 
-	ereport(DEBUG4, (errmsg("TeardownInterconnect successful") ));
+	ereport(DEBUG5, (errmsg("TeardownInterconnect successful") ));
 }
 
 
