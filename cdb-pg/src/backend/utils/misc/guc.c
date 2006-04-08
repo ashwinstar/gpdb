@@ -1192,7 +1192,7 @@ static struct config_int ConfigureNamesInt[] =
 						 "temporary disk files.")
 		},
 		&work_mem,
-		1024, 8 * BLCKSZ / 1024, MAX_KILOBYTES, NULL, NULL
+		16384, 8 * BLCKSZ / 1024, MAX_KILOBYTES, NULL, NULL
 	},
 
 	{
