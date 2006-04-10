@@ -58,7 +58,7 @@ CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
 PG_PID=postmaster.pid
 EXIT_STATUS=0
-FORCESTOP=1
+FORCESTOP=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -173,7 +173,10 @@ DISPLAY_PARAM () {
 	if [ $STOPDB -eq 1 ]; then
 		LOG_MSG "[INFO]:-Procedure will STOP database as mpp_fault_action=$FAIL_TYPE"
 	else
-		LOG_MSG "[INFO]:-Procedure can continue without database interruption as mpp_fault_action=$FAIL_TYPE"
+		if [ $FORCESTOP -eq 1 ];then
+			LOG_MSG "[INFO]:-Procedure will STOP database as -f option supplied"
+			LOG_MSG "[INFO]:-Procedure can continue without database interruption as mpp_fault_action=$FAIL_TYPE"
+		fi
 	fi
 	$ECHO
         $ECHO "Continue with recovery procedure yY|nN >"
@@ -232,7 +235,7 @@ TEST_ACCESS () {
 }
 STOP_DATABASE () { 
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	if [ $STOPDB -eq 1 ] && [ $FORCESTOP -ne 0 ]; then
+	if [ $STOPDB -eq 1 ] || [ $FORCESTOP -ne 0 ]; then
 		CHK_FILE $STOP_PROG
         if [ $EXISTS -ne 0 ];then
                 ERROR_EXIT "[FATAL]:-Could not locate $STOP_PROG script"
@@ -278,7 +281,7 @@ RECOVER_DATA () {
 		LOG_MSG "[INFO]:-Deleting failed database directory on ${FAIL_QE_HOST}"
 		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -Rf ${FAIL_QE_DIR}" 
 		#Run a checkpoint if STOPDB=0
-		if [ $STOPDB -eq 0 ]; then
+		if [ $STOPDB -eq 0 ] && [ $FORCESTOP -eq 0 ]; then
 			LOG_MSG "[INFO]:-Issuing checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT"
 			$TRUSTED_SHELL $MIR_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIR_QE_PORT $DEFAULTDB -c \"checkpoint;\""
 			ERROR_CHK $? "instance checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT" 1
@@ -292,7 +295,7 @@ RECOVER_DATA () {
 		ED_FILE ${FAIL_QE_DIR}/$PG_CONF "port=" "port=${FAIL_QE_PORT}" 0 ${FAIL_QE_HOST}
 		LOG_MSG "[INFO]:-Clearing old postmaster.opts file"
 		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -f ${FAIL_QE_DIR}/postmaster.opts"
-		if [ $STOPDB -eq 0 ]; then
+		if [ $STOPDB -eq 0 ] && [ $FORCESTOP -eq 0 ]; then
 			LOG_MSG "[INFO]:-Clearing old postmaster.pid file"
 			RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -f ${FAIL_QE_DIR}/postmaster.pid"
 		fi
@@ -315,7 +318,7 @@ UPDATE_MPP_MPP () {
 		# Update table
 		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $QD_DBNAME -c \"update mpp_mpp set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\""
 		ERROR_CHK $? "update segment mpp_mpp on $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT" 2
-		if [ $STOPDB -eq 1 ]; then
+		if [ $STOPDB -eq 1 ] || [ $FORCESTOP -eq 1 ]; then
 				LOG_MSG "[INFO]:-Commencing shutdown of $FAIL_QE_HOST port=$FAIL_QE_PORT"
 				$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m smart -l ${FAIL_QE_DIR}.log"
 				ERROR_CHK $? "segment instance stop $FAIL_QE_HOST port=$FAIL_QE_PORT" 2
@@ -441,7 +444,7 @@ TEST_ACCESS
 STOP_DATABASE
 RECOVER_DATA
 UPDATE_MPP_MPP
-if [ $STOPDB -eq 1 ] && [ $FORCESTOP -ne 0 ];then
+if [ $STOPDB -eq 1 ] || [ $FORCESTOP -ne 0 ];then
 	UPDATE_STATUS
 	START_DATABASE
 else
