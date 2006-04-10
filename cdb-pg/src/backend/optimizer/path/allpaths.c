@@ -518,9 +518,6 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	rel->subplan = subquery_planner(subquery, tuple_fraction,
 									&subquery_pathkeys);
 	
-	/* Be sure it's fully parallelized */
-	rel->subplan = cdbparallelize_subquery(rel->subplan, subquery);
-
 	/* Copy number of output rows from subplan */
 	rel->tuples = rel->subplan->plan_rows;
 
