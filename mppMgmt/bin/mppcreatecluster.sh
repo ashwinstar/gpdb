@@ -240,6 +240,17 @@ CHK_PARAMS () {
 		if [ x"" = x"$MASTER_DIRECTORY" ]; then
 				ERROR_EXIT "[FATAL]:-MASTER_DIRECTORY variable not set" 2
 		fi
+		# Check that we have write access to the proposed master data directory
+                W_DIR=$MASTER_DIRECTORY
+                LOG_MSG "[INFO]:-Checking write access to $W_DIR on Master Segment host"
+                $TOUCH ${W_DIR}/tmp_file_test
+                RETVAL=$?
+                if [ $RETVAL -ne 0 ];then
+                        ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on Master Segment host " 2
+                else
+                        $RM -f ${W_DIR}/tmp_file_test
+                        LOG_MSG "[INFO]:-Write test passed $W_DIR directory on Master Segment host"
+		fi	
 		#DATABASE_PREFIX
 		if [ x"" = x"$DATABASE_NAME" ]; then
 				LOG_MSG "[INFO]:-No DATABASE_NAME set, will exit following $DEFAULTDB updates"
@@ -335,6 +346,18 @@ CHK_QES () {
 				if [ $EXISTS -eq 0 ]; then
 					ERROR_EXIT "[FATAL]:-Instance directory $MPP_DIR exists on segment instance $MPP_HOSTNAME" 2
 				fi
+                                # Check that we can write to the QE directory
+                                        W_DIR=`$ECHO $MPP_DIR|$CUT -d '/' -f1-3`
+                                        LOG_MSG "[INFO]:-Checking write access to $W_DIR on $MPP_HOSTNAME"
+                                        $TRUSTED_SHELL $MPP_HOSTNAME "$TOUCH ${W_DIR}/tmp_file_test"
+                                        RETVAL=$?
+                                        if [ $RETVAL -ne 0 ];then
+                                                ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on $MPP_HOSTNAME " 2
+                                        else
+                                                $TRUSTED_SHELL $MPP_HOSTNAME "$RM -f ${W_DIR}/tmp_file_test"
+                                                LOG_MSG "[INFO]:-Write test passed on $MPP_HOSTNAME $W_DIR directory"
+                                        fi
+
 		done
 		#Check for mirror directories if nirroring configured
 		if [ $MIRRORING -ne 0 ]; then
@@ -347,6 +370,17 @@ CHK_QES () {
 						if [ $EXISTS -eq 0 ]; then
 								ERROR_EXIT "[FATAL]:-Instance directory $MPP_DIR exists on segment instance $MPP_HOSTNAME" 2
 						fi
+                                # Check that we can write to the QE directory
+                                        W_DIR=`$ECHO $MPP_DIR|$CUT -d '/' -f1-3`
+                                        LOG_MSG "[INFO]:-Checking write access to $W_DIR on $MPP_HOSTNAME"
+                                        $TRUSTED_SHELL $MPP_HOSTNAME "$TOUCH ${W_DIR}/tmp_file_test"
+                                        RETVAL=$?
+                                        if [ $RETVAL -ne 0 ];then
+                                                ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on $MPP_HOSTNAME " 2
+                                        else
+                                                $TRUSTED_SHELL $MPP_HOSTNAME "$RM -f ${W_DIR}/tmp_file_test"
+                                                LOG_MSG "[INFO]:-Write test passed on $MPP_HOSTNAME $W_DIR directory"
+					fi
 				done
 		else
 				LOG_MSG "[INFO]:-Mirror segment instance directory check skipped, mirroring=Off"
