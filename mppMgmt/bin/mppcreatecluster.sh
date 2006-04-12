@@ -82,7 +82,7 @@ USAGE () {
 		$ECHO
 		$ECHO "      `basename $0` -c mpp_config_file [OPTIONS]"
 		$ECHO
-		$ECHO "      Creates a new MPP database on a Master host and a number of"
+		$ECHO "      Creates a new MPP indtance on a Master host and a number of"
 		$ECHO "      segment instance hosts."
 		$ECHO
 		$ECHO "      General options:"
@@ -91,7 +91,7 @@ USAGE () {
 		$ECHO
 		$ECHO "      Logging options:"
 		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
-		$ECHO "      -a, don't ask to confirm database creation [default:- ask]"
+		$ECHO "      -a, don't ask to confirm instance creation [default:- ask]"
 		$ECHO "      -l, logfile_directory [optional]"
 		$ECHO "	         Alternative logfile directory"
 		$ECHO
@@ -104,7 +104,7 @@ USAGE () {
 		$ECHO "          the operation and configuration of this script"
 		$ECHO "      -h, mpp_hostlist_file [optional]"
 		$ECHO "          Contains a list of all segment instance hostnames required to participate in"
-		$ECHO "          the new MPP database. Normally set in mpp_config_file."
+		$ECHO "          the new MPP instance. Normally set in mpp_config_file."
 		$ECHO "      -p, postgresql_conf_mpp_additions [optional]"
 		$ECHO "          List of additional PostgreSQL parameters to be applied to each Master/Segment"
 		$ECHO "          postgresql.conf file during MPP database initialization."
@@ -115,8 +115,8 @@ USAGE () {
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 - No problems encountered with requested operation"
-		$ECHO "      1 - Warning generated, but database operational"
-		$ECHO "      2 - Fatal error, database not created/started, or in an inconsistent state,"
+		$ECHO "      1 - Warning generated, but instance operational"
+		$ECHO "      2 - Fatal error, instance not created/started, or in an inconsistent state,"
 	    	$ECHO "            see log file for failure reason."
 		$ECHO
 		exit $EXIT_STATUS
@@ -240,6 +240,17 @@ CHK_PARAMS () {
 		if [ x"" = x"$MASTER_DIRECTORY" ]; then
 				ERROR_EXIT "[FATAL]:-MASTER_DIRECTORY variable not set" 2
 		fi
+		# Check that we have write access to the proposed master data directory
+                W_DIR=$MASTER_DIRECTORY
+                LOG_MSG "[INFO]:-Checking write access to $W_DIR on Master Segment host"
+                $TOUCH ${W_DIR}/tmp_file_test
+                RETVAL=$?
+                if [ $RETVAL -ne 0 ];then
+                        ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on Master Segment host " 2
+                else
+                        $RM -f ${W_DIR}/tmp_file_test
+                        LOG_MSG "[INFO]:-Write test passed $W_DIR directory on Master Segment host"
+		fi	
 		#DATABASE_PREFIX
 		if [ x"" = x"$DATABASE_NAME" ]; then
 				LOG_MSG "[INFO]:-No DATABASE_NAME set, will exit following $DEFAULTDB updates"
@@ -335,6 +346,18 @@ CHK_QES () {
 				if [ $EXISTS -eq 0 ]; then
 					ERROR_EXIT "[FATAL]:-Instance directory $MPP_DIR exists on segment instance $MPP_HOSTNAME" 2
 				fi
+                                # Check that we can write to the QE directory
+                                        W_DIR=`$DIRNAME $MPP_DIR`
+                                        LOG_MSG "[INFO]:-Checking write access to $W_DIR on $MPP_HOSTNAME"
+                                        $TRUSTED_SHELL $MPP_HOSTNAME "$TOUCH ${W_DIR}/tmp_file_test"
+                                        RETVAL=$?
+                                        if [ $RETVAL -ne 0 ];then
+                                                ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on $MPP_HOSTNAME " 2
+                                        else
+                                                $TRUSTED_SHELL $MPP_HOSTNAME "$RM -f ${W_DIR}/tmp_file_test"
+                                                LOG_MSG "[INFO]:-Write test passed on $MPP_HOSTNAME $W_DIR directory"
+                                        fi
+
 		done
 		#Check for mirror directories if nirroring configured
 		if [ $MIRRORING -ne 0 ]; then
@@ -347,6 +370,17 @@ CHK_QES () {
 						if [ $EXISTS -eq 0 ]; then
 								ERROR_EXIT "[FATAL]:-Instance directory $MPP_DIR exists on segment instance $MPP_HOSTNAME" 2
 						fi
+                                # Check that we can write to the QE directory
+                                        W_DIR=`$DIRNAME $MPP_DIR`
+                                        LOG_MSG "[INFO]:-Checking write access to $W_DIR on $MPP_HOSTNAME"
+                                        $TRUSTED_SHELL $MPP_HOSTNAME "$TOUCH ${W_DIR}/tmp_file_test"
+                                        RETVAL=$?
+                                        if [ $RETVAL -ne 0 ];then
+                                                ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on $MPP_HOSTNAME " 2
+                                        else
+                                                $TRUSTED_SHELL $MPP_HOSTNAME "$RM -f ${W_DIR}/tmp_file_test"
+                                                LOG_MSG "[INFO]:-Write test passed on $MPP_HOSTNAME $W_DIR directory"
+					fi
 				done
 		else
 				LOG_MSG "[INFO]:-Mirror segment instance directory check skipped, mirroring=Off"
@@ -1000,31 +1034,31 @@ fi
 LOG_MSG "[INFO]:-Removing back out file"
 $RM -f $BACKOUT_FILE
 #Check the library info in initdb
-LOG_MSG "[INFO]:-MPP cluster successfully created"
+LOG_MSG "[INFO]:-MPP instance successfully created"
 LOG_MSG "[INFO]:-------------------------------------------------------"
 if [ `strings $INITDB|$GREP -c "$MPP_LIBRARY_PATH"` -eq 0 ];then
-LOG_MSG "[INFO]:-To access database via psql you will need to add the below"
+LOG_MSG "[INFO]:-To access instance via psql you will need to add the below"
 LOG_MSG "[INFO]:-library path $MPP_LIBRARY_PATH"
 LOG_MSG "[INFO]:-to the ${LIB_TYPE} environment variable"
 LOG_MSG "[INFO]:-For example the below command can be used"
 LOG_MSG "[INFO]:-export ${LIB_TYPE}=$MPP_LIBRARY_PATH:\$${LIB_TYPE}"
 LOG_MSG "[INFO]:-This should be set in users startup environment file i.e. .bashrc"
 fi
-LOG_MSG "[INFO]:-To access the mpp scripts for this cluster:"
+LOG_MSG "[INFO]:-To access the MPP scripts for this instance:"
 LOG_MSG "[INFO]:-In user $USER_NAME startup environment file add following line"
 LOG_MSG "[INFO]:-export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}0"
-LOG_MSG "[INFO]:-or, use -d ${MASTER_DIRECTORY}/${SEG_PREFIX}0 option for the mpp scripts"
+LOG_MSG "[INFO]:-or, use -d ${MASTER_DIRECTORY}/${SEG_PREFIX}0 option for the MPP scripts"
 LOG_MSG "[INFO]:-Example ./mppstate.sh -d ${MASTER_DIRECTORY}/${SEG_PREFIX}0"
 LOG_MSG "[INFO]:-Script log file = $LOG_FILE"
-LOG_MSG "[INFO]:-To remove cluster, run mppdeletecluster.sh script"
+LOG_MSG "[INFO]:-To remove instance, run mppdeleteinstance.sh script"
 if [ x"" != x"$STANDBY_HOSTNAME" ];then
-LOG_MSG "[INFO]:-Standby QD $STANDBY_HOSTNAME has been configured"
-LOG_MSG "[INFO]:-To activate the standby QD in the event of primary QD failure"
+LOG_MSG "[INFO]:-Standby Master $STANDBY_HOSTNAME has been configured"
+LOG_MSG "[INFO]:-To activate the Standby Master Segment in the event of Master failure"
 LOG_MSG "[INFO]:-Review options for mppactivatestandby.sh"
-LOG_MSG "[INFO]:-To re-activate a previously failed primary QD"
+LOG_MSG "[INFO]:-To re-activate a previously failed Master"
 LOG_MSG "[INFO]:-Review options for mppactivatemaster,sh"
 else
-LOG_MSG "[INFO]:-To initialize a standby QD for this MPP cluster"
+LOG_MSG "[INFO]:-To initialize a Standby Master Segment for this MPP instance"
 LOG_MSG "[INFO]:-Review options for mppinitstandby.sh"
 fi
 LOG_MSG "[INFO]:-------------------------------------------------------"
