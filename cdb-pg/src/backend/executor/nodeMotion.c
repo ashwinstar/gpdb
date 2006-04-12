@@ -600,7 +600,8 @@ ExecInitMotion(Motion * node, EState *estate)
     SliceTable *sliceTable = estate->es_sliceTable;
 	int			prior_es_cur_slice_idx = estate->es_cur_slice_idx;	/* save */
 	int			prior_es_cur_root_idx = estate->es_cur_root_idx;	/* save */
-
+	int			i;
+	
 	Assert(0 < node->motionID &&
            node->motionID <= sliceTable->nMotions &&
            node->numInputSegs > 0);
