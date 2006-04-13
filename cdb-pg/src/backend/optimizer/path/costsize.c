@@ -1799,7 +1799,7 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
      * which could be very slow if the actual number of rows is > 1.
      * Someday we should improve the join selectivity estimates.
      */
-    adjnrows = Max(4, outer_rel->rows);
+    adjnrows = Max(10, outer_rel->rows);
     adjnrows = Max(adjnrows, inner_rel->rows);
     adjnrows = LOG2(adjnrows);
     if (nrows < adjnrows)
