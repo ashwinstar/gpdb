@@ -1723,6 +1723,7 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 {
 	Selectivity selec;
 	double		nrows;
+    double      adjnrows;
 	UniquePath *upath;
 
 	/*
@@ -1791,7 +1792,20 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 			break;
 	}
 
-	rel->rows = clamp_row_est(nrows);
+    /*
+     * CDB: Force estimated number of join output rows to be at least 2.
+     * Otherwise a later nested join could take this join as its outer input,
+     * thinking that there will be only one pass over its inner table,
+     * which could be very slow if the actual number of rows is > 1.
+     * Someday we should improve the join selectivity estimates.
+     */
+    adjnrows = Max(4, outer_rel->rows);
+    adjnrows = Max(adjnrows, inner_rel->rows);
+    adjnrows = LOG2(adjnrows);
+    if (nrows < adjnrows)
+        nrows = adjnrows;
+
+    rel->rows = nrows;
 }
 
 /*
