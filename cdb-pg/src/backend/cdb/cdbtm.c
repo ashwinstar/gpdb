@@ -807,7 +807,68 @@ formatDtxState(DtxState state)
 	return s;
 }	/* formatDtxState */
 
+bool
+dispatchDtxCommand(const char *cmd, bool dispatchToMirrors)
+{
+	int		i, resultCount, numOfFailed = 0;
 
+	struct pg_result **results = NULL;
+	StringInfoData errbuf;
+
+	elog(DEBUG3, "dispatchDtxCommand: '%s' willMirror: %s", cmd, dispatchToMirrors ? "yes" : "no");
+
+	initStringInfo(&errbuf);
+	results = cdbdisp_dispatchRMCommand(cmd, dispatchToMirrors, &errbuf, &resultCount);
+
+	if (errbuf.len > 0)
+		ereport(ERROR, (errmsg("DTM error (gathered %d results from cmd '%s')", resultCount, cmd),
+						errdetail("%s", errbuf.data)));
+
+	Assert(results != NULL);
+	if (results == NULL)
+	{
+		numOfFailed++; /* If we got no results, we need to treat it as an error! */		
+	}
+	for (i = 0; i < resultCount; i++)
+	{
+		char			*cmdStatus;
+		ExecStatusType	resultStatus;
+
+		/* note: PQresultStatus() is smart enough to deal with results[i] == NULL */
+		resultStatus = PQresultStatus(results[i]);
+		if (resultStatus != PGRES_COMMAND_OK &&
+			resultStatus != PGRES_TUPLES_OK)
+		{
+			numOfFailed++;
+		}
+		else
+		{
+			/*
+			 * success ? If an error happened during a transaction which
+			 * hasn't already been caught when we try a prepare we'll get a
+			 * rollback from our prepare ON ONE SEGMENT: so we go look at the
+			 * status, otherwise we could issue a COMMIT when we don't want
+			 * to!
+			 */
+			cmdStatus = PQcmdStatus(results[i]);
+
+			elog(DEBUG3, "DTM: status message cmd '%s' [%d] result '%s'", cmd, i, cmdStatus);
+			if (strncmp(cmdStatus, cmd, strlen(cmdStatus)) != 0)
+			{
+				/* failed */
+				numOfFailed++;
+			}
+		}
+	}
+
+	/* discard the errbuf text */
+	pfree(errbuf.data);
+
+	/* Now we clean up the results array. */
+	cleanRMResultSets(results);
+
+	return (numOfFailed == 0);
+}
 
 /*
  * execute a transaction command on all QE
@@ -815,18 +876,10 @@ formatDtxState(DtxState state)
 static int
 execDtxCommand(void)
 {
-	char	   *cmdStatus,
-			   *cmd = NULL,
+	char		*cmd = NULL,
 				cmdbuf[100];
-	int			numOfFailed = 0;
-	int			i,
-				resultCount,
-				ret = DTX_OK;
+	int			ret = DTX_OK;
 	bool		dispatchToMirrors = true;
-
-	struct pg_result **results = NULL;
-	ExecStatusType resultStatus;
-	StringInfoData errbuf;
 
 	switch (currentGxact->state)
 	{
@@ -918,80 +971,31 @@ execDtxCommand(void)
 									  formatDtxState(currentGxact->state))));
 	}
 
-	initStringInfo(&errbuf);
-	results = cdbdisp_dispatchRMCommand(cmd, dispatchToMirrors, &errbuf, &resultCount);
-
-	if (errbuf.len > 0)
-		ereport(DEBUG2, (errmsg("DTM error (gathered %d results)", resultCount),
-						 errdetail("%s", errbuf.data)));
-
-	Assert(results != NULL);
-	if (results == NULL)
-	{
-		numOfFailed++; /* If we got no results, we need to treat it as an error! */
-	}
-	for (i = 0; i < resultCount; i++)
-	{
-		/* note: PQresultStatus() is smart enough to deal with results[i] == NULL */
-		resultStatus = PQresultStatus(results[i]);
-		if (resultStatus != PGRES_COMMAND_OK &&
-			resultStatus != PGRES_TUPLES_OK)
-		{
-			numOfFailed++;
-		}
-		else
-		{
-			/*
-			 * success ? If an error happened during a transaction which
-			 * hasn't already been caught when we try a prepare we'll get a
-			 * rollback from our prepare ON ONE SEGMENT: so we go look at the
-			 * status, otherwise we could issue a COMMIT when we don't want
-			 * to!
-			 */
-			cmdStatus = PQcmdStatus(results[i]);
-
-			elog(DEBUG3, "DTM: status message cmd '%s' [%d] result '%s'", cmd, i, cmdStatus);
-			if (strncmp(cmdStatus, cmd, strlen(cmdStatus)) != 0)
-			{
-				/* failed */
-				numOfFailed++;
-			}
-		}
-	}
-
-	/* discard the errbuf text */
-	pfree(errbuf.data);
-
-	/* Now we clean up the results array. */
-	cleanRMResultSets(results);
-
-	if (numOfFailed == 0)
+	if (dispatchDtxCommand(cmd, dispatchToMirrors))
 	{
 		/* everything went swell. */
 		return DTX_OK;
 	}
-	/* Trouble */
-	else
+
+	/* Something horrible happened inside our dispatch ? */
+	switch (currentGxact->state)
 	{
-		switch (currentGxact->state)
-		{
-			case DTX_STATE_IN_PROGRESS:
-			case DTX_STATE_PREPARED:
-			case DTX_STATE_ROLLBACK:
-			case DTX_STATE_1P_COMMIT:
-				updateDtxState(DTX_STATE_ABORT);
-				ret = DTX_ERR_COMM;
-				break;
-			case DTX_STATE_2P_COMMIT:
-				/* keep this transaction for recovery */
-				ret = DTX_ERR_COMM;
-				break;
-			default:
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-						   errmsg_internal("Transaction %s invalid state %s",
-										   currentGxact->gid,
-									  formatDtxState(currentGxact->state))));
-		}
+		case DTX_STATE_IN_PROGRESS:
+		case DTX_STATE_PREPARED:
+		case DTX_STATE_ROLLBACK:
+		case DTX_STATE_1P_COMMIT:
+			updateDtxState(DTX_STATE_ABORT);
+			ret = DTX_ERR_COMM;
+			break;
+		case DTX_STATE_2P_COMMIT:
+			/* keep this transaction for recovery */
+			ret = DTX_ERR_COMM;
+			break;
+		default:
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+							errmsg_internal("Transaction %s invalid state %s",
+											currentGxact->gid,
+											formatDtxState(currentGxact->state))));
 	}
 
 	return ret;
