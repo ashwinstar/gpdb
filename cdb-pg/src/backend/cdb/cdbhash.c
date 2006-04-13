@@ -638,13 +638,6 @@ ignoreblanks(char *data, int len)
 int
 ispowof2(int numsegs)
 {
-	if (numsegs == 0)
-		return 0;
 
-	while (numsegs % 2 == 0)
-	{
-		numsegs >>= 1;			/* effectively divide by 2 */
-	}
-
-	return (numsegs == 1) ? 1 : 0;
+	return !(numsegs & (numsegs - 1));
 }
