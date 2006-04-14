@@ -232,7 +232,7 @@ cdbdisp_destroyDispatchResults(CdbDispatchResults  *results);
  */
 int
 cdbdisp_dumpDispatchResults(struct CdbDispatchResults  *gangResults,
-                            StringInfo                  buffer,
+                            struct StringInfoData      *buffer,
                             bool                        verbose);
 
 /* Return sum of the cmdTuples values from CdbDispatchResult

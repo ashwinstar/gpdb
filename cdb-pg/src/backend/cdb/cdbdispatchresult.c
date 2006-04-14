@@ -665,7 +665,7 @@ cdbdisp_destroyDispatchResults(CdbDispatchResults * results)
  */
 int
 cdbdisp_dumpDispatchResults(struct CdbDispatchResults  *meleeResults,
-                            StringInfo                  buffer,
+                            struct StringInfoData      *buffer,
                             bool                        verbose)
 {
     CdbDispatchResult  *dispatchResult;
