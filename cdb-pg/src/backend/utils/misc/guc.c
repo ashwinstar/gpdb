@@ -1192,7 +1192,7 @@ static struct config_int ConfigureNamesInt[] =
 						 "temporary disk files.")
 		},
 		&work_mem,
-		16384, 8 * BLCKSZ / 1024, MAX_KILOBYTES, NULL, NULL
+		32768, 8 * BLCKSZ / 1024, MAX_KILOBYTES, NULL, NULL
 	},
 
 	{
@@ -1201,7 +1201,7 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("This includes operations such as VACUUM and CREATE INDEX.")
 		},
 		&maintenance_work_mem,
-		16384, 1024, MAX_KILOBYTES, NULL, NULL
+		65536, 1024, MAX_KILOBYTES, NULL, NULL
 	},
 
 	{

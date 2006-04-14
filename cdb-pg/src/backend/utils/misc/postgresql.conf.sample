@@ -95,8 +95,8 @@
 #max_prepared_transactions = 5		# can be 0 or more
 # note: increasing max_prepared_transactions costs ~600 bytes of shared memory
 # per transaction slot, plus lock space (see max_locks_per_transaction).
-#work_mem = 1024			# min 64, size in KB
-#maintenance_work_mem = 16384		# min 1024, size in KB
+#work_mem = 32768			# min 64, size in KB
+#maintenance_work_mem = 65536		# min 1024, size in KB
 #max_stack_depth = 2048			# min 100, size in KB
 
 # - Free Space Map -

@@ -92,8 +92,8 @@ int			CTimeZone = 0;
 
 bool		enableFsync = true;
 bool		allowSystemTableMods = false;
-int			work_mem = 16384;
-int			maintenance_work_mem = 16384;
+int			work_mem = 32768;
+int			maintenance_work_mem = 65536;
 
 /* Primary determinants of sizes of shared-memory structures: */
 int			NBuffers = 16000;
