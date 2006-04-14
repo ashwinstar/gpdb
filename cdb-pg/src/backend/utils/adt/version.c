@@ -18,7 +18,7 @@
 Datum
 pgsql_version(PG_FUNCTION_ARGS)
 {
-	char tag[] = " $Name: $";
+	char tag[] = " $Name:  $";
 	char version[512];
 	int			n;
 	text	   *ret;
@@ -27,6 +27,10 @@ pgsql_version(PG_FUNCTION_ARGS)
 	if (strlen(tag) > 10)
 	{
 		strcat(version, tag);
+	}
+	else
+	{
+		strcat(version, " (cvs head)");
 	}
 	n = strlen(version);
 		
