@@ -48,8 +48,7 @@
 
 #include "cdb/cdbgang.h"
 #include "cdb/cdbtm.h"
-#include "cdb/ml_ipc.h" /* flushInterconnectListenerBacklog() */
-#include "cdb/cdbvars.h" /* Mpp_role, Mpp_is_writer*/
+#include "cdb/cdbvars.h"		/* Mpp_role, Mpp_is_writer */
 
 /*
  *	User-tweakable parameters
@@ -1352,7 +1351,7 @@ AtSubCleanup_Memory(void)
  *						interface routines
  * ----------------------------------------------------------------
  */
-/* MPP routine for setting the transacion id.  this is needed for the shared
+/* MPP routine for setting the transaction id.	this is needed for the shared
  * shapshot for segmates.
  *
  * TODO: this sucks to have to allow this since its potentially very dangerous.
@@ -1369,7 +1368,7 @@ SetSharedTransactionId(void)
 
 	if (Mpp_is_writer)
 	{
-		elog(DEBUG5, "qExec WRITER setting shared xid to: %d", TopTransactionStateData.transactionId);
+		elog(DEBUG5, "qExec WRITER setting shared xid to: %d (QDxid %d)", TopTransactionStateData.transactionId, QDSentXID);
 		SharedLocalSnapshotSlot->xid = TopTransactionStateData.transactionId;
 	}
 	else
@@ -1377,7 +1376,7 @@ SetSharedTransactionId(void)
 		TopTransactionStateData.transactionId = SharedLocalSnapshotSlot->xid;
 		currentCommandId = SharedLocalSnapshotSlot->snapshot.curcid;
 
-		elog(DEBUG5, "qExec READER setting local xid to: %d", TopTransactionStateData.transactionId);
+		elog(DEBUG5, "qExec READER setting local xid to: %d (QDxid %d)", TopTransactionStateData.transactionId, QDSentXID);
 	}
 }
 
@@ -1467,8 +1466,6 @@ StartTransaction(void)
 			elog(ERROR, "Bizgres MPP does not support SERIALIZABLE transactions.");
 	}
 
-
-
 	/*
 	 * MPP Modification
 	 *
@@ -1503,7 +1500,6 @@ StartTransaction(void)
 			 */
 			xactStartTimestamp = GetCurrentTimestamp();
 
-
 			/*
 			 * NOTE: this is a bit hackish. It appears as though
 			 * StartTransaction() gets called during connection setup before
@@ -1511,12 +1507,12 @@ StartTransaction(void)
 			 */
 			if (SharedLocalSnapshotSlot != NULL)
 			{
+				elog(DEBUG4, "qExec writer setting QDSentXID: %d", QDSentXID);
+
 				SharedLocalSnapshotSlot->xid = s->transactionId;
-				SharedLocalSnapshotSlot->QDxid = QDSentXID;
 				SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
+				SharedLocalSnapshotSlot->QDxid = QDSentXID;
 			}
-
-
 		}
 		else
 		{
@@ -1534,6 +1530,9 @@ StartTransaction(void)
 				bool		done = false;
 				int			count = 0;
 
+				elog(DEBUG4, "qExec reader: QDSentXID %d sharedlocalsnapshot->QDxid %d sharedsnapshots: %s",
+					 QDSentXID, SharedLocalSnapshotSlot->QDxid, SharedSnapshotDump());
+
 				/*
 				 * If we're waiting on an old transaction, let's exit quickly
 				 * instead of timing out.
@@ -1546,7 +1545,6 @@ StartTransaction(void)
 				{
 					Assert(QDSentSnapshot != NULL);
 					Assert(SharedLocalSnapshotSlot != NULL);
-
 
 					/*
 					 * If the QDxid in the SharedLocalSnapshotSlot is the same
@@ -2508,7 +2506,7 @@ CommitTransactionCommand(void)
 				AbortSubTransaction();
 				CleanupSubTransaction();
 
-				DefineSavepoint(NULL);
+				DefineSavepoint(name);
 				s = CurrentTransactionState;	/* changed by push */
 				s->name = name;
 				s->savepointLevel = savepointLevel;
@@ -2536,7 +2534,7 @@ CommitTransactionCommand(void)
 
 				CleanupSubTransaction();
 
-				DefineSavepoint(NULL);
+				DefineSavepoint(name);
 				s = CurrentTransactionState;	/* changed by push */
 				s->name = name;
 				s->savepointLevel = savepointLevel;
@@ -3277,6 +3275,41 @@ DefineSavepoint(char *name)
 	{
 		case TBLOCK_INPROGRESS:
 		case TBLOCK_SUBINPROGRESS:
+
+			/* First we attempt to create on the QEs */
+			if (Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				char	   *cmd = NULL;
+				bool		freecmd;
+
+				if (name != NULL)
+				{
+					cmd = palloc(sizeof("SAVEPOINT ") + strlen(name));
+					Assert(cmd != NULL);
+					if (cmd == NULL)
+						elog(ERROR, "Can't define savepoint name too long (%s)", name);
+					sprintf(cmd, "SAVEPOINT %s", name);
+					freecmd = true;
+				}
+				else
+				{
+					cmd = "SAVEPOINT";
+					freecmd = false;
+				}
+
+				/*
+				 * dispatch a DTX command, in the event of an error, this call
+				 * will either exit via elog()/ereport() or return false
+				 */
+				if (!dispatchDtxCommand(cmd, /* dispatchToMirrors */ true))
+				{
+					elog(ERROR, "Could not create a new savepoint (%s)", cmd);
+				}
+
+				if (freecmd)
+					pfree(cmd);
+			}
+
 			/* Normal subtransaction start */
 			PushTransaction();
 			s = CurrentTransactionState;		/* changed by push */
@@ -3376,6 +3409,39 @@ ReleaseSavepoint(List *options)
 
 	Assert(PointerIsValid(name));
 
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		char	   *cmd = NULL;
+		bool		freecmd;
+
+		if (name != NULL)
+		{
+			cmd = palloc(sizeof("RELEASE SAVEPOINT ") + strlen(name));
+			Assert(cmd != NULL);
+			if (cmd == NULL)
+				elog(ERROR, "Can't release savepoint name too long (%s)", name);
+			sprintf(cmd, "RELEASE SAVEPOINT %s", name);
+			freecmd = true;
+		}
+		else
+		{
+			cmd = "RELEASE SAVEPOINT";
+			freecmd = false;
+		}
+
+		/*
+		 * dispatch a DTX command, in the event of an error, this call will
+		 * either exit via elog()/ereport() or return false
+		 */
+		if (!dispatchDtxCommand(cmd, /* dispatchToMirrors */ true))
+		{
+			elog(ERROR, "Could not release savepoint (%s)", cmd);
+		}
+
+		if (freecmd)
+			pfree(cmd);
+	}
+
 	for (target = s; PointerIsValid(target); target = target->parent)
 	{
 		if (PointerIsValid(target->name) && strcmp(target->name, name) == 0)
@@ -3473,6 +3539,39 @@ RollbackToSavepoint(List *options)
 	}
 
 	Assert(PointerIsValid(name));
+
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		char	   *cmd;
+		bool		freecmd;
+
+		if (name != NULL)
+		{
+			cmd = palloc(sizeof("ROLLBACK TO SAVEPOINT ") + strlen(name));
+			Assert(cmd != NULL);
+			if (cmd == NULL)
+				elog(ERROR, "Can't rollback to savepoint, name too long (%s)", name);
+			sprintf(cmd, "ROLLBACK TO SAVEPOINT %s", name);
+			freecmd = true;
+		}
+		else
+		{
+			cmd = "ROLLBACK TO SAVEPOINT";
+			freecmd = false;
+		}
+
+		/*
+		 * dispatch a DTX command, in the event of an error, this call will
+		 * either exit via elog()/ereport() or return false
+		 */
+		if (!dispatchDtxCommand(cmd, /* dispatchToMirrors */ true))
+		{
+			elog(ERROR, "Could not rollback to savepoint (%s)", cmd);
+		}
+
+		if (freecmd)
+			pfree(cmd);
+	}
 
 	for (target = s; PointerIsValid(target); target = target->parent)
 	{

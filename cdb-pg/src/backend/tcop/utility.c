@@ -537,7 +537,6 @@ ProcessUtility(Node *parsetree,
 						break;
 
 					case TRANS_STMT_SAVEPOINT:
-						CdbSentry(CDB_REJECT, parsetree, NULL);
 						{
 							ListCell   *cell;
 							char	   *name = NULL;
@@ -559,13 +558,11 @@ ProcessUtility(Node *parsetree,
 						break;
 
 					case TRANS_STMT_RELEASE:
-						CdbSentry(CDB_REJECT, parsetree, NULL);
 						RequireTransactionChain((void *) stmt, "RELEASE SAVEPOINT");
 						ReleaseSavepoint(stmt->options);
 						break;
 
 					case TRANS_STMT_ROLLBACK_TO:
-						CdbSentry(CDB_REJECT, parsetree, "ROLLBACK TO SAVEPOINT");
 						RequireTransactionChain((void *) stmt, "ROLLBACK TO SAVEPOINT");
 						RollbackToSavepoint(stmt->options);
 

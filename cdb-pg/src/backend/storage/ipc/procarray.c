@@ -36,7 +36,7 @@
 #include "storage/procarray.h"
 #include "utils/tqual.h"
 
-#include "access/xact.h" /*setting the shared xid*/
+#include "access/xact.h"		/* setting the shared xid */
 
 #include "cdb/cdbvars.h"
 
@@ -51,7 +51,7 @@ typedef struct ProcArrayStruct
 	 * actually it is maxProcs entries long.
 	 */
 	PGPROC	   *procs[1];		/* VARIABLE LENGTH ARRAY */
-} ProcArrayStruct;
+}	ProcArrayStruct;
 
 static ProcArrayStruct *procArray;
 
@@ -70,6 +70,7 @@ static long xc_slow_answer = 0;
 #define xc_slow_answer_inc()		(xc_slow_answer++)
 
 static void DisplayXidCache(void);
+
 #else							/* !XIDCACHE_DEBUG */
 
 #define xc_by_recent_xmin_inc()		((void) 0)
@@ -481,93 +482,89 @@ Snapshot
 GetSnapshotData(Snapshot snapshot, bool serializable)
 {
 	ProcArrayStruct *arrayP = procArray;
-	TransactionId xmin;
-	TransactionId xmax;
+	TransactionId xmin,
+				xmax;
 	TransactionId globalxmin;
 	int			index;
 	int			count = 0;
 
 	Assert(snapshot != NULL);
 
-	/* MPP Addition.  if we are in EXECUTE mode and not the writer... then
-	 * we want to just get the shared snapshot and make it our own.
+	/*
+	 * MPP Addition.  if we are in EXECUTE mode and not the writer... then we
+	 * want to just get the shared snapshot and make it our own.
 	 *
 	 * code for the writer is at the bottom of this function.
 	 *
 	 * NOTE: we could be dispatched and get here before the WRITER can set the
-	 *       shared snapshot.  if this happens we'll have to wait around, 
-	 *		 hopefully its never for a very long time.
+	 * shared snapshot.  if this happens we'll have to wait around, hopefully
+	 * its never for a very long time.
 	 *
 	 */
-	
 	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
 	{
-		bool done = false;
-		int count = 0;		
-		
-		while(!done)
+		bool		done = false;
+		int			count = 0;
+
+		while (!done)
 		{
-			
-			if( SharedLocalSnapshotSlot == NULL )
-				elog( ERROR, "SharedLocalSnapshotSlot is NULL");
-			
-				
-			if ( QDSentXID == SharedLocalSnapshotSlot->QDxid && 
-				 QDSentSnapshot->curcid == SharedLocalSnapshotSlot->QDcid)
+			if (SharedLocalSnapshotSlot == NULL)
+				elog(ERROR, "SharedLocalSnapshotSlot is NULL");
+
+			if (QDSentXID == SharedLocalSnapshotSlot->QDxid &&
+				QDSentSnapshot->curcid == SharedLocalSnapshotSlot->QDcid)
 			{
-				/* YAY we found it.  set the contents of the SharedLocalSnapshot
-				 * to this and move on.
+				/*
+				 * YAY we found it.  set the contents of the
+				 * SharedLocalSnapshot to this and move on.
 				 */
 				snapshot->xmin = SharedLocalSnapshotSlot->snapshot.xmin;
 				snapshot->xmax = SharedLocalSnapshotSlot->snapshot.xmax;
 				snapshot->xcnt = SharedLocalSnapshotSlot->snapshot.xcnt;
-				
-			
-				/* We don't need to worry about making our copy of the xip array
-				 * Since we don't dispatch the next stmt to the WRITER 
-				 * until everybody finishes then this won't change out from under
-				 * us
+
+				/*
+				 * We don't need to worry about making our copy of the xip
+				 * array Since we don't dispatch the next stmt to the WRITER
+				 * until everybody finishes then this won't change out from
+				 * under us
 				 *
 				 * The handling of snapshot->xip looks very strange.  The reason
-				 * is that while snapshot->xip is a pointer...  the shmem snapshot.xip
-				 * is actually the array itself stored where the pointer should go.
-				 * This is a bit evil but this is the only function that deals with it
-				 * so it seems ok. (See Writer portion at the bottom).
+				 * is that while snapshot->xip is a pointer...	the shmem
+				 * snapshot.xip is actually the array itself stored where the
+				 * pointer should go. This is a bit evil but this is the only
+				 * function that deals with it so it seems ok. (See Writer
+				 * portion at the bottom).
 				 */
-				snapshot->xip = (TransactionId*)&SharedLocalSnapshotSlot->snapshot.xip;
-				
- 			    snapshot->curcid = SharedLocalSnapshotSlot->snapshot.curcid;
-				 				 
+				snapshot->xip = (TransactionId *) &SharedLocalSnapshotSlot->snapshot.xip;
+
+				snapshot->curcid = SharedLocalSnapshotSlot->snapshot.curcid;
+
 				SetSharedTransactionId();
-				 
-				elog( DEBUG5, "Reader qExec setting shared local snapshot to: xmin: %d xmax: %d curcid: %d",
-				 	snapshot->xmin, snapshot->xmax, snapshot->curcid );				
-	
-				 return snapshot;
+
+				elog(DEBUG5, "Reader qExec setting shared local snapshot to: xmin: %d xmax: %d curcid: %d",
+					 snapshot->xmin, snapshot->xmax, snapshot->curcid);
+
+				return snapshot;
 			}
 			else
 			{
-				/* didn't find it.  we'll sleep for a small amount of time and then
-				 * try again. 
+				/*
+				 * didn't find it.  we'll sleep for a small amount of time and
+				 * then try again.
 				 *
 				 * TODO: is there a semaphore or something better we can do ehre.
 				 */
-				 pg_usleep( /*microseconds*/ 2000);
-				 count++;
-				 
-				 CHECK_FOR_INTERRUPTS();
-				 
-				 if( count >= 4000 )
-				 	elog( ERROR, "Reader qExec timed out waiting for Writer to set the shared snapshot");
-				 
-			}	
-		
+				pg_usleep( /* microseconds */ 2000);
+				count++;
+
+				CHECK_FOR_INTERRUPTS();
+
+				if (count >= 4000)
+					elog(ERROR, "Reader qExec timed out waiting for Writer to set the shared snapshot");
+			}
 		}
+	}
 
-
-	}		
-		
-	 
 	/* Serializable snapshot must be computed before any other... */
 	Assert(serializable ?
 		   !TransactionIdIsValid(MyProc->xmin) :
@@ -688,36 +685,39 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 
 	snapshot->curcid = GetCurrentCommandId();
 
-	/* MPP Addition.  If we are the chief then we'll save our local snapshot
+	/*
+	 * MPP Addition.  If we are the chief then we'll save our local snapshot
 	 * into the shared snapshot.
 	 */
 	if (Mpp_role == MPP_ROLE_EXECUTE && Mpp_is_writer)
 	{
-		
+
 		SharedLocalSnapshotSlot->snapshot.xmin = snapshot->xmin;
 		SharedLocalSnapshotSlot->snapshot.xmax = snapshot->xmax;
 		SharedLocalSnapshotSlot->snapshot.xcnt = snapshot->xcnt;
-		
-		/* The handling of snapshot->xip looks very strange.  The reason
-		 * is that while snapshot->xip is a pointer...  the shmem snapshot.xip
-		 * is actually the array itself stored where the pointer should go.
-		 * This is a bit evil but this function is the only place that deals with 
+
+		/*
+		 * The handling of snapshot->xip looks very strange.  The reason is
+		 * that while snapshot->xip is a pointer...  the shmem snapshot.xip is
+		 * actually the array itself stored where the pointer should go. This
+		 * is a bit evil but this function is the only place that deals with
 		 * it so it seems ok. (See Reader portion at the top).
 		 */
-		memcpy( &SharedLocalSnapshotSlot->snapshot.xip, snapshot->xip, snapshot->xcnt * sizeof(TransactionId));
-				 
+		memcpy(&SharedLocalSnapshotSlot->snapshot.xip, snapshot->xip, snapshot->xcnt * sizeof(TransactionId));
+
 		SharedLocalSnapshotSlot->snapshot.curcid = snapshot->curcid;
-		
+
 		SetSharedTransactionId();
-		
+
 		SharedLocalSnapshotSlot->QDcid = QDSentSnapshot->curcid;
-		elog( DEBUG5, "WRITER QE setting shared local Snapshot Data xmin: %d"
-					  " xmax: %d curcid: %d\n", SharedLocalSnapshotSlot->snapshot.xmin, 
-					  SharedLocalSnapshotSlot->snapshot.xmax, 
-					  SharedLocalSnapshotSlot->snapshot.curcid);
-	
+		SharedLocalSnapshotSlot->QDxid = QDSentXID;
+		elog(DEBUG5, "WRITER QE setting shared local Snapshot Data xmin: %d"
+			 " xmax: %d curcid: %d\n", SharedLocalSnapshotSlot->snapshot.xmin,
+			 SharedLocalSnapshotSlot->snapshot.xmax,
+			 SharedLocalSnapshotSlot->snapshot.curcid);
+
 	}
-	
+
 	return snapshot;
 }
 
