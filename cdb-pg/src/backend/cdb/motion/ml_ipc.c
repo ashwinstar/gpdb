@@ -2129,7 +2129,7 @@ sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn)
         format_sockaddr((struct sockaddr *)&localAddr, conn->localHostAndPort,
                         sizeof(conn->localHostAndPort));
 
-    	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
+    	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
             ereport(LOG, (errmsg("Interconnect sending registration message "
                                  "to seg%d pid=%d remote=%s "
                                  "from local=%s sockfd=%d: "
@@ -2325,7 +2325,7 @@ readRegisterMessage(MotionConn *conn)
 
  			return true;
 		}
-		else if (mpp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
+		else if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
 		{
 			/* message looks good */
 			ereport(LOG, (errmsg("Interconnect got registration message "
