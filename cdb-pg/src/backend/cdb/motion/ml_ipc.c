@@ -792,12 +792,13 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 		expectedTotalIncoming += pEntry->numConns;
 	}
 
-    ereport(DEBUG4, (errmsg("SetupInterconnect+0ms: Activating "
-                            "%d incoming, %d outgoing routes.  "
-                            "Listening on port=%d sockfd=%d",
-                            expectedTotalIncoming, expectedTotalOutgoing,
-                            Mpp_listener_port, listenerFd)
-                     ));
+    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        ereport(DEBUG1, (errmsg("SetupInterconnect will activate "
+                                "%d incoming, %d outgoing routes.  "
+                                "Listening on port=%d sockfd=%d.",
+                                expectedTotalIncoming, expectedTotalOutgoing,
+                                Mpp_listener_port, listenerFd)
+                ));
 
 	/*
      * Loop until all connections are completed or time limit is exceeded.
@@ -810,7 +811,6 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	    int			    highsock = -1;
         int             timeout_ms = 20*60*1000;
         int             outgoing_fail_count = 0;
-        int             elevel;
 
         iteration++;
 
@@ -944,12 +944,12 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
          */
         if (highsock < 0)
         {
-            if (timeout_ms > 0 ||
-                iteration > 2)
-                ereport(DEBUG4, (errmsg("SetupInterconnect+%dms:   pause %dms   "
-                                        "outgoing_fail=%d iteration=%d",
-                                        elapsed_ms, timeout_ms,
-                                        outgoing_fail_count, iteration)
+            if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE &&
+                (timeout_ms > 0 || iteration > 2))
+                ereport(LOG, (errmsg("SetupInterconnect+%dms:   pause %dms   "
+                                     "outgoing_fail=%d iteration=%d",
+                                     elapsed_ms, timeout_ms,
+                                     outgoing_fail_count, iteration)
                         ));
 
             /* Shouldn't be in this loop unless we have some work to do. */
@@ -980,16 +980,14 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
         else
             timeout.tv_sec = timeout.tv_usec = 0;
 
-#ifdef AMS_VERBOSE_LOGGING
-        elevel = DEBUG5;
-        if (elevel >= log_min_messages)
+        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
         {
             initStringInfo(&logbuf);
             format_fd_set(&logbuf, highsock+1, &rset, "r={", "} ");
             format_fd_set(&logbuf, highsock+1, &wset, "w={", "} ");
             format_fd_set(&logbuf, highsock+1, &eset, "e={", "}");
             elapsed_ms = gettime_elapsed_ms(startTime);
-            ereport(elevel, (errmsg("SetupInterconnect+%dms:   select()  "
+            ereport(DEBUG1, (errmsg("SetupInterconnect+%dms:   select()  "
                                     "Interest: %s.  timeout=%dms "
                                     "outgoing_fail=%d iteration=%d",
                                     elapsed_ms, logbuf.data, timeout_ms,
@@ -998,7 +996,6 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
             pfree(logbuf.data);
             memset(&logbuf, 0, sizeof(logbuf));
         }
-#endif
 
 		ML_CHECK_FOR_INTERRUPTS();
         n = select(highsock + 1, &rset, &wset, &eset, &timeout);
@@ -1009,27 +1006,31 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
         /*
          * Log the select() if requested.
          */
-        elevel = (n == expectedTotalIncoming + expectedTotalOutgoing)
-                 ? DEBUG5 : DEBUG4;
-        if (elevel >= log_min_messages)
+        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
         {
-            int errnoSave = errno;
-
-            initStringInfo(&logbuf);
-            if (n > 0)
+            if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG ||
+                n != expectedTotalIncoming + expectedTotalOutgoing)
             {
-                appendStringInfo(&logbuf, "result=%d  Ready: ", n);
-                format_fd_set(&logbuf, highsock+1, &rset, "r={", "} ");
-                format_fd_set(&logbuf, highsock+1, &wset, "w={", "} ");
-                format_fd_set(&logbuf, highsock+1, &eset, "e={", "}");
+                int elevel = (n == expectedTotalIncoming + expectedTotalOutgoing)
+                             ? DEBUG1 : LOG;
+                int errnoSave = errno;
+
+                initStringInfo(&logbuf);
+                if (n > 0)
+                {
+                    appendStringInfo(&logbuf, "result=%d  Ready: ", n);
+                    format_fd_set(&logbuf, highsock+1, &rset, "r={", "} ");
+                    format_fd_set(&logbuf, highsock+1, &wset, "w={", "} ");
+                    format_fd_set(&logbuf, highsock+1, &eset, "e={", "}");
+                }
+                else
+                    appendStringInfoString(&logbuf, n < 0 ? "error" : "timeout");
+                ereport(elevel, (errmsg("SetupInterconnect+%dms:   select()  %s",
+                                        elapsed_ms, logbuf.data) ));
+                pfree(logbuf.data);
+                memset(&logbuf, 0, sizeof(logbuf));
+                errno = errnoSave;
             }
-            else
-                appendStringInfoString(&logbuf, n < 0 ? "error" : "timeout");
-            ereport(elevel, (errmsg("SetupInterconnect+%dms:   select()  %s",
-                                    elapsed_ms, logbuf.data) ));
-            pfree(logbuf.data);
-            memset(&logbuf, 0, sizeof(logbuf));
-            errno = errnoSave;
         }
 
 		if (n < 0)
@@ -1173,8 +1174,9 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	 */
 	if (list_length(incompleteConns) != 0)
 	{
-		elog(DEBUG2, "Incomplete connections after known connections done, cleaning %d",
-			 list_length(incompleteConns));
+        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+            elog(DEBUG1, "Incomplete connections after known connections done, cleaning %d",
+			     list_length(incompleteConns));
 
 		while ((cell = list_head(incompleteConns)) != NULL)
 		{
@@ -1198,12 +1200,12 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 
 	activated = true;
 
-    ereport(DEBUG3, (errmsg("SetupInterconnect+%dms: Ready.  "
-                            "Activated %d incoming, "
-                            "%d outgoing routes.",
-                            gettime_elapsed_ms(startTime),
-                            incoming_count, outgoing_count)
-                     ));
+    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
+        ereport(LOG, (errmsg("SetupInterconnect+%dms: Activated %d incoming, "
+                             "%d outgoing routes.",
+                             gettime_elapsed_ms(startTime),
+                             incoming_count, outgoing_count)
+                      ));
 }                               /* SetupInterconnect */
 
 
@@ -1252,18 +1254,18 @@ TeardownInterconnect(bool forceEOS)
 	MotionConn *conn;
 
 	/* multi-phase shutdown, mark all as shutdown */
-	ereport(DEBUG4, (errmsg("Interconnect cleanup state: %s; setup was %s",
-		                    forceEOS ? "force" : "normal",
-                            activated ? "completed" : "exited")
-            ));
+    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
+        ereport(LOG, (errmsg("Interconnect cleanup state: %s; setup was %s",
+		                     forceEOS ? "force" : "normal",
+                             activated ? "completed" : "exited")
+                ));
 
 	Insist(sliceTable != NULL);
 
-	/* if setup did not complete; or we're in the "force" argument is
-	 * set, pretty-print the slicetable */
-	if (!activated)
-		elog_node_display(DEBUG5, "local slice table",
-						  sliceTable, true);
+	/* if setup did not complete, log the slicetable */
+    if (!activated &&
+        mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+		elog_node_display(DEBUG2, "local slice table", sliceTable, true);
 
 	mySlice = (Slice *) list_nth(sliceTable->slices, sliceId);
 
@@ -1319,11 +1321,10 @@ TeardownInterconnect(bool forceEOS)
 	 */
 	if (mySlice->parentIndex != -1)
 	{
-#ifdef AMS_VERBOSE_LOGGING
         /* cleanup a Sending motion node. */
-		elog(DEBUG5, "shutdown outgoing connections for motion id: %d",
-			 mySlice->sliceIndex);
-#endif
+        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+		    elog(DEBUG2, "shutdown outgoing connections for motion id: %d",
+			     mySlice->sliceIndex);
 
 		pEntry = getMotionState(mySlice->sliceIndex);
 
@@ -1354,9 +1355,9 @@ TeardownInterconnect(bool forceEOS)
 		aSlice = (Slice *) list_nth(sliceTable->slices, childId);
 
 		pEntry = removeMotionState(aSlice->sliceIndex);
-#ifdef AMS_VERBOSE_LOGGING
-		elog(DEBUG5, "close down connections for motion Id: %d", pEntry->motNodeId);
-#endif
+
+        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+		    elog(DEBUG2, "close connections for motion Id: %d", pEntry->motNodeId);
 
 		/*
 		 * receivers know that they no longer care about data from
@@ -1385,10 +1386,9 @@ TeardownInterconnect(bool forceEOS)
 	if (mySlice->parentIndex != -1)
 	{
 		/* cleanup a Sending motion node. */
-#ifdef AMS_VERBOSE_LOGGING
-		elog(DEBUG5, "close outgoing connections for motion id: %d",
-			 mySlice->sliceIndex);
-#endif
+        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+		    elog(DEBUG2, "close outgoing connections for motion id: %d",
+			     mySlice->sliceIndex);
 
 		pEntry = removeMotionState(mySlice->sliceIndex);
 
@@ -1424,7 +1424,8 @@ TeardownInterconnect(bool forceEOS)
 	activated = false;
 	sliceTable = NULL;
 
-	ereport(DEBUG5, (errmsg("TeardownInterconnect successful") ));
+	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        ereport(DEBUG1, (errmsg("TeardownInterconnect successful") ));
 }
 
 
@@ -1734,9 +1735,10 @@ startOutgoingConnections(Slice *sendSlice, int *pOutgoingCount)
 
 	recvSlice = (Slice *) list_nth(sliceTable->slices, sendSlice->parentIndex);
 
-	ereport(DEBUG5, (errmsg("Setting up SENDING motion node %d",
-		                    sendSlice->sliceIndex)
-            ));
+    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        ereport(DEBUG2, (errmsg("Setting up SENDING motion node %d",
+		                        sendSlice->sliceIndex)
+                ));
 
 	pEntry = createMotionState(sendSlice,
                                recvSlice,
@@ -1907,12 +1909,13 @@ setupOutgoingConnection(MotionLayerState *pEntry, MotionConn *conn)
     format_sockaddr((struct sockaddr *) &saddr, conn->remoteHostAndPort,
                     sizeof(conn->remoteHostAndPort));
 
-    ereport(DEBUG5, (errmsg("Connecting to seg%d %s pid=%d sockfd=%d",
-                            conn->remoteContentId,
-                            conn->remoteHostAndPort,
-                            conn->cdbProc->pid,
-                            conn->sockfd)
-                     ));
+    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        ereport(DEBUG1, (errmsg("Connecting to seg%d %s pid=%d sockfd=%d",
+                                conn->remoteContentId,
+                                conn->remoteHostAndPort,
+                                conn->cdbProc->pid,
+                                conn->sockfd)
+                         ));
 
     /*
      * Initiate the connection.
@@ -2045,8 +2048,9 @@ getOutgoingPort(MotionLayerState *pEntry)
         pEntry->outgoingPortRetryCount++;
     }
 
-    ereport(DEBUG3, (errmsg("Outgoing connections will use tcp port %d",
-                            outgoingPort) ));
+    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
+        ereport(LOG, (errmsg("Outgoing connections will use tcp port %d",
+                             outgoingPort) ));
     return outgoingPort;
 }                               /* getOutgoingPort */
 
@@ -2125,20 +2129,21 @@ sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn)
         format_sockaddr((struct sockaddr *)&localAddr, conn->localHostAndPort,
                         sizeof(conn->localHostAndPort));
 
-        ereport(DEBUG3, (errmsg("Interconnect sending registration message to "
-                                "seg%d pid=%d remote=%s "
-                                "from local=%s sockfd=%d: "
-                                "recvSlice=%d sendSlice=%d "
-                                "srcContentId=%d",
-                                conn->remoteContentId,
-                                conn->cdbProc->pid,
-                                conn->remoteHostAndPort,
-                                conn->localHostAndPort,
-                                conn->sockfd,
-                                pEntry->recvSlice->sliceIndex,
-                                pEntry->sendSlice->sliceIndex,
-                                Mpp_segment)
-                ));
+    	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
+            ereport(LOG, (errmsg("Interconnect sending registration message "
+                                 "to seg%d pid=%d remote=%s "
+                                 "from local=%s sockfd=%d: "
+                                 "recvSlice=%d sendSlice=%d "
+                                 "srcContentId=%d",
+                                 conn->remoteContentId,
+                                 conn->cdbProc->pid,
+                                 conn->remoteHostAndPort,
+                                 conn->localHostAndPort,
+                                 conn->sockfd,
+                                 pEntry->recvSlice->sliceIndex,
+                                 pEntry->sendSlice->sliceIndex,
+                                 Mpp_segment)
+                    ));
 
         regMsg->msgBytes = sizeof(*regMsg);
         regMsg->recvSliceIndex = pEntry->recvSlice->sliceIndex;
@@ -2320,15 +2325,15 @@ readRegisterMessage(MotionConn *conn)
 
  			return true;
 		}
-		else
+		else if (mpp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
 		{
 			/* message looks good */
-			ereport(DEBUG3, (errmsg("Interconnect got registration message "
-									"from %s sockfd=%d: recvSlice=%d sendSlice=%d "
-									"srcContentId=%d srcPid=%d",
-									conn->remoteHostAndPort, conn->sockfd,
-									msg.recvSliceIndex, msg.sendSliceIndex,
-									msg.srcContentId, msg.srcPid)
+			ereport(LOG, (errmsg("Interconnect got registration message "
+							     "from %s sockfd=%d: recvSlice=%d sendSlice=%d "
+								 "srcContentId=%d srcPid=%d",
+								 conn->remoteHostAndPort, conn->sockfd,
+								 msg.recvSliceIndex, msg.sendSliceIndex,
+								 msg.srcContentId, msg.srcPid)
 						));
 		}
     }
@@ -2549,12 +2554,12 @@ acceptIncomingConnection(void)
                 ));
     }
 
-    ereport(DEBUG4, (errmsg("Interconnect got incoming connection "
-                            "to local=%s from remote=%s.  sockfd=%d",
-                            conn->localHostAndPort,
-                            conn->remoteHostAndPort,
-                            newsockfd)
-                     ));
+    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
+        ereport(LOG, (errmsg("Interconnect got incoming connection "
+                             "from remote=%s to local=%s.  sockfd=%d.",
+                             conn->remoteHostAndPort, conn->localHostAndPort,
+                             newsockfd)
+                         ));
     return conn;
 }                               /* acceptIncomingConnection */
 
@@ -2699,7 +2704,7 @@ flushBuffer(MotionConn * conn, int16 motionId)
 						}
 						ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 										errmsg("Interconnect error writing an outgoing packet"),
-						 errdetail("error during select() call (error:%d).\n"
+						    errdetail("error during select() call (error:%d).\n"
 							"For Remote Connection: contentId=%d at %s",
 							  errno, conn->remoteContentId,
                               conn->remoteHostAndPort)
@@ -2936,9 +2941,6 @@ dumpEntryConnections(int elevel, MotionLayerState *pEntry)
 	int			i;
     MotionConn *conn;
 
-    if (elevel < log_min_messages)
-        return;
-
     for (i = 0; i < pEntry->numConns; i++)
 	{
 		conn = &pEntry->conns[i];
@@ -2983,9 +2985,8 @@ doSendStopMessage(int16 motNodeID)
 
 	pEntry = getMotionState(motNodeID);
 
-#ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG5, "sending stop message from slice %d to node %d", sliceId, motNodeID);
-#endif
+    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+    	elog(DEBUG2, "sending stop message from slice %d to node %d", sliceId, motNodeID);
 
 	/*
 	 * Note: we're only concerned with receivers here, so mirrors
@@ -3128,15 +3129,12 @@ flushInterconnectListenerBacklog(void)
 		{
 			for (i = 0; i < pendingConn; i++)
 			{
-#ifdef AMS_VERBOSE_LOGGING
-				elog(DEBUG3, "flushInterconnectListenerBacklog(): accepting and closing client conn");
-#endif
-
 				peerlen = sizeof(peer);
 				newfd = accept(listenerFd, (struct sockaddr *) & peer, &peerlen);
 				if (newfd < 0)
 				{
-					elog(DEBUG2, "flushInterconnectListenerBacklog: %m%s", "accept");
+                    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+					    elog(DEBUG2, "flushInterconnectListenerBacklog: %m%s", "accept");
 					continue;
 				}
 				/* shutdown this socket */

@@ -314,7 +314,8 @@ execMotionUnsortedReceiver(MotionState * node)
 
 	if (recvRC == END_OF_STREAM)
 	{
-		elog(DEBUG4, "motionID=%d saw END_OF_STREAM", motion->motionID);
+        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+		    elog(DEBUG2, "motionID=%d saw END_OF_STREAM", motion->motionID);
         Assert(node->numTuplesFromAMS == node->numTuplesToParent &&
                node->numTuplesFromChild == 0 &&
                node->numTuplesToAMS == 0);
@@ -600,8 +601,10 @@ ExecInitMotion(Motion * node, EState *estate)
     SliceTable *sliceTable = estate->es_sliceTable;
 	int			prior_es_cur_slice_idx = estate->es_cur_slice_idx;	/* save */
 	int			prior_es_cur_root_idx = estate->es_cur_root_idx;	/* save */
+#ifdef CDB_MOTION_DEBUG
 	int			i;
-	
+#endif
+
 	Assert(0 < node->motionID &&
            node->motionID <= sliceTable->nMotions &&
            node->numInputSegs > 0);
@@ -738,19 +741,19 @@ ExecInitMotion(Motion * node, EState *estate)
 	estate->es_cur_slice_idx = prior_es_cur_slice_idx;
 	estate->es_cur_root_idx = prior_es_cur_root_idx;
 
-    if (thisSlice)
-        ereport(DEBUG3, (errmsg("Motion node %d in slice%d is %s%s %s (slice%d %s)",
-		                        node->motionID,
-                                thisSlice->sliceIndex,
-                                (node->sendSorted ? "sorted " : ""),
-		                        (node->motionType == MOTIONTYPE_HASH ? "hash" :
-                                 node->numOutputSegs == 0 ? "broadcast" :
-                                 node->numOutputSegs == 1 ? "gather" :
-                                 "unknown"),
-                                (motionstate->isReceiver ? "receiver" : "sender"),
-                                thatSlice->sliceIndex,
-                                (motionstate->isReceiver ? "is sender"
-                                                         : "is receiver") )
+    if (thisSlice &&
+        mpp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
+        ereport(LOG, (errmsg("Motion node %d in slice%d is %s%s %s slice%d",
+		                     node->motionID,
+                             thisSlice->sliceIndex,
+                             (node->sendSorted ? "sorted " : ""),
+		                     (node->motionType == MOTIONTYPE_HASH ? "hash" :
+                              node->numOutputSegs == 0 ? "broadcast" :
+                              node->numOutputSegs == 1 ? "gather" :
+                              "unknown"),
+                             (motionstate->isReceiver ? "receiver for input from"
+                                                      : "sender for output to"),
+                             thatSlice->sliceIndex )
                 ));
 
 	/*
@@ -1127,7 +1130,9 @@ doSendEndOfStream(Motion * motion, MotionState * node)
 	Assert(sendRC == SEND_COMPLETE);
 
 	node->sentEndOfStream = true;
-	elog(DEBUG4, "motionID=%d node->sentEndOfStream=%d", motion->motionID, node->sentEndOfStream);
+
+    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+	    elog(DEBUG2, "motionID=%d node->sentEndOfStream=%d", motion->motionID, node->sentEndOfStream);
 }
 
 

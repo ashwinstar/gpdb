@@ -312,27 +312,41 @@
 					#   %s = session start timestamp
 					#   %x = transaction id
 					#   %q = stop here in non-session
-					#        processes
+					#		 processes
 					#   %% = '%'
-					# e.g. '<%u%%%d> '		
-				#
-				# MPP specific options:
-				# %C  content id (or segment index)
-                # %I  prints a handy mixture of other elements:
-                #		'QD slice #0'  Query Dispatcher executing slice #0.
-                #		'QE#2P slice #1' Query Executor with content id 2 and is
-                #						 Primary executing slice #1.
-                #
-                # %P  if the content database is the primary or not.
-                #	  	 'P' if primary, 'M' if mirror. blank if n/a.
-                # %R  role (dispatch, execute, utility).
-                # %S  slice index when applicable otherwise blank.
-                # %T  process Type. prints:
-                #	    QD if QueryDispatcher
-                #		QE if QueryExecutor
-                #		blank if other.
+					# e.g. '<%u%%%d> '
+					#
+					# MPP specific substitutions allowed in log_line_prefix:
+					#   %C  content id (or segment index)
+					#   %I  process description and status.  For example:
+					#		'con99 cmd42'			   QD (query dispatcher or entry process) for
+					#									client connection number 99 (mpp_session_id);
+					#									its 42nd command (mpp_command_count) is
+					#									in progress or finished
+					#		'con99 cmd42 slice1'	   QD working on slice number 1 of the
+					#									query execution plan for the
+					#									42nd command of client session 99
+					#		'con99 seg0'			   QE (query executor or worker process)
+					#									for segment 0, idle
+					#		'con99 mir0'			   QE for mirror of segment 0, idle
+					#		'con99 cmd42 seg0'		   QE for segment 0, working on the
+					#									42nd command of client session 99
+					#		'con99 cmd42 seg0 slice1'  QE for segment 0, working on slice
+					#									number 1 of the 42nd command
+					#		'postmaster'			   A postmaster process
+					#   %P  if the content database is the primary or not.
+					#		   'P' if primary, 'M' if mirror. blank if n/a.
+					#   %R  role (dispatch, execute, utility, postmaster).
+					#   %S  slice index when applicable otherwise empty.
+					#   %T  process Type. prints:
+					#		  'qd' if QueryDispatcher
+					#		  'qe' if QueryExecutor
+					#		  empty if other.
 #log_statement = 'none'			# none, mod, ddl, all
 #log_hostname = off
+
+#mpp_log_interconnect = terse           # off, terse, verbose, debug
+                                        #  logging of MPP interconnect events
 
 
 #---------------------------------------------------------------------------
@@ -443,11 +457,15 @@
 
 
 #---------------------------------------------------------------------------
+# MPP FAULT TOLERANCE OPTIONS
+#---------------------------------------------------------------------------
+
+#mpp_fault_action = readonly         # none for disabling Fault Tolerance feature,
+                                     # other valid parameters are readonly, continue
+
+#---------------------------------------------------------------------------
 # CUSTOMIZED OPTIONS
 #---------------------------------------------------------------------------
 
 #custom_variable_classes = ''		# list of custom variable class names
 
-
-#mpp_fault_action = readonly         # none for disabling Fault Tolerance feature,
-                                     # other valid parameters are readonly, continue 

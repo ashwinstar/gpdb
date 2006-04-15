@@ -266,6 +266,44 @@ extern int	interconnect_setup_timeout;
 
 
 /* --------------------------------------------------------------------------------------------------
+ * Logging
+ */
+
+typedef enum CdbVars_Verbosity
+{
+	CDBVARS_VERBOSITY_UNDEFINED = 0,
+    CDBVARS_VERBOSITY_OFF,
+	CDBVARS_VERBOSITY_TERSE,	
+	CDBVARS_VERBOSITY_VERBOSE,
+    CDBVARS_VERBOSITY_DEBUG,
+} CdbVars_Verbosity;
+
+CdbVars_Verbosity
+cdbvars_string_to_verbosity(const char *s);
+const char *
+cdbvars_verbosity_to_string(CdbVars_Verbosity verbosity);
+
+/*
+ * mpp_log_interconnect (string)
+ *
+ * Should connections between internal processes be logged?  (qDisp/qExec/etc)
+ * "OFF"     -> connection errors are logged
+ * "TERSE"   -> terse logging of routine events, e.g. successful connections
+ * "VERBOSE" -> most interconnect setup events are logged
+ * "DEBUG"   -> additional events are logged at severity level DEBUG1 to DEBUG5.
+ *
+ * The messages that are enabled by the TERSE and VERBOSE settings are
+ * written with a severity level of LOG.
+ */
+extern CdbVars_Verbosity    mpp_log_interconnect;
+
+const char *
+cdbvars_assign_mpp_log_interconnect(const char *newval, bool doit, GucSource source);
+const char *
+cdbvars_show_mpp_log_interconnect(void);
+
+
+/* --------------------------------------------------------------------------------------------------
  * MPP Optimizer GUCs
  */
 
@@ -287,7 +325,7 @@ extern double   mpp_motion_cost_per_row;
 extern int      mpp_segments_for_planner;
 
 /*
- * Unlike some other enable... vars, enable_agg_restruct is not cost based. 
+ * Unlike some other enable... vars, enable_agg_restruct is not cost based.
  * When set to false, the planner will not use two-stage aggregation.
  */
 extern bool enable_agg_restruct;

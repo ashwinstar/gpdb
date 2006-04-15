@@ -360,14 +360,14 @@ ExecutorRun(QueryDesc *queryDesc,
 		}
 
 		if (Debug_print_slice_table)
-			elog_node_display(DEBUG4, "slice table", estate->es_sliceTable, true);
+			elog_node_display(DEBUG3, "slice table", estate->es_sliceTable, true);
 
-		ereport(DEBUG4, (errmsg("%s%d executing slice%d under root slice%d",
-			                    (Mpp_is_primary ? "seg" : "mir"),
-			                    Mpp_segment,
-			                    estate->es_cur_slice_idx,
-			                    estate->es_cur_root_idx)
-			    ));
+        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+		    elog(DEBUG1, "%s%d executing slice%d under root slice%d",
+			     (Mpp_is_primary ? "seg" : "mir"),
+			     Mpp_segment,
+			     estate->es_cur_slice_idx,
+			     estate->es_cur_root_idx);
 	}
 
 	/*

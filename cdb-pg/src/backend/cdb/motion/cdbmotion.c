@@ -223,8 +223,8 @@ void
 ResetMotionLayer(bool flushCommLayer)
 {
 	/* Emit statistics to log */
-	if (DEBUG3 >= log_min_messages)
-		elog(DEBUG1, "ResetMotionLayer(): dumping stats\n"
+	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
+		elog(LOG, "ResetMotionLayer(): dumping stats\n"
 			 "      Sent: %9u chunks %9u total bytes %9u tuple bytes\n"
 			 "  Received: %9u chunks %9u total bytes %9u tuple bytes; "
 			 "%9u chunkproc calls\n",
@@ -263,7 +263,8 @@ ResetMotionLayer(bool flushCommLayer)
 void
 CleanUpMotionLayer(void)
 {
-	elog(DEBUG3, "Cleaning Up Motion Layer...");
+	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+    	elog(DEBUG2, "Cleaning Up Motion Layer...");
 
 	/* shutdown our listener socket */
 	CleanUpMotionLayerIPC();
@@ -353,11 +354,6 @@ InitMotionLayerNode(int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
 		MotionNodeEntry *newTable;
 
 		newTable = repalloc(s_motion_layer_state.mnEntries, motNodeID * sizeof(MotionNodeEntry));
-		if (newTable == NULL)
-		{
-			ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("Could not re-allocate motion layer state table.")));
-		}
 		s_motion_layer_state.mnEntries = newTable;
 		/* zero-out the new piece at the end */
 		memset(&s_motion_layer_state.mnEntries[s_motion_layer_state.mneCount],
@@ -779,11 +775,12 @@ EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 		if (ChunkSorterKey_id(pCSEntry->key) != motNodeID)
 			continue;
 
-		if (pMNEntry->preserve_order)
+		if (pMNEntry->preserve_order &&
+        	mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
 		{
 			/* Print chunk-sorter entry statistics. */
 
-			elog(DEBUG4, "Chunk-sorter entry [src=%d,mn=%d] statistics:\n"
+			elog(DEBUG1, "Chunk-sorter entry [src=%d,mn=%d] statistics:\n"
 				 "\tAvailable Tuples High-Watermark:  %u",
 				 ChunkSorterKey_route(pCSEntry->key),
 				 ChunkSorterKey_id(pCSEntry->key),
@@ -803,12 +800,11 @@ EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 		{
 			if (flushCommLayer)
 			{
-				elog(DEBUG2, "Motion layer node %d cleanup - did not receive"
-					 " end-of-stream from sender %d.  Waiting.", motNodeID,
+				elog(FATAL, "Motion layer node %d cleanup - did not receive"
+					 " end-of-stream from sender %d.", motNodeID,
 					 ChunkSorterKey_route(pCSEntry->key));
 
 				/*** TODO - get chunks until end-of-stream comes in. ***/
-				Assert(false);
 			}
 			else
 			{
@@ -853,26 +849,37 @@ EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 	pMNEntry->cleanedUp = true;
 
 	/* Clean up the motion-node entry, then remove it from the hash table. */
-    if (pMNEntry->stat_total_sends ||
-        pMNEntry->stat_total_recvs ||
-        pMNEntry->sel_rd_wait ||
-        pMNEntry->sel_wr_wait)
-	elog(DEBUG3, "Motion Node %d Statistics:\n"
-		 "    Sending:   %9u attempts %9u chunks sent %9u tuple bytes %9u total bytes\n"
-		 "    Receiving: %9u attempts %9u chunks rcvd %9u tuple bytes %9u total bytes\n"
-		 "    Read wait: %9u usec	              Write wait: %9u usec",
-		 motNodeID,
-		 pMNEntry->stat_total_sends,
-		 pMNEntry->stat_total_chunks_sent,
-		 pMNEntry->stat_tuple_bytes_sent,
-		 pMNEntry->stat_total_bytes_sent,
-		 pMNEntry->stat_total_recvs,
-		 pMNEntry->stat_total_chunks_recvd,
-		 pMNEntry->stat_tuple_bytes_recvd,
-		 pMNEntry->stat_total_bytes_recvd,
-		 pMNEntry->sel_rd_wait,
-		 pMNEntry->sel_wr_wait
-		);
+	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
+    {
+        if (pMNEntry->stat_total_sends > 0 ||
+            pMNEntry->sel_wr_wait > 0)
+        {
+            elog(LOG, "Motion node %d in slice%d sent %u tuples, "
+                 "%u total bytes, %u tuple bytes, %u chunks; waited %u usec.",
+		         motNodeID,
+                 currentSliceId,
+		         pMNEntry->stat_total_sends,
+		         pMNEntry->stat_total_bytes_sent,
+		         pMNEntry->stat_tuple_bytes_sent,
+		         pMNEntry->stat_total_chunks_sent,
+		         pMNEntry->sel_wr_wait
+		        );
+        }
+        if (pMNEntry->stat_total_recvs > 0 ||
+            pMNEntry->sel_rd_wait > 0)
+        {
+            elog(LOG, "Motion node %d in slice%d received %u tuples, "
+                 "%u total bytes, %u tuple bytes, %u chunks; waited %u usec.",
+		         motNodeID,
+                 currentSliceId,
+		         pMNEntry->stat_total_recvs,
+		         pMNEntry->stat_total_bytes_recvd,
+		         pMNEntry->stat_tuple_bytes_recvd,
+		         pMNEntry->stat_total_chunks_recvd,
+		         pMNEntry->sel_rd_wait
+		        );
+        }
+    }
 
 	CleanupSerTupInfo(&pMNEntry->ser_tup_info);
 	FreeTupleDesc(pMNEntry->tuple_desc);
@@ -957,8 +964,10 @@ getChunkSorterEntry(MotionNodeEntry * motNodeEntry,
 		 * initializes the key).
 		 */
 
+#ifdef AMS_VERBOSE_LOGGING
 		elog(DEBUG5, "Tuple chunk sorter allocated new HTAB entry for"
 			 " [src=%d,mn=%d].", srcRoute, motNodeID);
+#endif
 
 		chunkSorterEntry->chunk_list.serialized_data_length = 0;
 		chunkSorterEntry->chunk_list.max_chunk_length = Mpp_max_tuple_chunk_size;
@@ -974,10 +983,11 @@ getChunkSorterEntry(MotionNodeEntry * motNodeEntry,
 		 */
 		if (motNodeEntry->preserve_order)
 		{
+#ifdef AMS_VERBOSE_LOGGING
 			elog(DEBUG5, "Motion node %d is order-preserving.  Creating"
 				 " tuple-store for entry [src=%d,mn=%d].", motNodeID,
 				 srcRoute, motNodeID);
-
+#endif
 			chunkSorterEntry->ready_tuples = htfifo_create(work_mem);
 
 			/* Sanity-check: */
@@ -985,9 +995,11 @@ getChunkSorterEntry(MotionNodeEntry * motNodeEntry,
 		}
 		else
 		{
+#ifdef AMS_VERBOSE_LOGGING
 			elog(DEBUG5, "Motion node %d is not order-preserving.  Using"
 				 " shared tuple-store for entry [src=%d,mn=%d].", motNodeID,
 				 srcRoute, motNodeID);
+#endif
 
 			chunkSorterEntry->ready_tuples = motNodeEntry->ready_tuples;
 
@@ -1022,11 +1034,6 @@ materializeChunk(TupleChunkListItem * tcItem)
 	Assert(*tcItem != NULL);
 
 	newItem = repalloc(*tcItem, sizeof(TupleChunkListItemData) + (*tcItem)->chunk_length);
-	if (newItem == NULL)
-	{
-		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-					errmsg("Could not re-allocate space for tuple-chunk.")));
-	}
 
 	memcpy(newItem->chunk_data, newItem->inplace, newItem->chunk_length);
 	newItem->inplace = NULL;	/* no need to free, someone else owns it */
@@ -1254,6 +1261,7 @@ statSendTuple(MotionNodeEntry * pMNEntry, TupleChunkList tcList)
 	headerOverhead = TUPLE_CHUNK_HEADER_SIZE * tcList->num_chunks;
 
 	/* per motion-node stats. */
+	pMNEntry->stat_total_sends++;
 	pMNEntry->stat_total_chunks_sent += tcList->num_chunks;
 	pMNEntry->stat_total_bytes_sent += tcList->serialized_data_length + headerOverhead;
 	pMNEntry->stat_tuple_bytes_sent += tcList->serialized_data_length;

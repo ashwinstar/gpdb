@@ -225,6 +225,7 @@ static int	max_identifier_length;
 static int	block_size;
 static bool integer_datetimes;
 static bool standard_conforming_strings;
+static char *mpp_log_interconnect_str;
 
 
 
@@ -2290,7 +2291,16 @@ static struct config_string ConfigureNamesString[] =
        "readonly", NULL, NULL
     },
 
-	/* End-of-list marker */
+	{
+		{"mpp_log_interconnect", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Sets the verbosity of logged messages pertaining to connections between MPP worker processes."),
+			gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\".")
+		},
+		&mpp_log_interconnect_str,
+		"terse", cdbvars_assign_mpp_log_interconnect, cdbvars_show_mpp_log_interconnect
+	},
+
+    /* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, NULL, NULL, NULL
 	}

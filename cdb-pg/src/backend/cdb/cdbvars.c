@@ -391,3 +391,96 @@ show_interconnect_setup_timeout(void)
 
 	return buffer.data;
 }
+
+
+/* --------------------------------------------------------------------------------------------------
+ * Logging
+ */
+
+
+/*
+ * mpp_log_interconnect (string)
+ *
+ * Should connections between internal processes be logged?  (qDisp/qExec/etc)
+ * "OFF"     -> connection errors are logged
+ * "TERSE"   -> terse logging of routine events, e.g. successful connections
+ * "VERBOSE" -> most interconnect setup events are logged
+ * "DEBUG"   -> additional events are logged at severity level DEBUG1 to DEBUG5.
+ *
+ * The messages that are enabled by the TERSE and VERBOSE settings are
+ * written with a severity level of LOG.
+ */
+CdbVars_Verbosity   mpp_log_interconnect;
+
+
+/*
+ * cdbvars_string_to_verbosity
+ */
+CdbVars_Verbosity
+cdbvars_string_to_verbosity(const char *s)
+{
+	CdbVars_Verbosity result;
+
+	if (!s ||
+        !s[0] ||
+        !strcasecmp("terse", s))
+		result = CDBVARS_VERBOSITY_TERSE;
+	else if (!strcasecmp("off", s))
+		result = CDBVARS_VERBOSITY_OFF;
+	else if (!strcasecmp("verbose", s))
+		result = CDBVARS_VERBOSITY_VERBOSE;
+	else if (!strcasecmp("debug", s))
+		result = CDBVARS_VERBOSITY_DEBUG;
+    else
+        result = CDBVARS_VERBOSITY_UNDEFINED;
+	return result;
+}                               /* cdbvars_string_to_verbosity */
+
+/*
+ * cdbvars_verbosity_to_string
+ */
+const char *
+cdbvars_verbosity_to_string(CdbVars_Verbosity verbosity)
+{
+	switch (verbosity)
+	{
+		case CDBVARS_VERBOSITY_OFF:
+			return "off";
+		case CDBVARS_VERBOSITY_TERSE:
+			return "terse";
+		case CDBVARS_VERBOSITY_VERBOSE:
+			return "verbose";
+		case CDBVARS_VERBOSITY_DEBUG:
+			return "debug";
+		default:
+			return "*undefined*";
+	}
+}                               /* cdbvars_verbosity_to_string */
+
+
+/*
+ * cdbvars_assign_mpp_log_interconnect
+ */
+const char *
+cdbvars_assign_mpp_log_interconnect(const char *newval, bool doit, GucSource source)
+{
+	CdbVars_Verbosity v = cdbvars_string_to_verbosity(newval);
+
+	if (v == CDBVARS_VERBOSITY_UNDEFINED)
+        return NULL;
+	if (doit)
+		mpp_log_interconnect = v;
+	return newval;
+}                               /* cdbvars_assign_mpp_log_interconnect */
+
+
+/*
+ * cdbvars_show_mpp_log_interconnect
+ */
+const char *
+cdbvars_show_mpp_log_interconnect(void)
+{
+	return cdbvars_verbosity_to_string(mpp_log_interconnect);
+}                               /* cdbvars_show_mpp_log_interconnect */
+
+
