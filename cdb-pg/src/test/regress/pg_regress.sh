@@ -545,15 +545,16 @@ if [ $? -ne 0 ]; then
     (exit 2); exit
 fi
 
-"$bindir/psql" -q -X $psql_options -c "\
-alter database \"$dbname\" set lc_messages to 'C';
-alter database \"$dbname\" set lc_monetary to 'C';
-alter database \"$dbname\" set lc_numeric to 'C';
-alter database \"$dbname\" set lc_time to 'C';" "$dbname"
-if [ $? -ne 0 ]; then
-    echo "$me: could not set database default locales"
-    (exit 2); exit
-fi
+# disable until mpp can accept these ALTER DATABASE commands
+# "$bindir/psql" -q -X $psql_options -c "\
+# alter database \"$dbname\" set lc_messages to 'C';
+# alter database \"$dbname\" set lc_monetary to 'C';
+# alter database \"$dbname\" set lc_numeric to 'C';
+# alter database \"$dbname\" set lc_time to 'C';" "$dbname"
+# if [ $? -ne 0 ]; then
+#    echo "$me: could not set database default locales"
+#    (exit 2); exit
+# fi
 
 
 # ----------
