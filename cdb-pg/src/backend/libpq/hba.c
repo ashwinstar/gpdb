@@ -662,8 +662,6 @@ parse_hba(List *line, int line_num, hbaPort *port,
 	/* Check the record type. */
 	token = lfirst(line_item);
 
-	elog(LOG, "parse_hba: first token %s", token);
-
 	if (strcmp(token, "local") == 0)
 	{
 		/* Get the database. */

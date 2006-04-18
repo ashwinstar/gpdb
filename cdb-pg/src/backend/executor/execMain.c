@@ -299,7 +299,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		 * Are we going to dispatch this plan parallel?  Only if we're running as
 		 * a QD and the plan is a parallel plan.
 		 */
-		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL && !explainOnly;
+		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL && !(eflags & EXEC_FLAG_EXPLAIN_ONLY);
 		
 		/*
 		 * if in dispatch mode, time to serialize plan and query
@@ -343,7 +343,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		 * Get executor identity (who does the executor serve). we can assume 
 		 * Forward scan direction for now just for retrieving the identity. 
 		 */
-		if(!explainOnly)
+		if (!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 			exec_identity = getMppExecIdentity(queryDesc, ForwardScanDirection, estate);
 		else
 			exec_identity = MPP_IGNORE;
