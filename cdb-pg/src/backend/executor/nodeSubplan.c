@@ -683,7 +683,7 @@ slotNoNulls(TupleTableSlot *slot)
  * ----------------------------------------------------------------
  */
 void
-ExecInitSubPlan(SubPlanState *node, EState *estate)
+ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 {
 	SubPlan    *subplan = (SubPlan *) node->xprstate.expr;
 	EState	   *sp_estate;
@@ -756,8 +756,16 @@ ExecInitSubPlan(SubPlanState *node, EState *estate)
 
 	/*
 	 * Start up the subplan (this is a very cut-down form of InitPlan())
+	 *
+	 * The subplan will never need to do BACKWARD scan or MARK/RESTORE.
+	 * If it is a parameterless subplan (not initplan), we suggest that it
+	 * be prepared to handle REWIND efficiently; otherwise there is no need.
 	 */
-	node->planstate = ExecInitNode(subplan->plan, sp_estate);
+	eflags &= EXEC_FLAG_EXPLAIN_ONLY;
+	if (subplan->parParam == NIL && subplan->setParam == NIL)
+		eflags |= EXEC_FLAG_REWIND;
+
+	node->planstate = ExecInitNode(subplan->plan, sp_estate, eflags);
 
 	/*
 	 * Should we "Reclaim" the global slice table to keep control of it?

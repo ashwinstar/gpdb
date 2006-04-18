@@ -3,7 +3,6 @@
  * nodeHashjoin.c
  *	  Routines to handle hash join nodes
  *
- * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -140,8 +139,8 @@ ExecHashJoin(HashJoinState *node)
 			{
 				node->hj_OuterNotEmpty = false;
 				return NULL;
-		}
-		else
+			}
+			else
 				node->hj_OuterNotEmpty = true;
 		}
 		else
@@ -345,7 +344,7 @@ ExecHashJoin(HashJoinState *node)
  * ----------------------------------------------------------------
  */
 HashJoinState *
-ExecInitHashJoin(HashJoin *node, EState *estate)
+ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 {
 	HashJoinState *hjstate;
 	Plan	   *outerNode;
@@ -354,6 +353,9 @@ ExecInitHashJoin(HashJoin *node, EState *estate)
 	List	   *rclauses;
 	List	   *hoperators;
 	ListCell   *l;
+
+	/* check for unsupported flags */
+	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
 	/*
 	 * create state structure
@@ -388,12 +390,16 @@ ExecInitHashJoin(HashJoin *node, EState *estate)
 
 	/*
 	 * initialize child nodes
+	 *
+	 * Note: we could suppress the REWIND flag for the inner input, which
+	 * would amount to betting that the hash will be a single batch.  Not
+	 * clear if this would be a win or not.
 	 */
 	outerNode = outerPlan(node);
 	hashNode = (Hash *) innerPlan(node);
 
-	outerPlanState(hjstate) = ExecInitNode(outerNode, estate);
-	innerPlanState(hjstate) = ExecInitNode((Plan *) hashNode, estate);
+	outerPlanState(hjstate) = ExecInitNode(outerNode, estate, eflags);
+	innerPlanState(hjstate) = ExecInitNode((Plan *) hashNode, estate, eflags);
 
 #define HASHJOIN_NSLOTS 3
 
@@ -840,9 +846,9 @@ ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 	 */
 	if (node->hj_HashTable != NULL)
 	{
-	if (node->hj_HashTable->nbatch == 1 &&
-		((PlanState *) node)->righttree->chgParam == NULL)
-	{
+		if (node->hj_HashTable->nbatch == 1 &&
+			((PlanState *) node)->righttree->chgParam == NULL)
+		{
 			/*
 			 * okay to reuse the hash table; needn't rescan inner, either.
 			 *
@@ -856,20 +862,20 @@ ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 			 * through.)
 			 */
 			node->hj_OuterNotEmpty = false;
-	}
-	else
-	{
-		/* must destroy and rebuild hash table */
-		ExecHashTableDestroy(node->hj_HashTable);
-		node->hj_HashTable = NULL;
+		}
+		else
+		{
+			/* must destroy and rebuild hash table */
+			ExecHashTableDestroy(node->hj_HashTable);
+			node->hj_HashTable = NULL;
 
-		/*
+			/*
 			 * if chgParam of subnode is not null then plan will be re-scanned
 			 * by first ExecProcNode.
-		 */
-		if (((PlanState *) node)->righttree->chgParam == NULL)
-			ExecReScan(((PlanState *) node)->righttree, exprCtxt);
-	}
+			 */
+			if (((PlanState *) node)->righttree->chgParam == NULL)
+				ExecReScan(((PlanState *) node)->righttree, exprCtxt);
+		}
 	}
 
 	/* Always reset intra-tuple state */

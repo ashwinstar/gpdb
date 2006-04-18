@@ -590,7 +590,7 @@ execMotionSortedReceiverFirstTime(MotionState * node)
  * ----------------------------------------------------------------
  */
 MotionState *
-ExecInitMotion(Motion * node, EState *estate)
+ExecInitMotion(Motion * node, EState *estate, int eflags)
 {
 	MotionState *motionstate;
 	TupleDesc	tupDesc;
@@ -732,7 +732,7 @@ ExecInitMotion(Motion * node, EState *estate)
 	/*
 	 * initializes child nodes
 	 */
-	outerPlanState(motionstate) = ExecInitNode(outerPlan(node), estate);
+	outerPlanState(motionstate) = ExecInitNode(outerPlan(node), estate, eflags);
 
 	/*
 	 * restore state that might have changed in recursion for our caller

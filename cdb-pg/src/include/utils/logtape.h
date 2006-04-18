@@ -40,4 +40,6 @@ extern void LogicalTapeTell(LogicalTapeSet *lts, int tapenum,
 				long *blocknum, int *offset);
 extern long LogicalTapeSetBlocks(LogicalTapeSet *lts);
 
+extern void LogicalTapeSetForgetFreeSpace(LogicalTapeSet *lts);
+
 #endif   /* LOGTAPE_H */

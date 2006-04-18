@@ -1331,8 +1331,9 @@ typedef struct HashJoinState
 typedef struct MaterialState
 {
 	ScanState	ss;				/* its first field is NodeTag */
-	void	   *tuplestorestate;	/* private state of tuplestore.c */
+	bool		randomAccess;
 	bool		eof_underlying; /* reached end of underlying plan? */
+	void		*tuplestorestate;	/* private state of tuplestore.c */
 } MaterialState;
 
 /* ----------------
@@ -1342,6 +1343,7 @@ typedef struct MaterialState
 typedef struct SortState
 {
 	ScanState	ss;				/* its first field is NodeTag */
+	bool		randomAccess;
 	bool		sort_Done;		/* sort completed yet? */
 	void	   *tuplesortstate; /* private state of tuplesort.c */
 } SortState;

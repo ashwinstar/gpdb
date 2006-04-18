@@ -190,13 +190,16 @@ ExecEndBitmapIndexScan(BitmapIndexScanState *node)
  * ----------------------------------------------------------------
  */
 BitmapIndexScanState *
-ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate)
+ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 {
 	BitmapIndexScanState *indexstate;
 	ScanKey		scanKeys;
 	int			numScanKeys;
 	ExprState **runtimeKeyInfo;
 	bool		have_runtime_keys;
+
+	/* check for unsupported flags */
+	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
 	/*
 	 * create state structure

@@ -88,7 +88,7 @@ typedef struct evalPlanQual
 } evalPlanQual;
 
 /* decls for local routines only used within this module */
-static void InitPlan(QueryDesc *queryDesc, bool explainOnly);
+static void InitPlan(QueryDesc *queryDesc, int eflags);
 static void initResultRelInfo(ResultRelInfo *resultRelInfo,
 				  Index resultRelationIndex,
 				  List *rangeTable,
@@ -128,7 +128,7 @@ static void EvalPlanQualStop(evalPlanQual *epq);
  * field of the QueryDesc is filled in to describe the tuples that will be
  * returned, and the internal fields (estate and planstate) are set up.
  *
- * If explainOnly is true, we are not actually intending to run the plan,
+ * If explainOnly-flag is true, we are not actually intending to run the plan,
  * only to set up for EXPLAIN; so skip unwanted side-effects.
  *
  * NB: the CurrentMemoryContext when this is called will become the parent
@@ -141,7 +141,7 @@ static void EvalPlanQualStop(evalPlanQual *epq);
  * ----------------------------------------------------------------
  */
 void
-ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
+ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
 	EState	   *estate;
 	MemoryContext oldcontext;
@@ -156,7 +156,7 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	 * If the transaction is read-only, we need to check if any writes are
 	 * planned to non-temporary tables.
 	 */
-	if ( (XactReadOnly || Mpp_role == MPP_ROLE_DISPATCH) && !explainOnly)
+	if ((XactReadOnly || Mpp_role == MPP_ROLE_DISPATCH) && !(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 		ExecCheckXactReadOnly(queryDesc->parsetree);
 
 	/*
@@ -225,14 +225,14 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	/*
 	 * Initialize the plan state tree
 	 */
-	InitPlan(queryDesc, explainOnly);
+	InitPlan(queryDesc, eflags);
 
 	if (Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
 	{
 		/* Assign gang descriptions to the root slices of the slice forest. */
 		InitRootSlices(queryDesc);
 
-		if (!explainOnly)
+		if (!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 		{
 			/*
 			 * Since we intend to execute the plan, inventory the slice tree,
@@ -866,7 +866,7 @@ fail:
  * ----------------------------------------------------------------
  */
 static void
-InitPlan(QueryDesc *queryDesc, bool explainOnly)
+InitPlan(QueryDesc *queryDesc, int eflags)
 {
 	CmdType		operation = queryDesc->operation;
 	Query	   *parseTree = queryDesc->parsetree;
@@ -1080,7 +1080,7 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 	 * tree.  This opens files, allocates storage and leaves us ready to start
 	 * processing tuples.
 	 */
-	planstate = ExecInitNode(plan, estate);
+	planstate = ExecInitNode(plan, estate, eflags);
 
 	/*
 	 * Get the tuple descriptor describing the type of tuples to return. (this
@@ -1199,7 +1199,7 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 	 */
 	intoRelationDesc = NULL;
 
-	if (do_select_into && !explainOnly)
+	if (do_select_into && !(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 	{
 		char	   *intoName;
 		Oid			namespaceId;
@@ -2724,7 +2724,7 @@ EvalPlanQualStart(evalPlanQual *epq, EState *estate, evalPlanQual *priorepq)
 	epqstate->es_tupleTable =
 		ExecCreateTupleTable(estate->es_tupleTable->size);
 
-	epq->planstate = ExecInitNode(estate->es_topPlan, epqstate);
+	epq->planstate = ExecInitNode(estate->es_topPlan, epqstate, 0);
 
 	MemoryContextSwitchTo(oldcontext);
 }

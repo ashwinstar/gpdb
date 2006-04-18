@@ -404,13 +404,16 @@ ExecEndBitmapHeapScan(BitmapHeapScanState *node)
  * ----------------------------------------------------------------
  */
 BitmapHeapScanState *
-ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate)
+ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 {
 	BitmapHeapScanState *scanstate;
 	RangeTblEntry *rtentry;
 	Index		relid;
 	Oid			reloid;
 	Relation	currentRelation;
+
+	/* check for unsupported flags */
+	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
 	/*
 	 * create state structure
@@ -498,7 +501,7 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate)
 	 * relation's indexes, and we want to be sure we have acquired a lock
 	 * on the relation first.
 	 */
-	outerPlanState(scanstate) = ExecInitNode(outerPlan(node), estate);
+	outerPlanState(scanstate) = ExecInitNode(outerPlan(node), estate, eflags);
 
 	/*
 	 * all done.

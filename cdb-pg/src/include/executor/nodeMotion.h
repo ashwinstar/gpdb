@@ -15,7 +15,7 @@
 #include "nodes/execnodes.h"
 
 extern int	ExecCountSlotsMotion(Motion *node);
-extern MotionState *ExecInitMotion(Motion *node, EState *estate);
+extern MotionState *ExecInitMotion(Motion *node, EState *estate, int eflags);
 extern TupleTableSlot *ExecMotion(MotionState *node);
 extern void ExecEndMotion(MotionState *node);
 
