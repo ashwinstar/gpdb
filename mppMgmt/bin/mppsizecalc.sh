@@ -162,8 +162,8 @@ SEND_TABLE_SIZE_REQUEST () {
 	for I in "${QE_ARRAY[@]}"
 	do
 		SET_VAR
-		QE_TABLE_OID=`$TRUSTED_SHELL -n $QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" psql -p $QE_PORT $QD_DBNAME -A -t -c\"select relfilenode from pg_class where oid=$TABLE_OID ;\""`
-		ERROR_CHK $? "obtain QE table oid info" 2
+		QE_TABLE_OID=`$TRUSTED_SHELL -n $QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"select relfilenode from pg_class where oid=$TABLE_OID ;\""`
+		ERROR_CHK $? "obtain segment instance table oid info" 2
 		LOG_MSG "[INFO]:-Processing $QE_HOST post $QE_PORT Table OID $QE_TABLE_OID"
 		QE_TABLE=${QE_DIR}/base/${DB_OID}/${QE_TABLE_OID}
 		QE_BASE_DIR=`$BASENAME $QE_DIR`
@@ -191,7 +191,7 @@ SEND_INDEX_SIZE_REQUEST () {
 	do
 		SET_VAR
 ###		for IDX in "${INDEX_OID[@]}"
-		for IDX in `$TRUSTED_SHELL -n $QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" psql -p $QE_PORT $QD_DBNAME -A -t -c\"select indexrelid from pg_index where indrelid=${TABLE_OID};\""` 
+		for IDX in `$TRUSTED_SHELL -n $QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"select indexrelid from pg_index where indrelid=${TABLE_OID};\""` 
 		do
 			LOG_MSG "[INFO]:-Processing $QE_HOST post $QE_PORT Index OID $IDX"
 			QE_INDEX=${QE_DIR}/base/${DB_OID}/$IDX
