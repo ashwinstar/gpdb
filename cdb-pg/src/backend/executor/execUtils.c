@@ -58,6 +58,10 @@
 #include "cdb/cdbutil.h"
 #include "cdb/cdbgang.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
+#include "cdb/ml_ipc.h"
+#include "cdb/cdbmotion.h"
+
 #include "utils/elog.h"
 
 /* ----------------------------------------------------------------
@@ -231,6 +235,10 @@ CreateExecutorState(void)
 	estate->es_cur_root_idx = 0;
 	estate->es_sliceTable = NULL;
 	estate->es_slice_map = NULL;
+	estate->es_interconnect_is_setup = false;
+	estate->primaryResults = NULL;
+	estate->mirrorResults = NULL;
+	
 
 	/*
 	 * Return the executor state structure
@@ -1511,3 +1519,90 @@ sliceRunsOnQE(Slice * slice)
 {
 	return (slice != NULL && slice->gangType != GANGTYPE_UNALLOCATED);
 }
+
+/*
+ * Choose the execution identity (who does this executor serve?).  
+ * There are types:
+ *
+ * 1. No-Op (ignore) -- this occurs when the specified direction is
+ *	 NoMovementScanDirection or when Mpp_role is MPP_ROLE_DISPATCH
+ *	 and the current slice belongs to a QE.
+ *
+ * 2. Executor serves a Root Slice -- this occurs when Mpp_role is 
+ *   MPP_ROLE_UTILITY or the current slice is a root.  It corresponds 
+ *   to the "normal" path through the executor in that we enter the plan 
+ *   at the top and count on the motion nodes at the fringe of the top 
+ *   slice to return without ever calling nodes below them.
+ *
+ * 3. Executor serves a Non-Root Slice on a QE -- this occurs when 
+ *   Mpp_role is MPP_ROLE_EXECUTE and the current slice is not a root 
+ *   slice. It corresponds to a QE running a slice with a motion node on
+ *	 top.  The call, thus, returns no tuples (since they all go out
+ *	 on the interconnect to the receiver version of the motion node),
+ *	 but it does execute the indicated slice down to any fringe
+ *	 motion nodes (as in case 2).
+ */
+MppExecIdentity
+getMppExecIdentity(QueryDesc *queryDesc,
+				   ScanDirection direction,
+				   EState	   *estate)
+{
+	Slice              *currentSlice;
+	
+	currentSlice = getCurrentSlice(estate);
+	if (currentSlice)
+    {
+        if (Mpp_role == MPP_ROLE_EXECUTE ||
+            sliceRunsOnQD(currentSlice))
+            currentSliceId = currentSlice->sliceIndex;
+    }
+	
+	/* select the strategy */
+	if (direction == NoMovementScanDirection)
+	{
+		return MPP_IGNORE;
+	}
+	else if (Mpp_role == MPP_ROLE_DISPATCH && sliceRunsOnQE(currentSlice))
+	{
+		return MPP_IGNORE;
+	}
+	else if (Mpp_role == MPP_ROLE_EXECUTE && estate->es_cur_slice_idx != estate->es_cur_root_idx)
+	{
+		return MPP_NON_ROOT_ON_QE;
+	}
+	else
+	{
+		return MPP_ROOT_SLICE;
+	}
+}
+
+/*
+ * Cleanup before exiting the executor. Will normally be
+ * called from within a CATCH block.
+ */
+void mppExecCleanup(EState *estate)
+{
+	/*
+	 * Request any commands still executing on qExecs to stop.
+	 * Wait for them to finish and clean up the dispatching structures.
+	 * Replace current error info with QE error info if more interesting.
+	 */
+	if (estate->primaryResults)
+		cdbdisp_handleError(estate->primaryResults, estate->mirrorResults);
+	
+	/* teardown the sequence server. */
+	TeardownSequenceServer();
+	
+	/* Clean up the interconnect. */
+	if (estate->es_interconnect_is_setup)
+	{
+		TeardownInterconnect(true);
+		estate->es_interconnect_is_setup = false;
+	}
+	
+	/* Clean up our own motion layer. */
+	if (Mpp_role != MPP_ROLE_UTILITY)
+		ResetMotionLayer(true);
+	
+}
+

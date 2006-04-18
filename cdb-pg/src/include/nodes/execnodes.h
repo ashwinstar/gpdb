@@ -22,6 +22,7 @@
 
 #include "access/relscan.h"
 #include "cdb/cdbhash.h"
+#include "cdb/cdbdispatchresult.h"
 #include "executor/tuptable.h"
 #include "fmgr.h"
 #include "nodes/bitmapset.h"
@@ -524,6 +525,10 @@ typedef struct EState
 	int es_cur_slice_idx;
  	SliceTable *es_sliceTable;
 	struct MotionState **es_slice_map;
+	bool es_interconnect_is_setup;      /* is interconnect set-up? */
+	CdbDispatchResults *primaryResults;
+    CdbDispatchResults *mirrorResults;
+	
 
 } EState;
 
