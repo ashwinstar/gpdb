@@ -900,8 +900,8 @@ getMotionNodeEntry(int16 motNodeID, char *errString)
 	if (motNodeID > s_motion_layer_state.mneCount ||
 		!s_motion_layer_state.mnEntries[motNodeID - 1].valid)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-		errmsg("Interconect Error: Unexpected Motion Node Id: %d.  This means"
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		errmsg("Interconnect Error: Unexpected Motion Node Id: %d.  This means"
 			   " a motion node that wasn't setup is requesting interconnect"
 			   " resources.", motNodeID)));
 	}
