@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- This script was automatically generated using Macrovision's InstallAnywhere 7.1 Enterprise, Build 2781
      STATUS: Fully Functional LICENSED Edition
-     DATE:   Mon Apr 03 21:12:27 PDT 2006 -->
-<InstallAnywhere_Deployment_Project increments="6679">
+     DATE:   Tue Apr 18 17:42:56 PDT 2006 -->
+<InstallAnywhere_Deployment_Project increments="6868">
 	<!-- ** DO NOT EDIT ** Essential authorization and configuration data ** DO NOT EDIT ** -->
 	<essentialScriptInfo>
 		<versionID major="7" minor="1" revision="-1"/>
@@ -10,9 +10,9 @@
 		<scriptID>12,42,11,77,81,49,57,51,55,75,55,90,77,89,71,70</scriptID>
 		<buildID>3,13,71,76,105,110,117,120,44,32,50,46,52,46,50,49,45,50,55,46,69,76,44,32,97,109,100,54,52,59,32,74,97,118,97,32,49,46,53,46,48,95,48,53,44,32,83,117,110,32,77,105,99,114,111,115,121,115,116,101,109,115,32,73,110,99,46,44,32,104,116,116,112,58,47,47,106,97,118,97,46,115,117,110,46,99,111,109,47,59,32,101,110,44,32,85,110,107,110,111,119,110,59,32,85,84,70,45,56</buildID>
 		<!-- The authorizationID may change between project saves and builds.  This does not effect the integrity of the project, nor do changes in this value represent changes in the actual InstallAnywhere project. -->
-		<authorizationID>1,0,0,0,99,20,-16,0,80,112,117,98,89,98,113,97,113,65,81,86,58,65,67,66,70,65,64,69,66,69,48,63,71,5,2,12,8,73,99,10,1,0,0</authorizationID>
+		<authorizationID>1,0,0,0,-93,-108,-128,-128,80,112,117,98,89,98,113,97,113,65,81,86,58,65,67,66,70,65,64,69,66,69,48,63,71,5,2,11,11,73,111,10,1,0,0</authorizationID>
 	</essentialScriptInfo>
-	<installationObjects uniqueObjects="323">
+	<installationObjects uniqueObjects="332">
 		<object class="com.zerog.ia.installer.Installer" objectID="089e8853af36">
 			<property name="classpath">
 				<object class="java.util.Vector"/>
@@ -219,7 +219,7 @@ You may cancel this installation at any time by typing 'quit'.
 								<string><![CDATA[$MPP_REL_NAME$]]></string>
 							</property>
 							<property name="value">
-								<string><![CDATA[mpp-pgsql-Release-2_1_P2_build-2]]></string>
+								<string><![CDATA[mpp-pgsql-Release-2_1_P2_build-3]]></string>
 							</property>
 						</object>
 					</method>
@@ -1616,6 +1616,267 @@ For your convenience, a file called bizgres_path.sh has been placed in the top l
 						</object>
 					</method>
 					<method name="addElement">
+						<object class="com.zerog.ia.installer.actions.ActionGroup" objectID="c312c0c7a450">
+							<property name="groupName">
+								<string><![CDATA[Set DOC links]]></string>
+							</property>
+							<visualChildren>
+								<object class="com.zerog.ia.installer.actions.Exec" objectID="c3131727a450">
+									<property name="commandLineArgs">
+										<string><![CDATA[ln -s $USER_INSTALL_DIR$/$MPP_REL_NAME$/docs/MPPAdminGuide.pdf $USER_INSTALL_DIR$/doc/MPPAdminGuide.pdf]]></string>
+									</property>
+									<property name="waitForProcess">
+										<boolean>false</boolean>
+									</property>
+									<property name="suppressConsoleWindow">
+										<boolean>false</boolean>
+									</property>
+									<property name="showIndeterminateDialog">
+										<boolean>false</boolean>
+									</property>
+									<property name="dialogLabel">
+										<string><![CDATA[Executing...]]></string>
+									</property>
+									<property name="showPleaseWaitPanel">
+										<boolean>true</boolean>
+									</property>
+									<property name="stdoutVar">
+										<string><![CDATA[$EXECUTE_STDOUT$]]></string>
+									</property>
+									<property name="stderrVar">
+										<string><![CDATA[$EXECUTE_STDERR$]]></string>
+									</property>
+									<property name="exitCodeVar">
+										<string><![CDATA[$EXECUTE_EXITCODE$]]></string>
+									</property>
+									<rules logicalOperation="AND">
+										<object class="com.zerog.ia.installer.rules.FileFolderPathChk" objectID="c31411b8a450">
+											<property name="path">
+												<string><![CDATA[$USER_INSTALL_DIR$/$MPP_REL_NAME$]]></string>
+											</property>
+											<property name="checkIsFileFolder">
+												<boolean>false</boolean>
+											</property>
+											<property name="isFile">
+												<boolean>true</boolean>
+											</property>
+											<property name="checkExists">
+												<boolean>true</boolean>
+											</property>
+											<property name="exists">
+												<boolean>true</boolean>
+											</property>
+											<property name="checkReadWrite">
+												<boolean>false</boolean>
+											</property>
+											<property name="isReadable">
+												<boolean>true</boolean>
+											</property>
+											<property name="isWriteable">
+												<boolean>true</boolean>
+											</property>
+											<property name="checksInUseNotNotInUse">
+												<boolean>false</boolean>
+											</property>
+											<property name="checkInUse">
+												<boolean>false</boolean>
+											</property>
+										</object>
+									</rules>
+								</object>
+								<object class="com.zerog.ia.installer.actions.Exec" objectID="c3166f58a450">
+									<property name="commandLineArgs">
+										<string><![CDATA[ln -s $USER_INSTALL_DIR$/$MPP_REL_NAME$/docs/MPPOverview.pdf $USER_INSTALL_DIR$/doc/MPPOverview.pdf]]></string>
+									</property>
+									<property name="waitForProcess">
+										<boolean>false</boolean>
+									</property>
+									<property name="suppressConsoleWindow">
+										<boolean>false</boolean>
+									</property>
+									<property name="showIndeterminateDialog">
+										<boolean>false</boolean>
+									</property>
+									<property name="dialogLabel">
+										<string><![CDATA[Executing...]]></string>
+									</property>
+									<property name="showPleaseWaitPanel">
+										<boolean>true</boolean>
+									</property>
+									<property name="stdoutVar">
+										<string><![CDATA[$EXECUTE_STDOUT$]]></string>
+									</property>
+									<property name="stderrVar">
+										<string><![CDATA[$EXECUTE_STDERR$]]></string>
+									</property>
+									<property name="exitCodeVar">
+										<string><![CDATA[$EXECUTE_EXITCODE$]]></string>
+									</property>
+									<rules logicalOperation="AND">
+										<object class="com.zerog.ia.installer.rules.FileFolderPathChk" objectID="c3166f59a450">
+											<property name="path">
+												<string><![CDATA[$USER_INSTALL_DIR$/$MPP_REL_NAME$]]></string>
+											</property>
+											<property name="checkIsFileFolder">
+												<boolean>false</boolean>
+											</property>
+											<property name="isFile">
+												<boolean>true</boolean>
+											</property>
+											<property name="checkExists">
+												<boolean>true</boolean>
+											</property>
+											<property name="exists">
+												<boolean>true</boolean>
+											</property>
+											<property name="checkReadWrite">
+												<boolean>false</boolean>
+											</property>
+											<property name="isReadable">
+												<boolean>true</boolean>
+											</property>
+											<property name="isWriteable">
+												<boolean>true</boolean>
+											</property>
+											<property name="checksInUseNotNotInUse">
+												<boolean>false</boolean>
+											</property>
+											<property name="checkInUse">
+												<boolean>false</boolean>
+											</property>
+										</object>
+									</rules>
+								</object>
+								<object class="com.zerog.ia.installer.actions.Exec" objectID="c31677c7a450">
+									<property name="commandLineArgs">
+										<string><![CDATA[ln -s $USER_INSTALL_DIR$/$MPP_REL_NAME$/docs/MPP_README $USER_INSTALL_DIR$/doc/MPP_README]]></string>
+									</property>
+									<property name="waitForProcess">
+										<boolean>false</boolean>
+									</property>
+									<property name="suppressConsoleWindow">
+										<boolean>false</boolean>
+									</property>
+									<property name="showIndeterminateDialog">
+										<boolean>false</boolean>
+									</property>
+									<property name="dialogLabel">
+										<string><![CDATA[Executing...]]></string>
+									</property>
+									<property name="showPleaseWaitPanel">
+										<boolean>true</boolean>
+									</property>
+									<property name="stdoutVar">
+										<string><![CDATA[$EXECUTE_STDOUT$]]></string>
+									</property>
+									<property name="stderrVar">
+										<string><![CDATA[$EXECUTE_STDERR$]]></string>
+									</property>
+									<property name="exitCodeVar">
+										<string><![CDATA[$EXECUTE_EXITCODE$]]></string>
+									</property>
+									<rules logicalOperation="AND">
+										<object class="com.zerog.ia.installer.rules.FileFolderPathChk" objectID="c31677c8a450">
+											<property name="path">
+												<string><![CDATA[$USER_INSTALL_DIR$/$MPP_REL_NAME$]]></string>
+											</property>
+											<property name="checkIsFileFolder">
+												<boolean>false</boolean>
+											</property>
+											<property name="isFile">
+												<boolean>true</boolean>
+											</property>
+											<property name="checkExists">
+												<boolean>true</boolean>
+											</property>
+											<property name="exists">
+												<boolean>true</boolean>
+											</property>
+											<property name="checkReadWrite">
+												<boolean>false</boolean>
+											</property>
+											<property name="isReadable">
+												<boolean>true</boolean>
+											</property>
+											<property name="isWriteable">
+												<boolean>true</boolean>
+											</property>
+											<property name="checksInUseNotNotInUse">
+												<boolean>false</boolean>
+											</property>
+											<property name="checkInUse">
+												<boolean>false</boolean>
+											</property>
+										</object>
+									</rules>
+								</object>
+								<object class="com.zerog.ia.installer.actions.Exec" objectID="c316811da450">
+									<property name="commandLineArgs">
+										<string><![CDATA[ln -s $USER_INSTALL_DIR$/$MPP_REL_NAME$/docs/MPPUserGuide.pdf  $USER_INSTALL_DIR$/doc/MPPUserGuide.pdf]]></string>
+									</property>
+									<property name="waitForProcess">
+										<boolean>false</boolean>
+									</property>
+									<property name="suppressConsoleWindow">
+										<boolean>false</boolean>
+									</property>
+									<property name="showIndeterminateDialog">
+										<boolean>false</boolean>
+									</property>
+									<property name="dialogLabel">
+										<string><![CDATA[Executing...]]></string>
+									</property>
+									<property name="showPleaseWaitPanel">
+										<boolean>true</boolean>
+									</property>
+									<property name="stdoutVar">
+										<string><![CDATA[$EXECUTE_STDOUT$]]></string>
+									</property>
+									<property name="stderrVar">
+										<string><![CDATA[$EXECUTE_STDERR$]]></string>
+									</property>
+									<property name="exitCodeVar">
+										<string><![CDATA[$EXECUTE_EXITCODE$]]></string>
+									</property>
+									<rules logicalOperation="AND">
+										<object class="com.zerog.ia.installer.rules.FileFolderPathChk" objectID="c316811ea450">
+											<property name="path">
+												<string><![CDATA[$USER_INSTALL_DIR$/$MPP_REL_NAME$]]></string>
+											</property>
+											<property name="checkIsFileFolder">
+												<boolean>false</boolean>
+											</property>
+											<property name="isFile">
+												<boolean>true</boolean>
+											</property>
+											<property name="checkExists">
+												<boolean>true</boolean>
+											</property>
+											<property name="exists">
+												<boolean>true</boolean>
+											</property>
+											<property name="checkReadWrite">
+												<boolean>false</boolean>
+											</property>
+											<property name="isReadable">
+												<boolean>true</boolean>
+											</property>
+											<property name="isWriteable">
+												<boolean>true</boolean>
+											</property>
+											<property name="checksInUseNotNotInUse">
+												<boolean>false</boolean>
+											</property>
+											<property name="checkInUse">
+												<boolean>false</boolean>
+											</property>
+										</object>
+									</rules>
+								</object>
+							</visualChildren>
+						</object>
+					</method>
+					<method name="addElement">
 						<object class="com.zerog.ia.installer.actions.ActionGroup" objectID="374566dbb935">
 							<property name="groupName">
 								<string><![CDATA[PostInstall Actions]]></string>
@@ -2399,7 +2660,7 @@ For your convenience, a file called bizgres_path.sh has been placed in the top l
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.project.build.last.date]]></string>
-						<string><![CDATA[April 3, 2006 9:12:25 PM PDT]]></string>
+						<string><![CDATA[April 18, 2006 5:42:54 PM PDT]]></string>
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.build.platform.windows.vm]]></string>
@@ -2471,7 +2732,7 @@ For your convenience, a file called bizgres_path.sh has been placed in the top l
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.project.save.last.date]]></string>
-						<string><![CDATA[April 3, 2006 9:12:25 PM PDT]]></string>
+						<string><![CDATA[April 18, 2006 5:42:54 PM PDT]]></string>
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.build.options.optimization.platform.cdrom]]></string>
@@ -2635,7 +2896,7 @@ For your convenience, a file called bizgres_path.sh has been placed in the top l
 			<property name="installerInfoData">
 				<object class="com.zerog.ia.installer.util.InstallerInfoData" objectID="089e8867af38">
 					<property name="installerTitle">
-						<string><![CDATA[Bizgres MPP 2.1 Patch 2 Build 2]]></string>
+						<string><![CDATA[Bizgres MPP 2.1 Patch 2 Build 3]]></string>
 					</property>
 					<property name="installerName">
 						<string><![CDATA[BizgresMPP]]></string>
@@ -3021,7 +3282,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>37378018</long>
+												<long>37378022</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -3036,7 +3297,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -3048,7 +3309,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="198e2fa68c19">
@@ -3263,7 +3524,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>40186880</long>
+												<long>40186819</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -3278,7 +3539,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -3290,7 +3551,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19981f888c1f">
@@ -3496,7 +3757,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>45242847</long>
+												<long>45244541</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -3511,7 +3772,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -3523,7 +3784,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19d6a1bb8c5e">
@@ -3928,7 +4189,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>4457</long>
+												<long>4465</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -4063,7 +4324,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>4495</long>
+												<long>4503</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -4339,7 +4600,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/OSX-i386/usr/local/bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/OSX-i386/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -4351,7 +4612,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="16280503a0d7">
@@ -4591,7 +4852,7 @@ kernel.shmall = 4000000000]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>13255</long>
+												<long>4379</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -4606,7 +4867,7 @@ kernel.shmall = 4000000000]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/mac_path]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/mac_path/bizgresmpp]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -4618,7 +4879,7 @@ kernel.shmall = 4000000000]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[mac_path]]></string>
+												<string><![CDATA[bizgresmpp]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="6cd1d4b5ab62">
@@ -5744,7 +6005,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>97149393</long>
+												<long>92851553</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -5759,7 +6020,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/OSX-ppc/usr/local/bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/OSX-ppc/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -5771,7 +6032,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="762cb525a8fb">
@@ -5881,6 +6142,444 @@ and any path to a file to read from that file]]></string>
 													</property>
 													<property name="operandTwo">
 														<string><![CDATA[powerpc]]></string>
+													</property>
+												</object>
+											</rules>
+										</object>
+										<object class="com.zerog.ia.installer.actions.InstallDirCont" objectID="6cccffbcab62">
+											<property name="useFilterExtensions">
+												<boolean>false</boolean>
+											</property>
+											<property name="totalSize">
+												<long>140799109</long>
+											</property>
+											<property name="unixPermissions">
+												<string><![CDATA[775]]></string>
+											</property>
+											<property name="sourceName">
+												<string><![CDATA[]]></string>
+											</property>
+											<property name="overrideUnixPermissions">
+												<boolean>false</boolean>
+											</property>
+											<property name="directoryChosen">
+												<boolean>true</boolean>
+											</property>
+											<property name="sourcePath">
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/jdk-1_5_0_05-linux-i586]]></string>
+											</property>
+											<property name="shouldUninstall">
+												<boolean>true</boolean>
+											</property>
+											<property name="destinationName">
+												<string><![CDATA[/]]></string>
+											</property>
+											<property name="createDirectory">
+												<boolean>false</boolean>
+											</property>
+											<property name="directoryName">
+												<string><![CDATA[jdk-1_5_0_05-linux-i586]]></string>
+											</property>
+											<property name="patternMatcher">
+												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="6cccffbdab62">
+													<property name="includePatterns">
+														<object class="java.util.Vector"/>
+													</property>
+													<property name="excludePatterns">
+														<object class="java.util.Vector"/>
+													</property>
+												</object>
+											</property>
+											<property name="macBinary">
+												<boolean>false</boolean>
+											</property>
+											<property name="targetCheckKind">
+												<int>1</int>
+											</property>
+											<property name="recursivelyUninstall">
+												<boolean>true</boolean>
+											</property>
+											<rules logicalOperation="AND">
+												<object class="com.zerog.ia.installer.rules.PlatformChk" objectID="6ccdeef7ab62">
+													<property name="installOnPlatformList">
+														<object class="java.util.Vector">
+															<method name="addElement">
+																<string><![CDATA[Linux]]></string>
+															</method>
+														</object>
+													</property>
+													<property name="doNotInstallOnPlatformList">
+														<object class="java.util.Vector">
+															<method name="addElement">
+																<string><![CDATA[Windows 95]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows 98]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows NT]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows Me]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows 2000]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows XP]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows 2003]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Mac OS X]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[OS/2]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Solaris]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[SunOS]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[HP-UX]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[AIX]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Irix]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[DG-UX]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Compaq's Digital UNIX]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[FreeBSD]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Rhapsody]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[NetWare]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[z/OS]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[OS/390]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Unlisted Platforms]]></string>
+															</method>
+														</object>
+													</property>
+												</object>
+												<object class="com.zerog.ia.installer.rules.CompareVariable" objectID="6cceb786ab62">
+													<property name="operation">
+														<string><![CDATA[contains]]></string>
+													</property>
+													<property name="operandOne">
+														<string><![CDATA[$IS_64BIT$]]></string>
+													</property>
+													<property name="operandTwo">
+														<string><![CDATA[NO]]></string>
+													</property>
+												</object>
+											</rules>
+										</object>
+										<object class="com.zerog.ia.installer.actions.InstallDirCont" objectID="6ccfbc93ab62">
+											<property name="useFilterExtensions">
+												<boolean>false</boolean>
+											</property>
+											<property name="totalSize">
+												<long>114509798</long>
+											</property>
+											<property name="unixPermissions">
+												<string><![CDATA[775]]></string>
+											</property>
+											<property name="sourceName">
+												<string><![CDATA[]]></string>
+											</property>
+											<property name="overrideUnixPermissions">
+												<boolean>false</boolean>
+											</property>
+											<property name="directoryChosen">
+												<boolean>true</boolean>
+											</property>
+											<property name="sourcePath">
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/jdk-1_5_0_05-linux-amd64]]></string>
+											</property>
+											<property name="shouldUninstall">
+												<boolean>true</boolean>
+											</property>
+											<property name="destinationName">
+												<string><![CDATA[/]]></string>
+											</property>
+											<property name="createDirectory">
+												<boolean>false</boolean>
+											</property>
+											<property name="directoryName">
+												<string><![CDATA[jdk-1_5_0_05-linux-amd64]]></string>
+											</property>
+											<property name="patternMatcher">
+												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="6ccfbc94ab62">
+													<property name="includePatterns">
+														<object class="java.util.Vector"/>
+													</property>
+													<property name="excludePatterns">
+														<object class="java.util.Vector"/>
+													</property>
+												</object>
+											</property>
+											<property name="macBinary">
+												<boolean>false</boolean>
+											</property>
+											<property name="targetCheckKind">
+												<int>1</int>
+											</property>
+											<property name="recursivelyUninstall">
+												<boolean>true</boolean>
+											</property>
+											<rules logicalOperation="AND">
+												<object class="com.zerog.ia.installer.rules.PlatformChk" objectID="6cd023cbab62">
+													<property name="installOnPlatformList">
+														<object class="java.util.Vector">
+															<method name="addElement">
+																<string><![CDATA[Linux]]></string>
+															</method>
+														</object>
+													</property>
+													<property name="doNotInstallOnPlatformList">
+														<object class="java.util.Vector">
+															<method name="addElement">
+																<string><![CDATA[Windows 95]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows 98]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows NT]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows Me]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows 2000]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows XP]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows 2003]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Mac OS X]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[OS/2]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Solaris]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[SunOS]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[HP-UX]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[AIX]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Irix]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[DG-UX]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Compaq's Digital UNIX]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[FreeBSD]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Rhapsody]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[NetWare]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[z/OS]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[OS/390]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Unlisted Platforms]]></string>
+															</method>
+														</object>
+													</property>
+												</object>
+												<object class="com.zerog.ia.installer.rules.CompareVariable" objectID="6cd04719ab62">
+													<property name="operation">
+														<string><![CDATA[contains]]></string>
+													</property>
+													<property name="operandOne">
+														<string><![CDATA[$IS_64BIT$]]></string>
+													</property>
+													<property name="operandTwo">
+														<string><![CDATA[YES]]></string>
+													</property>
+												</object>
+											</rules>
+										</object>
+										<object class="com.zerog.ia.installer.actions.InstallDirCont" objectID="6ccb31f8ab62">
+											<property name="useFilterExtensions">
+												<boolean>false</boolean>
+											</property>
+											<property name="totalSize">
+												<long>175358204</long>
+											</property>
+											<property name="unixPermissions">
+												<string><![CDATA[775]]></string>
+											</property>
+											<property name="sourceName">
+												<string><![CDATA[]]></string>
+											</property>
+											<property name="overrideUnixPermissions">
+												<boolean>false</boolean>
+											</property>
+											<property name="directoryChosen">
+												<boolean>true</boolean>
+											</property>
+											<property name="sourcePath">
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/jdk-1_5_0_05-solaris-amd64]]></string>
+											</property>
+											<property name="shouldUninstall">
+												<boolean>true</boolean>
+											</property>
+											<property name="destinationName">
+												<string><![CDATA[/]]></string>
+											</property>
+											<property name="createDirectory">
+												<boolean>false</boolean>
+											</property>
+											<property name="directoryName">
+												<string><![CDATA[jdk-1_5_0_05-solaris-amd64]]></string>
+											</property>
+											<property name="patternMatcher">
+												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="6ccb31f9ab62">
+													<property name="includePatterns">
+														<object class="java.util.Vector"/>
+													</property>
+													<property name="excludePatterns">
+														<object class="java.util.Vector"/>
+													</property>
+												</object>
+											</property>
+											<property name="macBinary">
+												<boolean>false</boolean>
+											</property>
+											<property name="targetCheckKind">
+												<int>1</int>
+											</property>
+											<property name="recursivelyUninstall">
+												<boolean>false</boolean>
+											</property>
+											<rules logicalOperation="AND">
+												<object class="com.zerog.ia.installer.rules.PlatformChk" objectID="6ccb5d4aab62">
+													<property name="installOnPlatformList">
+														<object class="java.util.Vector">
+															<method name="addElement">
+																<string><![CDATA[Solaris]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[SunOS]]></string>
+															</method>
+														</object>
+													</property>
+													<property name="doNotInstallOnPlatformList">
+														<object class="java.util.Vector">
+															<method name="addElement">
+																<string><![CDATA[Windows 95]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows 98]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows NT]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows Me]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows 2000]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows XP]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Windows 2003]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Mac OS X]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[OS/2]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[HP-UX]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Linux]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[AIX]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Irix]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[DG-UX]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Compaq's Digital UNIX]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[FreeBSD]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Rhapsody]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[NetWare]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[z/OS]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[OS/390]]></string>
+															</method>
+															<method name="addElement">
+																<string><![CDATA[Unlisted Platforms]]></string>
+															</method>
+														</object>
+													</property>
+												</object>
+												<object class="com.zerog.ia.installer.rules.CompareVariable" objectID="6dde021bad0d">
+													<property name="operation">
+														<string><![CDATA[contains]]></string>
+													</property>
+													<property name="operandOne">
+														<string><![CDATA[$IS_64BIT$]]></string>
+													</property>
+													<property name="operandTwo">
+														<string><![CDATA[YES]]></string>
 													</property>
 												</object>
 											</rules>
@@ -6237,7 +6936,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -6249,7 +6948,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="1999ab4f8c24">
@@ -6479,7 +7178,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -6491,7 +7190,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19c773988c34">
@@ -6726,7 +7425,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -6738,7 +7437,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19d833ab8c63">
@@ -7554,7 +8253,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>45002961</long>
+												<long>45002965</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -7569,7 +8268,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -7581,7 +8280,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19cf4c4d8c40">
@@ -7758,7 +8457,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>47803631</long>
+												<long>47803570</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -7773,7 +8472,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -7785,7 +8484,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19cf92ae8c46">
@@ -7967,7 +8666,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>52867792</long>
+												<long>52869486</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -7982,7 +8681,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -7994,7 +8693,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19dbb3bb8c6e">
@@ -8420,7 +9119,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -8432,7 +9131,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19d3b4ae8c52">
@@ -8605,7 +9304,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -8617,7 +9316,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19d3cc8f8c55">
@@ -8814,7 +9513,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -8826,7 +9525,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-2-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19de7f8b8c75">
@@ -9111,446 +9810,6 @@ and any path to a file to read from that file]]></string>
 					<property name="hasSomethingToInstall">
 						<boolean>true</boolean>
 					</property>
-					<installChildren>
-						<object class="com.zerog.ia.installer.actions.InstallDirCont" objectID="6cccffbcab62">
-							<property name="useFilterExtensions">
-								<boolean>false</boolean>
-							</property>
-							<property name="totalSize">
-								<long>140799109</long>
-							</property>
-							<property name="unixPermissions">
-								<string><![CDATA[775]]></string>
-							</property>
-							<property name="sourceName">
-								<string><![CDATA[]]></string>
-							</property>
-							<property name="overrideUnixPermissions">
-								<boolean>false</boolean>
-							</property>
-							<property name="directoryChosen">
-								<boolean>true</boolean>
-							</property>
-							<property name="sourcePath">
-								<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/jdk-1_5_0_05-linux-i586]]></string>
-							</property>
-							<property name="shouldUninstall">
-								<boolean>true</boolean>
-							</property>
-							<property name="destinationName">
-								<string><![CDATA[/]]></string>
-							</property>
-							<property name="createDirectory">
-								<boolean>false</boolean>
-							</property>
-							<property name="directoryName">
-								<string><![CDATA[jdk-1_5_0_05-linux-i586]]></string>
-							</property>
-							<property name="patternMatcher">
-								<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="6cccffbdab62">
-									<property name="includePatterns">
-										<object class="java.util.Vector"/>
-									</property>
-									<property name="excludePatterns">
-										<object class="java.util.Vector"/>
-									</property>
-								</object>
-							</property>
-							<property name="macBinary">
-								<boolean>false</boolean>
-							</property>
-							<property name="targetCheckKind">
-								<int>1</int>
-							</property>
-							<property name="recursivelyUninstall">
-								<boolean>true</boolean>
-							</property>
-							<rules logicalOperation="AND">
-								<object class="com.zerog.ia.installer.rules.PlatformChk" objectID="6ccdeef7ab62">
-									<property name="installOnPlatformList">
-										<object class="java.util.Vector">
-											<method name="addElement">
-												<string><![CDATA[Linux]]></string>
-											</method>
-										</object>
-									</property>
-									<property name="doNotInstallOnPlatformList">
-										<object class="java.util.Vector">
-											<method name="addElement">
-												<string><![CDATA[Windows 95]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows 98]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows NT]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows Me]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows 2000]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows XP]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows 2003]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Mac OS X]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[OS/2]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Solaris]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[SunOS]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[HP-UX]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[AIX]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Irix]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[DG-UX]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Compaq's Digital UNIX]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[FreeBSD]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Rhapsody]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[NetWare]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[z/OS]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[OS/390]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Unlisted Platforms]]></string>
-											</method>
-										</object>
-									</property>
-								</object>
-								<object class="com.zerog.ia.installer.rules.CompareVariable" objectID="6cceb786ab62">
-									<property name="operation">
-										<string><![CDATA[contains]]></string>
-									</property>
-									<property name="operandOne">
-										<string><![CDATA[$IS_64BIT$]]></string>
-									</property>
-									<property name="operandTwo">
-										<string><![CDATA[NO]]></string>
-									</property>
-								</object>
-							</rules>
-						</object>
-						<object class="com.zerog.ia.installer.actions.InstallDirCont" objectID="6ccfbc93ab62">
-							<property name="useFilterExtensions">
-								<boolean>false</boolean>
-							</property>
-							<property name="totalSize">
-								<long>114509798</long>
-							</property>
-							<property name="unixPermissions">
-								<string><![CDATA[775]]></string>
-							</property>
-							<property name="sourceName">
-								<string><![CDATA[]]></string>
-							</property>
-							<property name="overrideUnixPermissions">
-								<boolean>false</boolean>
-							</property>
-							<property name="directoryChosen">
-								<boolean>true</boolean>
-							</property>
-							<property name="sourcePath">
-								<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/jdk-1_5_0_05-linux-amd64]]></string>
-							</property>
-							<property name="shouldUninstall">
-								<boolean>true</boolean>
-							</property>
-							<property name="destinationName">
-								<string><![CDATA[/]]></string>
-							</property>
-							<property name="createDirectory">
-								<boolean>false</boolean>
-							</property>
-							<property name="directoryName">
-								<string><![CDATA[jdk-1_5_0_05-linux-amd64]]></string>
-							</property>
-							<property name="patternMatcher">
-								<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="6ccfbc94ab62">
-									<property name="includePatterns">
-										<object class="java.util.Vector"/>
-									</property>
-									<property name="excludePatterns">
-										<object class="java.util.Vector"/>
-									</property>
-								</object>
-							</property>
-							<property name="macBinary">
-								<boolean>false</boolean>
-							</property>
-							<property name="targetCheckKind">
-								<int>1</int>
-							</property>
-							<property name="recursivelyUninstall">
-								<boolean>true</boolean>
-							</property>
-							<rules logicalOperation="AND">
-								<object class="com.zerog.ia.installer.rules.PlatformChk" objectID="6cd023cbab62">
-									<property name="installOnPlatformList">
-										<object class="java.util.Vector">
-											<method name="addElement">
-												<string><![CDATA[Linux]]></string>
-											</method>
-										</object>
-									</property>
-									<property name="doNotInstallOnPlatformList">
-										<object class="java.util.Vector">
-											<method name="addElement">
-												<string><![CDATA[Windows 95]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows 98]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows NT]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows Me]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows 2000]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows XP]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows 2003]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Mac OS X]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[OS/2]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Solaris]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[SunOS]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[HP-UX]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[AIX]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Irix]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[DG-UX]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Compaq's Digital UNIX]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[FreeBSD]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Rhapsody]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[NetWare]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[z/OS]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[OS/390]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Unlisted Platforms]]></string>
-											</method>
-										</object>
-									</property>
-								</object>
-								<object class="com.zerog.ia.installer.rules.CompareVariable" objectID="6cd04719ab62">
-									<property name="operation">
-										<string><![CDATA[contains]]></string>
-									</property>
-									<property name="operandOne">
-										<string><![CDATA[$IS_64BIT$]]></string>
-									</property>
-									<property name="operandTwo">
-										<string><![CDATA[YES]]></string>
-									</property>
-								</object>
-							</rules>
-						</object>
-						<object class="com.zerog.ia.installer.actions.InstallDirCont" objectID="6ccb31f8ab62">
-							<property name="useFilterExtensions">
-								<boolean>false</boolean>
-							</property>
-							<property name="totalSize">
-								<long>175358204</long>
-							</property>
-							<property name="unixPermissions">
-								<string><![CDATA[775]]></string>
-							</property>
-							<property name="sourceName">
-								<string><![CDATA[]]></string>
-							</property>
-							<property name="overrideUnixPermissions">
-								<boolean>false</boolean>
-							</property>
-							<property name="directoryChosen">
-								<boolean>true</boolean>
-							</property>
-							<property name="sourcePath">
-								<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/jdk-1_5_0_05-solaris-amd64]]></string>
-							</property>
-							<property name="shouldUninstall">
-								<boolean>true</boolean>
-							</property>
-							<property name="destinationName">
-								<string><![CDATA[/]]></string>
-							</property>
-							<property name="createDirectory">
-								<boolean>false</boolean>
-							</property>
-							<property name="directoryName">
-								<string><![CDATA[jdk-1_5_0_05-solaris-amd64]]></string>
-							</property>
-							<property name="patternMatcher">
-								<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="6ccb31f9ab62">
-									<property name="includePatterns">
-										<object class="java.util.Vector"/>
-									</property>
-									<property name="excludePatterns">
-										<object class="java.util.Vector"/>
-									</property>
-								</object>
-							</property>
-							<property name="macBinary">
-								<boolean>false</boolean>
-							</property>
-							<property name="targetCheckKind">
-								<int>1</int>
-							</property>
-							<property name="recursivelyUninstall">
-								<boolean>false</boolean>
-							</property>
-							<rules logicalOperation="AND">
-								<object class="com.zerog.ia.installer.rules.PlatformChk" objectID="6ccb5d4aab62">
-									<property name="installOnPlatformList">
-										<object class="java.util.Vector">
-											<method name="addElement">
-												<string><![CDATA[Solaris]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[SunOS]]></string>
-											</method>
-										</object>
-									</property>
-									<property name="doNotInstallOnPlatformList">
-										<object class="java.util.Vector">
-											<method name="addElement">
-												<string><![CDATA[Windows 95]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows 98]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows NT]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows Me]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows 2000]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows XP]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Windows 2003]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Mac OS X]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[OS/2]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[HP-UX]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Linux]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[AIX]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Irix]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[DG-UX]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Compaq's Digital UNIX]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[FreeBSD]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Rhapsody]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[NetWare]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[z/OS]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[OS/390]]></string>
-											</method>
-											<method name="addElement">
-												<string><![CDATA[Unlisted Platforms]]></string>
-											</method>
-										</object>
-									</property>
-								</object>
-								<object class="com.zerog.ia.installer.rules.CompareVariable" objectID="6dde021bad0d">
-									<property name="operation">
-										<string><![CDATA[contains]]></string>
-									</property>
-									<property name="operandOne">
-										<string><![CDATA[$IS_64BIT$]]></string>
-									</property>
-									<property name="operandTwo">
-										<string><![CDATA[YES]]></string>
-									</property>
-								</object>
-							</rules>
-						</object>
-					</installChildren>
 				</object>
 				<object refID="1a1e55b98db4"/>
 				<object refID="1a1e6b918db6"/>
