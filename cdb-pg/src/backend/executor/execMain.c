@@ -359,9 +359,9 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			
 			/* activate the connections, if needed */
 			if (((PlanState *) motionState)->plan->nMotionNodes > 0)
-			{			
-				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
+			{
 				estate->es_interconnect_is_setup = true;
+				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
 			}
 		}
 		else if(exec_identity == MPP_ROOT_SLICE)
@@ -371,8 +371,8 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			/* Run a root slice. */		
 			if (queryDesc->planstate->plan->nMotionNodes > 0)
 			{
-				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
 				estate->es_interconnect_is_setup = true;
+				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
 			}
 		}
 		else if(exec_identity != MPP_IGNORE)
@@ -621,25 +621,7 @@ ExecutorEnd(QueryDesc *queryDesc)
 	PG_CATCH();
 	{
 		mppExecCleanup(estate);		
-		
-		ExecEndPlan(queryDesc->planstate, estate);
-		
-		/*
-		 * Release any gangs we may have assigned.
-		 */
-		ReleaseGangs(queryDesc);
-		
-		/*
-		 * Must switch out of context before destroying it
-		 */
-		MemoryContextSwitchTo(oldcontext);
-		
-		/*
-		 * Release EState and per-query memory context.  This should release
-		 * everything the executor has allocated.
-		 */
-		FreeExecutorState(estate);
-		
+
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
