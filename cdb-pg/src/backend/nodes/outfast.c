@@ -728,7 +728,10 @@ _outAggref(StringInfo str, Aggref *node)
 	WRITE_UINT_FIELD(agglevelsup);
 	WRITE_BOOL_FIELD(aggstar);
 	WRITE_BOOL_FIELD(aggdistinct);
-	WRITE_ENUM_FIELD(aggstage,AggStage);
+
+    /* CDB: The reader checks for the name of this field. */
+    if (node->aggstage != 0)
+	    appendStringInfo(str, " :aggstage %d", (int)node->aggstage);
 }
 
 static void

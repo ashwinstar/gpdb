@@ -810,7 +810,16 @@ _readAggref(void)
 	READ_UINT_FIELD(agglevelsup);
 	READ_BOOL_FIELD(aggstar);
 	READ_BOOL_FIELD(aggdistinct);
-	READ_ENUM_FIELD(aggstage, AggStage);
+
+    /*
+     * CDB: This field was added after the MPP 2.1p2 release.  It's filled in
+     * by the planner and not present in nodes stored persistently.  So if
+     * it's missing, just let the field stay 0.
+     */
+    if (pg_strtok_peek_fldname("aggstage"))
+    {                           /* braces required, macro doesn't have 'em */
+        READ_ENUM_FIELD(aggstage, AggStage);
+    }
 
 	READ_DONE();
 }

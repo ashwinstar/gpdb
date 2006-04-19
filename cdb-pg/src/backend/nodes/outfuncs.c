@@ -718,7 +718,15 @@ _outAggref(StringInfo str, Aggref *node)
 	WRITE_UINT_FIELD(agglevelsup);
 	WRITE_BOOL_FIELD(aggstar);
 	WRITE_BOOL_FIELD(aggdistinct);
-	WRITE_ENUM_FIELD(aggstage, AggStage);
+
+    /*
+     * CDB: This field was added after the MPP 2.1p2 release.  Upstream of
+     * the planner, it's unused and zero, in which case we skip writing it
+     * because we don't want it written into the catalog.  Allows downward
+     * compatibility in case the database is opened using an older release.
+     */
+    if (node->aggstage != 0)
+	    WRITE_ENUM_FIELD(aggstage, AggStage);
 }
 
 static void
