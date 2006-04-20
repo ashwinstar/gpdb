@@ -1972,16 +1972,6 @@ _outQuery(StringInfo str, Query *node)
 			default:
 				appendStringInfoLiteral(str, " :utilityStmt ?");
 				appendStringInfo(str, "%u", nodeTag(node->utilityStmt));
-				if (Mpp_role == MPP_ROLE_DISPATCH)
-				{
-#ifdef _DEBUG
-					elog(ERROR, "could not serialize unrecognized utilityStmt node type: %d",
-						 (int) nodeTag(node->utilityStmt));
-#else
-					elog(WARNING, "could not serialize unrecognized utilityStmt node type: %d",
-						 (int) nodeTag(node->utilityStmt));
-#endif
-				}
 				break;
 		}
 	}
