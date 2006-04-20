@@ -178,40 +178,6 @@ ProcessQuery(Query *parsetree,
 	 */
 	ExecutorRun(queryDesc, ForwardScanDirection, 0L);
 
-	/*
-	 * Build command completion status string, if caller wants one.
-	 */
-	if (completionTag)
-	{
-		Oid			lastOid;
-
-		switch (operation)
-		{
-			case CMD_SELECT:
-				strcpy(completionTag, "SELECT");
-				break;
-			case CMD_INSERT:
-				if (queryDesc->estate->es_processed == 1)
-					lastOid = queryDesc->estate->es_lastoid;
-				else
-					lastOid = InvalidOid;
-				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
-				   "INSERT %u %u", lastOid, queryDesc->estate->es_processed);
-				break;
-			case CMD_UPDATE:
-				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
-						 "UPDATE %u", queryDesc->estate->es_processed);
-				break;
-			case CMD_DELETE:
-				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
-						 "DELETE %u", queryDesc->estate->es_processed);
-				break;
-			default:
-				strcpy(completionTag, "???");
-				break;
-		}
-	}
-
 	/* Now take care of any queued AFTER triggers */
 	AfterTriggerEndQuery(queryDesc->estate);
 
@@ -220,6 +186,43 @@ ProcessQuery(Query *parsetree,
 	 */
 	ExecutorEnd(queryDesc);
 
+	/*
+	 * Build command completion status string, if caller wants one.
+	 */
+	if (completionTag)
+	{
+		Oid			lastOid;
+		
+		switch (operation)
+		{
+			case CMD_SELECT:
+				strcpy(completionTag, "SELECT");
+				break;
+			case CMD_INSERT:
+				/*
+				if (queryDesc->es_processed == 1)
+					lastOid = queryDesc->estate->es_lastoid;
+				else
+				*/
+					lastOid = InvalidOid;
+				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
+						 "INSERT %u %u", lastOid, queryDesc->es_processed);
+				break;
+			case CMD_UPDATE:
+				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
+						 "UPDATE %u", queryDesc->es_processed);
+				break;
+			case CMD_DELETE:
+				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
+						 "DELETE %u", queryDesc->es_processed);
+				break;
+			default:
+				strcpy(completionTag, "???");
+				break;
+		}
+	}
+	
+	
 	FreeQueryDesc(queryDesc);
 
 	FreeSnapshot(ActiveSnapshot);

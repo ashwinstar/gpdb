@@ -649,6 +649,8 @@ ExecutorEnd(QueryDesc *queryDesc)
 	 */
 	MemoryContextSwitchTo(oldcontext);
 
+	queryDesc->es_processed = estate->es_processed;
+
 	/*
 	 * Release EState and per-query memory context.  This should release
 	 * everything the executor has allocated.

@@ -44,6 +44,9 @@ typedef struct QueryDesc
 	EState	   *estate;			/* executor's query-wide state */
 	PlanState  *planstate;		/* tree of per-plan-node state */
 	
+	/* This field is set by ExecutorEnd after collecting cdbdisp results */
+	uint32		es_processed;	/* # of tuples processed */
+	
 } QueryDesc;
 
 /* in pquery.c */
