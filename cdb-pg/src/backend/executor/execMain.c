@@ -599,8 +599,14 @@ ExecutorEnd(QueryDesc *queryDesc)
 			CdbDispatchResults *pr = estate->primaryResults;
 			CdbDispatchResults *mr = estate->mirrorResults;
 			
-			/* Wait for completion of all QEs. */
-			CdbCheckDispatchResult(false);	
+			/* 
+			 * Wait for completion of all QEs. However, if we are
+			 * in ABORT state we don't wait and instead just cancel.
+			 * It's particularly important if this is an open cursor. 
+			 * (because the query and interconnect, and QE's are all 
+			 * suspended, and wouldn't terminate unless we cancel).
+			 */
+			CdbCheckDispatchResult(IsAbortInProgress());	
 			
 			/* If top slice was delegated to QEs, get num of rows processed. */
 			if (sliceRunsOnQE(currentSlice))
