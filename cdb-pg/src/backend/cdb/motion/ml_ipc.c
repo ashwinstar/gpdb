@@ -361,7 +361,7 @@ SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcIte
 		}
 		else
 		{
-			/* handle pt-to-pt message. */
+			/* handle pt-to-pt message. Primary */
 			conn = pEntry->conns + targetRoute;
 			/* only send to interested connections */
 			if (conn->stillActive)
@@ -370,6 +370,20 @@ SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcIte
 				if (!conn->stillActive)
 					recount = 1;
 			}
+
+			/* handle pt-to-pt message. Mirror */
+			if (pEntry->numConns > pEntry->numPrimaryConns)
+			{
+				conn = pEntry->conns + targetRoute + pEntry->numPrimaryConns;
+				/* only send to interested connections */
+				if (conn->stillActive)
+				{
+					sendChunk(conn, currItem, motNodeID);
+					if (!conn->stillActive)
+						recount = 1;
+				}
+			}
+
 		}
 	}
 
