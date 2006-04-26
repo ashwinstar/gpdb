@@ -3090,14 +3090,14 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
     /* Save remote host:port string for error messages. */
     if (sa->sa_family == AF_INET)
     {
-        struct sockaddr_in *sin = (struct sockaddr_in *)sa;
-        unsigned            s_addr = ntohl(sin->sin_addr.s_addr);
+        struct sockaddr_in *	sin = (struct sockaddr_in *)sa;
+        uint32					saddr = ntohl(sin->sin_addr.s_addr);
 
         snprintf(buf, bufsize, "%d.%d.%d.%d:%d",
-                 (s_addr >> 24)&0xff,
-                 (s_addr >> 16)&0xff,
-                 (s_addr >> 8)&0xff,
-                 s_addr&0xff,
+                 (saddr >> 24)&0xff,
+                 (saddr >> 16)&0xff,
+                 (saddr >> 8)&0xff,
+                 saddr&0xff,
                  ntohs(sin->sin_port));
     }
 #ifdef HAVE_IPV6
