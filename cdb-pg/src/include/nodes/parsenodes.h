@@ -25,7 +25,8 @@ typedef enum QuerySource
 	QSRC_PARSER,				/* added by parse analysis */
 	QSRC_INSTEAD_RULE,			/* added by unconditional INSTEAD rule */
 	QSRC_QUAL_INSTEAD_RULE,		/* added by conditional INSTEAD rule */
-	QSRC_NON_INSTEAD_RULE		/* added by non-INSTEAD rule */
+	QSRC_NON_INSTEAD_RULE,		/* added by non-INSTEAD rule */
+	QSRC_PLANNER				/* added in planner by splicing parse tree */
 } QuerySource;
 
 /*

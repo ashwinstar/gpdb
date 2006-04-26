@@ -992,6 +992,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	newrtable = list_make1(newrte);
 
 	/* Modify the root query in place to look like a simple Subquery. */
+	parse->querySource = QSRC_PLANNER; /* but remember it's really ours  */
 	parse->rtable = newrtable;
 	parse->jointree = makeNode(FromExpr);
 	newrtref = makeNode(RangeTblRef);

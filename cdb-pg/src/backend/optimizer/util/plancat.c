@@ -664,6 +664,12 @@ build_physical_tlist(PlannerInfo *root, RelOptInfo *rel)
 
 		case RTE_SUBQUERY:
 			subquery = rte->subquery;
+			if ( subquery->querySource == QSRC_PLANNER )
+			{
+				/* MPP: punt since parse tree correspondence in doubt */
+				tlist = NIL;
+				break;
+			}
 			foreach(l, subquery->targetList)
 			{
 				TargetEntry *tle = (TargetEntry *) lfirst(l);
