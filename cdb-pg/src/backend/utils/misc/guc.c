@@ -1791,6 +1791,15 @@ static struct config_real ConfigureNamesReal[] =
 		0, 0, DBL_MAX, NULL, NULL
 	},
 
+	{
+		{"default_statistics_efraction", PGC_USERSET, QUERY_TUNING_OTHER,
+		 gettext_noop("target error fraction for row sampling during analyze"),
+		 NULL
+		},
+		&default_statistics_efraction,
+		0.5, 0, 1.0, NULL, NULL
+	},
+
     /* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0.0, 0.0, 0.0, NULL, NULL

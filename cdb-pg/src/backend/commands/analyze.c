@@ -66,6 +66,9 @@ typedef struct AnlIndexData
 /* Default statistics target (GUC parameter) */
 int			default_statistics_target = 10;
 
+/* Default target efraction */
+double	default_statistics_efraction = 0.5;
+
 static int	elevel = -1;
 
 static MemoryContext anl_context = NULL;
@@ -1348,6 +1351,8 @@ std_typanalyze(VacAttrStats *stats)
 	Oid			ltopr = InvalidOid;
 	StdAnalyzeData *mystats;
 
+	double		row_target;
+
 	/* If the attstattarget column is negative, use the default value */
 	/* NB: it is okay to scribble on stats->attr since it's a copy */
 	if (attr->attstattarget < 0)
@@ -1386,34 +1391,36 @@ std_typanalyze(VacAttrStats *stats)
 	{
 		/* Seems to be a scalar datatype */
 		stats->compute_stats = compute_scalar_stats;
-		/*--------------------
-		 * The following choice of minrows is based on the paper
-		 * "Random sampling for histogram construction: how much is enough?"
-		 * by Surajit Chaudhuri, Rajeev Motwani and Vivek Narasayya, in
-		 * Proceedings of ACM SIGMOD International Conference on Management
-		 * of Data, 1998, Pages 436-447.  Their Corollary 1 to Theorem 5
-		 * says that for table size n, histogram size k, maximum relative
-		 * error in bin size f, and error probability gamma, the minimum
-		 * random sample size is
-		 *		r = 4 * k * ln(2*n/gamma) / f^2
-		 * Taking f = 0.5, gamma = 0.01, n = 1 million rows, we obtain
-		 *		r = 305.82 * k
-		 * Note that because of the log function, the dependence on n is
-		 * quite weak; even at n = 1 billion, a 300*k sample gives <= 0.59
-		 * bin size error with probability 0.99.  So there's no real need to
-		 * scale for n, which is a good thing because we don't necessarily
-		 * know it at this point.
-		 *--------------------
-		 */
-		stats->minrows = 300 * attr->attstattarget;
 	}
 	else
 	{
 		/* Can't do much but the minimal stuff */
 		stats->compute_stats = compute_minimal_stats;
-		/* Might as well use the same minrows as above */
-		stats->minrows = 300 * attr->attstattarget;
 	}
+
+	/*--------------------
+	 * The following choice of minrows is based on the paper
+	 * "Random sampling for histogram construction: how much is enough?"
+	 * by Surajit Chaudhuri, Rajeev Motwani and Vivek Narasayya, in
+	 * Proceedings of ACM SIGMOD International Conference on Management
+	 * of Data, 1998, Pages 436-447.  Their Corollary 1 to Theorem 5
+	 * says that for table size n, histogram size k, maximum relative
+	 * error fraction, and error probability gamma, the minimum
+	 * random sample size is
+	 *		r = 4 * k * ln(2*n/gamma) / error_fraction^2
+	 * Taking gamma = 0.01, n = 1 million rows, we obtain
+	 *		r = 76.45 * k/error_fraction^2
+	 *
+	 * Note: because of the log function, the dependence on n is
+	 * quite weak; even at n = 1 billion, the error fraction doesn't
+	 * increase too much. So there's no real need to scale for n,
+	 * which is a good thing because we don't necessarily know it at
+	 * this point.  
+	 *--------------------
+	 */
+	row_target = 76.45 * attr->attstattarget / (default_statistics_efraction * default_statistics_efraction);
+	elog(DEBUG3, "analyze row target: %f", row_target);
+	stats->minrows = ceil(row_target);
 
 	return true;
 }

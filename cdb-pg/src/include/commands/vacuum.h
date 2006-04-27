@@ -107,6 +107,7 @@ typedef struct VacAttrStats
 
 /* Default statistics target (GUC parameter) */
 extern DLLIMPORT int default_statistics_target; /* DLLIMPORT for PostGIS */
+extern DLLIMPORT double default_statistics_efraction;
 
 
 /* in commands/vacuum.c */
