@@ -818,7 +818,10 @@ dispatchDtxCommand(const char *cmd, bool dispatchToMirrors)
 	elog(DEBUG3, "dispatchDtxCommand: '%s' willMirror: %s", cmd, dispatchToMirrors ? "yes" : "no");
 
 	initStringInfo(&errbuf);
-	results = cdbdisp_dispatchRMCommand(cmd, dispatchToMirrors, &errbuf, &resultCount);
+	results = cdbdisp_dispatchRMCommand(cmd,
+										/* withSnapshot */false,
+										dispatchToMirrors,
+										&errbuf, &resultCount);
 
 	if (errbuf.len > 0)
 		ereport(ERROR, (errmsg("DTM error (gathered %d results from cmd '%s')", resultCount, cmd),
@@ -1554,7 +1557,10 @@ gatherRMInDoubtTransactions(void)
 	initStringInfo(&errmsgbuf);
 
 	/* call to all QE to get in-doubt transactions */
-	pgresultSets = cdbdisp_dispatchRMCommand(cmdbuf, dispatchToMirrors, &errmsgbuf, NULL);
+	pgresultSets = cdbdisp_dispatchRMCommand(cmdbuf,
+											 /* withSnapshot */false,
+											 dispatchToMirrors,
+											 &errmsgbuf, NULL);
 
 	/* display error messages */
 	if (errmsgbuf.len > 0)
@@ -1671,7 +1677,12 @@ abortRMInDoubtTransactions(HTAB *htab)
 
 		elog(DEBUG3, "Aborting in-doubt transaction with GID: %s", entry->gid);
 
-		cdbdisp_dispatchCommand(cmd, false, false, true, &primaryResults, &mirrorResults);
+		cdbdisp_dispatchCommand(cmd,
+								/* cancelonError */		false,
+								/* startTrans */		false,
+								/* withSnapshot */		false,
+								/* toMirrors */			true,
+								&primaryResults, &mirrorResults);
 
 		/*
 		 * Wait for completion.  Don't cancel.

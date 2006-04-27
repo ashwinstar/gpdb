@@ -613,6 +613,7 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor *** failedSegDB,
  */
 struct pg_result **				/* returns ptr to array of PGresult ptrs */
 cdbdisp_dispatchRMCommand(const char *szCommand,
+						  bool withSnapshot,
 						  bool dispatchToMirrors,
 						  StringInfo errmsgbuf,
 						  int *numresults)
@@ -632,7 +633,9 @@ cdbdisp_dispatchRMCommand(const char *szCommand,
 	bool		startTransaction = false;
 
 	/* Launch the command.	Don't cancel on error. */
-	cdbdisp_dispatchCommand(szCommand, false, startTransaction, dispatchToMirrors,
+	cdbdisp_dispatchCommand(szCommand,
+							/* cancelOnError */false,
+							startTransaction, withSnapshot, dispatchToMirrors,
 			&primaryResults, &mirrorResults);
 
 	/* Wait for all QEs to finish.	Don't cancel. */
@@ -731,21 +734,22 @@ void
 cdbdisp_dispatchCommand(const char                 *szCommand,
                         bool                        cancelOnError,
                         bool						startTransaction,
+                        bool						withSnapshot,
                         bool						dispatchToMirrors,
                         struct CdbDispatchResults **pPrimaryResults,    /* OUT */
                         struct CdbDispatchResults **pMirrorResults)     /* OUT */
 {
-	Gang   *primaryGang;
-    Gang   *mirrorGang;
-    int     nsegdb = getMPPSegmentCount();
-	char *szSnapshotInfo;
+	Gang	*primaryGang;
+	Gang	*mirrorGang;
 	int		txnOptions;
+	char	*szSnapshotInfo = NULL;
+	int		nsegdb = getMPPSegmentCount();
 	
     elog(DEBUG3, "cdbdisp_dispatchCommand: %.50s", szCommand);
 
     *pPrimaryResults = NULL;
     if (pMirrorResults)
-        *pMirrorResults = NULL;
+		*pMirrorResults = NULL;
 
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
@@ -776,8 +780,9 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
 	}
 
 	/* Serialize a version of our snapshot */
-	szSnapshotInfo = serializeSnapshot();
-	
+	if (withSnapshot)
+		szSnapshotInfo = serializeSnapshot();
+
 	/* generate our transactions options. */
 	txnOptions = generateTxnOptions(startTransaction);
 	
@@ -785,17 +790,20 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
      * Dispatch the command.
      */
     *pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-    cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, txnOptions, primaryGang, *pPrimaryResults, -1, 1);
+    cdbdisp_dispatchToGang(szCommand,
+						   (szSnapshotInfo != NULL ? szSnapshotInfo : "NONE"),
+						   txnOptions, primaryGang, *pPrimaryResults, -1, 1);
 
 	if (dispatchToMirrors && mirrorGang)
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-        cdbdisp_dispatchToGang(szCommand, szSnapshotInfo,  txnOptions, mirrorGang, *pMirrorResults, -1, 1);
+        cdbdisp_dispatchToGang(szCommand,
+							   (szSnapshotInfo != NULL ? szSnapshotInfo : "NONE"),
+							   txnOptions, mirrorGang, *pMirrorResults, -1, 1);
     }
 
-    pfree(szSnapshotInfo);
-
-
+	if (szSnapshotInfo != NULL)
+		pfree(szSnapshotInfo);
 }	/* cdbdisp_dispatchCommand */
 
 
@@ -1646,7 +1654,8 @@ CdbDoCommand(const char *szCommand,
 
 	}
 
-	cdbdisp_dispatchCommand(szCommand, cancelOnError, startTransaction, dispatchToMirrors,
+	cdbdisp_dispatchCommand(szCommand, cancelOnError, startTransaction, 
+							/* withSnapshot */true, dispatchToMirrors,
 							&primaryResults, &mirrorResults);
 
 	/*
@@ -2443,7 +2452,8 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	pfree(szCommand);
 
 	cdbdisp_dispatchCommand(buffer.data, cancelOnError, startTransaction,
-							dispatchToMirrors,pPrimaryResults, pMirrorResults);
+							/* withSnapshot */true,
+							dispatchToMirrors, pPrimaryResults, pMirrorResults);
 
 	pfree(buffer.data);
 }	/* cdbdisp_dispatchUtilityStatement */
