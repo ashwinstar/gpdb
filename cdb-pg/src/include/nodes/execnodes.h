@@ -526,6 +526,7 @@ typedef struct EState
  	SliceTable *es_sliceTable;
 	struct MotionState **es_slice_map;
 	bool es_interconnect_is_setup;      /* is interconnect set-up? */
+	bool es_got_eos;				/* was end-of-stream recieved? */
 
     /* results from qExec processes */
     struct CdbDispatchResults  *primaryResults;

@@ -61,6 +61,16 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 	if (!(stmt->options & CURSOR_OPT_HOLD))
 		RequireTransactionChain((void *) stmt, "DECLARE CURSOR");
 
+	if (stmt->options & CURSOR_OPT_HOLD)
+		ereport(ERROR,
+				(errcode(ERRCODE_MPP_FEATURE_NOT_YET),
+				 errmsg("holdable cursors are not yet supported in bizgres MPP")));
+	
+	if (stmt->options & CURSOR_OPT_SCROLL)
+		ereport(ERROR,
+				(errcode(ERRCODE_MPP_FEATURE_NOT_YET),
+				 errmsg("scrollable cursors are not yet supported in bizgres MPP")));
+	
 	/*
 	 * Because the planner is not cool about not scribbling on its input, we
 	 * make a preliminary copy of the source querytree.  This prevents
@@ -111,6 +121,8 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 					  list_make1(query),
 					  list_make1(plan),
 					  PortalGetHeapMemory(portal));
+	
+	portal->is_cursor = true; /* mark this portal as a cursor */
 
 	/*
 	 * Also copy the outer portal's parameter list into the inner portal's

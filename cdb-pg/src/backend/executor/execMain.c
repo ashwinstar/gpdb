@@ -542,6 +542,15 @@ ExecutorRun(QueryDesc *queryDesc,
 					(errcode(ERRCODE_MPP_INTERNAL_ERROR),
 					 errmsg("Undefined MPP execution strategy")));
 		}
+		
+		/*
+		 * if result is null we got end-of-stream. We need to mark it
+		 * since with a cursor end-of-stream will only be received with
+		 * the fetch that returns the last tuple. ExecutorEnd needs to 
+		 * know if EOS was received in order to do the right cleanup.
+		 */
+		if(result == NULL)
+			estate->es_got_eos = true;
     }
 	PG_CATCH();
 	{
@@ -599,14 +608,19 @@ ExecutorEnd(QueryDesc *queryDesc)
 			CdbDispatchResults *pr = estate->primaryResults;
 			CdbDispatchResults *mr = estate->mirrorResults;
 			
-			/* 
-			 * Wait for completion of all QEs. However, if we are
-			 * in ABORT state we don't wait and instead just cancel.
-			 * It's particularly important if this is an open cursor. 
-			 * (because the query and interconnect, and QE's are all 
-			 * suspended, and wouldn't terminate unless we cancel).
+			/*
+			 * If we are closing a cursor before all the tuples of the query 
+			 * plan were fetched we must call ExecSquelchNode before checking 
+			 * the dispatch results in order to tell the nodes below we no longer 
+			 * need any more tuples. 
 			 */
-			CdbCheckDispatchResult(IsAbortInProgress());	
+			if(queryDesc->cursor_query && !estate->es_got_eos)
+				ExecSquelchNode(queryDesc->planstate);
+			
+			/* 
+			 * Wait for completion of all QEs.
+			 */
+			CdbCheckDispatchResult(false);	
 			
 			/* If top slice was delegated to QEs, get num of rows processed. */
 			if (sliceRunsOnQE(currentSlice))

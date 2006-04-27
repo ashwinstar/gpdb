@@ -46,6 +46,7 @@ typedef struct QueryDesc
 	
 	/* This field is set by ExecutorEnd after collecting cdbdisp results */
 	uint32		es_processed;	/* # of tuples processed */
+	bool		cursor_query;   /* does this query service a cursor? */
 	
 } QueryDesc;
 

@@ -166,6 +166,9 @@ typedef struct PortalData
 	bool		atEnd;
 	bool		posOverflow;
 	long		portalPos;
+	
+	/* is this portal a CURSOR, or protocol level portal? */	
+	bool		is_cursor;
 } PortalData;
 
 /*

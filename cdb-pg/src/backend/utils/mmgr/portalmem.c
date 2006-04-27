@@ -24,6 +24,7 @@
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 #include "utils/portal.h"
+#include "cdb/cdbvars.h"
 
 /*
  * Estimate of the maximum number of open portals a user would have,
@@ -157,9 +158,9 @@ Portal
 CreatePortal(const char *name, bool allowDup, bool dupSilent)
 {
 	Portal		portal;
-
+	
 	AssertArg(PointerIsValid(name));
-
+	
 	portal = GetPortalByName(name);
 	if (PortalIsValid(portal))
 	{
@@ -197,6 +198,8 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 	portal->atStart = true;
 	portal->atEnd = true;		/* disallow fetches until query is set */
 
+	portal->is_cursor = false; /* default value */
+	
 	/* put portal in table (sets portal->name) */
 	PortalHashTableInsert(portal, name);
 
@@ -245,6 +248,38 @@ PortalDefineQuery(Portal portal,
 				  List *planTrees,
 				  MemoryContext queryContext)
 {
+	/* 
+	 * The following code block is a temporary gate keeper to disallow 
+	 * any queries or new cursors while there is already an open cursor.
+	 */
+	HASH_SEQ_STATUS status;
+	PortalHashEnt *hentry;
+	
+	hash_seq_init(&status, PortalHashTable);
+	
+	/* loop through existing portals (normally there will be one - that we just created) */
+	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
+	{
+		Portal		portal = hentry->portal;
+		
+		/* if this portal is a cursor, allow only selected operations to go through */
+		if(portal->is_cursor && Mpp_role == MPP_ROLE_DISPATCH)
+		{
+			if(commandTag != "FETCH" &&
+			   commandTag != "CLOSE CURSOR" &&
+			   commandTag != "BEGIN" &&
+			   commandTag != "ROLLBACK" &&
+			   commandTag != "COMMIT")
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot run a query or open a cursor while another cursor is already open"),
+						 errhint("the only allowed commands are FETCH, CLOSE, BEGIN, ROLLBACK and COMMIT")));				
+			}
+		}
+	}
+	/* End temp block */
+	
 	AssertArg(PortalIsValid(portal));
 	AssertState(portal->queryContext == NULL);	/* else defined already */
 

@@ -236,6 +236,7 @@ CreateExecutorState(void)
 	estate->es_sliceTable = NULL;
 	estate->es_slice_map = NULL;
 	estate->es_interconnect_is_setup = false;
+	//estate->es_got_eos = false;
 	estate->primaryResults = NULL;
 	estate->mirrorResults = NULL;
 	
