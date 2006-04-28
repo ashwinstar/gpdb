@@ -268,13 +268,12 @@ PortalDefineQuery(Portal portal,
 			if(commandTag != "FETCH" &&
 			   commandTag != "CLOSE CURSOR" &&
 			   commandTag != "BEGIN" &&
-			   commandTag != "ROLLBACK" &&
-			   commandTag != "COMMIT")
+			   commandTag != "ROLLBACK")
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot run a query or open a cursor while another cursor is already open"),
-						 errhint("the only allowed commands are FETCH, CLOSE, BEGIN, ROLLBACK and COMMIT")));				
+						 errhint("you should either CLOSE the cursor first or ROLLBACK")));				
 			}
 		}
 	}
