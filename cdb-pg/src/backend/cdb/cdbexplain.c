@@ -362,8 +362,7 @@ cdbexplain_showExecutionStatistics(struct PlanState        *planstate,
         appendStringInfoString(str, "recv:  ");
 
     /* Average number of result tuples per qExec */
-    if (instr->cdbSegIndex >= 0 &&
-        instr->cdbWorkers > 0)
+    if (instr->cdbWorkers > 1)
         appendStringInfo(str, "Avg %.2f rows x %d workers.  Max ",
                          instr->cdbGangTuples / instr->cdbWorkers,
                          instr->cdbWorkers);
@@ -396,7 +395,6 @@ cdbexplain_showExecutionStatistics(struct PlanState        *planstate,
     else
         sprintf(totalbuf, "%.0f", total);
 
-    /* Show elapsed time just once if they are the same. */
     appendStringInfo(str, "%s ms to first row, %s ms to end",
                      firstbuf, totalbuf);
 
