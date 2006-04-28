@@ -746,25 +746,21 @@ explain_outNode(StringInfo str,
 	appendStringInfo(str, "  (cost=%.2f..%.2f rows=%.0f width=%d)",
 					 plan->startup_cost, plan->total_cost,
 					 plan->plan_rows, plan->plan_width);
+    appendStringInfoChar(str, '\n');
 
 	/*
 	 * We have to forcibly clean up the instrumentation state because we
 	 * haven't done ExecutorEnd yet.  This is pretty grotty ...
 	 */
 	if (planstate->instrument)
-		InstrEndLoop(planstate->instrument);
-
-    /* CDB: Show actual row count, etc, if EXPLAIN ANALYZE. */
-	if (planstate->instrument && planstate->instrument->nloops > 0)
-	{
-    	appendStringInfoChar(str, '\n');
-        cdbexplain_showExecutionStatistics(planstate, str, indent);
-	}
-	else
     {
-        if (es->printAnalyze)
-            appendStringInfo(str, " (never executed)");
-        appendStringInfoChar(str, '\n');
+        InstrEndLoop(planstate->instrument);
+
+        /* CDB: Show actual row count, etc, if EXPLAIN ANALYZE. */
+	    if (planstate->instrument->nloops > 0 ||
+            planstate->instrument->ntuples > 0 ||
+            planstate->instrument->total > 0)
+            cdbexplain_showExecutionStatistics(planstate, str, indent);
     }
 
     /* quals, sort keys, etc */

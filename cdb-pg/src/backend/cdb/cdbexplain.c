@@ -351,14 +351,11 @@ cdbexplain_showExecutionStatistics(struct PlanState        *planstate,
     char        totalbuf[32];
     int         i;
 
-    Assert(instr->nloops != 0);
-
 	for (i = 0; i < indent; i++)
 		appendStringInfo(str, "  ");
 
     /* Motion node stats are taken from the receiving (upper) slice. */
-    if (IsA(planstate, MotionState) &&
-        instr->cdbSegIndex >= 0)
+    if (IsA(planstate, MotionState))
         appendStringInfoString(str, "recv:  ");
 
     /* Average number of result tuples per qExec */
@@ -378,25 +375,31 @@ cdbexplain_showExecutionStatistics(struct PlanState        *planstate,
     appendStringInfoString(str, "with ");
 
     /* Number of rescans */
-    if (instr->nloops != 1)
+    if (instr->nloops > 1)
+    {
         appendStringInfo(str, "%.0f loops, avg ", instr->nloops);
+        startup /= instr->nloops;
+        total /= instr->nloops;
+    }
 
     /* Elapsed time (ms) per rescan to fetch first row */
-    startup /= instr->nloops;
     if (startup < 20 && startup != 0)
         sprintf(firstbuf, "%.3f", startup);
     else
         sprintf(firstbuf, "%.0f", startup);
 
     /* Elapsed time (ms) per rescan to fetch all rows */
-    total /= instr->nloops;
     if (total < 20 && total != 0)
         sprintf(totalbuf, "%.3f", total);
     else
         sprintf(totalbuf, "%.0f", total);
 
-    appendStringInfo(str, "%s ms to first row, %s ms to end",
-                     firstbuf, totalbuf);
+    /* Show elapsed time just once if they are the same. */
+    if (strcmp(firstbuf, totalbuf) == 0)
+        appendStringInfo(str, "%s ms to end", totalbuf);
+    else
+        appendStringInfo(str, "%s ms to first row, %s ms to end",
+                         firstbuf, totalbuf);
 
     appendStringInfoString(str, ".\n");
 }                               /* cdbexplain_showExecutionStatistics */
