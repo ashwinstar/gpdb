@@ -851,7 +851,7 @@ EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 	/* Clean up the motion-node entry, then remove it from the hash table. */
 	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
     {
-        if (pMNEntry->stat_total_sends > 0 ||
+        if (pMNEntry->stat_total_bytes_sent > 0 ||
             pMNEntry->sel_wr_wait > 0)
         {
             elog(LOG, "Motion node %d in slice%d sent %u tuples, "
@@ -865,7 +865,7 @@ EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 		         pMNEntry->sel_wr_wait
 		        );
         }
-        if (pMNEntry->stat_total_recvs > 0 ||
+        if (pMNEntry->stat_total_bytes_recvd > 0 ||
             pMNEntry->sel_rd_wait > 0)
         {
             elog(LOG, "Motion node %d in slice%d received %u tuples, "
@@ -1282,7 +1282,6 @@ statSendEOS(MotionNodeEntry * pMNEntry)
 	AssertArg(pMNEntry != NULL);
 
 	/* Update motion node statistics. */
-	pMNEntry->stat_total_sends++;
 	pMNEntry->stat_total_chunks_sent++;
 	pMNEntry->stat_total_bytes_sent += TUPLE_CHUNK_HEADER_SIZE;
 
@@ -1352,14 +1351,12 @@ statRecvTuple(MotionNodeEntry * pMNEntry, ChunkSorterEntry * pCSEntry,
 	AssertArg(pMNEntry != NULL);
 	AssertArg(pCSEntry != NULL || !pMNEntry->preserve_order);
 
-	/* Keep track of calls to RecvTuple() and RecvTupleFrom(). */
-
-	pMNEntry->stat_total_recvs++;
-
-	/* Update "tuples available" counts for high watermark stats. */
-
 	if (recvRC == GOT_TUPLE)
 	{
+	    /* Count tuples received. */
+	    pMNEntry->stat_total_recvs++;
+
+	    /* Update "tuples available" counts for high watermark stats. */
 		pMNEntry->stat_tuples_available--;
 
 		if (pMNEntry->preserve_order)

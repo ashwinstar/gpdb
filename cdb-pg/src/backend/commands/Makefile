@@ -13,7 +13,7 @@ top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
 OBJS = aggregatecmds.o alter.o analyze.o async.o cluster.o comment.o  \
-	cdbexec.o conversioncmds.o copy.o \
+	conversioncmds.o copy.o \
 	dbcommands.o define.o explain.o functioncmds.o \
 	indexcmds.o lockcmds.o operatorcmds.o opclasscmds.o \
 	portalcmds.o prepare.o proclang.o \
@@ -28,8 +28,8 @@ SUBSYS.o: $(OBJS)
 depend dep:
 	$(CC) -MM $(CFLAGS) *.c >depend
 
-clean: 
-	rm -f SUBSYS.o $(OBJS) 
+clean:
+	rm -f SUBSYS.o $(OBJS)
 
 ifeq (depend,$(wildcard depend))
 include depend

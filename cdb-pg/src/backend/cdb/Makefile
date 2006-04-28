@@ -18,14 +18,22 @@ OBJCOPY ?= objcopy
 SUBDIRS := motion
 SUBDIROBJS := $(SUBDIRS:%=%/SUBSYS.o)
 
-OBJS = cdbvars.o cdbplan.o cdbllize.o cdbcat.o cdbutil.o \
-	   cdblink.o cdbconn.o cdbdisp.o cdbdispatchresult.o \
-	   cdbsrlz.o cdbhash.o cdbheap.o cdbagg.o cdbmutate.o cdbpullup.o \
-	   cdbaggtactic.o cdbaggmutate.o cdbanalyze.o cdbcopy.o cdblimmutate.o \
-	   cdbsubplan.o cdbtm.o cdbtmlog.o \
-	   cdbpath.o cdbpathlocus.o cdbpathtoplan.o \
-	   cdbsetop.o cdbgroup.o \
-	   cdbbackup.o cdbfts.o cdbgang.o cdblogsync.o cdbpgdatabase.o
+OBJS = cdbagg.o cdbaggtactic.o cdbaggmutate.o cdbanalyze.o \
+	   cdbbackup.o \
+	   cdbcat.o cdbconn.o cdbcopy.o \
+	   cdbdisp.o cdbdispatchresult.o \
+	   cdbexec.o cdbexplain.o \
+	   cdbfts.o \
+	   cdbgang.o cdbgroup.o \
+	   cdbhash.o cdbheap.o \
+	   cdblimmutate.o cdblink.o cdbllize.o cdblogsync.o \
+	   cdbmutate.o \
+	   cdbpath.o cdbpathlocus.o cdbpathtoplan.o cdbpgdatabase.o \
+	   cdbplan.o cdbpullup.o \
+	   cdbsetop.o cdbsrlz.o cdbsubplan.o \
+	   cdbtm.o cdbtmlog.o \
+	   cdbutil.o \
+	   cdbvars.o
 
 ifeq ($(PORTNAME),cygwin)
 .LIBPATTERNS := $(filter-out %.so,$(.LIBPATTERNS))

@@ -4,7 +4,8 @@
  *	 functions for instrumentation of plan execution
  *
  *
- * Copyright (c) 2001-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006, greenplum inc
+ * Portions Copyright (c) 2001-2005, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/executor/instrument.c,v 1.13 2005/10/15 02:49:17 momjian Exp $
@@ -25,6 +26,8 @@ InstrAlloc(int n)
 	Instrumentation *instr = palloc0(n * sizeof(Instrumentation));
 
 	/* we don't need to do any initialization except zero 'em */
+
+    instr->cdbSegIndex = -1;
 
 	return instr;
 }

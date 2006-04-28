@@ -430,6 +430,7 @@ typedef struct SliceTable
  	List *slices;		/* List of slices */
 	char *seqServerHost;	/* If non-null, sequence server host name. */
 	int seqServerPort;		/* If seqServerHost non-null, sequence server port. */
+    bool    doInstrument;   /* true => collect stats for EXPLAIN ANALYZE */
 	
 } SliceTable;
 

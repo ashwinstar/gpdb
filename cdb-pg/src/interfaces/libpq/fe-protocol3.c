@@ -3,6 +3,7 @@
  * fe-protocol3.c
  *	  functions that are specific to frontend/backend protocol version 3
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -354,7 +355,23 @@ pqParseInput3(PGconn *conn)
 					 * the COPY command.
 					 */
 					break;
-				default:
+                case 'Y':       /* CDB: execution stats for EXPLAIN ANALYZE */
+                    if (conn->result)
+                    {
+                        conn->result->cdbStatBuf = pqResultAlloc(conn->result,
+                                                                 msgLength,
+                                                                 true);
+                        if (conn->result->cdbStatBuf)
+                        {
+                            conn->result->cdbStatLen = msgLength;
+                            memcpy(conn->result->cdbStatBuf,
+                                   conn->inBuffer + conn->inCursor,
+                                   msgLength);
+                        }
+                    }
+                    conn->inCursor += msgLength;
+                    break;
+                default:
 					printfPQExpBuffer(&conn->errorMessage,
 									  libpq_gettext(
 													"unexpected response from server; first received character was \"%c\"\n"),
@@ -534,7 +551,6 @@ getAnotherTuple(PGconn *conn, int msgLength)
 	/* Allocate tuple space if first time for this data message */
 	if (conn->curTuple == NULL)
 	{
-	 
 		conn->curTuple = (PGresAttValue *)
 			pqResultAlloc(result, nfields * sizeof(PGresAttValue), TRUE);
 		if (conn->curTuple == NULL)

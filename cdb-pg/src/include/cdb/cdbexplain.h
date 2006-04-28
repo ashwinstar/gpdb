@@ -1,0 +1,48 @@
+/*-------------------------------------------------------------------------
+ *
+ * cdbexplain.h
+ *    Functions supporting the MPP EXPLAIN command
+ *
+ * Copyright (c) 2006, greenplum inc
+ *
+ * $Id$
+ *
+ *-------------------------------------------------------------------------
+ */
+#ifndef CDBEXPLAIN_H
+#define CDBEXPLAIN_H
+
+struct PlanState;                       /* #include "nodes/execnodes.h" */
+struct QueryDesc;                       /* #include "executor/execdesc.h" */
+struct StringInfoData;                  /* #include "lib/stringinfo.h" */
+
+
+/*
+ * cdbexplain_sendExecutionStatistics
+ *    Called by qExec process to send EXPLAIN ANALYZE statistics to qDisp.
+ *    On the qDisp, libpq will attach this data to the PGresult object.
+ */
+void
+cdbexplain_sendExecutionStatistics(struct QueryDesc *queryDesc);
+
+/*
+ * cdbexplain_recvExecutionStatistics
+ *    Called by qDisp process to transfer a slice's EXPLAIN ANALYZE statistics
+ *    from the CdbDispatchResults structures to the PlanState tree.
+ */
+void
+cdbexplain_recvExecutionStatistics(struct QueryDesc    *queryDesc,
+                                   struct PlanState    *planstate,
+                                   int                  sliceIndex);
+
+/*
+ * cdbexplain_showExecutionStatistics
+ *    Called by qDisp process to format a node's EXPLAIN ANALYZE statistics.
+ */
+void
+cdbexplain_showExecutionStatistics(struct PlanState        *planstate,
+                                   struct StringInfoData   *str, 
+                                   int                      indent);
+
+
+#endif   /* CDBEXPLAIN_H */

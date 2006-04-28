@@ -327,10 +327,10 @@ nodeRead(char *token, int tok_len)
         			token = pg_strtok(&tok_len);
                     token = debackslash(token, tok_len);
                     ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                                    errmsg("This version of %s does not contain "
-                                           "support for the \"%.*s\" feature "
-                                           "which this operation requires.",
-                                           PACKAGE_NAME, tok_len, token)
+                                    errmsg("This operation requires a feature "
+                                           "called \"%.*s\" which is not "
+                                           "supported in this version of %s.", 
+                                           tok_len, token, PACKAGE_NAME)
                             ));
                 }
 

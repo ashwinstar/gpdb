@@ -32,7 +32,6 @@
 #include "commands/lockcmds.h"
 #include "commands/portalcmds.h"
 #include "commands/prepare.h"
-#include "commands/cdbexec.h"
 #include "commands/proclang.h"
 #include "commands/schemacmds.h"
 #include "commands/sequence.h"
@@ -59,11 +58,12 @@
 #include "utils/syscache.h"
 #include "lib/stringinfo.h"
 
-#include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
-#include "cdb/cdbtm.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbexec.h"                /* CdbExecQuery() */
 #include "cdb/cdbsrlz.h"
+#include "cdb/cdbtm.h"
+#include "cdb/cdbvars.h"
 
 /*
  * Error-checking support for DROP commands

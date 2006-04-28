@@ -2176,6 +2176,7 @@ _readSliceTable(void)
 	READ_NODE_FIELD(slices); /* List of Slice* */
 	READ_STRING_FIELD(seqServerHost);
 	READ_INT_FIELD(seqServerPort);
+    READ_BOOL_FIELD(doInstrument);
 	
 	READ_DONE();
 }
@@ -2484,7 +2485,12 @@ parseNodeString(void)
 
 	if ( found == NULL )
 	{
-		elog(ERROR, "badly formatted node string \"%.40s\"...", token);
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                        errmsg("This operation involves an internal data item "
+                               "of a type called \"%.*s\" which is not "
+                               "supported in this version of %s.", 
+                               length, token, PACKAGE_NAME)
+                ));
 		return_value = NULL;	/* keep compiler quiet */
 	}
 	else

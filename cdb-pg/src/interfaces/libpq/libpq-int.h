@@ -177,6 +177,10 @@ struct pg_result
 	PGresult_data *curBlock;	/* most recently allocated block */
 	int			curOffset;		/* start offset of free space in block */
 	int			spaceLeft;		/* number of free bytes remaining in block */
+
+    /* CDB: Statistics returned in 'Y' message from qExec to qDisp. */
+	void       *cdbStatBuf;		/* -> EXPLAIN ANALYZE stats, or NULL */
+    int         cdbStatLen;     /* message length (bytes) */
 };
 
 /* PGAsyncStatusType defines the state of the query-execution state machine */

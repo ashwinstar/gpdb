@@ -191,6 +191,9 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		/* Set up blank slice table to be filled in during InitPlan. */
 		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nInitPlans);
 
+        /* Pass EXPLAIN ANALYZE flag to qExecs. */
+        estate->es_sliceTable->doInstrument = queryDesc->doInstrument;
+
 		/* set our global sliceid variable for elog. */
 		currentSliceId = estate->es_cur_slice_idx;
 	}
@@ -219,6 +222,10 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 
 			/* set our global sliceid variable for elog. */
 			currentSliceId = estate->es_cur_slice_idx;
+
+            /* Should we collect statistics for EXPLAIN ANALYZE? */
+            estate->es_instrument = sliceTable->doInstrument;
+            queryDesc->doInstrument = sliceTable->doInstrument;
 		}
 	}
 
@@ -339,9 +346,9 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			cdbdisp_dispatchPlan(queryDesc, true, &estate->primaryResults, &estate->mirrorResults);
 		}
 		
-		/* 
-		 * Get executor identity (who does the executor serve). we can assume 
-		 * Forward scan direction for now just for retrieving the identity. 
+		/*
+		 * Get executor identity (who does the executor serve). we can assume
+		 * Forward scan direction for now just for retrieving the identity.
 		 */
 		if (!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 			exec_identity = getMppExecIdentity(queryDesc, ForwardScanDirection, estate);
@@ -484,9 +491,9 @@ ExecutorRun(QueryDesc *queryDesc,
 		 * 2. Run a root slice
 		 * 3. Run a non-root slice on a QE.
 		 *
-		 * Here we decide what is our identity -- root slice, non-root 
+		 * Here we decide what is our identity -- root slice, non-root
 		 * on QE or other (in which case we do nothing), and then run
-		 * the plan if required. For more information see 
+		 * the plan if required. For more information see
 		 * getMppExecIdentity() in execUtils.
 		 */
 		exec_identity = getMppExecIdentity(queryDesc, direction, estate);
@@ -521,11 +528,11 @@ ExecutorRun(QueryDesc *queryDesc,
 		}
 		else if (exec_identity == MPP_ROOT_SLICE)
 		{
-			/* 
+			/*
 			 * Run a root slice
-			 * It corresponds to the "normal" path through the executor 
-			 * in that we enter the plan at the top and count on the 
-			 * motion nodes at the fringe of the top slice to return 
+			 * It corresponds to the "normal" path through the executor
+			 * in that we enter the plan at the top and count on the
+			 * motion nodes at the fringe of the top slice to return
 			 * without ever calling nodes below them.
 			 */
 			result = ExecutePlan(estate,

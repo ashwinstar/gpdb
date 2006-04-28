@@ -35,17 +35,22 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 
-#include "cdb/cdblink.h"        /* getMPPSegmentCount() */
-#include "cdb/cdbpullup.h"      /* cdbpullup_targetlist() */
+#include "cdb/cdbdisp.h"                /* CheckDispatchResult() */
+#include "cdb/cdbexplain.h"             /* cdbexplain_getExecutionStatistics */
+#include "cdb/cdblink.h"                /* getMPPSegmentCount() */
+#include "cdb/cdbpullup.h"              /* cdbpullup_targetlist() */
 
 
 typedef struct ExplainState
 {
-	/* options */
+    /* options */
 	bool		printNodes;		/* do nodeToString() too */
 	bool		printAnalyze;	/* print actual times */
 	/* other states */
 	List	   *rtable;			/* range table */
+
+    /* CDB */
+    QueryDesc  *queryDesc;
 } ExplainState;
 
 static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
@@ -237,11 +242,15 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 {
 	instr_time	starttime;
 	double		totaltime = 0;
-	ExplainState *es;
+	ExplainState    explainState;
+    ExplainState   *es = &explainState;
 	StringInfo	str;
 	Node	   *saved_es_sliceTable;
 
-	INSTR_TIME_SET_CURRENT(starttime);
+	memset(es, 0, sizeof(*es));
+    es->queryDesc = queryDesc;
+
+    INSTR_TIME_SET_CURRENT(starttime);
 
 	/* If analyzing, we need to cope with queued triggers */
 	if (stmt->analyze)
@@ -256,13 +265,14 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 		/* run the plan */
 		ExecutorRun(queryDesc, ForwardScanDirection, 0L);
 
+        /* Wait for completion of all qExecs. */
+        CdbCheckDispatchResult(false);	
+
 		/* We can't clean up 'till we're done printing the stats... */
 		totaltime += elapsed_time(&starttime);
 	}
 
-	es = (ExplainState *) palloc0(sizeof(ExplainState));
-
-	es->printNodes = stmt->verbose;
+    es->printNodes = stmt->verbose;
 	es->printAnalyze = stmt->analyze;
 	es->rtable = queryDesc->parsetree->rtable;
 
@@ -382,13 +392,12 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	totaltime += elapsed_time(&starttime);
 
 	if (stmt->analyze)
-		appendStringInfo(str, "Total runtime: %.3f ms\n",
-						 1000.0 * totaltime);
+		appendStringInfo(str, "%.3f ms elapsed\n", 1000.0 * totaltime);
+
 	do_text_output_multiline(tstate, str->data);
 
 	pfree(str->data);
 	pfree(str);
-	pfree(es);
 }
 
 /* Compute elapsed time in seconds since given timestamp */
@@ -629,6 +638,16 @@ explain_outNode(StringInfo str,
                 appendStringInfo(str, "%s %d:%d  (slice%d)", pname,
                                  nSenders, nReceivers, pMotion->motionID);
                 pname = "";
+
+                /* Update the slice's Instrumentation with stats from qExecs. */
+                if (es->printAnalyze &&
+                    es->queryDesc->estate->primaryResults &&
+                    planstate->instrument)
+                {
+                    cdbexplain_recvExecutionStatistics(es->queryDesc,
+                                                       planstate,
+                                                       pMotion->motionID);
+                }
 			}
 
 			break;
@@ -735,21 +754,20 @@ explain_outNode(StringInfo str,
 	if (planstate->instrument)
 		InstrEndLoop(planstate->instrument);
 
+    /* CDB: Show actual row count, etc, if EXPLAIN ANALYZE. */
 	if (planstate->instrument && planstate->instrument->nloops > 0)
 	{
-		double		nloops = planstate->instrument->nloops;
-
-		appendStringInfo(str, " (actual time=%.3f..%.3f rows=%.0f loops=%.0f)",
-						 1000.0 * planstate->instrument->startup / nloops,
-						 1000.0 * planstate->instrument->total / nloops,
-						 planstate->instrument->ntuples / nloops,
-						 planstate->instrument->nloops);
+    	appendStringInfoChar(str, '\n');
+        cdbexplain_showExecutionStatistics(planstate, str, indent);
 	}
-	else if (es->printAnalyze)
-		appendStringInfo(str, " (never executed)");
-	appendStringInfoChar(str, '\n');
+	else
+    {
+        if (es->printAnalyze)
+            appendStringInfo(str, " (never executed)");
+        appendStringInfoChar(str, '\n');
+    }
 
-	/* quals, sort keys, etc */
+    /* quals, sort keys, etc */
 	switch (nodeTag(plan))
 	{
 		case T_IndexScan:
@@ -1313,5 +1331,4 @@ show_motion_keys(List *tlist, List *hashExpr, int nkeys, AttrNumber *keycols,
 	    appendStringInfo(str, "  %s: %s\n", "Hash Key", exprstr);
     }
 }                               /* show_motion_keys */
-
 

@@ -4,7 +4,8 @@
  *	  definitions for run-time statistics collection
  *
  *
- * Copyright (c) 2001-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006, greenplum inc
+ * Portions Copyright (c) 2001-2005, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/include/executor/instrument.h,v 1.12 2005/10/15 02:49:44 momjian Exp $
  *
@@ -66,6 +67,11 @@ typedef struct Instrumentation
 	double		total;			/* Total total time (in seconds) */
 	double		ntuples;		/* Total tuples produced */
 	double		nloops;			/* # of run cycles for this node */
+    /* CDB: Which process were these stats taken from? */
+    int         cdbSegIndex;    /* segment id of qExec, or -1 if qDisp */
+    /* CDB: Gang totals */
+    int         cdbWorkers;     /* # of processes reporting ntuples > 0 */
+    double      cdbGangTuples;  /* sum of ntuples over all workers */
 } Instrumentation;
 
 extern Instrumentation *InstrAlloc(int n);
