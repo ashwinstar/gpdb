@@ -195,8 +195,10 @@
 #geqo_selection_bias = 2.0		# range 1.5-2.0
 
 # - Other Planner Options -
-
-#default_statistics_target = 10		# range 1-1000
+#default_statistics_target = 25		# range 1 - 1000 (target # of
+					# histogram bins)
+#default_statistics_efraction = 0.25	# range 0.0 - 1.0 (target relative
+					# error fraction)
 #constraint_exclusion = off
 #from_collapse_limit = 8
 #join_collapse_limit = 8		# 1 disables collapsing of explicit
