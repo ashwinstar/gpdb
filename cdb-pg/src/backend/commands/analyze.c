@@ -64,10 +64,10 @@ typedef struct AnlIndexData
 
 
 /* Default statistics target (GUC parameter) */
-int			default_statistics_target = 10;
+int			default_statistics_target = 25;
 
 /* Default target efraction */
-double	default_statistics_efraction = 0.5;
+double	default_statistics_efraction = 0.25;
 
 static int	elevel = -1;
 
