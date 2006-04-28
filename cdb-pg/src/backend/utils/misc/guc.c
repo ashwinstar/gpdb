@@ -1792,11 +1792,11 @@ static struct config_real ConfigureNamesReal[] =
 	},
 
 	{
-		{"default_statistics_efraction", PGC_USERSET, QUERY_TUNING_OTHER,
-		 gettext_noop("target error fraction for row sampling during analyze"),
+		{"analyze_relative_error", PGC_USERSET, QUERY_TUNING_OTHER,
+		 gettext_noop("target relative error fraction for row sampling during analyze"),
 		 NULL
 		},
-		&default_statistics_efraction,
+		&analyze_relative_error,
 		0.25, 0, 1.0, NULL, NULL
 	},
 

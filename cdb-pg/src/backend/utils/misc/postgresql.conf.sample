@@ -197,7 +197,7 @@
 # - Other Planner Options -
 #default_statistics_target = 25		# range 1 - 1000 (target # of
 					# histogram bins)
-#default_statistics_efraction = 0.25	# range 0.0 - 1.0 (target relative
+#analyze_relative_error = 0.25		# range 0.0 - 1.0 (target relative
 					# error fraction)
 #constraint_exclusion = off
 #from_collapse_limit = 8

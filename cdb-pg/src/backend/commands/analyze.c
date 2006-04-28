@@ -67,7 +67,7 @@ typedef struct AnlIndexData
 int			default_statistics_target = 25;
 
 /* Default target efraction */
-double	default_statistics_efraction = 0.25;
+double	analyze_relative_error = 0.25;
 
 static int	elevel = -1;
 
@@ -1418,7 +1418,7 @@ std_typanalyze(VacAttrStats *stats)
 	 * this point.  
 	 *--------------------
 	 */
-	row_target = 76.45 * attr->attstattarget / (default_statistics_efraction * default_statistics_efraction);
+	row_target = 76.45 * attr->attstattarget / (analyze_relative_error * analyze_relative_error);
 	elog(DEBUG3, "analyze row target: %f", row_target);
 	stats->minrows = ceil(row_target);
 
