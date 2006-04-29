@@ -758,11 +758,8 @@ explain_outNode(StringInfo str,
     {
         InstrEndLoop(planstate->instrument);
 
-        /* CDB: Show actual row count, etc, if EXPLAIN ANALYZE. */
-	    if (planstate->instrument->nloops > 0 ||
-            planstate->instrument->ntuples > 0 ||
-            planstate->instrument->total > 0)
-            cdbexplain_showExecStats(planstate, str, indent+1);
+        /* CDB: Show actual row count, etc. */
+        cdbexplain_showExecStats(planstate, str, indent+1);
     }
 
     /* quals, sort keys, etc */
