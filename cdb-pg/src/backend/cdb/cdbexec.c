@@ -14,7 +14,7 @@
 #include "postgres.h"
 
 #include "cdb/cdbexec.h"                /* me */
-#include "cdb/cdbexplain.h"             /* cdbexplain_putExecutionStatistics */
+#include "cdb/cdbexplain.h"             /* cdbexplain_sendExecStats */
 #include "cdb/cdbsrlz.h"                /* deserializeNode() */
 #include "cdb/cdbvars.h"
 #include "tcop/pquery.h"                /* CreateNewPortal, PortalRun, etc */
@@ -203,7 +203,7 @@ CdbExecQuery(struct CdbExecStmt * stmt, struct _DestReceiver *dest, char *comple
     /* If EXPLAIN ANALYZE, send statistics to qDisp. */
     if (sliceTable &&
         sliceTable->doInstrument)
-        cdbexplain_sendExecutionStatistics(PortalGetQueryDesc(portal));
+        cdbexplain_sendExecStats(PortalGetQueryDesc(portal));
 
 	PortalDrop(portal, false);
 

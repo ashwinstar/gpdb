@@ -36,7 +36,7 @@
 #include "utils/lsyscache.h"
 
 #include "cdb/cdbdisp.h"                /* CheckDispatchResult() */
-#include "cdb/cdbexplain.h"             /* cdbexplain_getExecutionStatistics */
+#include "cdb/cdbexplain.h"             /* cdbexplain_recvExecStats */
 #include "cdb/cdblink.h"                /* getMPPSegmentCount() */
 #include "cdb/cdbpullup.h"              /* cdbpullup_targetlist() */
 
@@ -265,11 +265,23 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 		/* run the plan */
 		ExecutorRun(queryDesc, ForwardScanDirection, 0L);
 
-        /* Wait for completion of all qExecs. */
-        CdbCheckDispatchResult(false);	
+        /* Did we delegate (some or all of) the execution to qExecs? */
+        if (queryDesc->estate->primaryResults)
+        {
+            /* Wait for completion of all qExec processes. */
+            CdbCheckDispatchResult(false);	
 
-		/* We can't clean up 'till we're done printing the stats... */
-		totaltime += elapsed_time(&starttime);
+		    totaltime += elapsed_time(&starttime);
+
+            /* Fill in the plan's Instrumentation with stats from qExecs. */
+            cdbexplain_recvExecStats(queryDesc->planstate,
+                                     queryDesc->estate->primaryResults,
+                                     queryDesc->estate->es_cur_slice_idx);
+        }
+
+        /* We can't clean up 'till we're done printing the stats... */
+        else
+		    totaltime += elapsed_time(&starttime);
 	}
 
     es->printNodes = stmt->verbose;
@@ -638,16 +650,6 @@ explain_outNode(StringInfo str,
                 appendStringInfo(str, "%s %d:%d  (slice%d)", pname,
                                  nSenders, nReceivers, pMotion->motionID);
                 pname = "";
-
-                /* Update the slice's Instrumentation with stats from qExecs. */
-                if (es->printAnalyze &&
-                    es->queryDesc->estate->primaryResults &&
-                    planstate->instrument)
-                {
-                    cdbexplain_recvExecutionStatistics(es->queryDesc,
-                                                       planstate,
-                                                       pMotion->motionID);
-                }
 			}
 
 			break;
@@ -760,7 +762,7 @@ explain_outNode(StringInfo str,
 	    if (planstate->instrument->nloops > 0 ||
             planstate->instrument->ntuples > 0 ||
             planstate->instrument->total > 0)
-            cdbexplain_showExecutionStatistics(planstate, str, indent);
+            cdbexplain_showExecStats(planstate, str, indent+1);
     }
 
     /* quals, sort keys, etc */

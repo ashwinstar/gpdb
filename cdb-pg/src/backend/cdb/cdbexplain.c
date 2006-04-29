@@ -61,6 +61,7 @@ typedef struct CdbExplain_RecvStatCtx
     int                     nStatInst;
     int                     nmsgptr;
     CdbExplain_StatHdr    **msgptrs;
+    CdbDispatchResults     *dispatchResults;
 } CdbExplain_RecvStatCtx;
 
 
@@ -71,13 +72,13 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context);
 
 
 /*
- * cdbexplain_sendExecutionStatistics
+ * cdbexplain_sendExecStats
  *    Called by qExec process to send EXPLAIN ANALYZE statistics to qDisp.
  *    On the qDisp, libpq will recognize our special message type ('Y') and
  *    attach the message to the current command's PGresult object.
  */
 void
-cdbexplain_sendExecutionStatistics(QueryDesc *queryDesc)
+cdbexplain_sendExecStats(QueryDesc *queryDesc)
 {
     EState                 *estate;
     PlanState              *planstate;
@@ -123,20 +124,21 @@ cdbexplain_sendExecutionStatistics(QueryDesc *queryDesc)
 
     /* Send message to qDisp process. */
     pq_endmessage(&ctx.buf);
-}                               /* cdbexplain_sendExecutionStatistics */
+}                               /* cdbexplain_sendExecStats */
 
 
 /*
- * cdbexplain_recvExecutionStatistics
- *    Called by qDisp process to transfer a slice's EXPLAIN ANALYZE statistics
+ * cdbexplain_recvExecStats
+ *    Called by qDisp to transfer a slice's EXPLAIN ANALYZE statistics
  *    from the CdbDispatchResults structures to the PlanState tree.
+ *    Recursively does the same for slices that are descendants of the
+ *    one specified.
  */
 void
-cdbexplain_recvExecutionStatistics(struct QueryDesc    *queryDesc,
-                                   struct PlanState    *planstate,
-                                   int                  sliceIndex)
+cdbexplain_recvExecStats(struct PlanState          *planstate,
+                         struct CdbDispatchResults *dispatchResults,
+                         int                        sliceIndex)
 {
-    CdbDispatchResults     *primaryResults = queryDesc->estate->primaryResults;
     CdbDispatchResult      *dispatchResultBeg;
     CdbDispatchResult      *dispatchResultEnd;
     CdbExplain_RecvStatCtx  ctx;
@@ -144,30 +146,25 @@ cdbexplain_recvExecutionStatistics(struct QueryDesc    *queryDesc,
     int                     iDispatch;
     int                     nDispatch;
 
-    Assert(planstate &&
-           IsA(planstate, MotionState) &&
-           planstate->lefttree &&
-           planstate->lefttree->instrument);
-
-    /* Descend to child of this slice's sending Motion node. */
-    planstate = planstate->lefttree;
-
-    /* Initialize treewalk context. */
-    memset(&ctx, 0, sizeof(ctx));
-    ctx.iStatInst = 0;
-    ctx.nStatInst = 0;
-
-    /* Find the slice's CdbDispatchResult objects. */
-    dispatchResultBeg = cdbdisp_resultBegin(primaryResults, sliceIndex);
-    dispatchResultEnd = cdbdisp_resultEnd(primaryResults, sliceIndex);
-    nDispatch = dispatchResultEnd - dispatchResultBeg;
-
-    if (nDispatch == 0)
+    if (!planstate ||
+        !planstate->instrument)
         return;
 
-    /* Find and validate the statistics returned from each qExec. */
-    ctx.msgptrs = (CdbExplain_StatHdr **)palloc0(nDispatch * sizeof(ctx.msgptrs[0]));
+    /* Initialize treewalk context. */
+    ctx.iStatInst = 0;
+    ctx.nStatInst = 0;
     ctx.nmsgptr = 0;
+    ctx.msgptrs = NULL;
+    ctx.dispatchResults = dispatchResults;
+
+    /* Find the slice's CdbDispatchResult objects. */
+    dispatchResultBeg = cdbdisp_resultBegin(dispatchResults, sliceIndex);
+    dispatchResultEnd = cdbdisp_resultEnd(dispatchResults, sliceIndex);
+    nDispatch = dispatchResultEnd - dispatchResultBeg;
+
+    /* Find and validate the statistics returned from each qExec. */
+    if (nDispatch > 0)
+        ctx.msgptrs = (CdbExplain_StatHdr **)palloc0(nDispatch * sizeof(ctx.msgptrs[0]));
     for (iDispatch = 0; iDispatch < nDispatch; iDispatch++)
     {
         CdbDispatchResult  *dispatchResult = &dispatchResultBeg[iDispatch];
@@ -220,14 +217,15 @@ cdbexplain_recvExecutionStatistics(struct QueryDesc    *queryDesc,
     Insist(ctx.iStatInst == ctx.nStatInst);
 
     /* Clean up. */
-    pfree(ctx.msgptrs);
-}                               /* cdbexplain_recvExecutionStatistics */
+    if (ctx.msgptrs)
+        pfree(ctx.msgptrs);
+}                               /* cdbexplain_recvExecStats */
 
 
 /*
  * cdbexplain_recvStatWalker
  *    Update the given PlanState node's Instrument node with statistics
- *    received from qExecs.
+ *    received from qExecs.  At a MotionState node, descend to child slice.
  */
 CdbVisitOpt
 cdbexplain_recvStatWalker(PlanState *planstate, void *context)
@@ -239,62 +237,71 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context)
     int                     imsgptr;
     double                  ntMax;
 
-    Insist(instr &&
-           ctx->iStatInst < ctx->nStatInst);
-
-    /* Start with one qExec's statistics for the node. */
-    shMax = ctx->msgptrs[0];
-    siMax = &shMax->inst[ctx->iStatInst];
-    ntMax = siMax->ntuples;
-
-    instr->cdbGangTuples = siMax->ntuples;
-    instr->cdbWorkers = (siMax->ntuples > 0) ? 1 : 0;
-
-    Insist(siMax->pstype == planstate->type);
-
-    /* Examine the statistics from the rest of the qExecs. */
-    for (imsgptr = 1; imsgptr < ctx->nmsgptr; imsgptr++)
+    /* If slice was dispatched to qExecs, and stats came back, grab 'em. */
+    if (ctx->nmsgptr > 0)
     {
-        CdbExplain_StatHdr     *sh = ctx->msgptrs[imsgptr];
-        CdbExplain_StatInst    *si = &sh->inst[ctx->iStatInst];
-        double                  nt = si->ntuples;
+        Insist(instr &&
+               ctx->iStatInst < ctx->nStatInst);
 
-        Insist(siMax->pstype == si->pstype);
+        /* Start with one qExec's statistics for the node. */
+        shMax = ctx->msgptrs[0];
+        siMax = &shMax->inst[ctx->iStatInst];
+        ntMax = siMax->ntuples;
 
-        /* Update gang totals. */
-        if (si->ntuples > 0)
+        instr->cdbGangTuples = siMax->ntuples;
+        instr->cdbWorkers = (siMax->ntuples > 0) ? 1 : 0;
+
+        Insist(siMax->pstype == planstate->type);
+
+        /* Examine the statistics from the rest of the qExecs. */
+        for (imsgptr = 1; imsgptr < ctx->nmsgptr; imsgptr++)
         {
-            instr->cdbGangTuples += si->ntuples;
-            instr->cdbWorkers++;
+            CdbExplain_StatHdr     *sh = ctx->msgptrs[imsgptr];
+            CdbExplain_StatInst    *si = &sh->inst[ctx->iStatInst];
+            double                  nt = si->ntuples;
+
+            Insist(siMax->pstype == si->pstype);
+
+            /* Update gang totals. */
+            if (si->ntuples > 0)
+            {
+                instr->cdbGangTuples += si->ntuples;
+                instr->cdbWorkers++;
+            }
+
+            /* Remember qExec with highest number of output tuples. */
+            if (nt < ntMax)
+                continue;
+            if (nt == ntMax &&
+                si->total <= siMax->total)
+                continue;
+
+            shMax = sh;
+            siMax = si;
+            ntMax = nt;
         }
 
-        /* Remember qExec with highest number of output tuples. */
-        if (nt < ntMax)
-            continue;
-        if (nt == ntMax &&
-            si->total <= siMax->total)
-            continue;
+        /* Copy stats from winning qExec into the Instrumentation node. */
+        instr->startup = siMax->startup;
+        instr->total = siMax->total;
+        instr->ntuples = siMax->ntuples;
+        instr->nloops = siMax->nloops;
 
-        shMax = sh;
-        siMax = si;
-        ntMax = nt;
+        /* Store segment id of the winning qExec. */
+        instr->cdbSegIndex = shMax->segindex;
+
+        /* Advance to next node's entry in all of the StatInst arrays. */
+        ctx->iStatInst++;
     }
 
-    /* Copy stats from winning qExec into the Instrumentation node. */
-    instr->startup = siMax->startup;
-    instr->total = siMax->total;
-    instr->ntuples = siMax->ntuples;
-    instr->nloops = siMax->nloops;
-
-    /* Store segment id of the winning qExec. */
-    instr->cdbSegIndex = shMax->segindex;
-
-    /* Advance to next node's entry in all of the StatInst arrays. */
-    ctx->iStatInst++;
-
-    /* Don't descend below bottom of slice. */
+    /* Motion operator?  Descend to next slice. */
     if (IsA(planstate, MotionState))
+    {
+        cdbexplain_recvExecStats(planstate->lefttree,
+                                 ctx->dispatchResults,
+                                 ((Motion *)planstate->plan)->motionID);
         return CdbVisit_Skip;
+    }
 
     return CdbVisit_Walk;
 }                               /* cdbexplain_recvStatWalker */
@@ -336,13 +343,13 @@ cdbexplain_sendStatWalker(PlanState *planstate, void *context)
 
 
 /*
- * cdbexplain_showExecutionStatistics
+ * cdbexplain_showExecStats
  *    Called by qDisp process to format a node's EXPLAIN ANALYZE statistics.
  */
 void
-cdbexplain_showExecutionStatistics(struct PlanState        *planstate,
-                                   struct StringInfoData   *str,
-                                   int                      indent)
+cdbexplain_showExecStats(struct PlanState      *planstate,
+                         struct StringInfoData *str,
+                         int                    indent)
 {
     Instrumentation    *instr = planstate->instrument;
     double      startup = instr->startup * 1000.0;  /* convert secs to ms */
@@ -402,5 +409,5 @@ cdbexplain_showExecutionStatistics(struct PlanState        *planstate,
                          firstbuf, totalbuf);
 
     appendStringInfoString(str, ".\n");
-}                               /* cdbexplain_showExecutionStatistics */
+}                               /* cdbexplain_showExecStats */
 

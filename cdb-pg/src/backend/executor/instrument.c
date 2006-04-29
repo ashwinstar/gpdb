@@ -24,10 +24,14 @@ Instrumentation *
 InstrAlloc(int n)
 {
 	Instrumentation *instr = palloc0(n * sizeof(Instrumentation));
+    int i;
 
 	/* we don't need to do any initialization except zero 'em */
 
-    instr->cdbSegIndex = -1;
+    for (i = 0; i < n; i++)
+    {
+	    instr[i].cdbSegIndex = -1;
+    }
 
 	return instr;
 }

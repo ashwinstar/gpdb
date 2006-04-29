@@ -21,6 +21,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "cdb/cdbexplain.h"             /* cdbexplain_recvSubplanStats */
 #include "cdb/cdbvars.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbdisp.h"
@@ -974,7 +975,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 
 	Query	   *query;
 	QueryDesc  *queryDesc = NULL;
-	EState	   *local;			/* The EState to use. */
 
     struct CdbDispatchResults  *primaryResults = NULL;
 	bool		        shouldDispatch = false;
@@ -993,12 +993,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	 */
 	if (shouldDispatch)
 	{
-		/*
-		 * There are two EState structures available: node->planstate->state
-		 * node->sub_estate
-		 */
-		local = node->sub_estate;
-
 		/* Fake a Query node to hold the range table. */
 		query = makeNode(Query);
 		query->rtable = subplan->rtable;
@@ -1199,6 +1193,18 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
         if (primaryResults)
         {
             struct CdbDispatchResults  *pr = primaryResults;
+
+            /* If EXPLAIN ANALYZE, collect execution stats from qExecs. */
+            if (planstate->instrument)
+            {
+                /* Wait for all gangs to finish. */
+                CdbCheckDispatchResult(false);	
+
+                /* Jam stats into subplan's Instrumentation nodes. */
+                cdbexplain_recvExecStats(planstate,
+                                         primaryResults,
+                                         queryDesc->estate->es_cur_slice_idx);
+            }
 
             /*
              * Wait for all gangs to finish.  Check and free the results.
