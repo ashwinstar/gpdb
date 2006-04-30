@@ -1023,6 +1023,38 @@ stateTreeWalker(PlanState *node,
 					}
 					break;
 				}
+            case T_BitmapAndState:
+                {
+                    BitmapAndState *bas = (BitmapAndState *)node;
+
+					for (i = 0; i < bas->nplans; i++)
+					{
+						subtree = bas->bitmapplans[i];
+						if (subtree)
+						{
+							if (next && !stateTreeWalker(next, ctx))
+								return false;
+							next = subtree;
+						}
+					}
+					break;
+                }
+            case T_BitmapOrState:
+                {
+                    BitmapOrState  *bos = (BitmapOrState *)node;
+
+					for (i = 0; i < bos->nplans; i++)
+					{
+						subtree = bos->bitmapplans[i];
+						if (subtree)
+						{
+							if (next && !stateTreeWalker(next, ctx))
+								return false;
+							next = subtree;
+						}
+					}
+					break;
+                }
 			case T_SubqueryScanState:
 				next = ((SubqueryScanState *) node)->subplan;
 				break;
@@ -1054,9 +1086,8 @@ stateTreeWalker(PlanState *node,
 			if (next && !stateTreeWalker(next, ctx))
 				return false;
 			ctx->result = ctx->visit_postorder(node, ctx->context);
-			if (ctx->result != CdbVisit_Walk)
-				return (ctx->result == CdbVisit_Skip);
-			break;
+			return (ctx->result == CdbVisit_Walk ||
+				    ctx->result == CdbVisit_Skip);
 		}
 	}
 	return true;

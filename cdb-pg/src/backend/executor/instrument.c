@@ -120,8 +120,11 @@ InstrEndLoop(Instrumentation *instr)
 	/* Accumulate per-cycle statistics into totals */
 	totaltime = INSTR_TIME_GET_DOUBLE(instr->counter);
 
-	instr->startup += instr->firsttuple;
-	instr->total += totaltime;
+    /* CDB: Report startup time from only the first cycle. */
+    if (instr->nloops == 0)
+        instr->startup = instr->firsttuple;
+
+    instr->total += totaltime;
 	instr->ntuples += instr->tuplecount;
 	instr->nloops += 1;
 

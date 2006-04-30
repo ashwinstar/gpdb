@@ -381,32 +381,27 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
         appendStringInfo(str, "(seg%d) ", instr->cdbSegIndex);
     appendStringInfoString(str, "with ");
 
-    /* Number of rescans */
-    if (instr->nloops > 1)
-    {
-        appendStringInfo(str, "%.0f loops, avg ", instr->nloops);
-        startup /= instr->nloops;
-        total /= instr->nloops;
-    }
-
-    /* Elapsed time (ms) per rescan to fetch first row */
+    /* Elapsed time (ms) to fetch first row */
     if (startup < 20 && startup != 0)
         sprintf(firstbuf, "%.3f", startup);
     else
         sprintf(firstbuf, "%.0f", startup);
 
-    /* Elapsed time (ms) per rescan to fetch all rows */
+    /* Elapsed time (ms) to fetch all rows */
     if (total < 20 && total != 0)
         sprintf(totalbuf, "%.3f", total);
     else
         sprintf(totalbuf, "%.0f", total);
 
     /* Show elapsed time just once if they are the same. */
-    if (strcmp(firstbuf, totalbuf) == 0)
-        appendStringInfo(str, "%s ms to end", totalbuf);
-    else
-        appendStringInfo(str, "%s ms to first row, %s ms to end",
-                         firstbuf, totalbuf);
+    appendStringInfo(str, "%s ms ", firstbuf);
+    if (strcmp(firstbuf, totalbuf) != 0)
+        appendStringInfo(str, "to first row, %s ms ", totalbuf);
+    appendStringInfoString(str, "to end");
+
+    /* Number of rescans */
+    if (instr->nloops > 1)
+        appendStringInfo(str, " of %.0f scans", instr->nloops);
 
     appendStringInfoString(str, ".\n");
 }                               /* cdbexplain_showExecStats */
