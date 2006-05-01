@@ -65,13 +65,18 @@ typedef struct DispatchCommandParms
 	 */
 	char	   *szSnapshot;
 	
-	
 	/*
 	 * options for controlling certain behavior
 	 * on the remote backend before query processing. Like
 	 * explicitly opening a transaction.
 	 */
 	int			txnOptions;
+
+	/*
+	 * store the command here, so that we make sure that every
+	 * thread gets the same command-id
+	 */
+	int			cmdID;
 	
 	/*
 	 * db_count: The number of segdbs that this thread is responsible
@@ -108,7 +113,8 @@ static
 void dispatchCommand(CdbDispatchResult *dispatchResult,
                      const char        *szCommand,
                      const char		   *szSnapshot,
-                     int 			  	txnOptions);
+                     int 			  	txnOptions,
+                     int 			  	cmdID);
 							
 static void
 handleSelectError(DispatchCommandParms *pParms,
@@ -424,6 +430,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 		pParms->szCommand = pstrdup(szCommand);
 		pParms->szSnapshot = pstrdup(szSnapshot);
 		pParms->txnOptions = txnOptions;
+		pParms->cmdID = mpp_command_count;
 		pParms->dispatchResultPtrArray =
 			(CdbDispatchResult **) palloc0(mpp_connections_per_thread *
 										   sizeof(CdbDispatchResult *));
@@ -1089,7 +1096,7 @@ thread_DispatchCommand(void *arg)
             /* Kick off the command over the libpq connection.
              * If unsuccessful, proceed anyway, and check for lost connection below.
              */
-            dispatchCommand(dispatchResult, pParms->szCommand, pParms->szSnapshot, pParms->txnOptions);
+            dispatchCommand(dispatchResult, pParms->szCommand, pParms->szSnapshot, pParms->txnOptions, pParms->cmdID);
             dispatchResult->hasDispatched = true;
         }
 
@@ -1297,11 +1304,12 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
  * NOTE: since this is called via a thread, the same rules apply as to
  *		 thread_DispatchCommand absolutely no elog'ing.
  */
-void
+static void
 dispatchCommand(CdbDispatchResult  *dispatchResult,
                 const char         *szCommand,
                 const char		   *szSnapshot,
-                int txnOptions )
+                int txnOptions,
+                int cmdID)
 {
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 	PGconn	   *conn = segdbDesc->conn;
@@ -1314,7 +1322,7 @@ dispatchCommand(CdbDispatchResult  *dispatchResult,
 	 * Submit the command asynchronously.
 	 */
 	
-	if (0 == PQsendMppQuery(conn,szCommand,szSnapshot,txnOptions,mpp_command_count))
+	if (0 == PQsendMppQuery(conn, szCommand, szSnapshot, txnOptions, cmdID))
 	{
 		/* Note the error. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
