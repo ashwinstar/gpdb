@@ -524,6 +524,7 @@ _readDropStmt(void)
 	READ_NODE_FIELD(objects);
 	READ_ENUM_FIELD(removeType,ObjectType);
 	READ_ENUM_FIELD(behavior,DropBehavior);
+	local_node->missing_ok=true;
 
 	READ_DONE();
 }
