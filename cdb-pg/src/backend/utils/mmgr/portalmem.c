@@ -272,7 +272,7 @@ PortalDefineQuery(Portal portal,
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot run a query or open a cursor while another cursor is already open"),
+						 errmsg("cannot run %s while there is an open cursor", commandTag),
 						 errhint("you should either CLOSE the cursor first or ROLLBACK")));				
 			}
 		}
