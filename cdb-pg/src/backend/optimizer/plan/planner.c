@@ -161,8 +161,8 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	{
 		bool uses_correlation = has_correlation_params(PlannerParamList);
 		
-		result_plan = cdbparallelize(result_plan, parse, 
-									isCursor, cursorOptions, 
+		result_plan = cdbparallelize(result_plan, parse,
+									isCursor, cursorOptions,
 									boundParams, uses_correlation);
 	}
 
@@ -222,10 +222,19 @@ subquery_planner(Query *parse, double tuple_fraction,
     /* CDB: Initialize globals */
     if (Mpp_role != MPP_ROLE_DISPATCH)
         cdbpath_segments = 1;
-    else if (mpp_segments_for_planner > 0)
-        cdbpath_segments = mpp_segments_for_planner;
     else
-        cdbpath_segments = getMPPSegmentCount();
+    {
+        int segmentCount = getMPPSegmentCount();
+
+        if (mpp_segments_for_planner > 0)
+            cdbpath_segments = mpp_segments_for_planner;
+        else
+            cdbpath_segments = segmentCount;
+
+        /* Choose a segdb to which our singleton gangs should be dispatched. */
+        if (segmentCount > 0)
+            mpp_singleton_segindex = mpp_session_id % segmentCount;
+    }
 
     /*
 	 * Look for IN clauses at the top level of WHERE, and transform them into
@@ -671,11 +680,11 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	int			offset_est = 0;
 	int			count_est = 0;
 	Plan	   *result_plan;
-	List	   *current_pathkeys;
+	List	   *current_pathkeys = NIL;
 	List	   *sort_pathkeys;
     Path       *best_path = NULL;
 	double		dNumGroups = 0;
-	double		motion_cost_per_row  = 
+	double		motion_cost_per_row  =
 						(mpp_motion_cost_per_row > 0.0) ?
 						mpp_motion_cost_per_row :
 						2.0 * cpu_tuple_cost;
@@ -855,13 +864,13 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
             /* elog(DEBUG1, "Path chosen: ordered"); CDB*/
 		}
 		
-		/* CDB:  For now, we either 
-		 * - construct a general parallel plan, 
-		 * - let the sequential planner handle the situation, or 
-		 * - construct a sequential plan using the mix-max index optimization.  
+		/* CDB:  For now, we either
+		 * - construct a general parallel plan,
+		 * - let the sequential planner handle the situation, or
+		 * - construct a sequential plan using the mix-max index optimization.
 		 *
-		 * Eventually we should add a parallel version of the min-max 
-		 * optimization.  For now, it's either-or. 
+		 * Eventually we should add a parallel version of the min-max
+		 * optimization.  For now, it's either-or.
 		 */
 		if ( Mpp_role == MPP_ROLE_DISPATCH )
 		{
@@ -886,9 +895,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		else /* Not MPP_ROLE_DISPATCH */
 		{
 			/*
-			 * Check to see if it's possible to optimize MIN/MAX aggregates. 
-			 * If so, we will forget all the work we did so far to choose a 
-			 * "regular" path ... but we had to do it anyway to be able to 
+			 * Check to see if it's possible to optimize MIN/MAX aggregates.
+			 * If so, we will forget all the work we did so far to choose a
+			 * "regular" path ... but we had to do it anyway to be able to
 			 * tell which way is cheaper.
 			 */
 			result_plan = optimize_minmax_aggregates(root,
@@ -1140,7 +1149,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	 * key, we need to redistribute.
 	 *
 	 * TODO: There may be cases where it would pay to insert a preliminary
-	 * Unique node prior to redistribution (to reduce the number of rows we 
+	 * Unique node prior to redistribution (to reduce the number of rows we
 	 * move around). We don't pursue that at the moment.
 	 */
 	 if ( Mpp_role == MPP_ROLE_DISPATCH && parse->distinctClause != NULL)
@@ -1230,9 +1239,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			 * to each QEs requested contribution. */			
 			if ( current_pathkeys && precount && parse->limitOffset )
 			{
-				precount = (Node*)make_op(NULL, 
-										  list_make1(makeString(pstrdup("+"))), 
-										  copyObject(parse->limitOffset), 
+				precount = (Node*)make_op(NULL,
+										  list_make1(makeString(pstrdup("+"))),
+										  copyObject(parse->limitOffset),
 										  precount);
 				precount_est += offset_est;
 			}

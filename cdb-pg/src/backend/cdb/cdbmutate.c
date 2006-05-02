@@ -511,21 +511,17 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
                 newnode = (Node *)make_sorted_union_motion(plan,
                                                            sendToSecondary,
                                                            numInputSegs,
-                                                           flow->segindex,  /* TODO if 0, adjust to
-                                                                             * "chosen" segment. */
+                                                           flow->segindex,
                                                            flow->numSortCols,
                                                            flow->sortColIdx,
-                                                           flow->sortOperators
-                                                           );
+                                                           flow->sortOperators);
             }
             else
             {
                 newnode = (Node *)make_union_motion(plan,
                                                     sendToSecondary,
                                                     numInputSegs,
-                                                    flow->segindex  /* TODO if 0, adjust to
-                                                                     * "chosen" segment. */
-                                                    );
+                                                    flow->segindex);
             }
             /* Assign unique node number to the new node. */
             assignMotionID(newnode, context, NULL);
@@ -870,8 +866,7 @@ validateMotionNodeParms(MotionType motionType,
 			/*
 			 *	A Hash motion node must have hash expr info specified.
 			 */
-			if (hashExpr == NIL)
-				elog(ERROR, "motion type 'hash' node must have non-NULL hashExpr");
+			Assert(hashExpr);
 
 			/*
 			 *	A Hash motion node shouldn't have FixedMotionDefn specified.
@@ -882,26 +877,27 @@ validateMotionNodeParms(MotionType motionType,
 		case MOTIONTYPE_FIXED:
 
 			/*
-			 *	An Fixed motion node must have output Segs info specified.
+			 * Fixed motion node must have output Segs info specified.
+             * Singleton destination must be QD or mpp_singleton_segindex.
 			 */
-			if (numOutputSegs < 0 ||
-				(numOutputSegs == 0 && outputSegIdx != NULL) ||
-				(numOutputSegs > 0 && outputSegIdx == NULL))
-				elog(ERROR, "motion type 'fixed' node must have numOutputSegs > 0 and non-NULL outputSegIdx"
-					 " or numOutputSegs == 0 and NULL outputSegIdx");
+			Assert((numOutputSegs == 0              /* destination: broadcast */
+                     && outputSegIdx == NULL) ||
+				   (numOutputSegs == 1              /* destination: singleton */
+                     && outputSegIdx != NULL
+                     && (outputSegIdx[0] == -1 ||
+                         outputSegIdx[0] == mpp_singleton_segindex)));
 
 			/*
 			 *	A Fixed motion node shouldn't have HashMotionDefn specified.
 			 */
-			Assert(hashExpr == NIL);
-
+			Assert(!hashExpr);
 			break;
 
 		default:
 			/*
 			 *	Invalid motion node type.
 			 */
-			Assert(true);
+			Assert(false);
 			break;
 	}
 
@@ -913,8 +909,7 @@ validateMotionNodeParms(MotionType motionType,
 		/*
 		 *	A sorted motion node must have sort Cols specified
 		 */
-		if (numSortCols == 0 || sortColIdx == NULL || sortOperators == NULL)
-			elog(ERROR, "sorted motion node must have numSortCols > 0 and non-NULL sortColIdx and sortOperators");
+		Assert(numSortCols > 0 && sortColIdx && sortOperators);
 	}
 	else
 	{

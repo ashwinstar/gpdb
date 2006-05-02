@@ -216,9 +216,6 @@ extern bool assign_mpp_set_read_only(bool newval, bool doit, GucSource source);
 extern const char *show_mpp_set_read_only(void);
 extern const char *role_to_string(MppRoleValue role);
 
-#define UNSET_SLICE_ID -1
-extern int	currentSliceId;
-
 /*
  * Parameter Mpp_max_packet_size
  *
@@ -329,6 +326,17 @@ extern int      mpp_segments_for_planner;
  * When set to false, the planner will not use two-stage aggregation.
  */
 extern bool enable_agg_restruct;
+
+
+/* --------------------------------------------------------------------------------------------------
+ * Non-GUC globals
+ */
+
+#define UNSET_SLICE_ID -1
+extern int	currentSliceId;
+
+/* Segment id where singleton gangs are to be dispatched. */
+extern int  mpp_singleton_segindex;
 
 
 /* --------------------------------------------------------------------------------------------------

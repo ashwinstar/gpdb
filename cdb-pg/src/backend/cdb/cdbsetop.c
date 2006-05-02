@@ -6,10 +6,9 @@
  *    optimizer/prep/prepunion.c, although some functions are not
  *    externalized.
  *
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- * Portions Copyright (c) 2005, greenplum inc
- *
  *
  * IDENTIFICATION
  *	  $Id$
@@ -299,7 +298,7 @@ Motion* make_motion_gather_to_QD(Plan *subplan, bool keep_ordering)
  */
 Motion* make_motion_gather_to_QE(Plan *subplan, bool keep_ordering)
 {
-	return make_motion_gather(subplan, 0, keep_ordering);
+	return make_motion_gather(subplan, mpp_singleton_segindex, keep_ordering);
 }	
 
 /*
@@ -316,7 +315,6 @@ Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 
 	Assert(subplan->flow != NULL);
 	Assert(subplan->flow->flotype == FLOW_PARTITIONED);
-	Assert(segindex == 0 || segindex == -1);
 	
 	numInputSegs =  (subplan->flow->flotype == FLOW_SINGLETON) ? 1 : getMPPSegmentCount();
 	

@@ -75,13 +75,6 @@ int			Mpp_max_packet_size;	/* max Interconnect packet size */
 
 int			interconnect_setup_timeout;
 
-int			currentSliceId = UNSET_SLICE_ID;	/* used by elog to show the
-												 * current slice the process
-												 * is executing. */
-
-
-SeqServerControlBlock *seqServerCtl;
-
 
 /*
  * MPP Optimizer GUCs
@@ -92,7 +85,20 @@ int         mpp_segments_for_planner = 0;
 bool		enable_agg_restruct = TRUE;
 
 
-/*
+/* ----------------
+ * Non-GUC globals
+ */
+
+int			currentSliceId = UNSET_SLICE_ID;	/* used by elog to show the
+												 * current slice the process
+												 * is executing. */
+SeqServerControlBlock *seqServerCtl;
+
+/* Segment id where singleton gangs are to be dispatched. */
+int         mpp_singleton_segindex;
+
+
+/* ----------------
  * The single row from mpp_mpp for this database is held in this variable,
  * which is initialized in cdbutil.c in the function
  * getMppMpp(), which is called from cdblink_setup()

@@ -17,6 +17,7 @@
 #include "cdb/cdblink.h"        /* getMPPSegmentCount() */
 #include "cdb/cdbllize.h"       /* makeFlow() */
 #include "cdb/cdbmutate.h"      /* make_*_motion() */
+#include "cdb/cdbvars.h"        /* mpp_singleton_segindex */
 
 #include "cdb/cdbpathtoplan.h"  /* me */
 
@@ -116,7 +117,7 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
         int destSegIndex = -1;                          /* to dispatcher */
 
         if (CdbPathLocus_IsSingleQE(path->path.locus))
-            destSegIndex = 0;                           /* to singleton qExec */
+            destSegIndex = mpp_singleton_segindex;      /* to singleton qExec */
 
         if (path->path.pathkeys)
         {

@@ -245,12 +245,13 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			 * Since we intend to execute the plan, inventory the slice tree,
 			 * allocate gangs, and associate them with slices.
 			 *
-			 * For now, always use segment 0 for singleton gangs.
+			 * For now, always use segment 'mpp_singleton_segindex' for
+             * singleton gangs.
 			 *
 			 * On return, gangs have been allocated and CDBProcess lists have
 			 * been filled in in the slice table.)
 			 */
-			AssignGangs(queryDesc, 0);
+			AssignGangs(queryDesc, mpp_singleton_segindex);
 			
 			/* Add sequence server info to the plan's SliceTable. */
 			SetSeqServerInfo(queryDesc);
@@ -553,7 +554,7 @@ ExecutorRun(QueryDesc *queryDesc,
 		/*
 		 * if result is null we got end-of-stream. We need to mark it
 		 * since with a cursor end-of-stream will only be received with
-		 * the fetch that returns the last tuple. ExecutorEnd needs to 
+		 * the fetch that returns the last tuple. ExecutorEnd needs to
 		 * know if EOS was received in order to do the right cleanup.
 		 */
 		if(result == NULL)
@@ -616,15 +617,15 @@ ExecutorEnd(QueryDesc *queryDesc)
 			CdbDispatchResults *mr = estate->mirrorResults;
 			
 			/*
-			 * If we are closing a cursor before all the tuples of the query 
-			 * plan were fetched we must call ExecSquelchNode before checking 
-			 * the dispatch results in order to tell the nodes below we no longer 
-			 * need any more tuples. 
+			 * If we are closing a cursor before all the tuples of the query
+			 * plan were fetched we must call ExecSquelchNode before checking
+			 * the dispatch results in order to tell the nodes below we no longer
+			 * need any more tuples.
 			 */
 			if(queryDesc->cursor_query && !estate->es_got_eos)
 				ExecSquelchNode(queryDesc->planstate);
 			
-			/* 
+			/*
 			 * Wait for completion of all QEs.
 			 */
 			CdbCheckDispatchResult(false);	
