@@ -1792,7 +1792,7 @@ static struct config_real ConfigureNamesReal[] =
 	},
 
 	{
-		{"analyze_relative_error", PGC_USERSET, QUERY_TUNING_OTHER,
+		{"mpp_analyze_relative_error", PGC_USERSET, QUERY_TUNING_OTHER,
 		 gettext_noop("target relative error fraction for row sampling during analyze"),
 		 NULL
 		},
