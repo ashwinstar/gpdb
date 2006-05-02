@@ -265,10 +265,10 @@ PortalDefineQuery(Portal portal,
 		/* if this portal is a cursor, allow only selected operations to go through */
 		if(portal->is_cursor && Mpp_role == MPP_ROLE_DISPATCH)
 		{
-			if(commandTag != "FETCH" &&
-			   commandTag != "CLOSE CURSOR" &&
-			   commandTag != "BEGIN" &&
-			   commandTag != "ROLLBACK")
+			if(strcmp(commandTag, "FETCH") != 0 &&
+			   strcmp(commandTag, "CLOSE CURSOR") != 0 && 
+			   strcmp(commandTag, "BEGIN") != 0 &&
+			   strcmp(commandTag, "ROLLBACK") != 0)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
