@@ -34,32 +34,16 @@ typedef struct ApplyMotionState
     int         sliceDepth;
     int         numInitPlanMotionNodes;
     List       *initPlans;
-
-	/*
-	 * TODO Finish the mutator which will eventually need some state: At a
-	 * minimum, a range table, and perhaps more.
-	 */
 }	ApplyMotionState;
 
 extern Plan *apply_motion(Plan *plan, Query *query);
 extern void assignMotionID(Node *newnode, ApplyMotionState * context, Node *oldnode);
-
-/* Declarations of functions defined in cdbaggmutate.c */
-void cdbaggmutate_transformToTwoStage(Agg *agg, bool useExecutorVarFormat);
-
-/* Declarations of functions defined in cdblimmutate.c */
-extern Plan *apply_limit_motion(Plan *plan, ApplyMotionState * state);
-
 
 List *
 getExprListFromTargetList(List         *tlist,
                           int           numCols,
                           AttrNumber   *colIdx,
                           bool          useExecutorVarFormat);
-
-#ifdef UNUSED
-extern Node *getHashExprForExpression(Plan *varsource, Expr *expr);
-#endif /*UNUSED*/
 
 Motion *
 make_motion(Plan       *lefttree,
@@ -82,20 +66,8 @@ extern Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary,
 extern Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary,
 				    int numInputSegs, List *hashExpr);
 
-#if UNUSED
-extern Motion *make_sorted_hashed_motion(Plan *lefttree, bool sendToSecondary,
-						   int numInputSegs, List *hashExpr,
-				int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators);
-#endif /*UNUSED*/
-
 extern Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary,
                                      int numInputSegs);
-
-#if UNUSED
-extern Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary,
-				 int numInputSegs,
-                 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators);
-#endif /*UNUSED*/
 
 extern int *makeDefaultSegIdxArray(int numSegs);
 

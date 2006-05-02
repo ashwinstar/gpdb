@@ -51,7 +51,6 @@ MppSetOpType choose_setop_type(List *planlist)
 {
 	ListCell *cell;
 	Plan *subplan = NULL;
-	FlowType subplan_type;
 	bool ok_partitioned = TRUE;
 	bool ok_replicated = TRUE;
 	bool ok_single_qd = TRUE;
@@ -63,37 +62,40 @@ MppSetOpType choose_setop_type(List *planlist)
 	{
 		subplan = (Plan*)lfirst(cell);		
 		Assert(is_plan_node((Node*)subplan));
-		subplan_type = (subplan->flow? subplan->flow->flotype: FLOW_UNDEFINED);
-		switch ( subplan_type )
+		
+		Assert(subplan->flow != NULL);
+		switch ( subplan->flow->locustype )
 		{
-		case FLOW_PARTITIONED:
-			ok_replicated = FALSE;
-			break;
-		case FLOW_SINGLETON:
-			if ( subplan->flow->segindex == -1 )
-			{
-				ok_partitioned = ok_replicated = ok_single_qe = FALSE;
-			}
-			else
-			{
+			case CdbLocusType_Hashed:
+			case CdbLocusType_HashedOJ:
+			case CdbLocusType_Strewn:
 				ok_replicated = FALSE;
-			}
-			break;
-		case FLOW_REPLICATED:
-			break;
-		default:
-			return PSETOP_NONE;
+				break;
+				
+			case CdbLocusType_Root:
+				ok_partitioned = ok_replicated = ok_single_qe = FALSE;
+				break;
+				
+			case CdbLocusType_SingleQE:
+				ok_replicated = FALSE;
+				break;
+				
+			case CdbLocusType_General:
+				break;
+
+			case CdbLocusType_Null:
+			case CdbLocusType_Replicated:
+			default:
+				return PSETOP_NONE;
 		}
 	}
 	
-	if ( ok_replicated )
-		return PSETOP_PARALLEL_REPLICATED;
-	else if ( ok_partitioned )
+	if ( ok_partitioned )
 		return PSETOP_PARALLEL_PARTITIONED;
-	else if ( ok_single_qd )
-		return PSETOP_SEQUENTIAL_QD;
 	else if ( ok_single_qe )
 		return PSETOP_SEQUENTIAL_QE;
+	else if ( ok_single_qd )
+		return PSETOP_SEQUENTIAL_QD;
 	
 	return PSETOP_NONE;
 }
@@ -104,96 +106,100 @@ void adjust_setop_arguments(List *planlist, MppSetOpType setop_type)
 	ListCell *cell;
 	Plan *subplan;
 	Plan *adjusted_plan;
-	FlowType subplan_type;
 	
 	foreach ( cell, planlist )
 	{
 		subplan = (Plan*)lfirst(cell);
 		Assert(is_plan_node((Node*)subplan));
-		subplan_type = (subplan->flow? subplan->flow->flotype: FLOW_UNDEFINED);
+		Assert(subplan->flow != NULL);
 	
 		adjusted_plan = subplan;
 		switch ( setop_type )
 		{
+
 		case PSETOP_PARALLEL_PARTITIONED:
-			switch ( subplan_type )
+			switch ( subplan->flow->locustype )
 			{
-			case FLOW_PARTITIONED:
-				break;
-			case FLOW_SINGLETON:
-				Assert( subplan->flow->segindex == 0 );
-				/* The setop itself will run on an N-gang, so we need to
-				 * arrange for the singleton input to be separately dispatched
-				 * to a 1-gang and collect its result on one of our N QEs.
-				 * Hence ... */
-				adjusted_plan = (Plan *)make_motion_hash_all_targets(NULL, subplan);
-				break;
-			case FLOW_REPLICATED:
-				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					errmsg("unexpected replicated intermediate result"),
-					errdetail("argument to set operation may not be replicated") ));
-				break;
-			default:
-				ereport(ERROR, (
-					errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					errmsg("unexpected argument locus to set operation") ));
-				break;
+				case CdbLocusType_Hashed:
+				case CdbLocusType_HashedOJ:
+				case CdbLocusType_Strewn:
+					Assert( subplan->flow->flotype == FLOW_PARTITIONED );
+					break;
+				case CdbLocusType_SingleQE:
+				case CdbLocusType_General:
+					Assert( subplan->flow->flotype == FLOW_SINGLETON && subplan->flow->segindex == 0 );
+					/* The setop itself will run on an N-gang, so we need to
+					 * arrange for the singleton input to be separately dispatched
+					 * to a 1-gang and collect its result on one of our N QEs.
+					 * Hence ... */
+					adjusted_plan = (Plan *)make_motion_hash_all_targets(NULL, subplan);
+					break;
+				case CdbLocusType_Null:
+				case CdbLocusType_Root:
+				case CdbLocusType_Replicated:
+				default:
+					ereport(ERROR, (
+						errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("unexpected argument locus to set operation") ));
+					break;
 			}
 			break;
 			
 		case PSETOP_SEQUENTIAL_QD:
-			switch ( subplan_type )
+			switch ( subplan->flow->locustype )
 			{
-			case FLOW_PARTITIONED:
-				/* Gather to QD. */
-				adjusted_plan = (Plan*)make_motion_gather_to_QD(subplan, false);				
-				break;
-			case FLOW_SINGLETON:
-				if ( subplan->flow->segindex == 0 )
-				{
-					/* Gather to QD. */
+				case CdbLocusType_Hashed:
+				case CdbLocusType_HashedOJ:
+				case CdbLocusType_Strewn:
+					Assert( subplan->flow->flotype == FLOW_PARTITIONED );
 					adjusted_plan = (Plan*)make_motion_gather_to_QD(subplan, false);				
-				}
-				else
-				{
-					Assert( subplan->flow->segindex == -1 );
-				}
-				break;
-			case FLOW_REPLICATED:
-				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					errmsg("unexpected replicated intermediate result"),
-					errdetail("argument to set operation may not be replicated") ));
-				break;
-			default:
-				/* Can't happen! */
-				ereport(ERROR, (
-					errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					errmsg("unexpected argument locus to set operation") ));
-				break;
+					break;
+					
+				case CdbLocusType_SingleQE:
+					Assert( subplan->flow->flotype == FLOW_SINGLETON && subplan->flow->segindex == 0 );
+					adjusted_plan = (Plan*)make_motion_gather_to_QD(subplan, false);				
+					break;
+
+				case CdbLocusType_Root:
+				case CdbLocusType_General:
+					break;
+					
+				case CdbLocusType_Null:
+				case CdbLocusType_Replicated:
+				default:
+					ereport(ERROR, (
+						errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("unexpected argument locus to set operation") ));
+					break;
 			}
 			break;
 			
 		case PSETOP_SEQUENTIAL_QE:
-			switch ( subplan_type )
+			switch ( subplan->flow->locustype )
 			{
-			case FLOW_PARTITIONED:
-				/* Gather to QE.  No need to keep ordering. */
-				adjusted_plan = (Plan*)make_motion_gather_to_QE(subplan, false);				
-				break;
-			case FLOW_SINGLETON:
-				Assert( subplan->flow->segindex != -1 );
-				break;
-			case FLOW_REPLICATED:
-				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					errmsg("unexpected replicated intermediate result"),
-					errdetail("argument to set operation may not be replicated") ));
-				break;
-			default:
-				/* Can't happen! */
-				ereport(ERROR, (
-					errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					errmsg("unexpected argument locus to set operation") ));
-				break;
+				case CdbLocusType_Hashed:
+				case CdbLocusType_HashedOJ:
+				case CdbLocusType_Strewn:
+					Assert( subplan->flow->flotype == FLOW_PARTITIONED );
+					/* Gather to QE.  No need to keep ordering. */
+					adjusted_plan = (Plan*)make_motion_gather_to_QE(subplan, false);				
+					break;
+					
+				case CdbLocusType_SingleQE:
+					Assert( subplan->flow->flotype == FLOW_SINGLETON && subplan->flow->segindex != -1 );
+					break;
+
+				case CdbLocusType_General:
+					break;
+					
+				case CdbLocusType_Root:
+				case CdbLocusType_Null:
+				case CdbLocusType_Replicated:
+				default:
+					ereport(ERROR, (
+						errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("unexpected argument locus to set operation") ));
+					break;
 			}
 			break;
 			
@@ -240,6 +246,7 @@ Flow *copyFlow(Flow *model_flow, bool withExprs, bool withSort)
 		return NULL;
 
 	new_flow = makeFlow(model_flow->flotype);
+	new_flow->locustype = model_flow->locustype;
 
 	if (model_flow->flotype == FLOW_PARTITIONED)
 	{
@@ -353,6 +360,7 @@ Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 			false, /* sendToSecondary */
 			numInputSegs,
 			segindex);
+
 		motion->plan.flow = flow;
 	}
 	
@@ -496,7 +504,7 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 		flow->hashExpr = hash;
 	}
 
-	flow->req_move = flow->req_xform = MOVEMENT_NONE;
+	flow->req_move = MOVEMENT_NONE;
 	flow->base_flotype = flow->flotype;
 	
 	plan->flow = flow;
@@ -517,7 +525,7 @@ void mark_sort_locus(Plan *plan)
 	
 	sort = (Sort*)plan;
 	flow = (Flow*)copyObject(plan->lefttree->flow);
-	flow->req_move = flow->req_xform = MOVEMENT_NONE;
+	flow->req_move = MOVEMENT_NONE;
 	flow->base_flotype = flow->flotype;
 	flow->numSortCols = sort->numCols;
 	ARRAYCOPY(

@@ -590,7 +590,7 @@ _equalFlow(Flow *a, Flow *b)
 	COMPARE_SCALAR_FIELD(flotype);
 	COMPARE_SCALAR_FIELD(base_flotype);
 	COMPARE_SCALAR_FIELD(req_move);
-	COMPARE_SCALAR_FIELD(req_xform);
+	COMPARE_SCALAR_FIELD(locustype);
 	COMPARE_SCALAR_FIELD(segindex);
 	COMPARE_SCALAR_FIELD(numSortCols);
 	COMPARE_POINTER_FIELD(sortColIdx, a->numSortCols*sizeof(AttrNumber));

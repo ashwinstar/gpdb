@@ -390,9 +390,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
         context->sliceDepth = 0;
     else if (IsA(node, Motion))
         context->sliceDepth++;
-    else if (flow &&
-                (flow->req_move != MOVEMENT_NONE ||
-                 flow->req_xform != MOVEMENT_NONE))
+    else if (flow && flow->req_move != MOVEMENT_NONE )
         context->sliceDepth++;
 
 	/*
@@ -403,19 +401,6 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     newnode = plan_tree_mutator(node, apply_motion_mutator, context);
 
     context->sliceDepth = saveSliceDepth;
-
-	/* Perform special transformation, if specified. */
-	if (flow != NULL &&
-		flow->req_xform != MOVEMENT_NONE)
-	{
-		/* Special limit transformation? */
-		if (IsA(node, Limit) && flow->req_xform == MOVEMENT_LIM_RESTRUCT)
-		{
-			newnode = (Node *) apply_limit_motion((Plan *) newnode, context);
-		}
-		else
-			Insist(0);
-	}
 
     plan = (Plan *)newnode;
     flow = plan->flow;
@@ -698,16 +683,21 @@ make_motion(Plan       *lefttree,
 	case MOTIONTYPE_HASH:
 		flow = makeFlow(FLOW_PARTITIONED);
 		flow->hashExpr = copyObject(node->hashExpr);
+		flow->locustype = CdbLocusType_Hashed;
 		break;
 	case MOTIONTYPE_FIXED:
 		if ( node->numOutputSegs == 0 )
 		{
 			flow = makeFlow(FLOW_REPLICATED);
+			flow->locustype = CdbLocusType_Replicated;
 		}
 		else if ( node->numOutputSegs == 1 )
 		{
 			flow = makeFlow(FLOW_SINGLETON);
 			flow->segindex = node->outputSegIdx[0];
+			flow->locustype = ( flow->segindex<0 ) ? 
+								CdbLocusType_Root : 
+								CdbLocusType_SingleQE;
 		}
 		else
 			flow = NULL;
@@ -777,20 +767,6 @@ make_hashed_motion(Plan *lefttree, bool sendToSecondary, int numInputSegs,
 					   0, NULL, 0, NULL, NULL);
 }
 
-#if UNUSED
-Motion *
-make_sorted_hashed_motion(Plan *lefttree, bool sendToSecondary,
-						  int numInputSegs, List *hashExpr,
-				 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
-{
-	return make_motion(lefttree, MOTIONTYPE_HASH,
-					   sendToSecondary, true, numInputSegs,
-					   hashExpr,
-					   0, NULL,
-					   numSortCols, sortColIdx, sortOperators);
-}
-#endif /*UNUSED*/
-
 Motion *
 make_broadcast_motion(Plan *lefttree, bool sendToSecondary, int numInputSegs)
 {
@@ -800,20 +776,6 @@ make_broadcast_motion(Plan *lefttree, bool sendToSecondary, int numInputSegs)
 					   0, NULL,
 					   0, NULL, NULL);
 }
-
-#if UNUSED
-Motion *
-make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary,
-                 int numInputSegs,
-				 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
-{
-	return make_motion(lefttree, MOTIONTYPE_FIXED,
-					   sendToSecondary, true, numInputSegs,
-					   NIL,
-					   0, NULL,
-					   numSortCols, sortColIdx, sortOperators);
-}
-#endif /*UNUSED*/
 
 
 /* --------------------------------------------------------------------

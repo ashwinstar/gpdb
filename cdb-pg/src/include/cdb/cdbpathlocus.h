@@ -13,7 +13,7 @@
 #define CDBPATHLOCUS_H
 
 #include "nodes/pg_list.h"      /* List */
-
+#include "nodes/bitmapset.h"    /* Bitmapset */
 
 struct RelOptInfo;              /* defined in relation.h */
 struct PlannerInfo;				/* defined in relation.h */

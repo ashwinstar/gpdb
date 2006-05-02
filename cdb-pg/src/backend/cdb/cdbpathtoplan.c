@@ -69,6 +69,7 @@ cdbpathtoplan_create_flow(PlannerInfo    *root,
         flow = makeFlow(FLOW_PARTITIONED);
     else
         Assert(false);
+	
 
     /* Ordering */
     if (pathkeys)
@@ -80,7 +81,7 @@ cdbpathtoplan_create_flow(PlannerInfo    *root,
     }
 
     flow->req_move = MOVEMENT_NONE;
-    flow->req_xform = MOVEMENT_NONE;
+	flow->locustype = path->locus.locustype;
     return flow;
 }                               /* cdbpathtoplan_create_flow */
 

@@ -2072,7 +2072,7 @@ _readFlow(void)
 	READ_ENUM_FIELD(flotype, FlowType);
 	READ_ENUM_FIELD(base_flotype, FlowType);
 	READ_ENUM_FIELD(req_move, Movement);
-	READ_ENUM_FIELD(req_xform, Movement);
+	READ_ENUM_FIELD(locustype, CdbLocusType);
 	READ_INT_FIELD(segindex);
 	
 	READ_INT_FIELD(numSortCols);

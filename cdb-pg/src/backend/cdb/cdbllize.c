@@ -35,7 +35,6 @@
 #include "cdb/cdbpullup.h"
 #include "cdb/cdbllize.h"
 #include "cdb/cdbcat.h"
-#include "cdb/cdbagg.h"
 #include "cdb/cdbmutate.h"
 
 #define ARRAYCOPY(to, from, sz) \
@@ -91,57 +90,13 @@ typedef struct PlanProfile
 
 
 /*
- * For Append node prescan: Strategies we might adopt as well as
- * states/transitions for the FSM used to derive the strategy.
- */
-typedef enum AppendStrategy
-{
-	AFS_0 = 0,					/* Null (pseudo-identity) */
-	AFS_D,						/* Singleton on entry database */
-	AFS_S,						/* Singleton on segment (assumed same thruout
-								 * plan) */
-	AFS_Pa,						/* Partitioned on same attributes as initial
-								 * term. */
-	AFS_P,						/* Partitioned anonymously. */
-	AFS_R,						/* Replicated. */
-	AFS_XP,						/* Transform to AFS_P by adjusting
-								 * non-partitioned terms. */
-	AFS_X,						/* Invalid, no transformation known */
-	AFS_COUNT,
-	AFS_CP						/* AFS_Pa, if atttributes match, else AFS_P */
-}	AppendStrategy;
-
-/*
- * For Append node prescan: An FSM used to derive the strategy to
- * use for parallelizing an Append node.  See fn chooseAppendStrategy.
- */
-static const AppendStrategy append_FSM[][AFS_COUNT] =
-{
-	{AFS_0, AFS_D, AFS_S, AFS_Pa, AFS_P, AFS_R, AFS_XP, AFS_X},
-	{AFS_D, AFS_D, AFS_XP, AFS_XP, AFS_XP, AFS_XP, AFS_XP, AFS_X},
-	{AFS_S, AFS_XP, AFS_S, AFS_P, AFS_P, AFS_XP, AFS_XP, AFS_X},
-	{AFS_Pa, AFS_XP, AFS_P, AFS_CP, AFS_P, AFS_XP, AFS_XP, AFS_X},
-	{AFS_P, AFS_XP, AFS_P, AFS_P, AFS_P, AFS_XP, AFS_XP, AFS_X},
-	{AFS_R, AFS_XP, AFS_XP, AFS_XP, AFS_XP, AFS_R, AFS_XP, AFS_X},
-	{AFS_XP, AFS_XP, AFS_XP, AFS_XP, AFS_XP, AFS_XP, AFS_XP, AFS_X},
-	{AFS_X, AFS_X, AFS_X, AFS_X, AFS_X, AFS_X, AFS_X, AFS_X}
-};
-
-
-
-/*
  * Forward Declarations
  */
 static bool prescan(Plan *plan, PlanProfile * context);
 static bool prescan_walker(Node *node, PlanProfile * context);
 
-static bool prescan_unique(Plan *plan, PlanProfile * context);
-static bool prescan_append(Plan *plan, PlanProfile * context);
-static bool prescan_group(Plan *plan, PlanProfile * context);
-
 static void psError(PlanProfile * context, unsigned code, const char *message, const char *detail);
 static void psErrorNonce(PlanProfile * context, const char *detail);
-static void psErrorInternal(PlanProfile * context, const char *detail);
 static void issuePsError(PlanProfile * context);
 
 static void initPlanProfile(PlanProfile * context, Query *query, bool useExecutorVarFormat);
@@ -501,265 +456,27 @@ prescan_walker(Node *node, PlanProfile * context)
 					goto return_true;
 				popLocals(context);
 
-				if (!finished)
-				{
-					plan->flow = pull_up_Flow(plan, subqueryscan->subplan, true);
-					/* Don't use expressions from the wrong range table */
-					plan->flow->hashExpr = NIL;
-					if (plan->flow->flotype == FLOW_PARTITIONED)
-					{
-						plan->flow->hashExpr = getExprListForSubqueryScan(
-										   subqueryscan->subplan->targetlist,
-									  subqueryscan->subplan->flow->hashExpr);
-					}
-				}
+				Assert(finished);
+				
 				goto return_false;
 			}
 			break;				/* Fall through to report error. */
 
 
 		case T_Result:
-			/* First prescan children */
-			if (plan_tree_walker(node, prescan_walker, context))
-				goto return_true;
-			if (!finished)
-			{
-				Plan	   *plan = (Plan *) node;
-				Plan	   *child = outerPlan(node);
-
-                /* If there is a child, inherit its flow characteristics. */
-                if (child)
-					plan->flow = pull_up_Flow(plan, plan->lefttree, true);
-
-                /* Result is a constant 1-row table. Evaluate on a single QE. */
-				else
-					plan->flow = makeFlow(FLOW_SINGLETON);
-			}
-			goto return_false;
-
 		case T_Material:
-			/* First prescan children */
-			if (plan_tree_walker(node, prescan_walker, context))
-				goto return_true;
-			if (!finished)
-			{
-				/* Flow is same as leftree's Flow. */
-				Plan	   *plan = (Plan *) node;
-
-				plan->flow = pull_up_Flow(plan, plan->lefttree, true);
-			}
-			goto return_false;
-
 		case T_Sort:
-            /* First prescan children */
-            if (plan_tree_walker(node, prescan_walker, context))
-				goto return_true;
-			if (!finished)
-			{
-				Sort	   *sort;
-
-				/* Flow is same as leftree's Flow ... */
-				Plan	   *plan = (Plan *) node;
-
-				plan->flow = pull_up_Flow(plan, plan->lefttree, false);
-
-				/* ... but reordered. */
-				sort = (Sort *) node;
-				plan->flow->numSortCols = sort->numCols;
-				ARRAYCOPY(plan->flow->sortColIdx, sort->sortColIdx,
-						  sort->numCols);
-				ARRAYCOPY(plan->flow->sortOperators, sort->sortOperators,
-						  sort->numCols);
-			}
-			goto return_false;
-
 		case T_Unique:
-            /* First prescan children */
-			if (plan_tree_walker(node, prescan_walker, context))
-				goto return_true;
-			if (finished)
-				goto return_false;
-
-			if (prescan_unique((Plan *) node, context))
-			{
-				goto return_true;		/* prescan_unique sets its own detail
-										 * in context. */
-			}
-			goto return_false;
-
 		case T_SetOp:
-
-			/*
-			 * A SetOp node has only a lefttree headed by a Sort as in
-			 *
-			 * (Sort (Append (SubqueryScan ...) (SubqueryScan ...)))
-			 *
-			 * The Sort argument is often, but not always, an Append of
-			 * SubqueryScan nodes.	SetOp is non-projecting.
-			 */
-
-			/* First prescan children */
-			if (plan_tree_walker(node, prescan_walker, context))
-				goto return_true;
-			if (finished)
-				goto return_false;
-
-			/* Default failure message for this case. */
-			detail = "Cannot parallelize a set or multiset operation.";
-
-			{
-				Plan	   *plan = (Plan *) node;
-				Plan	   *child = plan->lefttree;
-
-				switch ((child->flow == NULL) ? FLOW_UNDEFINED : child->flow->flotype)
-				{
-					case FLOW_SINGLETON:
-					case FLOW_REPLICATED:
-						/* No motion required so inherit flow characteristics. */
-						plan->flow = pull_up_Flow(plan, child, true);
-						goto return_false;
-
-					case FLOW_PARTITIONED:
-
-						/*
-						 * I think this could be an assertion, but play it
-						 * safe.
-						 */
-						if (!IsA(child, Sort))
-						{
-							ereport(ERROR, (
-										 errcode(ERRCODE_CDB_INTERNAL_ERROR),
-								errmsg("unexpected argument to set operator")
-											));
-						}
-
-						/*
-						 * Since SetOp and Sort are non-projecting we can
-						 * directly compare the Sort's hash expressions to the
-						 * expressions in SetOp's target list. If the
-						 * partitioning attributes of the Sort are a non-empty
-						 * subset of the "duplicated" attributes of the SetOp,
-						 * then the existing partition is suitable, else we
-						 * need to repartition. In that case, we choose to use
-						 * the entire "duplicated" set in the hope that it
-						 * will be less skew than a subset.
-						 */
-						{
-							SetOp	   *op;
-							List	   *hx;
-							int			n;
-							bool		isSubset = FALSE;
-
-							n = list_length(child->flow->hashExpr);
-							if (n > 0)
-							{
-								AttrNumber *attrs = palloc(n * sizeof(AttrNumber));
-
-								isSubset = findHashAttrsInTargetList(plan->targetlist, child->flow->hashExpr, attrs);
-								pfree(attrs);
-							}
-							if (isSubset)
-							{
-								plan->flow = pull_up_Flow(plan, child, true);
-								goto return_false;
-							}
-
-							/*
-							 * Repartition on the dupColIdx attrs of the
-							 * SetOp.
-							 */
-							op = (SetOp *) plan;
-							hx = getExprListFromTargetList(child->targetlist,
-                                                           op->numCols,
-                                                           op->dupColIdx,
-                                                           context->useExecutorVarFormat);
-							if (repartitionPlan(child, true, true, false, hx))
-							{
-								plan->flow = pull_up_Flow(plan, child, true);
-								goto return_false;
-							}
-						}
-						detail = "Can't characterize flow into SetOp node.";
-						break;
-
-					default:
-						detail = "Can't characterize flow in argument to set operation.";
-						break;	/* Fall through to report error. */
-				}
-			}
-			break;				/* Fall through to report error. */
-
 		case T_Append:
-			/*
-			 * Append is used in several contexts, e.g. unions, inheritance
-			 * sets, or, when ((Append*)node)->isTarget is true, to hold
-			 * the sequence of tables to be updated or deleted.
-			 */
-			if (plan_tree_walker(node, prescan_walker, context))
-				goto return_true;
-			if (finished)
-				goto return_false;
-			if (prescan_append((Plan *) node, context))
-			{
-				goto return_true;
-			}
-			goto return_false;
-					
 		case T_Agg:
-			{
-				/* First prescan children */
-				if (plan_tree_walker(node, prescan_walker, context))
-					goto return_true;
-
-				if (finished)
-					goto return_false;
-
-				if (cdbagg_prescan((Agg *)node, context->useExecutorVarFormat))
-					goto return_false;
-				detail = "Query involves complex aggregation.";
-			}
-			break;				/* Fall through to report error. */
-
 		case T_Group:
-            /* First prescan children */
-			if (plan_tree_walker(node, prescan_walker, context))
-				goto return_true;
-			if (finished)
-				goto return_false;
-
-			if (prescan_group((Plan *) node, context))
-			{
-				goto return_true;		/* prescan_group sets its own detail
-										 * in context. */
-			}
-			goto return_false;
-
 		case T_Limit:
 			/* First prescan children */
 			if (plan_tree_walker(node, prescan_walker, context))
 				goto return_true;
-			if (!finished)
-			{
-				Plan   *plan = (Plan *)node;
-
-				/* Start with same flow characteristics as subplan. */
-				plan->flow = pull_up_Flow(plan, plan->lefttree, true);
-
-    			/* Deal with partitioned LIMIT and OFFSET.	*/
-				if (plan->flow->flotype == FLOW_PARTITIONED)
-				{
-				    /*
-				     * Specify restructuring.  The resulting flow will retain
-                     * any sort specified in the input plan, but will become
-				     * singleton.  The restructuring is flagged by the xform
-				     * movement request.
-				     */
-                    plan->flow->flotype = FLOW_SINGLETON;
-                    plan->flow->segindex = 0;
-                    plan->flow->hashExpr = NIL;
-                    plan->flow->req_xform = MOVEMENT_LIM_RESTRUCT;
-				}
-			}
+			
+			Assert(finished); 
 			goto return_false;
 
 		default:
@@ -785,389 +502,6 @@ return_false:
 }
 
 
-/* Helper for prescan_walker() does processing for a Unique node.
- *
- * Note that prescan_walker has already finished scaning the child nodes
- * of the node.
- *
- * Return false to indicate successful prescan.  Else set error info
- * in the context and return true.
- */
-bool
-prescan_unique(Plan *plan, PlanProfile * context)
-{
-	Unique	   *unique = (Unique *) plan;
-	Plan	   *child = outerPlan((Node *) plan);		/* already scanned */
-	bool		prefix_condition = true;
-	bool		match_condition = true;
-	int			i;
-
-	/* Argument is a prescanned plan. */
-	Assert(is_plan_node((Node *) child) && child->flow != NULL);
-
-	if (child->flow->flotype == FLOW_REPLICATED
-		|| child->flow->flotype == FLOW_SINGLETON)
-	{
-		/* No motion required so inherit flow characteristics. */
-		plan->flow = pull_up_Flow(plan, child, true);
-		return false;
-	}
-
-	/*
-	 * The argument flow is partitioned and ordered.  We need to make sure
-	 * that tuples are collocated on the attributes to be "uniqued" and that
-	 * the result order is preserved.
-	 */
-
-	/*
-	 * The parser/planner guarantees that the unique attributes are a prefix
-	 * of the input sort attributes.  We should check, however.
-	 */
-	prefix_condition = (unique->numCols <= child->flow->numSortCols);
-	for (i = 0; prefix_condition && i < unique->numCols; i++)
-	{
-		prefix_condition = (unique->uniqColIdx[i] == child->flow->sortColIdx[i]);
-	}
-	if (!prefix_condition)
-	{
-		psErrorInternal(context, "Plan violates DISTINCT/ORDER BY prefix condition");
-		return true;
-	}
-
-	/*
-	 * If the existing partition does not match the unique attributes, we need
-	 * to repartition on the unique attributes and preserve the sort order.
-	 */
-	match_condition = (unique->numCols == list_length(child->flow->hashExpr));
-	if (match_condition)
-	{
-		int			tidx;
-		Node	   *hexpr;
-		Node	   *texpr;
-		ListCell   *cell;
-
-		i = 0;
-		foreach(cell, child->flow->hashExpr)
-		{
-			tidx = unique->uniqColIdx[i];
-			match_condition = (tidx < list_length(plan->targetlist));
-			if (!match_condition)
-				break;			/* foreach */
-			texpr = (Node *) ((TargetEntry *) list_nth(plan->targetlist, tidx))->expr;
-			hexpr = lfirst(cell);
-			match_condition = (IsA(hexpr, Var) &&IsA(texpr, Var)
-				   &&((Var *) hexpr)->varattno == ((Var *) texpr)->varattno);
-			if (!match_condition)
-				break;			/* foreach */
-			i++;
-		}
-	}
-	if (!match_condition)
-	{
-		List	   *hashExpr = getExprListFromTargetList(child->targetlist,
-                                                         unique->numCols,
-                                                         unique->uniqColIdx,
-                                                         context->useExecutorVarFormat);
-
-		if (!repartitionPlan(child, false, true, false, hashExpr))
-		{
-			psErrorNonce(context, "Can't implement that partitioned duplicate removal");
-			return true;
-		}
-		repartitionPlan(child, true, true, false, hashExpr);
-	}
-	plan->flow = pull_up_Flow(plan, child, true);
-
-	return false;
-}
-
-
-
-
-/* Helper for prescan_walker() does processing for an Append node.
- *
- * Note that prescan_walker has already finished scaning the child nodes
- * of the node.
- *
- * Return false to indicate successful prescan.  Else set error info
- * in the context and return true.
- */
-bool
-prescan_append(Plan *plan, PlanProfile * context)
-{
-	ListCell   *cell;
-	int			nattrs;
-	AttrNumber *attrs;
-	AppendStrategy cumstate;
-	Plan	   *prototype;
-
-	Append	   *append = (Append *) plan;
-
-	Assert(IsA(append, Append) &&plan->flow == NULL);
-
-	/*
-	 * Choose an approach to parallelizing the Append node by examining the
-	 * flow characteristics of each item in the list of argument plans.  The
-	 * approach uses a state machine (append_FSM) to increment the strategy
-	 * chosen so far by the "natural" stategy of the next item.
-	 *
-	 * If the result strategy is AFS_D, AFS_S, AFS_R, or AFS_P, then no
-	 * additional determination is required, and the Append can marked as
-	 * singleton (on dispatcher or on segment), replicated, or anonymously
-	 * partitioned, respectively.
-	 *
-	 * If the result strategy is AFS_Pa, the hash expressions of the first
-	 * argument plan can be copied and used for the Append.
-	 *
-	 * If the result strategy is AFS_XP, then a transformation can be
-	 * applied to make the the Append partitioned, but should be deferred
-	 * in case the Append is an argument of a Sort/SetOp and, therefore,
-	 * has an external (and at this point unknown) partitioning requirement.
-	 *
-	 * If the result strategy is AFS_X, then no strategy was chosen.
-	 */
-	cumstate = AFS_0;
-	attrs = NULL;
-	nattrs = 0;
-
-	foreach(cell, append->appendplans)
-	{
-		AppendStrategy nxtstate = AFS_0;
-		int			nxtnattrs = 0;
-		AttrNumber *nxtattrs = NULL;
-
-		Plan	   *nxt = (Plan *) lfirst(cell);
-
-		/*
-		 * For the next Append element plan (nxt), determine the state value
-		 * by which to increment the state machine.
-		 */
-		switch (nxt->flow->flotype)
-		{
-			case FLOW_UNDEFINED:
-				nxtstate = AFS_X;
-				break;
-
-			case FLOW_SINGLETON:
-				if (nxt->flow->segindex == -1)
-				{
-					nxtstate = AFS_D;
-				}
-				else
-				{
-					Assert(nxt->flow->segindex == 0);
-					nxtstate = AFS_S;
-				}
-				break;
-
-			case FLOW_REPLICATED:
-				nxtstate = AFS_R;
-				break;
-
-			case FLOW_PARTITIONED:
-				if (nxt->flow->hashExpr == NIL)
-				{
-					nxtstate = AFS_P;
-				}
-				else
-				{
-					nxtnattrs = list_length(nxt->flow->hashExpr);
-					nxtattrs = (AttrNumber *) palloc0(sizeof(AttrNumber) * nxtnattrs);
-					if (findHashAttrsInTargetList(nxt->targetlist, nxt->flow->hashExpr, nxtattrs))
-					{
-						nxtstate = AFS_Pa;
-					}
-					else
-					{
-						pfree(nxtattrs);
-						nxtattrs = NULL;
-						nxtnattrs = 0;
-						nxtstate = AFS_P;
-					}
-				}
-				break;
-
-            default:
-                Insist(0);
-		}
-
-		/*
-		 * Calculate the cumulative state.
-		 */
-		cumstate = append_FSM[cumstate][nxtstate];
-
-
-		if (cumstate == AFS_Pa)
-		{
-			Assert(nxtattrs != NULL && attrs == NULL && nxtnattrs == list_length(nxt->flow->hashExpr));
-			nattrs = nxtnattrs;
-			attrs = nxtattrs;
-			nxtnattrs = 0;
-			nxtattrs = NULL;
-		}
-		else if (cumstate == AFS_CP)
-		{
-			bool		match;
-			int			i;
-
-			Assert(nxtattrs != NULL && attrs != NULL);
-			match = (nattrs == nxtnattrs);
-			for (i = 0; match && i < nattrs; i++)
-			{
-				match = (attrs[i] == nxtattrs[i]);
-			}
-			nxtnattrs = 0;
-			nxtattrs = NULL;
-
-			cumstate = match ? AFS_Pa : AFS_P;
-		}
-
-		Assert(AFS_0 < cumstate && cumstate < AFS_COUNT);
-	}
-	if (attrs != NULL)
-		pfree(attrs);
-
-	switch (cumstate)
-	{
-		case AFS_D:				/* Singleton on entry database */
-			plan->flow = makeFlow(FLOW_SINGLETON);
-			plan->flow->segindex = -1;
-			break;
-
-		case AFS_S:				/* Singleton on segment (assumed same thruout
-								 * plan) */
-			plan->flow = makeFlow(FLOW_SINGLETON);
-			plan->flow->segindex = 0;
-			break;
-
-		case AFS_Pa:			/* Partitioned on same attributes as initial
-								 * term. */
-			plan->flow = makeFlow(FLOW_PARTITIONED);
-			prototype = (Plan *) linitial(append->appendplans);
-			plan->flow->hashExpr = copyObject(prototype->flow->hashExpr);
-			break;
-
-		case AFS_P:				/* Partitioned anonymously. */
-			plan->flow = makeFlow(FLOW_PARTITIONED);
-			break;
-
-		case AFS_R:				/* Replicated. */
-			plan->flow = makeFlow(FLOW_REPLICATED);
-			break;
-
-		case AFS_XP:			/* Transform to AFS_P by adjusting
-								 * non-partitioned terms. */
-		case AFS_X:				/* Invalid, no transformation known */
-		default:
-			psErrorNonce(context, "Terms of multiset union are not congruent.");
-			return true;
-	}
-	return false;
-}
-
-
-/* Helper for prescan_walker() does processing for a Group node.
- *
- * Note that prescan_walker has already finished scaning the child nodes
- * of the node.
- *
- * Return false to indicate successful prescan.  Else set error info
- * in the context and return true.
- */
-bool
-prescan_group(Plan *plan, PlanProfile * context)
-{
-	Group	   *group = (Group *) plan;
-	Plan	   *child = outerPlan((Node *) plan);		/* already scanned */
-	bool		prefix_condition = true;
-	bool		match_condition = true;
-	int			i;
-
-	/* Argument is a prescaned Group plan. */
-	Assert(is_plan_node((Node *) child) && child->flow != NULL);
-
-
-	if (child->flow->flotype == FLOW_PARTITIONED)
-	{
-		/*
-		 * The argument flow is partitioned and ordered.  We need to make sure
-		 * that tuples are collocated on the attributes to be grouped.	Note
-		 * that, unlike the Unique node, the Group node is projecting. The
-		 * resulting partial order is preserved.
-		 */
-
-		/*
-		 * The parser/planner guarantees that the grouping attributes are a
-		 * prefix of the input sort attributes.  We should check, however.
-		 */
-		prefix_condition = (group->numCols <= child->flow->numSortCols);
-		for (i = 0; prefix_condition && i < group->numCols; i++)
-		{
-			prefix_condition = (group->grpColIdx[i] == child->flow->sortColIdx[i]);
-		}
-		if (!prefix_condition)
-		{
-			psErrorInternal(context, "Plan violates GROUP/ORDER BY prefix condition");
-			return true;
-		}
-
-		/*
-		 * If the input partition does not match the grouping attributes, we
-		 * must repartition on the grouping attributes and preserve the sort
-		 * order.
-		 */
-		match_condition = (group->numCols == list_length(child->flow->hashExpr));
-		if (match_condition)
-		{
-			AttrNumber *hattrs = palloc0(sizeof(AttrNumber) * group->numCols);
-
-			match_condition = findHashAttrsInTargetList(child->targetlist, child->flow->hashExpr, hattrs);
-			for (i = 0; match_condition && i < group->numCols; i++)
-			{
-				match_condition = (group->grpColIdx[i] == hattrs[i]);
-				if (!match_condition)
-					break;		/* for */
-			}
-			pfree(hattrs);
-		}
-		if (!match_condition)
-		{
-			List	   *hashExpr = getExprListFromTargetList(child->targetlist,
-                                                             group->numCols,
-                                                             group->grpColIdx,
-                                                             context->useExecutorVarFormat);
-
-			if (!repartitionPlan(child, false, true, false, hashExpr))
-			{
-				psErrorNonce(context, "Can't implement that partitioned grouping");
-				return true;
-			}
-			repartitionPlan(child, true, true, false, hashExpr);
-		}
-	}
-	else if (child->flow->flotype != FLOW_REPLICATED && child->flow->flotype != FLOW_SINGLETON)
-	{
-		psErrorInternal(context, "Uncharacterized flow into Group node.");
-		return true;
-	}
-
-	/*
-	 * Else, Flow is replicated or singleton, so no motion required. Just
-	 * inherit flow characteristics.
-	 */
-
-	plan->flow = pull_up_Flow(plan, child, true);
-
-	if (plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED)
-	{
-		psErrorNonce(context, "Can't characterize flow from Group node.");
-		return true;
-	}
-	return false;
-}
-
-
-
 /*
  * Helper for prescan() -- Write error info into a PlanProfile.
  */
@@ -1191,18 +525,6 @@ psErrorNonce(PlanProfile * context, const char *detail)
 {
 	context->code = ERRCODE_CDB_FEATURE_NOT_YET;
 	context->message = "Cannot parallelize that query yet.";
-	context->detail = detail;
-}
-
-
-/*
- * Helper for prescan() -- Write error info into a PlanProfile.
- */
-void
-psErrorInternal(PlanProfile * context, const char *detail)
-{
-	context->code = ERRCODE_CDB_INTERNAL_ERROR;
-	context->message = "Unexpected error parallelizing a query.";
 	context->detail = detail;
 }
 
@@ -1242,7 +564,7 @@ makeFlow(FlowType flotype)
 	flow->flotype = flotype;
     flow->base_flotype = FLOW_UNDEFINED;
 	flow->req_move = MOVEMENT_NONE;
-	flow->req_xform = MOVEMENT_NONE;
+	flow->locustype = CdbLocusType_Null;
 
 	return flow;
 }
@@ -1311,6 +633,8 @@ pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
                       new_flow->numSortCols);
 	}
 
+	new_flow->locustype = model_flow->locustype;
+	
 	return new_flow;
 }
 
@@ -1729,9 +1053,6 @@ adjustPlanFlow(Plan        *plan,
      * into the proposed Motion operator.  Refuse further adjustments.
      */
     if (flow->req_move != MOVEMENT_NONE)
-        return false;
-    if (flow->req_xform != MOVEMENT_NONE &&
-        flow->req_xform != MOVEMENT_LIM_RESTRUCT)
         return false;
 
     /* Tuples cannot be sent from QD to QEs via Motion nodes (for now). */

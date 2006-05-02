@@ -22,6 +22,7 @@
 #include "nodes/pg_list.h"
 #include "nodes/value.h"
 #include "nodes/params.h"  /* For ParamListInfoData */
+#include "cdb/cdbpathlocus.h" /* For CdbLocusType */
 
 
 /* ----------------------------------------------------------------
@@ -979,11 +980,9 @@ typedef struct Flow
 	/* What motion (including none) should be applied to this Plan's output. */
 	Movement	req_move;
 	
-	/* What transformation (including none) should be applied to this
-	 * Plan itself.  This covers (e.g.) the two-stage aggregate and limit
-	 * transformations.
+	/* Locus type (optimizer flow characterization).
 	 */
-	 Movement	req_xform;
+	 CdbLocusType	locustype;
 	
 	/* If flotype is FLOW_SINGLETON, then this is the segment (-1 for entry)
 	 * on which tuples occur.  If req_move is MOVEMENT_FOCUS, then this is
