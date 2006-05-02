@@ -257,8 +257,6 @@ CheckRelationOwnership(RangeVar *rel, bool noCatalogs)
 	}
 
 	ReleaseSysCache(tuple);
-
-	return true;
 }
 
 
