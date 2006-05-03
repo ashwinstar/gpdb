@@ -337,7 +337,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
              * Start a global transaction and reconfigure the cluster if needed.
              */
 			cdbdisp_startDtxTransaction();
-			
+						
 			/*
 			 * This call returns after launching the threads that send the
              * plan to the appropriate segdbs.  It does not wait for them to
@@ -363,6 +363,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			
 			Assert(IsA(motionState->ps.plan, Motion));
 			
+			estate->es_seqserver_is_setup = true;
 			SetupSequenceServer(estate->es_sliceTable);
 			
 			/* activate the connections, if needed */
@@ -374,6 +375,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		}
 		else if(exec_identity == MPP_ROOT_SLICE)
 		{
+			estate->es_seqserver_is_setup = true;
 			SetupSequenceServer(estate->es_sliceTable);
 			
 			/* Run a root slice. */		
@@ -393,7 +395,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
     }
 	PG_CATCH();
 	{
-		mppExecCleanup(estate);
+		mppExecutorCleanup(estate);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -562,7 +564,7 @@ ExecutorRun(QueryDesc *queryDesc,
     }
 	PG_CATCH();
 	{
-		mppExecCleanup(estate);
+		mppExecutorCleanup(estate);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -589,7 +591,6 @@ ExecutorEnd(QueryDesc *queryDesc)
 {
 	EState	   *estate;
 	MemoryContext oldcontext;
-	Slice      *currentSlice;
 	
 	/* sanity checks */
 	Assert(queryDesc != NULL);
@@ -597,8 +598,6 @@ ExecutorEnd(QueryDesc *queryDesc)
 	estate = queryDesc->estate;
 
 	Assert(estate != NULL);
-	
-	currentSlice = getCurrentSlice(estate);
 
 	/*
 	 * Switch into per-query memory context to run ExecEndPlan
@@ -606,65 +605,23 @@ ExecutorEnd(QueryDesc *queryDesc)
 	oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
 
 	/*
-	 * If QD, wait for QEs to finish and check their results.
+	 * if needed, collect mpp dispatch results and tear down 
+	 * all mpp specific resources (interconnect, seq server).
 	 */
 	PG_TRY();
 	{
-		
-		if (estate->primaryResults)
-		{
-			CdbDispatchResults *pr = estate->primaryResults;
-			CdbDispatchResults *mr = estate->mirrorResults;
-			
-			/*
-			 * If we are closing a cursor before all the tuples of the query
-			 * plan were fetched we must call ExecSquelchNode before checking
-			 * the dispatch results in order to tell the nodes below we no longer
-			 * need any more tuples.
-			 */
-			if(queryDesc->cursor_query && !estate->es_got_eos)
-				ExecSquelchNode(queryDesc->planstate);
-			
-			/*
-			 * Wait for completion of all QEs.
-			 */
-			CdbCheckDispatchResult(false);	
-			
-			/* If top slice was delegated to QEs, get num of rows processed. */
-			if (sliceRunsOnQE(currentSlice))
-				estate->es_processed +=
-					cdbdisp_sumCmdTuples(pr, estate->es_cur_slice_idx);
-			
-			/*
-			 * Check and free the results of all gangs. If any QE had an
-			 * error, report it and exit to our error handler via PG_THROW.
-			 * NB: This call doesn't wait, because we already waited above.
-			 */
-			estate->primaryResults = NULL;
-			estate->mirrorResults = NULL;
-			cdbdisp_finishCommand(pr, mr);
-			
-		}
+		mppExecutorFinishup(queryDesc);
 	}
 	PG_CATCH();
 	{
-		mppExecCleanup(estate);		
-
+		/*
+		 * we got an error. do all the necessary cleanup.
+		 */
+		mppExecutorCleanup(estate);		
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-	
-	/*
-	 * MPP TODO: there is duplication here. Need to find a way to do the cleanup
-	 * only once instead of having it in the CATCH block and also after it...
-	 */
-	
-	/* Teardown the Sequence Server */
-	TeardownSequenceServer();
-	
-	if(estate->es_interconnect_is_setup)
-		TeardownInterconnect(false);
-	
+		
 	ExecEndPlan(queryDesc->planstate, estate);
 
 	/*

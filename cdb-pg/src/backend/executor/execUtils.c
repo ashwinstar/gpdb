@@ -59,6 +59,7 @@
 #include "cdb/cdbgang.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbdispatchresult.h"
 #include "cdb/ml_ipc.h"
 #include "cdb/cdbmotion.h"
 
@@ -236,6 +237,7 @@ CreateExecutorState(void)
 	estate->es_sliceTable = NULL;
 	estate->es_slice_map = NULL;
 	estate->es_interconnect_is_setup = false;
+	estate->es_seqserver_is_setup = false;
 	estate->es_got_eos = false;
 	estate->primaryResults = NULL;
 	estate->mirrorResults = NULL;
@@ -1579,10 +1581,81 @@ getMppExecIdentity(QueryDesc *queryDesc,
 }
 
 /*
- * Cleanup before exiting the executor. Will normally be
- * called from within a CATCH block.
+ * End the MPP-specific part of the executor.
+ *
+ * In here we collect the dispatch results if there are any, tear
+ * down the interconnect if it is set-up, and tear down the sequence
+ * server if it is set-up.
  */
-void mppExecCleanup(EState *estate)
+void mppExecutorFinishup(QueryDesc *queryDesc)
+{
+	EState	   *estate;
+	Slice      *currentSlice;
+	
+	/* caller must have switched into per-query memory context already */
+	estate = queryDesc->estate;
+	
+	currentSlice = getCurrentSlice(estate);
+	
+	/*
+	 * If QD, wait for QEs to finish and check their results.
+	 */	
+	if (estate->primaryResults)
+	{
+		CdbDispatchResults *pr = estate->primaryResults;
+		CdbDispatchResults *mr = estate->mirrorResults;
+		
+		/*
+		 * If we are closing a cursor before all the tuples of the query
+		 * plan were fetched we must call ExecSquelchNode before checking
+		 * the dispatch results in order to tell the nodes below we no longer
+		 * need any more tuples.
+		 */
+		if(queryDesc->cursor_query && !estate->es_got_eos)
+			ExecSquelchNode(queryDesc->planstate);
+		
+		/*
+		 * Wait for completion of all QEs.
+		 */
+		CdbCheckDispatchResult(false);	
+		
+		/* If top slice was delegated to QEs, get num of rows processed. */
+		if (sliceRunsOnQE(currentSlice))
+			estate->es_processed +=
+				cdbdisp_sumCmdTuples(pr, estate->es_cur_slice_idx);
+		
+		/*
+		 * Check and free the results of all gangs. If any QE had an
+		 * error, report it and exit to our error handler via PG_THROW.
+		 * NB: This call doesn't wait, because we already waited above.
+		 */
+		estate->primaryResults = NULL;
+		estate->mirrorResults = NULL;
+		cdbdisp_finishCommand(pr, mr);
+	}
+	
+	/* Teardown the Sequence Server */
+	if(estate->es_seqserver_is_setup)
+	{
+		TeardownSequenceServer();
+		estate->es_seqserver_is_setup = false;
+	}
+	
+	/* Teardown the Interconnect */
+	if(estate->es_interconnect_is_setup)
+	{
+		TeardownInterconnect(false);
+		estate->es_interconnect_is_setup = false;		
+	}
+	
+}
+
+/*
+ * Cleanup the MPP-specific parts of the query executor. 
+ * 
+ * Will normally be called after an error from within a CATCH block.
+ */
+void mppExecutorCleanup(EState *estate)
 {
 	/*
 	 * Request any commands still executing on qExecs to stop.
@@ -1592,13 +1665,17 @@ void mppExecCleanup(EState *estate)
 	if (estate->primaryResults)
 		cdbdisp_handleError(estate->primaryResults, estate->mirrorResults);
 	
-	/* teardown the sequence server. */
-	TeardownSequenceServer();
+	/* Clean up the Sequence Server */
+	if(estate->es_seqserver_is_setup)
+	{
+		TeardownSequenceServer();
+		estate->es_seqserver_is_setup = false;
+	}
 	
 	/* Clean up the interconnect. */
 	if (estate->es_interconnect_is_setup)
 	{
-		TeardownInterconnect(true);
+		TeardownInterconnect(true); /* force EOS */
 		estate->es_interconnect_is_setup = false;
 	}
 	

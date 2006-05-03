@@ -307,7 +307,8 @@ extern void ReleaseGangs(QueryDesc *queryDesc);
 extern MppExecIdentity getMppExecIdentity(QueryDesc *queryDesc,
 										  ScanDirection direction,
 										  EState	   *estate);
-extern void mppExecCleanup(EState *estate);
+extern void mppExecutorFinishup(QueryDesc *queryDesc);
+extern void mppExecutorCleanup(EState *estate);
 
 
 extern Slice *getCurrentSlice(EState* estate);

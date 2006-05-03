@@ -526,7 +526,11 @@ typedef struct EState
 	int es_cur_slice_idx;
  	SliceTable *es_sliceTable;
 	struct MotionState **es_slice_map;
-	bool es_interconnect_is_setup;      /* is interconnect set-up? */
+	
+	/* MPP used resources */
+	bool es_interconnect_is_setup;   /* is interconnect set-up?    */
+	bool es_seqserver_is_setup;      /* is sequence server set-up? */
+	
 	bool es_got_eos;				/* was end-of-stream recieved? */
 
     /* results from qExec processes */

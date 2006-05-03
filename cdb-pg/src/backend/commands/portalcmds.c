@@ -276,15 +276,23 @@ PortalCleanup(Portal portal)
 	 * Shut down executor, if still running.  We skip this during error abort,
 	 * since other mechanisms will take care of releasing executor resources,
 	 * and we can't be sure that ExecutorEnd itself wouldn't fail.
+	 *
+	 * MPP: hmm... Skipping ExecutorEnd in the case of PORTAL_FAILED is 
+	 * a bit of a problem for MPP since that's where we join the dispatch results,
+	 * tear down the interconnect and seqserver and release gangs. These must be 
+	 * done no matter if the portal failed or not. Therefore the "else" clause was 
+	 * added below to just do those specific things without actually calling 
+	 * ExecutorEnd and possibly breaking the resource owner stuff.
 	 */
 	queryDesc = PortalGetQueryDesc(portal);
 	if (queryDesc)
 	{
 		portal->queryDesc = NULL;
+		
 		if (portal->status != PORTAL_FAILED)
 		{
 			ResourceOwner saveResourceOwner;
-
+			
 			/* We must make the portal's resource owner current */
 			saveResourceOwner = CurrentResourceOwner;
 			PG_TRY();
@@ -301,6 +309,51 @@ PortalCleanup(Portal portal)
 			}
 			PG_END_TRY();
 			CurrentResourceOwner = saveResourceOwner;
+		}
+		else /* PORTAL_FAILED (MPP addition) */
+		{
+			MemoryContext oldcontext;
+			EState	   *estate;
+			
+			estate = queryDesc->estate;
+			
+			Assert(estate != NULL);
+			
+			/*
+			 * Switch into per-query memory context
+			 */
+			oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
+			
+			/*
+			 * if needed, collect mpp dispatch results and tear down 
+			 * all mpp specific resources (interconnect, seq server).
+			 */
+			PG_TRY();
+			{
+				mppExecutorFinishup(queryDesc);
+			}
+			PG_CATCH();
+			{
+				/*
+				 * we got an error. do all the necessary cleanup.
+				 */
+				mppExecutorCleanup(estate);	
+				
+				/*
+				 * TODO: we may need to take the risk of not rethrowing
+				 * if this will end up interfering the the resource owner
+				 * code in PortalDrop...
+				 */
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
+			
+			/*
+			 * Release any gangs we may have assigned.
+			 */
+			ReleaseGangs(queryDesc);
+			
+			MemoryContextSwitchTo(oldcontext);
 		}
 	}
 }
