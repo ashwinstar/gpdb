@@ -41,6 +41,10 @@
  *    The plans input to the Append node are replicated loci.  The result of 
  *    the Append is, therefore, replicated.  The set operation is performed 
  *    in parallel (and redundantly) on the QEs as if it were sequential.
+ *
+ * PSETOP_GENERAL
+ *    The plans input to the Append node are all general loci.  The result
+ *    of the Append is, therefore general as well.
  */
 typedef enum MppSetOpType
 {
@@ -48,7 +52,8 @@ typedef enum MppSetOpType
 	PSETOP_PARALLEL_PARTITIONED,
 	PSETOP_SEQUENTIAL_QD,
 	PSETOP_SEQUENTIAL_QE,
-	PSETOP_PARALLEL_REPLICATED
+	PSETOP_PARALLEL_REPLICATED,
+	PSETOP_GENERAL
 } MppSetOpType;
 
 extern 
@@ -84,6 +89,9 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort);
 
 extern
 void mark_sort_locus(Plan *plan);
+
+extern
+void mark_plan_general(Plan* plan);
 
 extern
 void mark_plan_strewn(Plan* plan);

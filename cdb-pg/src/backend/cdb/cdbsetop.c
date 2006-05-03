@@ -51,10 +51,12 @@ MppSetOpType choose_setop_type(List *planlist)
 {
 	ListCell *cell;
 	Plan *subplan = NULL;
+	bool ok_general = TRUE;
 	bool ok_partitioned = TRUE;
 	bool ok_replicated = TRUE;
 	bool ok_single_qd = TRUE;
 	bool ok_single_qe = TRUE;
+	bool has_partitioned = FALSE;
 	
 	Assert( Mpp_role == MPP_ROLE_DISPATCH );
 	
@@ -69,15 +71,16 @@ MppSetOpType choose_setop_type(List *planlist)
 			case CdbLocusType_Hashed:
 			case CdbLocusType_HashedOJ:
 			case CdbLocusType_Strewn:
-				ok_replicated = FALSE;
+				ok_general = ok_replicated = FALSE;
+				has_partitioned = TRUE;
 				break;
 				
 			case CdbLocusType_Root:
-				ok_partitioned = ok_replicated = ok_single_qe = FALSE;
+				ok_general = ok_partitioned = ok_replicated = ok_single_qe = FALSE;
 				break;
 				
 			case CdbLocusType_SingleQE:
-				ok_replicated = FALSE;
+				ok_general = ok_replicated = FALSE;
 				break;
 				
 			case CdbLocusType_General:
@@ -90,7 +93,9 @@ MppSetOpType choose_setop_type(List *planlist)
 		}
 	}
 	
-	if ( ok_partitioned )
+	if ( ok_general )
+		return PSETOP_GENERAL;
+	else if ( ok_partitioned && has_partitioned )
 		return PSETOP_PARALLEL_PARTITIONED;
 	else if ( ok_single_qe )
 		return PSETOP_SEQUENTIAL_QE;
@@ -116,6 +121,9 @@ void adjust_setop_arguments(List *planlist, MppSetOpType setop_type)
 		adjusted_plan = subplan;
 		switch ( setop_type )
 		{
+		case PSETOP_GENERAL:
+			/* This only occurs when all arguments are general. */
+			break;
 
 		case PSETOP_PARALLEL_PARTITIONED:
 			switch ( subplan->flow->locustype )
@@ -327,6 +335,7 @@ Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 	
 	flow = makeFlow(FLOW_SINGLETON);
 	flow->segindex = segindex;
+	flow->locustype = (segindex==-1)? CdbLocusType_Root : CdbLocusType_SingleQE;
 	
 	if ( keep_ordering && subplan->flow->numSortCols > 0 )
 	{
@@ -397,6 +406,7 @@ Motion* make_motion_hash(PlannerInfo *root, Plan *subplan, List *hashexprs)
 	
 	flow = makeFlow(FLOW_PARTITIONED);
 	flow->hashExpr = hashexprs;
+	flow->locustype = CdbLocusType_Hashed;
 	
 	motion = make_hashed_motion(
 		subplan, 
@@ -443,6 +453,9 @@ void mark_append_locus(Plan *plan, MppSetOpType optype)
 {
 	switch ( optype  )
 	{
+	case PSETOP_GENERAL:
+		mark_plan_general(plan);
+		break;
 	case PSETOP_PARALLEL_PARTITIONED:
 		mark_plan_strewn(plan);
 		break;
@@ -542,16 +555,26 @@ void mark_sort_locus(Plan *plan)
 	plan->flow = flow;
 }	
 
+void mark_plan_general(Plan* plan)
+{
+	Assert( is_plan_node((Node*)plan) && plan->flow == NULL );
+	plan->flow = makeFlow(FLOW_SINGLETON);
+	plan->flow->segindex = 0;
+	plan->flow->locustype = CdbLocusType_General;
+}
+
 void mark_plan_strewn(Plan* plan)
 {
 	Assert( is_plan_node((Node*)plan) && plan->flow == NULL );
 	plan->flow = makeFlow(FLOW_PARTITIONED);
+	plan->flow->locustype = CdbLocusType_Strewn;
 }
 
 void mark_plan_replicated(Plan* plan)
 {
 	Assert( is_plan_node((Node*)plan) && plan->flow == NULL );
 	plan->flow = makeFlow(FLOW_REPLICATED);
+	plan->flow->locustype = CdbLocusType_Replicated;
 }
 
 void mark_plan_root(Plan* plan)
@@ -559,6 +582,7 @@ void mark_plan_root(Plan* plan)
 	Assert( is_plan_node((Node*)plan) && plan->flow == NULL );
 	plan->flow = makeFlow(FLOW_SINGLETON);
 	plan->flow->segindex = -1;
+	plan->flow->locustype = CdbLocusType_Root;
 }
 
 void mark_plan_singleQE(Plan* plan)
@@ -566,4 +590,5 @@ void mark_plan_singleQE(Plan* plan)
 	Assert( is_plan_node((Node*)plan) && plan->flow == NULL );
 	plan->flow = makeFlow(FLOW_SINGLETON);
 	plan->flow->segindex = 0;
+	plan->flow->locustype = CdbLocusType_SingleQE;
 }
