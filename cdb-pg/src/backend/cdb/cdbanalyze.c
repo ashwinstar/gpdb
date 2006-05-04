@@ -324,7 +324,13 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 		 */
 			
 		if (!isnull)
+		{
+			if ((DatumGetFloat4(dat) > 0 && distinct < 0) ||
+				(DatumGetFloat4(dat) < 0 && distinct > 0))
+				elog(NOTICE,"Analyze bug:  Sign reversed");
+				
 			distinct +=  DatumGetFloat4(dat);
+		}
 		
 		/*
 		 * Now get the statistic "slots" from the record.  One big issue is: What's a good way to combine the
@@ -424,6 +430,9 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 	ctx->stats->stawidth = (short)(avgwidth/SPI_processed);
 	
 	ctx->stats->stadistinct = distinct/(float)SPI_processed;
+	
+	//if (ctx->stats->stadistinct > 0.1 * totalrows)
+	//		ctx->stats->stadistinct = -(ctx->stats->stadistinct / totalrows);
 	
 	/*
 	 * Fill in the slots with info gathered above.  We can't do this at the same
