@@ -268,12 +268,13 @@ PortalDefineQuery(Portal portal,
 			if(strcmp(commandTag, "FETCH") != 0 &&
 			   strcmp(commandTag, "CLOSE CURSOR") != 0 && 
 			   strcmp(commandTag, "BEGIN") != 0 &&
+			   strcmp(commandTag, "COMMIT") != 0 &&
 			   strcmp(commandTag, "ROLLBACK") != 0)
 			{
 				ereport(ERROR,
-						(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+						(errcode(ERRCODE_MPP_FEATURE_NOT_YET),
 						 errmsg("cannot run %s while there is an open cursor", commandTag),
-						 errhint("you should either CLOSE the cursor first or ROLLBACK")));				
+						 errhint("you should CLOSE the cursor or finish the transaction before attempting other operations")));				
 			}
 		}
 	}

@@ -539,6 +539,17 @@ ProcessUtility(Node *parsetree,
 						}
 						else
 						{
+							/*
+							 * Remove all non-holdable portals created in this 
+							 * transaction before dispatching the COMMIT. 
+							 *
+							 * NOTE: this may not be necessary anymore when we
+							 * remove the single cursor limitation. This is only
+							 * true, however, if AtCommit_Portals() is called at
+							 * some later point (it must be called at SOME point).
+							 */
+							AtCommit_Portals();
+							
 							/* commit all QE */
 							commitDtxTransaction();
 						}
