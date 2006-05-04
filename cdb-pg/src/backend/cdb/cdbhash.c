@@ -21,6 +21,7 @@
 #include "utils/timestamp.h"
 #include "utils/array.h"
 #include "utils/date.h"
+#include "utils/cash.h"
 #include "utils/datetime.h"
 #include "utils/varbit.h"
 #include "fmgr.h"
@@ -171,6 +172,8 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	
 	int2vector *i2vec_buf;
 	oidvector  *oidvec_buf;
+	
+	Cash		cash_buf;
 
 	/*
 	 * Select the hash to be performed according to the field type we are adding to the
@@ -436,6 +439,12 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			oidvec_buf = (oidvector *) DatumGetPointer(datum);
 			len = oidvec_buf->dim1 * sizeof(Oid);
 			buf = oidvec_buf->values;
+			break;
+			
+		case CASHOID: /* cash is stored in int32 internally */
+			cash_buf = (* (Cash *)DatumGetPointer(datum));
+			len = sizeof(Cash);
+			buf = &cash_buf;
 			break;
 			
 		default:

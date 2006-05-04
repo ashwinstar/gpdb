@@ -570,9 +570,7 @@ DefineRelation_int(CreateStmt *stmt,
 						strcmp(n, "polygon") == 0 ||
 						strcmp(n, "line") == 0 ||
 						strcmp(n, "unknown") == 0 ||
-						strcmp(n, "cash") == 0 ||
 						strcmp(n, "aclitem") == 0 ||
-						strcmp(n, "money") == 0 ||
 						strcmp(n, "anyelement") == 0 ||
 						strcmp(n, "smgr") == 0 ||
 						strcmp(n, "point") == 0)
@@ -3162,9 +3160,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 					strcmp(n, "polygon") == 0 ||
 					strcmp(n, "line") == 0 ||
 					strcmp(n, "unknown") == 0 ||
-					strcmp(n, "cash") == 0 ||
 					strcmp(n, "aclitem") == 0 ||
-					strcmp(n, "money") == 0 ||
 					strcmp(n, "anyelement") == 0 ||
 					strcmp(n, "smgr") == 0 ||
 					strcmp(n, "point") == 0)
