@@ -30,10 +30,46 @@
 #include "cdb/cdbpullup.h"
 #include "cdb/cdbvars.h"
 
+/*
+ * An ApplyMotionState holds state for the recursive apply_motion_mutator().
+ * It is externalized here to make it shareable by helper code in other
+ * modules, e.g., cdbaggmutate.c.
+ */
+typedef struct ApplyMotionState
+{
+	int			nextMotionID;
+    int         sliceDepth;
+    int         numInitPlanMotionNodes;
+    List       *initPlans;
+}	ApplyMotionState;
+
 
 /*
  * Forward Declarations
  */
+static void assignMotionID(Node *newnode, ApplyMotionState * context, Node *oldnode);
+
+static List *
+getExprListFromTargetList(List         *tlist,
+                          int           numCols,
+                          AttrNumber   *colIdx,
+                          bool          useExecutorVarFormat);
+
+static int *makeDefaultSegIdxArray(int numSegs);
+
+static Motion *
+make_motion(Plan       *lefttree,
+            MotionType  motionType,
+            bool        sendToSecondary,
+            bool        sendSorted,
+            int         numInputSegs,
+            List       *hashExpr,
+            int         numOutputSegs,
+            int        *outputSegIdx,
+            int         numSortCols,
+            AttrNumber *sortColIdx,
+            Oid        *sortOperators);
+			
 static Node *apply_motion_mutator(Node *node, ApplyMotionState * context);
 
 static void validateMotionNodeParms(MotionType motionType,
@@ -42,9 +78,6 @@ static void validateMotionNodeParms(MotionType motionType,
 						int numOutputSegs, int *outputSegIdx,
 				int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators);
 static bool motion_expr_walker(Node *node, char *not_used);
-#ifdef UNUSED
-static List *makeMotionTargetList(Plan *arg);
-#endif   /* UNUSED */
 
 static bool
 doesUpdateAffectPartitionCols(Plan         *plan,
@@ -975,160 +1008,6 @@ getExprListFromTargetList(List         *tlist,
 }
 
 
-#ifdef UNUSED
-/* ----------------------------------------------------------------
- * getHashExprForExpression
- *
- * Returns an expression over the range of the given plan
- * correponding the given expression over the target list of
- * the  plan.  This function is fragile!  It expects an expression
- * from a projecting node.
- *
- * This amounts to substituting the target list expressions
- * for the Var nodes in the given expression and forcing the
- * varno to OUTER.
- * ----------------------------------------------------------------
- */
-static Node* ovmutator(Node *node, void *context);
-static Node* hvmutator(Node *node, void *context);
-
-Node *getHashExprForExpression(Plan *varsource, Expr *expr)
-{
-	return hvmutator((Node*)expr, varsource);
-}
-
-/* Copy given expression forcing varno in Var nodes to OUTER. */
-static Node* ovmutator(Node *node, void *context)
-{
-	if ( node == NULL )
-		return NULL;
-	if ( IsA(node, Var) )
-	{
-        Var    *newvar = (Var *)copyObject(node);
-
-        newvar->varno = OUTER;
-
-        return (Node *)newvar;
-	}
-	return expression_tree_mutator(node, ovmutator, NULL);
-}
-
-/* Copy given expression with Var nodes replaced by the referenced expression
- * in the target list of the context Plan node, but ovmutated. */
-static Node* hvmutator(Node *node, void *context)
-{
-	if ( node == NULL )
-		return NULL;
-	if ( IsA(node, Var) )
-	{
-		Var * var;
-		Plan *varsource;
-		TargetEntry* tle;
-		
-		var = (Var*)node;
-		varsource = (Plan*)context;
-		tle = get_tle_by_resno( varsource->targetlist, var->varattno);
-		if ( tle == NULL )
-		{
-			elog( ERROR, "no tlist entry for key %d", var->varattno );
-		}
-		return ovmutator((Node*)tle->expr, NULL);
-	}
-	return expression_tree_mutator(node, hvmutator, context);
-}
-#endif /*UNUSED*/
-
-#ifdef UNUSED
-/* ----------------------------------------------------------------
- * getOpListFromTargetList
- *
- * Returns a list of oids or the equality operators for indicated
- * entries of the target list.
- *
- * The AttrNumber indexes actually refer to the resno value in the
- * Resdom entries in the target list.  These are often just the
- * ordinal positions (origin 1) of the entries, but for non-query
- * DML it may not be.
- *
- * ----------------------------------------------------------------
- */
-List *
-getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
-{
-	int			i;
-	List	   *oplist = NIL;
-	Operator	eq_operator;
-	Oid			typeoid;
-
-	for (i = 0; i < numCols; i++)
-	{
-		/* Find expr in TargetList */
-		AttrNumber	n = colIdx[i];
-
-		TargetEntry *target = get_tle_by_resno(tlist, n);
-
-		if (target == NULL)
-			elog(ERROR, "no tlist entry for key %d", n);
-
-		typeoid = target->resdom->restype;
-		eq_operator = compatible_oper(list_make1(makeString("=")), typeoid, typeoid, true);
-		oplist = lappend_oid(oplist, oprid(eq_operator));
-		ReleaseSysCache(eq_operator);
-	}
-
-	return oplist;
-}
-#endif   /* UNUSED */
-
-#ifdef UNUSED
-/* ----------------------------------------------------------------
- * makeMotionTargetList
- *
- * Returns a target list for a new motion node based on the
- * argument plan's target list.
- *
- * ----------------------------------------------------------------
- */
-List *
-makeMotionTargetList(Plan *arg)
-{
-	TargetEntry *tle;
-	Resdom	   *new_resdom,
-			   *resdom;
-	Var		   *new_var;
-	ListCell   *cell;
-
-	int			attno = 0;
-	List	   *new_tlist = NIL;
-
-	foreach(cell, arg->targetlist)
-	{
-		tle = (TargetEntry *) lfirst(cell);
-		resdom = tle->resdom;
-		attno++;
-
-		Assert(attno == tle->resdom->resno);
-
-		new_resdom = makeResdom(
-								tle->resdom->resno,
-								tle->resdom->restype,
-								tle->resdom->restypmod,
-		tle->resdom->resname ? pstrdup(tle->resdom->resname) : (char *) NULL,
-								tle->resdom->resjunk
-			);
-
-		new_var = makeVar(
-						  0, attno,
-						  new_resdom->restype, new_resdom->restypmod, 0
-			);
-
-		new_tlist = lappend(new_tlist, makeTargetEntry(resdom, (Expr *) new_var));
-	}
-	return new_tlist;
-}
-#endif   /* UNUSED */
-
-
 /*
  * isAnyColChangedByUpdate
  */
@@ -1215,165 +1094,6 @@ doesUpdateAffectPartitionCols(Plan         *plan,
 }                               /* doesUpdateAffectPartitionCols */
 
 
-/* ----------------------------------------------------------------
- * findHashAttrsInTargetList
- *
- * For each hash expression, find the first matching target list
- * entry and store its attribute number (or 0, for no match) in the
- * corresponding element of the given integer vector.	Note that
- * an element with value V corresponds to attribute number V+1.
- *
- * The length of the given vector must be equal to length of the
- * given list of hash expressions.
- *
- * Return true, if all hash expressions appear as attributes in
- * the target list; else return false.
- * ----------------------------------------------------------------
- */
-bool
-findHashAttrsInTargetList(List *targetlist, List *hashExprs, AttrNumber *attrs)
-{
-	int			ntles;
-	int			nattrs;
-	Node	  **map;
-	ListCell   *cell;
-	int			i,
-				j;
-	bool		miss;
-
-	nattrs = list_length(hashExprs);
-	if (nattrs == 0)
-		return TRUE;
-
-	/*
-	 * Make a map of pointers to the expressions in the input target list in
-	 * attribute number order (usually but not necessarily target entry
-	 * order).	Note that map index 0 corresponds to attribute number 1.
-	 */
-	ntles = list_length(targetlist);
-	map = (Node **) palloc0(ntles * sizeof(Node *));
-	foreach(cell, targetlist)
-	{
-		TargetEntry *tle = (TargetEntry *) lfirst(cell);
-
-		j = tle->resno - 1;
-		Assert(0 <= j && j < ntles && map[j] == NULL);
-		map[j] = (Node *) tle->expr;
-	}
-
-	/* Record 1st occurance of each hash expr in the target list. */
-	miss = FALSE;
-	i = 0;
-	foreach(cell, hashExprs)
-	{
-		Node	   *hexpr = (Node *) lfirst(cell);
-
-		for (j = 0; j < ntles; j++)
-		{
-			if (equal(map[j], hexpr))
-				break;
-		}
-		if (j < ntles)
-		{
-			attrs[i] = 1 + j;
-		}
-		else
-		{
-			attrs[i] = 0;
-			miss = TRUE;
-		}
-		i++;
-	}
-	pfree(map);
-
-	return !miss;
-}
-
-
-/* ------------------------------------------------------------------------
- * getExprListForSubqueryScan
- *
- * Given the target list and hash expression list from the partitioned
- * argument plan of a SubqueryScan, return a hash expression list to
- * characterize the partitioning of the SubqueryScan in terms of the
- * attributes of the argument relation.
- *
- * This could be NIL, if the argument partitioning is "anonymous"
- * or the argument relation does not contain attributes corresonding
- * to all of its partitioning criteria.  In this case, the SubqueryScan
- * will have anonymous partitioning.
- *
- * Otherwise, it will be a list of Var nodes referencing the attributes
- * of the argument (the given targetlist) correspond to its partitioning
- * hash expressions (the given hashExprs).
- * ------------------------------------------------------------------------
- */
-List *
-getExprListForSubqueryScan(List *targetlist, List *hashExprs)
-{
-	int			ntles;
-	int			nattrs;
-	TargetEntry **map,
-			   *tle;
-	ListCell   *cell;
-	int			i;
-	List	   *resultExprs = NIL;
-	Index		varno = 0;		/* used to be OUTER */
-
-	nattrs = list_length(hashExprs);
-	if (nattrs == 0)
-		return NIL;
-
-	/*
-	 * Make a map taking attribute numbers (minus 1) to pointers to the target
-	 * entries in the input target list.  Note that attribute number order is
-	 * usually, but not necessarily, target entry order.  Note that map index
-	 * 0 corresponds to attribute number 1.
-	 */
-	ntles = list_length(targetlist);
-	map = (TargetEntry **) palloc0(ntles * sizeof(TargetEntry *));
-	foreach(cell, targetlist)
-	{
-		tle = (TargetEntry *) lfirst(cell);
-		i = tle->resno - 1;
-		Assert(0 <= i && i < ntles && map[i] == NULL);
-		map[i] = tle;
-	}
-
-	/*
-	 * Generate a Var referencing the target entry corresponding to the 1st
-	 * occurance of each hash expr in the target list.
-	 */
-	foreach(cell, hashExprs)
-	{
-		Node	   *hexpr = (Node *) lfirst(cell);
-
-		for (i = 0; i < ntles; i++)
-		{
-			if (equal(map[i]->expr, hexpr))
-				break;
-		}
-		if (i < ntles)
-		{
-			Var		   *var = NULL;
-			tle = map[i];
-
-			// ???????
-			var = makeVar(varno, 1 + i, exprType((Node *) tle->expr), exprTypmod((Node *) tle->expr), 0);
-
-			resultExprs = lappend(resultExprs, var);
-		}
-		else
-		{
-			list_free_deep(resultExprs);
-			resultExprs = NIL;
-			break;
-		}
-	}
-	pfree(map);
-
-	return resultExprs;
-}
 
 /* ----------------------------------------------------------------------- *
  * Functions hasCtid(), hasCtid_outside_tlist() and helper function

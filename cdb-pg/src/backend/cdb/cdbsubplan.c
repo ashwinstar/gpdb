@@ -103,6 +103,7 @@ preprocess_initplans(QueryDesc *queryDesc)
 		 */
 		augmentedPli = addRemoteExecParamsToParamList(
 													  queryDesc->plantree,
+													  queryDesc->parsetree->rtable,
 													  originalPli,
 												  estate->es_param_exec_vals,
 													  plan->nParamExec
@@ -163,7 +164,7 @@ preprocess_initplans(QueryDesc *queryDesc)
  * ParamListInfo (as for an external parameter).
  */
 ParamListInfo
-addRemoteExecParamsToParamList(Plan *plan, ParamListInfo extPrm, ParamExecData *intPrm, int nIntPrm)
+addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo extPrm, ParamExecData *intPrm, int nIntPrm)
 {
 	ParamListInfo augPrm,
 				q;
@@ -171,6 +172,7 @@ addRemoteExecParamsToParamList(Plan *plan, ParamListInfo extPrm, ParamExecData *
 	int			i,
 				j;
 	int			nParams;
+	ListCell *lc;
 
 	if (nIntPrm == 0)
 		return extPrm;
@@ -206,20 +208,35 @@ addRemoteExecParamsToParamList(Plan *plan, ParamListInfo extPrm, ParamExecData *
 
 	memset(&context, 0, sizeof(context));
 	param_walker((Node *) plan, &context);
-
-	/*
-	 * TODO Revisit this error condition!  The error replaces an assertion
-	 * that was tripping on, e.g., select * from generate_series(0,(select
-	 * count(*) from sale));
-	 *
-	 * This appears to be a case of an initplan with no corresponding parameter,
-	 * but needs more analysis.  In the meantime, plug with an internal error.
+	
+	/* 
+	 * This code, unfortunately, duplicates code in the param_walker case
+	 * for T_SubPlan.  That code checks for Param nodes in Function RTEs in
+	 * the range table.  The outer range table is in the parsetree, though,
+	 * so we check it specially here.
 	 */
+	foreach(lc, rtable)
+	{
+		RangeTblEntry *rte = lfirst(lc);
+		if ( rte->rtekind == RTE_FUNCTION )
+		{
+			FuncExpr *fexpr = (FuncExpr*)rte->funcexpr;
+			Assert(fexpr && IsA(fexpr,FuncExpr));
+			param_walker((Node*)fexpr->args, &context);
+		}
+	}
+
 	if (context.params == NIL)
 	{
+		/* We apparently have an initplan with no corresponding parameter.
+		 * This shouldn't happen, but we had a bug once (MPP-239) because
+		 * we weren't looking for parameters in Function RTEs.  So we still 
+		 * better check.  The old correct, but unhelpful to ENG, message was 
+		 * "Subquery datatype information unavailable."
+		 */
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				 errmsg("Subquery datatype information unavailable.")));
+				 errmsg("no parameter found for initplan subquery")));
 	}
 
 	/*
@@ -266,6 +283,24 @@ param_walker(Node *node, ParamWalkerContext * context)
 			context->params = lappend(context->params, param);
 			return false;
 		}
+	}
+	else if (nodeTag(node) == T_SubPlan)
+	{
+		/* Sift through the range table, might be a Param in there. */
+		SubPlan *sub = (SubPlan*)node;
+		ListCell *lc;
+		
+		foreach( lc, sub->rtable )
+		{
+			RangeTblEntry *rte = lfirst(lc);
+			if ( rte->rtekind == RTE_FUNCTION )
+			{
+				FuncExpr *fexpr = (FuncExpr*)rte->funcexpr;
+				Assert(fexpr && IsA(fexpr,FuncExpr));
+				param_walker((Node*)fexpr->args, context);
+			}
+		}
+		/* Don't return, though.  Let the general walker finish the node. */
 	}
 
 	return plan_tree_walker(node, param_walker, context);

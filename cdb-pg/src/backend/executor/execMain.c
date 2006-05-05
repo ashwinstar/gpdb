@@ -328,6 +328,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				 * external parameters.
 				 */
 				queryDesc->params = addRemoteExecParamsToParamList(queryDesc->plantree,
+																   queryDesc->parsetree->rtable,
 																   queryDesc->params,
 																   queryDesc->estate->es_param_exec_vals,
 																   queryDesc->plantree->nParamExec);
