@@ -266,6 +266,16 @@ cost_index(IndexPath *path, PlannerInfo *root,
 					 PointerGetDatum(&indexTotalCost),
 					 PointerGetDatum(&indexSelectivity),
 					 PointerGetDatum(&indexCorrelation));
+					 
+	/*
+	 * clamp index correlation to 99% or less, so that we always account for at least a little bit
+	 * of random_page_cost in our calculation.  Otherwise, perfectly correlated indexes look too fast.
+	 * Chuck
+	 */
+	if (indexCorrelation >= 0.99)
+		indexCorrelation = 0.99;
+	else if (indexCorrelation <= -0.99)
+		indexCorrelation = -0.99;
 
 	/*
 	 * Save amcostestimate's results for possible use in bitmap scan planning.
@@ -351,6 +361,13 @@ cost_index(IndexPath *path, PlannerInfo *root,
 	 */
 	min_IO_cost = ceil(indexSelectivity * T);
 	max_IO_cost = pages_fetched * random_page_cost;
+	
+	/*
+	 * make min_IO_cost include 1 * random_page_cost, otherwise the
+	 * disable_cost doesn't always work
+	 * Chuck
+	 */
+	min_IO_cost += random_page_cost;
 
 	/*
 	 * Now interpolate based on estimated index order correlation to get total
