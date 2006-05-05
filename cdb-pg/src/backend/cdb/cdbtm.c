@@ -575,27 +575,6 @@ restoreGxact(TMGXACT * gxact)
 		memcpy(currentGxact, gxact, sizeof(TMGXACT));
 }
 
-
-/*
- * is global transaction started
- */
-bool
-isInGlobalTransaction(void)
-{
-	if (Mpp_role != MPP_ROLE_DISPATCH)
-		return false;
-
-	/* check fts sync count */
-	if (!verifyFtsSyncCount())
-	{
-		/* recofig mpp connections */
-		if (!FtsReConfigureMPP())
-			elog(PANIC, "FTS: reconfigMPP failed");
-	}
-	return (currentGxact != NULL);
-}
-
-
 /* Marks the state such that a BEGIN has been executed on
  * the remote QEs.	This is part of the code that supports the DTM from
  * not having to explicitly issue a BEGIN at the beginning of a tranaction

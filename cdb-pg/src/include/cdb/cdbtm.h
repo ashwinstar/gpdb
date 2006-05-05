@@ -115,8 +115,6 @@ extern void restoreGxact(TMGXACT * gxact);
 extern void semanticCheckingOnQE(bool commit);
 extern void discardDtxTransaction(void);
 
-
-extern bool isInGlobalTransaction(void);
 extern bool isTMInRecovery(void);
 extern void setRecoverTMOn(void);
 
