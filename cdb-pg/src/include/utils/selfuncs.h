@@ -29,23 +29,23 @@
  * 1/DEFAULT_EQ_SEL.
  */
 
+/* default number of distinct values in a table */
+#define DEFAULT_NUM_DISTINCT    1000                                /*CDB*/
+
 /* default selectivity estimate for equalities such as "A = b" */
-#define DEFAULT_EQ_SEL	0.005
+#define DEFAULT_EQ_SEL	        (1.0 / DEFAULT_NUM_DISTINCT)        /*CDB*/
 
 /* default selectivity estimate for inequalities such as "A < b" */
-#define DEFAULT_INEQ_SEL  0.3333333333333333
+#define DEFAULT_INEQ_SEL        0.3333333333333333
 
 /* default selectivity estimate for range inequalities "A > b AND A < c" */
-#define DEFAULT_RANGE_INEQ_SEL	0.005
+#define DEFAULT_RANGE_INEQ_SEL	(10 * DEFAULT_EQ_SEL)               /*CDB*/
 
 /* default selectivity estimate for pattern-match operators such as LIKE */
-#define DEFAULT_MATCH_SEL	0.005
-
-/* default number of distinct values in a table */
-#define DEFAULT_NUM_DISTINCT  200
+#define DEFAULT_MATCH_SEL	    (50 * DEFAULT_EQ_SEL)               /*CDB*/
 
 /* default selectivity estimate for boolean and null test nodes */
-#define DEFAULT_UNK_SEL			0.005
+#define DEFAULT_UNK_SEL			DEFAULT_EQ_SEL                      /*CDB*/
 #define DEFAULT_NOT_UNK_SEL		(1.0 - DEFAULT_UNK_SEL)
 
 

@@ -10,6 +10,7 @@
  *	  Index cost functions are registered in the pg_am catalog
  *	  in the "amcostestimate" attribute.
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -819,6 +820,7 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 	Const	   *patt = NULL;
 	Const	   *prefix = NULL;
 	Const	   *rest = NULL;
+    double      nullfrac = 0;
 	double		result;
 
 	/*
@@ -894,6 +896,14 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 			return DEFAULT_MATCH_SEL;
 	}
 
+    /* CDB: Get fraction of tuples with NULL in this column */
+    if (HeapTupleIsValid(vardata.statsTuple))
+    {
+	    Form_pg_statistic   stats = (Form_pg_statistic)GETSTRUCT(vardata.statsTuple);
+
+        nullfrac = stats->stanullfrac;
+    }
+
 	/* divide pattern into fixed prefix and remainder */
 	patt = (Const *) other;
 	pstatus = pattern_fixed_prefix(patt, ptype, &prefix, &rest);
@@ -949,7 +959,13 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 		/*
 		 * Not exact-match pattern.  We estimate selectivity of the fixed
 		 * prefix and remainder of pattern separately, then combine the two.
+         *
+         * CDB TODO: Try matching the pattern against the frequently
+         * occurring values, similar to eqsel().
 		 */
+        Selectivity eqsel;
+        Selectivity fewsel;
+        double      ndistinct;
 		Selectivity prefixsel;
 		Selectivity restsel;
 		Selectivity selec;
@@ -957,9 +973,22 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 		if (pstatus == Pattern_Prefix_Partial)
 			prefixsel = prefix_selectivity(root, variable, opclass, prefix);
 		else
-			prefixsel = 1.0;
+			prefixsel = 1.0 - nullfrac;
+
 		restsel = pattern_selectivity(rest, ptype);
+
+        /* CDB: Assume remainder will match at least a few distinct values. */
+        ndistinct = get_variable_numdistinct(&vardata);
+        eqsel = (ndistinct <= 1) ? 1 : 1.0 / ndistinct;
+        fewsel = (DEFAULT_MATCH_SEL / DEFAULT_EQ_SEL) * eqsel;
+        if (fewsel > 1.0)
+            fewsel = 1.0;
+        if (restsel < fewsel)
+            restsel = fewsel;
+        restsel *= 1.0 - nullfrac;
+
 		selec = prefixsel * restsel;
+
 		/* result should be in range, but make sure... */
 		CLAMP_PROBABILITY(selec);
 		result = selec;
@@ -3772,20 +3801,23 @@ prefix_selectivity(PlannerInfo *root, Node *variable,
  * Note that any fixed prefix of the pattern will have been removed already.
  *
  * For now, we use a very simplistic approach: fixed characters reduce the
- * selectivity a good deal, character ranges reduce it a little,
- * wildcards (such as % for LIKE or .* for regex) increase it.
+ * selectivity a good deal, character ranges reduce it a little.
+ *
+ * CDB: There is a gradual lessening of the change in selectivity as more
+ * fixed characters or character ranges are added.
  */
 
 #define FIXED_CHAR_SEL	0.20	/* about 1/5 */
 #define CHAR_RANGE_SEL	0.25
-#define ANY_CHAR_SEL	0.9		/* not 1, since it won't match end-of-string */
-#define FULL_WILDCARD_SEL 5.0
-#define PARTIAL_WILDCARD_SEL 2.0
+#define ANY_CHAR_SEL	0.99	/* not 1, since it won't match end-of-string */
+#define CDB_RANCHOR_SEL 0.95
+#define CDB_ROLLOFF_SEL 0.14
 
 static Selectivity
 like_selectivity(Const *patt_const, bool case_insensitive)
 {
 	Selectivity sel = 1.0;
+    Selectivity fixed_char_sel = FIXED_CHAR_SEL;
 	int			pos;
 	int			start;
 	Oid			typeid = patt_const->consttype;
@@ -3830,23 +3862,23 @@ like_selectivity(Const *patt_const, bool case_insensitive)
 	{
 		/* % and _ are wildcard characters in LIKE */
 		if (patt[pos] == '%')
-			sel *= FULL_WILDCARD_SEL;
+        {}
 		else if (patt[pos] == '_')
 			sel *= ANY_CHAR_SEL;
-		else if (patt[pos] == '\\')
-		{
-			/* Backslash quotes the next character */
-			pos++;
-			if (patt[pos] == '\0' && typeid != BYTEAOID)
-				break;
-			sel *= FIXED_CHAR_SEL;
-		}
 		else
-			sel *= FIXED_CHAR_SEL;
+        {
+            if (patt[pos] == '\\')
+		    {
+			    /* Backslash quotes the next character */
+			    pos++;
+			    if (patt[pos] == '\0' && typeid != BYTEAOID)
+				    break;
+		    }
+
+			sel *= fixed_char_sel;
+            fixed_char_sel += (1.0 - fixed_char_sel) * CDB_ROLLOFF_SEL;
+        }
 	}
-	/* Could get sel > 1 if multiple wildcards */
-	if (sel > 1.0)
-		sel = 1.0;
 	return sel;
 }
 
@@ -3854,7 +3886,9 @@ static Selectivity
 regex_selectivity_sub(char *patt, int pattlen, bool case_insensitive)
 {
 	Selectivity sel = 1.0;
-	int			paren_depth = 0;
+    Selectivity fixed_char_sel = FIXED_CHAR_SEL;
+    Selectivity csel;
+    int			paren_depth = 0;
 	int			paren_pos = 0;	/* dummy init to keep compiler quiet */
 	int			pos;
 
@@ -3900,44 +3934,42 @@ regex_selectivity_sub(char *patt, int pattlen, bool case_insensitive)
 			while (pos < pattlen && patt[pos] != ']')
 				pos++;
 			if (paren_depth == 0)
-				sel *= (negclass ? (1.0 - CHAR_RANGE_SEL) : CHAR_RANGE_SEL);
+            {
+                csel = CHAR_RANGE_SEL / FIXED_CHAR_SEL * fixed_char_sel;
+                sel *= (negclass ? (1.0 - csel) : csel);
+                fixed_char_sel += (1.0 - fixed_char_sel) * CDB_ROLLOFF_SEL;
+            }
 		}
 		else if (patt[pos] == '.')
 		{
 			if (paren_depth == 0)
-				sel *= ANY_CHAR_SEL;
+                sel *= Max(ANY_CHAR_SEL, fixed_char_sel);
 		}
 		else if (patt[pos] == '*' ||
 				 patt[pos] == '?' ||
 				 patt[pos] == '+')
-		{
-			/* Ought to be smarter about quantifiers... */
-			if (paren_depth == 0)
-				sel *= PARTIAL_WILDCARD_SEL;
-		}
+        {}
 		else if (patt[pos] == '{')
 		{
 			while (pos < pattlen && patt[pos] != '}')
 				pos++;
-			if (paren_depth == 0)
-				sel *= PARTIAL_WILDCARD_SEL;
-		}
-		else if (patt[pos] == '\\')
-		{
-			/* backslash quotes the next character */
-			pos++;
-			if (pos >= pattlen)
-				break;
-			if (paren_depth == 0)
-				sel *= FIXED_CHAR_SEL;
 		}
 		else
 		{
+			/* backslash quotes the next character */
+            if (patt[pos] == '\\')
+            {
+                pos++;
+                if (pos >= pattlen)
+                    break;
+            }
 			if (paren_depth == 0)
-				sel *= FIXED_CHAR_SEL;
+            {
+                sel *= fixed_char_sel;
+                fixed_char_sel += (1.0 - fixed_char_sel) * CDB_ROLLOFF_SEL;
+            }
 		}
 	}
-	/* Could get sel > 1 if multiple wildcards */
 	if (sel > 1.0)
 		sel = 1.0;
 	return sel;
@@ -3971,14 +4003,12 @@ regex_selectivity(Const *patt_const, bool case_insensitive)
 	{
 		/* has trailing $ */
 		sel = regex_selectivity_sub(patt, pattlen - 1, case_insensitive);
-	}
+        sel *= CDB_RANCHOR_SEL;
+    }
 	else
 	{
 		/* no trailing $ */
 		sel = regex_selectivity_sub(patt, pattlen, case_insensitive);
-		sel *= FULL_WILDCARD_SEL;
-		if (sel > 1.0)
-			sel = 1.0;
 	}
 	return sel;
 }
