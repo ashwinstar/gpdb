@@ -18,20 +18,19 @@
 Datum
 pgsql_version(PG_FUNCTION_ARGS)
 {
-	char tag[] = " $Name:  $";
+
 	char version[512];
 	int			n;
 	text	   *ret;
 	strcpy(version, PG_VERSION_STR " compiled on " __DATE__ " " __TIME__);
 	
-	if (strlen(tag) > 10)
-	{
-		strcat(version, tag);
-	}
-	else
-	{
-		strcat(version, " (cvs head)");
-	}
+
+	strcat(version, " (cvs head)");
+
+#ifdef USE_ASSERT_CHECKING
+	strcat(version, " (with assert checking)");
+#endif 
+
 	n = strlen(version);
 		
 	ret = (text *) palloc(n + VARHDRSZ);
