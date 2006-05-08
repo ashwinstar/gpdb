@@ -21,6 +21,13 @@ struct FtsQDMirrorInfo
 	uint16		port;
 };
 
+struct FtsSegDBState
+{
+	bool	valid;
+	bool	primary;
+	int16	id;
+};
+
 #define FTS_MAX_TRANSIENT_STATE 100
 
 typedef struct FtsControlBlock
@@ -31,10 +38,10 @@ typedef struct FtsControlBlock
 	int			ftsAction;
 	bool		ftsReadOnlyFlag;
 
-	struct FtsQDMirrorInfo		ftsQDMirror;
+	struct FtsQDMirrorInfo	ftsQDMirror;
 
 	int			ftsSegDBTransientCount;
-	uint16		ftsSegDBTransientState[FTS_MAX_TRANSIENT_STATE];
+	struct FtsSegDBState ftsSegDBTransientState[FTS_MAX_TRANSIENT_STATE];
 }	FtsControlBlock;
 
 typedef enum

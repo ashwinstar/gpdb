@@ -25,14 +25,13 @@
 #include "cdb/cdbtm.h"
 #include "commands/dbcommands.h"
 
-
 bool	   *ftsEnabled;
 static LWLockId ftsControlLock;
 static int *ftsSyncCount;
 int		   *ftsAction;
 static bool *ftsReadOnlyFlag;
 
-static uint16 *ftsSegDBTransientState;
+static struct FtsSegDBState *ftsSegDBTransientState;
 static int *ftsSegDBTransientCount;
 
 static PQExpBuffer entryBuffer = NULL;
@@ -47,16 +46,6 @@ static void CdbShutdown(void);
 static void initPQConnectionBuffer(CdbComponentDatabaseInfo *, char *, char *, PQExpBuffer, bool);
 static void markSegDBTransientState(int, bool);
 static void markSegDBPersistentState(int, bool);
-
-#define GET_TRANSIENT_VALID_STATE(id)  (id >> 15)		/* first bit indicates
-														 * valid column */
-#define GET_TRANSIENT_ISPRIMARY_STATE(id) ((id & 0x4000) >> 14) /* second bit indicates
-																 * isPrimary column */
-#define GET_TRANSIENT_SEGDB_ID(id) (id & 0x3FFF)		/* get segdb dbid */
-#define SET_TRANSIENT_SEGDB_STATE_INVALID(id) (id)		/* set segdb valid and
-														 * isPrimary flags */
-#define SET_TRANSIENT_SEGDB_STATE_PRIMARY(id) (id | 0xC000)		/* set segdb valid and
-																 * isPrimary flags */
 
 #define incFtsSyncCount() (localFtsSyncCount = ++*ftsSyncCount)
 
@@ -250,6 +239,7 @@ FtsReConfigureMPP(void)
 
 	elog(LOG, "FTS: reconfiguration is in progress");
 	disconnectAndDestroyAllGangs();
+
 	allocateGang(GANGTYPE_PRIMARY_WRITER, getMPPSegmentCount(), -1);
 	allocateGang(GANGTYPE_MIRROR_WRITER, getMPPSegmentCount(), -1);
 
@@ -319,8 +309,9 @@ FtsHandleNetFailure(SegmentDatabaseDescriptor ** segDB, int numOfFailed)
 	}
 }
 
-/* call by createGang during creating connections
- * return true if error need to be thrown
+/*
+ * FtsHandleGangConnectionFailure is called by createGang during
+ * creating connections return true if error need to be thrown
  */
 bool
 FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
@@ -462,32 +453,33 @@ markSegDBStatus(int dbid, bool state)
 }
 
 /* set segdb state transiently */
-void
+static void
 markSegDBTransientState(int dbid, bool state)
 {
+	int			i,
+		segindex;
+	CdbComponentDatabaseInfo *segDb = NULL;
+	CdbComponentDatabases *cdb_component_dbs = NULL;
+
 	/*
-	 * this checking should be taken care by synchronization, but check again
+	 * this checking should be taken of care by synchronization, but check again
 	 * for safety, may be removed in the future
 	 */
 	if (state)
 	{
-		/* we do not have this case right now */
-		assert(false);
+		/* we do not support automatic "revalidation" of segments */
+		elog(ERROR, "FTS: caller requesting automatic reset of segment to 'valid': operation unsupported.");
 	}
 	else
 	{
 		/* set transient state if state is false */
-		int			i,
-					segindex;
-		CdbComponentDatabaseInfo *segDb = NULL;
-		CdbComponentDatabases *cdb_component_dbs = NULL;
 
 		if (*ftsSegDBTransientCount >= FTS_MAX_TRANSIENT_STATE)
 			elog(ERROR, "FTS: the number of failed segdb exceeds the MPP limit");
 
 		cdb_component_dbs = getComponentDatabases();
-		*(ftsSegDBTransientState + *ftsSegDBTransientCount) =
-			SET_TRANSIENT_SEGDB_STATE_INVALID(dbid);
+		ftsSegDBTransientState[*ftsSegDBTransientCount].valid = false;
+		ftsSegDBTransientState[*ftsSegDBTransientCount].id = dbid;
 
 		elog(LOG, "FTS: mark segDB %d as invalid", dbid);
 
@@ -522,18 +514,20 @@ markSegDBTransientState(int dbid, bool state)
 
 		if (segDb->valid && !segDb->isprimary)
 		{
-			*(ftsSegDBTransientState + *ftsSegDBTransientCount) =
-				SET_TRANSIENT_SEGDB_STATE_PRIMARY(segDb->dbid);
+			ftsSegDBTransientState[*ftsSegDBTransientCount].primary = true;
+			ftsSegDBTransientState[*ftsSegDBTransientCount].valid = true;
+			ftsSegDBTransientState[*ftsSegDBTransientCount].id = segDb->dbid;
 
 			if (*ftsSegDBTransientCount >= FTS_MAX_TRANSIENT_STATE)
 				elog(ERROR, "FTS: the number of failed segdb exceeds the MPP limit");
 
 			(*ftsSegDBTransientCount)++;
 		}
+		return;
 	}
 }
 
-/* set segdb state permantally */
+/* set segdb state persistently */
 void
 markSegDBPersistentState(int dbid, bool state)
 {
@@ -541,6 +535,13 @@ markSegDBPersistentState(int dbid, bool state)
 	char		cmd[100];
 	PGresult   *rs;
 	CdbComponentDatabaseInfo *q = getEntrySegDB(&count);
+
+	if (state)
+	{
+		/* we do not support automatic "revalidation" of segments */
+		elog(ERROR, "FTS: caller requesting automatic reset of segment to 'valid': operation unsupported.");
+		return;
+	}
 
 	/* can only be maximum 2 dbs */
 	if (count > 1)
@@ -682,18 +683,6 @@ convertFaultActionValue(char *action)
 	}
 }
 
-/*
-bool convertReadOnlyValue(char *action)
-{
-	if (strcasecmp(action, "true")==0)
-		return true;
-	else if (strcasecmp(action, "false")==0)
-		return false;
-	else
-		elog(ERROR, "invalid string for mpp_set_read_only - %s", action );
-}
-*/
-
 bool
 verifyFtsSyncCount(void)
 {
@@ -723,29 +712,29 @@ applyTransientState(CdbComponentDatabases *cdb_component_dbs)
 				dbid;
 	CdbComponentDatabaseInfo *segDb;
 
-	/* do not synchronzie here, it may cause sync deadlock */
+	/* do not synchronize here, it may cause sync deadlock */
 	/*
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	  LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
 	*/
 
 	for (i = 0; i < *ftsSegDBTransientCount; i++)
 	{
-		dbid = GET_TRANSIENT_SEGDB_ID(*(ftsSegDBTransientState + i));
+		dbid = ftsSegDBTransientState[i].id;
 
 		for (j = 0; j < cdb_component_dbs->total_segment_dbs; j++)
 		{
 			segDb = cdb_component_dbs->segment_db_info + j;
 			if (segDb->dbid == dbid)
 			{
-				segDb->valid = GET_TRANSIENT_VALID_STATE(*(ftsSegDBTransientState + i));
-				segDb->isprimary = GET_TRANSIENT_ISPRIMARY_STATE(*(ftsSegDBTransientState + i));
+				segDb->valid = ftsSegDBTransientState[i].valid;
+				segDb->isprimary = ftsSegDBTransientState[i].primary;
 				break;
 			}
 		}
 	}
 
 	/*
-	LWLockRelease(ftsControlLock);
+	  LWLockRelease(ftsControlLock);
 	*/
 	return cdb_component_dbs;
 }
@@ -765,14 +754,14 @@ FtsEvaluateTransientState(void)
 
 	cdb_component_dbs = getComponentDatabases();
 
-	/* synchronzie fts */
+	/* synchronize fts */
 	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
 
 	for (i = 0; i < *ftsSegDBTransientCount; i++)
 	{
-		if (!GET_TRANSIENT_VALID_STATE(*(ftsSegDBTransientState + i)))
+		if (!ftsSegDBTransientState[i].valid)
 		{
-			dbid = GET_TRANSIENT_SEGDB_ID(*(ftsSegDBTransientState + i));
+			dbid = ftsSegDBTransientState[i].id;
 			for (j = 0; j < cdb_component_dbs->total_segment_dbs; j++)
 			{
 				segDbInfo = cdb_component_dbs->segment_db_info + j;
@@ -791,10 +780,13 @@ FtsEvaluateTransientState(void)
 	}
 
 	/* retest ok, reset all states */
+	memset(ftsSegDBTransientState, 0, *ftsSegDBTransientCount * sizeof(struct FtsSegDBState));
 	*ftsSegDBTransientCount = 0;
+
 	incFtsSyncCount();
 	assign_mpp_set_read_only(false, true, PGC_S_DEFAULT);
 	setRecoverTMOn();
+
 	LWLockRelease(ftsControlLock);
 }
 
