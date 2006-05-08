@@ -1364,9 +1364,9 @@ allocateGang(GangType type, int size, int content)
 	{
 		gp->allocated = true;
 
-		/* sanity check the gang -- should this be an error ? */
+		/* sanity check the gang */
 		if (!gangOK(gp))
-			elog(WARNING, "allocateGang returning a BAD gang");
+			elog(ERROR, "Segment connection failed: allocateGang attempted to return a bad gang.");
 	}
 
 	return gp;

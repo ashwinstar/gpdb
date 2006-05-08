@@ -25,6 +25,8 @@
 #include "cdb/cdbtm.h"
 #include "commands/dbcommands.h"
 
+#include "executor/spi.h"
+
 bool	   *ftsEnabled;
 static LWLockId ftsControlLock;
 static int *ftsSyncCount;
@@ -34,8 +36,6 @@ static bool *ftsReadOnlyFlag;
 static struct FtsSegDBState *ftsSegDBTransientState;
 static int *ftsSegDBTransientCount;
 
-static PQExpBuffer entryBuffer = NULL;
-static PGconn *entryConn = NULL;
 static int	localFtsSyncCount = -1;
 static bool InReConfigure = false;
 static char *currDbName=NULL;
@@ -527,50 +527,158 @@ markSegDBTransientState(int dbid, bool state)
 	}
 }
 
-/* set segdb state persistently */
-void
+/* 
+ * Set persistent segdb state: we MUST NOT be called from anything
+ * other than our main thread. (SPI isn't thread safe)
+ */
+static void
 markSegDBPersistentState(int dbid, bool state)
 {
+	TupleDesc tupdesc;
+	char *tmp, cmd[200];
+	int contentid, hasmirror=0;
+	int partnerid, partnervalid, partnerdefinedprimary, partnerisprimary;
+
 	int			count;
-	char		cmd[100];
 	PGresult   *rs;
-	CdbComponentDatabaseInfo *q = getEntrySegDB(&count);
+	CdbComponentDatabaseInfo *q;
+
+	PQExpBuffer entryBuffer = NULL;
+	PGconn *entryConn = NULL;
 
 	if (state)
 	{
-		/* we do not support automatic "revalidation" of segments */
-		elog(ERROR, "FTS: caller requesting automatic reset of segment to 'valid': operation unsupported.");
-		return;
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("FTS: can only automatically invalidate segments")));
 	}
 
-	/* can only be maximum 2 dbs */
+	if (SPI_OK_CONNECT != SPI_connect())
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("SPI_connect failed in FTS")));
+	}
+
+	/* We're going to use the content id for some sanity checking, and
+	 * to retrieve the "partner" database. We could get the partner
+	 * database directly: 
+	 * select dbid, valid, isprimary, definedprimary from mpp_configuration
+	 *   where content = 
+	 *			(select content from mpp_configuration where dbid = 2)
+	 *			and dbid != 2;
+	 * but the sanity checks seem worthwhile */
+	if (snprintf(cmd, sizeof(cmd),
+				 "select content from mpp_configuration where dbid=CAST(%d AS SMALLINT)",
+				 dbid) >= sizeof(cmd))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("FTS: could not format command string")));
+	}
+
+	if (SPI_OK_SELECT != SPI_execute(cmd, false, 0))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("FTS: SPI_execute failed")));
+	}
+
+	if (SPI_processed != 1)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("FTS: found %d rows for dbid %d", SPI_processed, dbid)));
+	}
+
+	tupdesc = SPI_tuptable->tupdesc;
+	contentid = atoi(SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 1));
+
+	if (contentid < 0)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("FTS: data mirror cannot modify qd-mirror attributes")));
+	}
+
+	if (snprintf(cmd, sizeof(cmd),
+				 "select dbid, isprimary, valid, definedprimary from mpp_configuration where content = %d and dbid != CAST(%d AS SMALLINT)",
+				 contentid, dbid) >= sizeof(cmd))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("FTS: could not format command string")));
+	}
+
+	if (SPI_OK_SELECT != SPI_execute(cmd, false, 0))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("FTS: SPI_execute failed")));
+	}
+
+	/* again we should have exactly one row (or zero if no mirror exists) */
+	if (SPI_processed > 1)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("FTS: found %d rows for content %d dbid != %d",
+						SPI_processed, contentid, dbid)));
+	}
+
+	hasmirror = SPI_processed;
+
+	if (hasmirror)
+	{
+		tupdesc = SPI_tuptable->tupdesc;
+		partnerid = atoi(SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 1));
+		if (partnerid < 1)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("FTS: invalid partner id for db %d", dbid)));
+		}
+
+		tmp = SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 2);
+		partnerisprimary = (tmp[0] == 't') ? 1 : 0;
+
+		tmp = SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 3);
+		partnervalid = (tmp[0] == 't') ? 1 : 0;
+
+		tmp = SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 4);
+		partnerdefinedprimary = (tmp[0] == 't') ? 1 : 0;
+	}
+
+	SPI_finish();
+
+	/* We now have the full row of the partner db, all of the
+	 * information that we need to update out catalog */
+
+	/* We can't use the SPI interface to update the database
+	 * persistently (we got here because a transaction is in the
+	 * middle of ABORTing.
+	 * 
+	 * The hack we use is to establish a utility mode connection to
+	 * ourselves to fix things up. */
+
+	q = getEntrySegDB(&count);
+
 	if (count > 1)
 		if (q->dbid != MppIdentity.dbid)
 			q = q + 1;
 
-	/*
-	 * We use PQExpBufferData instead of StringInfoData
-	 * because the former uses malloc, the latter palloc.
-	 * We are in a thread, and we CANNOT use palloc since it's not
-	 * thread safe.  We cannot call elog or ereport either for the
-	 * same reason.
-	 */
-	if (entryBuffer == NULL)
-	{
-		entryBuffer = createPQExpBuffer();
+	entryBuffer = createPQExpBuffer();
 
-		/*
-		 * initialize libpq connection buffer, we only need to initialize it
-		 * once
-		 */
-		initPQConnectionBuffer(q, NULL, NULL, entryBuffer, true);
-	}
+	/*
+	 * initialize libpq connection buffer, we only need to initialize it
+	 * once
+	 */
+	initPQConnectionBuffer(q, NULL, NULL, entryBuffer, true);
 
 	/*
 	 * Call libpq to connect
 	 */
-	if (entryConn == NULL)
-		entryConn = PQconnectdb(entryBuffer->data);
+	entryConn = PQconnectdb(entryBuffer->data);
 
 	if (PQstatus(entryConn) == CONNECTION_BAD)
 	{
@@ -581,27 +689,76 @@ markSegDBPersistentState(int dbid, bool state)
 		 */
 		char	   *error_message = strdup(PQerrorMessage(entryConn));
 
+		free(entryBuffer->data);
 		PQfinish(entryConn);
 		entryConn = NULL;
 		elog(PANIC, "FTS: setting segDB state failed, error connecting to entry db, error: %s", error_message);
 	}
 
-	sprintf(cmd, "select mpp_set_segdb_state(CAST(%d AS SMALLINT),%s)", dbid, state ? "TRUE" : "FALSE");
+	/* finally, we're ready to actually get some stuff done. */
 
-	rs = PQexec(entryConn, cmd);
+	do {
+		rs = PQexec(entryConn, "BEGIN");
+		if (PQresultStatus(rs) != PGRES_COMMAND_OK)
+			break;
 
-	if (PQresultStatus(rs) != PGRES_TUPLES_OK)
-	{
+		elog(DEBUG1, "marking dbid %d as invalid for contentid %d", dbid, contentid);
+
+		/* mark failed db as 'invalid' */
+		if (snprintf(cmd, sizeof(cmd),
+					 "update mpp_configuration set valid='f', isprimary='f' where dbid = CAST(%d AS SMALLINT)",
+					 dbid) >= sizeof(cmd))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("FTS: could not invalidate invalid node in config: format command string failure")));
+			break;
+		}
+
+		rs = PQexec(entryConn, cmd);
+		if (PQresultStatus(rs) != PGRES_COMMAND_OK)
+			break;
+
+		/* Mark mirror db 'primary' */
+		if (hasmirror && partnervalid)
+		{
+			elog(DEBUG1, "marking mirror partner (%d) as primary for contentid %d", partnerid, contentid);
+
+			if (snprintf(cmd, sizeof(cmd),
+						 "update mpp_configuration set isprimary='t' where dbid = CAST(%d AS SMALLINT)",
+						 partnerid) >= sizeof(cmd))
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("FTS: could not format command string")));
+				break;
+			}
+
+			rs = PQexec(entryConn, cmd);
+			if (PQresultStatus(rs) != PGRES_COMMAND_OK)
+				break;
+		}
+
+		rs = PQexec(entryConn, "COMMIT");
+		if (PQresultStatus(rs) != PGRES_COMMAND_OK)
+			break;
+
+		/* No error, we're ready to go */
+
+		elog(LOG, "FTS: mark segDB %d as %s", dbid, state ? "valid" : "invalid");
 		PQclear(rs);
 		PQfinish(entryConn);
-		entryConn = NULL;
-		elog(PANIC, "FTS: setting segDB state failed");
-	}
+		free(entryBuffer->data);
+		return;
+	} while (0);
 
-	elog(LOG, "FTS: mark segDB %d as %s", dbid, state ? "valid" : "invalid");
+	/* Something horrible happened while marking our database ? */
+
 	PQclear(rs);
 	PQfinish(entryConn);
-	entryConn = NULL;
+	free(entryBuffer->data);
+
+	elog(PANIC, "FTS: setting segDB state failed");
 }
 
 /*

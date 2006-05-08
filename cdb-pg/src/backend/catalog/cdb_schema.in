@@ -16,114 +16,11 @@
 
 SET log_min_messages = WARNING;
 
-
-
-
-
-
--- Add PL/PGSQL to the database
-CREATE FUNCTION plpgsql_call_handler () 
-		RETURNS language_handler 
-		AS '@pkglibdir@/plpgsql@dlsuffix@'
-		LANGUAGE 'C';
-		
--- PIN the function to the database
-INSERT INTO pg_depend SELECT 0,0,0, tableoid, oid, 0, 'p' FROM pg_proc WHERE proname = 'plpgsql_call_handler';
-
-CREATE TRUSTED LANGUAGE 'plpgsql' 
-		HANDLER plpgsql_call_handler
-		LANCOMPILER 'PL/pgSQL';
-
--- PIN the language to the database
-INSERT INTO pg_depend SELECT 0,0,0, tableoid, oid, 0, 'p' FROM pg_language WHERE lanname = 'plpgsql';
-
-
-
-CREATE OR REPLACE FUNCTION mpp_set_segdb_state( mpp_configuration.dbid%TYPE,
-			 					     			 mpp_configuration.valid%TYPE	 
-												)
-	RETURNS void
-	AS '
-		DECLARE
-			arg_dbid				ALIAS FOR $1;
-			arg_valid			    ALIAS FOR $2;
-            dprimary                mpp_configuration.definedprimary%TYPE;
-            segindex                mpp_configuration.content%TYPE;
-			
-		BEGIN		
-			--
-			-- Perform a little validation on the input parameters
-			--
-			IF arg_dbid IS NULL OR arg_valid IS NULL
-			THEN
-				RAISE EXCEPTION ''argument can not be NULL'';
-			END IF;
-
-            -- 
-            -- Determine this segdb is primary
-            --  
-            SELECT INTO dprimary, segindex
-                    definedprimary, content
-                FROM mpp_configuration
-                WHERE dbid = arg_dbid;
-                
-            IF NOT FOUND
-            THEN
-				RAISE EXCEPTION ''dbid not found in catalog'';
-            END IF;
-
-			--
-			-- update the row in mpp_configuration
-			--
-			UPDATE mpp_configuration SET valid = arg_valid, isprimary = (arg_valid and definedprimary)
-			WHERE dbid = arg_dbid;
-			IF NOT FOUND
-			THEN
-				RAISE EXCEPTION ''Failed to set state'';
-			END IF;
-
-			--
-			-- update the its isprimary column if primary is down
-			--
-            IF NOT dprimary and arg_valid
-            THEN
-                UPDATE mpp_configuration SET isprimary = arg_valid 
-				where dbid = arg_dbid and
-                      valid != (select valid from mpp_configuration where dbid != arg_dbid and content = segindex);
-            END IF;
-
-			--
-			-- update the its mirror entry in mpp_configuration
-			--
-			IF dprimary
-            THEN
-                UPDATE mpp_configuration SET isprimary = NOT arg_valid 
-                where dbid != arg_dbid and content = segindex and valid = true;
-
-            END IF;
-
-            SELECT INTO dprimary
-                    definedprimary
-                   FROM mpp_configuration where content = segindex and valid = true;
-    		IF NOT FOUND
-			THEN
-				RAISE WARNING ''No valid db of this segment is active'';
-			END IF;
-
-			RETURN;
-		END;
-	' LANGUAGE 'plpgsql';
-	
-COMMENT ON FUNCTION mpp_set_segdb_state( mpp_configuration.dbid%TYPE,
-	 					     			   mpp_configuration.valid%TYPE )
-	IS 'used to set the state of a component database of the mpp';
-	
 CREATE VIEW mpp_pgdatabase AS 
     SELECT *
       FROM mpp_pgdatabase() AS L(dbid smallint, isprimary boolean, content smallint, valid boolean, definedprimary boolean);
 
 GRANT SELECT ON mpp_pgdatabase TO PUBLIC;
-
 
 RESET log_min_messages;
 
