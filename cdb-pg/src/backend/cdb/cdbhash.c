@@ -199,13 +199,6 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			len = sizeof(intbuf);
 			break;
 			
-		case OIDOID:			/* object identifier(oid), maximum 4 billion */
-			intbuf = (int64) DatumGetUInt32(datum);		/* cast to 8 byte before
-														 * hashing */
-			buf = &intbuf;
-			len = sizeof(intbuf);
-			break;
-
 		case INT8OID:			/* ~18 digit integer, 8-byte storage */
 			intbuf = DatumGetInt64(datum);		/* cast to 8 byte before
 												 * hashing */
@@ -316,7 +309,22 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			if (len > 1)
 				len = ignoreblanks((char *) buf, len);
 			break;
-
+		
+		/*
+		 * ====== OBJECT IDENTIFIER TYPES ======
+		 */
+		case OIDOID:				/* object identifier(oid), maximum 4 billion */
+		case REGPROCOID:			/* function name */
+		case REGPROCEDUREOID:		/* function name with argument types */
+		case REGOPEROID:			/* operator name */
+		case REGOPERATOROID:		/* operator with argument types */
+		case REGCLASSOID:			/* relation name */
+		case REGTYPEOID:			/* data type name */
+			intbuf = (int64) DatumGetUInt32(datum);	/* cast to 8 byte before hashing */
+			buf = &intbuf;
+			len = sizeof(intbuf);
+			break;
+			
 		/*
 		 * ====== DATE/TIME TYPES ======
 		 */
