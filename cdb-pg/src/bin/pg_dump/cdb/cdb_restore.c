@@ -1257,9 +1257,9 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 	{
 		/* See whether we can create the file in the report directory */
 		if ( pszReportDirectory[ strlen(pszReportDirectory) - 1] != '/'  )
-			pszFormat = "%s/mpp_dump_%s.rpt";
+			pszFormat = "%s/mpp_restore_%s.rpt";
 		else
-			pszFormat = "%smpp_dump_%s.rpt";
+			pszFormat = "%smpp_restore_%s.rpt";
 		
 		pszReportPathName = MakeString( pszFormat, pszReportDirectory, pOptions->pszKey );
 		
