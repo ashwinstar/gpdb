@@ -588,8 +588,6 @@ DefineDomain(CreateDomainStmt *stmt)
 				if (strcmp(n, "path") == 0 ||
 					strcmp(n, "box") == 0 ||
 					strcmp(n, "circle") == 0 ||
-					strcmp(n, "abstime") == 0 ||
-					strcmp(n, "reltime") == 0 ||
 					strcmp(n, "tinterval") == 0 ||
 					strcmp(n, "regproc") == 0 ||
 					strcmp(n, "lseg") == 0 ||

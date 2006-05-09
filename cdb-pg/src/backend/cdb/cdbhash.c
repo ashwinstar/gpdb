@@ -23,6 +23,7 @@
 #include "utils/date.h"
 #include "utils/cash.h"
 #include "utils/datetime.h"
+#include "utils/nabstime.h"
 #include "utils/varbit.h"
 #include "fmgr.h"
 #include "cdb/cdbhash.h"
@@ -42,6 +43,9 @@
 
 /* Constant used for hashing a NAN value  */
 #define NAN_VAL ((uint32)0XE0E0E0E1)
+
+/* Constant used for hashing an invalid value  */
+#define INVALID_VAL ((uint32)0XD0D0D0D1) 
 
 /* Fast mod using a bit mask, assuming that y is a power of 2 */
 #define FASTMOD(x,y)		((x) & ((y)-1))
@@ -157,11 +161,12 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	TimeADT		timebuf;
 	TimeTzADT  *timetzptr;
 	Interval   *intervalptr;
+	AbsoluteTime abstime_buf;
+	RelativeTime reltime_buf;
 	
 	Numeric		num;
 	bool		bool_buf;
 	Name		namebuf;
-	uint32		nanbuf;
 	
 	ArrayType  *arrbuf;
 	inet		 *inetptr; /* inet/cidr */
@@ -174,6 +179,12 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	oidvector  *oidvec_buf;
 	
 	Cash		cash_buf;
+	
+	/*
+	 * special case buffers
+	 */
+	uint32		nanbuf;
+	uint32		invalidbuf;
 
 	/*
 	 * Select the hash to be performed according to the field type we are adding to the
@@ -379,7 +390,43 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			 */
 			len = sizeof(intervalptr->time) + sizeof(intervalptr->month);
 			break;
+			
+		case ABSTIMEOID:
+			abstime_buf = DatumGetAbsoluteTime(datum);
+			
+			if (abstime_buf == INVALID_ABSTIME)
+			{
+				/* hash to a constant value */
+				invalidbuf = INVALID_VAL;
+				len = sizeof(invalidbuf);
+				buf = &invalidbuf;
+			}
+			else
+			{
+				len = sizeof(abstime_buf);
+				buf = &abstime_buf;
+			}
+					
+			break;
 
+		case RELTIMEOID:
+			reltime_buf = DatumGetRelativeTime(datum);
+			
+			if (reltime_buf == INVALID_RELTIME)
+			{
+				/* hash to a constant value */
+				invalidbuf = INVALID_VAL;
+				len = sizeof(invalidbuf);
+				buf = &invalidbuf;
+			}
+			else
+			{
+				len = sizeof(reltime_buf);
+				buf = &reltime_buf;
+			}
+				
+			break;
+			
 		/*
 		 * ======= NETWORK TYPES ========
 		 */
