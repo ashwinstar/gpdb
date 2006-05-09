@@ -238,12 +238,7 @@ BUILD_SEGMENT_INSTANCES () {
 	for SEG_INFO in "${REBUILD_ARRAY[@]}"
 	do
 		SET_VAR $SEG_INFO
-		if [ `$TRUSTED_SHELL ${SEG_HOSTNAME} "$GREP -c \"${MPP_LIBRARY_PATH}/plpgsql.so\" ${SHARE_PATH}/$SCHEMA_FILE"` -eq 0 ];then
-			LOG_MSG "[INFO]:-Setting path for plpgsql.so"
-			ED_FILE ${SHARE_PATH}/$SCHEMA_FILE plpgsql.so "AS '${MPP_LIBRARY_PATH}/plpgsql.so'" 1 $SEG_HOSTNAME
-		else
-			LOG_MSG "[INFO]:-Path correct for plpgsql.so, skipping edit"
-		fi	
+
 		LOG_MSG "[INFO]:-Processing segment host $SEG_HOSTNAME port $SEG_PORT data directory $SEG_DATADIR dbid $SEG_DBID"
 		RUN_COMMAND_REMOTE ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};$INITDB -E $ENCODING -D $SEG_DATADIR"
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${SEG_HOSTNAME} \"$RM -rf $SEG_DATADIR\""

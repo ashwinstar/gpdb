@@ -654,12 +654,6 @@ CREATE_QD_DB () {
 		if [ $EXISTS -eq 0 ]; then
 				ERROR_EXIT "[FATAL]:-Master directory $MPP_DIR already exists" 2
 		fi
-		if [ `$GREP -c "${MPP_LIBRARY_PATH}/plpgsql.so" ${SHARE_PATH}/$SCHEMA_FILE` -eq 0 ];then
-			LOG_MSG "[INFO]:-Setting path for plpgsql.so"
-			ED_FILE ${SHARE_PATH}/$SCHEMA_FILE plpgsql.so "AS '${MPP_LIBRARY_PATH}/plpgsql.so'" 1
-		else
-			LOG_MSG "[INFO]:-Path correct for plpgsql.so, skipping edit"
-		fi
 		LOG_MSG "[INFO]:-Initializing Master Postgres instance $MPP_DIR"
 		$EXPORT_LIB_PATH
 		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR"
@@ -836,13 +830,6 @@ CREATE_QES_MIRROR () {
 
 PROCESS_QE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		if [ `$TRUSTED_SHELL ${MPP_HOSTNAME} "$GREP -c \"${MPP_LIBRARY_PATH}/plpgsql.so\" ${SHARE_PATH}/$SCHEMA_FILE"` -eq 0 ];then
-			LOG_MSG "[INFO]:-Setting path for plpgsql.so"
-			ED_FILE ${SHARE_PATH}/$SCHEMA_FILE plpgsql.so "AS '${MPP_LIBRARY_PATH}/plpgsql.so'" 1 $MPP_HOSTNAME
-		else
-			LOG_MSG "[INFO]:-Path correct for plpgsql.so, skipping edit"
-		fi
-
 		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB -E $ENCODING -D $MPP_DIR"
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
