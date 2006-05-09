@@ -23,29 +23,3 @@ CREATE VIEW mpp_pgdatabase AS
 GRANT SELECT ON mpp_pgdatabase TO PUBLIC;
 
 RESET log_min_messages;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
