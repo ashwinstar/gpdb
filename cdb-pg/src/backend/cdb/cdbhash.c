@@ -163,6 +163,8 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	Interval   *intervalptr;
 	AbsoluteTime abstime_buf;
 	RelativeTime reltime_buf;
+	TimeInterval tinterval;
+	AbsoluteTime tinterval_len;
 	
 	Numeric		num;
 	bool		bool_buf;
@@ -425,6 +427,34 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 				buf = &reltime_buf;
 			}
 				
+			break;
+			
+		case TINTERVALOID:
+			tinterval = DatumGetTimeInterval(datum);
+			
+			/*
+			 * check if a valid interval. the '0' status code
+			 * stands for T_INTERVAL_INVAL which is defined in
+			 * nabstime.c. We use the actual value instead
+			 * of defining it again here.
+			 */
+			if(tinterval->status == 0 ||
+			   tinterval->data[0] == INVALID_ABSTIME ||
+			   tinterval->data[1] == INVALID_ABSTIME)
+			{
+				/* hash to a constant value */
+				invalidbuf = INVALID_VAL;
+				len = sizeof(invalidbuf);
+				buf = &invalidbuf;				
+			}
+			else
+			{
+				/* normalize on length of the time interval */
+				tinterval_len = tinterval->data[1] -  tinterval->data[0];
+				len = sizeof(tinterval_len);
+				buf = &tinterval_len;	
+			}
+
 			break;
 			
 		/*
