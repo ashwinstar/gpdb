@@ -1043,7 +1043,7 @@ LOG_MSG "[INFO]:-Standby Master $STANDBY_HOSTNAME has been configured"
 LOG_MSG "[INFO]:-To activate the Standby Master Segment in the event of Master failure"
 LOG_MSG "[INFO]:-Review options for mppactivatestandby.sh"
 LOG_MSG "[INFO]:-To re-activate a previously failed Master"
-LOG_MSG "[INFO]:-Review options for mppactivatemaster,sh"
+LOG_MSG "[INFO]:-Review options for mppactivatemaster.sh"
 else
 LOG_MSG "[INFO]:-To initialize a Standby Master Segment for this MPP instance"
 LOG_MSG "[INFO]:-Review options for mppinitstandby.sh"
