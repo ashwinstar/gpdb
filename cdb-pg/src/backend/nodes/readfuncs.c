@@ -1394,6 +1394,18 @@ _readTypeName(void)
 	READ_DONE();
 }
 
+static TypeCast *
+_readTypeCast(void)
+{
+	READ_LOCALS(TypeCast);
+
+	READ_NODE_FIELD(arg);
+	READ_NODE_FIELD(typename);
+
+	READ_DONE();
+}
+
+
 /*
  * _readRangeTblEntry
  */
@@ -2422,6 +2434,7 @@ static ParseNodeInfo infoAr[] =
 	{"TARGETENTRY", (ReadFn)_readTargetEntry},
 	{"TIDSCAN", (ReadFn)_readTidScan},
 	{"TRUNCATESTMT", (ReadFn)_readTruncateStmt},
+	{"TYPECAST", (ReadFn)_readTypeCast},
 	{"TYPENAME", (ReadFn)_readTypeName},
 	{"UNIQUE", (ReadFn)_readUnique},
 	{"VACUUMSTMT", (ReadFn)_readVacuumStmt},
