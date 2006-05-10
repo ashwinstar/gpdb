@@ -984,12 +984,18 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 
         /*
 		 * Wait for socket events.
+		 *
+		 * In order to handle errors at intervals less than the full
+		 * timeout length, we limit our select(2) wait to a maximum of
+		 * 500ms.
 		 */
         if (timeout_ms > 0)
         {
-            timeout.tv_sec = timeout_ms / 1000;
-            timeout.tv_usec = (timeout_ms - (timeout.tv_sec * 1000)) * 1000;
-            Assert(timeout_ms == timeout.tv_sec*1000 + timeout.tv_usec/1000);
+			int select_ms = MIN(500, timeout_ms);
+
+            timeout.tv_sec = select_ms / 1000; /* 0 */
+            timeout.tv_usec = (select_ms - (timeout.tv_sec * 1000)) * 1000;
+            Assert(select_ms == timeout.tv_sec*1000 + timeout.tv_usec/1000);
         }
         else
             timeout.tv_sec = timeout.tv_usec = 0;
