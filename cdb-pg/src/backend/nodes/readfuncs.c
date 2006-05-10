@@ -1498,6 +1498,33 @@ _readCreateSchemaStmt(void)
 	READ_DONE();
 }
 
+
+static CreatePLangStmt *
+_readCreatePLangStmt(void)
+{
+	READ_LOCALS(CreatePLangStmt);
+	
+	READ_STRING_FIELD(plname);
+	READ_NODE_FIELD(plhandler);
+	READ_NODE_FIELD(plvalidator);
+	READ_BOOL_FIELD(pltrusted);
+	
+	READ_DONE();
+
+}
+
+static DropPLangStmt *
+_readDropPLangStmt(void)
+{
+	READ_LOCALS(DropPLangStmt);
+
+	READ_STRING_FIELD(plname);
+	READ_ENUM_FIELD(behavior,DropBehavior);
+	
+	READ_DONE();
+
+}
+
 static CreateSeqStmt *
 _readCreateSeqStmt(void)
 {
@@ -2362,6 +2389,7 @@ static ParseNodeInfo infoAr[] =
 	{"CREATEDBSTMT", (ReadFn)_readCreatedbStmt},
 	{"CREATEDOMAINSTMT", (ReadFn)_readCreateDomainStmt},
 	{"CREATEFUNCSTMT", (ReadFn)_readCreateFunctionStmt},
+	{"CREATEPLANGSTMT", (ReadFn)_readCreatePLangStmt},
 	{"CREATEROLESTMT", (ReadFn)_readCreateRoleStmt},
 	{"CREATESCHEMASTMT", (ReadFn)_readCreateSchemaStmt},
 	{"CREATESEQSTMT", (ReadFn)_readCreateSeqStmt},
@@ -2369,6 +2397,7 @@ static ParseNodeInfo infoAr[] =
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DEFELEM", (ReadFn)_readDefElem},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
+	{"DROPPLANGSTMT", (ReadFn)_readDropPLangStmt},
 	{"DROPPROPSTMT", (ReadFn)_readDropPropertyStmt},
 	{"DROPROLESTMT", (ReadFn)_readDropRoleStmt},
 	{"DROPSTMT", (ReadFn)_readDropStmt},

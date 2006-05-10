@@ -2290,6 +2290,29 @@ _outCreateSchemaStmt(StringInfo str, CreateSchemaStmt *node)
 }
 
 static void
+_outCreatePLangStmt(StringInfo str, CreatePLangStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEPLANGSTMT");
+	
+	WRITE_STRING_FIELD(plname);
+	WRITE_NODE_FIELD(plhandler);
+	WRITE_NODE_FIELD(plvalidator);
+	WRITE_BOOL_FIELD(pltrusted);
+
+}
+
+static void
+_outDropPLangStmt(StringInfo str, DropPLangStmt *node)
+{
+	WRITE_NODE_TYPE("DROPPLANGSTMT");
+
+	WRITE_STRING_FIELD(plname);
+	WRITE_ENUM_FIELD(behavior,DropBehavior);
+
+}
+
+
+static void
 _outVacuumStmt(StringInfo str, VacuumStmt *node)
 {
 	WRITE_NODE_TYPE("VACUUMSTMT");
@@ -2849,6 +2872,12 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_CreateSchemaStmt:
 				_outCreateSchemaStmt(str, obj);
+				break;
+			case T_CreatePLangStmt:
+				_outCreatePLangStmt(str, obj);
+				break;
+			case T_DropPLangStmt:
+				_outDropPLangStmt(str, obj);
 				break;
 			case T_VacuumStmt:
 				_outVacuumStmt(str, obj);
