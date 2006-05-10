@@ -25,6 +25,7 @@
 #include "utils/datetime.h"
 #include "utils/nabstime.h"
 #include "utils/varbit.h"
+#include "utils/acl.h"
 #include "fmgr.h"
 #include "cdb/cdbhash.h"
 
@@ -181,6 +182,8 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	oidvector  *oidvec_buf;
 	
 	Cash		cash_buf;
+	AclItem	   *aclitem_ptr;
+	uint32		aclitem_buf;
 	
 	/*
 	 * special case buffers
@@ -491,7 +494,7 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			len = VARBITBYTES(vbitptr);
 			buf = (char *) VARBITS(vbitptr);
 			break;
-			
+
 		/*
 		 * ======= other types =======
 		 */
@@ -500,7 +503,18 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			buf = &bool_buf;
 			len = sizeof(bool_buf);
 			break;
-
+			
+		/*
+		 * We prepare the hash key for aclitems just like postgresql does.
+		 * (see code and comment in acl.c: hash_aclitem() ).
+		 */
+		case ACLITEMOID:
+			aclitem_ptr = DatumGetAclItemP(datum);
+			aclitem_buf = (uint32) (aclitem_ptr->ai_privs + aclitem_ptr->ai_grantee + aclitem_ptr->ai_grantor);
+			buf = &aclitem_buf;
+			len = sizeof(aclitem_buf);
+			break;
+			
 		/*
 		 * ANYARRAY is a pseudo-type. We use it to include
 		 * any of the array types (OIDs 1007-1033 in pg_type.h).
@@ -531,7 +545,7 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			len = sizeof(Cash);
 			buf = &cash_buf;
 			break;
-			
+				
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_YET),

@@ -588,13 +588,11 @@ DefineDomain(CreateDomainStmt *stmt)
 				if (strcmp(n, "path") == 0 ||
 					strcmp(n, "box") == 0 ||
 					strcmp(n, "circle") == 0 ||
-					strcmp(n, "regproc") == 0 ||
 					strcmp(n, "lseg") == 0 ||
 					strcmp(n, "polygon") == 0 ||
 					strcmp(n, "line") == 0 ||
 					strcmp(n, "unknown") == 0 ||
-					strcmp(n, "aclitem") == 0 ||
-					strcmp(n, "anyelement") == 0 ||
+					strcmp(n, "aclitem") == 0 || /* need to know how to serialize */
 					strcmp(n, "smgr") == 0 ||
 					strcmp(n, "point") == 0)
 					ereport(ERROR,
