@@ -6024,7 +6024,7 @@ resync_xlog_to_mirror(void)
     lseek(xlogfilefd, offset, SEEK_SET);
     while ((readlen = read(xlogfilefd, buf, blocksz)) != 0)
     {
-        char cmd[50];
+		char cmd[MAXFNAMELEN + 30];
 
         if (readlen == -1)
         {
