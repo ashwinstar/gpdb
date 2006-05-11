@@ -266,6 +266,7 @@ PortalDefineQuery(Portal portal,
 		if(portal->is_cursor && Mpp_role == MPP_ROLE_DISPATCH)
 		{
 			if(strcmp(commandTag, "FETCH") != 0 &&
+			   strcmp(commandTag, "MOVE") != 0 &&
 			   strcmp(commandTag, "CLOSE CURSOR") != 0 && 
 			   strcmp(commandTag, "BEGIN") != 0 &&
 			   strcmp(commandTag, "COMMIT") != 0 &&
