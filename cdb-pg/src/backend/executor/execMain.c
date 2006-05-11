@@ -146,7 +146,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	EState	   *estate;
 	MemoryContext oldcontext;
 	MppExecIdentity exec_identity;
-	bool		shouldDispatch;
+	bool		shouldDispatch, needXact;
 	
 	/* sanity checks: queryDesc must not be started already */
 	Assert(queryDesc != NULL);
@@ -334,10 +334,14 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 																   queryDesc->plantree->nParamExec);
 			}
 			
-            /*
-             * Start a global transaction and reconfigure the cluster if needed.
-             */
-			cdbdisp_startDtxTransaction();
+			needXact = isCurrentDtxDirty();
+			if (needXact)
+			{
+				/*
+				 * Start a global transaction and reconfigure the cluster if needed.
+				 */
+				cdbdisp_startDtxTransaction();
+			}
 						
 			/*
 			 * This call returns after launching the threads that send the
@@ -345,7 +349,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
              * finish unless an error is detected before all slices have been
              * dispatched.
 			 */
-			cdbdisp_dispatchPlan(queryDesc, true, &estate->primaryResults, &estate->mirrorResults);
+			cdbdisp_dispatchPlan(queryDesc, needXact, true, &estate->primaryResults, &estate->mirrorResults);
 		}
 		
 		/*
@@ -374,7 +378,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
 			}
 		}
-		else if(exec_identity == MPP_ROOT_SLICE)
+		else if (exec_identity == MPP_ROOT_SLICE)
 		{
 			estate->es_seqserver_is_setup = true;
 			SetupSequenceServer(estate->es_sliceTable);
@@ -386,7 +390,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
 			}
 		}
-		else if(exec_identity != MPP_IGNORE)
+		else if (exec_identity != MPP_IGNORE)
 		{
 			/* should never happen */
 			ereport(ERROR,

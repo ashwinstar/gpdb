@@ -1666,7 +1666,7 @@ void mppExecutorCleanup(EState *estate)
 		cdbdisp_handleError(estate->primaryResults, estate->mirrorResults);
 	
 	/* Clean up the Sequence Server */
-	if(estate->es_seqserver_is_setup)
+	if (estate->es_seqserver_is_setup)
 	{
 		TeardownSequenceServer();
 		estate->es_seqserver_is_setup = false;

@@ -280,6 +280,15 @@ setCurrentDtxDirty(void)
 	isDirty = true;
 }
 
+/*
+ * The executor can avoid starting a distributed transaction if it knows that
+ * the current dtx is clean and we aren't in a user-started global transaction.
+ */
+bool
+isCurrentDtxDirty(void)
+{
+	return isDirty || (currentGxact != NULL);
+}
 
 /*
  * committing a global transaction, called by internal

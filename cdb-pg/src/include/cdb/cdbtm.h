@@ -100,6 +100,8 @@ extern void setCurrentDtxDirty(void);
 extern int	condCommitDtxTransaction(bool onephase);
 extern int	condRollbackDtxTransaction(void);
 
+extern bool isCurrentDtxDirty(void);
+
 extern bool dispatchDtxCommand(const char *cmd, bool dispatchToMirrors);
 
 extern int	startTMXactScan(void);

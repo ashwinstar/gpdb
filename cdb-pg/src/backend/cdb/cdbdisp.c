@@ -2007,6 +2007,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
  */
 void
 cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
+					 bool planRequiresTxn,
 					 bool cancelOnError,
 					 struct CdbDispatchResults ** pPrimaryResults,		/* OUT */
 					 struct CdbDispatchResults ** pMirrorResults)		/* OUT */
@@ -2029,7 +2030,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 				sliceLim;
 	int			iSlice;
 	int			txnOptions;
-	int 			datasize = 32*1024;
+	int			datasize = 32*1024;
 	pre_dispatch_function_evaluation_context pcontext;
 
 	*pPrimaryResults = NULL;
@@ -2056,7 +2057,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * Keep old value so we can restore it.  We use this field as a parameter.
 	 */
 	oldLocalSlice = sliceTbl->localSlice;
-
 
 	/*
 	 * Let's evaluate STABLE functions now, so we get consistent values on the QEs
@@ -2219,10 +2219,13 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	/* Serialize a version of our snapshot */
 	szSnapshotInfo = serializeSnapshot();
 	
-	/* Generate our transction isolations.  We always want Plan based dispatch
-	 * to be in a global transaction, so we hardwire the "true" to the function
+	/* 
+	 * Generate our transction isolations.  We generally want Plan
+	 * based dispatch to be in a global transaction. The executor gets
+	 * to decide if the special circumstances exist which allow us to
+	 * dispatch without starting a global xact.
 	 */
-	txnOptions = generateTxnOptions(true);
+	txnOptions = generateTxnOptions(planRequiresTxn);
 	
 	/*
 	 * Now we need to call CDBDispatchCommand once per slice.  Each such

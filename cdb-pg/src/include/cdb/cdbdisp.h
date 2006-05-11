@@ -219,6 +219,7 @@ CdbDoCommandOnAllGangs(const char *szCommand, bool cancelOnError, bool startTran
  */
 void
 cdbdisp_dispatchPlan(struct QueryDesc              *queryDesc,
+                     bool                           planRequiresTxn,
                      bool                           cancelOnError,
                      struct CdbDispatchResults    **pPrimaryResults,  /* OUT */
                      struct CdbDispatchResults    **pMirrorResults);  /* OUT */

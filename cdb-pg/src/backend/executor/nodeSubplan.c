@@ -25,6 +25,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbtm.h"
 #include "cdb/ml_ipc.h"
 #include "executor/executor.h"
 #include "executor/nodeSubplan.h"
@@ -977,7 +978,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	QueryDesc  *queryDesc = NULL;
 
     struct CdbDispatchResults  *primaryResults = NULL;
-	bool		        shouldDispatch = false;
+	bool		needXact, shouldDispatch = false;
 	volatile	bool shouldTeardownInterconnect = false;
 
 	if (Mpp_role == MPP_ROLE_DISPATCH &&
@@ -1029,21 +1030,24 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	 */
 	PG_TRY();
 	{
-
 		if (shouldDispatch)
 		{
-            /*
-             * Start a global transaction and reconfigure the cluster if needed.
-             */
-            cdbdisp_startDtxTransaction();
 
+			needXact = isCurrentDtxDirty();
+			if (needXact)
+			{
+				/*
+				 * Start a global transaction and reconfigure the cluster if needed.
+				 */
+				cdbdisp_startDtxTransaction();
+			}
 		
 			/*
 			 * This call returns after launching the threads that send the
              * command to the appropriate segdbs.  It does not wait for them
              * to finish unless an error is detected before all are dispatched.
 			 */
-			cdbdisp_dispatchPlan(queryDesc, true, &primaryResults, NULL);
+			cdbdisp_dispatchPlan(queryDesc, needXact, true, &primaryResults, NULL);
 
 
 			SetupSequenceServer(queryDesc->estate->es_sliceTable);
@@ -1054,8 +1058,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			shouldTeardownInterconnect = true;
 			SetupInterconnect( queryDesc->estate->es_sliceTable,
 							   queryDesc->estate->es_sliceTable->localSlice);
-							
-				
 		}
 
 
