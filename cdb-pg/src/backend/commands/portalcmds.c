@@ -145,9 +145,13 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 	portal->cursorOptions = stmt->options;
 	if (!(portal->cursorOptions & (CURSOR_OPT_SCROLL | CURSOR_OPT_NO_SCROLL)))
 	{
-		if (ExecSupportsBackwardScan(plan))
+		/*
+		 * MPP: we do not allow backward scans at the moment regardless
+		 * of any additional runtime overhead. Comment out this option:
+		 */
+		/*if (ExecSupportsBackwardScan(plan))
 			portal->cursorOptions |= CURSOR_OPT_SCROLL;
-		else
+		else*/
 			portal->cursorOptions |= CURSOR_OPT_NO_SCROLL;
 	}
 
