@@ -20,6 +20,10 @@
 
 #include "utils/guc.h"
 
+#ifndef MIN
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#endif
+
 /*
  * ----- Declarations of MPP global variables ------
  */

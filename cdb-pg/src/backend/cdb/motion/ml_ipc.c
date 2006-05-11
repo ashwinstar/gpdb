@@ -39,6 +39,10 @@
 #define SHUT_WR SD_SEND
 #endif
 
+#ifndef MIN
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#endif
+
 /*
 #define AMS_VERBOSE_LOGGING
 */

@@ -46,10 +46,6 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbllize.h"
 
-#ifndef MIN
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
-#endif
-
 /*
  * Parameter structure for the DispatchCommand threads
  */
