@@ -4955,6 +4955,7 @@ ATPrepAlterColumnType(List **wqueue,
 	Oid			targettype;
 	Node	   *transform;
 	NewColumnValue *newval;
+	MppPolicy  *policy;
 	ParseState *pstate = make_parsestate(NULL);
 
 	/* lookup the attribute so we can check inheritance status */
@@ -4991,6 +4992,22 @@ ATPrepAlterColumnType(List **wqueue,
 
 	/* make sure datatype is legal for a column */
 	CheckAttributeType(colName, targettype);
+	
+	policy = rel->rd_cdbpolicy;
+	if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
+	{
+		int			ia = 0;
+
+		for (ia = 0; ia < policy->nattrs; ia++)
+		{
+			if (attnum == policy->attrs[ia])
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("You cannot alter the datatype of a column that is used for the distribution of the table")));
+			}
+		}
+	}
 
 	/*
 	 * Set up an expression to transform the old data value to the new type.
