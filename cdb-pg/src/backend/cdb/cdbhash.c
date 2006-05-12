@@ -604,6 +604,54 @@ cdbhashreduce(CdbHash *h)
 	return result;
 }
 
+bool isMppHashable(Oid typid)
+{
+	switch(typid)
+	{
+		case INT2OID:		
+		case INT4OID:		
+		case INT8OID:		
+		case FLOAT4OID:
+		case FLOAT8OID:
+		case NUMERICOID:
+		case CHAROID:			
+		case BPCHAROID: 
+		case TEXTOID:	
+		case VARCHAROID:
+		case BYTEAOID:
+		case NAMEOID:
+		case OIDOID:			
+		case REGPROCOID:		
+		case REGPROCEDUREOID:		
+		case REGOPEROID:		
+		case REGOPERATOROID:		
+		case REGCLASSOID:			
+		case REGTYPEOID:		
+		case TIMESTAMPOID:		
+		case TIMESTAMPTZOID:	
+		case DATEOID:			
+		case TIMEOID:			
+		case TIMETZOID: 
+		case INTERVALOID:		
+		case ABSTIMEOID:
+		case RELTIMEOID:
+		case TINTERVALOID:
+		case INETOID:
+		case CIDROID:
+		case MACADDROID:
+		case BITOID:
+		case VARBITOID:
+		case BOOLOID:			
+		case ACLITEMOID:
+		case ANYARRAYOID:	
+		case INT2VECTOROID:
+		case OIDVECTOROID:	
+		case CASHOID: 
+			return true;
+		default:
+			return false;
+	}
+}
 
 /*
  * fnv1_32_buf - perform a 32 bit FNV 1 hash on a buffer

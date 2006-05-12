@@ -77,4 +77,11 @@ extern void cdbhashnull(CdbHash *h);
  */
 extern unsigned int cdbhashreduce(CdbHash *h);
 
+/*
+ * Return true if Oid is hashable internally in MPP.
+ */
+extern bool isMppHashable(Oid typid);
+
+
+
 #endif   /* CDBHASH_H */
