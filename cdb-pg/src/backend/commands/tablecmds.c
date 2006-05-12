@@ -341,18 +341,6 @@ DefineRelation_int(CreateStmt *stmt,
 	 */
 	StrNCpy(relname, stmt->relation->relname, NAMEDATALEN);
 
-
-	/* We can't support Temp objects until we fix MPP-475.
-	 *
-	 * Until then we'll simply state that we don't handle temp objects
-	 */
-	if( Mpp_role == MPP_ROLE_DISPATCH && stmt->relation->istemp)
-	{
-		ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_YET),
-						errmsg("Bizgres MPP support for TEMP objects is not available yet.")
-						));
-	}
-
 	/*
 	 * Check consistency of arguments
 	 */
@@ -3151,8 +3139,8 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 					strcmp(n, "polygon") == 0 ||
 					strcmp(n, "line") == 0 ||
 					strcmp(n, "unknown") == 0 ||
-					strcmp(n, "aclitem") == 0 || /* need to know how to serialize */ 
-					strcmp(n, "smgr") == 0 || 
+					strcmp(n, "aclitem") == 0 || /* need to know how to serialize */
+					strcmp(n, "smgr") == 0 ||
 					strcmp(n, "point") == 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -5973,14 +5961,14 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 	newrnode.spcNode = newTableSpace;
 
 	dstrel = smgropen(newrnode);
-	smgrcreate(dstrel, rel->rd_istemp, false);
+	smgrcreate(dstrel, rel->rd_isLocalBuf, false);
 
 	/* copy relation data to the new physical file */
 	copy_relation_data(rel, dstrel);
 
 	/* schedule unlinking old physical file */
 	RelationOpenSmgr(rel);
-	smgrscheduleunlink(rel->rd_smgr, rel->rd_istemp);
+	smgrscheduleunlink(rel->rd_smgr, rel->rd_isLocalBuf);
 
 	/*
 	 * Now drop smgr references.  The source was already dropped by

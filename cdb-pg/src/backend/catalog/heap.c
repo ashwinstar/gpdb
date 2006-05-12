@@ -279,6 +279,7 @@ heap_create(const char *relname,
 									 tupDesc,
 									 relid,
 									 reltablespace,
+                                     relkind,           /*CDB*/
 									 shared_relation);
 
 	/*
@@ -288,7 +289,7 @@ heap_create(const char *relname,
 	{
 		Assert(rel->rd_smgr == NULL);
 		RelationOpenSmgr(rel);
-		smgrcreate(rel->rd_smgr, rel->rd_istemp, false);
+		smgrcreate(rel->rd_smgr, rel->rd_isLocalBuf, false);
 	}
 
 	return rel;
@@ -1203,7 +1204,7 @@ heap_drop_with_catalog(Oid relid)
 		rel->rd_rel->relkind != RELKIND_COMPOSITE_TYPE)
 	{
 		RelationOpenSmgr(rel);
-		smgrscheduleunlink(rel->rd_smgr, rel->rd_istemp);
+		smgrscheduleunlink(rel->rd_smgr, rel->rd_isLocalBuf);
 	}
 
 	/*

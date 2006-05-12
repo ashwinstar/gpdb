@@ -67,6 +67,7 @@
 #include "utils/typcache.h"
 
 #include "cdb/cdbcat.h"         /* MppPolicy */
+#include "cdb/cdbvars.h"        /* Mpp_role */
 
 
 /*
@@ -743,6 +744,18 @@ RelationBuildDesc(Oid targetRelId, Relation oldrelation)
 	relation->rd_createSubid = InvalidSubTransactionId;
 	relation->rd_istemp = isTempNamespace(relation->rd_rel->relnamespace);
 
+    /*
+     * CDB: On QEs, temp relations must use shared buffer cache so data
+     * will be visible to all segmates.  On QD, sequence objects must
+     * use shared buffer cache so data will be visible to sequence server.
+     */
+    if (relation->rd_istemp &&
+        relation->rd_rel->relkind != RELKIND_SEQUENCE &&
+        Mpp_role != MPP_ROLE_EXECUTE)
+        relation->rd_isLocalBuf = true;
+    else
+        relation->rd_isLocalBuf = false;
+
 	/*
 	 * initialize the tuple descriptor (relation->rd_att).
 	 */
@@ -1207,6 +1220,7 @@ formrdesc(const char *relationName, Oid relationReltype,
 	relation->rd_isnailed = true;
 	relation->rd_createSubid = InvalidSubTransactionId;
 	relation->rd_istemp = false;
+    relation->rd_isLocalBuf = false;    /*CDB*/
 
 	/*
 	 * initialize relation tuple form
@@ -2012,6 +2026,7 @@ RelationBuildLocalRelation(const char *relname,
 						   TupleDesc tupDesc,
 						   Oid relid,
 						   Oid reltablespace,
+			               char relkind,            /*CDB*/
 						   bool shared_relation)
 {
 	Relation	rel;
@@ -2072,6 +2087,18 @@ RelationBuildLocalRelation(const char *relname,
 
 	/* is it a temporary relation? */
 	rel->rd_istemp = isTempNamespace(relnamespace);
+
+    /*
+     * CDB: On QEs, temp relations must use shared buffer cache so data
+     * will be visible to all segmates.  On QD, sequence objects must
+     * use shared buffer cache so data will be visible to sequence server.
+     */
+    if (rel->rd_istemp &&
+        relkind != RELKIND_SEQUENCE &&
+        Mpp_role != MPP_ROLE_EXECUTE)
+        rel->rd_isLocalBuf = true;
+    else
+        rel->rd_isLocalBuf = false;
 
 	/*
 	 * create a new tuple descriptor from the one passed in.  We do this

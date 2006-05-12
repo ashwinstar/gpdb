@@ -3,6 +3,7 @@
  * index.c
  *	  code to create and destroy POSTGRES index relations
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -532,7 +533,7 @@ index_create(Oid heapRelationId,
 	if (!OidIsValid(indexRelationId))
 		indexRelationId = GetNewRelFileNode(tableSpaceId, shared_relation,
 											pg_class);
-	else							  
+	else
 		if (Mpp_role == MPP_ROLE_EXECUTE)
 		{
 			CheckNewRelFileNodeIsOk(indexRelationId, tableSpaceId, shared_relation, pg_class);
@@ -806,7 +807,7 @@ index_drop(Oid indexId)
 	 */
 	RelationOpenSmgr(userIndexRelation);
 	smgrscheduleunlink(userIndexRelation->rd_smgr,
-					   userIndexRelation->rd_istemp);
+					   userIndexRelation->rd_isLocalBuf);
 
 	/*
 	 * Close and flush the index's relcache entry, to ensure relcache doesn't
@@ -1131,7 +1132,7 @@ setNewRelfilenode(Relation relation)
 	newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
 									   relation->rd_rel->relisshared,
 									   NULL);
-									   
+
 	if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
 		elog(DEBUG1,"setNewRelfilenode called in EXECUTE mode, newrelfilenode=%d",newrelfilenode);
@@ -1157,12 +1158,12 @@ setNewRelfilenode(Relation relation)
 	newrnode.relNode = newrelfilenode;
 
 	srel = smgropen(newrnode);
-	smgrcreate(srel, relation->rd_istemp, false);
+	smgrcreate(srel, relation->rd_isLocalBuf, false);
 	smgrclose(srel);
 
 	/* schedule unlinking old relfilenode */
 	RelationOpenSmgr(relation);
-	smgrscheduleunlink(relation->rd_smgr, relation->rd_istemp);
+	smgrscheduleunlink(relation->rd_smgr, relation->rd_isLocalBuf);
 
 	/* update the pg_class row */
 	rd_rel->relfilenode = newrelfilenode;
@@ -1183,7 +1184,7 @@ setNewRelfilenode(Relation relation)
 
 /*
  * MPP specific routine.
- * 
+ *
  * setNewRelfilenodeToOid		- assign a new relfilenode value to the relation
  *
  * Caller must already hold exclusive lock on the relation.
@@ -1229,12 +1230,12 @@ setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode)
 	newrnode.relNode = newrelfilenode;
 
 	srel = smgropen(newrnode);
-	smgrcreate(srel, relation->rd_istemp, false);
+	smgrcreate(srel, relation->rd_isLocalBuf, false);
 	smgrclose(srel);
 
 	/* schedule unlinking old relfilenode */
 	RelationOpenSmgr(relation);
-	smgrscheduleunlink(relation->rd_smgr, relation->rd_istemp);
+	smgrscheduleunlink(relation->rd_smgr, relation->rd_isLocalBuf);
 
 	/* update the pg_class row */
 	rd_rel->relfilenode = newrelfilenode;

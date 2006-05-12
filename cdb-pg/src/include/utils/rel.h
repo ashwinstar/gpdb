@@ -4,7 +4,7 @@
  *	  POSTGRES relation descriptor (a/k/a relcache entry) definitions.
  *
  *
- * Portions Copyright (c) 2005, Greenplum Inc.
+ * Portions Copyright (c) 2005-2006, Greenplum Inc.
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -131,7 +131,7 @@ typedef struct RelationData
 	BlockNumber rd_targblock;	/* current insertion target block, or
 								 * InvalidBlockNumber */
 	int			rd_refcnt;		/* reference count */
-	bool		rd_istemp;		/* rel uses the local buffer mgr */
+	bool		rd_istemp;		/* CDB: true => skip locking, logging, fsync */
 	bool		rd_isnailed;	/* rel is nailed in cache */
 	bool		rd_isvalid;		/* relcache entry is valid */
 	char		rd_indexvalid;	/* state of rd_indexlist: 0 = not valid, 1 =
@@ -153,8 +153,9 @@ typedef struct RelationData
 	RuleLock   *rd_rules;		/* rewrite rules */
 	MemoryContext rd_rulescxt;	/* private memory cxt for rd_rules, if any */
 	TriggerDesc *trigdesc;		/* Trigger info, or NULL if rel has none */
-    struct MppPolicy *rd_cdbpolicy; /* Partitioning info if distributed rel */ 
+    struct MppPolicy *rd_cdbpolicy; /* Partitioning info if distributed rel */
     bool        rd_cdbDefaultStatsWarningIssued;
+	bool		rd_isLocalBuf;  /* CDB: true => rel uses the local buffer mgr */
 
 	/* These are non-NULL only for an index relation: */
 	Form_pg_index rd_index;		/* pg_index tuple describing this index */

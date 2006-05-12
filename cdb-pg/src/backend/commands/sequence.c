@@ -1326,6 +1326,9 @@ cdb_sequence_relation_init(Relation seqrel,
     seqrel->rd_id = relid;
     seqrel->rd_istemp = istemp;
 
+    /* Must use shared buffer pool so seqserver & QDs can see the data. */
+    seqrel->rd_isLocalBuf = false;
+
 	seqrel->rd_rel = (Form_pg_class)palloc0(CLASS_TUPLE_SIZE);
     sprintf(seqrel->rd_rel->relname.data, "pg_class.oid=%d", relid);
 

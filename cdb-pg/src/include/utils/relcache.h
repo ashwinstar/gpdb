@@ -4,7 +4,7 @@
  *	  Relation descriptor cache definitions.
  *
  *
- * Portions Copyright (c) 2005, Greenplum Inc.
+ * Portions Copyright (c) 2005-2006, Greenplum Inc.
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -56,6 +56,7 @@ extern Relation RelationBuildLocalRelation(const char *relname,
 						   TupleDesc tupDesc,
 						   Oid relid,
 						   Oid reltablespace,
+			               char relkind,            /*CDB*/
 						   bool shared_relation);
 
 /*

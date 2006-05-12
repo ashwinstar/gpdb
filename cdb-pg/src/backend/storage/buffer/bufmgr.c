@@ -3,6 +3,7 @@
  * bufmgr.c
  *	  buffer manager interface routines
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -128,7 +129,7 @@ ReadBuffer(Relation reln, BlockNumber blockNum)
 	ResourceOwnerEnlargeBuffers(CurrentResourceOwner);
 
 	isExtend = (blockNum == P_NEW);
-	isLocalBuf = reln->rd_istemp;
+	isLocalBuf = reln->rd_isLocalBuf;
 
 	/* Open it at the smgr level if not already done */
 	RelationOpenSmgr(reln);
@@ -1385,7 +1386,7 @@ RelationTruncate(Relation rel, BlockNumber nblocks)
 	rel->rd_targblock = InvalidBlockNumber;
 
 	/* Do the real work */
-	smgrtruncate(rel->rd_smgr, nblocks, rel->rd_istemp);
+	smgrtruncate(rel->rd_smgr, nblocks, rel->rd_istemp, rel->rd_isLocalBuf); /*CDB*/
 }
 
 /* ---------------------------------------------------------------------
@@ -1415,12 +1416,12 @@ RelationTruncate(Relation rel, BlockNumber nblocks)
  * --------------------------------------------------------------------
  */
 void
-DropRelFileNodeBuffers(RelFileNode rnode, bool istemp,
+DropRelFileNodeBuffers(RelFileNode rnode, bool isLocalBuf,
 					   BlockNumber firstDelBlock)
 {
 	int			i;
 
-	if (istemp)
+	if (isLocalBuf) /*CDB*/
 	{
 		DropRelFileNodeLocalBuffers(rnode, firstDelBlock);
 		return;
@@ -1554,7 +1555,7 @@ FlushRelationBuffers(Relation rel)
 	/* Open rel at the smgr level if not already done */
 	RelationOpenSmgr(rel);
 
-	if (rel->rd_istemp)
+	if (rel->rd_isLocalBuf)
 	{
 		for (i = 0; i < NLocBuffer; i++)
 		{
@@ -1573,7 +1574,7 @@ FlushRelationBuffers(Relation rel)
 				smgrwrite(rel->rd_smgr,
 						  bufHdr->tag.blockNum,
 						  (char *) LocalBufHdrGetBlock(bufHdr),
-						  true);
+						  rel->rd_istemp);
 
 				bufHdr->flags &= ~(BM_DIRTY | BM_JUST_DIRTIED);
 

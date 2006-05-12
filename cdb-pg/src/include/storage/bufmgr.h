@@ -4,6 +4,7 @@
  *	  POSTGRES buffer manager definitions.
  *
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -133,7 +134,7 @@ extern BlockNumber BufferGetBlockNumber(Buffer buffer);
 extern BlockNumber RelationGetNumberOfBlocks(Relation relation);
 extern void RelationTruncate(Relation rel, BlockNumber nblocks);
 extern void FlushRelationBuffers(Relation rel);
-extern void DropRelFileNodeBuffers(RelFileNode rnode, bool istemp,
+extern void DropRelFileNodeBuffers(RelFileNode rnode, bool isLocalBuf,
 					   BlockNumber firstDelBlock);
 extern void DropBuffers(Oid dbid);
 

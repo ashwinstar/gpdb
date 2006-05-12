@@ -3,6 +3,7 @@
  * rewriteDefine.c
  *	  routines for defining a rewrite rule
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -480,7 +481,7 @@ DefineQueryRewrite(RuleStmt *stmt)
 	if (RelisBecomingView)
 	{
 		RelationOpenSmgr(event_relation);
-		smgrscheduleunlink(event_relation->rd_smgr, event_relation->rd_istemp);
+		smgrscheduleunlink(event_relation->rd_smgr, event_relation->rd_isLocalBuf);
 	}
 
 	/* Close rel, but keep lock till commit... */

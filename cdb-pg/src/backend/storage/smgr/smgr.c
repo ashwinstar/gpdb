@@ -6,6 +6,7 @@
  *	  All file system operations in POSTGRES dispatch through these
  *	  routines.
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -98,7 +99,7 @@ typedef struct PendingRelDelete
 {
 	RelFileNode relnode;		/* relation that may need to be deleted */
 	int			which;			/* which storage manager? */
-	bool		isTemp;			/* is it a temporary relation? */
+	bool		isLocalBuf;	    /* CDB: true => uses local buffer mgr */
 	bool		atCommit;		/* T=delete at commit; F=delete at abort */
 	int			nestLevel;		/* xact nesting level of request */
 	struct PendingRelDelete *next;		/* linked-list link */
@@ -133,7 +134,7 @@ typedef struct xl_smgr_truncate
 /* local function prototypes */
 static void smgrshutdown(int code, Datum arg);
 static void smgr_internal_unlink(RelFileNode rnode, int which,
-					 bool isTemp, bool isRedo);
+					 bool isLocalBuf, bool isRedo);
 
 
 /*
@@ -334,7 +335,7 @@ smgrclosenode(RelFileNode rnode)
  *		tell whether to drop the file.
  */
 void
-smgrcreate(SMgrRelation reln, bool isTemp, bool isRedo)
+smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo)
 {
 	XLogRecPtr	lsn;
 	XLogRecData rdata;
@@ -384,7 +385,7 @@ smgrcreate(SMgrRelation reln, bool isTemp, bool isRedo)
 		MemoryContextAlloc(TopMemoryContext, sizeof(PendingRelDelete));
 	pending->relnode = reln->smgr_rnode;
 	pending->which = reln->smgr_which;
-	pending->isTemp = isTemp;
+	pending->isLocalBuf = isLocalBuf;   /*CDB*/
 	pending->atCommit = false;	/* delete if abort */
 	pending->nestLevel = GetCurrentTransactionNestLevel();
 	pending->next = pendingDeletes;
@@ -400,7 +401,7 @@ smgrcreate(SMgrRelation reln, bool isTemp, bool isRedo)
  * This also implies smgrclose() on the SMgrRelation object.
  */
 void
-smgrscheduleunlink(SMgrRelation reln, bool isTemp)
+smgrscheduleunlink(SMgrRelation reln, bool isLocalBuf)
 {
 	PendingRelDelete *pending;
 
@@ -409,7 +410,7 @@ smgrscheduleunlink(SMgrRelation reln, bool isTemp)
 		MemoryContextAlloc(TopMemoryContext, sizeof(PendingRelDelete));
 	pending->relnode = reln->smgr_rnode;
 	pending->which = reln->smgr_which;
-	pending->isTemp = isTemp;
+	pending->isLocalBuf = isLocalBuf;   /*CDB*/
 	pending->atCommit = true;	/* delete if commit */
 	pending->nestLevel = GetCurrentTransactionNestLevel();
 	pending->next = pendingDeletes;
@@ -441,7 +442,7 @@ smgrscheduleunlink(SMgrRelation reln, bool isTemp)
  * This also implies smgrclose() on the SMgrRelation object.
  */
 void
-smgrdounlink(SMgrRelation reln, bool isTemp, bool isRedo)
+smgrdounlink(SMgrRelation reln, bool isLocalBuf, bool isRedo)
 {
 	RelFileNode rnode = reln->smgr_rnode;
 	int			which = reln->smgr_which;
@@ -449,20 +450,20 @@ smgrdounlink(SMgrRelation reln, bool isTemp, bool isRedo)
 	/* Close the file and throw away the hashtable entry */
 	smgrclose(reln);
 
-	smgr_internal_unlink(rnode, which, isTemp, isRedo);
+	smgr_internal_unlink(rnode, which, isLocalBuf, isRedo);
 }
 
 /*
  * Shared subroutine that actually does the unlink ...
  */
 static void
-smgr_internal_unlink(RelFileNode rnode, int which, bool isTemp, bool isRedo)
+smgr_internal_unlink(RelFileNode rnode, int which, bool isLocalBuf, bool isRedo)
 {
 	/*
 	 * Get rid of any remaining buffers for the relation.  bufmgr will just
 	 * drop them without bothering to write the contents.
 	 */
-	DropRelFileNodeBuffers(rnode, isTemp, 0);
+	DropRelFileNodeBuffers(rnode, isLocalBuf, 0);   /*CDB*/
 
 	/*
 	 * Tell the free space map to forget this relation.  It won't be accessed
@@ -595,7 +596,7 @@ smgrnblocks(SMgrRelation reln)
  *		transaction on failure.
  */
 BlockNumber
-smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp)
+smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp, bool isLocalBuf)
 {
 	BlockNumber newblks;
 
@@ -603,7 +604,7 @@ smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp)
 	 * Get rid of any buffers for the about-to-be-deleted blocks. bufmgr will
 	 * just drop them without bothering to write the contents.
 	 */
-	DropRelFileNodeBuffers(reln->smgr_rnode, isTemp, nblocks);
+	DropRelFileNodeBuffers(reln->smgr_rnode, isLocalBuf, nblocks);
 
 	/*
 	 * Tell the free space map to forget anything it may have stored for the
@@ -744,7 +745,7 @@ smgrDoPendingDeletes(bool isCommit)
 			if (pending->atCommit == isCommit)
 				smgr_internal_unlink(pending->relnode,
 									 pending->which,
-									 pending->isTemp,
+									 pending->isLocalBuf,
 									 false);
 			/* must explicitly free the list entry */
 			pfree(pending);
