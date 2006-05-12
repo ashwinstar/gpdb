@@ -37,27 +37,27 @@ INSERT INTO BOOLTBL1 (f1) VALUES (bool 'true');
 
 
 -- BOOLTBL1 should be full of true's at this point 
-SELECT '' AS t_3, BOOLTBL1.* FROM BOOLTBL1;
+SELECT '' AS t_3, BOOLTBL1.* FROM BOOLTBL1 order by 1,2;
 
 
 SELECT '' AS t_3, BOOLTBL1.*
    FROM BOOLTBL1
-   WHERE f1 = bool 'true';
+   WHERE f1 = bool 'true' order by 1,2;
 
 
 SELECT '' AS t_3, BOOLTBL1.* 
    FROM BOOLTBL1
-   WHERE f1 <> bool 'false';
+   WHERE f1 <> bool 'false'order by 1,2;
 
 SELECT '' AS zero, BOOLTBL1.*
    FROM BOOLTBL1
-   WHERE booleq(bool 'false', f1);
+   WHERE booleq(bool 'false', f1) order by 1,2;
 
 INSERT INTO BOOLTBL1 (f1) VALUES (bool 'f');
 
 SELECT '' AS f_1, BOOLTBL1.* 
    FROM BOOLTBL1
-   WHERE f1 = bool 'false';
+   WHERE f1 = bool 'false' order by 1,2;
 
 
 CREATE TABLE BOOLTBL2 (f1 bool);
@@ -76,28 +76,28 @@ INSERT INTO BOOLTBL2 (f1)
    VALUES (bool 'XXX');  
 
 -- BOOLTBL2 should be full of false's at this point 
-SELECT '' AS f_4, BOOLTBL2.* FROM BOOLTBL2;
+SELECT '' AS f_4, BOOLTBL2.* FROM BOOLTBL2 order by 1,2;
 
 
 SELECT '' AS tf_12, BOOLTBL1.*, BOOLTBL2.*
    FROM BOOLTBL1, BOOLTBL2
-   WHERE BOOLTBL2.f1 <> BOOLTBL1.f1;
+   WHERE BOOLTBL2.f1 <> BOOLTBL1.f1 order by 1,2;
 
 
 SELECT '' AS tf_12, BOOLTBL1.*, BOOLTBL2.*
    FROM BOOLTBL1, BOOLTBL2
-   WHERE boolne(BOOLTBL2.f1,BOOLTBL1.f1);
+   WHERE boolne(BOOLTBL2.f1,BOOLTBL1.f1) order by 1,2;
 
 
 SELECT '' AS ff_4, BOOLTBL1.*, BOOLTBL2.*
    FROM BOOLTBL1, BOOLTBL2
-   WHERE BOOLTBL2.f1 = BOOLTBL1.f1 and BOOLTBL1.f1 = bool 'false';
+   WHERE BOOLTBL2.f1 = BOOLTBL1.f1 and BOOLTBL1.f1 = bool 'false' order by 1,2;
 
 
 SELECT '' AS tf_12_ff_4, BOOLTBL1.*, BOOLTBL2.*
    FROM BOOLTBL1, BOOLTBL2
    WHERE BOOLTBL2.f1 = BOOLTBL1.f1 or BOOLTBL1.f1 = bool 'true'
-   ORDER BY BOOLTBL1.f1, BOOLTBL2.f1;
+   ORDER BY BOOLTBL1.f1, BOOLTBL2.f1 order by 1,2;
 
 --
 -- SQL92 syntax
@@ -107,35 +107,35 @@ SELECT '' AS tf_12_ff_4, BOOLTBL1.*, BOOLTBL2.*
 
 SELECT '' AS "True", f1
    FROM BOOLTBL1
-   WHERE f1 IS TRUE;
+   WHERE f1 IS TRUE order by 1,2;
 
 SELECT '' AS "Not False", f1
    FROM BOOLTBL1
-   WHERE f1 IS NOT FALSE;
+   WHERE f1 IS NOT FALSE order by 1,2;
 
 SELECT '' AS "False", f1
    FROM BOOLTBL1
-   WHERE f1 IS FALSE;
+   WHERE f1 IS FALSE order by 1,2;
 
 SELECT '' AS "Not True", f1
    FROM BOOLTBL1
-   WHERE f1 IS NOT TRUE;
+   WHERE f1 IS NOT TRUE order by 1,2;
 
 SELECT '' AS "True", f1
    FROM BOOLTBL2
-   WHERE f1 IS TRUE;
+   WHERE f1 IS TRUE order by 1,2;
 
 SELECT '' AS "Not False", f1
    FROM BOOLTBL2
-   WHERE f1 IS NOT FALSE;
+   WHERE f1 IS NOT FALSE order by 1,2;
 
 SELECT '' AS "False", f1
    FROM BOOLTBL2
-   WHERE f1 IS FALSE;
+   WHERE f1 IS FALSE order by 1,2;
 
 SELECT '' AS "Not True", f1
    FROM BOOLTBL2
-   WHERE f1 IS NOT TRUE;
+   WHERE f1 IS NOT TRUE order by 1,2;
 
 --
 -- Clean up
