@@ -991,7 +991,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 		 */
         if (timeout_ms > 0)
         {
-			int select_ms = MIN(500, timeout_ms);
+			int select_ms = Min(500, timeout_ms);
 
             timeout.tv_sec = select_ms / 1000; /* 0 */
             timeout.tv_usec = (select_ms - (timeout.tv_sec * 1000)) * 1000;
