@@ -13,9 +13,18 @@
 #include "catalog/pg_type.h"
 #include "cdb/tupser.h"
 #include "libpq/pqformat.h"
+#include "utils/acl.h"
 #include "utils/date.h"
 #include "utils/numeric.h"
 #include "utils/memutils.h"
+
+#ifndef MAX
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#endif
+
+#ifndef MIN
+#define MIN(x, y) ((x) > (y) ? (y) : (x))
+#endif
 
 /* A MemoryContext used within the tuple serialize code, so that freeing of
  * space is SUPAFAST.  It is initialized in the first call to InitSerTupInfo()
@@ -66,8 +75,7 @@ InitSerTupInfo(TupleDesc tupdesc, SerTupInfo * pSerInfo)
 		s_tupSerMemCtxt =
 			AllocSetContextCreate(TopMemoryContext,
 								  "TupSerMemCtxt",
-								  ALLOCSET_DEFAULT_INITSIZE,	/* always have some
-																 * memory */
+								  ALLOCSET_DEFAULT_INITSIZE,	/* always have some memory */
 								  ALLOCSET_DEFAULT_INITSIZE,
 								  ALLOCSET_DEFAULT_MAXSIZE);
 	}
@@ -102,15 +110,22 @@ InitSerTupInfo(TupleDesc tupdesc, SerTupInfo * pSerInfo)
 		attrInfo->atttypid = tupdesc->attrs[i]->atttypid;
 
 		/* Info for sending the type. */
-
-		getTypeBinaryOutputInfo(attrInfo->atttypid, &attrInfo->typsend,
+		if(attrInfo->atttypid == ACLITEMOID)
+			getTypeOutputInfo(attrInfo->atttypid, &attrInfo->typsend,
+					   &attrInfo->typisvarlena);
+		else
+			getTypeBinaryOutputInfo(attrInfo->atttypid, &attrInfo->typsend,
 					   &attrInfo->typisvarlena);
 
 		fmgr_info(attrInfo->typsend, &attrInfo->send_finfo);
 
 		/* Info for receiving the type. */
 
-		getTypeBinaryInputInfo(attrInfo->atttypid, &attrInfo->typrecv,
+		if(attrInfo->atttypid == ACLITEMOID)
+			getTypeInputInfo(attrInfo->atttypid, &attrInfo->typrecv,
+							   &attrInfo->recv_typio_param);
+		else
+			getTypeBinaryInputInfo(attrInfo->atttypid, &attrInfo->typrecv,
 							   &attrInfo->recv_typio_param);
 
 		fmgr_info(attrInfo->typrecv, &attrInfo->recv_finfo);
@@ -187,7 +202,7 @@ addByteStringToChunkList(TupleChunkList tcList, char *data, int datalen)
 		curSize = tcItem->chunk_length;
 
 		available = tcList->max_chunk_length - curSize;
-		copyLen = Min(available, remain);
+		copyLen = MIN(available, remain);
 		if (copyLen > 0)
 		{
 			/*
@@ -375,6 +390,22 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 					addByteStringToChunkList(tcList, (char *) VARDATA(num), numSize);
 					break;
 				}
+
+			case ACLITEMOID:
+				{
+					AclItem		*aip = DatumGetAclItemP(attr);
+					char		*outputstring;
+					int32		aclSize ;
+
+					outputstring = DatumGetCString(DirectFunctionCall1(aclitemout,
+					               PointerGetDatum(aip)));
+
+					aclSize = strlen(outputstring);
+					addInt32ToChunkList(tcList, aclSize);
+					addByteStringToChunkList(tcList, outputstring,aclSize);
+					break;
+				}	
+
 			default:
 				fHandled = false;
 		}
@@ -584,6 +615,34 @@ DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup)
 					VARATT_SIZEP(num) = numSize + VARHDRSZ;
 					pq_copymsgbytes(serialTup, VARDATA(num), numSize);
 					pSerInfo->values[i] = NumericGetDatum(num);
+					break;
+				}
+
+			case ACLITEMOID:
+				{
+					int		aclSize, k, cnt;
+					char		*inputstring, *starsfree;
+
+					aclSize = stringInfoGetInt32(serialTup);
+					inputstring = (char*) palloc(aclSize  + 1);
+					starsfree = (char*) palloc(aclSize  + 1);
+					cnt = 0;
+	
+
+					pq_copymsgbytes(serialTup, inputstring, aclSize);
+					inputstring[aclSize] = '\0';
+					for(k=0; k<aclSize; k++)
+					{					
+						if( inputstring[k] != '*')
+						{
+							starsfree[cnt] = inputstring[k];
+							cnt++;
+						}
+					}
+					starsfree[cnt] = '\0';
+
+					pSerInfo->values[i] = DirectFunctionCall1(aclitemin, CStringGetDatum(starsfree));
+					pfree(inputstring);
 					break;
 				}
 
