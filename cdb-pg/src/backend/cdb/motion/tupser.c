@@ -18,13 +18,6 @@
 #include "utils/numeric.h"
 #include "utils/memutils.h"
 
-#ifndef MAX
-#define MAX(x, y) ((x) > (y) ? (x) : (y))
-#endif
-
-#ifndef MIN
-#define MIN(x, y) ((x) > (y) ? (y) : (x))
-#endif
 
 /* A MemoryContext used within the tuple serialize code, so that freeing of
  * space is SUPAFAST.  It is initialized in the first call to InitSerTupInfo()
@@ -202,7 +195,7 @@ addByteStringToChunkList(TupleChunkList tcList, char *data, int datalen)
 		curSize = tcItem->chunk_length;
 
 		available = tcList->max_chunk_length - curSize;
-		copyLen = MIN(available, remain);
+		copyLen = Min(available, remain);
 		if (copyLen > 0)
 		{
 			/*
