@@ -2,14 +2,14 @@
 #	Filename:-		mppstart.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
-#	Status:-		MPP Conversion SE Co Internal
+#	Status:-		Released
 #	Author:-		G Coombe
 #	Contact:-		gcoombe@greenplum.com
-#	Release date:-		TBC
+#	Release date:-		March 2006
 #	Release stat:-		Greenplum Co internal
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
 #                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Starts the cluster database.
+#	Brief descn:-		Starts the MPP instance.
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -59,6 +59,7 @@ TAIL_COUNT=0
 START_INVALID=0
 STANDBY_COUNT=0
 FORCE=0
+START_SYNC=1
 STOP_PROG=$MPPSTOP
 #******************************************************************************
 # Functions
@@ -68,7 +69,7 @@ USAGE () {
 		$ECHO	
 		$ECHO "      `basename $0`"
 		$ECHO
-		$ECHO "      Starts the full MPP database, or Master database only in utility mode"
+		$ECHO "      Starts the full MPP instance, or Master instance only in utility mode"
 		$ECHO
 		$ECHO "      Usage:"
 		$ECHO "      $0 [OPTIONS]"
@@ -84,18 +85,18 @@ USAGE () {
 		$ECHO "      -a, don't ask to confirm startup [default:- ask]"
 		$ECHO
 		$ECHO "      Connection options:"
-		$ECHO "      -d, <Master database directory> name of alternative Master database to start up [optional]"
+		$ECHO "      -d, <Master instance directory> name of alternative Master instance to start up [optional]"
 		$ECHO
 		$ECHO "      Database startup options:"
 		$ECHO "      -n, do not wait for startup return code of each segment instance [default:- wait]"
-		$ECHO "      -m, start master database only in maintenance mode [default:- full MPP startup]"
+		$ECHO "      -m, start master instance only in maintenance mode [default:- full MPP startup]"
 		$ECHO "      -z, force startup of segment instance marked as invalid"
-		$ECHO "      -y, start master standby server [default:- do not start]"
+		$ECHO "      -y, do not start master standby server [default:- start standby server process]"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
-		$ECHO "      1 Warning generated, but database operational"
-		$ECHO "      2 Fatal error, database not started, or in an inconsistent state"
+		$ECHO "      1 Warning generated, but instance operational"
+		$ECHO "      2 Fatal error, instance not started, or in an inconsistent state"
 		$ECHO
 		exit $EXIT_STATUS
 }
@@ -113,8 +114,8 @@ DISPLAY_PARAM () {
 		$ECHO
 		$ECHO "Current Default Startup Parameters"
 		$ECHO "----------------------------------"
-		$ECHO "MPP QD database port        = $MASTER_PORT      [Override with -p <port number>]"
-		$ECHO "MPP QD database directory   = $MASTER_DATA_DIRECTORY [Override with -d <Master directory>]"
+		$ECHO "MPP Master instance port        = $MASTER_PORT      [Override with -p <port number>]"
+		$ECHO "MPP Master instance directory   = $MASTER_DATA_DIRECTORY [Override with -d <Master directory>]"
 		if [ $INTERACTIVE ]; then
 				$ECHO "Interactive                 = True            [Override with -a]"
 		else
@@ -137,7 +138,7 @@ DISPLAY_PARAM () {
 
 CHK_QD_DB_RUNNING () {
 		if [  -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
-			LOG_MSG "[WARN]:-$PG_PID file exists on QD, checking if recovery startup required" 
+			LOG_MSG "[WARN]:-$PG_PID file exists on Master, checking if recovery startup required" 
 			RECOVERY_STARTUP
 		fi
 }
@@ -147,15 +148,15 @@ RECOVERY_STARTUP () {
 	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 	GET_PG_PID_ACTIVE $MASTER_PORT
 	if [ $PID -ne 0 ];then	
-		ERROR_EXIT "[FATAL]:-Master QD process running" 2
+		ERROR_EXIT "[FATAL]:-Master instance process running" 2
 	fi
-	LOG_MSG "[INFO]:-No QD process, entering recovery startup mode"
-	LOG_MSG "[INFO]:-Clearing QD lock files"
+	LOG_MSG "[INFO]:-No Master instance process, entering recovery startup mode"
+	LOG_MSG "[INFO]:-Clearing Master instance lock files"
 	$RM -f /tmp/.s.PGSQL.${MASTER_PORT}.lock /tmp/.s.PGSQL.${MASTER_PORT}
-	LOG_MSG "[INFO]:-Clearing QD $PG_PID file"
+	LOG_MSG "[INFO]:-Clearing Master instance $PG_PID file"
 	$RM -f ${MASTER_DATA_DIRECTORY}/$PG_PID
 	START_ADMIN
-	LOG_MSG "[INFO]:-Commencing forced cluster shutdown"
+	LOG_MSG "[INFO]:-Commencing forced instance shutdown"
 	$STOP_PROG -faz
 	GET_DETAILS
 	PROCESS_STARTUP
@@ -164,12 +165,13 @@ RECOVERY_STARTUP () {
 }
 
 GET_DETAILS () {
-		#Get the database name
-		#Start the QD datase in admin mode
 		export PGPORT=$MASTER_PORT
-		LOG_MSG "[INFO]:-Starting Master database in admin mode"
+		LOG_MSG "[INFO]:-Starting Master instance in admin mode"
 		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT"  start >/dev/null 2>&1
 		ERROR_CHK $? "startup Master instance" 2
+		READ_CHK
+		if [ $READ_COUNT -ne 0 ];then
+			unset INTERACTIVE;fi
 		LOG_MSG "[INFO]:-Obtaining MPP Master catalog information"
 		#Now get tail details
 		GET_QE_DETAILS
@@ -181,27 +183,27 @@ GET_DETAILS () {
 			fi
 		fi
 		#Shutdown the QD database
-		LOG_MSG "[INFO]:-Shutting down Master database"
+		LOG_MSG "[INFO]:-Shutting down Master instance"
 		$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE	 >/dev/null 2>&1
 		ERROR_CHK $? "shutdown Master instance" 2
 }
 
 START_ADMIN () {
-		LOG_MSG "[INFO]:-Starting master database in admin mode"
+		LOG_MSG "[INFO]:-Starting master instance in admin mode"
 		export PGPORT=$MASTER_PORT
 		env PGOPTIONS="-c mpp_session_role=utility" $PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT " start
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				$TAIL ${MASTER_DATA_DIRECTORY}.log|$TEE -a $LOG_FILE
-				ERROR_EXIT "[FATAL]:-Could not start master database in admin mode" 2
+				ERROR_EXIT "[FATAL]:-Could not start master instance in admin mode" 2
 		fi
-		LOG_MSG "[INFO]:-Successfully started master database in admin mode"
+		LOG_MSG "[INFO]:-Successfully started master instance in admin mode"
 }
 
 
 PROMPT_CONTINUE () {
-		LOG_MSG "[INFO]:-Master parameters:"
-		LOG_MSG "--------------------------"
+		LOG_MSG "[INFO]:-Master instance parameters:"
+		LOG_MSG "[INFO]:----------------------------"
 		LOG_MSG "[INFO]:-Database                   = $QD_DBNAME"
 		LOG_MSG "[INFO]:-Master Port                = $MASTER_PORT"
 		LOG_MSG "[INFO]:-Master directory           = $MASTER_DATA_DIRECTORY"
@@ -211,7 +213,7 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Master standby start       = Off"
 		fi
 		LOG_MSG "[INFO]:-Segment instances that will be started:"
-		LOG_MSG "--------------------------------------------------"
+		LOG_MSG "[INFO]:----------------------------------------"
 		COUNT=1
 		for QNODE in "${QE_ARRAY[@]}"
 				do
@@ -228,7 +230,7 @@ PROMPT_CONTINUE () {
 				((COUNT=$COUNT+1))
 		done
 		$ECHO
-		$ECHO "Continue with MPP database startup yY|nN >"
+		$ECHO "Continue with MPP instance startup yY|nN >"
 		read REPLY
 		if [ -z $REPLY ]; then
 				LOG_MSG "[WARN]:-User abort requested, Script Exits!"
@@ -241,11 +243,13 @@ PROMPT_CONTINUE () {
 }	
 
 PROCESS_STARTUP () {
+	if [ $READ_COUNT -eq 0 ];then
 		if [ x"" != x"$START_SYNC" ] && [ $STANDBY_COUNT -ne 0 ];then
 			STANDBY_HOSTNAME=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f1`
 			STANDBY_DATADIR=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f2`
 			STANDBY_PORT=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f3`	
 			START_SYNC_PROCESS $STANDBY_HOSTNAME $STANDBY_DATADIR $STANDBY_PORT
+			SYNC_STATUS=$EXIT_STATUS
 		fi
 		INDEX=0
 		QE_START_COUNT=0
@@ -263,6 +267,10 @@ PROCESS_STARTUP () {
 				if [ $RETVAL -ne 0 ]; then
 						((FAILED_COUNT=$FAILED_COUNT+1))
 						LOG_MSG "[WARN]:-Startup request returned error code $RETVAL"
+						LOG_MSG "[INFO]:-Start diagnostic data dump"
+						LOG_MSG "[INFO]:-------------------------------------------------"
+						LOG_MSG "[INFO]:-Command string called"
+						LOG_MSG "[INFO]:-$TRUSTED_SHELL $QE_NAME ${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" 
 						LOG_MSG "[INFO]:-Tail'ing Segment instance log file"
 						$TRUSTED_SHELL $QE_NAME "$LS $QE_DIR" > /dev/null 2>&1
 						if [ $? -ne 0 ]; then
@@ -273,8 +281,10 @@ PROCESS_STARTUP () {
 								LOG_MSG "[WARN]:-Issue with $TRUSTED_SHELL to $QE_NAME for $QE_DIR database"
 								EXIT_STATUS=1
 						fi
+						LOG_MSG "[INFO]:-End of diagnostic data dump"
+						LOG_MSG "[INFO]:-------------------------------------------------"
 				else
-						LOG_MSG "[INFO]:-Successfully started Segment instance $QE_NAME database"
+						LOG_MSG "[INFO]:-Successfully started Segment instance $QE_NAME on port=$QE_PORT"
 				fi
 				#Now check status of postmaster on the tail
 				LOG_MSG "[INFO]:-Checking status via pg_ctl"
@@ -298,13 +308,14 @@ PROCESS_STARTUP () {
 						EXIT_STATUS=1
 				fi
 		done
-		LOG_MSG "[INFO]:-Starting Master $QD_NAME directory $MASTER_DATA_DIRECTORY"
+fi
+		LOG_MSG "[INFO]:-Starting Master instance $QD_NAME directory $MASTER_DATA_DIRECTORY"
 		if [ $WAIT == "-W" ]; then
 				$SLEEP 2
 		fi
 		export PGPORT=${MASTER_PORT}
 		export PGPATH=${APP_PATH}
-		$PG_CTL $WAIT  -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -E -p $MASTER_PORT " start -m $MODE  
+		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -E -p $MASTER_PORT " start -m $MODE  
 		ERROR_CHK $? "startup Master instance" 2
 		RET_TEXT=`$PG_CTL status -D $MASTER_DATA_DIRECTORY`
 		RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
@@ -314,11 +325,20 @@ PROCESS_STARTUP () {
 		else
 			LOG_MSG "[INFO]:-Command pg_ctl reports Master $QD_NAME instance active"
 		fi
+		$PSQL -p $MASTER_PORT $DEFAULTDB -c"\l" >/dev/null 2>&1
 		if [ $FAILED_COUNT -ne 0 ]; then
-				LOG_MSG "[WARN]:-Failed to start $FAILED_COUNT of a total of $QE_COUNT Segment instances"
+			LOG_MSG "[WARN]:-Failed to start $FAILED_COUNT of a total of $QE_COUNT Segment instances"
 		else
-				LOG_MSG "[INFO]:----------------------------------------------------------"
-				LOG_MSG "[INFO]:-Successfully started $QE_START_COUNT Segment instances and Master instance"
+			LOG_MSG "[INFO]:----------------------------------------------------------"
+			LOG_MSG "[INFO]:-Successfully started the Master instance"
+			if [ x"" != x"$START_SYNC" ] && [ $STANDBY_COUNT -ne 0 ];then
+				if [ $SYNC_STATUS -ne 0 ];then
+					LOG_MSG "[WARN]:-Failed to start Master standby instance"
+				else
+					LOG_MSG "[INFO]:-Successfully started the Master standby instance"
+				fi
+			fi
+				LOG_MSG "[INFO]:-Successfully started $QE_START_COUNT Segment instances"
 		fi
 }
 
@@ -327,7 +347,7 @@ PROCESS_STARTUP () {
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt'?'aqyznml:d:" opt;do
+		while getopts ":vt'?'abqyznml:d:" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -339,7 +359,8 @@ if [ $# -ne 0 ]; then
 						m ) ADMIN=1 ;;
 						z ) START_INVALID=1 ;;
 						l ) LOG_DIR=$OPTARG ;;
-						y ) START_SYNC=1 ;;
+						y ) unset START_SYNC ;;
+						b ) CHK_STANDBY=1 ;;
 						* ) USAGE ;;
 				esac
 		done	
@@ -354,8 +375,9 @@ if [ x"" != x"$LOG_DIR" ];then
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
-CHK_ON_PASSIVE_STANDBY
-#MPP-308
+if [ x"" == x"$CHK_STANDBY" ];then
+	CHK_ON_PASSIVE_STANDBY
+fi
 if [ x"" != x"$MPPHOME" ];then
 	APP_PATH=${MPPHOME}/bin
 else
