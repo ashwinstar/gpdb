@@ -2,14 +2,14 @@
 #	Filename:-		mppactivatemaster.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
-#	Status:-		Merge complete.
+#	Status:-		Released.
 #	Author:-		G Coombe
 #	Contact:-		gcoombe@greenplum.com
-#	Release date:-		TBC
+#	Release date:-		March 2006
 #	Release stat:-		Greenplum Co internal
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
 #                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Starts the cluster database.
+#	Brief descn:-		Re-activates the Master segment instance.
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -57,10 +57,8 @@ ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 FORCE_ACTIVATE=0
 unset START_MPPSYNC
-START_PROG=$MPPSTART
-STOP_PROG=$MPPSTOP
-REMOTE_START_PROG=$MPPSTART
-REMOTE_STOP_PROG=$MPPSTOP
+REMOTE_MPPSTART=$MPPSTART
+REMOTE_MPPSTOP=$MPPSTOP
 REMOTE_INIT_STANDBY=$MPPINITSTANDBY
 #******************************************************************************
 # Functions
@@ -70,17 +68,18 @@ USAGE () {
 		$ECHO	
 		$ECHO "      `basename $0 `"
 		$ECHO
-		$ECHO "      Re-activates a failed master QD instance."
-		$ECHO "      Used when a standby QD has been activated as a result of a failure"
-		$ECHO "      of the master QD host. Script will take the following actions:"
-		$ECHO "      1. Stop the MPP cluster running on the active standby QD"
-		$ECHO "      2. Copy the standby QD data directory to the master  QD"
+		$ECHO "      Re-activates a failed master segment instance."
+		$ECHO "      Used when a standby master instance has been activated as a result of a"
+		$ECHO "      failure of the master segment instance host."
+		$ECHO "      Script will take the following actions:"
+		$ECHO "      1. Stop the MPP instance running on the active standby segment instance"
+		$ECHO "      2. Copy the standby segment instance data directory to the master segment instance"
 		$ECHO "      3. Update the master catalog table"
-		$ECHO "      4. Initialize the standby QD"
-		$ECHO "      5. Re-start the master cluster on the master QD"
-		$ECHO "      Script should be run on the active standby QD host, and expects"
-		$ECHO "      the MPP cluster to be active, and the master data directory to be"
-		$ECHO "      the same as that of the active standby QD"
+		$ECHO "      4. Initialize the standby master segment instance"
+		$ECHO "      5. Re-start the master instance on the master segment instance"
+		$ECHO "      Script should be run on the active standby segment instance host, and expects"
+		$ECHO "      the MPP instance to be active, and the master data directory to be"
+		$ECHO "      the same as that of the active standby segment instance"
 		$ECHO
 		$ECHO "      Usage:"
 		$ECHO "      $0 [OPTIONS]"
@@ -92,7 +91,7 @@ USAGE () {
 		$ECHO "      Logging options:"
 		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
 		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
-		$ECHO "      -a, don't ask to confirm master QD re-activation [default:- ask]"
+		$ECHO "      -a, don't ask to confirm master segment instance re-activation [default:- ask]"
 		$ECHO
 		$ECHO "      Master re-activation options:"
 		$ECHO "      -m, <master hostname> [mandatory]" 
@@ -124,21 +123,21 @@ CHECK_PARAM () {
 	#Get the standby master port number
 	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 	#Check that we are in a active standby situation
-	ACTIVE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from mpp_configuration where definedprimary='f' and content=-1 and hostname='${MASTER_HOSTNAME}';"`
+	ACTIVE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where definedprimary='f' and content=-1 and hostname='${MASTER_HOSTNAME}';"`
 	ERROR_CHK $? "obtain active standby count" 2
-	if [ $ACTIVE_COUNT -ne 1 ];then
+	if [ $ACTIVE_COUNT -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Not in master fail-back situation" 2
 	fi
 	#Obtain the fail-back master port number
-	FAILBACK_MASTER_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(dbid) from mpp_configuration where content=-1;"`
-	FAILBACK_MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select port from mpp_configuration where dbid in ($FAILBACK_MASTER_DBID);"`
+	FAILBACK_MASTER_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(dbid) from $CONFIG_TABLE where content=-1;"`
+	FAILBACK_MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select port from $CONFIG_TABLE where dbid in ($FAILBACK_MASTER_DBID);"`
 	ERROR_CHK $? "obtain fail-back master port number" 2
 	#Obtain the fail-back master data directory
-	FAILBACK_MASTER_DATA_DIRECTORY=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir from mpp_configuration where dbid in ($FAILBACK_MASTER_DBID);"`
+	FAILBACK_MASTER_DATA_DIRECTORY=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where dbid in ($FAILBACK_MASTER_DBID);"`
 	ERROR_CHK $? "obtain fail-back master data directory" 2
-	#Check to ensure that we have an entry for FAILBACK_MASTER_HOSTNAME in mpp_configuration table
-	FAILBACK_MASTER_HOSTID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select 1 from mpp_configuration where hostname='${FAILBACK_MASTER_HOSTNAME}';"`
-	ERROR_CHK $? "obtain fail-back master hostid" 2
+	#Check to ensure that we have an entry for FAILBACK_MASTER_HOSTNAME in $CONFIG_TABLE table
+##	FAILBACK_MASTER_HOSTID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select 1 from $CONFIG_TABLE where hostname='${FAILBACK_MASTER_HOSTNAME}';"`
+##	ERROR_CHK $? "obtain fail-back master check" 2
 	#Check that we are not trying to re-activate on the standby host
 	if [ "$FAILBACK_MASTER_HOSTNAME" == "`$HOSTNAME`" ];then
 		ERROR_EXIT "[FATAL]:-Must run this script on the standby master host" 2
@@ -162,16 +161,16 @@ CHECK_PARAM () {
 		ERROR_EXIT "[FATAL]:-File $FAILBACK_MASTER_DATA_DIRECTORY/$PG_PID exists on $FAILBACK_MASTER_HOSTNAME" 2
 	fi	
 	#Check that we have the required additional scripts
-	if [ ! -f $START_PROG ];then ERROR_EXIT "[FATAL $START_PROG does not exist" 2;fi
-	if [ ! -f $STOP_PROG ];then ERROR_EXIT "[FATAL $STOP_PROG does not exist" 2;fi
+	if [ ! -f $MPPSTART ];then ERROR_EXIT "[FATAL $MPPSTART does not exist" 2;fi
+	if [ ! -f $MPPSTOP ];then ERROR_EXIT "[FATAL $MPPSTOP does not exist" 2;fi
 	#Also check that we have these on the master host to be re-activated
-	CHK_FILE $REMOTE_START_PROG $FAILBACK_MASTER_HOSTNAME
+	CHK_FILE $REMOTE_MPPSTART $FAILBACK_MASTER_HOSTNAME
 	if [ $EXISTS -eq 1 ];then
-		ERROR_EXIT "[FATAL]:-File $REMOTE_START_PROG does not exist on $FAILBACK_MASTER_HOSTNAME" 2
+		ERROR_EXIT "[FATAL]:-File $REMOTE_MPPSTART does not exist on $FAILBACK_MASTER_HOSTNAME" 2
 	fi
-	CHK_FILE $REMOTE_STOP_PROG $FAILBACK_MASTER_HOSTNAME
+	CHK_FILE $REMOTE_MPPSTOP $FAILBACK_MASTER_HOSTNAME
 	if [ $EXISTS -eq 1 ];then
-		ERROR_EXIT "[FATAL]:-File $REMOTE_STOP_PROG does not exist on $FAILBACK_MASTER_HOSTNAME" 2
+		ERROR_EXIT "[FATAL]:-File $REMOTE_MPPSTOP does not exist on $FAILBACK_MASTER_HOSTNAME" 2
 	fi
 	CHK_FILE $REMOTE_INIT_STANDBY $FAILBACK_MASTER_HOSTNAME
 	if [ $EXISTS -eq 1 ];then
@@ -182,14 +181,14 @@ CHECK_PARAM () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "MPP master QD re-activation parameters"
-	LOG_MSG "--------------------------------------"
-	LOG_MSG "MPP Master standby hostname       = $MASTER_HOSTNAME"
-	LOG_MSG "MPP Master standby port           = $MASTER_PORT"
-	LOG_MSG "MPP Master standby data directory = $MASTER_DATA_DIRECTORY"
-	LOG_MSG "MPP Master re-activate hostname   = $FAILBACK_MASTER_HOSTNAME"
-	LOG_MSG "MPP Master re-activate port       = $FAILBACK_MASTER_PORT"
-	LOG_MSG "MPP Master re-activate directory  = $FAILBACK_MASTER_DATA_DIRECTORY"
+	LOG_MSG "[INFO]:-MPP Master Segment re-activation parameters"
+	LOG_MSG "[INFO]:--------------------------------------------"
+	LOG_MSG "[INFO]:-MPP Master standby hostname       = $MASTER_HOSTNAME"
+	LOG_MSG "[INFO]:-MPP Master standby port           = $MASTER_PORT"
+	LOG_MSG "[INFO]:-MPP Master standby data directory = $MASTER_DATA_DIRECTORY"
+	LOG_MSG "[INFO]:-MPP Master re-activate hostname   = $FAILBACK_MASTER_HOSTNAME"
+	LOG_MSG "[INFO]:-MPP Master re-activate port       = $FAILBACK_MASTER_PORT"
+	LOG_MSG "[INFO]:-MPP Master re-activate directory  = $FAILBACK_MASTER_DATA_DIRECTORY"
 	if [ $INTERACTIVE ]; then
 		$ECHO  "Continue with MPP Master re-activation Yy/Nn>"
 		read REPLY
@@ -209,11 +208,11 @@ DISPLAY_PARAM () {
 
 PROCESS_REACTIVATION () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Commencing shutdown of cluster"
-	$STOP_PROG -qai
-	ERROR_CHK $? "[FATAL]:-Issues with cluster shutdown, please correct and re-run this script" 2
+	LOG_MSG "[INFO]:-Commencing shutdown of instance"
+	$MPPSTOP -qafy
+	ERROR_CHK $? "[FATAL]:-Issues with instance shutdown, please correct and re-run this script" 2
 	LOG_MSG "[INFO]:-Starting master instance in admin mode"
-	$START_PROG -m
+	$MPPSTART -m
 	ERROR_CHK $? "starting master instance in admin mode" 2
 	LOG_MSG "[INFO]:-Updating system catalog tables"
 	UPDATE_CATALOG
@@ -231,30 +230,34 @@ PROCESS_REACTIVATION () {
 ##	ERROR_CHK $? "re-sync of standby QD" 1
 	LOG_MSG "[INFO]:-Removing standby postmaster.opts file"
 	$RM -f $MASTER_DATA_DIRECTORY/$PG_OPT
-	LOG_MSG "[INFO]:-Restarting sync process on $MASTER_HOSTNAME"
-	RUN_COMMAND_REMOTE $FAILBACK_MASTER_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;. $SCRIPTDIR/mpp_bash_functions.sh; START_SYNC_PROCESS $MASTER_HOSTNAME $MASTER_DATA_DIRECTORY $MASTER_PORT"
-	LOG_MSG "[INFO]:-Starting MPP cluster on $FAILBACK_MASTER_HOSTNAME"
-	RUN_COMMAND_REMOTE $FAILBACK_MASTER_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$REMOTE_START_PROG -d $FAILBACK_MASTER_DATA_DIRECTORY -a"
+##	LOG_MSG "[INFO]:-Restarting sync process on $MASTER_HOSTNAME"
+##	RUN_COMMAND_REMOTE $FAILBACK_MASTER_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;. $SCRIPTDIR/mpp_bash_functions.sh; START_SYNC_PROCESS $MASTER_HOSTNAME $MASTER_DATA_DIRECTORY $MASTER_PORT"
+	LOG_MSG "[INFO]:-Starting MPP instance on $FAILBACK_MASTER_HOSTNAME"
+	RUN_COMMAND_REMOTE $FAILBACK_MASTER_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$REMOTE_MPPSTART -d $FAILBACK_MASTER_DATA_DIRECTORY -a"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	FAILBACK_MASTER_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(dbid) from mpp_configuration where content=-1;"`
-###	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT -A -t -c"update mpp_configuration set hostname='$FAILBACK_MASTER_HOSTNAME' where dbid in ($FAILBACK_MASTER_DBID);"
-	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"update mpp_configuration set hostname='$FAILBACK_MASTER_HOSTNAME' where dbid in ($FAILBACK_MASTER_DBID);"
-	ERROR_CHK $? "update mpp_configuration hostname value in database" 1
+	FAILBACK_MASTER_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(dbid) from $CONFIG_TABLE where content=-1;"`
+###	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT -A -t -c"update $CONFIG_TABLE set hostname='$FAILBACK_MASTER_HOSTNAME' where dbid in ($FAILBACK_MASTER_DBID);"
+	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set hostname='$FAILBACK_MASTER_HOSTNAME' where dbid in ($FAILBACK_MASTER_DBID);"
 	if [ $RETVAL -ne 0 ];then
 	    ADMIN_SHUTDOWN
-	    ERROR_EXIT "[FATAL]:-Unable to contine, unable to update mpp_configuration catalog" 2
+	    ERROR_EXIT "[FATAL]:-Unable to contine, unable to update $CONFIG_TABLE catalog" 2
 	fi
+	NEW_FAIL_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(dbid)+1 from $CONFIG_TABLE ;"`
+	LOG_MSG "[INFO]:-Obtained new master standby dbid $NEW_FAIL_DBID"
+	LOG_MSG "Creating new Master standby catalog record"
+	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"insert into $CONFIG_TABLE values (-1,'f',$NEW_FAIL_DBID,'f','t',$MASTER_HOSTNAME,$MASTER_PORT,'$MASTER_DATA_DIRECTORY');"
+	ERROR_CHECK $? "insert new standby catalog record" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 ADMIN_SHUTDOWN () {
         LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-        LOG_MSG "[INFO]:-Stopping master QD instance"
-        $STOP_PROG -m
-        ERROR_CHK $? "shutdown master QD instance" 1
+        LOG_MSG "[INFO]:-Stopping master segment instance"
+        $MPPSTOP -m
+        ERROR_CHK $? "shutdown master segment instance" 1
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -262,6 +265,10 @@ ADMIN_SHUTDOWN () {
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
+LOG_MSG "[INFO]:-This utility has been depreciated"
+LOG_MSG "[INFO]:-Use mppactivatestandby.sh and mppinitstandby.sh"
+LOG_MSG "[INFO]:-Review usage via -? for both utilities"
+exit 0
 if [ $# -ne 0 ]; then
 	while getopts ":v'?'aqm:l:" opt;do
 		case $opt in
@@ -300,9 +307,9 @@ if [ x"" != x"$INTERACTIVE" ];then
 	DISPLAY_PARAM
 fi
 PROCESS_REACTIVATION
-LOG_MSG "[INFO]:-Successfully completed master QD re-activation"
+LOG_MSG "[INFO]:-Successfully completed master instance re-activation"
 LOG_MSG "[INFO]:-Statistics will need to be run against the database"
-LOG_MSG "[INFO]:-Following master QD re-activation"
+LOG_MSG "[INFO]:-Following master instance re-activation"
 LOG_MSG "[INFO]:-When convenient, run analyze against the user databases"
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS
