@@ -1675,7 +1675,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 				 * tuples coming into the system will be randomly assigned a bucket.
 				 */
 				policy->nattrs = 0;
-				elog(NOTICE, "Table doesn't have 'distributed by' clause, and no column type is suitable for a distribution key. Creating a policy with no distribution keys.");
+				elog(NOTICE, "Table doesn't have 'distributed by' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.");
 			}
 		}
 	}
