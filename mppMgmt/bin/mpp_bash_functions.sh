@@ -3,10 +3,10 @@
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Updated:-		$Date$
-#	Status:-		MPP Conversion SE Co Internal	
+#	Status:-		Released	
 #	Author:-		G L Coombe (Greenplum)
 #	Contact:-		gcoombe@greenplum.com
-#	Release date:-		TBC
+#	Release date:-		March 2006
 #	Release stat:-		Greenplum Internal
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
 #                               Copyright (c) Greenplum 2005. All Rights Reserved
@@ -15,7 +15,6 @@
 # Update History
 #******************************************************************************
 # Ver	Date		Who		Update
-#			mppheadsync.bsh utility.
 #******************************************************************************
 # Detailed Description
 #******************************************************************************
@@ -26,7 +25,16 @@
 #***************************************************************
 # Location Functions
 #******************************************************************************
-
+#Check that SHELL is /bin/bash
+if [ $SHELL != /bin/bash ];then
+	echo "[FATAL]:-Scripts must be run by a user account that has SHELL=/bin/bash"
+	if [ -f /bin/bash ];then
+		echo "[INFO]:-/bin/bash exists, please update user account shell"
+	else
+		echo "[WARN]:-/bin/bash does not exist, does bash need to be installed?"
+	fi
+	exit 2
+fi
 #CMDPATH is the list of locations to search for commands, in precedence order
 declare -a CMDPATH
 CMDPATH=(/usr/kerberos/bin /usr/sfw/bin /opt/sfw/bin /usr/local/bin /bin /usr/bin /sbin /usr/sbin /usr/ucb)
@@ -103,6 +111,7 @@ IPCS=`findCmdInPath ipcs`
 IFCONFIG=`findCmdInPath ifconfig`
 KILL=`findCmdInPath kill`
 LS=`findCmdInPath ls`
+MAIL=`findCmdInPath mail`
 MV=`findCmdInPath mv`
 MKDIR=`findCmdInPath mkdir`
 MKFIFO=`findCmdInPath mkfifo`
@@ -156,6 +165,7 @@ MPPACTIVATEMASTER=$SCRIPTDIR/mppactivatemaster.sh
 MPPACTIVATESTANDBY=$SCRIPTDIR/mppactivatestandby.sh
 MPPADDMIRRORS=$SCRIPTDIR/mppaddmirrors.sh
 MPPCREATECLUSTER=$SCRIPTDIR/mppcreatecluster.sh
+MPPCRONDUMP=$SCRIPTDIR/mppcrondump.sh
 MPPDELETECLUSTER=$SCRIPTDIR/mppdeletecluster.sh
 MPPINITSTANDBY=$SCRIPTDIR/mppinitstandby.sh
 MPPREBUILDCLUSTER=$SCRIPTDIR/mpprebuildcluster.sh
@@ -166,6 +176,7 @@ MPPSKEW=$SCRIPTDIR/mppskew.sh
 MPPSTART=$SCRIPTDIR/mppstart.sh
 MPPSTATE=$SCRIPTDIR/mppstate.sh
 MPPSTOP=$SCRIPTDIR/mppstop.sh
+MAILFILE=$SCRIPTDIR/mail_contacts
 #******************************************************************************
 # MPP Command Variables
 #******************************************************************************
@@ -175,13 +186,14 @@ PG_CTL=$PSQLBIN/pg_ctl
 PG_DUMP=$PSQLBIN/pg_dump
 PG_RESTORE=$PSQLBIN/pg_restore
 PSQL=$PSQLBIN/psql
-MPP_DUMPALL=$PSQLBIN/mpp_dumpall
+MPP_DUMP=$PSQLBIN/mpp_dump
 MPP_RESTORE=$PSQLBIN/mpp_restore
 MPPSYNCMASTER=$PSQLBIN/mppsyncmaster
 
 #******************************************************************************
 # General Variables
 #******************************************************************************
+HOSTFILE=/etc/hosts
 PG_PID=postmaster.pid
 PG_OPT=postmaster.opts
 PG_CONF=postgresql.conf
@@ -192,6 +204,12 @@ PG_CONF_ADD_FILE=$WORKDIR/postgresql_conf_mpp_additions
 RECOVER_FLAG=/tmp/active_recovery_in_progress
 SCHEMA_FILE=cdb_schema.sql
 DEFAULTDB=template1
+CONFIG_TABLE=mpp_configuration
+MPP_MPP_TABLE=mpp_mpp
+MPP_PG_VIEW=mpp_pgdatabase
+MPP_INITDB_VER_TABLE=mpp_version_at_initdb
+DEFAULT_CHK_PT_SEG=8
+DEFAULT_IP_ALLOW="0.0.0.0/0"
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -241,9 +259,14 @@ ERROR_EXIT () {
 		exit $2
 }
 
+READ_CHK () {
+	READ_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c" select count(*) from $CONFIG_TABLE where port<0;"`
+	LOG_MSG "[INFO]:-Obtained -ve port read count $READ_COUNT" 
+}
+
 ERROR_CHK () {
 	if [ $# -ne 3 ];then 
-		LOG_MSG "[WARN]:-Incorrect # parameters supplied to $FUNCTNAME"
+		LOG_MSG "[WARN]:-Incorrect # parameters supplied to $FUNCNAME"
 		return;fi
 	RETVAL=$1;shift
 	MSG_TXT=$1;shift
@@ -382,9 +405,29 @@ CHK_EXISTS_TABLE () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+EVENT_MAIL () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	MAIL_SUBJECT=$1;shift
+	MAIL_MESSAGE=$1
+	if [ ! -f $MAIL_FILE ];then
+		LOG_MSG "[WARN]:-No $MAILFILE unable to proceed"
+		EXIT_STATUS=1
+	else
+		for MAIL_ADDRESS in `$CAT $MAILFILE | $GREP -v "^#"`
+		do
+			LOG_MSG "[INFO]:-Sending mail to $MAIL_ADDRESS"
+			$ECHO "$MAIL_MESSAGE"|$MAIL -s "$MAIL_SUBJECT" $MAIL_ADDRESS
+			ERROR_CHK $? "send email to $MAIL_ADDRESS" 1
+		done
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 GET_DISTRIB_COLS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	DISTRIB_COLS=`${EXPORT_LIB_PATH};$PSQL -p $2 $3 -A -t -c"select attrnums from  mpp_distribution_policy  where localoid in (select oid from pg_class where relname='${1}');"`
+	if [ x"" == x"$DISTRIB_COLS" ];then
+		DISTRIB_COLS=0;fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -408,11 +451,31 @@ CHK_DIR () {
 			EXISTS=`if [ -d $DIR_NAME ];then $ECHO 0;else $ECHO 1;fi`
 		else
 			EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -d $DIR_NAME ];then $ECHO 0;else $ECHO 1;fi"`
-			ERROR_CHK $? "obtain directory details $DIR_NAME on $DIR_HOST" 1
+			RETVAL=$?
+			if [ $RETVAL -ne 0 ];then
+			LOG_MSG "[WARN]:-Failed to obtain details of $DIR_NAME on $DIR_HOST"
+			EXIT_STATUS=1
+			EXISTS=1
+			fi
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+CHK_WRITE_DIR () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	DIR_NAME=$1;shift
+	DIR_HOST=$1
+	LOG_MSG "[INFO]:-Checking write access to $DIR_NAME on $DIR_HOST"
+	$TRUSTED_SHELL $DIR_HOST "$TOUCH ${DIR_NAME}/tmp_file_test"
+	RETVAL=$?
+	if [ $RETVAL -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Cannot write to $DIR_NAME on $DIR_HOST " 2
+	else
+		$TRUSTED_SHELL $DIR_HOST "$RM -f ${DIR_NAME}/tmp_file_test"
+	LOG_MSG "[INFO]:-Write test passed on $DIR_HOST $DIR_NAME directory"
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
 GET_MASTER_PORT () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		MASTER_DATA_DIRECTORY=$1
@@ -435,12 +498,41 @@ CHK_ON_PASSIVE_STANDBY () {
 		MPPSYNC_COUNT=`$GREP -c mppsync $MASTER_DATA_DIRECTORY/postmaster.opts`
 	fi
 	if [ $PID -ne 0 ] && [ $MPPSYNC_COUNT -ne 0 ];then
-		LOG_MSG "[FATAL]:-Cannot run this script on a passive standby QD where there" 
-		LOG_MSG "[FATAL]:-is a conflict with the current value of the MASTER_DATA_DIRECTORY"
-		LOG_MSG "[FATAL]:-environment variable setting."
+		LOG_MSG "[FATAL]:-Cannot run this script on a passive standby instance" 
+		LOG_MSG "[FATAL]:-where there is a conflict with the current value of"
+		LOG_MSG "[FATAL]:-the MASTER_DATA_DIRECTORY environment variable setting."
+		ERROR_EXIT "[FATAL]:-Unable to process requested command" 2
+	fi
+	if [ $MPPSYNC_COUNT -ne 0 ];then
+		LOG_MSG "[FATAL]:-Cannot run this script on the standby instance"
+		LOG_MSG "[FATAL]:-Status indicates that standby instance processs not running"
+		LOG_MSG "[FATAL]:-Check standby process status via mppstate.sh -f on Master instance"
 		ERROR_EXIT "[FATAL]:-Unable to process requested command" 2
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+BUILD_MASTER_PG_HBA_FILE () {
+        LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	if [ $# -eq 0 ];then ERROR_EXIT "[FATAL]:-Passed zero parameters, expected at least 1" 2;fi
+	MPP_DIR=$1
+	if [ x"" == x"$2" ];then
+		IP_ALLOW=$DEFAULT_IP_ALLOW
+	else
+		IP_ALLOW=$2
+	fi
+        LOG_MSG "[INFO]:-Clearing values in Master $PG_HBA"
+        $GREP "^#" ${MPP_DIR}/$PG_HBA > $TMP_PG_HBA
+        $MV $TMP_PG_HBA ${MPP_DIR}/$PG_HBA
+        LOG_MSG "[INFO]:-Setting local access"
+        $ECHO "local    all         $USER_NAME         $PG_METHOD" >> ${MPP_DIR}/$PG_HBA
+        $ECHO "local    all         all                $PG_METHOD" >> ${MPP_DIR}/$PG_HBA
+        LOG_MSG "[INFO]:-Setting local host access"
+        $ECHO "host     all         $USER_NAME         127.0.0.0/0     trust" >> ${MPP_DIR}/$PG_HBA
+        $ECHO "host     all         $USER_NAME         $IP_ALLOW       md5" >> ${MPP_DIR}/$PG_HBA
+        $ECHO "host     all         all                $IP_ALLOW       trust" >> ${MPP_DIR}/$PG_HBA
+        LOG_MSG "[INFO]:-Complete Master $PG_HBA configuration"
+        LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CHK_DB_RUNNING () {
@@ -454,8 +546,8 @@ CHK_DB_RUNNING () {
 		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 		export $EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" > /dev/null 2>&1
 		if [ $? -ne 0 ];then
-			LOG_MSG "[FATAL]:-Have a postmaster.pid file for QD instance on port $MASTER_PORT"
-			LOG_MSG "[FATAL]:-However, error reported on test psql access to QD instance"
+			LOG_MSG "[FATAL]:-Have a postmaster.pid file for master instance on port $MASTER_PORT"
+			LOG_MSG "[FATAL]:-However, error reported on test psql access to master instance"
 			LOG_MSG "[INFO]:-Check ps output for a postmaster process on the above port"
 			LOG_MSG "[INFO]:-Check the master postgres logfile for errors"
 			ERROR_EXIT "[FATAL]:-Unable to continue"
@@ -467,13 +559,22 @@ GET_QD_DB_NAME () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 		CHK_DB_RUNNING	
-		QD_DBNAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" 2>/dev/null|$GREP -v postgres|$GREP -v template|$HEAD -1|$CUT -d"|" -f1`
-		ERROR_CHK $? "obtain database name" 2
-		MASTER_DIR_CHK=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from mpp_configuration;"`
+		#Check if we have PGDATABASE environment variable set, if so see if that database exists
+		if [ x"" != x"$PGDATABASE" ];then
+			LOG_MSG "[INFO]:-PGDATABASE set, checking for this database"
+			QD_DBNAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" 2>/dev/null|$GREP -v postgres|$GREP -v template|$GREP $PGDATABASE|$CUT -d"|" -f1`
+			ERROR_CHK $? "check for $PGDATABASE" 2
+		fi
+		if [ x"" == x"$QD_DBNAME" ];then
+			LOG_MSG "[INFO]:-Checking for a non-system database"
+			QD_DBNAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" 2>/dev/null|$GREP -v postgres|$GREP -v template|$HEAD -1|$CUT -d"|" -f1`
+			ERROR_CHK $? "obtain database name" 2
+		fi
+		MASTER_DIR_CHK=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from ${CONFIG_TABLE};"`
 		if [ $MASTER_DIR_CHK -eq 0 ];then
 			ERROR_EXIT "[FATAL]:-MASTER_DATA_DIRECTORY value of $MASTER_DATA_DIRECTORY is incorrect" 2;fi
 		if [ x"" == x"$QD_DBNAME" ]; then
-				LOG_MSG "[INFO]:-Unable to obtain Master database name, setting value to $DEFAULTDB"
+				LOG_MSG "[INFO]:-Unable to obtain a non-system database name, setting value to $DEFAULTDB"
 				QD_DBNAME=$DEFAULTDB
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -482,7 +583,7 @@ GET_QD_DB_NAME () {
 GET_STANDBY_COUNT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_QD_DB_NAME
-	STANDBY_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp_configuration where content=-1 and dbid<>1 ;"`
+	STANDBY_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where content=-1 and dbid<>1 ;"`
 	ERROR_CHK $? "obtain standby master host count" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -490,7 +591,7 @@ GET_STANDBY_COUNT () {
 GET_STANDBY_DETAILS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_QD_DB_NAME
-	STANDBY_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, datadir, port, valid, definedprimary from mpp_configuration where content=-1 and dbid<>1"`) > /dev/null 2>&1
+	STANDBY_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, datadir, port, valid, definedprimary from $CONFIG_TABLE where content=-1 and dbid<>1"`) > /dev/null 2>&1
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ]; then
 		LOG_MSG "[INFO]:-Unable to obtain standby master details, error code $RETVAL returned"
@@ -499,10 +600,17 @@ GET_STANDBY_DETAILS () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+GET_TRANS_READ () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	TRANS_STATE=`${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show transaction_read_only;"|$AWK '{print $NF}'`
+	ERROR_CHK $? "obtain transaction state" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 GET_QE_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, datadir, port, valid, definedprimary from mpp_configuration where content <> -1;"`) > /dev/null 2>&1
+		QE_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.definedprimary from $CONFIG_TABLE a, $MPP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1;"`) > /dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				LOG_MSG "[WARN]:-Unable to obtain segment instance host details from Master db, error code $RETVAL returned"
@@ -520,15 +628,16 @@ GET_DB_LIST () {
 
 CHK_MIRRORS_CONFIGURED () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MIRROR_COUNT=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from mpp_configuration where content<>-1;"`
+	MIRROR_COUNT=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from $CONFIG_TABLE where content<>-1;"`
 	ERROR_CHK $? "obtain mirror count from master instance" 2
+	LOG_MSG "[INFO]:-Obtained $MIRROR_COUNT as check value"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_QE_PRIMARY_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_PRIMARY_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, datadir, port, valid, definedprimary from mpp_configuration where content<>-1 and  definedprimary='t' order by datadir;" 2>/dev/null`) > /dev/null 2>&1
+		QE_PRIMARY_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.isprimary from $CONFIG_TABLE a, $MPP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 and  a.definedprimary='t' order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -541,7 +650,7 @@ GET_QE_PRIMARY_DETAILS () {
 GET_QE_MIRROR_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_MIRROR_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, datadir, port, valid, isprimary from mpp_configuration where content<>-1 and definedprimary='f' order by datadir;" 2>/dev/null`) > /dev/null 2>&1
+		QE_MIRROR_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.isprimary from $CONFIG_TABLE a, $MPP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 and a.definedprimary='f' order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -557,7 +666,7 @@ GET_PG_PID_ACTIVE () {
 		PORT=$1;shift
 		HOST=$1
 		if [ x"" == x"$HOST" ];then
-			PG_LOCK_FILE=`$NETSTAT -an|$GREP ".s.PGSQL.${PORT}"|$GREP LISTENING|$AWK '{print $NF}'`
+			PG_LOCK_FILE=`$NETSTAT -an|$GREP ".s.PGSQL.${PORT}"|$AWK '{print $NF}'`
 			if [ x"" == x"$PG_LOCK_FILE" ];then
 				PID=0
 				LOG_MSG "[INFO]:-No socket connection found for port=${PORT}"
@@ -572,18 +681,24 @@ GET_PG_PID_ACTIVE () {
 				fi
 			fi
 		else
-			PG_LOCK_FILE=`$TRUSTED_SHELL $HOST "$NETSTAT -an|$GREP ".s.PGSQL.${PORT}" 2>/dev/null"|$AWK '{print $NF}'`
-			if [ x"" == x"$PG_LOCK_FILE" ];then
+			PING_HOST $HOST 1
+			if [ $RETVAL -ne 0 ];then
 				PID=0
-				LOG_MSG "[INFO]:-No socket connection found for port=${PORT} on $HOST"
-			else
-				if [ `$TRUSTED_SHELL $HOST "$LS ${PG_LOCK_FILE}.lock 2>/dev/null"|$WC -l` -ne 0 ];then
-					PID=`$TRUSTED_SHELL $HOST "$CAT ${PG_LOCK_FILE}.lock|$HEAD -1 2>/dev/null"|$AWK '{print $1}'`
-					LOG_MSG "[INFO]:-PID found for $PORT PID=$PID on $HOST"
-				else
+				EXIT_STATUS=1
+			else	
+				PG_LOCK_FILE=`$TRUSTED_SHELL $HOST "$NETSTAT -an|$GREP ".s.PGSQL.${PORT}" 2>/dev/null"|$AWK '{print $NF}'`
+				if [ x"" == x"$PG_LOCK_FILE" ];then
 					PID=0
-					LOG_MSG "[WARN]:-Socket connection found, but no ${PG_LOCK_FILE}.lock on $HOST"
-					EXIT_STATUS=1
+					LOG_MSG "[INFO]:-No socket connection found for port=${PORT} on $HOST"
+				else
+					if [ `$TRUSTED_SHELL $HOST "$LS ${PG_LOCK_FILE}.lock 2>/dev/null"|$WC -l` -ne 0 ];then
+						PID=`$TRUSTED_SHELL $HOST "$CAT ${PG_LOCK_FILE}.lock|$HEAD -1 2>/dev/null"|$AWK '{print $1}'`
+						LOG_MSG "[INFO]:-PID found for $PORT PID=$PID on $HOST"
+					else
+						PID=0
+						LOG_MSG "[WARN]:-Socket connection found, but no ${PG_LOCK_FILE}.lock on $HOST"
+						EXIT_STATUS=1
+					fi
 				fi
 			fi
 		fi
@@ -634,13 +749,23 @@ BACKOUT_COMMAND () {
 
 PING_HOST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	TARGET_HOST=$1
+	TARGET_HOST=$1;shift
+	PING_EXIT=$1
+	if [ x"" == x"$PING_EXIT" ];then PING_EXIT=0;fi
 	$PING -c 1 $TARGET_HOST > /dev/null 2>&1
 	RETVAL=$?
 	case $RETVAL in
 		0) LOG_MSG "[INFO]:-$TARGET_HOST contact established" ;;
-		1) ERROR_EXIT "[FATAL]:-Unable to contact $TARGET_HOST" 2 ;;
-		2) ERROR_EXIT "[FATAL]:-Unknown host $TARGET_HOST" 2 ;;
+		1) if [ $PING_EXIT -eq 0 ];then
+			ERROR_EXIT "[FATAL]:-Unable to contact $TARGET_HOST" 2 
+		   else
+		        LOG_MSG "[WARN]:-Unable to contact $TARGET_HOST"
+		   fi ;;
+		2) if [ $PING_EXIT -eq 0 ];then
+		 	ERROR_EXIT "[FATAL]:-Unknown host $TARGET_HOST" 2 
+		   else
+			LOG_MSG "[WARN]:-Unknown host $TARGET_HOST"
+		   fi ;;
 	esac
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 	return $RETVAL
@@ -651,13 +776,13 @@ STANDBY_CATALOG_UPDATE () {
 	MASTER_STANDBY_HOSTNAME=$1;shift
 	MASTER_STANDBY_DATA_DIRECTORY=$1;shift
 	MASTER_STANDBY_PORT=$1
-	STANDBY_HOST_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(distinct hostname) from mpp_configuration where hostname='${MASTER_STANDBY_HOSTNAME}';"`
+	STANDBY_HOST_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(distinct hostname) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}';"`
 	ERROR_CHK $? "obtain standby host count" 2
-        LOG_MSG "[INFO]:-Creating new mpp_configuration record for ${MASTER_STANDBY_HOSTNAME}"
-        MAX_DB_ID=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select max(dbid)+1 from mpp_configuration;"`
-	ERROR_CHK $? "obtain max dbid from mpp_configuration" 2
-        $EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"insert into mpp_configuration (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (${MAX_DB_ID},'f',-1,'t','f','${MASTER_STANDBY_HOSTNAME}',${MASTER_STANDBY_PORT},'${MASTER_STANDBY_DATA_DIRECTORY}');"
-        ERROR_CHK $? "add standby host mpp_configuration record" 2
+        LOG_MSG "[INFO]:-Creating new $CONFIG_TABLE record for ${MASTER_STANDBY_HOSTNAME}"
+        MAX_DB_ID=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select max(dbid)+1 from $CONFIG_TABLE;"`
+	ERROR_CHK $? "obtain max dbid from $CONFIG_TABLE" 2
+        $EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"insert into $CONFIG_TABLE (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (${MAX_DB_ID},'f',-1,'t','f','${MASTER_STANDBY_HOSTNAME}',${MASTER_STANDBY_PORT},'${MASTER_STANDBY_DATA_DIRECTORY}');"
+        ERROR_CHK $? "add standby host $CONFIG_TABLE record" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -670,11 +795,11 @@ START_SYNC_PROCESS () {
 	#Check to see if already have a process running on this port
 	GET_PG_PID_ACTIVE $MASTER_STANDBY_PORT ${MASTER_STANDBY_HOSTNAME}
 	if [ $PID -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Process PID=$PID on port=$MASTER_STANDBY_PORT running on $MASTER_STANDBY_HOSTNAME" 2
+		LOG_MSG "[INFO]:-Standby Master sync process active, will shutdown"
+		STOP_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY
 	fi
 	LOG_MSG "[INFO]:-Starting mppsyncmaster on standby host ${MASTER_STANDBY_HOSTNAME}"
-	$TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "exec $MPPSYNCMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -i  >> ${MASTER_STANDBY_DATA_DIRECTORY}.log 2>&1 &"
-	ERROR_CHK $? "initialize mppsyncmaster on ${MASTER_STANDBY_HOSTNAME}" 1
+        $TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "exec $MPPSYNCMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -h $MASTER_STANDBY_HOSTNAME  >> ${MASTER_STANDBY_DATA_DIRECTORY}.log 2>&1 &"
 	$SLEEP 3 #Wait to ensure process has time to start
 	GET_PG_PID_ACTIVE $MASTER_STANDBY_PORT ${MASTER_STANDBY_HOSTNAME}
 	if [ $PID -eq 0 ];then
@@ -692,7 +817,8 @@ STOP_SYNC_PROCESS () {
 	MASTER_STANDBY_HOSTNAME=$1;shift
 	MASTER_STANDBY_DATA_DIRECTORY=$1
 	$TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "$EXPORT_LIB_PATH;$PG_CTL stop -D $MASTER_STANDBY_DATA_DIRECTORY -m immediate"
-	ERROR_CHK $? "immediate shutdown of sync process on ${MASTER_STANDBY_HOSTNAME}" 1
+	RETVAL=$?
+	ERROR_CHK $RETVAL "immediate shutdown of sync process on ${MASTER_STANDBY_HOSTNAME}" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 #******************************************************************************
@@ -719,14 +845,17 @@ case $OS_TYPE in
 	sunos ) IFCONFIG_TXT="-a inet"
 		PS_TXT="-ef" 
 		LIB_TYPE="LD_LIBRARY_PATH"
+		PG_METHOD=trust
 		DU_TXT="-s" ;;
 	linux ) IFCONFIG_TXT="" 
 		PS_TXT="ax" 
 		LIB_TYPE="LD_LIBRARY_PATH"
+		PG_METHOD="ident sameuser"
 		DU_TXT="-c" ;;
 	darwin ) IFCONFIG_TXT=""
 		PS_TXT="ax"
 		LIB_TYPE="DYLD_LIBRARY_PATH"
+		PG_METHOD="ident sameuser"
 		DU_TXT="-c" ;;	
 	* ) echo unknown ;;
 esac
