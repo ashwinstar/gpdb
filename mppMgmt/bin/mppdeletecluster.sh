@@ -2,14 +2,14 @@
 #	Filename:-		mppdeletecluster.bsh
 #	Version:-		$Revision$	
 #	Updated:-		$Date$
-#	Status:-		Beta testing
+#	Status:-		Released
 #	Author:-		G L Coombe
 #	Contact:-		gcoombe@greenplum.com
-#	Release date:-		TBC
+#	Release date:-		March 2006
 #	Release stat:-		Greenplum Co Internal
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
 #                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Deletes an MPP array.
+#	Brief descn:-		Deletes an MPP instance.
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -44,7 +44,6 @@ CUR_DATE=`$DATE +%Y%m%d`
 MASTER_HOSTNAME=`hostname`
 EXIT_STATUS=0
 FULL_DISPLAY=0
-STOP_PROG=$MPPSTOP
 FORCE=0
 #******************************************************************************
 # Functions
@@ -53,7 +52,7 @@ USAGE () {
 	$ECHO
         $ECHO "      `basename $0`"
 	$ECHO
-        $ECHO "      Deletes a MPP cluster, use with caution, script is destructive"
+        $ECHO "      Deletes a MPP instance, use with caution, script is destructive"
         $ECHO
         $ECHO "      Usage:"
         $ECHO "      $0 [OPTIONS]"
@@ -89,14 +88,14 @@ CHECK_PARAM () {
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Directory $DELETE_MASTER_DATA_DIRECTORY does not exist on this host";fi
 	if [ ! -f ${DELETE_MASTER_DATA_DIRECTORY}/postmaster.pid ];then
-		ERROR_EXIT "[FATAL]:-MPP cluster not running, activate cluster to be able to progress cluster deletion" 2
+		ERROR_EXIT "[FATAL]:-MPP instance not running, activate instance to be able to progress instance deletion" 2
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 OBTAIN_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	export MASTER_DATA_DIRECTORY=$DELETE_MASTER_DATA_DIRECTORY
+	MASTER_DATA_DIRECTORY=$DELETE_MASTER_DATA_DIRECTORY
 	GET_QE_DETAILS
 	if [ $EXIT_STATUS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Unable to obtain details of segment instances" 2;fi
@@ -110,24 +109,29 @@ OBTAIN_PARAM () {
 	else
 		STANDBY_HOSTNAME="Not configured"
 	fi
-	if [ $FORCE -ne 1 ];then
-		LOG_MSG "[INFO]:-Checking for database dump files"
-		DB_DUMP_CHK
-	else
-		LOG_MSG "[INFO]:-Skipping database dump file check, as -f parameter supplied"
-	fi
+	LOG_MSG "[INFO]:-Checking for database dump files"
+	DB_DUMP_CHK
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 
 DB_DUMP_CHK () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Checking Master instance for dump files"
+	DUMP_COUNT=`$FIND $MASTER_DATA_DIRECTORY -name 'mpp_dump*' -print|$WC -l`
+	if [ $DUMP_COUNT -ne 0 ] && [ $FORCE -eq 0 ];then
+		LOG_MSG "[FATAL]:-Located possible database dump file on Master instance host" 
+		LOG_MSG "[FATAL]:-In directory $MASTER_DATA_DIRECTORY"
+		ERROR_EXIT "[FATAL]:-To override database dump file checking use -f option" 2
+	else
+		LOG_MSG "[INFO]:-Complete Master instance dump file check"
+	fi	
 	for DELETE_SEG in "${QE_ARRAY[@]}"
 	do
 		SET_VAR $DELETE_SEG
 		LOG_MSG "[INFO]:-Checking host=$DELETE_HOSTNAME Data directory=$DELETE_DATADIR"
 		DUMP_COUNT=`$TRUSTED_SHELL $DELETE_HOSTNAME "$FIND $DELETE_DATADIR -name 'mpp_dump*' -print|$WC -l"`
-		if [ $DUMP_COUNT -ne 0 ];then
+		if [ $DUMP_COUNT -ne 0 ] && [ $FORCE -eq 0 ];then
 			LOG_MSG "[FATAL]:-Located possible database dump file on $DELETE_HOSTNAME"
 			LOG_MSG "[FATAL]:-In directory $DELETE_DATADIR"
 			ERROR_EXIT "[FATAL]:-To override database dump file checking use -f option" 2
@@ -146,15 +150,23 @@ SET_VAR () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-MPP Cluster Deletion Parameters"
+	LOG_MSG "[INFO]:-MPP Instance Deletion Parameters"
 	LOG_MSG "[INFO]:--------------------------------"
 	LOG_MSG "[INFO]:-MPP Master hostname               = $MASTER_HOSTNAME"
 	LOG_MSG "[INFO]:-MPP Master data directory         = $MASTER_DATA_DIRECTORY"
 	LOG_MSG "[INFO]:-MPP Master port                   = $MASTER_PORT"
 	LOG_MSG "[INFO]:-MPP Master standby host           = $STANDBY_HOSTNAME"
+	if [ $FORCE -eq 1 ];then
+		LOG_MSG "[WARN]:-MPP Force delete of dump files    = ON"
+	else
+		LOG_MSG "[INFO]:-MPP Force delete of dump files    = Off"
+	fi	
 	if [ $STANDBY_COUNT -ne 0 ];then
 	LOG_MSG "[INFO]:-MPP Master standby data directory = $STANDBY_DATADIR"
 	LOG_MSG "[INFO]:-MPP Master standby port           = $STANDBY_PORT"
+	fi
+	if [ $FAIL_PRI_SEG ];then
+	LOG_MSG "[INFO]:-MPP RO Master deletion            = On"
 	fi
 	LOG_MSG "[INFO]:-------------------------------"
 	LOG_MSG "[INFO]:-Segment Instance List"
@@ -165,10 +177,13 @@ DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Host=$DELETE_HOSTNAME Data directory=$DELETE_DATADIR Port=$DELETE_PORT"
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-	$ECHO  "Continue with MPP deletion Yy/Nn>"
+	$ECHO  "Continue with MPP instance deletion Yy/Nn>"
 	read REPLY
 	CHK_REPLY
-	$ECHO "Final warning, you are about to delete the MPP cluster on Master host $MASTER_HOSTNAME"
+	$ECHO "FINAL WARNING, you are about to delete the MPP instance on Master host $MASTER_HOSTNAME"
+	if [ $DUMP_COUNT -ne 0 ] && [ $FORCE -eq 1 ];then
+	$ECHO "There are database dump files, these will be DELETED if you continue!"
+	fi
 	$ECHO "Continue with MPP deletion Yy/Nn>"
 	read REPLY
 	CHK_REPLY
@@ -190,11 +205,11 @@ CHK_REPLY () {
 
 DELETE_CLUSTER () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Closing down cluster"
-	if [ -f $STOP_PROG ];then
-		$STOP_PROG -zqai -d $MASTER_DATA_DIRECTORY
+	LOG_MSG "[INFO]:-Closing down instance"
+	if [ -f $MPPSTOP ];then
+		$MPPSTOP -zqaf -d $DELETE_MASTER_DATA_DIRECTORY
 	else
-		ERROR_EXIT "[FATAL]:-Unable to locate $STOP_PROG" 2
+		ERROR_EXIT "[FATAL]:-Unable to locate $MPPSTOP" 2
 	fi
 	LOG_MSG "[INFO]:-Deleting segment data directories"
 	for DELETE_SEG in "${QE_ARRAY[@]}"
@@ -208,26 +223,42 @@ DELETE_CLUSTER () {
 		LOG_MSG "[INFO]:-Processing Master standby host $STANDBY_HOSTNAME"
 		STOP_SYNC_PROCESS $STANDBY_HOSTNAME $STANDBY_DATADIR
 		RUN_COMMAND_REMOTE $STANDBY_HOSTNAME "$RM -Rf $STANDBY_DATADIR"
+		RUN_COMMAND_REMOTE $STANDBY_HOSTNAME "$RM -f ${STANDBY_DATADIR}.log"
 	fi
 	LOG_MSG "[INFO]:-Processing Master host $MASTER_HOSTNAME"
 	RUN_COMMAND "$RM -Rf $MASTER_DATA_DIRECTORY"
 	RUN_COMMAND "$RM -f ${MASTER_DATA_DIRECTORY}.log"
-	LOG_MSG "[INFO]:-The MPP cluster on Master host $MASTER_HOSTNAME, has been deleted"
+	LOG_MSG "[INFO]:-The MPP instance on Master host $MASTER_HOSTNAME, has been deleted"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+DELETE_RO_MASTER () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	PING_HOST $FAIL_PRI_SEG
+	if [ $RETVAL -eq 0 ];then
+		GET_PG_PID_ACTIVE $MASTER_PORT $FAIL_PRI_SEG
+		if [ $PID -ne 0 ];then
+			LOG_MSG "[INFO]:-Master read only host process active, calling shutdown"
+			$TRUSTED_SHELL $FAIL_PRI_SEG "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$MPPSTOP -d $MASTER_DATA_DIRECTORY -m"
+		fi
+		LOG_MSG "[INFO]:-Deleting Master read only directory and log file"
+		$TRUSTED_SHELL $FAIL_PRI_SEG "if [ -d $MASTER_DATA_DIRECTORY ];then $RM -Rf $MASTER_DATA_DIRECTORY; $RM -f ${MASTER_DATA_DIRECTORY}.log;fi"
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
 #******************************************************************************
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ];then
-        while getopts ":v'?'fd:l:" opt;do
+        while getopts ":v'?'fr:d:l:" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
                 '?' ) USAGE ;;
                 d ) DELETE_MASTER_DATA_DIRECTORY=$OPTARG ;;
 		l ) LOG_DIR=$OPTARG ;;
 		f ) FORCE=1 ;;
+		r ) FAIL_PRI_SEG=$OPTARG ;;
                 * ) UNKNOWN_OPTION ;;
         esac
         done
@@ -246,9 +277,13 @@ fi
 if [ x"" == x"$DELETE_MASTER_DATA_DIRECTORY" ];then
 	ERROR_EXIT "[FATAL]:-Must supply -d option"
 fi
+CHK_ON_PASSIVE_STANDBY
 CHECK_PARAM
 OBTAIN_PARAM
 DISPLAY_PARAM
 DELETE_CLUSTER
+if [ $FAIL_PRI_SEG ];then
+	DELETE_RO_MASTER
+fi
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS
