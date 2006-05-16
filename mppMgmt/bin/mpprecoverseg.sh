@@ -2,15 +2,15 @@
 #	Filename:-		mpprecoverseg.bsh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
-#	Status:-		Currently undergoing initial testing
+#	Status:-		Released
 #	Author:-		G L Coombe
 #	Contact:-		gcoombe@greenplum.com	
-#	Release date:-		TBC
+#	Release date:-		March 2006
 #	Release stat:-		Greenplum Co internal
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
 #                               Copyright (c) Greenplum 2005. All Rights Reserved
 #	Brief descn:-		Script to recover database segments in
-#				the event of a node failure
+#				the event of a node or segment failure
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -41,8 +41,6 @@ declare -a FAILED_DATADIR_ARRAY_SUB
 declare -a FAILED_PORT_ARRAY
 declare -a MIRROR_HOST_ARRAY
 declare -a MIRROR_DATADIR_ARRAY
-STOP_PROG=$MPPSTOP
-START_PROG=$MPPSTART
 #******************************************************************************
 # Command Variables
 #******************************************************************************
@@ -82,7 +80,7 @@ USAGE () {
 		$ECHO "      -a, don't ask to confirm recovery [default:- ask]"
 		$ECHO 
 		$ECHO "      Recovery options:"
-		$ECHO "      -f, force MPP cluster shutdown and restart"
+		$ECHO "      -f, force MPP instance shutdown and restart"
         	$ECHO "      -z, <failed_segment_instance_directory_name:failed_hostname> force a recovery,"
 		$ECHO "          even though no instance segments are marked as invalid on the Master"
 		$ECHO "          CAUTION:-USE THIS OPTION WITH CARE!"
@@ -117,11 +115,11 @@ GET_MIRROR () {
 	#Now check to see that we have mirroring configured on this system
 	CHK_MIRRORS_CONFIGURED
 	if [ $MIRROR_COUNT -ne 2 ]; then
-		LOG_MSG "[FATAL]:-Mirroring not configured on this MPP cluster"
+		LOG_MSG "[FATAL]:-Mirroring not configured on this MPP instance"
 		ERROR_EXIT "[FATAL]:-Unable to continue" 2
 	fi
 	#Get a list of dbid's that are marked as invalid
-	FAILED_INST_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from mpp_pgdatabase where valid='f';"`)
+	FAILED_INST_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where valid='f';"`)
 	ERROR_CHK $? "obtain master instance failed segments" 2
 	FAILED_INST_COUNT=${#FAILED_INST_LIST[@]}
 	if [ $FAILED_INST_COUNT -eq 0 ]; then
@@ -131,10 +129,10 @@ GET_MIRROR () {
 		LOG_MSG "[INFO]:-Located $FAILED_INST_COUNT invalid segment instances"
 	fi
 	#Now check to make sure that we can initiate recovery
-	TOTAL_INST_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid) from mpp_configuration where content<>-1;"`
+	TOTAL_INST_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid) from $CONFIG_TABLE where content<>-1;"`
 	ERROR_CHK $? "obtain total segement count from master instance" 2
 	if [ $FAILED_INST_COUNT -gt $TOTAL_INST_COUNT ]; then
-		LOG_MSG "[FATAL]:-Insufficient remaining active instances to be able to recover cluster"
+		LOG_MSG "[FATAL]:-Insufficient remaining active instances to be able to recover instance"
 		ERROR_EXIT "[FATAL]:-Unable to continue" 2
 	else
 		LOG_MSG "[INFO]:-Sufficient active instances to be able to start recovery"
@@ -144,10 +142,10 @@ GET_MIRROR () {
 	ARRAY_INDEX=0
 	for DBID in ${FAILED_INST_LIST[@]}
 	do
-		FAILED_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid, content from mpp_configuration where dbid=${DBID};"`
+		FAILED_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where dbid=${DBID};"`
 		ERROR_CHK $? "obtain failed segment details from master instance" 2
-		ACTIVE_DBID=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select dbid from mpp_pgdatabase where content in (select content from mpp_pgdatabase where dbid=${DBID}) and dbid<>${DBID};"`
-		ACTIVE_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from mpp_configuration where valid='t' and content in (select content from mpp_configuration where dbid=${ACTIVE_DBID}) and dbid<>${DBID};"`
+		ACTIVE_DBID=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select dbid from $MPP_PG_VIEW where content in (select content from $MPP_PG_VIEW where dbid=${DBID}) and dbid<>${DBID};"`
+		ACTIVE_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where valid='t' and content in (select content from $CONFIG_TABLE where dbid=${ACTIVE_DBID}) and dbid<>${DBID};"`
 		ERROR_CHK $? "obtain recovery segment details from master instance" 2
 		((ARRAY_INDEX=$ARRAY_INDEX+1))
 	done	
@@ -156,16 +154,16 @@ GET_MIRROR () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Node recovery parameters"
-	LOG_MSG "[INFO]:-------------------------"
+	LOG_MSG "[INFO]:-MPP instance recovery parameters"
+	LOG_MSG "[INFO]:---------------------------------"
 	COUNT=0
 	while [ $COUNT -lt $ARRAY_INDEX ]
 	do
 		((REC_COUNT=$COUNT+1))
 		LOG_MSG "[INFO]:-Recovery $REC_COUNT of $ARRAY_INDEX"
 		LOG_MSG "[INFO]:-------------------------------"
-		LOG_MSG "[INFO]:-Failed instance details    = ${FAILED_INSTANCE_ARRAY[$COUNT]}"
-		LOG_MSG "[INFO]:-Recovery instance details  = ${ACTIVE_INSTANCE_ARRAY[$COUNT]}"
+		LOG_MSG "[INFO]:-Failed instance    = ${FAILED_INSTANCE_ARRAY[$COUNT]}"
+		LOG_MSG "[INFO]:-Recovery instance  = ${ACTIVE_INSTANCE_ARRAY[$COUNT]}"
 		LOG_MSG "[INFO]:-------------------------------"
 		((COUNT=$COUNT+1))
 	done
@@ -195,7 +193,6 @@ FAIL_SET_VAR () {
 	FAIL_QE_PORT=`$ECHO $1|$CUT -d"|" -f2`
 	FAIL_QE_DIR=`$ECHO $1|$CUT -d"|" -f3`
 	FAIL_QE_DBID=`$ECHO $1|$CUT -d"|" -f4`
-	FAIL_QE_CONTENTID=`$ECHO $1|$CUT -d"|" -f5`
 	FAIL_QE_TOP_DIR=`$DIRNAME $FAIL_QE_DIR`
 }
 
@@ -237,27 +234,28 @@ TEST_ACCESS () {
 STOP_DATABASE () { 
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ $STOPDB -eq 1 ] || [ $FORCESTOP -ne 0 ]; then
-		CHK_FILE $STOP_PROG
-        if [ $EXISTS -ne 0 ];then
-                ERROR_EXIT "[FATAL]:-Could not locate $STOP_PROG script"
+		CHK_FILE $MPPSTOP
+        	if [ $EXISTS -ne 0 ];then
+                	ERROR_EXIT "[FATAL]:-Could not locate $MPPSTOP script"
 		fi
-        LOG_MSG "[INFO]:-Shutting down the Cluster ... Please wait ..."
-        $STOP_PROG -zfa
-	if [ x"" == x"$FORCE_RECOVER_STRING" ];then
-        	ERROR_CHK $? "shutdown master array" 2
+        	LOG_MSG "[INFO]:-Shutting down the instance ... Please wait ..."
+        	$MPPSTOP -zfa
+		if [ x"" == x"$FORCE_RECOVER_STRING" ];then
+        		ERROR_CHK $? "shutdown master instance" 2
+		else
+			LOG_MSG "[INFO]:-Ignoring shutdown errors as force option selected"
+		fi
+        	LOG_MSG "[INFO]:-Successfully shutdown the MPP instance"
 	else
-		LOG_MSG "[INFO]:-Ignoring shutdown errors as force option selected"
-	fi
-        LOG_MSG "[INFO]:-Successfully shutdown the MPP array"
-	else
-		while [ $COUNT -lt $ARRAY_INDEX ]
+		COUNT=0
+		while [ $COUNT -lt $FAILED_INST_COUNT ]
 		do
 			FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
 			LOG_MSG "[INFO]:-Forcing shutdown of $FAIL_QE_HOST for port=$FAIL_QE_PORT "
 			$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m immediate -l ${FAIL_QE_DIR}.log"
 			ERROR_CHK $? "force shutdown of $FAIL_QE_DIR on $FAIL_QE_HOST" 1
 			LOG_MSG "[INFO]:-Clearing /tmp/lock files for $FAIL_QE_HOST for port=$FAIL_QE_PORT "
-			$TRUSTED_SHELL $FAIL_QE_NAME "$RM -f /tmp/.s.PGSQL.${FAIL_QE_PORT}.lock /tmp/.s.PGSQL.${FAIL_QE_PORT}"
+			$TRUSTED_SHELL $FAIL_QE_HOST "$RM -f /tmp/.s.PGSQL.${FAIL_QE_PORT}.lock /tmp/.s.PGSQL.${FAIL_QE_PORT}"
 			ERROR_CHK $? "remove of /tmp lockfiles for $FAIL_QE_HOST" 1
 			((COUNT=$COUNT+1))		
 		done
@@ -317,8 +315,8 @@ UPDATE_MPP_MPP () {
 		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w -D $FAIL_QE_DIR -l ${FAIL_QE_DIR}.log -o \"-i -p $FAIL_QE_PORT \" start" 
 		ERROR_CHK $? "segment start $FAIL_QE_HOST instance $FAIL_QE_DIR port=$FAIL_QE_PORT" 2
 		# Update table
-		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $QD_DBNAME -c \"update mpp_mpp set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\""
-		ERROR_CHK $? "update segment mpp_mpp on $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT" 2
+		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $QD_DBNAME -c \"update $MPP_MPP_TABLE set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\""
+		ERROR_CHK $? "update segment $MPP_MPP_TABLE on $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT" 2
 		if [ $STOPDB -eq 1 ] || [ $FORCESTOP -eq 1 ]; then
 				LOG_MSG "[INFO]:-Commencing shutdown of $FAIL_QE_HOST port=$FAIL_QE_PORT"
 				$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m smart -l ${FAIL_QE_DIR}.log"
@@ -340,32 +338,32 @@ UPDATE_STATUS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		COUNT=0
 		LOG_MSG "[INFO]:-Starting master database in utility mode"
-		$START_PROG -m
+		$MPPSTART -m
 		while [ $COUNT -lt $ARRAY_INDEX ]
 		do
 			FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
 			LOG_MSG "[INFO]:-Setting $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT as active"
-			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c "BEGIN; update mpp_configuration set valid = 't' where dbid = CAST($FAIL_QE_DBID AS smallint); update mpp_configuration set isprimary = definedprimary where content = CAST($FAIL_QE_CONTENTID AS smallint); COMMIT;" > /dev/null 2>&1
+			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c "select mpp_set_segdb_state(CAST(${FAIL_QE_DBID} AS smallint),true);" > /dev/null 2>&1
 			ERROR_CHK $? "update status on Master database" 2
 			((COUNT=$COUNT+1))
 		done
 		LOG_MSG "[INFO]:-Shutting down master database in utility mode"
-		$STOP_PROG -m
+		$MPPSTOP -m
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 START_DATABASE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-        LOG_MSG "[INFO]:-Starting up the MPP array ... Please wait ..."
-        $START_PROG -a
+        LOG_MSG "[INFO]:-Starting up the MPP instance... Please wait ..."
+        $MPPSTART -a
         RETVAL=$?
         if [ $RETVAL -ne 0 ];then
-		LOG_MSG "[WARN]:-The $START_PROG script returned a non zero return code"
-		LOG_MSG "[INFO]:-Check the $START_PROG log file for more information on cause"
-		LOG_MSG "[INFO]:-Run mppstate.sh to check current status of cluster database"
+		LOG_MSG "[WARN]:-The $MPPSTART script returned a non zero return code"
+		LOG_MSG "[INFO]:-Check the $MPPSTART log file for more information on cause"
+		LOG_MSG "[INFO]:-Run mppstate.sh to check current status of instance"
                 ERROR_EXIT "[FATAL]:-Issue with master database startup." 2
 	fi
-        LOG_MSG "[INFO]:-Successfully started the master array"
+        LOG_MSG "[INFO]:-Successfully started the master instance"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -378,22 +376,26 @@ FORCE_RECOVER () {
 		ERROR_EXIT "[FATAL]:Option -z string $FORCE_RECOVER_STRING incorrect" 2;fi
 	GET_QD_DB_NAME
 	#Obtain hostname for segment instance directory that is to be recovered
-	FAILED_INSTANCE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp_configuration where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`
+	FAILED_INSTANCE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`
 	ERROR_CHK $? "obtain failed instance count" 2
 	if [ $FAILED_INSTANCE_COUNT -eq 0 ];then
 		ERROR_EXIT "[FATAL]:-Could not locate $FAIL_QE_DIR for host $FAIL_QE_HOST" 2;fi
 	if [ $FAILED_INSTANCE_COUNT -gt 1 ];then
 		ERROR_EXIT "[FATAL]:-Found multiple records for $FAIL_QE_DIR for host $FAIL_QE_HOST" 2;fi
-	FAILED_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, port, datadir, dbid, content from mpp_configuration where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`)
+	FAILED_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`)
 	ERROR_CHK $? "obtain failed segment instance details" 2
 	FAIL_SET_VAR "${FAILED_INSTANCE_ARRAY[@]}" 
 	#Get active mirror details
-	ACTIVE_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, port, datadir, dbid from mpp_configuration where valid='t' and content in (select content from mpp_configuration where dbid=${FAIL_QE_DBID});"`)
+	ACTIVE_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where dbid<>$FAIL_QE_DBID and content in (select content from $CONFIG_TABLE where dbid=${FAIL_QE_DBID});"`)
 	ERROR_CHK $? "obtain recovery segment instance details" 2
+	if [ $#{ACTIVE_INSTANCE_COUNT[@]} -ne 1 ];then
+		ERROR_EXIT "[FATAL]:-Did not locate 1 recovery segment instance, obtained  $#{ACTIVE_INSTANCE_COUNT[@]}" 2
+	fi
 	MIR_SET_VAR "${ACTIVE_INSTANCE_ARRAY[@]}"	
 	ARRAY_INDEX=1
 	STOPDB=1
 	if [ $INTERACTIVE ]; then
+		FAIL_TYPE="Forced Recovery -z option supplied"
 		DISPLAY_PARAM
 	fi
 	TEST_ACCESS
@@ -436,7 +438,12 @@ LOG_MSG "[INFO]:-Start Main"
 if [ ! $MASTER_DATA_DIRECTORY ]; then
 	ERROR_EXIT "[FATAL]:-MASTER_DATA_DIRECTORY environment variable not set" 2
 fi
+CHK_ON_PASSIVE_STANDBY
 GET_SETTING
+READ_CHK
+if [ $READ_COUNT -ne 0 ];then
+        ERROR_EXIT "[FATAL]:-This script cannot be used on a Master read only segment instance" 2
+fi
 GET_MIRROR
 if [ $INTERACTIVE ]; then
 	DISPLAY_PARAM

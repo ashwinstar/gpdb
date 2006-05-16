@@ -2,14 +2,14 @@
 #	Filename:-		mpprebuildseg.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
-#	Status:-		Not yet complete, 1st phase only.
+#	Status:-		Released.
 #	Author:-		G Coombe
 #	Contact:-		gcoombe@greenplum.com
-#	Release date:-		TBC
+#	Release date:-		March 2006
 #	Release stat:-		Greenplum Co internal
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
 #                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Starts the cluster database.
+#	Brief descn:-		Rebuilds segments from a rebuilt master segment instance
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -55,9 +55,6 @@ TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 unset START_MPPSYNC
-MPP_TBL=mpp.mpp
-START_PROG=$MPPSTART
-STOP_PROG=$MPPSTOP
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -70,6 +67,8 @@ USAGE () {
 		$ECHO "      instance that was built via use of mpprebuildcluster.sh with -m"
 		$ECHO "      option. This allows original segment instance hostnames to be "
 		$ECHO "      changed following the Master instance rebuild"
+		$ECHO "      Script expects the master instance to be shutdown, if master active"
+		$ECHO "      use mppstop.sh -m to close down"
 		$ECHO
 		$ECHO "      Usage:"
 		$ECHO "      $0 [OPTIONS]"
@@ -89,7 +88,7 @@ USAGE () {
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
-		$ECHO "      1 Warning generated, but master database operational"
+		$ECHO "      1 Warning generated, but master instance operational"
 		$ECHO "      2 Fatal error, database not rebuilt, or in an inconsistent state"
 		$ECHO
 		exit $EXIT_STATUS
@@ -105,14 +104,14 @@ START_MASTER_DB () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Expect the master database instance to be closed down, check for postmaster.pid file
 	if [ -f ${MASTER_DATA_DIRECTORY}/$PG_PID ];then
-		ERROR_EXIT "[FATAL]:-Appears Master instance operational, shutdown master instance from admin mode" 2
+			ERROR_EXIT "[FATAL]:-Expected Master to be shutdown, use mppstop.sh -m to shutdown master instance" 2
 	else
 		LOG_MSG "[INFO]:-Starting Master instance in admin mode"
-		if [ -f $START_PROG ];then
-			$START_PROG -qam
+		if [ -f $MPPSTART ];then
+			$MPPSTART -qam -d $MASTER_DATA_DIRECTORY
 			ERROR_CHK $? "start Master instance in admin mode" 2
 		else
-			ERROR_EXIT "[FATAL]:-Unable to locate $START_PROG" 2
+			ERROR_EXIT "[FATAL]:-Unable to locate $MPPSTART" 2
 		fi		
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -121,14 +120,14 @@ START_MASTER_DB () {
 STOP_MASTER_DB () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ ! -f ${MASTER_DATA_DIRECTORY}/$PG_PID ];then
-		ERROR_EXIT "[FATAL]:-Appears Master instance shutdown during this process, check Master instance log file" 2
+		ERROR_EXIT "[FATAL]:-Appears Master instance is operational, shutdown with mppstop.sh -m" 2
 	else
 		LOG_MSG "[INFO]:-Commencing shutdown of Master instance from admin mode"
-		if [ -f $STOP_PROG ];then
-			$STOP_PROG -qam
+		if [ -f $MPPSTOP ];then
+			$MPPSTOP -qam -d $MASTER_DATA_DIRECTORY
 			ERROR_CHK $? "stop Master instance from admin mode" 2
 		else
-			ERROR_EXIT "[FATAL]:-Unable to locate $STOP_PROG" 2
+			ERROR_EXIT "[FATAL]:-Unable to locate $MPPSTOP" 2
 		fi
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -136,31 +135,25 @@ STOP_MASTER_DB () {
 
 GET_SEGMENT_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select mppname from mpp_mpp;"`
-	ERROR_CHK $? "get master instance array name" 2
-	REBUILD_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select hostname, port, datadir, dbid, content, definedprimary from mpp_configuration where content<>-1;"`)
-	ERROR_CHK $? "get array segment instance details " 2
+	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select mppname from $MPP_MPP_TABLE;"`
+	ERROR_CHK $? "get master instance instance name" 2
+	REBUILD_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select hostname, port, datadir, dbid, content, definedprimary from $CONFIG_TABLE where content<>-1;"`)
+	ERROR_CHK $? "get instance segment instance details " 2
 	MASTER_IP_ADDRESS_ALL=(`$IFCONFIG |$GREP "inet addr"|$GREP -v addr:127|$AWK '{print $2}'|$CUT -d: -f2`)	
 	ERROR_CHK $? "get master host IP details" 2
 	MASTER_IP_ADDRESS=(`$ECHO ${MASTER_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-	MASTER_TOTAL_SEG=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select numsegments from mpp_mpp;"`
+	MASTER_TOTAL_SEG=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select numsegments from $MPP_MPP_TABLE;"`
 	ERROR_CHK $? "get total instance segments" 2
 	MASTER_HOST=`$HOSTNAME`
-}
+	STANDBY_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select count(*) from mpp_configuration where content=-1 and hostname<>'$MASTER_HOST';"`
+	if [ $STANDBY_COUNT -eq 1 ];then
+		LOG_MSG "[INFO]:-Master standby found, will process details"
+		STANDBY_MASTER_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select hostname from mpp_configuration where content=-1 and hostname<>'$MASTER_HOST';"`
+	else
+		LOG_MSG "[INFO]:-No Master standby host found"
+	fi
 
-CHK_PARAM () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Commencing parameter checks"
-	STOP_BUILD=0
-	if [ "$USER_NAME" != "$MASTER_USER" ] ;then
-		LOG_MSG "[WARN]:-Current user account name $USER_NAME does not match mppsuperuser"
-		STOP_BUILD=1
-	fi
-	if [ $STOP_BUILD -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-One or more errors encountered, please review log and correct." 2
-	fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CHK_QES () {
@@ -187,14 +180,19 @@ DISPLAY_PARAM () {
 	LOG_MSG "MPP Master data directory      = $MASTER_DATA_DIRECTORY"
 	LOG_MSG "MPP Master port                = $MASTER_PORT"
 	LOG_MSG "MPP Array name                 = $MASTER_MPP_NAME"
+	if [ $STANDBY_COUNT -eq 1 ];then
+		LOG_MSG "MPP Master standy hostname     = $STANDBY_MASTER_HOSTNAME"
+	else
+		LOG_MSG "MPP Build Master standby       = Off"
+	fi
 	for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
 	do
 		LOG_MSG "MPP Master IP addr             = $MASTER_IP"
 		IP_ALLOW="`$ECHO $MASTER_IP|$CUT -d. -f1-3`.0/24"
 		LOG_MSG "MPP Master IP allow            = $IP_ALLOW"
 	done
-	LOG_MSG "MPP Segment instance list"
-	LOG_MSG "-------------------------"
+	LOG_MSG "MPP Segment instance rebuild list"
+	LOG_MSG "---------------------------------"
 	for I in "${REBUILD_ARRAY[@]}"
 	do
 		SET_VAR $I
@@ -238,7 +236,12 @@ BUILD_SEGMENT_INSTANCES () {
 	for SEG_INFO in "${REBUILD_ARRAY[@]}"
 	do
 		SET_VAR $SEG_INFO
-
+		if [ `$TRUSTED_SHELL ${SEG_HOSTNAME} "$GREP -c \"${MPP_LIBRARY_PATH}/plpgsql.so\" ${SHARE_PATH}/$SCHEMA_FILE"` -eq 0 ];then
+			LOG_MSG "[INFO]:-Setting path for plpgsql.so"
+			ED_FILE ${SHARE_PATH}/$SCHEMA_FILE plpgsql.so "AS '${MPP_LIBRARY_PATH}/plpgsql.so'" 1 $SEG_HOSTNAME
+		else
+			LOG_MSG "[INFO]:-Path correct for plpgsql.so, skipping edit"
+		fi	
 		LOG_MSG "[INFO]:-Processing segment host $SEG_HOSTNAME port $SEG_PORT data directory $SEG_DATADIR dbid $SEG_DBID"
 		RUN_COMMAND_REMOTE ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};$INITDB -E $ENCODING -D $SEG_DATADIR"
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${SEG_HOSTNAME} \"$RM -rf $SEG_DATADIR\""
@@ -253,7 +256,7 @@ BUILD_SEGMENT_INSTANCES () {
 			RUN_COMMAND_REMOTE ${SEG_HOSTNAME} "$ECHO host  all     all     ${MASTER_IP}/32 trust >> ${SEG_DATADIR}/$PG_HBA"
 		done
 		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${SEG_HOSTNAME}"
-		$TRUSTED_SHELL ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" start" >> $LOG_FILE 2>&1
+		$TRUSTED_SHELL ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" start" 
 		if [ $? -ne 0 ]; then
 			BACKOUT_COMMAND "$TRUSTED_SHELL $SEG_HOSTNAME \"$RM -f ${SEG_DATADIR}.log\""
 			BACKOUT_COMMAND "$ECHO \"Removing segment log file ${SEG_DATADIR}.log on segment $SEG_HOSTNAME\""
@@ -269,44 +272,41 @@ BUILD_SEGMENT_INSTANCES () {
 		BACKOUT_COMMAND "$TRUSTED_SHELL $SEG_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" -m immediate  stop\""
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance\""
 		LOG_MSG "[INFO]:-Successfully started segment instance on $SEG_HOSTNAME"
-		LOG_MSG "[INFO]:-Updating segment mpp_mpp system table"
-		RUN_COMMAND_REMOTE $SEG_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $DEFAULTDB -c \"insert into $MPP_TBL values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" >> $LOG_FILE 2>&1
-		ERROR_CHK $? "update $SEG_HOSTNAME mpp_mpp record entry with DBID value ${SEG_DBID}" 2
-		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME mpp_mpp system table"
+		LOG_MSG "[INFO]:-Updating segment $MPP_MPP_TABLE system table"
+		RUN_COMMAND_REMOTE $SEG_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $DEFAULTDB -c \"insert into $MPP_MPP_TABLE values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" 
+		ERROR_CHK $? "update $SEG_HOSTNAME $MPP_MPP_TABLE record entry with DBID value ${SEG_DBID}" 2
+		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME $MPP_MPP_TABLE system table"
 		LOG_MSG "[INFO]:-Commencing shutdown of segment instance on $SEG_HOSTNAME"
-		$TRUSTED_SHELL ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" stop" >> $LOG_FILE 2>&1
+		$TRUSTED_SHELL ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" stop" 
 		ERROR_CHK $? "shutdown of instance on port $SEG_PORT data directory $SEG_DATADIR host $SEG_HOSTNAME" 2
 	done	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-
-UPDATE_BACKOUT_FILE () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	$ECHO "$RM -f $BACKOUT_FILE" >> $BACKOUT_FILE
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
 START_ARRAY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	CHK_FILE $START_PROG
+	CHK_FILE $MPPSTART
 	if [ $EXISTS -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Could not locate $START_PROG to start MPP array" 2
+		ERROR_EXIT "[FATAL]:-Could not locate $MPPSTART to start MPP instance" 2
 	else
-		LOG_MSG "[INFO]:-Starting the MPP array"
-		$START_PROG -d $MASTER_DATA_DIRECTORY -a
+		LOG_MSG "[INFO]:-Starting the MPP instance"
+		$MPPSTART -d $MASTER_DATA_DIRECTORY -a
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 DISPLAY_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-The MPP array has now been successfully rebuilt and is now operational"
+	LOG_MSG "[INFO]:-The MPP instance has now been successfully rebuilt and is now operational"
 	LOG_MSG "[INFO]:-Rebuild details"
 	LOG_MSG "[INFO]:-Master database host       = $MASTER_HOST"
 	LOG_MSG "[INFO]:-Master data directory      = $MASTER_DATA_DIRECTORY"
 	LOG_MSG "[INFO]:-Master database port       = $MASTER_PORT"
-	LOG_MSG "[INFO]:-To remove this array run /bin/bash logs/$BACKOUT_FILE"
+	if [ $STANDBY_COUNT -eq 1 ];then
+	LOG_MSG "[INFO]:-Master standby host        = $MASTER_STANDBY_HOSTNAME"
+	fi
+	LOG_MSG "[INFO]:-To remove this instance use mppdeletecluster.sh"
+	LOG_MSG "[INFO]:-The databases can now be restored using mpp_restore"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -349,12 +349,14 @@ START_MASTER_DB
 GET_QD_DB_NAME
 GET_SEGMENT_INFO
 CHK_QES
-CHK_PARAM
 STOP_MASTER_DB
 DISPLAY_PARAM
 BUILD_SEGMENT_INSTANCES
-UPDATE_BACKOUT_FILE
 START_ARRAY
+if [ $STANDBY_COUNT -eq 1 ];then
+	$MPPINITSTANDBY -s $STANDBY_MASTER_HOSTNAME -n -a
+fi
 DISPLAY_INFO
 LOG_MSG "[INFO]:-End Main"
+$RM -f $BACKOUT_FILE
 exit $EXIT_STATUS
