@@ -2,14 +2,14 @@
 #	Filename:-		mppaddmirrors.bsh
 #	Version:-		$Revision$	
 #	Updated:-		$Date$
-#	Status:-		Beta testing
+#	Status:-		Released
 #	Author:-		G L Coombe
 #	Contact:-		gcoombe@greenplum.com
-#	Release date:-		TBC
+#	Release date:-		March 2006
 #	Release stat:-		Greenplum Co Internal
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
 #                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Calculates table skew on a per node basis
+#	Brief descn:-		Adds mirror segments to a MPP instance with primary segments only
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -44,9 +44,12 @@ CUR_DATE=`$DATE +%Y%m%d`
 MASTER_HOSTNAME=`hostname`
 EXIT_STATUS=0
 FULL_DISPLAY=0
-STOP_PROG=$MPPSTOP
-START_PROG=$MPPSTART
 MIRROR_OFFSET=1000
+BALANCE=0
+MAX_MIR_PORT=61000
+MIN_MIR_PORT=7000
+PORT_OVERRIDE=0
+INTERACTIVE=1
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -54,8 +57,8 @@ USAGE () {
 	$ECHO
         $ECHO "      `basename $0`"
 	$ECHO
-	$ECHO "      Configures mirror segments for an MPP cluster which has primary"
-	$ECHO "      segment instances only. Process will stop the MPP cluster to be"
+	$ECHO "      Configures mirror segments for an MPP Instance which has primary"
+	$ECHO "      segment instances only. Process will stop the MPP Instance to be"
 	$ECHO "      able to generate mirror copies of primary segments."
         $ECHO
         $ECHO "      Usage:"
@@ -64,14 +67,40 @@ USAGE () {
         $ECHO "      General options:"
         $ECHO "      -?, display this help message & exit"
         $ECHO "      -v, display version information & exit"
+	$ECHO "      -a, don't ask to confirm mirror creation process"
+	$ECHO "          Must supply -m <mirror configuration file> if this option used"
 	$ECHO
 	$ECHO "      Logging options:"
 	$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
 	$ECHO
 	$ECHO "      Mirror creation options:"
-	$ECHO "      -p, mirror port base, if not supplied, script will calculate a suitable"
-	$ECHO "          port base for the mirror segment instances, range 1000 - 65500"
+	$ECHO "      -p, mirror offset, if not supplied, script will calculate a suitable"
+	$ECHO "          port offset for the mirror segment instances, range $MIN_MIR_PORT - $MAX_MIR_PORT"
+	$ECHO "          Current offset value is $MIRROR_OFFSET"
 	$ECHO "      -d, <master data directory> [mandatory]"
+	$ECHO "      -s, spread mirrors amongst available MPP hosts [default group mirrors]"
+	$ECHO "          Mirror grouping will mirror all primary segments from one host onto"
+	$ECHO "          another host within the MPP array."
+	$ECHO "          Mirror spreading will place each mirror on a different host within the"
+	$ECHO "          MPP array. Spreading will only be allowed if there are a sufficient number"
+	$ECHO "          of hosts, i.e. number of segment instance hosts >= number segments/host" 
+	$ECHO "      -m, <mirror configuration file> contains details of mirror configuration to"
+	$ECHO "          implement for the master instance, file format for each line:"
+	$ECHO "          <mirror host name>:<top level segment directory>"
+	$ECHO "          <mirror host name> name returned via hostname command. Hostnames must either"
+	$ECHO "          match primary segment hostnames, or, be all different from primary segment"
+	$ECHO "          hostnames."
+	$ECHO "          <top level segment directory> directory name where segment instance directory"
+	$ECHO "          will be created."
+	$ECHO "          Number of <mirror host name>:<top level segment directory> lines, must match"
+	$ECHO "          with number of primary segments per host in master instance"
+	$ECHO "          Example contents"
+	$ECHO "          host1:/dbfast2/mir"
+	$ECHO "          host1:/dbfast4/mir"
+	$ECHO "          host2:/dbfast2/mir"
+	$ECHO "          host2:/dbfast4/mir"
+	$ECHO "          Will create 2 mirror segment instances on hosts host1 and host2, for a primary"
+	$ECHO "          instance that consists of 2 hosts with 2 primary instances on each host" 
 	$ECHO
         $ECHO "      Return codes:"
         $ECHO "      0 No problems encountered with requested operation"
@@ -93,52 +122,111 @@ CHECK_PARAM () {
 	#Check to see if mirroring already configured
 	CHK_MIRRORS_CONFIGURED
 	if [ $MIRROR_COUNT -eq 2 ];then
-		ERROR_EXIT "[FATAL]:-Mirroring already configured for this MPP array" 2
+		ERROR_EXIT "[FATAL]:-Mirroring already configured for this MPP Instance" 2
 	fi	
+	#Check to see if we have a file if -m option supplied
+	if [ x"" != x"$MIRROR_MACHINE_LIST_FILE" ];then
+		CHK_FILE $MIRROR_MACHINE_LIST_FILE
+		if [ $EXISTS -eq 1 ];then
+			ERROR_EXIT "[FATAL]:-Issue with $MIRROR_MACHINE_LIST_FILE, please check file" 2
+		fi
+		#Get line count for file
+		MIRROR_COUNT_FILE=`$CAT $MIRROR_MACHINE_LIST_FILE|$WC -l`
+		LOG_MSG "[INFO]:-Number of lines in file = $MIRROR_COUNT"
+		#Check that have : field separator
+		if [ `$CAT $MIRROR_MACHINE_LIST_FILE|$GREP -c ":"` -ne $MIRROR_COUNT_FILE ];then
+			ERROR_EXIT "[FATAL]:-Seperator/line number mismatch, please check file" 2
+		else
+			LOG_MSG "[INFO]:-Phase I file check complete $MIRROR_MACHINE_LIST_FILE"
+		fi
+		#Check to ensure have no blank hostnames
+		if [ `$CAT $MIRROR_MACHINE_LIST_FILE|$CUT -d":" -f1|$CUT -d":" -f1|$TR '\n' ' '|$WC -w` -ne $MIRROR_COUNT_FILE ];then
+			ERROR_EXIT "[FATAL]:-There are some hostname fields blank" 2
+		else
+			LOG_MSG "[INFO]:-Phase II file check complete $MIRROR_MACHINE_LIST_FILE"
+		fi
+		#Check to ensure have no blank directory fields
+		if [ `$CAT $MIRROR_MACHINE_LIST_FILE|$CUT -d":" -f2|$CUT -d":" -f1|$TR '\n' ' '|$WC -w` -ne $MIRROR_COUNT_FILE ];then
+			ERROR_EXIT "[FATAL]:-There are some directory fields blank" 2
+		else
+			LOG_MSG "[INFO]:-Phase III file check complete $MIRROR_MACHINE_LIST_FILE"
+		fi
+	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 OBTAIN_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Obtain number of segment instances per host
-	PRI_SEG_PER_HOST=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(distinct port) from mpp_configuration b where content<>-1 and definedprimary='t';"`
+	PRI_SEG_PER_HOST=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(distinct port) from $CONFIG_TABLE b where content<>-1 and definedprimary='t';"`
 	ERROR_CHK $? "obtain primary segments per host" 2
-	MAX_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select max(dbid)+1 from mpp_configuration;"`
-	#ARRAY_SUPERUSER=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select mppsuperuser from mpp.listener where listenerid=1;"`
-	#ERROR_CHK $? "obtain array superuser name" 2
-	if [ x"" == x"$MIRROR_PORT_BASE" ];then	
-		CALC_MIRROR_PORT_BASE
-	else
-		CHK_MIRROR_PORT_BASE
-	fi
-	DIR_COUNT=0
-	while [ $DIR_COUNT -lt $PRI_SEG_PER_HOST ]
-	do
-		((COUNTER=$DIR_COUNT+1))
-		$ECHO "Enter mirror segment instance directory $COUNTER of $PRI_SEG_PER_HOST >"
-		read MIRROR_DATADIRECTORY[$DIR_COUNT]
-		if [ x"" == x"$MIRROR_DATADIRECTORY" ];then
-			ERROR_EXIT "[FATAL]:-Null value entered for mirror directory" 2
-		fi
-		((DIR_COUNT=$DIR_COUNT+1))
-	done
-	PRI_HOSTNAME_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select distinct hostname from mpp_configuration where content<>-1 and definedprimary='t';"`)
+	MAX_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(dbid)+1 from $CONFIG_TABLE;"`
+	ERROR_CHK $? "obtain current max dbid" 2
+	CALC_MIRROR_PORT_BASE
+	PRI_HOSTNAME_ARRAY=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c "select distinct hostname from $CONFIG_TABLE where content<>-1 and definedprimary='t' order by hostname;"`
 	ERROR_CHK $? "obtain primary hostname list" 2
-	PRI_HOST_COUNT=${#PRI_HOSTNAME_ARRAY[@]}
-	PRI_SEGMENT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select datadir, port, hostname, content from mpp_configuration where content<>-1 order by dbid;"`)
+	BAL_HOSTNAME_ARRAY=$PRI_HOSTNAME_ARRAY" "`$ECHO $PRI_HOSTNAME_ARRAY|$CUT -d" " -f1`
+	PRI_HOST_COUNT=`$ECHO $PRI_HOSTNAME_ARRAY|$WC -w`
+	PRI_SEGMENT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir, port, hostname, content from $CONFIG_TABLE where content<>-1 order by hostname;"`)
 	ERROR_CHK $? "obtain segment instance directory suffix" 2
-	LOG_MSG "[INFO]:-Obtaining list of databases in MPP cluster"
-	GET_DB_LIST
-	ERROR_CHK $? "obtain database list" 2
+	PRI_SEGMENT_ARRAY_COUNT=${#PRI_SEGMENT_ARRAY[@]}
+	if [ $BALANCE -eq 1 ];then
+		if [ $PRI_HOST_COUNT -eq 1 ] || [ $PRI_SEG_PER_HOST -gt $PRI_HOST_COUNT ];then
+			LOG_MSG "[FATAL]:-Number of segment hosts must be >= number of segments per hosts" 
+			ERROR_EXIT "[FATAL]:-Insufficient MPP hosts for -s mirroring option" 2
+		fi
+		LOG_MSG "[INFO]:-Sufficient MPP segment hosts for -s option"
+	fi 
+	if [ x"" == x"$MIRROR_MACHINE_LIST_FILE" ];then
+		DIR_COUNT=0
+		while [ $DIR_COUNT -lt $PRI_SEG_PER_HOST ]
+		do
+			((COUNTER=$DIR_COUNT+1))
+			$ECHO "Enter mirror segment instance directory name $COUNTER of $PRI_SEG_PER_HOST >"
+			read MIRROR_DATADIRECTORY[$DIR_COUNT]
+			if [ x"" == x"$MIRROR_DATADIRECTORY" ];then
+				ERROR_EXIT "[FATAL]:-Null value entered for mirror directory" 2
+			fi
+			((DIR_COUNT=$DIR_COUNT+1))
+		done
+	else
+		#Check that number of lines in file match number of primay segment instances
+		if [ $MIRROR_COUNT_FILE -ne $PRI_SEGMENT_ARRAY_COUNT ];then
+			ERROR_EXIT "[INFO]:-Mismatch between number of mirror and primary segments" 2
+		fi	
+		PRI_SEGMENT_NAMES=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content<>-1;"`)
+		ERROR_CHK $? "obtain primary hostnames from $CONFIG_TABLE" 2
+		MIR_SEGMENT_NAMES=(`$CAT $MIRROR_MACHINE_LIST_FILE|$CUT -d":" -f1|$SORT -u|$TR '\n' ' '`)
+		#Check to see if all hostnames match or none	
+		MIR_HOST_COUNT=${#MIR_SEGMENT_NAMES[@]}
+		MATCH_COUNT=0
+		for MIR_HOST in "${MIR_SEGMENT_NAMES[@]}"
+		do
+			if [ `$ECHO ${PRI_SEGMENT_NAMES[@]}|$GREP -c $MIR_HOST` -eq 1 ];then
+				((MATCH_COUNT=$MATCH_COUNT+1))
+			fi
+		done
+		if [ $MATCH_COUNT -eq 0 ];then
+			LOG_MSG "[INFO]:-Will configure mirror segments on new segment instance hosts"
+		else
+			if [ $MATCH_COUNT -eq $MIR_HOST_COUNT ];then
+				LOG_MSG "[INFO]:-Will configure mirror segments on current segment instance hosts"
+			else
+				ERROR_EXIT "[FATAL]:-Mix of current and new mirror segment hosts not allowed" 2
+			fi
+		fi
+		#Set up mirror directory array
+		MIRROR_DATADIRECTORY=(`$CAT $MIRROR_MACHINE_LIST_FILE|$CUT -d: -f2|tr '\n' ' '`)
+	fi	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 OBTAIN_CURRENT_PORT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MAX_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select max(port) from mpp_configuration;"`
-	ERROR_CHK $? "obtain max port number from mpp_configuration" 2
-	MIN_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select min(port) from mpp_configuration;"`
-	ERROR_CHK $? "obtain min port number from mpp_configuration" 2
+	MAX_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(port) from $CONFIG_TABLE where content<>-1;"`
+	ERROR_CHK $? "obtain max port number from $CONFIG_TABLE" 2
+	MIN_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(port) from $CONFIG_TABLE where content<>-1;"`
+	ERROR_CHK $? "obtain min port number from $CONFIG_TABLE" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -146,27 +234,11 @@ CALC_MIRROR_PORT_BASE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	OBTAIN_CURRENT_PORT
 	if [ $MAX_PORT -ge 40000 ];then
-		((MIRROR_PORT_BASE=${MIN_PORT}-$MIRROR_OFFSET))
+		((MIRROR_PORT_BASE=${MIN_PORT}-$MIRROR_OFFSET-1))
 	else
-		((MIRROR_PORT_BASE=${MIN_PORT}+$MIRROR_OFFSET))
+		((MIRROR_PORT_BASE=${MIN_PORT}+$MIRROR_OFFSET-1))
 	fi
 	LOG_MSG "[INFO]:-Setting mirror port base = $MIRROR_PORT_BASE"
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-CHK_MIRROR_PORT_BASE () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	OBTAIN_CURRENT_PORT
-	if [ $MIRROR_PORT_BASE -gt 65500 ];then
-		ERROR_EXIT "[FATAL]:-Value of Mirror Port Base too large at $MIRROR_PORT_BASE" 2
-	fi
-	if [ $MIRROR_PORT_BASE -lt 1000 ];then
-		 ERROR_EXIT "[FATAL]:-Value of Mirror Port Base too small at $MIRROR_PORT_BASE" 2
-	fi
-	#Now check to ensure that port range not in use
-	if [ $MIRROR_PORT_BASE -le $MAX_PORT ] && [ $MIRROR_PORT_BASE -ge $MIN_PORT ];then
-		ERROR_EXIT "[FATAL]:-Value of Mirror Port clashes with current primary port numbers" 2
-	fi	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -181,34 +253,54 @@ POSTGRES_PORT_CHK () {
 
 CREATE_MIRROR_ARRAY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	HOST_COUNT=1
+	BALANCE_COUNT=2
 	DIR_VECTOR=0
+	ARRAY_VECTOR=0
+	HOST_COUNT=1
+        while [ $HOST_COUNT -le $PRI_HOST_COUNT ]
+        do
+                MIRROR_LIST=(${MIRROR_LIST[@]} ${MIRROR_DATADIRECTORY[@]})
+                ((HOST_COUNT=$HOST_COUNT+1))
+        done
 	for PRIDETAILS in "${PRI_SEGMENT_ARRAY[@]}"
 	do
-		HOSTID_LIST=$HOSTID_LIST" `$ECHO $PRIDETAILS|$CUT -d"|" -f3`"
-	done
-	while [ $HOST_COUNT -le $PRI_HOST_COUNT ]
-	do
-		MIRROR_LIST=(${MIRROR_LIST[@]} ${MIRROR_DATADIRECTORY[@]}) 
-		((HOST_COUNT=$HOST_COUNT+1))
-	done
-	HOSTID_INDEX=1	
-	for PRIDETAILS in "${PRI_SEGMENT_ARRAY[@]}"
-	do
+		CUR_HOST=`$ECHO $PRIDETAILS|$CUT -d"|" -f3`
+		#Spread the mirrors
+		if [ $BALANCE -eq 1 ];then
+		 	HOST_ARRAY=(`$ECHO $PRI_HOSTNAME_ARRAY|$TR ' ' '\n'|$GREP -v $CUR_HOST|$TR '\n' ' '`)
+			 MIRROR_HOSTNAME=${HOST_ARRAY[$ARRAY_VECTOR]}
+                        ((ARRAY_VECTOR=$ARRAY_VECTOR+1))
+			if [ $ARRAY_VECTOR -eq $PRI_SEG_PER_HOST ];then
+                                ARRAY_VECTOR=0
+                        fi
+                else
+			if [ x"" == x"$MIRROR_MACHINE_LIST_FILE" ];then
+				MIRROR_HOSTNAME=`$ECHO $BAL_HOSTNAME_ARRAY|$CUT -d" " -f$BALANCE_COUNT`
+			else
+				((MIRIDX=$ARRAY_VECTOR+1))
+				MIRROR_HOSTNAME=`$ECHO ${MIR_SEGMENT_NAMES[@]}|$CUT -d" " -f$MIRIDX`
+			fi	
+                        ((ARRAY_VECTOR=$ARRAY_VECTOR+1))
+                        if [ $ARRAY_VECTOR -eq $PRI_SEG_PER_HOST ];then
+                                ((BALANCE_COUNT=$BALANCE_COUNT+1))
+                                ARRAY_VECTOR=0
+                        fi
+                fi
 		MIRROR_DIR=${MIRROR_LIST[$DIR_VECTOR]}/`$ECHO $PRIDETAILS|$CUT -d"|" -f1|$AWK -F"/" '{print $NF}'`
-		PRI_HOSTID=`$ECHO $PRIDETAILS|$CUT -d"|" -f3`
-		MIRROR_HOSTID=`$ECHO $HOSTID_LIST|$TR ' ' '\n'|$SORT -u|$GREP -v $PRI_HOSTID|$TR '\n' ' '|$CUT -d" " -f${HOSTID_INDEX}`
-		if [ x"" == x"$MIRROR_HOSTID" ];then
-			MIRROR_HOSTID=`$ECHO $HOSTID_LIST|$CUT -d" " -f${HOSTID_INDEX}`;fi
-		if [ $HOSTID_INDEX -lt $PRI_SEG_PER_HOST ];then ((HOSTID_INDEX=$HOSTID_INDEX+1));else HOSTID_INDEX=1;fi
 		((MIRROR_DBID=$MAX_DBID+$DIR_VECTOR))
 		((DIR_VECTOR=$DIR_VECTOR+1))
-###		((MIRROR_PORT=`$ECHO $PRIDETAILS|$CUT -d"|" -f2`+$MIRROR_PORT_BASE))
-		((MIRROR_PORT=$MIRROR_PORT_BASE+$HOSTID_INDEX))
+		PRI_PORT=`$ECHO $PRIDETAILS|$CUT -d"|" -f2`
+		((MIRROR_PORT=$MIRROR_OFFSET+$PRI_PORT))
 		MIRROR_CONTENT=`$ECHO $PRIDETAILS|$CUT -d"|" -f4`
-		MIRROR_ARRAY=(${MIRROR_ARRAY[@]} $MIRROR_DIR"|"$MIRROR_PORT"|"$MIRROR_DBID"|"$MIRROR_CONTENT"|"$MIRROR_HOSTID"|"$PRI_HOSTID)
-		MIRROR_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname from mpp_configuration where hostid=${MIRROR_HOSTID};"`
-		POSTGRES_PORT_CHK $MIRROR_PORT $MIRROR_HOSTNAME
+		if [ $PRI_HOST_COUNT -eq 1 ];then
+			if [ x"" == x"$MIRROR_MACHINE_LIST_FILE" ];then
+				MIRROR_HOSTNAME=`$ECHO $PRIDETAILS|$CUT -d"|" -f3`
+			else
+				#MIRROR_HOSTNAME=`$CAT $MIRROR_MACHINE_LIST_FILE|$HEAD -1|$CUT -d":" -f1`
+				MIRROR_HOSTNAME=$MIRROR_HOSTNAME
+			fi
+		fi
+		MIRROR_ARRAY=(${MIRROR_ARRAY[@]} $MIRROR_DIR"|"$MIRROR_PORT"|"$MIRROR_DBID"|"$MIRROR_CONTENT"|"$MIRROR_HOSTNAME)
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"	
 }
@@ -218,8 +310,7 @@ SET_VAR () {
 	MIRROR_PORT=`$ECHO $MIRROR_SEG|$CUT -d"|" -f2`
 	MIRROR_DBID=`$ECHO $MIRROR_SEG|$CUT -d"|" -f3`
 	MIRROR_CONTENT=`$ECHO $MIRROR_SEG|$CUT -d"|" -f4`
-	MIRROR_HOSTID=`$ECHO $MIRROR_SEG|$CUT -d"|" -f5`
-	MIRROR_PRI_HOSTID=`$ECHO $MIRROR_SEG|$CUT -d"|" -f6`
+	MIRROR_HOSTNAME=`$ECHO $MIRROR_SEG|$CUT -d"|" -f5`
 }
 
 CHK_MIRROR_DIR () {
@@ -227,10 +318,22 @@ CHK_MIRROR_DIR () {
 	for MIRROR_SEG in "${MIRROR_ARRAY[@]}"
 	do
 		SET_VAR $MIRROR_SEG
+		LOG_MSG "[INFO]:-Checking if can see $MIRROR_HOSTNAME on network"
+		PING_HOST $MIRROR_HOSTNAME
 		LOG_MSG "[INFO]:-Checking $MIRROR_HOSTNAME for Data directory $MIRROR_DATADIR"
 		CHK_DIR $MIRROR_DATADIR $MIRROR_HOSTNAME
 		if [ $EXISTS -eq 0 ];then
 			ERROR_EXIT "[FATAL:-Directory $MIRROR_DATADIR already exists on $MIRROR_HOSTNAME" 2
+		fi
+		W_DIR=`$DIRNAME $MIRROR_DATADIR`
+		LOG_MSG "[INFO]:-Checking write access to $W_DIR on Segment host $MIRROR_HOSTNAME"
+		$TRUSTED_SHELL $MIRROR_HOSTNAME "$TOUCH $W_DIR/tmp_test_file"
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ];then
+			ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on Segment host $MIRROR_HOSTNAME"
+		else
+			$TRUSTED_SHELL $MIRROR_HOSTNAME "$RM -f $W_DIR/tmp_test_file"
+			LOG_MSG "[INFO]:-Write test passed MIRROR_DATADIR on Segment host $MIRROR_HOSTNAME"
 		fi
 	done
 
@@ -239,53 +342,55 @@ CHK_MIRROR_DIR () {
 
 CONFIG_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Commencing shutdown of Master cluster"
-	if [ -f $STOP_PROG ];then
-		$STOP_PROG -qa -d $MASTER_DATA_DIRECTORY	
+	LOG_MSG "[INFO]:-Commencing shutdown of Master Instance"
+	if [ -f $MPPSTOP ];then
+		$MPPSTOP -qfa -d $MASTER_DATA_DIRECTORY	
 	else
-		ERROR_EXIT "[FATAL]:-Could not locate $STOP_PROG" 2
+		ERROR_EXIT "[FATAL]:-Could not locate $MPPSTOP" 2
 	fi
 	LOG_MSG "[INFO]:-Starting Master instance in admin mode"
-	if [ -f $START_PROG ];then
-		$START_PROG -qam -d $MASTER_DATA_DIRECTORY
+	if [ -f $MPPSTART ];then
+		$MPPSTART -qam -d $MASTER_DATA_DIRECTORY
 	else
-		ERROR_EXIT "[FATAL]:-Could not locate $START_PROG" 2
+		ERROR_EXIT "[FATAL]:-Could not locate $MPPSTART" 2
 	fi
-	DB_LIST=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datname from pg_database where datallowconn<>'f' and datname<>'postgres';"`)
-	ERROR_CHK $? "obtain list of database names from master instance" 2
-	for MPP_DATABASE in "${DB_LIST[@]}"
+	LOG_MSG "[INFO]:-Processing database $DEFAULTDB"
+	for MIRROR_SEG in "${MIRROR_ARRAY[@]}"
 	do
-		LOG_MSG "[INFO]:-Processing database $MPP_DATABASE"
-		for MIRROR_SEG in "${MIRROR_ARRAY[@]}"
-		do
-			SET_VAR $MIRROR_SEG
-			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $MPP_DATABASE -A -t -c"insert into mpp_configuration (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir)  values (${MIRROR_DBID},'f',${MIRROR_CONTENT},'t','f', '${MIRROR_HOSTNAME}',${MIRROR_PORT},'${MIRROR_DATADIR}' );"
-			ERROR_CHK $? "insert pgdatabase record for $MIRROR_DATADIR port $MIRROR_PORT" 2
-		done	
-	done
+		SET_VAR $MIRROR_SEG
+		env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"insert into $CONFIG_TABLE (content, definedprimary, dbid, isprimary, valid, hostname, port, datadir)  values (${MIRROR_CONTENT},'f',${MIRROR_DBID},'f','t', '${MIRROR_HOSTNAME}',${MIRROR_PORT},'${MIRROR_DATADIR}' );"
+		ERROR_CHK $? "insert $CONFIG_TABLE record for $MIRROR_DATADIR port $MIRROR_PORT" 2
+	done	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-MPP Cluster Mirror Parameters"
+	LOG_MSG "[INFO]:-MPP Instance Mirror Parameters"
 	LOG_MSG "[INFO]:------------------------------"
 	LOG_MSG "[INFO]:-MPP Master hostname               = $MASTER_HOSTNAME"
 	LOG_MSG "[INFO]:-MPP Master data directory         = $MASTER_DATA_DIRECTORY"
 	LOG_MSG "[INFO]:-MPP Master port                   = $MASTER_PORT"
+	if [ $BALANCE -eq 0 ];then
+	LOG_MSG "[INFO]:-MPP mirror type                   = Group"
+	else
+	LOG_MSG "[INFO]:-MPP mirror type                   = Spread"
+	fi
 	LOG_MSG "[INFO]:-------------------------------"
 	LOG_MSG "[INFO]:-Mirror segment Instance List"
 	LOG_MSG "[INFO]:-------------------------------"
 	for MIRROR_SEG in "${MIRROR_ARRAY[@]}"
 	do
 		SET_VAR $MIRROR_SEG
-		MIRROR_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname from mpp.host where hostid=${MIRROR_HOSTID};"`
-	LOG_MSG "[INFO]:-Host=$MIRROR_HOSTNAME Data directory=$MIRROR_DATADIR Port=$MIRROR_PORT"
+##		MIRROR_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where dbid=${MIRROR_DBID};"`
+	LOG_MSG "[INFO]:-Host $MIRROR_HOSTNAME Segment directory $MIRROR_DATADIR Port $MIRROR_PORT"
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-	$ECHO  "Continue with MPP mirror creation Yy/Nn>"
-	read REPLY
-	CHK_REPLY
+	if [ $INTERACTIVE ];then
+		$ECHO  "Continue with MPP Instance mirror creation Yy/Nn>"
+		read REPLY
+		CHK_REPLY
+	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -308,25 +413,22 @@ CREATE_MIRRORS () {
 	for MIRROR_SEG in "${MIRROR_ARRAY[@]}"
 	do
 		SET_VAR $MIRROR_SEG
-		MIRROR_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname from mpp.host where hostid=${MIRROR_HOSTID};"`
+		MIRROR_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where dbid=${MIRROR_DBID};"`
 		ERROR_CHK $? "obtain mirror hostname" 2
-		PRIMARY_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname from mpp.host where hostid=${MIRROR_PRI_HOSTID};"`
+		PRIMARY_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content=${MIRROR_CONTENT} and isprimary='t';"`
 		ERROR_CHK $? "obtain primary hostname" 2
 		LOG_MSG "[INFO]:-Commencing primary data directory copy $PRIMARY_HOSTNAME to $MIRROR_HOSTNAME"
-		PRIMARY_DATADIR=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select datadir from mpp_configuration where content=$MIRROR_CONTENT and dbid<>${MIRROR_DBID};"`
+		PRIMARY_DATADIR=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content=$MIRROR_CONTENT and dbid<>${MIRROR_DBID};"`
 		ERROR_CHK $? "obtain primary data directory for $PRIMARY_HOSTNAME" 2
 		$TRUSTED_SHELL $PRIMARY_HOSTNAME "$TRUSTED_COPY -pr $PRIMARY_DATADIR ${MIRROR_HOSTNAME}:$MIRROR_DATADIR"
 		ERROR_CHK $? "copy data directory on $PRIMARY_HOSTNAME to $MIRROR_HOSTNAME" 2
 		ED_FILE ${MIRROR_DATADIR}/$PG_CONF "port=" "port=${MIRROR_PORT}" 0 $MIRROR_HOSTNAME
 		LOG_MSG "[INFO]:-Starting mirror segment in admin mode"
 		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w -D $MIRROR_DATADIR -l ${MIRROR_DATADIR}.log -o \"-i -p $MIRROR_PORT \" start"
-		ERROR_CHK $? "update segment mpp_mpp on $MIRROR_HOSTNAME DBID=$MIRROR_DBID port=$MIRROR_PORT" 2
-		for DB in "${DB_ARRAY[@]}"
-		do
-			LOG_MSG "[INFO]:-Updating mpp_mpp table for database $DB"
-			$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIRROR_PORT $DB -c \"update mpp_mpp set dbid=${MIRROR_DBID} where dbid<>${MIRROR_DBID};\""
-			ERROR_CHK $? "update mpp_mpp table on $MIRROR_HOSTNAME $MIRROR_DATADIR database $DB" 2
-		done
+		ERROR_CHK $? "start mirror segment port=$MIRROR_PORT host=$MIRROR_HOSTNAME" 2
+		LOG_MSG "[INFO]:-Updating $MPP_MPP_TABLE table for database $DB"
+		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIRROR_PORT $DEFAULTDB -c \"update $MPP_MPP_TABLE set dbid=${MIRROR_DBID} where dbid<>${MIRROR_DBID};\""
+		ERROR_CHK $? "update $MPP_MPP_TABLE table on $MIRROR_HOSTNAME $MIRROR_DATADIR database $DB" 2
 		LOG_MSG "[INFO]:-Closing down mirror segment from admin mode"
 		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w stop -D $MIRROR_DATADIR -m smart -l ${MIRROR_DATADIR}.log"
 		ERROR_CHK $? "close mirror segment $MIRROR_HOSTNAME $MIRROR_DATADIR" 2	
@@ -338,13 +440,16 @@ CREATE_MIRRORS () {
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
-        while getopts ":v'?'d:l:p:" opt;do
+        while getopts ":v'?'d:l:p:sam:" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
                 '?' ) USAGE ;;
                 d ) MIRROR_MASTER_DATA_DIRECTORY=$OPTARG ;;
 		l ) LOG_DIR=$OPTARG ;;
-		p ) MIRROR_PORT_BASE=$OPTARG ;;
+		p ) MIRROR_OFFSET=$OPTARG ;;
+		s ) BALANCE=1 ;;
+		a ) unset INTERACTIVE ;;
+		m ) MIRROR_MACHINE_LIST_FILE=$OPTARG ;;
                 * ) UNKNOWN_OPTION ;;
         esac
         done
@@ -362,6 +467,19 @@ if [ x"" == x"$MIRROR_MASTER_DATA_DIRECTORY" ];then
 else
 	MASTER_DATA_DIRECTORY=$MIRROR_MASTER_DATA_DIRECTORY
 fi
+if [  ! $INTERACTIVE ] && [ x"" == x"$MIRROR_MACHINE_LIST_FILE" ];then
+	ERROR_EXIT "[FATAL]:-Can only use -a option if -m <mirror host list file> used" 2
+else
+	if [ ! $INTERACTIVE ];then
+		LOG_MSG "[INFO]:-Non-interactive mirror build from file initiated"
+	else
+		LOG_MSG "[INFO]:-Interactive build from file initiated"
+	fi
+	if [ $BALANCE -eq 1 ] && [ x"" != x"$MIRROR_MACHINE_LIST_FILE" ];then
+		LOG_MSG "[INFO]:-Overriding mirror spread request"
+		BALANCE=0
+	fi
+fi
 CHK_ON_PASSIVE_STANDBY
 CHECK_PARAM
 OBTAIN_PARAM
@@ -372,23 +490,24 @@ CONFIG_CATALOG
 CREATE_MIRRORS
 GET_STANDBY_COUNT
 if [ $STANDBY_COUNT -ne 0 ];then
-	LOG_MSG "[INFO]:-Standby host is configured on the MPP cluster, will sync standby host"
+	LOG_MSG "[INFO]:-Standby host is configured on the MPP Instance, will sync standby host"
 	GET_STANDBY_DETAILS
 	STANDBY_HOSTNAME=`$ECHO $STANDBY_ARRAY|$CUT -d'|' -f1`
 	LOG_MSG "[INFO]:-Obtained standby hostname as $STANDBY_HOSTNAME"
 	if [ -f $MPPINITSTANDBY ];then
-		$STOP_PROG -qam -d $MASTER_DATA_DIRECTORY
-		$START_PROG -qa -d $MASTER_DATA_DIRECTORY
-		$MPPINITSTANDBY -s $STANDBY_HOSTNAME -n -i -a
+		$MPPSTOP -qam -d $MASTER_DATA_DIRECTORY
+		$MPPSTART -qa -d $MASTER_DATA_DIRECTORY
+		$MPPINITSTANDBY -s $STANDBY_HOSTNAME -n -a
 	else
 		ERROR_EXIT "[FATAL]:-Could not locate $MPPINITSTANDBY" 2
 	fi
 else
 	LOG_MSG "[INFO]:-Commencing shutdown of Master instance from admin mode"
-	$STOP_PROG -qam -d $MASTER_DATA_DIRECTORY
-	LOG_MSG "[INFO]:-Commencing startup of mirrored cluster"
-	$START_PROG -qa -d $MASTER_DATA_DIRECTORY
+	$MPPSTOP -qam -d $MASTER_DATA_DIRECTORY
+	LOG_MSG "[INFO]:-Commencing startup of mirrored Instance"
+	$MPPSTART -qa -d $MASTER_DATA_DIRECTORY
 fi
+LOG_MSG "[INFO]:-------------------------------------------------"
 LOG_MSG "[INFO]:-Successfully configured mirror segment instances"
 LOG_MSG "[INFO]:-Run mppstate.sh -c to display primary/mirror configuration"
 LOG_MSG "[INFO]:-End Main"
