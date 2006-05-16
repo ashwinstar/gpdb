@@ -2,14 +2,14 @@
 #	Filename:-		mppinitstandby.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
-#	Status:-		Not yet complete, 1st phase only.
+#	Status:-		Released.
 #	Author:-		G Coombe
 #	Contact:-		gcoombe@greenplum.com
-#	Release date:-		TBC
+#	Release date:-		March 2006
 #	Release stat:-		Greenplum Co internal
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
 #                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Starts the cluster database.
+#	Brief descn:-		Creates a MPP master instance warm standby.
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -54,21 +54,18 @@ EXIT_STATUS=0
 TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
-unset START_MPPSYNC
-START_PROG=$MPPSTART
-STOP_PROG=$MPPSTOP
+START_MPPSYNC=1
 UPDATE_CATALOG=1
 #******************************************************************************
 # Functions
 #******************************************************************************
 #
 USAGE () {
-		GET_QD_DB_NAME
 		$ECHO	
 		$ECHO "      `basename $0 `"
 		$ECHO
 		$ECHO "      Initalizes a standby Master host instance. Script will shutdown the"
-		$ECHO "      Master array to be able to complete this operation"
+		$ECHO "      Master instance to be able to complete this operation"
 		$ECHO "      Will create a copy of the Master data directory on the designated"
 		$ECHO "      standby host and start the database replication process"
 		$ECHO
@@ -86,7 +83,7 @@ USAGE () {
 		$ECHO
 		$ECHO "      Standby initialization options:"
 		$ECHO "      -s, <standby hostname> [mandatory]" 
-		$ECHO "      -i, initialize mppsynchmaster process on standby master host [default:- do not initialize]"
+		$ECHO "      -i, do not initialize mppsynchmaster process on standby master host [default:- initialize]"
 		$ECHO "      -n, do not update system catalog tables [default:- add standby host details]"
 		$ECHO "          Only use this option if standby host already recorded in MPP system catalog"
 		$ECHO "          tables and only need to re-sync the standby master data directory"
@@ -116,15 +113,28 @@ CHECK_PARAM () {
 	#Check to see if we already have a standby master configured
 	if [ $UPDATE_CATALOG -eq 1 ];then
 	    # there is a function to do this in mpp_bash_functions.sh
-		STANDBY_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp_configuration where content=-1 and dbid<>1 ;"`
+		STANDBY_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where content=-1 and dbid<>1 ;"`
 		ERROR_CHK $? "obtained standby master host count" 2
 		if [ $STANDBY_COUNT -ne 0 ];then
 			ERROR_EXIT "[FATAL]:-Standby master host already configured" 2
 		fi
 	fi
-	# Now check to ensure that hostname supplied matches unix hostname output
-	SSH_HOSTNAME=`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME $HOSTNAME`
-	if [ $SSH_HOSTNAME <> $MASTER_STANDBY_HOSTNAME ];then
+	#Now check to see if have a MASTER_DATA_DIRECTORY on new host
+	CHK_DIR $MASTER_DATA_DIRECTORY $MASTER_STANDBY_HOSTNAME
+	if [ $EXISTS -eq 0 ];then
+		LOG_MSG "[WARN]:-Located directory $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME"
+		#Now see if we have a pid file
+		GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
+		if [ $PID -ne 0 ] && [ $FAIL_PRI_SEG -eq 1 ];then
+			LOG_MSG "[WARN]:-Active read only master detected on $MASTER_STANDBY_HOSTNAME"
+			LOG_MSG "[INFO]:-Calling close down routine"
+			$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$MPPSTOP -d $MASTER_DATA_DIRECTORY -m"
+		fi
+	fi
+	#Now check to ensure that hostname supplied matches unix hostname output
+	SSH_HOSTNAME=`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME $HOSTNAME|$TR -d ' '`
+	ERROR_CHK $? "obtain remote hostname value" 2
+	if [ $SSH_HOSTNAME != $MASTER_STANDBY_HOSTNAME ];then
 		LOG_MSG "[WARN]:-Hostname supplied does not match hostname output on $MASTER_STANDBY_HOSTNAME"
 		LOG_MSG "[INFO]:-Setting standby hostname to $SSH_HOSTNAME"
 		MASTER_STANDBY_HOSTNAME=$SSH_HOSTNAME
@@ -140,18 +150,20 @@ CHECK_PARAM () {
 	RUN_COMMAND_REMOTE $MASTER_STANDBY_HOSTNAME "$RM -f ${MASTER_STANDBY_TOP_LEVEL_DIR}/remote_test2.$$"
 	RUN_COMMAND "$RM -f /tmp/remote_test2.$$"	
 	STANDBY_IP_ADDRESS_ALL=(`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$IFCONFIG $IFCONFIG_TXT |$GREP \"inet \"|$GREP -v \"127.0.0\"|$AWK '{print \\$2}'|$CUT -d: -f2" 2>>$LOG_FILE`)
-	STANDBY_IP_ADDRESS=(`$ECHO ${STANDBY_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
 	ERROR_CHK $? "obtain IP address of standby Master host" 2
-	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select mppname from mpp_mpp;"`
+	LOG_MSG "[INFO]:-Standby address array = ${STANDBY_IP_ADDRESS_ALL[@]}"
+	STANDBY_IP_ADDRESS=(`$ECHO ${STANDBY_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
+	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select mppname from $MPP_MPP_TABLE;"`
 	ERROR_CHK $? "obtain master array name" 2
 	#Check to see if there are any other MPP host on the proposed standby host
-	IN_USE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp_configuration where hostname='${MASTER_STANDBY_HOSTNAME}' ;"`
+	IN_USE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' ;"`
 	ERROR_CHK $? "obtain standby host in use count" 2
 	if [ $IN_USE_COUNT -ne 0 ];then
-		LOG_MSG "[WARN]:-There are other segment instances active on $MASTER_STANDBY_HOSTNAME, this may have an impact on overall MPP cluster performance"
+		LOG_MSG "[WARN]:-There are other segment instances active on $MASTER_STANDBY_HOSTNAME"
+		LOG_MSG "[WARN]:-This may have an impact on overall MPP instance performance"
 		if [ $UPDATE_CATALOG -eq 1 ];then
 		#Check to ensure that port requested not already in use on that host
-			PORT_IN_USE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp_configuration where hostname='${MASTER_STANDBY_HOSTNAME}' and port=${MASTER_STANDBY_PORT};"`
+			PORT_IN_USE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' and port=${MASTER_STANDBY_PORT};"`
 			ERROR_CHK $? "obtain standby port check" 2
 			if [ $PORT_IN_USE_COUNT -ne 0 ];then
 				ERROR_EXIT "[FATAL]:-Port $MASTER_STANDBY_PORT already assigned on ${MASTER_STANDBY_HOSTNAME}" 2
@@ -167,10 +179,13 @@ UPDATE_PG_HBA () {
 	do
 		MPP_HOSTNAME=`$ECHO $TNODE|$CUT -d'|' -f1`
 		MPP_DIR=`$ECHO $TNODE|$CUT -d'|' -f2`
-		LOG_MSG "[INFO]:-Adding address of $MASTER_STANDBY_HOSTNAME to $MPP_HOSTNAME $PG_HBA file"
 		for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
 		do
+			CHK_COUNT=`$TRUSTED_SHELL $MPP_HOSTNAME "$GREP -c \"${STANDBY_IP}/32\" ${MPP_DIR}/$PG_HBA"`
+			if [ $CHK_COUNT -eq 0 ];then
+			LOG_MSG "[INFO]:-Adding address of $MASTER_STANDBY_HOSTNAME to $MPP_HOSTNAME $PG_HBA file"
 			RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host  all     all     ${STANDBY_IP}/32        trust >> ${MPP_DIR}/$PG_HBA"
+			fi
 		done
 	done	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -189,11 +204,11 @@ STOP_MASTER_DB () {
 		ERROR_EXIT "[FATAL]:-Appears Master instance shutdown during this process, check Master instance log file" 2
 	else
 		LOG_MSG "[INFO]:-Commencing shutdown of Master instance"
-		if [ -f $STOP_PROG ];then
-			$STOP_PROG -qa
-			ERROR_CHK $? "stop Master instance" 2
+		if [ -f $MPPSTOP ];then
+			$MPPSTOP -ay
+			ERROR_CHK $? "stop Master instance" 1
 		else
-			ERROR_EXIT "[FATAL]:-Unable to locate $STOP_PROG" 2
+			ERROR_EXIT "[FATAL]:-Unable to locate $MPPSTOP" 2
 		fi
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -202,24 +217,27 @@ STOP_MASTER_DB () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "MPP standby QD initialization parameters"
-	LOG_MSG "----------------------------------------"
-	LOG_MSG "MPP Master hostname               = $MASTER_HOSTNAME"
-	LOG_MSG "MPP Master data directory         = $MASTER_DATA_DIRECTORY"
-	LOG_MSG "MPP Master port                   = $MASTER_PORT"
-	LOG_MSG "MPP Master standby hostname       = $MASTER_STANDBY_HOSTNAME"
-	LOG_MSG "MPP Master standby port           = $MASTER_STANDBY_PORT"
-	LOG_MSG "MPP Array name                    = $MASTER_MPP_NAME"
-	LOG_MSG "MPP Master standby data directory = $MASTER_STANDBY_DATA_DIRECTORY"
+	LOG_MSG "[INFO]:-MPP standby master initialization parameters"
+	LOG_MSG "--------------------------------------------"
+	LOG_MSG "[INFO]:-MPP Master hostname               = $MASTER_HOSTNAME"
+	LOG_MSG "[INFO]:-MPP Master data directory         = $MASTER_DATA_DIRECTORY"
+	LOG_MSG "[INFO]:-MPP Master port                   = $MASTER_PORT"
+	LOG_MSG "[INFO]:-MPP Master standby hostname       = $MASTER_STANDBY_HOSTNAME"
+	LOG_MSG "[INFO]:-MPP Master standby port           = $MASTER_STANDBY_PORT"
+	LOG_MSG "[INFO]:-MPP Array name                    = $MASTER_MPP_NAME"
+	LOG_MSG "[INFO]:-MPP Master standby data directory = $MASTER_STANDBY_DATA_DIRECTORY"
 	if [ x"" == x"$START_MPPSYNC" ];then
-		LOG_MSG "MPP Start mppsynmaster process    = Off"
+		LOG_MSG "[INFO]:-MPP Start mppsynmaster process    = Off"
 	else
-		LOG_MSG "MPP Start mppsynmaster process    = On"
+		LOG_MSG "[INFO]:-MPP Start mppsynmaster process    = On"
 	fi
 	if [ $UPDATE_CATALOG -eq 1 ];then
-		LOG_MSG "MPP update system catalog         = On"
+		LOG_MSG "[INFO]:-MPP update system catalog         = On"
 	else
-		LOG_MSG "MPP update system catalog         = Off"
+		LOG_MSG "[INFO]:-MPP update system catalog         = Off"
+	fi
+	if [ x"" != x"$FAIL_PRI_SEG" ];then
+		LOG_MSG "[INFO]:-MPP standby build type            = Dual active Read Only"
 	fi
 	if [ $INTERACTIVE ]; then
 		$ECHO  "Continue with MPP Master standby initialization Yy/Nn>"
@@ -254,7 +272,7 @@ STANDBY_ACTIVATE () {
 		RUN_COMMAND_REMOTE $MASTER_STANDBY_HOSTNAME "$RM -Rf $MASTER_STANDBY_DATA_DIRECTORY"
 		EXIT_STATUS=1
 	fi
-	LOG_MSG "[INFO]:-Issuing sync on disk sub-system $MASTER_DATA_DIRECTORY"
+	LOG_MSG "[INFO]:-Starting remote copy of $MASTER_DATA_DIRECTORY to Master standby host"
 	C_DIR=`pwd`;cd ${MASTER_DATA_DIRECTORY};sync;cd $C_DIR
 	$TRUSTED_COPY -pr $MASTER_DATA_DIRECTORY ${MASTER_STANDBY_HOSTNAME}:${MASTER_STANDBY_DATA_DIRECTORY} 2>>$LOG_FILE
 	ERROR_CHK $? "remote copy of $MASTER_DATA_DIRECTORY to $MASTER_STANDBY_HOSTNAME" 2
@@ -263,38 +281,62 @@ STANDBY_ACTIVATE () {
 	else
 		LOG_MSG "[INFO]:-Process mppsyncmaster not started on $MASTER_STANDBY_HOSTNAME as -i not supplied"
 	fi
-##	LOG_MSG "[INFO]:-Copying maintenance scripts to standby QD $MASTER_STANDBY_HOSTNAME"
-##	TAR_NAME=Scripts_tar_initstandby_copy_${CUR_DATE}.tar.z
-##	LOG_MSG "[INFO]:-Scripts can be found in $TAR_NAME file on $MASTER_STANDBY_HOSTNAME"
-##	C_DIR=`pwd`
-##	cd $SCRIPTS_DIR
-##	$TAR cvzf $TAR_NAME ./* >> $LOG_FILE 2>&1
-##	$TRUSTED_COPY -pr $SCRIPTS_DIR/$TAR_NAME ${MASTER_STANDBY_HOSTNAME}:$SCRIPTS_DIR 2>> $LOG_FILE
-##	ERROR_CHK $? "copy scripts to $MASTER_STANDBY_HOSTNAME" 1
-##	$RM -f $TAR_NAME
-##	cd $C_DIR
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 
 START_ARRAY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	CHK_FILE $START_PROG
+	CHK_FILE $MPPSTART
 	if [ $EXISTS -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Could not locate $START_PROG to start MPP array" 2
+		ERROR_EXIT "[FATAL]:-Could not locate $MPPSTART to start MPP instance" 2
 	else
-		LOG_MSG "[INFO]:-Starting the MPP array"
-		$START_PROG -d $MASTER_DATA_DIRECTORY -a
+		LOG_MSG "[INFO]:-Starting the MPP instance"
+		$MPPSTART -d $MASTER_DATA_DIRECTORY -a -y
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+FAIL_PRIMARY_SEGMENTS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	CHK_FILE $MPPSTART $MASTER_STANDBY_HOSTNAME
+        if [ $EXISTS -eq 1 ];then
+                ERROR_EXIT "[FATAL]:-File $MPPSTART does not exist on $MASTER_STANDBY_HOSTNAME" 2
+        fi
+	CHK_FILE $MPPSTOP $MASTER_STANDBY_HOSTNAME
+        if [ $EXISTS -eq 1 ];then
+                ERROR_EXIT "[FATAL]:-File $MPPSTOP does not exist on $MASTER_STANDBY_HOSTNAME" 2
+        fi
+	#Start the readonly master segment in utility mode
+	LOG_MSG "[INFO]:-Starting read only master segment instance in utility mode"
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$MPPSTART -d $MASTER_DATA_DIRECTORY -m"
+	ERROR_CHK $? "start read only master segment instance" 2
+	#Now set primary segment instances port numbers to a negative number
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" update $CONFIG_TABLE set port=dbid*-1 where definedprimary='t' and content<>-1;\""
+	ERROR_CHK $? "update primary segment port numbers" 2
+	#Now delete any reference to a master standby instance
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" delete from $CONFIG_TABLE where content=-1 and definedprimary='f';\""
+	ERROR_CHK $? "delete master standby record" 2
+	#Now change the master segment instance hostname
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" update $CONFIG_TABLE set hostname='$MASTER_STANDBY_HOSTNAME' where content=-1;\""
+	ERROR_CHK $? "update master instance hostname" 2
+	#Now shutdown the read only master from utility mode
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$MPPSTOP -d $MASTER_DATA_DIRECTORY -m"
+	#Now start up the read only master
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$PG_CTL -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log start"
+	ERROR_CHK $? "start readonly master instance" 2
+	#Now force an update of mpp_pgdatabase
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$PSQL -p $MASTER_PORT $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$PSQL -p $MASTER_PORT $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
+	LOG_MSG "[INFO]:-Forced update of mpp_pgdatabase complete"	
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
 #******************************************************************************
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-	while getopts ":v'?'ainqs:l:" opt;do
+	while getopts ":v'?'ainfqs:l:" opt;do
 		case $opt in
 			v ) VERSION_INFO ;;
 			'?' ) USAGE ;;
@@ -302,8 +344,9 @@ if [ $# -ne 0 ]; then
 			a ) unset INTERACTIVE ;;
 			q ) unset VERBOSE ;;
 			l ) LOG_DIR=$OPTARG ;;
-			i ) START_MPPSYNC=1 ;;
+			i ) unset START_MPPSYNC ;;
 			n ) UPDATE_CATALOG=0 ;;
+			f ) FAIL_PRI_SEG=1 ;;
 			* ) USAGE ;;
 		esac
 	done	
@@ -322,9 +365,21 @@ else
 	BACKOUT_FILE=$DEFLOGDIR/backout_${PROG_NAME}_${USER_NAME}_${CUR_DATE}_$TIME
 fi
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+if [ $FAIL_PRI_SEG ] && [ $UPDATE_CATALOG -eq 1 ];then
+	LOG_MSG "[INFO]:-Option -f supplied setting update catalog to off"
+	UPDATE_CATALOG=0
+fi
+if [ $FAIL_PRI_SEG ] && [ $START_MPPSYNC ];then
+	LOG_MSG "[INFO]:-Option -f supplied setting start mppsync process to off"
+	unset START_MPPSYNC
+fi
 CHK_ON_PASSIVE_STANDBY
 MASTER_HOSTNAME=`$HOSTNAME`
 CHK_DB_RUNNING
+CHK_MIRRORS_CONFIGURED
+if [ $FAIL_PRI_SEG ] && [ $MIRROR_COUNT -eq 1 ];then
+	ERROR_EXIT "[FATAL]:-Cannot use -f option if mirroring is not configured" 2
+fi
 GET_QD_DB_NAME
 if [ x"" == x"$MASTER_STANDBY_HOSTNAME" ];then
 	ERROR_EXIT "[FATAL]:-Must supply master standby hostname location with -s option" 2
@@ -338,13 +393,18 @@ if [ x"" != x"$INTERACTIVE" ];then
 fi
 if [ $UPDATE_CATALOG -eq 1 ];then
 	UPDATE_CATALOG
-	UPDATE_PG_HBA
 else
 	LOG_MSG "[WARN]:-By passing catalog update as -n option passed to script"
 	EXIT_STATUS=1
 fi
+UPDATE_PG_HBA
 STOP_MASTER_DB
 STANDBY_ACTIVATE
 START_ARRAY
+if [ $FAIL_PRI_SEG ];then
+	FAIL_PRIMARY_SEGMENTS
+	LOG_MSG "[INFO]:------------------------------------------------"
+	LOG_MSG "[INFO]:-Successfully created a read only master standby"
+fi
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS
