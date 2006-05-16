@@ -2028,8 +2028,7 @@ CopyFromDispatch(CopyState cstate)
 	policy = cstate->rel->rd_cdbpolicy;
 	
 	Insist(policy &&
-           policy->ptype == POLICYTYPE_PARTITIONED &&
-           policy->nattrs > 0);
+           policy->ptype == POLICYTYPE_PARTITIONED);
 	
 	p_nattrs = policy->nattrs;	/* number of partitioning keys */
 	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1);		/* Create hash API
@@ -2158,6 +2157,9 @@ CopyFromDispatch(CopyState cstate)
 	/*
 	 * for optimized parsing - get the last field number in the
 	 * file that we need to parse to have all values for the hash keys.
+	 * (If the table has an empty distribution policy, then we don't need
+	 * to parse any attributes really... just send the row away using
+	 * a special cdbhash function designed for this purpose).
 	 */
 	cstate->last_hash_field = 0;
 
@@ -2859,6 +2861,14 @@ CopyFromDispatch(CopyState cstate)
 					else
 						cdbhashnull(cdbHash);
 				}
+
+				/*
+				 * If this is a relation with an empty policy, there is no
+				 * hash key to use, therefore use cdbhashnokey() to pick a 
+				 * hash value for us.
+				 */
+				if(p_nattrs == 0)
+					cdbhashnokey(cdbHash);
 
 				target_seg = cdbhashreduce(cdbHash);	/* hash result segment */
 

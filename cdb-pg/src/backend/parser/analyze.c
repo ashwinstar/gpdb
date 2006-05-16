@@ -49,6 +49,7 @@
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
+#include "cdb/cdbhash.h"
 
 /* State shared by transformCreateSchemaStmt and its subroutines */
 typedef struct
@@ -1622,17 +1623,14 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 
 	}
 
-
 	if (distributedBy == NIL)
 	{
 		/*
 		 * if we get here, we haven't a clue what to use for the distribution columns.
 		 */
-		policy->nattrs = 1;
-		/* Hack! BUG BUG!  right now we always partition on column 1 */
-		policy->attrs[0] = 1;
-		elog(NOTICE, "Table doesn't have 'distributed by' clause, defaulting to column 1");
 
+		bool	assignedDefault = false;
+		
 		/* If we have no attributes, make sure that we don't create a bogus policy! */
 		if (cxt && list_length(cxt->columns) == 0)
 		{
@@ -1640,9 +1638,54 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			pfree(policy);
 			return;
 		}
+		else
+		{
+			/*
+			 * table has one or more attributes and there is still no distribution
+			 * key. pick a default one. the winner is the first attribute that is
+			 * an mpp-hashable data type. 
+			 */
+			ListCell   *columns;
+			ColumnDef  *column = NULL;
+
+			/* we will distribute on at most one column */
+			policy->nattrs = 1;
+			
+			colindex = 0;
+			foreach(columns, cxt->columns)
+			{
+				column = (ColumnDef *) lfirst(columns);
+				colindex++;
+				
+				if(isMppHashable(typenameTypeId(column->typename)))
+				{
+					policy->attrs[0] = colindex;
+					assignedDefault = true;
+					elog(NOTICE, "Table doesn't have 'distributed by' clause, defaulting to column %d", colindex);
+					break;
+				}			
+				
+			}
+			
+			if(!assignedDefault)
+			{
+				/* 
+				 * There was no eligible distribution column to default to. This table
+				 * will be partitioned on an empty distribution key list. In other words
+				 * tuples coming into the system will be randomly assigned a bucket.
+				 */
+				policy->nattrs = 0;
+				elog(NOTICE, "Table doesn't have 'distributed by' clause, and no column type is suitable for a distribution key. Creating a policy with no distribution keys.");
+			}
+		}
 	}
 	else
 	{
+		/*
+		 * We have a DISTRIBUTED BY column list, either specified by the user
+		 * or defaulted to a primary key or unique column. Process it now and
+		 * set the distribution policy.
+		 */
 		policy->nattrs = 0;
 		foreach(keys, distributedBy)
 		{
@@ -1659,6 +1702,14 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 				colindex++;
 				if (strcmp(column->colname, key) == 0)
 				{
+					if(!isMppHashable(typenameTypeId(column->typename)))
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+								 errmsg("type \"%s\" can't be a part of a distribution key",
+										strVal(linitial(column->typename->names)))));						
+					}
+					
 					found = true;
 					break;
 				}
@@ -1742,8 +1793,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 	}
 
 
-	*policyp = policy;
-
+	*policyp = policy;	
+	
 	if (cxt && cxt->pkey)		/* Primary key	specified.	Make sure
 								 * distribution columns match */
 	{

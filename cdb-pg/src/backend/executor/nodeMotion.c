@@ -772,12 +772,14 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 		/*
 		 * Get info about the hash functions to be used for each hash key.
 		 */
-		Assert(node->hashDataTypes != NULL);
+		//Assert(node->hashDataTypes != NULL);
 		Assert(node->numHashSegs > 0);
 
 		nkeys = list_length(node->hashDataTypes);
-		motionstate->hashExprState = (List *) ExecInitExpr((Expr *) node->hashExpr,
-												  (PlanState *) motionstate);
+		
+		if(nkeys > 0)
+			motionstate->hashExprState = (List *) ExecInitExpr((Expr *) node->hashExpr,
+															   (PlanState *) motionstate);
 
 		/*
 		 * Create hash API reference
@@ -1081,24 +1083,38 @@ evalHashKey(ExprContext *econtext, List *hashkeys, List *hashtypes, CdbHash * h)
 
 	cdbhashinit(h);
 
-	forboth(hk, hashkeys, ht, hashtypes)
+	/*
+	 * If we have 1 or more distribution keys for this relation, hash
+	 * them. However, If this happens to be a relation with an empty 
+	 * policy (partitioning policy with a NULL distribution key list)
+	 * then we have no hash key value to feed in, so use cdbhashnokey() 
+	 * to assign a hash value for us.
+	 */
+	if(list_length(hashkeys) > 0)
+	{	
+		forboth(hk, hashkeys, ht, hashtypes)
+		{
+			ExprState  *keyexpr = (ExprState *) lfirst(hk);
+			Datum		keyval;
+			bool		isNull;
+			
+			/*
+			 * Get the attribute value of the tuple
+			 */
+			keyval = ExecEvalExpr(keyexpr, econtext, &isNull, NULL);
+			
+			/*
+			 * Compute the hash function
+			 */
+			if (!isNull)			/* treat nulls as having hash key 0 */
+				cdbhash(h, keyval, lfirst_oid(ht));
+			else
+				cdbhashnull(h);
+		}
+	}
+	else
 	{
-		ExprState  *keyexpr = (ExprState *) lfirst(hk);
-		Datum		keyval;
-		bool		isNull;
-
-		/*
-		 * Get the attribute value of the tuple
-		 */
-		keyval = ExecEvalExpr(keyexpr, econtext, &isNull, NULL);
-
-		/*
-		 * Compute the hash function
-		 */
-		if (!isNull)			/* treat nulls as having hash key 0 */
-			cdbhash(h, keyval, lfirst_oid(ht));
-		else
-			cdbhashnull(h);
+		cdbhashnokey(h);
 	}
 
 	MemoryContextSwitchTo(oldContext);

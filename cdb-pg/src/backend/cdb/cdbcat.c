@@ -108,13 +108,19 @@ MppPolicyFetch(MemoryContext mcxt, Oid tbloid)
 		 * Get the attributes on which to partition.
 		 */
 		attr = heap_getattr(mpp_policy_tuple, Anum_mpp_policy_attrnums, mpp_policy_rel->rd_att, &isNull);
-		Assert(!isNull);
-		extract_INT2OID_array(attr, &nattrs, &attrnums);
-		Assert(nattrs >= 0);
-
+		
+		/*
+		 * Get distribution keys only if this table has a policy.
+		 */
+		if(!isNull)
+		{
+			extract_INT2OID_array(attr, &nattrs, &attrnums);
+			Assert(nattrs >= 0);
+		}
+			
 		/* Create an MppPolicy object. */
-	    nb = sizeof(*policy) - sizeof(policy->attrs) + nattrs * sizeof(policy->attrs[0]);
-    	policy = (MppPolicy *)MemoryContextAlloc(mcxt, nb);
+		nb = sizeof(*policy) - sizeof(policy->attrs) + nattrs * sizeof(policy->attrs[0]);
+		policy = (MppPolicy *)MemoryContextAlloc(mcxt, nb);
 		policy->ptype = POLICYTYPE_PARTITIONED;
 		policy->nattrs = nattrs;
 		for (i = 0; i < nattrs; i++)
@@ -180,8 +186,7 @@ MppPolicyStore(Oid tbloid, const MppPolicy *policy)
 	char		nulls[2];
 	Datum		values[2];
 
-	Insist(policy->nattrs > 0 &&
-           policy->ptype == POLICYTYPE_PARTITIONED);
+	Insist(policy->ptype == POLICYTYPE_PARTITIONED);
 
     /*
      * Open and lock the mpp_distribution_policy catalog.

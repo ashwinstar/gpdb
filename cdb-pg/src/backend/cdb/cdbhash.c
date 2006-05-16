@@ -27,7 +27,9 @@
 #include "utils/varbit.h"
 #include "utils/acl.h"
 #include "fmgr.h"
+#include "optimizer/geqo_random.h"
 #include "cdb/cdbhash.h"
+
 
 /*
  * 32 bit FNV-1 and FNV-1a non-zero initial basis
@@ -47,6 +49,9 @@
 
 /* Constant used for hashing an invalid value  */
 #define INVALID_VAL ((uint32)0XD0D0D0D1) 
+
+/* Constant used to help defining upper limit for random generator */
+#define UPPER_VAL ((uint32)0XA0B0C0D1)
 
 /* Fast mod using a bit mask, assuming that y is a power of 2 */
 #define FASTMOD(x,y)		((x) & ((y)-1))
@@ -85,7 +90,7 @@ makeCdbHash(int numsegs, CdbHashAlg algorithm)
 	CdbHash    *h;
 
 	assert(numsegs > 0);		/* verify number of segments is legal. */
-	assert(algorithm == HASH_FNV_1 || algorithm == HASH_FNV_1A);
+	assert(algorithm == HASH_FNV_1); /* make sure everybody uses same algorithm */
 
 	/* Create a pointer to a CdbHash that includes the hash properties */
 	h = palloc(sizeof(CdbHash));
@@ -115,6 +120,17 @@ makeCdbHash(int numsegs, CdbHashAlg algorithm)
 		h->reducealg = REDUCE_LAZYMOD;
 	}
 
+	/*
+	 * if we distribute into a relation with an empty partitioning policy, 
+	 * we will round robin the tuples starting off from this index. Note that 
+	 * the random number is created one per makeCdbHash. This means that commands 
+	 * that create a cdbhash object only once for all tuples (like COPY, 
+	 * INSERT-INTO-SELECT) behave more like a round-robin distribution, while 
+	 * commands that create a cdbhash per row (like INSERT) behave more like a 
+	 * random distribution.
+	 */
+	h->rrindex = geqo_randint(0, UPPER_VAL);
+		
 	ereport(DEBUG4,
 	  (errmsg("CDBHASH started using algorithm %d into %d segment databases",
 			  h->hashalg,
@@ -137,6 +153,8 @@ cdbhashinit(CdbHash *h)
 
 /*
  * Add an attribute to the hash calculation.
+ * **IMPORTANT: any new hard coded support for a data type in here
+ * must be added to isMppHashable() below!
  */
 void
 cdbhash(CdbHash *h, Datum datum, Oid type)
@@ -571,6 +589,25 @@ cdbhashnull(CdbHash *h)
 	/* do the hash using the selected algorithm */
 	h->hash = (h->hashfn) (buf, len, h->hash);
 }
+
+/*
+ * Hash a tuple of a relation with an empty policy (no hash 
+ * key exists) via round robin with a random initial value.
+ */
+void
+cdbhashnokey(CdbHash *h)
+{
+	uint32		rrbuf = h->rrindex;			
+	void	   *buf = &rrbuf;
+	size_t		len = sizeof(rrbuf);
+	
+	/* do the hash using the selected algorithm */
+	h->hash = (h->hashfn) (buf, len, h->hash);
+	
+	h->rrindex++; /* increment for next time around */
+}
+
+
 
 /*
  * Reduce the hash to a segment number.

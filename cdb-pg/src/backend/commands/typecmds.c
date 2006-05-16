@@ -568,41 +568,6 @@ DefineDomain(CreateDomainStmt *stmt)
 				 errmsg("\"%s\" is not a valid base type for a domain",
 						TypeNameToString(stmt->typename))));
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-		ListCell   *listp2;
-
-		foreach(listp2, stmt->typename->names)
-		{
-
-			Value	   *v = lfirst(listp2);
-			char	   *n = NULL;
-
-			if (v)
-				n = v->val.str;
-
-
-
-
-			if (n)
-				if (strcmp(n, "path") == 0 ||
-					strcmp(n, "box") == 0 ||
-					strcmp(n, "circle") == 0 ||
-					strcmp(n, "lseg") == 0 ||
-					strcmp(n, "polygon") == 0 ||
-					strcmp(n, "line") == 0 ||
-					strcmp(n, "unknown") == 0 ||
-					strcmp(n, "aclitem") == 0 || /* need to know how to serialize */
-					strcmp(n, "smgr") == 0 ||
-					strcmp(n, "point") == 0)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					errmsg("Datatype is not yet supported by Bizgres MPP")));
-
-
-		}
-	}
-
 	/* passed by value */
 	byValue = baseType->typbyval;
 

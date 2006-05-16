@@ -1010,7 +1010,6 @@ repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hash
     Assert(plan->flow);
     Assert(plan->flow->flotype == FLOW_PARTITIONED ||
            plan->flow->flotype == FLOW_SINGLETON);
-    Assert(!live || list_length(hashExpr) > 0);
 
     /* Already partitioned on the given hashExpr?  Do nothing. */
     if (hashExpr &&

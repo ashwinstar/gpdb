@@ -859,11 +859,6 @@ validateMotionNodeParms(MotionType motionType,
 		case MOTIONTYPE_HASH:
 
 			/*
-			 *	A Hash motion node must have hash expr info specified.
-			 */
-			Assert(hashExpr);
-
-			/*
 			 *	A Hash motion node shouldn't have FixedMotionDefn specified.
 			 */
 			Assert(numOutputSegs == 0 && outputSegIdx == NULL);

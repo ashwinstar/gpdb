@@ -529,43 +529,6 @@ DefineRelation_int(CreateStmt *stmt,
 	
     if (shouldDispatch)
 	{
-		/*
-		 * Check to see if we support the datatypes
-		 */
-		foreach(listptr, schema)
-		{
-			ListCell   *listp2;
-
-			ColumnDef  *colDef = lfirst(listptr);
-
-			foreach(listp2, colDef->typename->names)
-			{
-				Value	   *v = lfirst(listp2);
-				char	   *n = NULL;
-
-				if (v)
-					n = v->val.str;
-
-				if (n)
-					if (strcmp(n, "path") == 0 ||
-						strcmp(n, "box") == 0 ||
-						strcmp(n, "circle") == 0 ||
-						strcmp(n, "lseg") == 0 ||
-						strcmp(n, "polygon") == 0 ||
-						strcmp(n, "line") == 0 ||
-						strcmp(n, "unknown") == 0 ||
-						strcmp(n, "aclitem") == 0 ||  /* need to know how to serialize */
-						strcmp(n, "smgr") == 0 ||
-						strcmp(n, "point") == 0)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-								 errmsg("Datatype is not yet supported by Bizgres MPP")));
-
-			}
-
-		}
-
-
 		/* Start a global transaction and reconfigure the cluster if needed.
 		 *
 		 * We defer the dispatch of the utility command until after
@@ -3119,37 +3082,6 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 		}
 	}
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-		ListCell   *listp2;
-
-		foreach(listp2, colDef->typename->names)
-		{
-			Value	   *v = lfirst(listp2);
-			char	   *n = NULL;
-
-			if (v)
-				n = v->val.str;
-			
-			if (n)
-				if (strcmp(n, "path") == 0 ||
-					strcmp(n, "box") == 0 ||
-					strcmp(n, "circle") == 0 ||
-					strcmp(n, "lseg") == 0 ||
-					strcmp(n, "polygon") == 0 ||
-					strcmp(n, "line") == 0 ||
-					strcmp(n, "unknown") == 0 ||
-					strcmp(n, "aclitem") == 0 || /* need to know how to serialize */
-					strcmp(n, "smgr") == 0 ||
-					strcmp(n, "point") == 0)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					errmsg("Datatype is not yet supported by Bizgres MPP")));
-
-		}
-
-	}
-	
 	pgclass = heap_open(RelationRelationId, RowExclusiveLock);
 
 	reltup = SearchSysCacheCopy(RELOID,

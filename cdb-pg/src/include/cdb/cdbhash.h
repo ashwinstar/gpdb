@@ -45,6 +45,7 @@ typedef struct CdbHash
 	CdbHashFn  *hashfn;			/* hashing function for the selected hash
 								 * algorithm */
 	CdbHashReduce reducealg;	/* the algorithm used for reducing to buckets		*/
+	uint32		rrindex;		/* round robin index for empty policy tables		*/
 
 } CdbHash;
 
@@ -71,6 +72,11 @@ extern void cdbhash(CdbHash *h, Datum val, Oid typid);
  * Add a NULL attribute to the hash calculation.
  */
 extern void cdbhashnull(CdbHash *h);
+
+/*
+ * Hash a tuple for a relation with an empty (no hash keys) partitioning policy.
+ */
+extern void cdbhashnokey(CdbHash *h);
 
 /*
  * Reduce the hash to a segment number.
