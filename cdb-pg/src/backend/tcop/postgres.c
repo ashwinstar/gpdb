@@ -66,6 +66,7 @@
 #include "cdb/cdblogsync.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbtm.h"
+#include "cdb/cdbdisp.h"
 
 #include <pthread.h>
 
@@ -2359,6 +2360,16 @@ ProcessInterrupts(void)
 		ImmediateInterruptOK = false;	/* not idle anymore */
 		DisableNotifyInterrupt();
 		DisableCatchupInterrupt();
+
+		/*
+		 * Make sure threads get cleaned up: FATAL will fast-track
+		 * exit, it will not be caught by the executor cleanup code,
+		 * so if we want the QEs to get a cancel notification we need
+		 * to call CdbCheckDispatchResult().
+		 */
+		if (Mpp_role == MPP_ROLE_DISPATCH)
+			CdbCheckDispatchResult(true);
+
 		ereport(FATAL,
 				(errcode(ERRCODE_ADMIN_SHUTDOWN),
 			 errmsg("terminating connection due to administrator command")));
