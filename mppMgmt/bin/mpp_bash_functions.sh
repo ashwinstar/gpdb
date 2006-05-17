@@ -26,15 +26,15 @@
 # Location Functions
 #******************************************************************************
 #Check that SHELL is /bin/bash
-if [ $SHELL != /bin/bash ];then
-	echo "[FATAL]:-Scripts must be run by a user account that has SHELL=/bin/bash"
-	if [ -f /bin/bash ];then
-		echo "[INFO]:-/bin/bash exists, please update user account shell"
-	else
-		echo "[WARN]:-/bin/bash does not exist, does bash need to be installed?"
+	if [ $SHELL != /bin/bash ];then
+		echo "[FATAL]:-Scripts must be run by a user account that has SHELL=/bin/bash"
+		if [ -f /bin/bash ];then
+			echo "[INFO]:-/bin/bash exists, please update user account shell"
+		else
+			echo "[WARN]:-/bin/bash does not exist, does bash need to be installed?"
+		fi
+		exit 2
 	fi
-	exit 2
-fi
 #CMDPATH is the list of locations to search for commands, in precedence order
 declare -a CMDPATH
 CMDPATH=(/usr/kerberos/bin /usr/sfw/bin /opt/sfw/bin /usr/local/bin /bin /usr/bin /sbin /usr/sbin /usr/ucb)
@@ -666,8 +666,8 @@ GET_PG_PID_ACTIVE () {
 		PORT=$1;shift
 		HOST=$1
 		if [ x"" == x"$HOST" ];then
-			PG_LOCK_FILE=`$NETSTAT -an|$GREP -c ".s.PGSQL.${PORT}"|$AWK '{print $NF}'`
-			if [ $PG_LOCK_FILE -eq 0 ];then
+			PG_LOCK_FILE=`$NETSTAT -an|$GREP ".s.PGSQL.${PORT}"|$AWK '{print $NF}'|$HEAD -1`
+			if [ x"" == "$PG_LOCK_FILE" ];then
 				PID=0
 				LOG_MSG "[INFO]:-No socket connection found for port=${PORT}"
 			else
@@ -677,7 +677,6 @@ GET_PG_PID_ACTIVE () {
 				else
 					PID=0
 					LOG_MSG "[WARN]:-Socket connection found, but no ${PG_LOCK_FILE}.lock"
-					EXIT_STATUS=1
 				fi
 			fi
 		else
@@ -686,7 +685,7 @@ GET_PG_PID_ACTIVE () {
 				PID=0
 				EXIT_STATUS=1
 			else	
-				PG_LOCK_FILE=`$TRUSTED_SHELL $HOST "$NETSTAT -an|$GREP ".s.PGSQL.${PORT}" 2>/dev/null"|$AWK '{print $NF}'`
+				PG_LOCK_FILE=`$TRUSTED_SHELL $HOST "$NETSTAT -an|$GREP ".s.PGSQL.${PORT}" 2>/dev/null"|$AWK '{print $NF}'|$HEAD -1`
 				if [ x"" == x"$PG_LOCK_FILE" ];then
 					PID=0
 					LOG_MSG "[INFO]:-No socket connection found for port=${PORT} on $HOST"
