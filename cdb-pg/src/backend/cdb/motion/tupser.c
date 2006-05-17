@@ -13,6 +13,7 @@
 #include "catalog/pg_type.h"
 #include "cdb/tupser.h"
 #include "libpq/pqformat.h"
+#include "storage/smgr.h"
 #include "utils/acl.h"
 #include "utils/date.h"
 #include "utils/numeric.h"
@@ -103,7 +104,7 @@ InitSerTupInfo(TupleDesc tupdesc, SerTupInfo * pSerInfo)
 		attrInfo->atttypid = tupdesc->attrs[i]->atttypid;
 
 		/* Info for sending the type. */
-		if(attrInfo->atttypid == ACLITEMOID)
+		if(attrInfo->atttypid == ACLITEMOID || attrInfo->atttypid == 210 /* storage manager */ )
 			getTypeOutputInfo(attrInfo->atttypid, &attrInfo->typsend,
 					   &attrInfo->typisvarlena);
 		else
@@ -114,7 +115,7 @@ InitSerTupInfo(TupleDesc tupdesc, SerTupInfo * pSerInfo)
 
 		/* Info for receiving the type. */
 
-		if(attrInfo->atttypid == ACLITEMOID)
+		if(attrInfo->atttypid == ACLITEMOID || attrInfo->atttypid == 210 /* storage manager */)
 			getTypeInputInfo(attrInfo->atttypid, &attrInfo->typrecv,
 							   &attrInfo->recv_typio_param);
 		else
@@ -399,6 +400,18 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 					break;
 				}	
 
+			case 210: /* storage manager */
+				{
+					char		*smgrstr;
+					int32		strsize;
+
+					smgrstr = DatumGetCString(DirectFunctionCall1(smgrout, 0));
+					strsize = strlen(smgrstr);
+					addInt32ToChunkList(tcList, strsize);
+					addByteStringToChunkList(tcList, smgrstr, strsize);
+					break;
+				}
+
 			default:
 				fHandled = false;
 		}
@@ -636,6 +649,20 @@ DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup)
 
 					pSerInfo->values[i] = DirectFunctionCall1(aclitemin, CStringGetDatum(starsfree));
 					pfree(inputstring);
+					break;
+				}
+
+			case 210:
+				{
+					int 		strsize;
+					char		*smgrstr;
+
+					strsize = stringInfoGetInt32(serialTup);
+					smgrstr = (char*) palloc(strsize + 1);
+					pq_copymsgbytes(serialTup, smgrstr, strsize);
+					smgrstr[strsize] = '\0';
+
+					pSerInfo->values[i] = DirectFunctionCall1(smgrin, CStringGetDatum(smgrstr));
 					break;
 				}
 
