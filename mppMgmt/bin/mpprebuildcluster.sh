@@ -94,14 +94,15 @@ USAGE () {
 		$ECHO "      -d, <temporary data directory name> directory where a temporary database can be created"
 		$ECHO "          to allow parsing of <sql source file name> [mandatory]"
 		$ECHO "          Directory name supplied must exist."
-		$ECHO "      -c, value of checkpoint segments [default $CHECK_POINT_SEGMENTS]"
+		$ECHO "      -c, value of checkpoint segments [default:-$CHECK_POINT_SEGMENTS]"
 		$ECHO "      -m, build master instance only [default:- build complete instance]"
 		$ECHO "          Use this option if you wish to change the names of the segment"
 		$ECHO "          instance hosts"
 		$ECHO "      -o, override hostname check and set master hostname to current host"
 		$ECHO "      -x, do not create database if *cdatabase* file exists in same directory as the"
 		$ECHO "          <sql source file name> file [default create database if file exists]"
-		$ECHO "      -i, alternative IP allow for pg_hba.conf [default $DEFAULT_IP_ALLOW]"
+		$ECHO "      -i, alternative IP allow for pg_hba.conf [default:-$DEFAULT_IP_ALLOW]"
+		$ECHO "      -n, <locale setting> locale setting when database initialized [dafeult:-$DEFAULT_LOCALE_SETTING]"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -122,7 +123,7 @@ CREATE_TEMP_DB () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Creating temporary parsing database"
 	MASTER_IP_ADDRESS=(`$IFCONFIG |$GREP "inet addr"|$GREP -v addr:127|$AWK '{print $2}'|$CUT -d: -f2`)	
-	RUN_COMMAND "$INITDB -E $ENCODING -D ${TEMP_DATA_DIRECTORY}/parsetemp"
+	RUN_COMMAND "$INITDB -E $ENCODING --locale=$LOCALE_SETTING -D ${TEMP_DATA_DIRECTORY}/parsetemp"
 	LOG_MSG "[INFO]:-Successfully initialized temporary parsing database"
 	LOG_MSG "[INFO]:-Setting temporary port number to $TEMP_PORT"
 	ED_FILE ${TEMP_DATA_DIRECTORY}/parsetemp/$PG_CONF "#port" port=$TEMP_PORT 0
@@ -319,7 +320,7 @@ BUILD_MPP_MASTER () {
 		LOG_MSG "[INFO]:-Path correct for plpgsql.so, skipping edit"
 	fi
 	LOG_MSG "[INFO]:-Creating Master database"
-	RUN_COMMAND "$INITDB -E $ENCODING -D $MASTER_DATA_DIRECTORY"
+	RUN_COMMAND "$INITDB -E $ENCODING --locale=$LOCALE_SETTING  -D $MASTER_DATA_DIRECTORY"
 	BACKOUT_COMMAND "$RM -Rf $MASTER_DATA_DIRECTORY"
 	BACKOUT_COMMAND "$ECHO \"Removing Master instance directory\""
 	LOG_MSG "[INFO]:-Setting the Master port to $MASTER_PORT"
@@ -390,7 +391,7 @@ BUILD_SEGMENT_INSTANCES () {
 		else
 			LOG_MSG "[INFO]:-Path correct for plpgsql.so, skipping edit"
 		fi
-		RUN_COMMAND_REMOTE ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};$INITDB -E $ENCODING -D $SEG_DATADIR"
+		RUN_COMMAND_REMOTE ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};$INITDB -E $ENCODING --locale=$LOCALE_SETTING -D $SEG_DATADIR"
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${SEG_HOSTNAME} \"$RM -rf $SEG_DATADIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $SEG_DATADIR on $SEG_HOSTNAME\""
 		LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
@@ -523,7 +524,7 @@ DISPLAY_INFO () {
 #******************************************************************************
 trap 'DELETE_TEMP_DB;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-	while getopts ":vt'?'axp:qi:omc:s:l:d:" opt;do
+	while getopts ":vt'?'axp:qi:on:mc:s:l:d:" opt;do
 		case $opt in
 			v ) VERSION_INFO ;;
 			'?' ) USAGE ;;
@@ -539,6 +540,7 @@ if [ $# -ne 0 ]; then
 ##			i ) unset START_MPPSYNC ;;
 			m ) MASTER_ONLY=1 
 			    NOCREATEDB=1 ;;
+			n ) LOCALE_SETTING=$OPTARG ;;
 			o ) OVERRIDE_MASTER_HOSTNAME=1 ;;
 			* ) USAGE ;;
 		esac
@@ -561,6 +563,10 @@ LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 if [ x"" = x"$SQL_FILE" ] || [ x"" = x"$TEMP_DATA_DIRECTORY" ]; then
 	ERROR_EXIT "[FATAL]:-Must supply file name of sql file and temporary database directory" 2
+fi
+if [ x"" == x"$LOCALE_SETTING" ];then
+	LOCALE_SETTING=$DEFAULT_LOCALE_SETTING
+	LOG_MSG "[INFO]:-Set locale to default value $LOCALE_SETTING"
 fi
 CHK_FILE $SQL_FILE
 if [ $EXISTS -ne 0 ]; then
