@@ -820,7 +820,7 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 	Const	   *patt = NULL;
 	Const	   *prefix = NULL;
 	Const	   *rest = NULL;
-    double      nullfrac = 0;
+    double      notnullfrac = 1.0;
 	double		result;
 
 	/*
@@ -901,7 +901,7 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
     {
 	    Form_pg_statistic   stats = (Form_pg_statistic)GETSTRUCT(vardata.statsTuple);
 
-        nullfrac = stats->stanullfrac;
+        notnullfrac = 1.0 - stats->stanullfrac;
     }
 
 	/* divide pattern into fixed prefix and remainder */
@@ -963,31 +963,45 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
          * CDB TODO: Try matching the pattern against the frequently
          * occurring values, similar to eqsel().
 		 */
-        Selectivity eqsel;
-        Selectivity fewsel;
         double      ndistinct;
-		Selectivity prefixsel;
-		Selectivity restsel;
+        Selectivity eqsel = notnullfrac;
+        Selectivity fewsel;
+	    Selectivity prefixsel;
+		Selectivity restsel = pattern_selectivity(rest, ptype);
 		Selectivity selec;
 
-		if (pstatus == Pattern_Prefix_Partial)
-			prefixsel = prefix_selectivity(root, variable, opclass, prefix);
-		else
-			prefixsel = 1.0 - nullfrac;
-
-		restsel = pattern_selectivity(rest, ptype);
-
-        /* CDB: Assume remainder will match at least a few distinct values. */
+        /* CDB: LIKE cannot select fewer rows than "=". */
         ndistinct = get_variable_numdistinct(&vardata);
-        eqsel = (ndistinct <= 1) ? 1 : 1.0 / ndistinct;
-        fewsel = (DEFAULT_MATCH_SEL / DEFAULT_EQ_SEL) * eqsel;
-        if (fewsel > 1.0)
-            fewsel = 1.0;
-        if (restsel < fewsel)
-            restsel = fewsel;
-        restsel *= 1.0 - nullfrac;
+        if (ndistinct > 1.0)
+            eqsel /= ndistinct;
 
-		selec = prefixsel * restsel;
+		if (pstatus == Pattern_Prefix_Partial)
+        {
+            prefixsel = prefix_selectivity(root, variable, opclass, prefix);
+
+            /* CDB: Assume prefix will match at least a few distinct values. */
+            fewsel = (DEFAULT_RANGE_INEQ_SEL / DEFAULT_EQ_SEL) * eqsel;
+            if (fewsel > notnullfrac)
+                fewsel = notnullfrac;
+            if (prefixsel < fewsel)
+                prefixsel = fewsel;
+
+            /* CDB: Assume whole pattern will match at least 1 or 2 values. */
+            fewsel = 2.0 * eqsel;
+        }
+		else
+        {
+		    prefixsel = notnullfrac;
+
+            /* CDB: Assume pattern will match at least a few distinct values. */
+            fewsel = (DEFAULT_MATCH_SEL / DEFAULT_EQ_SEL) * eqsel;
+        }
+
+        selec = prefixsel * restsel;
+        if (fewsel > notnullfrac)
+            fewsel = notnullfrac;
+        if (selec < fewsel)
+            selec = fewsel;
 
 		/* result should be in range, but make sure... */
 		CLAMP_PROBABILITY(selec);
