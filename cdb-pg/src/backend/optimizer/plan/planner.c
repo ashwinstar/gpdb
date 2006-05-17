@@ -577,6 +577,11 @@ inheritance_planner(PlannerInfo *root, List *inheritlist)
 	List	   *tlist = NIL;
 	ListCell   *l;
 
+	/* MPP */
+	Plan *plan;
+	CdbLocusType append_locustype = CdbLocusType_Null;
+	bool locus_ok = TRUE;
+
 	foreach(l, inheritlist)
 	{
 		int			childRTindex = lfirst_int(l);
@@ -603,6 +608,46 @@ inheritance_planner(PlannerInfo *root, List *inheritlist)
 		subplan = grouping_planner(&subroot, 0.0 /* retrieve all tuples */ );
 
 		subplans = lappend(subplans, subplan);
+		
+		/* MPP needs target loci to match. */
+		if ( Mpp_role == MPP_ROLE_DISPATCH )
+		{
+			CdbLocusType locustype = ( subplan->flow == NULL ) ?
+				CdbLocusType_Null : subplan->flow->locustype;
+				
+			if ( append_locustype == CdbLocusType_Null && locus_ok )
+			{
+				append_locustype = locustype;
+			}
+			else
+			{
+				switch ( locustype )
+				{
+				case CdbLocusType_Root:
+				case CdbLocusType_Hashed:
+				case CdbLocusType_Strewn:
+					/* Loci of inheritance set must match. */
+					locus_ok = locus_ok && locustype == append_locustype;
+					break;
+				case CdbLocusType_Null:
+				case CdbLocusType_SingleQE:
+				case CdbLocusType_General:
+				case CdbLocusType_HashedOJ:
+				case CdbLocusType_Replicated:
+				default:
+					/* These loci not valid on base relations. */
+					locus_ok = FALSE;
+					break;
+				}
+			}
+			if ( ! locus_ok )
+			{
+				ereport(ERROR, (
+					errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					errmsg("incompatible loci in target inheritance set") ));
+			}
+		}
+
 
 		/*
 		 * XXX my goodness this next bit is ugly.  Really need to think about
@@ -650,7 +695,32 @@ inheritance_planner(PlannerInfo *root, List *inheritlist)
 	/* Mark result as unordered (probably unnecessary) */
 	root->query_pathkeys = NIL;
 
-	return (Plan *) make_append(subplans, true, tlist);
+	plan = (Plan *) make_append(subplans, true, tlist);
+	
+	/* MPP dispatch needs to know the kind of locus. */
+	if ( Mpp_role == MPP_ROLE_DISPATCH )
+	{
+		switch ( append_locustype )
+		{
+		case CdbLocusType_Root:
+			mark_plan_root(plan);
+			break;
+			
+		case CdbLocusType_Hashed:
+		case CdbLocusType_Strewn:
+			/* Depend on caller to avoid incompatible hash keys. */
+			/* For our purpose (UPD/DEL target), strewn is good enough. */
+			mark_plan_strewn(plan);
+			break;
+			
+		default:
+			ereport(ERROR, (
+				errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				errmsg("unexpected locus assigned to target inheritance set") ));
+		}
+	}
+	
+	return plan;
 }
 
 /*--------------------
