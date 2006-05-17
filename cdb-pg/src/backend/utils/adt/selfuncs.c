@@ -3833,7 +3833,6 @@ like_selectivity(Const *patt_const, bool case_insensitive)
 	Selectivity sel = 1.0;
     Selectivity fixed_char_sel = FIXED_CHAR_SEL;
 	int			pos;
-	int			start;
 	Oid			typeid = patt_const->consttype;
 	char	   *patt;
 	int			pattlen;
@@ -3871,8 +3870,7 @@ like_selectivity(Const *patt_const, bool case_insensitive)
 	Assert(patt != NULL);
 
 	/* Skip any leading %; it's already factored into initial sel */
-	start = (*patt == '%') ? 1 : 0;
-	for (pos = start; pos < pattlen; pos++)
+	for (pos = 0; pos < pattlen; pos++)
 	{
 		/* % and _ are wildcard characters in LIKE */
 		if (patt[pos] == '%')
@@ -3893,6 +3891,15 @@ like_selectivity(Const *patt_const, bool case_insensitive)
             fixed_char_sel += (1.0 - fixed_char_sel) * CDB_ROLLOFF_SEL;
         }
 	}
+
+    /* CDB: If no trailing wildcard, reduce selectivity slightly. */
+    if (pos > 0 &&
+        patt[pos-1] != '%')
+        sel *= CDB_RANCHOR_SEL;
+    else if (pos >= 2 &&
+             patt[pos-2] == '\\')
+        sel *= CDB_RANCHOR_SEL;
+
 	return sel;
 }
 
