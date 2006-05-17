@@ -111,6 +111,7 @@ IPCS=`findCmdInPath ipcs`
 IFCONFIG=`findCmdInPath ifconfig`
 KILL=`findCmdInPath kill`
 LS=`findCmdInPath ls`
+LOCALE=`findCmdInPath locale`
 MAIL=`findCmdInPath mail`
 MV=`findCmdInPath mv`
 MKDIR=`findCmdInPath mkdir`
@@ -210,6 +211,7 @@ MPP_PG_VIEW=mpp_pgdatabase
 MPP_INITDB_VER_TABLE=mpp_version_at_initdb
 DEFAULT_CHK_PT_SEG=8
 DEFAULT_IP_ALLOW="0.0.0.0/0"
+DEFAULT_LOCALE_SETTING=en_US.UTF-8
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -710,7 +712,6 @@ RUN_COMMAND () {
 		LOG_MSG "[INFO]:-Commencing local $COMMAND"
 		$COMMAND
 		RETVAL=$?
-		echo "Return code = $RETVAL"
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:- Command $COMMAND failed with error status $RETVAL" 2
 		fi
