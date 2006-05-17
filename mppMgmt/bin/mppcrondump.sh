@@ -99,7 +99,9 @@ USAGE () {
 		$ECHO "      -s, <schema name> dump the schema contained within the database name supplied via -x"
 		$ECHO
 		$ECHO "      Crontab entry (example):"
+		$ECHO "      SHELL=/bin/bash"
 		$ECHO "      5 0 * * * . \$HOME/.bashrc;\$MPPUTIL/mppcrondump.sh -x tpch -aq >> <name of cronout file>" 
+		$ECHO "      Set the shell to /bin/bash (default for cron is /bin/sh"
 		$ECHO "      Dump the tpch database, start process 5 minutes past midnight on a daily basis"
 		$ECHO
 		$ECHO "      Return codes:"
@@ -641,12 +643,12 @@ if [ $ROLLBACK_DUMPS ];then
 		LOG_MSG "[WARN]:-Dump request was incomplete, rolling back dump"
 		DELETE_CURRENT_DUMP
 		REPORT_FAILED_DUMPS
-		EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files rolled back. Options passed [$OPTIONS_LIST]"
+		EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files rolled back. Options passed [$OPTIONS_LIST]"
 		ERROR_EXIT "[FATAL]:-Dump incomplete, completed rollback" 2
 	else
 		LOG_MSG "[WARN]:-Dump request was incomplete, not rolling back dump as -n option supplied"
 		REPORT_FAILED_DUMPS
-		EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files not rolled back. Options passed [$OPTIONS_LIST]"
+		EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files not rolled back. Options passed [$OPTIONS_LIST]"
 		ERROR_EXIT "[FATAL]:-Dump incomplete, rollback not processed" 2
 	fi
 fi
