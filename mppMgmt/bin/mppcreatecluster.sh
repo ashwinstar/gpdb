@@ -114,6 +114,7 @@ USAGE () {
 		$ECHO "      -o, create Master only, do not configure Segment instance hosts"
 		$ECHO "      -m, maximum number of connections for master instance [default ${MAX_QD_CONNECTIONS}]"
 		$ECHO "      -e, <password>, password to set for MPP superuser in database [default $MPP_PASSWD]"
+		$ECHO "      -n, <locale>, setting for locale to be set when database initialized [default $DEFAULT_LOCALE_SETTING]"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 - No problems encountered with requested operation"
@@ -175,7 +176,16 @@ CHK_PARAMS () {
 		if [ x"" = x"$DATA_DIRECTORY" ]; then
 				ERROR_EXIT "[FATAL]:-DATA_DIRECTORY not specified in $CLUSTER_CONFIG file, is this the correct instance configuration file." 2
 		fi
-
+		if [ x"" == x"$LOCALE_SETTING" ];then
+			LOG_MSG "[INFO]:-Locale has not been set in $CLUSTER_CONFIG, will set to default value"
+			LOCALE_SETTING=$DEFAULT_LOCALE_SETTING
+			LOG_MSG "[INFO]:-Locale set to $DEFAULT_LOCALE_SETTING"
+		else
+			LOG_MSG "[INFO]:-Locale set to $LOCALE_SETTING in $CLUSTER_CONFIG"
+		fi
+		LOG_MSG "[INFO]:-Dump current system locale to log file"
+		$LOCALE >> $LOG_FILE
+		LOG_MSG "[INFO]:-End of system locale dump"
 		#Check the other files that are required to be able to continue
 		FILE_LIST=($MACHINE_LIST_FILE)
 		for FILE in "${FILE_LIST[@]}"
@@ -577,6 +587,7 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Master hostname      = $MPP_HOSTNAME"
 		LOG_MSG "[INFO]:-Master port          = $MASTER_PORT"
 		LOG_MSG "[INFO]:-Master instance dir  = $MPP_DIR"
+		LOG_MSG "[INFO]:-Master LOCALE        = $LOCALE_SETTING"
 		LOG_MSG "[INFO]:-MPP segment prefix   = $SEG_PREFIX"
 		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME"
 		LOG_MSG "[INFO]:-Master connections   = $MAX_QD_CONNECTIONS"
@@ -682,7 +693,7 @@ CREATE_QD_DB () {
 		fi
 		LOG_MSG "[INFO]:-Initializing Master Postgres instance $MPP_DIR"
 		$EXPORT_LIB_PATH
-		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR"
+		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR --locale=$LOCALE_SETTING"
 		BACKOUT_COMMAND "$RM -Rf $MPP_DIR"
 		BACKOUT_COMMAND "$ECHO Removing Master data directory files"
 		LOG_MSG "[INFO]:-Completed Master instance initialization"
@@ -843,7 +854,7 @@ CREATE_QES_MIRROR () {
 
 PROCESS_QE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB -E $ENCODING -D $MPP_DIR"
+		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB -E $ENCODING -D $MPP_DIR --locale=$LOCALE_SETTING"
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
 		LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
@@ -968,7 +979,7 @@ CREATE_DATABASE () {
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
-while getopts ":v'?'aiqe:c:l:p:m:h:os:" opt
+while getopts ":v'?'aiqe:c:l:p:m:h:on:s:" opt
 		do
 		case $opt in
 				v ) VERSION_INFO ;;
@@ -984,6 +995,7 @@ while getopts ":v'?'aiqe:c:l:p:m:h:os:" opt
 				m ) MAX_QD_CONNECTIONS=$OPTARG ;;
 				o ) QD_ONLY=1 ;;
 				s ) STANDBY_HOSTNAME=$OPTARG ;;
+				n ) LOCALE_SETTING=$OPTARG ;;
 				* ) USAGE ;;
 		esac
 done
