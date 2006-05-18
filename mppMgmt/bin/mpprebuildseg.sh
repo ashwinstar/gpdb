@@ -85,6 +85,7 @@ USAGE () {
 		$ECHO "      Segment rebuild options:"
 		$ECHO "      -d, <master data directory name> directory where a master database is located"
 		$ECHO "         [mandatory]"
+		$ECHO "      -n, <locale setting> locale setting when database initialized [dafeult:-$DEFAULT_LOCALE_SETTING]"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -237,7 +238,7 @@ BUILD_SEGMENT_INSTANCES () {
 	do
 		SET_VAR $SEG_INFO
 		LOG_MSG "[INFO]:-Processing segment host $SEG_HOSTNAME port $SEG_PORT data directory $SEG_DATADIR dbid $SEG_DBID"
-		RUN_COMMAND_REMOTE ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};$INITDB -E $ENCODING -D $SEG_DATADIR"
+		RUN_COMMAND_REMOTE ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};$INITDB -E $ENCODING --locale=$LOCALE_SETTING -D $SEG_DATADIR"
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${SEG_HOSTNAME} \"$RM -rf $SEG_DATADIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $SEG_DATADIR on $SEG_HOSTNAME\""
 		LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
@@ -309,7 +310,7 @@ DISPLAY_INFO () {
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-	while getopts ":vt'?'aip:qomc:s:l:d:" opt;do
+	while getopts ":vt'?'aip:qn:omc:s:l:d:" opt;do
 		case $opt in
 			v ) VERSION_INFO ;;
 			'?' ) USAGE ;;
@@ -317,6 +318,7 @@ if [ $# -ne 0 ]; then
 			a ) unset INTERACTIVE ;;
 			q ) unset VERBOSE ;;
 			l ) LOG_DIR=$OPTARG ;;
+			n ) LOCALE_SETTING=$OPTARG ;;
 			* ) USAGE ;;
 		esac
 	done	
@@ -338,6 +340,10 @@ if [ x"" == x"$MASTER_DATA_DIRECTORY" ];then
 	ERROR_EXIT "[FATAL]:-Must supply master data directory location with -d option" 2
 fi
 LOG_MSG "[INFO]:-Start Main"
+if [ x"" == x"$LOCALE_SETTING" ];then
+        LOCALE_SETTING=$DEFAULT_LOCALE_SETTING
+        LOG_MSG "[INFO]:-Set locale to default value $LOCALE_SETTING"
+fi
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 START_MASTER_DB
 GET_QD_DB_NAME
