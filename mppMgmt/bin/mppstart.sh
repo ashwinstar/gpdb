@@ -92,6 +92,7 @@ USAGE () {
 		$ECHO "      -m, start master instance only in maintenance mode [default:- full MPP startup]"
 		$ECHO "      -z, force startup of segment instance marked as invalid"
 		$ECHO "      -y, do not start master standby server [default:- start standby server process]"
+		$ECHO "      -s, switch master log file, moves current logfile to <log file>.YYYYMMDD"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -164,6 +165,26 @@ RECOVERY_STARTUP () {
 	exit $EXIT_STATUS	
 }
 
+SWITCH_MASTER_LOG () {
+	LOG_MSG "[INFO]:-Moving master segment log file to ${MASTER_DATA_DIRECTORY}.log_$CUR_DATE"
+	if [ -f ${MASTER_DATA_DIRECTORY}.log ];then
+		if [ -f ${MASTER_DATA_DIRECTORY}.log_$CUR_DATE ];then
+			LOG_MSG "[INFO]:-Master log file has been previously switched today"
+			LOG_MSG "[INFO]:-Will append current master segment the switched log file"
+			$CAT ${MASTER_DATA_DIRECTORY}.log >> ${MASTER_DATA_DIRECTORY}.log_$CUR_DATE
+			ERROR_CHK $? "complete append to switched log file" 1
+			$RM -f ${MASTER_DATA_DIRECTORY}.log
+			ERROR_CHK $? "complete delete of current master segment log file" 1
+		else
+			$MV ${MASTER_DATA_DIRECTORY}.log ${MASTER_DATA_DIRECTORY}.log_$CUR_DATE
+			ERROR_CHK $? "complete move of master segment log file" 1
+		fi
+	else
+		LOG_MSG "[WARN]:-No current master segment log file, ignoring log file switch request"
+		EXIT_STATUS=1
+	fi
+}
+
 GET_DETAILS () {
 		export PGPORT=$MASTER_PORT
 		LOG_MSG "[INFO]:-Starting Master instance in admin mode"
@@ -189,6 +210,9 @@ GET_DETAILS () {
 }
 
 START_ADMIN () {
+		if [ x"" != x"$SWITCH_LOG" ];then
+			SWITCH_MASTER_LOG
+		fi
 		LOG_MSG "[INFO]:-Starting master instance in admin mode"
 		export PGPORT=$MASTER_PORT
 		env PGOPTIONS="-c mpp_session_role=utility" $PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT " start
@@ -207,6 +231,16 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Database                   = $QD_DBNAME"
 		LOG_MSG "[INFO]:-Master Port                = $MASTER_PORT"
 		LOG_MSG "[INFO]:-Master directory           = $MASTER_DATA_DIRECTORY"
+		if [ x"" == x"$SWITCH_LOG" ];then
+		LOG_MSG "[INFO]:-Master switch log file     = Off"
+		else
+		LOG_MSG "[INFO]:-Master switch log file     = On"
+			if [ -f ${MASTER_DATA_DIRECTORY}.log_$CUR_DATE ];then
+			LOG_MSG "[INFO]:-Switch type                = Append"
+			else
+			LOG_MSG "[INFO]:-Switch type                = Move"
+			fi
+		fi
 		if [ x"" != x"$START_SYNC" ] && [ $STANDBY_COUNT -ne 0 ];then
 		LOG_MSG "[INFO]:-Master standby start       = On"
 		else
@@ -223,9 +257,9 @@ PROMPT_CONTINUE () {
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
 				if [ "$QE_VALID" == "t" ]; then
-					LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT"
+					LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME segment = $QE_DIR port = $QE_PORT"
 				else
-					LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT invalid will not start"
+					LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME segment = $QE_DIR port = $QE_PORT invalid will not start"
 				fi
 				((COUNT=$COUNT+1))
 		done
@@ -243,6 +277,9 @@ PROMPT_CONTINUE () {
 }	
 
 PROCESS_STARTUP () {
+	if [ x"" != x"$SWITCH_LOG" ];then
+		SWITCH_MASTER_LOG
+	fi
 	if [ $READ_COUNT -eq 0 ];then
 		if [ x"" != x"$START_SYNC" ] && [ $STANDBY_COUNT -ne 0 ];then
 			STANDBY_HOSTNAME=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f1`
@@ -351,7 +388,7 @@ fi
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt'?'abqyznml:d:" opt;do
+		while getopts ":vt'?'abqyznsml:d:" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -361,6 +398,7 @@ if [ $# -ne 0 ]; then
 						q ) unset VERBOSE ;;
 						n ) WAIT="-W" ;; 
 						m ) ADMIN=1 ;;
+						s ) SWITCH_LOG=1 ;;
 						z ) START_INVALID=1 ;;
 						l ) LOG_DIR=$OPTARG ;;
 						y ) unset START_SYNC ;;
