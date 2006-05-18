@@ -220,7 +220,11 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 		/* in schemaOnly we skip all but the master */
 		if(schemaOnly && content != -1 && actors != SET_INDIVIDUAL)
 			continue;
-			
+
+		/* we never want to dump the warm standby master */
+		if(content == -1 && !isprimary)
+			continue;
+		
 		if(actors == SET_INDIVIDUAL)
 		{
 			should_dump = false;
@@ -410,6 +414,10 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 		if(dataOnly && contentid == -1)
 			continue;
 		
+		/* we never want to restore the warm standby master */
+		if(contentid == -1 && !isprimary)
+			continue;
+				
 		if(backupLocation == FILE_ON_INDIVIDUAL)
 		{
 			should_restore = false;
