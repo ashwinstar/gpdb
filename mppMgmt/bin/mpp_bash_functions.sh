@@ -546,12 +546,12 @@ CHK_DB_RUNNING () {
 				ERROR_EXIT "[FATAL]:-No $MASTER_DATA_DIRECTORY/$PG_PID file" 2
 		fi		
 		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
-		export $EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" > /dev/null 2>&1
+		export $EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" >> $LOG_FILE 2>&1
 		if [ $? -ne 0 ];then
 			LOG_MSG "[FATAL]:-Have a postmaster.pid file for master instance on port $MASTER_PORT"
 			LOG_MSG "[FATAL]:-However, error reported on test psql access to master instance"
 			LOG_MSG "[INFO]:-Check ps output for a postmaster process on the above port"
-			LOG_MSG "[INFO]:-Check the master postgres logfile for errors"
+			LOG_MSG "[INFO]:-Check the master postgres logfile for errors and also the utility log file"
 			ERROR_EXIT "[FATAL]:-Unable to continue"
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
