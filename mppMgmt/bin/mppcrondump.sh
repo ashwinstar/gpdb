@@ -268,6 +268,38 @@ CHK_PARAM () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+CALC_COMPRESSION () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	((REQ_FREE_SPACE_K=$DIR_HOST_USED_K/$COMPRESSION_FACTOR))
+	((CALC1=$DIR_HOST_FREE_K*$FREE_SPACE_PERCENT))
+	((CALC2=$CALC1/100))
+	((CALC_FREE_SPACE_K=$DIR_HOST_FREE_K-$CALC2))
+	LOG_MSG "[INFO]:-Revised space less $FREE_SPACE_PERCENT % = $CALC_FREE_SPACE_K K Required $REQ_FREE_SPACE_K K (Estimated size for compressed file)"
+	if [ $CALC_FREE_SPACE_K -lt $REQ_FREE_SPACE_K ];then
+		ERROR_EXIT "[FATAL]:-Insufficient free space $DIR_HOST $DIR required $REQ_FREE_SPACE_K K actual $CALC_FREE_SPACE_K K" 2
+	else
+		LOG_MSG "[INFO]:-Sufficient free space on $DIR_HOST for dump in segment directory $DIR"
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+CALC_NO_COMPRESSION () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	REQ_FREE_SPACE_K=$DIR_HOST_USED_K
+	((CALC1=$DIR_HOST_FREE_K*$FREE_SPACE_PERCENT))
+	((CALC2=$CALC1/100))
+	((CALC_FREE_SPACE_K=$DIR_HOST_FREE_K-$CALC2))
+	LOG_MSG "[INFO]:-Revised space less $FREE_SPACE_PERCENT % = $CALC_FREE_SPACE_K K Required $REQ_FREE_SPACE_K K "
+	if [ $CALC_FREE_SPACE_K -lt $REQ_FREE_SPACE_K ];then
+		LOG_MSG "[WARN]:-Insufficient free space $DIR_HOST $DIR required $REQ_FREE_SPACE_K K actual $CALC_FREE_SPACE_K K"
+		EXIT_STATUS=1
+		TRY_COMPRESSION=1
+	else
+		LOG_MSG "[INFO]:-Sufficient free space on $DIR_HOST for dump in segment directory $DIR"
+		TRY_COMPRESSION=0
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
 CHK_DUMP_SPACE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Check to see if we have sufficient space to be able to dump data to disks
@@ -283,30 +315,27 @@ CHK_DUMP_SPACE () {
 		DIR_HOST_USED_K=`$ECHO ${ACTUAL_DB_SIZE[@]}|$GREP $DIR_HOST|$GREP $SEG|$AWK -F'|' '{print $NF}'`
 		LOG_MSG "[INFO]:-Host $DIR_HOST Directory $DIR Database $DUMP_DATABASE has used $DIR_HOST_USED_K K"
 		if [ $COMPRESSION ];then
-			((REQ_FREE_SPACE_K=$DIR_HOST_USED_K/$COMPRESSION_FACTOR))
-			((CALC1=$DIR_HOST_FREE_K*$FREE_SPACE_PERCENT))
-			((CALC2=$CALC1/100))
-			((CALC_FREE_SPACE_K=$DIR_HOST_FREE_K-$CALC2))
-			LOG_MSG "[INFO]:-Revised space $FREE_SPACE_PERCENT % = $CALC_FREE_SPACE_K K Required $REQ_FREE_SPACE_K K (Estimated size for compressed file)"
-			if [ $CALC_FREE_SPACE_K -lt $REQ_FREE_SPACE_K ];then
-				ERROR_EXIT "[FATAL]:-Insufficient free space $DIR_HOST $DIR required $REQ_FREE_SPACE_K K actual $CALC_FREE_SPACE_K K" 2
-			else
-				LOG_MSG "[INFO]:-Sufficient free space on $DIR_HOST for dump in segment directory $DIR"
-			fi
+			CALC_COMPRESSION
 		else
-			REQ_FREE_SPACE_K=$DIR_HOST_USED_K
-			((CALC1=$DIR_HOST_FREE_K*$FREE_SPACE_PERCENT))
-			((CALC2=$CALC1/100))
-			((CALC_FREE_SPACE_K=$DIR_HOST_FREE_K-$CALC2))
-			LOG_MSG "[INFO]:-Revised space $FREE_SPACE_PERCENT % = $CALC_FREE_SPACE_K K Required $REQ_FREE_SPACE_K K "
-			if [ $CALC_FREE_SPACE_K -lt $REQ_FREE_SPACE_K ];then
-				ERROR_EXIT "[FATAL]:-Insufficient free space $DIR_HOST $DIR required $REQ_FREE_SPACE_K K actual $CALC_FREE_SPACE_K K" 2
-			else
-				LOG_MSG "[INFO]:-Sufficient free space on $DIR_HOST for dump in segment directory $DIR"
-			fi
-			
+			CALC_NO_COMPRESSION			
 		fi 
 	done
+	if [ $TRY_COMPRESSION -eq 1 ];then
+		LOG_MSG "[INFO]:--------------------------------------------------------"
+		LOG_MSG "[INFO]:-Checking to see if sufficient space if compression used"
+		LOG_MSG "[INFO]:--------------------------------------------------------"
+		COMPRESSION=1
+		for DBID in ${DBID_LIST[@]}
+		do
+			CHK_DATA
+			DIR_HOST_FREE_K=`$TRUSTED_SHELL $DIR_HOST "$DF -k $DIR|$TAIL -1|$AWK '{print \\$4}'"`
+			LOG_MSG "[INFO]:-Host $DIR_HOST Directory $DIR has free space $DIR_HOST_FREE_K K"
+			SEG=`$BASENAME $DIR`
+			DIR_HOST_USED_K=`$ECHO ${ACTUAL_DB_SIZE[@]}|$GREP $DIR_HOST|$GREP $SEG|$AWK -F'|' '{print $NF}'`
+			LOG_MSG "[INFO]:-Host $DIR_HOST Directory $DIR Database $DUMP_DATABASE has used $DIR_HOST_USED_K K"
+			CALC_COMPRESSION
+		done
+	fi				
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -349,6 +378,11 @@ PROMPT_CONTINUE () {
 			LOG_MSG "[INFO]:-Dump file compression      = On"
 		else
 			LOG_MSG "[INFO]:-Dump file compression      = Off"
+		fi
+		if [ $TRY_COMPRESSION -eq 1 ];then
+			LOG_MSG "[INFO]:-Compression override       = On"
+		else
+			LOG_MSG "[INFO]:-Compression override       = Off"
 		fi
 		if [ $CLEAR_DUMPS -eq 1 ];then
 			LOG_MSG "[INFO]:-Clear old dump files       = On"
