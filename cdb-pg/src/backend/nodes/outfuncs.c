@@ -1694,7 +1694,8 @@ _outFunctionParameter(StringInfo str, FunctionParameter *node)
 	WRITE_NODE_TYPE("FUNCTIONPARAMETER");
 	WRITE_STRING_FIELD(name);
 	WRITE_NODE_FIELD(argType);
-	/* someday add IN/OUT/INOUT indicator here */
+	WRITE_ENUM_FIELD(mode, FunctionParameterMode);
+
 }
 
 static void

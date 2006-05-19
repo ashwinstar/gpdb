@@ -1618,7 +1618,7 @@ _readFunctionParameter(void)
 	READ_LOCALS(FunctionParameter);
 	READ_STRING_FIELD(name);
 	READ_NODE_FIELD(argType);
-	/* someday add IN/OUT/INOUT indicator here */
+	READ_ENUM_FIELD(mode, FunctionParameterMode);
 			
 	READ_DONE();
 }
