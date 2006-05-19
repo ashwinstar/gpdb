@@ -688,12 +688,12 @@ if [ $ROLLBACK_DUMPS ];then
 		LOG_MSG "[WARN]:-Dump request was incomplete, rolling back dump"
 		DELETE_CURRENT_DUMP
 		REPORT_FAILED_DUMPS
-		EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files rolled back. Options passed [$OPTIONS_LIST]"
+		EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 		ERROR_EXIT "[FATAL]:-Dump incomplete, completed rollback" 2
 	else
 		LOG_MSG "[WARN]:-Dump request was incomplete, not rolling back dump as -n option supplied"
 		REPORT_FAILED_DUMPS
-		EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files not rolled back. Options passed [$OPTIONS_LIST]"
+		EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files not rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 		ERROR_EXIT "[FATAL]:-Dump incomplete, rollback not processed" 2
 	fi
 fi
@@ -701,6 +701,6 @@ if [ $CLEAR_DUMPS -eq 1 ];then
 	DELETE_OLD_DUMPS
 fi
 STATUS_REPORT
-EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST" "Completed for database $DUMP_DATABASE with return code $EXIT_STATUS Options passed [$OPTIONS_LIST]"
+EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST[COMPLETED]" "Completed for database $DUMP_DATABASE with return code $EXIT_STATUS [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS
