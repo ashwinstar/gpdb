@@ -1104,7 +1104,8 @@ typedef struct CreateTableSpaceStmt
 	NodeTag		type;
 	char	   *tablespacename;
 	char	   *owner;
-	char	   *location;
+	List	   *locations;
+	List	   *mirrorlocations;
 } CreateTableSpaceStmt;
 
 typedef struct DropTableSpaceStmt

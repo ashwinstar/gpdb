@@ -679,12 +679,10 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateTableSpaceStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
 			CreateTableSpace((CreateTableSpaceStmt *) parsetree);
 			break;
 
 		case T_DropTableSpaceStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
 			DropTableSpace((DropTableSpaceStmt *) parsetree);
 			break;
 

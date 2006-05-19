@@ -1292,7 +1292,8 @@ _equalCreateTableSpaceStmt(CreateTableSpaceStmt *a, CreateTableSpaceStmt *b)
 {
 	COMPARE_STRING_FIELD(tablespacename);
 	COMPARE_STRING_FIELD(owner);
-	COMPARE_STRING_FIELD(location);
+	COMPARE_NODE_FIELD(locations);
+	COMPARE_NODE_FIELD(mirrorlocations);
 
 	return true;
 }

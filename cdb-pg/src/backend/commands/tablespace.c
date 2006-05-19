@@ -65,6 +65,12 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbdisp.h"
+#include "cdb/cdbsrlz.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbutil.h"
+
+
 
 /* GUC variable */
 char	   *default_tablespace = NULL;
@@ -199,6 +205,12 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	char	   *location;
 	char	   *linkloc;
 	Oid			ownerId;
+	ListCell   *cell;
+	char	*tempstr;
+	int numSegsPerHost = 1;
+	bool hasMirrors = false;
+	int i;
+	
 
 	/* validate */
 
@@ -218,9 +230,119 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		ownerId = get_roleid_checked(stmt->owner);
 	else
 		ownerId = GetUserId();
-
+		
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		static CdbComponentDatabases *cdb_component_dbs = NULL;
+		int i;
+		
+		char * firsthost = NULL;
+		
+		elog(WARNING,"Support for tablespaces is experimental... Use at your own risk");
+		
+		if (cdb_component_dbs == NULL) 
+			cdb_component_dbs = getCdbComponentDatabases();
+		
+		for (i =0;i < cdb_component_dbs->total_segment_dbs;i++)
+		{	
+			if (cdb_component_dbs->segment_db_info[i].definedprimary && 
+				cdb_component_dbs->segment_db_info[i].segindex >=0)
+				firsthost = cdb_component_dbs->segment_db_info[i].hostname;
+			break;
+		}
+		
+		for (i = 1;i< cdb_component_dbs->total_segment_dbs;i++)
+		{
+			if (cdb_component_dbs->segment_db_info[i].definedprimary && 
+				cdb_component_dbs->segment_db_info[i].segindex >=0 &&
+			    strcmp(firsthost, cdb_component_dbs->segment_db_info[0].hostname)==0)
+				numSegsPerHost++;
+			if (!cdb_component_dbs->segment_db_info[i].definedprimary && 
+				cdb_component_dbs->segment_db_info[i].segindex >=0 )
+				hasMirrors = true;
+		}
+		
+		 
+		
+		if (hasMirrors && stmt->mirrorlocations == NULL)
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_MPP_COMMAND_ERROR),
+				 errmsg("Your system is using segment mirroring.  You must specify locations for the mirrors as well as the primaries"),
+				 errhint("Use a MIRROR LOCATION clause after the LOCATION clause")));
+		}
+		
+		i = 0;
+		foreach(cell, stmt->locations)
+		{
+			i++;
+		}
+		
+		if (i!=numSegsPerHost)
+			ereport(ERROR,
+				(errcode(ERRCODE_MPP_COMMAND_ERROR),
+				 errmsg("You must specify as many locations as you have segment databases on each host"),
+				 errhint("Check mpp_configuration for number of primary segment databases on each host")));
+			
+		
+		if (stmt->mirrorlocations)
+		{
+			int j = 0;
+			foreach(cell, stmt->mirrorlocations)
+			{
+				j++;
+			}
+			
+			if (i!=j)
+				ereport(ERROR,
+				(errcode(ERRCODE_MPP_COMMAND_ERROR),
+				 errmsg("You must specify as many mirror locations as primary locations"),
+				 errhint("Your system has mirroring configured, so you must allow for locations for the mirrors as well as primaries")));
+		}
+		
+	}
+	else
+	{
+		i = 0;
+		foreach(cell, stmt->locations)
+		{
+			i++;
+		}
+		numSegsPerHost = i;
+		 
+	}
+	
+	i = 0;
+	
+	if (Mpp_is_primary)
+	{
+	 
+		foreach(cell, stmt->locations)
+		{
+			Value * v = lfirst(cell);
+			location= pstrdup(v->val.str);
+			if (Mpp_segment < 0 || i== (Mpp_segment % numSegsPerHost))
+				break;
+			
+		}
+	}
+	else
+	{
+		foreach(cell, stmt->mirrorlocations)
+		{
+			Value * v = lfirst(cell);
+			location= pstrdup(v->val.str);
+			if (Mpp_segment < 0 || i== (Mpp_segment % numSegsPerHost))
+				break;
+			
+		}
+	}
+	
+	elog(DEBUG3,"Create Tablespace Using location %s", location);
+	
+		
 	/* Unix-ify the offered path, and strip any trailing slashes */
-	location = pstrdup(stmt->location);
+ 
 	canonicalize_path(location);
 
 	/* disallow quotes, else CREATE DATABASE would be at risk */
@@ -260,6 +382,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 				 errmsg("unacceptable tablespace name \"%s\"",
 						stmt->tablespacename),
 		errdetail("The prefix \"pg_\" is reserved for system tablespaces.")));
+		
 
 	/*
 	 * Check that there is no other tablespace by this name.  (The unique
@@ -310,6 +433,20 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 				 errmsg("could not set permissions on directory \"%s\": %m",
 						location)));
 
+	
+ 	tempstr = palloc(MAXPGPATH);
+ 	if (Mpp_is_primary)
+		sprintf(tempstr,"%s/seg%d",location,Mpp_segment);
+	else
+		sprintf(tempstr,"%s/mir%d",location,Mpp_segment);
+	location=tempstr;
+	
+	if (mkdir(location, 0700) != 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not create subdirectory \"%s\": %m",
+						location)));
+	
 	/*
 	 * Check the target directory is empty.
 	 */
@@ -364,6 +501,49 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 
 	/* We keep the lock on pg_tablespace until commit */
 	heap_close(rel, NoLock);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		ListCell   *cell;
+		StringInfoData buffer;
+		bool first = 0;
+
+		initStringInfo(&buffer);
+
+		appendStringInfo(&buffer, "CREATE TABLESPACE \"%s\"", stmt->tablespacename);
+		
+		if (stmt->owner)
+			appendStringInfo(&buffer, " OWNER \"%s\"", stmt->owner);
+		
+		
+		appendStringInfo(&buffer, " LOCATION ");
+
+		foreach(cell, stmt->locations)
+		{
+			Value * v = lfirst(cell);
+			if (first++)
+				appendStringInfo(&buffer, ",");
+			appendStringInfo(&buffer, " '%s'", v->val.str);
+		}
+		
+		if (hasMirrors)
+		{
+			first = 0;
+			appendStringInfo(&buffer, " MIRROR LOCATION ");
+
+			foreach(cell, stmt->mirrorlocations)
+			{
+				Value * v = lfirst(cell);
+				if (first++)
+					appendStringInfo(&buffer, ",");
+				appendStringInfo(&buffer, " '%s'", v->val.str);
+			}
+		}
+		
+		elog(NOTICE,"%s",buffer.data);
+		CdbDoCommand(buffer.data, false, /*no txn */ false);
+
+	}
 #else							/* !HAVE_SYMLINK */
 	ereport(ERROR,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -469,6 +649,20 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 
 	/* We keep the lock on pg_tablespace until commit */
 	heap_close(rel, NoLock);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+
+		StringInfoData buffer;
+
+		initStringInfo(&buffer);
+
+		appendStringInfo(&buffer, "DROP TABLESPACE \"%s\"", stmt->tablespacename);
+		
+
+		CdbDoCommand(buffer.data, false, /*no txn */ false);
+
+	}
 #else							/* !HAVE_SYMLINK */
 	ereport(ERROR,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
