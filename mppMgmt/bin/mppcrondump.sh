@@ -219,6 +219,17 @@ DUMP_MIR_CHK () {
 }	
 CHK_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	#Check if have a mirrored system
+	CHK_MIRRORS_CONFIGURED
+	if [ $MIRROR_COUNT -ne 2 ];then
+		if [ $DUMP_TYPE -eq 0 ]||[ $DUMP_TYPE -eq 2 ];then
+			LOG_MSG "[WARN]:-Dump type selected not supported as mirroring not configured"
+			LOG_MSG "[INFO]:-Setting dump type to primary segment only"
+			DUMP_TYPE=1
+		fi
+	else
+		LOG_MSG "[INFO]:-MPP array has mirroring implemented"
+	fi
 	#Check to see if there are any segment failures
 	if [ x"" != x"$SCHEMA_NAME" ];then
 		LOG_MSG "[INFO]:-Schema option -n $SCHEMA_NAME supplied, checking for schema in database $DUMP_DATABASE"
