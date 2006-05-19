@@ -59,6 +59,8 @@ FREE_SPACE_PERCENT=10
 ROLL_BACK=0
 RUN_CLEAR_DUMPS=0
 CUR_HOST=`$HOSTNAME`
+VACUUM_MODE=0 # 1=run before dump starts, 2=run after dump has completed.
+TRY_COMPRESSION=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -97,6 +99,8 @@ USAGE () {
 		$ECHO "      -b, bypass disk space checking [default check disk space]"
 		$ECHO "      -i, ignore initial parameter check phase [default check parameters]"
 		$ECHO "      -s, <schema name> dump the schema contained within the database name supplied via -x"
+		$ECHO "      -j, run vacuum before dump starts"
+		$ECHO "      -k, run vacuum after dump has completed successfully"
 		$ECHO
 		$ECHO "      Crontab entry (example):"
 		$ECHO "      SHELL=/bin/bash"
@@ -124,6 +128,14 @@ CHK_QD_DB_RUNNING () {
 		else
 			ERROR_EXIT "[FATAL]:-No Master segment $PG_PID"
 		fi
+}
+
+VACUUM_PROCESS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Processing vacuum request for database $DUMP_DATABASE"
+	$PSQL -p $MASTER_PORT $DUMP_DATABASE -c"vacuum;"
+	ERROR_CHK $? "complete vacuum on database $DUMP_DATABASE" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_DUMP_LIST () {
@@ -359,6 +371,14 @@ SET_DUMP_TYPE_TEXT () {
 	esac
 }
 
+SET_VAC_TXT () {
+	case $VACUUM_MODE in
+		0) VAC_TXT=Off ;;
+		1) VAC_TXT="Before database dump" ;;
+		2) VAC_TXT="After database dump" ;;
+	esac
+}
+
 PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Master MPP Instance dump parameters:"
 		LOG_MSG "[INFO]:-------------------------------------"
@@ -400,6 +420,8 @@ PROMPT_CONTINUE () {
 		else
 			LOG_MSG "[INFO]:-Clear old dump files       = Off"
 		fi	
+		SET_VAC_TXT
+		LOG_MSG "[INFO]:-Vacuum mode type           = $VAC_TXT"
 		LOG_MSG "[INFO]:-Disk free percent value    = $FREE_SPACE_PERCENT %"
 		$ECHO
 		$ECHO "Continue with MPP instance dump yY|nN >"
@@ -601,6 +623,8 @@ STATUS_REPORT () {
 	else
 	LOG_MSG "[INFO]:-Dump file compression              = Off"
 	fi
+	SET_VAC_TXT
+	LOG_MSG "[INFO]:-Vacuum mode type                   = $VAC_TXT"
 	if [ $EXIT_STATUS -ne 0 ];then
 	LOG_MSG "[WARN]:-Exit code not zero, check log file"
 	else
@@ -614,7 +638,7 @@ STATUS_REPORT () {
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":v'?'abiorqd:x:f:s:pmbcz" opt;do
+		while getopts ":v'?'ajkbiorqd:x:f:s:pmbcz" opt;do
 			case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
@@ -624,6 +648,8 @@ if [ $# -ne 0 ]; then
 				i ) CHK_PARAM_BYPASS=1 ;;
 				a ) unset INTERACTIVE ;;
 				q ) unset VERBOSE ;;
+				j ) VACUUM_MODE=1 ;;
+				k ) VACUUM_MODE=2 ;;
 				p ) DUMP_TYPE=1 ;;
 				m ) DUMP_TYPE=2 ;;
 				z ) unset COMPRESSION ;;
@@ -681,6 +707,10 @@ if [ $INTERACTIVE ]; then
 else
 	SET_DUMP_TYPE_TEXT
 fi
+if [ $VACUUM_MODE -eq 1 ];then
+	LOG_MSG "[INFO]:-Vacuum before database dump option selected"
+	VACUUM_PROCESS
+fi
 PROCESS_DUMP
 CHK_POST_DUMP
 if [ $ROLLBACK_DUMPS ];then
@@ -699,6 +729,10 @@ if [ $ROLLBACK_DUMPS ];then
 fi
 if [ $CLEAR_DUMPS -eq 1 ];then
 	DELETE_OLD_DUMPS
+fi
+if [ $VACUUM_MODE -eq 2 ];then
+	LOG_MSG "[INFO]:-Vacuum after database dump option selected"
+	VACUUM_PROCESS
 fi
 STATUS_REPORT
 EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST[COMPLETED]" "Completed for database $DUMP_DATABASE with return code $EXIT_STATUS [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
