@@ -595,6 +595,16 @@ ProcessUtility(Node *parsetree,
 
 							Assert(PointerIsValid(name));
 
+							if (Mpp_role == MPP_ROLE_DISPATCH)
+							{
+								/* We already checked that we're in a
+								 * transaction; need to make certain
+								 * that the BEGIN has been dispatched
+								 * before we start dispatching our savepoint.
+								 */
+								startDtxTransaction(true);
+							}
+
 							DefineSavepoint(name);
 						}
 						break;
