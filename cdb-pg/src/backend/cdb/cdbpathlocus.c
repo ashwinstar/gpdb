@@ -180,11 +180,19 @@ cdbpathlocus_from_baserel(struct PlannerInfo   *root,
     if (policy &&
         policy->ptype == POLICYTYPE_PARTITIONED)
     {
-        List *partkey = cdb_build_distribution_pathkeys(root,
-                                                        rel,
-                                                        policy->nattrs,
-                                                        policy->attrs);
-        CdbPathLocus_MakeHashed(&result, partkey);
+        /* Are the rows distributed by hashing on specified columns? */
+        if (policy->nattrs > 0)
+        {
+	        List *partkey = cdb_build_distribution_pathkeys(root,
+	                                                        rel,
+	                                                        policy->nattrs,
+	                                                        policy->attrs);
+	        CdbPathLocus_MakeHashed(&result, partkey);
+        }
+
+        /* Rows are distributed on an unknown criterion (uniformly, we hope!) */
+        else
+            CdbPathLocus_MakeStrewn(&result);
     }
 
     /* Kludge used internally for querying catalogs on segment dbs */
