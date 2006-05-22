@@ -1214,6 +1214,7 @@ static bool
 _equalDropdbStmt(DropdbStmt *a, DropdbStmt *b)
 {
 	COMPARE_STRING_FIELD(dbname);
+	COMPARE_SCALAR_FIELD(missing_ok);
 
 	return true;
 }

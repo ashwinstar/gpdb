@@ -1690,6 +1690,7 @@ typedef struct DropdbStmt
 {
 	NodeTag		type;
 	char	   *dbname;			/* database to drop */
+	bool		missing_ok;		/* for special QE cleanup usage */
 } DropdbStmt;
 
 /* ----------------------

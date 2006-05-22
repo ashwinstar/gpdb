@@ -72,6 +72,9 @@ createdb_int(CreatedbStmt *stmt,
              struct CdbDispatchResults    **pPrimaryResults,
              struct CdbDispatchResults    **pMirrorResults);
 
+static void
+mpp_cleanup_createdb(const char *dbname);
+
 /*
  * CREATE DATABASE
  */
@@ -89,7 +92,10 @@ createdb(CreatedbStmt *stmt)
 	{
         /* If dispatched, stop QEs and clean up after them. */
         if (primaryResults)
+		{
             cdbdisp_handleError(primaryResults, mirrorResults);
+			mpp_cleanup_createdb(stmt->dbname);
+		}
 
 		/* Carry on with error handling. */
 		PG_RE_THROW();
@@ -101,7 +107,56 @@ createdb(CreatedbStmt *stmt)
 	 * qExecs, if dispatched.  This waits for them to all finish, and exits
 	 * via ereport(ERROR,...) if unsuccessful.
 	 */
+	PG_TRY();
+	{
 	cdbdisp_finishCommand(primaryResults, mirrorResults);
+	}
+	PG_CATCH();
+	{
+		mpp_cleanup_createdb(stmt->dbname);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+}
+
+void
+mpp_cleanup_createdb(const char *dbname)
+{
+	bool cleanup_error = FALSE;
+    struct CdbDispatchResults *primaryResults = NULL;
+    struct CdbDispatchResults *mirrorResults = NULL;
+
+	DropdbStmt *stmt = makeNode(DropdbStmt);
+	stmt->dbname = (char*)dbname;
+	stmt->missing_ok = TRUE;
+	
+	ereport(DEBUG1,(errmsg("Cleaning up failed creation of database \"%s\"", dbname)));
+	
+    PG_TRY();
+    {
+		cdbdisp_dispatchUtilityStatement((Node*)stmt, TRUE, FALSE, &primaryResults, &mirrorResults);
+    }
+	PG_CATCH();
+	{
+        /* If dispatched, stop QEs and clean up after them. */
+        if (primaryResults)
+            cdbdisp_handleError(primaryResults, mirrorResults);
+
+		/* Carry on with error handling. */
+		elog_dismiss(DEBUG1);
+		cleanup_error = TRUE;
+	}
+	PG_END_TRY();
+
+	/*
+	 * We completed our work. Check the results from the  qExecs, if 
+	 * dispatched and not already checked in the CATCH block.  This 
+	 * waits for the QEs to finish, and exits via ereport(ERROR,...) 
+	 if unsuccessful, however, we expect success since this is the 
+	 * "forgiving" form of DROP DATABASE.
+	 */
+	if ( ! cleanup_error )
+		cdbdisp_finishCommand(primaryResults, mirrorResults);
 }
 
 
@@ -625,7 +680,7 @@ createdb_int(CreatedbStmt *stmt,
  * DROP DATABASE
  */
 void
-dropdb(const char *dbname)
+dropdb(const char *dbname, bool missing_ok)
 {
 	Oid			db_id;
 	bool		db_istemplate;
@@ -659,9 +714,25 @@ dropdb(const char *dbname)
 
 	if (!get_db_info(dbname, &db_id, NULL, NULL,
 					 &db_istemplate, NULL, NULL, NULL, NULL, NULL))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_DATABASE),
-				 errmsg("database \"%s\" does not exist", dbname)));
+	{
+		if ( missing_ok && Mpp_role == MPP_ROLE_EXECUTE )
+		{
+			/* This branch exists just to facilitate cleanup of a failed
+			 * CREATE DATABASE.  Other callers will supply missing_ok as
+			 * FALSE.  The role check is just insurance. 
+			 */
+			ereport(DEBUG1, (
+				errmsg("ignored request to drop non-existent database \"%s\"", dbname)
+			));
+			
+			heap_close(pgdbrel, NoLock); /* Keep lock, end of transaction will close. */
+			return;
+		}
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_DATABASE),
+					 errmsg("database \"%s\" does not exist", dbname)));
+	}
 
 	if (!pg_database_ownercheck(db_id, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,

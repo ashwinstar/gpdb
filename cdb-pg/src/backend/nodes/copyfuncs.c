@@ -2342,6 +2342,7 @@ _copyDropdbStmt(DropdbStmt *from)
 	DropdbStmt *newnode = makeNode(DropdbStmt);
 
 	COPY_STRING_FIELD(dbname);
+	COPY_SCALAR_FIELD(missing_ok);
 
 	return newnode;
 }

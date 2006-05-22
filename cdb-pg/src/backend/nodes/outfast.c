@@ -1661,6 +1661,14 @@ _outCreatedbStmt(StringInfo str, CreatedbStmt *node)
 }
 
 static void
+_outDropdbStmt(StringInfo str, DropdbStmt *node)
+{
+	WRITE_NODE_TYPE("DROPDBSTMT");
+	WRITE_STRING_FIELD(dbname);
+	WRITE_BOOL_FIELD(missing_ok);
+}
+
+static void
 _outCreateDomainStmt(StringInfo str, CreateDomainStmt *node)
 {
 	WRITE_NODE_TYPE("CREATEDOMAINSTMT");
@@ -2784,6 +2792,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_CreatedbStmt:
 				_outCreatedbStmt(str, obj);
+				break;
+			case T_DropdbStmt:
+				_outDropdbStmt(str, obj);
 				break;
 			case T_CreateDomainStmt:
 				_outCreateDomainStmt(str, obj);

@@ -1570,6 +1570,17 @@ _readCreatedbStmt(void)
 	READ_DONE();
 }
 
+static DropdbStmt *
+_readDropdbStmt(void)
+{
+	READ_LOCALS(DropdbStmt);
+	
+	READ_STRING_FIELD(dbname);
+	READ_BOOL_FIELD(missing_ok);
+	
+	READ_DONE();
+}
+
 static CreateDomainStmt *
 _readCreateDomainStmt(void)
 {
@@ -2397,6 +2408,7 @@ static ParseNodeInfo infoAr[] =
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DEFELEM", (ReadFn)_readDefElem},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
+	{"DROPDBSTMT", (ReadFn)_readDropdbStmt},
 	{"DROPPLANGSTMT", (ReadFn)_readDropPLangStmt},
 	{"DROPPROPSTMT", (ReadFn)_readDropPropertyStmt},
 	{"DROPROLESTMT", (ReadFn)_readDropRoleStmt},
