@@ -38,4 +38,3 @@ pg_sockaddr_cidr_mask
 pqsignal
 pg_utf8_islegal
 pg_encoding_verifymb
-
