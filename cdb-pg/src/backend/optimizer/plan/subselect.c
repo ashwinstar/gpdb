@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/subselect.c,v 1.100.2.1 2005/11/22 18:23:11 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/subselect.c,v 1.100.2.3 2006/05/03 00:25:07 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -1257,8 +1257,6 @@ SS_make_initplan_from_plan(PlannerInfo *root, Plan *plan,
 	List	   *saved_initplan = PlannerInitPlan;
 	SubPlan    *node;
 	Param	   *prm;
-	Bitmapset  *tmpset;
-	int			paramid;
 
 	/*
 	 * Set up for a new level of subquery.	This is just to keep
@@ -1290,18 +1288,9 @@ SS_make_initplan_from_plan(PlannerInfo *root, Plan *plan,
 	PlannerInitPlan = lappend(PlannerInitPlan, node);
 
 	/*
-	 * Make parParam list of params that current query level will pass to this
-	 * child plan.	(In current usage there probably aren't any.)
+	 * The node can't have any inputs (since it's an initplan), so the
+	 * parParam and args lists remain empty.
 	 */
-	tmpset = bms_copy(plan->extParam);
-	while ((paramid = bms_first_member(tmpset)) >= 0)
-	{
-		PlannerParamItem *pitem = list_nth(PlannerParamList, paramid);
-
-		if (pitem->abslevel == PlannerQueryLevel)
-			node->parParam = lappend_int(node->parParam, paramid);
-	}
-	bms_free(tmpset);
 
 	/*
 	 * Make a Param that will be the subplan's output.

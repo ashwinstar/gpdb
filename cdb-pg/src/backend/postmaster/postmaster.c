@@ -38,7 +38,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.475.2.3 2006/02/01 00:32:05 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.475.2.5 2006/05/19 15:15:38 alvherre Exp $
  *
  * NOTES
  *
@@ -801,7 +801,7 @@ PostmasterMain(int argc, char *argv[])
 		DNSServiceRegistrationCreate(bonjour_name,
 									 "_postgresql._tcp.",
 									 "",
-									 htonl(PostPortNumber),
+									 htons(PostPortNumber),
 									 "",
 									 (DNSServiceRegistrationReply) reg_reply,
 									 NULL);
@@ -2208,6 +2208,9 @@ reaper(SIGNAL_ARGS)
 		{
 			AutoVacPID = 0;
 			autovac_stopped();
+			/* Tell the collector about process termination */
+			pgstat_beterm(pid);
+
 			if (exitstatus != 0)
 				HandleChildCrash(pid, exitstatus,
 								 _("autovacuum process"));

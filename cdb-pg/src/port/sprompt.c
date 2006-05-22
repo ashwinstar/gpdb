@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/sprompt.c,v 1.12 2005/10/15 02:49:51 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/port/sprompt.c,v 1.12.2.3 2006/03/05 05:33:19 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -63,9 +63,14 @@ simple_prompt(const char *prompt, int maxlen, bool echo)
 	 * Do not try to collapse these into one "w+" mode file. Doesn't work on
 	 * some platforms (eg, HPUX 10.20).
 	 */
-	termin = fopen("/dev/tty", "r");
-	termout = fopen("/dev/tty", "w");
-	if (!termin || !termout)
+	termin = fopen(DEVTTY, "r");
+	termout = fopen(DEVTTY, "w");
+	if (!termin || !termout
+#ifdef WIN32
+		/* See DEVTTY comment for msys */
+		|| (getenv("OSTYPE") && strcmp(getenv("OSTYPE"), "msys") == 0)
+#endif
+		)
 	{
 		if (termin)
 			fclose(termin);

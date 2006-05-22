@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/path/indxpath.c,v 1.191.2.5 2006/01/29 17:27:49 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/path/indxpath.c,v 1.191.2.8 2006/05/18 19:56:56 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -54,6 +54,7 @@ static List *find_usable_indexes(PlannerInfo *root, RelOptInfo *rel,
 static Path *choose_bitmap_and(PlannerInfo *root, RelOptInfo *rel, List *paths);
 static int	bitmap_path_comparator(const void *a, const void *b);
 static Cost bitmap_and_cost_est(PlannerInfo *root, RelOptInfo *rel, List *paths);
+static List *pull_indexpath_quals(Path *bitmapqual);
 static bool lists_intersect_ptr(List *list1, List *list2);
 static bool match_clause_to_indexcol(IndexOptInfo *index,
 						 int indexcol, Oid opclass,
@@ -527,8 +528,7 @@ choose_bitmap_and(PlannerInfo *root, RelOptInfo *rel, List *paths)
 	 * lower estimated cost.
 	 *
 	 * We also make some effort to detect directly redundant input paths, as
-	 * can happen if there are multiple possibly usable indexes.  For this we
-	 * look only at plain IndexPath inputs, not at sub-OR clauses. And we
+	 * can happen if there are multiple possibly usable indexes.  We
 	 * consider an index redundant if any of its index conditions were already
 	 * used by earlier indexes.  (We could use predicate_implied_by to have a
 	 * more intelligent, but much more expensive, check --- but in most cases
@@ -543,10 +543,10 @@ choose_bitmap_and(PlannerInfo *root, RelOptInfo *rel, List *paths)
 	 * non-selective.  In any case, we'd surely be drastically misestimating
 	 * the selectivity if we count the same condition twice.
 	 *
-	 * XXX is there any risk of throwing away a useful partial index here
-	 * because we don't explicitly look at indpred?  At least in simple cases,
-	 * the partial index will sort before competing non-partial indexes and so
-	 * it makes the right choice, but perhaps we need to work harder.
+	 * We include index predicate conditions in the redundancy test.  Because
+	 * the test is just for pointer equality and not equal(), the effect is
+	 * that use of the same partial index in two different AND elements is
+	 * considered redundant.  (XXX is this too strong?)
 	 *
 	 * Note: outputting the selected sub-paths in selectivity order is a good
 	 * thing even if we weren't using that as part of the selection method,
@@ -565,36 +565,31 @@ choose_bitmap_and(PlannerInfo *root, RelOptInfo *rel, List *paths)
 
 	paths = list_make1(patharray[0]);
 	costsofar = bitmap_and_cost_est(root, rel, paths);
-	if (IsA(patharray[0], IndexPath))
-		qualsofar = list_copy(((IndexPath *) patharray[0])->indexclauses);
-	else
-		qualsofar = NIL;
+	qualsofar = pull_indexpath_quals(patharray[0]);
 	lastcell = list_head(paths);	/* for quick deletions */
 
 	for (i = 1; i < npaths; i++)
 	{
 		Path	   *newpath = patharray[i];
-		List	   *newqual = NIL;
+		List	   *newqual;
 		Cost		newcost;
 
-		if (IsA(newpath, IndexPath))
-		{
-			newqual = ((IndexPath *) newpath)->indexclauses;
-			if (lists_intersect_ptr(newqual, qualsofar))
-				continue;		/* redundant */
-		}
-
+		newqual = pull_indexpath_quals(newpath);
+		if (lists_intersect_ptr(newqual, qualsofar))
+			continue;			/* consider it redundant */
+		/* tentatively add newpath to paths, so we can estimate cost */
 		paths = lappend(paths, newpath);
 		newcost = bitmap_and_cost_est(root, rel, paths);
 		if (newcost < costsofar)
 		{
+			/* keep newpath in paths, update subsidiary variables */
 			costsofar = newcost;
-			if (newqual)
-				qualsofar = list_concat(qualsofar, list_copy(newqual));
+			qualsofar = list_concat(qualsofar, newqual);
 			lastcell = lnext(lastcell);
 		}
 		else
 		{
+			/* reject newpath, remove it from paths list */
 			paths = list_delete_cell(paths, lnext(lastcell), lastcell);
 		}
 		Assert(lnext(lastcell) == NULL);
@@ -659,6 +654,63 @@ bitmap_and_cost_est(PlannerInfo *root, RelOptInfo *rel, List *paths)
 	cost_bitmap_heap_scan(&bpath, root, rel, (Path *) &apath, false);
 
 	return bpath.total_cost;
+}
+
+/*
+ * pull_indexpath_quals
+ *
+ * Given the Path structure for a plain or bitmap indexscan, extract a list
+ * of all the indexquals and index predicate conditions used in the Path.
+ *
+ * This is sort of a simplified version of make_restrictinfo_from_bitmapqual;
+ * here, we are not trying to produce an accurate representation of the AND/OR
+ * semantics of the Path, but just find out all the base conditions used.
+ *
+ * The result list contains pointers to the expressions used in the Path,
+ * but all the list cells are freshly built, so it's safe to destructively
+ * modify the list (eg, by concat'ing it with other lists).
+ */
+static List *
+pull_indexpath_quals(Path *bitmapqual)
+{
+	List	   *result = NIL;
+	ListCell   *l;
+
+	if (IsA(bitmapqual, BitmapAndPath))
+	{
+		BitmapAndPath *apath = (BitmapAndPath *) bitmapqual;
+
+		foreach(l, apath->bitmapquals)
+		{
+			List	   *sublist;
+
+			sublist = pull_indexpath_quals((Path *) lfirst(l));
+			result = list_concat(result, sublist);
+		}
+	}
+	else if (IsA(bitmapqual, BitmapOrPath))
+	{
+		BitmapOrPath *opath = (BitmapOrPath *) bitmapqual;
+
+		foreach(l, opath->bitmapquals)
+		{
+			List	   *sublist;
+
+			sublist = pull_indexpath_quals((Path *) lfirst(l));
+			result = list_concat(result, sublist);
+		}
+	}
+	else if (IsA(bitmapqual, IndexPath))
+	{
+		IndexPath  *ipath = (IndexPath *) bitmapqual;
+
+		result = get_actual_clauses(ipath->indexclauses);
+		result = list_concat(result, list_copy(ipath->indexinfo->indpred));
+	}
+	else
+		elog(ERROR, "unrecognized node type: %d", nodeTag(bitmapqual));
+
+	return result;
 }
 
 
@@ -1179,6 +1231,14 @@ best_inner_indexscan(PlannerInfo *root, RelOptInfo *rel,
 
 	/*
 	 * Find all the relevant restriction and join clauses.
+	 *
+	 * Note: because we include restriction clauses, we will find indexscans
+	 * that could be plain indexscans, ie, they don't require the join context
+	 * at all.  This may seem redundant, but we need to include those scans in
+	 * the input given to choose_bitmap_and() to be sure we find optimal AND
+	 * combinations of join and non-join scans.  The worst case is that we
+	 * might return a "best inner indexscan" that's really just a plain
+	 * indexscan, causing some redundant effort in joinpath.c.
 	 */
 	clause_list = find_clauses_for_join(root, rel, outer_relids, isouterjoin);
 

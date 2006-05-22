@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/command.c,v 1.154.2.1 2005/12/08 21:17:46 petere Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/command.c,v 1.154.2.3 2006/03/04 04:30:51 momjian Exp $
  */
 #include "postgres_fe.h"
 #include "command.h"
@@ -659,8 +659,7 @@ exec_command(const char *cmd,
 
 		expand_tilde(&fname);
 		/* This scrolls off the screen when using /dev/tty */
-		success = saveHistory(fname ? fname : "/dev/tty");
-
+		success = saveHistory(fname ? fname : DEVTTY);
 		if (success && !quiet && fname)
 			printf(gettext("Wrote history to file \"%s/%s\".\n"),
 				   pset.dirname ? pset.dirname : ".", fname);

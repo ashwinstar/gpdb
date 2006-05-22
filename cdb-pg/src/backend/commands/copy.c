@@ -997,9 +997,15 @@ DoCopy(const CopyStmt *stmt)
 	initStringInfo(&cstate->line_buf);
 	cstate->line_buf_converted = false;
 
-	/* Set up encoding conversion info */
+	/*
+	 * Set up encoding conversion info.  Even if the client and server
+	 * encodings are the same, we must apply pg_client_to_server() to
+	 * validate data in multibyte encodings.
+	 */
 	cstate->client_encoding = pg_get_client_encoding();
-	cstate->need_transcoding = (cstate->client_encoding != GetDatabaseEncoding());
+	cstate->need_transcoding =
+		(cstate->client_encoding != GetDatabaseEncoding() ||
+		 pg_database_encoding_max_length() > 1);
 	cstate->client_only_encoding = PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding);
 
 

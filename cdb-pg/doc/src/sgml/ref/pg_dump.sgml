@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/pg_dump.sgml,v 1.81 2005/11/01 21:09:50 tgl Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/pg_dump.sgml,v 1.81.2.3 2006/05/13 17:11:02 momjian Exp $
 PostgreSQL documentation
 -->
 
@@ -173,6 +173,9 @@ PostgreSQL documentation
         non-<productname>PostgreSQL</productname> databases.  Note that
         the restore may fail altogether if you have rearranged column order.
         The <option>-D</option> option is safer, though even slower.
+        Also, while this option generates errors for invalid data, 
+        it allows other <command>INSERT</command>s to continue loading
+        data into the table.
        </para>
       </listitem>
      </varlistentry>
@@ -190,6 +193,9 @@ PostgreSQL documentation
         ...</literal>).  This will make restoration very slow; it is mainly
         useful for making dumps that can be loaded into
         non-<productname>PostgreSQL</productname> databases.
+        Also, while this option generates errors for invalid data, 
+        it allows other <command>INSERT</command>s to continue loading
+        data into the table.
        </para>
       </listitem>
      </varlistentry>
@@ -634,6 +640,17 @@ CREATE DATABASE foo WITH TEMPLATE template0;
    planning decisions.  Therefore, it is wise to run
    <command>ANALYZE</command> after restoring from a dump file to
    ensure good performance.
+  </para>
+
+  <para>
+   Because <application>pg_dump</application> is used to tranfer data
+   to newer versions of <productname>PostgreSQL</>, the output of
+   <application>pg_dump</application> can be loaded into
+   newer <productname>PostgreSQL</> databases.  It also can read older
+   <productname>PostgreSQL</> databases.  However, it usually cannot
+   read newer <productname>PostgreSQL</> databases or produce dump output
+   that can be loaded into older database versions.  To do this, manual
+   editing of the dump file might be required.
   </para>
 
  </refsect1>
