@@ -1225,6 +1225,21 @@ PortalRunFetch(Portal portal,
 		/* Uncaught error while executing portal: mark it dead */
 		portal->status = PORTAL_FAILED;
 
+		/* MPP: shutdown interconnect and cleanup executor state. We
+		 * must do this while our executor context is still alive. Otherwise
+		 * we'll SIGSEGV. */
+		{
+			MemoryContext oldcontext;
+			QueryDesc *qd = PortalGetQueryDesc(portal);
+
+			if (qd != NULL && qd->estate != NULL)
+			{
+				oldcontext = MemoryContextSwitchTo(qd->estate->es_query_cxt);
+				mppExecutorCleanup(qd->estate);
+				MemoryContextSwitchTo(oldcontext);
+			}
+		}
+
 		/* Restore global vars and propagate error */
 		ActivePortal = saveActivePortal;
 		ActiveSnapshot = saveActiveSnapshot;
