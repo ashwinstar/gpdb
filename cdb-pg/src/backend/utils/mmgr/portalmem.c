@@ -281,7 +281,7 @@ PortalDefineQuery(Portal portal,
 			/* we need to be able to tell the difference between a "rollback;" and a "rollback to foo;"*/
 			if (strcmp(commandTag, "ROLLBACK") == 0)
 			{
-				char *s=sourceText;
+				const char *s=sourceText;
 
 				s += strlen("rollback");
 				/* skip white space */
