@@ -265,17 +265,35 @@ PortalDefineQuery(Portal portal,
 		/* if this portal is a cursor, allow only selected operations to go through */
 		if(portal->is_cursor && Mpp_role == MPP_ROLE_DISPATCH)
 		{
-			if(strcmp(commandTag, "FETCH") != 0 &&
-			   strcmp(commandTag, "MOVE") != 0 &&
-			   strcmp(commandTag, "CLOSE CURSOR") != 0 && 
-			   strcmp(commandTag, "BEGIN") != 0 &&
-			   strcmp(commandTag, "COMMIT") != 0 &&
-			   strcmp(commandTag, "ROLLBACK") != 0)
+			if (strcmp(commandTag, "FETCH") != 0 &&
+				strcmp(commandTag, "MOVE") != 0 &&
+				strcmp(commandTag, "CLOSE CURSOR") != 0 && 
+				strcmp(commandTag, "BEGIN") != 0 &&
+				strcmp(commandTag, "COMMIT") != 0 &&
+				strcmp(commandTag, "ROLLBACK") != 0)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_MPP_FEATURE_NOT_YET),
 						 errmsg("cannot run %s while there is an open cursor", commandTag),
-						 errhint("you should CLOSE the cursor or finish the transaction before attempting other operations")));				
+						 errhint("you should CLOSE the cursor or finish the transaction before attempting other operations")));
+			}
+
+			/* we need to be able to tell the difference between a "rollback;" and a "rollback to foo;"*/
+			if (strcmp(commandTag, "ROLLBACK") == 0)
+			{
+				char *s=sourceText;
+
+				s += strlen("rollback");
+				/* skip white space */
+				while (*s && !isalnum(*s))
+					s++;
+				if (*s && strncasecmp(s, "to", 2) == 0)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_MPP_FEATURE_NOT_YET),
+							 errmsg("Cannot run '%s' while there is an open cursor", sourceText),
+							 errhint("you must CLOSE the open cursor before performing this operation")));
+				}
 			}
 		}
 	}
