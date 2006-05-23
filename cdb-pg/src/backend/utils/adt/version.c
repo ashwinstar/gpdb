@@ -24,7 +24,7 @@ pgsql_version(PG_FUNCTION_ARGS)
 	text	   *ret;
 	strcpy(version, PG_VERSION_STR " compiled on " __DATE__ " " __TIME__);
 	
-	if (strlen(tag) < 10)
+	if (strlen(tag) <= 10)
 	{
 		strcat(version, " (cvs head)");
 	}
