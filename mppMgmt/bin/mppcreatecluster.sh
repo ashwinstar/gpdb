@@ -71,6 +71,7 @@ LOG_STATEMENT_TXT="#log_statement ="
 MAX_CONNECT_TXT="max_connections ="
 LISTEN_ADR_TXT="listen_addresses"
 CHKPOINT_SEG_TXT="checkpoint_segments"
+LOG_STATS_TXT="stats_command_string="
 INIT_STANDBY_PROG=$MPPINITSTANDBY
 START_SYNC="-1"
 QE_MIRROR_ARRAY=""
@@ -712,6 +713,9 @@ CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Setting Master instance check point segments"
 		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" "checkpoint_segments=$CHECK_POINT_SEGMENTS" 0
 		ERROR_CHK $? "set checkpoint_segments=$CHECK_POINT_SEGMENTS in ${MPP_DIR}/$PG_CONF" 1
+		LOG_MSG "[INFO]:-Setting Master instance stats string to on"
+		ED_FILE ${MPP_DIR}/$PG_CONF "$LOG_STATS_TXT" "stats_command_string=on" 0
+		ERROR_CHK $? "set stats_command_string to on" 1
 		if [  x"" != x"$PG_CONF_ADD_FILE" ]; then
 				LOG_MSG "[INFO]:-Processing additional configuration parameters"
 				for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
