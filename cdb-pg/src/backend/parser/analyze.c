@@ -1654,10 +1654,20 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			colindex = 0;
 			foreach(columns, cxt->columns)
 			{
+				Oid typeOid;
+				bool isArray;
+
 				column = (ColumnDef *) lfirst(columns);
 				colindex++;
-				
-				if(isMppHashable(typenameTypeId(column->typename)))
+
+				typeOid = typenameTypeId(column->typename);
+				isArray = (column->typename->arrayBounds == NIL ? false : true);
+
+				/*
+				 * if we can hash on this type, or if it's an array type (which
+				 * we can always hash) this column with be our default key.
+				 */
+				if(isMppHashable(typeOid) || isArray)
 				{
 					policy->attrs[0] = colindex;
 					assignedDefault = true;
@@ -1702,7 +1712,16 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 				colindex++;
 				if (strcmp(column->colname, key) == 0)
 				{
-					if(!isMppHashable(typenameTypeId(column->typename)))
+					Oid typeOid = typenameTypeId(column->typename);
+					bool isArray = (column->typename->arrayBounds == NIL ? false : true);
+					
+					/*
+					 * To be a part of a distribution key, this type must be supported
+					 * for hashing internally in mpp. We check if the base type is 
+					 * supported for hashing or if it is an array type (we support 
+					 * hashing on all array types).
+					 */
+					if(!isMppHashable(typeOid) && !isArray)
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
