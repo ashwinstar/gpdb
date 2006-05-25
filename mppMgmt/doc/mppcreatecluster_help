@@ -1,15 +1,17 @@
 COMMAND NAME: mppcreatecluster.sh
 
-Initializes a Bizgres MPP system by using configuration 
-parameters specified in a MPP configuration file.
+Initializes a Bizgres MPP system by using configuration parameters specified in
+the mpp_config file of System Initialization Parameters.
+
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
-mppcreatecluster.sh -c <mpp_config_file> [-h <host_file>] 
-[-p <postgresql_conf_mpp_additions>] [-s standby_master_host] [-i] 
-[-o] [-m <max_connections>] [-a] [-q] [-l <logfile_directory>]
+mppcreatecluster.sh -c <mpp_config_file> [-h <host_file>] [-p 
+<postgresql_conf_param_file>] [-s <standby_master_host>] [-i] [-o] 
+[-m <max_connections>] [-e <superuser_password>] [-n <encoding>] [-a] 
+[-q] [-l <logfile_directory>]
 
 mppcreatecluster.sh [-? | -v]
 
@@ -18,13 +20,15 @@ mppcreatecluster.sh [-? | -v]
 DESCRIPTION
 *****************************************************
 
-The mppcreatecluster.sh script will create a Bizgres MPP DBMS instance 
-using the values defined in a Bizgres MPP configuration file. 
-See the 'mpp_config_example' file for instructions on creating this file.
-The functionality of mppcreatecluster.sh is analogous to PostgreSQLs 
-initdb script, which creates the data storage directories, generates the 
-shared catalog tables and configuration files, and creates a template 
-database, which is a template used to create other databases. 
+The mppcreatecluster.sh script will create a Bizgres MPP DBMS instance using 
+the values defined in a Bizgres MPP configuration file. Before running this 
+script, make sure that you have installed the Bizgres MPP software on all 
+the hosts in the array.
+
+The functionality of mppcreatecluster.sh is analogous to PostgreSQLs initdb 
+script, which creates the data storage directories, generates the shared 
+catalog tables and configuration files, and creates a template database, which 
+is a template used to create other databases. 
 
 In a Bizgres MPP DBMS, each database instance (the master and all segments) 
 must be initialized across all of the hosts in the system in such a way that 
@@ -33,21 +37,29 @@ takes care of initializing the database on the MPP master and on each segment
 instance, and configuring the system as a whole.
 
 Before running mppcreatecluster.sh, you must set the $MPPHOME or $BIZHOME 
-environment variable to point to the location of your Bizgres MPP 
-installation on the master host.
+environment variable to point to the location of your Bizgres MPP installation 
+on the master host.
 
 This script performs the following tasks:
 
 * Verifies that the parameters in the MPP configuration file are correct.
-* Ensures that a connection can be established to each host. 
-  If a host cannot be reached, the script will exit.
+
+* Ensures that a connection can be established to each host. If a host cannot 
+  be reached, the script will exit.
+
 * Displays the configuration that will be used and prompts the user for 
   confirmation.
+
 * Initializes the master instance.
-* Initializes a standby master instance (if configured).
+
+* Initializes the standby master instance (if specified).
+
 * Initializes the primary segment instances.
+
 * Initializes the mirror segment instances (if mirroring is configured).
+
 * Configures the Bizgres MPP system and checks for errors.
+
 * Starts the Bizgres MPP system.
 
 
@@ -58,8 +70,7 @@ OPTIONS
 -c <mpp_config_file>
 
 Required. The full path and filename of the MPP configuration file, which 
-contains all of the defined parameters to configure the array. See 
-'mpp_config_example' for instructions on creating this file.
+contains all of the defined parameters to configure the array.
 
 -h <host_file>
 
@@ -68,7 +79,7 @@ of all the segment hosts in the array. If not specified on the command line,
 you can specify the host file using the MACHINE_LIST_FILE parameter in the 
 mpp_config file.
 
--p <postgresql_conf_mpp_additions>
+-p <postgresql_conf_param_file>
 
 Optional. The name of a file that contains global postgresql.conf parameter 
 settings that you want to set for Bizgres MPP. These settings will be used 
@@ -76,9 +87,9 @@ when the individual master and segment instances are initialized.
 
 -s <standby_master_host>
 
-Optional. If you wish to configure a backup master host, specify the host 
-name using this option. If not specified on the command line, you can 
-specify it using the STANDBY_HOSTNAME parameter in the mpp_config file.
+Optional. If you wish to configure a backup master host, specify the host name 
+using this option. You must have the Bizgres MPP software installed and 
+configured on the backup master host.
 
 -i
 
@@ -92,8 +103,22 @@ Creates a master instance only. Does not configure any segment hosts.
 
 -m <max_connections>
 
-Sets the maximum number of client connections allowed to the MPP master. 
-The default is 25.
+Sets the maximum number of client connections allowed to the MPP master. The 
+default is 25.
+
+-e <superuser_password>
+
+The password to set for the Bizgres MPP database super user. Defaults to 
+'mpparray'. You can always change the super user password at a later time 
+using the ALTER ROLE command. Client connections over the network require 
+a password login for the database super user account (for example, the 
+bgadmin user).
+
+-n <encoding>
+
+Sets the default character set encoding for the Bizgres MPP system. Defaults to 
+UNICODE. See Character Set Support in the PostgreSQL documentation for more 
+information on the supported character set encodings.
 
 -a
 
@@ -101,10 +126,10 @@ Do not prompt the user for confirmation.
 
 -q
 
-Run in quiet mode. Command output is not displayed on the screen, 
-but is still written to the log file.
+Run in quiet mode. Command output is not displayed on the screen, but is still 
+written to the log file.
 
--l logfile_directory
+-l <logfile_directory>
 
 The directory to write the log file. Defaults to ~/mppAdminLogs.
 
@@ -114,8 +139,8 @@ Displays the online help.
 
 -v
 
-Displays the version, status, last updated date, and check sum of 
-this script.
+Displays the version, status, last updated date, and check sum of this script.
+
 
 *****************************************************
 EXAMPLES
@@ -123,21 +148,23 @@ EXAMPLES
 
 Initialize a Bizgres MPP array:
 
-./mppcreatecluster.sh -c mpp_config
+mppcreatecluster.sh -c mpp_config -e mypassword
 
 
-Initialize a Bizgres MPP array with a standby MPP master host:
+Initialize a Bizgres MPP array with an optional standby MPP master host:
 
-./mppcreatecluster.sh -c mpp_config -s host09 -i
-
+mppcreatecluster.sh -c mpp_config -s host09 -i -e mypassword
 
 
 Display the online help for the mppcreatecluster.sh script:
 
-./mppcreatecluster.sh -?
+mppcreatecluster.sh -?
+
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-mpp_config, groupSession, mpprebuildcluster.sh
+mpp_config_example, groupSession, mpprebuildcluster.sh, 
+mpprebuildseg.sh, mppdeletecluster.sh
+
