@@ -2408,7 +2408,22 @@ CopyFromDispatch(CopyState cstate)
 		/* read a chunk of data into the buffer */
 		if (!cstate->binary)
 		{
-			bytesread = CopyGetData(cstate, cstate->raw_buf, RAW_BUF_SIZE);
+			PG_TRY();
+			{
+				bytesread = CopyGetData(cstate, cstate->raw_buf, RAW_BUF_SIZE);	
+			}
+			PG_CATCH();
+			{
+				/* 
+				 * If we are here, we got some kind of communication error
+				 * with the client or a bad protocol message. clean up and 
+				 * re-throw error
+				 */
+				cdbCopyEnd(cdbCopy);
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
+
 			cstate->raw_buf_done = false;
 
 			/* set buffer pointers to beginning of the buffer */
