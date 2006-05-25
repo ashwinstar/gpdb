@@ -1,15 +1,15 @@
 COMMAND NAME: mppaddmirrors.sh
 
-Adds mirror segments to a Bizgres MPP system that was initially 
-configured without mirroring.
+Adds mirror segments to a Bizgres MPP system that was initially configured 
+without mirroring.
 
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
-mppaddmirrors.sh -d <master_data_directory> [-p <port_base>] 
-[-l <logfile_directory>]
+mppaddmirrors.sh -d <master_data_directory> [-p <port_base>] [-s] [-a] 
+[-m <mirror_config_file>] [-l <logfile_directory>]
 
 mppaddmirrors.sh [-? | -v]
 
@@ -18,38 +18,52 @@ mppaddmirrors.sh [-? | -v]
 DESCRIPTION
 *****************************************************
 
-The mppaddmirrors.sh script configures mirror segment instances 
-for an existing Bizgres MPP system that was initially configured 
-with primary segment instances only. The script will shut down your 
-Bizgres MPP system while it creates the mirrors, and then restart it 
-with mirroring enabled.
+The mppaddmirrors.sh script configures mirror segment instances for an existing 
+Bizgres MPP system that was initially configured with primary segment instances 
+only. The script will shut down your Bizgres MPP system while it creates the 
+mirrors, and then restart it with mirroring enabled.
 
-MIRROR DATA DIRECTORIES
+CREATING THE MIRROR DATA DIRECTORIES
 
-The script will prompt you for the data storage location(s) where it 
-will create the mirror segment data directories. The script will create 
-a unique data directory for each mirror segment instance in this location 
-using a predefined naming convention. 
-
-There must be the same number of data directories declared for mirror 
-segment 
-instances as for primary segment instances. It is OK to specify the same 
-directory name multiple times if you want your mirror data directories 
-created in the same location, or you can enter a different data location 
-for each mirror. Enter the absolute path. For example:
+By default, the script will prompt you for the data storage location(s) where 
+it will create the mirror segment data directories. The script will create a 
+unique data directory for each mirror segment instance in this location using 
+a predefined naming convention. There must be the same number of data 
+directories declared for mirror segment instances as for primary segment 
+instances. It is OK to specify the same directory name multiple times if you 
+want your mirror data directories created in the same location, or you can 
+enter a different data location for each mirror. Enter the absolute path. 
+For example:
 
 Enter mirror segment instance directory 1 of 2 > /mpp_mirror
+
 Enter mirror segment instance directory 2 of 2 > /mpp_mirror
 
 OR
 
-Enter mirror segment instance directory 1 of 2 > /mppdata/dbfast3
-Enter mirror segment instance directory 2 of 2 > /mppdata/dbfast4
+Enter mirror segment instance directory 1 of 2 > /dbfast3/mppmirror
 
-You must make sure that the user who runs mppaddmirrors.sh (for example, 
-the bgadmin user) has permissions to write to these directories. You may 
-want to create these directories on the segment hosts and chown them to 
-the appropriate user before running mppaddmirrors.sh.
+Enter mirror segment instance directory 2 of 2 > /dbfast4/mppmirror
+
+
+Alternatively, you can run the mppaddmirrors.sh script and supply a 
+configuration file containing the mirror host names and data directory 
+locations (-m option). This is useful if you want your mirror segments on a 
+completely different set of hosts than your primary segments. The format of 
+the mirror configuration file is:
+
+<mirror_hostname>:<mirror_data_directory_location>
+
+The mirror_hostname must match the host name configured for the machine (as 
+returned by the hostname command). Also, you must supply the exact same number 
+of segment hosts and segment instances as you have primary hosts and primary 
+instances. The host names can either be all the same as your primary segment 
+host names, or be all different from the primary segment host names.
+
+You must make sure that the user who runs mppaddmirrors.sh (for example, the 
+bgadmin user) has permissions to write to these directories. You may want to 
+create these directories on the segment hosts and chown them to the 
+appropriate user before running mppaddmirrors.sh.
 
 
 *****************************************************
@@ -60,22 +74,51 @@ OPTIONS
 
 Required. The data directory of the MPP master instance.
 
--p port_base
 
-This specifies the base port number on which mirror segment instances 
-will be started on a segment host. If a host has multiple mirror segment 
-instances, the base port number will be incremented by one for each 
-additional mirror segment instance started on that host. If not provided, 
-the mirror segment ports will be calculated based on the available ports 
-in the range of 1000 - 65500.
+-p <port_base>
+
+This specifies the base port number on which mirror segment instances will 
+be started on a segment host. If a host has multiple mirror segment instances, 
+the base port number will be incremented by one for each additional mirror 
+segment instance started on that host. If not provided, the mirror segment 
+ports will be calculated based on the available ports in the range of 
+1000 - 65500.
+
+
+-s
+
+Spreads the mirror segments amongst the available hosts. The default is to 
+group the a set of mirror segments together on an alternate host from their 
+primary segment set. Mirror spreading will place each mirror on a different 
+host within the MPP array. Spreading is only allowed if there is a sufficient 
+number of hosts in the array (number of hosts is greater than or equal to 
+the number of mirror segment instances).
+
+
+-a
+
+Run in quiet mode - do not prompt the user to enter information. Must supply a 
+configuration file with -m if this option is used.
+
+
+-m <mirror_config_file>
+
+A configuration file containing one line for each mirror segment you want to 
+create. You must have the same number of mirror hosts and segments as you do 
+primary hosts and segments. Each line in the file specifies the mirror host 
+name and data directory location of a mirror segment in the format of: 
+<mirror_hostname>:<mirror_data_directory_location>
+
 
 -l <logfile_directory>
 
 The directory to write the log file. Defaults to ~/mppAdminLogs.
 
+
 -?
 
 Displays the online help.
+
 
 -v
 
@@ -86,15 +129,30 @@ Displays the version, status, last updated date, and check sum of this script.
 EXAMPLES
 *****************************************************
 
-Add mirroring to an existing Bizgres MPP system:
+Add mirroring to an existing Bizgres MPP system using the same set of hosts 
+as your primary data:
 
 mppaddmirrors.sh -d /mpp_master_data -p 20000
+
+
+Add mirroring to an existing Bizgres MPP system using a different set of hosts 
+from your primary data:
+
+mppaddmirrors.sh -d /mpp_master_data -p 20000 -m mirror_config_file
+
+Where the mirror_config_file looks like this:
+
+host1:/dbfast2/mirror
+host1:/dbfast4/mirror
+host2:/dbfast2/mirror
+host2:/dbfast4/mirror
+host3:/dbfast2/mirror
+host3:/dbfast4/mirror
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-mppcreatecluster.sh, mppinitstandby.sh, mppactivatestandby.sh, 
-mppactivatemaster.sh
+mppcreatecluster.sh, mppinitstandby.sh, mppactivatestandby.sh
 

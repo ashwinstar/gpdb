@@ -7,7 +7,7 @@ SYNOPSIS
 *****************************************************
 
 mppstop.sh [-d <data_directory>] [-n | -z] [-f | -i | -s] [-r] 
-[-m] [-a] [-q] [-l <logfile_directory>]
+[-m] [-y] [-a] [-q] [-l <logfile_directory>]
 
 mppstop.sh [-t | -? | -v]
 
@@ -75,6 +75,11 @@ Restart after shutdown is complete.
 
 Optional. Shuts down a MPP master instance that was started in 
 maintenance mode.
+
+-y
+
+Do not stop the standby master process. The default is to stop 
+the standby master.
 
 -a
 

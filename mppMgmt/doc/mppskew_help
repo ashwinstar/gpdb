@@ -7,7 +7,7 @@ SYNOPSIS
 *****************************************************
 
 mppskew.sh -t <table_name> [-n <schema_name>] [-a <database_name>] 
-[-c] [-d <data_directory>] [-f] [-l <logfile_directory>]
+[-c] [-d <data_directory>] [-f] [-m] [-l <logfile_directory>]
 
 mppskew.sh [-? | -v]
 
@@ -65,6 +65,11 @@ the value set for $MASTER_DATA_DIRECTORY will be used.
 
 Optional. Displays the full data skew results instead of the 
 summary results.
+
+
+-m 
+
+Show data skew for mirror segments. Default is to show primary segments only.
 
 
 -l <logfile_directory>

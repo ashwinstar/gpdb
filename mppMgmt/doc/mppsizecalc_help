@@ -7,9 +7,9 @@ Shows the disk space usage for a given database, table, or index.
 SYNOPSIS
 *****************************************************
 
-mppsizecalc.sh {-x <database_name> | {-t <table_name> [-i] 
-[-a <other_database_name>]}} [-d <data_directory>] [-s b|k|m] 
-[-f] [-l <logfile_directory>]
+mppsizecalc.sh {-x <database_name> | {-t <table_name> [-n <schema_name>] 
+[-i] [-a <other_database_name>]}} [-d <data_directory>] [-s b|k|m] [-f] 
+[-l <logfile_directory>] [-p | -m]
 
 mppsizecalc.sh [-? | -v]
 
@@ -42,6 +42,13 @@ for which you want to see the disk space usage.
 Either a database name or a table name is required. The table for which 
 you want to see the disk space usage.
 
+
+-n <schema_name>
+
+Optional. The schema name if you have duplicate table names residing in 
+different schemas.
+
+
 -i
 
 Optional. Shows the index size for the named table.
@@ -65,6 +72,15 @@ or megabytes (m). The default is kilobytes (k).
 -f
 
 Optional. Displays the disk space usage per segment.
+
+-p
+
+Obtain sizing information for primary segments only.
+
+
+-m 
+
+Obtain sizing information for mirror segments only.
 
 -l <logfile_directory>
 

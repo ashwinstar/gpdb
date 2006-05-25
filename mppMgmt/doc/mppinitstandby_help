@@ -115,6 +115,4 @@ mppinitstandby.sh -s host09 -i -n
 SEE ALSO
 *****************************************************
 
-mppcreatecluster.sh, mppaddmirrors.sh, mppactivatestandby.sh, 
-mppactivatemaster.sh
-
+mppcreatecluster.sh, mppaddmirrors.sh, mppactivatestandby.sh

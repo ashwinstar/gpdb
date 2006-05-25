@@ -7,8 +7,8 @@ a Bizgres MPP master instance.
 SYNOPSIS
 *****************************************************
 
-mpprebuildseg.sh -d <master_data_directory> [-a] [-q] 
-[-l <logfile_directory>]
+mpprebuildseg.sh -d <master_data_directory> [-n <encoding>] 
+[-a] [-q] [-l <logfile_directory>]
 
 mpprebuildseg.sh [-? | -v]
 
@@ -35,6 +35,13 @@ OPTIONS
 -d <master_data_directory>
 
 Required. The data directory of the MPP master instance.
+
+-n <encoding>
+
+Sets the default character set encoding for the Bizgres MPP system. 
+Defaults to UNICODE. See Character Set Support in the PostgreSQL 
+documentation for more information on the supported character set 
+encodings.
 
 -a
 

@@ -7,7 +7,7 @@ Deletes a Bizgres MPP system that was initialized using mppcreatecluster.sh.
 SYNOPSIS
 *****************************************************
 
-mppdeletecluster.sh -d <data_directory> [-f] [-r] [-m] [-l <logfile_directory>]
+mppdeletecluster.sh -d <data_directory> [-f] [-r] [-l <logfile_directory>]
 
 mppdeletecluster.sh [-? | -v]
 

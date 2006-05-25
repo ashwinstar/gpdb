@@ -86,12 +86,20 @@ MASTER_DIRECTORY=/mppdata/dbfast1
 
 MASTER_PORT=5432
 
-# The IP address(es) of the hosts allowed to connect to a MPP 
-# master or segment instance. This adds an entry in the PostgreSQL 
-# pg_hba.conf file on each master and segment instance created. 
-# By default local host connections are already allowed. The following 
-# setting will allow connections from all hosts.
-
+# This parameter specifies the IP address(es) of the hosts allowed to 
+# connect to a MPP master instance. This adds an entry in the PostgreSQL 
+# pg_hba.conf file for the master instance. By default, local host 
+# connections are already allowed. The segment instances are configured 
+# by default to allow client connections from the master only (not configurable 
+# by this parameter). The default pg_hba.conf file on the MPP master has the 
+# following entries (assuming 0.0.0.0/0 is the IP_ALLOW setting and bgadmin 
+# is the database super user):
+#
+# local     all     bgadmin     ident          sameuser
+# local     all     all        ident           sameuser
+# host      all     bgadmin     127.0.0.0/0     trust
+# host      all     bgadmin     0.0.0.0/0       md5
+# host      all     all         0.0.0.0/0       trust
 
 IP_ALLOW=0.0.0.0/0
 

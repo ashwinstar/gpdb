@@ -6,7 +6,7 @@ Starts a Bizgres MPP database management server instance.
 SYNOPSIS
 *****************************************************
 
-mppstart.sh [-d <data_directory>] [-n | -z] [-m] [-a] [-q] 
+mppstart.sh [-d <data_directory>] [-n | -z] [-m] [-y] [-s] [-a] [-q] 
 [-l <logfile_directory>]
 
 mppstart.sh [-t | -? | -v]
@@ -57,6 +57,17 @@ to it.
 
 Optional. Starts the MPP master instance only, which may be useful for 
 maintenance tasks.
+
+-y
+
+Optional. Do not start the standby master host. The default is to start 
+the standby master host and synchronization process.
+
+
+-s
+
+Rollover the log file for the MPP master instance. Moves the current 
+logfile to <log file>.YYYYMMDD and starts a new log file.
 
 -a
 

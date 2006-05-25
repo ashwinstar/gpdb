@@ -7,7 +7,8 @@ as invalid (if mirroring is enabled).
 SYNOPSIS
 *****************************************************
 
-mpprecoverseg.sh [-d <data_directory>] [-f] [-a] [-q] [-l <logfile_directory>]
+mpprecoverseg.sh [-d <data_directory>] [-f] [-z <seg_data_dir:seg_hostname>]
+[-a] [-q] [-l <logfile_directory>]
 
 mpprecoverseg.sh [-? | -v]
 
@@ -62,6 +63,12 @@ set for $MASTER_DATA_DIRECTORY will be used.
 -f
 
 Optional. Force shutdown and startup of segment instances marked as invalid.
+
+
+-z <seg_data_dir:seg_hostname>
+
+Forces a recovery of a primary segment instance from its mirror even though 
+the segment has not been marked invalid. Use this option with care.
 
 -a
 
