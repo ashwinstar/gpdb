@@ -142,7 +142,7 @@ GET_MIRROR () {
 	ARRAY_INDEX=0
 	for DBID in ${FAILED_INST_LIST[@]}
 	do
-		FAILED_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where dbid=${DBID};"`
+		FAILED_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid, content from $CONFIG_TABLE where dbid=${DBID};"`
 		ERROR_CHK $? "obtain failed segment details from master instance" 2
 		ACTIVE_DBID=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select dbid from $MPP_PG_VIEW where content in (select content from $MPP_PG_VIEW where dbid=${DBID}) and dbid<>${DBID};"`
 		ACTIVE_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where valid='t' and content in (select content from $CONFIG_TABLE where dbid=${ACTIVE_DBID}) and dbid<>${DBID};"`
@@ -193,6 +193,7 @@ FAIL_SET_VAR () {
 	FAIL_QE_PORT=`$ECHO $1|$CUT -d"|" -f2`
 	FAIL_QE_DIR=`$ECHO $1|$CUT -d"|" -f3`
 	FAIL_QE_DBID=`$ECHO $1|$CUT -d"|" -f4`
+	FAIL_QE_CONTENTID=`$ECHO $1|$CUT -d"|" -f5`
 	FAIL_QE_TOP_DIR=`$DIRNAME $FAIL_QE_DIR`
 }
 
@@ -344,7 +345,8 @@ UPDATE_STATUS () {
 			FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
 			LOG_MSG "[INFO]:-Setting $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT as active"
 			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c "BEGIN; update mpp_configuration set valid = 't' where dbid = CAST($FAIL_QE_DBID AS smallint); update mpp_configuration set isprimary = definedprimary where content = CAST($FAIL_QE_CONTENTID AS smallint); COMMIT;" > /dev/null 2>&1
-			ERROR_CHK $? "update status on Master database" 2
+			RETVAL=$?
+			ERROR_CHK $RETVAL "update status on Master database" 2
 			((COUNT=$COUNT+1))
 		done
 		LOG_MSG "[INFO]:-Shutting down master database in utility mode"
@@ -382,7 +384,7 @@ FORCE_RECOVER () {
 		ERROR_EXIT "[FATAL]:-Could not locate $FAIL_QE_DIR for host $FAIL_QE_HOST" 2;fi
 	if [ $FAILED_INSTANCE_COUNT -gt 1 ];then
 		ERROR_EXIT "[FATAL]:-Found multiple records for $FAIL_QE_DIR for host $FAIL_QE_HOST" 2;fi
-	FAILED_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`)
+	FAILED_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, port, datadir, dbid, content from $CONFIG_TABLE where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`)
 	ERROR_CHK $? "obtain failed segment instance details" 2
 	FAIL_SET_VAR "${FAILED_INSTANCE_ARRAY[@]}" 
 	#Get active mirror details
