@@ -343,7 +343,7 @@ UPDATE_STATUS () {
 		do
 			FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
 			LOG_MSG "[INFO]:-Setting $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT as active"
-			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c "select mpp_set_segdb_state(CAST(${FAIL_QE_DBID} AS smallint),true);" > /dev/null 2>&1
+			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c "BEGIN; update mpp_configuration set valid = 't' where dbid = CAST($FAIL_QE_DBID AS smallint); update mpp_configuration set isprimary = definedprimary where content = CAST($FAIL_QE_CONTENTID AS smallint); COMMIT;" > /dev/null 2>&1
 			ERROR_CHK $? "update status on Master database" 2
 			((COUNT=$COUNT+1))
 		done
