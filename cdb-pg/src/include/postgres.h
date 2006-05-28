@@ -46,6 +46,11 @@
 #define POSTGRES_H
 
 #include "c.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "utils/elog.h"
 #include "utils/palloc.h"
 
@@ -546,5 +551,9 @@ extern int SyncAgentMain(int, char **, const char *);
 #define DESCR(x)  extern int no_such_variable
 
 typedef int4 aclitem;			/* PHONY definition for catalog use only */
+
+#ifdef __cplusplus
+}   /* extern "C" */
+#endif
 
 #endif   /* POSTGRES_H */

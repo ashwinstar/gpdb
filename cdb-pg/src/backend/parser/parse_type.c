@@ -3,6 +3,7 @@
  * parse_type.c
  *		handle type operations for parser
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -37,15 +38,15 @@
  * just a shell.  Caller should check typisdefined before using the type.
  */
 Oid
-LookupTypeName(const TypeName *typename)
+LookupTypeName(const TypeName *typname)
 {
 	Oid			restype;
 
 	/* Easy if it's an internally generated TypeName */
-	if (typename->names == NIL)
-		return typename->typeid;
+	if (typname->names == NIL)
+		return typname->typid;
 
-	if (typename->pct_type)
+	if (typname->pct_type)
 	{
 		/* Handle %TYPE reference to type of an existing field */
 		RangeVar   *rel = makeRangeVar(NULL, NULL);
@@ -54,34 +55,34 @@ LookupTypeName(const TypeName *typename)
 		AttrNumber	attnum;
 
 		/* deconstruct the name list */
-		switch (list_length(typename->names))
+		switch (list_length(typname->names))
 		{
 			case 1:
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 				errmsg("improper %%TYPE reference (too few dotted names): %s",
-					   NameListToString(typename->names))));
+					   NameListToString(typname->names))));
 				break;
 			case 2:
-				rel->relname = strVal(linitial(typename->names));
-				field = strVal(lsecond(typename->names));
+				rel->relname = strVal(linitial(typname->names));
+				field = strVal(lsecond(typname->names));
 				break;
 			case 3:
-				rel->schemaname = strVal(linitial(typename->names));
-				rel->relname = strVal(lsecond(typename->names));
-				field = strVal(lthird(typename->names));
+				rel->schemaname = strVal(linitial(typname->names));
+				rel->relname = strVal(lsecond(typname->names));
+				field = strVal(lthird(typname->names));
 				break;
 			case 4:
-				rel->catalogname = strVal(linitial(typename->names));
-				rel->schemaname = strVal(lsecond(typename->names));
-				rel->relname = strVal(lthird(typename->names));
-				field = strVal(lfourth(typename->names));
+				rel->catalogname = strVal(linitial(typname->names));
+				rel->schemaname = strVal(lsecond(typname->names));
+				rel->relname = strVal(lthird(typname->names));
+				field = strVal(lfourth(typname->names));
 				break;
 			default:
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("improper %%TYPE reference (too many dotted names): %s",
-								NameListToString(typename->names))));
+								NameListToString(typname->names))));
 				break;
 		}
 
@@ -96,26 +97,26 @@ LookupTypeName(const TypeName *typename)
 		restype = get_atttype(relid, attnum);
 
 		/* this construct should never have an array indicator */
-		Assert(typename->arrayBounds == NIL);
+		Assert(typname->arrayBounds == NIL);
 
 		/* emit nuisance notice */
 		ereport(NOTICE,
 				(errmsg("type reference %s converted to %s",
-						TypeNameToString(typename),
+						TypeNameToString(typname),
 						format_type_be(restype))));
 	}
 	else
 	{
 		/* Normal reference to a type name */
 		char	   *schemaname;
-		char	   *typname;
+		char	   *tname;
 
 		/* deconstruct the name list */
-		DeconstructQualifiedName(typename->names, &schemaname, &typname);
+		DeconstructQualifiedName(typname->names, &schemaname, &tname);
 
 		/* If an array reference, look up the array type instead */
-		if (typename->arrayBounds != NIL)
-			typname = makeArrayTypeName(typname);
+		if (typname->arrayBounds != NIL)
+			tname = makeArrayTypeName(typname);
 
 		if (schemaname)
 		{
@@ -124,14 +125,14 @@ LookupTypeName(const TypeName *typename)
 
 			namespaceId = LookupExplicitNamespace(schemaname);
 			restype = GetSysCacheOid(TYPENAMENSP,
-									 PointerGetDatum(typname),
+									 PointerGetDatum(tname),
 									 ObjectIdGetDatum(namespaceId),
 									 0, 0);
 		}
 		else
 		{
 			/* Unqualified type name, so search the search path */
-			restype = TypenameGetTypid(typname);
+			restype = TypenameGetTypid(tname);
 		}
 	}
 
@@ -146,20 +147,20 @@ LookupTypeName(const TypeName *typename)
  * it is mostly used for reporting lookup errors.
  */
 char *
-TypeNameToString(const TypeName *typename)
+TypeNameToString(const TypeName *typname)
 {
 	StringInfoData string;
 
 	initStringInfo(&string);
 
-	if (typename->names != NIL)
+	if (typname->names != NIL)
 	{
 		/* Emit possibly-qualified name as-is */
 		ListCell   *l;
 
-		foreach(l, typename->names)
+		foreach(l, typname->names)
 		{
-			if (l != list_head(typename->names))
+			if (l != list_head(typname->names))
 				appendStringInfoChar(&string, '.');
 			appendStringInfoString(&string, strVal(lfirst(l)));
 		}
@@ -167,17 +168,17 @@ TypeNameToString(const TypeName *typename)
 	else
 	{
 		/* Look up internally-specified type */
-		appendStringInfoString(&string, format_type_be(typename->typeid));
+		appendStringInfoString(&string, format_type_be(typname->typid));
 	}
 
 	/*
 	 * Add decoration as needed, but only for fields considered by
 	 * LookupTypeName
 	 */
-	if (typename->pct_type)
+	if (typname->pct_type)
 		appendStringInfoString(&string, "%TYPE");
 
-	if (typename->arrayBounds != NIL)
+	if (typname->arrayBounds != NIL)
 		appendStringInfoString(&string, "[]");
 
 	return string.data;
@@ -190,21 +191,21 @@ TypeNameToString(const TypeName *typename)
  * a suitable error message if the type cannot be found or is not defined.
  */
 Oid
-typenameTypeId(const TypeName *typename)
+typenameTypeId(const TypeName *typname)
 {
 	Oid			typoid;
 
-	typoid = LookupTypeName(typename);
+	typoid = LookupTypeName(typname);
 	if (!OidIsValid(typoid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("type \"%s\" does not exist",
-						TypeNameToString(typename))));
+						TypeNameToString(typname))));
 	if (!get_typisdefined(typoid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("type \"%s\" is only a shell",
-						TypeNameToString(typename))));
+						TypeNameToString(typname))));
 	return typoid;
 }
 
@@ -215,17 +216,17 @@ typenameTypeId(const TypeName *typename)
  * NB: caller must ReleaseSysCache the type tuple when done with it.
  */
 Type
-typenameType(const TypeName *typename)
+typenameType(const TypeName *typname)
 {
 	Oid			typoid;
 	HeapTuple	tup;
 
-	typoid = LookupTypeName(typename);
+	typoid = LookupTypeName(typname);
 	if (!OidIsValid(typoid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("type \"%s\" does not exist",
-						TypeNameToString(typename))));
+						TypeNameToString(typname))));
 	tup = SearchSysCache(TYPEOID,
 						 ObjectIdGetDatum(typoid),
 						 0, 0, 0);
@@ -235,7 +236,7 @@ typenameType(const TypeName *typename)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("type \"%s\" is only a shell",
-						TypeNameToString(typename))));
+						TypeNameToString(typname))));
 	return (Type) tup;
 }
 
@@ -383,7 +384,7 @@ parseTypeString(const char *str, Oid *type_id, int32 *typmod)
 	SelectStmt *stmt;
 	ResTarget  *restarget;
 	TypeCast   *typecast;
-	TypeName   *typename;
+	TypeName   *typname;
 	ErrorContextCallback ptserrcontext;
 
 	/* make sure we give useful error for empty input */
@@ -440,15 +441,15 @@ parseTypeString(const char *str, Oid *type_id, int32 *typmod)
 		typecast->arg == NULL ||
 		!IsA(typecast->arg, A_Const))
 		goto fail;
-	typename = typecast->typename;
-	if (typename == NULL ||
-		!IsA(typename, TypeName))
+	typname = typecast->typname;
+	if (typname == NULL ||
+		!IsA(typname, TypeName))
 		goto fail;
-	if (typename->setof)
+	if (typname->setof)
 		goto fail;
 
-	*type_id = typenameTypeId(typename);
-	*typmod = typename->typmod;
+	*type_id = typenameTypeId(typname);
+	*typmod = typname->typmod;
 
 	pfree(buf.data);
 

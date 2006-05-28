@@ -20,10 +20,10 @@
 
 typedef HeapTuple Type;
 
-extern Oid	LookupTypeName(const TypeName *typename);
-extern char *TypeNameToString(const TypeName *typename);
-extern Oid	typenameTypeId(const TypeName *typename);
-extern Type typenameType(const TypeName *typename);
+extern Oid	LookupTypeName(const TypeName *typname);
+extern char *TypeNameToString(const TypeName *typname);
+extern Oid	typenameTypeId(const TypeName *typname);
+extern Type typenameType(const TypeName *typname);
 
 extern Type typeidType(Oid id);
 
@@ -39,6 +39,6 @@ extern Oid	typeidTypeRelid(Oid type_id);
 
 extern void parseTypeString(const char *str, Oid *type_id, int32 *typmod);
 
-#define ISCOMPLEX(typeid) (typeidTypeRelid(typeid) != InvalidOid)
+#define ISCOMPLEX(typid) (typeidTypeRelid(typid) != InvalidOid)
 
 #endif   /* PARSE_TYPE_H */

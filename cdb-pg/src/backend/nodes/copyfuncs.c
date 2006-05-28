@@ -1242,7 +1242,7 @@ _copyJoinExpr(JoinExpr *from)
 	COPY_SCALAR_FIELD(isNatural);
 	COPY_NODE_FIELD(larg);
 	COPY_NODE_FIELD(rarg);
-	COPY_NODE_FIELD(using);
+	COPY_NODE_FIELD(usingClause);
 	COPY_NODE_FIELD(quals);
 	COPY_NODE_FIELD(alias);
 	COPY_SCALAR_FIELD(rtindex);
@@ -1490,7 +1490,7 @@ _copyAConst(A_Const *from)
 			break;
 	}
 
-	COPY_NODE_FIELD(typename);
+	COPY_NODE_FIELD(typname);
 
 	return newnode;
 }
@@ -1548,7 +1548,7 @@ _copyTypeName(TypeName *from)
 	TypeName   *newnode = makeNode(TypeName);
 
 	COPY_NODE_FIELD(names);
-	COPY_SCALAR_FIELD(typeid);
+	COPY_SCALAR_FIELD(typid);
 	COPY_SCALAR_FIELD(timezone);
 	COPY_SCALAR_FIELD(setof);
 	COPY_SCALAR_FIELD(pct_type);
@@ -1599,7 +1599,7 @@ _copyTypeCast(TypeCast *from)
 	TypeCast   *newnode = makeNode(TypeCast);
 
 	COPY_NODE_FIELD(arg);
-	COPY_NODE_FIELD(typename);
+	COPY_NODE_FIELD(typname);
 
 	return newnode;
 }
@@ -1622,7 +1622,7 @@ _copyColumnDef(ColumnDef *from)
 	ColumnDef  *newnode = makeNode(ColumnDef);
 
 	COPY_STRING_FIELD(colname);
-	COPY_NODE_FIELD(typename);
+	COPY_NODE_FIELD(typname);
 	COPY_SCALAR_FIELD(inhcount);
 	COPY_SCALAR_FIELD(is_local);
 	COPY_SCALAR_FIELD(is_not_null);
@@ -1814,7 +1814,7 @@ _copyAlterDomainStmt(AlterDomainStmt *from)
 	AlterDomainStmt *newnode = makeNode(AlterDomainStmt);
 
 	COPY_SCALAR_FIELD(subtype);
-	COPY_NODE_FIELD(typename);
+	COPY_NODE_FIELD(typname);
 	COPY_STRING_FIELD(name);
 	COPY_NODE_FIELD(def);
 	COPY_SCALAR_FIELD(behavior);
@@ -2265,7 +2265,7 @@ _copyCreateDomainStmt(CreateDomainStmt *from)
 	CreateDomainStmt *newnode = makeNode(CreateDomainStmt);
 
 	COPY_NODE_FIELD(domainname);
-	COPY_NODE_FIELD(typename);
+	COPY_NODE_FIELD(typname);
 	COPY_NODE_FIELD(constraints);
 	COPY_SCALAR_FIELD(domainOid);
 

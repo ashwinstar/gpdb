@@ -567,7 +567,7 @@ _equalJoinExpr(JoinExpr *a, JoinExpr *b)
 	COMPARE_SCALAR_FIELD(isNatural);
 	COMPARE_NODE_FIELD(larg);
 	COMPARE_NODE_FIELD(rarg);
-	COMPARE_NODE_FIELD(using);
+	COMPARE_NODE_FIELD(usingClause);
 	COMPARE_NODE_FIELD(quals);
 	COMPARE_NODE_FIELD(alias);
 	COMPARE_SCALAR_FIELD(rtindex);
@@ -769,7 +769,7 @@ static bool
 _equalAlterDomainStmt(AlterDomainStmt *a, AlterDomainStmt *b)
 {
 	COMPARE_SCALAR_FIELD(subtype);
-	COMPARE_NODE_FIELD(typename);
+	COMPARE_NODE_FIELD(typname);
 	COMPARE_STRING_FIELD(name);
 	COMPARE_NODE_FIELD(def);
 	COMPARE_SCALAR_FIELD(behavior);
@@ -1150,7 +1150,7 @@ static bool
 _equalCreateDomainStmt(CreateDomainStmt *a, CreateDomainStmt *b)
 {
 	COMPARE_NODE_FIELD(domainname);
-	COMPARE_NODE_FIELD(typename);
+	COMPARE_NODE_FIELD(typname);
 	COMPARE_NODE_FIELD(constraints);
 
 	return true;
@@ -1547,7 +1547,7 @@ _equalAConst(A_Const *a, A_Const *b)
 {
 	if (!equal(&a->val, &b->val))		/* hack for in-line Value field */
 		return false;
-	COMPARE_NODE_FIELD(typename);
+	COMPARE_NODE_FIELD(typname);
 
 	return true;
 }
@@ -1595,7 +1595,7 @@ static bool
 _equalTypeName(TypeName *a, TypeName *b)
 {
 	COMPARE_NODE_FIELD(names);
-	COMPARE_SCALAR_FIELD(typeid);
+	COMPARE_SCALAR_FIELD(typid);
 	COMPARE_SCALAR_FIELD(timezone);
 	COMPARE_SCALAR_FIELD(setof);
 	COMPARE_SCALAR_FIELD(pct_type);
@@ -1609,7 +1609,7 @@ static bool
 _equalTypeCast(TypeCast *a, TypeCast *b)
 {
 	COMPARE_NODE_FIELD(arg);
-	COMPARE_NODE_FIELD(typename);
+	COMPARE_NODE_FIELD(typname);
 
 	return true;
 }
@@ -1657,7 +1657,7 @@ static bool
 _equalColumnDef(ColumnDef *a, ColumnDef *b)
 {
 	COMPARE_STRING_FIELD(colname);
-	COMPARE_NODE_FIELD(typename);
+	COMPARE_NODE_FIELD(typname);
 	COMPARE_SCALAR_FIELD(inhcount);
 	COMPARE_SCALAR_FIELD(is_local);
 	COMPARE_SCALAR_FIELD(is_not_null);

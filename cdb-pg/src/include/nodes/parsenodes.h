@@ -4,6 +4,7 @@
  *	  definitions for parse tree nodes
  *
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -15,7 +16,7 @@
 #define PARSENODES_H
 
 #include "nodes/primnodes.h"
- 
+
 #include "cdb/cdbcat.h"
 
 /* Possible sources of a Query */
@@ -139,7 +140,7 @@ typedef struct Query
  *
  * For TypeName structures generated internally, it is often easier to
  * specify the type by OID than by name.  If "names" is NIL then the
- * actual type OID is given by typeid, otherwise typeid is unused.
+ * actual type OID is given by typid, otherwise typid is unused.
  *
  * If pct_type is TRUE, then names is actually a field name and we look up
  * the type of that field.	Otherwise (the normal case), names is a type
@@ -149,7 +150,7 @@ typedef struct TypeName
 {
 	NodeTag		type;
 	List	   *names;			/* qualified name (list of Value strings) */
-	Oid			typeid;			/* type identified by OID */
+	Oid			typid;		    /* type identified by OID */
 	bool		timezone;		/* timezone specified? */
 	bool		setof;			/* is a set? */
 	bool		pct_type;		/* %TYPE specified? */
@@ -215,7 +216,7 @@ typedef struct A_Const
 {
 	NodeTag		type;
 	Value		val;			/* the value (with the tag) */
-	TypeName   *typename;		/* typecast */
+	TypeName   *typname;		/* typecast */
 } A_Const;
 
 /*
@@ -231,7 +232,7 @@ typedef struct TypeCast
 {
 	NodeTag		type;
 	Node	   *arg;			/* the expression being casted */
-	TypeName   *typename;		/* the target type */
+	TypeName   *typname;		/* the target type */
 } TypeCast;
 
 /*
@@ -369,7 +370,7 @@ typedef struct ColumnDef
 {
 	NodeTag		type;
 	char	   *colname;		/* name of column */
-	TypeName   *typename;		/* type of column */
+	TypeName   *typname;		/* type of column */
 	int			inhcount;		/* number of times column is inherited */
 	bool		is_local;		/* column has local (non-inherited) def'n */
 	bool		is_not_null;	/* NOT NULL constraint specified? */
@@ -873,7 +874,7 @@ typedef struct AlterDomainStmt
 								 *	X = drop constraint
 								 *------------
 								 */
-	List	   *typename;		/* domain to work on */
+	List	   *typname;		/* domain to work on */
 	char	   *name;			/* column or constraint name to act on */
 	Node	   *def;			/* definition of default or constraint */
 	DropBehavior behavior;		/* RESTRICT or CASCADE for DROP cases */
@@ -1245,9 +1246,9 @@ typedef struct CreateDomainStmt
 {
 	NodeTag		type;
 	List	   *domainname;		/* qualified name (list of Value strings) */
-	TypeName   *typename;		/* the base type */
+	TypeName   *typname;		/* the base type */
 	List	   *constraints;	/* constraints (list of Constraint nodes) */
-	Oid		    domainOid; 
+	Oid		    domainOid;
 } CreateDomainStmt;
 
 /* ----------------------

@@ -4003,7 +4003,7 @@ get_const_expr(Const *constval, deparse_context *context)
 	pfree(extval);
 
 	/*
-	 * Append ::typename unless the constant will be implicitly typed as the
+	 * Append ::typname unless the constant will be implicitly typed as the
 	 * right type when it is read in.  XXX this code has to be kept in sync
 	 * with the behavior of the parser, especially make_const.
 	 */
@@ -4357,14 +4357,14 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 
 		if (!j->isNatural)
 		{
-			if (j->using)
+			if (j->usingClause)
 			{
 				ListCell   *col;
 
 				appendStringInfo(buf, " USING (");
-				foreach(col, j->using)
+				foreach(col, j->usingClause)
 				{
-					if (col != list_head(j->using))
+					if (col != list_head(j->usingClause))
 						appendStringInfo(buf, ", ");
 					appendStringInfoString(buf,
 									  quote_identifier(strVal(lfirst(col))));
@@ -4459,8 +4459,8 @@ get_from_clause_coldeflist(List *coldeflist, deparse_context *context)
 		int32		atttypmod;
 
 		attname = n->colname;
-		atttypeid = typenameTypeId(n->typename);
-		atttypmod = n->typename->typmod;
+		atttypeid = typenameTypeId(n->typname);
+		atttypmod = n->typname->typmod;
 
 		if (i > 0)
 			appendStringInfo(buf, ", ");

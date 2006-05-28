@@ -166,7 +166,7 @@ DefineSequence(CreateSeqStmt *seq)
 		typnam->typmod = -1;
 
 		coldef = makeNode(ColumnDef);
-		coldef->typename = typnam;
+		coldef->typname = typnam;
 		coldef->inhcount = 0;
 		coldef->is_local = true;
 		coldef->is_not_null = true;
@@ -180,48 +180,48 @@ DefineSequence(CreateSeqStmt *seq)
 		switch (i)
 		{
 			case SEQ_COL_NAME:
-				typnam->typeid = NAMEOID;
+				typnam->typid = NAMEOID;
 				coldef->colname = "sequence_name";
 				namestrcpy(&name, seq->sequence->relname);
 				value[i - 1] = NameGetDatum(&name);
 				break;
 			case SEQ_COL_LASTVAL:
-				typnam->typeid = INT8OID;
+				typnam->typid = INT8OID;
 				coldef->colname = "last_value";
 				value[i - 1] = Int64GetDatumFast(new.last_value);
 				break;
 			case SEQ_COL_INCBY:
-				typnam->typeid = INT8OID;
+				typnam->typid = INT8OID;
 				coldef->colname = "increment_by";
 				value[i - 1] = Int64GetDatumFast(new.increment_by);
 				break;
 			case SEQ_COL_MAXVALUE:
-				typnam->typeid = INT8OID;
+				typnam->typid = INT8OID;
 				coldef->colname = "max_value";
 				value[i - 1] = Int64GetDatumFast(new.max_value);
 				break;
 			case SEQ_COL_MINVALUE:
-				typnam->typeid = INT8OID;
+				typnam->typid = INT8OID;
 				coldef->colname = "min_value";
 				value[i - 1] = Int64GetDatumFast(new.min_value);
 				break;
 			case SEQ_COL_CACHE:
-				typnam->typeid = INT8OID;
+				typnam->typid = INT8OID;
 				coldef->colname = "cache_value";
 				value[i - 1] = Int64GetDatumFast(new.cache_value);
 				break;
 			case SEQ_COL_LOG:
-				typnam->typeid = INT8OID;
+				typnam->typid = INT8OID;
 				coldef->colname = "log_cnt";
 				value[i - 1] = Int64GetDatum((int64) 1);
 				break;
 			case SEQ_COL_CYCLE:
-				typnam->typeid = BOOLOID;
+				typnam->typid = BOOLOID;
 				coldef->colname = "is_cycled";
 				value[i - 1] = BoolGetDatum(new.is_cycled);
 				break;
 			case SEQ_COL_CALLED:
-				typnam->typeid = BOOLOID;
+				typnam->typid = BOOLOID;
 				coldef->colname = "is_called";
 				value[i - 1] = BoolGetDatum(false);
 				break;

@@ -928,7 +928,7 @@ typedef struct JoinExpr
 	bool		isNatural;		/* Natural join? Will need to shape table */
 	Node	   *larg;			/* left subtree */
 	Node	   *rarg;			/* right subtree */
-	List	   *using;			/* USING clause, if any (list of String) */
+	List	   *usingClause;	/* USING clause, if any (list of String) */
 	Node	   *quals;			/* qualifiers on join, if any */
 	Alias	   *alias;			/* user-written alias clause, if any */
 	int			rtindex;		/* RT index assigned for join */

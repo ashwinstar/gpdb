@@ -901,23 +901,23 @@ transformColumnDefinition(ParseState *pstate, CreateStmtContext *cxt,
 
 	/* Check for SERIAL pseudo-types */
 	is_serial = false;
-	if (list_length(column->typename->names) == 1)
+	if (list_length(column->typname->names) == 1)
 	{
-		char	   *typname = strVal(linitial(column->typename->names));
+		char	   *typname = strVal(linitial(column->typname->names));
 
 		if (strcmp(typname, "serial") == 0 ||
 			strcmp(typname, "serial4") == 0)
 		{
 			is_serial = true;
-			column->typename->names = NIL;
-			column->typename->typeid = INT4OID;
+			column->typname->names = NIL;
+			column->typname->typid = INT4OID;
 		}
 		else if (strcmp(typname, "bigserial") == 0 ||
 				 strcmp(typname, "serial8") == 0)
 		{
 			is_serial = true;
-			column->typename->names = NIL;
-			column->typename->typeid = INT8OID;
+			column->typname->names = NIL;
+			column->typname->typid = INT8OID;
 		}
 	}
 
@@ -989,7 +989,7 @@ transformColumnDefinition(ParseState *pstate, CreateStmtContext *cxt,
 		snamenode = makeNode(A_Const);
 		snamenode->val.type = T_String;
 		snamenode->val.val.str = qstring;
-		snamenode->typename = SystemTypeName("regclass");
+		snamenode->typname = SystemTypeName("regclass");
 		funccallnode = makeNode(FuncCall);
 		funccallnode->funcname = SystemFuncName("nextval");
 		funccallnode->args = list_make1(snamenode);
@@ -1171,7 +1171,7 @@ transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
 		Form_pg_attribute attribute = tupleDesc->attrs[parent_attno - 1];
 		char	   *attributeName = NameStr(attribute->attname);
 		ColumnDef  *def;
-		TypeName   *typename;
+		TypeName   *typname;
 
 		/*
 		 * Ignore dropped columns in the parent.
@@ -1187,10 +1187,10 @@ transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
 		 */
 		def = makeNode(ColumnDef);
 		def->colname = pstrdup(attributeName);
-		typename = makeNode(TypeName);
-		typename->typeid = attribute->atttypid;
-		typename->typmod = attribute->atttypmod;
-		def->typename = typename;
+		typname = makeNode(TypeName);
+		typname->typid = attribute->atttypid;
+		typname->typmod = attribute->atttypmod;
+		def->typname = typname;
 		def->inhcount = 0;
 		def->is_local = false;
 		def->is_not_null = attribute->attnotnull;
@@ -1643,7 +1643,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			/*
 			 * table has one or more attributes and there is still no distribution
 			 * key. pick a default one. the winner is the first attribute that is
-			 * an mpp-hashable data type. 
+			 * an mpp-hashable data type.
 			 */
 			ListCell   *columns;
 			ColumnDef  *column = NULL;
@@ -1660,8 +1660,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 				column = (ColumnDef *) lfirst(columns);
 				colindex++;
 
-				typeOid = typenameTypeId(column->typename);
-				isArray = (column->typename->arrayBounds == NIL ? false : true);
+				typeOid = typenameTypeId(column->typname);
+				isArray = (column->typname->arrayBounds == NIL ? false : true);
 
 				/*
 				 * if we can hash on this type, or if it's an array type (which
@@ -1679,7 +1679,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			
 			if(!assignedDefault)
 			{
-				/* 
+				/*
 				 * There was no eligible distribution column to default to. This table
 				 * will be partitioned on an empty distribution key list. In other words
 				 * tuples coming into the system will be randomly assigned a bucket.
@@ -1712,13 +1712,13 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 				colindex++;
 				if (strcmp(column->colname, key) == 0)
 				{
-					Oid typeOid = typenameTypeId(column->typename);
-					bool isArray = (column->typename->arrayBounds == NIL ? false : true);
+					Oid typeOid = typenameTypeId(column->typname);
+					bool isArray = (column->typname->arrayBounds == NIL ? false : true);
 					
 					/*
 					 * To be a part of a distribution key, this type must be supported
-					 * for hashing internally in mpp. We check if the base type is 
-					 * supported for hashing or if it is an array type (we support 
+					 * for hashing internally in mpp. We check if the base type is
+					 * supported for hashing or if it is an array type (we support
 					 * hashing on all array types).
 					 */
 					if(!isMppHashable(typeOid) && !isArray)
@@ -1726,7 +1726,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 						ereport(ERROR,
 								(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
 								 errmsg("type \"%s\" can't be a part of a distribution key",
-										strVal(linitial(column->typename->names)))));						
+										strVal(linitial(column->typname->names)))));						
 					}
 					
 					found = true;
@@ -3535,7 +3535,7 @@ transformColumnType(ParseState *pstate, ColumnDef *column)
 	/*
 	 * All we really need to do here is verify that the type is valid.
 	 */
-	Type		ctype = typenameType(column->typename);
+	Type		ctype = typenameType(column->typname);
 
 	ReleaseSysCache(ctype);
 }

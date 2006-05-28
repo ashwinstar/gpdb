@@ -1056,7 +1056,7 @@ _outJoinExpr(StringInfo str, JoinExpr *node)
 	WRITE_BOOL_FIELD(isNatural);
 	WRITE_NODE_FIELD(larg);
 	WRITE_NODE_FIELD(rarg);
-	WRITE_NODE_FIELD(using);
+	WRITE_NODE_FIELD(usingClause);
 	WRITE_NODE_FIELD(quals);
 	WRITE_NODE_FIELD(alias);
 	WRITE_INT_FIELD(rtindex);
@@ -1673,7 +1673,7 @@ _outCreateDomainStmt(StringInfo str, CreateDomainStmt *node)
 {
 	WRITE_NODE_TYPE("CREATEDOMAINSTMT");
 	WRITE_NODE_FIELD(domainname);
-	WRITE_NODE_FIELD(typename);
+	WRITE_NODE_FIELD(typname);
 	WRITE_NODE_FIELD(constraints);
 	WRITE_OID_FIELD(domainOid);
 }
@@ -1683,7 +1683,7 @@ _outAlterDomainStmt(StringInfo str, AlterDomainStmt *node)
 {
 	WRITE_NODE_TYPE("ALTERDOMAINSTMT");
 	WRITE_CHAR_FIELD(subtype);
-	WRITE_NODE_FIELD(typename);
+	WRITE_NODE_FIELD(typname);
 	WRITE_STRING_FIELD(name);
 	WRITE_NODE_FIELD(def);
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
@@ -1869,7 +1869,7 @@ _outColumnDef(StringInfo str, ColumnDef *node)
 	WRITE_NODE_TYPE("COLUMNDEF");
 
 	WRITE_STRING_FIELD(colname);
-	WRITE_NODE_FIELD(typename);
+	WRITE_NODE_FIELD(typname);
 	WRITE_INT_FIELD(inhcount);
 	WRITE_BOOL_FIELD(is_local);
 	WRITE_BOOL_FIELD(is_not_null);
@@ -1885,7 +1885,7 @@ _outTypeName(StringInfo str, TypeName *node)
 	WRITE_NODE_TYPE("TYPENAME");
 
 	WRITE_NODE_FIELD(names);
-	WRITE_OID_FIELD(typeid);
+	WRITE_OID_FIELD(typid);
 	WRITE_BOOL_FIELD(timezone);
 	WRITE_BOOL_FIELD(setof);
 	WRITE_BOOL_FIELD(pct_type);
@@ -1899,7 +1899,7 @@ _outTypeCast(StringInfo str, TypeCast *node)
 	WRITE_NODE_TYPE("TYPECAST");
 
 	WRITE_NODE_FIELD(arg);
-	WRITE_NODE_FIELD(typename);
+	WRITE_NODE_FIELD(typname);
 }
 
 static void
@@ -2194,7 +2194,7 @@ _outAConst(StringInfo str, A_Const *node)
 	appendStringInfoChar(str, ' ');
 
 	_outValue(str, &(node->val));
-	WRITE_NODE_FIELD(typename);
+	WRITE_NODE_FIELD(typname);
 	
 }
 

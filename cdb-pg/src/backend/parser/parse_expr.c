@@ -62,7 +62,7 @@ static Node *transformBooleanTest(ParseState *pstate, BooleanTest *b);
 static Node *transformIndirection(ParseState *pstate, Node *basenode,
 					 List *indirection);
 static Node *typecast_expression(ParseState *pstate, Node *expr,
-					TypeName *typename);
+					TypeName *typname);
 static Node *make_row_op(ParseState *pstate, List *opname,
 			Node *ltree, Node *rtree);
 static Node *make_row_distinct_op(ParseState *pstate, List *opname,
@@ -122,9 +122,9 @@ transformExpr(ParseState *pstate, Node *expr)
 				Value	   *val = &con->val;
 
 				result = (Node *) make_const(val);
-				if (con->typename != NULL)
+				if (con->typname != NULL)
 					result = typecast_expression(pstate, result,
-												 con->typename);
+												 con->typname);
 				break;
 			}
 
@@ -143,7 +143,7 @@ transformExpr(ParseState *pstate, Node *expr)
 				TypeCast   *tc = (TypeCast *) expr;
 				Node	   *arg = transformExpr(pstate, tc->arg);
 
-				result = typecast_expression(pstate, arg, tc->typename);
+				result = typecast_expression(pstate, arg, tc->typname);
 				break;
 			}
 
@@ -766,7 +766,7 @@ transformAExprOf(ParseState *pstate, A_Expr *a)
 	n = makeNode(A_Const);
 	n->val.type = T_String;
 	n->val.val.str = (matched ? "t" : "f");
-	n->typename = SystemTypeName("bool");
+	n->typname = SystemTypeName("bool");
 
 	return transformExpr(pstate, (Node *) n);
 }
@@ -1792,18 +1792,18 @@ exprIsLengthCoercion(Node *expr, int32 *coercedTypmod)
  * the type name and then apply any necessary coercion function(s).
  */
 static Node *
-typecast_expression(ParseState *pstate, Node *expr, TypeName *typename)
+typecast_expression(ParseState *pstate, Node *expr, TypeName *typname)
 {
 	Oid			inputType = exprType(expr);
 	Oid			targetType;
 
-	targetType = typenameTypeId(typename);
+	targetType = typenameTypeId(typname);
 
 	if (inputType == InvalidOid)
 		return expr;			/* do nothing if NULL input */
 
 	expr = coerce_to_target_type(pstate, expr, inputType,
-								 targetType, typename->typmod,
+								 targetType, typname->typmod,
 								 COERCION_EXPLICIT,
 								 COERCE_EXPLICIT_CAST);
 	if (expr == NULL)

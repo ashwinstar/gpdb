@@ -6,6 +6,7 @@
  * gram.y
  *	  POSTGRES SQL YACC rules/actions
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -73,8 +74,8 @@ static bool QueryIsRule = FALSE;
 /*#define __YYSCLASS*/
 
 static Node *makeColumnRef(char *relname, List *indirection);
-static Node *makeTypeCast(Node *arg, TypeName *typename);
-static Node *makeStringConst(char *str, TypeName *typename);
+static Node *makeTypeCast(Node *arg, TypeName *typname);
+static Node *makeStringConst(char *str, TypeName *typname);
 static Node *makeIntConst(int val);
 static Node *makeFloatConst(char *str);
 static Node *makeAConst(Value *v);
@@ -173,7 +174,7 @@ static void doNegateFloat(Value *v);
 %type <ival>	opt_lock lock_type cast_context
 %type <boolean>	opt_force opt_or_replace
 				opt_grant_grant_option opt_grant_admin_option
-				opt_nowait 
+				opt_nowait
 
 %type <boolean>	like_including_defaults
 
@@ -1127,7 +1128,7 @@ zone_value:
 							ereport(ERROR,
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("time zone interval must be HOUR or HOUR TO MINUTE")));
-						n->typename->typmod = INTERVAL_TYPMOD(INTERVAL_FULL_PRECISION, $3);
+						n->typname->typmod = INTERVAL_TYPMOD(INTERVAL_FULL_PRECISION, $3);
 					}
 					$$ = (Node *)n;
 				}
@@ -1154,7 +1155,7 @@ zone_value:
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("time zone interval must be HOUR or HOUR TO MINUTE")));
 
-					n->typename->typmod = INTERVAL_TYPMOD($3, $6);
+					n->typname->typmod = INTERVAL_TYPMOD($3, $6);
 
 					$$ = (Node *)n;
 				}
@@ -1775,7 +1776,7 @@ columnDef:	ColId Typename ColQualList
 				{
 					ColumnDef *n = makeNode(ColumnDef);
 					n->colname = $1;
-					n->typename = $2;
+					n->typname = $2;
 					n->constraints = $3;
 					n->is_local = true;
 					$$ = (Node *)n;
@@ -2216,7 +2217,7 @@ CreateAsElement:
 				{
 					ColumnDef *n = makeNode(ColumnDef);
 					n->colname = $1;
-					n->typename = NULL;
+					n->typname = NULL;
 					n->inhcount = 0;
 					n->is_local = true;
 					n->is_not_null = false;
@@ -2856,7 +2857,7 @@ DropOpClassStmt:
  *
  *		QUERY:
  *
- *		DROP itemtype [ IF EXISTS ] itemname [, itemname ...] 
+ *		DROP itemtype [ IF EXISTS ] itemname [, itemname ...]
  *           [ RESTRICT | CASCADE ]
  *
  *****************************************************************************/
@@ -4743,7 +4744,7 @@ CreateDomainStmt:
 				{
 					CreateDomainStmt *n = makeNode(CreateDomainStmt);
 					n->domainname = $3;
-					n->typename = $5;
+					n->typname = $5;
 					n->constraints = $6;
 					n->domainOid = 0;
 					$$ = (Node *)n;
@@ -4756,7 +4757,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 					n->subtype = 'T';
-					n->typename = $3;
+					n->typname = $3;
 					n->def = $4;
 					$$ = (Node *)n;
 				}
@@ -4765,7 +4766,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 					n->subtype = 'N';
-					n->typename = $3;
+					n->typname = $3;
 					$$ = (Node *)n;
 				}
 			/* ALTER DOMAIN <domain> SET NOT NULL */
@@ -4773,7 +4774,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 					n->subtype = 'O';
-					n->typename = $3;
+					n->typname = $3;
 					$$ = (Node *)n;
 				}
 			/* ALTER DOMAIN <domain> ADD CONSTRAINT ... */
@@ -4781,7 +4782,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 					n->subtype = 'C';
-					n->typename = $3;
+					n->typname = $3;
 					n->def = $5;
 					$$ = (Node *)n;
 				}
@@ -4790,7 +4791,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 					n->subtype = 'X';
-					n->typename = $3;
+					n->typname = $3;
 					n->name = $6;
 					n->behavior = $7;
 					$$ = (Node *)n;
@@ -5772,7 +5773,7 @@ joined_table:
 					n->isNatural = FALSE;
 					n->larg = $1;
 					n->rarg = $4;
-					n->using = NIL;
+					n->usingClause = NIL;
 					n->quals = NULL;
 					$$ = n;
 				}
@@ -5786,7 +5787,7 @@ joined_table:
 					n->isNatural = FALSE;
 					n->larg = $1;
 					n->rarg = $3;
-					n->using = NIL;
+					n->usingClause = NIL;
 					n->quals = NULL;
 					$$ = n;
 				}
@@ -5798,7 +5799,7 @@ joined_table:
 					n->larg = $1;
 					n->rarg = $4;
 					if ($5 != NULL && IsA($5, List))
-						n->using = (List *) $5; /* USING clause */
+						n->usingClause = (List *) $5; /* USING clause */
 					else
 						n->quals = $5; /* ON clause */
 					$$ = n;
@@ -5812,7 +5813,7 @@ joined_table:
 					n->larg = $1;
 					n->rarg = $3;
 					if ($4 != NULL && IsA($4, List))
-						n->using = (List *) $4; /* USING clause */
+						n->usingClause = (List *) $4; /* USING clause */
 					else
 						n->quals = $4; /* ON clause */
 					$$ = n;
@@ -5824,7 +5825,7 @@ joined_table:
 					n->isNatural = TRUE;
 					n->larg = $1;
 					n->rarg = $5;
-					n->using = NIL; /* figure out which columns later... */
+					n->usingClause = NIL; /* figure out which columns later... */
 					n->quals = NULL; /* fill later */
 					$$ = n;
 				}
@@ -5836,7 +5837,7 @@ joined_table:
 					n->isNatural = TRUE;
 					n->larg = $1;
 					n->rarg = $4;
-					n->using = NIL; /* figure out which columns later... */
+					n->usingClause = NIL; /* figure out which columns later... */
 					n->quals = NULL; /* fill later */
 					$$ = n;
 				}
@@ -5949,7 +5950,7 @@ TableFuncElement:	ColId Typename
 				{
 					ColumnDef *n = makeNode(ColumnDef);
 					n->colname = $1;
-					n->typename = $2;
+					n->typname = $2;
 					n->constraints = NIL;
 					n->is_local = true;
 					$$ = (Node *)n;
@@ -7138,7 +7139,7 @@ func_expr:	func_name '(' ')'
 
 					s->val.type = T_String;
 					s->val.val.str = "now";
-					s->typename = SystemTypeName("text");
+					s->typname = SystemTypeName("text");
 
 					d = SystemTypeName("date");
 
@@ -7155,7 +7156,7 @@ func_expr:	func_name '(' ')'
 
 					s->val.type = T_String;
 					s->val.val.str = "now";
-					s->typename = SystemTypeName("text");
+					s->typname = SystemTypeName("text");
 
 					d = SystemTypeName("timetz");
 
@@ -7172,7 +7173,7 @@ func_expr:	func_name '(' ')'
 
 					s->val.type = T_String;
 					s->val.val.str = "now";
-					s->typename = SystemTypeName("text");
+					s->typname = SystemTypeName("text");
 					d = SystemTypeName("timetz");
 					if ($3 < 0)
 						ereport(ERROR,
@@ -7215,7 +7216,7 @@ func_expr:	func_name '(' ')'
 
 					s->val.type = T_String;
 					s->val.val.str = "now";
-					s->typename = SystemTypeName("text");
+					s->typname = SystemTypeName("text");
 
 					d = SystemTypeName("timestamptz");
 					if ($3 < 0)
@@ -7246,7 +7247,7 @@ func_expr:	func_name '(' ')'
 
 					s->val.type = T_String;
 					s->val.val.str = "now";
-					s->typename = SystemTypeName("text");
+					s->typname = SystemTypeName("text");
 
 					d = SystemTypeName("time");
 
@@ -7263,7 +7264,7 @@ func_expr:	func_name '(' ')'
 
 					s->val.type = T_String;
 					s->val.val.str = "now";
-					s->typename = SystemTypeName("text");
+					s->typname = SystemTypeName("text");
 					d = SystemTypeName("time");
 					if ($3 < 0)
 						ereport(ERROR,
@@ -7293,7 +7294,7 @@ func_expr:	func_name '(' ')'
 
 					s->val.type = T_String;
 					s->val.val.str = "now";
-					s->typename = SystemTypeName("text");
+					s->typname = SystemTypeName("text");
 
 					d = SystemTypeName("timestamp");
 
@@ -7310,7 +7311,7 @@ func_expr:	func_name '(' ')'
 
 					s->val.type = T_String;
 					s->val.val.str = "now";
-					s->typename = SystemTypeName("text");
+					s->typname = SystemTypeName("text");
 
 					d = SystemTypeName("timestamp");
 					if ($3 < 0)
@@ -8074,7 +8075,7 @@ AexprConst: Iconst
 			| ConstTypename Sconst
 				{
 					A_Const *n = makeNode(A_Const);
-					n->typename = $1;
+					n->typname = $1;
 					n->val.type = T_String;
 					n->val.val.str = $2;
 					$$ = (Node *)n;
@@ -8082,18 +8083,18 @@ AexprConst: Iconst
 			| ConstInterval Sconst opt_interval
 				{
 					A_Const *n = makeNode(A_Const);
-					n->typename = $1;
+					n->typname = $1;
 					n->val.type = T_String;
 					n->val.val.str = $2;
 					/* precision is not specified, but fields may be... */
 					if ($3 != INTERVAL_FULL_RANGE)
-						n->typename->typmod = INTERVAL_TYPMOD(INTERVAL_FULL_PRECISION, $3);
+						n->typname->typmod = INTERVAL_TYPMOD(INTERVAL_FULL_PRECISION, $3);
 					$$ = (Node *)n;
 				}
 			| ConstInterval '(' Iconst ')' Sconst opt_interval
 				{
 					A_Const *n = makeNode(A_Const);
-					n->typename = $1;
+					n->typname = $1;
 					n->val.type = T_String;
 					n->val.val.str = $5;
 					/* precision specified, and fields may be... */
@@ -8110,7 +8111,7 @@ AexprConst: Iconst
 										$3, MAX_INTERVAL_PRECISION)));
 						$3 = MAX_INTERVAL_PRECISION;
 					}
-					n->typename->typmod = INTERVAL_TYPMOD($3, $6);
+					n->typname->typmod = INTERVAL_TYPMOD($3, $6);
 					$$ = (Node *)n;
 				}
 			| TRUE_P
@@ -8633,7 +8634,7 @@ makeColumnRef(char *relname, List *indirection)
 }
 
 static Node *
-makeTypeCast(Node *arg, TypeName *typename)
+makeTypeCast(Node *arg, TypeName *typname)
 {
 	/*
 	 * Simply generate a TypeCast node.
@@ -8644,18 +8645,18 @@ makeTypeCast(Node *arg, TypeName *typename)
 	 */
 	TypeCast *n = makeNode(TypeCast);
 	n->arg = arg;
-	n->typename = typename;
+	n->typname = typname;
 	return (Node *) n;
 }
 
 static Node *
-makeStringConst(char *str, TypeName *typename)
+makeStringConst(char *str, TypeName *typname)
 {
 	A_Const *n = makeNode(A_Const);
 
 	n->val.type = T_String;
 	n->val.val.str = str;
-	n->typename = typename;
+	n->typname = typname;
 
 	return (Node *)n;
 }
@@ -8666,7 +8667,7 @@ makeIntConst(int val)
 	A_Const *n = makeNode(A_Const);
 	n->val.type = T_Integer;
 	n->val.val.ival = val;
-	n->typename = SystemTypeName("int4");
+	n->typname = SystemTypeName("int4");
 
 	return (Node *)n;
 }
@@ -8678,7 +8679,7 @@ makeFloatConst(char *str)
 
 	n->val.type = T_Float;
 	n->val.val.str = str;
-	n->typename = SystemTypeName("float8");
+	n->typname = SystemTypeName("float8");
 
 	return (Node *)n;
 }
@@ -8729,7 +8730,7 @@ makeBoolAConst(bool state)
 	A_Const *n = makeNode(A_Const);
 	n->val.type = T_String;
 	n->val.val.str = (state? "t": "f");
-	n->typename = SystemTypeName("bool");
+	n->typname = SystemTypeName("bool");
 	return n;
 }
 
@@ -8973,7 +8974,7 @@ exprIsNullConstant(Node *arg)
 		A_Const *con = (A_Const *) arg;
 
 		if (con->val.type == T_Null &&
-			con->typename == NULL)
+			con->typname == NULL)
 			return TRUE;
 	}
 	return FALSE;

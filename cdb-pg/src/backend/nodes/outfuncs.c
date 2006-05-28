@@ -61,6 +61,10 @@
 #define WRITE_OID_FIELD(fldname) \
 	appendStringInfo(str, " :" CppAsString(fldname) " %u", node->fldname)
 
+/* CDB: Write an OID field, renamed */
+#define WRITE_OID_FIELD_AS(fldname, asname) \
+	appendStringInfo(str, " :" CppAsString(asname) " %u", node->fldname)
+
 /* Write a long-integer field */
 #define WRITE_LONG_FIELD(fldname) \
 	appendStringInfo(str, " :" CppAsString(fldname) " %ld", node->fldname)
@@ -91,6 +95,11 @@
 /* Write a Node field */
 #define WRITE_NODE_FIELD(fldname) \
 	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
+	 _outNode(str, node->fldname))
+
+/* CDB: Write a Node field, renamed */
+#define WRITE_NODE_FIELD_AS(fldname, asname) \
+	(appendStringInfo(str, " :" CppAsString(asname) " "), \
 	 _outNode(str, node->fldname))
 
 /* Write a bitmapset field */
@@ -1051,7 +1060,7 @@ _outJoinExpr(StringInfo str, JoinExpr *node)
 	WRITE_BOOL_FIELD(isNatural);
 	WRITE_NODE_FIELD(larg);
 	WRITE_NODE_FIELD(rarg);
-	WRITE_NODE_FIELD(using);
+	WRITE_NODE_FIELD_AS(usingClause, using);    /*CDB*/
 	WRITE_NODE_FIELD(quals);
 	WRITE_NODE_FIELD(alias);
 	WRITE_INT_FIELD(rtindex);
@@ -1667,7 +1676,7 @@ _outCreateDomainStmt(StringInfo str, CreateDomainStmt *node)
 {
 	WRITE_NODE_TYPE("CREATEDOMAINSTMT");
 	WRITE_NODE_FIELD(domainname);
-	WRITE_NODE_FIELD(typename);
+	WRITE_NODE_FIELD_AS(typname, typename);
 	WRITE_NODE_FIELD(constraints);
 	WRITE_OID_FIELD(domainOid);
 }
@@ -1677,7 +1686,7 @@ _outAlterDomainStmt(StringInfo str, AlterDomainStmt *node)
 {
 	WRITE_NODE_TYPE("ALTERDOMAINSTMT");
 	WRITE_CHAR_FIELD(subtype);
-	WRITE_NODE_FIELD(typename);
+	WRITE_NODE_FIELD_AS(typname, typename);
 	WRITE_STRING_FIELD(name);
 	WRITE_NODE_FIELD(def);
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
@@ -1863,7 +1872,7 @@ _outColumnDef(StringInfo str, ColumnDef *node)
 	WRITE_NODE_TYPE("COLUMNDEF");
 
 	WRITE_STRING_FIELD(colname);
-	WRITE_NODE_FIELD(typename);
+	WRITE_NODE_FIELD_AS(typname, typename);
 	WRITE_INT_FIELD(inhcount);
 	WRITE_BOOL_FIELD(is_local);
 	WRITE_BOOL_FIELD(is_not_null);
@@ -1879,7 +1888,7 @@ _outTypeName(StringInfo str, TypeName *node)
 	WRITE_NODE_TYPE("TYPENAME");
 
 	WRITE_NODE_FIELD(names);
-	WRITE_OID_FIELD(typeid);
+	WRITE_OID_FIELD_AS(typid, typeid);
 	WRITE_BOOL_FIELD(timezone);
 	WRITE_BOOL_FIELD(setof);
 	WRITE_BOOL_FIELD(pct_type);
@@ -1893,7 +1902,7 @@ _outTypeCast(StringInfo str, TypeCast *node)
 	WRITE_NODE_TYPE("TYPECAST");
 
 	WRITE_NODE_FIELD(arg);
-	WRITE_NODE_FIELD(typename);
+	WRITE_NODE_FIELD_AS(typname, typename);
 }
 
 static void
@@ -2181,7 +2190,7 @@ _outAConst(StringInfo str, A_Const *node)
 	appendStringInfoChar(str, ' ');
 
 	_outValue(str, &(node->val));
-	WRITE_NODE_FIELD(typename);
+	WRITE_NODE_FIELD_AS(typname, typename);
 	
 }
 

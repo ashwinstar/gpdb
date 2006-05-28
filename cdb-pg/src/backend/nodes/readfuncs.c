@@ -714,8 +714,8 @@ _readAConst(void)
 		}
 	}
 	
-	local_node->typename = NULL;
-	READ_NODE_FIELD(typename);
+	local_node->typname = NULL;
+	READ_NODE_FIELD(typname);
 	READ_DONE();
 }
 
@@ -1323,7 +1323,7 @@ _readJoinExpr(void)
 	READ_BOOL_FIELD(isNatural);
 	READ_NODE_FIELD(larg);
 	READ_NODE_FIELD(rarg);
-	READ_NODE_FIELD(using);
+	READ_NODE_FIELD(usingClause);   /*CDB*/
 	READ_NODE_FIELD(quals);
 	READ_NODE_FIELD(alias);
 	READ_INT_FIELD(rtindex);
@@ -1356,7 +1356,7 @@ _readColumnDef(void)
 	READ_LOCALS(ColumnDef);
 
 	READ_STRING_FIELD(colname);
-	READ_NODE_FIELD(typename);
+	READ_NODE_FIELD(typname);
 	READ_INT_FIELD(inhcount);
 	READ_BOOL_FIELD(is_local);
 	READ_BOOL_FIELD(is_not_null);
@@ -1384,7 +1384,7 @@ _readTypeName(void)
 	READ_LOCALS(TypeName);
 
 	READ_NODE_FIELD(names);
-	READ_OID_FIELD(typeid);
+	READ_OID_FIELD(typid);
 	READ_BOOL_FIELD(timezone);
 	READ_BOOL_FIELD(setof);
 	READ_BOOL_FIELD(pct_type);
@@ -1400,7 +1400,7 @@ _readTypeCast(void)
 	READ_LOCALS(TypeCast);
 
 	READ_NODE_FIELD(arg);
-	READ_NODE_FIELD(typename);
+	READ_NODE_FIELD(typname);
 
 	READ_DONE();
 }
@@ -1587,7 +1587,7 @@ _readCreateDomainStmt(void)
 	READ_LOCALS(CreateDomainStmt);
 
 	READ_NODE_FIELD(domainname);
-	READ_NODE_FIELD(typename);
+	READ_NODE_FIELD(typname);
 	READ_NODE_FIELD(constraints);
 	READ_OID_FIELD(domainOid);
 		
@@ -1600,7 +1600,7 @@ _readAlterDomainStmt(void)
 	READ_LOCALS(AlterDomainStmt);
 
 	READ_CHAR_FIELD(subtype);
-	READ_NODE_FIELD(typename);
+	READ_NODE_FIELD(typname);
 	READ_STRING_FIELD(name);
 	READ_NODE_FIELD(def);
 	READ_ENUM_FIELD(behavior, DropBehavior);
@@ -2543,7 +2543,7 @@ parseNodeString(void)
         ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                         errmsg("This operation involves an internal data item "
                                "of a type called \"%.*s\" which is not "
-                               "supported in this version of %s.", 
+                               "supported in this version of %s.",
                                length, token, PACKAGE_NAME)
                 ));
 		return_value = NULL;	/* keep compiler quiet */

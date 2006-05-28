@@ -727,7 +727,7 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 			ListCell   *lx,
 					   *rx;
 
-			Assert(j->using == NIL);	/* shouldn't have USING() too */
+			Assert(j->usingClause == NIL);	/* shouldn't have USING() too */
 
 			foreach(lx, l_colnames)
 			{
@@ -750,7 +750,7 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 					rlist = lappend(rlist, m_name);
 			}
 
-			j->using = rlist;
+			j->usingClause = rlist;
 		}
 
 		/*
@@ -759,14 +759,14 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 		res_colnames = NIL;
 		res_colvars = NIL;
 
-		if (j->using)
+		if (j->usingClause)
 		{
 			/*
 			 * JOIN/USING (or NATURAL JOIN, as transformed above). Transform
 			 * the list into an explicit ON-condition, and generate a list of
 			 * merged result columns.
 			 */
-			List	   *ucols = j->using;
+			List	   *ucols = j->usingClause;
 			List	   *l_usingvars = NIL;
 			List	   *r_usingvars = NIL;
 			ListCell   *ucol;

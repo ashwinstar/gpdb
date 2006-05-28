@@ -152,19 +152,19 @@ DropErrorMsgNonExistent(RangeVar *rel, char rightkind, bool missing_ok)
 	for (rentry = msgstringarray; rentry->kind != '\0'; rentry++)
 	{
 		if (rentry->kind == rightkind)
-		{ 
-	        if (! missing_ok) 
-	        { 
+		{
+	        if (! missing_ok)
+	        {
 				ereport(ERROR,
 					(errcode(rentry->nonexistent_code),
 					 errmsg(rentry->nonexistent_msg, rel->relname)));
-			} 
-            else 
-            { 
-                ereport(NOTICE, (errmsg(rentry->skipping_msg, rel->relname))); 
-                break; 
-            } 
-    	} 
+			}
+            else
+            {
+                ereport(NOTICE, (errmsg(rentry->skipping_msg, rel->relname)));
+                break;
+            }
+    	}
 			
 	}
 
@@ -523,7 +523,7 @@ ProcessUtility(Node *parsetree,
 						}
 
 						/* start transaction on all QE. the false means we dont
-						 * need a BEGIN to be dispatched at this time. we'll 
+						 * need a BEGIN to be dispatched at this time. we'll
 						 * let cdbdisp figure it out.
 						 */
 						startDtxTransaction(false);
@@ -540,8 +540,8 @@ ProcessUtility(Node *parsetree,
 						else
 						{
 							/*
-							 * Remove all non-holdable portals created in this 
-							 * transaction before dispatching the COMMIT. 
+							 * Remove all non-holdable portals created in this
+							 * transaction before dispatching the COMMIT.
 							 *
 							 * NOTE: this may not be necessary anymore when we
 							 * remove the single cursor limitation. This is only
@@ -860,23 +860,23 @@ ProcessUtility(Node *parsetree,
 						 * Recursively alter column default for table and, if
 						 * requested, for descendants
 						 */
-						AlterDomainDefault(stmt->typename,
+						AlterDomainDefault(stmt->typname,
 										   stmt->def);
 						break;
 					case 'N':	/* ALTER DOMAIN DROP NOT NULL */
-						AlterDomainNotNull(stmt->typename,
+						AlterDomainNotNull(stmt->typname,
 										   false);
 						break;
 					case 'O':	/* ALTER DOMAIN SET NOT NULL */
-						AlterDomainNotNull(stmt->typename,
+						AlterDomainNotNull(stmt->typname,
 										   true);
 						break;
 					case 'C':	/* ADD CONSTRAINT */
-						AlterDomainAddConstraint(stmt->typename,
+						AlterDomainAddConstraint(stmt->typname,
 												 stmt->def);
 						break;
 					case 'X':	/* DROP CONSTRAINT */
-						AlterDomainDropConstraint(stmt->typename,
+						AlterDomainDropConstraint(stmt->typname,
 												  stmt->name,
 												  stmt->behavior);
 						break;

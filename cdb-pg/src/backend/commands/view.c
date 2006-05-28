@@ -3,6 +3,7 @@
  * view.c
  *	  use rewrite rules to construct views
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -123,13 +124,13 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 		if (!tle->resjunk)
 		{
 			ColumnDef  *def = makeNode(ColumnDef);
-			TypeName   *typename = makeNode(TypeName);
+			TypeName   *typname = makeNode(TypeName);
 
 			def->colname = pstrdup(tle->resname);
 
-			typename->typeid = exprType((Node *) tle->expr);
-			typename->typmod = exprTypmod((Node *) tle->expr);
-			def->typename = typename;
+			typname->typid = exprType((Node *) tle->expr);
+			typname->typmod = exprTypmod((Node *) tle->expr);
+			def->typname = typname;
 
 			def->inhcount = 0;
 			def->is_local = true;

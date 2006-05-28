@@ -4455,7 +4455,7 @@ flatten_set_variable_args(const char *name, List *args)
 				break;
 			case T_String:
 				val = strVal(&arg->val);
-				if (arg->typename != NULL)
+				if (arg->typname != NULL)
 				{
 					/*
 					 * Must be a ConstInterval argument for TIME ZONE. Coerce
@@ -4469,7 +4469,7 @@ flatten_set_variable_args(const char *name, List *args)
 						DirectFunctionCall3(interval_in,
 											CStringGetDatum(val),
 											ObjectIdGetDatum(InvalidOid),
-									   Int32GetDatum(arg->typename->typmod));
+									   Int32GetDatum(arg->typname->typmod));
 
 					intervalout =
 						DatumGetCString(DirectFunctionCall1(interval_out,

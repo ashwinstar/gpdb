@@ -1206,12 +1206,12 @@ expandRTE(RangeTblEntry *rte, int rtindex, int sublevels_up,
 							Var		   *varnode;
 							Oid			atttypid;
 
-							atttypid = typenameTypeId(colDef->typename);
+							atttypid = typenameTypeId(colDef->typname);
 
 							varnode = makeVar(rtindex,
 											  attnum,
 											  atttypid,
-											  colDef->typename->typmod,
+											  colDef->typname->typmod,
 											  sublevels_up);
 
 							*colvars = lappend(*colvars, varnode);
@@ -1553,8 +1553,8 @@ get_rte_attribute_type(RangeTblEntry *rte, AttrNumber attnum,
 				{
 					ColumnDef  *colDef = list_nth(rte->coldeflist, attnum - 1);
 
-					*vartype = typenameTypeId(colDef->typename);
-					*vartypmod = colDef->typename->typmod;
+					*vartype = typenameTypeId(colDef->typname);
+					*vartypmod = colDef->typname->typmod;
 				}
 				else
 				{

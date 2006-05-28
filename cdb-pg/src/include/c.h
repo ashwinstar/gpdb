@@ -44,6 +44,10 @@
 #ifndef C_H
 #define C_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * We have to include stdlib.h here because it defines many of these macros
  * on some platforms, and we only want our definitions used if stdlib.h doesn't
@@ -820,5 +824,9 @@ extern int	fdatasync(int fildes);
 
 /* /port compatibility functions */
 #include "port.h"
+
+#ifdef __cplusplus
+}   /* extern "C" */
+#endif
 
 #endif   /* C_H */

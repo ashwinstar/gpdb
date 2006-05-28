@@ -242,7 +242,7 @@ static void ATPrepAlterColumnType(List **wqueue,
 					  bool recurse, bool recursing,
 					  AlterTableCmd *cmd);
 static void ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
-					  const char *colName, TypeName *typename);
+					  const char *colName, TypeName *typname);
 static void ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab);
 static void ATPostAlterTypeParse(char *cmd, List **wqueue);
 static void ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing);
@@ -962,7 +962,7 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 			char	   *attributeName = NameStr(attribute->attname);
 			int			exist_attno;
 			ColumnDef  *def;
-			TypeName   *typename;
+			TypeName   *typname;
 
 			/*
 			 * Ignore dropped columns in the parent.
@@ -992,14 +992,14 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 						(errmsg("merging multiple inherited definitions of column \"%s\"",
 								attributeName)));
 				def = (ColumnDef *) list_nth(inhSchema, exist_attno - 1);
-				if (typenameTypeId(def->typename) != attribute->atttypid ||
-					def->typename->typmod != attribute->atttypmod)
+				if (typenameTypeId(def->typname) != attribute->atttypid ||
+					def->typname->typmod != attribute->atttypmod)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATATYPE_MISMATCH),
 						errmsg("inherited column \"%s\" has a type conflict",
 							   attributeName),
 							 errdetail("%s versus %s",
-									   TypeNameToString(def->typename),
+									   TypeNameToString(def->typname),
 									   format_type_be(attribute->atttypid))));
 				def->inhcount++;
 				/* Merge of NOT NULL constraints = OR 'em together */
@@ -1014,10 +1014,10 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 				 */
 				def = makeNode(ColumnDef);
 				def->colname = pstrdup(attributeName);
-				typename = makeNode(TypeName);
-				typename->typeid = attribute->atttypid;
-				typename->typmod = attribute->atttypmod;
-				def->typename = typename;
+				typname = makeNode(TypeName);
+				typname->typid = attribute->atttypid;
+				typname->typmod = attribute->atttypmod;
+				def->typname = typname;
 				def->inhcount = 1;
 				def->is_local = false;
 				def->is_not_null = attribute->attnotnull;
@@ -1136,15 +1136,15 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 				   (errmsg("merging column \"%s\" with inherited definition",
 						   attributeName)));
 				def = (ColumnDef *) list_nth(inhSchema, exist_attno - 1);
-				if (typenameTypeId(def->typename) != typenameTypeId(newdef->typename) ||
-					def->typename->typmod != newdef->typename->typmod)
+				if (typenameTypeId(def->typname) != typenameTypeId(newdef->typname) ||
+					def->typname->typmod != newdef->typname->typmod)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATATYPE_MISMATCH),
 							 errmsg("column \"%s\" has a type conflict",
 									attributeName),
 							 errdetail("%s versus %s",
-									   TypeNameToString(def->typename),
-									   TypeNameToString(newdef->typename))));
+									   TypeNameToString(def->typname),
+									   TypeNameToString(newdef->typname))));
 				/* Mark the column as locally defined */
 				def->is_local = true;
 				/* Merge of NOT NULL constraints = OR 'em together */
@@ -3058,8 +3058,8 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 			Form_pg_attribute childatt = (Form_pg_attribute) GETSTRUCT(tuple);
 
 			/* Okay if child matches by type */
-			if (typenameTypeId(colDef->typename) != childatt->atttypid ||
-				colDef->typename->typmod != childatt->atttypmod)
+			if (typenameTypeId(colDef->typname) != childatt->atttypid ||
+				colDef->typname->typmod != childatt->atttypmod)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
 						 errmsg("child table \"%s\" has different type for column \"%s\"",
@@ -3112,7 +3112,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 						MaxHeapAttributeNumber)));
 	i = minattnum + 1;
 
-	typeTuple = typenameType(colDef->typename);
+	typeTuple = typenameType(colDef->typname);
 	tform = (Form_pg_type) GETSTRUCT(typeTuple);
 	typeOid = HeapTupleGetOid(typeTuple);
 
@@ -3132,10 +3132,10 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	attribute->attstattarget = -1;
 	attribute->attlen = tform->typlen;
 	attribute->attcacheoff = -1;
-	attribute->atttypmod = colDef->typename->typmod;
+	attribute->atttypmod = colDef->typname->typmod;
 	attribute->attnum = i;
 	attribute->attbyval = tform->typbyval;
-	attribute->attndims = list_length(colDef->typename->arrayBounds);
+	attribute->attndims = list_length(colDef->typname->arrayBounds);
 	attribute->attstorage = tform->typstorage;
 	attribute->attalign = tform->typalign;
 	attribute->attnotnull = colDef->is_not_null;
@@ -3224,7 +3224,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 												(Node *) defval,
 												basetype,
 												typeOid,
-												colDef->typename->typmod,
+												colDef->typname->typmod,
 												COERCION_ASSIGNMENT,
 												COERCE_IMPLICIT_CAST);
 		if (defval == NULL)		/* should not happen */
@@ -4868,7 +4868,7 @@ ATPrepAlterColumnType(List **wqueue,
 					  AlterTableCmd *cmd)
 {
 	char	   *colName = cmd->name;
-	TypeName   *typename = (TypeName *) cmd->def;
+	TypeName   *typname = (TypeName *) cmd->def;
 	HeapTuple	tuple;
 	Form_pg_attribute attTup;
 	AttrNumber	attnum;
@@ -4903,12 +4903,12 @@ ATPrepAlterColumnType(List **wqueue,
 						colName)));
 
 	/* Look up the target type */
-	targettype = LookupTypeName(typename);
+	targettype = LookupTypeName(typname);
 	if (!OidIsValid(targettype))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("type \"%s\" does not exist",
-						TypeNameToString(typename))));
+						TypeNameToString(typname))));
 
 	/* make sure datatype is legal for a column */
 	CheckAttributeType(colName, targettype);
@@ -4976,14 +4976,14 @@ ATPrepAlterColumnType(List **wqueue,
 
 	transform = coerce_to_target_type(pstate,
 									  transform, exprType(transform),
-									  targettype, typename->typmod,
+									  targettype, typname->typmod,
 									  COERCION_ASSIGNMENT,
 									  COERCE_IMPLICIT_CAST);
 	if (transform == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("column \"%s\" cannot be cast to type \"%s\"",
-						colName, TypeNameToString(typename))));
+						colName, TypeNameToString(typname))));
 
 	/*
 	 * Add a work queue item to make ATRewriteTable update the column
@@ -5014,7 +5014,7 @@ ATPrepAlterColumnType(List **wqueue,
 
 static void
 ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
-					  const char *colName, TypeName *typename)
+					  const char *colName, TypeName *typname)
 {
 	HeapTuple	heapTup;
 	Form_pg_attribute attTup;
@@ -5050,7 +5050,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 						colName)));
 
 	/* Look up the target type (should not fail, since prep found it) */
-	typeTuple = typenameType(typename);
+	typeTuple = typenameType(typname);
 	tform = (Form_pg_type) GETSTRUCT(typeTuple);
 	targettype = HeapTupleGetOid(typeTuple);
 
@@ -5073,14 +5073,14 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 		defaultexpr = strip_implicit_coercions(defaultexpr);
 		defaultexpr = coerce_to_target_type(NULL,		/* no UNKNOWN params */
 										  defaultexpr, exprType(defaultexpr),
-											targettype, typename->typmod,
+											targettype, typname->typmod,
 											COERCION_ASSIGNMENT,
 											COERCE_IMPLICIT_CAST);
 		if (defaultexpr == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 			errmsg("default for column \"%s\" cannot be cast to type \"%s\"",
-				   colName, TypeNameToString(typename))));
+				   colName, TypeNameToString(typname))));
 	}
 	else
 		defaultexpr = NULL;
@@ -5290,8 +5290,8 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	 * copy of the syscache entry, so okay to scribble on.)
 	 */
 	attTup->atttypid = targettype;
-	attTup->atttypmod = typename->typmod;
-	attTup->attndims = list_length(typename->arrayBounds);
+	attTup->atttypmod = typname->typmod;
+	attTup->attndims = list_length(typname->arrayBounds);
 	attTup->attlen = tform->typlen;
 	attTup->attbyval = tform->typbyval;
 	attTup->attalign = tform->typalign;
