@@ -116,7 +116,7 @@ LookupTypeName(const TypeName *typname)
 
 		/* If an array reference, look up the array type instead */
 		if (typname->arrayBounds != NIL)
-			tname = makeArrayTypeName(typname);
+			tname = makeArrayTypeName(tname);
 
 		if (schemaname)
 		{
