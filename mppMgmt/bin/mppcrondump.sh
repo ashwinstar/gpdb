@@ -439,6 +439,8 @@ PROMPT_CONTINUE () {
 
 PROCESS_DUMP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Setting dump running flag"
+	$TOUCH $IS_RUNNING_FLAG
 	LOG_MSG "[INFO]:-Building dump command line"
 	DUMP_TEXT="$MPP_DUMP -p $MASTER_PORT -U $LOGNAME --mpp-d=${DUMP_SUB_DIR}/$CUR_DATE --mpp-r=${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/$CUR_DATE --mpp-s=i[1,`$ECHO ${DBID_LIST[@]}|$TR ' ' ','`]"		
 	if [ $COMPRESSION ];then
@@ -461,6 +463,8 @@ PROCESS_DUMP () {
 		LOG_MSG "[INFO]:-Dump process returned exit code $RETVAL"
 	fi
 	TIME_END=`$DATE +%H":"%M":"%S`
+	LOG_MSG "[INFO]:-Deleting dump running flag"
+	$RM -f $IS_RUNNING_FLAG
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
