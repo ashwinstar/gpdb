@@ -61,6 +61,7 @@ RUN_CLEAR_DUMPS=0
 CUR_HOST=`$HOSTNAME`
 VACUUM_MODE=0 # 1=run before dump starts, 2=run after dump has completed.
 TRY_COMPRESSION=0
+IS_RUNNING_FLAG=/tmp/${PROG_NAME}_is_running_flag
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -636,7 +637,7 @@ STATUS_REPORT () {
 #******************************************************************************
 # Main Section
 #******************************************************************************
-trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
+trap '$RM -f ${IS_RUNNING_FLAG};ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
 		while getopts ":v'?'ajkbiorqd:x:f:s:pmbcz" opt;do
 			case $opt in
@@ -669,6 +670,11 @@ if [ $# -ne 0 ]; then
 				* ) USAGE ;;
 				esac
 		done	
+fi
+#Check to see if we have another dump running
+if [ -f $IS_RUNNING_FLAG ];then
+	LOG_MSG "[FATAL]:-Located $IS_RUNNING_FLAG file, which indicates another dump in progress"
+	ERROR_EXIT "[FATAL]:-If dump not running delete $IS_RUNNING_FLAG and restart dump" 2
 fi
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
