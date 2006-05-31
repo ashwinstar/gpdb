@@ -106,6 +106,7 @@ typedef struct CopyStateData
 	int			client_encoding;	/* remote side's character encoding */
 	bool		need_transcoding;		/* client encoding diff from server? */
 	bool		client_only_encoding;	/* encoding not valid on server? */
+	uint64      processed;      /* # of tuples processed */
 	
 	/* parameters from the COPY command */
 	Relation	rel;			/* relation to copy to or from */
@@ -666,7 +667,7 @@ CopyGetInt16(CopyState cstate, int16 *val)
  * Do not allow the copy if user doesn't have proper permission to access
  * the table.
  */
-void
+uint64
 DoCopy(const CopyStmt *stmt)
 {		
 	CopyState	cstate;
@@ -680,6 +681,7 @@ DoCopy(const CopyStmt *stmt)
 	AclMode		required_access = (is_from ? ACL_INSERT : ACL_SELECT);
 	AclResult	aclresult;
 	ListCell   *option;
+	uint64      processed;
 
 	/* Allocate workspace and zero all fields */
 	cstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
@@ -996,6 +998,7 @@ DoCopy(const CopyStmt *stmt)
 	initStringInfo(&cstate->attribute_buf);
 	initStringInfo(&cstate->line_buf);
 	cstate->line_buf_converted = false;
+	cstate->processed = 0;
 
 	/*
 	 * Set up encoding conversion info.  Even if the client and server
@@ -1157,10 +1160,13 @@ DoCopy(const CopyStmt *stmt)
 	heap_close(cstate->rel, (is_from ? NoLock : AccessShareLock));
 
 	/* Clean up storage (probably not really necessary) */
+	processed = cstate->processed;
+
 	pfree(cstate->attribute_buf.data);
 	pfree(cstate->line_buf.data);
 	pfree(cstate);
 
+	return processed;
 }
 
 
@@ -1429,6 +1435,9 @@ CopyToExec(CopyState cstate)
 		CopySendEndOfRow(cstate);
 
 		MemoryContextSwitchTo(oldcontext);
+		
+		/* note: this counter in here is only needed for utility mode */
+		cstate->processed++;
 	}
 
 	heap_endscan(scandesc);
@@ -1651,7 +1660,7 @@ CopyToDispatch(CopyState cstate)
 		bool copy_cancel = (QueryCancelPending ? true : false);
 		
 		/* get a chunk of data rows from the QE's */
-		done = cdbCopyGetData(cdbCopy, copy_cancel);
+		done = cdbCopyGetData(cdbCopy, copy_cancel, &cstate->processed);
 		
 		/* send the chunk of data rows to destination (file or stdout) */
 		if(cdbCopy->copy_out_buf.len > 0) /* conditional is important! */
@@ -2897,7 +2906,9 @@ CopyFromDispatch(CopyState cstate)
 				 * Send data row to all databases for this segment.
 				 */
 				cdbCopySendData(cdbCopy, target_seg, cstate->line_buf.data, cstate->line_buf.len);
-
+				
+				cstate->processed++;
+				
 				if (cdbCopy->io_errors)
 				{
 					appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
@@ -3516,6 +3527,17 @@ CopyFromExec(CopyState cstate)
 
 					/* AFTER ROW INSERT Triggers */
 					//ExecARInsertTriggers(estate, resultRelInfo, tuple);
+					
+					/*
+					 * We count only tuples not suppressed by a BEFORE INSERT trigger;
+					 * this is the same definition used by execMain.c for counting
+					 * tuples inserted by an INSERT command.
+					 *
+					 * MPP: incrementing this counter here only matters for utility
+					 * mode. in dispatch mode only the dispatcher COPY collects row
+					 * count, so this counter is meaningless.
+					 */
+					cstate->processed++;
 				}
 
 				cstate->line_buf.len = 0;		/* we can reset line buffer now. */

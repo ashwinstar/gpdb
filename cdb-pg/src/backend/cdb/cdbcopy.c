@@ -237,7 +237,7 @@ cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
  * returns boolean true if done. Caller should still
  * empty the leftovers in the outbuf in that case.
  */
-bool cdbCopyGetData(CdbCopy *c, bool copy_cancel)
+bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 {
 	SegmentDatabaseDescriptor *q;
 	Gang	    *gp;
@@ -286,6 +286,9 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel)
 			{
 				/* append the data row to the data chunk */
 				appendBinaryStringInfo(&(c->copy_out_buf), buffer, nbytes);
+				
+				/* increment the rows processed counter for the end tag */
+				(*rows_processed)++;
 				
 				PQfreemem(buffer);
 			}
