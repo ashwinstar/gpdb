@@ -105,9 +105,9 @@ USAGE () {
 		$ECHO
 		$ECHO "      Crontab entry (example):"
 		$ECHO "      SHELL=/bin/bash"
-		$ECHO "      5 0 * * * . \$HOME/.bashrc;\$MPPUTIL/mppcrondump.sh -x tpch -aq >> <name of cronout file>" 
+		$ECHO "      5 0 * * * . \$HOME/.bashrc;\$MPPUTIL/mppcrondump.sh -x template1 -aq >> <name of cronout file>" 
 		$ECHO "      Set the shell to /bin/bash (default for cron is /bin/sh"
-		$ECHO "      Dump the tpch database, start process 5 minutes past midnight on a daily basis"
+		$ECHO "      Dump the template1 database, start process 5 minutes past midnight on a daily basis"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
