@@ -1619,7 +1619,10 @@ InitTempTableNamespace(void)
 				 errmsg("permission denied to create temporary tables in database \"%s\"",
 						get_database_name(MyDatabaseId))));
 
-	snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", MyBackendId);
+	if (Mpp_role == MPP_ROLE_UTILITY)
+		snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", MyBackendId);
+	else
+		snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", mpp_session_id);
 
 	namespaceId = GetSysCacheOid(NAMESPACENAME,
 								 CStringGetDatum(namespaceName),
