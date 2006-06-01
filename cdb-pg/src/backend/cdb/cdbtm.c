@@ -320,6 +320,15 @@ condCommitDtxTransaction(bool onephase)
 		/* update the tm state first, so we know the latest state of the txn */
 		updateDtxState(DTX_STATE_PREPARED);
 
+		/*
+		 * set the transaction to be prepared, so it will not be
+		 * removed before all qe finish (we must do this before we
+		 * send the "PREPARE TRANSACTION" to even one QE so that we
+		 * can properly do a "ROLLBACK PREPARED" for the case where a
+		 * prepare fails on any QE).
+		 */
+		currentGxact->infomask |= GXACT_STATUS_PERSISTENT;
+
 		/* send prepare to all RM */
 		if (execDtxCommand() != DTX_OK)
 		{
@@ -327,13 +336,6 @@ condCommitDtxTransaction(bool onephase)
 					(errmsg("Global transaction failed on command \"PREPARE TRANSACTION %s\" due to error",
 							currentGxact->gid)));
 		}
-
-		/*
-		 * set the transaction to be prepared, so it will not be removed
-		 * before all qe finish.
-		 */
-		currentGxact->infomask |= GXACT_STATUS_PERSISTENT;
-
 
 		/* send phase 2 commit to all RM */
 		updateDtxState(DTX_STATE_2P_COMMIT);
@@ -947,6 +949,7 @@ execDtxCommand(void)
 				/* ? ? ? ? ? ? Bad way to check if we 've prepared? */
 			{
 				elog(DEBUG3, "execDtxCommand about to issue a ROLLBACK command with currState = DTX_STATE_ROLLBACK");
+
 				cmd = "ROLLBACK";
 			}
 			else
@@ -971,8 +974,9 @@ execDtxCommand(void)
 	/* Something horrible happened inside our dispatch ? */
 	switch (currentGxact->state)
 	{
-		case DTX_STATE_IN_PROGRESS:
 		case DTX_STATE_PREPARED:
+			elog(DEBUG1, "encountered an error during prepare statement (%s)", cmd);
+		case DTX_STATE_IN_PROGRESS:
 		case DTX_STATE_ROLLBACK:
 		case DTX_STATE_1P_COMMIT:
 			updateDtxState(DTX_STATE_ABORT);
@@ -991,7 +995,6 @@ execDtxCommand(void)
 
 	return ret;
 }
-
 
 /* initialize a global transaction context */
 static void
