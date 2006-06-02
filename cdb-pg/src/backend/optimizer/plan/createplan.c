@@ -2512,6 +2512,10 @@ materialize_finished_plan(Plan *subplan)
 	matplan->total_cost = matpath.total_cost;
 	matplan->plan_rows = subplan->plan_rows;
 	matplan->plan_width = subplan->plan_width;
+	
+	/* MPP -- propagate dispatch method and flow */
+	matplan->dispatch = subplan->dispatch;
+	matplan->flow = copyObject(subplan->flow);
 
 	/* parameter kluge --- see comments above */
 	matplan->extParam = bms_copy(subplan->extParam);

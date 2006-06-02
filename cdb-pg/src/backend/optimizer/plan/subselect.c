@@ -308,6 +308,8 @@ make_subplan(SubLink *slink, List *lefthand, bool isTopQual)
 	node->useHashTable = false;
 	/* At top level of a qual, can treat UNKNOWN the same as FALSE */
 	node->unknownEqFalse = isTopQual;
+	node->is_initplan = false;
+	node->is_multirow = false;
 	node->setParam = NIL;
 	node->parParam = NIL;
 	node->args = NIL;
@@ -340,6 +342,7 @@ make_subplan(SubLink *slink, List *lefthand, bool isTopQual)
 
 		prm = generate_new_param(BOOLOID, -1);
 		node->setParam = list_make1_int(prm->paramid);
+		node->is_initplan = true; /* CDB: take note. */
 		PlannerInitPlan = lappend(PlannerInitPlan, node);
 		result = (Node *) prm;
 	}
@@ -352,6 +355,7 @@ make_subplan(SubLink *slink, List *lefthand, bool isTopQual)
 		prm = generate_new_param(exprType((Node *) te->expr),
 								 exprTypmod((Node *) te->expr));
 		node->setParam = list_make1_int(prm->paramid);
+		node->is_initplan = true; /* CDB: take note. */
 		PlannerInitPlan = lappend(PlannerInitPlan, node);
 		result = (Node *) prm;
 	}
@@ -368,6 +372,7 @@ make_subplan(SubLink *slink, List *lefthand, bool isTopQual)
 				 format_type_be(exprType((Node *) te->expr)));
 		prm = generate_new_param(arraytype, -1);
 		node->setParam = list_make1_int(prm->paramid);
+		node->is_initplan = true; /* CDB: take note. */
 		PlannerInitPlan = lappend(PlannerInitPlan, node);
 		result = (Node *) prm;
 	}
@@ -382,6 +387,7 @@ make_subplan(SubLink *slink, List *lefthand, bool isTopQual)
 									  0,
 									  &node->paramIds);
 		node->setParam = list_copy(node->paramIds);
+		node->is_initplan = true; /* CDB: take note. */
 		PlannerInitPlan = lappend(PlannerInitPlan, node);
 
 		/*
@@ -399,6 +405,8 @@ make_subplan(SubLink *slink, List *lefthand, bool isTopQual)
 		List	   *args;
 		ListCell   *l;
 
+		node->is_multirow = true; /* CDB: take note. */
+		
 		/*
 		 * We can't convert subplans of ALL_SUBLINK or ANY_SUBLINK types to
 		 * initPlans, even when they are uncorrelated or undirect correlated,

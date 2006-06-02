@@ -461,6 +461,10 @@ typedef struct SubPlan
 	bool		unknownEqFalse; /* TRUE if it's okay to return FALSE when the
 								 * spec result is UNKNOWN; this allows much
 								 * simpler handling of null values */
+	bool		is_initplan;	/* CDB: Is the subplan implemented as an
+								 * initplan? */
+	bool		is_multirow;	/* CDB: May the subplan return more than
+								 * one row? */
 	/* Information for passing params into and out of the subselect: */
 	/* setParam and parParam are lists of integers (param IDs) */
 	List	   *setParam;		/* initplan subqueries have to set these

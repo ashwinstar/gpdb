@@ -51,8 +51,6 @@
 typedef struct LocalProfile
 {
 	List	   *rtable;			/* The current range table. */
-	bool		finished;		/* Are we inside a finished (by the planner)
-								 * branch? */
 
 	struct LocalProfile *outerFrame;	/* The next more global context or
 										 * NULL. */
@@ -68,22 +66,16 @@ typedef struct PlanProfile
 	 * The result flags refer to relation in the result of an insert, update,
 	 * or delete
 	 */
-	bool		resultSegments;
-
-    /*
-     * True if set_plan_references() has been called and Var nodes have been
-     * adjusted to refer to items in the subplan's targetlist.  False before
-     * the end of optimization, when Var nodes refer to RTE items.
-     */
-    bool        useExecutorVarFormat;
+	bool	resultSegments;
+	
+	bool	dispatchParallel;
 
 	/* Context */
 	LocalProfile *local;
 
-	/* Message data */
-	unsigned	code;
-	const char *message;
-	const char *detail;
+	int sliceDepth;
+	
+	bool hasNonRootSubplan;
 
 }	PlanProfile;
 
@@ -92,21 +84,12 @@ typedef struct PlanProfile
 /*
  * Forward Declarations
  */
-static bool prescan(Plan *plan, PlanProfile * context);
+static void prescan(Plan *plan, PlanProfile * context);
 static bool prescan_walker(Node *node, PlanProfile * context);
 
-static void psError(PlanProfile * context, unsigned code, const char *message, const char *detail);
-static void psErrorNonce(PlanProfile * context, const char *detail);
-static void issuePsError(PlanProfile * context);
-
-static void initPlanProfile(PlanProfile * context, Query *query, bool useExecutorVarFormat);
 static void pushLocals(PlanProfile * profile, List *rtable);
 static void popLocals(PlanProfile * profile);
 static List *localRangeTable(PlanProfile * profile);
-static bool isPlanFinished(Node *node, PlanProfile * profile);
-
-static bool scanForManagedTables_walker(Node *node, PlanProfile * context);
-static bool scanForManagedTables(Plan *plan, PlanProfile *profile);
 
 static bool
 adjustPlanFlow(Plan        *plan,
@@ -171,55 +154,82 @@ cdbparallelize(Plan *plan,
 			   bool uses_correlation
 )
 {
-	PlanProfile profile;		
 	int			nParamExec;
+	PlanProfile profile;
+	PlanProfile *context = &profile;
 	
-	if ( Mpp_role != MPP_ROLE_DISPATCH )
+	/* Make sure we're called correctly (and need to be called).  */
+	switch ( Mpp_role )
 	{
+	case MPP_ROLE_DISPATCH:
+		break;
+	case MPP_ROLE_UTILITY:
 		return plan;
+	case MPP_ROLE_EXECUTE:
+	case MPP_ROLE_UNDEFINED:
+		Insist(0);
 	}
-
 	Assert(is_plan_node((Node *) plan));
-	/*
-     * Print plan if debugging.
-     */
+	Assert(query != NULL && IsA(query, Query));
+	
+	/* Print plan if debugging. */
 	if (Debug_print_prelim_plan)
 		elog_node_display(DEBUG1, "preliminary plan", plan, Debug_pretty_print);
 
 
-	Assert(query != NULL && IsA(query, Query));
 
-	/* If the plan is already marked sequential, just return it. */
-	if (plan->dispatch == DISPATCH_SEQUENTIAL)
-		return plan;
+    /* Initialize the PlanProfile result ... */
+	context->resultSegments = false;
+	context->hasNonRootSubplan = false;
 
-    /* Initialize the PlanProfile result. */
-    initPlanProfile(&profile, query, true);
+	context->local = NULL;
+	pushLocals(context, query->rtable);
 
-	/*
-	 * Do a quick walk of the plan to see whether it references any managed
-	 * tables.	If not, we don't need to parallelize it.
-	 */
-	if (!scanForManagedTables(plan, &profile))
+	switch (query->commandType)
 	{
-		plan->dispatch = DISPATCH_SEQUENTIAL;
-		return plan;
+		case CMD_SELECT:
+			break;
+
+		case CMD_INSERT:
+		case CMD_UPDATE:
+		case CMD_DELETE:
+			{
+				/* Since this is a data modification command, we need to
+				 * include information about the result relation in the 
+				 * summary of relations touched. */
+				Oid			reloid;
+                Relation    relation;
+				MppPolicy  *policy = NULL;
+
+                /* Get Oid of target relation. */
+                Insist(query->resultRelation > 0 &&
+				       query->resultRelation <= list_length(localRangeTable(context)));
+				reloid = getrelid(query->resultRelation, localRangeTable(context));
+
+                /* Get a copy of the rel's MppPolicy from the relcache. */
+                relation = relation_open(reloid, NoLock);
+                policy = RelationGetPartitioningKey(relation);
+                relation_close(relation, NoLock);
+
+                /* Tell caller if target rel is distributed. */
+				if (policy &&
+                    policy->ptype == POLICYTYPE_PARTITIONED)
+					context->resultSegments = true;
+
+                if (policy)
+				    pfree(policy);	
+			}
+			break;
+
+		default:
+            Insist(0);
 	}
+
+
+	/* We need to keep track of whether any part of the plan needs to be
+	 * dispatched in parallel. */
+	context->dispatchParallel = context->resultSegments;
 	
-	/*
-	 * The plan refers to managed tables, so we can't allow it to use
-	 * correlation.  (This may be more severe that necessary, however,
-	 * we haven't done the work to discover "safe" uses, so we just
-	 * disallow them all.)
-	 */
-	if ( uses_correlation )
-	{
-		ereport(ERROR, (
-				errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-				errmsg("Correlated subqueries not yet supported.")
-		));
-	}
-
 	/* Save the global count of PARAM_EXEC from the top plan node. */
 	nParamExec = plan->nParamExec;
 
@@ -228,14 +238,40 @@ cdbparallelize(Plan *plan,
 	 * describe how to parallelize the plan.  We also accumulate summary
 	 * information in the profile stucture.
 	 */
-	if (!prescan(plan, &profile))
-		issuePsError(&profile);
+	prescan(plan, context);
+	
+	if ( context->dispatchParallel )
+	{
+		const char *notyet="Bizgres MPP does not yet support that query.";
+		
+		if ( uses_correlation )
+		{
+			ereport(ERROR, (
+					errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+					errmsg(notyet),
+					errdetail("The query contains a correlated subquery.")
+			));
+		}
+		else if ( context->hasNonRootSubplan )
+		{
+			ereport(ERROR, (
+					errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+					errmsg(notyet),
+					errdetail("The query contains a multi-row subquery.")
+			));
+		}
+		
+		/* From this point on, since part of plan is parallel, we have to
+		 * regard the whole plan as parallel. */
+		plan->dispatch = DISPATCH_PARALLEL;
 
-	/*
-	 * Implement the parallelizing directions in the attached flows.
-	 */
-	plan = apply_motion(plan, query);
-	plan->dispatch = DISPATCH_PARALLEL;
+		/*
+		 * Implement the parallelizing directions in the Flow nodes attached
+		 * to the root plan node of each root slice of the plan.
+		 */
+		plan = apply_motion(plan, query);
+	}
+
 
 	/* Restore the global count of PARAM_EXEC from the top plan node. */
 	plan->nParamExec = nParamExec;
@@ -246,59 +282,46 @@ cdbparallelize(Plan *plan,
 
 /* ----------------------------------------------------------------------- *
  * Functions prescan() and prescan_walker() use the plan_tree_walker()
- * framework to visit the nodes of a plan tree to be parallelized and
- * add flow information to the leaves for later use.  The walker may
- * also choose to exit with an error, usually to report an unsupported
- * feature used in the plan tree or an unexpected problem.
+ * framework to visit the nodes of the plan tree in order to check for 
+ * unsupported usages and collect information for use in finalizing the 
+ * plan.  The walker exits with an error only due an unexpected problems.
  *
  * The plan and query arguments should not be null.
- *
- * Returns true if the scan results in a parallelization strategy or
- * no parallelization is required;	false otherwise.
- *
- * In case the result is false, the caller should issue an error.
  * ----------------------------------------------------------------------- *
  */
-bool
+void
 prescan(Plan *plan, PlanProfile * context)
 {
-	return !prescan_walker((Node *) plan, context);
+	if ( prescan_walker((Node *) plan, context) )
+	{
+		Insist(0);
+	}
 }
-
 
 /*
  * Function prescan_walker is the workhorse of prescan.
  *
- * The driving function, prescan(), should be called only once on the
- * sequential plan produced by the the Postgres optimizer.	In particular,
- * this function assumes it will see a tree will no Flow nodes or Motion
- * nodes in it.  It will add Flow nodes which, in turn, will specify
- * where Motion nodes should go.
+ * The driving function, prescan(), should be called only once on a
+ * plan produced by the MPP optimizer for dispatch on the QD.  There
+ * are two main task performed:
  *
- * The general pattern for assigning flows to plan nodes is to examine
- * leaf nodes (scans) and assign them a flow prior to descending into
- * children (expressions), and to descend into children of interior
- * nodes (in order to assign their children's flows) before examining
- * them and assigning their flows.
+ * 1. Since the optimizer isn't in a position to view plan globally, 
+ *    it may generate plans that we can't execute.  This function is
+ *    responsible for detecting potential problem usages:
  *
- * This means that child (lefttree, righttree, etc)  Plan nodes of the
- * current Plan node (the one under investigation) will have had their
- * Flow nodes assigned already while the current Plan node will not.
- * Note, however, that the child plans may have their Flow nodes adjusted,
- * to meet the requirements of the current node.
+ *    Example: Non-initplan subplans are legal in sequential contexts
+ *    but not in parallel contexs.
+ *
+ * 2. The function specifies (by marking Flow nodes) what (if any) 
+ *    motions need to be applied to initplans prior to dispatch.  
+ *    As in the case of the main plan, the actual Motion node is 
+ *    attached later.
  */
 bool
 prescan_walker(Node *node, PlanProfile * context)
 {
-	bool		finished;
-	bool		parent_finished;
-	const char *detail = NULL;
-
 	if (node == NULL)
 		return false;
-
-	parent_finished = context->local->finished;
-	finished = parent_finished || isPlanFinished(node, context);
 
 	switch (nodeTag(node))
 	{
@@ -307,13 +330,10 @@ prescan_walker(Node *node, PlanProfile * context)
 			/*
 			 * A SubPlan node is not a Plan node, but an Expr node that
 			 * contains a Plan and its range table.  It corresponds to a
-			 * SubLink in the query tree (a SQL subquery expression) or a plan
-			 * in an initplan list.
-			 *
-			 * TODO Add support for multirow and correlated subqueries. Will this
-			 * require additional context to distinguish "in an initPlan" from
-			 * "in an ordinary expression"?
+			 * SubLink in the query tree (a SQL subquery expression) and
+			 * may occur in an expression or an initplan list.
 			 */
+
 			{
 				/*
 				 * SubPlans establish a local state for the contained plan,
@@ -321,47 +341,27 @@ prescan_walker(Node *node, PlanProfile * context)
 				 */
 				SubPlan    *subplan = (SubPlan *) node;
 
-				/* Nip processing of correlated subquery in the bud. */
-				if (subplan->parParam != NIL || subplan->args != NIL)
-				{
-					detail = "Query involves a correlated subquery.";
-					break;		/* Fall thru to error. */
-				}
-
 				/*
-				 * We're not ready to dispatch multirow subqueries (which
-				 * would be embeded in plans) yet, so cut them off.
-				 *
-				 * TODO Verify that noncorrelated,	single row subqueries will be
-				 * pull off into initPlans, which is all we're ready for.
+				 * Note subqueries that have not been pulled off into 
+				 * initPlans.  We're not ready for these yet.
 				 */
-				if (!(subplan->subLinkType == EXISTS_SUBLINK
-					  || subplan->subLinkType == MULTIEXPR_SUBLINK
-					  || subplan->subLinkType == EXPR_SUBLINK)
-					)
+				if ( subplan->is_multirow || ! subplan->is_initplan )
 				{
-					detail = "Query involves multi-row subquery expression.";
-					break;		/* Fall thru to error. */
+					context->hasNonRootSubplan = TRUE;
 				}
 
 				/* Recur into the exprs list (as usual). */
 				if (expression_tree_walker((Node *) subplan->exprs, prescan_walker, context))
-					goto return_true;
+					return true;
 
 				/*
-				 * Set local state for the subplan.  This has two effects. The
-				 * local state now has the new rangetable.	Also, the
-				 * "finished" indicator is cleared, so that when we recur to
-				 * parallelize the plan in the SubPlan expression, we will
-				 * make a fresh determination of how to interpret the plan: as
-				 * sequential or as already parallel (down to the next level
-				 * of SubPlan).
+				 * Set local state for the subplan to the new rangetable.
 				 */
 				pushLocals(context, subplan->rtable);
 
 				/* Parallelize the subplan.  */
 				if (prescan_walker((Node *) subplan->plan, context))
-					goto return_true;
+					return true;
 
                 Assert(subplan->plan->flow &&
                        subplan->plan->flow->flotype != FLOW_UNDEFINED);
@@ -377,40 +377,49 @@ prescan_walker(Node *node, PlanProfile * context)
 				popLocals(context);
 
 				/* Recur into the args list. */
-				if (expression_tree_walker((Node *) subplan->args, prescan_walker, context))
-					goto return_true;
+				return expression_tree_walker((Node *) subplan->args, prescan_walker, context);
 			}
-			goto return_false;
 
 		case T_Flow:
-
 			/*
 			 * Since this function is where Flow nodes are generated, we can't
 			 * rely on this case to see them all.  Instead we handle them as
 			 * they are created.
 			 */
-			goto return_false;
+			return false;
+
+		case T_Motion:			
+			context->dispatchParallel = TRUE;
+			context->sliceDepth++;
+			
+			if (plan_tree_walker(node, prescan_walker, context))
+				return true;
+				
+			context->sliceDepth--;
+			return false;
 
 		case T_SeqScan:
 		case T_IndexScan:
 		case T_BitmapIndexScan:
 		case T_BitmapHeapScan:
 		case T_TidScan:
+			{
+				Plan	   *plan = (Plan *) node;
+				
+				if ( plan->dispatch == DISPATCH_PARALLEL )
+					context->dispatchParallel = TRUE;
+					
+				return plan_tree_walker(node, prescan_walker, context);
+
 		case T_FunctionScan:
 		case T_NestLoop:
 		case T_MergeJoin:
 		case T_HashJoin:
 		case T_Hash:
-		case T_Motion:
-
 			/*
-			 * Node is part of a finished plan produced by the planner. Keep
-			 * walking in search of subqueries with unfinished plans.
+			 * Keep walking in search of subqueries with unfinished plans.
 			 */
-			Assert(finished);
-			if (plan_tree_walker(node, prescan_walker, context))
-				goto return_true;
-			goto return_false;
+			return plan_tree_walker(node, prescan_walker, context);
 
 		case T_SubqueryScan:
 
@@ -448,17 +457,15 @@ prescan_walker(Node *node, PlanProfile * context)
 
 				/*
 				 * The subplan uses the range table of the Query node
-				 * atttached to the subquery RTE. Also, the local context
+				 * attached to the subquery RTE. Also, the local context
 				 * forces reexamination of the contained query.
 				 */
 				pushLocals(context, rte->subquery->rtable);
 				if (prescan_walker((Node *) subplan, context))
-					goto return_true;
+					return true;
 				popLocals(context);
-
-				Assert(finished);
 				
-				goto return_false;
+				 return false;
 			}
 			break;				/* Fall through to report error. */
 
@@ -472,84 +479,18 @@ prescan_walker(Node *node, PlanProfile * context)
 		case T_Agg:
 		case T_Group:
 		case T_Limit:
-			/* First prescan children */
-			if (plan_tree_walker(node, prescan_walker, context))
-				goto return_true;
-			
-			Assert(finished); 
-			goto return_false;
-
 		default:
-			/* Let plan_tree_walker() deal with other node types. */
-			if (plan_tree_walker(node, prescan_walker, context))
-				goto return_true;
-			goto return_false;
-
+			return plan_tree_walker(node, prescan_walker, context);
 	}
 
 	/*
-	 * Breaking out of the above switch will setup an error report with
-	 * whatever detail was set above.
+	 * Breaking out of the above switch indicates an error report.
 	 */
-	psErrorNonce(context, detail);
-
-return_true:
-	context->local->finished = parent_finished;
-	return true;
-return_false:
-	context->local->finished = parent_finished;
-	return false;
-}
-
-
-/*
- * Helper for prescan() -- Write error info into a PlanProfile.
- */
-void
-psError(PlanProfile * context,
-		unsigned code,
-		const char *message,
-		const char *detail)
-{
-	context->code = code;
-	context->message = message;
-	context->detail = detail;
-}
-
-
-/*
- * Helper for prescan() -- Write error info into a PlanProfile.
- */
-void
-psErrorNonce(PlanProfile * context, const char *detail)
-{
-	context->code = ERRCODE_CDB_FEATURE_NOT_YET;
-	context->message = "Cannot parallelize that query yet.";
-	context->detail = detail;
-}
-
-/*
- * Helper for prescan() -- Issue the error specified in a PlanProfile.
- */
-void
-issuePsError(PlanProfile * context)
-{
-	if (context->detail != NULL)
-	{
-		ereport(ERROR, (
-						errcode(context->code),
-						errmsg(context->message),
-						errdetail(context->detail)
-						));
+	ereport(ERROR, (
+			errcode(ERRCODE_MPP_INTERNAL_ERROR),
+			errmsg("Unexpected error post-processing plan.")
+		));
 	}
-	else
-	{
-		ereport(ERROR, (
-						errcode(context->code),
-						errmsg(context->message)
-						));
-	}
-	Insist(0);				/* Never return */
 }
 
 
@@ -680,220 +621,12 @@ is_plan_node(Node *node)
 }
 
 
-/* ----------------------------------------------------------------------- *
- * Functions scanForManagedTables() and scanForManagedTables_walker()
- * use the plan_tree_walk() framework to visit the nodes of a plan tree
- * to see if there are any managed tables referenced in any of the
- * plan scan nodes.
- *
- * The plan and query arguments should not be null.
- *
- * Returns true if the there exists at least one managed table referenced
- * by the Plan, false otherwise.
- *
- * If an error is encountered, an ereport is issued directly.
- *
- * The purpose of scanForManagedTables is to do a quick scan to see whether
- * there are no managed tables, in which case we can skip the parallelization
- * step.  Without this, we may generate errors during  parallelization that
- * will erroneously prevent catalog queries from running.
- * ----------------------------------------------------------------------- *
- */
-bool
-scanForManagedTables(Plan *plan, PlanProfile *profile)
-{
-	/* initPlanProfile may have already found a managed table. */
-	if (profile->resultSegments)
-		return true;
-
-	return scanForManagedTables_walker((Node *) plan, profile);
-}
-
-
-/*
- * Function scanForManagedTables_walker() is the recursive core of
- * scanForManagedTables(). It is mainly interested in SeqScans, TidScans,
- * and Index Scans since these are the nodes that reference base relations.
- * For these, it
- * - gets the relid of the scan,
- * - gets the RangeTableEntry from the context rtable,
- * - gets the oid of the relation in the scan,
- * - calls get_table_policy to see whether this oid represents a
- *	 managed table.
- *
- * If so, we can exit the walk by returning true, otherwise we use the
- * plan_walker framework to walk the appropriate child nodes.
- *
- * The other node type of interest SubPlan, since this changes the current
- * range table.
- *
- * For nodes other than these, we just use plan_walker to walk the appropriate
- * child nodes.
- *
- * This walker uses the same PlanProfile structure as prescan_walker().
- * The only information we use from context PlanProfile is the current
- * range table.
- *
- */
-bool
-scanForManagedTables_walker(Node *node, PlanProfile * context)
-{
-	if (node == NULL)
-		return false;
-
-	switch (nodeTag(node))
-	{
-		case T_Motion:
-			return true;
-
-		case T_SeqScan:
-		case T_TidScan:
-		case T_IndexScan:
-		case T_BitmapIndexScan:
-		case T_BitmapHeapScan:
-			{
-				Plan	   *plan = (Plan *) node;
-
-				if (plan->dispatch == DISPATCH_PARALLEL)
-					return true;
-			}
-			return false;
-
-		case T_SubqueryScan:
-			{
-				/*
-				 * SubqueryScans have their own range table.  (See
-				 * ExecInitSubqueryScan for details.) We save the current
-				 * range table, substitute the SubqueryScan's range table in
-				 * the context before we descend into the fields of the
-				 * SubqueryScan and then put the original one back.
-				 */
-                RangeTblEntry  *rte;
-				Scan	       *scan = (Scan *)node;
-				Index		    rtindex = scan->scanrelid;
-                bool            done;
-
-				rte = rt_fetch(rtindex, localRangeTable(context));
-				Assert(rte->rtekind == RTE_SUBQUERY);
-
-				pushLocals(context, rte->subquery->rtable);
-				done = plan_tree_walker(node, scanForManagedTables_walker, context);
-				popLocals(context);
-
-                return done;
-			}
-
-		case T_SubPlan:
-			{
-				/*
-				 * SubPlans establish a local state for the contained plan,
-				 * notably the range table.
-				 */
-				SubPlan    *subplan = (SubPlan *) node;
-                bool        done;
-
-				/* Recur into the exprs list (as usual). */
-				if (expression_tree_walker((Node *) subplan->exprs, scanForManagedTables_walker, context))
-					return true;
-
-				/* Walk the subplan. */
-                pushLocals(context, subplan->rtable);
-				done = scanForManagedTables_walker((Node *) subplan->plan, context);
-				popLocals(context);
-
-                if (done)
-                    return true;
-
-                /* Recur into the args list. */
-				if (expression_tree_walker((Node *) subplan->args, scanForManagedTables_walker, context))
-					return true;
-			}
-			return false;
-
-		default:
-			/* Let plan_tree_walker() deal with other node types. */
-			break;
-
-	}
-
-	return plan_tree_walker(node, scanForManagedTables_walker, context);
-}
-
-/*
- * initPlanProfile
- * initializes the PlanProfile struct fields
- * and checks to see whether there is a result relation
- * (for an insert, update, or delete statement)
- * and if so, includes it in the summary of relations touched.
- */
-void
-initPlanProfile(PlanProfile * context, Query *query, bool useExecutorVarFormat)
-{
-	Assert(context != NULL);
-
-	context->resultSegments = false;
-    context->useExecutorVarFormat = useExecutorVarFormat;
-
-	/* Initialize the current range table. */
-	context->local = NULL;
-	pushLocals(context, query->rtable);
-
-	switch (query->commandType)
-	{
-		case CMD_SELECT:
-			break;
-
-		case CMD_INSERT:
-		case CMD_UPDATE:
-		case CMD_DELETE:
-			{
-				/*
-				 * Since this is a data modification command, include the
-				 * result relation in the summary of relations touched.
-				 */
-				Oid			reloid;
-                Relation    relation;
-				MppPolicy  *policy = NULL;
-
-                /* Get Oid of target relation. */
-                Insist(query->resultRelation > 0 &&
-				       query->resultRelation <= list_length(localRangeTable(context)));
-				reloid = getrelid(query->resultRelation, localRangeTable(context));
-
-                /* Get a copy of the rel's MppPolicy from the relcache. */
-                relation = relation_open(reloid, NoLock);
-                policy = RelationGetPartitioningKey(relation);
-                relation_close(relation, NoLock);
-
-                /* Tell caller if target rel is distributed. */
-				if (policy &&
-                    policy->ptype == POLICYTYPE_PARTITIONED)
-					context->resultSegments = true;
-
-                if (policy)
-				    pfree(policy);	
-			}
-			break;
-
-		default:
-            Insist(0);
-	}
-
-	/*
-	 * Initialize the error fields of the context, in case some failure
-	 * in the prescan neglects to set them.
-	 */
-	psError(context, ERRCODE_INTERNAL_ERROR,
-			"Unexpected failure parallelizing query.", NULL);
-}
-
 void
 pushLocals(PlanProfile * profile, List *rtable)
 {
     LocalProfile *newlocal = palloc(sizeof(LocalProfile));
 
 	newlocal->rtable = rtable;
-	newlocal->finished = false;
 	newlocal->outerFrame = profile->local;
 
     profile->local = newlocal;
@@ -917,26 +650,6 @@ localRangeTable(PlanProfile * profile)
 	if (profile->local == NULL)
 		return NIL;
 	return profile->local->rtable;
-}
-
-/* Has the plan in context at the given node been parallelized yet?
- * The node argument is only interesting if it's a Plan node and the
- * the context so far indicated "unfinished" in which case we check
- * for evidence of "finished" and update the context:
- *
- * - If the node has a defined Flow,  the branch must be finished.
- */
-bool
-isPlanFinished(Node *node, PlanProfile * profile)
-{
-	if (is_plan_node(node) && !profile->local->finished)
-	{
-		Plan	   *plan = (Plan *) node;
-
-		profile->local->finished = plan->flow != NULL &&
-                                   plan->flow->flotype != FLOW_UNDEFINED;
-	}
-	return profile->local->finished;
 }
 
 /* Functions focusPlan, broadcastPlan, and repartitionPlan annotate the top
@@ -1077,7 +790,7 @@ adjustPlanFlow(Plan        *plan,
             break;
     }
 
-    /*---------------
+    /*
 	 * Decide whether to push the request further down the plan tree and
 	 * possibly remove restrictions.
 	 */
@@ -1128,7 +841,7 @@ adjustPlanFlow(Plan        *plan,
 			break;
 	}
 
-    /*---------------
+    /*
      * Push motion down to a descendant of this node (= upstream).
      */
     if (recur)
@@ -1157,6 +870,7 @@ adjustPlanFlow(Plan        *plan,
         flow->flotype = kidflow->flotype;
         flow->segindex = kidflow->segindex;
         flow->hashExpr = copyObject(kidflow->hashExpr);
+		plan->dispatch = plan->lefttree->dispatch;
 
         /* Zap sort cols if motion has destroyed the ordering. */
         if (disorder && !reorder)
@@ -1169,7 +883,7 @@ adjustPlanFlow(Plan        *plan,
 		return true;  /* success */
 	}
 
-	/*---------------
+	/*
      * The buck stops here.  We have arrived at the node whose output is
      * to be moved.  Return false if can't do the motion as requested.
      */
@@ -1237,8 +951,10 @@ adjustPlanFlow(Plan        *plan,
         flow->sortColIdx = NULL;
         flow->sortOperators = NULL;
     }
+	
+	/* Since we added Motion, dispatch must be parallel. */
+	plan->dispatch = DISPATCH_PARALLEL;
 
     return true;                /* success */
 }                               /* adjustPlanFlow */
-
 

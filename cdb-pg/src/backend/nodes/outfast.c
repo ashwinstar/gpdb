@@ -849,6 +849,8 @@ _outSubPlan(StringInfo str, SubPlan *node)
 	WRITE_NODE_FIELD(rtable);
 	WRITE_BOOL_FIELD(useHashTable);
 	WRITE_BOOL_FIELD(unknownEqFalse);
+	WRITE_BOOL_FIELD(is_initplan); /*CDB*/
+	WRITE_BOOL_FIELD(is_multirow); /*CDB*/
 	WRITE_NODE_FIELD(setParam);
 	WRITE_NODE_FIELD(parParam);
 	WRITE_NODE_FIELD(args);

@@ -419,6 +419,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 
     /* Descending into a subquery or a new slice? */
     saveSliceDepth = context->sliceDepth;
+	Assert( !IsA(node,Query) ); /* TODO validate that following test is vestigial. */
     if (IsA(node, Query))
         context->sliceDepth = 0;
     else if (IsA(node, Motion))
@@ -488,7 +489,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 
     /*
      * If no Flow node, we're in a portion of the tree that was
-     * finished by the planner.
+     * finished by the planner and contains no Motion nodes.
      */
     if (!flow)
         goto done;
@@ -681,6 +682,7 @@ make_motion(Plan       *lefttree,
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
+	plan->dispatch = DISPATCH_PARALLEL;
 
 	node->motionType = motionType;
 	node->sendToSecondary = sendToSecondary;

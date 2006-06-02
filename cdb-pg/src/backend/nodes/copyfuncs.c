@@ -935,6 +935,8 @@ _copySubPlan(SubPlan *from)
 	COPY_NODE_FIELD(rtable);
 	COPY_SCALAR_FIELD(useHashTable);
 	COPY_SCALAR_FIELD(unknownEqFalse);
+	COPY_SCALAR_FIELD(is_initplan);	/*CDB*/
+	COPY_SCALAR_FIELD(is_multirow);	/*CDB*/
 	COPY_NODE_FIELD(setParam);
 	COPY_NODE_FIELD(parParam);
 	COPY_NODE_FIELD(args);
