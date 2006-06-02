@@ -669,7 +669,7 @@ GET_PG_PID_ACTIVE () {
 		HOST=$1
 		if [ x"" == x"$HOST" ];then
 			PG_LOCK_FILE=`$NETSTAT -an|$GREP ".s.PGSQL.${PORT}"|$AWK '{print $NF}'|$HEAD -1`
-			if [ x"" == "$PG_LOCK_FILE" ];then
+			if [ x"" == x"$PG_LOCK_FILE" ];then
 				PID=0
 				LOG_MSG "[INFO]:-No socket connection found for port=${PORT}"
 			else
