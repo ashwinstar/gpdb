@@ -566,7 +566,7 @@ buildGangDefinition(GangType type, int size, int content)
 				}
 				else
 				{
-					elog(PANIC, "building Gang:  No primary segdb found, both primary and mirror segdb could be down !!!!");
+					elog(PANIC, "building Gang: Primary and mirror both unavailable for segment %d", p->segindex);
 					continue;
 				}
 			}
