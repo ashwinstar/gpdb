@@ -89,6 +89,8 @@ USAGE () {
 		$ECHO "      -r, Restart MPP instance after successful mppstop.sh."
 		$ECHO "      -m, Stop master instance started in maintenance mode"
 		$ECHO "      -y, Do not stop master standby process [Default stop standby process]"
+		$ECHO "      -u, upload new master postgresql.conf settings, does not stop MPP array,"
+		$ECHO "          issues a signal to the master segment postmaster process to reload"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -291,6 +293,11 @@ STOP_STANDBY_SERVER () {
 		LOG_MSG "[INFO]:-No standby master host configured"
 	fi
 }
+RELOAD_PSQL_PARAM () {
+	LOG_MSG "[INFO]:-Signalling Master postmaster process to reload"
+	$PG_CTL reload -D $MASTER_DATA_DIRECTORY 
+	ERROR_CHK $? "signal master postmaster process" 1
+}
 
 #******************************************************************************
 # Main Section
@@ -299,12 +306,13 @@ trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 #Check to see if we have a parameter supplied to script
 if [ $# -ne 0 ]; then
 		##MPP	while getopts ":viskft'?'aqnml:d:" opt;do
-		while getopts ":vyrmiskzft'?'aqbnl:d:" opt;do
+		while getopts ":vuyrmiskzft'?'aqbnl:d:" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						i ) MODE=immediate ;;
 						s ) MODE=smart ;;
 						f ) MODE=fast ;;
+						u ) RELOAD_PARAM=1 ;;
 						t ) DISPLAY_PARAM ;;
 						'?' ) USAGE ;;
 						d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
@@ -342,6 +350,11 @@ READ_CHK
 if [ $ADMIN -eq 1 ] || [ $READ_COUNT -ne 0 ]; then
 		STOP_ADMIN
 		exit
+fi
+if [ x"" != x"$RELOAD_PARAM" ];then
+	RELOAD_PSQL_PARAM
+	LOG_MSG "[INFO]:-End Main"
+	exit
 fi
 GET_QE_DETAILS
 if [ $INTERACTIVE ]; then
