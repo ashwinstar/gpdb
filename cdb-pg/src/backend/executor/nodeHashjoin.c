@@ -3,7 +3,7 @@
  * nodeHashjoin.c
  *	  Routines to handle hash join nodes
  *
- * Portions Copyright (c) 2005, greenplum inc 
+ * Portions Copyright (c) 2005-2006, greenplum inc 
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -53,7 +53,6 @@ ExecHashJoin(HashJoinState *node)
 	List	   *otherqual;
 	TupleTableSlot *inntuple;
 	ExprContext *econtext;
-	ExprDoneCond isDone;
 	HashJoinTable hashtable;
 	HeapTuple	curtuple;
 	TupleTableSlot *outerTupleSlot;
@@ -74,22 +73,6 @@ ExecHashJoin(HashJoinState *node)
 	 */
 	hashtable = node->hj_HashTable;
 	econtext = node->js.ps.ps_ExprContext;
-
-	/*
-	 * Check to see if we're still projecting out tuples from a previous join
-	 * tuple (because there is a function-returning-set in the projection
-	 * expressions).  If so, try to project another one.
-	 */
-	if (node->js.ps.ps_TupFromTlist)
-	{
-		TupleTableSlot *result;
-
-		result = ExecProject(node->js.ps.ps_ProjInfo, &isDone);
-		if (isDone == ExprMultipleResult)
-			return result;
-		/* Done with that source tuple... */
-		node->js.ps.ps_TupFromTlist = false;
-	}
 
 	/*
 	 * If we're doing an IN join, we want to return at most one row per outer
@@ -276,18 +259,7 @@ ExecHashJoin(HashJoinState *node)
 				node->hj_MatchedOuter = true;
 
 				if (otherqual == NIL || ExecQual(otherqual, econtext, false))
-				{
-					TupleTableSlot *result;
-
-					result = ExecProject(node->js.ps.ps_ProjInfo, &isDone);
-
-					if (isDone != ExprEndResult)
-					{
-						node->js.ps.ps_TupFromTlist =
-							(isDone == ExprMultipleResult);
-						return result;
-					}
-				}
+					return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 
 				/*
 				 * If we didn't return a tuple, may need to set NeedNewOuter
@@ -318,22 +290,7 @@ ExecHashJoin(HashJoinState *node)
 			econtext->ecxt_innertuple = node->hj_NullInnerTupleSlot;
 
 			if (ExecQual(otherqual, econtext, false))
-			{
-				/*
-				 * qualification was satisfied so we project and return the
-				 * slot containing the result tuple using ExecProject().
-				 */
-				TupleTableSlot *result;
-
-				result = ExecProject(node->js.ps.ps_ProjInfo, &isDone);
-
-				if (isDone != ExprEndResult)
-				{
-					node->js.ps.ps_TupFromTlist =
-						(isDone == ExprMultipleResult);
-					return result;
-				}
-			}
+				return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 		}
 	}
 }
@@ -487,7 +444,6 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	((HashState *) innerPlanState(hjstate))->hashkeys = rclauses;
 
 	hjstate->js.ps.ps_OuterTupleSlot = NULL;
-	hjstate->js.ps.ps_TupFromTlist = false;
 	hjstate->hj_NeedNewOuter = true;
 	hjstate->hj_MatchedOuter = false;
 	hjstate->hj_OuterNotEmpty = false;
@@ -885,7 +841,6 @@ ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 	node->hj_CurTuple = NULL;
 
 	node->js.ps.ps_OuterTupleSlot = NULL;
-	node->js.ps.ps_TupFromTlist = false;
 	node->hj_NeedNewOuter = true;
 	node->hj_MatchedOuter = false;
 	node->hj_FirstOuterTupleSlot = NULL;

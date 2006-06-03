@@ -102,13 +102,13 @@ ExecResult(ResultState *node)
 	 * tuple (because there is a function-returning-set in the projection
 	 * expressions).  If so, try to project another one.
 	 */
-	if (node->ps.ps_TupFromTlist)
+	if (node->rs_TupFromTlist)
 	{
 		resultSlot = ExecProject(node->ps.ps_ProjInfo, &isDone);
 		if (isDone == ExprMultipleResult)
 			return resultSlot;
 		/* Done with that source tuple... */
-		node->ps.ps_TupFromTlist = false;
+		node->rs_TupFromTlist = false;
 	}
 
 	/*
@@ -164,7 +164,7 @@ ExecResult(ResultState *node)
 
 		if (isDone != ExprEndResult)
 		{
-			node->ps.ps_TupFromTlist = (isDone == ExprMultipleResult);
+			node->rs_TupFromTlist = (isDone == ExprMultipleResult);
 			return resultSlot;
 		}
 	}
@@ -279,7 +279,7 @@ void
 ExecReScanResult(ResultState *node, ExprContext *exprCtxt)
 {
 	node->rs_done = false;
-	node->ps.ps_TupFromTlist = false;
+	node->rs_TupFromTlist = false;
 	node->rs_checkqual = (node->resconstantqual == NULL) ? false : true;
 
 	/*

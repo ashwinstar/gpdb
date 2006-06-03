@@ -7,6 +7,7 @@
  * we need two sets of code.  Ought to look at trying to unify the cases.
  *
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -208,8 +209,6 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	subquerystate->subplan = ExecInitNode(node->subplan, sp_estate, eflags);
 
 	MemoryContextSwitchTo(oldcontext);
-
-	subquerystate->ss.ps.ps_TupFromTlist = false;
 
 	/*
 	 * Initialize scan tuple type (needed by ExecAssignScanProjectionInfo)

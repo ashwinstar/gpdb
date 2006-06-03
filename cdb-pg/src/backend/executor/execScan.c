@@ -7,6 +7,7 @@
  *	  stuff - checking the qualification and projecting the tuple
  *	  appropriately.
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -51,8 +52,6 @@ ExecScan(ScanState *node,
 	ExprContext *econtext;
 	List	   *qual;
 	ProjectionInfo *projInfo;
-	ExprDoneCond isDone;
-	TupleTableSlot *resultSlot;
 
 	/*
 	 * Fetch data from node
@@ -68,27 +67,11 @@ ExecScan(ScanState *node,
 		return (*accessMtd) (node);
 
 	/*
-	 * Check to see if we're still projecting out tuples from a previous scan
-	 * tuple (because there is a function-returning-set in the projection
-	 * expressions).  If so, try to project another one.
-	 */
-	if (node->ps.ps_TupFromTlist)
-	{
-		Assert(projInfo);		/* can't get here if not projecting */
-		resultSlot = ExecProject(projInfo, &isDone);
-		if (isDone == ExprMultipleResult)
-			return resultSlot;
-		/* Done with that source tuple... */
-		node->ps.ps_TupFromTlist = false;
-	}
-
-	/*
 	 * Reset per-tuple memory context to free any expression evaluation
-	 * storage allocated in the previous tuple cycle.  Note this can't happen
-	 * until we're done projecting out tuples from a scan tuple.
+	 * storage allocated in the previous tuple cycle.  
 	 */
 	econtext = node->ps.ps_ExprContext;
-	ResetExprContext(econtext);
+    ResetExprContext(econtext);
 
 	/*
 	 * get a tuple from the access method loop until we obtain a tuple which
@@ -137,15 +120,9 @@ ExecScan(ScanState *node,
 			{
 				/*
 				 * Form a projection tuple, store it in the result tuple slot
-				 * and return it --- unless we find we can project no tuples
-				 * from this scan tuple, in which case continue scan.
+				 * and return it.
 				 */
-				resultSlot = ExecProject(projInfo, &isDone);
-				if (isDone != ExprEndResult)
-				{
-					node->ps.ps_TupFromTlist = (isDone == ExprMultipleResult);
-					return resultSlot;
-				}
+				return ExecProject(projInfo, NULL);
 			}
 			else
 			{

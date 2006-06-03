@@ -3,7 +3,7 @@
  * nodeNestloop.c
  *	  routines to support nest-loop joins
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -84,23 +84,6 @@ ExecNestLoop(NestLoopState *node)
 	 */
 	outerTupleSlot = node->js.ps.ps_OuterTupleSlot;
 	econtext->ecxt_outertuple = outerTupleSlot;
-
-	/*
-	 * Check to see if we're still projecting out tuples from a previous join
-	 * tuple (because there is a function-returning-set in the projection
-	 * expressions).  If so, try to project another one.
-	 */
-	if (node->js.ps.ps_TupFromTlist)
-	{
-		TupleTableSlot *result;
-		ExprDoneCond isDone;
-
-		result = ExecProject(node->js.ps.ps_ProjInfo, &isDone);
-		if (isDone == ExprMultipleResult)
-			return result;
-		/* Done with that source tuple... */
-		node->js.ps.ps_TupFromTlist = false;
-	}
 
 	/*
 	 * If we're doing an IN join, we want to return at most one row per outer
@@ -208,19 +191,9 @@ ExecNestLoop(NestLoopState *node)
 					 * the slot containing the result tuple using
 					 * ExecProject().
 					 */
-					TupleTableSlot *result;
-					ExprDoneCond isDone;
-
 					ENL1_printf("qualification succeeded, projecting tuple");
 
-					result = ExecProject(node->js.ps.ps_ProjInfo, &isDone);
-
-					if (isDone != ExprEndResult)
-					{
-						node->js.ps.ps_TupFromTlist =
-							(isDone == ExprMultipleResult);
-						return result;
-					}
+					return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 				}
 			}
 
@@ -250,19 +223,9 @@ ExecNestLoop(NestLoopState *node)
 				 * qualification was satisfied so we project and return the
 				 * slot containing the result tuple using ExecProject().
 				 */
-				TupleTableSlot *result;
-				ExprDoneCond isDone;
-
 				ENL1_printf("qualification succeeded, projecting tuple");
 
-				result = ExecProject(node->js.ps.ps_ProjInfo, &isDone);
-
-				if (isDone != ExprEndResult)
-				{
-					node->js.ps.ps_TupFromTlist =
-						(isDone == ExprMultipleResult);
-					return result;
-				}
+				return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 			}
 
 			/* If we didn't return a tuple, may need to set NeedNewOuter */
@@ -367,7 +330,6 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	 * finally, wipe the current outer tuple clean.
 	 */
 	nlstate->js.ps.ps_OuterTupleSlot = NULL;
-	nlstate->js.ps.ps_TupFromTlist = false;
 	nlstate->nl_NeedNewOuter = true;
 	nlstate->nl_MatchedOuter = false;
 	nlstate->nl_Untouched = true;		/* CDB */
@@ -438,7 +400,6 @@ ExecReScanNestLoop(NestLoopState *node, ExprContext *exprCtxt)
 
 	/* let outerPlan to free its result tuple ... */
 	node->js.ps.ps_OuterTupleSlot = NULL;
-	node->js.ps.ps_TupFromTlist = false;
 	node->nl_NeedNewOuter = true;
 	node->nl_MatchedOuter = false;
 	/* CDB: We intentionally leave node->nl_Untouched unchanged on ReScan. */

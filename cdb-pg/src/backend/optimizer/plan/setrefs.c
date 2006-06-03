@@ -90,6 +90,9 @@ static Node *replace_vars_with_subplan_refs_mutator(Node *node,
 static bool fix_opfuncids_walker(Node *node, void *context);
 static void set_sa_opfuncid(ScalarArrayOpExpr *opexpr);
 
+static bool cdb_expr_requires_full_eval(Node *node, void* unused);
+static Plan *cdb_insert_result_node(Plan *plan, List *rtable);
+
 
 /*****************************************************************************
  *
@@ -159,10 +162,14 @@ set_plan_references(Plan *plan, List *rtable)
 	switch (nodeTag(plan))
 	{
 		case T_SeqScan:
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+                return cdb_insert_result_node(plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
 			break;
 		case T_IndexScan:
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+                return cdb_insert_result_node(plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
 			fix_expr_references(plan,
@@ -180,24 +187,32 @@ set_plan_references(Plan *plan, List *rtable)
 						 (Node *) ((BitmapIndexScan *) plan)->indexqualorig);
 			break;
 		case T_BitmapHeapScan:
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+                return cdb_insert_result_node(plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
 			fix_expr_references(plan,
 						 (Node *) ((BitmapHeapScan *) plan)->bitmapqualorig);
 			break;
 		case T_TidScan:
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+                return cdb_insert_result_node(plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
 			fix_expr_references(plan,
 								(Node *) ((TidScan *) plan)->tideval);
 			break;
 		case T_SubqueryScan:
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+                return cdb_insert_result_node(plan, rtable);
 			/* Needs special treatment, see comments below */
 			return set_subqueryscan_references((SubqueryScan *) plan, rtable);
 		case T_FunctionScan:
 			{
 				RangeTblEntry *rte;
 
+                if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+                    return cdb_insert_result_node(plan, rtable);
 				fix_expr_references(plan, (Node *) plan->targetlist);
 				fix_expr_references(plan, (Node *) plan->qual);
 				rte = rt_fetch(((FunctionScan *) plan)->scan.scanrelid,
@@ -207,12 +222,16 @@ set_plan_references(Plan *plan, List *rtable)
 			}
 			break;
 		case T_NestLoop:
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+                return cdb_insert_result_node(plan, rtable);
 			set_join_references((Join *) plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
 			fix_expr_references(plan, (Node *) ((Join *) plan)->joinqual);
 			break;
 		case T_MergeJoin:
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+                return cdb_insert_result_node(plan, rtable);
 			set_join_references((Join *) plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
@@ -221,6 +240,8 @@ set_plan_references(Plan *plan, List *rtable)
 								(Node *) ((MergeJoin *) plan)->mergeclauses);
 			break;
 		case T_HashJoin:
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+                return cdb_insert_result_node(plan, rtable);
 			set_join_references((Join *) plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
@@ -319,6 +340,9 @@ set_plan_references(Plan *plan, List *rtable)
                                                            OUTER);
                 fix_expr_references(plan, (Node *) motion->hashExpr);
                 pfree(subplan_itlist);
+    			
+ 		        /* no need to fix targetlist and qual */
+                Assert(plan->qual == NIL);
             }
             break;
 
@@ -351,6 +375,75 @@ set_plan_references(Plan *plan, List *rtable)
 
 	return plan;
 }
+
+
+/*
+ * cdb_expr_requires_full_eval
+ *
+ * Returns true if expr could call a set-returning function.
+ */
+bool
+cdb_expr_requires_full_eval(Node *node, void* unused)
+{
+	if (!node)
+		return false;
+
+	if (IsA(node, FuncExpr))
+	{
+        FuncExpr   *funcexpr = (FuncExpr *)node;
+
+        if (funcexpr->funcretset)
+		    return true;
+	}
+	else if (IsA(node, OpExpr))
+	{
+        OpExpr *opexpr = (OpExpr *)node;
+
+        if (opexpr->opretset)
+		    return true;
+	}
+
+    return expression_tree_walker(node, cdb_expr_requires_full_eval, unused);
+}                               /* cdb_expr_requires_full_eval */
+
+
+/*
+ * cdb_insert_result_node
+ *
+ * Adjusts the tree so that the target list of the given Plan node
+ * will contain only Var nodes.  The old target list is moved onto
+ * a new Result node which will be inserted above the given node.
+ * This is so the executor can use a faster path to evaluate the
+ * given node's targetlist.  Returns the new Result node.
+ */
+Plan *
+cdb_insert_result_node(Plan *plan, List *rtable)
+{
+    Plan   *resultplan;
+    Flow   *flow;
+
+    Assert(!IsA(plan, Result) &&
+           cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL));
+
+    /* Unhook the Flow node temporarily.  Caller has already fixed it up. */
+    flow = plan->flow;
+    plan->flow = NULL;
+
+    /* Build a Result node to take over the targetlist from the given Plan. */
+    resultplan = (Plan *)make_result(plan->targetlist, NULL, plan);
+
+    /* Build a new targetlist for the given Plan, with Var nodes only. */
+    plan->targetlist = flatten_tlist(plan->targetlist);
+
+    /* Fix up the Result node and the Plan tree below it. */
+    resultplan = set_plan_references(resultplan, rtable);
+
+    /* Reattach the Flow node. */
+    resultplan->flow = flow;
+
+    return resultplan;
+}                               /* cdb_insert_result_node */
+
 
 /*
  * set_subqueryscan_references
@@ -1365,3 +1458,4 @@ set_sa_opfuncid(ScalarArrayOpExpr *opexpr)
 	if (opexpr->opfuncid == InvalidOid)
 		opexpr->opfuncid = get_opcode(opexpr->opno);
 }
+

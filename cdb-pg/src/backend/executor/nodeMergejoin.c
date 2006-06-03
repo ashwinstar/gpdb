@@ -3,7 +3,7 @@
  * nodeMergejoin.c
  *	  routines supporting merge joins
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -551,19 +551,9 @@ MJFillOuter(MergeJoinState *node)
 		 * qualification succeeded.  now form the desired projection tuple and
 		 * return the slot containing it.
 		 */
-		TupleTableSlot *result;
-		ExprDoneCond isDone;
-
 		MJ_printf("ExecMergeJoin: returning outer fill tuple\n");
 
-		result = ExecProject(node->js.ps.ps_ProjInfo, &isDone);
-
-		if (isDone != ExprEndResult)
-		{
-			node->js.ps.ps_TupFromTlist =
-				(isDone == ExprMultipleResult);
-			return result;
-		}
+		return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 	}
 
 	return NULL;
@@ -590,19 +580,9 @@ MJFillInner(MergeJoinState *node)
 		 * qualification succeeded.  now form the desired projection tuple and
 		 * return the slot containing it.
 		 */
-		TupleTableSlot *result;
-		ExprDoneCond isDone;
-
 		MJ_printf("ExecMergeJoin: returning inner fill tuple\n");
 
-		result = ExecProject(node->js.ps.ps_ProjInfo, &isDone);
-
-		if (isDone != ExprEndResult)
-		{
-			node->js.ps.ps_TupFromTlist =
-				(isDone == ExprMultipleResult);
-			return result;
-		}
+		return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 	}
 
 	return NULL;
@@ -698,23 +678,6 @@ ExecMergeJoin(MergeJoinState *node)
 	otherqual = node->js.ps.qual;
 	doFillOuter = node->mj_FillOuter;
 	doFillInner = node->mj_FillInner;
-
-	/*
-	 * Check to see if we're still projecting out tuples from a previous join
-	 * tuple (because there is a function-returning-set in the projection
-	 * expressions).  If so, try to project another one.
-	 */
-	if (node->js.ps.ps_TupFromTlist)
-	{
-		TupleTableSlot *result;
-		ExprDoneCond isDone;
-
-		result = ExecProject(node->js.ps.ps_ProjInfo, &isDone);
-		if (isDone == ExprMultipleResult)
-			return result;
-		/* Done with that source tuple... */
-		node->js.ps.ps_TupFromTlist = false;
-	}
 
 	/*
 	 * Reset per-tuple memory context to free any expression evaluation
@@ -919,20 +882,9 @@ ExecMergeJoin(MergeJoinState *node)
 						 * qualification succeeded.  now form the desired
 						 * projection tuple and return the slot containing it.
 						 */
-						TupleTableSlot *result;
-						ExprDoneCond isDone;
-
 						MJ_printf("ExecMergeJoin: returning tuple\n");
 
-						result = ExecProject(node->js.ps.ps_ProjInfo,
-											 &isDone);
-
-						if (isDone != ExprEndResult)
-						{
-							node->js.ps.ps_TupFromTlist =
-								(isDone == ExprMultipleResult);
-							return result;
-						}
+						return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 					}
 				}
 				break;
@@ -1683,7 +1635,6 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 	 * initialize join state
 	 */
 	mergestate->mj_JoinState = EXEC_MJ_INITIALIZE_OUTER;
-	mergestate->js.ps.ps_TupFromTlist = false;
 	mergestate->mj_MatchedOuter = false;
 	mergestate->mj_MatchedInner = false;
 	mergestate->mj_OuterTupleSlot = NULL;
@@ -1746,7 +1697,6 @@ ExecReScanMergeJoin(MergeJoinState *node, ExprContext *exprCtxt)
 	ExecClearTuple(node->mj_MarkedTupleSlot);
 
 	node->mj_JoinState = EXEC_MJ_INITIALIZE_OUTER;
-	node->js.ps.ps_TupFromTlist = false;
 	node->mj_MatchedOuter = false;
 	node->mj_MatchedInner = false;
 	node->mj_OuterTupleSlot = NULL;
