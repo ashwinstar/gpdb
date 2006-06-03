@@ -90,7 +90,7 @@ static Node *replace_vars_with_subplan_refs_mutator(Node *node,
 static bool fix_opfuncids_walker(Node *node, void *context);
 static void set_sa_opfuncid(ScalarArrayOpExpr *opexpr);
 
-static bool cdb_expr_requires_full_eval(Node *node, void* unused);
+static bool cdb_expr_requires_full_eval(Node *node);
 static Plan *cdb_insert_result_node(Plan *plan, List *rtable);
 
 
@@ -162,13 +162,13 @@ set_plan_references(Plan *plan, List *rtable)
 	switch (nodeTag(plan))
 	{
 		case T_SeqScan:
-            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                 return cdb_insert_result_node(plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
 			break;
 		case T_IndexScan:
-            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                 return cdb_insert_result_node(plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
@@ -187,7 +187,7 @@ set_plan_references(Plan *plan, List *rtable)
 						 (Node *) ((BitmapIndexScan *) plan)->indexqualorig);
 			break;
 		case T_BitmapHeapScan:
-            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                 return cdb_insert_result_node(plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
@@ -195,7 +195,7 @@ set_plan_references(Plan *plan, List *rtable)
 						 (Node *) ((BitmapHeapScan *) plan)->bitmapqualorig);
 			break;
 		case T_TidScan:
-            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                 return cdb_insert_result_node(plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
@@ -203,7 +203,7 @@ set_plan_references(Plan *plan, List *rtable)
 								(Node *) ((TidScan *) plan)->tideval);
 			break;
 		case T_SubqueryScan:
-            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                 return cdb_insert_result_node(plan, rtable);
 			/* Needs special treatment, see comments below */
 			return set_subqueryscan_references((SubqueryScan *) plan, rtable);
@@ -211,7 +211,7 @@ set_plan_references(Plan *plan, List *rtable)
 			{
 				RangeTblEntry *rte;
 
-                if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+                if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                     return cdb_insert_result_node(plan, rtable);
 				fix_expr_references(plan, (Node *) plan->targetlist);
 				fix_expr_references(plan, (Node *) plan->qual);
@@ -222,7 +222,7 @@ set_plan_references(Plan *plan, List *rtable)
 			}
 			break;
 		case T_NestLoop:
-            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                 return cdb_insert_result_node(plan, rtable);
 			set_join_references((Join *) plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);
@@ -230,7 +230,7 @@ set_plan_references(Plan *plan, List *rtable)
 			fix_expr_references(plan, (Node *) ((Join *) plan)->joinqual);
 			break;
 		case T_MergeJoin:
-            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                 return cdb_insert_result_node(plan, rtable);
 			set_join_references((Join *) plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);
@@ -240,7 +240,7 @@ set_plan_references(Plan *plan, List *rtable)
 								(Node *) ((MergeJoin *) plan)->mergeclauses);
 			break;
 		case T_HashJoin:
-            if (cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL))
+            if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                 return cdb_insert_result_node(plan, rtable);
 			set_join_references((Join *) plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);
@@ -383,27 +383,9 @@ set_plan_references(Plan *plan, List *rtable)
  * Returns true if expr could call a set-returning function.
  */
 bool
-cdb_expr_requires_full_eval(Node *node, void* unused)
+cdb_expr_requires_full_eval(Node *node)
 {
-	if (!node)
-		return false;
-
-	if (IsA(node, FuncExpr))
-	{
-        FuncExpr   *funcexpr = (FuncExpr *)node;
-
-        if (funcexpr->funcretset)
-		    return true;
-	}
-	else if (IsA(node, OpExpr))
-	{
-        OpExpr *opexpr = (OpExpr *)node;
-
-        if (opexpr->opretset)
-		    return true;
-	}
-
-    return expression_tree_walker(node, cdb_expr_requires_full_eval, unused);
+    return expression_returns_set(node);
 }                               /* cdb_expr_requires_full_eval */
 
 
@@ -423,7 +405,7 @@ cdb_insert_result_node(Plan *plan, List *rtable)
     Flow   *flow;
 
     Assert(!IsA(plan, Result) &&
-           cdb_expr_requires_full_eval((Node *)plan->targetlist, NULL));
+           cdb_expr_requires_full_eval((Node *)plan->targetlist));
 
     /* Unhook the Flow node temporarily.  Caller has already fixed it up. */
     flow = plan->flow;
