@@ -165,7 +165,7 @@ SEND_TABLE_SIZE_REQUEST () {
 	for I in "${QE_ARRAY[@]}"
 	do
 		SET_VAR
-		QE_TABLE_OID=`$TRUSTED_SHELL -n $QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"select relfilenode from pg_class where oid=$TABLE_OID ;\""`
+		QE_TABLE_OID=`$TRUSTED_SHELL -n $QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"select relfilenode from pg_class where oid=$TABLE_OID ;\""`
 		ERROR_CHK $? "obtain segment instance table oid info" 2
 		LOG_MSG "[INFO]:-Processing $QE_HOST port $QE_PORT Table OID $QE_TABLE_OID"
 		QE_TABLE=${QE_DIR}/base/${DB_OID}/${QE_TABLE_OID}
@@ -344,7 +344,11 @@ if [ x"" != x"$SIZE_DB" ];then
 	SIZE_TYPE=2
 fi
 if [ $SIZE_TYPE -le 1 ];then
-	CHK_EXISTS_TABLE $TABLE_NAME $MASTER_PORT $QD_DBNAME
+	if [ x"" == x"$SCHEMA_NAME" ];then
+		CHK_EXISTS_TABLE $TABLE_NAME $MASTER_PORT $QD_DBNAME
+	else
+		CHK_EXISTS_TABLE $SCHEMA_NAME.$TABLE_NAME $MASTER_PORT $QD_DBNAME
+	fi
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Table $TABLE_NAME does not exist in $QD_DBNAME database" 2
 	fi
