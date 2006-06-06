@@ -1,7 +1,7 @@
-# Makef File for Demo
+# Makefile for Demo
 #
 #
-
+SHELL=/bin/bash
 
 #
 # VARIABLES
