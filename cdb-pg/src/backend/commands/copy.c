@@ -2637,6 +2637,7 @@ CopyFromDispatch(CopyState cstate)
 				{
 					/* binary */
 					int16		fld_count;
+					uint16		buf;
 					ListCell   *cur;
 
 					if (!CopyGetInt16(cstate, &fld_count) ||
@@ -2648,7 +2649,8 @@ CopyFromDispatch(CopyState cstate)
 					}
 					
 					fld_count += (int16)extra_attr_count; /* add pre-evaluated defaults to count */
-					appendBinaryStringInfo(&cstate->line_buf, (char *) &fld_count, sizeof(int16));
+					buf = htons((uint16) fld_count); /* change to network byte order */
+					appendBinaryStringInfo(&cstate->line_buf, (char *) &buf, sizeof(buf));
 					
 					if (fld_count != attr_count + extra_attr_count)
 					{
@@ -4555,6 +4557,7 @@ CopyReadBinaryAttribute(CopyState cstate, int column_no, FmgrInfo *flinfo, Oid t
 						int32 typmod, bool *isnull)
 {
 	int32		fld_size;
+	uint32		buf;
 	Datum		result;
 
 	if(!CopyGetInt32(cstate, &fld_size))
@@ -4563,7 +4566,10 @@ CopyReadBinaryAttribute(CopyState cstate, int column_no, FmgrInfo *flinfo, Oid t
 				 errmsg("unexpected EOF in COPY data")));
 	
 	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		buf = htonl((uint32) fld_size); /* change to network byte order */
 		appendBinaryStringInfo(&cstate->line_buf, (char *) &fld_size, sizeof(int32));
+	}
 
 	if (fld_size == -1)
 	{
