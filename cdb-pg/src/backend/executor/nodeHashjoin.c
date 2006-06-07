@@ -703,6 +703,15 @@ start_over:
 	return curbatch;
 }
 
+typedef struct HashTupleHeader
+{
+	uint32		hashval;
+	uint32		tuplen;	
+	uint16		natts;			/* number of attributes */
+	uint16		infomask;		/* various flag bits */
+	/* nulls bitmap follows if HEAP_HASNULL, then actual tuple data */
+} HashTupleHeader;
+
 /*
  * ExecHashJoinSaveTuple
  *		save a tuple to a batch file.
@@ -722,6 +731,13 @@ ExecHashJoinSaveTuple(HeapTuple heapTuple, uint32 hashvalue,
 	BufFile    *file = *fileptr;
 	size_t		written;
 
+	HashTupleHeader hth;
+
+	unsigned int	datalen;
+	unsigned int	nullslen;
+
+	HeapTupleHeader t_data = heapTuple->t_data;
+
 	if (file == NULL)
 	{
 		/* First write to this batch file, so open it. */
@@ -729,20 +745,35 @@ ExecHashJoinSaveTuple(HeapTuple heapTuple, uint32 hashvalue,
 		*fileptr = file;
 	}
 
-	written = BufFileWrite(file, (void *) &hashvalue, sizeof(uint32));
-	if (written != sizeof(uint32))
+	datalen = heapTuple->t_len - t_data->t_hoff;
+	if (HeapTupleHasNulls(heapTuple))
+		nullslen = BITMAPLEN(t_data->t_natts);
+	else
+		nullslen = 0;
+
+	hth.hashval = hashvalue;
+	hth.tuplen = sizeof(HashTupleHeader) + nullslen + datalen;
+	hth.natts = t_data->t_natts;
+	hth.infomask = t_data->t_infomask;
+
+	written = BufFileWrite(file, (void *)&hth, sizeof(hth));
+	if (written != sizeof(hth))
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not write to hash-join temporary file: %m")));
 
-	written = BufFileWrite(file, (void *) heapTuple, sizeof(HeapTupleData));
-	if (written != sizeof(HeapTupleData))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not write to hash-join temporary file: %m")));
+	/* Now the body of the tuple */
+	if (nullslen)
+	{
+		written = BufFileWrite(file, (void *)t_data->t_bits, nullslen);
+		if (written != nullslen)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not write to hash-join temporary file: %m")));
+	}
 
-	written = BufFileWrite(file, (void *) heapTuple->t_data, heapTuple->t_len);
-	if (written != (size_t) heapTuple->t_len)
+	written = BufFileWrite(file, (char *)t_data + t_data->t_hoff, datalen);
+	if (written != datalen)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not write to hash-join temporary file: %m")));
@@ -761,32 +792,76 @@ ExecHashJoinGetSavedTuple(HashJoinState *hjstate,
 						  uint32 *hashvalue,
 						  TupleTableSlot *tupleSlot)
 {
-	HeapTupleData htup;
 	size_t		nread;
 	HeapTuple	heapTuple;
 
-	nread = BufFileRead(file, (void *) hashvalue, sizeof(uint32));
+	HashTupleHeader hth;
+
+	unsigned int	datalen;
+	unsigned int	nullslen;
+	unsigned int	hoff;
+	HeapTupleHeader t_data;
+
+	nread = BufFileRead(file, (void *)&hth, sizeof(hth));
 	if (nread == 0)
-		return NULL;			/* end of file */
-	if (nread != sizeof(uint32))
+		return NULL; /* end of file */
+	if (nread != sizeof(hth))
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not read from hash-join temporary file: %m")));
-	nread = BufFileRead(file, (void *) &htup, sizeof(HeapTupleData));
-	if (nread != sizeof(HeapTupleData))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not read from hash-join temporary file: %m")));
-	heapTuple = palloc(HEAPTUPLESIZE + htup.t_len);
-	memcpy((char *) heapTuple, (char *) &htup, sizeof(HeapTupleData));
+
+	*hashvalue = hth.hashval;
+
+	/* reconstruct lengths of null bitmap and data part */
+	if (hth.infomask & HEAP_HASNULL)
+		nullslen = BITMAPLEN(hth.natts);
+	else
+		nullslen = 0;
+	datalen = hth.tuplen - sizeof(HashTupleHeader) - nullslen;
+
+	/* determine overhead size of tuple (should match heap_form_tuple) */
+	hoff = offsetof(HeapTupleHeaderData, t_bits) + nullslen;
+	if (hth.infomask & HEAP_HASOID)
+		hoff += sizeof(Oid);
+	hoff = MAXALIGN(hoff);
+
+	/* Allocate the space in one chunk, like heap_form_tuple */
+	heapTuple = (HeapTuple) palloc(HEAPTUPLESIZE + hoff + datalen);
 	heapTuple->t_datamcxt = CurrentMemoryContext;
-	heapTuple->t_data = (HeapTupleHeader)
-		((char *) heapTuple + HEAPTUPLESIZE);
-	nread = BufFileRead(file, (void *) heapTuple->t_data, htup.t_len);
-	if (nread != (size_t) htup.t_len)
+
+	t_data = (HeapTupleHeader) ((char *)heapTuple + HEAPTUPLESIZE);
+
+	/* make sure unused header fields are zeroed */
+	MemSetAligned(t_data, 0, hoff);
+	/* reconstruct the HeapTupleData fields */
+	heapTuple->t_len = hoff + datalen;
+	ItemPointerSetInvalid(&(heapTuple->t_self));
+	heapTuple->t_tableOid = InvalidOid;
+	heapTuple->t_data = t_data;
+
+	/* reconstruct the HeapTupleHeaderData fields */
+	ItemPointerSetInvalid(&(t_data->t_ctid));
+	t_data->t_natts = hth.natts;
+	t_data->t_infomask = (hth.infomask & ~HEAP_XACT_MASK)
+		| (HEAP_XMIN_INVALID | HEAP_XMAX_INVALID);
+	t_data->t_hoff = hoff;
+
+	if (nullslen)
+	{
+		nread = BufFileRead(file, (void *) t_data->t_bits, nullslen);
+		if (nread != nullslen)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not read from hash-join temporary file: %m")));
+	}
+
+	/* and now the data proper */
+	nread = BufFileRead(file, (char *) t_data + hoff, datalen);
+	if (nread != datalen)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not read from hash-join temporary file: %m")));
+
 	return ExecStoreTuple(heapTuple, tupleSlot, InvalidBuffer, true);
 }
 
