@@ -4,24 +4,25 @@
 groupSession -- ssh access to multiple hosts at once
 
 Usage:
-	groupSession <options> hostfile
+    groupSession <options> hostfile
 
 hostfile - a list of remote hosts, each entry of the form:
-	username@host
-	username@host2
-	...
-	userN@hostN
+    username@host
+    username@host2
+    ...
+    userN@hostN
 or just:
-	host1
-	host2
-	...
-	hostN
+    host1
+    host2
+    ...
+    hostN
 
 Options:
 -h,-?     Print usage summary and exit
 -v        Report all commands sent to host and output received.
 -p <port> Connect on a particular port in place of 22
 -s        Disable the setup of trusted hosts key access
+-l <fileName> Log all the messages to this file
 
 Runs commands on a list of hosts.  Manages passwords and trusted key access
 using ssh.
@@ -37,365 +38,400 @@ __version__ = "1.0"
 __date__ = "2005-09-26"
 
 import os, sys, threading, time, string, getpass, getopt, signal
-import lib.sshSessionModule as sshSessionModule, lib.threadpool as threadpool
-import cmd, atexit
+if sys.version_info < (2, 3):
+    print "Error groupSession is supported on Python versions 2.3 or greater."
+    print "Please upgrade python installed on this machine."
+    raise SystemExit, -1
+#
+# A tiny Kludge that will add '/lib' to the path
+#
+sys.path.append(sys.path[0]+'/lib')
+
+try :
+    import sshParamikoModule as sshParamikoModule, threadpool as threadpool
+    import cmd, atexit
+    import gpLogger
+    import logging
+except ImportError, e:
+    print "Error Importing necessary modules: %s " % str(e)
+    raise SystemExit, -1
+
 try:
-	import readline
-	#Read in the saved command history, if any
-	histfile = os.path.join(os.environ["HOME"], ".gshist")
-	try:
-    		readline.read_history_file(histfile)
-	except IOError:
-    		pass
-	atexit.register(readline.write_history_file, histfile)
+    import readline
+    #Read in the saved command history, if any
+    histfile = os.path.join(os.environ["HOME"], ".gshist")
+    try:
+            readline.read_history_file(histfile)
+    except IOError:
+            pass
+    atexit.register(readline.write_history_file, histfile)
 except:
-	pass
+    pass
 
 
 class groupSession(cmd.Cmd):
-	"A group of sessions attached to a set of remote hosts"
+    "A group of sessions attached to a set of remote hosts"
 
-	"""Init Args:
-		hosts 	= an array of tuples (hostname,user)
-		port	= the port to communicate with
-		"""
-	def __init__(self,hostuserport):
-		cmd.Cmd.__init__(self)
+    """Init Args:
+        hosts     = an array of tuples (hostname,user)
+        port    = the port to communicate with
+        """
+    def __init__(self,hostuserport, setupKeys=True, verboseOpt=False):
+        cmd.Cmd.__init__(self)
 
-		self.prompt = "=> "
-		self.intro = "GroupSession - execute commands on a cluster of machines\n  \"help\" for a list of commands"
+        self.prompt = "=> "
+        self.intro = "GroupSession - execute commands on a cluster of machines\n  \"help\" for a list of commands"
 
-		self.verbose = False
+        self.verbose = verboseOpt
 
-		#Create a threadpool to run the commands
-		self.pool = threadpool.ThreadPool(len(hostuserport))
+        #Create a threadpool to run the commands
+        self.pool = threadpool.ThreadPool(len(hostuserport))
 
-		# Create an sshSession object for each host
-		self.sessions = []
-		for host,user,port in hostuserport:
-			#Create a new instance of an sshSession object initialized with this
-			#host/user/port
-			a = sshSessionModule.sshSession(user,port,host)
-			self.sessions.append(a)
+        # Create an sshSession object for each host
+        self.sessions = []
+        for host,user,port in hostuserport:
+            #Create a new instance of an sshSession object initialized with this
+            #host/user/port
+            a = sshParamikoModule.sshSession(user,port,host, verbose=verboseOpt)
+            self.sessions.append(a)
 
-		try:
-			self.__setupHostAccess()
-		except sshSessionModule.PasswordFailure, e:
-			print '%s: %s' % (e,'groupSession: 3 attempts failed.')
-			raise SystemExit, -1
+        try:
+            self.__setupHostAccess(setupKeys)
+        except sshParamikoModule.PasswordFailure, e:
+            print '%s: %s' % (e,'Failed to authenticate.')
+            raise SystemExit, -1
 
-		#i = 0
-		#for th in self.sessions:
-			#i = i+1
-			#print '%d %s %s %s' % (i, th.user, th.host, th.port)
+        #i = 0
+        #for th in self.sessions:
+            #i = i+1
+            #print '%d %s %s %s' % (i, th.user, th.host, th.port)
 
-	#Command class overrides ------------------------------------------------
-	def default(self,line):
-		cmd = 'ssh'
-		args = [line,None]
-		
-		#Run the command on all sessions
-		interrupted = self.runCommand(cmd,args)
-
-
-	def do_rcopy(self,line):
-		i=0
-		source = None
-		dest = None
-		for str in line.split():
-			i = i+1
-			if i == 1:
-				source = str.strip()
-			if i == 2:
-				dest = str.strip()
-		if i > 2:
-			self.help_rcopy()
-			return
-
-		if source is None:
-			print 'source file (on this host): ',
-			source = sys.stdin.readline().strip()
-			print ''
-
-		if dest is None:
-			print 'destination file on remote host <'+source+'>: ',
-			dest = sys.stdin.readline().strip()
-			print ''
-
-		if dest == '':
-			dest = source
-
-		cmd = 'scp'
-		args = [source,dest]
-
-		#Run the command on all sessions
-		interrupted = self.runCommand(cmd,args)
-
-	def help_rcopy(self):
-		print '\nCopies the source file on this machine to a destination on the remote machine.'
-		print 'You can specify source and/or destination on the command line, or if either are'
-		print 'omitted, you will be prompted.\n'
-		print 'usage:\nrcopy [source_file] [dest_file]'
-
-	def emptyline(self):
-		pass
-
-	def do_hist(self, args):
-		"""Print a list of commands that have been entered"""
-		print self._hist
-
-	def precmd(self, line):
-		""" This method is called after the line has been input but before
-		it has been interpreted. If you want to modifdy the input line
-		before execution (for example, variable substitution) do it here.
-		"""
-		self._hist += [ line.strip() ]
-		return line
-
-	def postloop(self):
-		"""Take care of any unfinished business.
-		Despite the claims in the Cmd documentaion, Cmd.postloop() is not a stub.
-		"""
-		cmd.Cmd.postloop(self)   ## Clean up command completion
-		print "groupSession exit."
-
-	def preloop(self):
-		"""Initialization before prompting user for commands.
-		Despite the claims in the Cmd documentaion, Cmd.preloop() is not a stub.
-		"""
-		cmd.Cmd.preloop(self)   ## sets up command completion
-		self._hist    = []      ## No history yet
-		self._locals  = {}      ## Initialize execution namespace for user
-		self._globals = {}
+    #Command class overrides ------------------------------------------------
+    def default(self,line):
+        cmd = 'ssh'
+        args = [line,None]
+        
+        #Run the command on all sessions
+        interrupted = self.runCommand(cmd,args,line)
 
 
-	def do_help(self, args):
-		"""groupSession help:
-		'help' or '?' with no arguments prints a list of commands for which help is available
-		'help <command>' or '? <command>' gives help on <command>
-		Other than these special commands, what you type will be executed on the remote hosts
-		"""
-		## The only reason to define this method is for the help text in the doc string
-		cmd.Cmd.do_help(self, args)
+    def do_rcopy(self,line):
+        i=0
+        source = None
+        dest = None
+        for str in line.split():
+            i = i+1
+            if i == 1:
+                source = str.strip()
+            if i == 2:
+                dest = str.strip()
+        if i > 2:
+            self.help_rcopy()
+            return
 
-	def do_exit(self, args):
-		"""Exits from the console"""
-		return -1
+        if source is None:
+            print 'source file (on this host): ',
+            source = sys.stdin.readline().strip()
+            print ''
 
-	def do_quit(self,args):
-		"""Exits from the console"""
-		return -1
+        if dest is None:
+            print 'destination file on remote host <'+source+'>: ',
+            dest = sys.stdin.readline().strip()
+            print ''
 
-	def do_q(self,args):
-		"""Exits from the console"""
-		return -1
+        if dest == '':
+            dest = source
 
-	## Command definitions to support Cmd object functionality ##
-	def do_EOF(self, args):
-		"""Exit on system end of file character"""
-		return self.do_exit(args)
+        if os.path.isdir(os.path.expanduser(source)):
+            cmd = 'dirCopy'
+        else :
+            cmd = 'scp'
 
-	def do_shell(self, args):
-		"""Pass command to a system shell when line begins with '!'"""
-		os.system(args)
+        args = [source,dest]
 
-	#End command class overrides ------------------------------------------------
+        #Run the command on all sessions
+        try:
+            interrupted = self.runCommand(cmd,args)
+        except Exception, e:
+            errStr="Caught Exception %s: %s "% \
+                (str(e.__class__),  str(e))
+            logger.error(errStr)
+            if self.debug:
+                traceback.print_exc()
+        #Has to Reuturn String for runCommand in groupSession
 
-	def runCommand(self,cmd,args,begin=0,end=0,quiet=False):
-		#This kludge is here because python doesn't support copiable iterators
-		if end == 0:
-			end = len(self.sessions)
+    def help_rcopy(self):
+        print '\nCopies the source file on this machine to a destination on the remote machine.'
+        print 'You can specify source and/or destination on the command line, or if either are'
+        print 'omitted, you will be prompted.\n'
+        print 'usage:\nrcopy [source_file] [dest_file]'
 
-		#Put commands into threaded queue
-		for i in range(begin,end):
-			th = self.sessions[i]
-			if self.verbose:
-				print 'LAL in runCommand host: %s' % (th.host)
-			th.setCMD(cmd,args)
-			self.pool.putRequest(threadpool.WorkRequest(th.run,None,None,None))
+    def emptyline(self):
+        pass
 
-		interrupted = False
-		#Wait for completion of all in queue, or a keyboard interrupt
-		while True:
-        		try:
-				self.pool.poll()
-			except (threadpool.NoResultsPending):
-				interrupted=False
-				break
-        		except (KeyboardInterrupt):
-				for i in range(begin,end):
-					th = self.sessions[i]
-					th.killCMD(signal.SIGKILL)
-				self.pool.wait()
-				interrupted=True
-          			break
+    def do_hist(self, args):
+        """Print a list of commands that have been entered"""
+        print self._hist
 
-		if not quiet:
-		  if not interrupted:
-			#Print the output
-			lastTmp = None
-			for th in self.sessions:
-				if th.lastoutput == lastTmp:
-					print '%-8s: %-s' % (th.host, 'Output from host ' + th.host + ' is the same as the last host')
-				else:
-			  		for str in th.lastoutput.splitlines(True):
-			    			print '%-8s: %-s' % (th.host, str),
-			  		lastTmp = th.lastoutput
-		  else:
-				print 'Command interrupted.'
+    def precmd(self, line):
+        """ This method is called after the line has been input but before
+        it has been interpreted. If you want to modifdy the input line
+        before execution (for example, variable substitution) do it here.
+        """
+        self._hist += [ line.strip() ]
+        return line
 
-		  print ""
+    def postloop(self):
+        """Take care of any unfinished business.
+        Despite the claims in the Cmd documentaion, Cmd.postloop() is not a stub.
+        """
+        cmd.Cmd.postloop(self)   ## Clean up command completion
+        print "groupSession exit."
 
-		return interrupted
+    def preloop(self):
+        """Initialization before prompting user for commands.
+        Despite the claims in the Cmd documentaion, Cmd.preloop() is not a stub.
+        """
+        cmd.Cmd.preloop(self)   ## sets up command completion
+        self._hist    = []      ## No history yet
+        self._locals  = {}      ## Initialize execution namespace for user
+        self._globals = {}
 
-	def handlerTERM(self,signo,frame):
-		print 'Killing commands on remote hosts...'
-		for th in self.sessions:
-			th.killCMD(signal.SIGKILL)
-		print 'done.  Exiting.'
-		self.__die('\nSignal caught, program ')
-	
-	def __die(self,msg):
-		print msg + 'exiting.'
-    		raise SystemExit, 1
 
-	def __initializeSessions(self,defaultPassword=None,defaultPassPhrase=None,ibegin=0,iend=0):
-		"""Initialize all sessions for checking of passwords and setup of keys"""
-		if iend == 0:
-			iend = len(self.sessions)
+    def do_help(self, args):
+        """groupSession help:
+        'help' or '?' with no arguments prints a list of commands for which help is available
+        'help <command>' or '? <command>' gives help on <command>
+        Other than these special commands, what you type will be executed on the remote hosts
+        """
+        ## The only reason to define this method is for the help text in the doc string
+        cmd.Cmd.do_help(self, args)
 
-		#Set the password check flag to 1 for all sessions
-		for i in range(ibegin,iend):
-			th = self.sessions[i]
-			if self.verbose:
-				print 'LAL in initializeSessions host: %s' % (th.host)
-			th.initializeSession(defaultPassword,defaultPassPhrase)
-	
-	def __setupHostAccess(self,setupKeys=True):
-		#Set the default state of all of the sessions
-		self.__initializeSessions()
+    def do_exit(self, args):
+        """Exits from the console"""
+        return -1
 
-		defaultPassword=None
-		#Loop on sessions to get enough passwords for all
-		icurr = 0
-		while icurr < len(self.sessions):
-			th = self.sessions[icurr]
-			#Password is required for this session
-			if not th.isReady():
-				try:
-					th.makeReady(False)
-				except sshSessionModule.PasswordFailure, e:
-					raise
+    def do_quit(self,args):
+        """Exits from the console"""
+        return -1
 
-				if self.verbose:
-					print 'LAL in setupHostAccess host: %s' % (th.host)
+    def do_q(self,args):
+        """Exits from the console"""
+        return -1
 
-				#Initialize the remaining sessions to use the
-				#new default password and hostKeyPhrase
-				self.__initializeSessions(th.password,th.hostKeyPhrase,icurr)
-				#Run a parallel command to discover whether each host needs a PW or not
-				self.runCommand('ssh',['ls -ld '],icurr,len(self.sessions),True)
-			icurr += 1
+    ## Command defunitions to support Cmd object functionality ##
+    def do_EOF(self, args):
+        """Exit on system end of file character"""
+        return self.do_exit(args)
 
-		#Setup the ssh host keys if any session required a password
-		pwrequired = False
-		for i in range(0,len(self.sessions)):
-			if self.sessions[i].PWRequired: pwrequired = True
+    def do_shell(self, args):
+        """Pass command to a system shell when line begins with '!'"""
+        os.system(args)
 
-		if setupKeys and pwrequired:
-			#Copy the first session's passphrase to all
-			prompt = 'groupSession: ssh-agent pass key phrase:'
-			pphrasedef = getpass.getpass(prompt)
-			for i in range(0,len(self.sessions)):
-				self.sessions[i].hostKeyPhrase = pphrasedef
+    #End command class overrides ------------------------------------------------
 
-			#Setup/locate the local keys
-  			self.sessions[0].setupKeyAccessLocal()
+    def runCommand(self,cmd,args,command="",begin=0,end=0,quiet=False):
+        #This kludge is here because python doesn't support copiable iterators
+        logger=logging.getLogger('sshTest')
+        if end == 0:
+            end = len(self.sessions)
 
-			#Setup ssh host keys for all sessions in parallel
-			for i in range(0,len(self.sessions)):
-				th = self.sessions[i]
-				#Setup ssh trusted key access for this host
-				#th.setupKeyAccessRemote()
-				self.pool.putRequest(\
-						threadpool.WorkRequest(th.setupKeyAccessRemote,\
-						None,None,None))
+        #Put commands into threaded queue
+        for i in range(begin,end):
+            th = self.sessions[i]
+            if self.verbose:
+                logger.debug('LAL in runCommand host: %s' % (th.host))
+            th.setCMD(cmd,args)
+            self.pool.putRequest(threadpool.WorkRequest(th.run))
+        interrupted = False
+        #Wait for completion of all in queue, or a keyboard interrupt
+        while True:
+            try:
+                self.pool.poll()
+            except (threadpool.NoResultsPending):
+                interrupted=False
+                break
+            except (KeyboardInterrupt):
+                logger.info("Received KeyBoard Interrupt")
+                for i in range(begin,end):
+                    th = self.sessions[i]
+                    th.killCMD(signal.SIGKILL)
+                self.pool.wait()
+                interrupted=True
+                break
 
-			#Wait for completion of all in queue, or a keyboard interrupt
-			while True:
-        			try:
-					self.pool.poll()
+        if not quiet:
+          if not interrupted:
+            #Print the output
+            lastTmp = None
+            for th in self.sessions:
+                if th.lastoutput == lastTmp:
+                    print '%-16s: %-s' % (th.userHost,  'Output from host ' + 
+                        th.host + ' is the same as the last host')
+                else:
+                      for str in th.lastoutput.splitlines(True):
+                        print '%-16s: %-s' % (th.userHost, str),
+                      lastTmp = th.lastoutput
+          else:
+                print 'Command interrupted.'
 
-				except (threadpool.NoResultsPending,KeyboardInterrupt):
-					break
+          print ""
 
-		print 'Acquired passwords, keys.\n'
+        return interrupted
+
+    def handlerTERM(self,signo,frame):
+        print 'Killing commands on remote hosts...'
+        for th in self.sessions:
+            th.killCMD(signal.SIGKILL)
+        print 'done.  Exiting.'
+        self.__die('\nSignal caught, program ')
+    
+    def __die(self,msg):
+        print msg + 'exiting.'
+        raise SystemExit, 1
+
+    def __initializeSessions(self,defaultPassword=None,defaultPassPhrase=None,
+            ibegin=0,iend=0):
+        """Initialize all sessions for checking of passwords and setup of 
+        keys
+        """
+        if iend == 0:
+            iend = len(self.sessions)
+
+        #Set the password check flag to 1 for all sessions
+        for i in range(ibegin,iend):
+            th = self.sessions[i]
+            if self.verbose:
+                print 'LAL in initializeSessions host: %s' % (th.host)
+            th.initializeSession(defaultPassword,defaultPassPhrase)
+    
+    def __setupHostAccess(self,setupKeys=True):
+        #Set the default state of all of the sessions
+        #self.__initializeSessions()
+
+        defaultPassword=None
+        #Loop on sessions to get enough passwords for all
+        icurr = 0
+        while icurr < len(self.sessions):
+            th = self.sessions[icurr]
+            #Password is required for this session
+            if not th.isReady(False):
+                try:
+                    th.makeReady()
+                except sshParamikoModule.PasswordFailure, e:
+                    raise
+
+                if self.verbose:
+                    print 'LAL in setupHostAccess host: %s' % (th.host)
+
+                #Initialize the remaining sessions to use the
+                #new default password and hostKeyPhrase
+                #self.__initializeSessions(th.password,th.hostKeyPhrase,icurr)
+                #Run a parallel command to discover whether each host needs a 
+                #PW or not self.runCommand('ssh',['ls -ld '],icurr,
+                #len(self.sessions),True)
+            icurr += 1
+        if setupKeys:
+            sshParamikoModule.setupLocalKey('gpRsa', overWrite=False, \
+            emptyPhrase=True)
+            for i in range(0,len(self.sessions)):
+                th = self.sessions[i]
+                #Setup ssh trusted key access for this host
+                #th.setupKeyAccessRemote()
+                self.pool.putRequest( threadpool.WorkRequest(th.setupKeys,
+                        None,None,None))
+            #Wait for completion of all in queue, or a keyboard interrupt
+            while True:
+                try:
+                    self.pool.poll()
+                except (threadpool.NoResultsPending,KeyboardInterrupt):
+                    break
+            print 'Acquired passwords, keys.\n'
 
 
 if __name__ == '__main__': 
-	# Process options
-	(options, arguments) = getopt.getopt(sys.argv[1:], "?hvp:s")
-	verbose = 0
-	defaultport = 22
-	setupKeys = 1
+    # Process options
+    (options, arguments) = getopt.getopt(sys.argv[1:], "?hvdp:l:s")
+    verbose = 0
+    debug= 0
+    defaultport = 22
+    setupKeys = True
+    logFile=''
 
-	for (switch, val) in options:
-		if (switch == '-p'):
-			defaultport = val;
-		elif (switch == '-s'):
-		    setupKeys = 0
-		elif (switch == '-h' or switch == '-?'):
-			print __doc__
-			raise SystemExit, 0
-		elif (switch == '-v'):
-			verbose = 1
+    for (switch, val) in options:
+        if (switch == '-p'):
+            defaultport = val;
+        elif (switch == '-s'):
+            setupKeys = False 
+        elif (switch == '-h' or switch == '-?'):
+            print __doc__
+            raise SystemExit, 0
+        elif (switch == '-d'):
+            debug = True
+            verbose = True
+        elif (switch == '-v'):
+            verbose = True
+        elif (switch == '-l'):
+            logFile= val
 
-	if not arguments:
-		print "\nNo remote host list specified."
-		print __doc__
-		raise SystemExit, 0
-	else:
-		filename = arguments[0]
+    if not arguments:
+        print "\nNo remote host list specified."
+        print __doc__
+        raise SystemExit, 0
+    else:
+        filename = arguments[0]
 
-	try:
-		hostFile=open(filename,'r')
+    try:
+        hostFile=open(filename,'r')
 
-	except IOError:
-		print 'Error opening file named: ' + filename
-		raise SystemExit, 1
+    except IOError:
+        print 'Error opening file named: ' + filename
+        raise SystemExit, 1
 
-	except:
-		print 'Unexpected error:', sys.exc_info()[0]
-		raise
+    except:
+        print 'Unexpected error:', sys.exc_info()[0]
+        raise
+    # TODO Check the logFile is a valid path
 
-	hostuserport = []
-	for h in hostFile:
-		#Strip out the hostname and user, if there is a user present in the record
-		#(e.g. user@host)
-		host = h.strip()
-		if host != '':
-			if verbose:
-				print 'Working on host: ' + host
 
-			if '@' in host:
-				(user, host) = string.split(host, '@')
-			else:
-				user = os.environ.get('LOGNAME') or os.environ.get('USER')
+    if debug:
+        gpLogger.initLogger(lName="groupSession", lfName=logFile,  \
+           debug=True, verbose=True)
+    elif verbose:
+        gpLogger.initLogger(lName="groupSession", lfName=logFile,  \
+           debug=False, verbose=True)
+    else:
+        gpLogger.initLogger(lName="groupSession", lfName=logFile,  \
+           debug=False, verbose=False)
 
-			if ':' in host:
-				(host,port) = string.split(host, ':')
-			else:
-				port = defaultport
+    hostuserport = []
+    for h in hostFile:
+        #Strip out the hostname and user, if there is a user present in the 
+        # record (e.g. user@host)
+        host = h.strip()
+        if host != '':
+            if verbose:
+                print 'Working on host: ' + host
 
-			hostuserport.append((host,user,port))
+            if '@' in host:
+                (user, host) = string.split(host, '@')
+            else:
+                user = os.environ.get('LOGNAME') or os.environ.get('USER')
 
-	#Create a groupSession object
-	gsession = groupSession(hostuserport)
+            if ':' in host:
+                (host,port) = string.split(host, ':')
+            else:
+                port = defaultport
 
-	#Register a signal handler for the TERM signal
-	signal.signal(signal.SIGTERM,gsession.handlerTERM)
+            hostuserport.append((host,user,port))
 
-	#Run commands
-	gsession.cmdloop()
+    #Create a groupSession object
+    gsession = groupSession(hostuserport, setupKeys, verboseOpt=verbose)
 
-	print 'Done with group session.'
+    #Register a signal handler for the TERM signal
+    signal.signal(signal.SIGTERM,gsession.handlerTERM)
+
+    #Run commands
+    gsession.cmdloop()
+
+    print 'Done with group session.'
