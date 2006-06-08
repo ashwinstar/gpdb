@@ -693,6 +693,7 @@ _readAConst(void)
 	else
 	{
 		bool isInt = true;
+		bool isFloat = true;
 		int i = 0;
 		if (token[i] == ' ')
 			i++;
@@ -700,15 +701,25 @@ _readAConst(void)
 			i++;
 		for (; i < length; i++)
 	 	   if (token[i] < '0' || token[i] > '9')
+	 	   {
 	 	   	 isInt = false;
+	 	   	 if (token[i] != '.' && token[i] != 'e' && token[i] != 'E' && token[i] != '+' && token[i] != '-')
+	 	   	 	isFloat = false;
+	 	   }
 	 	if (isInt)
 		{
 			local_node->val.type = T_Integer;
 			local_node->val.val.ival = atol(token);
 		}
+		else if (isFloat)
+		{
+			local_node->val.type = T_Float;
+			local_node->val.val.str = palloc(length + 1);
+			strcpy(local_node->val.val.str , token);
+		}
 		else
 		{
-			elog(ERROR,"Deserialization problem:  A_Const not string, bitstring, or int");
+			elog(ERROR,"Deserialization problem:  A_Const not string, bitstring, float, or int");
 			local_node->val.val.str = palloc(length + 1);
 			strcpy(local_node->val.val.str , token);
 		}
