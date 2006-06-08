@@ -32,6 +32,7 @@ devel : CONFIGFLAGS+=--enable-cassert --enable-debug
 devel : HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(MPPPGDIR); make install
+	@make groupSession
 	@make mgmtcopy INSTLOC=$(INSTLOC)
 	@make copylibs INSTLOC=$(INSTLOC)
 
@@ -40,10 +41,14 @@ dist : INSTLOC=$(DISTPATH)
 dist : BIZDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(MPPPGDIR); make install
+	@make groupSession
 	@make mgmtcopy INSTLOC=$(INSTLOC)
 	@make copydocs INSTLOC=$(INSTLOC)
 	@make copylibs INSTLOC=$(INSTLOC)
 	@rm -f $(TARBALL); make tarball TARBALL=$(TARBALL) INSTLOC=$(INSTLOC)
+
+groupSession:
+	@cd $(MPPMGMT)/bin; make 
 
 
 copydocs :
