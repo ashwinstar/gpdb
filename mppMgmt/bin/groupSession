@@ -100,6 +100,14 @@ class groupSession(cmd.Cmd):
         except sshParamikoModule.PasswordFailure, e:
             print '%s: %s' % (e,'Failed to authenticate.')
             raise SystemExit, -1
+        except sshParamikoModule.NOTREADY, e:
+            errStr="*** Received NOTREADY Exception Error %s "% str(e)
+            print errStr
+            raise SystemExit, -1
+        except Exception, e:
+            errStr="*** Received Exception Error %s "% str(e)
+            print errStr
+            raise SystemExit, -1
 
         #i = 0
         #for th in self.sessions:
@@ -143,7 +151,9 @@ class groupSession(cmd.Cmd):
             dest = source
 
         if os.path.isdir(os.path.expanduser(source)):
-            cmd = 'dirCopy'
+            print '%s is a directory, directory copy is not supported.' % \
+                os.path.expanduser(source)
+            return
         else :
             cmd = 'scp'
 
@@ -332,8 +342,9 @@ class groupSession(cmd.Cmd):
                 #len(self.sessions),True)
             icurr += 1
         if setupKeys:
-            sshParamikoModule.setupLocalKey('gpRsa', overWrite=False, \
-            emptyPhrase=True)
+            self.sessions[0].setupKeyAccessLocal()
+            #sshParamikoModule.setupLocalKey('rsa', overWrite=False, \
+            #emptyPhrase=True)
             for i in range(0,len(self.sessions)):
                 th = self.sessions[i]
                 #Setup ssh trusted key access for this host
@@ -346,7 +357,6 @@ class groupSession(cmd.Cmd):
                     self.pool.poll()
                 except (threadpool.NoResultsPending,KeyboardInterrupt):
                     break
-            print 'Acquired passwords, keys.\n'
 
 
 if __name__ == '__main__': 
