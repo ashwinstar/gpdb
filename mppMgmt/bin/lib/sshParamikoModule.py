@@ -752,7 +752,7 @@ class sshSession(threading.Thread):
 
         #print self.authMode
         if self.authMode == 'PASSWORD':
-            self.setupKeyAccessLocal()
+            #self.setupKeyAccessLocal()
             self.setupRemoteKey()
             print "Keys are setup for %s@%s" % (self.user, self.host)
         return
