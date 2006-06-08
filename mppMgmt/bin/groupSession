@@ -38,6 +38,7 @@ __version__ = "1.0"
 __date__ = "2005-09-26"
 
 import os, sys, threading, time, string, getpass, getopt, signal
+import traceback
 if sys.version_info < (2, 3):
     print "Error groupSession is supported on Python versions 2.3 or greater."
     print "Please upgrade python installed on this machine."
@@ -106,6 +107,7 @@ class groupSession(cmd.Cmd):
             raise SystemExit, -1
         except Exception, e:
             errStr="*** Received Exception Error %s "% str(e)
+            traceback.print_exc()
             print errStr
             raise SystemExit, -1
 

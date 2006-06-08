@@ -617,7 +617,7 @@ class sshSession(threading.Thread):
             self.__die("Can't chdir into your .ssh directory!")
 
         public_keys  = filter(lambda f: os.access(f, os.R_OK), \
-            ("id_dsa.pub", "id_rsa.pub", "identity.pub"))
+            ("id_dsa.pub", "id_rsa.pub"))
         if not public_keys:
             public_keys = []
             for (keytype, file) in (("rsa", "id_rsa"), ("rsa1", "identity"), ("dsa", "id_dsa")):
