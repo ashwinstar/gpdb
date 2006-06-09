@@ -193,8 +193,6 @@ createGang(GangType type, int size, int content)
 	 */
 	for (i = 0; i < segdb_count; i++)
 	{
-
-
 		/*
 		 * Create the connection requests.	If we find a segment without a valid segdb
 		 * we error out.  Also, if this segdb is invalid, we msut fail the connection.
@@ -1548,7 +1546,7 @@ cleanupGang(Gang * gp)
 	if (gp == NULL)
 		return true;
 
-	elog(DEBUG5, "cleanupGang");
+	elog(DEBUG5, "cleanupGang %p", gp);
 
 	if (gp->active)
 		elog(DEBUG2, "cleanupGang called on a gang that is active");
@@ -1631,7 +1629,7 @@ disconnectAndDestroyGang(Gang * gp)
 	if (gp == NULL)
 		return;
 
-	elog(DEBUG5, "disconnectAndDestroyGang");
+	elog(DEBUG5, "disconnectAndDestroyGang %p", gp);
 
 	if (gp->active ||
 		gp->allocated)
@@ -1647,14 +1645,12 @@ disconnectAndDestroyGang(Gang * gp)
 	 */
 	for (i = 0; i < gp->size; i++)
 	{
-
-
 		SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
 
 		if (segdbDesc->conn && PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 		{
 			PGTransactionStatusType status =
-			PQtransactionStatus(segdbDesc->conn);
+				PQtransactionStatus(segdbDesc->conn);
 
 			elog(DEBUG2,
 				 "Finishing connection with %s; transaction status %d",
@@ -1723,12 +1719,14 @@ freeGangs(void)
 
 	if (!cleanupGang(primaryWriterGang))
 	{
+		primaryWriterGang = NULL; /* cleanupGang called disconnectAndDestroyGang() already */
 		disconnectAndDestroyAllGangs();
 		elog(ERROR, "freeGangs: Bad PRIMARY WRITER gang");
 		return;
 	}
 	if (!cleanupGang(mirrorWriterGang))
 	{
+		mirrorWriterGang = NULL; /* cleanupGang called disconnectAndDestroyGang() already */
 		disconnectAndDestroyAllGangs();
 		elog(ERROR, "freeGangs: Bad MIRROR WRITER gang");
 		return;
@@ -1983,7 +1981,7 @@ detectFailedConnections(void)
 		for (i = 0; i < primaryWriterGang->size; i++)
 		{
 			SegmentDatabaseDescriptor *segdbDesc =
-			&(primaryWriterGang->db_descriptors[i]);
+				&(primaryWriterGang->db_descriptors[i]);
 
 			if (!FtsTestConnection(segdbDesc->segment_database_info, segdbDesc->username, NULL))
 				markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
@@ -1998,7 +1996,7 @@ detectFailedConnections(void)
 		for (i = 0; i < mirrorWriterGang->size; i++)
 		{
 			SegmentDatabaseDescriptor *segdbDesc =
-			&(mirrorWriterGang->db_descriptors[i]);
+				&(mirrorWriterGang->db_descriptors[i]);
 
 			if (!FtsTestConnection(segdbDesc->segment_database_info, segdbDesc->username, NULL))
 				markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
