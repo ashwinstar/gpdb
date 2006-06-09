@@ -115,6 +115,9 @@ GET_TABLE_OID_DATA () {
 		#Get table oid
 		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$TABLE_NAME' and relnamespace=${SCHEMA_OID};"`
 		ERROR_CHK $? "obtain table oid value" 2
+		if [ x"" == x"$TABLE_OID" ];then
+			ERROR_EXIT "[FATAL]:Table OID is NULL" 2
+		fi
 	else
 		#No schema name supplied, make sure no duplicate tables
 		TABLE_NAME_COUNT=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from pg_class where relname='${TABLE_NAME}';"`
@@ -275,7 +278,7 @@ if [ $# -ne 0 ]; then
 	while getopts ":fvt:'?'ql:mpd:s:a:ix:n:" opt;do
 	case $opt in
 		v ) VERSION_INFO ;;
-		t ) TABLE_NAME=$OPTARG ;;
+		t ) TABLE_NAME=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
 		'?' ) USAGE ;;
 		d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
 		q ) unset VERBOSE ;;
@@ -287,7 +290,7 @@ if [ $# -ne 0 ]; then
 		m ) SIZE_TARGET=2 ;;
 		p ) SIZE_TARGET=1 ;;
 		x ) SIZE_DB=$OPTARG ;;
-		n ) SCHEMA_NAME=$OPTARG ;;
+		n ) SCHEMA_NAME=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
 		* ) USAGE ;;
 		esac
 	done

@@ -245,7 +245,7 @@ if [ $# -ne 0 ];then
         while getopts ":a:vmn:cqft:'?'d:l:" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
-                t ) TARGETTBL=$OPTARG ;;
+                t ) TARGETTBL=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
                 '?' ) USAGE ;;
                 d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
 		m ) SEG_TYPE=1 ;;
@@ -253,7 +253,7 @@ if [ $# -ne 0 ];then
 		a ) ALT_DBNAME=$OPTARG ;;
 		c ) DISTRIB=1 ;;
 		f ) FULL_DISPLAY=1 ;;
-		n ) SCHEMA_NAME=$OPTARG ;;
+		n ) SCHEMA_NAME=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
 		q ) unset VERBOSE ;;
                 * ) UNKNOWN_OPTION ;;
         esac
