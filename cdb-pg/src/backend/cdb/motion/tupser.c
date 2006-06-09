@@ -232,6 +232,13 @@ addByteStringToChunkList(TupleChunkList tcList, char *data, int datalen)
 	return;
 }
 
+typedef struct TupSerHeader
+{
+	uint32		tuplen;	
+	uint16		natts;			/* number of attributes */
+	uint16		infomask;		/* various flag bits */
+} TupSerHeader;
+
 /* Convert a HeapTuple into a byte-sequence, and store it directly into
  * a chunklist for transmission.
  *
@@ -245,7 +252,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 	MemoryContext oldCtxt;
 	TupleDesc	tupdesc;
 	int			i,
-				natts;
+		natts;
 	bool		fHandled;
 
 	AssertArg(tuple != NULL);
@@ -259,7 +266,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 	if (tcList == NULL)
 	{
 		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-					errmsg("Could not allocate space for new chunk list.")));
+						errmsg("Could not allocate space for new chunk list.")));
 	}
 	tcList->max_chunk_length = MaxChunkDataSize;
 
@@ -292,179 +299,219 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 	tcItem->chunk_length = TUPLE_CHUNK_HEADER_SIZE;
 	appendChunkToTCList(tcList, tcItem);
 
-	/*
-	 * Flip to our tuple-serialization memory-context, to speed up memory
-	 * reclamation operations.
-	 */
 	AssertState(s_tupSerMemCtxt != NULL);
-	oldCtxt = MemoryContextSwitchTo(s_tupSerMemCtxt);
 
-	/* deconstruct the tuple (faster than a heap_getattr loop) */
-	heap_deformtuple(tuple, tupdesc, pSerInfo->values, pSerInfo->nulls);
-
-	MemoryContextSwitchTo(oldCtxt);
-
-	/* Send the nulls character-array. */
-	addByteStringToChunkList(tcList, pSerInfo->nulls, natts);
-
-	/*
-	 * send the attributes of this tuple: NOTE anything which allocates
-	 * temporary space (e.g. could result in a PG_DETOAST_DATUM) should be
-	 * executed with the memory context set to s_tupSerMemCtxt
-	 */
-	for (i = 0; i < natts; ++i)
 	{
-		SerAttrInfo *attrInfo = pSerInfo->myinfo + i;
-		Datum		origattr = pSerInfo->values[i],
-					attr;
-		bytea	   *outputbytes=0;
+		TupSerHeader tsh;
 
-		/* skip null attributes (already taken care of above) */
-		if (pSerInfo->nulls[i] == 'n')
-			continue;
+		unsigned int	datalen;
+		unsigned int	nullslen;
 
-		/*
-		 * If we have a toasted datum, forcibly detoast it here to avoid
-		 * memory leakage: we want to force the detoast allocation(s) to
-		 * happen in our reset-able serialization context.
-		 */
-		if (attrInfo->typisvarlena)
+		HeapTupleHeader t_data = tuple->t_data;
+
+		datalen = tuple->t_len - t_data->t_hoff;
+		if (HeapTupleHasNulls(tuple))
+			nullslen = BITMAPLEN(t_data->t_natts);
+		else
+			nullslen = 0;
+
+		tsh.tuplen = sizeof(TupSerHeader) + nullslen + datalen;
+		tsh.natts = t_data->t_natts;
+		tsh.infomask = t_data->t_infomask;
+
+		addByteStringToChunkList(tcList, (char *)&tsh, sizeof(TupSerHeader));
+		/* If we don't have any attributes which have been toasted, we
+		 * can be very very simple: just send the raw data. */
+		if ((tsh.infomask & (HEAP_HASEXTERNAL | HEAP_HASEXTENDED)) == 0)
 		{
+			if (nullslen)
+				addByteStringToChunkList(tcList, (char *)t_data->t_bits, nullslen);
+			addByteStringToChunkList(tcList, (char *)t_data + t_data->t_hoff, datalen);
+		}
+		else
+		{
+			/* We have to be more careful when we have tuples that
+			 * have been toasted. Ideally we'd like to send the
+			 * untoasted attributes in as "raw" a format as possible
+			 * but that makes rebuilding the tuple harder .
+			 */
 			oldCtxt = MemoryContextSwitchTo(s_tupSerMemCtxt);
-			attr = PointerGetDatum(PG_DETOAST_DATUM(origattr));
+
+			/* deconstruct the tuple (faster than a heap_getattr loop) */
+			heap_deformtuple(tuple, tupdesc, pSerInfo->values, pSerInfo->nulls);
+
 			MemoryContextSwitchTo(oldCtxt);
-		}
-		else
-			attr = origattr;
 
-		/*
-		 * Assume that the data's output will be handled by the special IO
-		 * code, and if not then we can handle it the slow way.
-		 */
-		fHandled = true;
-		switch (attrInfo->atttypid)
-		{
-			case INT4OID:
-				addInt32ToChunkList(tcList, DatumGetInt32(attr));
-				break;
-			case CHAROID:
-				addCharToChunkList(tcList, DatumGetChar(attr));
-				break;
-			case BPCHAROID:
-			case VARCHAROID:
-			case INT2VECTOROID: /* postgres serialization logic broken, use our own */
-			case OIDVECTOROID: /* postgres serialization logic broken, use our own */
-			case ANYARRAYOID:
+			/* Send the nulls character-array. */
+			addByteStringToChunkList(tcList, pSerInfo->nulls, natts);
+
+			/*
+			 * send the attributes of this tuple: NOTE anything which allocates
+			 * temporary space (e.g. could result in a PG_DETOAST_DATUM) should be
+			 * executed with the memory context set to s_tupSerMemCtxt
+			 */
+			for (i = 0; i < natts; ++i)
+			{
+				SerAttrInfo *attrInfo = pSerInfo->myinfo + i;
+				Datum		origattr = pSerInfo->values[i],
+					attr;
+				bytea	   *outputbytes=0;
+
+				/* skip null attributes (already taken care of above) */
+				if (pSerInfo->nulls[i] == 'n')
+					continue;
+
+				/*
+				 * If we have a toasted datum, forcibly detoast it here to avoid
+				 * memory leakage: we want to force the detoast allocation(s) to
+				 * happen in our reset-able serialization context.
+				 */
+				if (attrInfo->typisvarlena)
 				{
-					text	   *pText = DatumGetTextP(attr);
-					int32		textSize = VARSIZE(pText) - VARHDRSZ;
-
-					addInt32ToChunkList(tcList, textSize);
-					addByteStringToChunkList(tcList, (char *) VARDATA(pText), textSize);
-					break;
+					oldCtxt = MemoryContextSwitchTo(s_tupSerMemCtxt);
+					/* we want to detoast but leave compressed, if
+					 * possible, but we have to handle varlena
+					 * attributes (and others ?) differently than we
+					 * currently do (first step is to use
+					 * heap_tuple_fetch_attr() instead of
+					 * PG_DETOAST_DATUM()). */
+					attr = PointerGetDatum(PG_DETOAST_DATUM(origattr));
+					MemoryContextSwitchTo(oldCtxt);
 				}
-			case DATEOID:
-				{
-					DateADT date = DatumGetDateADT(attr);
+				else
+					attr = origattr;
 
-					addByteStringToChunkList(tcList, (char *) &date, sizeof(DateADT));
-					break;
+				/*
+				 * Assume that the data's output will be handled by the special IO
+				 * code, and if not then we can handle it the slow way.
+				 */
+				fHandled = true;
+				switch (attrInfo->atttypid)
+				{
+					case INT4OID:
+						addInt32ToChunkList(tcList, DatumGetInt32(attr));
+						break;
+					case CHAROID:
+						addCharToChunkList(tcList, DatumGetChar(attr));
+						break;
+					case BPCHAROID:
+					case VARCHAROID:
+					case INT2VECTOROID: /* postgres serialization logic broken, use our own */
+					case OIDVECTOROID: /* postgres serialization logic broken, use our own */
+					case ANYARRAYOID:
+					{
+						text	   *pText = DatumGetTextP(attr);
+						int32		textSize = VARSIZE(pText) - VARHDRSZ;
+
+						addInt32ToChunkList(tcList, textSize);
+						addByteStringToChunkList(tcList, (char *) VARDATA(pText), textSize);
+						break;
+					}
+					case DATEOID:
+					{
+						DateADT date = DatumGetDateADT(attr);
+
+						addByteStringToChunkList(tcList, (char *) &date, sizeof(DateADT));
+						break;
+					}
+					case NUMERICOID:
+					{
+						/*
+						 * Treat the numeric as a varlena variable, and just push
+						 * the whole shebang to the output-buffer.	We don't care
+						 * about the guts of the numeric.
+						 */
+						Numeric		num = DatumGetNumeric(attr);
+						int32		numSize = VARSIZE(num) - VARHDRSZ;
+
+						addInt32ToChunkList(tcList, numSize);
+						addByteStringToChunkList(tcList, (char *) VARDATA(num), numSize);
+						break;
+					}
+
+					case ACLITEMOID:
+					{
+						AclItem		*aip = DatumGetAclItemP(attr);
+						char		*outputstring;
+						int32		aclSize ;
+
+						outputstring = DatumGetCString(DirectFunctionCall1(aclitemout,
+																		   PointerGetDatum(aip)));
+
+						aclSize = strlen(outputstring);
+						addInt32ToChunkList(tcList, aclSize);
+						addByteStringToChunkList(tcList, outputstring,aclSize);
+						break;
+					}	
+
+					case 210: /* storage manager */
+					{
+						char		*smgrstr;
+						int32		strsize;
+
+						smgrstr = DatumGetCString(DirectFunctionCall1(smgrout, 0));
+						strsize = strlen(smgrstr);
+						addInt32ToChunkList(tcList, strsize);
+						addByteStringToChunkList(tcList, smgrstr, strsize);
+						break;
+					}
+
+					default:
+						fHandled = false;
 				}
-			case NUMERICOID:
-				{
-					/*
-					 * Treat the numeric as a varlena variable, and just push
-					 * the whole shebang to the output-buffer.	We don't care
-					 * about the guts of the numeric.
-					 */
-					Numeric		num = DatumGetNumeric(attr);
-					int32		numSize = VARSIZE(num) - VARHDRSZ;
 
-					addInt32ToChunkList(tcList, numSize);
-					addByteStringToChunkList(tcList, (char *) VARDATA(num), numSize);
-					break;
-				}
+				if (fHandled)
+					continue;
 
-			case ACLITEMOID:
-				{
-					AclItem		*aip = DatumGetAclItemP(attr);
-					char		*outputstring;
-					int32		aclSize ;
-
-					outputstring = DatumGetCString(DirectFunctionCall1(aclitemout,
-					               PointerGetDatum(aip)));
-
-					aclSize = strlen(outputstring);
-					addInt32ToChunkList(tcList, aclSize);
-					addByteStringToChunkList(tcList, outputstring,aclSize);
-					break;
-				}	
-
-			case 210: /* storage manager */
-				{
-					char		*smgrstr;
-					int32		strsize;
-
-					smgrstr = DatumGetCString(DirectFunctionCall1(smgrout, 0));
-					strsize = strlen(smgrstr);
-					addInt32ToChunkList(tcList, strsize);
-					addByteStringToChunkList(tcList, smgrstr, strsize);
-					break;
-				}
-
-			default:
-				fHandled = false;
-		}
-
-		if (fHandled)
-			continue;
-
-		/*
-		 * the FunctionCall2 call into the send function may result in some
-		 * allocations which we'd like to have contained by our reset-able
-		 * context
-		 */
-		oldCtxt = MemoryContextSwitchTo(s_tupSerMemCtxt);						  
+				/*
+				 * the FunctionCall2 call into the send function may result in some
+				 * allocations which we'd like to have contained by our reset-able
+				 * context
+				 */
+				oldCtxt = MemoryContextSwitchTo(s_tupSerMemCtxt);						  
 							  
-		/* Call the attribute type's binary input converter. */
-		if (attrInfo->send_finfo.fn_nargs == 1)
-			outputbytes =
-				DatumGetByteaP(FunctionCall1(&attrInfo->send_finfo,
-										 attr));
-		else if (attrInfo->send_finfo.fn_nargs == 2)
-			outputbytes =
-				DatumGetByteaP(FunctionCall2(&attrInfo->send_finfo,
-										 attr,
-							  ObjectIdGetDatum(attrInfo->send_typio_param)));
-	    else if (attrInfo->send_finfo.fn_nargs == 3)
-	    	outputbytes =
-				DatumGetByteaP(FunctionCall3(&attrInfo->send_finfo,
-										 attr,
-							  ObjectIdGetDatum(attrInfo->send_typio_param),
-							  Int32GetDatum(-1) ));              // Is this right?  
-		else
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
-					 errmsg("Conversion function takes %d args",attrInfo->recv_finfo.fn_nargs)));
-		}
+				/* Call the attribute type's binary input converter. */
+				if (attrInfo->send_finfo.fn_nargs == 1)
+					outputbytes =
+						DatumGetByteaP(FunctionCall1(&attrInfo->send_finfo,
+													 attr));
+				else if (attrInfo->send_finfo.fn_nargs == 2)
+					outputbytes =
+						DatumGetByteaP(FunctionCall2(&attrInfo->send_finfo,
+													 attr,
+													 ObjectIdGetDatum(attrInfo->send_typio_param)));
+				else if (attrInfo->send_finfo.fn_nargs == 3)
+					outputbytes =
+						DatumGetByteaP(FunctionCall3(&attrInfo->send_finfo,
+													 attr,
+													 ObjectIdGetDatum(attrInfo->send_typio_param),
+													 Int32GetDatum(-1) ));              // Is this right?  
+				else
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
+							 errmsg("Conversion function takes %d args",attrInfo->recv_finfo.fn_nargs)));
+				}
 		
-		MemoryContextSwitchTo(oldCtxt);
+				MemoryContextSwitchTo(oldCtxt);
 
-		/* We assume the result will not have been toasted */
-		addInt32ToChunkList(tcList, VARSIZE(outputbytes) - VARHDRSZ);
-		addByteStringToChunkList(tcList, VARDATA(outputbytes),
-								 VARSIZE(outputbytes) - VARHDRSZ);
+				/* We assume the result will not have been toasted */
+				addInt32ToChunkList(tcList, VARSIZE(outputbytes) - VARHDRSZ);
+				addByteStringToChunkList(tcList, VARDATA(outputbytes),
+										 VARSIZE(outputbytes) - VARHDRSZ);
 
-		/*
-		 * this was allocated in our reset-able context, but we *are* done
-		 * with it; and for tuples with several large columns it'd be nice to
-		 * free the memory back to the context
-		 */
-		pfree(outputbytes);
+				/*
+				 * this was allocated in our reset-able context, but we *are* done
+				 * with it; and for tuples with several large columns it'd be nice to
+				 * free the memory back to the context
+				 */
+				pfree(outputbytes);
+
+			}
+
+			MemoryContextReset(s_tupSerMemCtxt);
+		}
 	}
-
-	MemoryContextReset(s_tupSerMemCtxt);
 
 	/*
 	 * if we have more than 1 chunk we have to set the chunk types on our
@@ -473,7 +520,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 	if (tcList->num_chunks > 1)
 	{
 		TupleChunkListItem first,
-					last;
+			last;
 
 		first = tcList->p_first;
 		last = tcList->p_last;
@@ -778,7 +825,7 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 				if (GetChunkType(tcItem) != TC_WHOLE)
 				{
 					ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-						   errmsg("Single chunk's type must be TC_WHOLE.")));
+									errmsg("Single chunk's type must be TC_WHOLE.")));
 				}
 			}
 			else
@@ -787,8 +834,8 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 				if (GetChunkType(tcItem) != TC_PARTIAL_START)
 				{
 					ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-							errmsg("First chunk of collection must have type"
-								   " TC_PARTIAL_START.")));
+									errmsg("First chunk of collection must have type"
+										   " TC_PARTIAL_START.")));
 				}
 			}
 		}
@@ -800,8 +847,8 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 				if (GetChunkType(tcItem) != TC_PARTIAL_END)
 				{
 					ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("Last chunk of collection must have type"
-									" TC_PARTIAL_END.")));
+									errmsg("Last chunk of collection must have type"
+										   " TC_PARTIAL_END.")));
 				}
 			}
 			else
@@ -810,16 +857,16 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 				if (GetChunkType(tcItem) != TC_PARTIAL_MID)
 				{
 					ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("Last chunk of collection must have type"
-									" TC_PARTIAL_MID.")));
+									errmsg("Last chunk of collection must have type"
+										   " TC_PARTIAL_MID.")));
 				}
 			}
 		}
 
 		/* Copy this chunk into the tuple data.  Don't include the header! */
 		appendBinaryStringInfo(&serData,
-			(const char *) GetChunkDataPtr(tcItem) + TUPLE_CHUNK_HEADER_SIZE,
-							 tcItem->chunk_length - TUPLE_CHUNK_HEADER_SIZE);
+							   (const char *) GetChunkDataPtr(tcItem) + TUPLE_CHUNK_HEADER_SIZE,
+							   tcItem->chunk_length - TUPLE_CHUNK_HEADER_SIZE);
 
 		/* Go to the next chunk. */
 		tcItem = tcItem->p_next;
@@ -830,8 +877,74 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 	/* we've finished with the TCList, free it now. */
 	clearTCList(tcList);
 
-	/* Create the HeapTuple from the concatenated chunks. */
-	htup = DeserializeTuple(pSerInfo, &serData);
+	{
+		TupSerHeader *tshp;
+		unsigned int	datalen;
+		unsigned int	nullslen;
+		unsigned int	hoff;
+		HeapTupleHeader t_data;
+		char *pos = (char *)serData.data;
+
+		tshp = (TupSerHeader *)pos;
+		pos += sizeof(TupSerHeader);
+
+		/* if the tuple had toasted elements we have to deserialize the old slow way */
+		if ((tshp->infomask & (HEAP_HASEXTERNAL | HEAP_HASEXTENDED)) != 0)
+		{
+			serData.cursor += sizeof(TupSerHeader);
+
+			htup = DeserializeTuple(pSerInfo, &serData);
+
+			/* Free up memory we used. */
+			pfree(serData.data);
+			return htup;
+		}
+
+		/* reconstruct lengths of null bitmap and data part */
+		if (tshp->infomask & HEAP_HASNULL)
+			nullslen = BITMAPLEN(tshp->natts);
+		else
+			nullslen = 0;
+		datalen = tshp->tuplen - sizeof(TupSerHeader) - nullslen;
+
+		/* determine overhead size of tuple (should match heap_form_tuple) */
+		hoff = offsetof(HeapTupleHeaderData, t_bits) + nullslen;
+		if (tshp->infomask & HEAP_HASOID)
+			hoff += sizeof(Oid);
+		hoff = MAXALIGN(hoff);
+
+		/* Allocate the space in one chunk, like heap_form_tuple */
+		htup = (HeapTuple) palloc(HEAPTUPLESIZE + hoff + datalen);
+		htup->t_datamcxt = CurrentMemoryContext;
+
+		t_data = (HeapTupleHeader) ((char *)htup + HEAPTUPLESIZE);
+
+		/* make sure unused header fields are zeroed */
+		MemSetAligned(t_data, 0, hoff);
+		/* reconstruct the HeapTupleData fields */
+		htup->t_len = hoff + datalen;
+		ItemPointerSetInvalid(&(htup->t_self));
+		htup->t_tableOid = InvalidOid;
+		htup->t_data = t_data;
+
+		/* reconstruct the HeapTupleHeaderData fields */
+		ItemPointerSetInvalid(&(t_data->t_ctid));
+		t_data->t_natts = tshp->natts;
+		t_data->t_infomask = (tshp->infomask & ~HEAP_XACT_MASK)
+			| (HEAP_XMIN_INVALID | HEAP_XMAX_INVALID);
+		t_data->t_hoff = hoff;
+
+		if (nullslen)
+		{
+			memcpy((void *)t_data->t_bits, pos, nullslen);
+			pos += nullslen;
+		}
+
+		/* and now the data proper (it would be nice if we could just
+		 * point our caller into our existing buffer in-place, but
+		 * we'll leave that for another day) */
+		memcpy((char *)t_data + hoff, pos, datalen);
+	}
 
 	/* Free up memory we used. */
 	pfree(serData.data);
