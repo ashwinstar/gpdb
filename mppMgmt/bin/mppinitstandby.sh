@@ -205,7 +205,7 @@ STOP_MASTER_DB () {
 	else
 		LOG_MSG "[INFO]:-Commencing shutdown of Master instance"
 		if [ -f $MPPSTOP ];then
-			$MPPSTOP -ay
+			$MPPSTOP -afy
 			ERROR_CHK $? "stop Master instance" 1
 		else
 			ERROR_EXIT "[FATAL]:-Unable to locate $MPPSTOP" 2
