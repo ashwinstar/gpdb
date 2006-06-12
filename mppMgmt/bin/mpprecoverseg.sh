@@ -442,6 +442,15 @@ if [ ! $MASTER_DATA_DIRECTORY ]; then
 fi
 CHK_ON_PASSIVE_STANDBY
 GET_SETTING
+
+if [ "$FAIL_TYPE" == "shutdown" ];then
+    LOG_MSG "[INFO]:-Recovering in 'shutdown' mode: simple restart required"
+    STOP_DATABASE
+    START_DATABASE
+    RESET_QE_CONNECT
+    exit $EXIT_STATUS
+fi
+
 READ_CHK
 if [ $READ_COUNT -ne 0 ];then
         ERROR_EXIT "[FATAL]:-This script cannot be used on a Master read only segment instance" 2
