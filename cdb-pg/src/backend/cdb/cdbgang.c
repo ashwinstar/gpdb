@@ -564,7 +564,7 @@ buildGangDefinition(GangType type, int size, int content)
 				}
 				else
 				{
-					elog(PANIC, "building Gang: Primary and mirror both unavailable for segment %d", p->segindex);
+					elog(FATAL, "building Gang: Primary and mirror both unavailable for segment %d", p->segindex);
 					continue;
 				}
 			}
