@@ -132,7 +132,7 @@ CHECK_PARAM () {
 		fi
 		#Get line count for file
 		MIRROR_COUNT_FILE=`$CAT $MIRROR_MACHINE_LIST_FILE|$WC -l`
-		LOG_MSG "[INFO]:-Number of lines in file = $MIRROR_COUNT"
+		LOG_MSG "[INFO]:-Number of lines in file = $MIRROR_COUNT_FILE"
 		#Check that have : field separator
 		if [ `$CAT $MIRROR_MACHINE_LIST_FILE|$GREP -c ":"` -ne $MIRROR_COUNT_FILE ];then
 			ERROR_EXIT "[FATAL]:-Seperator/line number mismatch, please check file" 2
@@ -171,8 +171,8 @@ OBTAIN_PARAM () {
 	ERROR_CHK $? "obtain segment instance directory suffix" 2
 	PRI_SEGMENT_ARRAY_COUNT=${#PRI_SEGMENT_ARRAY[@]}
 	if [ $BALANCE -eq 1 ];then
-		if [ $PRI_HOST_COUNT -eq 1 ] || [ $PRI_SEG_PER_HOST -gt $PRI_HOST_COUNT ];then
-			LOG_MSG "[FATAL]:-Number of segment hosts must be >= number of segments per hosts" 
+		if [ $PRI_HOST_COUNT -eq 1 ] || [ $PRI_SEG_PER_HOST -eq $PRI_HOST_COUNT ];then
+			LOG_MSG "[FATAL]:-Number of segment hosts must be > number of segments per hosts" 
 			ERROR_EXIT "[FATAL]:-Insufficient MPP hosts for -s mirroring option" 2
 		fi
 		LOG_MSG "[INFO]:-Sufficient MPP segment hosts for -s option"
@@ -199,9 +199,12 @@ OBTAIN_PARAM () {
 		MIR_SEGMENT_NAMES=(`$CAT $MIRROR_MACHINE_LIST_FILE|$CUT -d":" -f1|$SORT -u|$TR '\n' ' '`)
 		#Check to see if all hostnames match or none	
 		MIR_HOST_COUNT=${#MIR_SEGMENT_NAMES[@]}
+		LOG_MSG "[INFO]:-Obtained mirror host count as $MIR_HOST_COUNT"
 		MATCH_COUNT=0
+		LOG_MSG "[INFO]:-Checking for host name conflicts"
 		for MIR_HOST in "${MIR_SEGMENT_NAMES[@]}"
 		do
+			LOG_MSG "[INFO]:-Checking mirror host $MIR_HOST"
 			if [ `$ECHO ${PRI_SEGMENT_NAMES[@]}|$GREP -c $MIR_HOST` -eq 1 ];then
 				((MATCH_COUNT=$MATCH_COUNT+1))
 			fi
@@ -257,6 +260,10 @@ CREATE_MIRROR_ARRAY () {
 	DIR_VECTOR=0
 	ARRAY_VECTOR=0
 	HOST_COUNT=1
+	MIRIDX=0
+	USE_BALANCE_ARRAY=(${PRI_HOSTNAME_ARRAY[@]})
+	BAL_COUNT=1
+	((BAL_MAX=$PRI_HOST_COUNT-1))
         while [ $HOST_COUNT -le $PRI_HOST_COUNT ]
         do
                 MIRROR_LIST=(${MIRROR_LIST[@]} ${MIRROR_DATADIRECTORY[@]})
@@ -267,18 +274,21 @@ CREATE_MIRROR_ARRAY () {
 		CUR_HOST=`$ECHO $PRIDETAILS|$CUT -d"|" -f3`
 		#Spread the mirrors
 		if [ $BALANCE -eq 1 ];then
-		 	HOST_ARRAY=(`$ECHO $PRI_HOSTNAME_ARRAY|$TR ' ' '\n'|$GREP -v $CUR_HOST|$TR '\n' ' '`)
-			 MIRROR_HOSTNAME=${HOST_ARRAY[$ARRAY_VECTOR]}
-                        ((ARRAY_VECTOR=$ARRAY_VECTOR+1))
-			if [ $ARRAY_VECTOR -eq $PRI_SEG_PER_HOST ];then
-                                ARRAY_VECTOR=0
+			MIRROR_HOSTNAME=${USE_BALANCE_ARRAY[$BAL_COUNT]}
+			if [ $BAL_COUNT -eq $BAL_MAX ];then
+                                BAL_COUNT=0
+			else
+				((BAL_COUNT=$BAL_COUNT+1))
                         fi
                 else
 			if [ x"" == x"$MIRROR_MACHINE_LIST_FILE" ];then
 				MIRROR_HOSTNAME=`$ECHO $BAL_HOSTNAME_ARRAY|$CUT -d" " -f$BALANCE_COUNT`
 			else
-				((MIRIDX=$ARRAY_VECTOR+1))
+				((MIRIDX=$MIRIDX+1))
 				MIRROR_HOSTNAME=`$ECHO ${MIR_SEGMENT_NAMES[@]}|$CUT -d" " -f$MIRIDX`
+				if [ $MIRIDX -eq $MIR_HOST_COUNT ];then
+					MIRIDX=0
+				fi
 			fi	
                         ((ARRAY_VECTOR=$ARRAY_VECTOR+1))
                         if [ $ARRAY_VECTOR -eq $PRI_SEG_PER_HOST ];then
