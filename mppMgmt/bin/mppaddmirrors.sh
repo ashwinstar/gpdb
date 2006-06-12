@@ -176,6 +176,9 @@ OBTAIN_PARAM () {
 			ERROR_EXIT "[FATAL]:-Insufficient MPP hosts for -s mirroring option" 2
 		fi
 		LOG_MSG "[INFO]:-Sufficient MPP segment hosts for -s option"
+		BAL_PORT_BASE=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(port)-$PRI_SEG_PER_HOST from $CONFIG_TABLE where content<>-1;"`
+		ERROR_CHK $? "obtain current port base" 2
+		LOG_MSG "[INFO]:-Obtained current port base = $BAL_PORT_BASE"
 	fi 
 	if [ x"" == x"$MIRROR_MACHINE_LIST_FILE" ];then
 		DIR_COUNT=0
@@ -197,6 +200,7 @@ OBTAIN_PARAM () {
 		PRI_SEGMENT_NAMES=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content<>-1;"`)
 		ERROR_CHK $? "obtain primary hostnames from $CONFIG_TABLE" 2
 		MIR_SEGMENT_NAMES=(`$CAT $MIRROR_MACHINE_LIST_FILE|$CUT -d":" -f1|$SORT -u|$TR '\n' ' '`)
+		ALL_MIR_SEGMENT_NAMES=(`$CAT $MIRROR_MACHINE_LIST_FILE|$CUT -d":" -f1|$TR '\n' ' '`)
 		#Check to see if all hostnames match or none	
 		MIR_HOST_COUNT=${#MIR_SEGMENT_NAMES[@]}
 		LOG_MSG "[INFO]:-Obtained mirror host count as $MIR_HOST_COUNT"
@@ -263,6 +267,7 @@ CREATE_MIRROR_ARRAY () {
 	MIRIDX=0
 	USE_BALANCE_ARRAY=(${PRI_HOSTNAME_ARRAY[@]})
 	BAL_COUNT=1
+	BAL_TOGGLE=0
 	((BAL_MAX=$PRI_HOST_COUNT-1))
         while [ $HOST_COUNT -le $PRI_HOST_COUNT ]
         do
@@ -275,6 +280,8 @@ CREATE_MIRROR_ARRAY () {
 		#Spread the mirrors
 		if [ $BALANCE -eq 1 ];then
 			MIRROR_HOSTNAME=${USE_BALANCE_ARRAY[$BAL_COUNT]}
+			USED_HOSTNAME=$USED_HOSTNAME" "$MIRROR_HOSTNAME
+			((MIRROR_PORT=$BAL_PORT_BASE+$MIRROR_OFFSET+`$ECHO $USED_HOSTNAME|$TR ' ' '\n'|$GREP -c $MIRROR_HOSTNAME`))
 			if [ $BAL_COUNT -eq $BAL_MAX ];then
                                 BAL_COUNT=0
 			else
@@ -285,10 +292,7 @@ CREATE_MIRROR_ARRAY () {
 				MIRROR_HOSTNAME=`$ECHO $BAL_HOSTNAME_ARRAY|$CUT -d" " -f$BALANCE_COUNT`
 			else
 				((MIRIDX=$MIRIDX+1))
-				MIRROR_HOSTNAME=`$ECHO ${MIR_SEGMENT_NAMES[@]}|$CUT -d" " -f$MIRIDX`
-				if [ $MIRIDX -eq $MIR_HOST_COUNT ];then
-					MIRIDX=0
-				fi
+				MIRROR_HOSTNAME=`$ECHO ${ALL_MIR_SEGMENT_NAMES[@]}|$CUT -d" " -f$MIRIDX`
 			fi	
                         ((ARRAY_VECTOR=$ARRAY_VECTOR+1))
                         if [ $ARRAY_VECTOR -eq $PRI_SEG_PER_HOST ];then
@@ -299,14 +303,15 @@ CREATE_MIRROR_ARRAY () {
 		MIRROR_DIR=${MIRROR_LIST[$DIR_VECTOR]}/`$ECHO $PRIDETAILS|$CUT -d"|" -f1|$AWK -F"/" '{print $NF}'`
 		((MIRROR_DBID=$MAX_DBID+$DIR_VECTOR))
 		((DIR_VECTOR=$DIR_VECTOR+1))
-		PRI_PORT=`$ECHO $PRIDETAILS|$CUT -d"|" -f2`
-		((MIRROR_PORT=$MIRROR_OFFSET+$PRI_PORT))
 		MIRROR_CONTENT=`$ECHO $PRIDETAILS|$CUT -d"|" -f4`
+		if [ $BALANCE -ne 1 ];then
+			PRI_PORT=`$ECHO $PRIDETAILS|$CUT -d"|" -f2`
+			((MIRROR_PORT=$MIRROR_OFFSET+$PRI_PORT))
+		fi
 		if [ $PRI_HOST_COUNT -eq 1 ];then
 			if [ x"" == x"$MIRROR_MACHINE_LIST_FILE" ];then
 				MIRROR_HOSTNAME=`$ECHO $PRIDETAILS|$CUT -d"|" -f3`
 			else
-				#MIRROR_HOSTNAME=`$CAT $MIRROR_MACHINE_LIST_FILE|$HEAD -1|$CUT -d":" -f1`
 				MIRROR_HOSTNAME=$MIRROR_HOSTNAME
 			fi
 		fi
