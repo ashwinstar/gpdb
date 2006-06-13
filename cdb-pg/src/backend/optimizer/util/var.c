@@ -75,7 +75,7 @@ typedef struct Cdb_walk_vars_context
     int                             sublevelsup;
 } Cdb_walk_vars_context;
 
-bool
+static bool
 cdb_walk_vars_walker(Node *node, void *wvwcontext)
 {
     Cdb_walk_vars_context  *ctx = (Cdb_walk_vars_context *)wvwcontext;
@@ -137,10 +137,12 @@ cdb_walk_vars(Node                         *node,
  * SubPlan, we only need to look at the parameters passed to the subplan.
  */
 static bool
-pull_varnos_cbVar(Var *var, pull_varnos_context *context, int sublevelsup)
+pull_varnos_cbVar(Var *var, void *context, int sublevelsup)
 {
+    pull_varnos_context *ctx = (pull_varnos_context *)context;
+
 	if ((int)var->varlevelsup == sublevelsup)
-		context->varnos = bms_add_member(context->varnos, var->varno);
+		ctx->varnos = bms_add_member(ctx->varnos, var->varno);
 	return false;
 }
 
@@ -169,12 +171,14 @@ pull_varnos(Node *node)
  * SubPlan, we only need to look at the parameters passed to the subplan.
  */
 static bool
-contain_var_reference_cbVar(Var *var,
-							contain_var_reference_context *context,
-                            int sublevelsup)
+contain_var_reference_cbVar(Var    *var,
+							void   *context,
+                            int     sublevelsup)
 {
-	if (var->varno == context->varno &&
-		var->varattno == context->varattno &&
+    contain_var_reference_context *ctx = (contain_var_reference_context *)context;
+
+    if (var->varno == ctx->varno &&
+		var->varattno == ctx->varattno &&
 		(int)var->varlevelsup == sublevelsup)
 		return true;
 	return false;
@@ -285,20 +289,21 @@ contain_vars_above_level(Node *node, int levelsup)
  */
 static bool
 find_minimum_var_level_cbVar(Var   *var,
-							 find_minimum_var_level_context *context,
+							 void  *context,
                              int    sublevelsup)
 {
-	int			varlevelsup = var->varlevelsup;
+    find_minimum_var_level_context *ctx = (find_minimum_var_level_context *)context;
+    int			varlevelsup = var->varlevelsup;
 
 	/* convert levelsup to frame of reference of original query */
 	varlevelsup -= sublevelsup;
 	/* ignore local vars of subqueries */
 	if (varlevelsup >= 0)
 	{
-		if (context->min_varlevel < 0 ||
-			context->min_varlevel > varlevelsup)
+		if (ctx->min_varlevel < 0 ||
+			ctx->min_varlevel > varlevelsup)
 		{
-			context->min_varlevel = varlevelsup;
+			ctx->min_varlevel = varlevelsup;
 
 			/*
 			 * As soon as we find a local variable, we can abort the tree
@@ -313,7 +318,7 @@ find_minimum_var_level_cbVar(Var   *var,
 
 static bool
 find_minimum_var_level_cbAggref(Aggref *aggref,
-						        find_minimum_var_level_context *context,
+						        void   *context,
                                 int     sublevelsup)
 {
 	/*
@@ -321,17 +326,18 @@ find_minimum_var_level_cbAggref(Aggref *aggref,
 	 * the same result from looking at the Vars in the aggregate's argument,
 	 * but this fails in the case of a Var-less aggregate call (COUNT(*)).
 	 */
-	int			agglevelsup = aggref->agglevelsup;
+    find_minimum_var_level_context *ctx = (find_minimum_var_level_context *)context;
+    int			agglevelsup = aggref->agglevelsup;
 
 	/* convert levelsup to frame of reference of original query */
 	agglevelsup -= sublevelsup;
 	/* ignore local aggs of subqueries */
 	if (agglevelsup >= 0)
 	{
-		if (context->min_varlevel < 0 ||
-			context->min_varlevel > agglevelsup)
+		if (ctx->min_varlevel < 0 ||
+			ctx->min_varlevel > agglevelsup)
 		{
-			context->min_varlevel = agglevelsup;
+			ctx->min_varlevel = agglevelsup;
 
 			/*
 			 * As soon as we find a local aggregate, we can abort the tree
@@ -346,7 +352,7 @@ find_minimum_var_level_cbAggref(Aggref *aggref,
 	return cdb_walk_vars((Node *)aggref->target,
                          find_minimum_var_level_cbVar,
                          find_minimum_var_level_cbAggref,
-                         context,
+                         ctx,
                          sublevelsup);
 }
 
