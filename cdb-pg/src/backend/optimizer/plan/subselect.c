@@ -665,6 +665,7 @@ convert_IN_to_join(PlannerInfo *root, SubLink *sublink)
 	Query	   *parse = root->parse;
 	Query	   *subselect = (Query *) sublink->subselect;
 	Relids		left_varnos;
+    Relids      right_varnos;   /*CDB*/
 	int			rtindex;
 	RangeTblEntry *rte;
 	RangeTblRef *rtr;
@@ -682,20 +683,20 @@ convert_IN_to_join(PlannerInfo *root, SubLink *sublink)
 		strcmp(strVal(linitial(sublink->operName)), "=") != 0)
 		return NULL;
 
-	/*
-	 * The sub-select must not refer to any Vars of the parent query. (Vars of
-	 * higher levels should be okay, though.)
+    /*
+	 * CDB: Correlated subquery with outer refs to current query level?
 	 */
-	if (contain_vars_of_level((Node *) subselect, 1))
-		return NULL;
+	right_varnos = pull_varnos((Node *) subselect);
 
 	/*
 	 * The left-hand expressions must contain some Vars of the current query,
 	 * else it's not gonna be a join.
 	 */
 	left_varnos = pull_varnos((Node *) sublink->lefthand);
+#if 0   /*CDB*/
 	if (bms_is_empty(left_varnos))
 		return NULL;
+#endif  /*CDB*/
 
 	/*
 	 * The left-hand expressions mustn't be volatile.  (Perhaps we should test
@@ -727,7 +728,7 @@ convert_IN_to_join(PlannerInfo *root, SubLink *sublink)
 	 * Now build the InClauseInfo node.
 	 */
 	ininfo = makeNode(InClauseInfo);
-	ininfo->lefthand = left_varnos;
+	ininfo->lefthand = bms_union(left_varnos, right_varnos);    /*CDB*/
 	ininfo->righthand = bms_make_singleton(rtindex);
 	root->in_info_list = lappend(root->in_info_list, ininfo);
 
