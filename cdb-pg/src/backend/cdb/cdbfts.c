@@ -280,9 +280,10 @@ isQDMirroringEnabled(void)
 void
 FtsHandleNetFailure(SegmentDatabaseDescriptor ** segDB, int numOfFailed)
 {
+	int i;
 	SegmentDatabaseDescriptor *failedDB;
 
-	int			i;
+	elog(DEBUG3, "FtsHandleNetFailure: numOfFailed %d", numOfFailed);
 
 	for (i = 0; i < numOfFailed; i++)
 	{
@@ -294,6 +295,9 @@ FtsHandleNetFailure(SegmentDatabaseDescriptor ** segDB, int numOfFailed)
 		if (!isFTSEnabled())
 			continue;
 
+		/* we have a real failure, if we're supposed to shutdown,
+		 * that's all we need to do. Otherwise, we need to continue
+		 * scanning and connecting as long as we have more failures */
 		if (*ftsAction == FTS_SHUTDOWN)
 		{
 			elog(LOG, "MPP detects segment failures, system is shut down");
@@ -303,10 +307,11 @@ FtsHandleNetFailure(SegmentDatabaseDescriptor ** segDB, int numOfFailed)
 		else
 		{
 			FtsReConfigureMPP();
-			elog(ERROR, "MPP detects segment failures, system is reconnected");
-			break;
 		}
 	}
+
+	if (noconnect > 0)
+		elog(ERROR, "MPP detected %d segment failures, system is reconnected", numOfFailed);
 }
 
 /*
