@@ -23,6 +23,7 @@ if sys.version_info < (2, 3):
 import traceback
 import socket
 import commands
+from stat import *
 
 try :
     import logging
@@ -39,6 +40,7 @@ except ImportError, e:
 #
 maxTries=3
 logName='groupSession'
+BLK_SIZE=1024
 sshPasswd=""
 sshRsaPass=""
 sshDsaPass=""
@@ -334,8 +336,19 @@ class sshSession(threading.Thread):
         #Expand the ~ and ~<userName> at the begining of the file
         lPath=os.path.expanduser(localPath)
         rPath="%s@%s:%s" %(self.user, self.host, remotePath)
-        logger.info("Copying %s to %s", lPath, rPath)
         try :
+            try :
+                rStat=self.sftpClnt.stat(remotePath)
+                if S_ISDIR(rStat.st_mode):
+                    lbaseName=os.path.basename(localPath)
+                    rPath=rPath+'/'+lbaseName
+                    remotePath=remotePath+'/'+lbaseName
+            except Exception, e:
+                # Probably IOError
+                #logger.error("*** Caught exception (%s) message: (%s )" \
+                    #% (str(e.__class__), str(e)))
+                pass
+            logger.info("Copying %s to %s", lPath, rPath)
             self.sftpClnt.put(lPath, remotePath)
         except IOError, e:
             errStr='Unable to Copy (%s to %s):%s' % (lPath, rPath, str(e))
@@ -353,7 +366,7 @@ class sshSession(threading.Thread):
             if self.debug:
                 traceback.print_exc()
             return errStr 
-        #Has to Reuturn String for runCommand in groupSession
+        #Has to Reuturn String for  in groupSession
         logger.info("Finished Copying %s to %s", lPath, rPath)
         return  ""
 
@@ -398,7 +411,7 @@ class sshSession(threading.Thread):
         except Exception, e:
             errMsg="*** Caught exception (%s) message: (%s ), command (%s)"\
                 " host : %s " % (str(e.__class__), str(e), command, self.host)
-            logger.debug(errMsg)
+            logger.error(errMsg)
             raise runCommandException(errMsg)
         logger.debug("Waiting for error Code")
         exit_status=0
@@ -406,39 +419,29 @@ class sshSession(threading.Thread):
         # TODO Need to implement a timeout here 
         # However, taking care of CTRL-C would really solve the issue here.
         #
-        exit_status=self.chan.recv_exit_status()
+        stdout = ""
+        stderr = ""
+        self.chan.set_combine_stderr(True)
+        recvBlk=BLK_SIZE
+        if True or self.chan.recv_ready():
+            while True:
+                recvBytes= self.chan.recv(recvBlk)
+                if not recvBytes:
+                    break
+                stdout+= recvBytes
+                logger.debug("%s len = %d " %( self.userHost, len(recvBytes)))
+                if len(recvBytes) == recvBlk:
+                    recvBlk *= 2
+        exitStatus = self.chan.recv_exit_status()
+        logger.debug("%s stdout = %d \n" % (self.userHost, len(stdout)))
+        #exit_status=self.chan.recv_exit_status()
         logger.debug("Error Code : %d %s executed on %s \n", exit_status,
             command, self.host)
-        stdout=""
-        stderr=""
-        # Obtain the stderr of the command
-        # Buffered stderr.
-        while(self.chan.recv_stderr_ready()):
-            recvBytes=self.chan.recv_stderr(1024)
-            if not recvBytes:
-                break
-            stderr+=recvBytes
-        # Obtain the stdout of the command
-        while (True):
-            recvBytes=self.chan.recv_stderr(1024)
-            if not recvBytes:
-                break
-            stderr+=recvBytes
-        # Obtain the stdout of the command
-        while(self.chan.recv_ready()):
-            recvBytes=self.chan.recv(1024)
-            if not recvBytes:
-                break
-            stdout+=recvBytes
-        while (True):
-            recvBytes=self.chan.recv(1024)
-            if not recvBytes:
-                break
-            stdout+=recvBytes
         self.chan.close()
         self.chan=None
-        logger.debug("Command = <%s> exit_status=%d \n stdout=%s stderr=%s\n",
-            command, exit_status, stdout, stderr)
+        # Only Log first 1024 Bytes.
+        logger.debug("Command = <%s> exit_status=%d \n stdout=%d \n",
+            command, exit_status, len(stdout))
         self.stdout=stdout
         self.stderr=stderr
         self.exitStatus=exit_status
@@ -451,34 +454,25 @@ class sshSession(threading.Thread):
             self.chan.close()
 
     def run(self):
-        if self.cmd is "ssh":
-            #print self.args[0]
-            #print self.args
-            self.lastoutput = self.execCmd(self.args[0])
-        
-        elif self.cmd is "scp":
-            self.lastoutput = self.putFile(self.args[0], self.args[1])
-                    
-        elif self.cmd is "dirCopy":
-            self.lastoutput = self.putDir(self.args[0], self.args[1])
-                    
-        elif self.cmd is "scpOld":
-                scpOptions=[]
-                for i in range(2, len(self.args)):
-                    scpOptions.append(self.args[i])
-                self.lastoutput = self.scp(self.args[0], self.args[1], \
-                        scpOptions)
-        elif self.cmd is "scprem":
-                self.lastoutput = self.scprem(self.args[0], self.args[1])
-
-        elif self.cmd is "dircopy":
-                self.lastoutput = self.dircopy(self.args[0], self.args[1])
-
-        elif self.cmd is "exists":
-                self.lastoutput = self.exists(self.args[0])
-        else:
+        logger=logging.getLogger('groupSession')
+        try:
+            if self.cmd is "ssh":
+                self.lastoutput = self.execCmd(self.args[0])
+            elif self.cmd is "scp":
+                self.lastoutput = self.putFile(self.args[0], self.args[1])
+            elif self.cmd is "dirCopy":
+                self.lastoutput = self.putDir(self.args[0], self.args[1])
+            elif self.cmd is "exists":
+                    self.lastoutput = self.exists(self.args[0])
+            else:
                 self.lastoutput = "No interface selected"
-        return self.lastoutput
+            return self.lastoutput
+        except Exception, e:
+            errMsg="%s Caught exception (%s) message: (%s ), "\
+            "run(%s:%s)" % (self.userHost, str(e.__class__), str(e),   \
+                self.cmd, self.args[0])
+            logger.error(errMsg)
+            return False
 
     def exists(self, file):
         "Retrieve file permissions of specified remote file."
