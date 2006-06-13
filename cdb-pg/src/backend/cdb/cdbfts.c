@@ -310,8 +310,7 @@ FtsHandleNetFailure(SegmentDatabaseDescriptor ** segDB, int numOfFailed)
 		}
 	}
 
-	if (noconnect > 0)
-		elog(ERROR, "MPP detected %d segment failures, system is reconnected", numOfFailed);
+	elog(ERROR, "MPP detected %d segment failures, system is reconnected", numOfFailed);
 }
 
 /*
