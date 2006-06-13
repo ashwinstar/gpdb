@@ -3,6 +3,7 @@
  * var.c
  *	  Var node manipulation routines
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -25,20 +26,17 @@
 typedef struct
 {
 	Relids		varnos;
-	int			sublevels_up;
 } pull_varnos_context;
 
 typedef struct
 {
-	int			varno;
+	Index		varno;
 	int			varattno;
-	int			sublevels_up;
 } contain_var_reference_context;
 
 typedef struct
 {
 	int			min_varlevel;
-	int			sublevels_up;
 } find_minimum_var_level_context;
 
 typedef struct
@@ -53,20 +51,79 @@ typedef struct
 	int			sublevels_up;
 } flatten_join_alias_vars_context;
 
-static bool pull_varnos_walker(Node *node,
-				   pull_varnos_context *context);
-static bool contain_var_reference_walker(Node *node,
-							 contain_var_reference_context *context);
 static bool contain_var_clause_walker(Node *node, void *context);
-static bool contain_vars_of_level_walker(Node *node, int *sublevels_up);
-static bool contain_vars_above_level_walker(Node *node, int *sublevels_up);
-static bool find_minimum_var_level_walker(Node *node,
-							  find_minimum_var_level_context *context);
 static bool pull_var_clause_walker(Node *node,
 					   pull_var_clause_context *context);
 static Node *flatten_join_alias_vars_mutator(Node *node,
 								flatten_join_alias_vars_context *context);
 static Relids alias_relid_set(PlannerInfo *root, Relids relids);
+
+
+/*
+ * cdb_walk_vars
+ *	  Invoke callback function on each Var and/or Aggref node in an expression.
+ *    If a callback returns true, no further nodes are visited, and true is
+ *    returned.  Otherwise after visiting all nodes, false is returned.
+ *
+ * Will recurse into sublinks.	Also, may be invoked directly on a Query.
+ */
+typedef struct Cdb_walk_vars_context
+{
+    Cdb_walk_vars_callback_Var      callback_var;
+    Cdb_walk_vars_callback_Aggref   callback_aggref;
+    void                           *context;
+    int                             sublevelsup;
+} Cdb_walk_vars_context;
+
+bool
+cdb_walk_vars_walker(Node *node, void *wvwcontext)
+{
+    Cdb_walk_vars_context  *ctx = (Cdb_walk_vars_context *)wvwcontext;
+
+	if (node == NULL)
+		return false;
+
+    if (IsA(node, Var) &&
+        ctx->callback_var != NULL)
+		return ctx->callback_var((Var *)node, ctx->context, ctx->sublevelsup);
+
+    if (IsA(node, Aggref) &&
+        ctx->callback_aggref != NULL)
+        return ctx->callback_aggref((Aggref *)node, ctx->context, ctx->sublevelsup);
+
+    if (IsA(node, Query))
+	{
+		bool    b;
+
+		/* Recurse into subselects */
+		ctx->sublevelsup++;
+		b = query_tree_walker((Query *)node, cdb_walk_vars_walker, ctx, 0);
+		ctx->sublevelsup--;
+		return b;
+	}
+	return expression_tree_walker(node, cdb_walk_vars_walker, ctx);
+}                               /* cdb_walk_vars_walker */
+
+bool
+cdb_walk_vars(Node                         *node,
+              Cdb_walk_vars_callback_Var    callback_var,
+              Cdb_walk_vars_callback_Aggref callback_aggref,
+              void                         *context,
+              int                           levelsup)
+{
+	Cdb_walk_vars_context   ctx;
+
+    ctx.callback_var = callback_var;
+    ctx.callback_aggref = callback_aggref;
+    ctx.context = context;
+    ctx.sublevelsup = levelsup;
+
+	/*
+	 * Must be prepared to start with a Query or a bare expression tree; if
+	 * it's a Query, we don't want to increment levelsdown.
+	 */
+	return query_or_expression_tree_walker(node, cdb_walk_vars_walker, &ctx, 0);
+}                               /* cdb_walk_vars */
 
 
 /*
@@ -79,52 +136,24 @@ static Relids alias_relid_set(PlannerInfo *root, Relids relids);
  * references to the desired rtable level!	But when we find a completed
  * SubPlan, we only need to look at the parameters passed to the subplan.
  */
+static bool
+pull_varnos_cbVar(Var *var, pull_varnos_context *context, int sublevelsup)
+{
+	if ((int)var->varlevelsup == sublevelsup)
+		context->varnos = bms_add_member(context->varnos, var->varno);
+	return false;
+}
+
 Relids
 pull_varnos(Node *node)
 {
 	pull_varnos_context context;
 
 	context.varnos = NULL;
-	context.sublevels_up = 0;
 
-	/*
-	 * Must be prepared to start with a Query or a bare expression tree; if
-	 * it's a Query, we don't want to increment sublevels_up.
-	 */
-	query_or_expression_tree_walker(node,
-									pull_varnos_walker,
-									(void *) &context,
-									0);
+    cdb_walk_vars(node, pull_varnos_cbVar, NULL, &context, 0);
 
 	return context.varnos;
-}
-
-static bool
-pull_varnos_walker(Node *node, pull_varnos_context *context)
-{
-	if (node == NULL)
-		return false;
-	if (IsA(node, Var))
-	{
-		Var		   *var = (Var *) node;
-
-		if (var->varlevelsup == context->sublevels_up)
-			context->varnos = bms_add_member(context->varnos, var->varno);
-		return false;
-	}
-	if (IsA(node, Query))
-	{
-		/* Recurse into RTE subquery or not-yet-planned sublink subquery */
-		bool		result;
-
-		context->sublevels_up++;
-		result = query_tree_walker((Query *) node, pull_varnos_walker,
-								   (void *) context, 0);
-		context->sublevels_up--;
-		return result;
-	}
-	return expression_tree_walker(node, pull_varnos_walker,
-								  (void *) context);
 }
 
 
@@ -139,6 +168,18 @@ pull_varnos_walker(Node *node, pull_varnos_context *context)
  * references to the desired rtable entry!	But when we find a completed
  * SubPlan, we only need to look at the parameters passed to the subplan.
  */
+static bool
+contain_var_reference_cbVar(Var *var,
+							contain_var_reference_context *context,
+                            int sublevelsup)
+{
+	if (var->varno == context->varno &&
+		var->varattno == context->varattno &&
+		(int)var->varlevelsup == sublevelsup)
+		return true;
+	return false;
+}
+
 bool
 contain_var_reference(Node *node, int varno, int varattno, int levelsup)
 {
@@ -146,48 +187,8 @@ contain_var_reference(Node *node, int varno, int varattno, int levelsup)
 
 	context.varno = varno;
 	context.varattno = varattno;
-	context.sublevels_up = levelsup;
 
-	/*
-	 * Must be prepared to start with a Query or a bare expression tree; if
-	 * it's a Query, we don't want to increment sublevels_up.
-	 */
-	return query_or_expression_tree_walker(node,
-										   contain_var_reference_walker,
-										   (void *) &context,
-										   0);
-}
-
-static bool
-contain_var_reference_walker(Node *node,
-							 contain_var_reference_context *context)
-{
-	if (node == NULL)
-		return false;
-	if (IsA(node, Var))
-	{
-		Var		   *var = (Var *) node;
-
-		if (var->varno == context->varno &&
-			var->varattno == context->varattno &&
-			var->varlevelsup == context->sublevels_up)
-			return true;
-		return false;
-	}
-	if (IsA(node, Query))
-	{
-		/* Recurse into RTE subquery or not-yet-planned sublink subquery */
-		bool		result;
-
-		context->sublevels_up++;
-		result = query_tree_walker((Query *) node,
-								   contain_var_reference_walker,
-								   (void *) context, 0);
-		context->sublevels_up--;
-		return result;
-	}
-	return expression_tree_walker(node, contain_var_reference_walker,
-								  (void *) context);
+	return cdb_walk_vars(node, contain_var_reference_cbVar, NULL, &context, levelsup);
 }
 
 
@@ -230,43 +231,18 @@ contain_var_clause_walker(Node *node, void *context)
  *
  * Will recurse into sublinks.	Also, may be invoked directly on a Query.
  */
+static bool
+contain_vars_of_level_cbVar(Var *var, void *context, int sublevelsup)
+{
+	if ((int)var->varlevelsup == sublevelsup)
+		return true;		    /* abort tree traversal and return true */
+    return false;
+}
+
 bool
 contain_vars_of_level(Node *node, int levelsup)
 {
-	int			sublevels_up = levelsup;
-
-	return query_or_expression_tree_walker(node,
-										   contain_vars_of_level_walker,
-										   (void *) &sublevels_up,
-										   0);
-}
-
-static bool
-contain_vars_of_level_walker(Node *node, int *sublevels_up)
-{
-	if (node == NULL)
-		return false;
-	if (IsA(node, Var))
-	{
-		if (((Var *) node)->varlevelsup == *sublevels_up)
-			return true;		/* abort tree traversal and return true */
-	}
-	if (IsA(node, Query))
-	{
-		/* Recurse into subselects */
-		bool		result;
-
-		(*sublevels_up)++;
-		result = query_tree_walker((Query *) node,
-								   contain_vars_of_level_walker,
-								   (void *) sublevels_up,
-								   0);
-		(*sublevels_up)--;
-		return result;
-	}
-	return expression_tree_walker(node,
-								  contain_vars_of_level_walker,
-								  (void *) sublevels_up);
+	return cdb_walk_vars(node, contain_vars_of_level_cbVar, NULL, NULL, levelsup);
 }
 
 /*
@@ -279,43 +255,18 @@ contain_vars_of_level_walker(Node *node, int *sublevels_up)
  *
  * Will recurse into sublinks.	Also, may be invoked directly on a Query.
  */
+static bool
+contain_vars_above_level_cbVar(Var *var, void *context, int sublevelsup)
+{
+	if ((int)var->varlevelsup > sublevelsup)
+		return true;		    /* abort tree traversal and return true */
+    return false;
+}
+
 bool
 contain_vars_above_level(Node *node, int levelsup)
 {
-	int			sublevels_up = levelsup;
-
-	return query_or_expression_tree_walker(node,
-										   contain_vars_above_level_walker,
-										   (void *) &sublevels_up,
-										   0);
-}
-
-static bool
-contain_vars_above_level_walker(Node *node, int *sublevels_up)
-{
-	if (node == NULL)
-		return false;
-	if (IsA(node, Var))
-	{
-		if (((Var *) node)->varlevelsup > *sublevels_up)
-			return true;		/* abort tree traversal and return true */
-	}
-	if (IsA(node, Query))
-	{
-		/* Recurse into subselects */
-		bool		result;
-
-		(*sublevels_up)++;
-		result = query_tree_walker((Query *) node,
-								   contain_vars_above_level_walker,
-								   (void *) sublevels_up,
-								   0);
-		(*sublevels_up)--;
-		return result;
-	}
-	return expression_tree_walker(node,
-								  contain_vars_above_level_walker,
-								  (void *) sublevels_up);
+	return cdb_walk_vars(node, contain_vars_above_level_cbVar, NULL, NULL, levelsup);
 }
 
 
@@ -332,96 +283,87 @@ contain_vars_above_level_walker(Node *node, int *sublevels_up)
  *
  * Will recurse into sublinks.	Also, may be invoked directly on a Query.
  */
+static bool
+find_minimum_var_level_cbVar(Var   *var,
+							 find_minimum_var_level_context *context,
+                             int    sublevelsup)
+{
+	int			varlevelsup = var->varlevelsup;
+
+	/* convert levelsup to frame of reference of original query */
+	varlevelsup -= sublevelsup;
+	/* ignore local vars of subqueries */
+	if (varlevelsup >= 0)
+	{
+		if (context->min_varlevel < 0 ||
+			context->min_varlevel > varlevelsup)
+		{
+			context->min_varlevel = varlevelsup;
+
+			/*
+			 * As soon as we find a local variable, we can abort the tree
+			 * traversal, since min_varlevel is then certainly 0.
+			 */
+			if (varlevelsup == 0)
+				return true;
+		}
+	}
+    return false;
+}
+
+static bool
+find_minimum_var_level_cbAggref(Aggref *aggref,
+						        find_minimum_var_level_context *context,
+                                int     sublevelsup)
+{
+	/*
+	 * An Aggref must be treated like a Var of its level.  Normally we'd get
+	 * the same result from looking at the Vars in the aggregate's argument,
+	 * but this fails in the case of a Var-less aggregate call (COUNT(*)).
+	 */
+	int			agglevelsup = aggref->agglevelsup;
+
+	/* convert levelsup to frame of reference of original query */
+	agglevelsup -= sublevelsup;
+	/* ignore local aggs of subqueries */
+	if (agglevelsup >= 0)
+	{
+		if (context->min_varlevel < 0 ||
+			context->min_varlevel > agglevelsup)
+		{
+			context->min_varlevel = agglevelsup;
+
+			/*
+			 * As soon as we find a local aggregate, we can abort the tree
+			 * traversal, since min_varlevel is then certainly 0.
+			 */
+			if (agglevelsup == 0)
+				return true;
+		}
+	}
+
+    /* visit aggregate's args */
+	return cdb_walk_vars((Node *)aggref->target,
+                         find_minimum_var_level_cbVar,
+                         find_minimum_var_level_cbAggref,
+                         context,
+                         sublevelsup);
+}
+
 int
 find_minimum_var_level(Node *node)
 {
 	find_minimum_var_level_context context;
 
 	context.min_varlevel = -1;	/* signifies nothing found yet */
-	context.sublevels_up = 0;
 
-	(void) query_or_expression_tree_walker(node,
-										   find_minimum_var_level_walker,
-										   (void *) &context,
-										   0);
+	cdb_walk_vars(node,
+                  find_minimum_var_level_cbVar,
+                  find_minimum_var_level_cbAggref,
+                  &context,
+                  0);
 
 	return context.min_varlevel;
-}
-
-static bool
-find_minimum_var_level_walker(Node *node,
-							  find_minimum_var_level_context *context)
-{
-	if (node == NULL)
-		return false;
-	if (IsA(node, Var))
-	{
-		int			varlevelsup = ((Var *) node)->varlevelsup;
-
-		/* convert levelsup to frame of reference of original query */
-		varlevelsup -= context->sublevels_up;
-		/* ignore local vars of subqueries */
-		if (varlevelsup >= 0)
-		{
-			if (context->min_varlevel < 0 ||
-				context->min_varlevel > varlevelsup)
-			{
-				context->min_varlevel = varlevelsup;
-
-				/*
-				 * As soon as we find a local variable, we can abort the tree
-				 * traversal, since min_varlevel is then certainly 0.
-				 */
-				if (varlevelsup == 0)
-					return true;
-			}
-		}
-	}
-
-	/*
-	 * An Aggref must be treated like a Var of its level.  Normally we'd get
-	 * the same result from looking at the Vars in the aggregate's argument,
-	 * but this fails in the case of a Var-less aggregate call (COUNT(*)).
-	 */
-	if (IsA(node, Aggref))
-	{
-		int			agglevelsup = ((Aggref *) node)->agglevelsup;
-
-		/* convert levelsup to frame of reference of original query */
-		agglevelsup -= context->sublevels_up;
-		/* ignore local aggs of subqueries */
-		if (agglevelsup >= 0)
-		{
-			if (context->min_varlevel < 0 ||
-				context->min_varlevel > agglevelsup)
-			{
-				context->min_varlevel = agglevelsup;
-
-				/*
-				 * As soon as we find a local aggregate, we can abort the tree
-				 * traversal, since min_varlevel is then certainly 0.
-				 */
-				if (agglevelsup == 0)
-					return true;
-			}
-		}
-	}
-	if (IsA(node, Query))
-	{
-		/* Recurse into subselects */
-		bool		result;
-
-		context->sublevels_up++;
-		result = query_tree_walker((Query *) node,
-								   find_minimum_var_level_walker,
-								   (void *) context,
-								   0);
-		context->sublevels_up--;
-		return result;
-	}
-	return expression_tree_walker(node,
-								  find_minimum_var_level_walker,
-								  (void *) context);
 }
 
 
