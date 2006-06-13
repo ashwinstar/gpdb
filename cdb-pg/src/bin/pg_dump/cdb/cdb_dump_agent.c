@@ -765,17 +765,31 @@ main(int argc, char **argv)
 	PQclear(res);
 	
 	/* 
-		* If we got here it means we successfully set transactionisolation level to serializable.
-	 * Create a status operator that describes our new status.
+		* If we got here it means we successfully set transaction isolation level to serializable.
+	 * Create a status operator that describes our new status. 
+	 *
+	 * In the special case that we are the catalog dumper thread, we don't report success, we 
+	 * only report a failure. Reason is that there are 2 threads doing dump work on the master - 
+	 * the main agent thread that dumps the schema, and the catalog dumper that was forked. if 
+	 * both report success, but the second one failed, mpp_dump will not know it since it had already 
+	 * got a success operator. Therefore we let the catalog dumper only report errors, but not 
+	 * success so we don't report success prematurely. Only the main agent thread may report success.
+	 * TODO: This is a hack, and should be done more cleanly. The good news is that only case scenario which
+	 * this hack doesn't cover is if the catalog dumper thread finished with an error after the main
+	 * schema dumper thread finished with success. This is *very unlikely* to happen. If it ever does,
+	 * we will end up with a good dump, but bad catalog dump file.
 	 */
-    pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS, SUFFIX_SET_SERIALIZABLE, TASK_MSG_SUCCESS );
-    if ( pOp == NULL )
-    {
-        exit_horribly(g_fout, NULL, "could not allocate memory for mpp_backup_status operation\n");
-    }
-	
-	/* add status operator, to let the monitor thread see it */
-    AddToStatusOpList( g_pStatusOpList, pOp );
+	if (!g_mpp_catalog_only)
+	{
+		pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS, SUFFIX_SET_SERIALIZABLE, TASK_MSG_SUCCESS );
+		if ( pOp == NULL )
+		{
+			exit_horribly(g_fout, NULL, "could not allocate memory for mpp_backup_status operation\n");
+		}
+		
+		/* add status operator, to let the monitor thread see it */
+		AddToStatusOpList( g_pStatusOpList, pOp );
+	}
 	
 	/*
 	 * And finally we can do the actual output.
@@ -805,10 +819,7 @@ main(int argc, char **argv)
 
 	
 	/* is this the catalog dumper that was forked earlier? */
-	if (g_mpp_catalog_only &&  /*dataOnly &&*/
-		g_role == ROLE_MASTER /*&&
-		selectSchemaName != NULL &&
-		strcmp(selectSchemaName, "mpp") == 0*/)
+	if (g_mpp_catalog_only && g_role == ROLE_MASTER)
 	{
 		/* dumping mpp catalog */
 		mpp_err_msg( logInfo, pszProgName, "Dumping mpp catalog from \"%s\"...\n" , g_conn->dbName);
@@ -872,7 +883,16 @@ main(int argc, char **argv)
 		g_fout->n_errors = fout_temp->n_errors;
 	}
 
-	makeSureMonitorThreadEnds( TASK_RC_SUCCESS, TASK_MSG_SUCCESS );
+	/* 
+	 * Make sure to report that we are done. The only exception is if we are
+	 * the catalog dumper. It never reports success, but instead lets the main
+	 * master agent thread to do so when it is done (See comment above next to
+	 * CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS... )
+	 */
+	if (!g_mpp_catalog_only)
+	{
+		makeSureMonitorThreadEnds( TASK_RC_SUCCESS, TASK_MSG_SUCCESS );
+	}
 
 	DestroyStatusOpList( g_pStatusOpList );
 
