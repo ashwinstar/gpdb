@@ -64,9 +64,10 @@ USAGE () {
 	$ECHO
         $ECHO "      `basename $0`"
 	$ECHO
-        $ECHO "      Reports data skew for a table within an MPP database."
-	$ECHO "      Will report # records per segment instance, and the elapse"
-	$ECHO "      time for each segment instance host to respond to request."
+        $ECHO "    Reports the data skew for a table within an MPP database."
+	$ECHO "      Reports the segments with the most and least number of records,"
+	$ECHO "      calculates the variance of records between these two segments,"
+	$ECHO "      and reports the elapsed response time for the segment host."
         $ECHO
         $ECHO "      Usage:"
         $ECHO "      $0 [OPTIONS]"
