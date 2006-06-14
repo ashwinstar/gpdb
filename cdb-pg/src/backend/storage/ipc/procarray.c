@@ -512,7 +512,8 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 				elog(ERROR, "SharedLocalSnapshotSlot is NULL");
 
 			if (QDSentXID == SharedLocalSnapshotSlot->QDxid &&
-				QDSentSnapshot->curcid == SharedLocalSnapshotSlot->QDcid)
+				QDSentSnapshot->curcid == SharedLocalSnapshotSlot->QDcid &&
+				SharedLocalSnapshotSlot->ready)
 			{
 				/*
 				 * YAY we found it.  set the contents of the
@@ -711,6 +712,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 
 		SharedLocalSnapshotSlot->QDcid = QDSentSnapshot->curcid;
 		SharedLocalSnapshotSlot->QDxid = QDSentXID;
+		SharedLocalSnapshotSlot->ready = true;
 		elog(DEBUG5, "WRITER QE setting shared local Snapshot Data xmin: %d"
 			 " xmax: %d curcid: %d\n", SharedLocalSnapshotSlot->snapshot.xmin,
 			 SharedLocalSnapshotSlot->snapshot.xmax,

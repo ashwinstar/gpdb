@@ -1507,11 +1507,12 @@ StartTransaction(void)
 			 */
 			if (SharedLocalSnapshotSlot != NULL)
 			{
-				elog(DEBUG4, "qExec writer setting QDSentXID: %d", QDSentXID);
+				elog(DEBUG4, "qExec writer setting QDSentXID: %d ready: false", QDSentXID);
 
 				SharedLocalSnapshotSlot->xid = s->transactionId;
 				SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
 				SharedLocalSnapshotSlot->QDxid = QDSentXID;
+				SharedLocalSnapshotSlot->ready = false;
 			}
 		}
 		else

@@ -105,6 +105,9 @@ static Size slotSize;
 
 /*
  * Report shared-memory space needed by CreateSharedSnapshot.
+ * 
+ * Oh my god this is confusing -- shouldn't the compiler be able to help us out here ?
+ * sizeof(SharedSnapshotSlot) + sizeof(TransactionId)*(MaxBackends + max_prepared_xacts) ?
  */
 Size
 SharedSnapshotShmemSize(void)
@@ -118,8 +121,8 @@ SharedSnapshotShmemSize(void)
 	
 	/* Snapshot size: XID + XID + CommandId + uint32 + XID Array */
 	slotSize += 2*sizeof(TransactionId) + sizeof(CommandId) + sizeof(uint32);	
+	slotSize += sizeof(bool);
 	slotSize += sizeof(TransactionId) * (MaxBackends + max_prepared_xacts);
-	
 	
 	/* total size is int + int + int + slotSize*numSlots */
 	size = offsetof(SharedSnapshotStruct, slots);
