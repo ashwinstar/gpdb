@@ -2203,7 +2203,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 												   cancelOnError);
 
 	/* Allocate result array for mirror gang. */
-	if (queryDesc->operation != CMD_SELECT)
+	if (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL)
 	{
 		Slice	   *slice = (Slice *) list_nth(sliceTbl->slices, rootIdx);
 
@@ -2298,7 +2298,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		/*
 		 * dispatch the plan to our mirrorGang if we have one.
 		 */
-		if (mirrorGang != NULL && queryDesc->operation != CMD_SELECT)
+		if (mirrorGang != NULL && (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL))
 		{
             cdbdisp_dispatchToGang(strinfo.data,
             					   szSnapshotInfo,

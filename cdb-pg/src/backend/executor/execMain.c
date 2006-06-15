@@ -1182,11 +1182,15 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		AclResult	aclresult;
 		Oid			intoRelationId;
 		TupleDesc	tupdesc;
+		Oid			intoOid;
+		MppPolicy          *targetPolicy = NULL;
 
 		/*
 		 * find namespace to create in, check permissions
 		 */
 		intoName = parseTree->into->relname;
+		intoOid = parseTree->intoOid;
+		
 		namespaceId = RangeVarGetCreationNamespace(parseTree->into);
 
 		aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(),
@@ -1210,19 +1214,24 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		 */
 		tupdesc = CreateTupleDescCopy(tupType);
 		
-		/*
-		 * We can't do the create table here for MPP systems.
-		 * This would build a table with different OIDS on every QE... Bad
-		 * It would also fail to build the table on the QD, which is very bad.
-		 * Finally, it wouldn't create the tables on the mirror node, which is also bad.
-		 */
-		if (Mpp_role == MPP_ROLE_EXECUTE)
-			elog(ERROR,"SELECT INTO not working in EXECUTE mode yet");
+		
+		if (Mpp_role == MPP_ROLE_DISPATCH)
+		{
+			/*
+			 * This is ugly.  Both this place, and cdbmutate, assume the policy is fixed.
+			 * We should allow cdbmutate to set it, and use that policy here.
+			 */
+			targetPolicy = palloc(sizeof(MppPolicy)- sizeof(targetPolicy->attrs) + 1 * sizeof(targetPolicy->attrs[0]));
+			targetPolicy->nattrs = 1;
+			targetPolicy->attrs[0] = 1;		/* Partition on column 1 */
+			targetPolicy->ptype = POLICYTYPE_PARTITIONED;
+		}
+		
 
 		intoRelationId = heap_create_with_catalog(intoName,
 												  namespaceId,
 												  tablespaceId,
-												  InvalidOid,
+												  intoOid,						/*CDB*/
 												  GetUserId(),
 												  tupdesc,
 												  RELKIND_RELATION,
@@ -1230,11 +1239,14 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 												  true,
 												  0,
 												  ONCOMMIT_NOOP,
-                                                  NULL,                 /*CDB*/
+                                                  targetPolicy,                 /*CDB*/
 												  allowSystemTableMods,
 												  0);
 
 		FreeTupleDesc(tupdesc);
+		
+		if (targetPolicy)
+			pfree(targetPolicy);
 
 		/*
 		 * Advance command counter so that the newly-created relation's

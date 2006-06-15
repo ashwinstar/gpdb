@@ -2016,6 +2016,15 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(limitCount);
 	WRITE_NODE_FIELD(setOperations);
 	WRITE_NODE_FIELD(resultRelations);
+	
+	/*
+     * CDB: This field was added after the MPP 2.1p2 release.  Upstream of
+     * the planner, it's unused and zero, in which case we skip writing it
+     * because we don't want it written into the catalog.  Allows downward
+     * compatibility in case the database is opened using an older release.
+     */
+    if (node->intoOid != 0)
+		WRITE_OID_FIELD(intoOid);
 }
 
 static void

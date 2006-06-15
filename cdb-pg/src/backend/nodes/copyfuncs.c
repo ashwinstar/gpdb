@@ -1702,6 +1702,7 @@ _copyQuery(Query *from)
 	COPY_NODE_FIELD(limitCount);
 	COPY_NODE_FIELD(setOperations);
 	COPY_NODE_FIELD(resultRelations);
+	COPY_SCALAR_FIELD(intoOid);
 
 	return newnode;
 }

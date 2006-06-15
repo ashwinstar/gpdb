@@ -124,6 +124,8 @@ typedef struct Query
 	 * some sort of TopPlan plan node, not in the Query.
 	 */
 	List	   *resultRelations;	/* integer list of RT indexes, or NIL */
+	
+	Oid			intoOid;			/* Oid of table for SELECT INTO */
 } Query;
 
 

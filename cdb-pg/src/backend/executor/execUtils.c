@@ -1168,6 +1168,11 @@ InitRootSlices(QueryDesc *queryDesc)
 			{
 				case CMD_SELECT:
 					Assert(slice->gangType == GANGTYPE_UNALLOCATED && slice->gangSize == 0);
+					if (queryDesc->parsetree->into != NULL)
+					{
+						slice->gangType = GANGTYPE_PRIMARY_WRITER;
+						slice->gangSize = getMPPSegmentCount();
+					}
 					break;
 
 				case CMD_INSERT:

@@ -24,6 +24,9 @@
 #include "utils/relcache.h"     /* RelationGetPartitioningKey() */
 #include "optimizer/tlist.h"	/* get_sortgroupclause_tle() */
 
+#include "commands/tablespace.h"
+#include "catalog/catalog.h"
+
 #include "cdb/cdbllize.h"
 #include "cdb/cdbmutate.h"
 #include "cdb/cdbplan.h"
@@ -127,6 +130,7 @@ apply_motion(Plan *plan, Query *query)
 	    RangeTblEntry  *rte;
         Relation        relation;
 
+		elog(NOTICE,"resultRelation exists");
         rte = rt_fetch(query->resultRelation, query->rtable);
 	    Assert(rte->rtekind == RTE_RELATION);
 
@@ -144,6 +148,52 @@ apply_motion(Plan *plan, Query *query)
 		case CMD_SELECT:
 			if (plan->flow->flotype == FLOW_PARTITIONED)
 			{
+
+				if (query->into)
+				{
+					List   *hashExpr;
+
+					targetPolicy = palloc(sizeof(MppPolicy)- sizeof(targetPolicy->attrs) + 1 * sizeof(targetPolicy->attrs[0]));
+					targetPolicy->nattrs = 1;
+					targetPolicy->attrs[0] = 1;		/* Partition on column 1 */
+					targetPolicy->ptype = POLICYTYPE_PARTITIONED;
+					
+					targetPolicyType = targetPolicy->ptype;
+					
+					
+					/* This probably should be done somewhere better */
+					if (!OidIsValid(query->intoOid))
+					{
+						Relation	pg_class_desc;
+
+						Oid reltablespace = GetDefaultTablespace();
+					
+						pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+											
+						query->intoOid = GetNewRelFileNode(reltablespace, true, pg_class_desc);
+						
+						heap_close(pg_class_desc, RowExclusiveLock);
+						
+					}
+					
+		            /*
+		             * Make sure the top level flow is partitioned on the
+                     * partitioning key of the target relation.	Since this
+                     * is a SELECT INTO (basically same as an INSERT) command, the target list will correspond
+                     * to the attributes of the target relation in order.
+		             */
+                    hashExpr = getExprListFromTargetList(plan->targetlist,
+                                                         targetPolicy->nattrs,
+                                                         targetPolicy->attrs,
+                                                         true);
+                    if (!repartitionPlan(plan, true, false, false, hashExpr))
+                        ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+                                        errmsg("Cannot parallelize that SELECT INTO yet")
+                                ));
+                    
+				}
+				else
+				{
 			    /*
                  * Query result needs to be brought back to the QD.
                  * Ask for motion to a single QE.  Later, apply_motion
@@ -183,6 +233,7 @@ apply_motion(Plan *plan, Query *query)
                 }
                 else
                     Insist(focusPlan(plan, true, false, false));
+				}
 			}
 			break;
 

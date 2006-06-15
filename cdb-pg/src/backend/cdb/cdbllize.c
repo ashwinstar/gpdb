@@ -188,6 +188,11 @@ cdbparallelize(Plan *plan,
 	switch (query->commandType)
 	{
 		case CMD_SELECT:
+			if (query->into)
+			{
+				/* SELECT INTO always created partitioned tables. */
+				context->resultSegments = true;	
+			}
 			break;
 
 		case CMD_INSERT:

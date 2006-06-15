@@ -237,6 +237,17 @@ _readQuery(void)
 	READ_NODE_FIELD(limitCount);
 	READ_NODE_FIELD(setOperations);
 	READ_NODE_FIELD(resultRelations);
+	
+	/*
+     * CDB: This field was added after the MPP 2.1p2 release.  It's filled in
+     * by the planner and not present in nodes stored persistently.  So if
+     * it's missing, just let the field stay 0.
+     */
+    if (pg_strtok_peek_fldname("intoOid"))
+    {                           /* braces required, macro doesn't have 'em */
+        READ_OID_FIELD(intoOid);
+    }
+	
 
 	READ_DONE();
 }

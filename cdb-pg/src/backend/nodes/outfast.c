@@ -2020,6 +2020,11 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(limitCount);
 	WRITE_NODE_FIELD(setOperations);
 	WRITE_NODE_FIELD(resultRelations);
+	
+	/* CDB: The reader checks for the name of this field. */
+    if (node->intoOid != 0)
+	    appendStringInfo(str, " :intoOid %d", (int)node->intoOid);
+	 
 }
 
 static void
