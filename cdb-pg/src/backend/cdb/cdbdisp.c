@@ -115,11 +115,13 @@ static Node *pre_dispatch_function_evaluation_mutator(Node *node,
 						 pre_dispatch_function_evaluation_context * context);
 
 /* ====================================================
- * please NO STATIC STATE VARIABLES here!
+ * STATIC STATE VARIABLES should not be declared!
  * global state will break the ability to run cursors.
+ * only globals with a higher granularity than a running
+ * command (i.e: transaction, session) are ok.
  * ==================================================== */
-/* TODO: make pleaseCancel not static */
-static volatile bool pleaseCancel = false;
+
+static volatile bool pleaseCancel = false; /* (transaction granularity) */
 
 /*--------------------------------------------------------------------*/
 
