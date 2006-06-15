@@ -49,8 +49,8 @@
  * Solaris in the olden days this was built into gcc -- but it appears
  * that it isn't there any longer.
  */
-#ifndef __solaris__ 
+#ifndef pg_on_solaris
 #if defined(__sun__) && defined(__unix__) && defined(__svr4__)
-#define __solaris__ 1
+#define pg_on_solaris 1
 #endif
 #endif
