@@ -1640,6 +1640,7 @@ abortRMInDoubtTransactions(HTAB *htab)
 {
 	struct CdbDispatchResults *primaryResults = NULL;
 	struct CdbDispatchResults *mirrorResults = NULL;
+	struct CdbDispatchCmdThreads  *dispatchThreads = NULL;
 	SegmentDatabaseDescriptor **failedSegDB = NULL;
 	HASH_SEQ_STATUS status;
 	int			numOfFailed = 0;
@@ -1673,14 +1674,14 @@ abortRMInDoubtTransactions(HTAB *htab)
 								/* startTrans */		false,
 								/* withSnapshot */		false,
 								/* toMirrors */			true,
-								&primaryResults, &mirrorResults);
+								&primaryResults, &mirrorResults, &dispatchThreads);
 
 		/*
 		 * Wait for completion.  Don't cancel.
 		 * CDB TODO: Eliminate the CdbCheckDispatchResultInt() interface and
 		 * instead build the failedSegDB list from the CdbDispatchResults.
 		 */
-		CdbCheckDispatchResultInt(&failedSegDB, &numOfFailed, false);
+		CdbCheckDispatchResultInt(dispatchThreads, &failedSegDB, &numOfFailed, false);
 
 		cdbdisp_destroyDispatchResults(primaryResults);
 		cdbdisp_destroyDispatchResults(mirrorResults);

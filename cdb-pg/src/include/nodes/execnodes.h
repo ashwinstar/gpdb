@@ -536,6 +536,9 @@ typedef struct EState
     /* results from qExec processes */
     struct CdbDispatchResults  *primaryResults;
     struct CdbDispatchResults  *mirrorResults;
+	
+	/* dispatch threads for this command */
+	struct CdbDispatchCmdThreads  *dispatchThreads;
 
 } EState;
 

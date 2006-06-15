@@ -70,7 +70,8 @@ static void remove_dbtablespaces(Oid db_id);
 static void
 createdb_int(CreatedbStmt *stmt,
              struct CdbDispatchResults    **pPrimaryResults,
-             struct CdbDispatchResults    **pMirrorResults);
+             struct CdbDispatchResults    **pMirrorResults,
+			 struct CdbDispatchCmdThreads        **pDispatchThreads);
 
 static void
 mpp_cleanup_createdb(const char *dbname);
@@ -83,17 +84,18 @@ createdb(CreatedbStmt *stmt)
 {
     struct CdbDispatchResults *primaryResults = NULL;
     struct CdbDispatchResults *mirrorResults = NULL;
+	CdbDispatchCmdThreads *dispatchThreads = NULL;
 
     PG_TRY();
     {
-        createdb_int(stmt, &primaryResults, &mirrorResults);
+        createdb_int(stmt, &primaryResults, &mirrorResults, &dispatchThreads);
     }
 	PG_CATCH();
 	{
         /* If dispatched, stop QEs and clean up after them. */
         if (primaryResults)
 		{
-            cdbdisp_handleError(primaryResults, mirrorResults);
+            cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
 			mpp_cleanup_createdb(stmt->dbname);
 		}
 
@@ -109,7 +111,7 @@ createdb(CreatedbStmt *stmt)
 	 */
 	PG_TRY();
 	{
-	cdbdisp_finishCommand(primaryResults, mirrorResults);
+	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
 	}
 	PG_CATCH();
 	{
@@ -125,6 +127,7 @@ mpp_cleanup_createdb(const char *dbname)
 	bool cleanup_error = FALSE;
     struct CdbDispatchResults *primaryResults = NULL;
     struct CdbDispatchResults *mirrorResults = NULL;
+	CdbDispatchCmdThreads *dispatchThreads = NULL;
 
 	DropdbStmt *stmt = makeNode(DropdbStmt);
 	stmt->dbname = (char*)dbname;
@@ -134,13 +137,13 @@ mpp_cleanup_createdb(const char *dbname)
 	
     PG_TRY();
     {
-		cdbdisp_dispatchUtilityStatement((Node*)stmt, TRUE, FALSE, &primaryResults, &mirrorResults);
+		cdbdisp_dispatchUtilityStatement((Node*)stmt, TRUE, FALSE, &primaryResults, &mirrorResults, &dispatchThreads);
     }
 	PG_CATCH();
 	{
         /* If dispatched, stop QEs and clean up after them. */
         if (primaryResults)
-            cdbdisp_handleError(primaryResults, mirrorResults);
+            cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
 
 		/* Carry on with error handling. */
 		elog_dismiss(DEBUG1);
@@ -156,14 +159,15 @@ mpp_cleanup_createdb(const char *dbname)
 	 * "forgiving" form of DROP DATABASE.
 	 */
 	if ( ! cleanup_error )
-		cdbdisp_finishCommand(primaryResults, mirrorResults);
+		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
 }
 
 
 void
 createdb_int(CreatedbStmt *stmt,
              struct CdbDispatchResults    **pPrimaryResults,
-             struct CdbDispatchResults    **pMirrorResults)
+             struct CdbDispatchResults    **pMirrorResults,
+			 struct CdbDispatchCmdThreads        **pDispatchThreads)
 {
 	HeapScanDesc scan;
 	Relation	rel;
@@ -479,7 +483,8 @@ createdb_int(CreatedbStmt *stmt,
                                          true,      /* cancelOnError */
                                          false,      /* startTransaction */
                                          pPrimaryResults,
-                                         pMirrorResults);
+                                         pMirrorResults,
+										 pDispatchThreads);
 	}
 
 

@@ -241,6 +241,7 @@ CreateExecutorState(void)
 	estate->es_got_eos = false;
 	estate->primaryResults = NULL;
 	estate->mirrorResults = NULL;
+	estate->dispatchThreads = NULL;
 	
 
 	/*
@@ -1609,7 +1610,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 	{
 		CdbDispatchResults *pr = estate->primaryResults;
 		CdbDispatchResults *mr = estate->mirrorResults;
-		
+		CdbDispatchCmdThreads  *dThreads = estate->dispatchThreads;
 		/*
 		 * If we are closing a cursor before all the tuples of the query
 		 * plan were fetched we must call ExecSquelchNode before checking
@@ -1622,7 +1623,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		/*
 		 * Wait for completion of all QEs.
 		 */
-		CdbCheckDispatchResult(false);	
+		CdbCheckDispatchResult(dThreads, false);	
 		
 		/* If top slice was delegated to QEs, get num of rows processed. */
 		if (sliceRunsOnQE(currentSlice))
@@ -1636,7 +1637,8 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		 */
 		estate->primaryResults = NULL;
 		estate->mirrorResults = NULL;
-		cdbdisp_finishCommand(pr, mr);
+		estate->dispatchThreads = NULL;
+		cdbdisp_finishCommand(pr, mr, dThreads);
 	}
 	
 	/* Teardown the Sequence Server */
@@ -1668,7 +1670,7 @@ void mppExecutorCleanup(EState *estate)
 	 * Replace current error info with QE error info if more interesting.
 	 */
 	if (estate->primaryResults)
-		cdbdisp_handleError(estate->primaryResults, estate->mirrorResults);
+		cdbdisp_handleError(estate->primaryResults, estate->mirrorResults, estate->dispatchThreads);
 	
 	/* Clean up the Sequence Server */
 	if (estate->es_seqserver_is_setup)

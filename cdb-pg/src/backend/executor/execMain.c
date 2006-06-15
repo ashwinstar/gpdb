@@ -350,7 +350,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
              * finish unless an error is detected before all slices have been
              * dispatched.
 			 */
-			cdbdisp_dispatchPlan(queryDesc, needXact, true, &estate->primaryResults, &estate->mirrorResults);
+			cdbdisp_dispatchPlan(queryDesc, needXact, true, &estate->primaryResults, &estate->mirrorResults, &estate->dispatchThreads);
 		}
 		
 		/*

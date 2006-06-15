@@ -978,6 +978,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	QueryDesc  *queryDesc = NULL;
 
     struct CdbDispatchResults  *primaryResults = NULL;
+	struct CdbDispatchCmdThreads  *dispatchThreads = NULL; 
 	bool		needXact, shouldDispatch = false;
 	volatile	bool shouldTeardownInterconnect = false;
 
@@ -1047,7 +1048,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
              * command to the appropriate segdbs.  It does not wait for them
              * to finish unless an error is detected before all are dispatched.
 			 */
-			cdbdisp_dispatchPlan(queryDesc, needXact, true, &primaryResults, NULL);
+			cdbdisp_dispatchPlan(queryDesc, needXact, true, &primaryResults, NULL, &dispatchThreads);
 
 
 			SetupSequenceServer(queryDesc->estate->es_sliceTable);
@@ -1195,12 +1196,13 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
         if (primaryResults)
         {
             struct CdbDispatchResults  *pr = primaryResults;
+			struct CdbDispatchCmdThreads  *dThreads = dispatchThreads; 
 
             /* If EXPLAIN ANALYZE, collect execution stats from qExecs. */
             if (planstate->instrument)
             {
                 /* Wait for all gangs to finish. */
-                CdbCheckDispatchResult(false);	
+                CdbCheckDispatchResult(dThreads, false);	
 
                 /* Jam stats into subplan's Instrumentation nodes. */
                 cdbexplain_recvExecStats(planstate,
@@ -1214,7 +1216,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
              * exit to our error handler (below) via PG_THROW.
              */
             primaryResults = NULL;
-            cdbdisp_finishCommand(pr, NULL);
+            cdbdisp_finishCommand(pr, NULL, dThreads);
         }
 
 		/* teardown the sequence server */
@@ -1236,7 +1238,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
          * Replace current error info with QE error info if more interesting.
 		 */
 		if (primaryResults)
-            cdbdisp_handleError(primaryResults, NULL);
+            cdbdisp_handleError(primaryResults, NULL, dispatchThreads);
 		
 		/* teardown the sequence server */
 		TeardownSequenceServer();

@@ -2369,8 +2369,10 @@ ProcessInterrupts(void)
 		 * so if we want the QEs to get a cancel notification we need
 		 * to call CdbCheckDispatchResult().
 		 */
+		/* TODO: support clean-up like described above. We can't do it
+			     with a call to CdbCheckDispatchResult anymore...
 		if (Mpp_role == MPP_ROLE_DISPATCH)
-			CdbCheckDispatchResult(true);
+			CdbCheckDispatchResult(true);*/
 
 		ereport(FATAL,
 				(errcode(ERRCODE_ADMIN_SHUTDOWN),

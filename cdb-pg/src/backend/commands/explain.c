@@ -269,7 +269,7 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
         if (queryDesc->estate->primaryResults)
         {
             /* Wait for completion of all qExec processes. */
-            CdbCheckDispatchResult(false);	
+            CdbCheckDispatchResult(queryDesc->estate->dispatchThreads ,false);	
 
 		    totaltime += elapsed_time(&starttime);
 

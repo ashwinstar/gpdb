@@ -265,7 +265,8 @@ static Oid
 DefineRelation_int(CreateStmt *stmt,
                    char        relkind,
                    struct CdbDispatchResults  **pPrimaryResults,
-                   struct CdbDispatchResults  **pMirrorResults);
+                   struct CdbDispatchResults  **pMirrorResults,
+				   struct CdbDispatchCmdThreads     **pDispatchThreads);
 
 
 /* ----------------------------------------------------------------
@@ -280,17 +281,19 @@ DefineRelation(CreateStmt *stmt, char relkind)
 {
     struct CdbDispatchResults *primaryResults = NULL;
     struct CdbDispatchResults *mirrorResults = NULL;
+	CdbDispatchCmdThreads     *dispatchThreads = NULL;
+	
     Oid reloid = 0;
 
     PG_TRY();
     {
-        reloid = DefineRelation_int(stmt, relkind, &primaryResults, &mirrorResults);
+        reloid = DefineRelation_int(stmt, relkind, &primaryResults, &mirrorResults, &dispatchThreads);
     }
 	PG_CATCH();
 	{
         /* If dispatched, stop QEs and clean up after them. */
         if (primaryResults)
-            cdbdisp_handleError(primaryResults, mirrorResults);
+            cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
 
         /* Carry on with error handling. */
 		PG_RE_THROW();
@@ -302,7 +305,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	 * qExecs, if dispatched.  This waits for them to all finish, and exits
 	 * via ereport(ERROR,...) if unsuccessful.
 	 */
-	cdbdisp_finishCommand(primaryResults, mirrorResults);
+	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
 
     return reloid;
 }
@@ -312,7 +315,8 @@ Oid
 DefineRelation_int(CreateStmt *stmt,
                    char        relkind,
                    struct CdbDispatchResults  **pPrimaryResults,
-                   struct CdbDispatchResults  **pMirrorResults)
+                   struct CdbDispatchResults  **pMirrorResults,
+				   struct CdbDispatchCmdThreads     **pDispatchThreads)
 {
 	char		relname[NAMEDATALEN];
 	Oid			namespaceId;
@@ -564,7 +568,8 @@ DefineRelation_int(CreateStmt *stmt,
 										 true,      /* cancelOnError */
 										 true,      /* startTransaction */
 										 pPrimaryResults,
-										 pMirrorResults);
+										 pMirrorResults,
+										 pDispatchThreads);
 	}
 
 	StoreCatalogInheritance(relationId, inheritOids);
