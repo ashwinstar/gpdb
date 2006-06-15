@@ -1499,6 +1499,13 @@ getCdbProcessesForQD(int isPrimary)
 		elog(FATAL, "getCdbProcessesForQD: unsupported request for QD mirror process");
 	}
 
+	if (cdb_component_dbs == NULL)
+    {
+		cdb_component_dbs = getCdbComponentDatabases();
+        if (cdb_component_dbs == NULL)
+    		elog(ERROR, PACKAGE_NAME " schema not populated");
+	}
+
 	qdinfo = &(cdb_component_dbs->entry_db_info[0]);
 
 	Assert(qdinfo->segindex == -1 && qdinfo->isprimary);
