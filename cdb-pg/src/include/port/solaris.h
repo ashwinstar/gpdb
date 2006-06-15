@@ -42,3 +42,15 @@
  * the trouble to add a configure test for this.
  */
 #define HAVE_BUGGY_SOLARIS_STRTOD
+
+
+/*
+ * Make sure that we have an easy way to check that we're actually on
+ * Solaris in the olden days this was built into gcc -- but it appears
+ * that it isn't there any longer.
+ */
+#ifndef __solaris__ 
+#if defined(__sun__) && defined(__unix__) && defined(__svr4__)
+#define __solaris__ 1
+#endif
+#endif
