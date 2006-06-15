@@ -130,7 +130,6 @@ apply_motion(Plan *plan, Query *query)
 	    RangeTblEntry  *rte;
         Relation        relation;
 
-		elog(NOTICE,"resultRelation exists");
         rte = rt_fetch(query->resultRelation, query->rtable);
 	    Assert(rte->rtekind == RTE_RELATION);
 
