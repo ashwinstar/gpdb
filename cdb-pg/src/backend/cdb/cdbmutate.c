@@ -169,7 +169,7 @@ apply_motion(Plan *plan, Query *query)
 					
 						pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 											
-						query->intoOid = GetNewRelFileNode(reltablespace, true, pg_class_desc);
+						query->intoOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
 						
 						heap_close(pg_class_desc, RowExclusiveLock);
 						
