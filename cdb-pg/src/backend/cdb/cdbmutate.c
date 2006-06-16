@@ -152,13 +152,14 @@ apply_motion(Plan *plan, Query *query)
 				{
 					List   *hashExpr;
 
-					targetPolicy = palloc(sizeof(MppPolicy)- sizeof(targetPolicy->attrs) + 1 * sizeof(targetPolicy->attrs[0]));
+					targetPolicy = palloc0(sizeof(MppPolicy)- sizeof(targetPolicy->attrs) + 1 * sizeof(targetPolicy->attrs[0]));
 					targetPolicy->nattrs = 1;
 					targetPolicy->attrs[0] = 1;		/* Partition on column 1 */
 					targetPolicy->ptype = POLICYTYPE_PARTITIONED;
 					
 					targetPolicyType = targetPolicy->ptype;
 					
+					query->intoPolicy = targetPolicy;
 					
 					/* This probably should be done somewhere better */
 					if (!OidIsValid(query->intoOid))
@@ -189,6 +190,8 @@ apply_motion(Plan *plan, Query *query)
                         ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
                                         errmsg("Cannot parallelize that SELECT INTO yet")
                                 ));
+                                
+                    Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
                     
 				}
 				else
@@ -345,12 +348,6 @@ apply_motion(Plan *plan, Query *query)
 		default:
 			Insist(0);		/* Never see non-DML in here! */
 	}
-			
-    if (targetPolicy)
-    {
-        pfree(targetPolicy);
-        targetPolicy = NULL;
-    }
 
 	result = (Plan *) apply_motion_mutator((Node *) plan, &state);
 

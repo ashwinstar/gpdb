@@ -126,6 +126,7 @@ typedef struct Query
 	List	   *resultRelations;	/* integer list of RT indexes, or NIL */
 	
 	Oid			intoOid;			/* Oid of table for SELECT INTO */
+	MppPolicy  *intoPolicy;			/* Used only on the QD... Doesn't need to be serialized */
 } Query;
 
 

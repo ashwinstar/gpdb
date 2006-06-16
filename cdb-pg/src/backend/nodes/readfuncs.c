@@ -247,7 +247,7 @@ _readQuery(void)
     {                           /* braces required, macro doesn't have 'em */
         READ_OID_FIELD(intoOid);
     }
-	
+	local_node->intoPolicy = NULL;
 
 	READ_DONE();
 }

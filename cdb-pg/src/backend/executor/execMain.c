@@ -153,6 +153,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	Assert(queryDesc != NULL);
 	Assert(queryDesc->estate == NULL);
 
+Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
 	/*
 	 * If the transaction is read-only, we need to check if any writes are
 	 * planned to non-temporary tables.
@@ -854,6 +855,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	TupleDesc	tupType;
 	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
 
+	Assert(parseTree->intoPolicy == NULL || parseTree->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
 	/*
 	 * Do permissions checks.  It's sufficient to examine the query's top
 	 * rangetable here --- subplan RTEs will be checked during
@@ -1183,8 +1185,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		Oid			intoRelationId;
 		TupleDesc	tupdesc;
 		Oid			intoOid;
-		MppPolicy          *targetPolicy = NULL;
-
+		MppPolicy          *targetPolicy = parseTree->intoPolicy;
+		
 		/*
 		 * find namespace to create in, check permissions
 		 */
@@ -1217,14 +1219,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		
 		if (Mpp_role == MPP_ROLE_DISPATCH)
 		{
-			/*
-			 * This is ugly.  Both this place, and cdbmutate, assume the policy is fixed.
-			 * We should allow cdbmutate to set it, and use that policy here.
-			 */
-			targetPolicy = palloc(sizeof(MppPolicy)- sizeof(targetPolicy->attrs) + 1 * sizeof(targetPolicy->attrs[0]));
-			targetPolicy->nattrs = 1;
-			targetPolicy->attrs[0] = 1;		/* Partition on column 1 */
-			targetPolicy->ptype = POLICYTYPE_PARTITIONED;
+			Assert(targetPolicy != NULL);
+			Assert(targetPolicy->ptype == POLICYTYPE_PARTITIONED);
 		}
 		
 
@@ -1245,8 +1241,6 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 
 		FreeTupleDesc(tupdesc);
 		
-		if (targetPolicy)
-			pfree(targetPolicy);
 
 		/*
 		 * Advance command counter so that the newly-created relation's

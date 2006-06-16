@@ -675,6 +675,7 @@ _equalQuery(Query *a, Query *b)
 	COMPARE_NODE_FIELD(setOperations);
 	COMPARE_NODE_FIELD(resultRelations);
 	COMPARE_SCALAR_FIELD(intoOid);
+	COMPARE_SCALAR_FIELD(intoPolicy);
 
 	return true;
 }
