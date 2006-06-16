@@ -50,6 +50,7 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbvars.h"
+#include "cdb/cdbanalyze.h"
 
 
 /* non-export function prototypes */
@@ -1372,6 +1373,13 @@ UpdateStats(Oid relid, double reltuples)
 	 * conflict.)
 	 */
 	relpages = RelationGetNumberOfBlocks(whichRel);
+	
+	/*
+	 * CDB: Query the segment db local catalogs to get summary statistics.
+	 */
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+		cdbanalyze_get_relstats(whichRel, &relpages, &reltuples);
+	
 
 	if (rd_rel->relpages != (int32) relpages ||
 		rd_rel->reltuples != (float4) reltuples)

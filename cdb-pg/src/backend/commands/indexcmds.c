@@ -439,6 +439,35 @@ DefineIndex(RangeVar *heapRelation,
 
 	/* Close the relcache entry, but don't unlock the relation. */
     heap_close(rel, NoLock);
+    
+    
+   	if (shouldDispatch)
+	{
+		if (!OidIsValid(indexRelationId))
+		{
+			Relation pg_class;
+			
+			pg_class = heap_open(RelationRelationId, RowExclusiveLock);
+			
+			indexRelationId = GetNewRelFileNode(tablespaceId, false, pg_class);
+			
+			/* done with pg_class */
+			heap_close(pg_class, RowExclusiveLock);
+		}
+	
+		/* create the index on the QEs first, so we can get their stats when we create on the QD */
+		if (stmt)
+		{
+			Assert(stmt->idxOid == 0);
+			stmt->idxOid = indexRelationId;
+		}
+        /*
+         * Dispatch the command to all primary and mirror segment dbs.
+         * Start a global transaction and reconfigure cluster if needed.
+         * Wait for QEs to finish.  Exit via ereport(ERROR,...) if error.
+         */
+        CdbDispatchUtilityStatement((Node *)stmt);
+	}
 
 	indexRelationId = index_create(relationId, indexRelationName, indexRelationId,
 				 indexInfo, accessMethodId, tablespaceId, classObjectId,
@@ -455,21 +484,7 @@ DefineIndex(RangeVar *heapRelation,
 	setRelhasindex(relationId, true, primary, InvalidOid);
 
 
-	if (shouldDispatch)
-	{
-	
-		if (stmt)
-		{
-			Assert(stmt->idxOid == 0);
-			stmt->idxOid = indexRelationId;
-		}
-        /*
-         * Dispatch the command to all primary and mirror segment dbs.
-         * Start a global transaction and reconfigure cluster if needed.
-         * Wait for QEs to finish.  Exit via ereport(ERROR,...) if error.
-         */
-        CdbDispatchUtilityStatement((Node *)stmt);
-	}
+
 
 }
 
