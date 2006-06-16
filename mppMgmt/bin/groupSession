@@ -252,7 +252,7 @@ class groupSession(cmd.Cmd):
         for i in range(begin,end):
             th = self.sessions[i]
             if self.verbose:
-                logger.debug('LAL in runCommand host: %s' % (th.host))
+                logger.debug('runCommand host: %s' % (th.host))
             th.setCMD(cmd,args)
             self.pool.putRequest(threadpool.WorkRequest(th.run))
         interrupted = False
@@ -314,7 +314,7 @@ class groupSession(cmd.Cmd):
         for i in range(ibegin,iend):
             th = self.sessions[i]
             if self.verbose:
-                print 'LAL in initializeSessions host: %s' % (th.host)
+                print 'initializeSessions host: %s' % (th.host)
             th.initializeSession(defaultPassword,defaultPassPhrase)
     
     def __setupHostAccess(self,setupKeys=True):
@@ -334,7 +334,7 @@ class groupSession(cmd.Cmd):
                     raise
 
                 if self.verbose:
-                    print 'LAL in setupHostAccess host: %s' % (th.host)
+                    print 'setupHostAccess host: %s' % (th.host)
 
                 #Initialize the remaining sessions to use the
                 #new default password and hostKeyPhrase
