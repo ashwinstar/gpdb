@@ -516,14 +516,21 @@ main(int argc, char **argv)
 
 	if (dataOnly && schemaOnly)
 	{
-		mpp_err_msg(logInfo, pszProgName, "options \"schema only\" (-s) and \"data only\" (-a) cannot be used together\n");
+		mpp_err_msg(logError, pszProgName, "options \"schema only\" (-s) and \"data only\" (-a) cannot be used together\n");
 		exit(1);
 	}
 
 	if (dataOnly && outputClean)
 	{
-		mpp_err_msg(logInfo, pszProgName, "options \"clean\" (-c) and \"data only\" (-a) cannot be used together\n");
-		exit(1);
+		/*
+		 * we already check for this error in mpp_dump (main thread). if we get here now
+		 * it means that user specified '-c' and mpp_dump appended "data only" to the agent
+		 * of all the segment databases. since '-c' is only needed on the master agent and
+		 * not on the seg databases agents, we just set it to false here.
+		 */
+		/*mpp_err_msg(logInfo, pszProgName, "options \"clean\" (-c) and \"data only\" (-a) cannot be used together\n");
+		exit(1);*/
+		outputClean = false;
 	}
 
 	if (selectTableName != NULL || selectSchemaName != NULL)
@@ -531,8 +538,8 @@ main(int argc, char **argv)
 
 	if (dumpInserts == true && oids == true)
 	{
-		mpp_err_msg(logInfo, pszProgName, "INSERT (-d, -D) and OID (-o) options cannot be used together\n");
-		mpp_err_msg(logInfo, pszProgName, "(The INSERT command cannot set OIDs.)\n");
+		mpp_err_msg(logError, pszProgName, "INSERT (-d, -D) and OID (-o) options cannot be used together\n");
+		mpp_err_msg(logError, pszProgName, "(The INSERT command cannot set OIDs.)\n");
 		exit(1);
 	}
 
@@ -567,13 +574,13 @@ main(int argc, char **argv)
 			break;
 
 		default:
-			mpp_err_msg(logInfo, pszProgName, "invalid output format \"%s\" specified\n", format);
+			mpp_err_msg(logError, pszProgName, "invalid output format \"%s\" specified\n", format);
 			exit(1);
 	}
 
 	if (g_fout == NULL)
 	{
-		mpp_err_msg(logInfo, pszProgName, "could not open output file \"%s\" for writing\n", filename);
+		mpp_err_msg(logError, pszProgName, "could not open output file \"%s\" for writing\n", filename);
 		exit(1);
 	}
 
@@ -584,7 +591,7 @@ main(int argc, char **argv)
 	g_fout->maxRemoteVersion = parse_version(PG_VERSION);
 	if (g_fout->maxRemoteVersion < 0)
 	{
-		mpp_err_msg(logInfo, pszProgName, "could not parse version string \"%s\"\n", PG_VERSION);
+		mpp_err_msg(logError, pszProgName, "could not parse version string \"%s\"\n", PG_VERSION);
 		exit(1);
 	}
 
