@@ -564,7 +564,7 @@ GET_QD_DB_NAME () {
 		#Check if we have PGDATABASE environment variable set, if so see if that database exists
 		if [ x"" != x"$PGDATABASE" ];then
 			LOG_MSG "[INFO]:-PGDATABASE set, checking for this database"
-			QD_DBNAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" 2>/dev/null|$GREP -v postgres|$GREP -v template|$GREP $PGDATABASE|$CUT -d"|" -f1`
+			QD_DBNAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" 2>/dev/null|$GREP -v postgres|$GREP -v template|$GREP $PGDATABASE|$CUT -d"|" -f1|$HEAD -1`
 			ERROR_CHK $? "check for $PGDATABASE" 2
 		fi
 		if [ x"" == x"$QD_DBNAME" ];then
