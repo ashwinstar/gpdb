@@ -27,6 +27,7 @@
 #include "commands/tablespace.h"
 #include "catalog/catalog.h"
 
+#include "cdb/cdbfts.h"         /* isFTSEnabled() */
 #include "cdb/cdbllize.h"
 #include "cdb/cdbmutate.h"
 #include "cdb/cdbplan.h"
@@ -176,7 +177,18 @@ apply_motion(Plan *plan, Query *query)
 						
 					}
 					
-		            /*
+                    /*
+                     * If mirroring is enabled, force Redistribute Motion
+                     * even if the query result is already partitioned on the
+                     * same key as the target.  Need this to make sure that any
+                     * function calls in the SELECT targetlist are executed
+                     * on primaries only, and the result is then sent to
+                     * primaries and mirrors to be inserted.
+                     */
+                    if (isFTSEnabled())
+                        plan->flow->hashExpr = NIL;
+
+                    /*
 		             * Make sure the top level flow is partitioned on the
                      * partitioning key of the target relation.	Since this
                      * is a SELECT INTO (basically same as an INSERT) command, the target list will correspond
@@ -190,9 +202,9 @@ apply_motion(Plan *plan, Query *query)
                         ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
                                         errmsg("Cannot parallelize that SELECT INTO yet")
                                 ));
-                                
+
                     Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
-                    
+
 				}
 				else
 				{
@@ -246,6 +258,17 @@ apply_motion(Plan *plan, Query *query)
 					case POLICYTYPE_PARTITIONED:
                     {
                         List   *hashExpr;
+
+                        /*
+                         * If mirroring is enabled, force Redistribute Motion
+                         * even if the query result is already partitioned on the
+                         * same key as the target.  Need this to make sure any
+                         * function calls in the SELECT targetlist are executed
+                         * on primaries only, and the result is then sent to
+                         * primaries and mirrors to be inserted.
+                         */
+                        if (isFTSEnabled())
+                            plan->flow->hashExpr = NIL;
 
 			            /*
 			             * Make sure the top level flow is partitioned on the
@@ -777,8 +800,8 @@ make_motion(Plan       *lefttree,
 		{
 			flow = makeFlow(FLOW_SINGLETON);
 			flow->segindex = node->outputSegIdx[0];
-			flow->locustype = ( flow->segindex<0 ) ? 
-								CdbLocusType_Root : 
+			flow->locustype = ( flow->segindex<0 ) ?
+								CdbLocusType_Root :
 								CdbLocusType_SingleQE;
 		}
 		else
