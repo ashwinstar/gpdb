@@ -452,6 +452,8 @@ _outNestLoop(StringInfo str, NestLoop *node)
 	WRITE_NODE_TYPE("NESTLOOP");
 
 	_outJoinPlanInfo(str, (Join *) node);
+
+    WRITE_BOOL_FIELD(outernotreferencedbyinner);    /*CDB*/
 }
 
 static void

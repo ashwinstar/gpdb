@@ -453,6 +453,8 @@ _outNestLoop(StringInfo str, NestLoop *node)
 	WRITE_NODE_TYPE("NESTLOOP");
 
 	_outJoinPlanInfo(str, (Join *) node);
+
+    WRITE_BOOL_FIELD(outernotreferencedbyinner);
 }
 
 static void
@@ -2024,7 +2026,7 @@ _outQuery(StringInfo str, Query *node)
 	/* CDB: The reader checks for the name of this field. */
     if (node->intoOid != 0)
 	    appendStringInfo(str, " :intoOid %d", (int)node->intoOid);
-	 
+	
 }
 
 static void

@@ -420,7 +420,8 @@ _copyNestLoop(NestLoop *from)
 	 */
 	CopyJoinFields((Join *) from, (Join *) newnode);
 
-	return newnode;
+    COPY_SCALAR_FIELD(outernotreferencedbyinner);   /*CDB*/
+    return newnode;
 }
 
 

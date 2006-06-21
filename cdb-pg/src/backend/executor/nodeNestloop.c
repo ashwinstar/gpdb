@@ -197,13 +197,22 @@ ExecNestLoop(NestLoopState *node)
 				}
 			}
 
+            /* CDB: Quit if empty inner implies no outer rows can match. */
+            if (node->nl_QuitIfEmptyInner)
+            {
+                ExecSquelchNode(outerPlan);
+                return NULL;
+            }
+
 			/*
 			 * Otherwise just return to top of loop for a new outer tuple.
 			 */
 			continue;
 		}
 
-		/*
+        node->nl_QuitIfEmptyInner = false;  /*CDB*/
+
+        /*
 		 * at this point we have a new pair of inner and outer tuples so we
 		 * test the inner and outer tuples to see if they satisfy the node's
 		 * qualification.
@@ -333,6 +342,12 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	nlstate->nl_NeedNewOuter = true;
 	nlstate->nl_MatchedOuter = false;
 	nlstate->nl_Untouched = true;		/* CDB */
+
+    /* CDB: Set flag if empty inner implies empty join result. */
+    nlstate->nl_QuitIfEmptyInner = false;
+    if (node->outernotreferencedbyinner &&
+        node->join.jointype != JOIN_INNER)
+        nlstate->nl_QuitIfEmptyInner = true;
 
 	NL1_printf("ExecInitNestLoop: %s\n",
 			   "node initialized");

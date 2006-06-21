@@ -38,6 +38,7 @@ typedef struct
 	List	   *tlist;			/* underlying target list */
 	int			num_vars;		/* number of plain Var tlist entries */
 	bool		has_non_vars;	/* are there non-plain-Var entries? */
+    int         cdb_num_times_referenced;   /* num of Vars that referenced me */
 	/* array of num_vars entries: */
 	tlist_vinfo vars[1];		/* VARIABLE LENGTH ARRAY */
 } indexed_tlist;				/* VARIABLE LENGTH STRUCT */
@@ -852,10 +853,16 @@ set_join_references(Join *join, List *rtable)
 	/* Now do join-type-specific stuff */
 	if (IsA(join, NestLoop))
 	{
+        int     save_num_outer_refs = outer_itlist->cdb_num_times_referenced;
+
 		/* This processing is split out to handle possible recursion */
 		set_inner_join_references(inner_plan,
 								  rtable,
 								  outer_itlist);
+
+        /* Set flag if inner plan has no Var nodes that refer to outer rel. */
+        if (outer_itlist->cdb_num_times_referenced == save_num_outer_refs)
+            ((NestLoop *)join)->outernotreferencedbyinner = true;
 	}
 	else if (IsA(join, MergeJoin))
 	{
@@ -1120,6 +1127,7 @@ build_tlist_index(List *tlist)
 
 	itlist->tlist = tlist;
 	itlist->has_non_vars = false;
+    itlist->cdb_num_times_referenced = 0;
 
 	/* Find the Vars and fill in the index array */
 	vinfo = itlist->vars;
@@ -1171,6 +1179,7 @@ search_indexed_tlist_for_var(Var *var, indexed_tlist *itlist, Index newvarno)
 
 			newvar->varno = newvarno;
 			newvar->varattno = vinfo->resno;
+            itlist->cdb_num_times_referenced++;
 			return newvar;
 		}
 		vinfo++;
@@ -1205,6 +1214,7 @@ search_indexed_tlist_for_non_var(Node *node,
 						 0);
 		newvar->varnoold = 0;	/* wasn't ever a plain Var */
 		newvar->varoattno = 0;
+        itlist->cdb_num_times_referenced++;
 		return newvar;
 	}
 	return NULL;				/* no match */

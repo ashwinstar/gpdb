@@ -1927,11 +1927,12 @@ _readJoin(void)
 static NestLoop *
 _readNestLoop(void)
 {
-	READ_LOCALS_NO_FIELDS(NestLoop);
+	READ_LOCALS(NestLoop);
 
 	readJoinInfo((Join *)local_node);
 
-	READ_DONE();
+    READ_BOOL_FIELD(outernotreferencedbyinner); /*CDB*/
+    READ_DONE();
 }
 
 /*

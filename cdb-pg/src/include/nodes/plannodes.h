@@ -369,6 +369,7 @@ typedef struct Join
 typedef struct NestLoop
 {
 	Join		join;
+    bool        outernotreferencedbyinner;  /* true => inner has no OUTER Var */
 } NestLoop;
 
 /* ----------------

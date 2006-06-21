@@ -2114,6 +2114,7 @@ make_nestloop(List *tlist,
 	plan->righttree = righttree;
 	node->join.jointype = jointype;
 	node->join.joinqual = joinclauses;
+    node->outernotreferencedbyinner = false;    /*CDB*/
 
 	return node;
 }
