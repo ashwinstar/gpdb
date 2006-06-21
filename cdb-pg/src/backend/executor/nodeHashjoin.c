@@ -122,6 +122,10 @@ ExecHashJoin(HashJoinState *node)
 			if (TupIsNull(node->hj_FirstOuterTupleSlot))
 			{
 				node->hj_OuterNotEmpty = false;
+
+                /* CDB: Tell inner subtree that its data will not be needed. */
+			    ExecSquelchNode((PlanState *)hashNode);
+
 				return NULL;
 			}
 			else
