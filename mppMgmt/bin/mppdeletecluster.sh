@@ -177,16 +177,20 @@ DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Host=$DELETE_HOSTNAME Data directory=$DELETE_DATADIR Port=$DELETE_PORT"
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-	$ECHO  "Continue with MPP instance deletion Yy/Nn>"
-	read REPLY
-	CHK_REPLY
-	$ECHO "FINAL WARNING, you are about to delete the MPP instance on Master host $MASTER_HOSTNAME"
-	if [ $DUMP_COUNT -ne 0 ] && [ $FORCE -eq 1 ];then
-	$ECHO "There are database dump files, these will be DELETED if you continue!"
+	if [ -z $NOINTERACTIVE ];then
+		$ECHO  "Continue with MPP instance deletion Yy/Nn>"
+		read REPLY
+		CHK_REPLY
+		$ECHO "FINAL WARNING, you are about to delete the MPP instance on Master host $MASTER_HOSTNAME"
+		if [ $DUMP_COUNT -ne 0 ] && [ $FORCE -eq 1 ];then
+		$ECHO "There are database dump files, these will be DELETED if you continue!"
+		fi
+		$ECHO "Continue with MPP deletion Yy/Nn>"
+		read REPLY
+		CHK_REPLY
+	else
+		LOG_MSG "[INFO]:-Non-interactive mode selected"
 	fi
-	$ECHO "Continue with MPP deletion Yy/Nn>"
-	read REPLY
-	CHK_REPLY
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
