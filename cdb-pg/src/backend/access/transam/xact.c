@@ -48,7 +48,8 @@
 
 #include "cdb/cdbgang.h"
 #include "cdb/cdbtm.h"
-#include "cdb/cdbvars.h"		/* Mpp_role, Mpp_is_writer */
+#include "cdb/cdbvars.h"		/* Mpp_role, Mpp_is_writer,
+					   interconnect_setup_timeout */
 
 /*
  *	User-tweakable parameters
@@ -1528,8 +1529,11 @@ StartTransaction(void)
 			}
 			else
 			{
-				bool		done = false;
-				int			count = 0;
+				bool	done = false;
+				int	   	count = 0;
+				/* the pg_usleep() call below is in units of 2ms,
+				 * interconnect timeout is in seconds */
+				int		segmate_timeout = interconnect_setup_timeout * 500;
 
 				elog(DEBUG4, "qExec reader: QDSentXID %d sharedlocalsnapshot->QDxid %d sharedsnapshots: %s",
 					 QDSentXID, SharedLocalSnapshotSlot->QDxid, SharedSnapshotDump());
@@ -1581,7 +1585,7 @@ StartTransaction(void)
 
 						count++;
 
-						if (count % 10000 == 0)
+						if (count > segmate_timeout)
 						{
 							/*
 							 * FATAL seems pretty bad... but once we get out

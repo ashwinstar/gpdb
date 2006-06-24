@@ -503,10 +503,12 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	 */
 	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
 	{
-		bool		done = false;
-		int			count = 0;
+		int	   	count = 0;
+		/* the pg_usleep() call below is in units of 2ms, interconnect
+		 * timeout is in seconds */
+		int		segmate_timeout = interconnect_setup_timeout * 500;
 
-		while (!done)
+		for (;;)
 		{
 			if (SharedLocalSnapshotSlot == NULL)
 				elog(ERROR, "SharedLocalSnapshotSlot is NULL");
@@ -560,7 +562,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 
 				CHECK_FOR_INTERRUPTS();
 
-				if (count >= 4000)
+				if (count >= segmate_timeout)
 					elog(ERROR, "Reader qExec timed out waiting for Writer to set the shared snapshot");
 			}
 		}

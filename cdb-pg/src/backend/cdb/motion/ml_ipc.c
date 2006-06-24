@@ -52,7 +52,7 @@
   * good match for the maximum number of QEs. Slow insert performance will
   * result if it is too low.
   */
-#define LISTEN_BACKLOG 64
+#define LISTEN_BACKLOG 256
 #define MAX_BIND_RETRIES 12
 #define CONNECT_RETRY_MS    5000
 
