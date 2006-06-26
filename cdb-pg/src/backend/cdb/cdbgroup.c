@@ -319,14 +319,6 @@ cdb_grouping_planner(PlannerInfo* root,
 			   * defensive since we will have taken an early exit above. 
 			   */
 		}
-		else if ( has_groups && ! use_hashed_grouping && agg_counts->numDistinctAggs==1 )
-		{
-			; /* In this case, we'd be doing AGG_SORTED along with a 
-			   * preparatory hash redistribution on the DISTINCT expression, 
-			   * i.e., we would need to sort twice -- once after each of two 
-			   * Motions.  Seems unlikely to be worthwhile, so we avoid the
-			   * case. */
-		}
 		else /* Pick a 2-stage plan to compare to the 1-stage plan in hand. */
 		{
 			if ( agg_counts->numDistinctAggs ==  1 )
