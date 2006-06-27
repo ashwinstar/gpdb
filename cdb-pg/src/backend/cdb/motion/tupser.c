@@ -326,6 +326,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 		{
 			if (nullslen)
 				addByteStringToChunkList(tcList, (char *)t_data->t_bits, nullslen);
+
 			addByteStringToChunkList(tcList, (char *)t_data + t_data->t_hoff, datalen);
 		}
 		else
@@ -712,7 +713,6 @@ DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup)
 					pSerInfo->values[i] = DirectFunctionCall1(smgrin, CStringGetDatum(smgrstr));
 					break;
 				}
-
 			default:
 				fHandled = false;
 		}
@@ -886,9 +886,9 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 		char *pos = (char *)serData.data;
 
 		tshp = (TupSerHeader *)pos;
-		pos += sizeof(TupSerHeader);
-
-		/* if the tuple had toasted elements we have to deserialize the old slow way */
+		pos += sizeof(TupSerHeader);	
+		/* if the tuple had toasted elements we have to deserialize
+		 * the old slow way. */
 		if ((tshp->infomask & (HEAP_HASEXTERNAL | HEAP_HASEXTENDED)) != 0)
 		{
 			serData.cursor += sizeof(TupSerHeader);
@@ -914,13 +914,14 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 		hoff = MAXALIGN(hoff);
 
 		/* Allocate the space in one chunk, like heap_form_tuple */
-		htup = (HeapTuple) palloc(HEAPTUPLESIZE + hoff + datalen);
+		htup = (HeapTuple)palloc(HEAPTUPLESIZE + hoff + datalen);
 		htup->t_datamcxt = CurrentMemoryContext;
 
 		t_data = (HeapTupleHeader) ((char *)htup + HEAPTUPLESIZE);
 
 		/* make sure unused header fields are zeroed */
 		MemSetAligned(t_data, 0, hoff);
+
 		/* reconstruct the HeapTupleData fields */
 		htup->t_len = hoff + datalen;
 		ItemPointerSetInvalid(&(htup->t_self));
@@ -930,14 +931,21 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 		/* reconstruct the HeapTupleHeaderData fields */
 		ItemPointerSetInvalid(&(t_data->t_ctid));
 		t_data->t_natts = tshp->natts;
-		t_data->t_infomask = (tshp->infomask & ~HEAP_XACT_MASK)
-			| (HEAP_XMIN_INVALID | HEAP_XMAX_INVALID);
+		t_data->t_infomask = tshp->infomask & ~HEAP_XACT_MASK;
+		t_data->t_infomask |= HEAP_XMIN_INVALID | HEAP_XMAX_INVALID;
 		t_data->t_hoff = hoff;
 
 		if (nullslen)
 		{
 			memcpy((void *)t_data->t_bits, pos, nullslen);
 			pos += nullslen;
+		}
+
+		/* does the tuple descriptor expect an OID ? Note: we don't
+		 * have to set the oid itself, just the flag! (see heap_formtuple()) */
+		if (pSerInfo->tupdesc->tdhasoid)		/* else leave infomask = 0 */
+		{
+			t_data->t_infomask |= HEAP_HASOID;
 		}
 
 		/* and now the data proper (it would be nice if we could just
