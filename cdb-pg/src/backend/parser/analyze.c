@@ -1670,7 +1670,13 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 				{
 					policy->attrs[0] = colindex;
 					assignedDefault = true;
-					elog(NOTICE, "Table doesn't have 'distributed by' clause, defaulting to column %d", colindex);
+					ereport(NOTICE,
+							(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
+							 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column " 
+								    "named '%s' as the Bizgres MPP data distribution key for this "
+								    "table. ", column->colname),
+						     errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
+						     		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
 					break;
 				}			
 				
