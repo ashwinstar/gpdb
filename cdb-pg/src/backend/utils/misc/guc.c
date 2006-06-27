@@ -4525,11 +4525,19 @@ SetPGVariable(const char *name, List *args, bool is_local)
 		
 		initStringInfo( &buffer );
 
-		appendStringInfo(&buffer, "SET ");
-		if (is_local)
-			appendStringInfo(&buffer, "LOCAL ");
-			
-		appendStringInfo(&buffer, "%s TO ", name);
+        if (argstring == NULL)
+        {
+            appendStringInfo(&buffer, "RESET %s", name);
+            args = NIL;
+        }
+        else
+        {
+            appendStringInfo(&buffer, "SET ");
+		    if (is_local)
+			    appendStringInfo(&buffer, "LOCAL ");
+    			
+		    appendStringInfo(&buffer, "%s TO ", name);
+        }
 
 		foreach(l, args)
 		{
