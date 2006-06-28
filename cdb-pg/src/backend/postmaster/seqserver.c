@@ -218,9 +218,16 @@ sendSequenceRequest(int     sockfd,
 		
 		if (n < 0)
 		{
-			if (saved_err == EINTR)
-				continue;
-			else if (saved_err == EWOULDBLOCK)
+			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
+			{
+				ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
+								errmsg("Error: Could not write()  message to seqserver: %s",
+								strerror(errno)),
+								errdetail("error during write() call (error:%d) to seqserver on sockfd: %d ",
+											errno, sockfd)));
+			}
+
+			if (saved_err == EWOULDBLOCK)
 			{
 				/* we shouldn't really get here since we are dealing with
 				 * small messages, but once we've read a bit of data we
@@ -245,34 +252,24 @@ sendSequenceRequest(int     sockfd,
 										errmsg("Error: Could not write()  message to seqserver: %s",
 										strerror(errno)),
 										errdetail("error during write() call (error:%d) to seqserver on sockfd: %d ",
-													errno, sockfd)));
+												  errno, sockfd)));
 						return;
 					}
 				}
 				while (n < 1);
-				
 			}
-			else
-			{
-				ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
-								errmsg("Error: Could not write()  message to seqserver: %s",
-								strerror(errno)),
-								errdetail("error during write() call (error:%d) to seqserver on sockfd: %d ",
-											errno, sockfd)));
-				return;							
-			}
-		}
+			/* else saved_err == EINTR */
 
+			continue;
+		}
 
 		bytesWritten += n;
 	}
 	
-	
-	
 	/*
 	 * read the response
 	 */	
-	while( bytesRead < resplen )
+	while (bytesRead < resplen)
 	{
 		
 		CHECK_FOR_INTERRUPTS();
@@ -288,9 +285,13 @@ sendSequenceRequest(int     sockfd,
 		
 		if (n < 0)
 		{
-			if (saved_err == EINTR)
-				continue;
-			else if (saved_err == EWOULDBLOCK)
+			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
+			{
+				elog( ERROR, "Error: Could not read() message from seqserver."
+							  "(error:%d). Closing connection.", saved_err);
+			}
+
+			if (saved_err == EWOULDBLOCK)
 			{
 				/* we shouldn't really get here since we are dealing with
 				 * small messages, but once we've read a bit of data we
@@ -313,20 +314,16 @@ sendSequenceRequest(int     sockfd,
 
 						ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
 									    errmsg("Error: Could not read() message from seqserver"),
-										errdetail("error during read() call (error:%d) from remote"										
-										"sockfd = %d", errno, sockfd)));
+										errdetail("error during read() call (error:%d) from remote"
+												  "sockfd = %d", errno, sockfd)));
 						return;		
 					}
 				}
 				while (n < 1);
-				
 			}
-			else
-			{
-				elog( ERROR, "Error: Could not read() message from seqserver."
-							  "(error:%d). Closing connection.", saved_err);
-				return;
-			}
+			/* else saved_err == EINTR */
+
+			continue;
 		}
 		else
 			bytesRead += n;
