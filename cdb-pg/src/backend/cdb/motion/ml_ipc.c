@@ -603,7 +603,13 @@ RecvTupleChunk(MotionConn * conn)
 
 		if (tcSize >= conn->msgSize)
 		{
-			elog(ERROR, "tcSize %d >= conn->msgSize %d !", tcSize, conn->msgSize);
+			/* it is possible that our message got messed up by a
+			 * cancellation ? */
+			ML_CHECK_FOR_INTERRUPTS();
+
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+							errmsg("Interconnect error parsing message"),
+							errdetail("tcSize %d >= conn->msgSize %d", tcSize, conn->msgSize)));
 		}
 		Assert(tcSize < conn->msgSize);
 
