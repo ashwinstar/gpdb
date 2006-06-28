@@ -31,9 +31,7 @@ paramiko:
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@echo "Unzipping Paramiko"
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@if [ -d $(PYLIB_SRC)/$(PARAMIKO_DIR) ]; then rm -rf \
-        $(PYLIB_SRC)/$(PARAMIKO_DIR) ; fi
-	@cd $(PYLIB_SRC)/; unzip $(PARAMIKO_DIR).zip ; cd ../
+	@cd $(PYLIB_SRC)/; unzip -o $(PARAMIKO_DIR).zip ; cd ../ ;
 	@echo " Building paramiko "
 	@cd $(PYLIB_SRC)/$(PARAMIKO_DIR) ; NO_M64=TRUE python setup.py build ; cd ../../
 	cp -r $(PYLIB_SRC)/$(PARAMIKO_DIR)/build/lib/paramiko  $(LIB_DIR)/
@@ -59,8 +57,6 @@ PYCRYPTO_DIR=pycrypto-$(PYCRYPTO_VERSION)
 pycrypto:
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@echo "Unzipping pycrypto"
-	@if [ -d $(PYLIB_SRC)/$(PYCRYPTO_DIR) ]; then rm -rf \
-        $(PYLIB_SRC)/$(PYCRYPTO_DIR) ; fi
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@if [ `uname -s` = 'SunOS' ] ; then \
 		cd $(PYLIB_SRC)/; gtar -xvzf $(PYCRYPTO_DIR).tar.gz ; cd ../ ;\
