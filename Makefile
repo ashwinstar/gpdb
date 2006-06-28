@@ -71,8 +71,12 @@ mgmtcopy :
 	@cp -rp $(MPPMGMT)/bin $(INSTLOC)/$(MPPMGMT)
 	@if [ -d $(MPPMGMT)/doc ]; then cp -rp $(MPPMGMT)/doc $(INSTLOC)/$(MPPMGMT); fi
 	@if [ -d $(MPPMGMT)/demo/mppdemo ]; then mkdir $(INSTLOC)/$(MPPMGMT)/demo; gtar --exclude \*CVS\* -C $(MPPMGMT)/demo -czf $(INSTLOC)/$(MPPMGMT)/demo/mppdemo.tar.gz mppdemo; fi
+	#Remove Unwated Files
 	@rm -rf $(INSTLOC)/$(MPPMGMT)/bin/CVS
 	@rm -rf $(INSTLOC)/$(MPPMGMT)/doc/CVS
+	@rm -rf $(INSTLOC)/$(MPPMGMT)/bin/pythonSrc
+	@rm -rf $(INSTLOC)/$(MPPMGMT)/bin/Makefile
+	@rm -rf $(INSTLOC)/$(MPPMGMT)/bin/lib/CVS
 
 copylibs :
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep readline | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
