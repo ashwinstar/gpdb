@@ -208,4 +208,7 @@ extern ArrayType *create_singleton_array(FunctionCallInfo fcinfo,
 					   Datum element,
 					   int ndims);
 
+/* MPP Additions: */
+extern Datum array_int4_add(PG_FUNCTION_ARGS);
+
 #endif   /* ARRAY_H */

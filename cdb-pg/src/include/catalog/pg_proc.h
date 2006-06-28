@@ -1046,6 +1046,9 @@ DATA(insert OID = 515 (  array_larger	   PGNSP PGUID 12 f f t f i 2 2277 "2277 2
 DESCR("larger of two");
 DATA(insert OID = 516 (  array_smaller	   PGNSP PGUID 12 f f t f i 2 2277 "2277 2277" _null_ _null_ _null_ array_smaller - _null_ ));
 DESCR("smaller of two");
+/* MPP -- array_add -- special for prospective customer */
+DATA(insert OID = 6012 (  array_add		   PGNSP PGUID 12 f f t f i 2 1007 "1007 1007" _null_ _null_ _null_ array_int4_add - _null_ ));
+DESCR("itemwise add two integer arrays");
 
 DATA(insert OID = 760 (  smgrin			   PGNSP PGUID 12 f f t f s 1 210 "2275" _null_ _null_ _null_  smgrin - _null_ ));
 DESCR("I/O");
@@ -3134,6 +3137,9 @@ DATA(insert OID = 2156 (  stddev			PGNSP PGUID 12 t f f f i 1 1700 "21" _null_ _
 DATA(insert OID = 2157 (  stddev			PGNSP PGUID 12 t f f f i 1 701 "700" _null_ _null_ _null_  aggregate_dummy - _null_ ));
 DATA(insert OID = 2158 (  stddev			PGNSP PGUID 12 t f f f i 1 701 "701" _null_ _null_ _null_  aggregate_dummy - _null_ ));
 DATA(insert OID = 2159 (  stddev			PGNSP PGUID 12 t f f f i 1 1700 "1700" _null_ _null_ _null_ aggregate_dummy - _null_ ));
+
+/* MPP Aggregate -- array_sum -- special for prospective customer. */
+DATA(insert OID = 6013 (  array_sum			PGNSP PGUID 12 t f f f i 1 1007 "1007" _null_ _null_ _null_ aggregate_dummy - _null_ ));
 
 DATA(insert OID = 2160 ( text_pattern_lt	 PGNSP PGUID 12 f f t f i 2 16 "25 25" _null_ _null_ _null_ text_pattern_lt - _null_ ));
 DATA(insert OID = 2161 ( text_pattern_le	 PGNSP PGUID 12 f f t f i 2 16 "25 25" _null_ _null_ _null_ text_pattern_le - _null_ ));

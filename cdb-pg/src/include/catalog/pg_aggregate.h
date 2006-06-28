@@ -175,7 +175,11 @@ DATA(insert ( 2239 int4or		  int4or		  -					0	23		_null_ ));
 DATA(insert ( 2240 int8and		  int8and		  -					0	20		_null_ ));
 DATA(insert ( 2241 int8or		  int8or		  -					0	20		_null_ ));
 DATA(insert ( 2242 bitand		  bitand		  -					0	1560	_null_ ));
-DATA(insert ( 2243 bitor		   bitor		  -					0	1560	_null_ ));
+DATA(insert ( 2243 bitor		  bitor			  -					0	1560	_null_ ));
+
+/* MPP Aggregate -- array_sum -- special for prospective customer. */
+DATA(insert ( 6013	array_add 	array_add		  -					0	1007	"{}" ));
+
 
 /*
  * prototypes for functions in pg_aggregate.c
