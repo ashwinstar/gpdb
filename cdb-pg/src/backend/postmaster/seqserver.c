@@ -633,9 +633,14 @@ processSequenceRequest( int sockfd )
 		
 		if (n < 0)
 		{
-			if (saved_err == EINTR)
-				continue;
-			else if (saved_err == EWOULDBLOCK)
+			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
+			{
+				elog( DEBUG3, "Error: Could not read() message from client."
+					  "(error:%d). Closing connection.", saved_err);
+				return false;
+			}
+
+			if (saved_err == EWOULDBLOCK)
 			{
 				/* we shouldn't really get here since we are dealing with
 				 * small messages, but once we've read a bit of data we
@@ -656,21 +661,17 @@ processSequenceRequest( int sockfd )
 					{
 						saved_err = errno;
 
-						elog( DEBUG3, "error reading incoming message from client. (errno: %d)", saved_err);
+						elog(DEBUG3, "error reading incoming message from client. (errno: %d)",
+							 saved_err);
 						return false;
 					}
 				}
 				while (n < 1);
 				
 			}
-			else
-			{
-				elog( DEBUG3, "Error: Could not read() message from client."
-							  "(error:%d). Closing connection.", saved_err);
-				return false;
-			}
+			/* else saved_err == EINTR */
+			continue;
 		}
-
 
 		bytesRead += n;
 	}
@@ -733,9 +734,14 @@ processSequenceRequest( int sockfd )
 		
 		if (n < 0)
 		{
-			if (saved_err == EINTR)
-				continue;
-			else if (saved_err == EWOULDBLOCK)
+			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
+			{
+				elog( DEBUG3, "Error: Could not write() message from client."
+					  "(error:%d). Closing connection.", sockfd);
+				return false;
+			}
+
+			if (saved_err == EWOULDBLOCK)
 			{
 				/* we shouldn't really get here since we are dealing with
 				 * small messages, but once we've read a bit of data we
@@ -760,15 +766,10 @@ processSequenceRequest( int sockfd )
 						return false;
 					}
 				}
-				while (n < 1);
-				
+				while (n < 1);				
 			}
-			else
-			{
-				elog( DEBUG3, "Error: Could not write() message from client."
-							  "(error:%d). Closing connection.", sockfd);
-				return false;			
-			}
+			/* else saved_err == EINTR */
+			continue;
 		}
 		else
 			bytesWritten += n;
