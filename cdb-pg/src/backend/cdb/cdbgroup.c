@@ -319,6 +319,19 @@ cdb_grouping_planner(PlannerInfo* root,
 			   * defensive since we will have taken an early exit above. 
 			   */
 		}
+		else if ( has_groups && agg_counts->numDistinctAggs==1 && !mpp_enable_agg_distinct )
+		{
+			; /* If we continue, we'll use an initial redistibute motion to 
+			   * allow use of 2-phase aggregation with the lone agg distinct.
+			   * Here, that is not enabled, so we bail out and use the 
+			   * 1-phase plan.
+			   *
+			   * Since HashAgg can't handle distinct, the 2-phase plan will be
+			   *    (Agg (Sort (Motion (Agg (Sort (Motion R)))))) 
+			   * which we probably won't like.  However, the 2-phase approach
+			   * may be enabled using the GUC mpp_enable_agg_distinct.
+			   */
+		}
 		else /* Pick a 2-stage plan to compare to the 1-stage plan in hand. */
 		{
 			if ( agg_counts->numDistinctAggs ==  1 )

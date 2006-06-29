@@ -1007,6 +1007,28 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 
+
+	{
+		{"mpp_enable_agg_distinct", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+			gettext_noop("Experimental feature: 2-phase aggregation with single distinct-qualified aggregate."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&mpp_enable_agg_distinct,
+		false, NULL, NULL
+	},
+
+
+	{
+		{"mpp_enable_preunique", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+			gettext_noop("Experimental feature: 2-phase duplicate removal."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&mpp_enable_preunique,
+		false, NULL, NULL
+	},
+
 	{
 		{"mpp_is_primary", PGC_BACKEND, UNGROUPED,
 			gettext_noop("Reports session type as primary or mirror."),

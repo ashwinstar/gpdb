@@ -84,6 +84,10 @@ double      mpp_motion_cost_per_row = 0;
 int         mpp_segments_for_planner = 0;
 bool		enable_agg_restruct = TRUE;
 
+/* MPP Experimental Feature GUCs */
+bool		mpp_enable_agg_distinct = FALSE;
+bool		mpp_enable_preunique = FALSE;
+
 
 /* ----------------
  * Non-GUC globals

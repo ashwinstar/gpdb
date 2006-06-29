@@ -327,6 +327,26 @@ extern int      mpp_segments_for_planner;
  */
 extern bool enable_agg_restruct;
 
+/* ----- Experimental Features ----- */
+
+/* May MPP redistribute on the argument of a lone aggregate distinct in 
+ * order to use 2-phase aggregation?  
+ * 
+ * The code does not currently use planner estimates for this.  If enabled, 
+ * the tactic is used whenever possible.
+ */
+extern bool mpp_enable_agg_distinct;
+
+/* May MPP apply Unique operator (and possibly a Sort) in parallel prior
+ * to the collocation motion for a Unique operator?  The idea is to reduce
+ * the number of rows moving over the interconnect.
+ * 
+ * The code does not currently use planner estimates for this.  If enabled, 
+ * the tactic is used whenever possible.
+ */
+extern bool mpp_enable_preunique;
+
+
 
 /* --------------------------------------------------------------------------------------------------
  * Non-GUC globals

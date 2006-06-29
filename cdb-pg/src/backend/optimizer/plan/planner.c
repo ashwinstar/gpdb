@@ -1217,10 +1217,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	/*
 	 * MPP: If there's a DISTINCT clause and we're not collocated on the
 	 * key, we need to redistribute.
-	 *
-	 * TODO: There may be cases where it would pay to insert a preliminary
-	 * Unique node prior to redistribution (to reduce the number of rows we
-	 * move around). We don't pursue that at the moment.
 	 */
 	 if ( Mpp_role == MPP_ROLE_DISPATCH && parse->distinctClause != NULL)
 	 {
@@ -1232,6 +1228,37 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			ListCell *cell;
 		
 			/* Regard input as strewn.  Redistribute on distinct keys. */
+			
+			if ( mpp_enable_preunique ) /* Do we want to pre-unique? */
+			{
+				/* Reduce the number of rows to move by adding a [Sort and] 
+				 * Unique prior to the redistribute Motion. */
+				if (parse->sortClause)
+				{
+					if (!pathkeys_contained_in(sort_pathkeys, current_pathkeys))
+					{
+						result_plan = (Plan *)
+							make_sort_from_sortclauses(root,
+													   parse->sortClause,
+													   result_plan);
+						current_pathkeys = sort_pathkeys;
+						if ( Mpp_role == MPP_ROLE_DISPATCH )
+						{
+							mark_sort_locus(result_plan);
+						}
+					}
+				}
+
+				result_plan = (Plan *) make_unique(result_plan, parse->distinctClause);
+				if ( Mpp_role == MPP_ROLE_DISPATCH )
+				{
+					mark_passthru_locus(result_plan, TRUE, TRUE);
+				}
+				
+				/* Is this right? */
+				result_plan->plan_rows = dNumGroups;
+			}
+			
 			foreach(cell, parse->distinctClause)
 			{
 				SortClause *sortcl = (SortClause *) lfirst(cell);
