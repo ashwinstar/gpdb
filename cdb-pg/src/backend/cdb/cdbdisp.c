@@ -687,11 +687,11 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
 	 */
-	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, nsegdb, -1);
+	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, nsegdb, -1, NULL);
 
 	Assert(primaryGang);
 
-	mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, nsegdb, -1);
+	mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, nsegdb, -1, NULL);
 
 	if (mirrorGang &&
 		(mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))
@@ -920,11 +920,11 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
 	 */
-	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, nsegdb, -1);
+	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, nsegdb, -1, NULL);
 
 	Assert(primaryGang);
 
-	mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, nsegdb, -1);
+	mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, nsegdb, -1, NULL);
 
 	if (mirrorGang &&
 		(mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))

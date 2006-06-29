@@ -88,6 +88,7 @@ CreateQueryDesc(Query *parsetree,
 	qd->planstate = NULL;
 	
 	qd->cursor_query = false; /* default value */
+	qd->portal_name = NULL;
 
 	return qd;
 }
@@ -401,7 +402,10 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 				 * it could do the right cleanup in ExecutorEnd.
 				 */
 				if(portal->is_cursor)
+				{
 					queryDesc->cursor_query = true;
+					queryDesc->portal_name = (portal->name ? pstrdup(portal->name) : (char *) NULL);
+				}
 
 				/*
 				 * We do *not* call AfterTriggerBeginQuery() here.	We assume

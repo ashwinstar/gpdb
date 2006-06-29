@@ -46,12 +46,12 @@ extern char *session_authorization_string;
 static void *thread_DoConnect(void *arg);
 static void build_mppqeid_params(PQExpBuffer buf);
 
-static Gang *createGang(GangType type, int size, int content);
+static Gang *createGang(GangType type, int size, int content, char *portal_name);
 
 static void disconnectAndDestroyGang(Gang * gp);
 static void disconnectAndDestroyAllReaderGangs(void);
 
-static Gang *buildGangDefinition(GangType type, int size, int content);
+static Gang *buildGangDefinition(GangType type, int size, int content, char *portal_name);
 
 static bool cleanupGang(Gang * gp);
 
@@ -108,7 +108,7 @@ static char *myDatabaseName = NULL;
  *
  */
 static Gang *
-createGang(GangType type, int size, int content)
+createGang(GangType type, int size, int content, char *portal_name)
 {
 	Gang	   *newGangDefinition;
 	MemoryContext oldContext;
@@ -147,7 +147,7 @@ createGang(GangType type, int size, int content)
 	if (myDatabaseName == NULL)
 		myDatabaseName = get_database_name(MyDatabaseId);
 
-	newGangDefinition = buildGangDefinition(type, size, content);
+	newGangDefinition = buildGangDefinition(type, size, content, portal_name);
 
 	if (type == GANGTYPE_MIRROR_WRITER && newGangDefinition == NULL)
 	{
@@ -401,7 +401,7 @@ createGang(GangType type, int size, int content)
  *	all the non-connection related fields.
  */
 static Gang *
-buildGangDefinition(GangType type, int size, int content)
+buildGangDefinition(GangType type, int size, int content, char *portal_name)
 {
 	Gang	   *newGangDefinition = NULL;
 
@@ -434,15 +434,16 @@ buildGangDefinition(GangType type, int size, int content)
 	newGangDefinition->type = type;
 	newGangDefinition->allocated = false;
 	newGangDefinition->active = false;
+	newGangDefinition->portal_name = (portal_name ? pstrdup(portal_name) : (char *) NULL);
 
 	switch (type)
 	{
 		case GANGTYPE_PRIMARY_WRITER:
-			elog(DEBUG4, "building Gang.  Gang is primary writer");
+			elog(DEBUG4, "building Gang for %s. Gang is primary writer", (portal_name ? portal_name : "unnamed portal"));
 			break;
 
 		case GANGTYPE_MIRROR_WRITER:
-			elog(DEBUG4, "building Gang.  Gang is mirror writer");
+			elog(DEBUG4, "building Gang for %s. Gang is mirror writer", (portal_name ? portal_name : "unnamed portal"));
 			break;
 
 		case GANGTYPE_READER:
@@ -453,7 +454,8 @@ buildGangDefinition(GangType type, int size, int content)
 			 * If size 1, then content tells us what?
 			 */
 			elog(DEBUG4,
-				 "building Gang.  Gang is reader size %d for content %d", size, content);
+				 "building Gang for %s.  Gang is reader size %d for content %d", 
+										(portal_name ? portal_name : "unnamed portal"), size, content);
 			break;
 
 		case GANGTYPE_UNALLOCATED:
@@ -1192,7 +1194,7 @@ getAllReaderGangs()
 }
 
 Gang *
-allocateGang(GangType type, int size, int content)
+allocateGang(GangType type, int size, int content, char *portal_name)
 {
 	/*
 	 * First, we look for an unallocated but created gang of the right type
@@ -1233,12 +1235,15 @@ allocateGang(GangType type, int size, int content)
 				/*
 				 * try twice for creating gang
 				 */
-				gp = primaryWriterGang = createGang(type, size, content);
+				gp = primaryWriterGang = createGang(type, size, content, portal_name);
 				if (gp == NULL)
-					gp = primaryWriterGang = createGang(type, size, content);
+					gp = primaryWriterGang = createGang(type, size, content, portal_name);
 			}
 			else
+			{
+				elog(DEBUG4, "Reusing an existing primary writer gang");
 				gp = primaryWriterGang;
+			}
 			break;
 
 		case GANGTYPE_MIRROR_WRITER:
@@ -1247,12 +1252,15 @@ allocateGang(GangType type, int size, int content)
 				/*
 				 * try twice for creating gang
 				 */
-				gp = mirrorWriterGang = createGang(type, size, content);
+				gp = mirrorWriterGang = createGang(type, size, content, portal_name);
 				if (gp == NULL && !mirroringNotConfigured)
-					gp = mirrorWriterGang = createGang(type, size, content);
+					gp = mirrorWriterGang = createGang(type, size, content, portal_name);
 			}
 			else
+			{
+				elog(DEBUG4, "Reusing an existing mirror writer gang");
 				gp = mirrorWriterGang;
+			}
 			break;
 
 		case GANGTYPE_READER:
@@ -1260,18 +1268,25 @@ allocateGang(GangType type, int size, int content)
 			 * Must be size 1 or size numsegments
 			 * If size 1, then content tells us which segment we want
 			 */
-			elog(DEBUG4, "building Gang.  Gang is reader size %d", size);
+			elog(DEBUG4, "Building Gang for %s. Gang is reader size %d", (portal_name ? portal_name : "unnamed portal"), size);
 			if (size != 1)
 			{
 
 				if (availableReaderGangsN != NIL)		/* There are gangs
 														 * already created */
 				{
-					elog(DEBUG5, "reusing an old gang");
+					elog(DEBUG4, "Reusing an available reader N-gang for %s", (portal_name ? portal_name : "unnamed portal"));
 
 					gp = linitial(availableReaderGangsN);
 					Assert(gp != NULL);
 					Assert(gp->type == type && gp->size > 1);
+					
+					/* make sure no memory is still allocated for previous portal name that this gang belonged to */
+					if(gp->portal_name)
+						pfree(gp->portal_name);
+					
+					/* let the gang know which portal it is being assigned to */
+					gp->portal_name = (portal_name ? pstrdup(portal_name) : (char *) NULL);
 
 					availableReaderGangsN =
 						list_delete_first(availableReaderGangsN);
@@ -1282,11 +1297,11 @@ allocateGang(GangType type, int size, int content)
 					 * no pre-created gang exists
 					 */
 				{
-					elog(DEBUG5, "creating a new gang");
-					gp = createGang(type, size, content);
+					elog(DEBUG4, "Creating a new reader N-gang for %s", (portal_name ? portal_name : "unnamed portal"));
+					gp = createGang(type, size, content, portal_name);
 					/* try again */
 					if (gp == NULL)
-						gp = createGang(type, size, content);
+						gp = createGang(type, size, content, portal_name);
 				}
 				if (gp == NULL)
 					elog(ERROR, "No reader gang allocated");
@@ -1311,7 +1326,15 @@ allocateGang(GangType type, int size, int content)
 					 */
 					if (gp->db_descriptors[0].segindex == content)
 					{
-						elog(DEBUG5, "reusing an old 1 gang for content %d", content);
+						elog(DEBUG4, "reusing an available reader 1-gang for content: %d, portal: %s", content, (portal_name ? portal_name : "unnamed"));
+						
+						/* make sure no memory is still allocated for previous portal name that this gang belonged to */
+						if(gp->portal_name)
+							pfree(gp->portal_name);
+						
+						/* let the gang know which portal it is being assigned to */
+						gp->portal_name = (portal_name ? pstrdup(portal_name) : (char *) NULL);
+						
 						availableReaderGangs1 =
 							list_delete_first(availableReaderGangs1);
 					}
@@ -1320,11 +1343,11 @@ allocateGang(GangType type, int size, int content)
 				}
 				if (gp == NULL) /* no pre-created gang exists */
 				{
-					elog(DEBUG5, "creating a new 1 gang for content %d", content);
-					gp = createGang(type, size, content);
+					elog(DEBUG4, "creating a new reader 1-gang for content: %d, portal: %s", content, (portal_name ? portal_name : "unnamed"));
+					gp = createGang(type, size, content, portal_name);
 					/* try again */
 					if (gp->size == 0)
-						gp = createGang(type, size, content);
+						gp = createGang(type, size, content, portal_name);
 				}
 				if (gp == NULL)
 					elog(ERROR, "No reader gang allocated");
@@ -1553,8 +1576,14 @@ cleanupGang(Gang * gp)
 	if (gp == NULL)
 		return true;
 
-	elog(DEBUG5, "cleanupGang %p", gp);
+	elog(DEBUG5, "cleanupGang: cleaning gang type %d, was used for portal: %s", gp->type, (gp->portal_name ? gp->portal_name : "none (unnamed)"));
 
+	/* disassociate this gang with any portal that it may have belonged to */
+	if (gp->portal_name)
+		pfree(gp->portal_name);
+	
+	gp->portal_name = NULL;
+	
 	if (gp->active)
 		elog(DEBUG2, "cleanupGang called on a gang that is active");
 
@@ -1694,6 +1723,8 @@ disconnectAndDestroyGang(Gang * gp)
 	pfree(gp->db_descriptors);
 	gp->db_descriptors = NULL;
 	gp->size = 0;
+	if(gp->portal_name != NULL)
+		pfree(gp->portal_name);
 	pfree(gp);
 
 	/*
@@ -1747,7 +1778,7 @@ freeGangs(void)
 
 		while (gp != NULL)
 		{
-			elog(DEBUG5, "Returning an N gang to the available list");
+			elog(DEBUG5, "Returning a reader N gang to the available list");
 
 			/* we only return the gang to the available list if it is good */
 			if (cleanupGang(gp))
@@ -1769,7 +1800,7 @@ freeGangs(void)
 
 		while (gp != NULL)
 		{
-			elog(DEBUG5, "Returning a 1 gang to the available list");
+			elog(DEBUG5, "Returning a reader 1 gang to the available list");
 
 			/* we only return the gang to the available list if it is good */
 			if (cleanupGang(gp))

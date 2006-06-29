@@ -31,12 +31,13 @@ typedef struct Gang
 	bool		all_valid_segdbs_connected;
 	bool		allocated;
 	bool		active;
+	char		*portal_name; /* the named portal that owns this gang, NULL if none */
 	struct SegmentDatabaseDescriptor *db_descriptors;	/* Array of QEs/segDBs
 														 * that make up this
 														 * gang */
 } Gang;
 
-extern Gang *allocateGang(GangType type, int size, int content);
+extern Gang *allocateGang(GangType type, int size, int content, char *portal_name);
 
 extern List *getCdbProcessList(Gang *gang);
 

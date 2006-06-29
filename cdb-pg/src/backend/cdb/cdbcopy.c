@@ -88,8 +88,8 @@ makeCdbCopy(bool is_copy_in)
 	}
 
 	/* init gangs */
-	c->primary_writer = allocateGang(GANGTYPE_PRIMARY_WRITER, c->total_segs, -1);
-	c->mirror_writer = allocateGang(GANGTYPE_MIRROR_WRITER, c->total_segs, -1);
+	c->primary_writer = allocateGang(GANGTYPE_PRIMARY_WRITER, c->total_segs, -1, NULL);
+	c->mirror_writer = allocateGang(GANGTYPE_MIRROR_WRITER, c->total_segs, -1, NULL);
 	
 	/* init seg list for copy out */
 	if(!c->copy_in)
@@ -110,7 +110,7 @@ cdbCopyGetDbCount(int total_segs, int seg)
 {
 	int			i;
 
-	Gang	   *gp = allocateGang(GANGTYPE_MIRROR_WRITER, total_segs, -1);
+	Gang	   *gp = allocateGang(GANGTYPE_MIRROR_WRITER, total_segs, -1, NULL);
 
 	if (gp == NULL)
 		return 1;

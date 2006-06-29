@@ -1297,16 +1297,16 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 		{
 			if (i == 0)
 			{
-				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_WRITER, getMPPSegmentCount(), 0);
+				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_WRITER, getMPPSegmentCount(), 0, queryDesc->portal_name);
 				Assert(inv.vecNgangs[i] != NULL);
 				if (inv.writer)
 				{
-					inv.mirrorWriterGang = allocateGang(GANGTYPE_MIRROR_WRITER, getMPPSegmentCount(), 0);
+					inv.mirrorWriterGang = allocateGang(GANGTYPE_MIRROR_WRITER, getMPPSegmentCount(), 0, queryDesc->portal_name);
 				}
 			}
 			else
 			{
-				inv.vecNgangs[i] = allocateGang(GANGTYPE_READER, getMPPSegmentCount(), 0);
+				inv.vecNgangs[i] = allocateGang(GANGTYPE_READER, getMPPSegmentCount(), 0, queryDesc->portal_name);
 			}
 		}
 	}
@@ -1315,7 +1315,7 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 		inv.vec1gangs = (Gang **) palloc(sizeof(Gang *) * inv.num1gangs);
 		for (i = 0; i < inv.num1gangs; i++)
 		{
-			inv.vec1gangs[i] = allocateGang(GANGTYPE_READER, 1, utility_segment_index);
+			inv.vec1gangs[i] = allocateGang(GANGTYPE_READER, 1, utility_segment_index, queryDesc->portal_name);
 		}
 	}
 
