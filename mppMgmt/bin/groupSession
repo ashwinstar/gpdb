@@ -242,11 +242,13 @@ class groupSession(cmd.Cmd):
 
     #End command class overrides ------------------------------------------------
 
-    def runCommand(self,cmd,args,command="",begin=0,end=0,quiet=False):
+    def runCommand(self,cmd,args, command="", begin=0,end=0,quiet=False, \
+        retDict=False,  resDict=None):
         #This kludge is here because python doesn't support copiable iterators
-        logger=logging.getLogger('sshTest')
+        logger=logging.getLogger('groupSession')
         if end == 0:
             end = len(self.sessions)
+
 
         #Put commands into threaded queue
         for i in range(begin,end):
@@ -288,7 +290,12 @@ class groupSession(cmd.Cmd):
                 print 'Command interrupted.'
 
           print ""
-
+        if retDict:
+            if not interrupted:
+                for th in self.sessions:
+                    resDict[th.host]=th.lastoutput
+                    if self.verbose:
+                        print th.host, th.lastoutput
         return interrupted
 
     def handlerTERM(self,signo,frame):
