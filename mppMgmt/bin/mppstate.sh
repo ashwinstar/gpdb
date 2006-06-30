@@ -186,7 +186,7 @@ DATABASE_STATUS () {
 				LOG_MSG "[INFO]:-MPP failure action            = $FAIL_TYPE"
 				LOG_MSG "[INFO]:-MPP mirroring status          = $MIRROR_CONFIG"
 				LOG_MSG "[INFO]:-MPP master standby            = $STANDBY_CONFIGURED"
-				LOG_MSG "[INFO}:-MPP master standby state      = $STANDBY_STATE"
+				LOG_MSG "[INFO]:-MPP master standby state      = $STANDBY_STATE"
 				LOG_MSG "[INFO]:-Segment instance status"
 				if [ ${#QE_ARRAY[@]} -eq 0 ]; then
 						LOG_MSG "[WARN]:-Could not obtain any segment instance host details"
