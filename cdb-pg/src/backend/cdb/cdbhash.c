@@ -333,6 +333,7 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			ba = DatumGetByteaP(datum);
 			len = VARSIZE(ba) - VARHDRSZ;
 			buf = VARDATA(ba);
+			break;
 
 		case NAMEOID:
 			namebuf = DatumGetName(datum);
