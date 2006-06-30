@@ -46,6 +46,7 @@ INTERACTIVE=1
 VERBOSE=1
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
+DUMP_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
 EXIT_STATUS=0
 DUMP_TYPE=0
@@ -442,7 +443,7 @@ PROCESS_DUMP () {
 	LOG_MSG "[INFO]:-Setting dump running flag"
 	$TOUCH $IS_RUNNING_FLAG
 	LOG_MSG "[INFO]:-Building dump command line"
-	DUMP_TEXT="$MPP_DUMP -p $MASTER_PORT -U $LOGNAME --mpp-d=${DUMP_SUB_DIR}/$CUR_DATE --mpp-r=${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/$CUR_DATE --mpp-s=i[1,`$ECHO ${DBID_LIST[@]}|$TR ' ' ','`]"		
+	DUMP_TEXT="$MPP_DUMP -p $MASTER_PORT -U $LOGNAME --mpp-d=${DUMP_SUB_DIR}/$DUMP_DATE --mpp-r=${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/$DUMP_DATE --mpp-s=i[1,`$ECHO ${DBID_LIST[@]}|$TR ' ' ','`]"		
 	if [ $COMPRESSION ];then
 		LOG_MSG "[INFO]:-Adding compression parameter"
 		DUMP_TEXT=$DUMP_TEXT" --mpp-c"
@@ -471,17 +472,17 @@ PROCESS_DUMP () {
 CHK_POST_DUMP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Get the latest report file name on Master segment instance
-	MASTER_DUMP_RPT=`$LS -altr ${MASTER_DATA_DIRECTORY}/$DUMP_SUB_DIR/$CUR_DATE/mpp_dump_*.rpt|$TAIL -1 |$AWK '{print \$NF}'`
+	MASTER_DUMP_RPT=`$LS -altr ${MASTER_DATA_DIRECTORY}/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_*.rpt|$TAIL -1 |$AWK '{print \$NF}'`
 	if [ x"" == x"$MASTER_DUMP_RPT" ];then
 		LOG_MSG "[WARN]:-Could not locate a report file on Master segment dump directory"
 		EXIT_STATUS=1
 		LOG_MSG "[INFO]:-Checking to see if can locate a status file on dbid ${DBID_LIST[1]}"
 		DBID=${DBID_LIST[1]}
 		CHK_DATA
-		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$CUR_DATE/mpp_dump_status_?_${DBID}_$CUR_DATE* ];then $ECHO 0;else $ECHO 1;fi"`
+		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$DUMP_DATE* ];then $ECHO 0;else $ECHO 1;fi"`
 		if [ $EXISTS -eq 0 ];then
 			LOG_MSG "[INFO]:-Located dump status file on $DIR_HOST"
-			TIMESTAMP_KEY=`$TRUSTED_SHELL $DIR_HOST "$LS $DIR/$DUMP_SUB_DIR/$CUR_DATE/mpp_dump_status_?_${DBID}_$CUR_DATE*|$CUT -d'_' -f7"`
+			TIMESTAMP_KEY=`$TRUSTED_SHELL $DIR_HOST "$LS $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$DUMP_DATE*|$CUT -d'_' -f7"`
 			LOG_MSG "[INFO]:-Time stamp key = $TIMESTAMP_KEY"
 		else
 			LOG_MSG "[WARN]:-Failed to locate a dump status file on $DIR_HOST in directory $DIR"
@@ -494,8 +495,8 @@ CHK_POST_DUMP () {
 	for DBID in ${DBID_LIST[@]}
 	do
 		CHK_DATA
-		LOG_MSG "[INFO]:-Checking dump status for $DIR_HOST segment directory $DIR/$DUMP_SUB_DIR/$CUR_DATE"
-		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$CUR_DATE/mpp_dump_status_0_${DBID}_$TIMESTAMP_KEY  ];then $ECHO 0;else $ECHO 1;fi"`
+		LOG_MSG "[INFO]:-Checking dump status for $DIR_HOST segment directory $DIR/$DUMP_SUB_DIR/$DUMP_DATE"
+		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_0_${DBID}_$TIMESTAMP_KEY  ];then $ECHO 0;else $ECHO 1;fi"`
 		if [ $EXISTS -eq 1 ];then
 			LOG_MSG "[WARN]:-Could not locate status report file"
 			ROLLBACK_DUMPS=1
@@ -503,21 +504,21 @@ CHK_POST_DUMP () {
 			FAILED_REPORT=(${FAILED_REPORT[@]}" "$DIR_HOST"|"$DIR)
 		else
 			LOG_MSG "[INFO]:-Located status report file"
-			STATUS=`$TRUSTED_SHELL $DIR_HOST "$GREP -c \"Finished successfully\" $DIR/$DUMP_SUB_DIR/$CUR_DATE/mpp_dump_status_0_${DBID}_$TIMESTAMP_KEY"`
+			STATUS=`$TRUSTED_SHELL $DIR_HOST "$GREP -c \"Finished successfully\" $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_0_${DBID}_$TIMESTAMP_KEY"`
 			if [ $STATUS -eq 1 ];then
 				LOG_MSG "[INFO]:-Status report file indicates dump successful"
 			else
 				LOG_MSG "[WARN]:-Status report file indicates dump failure"
 				LOG_MSG "[INFO]:-Status log file contents"
 				LOG_MSG "[INFO]:-------------------------"
-				$TRUSTED_SHELL $DIR_HOST "$CAT $DIR/$DUMP_SUB_DIR/$CUR_DATE/mpp_dump_status_0_${DBID}_$TIMESTAMP_KEY" >> $LOG_FILE
+				$TRUSTED_SHELL $DIR_HOST "$CAT $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_0_${DBID}_$TIMESTAMP_KEY" >> $LOG_FILE
 				LOG_MSG "[INFO]:-------------------------"
 				ROLLBACK_DUMPS=1
 				EXIT_STATUS=1
 			fi
 		fi
 		#Checking for dump file
-		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$CUR_DATE/mpp_dump_0_${DBID}_$TIMESTAMP_KEY*  ];then $ECHO 0;else $ECHO 1;fi"`
+		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_0_${DBID}_$TIMESTAMP_KEY*  ];then $ECHO 0;else $ECHO 1;fi"`
 		if [ $EXISTS -eq 1 ];then
 			LOG_MSG "[WARN]:-Could not locate dump file"
 			EXIT_STATUS=1
@@ -555,10 +556,10 @@ DELETE_CURRENT_DUMP () {
 		CHK_DATA
 		
 		LOG_MSG "[INFO]:-Deleting dump files on $DIR_HOST segment dir $DIR"
-		$TRUSTED_SHELL $DIR_HOST "$RM -f $DIR/$DUMP_SUB_DIR/$CUR_DATE/mpp_dump*$TIMESTAMP_KEY*"
+		$TRUSTED_SHELL $DIR_HOST "$RM -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump*$TIMESTAMP_KEY*"
 	done
 	LOG_MSG "[INFO]:-Deleting Master segment dump files"
-	$RM -f $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/$CUR_DATE/mpp_dump*$TIMESTAMP_KEY*
+	$RM -f $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump*$TIMESTAMP_KEY*
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -571,7 +572,7 @@ DELETE_OLD_DUMPS () {
 	do
 		CHK_DATA
 		LOG_MSG "[INFO]:-Processing $DIR_HOST segment directory $DIR"
-		DEL_DIR=`$TRUSTED_SHELL $DIR_HOST "$LS $DIR/$DUMP_SUB_DIR|$TR ' ' '\n'|$GREP -v $CUR_DATE|$SORT|$HEAD -1"`
+		DEL_DIR=`$TRUSTED_SHELL $DIR_HOST "$LS $DIR/$DUMP_SUB_DIR|$TR ' ' '\n'|$GREP -v $DUMP_DATE|$SORT|$HEAD -1"`
 		if [ x"" == x"$DEL_DIR" ];then
 			LOG_MSG "[INFO]:-No previous old dump directories located $DIR_HOST in segment directory $DIR"
 		else
@@ -604,7 +605,7 @@ STATUS_REPORT () {
 	LOG_MSG "[INFO]:-Dump status report"
 	LOG_MSG "[INFO]:--------------------------------------------"
 	LOG_MSG "[INFO]:-Target database                    = $DUMP_DATABASE"
-	LOG_MSG "[INFO]:-Dump sub directory                 = $CUR_DATE"
+	LOG_MSG "[INFO]:-Dump sub directory                 = $DUMP_DATE"
 	if [ $CLEAR_DUMPS -eq 1 ];then
 	LOG_MSG "[INFO]:-Clear old dump directories         = On"
 	LOG_MSG "[INFO]:-Backup set deleted                 = $DEL_SET"
