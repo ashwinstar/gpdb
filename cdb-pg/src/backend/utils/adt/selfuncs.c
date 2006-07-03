@@ -111,6 +111,8 @@
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"                /* getMPPSegmentCount */
+
 
 /* Return data from examine_variable and friends */
 typedef struct
@@ -3222,6 +3224,9 @@ get_variable_numdistinct(VariableStatData *vardata)
 					break;
 				case TableOidAttributeNumber:
 					stadistinct = 1.0;	/* only 1 value */
+					break;
+				case MppSegmentIdAttributeNumber:   /*CDB*/
+					stadistinct = getMPPSegmentCount();
 					break;
 				default:
 					stadistinct = 0.0;	/* means "unknown" */
