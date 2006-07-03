@@ -5,6 +5,7 @@
  *	  along with the relation's initial contents.
  *
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -276,6 +277,7 @@ DATA(insert ( 1247 cmin				29 0  4  -4 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1247 xmax				28 0  4  -5 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1247 cmax				29 0  4  -6 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1247 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
+DATA(insert ( 1247 mpp_segment_id   23 0  4  -8 0 -1 -1 t p i t f f t 0));
 
 /* ----------------
  *		pg_proc
@@ -326,6 +328,7 @@ DATA(insert ( 1255 cmin				29 0  4  -4 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 xmax				28 0  4  -5 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 cmax				29 0  4  -6 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
+DATA(insert ( 1255 mpp_segment_id   23 0  4  -8 0 -1 -1 t p i t f f t 0));
 
 /* ----------------
  *		pg_attribute
@@ -374,6 +377,7 @@ DATA(insert ( 1249 cmin				29 0  4  -4 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1249 xmax				28 0  4  -5 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1249 cmax				29 0  4  -6 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1249 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
+DATA(insert ( 1249 mpp_segment_id   23 0  4  -8 0 -1 -1 t p i t f f t 0));
 
 /* ----------------
  *		pg_class
@@ -438,6 +442,7 @@ DATA(insert ( 1259 cmin				29 0  4  -4 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1259 xmax				28 0  4  -5 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1259 cmax				29 0  4  -6 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1259 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
+DATA(insert ( 1259 mpp_segment_id   23 0  4  -8 0 -1 -1 t p i t f f t 0));
 
 /* ----------------
  *		pg_index
