@@ -211,6 +211,17 @@ SEND_INDEX_SIZE_REQUEST () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+CHK_SCHEMA_PREFIX () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	if [ `$ECHO $TABLE_NAME|$GREP -c "\."` -eq 1 ];then
+		LOG_MSG "[INFO]:-Schema prefix found, processing"
+		TMP_TABLE_NAME=`$ECHO $TABLE_NAME|$CUT -d"." -f2`
+		SCHEMA_NAME=`$ECHO $TABLE_NAME|$CUT -d"." -f1`
+		TABLE_NAME=$TMP_TABLE_NAME
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 SEND_DB_SIZE_REQUEST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	QE_COUNT=${#QE_ARRAY[@]}
@@ -310,6 +321,8 @@ else
 fi
 if [ x"" == x"$TABLE_NAME" ] && [ x"" == x"$SIZE_DB" ];then
 	ERROR_EXIT "[FATAL]:-Must supply a table name via -t option, or use -x <database name> option" 2
+else
+	CHK_SCHEMA_PREFIX
 fi
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
