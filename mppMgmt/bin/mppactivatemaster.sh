@@ -265,7 +265,7 @@ ADMIN_SHUTDOWN () {
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
-LOG_MSG "[INFO]:-This utility has been depreciated"
+LOG_MSG "[INFO]:-This utility has been deprecated"
 LOG_MSG "[INFO]:-Use mppactivatestandby.sh and mppinitstandby.sh"
 LOG_MSG "[INFO]:-Review usage via -? for both utilities"
 exit 0
