@@ -181,7 +181,8 @@ DATABASE_STATUS () {
 				LOG_MSG "[INFO]:-Database name                 = $QD_DBNAME "
 				LOG_MSG "[INFO]:-Master port                   = $MASTER_PORT"
 				LOG_MSG "[INFO]:-Master current role           = $QD_ROLE"
-				LOG_MSG "[INFO]:-MPP software version          = $MPP_VERSION"
+				LOG_MSG "[INFO]:-MPP initdb version            = $MPP_INIT_VERSION"
+				LOG_MSG "[INFO]:-MPP current version           = $MPP_VERSION"
 				LOG_MSG "[INFO]:-Postgres version              = $QD_PG_VERSION"
 				LOG_MSG "[INFO]:-MPP failure action            = $FAIL_TYPE"
 				LOG_MSG "[INFO]:-MPP mirroring status          = $MIRROR_CONFIG"
@@ -264,13 +265,17 @@ fi
 VERSION_INFO () {
 	GET_QE_DETAILS
 	MASTER_POSTGRES_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"show server_version;"`
-	ERROR_CHK $? "obtain postgres server version" 1
+	ERROR_CHK $? "obtain master postgres server version" 1
 	MASTER_INITDB_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"select productversion from $MPP_INITDB_VER_TABLE limit 1;"|$TR '$' ' '|$TR -s ' '`
+	ERROR_CHK $? "obtain master initdb version" 1
+	MASTER_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"select version();" `
+	ERROR_CHK $? "obtain master current version" 1
 	LOG_MSG "[INFO]:-Master segment version details"
 	LOG_MSG "[INFO]:-------------------------------"
 	LOG_MSG "[INFO]:-Master segment      = $MASTER_DATA_DIRECTORY"
 	LOG_MSG "[INFO]:-Postgres version    = $MASTER_POSTGRES_VERSION"
-	LOG_MSG "[INFO]:-MPP version         = $MASTER_INITDB_VERSION"
+	LOG_MSG "[INFO]:-MPP initdb version  = $MASTER_INITDB_VERSION"
+	LOG_MSG "[INFO]:-MPP current version = $MASTER_VERSION"
 	LOG_MSG "[INFO]:-Segment instance version details"
 	LOG_MSG "[INFO]:---------------------------------"
 	for TNODE in "${QE_ARRAY[@]}"
@@ -285,9 +290,12 @@ VERSION_INFO () {
 			LOG_MSG "[INFO]:-$QE_NAME segment    = $QE_DIR"
 			LOG_MSG "[INFO]:-Postgres version    = $POSTGRES_VERSION"
 		fi
-		INITDB_VERSION=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -A -t -p $QE_PORT $DEFAULTDB -c\"select productversion from $MPP_INITDB_VER_TABLE;\""|$TR '$' ' '|$TR -s ' '`
-		RETVAL=$?
-		LOG_MSG "[INFO]:-MPP version         = $INITDB_VERSION"
+		QE_INITDB_VERSION=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -A -t -p $QE_PORT $DEFAULTDB -c\"select productversion from $MPP_INITDB_VER_TABLE;\""|$TR '$' ' '|$TR -s ' '`
+		ERROR_CHK $? "obtain segment initdb version" 1
+		QE_VERSION=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -A -t -p $QE_PORT $DEFAULTDB -c\"select version();\""`
+		ERROR_CHK $? "obtain segment current version" 1
+		LOG_MSG "[INFO]:-MPP initdb version  = $QE_INITDB_VERSION"
+		LOG_MSG "[INFO]:-MPP current version = $QE_VERSION"
 	done
 
 }
@@ -569,7 +577,9 @@ STANDBY_HOST_DETAILS () {
 }
 
 GET_MPP_VERSION () {
-		MPP_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from mpp_version_at_initdb limit 1;" 2>/dev/null`
+		MPP_INIT_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from mpp_version_at_initdb limit 1;" 2>/dev/null`
+		ERROR_CHK $? "obtain MPP initdb version information" 2
+		MPP_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select version();" 2>/dev/null`
 		ERROR_CHK $? "obtain MPP version information" 2
 }
 
