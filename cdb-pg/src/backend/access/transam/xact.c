@@ -1879,7 +1879,7 @@ CommitTransaction(void)
 
 	RESUME_INTERRUPTS();
 
-	freeGangs();
+	freeGangsForPortal(NULL);
 }
 
 
@@ -2230,7 +2230,7 @@ AbortTransaction(void)
 	/* abort all QE as cleanup process, ignore all errors */
 	rollbackDtxTransaction();
 
-	freeGangs();
+	freeGangsForPortal(NULL);
 }
 
 /*

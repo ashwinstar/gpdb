@@ -43,7 +43,7 @@ extern List *getCdbProcessList(Gang *gang);
 
 extern List *getCdbProcessesForQD(int isPrimary);
 
-extern void freeGangs(void);
+extern void freeGangsForPortal(char *portal_name);
 
 extern void disconnectAndDestroyAllGangs(void);
 

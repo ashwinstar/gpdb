@@ -57,6 +57,9 @@ static bool cleanupGang(Gang * gp);
 
 static bool gangOK(Gang * gp);
 
+static bool isTargetPortal(char *p1, char *p2);
+
+
 /*
  * Points to the result of getCdbComponentDatabases()
  */
@@ -1576,7 +1579,7 @@ cleanupGang(Gang * gp)
 	if (gp == NULL)
 		return true;
 
-	elog(DEBUG5, "cleanupGang: cleaning gang type %d, was used for portal: %s", gp->type, (gp->portal_name ? gp->portal_name : "none (unnamed)"));
+	elog(DEBUG5, "cleanupGang: cleaning gang type %d, was used for portal: %s", gp->type, (gp->portal_name ? gp->portal_name : "(unnamed)"));
 
 	/* disassociate this gang with any portal that it may have belonged to */
 	if (gp->portal_name)
@@ -1736,13 +1739,18 @@ disconnectAndDestroyGang(Gang * gp)
 }
 
 /*
+ * freeGangsForPortal
+ *
+ * Free all gangs that were allocated for a specific portal 
+ * (could either be a cursor name or an unnamed portal) 
+ *
  * Be careful when moving gangs onto the available list, if
  * cleanupGang() tells us that the gang has a problem, the gang has
  * been free()ed and we should discard it -- otherwise it is good as
  * far as we can tell.
  */
 void
-freeGangs(void)
+freeGangsForPortal(char *portal_name)
 {
 	MemoryContext oldContext;
 
@@ -1751,7 +1759,8 @@ freeGangs(void)
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
-	elog(DEBUG4, "freeGangs: allocated-N %d, available-N %d allocated-1 %d available-1 %d",
+	elog(DEBUG4, "freeGangsForPortal %s. Total gangs in the system: allocated-N %d, available-N %d allocated-1 %d available-1 %d",
+		 (portal_name ? portal_name : "unnamed portal"),
 		 list_length(allocatedReaderGangsN), list_length(availableReaderGangsN),
 		 list_length(allocatedReaderGangs1), list_length(availableReaderGangs1));
 
@@ -1759,69 +1768,111 @@ freeGangs(void)
 	{
 		primaryWriterGang = NULL; /* cleanupGang called disconnectAndDestroyGang() already */
 		disconnectAndDestroyAllGangs();
-		elog(ERROR, "freeGangs: Bad PRIMARY WRITER gang");
+		elog(ERROR, "freeGangsForPortal: Bad PRIMARY WRITER gang");
 		return;
 	}
 	if (!cleanupGang(mirrorWriterGang))
 	{
 		mirrorWriterGang = NULL; /* cleanupGang called disconnectAndDestroyGang() already */
 		disconnectAndDestroyAllGangs();
-		elog(ERROR, "freeGangs: Bad MIRROR WRITER gang");
+		elog(ERROR, "freeGangsForPortal: Bad MIRROR WRITER gang");
 		return;
 	}
 
+	/*
+	 * Now we iterate through the list of allocated reader gangs
+	 * and we free all the gangs that belong to the portal that 
+	 * was specified by our caller.
+	 */
 	if (allocatedReaderGangsN != NIL)
 	{
 		Gang	   *gp = linitial(allocatedReaderGangsN);
 
 		Assert(gp != NULL);
-
+		
 		while (gp != NULL)
 		{
-			elog(DEBUG5, "Returning a reader N gang to the available list");
-
-			/* we only return the gang to the available list if it is good */
-			if (cleanupGang(gp))
-				availableReaderGangsN = lappend(availableReaderGangsN, gp);
-
-			allocatedReaderGangsN = list_delete_first(allocatedReaderGangsN);
-			if (allocatedReaderGangsN != NIL)
-				gp = linitial(allocatedReaderGangsN);
+			
+			if(isTargetPortal(gp->portal_name, portal_name))
+			{
+				elog(DEBUG5, "Returning a reader N gang to the available list");
+	
+				/* we only return the gang to the available list if it is good */
+				if (cleanupGang(gp))
+					availableReaderGangsN = lappend(availableReaderGangsN, gp);
+				
+				allocatedReaderGangsN = list_delete_first(allocatedReaderGangsN);
+				if (allocatedReaderGangsN != NIL)
+					gp = linitial(allocatedReaderGangsN);
+				else
+					gp = NULL;
+			}
 			else
-				gp = NULL;
+			{
+				/*
+				 * TODO: until we actually enable multiple portals to execute, and not only
+				 * one at a time like currently, we should never get here! all reader gangs
+				 * must be of the portal that wants to free them - since there is only one.
+				 */
+				Assert(false);
+				
+				/* TODO: uncomment this message when the assert is removed
+				elog(DEBUG5, "Skipping the release of a reader N gang. It is used by another portal");*/
+			}
+
 		}
 	}
-	if (allocatedReaderGangsN != NIL)
-		elog(DEBUG1, "allocatedReaderGangN didn't get freed!");
-
+		
 	if (allocatedReaderGangs1 != NIL)
 	{
 		Gang	   *gp = linitial(allocatedReaderGangs1);
 
 		while (gp != NULL)
 		{
-			elog(DEBUG5, "Returning a reader 1 gang to the available list");
-
-			/* we only return the gang to the available list if it is good */
-			if (cleanupGang(gp))
+			if(isTargetPortal(gp->portal_name, portal_name))
 			{
-				availableReaderGangs1 = lappend(availableReaderGangs1, gp);
+				elog(DEBUG5, "Returning a reader 1 gang to the available list");
+
+				/* we only return the gang to the available list if it is good */
+				if (cleanupGang(gp))
+				{
+					availableReaderGangs1 = lappend(availableReaderGangs1, gp);
+				}
+				allocatedReaderGangs1 = list_delete_first(allocatedReaderGangs1);
+				if (allocatedReaderGangs1 != NIL)
+					gp = linitial(allocatedReaderGangs1);
+				else
+					gp = NULL;
 			}
-			allocatedReaderGangs1 = list_delete_first(allocatedReaderGangs1);
-			if (allocatedReaderGangs1 != NIL)
-				gp = linitial(allocatedReaderGangs1);
 			else
-				gp = NULL;
+			{
+				/*
+				 * TODO: until we actually enable multiple portals to execute, and not only
+				 * one at a time like currently, we should never get here! all reader gangs
+				 * must be of the portal that wants to free them - since there is only one.
+				 */
+				Assert(false);
+				
+				/* TODO: uncomment this message when the assert is removed
+				elog(DEBUG5, "Skipping the release of a reader 1 gang. It is used by another portal");*/
+			}
 		}
 	}
 
 	MemoryContextSwitchTo(oldContext);
 
-	elog(DEBUG4, "freeGangs: done allocated-N %d, available-N %d allocated-1 %d available-1 %d",
+	elog(DEBUG4, "freeGangsForPortal done. Total gangs in the system: allocated-N %d, available-N %d allocated-1 %d available-1 %d",
 		 list_length(allocatedReaderGangsN), list_length(availableReaderGangsN),
 		 list_length(allocatedReaderGangs1), list_length(availableReaderGangs1));
 }
 
+/*
+ * disconnectAndDestroyAllReaderGangs
+ *
+ * Here we destroy all reader gangs regardless of the portal they belong to.
+ * TODO: This may need to be done more carefully when multiple cursors are
+ * enabled.
+ */
 static void
 disconnectAndDestroyAllReaderGangs(void)
 {
@@ -1891,6 +1942,7 @@ disconnectAndDestroyAllGangs(void)
 {
 	elog(DEBUG3, "disconnectAndDestroyAllGangs");
 
+	/* for now, destroy all readers, regardless of the portal that owns them */
 	disconnectAndDestroyAllReaderGangs();
 
 	disconnectAndDestroyGang(primaryWriterGang);
@@ -2101,4 +2153,27 @@ SetSeqServerInfo(QueryDesc *queryDesc)
 
 	sliceTable->seqServerHost = pstrdup(qd_hostip);
 	sliceTable->seqServerPort = seqServerCtl->seqServerPort;
+}
+
+/*
+ * the gang is working for portal p1. we are only interested in gangs
+ * from portal p2. if p1 and p2 are the same portal return true. false
+ * otherwise.
+ */
+static
+bool isTargetPortal(char *p1, char *p2)
+{
+	/* both are unnamed portals (represented as NULL) */
+	if (!p1 && !p2)
+		return true; 
+	
+	/* one is unnamed, the other is named */
+	if (!p1 || !p2)
+		return false;
+	
+	/* both are the same named portal */
+	if (strcmp(p1, p2) == 0)
+		return true;
+	
+	return false;
 }
