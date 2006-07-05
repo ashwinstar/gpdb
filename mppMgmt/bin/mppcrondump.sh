@@ -159,7 +159,7 @@ GET_DUMP_LIST () {
 CHK_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		CHK_DIR_TARGET=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select hostname, datadir from $CONFIG_TABLE where dbid=${DBID};"`
-		ERROR_CHK $? "obtained host data for DBID $DBID" 2
+		ERROR_CHK $? "obtained host datadir for DBID $DBID" 2
 		DIR_HOST=`$ECHO $CHK_DIR_TARGET|$CUT -d"|" -f1`
 		DIR=`$ECHO $CHK_DIR_TARGET|$CUT -d"|" -f2`
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -492,11 +492,13 @@ CHK_POST_DUMP () {
 		TIMESTAMP_KEY=`$GREP "Timestamp Key:" $MASTER_DUMP_RPT|$AWK '{print \$NF}'`
 		LOG_MSG "[INFO]:-Time stamp key = $TIMESTAMP_KEY"
 	fi
-	for DBID in ${DBID_LIST[@]}
+	CHK_DB_LIST=(1 ${DBID_LIST[@]})
+#	for DBID in ${DBID_LIST[@]}
+	for DBID in ${CHK_DB_LIST[@]}
 	do
 		CHK_DATA
 		LOG_MSG "[INFO]:-Checking dump status for $DIR_HOST segment directory $DIR/$DUMP_SUB_DIR/$DUMP_DATE"
-		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_0_${DBID}_$TIMESTAMP_KEY  ];then $ECHO 0;else $ECHO 1;fi"`
+		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$TIMESTAMP_KEY  ];then $ECHO 0;else $ECHO 1;fi"`
 		if [ $EXISTS -eq 1 ];then
 			LOG_MSG "[WARN]:-Could not locate status report file"
 			ROLLBACK_DUMPS=1
@@ -504,21 +506,21 @@ CHK_POST_DUMP () {
 			FAILED_REPORT=(${FAILED_REPORT[@]}" "$DIR_HOST"|"$DIR)
 		else
 			LOG_MSG "[INFO]:-Located status report file"
-			STATUS=`$TRUSTED_SHELL $DIR_HOST "$GREP -c \"Finished successfully\" $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_0_${DBID}_$TIMESTAMP_KEY"`
+			STATUS=`$TRUSTED_SHELL $DIR_HOST "$GREP -c \"Finished successfully\" $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$TIMESTAMP_KEY"`
 			if [ $STATUS -eq 1 ];then
 				LOG_MSG "[INFO]:-Status report file indicates dump successful"
 			else
 				LOG_MSG "[WARN]:-Status report file indicates dump failure"
 				LOG_MSG "[INFO]:-Status log file contents"
 				LOG_MSG "[INFO]:-------------------------"
-				$TRUSTED_SHELL $DIR_HOST "$CAT $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_0_${DBID}_$TIMESTAMP_KEY" >> $LOG_FILE
+				$TRUSTED_SHELL $DIR_HOST "$CAT $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$TIMESTAMP_KEY" | $TEE -a $LOG_FILE
 				LOG_MSG "[INFO]:-------------------------"
 				ROLLBACK_DUMPS=1
 				EXIT_STATUS=1
 			fi
 		fi
 		#Checking for dump file
-		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_0_${DBID}_$TIMESTAMP_KEY*  ];then $ECHO 0;else $ECHO 1;fi"`
+		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_?_${DBID}_$TIMESTAMP_KEY*  ];then $ECHO 0;else $ECHO 1;fi"`
 		if [ $EXISTS -eq 1 ];then
 			LOG_MSG "[WARN]:-Could not locate dump file"
 			EXIT_STATUS=1
