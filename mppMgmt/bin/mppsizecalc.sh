@@ -54,7 +54,11 @@ SIZE_TYPE=0 #0=table 1=index
 SIZE_TARGET=0 #0=primary and mirror 1=primary only 2=mirror only
 #***********************************************************************************
 USAGE () {
-	GET_QD_DB_NAME >/dev/null 2>&1
+	if [ x"" == x"$PGDATABASE" ];then
+		QD_DBNAME=Unknown
+	else
+		QD_DBNAME=$PGDATABASE
+	fi
 	$ECHO 
 	$ECHO "      `basename $0`"
 	$ECHO
@@ -74,8 +78,9 @@ USAGE () {
 	$ECHO 
 	$ECHO "      Size options:"
 	$ECHO "      -t, <table name> name of table to obtain size data [mandatory if -x not supplied]"
-	$ECHO "      -s, <scale> valid values b (bytes) k (kbytes) m (mbytes) [default:- ${SCALE}]"
-	$ECHO "          where OS allows this option, otherwise defaults to KBytes"
+	$ECHO "      -s, <scale> valid values b (Bytes) k (KBytes) m (MBytes) g (GBytes) [default:- ${SCALE}]"
+	$ECHO "          Size obtained via du -k, if b specified, value will be multiplied by 1024, if m"
+	$ECHO "          specified, value will be divided by 1024, and again further divided by 1024 for value g"
 	$ECHO "      -f, display full size information [default:-display total only]"
 	$ECHO "      -a, <database name> alternative database name [default ${QD_DBNAME}]"
 	$ECHO "      -i, obtain index size for <table name> [default:- table size]"
@@ -173,9 +178,9 @@ SEND_TABLE_SIZE_REQUEST () {
 		LOG_MSG "[INFO]:-Processing $QE_HOST port $QE_PORT Table OID $QE_TABLE_OID"
 		QE_TABLE=${QE_DIR}/base/${DB_OID}/${QE_TABLE_OID}
 		QE_BASE_DIR=`$BASENAME $QE_DIR`
-		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} $DU_TXT ${QE_TABLE}"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
+		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_TABLE}"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
 		((LINECOUNT=$LINECOUNT+1))
-		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} $DU_TXT ${QE_TABLE}.* 2>/dev/null"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE  &
+		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_TABLE}.* 2>/dev/null"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE  &
 		((LINECOUNT=$LINECOUNT+1))
 	done	
 	WAIT_COMPLETE
@@ -201,9 +206,9 @@ SEND_INDEX_SIZE_REQUEST () {
 			LOG_MSG "[INFO]:-Processing $QE_HOST port $QE_PORT Index OID $IDX"
 			QE_INDEX=${QE_DIR}/base/${DB_OID}/$IDX
 			QE_BASE_DIR=`$BASENAME $QE_DIR`
-			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} $DU_TXT ${QE_INDEX}"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
+			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_INDEX}"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
 			((LINECOUNT=$LINECOUNT+1))
-			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} $DU_TXT ${QE_INDEX}.* 2>/dev/null"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
+			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_INDEX}.* 2>/dev/null"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
 			((LINECOUNT=$LINECOUNT+1))
 		done
 	done
@@ -234,7 +239,7 @@ SEND_DB_SIZE_REQUEST () {
 		QE_DB=${QE_DIR}/base/${DB_OID}
 		QE_PORT=`$ECHO $I|$CUT -d'|' -f3`
 		QE_BASE_DIR=`$BASENAME $QE_DIR`
-		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} $DU_TXT ${QE_DB}"|$TAIL -1 |$AWK '{print \$1}'`>> $TMPFILE &
+		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_DB}"|$TAIL -1 |$AWK '{print \$1}'`>> $TMPFILE &
 		((LINECOUNT=$LINECOUNT+1)) 
 	done	
 	WAIT_COMPLETE
@@ -246,13 +251,19 @@ CALC_TOTAL_SIZE () {
 	TOTAL_SIZE=0
 	for I in `$CAT $TMPFILE| grep -v "|0"` 
 	do
-		SIZE=`$ECHO $I|$CUT -d'|' -f4`
+		KSIZE=`$ECHO $I|$CUT -d'|' -f4`
+		case $SCALE in
+			b) ((SIZE=$KSIZE*1024)) ;;
+			m) ((SIZE=$KSIZE/1024)) ;;
+			g) ((SIZE=$KSIZE/1024/1024)) ;;
+			k) ((SIZE=$KSIZE)) ;;
+		esac
 		HOST=`$ECHO $I|$CUT -d'|' -f1`
 		SEG=`$ECHO $I|$CUT -d'|' -f2`
 		PORT=`$ECHO $I|$CUT -d'|' -f3`
 		if [ $DISPLAY_TYPE -eq 1 ];then
 			if [ $VERBOSE ];then
-				LOG_MSG "[INFO]:-Host $HOST Port $PORT Segment $SEG Space Used = $SIZE ${SCALE}"
+				LOG_MSG "[INFO]:-Host $HOST Port $PORT Segment $SEG Space Used = $SIZE ${TXT_SCALE}"
 			else
 				$ECHO $I
 			fi
@@ -265,9 +276,10 @@ CALC_TOTAL_SIZE () {
 DISPLAY_SIZE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	case $SCALE in
-		b ) SCALE=Bytes ;;
-		k ) SCALE=KBytes ;;
-		m ) SCALE=MBytes ;;
+		b ) TXT_SCALE=Bytes ;;
+		k ) TXT_SCALE=KBytes ;;
+		m ) TXT_SCALE=MBytes ;;
+		g ) TXT_SCALE=GBytes ;;
 	esac
 	LOG_MSG "[INFO]:-Size calculation type = $TYPE_TEXT"
 	if [ $VERBOSE ];then
@@ -276,7 +288,7 @@ DISPLAY_SIZE () {
 			1) LOG_MSG "[INFO]:-Total space used for indexes on [$TABLE_NAME table in database [$QD_DBNAME] " ;;
 			2) LOG_MSG "[INFO]:-Total space used for database [$QD_DBNAME] " ;;
 		esac
-		LOG_MSG "[INFO]:- $TOTAL_SIZE ${SCALE}"	
+		LOG_MSG "[INFO]:- $TOTAL_SIZE ${TXT_SCALE}"	
 	else
 		$ECHO $TOTAL_SIZE
 	fi
@@ -294,7 +306,7 @@ if [ $# -ne 0 ]; then
 		d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
 		q ) unset VERBOSE ;;
 		l ) LOG_DIR=$OPTARG ;;
-		s ) SCALE=$OPTARG ;;
+		s ) SCALE=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
 		f ) DISPLAY_TYPE=1 ;;
 		a ) ALT_DBNAME=$OPTARG ;;
 		i ) SIZE_TYPE=1 ;;
@@ -310,14 +322,13 @@ else
 	CHK_ON_PASSIVE_STANDBY
 	USAGE
 fi
-if [ $SCALE != "k" ] && [ $OS_TYPE != "sunos" ];then
+if [ $SCALE != "k" ];then
 	case $SCALE in
 		m ) ;;
 		b ) ;;
-		* ) ERROR_EXIT "[FATAL]:-Parameter -s must be either b, k or m" 2 ;;
+		g ) ;;
+		* ) ERROR_EXIT "[FATAL]:-Parameter -s must be either b, k, m or g" 2 ;;
 	esac
-else
-	SCALE="k"
 fi
 if [ x"" == x"$TABLE_NAME" ] && [ x"" == x"$SIZE_DB" ];then
 	ERROR_EXIT "[FATAL]:-Must supply a table name via -t option, or use -x <database name> option" 2
