@@ -57,7 +57,7 @@ FAILED_MIRROR_COUNT=0
 DUMP_SUB_DIR=db_dumps
 COMPRESSION_FACTOR=7
 FREE_SPACE_PERCENT=10
-ROLL_BACK=0
+ROLLBACK=0
 RUN_CLEAR_DUMPS=0
 CUR_HOST=`$HOSTNAME`
 VACUUM_MODE=0 # 1=run before dump starts, 2=run after dump has completed.
@@ -95,7 +95,7 @@ USAGE () {
 		$ECHO "      -o, clear dump files only, do not run a dump"
 		$ECHO "      -z, do not use compression [default use compression]"
 		$ECHO "      -x, database name to dump [mandatory]"
-		$ECHO "      -r, do not rollback dump files if dump failure detected [default rollback]"
+		$ECHO "      -r, rollback dump files if dump failure detected [default no rollback]"
 		$ECHO "      -f, % free disk value to reserve when calculating available free space for dump"
 		$ECHO "          files [default $FREE_SPACE_PERCENT %]"
 		$ECHO "      -b, bypass disk space checking [default check disk space]"
@@ -402,10 +402,10 @@ PROMPT_CONTINUE () {
 		else
 			LOG_MSG "[INFO]:-Failed mirror count        = $FAILED_MIRROR_COUNT"
 		fi	
-		if [ $ROLL_BACK -eq 0 ];then
-			LOG_MSG "[INFO]:-Rollback dumps             = On"
-		else
+		if [ $ROLLBACK -eq 0 ];then
 			LOG_MSG "[INFO]:-Rollback dumps             = Off"
+		else
+			LOG_MSG "[INFO]:-Rollback dumps             = On"
 		fi
 		if [ $COMPRESSION ];then
 			LOG_MSG "[INFO]:-Dump file compression      = On"
@@ -561,7 +561,8 @@ DELETE_CURRENT_DUMP () {
 		$TRUSTED_SHELL $DIR_HOST "$RM -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump*$TIMESTAMP_KEY*"
 	done
 	LOG_MSG "[INFO]:-Deleting Master segment dump files"
-	$RM -f $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump*$TIMESTAMP_KEY*
+	$RM -f $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_1*$TIMESTAMP_KEY*
+	$RM -f $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/$DUMP_DATE/mpp_c*$TIMESTAMP_KEY
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -618,13 +619,19 @@ STATUS_REPORT () {
 	LOG_MSG "[INFO]:-Dump start time                    = $TIME_START"
 	LOG_MSG "[INFO]:-Dump end time                      = $TIME_END"
 	LOG_MSG "[INFO]:-Number of segments dumped          = ${#DBID_LIST[@]}"
-	if [ $ROLLBACK_DUMPS ];then
+	if [ $ROLLBACK_DUMPS ] && [ $ROLLBACK -eq 1 ];then
 	LOG_MSG "[WARN]:-Status                             = FAILED, Rollback Called"
 	LOG_MSG "[INFO]:-See dump log file for errors"
 	LOG_MSG "[WARN]:-Dump key                           = Not Applicable"
 	else
-	LOG_MSG "[INFO]:-Status                             = COMPLETED"
-	LOG_MSG "[INFO]:-Dump key                           = $TIMESTAMP_KEY"
+		if [ $ROLLBACK_DUMPS ] && [ $ROLLBACK -eq 0 ];then 
+		LOG_MSG "[WARN]:-Status                             = FAILED, Rollback Not Called"
+		LOG_MSG "[INFO]:-See dump log file for errors"
+		LOG_MSG "[WARN]:-Dump key                           = Not Applicable"
+		else
+		LOG_MSG "[INFO]:-Status                             = COMPLETED"
+		LOG_MSG "[INFO]:-Dump key                           = $TIMESTAMP_KEY"
+		fi
 	fi
 	if [ $COMPRESSION ];then
 	LOG_MSG "[INFO]:-Dump file compression              = On"
@@ -727,14 +734,14 @@ fi
 PROCESS_DUMP
 CHK_POST_DUMP
 if [ $ROLLBACK_DUMPS ];then
-	if [ $ROLL_BACK -eq 1 ];then
+	if [ $ROLLBACK -eq 1 ];then
 		LOG_MSG "[WARN]:-Dump request was incomplete, rolling back dump"
 		DELETE_CURRENT_DUMP
 		REPORT_FAILED_DUMPS
 		EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 		ERROR_EXIT "[FATAL]:-Dump incomplete, completed rollback" 2
 	else
-		LOG_MSG "[WARN]:-Dump request was incomplete, not rolling back dump as -n option supplied"
+		LOG_MSG "[WARN]:-Dump request was incomplete, not rolling back dump as -r option not supplied"
 		REPORT_FAILED_DUMPS
 		EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files not rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 		ERROR_EXIT "[FATAL]:-Dump incomplete, rollback not processed" 2
