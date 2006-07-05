@@ -71,11 +71,11 @@ USAGE(){
 cleanDemo(){
     PG_CTL_PATH=${MPPHOME}/bin/pg_ctl
     # Data Directories for the segments
-    if [ -f ${QDDIR}/demoDataDir0/postmaster.pid ] ; then 
-        echo "stopping postmaster ${PG_CTL_PATH} -D ${QDDIR} stop"
-        ${PG_CTL_PATH} -D ${QDDIR}/demoDataDir0 stop
+    if [ -f ${QDDIR}/demoDataDir-1/postmaster.pid ] ; then 
+        echo "stopping postmaster ${PG_CTL_PATH} -D ${QDDIR}/demoDataDir-1 stop"
+        ${PG_CTL_PATH} -D ${QDDIR}/demoDataDir-1 stop
     fi
-    declare -a SEGDIRS=($DATADIRS/dbfast1/demoDataDir1 $DATADIRS/dbfast2/demoDataDir2 $DATADIRS/dbfast3/demoDataDir3)
+    declare -a SEGDIRS=($DATADIRS/dbfast1/demoDataDir0 $DATADIRS/dbfast2/demoDataDir1 $DATADIRS/dbfast3/demoDataDir2)
     for eDir in ${SEGDIRS[@]}
     do
         if [ -f ${eDir}/postmaster.pid ] ; then 

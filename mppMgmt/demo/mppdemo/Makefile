@@ -40,7 +40,7 @@ check:
 		
 clean:
 	@ echo "Deleting cluster.... "
-	@./demo_cluster.sh -d
+	@DEMO_PORT_BASE=$(PORT_BASE) ./demo_cluster.sh -d
 	@echo ""
 
 
