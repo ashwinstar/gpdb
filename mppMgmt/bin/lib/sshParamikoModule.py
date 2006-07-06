@@ -30,6 +30,8 @@ try :
     import base64
     import paramiko
     import gpLogger
+    import gSessionUtil
+    from gSessionUtil import keyFiles
 except ImportError, e:
     print "Error Importing necessary modules: %s " % str(e)
     raise SystemExit, -1
@@ -45,132 +47,6 @@ sshPasswd=""
 sshRsaPass=""
 sshDsaPass=""
 debug=False
-
-keyFiles={'rsa':'id_rsa', 'rsa1':'identity', 'dsa':'id_dsa', 'gpRsa':'id_rsagp'}
-
-def getLocalSSHDir(create=True):
-    """ Return ssh directory on localhost.
-        create if not present.
-    """
-    # Make Sure ~/.ssh is present
-    logger=logging.getLogger('groupSession')
-    try:
-        homeDir=os.getenv("HOME")
-    except:
-        logger.error("Error evnironment variable HOME is not set properly.")
-        return None
-    sshDir = homeDir + '/.ssh'
-    logger.debug("SSH Directory : %s ", sshDir)
-    if not create:
-        return sshDir
-    try :
-        if not os.access(sshDir, os.R_OK):
-            logger.debug("Creating " + sshDir)
-            os.mkdir(sshDir)
-            logger.debug("chmod 700 " + sshDir)
-            os.system('chmod 700 ' + sshDir)
-            return sshDir
-    except Exception, e:
-        logger.error("*** Caught exception (%s) message: (%s )" \
-            % (str(e.__class__), str(e)))
-        return None
-    return sshDir
-
-def setupLocalKey(authType, overWrite=False, emptyPhrase=False):
-    """ Generate ssh Key on the local machine 
-        
-        authType= 'rsa', 'rsa1', 'dsa', 'gpRsa'
-        overWrite :: Overwrite Existing File
-        emptyPhrase :: Generate Key with Empty Phrase.
-        Return  :: True on success
-    """
-    logger=logging.getLogger('groupSession')
-    global keyFiles
-    if not keyFiles.has_key(authType):
-        logger.error("UnSupported authentication type: %s ", authType)
-        return False
-    # Make Sure ~/.ssh is present
-    try:
-        homeDir=os.getenv("HOME")
-    except:
-        logger.error("Error determinig HOME evnironment variable.")
-        return False
-    sshDir = homeDir + '/.ssh'
-    logger.debug("SSH Directory : %s ", sshDir)
-    try :
-        if not os.access(sshDir, os.R_OK):
-            logger.debug("Creating " + sshDir)
-            os.mkdir(sshDir)
-            logger.debug("chmod 700 " + sshDir)
-            os.system('chmod 700 ' + sshDir)
-    except Exception, e:
-        logger.error("*** Caught exception (%s) message: (%s )" \
-            % (str(e.__class__), str(e)))
-        return False
-    authKeyPath=sshDir+'/'+keyFiles[authType]
-    authKeyBackUp=authKeyPath+'_backUp'
-    authKeyFile=keyFiles[authType]
-    try:
-        if os.access(authKeyPath, os.R_OK) :
-            if not overWrite:
-                return True
-            else:
-                cmd='mv ' + authKeyPath+ ' ' + authKeyBackUp
-                print cmd
-                os.system('mv ' + authKeyPath+ ' ' + authKeyBackUp)
-        if authType == 'gpRsa':
-            sshAuth='rsa'
-        else :
-            sshAuth = authType
-        genCommand = 'ssh-keygen -f ' + authKeyPath + ' -t ' + sshAuth
-        if emptyPhrase:
-            genCommand=genCommand+ ' -P "" ' 
-        try :
-            logger.debug("Executing ::" + genCommand)
-            os.system(genCommand)
-        except Exception, e:    
-            errMsg="*** Error  %s caught exception (%s) :"\
-            "message: (%s ) " % (genCommand, str(e.__class__), str(e))
-            logger.error(errMsg)
-            if os.access(authKeyBackUp, os.W_OK):
-                os.system('mv ' + authKeyBackUp + ' ' + authKeyPath)
-            return False
-        if os.access(authKeyBackUp, os.W_OK):
-            os.system('rm -rf ' + authKeyBackUp)
-    except Exception, e:    
-        errMsg="*** Generating ssh Key %s Caught exception (%s) :"\
-        "message: (%s )" %  \
-        (genCommand, str(e.__class__), str(e))
-        logger.error(errMsg)
-        return False
-    return True
-
-def addRemoteHostKey(hostName, fileName="", authType="rsa", prompt=False):
-    """ Add a remote hostKey to ~/.ssh/known_hosts file"""
-    logger=logging.getLogger('groupSession')
-    if fileName == "":
-        sshDir=getLocalSSHDir()
-        if not sshDir:
-            logger.error("Unable to determine local Home Directory")
-            return False
-        fileName = sshDir + '/known_hosts'
-    logger.debug("Updating key for %s to fileName= %s" % (hostName, fileName))
-    scanCmd='ssh-keyscan  -t %s %s ' % (authType, hostName)
-    remoteKey=commands.getoutput(scanCmd)
-    logger.debug("Remote Host Key  = %s " % remoteKey)
-    if prompt: 
-        print "Adding %s to \n %s (yes/no):" %(remoteKey, fileName),
-        resp= sys.stdin.readline().strip()
-        if(resp == 'Yes' or resp == 'y'  or resp=='Y' or resp == 'YES' or \
-            resp =='yes'):
-            pass
-        else :
-            return False
-    catCmd=scanCmd + " >> %s " % fileName
-    res=commands.getoutput(catCmd)
-    logger.warning("Added remoteKey : %s to %s ", remoteKey, fileName)
-    return True
-
 
 
 # Exception classes used by this module.
@@ -227,6 +103,8 @@ class sshSession(threading.Thread):
         self.password = password
         self.userHost=self.user + '@' + self.host
         self.authMode=""
+        self.sshDir=""
+        self.keyFileList=[]
 
         #Output of last command executed
         self.lastoutput = None
@@ -245,6 +123,7 @@ class sshSession(threading.Thread):
         # Paramiko Variables
         self.trans=None
         self.chan=None
+        self.sftpClnt=None
 
         self.setUpKeys=setupKeysFlag
 
@@ -360,7 +239,7 @@ class sshSession(threading.Thread):
             logger.error(errStr)
             return errStr
         except Exception, e:
-            errStr="Caught Exception %s: %s (%s to %s) "% \
+            errStr="Caught Exception putFile %s: %s (%s to %s) "% \
                 (str(e.__class__),  str(e), lPath, rPath)
             logger.error(errStr)
             if self.debug:
@@ -382,7 +261,7 @@ class sshSession(threading.Thread):
             logger.info('Error Executing %s on %s %s',  \
                 command, self.userHost, err)
         except Exception, e:
-            logger.error('*** Caught exception %s: %s executing %s on %s ', 
+            logger.error('*** Caught execCmd exception %s: %s executing %s on %s ', 
                    str(e.__class__), str(e), command, self.userHost)
             traceback.print_exc()
         self.lastoutput=stdout
@@ -409,7 +288,7 @@ class sshSession(threading.Thread):
         except paramiko.SSHException, e:
             raise runCommandException(str(e))
         except Exception, e:
-            errMsg="*** Caught exception (%s) message: (%s ), command (%s)"\
+            errMsg="*** Caught exception runCommand (%s) message: (%s ), command (%s)"\
                 " host : %s " % (str(e.__class__), str(e), command, self.host)
             logger.error(errMsg)
             raise runCommandException(errMsg)
@@ -453,6 +332,12 @@ class sshSession(threading.Thread):
             logger.info("Closing channel %s@%s", self.user, self.port)
             self.chan.close()
 
+    def shutdown(self):
+        """ Close the trans """
+        if self.trans:
+            self.trans.close()
+
+
     def run(self):
         logger=logging.getLogger('groupSession')
         try:
@@ -468,7 +353,7 @@ class sshSession(threading.Thread):
                 self.lastoutput = "No interface selected"
             return self.lastoutput
         except Exception, e:
-            errMsg="%s Caught exception (%s) message: (%s ), "\
+            errMsg="%s Caught exception run (%s) message: (%s ), "\
             "run(%s:%s)" % (self.userHost, str(e.__class__), str(e),   \
                 self.cmd, self.args[0])
             logger.error(errMsg)
@@ -491,38 +376,32 @@ class sshSession(threading.Thread):
         self.cmd=cmd
         self.args=args
 
-    def setupRemoteKey(self):
-        """ Copy Local Public Key to remote Machine 
-
-            authType : 'rsa', 'rsa1',  'dsa', 'gprsa'
+    def getRemoteSSHDir(self, createFlag=True):
+        """ Return remote SSHDIr
+            Most of the cases it is ~/.ssh
+            Create and set correct permisssions if not present
         """
         logger=logging.getLogger('groupSession')
-        global keyFiles
-        if not self.isReady(True):
-            return False
-        try:
-            homeDir=os.getenv("HOME")
-        except:
-            logger.error("Error evnironment variable HOME is not set properly.")
-            return False
-        sshDir = homeDir + '/.ssh'
         # Determine Remote Node Stuff.
+        if self.sshDir:
+            return self.sshDir
         try:
             (exitStatus, stdout, stderr)=self.runCommand('echo $HOME')
         except runCommandException, err:
             logger.error("Unable to determine HOME for %s@%s: %s",
                 self.user, self.host, str(err))
-            return False
+            return ""
         except Exception, e:
-            logger.error('*** Caught exception %s: %s ', str(e.__class__), \
+            logger.error('*** Caught exception getRSSHDir %s: %s ', str(e.__class__), \
                 str(e))
             traceback.print_exc()
-            return False
+            return "" 
         rmtHomeDir=stdout.strip()
+        #print "rmtHomeDir=%s" % rmtHomeDir
         if not rmtHomeDir:
             logger.error("Unable to determine the Home Directory for  "\
                 " %s@%s " , self.user, self.home)
-            return False
+            return ""
         rmtSSHDir = rmtHomeDir + '/.ssh'
         logger.debug("Remote SSH Directory %s@%s : %s ", self.user,
             self.host, rmtSSHDir)
@@ -540,13 +419,86 @@ class sshSession(threading.Thread):
             except IOError, e:
                 logger.info('Received IO Error %s on host %s@%s ', \
                     rmtSSHDir, self.host)
-                return False
+                return ""
         except Exception, e:
-            errMsg="*** Caught exception (%s) message: (%s ), "\
+            errMsg="*** Caught exception stat (%s) message: (%s ), "\
             " remote SSHDIR (%s) host : %s " % (str(e.__class__), str(e),  
                 self.host, rmtSSHDir)
             logger.error(errMsg)
+            return ""
+        self.sshDir=rmtSSHDir
+        return rmtSSHDir
+
+    def updateAuthorizedKeys(self, authKeyPath=""):
+        """  Copy a local file to remote sessions and 
+            append to ~/.ssh/authorizedKeys)
+        """
+        logger=logging.getLogger('groupSession')
+        rmtSSHDir = self.getRemoteSSHDir()
+        if not authKeyPath:
+            authKeyPath=self.localSSHDir+'/gSession.pub'
+        if not rmtSSHDir:
+            logger.error("%s, Unable to determine Remote SSH directory.", 
+                self.userHost)
             return False
+        try:
+            if not os.access(authKeyPath, os.R_OK) :
+                logger.error("%s Unable to access:%s \n", self.userHost,
+                    authKeyPath)
+                return False
+            # Copy local file to remote
+            try :
+                rmtFilePath=rmtSSHDir+'/' + 'gSession.auth'
+                scpErr=self.putFile(authKeyPath, rmtFilePath)
+                if scpErr:
+                    logger.error(scpErr)
+                    return False
+                rmtAuthKeyFile=rmtSSHDir+'/' + 'authorized_keys'
+                try:
+                    cmd = 'cat ' + rmtFilePath  + ' >> ' + rmtAuthKeyFile 
+                    (exitStatus, stdout, stderr)=self.runCommand(cmd)
+                    self.sftpClnt.remove(rmtFilePath)
+                    stat=self.sftpClnt.stat(rmtAuthKeyFile)
+                    self.sftpClnt.chmod(rmtAuthKeyFile, 
+                        (stat.st_mode & ~0777) | 0700)
+                except runCommandException, err:
+                    logger.error("Command : %s for %s@%s: %s", cmd, 
+                        self.user, self.host, str(err))
+                    return False
+            except Exception, e:
+                logger.error('***Caught exception rCopy %s messaeg: %s'\
+                        ' copy Authorized Key ' , str(e.__class__),  str(e))
+                return False
+        except Exception, e:
+            errMsg="*** Caught exception (%s)access message: (%s ), "\
+            "setupRemoteHost : %s " % (str(e.__class__), str(e),  self.host)
+            logger.error(errMsg)
+            return False
+
+
+    def setupRemoteKey(self):
+        """ Copy Local Public Key to remote Machine 
+
+            authType : 'rsa', 'rsa1',  'dsa', 'gprsa'
+        """
+        logger=logging.getLogger('groupSession')
+        global keyFiles
+        if not self.isReady(True):
+            return False
+        try:
+            homeDir=os.getenv("HOME")
+        except:
+            logger.error("%s, Please check HOME environment variable", 
+                self.userHost)
+            return False
+        sshDir = homeDir + '/.ssh'
+        # Remote SSH Dir
+        rmtSSHDir = self.getRemoteSSHDir()
+        if not rmtSSHDir:
+            logger.error("%s, Unable to determine Remote SSH directory.", 
+                self.userHost)
+            return False
+
         for authType in ['rsa', 'rsa1', 'dsa']:
             if not keyFiles.has_key(authType):
                 logger.error("UnSupported authentication type: %s ", authType)
@@ -562,7 +514,8 @@ class sshSession(threading.Thread):
                     continue
                 # Copy local file to remote
                 try :
-                    rmtFilePath=rmtSSHDir+'/' + authKeyFile + '_' + self.host
+                    rmtFilePath=rmtSSHDir+'/' + authKeyFile + '_' + \
+                        self.userHost
                     scpErr=self.putFile(authKeyPath, rmtFilePath)
                     if scpErr:
                         logger.error(scpErr)
@@ -572,7 +525,7 @@ class sshSession(threading.Thread):
                         cmd = 'cat ' + rmtFilePath  + ' >> ' + rmtAuthKeyFile 
                         (exitStatus, stdout, stderr)=self.runCommand(cmd)
                         self.sftpClnt.remove(rmtFilePath)
-                        self.sftpClnt.stat(rmtAuthKeyFile)
+                        stat=self.sftpClnt.stat(rmtAuthKeyFile)
                         self.sftpClnt.chmod(rmtAuthKeyFile, 
                             (stat.st_mode & ~0777) | 0700)
                     except runCommandException, err:
@@ -580,15 +533,162 @@ class sshSession(threading.Thread):
                             self.user, self.host, str(err))
                         return False
                 except Exception, e:
-                    logger.error('***Caught exception %s messaeg: %s'\
+                    logger.error('***Caught exception rCopy %s messaeg: %s'\
                         ' copy Authorized Key ' , str(e.__class__),  str(e))
                     return False
             except Exception, e:
-                errMsg="*** Caught exception (%s) message: (%s ), "\
+                errMsg="*** Caught exception (%s)access message: (%s ), "\
                 "setupRemoteHost : %s " % (str(e.__class__), str(e),  self.host)
                 logger.error(errMsg)
                 return False
         return True
+
+    def checkKeyFiles(self):
+        """ Check if any of the private public keys are present """
+        # Initialize
+        global keyFiles
+        logger=logging.getLogger('groupSession')
+        rmtSSHDir=self.getRemoteSSHDir()
+        self.keyFileList=[]
+        if not self.sftpClnt:
+            logger.error("%s sftpClient is not yet initialized")
+            return False
+        for eachKey in keyFiles.keys():
+            file=keyFiles[eachKey]
+            privateKey=rmtSSHDir+'/'+file
+            publicKey=rmtSSHDir+'/'+file+'.pub'
+            statPriv=statPub=None
+            try:
+                statPriv=self.sftpClnt.stat(privateKey)
+                statPub=self.sftpClnt.stat(publicKey)
+            except IOError, e:
+                pass
+            if statPriv :
+                self.keyFileList.append(privateKey)
+            if statPub :
+                self.keyFileList.append(publicKey)
+        return True
+
+    def generatePubKeys(self):
+        """ Generate rsa,dsa,rsa1 private, public keys with empty passphrase
+            -- Delete existings private, public keys if they are present.
+            -- Generate rsa, dsa, rsa1, private public keys.
+        """
+        global keyFiles
+        logger=logging.getLogger('groupSession')
+        rmtSSHDir=self.getRemoteSSHDir()
+        if not rmtSSHDir:
+            logger.error('Unable to determine SSH directory for %s',
+                self.userHost);
+            return False
+        # Delete the files.
+        #keyFiles={'rsa':'id_rsa', 'rsa1':'identity', 'dsa':'id_dsa'}
+        print "\n Generating public-private keys for : %s \n"% self.userHost
+        for eachKey in keyFiles.keys():
+            file=keyFiles[eachKey]
+            privateKey=rmtSSHDir+'/'+file
+            publicKey=rmtSSHDir+'/'+file+'.pub'
+            try :
+                logger.info("Deleting keys:(%s) files %s, %s \n",
+                    self.userHost, privateKey, publicKey)
+                self.sftpClnt.remove(privateKey)
+                self.sftpClnt.remove(publicKey)
+            except IOError, e:
+                # If its not there don't worry.
+                pass
+            except Exception, e:
+                errMsg="***Error:%s Deleting Keys exception(%s) message:(%s )"\
+                % (self.userHost, str(e.__class__), str(e))
+                return
+        for eachKey in keyFiles.keys():
+            file=keyFiles[eachKey]
+            privateKey=rmtSSHDir+'/'+file
+            keyGenCmd='ssh-keygen -t %s -N \"\" -f %s ' % (eachKey, privateKey)
+            logger.debug("Executing %s on %s \n" %(keyGenCmd, self.userHost))
+            stdout=self.execCmd(keyGenCmd)
+            logger.info("Executed:%s command  %s", self.userHost, keyGenCmd);
+
+    def obtainRemotePublicKeys(self):
+        """ 
+            Obtain the remote Public Keys and dump them in a local file
+            If the file is not there ignore.
+        """
+        global keyFiles
+        logger=logging.getLogger('groupSession')
+        rmtSSHDir=self.getRemoteSSHDir()
+        if not rmtSSHDir:
+            logger.error("Unable to determine SSH directory for :%s ", \
+                self.userHost)
+            return False
+        self.lock.acquire()
+        localSSHHome=self.localSSHDir
+        localGSDir  =self.localGSDir
+        self.lock.release()
+        if not localSSHHome:
+            logger.error("Unable to obtain .ssh on this machine.")
+            return False
+        print "Obtaining public keys for %s\n" % self.userHost
+        for eachKey in keyFiles.keys():
+            file=keyFiles[eachKey]
+            publicKey=rmtSSHDir+'/'+file+'.pub'
+            if localGSDir:
+                localCopy = localGSDir+ '/' + self.userHost+'_' + file + '.pub'
+            else :
+                localCopy=localSSHHome+'/'+'gSession/'+ \
+                    self.userHost+'_' + file+'.pub'
+            try :
+                logger.info("Copying %s:%s to %s ", self.userHost, publicKey,
+                    localCopy)
+                self.sftpClnt.get(publicKey, localCopy)
+            except Exception, e:
+                errMsg="***Error:%s Copying Remote Keys (%s->%s) exception(%s)"\
+                    "message:(%s )"  % (self.userHost, publicKey, localCopy, \
+                        str(e.__class__),str(e))
+                logger.error(errMsg)
+        
+    def setupKeyAccess(self, rsaPPhrase=None, dsaPPhrase=None, \
+        rsa1PPhrase=None ):
+        """ Set up keys for the user on this host """
+        logger=logging.getLogger('groupSession')
+        rmtSSHDir=self.getRemoteSSHDir()
+        if not rmtSSHDir:
+            logger.error("Unable to determine SSH directory for :%s ", \
+                self.userHost)
+            return False
+
+        for (keytype, file) in (("rsa", "id_rsa"), ("rsa1", "identity"), \
+            ("dsa", "id_dsa")):
+            rmtPubFile= rmtSSHDir+ '/' + file+ '.pub'
+            logger.debug("Checking file %s :" % rmtPubFile)
+            try:
+                fileStat = self.sftpClnt.stat(rmtPubFile)
+                #
+                # The file already exists, So don't worry about it.
+                # Support OverWrite in Future.
+                #
+                continue
+            except IOError, e:
+                pass
+            except Exception, e:
+                errStr="Caught Exception %s: %s (%s to %s) "% \
+                (str(e.__class__),  str(e), lPath, rPath)
+                return False
+            if keytype=='rsa':  pPhrase=rsaPPhrase
+            if keytype=='dsa':  pPhrase=dsaPPhrase
+            if keytype=='rsa1': pPhrase=rsa1PPhrase
+            if pPhrase == None: 
+                # We don't support remote interactive as of now.
+                continue
+            else :
+                keyGenCmd='ssh-keygen -t %s -f %s -N \"%s\" ' %(keytype, rmtPubFile,
+                    pPhrase)
+            logger.debug("About to generate a %s key. " % keytype)
+
+            stdout=self.execCmd(keyGenCmd)
+            print stdout
+        return True
+
+
 
     def setupKeyAccessLocal(self):
         # Verify that key pairs are present on the local side 
@@ -614,7 +714,8 @@ class sshSession(threading.Thread):
             ("id_dsa.pub", "id_rsa.pub"))
         if not public_keys:
             public_keys = []
-            for (keytype, file) in (("rsa", "id_rsa"), ("rsa1", "identity"), ("dsa", "id_dsa")):
+            for (keytype, file) in (("rsa", "id_rsa"), ("rsa1", "identity"), \
+            ("dsa", "id_dsa")):
                 print "About to generate a %s key. You will be prompted for a "\
                             " passphrase," % keytype
                 print "Pressing enter at that prompt will create a key with no"\
@@ -622,26 +723,61 @@ class sshSession(threading.Thread):
                 os.system("ssh-keygen -t %s -f %s" % (keytype, file))
                 public_keys.append(file + ".pub")
 
-    def setupKeyAccessRemote(self):
+    def updateRemoteHostKeys(self, hostArray):
+        """ Update the remote host keys for each entry in the hostArray. 
+        Update hostKey for eachentry in the file ~/.ssh/known_hosts
+        """
+        if not hostArray: return
+        logger=logging.getLogger('groupSession')
+        # Set the Variables
+        rmtSSHDir=self.getRemoteSSHDir()
+        if not rmtSSHDir:
+            logger.error("Unable to determine SSH directory for :%s ",\
+                self.userHost)
+            return False
+        khPath=rmtSSHDir+'/known_hosts'
+        khNewPath=khPath+'.new'
+        # if the file is not there create one
         try:
-            #This is actually a no-no with threads, they all share a 
-            # FS node in Python
-            self.lock.acquire()
-            dir = os.getenv("HOME") + '/.ssh'
-            os.chdir(dir)
-            self.lock.release()
-        except:
-            self.__die("Can't chdir to your ssh directory!")
-        public_keys  = filter(lambda f: os.access(f, os.R_OK), \
-            ("id_dsa.pub", "id_rsa.pub", "identity.pub"))
-
-        #print "I see the following public keys:", string.join(public_keys,", ")
-        for file in public_keys:
-            private_key = file[:-4]
-            legend = private_key + " corresponding to " + file + " " 
-            if not os.access(private_key, os.R_OK):
-                self.__die(legend + "does not exist or is unreadable.")
-
+            khStat=self.sftpClnt.stat(khPath)
+        except IOError, e:
+            touchKhStat='touch %s' % (khPath)
+            stdout=self.execCmd(touchKhStat)
+            logger.debug("%s : cmd : %s output: %s ", self.userHost,
+                touchKhStat, stdout)
+            try:
+                khStat=self.sftpClnt.stat(khPath)
+            except IOError, e:
+                eMsg= "Error on %s: Unable to create:%s msg:%s " % \
+                    (self.userHost, khPath, str(e))
+                logger.error(eMsg)
+                return False
+        # Now, execute the keyscan command for each host, use rsa
+        # TODO is rsa sufficient, it required add the all the entries
+        # -t rsa, -t dsa, -t rsa1 to ~/known_hosts.
+        print "Updating remote host keys on %s \n"% self.userHost
+        for eachHost in hostArray:
+            logger.info("update hostKey for %s on %s", eachHost, self.userHost)
+            upEntCmd="grep -v %s %s > %s ; ssh-keyscan -t %s %s >> %s ;"\
+            " rm -rf %s; cp %s %s" %(eachHost, khPath, khNewPath, 'rsa', \
+            eachHost, khNewPath, khPath, khNewPath, khPath)
+            logger.debug("%s : %s", self.userHost, upEntCmd)
+            stdout=self.execCmd(upEntCmd)
+            if stdout:
+                logger.debug("%s: \n cmd=%s \noutPut=%s \n", self.userHost,
+                    upEntCmd, stdout)
+        # Fix the permissions
+        try:
+            khStat=self.sftpClnt.stat(khPath)
+            self.sftpClnt.chmod(khPath,
+                    (khStat.st_mode & ~0777) | 0644)
+        except Exception, e:
+            errMsg="*** Caught Exception (%s) Msg : %s while setting "\
+            " permissions for %s on %s \n" % \
+            (str(e.__class__), str(e), khPath, self.userHost)
+            logger.error(errMsg)
+            return False
+        return True 
 
     def initializeSession(self, defaultPassword=None, defaultPassPhrase=None):
         """ Initialize ssh session """
@@ -689,13 +825,14 @@ class sshSession(threading.Thread):
             else :
                 logger.info("Host Key OK for %s", self.host)
             if updateLocalKey:
-                addRemoteHostKey(self.host, prompt=False)
+                gSessionUtil.addRemoteHostKey(self.host, prompt=False)
         except Exception, e:
             logger.error('*** Caught exception %s:%s host : %s ',  
                 str(e.__class__),  str(e), self.host)
             raise sshSocketConnection, str(e)
+        return True
 
-    def makeReady(self):
+    def makeReady(self, authenticate=False):
         """ Authenticate an ssh Connection """
         logger=logging.getLogger('groupSession')
         try :
@@ -704,9 +841,10 @@ class sshSession(threading.Thread):
             logger.error('*** Initialization error host %s : %s ' , self.host,\
                 str(err))
             raise PasswordFailure, str(err)
-
         if not self.trans:
             raise PasswordFailure, " *** Transport is not initialized."
+        if not authenticate:
+            return
         self.agent_auth()
         if self.trans.is_authenticated():
             pass
@@ -721,6 +859,9 @@ class sshSession(threading.Thread):
             raise PasswordFailure, " **** Transport is not authenticated" 
         logger.info("ssh Connection %s@%s:%d is authenticated : %s \n",
             self.user, self.host, self.port, self.authMode)
+        self.startSftp()
+
+    def startSftp(self):
         #
         # Start a sftpClient from the authenticated trans
         #
@@ -743,12 +884,13 @@ class sshSession(threading.Thread):
     def setupKeys(self, setupLocal=False, authType='gpRsa'):
         """ Set Up keys for remote host """
         logger=logging.getLogger('groupSession')
-
-        #print self.authMode
         if self.authMode == 'PASSWORD':
-            #self.setupKeyAccessLocal()
-            self.setupRemoteKey()
-            print "Keys are setup for %s@%s" % (self.user, self.host)
+            #self.etupKeyAccessLocal()
+            # NFS issue
+            self.lock.acquire()
+            if (self.setupRemoteKey()):
+                print "Keys are setup for %s@%s" % (self.user, self.host)
+            self.lock.release()
         return
 
     def agent_auth(self):
@@ -921,6 +1063,51 @@ class sshSession(threading.Thread):
         else :
             return False
 
+    def authPublicKey(self, key):
+        """ Authenticate using a public Key """
+        rTrans=self.trans
+        if not rTrans:
+            return False
+        try:
+            rTrans.auth_publickey(self.user, key)
+        except paramiko.SSHException, e:
+            return False
+        if rTrans.is_authenticated():
+            return True
+        return False
+
+    def authPasswd(self, password):
+        """ Authenticate using the password provided """
+        rTrans=self.trans
+        if not rTrans:
+            return False
+        try:
+            rTrans.auth_password(self.user, password)
+        except paramiko.SSHException, e:
+            return False
+        if rTrans.is_authenticated():
+            return True
+
+    def setAuthMode(self, authMode):
+        """ Set the authentication mode"""
+        self.authMode= authMode
+
+    def setLocalSSHDir(self, dirName):
+        """ Set the authentication mode"""
+        self.localSSHDir=dirName
+
+    def setLocalGSDir(self, dirName):
+        """ Set the authentication mode"""
+        self.localGSDir =dirName
+
+
+    def closeTrans(self):
+        """ Close the transport opened for this session."""
+        if not self.trans:
+            return
+        self.trans.close()
+
+
     def passwd_auth(self):
         """ Try authenticating using password.
             First try the globalPassword, Second sessionPasword
@@ -984,12 +1171,27 @@ if __name__ == '__main__':
     gpLogger.initLogger(lName="groupSession", lfName="groupSession",  \
         debug=False, verbose=False)
     logger=logging.getLogger('groupSession')
+    #gSessionUtil.gSessionAuth()
     try :
         a = sshSession('testuser2',22,'supertracs')
-        a.makeReady()
+        a.makeReady(authenticate=True)
         a.setCMD('ssh', ['uname -a'])
         res=a.run()
         print res
+        a.checkKeyFiles()
+        if a.keyFileList:
+            for eFile in a.keyFileList:
+                print eFile
+        #a.generatePubKeys()
+        #a.checkKeyFiles()
+        #if a.keyFileList:
+            #for eFile in a.keyFileList:
+                #print eFile
+        a.updateRemoteHostKeys(['10.0.0.216', '10.0.0.214', \
+            'buzzard1', \
+            'buzzard2', \
+            'buzzard3', \
+            'buzzard1' ])
     except Exception, e:
         logger.error('*** Caught exception %s:%s ',  
                 str(e.__class__),  str(e))
@@ -1000,6 +1202,7 @@ if __name__ == '__main__':
         #print '%s' % (a.run())
         #a.setCMD('scp', ['~/xx.sh', 'x1.sh'])
         #a.run()
+        gSessionAuth()
     except NOTREADY, e:
         print '%s:%s' % (e,'ssh session for ' + a.hostname + \
             ' not ready for commands.')

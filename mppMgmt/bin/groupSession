@@ -23,6 +23,8 @@ Options:
 -p <port> Connect on a particular port in place of 22
 -s        Disable the setup of trusted hosts key access
 -l <fileName> Log all the messages to this file
+-x        Establish trusted key access across all sessions, using ssh-keys. 
+
 
 Runs commands on a list of hosts.  Manages passwords and trusted key access
 using ssh.
@@ -37,8 +39,9 @@ __author__ = "Luke Lonergan"
 __version__ = "1.0"
 __date__ = "2005-09-26"
 
-import os, sys, threading, time, string, getpass, getopt, signal
+import os, sys, threading, time, string, getpass, getopt, signal, commands
 import traceback
+
 if sys.version_info < (2, 3):
     print "Error groupSession is supported on Python versions 2.3 or greater."
     print "Please upgrade python installed on this machine."
@@ -50,9 +53,11 @@ sys.path.append(sys.path[0]+'/lib')
 
 try :
     import sshParamikoModule as sshParamikoModule, threadpool as threadpool
+    import paramiko
     import cmd, atexit
     import gpLogger
     import logging
+    import gSessionUtil
 except ImportError, e:
     print "Error Importing necessary modules: %s " % str(e)
     raise SystemExit, -1
@@ -90,6 +95,7 @@ class groupSession(cmd.Cmd):
 
         # Create an sshSession object for each host
         self.sessions = []
+        self.hostList=[]
         for host,user,port in hostuserport:
             #Create a new instance of an sshSession object initialized with this
             #host/user/port
@@ -97,7 +103,10 @@ class groupSession(cmd.Cmd):
             self.sessions.append(a)
 
         try:
-            self.__setupHostAccess(setupKeys)
+            if not self.__authenticateHosts():
+                self.__die("Failed to athenticate.. ")
+            if setupKeys:
+                self.__setupHostAccessKeys(setupKeys)
         except sshParamikoModule.PasswordFailure, e:
             print '%s: %s' % (e,'Failed to authenticate.')
             raise SystemExit, -1
@@ -110,6 +119,7 @@ class groupSession(cmd.Cmd):
             traceback.print_exc()
             print errStr
             raise SystemExit, -1
+
 
         #i = 0
         #for th in self.sessions:
@@ -124,8 +134,18 @@ class groupSession(cmd.Cmd):
         #Run the command on all sessions
         interrupted = self.runCommand(cmd,args,line)
 
+    def do_exchangeKeys(self, line):
+        """ Generate ssh keys with each session, and update public keys 
+            across all sessions.
+        """
+        try:
+            self.exchangeKeys()
+        except Exception, e:
+            print "*** Caught exception (%s) message: (%s )" \
+                % (str(e.__class__), str(e))
 
     def do_rcopy(self,line):
+        logger=logging.getLogger('groupSession')
         i=0
         source = None
         dest = None
@@ -240,7 +260,7 @@ class groupSession(cmd.Cmd):
         """Pass command to a system shell when line begins with '!'"""
         os.system(args)
 
-    #End command class overrides ------------------------------------------------
+    #End command class overrides ---------------------------------------------
 
     def runCommand(self,cmd,args, command="", begin=0,end=0,quiet=False, \
         retDict=False,  resDict=None):
@@ -306,80 +326,370 @@ class groupSession(cmd.Cmd):
         self.__die('\nSignal caught, program ')
     
     def __die(self,msg):
-        print msg + 'exiting.'
+        print 
+        print msg + ' exiting.'
+        print 
         raise SystemExit, 1
 
-    def __initializeSessions(self,defaultPassword=None,defaultPassPhrase=None,
-            ibegin=0,iend=0):
-        """Initialize all sessions for checking of passwords and setup of 
-        keys
+    def obtainLocalKey(self, authType, def_path, maxTries=3):
+        """ Obtain the key from path provided 
+            Return Key or None on Failure
         """
-        if iend == 0:
-            iend = len(self.sessions)
-
-        #Set the password check flag to 1 for all sessions
-        for i in range(ibegin,iend):
-            th = self.sessions[i]
-            if self.verbose:
-                print 'initializeSessions host: %s' % (th.host)
-            th.initializeSession(defaultPassword,defaultPassPhrase)
-    
-    def __setupHostAccess(self,setupKeys=True):
-        #Set the default state of all of the sessions
-        #self.__initializeSessions()
-
-        defaultPassword=None
-        #Loop on sessions to get enough passwords for all
-        icurr = 0
+        logger=logging.getLogger("groupSession")
+        key=None
+        # check authType
+        if authType != 'rsa' and authType != 'dsa':  
+            logger.error("Invalid authType (%s) ", authType)
+            return None
+        # Check access
+        if not os.access(def_path, os.R_OK):
+            logger.debug("%s is not accessible (probably not there)", def_path)
+            return None
+        # Try to get the key witout password
+        try:
+            if authType == 'rsa':
+                key = paramiko.RSAKey.from_private_key_file(def_path)
+            else :
+                key = paramiko.DSSKey.from_private_key_file(def_path)
+        except paramiko.PasswordRequiredException:
+            tries = 0 
+            while tries < maxTries and not key:
+                # Enter passphrase for key '/Users/ksrikanth/.ssh/id_dsa':
+                password = getpass.getpass("Enter passphrase for key '%s':" %\
+                    def_path)
+                try :
+                    if authType=='rsa':
+                        key = paramiko.RSAKey.from_private_key_file(
+                            def_path, password)
+                    else : 
+                        key = paramiko.DSSKey.from_private_key_file(
+                            def_path, password)
+                except paramiko.SSHException, e:
+                    logger.debug("Received SSHException  %s, %s for %s ", \
+                        str(e.__class__),  str(e), authType)
+                    key = ""
+                    tries+=1
+                    continue
+            if tries >= maxTries:
+                return None
+        return key
+            
+    def __authenticateHosts(self, maxTries=3):
+        """ Authenticate the list of hosts
+            if id_rsa and id_rsa.pub are present try it
+            if id_dsa and id_rsa.pub are present try it
+            if identidy and identiry.pub are present try it
+            then try password
+        """
+        # Initialize
+        rsaKey=dsaKey=passwd=None
+        rsaFailed=dsaFailed=idFailed=False
+        retVal=True
+        # Get Local SSH Dir
+        dotSSH=gSessionUtil.getLocalSSHDir(False)
+        icurr=0
         while icurr < len(self.sessions):
-            th = self.sessions[icurr]
-            #Password is required for this session
-            if not th.isReady(False):
-                try:
-                    th.makeReady()
-                except sshParamikoModule.PasswordFailure, e:
-                    raise
-
-                if self.verbose:
-                    print 'setupHostAccess host: %s' % (th.host)
-
-                #Initialize the remaining sessions to use the
-                #new default password and hostKeyPhrase
-                #self.__initializeSessions(th.password,th.hostKeyPhrase,icurr)
-                #Run a parallel command to discover whether each host needs a 
-                #PW or not self.runCommand('ssh',['ls -ld '],icurr,
-                #len(self.sessions),True)
+            eSess= self.sessions[icurr]
             icurr += 1
-        if setupKeys:
-            self.sessions[0].setupKeyAccessLocal()
-            #sshParamikoModule.setupLocalKey('rsa', overWrite=False, \
-            #emptyPhrase=True)
-            for i in range(0,len(self.sessions)):
-                th = self.sessions[i]
-                #Setup ssh trusted key access for this host
-                #th.setupKeyAccessRemote()
-                self.pool.putRequest( threadpool.WorkRequest(th.setupKeys,
-                        None,None,None))
-            #Wait for completion of all in queue, or a keyboard interrupt
-            while True:
-                try:
-                    self.pool.poll()
-                except (threadpool.NoResultsPending,KeyboardInterrupt):
+            try:
+                if (not eSess.initializeSession()):
+                    print "Unable to initialize session: %s." % eSess.userHost
+                    retVal=False
                     break
+            except sshParamikoModule.sshSocketConnection, e:
+                # TODO Do something nice here
+                retVal=False
+                break
+            # Authenticate... 
+            authType=""
+            # RSA
+            if rsaKey:
+                if(eSess.authPublicKey(rsaKey)):
+                    authType='rsa'
+            elif not rsaFailed :
+                keyType='rsa'
+                rsaPriv=dotSSH + '/' + gSessionUtil.keyFiles[keyType]
+                rsaKey=self.obtainLocalKey(keyType, rsaPriv)
+                if not rsaKey:
+                    rsaFailed=True
+                else :
+                    if(eSess.authPublicKey(rsaKey)):
+                        authType='rsa'
+            else :
+                pass
+            # DSA
+            if not authType:
+                if dsaKey:
+                    if(eSess.authPublicKey(dsaKey)):
+                        authType='dsa'
+                elif not dsaFailed :
+                    keyType='dsa'
+                    dsaPriv=dotSSH + '/' + gSessionUtil.keyFiles[keyType]
+                    dsaKey=self.obtainLocalKey(keyType, dsaPriv)
+                    if not dsaKey:
+                        dsaFailed=True
+                    else:
+                        if(eSess.authPublicKey(dsaKey)):
+                            authType='dsa'
+                else :
+                    pass
+            # Password
+            if not authType:
+                if passwd:
+                    if(eSess.authPasswd(passwd)):
+                        authType='PASSWORD'
+                tries = 0;
+                while tries < maxTries and not authType :
+                    passwd = getpass.getpass('Password for %s@%s:%d ' % \
+                        (eSess.user,  eSess.host, eSess.port))
+                    if(eSess.authPasswd(passwd)):
+                        authType='PASSWORD'
+                    else:
+                        tries+=1
+            if not authType:
+                print "Authentication failed for %s " % eSess.userHost
+                retVal=False
+                # Probably can return and break.
+            else :
+                eSess.setAuthMode(authType)
+                try:
+                    eSess.startSftp()
+                except sshParamikoModule.PasswordFailure, e:
+                    print "Unable to start sftpClient.. \n"
+                    retVal=False
+                print "%s is Authenticated (%s)" % (eSess.userHost, authType)
+        if retVal == False:
+            for j in range (0,  len(self.sessions)):
+                jSess= self.sessions[j]
+                jSess.closeTrans()
+        return retVal
+                    
+    def __setupHostAccessKeys(self,setupKeys=True):
+        # SetUp Local Keys
+        self.sessions[0].setupKeyAccessLocal()
+        for i in range(0,len(self.sessions)):
+            th = self.sessions[i]
+            self.pool.putRequest( threadpool.WorkRequest(th.setupKeys,
+                None,None,None))
+            #Wait for completion of all in queue, or a keyboard interrupt
+        while True:
+            try:
+                self.pool.poll()
+            except (threadpool.NoResultsPending,KeyboardInterrupt):
+                    break
+    
 
+    def exchangeKeys(self, force=False):
+        """ Exchange public keys across all hosts 
+            check if ~/.ssh/id_[rd]sa[_pub] files are present.
+                if any of the files are present, prompt the user.
+            Create ~/.ssh/GSession directory
+                If present empty it.
+            Generate public/private keys for all the hosts.
+            copy the public keys to ~/.ssh/gSession/user@host_id_[rd]sa_pub
+            create gSession.auth
+            copy gSession.auth to all hosts
+            append gSession.auth to ~/.ssh/authorized_keys
+        """
+        # Check if any of the keys are present on the remote hosts
+        if (not force):
+            if( not self.confirmFileRemoval()):
+                return
+        # Create ~/.ssh/gSession/ directoryl
+        lSSHHome=gSessionUtil.getLocalSSHDir()
+        gDir=gSessionUtil.getGSDir(emptyDir=True)
+        if not gDir:
+            print "Error invalid group Session directory "
+            return False
+        for i in range(0,len(self.sessions)):
+            th = self.sessions[i]
+            th.setLocalSSHDir(lSSHHome)
+            th.setLocalGSDir(gDir)
+        #
+        # Generate PublicKeys
+        #
+        print "Generating remote Keys... \n"
+        for i in range(0,len(self.sessions)):
+            th = self.sessions[i]
+            self.pool.putRequest( threadpool.WorkRequest(th.generatePubKeys,
+                None,None,None))
+            #Wait for completion of all in queue, or a keyboard interrupt
+        interrupted=False
+        while True:
+            try:
+                self.pool.poll()
+            except threadpool.NoResultsPending:
+                interrupted = False
+                break
+            except KeyboardInterrupt:
+                interrupted = True
+                break
+        if interrupted:
+            print "Command Interrupted"
+            return False
+        #
+        # Get the public Keys to 
+        #
+        print "Obtaining Remote Public Keys \n"
+        for i in range(0,len(self.sessions)):
+            th = self.sessions[i]
+            self.pool.putRequest( threadpool.WorkRequest(
+                th.obtainRemotePublicKeys, None,None,None))
+            #Wait for completion of all in queue, or a keyboard interrupt
+        interrupted=False
+        while True:
+            try:
+                self.pool.poll()
+            except threadpool.NoResultsPending:
+                interrupted = False
+                break
+            except KeyboardInterrupt:
+                interrupted = True
+                break
+        if interrupted:
+            print "Command Interrupted"
+            return False
+        print "\n Generating authorized keys file for all sessions.\n"
+        gsAuth=lSSHHome+'/'+'gSession.pub'
+        catCmd= "cat %s/* > %s" % (gDir, gsAuth)
+        #print "Executing %s" % catCmd
+        cmdOutPut=commands.getoutput(catCmd)
+        if cmdOutPut:
+            print "Error : %s : %s " % (catCmd, cmdOutPut)
+            return False
+        #
+        # Copy and append the file to remote host.
+        #
+        print "\n Updating Remote Authorized Keys with public keys... \n"
+        for i in range(0,len(self.sessions)):
+            th = self.sessions[i]
+            self.pool.putRequest( threadpool.WorkRequest(
+                th.updateAuthorizedKeys, None, None, None))
+            #Wait for completion of all in queue, or a keyboard interrupt
+        interrupted=False
+        while True:
+            try:
+                self.pool.poll()
+            except threadpool.NoResultsPending:
+                interrupted = False
+                break
+            except KeyboardInterrupt:
+                interrupted = True
+                break
+        if interrupted:
+            print "Command Interrupted"
+            return False
+        print "Public keys are exchanged across  all sessions.\n\n"
+        print "\nDo you want to update ~/.ssh/known_hosts entries in all"\
+        " sessions? (Yes/No)",
+        resp= sys.stdin.readline().strip()
+        if(resp == 'Yes' or resp == 'y'  or resp=='Y' or resp == 'YES' or \
+            resp =='yes'):
+            self.updateKnownHosts()
+        return True
+
+
+    def confirmFileRemoval(self):
+        """ Check if there are files that will be removed.
+            return True if user has opted to remove return False 
+        """
+        for i in range(0,len(self.sessions)):
+            th = self.sessions[i]
+            self.pool.putRequest( threadpool.WorkRequest(th.checkKeyFiles,
+                None,None,None))
+            #Wait for completion of all in queue, or a keyboard interrupt
+        interrupted=False
+        while True:
+            try:
+                self.pool.poll()
+            except threadpool.NoResultsPending:
+                interrupted = False
+                break
+            except KeyboardInterrupt:
+                interrupted = True
+                break
+        if interrupted:
+            print "\n Interrupted... \n"
+            return False
+        # Aggregate the results
+        rmFiles=[] 
+        for i in range(0,len(self.sessions)):
+            th = self.sessions[i]
+            if th.keyFileList:
+                for eachFile in th.keyFileList:
+                    rmFiles.append(th.userHost + ':/' + eachFile)
+
+        if rmFiles:
+            print "\n *** Files that will be over-written: *** \n"
+            for eFile in rmFiles:
+                print eFile
+            print "\nThe above list of files will be removed, Proceed(Yes/No)",
+            resp= sys.stdin.readline().strip()
+            if(resp == 'Yes' or resp == 'y'  or resp=='Y' or resp == 'YES' or \
+                resp =='yes'):
+                return True
+            else :
+                print 
+                return  False
+        return True
+
+    def updateKnownHosts(self):
+        """
+            Update hostKeys across Hosts that are present in the sessions.
+        """
+        self.getHostList()
+        print "Updating host entrys for \n"
+        cntr=0
+        for eachHost in self.hostList:
+            if cntr%5==0:
+                print
+            print "%s,  " % eachHost,
+            cntr+=1
+        print "\n\n"
+
+        for i in range(0,len(self.sessions)):
+            th = self.sessions[i]
+            self.pool.putRequest( threadpool.WorkRequest( \
+                th.updateRemoteHostKeys, [self.hostList],None,None))
+            #Wait for completion of all in queue, or a keyboard interrupt
+        interrupted=False
+        while True:
+            try:
+                self.pool.poll()
+            except threadpool.NoResultsPending:
+                interrupted = False
+                break
+            except KeyboardInterrupt:
+                interrupted = True
+                break
+
+    def getHostList(self):
+        """ Obtain the host list for the list of sessions. 
+            eliminate repeated hosts.
+        """
+        self.hostList=[]
+        for i in range(0, len(self.sessions)):
+            th=self.sessions[i]
+            if th.host in self.hostList:
+                pass
+            else:
+                self.hostList.append(th.host)
 
 if __name__ == '__main__': 
     # Process options
-    (options, arguments) = getopt.getopt(sys.argv[1:], "?hvdp:l:s")
+    (options, arguments) = getopt.getopt(sys.argv[1:], "?hvdp:l:sx")
     verbose = 0
     debug= 0
     defaultport = 22
     setupKeys = True
+    exKeys=False
     logFile=''
 
     for (switch, val) in options:
         if (switch == '-p'):
             defaultport = val;
+        elif (switch == '-x'):
+            exKeys = True 
         elif (switch == '-s'):
             setupKeys = False 
         elif (switch == '-h' or switch == '-?'):
@@ -410,9 +720,12 @@ if __name__ == '__main__':
     except:
         print 'Unexpected error:', sys.exc_info()[0]
         raise
-    # TODO Check the logFile is a valid path
-
-
+    #
+    # MPP-728
+    # We don't have to worry about size of this file,
+    # Truncated every new session.
+    #
+    paramiko.util.log_to_file('/tmp/paramiko.log') 
     if debug:
         gpLogger.initLogger(lName="groupSession", lfName=logFile,  \
            debug=True, verbose=True)
@@ -446,6 +759,10 @@ if __name__ == '__main__':
 
     #Create a groupSession object
     gsession = groupSession(hostuserport, setupKeys, verboseOpt=verbose)
+
+
+    if exKeys:
+        gsession.exchangeKeys()
 
     #Register a signal handler for the TERM signal
     signal.signal(signal.SIGTERM,gsession.handlerTERM)
