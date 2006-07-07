@@ -212,6 +212,9 @@ MPP_INITDB_VER_TABLE=mpp_version_at_initdb
 DEFAULT_CHK_PT_SEG=8
 DEFAULT_IP_ALLOW="0.0.0.0/0"
 DEFAULT_LOCALE_SETTING=en_US.UTF-8
+DEFAULT_QD_MAX_CONNECT=25
+QE_CONNECT_FACTOR=5
+DEFAULT_BUFFERS=16000
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -486,7 +489,14 @@ GET_MASTER_PORT () {
 		if [ ! -d $MASTER_DATA_DIRECTORY ]; then
 				ERROR_EXIT "[FATAL]:-No $MASTER_DATA_DIRECTORY directory" 2
 		fi
-		MASTER_PORT=`$GREP "^port" $MASTER_DATA_DIRECTORY/$PG_CONF |$GREP -v "^#"|$CUT -d= -f2|$AWK '{print $1}'`
+		if [ -r $MASTER_DATA_DIRECTORY/$PG_CONF ];then
+			MASTER_PORT=`$GREP "^port" $MASTER_DATA_DIRECTORY/$PG_CONF |$GREP -v "^#"|$CUT -d= -f2|$AWK '{print $1}'`
+			if [ x"" == x"$MASTER_PORT" ];then
+			ERROR_EXIT "[FATAL]:-Failed to obtain master port number from $MASTER_DATA_DIRECTORY/$PG_CONF" 2
+			fi
+		else
+			ERROR_EXIT "[FATAL]:-Do not have read access to $MASTER_DATA_DIRECTORY/$PG_CONF" 2
+		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
