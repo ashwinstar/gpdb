@@ -179,7 +179,8 @@ int			seqServerPort;
 int			transportStatesSize = 0;
 ChunkTransportState *transportStates = NULL;
 
-#define MLS_INITIAL_SIZE (10)
+/* ChunkTransportState array initial size */
+#define CTS_INITIAL_SIZE (10)
 
 /*
  * Outgoing port assignment
@@ -772,8 +773,8 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 
 	Insist(!activated && !transportStates && mySliceTable);
 
-	transportStatesSize = MLS_INITIAL_SIZE;
-	transportStates = palloc0(MLS_INITIAL_SIZE * sizeof(ChunkTransportState));
+	transportStatesSize = CTS_INITIAL_SIZE;
+	transportStates = palloc0(CTS_INITIAL_SIZE * sizeof(ChunkTransportState));
 
 	sliceTable = mySliceTable;
 	sliceId = mySliceId;
