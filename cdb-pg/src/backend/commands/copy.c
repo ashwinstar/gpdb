@@ -3801,9 +3801,9 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 	}
 
 	/*
-	 * Done reading the line. Convert it to server encoding.
+	 * Done reading the line. Convert it to server encoding if it's complete.
 	 */
-	if (cstate->need_transcoding)
+	if (cstate->need_transcoding && cstate->line_done)
 	{
 		cvt = (char *) pg_client_to_server(cstate->line_buf.data,
 										   cstate->line_buf.len);
@@ -3814,6 +3814,7 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 			cstate->line_buf.data[0] = '\0';
 			cstate->line_buf.cursor = 0;
 			appendBinaryStringInfo(&cstate->line_buf, cvt, strlen(cvt));
+			pfree(cvt);
 		}
 	}
 
