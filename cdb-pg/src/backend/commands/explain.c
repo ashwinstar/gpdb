@@ -71,7 +71,14 @@ static void show_sort_keys(List *tlist, int nkeys, AttrNumber *keycols,
 			   const char *qlabel,
 			   StringInfo str, int indent, ExplainState *es);
 static void
+show_grouping_keys(Plan        *plan,
+                   int          numCols,
+                   AttrNumber  *subplanColIdx,
+                   const char  *qlabel,
+			       StringInfo str, int indent, ExplainState *es);
+static void
 show_motion_keys(List *tlist, List *hashExpr, int nkeys, AttrNumber *keycols,
+			     const char *qlabel,
                  StringInfo str, int indent, ExplainState *es);
 
 /*
@@ -849,12 +856,36 @@ explain_outNode(StringInfo str,
 							str, indent, es);
 			break;
 		case T_Agg:
+			show_upper_qual(plan->qual,
+							"Filter",
+							"subplan", 0, outerPlan(plan),
+							"", 0, NULL,
+							str, indent, es);
+			show_grouping_keys(plan,
+						       ((Agg *) plan)->numCols,
+						       ((Agg *) plan)->grpColIdx,
+						       "Group By",
+						       str, indent, es);
+			break;
 		case T_Group:
 			show_upper_qual(plan->qual,
 							"Filter",
 							"subplan", 0, outerPlan(plan),
 							"", 0, NULL,
 							str, indent, es);
+			show_grouping_keys(plan,
+						       ((Group *) plan)->numCols,
+						       ((Group *) plan)->grpColIdx,
+						       "Group By",
+						       str, indent, es);
+			break;
+		case T_Unique:
+			show_motion_keys(plan->targetlist,
+                             NIL,
+						     ((Unique *) plan)->numCols,
+						     ((Unique *) plan)->uniqColIdx,
+						     "Group By",
+						     str, indent, es);
 			break;
 		case T_Sort:
 			show_sort_keys(plan->targetlist,
@@ -885,6 +916,7 @@ explain_outNode(StringInfo str,
                                      pMotion->hashExpr,
 								     pMotion->numSortCols,
 								     pMotion->sortColIdx,
+                                     "Merge Key",
 								     str, indent, es);
 			}
 			break;
@@ -1182,6 +1214,89 @@ show_upper_qual(List *qual, const char *qlabel,
 
 
 /*
+ * CDB: Show GROUP BY keys for an Agg or Group node.
+ */
+void
+show_grouping_keys(Plan        *plan,
+                   int          numCols,
+                   AttrNumber  *subplanColIdx,
+                   const char  *qlabel,
+			       StringInfo str, int indent, ExplainState *es)
+{
+    Plan       *subplan = plan->lefttree;
+    List	   *context;
+    char	   *exprstr;
+    bool		useprefix;
+    int			keyno;
+    int			i;
+
+    if (numCols <= 0)
+        return;
+
+    for (i = 0; i < indent; i++)
+        appendStringInfoString(str, "  ");
+    appendStringInfo(str, "  %s: ", qlabel);
+
+    /* Generate deparse context */
+	if (cdbpullup_exprHasSubplanRef((Expr *)subplan->targetlist))
+	{
+		Node	   *outerctx;
+		Node	   *innerctx;
+
+        if (subplan->righttree)
+        {
+            outerctx = deparse_context_for_subplan("OUTER",
+                                                   subplan->lefttree->targetlist,
+                                                   es->rtable);
+            innerctx = deparse_context_for_subplan("INNER",
+                                                   subplan->righttree->targetlist,
+                                                   es->rtable);
+	        context = deparse_context_for_plan(OUTER, outerctx,
+									           INNER, innerctx,
+									           NIL);
+        }
+        else
+        {
+            outerctx = deparse_context_for_subplan("subplan",
+                                                   subplan->lefttree->targetlist,
+                                                   es->rtable);
+	        context = deparse_context_for_plan(OUTER, outerctx,
+									           0, NULL,
+									           NIL);
+        }
+        useprefix = false;
+	}
+	else
+	{
+		context = deparse_context_for_plan(0, NULL,
+										   0, NULL,
+										   es->rtable);
+		useprefix = list_length(es->rtable) > 1;
+	}
+
+    for (keyno = 0; keyno < numCols; keyno++)
+    {
+	    /* find key expression in tlist */
+	    AttrNumber      keyresno = subplanColIdx[keyno];
+	    TargetEntry    *target = get_tle_by_resno(subplan->targetlist, keyresno);
+
+	    if (!target)
+		    elog(ERROR, "no tlist entry for key %d", keyresno);
+
+	    /* Deparse the expression, showing any top-level cast */
+	    exprstr = deparse_expression((Node *) target->expr, context,
+								     useprefix, true);
+	    /* And add to str */
+	    if (keyno > 0)
+		    appendStringInfoString(str, ", ");
+	    appendStringInfoString(str, exprstr);
+    }
+
+    appendStringInfoChar(str, '\n');
+}                               /* show_grouping_keys */
+
+
+/*
  * Show the sort keys for a Sort node.
  */
 static void
@@ -1256,6 +1371,7 @@ show_sort_keys(List *tlist, int nkeys, AttrNumber *keycols,
  */
 void
 show_motion_keys(List *tlist, List *hashExpr, int nkeys, AttrNumber *keycols,
+			     const char *qlabel,
                  StringInfo str, int indent, ExplainState *es)
 {
     List	   *context;
@@ -1263,6 +1379,10 @@ show_motion_keys(List *tlist, List *hashExpr, int nkeys, AttrNumber *keycols,
     bool		useprefix;
     int			keyno;
     int			i;
+
+    if (!nkeys &&
+        !hashExpr)
+        return;
 
     /* Generate deparse context */
 	if (cdbpullup_exprHasSubplanRef((Expr *)tlist) ||
@@ -1291,7 +1411,7 @@ show_motion_keys(List *tlist, List *hashExpr, int nkeys, AttrNumber *keycols,
     {
         for (i = 0; i < indent; i++)
             appendStringInfoString(str, "  ");
-        appendStringInfo(str, "  %s: ", "Merge Key");
+        appendStringInfo(str, "  %s: ", qlabel);
 
 	    for (keyno = 0; keyno < nkeys; keyno++)
 	    {
