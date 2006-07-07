@@ -62,13 +62,13 @@ MPP_USER=$USER_NAME
 # System table names
 MPP_TBL=mpp_mpp
 MPP_CONFIGURATION_TBL=mpp_configuration
-MAX_QD_CONNECTIONS=25
 unset PG_CONF_ADD_FILE
 EXIT_STATUS=0
 # ED_FILE search text values
 PORT_TXT="#port"
 LOG_STATEMENT_TXT="#log_statement ="
 MAX_CONNECT_TXT="max_connections ="
+SHARED_BUFFER_TXT="shared_buffers ="
 LISTEN_ADR_TXT="listen_addresses"
 CHKPOINT_SEG_TXT="checkpoint_segments"
 LOG_STATS_TXT="stats_command_string="
@@ -113,7 +113,7 @@ USAGE () {
 		$ECHO "      -s, standby_hostname [optional]"
 		$ECHO "      -i, do not initialize standby sync process [default:- start process]"
 		$ECHO "      -o, create Master only, do not configure Segment instance hosts"
-		$ECHO "      -m, maximum number of connections for master instance [default ${MAX_QD_CONNECTIONS}]"
+		$ECHO "      -m, maximum number of connections for master instance [default ${DEFAULT_QD_MAX_CONNECT}]"
 		$ECHO "      -e, <password>, password to set for MPP superuser in database [default $MPP_PASSWD]"
 		$ECHO "      -n, <locale>, setting for locale to be set when database initialized [default $DEFAULT_LOCALE_SETTING]"
 		$ECHO
@@ -285,6 +285,20 @@ CHK_PARAMS () {
 				EXIT_STATUS=1
 				ENCODING="SQL_ASCII"
 		fi
+		#MASTER_MAX_CONNECT
+		if [ ! $MASTER_MAX_CONNECT ];then
+			LOG_MSG "[WARN]:-MASTER_MAX_CONNECT not set, will set to default value $DEFAULT_QD_MAX_CONNECT"
+			EXIT_STATUS=1
+			MASTER_MAX_CONNECT=$DEFAULT_QD_MAX_CONNECT
+		else
+			if [ $MASTER_MAX_CONNECT -lt 1 ];then
+				ERROR_EXIT "[FATAL]:-MASTER_MAX_CONNECT less than 1"
+			fi
+		fi
+		((QE_MAX_CONNECT=$MASTER_MAX_CONNECT*$QE_CONNECT_FACTOR))
+		LOG_MSG "[INFO]:-Setting segment instance MAX_CONNECTIONS to $QD_MAX_CONNECT"
+		MASTER_SHARED_BUFFERS=$DEFAULT_BUFFERS
+		QE_SHARED_BUFFERS=$DEFAULT_BUFFERS
 		#Number of QE hosts in this configuration
 		((NUM_QES=${#MACHINE_LIST[*]}))
 		if [ $NUM_QES -eq 0 ]; then
@@ -591,8 +605,11 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Master LOCALE        = $LOCALE_SETTING"
 		LOG_MSG "[INFO]:-MPP segment prefix   = $SEG_PREFIX"
 		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME"
-		LOG_MSG "[INFO]:-Master connections   = $MAX_QD_CONNECTIONS"
+		LOG_MSG "[INFO]:-Master connections   = $MASTER_MAX_CONNECT"
+		LOG_MSG "[INFO]:-Master buffers       = $MASTER_SHARED_BUFFERS"
 		LOG_MSG "[INFO]:-Master IP allow      = $IP_ALLOW"
+		LOG_MSG "[INFO]:-Segment connections  = $QE_MAX_CONNECT"
+		LOG_MSG "[INFO]:-Segment buffers      = $QE_SHARED_BUFFERS"
 		LOG_MSG "[INFO]:-Checkpoint segments  = $CHECK_POINT_SEGMENTS"
 		LOG_MSG "[INFO]:-Encoding             = $ENCODING"
 		LOG_MSG "[INFO]:-Pg Conf add file     = $PG_ADD"
@@ -707,9 +724,12 @@ CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Setting Master logging option"
 		ED_FILE ${MPP_DIR}/$PG_CONF "$LOG_STATEMENT_TXT" log_statement=all 0
 		ERROR_CHK $? "set log_statement=all in ${MPP_DIR}/$PG_CONF" 1
-		LOG_MSG "[INFO]:-Setting Master instance maximum connections to ${MAX_QD_CONNECTIONS}"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${MAX_QD_CONNECTIONS}" 0
-		ERROR_CHK $? "set max_connections=${MAX_QD_CONNECTIONS} in ${MPP_DIR}/$PG_CONF" 1
+		LOG_MSG "[INFO]:-Setting Master instance maximum connections to ${MASTER_MAX_CONNECT}"
+		ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${MASTER_MAX_CONNECT}" 0
+		ERROR_CHK $? "set max_connections=${MASTER_MAX_CONNECT} in ${MPP_DIR}/$PG_CONF" 1
+		LOG_MSG "[INFO]:-Setting Master instance shared buffers to ${MASTER_SHARED_BUFFERS}"
+		ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${MASTER_SHARED_BUFFERS}" 0
+		ERROR_CHK $? "set shared_buffers=${MASTER_SHARED_BUFFERS} in ${MPP_DIR}/$PG_CONF" 1	
 		LOG_MSG "[INFO]:-Setting Master instance check point segments"
 		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" "checkpoint_segments=$CHECK_POINT_SEGMENTS" 0
 		ERROR_CHK $? "set checkpoint_segments=$CHECK_POINT_SEGMENTS in ${MPP_DIR}/$PG_CONF" 1
@@ -867,6 +887,12 @@ PROCESS_QE () {
 		ED_FILE ${MPP_DIR}/$PG_CONF "$PORT_TXT" port=$MPP_PORT 0 $MPP_HOSTNAME
 		ED_FILE ${MPP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $MPP_HOSTNAME
 		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $MPP_HOSTNAME
+		LOG_MSG "[INFO]:-Setting Segment instance maximum connections to ${QE_MAX_CONNECT}"
+		ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${QE_MAX_CONNECT}" 0 $MPP_HOSTNAME
+		ERROR_CHK $? "set max_connections=${QE_MAX_CONNECT} in ${MPP_DIR}/$PG_CONF" 1
+		LOG_MSG "[INFO]:-Setting Segment shared buffers to ${QE_SHARED_BUFFERS}"
+		ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${QE_SHARED_BUFFERS}" 0 $MPP_HOSTNAME
+		ERROR_CHK $? "set shared_buffers=${QE_SHARED_BUFFERS} in ${MPP_DIR}/$PG_CONF" 1
 		if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
 			LOG_MSG "[INFO]:-Processing additional configuration parameters"
 			for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
@@ -996,7 +1022,7 @@ while getopts ":v'?'aiqe:c:l:p:m:h:on:s:" opt
 				e ) MPP_PASSWD=$OPTARG ;;
 				p ) PG_CONF_ADD_FILE=$OPTARG ;;
 				h ) MACHINE_LIST_FILE_ALT=$OPTARG ;;
-				m ) MAX_QD_CONNECTIONS=$OPTARG ;;
+				m ) MASTER_MAX_CONNECT=$OPTARG ;;
 				o ) QD_ONLY=1 ;;
 				s ) STANDBY_HOSTNAME=$OPTARG ;;
 				n ) LOCALE_SETTING=$OPTARG ;;
