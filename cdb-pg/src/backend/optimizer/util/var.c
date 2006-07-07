@@ -146,16 +146,20 @@ pull_varnos_cbVar(Var *var, void *context, int sublevelsup)
 	return false;
 }
 
-Relids
-pull_varnos(Node *node)
+inline Relids
+pull_varnos_of_level(Node *node, int levelsup)      /*CDB*/
 {
 	pull_varnos_context context;
 
 	context.varnos = NULL;
-
-    cdb_walk_vars(node, pull_varnos_cbVar, NULL, &context, 0);
-
+    cdb_walk_vars(node, pull_varnos_cbVar, NULL, &context, levelsup);
 	return context.varnos;
+}                               /* pull_varnos_of_level */
+
+Relids
+pull_varnos(Node *node)
+{
+	return pull_varnos_of_level(node, 0);
 }
 
 
@@ -525,6 +529,10 @@ flatten_join_alias_vars_mutator(Node *node,
 											   ininfo->lefthand);
 			ininfo->righthand = alias_relid_set(context->root,
 												ininfo->righthand);
+			ininfo->correlating = alias_relid_set(context->root,        /*CDB*/
+												  ininfo->correlating);
+			ininfo->allrelids = alias_relid_set(context->root,          /*CDB*/
+												ininfo->allrelids);
 		}
 		return (Node *) ininfo;
 	}

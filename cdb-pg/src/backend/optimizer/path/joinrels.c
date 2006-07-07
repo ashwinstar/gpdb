@@ -3,6 +3,7 @@
  * joinrels.c
  *	  Routines to determine which relations should be joined
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -411,6 +412,134 @@ make_jointree_rel(PlannerInfo *root, Node *jtnode)
 
 
 /*
+ * cdb_jointype_for_subquery
+ *
+ * When a subquery predicate has been flattened into a join, the join
+ * may need some special mojo which is activated by a special jointype.
+ * This function returns the adjusted jointype.  JOIN_INVALID is
+ * returned if the given rels should not be joined.
+ *
+ * When JOIN_IN is returned, the caller's join_unique flag is set to
+ * indicate whether the JOIN_UNIQUE technique should be considered also.
+ */
+static JoinType
+cdb_jointype_for_subquery(PlannerInfo  *root,
+                          Relids        joinrelids,
+                          RelOptInfo   *rel1,
+                          RelOptInfo   *rel2,
+			              JoinType      jointype,
+                          bool         *join_unique)
+{
+	ListCell   *l;
+    JoinType    savejointype = jointype;
+
+    foreach(l, root->in_info_list)
+	{
+		InClauseInfo   *ininfo = (InClauseInfo *) lfirst(l);
+        RelOptInfo     *curqrel;
+        RelOptInfo     *subqrel;
+
+		/*
+		 * This IN clause is not relevant unless its RHS overlaps the
+		 * proposed join.  (Check this first as a fast path for dismissing
+		 * most irrelevant INs quickly.)
+		 */
+		if (!bms_overlap(ininfo->righthand, joinrelids))
+			continue;
+
+		/*
+		 * If we are still building the IN clause's RHS, then this IN
+		 * clause isn't relevant yet.
+		 */
+		if (bms_is_subset(joinrelids, ininfo->righthand))
+			continue;
+
+        /*
+         * Cannot join if proposed join contains rels not in the RHS *and*
+	     * contains only part of the RHS.  We must build the complete RHS
+	     * (subselect's join) before it can be joined to rels outside the
+	     * subselect.
+	     */
+        if (!bms_is_subset(ininfo->righthand, joinrelids))
+            return JOIN_INVALID;
+		
+		/*
+		 * At this point we are considering a join of the IN's RHS to some
+		 * other rel(s).
+         */
+        if (bms_equal(ininfo->righthand, rel2->relids))
+        {
+            curqrel = rel1;
+            subqrel = rel2;
+        }
+        else if (bms_equal(ininfo->righthand, rel1->relids))
+        {
+            curqrel = rel2;
+            subqrel = rel1;
+        }
+		/*
+		 * If we already joined IN's RHS to any other rels in either input
+		 * path, then this join is not constrained (the necessary work was
+		 * done at the lower level where that join occurred).
+		 */
+        else
+        {
+            Assert(bms_is_subset(ininfo->righthand, rel1->relids) ||
+			       bms_is_subset(ininfo->righthand, rel2->relids));
+			continue;
+        }
+
+		/*
+		 * JOIN_IN technique will work if outerrel includes LHS and
+		 * innerrel is exactly RHS; conversely JOIN_REVERSE_IN handles
+		 * RHS/LHS.
+		 *
+		 * JOIN_UNIQUE_OUTER will work if outerrel is exactly RHS;
+		 * conversely JOIN_UNIQUE_INNER will work if innerrel is exactly
+		 * RHS.
+		 *
+		 * But none of these will work if we already found another IN that
+		 * needs to trigger here.
+		 */
+		if (jointype != savejointype)
+            return JOIN_INVALID;
+
+        /*
+         * JOIN_UNIQUE technique removes duplicates from the rel containing
+         * the subquery result, then does an ordinary equijoin.
+         *
+         * CDB TODO: We wouldn't have to do anything special if we knew
+         * that the subquery result rows were already distinct.
+         *
+         * CDB TODO: Correlated subquery could use JOIN_UNIQUE if all outer
+         * refs can be pulled up into the join operator (or inner indexscan).
+         */
+        *join_unique = false;
+        if (ininfo->op_is_equality &&
+            !ininfo->correlating)
+        {
+            *join_unique = true;        /* oo is this ugly or what */
+            jointype = (curqrel == rel1) ? JOIN_UNIQUE_INNER : JOIN_UNIQUE_OUTER;
+        }
+
+		/*
+		 * JOIN_IN technique matches each row of outer rel (current query)
+         * with at most one row of the inner rel (subquery).  It doesn't
+         * need an extra step for duplicate removal.
+		 */
+        if (bms_is_subset(ininfo->allrelids, joinrelids))
+            jointype = (curqrel == rel1) ? JOIN_IN : JOIN_REVERSE_IN;
+
+        /* Fail if curqrel lacks some baserel required for join with subqrel. */
+		if (jointype == savejointype)
+            return JOIN_INVALID;
+	}
+
+	return jointype;
+}                               /* cdb_jointype_for_subquery */
+
+
+/*
  * make_join_rel
  *	   Find or create a join RelOptInfo that represents the join of
  *	   the two given rels, and add to it path information for paths
@@ -428,6 +557,7 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 	Relids		joinrelids;
 	RelOptInfo *joinrel;
 	List	   *restrictlist;
+    bool        join_unique = false;
 
 	/* We should never try to join two overlapping sets of rels. */
 	Assert(!bms_overlap(rel1->relids, rel2->relids));
@@ -435,97 +565,25 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 	/* Construct Relids set that identifies the joinrel. */
 	joinrelids = bms_union(rel1->relids, rel2->relids);
 
-	/*
-	 * If we are implementing IN clauses as joins, there are some joins that
-	 * are illegal.  Check to see if the proposed join is trouble. We can skip
-	 * the work if looking at an outer join, however, because only top-level
-	 * joins might be affected.
-	 */
-	if (jointype == JOIN_INNER)
-	{
-		ListCell   *l;
-
-		foreach(l, root->in_info_list)
+    /*
+     * If we are implementing IN clauses as joins, there are some joins that
+     * are illegal.  Check to see if the proposed join is trouble. We can skip
+     * the work if looking at an outer join, however, because only top-level
+     * joins might be affected.
+     *
+     * CDB: Has been pulled out into a separate function (above).
+     */
+    if (root->in_info_list &&
+        jointype == JOIN_INNER)
+    {
+        jointype = cdb_jointype_for_subquery(root, joinrelids, rel1, rel2,
+                                             jointype, &join_unique);
+        if (jointype == JOIN_INVALID)
 		{
-			InClauseInfo *ininfo = (InClauseInfo *) lfirst(l);
-
-			/*
-			 * This IN clause is not relevant unless its RHS overlaps the
-			 * proposed join.  (Check this first as a fast path for dismissing
-			 * most irrelevant INs quickly.)
-			 */
-			if (!bms_overlap(ininfo->righthand, joinrelids))
-				continue;
-
-			/*
-			 * If we are still building the IN clause's RHS, then this IN
-			 * clause isn't relevant yet.
-			 */
-			if (bms_is_subset(joinrelids, ininfo->righthand))
-				continue;
-
-			/*
-			 * Cannot join if proposed join contains rels not in the RHS *and*
-			 * contains only part of the RHS.  We must build the complete RHS
-			 * (subselect's join) before it can be joined to rels outside the
-			 * subselect.
-			 */
-			if (!bms_is_subset(ininfo->righthand, joinrelids))
-			{
-				bms_free(joinrelids);
-				return NULL;
-			}
-
-			/*
-			 * At this point we are considering a join of the IN's RHS to some
-			 * other rel(s).
-			 *
-			 * If we already joined IN's RHS to any other rels in either input
-			 * path, then this join is not constrained (the necessary work was
-			 * done at the lower level where that join occurred).
-			 */
-			if (bms_is_subset(ininfo->righthand, rel1->relids) &&
-				!bms_equal(ininfo->righthand, rel1->relids))
-				continue;
-			if (bms_is_subset(ininfo->righthand, rel2->relids) &&
-				!bms_equal(ininfo->righthand, rel2->relids))
-				continue;
-
-			/*
-			 * JOIN_IN technique will work if outerrel includes LHS and
-			 * innerrel is exactly RHS; conversely JOIN_REVERSE_IN handles
-			 * RHS/LHS.
-			 *
-			 * JOIN_UNIQUE_OUTER will work if outerrel is exactly RHS;
-			 * conversely JOIN_UNIQUE_INNER will work if innerrel is exactly
-			 * RHS.
-			 *
-			 * But none of these will work if we already found another IN that
-			 * needs to trigger here.
-			 */
-			if (jointype != JOIN_INNER)
-			{
-				bms_free(joinrelids);
-				return NULL;
-			}
-			if (bms_is_subset(ininfo->lefthand, rel1->relids) &&
-				bms_equal(ininfo->righthand, rel2->relids))
-				jointype = JOIN_IN;
-			else if (bms_is_subset(ininfo->lefthand, rel2->relids) &&
-					 bms_equal(ininfo->righthand, rel1->relids))
-				jointype = JOIN_REVERSE_IN;
-			else if (bms_equal(ininfo->righthand, rel1->relids))
-				jointype = JOIN_UNIQUE_OUTER;
-			else if (bms_equal(ininfo->righthand, rel2->relids))
-				jointype = JOIN_UNIQUE_INNER;
-			else
-			{
-				/* invalid join path */
-				bms_free(joinrelids);
-				return NULL;
-			}
+			bms_free(joinrelids);
+			return NULL;
 		}
-	}
+    }
 
 	/*
 	 * Find or build the join RelOptInfo, and compute the restrictlist that
@@ -567,6 +625,8 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 			add_paths_to_joinrel(root, joinrel, rel1, rel2, JOIN_IN,
 								 restrictlist);
 			/* REVERSE_IN isn't supported by joinpath.c */
+            if (!join_unique)
+                break;
 			add_paths_to_joinrel(root, joinrel, rel1, rel2, JOIN_UNIQUE_INNER,
 								 restrictlist);
 			add_paths_to_joinrel(root, joinrel, rel2, rel1, JOIN_UNIQUE_OUTER,
@@ -576,6 +636,8 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 			/* REVERSE_IN isn't supported by joinpath.c */
 			add_paths_to_joinrel(root, joinrel, rel2, rel1, JOIN_IN,
 								 restrictlist);
+            if (!join_unique)
+                break;
 			add_paths_to_joinrel(root, joinrel, rel1, rel2, JOIN_UNIQUE_OUTER,
 								 restrictlist);
 			add_paths_to_joinrel(root, joinrel, rel2, rel1, JOIN_UNIQUE_INNER,

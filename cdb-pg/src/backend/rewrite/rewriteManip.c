@@ -2,6 +2,7 @@
  *
  * rewriteManip.c
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -180,6 +181,10 @@ OffsetVarNodes_walker(Node *node, OffsetVarNodes_context *context)
 												context->offset);
 			ininfo->righthand = offset_relid_set(ininfo->righthand,
 												 context->offset);
+			ininfo->correlating = offset_relid_set(ininfo->correlating, /*CDB*/
+												   context->offset);
+			ininfo->allrelids = offset_relid_set(ininfo->allrelids,     /*CDB*/
+												 context->offset);
 		}
 		/* fall through to examine children */
 	}
@@ -318,6 +323,12 @@ ChangeVarNodes_walker(Node *node, ChangeVarNodes_context *context)
 												context->rt_index,
 												context->new_index);
 			ininfo->righthand = adjust_relid_set(ininfo->righthand,
+												 context->rt_index,
+												 context->new_index);
+			ininfo->correlating = adjust_relid_set(ininfo->correlating, /*CDB*/
+												   context->rt_index,
+												   context->new_index);
+			ininfo->allrelids = adjust_relid_set(ininfo->allrelids,     /*CDB*/
 												 context->rt_index,
 												 context->new_index);
 		}

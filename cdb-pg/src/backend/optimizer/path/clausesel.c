@@ -3,6 +3,7 @@
  * clausesel.c
  *	  Routines to compute clause selectivities
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -449,13 +450,8 @@ clause_selectivity(PlannerInfo *root,
 					cacheable = true;
 					break;
 
-				case JOIN_UNION:
-					/* unimplemented anyway... */
-				case JOIN_IN:
-				case JOIN_REVERSE_IN:
-				case JOIN_UNIQUE_OUTER:
-				case JOIN_UNIQUE_INNER:
-					/* unsafe to cache */
+                default:
+                    /* unsafe to cache */
 					break;
 			}
 		}

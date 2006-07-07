@@ -27,6 +27,7 @@ bool        cdb_walk_vars(Node                         *node,
                           int                           levelsup);
 
 extern Relids pull_varnos(Node *node);
+extern Relids pull_varnos_of_level(Node *node, int levelsup);   /*CDB*/
 extern bool contain_var_reference(Node *node, int varno, int varattno,
 					  int levelsup);
 extern bool contain_var_clause(Node *node);

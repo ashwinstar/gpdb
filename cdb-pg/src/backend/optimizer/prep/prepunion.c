@@ -1103,6 +1103,12 @@ adjust_inherited_attrs_mutator(Node *node,
 		ininfo->righthand = adjust_relid_set(ininfo->righthand,
 											 context->old_rt_index,
 											 context->new_rt_index);
+		ininfo->correlating = adjust_relid_set(ininfo->correlating,     /*CDB*/
+											   context->old_rt_index,
+											   context->new_rt_index);
+		ininfo->allrelids = adjust_relid_set(ininfo->allrelids,         /*CDB*/
+											 context->old_rt_index,
+											 context->new_rt_index);
 		return (Node *) ininfo;
 	}
 

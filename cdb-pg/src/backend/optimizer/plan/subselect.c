@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "catalog/pg_operator.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -92,6 +93,67 @@ static Bitmapset *finalize_plan(Plan *plan, List *rtable,
 			  Bitmapset *outer_params,
 			  Bitmapset *valid_params);
 static bool finalize_primnode(Node *node, finalize_primnode_context *context);
+
+
+/*
+ * cdb_op_is_equality: return true if all ops in list are mergejoinable or
+ * hashjoinable.
+ *
+ * We would like to return true iff every op in the list has the properties:
+ *      - There is no non-NULL a,b,c such that
+ *          (a op b) and (a op c) and (b IS DISTINCT FROM c)
+ *      - (a op b) is unknown if and only if (a IS NULL) or (b IS NULL)
+ * Unfortunately these properties aren't specified as part of the operator
+ * definition.  We'll use the info that is available and hope for the best.
+ */
+static bool
+cdb_op_is_equality(List *operOids)
+{
+	ListCell   *cell;
+    bool        result = true;
+
+	foreach(cell, operOids)
+	{
+		Oid			        opid = lfirst_oid(cell);
+        regproc             procid = 0;
+		Form_pg_operator    optup;
+        Form_pg_proc        proctup;
+		HeapTuple	        tup;
+
+        /* op must be hashjoinable or mergejoinable */
+        tup = SearchSysCache(OPEROID, ObjectIdGetDatum(opid), 0, 0, 0);
+		if (!HeapTupleIsValid(tup))
+			elog(ERROR, "cache lookup failed for operator %u", opid);
+		optup = (Form_pg_operator)GETSTRUCT(tup);
+
+        if (optup->oprcanhash)
+            procid = optup->oprcode;
+        else if (optup->oprlsortop && optup->oprrsortop)
+            procid = optup->oprcode;
+
+		ReleaseSysCache(tup);
+        optup = NULL;
+
+        if (!procid)
+            return false;
+
+        /* Function must be strict and not volatile */
+		tup = SearchSysCache(PROCOID, ObjectIdGetDatum(procid), 0, 0, 0);
+		if (!HeapTupleIsValid(tup))
+			elog(ERROR, "cache lookup failed for function %u", procid);
+		proctup = (Form_pg_proc)GETSTRUCT(tup);
+
+        if (!proctup->proisstrict ||
+            proctup->provolatile)
+            result = false;
+
+		ReleaseSysCache(tup);
+
+        if (!result)
+            return false;
+	}
+	return true;
+}                               /* cdb_op_is_equality */
 
 
 /*
@@ -665,28 +727,20 @@ convert_IN_to_join(PlannerInfo *root, SubLink *sublink)
 	Query	   *parse = root->parse;
 	Query	   *subselect = (Query *) sublink->subselect;
 	Relids		left_varnos;
-    Relids      right_varnos;   /*CDB*/
+    Relids      correlating_varnos;
 	int			rtindex;
 	RangeTblEntry *rte;
 	RangeTblRef *rtr;
 	InClauseInfo *ininfo;
 	List	   *exprs;
 
-	/*
-	 * The sublink type must be "= ANY" --- that is, an IN operator. (We
-	 * require the operator name to be unqualified, which may be overly
-	 * paranoid, or may not be.)
+    Assert(IsA(subselect, Query));
+
+    /*
+	 * The sublink type must be "op ANY".
 	 */
 	if (sublink->subLinkType != ANY_SUBLINK)
 		return NULL;
-	if (list_length(sublink->operName) != 1 ||
-		strcmp(strVal(linitial(sublink->operName)), "=") != 0)
-		return NULL;
-
-    /*
-	 * CDB: Correlated subquery with outer refs to current query level?
-	 */
-	right_varnos = pull_varnos((Node *) subselect);
 
 	/*
 	 * The left-hand expressions must contain some Vars of the current query,
@@ -728,11 +782,20 @@ convert_IN_to_join(PlannerInfo *root, SubLink *sublink)
 	 * Now build the InClauseInfo node.
 	 */
 	ininfo = makeNode(InClauseInfo);
-	ininfo->lefthand = bms_union(left_varnos, right_varnos);    /*CDB*/
+	ininfo->lefthand = left_varnos;
 	ininfo->righthand = bms_make_singleton(rtindex);
 	root->in_info_list = lappend(root->in_info_list, ininfo);
 
-	/*
+    /*
+     * CDB: Get relids of current query that are referenced by subquery.
+     */
+	correlating_varnos = pull_varnos_of_level((Node *) subselect, 1);
+    ininfo->correlating = correlating_varnos;
+    ininfo->allrelids = bms_union(left_varnos, correlating_varnos);
+    ininfo->allrelids = bms_add_member(ininfo->allrelids, rtindex);
+    ininfo->op_is_equality = cdb_op_is_equality(sublink->operOids);
+
+    /*
 	 * Build the result qual expressions.  As a side effect,
 	 * ininfo->sub_targetlist is filled with a list of Vars representing the
 	 * subselect outputs.

@@ -898,12 +898,17 @@ typedef struct InClauseInfo
 	NodeTag		type;
 	Relids		lefthand;		/* base relids in lefthand expressions */
 	Relids		righthand;		/* base relids coming from the subselect */
+	Relids		correlating;    /* CDB: relids of outer refs from subquery */
+	Relids		allrelids;		/* CDB: lefthand + righthand + correlated */
 	List	   *sub_targetlist; /* targetlist of original RHS subquery */
 
 	/*
 	 * Note: sub_targetlist is just a list of Vars or expressions; it does not
 	 * contain TargetEntry nodes.
 	 */
+
+    bool        op_is_equality; /* CDB: true => comparison is equality op */
+
 } InClauseInfo;
 
 #endif   /* RELATION_H */

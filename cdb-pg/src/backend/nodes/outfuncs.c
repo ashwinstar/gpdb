@@ -1430,7 +1430,11 @@ _outInClauseInfo(StringInfo str, InClauseInfo *node)
 
 	WRITE_BITMAPSET_FIELD(lefthand);
 	WRITE_BITMAPSET_FIELD(righthand);
+	WRITE_BITMAPSET_FIELD(correlating);                 /*CDB*/
+    WRITE_BITMAPSET_FIELD(allrelids);                   /*CDB*/
 	WRITE_NODE_FIELD(sub_targetlist);
+
+    WRITE_BOOL_FIELD(op_is_equality);                   /*CDB*/
 }
 
 /*****************************************************************************

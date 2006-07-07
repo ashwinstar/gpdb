@@ -4,7 +4,7 @@
  *	  Definitions for tagged nodes.
  *
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -462,6 +462,8 @@ typedef enum CmdType
  */
 typedef enum JoinType
 {
+    JOIN_INVALID = -1,          /* CDB */
+
 	/*
 	 * The canonical kinds of joins
 	 */
