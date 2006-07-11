@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- This script was automatically generated using Macrovision's InstallAnywhere 7.1 Enterprise, Build 2781
      STATUS: Fully Functional LICENSED Edition
-     DATE:   Wed Apr 19 19:46:28 PDT 2006 -->
+     DATE:   Tue Jun 27 16:54:39 PDT 2006 -->
 <InstallAnywhere_Deployment_Project increments="7087">
 	<!-- ** DO NOT EDIT ** Essential authorization and configuration data ** DO NOT EDIT ** -->
 	<essentialScriptInfo>
@@ -10,7 +10,7 @@
 		<scriptID>12,42,11,77,81,49,57,51,55,75,55,90,77,89,71,70</scriptID>
 		<buildID>3,13,71,76,105,110,117,120,44,32,50,46,52,46,50,49,45,50,55,46,69,76,44,32,97,109,100,54,52,59,32,74,97,118,97,32,49,46,53,46,48,95,48,53,44,32,83,117,110,32,77,105,99,114,111,115,121,115,116,101,109,115,32,73,110,99,46,44,32,104,116,116,112,58,47,47,106,97,118,97,46,115,117,110,46,99,111,109,47,59,32,101,110,44,32,85,110,107,110,111,119,110,59,32,85,84,70,45,56</buildID>
 		<!-- The authorizationID may change between project saves and builds.  This does not effect the integrity of the project, nor do changes in this value represent changes in the actual InstallAnywhere project. -->
-		<authorizationID>1,0,0,0,-77,52,0,64,80,112,117,98,89,98,113,97,113,65,81,86,58,65,67,66,70,65,64,69,66,69,48,63,71,5,2,7,0,65,101,10,1,0,0</authorizationID>
+		<authorizationID>1,0,0,0,19,-28,112,-96,80,112,117,98,89,98,113,97,113,65,81,86,58,65,67,66,70,65,64,69,66,69,48,63,71,5,2,0,15,74,103,12,1,0,0</authorizationID>
 	</essentialScriptInfo>
 	<installationObjects uniqueObjects="344">
 		<object class="com.zerog.ia.installer.Installer" objectID="089e8853af36">
@@ -222,7 +222,7 @@ You may cancel this installation at any time by typing 'quit'.
 								<string><![CDATA[$MPP_REL_NAME$]]></string>
 							</property>
 							<property name="value">
-								<string><![CDATA[mpp-pgsql-Release-2_1_P2_build-3]]></string>
+								<string><![CDATA[mpp-pgsql-2.2.0.1]]></string>
 							</property>
 						</object>
 					</method>
@@ -2974,7 +2974,7 @@ For your convenience, a file called bizgres_path.sh has been placed in the top l
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.project.build.last.date]]></string>
-						<string><![CDATA[April 19, 2006 7:46:26 PM PDT]]></string>
+						<string><![CDATA[June 27, 2006 3:44:41 PM PDT]]></string>
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.build.platform.windows.vm]]></string>
@@ -3046,7 +3046,7 @@ For your convenience, a file called bizgres_path.sh has been placed in the top l
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.project.save.last.date]]></string>
-						<string><![CDATA[April 19, 2006 7:46:26 PM PDT]]></string>
+						<string><![CDATA[June 27, 2006 4:54:37 PM PDT]]></string>
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.build.options.optimization.platform.cdrom]]></string>
@@ -3210,7 +3210,7 @@ For your convenience, a file called bizgres_path.sh has been placed in the top l
 			<property name="installerInfoData">
 				<object class="com.zerog.ia.installer.util.InstallerInfoData" objectID="089e8867af38">
 					<property name="installerTitle">
-						<string><![CDATA[Bizgres MPP 2.1 Patch 2 Build 3]]></string>
+						<string><![CDATA[Bizgres MPP 2.2.0.1 Build 6]]></string>
 					</property>
 					<property name="installerName">
 						<string><![CDATA[BizgresMPP]]></string>
@@ -3596,7 +3596,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>37378022</long>
+												<long>49289916</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -3611,7 +3611,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -3623,7 +3623,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="198e2fa68c19">
@@ -3838,7 +3838,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>40186819</long>
+												<long>52377139</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -3853,7 +3853,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -3865,7 +3865,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19981f888c1f">
@@ -4071,7 +4071,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>45244541</long>
+												<long>57212856</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -4086,7 +4086,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -4098,7 +4098,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19d6a1bb8c5e">
@@ -4899,7 +4899,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>98964255</long>
+												<long>115888922</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -4914,7 +4914,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/OSX-i386/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/OSX-i386/usr/local/bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -4926,7 +4926,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="16280503a0d7">
@@ -6321,7 +6321,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>92851553</long>
+												<long>114418680</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -6336,7 +6336,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/OSX-ppc/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/OSX-ppc/usr/local/bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -6348,7 +6348,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="762cb525a8fb">
@@ -7237,7 +7237,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>41796052</long>
+												<long>46516255</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -7252,7 +7252,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -7264,7 +7264,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="1999ab4f8c24">
@@ -7479,7 +7479,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>41945389</long>
+												<long>46655579</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -7494,7 +7494,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -7506,7 +7506,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19c773988c34">
@@ -7726,7 +7726,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>47670705</long>
+												<long>52393394</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -7741,7 +7741,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -7753,7 +7753,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19d833ab8c63">
@@ -8066,7 +8066,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>4366</long>
+												<long>4374</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -8569,7 +8569,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>45002965</long>
+												<long>61996076</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -8584,7 +8584,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -8596,7 +8596,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19cf4c4d8c40">
@@ -8773,7 +8773,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>47803570</long>
+												<long>65075107</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -8788,7 +8788,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -8800,7 +8800,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19cf92ae8c46">
@@ -8982,7 +8982,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>52869486</long>
+												<long>69919015</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -8997,7 +8997,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -9009,7 +9009,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19dbb3bb8c6e">
@@ -9420,7 +9420,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>49433283</long>
+												<long>59234703</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -9435,7 +9435,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -9447,7 +9447,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19d3b4ae8c52">
@@ -9605,7 +9605,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>49570332</long>
+												<long>59361739</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -9620,7 +9620,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -9632,7 +9632,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19d3cc8f8c55">
@@ -9814,7 +9814,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>55295650</long>
+												<long>65099553</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -9829,7 +9829,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -9841,7 +9841,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="directoryName">
-												<string><![CDATA[bizgres-mpp-2_1_P2_build-3-0_9_GA]]></string>
+												<string><![CDATA[bizgres-mpp-2_2_0_1-build-6]]></string>
 											</property>
 											<property name="patternMatcher">
 												<object class="com.zerog.ia.installer.SimplePatternMatcher" objectID="19de7f8b8c75">
