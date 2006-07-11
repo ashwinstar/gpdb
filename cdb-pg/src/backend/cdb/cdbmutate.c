@@ -153,86 +153,95 @@ apply_motion(Plan *plan, Query *query)
 				{
 					List   *hashExpr;
 					ListCell *exp1;
+					int			maxattrs = 200;
 					
-					targetPolicy = palloc0(sizeof(MppPolicy)- sizeof(targetPolicy->attrs) + 200 * sizeof(targetPolicy->attrs[0]));
-					targetPolicy->nattrs = 0;
-					 
-					targetPolicy->ptype = POLICYTYPE_PARTITIONED;
-					
-					/* Find out what the flow is partitioned on */
-					hashExpr = plan->flow->hashExpr;
-					
-					if(hashExpr)
-					foreach(exp1, hashExpr) 
+					if (query->intoPolicy != NULL)
+						targetPolicy = query->intoPolicy;
+					else
 					{
-						AttrNumber	n;
-						/* See if this Expr is a column of the result table */
+						/* User did not specify a DISTRIBUTED BY clause */
+					
+						targetPolicy = palloc0(sizeof(MppPolicy)- sizeof(targetPolicy->attrs) + maxattrs * sizeof(targetPolicy->attrs[0]));
+						targetPolicy->nattrs = 0;
+						 
+						targetPolicy->ptype = POLICYTYPE_PARTITIONED;
 						
-						for(n=1;n<=list_length(plan->targetlist);n++)
+						/* Find out what the flow is partitioned on */
+						hashExpr = plan->flow->hashExpr;
+						
+						if(hashExpr)
+						foreach(exp1, hashExpr) 
 						{
-							Var		   *new_var = NULL;
-							 
-							TargetEntry *target = get_tle_by_resno(plan->targetlist, n);
+							AttrNumber	n;
+							/* See if this Expr is a column of the result table */
 							
-							/* If subplan expr is a Var, copy to preserve its EXPLAIN info. */
-				            if (IsA(target->expr, Var))
-				            {
-				                new_var = copyObject(target->expr);
-				                new_var->varno = OUTER;
-				                new_var->varattno = n;
-				            }
-				
-				            /*
-					         * Make a Var that references the target list entry at this offset,
-					         * using OUTER as the varno
-					         */
-				            else
-						        new_var = makeVar(OUTER,
-				                                  n,
-				                                  exprType((Node *) target->expr),
-				                                  exprTypmod((Node *) target->expr),
-				                                  0);
-				           
-							if (equal(lfirst(exp1),new_var))
+							for(n=1;n<=list_length(plan->targetlist);n++)
 							{
-								/* If it is, use it to partition the result table, to avoid 
-								 * unnecessary redistibution of data */
+								Var		   *new_var = NULL;
 								 
-								targetPolicy->attrs[targetPolicy->nattrs++] = n;
-								break;
+								TargetEntry *target = get_tle_by_resno(plan->targetlist, n);
+								
+								/* If subplan expr is a Var, copy to preserve its EXPLAIN info. */
+					            if (IsA(target->expr, Var))
+					            {
+					                new_var = copyObject(target->expr);
+					                new_var->varno = OUTER;
+					                new_var->varattno = n;
+					            }
+					
+					            /*
+						         * Make a Var that references the target list entry at this offset,
+						         * using OUTER as the varno
+						         */
+					            else
+							        new_var = makeVar(OUTER,
+					                                  n,
+					                                  exprType((Node *) target->expr),
+					                                  exprTypmod((Node *) target->expr),
+					                                  0);
+					           
+								if (equal(lfirst(exp1),new_var))
+								{
+									/* If it is, use it to partition the result table, to avoid 
+									 * unnecessary redistibution of data */
+									 
+									targetPolicy->attrs[targetPolicy->nattrs++] = n;
+									break;
+								}
+								
+								
 							}
-							
-							
 						}
-					}
-
-					/* do we know how to partition? */
-					if (targetPolicy->nattrs == 0)
-					{
-						/* If not, Distribute on column 1 */
-						targetPolicy->attrs[targetPolicy->nattrs++] = 1;
-					}
-					
-					{
-						char columns[255];
-						int i;
-						columns[0] = '\0';
-						for (i=0;i<targetPolicy->nattrs;i++)
+	
+						/* do we know how to partition? */
+						if (targetPolicy->nattrs == 0)
 						{
-							TargetEntry *target = get_tle_by_resno(plan->targetlist, targetPolicy->attrs[i]);
-							if (i>0)
-							strcat(columns, ", ");
-							strcat(columns, target->resname);
-						
+							/* If not, Distribute on column 1 */
+							targetPolicy->attrs[targetPolicy->nattrs++] = 1;
 						}
-					
-						ereport(NOTICE,
-								(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
-								 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) " 
-									    "named '%s' as the Bizgres MPP data distribution key for this "
-									    "table. ", columns),
-							     errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
-							     		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
+						
+						if (query->intoPolicy == NULL)
+						{
+							char columns[255];
+							int i;
+							columns[0] = '\0';
+							for (i=0;i<targetPolicy->nattrs;i++)
+							{
+								TargetEntry *target = get_tle_by_resno(plan->targetlist, targetPolicy->attrs[i]);
+								if (i>0)
+								strcat(columns, ", ");
+								strcat(columns, target->resname);
+							
+							}
+						
+							ereport(NOTICE,
+									(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
+									 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) " 
+										    "named '%s' as the Bizgres MPP data distribution key for this "
+										    "table. ", columns),
+								     errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
+								     		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
+						}
 					}
 					
 					targetPolicyType = targetPolicy->ptype;

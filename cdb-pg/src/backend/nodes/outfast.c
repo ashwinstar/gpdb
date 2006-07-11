@@ -1835,6 +1835,7 @@ _outSelectStmt(StringInfo str, SelectStmt *node)
 	WRITE_BOOL_FIELD(all);
 	WRITE_NODE_FIELD(larg);
 	WRITE_NODE_FIELD(rarg);
+	WRITE_NODE_FIELD(distributedBy);
 }
 
 static void

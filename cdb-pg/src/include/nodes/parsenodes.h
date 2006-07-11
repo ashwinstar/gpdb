@@ -710,6 +710,8 @@ typedef struct SelectStmt
 	struct SelectStmt *larg;	/* left child */
 	struct SelectStmt *rarg;	/* right child */
 	/* Eventually add fields for CORRESPONDING spec here */
+	
+	List       *distributedBy;   /* what columns we distribute the data by for SELECT INTO or CTAS */
 } SelectStmt;
 
 

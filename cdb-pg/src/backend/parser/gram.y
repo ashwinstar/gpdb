@@ -2168,7 +2168,7 @@ OptDistributedBy:   DISTRIBUTED BY  '(' columnList ')'			{ $$ = $4; }
  */
 
 CreateAsStmt:
-			CREATE OptTemp TABLE qualified_name OptCreateAs WithOidsAs SelectStmt
+			CREATE OptTemp TABLE qualified_name OptCreateAs WithOidsAs SelectStmt OptDistributedBy
 				{
 					/*
 					 * When the SelectStmt is a set-operation tree, we must
@@ -2186,6 +2186,7 @@ CreateAsStmt:
 					n->into = $4;
 					n->intoColNames = $5;
 					n->intoHasOids = $6;
+					n->distributedBy = $8;
 					$$ = $7;
 				}
 		;
