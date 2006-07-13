@@ -576,6 +576,13 @@ RecvTuple(int16 motNodeID, HeapTuple *tup_i)
 	/* Get the next HeapTuple, if one is available! */
 	*tup_i = htfifo_gettuple(pMNEntry->ready_tuples);
 
+	if (*tup_i != NULL)
+	{
+		statRecvTuple(pMNEntry, NULL, recvRC);
+		return GOT_TUPLE;
+	}
+
+	/* Need to process more chunks before we can build a full tuple to return */
 	do
 	{
 		if (*tup_i == NULL && pMNEntry->moreNetWork)
@@ -607,11 +614,11 @@ RecvTuple(int16 motNodeID, HeapTuple *tup_i)
 			 */
 			recvRC = NO_TUPLE;
 		}
-
-		/* Stats */
-		statRecvTuple(pMNEntry, NULL, recvRC);
 	}
 	while (recvRC == NO_TUPLE);
+
+	/* Stats */
+	statRecvTuple(pMNEntry, NULL, recvRC);
 
 	return recvRC;
 }
@@ -641,9 +648,16 @@ RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i, int16 srcRoute)
 	/* Get the next HeapTuple, if one is available! */
 	*tup_i = htfifo_gettuple(pCSEntry->ready_tuples);
 
-	if (*tup_i == NULL)
+	if (*tup_i != NULL)
 	{
+		statRecvTuple(pMNEntry, pCSEntry, recvRC);
+		return GOT_TUPLE;
+	}
 
+	/* We need to get more chunks before we have a full tuple to return */
+
+	do
+	{
 		if (pCSEntry->end_of_stream)
 		{
 			recvRC = END_OF_STREAM;
@@ -653,26 +667,32 @@ RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i, int16 srcRoute)
 
 		processIncomingChunks(pMNEntry, motNodeID, srcRoute);
 		*tup_i = htfifo_gettuple(pCSEntry->ready_tuples);
-	}
 
-	if (*tup_i != NULL)
-	{
-		/* We got a tuple. */
-		recvRC = GOT_TUPLE;
+		if (*tup_i != NULL)
+		{
+			/* We got a tuple. */
+			recvRC = GOT_TUPLE;
+		}
+		else if (pCSEntry->end_of_stream)
+		{
+			/*
+			 * No tuple was available (tuple-store was at EOF), and end-of-stream
+			 * has been marked.  No more tuples are going to show up.
+			 */
+			recvRC = END_OF_STREAM;
+		}
+		else
+		{
+			/*
+			 * No tuple was available (tuple-store was at EOF), but we
+			 * have not been sent an end-of-stream. We need to loop so
+			 * that we process more chunks to assemble a complete
+			 * tuple.
+			 */
+			recvRC = NO_TUPLE;
+		}
 	}
-	else if (pCSEntry->end_of_stream)
-	{
-		/*
-		 * No tuple was available (tuple-store was at EOF), and end-of-stream
-		 * has been marked.  No more tuples are going to show up.
-		 */
-		recvRC = END_OF_STREAM;
-	}
-	else
-        ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-                        errmsg_internal("RecvTupleFrom got no data and no EOS "
-                                        "on motNodeID=%d srcRoute=%d",
-                                        motNodeID, srcRoute) ));
+	while (recvRC == NO_TUPLE);
 
 	/* Stats */
 	statRecvTuple(pMNEntry, pCSEntry, recvRC);
