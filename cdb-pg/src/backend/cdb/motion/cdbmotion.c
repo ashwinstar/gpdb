@@ -551,78 +551,7 @@ SendEndOfStream(int16 motNodeID, int16 targetRoute)
 	return SEND_COMPLETE;
 }
 
-/*
- * Function:
- *
- */
-ReceiveReturnCode
-RecvTuple(int16 motNodeID, HeapTuple *tup_i)
-{
-	MotionNodeEntry *pMNEntry;
-	ReceiveReturnCode recvRC;
-
-	/*
-	 * Process all chunks in our incoming queue, regardless of which motion
-	 * nodes they are coming from.
-	 */
-
-	/* Get the tuple-store that should contain heap-tuples that we want. */
-
-	pMNEntry = getMotionNodeEntry(motNodeID, "RecvTuple");
-
-    /* Sorted receiver doesn't call this function. */
-    Assert(!pMNEntry->preserve_order);
-
-	/* Get the next HeapTuple, if one is available! */
-	*tup_i = htfifo_gettuple(pMNEntry->ready_tuples);
-
-	if (*tup_i != NULL)
-	{
-		statRecvTuple(pMNEntry, NULL, recvRC);
-		return GOT_TUPLE;
-	}
-
-	/* Need to process more chunks before we can build a full tuple to return */
-	do
-	{
-		if (*tup_i == NULL && pMNEntry->moreNetWork)
-		{
-			processIncomingChunks(pMNEntry, motNodeID, ANY_ROUTE);
-			*tup_i = htfifo_gettuple(pMNEntry->ready_tuples);
-		}
-
-		if (*tup_i != NULL)
-		{
-			/* We got a tuple. */
-			recvRC = GOT_TUPLE;
-		}
-		else if (!pMNEntry->moreNetWork)
-		{
-			/*
-			 * No tuple was available (tuple-store was at EOF), and
-			 * end-of-stream has been marked.  No more tuples are going to
-			 * show up.
-			 */
-			recvRC = END_OF_STREAM;
-		}
-		else
-		{
-			/*
-			 * No tuple was available (tuple-store was at EOF), but we have
-			 * not been sent an end-of-stream.	Tell the caller that there are
-			 * no tuples right now.
-			 */
-			recvRC = NO_TUPLE;
-		}
-	}
-	while (recvRC == NO_TUPLE);
-
-	/* Stats */
-	statRecvTuple(pMNEntry, NULL, recvRC);
-
-	return recvRC;
-}
-
+/* An unordered receiver will call this with srcRoute == ANY_ROUTE */
 ReceiveReturnCode
 RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i, int16 srcRoute)
 {
@@ -636,44 +565,70 @@ RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i, int16 srcRoute)
 
 	pMNEntry = getMotionNodeEntry(motNodeID, "RecvTupleFrom");
 
-    /* Only sorted receiver (Merge Receive) uses this function. */
-    Assert(pMNEntry->preserve_order);
-
-	/*
-	 * Pull up the chunk-sorter entry for the specified sender, and get the
-	 * tuple-store we should use.
-	 */
-	pCSEntry = getChunkSorterEntry(pMNEntry, srcRoute);
+	if (srcRoute == ANY_ROUTE)
+	{
+		Assert(pMNEntry->preserve_order == 0);
+		pCSEntry = NULL;
+	}
+	else
+	{
+		Assert(pMNEntry->preserve_order != 0);
+		/*
+		 * Pull up the chunk-sorter entry for the specified sender, and get the
+		 * tuple-store we should use.
+		 */
+		pCSEntry = getChunkSorterEntry(pMNEntry, srcRoute);
+	}
 
 	/* Get the next HeapTuple, if one is available! */
-	*tup_i = htfifo_gettuple(pCSEntry->ready_tuples);
+	if (srcRoute == ANY_ROUTE)
+		*tup_i = htfifo_gettuple(pMNEntry->ready_tuples);
+	else
+		*tup_i = htfifo_gettuple(pCSEntry->ready_tuples);
 
 	if (*tup_i != NULL)
 	{
+		recvRC = GOT_TUPLE;
 		statRecvTuple(pMNEntry, pCSEntry, recvRC);
-		return GOT_TUPLE;
+		return recvRC;
 	}
 
 	/* We need to get more chunks before we have a full tuple to return */
-
 	do
 	{
-		if (pCSEntry->end_of_stream)
+		if (srcRoute == ANY_ROUTE)
 		{
-			recvRC = END_OF_STREAM;
-			statRecvTuple(pMNEntry, pCSEntry, recvRC);
-			return recvRC;
+			if (!pMNEntry->moreNetWork)
+			{
+				recvRC = END_OF_STREAM;
+				statRecvTuple(pMNEntry, pCSEntry, recvRC);
+				return recvRC;
+			}
+		}
+		else
+		{
+			if  (pCSEntry->end_of_stream)
+			{
+				recvRC = END_OF_STREAM;
+				statRecvTuple(pMNEntry, pCSEntry, recvRC);
+				return recvRC;
+			}
 		}
 
 		processIncomingChunks(pMNEntry, motNodeID, srcRoute);
-		*tup_i = htfifo_gettuple(pCSEntry->ready_tuples);
+
+		if (srcRoute == ANY_ROUTE)
+			*tup_i = htfifo_gettuple(pMNEntry->ready_tuples);
+		else
+			*tup_i = htfifo_gettuple(pCSEntry->ready_tuples);
 
 		if (*tup_i != NULL)
 		{
 			/* We got a tuple. */
 			recvRC = GOT_TUPLE;
 		}
-		else if (pCSEntry->end_of_stream)
+		else if ((srcRoute == ANY_ROUTE && !pMNEntry->moreNetWork) ||
+				 (srcRoute != ANY_ROUTE && pCSEntry->end_of_stream))
 		{
 			/*
 			 * No tuple was available (tuple-store was at EOF), and end-of-stream

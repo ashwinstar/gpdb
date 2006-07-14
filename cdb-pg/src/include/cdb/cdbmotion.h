@@ -186,6 +186,8 @@ extern SendReturnCode SendEndOfStream(int16 motNodeID, int16 targetRoute);
 /* Receive a tuple from the corresponding motion-node on any query-executor
  * in the process-group.  This function returns immediately without blocking;
  *
+ * To get an result for unordered receive (we used to provide a separate
+ * RecvTuple() function, set the srcRoute to ANY_ROUTE
  *
  * RETURN: the return code is one of the following:
  *
@@ -195,9 +197,8 @@ extern SendReturnCode SendEndOfStream(int16 motNodeID, int16 targetRoute);
  *
  *		END_OF_STREAM - No tuple was received, and no more are expected.
  */
-extern ReceiveReturnCode RecvTuple(int16 motNodeID, HeapTuple *tup_i);
 extern ReceiveReturnCode RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i,
-			  int16 srcRoute);
+									   int16 srcRoute);
 
 extern void SendStopMessage(int16 motNodeID);
 

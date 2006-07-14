@@ -310,7 +310,7 @@ execMotionUnsortedReceiver(MotionState * node)
 		return NULL;
 	}
 
-	recvRC = RecvTuple(motion->motionID, &tuple);
+	recvRC = RecvTupleFrom(motion->motionID, &tuple, ANY_ROUTE);
 
 	if (recvRC == END_OF_STREAM)
 	{
