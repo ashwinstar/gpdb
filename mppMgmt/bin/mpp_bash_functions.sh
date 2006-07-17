@@ -411,8 +411,15 @@ CHK_EXISTS_TABLE () {
 			SCHEMA_NAME=`$ECHO $TABLENAME|$CUT -d"." -f1`
                         QUERY_TABLENAME=`$ECHO $TABLENAME|$CUT -d"." -f2`
 			TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select count(*) from pg_class where relname='$QUERY_TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+			if [ $TAB_COUNT -eq 1 ];then
+			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select relhassubclass from pg_class where relname='$QUERY_TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+			fi
 		else
 			TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select count(*) from pg_class where relname='$TABLENAME';"`
+			if [ $TAB_COUNT -eq 1 ];then
+			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select relhassubclass from pg_class where relname='$TABLENAME';"`
+			SCHEMA_NAME=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select nspname from pg_namespace where oid in(select relnamespace from pg_class where relname='$TABLENAME');"`
+			fi
 		fi
 #		$EXPORT_LIB_PATH;$PSQL -q -p  $MASTER_PORT $QD_DBNAME -c"\d $TABLENAME;" -o /dev/null
 		if [ $TAB_COUNT -eq 0 ] || [ $TAB_COUNT -gt 1 ];then
