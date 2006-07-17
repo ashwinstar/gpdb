@@ -101,22 +101,9 @@ USAGE () {
 GET_DISTRIB_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ `$ECHO $DISTRIB_COLS |$GREP -c "{"` -ne 0 ];then
-	if [ x"" != x"$SCHEMA_NAME" ]; then
-		SCHEMA_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_namespace where nspname='${SCHEMA_NAME}';"`
-		ERROR_CHK $? "obtain schema oid value" 2
-		LOG_MSG "[INFO]:-Obtaining OID for $TARGETTBL on QD"
-		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$TARGETTBL' and relnamespace=${SCHEMA_OID};"`
+		LOG_MSG "[INFO]:-Obtaining OID for $TABLENAME on QD"
+		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 		ERROR_CHK $? "obtain table oid value" 2
-	else
-		TABLE_NAME_COUNT=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from pg_class where relname='${TARGETTBL}';"`
-		case $TABLE_NAME_COUNT in
-                        0) ERROR_EXIT "[FATAL]:-Could not locate $TARGETTBL in pg_class" 2 ;;
-                        1) ;;
-                        *) ERROR_EXIT "[FATAL]:-Duplicates found for $TARGETTBL in pg_class, use -n <schema name> option" 2 ;;
-                esac
-		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$TARGETTBL';"`
-		ERROR_CHK $? "obtain table oid value" 2
-	fi
 	TOTAL_COLS=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select max(attnum) from pg_attribute where attrelid=${TABLE_OID};"`
 	ERROR_CHK $? "obtain table column count" 2
 	LOG_MSG "[INFO]:-Distribution columns for $TARGETTBL"
@@ -131,8 +118,17 @@ GET_DISTRIB_INFO () {
 	LOG_MSG "[INFO]:-Total columns in table $TARGETTBL = $TOTAL_COLS"
 	LOG_MSG "[INFO]:-------------------------------------------"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+	if [ $PARTITIONED == 't' ];then
+		LOG_MSG "[INFO]:-Table $TARGETTBL is type Partitioned"
+		PARENT_TABLE_RELFILENODE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relfilenode from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+		CHILD_NAME_ARRAY=(`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relname from pg_class where relfilenode in (select inhrelid from pg_inherits where inhparent=$PARENT_TABLE_RELFILENODE);"|$TR '\n' ' '`)
+		for C_NAME in ${CHILD_NAME_ARRAY[@]}
+		do
+			LOG_MSG "[INFO]:-Has child table $C_NAME"
+		done	
+	fi
 	else
-		LOG_MSG "[INFO]:-Distribution columns for are type special"
+		LOG_MSG "[INFO]:-Distribution columns are of type special"
 	fi
 }
 GET_NODE_COUNT () {
@@ -158,7 +154,6 @@ GET_NODE_COUNT () {
 	if [ `$ECHO $TARGETTBL|$GREP -c "\."` -eq 0 ];then
 		TARGETTBL="${SCHEMA_NAME}.$TARGETTBL"
 	fi
-echo $TARGETTBL
 	SEGCOUNT=0
 	for NodeInfo in `$CAT $NODELIST`
 	do
@@ -307,7 +302,7 @@ if [ x"" != x"$TARGETTBL" ];then
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Table $TARGETTBL does not exist" 2
 	else
-		GET_DISTRIB_COLS $TARGETTBL $MASTER_PORT $QD_DBNAME
+		GET_DISTRIB_COLS $TABLENAME $MASTER_PORT $QD_DBNAME
 		if [ $DISTRIB -eq 1 ];then
 			GET_DISTRIB_INFO
 		else
