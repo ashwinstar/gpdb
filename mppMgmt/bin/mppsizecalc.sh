@@ -84,7 +84,6 @@ USAGE () {
 	$ECHO "      -f, display full size information [default:-display total only]"
 	$ECHO "      -a, <database name> alternative database name [default ${QD_DBNAME}]"
 	$ECHO "      -i, obtain index size for <table name> [default:- table size]"
-	$ECHO "      -n, <schema name> used where have duplicate table names in different schema"
 	$ECHO "      -x, <database name> name of database to obtain size data [default ${QD_DBNAME}]"
 	$ECHO "      -p, obtain size details for primary segment instance only [default both]"
 	$ECHO "      -m, obtain size details for mirror segment instances only [default both]"
@@ -284,7 +283,12 @@ DISPLAY_SIZE () {
 	LOG_MSG "[INFO]:-Size calculation type = $TYPE_TEXT"
 	if [ $VERBOSE ];then
 		case $SIZE_TYPE in 
-			0) LOG_MSG "[INFO]:-Total space used for table [$TABLE_NAME] in database [$QD_DBNAME] " ;;
+			0) if [ $PARTITIONED = 't' ];then
+			   LOG_MSG "[INFO]:-Table $TABLE_NAME is type Partitioned"
+			   else
+			   LOG_MSG "[INFO]:-Table $TABLE_NAME is type Un-Partitioned"
+			   fi 
+			   LOG_MSG "[INFO]:-Total space used for table [$TABLE_NAME] in database [$QD_DBNAME] " ;;
 			1) LOG_MSG "[INFO]:-Total space used for indexes on [$TABLE_NAME table in database [$QD_DBNAME] " ;;
 			2) LOG_MSG "[INFO]:-Total space used for database [$QD_DBNAME] " ;;
 		esac
@@ -298,7 +302,7 @@ DISPLAY_SIZE () {
 trap '$RM -f $TMPFILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 CHK_DB_QD_SET
 if [ $# -ne 0 ]; then
-	while getopts ":fvt:'?'ql:mpd:s:a:ix:n:" opt;do
+	while getopts ":fvt:'?'ql:mpd:s:a:ix:" opt;do
 	case $opt in
 		v ) VERSION_INFO ;;
 		t ) TABLE_NAME=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
@@ -313,7 +317,6 @@ if [ $# -ne 0 ]; then
 		m ) SIZE_TARGET=2 ;;
 		p ) SIZE_TARGET=1 ;;
 		x ) SIZE_DB=$OPTARG ;;
-		n ) SCHEMA_NAME=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
 		* ) USAGE ;;
 		esac
 	done
@@ -371,11 +374,7 @@ if [ x"" != x"$SIZE_DB" ];then
 	SIZE_TYPE=2
 fi
 if [ $SIZE_TYPE -le 1 ];then
-	if [ x"" == x"$SCHEMA_NAME" ];then
-		CHK_EXISTS_TABLE $TABLE_NAME $MASTER_PORT $QD_DBNAME
-	else
-		CHK_EXISTS_TABLE $SCHEMA_NAME.$TABLE_NAME $MASTER_PORT $QD_DBNAME
-	fi
+	CHK_EXISTS_TABLE $TABLE_NAME $MASTER_PORT $QD_DBNAME
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Table $TABLE_NAME does not exist in $QD_DBNAME database" 2
 	fi
