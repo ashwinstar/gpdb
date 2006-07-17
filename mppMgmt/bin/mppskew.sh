@@ -85,7 +85,6 @@ USAGE () {
 	$ECHO "      -a, <database name> alternative database name [default ${QD_DBNAME}]"
 	$ECHO "      -f, display full results output [default summary]"
 	$ECHO "      -c, display distribution columns for table, do not compute skew"
-	$ECHO "      -n, <schema name> used where have duplicate table names in different schema"
 	$ECHO "      -m, use mirror segment hosts for skew analysis [default primary segments]"
 	$ECHO
 	$ECHO "      Connection options:"
@@ -138,8 +137,10 @@ GET_DISTRIB_INFO () {
 }
 GET_NODE_COUNT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	SCHEMA=`$ECHO $TARGETTBL|$CUT -d. -f1`
-	T_NAME=`$ECHO $TARGETTBL|$CUT -d. -f2`
+	if [ `$ECHO $TARGETTBL|$GREP -c "\."` -eq 1 ];then
+		SCHEMA_NAME=`$ECHO $TARGETTBL|$CUT -d. -f1`
+		T_NAME=`$ECHO $TARGETTBL|$CUT -d. -f2`
+	fi
 	SEGCOUNT=0
 	NUM_SEGMENTS=`$PSQL -p $MASTER_PORT  $QD_DBNAME -A -t -c "select count(*) from $CONFIG_TABLE where content<>-1 and isprimary='t';"`
 	ERROR_CHK $? "obtain number of segment instances" 2
@@ -154,9 +155,10 @@ GET_NODE_COUNT () {
 		fi
 
 	LOG_MSG  "[INFO]:-Sending request to nodes.."
-	if [ $SCHEMA_NAME ];then
+	if [ `$ECHO $TARGETTBL|$GREP -c "\."` -eq 0 ];then
 		TARGETTBL="${SCHEMA_NAME}.$TARGETTBL"
 	fi
+echo $TARGETTBL
 	SEGCOUNT=0
 	for NodeInfo in `$CAT $NODELIST`
 	do
@@ -221,6 +223,11 @@ GET_NODE_COUNT () {
 	fi
 	LOG_MSG "-------------------------------------------------------------------"
 	LOG_MSG "[INFO]:-Table of results for Table $TARGETTBL in database $QD_DBNAME"
+	if [ $PARTITIONED == 't' ];then
+	LOG_MSG "[INFO]:-Table $TARGETTBL is type Partitioned"
+	else
+	LOG_MSG "[INFO]:-Table $TARGETTBL is type Un-Partitioned"
+	fi
 	LOG_MSG "-------------------------------------------------------------------"
 	LOG_MSG "[INFO]:-Distribution columns = $DISTRIB_COLS"
 	LOG_MSG "-------------------------------------------------------------------"
@@ -243,7 +250,7 @@ GET_NODE_COUNT () {
 trap '$RM -f $TMPFILE $NODELIST;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 CHK_DB_QD_SET
 if [ $# -ne 0 ];then
-        while getopts ":a:vmn:cqft:'?'d:l:" opt;do
+        while getopts ":a:vmcqft:'?'d:l:" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
                 t ) TARGETTBL=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
@@ -254,7 +261,6 @@ if [ $# -ne 0 ];then
 		a ) ALT_DBNAME=$OPTARG ;;
 		c ) DISTRIB=1 ;;
 		f ) FULL_DISPLAY=1 ;;
-		n ) SCHEMA_NAME=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
 		q ) unset VERBOSE ;;
                 * ) UNKNOWN_OPTION ;;
         esac
@@ -292,20 +298,16 @@ if [ $SEG_TYPE -eq 1 ];then
 else
 		TYPE_TEXT="Primary Segments"
 fi
-if [ $TARGETTBL ];then
+if [ x"" != x"$TARGETTBL" ];then
 	GET_QD_DB_NAME
 	if [ x"" != x"$ALT_DBNAME" ];then
         	QD_DBNAME=$ALT_DBNAME
 	fi
-	if [ x"" != x"$SCHEMA_NAME" ];then
-		CHK_EXISTS_TABLE ${SCHEMA_NAME}.$TARGETTBL $MASTER_PORT $QD_DBNAME
-	else
-		 CHK_EXISTS_TABLE $TARGETTBL $MASTER_PORT $QD_DBNAME
-	fi
-	GET_DISTRIB_COLS $TARGETTBL $MASTER_PORT $QD_DBNAME
+	CHK_EXISTS_TABLE $TARGETTBL $MASTER_PORT $QD_DBNAME
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Table $TARGETTBL does not exist" 2
 	else
+		GET_DISTRIB_COLS $TARGETTBL $MASTER_PORT $QD_DBNAME
 		if [ $DISTRIB -eq 1 ];then
 			GET_DISTRIB_INFO
 		else
