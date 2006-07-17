@@ -123,6 +123,7 @@ RCP=`findCmdInPath rcp`
 RSH=`findCmdInPath rsh`
 RM=`findCmdInPath rm`
 SCP=`findCmdInPath scp`
+SED=`findCmdInPath sed`
 SLEEP=`findCmdInPath sleep`
 SORT=`findCmdInPath sort`
 SPLIT=`findCmdInPath split`
@@ -178,6 +179,7 @@ MPPSTART=$SCRIPTDIR/mppstart.sh
 MPPSTATE=$SCRIPTDIR/mppstate.sh
 MPPSTOP=$SCRIPTDIR/mppstop.sh
 MAILFILE=$SCRIPTDIR/mail_contacts
+HMAILFILE=$HOME/mail_contacts
 #******************************************************************************
 # MPP Command Variables
 #******************************************************************************
@@ -405,8 +407,19 @@ CHK_EXISTS_TABLE () {
 		MASTER_PORT=$2
 		QD_DBNAME=$3
 		LOG_MSG "[INFO]:-Checking for table $TABLENAME in database $QD_DBNAME"
-		$EXPORT_LIB_PATH;$PSQL -q -p  $MASTER_PORT $QD_DBNAME -c"\d $TABLENAME;" -o /dev/null
-		EXISTS=$?
+		if [ `$ECHO $TABLENAME|$GREP -c "\."` -eq 1 ];then
+			SCHEMA_NAME=`$ECHO $TABLENAME|$CUT -d"." -f1`
+                        QUERY_TABLENAME=`$ECHO $TABLENAME|$CUT -d"." -f2`
+			TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select count(*) from pg_class where relname='$QUERY_TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+		else
+			TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select count(*) from pg_class where relname='$TABLENAME';"`
+		fi
+#		$EXPORT_LIB_PATH;$PSQL -q -p  $MASTER_PORT $QD_DBNAME -c"\d $TABLENAME;" -o /dev/null
+		if [ $TAB_COUNT -eq 0 ] || [ $TAB_COUNT -gt 1 ];then
+			EXISTS=1
+		else
+			EXISTS=0
+		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -414,13 +427,14 @@ EVENT_MAIL () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	MAIL_SUBJECT=$1;shift
 	MAIL_MESSAGE=$1
-	if [ ! -f $MAIL_FILE ];then
-		LOG_MSG "[WARN]:-No $MAILFILE unable to proceed"
+	if [ ! -f $MAILFILE ] && [ ! -f $HMAILFILE ] ;then
+		LOG_MSG "[WARN]:-No $MAILFILE or $HMAILFILE unable to proceed"
 		EXIT_STATUS=1
 	else
+		if [ -f $HMAILFILE ];then MAILFILE=$HMAILFILE;fi
 		for MAIL_ADDRESS in `$CAT $MAILFILE | $GREP -v "^#"`
 		do
-			LOG_MSG "[INFO]:-Sending mail to $MAIL_ADDRESS"
+			LOG_MSG "[INFO]:-Sending mail to $MAIL_ADDRESS using file $MAILFILE"
 			$ECHO "$MAIL_MESSAGE"|$MAIL -s "$MAIL_SUBJECT" $MAIL_ADDRESS
 			ERROR_CHK $? "send email to $MAIL_ADDRESS" 1
 		done
