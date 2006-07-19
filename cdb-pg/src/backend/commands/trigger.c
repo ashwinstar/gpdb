@@ -38,6 +38,8 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
 
 
 static void InsertTrigger(TriggerDesc *trigdesc, Trigger *trigger, int indx);
@@ -442,6 +444,11 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 
 	/* Keep lock on target rel until end of xact */
 	heap_close(rel, NoLock);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 
 	return trigoid;
 }
