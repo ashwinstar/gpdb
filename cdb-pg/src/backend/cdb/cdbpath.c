@@ -10,6 +10,10 @@
  */
 #include "postgres.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "miscadmin.h"          /* work_mem */
 #include "nodes/relation.h"     /* RelOptInfo */
 #include "optimizer/cost.h"     /* cpu_tuple_cost */
@@ -21,6 +25,10 @@
 
 #include "cdb/cdbpath.h"        /* me */
 
+#ifdef __cplusplus
+}   /* extern "C" */
+#endif
+
 #ifdef small                    /* <socket.h> might #define small */
 #undef small                    /*  but I want it for a variable name */
 #endif
@@ -29,6 +37,31 @@
 /* Globals */
 Cost        cdbpath_motion_cost_per_row = 0.0;
 int         cdbpath_segments = 1;
+
+
+/*
+ * cdbpath_cost_motion
+ *    Fills in the cost estimate fields in a MotionPath node.
+ */
+void
+cdbpath_cost_motion(CdbMotionPath *motionpath, Path *subpath)
+{
+    Cost    cost_per_row;
+    Cost    motioncost;
+    double  recvrows;
+    double  sendrows;
+
+    cost_per_row = (mpp_motion_cost_per_row > 0.0)
+                    ? mpp_motion_cost_per_row
+                    : 2.0 * cpu_tuple_cost;
+    sendrows = cdbpath_rows(subpath);
+    recvrows = cdbpath_rows((Path *)motionpath);
+    motioncost = cost_per_row * 0.5 * (sendrows + recvrows);
+
+    motionpath->path.total_cost = motioncost + subpath->total_cost;
+    motionpath->path.startup_cost = subpath->startup_cost;
+    motionpath->path.memory = subpath->memory;
+}                               /* cdbpath_cost_motion */
 
 
 /*
@@ -57,10 +90,6 @@ cdbpath_create_motion_path(PlannerInfo     *root,
                            CdbPathLocus     locus)
 {
     CdbMotionPath      *pathnode;
-    Cost                cost_per_row;
-    Cost                motioncost;
-    double              recvrows;
-    double              sendrows;
 
     /* No motion needed if subpath locus is exactly as requested. */
     if (CdbPathLocus_IsEqual(subpath->locus, locus))
@@ -208,16 +237,7 @@ cdbpath_create_motion_path(PlannerInfo     *root,
     pathnode->subpath = subpath;
 
     /* Cost of motion */
-    cost_per_row = (mpp_motion_cost_per_row > 0.0)
-                    ? mpp_motion_cost_per_row
-                    : 2.0 * cpu_tuple_cost;
-    sendrows = cdbpath_rows(pathnode->subpath);
-    recvrows = cdbpath_rows((Path *)pathnode);
-    motioncost = cost_per_row * 0.5 * (sendrows + recvrows);
-
-    pathnode->path.total_cost = motioncost + subpath->total_cost;
-    pathnode->path.startup_cost = subpath->startup_cost;
-    pathnode->path.memory = subpath->memory;
+    cdbpath_cost_motion(pathnode, subpath);
 
     /* Tell operators above us that slack may be needed for deadlock safety. */
     pathnode->path.motionHazard = true;
@@ -590,7 +610,7 @@ typedef struct
 
 CdbPathLocus
 cdbpath_motion_for_join(PlannerInfo      *root,
-                        JoinType    jointype,           /* JOIN_INNER, JOIN_FULL, JOIN_LEFT, JOIN_RIGHT */
+                        JoinType    jointype,           /* JOIN_INNER/FULL/LEFT/RIGHT/IN */
                         Path      **outer_path,         /* INOUT */
                         Path      **inner_path,         /* INOUT */
                         List       *mergeclause_list,   /* equijoin RestrictInfo list */
@@ -608,9 +628,31 @@ cdbpath_motion_for_join(PlannerInfo      *root,
     inner.locus = inner.path->locus;
     CdbPathLocus_MakeNull(&outer.move_to);
     CdbPathLocus_MakeNull(&inner.move_to);
-    outer.oj_preserved = (jointype == JOIN_FULL) || (jointype == JOIN_LEFT);
-    inner.oj_preserved = (jointype == JOIN_FULL) || (jointype == JOIN_RIGHT);
 
+    /* Don't consider replicating the preserved rel of an outer join, or
+     * the current-query rel of a join between current query and subquery.
+     */
+    outer.oj_preserved = false;
+    inner.oj_preserved = false;
+    switch (jointype)
+    {
+        case JOIN_INNER:
+            break;
+        case JOIN_IN:
+        case JOIN_LEFT:
+            outer.oj_preserved = true;
+            break;
+        case JOIN_RIGHT:
+            inner.oj_preserved = true;
+            break;
+        case JOIN_FULL:
+            outer.oj_preserved = true;
+            inner.oj_preserved = true;
+            break;
+        default:
+            Assert(0);
+    }
+    
     /* Caller can specify an ordering for each source path that is
      * the same as or weaker than the path's existing ordering.
      * Caller may insist that we do not add motion that would
@@ -631,11 +673,24 @@ cdbpath_motion_for_join(PlannerInfo      *root,
      * and the motion we choose for the join suffices for the Unique
      * operator also.  So Unique doesn't need motion logic of its own.
      * All we have to do is lift the Unique node above the Motion node.
+     *
+     * The Unique operator is meant to ensure that a row of the opposite
+     * rel (the current query) joins with at most one row of the Unique rel 
+     * (the subquery).  If the opposite rel were replicated, a row might
+     * find a match on more than one QE because in such a plan the subquery 
+     * rows would be only locally unique.  Set oj_preserved flag so that we 
+     * won't consider replicating the non-Unique rel.
      */
     if (IsA(outer.path, UniquePath))
+    {
         outer.path = ((UniquePath *)outer.path)->subpath;
+        inner.oj_preserved = true;
+    }
     if (IsA(inner.path, UniquePath))
+    {
         inner.path = ((UniquePath *)inner.path)->subpath;
+        outer.oj_preserved = true;
+    }
 
     /* Get rel sizes. */
     outer.bytes = cdbpath_rows(outer.path) * outer.path->parent->width;

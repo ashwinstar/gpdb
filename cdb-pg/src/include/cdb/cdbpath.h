@@ -18,6 +18,9 @@
 extern Cost     cdbpath_motion_cost_per_row;
 extern int      cdbpath_segments;
 
+void
+cdbpath_cost_motion(CdbMotionPath *motionpath, Path *subpath);
+
 Path *
 cdbpath_create_motion_path(PlannerInfo     *root,
                            Path            *subpath,
