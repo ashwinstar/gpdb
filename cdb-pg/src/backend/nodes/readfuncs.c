@@ -1509,6 +1509,25 @@ _readCreateStmt(void)
 	READ_DONE();
 }
 
+static FkConstraint *
+_outFkConstraint(void)
+{
+	READ_LOCALS(FkConstraint);
+
+	READ_STRING_FIELD(constr_name);
+	READ_NODE_FIELD(pktable);
+	READ_NODE_FIELD(fk_attrs);
+	READ_NODE_FIELD(pk_attrs);
+	READ_CHAR_FIELD(fk_matchtype);
+	READ_CHAR_FIELD(fk_upd_action);
+	READ_CHAR_FIELD(fk_del_action);
+	READ_BOOL_FIELD(deferrable);
+	READ_BOOL_FIELD(initdeferred);
+	READ_BOOL_FIELD(skip_validation);
+	
+	READ_DONE();
+}
+
 static CreateSchemaStmt *
 _readCreateSchemaStmt(void)
 {
@@ -2355,6 +2374,28 @@ bitmapsetRead(void)
 	return bms;
 }
 
+static CreateTrigStmt *
+_readCreateTrigStmt(void)
+{
+	READ_LOCALS(CreateTrigStmt);
+	
+	READ_STRING_FIELD(trigname);
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(funcname);
+	READ_NODE_FIELD(args);
+	READ_BOOL_FIELD(before);
+	READ_BOOL_FIELD(row);
+	token = pg_strtok(&length);		/* skip :fldname */ 
+	token = pg_strtok(&length);		/* get field value */ 
+	strcpy(local_node->actions, debackslash(token, length));
+	READ_BOOL_FIELD(isconstraint);
+	READ_BOOL_FIELD(deferrable);
+	READ_BOOL_FIELD(initdeferred);
+	READ_NODE_FIELD(constrrel);
+	
+	READ_DONE();
+
+}
 /*
  * MPP developers added code to improve performance over the
  * linear searching that existed in the postgres version of
@@ -2430,6 +2471,7 @@ static ParseNodeInfo infoAr[] =
 	{"CREATESCHEMASTMT", (ReadFn)_readCreateSchemaStmt},
 	{"CREATESEQSTMT", (ReadFn)_readCreateSeqStmt},
 	{"CREATESTMT", (ReadFn)_readCreateStmt},
+	{"CREATETRIGSTMT", (ReadFn)_readCreateTrigStmt},
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DEFELEM", (ReadFn)_readDefElem},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
@@ -2440,6 +2482,7 @@ static ParseNodeInfo infoAr[] =
 	{"DROPSTMT", (ReadFn)_readDropStmt},
 	{"FIELDSELECT", (ReadFn)_readFieldSelect},
 	{"FIELDSTORE", (ReadFn)_readFieldStore},
+	{"FKCONSTRAINT", (ReadFn)_outFkConstraint},
 	{"FLOW", (ReadFn)_readFlow},
 	{"FROMEXPR", (ReadFn)_readFromExpr},
 	{"FUNCCALL", (ReadFn)_readFuncCall},

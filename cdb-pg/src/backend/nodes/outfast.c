@@ -1987,6 +1987,7 @@ _outQuery(StringInfo str, Query *node)
 			case T_CopyStmt:
 			case T_ReindexStmt:
 			case T_VariableResetStmt:
+			case T_CreateTrigStmt:
 				WRITE_NODE_FIELD(utilityStmt);
 				break;
 			default:
@@ -2438,6 +2439,24 @@ _outSnapshotInfo(StringInfo str, SnapshotInfo *node)
 	WRITE_UINT_FIELD(curcid);
 }
 
+static void
+_outCreateTrigStmt(StringInfo str, CreateTrigStmt *node)
+{
+	WRITE_NODE_TYPE("CREATETRIGSTMT");
+	
+	WRITE_STRING_FIELD(trigname);
+	WRITE_NODE_FIELD(relation);
+	WRITE_NODE_FIELD(funcname);
+	WRITE_NODE_FIELD(args);
+	WRITE_BOOL_FIELD(before);
+	WRITE_BOOL_FIELD(row);
+	WRITE_STRING_FIELD(actions);
+	WRITE_BOOL_FIELD(isconstraint);
+	WRITE_BOOL_FIELD(deferrable);
+	WRITE_BOOL_FIELD(initdeferred);
+	WRITE_NODE_FIELD(constrrel);
+
+}
 
 /*
  * _outNode -
@@ -2922,6 +2941,10 @@ _outNode(StringInfo str, void *obj)
 				
 			case T_LockingClause:
 				_outLockingClause(str, obj);
+				break;
+				
+			case T_CreateTrigStmt:
+				_outCreateTrigStmt(str, obj);
 				break;
 
 			default:
