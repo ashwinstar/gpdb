@@ -23,7 +23,6 @@
 #include "utils/memutils.h"
 #include "utils/typcache.h"
 
-#include "nodes/print.h"
 
 uint32		SPI_processed = 0;
 Oid			SPI_lastoid = InvalidOid;
@@ -292,8 +291,6 @@ SPI_execute(const char *src, bool read_only, long tcount)
 	_SPI_plan	plan;
 	int			res;
 
-	elog(NOTICE,"SPI_execute");
-	
 	if (src == NULL || tcount < 0)
 		return SPI_ERROR_ARGUMENT;
 
@@ -329,8 +326,6 @@ SPI_execute_plan(void *plan, Datum *Values, const char *Nulls,
 				 bool read_only, long tcount)
 {
 	int			res;
-	
-	elog(NOTICE,"SPI_execute_plan");
 
 	if (plan == NULL || tcount < 0)
 		return SPI_ERROR_ARGUMENT;
@@ -374,7 +369,6 @@ SPI_execute_snapshot(void *plan,
 					 bool read_only, long tcount)
 {
 	int			res;
-	elog(NOTICE,"SPI_execute_snapshot");
 
 	if (plan == NULL || tcount < 0)
 		return SPI_ERROR_ARGUMENT;
@@ -401,7 +395,6 @@ SPI_prepare(const char *src, int nargs, Oid *argtypes)
 	_SPI_plan	plan;
 	_SPI_plan  *result;
 
-	elog(NOTICE,"SPI_prepare");
 	if (src == NULL || nargs < 0 || (nargs > 0 && argtypes == NULL))
 	{
 		SPI_result = SPI_ERROR_ARGUMENT;
@@ -1256,7 +1249,7 @@ _SPI_prepare_plan(const char *src, _SPI_plan *plan)
 	ErrorContextCallback spierrcontext;
 	Oid		   *argtypes = plan->argtypes;
 	int			nargs = plan->nargs;
-	elog(NOTICE,"_SPI_prepare_plan");
+
 	/*
 	 * Increment CommandCounter to see changes made by now.  We must do this
 	 * to be sure of seeing any schema changes made by a just-preceding SPI
@@ -1304,7 +1297,6 @@ _SPI_prepare_plan(const char *src, _SPI_plan *plan)
 	plan->qtlist = query_list_list;
 	plan->ptlist = plan_list;
 
-	elog_node_display(NOTICE,"SPI plan",plan_list,true);
 	/*
 	 * Pop the error context stack
 	 */
@@ -1331,7 +1323,6 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 	SPITupleTable *volatile my_tuptable = NULL;
 	Snapshot	saveActiveSnapshot;
 
-	elog(NOTICE,"_SPI_execute_plan");
 	/* Be sure to restore ActiveSnapshot on error exit */
 	saveActiveSnapshot = ActiveSnapshot;
 	PG_TRY();
@@ -1521,8 +1512,6 @@ fail:
 	SPI_processed = my_processed;
 	SPI_lastoid = my_lastoid;
 	SPI_tuptable = my_tuptable;
-	
-	elog(NOTICE,"_SPI_execute_plan done");
 
 	return res;
 }
@@ -1532,7 +1521,7 @@ _SPI_pquery(QueryDesc *queryDesc, long tcount)
 {
 	int			operation = queryDesc->operation;
 	int			res;
-	elog(NOTICE,"_SPI_pquery");
+
 	switch (operation)
 	{
 		case CMD_SELECT:
@@ -1567,13 +1556,9 @@ _SPI_pquery(QueryDesc *queryDesc, long tcount)
 #endif
 
 	AfterTriggerBeginQuery();
-	
-	elog(NOTICE,"_SPI_pquery calling ExecutorStart");
 
 	ExecutorStart(queryDesc, 0);
 
-	elog(NOTICE,"_SPI_pquery calling ExecutorRun");
-	
 	ExecutorRun(queryDesc, ForwardScanDirection, tcount);
 
 	_SPI_current->processed = queryDesc->estate->es_processed;
@@ -1588,16 +1573,12 @@ _SPI_pquery(QueryDesc *queryDesc, long tcount)
 	/* Take care of any queued AFTER triggers */
 	AfterTriggerEndQuery(queryDesc->estate);
 
-	elog(NOTICE,"_SPI_pquery calling ExecutorEnd");
-	
 	ExecutorEnd(queryDesc);
 
 #ifdef SPI_EXECUTOR_STATS
 	if (ShowExecutorStats)
 		ShowUsage("SPI EXECUTOR STATS");
 #endif
-
-	elog(NOTICE,"_SPI_pquery done");
 
 	return res;
 }
@@ -1723,8 +1704,6 @@ _SPI_end_call(bool procmem)
 	 * We're returning to procedure where _SPI_curid == _SPI_connected - 1
 	 */
 	_SPI_curid--;
-	
-	elog(NOTICE,"_SPI_end_call");
 
 	if (procmem)				/* switch to the procedure memory context */
 	{
@@ -1811,8 +1790,6 @@ SPI_execute_cdb(const char *src, Plan *pPlan, Query *pQuery, bool read_only, int
 	_SPI_plan	plan;
 	int			res;
 	List	   *query_list = NIL;
-	
-	elog(NOTICE,"SPI_execute_cdb");
 
 	if (src == NULL || pPlan == NULL || pQuery == NULL || tcount < 0)
 		return SPI_ERROR_ARGUMENT;
