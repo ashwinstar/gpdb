@@ -147,6 +147,9 @@ cdbanalyze_callback(StringInfo sqlstmt,
 		ctx->tuples = atof(tmp);
 	else
 		ctx->tuples = 2000;			// Work around aggregate bug
+		
+	if (ctx->tuples == 0)
+		ctx->tuples = 1;			// So we know analyze has been run.
 
 	tmp = SPI_getvalue(tup, tupdesc, Anum_pg_class_max_pages);
 	if (SPI_result != 0 && !tmp)
@@ -155,6 +158,9 @@ cdbanalyze_callback(StringInfo sqlstmt,
 		ctx->pages = atoi(tmp);
 	else
 		ctx->pages = 50;			// Work around aggregate bug
+		
+	if (ctx->pages == 0)
+		ctx->pages = 1;				// So we know analyze has been run.
 
 	elog(DEBUG3, "cdbanalyze oid=%d pages=%d tuples=%f",
 		 ctx->relid, ctx->pages, ctx->tuples);
