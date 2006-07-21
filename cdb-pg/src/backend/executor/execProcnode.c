@@ -110,6 +110,8 @@
 #include "tcop/tcopprot.h"
 #include "cdb/cdbvars.h"
 
+#include "cdb/ml_ipc.h" /* interconnect context */
+
 #ifdef CDB_TRACE_EXECUTOR
 #include "nodes/print.h"
 static void ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result);
@@ -644,6 +646,26 @@ ExecSquelchNode(PlanState *node)
 {
 	ExecStateTreeWalker(node, squelchNodeWalker, NULL, NULL);
 }	/* ExecSquelchNode */
+
+static CdbVisitOpt
+transportUpdateNodeWalker(PlanState *node, void *context)
+{
+
+	/* For motion nodes, we just transfer the context information established during SetupInterconnect */
+	if (IsA(node, MotionState))
+	{
+		((MotionState *)node)->ps.state->interconnect_context = (ChunkTransportState *)context;
+		/* visit subtree */
+	}
+
+	return CdbVisit_Walk;
+}	/* transportUpdateNodeWalker */
+
+void
+ExecUpdateTransportState(PlanState *node, void *state)
+{
+	ExecStateTreeWalker(node, transportUpdateNodeWalker, NULL, (void *)state);
+}	/* ExecUpdateTransportState */
 
 
 /* ----------------------------------------------------------------

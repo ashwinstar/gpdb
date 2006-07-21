@@ -34,7 +34,6 @@
 
 struct CdbDispatchResults;              /* in cdbdispatchresult.h */
 
-
 /* ----------------
  *	  IndexInfo information
  *
@@ -526,6 +525,8 @@ typedef struct EState
 	int es_cur_slice_idx;
  	SliceTable *es_sliceTable;
 	struct MotionState **es_slice_map;
+	
+	void *interconnect_context; /* Interconnect state */
 	
 	/* MPP used resources */
 	bool es_interconnect_is_setup;   /* is interconnect set-up?    */
@@ -1529,6 +1530,7 @@ typedef struct MotionState
     Oid                *outputFunArray;     /* output functions for each column (debug only) */
     Slice              *sendSlice;          /* sending slice */
     Slice              *recvSlice;          /* receiving slice */
+
 } MotionState;
 
 #endif   /* EXECNODES_H */

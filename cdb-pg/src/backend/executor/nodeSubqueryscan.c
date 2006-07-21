@@ -202,7 +202,6 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	sp_estate->es_sliceTable = estate->es_sliceTable;
 	sp_estate->es_slice_map = estate->es_slice_map;
 
-
 	/*
 	 * Start up the subplan (this is a very cut-down form of InitPlan())
 	 */

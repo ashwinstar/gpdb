@@ -236,6 +236,7 @@ CreateExecutorState(void)
 	estate->es_cur_root_idx = 0;
 	estate->es_sliceTable = NULL;
 	estate->es_slice_map = NULL;
+	estate->interconnect_context = NULL;
 	estate->es_interconnect_is_setup = false;
 	estate->es_seqserver_is_setup = false;
 	estate->es_got_eos = false;
@@ -1648,7 +1649,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 	/* Teardown the Interconnect */
 	if(estate->es_interconnect_is_setup)
 	{
-		TeardownInterconnect(false);
+		TeardownInterconnect(estate->interconnect_context, false);
 		estate->es_interconnect_is_setup = false;		
 	}
 	
@@ -1679,7 +1680,7 @@ void mppExecutorCleanup(EState *estate)
 	/* Clean up the interconnect. */
 	if (estate->es_interconnect_is_setup)
 	{
-		TeardownInterconnect(true); /* force EOS */
+		TeardownInterconnect(estate->interconnect_context, true /* force EOS */); 
 		estate->es_interconnect_is_setup = false;
 	}
 	

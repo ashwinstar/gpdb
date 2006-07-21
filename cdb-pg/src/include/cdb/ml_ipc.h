@@ -12,9 +12,113 @@
 #include "cdb/tupchunklist.h"
 #include "nodes/execnodes.h"
 
-#ifndef MAX
-#define MAX(x, y) ((x) > (y) ? (x) : (y))
-#endif
+typedef enum MotionConnState
+{
+    mcsNull,
+    mcsAccepted,
+    mcsSetupOutgoingConnection,
+    mcsConnecting,
+    mcsRecvRegMsg,
+    mcsSendRegMsg,
+    mcsStarted,
+} MotionConnState;
+
+/* Structure used for keeping track of a pt-to-pt connection between two
+* Cdb Entities (either QE or QD).
+*/
+typedef struct MotionConn
+{
+	/* socket file descriptor. */
+	int			sockfd;
+	
+	/* pointer to the data buffer. */
+	uint8	   *pBuff;
+	
+	/* size of the message in the buffer, if any. */
+	int32		msgSize;
+	
+	/* position of message inside of buffer, "cursor" pointer */
+	uint8	   *msgPos;
+	
+	/*
+	 * recv bytes: we can have more than one message/message fragment in recv
+	 * queue at once
+	 */
+	int32		recvBytes;
+	
+	int			tupleCount;
+	
+	bool		stillActive;
+	
+    MotionConnState state;
+	
+    int         wakeup_ms;
+	
+    CdbProcess *cdbProc;
+    int			remoteContentId;
+    char        remoteHostAndPort[64];
+    char        localHostAndPort[64];
+	
+}	MotionConn;
+
+/* used to organize all of the information for a given motion node.
+*
+*/
+typedef struct ChunkTransportStateEntry
+{
+	int         motNodeId;
+	bool		valid;
+	
+	/* Connection array: first the primaries, then the mirrors (if needed) */
+    MotionConn *conns;
+	int			numConns;               /* all, including mirrors if present */
+    int         numPrimaryConns;        /* does not include mirrors */
+	
+	/*
+	 * used for receiving. to select() from a set of interesting MotionConns
+	 * to see when data is ready to be read.  When the incoming connections
+	 * are established, read interest is turned on.  It is turned off when an
+	 * EOS (End of Stream) message is read.
+	 */
+	fd_set		readSet;
+	
+	/* highest file descriptor in the readSet. */
+	int			highReadSock;
+    int         scanStart;
+	
+    /* slice table entries */
+    Slice      *sendSlice;
+    Slice      *recvSlice;
+	
+    /* setup info */
+    int         outgoingPortRetryCount;
+	
+}	ChunkTransportStateEntry;
+
+typedef struct ChunkTransportState
+{
+	int size;
+	ChunkTransportStateEntry *states;
+} ChunkTransportState;
+
+/*
+ * Registration message
+ *
+ * Upon making a connection, the sender sends a registration message to
+ * identify itself to the receiver.  A lot of the fields are just there
+ * for validity checking.
+ */
+typedef struct RegisterMessage
+{
+	int32       msgBytes;
+    int32       recvSliceIndex;
+    int32       sendSliceIndex;
+	int32       srcContentId;
+	int32		srcListenerPort;
+	int32		srcPid;
+    int32       srcSessionId;
+    int32       srcCommandCount;
+}	RegisterMessage;
 
 /* 2 bytes to store the size of the entire packet.	a packet is composed of
  * of one or more serialized TupleChunks (each of which has a TupleChunk
@@ -66,7 +170,9 @@ extern int  GetSeqServerFD(void);
  *	 mySliceId - the index of the slice in the slicetable that we are a member of.
  *
  */
-extern void SetupInterconnect(SliceTable * mySliceTable, int mySliceId);
+extern void SetupInterconnect(ChunkTransportState **transportStates, 
+							  SliceTable * mySliceTable, 
+							  int mySliceId);
 
 /* The TeardownInterconnect() function should be called at the end of executing
  * a DML statement to close down all TCP socket resources that were setup during
@@ -78,7 +184,8 @@ extern void SetupInterconnect(SliceTable * mySliceTable, int mySliceId);
  *		 statement termination we can force an end-of-stream notification.
  *
  */
-extern void TeardownInterconnect(bool forceEOS);
+extern void TeardownInterconnect(ChunkTransportState *transportStates, 
+								 bool forceEOS);
 
 
 
@@ -101,7 +208,10 @@ extern void TeardownSequenceServer(void);
  *	 - tcItem:		The tuple-chunk data to send.
  *
  */
-extern bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem);
+extern bool SendTupleChunkToAMS(ChunkTransportState *transportStates, 
+								int16 motNodeID, 
+								int16 targetRoute, 
+								TupleChunkListItem tcItem);
 
 /* The SendEosToAMS() function is used to send an "End Of Stream" message to
  * the specified targetRoute. (generally this is a broadcast)
@@ -112,7 +222,10 @@ extern bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkLi
  *	 - tcItem:		The tuple-chunk data to send.
  *
  */
-extern void SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem);
+extern void SendEosToAMS(ChunkTransportState *transportStates, 
+						 int16 motNodeID, 
+						 int16 targetRoute, 
+						 TupleChunkListItem tcItem);
 
 /* The RecvTupleChunkFromAny() function attempts to receive one or more tuple
  * chunks from any of the incoming connections.  This function blocks until
@@ -130,7 +243,9 @@ extern void SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
  * RETURN:
  *	 - A populated TupleChunkListItemData structure (allocated with palloc()).
  */
-extern TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute);
+extern TupleChunkListItem RecvTupleChunkFromAny(ChunkTransportState *transportStates, 
+												int16 motNodeID, 
+												int16 *srcRoute);
 
 
 /* The RecvTupleChunkFrom() function is similar to the RecvTupleChunkFromAny()
@@ -143,7 +258,9 @@ extern TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute
  * RETURN:
  *	 - A populated TupleChunkListItemData structure (allocated with palloc()).
  */
-extern TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute);
+extern TupleChunkListItem RecvTupleChunkFrom(ChunkTransportState *transportStates, 
+											 int16 motNodeID, 
+											 int16 srcRoute);
 
 /* The DeregisterReadInterest() function is used to specify that we are no
  * longer interested in reading from the specified srcRoute. After calling this
@@ -155,11 +272,14 @@ extern TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute);
  *	 - srcRoute:  which connection to turn off reads for.
  *
  */
-extern void DeregisterReadInterest(int16 motNodeID, int16 srcRoute);
+extern void DeregisterReadInterest(ChunkTransportState *transportStates, 
+								   int16 motNodeID, 
+								   int16 srcRoute);
 
 /*
  * doSendStopMessage() actually does the work of sending the stop message.
  */
-extern void doSendStopMessage(int16 motNodeID);
+extern void doSendStopMessage(ChunkTransportState *transportStates, 
+							  int16 motNodeID);
 
 #endif   /* ML_IPC_H */

@@ -16,6 +16,7 @@
 #include "cdb/tupser.h"
 #include "cdb/tupchunk.h"
 #include "cdb/tupchunklist.h"
+#include "cdb/ml_ipc.h"
 #include "nodes/primnodes.h"
 #include "nodes/execnodes.h" //SliceTable
 
@@ -159,7 +160,10 @@ extern void ResetMotionLayer(bool flushCommLayer);
  *
  *		STOP_SENDING - Receiver no longer wants to receive from us.
  */
-extern SendReturnCode SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRoute);
+extern SendReturnCode SendTuple(ChunkTransportState *transportStates, 
+								int16 motNodeID, 
+								HeapTuple tuple, 
+								int16 targetRoute);
 
 
 /* Send or broadcast an END_OF_STREAM token to the corresponding motion-node
@@ -180,7 +184,9 @@ extern SendReturnCode SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRo
  *				  were full and the operation should be tried
  *				  later.  (Real errors are signalled via ereport().)
  */
-extern SendReturnCode SendEndOfStream(int16 motNodeID, int16 targetRoute);
+extern SendReturnCode SendEndOfStream(ChunkTransportState *transportStates, 
+									  int16 motNodeID, 
+									  int16 targetRoute);
 
 
 /* Receive a tuple from the corresponding motion-node on any query-executor
@@ -197,10 +203,13 @@ extern SendReturnCode SendEndOfStream(int16 motNodeID, int16 targetRoute);
  *
  *		END_OF_STREAM - No tuple was received, and no more are expected.
  */
-extern ReceiveReturnCode RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i,
+extern ReceiveReturnCode RecvTupleFrom(ChunkTransportState *transportStates, 
+									   int16 motNodeID, 
+									   HeapTuple *tup_i,
 									   int16 srcRoute);
 
-extern void SendStopMessage(int16 motNodeID);
+extern void SendStopMessage(ChunkTransportState *transportStates,
+							int16 motNodeID);
 
 /* used by ml_ipc to set the number of receivers that the motion node is expecting.
  * This is used by cdbmotion to keep track of when its seen enough EndOfStream

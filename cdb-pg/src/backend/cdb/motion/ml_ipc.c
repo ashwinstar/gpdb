@@ -59,108 +59,6 @@
 #define getInt16(pNetData)	  ntohs(*((int16 *)(pNetData)))
 #define getInt32(pNetData)	  ntohl(*((int32 *)(pNetData)))
 
-typedef enum MotionConnState
-{
-    mcsNull,
-    mcsAccepted,
-    mcsSetupOutgoingConnection,
-    mcsConnecting,
-    mcsRecvRegMsg,
-    mcsSendRegMsg,
-    mcsStarted,
-} MotionConnState;
-
-/* Structure used for keeping track of a pt-to-pt connection between two
- * Cdb Entities (either QE or QD).
- */
-typedef struct MotionConn
-{
-	/* socket file descriptor. */
-	int			sockfd;
-
-	/* pointer to the data buffer. */
-	uint8	   *pBuff;
-
-	/* size of the message in the buffer, if any. */
-	int32		msgSize;
-
-	/* position of message inside of buffer, "cursor" pointer */
-	uint8	   *msgPos;
-
-	/*
-	 * recv bytes: we can have more than one message/message fragment in recv
-	 * queue at once
-	 */
-	int32		recvBytes;
-
-	int			tupleCount;
-
-	bool		stillActive;
-
-    MotionConnState state;
-
-    int         wakeup_ms;
-
-    CdbProcess *cdbProc;
-    int			remoteContentId;
-    char        remoteHostAndPort[64];
-    char        localHostAndPort[64];
-
-}	MotionConn;
-
-/* used to organize all of the information for a given motion node.
- *
- */
-typedef struct ChunkTransportState
-{
-	int         motNodeId;
-	bool		valid;
-
-	/* Connection array: first the primaries, then the mirrors (if needed) */
-    MotionConn *conns;
-	int			numConns;               /* all, including mirrors if present */
-    int         numPrimaryConns;        /* does not include mirrors */
-
-	/*
-	 * used for receiving. to select() from a set of interesting MotionConns
-	 * to see when data is ready to be read.  When the incoming connections
-	 * are established, read interest is turned on.  It is turned off when an
-	 * EOS (End of Stream) message is read.
-	 */
-	fd_set		readSet;
-
-	/* highest file descriptor in the readSet. */
-	int			highReadSock;
-    int         scanStart;
-
-    /* slice table entries */
-    Slice      *sendSlice;
-    Slice      *recvSlice;
-
-    /* setup info */
-    int         outgoingPortRetryCount;
-
-}	ChunkTransportState;
-
-
-/*
- * Registration message
- *
- * Upon making a connection, the sender sends a registration message to
- * identify itself to the receiver.  A lot of the fields are just there
- * for validity checking.
- */
-typedef struct RegisterMessage
-{
-	int32       msgBytes;
-    int32       recvSliceIndex;
-    int32       sendSliceIndex;
-	int32       srcContentId;
-	int32		srcListenerPort;
-	int32		srcPid;
-    int32       srcSessionId;
-    int32       srcCommandCount;
-}	RegisterMessage;
 
 
 /*=========================================================================
@@ -175,12 +73,9 @@ int			seqserverFd = -1;
 char		*seqServerHost;
 int			seqServerPort;
 
-/* Use an array to store our motion-layer-state table. */
-int			transportStatesSize = 0;
-ChunkTransportState *transportStates = NULL;
 
 /* ChunkTransportState array initial size */
-#define CTS_INITIAL_SIZE (10)
+#define CTS_INITIAL_SIZE (1)
 
 /*
  * Outgoing port assignment
@@ -213,30 +108,41 @@ bool		teardownActive = false;
  */
 static void setupListeningSocket(int backlog, int *listenerSocketFd, int *listenerPort);
 
-static ChunkTransportState *createChunkTransportState(Slice *sendSlice, Slice *recvSlice,
-                                           int numPrimaryConns, int numMirrorConns);
-static inline ChunkTransportState *getChunkTransportState(int motNodeID);
-static ChunkTransportState *removeChunkTransportState(int16 motNodeID);
+static ChunkTransportStateEntry *createChunkTransportState(ChunkTransportState *transportStates, 
+													  Slice *sendSlice, 
+													  Slice *recvSlice,
+													  int numPrimaryConns, 
+													  int numMirrorConns);
+
+static inline ChunkTransportStateEntry *getChunkTransportState(ChunkTransportState *transportStates, 
+														  int motNodeID);
+
+static ChunkTransportStateEntry *removeChunkTransportState(ChunkTransportState *transportStates, 
+													  int16 motNodeID);
 
 static void setupSeqServerConnection(char *hostname, int port);
 
-static ChunkTransportState *startOutgoingConnections(Slice *sendSlice, int *pOutgoingCount);
-static void setupOutgoingConnection(ChunkTransportState *pEntry, MotionConn *conn);
-static void updateOutgoingConnection(ChunkTransportState *pEntry, MotionConn *conn, int errnoSave);
-static int  getOutgoingPort(ChunkTransportState *pEntry);
-static void zapOutgoingPort(ChunkTransportState *pEntry);
+static ChunkTransportStateEntry *startOutgoingConnections(ChunkTransportState *transportStates, 
+													 Slice *sendSlice, 
+													 int *pOutgoingCount);
 
-static void sendRegisterMessage(ChunkTransportState * pEntry, MotionConn * conn);
-static bool readRegisterMessage(MotionConn *conn);
+static void setupOutgoingConnection(ChunkTransportStateEntry *pEntry, MotionConn *conn);
+static void updateOutgoingConnection(ChunkTransportStateEntry *pEntry, MotionConn *conn, int errnoSave);
+static int  getOutgoingPort(ChunkTransportStateEntry *pEntry);
+static void zapOutgoingPort(ChunkTransportStateEntry *pEntry);
+
+static void sendRegisterMessage(ChunkTransportStateEntry *pEntry, MotionConn * conn);
+static bool readRegisterMessage(ChunkTransportState *transportStates, 
+								MotionConn *conn);
 static MotionConn *acceptIncomingConnection(void);
 
 static bool sendChunk(MotionConn * conn, TupleChunkListItem tcItem, int16 motionId);
 static inline void readPacket(MotionConn * conn);
-static inline int doBroadcast(ChunkTransportState * pEntry, TupleChunkListItem tcItem);
+static inline int doBroadcast(ChunkTransportStateEntry *pEntry, TupleChunkListItem tcItem);
 
 static bool flushBuffer(MotionConn * conn, int16 motionId);
 
-static void	dumpEntryConnections(int elevel, ChunkTransportState *pEntry);
+static void	dumpEntryConnections(int elevel, ChunkTransportStateEntry *pEntry);
 static void	print_connection(int fd, const char *msg);
 static void format_fd_set(StringInfo buf, int nfds, fd_set *fds, char* pfx, char *sfx);
 static char *format_sockaddr(struct sockaddr *sa, char* buf, int bufsize);
@@ -324,11 +230,14 @@ CleanUpMotionLayerIPC(void)
 
 /* See ml_ipc.h */
 bool
-SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
+SendTupleChunkToAMS(ChunkTransportState *transportStates, 
+					int16 motNodeID, 
+					int16 targetRoute, 
+					TupleChunkListItem tcItem)
 {
 	int			i,
 				recount = 0;
-	ChunkTransportState *pEntry;
+	ChunkTransportStateEntry *pEntry;
 	MotionConn *conn;
 	TupleChunkListItem currItem;
 
@@ -338,14 +247,15 @@ SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcIte
 	ML_CHECK_FOR_INTERRUPTS();
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG5, "SendTupleChunkToAMS(motNodeID: %d, targetRoute: %d)", motNodeID, targetRoute);
+	elog(DEBUG5, "sendtuplechunktoams: calling get_transport_state w/transportStates %p transportState->size %d motnodeid %d",
+		 transportStates, transportStates->size, motNodeID);
 #endif
 
 	/*
 	 * tcItem can actually be a chain of tcItems.  we need to send out all of
 	 * them.
 	 */
-	pEntry = getChunkTransportState(motNodeID);
+	pEntry = getChunkTransportState(transportStates, motNodeID);
 
 	currItem = tcItem;
 
@@ -406,9 +316,12 @@ SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcIte
 
 /* See ml_ipc.h */
 void
-SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
+SendEosToAMS(ChunkTransportState *transportStates, 
+			 int16 motNodeID, 
+			 int16 targetRoute, 
+			 TupleChunkListItem tcItem)
 {
-	ChunkTransportState *pEntry;
+	ChunkTransportStateEntry *pEntry;
 	MotionConn *conn;
 	int			i;
 
@@ -418,10 +331,10 @@ SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 	ML_CHECK_FOR_INTERRUPTS();
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG5, "SendEosToAMS() Entering");
+	elog(DEBUG5, "SendEosToAMS() Entering motnode %d targetroute %d", motNodeID, targetRoute);
 #endif
 
-	pEntry = getChunkTransportState(motNodeID);
+	pEntry = getChunkTransportState(transportStates, motNodeID);
 
 	/* we want to add our tcItem onto each of the outgoing buffers */
 	doBroadcast(pEntry, tcItem);
@@ -442,9 +355,11 @@ SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 
 /* See ml_ipc.h */
 TupleChunkListItem
-RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
+RecvTupleChunkFromAny(ChunkTransportState *transportStates, 
+					  int16 motNodeID, 
+					  int16 *srcRoute)
 {
-	ChunkTransportState *pEntry;
+	ChunkTransportStateEntry *pEntry;
 	MotionNodeEntry  *pMNEntry;
 	MotionConn *conn;
 	TupleChunkListItem tcItem;
@@ -460,7 +375,7 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 	elog(DEBUG5, "RecvTupleChunkFromAny(motNodeId=%d)", motNodeID);
 #endif
 
-	pEntry = getChunkTransportState(motNodeID);
+	pEntry = getChunkTransportState(transportStates, motNodeID);
 	pMNEntry = getMotionNodeEntry(motNodeID, "RecvTupleChunkFromAny");
 
 	do
@@ -559,9 +474,11 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 
 /* See ml_ipc.h */
 TupleChunkListItem
-RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
+RecvTupleChunkFrom(ChunkTransportState *transportStates, 
+				   int16 motNodeID, 
+				   int16 srcRoute)
 {
-	ChunkTransportState *pEntry;
+	ChunkTransportStateEntry *pEntry;
 	MotionConn *conn;
 
 	Insist(activated);
@@ -573,7 +490,7 @@ RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 	elog(DEBUG5, "RecvTupleChunkFrom(motNodID=%d, srcRoute=%d)", motNodeID, srcRoute);
 #endif
 
-	pEntry = getChunkTransportState(motNodeID);
+	pEntry = getChunkTransportState(transportStates, motNodeID);
 	conn = pEntry->conns + srcRoute;
 
 	return RecvTupleChunk(conn);
@@ -654,9 +571,9 @@ RecvTupleChunk(MotionConn * conn)
 /* DeregisterReadInterest is called on receiving nodes when they
  * believe that they're done with the receiver */
 void
-DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
+DeregisterReadInterest(ChunkTransportState *transportStates, int16 motNodeID, int16 srcRoute)
 {
-	ChunkTransportState *pEntry;
+	ChunkTransportStateEntry *pEntry;
 	MotionConn *conn;
 
 	Insist(activated);
@@ -665,7 +582,7 @@ DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 	elog(DEBUG4, "DeregisterReadInterest(%d, %d)", motNodeID, srcRoute);
 #endif
 
-	pEntry = getChunkTransportState(motNodeID);
+	pEntry = getChunkTransportState(transportStates, motNodeID);
 	conn = pEntry->conns + srcRoute;
 
 	/*
@@ -751,7 +668,9 @@ TeardownSequenceServer(void)
 
 /* See ml_ipc.h */
 void
-SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
+SetupInterconnect(ChunkTransportState **ppTransportStates,
+				  SliceTable * mySliceTable, 
+				  int mySliceId)
 {
 	int			i,
 				n;
@@ -769,12 +688,15 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	int             elapsed_ms = 0;
 
 	/* we can have at most one of these. */
-	ChunkTransportState *sendingChuckTransportState = NULL;
+	ChunkTransportStateEntry *sendingChunkTransportState = NULL;
 
-	Insist(!activated && !transportStates && mySliceTable);
+	Insist(!activated && !*ppTransportStates && mySliceTable);
 
-	transportStatesSize = CTS_INITIAL_SIZE;
-	transportStates = palloc0(CTS_INITIAL_SIZE * sizeof(ChunkTransportState));
+	*ppTransportStates = palloc0(sizeof(ChunkTransportState));
+	
+	Assert((*ppTransportStates)->size == 0);
+	(*ppTransportStates)->size = CTS_INITIAL_SIZE;
+	(*ppTransportStates)->states = palloc0(CTS_INITIAL_SIZE * sizeof(ChunkTransportStateEntry));
 
 	sliceTable = mySliceTable;
 	sliceId = mySliceId;
@@ -789,14 +711,14 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 
     /* Initiate outgoing connections. */
     if (mySlice->parentIndex != -1)
-		sendingChuckTransportState = startOutgoingConnections(mySlice, &expectedTotalOutgoing);
+		sendingChunkTransportState = startOutgoingConnections(*ppTransportStates, mySlice, &expectedTotalOutgoing);
 
 	/* now we'll do some setup for each of our Receiving Motion Nodes. */
 	foreach(cell, mySlice->children)
 	{
 		int			numProcs;
 		int			childId = lfirst_int(cell);
-	    ChunkTransportState *pEntry;
+	    ChunkTransportStateEntry *pEntry;
 
 #ifdef AMS_VERBOSE_LOGGING
 		elog(DEBUG5, "Setting up RECEIVING motion node %d", childId);
@@ -805,7 +727,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 		aSlice = (Slice *) list_nth(sliceTable->slices, childId);
 		numProcs = list_length(aSlice->primaryProcesses);
 
-		pEntry = createChunkTransportState(aSlice, mySlice, numProcs, 0);
+		pEntry = createChunkTransportState(*ppTransportStates, aSlice, mySlice, numProcs, 0);
 
 		/* let cdbmotion now how many receivers to expect. */
 		setExpectedReceivers(childId, numProcs);
@@ -858,10 +780,10 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 
         /* Outgoing connections */
         outgoing_count = 0;
-        n = sendingChuckTransportState ? sendingChuckTransportState->numConns : 0;
+        n = sendingChunkTransportState ? sendingChunkTransportState->numConns : 0;
         for (i = 0; i < n; i++)
 		{                       /* loop to set up outgoing connections */
-			conn = &sendingChuckTransportState->conns[i];
+			conn = &sendingChunkTransportState->conns[i];
 
             /* Time to cancel incomplete connect() and retry? */
             if (conn->state == mcsConnecting &&
@@ -877,7 +799,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
                                      conn->localHostAndPort,
                                      CONNECT_RETRY_MS)
                         ));
-                zapOutgoingPort(sendingChuckTransportState);
+                zapOutgoingPort(sendingChunkTransportState);
                 conn->state = mcsSetupOutgoingConnection;
             }
 
@@ -885,7 +807,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
             if (conn->state == mcsSetupOutgoingConnection &&
                 conn->wakeup_ms <= elapsed_ms + 20)
             {
-                setupOutgoingConnection(sendingChuckTransportState, conn);
+                setupOutgoingConnection(sendingChunkTransportState, conn);
                 switch (conn->state)
                 {
                     case mcsSetupOutgoingConnection:
@@ -1094,7 +1016,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 			if (FD_ISSET(conn->sockfd, &rset))
 			{
                 n--;
-                if (readRegisterMessage(conn))
+                if (readRegisterMessage(*ppTransportStates, conn))
                 {
                     incompleteConns = list_delete_ptr(incompleteConns, conn);
 
@@ -1116,7 +1038,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
             while ((conn = acceptIncomingConnection()) != NULL)
             {
                 /* Try to read the Register message without waiting. */
-                if (readRegisterMessage(conn))
+                if (readRegisterMessage(*ppTransportStates, conn))
                 {
 					if (conn->sockfd != -1)
 						incoming_count++;
@@ -1135,9 +1057,9 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
         i = 0;
         while (n > 0 &&
                outgoing_count < expectedTotalOutgoing &&
-		       i < sendingChuckTransportState->numConns)
+		       i < sendingChunkTransportState->numConns)
 		{                       /* loop to check outgoing connections */
-			conn = &sendingChuckTransportState->conns[i++];
+			conn = &sendingChunkTransportState->conns[i++];
             switch (conn->state)
             {
                 case mcsConnecting:
@@ -1146,7 +1068,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
                         FD_ISSET(conn->sockfd, &eset))
                     {
                         n--;
-                        updateOutgoingConnection(sendingChuckTransportState, conn, -1);
+                        updateOutgoingConnection(sendingChunkTransportState, conn, -1);
                         switch (conn->state)
                         {
                             case mcsSetupOutgoingConnection:
@@ -1172,7 +1094,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
                     if (FD_ISSET(conn->sockfd, &wset))
                     {
                         n--;
-                        sendRegisterMessage(sendingChuckTransportState, conn);
+                        sendRegisterMessage(sendingChunkTransportState, conn);
                         if (conn->state == mcsStarted)
                             outgoing_count++;
                     }
@@ -1241,7 +1163,9 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
  * tons of stuff volatile in TeardownInterconnect().
  */
 static void
-forceEosToPeer(int16 motNodeID, int16 targetRoute)
+forceEosToPeer(ChunkTransportState *transportStates,
+			   int16 motNodeID, 
+			   int16 targetRoute)
 {
 
 #ifdef AMS_VERBOSE_LOGGING
@@ -1250,7 +1174,7 @@ forceEosToPeer(int16 motNodeID, int16 targetRoute)
 
 	teardownActive = true;
 
-	SendEndOfStream(motNodeID, targetRoute);
+	SendEndOfStream(transportStates, motNodeID, targetRoute);
 
 	teardownActive = false;
 }
@@ -1272,10 +1196,11 @@ forceEosToPeer(int16 motNodeID, int16 targetRoute)
  * adding errors!).
  */
 void
-TeardownInterconnect(bool forceEOS)
+TeardownInterconnect(ChunkTransportState *transportStates, 
+					 bool forceEOS)
 {
 	ListCell   *cell;
-	ChunkTransportState *pEntry;
+	ChunkTransportStateEntry *pEntry;
 	int			i;
 	Slice	   *mySlice;
 	MotionConn *conn;
@@ -1353,7 +1278,7 @@ TeardownInterconnect(bool forceEOS)
 		    elog(DEBUG2, "shutdown outgoing connections for motion id: %d",
 			     mySlice->sliceIndex);
 
-		pEntry = getChunkTransportState(mySlice->sliceIndex);
+		pEntry = getChunkTransportState(transportStates, mySlice->sliceIndex);
 
 		for (i = 0; i < pEntry->numConns; i++)
 		{
@@ -1361,7 +1286,7 @@ TeardownInterconnect(bool forceEOS)
 
 			if (forceEOS)
 			{
-				forceEosToPeer(mySlice->sliceIndex, i);
+				forceEosToPeer(transportStates, mySlice->sliceIndex, i);
 			}
 
 			if (conn->sockfd >= 0)
@@ -1381,7 +1306,7 @@ TeardownInterconnect(bool forceEOS)
 
 		aSlice = (Slice *) list_nth(sliceTable->slices, childId);
 
-		pEntry = removeChunkTransportState(aSlice->sliceIndex);
+		pEntry = removeChunkTransportState(transportStates, aSlice->sliceIndex);
 
         if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
 		    elog(DEBUG2, "close connections for motion Id: %d", pEntry->motNodeId);
@@ -1417,7 +1342,7 @@ TeardownInterconnect(bool forceEOS)
 		    elog(DEBUG2, "close outgoing connections for motion id: %d",
 			     mySlice->sliceIndex);
 
-		pEntry = removeChunkTransportState(mySlice->sliceIndex);
+		pEntry = removeChunkTransportState(transportStates, mySlice->sliceIndex);
 
 		for (i = 0; i < pEntry->numConns; i++)
 		{
@@ -1444,8 +1369,6 @@ TeardownInterconnect(bool forceEOS)
 	if (transportStates != NULL)
 	{
 		pfree(transportStates);
-		transportStates = NULL;
-		transportStatesSize = 0;
 	}
 
 	activated = false;
@@ -1542,10 +1465,14 @@ error:
  *	 a ChuckTransportState struct is already registered for the motNodeID an ERROR is
  *	 thrown.
  */
-ChunkTransportState *
-createChunkTransportState(Slice *sendSlice, Slice *recvSlice, int numPrimaryConns, int numMirrorConns)
+ChunkTransportStateEntry *
+createChunkTransportState(ChunkTransportState *transportStates,
+						  Slice *sendSlice, 
+						  Slice *recvSlice, 
+						  int numPrimaryConns, 
+						  int numMirrorConns)
 {
-	ChunkTransportState *pEntry;
+	ChunkTransportStateEntry *pEntry;
     int         motNodeID;
 	int			i;
 
@@ -1558,19 +1485,19 @@ createChunkTransportState(Slice *sendSlice, Slice *recvSlice, int numPrimaryConn
            sendSlice->sliceIndex > 0);
 
     motNodeID = sendSlice->sliceIndex;
-    if (motNodeID > transportStatesSize)
+    if (motNodeID > transportStates->size)
 	{
 		/* increase size of our table */
-		ChunkTransportState *newTable;
+		ChunkTransportStateEntry *newTable;
 
-		newTable = repalloc(transportStates, motNodeID * sizeof(ChunkTransportState));
-		transportStates = newTable;
+		newTable = repalloc(transportStates->states, motNodeID * sizeof(ChunkTransportStateEntry));
+		transportStates->states = newTable;
 		/* zero-out the new piece at the end */
-		memset(&transportStates[transportStatesSize], 0, (motNodeID - transportStatesSize) * sizeof(ChunkTransportState));
-		transportStatesSize = motNodeID;
+		memset(&transportStates->states[transportStates->size], 0, (motNodeID - transportStates->size) * sizeof(ChunkTransportStateEntry));
+		transportStates->size = motNodeID;
 	}
-
-	pEntry = &transportStates[motNodeID - 1];
+	
+	pEntry = &transportStates->states[motNodeID - 1];
 
 	if (pEntry->valid)
 	{
@@ -1591,7 +1518,7 @@ createChunkTransportState(Slice *sendSlice, Slice *recvSlice, int numPrimaryConn
     pEntry->outgoingPortRetryCount = 0;
 
 	pEntry->conns = palloc0(pEntry->numConns * sizeof(pEntry->conns[0]));
-
+	
 	for (i = 0; i < pEntry->numConns; i++)
     {
         MotionConn *conn = &pEntry->conns[i];
@@ -1624,18 +1551,20 @@ createChunkTransportState(Slice *sendSlice, Slice *recvSlice, int numPrimaryConn
  * RETURNS
  *	 The ChunkTransportState struct for the given motNodeID.
  */
-static inline ChunkTransportState *
-getChunkTransportState(int motNodeID)
+static inline ChunkTransportStateEntry *
+getChunkTransportState(ChunkTransportState *transportState, int motNodeID)
 {
-	ChunkTransportState *pEntry = NULL;
+	ChunkTransportStateEntry *pEntry = NULL;
+
+	Assert(transportState != NULL);
 
 	if (motNodeID > 0 &&
-        motNodeID <= transportStatesSize &&
-        transportStates &&
-        transportStates[motNodeID-1].motNodeId == motNodeID &&
-        transportStates[motNodeID-1].valid)
+        transportState &&
+        motNodeID <= transportState->size &&
+        transportState->states[motNodeID-1].motNodeId == motNodeID &&
+        transportState->states[motNodeID-1].valid)
     {
-        pEntry = &transportStates[motNodeID - 1];
+        pEntry = &transportState->states[motNodeID - 1];
     }
     else
 	{
@@ -1661,12 +1590,13 @@ getChunkTransportState(int motNodeID)
  * RETURNS
  *	 The ChunkTransportState that was removed from the hashtab hashtable.
  */
-static ChunkTransportState *
-removeChunkTransportState(int16 motNodeID)
+static ChunkTransportStateEntry *
+removeChunkTransportState(ChunkTransportState *transportStates, 
+						  int16 motNodeID)
 {
-	ChunkTransportState *pEntry = NULL;
+	ChunkTransportStateEntry *pEntry = NULL;
 
-	if (motNodeID > transportStatesSize || !transportStates[motNodeID - 1].valid)
+	if (motNodeID > transportStates->size || !transportStates->states[motNodeID - 1].valid)
 	{
 		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove.",
@@ -1674,8 +1604,8 @@ removeChunkTransportState(int16 motNodeID)
 	}
 	else
 	{
-		transportStates[motNodeID - 1].valid = false;
-		pEntry = &transportStates[motNodeID - 1];
+		transportStates->states[motNodeID - 1].valid = false;
+		pEntry = &transportStates->states[motNodeID - 1];
 	}
 
 	return pEntry;
@@ -1749,10 +1679,12 @@ setupSeqServerConnection(char *seqServerHost, int seqServerPort )
  * RETURNS
  *	 Initialized ChunkTransportState for the Sending Motion Node Id.
  */
-ChunkTransportState *
-startOutgoingConnections(Slice *sendSlice, int *pOutgoingCount)
+ChunkTransportStateEntry *
+startOutgoingConnections(ChunkTransportState *transportStates, 
+						 Slice *sendSlice, 
+						 int *pOutgoingCount)
 {
-	ChunkTransportState *pEntry;
+	ChunkTransportStateEntry *pEntry;
     MotionConn *conn;
     ListCell   *cell;
 	Slice	   *recvSlice;
@@ -1767,11 +1699,12 @@ startOutgoingConnections(Slice *sendSlice, int *pOutgoingCount)
 		                        sendSlice->sliceIndex)
                 ));
 
-	pEntry = createChunkTransportState(sendSlice,
-                               recvSlice,
-                               list_length(recvSlice->primaryProcesses),
-                               list_length(recvSlice->mirrorProcesses));
-
+	pEntry = createChunkTransportState(transportStates, 
+									   sendSlice,
+									   recvSlice,
+									   list_length(recvSlice->primaryProcesses),
+									   list_length(recvSlice->mirrorProcesses));
+	
 	/*
 	 * Setup a MotionConn entry for each of our outbound connections.
      * Request a connection to each receiving backend's listening port.
@@ -1821,7 +1754,7 @@ startOutgoingConnections(Slice *sendSlice, int *pOutgoingCount)
  *      mcsSendRegMsg or mcsStarted if connect() completed successfully.
  */
 void
-setupOutgoingConnection(ChunkTransportState *pEntry, MotionConn *conn)
+setupOutgoingConnection(ChunkTransportStateEntry *pEntry, MotionConn *conn)
 {
     CdbProcess         *cdbProc = conn->cdbProc;
 	struct sockaddr_in  saddr;
@@ -1985,7 +1918,7 @@ setupOutgoingConnection(ChunkTransportState *pEntry, MotionConn *conn)
  * Called when connect() succeeds or fails.
  */
 void
-updateOutgoingConnection(ChunkTransportState *pEntry, MotionConn *conn, int errnoSave)
+updateOutgoingConnection(ChunkTransportStateEntry *pEntry, MotionConn *conn, int errnoSave)
 {
     socklen_t   sizeoferrno = sizeof(errnoSave);
 
@@ -2057,7 +1990,7 @@ updateOutgoingConnection(ChunkTransportState *pEntry, MotionConn *conn, int errn
  * Returns port number for an outgoing connection.
  */
 static int
-getOutgoingPort(ChunkTransportState *pEntry)
+getOutgoingPort(ChunkTransportStateEntry *pEntry)
 {
     int oldPortReservationFd = portReservationFd;
 
@@ -2088,7 +2021,7 @@ getOutgoingPort(ChunkTransportState *pEntry)
  * Abandon the current outgoing port reservation.
  */
 static void
-zapOutgoingPort(ChunkTransportState *pEntry)
+zapOutgoingPort(ChunkTransportStateEntry *pEntry)
 {
     /* Tell getOutgoingPort() to pick a new port number. */
     outgoingPort = 0;
@@ -2122,7 +2055,7 @@ zapOutgoingPort(ChunkTransportState *pEntry)
  *          sending data.
  */
 static void
-sendRegisterMessage(ChunkTransportState * pEntry, MotionConn * conn)
+sendRegisterMessage(ChunkTransportStateEntry * pEntry, MotionConn * conn)
 {
     int     bytesToSend;
     int     bytesSent;
@@ -2235,7 +2168,8 @@ sendRegisterMessage(ChunkTransportState * pEntry, MotionConn * conn)
  * when socket becomes read-ready.
  */
 static bool
-readRegisterMessage(MotionConn *conn)
+readRegisterMessage(ChunkTransportState *transportStates, 
+					MotionConn *conn)
 {
    	int     bytesToReceive;
     int     bytesReceived;
@@ -2243,7 +2177,7 @@ readRegisterMessage(MotionConn *conn)
     RegisterMessage    *regMsg;
 	RegisterMessage     msg;
 	MotionConn         *newConn;
-    ChunkTransportState   *pEntry;
+    ChunkTransportStateEntry   *pEntry;
 	CdbProcess         *cdbproc;
 
     /* Get ready to receive the Register message. */
@@ -2324,11 +2258,11 @@ readRegisterMessage(MotionConn *conn)
      * number equals the motion node id.  (Don't use this ptr until after
      * the bounds are checked, just below.)
      */
-    pEntry = &transportStates[msg.sendSliceIndex-1];
+    pEntry = &transportStates->states[msg.sendSliceIndex-1];
 
     /* Verify that the message pertains to one of our receiving Motion nodes. */
     if (msg.sendSliceIndex > 0 &&
-        msg.sendSliceIndex <= transportStatesSize &&
+        msg.sendSliceIndex <= transportStates->size &&
         msg.sendSliceIndex == pEntry->motNodeId &&
         pEntry->valid &&
         msg.recvSliceIndex == sliceId &&
@@ -2939,7 +2873,7 @@ readPacket(MotionConn * conn)
  *	 tcItem - TupleChunk to send.
  */
 static int
-doBroadcast(ChunkTransportState * pEntry, TupleChunkListItem tcItem)
+doBroadcast(ChunkTransportStateEntry * pEntry, TupleChunkListItem tcItem)
 {
 	MotionConn *conn;
 	int			i,
@@ -2963,7 +2897,7 @@ doBroadcast(ChunkTransportState * pEntry, TupleChunkListItem tcItem)
 
 
 void
-dumpEntryConnections(int elevel, ChunkTransportState *pEntry)
+dumpEntryConnections(int elevel, ChunkTransportStateEntry *pEntry)
 {
 	int			i;
     MotionConn *conn;
@@ -3002,15 +2936,15 @@ dumpEntryConnections(int elevel, ChunkTransportState *pEntry)
  *	 motNodeID - motion node identifier
  */
 void
-doSendStopMessage(int16 motNodeID)
+doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
 {
-	ChunkTransportState *pEntry;
+	ChunkTransportStateEntry *pEntry;
 	MotionConn *conn;
 	int			i;
 	char		m = 'S';
 	ssize_t		written;
 
-	pEntry = getChunkTransportState(motNodeID);
+	pEntry = getChunkTransportState(transportStates, motNodeID);
 
     if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
     	elog(DEBUG2, "sending stop message from slice %d to node %d", sliceId, motNodeID);
@@ -3048,7 +2982,7 @@ doSendStopMessage(int16 motNodeID)
 			}
 		}
 		/* CRITICAL TO AVOID DEADLOCK */
-		DeregisterReadInterest(motNodeID, i);
+		DeregisterReadInterest(transportStates, motNodeID, i);
 	}
 }
 

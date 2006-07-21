@@ -69,7 +69,11 @@ Datum ml_ipc_bench(PG_FUNCTION_ARGS)
 	
 	MppRoleValue oldRole = Mpp_role;
 	
-    
+	/* temporarily disable this routine. see TODO item below. */
+	ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_YET),
+					errmsg("Interconnect testing through libcdbtest is currently disabled")
+					));
+	
     if( SRF_IS_FIRSTCALL() )
     {
         
@@ -147,10 +151,12 @@ Datum ml_ipc_bench(PG_FUNCTION_ARGS)
            
            //try and send out
            if( msgsSent != num_msgs)
-           {			   
+           {	
+			   /* TODO: we need to enable this call again in order to support this test routine!
                if( SendTupleChunkToAMS( tcItem ) ){
 				   msgsSent++;                   
                }
+			   */
            }
            
            

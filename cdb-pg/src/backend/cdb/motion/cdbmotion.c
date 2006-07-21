@@ -151,17 +151,22 @@ static TupleChunkListItemData s_eos_chunk_data =
 {NULL, TUPLE_CHUNK_HEADER_SIZE, NULL, "                "};
 
 /*=========================================================================
- * HELPER FUNCTION DECLARATIONS
- */
+* HELPER FUNCTION DECLARATIONS
+*/
 static void initMotionLayerStructs(void);
 
 static ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry * motNodeEntry,
-					int16 srcRoute);
-static bool addChunkToSorter(MotionNodeEntry * pMNEntry, TupleChunkListItem tcItem,
-				 int16 motNodeID, int16 srcRoute);
+											 int16 srcRoute);
+static bool addChunkToSorter(ChunkTransportState *transportStates, 
+							 MotionNodeEntry * pMNEntry, 
+							 TupleChunkListItem tcItem,
+							 int16 motNodeID, 
+							 int16 srcRoute);
 
-static void processIncomingChunks(MotionNodeEntry * pMNEntry, int16 motNodeID,
-					  int16 srcRoute);
+static void processIncomingChunks(ChunkTransportState *transportStates, 
+								  MotionNodeEntry * pMNEntry, 
+								  int16 motNodeID,
+								  int16 srcRoute);
 
 static inline void reconstructTuple(MotionNodeEntry * pMNEntry, ChunkSorterEntry * pCSEntry);
 
@@ -171,8 +176,8 @@ static void statSendEOS(MotionNodeEntry * pMNEntry);
 static void statChunksProcessed(MotionNodeEntry * pMNEntry, int chunksProcessed, int chunkBytes, int tupleBytes);
 static void statNewTupleArrived(MotionNodeEntry * pMNEntry, ChunkSorterEntry * pCSEntry);
 static void statRecvTuple(MotionNodeEntry * pMNEntry,
-			  ChunkSorterEntry * pCSEntry,
-			  ReceiveReturnCode recvRC);
+						  ChunkSorterEntry * pCSEntry,
+						  ReceiveReturnCode recvRC);
 
 /*=========================================================================
  * FUNCTION DEFINITIONS
@@ -433,12 +438,13 @@ setExpectedReceivers(int16 motNodeID, int expectedReceivers)
 }
 
 void
-SendStopMessage(int16 motNodeID)
+SendStopMessage(ChunkTransportState *transportStates, 
+				int16 motNodeID)
 {
 	MotionNodeEntry *pEntry = getMotionNodeEntry(motNodeID, "SendStopMessage");
 
 	pEntry->stopped = true;
-	doSendStopMessage(motNodeID);
+	doSendStopMessage(transportStates, motNodeID);
 }
 
 /*
@@ -446,7 +452,10 @@ SendStopMessage(int16 motNodeID)
  *
  */
 SendReturnCode
-SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRoute)
+SendTuple(ChunkTransportState *transportStates, 
+		  int16 motNodeID, 
+		  HeapTuple tuple, 
+		  int16 targetRoute)
 {
 	MotionNodeEntry *pMNEntry;
 	TupleChunkList tcList;
@@ -484,7 +493,7 @@ SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRoute)
 #endif
 
 	/* do the send. */
-	if (!SendTupleChunkToAMS(motNodeID, targetRoute, tcList->p_first))
+	if (!SendTupleChunkToAMS(transportStates, motNodeID, targetRoute, tcList->p_first))
 	{
 		pMNEntry->stopped = true;
 		rc = STOP_SENDING;
@@ -512,7 +521,9 @@ SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRoute)
  * until the SEND_COMPLETE value is returned.
  */
 SendReturnCode
-SendEndOfStream(int16 motNodeID, int16 targetRoute)
+SendEndOfStream(ChunkTransportState *transportStates, 
+				int16 motNodeID, 
+				int16 targetRoute)
 {
 	MotionNodeEntry *pMNEntry;
 	uint8	   *pData;
@@ -537,7 +548,7 @@ SendEndOfStream(int16 motNodeID, int16 targetRoute)
 	SetChunkDataSize(pData, 0);
 	SetChunkType(pData, TC_END_OF_STREAM);
 
-	SendEosToAMS(motNodeID, targetRoute, &s_eos_chunk_data);
+	SendEosToAMS(transportStates, motNodeID, targetRoute, &s_eos_chunk_data);
 
 	/*
 	 * We increment our own "stream-ends received" count when we send our own,
@@ -553,7 +564,10 @@ SendEndOfStream(int16 motNodeID, int16 targetRoute)
 
 /* An unordered receiver will call this with srcRoute == ANY_ROUTE */
 ReceiveReturnCode
-RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i, int16 srcRoute)
+RecvTupleFrom(ChunkTransportState *transportStates, 
+			  int16 motNodeID, 
+			  HeapTuple *tup_i, 
+			  int16 srcRoute)
 {
 	MotionNodeEntry *pMNEntry;
 	ChunkSorterEntry *pCSEntry;
@@ -615,7 +629,7 @@ RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i, int16 srcRoute)
 			}
 		}
 
-		processIncomingChunks(pMNEntry, motNodeID, srcRoute);
+		processIncomingChunks(transportStates, pMNEntry, motNodeID, srcRoute);
 
 		if (srcRoute == ANY_ROUTE)
 			*tup_i = htfifo_gettuple(pMNEntry->ready_tuples);
@@ -665,7 +679,10 @@ RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i, int16 srcRoute)
  * sometime during send-tuple operations as well.
  */
 static void
-processIncomingChunks(MotionNodeEntry * pMNEntry, int16 motNodeID, int16 srcRoute)
+processIncomingChunks(ChunkTransportState *transportStates, 
+					  MotionNodeEntry * pMNEntry, 
+					  int16 motNodeID,
+					  int16 srcRoute)
 {
 	TupleChunkListItem tcItem,
 				tcNext;
@@ -683,9 +700,9 @@ processIncomingChunks(MotionNodeEntry * pMNEntry, int16 motNodeID, int16 srcRout
 	 * the chunk-sorter.
 	 */
 	if (srcRoute == ANY_ROUTE)
-		tcItem = RecvTupleChunkFromAny(motNodeID, &srcRoute);
+		tcItem = RecvTupleChunkFromAny(transportStates, motNodeID, &srcRoute);
 	else
-		tcItem = RecvTupleChunkFrom(motNodeID, srcRoute);
+		tcItem = RecvTupleChunkFrom(transportStates, motNodeID, srcRoute);
 
 	numChunks = 0;
 	chunkBytes = 0;
@@ -713,7 +730,7 @@ processIncomingChunks(MotionNodeEntry * pMNEntry, int16 motNodeID, int16 srcRout
 		}
 
 		/* Stick the chunk into the sorter. */
-		addChunkToSorter(pMNEntry, tcItem, motNodeID, srcRoute);
+		addChunkToSorter(transportStates, pMNEntry, tcItem, motNodeID, srcRoute);
 
 		tcItem = tcNext;
 	}
@@ -1028,8 +1045,11 @@ materializeChunk(TupleChunkListItem * tcItem)
  *	 false - if the chunk does not complete a HeapTuple.
  */
 static bool
-addChunkToSorter(MotionNodeEntry * pMNEntry, TupleChunkListItem tcItem,
-				 int16 motNodeID, int16 srcRoute)
+addChunkToSorter(ChunkTransportState *transportStates, 
+				 MotionNodeEntry * pMNEntry, 
+				 TupleChunkListItem tcItem,
+				 int16 motNodeID, 
+				 int16 srcRoute)
 {
 	MemoryContext oldCtxt;
 	ChunkSorterEntry *chunkSorterEntry;
@@ -1155,7 +1175,7 @@ addChunkToSorter(MotionNodeEntry * pMNEntry, TupleChunkListItem tcItem,
 			 * Since we received an end-of-stream.	Then we no longer need
 			 * read interest in the interconnect.
 			 */
-			DeregisterReadInterest(motNodeID, srcRoute);
+			DeregisterReadInterest(transportStates, motNodeID, srcRoute);
 
 			break;
 
@@ -1183,7 +1203,7 @@ addChunkToSorter(MotionNodeEntry * pMNEntry, TupleChunkListItem tcItem,
 			chunkSorterEntry->end_of_stream = true;
 			pMNEntry->num_stream_ends_recvd++;
 
-			DeregisterReadInterest(motNodeID, srcRoute);
+			DeregisterReadInterest(transportStates, motNodeID, srcRoute);
 
 			break;
 

@@ -212,6 +212,7 @@ execMotionSender(MotionState * node)
 	Motion	   *motion = (Motion *) node->ps.plan;
 	bool		done = false;
 
+
 #ifdef MEASURE_MOTION_TIME
 	struct timeval time1;
 	struct timeval time2;
@@ -304,13 +305,16 @@ execMotionUnsortedReceiver(MotionState * node)
 	AssertState(motion->motionType == MOTIONTYPE_HASH ||
 	 (motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs <= 1));
 
+
 	if (node->stopRequested)
 	{
-		SendStopMessage(motion->motionID);
+		SendStopMessage(node->ps.state->interconnect_context,
+						motion->motionID);
 		return NULL;
 	}
 
-	recvRC = RecvTupleFrom(motion->motionID, &tuple, ANY_ROUTE);
+	recvRC = RecvTupleFrom(node->ps.state->interconnect_context,
+						   motion->motionID, &tuple, ANY_ROUTE);
 
 	if (recvRC == END_OF_STREAM)
 	{
@@ -401,7 +405,9 @@ execMotionSortedReceiver(MotionState * node)
 	/* Notify senders and return EOS if caller doesn't want any more data. */
     if (node->stopRequested)
 	{
-		SendStopMessage(motion->motionID);
+		
+		SendStopMessage(node->ps.state->interconnect_context,
+						motion->motionID);
 		return NULL;
 	}
 
@@ -423,7 +429,10 @@ execMotionSortedReceiver(MotionState * node)
                     tupHeapInfo->sourceRouteId == node->routeIdNext);
 
         /* Receive the successor of the tuple that we returned last time. */
-        recvRC = RecvTupleFrom(motion->motionID, &inputTuple, node->routeIdNext);
+        recvRC = RecvTupleFrom(node->ps.state->interconnect_context,
+							   motion->motionID, 
+							   &inputTuple, 
+							   node->routeIdNext);
 
         /* Substitute it in the pq for its predecessor. */
 		if (recvRC == GOT_TUPLE)
@@ -539,7 +548,8 @@ execMotionSortedReceiverFirstTime(MotionState * node)
 		 * another place where we are mapping segid space to routeid space. so
 		 * route[x] = inputSegIdx[x] now.
 		 */
-		recvRC = RecvTupleFrom(motion->motionID, &inputTuple, iSegIdx);
+		recvRC = RecvTupleFrom(node->ps.state->interconnect_context,
+							   motion->motionID, &inputTuple, iSegIdx);
 
 		if (recvRC == GOT_TUPLE)
 		{
@@ -1141,7 +1151,9 @@ doSendEndOfStream(Motion * motion, MotionState * node)
 	else
 		targetRoute = BROADCAST_SEGIDX;
 
-	sendRC = SendEndOfStream(motion->motionID, targetRoute);
+
+	sendRC = SendEndOfStream(node->ps.state->interconnect_context,
+							 motion->motionID, targetRoute);
 
 	Assert(sendRC == SEND_COMPLETE);
 
@@ -1184,6 +1196,7 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
     HeapTuple       tuple;
     SendReturnCode  sendRC;
 	ExprContext    *econtext = node->ps.ps_ExprContext;
+	
 
 	/* We got a tuple from the child-plan. */
 	node->numTuplesFromChild++;
@@ -1229,7 +1242,12 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 
 	/* send the tuple out. */
     tuple = ExecFetchSlotTuple(outerTupleSlot);
-	sendRC = SendTuple(motion->motionID, tuple, targetRoute);
+	
+	
+	sendRC = SendTuple(node->ps.state->interconnect_context,
+					   motion->motionID, 
+					   tuple, 
+					   targetRoute);
 
 	Assert(sendRC == SEND_COMPLETE || sendRC == STOP_SENDING);
 
@@ -1280,5 +1298,6 @@ ExecStopMotion(MotionState * node)
 	motion = (Motion *) node->ps.plan;
 
 	node->stopRequested = true;
-	SendStopMessage(motion->motionID);
+	SendStopMessage(node->ps.state->interconnect_context,
+					motion->motionID);
 }

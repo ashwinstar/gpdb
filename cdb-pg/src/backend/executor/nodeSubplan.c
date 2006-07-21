@@ -1057,10 +1057,12 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			 * Set up the interconnect for execution of the initplan root slice.
 			 */
 			shouldTeardownInterconnect = true;
-			SetupInterconnect( queryDesc->estate->es_sliceTable,
+			SetupInterconnect((ChunkTransportState **)&queryDesc->estate->interconnect_context,
+							   queryDesc->estate->es_sliceTable,
 							   queryDesc->estate->es_sliceTable->localSlice);
-		}
 
+			ExecUpdateTransportState(planstate, queryDesc->estate->interconnect_context);
+		}
 
 		/*
 		 * Must switch to child query's per-query memory context.
@@ -1226,7 +1228,10 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
         if (shouldTeardownInterconnect)
         {
         	shouldTeardownInterconnect = false;
-	        TeardownInterconnect(false); /* following success on QD */
+
+	        TeardownInterconnect(queryDesc->estate->interconnect_context, 
+								 false); /* following success on QD */	
+
 	    }
 
     }
@@ -1249,7 +1254,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
          * CDB TODO: Is this needed following failure on QD?
          */
         if (shouldTeardownInterconnect)
-			TeardownInterconnect(true);
+			TeardownInterconnect(queryDesc->estate->interconnect_context, 
+								 true);
 
         PG_RE_THROW();
 	}

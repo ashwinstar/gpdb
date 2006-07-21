@@ -52,13 +52,18 @@
  * NOTE: this function MUST be called in utility mode.!
  * 
  */
+
 PG_FUNCTION_INFO_V1(ml_ipc_getMsg__text1);
 Datum ml_ipc_getMsg__text1(PG_FUNCTION_ARGS)
 {
 	char	*msg = GET_STR(PG_GETARG_TEXT_P(0));
     int		mySegIndex = 1;
 
-    
+	/* temporarily disable this routine. see TODO item below. */
+	ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_YET),
+					errmsg("Interconnect testing through libcdbtest is currently disabled")
+					));
+	
     /* Initialize the Motion Layer IPC subsystem. */			
 	InitMotionLayerIPC();
 
@@ -80,11 +85,12 @@ Datum ml_ipc_getMsg__text1(PG_FUNCTION_ARGS)
     memcpy( tcItem->chunk_data + TUPLE_CHUNK_HEADER_SIZE, msg, strlen(msg) );
 
     /* Send it out via the ml_ipc */
-    if( ! SendTupleChunkToAMS(tcItem) )
+    /* TODO: we need to be able to enable this call again in order to support this test routine */
+	/*if( ! SendTupleChunkToAMS(tcItem) )
 	{
 	    elog(FATAL, "failed during SendTupleChunkToAMS( tcItem )" );
         //DOH: nasty error handling.
-    }
+    }*/
 
     /* wait for amsd to get to it */
     sleep(1);

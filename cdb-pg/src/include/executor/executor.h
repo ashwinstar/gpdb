@@ -143,8 +143,8 @@ extern Node *MultiExecProcNode(PlanState *node);
 extern int	ExecCountSlotsNode(Plan *node);
 extern void ExecEndNode(PlanState *node);
 
-void
-ExecSquelchNode(PlanState *node);
+void ExecSquelchNode(PlanState *node);
+void ExecUpdateTransportState(PlanState *node, void *state);
 
 typedef enum
 {

@@ -377,7 +377,12 @@ Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPol
 			if (((PlanState *) motionState)->plan->nMotionNodes > 0)
 			{
 				estate->es_interconnect_is_setup = true;
-				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
+
+				SetupInterconnect((ChunkTransportState **)&estate->interconnect_context,
+								  estate->es_sliceTable, estate->es_cur_slice_idx);
+
+				ExecUpdateTransportState((PlanState *)motionState,
+										 (ChunkTransportState *)estate->interconnect_context);
 			}
 		}
 		else if (exec_identity == MPP_ROOT_SLICE)
@@ -389,7 +394,12 @@ Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPol
 			if (queryDesc->planstate->plan->nMotionNodes > 0)
 			{
 				estate->es_interconnect_is_setup = true;
-				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
+
+				SetupInterconnect((ChunkTransportState **)&estate->interconnect_context,
+								  estate->es_sliceTable, estate->es_cur_slice_idx);
+
+				ExecUpdateTransportState(queryDesc->planstate,
+										 (ChunkTransportState *)estate->interconnect_context);
 			}
 		}
 		else if (exec_identity != MPP_IGNORE)
@@ -399,6 +409,10 @@ Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPol
 					(errcode(ERRCODE_MPP_INTERNAL_ERROR),
 					 errmsg("Unsupported MPP execution strategy")));			
 		}
+		
+		if(estate->es_interconnect_is_setup)
+			Assert(estate->interconnect_context != NULL);
+
     }
 	PG_CATCH();
 	{
@@ -507,7 +521,7 @@ ExecutorRun(QueryDesc *queryDesc,
 		 * getMppExecIdentity() in execUtils.
 		 */
 		exec_identity = getMppExecIdentity(queryDesc, direction, estate);
-		
+
 		if (exec_identity == MPP_IGNORE)
 		{
 			result = NULL;
@@ -528,7 +542,7 @@ ExecutorRun(QueryDesc *queryDesc,
 			 * root.
 			 */
 			MotionState *motionState = (estate->es_slice_map[estate->es_cur_slice_idx]);
-			
+
 			result = ExecutePlan(estate,
 								 (PlanState *) motionState,
 								 CMD_SELECT,
