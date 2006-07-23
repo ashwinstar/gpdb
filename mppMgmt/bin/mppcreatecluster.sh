@@ -193,7 +193,7 @@ CHK_PARAMS () {
 		LOG_MSG "[INFO]:-Dump current system locale to log file"
 		$LOCALE >> $LOG_FILE
 		LOG_MSG "[INFO]:-End of system locale dump"
-		QD_ARCH_TYPE=`uname -i`
+		QD_ARCH_TYPE=`$HOST_ARCH_TYPE`
 		QD_OS_TYPE=$OS_TYPE
 		#Check the other files that are required to be able to continue
 		FILE_LIST=($MACHINE_LIST_FILE)
@@ -448,7 +448,7 @@ CHK_QES () {
 
 RUN_OS_CHKS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	QE_ARCH_TYPE=`$TRUSTED_SHELL $MPP_HOSTNAME uname -i`
+	QE_ARCH_TYPE=`$TRUSTED_SHELL $MPP_HOSTNAME $HOST_ARCH_TYPE`
 	if [ $QD_ARCH_TYPE != $QE_ARCH_TYPE ];then
 		ERROR_EXIT "[FATAL]:-Host $MPP_HOSTNAME architecture variance with master has architecture type $QE_ARCH_TYPE master is $QD_ARCH_TYPE" 2
 	else

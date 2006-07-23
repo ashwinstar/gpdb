@@ -877,16 +877,19 @@ case $OS_TYPE in
 		PS_TXT="-ef" 
 		LIB_TYPE="LD_LIBRARY_PATH"
 		PG_METHOD=trust
+		HOST_ARCH_TYPE="uname -i"
 		DU_TXT="-s" ;;
 	linux ) IFCONFIG_TXT="" 
 		PS_TXT="ax" 
 		LIB_TYPE="LD_LIBRARY_PATH"
 		PG_METHOD="ident sameuser"
+		HOST_ARCH_TYPE="uname -i"
 		DU_TXT="-c" ;;
 	darwin ) IFCONFIG_TXT=""
 		PS_TXT="ax"
 		LIB_TYPE="DYLD_LIBRARY_PATH"
 		PG_METHOD="ident sameuser"
+		HOST_ARCH_TYPE="uname -m"
 		DU_TXT="-c" ;;	
 	* ) echo unknown ;;
 esac
