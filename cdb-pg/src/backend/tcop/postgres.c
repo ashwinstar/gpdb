@@ -1209,6 +1209,16 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	is_named = (stmt_name[0] != '\0');
 	if (is_named)
 	{
+		/* MPP TEMP start: this is unnecessary after multiple cursors are working (see MPP-742) */
+		unnamed_stmt_pstmt = NULL;
+		if (unnamed_stmt_context)
+		{
+			DropDependentPortals(unnamed_stmt_context);
+			MemoryContextDelete(unnamed_stmt_context);
+		}
+		unnamed_stmt_context = NULL;
+		/* MPP TEMP end */
+		
 		/* Named prepared statement --- parse in MessageContext */
 		oldcontext = MemoryContextSwitchTo(MessageContext);
 	}
@@ -1478,9 +1488,15 @@ exec_bind_message(StringInfo input_message)
 	 * if the unnamed portal is specified.
 	 */
 	if (portal_name[0] == '\0')
+	{
 		portal = CreatePortal(portal_name, true, true);
+	}
 	else
+	{
 		portal = CreatePortal(portal_name, false, false);
+		portal->is_cursor = true;
+	}
+		
 
 	/* We need to output the parameter values someday */
 	if (log_statement == LOGSTMT_ALL)

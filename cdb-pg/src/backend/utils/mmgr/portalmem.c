@@ -260,10 +260,10 @@ PortalDefineQuery(Portal portal,
 	/* loop through existing portals (normally there will be one - that we just created) */
 	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
 	{
-		Portal		portal = hentry->portal;
+		Portal		existing_portal = hentry->portal;
 		
 		/* if this portal is a cursor, allow only selected operations to go through */
-		if(portal->is_cursor && Mpp_role == MPP_ROLE_DISPATCH)
+		if(existing_portal->is_cursor && Mpp_role == MPP_ROLE_DISPATCH && existing_portal != portal)
 		{
 			if (strcmp(commandTag, "FETCH") != 0 &&
 				strcmp(commandTag, "MOVE") != 0 &&
