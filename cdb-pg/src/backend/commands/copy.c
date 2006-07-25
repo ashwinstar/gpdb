@@ -2451,10 +2451,20 @@ CopyFromDispatch(CopyState cstate)
 			if (cstate->header_line)
 			{
 				cstate->cur_lineno++;
-				
-				cstate->line_done = cstate->csv_mode ?
-					CopyReadLineCSV(cstate, bytesread) :
-					CopyReadLineText(cstate, bytesread);
+
+				PG_TRY();
+				{
+					cstate->line_done = cstate->csv_mode ?
+						CopyReadLineCSV(cstate, bytesread) :
+						CopyReadLineText(cstate, bytesread);
+				}
+				PG_CATCH();
+				{
+					/* clean up and re-throw error */
+					cdbCopyEnd(cdbCopy);
+					PG_RE_THROW();
+				}
+				PG_END_TRY();
 				
 				cstate->line_buf.len = 0;
 				cstate->line_buf.data[0] = '\0';
@@ -2488,10 +2498,20 @@ CopyFromDispatch(CopyState cstate)
 				if (!cstate->binary)
 				{
 
-					/* Actually read the line into memory here */
-					cstate->line_done = cstate->csv_mode ?
-						CopyReadLineCSV(cstate, bytesread) :
-						CopyReadLineText(cstate, bytesread);
+					PG_TRY();
+					{
+						/* Actually read the line into memory here */
+						cstate->line_done = cstate->csv_mode ?
+							CopyReadLineCSV(cstate, bytesread) :
+							CopyReadLineText(cstate, bytesread);
+					}
+					PG_CATCH();
+					{
+						/* clean up and re-throw error */
+						cdbCopyEnd(cdbCopy);
+						PG_RE_THROW();
+					}
+					PG_END_TRY();					
 
 					/*
 					 * if finished processing data line - increment line count.
