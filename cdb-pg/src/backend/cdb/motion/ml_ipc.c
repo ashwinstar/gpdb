@@ -91,16 +91,11 @@ struct timeval tval;
 
 List	   *incompleteConns = NIL;
 
-/* keeps track of if we've "activated" connections via SetupInterconnect(). */
-bool		activated;
-
 /*slice table stuff. */
 SliceTable *sliceTable = NULL;
 int			sliceId;
 
-bool		teardownActive = false;
-
-#define ML_CHECK_FOR_INTERRUPTS() \
+#define ML_CHECK_FOR_INTERRUPTS(teardownActive) \
 		do {if (!teardownActive && InterruptPending) CHECK_FOR_INTERRUPTS(); } while (0)
 
 /*=========================================================================
@@ -126,24 +121,24 @@ static ChunkTransportStateEntry *startOutgoingConnections(ChunkTransportState *t
 													 Slice *sendSlice, 
 													 int *pOutgoingCount);
 
-static void setupOutgoingConnection(ChunkTransportStateEntry *pEntry, MotionConn *conn);
-static void updateOutgoingConnection(ChunkTransportStateEntry *pEntry, MotionConn *conn, int errnoSave);
+static void setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn);
+static void updateOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn, int errnoSave);
 static int  getOutgoingPort(ChunkTransportStateEntry *pEntry);
 static void zapOutgoingPort(ChunkTransportStateEntry *pEntry);
 
-static void sendRegisterMessage(ChunkTransportStateEntry *pEntry, MotionConn * conn);
+static void sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn * conn);
 static bool readRegisterMessage(ChunkTransportState *transportStates, 
 								MotionConn *conn);
 static MotionConn *acceptIncomingConnection(void);
 
-static bool sendChunk(MotionConn * conn, TupleChunkListItem tcItem, int16 motionId);
-static inline void readPacket(MotionConn * conn);
-static inline int doBroadcast(ChunkTransportStateEntry *pEntry, TupleChunkListItem tcItem);
+static bool sendChunk(ChunkTransportState *transportStates, MotionConn * conn, TupleChunkListItem tcItem, int16 motionId);
+static inline void readPacket(ChunkTransportState *transportStates, MotionConn * conn);
+static inline int doBroadcast(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, TupleChunkListItem tcItem);
 
-static bool flushBuffer(MotionConn * conn, int16 motionId);
+static bool flushBuffer(ChunkTransportState *transportStates, MotionConn * conn, int16 motionId);
 
 static void	dumpEntryConnections(int elevel, ChunkTransportStateEntry *pEntry);
-static void	print_connection(int fd, const char *msg);
+static void	print_connection(ChunkTransportState *transportStates, int fd, const char *msg);
 static void format_fd_set(StringInfo buf, int nfds, fd_set *fds, char* pfx, char *sfx);
 static char *format_sockaddr(struct sockaddr *sa, char* buf, int bufsize);
 
@@ -151,7 +146,7 @@ static void waitOnSocketDone(int);
 
 static void flushInterconnectListenerBacklog(void);
 
-static inline TupleChunkListItem RecvTupleChunk(MotionConn * conn);
+static inline TupleChunkListItem RecvTupleChunk(ChunkTransportState *transportStates, MotionConn * conn);
 
 
 /*=========================================================================
@@ -191,7 +186,7 @@ InitMotionLayerIPC(void)
 	tval.tv_sec = 0;
 	tval.tv_usec = 500000;
 
-	activated = false;
+	/*activated = false;*/
 	seqserverFd = -1;
 
 	/* Listen for connections from qExecs. */
@@ -218,7 +213,6 @@ CleanUpMotionLayerIPC(void)
         close(portReservationFd);
 
 	/* be safe and reset global state variables. */
-	activated = false;
 	Mpp_listener_port = 0;
 	listenerFd = -1;
     portReservationFd = -1;
@@ -241,10 +235,10 @@ SendTupleChunkToAMS(ChunkTransportState *transportStates,
 	MotionConn *conn;
 	TupleChunkListItem currItem;
 
-	Insist(activated);
+	Insist(transportStates && transportStates->activated);
 
 	/* check em' */
-	ML_CHECK_FOR_INTERRUPTS();
+	ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG5, "sendtuplechunktoams: calling get_transport_state w/transportStates %p transportState->size %d motnodeid %d",
@@ -267,7 +261,7 @@ SendTupleChunkToAMS(ChunkTransportState *transportStates,
 
 		if (targetRoute == BROADCAST_SEGIDX)
 		{
-			if (doBroadcast(pEntry, currItem) != 0)
+			if (doBroadcast(transportStates, pEntry, currItem) != 0)
 				recount = 1;
 		}
 		else
@@ -277,7 +271,7 @@ SendTupleChunkToAMS(ChunkTransportState *transportStates,
 			/* only send to interested connections */
 			if (conn->stillActive)
 			{
-				sendChunk(conn, currItem, motNodeID);
+				sendChunk(transportStates, conn, currItem, motNodeID);
 				if (!conn->stillActive)
 					recount = 1;
 			}
@@ -289,7 +283,7 @@ SendTupleChunkToAMS(ChunkTransportState *transportStates,
 				/* only send to interested connections */
 				if (conn->stillActive)
 				{
-					sendChunk(conn, currItem, motNodeID);
+					sendChunk(transportStates, conn, currItem, motNodeID);
 					if (!conn->stillActive)
 						recount = 1;
 				}
@@ -325,10 +319,10 @@ SendEosToAMS(ChunkTransportState *transportStates,
 	MotionConn *conn;
 	int			i;
 
-	Insist(activated || teardownActive);
+	Insist(transportStates && (transportStates->activated || transportStates->teardownActive));
 
 	/* check em' */
-	ML_CHECK_FOR_INTERRUPTS();
+	ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG5, "SendEosToAMS() Entering motnode %d targetroute %d", motNodeID, targetRoute);
@@ -337,7 +331,7 @@ SendEosToAMS(ChunkTransportState *transportStates,
 	pEntry = getChunkTransportState(transportStates, motNodeID);
 
 	/* we want to add our tcItem onto each of the outgoing buffers */
-	doBroadcast(pEntry, tcItem);
+	doBroadcast(transportStates, pEntry, tcItem);
 
 	/* now flush all of the buffers. */
 	for (i = 0; i < pEntry->numConns; i++)
@@ -345,7 +339,7 @@ SendEosToAMS(ChunkTransportState *transportStates,
 		conn = pEntry->conns + i;
 		if (conn->sockfd >= 0 &&
             conn->state == mcsStarted)
-			flushBuffer(conn, motNodeID);
+			flushBuffer(transportStates, conn, motNodeID);
 	}
 
 #ifdef AMS_VERBOSE_LOGGING
@@ -369,7 +363,7 @@ RecvTupleChunkFromAny(ChunkTransportState *transportStates,
 				index;
 	bool		skipSelect = false;
 
-	Insist(activated);
+	Insist(transportStates && transportStates->activated);
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG5, "RecvTupleChunkFromAny(motNodeId=%d)", motNodeID);
@@ -383,7 +377,7 @@ RecvTupleChunkFromAny(ChunkTransportState *transportStates,
 		struct timeval timeout = tval;
 
 		/* make sure we check for these. */
-		ML_CHECK_FOR_INTERRUPTS();
+		ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
 		memcpy(&rset, &(pEntry->readSet), sizeof(fd_set));
 
@@ -454,7 +448,7 @@ RecvTupleChunkFromAny(ChunkTransportState *transportStates,
 #ifdef AMS_VERBOSE_LOGGING
 			elog(DEBUG5, "RecvTupleChunkFromAny() (fd %d) %d/%d", conn->sockfd, motNodeID, index);
 #endif
-			tcItem = RecvTupleChunk(conn);
+			tcItem = RecvTupleChunk(transportStates, conn);
 
 			*srcRoute = index;
 
@@ -481,10 +475,10 @@ RecvTupleChunkFrom(ChunkTransportState *transportStates,
 	ChunkTransportStateEntry *pEntry;
 	MotionConn *conn;
 
-	Insist(activated);
+	Insist(transportStates && transportStates->activated);
 
 	/* check em' */
-	ML_CHECK_FOR_INTERRUPTS();
+	ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG5, "RecvTupleChunkFrom(motNodID=%d, srcRoute=%d)", motNodeID, srcRoute);
@@ -493,11 +487,12 @@ RecvTupleChunkFrom(ChunkTransportState *transportStates,
 	pEntry = getChunkTransportState(transportStates, motNodeID);
 	conn = pEntry->conns + srcRoute;
 
-	return RecvTupleChunk(conn);
+	return RecvTupleChunk(transportStates, conn);
 }
 
 static inline TupleChunkListItem
-RecvTupleChunk(MotionConn * conn)
+RecvTupleChunk(ChunkTransportState *transportStates,
+			   MotionConn * conn)
 {
 	TupleChunkListItem tcItem;
 	TupleChunkListItem firstTcItem = NULL;
@@ -506,7 +501,7 @@ RecvTupleChunk(MotionConn * conn)
 	int			bytesProcessed = 0;
 
 	/* read the packet in from the network. */
-	readPacket(conn);
+	readPacket(transportStates, conn);
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG5, "read packet recv bytes %d msgsize %d", conn->recvBytes, conn->msgSize);
@@ -523,7 +518,7 @@ RecvTupleChunk(MotionConn * conn)
 		{
 			/* it is possible that our message got messed up by a
 			 * cancellation ? */
-			ML_CHECK_FOR_INTERRUPTS();
+			ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
 			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 							errmsg("Interconnect error parsing message"),
@@ -576,7 +571,7 @@ DeregisterReadInterest(ChunkTransportState *transportStates, int16 motNodeID, in
 	ChunkTransportStateEntry *pEntry;
 	MotionConn *conn;
 
-	Insist(activated);
+	Insist(transportStates && transportStates->activated);
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG4, "DeregisterReadInterest(%d, %d)", motNodeID, srcRoute);
@@ -690,13 +685,15 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 	/* we can have at most one of these. */
 	ChunkTransportStateEntry *sendingChunkTransportState = NULL;
 
-	Insist(!activated && !*ppTransportStates && mySliceTable);
+	Insist(!*ppTransportStates && mySliceTable);
 
 	*ppTransportStates = palloc0(sizeof(ChunkTransportState));
 	
 	Assert((*ppTransportStates)->size == 0);
 	(*ppTransportStates)->size = CTS_INITIAL_SIZE;
 	(*ppTransportStates)->states = palloc0(CTS_INITIAL_SIZE * sizeof(ChunkTransportStateEntry));
+	(*ppTransportStates)->teardownActive = false;
+	(*ppTransportStates)->activated = false;
 
 	sliceTable = mySliceTable;
 	sliceId = mySliceId;
@@ -807,7 +804,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
             if (conn->state == mcsSetupOutgoingConnection &&
                 conn->wakeup_ms <= elapsed_ms + 20)
             {
-                setupOutgoingConnection(sendingChunkTransportState, conn);
+                setupOutgoingConnection(*ppTransportStates, sendingChunkTransportState, conn);
                 switch (conn->state)
                 {
                     case mcsSetupOutgoingConnection:
@@ -901,9 +898,9 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
             /* Wait until earliest wakeup time or overall timeout. */
             if (timeout_ms > 0)
             {
-                ML_CHECK_FOR_INTERRUPTS();
+                ML_CHECK_FOR_INTERRUPTS((*ppTransportStates)->teardownActive);
                 pg_usleep(timeout_ms * 1000);
-                ML_CHECK_FOR_INTERRUPTS();
+                ML_CHECK_FOR_INTERRUPTS((*ppTransportStates)->teardownActive);
             }
 
             /* Back to top of loop and look again. */
@@ -946,9 +943,9 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
             memset(&logbuf, 0, sizeof(logbuf));
         }
 
-		ML_CHECK_FOR_INTERRUPTS();
+		ML_CHECK_FOR_INTERRUPTS((*ppTransportStates)->teardownActive);
         n = select(highsock + 1, &rset, &wset, &eset, &timeout);
-		ML_CHECK_FOR_INTERRUPTS();
+		ML_CHECK_FOR_INTERRUPTS((*ppTransportStates)->teardownActive);
 
         elapsed_ms = gettime_elapsed_ms(startTime);
 
@@ -1068,7 +1065,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
                         FD_ISSET(conn->sockfd, &eset))
                     {
                         n--;
-                        updateOutgoingConnection(sendingChunkTransportState, conn, -1);
+                        updateOutgoingConnection(*ppTransportStates, sendingChunkTransportState, conn, -1);
                         switch (conn->state)
                         {
                             case mcsSetupOutgoingConnection:
@@ -1094,7 +1091,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
                     if (FD_ISSET(conn->sockfd, &wset))
                     {
                         n--;
-                        sendRegisterMessage(sendingChunkTransportState, conn);
+                        sendRegisterMessage(*ppTransportStates, sendingChunkTransportState, conn);
                         if (conn->state == mcsStarted)
                             outgoing_count++;
                     }
@@ -1147,7 +1144,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 		}
 	}
 
-	activated = true;
+	(*ppTransportStates)->activated = true;
 
     if (mpp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
         ereport(LOG, (errmsg("SetupInterconnect+%dms: Activated %d incoming, "
@@ -1172,11 +1169,13 @@ forceEosToPeer(ChunkTransportState *transportStates,
 	elog(DEBUG5, "forceEosToPeer(%d, %d)", motNodeID, targetRoute);
 #endif
 
-	teardownActive = true;
+	Insist(transportStates);
+	
+	transportStates->teardownActive = true;
 
 	SendEndOfStream(transportStates, motNodeID, targetRoute);
 
-	teardownActive = false;
+	transportStates->teardownActive = false;
 }
 
 /* TeardownInterconnect() function is used to cleanup interconnect resources that
@@ -1209,13 +1208,13 @@ TeardownInterconnect(ChunkTransportState *transportStates,
     if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
         ereport(LOG, (errmsg("Interconnect cleanup state: %s; setup was %s",
 		                     forceEOS ? "force" : "normal",
-                             activated ? "completed" : "exited")
+                             transportStates->activated ? "completed" : "exited")
                 ));
 
 	Insist(sliceTable != NULL);
 
 	/* if setup did not complete, log the slicetable */
-    if (!activated &&
+    if (!transportStates->activated &&
         mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
 		elog_node_display(DEBUG2, "local slice table", sliceTable, true);
 
@@ -1371,7 +1370,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 		pfree(transportStates);
 	}
 
-	activated = false;
+	transportStates->activated = false;
 	sliceTable = NULL;
 
 	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
@@ -1754,7 +1753,7 @@ startOutgoingConnections(ChunkTransportState *transportStates,
  *      mcsSendRegMsg or mcsStarted if connect() completed successfully.
  */
 void
-setupOutgoingConnection(ChunkTransportStateEntry *pEntry, MotionConn *conn)
+setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn)
 {
     CdbProcess         *cdbProc = conn->cdbProc;
 	struct sockaddr_in  saddr;
@@ -1882,14 +1881,14 @@ setupOutgoingConnection(ChunkTransportStateEntry *pEntry, MotionConn *conn)
      */
     for (;;)
     {                           /* connect() EINTR retry loop */
-        ML_CHECK_FOR_INTERRUPTS();
+        ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
         n = connect(conn->sockfd, (struct sockaddr *) &saddr, sizeof(saddr));
 	
         /* Non-blocking socket never connects immediately, but check anyway. */
         if (n == 0)
         {
-            sendRegisterMessage(pEntry, conn);
+            sendRegisterMessage(transportStates, pEntry, conn);
             return;
         }
 	
@@ -1906,7 +1905,7 @@ setupOutgoingConnection(ChunkTransportStateEntry *pEntry, MotionConn *conn)
         }
 
         /* connect() failed.  Log the error.  Caller should retry. */
-        updateOutgoingConnection(pEntry, conn, errno);
+        updateOutgoingConnection(transportStates, pEntry, conn, errno);
         return;
     }                           /* connect() EINTR retry loop */
 }                               /* setupOutgoingConnection */
@@ -1918,7 +1917,7 @@ setupOutgoingConnection(ChunkTransportStateEntry *pEntry, MotionConn *conn)
  * Called when connect() succeeds or fails.
  */
 void
-updateOutgoingConnection(ChunkTransportStateEntry *pEntry, MotionConn *conn, int errnoSave)
+updateOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn, int errnoSave)
 {
     socklen_t   sizeoferrno = sizeof(errnoSave);
 
@@ -1942,7 +1941,7 @@ updateOutgoingConnection(ChunkTransportStateEntry *pEntry, MotionConn *conn, int
     {
         /* Success!  Advance to next state. */
         case 0:
-            sendRegisterMessage(pEntry, conn);
+            sendRegisterMessage(transportStates, pEntry, conn);
             return;
 
 #if 0   /* port number conservation not working yet */
@@ -2055,7 +2054,7 @@ zapOutgoingPort(ChunkTransportStateEntry *pEntry)
  *          sending data.
  */
 static void
-sendRegisterMessage(ChunkTransportStateEntry * pEntry, MotionConn * conn)
+sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEntry * pEntry, MotionConn * conn)
 {
     int     bytesToSend;
     int     bytesSent;
@@ -2131,7 +2130,7 @@ sendRegisterMessage(ChunkTransportStateEntry * pEntry, MotionConn * conn)
         else if (errno == EWOULDBLOCK)
             return;                     /* call me again to send the rest */
         else if (errno == EINTR)
-            ML_CHECK_FOR_INTERRUPTS();
+            ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
         else
         {
             ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
@@ -2213,7 +2212,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
         else if (errno == EWOULDBLOCK)
             return false;       /* call me again to receive the rest */
         else if (errno == EINTR)
-            ML_CHECK_FOR_INTERRUPTS();
+            ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
         else
         {
             ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
@@ -2535,7 +2534,7 @@ acceptIncomingConnection(void)
  *	 motionId - Node Motion Id.
  */
 static bool
-sendChunk(MotionConn * conn, TupleChunkListItem tcItem, int16 motionId)
+sendChunk(ChunkTransportState *transportStates, MotionConn * conn, TupleChunkListItem tcItem, int16 motionId)
 {
 	Assert(conn->msgSize > 0);
 
@@ -2545,7 +2544,7 @@ sendChunk(MotionConn * conn, TupleChunkListItem tcItem, int16 motionId)
 
 	if (conn->msgSize + tcItem->chunk_length > Mpp_max_packet_size)
 	{
-		if (!flushBuffer(conn, motionId))
+		if (!flushBuffer(transportStates, conn, motionId))
 			return false;
 	}
 
@@ -2574,7 +2573,7 @@ sendChunk(MotionConn * conn, TupleChunkListItem tcItem, int16 motionId)
  *
  */
 static bool
-flushBuffer(MotionConn * conn, int16 motionId)
+flushBuffer(ChunkTransportState *transportStates, MotionConn * conn, int16 motionId)
 {
 	char	   *sendptr;
 	MotionNodeEntry *pMNEntry;
@@ -2620,7 +2619,7 @@ flushBuffer(MotionConn * conn, int16 motionId)
 		if (n > 0 && FD_ISSET(conn->sockfd, &rset))
 		{
 #ifdef AMS_VERBOSE_LOGGING
-			print_connection(conn->sockfd, "stop from");
+			print_connection(transportStates, conn->sockfd, "stop from");
 #endif
 			/* got a stop message */
 			conn->stillActive = false;
@@ -2629,7 +2628,7 @@ flushBuffer(MotionConn * conn, int16 motionId)
 
 		if ((n = write(conn->sockfd, sendptr + sent, conn->msgSize - sent)) < 0)
 		{
-			ML_CHECK_FOR_INTERRUPTS();
+			ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 			if (errno == EINTR)
 				continue;
 			if (errno == EWOULDBLOCK)
@@ -2638,7 +2637,7 @@ flushBuffer(MotionConn * conn, int16 motionId)
 				{
 					timeout = tval;
 
-					ML_CHECK_FOR_INTERRUPTS();
+					ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
 					FD_ZERO(&rset);
 					FD_ZERO(&wset);
@@ -2655,10 +2654,10 @@ flushBuffer(MotionConn * conn, int16 motionId)
 						 * if we got an error in teardown, ignore it: treat it
 						 * as a stop message
 						 */
-						if (teardownActive)
+						if (transportStates->teardownActive)
 						{
 #ifdef AMS_VERBOSE_LOGGING
-							print_connection(conn->sockfd, "stop from");
+							print_connection(transportStates, conn->sockfd, "stop from");
 #endif
 							conn->stillActive = false;
 							return false;
@@ -2677,10 +2676,10 @@ flushBuffer(MotionConn * conn, int16 motionId)
 					 * it must mean its a StopSendingMessage.  we
 					 * don't even bother to read it.
 					 */
-					if (FD_ISSET(conn->sockfd, &rset) || teardownActive)
+					if (FD_ISSET(conn->sockfd, &rset) || transportStates->teardownActive)
 					{
 #ifdef AMS_VERBOSE_LOGGING
-						print_connection(conn->sockfd, "stop from");
+						print_connection(transportStates, conn->sockfd, "stop from");
 #endif
 						conn->stillActive = false;
 						return false;
@@ -2693,10 +2692,10 @@ flushBuffer(MotionConn * conn, int16 motionId)
 				 * if we got an error in teardown, ignore it: treat it as a
 				 * stop message
 				 */
-				if (teardownActive)
+				if (transportStates->teardownActive)
 				{
 #ifdef AMS_VERBOSE_LOGGING
-					print_connection(conn->sockfd, "stop from");
+					print_connection(transportStates, conn->sockfd, "stop from");
 #endif
 					conn->stillActive = false;
 					return false;
@@ -2740,7 +2739,7 @@ flushBuffer(MotionConn * conn, int16 motionId)
  *
  */
 static inline void
-readPacket(MotionConn * conn)
+readPacket(ChunkTransportState *transportStates, MotionConn * conn)
 {
 	int			n,
 				bytesRead = conn->recvBytes;
@@ -2783,7 +2782,7 @@ readPacket(MotionConn * conn)
 	while (!gotPacket && bytesRead < Mpp_max_packet_size)
 	{
 		/* see if user canceled and stuff like that */
-		ML_CHECK_FOR_INTERRUPTS();
+		ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
 		/*
 		 * we read at the end of the buffer, we've eliminated any
@@ -2801,7 +2800,7 @@ readPacket(MotionConn * conn)
 					struct timeval timeout = tval;
 
 					/* see if user canceled and stuff like that */
-					ML_CHECK_FOR_INTERRUPTS();
+					ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
 					FD_ZERO(&rset);
 					FD_SET(conn->sockfd, &rset);
@@ -2836,7 +2835,7 @@ readPacket(MotionConn * conn)
 		{
 #ifdef AMS_VERBOSE_LOGGING
 			elog(DEBUG5, "readpacket(); breaking in while (fd %d) recvBytes %d msgSize %d", conn->sockfd, conn->recvBytes, conn->msgSize);
-			print_connection(conn->sockfd, "interconnect error on");
+			print_connection(transportStates, conn->sockfd, "interconnect error on");
 #endif
 			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 				errmsg("Interconnect error: connection closed prematurely."),
@@ -2873,7 +2872,7 @@ readPacket(MotionConn * conn)
  *	 tcItem - TupleChunk to send.
  */
 static int
-doBroadcast(ChunkTransportStateEntry * pEntry, TupleChunkListItem tcItem)
+doBroadcast(ChunkTransportState *transportStates, ChunkTransportStateEntry * pEntry, TupleChunkListItem tcItem)
 {
 	MotionConn *conn;
 	int			i,
@@ -2886,7 +2885,7 @@ doBroadcast(ChunkTransportStateEntry * pEntry, TupleChunkListItem tcItem)
 		/* only send to still interested receivers. */
 		if (conn->stillActive)
 		{
-			sendChunk(conn, tcItem, pEntry->motNodeId);
+			sendChunk(transportStates, conn, tcItem, pEntry->motNodeId);
 			if (!conn->stillActive)
 				inactive++;
 		}
@@ -2965,7 +2964,7 @@ doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
 			{
 				if (errno == EINTR)
 				{
-					ML_CHECK_FOR_INTERRUPTS();
+					ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 					continue;
 				}
 				else
@@ -2987,12 +2986,12 @@ doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
 }
 
 void
-print_connection(int fd, const char *msg)
+print_connection(ChunkTransportState *transportStates, int fd, const char *msg)
 {
 	struct sockaddr_in local,
 				remote;
 	socklen_t	len;
-	int			errlevel = teardownActive ? LOG : ERROR;
+	int			errlevel = transportStates->teardownActive ? LOG : ERROR;
 
 	len = sizeof(remote);
 	if (getpeername(fd, (struct sockaddr *) & remote, &len) < 0)

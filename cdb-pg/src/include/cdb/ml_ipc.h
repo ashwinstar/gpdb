@@ -99,6 +99,12 @@ typedef struct ChunkTransportState
 {
 	int size;
 	ChunkTransportStateEntry *states;
+	
+	/* keeps track of if we've "activated" connections via SetupInterconnect(). */
+	bool		activated;
+
+	bool		teardownActive;
+	
 } ChunkTransportState;
 
 /*
