@@ -82,13 +82,25 @@ class groupSession(cmd.Cmd):
         hosts     = an array of tuples (hostname,user)
         port    = the port to communicate with
         """
-    def __init__(self,hostuserport, setupKeys=True, verboseOpt=False):
+    def __init__(self,hostuserport, setupKeys=True, verboseOpt=False, debug=False, \
+        logger=None):
         cmd.Cmd.__init__(self)
 
         self.prompt = "=> "
-        self.intro = "GroupSession - execute commands on a cluster of machines\n  \"help\" for a list of commands"
-
+        self.intro = "GroupSession - execute commands on a cluster of machines\n"\
+        " \"help\" for a list of commands"
         self.verbose = verboseOpt
+
+        if logger:
+            self.logger=logger
+        else :
+            gpLogger.initLogger(lName='groupSession', debug=debug, \
+                verbose=verboseOpt)
+            self.logger=logging.getLogger('groupSession')
+                
+        self.logger.info(" Initializing groupSession .. \n")
+
+
 
         #Create a threadpool to run the commands
         self.pool = threadpool.ThreadPool(len(hostuserport))
@@ -99,14 +111,14 @@ class groupSession(cmd.Cmd):
         for host,user,port in hostuserport:
             #Create a new instance of an sshSession object initialized with this
             #host/user/port
-            a = sshParamikoModule.sshSession(user,port,host, verbose=verboseOpt)
-            self.sessions.append(a)
+            sshSess = sshParamikoModule.sshSession(user,port,host, logger=logger)
+            self.sessions.append(sshSess)
 
         try:
             if not self.__authenticateHosts():
                 self.__die("Failed to athenticate.. ")
             if setupKeys:
-                self.__setupHostAccessKeys(setupKeys)
+                self.__setupHostAccessKeys()
         except sshParamikoModule.PasswordFailure, e:
             print '%s: %s' % (e,'Failed to authenticate.')
             raise SystemExit, -1
@@ -120,11 +132,6 @@ class groupSession(cmd.Cmd):
             print errStr
             raise SystemExit, -1
 
-
-        #i = 0
-        #for th in self.sessions:
-            #i = i+1
-            #print '%d %s %s %s' % (i, th.user, th.host, th.port)
 
     #Command class overrides ------------------------------------------------
     def default(self,line):
@@ -145,7 +152,7 @@ class groupSession(cmd.Cmd):
                 % (str(e.__class__), str(e))
 
     def do_rcopy(self,line):
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         i=0
         source = None
         dest = None
@@ -265,7 +272,7 @@ class groupSession(cmd.Cmd):
     def runCommand(self,cmd,args, command="", begin=0,end=0,quiet=False, \
         retDict=False,  resDict=None):
         #This kludge is here because python doesn't support copiable iterators
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         if end == 0:
             end = len(self.sessions)
 
@@ -273,8 +280,7 @@ class groupSession(cmd.Cmd):
         #Put commands into threaded queue
         for i in range(begin,end):
             th = self.sessions[i]
-            if self.verbose:
-                logger.debug('runCommand host: %s' % (th.host))
+            logger.debug("Executing command on host:%s " % th.userHost)
             th.setCMD(cmd,args)
             self.pool.putRequest(threadpool.WorkRequest(th.run))
         interrupted = False
@@ -313,7 +319,7 @@ class groupSession(cmd.Cmd):
         if retDict:
             if not interrupted:
                 for th in self.sessions:
-                    resDict[th.host]=th.lastoutput
+                    resDict[th.userHost]=th.lastoutput
                     if self.verbose:
                         print th.host, th.lastoutput
         return interrupted
@@ -335,7 +341,7 @@ class groupSession(cmd.Cmd):
         """ Obtain the key from path provided 
             Return Key or None on Failure
         """
-        logger=logging.getLogger("groupSession")
+        logger=self.logger
         key=None
         # check authType
         if authType != 'rsa' and authType != 'dsa':  
@@ -382,6 +388,7 @@ class groupSession(cmd.Cmd):
             then try password
         """
         # Initialize
+        logger=self.logger
         rsaKey=dsaKey=passwd=None
         rsaFailed=dsaFailed=idFailed=False
         retVal=True
@@ -415,6 +422,8 @@ class groupSession(cmd.Cmd):
                 else :
                     if(eSess.authPublicKey(rsaKey)):
                         authType='rsa'
+                        logger.info("%s is authenticated via %s", eSess.userHost, 
+                            authType)
             else :
                 pass
             # DSA
@@ -431,6 +440,8 @@ class groupSession(cmd.Cmd):
                     else:
                         if(eSess.authPublicKey(dsaKey)):
                             authType='dsa'
+                            logger.info("%s is authenticated via %s", eSess.userHost,
+                                authType)
                 else :
                     pass
             # Password
@@ -444,6 +455,8 @@ class groupSession(cmd.Cmd):
                         (eSess.user,  eSess.host, eSess.port))
                     if(eSess.authPasswd(passwd)):
                         authType='PASSWORD'
+                        logger.info("%s is authenticated via %s", eSess.userHost,
+                                authType)
                     else:
                         tries+=1
             if not authType:
@@ -464,7 +477,7 @@ class groupSession(cmd.Cmd):
                 jSess.closeTrans()
         return retVal
                     
-    def __setupHostAccessKeys(self,setupKeys=True):
+    def __setupHostAccessKeys(self):
         # SetUp Local Keys
         self.sessions[0].setupKeyAccessLocal()
         for i in range(0,len(self.sessions)):
@@ -478,7 +491,6 @@ class groupSession(cmd.Cmd):
             except (threadpool.NoResultsPending,KeyboardInterrupt):
                     break
     
-
     def exchangeKeys(self, force=False):
         """ Exchange public keys across all hosts 
             check if ~/.ssh/id_[rd]sa[_pub] files are present.
@@ -677,14 +689,15 @@ class groupSession(cmd.Cmd):
 
 if __name__ == '__main__': 
     # Process options
-    (options, arguments) = getopt.getopt(sys.argv[1:], "?hvdp:l:sx")
-    verbose = 0
-    debug= 0
+    verbose = False
+    debug   = False
     defaultport = 22
     setupKeys = True
     exKeys=False
     logFile=''
+    logName='groupSession'
 
+    (options, arguments) = getopt.getopt(sys.argv[1:], "?hvdp:l:sx")
     for (switch, val) in options:
         if (switch == '-p'):
             defaultport = val;
@@ -725,16 +738,12 @@ if __name__ == '__main__':
     # We don't have to worry about size of this file,
     # Truncated every new session.
     #
-    paramiko.util.log_to_file('/tmp/paramiko.log') 
-    if debug:
-        gpLogger.initLogger(lName="groupSession", lfName=logFile,  \
-           debug=True, verbose=True)
-    elif verbose:
-        gpLogger.initLogger(lName="groupSession", lfName=logFile,  \
-           debug=False, verbose=True)
-    else:
-        gpLogger.initLogger(lName="groupSession", lfName=logFile,  \
-           debug=False, verbose=False)
+    try:
+        execUser = os.environ.get('LOGNAME') or os.environ.get('USER')
+        paramiko.util.log_to_file('/tmp/paramiko'+'_'+execUser+'.log') 
+    except :
+        print "Unexpected error: +'-'+execUser", sys.exc_info()[0]
+        raise
 
     hostuserport = []
     for h in hostFile:
@@ -748,7 +757,7 @@ if __name__ == '__main__':
             if '@' in host:
                 (user, host) = string.split(host, '@')
             else:
-                user = os.environ.get('LOGNAME') or os.environ.get('USER')
+                user = execUser
 
             if ':' in host:
                 (host,port) = string.split(host, ':')
@@ -757,9 +766,15 @@ if __name__ == '__main__':
 
             hostuserport.append((host,user,port))
 
-    #Create a groupSession object
-    gsession = groupSession(hostuserport, setupKeys, verboseOpt=verbose)
+    hostFile.close()
 
+    #Create a groupSession object
+    gpLogger.initLogger(lName=logName, lfName=logFile, debug=debug, 
+        verbose=verbose)
+    logger=logging.getLogger(logName)
+
+    gsession = groupSession(hostuserport, setupKeys, verboseOpt=verbose, \
+        logger=logger)
 
     if exKeys:
         gsession.exchangeKeys()

@@ -41,7 +41,6 @@ except ImportError, e:
 # Global variables
 #
 maxTries=3
-logName='groupSession'
 BLK_SIZE=1024
 sshPasswd=""
 sshRsaPass=""
@@ -87,10 +86,8 @@ class runCommandException(ExceptionSshSession):
 class sshSession(threading.Thread):
     "Session with extra state including the password to be used."
     def __init__(self, user, port, host, password=None, verbose=False, \
-        setupKeysFlag=True):
+        debug=False, logger=None, setupKeysFlag=True):
         threading.Thread.__init__(self)        
-        logger=logging.getLogger(logName)
-        logger.info("Initializing sshSession %s@%s:%d ", user, host, port)
         self.stdout=""
         self.stderr=""
         self.exitStatus=0
@@ -110,20 +107,11 @@ class sshSession(threading.Thread):
         self.lastoutput = None
         self.cmd = None
         self.args = []
-        self.timeout = 30
-
-        self.PWCheck = False
-        self.PWRequired = False
-
-        self.PPRequired = False
-        self.hostKeyPhrase = None
-
-        self.child = None
 
         # Paramiko Variables
         self.trans=None
-        self.chan=None
         self.sftpClnt=None
+        self.chan=None
 
         self.setUpKeys=setupKeysFlag
 
@@ -131,6 +119,13 @@ class sshSession(threading.Thread):
         #commands
         self.ready = False
         self.error = False
+
+        if logger:
+            self.logger=logger
+        else :
+            gpLogger.initLogger(lName="sshSession", debug=debug, \
+                verbose=verbose)
+            self.logger=logging.getLogger("sshSession")
 
     def __die(self,msg=None):
         if not msg == None:
@@ -144,7 +139,7 @@ class sshSession(threading.Thread):
             self.__die('ssh session not set up to run commands.')
 
     def isReady(self, printError=True):
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         if (not self.trans):
             if printError:
                 logger.error("Transport for %s is not initialized.", 
@@ -170,7 +165,7 @@ class sshSession(threading.Thread):
 
     def putDir(self, localPath, remotePath):
         """ Copy local Directory to remote Directory """
-        logger = logging.getLogger('groupSession')
+        logger = self.logger
         if  not self.isReady():
             return "" 
         logger.debug('authMode = %s ', self.authMode)
@@ -211,7 +206,7 @@ class sshSession(threading.Thread):
             localPath, remotePath 
             Has to return a string for groupSession
         """
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         #Expand the ~ and ~<userName> at the begining of the file
         lPath=os.path.expanduser(localPath)
         rPath="%s@%s:%s" %(self.user, self.host, remotePath)
@@ -251,7 +246,7 @@ class sshSession(threading.Thread):
 
     def execCmd(self, command):
         """ Wrapper for run command, Returns only stdout"""
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         logger.debug("execCmd %s on %s ", command, self.userHost)
         stdout=""
         stderr=""
@@ -274,8 +269,8 @@ class sshSession(threading.Thread):
             return (exitCode, stdout, stderr)
             raise runCommmandException, for other errors 
         """
-        logger=logging.getLogger("groupSession")
-        self.chan=None
+        logger=self.logger
+        channel=None
         if (not self.trans):
             raise runCommandException("Transport is not initialized.")
         if (not self.trans.is_authenticated()):
@@ -283,8 +278,9 @@ class sshSession(threading.Thread):
         if (not command):
             raise runCommandException("Command not provided.")
         try:
-            self.chan = self.trans.open_session()
-            self.chan.exec_command(command)
+            channel = self.trans.open_session()
+            self.chan=channel
+            channel.exec_command(command)
         except paramiko.SSHException, e:
             raise runCommandException(str(e))
         except Exception, e:
@@ -292,7 +288,7 @@ class sshSession(threading.Thread):
                 " host : %s " % (str(e.__class__), str(e), command, self.host)
             logger.error(errMsg)
             raise runCommandException(errMsg)
-        logger.debug("Waiting for error Code")
+        logger.debug(" %s Waiting for error Code: (%s)", self.userHost, command)
         exit_status=0
         #
         # TODO Need to implement a timeout here 
@@ -300,24 +296,26 @@ class sshSession(threading.Thread):
         #
         stdout = ""
         stderr = ""
-        self.chan.set_combine_stderr(True)
+        channel.set_combine_stderr(True)
         recvBlk=BLK_SIZE
-        if True or self.chan.recv_ready():
+        if True or channel.recv_ready():
             while True:
-                recvBytes= self.chan.recv(recvBlk)
+                recvBytes= channel.recv(recvBlk)
                 if not recvBytes:
                     break
                 stdout+= recvBytes
                 logger.debug("%s len = %d " %( self.userHost, len(recvBytes)))
                 if len(recvBytes) == recvBlk:
                     recvBlk *= 2
-        exitStatus = self.chan.recv_exit_status()
+        exitStatus = channel.recv_exit_status()
         logger.debug("%s stdout = %d \n" % (self.userHost, len(stdout)))
-        #exit_status=self.chan.recv_exit_status()
+        #exit_status=channel.recv_exit_status()
         logger.debug("Error Code : %d %s executed on %s \n", exit_status,
             command, self.host)
-        self.chan.close()
-        self.chan=None
+        if channel:
+            channel.close()
+            channel=None
+            self.chan=None
         # Only Log first 1024 Bytes.
         logger.debug("Command = <%s> exit_status=%d \n stdout=%d \n",
             command, exit_status, len(stdout))
@@ -328,8 +326,8 @@ class sshSession(threading.Thread):
 
     def killCMD(self,sig=signal.SIGTERM):
         if self.chan:
-            logger=logging.getLogger('groupSession')
-            logger.info("Closing channel %s@%s", self.user, self.port)
+            logger=self.logger
+            logger.info("Closing channel %s", self.userHost)
             self.chan.close()
 
     def shutdown(self):
@@ -339,7 +337,7 @@ class sshSession(threading.Thread):
 
 
     def run(self):
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         try:
             if self.cmd is "ssh":
                 self.lastoutput = self.execCmd(self.args[0])
@@ -361,7 +359,7 @@ class sshSession(threading.Thread):
 
     def exists(self, file):
         "Retrieve file permissions of specified remote file."
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         logger.info("Closing channel %s@%s", self.user, self.port)
         self.__readyOrDie()
         seen = self.ssh("/bin/ls -ld %s" % file)
@@ -381,7 +379,7 @@ class sshSession(threading.Thread):
             Most of the cases it is ~/.ssh
             Create and set correct permisssions if not present
         """
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         # Determine Remote Node Stuff.
         if self.sshDir:
             return self.sshDir
@@ -433,7 +431,7 @@ class sshSession(threading.Thread):
         """  Copy a local file to remote sessions and 
             append to ~/.ssh/authorizedKeys)
         """
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         rmtSSHDir = self.getRemoteSSHDir()
         if not authKeyPath:
             authKeyPath=self.localSSHDir+'/gSession.pub'
@@ -481,7 +479,7 @@ class sshSession(threading.Thread):
 
             authType : 'rsa', 'rsa1',  'dsa', 'gprsa'
         """
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         global keyFiles
         if not self.isReady(True):
             return False
@@ -547,7 +545,7 @@ class sshSession(threading.Thread):
         """ Check if any of the private public keys are present """
         # Initialize
         global keyFiles
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         rmtSSHDir=self.getRemoteSSHDir()
         self.keyFileList=[]
         if not self.sftpClnt:
@@ -575,7 +573,7 @@ class sshSession(threading.Thread):
             -- Generate rsa, dsa, rsa1, private public keys.
         """
         global keyFiles
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         rmtSSHDir=self.getRemoteSSHDir()
         if not rmtSSHDir:
             logger.error('Unable to determine SSH directory for %s',
@@ -614,7 +612,7 @@ class sshSession(threading.Thread):
             If the file is not there ignore.
         """
         global keyFiles
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         rmtSSHDir=self.getRemoteSSHDir()
         if not rmtSSHDir:
             logger.error("Unable to determine SSH directory for :%s ", \
@@ -649,7 +647,7 @@ class sshSession(threading.Thread):
     def setupKeyAccess(self, rsaPPhrase=None, dsaPPhrase=None, \
         rsa1PPhrase=None ):
         """ Set up keys for the user on this host """
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         rmtSSHDir=self.getRemoteSSHDir()
         if not rmtSSHDir:
             logger.error("Unable to determine SSH directory for :%s ", \
@@ -728,7 +726,7 @@ class sshSession(threading.Thread):
         Update hostKey for eachentry in the file ~/.ssh/known_hosts
         """
         if not hostArray: return
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         # Set the Variables
         rmtSSHDir=self.getRemoteSSHDir()
         if not rmtSSHDir:
@@ -781,7 +779,7 @@ class sshSession(threading.Thread):
 
     def initializeSession(self, defaultPassword=None, defaultPassPhrase=None):
         """ Initialize ssh session """
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.connect((self.host, self.port))
@@ -834,7 +832,7 @@ class sshSession(threading.Thread):
 
     def makeReady(self, authenticate=False):
         """ Authenticate an ssh Connection """
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         try :
             self.initializeSession()
         except sshSocketConnection, err:
@@ -883,7 +881,7 @@ class sshSession(threading.Thread):
         #
     def setupKeys(self, setupLocal=False, authType='gpRsa'):
         """ Set Up keys for remote host """
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         if self.authMode == 'PASSWORD':
             #self.etupKeyAccessLocal()
             # NFS issue
@@ -895,7 +893,7 @@ class sshSession(threading.Thread):
 
     def agent_auth(self):
         """ Authenticate using local agent """
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         try :
             agent = paramiko.Agent()
         except paramiko.SSHException, e:
@@ -960,7 +958,7 @@ class sshSession(threading.Thread):
         authMode=""
         password=""
 
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         logger.debug("Trying " + authType + " public key authentication ")
 
         if authType == "rsa" or authType ==  "dsa" or authType == 'rsagp' :
@@ -1113,7 +1111,7 @@ class sshSession(threading.Thread):
             First try the globalPassword, Second sessionPasword
             Third Prompt user 3 times for password from the key board
         """
-        logger=logging.getLogger('groupSession')
+        logger=self.logger
         logger.debug('Trying passwd auth... ')
         global sshPasswd
         if (sshPasswd):
@@ -1168,9 +1166,6 @@ class sshSession(threading.Thread):
         return True
 
 if __name__ == '__main__': 
-    gpLogger.initLogger(lName="groupSession", lfName="groupSession",  \
-        debug=False, verbose=False)
-    logger=logging.getLogger('groupSession')
     #gSessionUtil.gSessionAuth()
     try :
         a = sshSession('testuser2',22,'supertracs')
@@ -1193,7 +1188,7 @@ if __name__ == '__main__':
             'buzzard3', \
             'buzzard1' ])
     except Exception, e:
-        logger.error('*** Caught exception %s:%s ',  
+        print ('*** Caught exception %s:%s ',  
                 str(e.__class__),  str(e))
     raise  SystemExit, 0
     try:
