@@ -89,12 +89,6 @@ int         outgoingPort = 0;
 /* our timeout value for select() and other socket operations. */
 struct timeval tval;
 
-List	   *incompleteConns = NIL;
-
-/*slice table stuff. */
-SliceTable *sliceTable = NULL;
-int			sliceId;
-
 #define ML_CHECK_FOR_INTERRUPTS(teardownActive) \
 		do {if (!teardownActive && InterruptPending) CHECK_FOR_INTERRUPTS(); } while (0)
 
@@ -181,8 +175,6 @@ gettime_elapsed_ms(struct timeval t0)
 void
 InitMotionLayerIPC(void)
 {
-	incompleteConns = NIL;
-
 	tval.tv_sec = 0;
 	tval.tv_usec = 500000;
 
@@ -216,10 +208,6 @@ CleanUpMotionLayerIPC(void)
 	Mpp_listener_port = 0;
 	listenerFd = -1;
     portReservationFd = -1;
-	sliceTable = NULL;
-	sliceId = -1;
-
-	list_free(incompleteConns);
 }
 
 /* See ml_ipc.h */
@@ -689,16 +677,21 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 
 	*ppTransportStates = palloc0(sizeof(ChunkTransportState));
 	
+	/* initialize state variables */
 	Assert((*ppTransportStates)->size == 0);
 	(*ppTransportStates)->size = CTS_INITIAL_SIZE;
 	(*ppTransportStates)->states = palloc0(CTS_INITIAL_SIZE * sizeof(ChunkTransportStateEntry));
 	(*ppTransportStates)->teardownActive = false;
 	(*ppTransportStates)->activated = false;
+	(*ppTransportStates)->incompleteConns = NIL;
+	(*ppTransportStates)->sliceTable = NULL;
+	(*ppTransportStates)->sliceId = -1;
 
-	sliceTable = mySliceTable;
-	sliceId = mySliceId;
 
-	mySlice = (Slice *) list_nth(sliceTable->slices, mySliceId);
+	(*ppTransportStates)->sliceTable = mySliceTable;
+	(*ppTransportStates)->sliceId = mySliceId;
+
+	mySlice = (Slice *) list_nth((*ppTransportStates)->sliceTable->slices, mySliceId);
 
     Assert(mySlice &&
            IsA(mySlice, Slice) &&
@@ -721,7 +714,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 		elog(DEBUG5, "Setting up RECEIVING motion node %d", childId);
 #endif
 
-		aSlice = (Slice *) list_nth(sliceTable->slices, childId);
+		aSlice = (Slice *) list_nth((*ppTransportStates)->sliceTable->slices, childId);
 		numProcs = list_length(aSlice->primaryProcesses);
 
 		pEntry = createChunkTransportState(*ppTransportStates, aSlice, mySlice, numProcs, 0);
@@ -767,7 +760,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
         }
 
         /* Inbound connections awaiting registration message */
-        foreach(cell, incompleteConns)
+        foreach(cell, (*ppTransportStates)->incompleteConns)
         {
 			conn = (MotionConn *)lfirst(cell);
             Insist(conn->state == mcsRecvRegMsg && conn->sockfd >= 0);
@@ -997,7 +990,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 		 * NOTE: we don't use foreach() here because we want to trim from the
 		 * list as we go.
 		 */
-		cell = list_head(incompleteConns);
+		cell = list_head((*ppTransportStates)->incompleteConns);
 		while (n > 0 &&
                incoming_count < expectedTotalIncoming &&
                cell != NULL)
@@ -1015,7 +1008,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
                 n--;
                 if (readRegisterMessage(*ppTransportStates, conn))
                 {
-                    incompleteConns = list_delete_ptr(incompleteConns, conn);
+                    (*ppTransportStates)->incompleteConns = list_delete_ptr((*ppTransportStates)->incompleteConns, conn);
 
 					if (conn->sockfd != -1)
 						incoming_count++;
@@ -1044,7 +1037,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 
                 /* We'll try again when more data arrives on the socket. */
                 else
-                    incompleteConns = lappend(incompleteConns, conn);
+                    (*ppTransportStates)->incompleteConns = lappend((*ppTransportStates)->incompleteConns, conn);
             }
 		}
 
@@ -1118,13 +1111,13 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 	 * obviously be better if we could avoid these connections in the
 	 * first place!
 	 */
-	if (list_length(incompleteConns) != 0)
+	if (list_length((*ppTransportStates)->incompleteConns) != 0)
 	{
         if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
             elog(DEBUG1, "Incomplete connections after known connections done, cleaning %d",
-			     list_length(incompleteConns));
+			     list_length((*ppTransportStates)->incompleteConns));
 
-		while ((cell = list_head(incompleteConns)) != NULL)
+		while ((cell = list_head((*ppTransportStates)->incompleteConns)) != NULL)
 		{
 			conn = (MotionConn *) lfirst(cell);
 
@@ -1136,7 +1129,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 				conn->sockfd = -1;
 			}
 
-			incompleteConns = list_delete_ptr(incompleteConns, conn);
+			(*ppTransportStates)->incompleteConns = list_delete_ptr((*ppTransportStates)->incompleteConns, conn);
 
 			if (conn->pBuff)
                 pfree(conn->pBuff);
@@ -1211,14 +1204,14 @@ TeardownInterconnect(ChunkTransportState *transportStates,
                              transportStates->activated ? "completed" : "exited")
                 ));
 
-	Insist(sliceTable != NULL);
+	Insist(transportStates->sliceTable != NULL);
 
 	/* if setup did not complete, log the slicetable */
     if (!transportStates->activated &&
         mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-		elog_node_display(DEBUG2, "local slice table", sliceTable, true);
+		elog_node_display(DEBUG2, "local slice table", transportStates->sliceTable, true);
 
-	mySlice = (Slice *) list_nth(sliceTable->slices, sliceId);
+	mySlice = (Slice *) list_nth(transportStates->sliceTable->slices, transportStates->sliceId);
 
 	/*
 	 * phase 1 mark all sockets (senders and receivers) with
@@ -1234,12 +1227,12 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 	 * NOTE: we don't use foreach() here because we want to trim from the
 	 * list as we go.
 	 */
-	while ((cell = list_head(incompleteConns)) != NULL)
+	while ((cell = list_head(transportStates->incompleteConns)) != NULL)
 	{
 		MotionConn *conn = (MotionConn *) lfirst(cell);
 
 #ifdef AMS_VERBOSE_LOGGING
-		elog(LOG, "Found incomplete conn. length %d", list_length(incompleteConns));
+		elog(LOG, "Found incomplete conn. length %d", list_length(transportStates->incompleteConns));
 #endif
 
 		/* they're incomplete, so just slam them shut. */
@@ -1260,10 +1253,11 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 		 * list_delete_first(incompleteConns); or incompleteConns =
 		 * list_delete_ptr(incompleteConns, conn)
 		 */
-		incompleteConns = list_delete(incompleteConns, conn);
+		transportStates->incompleteConns = list_delete(transportStates->incompleteConns, conn);
 	}
 
-	incompleteConns = NIL;
+	list_free(transportStates->incompleteConns);
+	transportStates->incompleteConns = NIL;
 
 	/*
 	 * Now "normal" connections which made it through our
@@ -1303,7 +1297,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 		Slice	   *aSlice;
 		int			childId = lfirst_int(cell);
 
-		aSlice = (Slice *) list_nth(sliceTable->slices, childId);
+		aSlice = (Slice *) list_nth(transportStates->sliceTable->slices, childId);
 
 		pEntry = removeChunkTransportState(transportStates, aSlice->sliceIndex);
 
@@ -1371,7 +1365,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 	}
 
 	transportStates->activated = false;
-	sliceTable = NULL;
+	transportStates->sliceTable = NULL;
 
 	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
         ereport(DEBUG1, (errmsg("TeardownInterconnect successful") ));
@@ -1691,7 +1685,7 @@ startOutgoingConnections(ChunkTransportState *transportStates,
 
     *pOutgoingCount = 0;
 
-	recvSlice = (Slice *) list_nth(sliceTable->slices, sendSlice->parentIndex);
+	recvSlice = (Slice *) list_nth(transportStates->sliceTable->slices, sendSlice->parentIndex);
 
     if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
         ereport(DEBUG2, (errmsg("Setting up SENDING motion node %d",
@@ -2264,7 +2258,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
         msg.sendSliceIndex <= transportStates->size &&
         msg.sendSliceIndex == pEntry->motNodeId &&
         pEntry->valid &&
-        msg.recvSliceIndex == sliceId &&
+        msg.recvSliceIndex == transportStates->sliceId &&
         msg.srcContentId >= 0 &&
         msg.srcSessionId == mpp_session_id &&
 		msg.srcCommandCount <= mpp_command_count)
@@ -2946,7 +2940,7 @@ doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
 	pEntry = getChunkTransportState(transportStates, motNodeID);
 
     if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-    	elog(DEBUG2, "sending stop message from slice %d to node %d", sliceId, motNodeID);
+    	elog(DEBUG2, "sending stop message from slice %d to node %d", transportStates->sliceId, motNodeID);
 
 	/*
 	 * Note: we're only concerned with receivers here, so mirrors

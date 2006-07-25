@@ -97,6 +97,7 @@ typedef struct ChunkTransportStateEntry
 
 typedef struct ChunkTransportState
 {
+	/* array of per-motion-node chunk transport state */
 	int size;
 	ChunkTransportStateEntry *states;
 	
@@ -104,6 +105,12 @@ typedef struct ChunkTransportState
 	bool		activated;
 
 	bool		teardownActive;
+	List	   *incompleteConns;
+	
+	/*slice table stuff. */
+	SliceTable *sliceTable;
+	int			sliceId;
+	
 	
 } ChunkTransportState;
 
