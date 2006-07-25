@@ -48,6 +48,7 @@ fileHandler=None
 logFmt=logging.Formatter("%(asctime)s  %(name)s: %(levelname)-5s: "\
     "%(message)s", "%x %X") 
 
+
 #
 # Function to initialize Logging
 #
@@ -231,7 +232,7 @@ def logTest():
 #
 # Test the logging functionality
 #
-if __name__=='__main__':
+if __name__=='__main2__':
     print "Initializing Logging"
     print "LogFile name = /tmp/logTestLog"
     initLogger("LogTest", '/tmp', 'logTestLog', False)
@@ -252,3 +253,66 @@ if __name__=='__main__':
     for i in range(rangeInt):
         debug()
         logTest()
+
+def msgLogger(loggerName, fileName=""):
+    """ 
+        Return a logger, that will log to file and screen.
+        All messages should be logger.info
+    """
+    logger= logging.getLogger(loggerName)
+    #logging.addLevelName("MESSAGE", message)
+    logger.setLevel(logging.INFO)
+    # fileHandler
+    if (fileName):
+        fileHandler = logging.handlers.RotatingFileHandler(fileName, "a")
+        fileHandler.setLevel(logging.INFO)
+        logger.addHandler(fileHandler)
+    # Stream Handler
+    strmHandler = logging.StreamHandler()
+    strmHandler.setLevel(logging.INFO)
+    logger.addHandler(strmHandler)
+
+    strmHandler = logging.StreamHandler()
+    strmHandler.setLevel(55)
+    strmHandler.setFormatter(logFmt)
+    logger.addHandler(strmHandler)
+
+    return logger
+
+
+    
+
+if __name__=='__main__':
+    logging.addLevelName(55, "Message")
+
+    logger=msgLogger("MyLog")
+    logger.debug("This is Debug, Nothing to File")
+    logger.info("This is Info, Nothing to File")
+    logger.error("This is error, Nothing to File")
+
+    # 
+    # Thiw will print twice to screen
+    #
+
+    logger=msgLogger("MyLog")
+    logger.debug("This is Debug, Nothing to File")
+    logger.info("This is Info, Nothing to File")
+    logger.error("This is error, Nothing to File")
+
+    # 
+    # Thiw will print thrice to screen
+    #
+    logger=msgLogger("MyLog")
+    logger.debug("This is Debug, Nothing to File")
+    logger.info("This is Info, Nothing to File")
+    logger.error("This is error, Nothing to File")
+
+    logger1=msgLogger("Foo", "/tmp/mylog.log")
+    logger1.debug("This is Debug, should go to File")
+    logger1.info("This is Info, should go to File")
+    logger1.error("This is Error, should go to File")
+    logger1.log(logging.ERROR, "This is error 2, should go to File")
+    logger1.log("Message", "This is error 2, should go to File")
+    logger1.log(55, "This is error 3, should go to File")
+
+
