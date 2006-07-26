@@ -2382,7 +2382,7 @@ CopyFromDispatch(CopyState cstate)
 	cstate->fe_eof = false;
 	cstate->eol_type = EOL_UNKNOWN;
 	cstate->cur_relname = RelationGetRelationName(cstate->rel);
-	cstate->cur_lineno = 0;
+	cstate->cur_lineno = 1;
 	cstate->cur_attname = NULL;
 
 	/* Set up callback to identify error line number */
@@ -2450,8 +2450,6 @@ CopyFromDispatch(CopyState cstate)
 			/* on first time around just throw the header line away */
 			if (cstate->header_line)
 			{
-				cstate->cur_lineno++;
-
 				PG_TRY();
 				{
 					cstate->line_done = cstate->csv_mode ?
@@ -2466,6 +2464,7 @@ CopyFromDispatch(CopyState cstate)
 				}
 				PG_END_TRY();
 				
+				cstate->cur_lineno++;
 				cstate->line_buf.len = 0;
 				cstate->line_buf.data[0] = '\0';
 				cstate->line_buf.cursor = 0;
