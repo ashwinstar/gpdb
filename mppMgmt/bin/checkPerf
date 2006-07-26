@@ -1,0 +1,766 @@
+#!/usr/bin/env python
+"""
+checkPerf -- Check the hardware for MPP software
+
+
+Usage: checkPerf -c config-file -h hostfile  <options>
+
+-h hostfile - a list of remote hosts, each entry of the form:
+   username@host
+   username@host2
+or just:
+   host1
+   host2
+
+-c configfile file that contains configuration for checkPerf.
+-l logFile , where all the info and debug messages go.
+-o outPutFile, File to write the results of each test.
+-m configSpecFile, Location of configSpec file.
+
+
+-v  Enable verbose
+-d  Enable debug
+
+ssh options.
+-p <port> Port Number to use for ssh connections.
+-s Disable set up of trusted host key access.
+-x Establish trusted key across all sessions, using ssh-keys.
+
+
+-n :  No of times each test is repeated.
+-e :  Repeat the tests untile 't' seconds is elapsed.
+-t :  Tolerance, (0.1, 0.99) Tolerance of results.
+
+
+"""
+
+import os, sys, threading, time, string, getpass, getopt, signal, commands
+import traceback
+from stat import *
+
+if sys.version_info < (2, 3):
+    print "Error checkPerf is supported on Python versions 2.3 or greater."
+    print "Please upgrade python installed on this machine."
+    raise SystemExit, -1
+
+
+sys.path.append(sys.path[0]+'/lib')
+try :
+    import sshParamikoModule as sshParamikoModule, threadpool as threadpool
+    import host
+    from configobj import ConfigObj, flatten_errors
+    from validate import Validator
+    from groupSession import groupSession
+    import checkPerfResults
+    import gpLogger
+    import logging
+except ImportError, e:
+    print
+    print "Error Importing necessary modules: %s " % str(e)
+    print
+    raise SystemExit, -1
+
+
+class CheckPerf:
+    """ 
+        CheckPerf class
+        Reads given a groupSesssion and configDetails.
+        Performs tests on different nodes.
+    """
+    def __init__(self, gSession=None, logger=None):
+        self.options={}
+        self.gSession=gSession
+        self.sessions=gSession.sessions
+        self.pool=gSession.pool
+
+        # Files Needed.
+
+        self.options['LogFile'] =""
+        self.options['ResFile'] =""
+
+        # test Optoions
+        self.options['rptCount'] = 5
+        self.options['elpTime']= 0
+
+        # dd Options
+        self.ddOptions=None
+        self.ddResults=None
+        self.results=None
+
+        # Logger
+        if logger:
+            self.logger=logger
+        else :
+            gpLogger.initLogger(lName='checkPerf', debug=debug, \
+                verbose=verboseOpt)
+            self.logger=logging.getLogger('checkPerf')
+                
+        self.logger.info(" Initializing checkPerf Object.. \n")
+
+
+    def termHandler(self, signo, frame):
+        print "Received Singal ", signo
+        print ""
+        if self.gSession:
+            for th in self.gSession.sessions:
+                th.killCMD(signal.SIGKILL)
+                th.shutdown()
+        #
+        # TBD: Remove any direcotories or files created on each Node.
+        #
+                
+        #
+        # Write failure information into the results file.
+        # Close the results File.
+        #
+        print "Exiting..."
+        raise SystemExit, 1
+    
+    def obtainConfig(self, configFile="", specFile=""):
+        """ 
+            parse configuration file for config valuesJ
+        """
+        logger=self.logger
+        if specFile:
+            logger.info("Coniguration spec file %s" % specFile)
+            try:
+                specFd = open(specFile, 'r')
+                specFd.close()
+            except IOError, e:
+                logger.error("*** Received IO Error (%s)" % str(e))
+                return None
+        if configFile:
+            print "ConfigFile = %s" % configFile
+            try:
+                specFd = open(configFile, 'r')
+                specFd.close()
+            except IOError, e:
+                logger.error("*** Received IO Error (%s)" % str(e))
+                return None
+        try: 
+            configspec = ConfigObj(specFile, encoding='UTF8', list_values=False)
+            config = ConfigObj(configFile, configspec=configspec)
+        except SyntaxError, e:
+            logger.error("*** Received Syntax Error (%s)" % str(e))
+            return None
+        except Exception, e:
+            logger.error("*** Caught exception(obtainConfig) (%s) message: (%s )" \
+                % (str(e.__class__), str(e)))
+            traceback.print_exc()
+        val = Validator()
+        valResult = config.validate(val, preserve_errors=True)
+        if valResult == True:
+            return config
+        else :
+            logger.error("*** Encountered config parsing errors. ***")
+            for entry in flatten_errors(config, test):
+                # each entry is a tuple
+                section_list, key, error = entry
+                if key is not None:
+                    section_list.append(key)
+                else:
+                    section_list.append('[missing section]')
+                section_string = ', '.join(section_list)
+                if error == False:
+                    error = 'Missing value or section.'
+                eeStr="%s = %s" %(section_string, error)
+                logger.error(errStr)
+            return None
+
+    def populateConfig(self, configObj):
+        """ Populate Configuration from configObj """
+        logger=self.logger
+        if not configObj:
+            return False
+        try :
+            self.options['RptCount']=configObj['CheckPerf']['RptCount']
+            self.options['Tolerance']=configObj['CheckPerf']['Tolerance']
+            self.options['ElapseTime']=configObj['CheckPerf']['ElapseTime']
+            self.options['LogFile']=configObj['CheckPerf']['LogFile']
+            self.options['ResFile']=configObj['CheckPerf']['ResFile']
+            #
+            # DD Options
+            #
+            if not self.ddOptions:
+                self.ddOptions={}
+            if (isinstance(configObj['Disk Performance'], dict)):
+                if (isinstance(configObj['Disk Performance']['DirectoryList'], list)):
+                    self.ddOptions['DirectoryList']=\
+                        configObj['Disk Performance']['DirectoryList']
+                    self.ddOptions['BlockSize']= \
+                        configObj['Disk Performance']['BlockSize']
+                    self.ddOptions['Count']= \
+                        configObj['Disk Performance']['Count']
+        except KeyError, e:
+            logger.error("Recevied Key Error ")
+            return False
+        except Exception, e:
+            logger.error("*** Caught exception (populateConfig) (%s) message: (%s )" \
+                % (str(e.__class__), str(e)))
+            traceback.print_exc()
+
+    def printOptions(self):
+        """ Print the options to screen """
+        logger=self.logger
+        print "CheckPerf Options.. \n"
+        print "\t", "LogFile : %s " % self.options['LogFile']
+        print "\t", "ResFile : %s " % self.options['ResFile']
+
+        print "\t", "RptCount : %d " % self.options['RptCount']
+        print "\t", "Tolerance: %f " % self.options['Tolerance']
+        print "\t", "ElapseTime: %d " % self.options['ElapseTime']
+
+        print "DD OPTIONS \n"
+    
+        print "\t", self.ddOptions['DirectoryList']
+        print "\t", "Block Size : %d " % self.ddOptions['BlockSize']
+        print "\t", "Count : %d " % self.ddOptions['Count']
+
+    def ddPermTest(self, dirName):
+        """ Make sure you have write permissions in the directory """
+        cpDirName=dirName+'/checkPerf'
+        return 
+
+    def getTimes(self, stdout, stderr=None):
+        """ Return various time intervals from the output 
+    
+            Return (real, user, sys) floats
+        """
+        logger=self.logger
+        realTime=userTime=sysTime=0.0
+        if not stdout and not stderr:
+            return (realTime, userTime, sysTime)
+        if stderr and stdout:
+            outPut="%s\n%s" % (stderr, stdout)
+        elif stdout:
+            outPut="%s" % (stdout)
+        for eachLine in outPut.split('\n'):
+            try:
+                if eachLine.strip().startswith('real '):
+                    lineWords=eachLine.split()
+                    realTime=float(lineWords[1])
+                    continue
+                if eachLine.strip().startswith('user '):
+                    lineWords=eachLine.split()
+                    userTime=float(lineWords[1])
+                    continue
+                if eachLine.strip().startswith('sys '):
+                    lineWords=eachLine.split()
+                    sysTime=float(lineWords[1])
+                    continue
+            except valueError:
+                logger.error("Received value Error : %s " % eachLine)
+                break
+        return (realTime, userTime, sysTime)
+
+    def rptCmd(self, cmd, cmdTitle, resObj, sshSession=None, host="", postCmd=""):
+        """
+            Execute a command repeatedly
+            cmd : Command to be executed
+            cmdTitle : Store the results using this string
+            sshSession: Execute using sshSession, if None execute on local host.
+            host : on which the test is performed
+            postCmd: Any command that needs to be executed after each execution.
+            Return : None
+             None on Fatal Erorr
+        """
+        logger=self.logger
+        runTime=0
+        runCntr=1
+        tInterval=self.options['ElapseTime']
+        rptTimes=self.options['RptCount']
+        tmInterval=100*tInterval
+        hostID='localhost'
+        if sshSession: hostID=sshSession.userHost
+        try:
+            logger.debug("rptCmd: %s: %s   "%  (hostID, cmd))
+            while True:
+                # Obtain time in milliSeconds
+                befTime=time.time()*100
+                # Prepend time command
+                if not cmd.strip().startswith('time '):
+                    cmd="time -p %s" % cmd
+                exitStatus=-1
+                if sshSession:
+                    stdout=""
+                    stderr=""
+                    try:
+                        (exitStatus, stdout, stderr)=sshSession.runCommand(cmd)
+                    except sshParamikoModule.runCommandException, err:
+                        errStr= "%s Iteration :%d Error Executing" \
+                        "%s: %s" % (hostID, runCntr, cmd, err)
+                        logger.error(errStr)
+                    except Exception, e:
+                        errStr= "%s Iteration: %d Caught exception (rptCmd1)%s:"\
+                        "%s executing %s " % \
+                            (hostID, runCntr, str(e.__class__), str(e), cmd)
+                        logger.error(errStr)
+                        traceback.print_exc()
+                else :
+                    (exitStatus, stdout)=commands.getstatusoutput(cmd) 
+                outText=stdout+stderr
+                aftTime=time.time()*100
+                execTime=int(aftTime-befTime)
+                runTime += execTime
+                if (not exitStatus):
+                    (rTime, uTime, sTime) = self.getTimes(outText)
+                    logger.info("%s Iteration :%d Results: %.2f %.2f %.2f" \
+                        % (hostID, runCntr, rTime, uTime, sTime))
+                    # Add only if rTime is not zero
+                    if resObj and rTime:
+                        resObj.addResults(hostID, runCntr, rTime, uTime, sTime)
+                else:
+                    if outText:
+                        th.rptError=outText
+                    else:
+                        th.rptError="Failed : %d" % exitStatus
+                    return False
+                # postCmd
+                if postCmd:
+                    if sshSession:
+                        opt=sshSession.execCmd(postCmd)
+                    else :
+                        opt=commands.getoutput(postCmd) 
+                if runTime>=tmInterval:
+                    break;
+                if runCntr>=rptTimes:
+                    break
+                runCntr+=1
+        except Exception, e:
+            hostStr="%s : %s " % (cmd, hostID)
+            logger.error("*** Caught exception(rptCmd2): %s  (%s) message: (%s )" \
+                % (hostStr, str(e.__class__), str(e)))
+            traceback.print_exc()
+
+    def obtainHostObj(self, sshSession):
+        """ Obtain Host information for each SSH Session"""
+        logger=self.logger
+        th=sshSession
+        hostObj=host.Host.getHostObject(th.host, th.user, th.port, th)
+        th.hostObj=hostObj
+        self.hostObjs.append(hostObj)
+
+    def getHostInfo(self):
+        """ Obtain information regarding each Host """ 
+        logger=self.logger
+        if not self.hostObjs:
+            self.hostObjs=[]
+        for i in range(0,len(self.gSession.sessions)):
+            th = self.gSession.sessions[i]
+            self.pool.putRequest(threadpool.WorkRequest(self.obtainHostObj, \
+            [th],None,None))
+        if not self.pollResponse():
+            logger.error("Error Obtaining host information.")
+        for i in range(len(self.hostObjs)):
+            hObj= self.hostObjs[i]
+            hObj.printHostinfo()
+
+    def pollResponse(self):
+        #
+        # Wait for results
+        #
+        logger=self.logger
+        while True:
+            try:
+                self.pool.poll()
+            except (threadpool.NoResultsPending):
+                interrupted=False
+                break
+            except (KeyboardInterrupt):
+                print("Received KeyBoard Interrupt")
+                for i in range(0,len(self.gSession.sessions)):
+                    th.killCMD(signal.SIGKILL)
+                self.pool.wait()
+                interrupted=True
+                break
+        if interrupted:
+            return False
+        return True
+        
+    
+    def clearDir(self, dirName, sshSession, create=False):
+        """ 
+            If the directory is present remove it.
+            If create is true, create a new one.
+            update sshSession.dirTest with error string, in case of failure.
+        """
+        logger=self.logger
+        sftpClnt=sshSession.sftpClnt
+        sshSession.dirTest=""
+        userHost=sshSession.userHost
+        try :
+            rStat=sftpClnt.stat(dirName)
+            if S_ISDIR(rStat.st_mode):
+                logger.debug("%s: Removing directory : %s " % (userHost, dirName))
+                stdout=sshSession.execCmd("rm -rf %s " % dirName)
+                if stdout:
+                    errStr= "Unable to remove %s on %s :%s  " % (dirName, \
+                        sshSession.userHost, stdout)
+                    sshSession.dirTest=errStr
+                    return
+        except IOError:
+            pass
+        except Exception, e:
+            errStr="Caught Exception (clearDir)(%s) : %s, %s " % (sshSession.userHost,
+                str(e.__class__), str(e))
+            traceback.print_exc()
+            sshSession.dirTest=errStr
+            return
+        if not create:
+            return
+        try:
+            stdout=sshSession.execCmd("mkdir -p %s " % dirName)
+            logger.debug("%s Making Directory : %s " % (userHost, dirName))
+            if stdout:
+                errStr= "Unable to mkdir %s on %s :%s  " % (dirName, \
+                    sshSession.userHost, stdout)
+                sshSession.dirTest=errStr
+                return
+        except Exception, e:
+            errStr="Caught Exception clearDir2(%s) : %s, %s " % (sshSession.userHost,
+                str(e.__class__), str(e))
+            traceback.print_exc()
+            sshSession.dirTest=errStr
+
+    def checkDirPerms(self, dirName, createFlag=True):
+        """
+            Check if the directory is OK across all the hosts
+            Return True or False
+        """
+        logger=self.logger
+        for i in range(0,len(self.gSession.sessions)):
+            th = self.gSession.sessions[i]
+            th.dirTest=""
+            self.pool.putRequest(threadpool.WorkRequest(self.clearDir, \
+            [dirName, th, createFlag],None,None))
+        if not self.pollResponse():
+            logger.errr("Error Obtaining directory permissions\n")
+            return False
+        retVal=True
+        for i in range(0,len(self.gSession.sessions)):
+            th = self.gSession.sessions[i]
+            if th.dirTest:
+                logger.error("%s: %s" ,th.userHost, th.dirTest)
+                retVal=False
+        return retVal
+
+    def cmdParallel(self, cmd, cmdTitle, postCmd=""):
+        #
+        # Execute command in parallel on all the sessions
+        #
+        logger=self.logger
+        cmdRes =checkPerfResults.checkPerfResults(cmdTitle, cmd)
+        for i in range(0,len(self.gSession.sessions)):
+            th = self.gSession.sessions[i]
+            th.rptError=""
+            cmdRes.addHost(th.userHost)
+            self.pool.putRequest(threadpool.WorkRequest(self.rptCmd, \
+            [cmd, cmdTitle, cmdRes, th, th.userHost, postCmd],None,None))
+        if not self.pollResponse():
+            return None
+        for i in range(0,len(self.gSession.sessions)):
+            th = self.gSession.sessions[i]
+            if th.rptError:
+                logger.error("Error %s : %s "% (th.userHost, th.rptError))
+                cmdRes=None
+        #cmdRes.printIOResults(10*1000)
+        return cmdRes
+
+    def execSSHCmd(self, cmd, sshSession=None):
+        """ Execute  cmd on sshSession """
+        # Intialize
+        logger=self.logger
+        exitStatus=0
+        stdout=""
+        stderr=""
+        if sshSession:
+            try:
+                (exitStatus, stdout, stderr)=sshSession.runCommand(cmd)
+            except sshParamikoModule.runCommandException, err:
+                exitStatus=-1
+                outText="%s" % str(err)
+            except Exception, e:
+                outText= "***Caught exception (execSSHCmd)%s: %s executing "\
+                "%s on %s." %\
+                    (str(e.__class__), str(e), cmd, sshSession.userHost)
+                exitStatus=-1
+                traceback.print_exc()
+            outText=stdout+stderr
+        else :
+            (exitStatus, outText)=commands.getstatusoutput(cmd) 
+        sshSession.exitStatus=exitStatus
+        sshSession.outText = outText
+
+    def createFile(self, fileName, blkCount, blockSize):
+        """ Create a file of  size using DD command """
+        logger=self.logger
+        retVal=True
+        # Write command
+        wrCmd="dd if=/dev/zero of=%s count=%d bs=%dk" % \
+            (fileName, blkCount, blockSize)
+        for i in range(0,len(self.gSession.sessions)):
+            th = self.gSession.sessions[i]
+            th.exitStatus=0
+            th.outText=""
+            self.pool.putRequest(threadpool.WorkRequest(self.execSSHCmd,\
+                [wrCmd, th], None,None))
+        #
+        # Poll for the results
+        # 
+        if not self.pollResponse():
+            logger.error("Error creating a readFile %s" % fileName)
+            return False
+        for i in range(0,len(self.gSession.sessions)):
+            th = self.gSession.sessions[i]
+            if th.exitStatus:
+                logger.error("Error creating file(%s) on (%s): %d/%s " % 
+                    (fileName, th.userHost, th.exitStatus, th.outText))
+                retVal=False
+        return retVal
+
+    def ddReadTest(self, eachDir, blkCount, blockSize):
+        """ Perform  Read test on the the directory 
+
+            return Results Structure
+        """
+        logger=self.logger
+        dirName=eachDir+'/checkPerf'
+        if not self.checkDirPerms(dirName):
+            print "Permissions check on %s Failed \n" % eachDir
+            return None
+        # Create a file for reading
+        fileName="%s/%s" % (dirName, "ddFile")
+        if not self.createFile(fileName, blkCount, blockSize):
+            print "Unable to create file (%s)"
+            return None
+        # Proceed with reading
+        print "Performing Read Test on %s \n" % eachDir
+        rdCmd="dd if=%s of=/dev/null count=%d bs=%dk" %  \
+            (fileName, blkCount, blockSize)
+        cmdTitle="Directory Read I/O Test : %s " % eachDir
+        readRes=self.cmdParallel(rdCmd, cmdTitle) 
+        if readRes:
+            self.ddResults[eachDir]['Read']=readRes
+            return True
+        return False
+                
+
+    def ddWriteTest(self, eachDir, blkCount, blockSize):
+        """ Perform  write test on the the directory """
+        logger=self.logger
+        dirName=eachDir+'/checkPerf'
+        if not self.checkDirPerms(dirName):
+            logger.error("Permissions check on %s Failed \n" % eachDir)
+            return False
+        print "Performing Write Test on %s \n" % eachDir
+        wrCmd="dd if=/dev/zero of=%s/ddFile count=%d bs=%dk" % \
+            (dirName, blkCount, blockSize)
+        cmdTitle="Directory Write I/O Test : %s " % eachDir
+        writeRes=self.cmdParallel(wrCmd, cmdTitle)
+        if writeRes:
+            self.ddResults[eachDir]['Write']=writeRes
+            return True
+        return False
+
+    def ddTest(self):
+        """ Perform dd Test """
+        logger=self.logger
+        dirList=self.ddOptions['DirectoryList']
+        if not dirList:
+            logger.error("Directory list is empty\n"\
+                "Provide directory list in the configuration file.")
+            return False
+        if not self.ddResults:
+            self.ddResults={}
+        blkCount=self.ddOptions['Count']
+        blockSize=self.ddOptions['BlockSize']
+        for eachDir in dirList:
+            self.ddResults[eachDir]={}
+            self.ddResults[eachDir]['Write']=None
+            self.ddResults[eachDir]['Read']=None
+            if not self.ddWriteTest(eachDir, blkCount, blockSize):
+                return False
+            if not self.ddReadTest(eachDir, blkCount, blockSize):
+                return False
+
+    def printDirResults(self):
+        """ Print Directory I/O Results """
+        blkCount=self.ddOptions['Count']
+        blockSize=self.ddOptions['BlockSize']
+        dirList=self.ddOptions['DirectoryList']
+        if not dirList:
+            print "Directory list is empty\n"\
+                "Provide directory list in the configuration file."
+        try:
+            print "Printing Results SUMMMARY"
+            tSize=blkCount * blockSize * 1024
+            for eachDir in dirList:
+                print "Directory : %s "% eachDir
+                wrRes=self.ddResults[eachDir]['Write']
+                rdRes=self.ddResults[eachDir]['Read']
+                print "\t Write I/O Results"
+                if wrRes:
+                    wrRes.printIOResults(tSize)
+                else :
+                    print " **** WRITE IO RESULTS NOT PRESENT ****"
+                print "\t Read I/O Results"
+                if rdRes:
+                    rdRes.printIOResults(tSize)
+                else :
+                    print " **** READ IO RESULTS NOT PRESENT ****"
+        except Exception, e:
+            print "*** Caught exception (%s) message: (%s )" \
+                % (str(e.__class__), str(e))
+            traceback.print_exc()
+
+
+def parseHostFile(hostFile, defaultPort=22, defaultUser=None, verbose=False):
+    """ Parse the host file """
+    hostuserport = []
+    if not defaultUser:
+        defaultUser = os.environ.get('LOGNAME') or os.environ.get('USER')
+    for h in hostFile:
+        #Strip out the hostname and user, if there is a user present in the 
+        # record (e.g. user@host)
+        host = h.strip()
+        if host != '':
+            if verbose:
+                print 'Working on host: ' + host
+
+            if '@' in host:
+                (user, host) = string.split(host, '@')
+            else:
+                user = defaultUser
+
+            if ':' in host:
+                (host,port) = string.split(host, ':')
+            else:
+                port = defaultPort
+
+            hostuserport.append((host,user,port))
+    return hostuserport
+
+def checkPerfMain(argv):
+    # Process options
+    try :
+        (options, arguments) = getopt.getopt(argv[1:], "?uvdo:l:c:m:h:-p:sxn:t:",
+            ['help', 'usage', 'verbose', 'debug', 'output_file=',\
+            'log_file=', 'config_file', 'spec_file=', 'host_file=',
+            'port=', 'no_trusted_key_setup', 'exchange_trusted_keys',
+            'repeat_count=', 'elapse_time='])
+    except getopt.GetoptError, e:
+        # print help information and exit:
+        print __doc__
+        print str(e)
+        sys.exit(2)
+    #
+    # Initialize 
+    #
+    defaultPort=22
+    logFile=optFile=hostFile=configFile=""
+    exKeys=False
+    setupKeys=True
+    repeatCount=elpTime=-1
+    verbose=False
+    debug=False
+    specFile=sys.path[0]+'/lib/checkPerf.spec'
+    try :
+        for (switch, val) in options:
+            if (switch == '-o' or switch == '--output_file'):
+                optFile = val;
+            elif (switch == '-l' or switch == '--log_file'):
+                logFile = val;
+            elif (switch == '-c' or switch == '--config_file'):
+                configFile = val;
+            elif (switch == '-m' or switch == '--spec_file'):
+                specFile = val;
+            elif (switch == '-h' or switch == '--host_file'):
+                hostFile= val; 
+            elif (switch == '-p' or switch == '--port'):
+                defaultPort = int(val);
+            elif (switch == '-x' or switch == '--exchange_trusted_keys'):
+                exKeys = True 
+            elif (switch == '-s' or switch == '--no_trusted_key_setup'):
+                setupKeys = False 
+            elif (switch == '-d' or switch == '--debug'):
+                debug = True
+                verbose = True
+            elif (switch == '-v' or switch == '-verbose'):
+                verbose = True
+            elif (switch == '-n' or switch == '--repeat_count'):
+                repeatCount = int(val);
+            elif (switch == '-e' or switch == '--elapse_time'):
+                elpTime = int(val);
+            elif (switch == '-t' or switch == '--tolerance'):
+                elpTime = floar(val);
+            elif (switch == '-u' or switch == '-?' or switch=='--help' or \
+                switch=='--usage'):
+                print __doc__
+                raise SystemExit, 0
+    except Exception, e:
+        print "*** Caught exception (%s) message: (%s )" \
+            % (str(e.__class__), str(e))
+        traceback.print_exc()
+        raise SystemExit, 1
+    # 
+    # Now, check if we have enough configuration to proceed.
+    #
+    if not hostFile:
+        print __doc__
+        print "\n Provide hostFile \n"
+        raise SystemExit, 0
+
+    try:
+        hostFd=open(hostFile, 'r')
+        hostuserport=parseHostFile(hostFd,defaultPort)
+    except IOError:
+        print 'Error opening file named: ' + hostFile 
+        raise SystemExit, 1
+    except Exception, e:
+        print "*** Caught exception (%s) message: (%s )" \
+            % (str(e.__class__), str(e))
+        traceback.print_exc()
+        raise
+    lName='checkPerf'
+    gpLogger.initLogger(lName=lName, lfName=logFile, verbose=verbose, \
+        debug=debug)
+    Logger=logging.getLogger(lName)
+    gsObj=groupSession(hostuserport, setupKeys, verboseOpt=verbose, logger=Logger)
+    if (exKeys):
+        gsObj.exchangeKeys()
+    #gs.runCommand('ssh', ['uptime'])
+    #resDict={}
+    #gs.runCommand('ssh', ['uptime'], retDict=True, resDict=resDict, quiet=True)
+    #print resDict
+    chkPerf=CheckPerf(gSession=gsObj, logger=Logger)
+    signal.signal(signal.SIGTERM,chkPerf.termHandler)
+    confObj=chkPerf.obtainConfig(configFile, specFile)
+    if not confObj:
+        print "*** Configuration parsing errors "
+        raise SystemExit, 1
+    #
+    # Command Line Options take precedence
+    #
+    if optFile:
+        confObj['CheckPerf']['ResFile']=optFile
+    if logFile:
+        confObj['CheckPerf']['LogFile']=logFile
+    if repeatCount >= 0:
+        confObj['CheckPerf']['RptCount']=int(repeatCount)
+    if elpTime >= 0:
+        confObj['CheckPerf']['ElapseTime']=int(elpTime)
+    chkPerf.populateConfig(confObj)
+    if verbose:
+        chkPerf.printOptions()
+    #
+    # Obtain Host Objects
+    #
+    #chkPerf.getHostInfo()
+    chkPerf.ddTest()
+    chkPerf.printDirResults()
+
+if __name__ == '__main__': 
+    #print sys.argv
+    checkPerfMain(sys.argv)
+    exit 
+
