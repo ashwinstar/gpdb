@@ -47,6 +47,11 @@
 #include "storage/procarray.h"
 #include "utils/tqual.h"
 
+#include "catalog/pg_type.h"
+#include "funcapi.h"
+
+#include "utils/builtins.h"
+
 /*
  * These SnapshotData structs are static to simplify memory allocation
  * (see the hack in GetSnapshotData to avoid repeated malloc/free).
@@ -105,28 +110,17 @@ static Size slotSize;
 
 /*
  * Report shared-memory space needed by CreateSharedSnapshot.
- * 
- * Oh my god this is confusing -- shouldn't the compiler be able to help us out here ?
- * sizeof(SharedSnapshotSlot) + sizeof(TransactionId)*(MaxBackends + max_prepared_xacts) ?
  */
 Size
 SharedSnapshotShmemSize(void)
 {
 	Size		size;
 
-	int numSlots = MaxBackends;	
-	
-	/* 2*int4 + XID + commandId + XID + CommandId */
-	slotSize = 2*sizeof(int4) + 2*sizeof(TransactionId) + 2*sizeof(CommandId) + sizeof(TimestampTz);
-	
-	/* Snapshot size: XID + XID + CommandId + uint32 + XID Array */
-	slotSize += 2*sizeof(TransactionId) + sizeof(CommandId) + sizeof(uint32);	
-	slotSize += sizeof(bool);
+	slotSize = sizeof(SharedSnapshotSlot);
 	slotSize += sizeof(TransactionId) * (MaxBackends + max_prepared_xacts);
 	
-	/* total size is int + int + int + slotSize*numSlots */
 	size = offsetof(SharedSnapshotStruct, slots);
-	size = add_size( size, mul_size(slotSize, numSlots) );
+	size = add_size(size, mul_size(slotSize, MaxBackends));
 	
 	return size;
 }
@@ -138,12 +132,12 @@ SharedSnapshotShmemSize(void)
 void
 CreateSharedSnapshotArray(void)
 {
-	bool		found;
+	bool	found;
+	int		i;
 
 	/* Create or attach to the SharedSnapshot shared structure */
 	sharedSnapshotArray = (SharedSnapshotStruct *)
 		ShmemInitStruct("Shared Snapshot", SharedSnapshotShmemSize(), &found);
-
 
 	if (!found)
 	{
@@ -162,45 +156,36 @@ CreateSharedSnapshotArray(void)
 		
 		sharedSnapshotArray->nextSlot = 0;
 		
+		for (i=0; i < sharedSnapshotArray->maxSlots; i++)
 		{
-			int i;
-			
-			for (i=0; i < sharedSnapshotArray->maxSlots; i++)
-			{
-				/* need to do byte addressing to find the right slot */ 	
-				SharedSnapshotSlot *tmpSlot = (SharedSnapshotSlot*) ((char*)&sharedSnapshotArray->slots + (i*slotSize)); 
-				
-				tmpSlot->slotid = -1;
-			}		
-		}
+			/* need to do byte addressing to find the right slot */ 	
+			SharedSnapshotSlot *tmpSlot = (SharedSnapshotSlot*) ((char*)&sharedSnapshotArray->slots + (i*slotSize)); 
+			tmpSlot->slotid = -1;
+		}		
 	}
-	
 }
 
 /* used to dump the internal state of the shared slots for debugging.
  */
 char *SharedSnapshotDump(void)
 {
-	
 	StringInfoData str;
 	SharedSnapshotStruct *arrayP = sharedSnapshotArray;
 	int index;
 	
     initStringInfo(&str);
 
-
 	appendStringInfo(&str, "Local SharedSnapshot Slot Dump: currSlots: %d maxSlots: %d ", 
 					 arrayP->numSlots, arrayP->maxSlots);
 	
 	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
-	
 	
 	for (index=0; index < arrayP->maxSlots; index++)
 	{
 		/* need to do byte addressing to find the right slot */ 
 		SharedSnapshotSlot *testSlot = (SharedSnapshotSlot*) ((char*)&arrayP->slots + index*slotSize);
 		
-		if( testSlot->slotid != -1 )
+		if (testSlot->slotid != -1)
 		{
 			appendStringInfo(&str, "(SLOT index: %d slotid: %d QDxid: %u QDcid: %u )", 
 				testSlot->slotindex, testSlot->slotid, testSlot->QDxid, testSlot->QDcid);
@@ -230,7 +215,6 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 	int i;
 	
 	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
-	
 		
 	if (arrayP->numSlots >= arrayP->maxSlots || arrayP->nextSlot == -1)
 	{
@@ -252,7 +236,6 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 	
 	slot->slotindex = arrayP->nextSlot;
 	
-		
 	/* find the next available slot */
 	for (i=arrayP->nextSlot+1; i < arrayP->maxSlots; i++)
 	{
@@ -278,12 +261,11 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 
 	slot->slotid = slotId;
 	slot->xid = 0;
+	slot->pid = 0;
 	slot->cid = 0;
 	slot->startTimestamp = 0;
 	slot->QDxid = 0;
 	slot->QDcid = 0;
-	
-	
 	
 	LWLockRelease(SharedSnapshotLock);
 	
@@ -301,10 +283,8 @@ SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId)
 	SharedSnapshotSlot *slot = NULL;
 	SharedSnapshotStruct *arrayP = sharedSnapshotArray;
 	int index;
-
 	
 	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
-	
 	
 	for (index=0; index < arrayP->maxSlots; index++)
 	{
@@ -324,7 +304,6 @@ SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId)
 		}
 	}
 	
-	
 	LWLockRelease(SharedSnapshotLock);
 	
 	return slot;
@@ -336,9 +315,7 @@ SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId)
  */
 void SharedSnapshotRemove(SharedSnapshotSlot *slot)
 {
-	
 	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
-	
 		
 	/* determine if we need to modify the next available slot to use.  we
 	 * only do this is our slotindex is lower then the existing one.
@@ -355,6 +332,7 @@ void SharedSnapshotRemove(SharedSnapshotSlot *slot)
 	/* reset the slotid which marks it as being unused. */
 	slot->slotid = -1;
 	slot->xid = 0;
+	slot->pid = 0;
 	slot->cid = 0;
 	slot->startTimestamp = 0;
 	slot->QDxid = 0;
@@ -1639,4 +1617,112 @@ FreeXactSnapshot(void)
 	SerializableSnapshot = NULL;
 	LatestSnapshot = NULL;
 	ActiveSnapshot = NULL;		/* just for cleanliness */
+}
+
+
+struct mpp_xid_map_entry {
+	pid_t				pid;
+	TransactionId		global;
+	TransactionId		local;
+};
+
+struct mpp_xid_map {
+	int			size;
+	int			cur;
+	struct mpp_xid_map_entry map[1];
+};
+
+/*
+ * mpp_global_xid_map
+ */
+Datum
+mpp_global_xid_map(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+	struct mpp_xid_map *ctx;
+	char		nulls[3];
+	int			i, j;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		TupleDesc	tupdesc;
+		MemoryContext oldcontext;
+		SharedSnapshotStruct *arrayP = sharedSnapshotArray;
+
+		/* create a function context for cross-call persistence */
+		funcctx = SRF_FIRSTCALL_INIT();
+
+		/*
+		 * switch to memory context appropriate for multiple function calls
+		 */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		/* build tupdesc for result tuples */
+		/* this had better match pg_locks view in system_views.sql */
+		tupdesc = CreateTemplateTupleDesc(3, false);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "pid",
+						   INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "localxid",
+						   XIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "globalxid",
+						   XIDOID, -1, 0);
+
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+		/* figure out how many slots we need */
+
+		ctx = (struct mpp_xid_map *)palloc0(sizeof(struct mpp_xid_map) + 
+											arrayP->maxSlots * sizeof(struct mpp_xid_map_entry));
+
+		j = 0;
+		LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
+		for (i = 0; i < arrayP->maxSlots; i++)
+		{
+			/* need to do byte addressing to find the right slot */ 
+			SharedSnapshotSlot *testSlot = (SharedSnapshotSlot*) ((char*)&arrayP->slots + i*slotSize);
+		
+			if (testSlot->slotid != -1)
+			{
+				ctx->map[j].pid = testSlot->pid;
+				ctx->map[j].local = testSlot->xid;
+				ctx->map[j].global = testSlot->QDxid;
+				j++;
+			}		
+		}	
+		LWLockRelease(SharedSnapshotLock);
+		ctx->size = j;
+
+		funcctx->user_fctx = (void *)ctx;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+	ctx = (struct mpp_xid_map *)funcctx->user_fctx;
+
+	MemSet(nulls, ' ', sizeof(nulls));
+	while (ctx->cur < ctx->size)
+	{
+		Datum		values[3];
+
+		HeapTuple	tuple;
+		Datum		result;
+
+		/*
+		 * Form tuple with appropriate data.
+		 */
+		MemSet(values, 0, sizeof(values));
+
+		values[0] = Int32GetDatum(ctx->map[ctx->cur].pid);
+		values[1] = TransactionIdGetDatum(ctx->map[ctx->cur].local);
+		values[2] = TransactionIdGetDatum(ctx->map[ctx->cur].global);
+
+		ctx->cur++;
+
+		tuple = heap_formtuple(funcctx->tuple_desc, values, nulls);
+		result = HeapTupleGetDatum(tuple);
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+
+	SRF_RETURN_DONE(funcctx);
 }

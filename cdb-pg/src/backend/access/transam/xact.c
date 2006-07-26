@@ -1513,6 +1513,9 @@ StartTransaction(void)
 				SharedLocalSnapshotSlot->xid = s->transactionId;
 				SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
 				SharedLocalSnapshotSlot->QDxid = QDSentXID;
+
+				SharedLocalSnapshotSlot->pid = MyProc->pid;
+
 				SharedLocalSnapshotSlot->ready = false;
 			}
 		}
@@ -1537,22 +1540,6 @@ StartTransaction(void)
 
 				elog(DEBUG4, "qExec reader: QDSentXID %d sharedlocalsnapshot->QDxid %d sharedsnapshots: %s",
 					 QDSentXID, SharedLocalSnapshotSlot->QDxid, SharedSnapshotDump());
-
-#if 0
-				/* XXX: unfortunately subtransaction support means
-				 * that transaction ids are not necessarily
-				 * monotonic-increasing anymore (if we release a
-				 * subtransaction and execute a statement in its
-				 * parent, for example) */
-				/*
-				 * If we're waiting on an old transaction, let's exit quickly
-				 * instead of timing out.
-				 */
-
-				if (TransactionIdPrecedes(QDSentXID, SharedLocalSnapshotSlot->QDxid))
-					elog(ERROR, "Reader gang waiting for old xid: current: %d waiting on %d",
-						 QDSentXID, SharedLocalSnapshotSlot->QDxid);
-#endif
 
 				while (!done)
 				{

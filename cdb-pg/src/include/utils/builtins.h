@@ -864,4 +864,7 @@ extern Datum pg_prepared_xact(PG_FUNCTION_ARGS);
 /* catalog/pg_conversion.c */
 extern Datum pg_convert_using(PG_FUNCTION_ARGS);
 
+/* tqual.c */
+extern Datum mpp_global_xid_map(PG_FUNCTION_ARGS);
+
 #endif   /* BUILTINS_H */
