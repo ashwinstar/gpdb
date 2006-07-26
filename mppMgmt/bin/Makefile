@@ -22,8 +22,38 @@ all: pylib
 #
 # Python Libraries
 #
-pylib : paramiko pycrypto
+pylib : paramiko pycrypto configobj
 
+
+#
+# CONFIGOBJ
+#
+CONFIGOBJ_VERSION=4.3.2
+CONFIGOBJ_DIR=configobj-$(CONFIGOBJ_VERSION)
+configobj:
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@echo "Unzipping Paramiko"
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@cd $(PYLIB_SRC)/; unzip -o $(CONFIGOBJ_DIR).zip ; cd ../ ;
+	@echo " Building configobj "
+	@cd $(PYLIB_SRC)/$(CONFIGOBJ_DIR) ; NO_M64=TRUE python setup.py build ; cd ../../
+	cp -r $(PYLIB_SRC)/$(CONFIGOBJ_DIR)/build/lib/* $(LIB_DIR)/
+
+configobjInstall:
+	@echo "Installing configobj"
+
+configobjClean:
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@echo "Cleaning Paramiko"
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@cd $(PYLIB_SRC)/$(CONFIGOBJ_DIR) ; NO_M64=TRUE python setup.py clean; cd ../../
+	@echo ""
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@echo " Removing $(CONFIGOBJ_DIR) "
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@echo ""
+#
+# PARAMIKO
 #
 PARAMIKO_VERSION=1.5.4
 PARAMIKO_DIR=paramiko-$(PARAMIKO_VERSION)
@@ -51,6 +81,10 @@ paramikoClean:
 	@echo ""
 	@cd $(PYLIB_SRC)/; rm -rf $(PARAMIKO_DIR) ; cd ../
 
+
+#
+# PYCRYPTO
+#
 PYCRYPTO_VERSION=2.0.1
 PYCRYPTO_DIR=pycrypto-$(PYCRYPTO_VERSION)
 
@@ -86,6 +120,6 @@ solarisTest:
 	@if [ `uname -s` = 'SunOS' ]; then \
 		echo "SOLARIS" ; \
 	fi
-clean : pycryptoClean paramikoClean
+clean : pycryptoClean paramikoClean configobjClean
 
     
