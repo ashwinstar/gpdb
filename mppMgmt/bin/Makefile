@@ -22,7 +22,16 @@ all: pylib
 #
 # Python Libraries
 #
-pylib : paramiko pycrypto configobj
+pylib : paramiko pycrypto configobj gpLink
+
+
+gpLink:
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@echo "creating groupSession.py link"
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@cd $(LIB_DIR)/; ln -s ../groupSession groupSession.py ; cd ../ ;
+	@echo " Building configobj "
+
 
 
 #
@@ -121,5 +130,7 @@ solarisTest:
 		echo "SOLARIS" ; \
 	fi
 clean : pycryptoClean paramikoClean configobjClean
+	rm -rf lib/groupSession*
+	rm -rf *.pyc lib/*.pyc
 
     

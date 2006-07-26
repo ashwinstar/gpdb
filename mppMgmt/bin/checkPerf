@@ -14,7 +14,6 @@ or just:
 
 -c configfile file that contains configuration for checkPerf.
 -l logFile , where all the info and debug messages go.
--o outPutFile, File to write the results of each test.
 -m configSpecFile, Location of configSpec file.
 
 
@@ -28,11 +27,14 @@ ssh options.
 
 
 -n :  No of times each test is repeated.
--e :  Repeat the tests untile 't' seconds is elapsed.
 -t :  Tolerance, (0.1, 0.99) Tolerance of results.
 
 
 """
+
+#-o outPutFile, File to write the results of each test.
+#-t :  Tolerance, (0.1, 0.99) Tolerance of results.
+#-e :  Repeat the tests untile 't' seconds is elapsed.
 
 import os, sys, threading, time, string, getpass, getopt, signal, commands
 import traceback
@@ -50,7 +52,8 @@ try :
     import host
     from configobj import ConfigObj, flatten_errors
     from validate import Validator
-    from groupSession import groupSession
+    #from groupSession import groupSession
+    import groupSession as groupSession
     import checkPerfResults
     import gpLogger
     import logging
@@ -153,7 +156,7 @@ class CheckPerf:
             return config
         else :
             logger.error("*** Encountered config parsing errors. ***")
-            for entry in flatten_errors(config, test):
+            for entry in flatten_errors(config, valResult):
                 # each entry is a tuple
                 section_list, key, error = entry
                 if key is not None:
@@ -163,7 +166,7 @@ class CheckPerf:
                 section_string = ', '.join(section_list)
                 if error == False:
                     error = 'Missing value or section.'
-                eeStr="%s = %s" %(section_string, error)
+                errStr="%s = %s" %(section_string, error)
                 logger.error(errStr)
             return None
 
@@ -534,9 +537,10 @@ class CheckPerf:
             print "Unable to create file (%s)"
             return None
         # Proceed with reading
-        print "Performing Read Test on %s \n" % eachDir
         rdCmd="dd if=%s of=/dev/null count=%d bs=%dk" %  \
             (fileName, blkCount, blockSize)
+        print "Performing Read Test on %s \n" % eachDir
+        logger.info("Read I/O Command : %s " % rdCmd)
         cmdTitle="Directory Read I/O Test : %s " % eachDir
         readRes=self.cmdParallel(rdCmd, cmdTitle) 
         if readRes:
@@ -552,9 +556,10 @@ class CheckPerf:
         if not self.checkDirPerms(dirName):
             logger.error("Permissions check on %s Failed \n" % eachDir)
             return False
-        print "Performing Write Test on %s \n" % eachDir
         wrCmd="dd if=/dev/zero of=%s/ddFile count=%d bs=%dk" % \
             (dirName, blkCount, blockSize)
+        print "Performing Write Test on %s \n" % eachDir
+        logger.info("Write Command : %s " % wrCmd)
         cmdTitle="Directory Write I/O Test : %s " % eachDir
         writeRes=self.cmdParallel(wrCmd, cmdTitle)
         if writeRes:
@@ -582,6 +587,7 @@ class CheckPerf:
                 return False
             if not self.ddReadTest(eachDir, blkCount, blockSize):
                 return False
+        return True
 
     def printDirResults(self):
         """ Print Directory I/O Results """
@@ -725,7 +731,8 @@ def checkPerfMain(argv):
     gpLogger.initLogger(lName=lName, lfName=logFile, verbose=verbose, \
         debug=debug)
     Logger=logging.getLogger(lName)
-    gsObj=groupSession(hostuserport, setupKeys, verboseOpt=verbose, logger=Logger)
+    gsObj=groupSession.groupSession(hostuserport, setupKeys, verboseOpt=verbose,\
+    logger=Logger)
     if (exKeys):
         gsObj.exchangeKeys()
     #gs.runCommand('ssh', ['uptime'])
@@ -756,8 +763,8 @@ def checkPerfMain(argv):
     # Obtain Host Objects
     #
     #chkPerf.getHostInfo()
-    chkPerf.ddTest()
-    chkPerf.printDirResults()
+    if(chkPerf.ddTest()):
+        chkPerf.printDirResults()
 
 if __name__ == '__main__': 
     #print sys.argv

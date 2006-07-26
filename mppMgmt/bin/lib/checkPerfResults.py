@@ -104,7 +104,7 @@ class checkPerfResults:
         self.computeItSummary()
         maxReal=minReal=None
         totReal=cntr=0
-        for eachHost in self.results.keys():
+        for eachHost in self.hosts:
             hDict=self.results[eachHost]['Average']
             if not maxReal or maxReal<hDict['real']:
                 maxReal=hDict['real']
@@ -119,8 +119,12 @@ class checkPerfResults:
     
     def printIOResults(self, tSize):
         """ Print the real times for I/O results """
-        self.computeHostSummary()
-
+        try:
+            self.computeHostSummary()
+        except Exception, e:
+            print "*** Caught exception printIOResults  (%s) message: (%s )" \
+                % (str(e.__class__), str(e))
+            return
         #print "===== %s ======" % self.cmdTitle
         print 
         print "\t cmd : %s " % self.cmd
