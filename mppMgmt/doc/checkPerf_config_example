@@ -1,0 +1,77 @@
+#
+# This is a config file for checkPerf utility.
+# Please follow the instructions at each section and name value pairs
+#
+
+#
+# Section, General Configuration
+#
+[ "CheckPerf" ]
+#
+# Tolerance, variance allowed
+#
+Tolerance=0.1
+#
+# No of times each test should be performed.
+#
+RptCount=5
+
+#
+# Time in seconds.
+#
+ElapseTime=3600
+
+#
+# logFile
+#
+LogFile="fileOne"
+ResFile="fileTwo"
+#
+# Stating Directory, Directoy on each Host where the user has 
+# read/write persmissions.
+# Will be used to host software.
+#
+StagingDirectory=""
+
+
+# Section Disk I/O Test
+#
+[ "Disk Performance"]
+#
+# Directory List, List of directories to test I/O performance.
+# Format 
+# Directory_List= "Path_to_dir1", "Path_to_dir2", "Path_to_dir2"
+#
+DirectoryList= "/dbfast/dirOne",
+#
+# Block Size
+#
+BlockSize=8
+#
+#  Count No of blocks
+#
+Count=1220703
+
+
+#
+# Section Memory Testing
+#
+["Memory Bandwidth"]
+#
+# No of concurrent tests that should be executed.
+#
+ConcurrentTests=2
+
+
+#
+# Network Test
+#
+["Network Bandwidth"]
+#
+# Size of each Packet
+#
+PacketSize=1024
+#
+# No of packets to be send
+PacketNumber=100
+
