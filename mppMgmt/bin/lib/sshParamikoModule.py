@@ -91,9 +91,9 @@ class sshSession(threading.Thread):
         self.stdout=""
         self.stderr=""
         self.exitStatus=0
-
+        self.debug=debug
+        self.verbose=verbose
         self.lock = threading.RLock()
-        self.verbose = verbose
         self.user = user
         self.port = port
         self.host = host

@@ -311,7 +311,9 @@ class CheckPerf:
                         % (hostID, runCntr, rTime, uTime, sTime))
                     # Add only if rTime is not zero
                     if resObj and rTime:
+			sshSession.lock.acquire()
                         resObj.addResults(hostID, runCntr, rTime, uTime, sTime)
+			sshSession.lock.release()
                 else:
                     if outText:
                         th.rptError=outText
@@ -372,6 +374,7 @@ class CheckPerf:
             except (KeyboardInterrupt):
                 print("Received KeyBoard Interrupt")
                 for i in range(0,len(self.gSession.sessions)):
+                    th=self.gSession.sessions[i]
                     th.killCMD(signal.SIGKILL)
                 self.pool.wait()
                 interrupted=True
@@ -394,7 +397,7 @@ class CheckPerf:
         try :
             rStat=sftpClnt.stat(dirName)
             if S_ISDIR(rStat.st_mode):
-                logger.debug("%s: Removing directory : %s " % (userHost, dirName))
+                logger.info("%s: Removing directory : %s " % (userHost, dirName))
                 stdout=sshSession.execCmd("rm -rf %s " % dirName)
                 if stdout:
                     errStr= "Unable to remove %s on %s :%s  " % (dirName, \
@@ -413,7 +416,7 @@ class CheckPerf:
             return
         try:
             stdout=sshSession.execCmd("mkdir -p %s " % dirName)
-            logger.debug("%s Making Directory : %s " % (userHost, dirName))
+            logger.info("%s Making Directory : %s " % (userHost, dirName))
             if stdout:
                 errStr= "Unable to mkdir %s on %s :%s  " % (dirName, \
                     sshSession.userHost, stdout)
@@ -422,6 +425,7 @@ class CheckPerf:
         except Exception, e:
             errStr="Caught Exception clearDir2(%s) : %s, %s " % (sshSession.userHost,
                 str(e.__class__), str(e))
+            logger.error(errStr)
             traceback.print_exc()
             sshSession.dirTest=errStr
 
@@ -437,7 +441,7 @@ class CheckPerf:
             self.pool.putRequest(threadpool.WorkRequest(self.clearDir, \
             [dirName, th, createFlag],None,None))
         if not self.pollResponse():
-            logger.errr("Error Obtaining directory permissions\n")
+            logger.error("Error Obtaining directory permissions\n")
             return False
         retVal=True
         for i in range(0,len(self.gSession.sessions)):
@@ -528,21 +532,26 @@ class CheckPerf:
         """
         logger=self.logger
         dirName=eachDir+'/checkPerf'
+	logger.info("Checking permisions\n")
         if not self.checkDirPerms(dirName):
             print "Permissions check on %s Failed \n" % eachDir
             return None
+	logger.info("Checking permisions successful.\n")
         # Create a file for reading
         fileName="%s/%s" % (dirName, "ddFile")
+	logger.info("Creating file(%s) to read from. \n" % fileName)
         if not self.createFile(fileName, blkCount, blockSize):
             print "Unable to create file (%s)"
             return None
         # Proceed with reading
+	logger.info("Creating file(%s) to read from. Succesfull.\n" % fileName)
         rdCmd="dd if=%s of=/dev/null count=%d bs=%dk" %  \
             (fileName, blkCount, blockSize)
         print "Performing Read Test on %s \n" % eachDir
         logger.info("Read I/O Command : %s " % rdCmd)
         cmdTitle="Directory Read I/O Test : %s " % eachDir
         readRes=self.cmdParallel(rdCmd, cmdTitle) 
+        self.checkDirPerms(dirName, False)
         if readRes:
             self.ddResults[eachDir]['Read']=readRes
             return True
@@ -562,6 +571,7 @@ class CheckPerf:
         logger.info("Write Command : %s " % wrCmd)
         cmdTitle="Directory Write I/O Test : %s " % eachDir
         writeRes=self.cmdParallel(wrCmd, cmdTitle)
+        self.checkDirPerms(dirName, False)
         if writeRes:
             self.ddResults[eachDir]['Write']=writeRes
             return True
