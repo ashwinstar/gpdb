@@ -101,6 +101,9 @@ typedef struct ChunkTransportState
 	int size;
 	ChunkTransportStateEntry *states;
 	
+	/* ChunkTransportState array initial size */
+#define CTS_INITIAL_SIZE (10)
+	
 	/* keeps track of if we've "activated" connections via SetupInterconnect(). */
 	bool		activated;
 

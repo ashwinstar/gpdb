@@ -73,10 +73,6 @@ int			seqserverFd = -1;
 char		*seqServerHost;
 int			seqServerPort;
 
-
-/* ChunkTransportState array initial size */
-#define CTS_INITIAL_SIZE (1)
-
 /*
  * Outgoing port assignment
  *
