@@ -10,7 +10,7 @@
 #
 # Tolerance, variance allowed
 #
-Tolerance=0.1
+Tolerance=0.05
 #
 # No of times each test should be performed.
 #
@@ -19,13 +19,13 @@ RptCount=5
 #
 # Time in seconds.
 #
-ElapseTime=3600
+ElapseTime=0
 
 #
 # logFile
 #
-LogFile="fileOne"
-ResFile="fileTwo"
+LogFile=""
+ResFile=""
 #
 # Stating Directory, Directoy on each Host where the user has 
 # read/write persmissions.
@@ -42,16 +42,17 @@ StagingDirectory=""
 # Format 
 # Directory_List= "Path_to_dir1", "Path_to_dir2", "Path_to_dir2"
 #
-DirectoryList= "/dbfast/dirOne",
+DirectoryList= "/dbfast1/dirOne",
 #
 # Block Size
+# Specify BlockSize
 #
-BlockSize=8
+BlockSize=1K
+FileSize=100Mb
 #
 #  Count No of blocks
 #
-Count=1220703
-
+Count=1234
 
 #
 # Section Memory Testing

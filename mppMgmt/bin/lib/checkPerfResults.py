@@ -46,9 +46,9 @@ class checkPerfResults:
         """ Compute the maximum and minimum for all the iterations """
         for eachHost in self.results.keys():
             hDict=self.results[eachHost]
-            hDict['Average']={}
-            hDict['Minimum']={}
-            hDict['Maximum']={}
+            hDict['Average']=None
+            hDict['Minimum']=None
+            hDict['Maximum']=None
             maxReal=maxUser=maxSys=None
             minReal=minUser=minSys=None
             totUser=totSys=totReal=0
@@ -83,6 +83,9 @@ class checkPerfResults:
             avgUser=totUser/cntr
             avgSys=totSys/cntr
             avgReal=totReal/cntr
+            hDict['Average']={}
+            hDict['Minimum']={}
+            hDict['Maximum']={}
             hDict['Average']['real']=avgReal
             hDict['Average']['user']=avgUser
             hDict['Average']['sys']=avgSys
@@ -105,19 +108,26 @@ class checkPerfResults:
         maxReal=minReal=None
         totReal=cntr=0
         for eachHost in self.hosts:
-            hDict=self.results[eachHost]['Average']
+            hDict=self.results[eachHost]
+            if 'Average' in hDict.keys():
+                hDict=self.results[eachHost]['Average']
+            else:
+                continue
             if not maxReal or maxReal<hDict['real']:
                 maxReal=hDict['real']
+                self.maxHost=eachHost
             if not minReal or minReal>hDict['real']:
                 minReal=hDict['real']
+                self.minHost=eachHost
             totReal+=hDict['real']
             cntr+=1
         if cntr:
             self.realAvg= totReal/cntr
+        self.iterations=cntr
         self.realMax= maxReal
         self.realMin= minReal
     
-    def printIOResults(self, tSize):
+    def printIOResults(self, tSize, tRence=0):
         """ Print the real times for I/O results """
         try:
             self.computeHostSummary()
@@ -135,12 +145,22 @@ class checkPerfResults:
         factor=1000000
         for eachHost in self.hosts:
             hDict=self.results[eachHost]
-            realAvg=hDict['Average']['real']
-            realMax=hDict['Maximum']['real']
-            realMin=hDict['Minimum']['real']
+            if hDict['Average'] and hDict['Maximum'] and hDict['Minimum']:
+                pass
+            else :
+                hDict['avgMbps'] = None
+                continue
+            try:
+                realAvg=hDict['Average']['real']
+                realMax=hDict['Maximum']['real']
+                realMin=hDict['Minimum']['real']
+            except KeyError, e:
+                print "Unable to obtain %s value for Host %s" % (str(e), eachHost)
+                continue
             avgMbps=maxMbps=minMbps=0
             if realAvg:
                 avgMbps=tSize/(realAvg *factor)
+                hDict['avgMbps']=avgMbps
             if realMax:
                 maxMbps=tSize/(realMin*factor)
             if realMin:
@@ -156,10 +176,28 @@ class checkPerfResults:
             minMbps=tSize/(self.realMax*factor)
         if self.realAvg:
             avgMbps=tSize/(self.realAvg*factor)
-        print "\t\t Maximum %10.2f" % maxMbps
-        print "\t\t Minimum %10.2f" % minMbps
+        print "\t\t Maximum %10.2f (%s)" % (maxMbps, self.minHost)
+        print "\t\t Minimum %10.2f (%s)" % (minMbps, self.maxHost)
         print "\t\t Average %10.2f" % avgMbps
         print
+        if tRence:
+            print
+            thDict=[]
+            maxAllowed= maxMbps - (maxMbps * tRence)
+            for eachHost in self.hosts:
+                hDict=self.results[eachHost]
+                if 'avgMbps' in hDict.keys() and  hDict['avgMbps']<maxAllowed:
+                    thDict.append(eachHost)
+            if len(thDict):
+                print "\tHosts that are below Tolerance %.2f compared to %10.2f" % \
+                    (tRence, maxMbps)
+                print 
+                for x in thDict:
+                    print "\t\t %s (%10.2f)"% (x, self.results[x]['avgMbps'])
+                print 
+        return
+                    
+                    
 
 if __name__ == '__main__':
     res=checkPerfResults()

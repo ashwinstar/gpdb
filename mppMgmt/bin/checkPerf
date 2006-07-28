@@ -52,7 +52,6 @@ try :
     import host
     from configobj import ConfigObj, flatten_errors
     from validate import Validator
-    #from groupSession import groupSession
     import groupSession as groupSession
     import checkPerfResults
     import gpLogger
@@ -71,9 +70,11 @@ class CheckPerf:
         Performs tests on different nodes.
     """
     def __init__(self, gSession=None, logger=None):
+        """
+            Initialize checkPerf Object
+        """
         self.options={}
         self.gSession=gSession
-        self.sessions=gSession.sessions
         self.pool=gSession.pool
 
         # Files Needed.
@@ -111,11 +112,6 @@ class CheckPerf:
         #
         # TBD: Remove any direcotories or files created on each Node.
         #
-                
-        #
-        # Write failure information into the results file.
-        # Close the results File.
-        #
         print "Exiting..."
         raise SystemExit, 1
     
@@ -133,7 +129,7 @@ class CheckPerf:
                 logger.error("*** Received IO Error (%s)" % str(e))
                 return None
         if configFile:
-            print "ConfigFile = %s" % configFile
+            logger.info("Configuration File = %s" % configFile)
             try:
                 specFd = open(configFile, 'r')
                 specFd.close()
@@ -150,6 +146,10 @@ class CheckPerf:
             logger.error("*** Caught exception(obtainConfig) (%s) message: (%s )" \
                 % (str(e.__class__), str(e)))
             traceback.print_exc()
+            return None
+        #
+        # Create a validator
+        #
         val = Validator()
         valResult = config.validate(val, preserve_errors=True)
         if valResult == True:
@@ -170,41 +170,110 @@ class CheckPerf:
                 logger.error(errStr)
             return None
 
+    def getIntVal(self, intString):
+        """ 
+            Return integer value
+        """
+        if not intString or not len(intString):
+            return (0, "")
+        factor=1
+        intWord=intString.strip()
+        intVal=intWord
+        if intWord.endswith("GB") or intWord.endswith("gB")\
+            or intWord.endswith("Gb") or intWord.endswith("gb") :
+            factor = 1024 * 1000000
+            intVal=intWord[0:len(intWord)-2]
+        elif intWord.endswith("G") or  intWord.endswith("g"):
+            factor = 1024 * 1000000
+            intVal=intWord[0:len(intWord)-1]
+        elif intWord.endswith("MB") or intWord.endswith("mB") \
+            or intWord.endswith("Mb") or intWord.endswith("mb") :
+            factor = 1024 * 1000
+            intVal=intWord[0:len(intWord)-2]
+        elif intWord.endswith("M") or  intWord.endswith("m"):
+            factor = 1024 * 1000
+            intVal=intWord[0:len(intWord)-1]
+        elif intWord.endswith("KB") or intWord.endswith("kB") \
+            or intWord.endswith("Kb") or intWord.endswith("kb") :
+            factor = 1024 
+            intVal=intWord[0:len(intWord)-2]
+        elif intWord.endswith("K") or  intWord.endswith("k"):
+            factor = 1024 
+            intVal=intWord[0:len(intWord)-1]
+        else :
+            intVal=intWord
+
+        if not len(intVal):
+            return (factor, "")
+        try:
+            floatVal=float(intVal)
+        except ValueError:
+            return (None, "Unable to parse, Invalid interger string(%s)." %\
+                intWord)
+        return (floatVal *  factor, "")
+
+
     def populateConfig(self, configObj):
         """ Populate Configuration from configObj """
         logger=self.logger
         if not configObj:
             return False
+        self.options['LogFile']   =""
+        self.options['ResFile']   =""
         try :
-            self.options['RptCount']=configObj['CheckPerf']['RptCount']
-            self.options['Tolerance']=configObj['CheckPerf']['Tolerance']
+            self.options['RptCount']  =configObj['CheckPerf']['RptCount']
+            self.options['Tolerance'] =configObj['CheckPerf']['Tolerance']
             self.options['ElapseTime']=configObj['CheckPerf']['ElapseTime']
-            self.options['LogFile']=configObj['CheckPerf']['LogFile']
-            self.options['ResFile']=configObj['CheckPerf']['ResFile']
             #
             # DD Options
             #
             if not self.ddOptions:
                 self.ddOptions={}
             if (isinstance(configObj['Disk Performance'], dict)):
-                if (isinstance(configObj['Disk Performance']['DirectoryList'], list)):
-                    self.ddOptions['DirectoryList']=\
-                        configObj['Disk Performance']['DirectoryList']
-                    self.ddOptions['BlockSize']= \
-                        configObj['Disk Performance']['BlockSize']
-                    self.ddOptions['Count']= \
-                        configObj['Disk Performance']['Count']
+                ddConfig=configObj['Disk Performance']
+                ddKeys=ddConfig.keys()
+                if ('DirectoryList' in ddKeys and \
+                    isinstance(ddConfig['DirectoryList'], list)):
+                    self.ddOptions['DirectoryList']=ddConfig['DirectoryList']
+                if 'FileSize' in  ddKeys:
+                    self.ddOptions['FileSize']=  ddConfig['FileSize']
+                if 'BlockSize' in  ddKeys:
+                    (intBlkSize, errStr)= \
+                        self.getIntVal(ddConfig['BlockSize'])
+                    if errStr:
+                        logger.error(errStr)
+                        return False
+                    self.ddOptions['BlockSize']=  intBlkSize
+                if 'Count' in  ddKeys:
+                    self.ddOptions['Count']=  ddConfig['Count']
+                try:
+                    if 'FileSize' in  self.ddOptions.keys():
+                        (intFileSize, errStr)=\
+                            self.getIntVal(self.ddOptions['FileSize'])
+                        if errStr:
+                            logger.error(errStr)
+                            return False
+                        blockSize=int(self.ddOptions['BlockSize'])
+                        if intFileSize:
+                            count = intFileSize/blockSize
+                            self.ddOptions['Count']= count
+                except Exception, e:
+                    logger.error("*** Caught exception (obtainCount) (%s) message: "\
+                        "(%s )" % (str(e.__class__), str(e)))
+                    traceback.print_exc()
+                    return False
         except KeyError, e:
-            logger.error("Recevied Key Error ")
+            logger.error("Missing configuration %s  ", str(e))
             return False
         except Exception, e:
             logger.error("*** Caught exception (populateConfig) (%s) message: (%s )" \
                 % (str(e.__class__), str(e)))
             traceback.print_exc()
+            return False
+        return True
 
     def printOptions(self):
         """ Print the options to screen """
-        logger=self.logger
         print "CheckPerf Options.. \n"
         print "\t", "LogFile : %s " % self.options['LogFile']
         print "\t", "ResFile : %s " % self.options['ResFile']
@@ -214,15 +283,9 @@ class CheckPerf:
         print "\t", "ElapseTime: %d " % self.options['ElapseTime']
 
         print "DD OPTIONS \n"
-    
         print "\t", self.ddOptions['DirectoryList']
         print "\t", "Block Size : %d " % self.ddOptions['BlockSize']
         print "\t", "Count : %d " % self.ddOptions['Count']
-
-    def ddPermTest(self, dirName):
-        """ Make sure you have write permissions in the directory """
-        cpDirName=dirName+'/checkPerf'
-        return 
 
     def getTimes(self, stdout, stderr=None):
         """ Return various time intervals from the output 
@@ -251,7 +314,7 @@ class CheckPerf:
                     lineWords=eachLine.split()
                     sysTime=float(lineWords[1])
                     continue
-            except valueError:
+            except ValueError:
                 logger.error("Received value Error : %s " % eachLine)
                 break
         return (realTime, userTime, sysTime)
@@ -288,21 +351,25 @@ class CheckPerf:
                     stdout=""
                     stderr=""
                     try:
+                        logger.info("%s Executing %s (%d time) ", hostID, cmd, runCntr)
                         (exitStatus, stdout, stderr)=sshSession.runCommand(cmd)
                     except sshParamikoModule.runCommandException, err:
                         errStr= "%s Iteration :%d Error Executing" \
                         "%s: %s" % (hostID, runCntr, cmd, err)
-                        logger.error(errStr)
+                        sshSession.rptError=errStr
+                        return False
                     except Exception, e:
                         errStr= "%s Iteration: %d Caught exception (rptCmd1)%s:"\
                         "%s executing %s " % \
                             (hostID, runCntr, str(e.__class__), str(e), cmd)
+                        sshSession.rptError=errStr
                         logger.error(errStr)
                         traceback.print_exc()
+                        return False
                 else :
                     (exitStatus, stdout)=commands.getstatusoutput(cmd) 
-                outText=stdout+stderr
-                aftTime=time.time()*100
+                outText = stdout+stderr
+                aftTime = time.time()*100
                 execTime=int(aftTime-befTime)
                 runTime += execTime
                 if (not exitStatus):
@@ -310,15 +377,17 @@ class CheckPerf:
                     logger.info("%s Iteration :%d Results: %.2f %.2f %.2f" \
                         % (hostID, runCntr, rTime, uTime, sTime))
                     # Add only if rTime is not zero
-                    if resObj and rTime:
-			sshSession.lock.acquire()
+                    if resObj:
+                        sshSession.lock.acquire()
                         resObj.addResults(hostID, runCntr, rTime, uTime, sTime)
-			sshSession.lock.release()
+                        sshSession.lock.release()
                 else:
                     if outText:
-                        th.rptError=outText
+                        if sshSession:
+                            sshSession.rptError=outText
                     else:
-                        th.rptError="Failed : %d" % exitStatus
+                        if sshSession:
+                            sshSession.rptError="Failed : %d" % exitStatus
                     return False
                 # postCmd
                 if postCmd:
@@ -326,43 +395,53 @@ class CheckPerf:
                         opt=sshSession.execCmd(postCmd)
                     else :
                         opt=commands.getoutput(postCmd) 
-                if runTime>=tmInterval:
+                if tmInterval and runTime>=tmInterval:
                     break;
                 if runCntr>=rptTimes:
                     break
                 runCntr+=1
         except Exception, e:
             hostStr="%s : %s " % (cmd, hostID)
-            logger.error("*** Caught exception(rptCmd2): %s  (%s) message: (%s )" \
-                % (hostStr, str(e.__class__), str(e)))
+            errStr="*** Caught exception(rptCmd2): %s  (%s) message: (%s )" \
+                % (hostStr, str(e.__class__), str(e))
+            logger.error(errStr)
+            if sshSession:
+                sshSession.rptError= errStr
             traceback.print_exc()
+            return False
+
 
     def obtainHostObj(self, sshSession):
         """ Obtain Host information for each SSH Session"""
-        logger=self.logger
         th=sshSession
         hostObj=host.Host.getHostObject(th.host, th.user, th.port, th)
+        # Attach the host Object to the session.
         th.hostObj=hostObj
+        # Do we have to lock here ?
         self.hostObjs.append(hostObj)
 
-    def getHostInfo(self):
+    def getHostInfo(self, verbose=False):
         """ Obtain information regarding each Host """ 
+        # Initialze hostObjs
         logger=self.logger
         if not self.hostObjs:
             self.hostObjs=[]
-        for i in range(0,len(self.gSession.sessions)):
+        # Obtain Host information for every SESSION
+        for i in range(0, len(self.gSession.sessions)):
             th = self.gSession.sessions[i]
             self.pool.putRequest(threadpool.WorkRequest(self.obtainHostObj, \
             [th],None,None))
         if not self.pollResponse():
             logger.error("Error Obtaining host information.")
-        for i in range(len(self.hostObjs)):
-            hObj= self.hostObjs[i]
-            hObj.printHostinfo()
+            return False
+        if verbose:
+            for i in range(len(self.hostObjs)):
+                hObj= self.hostObjs[i]
+                hObj.printHostinfo()
 
-    def pollResponse(self):
+    def pollResponse(self, waitingFor=""):
         #
-        # Wait for results
+        # Wait for results, in a thread pool
         #
         logger=self.logger
         while True:
@@ -372,7 +451,7 @@ class CheckPerf:
                 interrupted=False
                 break
             except (KeyboardInterrupt):
-                print("Received KeyBoard Interrupt")
+                logger.error ("Received KeyBoard Interrupt %s", waitingFor)
                 for i in range(0,len(self.gSession.sessions)):
                     th=self.gSession.sessions[i]
                     th.killCMD(signal.SIGKILL)
@@ -382,7 +461,6 @@ class CheckPerf:
         if interrupted:
             return False
         return True
-        
     
     def clearDir(self, dirName, sshSession, create=False):
         """ 
@@ -470,7 +548,6 @@ class CheckPerf:
             if th.rptError:
                 logger.error("Error %s : %s "% (th.userHost, th.rptError))
                 cmdRes=None
-        #cmdRes.printIOResults(10*1000)
         return cmdRes
 
     def execSSHCmd(self, cmd, sshSession=None):
@@ -503,7 +580,7 @@ class CheckPerf:
         logger=self.logger
         retVal=True
         # Write command
-        wrCmd="dd if=/dev/zero of=%s count=%d bs=%dk" % \
+        wrCmd="dd if=/dev/zero of=%s count=%d bs=%d" % \
             (fileName, blkCount, blockSize)
         for i in range(0,len(self.gSession.sessions)):
             th = self.gSession.sessions[i]
@@ -545,7 +622,7 @@ class CheckPerf:
             return None
         # Proceed with reading
 	logger.info("Creating file(%s) to read from. Succesfull.\n" % fileName)
-        rdCmd="dd if=%s of=/dev/null count=%d bs=%dk" %  \
+        rdCmd="dd if=%s of=/dev/null count=%d bs=%d" %  \
             (fileName, blkCount, blockSize)
         print "Performing Read Test on %s \n" % eachDir
         logger.info("Read I/O Command : %s " % rdCmd)
@@ -565,7 +642,7 @@ class CheckPerf:
         if not self.checkDirPerms(dirName):
             logger.error("Permissions check on %s Failed \n" % eachDir)
             return False
-        wrCmd="dd if=/dev/zero of=%s/ddFile count=%d bs=%dk" % \
+        wrCmd="dd if=/dev/zero of=%s/ddFile count=%d bs=%d" % \
             (dirName, blkCount, blockSize)
         print "Performing Write Test on %s \n" % eachDir
         logger.info("Write Command : %s " % wrCmd)
@@ -601,6 +678,12 @@ class CheckPerf:
 
     def printDirResults(self):
         """ Print Directory I/O Results """
+        tRence=0
+        try:
+            tRence=self.options['Tolerance']
+        except KeyError:
+            pass
+
         blkCount=self.ddOptions['Count']
         blockSize=self.ddOptions['BlockSize']
         dirList=self.ddOptions['DirectoryList']
@@ -616,12 +699,12 @@ class CheckPerf:
                 rdRes=self.ddResults[eachDir]['Read']
                 print "\t Write I/O Results"
                 if wrRes:
-                    wrRes.printIOResults(tSize)
+                    wrRes.printIOResults(tSize, tRence)
                 else :
                     print " **** WRITE IO RESULTS NOT PRESENT ****"
                 print "\t Read I/O Results"
                 if rdRes:
-                    rdRes.printIOResults(tSize)
+                    rdRes.printIOResults(tSize, tRence)
                 else :
                     print " **** READ IO RESULTS NOT PRESENT ****"
         except Exception, e:
@@ -766,7 +849,9 @@ def checkPerfMain(argv):
         confObj['CheckPerf']['RptCount']=int(repeatCount)
     if elpTime >= 0:
         confObj['CheckPerf']['ElapseTime']=int(elpTime)
-    chkPerf.populateConfig(confObj)
+    if not chkPerf.populateConfig(confObj):
+        raise SystemExit, 1
+
     if verbose:
         chkPerf.printOptions()
     #

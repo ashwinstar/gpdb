@@ -38,7 +38,12 @@ ElapseTime=integer(0, default=0)
 # Block Size in 1K Units
 #
 #
-BlockSize=integer(1, default=10)
+#BlockSize=integer(1, default=1)
+BlockSize=string(default="1K")
+#
+# File Sizez
+#
+FileSize=string(default="0MB")
 #
 #  Count No of blocks
 #
