@@ -126,8 +126,11 @@ class groupSession(cmd.Cmd):
             errStr="*** Received NOTREADY Exception Error %s "% str(e)
             print errStr
             raise SystemExit, -1
+        except SystemExit:
+            raise
         except Exception, e:
-            errStr="*** Received Exception Error %s "% str(e)
+            errStr="*** Received Exception Error %s %s "% \
+                (str(e.__class__),str(e))
             traceback.print_exc()
             print errStr
             raise SystemExit, -1
@@ -287,7 +290,7 @@ class groupSession(cmd.Cmd):
         #Wait for completion of all in queue, or a keyboard interrupt
         while True:
             try:
-                self.pool.poll()
+                self.pool.poll(block=True)
             except (threadpool.NoResultsPending):
                 interrupted=False
                 break
@@ -335,7 +338,7 @@ class groupSession(cmd.Cmd):
         print 
         print msg + ' exiting.'
         print 
-        raise SystemExit, 1
+        sys.exit()
 
     def obtainLocalKey(self, authType, def_path, maxTries=3):
         """ Obtain the key from path provided 
@@ -487,7 +490,7 @@ class groupSession(cmd.Cmd):
             #Wait for completion of all in queue, or a keyboard interrupt
         while True:
             try:
-                self.pool.poll()
+                self.pool.poll(block=True)
             except (threadpool.NoResultsPending,KeyboardInterrupt):
                     break
     
@@ -529,7 +532,7 @@ class groupSession(cmd.Cmd):
         interrupted=False
         while True:
             try:
-                self.pool.poll()
+                self.pool.poll(block=True)
             except threadpool.NoResultsPending:
                 interrupted = False
                 break
@@ -551,7 +554,7 @@ class groupSession(cmd.Cmd):
         interrupted=False
         while True:
             try:
-                self.pool.poll()
+                self.pool.poll(block=True)
             except threadpool.NoResultsPending:
                 interrupted = False
                 break
@@ -581,7 +584,7 @@ class groupSession(cmd.Cmd):
         interrupted=False
         while True:
             try:
-                self.pool.poll()
+                self.pool.poll(block=True)
             except threadpool.NoResultsPending:
                 interrupted = False
                 break
@@ -613,7 +616,7 @@ class groupSession(cmd.Cmd):
         interrupted=False
         while True:
             try:
-                self.pool.poll()
+                self.pool.poll(block=True)
             except threadpool.NoResultsPending:
                 interrupted = False
                 break
@@ -667,7 +670,7 @@ class groupSession(cmd.Cmd):
         interrupted=False
         while True:
             try:
-                self.pool.poll()
+                self.pool.poll(block=True)
             except threadpool.NoResultsPending:
                 interrupted = False
                 break
@@ -772,17 +775,21 @@ if __name__ == '__main__':
     gpLogger.initLogger(lName=logName, lfName=logFile, debug=debug, 
         verbose=verbose)
     logger=logging.getLogger(logName)
+    try:
+        gsession = groupSession(hostuserport, setupKeys, verboseOpt=verbose, \
+         logger=logger)
+        
 
-    gsession = groupSession(hostuserport, setupKeys, verboseOpt=verbose, \
-        logger=logger)
+        if exKeys:
+            gsession.exchangeKeys()
 
-    if exKeys:
-        gsession.exchangeKeys()
+        #Register a signal handler for the TERM signal
+        signal.signal(signal.SIGTERM,gsession.handlerTERM)
 
-    #Register a signal handler for the TERM signal
-    signal.signal(signal.SIGTERM,gsession.handlerTERM)
+        #Run commands
+        gsession.cmdloop()
 
-    #Run commands
-    gsession.cmdloop()
-
-    print 'Done with group session.'
+        print 'Done with group session.'
+    except Exception, e:
+        print "Exiting.."
+        raise SystemExit, 1

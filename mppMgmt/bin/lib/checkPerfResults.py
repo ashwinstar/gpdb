@@ -127,7 +127,7 @@ class checkPerfResults:
         self.realMax= maxReal
         self.realMin= minReal
     
-    def printIOResults(self, tSize, tRence=0):
+    def printIOResults(self, tSize, tRence=0, detailed=False):
         """ Print the real times for I/O results """
         try:
             self.computeHostSummary()
@@ -136,13 +136,15 @@ class checkPerfResults:
                 % (str(e.__class__), str(e))
             return
         #print "===== %s ======" % self.cmdTitle
-        print 
-        print "\t cmd : %s " % self.cmd
-        print "%8s HOST Results "  % ("")
-        print "%8s %20s %10s %10s %10s " % ("", "Host", 
-            "Maximum", "Minimum", "Average")
-        print
+        if detailed:
+            print 
+            print "\t cmd : %s " % self.cmd
+            print "%8s HOST Results "  % ("")
+            print "%8s %20s %10s %10s %10s " % ("", "Host", 
+                "Maximum", "Minimum", "Average")
+            print
         factor=1000000
+        totalMbps=0
         for eachHost in self.hosts:
             hDict=self.results[eachHost]
             if hDict['Average'] and hDict['Maximum'] and hDict['Minimum']:
@@ -165,8 +167,10 @@ class checkPerfResults:
                 maxMbps=tSize/(realMin*factor)
             if realMin:
                 minMbps=tSize/(realMax*factor)
-            print "%8s %20s %10.2f %10.2f %10.2f MB/Second" %  \
-                ("", eachHost, maxMbps, minMbps, avgMbps)
+            if detailed:
+                print "%8s %20s %10.2f %10.2f %10.2f Mb/Second" %  \
+                    ("", eachHost, maxMbps, minMbps, avgMbps)
+            totalMbps+= avgMbps
         print
         avgMbps=maxMbps=minMbps=0
 
@@ -176,11 +180,13 @@ class checkPerfResults:
             minMbps=tSize/(self.realMax*factor)
         if self.realAvg:
             avgMbps=tSize/(self.realAvg*factor)
-        print "\t\t Maximum %10.2f (%s)" % (maxMbps, self.minHost)
-        print "\t\t Minimum %10.2f (%s)" % (minMbps, self.maxHost)
-        print "\t\t Average %10.2f" % avgMbps
+
+        print "\t\t Maximum %10.2f Mb/Sec(%s)" % (maxMbps, self.minHost)
+        print "\t\t Minimum %10.2f Mb/Sec(%s)" % (minMbps, self.maxHost)
+        print "\t\t Average %10.2f Mb/Sec"% avgMbps
+        print "\t\t Total   %10.2f Mb/Sec"% totalMbps
         print
-        if tRence:
+        if tRence and detailed:
             print
             thDict=[]
             maxAllowed= maxMbps - (maxMbps * tRence)

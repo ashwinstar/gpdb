@@ -29,6 +29,8 @@ ssh options.
 -n :  No of times each test is repeated.
 -t :  Tolerance, (0.1, 0.99) Tolerance of results.
 
+--detailed: Print detailed output for each test
+
 
 """
 
@@ -76,6 +78,7 @@ class CheckPerf:
         self.options={}
         self.gSession=gSession
         self.pool=gSession.pool
+        self.hostObjs=None
 
         # Files Needed.
 
@@ -85,6 +88,7 @@ class CheckPerf:
         # test Optoions
         self.options['rptCount'] = 5
         self.options['elpTime']= 0
+        self.options['baseDir']=""
 
         # dd Options
         self.ddOptions=None
@@ -437,7 +441,9 @@ class CheckPerf:
         if verbose:
             for i in range(len(self.hostObjs)):
                 hObj= self.hostObjs[i]
+                print
                 hObj.printHostinfo()
+                print
 
     def pollResponse(self, waitingFor=""):
         #
@@ -446,7 +452,7 @@ class CheckPerf:
         logger=self.logger
         while True:
             try:
-                self.pool.poll()
+                self.pool.poll(block=True)
             except (threadpool.NoResultsPending):
                 interrupted=False
                 break
@@ -462,11 +468,13 @@ class CheckPerf:
             return False
         return True
     
-    def clearDir(self, dirName, sshSession, create=False):
+    def createRmtDir(self, dirName, sshSession, create=True, clear=True):
         """ 
             If the directory is present remove it.
             If create is true, create a new one.
             update sshSession.dirTest with error string, in case of failure.
+            create=False, Create the directory if not present
+            clear= True, Clear the directory if present.
         """
         logger=self.logger
         sftpClnt=sshSession.sftpClnt
@@ -474,7 +482,7 @@ class CheckPerf:
         userHost=sshSession.userHost
         try :
             rStat=sftpClnt.stat(dirName)
-            if S_ISDIR(rStat.st_mode):
+            if S_ISDIR(rStat.st_mode) and clear:
                 logger.info("%s: Removing directory : %s " % (userHost, dirName))
                 stdout=sshSession.execCmd("rm -rf %s " % dirName)
                 if stdout:
@@ -485,7 +493,7 @@ class CheckPerf:
         except IOError:
             pass
         except Exception, e:
-            errStr="Caught Exception (clearDir)(%s) : %s, %s " % (sshSession.userHost,
+            errStr="Caught Exception (createRmtDir)(%s) : %s, %s " % (sshSession.userHost,
                 str(e.__class__), str(e))
             traceback.print_exc()
             sshSession.dirTest=errStr
@@ -501,13 +509,13 @@ class CheckPerf:
                 sshSession.dirTest=errStr
                 return
         except Exception, e:
-            errStr="Caught Exception clearDir2(%s) : %s, %s " % (sshSession.userHost,
+            errStr="Caught Exception createRmtDir2(%s) : %s, %s " % (sshSession.userHost,
                 str(e.__class__), str(e))
             logger.error(errStr)
             traceback.print_exc()
             sshSession.dirTest=errStr
 
-    def checkDirPerms(self, dirName, createFlag=True):
+    def checkDirPerms(self, dirName, createFlag=True, clearFlag=True):
         """
             Check if the directory is OK across all the hosts
             Return True or False
@@ -516,7 +524,7 @@ class CheckPerf:
         for i in range(0,len(self.gSession.sessions)):
             th = self.gSession.sessions[i]
             th.dirTest=""
-            self.pool.putRequest(threadpool.WorkRequest(self.clearDir, \
+            self.pool.putRequest(threadpool.WorkRequest(self.createRmtDir, \
             [dirName, th, createFlag],None,None))
         if not self.pollResponse():
             logger.error("Error Obtaining directory permissions\n")
@@ -529,7 +537,7 @@ class CheckPerf:
                 retVal=False
         return retVal
 
-    def cmdParallel(self, cmd, cmdTitle, postCmd=""):
+    def cmdParallel(self, cmd, cmdTitle, postCmd="", useSessionCmd=False):
         #
         # Execute command in parallel on all the sessions
         #
@@ -539,8 +547,12 @@ class CheckPerf:
             th = self.gSession.sessions[i]
             th.rptError=""
             cmdRes.addHost(th.userHost)
+            if useSessionCmd:
+                runCmd=th.runCmd
+            else :
+                runCmd=cmd
             self.pool.putRequest(threadpool.WorkRequest(self.rptCmd, \
-            [cmd, cmdTitle, cmdRes, th, th.userHost, postCmd],None,None))
+            [runCmd, cmdTitle, cmdRes, th, th.userHost, postCmd],None,None))
         if not self.pollResponse():
             return None
         for i in range(0,len(self.gSession.sessions)):
@@ -574,6 +586,9 @@ class CheckPerf:
             (exitStatus, outText)=commands.getstatusoutput(cmd) 
         sshSession.exitStatus=exitStatus
         sshSession.outText = outText
+    
+
+    
 
     def createFile(self, fileName, blkCount, blockSize):
         """ Create a file of  size using DD command """
@@ -602,32 +617,49 @@ class CheckPerf:
                 retVal=False
         return retVal
 
-    def ddReadTest(self, eachDir, blkCount, blockSize):
+
+
+    def ddReadTest(self, eachDir, blkCount, blockSize, useRAM=False):
         """ Perform  Read test on the the directory 
 
             return Results Structure
         """
         logger=self.logger
         dirName=eachDir+'/checkPerf'
-	logger.info("Checking permisions\n")
+        logger.info("Checking permisions\n")
         if not self.checkDirPerms(dirName):
             print "Permissions check on %s Failed \n" % eachDir
             return None
-	logger.info("Checking permisions successful.\n")
+        logger.info("Checking permisions successful.\n")
         # Create a file for reading
         fileName="%s/%s" % (dirName, "ddFile")
-	logger.info("Creating file(%s) to read from. \n" % fileName)
+        logger.info("Creating file(%s) to read from. \n" % fileName)
         if not self.createFile(fileName, blkCount, blockSize):
             print "Unable to create file (%s)"
             return None
         # Proceed with reading
-	logger.info("Creating file(%s) to read from. Succesfull.\n" % fileName)
-        rdCmd="dd if=%s of=/dev/null count=%d bs=%d" %  \
-            (fileName, blkCount, blockSize)
-        print "Performing Read Test on %s \n" % eachDir
-        logger.info("Read I/O Command : %s " % rdCmd)
+        logger.info("Creating file(%s) to read from. Succesfull.\n" % fileName)
         cmdTitle="Directory Read I/O Test : %s " % eachDir
-        readRes=self.cmdParallel(rdCmd, cmdTitle) 
+        print "Performing Read Test on %s \n" % eachDir
+        if useRAM:
+            rdCmd="dd if=%s of=/dev/null count=(2 * TotalRAM)/%d bs=%d" %  \
+                (fileName, blockSize, blockSize)
+            for i in range(0,len(self.gSession.sessions)):
+                th = self.gSession.sessions[i]
+                if th.hostObj and th.hostObj.totalRam:
+                    blkCount= (th.hostObj.totalRam/blockSize)*2
+                else:
+                    logger.warning("Host information missing %s" % \
+                        (th.userHost))
+                th.runCmd= "dd if=%s of=/dev/null count=%d bs=%d" %  \
+                    (fileName, blkCount, blockSize)
+                logger.info("Read I/O Command %s:%s" % (th.userHost, th.runCmd))
+            readRes=self.cmdParallel(rdCmd, cmdTitle, useSessionCmd=True) 
+        else :
+            rdCmd="dd if=%s of=/dev/null count=%d bs=%d" %  \
+                (fileName, blkCount, blockSize)
+            logger.info("Read I/O Command: %s" % rdCmd)
+            readRes=self.cmdParallel(rdCmd, cmdTitle) 
         self.checkDirPerms(dirName, False)
         if readRes:
             self.ddResults[eachDir]['Read']=readRes
@@ -635,26 +667,42 @@ class CheckPerf:
         return False
                 
 
-    def ddWriteTest(self, eachDir, blkCount, blockSize):
+    def ddWriteTest(self, eachDir, blkCount, blockSize, useRAM=False):
         """ Perform  write test on the the directory """
         logger=self.logger
         dirName=eachDir+'/checkPerf'
         if not self.checkDirPerms(dirName):
             logger.error("Permissions check on %s Failed \n" % eachDir)
             return False
-        wrCmd="dd if=/dev/zero of=%s/ddFile count=%d bs=%d" % \
-            (dirName, blkCount, blockSize)
         print "Performing Write Test on %s \n" % eachDir
-        logger.info("Write Command : %s " % wrCmd)
         cmdTitle="Directory Write I/O Test : %s " % eachDir
-        writeRes=self.cmdParallel(wrCmd, cmdTitle)
+        if useRAM:
+            wrCmd="dd if=/dev/zero of=%s/ddFile count=(2*TotalRAM)/%d bs=%d" % \
+                (dirName, blockSize, blockSize)
+            for i in range(0,len(self.gSession.sessions)):
+                th = self.gSession.sessions[i]
+                if th.hostObj and th.hostObj.totalRam:
+                    blkCount= (th.hostObj.totalRam/blockSize)*2
+                else:
+                    logger.warning("Host information missing %s" % \
+                        (th.userHost))
+                th.runCmd="dd if=/dev/zero of=%s/ddFile count=%d bs=%d" % \
+                    (dirName, blkCount, blockSize)
+                logger.info("Write I/O Command %s:%s" % \
+                    (th.userHost, th.runCmd))
+            writeRes=self.cmdParallel(wrCmd, cmdTitle, useSessionCmd=True) 
+        else:
+            wrCmd="dd if=/dev/zero of=%s/ddFile count=%d bs=%d" % \
+                (dirName, blkCount, blockSize)
+            logger.info("Write Command : %s " % wrCmd)
+            writeRes=self.cmdParallel(wrCmd, cmdTitle)
         self.checkDirPerms(dirName, False)
         if writeRes:
             self.ddResults[eachDir]['Write']=writeRes
             return True
         return False
 
-    def ddTest(self):
+    def ddTest(self, useRAMFlag=False):
         """ Perform dd Test """
         logger=self.logger
         dirList=self.ddOptions['DirectoryList']
@@ -670,13 +718,15 @@ class CheckPerf:
             self.ddResults[eachDir]={}
             self.ddResults[eachDir]['Write']=None
             self.ddResults[eachDir]['Read']=None
-            if not self.ddWriteTest(eachDir, blkCount, blockSize):
+            if not self.ddWriteTest(eachDir, blkCount, blockSize, \
+                useRAM=useRAMFlag):
                 return False
-            if not self.ddReadTest(eachDir, blkCount, blockSize):
+            if not self.ddReadTest(eachDir, blkCount, blockSize,\
+                useRAM=useRAMFlag):
                 return False
         return True
 
-    def printDirResults(self):
+    def printDirResults(self, detailed=False):
         """ Print Directory I/O Results """
         tRence=0
         try:
@@ -692,25 +742,153 @@ class CheckPerf:
                 "Provide directory list in the configuration file."
         try:
             print "Printing Results SUMMMARY"
-            tSize=blkCount * blockSize * 1024
+            tSize= blkCount * blockSize * 1024
             for eachDir in dirList:
                 print "Directory : %s "% eachDir
                 wrRes=self.ddResults[eachDir]['Write']
                 rdRes=self.ddResults[eachDir]['Read']
                 print "\t Write I/O Results"
                 if wrRes:
-                    wrRes.printIOResults(tSize, tRence)
+                    wrRes.printIOResults(tSize, tRence, detailed)
                 else :
                     print " **** WRITE IO RESULTS NOT PRESENT ****"
                 print "\t Read I/O Results"
                 if rdRes:
-                    rdRes.printIOResults(tSize, tRence)
+                    rdRes.printIOResults(tSize, tRence, detailed)
                 else :
                     print " **** READ IO RESULTS NOT PRESENT ****"
         except Exception, e:
             print "*** Caught exception (%s) message: (%s )" \
                 % (str(e.__class__), str(e))
             traceback.print_exc()
+
+    def createBaseDir(self):    
+        """ Create base directory on all the hosts """
+        baseDir=self.options['baseDir']
+        if not baseDir:
+            self.rmtDir='~/checkPerf'
+        else :
+            self.rmtDir=baseDir+'/checkPerf'
+        retVal=self.checkDirPerms(self.rmtDir, createFlag=True, clearFlag=False)
+        return retVal
+
+    def streamSync(self):
+        """ Sync the stream software to remote hosts 
+            Update self.strmPath
+            sync self.lStrmPath to self.strmPath
+        """
+        logger=self.logger
+        if not self.createBaseDir():
+            return False
+        # TBD Check if the file has read/execute permissions.
+        if not self.strmLPath:
+            logger.error("Undefined stream local Stream Path")
+            return False
+        self.strmRPath=self.rmtDir+'/stream'
+        cmd='scp'
+        resDict={}
+        logger.info("Copyting %s to %s on all hosts " % (self.strmLPath, \
+            self.strmRPath))
+        self.gSession.runCommand('scp', [self.strmLPath, self.strmRPath], \
+            quiet=True, retDict=True, resDict=resDict)
+        retVal=True
+        for eachHost in resDict.keys():
+            if resDict[eachHost]:
+                logger.error(resDict[eachHost])
+                retVal=False
+        if not retVal: return retVal
+        chmodCmd="chmod +x %s" % self.strmRPath
+        logger.info("Executing %s on all hosts " % chmodCmd)
+        resDict={}
+        self.gSession.runCommand('ssh', [chmodCmd], quiet=True, retDict=True,
+            resDict=resDict)
+        retVal=True
+        for eachHost in resDict.keys():
+            if resDict[eachHost]:
+                logger.error(resDict[eachHost])
+                retVal=False
+        return retVal
+
+    def streamTest(self):
+        """ Execute stream command on all hosts ... 
+            return a dictionary of results for each host.
+        """
+        logger=self.logger
+        if not self.streamSync():
+            return None
+        strmCmd="%s | grep '^Triad' | awk -F' ' '{print $2} '" % \
+            self.strmRPath
+        logger.info("Executing %s on all hosts " % strmCmd)
+        resDict={}
+        self.gSession.runCommand('ssh', [strmCmd], quiet=True, retDict=True,
+            resDict=resDict)
+        return resDict
+
+    def computeStrmResults(self, strmDict):
+        minStrm= maxStrm= totStrm= avgStrm= cntr=0
+        logger=self.logger
+        minStrm=maxStrm=None
+        for eachHost in  strmDict.keys():
+            eachRes=strmDict[eachHost]
+            trmRes=eachRes.strip()
+            try:
+                res=float(trmRes)
+            except ValueError:
+                logger.error("Received %s for %s" % (trmRes, eachHost))
+                continue
+            if not maxStrm or maxStrm<res:
+                maxStrm=res
+            if not minStrm or minStrm>res:
+                minStrm=res
+            totStrm+=res
+            cntr+=1
+        if not cntr:
+            logger.error("None of the hosts values is correct.")
+            return False
+        if not maxStrm or not minStrm:
+            logger.error("Unable to obtain maximum and minimum values")
+            return False
+        self.maxStrm=maxStrm
+        self.minStrm=minStrm
+        self.totalStrm=totStrm
+        self.avgStrm= totStrm/cntr
+        return True
+
+    def printStrmSummary(self, strmDict):
+        if not self.computeStrmResults(strmDict):
+            return
+        print
+        print "Stream Tests Results Summary "
+        print 
+        print 
+        print "\t\t%10s %10.2f MB/S " % ('Maximum', self.maxStrm)
+        print "\t\t%10s %10.2f MB/S " % ('Minimum', self.minStrm)
+        print "\t\t%10s %10.2f MB/S " % ('Average', self.avgStrm)
+        print "\t\t%10s %10.2f MB/S " % ('Total',   self.totalStrm)
+        print 
+        print
+
+    def printStrmResults(self, strmDict):
+        """ Print each Host Results """
+        logger=self.logger
+        print
+        print "Stream Test Results for each host"
+        print 
+        for eachSess in  self.gSession.sessions:
+            eachHost=eachSess.userHost
+            if not eachHost in strmDict.keys():
+                continue
+            eachRes=strmDict[eachHost]
+            trmRes=eachRes.strip()
+            try:
+                res=float(trmRes)
+            except ValueError:
+                logger.error("Received %s for %s" % (trmRes, eachHost))
+                continue
+            print "%20s %10.2f MB/S" % (eachHost, res)
+
+
+
 
 
 def parseHostFile(hostFile, defaultPort=22, defaultUser=None, verbose=False):
@@ -724,8 +902,7 @@ def parseHostFile(hostFile, defaultPort=22, defaultUser=None, verbose=False):
         host = h.strip()
         if host != '':
             if verbose:
-                print 'Working on host: ' + host
-
+                print 'Working on host: ' + host 
             if '@' in host:
                 (user, host) = string.split(host, '@')
             else:
@@ -746,7 +923,7 @@ def checkPerfMain(argv):
             ['help', 'usage', 'verbose', 'debug', 'output_file=',\
             'log_file=', 'config_file', 'spec_file=', 'host_file=',
             'port=', 'no_trusted_key_setup', 'exchange_trusted_keys',
-            'repeat_count=', 'elapse_time='])
+            'repeat_count=', 'elapse_time=', 'detailed'])
     except getopt.GetoptError, e:
         # print help information and exit:
         print __doc__
@@ -762,6 +939,7 @@ def checkPerfMain(argv):
     repeatCount=elpTime=-1
     verbose=False
     debug=False
+    detFlag=False
     specFile=sys.path[0]+'/lib/checkPerf.spec'
     try :
         for (switch, val) in options:
@@ -792,6 +970,8 @@ def checkPerfMain(argv):
                 elpTime = int(val);
             elif (switch == '-t' or switch == '--tolerance'):
                 elpTime = floar(val);
+            elif (switch == '--detailed'):
+                detFlag= True
             elif (switch == '-u' or switch == '-?' or switch=='--help' or \
                 switch=='--usage'):
                 print __doc__
@@ -857,12 +1037,23 @@ def checkPerfMain(argv):
     #
     # Obtain Host Objects
     #
-    #chkPerf.getHostInfo()
-    if(chkPerf.ddTest()):
-        chkPerf.printDirResults()
+    chkPerf.getHostInfo(verbose)
+    chkPerf.ddTestFlag=True
+    if chkPerf.ddTestFlag:
+        if(chkPerf.ddTest(useRAMFlag=True)):
+            chkPerf.printDirResults(detailed=detFlag)
+    chkPerf.strmTestFlag=True
+    if chkPerf.strmTestFlag:
+        chkPerf.options['baseDir']='tmpDir'
+        chkPerf.rmtDir=""
+        chkPerf.strmLPath=sys.path[0]+'/lib/stream'
+        strmRes=chkPerf.streamTest()
+        if strmRes:
+            if detFlag:
+                chkPerf.printStrmResults(strmRes)
+            chkPerf.printStrmSummary(strmRes)
 
 if __name__ == '__main__': 
     #print sys.argv
     checkPerfMain(sys.argv)
     exit 
-
