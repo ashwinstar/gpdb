@@ -11,6 +11,7 @@
 SRC=`pwd`
 PYLIB_SRC=$(SRC)/pythonSrc
 
+
 #
 # INSTALL DIRECTORY
 #
@@ -22,7 +23,9 @@ all: pylib
 #
 # Python Libraries
 #
-pylib : paramiko pycrypto configobj gpLink
+pylib : paramiko pycrypto configobj gpLink stream
+
+
 
 
 gpLink:
@@ -30,7 +33,30 @@ gpLink:
 	@echo "creating groupSession.py link"
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@cd $(LIB_DIR)/; ln -s ../groupSession groupSession.py ; cd ../ ;
-	@echo " Building configobj "
+
+
+#
+#  STREAM
+#
+STREAM_DIR=$(SRC)/src/stream
+stream:
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@echo "Building stream utility."
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@cd $(STREAM_DIR) ; NO_M64=TRUE gcc -Wall stream.c -o stream; cd ../../
+	@cp $(STREAM_DIR)/stream lib/stream 
+	@echo ""
+
+streamClean:
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@echo "Cleaning stream utility."
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@rm -rf $(STREAM_DIR)/stream lib/stream > /dev/null 
+	@echo ""
+
+
+
+stream:
 
 
 
