@@ -52,6 +52,7 @@ class Host(object):
     #Dictionary of ssh sessions, keyed on username
     sshsessions = None
     ostype = None
+    totalRam = 0
 
     #>>> Generic methods that add to information about this host
     def addSession(self,user,port=22,session=None):
@@ -144,6 +145,7 @@ class Host(object):
             key = keysorted[i]
             print 'FS#%d:\t\t' % (i+1),
             print '%s %s %s' % (key,self.filesystems[key][0],self.filesystems[key][1])
+        print "Total RAM: %d" % self.totalRam
 
     def runSSH(self,command,session=None):
         """Run an ssh command on the first session (unless one passed in)"""
@@ -174,6 +176,12 @@ class LinuxHost(Host):
         self.discoverFilesystems()
         self.discoverCPUs()
         self.discoverNICs()
+        try:
+            self.discoverTotalRam()
+        except Exception, e:
+            print "Unable to determine RAM, Received exception %s mesg: %s" % \
+                (str(e.__class__), str(e))
+            self.totalRam=0
 
     def discoverNICs(self):
         result = self.runSSH('cat /proc/net/dev')
@@ -206,6 +214,19 @@ class LinuxHost(Host):
                         self.addFilesystem(items[0],items[1],items[2])
                     except DuplicateInfo:
                         pass
+    def discoverTotalRam(self):
+        """ Discover the RAM Size"""
+        result= self.runSSH("cat /proc/meminfo  | grep MemTotal ")
+        memTotalLine=result.strip()
+        memList=memTotalLine.split(' ')
+        memVal = memList[len(memList)-2]
+        memFactor= memList[len(memList)-1]
+        if memFactor == 'kB':
+            self.totalRam=int(memVal) * 1024
+            
+
+
+
 
 class OSXHost(Host):
     def __init__(self, *args, **kwds):
@@ -214,6 +235,12 @@ class OSXHost(Host):
         self.discoverFilesystems()
         self.discoverCPUs()
         self.discoverNICs()
+        try:
+            self.discoverTotalRam()
+        except Exception, e:
+            print "Unable to determine RAM, Received exception %s mesg: %s" % \
+                (str(e.__class__), str(e))
+            self.totalRam=0
 
     def discoverNICs(self):
         result = self.runSSH('ifconfig -lu')
@@ -248,6 +275,14 @@ class OSXHost(Host):
                     except DuplicateInfo:
                         pass
 
+    def discoverTotalRam(self):
+        """ Discover the RAM Size"""
+        memTotalLine= self.runSSH("sysctl hw.physmem")
+        memTotalLine.strip()
+        memList=memTotalLine.split(' ')
+        self.totalRam = int(memList[1])
+
+
 
 class SolarisHost(Host):
     def __init__(self, *args, **kwds):
@@ -256,6 +291,12 @@ class SolarisHost(Host):
         self.discoverFilesystems()
         self.discoverCPUs()
         self.discoverNICs()
+        try:
+            self.discoverTotalRam()
+        except Exception, e:
+            print "Unable to determine RAM, Received exception %s mesg: %s" % \
+                (str(e.__class__), str(e))
+            self.totalRam=0
 
     def discoverNICs(self):
         result = self.runSSH('netstat -i | tail +2')
@@ -290,6 +331,20 @@ class SolarisHost(Host):
                         self.addFilesystem(items[0],items[1],items[2])
                     except DuplicateInfo:
                         pass
+        
+    def discoverTotalRam(self):
+        """ Discover the RAM Size"""
+        memTotalLine= self.runSSH("prtconf | awk '/^Memory/{print}'")
+        memTotalLine.strip()
+        memList=memTotalLine.split(' ')
+        memVal = memList[2]
+        memFactor= memList[3]
+        print memVal
+        print memFactor
+        if 'Megabytes' in memFactor:
+            self.totalRam = int(memVal) * 1024 * 1024
+
+        
 
 
 if __name__ == '__main__':
