@@ -741,7 +741,7 @@ RUN_COMMAND () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		COMMAND="$1"
 		LOG_MSG "[INFO]:-Commencing local $COMMAND"
-		$COMMAND
+		$COMMAND >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:- Command $COMMAND failed with error status $RETVAL" 2
@@ -754,7 +754,7 @@ RUN_COMMAND_REMOTE () {
 		HOST=$1
 		COMMAND=$2
 		LOG_MSG "[INFO]:-Commencing remote $TRUSTED_SHELL $HOST $COMMAND"
-		$TRUSTED_SHELL $HOST $COMMAND
+		$TRUSTED_SHELL $HOST $COMMAND >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then 
 			ERROR_EXIT "[FATAL]:- Command $COMMAND on $HOST failed with error status $RETVAL" 2
