@@ -128,12 +128,12 @@ class CheckPerf:
         print "Exiting..."
         raise SystemExit, 1
     
-    def obtainConfig(self, configFile="", specFile=""):
+    def obtainConfig(self, configFile="", specFile="", configFd=None, specFd=None):
         """ 
             parse configuration file for config valuesJ
         """
         logger=self.logger
-        if specFile:
+        if specFile and not specFd:
             logger.info("Coniguration spec file %s" % specFile)
             try:
                 specFd = open(specFile, 'r')
@@ -141,7 +141,7 @@ class CheckPerf:
             except IOError, e:
                 logger.error("*** Received IO Error (%s)" % str(e))
                 return None
-        if configFile:
+        if configFile and not configFd:
             logger.info("Configuration File = %s" % configFile)
             try:
                 specFd = open(configFile, 'r')
@@ -150,8 +150,8 @@ class CheckPerf:
                 logger.error("*** Received IO Error (%s)" % str(e))
                 return None
         try: 
-            configspec = ConfigObj(specFile, encoding='UTF8', list_values=False)
-            config = ConfigObj(configFile, configspec=configspec)
+            configspec = ConfigObj(specFd, encoding='UTF8', list_values=False)
+            config = ConfigObj(configFd, configspec=configspec)
         except SyntaxError, e:
             logger.error("*** Received Syntax Error (%s)" % str(e))
             return None
@@ -1037,8 +1037,28 @@ def checkPerfMain(argv):
     #
     if not hostFile:
         print __doc__
-        print "\n Provide hostFile \n"
-        raise SystemExit, 0
+        print "\n Provide hostFile. \n"
+        raise SystemExit, 1
+
+    if not configFile:
+        print __doc__
+        print "\n Provide configuration file.\n"
+        raise SystemExit, 1
+    
+    fileError=False
+    configFd=None
+    try:
+        configFd=open(configFile, 'r')
+    except IOError, e:
+        print "*** Received IO error(%s) %s " % (configFile, str(e))
+        fileError=True
+    try:
+        specFd=open(specFile, 'r')
+    except IOError, e:
+        print "*** Received IO error(%s) %s " % (specFile, str(e))
+        fileError=True
+    if fileError:
+        raise SystemExit, 1
 
     try:
         hostFd=open(hostFile, 'r')
@@ -1051,6 +1071,7 @@ def checkPerfMain(argv):
             % (str(e.__class__), str(e))
         traceback.print_exc()
         raise
+    hostFd.close()
     lName='checkPerf'
     gpLogger.initLogger(lName=lName, lfName=logFile, verbose=verbose, \
         debug=debug)
@@ -1065,7 +1086,9 @@ def checkPerfMain(argv):
     #print resDict
     chkPerf=CheckPerf(gSession=gsObj, logger=Logger)
     signal.signal(signal.SIGTERM,chkPerf.termHandler)
-    confObj=chkPerf.obtainConfig(configFile, specFile)
+    confObj=chkPerf.obtainConfig(configFile, specFile, configFd, specFd)
+    configFd.close()
+    specFd.close()
     if not confObj:
         print "*** Configuration parsing errors "
         raise SystemExit, 1
