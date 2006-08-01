@@ -13,17 +13,24 @@ class checkPerfResults:
         self.hosts=None
         self.cmdTitle=cmdTitle
         self.cmd = cmd
+        self.hostsTSize=None
 
-        pass
-    def addHost(self, host):
+    def addHost(self, host, tSize):
         """ Add a host to the list """
         if not self.hosts:
             self.hosts=[]
         if not self.results:
             self.results={}
+
+        if not self.hostsTSize:
+            self.hostsTSize={}
+
         if host not in self.results.keys():
             self.hosts.append(host)
             self.results[host]={}
+
+        self.hostsTSize[host]=tSize
+
 
     def addResults(self, host, iteration, real, user, sys):
         """ Add Results to Host """
@@ -127,7 +134,7 @@ class checkPerfResults:
         self.realMax= maxReal
         self.realMin= minReal
     
-    def printIOResults(self, tSize, tRence=0, detailed=False):
+    def printIOResults(self, tHSize, tRence=0, detailed=False):
         """ Print the real times for I/O results """
         try:
             self.computeHostSummary()
@@ -160,6 +167,10 @@ class checkPerfResults:
                 print "Unable to obtain %s value for Host %s" % (str(e), eachHost)
                 continue
             avgMbps=maxMbps=minMbps=0
+            if not tHSize:
+                tSize=self.hostsTSize[eachHost]
+            else:
+                tSize= tHSize
             if realAvg:
                 avgMbps=tSize/(realAvg *factor)
                 hDict['avgMbps']=avgMbps
@@ -199,7 +210,7 @@ class checkPerfResults:
                     (tRence, maxMbps)
                 print 
                 for x in thDict:
-                    print "\t\t %s (%10.2f)"% (x, self.results[x]['avgMbps'])
+                    print "\t\t %s (%.2f)"% (x, self.results[x]['avgMbps'])
                 print 
         return
                     

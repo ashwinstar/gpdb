@@ -47,7 +47,7 @@ FileSize=string(default="0MB")
 #
 #  Count No of blocks
 #
-Count=integer(1, default=1000)
+Count=integer(0, default=1000)
 
 #
 # Section Memory Testing

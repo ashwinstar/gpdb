@@ -29,8 +29,11 @@ ssh options.
 -n :  No of times each test is repeated.
 -t :  Tolerance, (0.1, 0.99) Tolerance of results.
 
---detailed: Print detailed output for each test
+--no-dd-test: Do not perform dd tests on the specified directories.
+--no-stream-test: Do not perform stream tests.
 
+
+--detailed: Print detailed output for each test
 
 """
 
@@ -104,6 +107,12 @@ class CheckPerf:
             self.logger=logging.getLogger('checkPerf')
                 
         self.logger.info(" Initializing checkPerf Object.. \n")
+
+    def killHandler(self, signo, frame):
+        print "Received Singal ", signo
+        print ""
+        print "Exiting..."
+        raise SystemExit, 1
 
 
     def termHandler(self, signo, frame):
@@ -537,7 +546,8 @@ class CheckPerf:
                 retVal=False
         return retVal
 
-    def cmdParallel(self, cmd, cmdTitle, postCmd="", useSessionCmd=False):
+    def cmdParallel(self, cmd, cmdTitle, postCmd="", useSessionCmd=False,\
+        tSize=0):
         #
         # Execute command in parallel on all the sessions
         #
@@ -546,10 +556,11 @@ class CheckPerf:
         for i in range(0,len(self.gSession.sessions)):
             th = self.gSession.sessions[i]
             th.rptError=""
-            cmdRes.addHost(th.userHost)
             if useSessionCmd:
+                cmdRes.addHost(th.userHost, th.tSize)
                 runCmd=th.runCmd
             else :
+                cmdRes.addHost(th.userHost, tSize)
                 runCmd=cmd
             self.pool.putRequest(threadpool.WorkRequest(self.rptCmd, \
             [runCmd, cmdTitle, cmdRes, th, th.userHost, postCmd],None,None))
@@ -590,17 +601,24 @@ class CheckPerf:
 
     
 
-    def createFile(self, fileName, blkCount, blockSize):
+    def createFile(self, fileName, blkCount, blockSize, useRAM=False):
         """ Create a file of  size using DD command """
         logger=self.logger
         retVal=True
         # Write command
-        wrCmd="dd if=/dev/zero of=%s count=%d bs=%d" % \
-            (fileName, blkCount, blockSize)
         for i in range(0,len(self.gSession.sessions)):
             th = self.gSession.sessions[i]
             th.exitStatus=0
             th.outText=""
+            thBlkCount = blkCount
+            if useRAM:
+                if th.hostObj and th.hostObj.totalRam:
+                    thBlkCount= (th.hostObj.totalRam/blockSize)*2
+                else:
+                    logger.warning("Host information missing %s" % \
+                        (th.userHost))
+            wrCmd= "dd if=/dev/zero of=%s  count=%d bs=%d" %  \
+                    (fileName, thBlkCount, blockSize)
             self.pool.putRequest(threadpool.WorkRequest(self.execSSHCmd,\
                 [wrCmd, th], None,None))
         #
@@ -634,7 +652,7 @@ class CheckPerf:
         # Create a file for reading
         fileName="%s/%s" % (dirName, "ddFile")
         logger.info("Creating file(%s) to read from. \n" % fileName)
-        if not self.createFile(fileName, blkCount, blockSize):
+        if not self.createFile(fileName, blkCount, blockSize, useRAM):
             print "Unable to create file (%s)"
             return None
         # Proceed with reading
@@ -653,13 +671,14 @@ class CheckPerf:
                         (th.userHost))
                 th.runCmd= "dd if=%s of=/dev/null count=%d bs=%d" %  \
                     (fileName, blkCount, blockSize)
+                th.tSize=blkCount * blockSize
                 logger.info("Read I/O Command %s:%s" % (th.userHost, th.runCmd))
-            readRes=self.cmdParallel(rdCmd, cmdTitle, useSessionCmd=True) 
+            readRes=self.cmdParallel(rdCmd, cmdTitle, useSessionCmd=True)
         else :
             rdCmd="dd if=%s of=/dev/null count=%d bs=%d" %  \
                 (fileName, blkCount, blockSize)
             logger.info("Read I/O Command: %s" % rdCmd)
-            readRes=self.cmdParallel(rdCmd, cmdTitle) 
+            readRes=self.cmdParallel(rdCmd, cmdTitle, tSize=blkCount*blockSize) 
         self.checkDirPerms(dirName, False)
         if readRes:
             self.ddResults[eachDir]['Read']=readRes
@@ -688,19 +707,42 @@ class CheckPerf:
                         (th.userHost))
                 th.runCmd="dd if=/dev/zero of=%s/ddFile count=%d bs=%d" % \
                     (dirName, blkCount, blockSize)
+                th.tSize=blkCount * blockSize
                 logger.info("Write I/O Command %s:%s" % \
                     (th.userHost, th.runCmd))
-            writeRes=self.cmdParallel(wrCmd, cmdTitle, useSessionCmd=True) 
+            writeRes=self.cmdParallel(wrCmd, cmdTitle, useSessionCmd=True)
         else:
             wrCmd="dd if=/dev/zero of=%s/ddFile count=%d bs=%d" % \
                 (dirName, blkCount, blockSize)
             logger.info("Write Command : %s " % wrCmd)
-            writeRes=self.cmdParallel(wrCmd, cmdTitle)
+            writeRes=self.cmdParallel(wrCmd, cmdTitle, \
+                tSize=blkCount * blockSize)
         self.checkDirPerms(dirName, False)
         if writeRes:
             self.ddResults[eachDir]['Write']=writeRes
             return True
         return False
+
+    def printRAMWarning(self):
+        """ Print RAM Warning if they are different """
+        ramDict={}
+        for i in range(0, len(self.gSession.sessions)):
+            th = self.gSession.sessions[i]
+            tRam=th.hostObj.totalRam
+            if tRam in ramDict.keys():
+                tRamDict=ramDict[tRam]
+                tRamDict.append(th.host)
+            else:
+                ramDict[tRam]=[]
+                ramDict[tRam].append(th.host)
+        if len(ramDict) !=1:
+            print
+            print (" RAM Sizes of the all hosts doesn't seem to be equal. ");
+            print
+            for eKey in ramDict.keys():
+                print eKey, ramDict[eKey]
+            print 
+
 
     def ddTest(self, useRAMFlag=False):
         """ Perform dd Test """
@@ -714,14 +756,17 @@ class CheckPerf:
             self.ddResults={}
         blkCount=self.ddOptions['Count']
         blockSize=self.ddOptions['BlockSize']
+        if not blkCount:
+            self.printRAMWarning()
+            useRAMFlag=True
         for eachDir in dirList:
             self.ddResults[eachDir]={}
             self.ddResults[eachDir]['Write']=None
             self.ddResults[eachDir]['Read']=None
-            if not self.ddWriteTest(eachDir, blkCount, blockSize, \
+            if not self.ddWriteTest(eachDir, blkCount, blockSize,\
                 useRAM=useRAMFlag):
                 return False
-            if not self.ddReadTest(eachDir, blkCount, blockSize,\
+            if not self.ddReadTest(eachDir, blkCount, blockSize, \
                 useRAM=useRAMFlag):
                 return False
         return True
@@ -923,7 +968,8 @@ def checkPerfMain(argv):
             ['help', 'usage', 'verbose', 'debug', 'output_file=',\
             'log_file=', 'config_file', 'spec_file=', 'host_file=',
             'port=', 'no_trusted_key_setup', 'exchange_trusted_keys',
-            'repeat_count=', 'elapse_time=', 'detailed'])
+            'repeat_count=', 'elapse_time=', 'detailed', 'no-dd-test',
+            'no-stream-test'])
     except getopt.GetoptError, e:
         # print help information and exit:
         print __doc__
@@ -940,6 +986,7 @@ def checkPerfMain(argv):
     verbose=False
     debug=False
     detFlag=False
+    ddTestFlag=streamTestFlag=True
     specFile=sys.path[0]+'/lib/checkPerf.spec'
     try :
         for (switch, val) in options:
@@ -972,6 +1019,10 @@ def checkPerfMain(argv):
                 elpTime = floar(val);
             elif (switch == '--detailed'):
                 detFlag= True
+            elif (switch == '--no-dd-test'):
+                ddTestFlag= False 
+            elif (switch == '--no-stream-test'):
+                streamTestFlag=False
             elif (switch == '-u' or switch == '-?' or switch=='--help' or \
                 switch=='--usage'):
                 print __doc__
@@ -1018,6 +1069,8 @@ def checkPerfMain(argv):
     if not confObj:
         print "*** Configuration parsing errors "
         raise SystemExit, 1
+    chkPerf.ddTestFlag=ddTestFlag
+    chkPerf.streamTestFlag=streamTestFlag
     #
     # Command Line Options take precedence
     #
@@ -1038,12 +1091,15 @@ def checkPerfMain(argv):
     # Obtain Host Objects
     #
     chkPerf.getHostInfo(verbose)
-    chkPerf.ddTestFlag=True
+    #for th in chkPerf.gSession.sessions:
+        #th.hostObj.totalRam=10240000
+    #th=chkPerf.gSession.sessions[0].hostObj.totalRam=10024000
+    #th=chkPerf.gSession.sessions[1].hostObj.totalRam=10048000
+        
     if chkPerf.ddTestFlag:
-        if(chkPerf.ddTest(useRAMFlag=True)):
+        if(chkPerf.ddTest()):
             chkPerf.printDirResults(detailed=detFlag)
-    chkPerf.strmTestFlag=True
-    if chkPerf.strmTestFlag:
+    if chkPerf.streamTestFlag:
         chkPerf.options['baseDir']='tmpDir'
         chkPerf.rmtDir=""
         chkPerf.strmLPath=sys.path[0]+'/lib/stream'
