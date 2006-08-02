@@ -214,10 +214,8 @@ typedef struct MotionLayerState
 	
 	/*
 	 * Memory context for the whole motion layer.  This is a child context of
-	 * the TopMemoryContext, so we are responsible for managing it.
-	 *
-	 * TODO: do we still want this, now that the state is per query?
-	 * is per-query context (the one that estate uses) a better choice?
+	 * the Executor State Context, so the if it fails to get cleaned up the 
+	 * estate context should free our resources at the end of the query.
 	 */
 	MemoryContext motion_layer_mctx;
 	

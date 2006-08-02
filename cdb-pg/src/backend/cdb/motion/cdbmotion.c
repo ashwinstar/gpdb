@@ -151,6 +151,10 @@ RemoveMotionLayer(MotionLayerState *mlStates, bool flushCommLayer)
 			 mlStates->stat_tuple_bytes_recvd,
 			 mlStates->stat_total_chunkproc_calls);
 
+	/*
+	 * free our some resources to be safe. The rest will get freed with
+	 * MemoryContextDelete()
+	 */
 	if(mlStates->mnEntries != NULL)
 		pfree(mlStates->mnEntries);
 	
@@ -165,6 +169,7 @@ RemoveMotionLayer(MotionLayerState *mlStates, bool flushCommLayer)
 	if(mlStates->motion_layer_mctx != NULL)
 		MemoryContextDelete(mlStates->motion_layer_mctx);
 }
+
 
 void
 initMotionLayerStructs(MotionLayerState **mlStates)
@@ -182,14 +187,18 @@ initMotionLayerStructs(MotionLayerState **mlStates)
 	/*
 	 * Create the memory-contexts that we will use within the Motion Layer.
 	 *
-	 * The Motion Layer memory-context is a child of the TopMemoryContext, so
-	 * that we can manage when it is reset ourselves.
+	 * We make the Motion Layer memory-context a child of the ExecutorState 
+	 * Context, as it lives inside of the estate of a specific query and needs
+	 * to get freed when the query is finished. 
 	 *
 	 * The tuple-serial memory-context is a child of the Motion Layer
 	 * memory-context
+	 *
+	 * NOTE: we need to be sure the caller is in ExecutorState memory context
+	 * (estate->es_query_cxt) before calling us .
 	 */
 	ml_mctx =
-		AllocSetContextCreate(TopMemoryContext, "MotionLayerMemCtxt",
+		AllocSetContextCreate(CurrentMemoryContext, "MotionLayerMemCtxt",
 							  ALLOCSET_SMALL_MINSIZE,
 							  ALLOCSET_SMALL_INITSIZE,
 							  ALLOCSET_DEFAULT_MAXSIZE); /* use a setting bigger than "small" */

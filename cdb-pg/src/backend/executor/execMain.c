@@ -187,8 +187,8 @@ Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPol
 
 	/*
 	 * Initialize the motion layer for this query.
-	 * TODO: we could probably move this call for a little later, so 
-	 * that it wouldn't be called for queries that don't need it.
+	 *
+	 * NOTE: need to be in estate->es_query_cxt before the call.
 	 */
 	initMotionLayerStructs((MotionLayerState **)&estate->motionlayer_context);
 	
