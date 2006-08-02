@@ -152,6 +152,7 @@ class checkPerfResults:
             print
         factor=1000000
         totalMbps=0
+        numHosts=0
         for eachHost in self.hosts:
             hDict=self.results[eachHost]
             if hDict['Average'] and hDict['Maximum'] and hDict['Minimum']:
@@ -179,9 +180,10 @@ class checkPerfResults:
             if realMin:
                 minMbps=tSize/(realMax*factor)
             if detailed:
-                print "%8s %20s %10.2f %10.2f %10.2f Mb/Second" %  \
+                print "%8s %20s %10.2f %10.2f %10.2f MB/Second" %  \
                     ("", eachHost, maxMbps, minMbps, avgMbps)
             totalMbps+= avgMbps
+            numHosts+=1
         print
         avgMbps=maxMbps=minMbps=0
 
@@ -192,10 +194,12 @@ class checkPerfResults:
         if self.realAvg:
             avgMbps=tSize/(self.realAvg*factor)
 
-        print "\t\t Maximum %10.2f Mb/Sec(%s)" % (maxMbps, self.minHost)
-        print "\t\t Minimum %10.2f Mb/Sec(%s)" % (minMbps, self.maxHost)
-        print "\t\t Average %10.2f Mb/Sec"% avgMbps
-        print "\t\t Total   %10.2f Mb/Sec"% totalMbps
+        print "\t\t Maximum %10.2f MB/Sec(%s)" % (maxMbps, self.minHost)
+        print "\t\t Minimum %10.2f MB/Sec(%s)" % (minMbps, self.maxHost)
+        print "\t\t Average %10.2f MB/Sec"% avgMbps
+        print 
+        print "\t\t Total   %10.2f MB/Sec (on %d hosts)"% \
+            (totalMbps, len(self.hosts))
         print
         if tRence and detailed:
             print

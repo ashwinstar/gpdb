@@ -10,9 +10,10 @@
 #
 # Tolerance, variance allowed
 #
-Tolerance=float(0.0, 0.99, default=0.1)
-LogFile=string
-ResFile=string
+Tolerance=float(0.01, 0.99, default=0.1)
+
+# LogFile=string
+#ResFile=string
 
 #
 # No of times each test should be performed.
@@ -47,7 +48,7 @@ FileSize=string(default="0MB")
 #
 #  Count No of blocks
 #
-Count=integer(0, default=1000)
+Count=integer(0, default=0)
 
 #
 # Section Memory Testing

@@ -1,37 +1,40 @@
 #
 # This is a config file for checkPerf utility.
-# Please follow the instructions at each section and name value pairs
+# Review spec (checkPerf.spec) in the mppMgmt/lib directory
+# for more details.
+# syntax for this file is based on python module configobj-4.3.2.
 #
 
 #
 # Section, General Configuration
+# This section contains configuration that is applicable to the utility
+# and all sub sections that follow
 #
 [ "CheckPerf" ]
 #
 # Tolerance, variance allowed
+# All the hosts that are below the tolerance will be listed.
+# Example All hosts below the maximum I/O for dd tests
+# Type    : Float
+# Range   : 0.01 0.99
+# Default : 0.05
 #
 Tolerance=0.05
 #
 # No of times each test should be performed.
+# Type    : Integer
+# Ranage  : 1, 20
+# Default : 5
 #
 RptCount=5
 
-#
-# Time in seconds.
-#
-ElapseTime=0
 
-#
-# logFile
-#
-LogFile=""
-ResFile=""
 #
 # Stating Directory, Directoy on each Host where the user has 
 # read/write persmissions.
 # Will be used to host software.
 #
-StagingDirectory=""
+baseDir=""
 
 
 # Section Disk I/O Test
@@ -39,30 +42,37 @@ StagingDirectory=""
 [ "Disk Performance"]
 #
 # Directory List, List of directories to test I/O performance.
-# Format 
 # Directory_List= "Path_to_dir1", "Path_to_dir2", "Path_to_dir2"
+# Directory_List= "Path_to_dir1", 
 #
 DirectoryList= "/dbfast1/dirOne",
 #
-# Block Size
-# Specify BlockSize
+# BlockSize: Sice of the block to be used for dd test
+# Range : String (int Followed by String [kK][Mm][gG][bB])
+# Example : 1024, 1KB, 1MB, 10MB
+# Default : 1K
 #
 BlockSize=1K
-FileSize=100Mb
 #
+# FileSize: 
+# Range : String (int Followed by String [kK][Mm][gG][bB])
+# Example : 1024, 1KB, 1MB, 10MB
+# Default : 0MB
+#
+FileSize=1000Mb
+
+#
+# NOTE: 
+# :: If FileSize is not zero, Count is obtained from fileSize  and blockSize
+# :: If FileSize and Count are set to 0, the fileSize with double the RAM Size
+#    on that host
+#
+
 #  Count No of blocks
+# Range : Integer
+# Default : 0
 #
-Count=1234
-
-#
-# Section Memory Testing
-#
-["Memory Bandwidth"]
-#
-# No of concurrent tests that should be executed.
-#
-ConcurrentTests=2
-
+Count=0
 
 #
 # Network Test
@@ -70,9 +80,16 @@ ConcurrentTests=2
 ["Network Bandwidth"]
 #
 # Size of each Packet
+# Type    : Integer
+# Range   :  1k - 100k
+# Default : 1K
 #
 PacketSize=1024
 #
 # No of packets to be send
+# Type    : Integer
+# Range   : 100-10000
+# Default : 100
+#
 PacketNumber=100
 
