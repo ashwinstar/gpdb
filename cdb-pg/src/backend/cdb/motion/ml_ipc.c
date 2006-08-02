@@ -18,7 +18,6 @@
 
 #include "cdb/tupchunklist.h"
 #include "cdb/ml_ipc.h"
-#include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
 
 #include <fcntl.h>
@@ -121,11 +120,11 @@ static bool readRegisterMessage(ChunkTransportState *transportStates,
 								MotionConn *conn);
 static MotionConn *acceptIncomingConnection(void);
 
-static bool sendChunk(ChunkTransportState *transportStates, MotionConn * conn, TupleChunkListItem tcItem, int16 motionId);
+static bool sendChunk(MotionLayerState *mlStates, ChunkTransportState *transportStates, MotionConn * conn, TupleChunkListItem tcItem, int16 motionId);
 static inline void readPacket(ChunkTransportState *transportStates, MotionConn * conn);
-static inline int doBroadcast(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, TupleChunkListItem tcItem);
+static inline int doBroadcast(MotionLayerState *mlStates, ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, TupleChunkListItem tcItem);
 
-static bool flushBuffer(ChunkTransportState *transportStates, MotionConn * conn, int16 motionId);
+static bool flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, MotionConn * conn, int16 motionId);
 
 static void	dumpEntryConnections(int elevel, ChunkTransportStateEntry *pEntry);
 static void	print_connection(ChunkTransportState *transportStates, int fd, const char *msg);
@@ -188,6 +187,9 @@ InitMotionLayerIPC(void)
 void
 CleanUpMotionLayerIPC(void)
 {
+	
+	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+    	elog(DEBUG2, "Cleaning Up Motion Layer IPC...");
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "CleanUpMotionLayerIPC()");
@@ -208,7 +210,8 @@ CleanUpMotionLayerIPC(void)
 
 /* See ml_ipc.h */
 bool
-SendTupleChunkToAMS(ChunkTransportState *transportStates, 
+SendTupleChunkToAMS(MotionLayerState *mlStates,
+					ChunkTransportState *transportStates, 
 					int16 motNodeID, 
 					int16 targetRoute, 
 					TupleChunkListItem tcItem)
@@ -245,7 +248,7 @@ SendTupleChunkToAMS(ChunkTransportState *transportStates,
 
 		if (targetRoute == BROADCAST_SEGIDX)
 		{
-			if (doBroadcast(transportStates, pEntry, currItem) != 0)
+			if (doBroadcast(mlStates, transportStates, pEntry, currItem) != 0)
 				recount = 1;
 		}
 		else
@@ -255,7 +258,7 @@ SendTupleChunkToAMS(ChunkTransportState *transportStates,
 			/* only send to interested connections */
 			if (conn->stillActive)
 			{
-				sendChunk(transportStates, conn, currItem, motNodeID);
+				sendChunk(mlStates, transportStates, conn, currItem, motNodeID);
 				if (!conn->stillActive)
 					recount = 1;
 			}
@@ -267,7 +270,7 @@ SendTupleChunkToAMS(ChunkTransportState *transportStates,
 				/* only send to interested connections */
 				if (conn->stillActive)
 				{
-					sendChunk(transportStates, conn, currItem, motNodeID);
+					sendChunk(mlStates, transportStates, conn, currItem, motNodeID);
 					if (!conn->stillActive)
 						recount = 1;
 				}
@@ -294,7 +297,8 @@ SendTupleChunkToAMS(ChunkTransportState *transportStates,
 
 /* See ml_ipc.h */
 void
-SendEosToAMS(ChunkTransportState *transportStates, 
+SendEosToAMS(MotionLayerState *mlStates,
+			 ChunkTransportState *transportStates, 
 			 int16 motNodeID, 
 			 int16 targetRoute, 
 			 TupleChunkListItem tcItem)
@@ -315,7 +319,7 @@ SendEosToAMS(ChunkTransportState *transportStates,
 	pEntry = getChunkTransportState(transportStates, motNodeID);
 
 	/* we want to add our tcItem onto each of the outgoing buffers */
-	doBroadcast(transportStates, pEntry, tcItem);
+	doBroadcast(mlStates, transportStates, pEntry, tcItem);
 
 	/* now flush all of the buffers. */
 	for (i = 0; i < pEntry->numConns; i++)
@@ -323,7 +327,7 @@ SendEosToAMS(ChunkTransportState *transportStates,
 		conn = pEntry->conns + i;
 		if (conn->sockfd >= 0 &&
             conn->state == mcsStarted)
-			flushBuffer(transportStates, conn, motNodeID);
+			flushBuffer(mlStates, transportStates, conn, motNodeID);
 	}
 
 #ifdef AMS_VERBOSE_LOGGING
@@ -333,7 +337,8 @@ SendEosToAMS(ChunkTransportState *transportStates,
 
 /* See ml_ipc.h */
 TupleChunkListItem
-RecvTupleChunkFromAny(ChunkTransportState *transportStates, 
+RecvTupleChunkFromAny(MotionLayerState *mlStates,
+					  ChunkTransportState *transportStates, 
 					  int16 motNodeID, 
 					  int16 *srcRoute)
 {
@@ -354,7 +359,7 @@ RecvTupleChunkFromAny(ChunkTransportState *transportStates,
 #endif
 
 	pEntry = getChunkTransportState(transportStates, motNodeID);
-	pMNEntry = getMotionNodeEntry(motNodeID, "RecvTupleChunkFromAny");
+	pMNEntry = getMotionNodeEntry(mlStates, motNodeID, "RecvTupleChunkFromAny");
 
 	do
 	{
@@ -649,7 +654,8 @@ TeardownSequenceServer(void)
 void
 SetupInterconnect(ChunkTransportState **ppTransportStates,
 				  SliceTable * mySliceTable, 
-				  int mySliceId)
+				  int mySliceId,
+				  MotionLayerState *mlStates)
 {
 	int			i,
 				n;
@@ -716,7 +722,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 		pEntry = createChunkTransportState(*ppTransportStates, aSlice, mySlice, numProcs, 0);
 
 		/* let cdbmotion now how many receivers to expect. */
-		setExpectedReceivers(childId, numProcs);
+		setExpectedReceivers(mlStates, childId, numProcs);
 
 		expectedTotalIncoming += pEntry->numConns;
 	}
@@ -1149,7 +1155,8 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
  * tons of stuff volatile in TeardownInterconnect().
  */
 static void
-forceEosToPeer(ChunkTransportState *transportStates,
+forceEosToPeer(MotionLayerState *mlStates,
+			   ChunkTransportState *transportStates,
 			   int16 motNodeID, 
 			   int16 targetRoute)
 {
@@ -1162,7 +1169,7 @@ forceEosToPeer(ChunkTransportState *transportStates,
 	
 	transportStates->teardownActive = true;
 
-	SendEndOfStream(transportStates, motNodeID, targetRoute);
+	SendEndOfStream(mlStates, transportStates, motNodeID, targetRoute);
 
 	transportStates->teardownActive = false;
 }
@@ -1184,7 +1191,8 @@ forceEosToPeer(ChunkTransportState *transportStates,
  * adding errors!).
  */
 void
-TeardownInterconnect(ChunkTransportState *transportStates, 
+TeardownInterconnect(ChunkTransportState *transportStates,
+					 MotionLayerState *mlStates,
 					 bool forceEOS)
 {
 	ListCell   *cell;
@@ -1275,7 +1283,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 
 			if (forceEOS)
 			{
-				forceEosToPeer(transportStates, mySlice->sliceIndex, i);
+				forceEosToPeer(mlStates, transportStates, mySlice->sliceIndex, i);
 			}
 
 			if (conn->sockfd >= 0)
@@ -2524,7 +2532,7 @@ acceptIncomingConnection(void)
  *	 motionId - Node Motion Id.
  */
 static bool
-sendChunk(ChunkTransportState *transportStates, MotionConn * conn, TupleChunkListItem tcItem, int16 motionId)
+sendChunk(MotionLayerState *mlStates, ChunkTransportState *transportStates, MotionConn * conn, TupleChunkListItem tcItem, int16 motionId)
 {
 	Assert(conn->msgSize > 0);
 
@@ -2534,7 +2542,7 @@ sendChunk(ChunkTransportState *transportStates, MotionConn * conn, TupleChunkLis
 
 	if (conn->msgSize + tcItem->chunk_length > Mpp_max_packet_size)
 	{
-		if (!flushBuffer(transportStates, conn, motionId))
+		if (!flushBuffer(mlStates, transportStates, conn, motionId))
 			return false;
 	}
 
@@ -2563,7 +2571,7 @@ sendChunk(ChunkTransportState *transportStates, MotionConn * conn, TupleChunkLis
  *
  */
 static bool
-flushBuffer(ChunkTransportState *transportStates, MotionConn * conn, int16 motionId)
+flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, MotionConn * conn, int16 motionId)
 {
 	char	   *sendptr;
 	MotionNodeEntry *pMNEntry;
@@ -2582,7 +2590,7 @@ flushBuffer(ChunkTransportState *transportStates, MotionConn * conn, int16 motio
 	}
 #endif
 
-	pMNEntry = getMotionNodeEntry(motionId, "flushBuffer");
+	pMNEntry = getMotionNodeEntry(mlStates, motionId, "flushBuffer");
 
 	/* first set header length */
 	*(uint32 *) conn->pBuff = htonl(conn->msgSize);
@@ -2862,7 +2870,7 @@ readPacket(ChunkTransportState *transportStates, MotionConn * conn)
  *	 tcItem - TupleChunk to send.
  */
 static int
-doBroadcast(ChunkTransportState *transportStates, ChunkTransportStateEntry * pEntry, TupleChunkListItem tcItem)
+doBroadcast(MotionLayerState *mlStates, ChunkTransportState *transportStates, ChunkTransportStateEntry * pEntry, TupleChunkListItem tcItem)
 {
 	MotionConn *conn;
 	int			i,
@@ -2875,7 +2883,7 @@ doBroadcast(ChunkTransportState *transportStates, ChunkTransportStateEntry * pEn
 		/* only send to still interested receivers. */
 		if (conn->stillActive)
 		{
-			sendChunk(transportStates, conn, tcItem, pEntry->motNodeId);
+			sendChunk(mlStates, transportStates, conn, tcItem, pEntry->motNodeId);
 			if (!conn->stillActive)
 				inactive++;
 		}

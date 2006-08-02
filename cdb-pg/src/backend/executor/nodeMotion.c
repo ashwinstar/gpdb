@@ -308,12 +308,14 @@ execMotionUnsortedReceiver(MotionState * node)
 
 	if (node->stopRequested)
 	{
-		SendStopMessage(node->ps.state->interconnect_context,
+		SendStopMessage(node->ps.state->motionlayer_context,
+						node->ps.state->interconnect_context,
 						motion->motionID);
 		return NULL;
 	}
 
-	recvRC = RecvTupleFrom(node->ps.state->interconnect_context,
+	recvRC = RecvTupleFrom(node->ps.state->motionlayer_context,
+						   node->ps.state->interconnect_context,
 						   motion->motionID, &tuple, ANY_ROUTE);
 
 	if (recvRC == END_OF_STREAM)
@@ -406,7 +408,8 @@ execMotionSortedReceiver(MotionState * node)
     if (node->stopRequested)
 	{
 		
-		SendStopMessage(node->ps.state->interconnect_context,
+		SendStopMessage(node->ps.state->motionlayer_context,
+						node->ps.state->interconnect_context,
 						motion->motionID);
 		return NULL;
 	}
@@ -429,7 +432,8 @@ execMotionSortedReceiver(MotionState * node)
                     tupHeapInfo->sourceRouteId == node->routeIdNext);
 
         /* Receive the successor of the tuple that we returned last time. */
-        recvRC = RecvTupleFrom(node->ps.state->interconnect_context,
+        recvRC = RecvTupleFrom(node->ps.state->motionlayer_context,
+							   node->ps.state->interconnect_context,
 							   motion->motionID, 
 							   &inputTuple, 
 							   node->routeIdNext);
@@ -548,7 +552,8 @@ execMotionSortedReceiverFirstTime(MotionState * node)
 		 * another place where we are mapping segid space to routeid space. so
 		 * route[x] = inputSegIdx[x] now.
 		 */
-		recvRC = RecvTupleFrom(node->ps.state->interconnect_context,
+		recvRC = RecvTupleFrom(node->ps.state->motionlayer_context,
+							   node->ps.state->interconnect_context,
 							   motion->motionID, &inputTuple, iSegIdx);
 
 		if (recvRC == GOT_TUPLE)
@@ -828,7 +833,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	/*
 	 * Perform per-node initialization in the motion layer.
 	 */
-	InitMotionLayerNode(node->motionID, node->sendSorted, tupDesc);
+	InitMotionLayerNode(motionstate->ps.state->motionlayer_context, node->motionID, node->sendSorted, tupDesc);
 
 #ifdef CDB_MOTION_DEBUG
     motionstate->outputFunArray = (Oid *)palloc(tupDesc->natts * sizeof(Oid));
@@ -953,7 +958,7 @@ ExecEndMotion(MotionState * node)
 	 *
 	 * TODO: For now, we don't flush the comm-layer.  NO ERRORS DURING AMS!!!
 	 */
-	EndMotionLayerNode(motNodeID, /* flush-comm-layer */ false);
+	EndMotionLayerNode(node->ps.state->motionlayer_context, motNodeID, /* flush-comm-layer */ false);
 
 #ifdef CDB_MOTION_DEBUG
     if (node->outputFunArray)
@@ -1152,7 +1157,8 @@ doSendEndOfStream(Motion * motion, MotionState * node)
 		targetRoute = BROADCAST_SEGIDX;
 
 
-	sendRC = SendEndOfStream(node->ps.state->interconnect_context,
+	sendRC = SendEndOfStream(node->ps.state->motionlayer_context,
+							 node->ps.state->interconnect_context,
 							 motion->motionID, targetRoute);
 
 	Assert(sendRC == SEND_COMPLETE);
@@ -1244,7 +1250,8 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
     tuple = ExecFetchSlotTuple(outerTupleSlot);
 	
 	
-	sendRC = SendTuple(node->ps.state->interconnect_context,
+	sendRC = SendTuple(node->ps.state->motionlayer_context,
+					   node->ps.state->interconnect_context,
 					   motion->motionID, 
 					   tuple, 
 					   targetRoute);
@@ -1298,6 +1305,7 @@ ExecStopMotion(MotionState * node)
 	motion = (Motion *) node->ps.plan;
 
 	node->stopRequested = true;
-	SendStopMessage(node->ps.state->interconnect_context,
+	SendStopMessage(node->ps.state->motionlayer_context,
+					node->ps.state->interconnect_context,
 					motion->motionID);
 }

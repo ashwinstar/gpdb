@@ -186,6 +186,13 @@ Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPol
 	estate->es_instrument = queryDesc->doInstrument;
 
 	/*
+	 * Initialize the motion layer for this query.
+	 * TODO: we could probably move this call for a little later, so 
+	 * that it wouldn't be called for queries that don't need it.
+	 */
+	initMotionLayerStructs((MotionLayerState **)&estate->motionlayer_context);
+	
+	/*
 	 * Handling of the Slice table depends on context.
 	 */
 	if (Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
@@ -379,7 +386,8 @@ Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPol
 				estate->es_interconnect_is_setup = true;
 
 				SetupInterconnect((ChunkTransportState **)&estate->interconnect_context,
-								  estate->es_sliceTable, estate->es_cur_slice_idx);
+								  estate->es_sliceTable, estate->es_cur_slice_idx,
+								  estate->motionlayer_context);
 
 				ExecUpdateTransportState((PlanState *)motionState,
 										 (ChunkTransportState *)estate->interconnect_context);
@@ -396,7 +404,8 @@ Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPol
 				estate->es_interconnect_is_setup = true;
 
 				SetupInterconnect((ChunkTransportState **)&estate->interconnect_context,
-								  estate->es_sliceTable, estate->es_cur_slice_idx);
+								  estate->es_sliceTable, estate->es_cur_slice_idx,
+								  estate->motionlayer_context);
 
 				ExecUpdateTransportState(queryDesc->planstate,
 										 (ChunkTransportState *)estate->interconnect_context);
@@ -649,6 +658,11 @@ ExecutorEnd(QueryDesc *queryDesc)
 	 * Release any gangs we may have assigned.
 	 */
 	ReleaseGangs(queryDesc);
+	
+	/* 
+	 * Remove our own query's motion layer. 
+	 */
+	RemoveMotionLayer(estate->motionlayer_context, true);	
 
 	/*
 	 * Must switch out of context before destroying it

@@ -611,7 +611,10 @@ cdb_setup(void)
 
 	/* If mpp_role is UTILITY, skip this call. */
 	if (Mpp_role != MPP_ROLE_UTILITY)
-		InitMotionLayer();
+	{
+		/* Initialize the Motion Layer IPC subsystem. */
+		InitMotionLayerIPC();
+	}
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
@@ -642,7 +645,10 @@ cdb_cleanup(int code, Datum arg)
 	disconnectMirrorQD();
 
 	if (Mpp_role != MPP_ROLE_UTILITY)
-		CleanUpMotionLayer();
+	{
+		/* shutdown our listener socket */
+		CleanUpMotionLayerIPC();
+	}
 }
 
 

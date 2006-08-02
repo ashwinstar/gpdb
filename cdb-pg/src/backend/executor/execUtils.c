@@ -237,6 +237,7 @@ CreateExecutorState(void)
 	estate->es_sliceTable = NULL;
 	estate->es_slice_map = NULL;
 	estate->interconnect_context = NULL;
+	estate->motionlayer_context = NULL;
 	estate->es_interconnect_is_setup = false;
 	estate->es_seqserver_is_setup = false;
 	estate->es_got_eos = false;
@@ -1649,10 +1650,9 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 	/* Teardown the Interconnect */
 	if(estate->es_interconnect_is_setup)
 	{
-		TeardownInterconnect(estate->interconnect_context, false);
+		TeardownInterconnect(estate->interconnect_context, estate->motionlayer_context, false);
 		estate->es_interconnect_is_setup = false;		
 	}
-	
 }
 
 /*
@@ -1680,13 +1680,8 @@ void mppExecutorCleanup(EState *estate)
 	/* Clean up the interconnect. */
 	if (estate->es_interconnect_is_setup)
 	{
-		TeardownInterconnect(estate->interconnect_context, true /* force EOS */); 
+		TeardownInterconnect(estate->interconnect_context, estate->motionlayer_context, true /* force EOS */); 
 		estate->es_interconnect_is_setup = false;
 	}
-	
-	/* Clean up our own motion layer. */
-	if (Mpp_role != MPP_ROLE_UTILITY)
-		ResetMotionLayer(true);
-	
 }
 

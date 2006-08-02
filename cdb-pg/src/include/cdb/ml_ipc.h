@@ -8,114 +8,8 @@
 #ifndef ML_IPC_H
 #define ML_IPC_H
 
-#include "nodes/primnodes.h"
-#include "cdb/tupchunklist.h"
-#include "nodes/execnodes.h"
-
-typedef enum MotionConnState
-{
-    mcsNull,
-    mcsAccepted,
-    mcsSetupOutgoingConnection,
-    mcsConnecting,
-    mcsRecvRegMsg,
-    mcsSendRegMsg,
-    mcsStarted,
-} MotionConnState;
-
-/* Structure used for keeping track of a pt-to-pt connection between two
-* Cdb Entities (either QE or QD).
-*/
-typedef struct MotionConn
-{
-	/* socket file descriptor. */
-	int			sockfd;
-	
-	/* pointer to the data buffer. */
-	uint8	   *pBuff;
-	
-	/* size of the message in the buffer, if any. */
-	int32		msgSize;
-	
-	/* position of message inside of buffer, "cursor" pointer */
-	uint8	   *msgPos;
-	
-	/*
-	 * recv bytes: we can have more than one message/message fragment in recv
-	 * queue at once
-	 */
-	int32		recvBytes;
-	
-	int			tupleCount;
-	
-	bool		stillActive;
-	
-    MotionConnState state;
-	
-    int         wakeup_ms;
-	
-    CdbProcess *cdbProc;
-    int			remoteContentId;
-    char        remoteHostAndPort[64];
-    char        localHostAndPort[64];
-	
-}	MotionConn;
-
-/* used to organize all of the information for a given motion node.
-*
-*/
-typedef struct ChunkTransportStateEntry
-{
-	int         motNodeId;
-	bool		valid;
-	
-	/* Connection array: first the primaries, then the mirrors (if needed) */
-    MotionConn *conns;
-	int			numConns;               /* all, including mirrors if present */
-    int         numPrimaryConns;        /* does not include mirrors */
-	
-	/*
-	 * used for receiving. to select() from a set of interesting MotionConns
-	 * to see when data is ready to be read.  When the incoming connections
-	 * are established, read interest is turned on.  It is turned off when an
-	 * EOS (End of Stream) message is read.
-	 */
-	fd_set		readSet;
-	
-	/* highest file descriptor in the readSet. */
-	int			highReadSock;
-    int         scanStart;
-	
-    /* slice table entries */
-    Slice      *sendSlice;
-    Slice      *recvSlice;
-	
-    /* setup info */
-    int         outgoingPortRetryCount;
-	
-}	ChunkTransportStateEntry;
-
-typedef struct ChunkTransportState
-{
-	/* array of per-motion-node chunk transport state */
-	int size;
-	ChunkTransportStateEntry *states;
-	
-	/* ChunkTransportState array initial size */
-#define CTS_INITIAL_SIZE (10)
-	
-	/* keeps track of if we've "activated" connections via SetupInterconnect(). */
-	bool		activated;
-
-	bool		teardownActive;
-	List	   *incompleteConns;
-	
-	/*slice table stuff. */
-	SliceTable *sliceTable;
-	int			sliceId;
-	
-	
-} ChunkTransportState;
+#include "cdb/cdbinterconnect.h"
+#include "cdb/cdbmotion.h"
 
 /*
  * Registration message
@@ -154,11 +48,10 @@ extern void InitMotionLayerIPC(void);
 
 /* Performs any cleanup necessary by the Motion Layer IPC.	This is the cleanup
  * function that matches InitMotionLayerIPC, it should only be called during
- * shutdown of the process.
+ * shutdown of the process. This includes shutting down the Motion Listener.
  *
  * Errors are indicated by calls to ereport(), and are therefore not indicated
  * in the return code.
- *
  */
 extern void CleanUpMotionLayerIPC(void);
 
@@ -188,7 +81,8 @@ extern int  GetSeqServerFD(void);
  */
 extern void SetupInterconnect(ChunkTransportState **transportStates, 
 							  SliceTable * mySliceTable, 
-							  int mySliceId);
+							  int mySliceId,
+							  MotionLayerState *mlStates);
 
 /* The TeardownInterconnect() function should be called at the end of executing
  * a DML statement to close down all TCP socket resources that were setup during
@@ -200,7 +94,8 @@ extern void SetupInterconnect(ChunkTransportState **transportStates,
  *		 statement termination we can force an end-of-stream notification.
  *
  */
-extern void TeardownInterconnect(ChunkTransportState *transportStates, 
+extern void TeardownInterconnect(ChunkTransportState *transportStates,
+								 MotionLayerState *mlStates,
 								 bool forceEOS);
 
 
@@ -224,7 +119,8 @@ extern void TeardownSequenceServer(void);
  *	 - tcItem:		The tuple-chunk data to send.
  *
  */
-extern bool SendTupleChunkToAMS(ChunkTransportState *transportStates, 
+extern bool SendTupleChunkToAMS(MotionLayerState *mlStates,
+								ChunkTransportState *transportStates, 
 								int16 motNodeID, 
 								int16 targetRoute, 
 								TupleChunkListItem tcItem);
@@ -238,7 +134,8 @@ extern bool SendTupleChunkToAMS(ChunkTransportState *transportStates,
  *	 - tcItem:		The tuple-chunk data to send.
  *
  */
-extern void SendEosToAMS(ChunkTransportState *transportStates, 
+extern void SendEosToAMS(MotionLayerState *mlStates,
+						 ChunkTransportState *transportStates, 
 						 int16 motNodeID, 
 						 int16 targetRoute, 
 						 TupleChunkListItem tcItem);
@@ -259,7 +156,8 @@ extern void SendEosToAMS(ChunkTransportState *transportStates,
  * RETURN:
  *	 - A populated TupleChunkListItemData structure (allocated with palloc()).
  */
-extern TupleChunkListItem RecvTupleChunkFromAny(ChunkTransportState *transportStates, 
+extern TupleChunkListItem RecvTupleChunkFromAny(MotionLayerState *mlStates,
+												ChunkTransportState *transportStates, 
 												int16 motNodeID, 
 												int16 *srcRoute);
 

@@ -201,6 +201,11 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
 	sp_estate->es_sliceTable = estate->es_sliceTable;
 	sp_estate->es_slice_map = estate->es_slice_map;
+	
+	/*
+	 * also loan the motion later state.
+	 */
+	sp_estate->motionlayer_context = estate->motionlayer_context;
 
 	/*
 	 * Start up the subplan (this is a very cut-down form of InitPlan())

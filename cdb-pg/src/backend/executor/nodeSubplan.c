@@ -756,6 +756,8 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 	sp_estate->es_sliceTable = estate->es_sliceTable;
 	sp_estate->es_slice_map = estate->es_slice_map;
 
+	sp_estate->motionlayer_context = estate->motionlayer_context;
+	
 	/*
 	 * Start up the subplan (this is a very cut-down form of InitPlan())
 	 *
@@ -1021,6 +1023,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		queryDesc->estate->es_cur_root_idx = gbl_queryDesc->estate->es_cur_root_idx;
 		queryDesc->estate->es_cur_slice_idx = gbl_queryDesc->estate->es_cur_slice_idx;
 		queryDesc->estate->es_param_exec_vals = gbl_queryDesc->estate->es_param_exec_vals;
+		queryDesc->estate->motionlayer_context = gbl_queryDesc->estate->motionlayer_context;
 	}
 
 	/*
@@ -1032,8 +1035,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	PG_TRY();
 	{
 		if (shouldDispatch)
-		{
-
+		{			
 			needXact = isCurrentDtxDirty();
 			if (needXact)
 			{
@@ -1059,7 +1061,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			shouldTeardownInterconnect = true;
 			SetupInterconnect((ChunkTransportState **)&queryDesc->estate->interconnect_context,
 							   queryDesc->estate->es_sliceTable,
-							   queryDesc->estate->es_sliceTable->localSlice);
+							   queryDesc->estate->es_sliceTable->localSlice,
+							   queryDesc->estate->motionlayer_context);
 
 			ExecUpdateTransportState(planstate, queryDesc->estate->interconnect_context);
 		}
@@ -1230,9 +1233,9 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
         	shouldTeardownInterconnect = false;
 
 	        TeardownInterconnect(queryDesc->estate->interconnect_context, 
+								 queryDesc->estate->motionlayer_context,
 								 false); /* following success on QD */	
-
-	    }
+		}
 
     }
 	PG_CATCH();
@@ -1254,10 +1257,10 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
          * CDB TODO: Is this needed following failure on QD?
          */
         if (shouldTeardownInterconnect)
-			TeardownInterconnect(queryDesc->estate->interconnect_context, 
+			TeardownInterconnect(queryDesc->estate->interconnect_context,
+								 queryDesc->estate->motionlayer_context,
 								 true);
-
-        PG_RE_THROW();
+		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
