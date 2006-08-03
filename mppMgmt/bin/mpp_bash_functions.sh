@@ -409,10 +409,10 @@ CHK_EXISTS_TABLE () {
 		LOG_MSG "[INFO]:-Checking for table $TABLENAME in database $QD_DBNAME"
 		if [ `$ECHO $TABLENAME|$GREP -c "\."` -eq 1 ];then
 			SCHEMA_NAME=`$ECHO $TABLENAME|$CUT -d"." -f1`
-                        QUERY_TABLENAME=`$ECHO $TABLENAME|$CUT -d"." -f2`
-			TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select count(*) from pg_class where relname='$QUERY_TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+                        TABLENAME=`$ECHO $TABLENAME|$CUT -d"." -f2`
+			TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select count(*) from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 			if [ $TAB_COUNT -eq 1 ];then
-			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select relhassubclass from pg_class where relname='$QUERY_TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select relhassubclass from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 			fi
 		else
 			TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select count(*) from pg_class where relname='$TABLENAME';"`
@@ -451,7 +451,11 @@ EVENT_MAIL () {
 
 GET_DISTRIB_COLS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	DISTRIB_COLS=`${EXPORT_LIB_PATH};$PSQL -p $2 $3 -A -t -c"select attrnums from  mpp_distribution_policy  where localoid in (select oid from pg_class where relname='${1}');"`
+	T_NAME=$1
+	if [ `$ECHO $1|$GREP -c "\."` -eq 1 ];then
+		T_NAME=`$ECHO $1|$CUT -d"." -f2`
+	fi
+	DISTRIB_COLS=`${EXPORT_LIB_PATH};$PSQL -p $2 $3 -A -t -c"select attrnums from  mpp_distribution_policy  where localoid in (select oid from pg_class where relname='${T_NAME}');"`
 	if [ x"" == x"$DISTRIB_COLS" ];then
 		DISTRIB_COLS=0;fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"

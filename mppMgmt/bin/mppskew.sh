@@ -102,7 +102,7 @@ GET_DISTRIB_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ `$ECHO $DISTRIB_COLS |$GREP -c "{"` -ne 0 ];then
 		LOG_MSG "[INFO]:-Obtaining OID for $TABLENAME on QD"
-		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$TABLENAME' and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 		ERROR_CHK $? "obtain table oid value" 2
 	TOTAL_COLS=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select max(attnum) from pg_attribute where attrelid=${TABLE_OID};"`
 	ERROR_CHK $? "obtain table column count" 2
@@ -120,8 +120,8 @@ GET_DISTRIB_INFO () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 	if [ $PARTITIONED == 't' ];then
 		LOG_MSG "[INFO]:-Table $TARGETTBL is type Partitioned"
-		PARENT_TABLE_RELFILENODE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relfilenode from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
-		CHILD_NAME_ARRAY=(`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relname from pg_class where relfilenode in (select inhrelid from pg_inherits where inhparent=$PARENT_TABLE_RELFILENODE);"|$TR '\n' ' '`)
+		PARENT_TABLE_RELFILENODE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relfilenode from pg_class where relname='$TABLENAME' and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+		CHILD_NAME_ARRAY=(`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relname from pg_class where relkind='r' and relfilenode in (select inhrelid from pg_inherits where inhparent=$PARENT_TABLE_RELFILENODE);"|$TR '\n' ' '`)
 		for C_NAME in ${CHILD_NAME_ARRAY[@]}
 		do
 			LOG_MSG "[INFO]:-Has child table $C_NAME"
