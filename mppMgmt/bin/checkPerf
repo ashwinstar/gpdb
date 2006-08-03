@@ -156,6 +156,10 @@ class CheckPerf:
         except SyntaxError, e:
             logger.error("*** Received Syntax Error (%s)" % str(e))
             return None
+        except SystemExit:
+            raise
+        except KeyboardInterrupt:
+            raise
         except Exception, e:
             logger.error("*** Caught exception(obtainConfig) (%s) message: (%s )" \
                 % (str(e.__class__), str(e)))
@@ -273,6 +277,10 @@ class CheckPerf:
                         if intFileSize:
                             count = intFileSize/blockSize
                             self.ddOptions['Count']= count
+                except SystemExit:
+                    raise
+                except KeyboardInterrupt:
+                    raise
                 except Exception, e:
                     logger.error("*** Caught exception (obtainCount) (%s) message: "\
                         "(%s )" % (str(e.__class__), str(e)))
@@ -281,6 +289,10 @@ class CheckPerf:
         except KeyError, e:
             logger.error("Missing configuration %s  ", str(e))
             return False
+        except SystemExit: 
+            raise
+        except KeyboardInterrupt:
+            raise
         except Exception, e:
             logger.error("*** Caught exception (populateConfig) (%s) message: (%s )" \
                 % (str(e.__class__), str(e)))
@@ -374,6 +386,10 @@ class CheckPerf:
                         "%s: %s" % (hostID, runCntr, cmd, err)
                         sshSession.rptError=errStr
                         return False
+                    except SystemExit: 
+                        raise
+                    except KeyboardInterrupt:
+                        raise
                     except Exception, e:
                         errStr= "%s Iteration: %d Caught exception (rptCmd1)%s:"\
                         "%s executing %s " % \
@@ -416,6 +432,10 @@ class CheckPerf:
                 if runCntr>=rptTimes:
                     break
                 runCntr+=1
+        except SystemExit: 
+            raise
+        except KeyboardInterrupt:
+            raise
         except Exception, e:
             hostStr="%s : %s " % (cmd, hostID)
             errStr="*** Caught exception(rptCmd2): %s  (%s) message: (%s )" \
@@ -473,10 +493,11 @@ class CheckPerf:
                 for i in range(0,len(self.gSession.sessions)):
                     th=self.gSession.sessions[i]
                     th.killCMD(signal.SIGKILL)
-                self.pool.wait()
+                #self.pool.wait()
                 interrupted=True
                 break
         if interrupted:
+            print "Command Interrupted"
             return False
         return True
     
@@ -504,6 +525,10 @@ class CheckPerf:
                     return
         except IOError:
             pass
+        except SystemExit:
+            raise
+        except KeyboardInterrupt:
+            raise
         except Exception, e:
             errStr="Caught Exception (createRmtDir)(%s) : %s, %s " % (sshSession.host,
                 str(e.__class__), str(e))
@@ -520,6 +545,10 @@ class CheckPerf:
                     sshSession.host, stdout)
                 sshSession.dirTest=errStr
                 return
+        except SystemExit: 
+            raise
+        except KeyboardInterrupt:
+            raise
         except Exception, e:
             errStr="Caught Exception createRmtDir2(%s) : %s, %s " % (sshSession.host,
                 str(e.__class__), str(e))
@@ -589,11 +618,16 @@ class CheckPerf:
             except sshParamikoModule.runCommandException, err:
                 exitStatus=-1
                 outText="%s" % str(err)
+            except SystemExit: 
+                raise
+            except KeyboardInterrupt:
+                raise
             except Exception, e:
                 outText= "***Caught exception (execSSHCmd)%s: %s executing "\
                 "%s on %s." %\
                     (str(e.__class__), str(e), cmd, sshSession.host)
                 exitStatus=-1
+                logger.error(outTxt)
                 traceback.print_exc()
             outText=stdout+stderr
         else :
@@ -682,8 +716,9 @@ class CheckPerf:
                 (fileName, blkCount, blockSize)
             logger.info("Read I/O Command: %s" % rdCmd)
             readRes=self.cmdParallel(rdCmd, cmdTitle, tSize=blkCount*blockSize) 
-        self.checkDirPerms(dirName, False)
         if readRes:
+            if not self.checkDirPerms(dirName, False):
+                return False
             self.ddResults[eachDir]['Read']=readRes
             return True
         return False
@@ -723,8 +758,9 @@ class CheckPerf:
             logger.info("Write Command : %s " % wrCmd)
             writeRes=self.cmdParallel(wrCmd, cmdTitle, \
                 tSize=blkCount * blockSize)
-        self.checkDirPerms(dirName, False)
         if writeRes:
+            if not (self.checkDirPerms(dirName, False)):
+                return False
             self.ddResults[eachDir]['Write']=writeRes
             return True
         return False
@@ -809,6 +845,10 @@ class CheckPerf:
                     rdRes.printIOResults(tSize, tRence, detailed)
                 else :
                     print " **** READ IO RESULTS NOT PRESENT ****"
+        except SystemExit: 
+            raise
+        except KeyboardInterrupt:
+            raise
         except Exception, e:
             print "*** Caught exception (%s) message: (%s )" \
                 % (str(e.__class__), str(e))
@@ -926,6 +966,10 @@ def checkPerfMain(argv):
         print __doc__
         print "\nReceived Value Error : %s \n" % str(e)
         sys.exit(1)
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        raise
     except Exception, e:
         print "*** Caught exception (%s) message: (%s )" \
             % (str(e.__class__), str(e))
@@ -976,6 +1020,10 @@ def checkPerfMain(argv):
     except IOError:
         print 'Error opening file named: ' + hostFile 
         raise SystemExit, 1
+    except SystemExit:
+        raise
+    except  KeyboardInterrupt:
+        raise
     except Exception, e:
         print "*** Caught exception (%s) message: (%s )" \
             % (str(e.__class__), str(e))
@@ -1021,29 +1069,36 @@ def checkPerfMain(argv):
     #
     chkPerf.getHostInfo(verbose)
 
-    if chkPerf.ddTestFlag:
-        if(chkPerf.ddTest()):
-            chkPerf.printDirResults(detailed=detFlag)
-    if chkPerf.streamTestFlag:
-        if not chkPerf.options['baseDir']:
-            chkPerf.options['baseDir']='tmpDir'
-        if not chkPerf.createBaseDir():
-            return False
-        strmLPath=sys.path[0]+'/lib/stream'
-        strmRPath= chkPerf.options['baseDir']+'/'+ 'stream'
-        strmObj=checkPerfStream.StreamTest(chkPerf.gSession, strmLPath, \
-            strmRPath, chkPerf.logger)
-        if not strmObj.execStream():
-            Logger.error("Stream Test failed\n")
-        else :
-            tRence=0
-            try:
-                tRence=chkPerf.options['Tolerance']
-            except KeyError:
-                pass
-            strmObj.printStrmSummary(tRence=tRence, detailed=detFlag,
-                hostList=hostList)
-
+    try:
+        if chkPerf.ddTestFlag:
+            if(chkPerf.ddTest()):
+                chkPerf.printDirResults(detailed=detFlag)
+            else :
+                raise SystemExit, 1
+        chkPerf.streamTestFlag=True
+        if chkPerf.streamTestFlag:
+            if not chkPerf.options['baseDir']:
+                chkPerf.options['baseDir']='tmpDir'
+            if not chkPerf.createBaseDir():
+                return False
+            strmLPath=sys.path[0]+'/lib/stream'
+            strmRPath= chkPerf.options['baseDir']+'/'+ 'stream'
+            strmObj=checkPerfStream.StreamTest(chkPerf.gSession, strmLPath, \
+                strmRPath, chkPerf.logger)
+            if not strmObj.execStream():
+                Logger.error("Stream Test failed\n")
+            else :
+                tRence=0
+                try:
+                    tRence=chkPerf.options['Tolerance']
+                except KeyError:
+                    pass
+                strmObj.printStrmSummary(tRence=tRence, detailed=detFlag,\
+                    hostList=hostList)
+    except KeyboardInterrupt:
+        print "Received KeyBoard Interrupt"
+        raise SystemExit, 1
+        
 if __name__ == '__main__': 
     #print sys.argv
     checkPerfMain(sys.argv)

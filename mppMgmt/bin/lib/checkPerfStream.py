@@ -53,8 +53,12 @@ class StreamTest:
         resDict={}
         logger.info("Copyting %s to %s on all hosts " % (self.strmLPath, \
             self.strmRPath))
-        self.gSession.runCommand('scp', [self.strmLPath, self.strmRPath], \
-            quiet=True, retDict=True, resDict=resDict)
+        interrupted=self.gSession.runCommand('scp', [self.strmLPath, \
+            self.strmRPath],  quiet=True, retDict=True, resDict=resDict, \
+                useHost=True)
+        if interrupted:
+            logger.error("Copying stream to remote hosts is interrupted.")
+            return False
         retVal=True
         for eachHost in resDict.keys():
             if resDict[eachHost]:
@@ -64,8 +68,11 @@ class StreamTest:
         chmodCmd="chmod +x %s" % self.strmRPath
         logger.info("Executing %s on all hosts " % chmodCmd)
         resDict={}
-        self.gSession.runCommand('ssh', [chmodCmd], quiet=True, retDict=True,
-            resDict=resDict)
+        interrupted=self.gSession.runCommand('ssh', [chmodCmd], quiet=True, \
+            retDict=True, resDict=resDict, useHost=True)
+        if interrupted:
+            logger.error("Copying stream to remote hosts is interrupted.")
+            return False
         retVal=True
         for eachHost in resDict.keys():
             if resDict[eachHost]:
@@ -86,8 +93,11 @@ class StreamTest:
             self.strmRPath
         logger.info("Executing %s on all hosts " % strmCmd)
         resDict={}
-        self.gSession.runCommand('ssh', [strmCmd], quiet=True, retDict=True,
-            resDict=resDict, useHost=True)
+        interrupted=self.gSession.runCommand('ssh', [strmCmd], \
+                quiet=True, retDict=True, resDict=resDict, useHost=True)
+        if interrupted:
+            logger.error("Executing stream on remote hosts is interrupted.")
+            return False
         self.resDict=resDict
         return True
 

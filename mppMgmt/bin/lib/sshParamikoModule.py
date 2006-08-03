@@ -22,6 +22,7 @@ if sys.version_info < (2, 3):
 
 import traceback
 import socket
+import select
 import commands
 from stat import *
 
@@ -255,6 +256,11 @@ class sshSession(threading.Thread):
         except runCommandException, err:
             logger.info('Error Executing %s on %s %s',  \
                 command, self.userHost, err)
+        except SystemExit:
+            raise
+        except KeyboardInterrupt:
+            logger.debug("execCmd Received KeyBoardInterrupt")
+            raise
         except Exception, e:
             logger.error('*** Caught execCmd exception %s: %s executing %s on %s ', 
                    str(e.__class__), str(e), command, self.userHost)
@@ -283,10 +289,16 @@ class sshSession(threading.Thread):
             channel.exec_command(command)
         except paramiko.SSHException, e:
             raise runCommandException(str(e))
+        except SystemExit:
+            raise
+        except KeyboardInterrupt:
+            logger.debug("runCmd Received KeyBoardInterrupt")
+            raise
         except Exception, e:
             errMsg="*** Caught exception runCommand (%s) message: (%s ), command (%s)"\
                 " host : %s " % (str(e.__class__), str(e), command, self.host)
             logger.error(errMsg)
+            print errMsg
             raise runCommandException(errMsg)
         logger.debug(" %s Waiting for error Code: (%s)", self.userHost, command)
         exit_status=0
@@ -294,34 +306,59 @@ class sshSession(threading.Thread):
         # TODO Need to implement a timeout here 
         # However, taking care of CTRL-C would really solve the issue here.
         #
-        stdout = ""
-        stderr = ""
-        channel.set_combine_stderr(True)
-        recvBlk=BLK_SIZE
-        if True or channel.recv_ready():
-            while True:
-                recvBytes= channel.recv(recvBlk)
-                if not recvBytes:
-                    break
-                stdout+= recvBytes
-                logger.debug("%s len = %d " %( self.userHost, len(recvBytes)))
-                if len(recvBytes) == recvBlk:
-                    recvBlk *= 2
-        exitStatus = channel.recv_exit_status()
-        logger.debug("%s stdout = %d \n" % (self.userHost, len(stdout)))
-        #exit_status=channel.recv_exit_status()
-        logger.debug("Error Code : %d %s executed on %s \n", exit_status,
-            command, self.host)
+        try:
+            stdout = ""
+            stderr = ""
+            channel.set_combine_stderr(True)
+            channel.setblocking(0)
+            recvBlk=BLK_SIZE
+            try:
+                while channel and select.select([channel], [], [], 0.1):
+                    try:
+                        recvBytes= channel.recv(recvBlk)
+                        if not recvBytes:
+                            break
+                        stdout+= recvBytes
+                        logger.debug("%s len = %d " %( self.userHost, 
+                                len(recvBytes)))
+                        if len(recvBytes) == recvBlk:
+                            recvBlk *= 2
+                        select.select([], [], [], 0.1)
+                    except select.error:
+                       pass
+                       #print "Received Select (block) Error"
+                       # raise KeyboardInterrupt
+                    except socket.timeout:
+                        pass
+            except select.error:
+                pass
+                #print "Received Select Error"
+                #raise KeyboardInterrupt
+            except KeyboardInterrupt:
+                logger.debug("runCmd(Waiting) Received KeyBoardInterrupt")
+                raise
+            exitStatus = channel.recv_exit_status()
+            logger.debug("%s stdout = %d \n" % (self.userHost, len(stdout)))
+            #exit_status=channel.recv_exit_status()
+            logger.debug("Error Code : %d %s executed on %s \n", exit_status,
+                command, self.host)
+            # Only Log first 1024 Bytes.
+            logger.debug("Command = <%s> exit_status=%d \n stdout=%d \n",
+                command, exit_status, len(stdout))
+            self.stdout=stdout
+            self.stderr=stderr
+            self.exitStatus=exit_status
+        except KeyboardInterrupt:
+            logger.debug("runCmd(Executing) Received KeyBoardInterrupt")
+            if channel:
+                channel.close()
+                channel=None
+                self.chan=None
+            raise
         if channel:
             channel.close()
             channel=None
             self.chan=None
-        # Only Log first 1024 Bytes.
-        logger.debug("Command = <%s> exit_status=%d \n stdout=%d \n",
-            command, exit_status, len(stdout))
-        self.stdout=stdout
-        self.stderr=stderr
-        self.exitStatus=exit_status
         return (self.exitStatus, self.stdout, self.stderr)
 
     def killCMD(self,sig=signal.SIGTERM):
@@ -350,12 +387,17 @@ class sshSession(threading.Thread):
             else:
                 self.lastoutput = "No interface selected"
             return self.lastoutput
+        except SystemExit:
+            raise
+        except KeyboardInterrupt:
+            logger.debug("run Received KeyBoard Interrupt")
+            raise
         except Exception, e:
             errMsg="%s Caught exception run (%s) message: (%s ), "\
             "run(%s:%s)" % (self.userHost, str(e.__class__), str(e),   \
                 self.cmd, self.args[0])
             logger.error(errMsg)
-            return False
+            return None
 
     def exists(self, file):
         "Retrieve file permissions of specified remote file."
@@ -1165,14 +1207,38 @@ class sshSession(threading.Thread):
             self.authMode='PASSWORD'
         return True
 
+
 if __name__ == '__main__': 
-    #gSessionUtil.gSessionAuth()
     try :
-        a = sshSession('testuser2',22,'supertracs')
+        a = sshSession('ksrikanth',22,'localhost')
         a.makeReady(authenticate=True)
         a.setCMD('ssh', ['uname -a'])
-        res=a.run()
-        print res
+        print "Authenticated..."
+        #signal.signal(signal.SIGTERM, handlerTERM)
+        cmd='date; sleep 1; date '
+        print "Running command"
+        try:
+            print "executing %s " % cmd
+            res=a.execCmd(cmd)
+            print res
+            #a.setCMD('ssh', ['date; sleep 1; date '])
+            #res=a.run()
+            #print res
+            #print "Copying File"
+            #a.setCMD('scp', ['/Users/ksrikanth/fileOne', 'fileOne'])
+            #res=a.run()
+            #print res
+            #a.setCMD('ssh', ['cat fileOne'])
+            a.setCMD('ssh', ['~/tmpdir1/stream'])
+            res=a.run()
+            print res
+        except SystemExit:
+            raise
+        except KeyboardInterrupt:
+            print "Received KeyBoard Interrupt"
+            raise SystemExit, 2
+        raise SystemExit, 0
+
         a.checkKeyFiles()
         if a.keyFileList:
             for eFile in a.keyFileList:
@@ -1187,18 +1253,10 @@ if __name__ == '__main__':
             'buzzard2', \
             'buzzard3', \
             'buzzard1' ])
+    except SystemExit:
+        raise
     except Exception, e:
         print ('*** Caught exception %s:%s ',  
                 str(e.__class__),  str(e))
     raise  SystemExit, 0
-    try:
-        a.setCMD('ssh', ['uname -a'])
-        #a.setCMD('ssh', ['uname -a; sleep 2; uname -i; uname -m'])
-        #print '%s' % (a.run())
-        #a.setCMD('scp', ['~/xx.sh', 'x1.sh'])
-        #a.run()
-        gSessionAuth()
-    except NOTREADY, e:
-        print '%s:%s' % (e,'ssh session for ' + a.hostname + \
-            ' not ready for commands.')
 

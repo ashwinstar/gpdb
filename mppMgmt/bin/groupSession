@@ -126,6 +126,8 @@ class groupSession(cmd.Cmd):
             errStr="*** Received NOTREADY Exception Error %s "% str(e)
             print errStr
             raise SystemExit, -1
+        except KeyboardInterrupt:
+            raise
         except SystemExit:
             raise
         except Exception, e:
@@ -142,7 +144,17 @@ class groupSession(cmd.Cmd):
         args = [line,None]
         
         #Run the command on all sessions
-        interrupted = self.runCommand(cmd,args,line)
+        try:
+            interrupted = self.runCommand(cmd,args,line)
+            if interrupted:
+                print 
+                print "Command is interrupted."
+                print
+        except SystemExit:
+            raise
+        except KeyboardInterrupt:
+            raise
+
 
     def do_exchangeKeys(self, line):
         """ Generate ssh keys with each session, and update public keys 
@@ -150,6 +162,8 @@ class groupSession(cmd.Cmd):
         """
         try:
             self.exchangeKeys()
+        except KeyboardInterrupt:
+            raise
         except Exception, e:
             print "*** Caught exception (%s) message: (%s )" \
                 % (str(e.__class__), str(e))
@@ -194,10 +208,11 @@ class groupSession(cmd.Cmd):
         #Run the command on all sessions
         try:
             interrupted = self.runCommand(cmd,args)
+        except KeyboardInterrupt:
+            raise
         except Exception, e:
             errStr="Caught Exception %s: %s "% \
                 (str(e.__class__),  str(e))
-            logger.error(errStr)
             if self.debug:
                 traceback.print_exc()
         #Has to Reuturn String for runCommand in groupSession
@@ -290,18 +305,19 @@ class groupSession(cmd.Cmd):
         while True:
             try:
                 self.pool.poll(block=True)
+                #self.pool.poll(block=False)
             except (threadpool.NoResultsPending):
                 interrupted=False
                 break
             except (KeyboardInterrupt):
-                logger.info("Received KeyBoard Interrupt")
+                #self.pool.wait()
                 for i in range(begin,end):
                     th = self.sessions[i]
                     th.killCMD(signal.SIGKILL)
-                self.pool.wait()
                 interrupted=True
                 break
-
+        if interrupted:
+            return interrupted
         if not quiet:
           if not interrupted:
             #Print the output
@@ -315,8 +331,9 @@ class groupSession(cmd.Cmd):
                         print '%-16s: %-s' % (th.userHost, str),
                       lastTmp = th.lastoutput
           else:
+                print
                 print 'Command interrupted.'
-
+                print
           print ""
         if retDict:
             if not interrupted:
@@ -543,7 +560,9 @@ class groupSession(cmd.Cmd):
                 interrupted = True
                 break
         if interrupted:
+            print
             print "Command Interrupted"
+            print
             return False
         #
         # Get the public Keys to 
@@ -565,7 +584,7 @@ class groupSession(cmd.Cmd):
                 interrupted = True
                 break
         if interrupted:
-            print "Command Interrupted"
+            print "\n Command Interrupted\n"
             return False
         print "\n Generating authorized keys file for all sessions.\n"
         gsAuth=lSSHHome+'/'+'gSession.pub'
@@ -595,7 +614,7 @@ class groupSession(cmd.Cmd):
                 interrupted = True
                 break
         if interrupted:
-            print "Command Interrupted"
+            print "\nCommand Interrupted\n"
             return False
         print "Public keys are exchanged across  all sessions.\n\n"
         print "\nDo you want to update ~/.ssh/known_hosts entries in all"\
@@ -791,8 +810,13 @@ if __name__ == '__main__':
 
         #Run commands
         gsession.cmdloop()
-
         print 'Done with group session.'
+    except KeyboardInterrupt:
+        print "Received KeyboardInterrupt"
+        raise SystemExit, 1
     except Exception, e:
+        errStr="*** Received Exception Error %s %s "% \
+                (str(e.__class__),str(e))
+        traceback.print_exc()
         print "Exiting.."
         raise SystemExit, 1

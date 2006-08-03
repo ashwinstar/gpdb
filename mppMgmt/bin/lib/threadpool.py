@@ -35,6 +35,7 @@ __version__ = "1.1"
 __date__ = "2005-07-19"
 
 import threading, Queue
+import time
 
 class NoResultsPending(Exception):
     """All work requests have been processed."""
@@ -172,7 +173,42 @@ class ThreadPool:
                 elif block and not self.workers:
                     raise NoWorkersAvailable
                 # get back next results
-                request, result = self.resultsQueue.get(block=block)
+                if block:
+                    request, result = self.resultsQueue.get(block=block, 
+                            timeout=0.1)
+                else:
+                    request, result = self.resultsQueue.get(block=block)
+                # and hand them to the callback, if any
+                if request.callback:
+                    request.callback(request, result)
+                del self.workRequests[request.requestID]
+            except Queue.Empty:
+                break
+
+
+    def pollSave(self, block=False):
+        """Process any new results in the queue."""
+        while 1:
+            try:
+                # still results pending?
+                if not self.workRequests:
+                    raise NoResultsPending
+                # are there still workers to process remaining requests?
+                elif block and not self.workers:
+                    raise NoWorkersAvailable
+                # get back next results
+                if block:
+                    while 1:
+                        try:
+                            request, result = self.resultsQueue.get(block=block, 
+                                timeout=0.1)
+                            break
+                        except Queue.Empty:
+                            time.sleep(0.5)
+                        except KeyboardInterrupt:
+                            raise
+                else:
+                    request, result = self.resultsQueue.get(block=block)
                 # and hand them to the callback, if any
                 if request.callback:
                     request.callback(request, result)

@@ -32,6 +32,7 @@ gpLink:
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@echo "creating groupSession.py link"
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@rm -rf $(LIB_DIR)/groupSession.py
 	@cd $(LIB_DIR)/; ln -s ../groupSession groupSession.py ; cd ../ ;
 
 
