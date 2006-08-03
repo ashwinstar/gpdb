@@ -18,7 +18,9 @@
 #include "utils/date.h"
 #include "utils/numeric.h"
 #include "utils/memutils.h"
-
+#include "utils/builtins.h"
+#include "utils/lsyscache.h"
+#include "utils/syscache.h"
 
 /* A MemoryContext used within the tuple serialize code, so that freeing of
  * space is SUPAFAST.  It is initialized in the first call to InitSerTupInfo()
@@ -102,25 +104,70 @@ InitSerTupInfo(TupleDesc tupdesc, SerTupInfo * pSerInfo)
 		 * operations for some attribute-types.
 		 */
 		attrInfo->atttypid = tupdesc->attrs[i]->atttypid;
+		
+		/*
+		 * Ok, we want the Binary input/output routines for the type if they exist,
+		 * else we want the normal text input/output routines.
+		 * 
+		 * User defined types might or might not have binary routines.
+		 * 
+		 * getTypeBinaryOutputInfo throws an error if we try to call it to get
+		 * the binary output routine and one doesn't exist, so let's not call that.
+		 */
+		{
+			HeapTuple	typeTuple;
+			Form_pg_type pt;
+		
+			typeTuple = SearchSysCache(TYPEOID,
+									   ObjectIdGetDatum(attrInfo->atttypid),
+									   0, 0, 0);
+			if (!HeapTupleIsValid(typeTuple))
+				elog(ERROR, "cache lookup failed for type %u", attrInfo->atttypid);
+			pt = (Form_pg_type) GETSTRUCT(typeTuple);
+		
+			if (!pt->typisdefined)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("type %s is only a shell",
+								format_type_be(attrInfo->atttypid))));
+								
+			/* If we don't have both binary routines */
+			if (!OidIsValid(pt->typsend) || !OidIsValid(pt->typreceive))
+			{
+				/* Use the normal text routines (slower) */
+				if (!OidIsValid(pt->typoutput))
+					ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_FUNCTION),
+						 errmsg("no output function available for type %s",
+								format_type_be(attrInfo->atttypid))));
+				if (!OidIsValid(pt->typinput))
+					ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_FUNCTION),
+						 errmsg("no input function available for type %s",
+								format_type_be(attrInfo->atttypid))));
+		
+				attrInfo->typsend = pt->typoutput;
+				attrInfo->typisvarlena = (!pt->typbyval) && (pt->typlen == -1);
+				attrInfo->typrecv = pt->typinput;
+				attrInfo->recv_typio_param = getTypeIOParam(typeTuple);
+				
+			}
+			else
+			{
+				/* Use binary routines */
+		
+				attrInfo->typsend = pt->typsend;
+				attrInfo->typisvarlena = (!pt->typbyval) && (pt->typlen == -1);
+				attrInfo->typrecv  = pt->typreceive;
+				attrInfo->recv_typio_param = getTypeIOParam(typeTuple);
+				
+			}
+			
+			ReleaseSysCache(typeTuple);
+		}
 
-		/* Info for sending the type. */
-		if(attrInfo->atttypid == ACLITEMOID || attrInfo->atttypid == 210 /* storage manager */ )
-			getTypeOutputInfo(attrInfo->atttypid, &attrInfo->typsend,
-					   &attrInfo->typisvarlena);
-		else
-			getTypeBinaryOutputInfo(attrInfo->atttypid, &attrInfo->typsend,
-					   &attrInfo->typisvarlena);
-
+		
 		fmgr_info(attrInfo->typsend, &attrInfo->send_finfo);
-
-		/* Info for receiving the type. */
-
-		if(attrInfo->atttypid == ACLITEMOID || attrInfo->atttypid == 210 /* storage manager */)
-			getTypeInputInfo(attrInfo->atttypid, &attrInfo->typrecv,
-							   &attrInfo->recv_typio_param);
-		else
-			getTypeBinaryInputInfo(attrInfo->atttypid, &attrInfo->typrecv,
-							   &attrInfo->recv_typio_param);
 
 		fmgr_info(attrInfo->typrecv, &attrInfo->recv_finfo);
 
