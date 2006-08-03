@@ -1727,6 +1727,17 @@ _outRemoveFuncStmt(StringInfo str, RemoveFuncStmt *node)
 
 
 static void
+_outDefineStmt(StringInfo str, DefineStmt *node)
+{
+	WRITE_NODE_TYPE("DEFINESTMT");
+	WRITE_ENUM_FIELD(kind, ObjectType);
+	WRITE_NODE_FIELD(defnames);
+	WRITE_NODE_FIELD(definition);
+	WRITE_OID_FIELD(newOid);
+	
+}
+
+static void
 _outTransactionStmt(StringInfo str, TransactionStmt *node)
 {
 	WRITE_NODE_TYPE("TRANSACTIONSTMT");
@@ -1979,6 +1990,7 @@ _outQuery(StringInfo str, Query *node)
 			
 			case T_CreateFunctionStmt:
 			case T_RemoveFuncStmt:
+			case T_DefineStmt:
 			
 			case T_TransactionStmt:
 			case T_CdbExecStmt:
@@ -2767,6 +2779,10 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_RemoveFuncStmt:
 				_outRemoveFuncStmt(str, obj);
+				break;
+				
+			case T_DefineStmt:
+				_outDefineStmt(str,obj);
 				break;
 			
 				

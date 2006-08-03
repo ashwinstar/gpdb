@@ -444,17 +444,17 @@ CdbSentry(CdbAction dispatch, Node *parsetree, const char *altname)
 			return;
 
 		case CDB_NONCE:
-			ereport(ERROR, (
+			ereport(WARNING, (
 							errcode(ERRCODE_MPP_FEATURE_NOT_YET),
 							errmsg("Bizgres MPP support for %s is not available yet.", cmdname)
 							));
-
+			return;
 		case CDB_REJECT:
 			ereport(ERROR, (
 							errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
 						  errmsg("Bizgres MPP does not support %s.", cmdname)
 							));
-
+			return;
 		default:
 			Assert(false);		/* Should be impossible */
 	}
@@ -912,20 +912,19 @@ ProcessUtility(Node *parsetree,
 			 *
 			 */
 		case T_DefineStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
 			{
 				DefineStmt *stmt = (DefineStmt *) parsetree;
 
 				switch (stmt->kind)
 				{
 					case OBJECT_AGGREGATE:
-						DefineAggregate(stmt->defnames, stmt->definition);
+						DefineAggregate(stmt->defnames, stmt->definition, stmt->newOid);
 						break;
 					case OBJECT_OPERATOR:
-						DefineOperator(stmt->defnames, stmt->definition);
+						DefineOperator(stmt->defnames, stmt->definition, stmt->newOid);
 						break;
 					case OBJECT_TYPE:
-						DefineType(stmt->defnames, stmt->definition);
+						DefineType(stmt->defnames, stmt->definition, stmt->newOid);
 						break;
 					default:
 						elog(ERROR, "unrecognized define stmt type: %d",
@@ -1170,7 +1169,6 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateTrigStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
 			CreateTrigger((CreateTrigStmt *) parsetree, false);
 			break;
 

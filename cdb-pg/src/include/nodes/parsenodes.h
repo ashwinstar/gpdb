@@ -1241,6 +1241,7 @@ typedef struct DefineStmt
 	ObjectType	kind;			/* aggregate, operator, type */
 	List	   *defnames;		/* qualified name (list of Value strings) */
 	List	   *definition;		/* a list of DefElem */
+	Oid			newOid;			/* for MPP only, the new Oid of the object */
 } DefineStmt;
 
 /* ----------------------

@@ -47,6 +47,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
 
 /*
  * DefineOperator
@@ -57,7 +59,7 @@
  * 'parameters' is a list of DefElem
  */
 void
-DefineOperator(List *names, List *parameters)
+DefineOperator(List *names, List *parameters, Oid newOid)
 {
 	char	   *oprName;
 	Oid			oprNamespace;
@@ -78,6 +80,7 @@ DefineOperator(List *names, List *parameters)
 	List	   *ltCompareName = NIL;	/* optional < compare operator */
 	List	   *gtCompareName = NIL;	/* optional > compare operator */
 	ListCell   *pl;
+	Oid    opOid;
 
 	/* Convert list of names to a name and namespace */
 	oprNamespace = QualifiedNameGetCreationNamespace(names, &oprName);
@@ -177,7 +180,7 @@ DefineOperator(List *names, List *parameters)
 	/*
 	 * now have OperatorCreate do all the work..
 	 */
-	OperatorCreate(oprName,		/* operator name */
+	opOid = OperatorCreate(oprName,		/* operator name */
 				   oprNamespace,	/* namespace */
 				   typeId1,		/* left type id */
 				   typeId2,		/* right type id */
@@ -191,6 +194,16 @@ DefineOperator(List *names, List *parameters)
 				   rightSortName,		/* optional right sort operator */
 				   ltCompareName,		/* optional < comparison op */
 				   gtCompareName);		/* optional < comparison op */
+				   
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		DefineStmt * stmt = makeNode(DefineStmt);
+		stmt->kind = OBJECT_OPERATOR;
+		stmt->defnames = names;
+		stmt->definition = parameters;
+		stmt->newOid = opOid;
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 }
 
 

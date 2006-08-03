@@ -61,14 +61,14 @@ extern void AlterFunctionNamespace(List *name, List *argtypes,
 					   const char *newschema);
 
 /* commands/operatorcmds.c */
-extern void DefineOperator(List *names, List *parameters);
+extern void DefineOperator(List *names, List *parameters, Oid newOid);
 extern void RemoveOperator(RemoveOperStmt *stmt);
 extern void RemoveOperatorById(Oid operOid);
 extern void AlterOperatorOwner(List *name, TypeName *typeName1,
 				   TypeName *typename2, Oid newOwnerId);
 
 /* commands/aggregatecmds.c */
-extern void DefineAggregate(List *names, List *parameters);
+extern void DefineAggregate(List *names, List *parameters, Oid newOid);
 extern void RemoveAggregate(RemoveAggrStmt *stmt);
 extern void RenameAggregate(List *name, TypeName *basetype, const char *newname);
 extern void AlterAggregateOwner(List *name, TypeName *basetype, Oid newOwnerId);

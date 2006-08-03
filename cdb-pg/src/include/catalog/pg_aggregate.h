@@ -184,7 +184,7 @@ DATA(insert ( 6013	array_add 	array_add		  -					0	1007	"{}" ));
 /*
  * prototypes for functions in pg_aggregate.c
  */
-extern void AggregateCreate(const char *aggName,
+extern Oid AggregateCreate(const char *aggName,
 				Oid aggNamespace,
 				Oid aggBaseType,
 				List *aggtransfnName,
@@ -193,5 +193,18 @@ extern void AggregateCreate(const char *aggName,
 				List *aggsortopName,
 				Oid aggTransType,
 				const char *agginitval);
+
+/* special for MPP */				
+extern Oid
+AggregateCreateWithOid(const char *aggName,
+				Oid aggNamespace,
+				Oid aggBaseType,
+				List *aggtransfnName,
+				List *aggprelimfnName,
+				List *aggfinalfnName,
+				List *aggsortopName,
+				Oid aggTransType,
+				const char *agginitval,
+				Oid procOid);
 
 #endif   /* PG_AGGREGATE_H */

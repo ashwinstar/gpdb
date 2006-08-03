@@ -881,7 +881,7 @@ DATA(insert OID = 2590 (  "|&>"    PGNSP PGUID b f 718 718	16	 0	 0	 0	 0	 0	 0 
 /*
  * function prototypes
  */
-extern void OperatorCreate(const char *operatorName,
+extern Oid OperatorCreate(const char *operatorName,
 			   Oid operatorNamespace,
 			   Oid leftTypeId,
 			   Oid rightTypeId,
@@ -895,5 +895,21 @@ extern void OperatorCreate(const char *operatorName,
 			   List *rightSortName,
 			   List *ltCompareName,
 			   List *gtCompareName);
+			   
+extern Oid OperatorCreateWithOid(const char *operatorName,
+			   Oid operatorNamespace,
+			   Oid leftTypeId,
+			   Oid rightTypeId,
+			   List *procedureName,
+			   List *commutatorName,
+			   List *negatorName,
+			   List *restrictionName,
+			   List *joinName,
+			   bool canHash,
+			   List *leftSortName,
+			   List *rightSortName,
+			   List *ltCompareName,
+			   List *gtCompareName,
+			   Oid newOid);
 
 #endif   /* PG_OPERATOR_H */

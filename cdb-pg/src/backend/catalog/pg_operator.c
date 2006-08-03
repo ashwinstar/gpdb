@@ -358,7 +358,7 @@ OperatorShellMake(const char *operatorName,
  *	 create a tuple using heap_formtuple
  *	 call simple_heap_insert
  */
-void
+Oid
 OperatorCreate(const char *operatorName,
 			   Oid operatorNamespace,
 			   Oid leftTypeId,
@@ -373,6 +373,43 @@ OperatorCreate(const char *operatorName,
 			   List *rightSortName,
 			   List *ltCompareName,
 			   List *gtCompareName)
+{
+	return
+	OperatorCreateWithOid(operatorName,
+			   operatorNamespace,
+			   leftTypeId,
+			   rightTypeId,
+			   procedureName,
+			   commutatorName,
+			   negatorName,
+			   restrictionName,
+			   joinName,
+			   canHash,
+			   leftSortName,
+			   rightSortName,
+			   ltCompareName,
+			   gtCompareName,
+			   0);
+}
+			   
+			   
+			   
+Oid
+OperatorCreateWithOid(const char *operatorName,
+			   Oid operatorNamespace,
+			   Oid leftTypeId,
+			   Oid rightTypeId,
+			   List *procedureName,
+			   List *commutatorName,
+			   List *negatorName,
+			   List *restrictionName,
+			   List *joinName,
+			   bool canHash,
+			   List *leftSortName,
+			   List *rightSortName,
+			   List *ltCompareName,
+			   List *gtCompareName,
+			   Oid newOid)
 {
 	Relation	pg_operator_desc;
 	HeapTuple	tup;
@@ -444,6 +481,7 @@ OperatorCreate(const char *operatorName,
 				(errcode(ERRCODE_DUPLICATE_FUNCTION),
 				 errmsg("operator %s already exists",
 						operatorName)));
+
 
 	/*
 	 * At this point, if operatorObjectId is not InvalidOid then we are
@@ -646,6 +684,9 @@ OperatorCreate(const char *operatorName,
 	{
 		tupDesc = pg_operator_desc->rd_att;
 		tup = heap_formtuple(tupDesc, values, nulls);
+		
+		if (newOid != (Oid) 0)
+			HeapTupleSetOid(tup, newOid);
 
 		operatorObjectId = simple_heap_insert(pg_operator_desc, tup);
 	}
@@ -674,6 +715,8 @@ OperatorCreate(const char *operatorName,
 
 	if (OidIsValid(commutatorId) || OidIsValid(negatorId))
 		OperatorUpd(operatorObjectId, commutatorId, negatorId);
+		
+	return operatorObjectId;
 }
 
 /*

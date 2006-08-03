@@ -1732,6 +1732,17 @@ _outRemoveFuncStmt(StringInfo str, RemoveFuncStmt *node)
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
 }
 
+static void
+_outDefineStmt(StringInfo str, DefineStmt *node)
+{
+	WRITE_NODE_TYPE("DEFINESTMT");
+	WRITE_ENUM_FIELD(kind, ObjectType);
+	WRITE_NODE_FIELD(defnames);
+	WRITE_NODE_FIELD(definition);
+	WRITE_OID_FIELD(newOid);
+	
+}
+
 
 static void
 _outTransactionStmt(StringInfo str, TransactionStmt *node)
@@ -1995,6 +2006,7 @@ _outQuery(StringInfo str, Query *node)
 			case T_ReindexStmt:
 			case T_VariableResetStmt:
 			case T_CreateTrigStmt:
+			case T_DefineStmt:
 				WRITE_NODE_FIELD(utilityStmt);
 				break;
 			default:
@@ -2770,6 +2782,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_RemoveFuncStmt:
 				_outRemoveFuncStmt(str, obj);
+				break;
+			case T_DefineStmt:
+				_outDefineStmt(str,obj);
 				break;
 			
 				

@@ -50,6 +50,8 @@ bool		Mpp_is_writer; 		/* is this qExec a "writer" process. */
 
 int 		mpp_session_id;    /* global unique id for session. */
 
+char       *mpp_qd_callback_info;	/* info for QE to call back to QD */
+
 int         mpp_command_count;          /* num of commands from client */
 
 bool		Debug_print_prelim_plan;	/* Shall we log argument of

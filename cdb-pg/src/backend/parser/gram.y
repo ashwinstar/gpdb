@@ -2688,6 +2688,7 @@ DefineStmt:
 					n->kind = OBJECT_AGGREGATE;
 					n->defnames = $3;
 					n->definition = $4;
+					n->newOid = 0;
 					$$ = (Node *)n;
 				}
 			| CREATE OPERATOR any_operator definition
@@ -2696,6 +2697,7 @@ DefineStmt:
 					n->kind = OBJECT_OPERATOR;
 					n->defnames = $3;
 					n->definition = $4;
+					n->newOid = 0;
 					$$ = (Node *)n;
 				}
 			| CREATE TYPE_P any_name definition
@@ -2704,6 +2706,7 @@ DefineStmt:
 					n->kind = OBJECT_TYPE;
 					n->defnames = $3;
 					n->definition = $4;
+					n->newOid = 0;
 					$$ = (Node *)n;
 				}
 			| CREATE TYPE_P any_name AS '(' TableFuncElementList ')'

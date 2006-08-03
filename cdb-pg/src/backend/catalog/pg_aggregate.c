@@ -40,7 +40,7 @@ static Oid lookup_agg_function(List *fnName, int nargs, Oid *input_types,
 /*
  * AggregateCreate
  */
-void
+Oid
 AggregateCreate(const char *aggName,
 				Oid aggNamespace,
 				Oid aggBaseType,
@@ -50,6 +50,26 @@ AggregateCreate(const char *aggName,
 				List *aggsortopName,
 				Oid aggTransType,
 				const char *agginitval)
+{
+	return
+	AggregateCreateWithOid(aggName, aggNamespace, aggBaseType,
+			aggtransfnName, aggprelimfnName, aggfinalfnName, aggsortopName,
+			aggTransType, agginitval, 0);
+}
+				
+				
+				
+Oid
+AggregateCreateWithOid(const char *aggName,
+				Oid aggNamespace,
+				Oid aggBaseType,
+				List *aggtransfnName,
+				List *aggprelimfnName,
+				List *aggfinalfnName,
+				List *aggsortopName,
+				Oid aggTransType,
+				const char *agginitval,
+				Oid procOid)
 {
 	Relation	aggdesc;
 	HeapTuple	tup;
@@ -64,7 +84,6 @@ AggregateCreate(const char *aggName,
 	Oid			finaltype;
 	Oid			fnArgs[2];		/* we only deal with 1- and 2-arg fns */
 	int			nargs_transfn;
-	Oid			procOid;
 	TupleDesc	tupDesc;
 	int			i;
 	ObjectAddress myself,
@@ -190,8 +209,6 @@ AggregateCreate(const char *aggName,
 	 * aggregate.  (This could fail if there's already a conflicting entry.)
 	 */
 	fnArgs[0] = aggBaseType;
-	
-	procOid = 0;
 
 	procOid = ProcedureCreate(aggName,
 							  aggNamespace,
@@ -286,6 +303,8 @@ AggregateCreate(const char *aggName,
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 	}
+	
+	return procOid;
 }
 
 /*

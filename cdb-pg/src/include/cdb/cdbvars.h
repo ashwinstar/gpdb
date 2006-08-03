@@ -152,6 +152,15 @@ extern bool Mpp_is_writer;
  */
 extern int mpp_session_id; ;
 
+
+/* Parameter mpp_qd_callback_info
+ * 
+ * This is the port of the QD, sent down to the QEs
+ */
+ 
+extern char * mpp_qd_callback_info;
+extern bool mpp_use_snapshop_during_callback;
+
 /* Parameter debug_print_prelim_plan
  *
  * This run-time parameter is closely related to the PostgreSQL parameter

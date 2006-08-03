@@ -1688,6 +1688,20 @@ _readRemoveFuncStmt(void)
 	READ_DONE();
 }
 
+
+static DefineStmt *
+_readDefineStmt(void)
+{
+	READ_LOCALS(DefineStmt);
+	READ_ENUM_FIELD(kind, ObjectType);
+	READ_NODE_FIELD(defnames);
+	READ_NODE_FIELD(definition);
+	READ_OID_FIELD(newOid);
+	
+	READ_DONE();
+	
+}
+
 static GrantStmt *
 _readGrantStmt(void)
 {
@@ -2474,6 +2488,7 @@ static ParseNodeInfo infoAr[] =
 	{"CREATETRIGSTMT", (ReadFn)_readCreateTrigStmt},
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DEFELEM", (ReadFn)_readDefElem},
+	{"DEFINESTMT", (ReadFn)_readDefineStmt},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
 	{"DROPDBSTMT", (ReadFn)_readDropdbStmt},
 	{"DROPPLANGSTMT", (ReadFn)_readDropPLangStmt},

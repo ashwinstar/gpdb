@@ -38,12 +38,14 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
 
 /*
  *	DefineAggregate
  */
 void
-DefineAggregate(List *names, List *parameters)
+DefineAggregate(List *names, List *parameters, Oid newOid)
 {
 	char	   *aggName;
 	Oid			aggNamespace;
@@ -58,6 +60,7 @@ DefineAggregate(List *names, List *parameters)
 	Oid			baseTypeId;
 	Oid			transTypeId;
 	ListCell   *pl;
+	Oid			aggOid;
 
 	/* Convert list of names to a name and namespace */
 	aggNamespace = QualifiedNameGetCreationNamespace(names, &aggName);
@@ -146,7 +149,7 @@ DefineAggregate(List *names, List *parameters)
 	/*
 	 * Most of the argument-checking is done inside of AggregateCreate
 	 */
-	AggregateCreate(aggName,	/* aggregate name */
+	aggOid = AggregateCreateWithOid(aggName,	/* aggregate name */
 					aggNamespace,		/* namespace */
 					baseTypeId, /* type of data being aggregated */
 					transfuncName,		/* step function name */
@@ -154,7 +157,18 @@ DefineAggregate(List *names, List *parameters)
 					finalfuncName,		/* final function name */
 					sortoperatorName,	/* sort operator name */
 					transTypeId,	/* transition data type */
-					initval);	/* initial condition */
+					initval,	/* initial condition */
+					newOid);
+					
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		DefineStmt * stmt = makeNode(DefineStmt);
+		stmt->kind = OBJECT_AGGREGATE;
+		stmt->defnames = names;
+		stmt->definition = parameters;
+		stmt->newOid = aggOid;
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 }
 
 

@@ -94,7 +94,7 @@ static char *domainAddConstraint(Oid domainOid, Oid domainNamespace,
  *		Registers a new type.
  */
 void
-DefineType(List *names, List *parameters)
+DefineType(List *names, List *parameters, Oid newOid)
 {
 	char	   *typeName;
 	Oid			typeNamespace;
@@ -336,7 +336,7 @@ DefineType(List *names, List *parameters)
 	 * now have TypeCreate do all the real work.
 	 */
 	typoid =
-		TypeCreate(typeName,	/* type name */
+		TypeCreateWithOid(typeName,	/* type name */
 				   typeNamespace,		/* namespace */
 				   InvalidOid,	/* relation oid (n/a here) */
 				   0,			/* relation kind (ditto) */
@@ -357,7 +357,8 @@ DefineType(List *names, List *parameters)
 				   storage,		/* TOAST strategy */
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array Dimensions of typbasetype */
-				   false);		/* Type NOT NULL */
+				   false,		/* Type NOT NULL */
+				   newOid);
 
 	/*
 	 * When we create a base type (as opposed to a complex type) we need to
@@ -392,6 +393,16 @@ DefineType(List *names, List *parameters)
 			   false);			/* Type NOT NULL */
 
 	pfree(shadow_type);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		DefineStmt * stmt = makeNode(DefineStmt);
+		stmt->kind = OBJECT_TYPE;
+		stmt->defnames = names;
+		stmt->definition = parameters;
+		stmt->newOid = typoid;
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 }
 
 
