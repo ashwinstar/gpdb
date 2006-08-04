@@ -180,7 +180,7 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 	/*
 	 * now have OperatorCreate do all the work..
 	 */
-	opOid = OperatorCreate(oprName,		/* operator name */
+	opOid = OperatorCreateWithOid(oprName,		/* operator name */
 				   oprNamespace,	/* namespace */
 				   typeId1,		/* left type id */
 				   typeId2,		/* right type id */
@@ -193,7 +193,8 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 				   leftSortName,	/* optional left sort operator */
 				   rightSortName,		/* optional right sort operator */
 				   ltCompareName,		/* optional < comparison op */
-				   gtCompareName);		/* optional < comparison op */
+				   gtCompareName,		/* optional < comparison op */
+				   newOid);
 				   
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{

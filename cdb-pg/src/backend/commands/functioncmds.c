@@ -72,7 +72,7 @@
  */
 static void
 compute_return_type(TypeName *returnType, Oid languageOid,
-					Oid *prorettype_p, bool *returnsSet_p)
+					Oid *prorettype_p, bool *returnsSet_p, Oid shelltypeOid)
 {
 	Oid			rettype;
 
@@ -125,7 +125,7 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
 						   get_namespace_name(namespaceId));
-		rettype = TypeShellMake(typname, namespaceId);
+		rettype = TypeShellMakeWithOid(typname, namespaceId, shelltypeOid);
 		Assert(OidIsValid(rettype));
 	}
 
@@ -599,12 +599,13 @@ CreateFunction(CreateFunctionStmt *stmt)
 	{
 		/* explicit RETURNS clause */
 		compute_return_type(stmt->returnType, languageOid,
-							&prorettype, &returnsSet);
+							&prorettype, &returnsSet, stmt->shelltypeOid);
 		if (OidIsValid(requiredResultType) && prorettype != requiredResultType)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					 errmsg("function result type must be %s because of OUT parameters",
 							format_type_be(requiredResultType))));
+		stmt->shelltypeOid = prorettype;
 	}
 	else if (OidIsValid(requiredResultType))
 	{
@@ -649,7 +650,7 @@ CreateFunction(CreateFunctionStmt *stmt)
 	}
 	
 	if (Mpp_role == MPP_ROLE_DISPATCH && volatility != PROVOLATILE_IMMUTABLE)
-		elog(ERROR,"This release of Bizgres MPP only supports IMMUTABLE functions");
+		elog(WARNING,"This release of Bizgres MPP only supports IMMUTABLE functions and functions that don't execute SQL");
 
 	/*
 	 * And now that we have all the parameters, and know we're permitted to do

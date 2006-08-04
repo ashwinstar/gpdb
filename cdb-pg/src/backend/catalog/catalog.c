@@ -260,6 +260,7 @@ GetNewOid(Relation relation)
 	/* If no OID index, just hand back the next OID counter value */
 	if (!OidIsValid(oidIndex))
 	{
+		Oid result;
 		/*
 		 * System catalogs that have OIDs should *always* have a unique OID
 		 * index; we should only take this path for user tables. Give a
@@ -269,7 +270,20 @@ GetNewOid(Relation relation)
 			elog(WARNING, "generating possibly-non-unique OID for \"%s\"",
 				 RelationGetRelationName(relation));
 
-		return GetNewObjectId();
+		result=  GetNewObjectId();
+		
+		if (IsSystemNamespace(RelationGetNamespace(relation)))
+		{
+			if (Mpp_role == MPP_ROLE_EXECUTE)
+			{
+				elog(WARNING,"Allocating Oid %u on relid %u in EXECUTE mode",result,relation->rd_id);
+			}
+			if (Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				elog(DEBUG5,"Allocating Oid %u on relid %u in DISPATCH mode",result,relation->rd_id);
+			}
+		}
+		return result;
 	}
 
 	/* Otherwise, use the index to find a nonconflicting OID */
@@ -317,6 +331,21 @@ GetNewOidWithIndex(Relation relation, Relation indexrel)
 
 		index_endscan(scan);
 	} while (collides);
+	
+	if (IsSystemNamespace(RelationGetNamespace(relation)))
+	{
+		if (Mpp_role == MPP_ROLE_EXECUTE)
+		{
+			if (relation->rd_id != 2604 /* pg_attrdef */ && relation->rd_id != 2606 /* pg_constraint */ && relation->rd_id != 2615 /* pg_namespace */) 
+				elog(WARNING,"Allocating Oid %u with index on relid %u in EXECUTE mode",newOid,relation->rd_id);
+			else
+				elog(DEBUG1,"Allocating Oid %u with index in EXECUTE mode",newOid);
+		}
+		if (Mpp_role == MPP_ROLE_DISPATCH)
+		{
+			elog(DEBUG5,"Allocating Oid %u with index on relid %u in DISPATCH mode",newOid,relation->rd_id);
+		}
+	}
 
 	return newOid;
 }
@@ -389,9 +418,9 @@ GetNewRelFileNode(Oid reltablespace, bool relisshared, Relation pg_class)
 	if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
 		if (pg_class)
-			elog(WARNING,"Calling GetNewRelFileNode (with pg_class) in EXECUTE mode.  New relOid = %d", rnode.relNode );
+			elog(ERROR,"Calling GetNewRelFileNode (with pg_class) in EXECUTE mode.  New relOid = %d", rnode.relNode );
 		else
-			elog(DEBUG1,"Calling GetNewRelFileNode in EXECUTE mode.  New relOid = %d", rnode.relNode );
+			elog(WARNING,"Calling GetNewRelFileNode in EXECUTE mode.  New relOid = %d", rnode.relNode );
 	}
 
 	return rnode.relNode;

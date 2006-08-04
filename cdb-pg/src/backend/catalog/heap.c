@@ -689,7 +689,7 @@ heap_create_with_catalog(const char *relname,
 						 OnCommitAction oncommit,
                          const struct MppPolicy *policy,
 						 bool allow_system_table_mods,
-						 Oid comptypeOid)
+						 Oid *comptypeOid)
 {
 	Relation	pg_class_desc;
 	Relation	new_rel_desc;
@@ -747,7 +747,7 @@ heap_create_with_catalog(const char *relname,
 	 * NOTE: we could get a unique-index failure here, in case the same name
 	 * has already been used for a type.
 	 */
-	if (comptypeOid == InvalidOid)
+	if (comptypeOid && *comptypeOid == InvalidOid)
 	new_type_oid = AddNewRelationType(relname,
 									  relnamespace,
 									  relid,
@@ -776,11 +776,13 @@ heap_create_with_catalog(const char *relname,
 				   -1,			/* typmod */
 				   0,			/* array dimensions for typBaseType */
 				   false,
-				   comptypeOid);		/* Type NOT NULL */
+				   *comptypeOid);		/* Type NOT NULL */
 				
-		Assert(new_type_oid == comptypeOid);
+		Assert(new_type_oid == *comptypeOid);
 	}
 
+	if (comptypeOid)
+		*comptypeOid = new_type_oid;
 	/*
 	 * now create an entry in pg_class for the relation.
 	 *

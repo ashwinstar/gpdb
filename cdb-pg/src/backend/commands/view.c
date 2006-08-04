@@ -101,7 +101,7 @@ isViewOnTempTable_walker(Node *node, void *context)
  *---------------------------------------------------------------------
  */
 static Oid
-DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid viewOid)
+DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid viewOid, Oid * comptypeOid)
 {
 	Oid			namespaceId;
 	CreateStmt *createStmt = makeNode(CreateStmt);
@@ -109,7 +109,10 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 	ListCell   *t;
 
 	createStmt->relOid = viewOid;
-	createStmt->comptypeOid = 0;
+	if (comptypeOid)
+		createStmt->comptypeOid = *comptypeOid;
+	else
+		createStmt->comptypeOid = 0;
 	createStmt->toastOid = 0;
 	createStmt->toastIndexOid = 0;
 	/*
@@ -201,6 +204,7 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 	}
 	else
 	{
+		Oid newviewOid;
 		/*
 		 * now set the parameters for keys/inheritance etc. All of these are
 		 * uninteresting for views...
@@ -219,7 +223,10 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 		 * existing view, so we don't need more code to complain if "replace"
 		 * is false).
 		 */
-		return DefineRelation(createStmt, RELKIND_VIEW);
+		newviewOid =  DefineRelation(createStmt, RELKIND_VIEW);
+		if(comptypeOid)
+			*comptypeOid = createStmt->comptypeOid;
+		return newviewOid;
 	}
 }
 
@@ -430,7 +437,7 @@ DefineView(ViewStmt *stmt)
 	 * NOTE: if it already exists and replace is false, the xact will be
 	 * aborted.
 	 */
-	viewOid = DefineVirtualRelation(view, viewParse->targetList, replace, viewOid);
+	viewOid = DefineVirtualRelation(view, viewParse->targetList, replace, viewOid, &stmt->comptypeOid);
 
 	stmt->relOid = viewOid;
 

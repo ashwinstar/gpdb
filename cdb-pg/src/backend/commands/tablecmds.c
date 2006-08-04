@@ -510,6 +510,7 @@ DefineRelation_int(CreateStmt *stmt,
 		stmt->comptypeOid = comptypeOid;
 		stmt->toastOid = toastRelationId;
 		stmt->toastIndexOid = toastIndexId;
+		stmt->toastComptypeOid = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
 		stmt->relKind = relkind;
 		stmt->relation->schemaname = get_namespace_name(namespaceId);	
 	}
@@ -556,7 +557,7 @@ DefineRelation_int(CreateStmt *stmt,
 										  stmt->oncommit,
                                           stmt->policy,             /*CDB*/
 										  allowSystemTableMods,
-										  stmt->comptypeOid);
+										  &stmt->comptypeOid);
 
 	/* It is now safe to dispatch */
 	if (shouldDispatch)
@@ -4004,7 +4005,7 @@ ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
 	Oid			constrOid;
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
-		ereport(ERROR,
+		ereport(WARNING,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Bizgres MPP")));
 	/*
@@ -6050,11 +6051,11 @@ ATExecEnableDisableTrigger(Relation rel, char *trigname,
 void
 AlterTableCreateToastTable(Oid relOid, bool silent)
 {
-	AlterTableCreateToastTableWithOid(relOid,silent,InvalidOid,InvalidOid);
+	AlterTableCreateToastTableWithOid(relOid,silent,InvalidOid,InvalidOid,NULL);
 }
 
 void
-AlterTableCreateToastTableWithOid(Oid relOid, bool silent, Oid newOid, Oid newIndexOid)
+AlterTableCreateToastTableWithOid(Oid relOid, bool silent, Oid newOid, Oid newIndexOid, Oid * comptypeOid)
 {
 	Relation	rel;
 	HeapTuple	reltup;
@@ -6178,7 +6179,7 @@ AlterTableCreateToastTableWithOid(Oid relOid, bool silent, Oid newOid, Oid newIn
 										   ONCOMMIT_NOOP,
                                            NULL,                    /*CDB*/
 										   true,
-										   0);
+										   comptypeOid);
 
 	/* make the toast relation visible, else index creation will fail */
 	CommandCounterIncrement();

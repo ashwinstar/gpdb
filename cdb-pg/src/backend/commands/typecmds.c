@@ -94,7 +94,7 @@ static char *domainAddConstraint(Oid domainOid, Oid domainNamespace,
  *		Registers a new type.
  */
 void
-DefineType(List *names, List *parameters, Oid newOid)
+DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 {
 	char	   *typeName;
 	Oid			typeNamespace;
@@ -369,7 +369,7 @@ DefineType(List *names, List *parameters, Oid newOid)
 	/* alignment must be 'i' or 'd' for arrays */
 	alignment = (alignment == 'd') ? 'd' : 'i';
 
-	TypeCreate(shadow_type,		/* type name */
+	shadowOid = TypeCreateWithOid(shadow_type,		/* type name */
 			   typeNamespace,	/* namespace */
 			   InvalidOid,		/* relation oid (n/a here) */
 			   0,				/* relation kind (ditto) */
@@ -390,7 +390,8 @@ DefineType(List *names, List *parameters, Oid newOid)
 			   'x',				/* ARRAY is always toastable */
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
-			   false);			/* Type NOT NULL */
+			   false,			/* Type NOT NULL */
+			   shadowOid);
 
 	pfree(shadow_type);
 	
@@ -401,6 +402,7 @@ DefineType(List *names, List *parameters, Oid newOid)
 		stmt->defnames = names;
 		stmt->definition = parameters;
 		stmt->newOid = typoid;
+		stmt->shadowOid = shadowOid;
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }
@@ -1108,12 +1110,12 @@ findTypeAnalyzeFunction(List *procname, Oid typeOid)
  *-------------------------------------------------------------------
  */
 Oid
-DefineCompositeType(const RangeVar *typevar, List *coldeflist)
+DefineCompositeType(const RangeVar *typevar, List *coldeflist, Oid relOid, Oid comptypeOid)
 {
 	CreateStmt *createStmt = makeNode(CreateStmt);
 
-	createStmt->relOid = 0;
-	createStmt->comptypeOid = 0;
+	createStmt->relOid = relOid;
+	createStmt->comptypeOid = comptypeOid;
 	createStmt->toastOid = 0;
 	createStmt->toastIndexOid = 0;
 
@@ -1137,7 +1139,22 @@ DefineCompositeType(const RangeVar *typevar, List *coldeflist)
 	/*
 	 * finally create the relation...
 	 */
-	return DefineRelation(createStmt, RELKIND_COMPOSITE_TYPE);
+	return  DefineRelation(createStmt, RELKIND_COMPOSITE_TYPE);
+	
+	/*
+	 * DefineRelation already dispatches this.
+	 * 
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		CompositeTypeStmt *stmt = makeNode(CompositeTypeStmt);
+		stmt->typevar = (RangeVar *)typevar;
+		stmt->coldeflist = coldeflist;
+		stmt->relOid = newRelOid;
+		stmt->comptypeOid = createStmt->comptypeOid;
+
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}*/
+	 
 }
 
 /*

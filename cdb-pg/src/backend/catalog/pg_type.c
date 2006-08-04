@@ -41,8 +41,15 @@
  *		field is set to true. -cim 6/15/90
  * ----------------------------------------------------------------
  */
+ 
 Oid
 TypeShellMake(const char *typeName, Oid typeNamespace)
+{
+	return TypeShellMakeWithOid(typeName,typeNamespace,InvalidOid);
+}
+
+Oid
+TypeShellMakeWithOid(const char *typeName, Oid typeNamespace, Oid shelltypeOid)
 {
 	Relation	pg_type_desc;
 	TupleDesc	tupDesc;
@@ -104,6 +111,11 @@ TypeShellMake(const char *typeName, Oid typeNamespace)
 	 */
 	tup = heap_formtuple(tupDesc, values, nulls);
 
+	/*
+	 * MPP: If we are on the QEs, we need to use the same Oid as the QD used
+	 */
+	if (shelltypeOid != InvalidOid)
+		HeapTupleSetOid(tup, shelltypeOid);
 	/*
 	 * insert the tuple in the relation and get the tuple's oid.
 	 */
@@ -313,7 +325,11 @@ TypeCreateWithOid(const char *typeName,
 							 nulls);
 						 
 		if (newtypeOid != InvalidOid)
+		{
+			elog(NOTICE," Setting Oid in new pg_type tuple");
 			HeapTupleSetOid(tup, newtypeOid);
+		}
+		else if (Mpp_role == MPP_ROLE_EXECUTE) elog(ERROR," newtypeOid NULL");
 
 		typeObjectId = simple_heap_insert(pg_type_desc, tup);
 	}

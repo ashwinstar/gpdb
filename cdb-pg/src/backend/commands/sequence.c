@@ -236,6 +236,7 @@ DefineSequence(CreateSeqStmt *seq)
 	stmt->oncommit = ONCOMMIT_NOOP;
 	stmt->tablespacename = NULL;
 	stmt->relKind = RELKIND_SEQUENCE;
+	stmt->comptypeOid = seq->comptypeOid;
 
 	seqoid = DefineRelation(stmt, RELKIND_SEQUENCE);
 
@@ -243,6 +244,7 @@ DefineSequence(CreateSeqStmt *seq)
 
 	if (shouldDispatch)
 	{
+		seq->comptypeOid = stmt->comptypeOid;
 		CdbDispatchUtilityStatement((Node *)seq);
 	}
 

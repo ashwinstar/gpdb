@@ -674,7 +674,8 @@ ProcessUtility(Node *parsetree,
 				
 				elog(DEBUG1,"CreateStmt: rel Oid %d toast Oid %d",relOid, ((CreateStmt *) parsetree)->toastOid);
 		
-				AlterTableCreateToastTableWithOid(relOid, true, ((CreateStmt *) parsetree)->toastOid, ((CreateStmt *) parsetree)->toastIndexOid);
+				if (relKind != RELKIND_COMPOSITE_TYPE)
+					AlterTableCreateToastTableWithOid(relOid, true, ((CreateStmt *) parsetree)->toastOid, ((CreateStmt *) parsetree)->toastIndexOid, &(((CreateStmt *) parsetree)->toastComptypeOid));
 			}
 			break;
 
@@ -924,7 +925,7 @@ ProcessUtility(Node *parsetree,
 						DefineOperator(stmt->defnames, stmt->definition, stmt->newOid);
 						break;
 					case OBJECT_TYPE:
-						DefineType(stmt->defnames, stmt->definition, stmt->newOid);
+						DefineType(stmt->defnames, stmt->definition, stmt->newOid, stmt->shadowOid);
 						break;
 					default:
 						elog(ERROR, "unrecognized define stmt type: %d",
@@ -935,11 +936,10 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CompositeTypeStmt:		/* CREATE TYPE (composite) */
-			CdbSentry(CDB_REJECT, parsetree, NULL);
 			{
 				CompositeTypeStmt *stmt = (CompositeTypeStmt *) parsetree;
 
-				DefineCompositeType(stmt->typevar, stmt->coldeflist);
+				DefineCompositeType(stmt->typevar, stmt->coldeflist, stmt->relOid, stmt->comptypeOid);
 			}
 			break;
 

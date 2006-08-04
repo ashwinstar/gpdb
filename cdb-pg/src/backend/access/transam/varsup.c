@@ -311,15 +311,5 @@ GetNewObjectId(void)
 
 	LWLockRelease(OidGenLock);
 
-	
-	if (Mpp_role == MPP_ROLE_EXECUTE)
-	{
-		elog(DEBUG5,"Allocating Oid %u in EXECUTE mode",result);
-	}
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-		elog(DEBUG5,"Allocating Oid %u in DISPATCH mode",result);
-	}
-
 	return result;
 }

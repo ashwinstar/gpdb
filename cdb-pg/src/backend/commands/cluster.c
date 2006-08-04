@@ -592,7 +592,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace)
 										  ONCOMMIT_NOOP,
                                           NULL,                         /*CDB*/
 										  allowSystemTableMods
-										  ,0);
+										  ,NULL);
 
 	/*
 	 * Advance command counter so that the newly-created relation's catalog

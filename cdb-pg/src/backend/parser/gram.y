@@ -1702,6 +1702,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->comptypeOid = 0;
 					n->toastOid = 0;
 					n->toastIndexOid = 0;
+					n->toastComptypeOid = 0;
 					n->relKind = RELKIND_RELATION;
 					n->policy = 0;
 					
@@ -1727,6 +1728,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->comptypeOid = 0;
 					n->toastOid = 0;
 					n->toastIndexOid = 0;
+					n->toastComptypeOid = 0;
 					n->relKind = RELKIND_RELATION;
 					n->policy = 0;
 					
@@ -2741,6 +2743,8 @@ DefineStmt:
 					}
 					n->typevar = r;
 					n->coldeflist = $6;
+					n->relOid = 0;
+					n->comptypeOid = 0;
 					$$ = (Node *)n;
 				}
 		;
@@ -3566,6 +3570,7 @@ CreateFunctionStmt:
 					n->options = $8;
 					n->withClause = $9;
 					n->funcOid = 0;
+					n->shelltypeOid = 0;
 					$$ = (Node *)n;
 				}
 			| CREATE opt_or_replace FUNCTION func_name func_args
@@ -3578,6 +3583,8 @@ CreateFunctionStmt:
 					n->returnType = NULL;
 					n->options = $6;
 					n->withClause = $7;
+					n->funcOid = 0;
+					n->shelltypeOid = 0;
 					$$ = (Node *)n;
 				}
 		;
