@@ -42,4 +42,6 @@ extern int	BufFileSeek(BufFile *file, int fileno, long offset, int whence);
 extern void BufFileTell(BufFile *file, int *fileno, long *offset);
 extern int	BufFileSeekBlock(BufFile *file, long blknum);
 
+extern size_t sizeBufFile(BufFile * file); /* MPP */
+
 #endif   /* BUFFILE_H */

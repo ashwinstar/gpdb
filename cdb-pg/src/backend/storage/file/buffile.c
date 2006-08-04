@@ -110,6 +110,20 @@ makeBufFile(File firstfile)
 }
 
 /*
+ * MPP: How much memory does a BufFile use?  (Just an estimate. NULL
+ *      argument specifies a default BufFile.)  Must agree with 
+ *      makeBufFile.
+ *
+ *      TODO: Should we account for palloc overhead?
+ */
+size_t 
+sizeBufFile(BufFile * file)
+{
+	int n = ( file == NULL )? 1: file->numFiles;
+	return sizeof(BufFile) + n * ( sizeof(File) + sizeof(long) );
+}
+
+/*
  * Add another component temp file.
  */
 static void
