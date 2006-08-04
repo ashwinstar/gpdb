@@ -960,7 +960,6 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 		elog(DEBUG4, "CDB_TRACE_EXECUTOR: Return from %s%s with %s tuple.", nameTag, extraTag, willReturnTuple ? "a" : "no");
 		if ( willReturnTuple )
 			print_slot(result);
-			fflush(stdout);
 	}
 
 	return;

@@ -466,17 +466,13 @@ void
 print_slot(TupleTableSlot *slot)
 {
 	if (TupIsNull(slot))
-	{
 		printf("tuple is null.\n");
-		return;
-	}
-	if (!slot->tts_tupleDescriptor)
-	{
+	else if (!slot->tts_tupleDescriptor)
 		printf("no tuple descriptor.\n");
-		return;
-	}
-
-	debugtup(slot, NULL);
+	else 
+		debugtup(slot, NULL);
+	
+	fflush(stdout);
 }
 
 static char *
