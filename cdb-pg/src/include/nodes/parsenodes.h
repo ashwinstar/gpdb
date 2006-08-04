@@ -1008,6 +1008,7 @@ typedef struct CreateStmt
 	Oid         comptypeOid;			/* create table with this composite type Oid */
 	Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
 	Oid		    toastIndexOid;		/* if toast table needed, use this for the relOid of the index */
+	Oid			toastComptypeOid;
 	char	    relKind;         /* CDB: force relkind to this */
 	MppPolicy  *policy;
 } CreateStmt;
@@ -1142,6 +1143,7 @@ typedef struct CreateTrigStmt
 	bool		deferrable;		/* [NOT] DEFERRABLE */
 	bool		initdeferred;	/* INITIALLY {DEFERRED|IMMEDIATE} */
 	RangeVar   *constrrel;		/* opposite relation */
+	Oid			trigOid;
 } CreateTrigStmt;
 
 /* ----------------------
@@ -1221,7 +1223,8 @@ typedef struct CreateSeqStmt
 	NodeTag		type;
 	RangeVar   *sequence;		/* the sequence to create */
 	List	   *options;
-	Oid        relOid;			/* create table with this relOid */
+	Oid        	relOid;			/* create table with this relOid */
+	Oid			comptypeOid;
 } CreateSeqStmt;
 
 typedef struct AlterSeqStmt
@@ -1242,6 +1245,7 @@ typedef struct DefineStmt
 	List	   *defnames;		/* qualified name (list of Value strings) */
 	List	   *definition;		/* a list of DefElem */
 	Oid			newOid;			/* for MPP only, the new Oid of the object */
+	Oid			shadowOid;
 } DefineStmt;
 
 /* ----------------------
@@ -1430,6 +1434,7 @@ typedef struct CreateFunctionStmt
 	List	   *options;		/* a list of DefElem */
 	List	   *withClause;		/* a list of DefElem */
 	Oid			funcOid;
+	Oid			shelltypeOid;
 } CreateFunctionStmt;
 
 typedef enum FunctionParameterMode
@@ -1631,6 +1636,8 @@ typedef struct CompositeTypeStmt
 	NodeTag		type;
 	RangeVar   *typevar;		/* the composite type to be created */
 	List	   *coldeflist;		/* list of ColumnDef nodes */
+	Oid			relOid;
+	Oid			comptypeOid;
 } CompositeTypeStmt;
 
 
@@ -1645,7 +1652,8 @@ typedef struct ViewStmt
 	List	   *aliases;		/* target column names */
 	Query	   *query;			/* the SQL statement */
 	bool		replace;		/* replace an existing view? */
-	Oid        relOid;			/* create view with this relOid */
+	Oid         relOid;			/* create view with this relOid */
+	Oid			comptypeOid;
 } ViewStmt;
 
 /* ----------------------

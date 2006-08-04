@@ -1953,6 +1953,7 @@ _copyCreateStmt(CreateStmt *from)
 	COPY_SCALAR_FIELD(comptypeOid);
 	COPY_SCALAR_FIELD(toastOid);
 	COPY_SCALAR_FIELD(toastIndexOid);
+	COPY_SCALAR_FIELD(toastComptypeOid);
 	COPY_SCALAR_FIELD(relKind);
 	COPY_POINTER_FIELD(policy,sizeof(MppPolicy) + from->policy->nattrs*sizeof(from->policy->attrs[0]));
 
@@ -1978,6 +1979,8 @@ _copyDefineStmt(DefineStmt *from)
 	COPY_SCALAR_FIELD(kind);
 	COPY_NODE_FIELD(defnames);
 	COPY_NODE_FIELD(definition);
+	COPY_SCALAR_FIELD(newOid);
+	COPY_SCALAR_FIELD(shadowOid);
 
 	return newnode;
 }
@@ -2062,6 +2065,8 @@ _copyCreateFunctionStmt(CreateFunctionStmt *from)
 	COPY_NODE_FIELD(returnType);
 	COPY_NODE_FIELD(options);
 	COPY_NODE_FIELD(withClause);
+	COPY_SCALAR_FIELD(funcOid);
+	COPY_SCALAR_FIELD(shelltypeOid);
 
 	return newnode;
 }
@@ -2247,6 +2252,8 @@ _copyCompositeTypeStmt(CompositeTypeStmt *from)
 
 	COPY_NODE_FIELD(typevar);
 	COPY_NODE_FIELD(coldeflist);
+	COPY_SCALAR_FIELD(relOid);
+	COPY_SCALAR_FIELD(comptypeOid);
 
 	return newnode;
 }
@@ -2260,6 +2267,8 @@ _copyViewStmt(ViewStmt *from)
 	COPY_NODE_FIELD(aliases);
 	COPY_NODE_FIELD(query);
 	COPY_SCALAR_FIELD(replace);
+	COPY_SCALAR_FIELD(relOid);
+	COPY_SCALAR_FIELD(comptypeOid);
 
 	return newnode;
 }
@@ -2398,6 +2407,7 @@ _copyCreateSeqStmt(CreateSeqStmt *from)
 	COPY_NODE_FIELD(sequence);
 	COPY_NODE_FIELD(options);
 	COPY_SCALAR_FIELD(relOid);
+	COPY_SCALAR_FIELD(comptypeOid);
 
 	return newnode;
 }

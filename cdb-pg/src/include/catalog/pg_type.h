@@ -551,6 +551,7 @@ DATA(insert OID = 2283 ( anyelement		PGNSP PGUID  4 t p t \054 0 0 anyelement_in
  * prototypes for functions in pg_type.c
  */
 extern Oid	TypeShellMake(const char *typeName, Oid typeNamespace);
+extern Oid	TypeShellMakeWithOid(const char *typeName, Oid typeNamespace, Oid shelltypeOid);
 
 extern Oid TypeCreate(const char *typeName,
 		   Oid typeNamespace,

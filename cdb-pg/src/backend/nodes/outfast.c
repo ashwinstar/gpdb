@@ -1452,6 +1452,7 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_OID_FIELD(comptypeOid);
 	WRITE_OID_FIELD(toastOid);
 	WRITE_OID_FIELD(toastIndexOid);
+	WRITE_OID_FIELD(toastComptypeOid);
 	WRITE_CHAR_FIELD(relKind);
 }
 
@@ -1497,6 +1498,7 @@ _outViewStmt(StringInfo str, ViewStmt *node)
 	WRITE_NODE_FIELD(query);
 	WRITE_BOOL_FIELD(replace);
 	WRITE_OID_FIELD(relOid);
+	WRITE_OID_FIELD(comptypeOid);
 }
 
 static void
@@ -1635,6 +1637,7 @@ _outCreateSeqStmt(StringInfo str, CreateSeqStmt *node)
 	WRITE_NODE_FIELD(sequence);
 	WRITE_NODE_FIELD(options);
 	WRITE_OID_FIELD(relOid);
+	WRITE_OID_FIELD(comptypeOid);
 }
 
 static void
@@ -1704,6 +1707,7 @@ _outCreateFunctionStmt(StringInfo str, CreateFunctionStmt *node)
 	WRITE_NODE_FIELD(options);
 	WRITE_NODE_FIELD(withClause);
 	WRITE_OID_FIELD(funcOid);
+	WRITE_OID_FIELD(shelltypeOid);
 }
 
 static void
@@ -1734,8 +1738,22 @@ _outDefineStmt(StringInfo str, DefineStmt *node)
 	WRITE_NODE_FIELD(defnames);
 	WRITE_NODE_FIELD(definition);
 	WRITE_OID_FIELD(newOid);
+	WRITE_OID_FIELD(shadowOid);
 	
 }
+
+static void
+_outCompositeTypeStmt(StringInfo str, CompositeTypeStmt *node)
+{
+	WRITE_NODE_TYPE("COMPTYPESTMT");
+
+	WRITE_NODE_FIELD(typevar);
+	WRITE_NODE_FIELD(coldeflist);
+	WRITE_OID_FIELD(relOid);
+	WRITE_OID_FIELD(comptypeOid);
+	
+}
+
 
 static void
 _outTransactionStmt(StringInfo str, TransactionStmt *node)
@@ -1991,6 +2009,7 @@ _outQuery(StringInfo str, Query *node)
 			case T_CreateFunctionStmt:
 			case T_RemoveFuncStmt:
 			case T_DefineStmt:
+			case T_CompositeTypeStmt:
 			
 			case T_TransactionStmt:
 			case T_CdbExecStmt:
@@ -2467,6 +2486,7 @@ _outCreateTrigStmt(StringInfo str, CreateTrigStmt *node)
 	WRITE_BOOL_FIELD(deferrable);
 	WRITE_BOOL_FIELD(initdeferred);
 	WRITE_NODE_FIELD(constrrel);
+	WRITE_OID_FIELD(trigOid);
 
 }
 
@@ -2783,6 +2803,9 @@ _outNode(StringInfo str, void *obj)
 				
 			case T_DefineStmt:
 				_outDefineStmt(str,obj);
+				break;
+			case T_CompositeTypeStmt:
+				_outCompositeTypeStmt(str,obj);
 				break;
 			
 				

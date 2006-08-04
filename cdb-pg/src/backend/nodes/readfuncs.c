@@ -507,6 +507,7 @@ _readViewStmt(void)
 	READ_NODE_FIELD(query);
 	READ_BOOL_FIELD(replace);
 	READ_OID_FIELD(relOid);
+	READ_OID_FIELD(comptypeOid);
 
 	READ_DONE();
 }
@@ -1503,6 +1504,7 @@ _readCreateStmt(void)
 	READ_OID_FIELD(comptypeOid);
 	READ_OID_FIELD(toastOid);
 	READ_OID_FIELD(toastIndexOid);
+	READ_OID_FIELD(toastComptypeOid);
 	READ_CHAR_FIELD(relKind);
 	local_node->policy = NULL;
 
@@ -1576,6 +1578,7 @@ _readCreateSeqStmt(void)
 	READ_NODE_FIELD(options);
 	
 	READ_OID_FIELD(relOid);
+	READ_OID_FIELD(comptypeOid);
 	
 	READ_DONE();
 }
@@ -1662,6 +1665,7 @@ _readCreateFunctionStmt(void)
 	READ_NODE_FIELD(options);
 	READ_NODE_FIELD(withClause);
 	READ_OID_FIELD(funcOid);
+	READ_OID_FIELD(shelltypeOid);
 			
 	READ_DONE();
 }
@@ -1697,6 +1701,20 @@ _readDefineStmt(void)
 	READ_NODE_FIELD(defnames);
 	READ_NODE_FIELD(definition);
 	READ_OID_FIELD(newOid);
+	READ_OID_FIELD(shadowOid);
+	
+	READ_DONE();
+	
+}
+
+static CompositeTypeStmt *
+_readCompositeTypeStmt(void)
+{
+	READ_LOCALS(CompositeTypeStmt);
+
+	READ_NODE_FIELD(typevar);
+	READ_NODE_FIELD(coldeflist);
+	READ_OID_FIELD(comptypeOid);
 	
 	READ_DONE();
 	
@@ -2406,6 +2424,7 @@ _readCreateTrigStmt(void)
 	READ_BOOL_FIELD(deferrable);
 	READ_BOOL_FIELD(initdeferred);
 	READ_NODE_FIELD(constrrel);
+	READ_OID_FIELD(trigOid);
 	
 	READ_DONE();
 
@@ -2474,6 +2493,7 @@ static ParseNodeInfo infoAr[] =
 	{"COERCETODOMAINVALUE", (ReadFn)_readCoerceToDomainValue},
 	{"COLUMNDEF", (ReadFn)_readColumnDef},
 	{"COLUMNREF", (ReadFn)_readColumnRef},
+	{"COMPTYPESTMT", (ReadFn)_readCompositeTypeStmt},
 	{"CONST", (ReadFn)_readConst},
 	{"CONSTRAINT", (ReadFn)_readConstraint},
 	{"CONVERTROWTYPEEXPR", (ReadFn)_readConvertRowtypeExpr},
