@@ -34,8 +34,14 @@
  *	  least once per input tuple, so when the transvalue datatype is
  *	  pass-by-reference, we have to be careful to copy it into a longer-lived
  *	  memory context, and free the prior value to avoid memory leakage.
- *	  We store transvalues in the memory context aggstate->aggcontext,
+ *
+ *    Postgres stores transvalues in the memory context aggstate->aggcontext,
  *	  which is also used for the hashtable structures in AGG_HASHED mode.
+ *    MPP (in order to support hybrid hash aggregation) stores hash table
+ *    entries and associated transition values in aggstate->transcontext.
+ *    In AGG_PLAIN and AGG_SORTED cases, these contexts are the same, but
+ *    for AGG_HASHED they differ.
+ *
  *	  The node's regular econtext (aggstate->csstate.cstate.cs_ExprContext)
  *	  is used to run finalize functions and compute the output tuple;
  *	  this context can be reset once per output tuple.
@@ -73,6 +79,7 @@
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "executor/executor.h"
+#include "executor/execHashagg.h"
 #include "executor/nodeAgg.h"
 #include "miscadmin.h"
 #include "optimizer/clauses.h"
@@ -88,6 +95,7 @@
 #include "utils/tuplesort.h"
 #include "utils/datum.h"
 
+#include "cdb/cdbvars.h" /* mpp_hybrid_hash_agg */
 
 /*
  * AggStatePerAggData - per-aggregate working state for the Agg scan
@@ -163,34 +171,9 @@ typedef struct AggStatePerAggData
 /*
  * AggStatePerGroupData - per-aggregate-per-group working state
  *
- * These values are working state that is initialized at the start of
- * an input tuple group and updated for each input tuple.
- *
- * In AGG_PLAIN and AGG_SORTED modes, we have a single array of these
- * structs (pointed to by aggstate->pergroup); we re-use the array for
- * each input group, if it's AGG_SORTED mode.  In AGG_HASHED mode, the
- * hash table contains an array of these structs for each tuple group.
- *
- * Logically, the sortstate field belongs in this struct, but we do not
- * keep it here for space reasons: we don't support DISTINCT aggregates
- * in AGG_HASHED mode, so there's no reason to use up a pointer field
- * in every entry of the hashtable.
+ * Definition moved to nodeAgg.c to provide visibility to execHashagg.c
  */
-typedef struct AggStatePerGroupData
-{
-	Datum		transValue;		/* current transition value */
-	bool		transValueIsNull;
 
-	bool		noTransValue;	/* true if transValue not set yet */
-
-	/*
-	 * Note: noTransValue initially has the same value as transValueIsNull,
-	 * and if true both are cleared to false at the same time.	They are not
-	 * the same though: if transfn later returns a NULL, we want to keep that
-	 * NULL and not auto-replace it with a later input value. Only the first
-	 * non-NULL input will be auto-substituted.
-	 */
-} AggStatePerGroupData;
 
 /*
  * To implement hashed aggregation, we need a hashtable that stores a
@@ -207,15 +190,18 @@ typedef struct AggHashEntryData
 	AggStatePerGroupData pergroup[1];	/* VARIABLE LENGTH ARRAY */
 } AggHashEntryData;				/* VARIABLE LENGTH STRUCT */
 
-
+/* MPP needs to see this in execHashAgg.c
 static void initialize_aggregates(AggState *aggstate,
 					  AggStatePerAgg peragg,
 					  AggStatePerGroup pergroup);
+*/
 static void advance_transition_function(AggState *aggstate,
 							AggStatePerAgg peraggstate,
 							AggStatePerGroup pergroupstate,
 							Datum newVal, bool isNull);
+/* MPP needs to see this in execHashAgg.c 
 static void advance_aggregates(AggState *aggstate, AggStatePerGroup pergroup);
+*/
 static void process_sorted_aggregate(AggState *aggstate,
 						 AggStatePerAgg peraggstate,
 						 AggStatePerGroup pergroupstate);
@@ -223,13 +209,19 @@ static void finalize_aggregate(AggState *aggstate,
 				   AggStatePerAgg peraggstate,
 				   AggStatePerGroup pergroupstate,
 				   Datum *resultVal, bool *resultIsNull);
+static Bitmapset *find_unaggregated_cols(AggState *aggstate);
+static bool find_unaggregated_cols_walker(Node *node, Bitmapset **colnos);
 static void build_hash_table(AggState *aggstate);
 static AggHashEntry lookup_hash_entry(AggState *aggstate,
-				  TupleTableSlot *slot);
+				  TupleTableSlot *inputslot);
 static TupleTableSlot *agg_retrieve_direct(AggState *aggstate);
 static void agg_fill_hash_table(AggState *aggstate);
 static TupleTableSlot *agg_retrieve_hash_table(AggState *aggstate);
 static Datum GetAggInitVal(Datum textInitVal, Oid transtype);
+
+/* MPP - Hybrid Hash Aggregation */
+static void init_hybrid_hash_agg(AggState *aggstate);
+static TupleTableSlot *exec_hybrid_hash_agg(AggState *aggstate);
 
 
 /*
@@ -237,7 +229,7 @@ static Datum GetAggInitVal(Datum textInitVal, Oid transtype);
  *
  * When called, CurrentMemoryContext should be the per-query context.
  */
-static void
+void
 initialize_aggregates(AggState *aggstate,
 					  AggStatePerAgg peragg,
 					  AggStatePerGroup pergroup)
@@ -284,7 +276,7 @@ initialize_aggregates(AggState *aggstate,
 		 * (Re)set transValue to the initial value.
 		 *
 		 * Note that when the initial value is pass-by-ref, we must copy it
-		 * (into the aggcontext) since we will pfree the transValue later.
+		 * (into the transcontext) since we will pfree the transValue later.
 		 */
 		if (peraggstate->initValueIsNull)
 			pergroupstate->transValue = peraggstate->initValue;
@@ -292,7 +284,7 @@ initialize_aggregates(AggState *aggstate,
 		{
 			MemoryContext oldContext;
 
-			oldContext = MemoryContextSwitchTo(aggstate->aggcontext);
+			oldContext = MemoryContextSwitchTo(aggstate->transcontext);
 			pergroupstate->transValue = datumCopy(peraggstate->initValue,
 												  peraggstate->transtypeByVal,
 												  peraggstate->transtypeLen);
@@ -341,10 +333,10 @@ advance_transition_function(AggState *aggstate,
 			 * already checked that the agg's input type is binary-compatible
 			 * with its transtype, so straight copy here is OK.)
 			 *
-			 * We must copy the datum into aggcontext if it is pass-by-ref. We
-			 * do not need to pfree the old transValue, since it's NULL.
+			 * We must copy the datum into transcontext if it is pass-by-ref.
+			 * We do not need to pfree the old transValue, since it's NULL.
 			 */
-			oldContext = MemoryContextSwitchTo(aggstate->aggcontext);
+			oldContext = MemoryContextSwitchTo(aggstate->transcontext);
 			pergroupstate->transValue = datumCopy(newVal,
 												  peraggstate->transtypeByVal,
 												  peraggstate->transtypeLen);
@@ -381,7 +373,7 @@ advance_transition_function(AggState *aggstate,
 	newVal = FunctionCallInvoke(&fcinfo);
 
 	/*
-	 * If pass-by-ref datatype, must copy the new value into aggcontext and
+	 * If pass-by-ref datatype, must copy the new value into transcontext and
 	 * pfree the prior transValue.	But if transfn returned a pointer to its
 	 * first input, we don't need to do anything.
 	 */
@@ -390,7 +382,7 @@ advance_transition_function(AggState *aggstate,
 	{
 		if (!fcinfo.isnull)
 		{
-			MemoryContextSwitchTo(aggstate->aggcontext);
+			MemoryContextSwitchTo(aggstate->transcontext);
 			newVal = datumCopy(newVal,
 							   peraggstate->transtypeByVal,
 							   peraggstate->transtypeLen);
@@ -413,7 +405,7 @@ advance_transition_function(AggState *aggstate,
  *
  * When called, CurrentMemoryContext should be the per-query context.
  */
-static void
+void
 advance_aggregates(AggState *aggstate, AggStatePerGroup pergroup)
 {
 	ExprContext *econtext = aggstate->tmpcontext;
@@ -580,6 +572,89 @@ finalize_aggregate(AggState *aggstate,
 }
 
 /*
+ * find_unaggregated_cols
+ *	  Construct a bitmapset of the column numbers of un-aggregated Vars
+ *	  appearing in our targetlist and qual (HAVING clause)
+ */
+static Bitmapset *
+find_unaggregated_cols(AggState *aggstate)
+{
+	Agg		   *node = (Agg *) aggstate->ss.ps.plan;
+	Bitmapset *colnos;
+
+	colnos = NULL;
+	(void) find_unaggregated_cols_walker((Node *) node->plan.targetlist,
+										 &colnos);
+	(void) find_unaggregated_cols_walker((Node *) node->plan.qual,
+										 &colnos);
+	return colnos;
+}
+
+static bool
+find_unaggregated_cols_walker(Node *node, Bitmapset **colnos)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, Var))
+	{
+		Var		   *var = (Var *) node;
+
+		/* setrefs.c should have set the varno to 0 */
+		Assert(var->varno == 0);
+		Assert(var->varlevelsup == 0);
+		*colnos = bms_add_member(*colnos, var->varattno);
+		return false;
+	}
+	if (IsA(node, Aggref))		/* do not descend into aggregate exprs */
+		return false;
+	return expression_tree_walker(node, find_unaggregated_cols_walker,
+								  (void *) colnos);
+}
+
+/* 
+ * Create a list of the tuple columns that actually need to be stored
+ * in hashtable entries.  The incoming tuples from the child plan node
+ * will contain grouping columns, other columns referenced in our
+ * targetlist and qual, columns used to compute the aggregate functions,
+ * and perhaps just junk columns we don't use at all.  Only columns of the
+ * first two types need to be stored in the hashtable, and getting rid of
+ * the others can make the table entries significantly smaller.  To avoid
+ * messing up Var numbering, we keep the same tuple descriptor for
+ * hashtable entries as the incoming tuples have, but set unwanted columns
+ * to NULL in the tuples that go into the table.
+ *
+ * To eliminate duplicates, we build a bitmapset of the needed columns,
+ * then convert it to an integer list (cheaper to scan at runtime).
+ * The list is in decreasing order so that the first entry is the largest;
+ * lookup_hash_entry depends on this to use slot_getsomeattrs correctly.
+ *
+ * Note: at present, searching the tlist/qual is not really necessary
+ * since the parser should disallow any unaggregated references to
+ * ungrouped columns.  However, the search will be needed when we add
+ * support for SQL99 semantics that allow use of "functionally dependent"
+ * columns that haven't been explicitly grouped by.
+ */
+List *
+get_agg_hash_collist(AggState *aggstate)
+{
+	Agg		   *node = (Agg *) aggstate->ss.ps.plan;
+	Bitmapset  *colnos;
+	List	   *collist;
+	int			i;
+
+	/* Find Vars that will be needed in tlist and qual */
+	colnos = find_unaggregated_cols(aggstate);
+	/* Add in all the grouping columns */
+	for (i = 0; i < node->numCols; i++)
+		colnos = bms_add_member(colnos, node->grpColIdx[i]);
+	/* Convert to list, using lcons so largest element ends up first */
+	collist = NIL;
+	while ((i = bms_first_member(colnos)) >= 0)
+		collist = lcons_int(i, collist);
+	return collist;
+}
+
+/*
  * Initialize the hash table to empty.
  *
  * The hash table always lives in the aggcontext memory context.
@@ -611,7 +686,7 @@ build_hash_table(AggState *aggstate)
  * Estimate per-hash-table-entry overhead for the planner.
  *
  * Note that the estimate does not include space for pass-by-reference
- * transition data values.
+ * transition data values, nor for the representative tuple of each group.
  */
 Size
 hash_agg_entry_size(int numAggs)
@@ -621,9 +696,9 @@ hash_agg_entry_size(int numAggs)
 	/* This must match build_hash_table */
 	entrysize = sizeof(AggHashEntryData) +
 		(numAggs - 1) *sizeof(AggStatePerGroupData);
-	/* Account for hashtable overhead */
-	entrysize += 2 * sizeof(void *);
 	entrysize = MAXALIGN(entrysize);
+	/* Account for hashtable overhead (assuming fill factor = 1) */
+	entrysize += 3 * sizeof(void *);
 	return entrysize;
 }
 
@@ -634,13 +709,34 @@ hash_agg_entry_size(int numAggs)
  * When called, CurrentMemoryContext should be the per-query context.
  */
 static AggHashEntry
-lookup_hash_entry(AggState *aggstate, TupleTableSlot *slot)
+lookup_hash_entry(AggState *aggstate, TupleTableSlot *inputslot)
 {
+	TupleTableSlot *hashslot = aggstate->hashslot;
+	ListCell   *l;
 	AggHashEntry entry;
 	bool		isnew;
 
+	/* if first time through, initialize hashslot by cloning input slot */
+	if (hashslot->tts_tupleDescriptor == NULL)
+	{
+		ExecSetSlotDescriptor(hashslot, inputslot->tts_tupleDescriptor,false);
+		/* Make sure all unused columns are NULLs */
+		ExecStoreAllNullTuple(hashslot);
+	}
+
+	/* transfer just the needed columns into hashslot */
+	slot_getsomeattrs(inputslot, linitial_int(aggstate->hash_needed));
+	foreach(l, aggstate->hash_needed)
+	{
+		int		varNumber = lfirst_int(l) - 1;
+
+		hashslot->tts_values[varNumber] = inputslot->tts_values[varNumber];
+		hashslot->tts_isnull[varNumber] = inputslot->tts_isnull[varNumber];
+	}
+
+	/* find or create the hashtable entry using the filtered tuple */
 	entry = (AggHashEntry) LookupTupleHashEntry(aggstate->hashtable,
-												slot,
+												hashslot,
 												&isnew);
 
 	if (isnew)
@@ -673,9 +769,16 @@ ExecAgg(AggState *node)
 
 	if (((Agg *) node->ss.ps.plan)->aggstrategy == AGG_HASHED)
 	{
-		if (!node->table_filled)
-			agg_fill_hash_table(node);
-		return agg_retrieve_hash_table(node);
+		if ( mpp_hybrid_hash_agg )
+		{
+			return exec_hybrid_hash_agg(node);
+		}
+		else
+		{
+			if (!node->table_filled)
+				agg_fill_hash_table(node);
+			return agg_retrieve_hash_table(node);
+		}
 	}
 	else
 		return agg_retrieve_direct(node);
@@ -936,7 +1039,6 @@ agg_retrieve_hash_table(AggState *aggstate)
 	bool	   *aggnulls;
 	AggStatePerAgg peragg;
 	AggStatePerGroup pergroup;
-	AggHashEntry entry;
 	TupleTableSlot *firstSlot;
 	int			aggno;
 
@@ -957,32 +1059,54 @@ agg_retrieve_hash_table(AggState *aggstate)
 	 */
 	while (!aggstate->agg_done)
 	{
-		/*
-		 * Find the next entry in the hash table
-		 */
-		entry = (AggHashEntry) ScanTupleHashTable(&aggstate->hashiter);
-		if (entry == NULL)
+		if ( mpp_hybrid_hash_agg )
 		{
-			/* No more entries in hashtable, so done */
-			aggstate->agg_done = TRUE;
-			return NULL;
+			/* MPP Hybrid Hash Agg way */
+			HashAggEntry *entry = agg_hash_iter(aggstate->hhashtable);
+			
+			if ( entry == NULL )
+			{
+				aggstate->agg_done = TRUE;
+				return NULL;
+			}
+			
+			ResetExprContext(econtext);
+			
+			ExecStoreTuple(entry->heaptuple, firstSlot, InvalidBuffer, false);
+			
+			pergroup = entry->pergroup;
 		}
+		else
+		{
+			/* PostgreSQL In-Memory way */
+			AggHashEntry entry;
+			/*
+			 * Find the next entry in the hash table
+			 */
+			entry = (AggHashEntry) ScanTupleHashTable(&aggstate->hashiter);
+			if (entry == NULL)
+			{
+				/* No more entries in hashtable, so done */
+				aggstate->agg_done = TRUE;
+				return NULL;
+			}
 
-		/*
-		 * Clear the per-output-tuple context for each group
-		 */
-		ResetExprContext(econtext);
+			/*
+			 * Clear the per-output-tuple context for each group
+			 */
+			ResetExprContext(econtext);
 
-		/*
-		 * Store the copied first input tuple in the tuple table slot reserved
-		 * for it, so that it can be used in ExecProject.
-		 */
-		ExecStoreTuple(entry->shared.firstTuple,
-					   firstSlot,
-					   InvalidBuffer,
-					   false);
+			/*
+			 * Store the copied first input tuple in the tuple table slot reserved
+			 * for it, so that it can be used in ExecProject.
+			 */
+			ExecStoreTuple(entry->shared.firstTuple,
+						   firstSlot,
+						   InvalidBuffer,
+						   false);
 
-		pergroup = entry->pergroup;
+			pergroup = entry->pergroup;
+		}
 
 		/*
 		 * Finalize each aggregate calculation, and stash results in the
@@ -1084,14 +1208,26 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 							  ALLOCSET_DEFAULT_INITSIZE,
 							  ALLOCSET_DEFAULT_MAXSIZE);
 
-#define AGG_NSLOTS 2
+	if ( node->aggstrategy == AGG_HASHED )
+	{
+		aggstate->transcontext =
+			AllocSetContextCreate(aggstate->aggcontext,
+								  "TransContext",
+								  ALLOCSET_DEFAULT_MINSIZE,
+								  ALLOCSET_DEFAULT_INITSIZE,
+								  ALLOCSET_DEFAULT_MAXSIZE);
+	}
+	else
+		aggstate->transcontext = aggstate->aggcontext;
+
+#define AGG_NSLOTS 3
 
 	/*
 	 * tuple table initialization
 	 */
 	ExecInitScanTupleSlot(estate, &aggstate->ss);
 	ExecInitResultTupleSlot(estate, &aggstate->ss.ps);
-
+	aggstate->hashslot = ExecInitExtraTupleSlot(estate);
 	/*
 	 * initialize child expressions
 	 *
@@ -1116,6 +1252,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	 */
 	if (node->aggstrategy == AGG_HASHED)
 		eflags &= ~EXEC_FLAG_REWIND;
+		
 	outerPlan = outerPlan(node);
 	outerPlanState(aggstate) = ExecInitNode(outerPlan, estate, eflags);
 
@@ -1180,7 +1317,11 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 
 	if (node->aggstrategy == AGG_HASHED)
 	{
-		build_hash_table(aggstate);
+		if ( !mpp_hybrid_hash_agg )
+		{
+			build_hash_table(aggstate);
+		}
+		aggstate->hash_needed = get_agg_hash_collist(aggstate);
 		aggstate->table_filled = false;
 	}
 	else
@@ -1408,6 +1549,10 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 
 	/* Update numaggs to match number of unique aggregates found */
 	aggstate->numaggs = aggno + 1;
+	
+	/* MPP */
+	if ( node->aggstrategy == AGG_HASHED && mpp_hybrid_hash_agg )
+		init_hybrid_hash_agg(aggstate);
 
 	return aggstate;
 }
@@ -1564,3 +1709,68 @@ aggregate_dummy(PG_FUNCTION_ARGS)
 		 fcinfo->flinfo->fn_oid);
 	return (Datum) 0;			/* keep compiler quiet */
 }
+
+/* MPP - Hybrid Hash Aggregation */
+
+/* Function: init_hybrid_hash_agg
+ *
+ * Specific initialization for hashed aggregation.  Call from ExecInitAgg
+ * in addition to the general initialization.
+ */
+void
+init_hybrid_hash_agg(AggState *aggstate)
+{
+	aggstate->hhashtable = create_agg_hash_table(aggstate);
+}
+
+/* Function: exec_hybrid_hash_agg
+ *
+ * ExecAgg processing for hashed aggregation -- returns the next result
+ * tuple or NULL. When returning NULL also sets aggstate to prevent future
+ * calls.
+ */
+TupleTableSlot *
+exec_hybrid_hash_agg(AggState *aggstate)
+{
+	TupleTableSlot *tuple = NULL;
+	
+	for (;;)
+	{
+		tuple = agg_retrieve_hash_table(aggstate);
+		aggstate->agg_done = false; /* Not done 'til batches used up. */
+		
+		if ( tuple != NULL )
+			return tuple;
+		
+		switch ( aggstate->hhashtable->state )
+		{
+		case HASHAGG_BEFORE_FIRST_PASS:
+		
+			agg_hash_initial_pass(aggstate);
+			aggstate->hhashtable->state = HASHAGG_BETWEEN_PASSES;
+			continue;
+		
+		case HASHAGG_BETWEEN_PASSES:
+		
+			if ( ! agg_hash_next_pass(aggstate) )
+			{
+				aggstate->hhashtable->state = HASHAGG_END_OF_PASSES;
+				continue;
+			}
+			aggstate->hhashtable->state = HASHAGG_IN_A_PASS;
+			continue;
+		
+		case HASHAGG_IN_A_PASS:
+		
+			if ( ! agg_hash_continue_pass(aggstate) )
+				aggstate->hhashtable->state = HASHAGG_BETWEEN_PASSES;
+			continue;
+
+		case HASHAGG_END_OF_PASSES:
+		
+			aggstate->agg_done = true;
+			return NULL;
+		}
+	}
+}
+

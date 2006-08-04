@@ -1404,8 +1404,14 @@ typedef struct AggState
 	HeapTuple	grp_firstTuple; /* copy of first tuple of current group */
 	/* these fields are used in AGG_HASHED mode: */
 	TupleHashTable hashtable;	/* hash table with one entry per group */
+	TupleTableSlot *hashslot;	/* slot for loading hash table */
+	List	   *hash_needed;	/* list of columns needed in hash table */
 	bool		table_filled;	/* hash table filled yet? */
 	TupleHashIterator hashiter; /* for iterating through hash table */
+	
+	/* MPP */
+	MemoryContext transcontext;	/* memory context for less long-lived data */
+	struct HashAggTable *hhashtable;
 } AggState;
 
 /* ----------------
