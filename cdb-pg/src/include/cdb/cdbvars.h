@@ -355,6 +355,11 @@ extern bool mpp_enable_agg_distinct;
  */
 extern bool mpp_enable_preunique;
 
+/* Should hashed aggregation use the "hybrid" approach (spilling to disk
+ * as necessary to constrain the size of the in-memory hash table) or not.
+ * If not, an all-in-memory hash is used.
+ */
+extern bool mpp_hybrid_hash_agg;
 
 
 /* --------------------------------------------------------------------------------------------------
