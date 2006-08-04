@@ -58,7 +58,7 @@ try :
     import host
     from configobj import ConfigObj, flatten_errors
     from validate import Validator
-    import groupSession as groupSession
+    import groupSessionModule as groupSession
     import checkPerfResults, checkPerfStream
     import gpLogger
     import logging
@@ -1030,8 +1030,8 @@ def checkPerfMain(argv):
         traceback.print_exc()
         raise
     hostFd.close()
-    gsObj=groupSession.groupSession(hostuserport, setupKeys, verboseOpt=verbose,\
-    logger=Logger)
+    gsObj=groupSession.groupSession(hostuserport, setupKeys, 
+        verboseOpt=verbose, gLogger=Logger)
     if (exKeys):
         gsObj.exchangeKeys()
     #

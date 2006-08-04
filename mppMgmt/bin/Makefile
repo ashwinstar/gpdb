@@ -23,17 +23,9 @@ all: pylib
 #
 # Python Libraries
 #
-pylib : paramiko pycrypto configobj gpLink stream
+pylib : paramiko pycrypto configobj stream
 
 
-
-
-gpLink:
-	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@echo "creating groupSession.py link"
-	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@rm -rf $(LIB_DIR)/groupSession.py
-	@cd $(LIB_DIR)/; ln -s ../groupSession groupSession.py ; cd ../ ;
 
 
 #
@@ -157,7 +149,6 @@ solarisTest:
 		echo "SOLARIS" ; \
 	fi
 clean : pycryptoClean paramikoClean configobjClean
-	rm -rf lib/groupSession*
 	rm -rf *.pyc lib/*.pyc
 
     
