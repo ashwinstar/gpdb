@@ -225,11 +225,14 @@ class sshSession(threading.Thread):
                 pass
             logger.info("Copying %s to %s", lPath, rPath)
             self.sftpClnt.put(lPath, remotePath)
+        except KeyboardInterrupt:
+            logger.debug("runCmd(Executing) Received KeyBoardInterrupt")
+            raise
         except IOError, e:
             errStr='Unable to Copy (%s to %s):%s' % (lPath, rPath, str(e))
             logger.error(errStr)
             return errStr
-        except SFTPError, e:
+        except paramiko.SFTPError, e:
             errStr= 'Received SFTP Client Error (%s to %s):%s' % \
                 (lPath, rPath, str(e))
             logger.error(errStr)
@@ -276,7 +279,7 @@ class sshSession(threading.Thread):
             raise runCommmandException, for other errors 
         """
         logger=self.logger
-        channel=None
+        rmChannel=None
         if (not self.trans):
             raise runCommandException("Transport is not initialized.")
         if (not self.trans.is_authenticated()):
@@ -284,9 +287,9 @@ class sshSession(threading.Thread):
         if (not command):
             raise runCommandException("Command not provided.")
         try:
-            channel = self.trans.open_session()
-            self.chan=channel
-            channel.exec_command(command)
+            rmChannel = self.trans.open_session()
+            self.chan=rmChannel
+            rmChannel.exec_command(command)
         except paramiko.SSHException, e:
             raise runCommandException(str(e))
         except SystemExit:
@@ -309,13 +312,13 @@ class sshSession(threading.Thread):
         try:
             stdout = ""
             stderr = ""
-            channel.set_combine_stderr(True)
-            channel.setblocking(0)
+            rmChannel.set_combine_stderr(True)
+            rmChannel.setblocking(0)
             recvBlk=BLK_SIZE
             try:
-                while channel and select.select([channel], [], [], 0.1):
+                while True:
                     try:
-                        recvBytes= channel.recv(recvBlk)
+                        recvBytes= rmChannel.recv(recvBlk)
                         if not recvBytes:
                             break
                         stdout+= recvBytes
@@ -325,10 +328,12 @@ class sshSession(threading.Thread):
                             recvBlk *= 2
                         select.select([], [], [], 0.1)
                     except select.error:
-                       pass
+                        select.select([], [], [], 0.1)
+                        pass
                        #print "Received Select (block) Error"
                        # raise KeyboardInterrupt
                     except socket.timeout:
+                        select.select([], [], [], 0.1)
                         pass
             except select.error:
                 pass
@@ -337,9 +342,9 @@ class sshSession(threading.Thread):
             except KeyboardInterrupt:
                 logger.debug("runCmd(Waiting) Received KeyBoardInterrupt")
                 raise
-            exitStatus = channel.recv_exit_status()
+            exitStatus = rmChannel.recv_exit_status()
             logger.debug("%s stdout = %d \n" % (self.userHost, len(stdout)))
-            #exit_status=channel.recv_exit_status()
+            #exit_status=rmChannel.recv_exit_status()
             logger.debug("Error Code : %d %s executed on %s \n", exit_status,
                 command, self.host)
             # Only Log first 1024 Bytes.
@@ -350,14 +355,14 @@ class sshSession(threading.Thread):
             self.exitStatus=exit_status
         except KeyboardInterrupt:
             logger.debug("runCmd(Executing) Received KeyBoardInterrupt")
-            if channel:
-                channel.close()
-                channel=None
+            if rmChannel:
+                rmChannel.close()
+                rmChannel=None
                 self.chan=None
             raise
-        if channel:
-            channel.close()
-            channel=None
+        if rmChannel:
+            rmChannel.close()
+            rmChannel=None
             self.chan=None
         return (self.exitStatus, self.stdout, self.stderr)
 
@@ -1208,19 +1213,32 @@ class sshSession(threading.Thread):
         return True
 
 
+def rptTest(sess, cmd='uptime', times=10):
+    cntr=times
+    while cntr:
+        sess.setCMD('ssh', [cmd])
+        res=sess.run()
+        print res
+        cntr-=1
+    
+    
+    
 if __name__ == '__main__': 
     try :
-        a = sshSession('ksrikanth',22,'localhost')
+        a = sshSession('testuser2',22,'10.0.0.216')
         a.makeReady(authenticate=True)
         a.setCMD('ssh', ['uname -a'])
         print "Authenticated..."
         #signal.signal(signal.SIGTERM, handlerTERM)
-        cmd='date; sleep 1; date '
+        cmd='date; sleep 10; date '
         print "Running command"
         try:
             print "executing %s " % cmd
-            res=a.execCmd(cmd)
-            print res
+            #a.setCMD('scp', ['/Users/ksrikanth/fileOne', 'fileOne'])
+            #res=a.run()
+            #print res
+            #res=a.execCmd(cmd)
+            #print res
             #a.setCMD('ssh', ['date; sleep 1; date '])
             #res=a.run()
             #print res
@@ -1228,10 +1246,11 @@ if __name__ == '__main__':
             #a.setCMD('scp', ['/Users/ksrikanth/fileOne', 'fileOne'])
             #res=a.run()
             #print res
+            #a.setCMD('ssh', ['~/tmpdir1/stream'])
             #a.setCMD('ssh', ['cat fileOne'])
-            a.setCMD('ssh', ['~/tmpdir1/stream'])
-            res=a.run()
-            print res
+            #res=a.run()
+            #print len(res)
+            rptTest(a, 'uptime', times=100)
         except SystemExit:
             raise
         except KeyboardInterrupt:

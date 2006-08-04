@@ -208,7 +208,10 @@ class groupSession(cmd.Cmd):
         #Run the command on all sessions
         try:
             interrupted = self.runCommand(cmd,args)
+            if interrupted:
+                print "\nCopy Interrupted\n"
         except KeyboardInterrupt:
+            print "Command Interrupted..."
             raise
         except Exception, e:
             errStr="Caught Exception %s: %s "% \
@@ -266,6 +269,8 @@ class groupSession(cmd.Cmd):
 
     def do_exit(self, args):
         """Exits from the console"""
+        for th in self.sessions:
+            th.killCMD(signal.SIGKILL)
         return -1
 
     def do_quit(self,args):
