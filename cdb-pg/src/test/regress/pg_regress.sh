@@ -89,7 +89,6 @@ bindir='@bindir@'
 datadir='@datadir@'
 host_platform='@host_tuple@'
 enable_shared='@enable_shared@'
-cdb_is_here=yes
 GCC=@GCC@
 
 if [ "$GCC" = yes ]; then
@@ -545,16 +544,15 @@ if [ $? -ne 0 ]; then
     (exit 2); exit
 fi
 
-# disable until mpp can accept these ALTER DATABASE commands
-# "$bindir/psql" -q -X $psql_options -c "\
-# alter database \"$dbname\" set lc_messages to 'C';
-# alter database \"$dbname\" set lc_monetary to 'C';
-# alter database \"$dbname\" set lc_numeric to 'C';
-# alter database \"$dbname\" set lc_time to 'C';" "$dbname"
-# if [ $? -ne 0 ]; then
-#    echo "$me: could not set database default locales"
-#    (exit 2); exit
-# fi
+"$bindir/psql" -q -X $psql_options -c "\
+alter database \"$dbname\" set lc_messages to 'C';
+alter database \"$dbname\" set lc_monetary to 'C';
+alter database \"$dbname\" set lc_numeric to 'C';
+alter database \"$dbname\" set lc_time to 'C';" "$dbname"
+if [ $? -ne 0 ]; then
+    echo "$me: could not set database default locales"
+    (exit 2); exit
+fi
 
 
 # ----------
@@ -573,9 +571,7 @@ fi
 # Install any requested PL languages
 # ----------
 
-if [ "$cdb_is_here" = yes ]; then
-		message "skipping PL/pgSQL installation (CDB)"
-elif [ "$enable_shared" = yes ]; then
+if [ "$enable_shared" = yes ]; then
     for lang in xyzzy $load_langs ; do    
         if [ "$lang" != "xyzzy" ]; then
             message "installing $lang"
