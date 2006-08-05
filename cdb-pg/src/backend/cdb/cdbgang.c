@@ -24,6 +24,7 @@
 
 #include "catalog/namespace.h"
 #include "commands/variable.h"
+#include "postmaster/postmaster.h"
 
 extern int	CommitDelay;
 extern int	CommitSiblings;
@@ -772,6 +773,8 @@ thread_DoConnect(void *arg)
 			appendPQExpBuffer(&buffer, " -c mpp_is_primary=false");
 
 
+		appendPQExpBuffer(&buffer, " -c mpp_qd_callback_info=port=%d",PostPortNumber);
+		
 		/* user-settable GUC variables */
 
 		/*
@@ -845,6 +848,11 @@ thread_DoConnect(void *arg)
 		appendPQExpBuffer(&buffer, " -c temp_buffers=%d", num_temp_buffers);
         appendPQExpBuffer(&buffer, " -c mpp_log_interconnect=%s",
                            cdbvars_show_mpp_log_interconnect());
+         
+        if (mpp_use_snapshop_during_callback)   
+        	appendPQExpBuffer(&buffer, " -c mpp_use_snapshop_during_callback=true");
+        else               
+        	appendPQExpBuffer(&buffer, " -c mpp_use_snapshop_during_callback=false");
 
 		if (StatementTimeout != 0)
 			appendPQExpBuffer(&buffer, " -c statement_timeout=%d", StatementTimeout);

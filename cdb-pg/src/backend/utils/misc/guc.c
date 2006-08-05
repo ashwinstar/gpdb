@@ -95,7 +95,7 @@
 #endif
 
 /* XXX these should appear in other modules' header files */
-extern bool Log_disconnections;
+extern bool Log_disconnections; 
 extern DLLIMPORT bool check_function_bodies;
 extern int	CommitDelay;
 extern int	CommitSiblings;
@@ -1068,6 +1068,16 @@ static struct config_bool ConfigureNamesBool[] =
     	},
     	&Mpp_is_writer,
     	false, NULL, NULL
+    },
+    
+    {
+    	{"mpp_use_snapshop_during_callback", PGC_USERSET, UNGROUPED,
+    		gettext_noop("For debugging.. If SPI should try to send snapshot on callback to QD."),
+    		NULL,
+    		GUC_NOT_IN_SAMPLE
+    	},
+    	&mpp_use_snapshop_during_callback,
+    	true, NULL, NULL
     },
 
 	/* End-of-list marker */
@@ -2352,6 +2362,17 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&mpp_log_interconnect_str,
 		"terse", cdbvars_assign_mpp_log_interconnect, cdbvars_show_mpp_log_interconnect
+	},
+	
+	{
+		{"mpp_qd_callback_info", PGC_USERSET, UNGROUPED,
+			gettext_noop("Sets the QD callback information for the QEs in this session."),
+			gettext_noop("Right now, this is the port information"),
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+
+		},
+		&mpp_qd_callback_info,
+		"", NULL, NULL
 	},
 
     /* End-of-list marker */
