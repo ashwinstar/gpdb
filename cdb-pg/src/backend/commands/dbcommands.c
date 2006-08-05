@@ -1158,41 +1158,40 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 			appendStringInfo(&buffer, "RESET \"%s\"", stmt->variable);
 		}
 		{
-			List	   *namelist;
 			ListCell   *l;
-			char * 	rawname;
+	
 			
 			appendStringInfo(&buffer, "SET \"%s\" TO ",stmt->variable);
 		
-			/* Need a modifiable copy of string */
-			rawname = pstrdup(valuestr);
+
 		
 			/* Parse string into list of identifiers */
-			if (!SplitIdentifierString(rawname, ',', &namelist))
+
+			foreach(l, stmt->value)
 			{
-				appendStringInfo(&buffer, "%s", valuestr);
-			}
-			else
-			{
-				bool first = true;
-				foreach(l, namelist)
-				{
-					char	   *curname = (char *) lfirst(l);
-					if (!first)
-						appendStringInfo(&buffer, ",");
-					first = false;
-					
-					if (curname[0] == '-' || curname[0] == '"' || curname[0] == '\'' || (curname[0] >= '0' && curname[0] <= '9'))
-						appendStringInfo(&buffer, "%s", curname);
-					else
-						appendStringInfo(&buffer, "\"%s\"", curname);
-					
-				}
+				A_Const    *arg = (A_Const *) lfirst(l);
+				if (l != list_head(stmt->value))
+					appendStringInfo(&buffer, ",");
 				
+				switch (nodeTag(&arg->val))
+				{
+					case T_Integer:
+						appendStringInfo(&buffer, "%ld", intVal(&arg->val));
+						break;
+					case T_Float:
+						/* represented as a string, so just copy it */
+						appendStringInfoString(&buffer, strVal(&arg->val));
+						break;
+					case T_String:
+						appendStringInfo(&buffer,"'%s'", strVal(&arg->val));
+						break;
+					default:
+						appendStringInfo(&buffer, "%s", quote_identifier(strVal(&arg->val)));
+				}
 			}
+				
 			
-			pfree(rawname);
-			list_free(namelist);
+		
 		}
 	
 		CdbDoCommand(buffer.data, false, /*start txn*/ true);
