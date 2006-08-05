@@ -57,6 +57,8 @@ static MemoryContext _SPI_execmem(void);
 static MemoryContext _SPI_procmem(void);
 static bool _SPI_checktuples(void);
 
+bool mpp_use_snapshop_during_callback = true;
+
 /* used only in testing in test/libcdbtest ?? */
 extern int
 			SPI_execute_cdb(const char *src, Plan *pPlan, Query *pQuery, bool read_only, int tcount);
