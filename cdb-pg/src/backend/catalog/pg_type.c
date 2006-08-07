@@ -326,7 +326,7 @@ TypeCreateWithOid(const char *typeName,
 						 
 		if (newtypeOid != InvalidOid)
 		{
-			elog(NOTICE," Setting Oid in new pg_type tuple");
+			elog(DEBUG5," Setting Oid in new pg_type tuple");
 			HeapTupleSetOid(tup, newtypeOid);
 		}
 		else if (Mpp_role == MPP_ROLE_EXECUTE) elog(ERROR," newtypeOid NULL");
