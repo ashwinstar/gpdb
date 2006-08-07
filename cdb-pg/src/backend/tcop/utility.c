@@ -1001,7 +1001,6 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_RemoveAggrStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
 			RemoveAggregate((RemoveAggrStmt *) parsetree);
 			break;
 
@@ -1010,7 +1009,6 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_RemoveOperStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
 			RemoveOperator((RemoveOperStmt *) parsetree);
 			break;
 
@@ -1062,8 +1060,7 @@ ProcessUtility(Node *parsetree,
 			}
 			break;
 
-		case T_LoadStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
+		case T_LoadStmt: 
 			{
 				LoadStmt   *stmt = (LoadStmt *) parsetree;
 
@@ -1073,6 +1070,17 @@ ProcessUtility(Node *parsetree,
 							 errmsg("must be superuser to do LOAD")));
 				closeAllVfds(); /* probably not necessary... */
 				load_file(stmt->filename);
+				
+				if (Mpp_role == MPP_ROLE_DISPATCH)
+				{
+					StringInfoData buffer;
+
+					initStringInfo(&buffer);
+
+					appendStringInfo(&buffer, "LOAD '%s'", stmt->filename);
+
+					CdbDoCommand(buffer.data, false, /*no txn*/ false);
+				}
 			}
 			break;
 

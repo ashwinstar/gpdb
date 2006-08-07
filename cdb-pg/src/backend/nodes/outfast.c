@@ -1731,6 +1731,26 @@ _outRemoveFuncStmt(StringInfo str, RemoveFuncStmt *node)
 
 
 static void
+_outRemoveAggrStmt(StringInfo str, RemoveAggrStmt *node)
+{
+	WRITE_NODE_TYPE("REMOVEAGGRSTMT");
+	WRITE_NODE_FIELD(aggname);
+	WRITE_NODE_FIELD(aggtype);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
+}
+
+static void
+_outRemoveOperStmt(StringInfo str, RemoveOperStmt *node)
+{
+	WRITE_NODE_TYPE("REMOVEOPERSTMT");
+	WRITE_NODE_FIELD(opname);
+	WRITE_NODE_FIELD(args);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
+}
+
+
+
+static void
 _outDefineStmt(StringInfo str, DefineStmt *node)
 {
 	WRITE_NODE_TYPE("DEFINESTMT");
@@ -2008,6 +2028,9 @@ _outQuery(StringInfo str, Query *node)
 			
 			case T_CreateFunctionStmt:
 			case T_RemoveFuncStmt:
+			case T_RemoveAggrStmt:
+			case T_RemoveOperStmt:
+			
 			case T_DefineStmt:
 			case T_CompositeTypeStmt:
 			
@@ -2799,6 +2822,12 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_RemoveFuncStmt:
 				_outRemoveFuncStmt(str, obj);
+				break;
+			case T_RemoveAggrStmt:
+				_outRemoveAggrStmt(str, obj);
+				break;
+			case T_RemoveOperStmt:
+				_outRemoveOperStmt(str, obj);
 				break;
 				
 			case T_DefineStmt:

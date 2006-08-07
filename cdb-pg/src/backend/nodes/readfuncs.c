@@ -1692,6 +1692,30 @@ _readRemoveFuncStmt(void)
 	READ_DONE();
 }
 
+static RemoveAggrStmt *
+_readRemoveAggrStmt(void)
+{
+	READ_LOCALS(RemoveAggrStmt);
+	READ_NODE_FIELD(aggname);
+	READ_NODE_FIELD(aggtype);
+	READ_ENUM_FIELD(behavior, DropBehavior);
+			
+	READ_DONE();
+}
+
+static RemoveOperStmt *
+_readRemoveOperStmt(void)
+{
+	READ_LOCALS(RemoveOperStmt);
+	READ_NODE_FIELD(opname);
+	READ_NODE_FIELD(args);
+	READ_ENUM_FIELD(behavior, DropBehavior);
+			
+	READ_DONE();
+}
+
+
+
 
 static DefineStmt *
 _readDefineStmt(void)
@@ -2555,7 +2579,9 @@ static ParseNodeInfo infoAr[] =
 	{"REINDEXSTMT", (ReadFn)_readReindexStmt},
 	{"RELABELTYPE", (ReadFn)_readRelabelType},
 	{"REMOTEPARAMDATA", (ReadFn)_readRemoteParamData},
+	{"REMOVEAGGRSTMT", (ReadFn)_readRemoveAggrStmt},
 	{"REMOVEFUNCSTMT", (ReadFn)_readRemoveFuncStmt},
+	{"REMOVEOPERSTMT", (ReadFn)_readRemoveOperStmt},
 	{"RENAMESTMT", (ReadFn)_readRenameStmt},
 	{"RESULT", (ReadFn)_readResult},
 	{"ROW", (ReadFn)_readRowExpr},
