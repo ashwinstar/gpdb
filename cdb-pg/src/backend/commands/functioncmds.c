@@ -1332,7 +1332,10 @@ CreateCast(CreateCastStmt *stmt)
 
 	tuple = heap_formtuple(RelationGetDescr(relation), values, nulls);
 
-	simple_heap_insert(relation, tuple);
+	if (stmt->castOid != 0)
+		HeapTupleSetOid(tuple, stmt->castOid);
+		
+	stmt->castOid = simple_heap_insert(relation, tuple);
 
 	CatalogUpdateIndexes(relation, tuple);
 
@@ -1365,6 +1368,12 @@ CreateCast(CreateCastStmt *stmt)
 	heap_freetuple(tuple);
 
 	heap_close(relation, RowExclusiveLock);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
+	
 }
 
 
@@ -1424,6 +1433,11 @@ DropCast(DropCastStmt *stmt)
 	ReleaseSysCache(tuple);
 
 	performDeletion(&object, stmt->behavior);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 }
 
 

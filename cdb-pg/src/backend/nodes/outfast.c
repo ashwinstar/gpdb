@@ -1774,6 +1774,58 @@ _outCompositeTypeStmt(StringInfo str, CompositeTypeStmt *node)
 	
 }
 
+static void
+_outCreateCastStmt(StringInfo str, CreateCastStmt *node)
+{
+	WRITE_NODE_TYPE("CREATECAST");
+	WRITE_NODE_FIELD(sourcetype);
+	WRITE_NODE_FIELD(targettype);
+	WRITE_NODE_FIELD(func);
+	WRITE_ENUM_FIELD(context, CoercionContext);
+	WRITE_OID_FIELD(castOid);
+}
+
+static void
+_outDropCastStmt(StringInfo str, DropCastStmt *node)
+{
+	WRITE_NODE_TYPE("DROPCAST");
+	WRITE_NODE_FIELD(sourcetype);
+	WRITE_NODE_FIELD(targettype);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
+}
+
+static void
+_outCreateOpClassStmt(StringInfo str, CreateOpClassStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEOPCLASS");
+	WRITE_NODE_FIELD(opclassname);
+	WRITE_STRING_FIELD(amname);
+	WRITE_NODE_FIELD(datatype);
+	WRITE_NODE_FIELD(items);
+	WRITE_BOOL_FIELD(isDefault);
+	WRITE_OID_FIELD(opclassOid);
+}
+	
+static void
+_outRemoveOpClassStmt(StringInfo str, RemoveOpClassStmt *node)
+{
+	WRITE_NODE_TYPE("REMOVEOPCLASS");
+	WRITE_NODE_FIELD(opclassname);
+	WRITE_STRING_FIELD(amname);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
+}
+
+static void
+_outCreateConversionStmt(StringInfo str, CreateConversionStmt *node)
+{
+	WRITE_NODE_TYPE("CREATECONVERSION");
+	WRITE_NODE_FIELD(conversion_name);
+	WRITE_STRING_FIELD(for_encoding_name);
+	WRITE_STRING_FIELD(to_encoding_name);
+	WRITE_NODE_FIELD(func_name);
+	WRITE_BOOL_FIELD(def);
+	WRITE_OID_FIELD(convOid);
+}
 
 static void
 _outTransactionStmt(StringInfo str, TransactionStmt *node)
@@ -2033,6 +2085,11 @@ _outQuery(StringInfo str, Query *node)
 			
 			case T_DefineStmt:
 			case T_CompositeTypeStmt:
+			case T_CreateCastStmt:
+			case T_DropCastStmt:
+			case T_CreateOpClassStmt:
+			case T_RemoveOpClassStmt:
+			case T_CreateConversionStmt:
 			
 			case T_TransactionStmt:
 			case T_CdbExecStmt:
@@ -2836,6 +2893,22 @@ _outNode(StringInfo str, void *obj)
 			case T_CompositeTypeStmt:
 				_outCompositeTypeStmt(str,obj);
 				break;
+			case T_CreateCastStmt:
+				_outCreateCastStmt(str,obj);
+				break;
+			case T_DropCastStmt:
+				_outDropCastStmt(str,obj);
+				break;
+			case T_CreateOpClassStmt:
+				_outCreateOpClassStmt(str,obj);
+				break;
+			case T_RemoveOpClassStmt:
+				_outRemoveOpClassStmt(str,obj);
+				break;
+			case T_CreateConversionStmt:
+				_outCreateConversionStmt(str,obj);
+				break;
+			
 			
 				
 			case T_ViewStmt:

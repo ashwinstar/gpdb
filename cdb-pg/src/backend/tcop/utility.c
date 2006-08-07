@@ -1311,27 +1311,22 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateConversionStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
 			CreateConversionCommand((CreateConversionStmt *) parsetree);
 			break;
 
 		case T_CreateCastStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
 			CreateCast((CreateCastStmt *) parsetree);
 			break;
 
 		case T_DropCastStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
 			DropCast((DropCastStmt *) parsetree);
 			break;
 
 		case T_CreateOpClassStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
 			DefineOpClass((CreateOpClassStmt *) parsetree);
 			break;
 
 		case T_RemoveOpClassStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
 			RemoveOpClass((RemoveOpClassStmt *) parsetree);
 			break;
 

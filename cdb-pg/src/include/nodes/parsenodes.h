@@ -1273,6 +1273,7 @@ typedef struct CreateOpClassStmt
 	TypeName   *datatype;		/* datatype of indexed column */
 	List	   *items;			/* List of CreateOpClassItem nodes */
 	bool		isDefault;		/* Should be marked as default for type? */
+	Oid			opclassOid;
 } CreateOpClassStmt;
 
 #define OPCLASS_ITEM_OPERATOR		1
@@ -1843,6 +1844,7 @@ typedef struct CreateConversionStmt
 	char	   *to_encoding_name;		/* destination encoding name */
 	List	   *func_name;		/* qualified conversion function name */
 	bool		def;			/* is this a default conversion? */
+	Oid			convOid;
 } CreateConversionStmt;
 
 /* ----------------------
@@ -1856,6 +1858,7 @@ typedef struct CreateCastStmt
 	TypeName   *targettype;
 	FuncWithArgs *func;
 	CoercionContext context;
+	Oid			castOid;
 } CreateCastStmt;
 
 /* ----------------------

@@ -1744,6 +1744,69 @@ _readCompositeTypeStmt(void)
 	
 }
 
+static CreateCastStmt *
+_readCreateCastStmt(void)
+{
+	READ_LOCALS(CreateCastStmt);
+	READ_NODE_FIELD(sourcetype);
+	READ_NODE_FIELD(targettype);
+	READ_NODE_FIELD(func);
+	READ_ENUM_FIELD(context, CoercionContext);
+	READ_OID_FIELD(castOid);
+		
+	READ_DONE();
+}
+
+static DropCastStmt *
+_readDropCastStmt(void)
+{
+	READ_LOCALS(DropCastStmt);
+	READ_NODE_FIELD(sourcetype);
+	READ_NODE_FIELD(targettype);
+	READ_ENUM_FIELD(behavior, DropBehavior);
+			
+	READ_DONE();
+}
+
+static CreateOpClassStmt *
+_readCreateOpClassStmt(void)
+{
+	READ_LOCALS(CreateOpClassStmt);
+	READ_NODE_FIELD(opclassname);
+	READ_STRING_FIELD(amname);
+	READ_NODE_FIELD(datatype);
+	READ_NODE_FIELD(items);
+	READ_BOOL_FIELD(isDefault);
+	READ_OID_FIELD(opclassOid);
+				
+	READ_DONE();
+}
+	
+static RemoveOpClassStmt *
+_readRemoveOpClassStmt(void)
+{
+	READ_LOCALS(RemoveOpClassStmt);
+	READ_NODE_FIELD(opclassname);
+	READ_STRING_FIELD(amname);
+	READ_ENUM_FIELD(behavior, DropBehavior);
+				
+	READ_DONE();
+}
+
+static CreateConversionStmt *
+_readCreateConversionStmt(void)
+{
+	READ_LOCALS(CreateConversionStmt);
+	READ_NODE_FIELD(conversion_name);
+	READ_STRING_FIELD(for_encoding_name);
+	READ_STRING_FIELD(to_encoding_name);
+	READ_NODE_FIELD(func_name);
+	READ_BOOL_FIELD(def);
+	READ_OID_FIELD(convOid);
+					
+	READ_DONE();
+}
+
 static GrantStmt *
 _readGrantStmt(void)
 {
@@ -2521,9 +2584,12 @@ static ParseNodeInfo infoAr[] =
 	{"CONST", (ReadFn)_readConst},
 	{"CONSTRAINT", (ReadFn)_readConstraint},
 	{"CONVERTROWTYPEEXPR", (ReadFn)_readConvertRowtypeExpr},
+	{"CREATECAST", (ReadFn)_readCreateCastStmt},
+	{"CREATECONVERSION", (ReadFn)_readCreateConversionStmt},
 	{"CREATEDBSTMT", (ReadFn)_readCreatedbStmt},
 	{"CREATEDOMAINSTMT", (ReadFn)_readCreateDomainStmt},
 	{"CREATEFUNCSTMT", (ReadFn)_readCreateFunctionStmt},
+	{"CREATEOPCLASS", (ReadFn)_readCreateOpClassStmt},
 	{"CREATEPLANGSTMT", (ReadFn)_readCreatePLangStmt},
 	{"CREATEROLESTMT", (ReadFn)_readCreateRoleStmt},
 	{"CREATESCHEMASTMT", (ReadFn)_readCreateSchemaStmt},
@@ -2534,6 +2600,7 @@ static ParseNodeInfo infoAr[] =
 	{"DEFELEM", (ReadFn)_readDefElem},
 	{"DEFINESTMT", (ReadFn)_readDefineStmt},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
+	{"DROPCAST", (ReadFn)_readDropCastStmt},
 	{"DROPDBSTMT", (ReadFn)_readDropdbStmt},
 	{"DROPPLANGSTMT", (ReadFn)_readDropPLangStmt},
 	{"DROPPROPSTMT", (ReadFn)_readDropPropertyStmt},
@@ -2581,6 +2648,7 @@ static ParseNodeInfo infoAr[] =
 	{"REMOTEPARAMDATA", (ReadFn)_readRemoteParamData},
 	{"REMOVEAGGRSTMT", (ReadFn)_readRemoveAggrStmt},
 	{"REMOVEFUNCSTMT", (ReadFn)_readRemoveFuncStmt},
+	{"REMOVEOPCLASS", (ReadFn)_readRemoveOpClassStmt},
 	{"REMOVEOPERSTMT", (ReadFn)_readRemoveOperStmt},
 	{"RENAMESTMT", (ReadFn)_readRenameStmt},
 	{"RESULT", (ReadFn)_readResult},

@@ -30,6 +30,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
 
 /*
  * CREATE CONVERSION
@@ -90,8 +92,13 @@ CreateConversionCommand(CreateConversionStmt *stmt)
 	 * All seem ok, go ahead (possible failure would be a duplicate conversion
 	 * name)
 	 */
-	ConversionCreate(conversion_name, namespaceId, GetUserId(),
-					 from_encoding, to_encoding, funcoid, stmt->def);
+	stmt->convOid = ConversionCreate(conversion_name, namespaceId, GetUserId(),
+					 from_encoding, to_encoding, funcoid, stmt->def, stmt->convOid);
+					 
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 }
 
 /*
@@ -125,6 +132,16 @@ DropConversionCommand(List *name, DropBehavior behavior, bool missing_ok)
 	}
 
 	ConversionDrop(conversionOid, behavior);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		DropStmt * stmt = makeNode(DropStmt);
+		stmt->objects = list_make1(name);
+		stmt->removeType = OBJECT_CONVERSION;
+		stmt->behavior=behavior;
+		stmt->missing_ok = true;
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 }
 
 /*

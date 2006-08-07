@@ -39,6 +39,9 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
+
 
 /*
  * We use lists of this struct type to keep track of both operators and
@@ -327,7 +330,12 @@ DefineOpClass(CreateOpClassStmt *stmt)
 
 	tup = heap_formtuple(rel->rd_att, values, nulls);
 
+	if (stmt->opclassOid !=0)
+		HeapTupleSetOid(tup, stmt->opclassOid);
+		
 	opclassoid = simple_heap_insert(rel, tup);
+	
+	stmt->opclassOid = opclassoid;
 
 	CatalogUpdateIndexes(rel, tup);
 
@@ -395,6 +403,11 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	recordDependencyOnOwner(OperatorClassRelationId, opclassoid, GetUserId());
 
 	heap_close(rel, RowExclusiveLock);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 }
 
 /*
@@ -708,6 +721,11 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 	object.objectSubId = 0;
 
 	performDeletion(&object, stmt->behavior);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 }
 
 /*
