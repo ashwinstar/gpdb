@@ -699,13 +699,13 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
  * Initialize HashAggTable with the specified number of batch file slots. 
  */
 void
-create_batches(HashAggTable * hashtable, int nbatch)
+create_batches(HashAggTable *hashtable, int nbatch)
 {
 	size_t sz;
 	
 	Assert( nbatch > 1 && hashtable->batches == NULL );
 
-	sz = sizeof(BatchFileInfo) * (nbatch-1);	
+	sz = nbatch * sizeof(BatchFileInfo);	
 	hashtable->batches = (BatchFileInfo*)palloc0(sz);
 	hashtable->nbatch = nbatch;
 }
