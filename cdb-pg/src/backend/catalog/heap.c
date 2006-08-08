@@ -747,7 +747,7 @@ heap_create_with_catalog(const char *relname,
 	 * NOTE: we could get a unique-index failure here, in case the same name
 	 * has already been used for a type.
 	 */
-	if (comptypeOid && *comptypeOid == InvalidOid)
+	if (comptypeOid==NULL || *comptypeOid == InvalidOid)
 	new_type_oid = AddNewRelationType(relname,
 									  relnamespace,
 									  relid,
