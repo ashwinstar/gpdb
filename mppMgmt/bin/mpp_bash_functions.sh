@@ -671,6 +671,20 @@ CHK_MIRRORS_CONFIGURED () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+GET_MIRROR_TYPE () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	MIR_NUM=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(distinct hostname) - (select count(distinct hostname) from $CONFIG_TABLE where content<>-1 and hostname not in (select hostname from $CONFIG_TABLE where definedprimary='t' and content<>-1)) from $CONFIG_TABLE where content in (select content from $CONFIG_TABLE where hostname in (select hostname from $CONFIG_TABLE where content=0 and definedprimary='t') and content <>-1 and definedprimary='f');"`
+	if [ $MIR_NUM -eq 0 ];then
+		MIR_TYPE="No Mirror";fi
+	if [ $MIR_NUM -ge 1 ] && [ $MIR_NUM -le 2 ];then
+		MIR_TYPE="Group";fi
+	if [ $MIR_NUM -ge 3 ];then
+		MIR_TYPE="Spread";fi
+	if [ $MIR_NUM -lt 0 ];then
+		MIR_TYPE="Separate Hosts";fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 GET_QE_PRIMARY_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
