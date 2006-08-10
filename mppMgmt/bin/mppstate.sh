@@ -303,7 +303,9 @@ VERSION_INFO () {
 MIRROR_LIST () {
 		GET_QE_MIRROR_DETAILS
 		EXIT_STATUS=0
+		GET_MIRROR_TYPE
 		LOG_MSG "[INFO]:-Mirror list"
+		LOG_MSG "[INFO]:-Mirror type = $MIR_TYPE"
 		if [ ${#QE_MIRROR_ARRAY[@]} -ne 0 ]; then
 				for MNODE in "${QE_MIRROR_ARRAY[@]}"
 						do
@@ -329,7 +331,7 @@ MIRROR_LIST () {
 								EXIT_STATUS=1
 							fi
 						fi
-						$TABECHO "[$LM]:-Mirror  = $QE_NAME data directory = $QE_DIR port = $QE_PORT status = $STATUS $TAG"
+						$ECHO "[$LM]:-Mirror  = $QE_NAME data directory = $QE_DIR port = $QE_PORT status = $STATUS $TAG"
 				done
 		else
 				LOG_MSG "[WARN]:-No mirrors defined"
@@ -483,8 +485,10 @@ fi
 CLUSTER_CONFIG () {
 		GET_QE_PRIMARY_DETAILS
 		GET_QE_MIRROR_DETAILS
+		GET_MIRROR_TYPE
+		$ECHO "[INFO]:-Mirror type = $MIR_TYPE"
 		if [ ${#QE_MIRROR_ARRAY[@]} -ne 0 ]; then
-				LOG_MSG "[INFO]:-Primary to mirror mapping "
+				$ECHO "[INFO]:-Primary to mirror mapping "
 				ARRAY_MAX=${#QE_MIRROR_ARRAY[@]}
 				COUNT=0
 				while [ $COUNT -lt $ARRAY_MAX ]
@@ -495,7 +499,7 @@ CLUSTER_CONFIG () {
 						MHOST=`$ECHO ${QE_MIRROR_ARRAY[$COUNT]}|$CUT -d"|" -f1`
 						MDIR=`$ECHO ${QE_MIRROR_ARRAY[$COUNT]}|$CUT -d"|" -f2`
 						MPORT=`$ECHO ${QE_MIRROR_ARRAY[$COUNT]}|$CUT -d"|" -f3`
-						$TABECHO "[INFO]:-Primary $PHOST  $PDIR  $PPORT  mirror $MHOST  $MDIR  $MPORT"
+						$ECHO "[INFO]:-Primary $PHOST  $PDIR  $PPORT  mirror $MHOST  $MDIR  $MPORT"
 						((COUNT=$COUNT+1))
 				done
 
@@ -506,7 +510,7 @@ CLUSTER_CONFIG () {
 						PHOST=`$ECHO $PNODE|$CUT -d "|" -f1`
 						PDIR=`$ECHO $PNODE|$CUT -d "|" -f2`
 						PPORT=`$ECHO $PNODE|$CUT -d "|" -f3`
-						$TABECHO "[INFO]:-Primary $PHOST  $PDIR  $PPORT"
+						$ECHO "[INFO]:-Primary $PHOST  $PDIR  $PPORT"
 				done
 		fi
 }
