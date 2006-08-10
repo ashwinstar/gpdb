@@ -141,10 +141,11 @@ ENCODING=UNICODE
 # OPTIONAL PARAMETERS FOR SEGMENT MIRRORING
 ################################################
 
-# Data mirroring is optional. Mirroring must be configured
-# at system initialization time. You can not set up mirrors
-# after Bizgres MPP has been set up. Uncomment these
-# parameters to set up mirroring.
+# Data mirroring is optional. Mirroring can be configured
+# at system initialization time. 
+# You can also set up mirrors later
+# after Bizgres MPP has been set up, using mppaddmirrors.sh. 
+# Uncomment these parameters to set up mirroring.
 
 # The base port number on which mirror segment instances will be 
 # started on a segment host. If a host has multiple mirror segment 
