@@ -220,7 +220,6 @@ static TupleTableSlot *agg_retrieve_hash_table(AggState *aggstate);
 static Datum GetAggInitVal(Datum textInitVal, Oid transtype);
 
 /* MPP - Hybrid Hash Aggregation */
-static void init_hybrid_hash_agg(AggState *aggstate);
 static TupleTableSlot *exec_hybrid_hash_agg(AggState *aggstate);
 
 
@@ -1551,8 +1550,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	aggstate->numaggs = aggno + 1;
 	
 	/* MPP */
-	if ( node->aggstrategy == AGG_HASHED && mpp_hybrid_hash_agg )
-		init_hybrid_hash_agg(aggstate);
+	aggstate->hhashtable = NULL;
 
 	return aggstate;
 }
@@ -1597,6 +1595,10 @@ ExecEndAgg(AggState *node)
 		if (peraggstate->sortstate)
 			tuplesort_end(peraggstate->sortstate);
 	}
+	
+	/* Clean up hybrid hash agg. */
+	if ( ((Agg*)node->ss.ps.plan)->aggstrategy == AGG_HASHED && mpp_hybrid_hash_agg )
+		destroy_agg_hash_table(node);
 
 	/*
 	 * Free both the expr contexts.
@@ -1712,17 +1714,6 @@ aggregate_dummy(PG_FUNCTION_ARGS)
 
 /* MPP - Hybrid Hash Aggregation */
 
-/* Function: init_hybrid_hash_agg
- *
- * Specific initialization for hashed aggregation.  Call from ExecInitAgg
- * in addition to the general initialization.
- */
-void
-init_hybrid_hash_agg(AggState *aggstate)
-{
-	aggstate->hhashtable = create_agg_hash_table(aggstate);
-}
-
 /* Function: exec_hybrid_hash_agg
  *
  * ExecAgg processing for hashed aggregation -- returns the next result
@@ -1734,6 +1725,13 @@ exec_hybrid_hash_agg(AggState *aggstate)
 {
 	TupleTableSlot *tuple = NULL;
 	
+	if ( aggstate->hhashtable == NULL )
+	{
+		aggstate->hhashtable = create_agg_hash_table(aggstate);
+		agg_hash_initial_pass(aggstate);
+		aggstate->hhashtable->state = HASHAGG_BETWEEN_PASSES;
+	}
+	
 	for (;;)
 	{
 		tuple = agg_retrieve_hash_table(aggstate);
@@ -1744,14 +1742,7 @@ exec_hybrid_hash_agg(AggState *aggstate)
 		
 		switch ( aggstate->hhashtable->state )
 		{
-		case HASHAGG_BEFORE_FIRST_PASS:
-		
-			agg_hash_initial_pass(aggstate);
-			aggstate->hhashtable->state = HASHAGG_BETWEEN_PASSES;
-			continue;
-		
 		case HASHAGG_BETWEEN_PASSES:
-		
 			if ( ! agg_hash_next_pass(aggstate) )
 			{
 				aggstate->hhashtable->state = HASHAGG_END_OF_PASSES;
@@ -1761,15 +1752,16 @@ exec_hybrid_hash_agg(AggState *aggstate)
 			continue;
 		
 		case HASHAGG_IN_A_PASS:
-		
 			if ( ! agg_hash_continue_pass(aggstate) )
 				aggstate->hhashtable->state = HASHAGG_BETWEEN_PASSES;
 			continue;
 
 		case HASHAGG_END_OF_PASSES:
-		
 			aggstate->agg_done = true;
 			return NULL;
+			
+		case HASHAGG_BEFORE_FIRST_PASS:
+			elog(ERROR,"hybrid hash aggregation sequencing error");
 		}
 	}
 }

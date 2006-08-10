@@ -88,11 +88,10 @@ typedef struct HashAggTable
 	unsigned long		ngroup;
 	unsigned long		ntuple;
 	
-	HashAggState		state;		/* state to sequence operations */
-	int pass;					/* pass (0 is initial) */
-	int last_pass;				/* limits of pass numbers */
-	int source;					/* batch file source */
-	int overflow;				/* batch file for overflow */
+	HashAggState		state;	/* state of processing */
+	int pass;					/* current pass (0 is initial) */
+ 	int source;					/* source batch file for this pass */
+	int overflow;				/* overflow batch file for this pass */
 	
 	/* Hash table iterator */
 	int				curr_bucket_idx;
@@ -106,11 +105,16 @@ extern bool agg_hash_continue_pass(AggState *aggstate);
 
 extern HashAggEntry *agg_hash_iter(HashAggTable* ht);
 
+extern void destroy_agg_hash_table(AggState *aggstate);
+
+
 
 extern bool 
 calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 					   double ngroups,	/* Est # of groups. */
-					   int entrywidth,	/* Est per entry size of key and aggs. */
+					   int numaggs,		/* Est # of aggregate functions */
+					   int keywidth,	/* Est per entry size of hash key. */
+					   int transpace,	/* Est per entry size of by-ref values. */
 					   int *p_nbuckets,	/* Calculated # of hash buckets. */
 					   int *p_nentries,	/* Calculated # of hash entries. */
 					   int *p_nbatches	/* Calculated # of passes. */

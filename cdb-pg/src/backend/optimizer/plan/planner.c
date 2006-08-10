@@ -21,6 +21,7 @@
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
+#include "executor/execHashagg.h"
 #include "executor/nodeAgg.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -1628,14 +1629,35 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 	}
 
 	/* Estimate per-hash-entry space at tuple width... */
-	hashentrysize = cheapest_path_width;
+	/* (Should improve this estimate since not all 
+	 *  attributes are saved in a hash table entry's 
+	 *  grouping key tuple.) 
+	 */
+	hashentrysize = cheapest_path_width; 
 	/* plus space for pass-by-ref transition values... */
 	hashentrysize += agg_counts->transitionSpace;
 	/* plus the per-hash-entry overhead */
 	hashentrysize += hash_agg_entry_size(agg_counts->numAggs);
 
-	if (hashentrysize * dNumGroups > work_mem * 1024L)
+	if ( mpp_hybrid_hash_agg )
+	{
+		/* TODO - Stash transition space estimate in Agg somewhere so execHashagg.c can use it! */
+		if ( !calcHashAggTableSizes( 
+				1024.0 * (double)work_mem, 
+				dNumGroups, 
+				agg_counts->numAggs,
+				cheapest_path_width,
+				agg_counts->transitionSpace,
+				NULL, 
+				NULL, 
+				NULL ) 
+			)
+			return false;
+	}
+	else if (hashentrysize * dNumGroups > work_mem * 1024L)
+	{
 		return false;
+	}
 
 	/*
 	 * See if the estimated cost is no more than doing it the other way. While
