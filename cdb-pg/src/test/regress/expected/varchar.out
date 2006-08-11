@@ -14,34 +14,34 @@ INSERT INTO VARCHAR_TBL (f1) VALUES ('');
 INSERT INTO VARCHAR_TBL (f1) VALUES ('cd');
 ERROR:  value too long for type character varying(1)
 INSERT INTO VARCHAR_TBL (f1) VALUES ('c     ');
-SELECT '' AS seven, * FROM VARCHAR_TBL;
+SELECT '' AS seven, * FROM VARCHAR_TBL order by f1;
  seven | f1 
 -------+----
-       | a
-       | A
+       | 
        | 1
        | 2
        | 3
-       | 
+       | a
+       | A
        | c
 (7 rows)
 
 SELECT '' AS six, c.*
    FROM VARCHAR_TBL c
-   WHERE c.f1 <> 'a';
+   WHERE c.f1 <> 'a' order by f1;
  six | f1 
 -----+----
-     | A
+     | 
      | 1
      | 2
      | 3
-     | 
+     | A
      | c
 (6 rows)
 
 SELECT '' AS one, c.*
    FROM VARCHAR_TBL c
-   WHERE c.f1 = 'a';
+   WHERE c.f1 = 'a' order by f1;
  one | f1 
 -----+----
      | a
@@ -49,45 +49,45 @@ SELECT '' AS one, c.*
 
 SELECT '' AS five, c.*
    FROM VARCHAR_TBL c
-   WHERE c.f1 < 'a';
+   WHERE c.f1 < 'a' order by f1;
  five | f1 
 ------+----
-      | A
+      | 
       | 1
       | 2
       | 3
-      | 
-(5 rows)
+(4 rows)
 
 SELECT '' AS six, c.*
    FROM VARCHAR_TBL c
-   WHERE c.f1 <= 'a';
+   WHERE c.f1 <= 'a' order by f1;
  six | f1 
 -----+----
-     | a
-     | A
+     | 
      | 1
      | 2
      | 3
-     | 
-(6 rows)
+     | a
+(5 rows)
 
 SELECT '' AS one, c.*
    FROM VARCHAR_TBL c
-   WHERE c.f1 > 'a';
+   WHERE c.f1 > 'a' order by f1;
  one | f1 
 -----+----
+     | A
      | c
-(1 row)
+(2 rows)
 
 SELECT '' AS two, c.*
    FROM VARCHAR_TBL c
-   WHERE c.f1 >= 'a';
+   WHERE c.f1 >= 'a' order by f1;
  two | f1 
 -----+----
      | a
+     | A
      | c
-(2 rows)
+(3 rows)
 
 DROP TABLE VARCHAR_TBL;
 --
@@ -100,7 +100,7 @@ INSERT INTO VARCHAR_TBL (f1) VALUES ('abcd');
 INSERT INTO VARCHAR_TBL (f1) VALUES ('abcde');
 ERROR:  value too long for type character varying(4)
 INSERT INTO VARCHAR_TBL (f1) VALUES ('abcd    ');
-SELECT '' AS four, * FROM VARCHAR_TBL;
+SELECT '' AS four, * FROM VARCHAR_TBL order by f1;
  four |  f1  
 ------+------
       | a
