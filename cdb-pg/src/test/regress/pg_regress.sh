@@ -231,7 +231,7 @@ case $host_platform in
     *-*-qnx* | *-*-sco3.2v5*)
         DIFFFLAGS=-b;;
     *)
-        DIFFFLAGS=-w -I NOTICE: -I HINT:;;
+        DIFFFLAGS='-w -I NOTICE: -I HINT:';;
 esac
 
 
