@@ -3,7 +3,7 @@
  * cdbdef.h
  *	Definitions for use anywhere
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -24,6 +24,18 @@
 		_x = (_y);				\
 		_y = (_t);				\
 	} while (0)
+
+
+/*
+ * CdbVisitOpt
+ *      Some tree walkers use these codes to direct the traversal.
+ */
+typedef enum 
+{
+    CdbVisit_Walk = 1,          /* proceed in normal sequence */    
+    CdbVisit_Skip,              /* no more calls for current node or its kids */
+    CdbVisit_Stop               /* break out of traversal, no more callbacks */
+} CdbVisitOpt;
 
 
 #endif   /* CDBDEF_H */

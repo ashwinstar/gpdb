@@ -4,7 +4,7 @@
  *	  support for the POSTGRES executor module
  *
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -16,6 +16,8 @@
 #define EXECUTOR_H
 
 #include "executor/execdesc.h"
+
+#include "cdb/cdbdef.h"                 /* CdbVisitOpt */
 
 
 /*
@@ -152,13 +154,6 @@ typedef enum
 	MPP_ROOT_SLICE,
 	MPP_NON_ROOT_ON_QE
 } MppExecIdentity;
-
-typedef enum 
-{
-    CdbVisit_Walk,    
-    CdbVisit_Skip,
-    CdbVisit_Stop
-} CdbVisitOpt;
 
 CdbVisitOpt
 ExecStateTreeWalker(PlanState      *node,
