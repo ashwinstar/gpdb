@@ -8,6 +8,7 @@
  * but also length coercion functions.
  *
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Copyright (c) 2002-2005, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/include/catalog/pg_cast.h,v 1.24 2005/10/21 15:45:06 tgl Exp $
@@ -391,5 +392,10 @@ DATA(insert ( 1266 1266 1969 i ));
 DATA(insert ( 1560 1560 1685 i ));
 DATA(insert ( 1562 1562 1687 i ));
 DATA(insert ( 1700 1700 1703 i ));
+
+/*
+ * CDB: Allow explicit cast from tid to int8
+ */
+DATA(insert (   27   20 6021 e ));
 
 #endif   /* PG_CAST_H */

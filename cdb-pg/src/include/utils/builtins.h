@@ -4,7 +4,7 @@
  *	  Declarations for operations on built-in types.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/utils/builtins.h,v 1.267.2.1 2005/11/22 18:23:29 momjian Exp $
@@ -530,6 +530,7 @@ extern Datum tidin(PG_FUNCTION_ARGS);
 extern Datum tidout(PG_FUNCTION_ARGS);
 extern Datum tidrecv(PG_FUNCTION_ARGS);
 extern Datum tidsend(PG_FUNCTION_ARGS);
+extern Datum tidtoi8(PG_FUNCTION_ARGS);     /*CDB*/
 extern Datum tideq(PG_FUNCTION_ARGS);
 extern Datum currtid_byreloid(PG_FUNCTION_ARGS);
 extern Datum currtid_byrelname(PG_FUNCTION_ARGS);

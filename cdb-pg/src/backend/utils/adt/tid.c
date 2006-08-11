@@ -3,6 +3,7 @@
  * tid.c
  *	  Functions for the built-in type tuple id
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -158,6 +159,26 @@ tidsend(PG_FUNCTION_ARGS)
 	pq_sendint(&buf, offsetNumber, sizeof(offsetNumber));
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }
+
+
+/* ----------------------------------------------------------------
+ *	Conversion operators.
+ * ----------------------------------------------------------------
+ */
+
+Datum
+tidtoi8(PG_FUNCTION_ARGS)       /*CDB*/
+{
+    ItemPointer itemPtr = PG_GETARG_ITEMPOINTER(0);
+    BlockNumber blockNumber;
+    OffsetNumber offsetNumber;
+
+    blockNumber = BlockIdGetBlockNumber(&(itemPtr->ip_blkid));
+    offsetNumber = itemPtr->ip_posid;
+
+	PG_RETURN_INT64(((int64)blockNumber << 16) + offsetNumber);
+}
+
 
 /*****************************************************************************
  *	 PUBLIC ROUTINES														 *

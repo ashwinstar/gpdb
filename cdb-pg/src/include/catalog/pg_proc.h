@@ -4,6 +4,7 @@
  *	  definition of the system "procedure" relation (pg_proc)
  *	  along with the relation's initial contents.
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -3772,14 +3773,14 @@ DATA(insert OID = 2592 (  gist_circle_compress	PGNSP PGUID 12 f f t f i 1 2281 "
 DESCR("GiST support");
 
 
-/* Greenplum MPP exposed internally-defined functions. */ 
+/* Greenplum MPP exposed internally-defined functions. */
 DATA(insert OID = 6003 (  mpp_backup_launch    PGNSP PGUID 12 f f f f v 5 25 "25 25 25 25 25" _null_ _null_ _null_ mpp_backup_launch__  - _null_  ));
 DESCR("launch mpp backup on outboard Postgres instances");
 DATA(insert OID = 6004 (  mpp_restore_launch   PGNSP PGUID 12 f f f f v 8 25 "25 25 25 25 25 25 23 16" _null_ _null_ _null_ mpp_restore_launch__  - _null_  ));
 DESCR("launch mpp restore on outboard Postgres instances");
 DATA(insert OID = 6005 (  mpp_read_backup_file PGNSP PGUID 12 f f f f v 3 25 "25 25 24" _null_ _null_ _null_ mpp_read_backup_file__  - _null_  ));
 DESCR("read mpp backup file on outboard Postgres instances");
-DATA(insert OID = 6006 (  mpp_write_backup_file PGNSP PGUID 12 f f f f v 3 25 "25 25 25" _null_ _null_ _null_ mpp_write_backup_file__  - _null_  )); 
+DATA(insert OID = 6006 (  mpp_write_backup_file PGNSP PGUID 12 f f f f v 3 25 "25 25 25" _null_ _null_ _null_ mpp_write_backup_file__  - _null_  ));
 DESCR("write mpp backup file on outboard Postgres instances");
 DATA(insert OID = 6007 (  mpp_pgdatabase   PGNSP PGUID 12 f f f t v 0 2249 "" _null_ _null_ _null_ mpp_pgdatabase__ - _null_ ));
 DESCR("view mpp pgdatabase state");
@@ -3791,6 +3792,9 @@ DATA(insert OID = 6010 (  float8_amalg	   PGNSP PGUID 12 f f t f i 2 1022 "1022 
 DESCR("aggregate preliminary function");
 DATA(insert OID = 6011 (  interval_amalg   PGNSP PGUID 12 f f t f i 2 1187 "1187 1187" _null_ _null_ _null_ interval_amalg - _null_ ));
 DESCR("aggregate preliminary function");
+DATA(insert OID = 6021 (  int8			   PGNSP PGUID 12 f f t f i 1 20 "27" _null_ _null_ _null_	tidtoi8 - _null_ ));
+DESCR("convert tid to int8");
+#define CDB_PROC_TIDTOI8    6021
 
 
 /*
