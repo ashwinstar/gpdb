@@ -48,7 +48,7 @@ SELECT '' AS to_char_3, to_char( (q1 * -1), '9999999999999999PR'), to_char( (q2 
 	FROM INT8_TBL  order by 1, 2;
 
 SELECT '' AS to_char_4, to_char( (q1 * -1), '9999999999999999S'), to_char( (q2 * -1), 'S9999999999999999') 
-	FROM INT8_TBL  order by 1, 2
+	FROM INT8_TBL  order by 1, 2;
 
 SELECT '' AS to_char_5,  to_char(q2, 'MI9999999999999999')     FROM INT8_TBL  order by 1, 2;	
 SELECT '' AS to_char_6,  to_char(q2, 'FMS9999999999999999')    FROM INT8_TBL  order by 1, 2;

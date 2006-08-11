@@ -5,7 +5,8 @@
 CREATE TABLE update_test (
     a   INT DEFAULT 10,
     b   INT
-);
+    ,c   INT DEFAULT 1
+) DISTRIBUTED BY (c);
 
 INSERT INTO update_test VALUES (5, 10);
 INSERT INTO update_test VALUES (10, 15);

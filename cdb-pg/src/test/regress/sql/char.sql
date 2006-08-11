@@ -13,9 +13,9 @@ SELECT char 'c' = char 'c' AS true;
 
 CREATE TABLE CHAR_TBL(f1 char);
 
-INSERT INTO CHAR_TBL (f1) VALUES ('a') ;
+INSERT INTO CHAR_TBL (f1) VALUES ('a');
 
-INSERT INTO CHAR_TBL (f1) VALUES ('A') ;
+INSERT INTO CHAR_TBL (f1) VALUES ('A');
 
 -- any of the following three input formats are acceptable 
 INSERT INTO CHAR_TBL (f1) VALUES ('1');
