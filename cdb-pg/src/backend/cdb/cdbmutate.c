@@ -88,7 +88,9 @@ doesUpdateAffectPartitionCols(Plan         *plan,
                               Query        *query,
                               int           nattrs,
                               AttrNumber   *attrs);
-static bool hasCtid(Plan *plan);
+static void
+warn_ctid_without_segid(Query *query, Plan *plan);
+
 static bool has_ctid_outside_tlist_walker(Node *node, void* unused);
 
 
@@ -163,14 +165,14 @@ apply_motion(Plan *plan, Query *query)
 					
 						targetPolicy = palloc0(sizeof(MppPolicy)- sizeof(targetPolicy->attrs) + maxattrs * sizeof(targetPolicy->attrs[0]));
 						targetPolicy->nattrs = 0;
-						 
+						
 						targetPolicy->ptype = POLICYTYPE_PARTITIONED;
 						
 						/* Find out what the flow is partitioned on */
 						hashExpr = plan->flow->hashExpr;
 						
 						if(hashExpr)
-						foreach(exp1, hashExpr) 
+						foreach(exp1, hashExpr)
 						{
 							AttrNumber	n;
 							/* See if this Expr is a column of the result table */
@@ -178,7 +180,7 @@ apply_motion(Plan *plan, Query *query)
 							for(n=1;n<=list_length(plan->targetlist);n++)
 							{
 								Var		   *new_var = NULL;
-								 
+								
 								TargetEntry *target = get_tle_by_resno(plan->targetlist, n);
 								
 								/* If subplan expr is a Var, copy to preserve its EXPLAIN info. */
@@ -199,12 +201,12 @@ apply_motion(Plan *plan, Query *query)
 					                                  exprType((Node *) target->expr),
 					                                  exprTypmod((Node *) target->expr),
 					                                  0);
-					           
+					
 								if (equal(lfirst(exp1),new_var))
 								{
-									/* If it is, use it to partition the result table, to avoid 
+									/* If it is, use it to partition the result table, to avoid
 									 * unnecessary redistibution of data */
-									 
+									
 									targetPolicy->attrs[targetPolicy->nattrs++] = n;
 									break;
 								}
@@ -236,7 +238,7 @@ apply_motion(Plan *plan, Query *query)
 						
 							ereport(NOTICE,
 									(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
-									 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) " 
+									 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) "
 										    "named '%s' as the Bizgres MPP data distribution key for this "
 										    "table. ", columns),
 								     errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
@@ -505,14 +507,8 @@ apply_motion(Plan *plan, Query *query)
 							));
 		}
 	}
-	else if (hasCtid(result))
-	{
-		ereport(WARNING, (
-						  errcode(ERRCODE_WARNING_MPP_INTERIM_FEATURE),
-						  errmsg("Query uses CTID system column"),
-		errdetail("Support for CTID system column may change in the future.")
-						  ));
-	}
+	else
+        warn_ctid_without_segid(query, result);
 
 	return result;
 }
@@ -1253,7 +1249,9 @@ doesUpdateAffectPartitionCols(Plan         *plan,
  * ctid_inventory_walker() search a plan tree for a use of the CTID
  * pseudo-attribute.
  *
- * hasCtid() detects a CTID reference anywhere in the plan
+ * warn_ctid_without_segid() warns the user if the plan refers to a
+ * partitioned table's ctid column without also referencing its
+ * mpp_segment_id column.
  *
  * hasCtid_outside_tlist() detects a CTID reference outside of simple
  * Var in the targetlist of the top-level plan node.  The use of this
@@ -1261,41 +1259,68 @@ doesUpdateAffectPartitionCols(Plan         *plan,
  * in MPP first release.
  * ----------------------------------------------------------------------- *
  */
-#define CTID_ATTRNO -1
-
 typedef struct ctid_inv_data
 {
-	int			nctid;
-	bool		exit_early;
+	Relids      ctid_relids;
+    Relids      segid_relids;
 }	ctid_inv_data;
 
 static bool ctid_inventory_walker(Node *node, ctid_inv_data * inv);
 
-bool
-hasCtid(Plan *plan)
+void
+warn_ctid_without_segid(Query *query, Plan *plan)
 {
-	bool		r;
-	ctid_inv_data invdata;
+	ctid_inv_data   invdata;
+    Relids          warn_relids;
+    RangeTblEntry  *rte;
+    int             relid;
+	
+    invdata.ctid_relids = NULL;
+	invdata.segid_relids = NULL;
 
-	invdata.nctid = 0;
-	invdata.exit_early = TRUE;	/* Find one and you're done. */
+	ctid_inventory_walker((Node *) plan, &invdata);
 
-	r = ctid_inventory_walker((Node *) plan, &invdata);
+    if (invdata.ctid_relids == NULL)
+        return;
 
-	if (invdata.nctid > 0)
-	{
-		return TRUE;
-	}
-	else if (r == TRUE)
-	{
-		ereport(ERROR, (
-						errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("unexpected error in plan")
-						));
-	}
+    warn_relids = bms_difference(invdata.ctid_relids, invdata.segid_relids);
 
-	return FALSE;
-}
+    bms_foreach(relid, warn_relids)
+    {
+	    rte = rt_fetch(relid, query->rtable);
+        if (rte->rtekind == RTE_RELATION)
+        {
+            Relation    relation;
+            bool        isPartitioned;
+
+            relation = relation_open(rte->relid, NoLock);
+            isPartitioned = (relation->rd_cdbpolicy &&
+                             relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED);
+            relation_close(relation, NoLock);
+
+            if (isPartitioned)
+            {
+                /* Get name from catalog, not relcache, in case it changed. */
+                char   *relname = get_rel_name(rte->relid);
+
+                ereport(NOTICE,
+                        (errmsg("Query uses system column \"%s.ctid\"",
+                                relname),
+                         errdetail("To uniquely identify a row within a "
+                                   "distributed table, use the "
+                                   "\"mpp_segment_id\" system column "
+                                   "together with the \"ctid\" column.")
+                         ));
+                if (relname)
+                    pfree(relname);
+            }
+        }
+    }
+
+    bms_free(warn_relids);
+    bms_free(invdata.ctid_relids);
+    bms_free(invdata.segid_relids);
+}                               /* warn_ctid_without_segid */
 
 bool
 ctid_inventory_walker(Node *node, ctid_inv_data * inv)
@@ -1306,27 +1331,28 @@ ctid_inventory_walker(Node *node, ctid_inv_data * inv)
 	switch (nodeTag(node))
 	{
 		case T_Var:
+        {
+            Var    *var = (Var *)node;
 
-			/* Process the Var node. */
-			if (((Var *) node)->varattno == CTID_ATTRNO)
-			{
-				(inv->nctid)++;
-				if (inv->exit_early)
-				{
-					return true;/* This is all we care about so early exit is
-								 * ok. */
-				}
-			}
-
+			switch (var->varattno)
+            {
+                case SelfItemPointerAttributeNumber:    /* ctid */
+				    inv->ctid_relids = bms_add_member(inv->ctid_relids, var->varno);
+                    break;
+                case MppSegmentIdAttributeNumber:       /* mpp_segment_id */
+				    inv->segid_relids = bms_add_member(inv->segid_relids, var->varno);
+                    break;
+                default:
+                    break;
+            }
 			/* Var is primitive, no need to recur, but keep walking. */
 			return false;
-
+        }
 		default:
 			/* Let plan_tree_walker() deal with other node types. */
 			break;
 	}
 	return plan_tree_walker(node, ctid_inventory_walker, inv);
-
 }
 
 bool
@@ -1345,7 +1371,7 @@ has_ctid_outside_tlist_walker(Node *node, void* unused)
 
 		case T_Var:
 			/* Return true if found CTID outside target list. */
-			if (((Var *) node)->varoattno == CTID_ATTRNO)
+			if (((Var *) node)->varoattno == SelfItemPointerAttributeNumber)
                 return true;
 			return false;
 
