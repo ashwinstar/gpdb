@@ -25,9 +25,10 @@
  */
 
 /* The unit size can be adjusted by changing these three declarations: */
-#define BITS_PER_BITMAPWORD 32
 typedef uint32 bitmapword;		/* must be an unsigned type */
 typedef int32 signedbitmapword; /* must be the matching signed type */
+#define BITS_PER_BITMAPWORD_LOG2    5
+#define BITS_PER_BITMAPWORD         (1 << BITS_PER_BITMAPWORD_LOG2)
 
 typedef struct Bitmapset
 {
@@ -70,6 +71,7 @@ extern bool bms_is_empty(const Bitmapset *a);
 
 /* these routines recycle (modify or free) their non-const inputs: */
 
+extern Bitmapset *bms_assign(Bitmapset *tgt, const Bitmapset *src);
 extern Bitmapset *bms_add_member(Bitmapset *a, int x);
 extern Bitmapset *bms_del_member(Bitmapset *a, int x);
 extern Bitmapset *bms_add_members(Bitmapset *a, const Bitmapset *b);
@@ -78,6 +80,14 @@ extern Bitmapset *bms_del_members(Bitmapset *a, const Bitmapset *b);
 extern Bitmapset *bms_join(Bitmapset *a, Bitmapset *b);
 
 /* support for iterating through the integer elements of a set: */
+extern int  bms_first_from(const Bitmapset *a, int x);
+
+#define bms_foreach(_member, _set)              \
+    for ((_member) = bms_first_from((_set), 0); \
+         (_member) >= 0;                        \
+         (_member) = bms_first_from((_set), (_member)+1))
+
+/* return first member and delete it from the set */
 extern int	bms_first_member(Bitmapset *a);
 
 /* support for hashtables using Bitmapsets as keys: */

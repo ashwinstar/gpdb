@@ -23,8 +23,8 @@
 #include "nodes/bitmapset.h"
 
 
-#define WORDNUM(x)	((x) / BITS_PER_BITMAPWORD)
-#define BITNUM(x)	((x) % BITS_PER_BITMAPWORD)
+#define WORDNUM(x)	((int)((unsigned)(x) >> BITS_PER_BITMAPWORD_LOG2))
+#define BITNUM(x)	((int)((unsigned)(x) & (BITS_PER_BITMAPWORD - 1)))
 
 #define BITMAPSET_SIZE(nwords)	\
 	(offsetof(Bitmapset, words) + (nwords) * sizeof(bitmapword))
@@ -54,34 +54,12 @@
 /*
  * Lookup tables to avoid need for bit-by-bit groveling
  *
- * rightmost_one_pos[x] gives the bit number (0-7) of the rightmost one bit
- * in a nonzero byte value x.  The entry for x=0 is never used.
- *
  * number_of_ones[x] gives the number of one-bits (0-8) in a byte value x.
  *
  * We could make these tables larger and reduce the number of iterations
  * in the functions that use them, but bytewise shifts and masks are
  * especially fast on many machines, so working a byte at a time seems best.
  */
-
-static const uint8 rightmost_one_pos[256] = {
-	0, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-	5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-	6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-	5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-	7, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-	5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-	6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-	5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0
-};
 
 static const uint8 number_of_ones[256] = {
 	0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
@@ -104,9 +82,34 @@ static const uint8 number_of_ones[256] = {
 
 
 /*
+ * num_low_order_zero_bits
+ */
+static inline int
+num_low_order_zero_bits(bitmapword w)
+{
+    int         x = 0;
+    int         i;
+    bitmapword  m;
+
+    for (i = BITS_PER_BITMAPWORD / 2; i; i >>= 1)
+    {                           /* i = 16, 8, 4, 2, 1 */
+        m = (1 << i) - 1;       /* m = 0xffff, 0xff, 0xf, 3, 1 */
+        if ((w & m) == 0)
+        {
+            w >>= i;
+            x += i;
+        }
+    }
+    if (w == 0)                 /* all 0 => return BITS_PER_BITMAPWORD */
+        x++;
+    return x;
+}
+
+
+/*
  * bms_copy - make a palloc'd copy of a bitmapset
  */
-Bitmapset *
+inline Bitmapset *
 bms_copy(const Bitmapset *a)
 {
 	Bitmapset  *result;
@@ -433,13 +436,7 @@ bms_singleton_member(const Bitmapset *a)
 		{
 			if (result >= 0 || HAS_MULTIPLE_ONES(w))
 				elog(ERROR, "bitmapset has multiple members");
-			result = wordnum * BITS_PER_BITMAPWORD;
-			while ((w & 255) == 0)
-			{
-				w >>= 8;
-				result += 8;
-			}
-			result += rightmost_one_pos[w & 255];
+            result = num_low_order_zero_bits(w) + wordnum * BITS_PER_BITMAPWORD;
 		}
 	}
 	if (result < 0)
@@ -537,6 +534,30 @@ bms_is_empty(const Bitmapset *a)
  *		foo = bms_add_member(foo, x);
  */
 
+
+/*
+ * bms_assign - copy 'tgt' from 'src'
+ *
+ * 'tgt' set is modified or recycled!
+ */
+Bitmapset *
+bms_assign(Bitmapset *tgt, const Bitmapset *src)
+{
+	int			i;
+
+	if (tgt == NULL)
+		return bms_copy(src);
+    if (tgt->nwords < src->nwords)
+    {
+        pfree(tgt);
+        return bms_copy(src);
+    }
+    for (i = 0; i < src->nwords; i++)
+        tgt->words[i] = src->words[i];
+    for (; i < tgt->nwords; i++)
+        tgt->words[i] = 0;
+    return tgt;
+}                               /* bms_assign */
 
 /*
  * bms_add_member - add a specified member to set
@@ -718,6 +739,51 @@ bms_join(Bitmapset *a, Bitmapset *b)
 }
 
 /*----------
+ * bms_first_from - find first member of a set, starting at given index
+ *
+ * Returns -1 if no members >= x.	The set is not modified.
+ *
+ * This is intended as support for iterating through the members of a set.
+ * The typical pattern is
+ *
+ *          x = bms_first_from(set, 0);
+ *          while (x >= 0)
+ *          {
+ *              process member x;
+ *              x = bms_first_from(set, x + 1);
+ *          }
+ *----------
+ */
+int
+bms_first_from(const Bitmapset *a, int x)
+{
+	int			wordnum;
+    bitmapword  w;
+
+	if (a == NULL)
+        return -1;
+
+    wordnum = WORDNUM(x);
+
+    if ((unsigned)wordnum >= (unsigned)a->nwords)
+		return -1;
+
+	w = a->words[wordnum] >> BITNUM(x);
+    if (w & 1)
+        return x;
+    if (w)
+        return  x + num_low_order_zero_bits(w);
+
+	for (wordnum++; wordnum < a->nwords; wordnum++)
+	{
+		w = a->words[wordnum];
+		if (w)
+			return wordnum * BITS_PER_BITMAPWORD + num_low_order_zero_bits(w);
+	}
+	return -1;
+}
+
+/*----------
  * bms_first_member - find and remove first member of a set
  *
  * Returns -1 if set is empty.	NB: set is destructively modified!
@@ -746,19 +812,10 @@ bms_first_member(Bitmapset *a)
 
 		if (w != 0)
 		{
-			int			result;
-
 			w = RIGHTMOST_ONE(w);
 			a->words[wordnum] &= ~w;
 
-			result = wordnum * BITS_PER_BITMAPWORD;
-			while ((w & 255) == 0)
-			{
-				w >>= 8;
-				result += 8;
-			}
-			result += rightmost_one_pos[w & 255];
-			return result;
+			return num_low_order_zero_bits(w) + wordnum * BITS_PER_BITMAPWORD;
 		}
 	}
 	return -1;
