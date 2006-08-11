@@ -664,7 +664,6 @@ do
     # because they would certainly get corrupted if run in parallel
     # subshells.)
     # ----------
-
     for name do
         if [ $# -ne 1 ]; then
             formatted=`echo "$name" | awk '{printf "%-20.20s", $1;}'`
@@ -693,6 +692,7 @@ do
         result=2
         for thisfile in $EXPECTED.out ${EXPECTED}_[0-9].out; do
             [ ! -r "$thisfile" ] && continue
+			sed -i -e 's/  (seg.*pid.*)//' $outputdir/results/${name}.out
             diff $DIFFFLAGS $thisfile $outputdir/results/${name}.out >/dev/null 2>&1
             result=$?
             case $result in
