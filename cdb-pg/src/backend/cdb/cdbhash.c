@@ -3,7 +3,7 @@
  * cdbhash.c
  *	  Rrovides hashing routines to support consistant data distribution/location within MPP.
  *
- * Copyright (c) 2005, Greenplum
+ * Copyright (c) 2005-2006, Greenplum
  *
  * IDENTIFICATION
  *	  $Id$
@@ -359,6 +359,11 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			buf = &intbuf;
 			len = sizeof(intbuf);
 			break;
+
+        case TIDOID:                /* tuple id (6 bytes) */
+            buf = DatumGetPointer(datum);
+            len = SizeOfIptrData;
+            break;
 			
 		/*
 		 * ====== DATE/TIME TYPES ======
@@ -658,7 +663,8 @@ bool isMppHashable(Oid typid)
 		case VARCHAROID:
 		case BYTEAOID:
 		case NAMEOID:
-		case OIDOID:			
+		case OIDOID:
+        case TIDOID:
 		case REGPROCOID:		
 		case REGPROCEDUREOID:		
 		case REGOPEROID:		
