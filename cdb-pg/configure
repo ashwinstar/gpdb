@@ -32,6 +32,29 @@ else
   as_unset=false
 fi
 
+# Calculate the MPP version string from the CVS tag.
+# If there is no version set, get the name from CVS/Tag,
+# otherwise default to the head of cvs.
+RAW_VERSION=$Name$
+if [ -z "$RAW_VERSION" ] ; then
+    if [ -r CVS/Tag ] ; then
+        #Source is from a tag
+        MPP_VERSION=`cat CVS/Tag | sed 's,^[A-Z],,'`
+    else
+        #Source is from head
+        MPP_VERSION="cvs Head"
+    fi
+    #Set the buildnumber to a dev build
+    MPP_BUILDNUMBER="dev"
+else
+    MPP_VERSION=`echo $RAW_VERSION | sed -e 's,Release-,,' -e 's,-build-.*,,' -e 's,_,.,g'`
+    MPP_BUILDNUMBER=`echo $RAW_VERSION | sed -e 's,.*build-,,'`
+fi
+MPP_VERSION_HEADER="src/include/catalog/mpp_version.h"
+if grep '\$\$' $MPP_VERSION_HEADER > /dev/null 2>&1 ; then
+    cat $MPP_VERSION_HEADER | sed 's,\$.*\$\$,'$MPP_VERSION' build '$MPP_BUILDNUMBER',' > $MPP_VERSION_HEADER.new
+    mv $MPP_VERSION_HEADER.new $MPP_VERSION_HEADER
+fi
 
 # Work around bugs in pre-3.0 UWIN ksh.
 $as_unset ENV MAIL MAILPATH
@@ -3247,7 +3270,7 @@ else
 fi
 
 cat >>confdefs.h <<_ACEOF
-#define PG_VERSION_STR "PostgreSQL $PACKAGE_VERSION (Bizgres MPP $Name$) on $host, compiled by $cc_string"
+#define PG_VERSION_STR "PostgreSQL $PACKAGE_VERSION (Bizgres MPP $MPP_VERSION build $MPP_BUILDNUMBER) on $host, compiled by $cc_string"
 _ACEOF
 
 
@@ -22776,7 +22799,6 @@ if ( (MAIL=60; unset MAIL) || exit) >/dev/null 2>&1; then
 else
   as_unset=false
 fi
-
 
 # Work around bugs in pre-3.0 UWIN ksh.
 $as_unset ENV MAIL MAILPATH
