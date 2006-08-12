@@ -42,6 +42,8 @@ typedef struct
 	/* Argument types, if a prepared plan */
 	int			nargs;
 	Oid		   *argtypes;
+	
+	bool		run_via_callback_to_qd;
 } _SPI_plan;
 
 

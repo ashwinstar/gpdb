@@ -340,13 +340,13 @@ SocketBackend(StringInfo inBuf)
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
 							 errmsg("MPP dispatch unsupported for old FrontendProtocols.")));
 			
-			if (Mpp_role != MPP_ROLE_EXECUTE)
+			/*if (Mpp_role != MPP_ROLE_EXECUTE)
 			{
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 						 errmsg("invalid frontend message type: %d "
 						 	    "while not in \"execute\" mode", qtype)));
-			}
+			}*/
 		
 			break;
 		
@@ -2053,7 +2053,7 @@ finish_xact_command(void)
 
 		/* Now commit the command */
 		ereport(DEBUG3,
-				(errmsg_internal("CommitTransactionCommand")));
+				(errmsg_internal("finish_xact_command CommitTransactionCommand")));
 
 		CommitTransactionCommand();
 
@@ -3416,7 +3416,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					 * need to worry about setting the snapshot info.
 					 */
 					if (strcmp(snapshot_string, "NONE") != 0)
-					{
+					{						
 						/* parse the snapshot_string and store it. */
 						snapInfo = (SnapshotInfo *) deserializeNode((char*)snapshot_string);
 						
@@ -3427,6 +3427,12 @@ PostgresMain(int argc, char *argv[], const char *username)
 						QDSentSnapshot->xcnt   = snapInfo->xcnt;	
 						QDSentSnapshot->xip    = snapInfo->xip;					
 						QDSentSnapshot->curcid = snapInfo->curcid;
+						
+						if (Mpp_role == MPP_ROLE_DISPATCH)
+						{
+							elog(DEBUG1,"QD Got snapshot from QE, xid = %d",snapInfo->currentTransactionId);
+							ActiveSnapshot = CopySnapshot(QDSentSnapshot);
+						}
 					}					
 					
 					/* get the transaction options */
@@ -3444,7 +3450,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 						 *		 the DTM never gets around to sending them any
 						 *		 explicit commits or anything
 						 */
-						if (Mpp_role == MPP_ROLE_EXECUTE && Mpp_is_writer)
+						if (Mpp_role == MPP_ROLE_DISPATCH || (Mpp_role == MPP_ROLE_EXECUTE && Mpp_is_writer))
 						{
 							/* we only need to do this step if we aren't already
 							 * within a transaction
@@ -3461,7 +3467,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 								else
 									beginStmt = "BEGIN ISOLATION LEVEL READ UNCOMMITTED";
 						
-								
 								/* kick off an explict BEGIN */
 								exec_simple_query(beginStmt);
 							}

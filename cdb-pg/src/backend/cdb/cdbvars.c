@@ -52,6 +52,8 @@ int 		mpp_session_id;    /* global unique id for session. */
 
 char       *mpp_qd_callback_info;	/* info for QE to call back to QD */
 
+bool 		mpp_is_callback;		/* are we executing a callback query? */
+
 int         mpp_command_count;          /* num of commands from client */
 
 bool		Debug_print_prelim_plan;	/* Shall we log argument of

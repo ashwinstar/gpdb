@@ -649,9 +649,6 @@ CreateFunction(CreateFunctionStmt *stmt)
 			prosrc_str = funcname;
 	}
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH && volatility != PROVOLATILE_IMMUTABLE)
-		elog(WARNING,"This release of Bizgres MPP only supports IMMUTABLE functions and functions that don't execute SQL");
-
 	/*
 	 * And now that we have all the parameters, and know we're permitted to do
 	 * so, go ahead and create the function.

@@ -1079,6 +1079,16 @@ static struct config_bool ConfigureNamesBool[] =
     	&mpp_use_snapshop_during_callback,
     	true, NULL, NULL
     },
+    
+    {
+    	{"mpp_is_callback", PGC_USERSET, UNGROUPED,
+    		gettext_noop("Are we executing on behalf of a callback from the QE to QD."),
+    		NULL,
+    		GUC_NOT_IN_SAMPLE
+    	},
+    	&mpp_use_snapshop_during_callback,
+    	false, NULL, NULL
+    },
 
 	/* End-of-list marker */
 	{

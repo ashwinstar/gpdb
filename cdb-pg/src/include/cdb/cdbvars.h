@@ -161,6 +161,11 @@ extern int mpp_session_id; ;
 extern char * mpp_qd_callback_info;
 extern bool mpp_use_snapshop_during_callback;
 
+/*
+ * Are we executing a callback query?
+ */
+extern bool mpp_is_callback;
+
 /* Parameter debug_print_prelim_plan
  *
  * This run-time parameter is closely related to the PostgreSQL parameter
