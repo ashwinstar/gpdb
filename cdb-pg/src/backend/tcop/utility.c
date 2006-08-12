@@ -1108,8 +1108,6 @@ ProcessUtility(Node *parsetree,
 				{
 					ListCell   *head;
 
-					CdbSentry(CDB_WARN, parsetree, "SET TRANSACTION");
-
 					foreach(head, n->args)
 					{
 						DefElem    *item = (DefElem *) lfirst(head);
@@ -1125,8 +1123,6 @@ ProcessUtility(Node *parsetree,
 				else if (strcmp(n->name, "SESSION CHARACTERISTICS") == 0)
 				{
 					ListCell   *head;
-
-					CdbSentry(CDB_WARN, parsetree, "SET SESSION CHARACTERISTICS");
 
 					foreach(head, n->args)
 					{
