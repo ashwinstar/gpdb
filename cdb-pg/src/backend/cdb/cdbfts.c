@@ -573,7 +573,7 @@ markSegDBPersistentState(int dbid, bool state)
 	 *			and dbid != 2;
 	 * but the sanity checks seem worthwhile */
 	if (snprintf(cmd, sizeof(cmd),
-				 "select content from mpp_configuration where dbid=CAST(%d AS SMALLINT)",
+				 "select content from pg_catalog.mpp_configuration where dbid=CAST(%d AS SMALLINT)",
 				 dbid) >= sizeof(cmd))
 	{
 		ereport(ERROR,
@@ -581,7 +581,7 @@ markSegDBPersistentState(int dbid, bool state)
 				 errmsg("FTS: could not format command string")));
 	}
 
-	if (SPI_OK_SELECT != SPI_execute(cmd, false, 0))
+	if (SPI_OK_SELECT != (cmd, false, 0))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
@@ -606,7 +606,7 @@ markSegDBPersistentState(int dbid, bool state)
 	}
 
 	if (snprintf(cmd, sizeof(cmd),
-				 "select dbid, isprimary, valid, definedprimary from mpp_configuration where content = %d and dbid != CAST(%d AS SMALLINT)",
+				 "select dbid, isprimary, valid, definedprimary from pg_catalog.mpp_configuration where content = %d and dbid != CAST(%d AS SMALLINT)",
 				 contentid, dbid) >= sizeof(cmd))
 	{
 		ereport(ERROR,
