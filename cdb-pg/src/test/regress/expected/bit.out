@@ -5,6 +5,8 @@
 -- Build tables for testing
 --
 CREATE TABLE BIT_TABLE(b BIT(11));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'b' as the Bizgres MPP data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO BIT_TABLE VALUES (B'10'); -- too short
 ERROR:  bit string length 2 does not match type bit(11)
 INSERT INTO BIT_TABLE VALUES (B'00000000000');
@@ -14,15 +16,17 @@ INSERT INTO BIT_TABLE VALUES (B'101011111010'); -- too long
 ERROR:  bit string length 12 does not match type bit(11)
 --INSERT INTO BIT_TABLE VALUES ('X554');
 --INSERT INTO BIT_TABLE VALUES ('X555');
-SELECT * FROM BIT_TABLE; 
+SELECT * FROM BIT_TABLE ORDER BY 1; 
       b      
 -------------
  00000000000
- 11011000000
  01010101010
+ 11011000000
 (3 rows)
 
 CREATE TABLE VARBIT_TABLE(v BIT VARYING(11));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'v' as the Bizgres MPP data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO VARBIT_TABLE VALUES (B'');
 INSERT INTO VARBIT_TABLE VALUES (B'0');
 INSERT INTO VARBIT_TABLE VALUES (B'010101');
@@ -31,7 +35,7 @@ INSERT INTO VARBIT_TABLE VALUES (B'101011111010'); -- too long
 ERROR:  bit string too long for type bit varying(11)
 --INSERT INTO VARBIT_TABLE VALUES ('X554');
 --INSERT INTO VARBIT_TABLE VALUES ('X555');
-SELECT * FROM VARBIT_TABLE; 
+SELECT * FROM VARBIT_TABLE ORDER BY 1; 
       v      
 -------------
  
@@ -44,6 +48,10 @@ SELECT * FROM VARBIT_TABLE;
 SELECT v, b, (v || b) AS concat
        FROM BIT_TABLE, VARBIT_TABLE 
        ORDER BY 3;
+NOTICE:  Query planner will use default statistics for table "bit_table"
+HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
+NOTICE:  Query planner will use default statistics for table "varbit_table"
+HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
       v      |      b      |         concat         
 -------------+-------------+------------------------
              | 00000000000 | 00000000000
@@ -62,16 +70,16 @@ SELECT v, b, (v || b) AS concat
 
 -- Length
 SELECT b, length(b) AS lb
-       FROM BIT_TABLE;
+       FROM BIT_TABLE ORDER BY 1;
       b      | lb 
 -------------+----
  00000000000 | 11
- 11011000000 | 11
  01010101010 | 11
+ 11011000000 | 11
 (3 rows)
 
 SELECT v, length(v) AS lv
-       FROM VARBIT_TABLE;
+       FROM VARBIT_TABLE ORDER BY 1;
       v      | lv 
 -------------+----
              |  0
@@ -85,19 +93,19 @@ SELECT b,
        SUBSTRING(b FROM 2 FOR 4) AS sub_2_4,
        SUBSTRING(b FROM 7 FOR 13) AS sub_7_13,
        SUBSTRING(b FROM 6) AS sub_6
-       FROM BIT_TABLE;
+       FROM BIT_TABLE ORDER BY 1;
       b      | sub_2_4 | sub_7_13 | sub_6  
 -------------+---------+----------+--------
  00000000000 | 0000    | 00000    | 000000
- 11011000000 | 1011    | 00000    | 000000
  01010101010 | 1010    | 01010    | 101010
+ 11011000000 | 1011    | 00000    | 000000
 (3 rows)
 
 SELECT v,
        SUBSTRING(v FROM 2 FOR 4) AS sub_2_4,
        SUBSTRING(v FROM 7 FOR 13) AS sub_7_13,
        SUBSTRING(v FROM 6) AS sub_6
-       FROM VARBIT_TABLE;
+       FROM VARBIT_TABLE ORDER BY 1;
       v      | sub_2_4 | sub_7_13 | sub_6  
 -------------+---------+----------+--------
              |         |          | 
@@ -109,6 +117,8 @@ SELECT v,
 --- Bit operations
 DROP TABLE varbit_table;
 CREATE TABLE varbit_table (a BIT VARYING(16), b BIT VARYING(16));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Bizgres MPP data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 COPY varbit_table FROM stdin;
 SELECT a, b, ~a AS "~ a", a & b AS "a & b", 
        a | b AS "a | b", a # b AS "a # b" FROM varbit_table;
@@ -161,6 +171,8 @@ DROP TABLE varbit_table;
 --- Bit operations
 DROP TABLE bit_table;
 CREATE TABLE bit_table (a BIT(16), b BIT(16));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Bizgres MPP data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 COPY bit_table FROM stdin;
 SELECT a,b,~a AS "~ a",a & b AS "a & b", 
 	a|b AS "a | b", a # b AS "a # b" FROM bit_table;
@@ -448,6 +460,8 @@ SELECT POSITION(B'0000000000011101011111010110' IN B'000000000011101011111010110
 
 -- Shifting
 CREATE TABLE BIT_SHIFT_TABLE(b BIT(16));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'b' as the Bizgres MPP data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO BIT_SHIFT_TABLE VALUES (B'1101100000000000');
 INSERT INTO BIT_SHIFT_TABLE SELECT b>>1 FROM BIT_SHIFT_TABLE;
 INSERT INTO BIT_SHIFT_TABLE SELECT b>>2 FROM BIT_SHIFT_TABLE;
@@ -456,9 +470,12 @@ INSERT INTO BIT_SHIFT_TABLE SELECT b>>8 FROM BIT_SHIFT_TABLE;
 SELECT POSITION(B'1101' IN b),
        POSITION(B'11011' IN b),
        b 
-       FROM BIT_SHIFT_TABLE ;
+       FROM BIT_SHIFT_TABLE ORDER BY 1,2,3;
  position | position |        b         
 ----------+----------+------------------
+        0 |        0 | 0000000000000001
+        0 |        0 | 0000000000000011
+        0 |        0 | 0000000000000110
         1 |        1 | 1101100000000000
         2 |        2 | 0110110000000000
         3 |        3 | 0011011000000000
@@ -472,12 +489,11 @@ SELECT POSITION(B'1101' IN b),
        11 |       11 | 0000000000110110
        12 |       12 | 0000000000011011
        13 |        0 | 0000000000001101
-        0 |        0 | 0000000000000110
-        0 |        0 | 0000000000000011
-        0 |        0 | 0000000000000001
 (16 rows)
 
 CREATE TABLE VARBIT_SHIFT_TABLE(v BIT VARYING(20));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'v' as the Bizgres MPP data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO VARBIT_SHIFT_TABLE VALUES (B'11011');
 INSERT INTO VARBIT_SHIFT_TABLE SELECT CAST(v || B'0' AS BIT VARYING(6)) >>1 FROM VARBIT_SHIFT_TABLE;
 INSERT INTO VARBIT_SHIFT_TABLE SELECT CAST(v || B'00' AS BIT VARYING(8)) >>2 FROM VARBIT_SHIFT_TABLE;
@@ -486,7 +502,7 @@ INSERT INTO VARBIT_SHIFT_TABLE SELECT CAST(v || B'00000000' AS BIT VARYING(20)) 
 SELECT POSITION(B'1101' IN v),
        POSITION(B'11011' IN v),
        v 
-       FROM VARBIT_SHIFT_TABLE ;
+       FROM VARBIT_SHIFT_TABLE ORDER BY 1,2,3;
  position | position |          v           
 ----------+----------+----------------------
         1 |        1 | 11011
