@@ -33,7 +33,7 @@ SELECT * FROM VARBIT_TABLE ORDER BY 1;
 -- Concatenation
 SELECT v, b, (v || b) AS concat
        FROM BIT_TABLE, VARBIT_TABLE 
-       ORDER BY 3;
+       ORDER BY 1,2,3;
 
 -- Length
 SELECT b, length(b) AS lb
@@ -70,10 +70,10 @@ X1234	XFFF5
 \.
 
 SELECT a, b, ~a AS "~ a", a & b AS "a & b", 
-       a | b AS "a | b", a # b AS "a # b" FROM varbit_table;
+       a | b AS "a | b", a # b AS "a # b" FROM varbit_table ORDER BY 1,2;
 SELECT a,b,a<b AS "a<b",a<=b AS "a<=b",a=b AS "a=b",
-        a>=b AS "a>=b",a>b AS "a>b",a<>b AS "a<>b" FROM varbit_table;
-SELECT a,a<<4 AS "a<<4",b,b>>2 AS "b>>2" FROM varbit_table;
+        a>=b AS "a>=b",a>b AS "a>b",a<>b AS "a<>b" FROM varbit_table ORDER BY 1,2;
+SELECT a,a<<4 AS "a<<4",b,b>>2 AS "b>>2" FROM varbit_table ORDER BY 1,2,3;
 
 DROP TABLE varbit_table;
 
@@ -94,10 +94,10 @@ X1234	XFFF5
 \.
 
 SELECT a,b,~a AS "~ a",a & b AS "a & b", 
-	a|b AS "a | b", a # b AS "a # b" FROM bit_table;
+	a|b AS "a | b", a # b AS "a # b" FROM bit_table ORDER BY 1,2;
 SELECT a,b,a<b AS "a<b",a<=b AS "a<=b",a=b AS "a=b",
-        a>=b AS "a>=b",a>b AS "a>b",a<>b AS "a<>b" FROM bit_table;
-SELECT a,a<<4 AS "a<<4",b,b>>2 AS "b>>2" FROM bit_table;
+        a>=b AS "a>=b",a>b AS "a>b",a<>b AS "a<>b" FROM bit_table ORDER BY 1,2;
+SELECT a,a<<4 AS "a<<4",b,b>>2 AS "b>>2" FROM bit_table ORDER BY 1,2,3;
 
 DROP TABLE bit_table;
 

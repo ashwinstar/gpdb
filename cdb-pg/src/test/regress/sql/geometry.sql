@@ -11,10 +11,10 @@ SET extra_float_digits TO -3;
 --
 
 SELECT '' AS four, center(f1) AS center
-   FROM BOX_TBL;
+   FROM BOX_TBL ORDER BY (f1[0])[0],(f1[1])[0];
 
 SELECT '' AS four, (@@ f1) AS center
-   FROM BOX_TBL;
+   FROM BOX_TBL ORDER BY (f1[0])[0],(f1[1])[0];
 
 SELECT '' AS six, point(f1) AS center
    FROM CIRCLE_TBL;
