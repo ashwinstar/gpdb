@@ -54,7 +54,7 @@ typedef struct ExplainState
 } ExplainState;
 
 static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
-				TupOutputState *tstate);
+							ParamListInfo params, TupOutputState *tstate);
 static double elapsed_time(instr_time *starttime);
 static void explain_outNode(StringInfo str,
 				Plan *plan, PlanState *planstate,
@@ -67,7 +67,7 @@ static void show_upper_qual(List *qual, const char *qlabel,
 				const char *outer_name, int outer_varno, Plan *outer_plan,
 				const char *inner_name, int inner_varno, Plan *inner_plan,
 				StringInfo str, int indent, ExplainState *es);
-static void show_sort_keys(List *tlist, int nkeys, AttrNumber *keycols,
+static void show_sort_keys(Plan *sortplan, int nkeys, AttrNumber *keycols,
 			   const char *qlabel,
 			   StringInfo str, int indent, ExplainState *es);
 static void
@@ -77,7 +77,7 @@ show_grouping_keys(Plan        *plan,
                    const char  *qlabel,
 			       StringInfo str, int indent, ExplainState *es);
 static void
-show_motion_keys(List *tlist, List *hashExpr, int nkeys, AttrNumber *keycols,
+show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
 			     const char *qlabel,
                  StringInfo str, int indent, ExplainState *es);
 
@@ -86,7 +86,7 @@ show_motion_keys(List *tlist, List *hashExpr, int nkeys, AttrNumber *keycols,
  *	  execute an EXPLAIN command
  */
 void
-ExplainQuery(ExplainStmt *stmt, DestReceiver *dest)
+ExplainQuery(ExplainStmt *stmt, ParamListInfo params, DestReceiver *dest)
 {
 	Query	   *query = stmt->query;
 	TupOutputState *tstate;
@@ -110,9 +110,9 @@ ExplainQuery(ExplainStmt *stmt, DestReceiver *dest)
 	{
 		/* Rewriter will not cope with utility statements */
 		if (query->utilityStmt && IsA(query->utilityStmt, DeclareCursorStmt))
-			ExplainOneQuery(query, stmt, tstate);
+			ExplainOneQuery(query, stmt, params, tstate);
 		else if (query->utilityStmt && IsA(query->utilityStmt, ExecuteStmt))
-			ExplainExecuteQuery(stmt, tstate);
+			ExplainExecuteQuery(stmt, params, tstate);
 		else
 			do_text_output_oneline(tstate, "Utility statements have no plan structure");
 	}
@@ -137,7 +137,7 @@ ExplainQuery(ExplainStmt *stmt, DestReceiver *dest)
 			/* Explain every plan */
 			foreach(l, rewritten)
 			{
-				ExplainOneQuery(lfirst(l), stmt, tstate);
+				ExplainOneQuery(lfirst(l), stmt, params, tstate);
 				/* put a blank line between plans */
 				if (lnext(l) != NULL)
 					do_text_output_oneline(tstate, "");
@@ -169,7 +169,8 @@ ExplainResultDesc(ExplainStmt *stmt)
  *	  print out the execution plan for one query
  */
 static void
-ExplainOneQuery(Query *query, ExplainStmt *stmt, TupOutputState *tstate)
+ExplainOneQuery(Query *query, ExplainStmt *stmt, ParamListInfo params,
+				TupOutputState *tstate)
 {
 	Plan	   *plan;
 	QueryDesc  *queryDesc;
@@ -227,7 +228,7 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, TupOutputState *tstate)
 	/* Create a QueryDesc requesting no output */
 	queryDesc = CreateQueryDesc(query, plan,
 								ActiveSnapshot, InvalidSnapshot,
-								None_Receiver, NULL,
+								None_Receiver, params,
 								stmt->analyze);
 
 	ExplainOnePlan(queryDesc, stmt, tstate);
@@ -253,6 +254,7 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
     ExplainState   *es = &explainState;
 	StringInfo	str;
 	Node	   *saved_es_sliceTable;
+	int			eflags;
 
 	memset(es, 0, sizeof(*es));
     es->queryDesc = queryDesc;
@@ -263,8 +265,14 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	if (stmt->analyze)
 		AfterTriggerBeginQuery();
 
+	/* Select execution options */
+	if (stmt->analyze)
+		eflags = 0;				/* default run-to-completion flags */
+	else
+		eflags = EXEC_FLAG_EXPLAIN_ONLY;
+
 	/* call ExecutorStart to prepare the plan for execution */
-	ExecutorStart(queryDesc, !stmt->analyze);
+	ExecutorStart(queryDesc, eflags);
 
 	/* Execute the plan for statistics if asked for */
 	if (stmt->analyze)
@@ -858,8 +866,8 @@ explain_outNode(StringInfo str,
 		case T_Agg:
 			show_upper_qual(plan->qual,
 							"Filter",
-							"subplan", 0, outerPlan(plan),
-							"", 0, NULL,
+							NULL, 0, outerPlan(plan),
+							NULL, 0, NULL,
 							str, indent, es);
 			show_grouping_keys(plan,
 						       ((Agg *) plan)->numCols,
@@ -871,7 +879,7 @@ explain_outNode(StringInfo str,
 			show_upper_qual(plan->qual,
 							"Filter",
 							"subplan", 0, outerPlan(plan),
-							"", 0, NULL,
+							NULL, 0, NULL,
 							str, indent, es);
 			show_grouping_keys(plan,
 						       ((Group *) plan)->numCols,
@@ -880,7 +888,7 @@ explain_outNode(StringInfo str,
 						       str, indent, es);
 			break;
 		case T_Unique:
-			show_motion_keys(plan->targetlist,
+			show_motion_keys(plan,
                              NIL,
 						     ((Unique *) plan)->numCols,
 						     ((Unique *) plan)->uniqColIdx,
@@ -888,7 +896,7 @@ explain_outNode(StringInfo str,
 						     str, indent, es);
 			break;
 		case T_Sort:
-			show_sort_keys(plan->targetlist,
+			show_sort_keys(plan,
 						   ((Sort *) plan)->numCols,
 						   ((Sort *) plan)->sortColIdx,
 						   "Sort Key",
@@ -897,13 +905,13 @@ explain_outNode(StringInfo str,
 		case T_Result:
 			show_upper_qual((List *) ((Result *) plan)->resconstantqual,
 							"One-Time Filter",
-							"subplan", OUTER, outerPlan(plan),
-							"", 0, NULL,
+							NULL, OUTER, outerPlan(plan),
+							NULL, 0, NULL,
 							str, indent, es);
 			show_upper_qual(plan->qual,
 							"Filter",
-							"subplan", OUTER, outerPlan(plan),
-							"", 0, NULL,
+							NULL, OUTER, outerPlan(plan),
+							NULL, 0, NULL,
 							str, indent, es);
 			break;
 		case T_Motion:
@@ -912,7 +920,7 @@ explain_outNode(StringInfo str,
 
                 if (pMotion->sendSorted ||
                     pMotion->motionType == MOTIONTYPE_HASH)
-				    show_motion_keys(plan->targetlist,
+				    show_motion_keys(plan,
                                      pMotion->hashExpr,
 								     pMotion->numSortCols,
 								     pMotion->sortColIdx,
@@ -1112,8 +1120,6 @@ show_scan_qual(List *qual, const char *qlabel,
 			   int scanrelid, Plan *outer_plan,
 			   StringInfo str, int indent, ExplainState *es)
 {
-	RangeTblEntry *rte;
-	Node	   *scancontext;
 	Node	   *outercontext;
 	List	   *context;
 	Node	   *node;
@@ -1127,11 +1133,6 @@ show_scan_qual(List *qual, const char *qlabel,
 	/* Convert AND list to explicit AND */
 	node = (Node *) make_ands_explicit(qual);
 
-	/* Generate deparse context */
-	Assert(scanrelid > 0 && scanrelid <= list_length(es->rtable));
-	rte = rt_fetch(scanrelid, es->rtable);
-	scancontext = deparse_context_for_rte(rte);
-
 	/*
 	 * If we have an outer plan that is referenced by the qual, add it to the
 	 * deparse context.  If not, don't (so that we don't force prefixes
@@ -1143,8 +1144,7 @@ show_scan_qual(List *qual, const char *qlabel,
 
 		if (bms_is_member(OUTER, varnos))
 			outercontext = deparse_context_for_subplan("outer",
-													   outer_plan->targetlist,
-													   es->rtable);
+													   (Node *) outer_plan);
 		else
 			outercontext = NULL;
 		bms_free(varnos);
@@ -1152,12 +1152,12 @@ show_scan_qual(List *qual, const char *qlabel,
 	else
 		outercontext = NULL;
 
-	context = deparse_context_for_plan(scanrelid, scancontext,
-									   OUTER, outercontext,
-									   NIL);
+	context = deparse_context_for_plan(OUTER, outercontext,
+									   0, NULL,
+									   es->rtable);
 
 	/* Deparse the expression */
-	exprstr = deparse_expression(node, context, (outercontext != NULL), false);
+	exprstr = deparse_expr_sweet(node, context, (outercontext != NULL), false);
 
 	/* And add to str */
 	for (i = 0; i < indent; i++)
@@ -1180,6 +1180,7 @@ show_upper_qual(List *qual, const char *qlabel,
 	Node	   *node;
 	char	   *exprstr;
 	int			i;
+    bool		useprefix = inner_plan || list_length(es->rtable) > 1;  /*CDB*/
 
 	/* No work if empty qual */
 	if (qual == NIL)
@@ -1188,23 +1189,21 @@ show_upper_qual(List *qual, const char *qlabel,
 	/* Generate deparse context */
 	if (outer_plan)
 		outercontext = deparse_context_for_subplan(outer_name,
-												   outer_plan->targetlist,
-												   es->rtable);
+												   (Node *) outer_plan);
 	else
 		outercontext = NULL;
 	if (inner_plan)
 		innercontext = deparse_context_for_subplan(inner_name,
-												   inner_plan->targetlist,
-												   es->rtable);
+												   (Node *) inner_plan);
 	else
 		innercontext = NULL;
 	context = deparse_context_for_plan(outer_varno, outercontext,
 									   inner_varno, innercontext,
-									   NIL);
+									   es->rtable);
 
 	/* Deparse the expression */
 	node = (Node *) make_ands_explicit(qual);
-	exprstr = deparse_expression(node, context, (inner_plan != NULL), false);
+	exprstr = deparse_expr_sweet(node, context, useprefix, false);
 
 	/* And add to str */
 	for (i = 0; i < indent; i++)
@@ -1226,7 +1225,7 @@ show_grouping_keys(Plan        *plan,
     Plan       *subplan = plan->lefttree;
     List	   *context;
     char	   *exprstr;
-    bool		useprefix;
+    bool		useprefix = list_length(es->rtable) > 1;
     int			keyno;
     int			i;
 
@@ -1245,34 +1244,28 @@ show_grouping_keys(Plan        *plan,
 
         if (subplan->righttree)
         {
-            outerctx = deparse_context_for_subplan("OUTER",
-                                                   subplan->lefttree->targetlist,
-                                                   es->rtable);
-            innerctx = deparse_context_for_subplan("INNER",
-                                                   subplan->righttree->targetlist,
-                                                   es->rtable);
+            outerctx = deparse_context_for_subplan("outer",
+                                                   (Node *)subplan->lefttree);
+            innerctx = deparse_context_for_subplan("inner",
+                                                   (Node *)subplan->righttree);
 	        context = deparse_context_for_plan(OUTER, outerctx,
 									           INNER, innerctx,
-									           NIL);
+									           es->rtable);
+            useprefix = true;
         }
         else
         {
-            outerctx = deparse_context_for_subplan("subplan",
-                                                   subplan->lefttree->targetlist,
-                                                   es->rtable);
+            outerctx = deparse_context_for_subplan(NULL,
+                                                   (Node *)subplan->lefttree);
 	        context = deparse_context_for_plan(OUTER, outerctx,
 									           0, NULL,
-									           NIL);
+									           es->rtable);
         }
-        useprefix = false;
 	}
 	else
-	{
 		context = deparse_context_for_plan(0, NULL,
 										   0, NULL,
 										   es->rtable);
-		useprefix = list_length(es->rtable) > 1;
-	}
 
     for (keyno = 0; keyno < numCols; keyno++)
     {
@@ -1284,7 +1277,7 @@ show_grouping_keys(Plan        *plan,
 		    elog(ERROR, "no tlist entry for key %d", keyresno);
 
 	    /* Deparse the expression, showing any top-level cast */
-	    exprstr = deparse_expression((Node *) target->expr, context,
+	    exprstr = deparse_expr_sweet((Node *) target->expr, context,
 								     useprefix, true);
 	    /* And add to str */
 	    if (keyno > 0)
@@ -1300,12 +1293,12 @@ show_grouping_keys(Plan        *plan,
  * Show the sort keys for a Sort node.
  */
 static void
-show_sort_keys(List *tlist, int nkeys, AttrNumber *keycols,
+show_sort_keys(Plan *sortplan, int nkeys, AttrNumber *keycols,
 			   const char *qlabel,
 			   StringInfo str, int indent, ExplainState *es)
 {
 	List	   *context;
-	bool		useprefix;
+    bool		useprefix = list_length(es->rtable) > 1;    /*CDB*/
 	int			keyno;
 	char	   *exprstr;
 	int			i;
@@ -1313,7 +1306,7 @@ show_sort_keys(List *tlist, int nkeys, AttrNumber *keycols,
 	if (nkeys <= 0)
 		return;
 
-    for (i = 0; i < indent; i++)
+	for (i = 0; i < indent; i++)
 		appendStringInfo(str, "  ");
 	appendStringInfo(str, "  %s: ", qlabel);
 
@@ -1325,36 +1318,30 @@ show_sort_keys(List *tlist, int nkeys, AttrNumber *keycols,
 	 * with varno OUTER, use the tlist itself to determine their names.
      * (NB: CDB uses varno OUTER; in PostgreSQL it was varno 0.)
 	 */
-	if (cdbpullup_exprHasSubplanRef((Expr *)tlist))
+	if (cdbpullup_exprHasSubplanRef((Expr *)sortplan->targetlist))
 	{
 		Node	   *outercontext;
 
-		outercontext = deparse_context_for_subplan("sort",
-												   tlist,
-												   es->rtable);
+		outercontext = deparse_context_for_subplan(NULL, (Node *)sortplan);
 		context = deparse_context_for_plan(OUTER, outercontext,
 										   0, NULL,
-										   NIL);
-		useprefix = false;
+										   es->rtable);
 	}
 	else
-	{
 		context = deparse_context_for_plan(0, NULL,
 										   0, NULL,
 										   es->rtable);
-		useprefix = list_length(es->rtable) > 1;
-	}
 
 	for (keyno = 0; keyno < nkeys; keyno++)
 	{
 		/* find key expression in tlist */
 		AttrNumber	keyresno = keycols[keyno];
-		TargetEntry *target = get_tle_by_resno(tlist, keyresno);
+		TargetEntry *target = get_tle_by_resno(sortplan->targetlist, keyresno);
 
 		if (!target)
 			elog(ERROR, "no tlist entry for key %d", keyresno);
 		/* Deparse the expression, showing any top-level cast */
-		exprstr = deparse_expression((Node *) target->expr, context,
+		exprstr = deparse_expr_sweet((Node *) target->expr, context,
 									 useprefix, true);
 		/* And add to str */
 		if (keyno > 0)
@@ -1370,13 +1357,13 @@ show_sort_keys(List *tlist, int nkeys, AttrNumber *keycols,
  * CDB: Show the hash and merge keys for a Motion node.
  */
 void
-show_motion_keys(List *tlist, List *hashExpr, int nkeys, AttrNumber *keycols,
+show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
 			     const char *qlabel,
                  StringInfo str, int indent, ExplainState *es)
 {
     List	   *context;
     char	   *exprstr;
-    bool		useprefix;
+    bool		useprefix = list_length(es->rtable) > 1;
     int			keyno;
     int			i;
 
@@ -1385,26 +1372,20 @@ show_motion_keys(List *tlist, List *hashExpr, int nkeys, AttrNumber *keycols,
         return;
 
     /* Generate deparse context */
-	if (cdbpullup_exprHasSubplanRef((Expr *)tlist) ||
+	if (cdbpullup_exprHasSubplanRef((Expr *)plan->targetlist) ||
         cdbpullup_exprHasSubplanRef((Expr *)hashExpr))
 	{
 		Node	   *outercontext;
 
-	    outercontext = deparse_context_for_subplan("subplan",
-                                                   tlist,
-                                                   es->rtable);
+	    outercontext = deparse_context_for_subplan(NULL, (Node *)plan);
 	    context = deparse_context_for_plan(OUTER, outercontext,
 									       0, NULL,
-									       NIL);
-        useprefix = false;
+									       es->rtable);
 	}
 	else
-	{
 		context = deparse_context_for_plan(0, NULL,
 										   0, NULL,
 										   es->rtable);
-		useprefix = list_length(es->rtable) > 1;
-	}
 
     /* Merge Receive ordering key */
     if (nkeys > 0)
@@ -1417,13 +1398,13 @@ show_motion_keys(List *tlist, List *hashExpr, int nkeys, AttrNumber *keycols,
 	    {
 		    /* find key expression in tlist */
 		    AttrNumber	keyresno = keycols[keyno];
-		    TargetEntry *target = get_tle_by_resno(tlist, keyresno);
+		    TargetEntry *target = get_tle_by_resno(plan->targetlist, keyresno);
 
 		    if (!target)
 			    elog(ERROR, "no tlist entry for key %d", keyresno);
 
 		    /* Deparse the expression, showing any top-level cast */
-		    exprstr = deparse_expression((Node *) target->expr, context,
+		    exprstr = deparse_expr_sweet((Node *) target->expr, context,
 									     useprefix, true);
 		    /* And add to str */
 		    if (keyno > 0)
@@ -1438,7 +1419,7 @@ show_motion_keys(List *tlist, List *hashExpr, int nkeys, AttrNumber *keycols,
     if (hashExpr)
     {
 	    /* Deparse the expression */
-	    exprstr = deparse_expression((Node *)hashExpr, context, useprefix, true);
+	    exprstr = deparse_expr_sweet((Node *)hashExpr, context, useprefix, true);
 
 	    /* And add to str */
 	    for (i = 0; i < indent; i++)

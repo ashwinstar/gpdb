@@ -262,32 +262,34 @@ print_rt(List *rtable)
 	foreach(l, rtable)
 	{
 		RangeTblEntry *rte = lfirst(l);
+		const char    *name = rte->eref ? rte->eref->aliasname
+		                                : "<null>";
 
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
 				printf("%d\t%s\t%u",
-					   i, rte->eref->aliasname, rte->relid);
+					   i, name, rte->relid);
 				break;
 			case RTE_SUBQUERY:
 				printf("%d\t%s\t[subquery]",
-					   i, rte->eref->aliasname);
+					   i, name);
 				break;
 			case RTE_FUNCTION:
 				printf("%d\t%s\t[rangefunction]",
-					   i, rte->eref->aliasname);
+					   i, name);
 				break;
 			case RTE_JOIN:
 				printf("%d\t%s\t[join]",
-					   i, rte->eref->aliasname);
+					   i, name);
 				break;
 			case RTE_SPECIAL:
 				printf("%d\t%s\t[special]",
-					   i, rte->eref->aliasname);
+					   i, name);
 				break;
 			default:
 				printf("%d\t%s\t[unknown rtekind]",
-					   i, rte->eref->aliasname);
+					   i, name);
 		}
 
 		printf("\t%s\t%s\n",

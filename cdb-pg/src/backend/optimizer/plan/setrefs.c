@@ -91,6 +91,7 @@ static Node *replace_vars_with_subplan_refs_mutator(Node *node,
 static bool fix_opfuncids_walker(Node *node, void *context);
 static void set_sa_opfuncid(ScalarArrayOpExpr *opexpr);
 
+static List *cdb_build_identity_tlist(List *newtlist, Plan *subplan, Index subvarno);
 static bool cdb_expr_requires_full_eval(Node *node);
 static Plan *cdb_insert_result_node(Plan *plan, List *rtable);
 
@@ -270,6 +271,7 @@ set_plan_references(Plan *plan, List *rtable)
 			 * find any qual expression attached to them.
 			 */
 			Assert(plan->qual == NIL);
+            plan->targetlist = cdb_build_identity_tlist(NIL, plan->lefttree, OUTER);
 			break;
 		case T_Limit:
 
@@ -279,6 +281,7 @@ set_plan_references(Plan *plan, List *rtable)
 			 * however.
 			 */
 			Assert(plan->qual == NIL);
+            plan->targetlist = cdb_build_identity_tlist(NIL, plan->lefttree, OUTER);
 			fix_expr_references(plan, ((Limit *) plan)->limitOffset);
 			fix_expr_references(plan, ((Limit *) plan)->limitCount);
 			break;
@@ -311,7 +314,7 @@ set_plan_references(Plan *plan, List *rtable)
 			 * recurse into child plans.
 			 */
 			Assert(plan->qual == NIL);
-			foreach(l, ((Append *) plan)->appendplans)
+            foreach(l, ((Append *) plan)->appendplans)
 				lfirst(l) = set_plan_references((Plan *) lfirst(l), rtable);
 			break;
 		case T_BitmapAnd:
@@ -344,6 +347,7 @@ set_plan_references(Plan *plan, List *rtable)
     			
  		        /* no need to fix targetlist and qual */
                 Assert(plan->qual == NIL);
+                plan->targetlist = cdb_build_identity_tlist(NIL, plan->lefttree, OUTER);
             }
             break;
 
@@ -376,6 +380,53 @@ set_plan_references(Plan *plan, List *rtable)
 
 	return plan;
 }
+
+
+/*
+ * cdb_build_identity_tlist
+ *
+ * Build a targetlist representing a 1-to-1 copy of the subplan's result tuples.
+ */
+List *
+cdb_build_identity_tlist(List *newtlist, Plan *subplan, Index subvarno)
+{
+    ListCell       *cell;
+
+    foreach(cell, subplan->targetlist)
+    {
+        TargetEntry    *subtle = (TargetEntry *)lfirst(cell);
+        TargetEntry    *newtle;
+        Var            *newvar;
+
+        if (IsA(subtle->expr, Var))
+        {
+            Var    *subvar = (Var *)subtle->expr;
+
+            newvar = (Var *)copyObject(subvar);
+            newvar->varno = subvarno;
+            newvar->varattno = subtle->resno;
+            newvar->varlevelsup = 0;
+        }
+        else
+        {
+		    newvar = makeVar(subvarno,
+						     subtle->resno,
+						     exprType((Node *)subtle->expr),
+						     exprTypmod((Node *)subtle->expr),
+						     0);
+		    newvar->varnoold = 0;   /* wasn't ever a plain Var */
+		    newvar->varoattno = 0;
+        }
+
+		/* Append new targetlist entry. */
+        newtle = flatCopyTargetEntry(subtle);
+		newtle->expr = (Expr *)newvar;
+        newtle->resno = list_length(newtlist) + 1;
+        newtlist = lappend(newtlist, newtle);
+    }
+
+    return newtlist;
+}                               /* cdb_build_identity_tlist */
 
 
 /*

@@ -119,7 +119,7 @@ typedef struct
  * The rangetable is the list of actual RTEs from the query tree.
  *
  * For deparsing plan trees, we allow two special RTE entries that are not
- * part of the rtable list (mainly because they don't have consecutively
+ * part of the rtable list (partly because they don't have consecutively
  * allocated varnos).
  */
 typedef struct
@@ -1353,6 +1353,19 @@ deparse_expression(Node *expr, List *dpcontext,
 }
 
 /* ----------
+ * deparse_expr_sweet			- CDB: expression deparser for EXPLAIN
+ *
+ * calls deparse_expression_pretty with minimal parentheses but no indenting.
+ */
+char *
+deparse_expr_sweet(Node *expr, List *dpcontext,
+				   bool forceprefix, bool showimplicit)
+{
+	return deparse_expression_pretty(expr, dpcontext, forceprefix,
+									 showimplicit, PRETTYFLAG_PAREN, 0);
+}
+
+/* ----------
  * deparse_expression_pretty	- General utility for deparsing expressions
  *
  * expr is the node tree to be deparsed.  It must be a transformed expression
@@ -1426,15 +1439,13 @@ deparse_context_for(const char *aliasname, Oid relid)
 /*
  * deparse_context_for_plan		- Build deparse context for a plan node
  *
- * We assume we are dealing with an upper-level plan node having either
- * one or two referenceable children (pass innercontext = NULL if only one).
- * The passed-in Nodes should be made using deparse_context_for_subplan
- * and/or deparse_context_for_relation.  The resulting context will work
- * for deparsing quals, tlists, etc of the plan node.
+ * The plan node may contain references to one or two subplans or outer
+ * join plan nodes.  For these, pass the varno used plus a context node
+ * made with deparse_context_for_subplan.  (Pass 0/NULL for unused inputs.)
  *
- * An rtable list can also be passed in case plain Vars might be seen.
- * This is not needed for true upper-level expressions, but is helpful for
- * Sort nodes and similar cases with slightly bogus targetlists.
+ * The plan's rangetable list must also be passed.  We actually prefer to use
+ * the rangetable to resolve simple Vars, but the subplan inputs are needed
+ * for Vars that reference expressions computed in subplan target lists.
  */
 List *
 deparse_context_for_plan(int outer_varno, Node *outercontext,
@@ -1456,86 +1467,31 @@ deparse_context_for_plan(int outer_varno, Node *outercontext,
 }
 
 /*
- * deparse_context_for_rte		- Build deparse context for 1 relation
- *
- * Helper routine to build one of the inputs for deparse_context_for_plan.
- *
- * The returned node is actually the given RangeTblEntry, but we declare it
- * as just Node to discourage callers from assuming anything.
- */
-Node *
-deparse_context_for_rte(RangeTblEntry *rte)
-{
-	return (Node *) rte;
-}
-
-/*
  * deparse_context_for_subplan	- Build deparse context for a plan node
  *
  * Helper routine to build one of the inputs for deparse_context_for_plan.
- * Pass the tlist of the subplan node, plus the query rangetable.
+ * Pass the name to be used to reference the subplan, plus the Plan node.
+ * (subplan really ought to be declared as "Plan *", but we use "Node *"
+ * to avoid having to include plannodes.h in builtins.h.)
  *
  * The returned node is actually a RangeTblEntry, but we declare it as just
  * Node to discourage callers from assuming anything.
  */
 Node *
-deparse_context_for_subplan(const char *name, List *tlist,
-							List *rtable)
+deparse_context_for_subplan(const char *name, Node *subplan)
 {
 	RangeTblEntry *rte = makeNode(RangeTblEntry);
-	List	   *attrs = NIL;
-	int			nattrs = 0;
-	int			rtablelength = list_length(rtable);
-	ListCell   *tl;
-	char		buf[32];
-
-	foreach(tl, tlist)
-	{
-		TargetEntry *tle = lfirst(tl);
-
-		nattrs++;
-		Assert(tle->resno == nattrs);
-		if (tle->resname)
-		{
-			attrs = lappend(attrs, makeString(tle->resname));
-			continue;
-		}
-		if (tle->expr && IsA(tle->expr, Var))
-		{
-			Var		   *var = (Var *) tle->expr;
-
-			/* varno/varattno won't be any good, but varnoold might be */
-			if (var->varnoold > 0 && var->varnoold <= rtablelength)
-			{
-				RangeTblEntry *varrte = rt_fetch(var->varnoold, rtable);
-				AttrNumber	varattnum = var->varoattno;
-
-				/* need this test in case it's referencing a resjunk col */
-				if (varattnum <= list_length(varrte->eref->colnames))
-				{
-					char	   *varname;
-
-					varname = get_rte_attribute_name(varrte, varattnum);
-					attrs = lappend(attrs, makeString(varname));
-					continue;
-				}
-			}
-		}
-		/* Fallback if can't get name */
-		snprintf(buf, sizeof(buf), "?column%d?", tle->resno);
-		attrs = lappend(attrs, makeString(pstrdup(buf)));
-	}
 
 	/*
-	 * We create an RTE_SPECIAL RangeTblEntry, and store the given tlist
-	 * in its coldeflist field.  This is a hack to make the tlist available
-	 * to get_name_for_var_field().  RTE_SPECIAL nodes shouldn't appear in
+	 * We create an RTE_SPECIAL RangeTblEntry, and store the subplan in
+	 * its funcexpr field.  RTE_SPECIAL nodes shouldn't appear in
 	 * deparse contexts otherwise.
 	 */
 	rte->rtekind = RTE_SPECIAL;
 	rte->relid = InvalidOid;
-	rte->coldeflist = tlist;
-	rte->eref = makeAlias(name, attrs);
+	rte->funcexpr = subplan;
+	rte->alias = NULL;
+    rte->eref = name ? makeAlias(name, NIL) : NULL;     /*CDB*/
 	rte->inh = false;
 	rte->inFromCl = true;
 
@@ -2480,16 +2436,23 @@ get_utility_query_def(Query *query, deparse_context *context)
 /*
  * Get the RTE referenced by a (possibly nonlocal) Var.
  *
+ * The appropriate attribute number is stored into *attno
+ * (do not assume that var->varattno is what to use).
+ *
  * In some cases (currently only when recursing into an unnamed join)
  * the Var's varlevelsup has to be interpreted with respect to a context
  * above the current one; levelsup indicates the offset.
  */
 static RangeTblEntry *
-get_rte_for_var(Var *var, int levelsup, deparse_context *context)
+get_rte_for_var(Var *var, int levelsup, deparse_context *context,
+				AttrNumber *attno)
 {
 	RangeTblEntry *rte;
 	int			netlevelsup;
 	deparse_namespace *dpns;
+
+	/* default assumption */
+	*attno = var->varattno;
 
 	/* Find appropriate nesting depth */
 	netlevelsup = var->varlevelsup + levelsup;
@@ -2499,9 +2462,20 @@ get_rte_for_var(Var *var, int levelsup, deparse_context *context)
 	dpns = (deparse_namespace *) list_nth(context->namespaces,
 										  netlevelsup);
 
-	/* Find the relevant RTE */
+	/*
+	 * Try to find the relevant RTE in this rtable.  In a plan tree, it's
+	 * likely that varno is OUTER, INNER, or 0, in which case we try to
+	 * use varnoold instead.  If the Var references an expression computed
+	 * by a subplan, varnoold will be 0, and we fall back to looking at the
+	 * special subplan RTEs.
+	 */
 	if (var->varno >= 1 && var->varno <= list_length(dpns->rtable))
 		rte = rt_fetch(var->varno, dpns->rtable);
+	else if (var->varnoold >= 1 && var->varnoold <= list_length(dpns->rtable))
+	{
+		rte = rt_fetch(var->varnoold, dpns->rtable);
+		*attno = var->varoattno;
+	}
 	else if (var->varno == dpns->outer_varno)
 		rte = dpns->outer_rte;
 	else if (var->varno == dpns->inner_varno)
@@ -2535,9 +2509,10 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
 				  char **schemaname, char **refname, char **attname)
 {
 	RangeTblEntry *rte;
+	AttrNumber	attnum;
 
 	/* Find appropriate RTE */
-	rte = get_rte_for_var(var, levelsup, context);
+	rte = get_rte_for_var(var, levelsup, context, &attnum);
 
     /* Emit results */
 	*schemaname = NULL;			/* default assumptions */
@@ -2552,7 +2527,10 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
         return;
     }
 
-	*refname = rte->eref->aliasname;
+    if (rte->eref)
+        *refname = rte->eref->aliasname;
+    else
+        *refname = NULL;
 
 	/* Exceptions occur only if the RTE is alias-less */
 	if (rte->alias == NULL)
@@ -2564,7 +2542,8 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
 			 * more-closely-nested RTE, or be ambiguous, in which case we need
 			 * to specify the schemaname to avoid these errors.
 			 */
-			if (find_rte_by_refname(rte->eref->aliasname, context) != rte)
+			if (rte->eref &&
+                find_rte_by_refname(rte->eref->aliasname, context) != rte)
 				*schemaname =
 					get_namespace_name(get_rel_namespace(rte->relid));
 		}
@@ -2580,12 +2559,11 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
 			 * variable name (this can only happen with columns that were
 			 * merged by USING or NATURAL clauses).
 			 */
-			if (var->varattno > 0)
+			if (attnum > 0)
 			{
 				Var		   *aliasvar;
 
-				aliasvar = (Var *) list_nth(rte->joinaliasvars,
-											var->varattno - 1);
+				aliasvar = (Var *) list_nth(rte->joinaliasvars, attnum - 1);
 				if (IsA(aliasvar, Var))
 				{
 					get_names_for_var(aliasvar,
@@ -2597,12 +2575,36 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
 			/* Unnamed join has neither schemaname nor refname */
 			*refname = NULL;
 		}
+		else if (rte->rtekind == RTE_SPECIAL)
+		{
+			/*
+			 * This case occurs during EXPLAIN when we are looking at a
+			 * deparse context node set up by deparse_context_for_subplan().
+			 * If the subplan tlist provides a name, use it, but usually
+			 * we'll end up with "?columnN?".
+			 */
+			List           *tlist = ((Plan *) rte->funcexpr)->targetlist;
+			TargetEntry    *tle = get_tle_by_resno(tlist, attnum);
+
+			if (tle && tle->resname)
+			{
+				*attname = tle->resname;
+			}
+			else
+			{
+				char	buf[32];
+
+				snprintf(buf, sizeof(buf), "?column%d?", attnum);
+				*attname = pstrdup(buf);
+			}
+			return;
+		}
 	}
 
-	if (var->varattno == InvalidAttrNumber)
+	if (attnum == InvalidAttrNumber)
 		*attname = NULL;
 	else
-		*attname = get_rte_attribute_name(rte, var->varattno);
+		*attname = get_rte_attribute_name(rte, attnum);
 }
 
 
@@ -2636,7 +2638,7 @@ get_name_for_var_field(Var *var, int fieldno,
 	Assert(var->vartype == RECORDOID);
 
 	/* Find appropriate RTE */
-	rte = get_rte_for_var(var, levelsup, context);
+	rte = get_rte_for_var(var, levelsup, context, &attnum);
 
     if (rte == NULL)
     {
@@ -2645,8 +2647,6 @@ get_name_for_var_field(Var *var, int fieldno,
                                           var->varno, var->varattno) ));
         return "*BOGUS*";
     }
-
-	attnum = var->varattno;
 
 	if (attnum == InvalidAttrNumber)
 	{
@@ -2673,8 +2673,12 @@ get_name_for_var_field(Var *var, int fieldno,
 													attnum);
 
 				if (ste == NULL || ste->resjunk)
-					elog(ERROR, "subquery %s does not have attribute %d",
-						 rte->eref->aliasname, attnum);
+                {
+                    ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
+                                      errmsg_internal("bogus var: varno=%d varattno=%d",
+                                                      var->varno, var->varattno) ));
+                    return "*BOGUS*";
+                }
 				expr = (Node *) ste->expr;
 				if (IsA(expr, Var))
 				{
@@ -2720,19 +2724,54 @@ get_name_for_var_field(Var *var, int fieldno,
 			 */
 			break;
 		case RTE_SPECIAL:
-			/*
-			 * This case occurs during EXPLAIN when we are looking at a
-			 * deparse context node set up by deparse_context_for_subplan().
-			 * Look into the subplan's target list to get the referenced
-			 * expression, and then pass it to get_expr_result_type().
-			 */
-			if (rte->coldeflist)
 			{
-				TargetEntry *ste = get_tle_by_resno(rte->coldeflist, attnum);
+				/*
+				 * We are looking at a deparse context node set up by
+				 * deparse_context_for_subplan().  The Var must refer to an
+				 * expression computed by this subplan (or possibly one of its
+				 * inputs), rather than any simple attribute of an RTE entry.
+				 * Look into the subplan's target list to get the referenced
+				 * expression, digging down as far as needed to find something
+				 * that's not a Var, and then pass it to
+				 * get_expr_result_type().
+				 */
+				Plan *subplan = (Plan *) rte->funcexpr;
 
-				if (ste != NULL)
+				for (;;)
+				{
+					TargetEntry *ste;
+
+					ste = get_tle_by_resno(subplan->targetlist,
+										   ((Var *) expr)->varattno);
+					if (!ste || !ste->expr)
+						break;
 					expr = (Node *) ste->expr;
-	}
+					if (!IsA(expr, Var))
+						break;
+					switch (((Var *)expr)->varno)
+                    {
+                        case 0:
+                        case OUTER:
+						    subplan = outerPlan(subplan);
+                            break;
+                        case INNER:
+						    subplan = innerPlan(subplan);
+                            break;
+                        default:
+                            subplan = NULL;
+                    }
+					if (!subplan)
+                    {
+                        ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
+                            errmsg_internal("bogus var: varno=%d varattno=%d "
+                                            "subvarno=%d subattno=%d",
+                                            var->varno, var->varattno,
+                                            ((Var *)expr)->varno,
+                                            ((Var *)expr)->varattno) ));
+                        return "*BOGUS*";
+                    }
+				}
+			}
 			break;
 	}
 
@@ -2769,7 +2808,7 @@ find_rte_by_refname(const char *refname, deparse_context *context)
 	RangeTblEntry *result = NULL;
 	ListCell   *nslist;
 
-	foreach(nslist, context->namespaces)
+    foreach(nslist, context->namespaces)
 	{
 		deparse_namespace *dpns = (deparse_namespace *) lfirst(nslist);
 		ListCell   *rtlist;
@@ -2778,7 +2817,8 @@ find_rte_by_refname(const char *refname, deparse_context *context)
 		{
 			RangeTblEntry *rte = (RangeTblEntry *) lfirst(rtlist);
 
-			if (strcmp(rte->eref->aliasname, refname) == 0)
+            if (rte->eref &&
+                strcmp(rte->eref->aliasname, refname) == 0)
 			{
 				if (result)
 					return NULL;	/* it's ambiguous */
@@ -2786,6 +2826,7 @@ find_rte_by_refname(const char *refname, deparse_context *context)
 			}
 		}
 		if (dpns->outer_rte &&
+            dpns->outer_rte->eref &&
 			strcmp(dpns->outer_rte->eref->aliasname, refname) == 0)
 		{
 			if (result)
@@ -2793,6 +2834,7 @@ find_rte_by_refname(const char *refname, deparse_context *context)
 			result = dpns->outer_rte;
 		}
 		if (dpns->inner_rte &&
+			dpns->inner_rte->eref &&
 			strcmp(dpns->inner_rte->eref->aliasname, refname) == 0)
 		{
 			if (result)
@@ -2990,7 +3032,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 						{
 							case NOT_EXPR:
 							case AND_EXPR:
-								if (parentType == AND_EXPR || parentType == OR_EXPR)
+								if (parentType == AND_EXPR)
 									return true;
 								break;
 							case OR_EXPR:
