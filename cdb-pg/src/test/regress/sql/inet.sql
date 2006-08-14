@@ -29,39 +29,39 @@ INSERT INTO INET_TBL (c, i) VALUES ('1234::1234::1234', '::1.2.3.4');
 -- check that CIDR rejects invalid input when converting from text:
 INSERT INTO INET_TBL (c, i) VALUES (cidr('192.168.1.2/30'), '192.168.1.226');
 INSERT INTO INET_TBL (c, i) VALUES (cidr('ffff:ffff:ffff:ffff::/24'), '::192.168.1.226');
-SELECT '' AS ten, c AS cidr, i AS inet FROM INET_TBL;
+SELECT '' AS ten, c AS cidr, i AS inet FROM INET_TBL ORDER BY 2,3;
 
 -- now test some support functions
 
-SELECT '' AS ten, i AS inet, host(i), text(i), family(i) FROM INET_TBL;
+SELECT '' AS ten, i AS inet, host(i), text(i), family(i) FROM INET_TBL ORDER BY 2;
 SELECT '' AS ten, c AS cidr, broadcast(c),
-  i AS inet, broadcast(i) FROM INET_TBL;
+  i AS inet, broadcast(i) FROM INET_TBL ORDER BY 2;
 SELECT '' AS ten, c AS cidr, network(c) AS "network(cidr)",
-  i AS inet, network(i) AS "network(inet)" FROM INET_TBL;
+  i AS inet, network(i) AS "network(inet)" FROM INET_TBL ORDER BY 2;
 SELECT '' AS ten, c AS cidr, masklen(c) AS "masklen(cidr)",
-  i AS inet, masklen(i) AS "masklen(inet)" FROM INET_TBL;
+  i AS inet, masklen(i) AS "masklen(inet)" FROM INET_TBL ORDER BY 2;
 
 SELECT '' AS four, c AS cidr, masklen(c) AS "masklen(cidr)",
   i AS inet, masklen(i) AS "masklen(inet)" FROM INET_TBL
-  WHERE masklen(c) <= 8;
+  WHERE masklen(c) <= 8 ORDER BY 2;
 
 SELECT '' AS six, c AS cidr, i AS inet FROM INET_TBL
-  WHERE c = i;
+  WHERE c = i ORDER BY 2;
 
 SELECT '' AS ten, i, c,
   i < c AS lt, i <= c AS le, i = c AS eq, 
   i >= c AS ge, i > c AS gt, i <> c AS ne,
   i << c AS sb, i <<= c AS sbe,
   i >> c AS sup, i >>= c AS spe
-  FROM INET_TBL;
+  FROM INET_TBL ORDER BY 2,3;
 
 -- check the conversion to/from text and set_netmask
-SELECT '' AS ten, set_masklen(inet(text(i)), 24) FROM INET_TBL;
+SELECT '' AS ten, set_masklen(inet(text(i)), 24) FROM INET_TBL ORDER BY 2;
 -- check that index works correctly
 CREATE INDEX inet_idx1 ON inet_tbl(i);
 SET enable_seqscan TO off;
-SELECT * FROM inet_tbl WHERE i<<'192.168.1.0/24'::cidr;
-SELECT * FROM inet_tbl WHERE i<<='192.168.1.0/24'::cidr;
+SELECT * FROM inet_tbl WHERE i<<'192.168.1.0/24'::cidr ORDER BY 1,2;
+SELECT * FROM inet_tbl WHERE i<<='192.168.1.0/24'::cidr ORDER BY 1,2;
 SET enable_seqscan TO on;
 DROP INDEX inet_idx1;
 

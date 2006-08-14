@@ -32,43 +32,43 @@ INSERT INTO TINTERVAL_TBL (f1)
 
 -- test tinterval operators
 
-SELECT '' AS five, * FROM TINTERVAL_TBL;
+SELECT '' AS five, * FROM TINTERVAL_TBL ORDER BY 2;
 
 -- length ==
 SELECT '' AS one, t.*
    FROM TINTERVAL_TBL t
-   WHERE t.f1 #= '@ 1 months';
+   WHERE t.f1 #= '@ 1 months' ORDER BY 2;
 
 -- length <>
 SELECT '' AS three, t.*
    FROM TINTERVAL_TBL t
-   WHERE t.f1 #<> '@ 1 months';
+   WHERE t.f1 #<> '@ 1 months' ORDER BY 2;
 
 -- length <
 SELECT '' AS zero, t.*
    FROM TINTERVAL_TBL t
-   WHERE t.f1 #< '@ 1 month';
+   WHERE t.f1 #< '@ 1 month' ORDER BY 2;
 
 -- length <=
 SELECT '' AS one, t.*
    FROM TINTERVAL_TBL t
-   WHERE t.f1 #<= '@ 1 month';
+   WHERE t.f1 #<= '@ 1 month' ORDER BY 2;
 
 -- length >
 SELECT '' AS three, t.*
    FROM TINTERVAL_TBL t
-   WHERE t.f1 #> '@ 1 year';
+   WHERE t.f1 #> '@ 1 year' ORDER BY 2;
 
 -- length >=
 SELECT '' AS three, t.*
    FROM TINTERVAL_TBL t
-   WHERE t.f1 #>= '@ 3 years';
+   WHERE t.f1 #>= '@ 3 years' ORDER BY 2;
 
 -- overlaps
 SELECT '' AS three, t1.*
    FROM TINTERVAL_TBL t1
    WHERE t1.f1 &&
-        tinterval '["Aug 15 14:23:19 1983" "Sep 16 14:23:19 1983"]';
+        tinterval '["Aug 15 14:23:19 1983" "Sep 16 14:23:19 1983"]' ORDER BY 2;
 
 SET geqo TO 'off';
 
