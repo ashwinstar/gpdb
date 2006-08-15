@@ -154,6 +154,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	Assert(queryDesc->estate == NULL);
 
 Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
+	
 	/*
 	 * If the transaction is read-only, we need to check if any writes are
 	 * planned to non-temporary tables.
@@ -1213,6 +1214,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		Oid			intoRelationId;
 		TupleDesc	tupdesc;
 		Oid			intoOid;
+		Oid			intoComptypeOid;
 		MppPolicy          *targetPolicy = parseTree->intoPolicy;
 		
 		/*
@@ -1220,6 +1222,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		 */
 		intoName = parseTree->into->relname;
 		intoOid = parseTree->intoOid;
+		intoComptypeOid = parseTree->intoComptypeOid;
 		
 		namespaceId = RangeVarGetCreationNamespace(parseTree->into);
 
@@ -1265,7 +1268,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 												  ONCOMMIT_NOOP,
                                                   targetPolicy,                 /*CDB*/
 												  allowSystemTableMods,
-												  0);
+												  &intoComptypeOid);
 
 		FreeTupleDesc(tupdesc);
 		

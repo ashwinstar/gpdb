@@ -2137,8 +2137,17 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(resultRelations);
 	
 	/* CDB: The reader checks for the name of this field. */
+    if (node->intoHasOids)
+    {
+    	appendStringInfoLiteral(str, " :intoHasOids true");
+    	elog(NOTICE,"Into has Oids");
+    }
+	    
+	/* CDB: The reader checks for the name of this field. */
     if (node->intoOid != 0)
 	    appendStringInfo(str, " :intoOid %d", (int)node->intoOid);
+	 if (node->intoComptypeOid != 0)
+	    appendStringInfo(str, " :intoComptypeOid %d", (int)node->intoComptypeOid);
 	
 }
 

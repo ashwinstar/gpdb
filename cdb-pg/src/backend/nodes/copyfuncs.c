@@ -1708,6 +1708,7 @@ _copyQuery(Query *from)
 	COPY_NODE_FIELD(setOperations);
 	COPY_NODE_FIELD(resultRelations);
 	COPY_SCALAR_FIELD(intoOid);
+	COPY_SCALAR_FIELD(intoComptypeOid);
 	if (from->intoPolicy)
 	{
 		COPY_POINTER_FIELD(intoPolicy,sizeof(MppPolicy) + from->intoPolicy->nattrs*sizeof(from->intoPolicy->attrs[0]));

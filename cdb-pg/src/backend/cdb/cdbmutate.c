@@ -261,6 +261,8 @@ apply_motion(Plan *plan, Query *query)
 											
 						query->intoOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
 						
+						query->intoComptypeOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+						
 						heap_close(pg_class_desc, RowExclusiveLock);
 						
 					}

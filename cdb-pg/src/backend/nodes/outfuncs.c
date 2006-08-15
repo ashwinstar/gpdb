@@ -2133,6 +2133,13 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(resultRelations);
 	
 	/*
+     * CDB: This field was added after the MPP 2.1p2 release.  
+     * This got left out by mistake, but is needed by CTAS.
+     * It doesn't need to get stored in the catalog if false.
+     */
+    if (node->intoHasOids)
+		WRITE_BOOL_FIELD(intoHasOids);
+	/*
      * CDB: This field was added after the MPP 2.1p2 release.  Upstream of
      * the planner, it's unused and zero, in which case we skip writing it
      * because we don't want it written into the catalog.  Allows downward
@@ -2140,6 +2147,9 @@ _outQuery(StringInfo str, Query *node)
      */
     if (node->intoOid != 0)
 		WRITE_OID_FIELD(intoOid);
+	if (node->intoComptypeOid != 0)
+		WRITE_OID_FIELD(intoComptypeOid);
+	
 }
 
 static void

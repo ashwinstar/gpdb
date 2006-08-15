@@ -239,6 +239,14 @@ _readQuery(void)
 	READ_NODE_FIELD(resultRelations);
 	
 	/*
+	 * * CDB: This field was added after the MPP 2.1p2 release.
+	 * This somehow got left off by mistake, but it's needed by CTAS
+	 */
+	if (pg_strtok_peek_fldname("intoHasOids"))
+    {
+        READ_BOOL_FIELD(intoHasOids);
+    }
+	/*
      * CDB: This field was added after the MPP 2.1p2 release.  It's filled in
      * by the planner and not present in nodes stored persistently.  So if
      * it's missing, just let the field stay 0.
@@ -247,7 +255,12 @@ _readQuery(void)
     {                           /* braces required, macro doesn't have 'em */
         READ_OID_FIELD(intoOid);
     }
+    if (pg_strtok_peek_fldname("intoComptypeOid"))
+    {                           /* braces required, macro doesn't have 'em */
+        READ_OID_FIELD(intoComptypeOid);
+    }
 	local_node->intoPolicy = NULL;
+	
 
 	READ_DONE();
 }
