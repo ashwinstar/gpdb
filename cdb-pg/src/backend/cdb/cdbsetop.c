@@ -135,7 +135,7 @@ void adjust_setop_arguments(List *planlist, MppSetOpType setop_type)
 					break;
 				case CdbLocusType_SingleQE:
 				case CdbLocusType_General:
-					Assert( subplan->flow->flotype == FLOW_SINGLETON && subplan->flow->segindex == 0 );
+					Assert( subplan->flow->flotype == FLOW_SINGLETON && subplan->flow->segindex > -1 );
 					/* The setop itself will run on an N-gang, so we need to
 					 * arrange for the singleton input to be separately dispatched
 					 * to a 1-gang and collect its result on one of our N QEs.
