@@ -16,7 +16,7 @@
 #define PATHNODE_H
 
 #include "nodes/relation.h"
-
+#include "cdb/cdbdef.h"                 /* CdbVisitOpt */
 
 /*
  * prototypes for pathnode.c
@@ -85,6 +85,20 @@ extern HashPath *create_hashjoin_path(PlannerInfo *root,
 					 List *restrict_clauses,
                      List *mergeclause_list,    /*CDB*/
 					 List *hashclauses);
+
+CdbVisitOpt
+pathnode_walk_node(Path            *path,
+			       CdbVisitOpt    (*walker)(Path *path, void *context),    
+			       void            *context);
+CdbVisitOpt
+pathnode_walk_kids(Path            *path,
+			       CdbVisitOpt    (*walker)(Path *path, void *context),    
+			       void            *context);
+CdbVisitOpt
+pathnode_walk_list(List            *pathlist,
+			       CdbVisitOpt    (*walker)(Path *path, void *context),    
+			       void            *context);
+
 
 /*
  * prototypes for relnode.c

@@ -1455,3 +1455,142 @@ create_hashjoin_path(PlannerInfo *root,
 
 	return pathnode;
 }
+
+
+/*
+ * pathnode_walk_node
+ *    Calls a 'walker' function for the given Path node; or returns
+ *    CdbVisit_Walk if 'path' is NULL.
+ *
+ *    If 'walker' returns CdbVisit_Walk, then this function calls
+ *    pathnode_walk_kids() to visit the node's children, and returns
+ *    the result.
+ *
+ *    If 'walker' returns CdbVisit_Skip, then this function immediately
+ *    returns CdbVisit_Walk and does not visit the node's children.
+ *
+ *    If 'walker' returns CdbVisit_Stop or another value, then this function
+ *    immediately returns that value and does not visit the node's children.
+ *
+ * pathnode_walk_list
+ *    Calls pathnode_walk_node() for each Path node in the given List.
+ *
+ *    Quits if the result of pathnode_walk_node() is CdbVisit_Stop or another
+ *    value other than CdbVisit_Walk, and returns that result without visiting
+ *    any more nodes.
+ *
+ *    Returns CdbVisit_Walk if all of the subtrees return CdbVisit_Walk, or
+ *    if the list is empty.
+ *
+ *    Note that this function never returns CdbVisit_Skip to its caller.
+ *    Only the 'walker' can return CdbVisit_Skip.
+ *
+ * pathnode_walk_kids
+ *    Calls pathnode_walk_node() for each child of the given Path node.
+ *
+ *    Quits if the result of pathnode_walk_node() is CdbVisit_Stop or another
+ *    value other than CdbVisit_Walk, and returns that result without visiting
+ *    any more nodes.
+ *
+ *    Returns CdbVisit_Walk if all of the children return CdbVisit_Walk, or
+ *    if there are no children.
+ *
+ *    Note that this function never returns CdbVisit_Skip to its caller.
+ *    Only the 'walker' can return CdbVisit_Skip.
+ */
+inline CdbVisitOpt
+pathnode_walk_node(Path            *path,
+                   CdbVisitOpt    (*walker)(Path *path, void *context),
+                   void            *context)
+{
+    CdbVisitOpt     whatnext;
+
+    if (path == NULL)
+        whatnext = CdbVisit_Walk;
+    else
+    {
+        whatnext = walker(path, context);
+        if (whatnext == CdbVisit_Walk)
+            whatnext = pathnode_walk_kids(path, walker, context);
+        else if (whatnext == CdbVisit_Skip)
+            whatnext = CdbVisit_Walk;
+    }
+    Assert(whatnext != CdbVisit_Skip);
+    return whatnext;
+}                               /* pathnode_walk_node */
+
+CdbVisitOpt
+pathnode_walk_list(List            *pathlist,
+                   CdbVisitOpt    (*walker)(Path *path, void *context),
+                   void            *context)
+{
+    ListCell       *cell;
+    Path           *path;
+    CdbVisitOpt     v = CdbVisit_Walk;
+
+    foreach(cell, pathlist)
+    {
+        path = (Path *)lfirst(cell);
+        v = pathnode_walk_node(path, walker, context);
+        if (v != CdbVisit_Walk) /* stop */
+            break;
+    }
+    return v;
+}                               /* pathnode_walk_list */
+
+CdbVisitOpt
+pathnode_walk_kids(Path            *path,
+                   CdbVisitOpt    (*walker)(Path *path, void *context),
+                   void            *context)
+{
+    CdbVisitOpt v;
+
+    Assert(path != NULL);
+
+    switch (path->pathtype)
+    {
+        case T_SeqScan:
+        case T_IndexScan:
+        case T_TidScan:
+        case T_SubqueryScan:
+        case T_FunctionScan:
+            return CdbVisit_Walk;
+        case T_BitmapHeapScan:
+            v = pathnode_walk_node(((BitmapHeapPath *)path)->bitmapqual, walker, context);
+            break;
+        case T_BitmapAnd:
+            v = pathnode_walk_list(((BitmapAndPath *)path)->bitmapquals, walker, context);
+            break;
+        case T_BitmapOr:
+            v = pathnode_walk_list(((BitmapOrPath *)path)->bitmapquals, walker, context);
+            break;
+        case T_HashJoin:
+        case T_MergeJoin:
+        case T_NestLoop:
+            v = pathnode_walk_node(((JoinPath *)path)->outerjoinpath, walker, context);
+            if (v != CdbVisit_Walk)     /* stop */
+                break;
+            v = pathnode_walk_node(((JoinPath *)path)->innerjoinpath, walker, context);
+            break;
+        case T_Append:
+            v = pathnode_walk_list(((AppendPath *)path)->subpaths, walker, context);
+            break;
+        case T_Result:
+            v = pathnode_walk_node(((ResultPath *)path)->subpath, walker, context);
+            break;
+        case T_Material:
+            v = pathnode_walk_node(((MaterialPath *)path)->subpath, walker, context);
+            break;
+        case T_Unique:
+            v = pathnode_walk_node(((UniquePath *)path)->subpath, walker, context);
+            break;
+        case T_Motion:
+            v = pathnode_walk_node(((CdbMotionPath *)path)->subpath, walker, context);
+            break;
+        default:
+            v = CdbVisit_Walk;  /* keep compiler quiet */
+            elog(ERROR, "unrecognized path type: %d", (int)path->pathtype);
+    }
+    return v;
+}                               /* pathnode_walk_kids */
+
