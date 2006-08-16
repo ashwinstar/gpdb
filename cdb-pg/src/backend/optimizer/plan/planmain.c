@@ -9,7 +9,7 @@
  * shorn of features like subselects, inheritance, aggregates, grouping,
  * and so on.  (Those are the things planner.c deals with.)
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -136,6 +136,11 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	root->left_join_clauses = NIL;
 	root->right_join_clauses = NIL;
 	root->full_join_clauses = NIL;
+
+    root->adedup = (InClauseInfo **)
+        palloc0(sizeof(root->adedup[0]) * list_length(root->in_info_list));
+    root->ndedup = 0;
+    root->dedup_relids = NULL;
 
 	/*
 	 * Construct RelOptInfo nodes for all base relations in query.

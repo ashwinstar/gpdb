@@ -10,6 +10,10 @@
  */
 #include "postgres.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "cdb/cdbcat.h"         /* MppPolicy */
 #include "cdb/cdbdef.h"         /* CdbSwap() */
 #include "cdb/cdbpullup.h"      /* cdbpullup_missing_var_walker() */
@@ -23,6 +27,10 @@
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbpathlocus.h"   /* me */
+
+#ifdef __cplusplus
+}   /* extern "C" */
+#endif
 
 
 /*
@@ -176,7 +184,6 @@ cdbpathlocus_from_baserel(struct PlannerInfo   *root,
 		return result;
 	}
 
-
     if (policy &&
         policy->ptype == POLICYTYPE_PARTITIONED)
     {
@@ -310,7 +317,7 @@ cdbpathlocus_get_pathkeyitem(List          *pathkey,
 
     foreach(pathkeycell, pathkey)
     {
-        PathKeyItem    *item = lfirst(pathkeycell);
+        PathKeyItem    *item = (PathKeyItem *)lfirst(pathkeycell);
         Assert(IsA(item, PathKeyItem));
 
         /* Constant expr?  Return it. */
@@ -356,16 +363,16 @@ cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
 
         if (CdbPathLocus_IsHashed(locus))
         {
-            pathkey = lfirst(partkeycell);
+            pathkey = (List *)lfirst(partkeycell);
             item = cdbpathlocus_get_pathkeyitem(pathkey, relids, targetlist);
         }
         else if (CdbPathLocus_IsHashedOJ(locus))
         {
-            List       *pathkeylist = lfirst(partkeycell);
+            List       *pathkeylist = (List *)lfirst(partkeycell);
             ListCell   *pathkeylistcell;
             foreach(pathkeylistcell, pathkeylist)
             {
-                pathkey = lfirst(pathkeylistcell);
+                pathkey = (List *)lfirst(pathkeylistcell);
                 item = cdbpathlocus_get_pathkeyitem(pathkey,
                                                     relids,
                                                     targetlist);
@@ -462,4 +469,84 @@ cdbpathlocus_join(CdbPathLocus a, CdbPathLocus b)
     }
     return ojlocus;
 }                               /* cdbpathlocus_join */
+
+
+/*
+ * cdbpathlocus_is_hashed_on_relids
+ *
+ * Used when a subquery predicate (such as "x IN (SELECT ...)") has been
+ * flattened into a join with the tables of the current query.  A row of
+ * the cross-product of the current query's tables might join with more
+ * than one row from the subquery and thus be duplicated.  Removing such
+ * duplicates after the join is called deduping.  If a row's duplicates
+ * might occur in more than one partition, a Motion operator will be
+ * needed to bring them together.  This function tests whether the join
+ * result (whose locus is given) can be deduped in place without motion.
+ *
+ * For a hashed locus, returns false if the partkey has a column whose
+ * equivalence class contains no Var node belonging to the given set of
+ * relids.  Caller should specify the relids of the tables of the current
+ * query, excluding the subquery.
+ */
+bool
+cdbpathlocus_is_hashed_on_relids(CdbPathLocus locus, Bitmapset *relids)
+{
+    ListCell       *partkeycell;
+    ListCell       *pathkeycell;
+    List           *pathkey;
+    PathKeyItem    *item;
+
+    if (!CdbPathLocus_IsHashed(locus) &&
+        !CdbPathLocus_IsHashedOJ(locus))
+    {
+        Assert(CdbLocusType_IsValid(locus.locustype));
+        return !CdbPathLocus_IsStrewn(locus);
+    }
+
+    Assert(CdbPathLocus_Degree(locus) > 0);
+
+    foreach(partkeycell, locus.partkey)
+    {
+        if (CdbPathLocus_IsHashed(locus))
+        {
+            /* Does pathkey contain a Var whose varno is in relids? */
+            pathkey = (List *)lfirst(partkeycell);
+            foreach(pathkeycell, pathkey)
+            {
+                item = (PathKeyItem *)lfirst(pathkeycell);
+                Assert(IsA(item, PathKeyItem));
+                if (IsA(item->key, Var) &&
+                    bms_is_subset(item->cdb_key_relids, relids))
+                    break;
+            }
+            if (!pathkeycell)
+                return false;
+        }
+        else                    /* CdbPathLocus_IsHashedOJ */
+        {
+            List       *pathkeylist = (List *)lfirst(partkeycell);
+            ListCell   *pathkeylistcell;
+            foreach(pathkeylistcell, pathkeylist)
+            {
+                /* Does pathkey contain a Var whose varno is in relids? */
+                pathkey = (List *)lfirst(pathkeylistcell);
+                foreach(pathkeycell, pathkey)
+                {
+                    item = (PathKeyItem *)lfirst(pathkeycell);
+                    Assert(IsA(item, PathKeyItem));
+                    if (IsA(item->key, Var) &&
+                        bms_is_subset(item->cdb_key_relids, relids))
+                        break;
+                }
+                if (pathkeycell)
+                    break;
+            }
+            if (!pathkeylistcell)
+                return false;
+        }
+    }
+
+    /* Every column of the partkey contains a Var whose varno is in relids. */
+    return true;
+}                               /* cdbpathlocus_is_hashed_on_relids */
 

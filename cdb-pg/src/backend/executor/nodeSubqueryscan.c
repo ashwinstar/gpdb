@@ -33,6 +33,7 @@
 #include "executor/execdefs.h"
 #include "executor/execdesc.h"
 #include "executor/nodeSubqueryscan.h"
+#include "optimizer/var.h"              /* CDB: contain_var_reference() */
 #include "parser/parsetree.h"
 #include "tcop/pquery.h"
 
@@ -79,6 +80,24 @@ SubqueryNext(SubqueryScanState *node)
 
 	MemoryContextSwitchTo(oldcontext);
 
+    /*
+     * CDB: Label each row with a synthetic ctid if needed for subquery dedup.
+     */
+    if (node->cdb_want_ctid &&
+        !TupIsNull(slot))
+    {
+        HeapTuple   tuple = ExecMaterializeSlot(slot);
+
+        /* Increment 48-bit row count */
+        node->cdb_fake_ctid.ip_posid++;
+        if (node->cdb_fake_ctid.ip_posid == 0)
+            ItemPointerSetBlockNumber(&node->cdb_fake_ctid,
+                                      1 + ItemPointerGetBlockNumber(&node->cdb_fake_ctid));
+
+        tuple->t_self = node->cdb_fake_ctid;
+        tuple->t_tableOid = node->cdb_fake_tableoid;
+    }
+
 	/*
 	 * We just overwrite our ScanTupleSlot with the subplan's result slot,
 	 * rather than expending the cycles for ExecCopySlot().
@@ -117,6 +136,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	SubqueryScanState *subquerystate;
 	RangeTblEntry *rte;
 	EState	   *sp_estate;
+    List       *tlist;
 	MemoryContext oldcontext;
 
 	/* check for unsupported flags */
@@ -151,6 +171,15 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	subquerystate->ss.ps.qual = (List *)
 		ExecInitExpr((Expr *) node->scan.plan.qual,
 					 (PlanState *) subquerystate);
+
+    /* CDB: Does targetlist contain a Var node referencing the ctid column? */
+    tlist = node->scan.plan.targetlist;
+    subquerystate->cdb_want_ctid = contain_var_reference((Node *)tlist,
+                                                         node->scan.scanrelid,
+                                                         SelfItemPointerAttributeNumber,
+                                                         0);
+    ItemPointerSet(&subquerystate->cdb_fake_ctid, 0, 0);
+    subquerystate->cdb_fake_tableoid = (Oid)node->scan.scanrelid;
 
 #define SUBQUERYSCAN_NSLOTS 2
 

@@ -4,7 +4,7 @@
  *	  prototypes for various files in optimizer/plan
  *
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -70,6 +70,8 @@ extern Sort *make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree,
  */
 extern void add_base_rels_to_query(PlannerInfo *root, Node *jtnode);
 extern void build_base_rel_tlists(PlannerInfo *root, List *final_tlist);
+extern void add_vars_to_targetlist(PlannerInfo *root, List *vars, 
+                                   Relids where_needed);
 extern Relids distribute_quals_to_rels(PlannerInfo *root, Node *jtnode,
 						 bool below_outer_join);
 extern void process_implied_equality(PlannerInfo *root,

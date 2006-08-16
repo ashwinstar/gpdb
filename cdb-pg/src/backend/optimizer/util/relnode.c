@@ -149,7 +149,8 @@ make_reloptinfo(PlannerInfo *root, int relid, RelOptKind reloptkind)
 		case RTE_FUNCTION:
 			/* Subquery or function --- set up attr range and arrays */
 			/* Note: 0 is included in range to support whole-row Vars */
-			rel->min_attr = 0;
+            /* CDB: Allow internal use of sysattrs (<0) for subquery dedup. */
+        	rel->min_attr = FirstLowInvalidHeapAttributeNumber + 1;     /*CDB*/  
 			rel->max_attr = list_length(rte->eref->colnames);
 			rel->attr_needed = (Relids *)
 				palloc0((rel->max_attr - rel->min_attr + 1) * sizeof(Relids));

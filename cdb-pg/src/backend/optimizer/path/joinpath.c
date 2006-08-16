@@ -3,6 +3,7 @@
  * joinpath.c
  *	  Routines to find all possible paths for processing a set of joins
  *
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -280,7 +281,7 @@ sort_inner_and_outer(PlannerInfo *root,
 		/*
 		 * And now we can make the path.
 		 */
-		add_path(joinrel, (Path *)
+		add_path(root, joinrel, (Path *)
 				 create_mergejoin_path(root,
 									   joinrel,
 									   jointype,
@@ -448,7 +449,7 @@ match_unsorted_outer(PlannerInfo *root,
 			 * cheapest-startup-cost inner path, and the best innerjoin
 			 * indexpath.
 			 */
-			add_path(joinrel, (Path *)
+			add_path(root, joinrel, (Path *)
 					 create_nestloop_path(root,
 										  joinrel,
 										  jointype,
@@ -458,7 +459,7 @@ match_unsorted_outer(PlannerInfo *root,
                                           mergeclause_list,         /*CDB*/
 										  merge_pathkeys));
 			if (matpath != NULL)
-				add_path(joinrel, (Path *)
+				add_path(root, joinrel, (Path *)
 						 create_nestloop_path(root,
 											  joinrel,
 											  jointype,
@@ -468,7 +469,7 @@ match_unsorted_outer(PlannerInfo *root,
                                               mergeclause_list,     /*CDB*/
 											  merge_pathkeys));
 			if (inner_cheapest_startup != inner_cheapest_total)
-				add_path(joinrel, (Path *)
+				add_path(root, joinrel, (Path *)
 						 create_nestloop_path(root,
 											  joinrel,
 											  jointype,
@@ -478,7 +479,7 @@ match_unsorted_outer(PlannerInfo *root,
                                               mergeclause_list,     /*CDB*/
 											  merge_pathkeys));
 			if (bestinnerjoin != NULL)
-				add_path(joinrel, (Path *)
+				add_path(root, joinrel, (Path *)
 						 create_nestloop_path(root,
 											  joinrel,
 											  jointype,
@@ -528,7 +529,7 @@ match_unsorted_outer(PlannerInfo *root,
 		 * create_mergejoin_path will do the right thing if
 		 * inner_cheapest_total is already correctly sorted.)
 		 */
-		add_path(joinrel, (Path *)
+		add_path(root, joinrel, (Path *)
 				 create_mergejoin_path(root,
 									   joinrel,
 									   jointype,
@@ -592,7 +593,7 @@ match_unsorted_outer(PlannerInfo *root,
 				}
 				else
 					newclauses = mergeclauses;
-				add_path(joinrel, (Path *)
+				add_path(root, joinrel, (Path *)
 						 create_mergejoin_path(root,
 											   joinrel,
 											   jointype,
@@ -636,7 +637,7 @@ match_unsorted_outer(PlannerInfo *root,
 						else
 							newclauses = mergeclauses;
 					}
-					add_path(joinrel, (Path *)
+					add_path(root, joinrel, (Path *)
 							 create_mergejoin_path(root,
 												   joinrel,
 												   jointype,
@@ -773,7 +774,7 @@ hash_inner_and_outer(PlannerInfo *root,
 			jointype = JOIN_INNER;
 		}
 
-		add_path(joinrel, (Path *)
+		add_path(root, joinrel, (Path *)
 				 create_hashjoin_path(root,
 									  joinrel,
 									  jointype,
@@ -783,7 +784,7 @@ hash_inner_and_outer(PlannerInfo *root,
                                       mergeclause_list,
 									  hashclauses));
 		if (cheapest_startup_outer != cheapest_total_outer)
-			add_path(joinrel, (Path *)
+			add_path(root, joinrel, (Path *)
 					 create_hashjoin_path(root,
 										  joinrel,
 										  jointype,

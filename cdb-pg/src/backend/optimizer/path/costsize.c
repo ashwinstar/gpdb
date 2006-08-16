@@ -106,7 +106,6 @@ static bool cost_qual_eval_walker(Node *node, QualCost *total);
 static Selectivity approx_selectivity(PlannerInfo *root, List *quals,
 				   JoinType jointype);
 static Selectivity join_in_selectivity(JoinPath *path, PlannerInfo *root);
-static void set_rel_width(PlannerInfo *root, RelOptInfo *rel);
 static double relation_byte_size(double tuples, int width);
 static double page_size(double tuples, int width);
 
@@ -1929,7 +1928,7 @@ set_function_size_estimates(PlannerInfo *root, RelOptInfo *rel)
  * The per-attribute width estimates are cached for possible re-use while
  * building join relations.
  */
-static void
+void
 set_rel_width(PlannerInfo *root, RelOptInfo *rel)
 {
 	int32		tuple_width = 0;

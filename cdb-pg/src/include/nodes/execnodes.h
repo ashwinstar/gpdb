@@ -1180,6 +1180,9 @@ typedef struct SubqueryScanState
 	ScanState	ss;				/* its first field is NodeTag */
 	PlanState  *subplan;
 	EState	   *sss_SubEState;
+    bool        cdb_want_ctid;  /* true => ctid is referenced in targetlist */
+    ItemPointerData cdb_fake_ctid;
+    Oid         cdb_fake_tableoid;
 } SubqueryScanState;
 
 /* ----------------
@@ -1199,6 +1202,10 @@ typedef struct FunctionScanState
 	TupleDesc	tupdesc;
 	Tuplestorestate *tuplestorestate;
 	ExprState  *funcexpr;
+    bool        cdb_want_ctid;  /* true => ctid is referenced in targetlist */
+    ItemPointerData cdb_fake_ctid;
+    ItemPointerData cdb_mark_ctid;
+    Oid         cdb_fake_tableoid;
 } FunctionScanState;
 
 /* ----------------------------------------------------------------

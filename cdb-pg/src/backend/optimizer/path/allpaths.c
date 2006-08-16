@@ -237,7 +237,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 */
 
 	/* Consider sequential scan */
-	add_path(rel, create_seqscan_path(root, rel));
+	add_path(root, rel, create_seqscan_path(root, rel));
 
 	/* Consider index scans */
 	create_index_paths(root, rel);
@@ -412,7 +412,7 @@ set_inherited_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	 * the parent rel.	(Note: this is correct even if we have zero or one
 	 * live subpath due to constraint exclusion.)
 	 */
-	add_path(rel, (Path *) create_append_path(rel, subpaths));
+	add_path(root, rel, (Path *) create_append_path(rel, subpaths));
 
 	/* Select cheapest path (pretty easy in this case...) */
 	set_cheapest(rel);
@@ -535,7 +535,7 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	pathkeys = convert_subquery_pathkeys(root, rel, subquery_pathkeys);
 
 	/* Generate appropriate path */
-	add_path(rel, create_subqueryscan_path(root, rel, pathkeys));
+	add_path(root, rel, create_subqueryscan_path(root, rel, pathkeys));
 
 	/* Select cheapest path (pretty easy in this case...) */
 	set_cheapest(rel);
@@ -552,7 +552,7 @@ set_function_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	set_function_size_estimates(root, rel);
 
 	/* Generate appropriate path */
-	add_path(rel, create_functionscan_path(root, rel));
+	add_path(root, rel, create_functionscan_path(root, rel));
 
 	/* Select cheapest path (pretty easy in this case...) */
 	set_cheapest(rel);

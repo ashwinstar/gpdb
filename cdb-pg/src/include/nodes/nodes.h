@@ -462,8 +462,6 @@ typedef enum CmdType
  */
 typedef enum JoinType
 {
-    JOIN_INVALID = -1,          /* CDB */
-
 	/*
 	 * The canonical kinds of joins
 	 */

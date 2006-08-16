@@ -3,6 +3,7 @@
  * catcache.c
  *	  System catalog cache for tuples matching a key.
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -20,6 +21,7 @@
 #include "access/valid.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
+#include "catalog/pg_proc.h"    /* CDB */
 #include "catalog/pg_type.h"
 #include "catalog/indexing.h"
 #include "miscadmin.h"
@@ -1077,6 +1079,58 @@ IndexScanOK(CatCache *cache, ScanKey cur_skey)
 }
 
 /*
+ * CdbCatCacheKludge
+ *     Fabricate "tidtoi8" pg_proc entry in lieu of catalog upgrade.
+ *     (Temporary kludge, remove in next release in which initdb is required)
+ */
+static CatCTup *
+CdbCatCacheKludge(CatCache *cache, uint32 hashValue, Index hashIndex)
+
+{
+	CatCTup        *ct;
+    Datum           datum;
+	Form_pg_proc    procstruct;
+	HeapTuple	    ntp;
+    bool            isnull;
+
+    /* Fetch a copy of the "oidtoi8" pg_proc tuple. */
+	ntp = SearchSysCacheCopy(cache->id, ObjectIdGetDatum(1288), 0, 0, 0);
+    Insist(HeapTupleIsValid(ntp));
+
+    procstruct = (Form_pg_proc)GETSTRUCT(ntp);
+    Insist(procstruct->prorettype == INT8OID &&
+           procstruct->pronargs == 1 &&
+           procstruct->proargtypes.dim1 == 1 &&
+           procstruct->proargtypes.values[0] == OIDOID);
+
+    /* Change its arg type to tid. */
+    procstruct->proargtypes.values[0] = TIDOID;
+
+    /* Change its entry point name to "tidtoi8". */
+    datum = heap_getattr(ntp, Anum_pg_proc_prosrc, cache->cc_tupdesc, &isnull);
+    Insist(datum &&
+           !VARATT_IS_EXTENDED(datum) &&
+           VARATT_SIZE(datum) == 7 + offsetof(varattrib, va_content.va_data) &&
+           0 == memcmp("oidtoi8", VARATT_DATA(datum), 7));
+    VARATT_DATA(datum)[0] = 't';
+
+    /* Change its OID. */
+    HeapTupleSetOid(ntp, CDB_PROC_TIDTOI8);
+
+    /* Add to cache. */
+    ct = CatalogCacheCreateEntry(cache, ntp,hashValue, hashIndex, false);
+
+    /* immediately set the refcount to 1 */
+    ResourceOwnerEnlargeCatCacheRefs(CurrentResourceOwner);
+    ct->refcount++;
+    ResourceOwnerRememberCatCacheRef(CurrentResourceOwner, &ct->tuple);
+
+	heap_freetuple(ntp);
+    return ct;
+}                               /* CdbCatCacheKludge */
+
+
+/*
  *	SearchCatCache
  *
  *		This call searches a system cache for a tuple, opening the relation
@@ -1245,7 +1299,17 @@ SearchCatCache(CatCache *cache,
 
 	heap_close(relation, AccessShareLock);
 
-	/*
+    /*
+     * CDB: Fabricate "tidtoi8" pg_proc entry in lieu of catalog upgrade.
+     * (Temporary kludge, remove in next release in which initdb is required)
+     */
+    if (ct == NULL &&
+        cache->id == PROCOID &&
+        cur_skey[0].sk_argument == ObjectIdGetDatum(CDB_PROC_TIDTOI8) &&
+        !IsBootstrapProcessingMode())
+        ct = CdbCatCacheKludge(cache, hashValue, hashIndex);
+
+    /*
 	 * If tuple was not found, we need to build a negative cache entry
 	 * containing a fake tuple.  The fake tuple has the correct key columns,
 	 * but nulls everywhere else.

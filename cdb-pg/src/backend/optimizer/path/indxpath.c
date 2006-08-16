@@ -165,7 +165,7 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 	{
 		IndexPath  *ipath = (IndexPath *) lfirst(l);
 
-		add_path(rel, (Path *) ipath);
+		add_path(root, rel, (Path *) ipath);
 
 		if (ipath->indexselectivity < 1.0 &&
 			!ScanDirectionIsBackward(ipath->indexscandir))
@@ -192,7 +192,7 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 
 		bitmapqual = choose_bitmap_and(root, rel, bitindexpaths);
 		bpath = create_bitmap_heap_path(root, rel, bitmapqual, false);
-		add_path(rel, (Path *) bpath);
+		add_path(root, rel, (Path *) bpath);
 	}
 }
 

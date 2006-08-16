@@ -151,6 +151,10 @@ create_plan(PlannerInfo *root, Path *best_path)
 
     ctx.root = root;
 
+    /* CDB: Modify path to support unique rowid operation for subquery preds. */
+    if (root->in_info_list)
+        cdbpath_dedup_fixup(root, best_path);
+
     return create_subplan(&ctx, best_path);
 }                               /* create_plan */
 
@@ -211,7 +215,8 @@ create_subplan(CreatePlanContext *ctx, Path *best_path)
         plan->dispatch = DISPATCH_PARALLEL;
 
     return plan;
-}
+}                               /* create_subplan */
+
 
 /*
  * create_scan_plan
@@ -605,26 +610,10 @@ create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path)
 	 * Therefore newtlist starts from build_relation_tlist() not just a
 	 * copy of the subplan's tlist; and we don't install it into the subplan
 	 * unless stuff has to be added.
-	 *
-	 * To find the correct list of values to unique-ify, we look in the
-	 * information saved for IN expressions.  If this code is ever used in
-	 * other scenarios, some other way of finding what to unique-ify will
-	 * be needed.
 	 *----------
 	 */
-	uniq_exprs = NIL;			/* just to keep compiler quiet */
-	foreach(l, ctx->root->in_info_list)
-	{
-		InClauseInfo *ininfo = (InClauseInfo *) lfirst(l);
-
-		if (bms_equal(ininfo->righthand, best_path->path.parent->relids))
-		{
-			uniq_exprs = ininfo->sub_targetlist;
-			break;
-		}
-	}
-	if (l == NULL)				/* fell out of loop? */
-		elog(ERROR, "could not find UniquePath in in_info_list");
+	uniq_exprs = best_path->distinct_on_exprs;  /*CDB*/
+    Insist(uniq_exprs);
 
 	/* initialize modified subplan tlist as just the "required" vars */
 	newtlist = build_relation_tlist(best_path->path.parent);

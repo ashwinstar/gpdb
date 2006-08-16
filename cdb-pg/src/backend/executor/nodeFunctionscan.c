@@ -25,6 +25,7 @@
 
 #include "executor/nodeFunctionscan.h"
 #include "funcapi.h"
+#include "optimizer/var.h"              /* CDB: contain_var_reference() */
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
 
@@ -92,7 +93,26 @@ FunctionNext(FunctionScanState *node)
 										&should_free);
 	slot = node->ss.ss_ScanTupleSlot;
 	if (heapTuple)
-		return ExecStoreTuple(heapTuple, slot, InvalidBuffer, should_free);
+    {
+		ExecStoreTuple(heapTuple, slot, InvalidBuffer, should_free);
+
+        /* CDB: Label each row with a synthetic ctid for subquery dedup. */
+        if (node->cdb_want_ctid)
+        {
+            HeapTuple   tuple = ExecMaterializeSlot(slot);
+
+            /* Increment 48-bit row count */
+            node->cdb_fake_ctid.ip_posid++;
+            if (node->cdb_fake_ctid.ip_posid == 0)
+                ItemPointerSetBlockNumber(&node->cdb_fake_ctid,
+                                          1 + ItemPointerGetBlockNumber(&node->cdb_fake_ctid));
+
+            tuple->t_self = node->cdb_fake_ctid;
+            tuple->t_tableOid = node->cdb_fake_tableoid;
+        }
+
+        return slot;
+    }
 	else
 		return ExecClearTuple(slot);
 }
@@ -128,6 +148,7 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 	Oid			funcrettype;
 	TypeFuncClass functypclass;
 	TupleDesc	tupdesc = NULL;
+    List       *tlist;
 
 	/*
 	 * FunctionScan should not have any children.
@@ -166,6 +187,16 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 	scanstate->ss.ps.qual = (List *)
 		ExecInitExpr((Expr *) node->scan.plan.qual,
 					 (PlanState *) scanstate);
+
+    /* CDB: Does targetlist contain a Var node referencing the ctid column? */
+    tlist = node->scan.plan.targetlist;
+    scanstate->cdb_want_ctid = contain_var_reference((Node *)tlist,
+                                                     node->scan.scanrelid,
+                                                     SelfItemPointerAttributeNumber,
+                                                     0);
+    ItemPointerSet(&scanstate->cdb_fake_ctid, 0, 0);
+    ItemPointerSet(&scanstate->cdb_mark_ctid, 0, 0);
+    scanstate->cdb_fake_tableoid = (Oid)node->scan.scanrelid;
 
 	/*
 	 * get info about function
@@ -288,6 +319,8 @@ ExecFunctionMarkPos(FunctionScanState *node)
 	if (!node->tuplestorestate)
 		return;
 
+    node->cdb_mark_ctid = node->cdb_fake_ctid;
+
 	tuplestore_markpos(node->tuplestorestate);
 }
 
@@ -305,6 +338,8 @@ ExecFunctionRestrPos(FunctionScanState *node)
 	 */
 	if (!node->tuplestorestate)
 		return;
+
+    node->cdb_fake_ctid = node->cdb_mark_ctid;
 
 	tuplestore_restorepos(node->tuplestorestate);
 }
@@ -326,7 +361,9 @@ ExecFunctionReScan(FunctionScanState *node, ExprContext *exprCtxt)
 	if (!node->tuplestorestate)
 		return;
 
-	/*
+    ItemPointerSet(&node->cdb_fake_ctid, 0, 0);
+
+    /*
 	 * Here we have a choice whether to drop the tuplestore (and recompute the
 	 * function outputs) or just rescan it.  This should depend on whether the
 	 * function expression contains parameters and/or is marked volatile.

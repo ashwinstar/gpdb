@@ -79,7 +79,16 @@ typedef struct PlannerInfo
 	struct RelOptInfo **base_rel_array; /* All one-relation RelOptInfos */
 	int			base_rel_array_size;	/* current allocated array len */
 
-	/*
+    /* 
+     * CDB: Post-join duplicate removal for flattened subqueries...
+     * Implicit parameters from cdb_add_subquery_join_paths() to add_path().  
+     */
+    struct InClauseInfo **adedup;   /* -> array[0..list_length(in_info_list)-1]        
+                                     *      of flattened-subquery-info ptrs  */
+    int         ndedup;             /* num of slots occupied in adedup array */
+    Relids      dedup_relids;       /* non-subquery relids in current join */
+    
+    /*
 	 * join_rel_list is a list of all join-relation RelOptInfos we have
 	 * considered in this planning run.  For small problems we just scan the
 	 * list to do lookups, but when there are many join relations we build a
@@ -641,6 +650,11 @@ typedef struct UniquePath
 	Path	   *subpath;
 	UniquePathMethod umethod;
 	double		rows;			/* estimated number of result tuples */
+    List       *distinct_on_exprs;  /* CDB: list of exprs to be uniqueified */
+    Relids      dedup_relids;       /* CDB: subquery relids for dedup.  Remove 
+                                     * dups from cross product of all rels but
+                                     * these. */
+    bool        must_repartition;   /* CDB: true => add Motion atop subpath  */
 } UniquePath;
 
 /*

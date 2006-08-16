@@ -29,22 +29,25 @@ cdbpath_create_motion_path(PlannerInfo     *root,
                            CdbPathLocus     locus);
 
 CdbPathLocus
-cdbpath_motion_for_join(PlannerInfo  *root,
-                        JoinType    jointype,           /* JOIN_INNER, JOIN_FULL, JOIN_LEFT, JOIN_RIGHT */
-                        Path      **outer_path,         /* INOUT */
-                        Path      **inner_path,         /* INOUT */
-                        List       *mergeclause_list,   /* equijoin RestrictInfo list */
-                        List       *outer_pathkeys,
-                        List       *inner_pathkeys,
-                        bool        outer_require_existing_order,
-                        bool        inner_require_existing_order);
+cdbpath_motion_for_join(PlannerInfo    *root,
+                        JoinType        jointype,           /* JOIN_INNER/FULL/LEFT/RIGHT/IN */
+                        Path          **p_outer_path,       /* INOUT */
+                        Path          **p_inner_path,       /* INOUT */
+                        List           *mergeclause_list,   /* equijoin RestrictInfo list */
+                        List           *outer_pathkeys,
+                        List           *inner_pathkeys,
+                        bool            outer_require_existing_order,
+                        bool            inner_require_existing_order);
+
+void 
+cdbpath_dedup_fixup(PlannerInfo *root, Path *path);
 
 /*
  * cdbpath_rows
  *
  * Returns a Path's estimated number of result rows.
  */
-static __inline__ double
+static inline double
 cdbpath_rows(Path *path)
 {
     double rows;

@@ -252,8 +252,7 @@ set_cheapest(RelOptInfo *parent_rel)
  *
  * Returns nothing, but modifies parent_rel->pathlist.
  */
-void
-add_path(RelOptInfo *parent_rel, Path *new_path)
+void add_path(PlannerInfo *root, RelOptInfo *parent_rel, Path *new_path)
 {
 	bool		accept_new = true;		/* unless we find a superior old path */
 	ListCell   *insert_after = NULL;	/* where to insert new item */
@@ -263,13 +262,15 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
     if (!new_path)
         return;
 
-	/*
-	 * This is a convenient place to check for query cancel --- no part of the
-	 * planner goes very long without calling add_path().
-	 */
-	CHECK_FOR_INTERRUPTS();
+    /* CDB: Might need to remove dups caused by flattened subqueries. */
+    if (root->ndedup > 0)
+    {
+        new_path = (Path *)create_unique_rowid_path(root, new_path, root->dedup_relids);
+        if (!new_path)
+            return;
+    }
 
-	/*
+    /*
 	 * Loop to check proposed new path against old paths.  Note it is possible
 	 * for more than one old path to be tossed out because new_path dominates
 	 * it.
@@ -790,31 +791,26 @@ create_material_path(RelOptInfo *rel, Path *subpath)
 	return pathnode;
 }
 
+
 /*
- * create_unique_path
+ * create_unique_common_path
  *	  Creates a path representing elimination of distinct rows from the
  *	  input data.
- *
- * If used at all, this is likely to be called repeatedly on the same rel;
- * and the input subpath should always be the same (the cheapest_total path
- * for the rel).  So we cache the result.
  */
-UniquePath *
-create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath)
+static UniquePath *
+create_unique_common_path(PlannerInfo *root,
+                          Path        *subpath,
+                          List        *distinct_on_exprs,
+                          Relids       dedup_relids)
 {
 	UniquePath *pathnode;
 	Path		sort_path;		/* dummy for result of cost_sort */
 	Path		agg_path;		/* dummy for result of cost_agg */
-	MemoryContext oldcontext;
-	List	   *sub_targetlist;
-	ListCell   *l;
+    MemoryContext oldcontext;
+    RelOptInfo *rel = subpath->parent;
 	int			numCols;
     double      subpath_rows;
-
-	/* If result already cached, return it */
-    if (subpath == rel->cheapest_total_path &&
-        rel->cheapest_unique_path)
-		return (UniquePath *) rel->cheapest_unique_path;
+    bool        hashable = false;
 
     subpath_rows = cdbpath_rows(subpath);
 
@@ -845,22 +841,9 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath)
 
 	pathnode->subpath = subpath;
 
-	/*
-	 * Try to identify the targetlist that will actually be unique-ified. In
-	 * current usage, this routine is only used for sub-selects of IN clauses,
-	 * so we should be able to find the tlist in in_info_list.
-	 */
-	sub_targetlist = NIL;
-	foreach(l, root->in_info_list)
-	{
-		InClauseInfo *ininfo = (InClauseInfo *) lfirst(l);
-
-		if (bms_equal(ininfo->righthand, rel->relids))
-		{
-			sub_targetlist = ininfo->sub_targetlist;
-			break;
-		}
-	}
+    pathnode->distinct_on_exprs = distinct_on_exprs;
+    pathnode->dedup_relids = dedup_relids;  /* CDB: share caller's relids */
+    pathnode->must_repartition = false;
 
 	/*
 	 * If the input is a subquery whose output must be unique already, then we
@@ -872,12 +855,12 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath)
 	 * we could do something with expressions in the subquery outputs, too,
 	 * but for now keep it simple.)
 	 */
-	if (sub_targetlist && rel->rtekind == RTE_SUBQUERY)
+	if (distinct_on_exprs && rel->rtekind == RTE_SUBQUERY)
 	{
 		RangeTblEntry *rte = rt_fetch(rel->relid, root->parse->rtable);
 		List	   *sub_tlist_colnos;
 
-		sub_tlist_colnos = translate_sub_tlist(sub_targetlist, rel->relid);
+		sub_tlist_colnos = translate_sub_tlist(distinct_on_exprs, rel->relid);
 
 		if (sub_tlist_colnos &&
 			query_is_distinct_for(rte->subquery, sub_tlist_colnos))
@@ -887,10 +870,6 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath)
 			pathnode->path.startup_cost = subpath->startup_cost;
 			pathnode->path.total_cost = subpath->total_cost;
 			pathnode->path.pathkeys = subpath->pathkeys;
-
-            if (subpath == rel->cheapest_total_path)
-    			rel->cheapest_unique_path = (Path *) pathnode;
-
 			return pathnode;
 		}
 	}
@@ -899,10 +878,10 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath)
 	 * If we know the targetlist, try to estimate number of result rows;
 	 * otherwise punt.
 	 */
-	if (sub_targetlist)
+	if (distinct_on_exprs)
 	{
-		pathnode->rows = estimate_num_groups(root, sub_targetlist, subpath_rows);
-		numCols = list_length(sub_targetlist);
+		pathnode->rows = estimate_num_groups(root, distinct_on_exprs, subpath_rows);
+		numCols = list_length(distinct_on_exprs);
 	}
 	else
 	{
@@ -929,9 +908,16 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath)
 	 * Is it safe to use a hashed implementation?  If so, estimate and compare
 	 * costs.  We only try this if we know the targetlist for sure (else we
 	 * can't be sure about the datatypes involved).
+     *
+     * CDB: For dedup, the distinct_on_exprs list isn't built until later,
+     * but we know the data types will be hashable.
 	 */
 	pathnode->umethod = UNIQUE_PATH_SORT;
-	if (enable_hashagg && sub_targetlist && hash_safe_tlist(sub_targetlist))
+    if (distinct_on_exprs && hash_safe_tlist(distinct_on_exprs))
+        hashable = true;
+    if (dedup_relids)
+        hashable = true;
+	if (hashable && enable_hashagg)
 	{
 		/*
 		 * Estimate the overhead per hashtable entry at 64 bytes (same as in
@@ -976,11 +962,114 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath)
 	 */
     pathnode->path.rescannable = true;
 
+	return pathnode;
+}                               /* create_unique_common_path */
+
+
+/*
+ * create_unique_path
+ *	  Creates a path representing elimination of distinct rows from the
+ *	  input data.
+ *
+ * If used at all, this is likely to be called repeatedly on the same rel;
+ * and the input subpath should always be the same (the cheapest_total path
+ * for the rel).  So we cache the result.
+ */
+UniquePath *
+create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath)
+{
+	UniquePath *pathnode;
+	List	   *sub_targetlist;
+	ListCell   *l;
+
+	/* If result already cached, return it */
+    if (subpath == rel->cheapest_total_path &&
+        rel->cheapest_unique_path)
+		return (UniquePath *) rel->cheapest_unique_path;
+
+	/*
+	 * Try to identify the targetlist that will actually be unique-ified. In
+	 * current usage, this routine is only used for sub-selects of IN clauses,
+	 * so we should be able to find the tlist in in_info_list.
+	 */
+	sub_targetlist = NIL;
+	foreach(l, root->in_info_list)
+	{
+		InClauseInfo *ininfo = (InClauseInfo *) lfirst(l);
+
+		if (bms_equal(ininfo->righthand, rel->relids))
+		{
+			sub_targetlist = ininfo->sub_targetlist;
+			break;
+		}
+	}
+
+    /* Create the UniquePath node. */
+    pathnode = create_unique_common_path(root, subpath, sub_targetlist, NULL);
+
+    /* Cache it in case we need it again. */
     if (subpath == rel->cheapest_total_path)
     	rel->cheapest_unique_path = (Path *) pathnode;
 
 	return pathnode;
-}
+}                               /* create_unique_path */
+
+
+/*
+ * create_unique_rowid_path
+ *
+ * CDB: Used when a subquery predicate (such as "x IN (SELECT ...)") has
+ * been flattened into a join with the tables of the current query.  A row
+ * of the cross-product of the current query's tables might join with more
+ * than one row from the subquery and thus be duplicated.  Removing such
+ * duplicates after the join is called deduping.
+ *
+ * If a row's duplicates might occur in more than one partition, a Motion
+ * operator will be needed to bring them together.  Since this path might
+ * not be chosen, we won't take the time to create a MotionPath node here;
+ * just estimate what the cost would be, and assign a dummy locus.  Save
+ * the real work for create_plan().
+ */
+UniquePath *
+create_unique_rowid_path(PlannerInfo *root,
+                         Path        *subpath,
+                         Relids       dedup_relids)
+{
+	UniquePath *uniquepath;
+
+    Assert(!bms_is_empty(dedup_relids));
+
+    /* Create the UniquePath node. */
+    uniquepath = create_unique_common_path(root, subpath, NIL, dedup_relids);
+
+    /* Add repartitioning cost if duplicates might be on different QEs. */
+    if (!CdbPathLocus_IsBottleneck(subpath->locus) &&
+        !cdbpathlocus_is_hashed_on_relids(subpath->locus, dedup_relids))
+    {
+        CdbMotionPath   motionpath;     /* dummy for cost estimate */
+        Cost            repartition_cost;
+
+        /* Tell create_unique_plan() to insert Motion operator atop subpath. */
+        uniquepath->must_repartition = true;
+
+        /* Set a fake locus.  Repartitioning key won't be built until later. */
+        CdbPathLocus_MakeStrewn(&uniquepath->path.locus);
+
+        /* Estimate repartitioning cost. */
+        memset(&motionpath, 0, sizeof(motionpath));
+        motionpath.path.type = T_CdbMotionPath;
+        motionpath.path.parent = subpath->parent;
+        motionpath.path.locus = uniquepath->path.locus;
+        cdbpath_cost_motion(&motionpath, subpath);
+
+        /* Add MotionPath cost to UniquePath cost. */
+        repartition_cost = motionpath.path.total_cost - subpath->total_cost;
+        uniquepath->path.total_cost += repartition_cost;
+    }
+
+	return uniquepath;
+}                               /* create_unique_rowid_path */
+
 
 /*
  * translate_sub_tlist - get subquery column numbers represented by tlist
@@ -1500,8 +1589,8 @@ create_hashjoin_path(PlannerInfo *root,
  */
 inline CdbVisitOpt
 pathnode_walk_node(Path            *path,
-                   CdbVisitOpt    (*walker)(Path *path, void *context),
-                   void            *context)
+			       CdbVisitOpt    (*walker)(Path *path, void *context),
+			       void            *context)
 {
     CdbVisitOpt     whatnext;
 
@@ -1517,46 +1606,46 @@ pathnode_walk_node(Path            *path,
     }
     Assert(whatnext != CdbVisit_Skip);
     return whatnext;
-}                               /* pathnode_walk_node */
+}	                            /* pathnode_walk_node */
 
 CdbVisitOpt
 pathnode_walk_list(List            *pathlist,
-                   CdbVisitOpt    (*walker)(Path *path, void *context),
-                   void            *context)
+			       CdbVisitOpt    (*walker)(Path *path, void *context),
+			       void            *context)
 {
     ListCell       *cell;
     Path           *path;
     CdbVisitOpt     v = CdbVisit_Walk;
 
-    foreach(cell, pathlist)
-    {
+	foreach(cell, pathlist)
+	{
         path = (Path *)lfirst(cell);
         v = pathnode_walk_node(path, walker, context);
         if (v != CdbVisit_Walk) /* stop */
             break;
-    }
-    return v;
-}                               /* pathnode_walk_list */
+	}
+	return v;
+}	                            /* pathnode_walk_list */
 
 CdbVisitOpt
 pathnode_walk_kids(Path            *path,
-                   CdbVisitOpt    (*walker)(Path *path, void *context),
-                   void            *context)
+			       CdbVisitOpt    (*walker)(Path *path, void *context),
+			       void            *context)
 {
     CdbVisitOpt v;
 
     Assert(path != NULL);
 
     switch (path->pathtype)
-    {
-        case T_SeqScan:
-        case T_IndexScan:
-        case T_TidScan:
-        case T_SubqueryScan:
-        case T_FunctionScan:
+	{
+	    case T_SeqScan:
+	    case T_IndexScan:
+	    case T_TidScan:
+	    case T_SubqueryScan:
+	    case T_FunctionScan:
             return CdbVisit_Walk;
-        case T_BitmapHeapScan:
-            v = pathnode_walk_node(((BitmapHeapPath *)path)->bitmapqual, walker, context);
+	    case T_BitmapHeapScan:
+	        v = pathnode_walk_node(((BitmapHeapPath *)path)->bitmapqual, walker, context);
             break;
         case T_BitmapAnd:
             v = pathnode_walk_list(((BitmapAndPath *)path)->bitmapquals, walker, context);
@@ -1565,8 +1654,8 @@ pathnode_walk_kids(Path            *path,
             v = pathnode_walk_list(((BitmapOrPath *)path)->bitmapquals, walker, context);
             break;
         case T_HashJoin:
-        case T_MergeJoin:
-        case T_NestLoop:
+	    case T_MergeJoin:
+	    case T_NestLoop:
             v = pathnode_walk_node(((JoinPath *)path)->outerjoinpath, walker, context);
             if (v != CdbVisit_Walk)     /* stop */
                 break;
@@ -1575,22 +1664,21 @@ pathnode_walk_kids(Path            *path,
         case T_Append:
             v = pathnode_walk_list(((AppendPath *)path)->subpaths, walker, context);
             break;
-        case T_Result:
-            v = pathnode_walk_node(((ResultPath *)path)->subpath, walker, context);
+	    case T_Result:
+	        v = pathnode_walk_node(((ResultPath *)path)->subpath, walker, context);
             break;
-        case T_Material:
-            v = pathnode_walk_node(((MaterialPath *)path)->subpath, walker, context);
+	    case T_Material:
+	        v = pathnode_walk_node(((MaterialPath *)path)->subpath, walker, context);
             break;
-        case T_Unique:
-            v = pathnode_walk_node(((UniquePath *)path)->subpath, walker, context);
+	    case T_Unique:
+	        v = pathnode_walk_node(((UniquePath *)path)->subpath, walker, context);
             break;
         case T_Motion:
-            v = pathnode_walk_node(((CdbMotionPath *)path)->subpath, walker, context);
+	        v = pathnode_walk_node(((CdbMotionPath *)path)->subpath, walker, context);
             break;
         default:
             v = CdbVisit_Walk;  /* keep compiler quiet */
-            elog(ERROR, "unrecognized path type: %d", (int)path->pathtype);
-    }
+		    elog(ERROR, "unrecognized path type: %d", (int)path->pathtype);
+	}
     return v;
-}                               /* pathnode_walk_kids */
-
+}	                            /* pathnode_walk_kids */
