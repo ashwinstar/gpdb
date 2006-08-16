@@ -22,7 +22,7 @@ all: cdb_schema.sql SUBSYS.o $(BKIFILES)
 cdb_schema.sql: cdb_schema.in
 			sed -e 's,@pkglibdir@,$(pkglibdir),g' \
                 -e 's,@dlsuffix@,$(DLSUFFIX),g' \
-             $< > cdb_schema.sql    
+             $< > cdb_schema.sql
 
 SUBSYS.o: $(OBJS)
 	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS)
