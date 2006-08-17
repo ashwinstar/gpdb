@@ -1496,8 +1496,8 @@ CopyToDispatch(CopyState cstate)
 	
 	/* append schema and tablename */
 	appendStringInfo(&cdbcopy_cmd, "COPY %s.%s",
-					 get_namespace_name(RelationGetNamespace(cstate->rel)),
-					 RelationGetRelationName(cstate->rel));
+					 quote_identifier(get_namespace_name(RelationGetNamespace(cstate->rel))),
+					 quote_identifier(RelationGetRelationName(cstate->rel)));
 	/*
 	 * append column list. NOTE: if not specified originally, attnumlist will
 	 * include all non-dropped columns of the table by default
@@ -1514,9 +1514,9 @@ CopyToDispatch(CopyState cstate)
 			continue;
 		
 		if (is_first_col)
-			appendStringInfo(&cdbcopy_cmd, "%s", NameStr(attr[m]->attname));
+			appendStringInfo(&cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[m]->attname)));
 		else
-			appendStringInfo(&cdbcopy_cmd, ",%s", NameStr(attr[m]->attname));
+			appendStringInfo(&cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[m]->attname)));
 		
 		is_first_col = false;
 	}
@@ -2055,8 +2055,8 @@ CopyFromDispatch(CopyState cstate)
 
 	/* append schema and tablename */
 	appendStringInfo(&cdbcopy_cmd, "COPY %s.%s",
-					 get_namespace_name(RelationGetNamespace(cstate->rel)),
-					 RelationGetRelationName(cstate->rel));
+					 quote_identifier(get_namespace_name(RelationGetNamespace(cstate->rel))),
+					 quote_identifier(RelationGetRelationName(cstate->rel)));
 	/*
 	 * append column list. NOTE: if not specified originally, attnumlist will
 	 * include all non-dropped columns of the table by default
@@ -2072,10 +2072,11 @@ CopyFromDispatch(CopyState cstate)
 		if (attr[m]->attisdropped)
 			continue;
 		
+		/* append column string. quote it if needed */
 		if (is_first_col)
-			appendStringInfo(&cdbcopy_cmd, "%s", NameStr(attr[m]->attname));
+			appendStringInfo(&cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[m]->attname)));
 		else
-			appendStringInfo(&cdbcopy_cmd, ",%s", NameStr(attr[m]->attname));
+			appendStringInfo(&cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[m]->attname)));
 
 		is_first_col = false;
 	}
@@ -2118,10 +2119,11 @@ CopyFromDispatch(CopyState cstate)
 			if (attr[defmap[i]]->attisdropped)
 				continue;
 			
+			/* append column string. quote it if needed */
 			if (is_first_col)
-				appendStringInfo(&cdbcopy_cmd, "%s", NameStr(attr[defmap[i]]->attname));
+				appendStringInfo(&cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[defmap[i]]->attname)));
 			else
-				appendStringInfo(&cdbcopy_cmd, ",%s", NameStr(attr[defmap[i]]->attname));
+				appendStringInfo(&cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[defmap[i]]->attname)));
 			
 			extra_attr_count++;
 			is_first_col = false;			
