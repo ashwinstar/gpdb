@@ -526,7 +526,7 @@ ProcessUtility(Node *parsetree,
 						 * need a BEGIN to be dispatched at this time. we'll
 						 * let cdbdisp figure it out.
 						 */
-						startDtxTransaction(true);
+						startDtxTransaction(false);
 
 						break;
 
