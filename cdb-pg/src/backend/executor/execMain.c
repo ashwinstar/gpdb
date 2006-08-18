@@ -1796,7 +1796,10 @@ lnext:	;
 		 */
 		current_tuple_count++;
 		if (numberTuples && numberTuples == current_tuple_count)
+		{
+			ExecSquelchNode(planstate);
 			break;
+		}
 	}
 
 	/*
