@@ -47,7 +47,7 @@
 #include "optimizer/cost.h"
 #include "optimizer/geqo.h"
 #include "optimizer/paths.h"
-#include "optimizer/prep.h"
+#include "optimizer/planmain.h"
 #include "parser/gramparse.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_relation.h"
@@ -1123,7 +1123,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"join_collapse_limit", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Sets the FROM-list size beyond which JOIN constructs are not "
 						 "flattened."),
-			gettext_noop("The planner will flatten explicit inner JOIN "
+			gettext_noop("The planner will flatten explicit JOIN "
 			"constructs into lists of FROM items whenever a list of no more "
 						 "than this many items would result.")
 		},
@@ -3780,7 +3780,7 @@ static const char *
 call_string_assign_hook(GucStringAssignHook assign_hook,
 						char *newval, bool doit, GucSource source)
 {
-	const char *result;
+	const char *result = NULL;
 
 	PG_TRY();
 	{

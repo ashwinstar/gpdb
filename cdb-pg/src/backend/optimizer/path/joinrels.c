@@ -27,7 +27,7 @@ static List *make_rels_by_clause_joins(PlannerInfo *root,
 static List *make_rels_by_clauseless_joins(PlannerInfo *root,
 							  RelOptInfo *old_rel,
 							  ListCell *other_rels);
-static bool is_inside_IN(PlannerInfo *root, RelOptInfo *rel);
+static bool has_join_restriction(PlannerInfo *root, RelOptInfo *rel);
 
 
 /*
@@ -88,15 +88,16 @@ make_rels_by_joins(PlannerInfo *root, int level, List **joinrels)
 												 other_rels);
 
 			/*
-			 * An exception occurs when there is a clauseless join inside an
-			 * IN (sub-SELECT) construct.  Here, the members of the subselect
-			 * all have join clauses (against the stuff outside the IN), but
-			 * they *must* be joined to each other before we can make use of
-			 * those join clauses.	So do the clauseless join bit.
+			 * An exception occurs when there is a clauseless join inside a
+			 * construct that restricts join order, i.e., an outer join RHS
+			 * or an IN (sub-SELECT) construct.  Here, the rel may well have
+			 * join clauses against stuff outside the OJ RHS or IN sub-SELECT,
+			 * but the clauseless join *must* be done before we can make use
+			 * of those join clauses.	So do the clauseless join bit.
 			 *
 			 * See also the last-ditch case below.
 			 */
-			if (new_rels == NIL && is_inside_IN(root, old_rel))
+			if (new_rels == NIL && has_join_restriction(root, old_rel))
 				new_rels = make_rels_by_clauseless_joins(root,
 														 old_rel,
 														 other_rels);
@@ -171,8 +172,7 @@ make_rels_by_joins(PlannerInfo *root, int level, List **joinrels)
 					{
 						RelOptInfo *jrel;
 
-						jrel = make_join_rel(root, old_rel, new_rel,
-											 JOIN_INNER);
+						jrel = make_join_rel(root, old_rel, new_rel);
 						/* Avoid making duplicate entries ... */
 						if (jrel)
 							result_rels = list_append_unique_ptr(result_rels,
@@ -221,8 +221,8 @@ make_rels_by_joins(PlannerInfo *root, int level, List **joinrels)
 		}
 
 		/*----------
-		 * When IN clauses are involved, there may be no legal way to make
-		 * an N-way join for some values of N.	For example consider
+		 * When OJs or IN clauses are involved, there may be no legal way
+		 * to make an N-way join for some values of N.	For example consider
 		 *
 		 * SELECT ... FROM t1 WHERE
 		 *	 x IN (SELECT ... FROM t2,t3 WHERE ...) AND
@@ -233,11 +233,12 @@ make_rels_by_joins(PlannerInfo *root, int level, List **joinrels)
 		 * to accept failure at level 4 and go on to discover a workable
 		 * bushy plan at level 5.
 		 *
-		 * However, if there are no IN clauses then make_join_rel() should
+		 * However, if there are no such clauses then make_join_rel() should
 		 * never fail, and so the following sanity check is useful.
 		 *----------
 		 */
-		if (result_rels == NIL && root->in_info_list == NIL)
+		if (result_rels == NIL &&
+			root->oj_info_list == NIL && root->in_info_list == NIL)
 			elog(ERROR, "failed to build any %d-way joins", level);
 	}
 
@@ -275,7 +276,7 @@ make_rels_by_clause_joins(PlannerInfo *root,
 		{
 			RelOptInfo *jrel;
 
-			jrel = make_join_rel(root, old_rel, other_rel, JOIN_INNER);
+			jrel = make_join_rel(root, old_rel, other_rel);
 			if (jrel)
 				result = lcons(jrel, result);
 		}
@@ -314,7 +315,7 @@ make_rels_by_clauseless_joins(PlannerInfo *root,
 		{
 			RelOptInfo *jrel;
 
-			jrel = make_join_rel(root, old_rel, other_rel, JOIN_INNER);
+			jrel = make_join_rel(root, old_rel, other_rel);
 
 			/*
 			 * As long as given other_rels are distinct, don't need to test to
@@ -330,16 +331,22 @@ make_rels_by_clauseless_joins(PlannerInfo *root,
 
 
 /*
- * is_inside_IN
- *		Detect whether the specified relation is inside an IN (sub-SELECT).
- *
- * Note that we are actually only interested in rels that have been pulled up
- * out of an IN, so the routine name is a slight misnomer.
+ * has_join_restriction
+ *		Detect whether the specified relation has join-order restrictions
+ *		due to being inside an OJ RHS or an IN (sub-SELECT).
  */
 static bool
-is_inside_IN(PlannerInfo *root, RelOptInfo *rel)
+has_join_restriction(PlannerInfo *root, RelOptInfo *rel)
 {
 	ListCell   *l;
+
+	foreach(l, root->oj_info_list)
+	{
+		OuterJoinInfo *ojinfo = (OuterJoinInfo *) lfirst(l);
+
+		if (bms_is_subset(rel->relids, ojinfo->min_righthand))
+			return true;
+	}
 
 	foreach(l, root->in_info_list)
 	{
@@ -349,66 +356,6 @@ is_inside_IN(PlannerInfo *root, RelOptInfo *rel)
 			return true;
 	}
 	return false;
-}
-
-
-/*
- * make_jointree_rel
- *		Find or build a RelOptInfo join rel representing a specific
- *		jointree item.	For JoinExprs, we only consider the construction
- *		path that corresponds exactly to what the user wrote.
- */
-RelOptInfo *
-make_jointree_rel(PlannerInfo *root, Node *jtnode)
-{
-	if (IsA(jtnode, RangeTblRef))
-	{
-		int			varno = ((RangeTblRef *) jtnode)->rtindex;
-
-		return find_base_rel(root, varno);
-	}
-	else if (IsA(jtnode, FromExpr))
-	{
-		FromExpr   *f = (FromExpr *) jtnode;
-
-		/* Recurse back to multi-way-join planner */
-		return make_fromexpr_rel(root, f);
-	}
-	else if (IsA(jtnode, JoinExpr))
-	{
-		JoinExpr   *j = (JoinExpr *) jtnode;
-		RelOptInfo *rel,
-				   *lrel,
-				   *rrel;
-
-		/* Recurse */
-		lrel = make_jointree_rel(root, j->larg);
-		rrel = make_jointree_rel(root, j->rarg);
-
-		/* Make this join rel */
-		rel = make_join_rel(root, lrel, rrel, j->jointype);
-
-		if (rel == NULL)		/* oops */
-			elog(ERROR, "invalid join order");
-
-		/*
-		 * Since we are only going to consider this one way to do it, we're
-		 * done generating Paths for this joinrel and can now select the
-		 * cheapest.  In fact we *must* do so now, since next level up will
-		 * need it!
-		 */
-		set_cheapest(rel);
-
-#ifdef OPTIMIZER_DEBUG
-		debug_print_rel(root, rel);
-#endif
-
-		return rel;
-	}
-	else
-		elog(ERROR, "unrecognized node type: %d",
-			 (int) nodeTag(jtnode));
-	return NULL;				/* keep compiler quiet */
 }
 
 
@@ -532,19 +479,20 @@ cdb_add_subquery_join_paths(PlannerInfo    *root,
  *	   (The join rel may already contain paths generated from other
  *	   pairs of rels that add up to the same set of base rels.)
  *
- * NB: will return NULL if attempted join is not valid.  This can only
- * happen when working with IN clauses that have been turned into joins.
+ * NB: will return NULL if attempted join is not valid.  This can happen
+ * when working with outer joins, or with IN clauses that have been turned
+ * into joins.
  */
 RelOptInfo *
-make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
-			  JoinType jointype)
+make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 {
 	Relids		joinrelids;
+	JoinType	jointype;
+    JoinType    swapjointype;
+	bool		is_valid_inner;
 	RelOptInfo *joinrel;
 	List	   *restrictlist;
-    JoinType    swapjointype = (jointype == JOIN_LEFT)  ? JOIN_RIGHT
-                             : (jointype == JOIN_RIGHT) ? JOIN_LEFT
-                             :                            jointype;
+	ListCell   *l;
 
 	/* This is a convenient place to check for query cancel. */
 	CHECK_FOR_INTERRUPTS();
@@ -557,6 +505,97 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 	joinrelids = bms_union(rel1->relids, rel2->relids);
 
 	/*
+	 * If we have any outer joins, the proposed join might be illegal; and
+	 * in any case we have to determine its join type.  Scan the OJ list
+	 * for conflicts.
+	 */
+	jointype = JOIN_INNER;		/* default if no match to an OJ */
+	is_valid_inner = true;
+
+	foreach(l, root->oj_info_list)
+	{
+		OuterJoinInfo *ojinfo = (OuterJoinInfo *) lfirst(l);
+
+		/*
+		 * This OJ is not relevant unless its RHS overlaps the proposed join.
+		 * (Check this first as a fast path for dismissing most irrelevant OJs
+		 * quickly.)
+		 */
+		if (!bms_overlap(ojinfo->min_righthand, joinrelids))
+			continue;
+
+		/*
+		 * Also, not relevant if proposed join is fully contained within RHS
+		 * (ie, we're still building up the RHS).
+		 */
+		if (bms_is_subset(joinrelids, ojinfo->min_righthand))
+			continue;
+
+		/*
+		 * Also, not relevant if OJ is already done within either input.
+		 */
+		if (bms_is_subset(ojinfo->min_lefthand, rel1->relids) &&
+			bms_is_subset(ojinfo->min_righthand, rel1->relids))
+			continue;
+		if (bms_is_subset(ojinfo->min_lefthand, rel2->relids) &&
+			bms_is_subset(ojinfo->min_righthand, rel2->relids))
+			continue;
+
+		/*
+		 * If one input contains min_lefthand and the other contains
+		 * min_righthand, then we can perform the OJ at this join.
+		 *
+		 * Barf if we get matches to more than one OJ (is that possible?)
+		 */
+		if (bms_is_subset(ojinfo->min_lefthand, rel1->relids) &&
+			bms_is_subset(ojinfo->min_righthand, rel2->relids))
+		{
+			if (jointype != JOIN_INNER)
+			{
+				/* invalid join path */
+				bms_free(joinrelids);
+				return NULL;
+			}
+			jointype = ojinfo->is_full_join ? JOIN_FULL : JOIN_LEFT;
+		}
+		else if (bms_is_subset(ojinfo->min_lefthand, rel2->relids) &&
+				 bms_is_subset(ojinfo->min_righthand, rel1->relids))
+		{
+			if (jointype != JOIN_INNER)
+			{
+				/* invalid join path */
+				bms_free(joinrelids);
+				return NULL;
+			}
+			jointype = ojinfo->is_full_join ? JOIN_FULL : JOIN_RIGHT;
+		}
+		else
+		{
+			/*----------
+			 * Otherwise, the proposed join overlaps the RHS but isn't
+			 * a valid implementation of this OJ.  It might still be
+			 * a valid implementation of some other OJ, however.  We have
+			 * to allow this to support the associative identity
+			 *	(a LJ b on Pab) LJ c ON Pbc = a LJ (b LJ c ON Pbc) on Pab
+			 * since joining B directly to C violates the lower OJ's RHS.
+			 * We assume that make_outerjoininfo() set things up correctly
+			 * so that we'll only match to the upper OJ if the transformation
+			 * is valid.  Set flag here to check at bottom of loop.
+			 *----------
+			 */
+			is_valid_inner = false;
+		}
+	}
+
+	/* Fail if violated some OJ's RHS and didn't match to another OJ */
+	if (jointype == JOIN_INNER && !is_valid_inner)
+	{
+		/* invalid join path */
+		bms_free(joinrelids);
+		return NULL;
+	}
+
+	/*
 	 * Find or build the join RelOptInfo, and compute the restrictlist that
 	 * goes with this particular joining.
 	 */
@@ -566,6 +605,10 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
     /*
      * CDB: Handle removal of duplicates introduced by flattened subqueries.
      */
+    swapjointype = (jointype == JOIN_LEFT)  ? JOIN_RIGHT
+                 : (jointype == JOIN_RIGHT) ? JOIN_LEFT
+                 :                            jointype;
+
     if (root->in_info_list)
         cdb_add_subquery_join_paths(root,
                                     joinrel,

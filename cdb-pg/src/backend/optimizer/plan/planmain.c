@@ -85,6 +85,7 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 {
 	Query	   *parse = root->parse;
 	List	   *constant_quals;
+	List	   *joinlist;
 	RelOptInfo *final_rel;
 	Path	   *cheapestpath;
 	Path	   *sortedpath;
@@ -136,6 +137,7 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	root->left_join_clauses = NIL;
 	root->right_join_clauses = NIL;
 	root->full_join_clauses = NIL;
+	root->oj_info_list = NIL;
 
     root->adedup = (InClauseInfo **)
         palloc0(sizeof(root->adedup[0]) * list_length(root->in_info_list));
@@ -151,7 +153,8 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	 * Examine the targetlist and qualifications, adding entries to baserel
 	 * targetlists for all referenced Vars.  Restrict and join clauses are
 	 * added to appropriate lists belonging to the mentioned relations.  We
-	 * also build lists of equijoined keys for pathkey construction.
+	 * also build lists of equijoined keys for pathkey construction, and
+	 * form a target joinlist for make_one_rel() to work from.
 	 *
 	 * Note: all subplan nodes will have "flat" (var-only) tlists. This
 	 * implies that all expression evaluations are done at the root of the
@@ -161,7 +164,7 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	 */
 	build_base_rel_tlists(root, tlist);
 
-	(void) distribute_quals_to_rels(root, (Node *) parse->jointree, false);
+	joinlist = deconstruct_jointree(root);
 
 	/*
 	 * Use the completed lists of equijoined keys to deduce any implied but
@@ -182,7 +185,7 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	/*
 	 * Ready to do the primary planning.
 	 */
-	final_rel = make_one_rel(root);
+	final_rel = make_one_rel(root, joinlist);
 
 	if (!final_rel || !final_rel->cheapest_total_path)
 		elog(ERROR, "failed to construct the join relation");

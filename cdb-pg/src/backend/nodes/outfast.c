@@ -1355,7 +1355,6 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 	WRITE_FLOAT_FIELD(tuples, "%.0f");
 	WRITE_NODE_FIELD(subplan);
 	WRITE_NODE_FIELD(baserestrictinfo);
-	WRITE_BITMAPSET_FIELD(outerjoinset);
 	WRITE_NODE_FIELD(joininfo);
 	WRITE_BITMAPSET_FIELD(index_outer_relids);
 	WRITE_NODE_FIELD(index_inner_paths);
