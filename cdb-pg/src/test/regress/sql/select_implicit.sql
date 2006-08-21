@@ -51,7 +51,7 @@ SELECT c, count(*) FROM test_missing_target GROUP BY 1 ORDER BY 1;
 
 --   group using reference number out of range
 --   failure expected
-SELECT c, count(*) FROM test_missing_target GROUP BY 3;
+SELECT c, count(*) FROM test_missing_target GROUP BY 3 ORDER BY 1;
 
 --   group w/o existing GROUP BY and ORDER BY target under ambiguous condition
 --   failure expected
@@ -90,7 +90,7 @@ SELECT count(*) INTO TABLE test_missing_target2
 FROM test_missing_target x, test_missing_target y 
 	WHERE x.a = y.a
 	GROUP BY x.b ORDER BY x.b;
-SELECT * FROM test_missing_target2;
+SELECT * FROM test_missing_target2 ORDER BY 1;
 
 
 --  Functions and expressions
@@ -146,7 +146,7 @@ SELECT count(x.b) INTO TABLE test_missing_target3
 FROM test_missing_target x, test_missing_target y 
 	WHERE x.a = y.a
 	GROUP BY x.b/2 ORDER BY x.b/2;
-SELECT * FROM test_missing_target3;
+SELECT * FROM test_missing_target3 ORDER BY 1;
 
 --   Cleanup
 DROP TABLE test_missing_target;

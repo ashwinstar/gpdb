@@ -66,7 +66,7 @@ ANALYZE onek2;
 --
 -- awk '{if($1<10){print $0;}else{next;}}' onek.data | sort +0n -1
 --
-SELECT onek2.* FROM onek2 WHERE onek2.unique1 < 10;
+SELECT onek2.* FROM onek2 WHERE onek2.unique1 < 10 ORDER BY 1;
 
 --
 -- awk '{if($1<20){print $1,$14;}else{next;}}' onek.data | sort +0nr -1
@@ -79,7 +79,7 @@ SELECT onek2.unique1, onek2.stringu1 FROM onek2
 -- awk '{if($1>980){print $1,$14;}else{next;}}' onek.data | sort +1d -2
 --
 SELECT onek2.unique1, onek2.stringu1 FROM onek2
-   WHERE onek2.unique1 > 980;
+   WHERE onek2.unique1 > 980 ORDER BY 1;
 
 
 SELECT two, stringu1, ten, string4
@@ -93,7 +93,7 @@ SELECT two, stringu1, ten, string4
 -- awk 'BEGIN{FS="      ";}{if(NF!=2){print $4,$5;}else{print;}}' - stud_emp.data
 --
 -- SELECT name, age FROM person*; ??? check if different
-SELECT p.name, p.age FROM person* p;
+SELECT p.name, p.age FROM person* p  ORDER BY 1;
 
 --
 -- awk '{print $1,$2;}' person.data |

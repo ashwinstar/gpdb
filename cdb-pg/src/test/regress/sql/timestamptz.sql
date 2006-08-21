@@ -125,43 +125,43 @@ SELECT '' AS "64", d1 FROM TIMESTAMPTZ_TBL ORDER BY 2;
 
 -- Demonstrate functions and operators
 SELECT '' AS "48", d1 FROM TIMESTAMPTZ_TBL
-   WHERE d1 > timestamp with time zone '1997-01-02';
+   WHERE d1 > timestamp with time zone '1997-01-02' ORDER BY 2;
 
 SELECT '' AS "15", d1 FROM TIMESTAMPTZ_TBL
-   WHERE d1 < timestamp with time zone '1997-01-02';
+   WHERE d1 < timestamp with time zone '1997-01-02' ORDER BY 2;
 
 SELECT '' AS one, d1 FROM TIMESTAMPTZ_TBL
-   WHERE d1 = timestamp with time zone '1997-01-02';
+   WHERE d1 = timestamp with time zone '1997-01-02' ORDER BY 2;
 
 SELECT '' AS "63", d1 FROM TIMESTAMPTZ_TBL
-   WHERE d1 != timestamp with time zone '1997-01-02';
+   WHERE d1 != timestamp with time zone '1997-01-02' ORDER BY 2;
 
 SELECT '' AS "16", d1 FROM TIMESTAMPTZ_TBL
-   WHERE d1 <= timestamp with time zone '1997-01-02';
+   WHERE d1 <= timestamp with time zone '1997-01-02' ORDER BY 2;
 
 SELECT '' AS "49", d1 FROM TIMESTAMPTZ_TBL
-   WHERE d1 >= timestamp with time zone '1997-01-02';
+   WHERE d1 >= timestamp with time zone '1997-01-02' ORDER BY 2;
 
 SELECT '' AS "54", d1 - timestamp with time zone '1997-01-02' AS diff
-   FROM TIMESTAMPTZ_TBL WHERE d1 BETWEEN '1902-01-01' AND '2038-01-01';
+   FROM TIMESTAMPTZ_TBL WHERE d1 BETWEEN '1902-01-01' AND '2038-01-01' ORDER BY 2;
 
 SELECT '' AS date_trunc_week, date_trunc( 'week', timestamp with time zone '2004-02-29 15:44:17.71393' ) AS week_trunc;
 
 -- Test casting within a BETWEEN qualifier
 SELECT '' AS "54", d1 - timestamp with time zone '1997-01-02' AS diff
   FROM TIMESTAMPTZ_TBL
-  WHERE d1 BETWEEN timestamp with time zone '1902-01-01' AND timestamp with time zone '2038-01-01';
+  WHERE d1 BETWEEN timestamp with time zone '1902-01-01' AND timestamp with time zone '2038-01-01' ORDER BY 2;
 
 SELECT '' AS "54", d1 as timestamptz,
    date_part( 'year', d1) AS year, date_part( 'month', d1) AS month,
    date_part( 'day', d1) AS day, date_part( 'hour', d1) AS hour,
    date_part( 'minute', d1) AS minute, date_part( 'second', d1) AS second
-   FROM TIMESTAMPTZ_TBL WHERE d1 BETWEEN '1902-01-01' AND '2038-01-01';
+   FROM TIMESTAMPTZ_TBL WHERE d1 BETWEEN '1902-01-01' AND '2038-01-01' ORDER BY 2;
 
 SELECT '' AS "54", d1 as timestamptz,
    date_part( 'quarter', d1) AS quarter, date_part( 'msec', d1) AS msec,
    date_part( 'usec', d1) AS usec
-   FROM TIMESTAMPTZ_TBL WHERE d1 BETWEEN '1902-01-01' AND '2038-01-01';
+   FROM TIMESTAMPTZ_TBL WHERE d1 BETWEEN '1902-01-01' AND '2038-01-01' ORDER BY 2;
 
 -- TO_CHAR()
 SELECT '' AS to_char_1, to_char(d1, 'DAY Day day DY Dy dy MONTH Month month RM MON Mon mon') 

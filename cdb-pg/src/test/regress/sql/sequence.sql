@@ -38,7 +38,7 @@ DROP SEQUENCE foo_seq_new;
 -- renaming serial sequences
 ALTER TABLE serialtest_f2_seq RENAME TO serialtest_f2_foo;
 INSERT INTO serialTest VALUES ('more');
-SELECT * FROM serialTest;
+SELECT * FROM serialTest ORDER BY 1,2;
 
 --
 -- Check dependencies of serial and ordinary sequences
