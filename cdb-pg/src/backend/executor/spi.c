@@ -97,13 +97,10 @@ can_execute_this_locally(const char * src)
 	if (Mpp_role == MPP_ROLE_UTILITY)
 		return true;
 	/*
-	 * Right now, the QD can't execute everything locally, if ExecutorRun has already been called, because of some bug.
-	 * But, if cdbpathlocus_querysegementcatalogs is true, we know we aren't in ExecutorRun, so we can
-	 * at least handle those internal catalog queries normally
-	 * 
-	 * This is probably handled just fine by the check down lower, but this is a quick check.
+	 * If we are running on the QD, we should be able to execute any function without problem,
+	 * because the QD knows how to dispatch SQL statements if necessary.
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH && cdbpathlocus_querysegmentcatalogs)
+	if (Mpp_role == MPP_ROLE_DISPATCH)
 		return true;
 		
 	/*
