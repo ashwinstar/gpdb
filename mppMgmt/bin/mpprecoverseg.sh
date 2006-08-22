@@ -255,9 +255,20 @@ STOP_DATABASE () {
 			LOG_MSG "[INFO]:-Forcing shutdown of $FAIL_QE_HOST for port=$FAIL_QE_PORT "
 			$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m immediate -l ${FAIL_QE_DIR}.log"
 			ERROR_CHK $? "force shutdown of $FAIL_QE_DIR on $FAIL_QE_HOST" 1
+			LOG_MSG "[INFO]:-Checking for postmaster process on $FAIL_QE_HOST port $FAIL_QE_PORT"
+			GET_PG_PID_ACTIVE $FAIL_QE_PORT $FAIL_QE_HOST
+			if [ $PID -ne 0 ];then
+				LOG_MSG "[WARN]:-Found postmaster process on $FAIL_QE_HOST port $FAIL_QE_PORT"
+				LOG_MSG "[WARN]:-Will kill process $PID"
+				$TRUSTED_SHELL $FAIL_QE_HOST "$KILL -9 $PID"
+				ERROR_CHK $? "$TRUSTED_SHELL $FAIL_QE_HOST $KILL -9 $PID" 1
+			else
+				LOG_MSG "[INFO]:-No postmaster process on $FAIL_QE_HOST port $FAIL_QE_PORT"
+			fi
 			LOG_MSG "[INFO]:-Clearing /tmp/lock files for $FAIL_QE_HOST for port=$FAIL_QE_PORT "
 			$TRUSTED_SHELL $FAIL_QE_HOST "$RM -f /tmp/.s.PGSQL.${FAIL_QE_PORT}.lock /tmp/.s.PGSQL.${FAIL_QE_PORT}"
 			ERROR_CHK $? "remove of /tmp lockfiles for $FAIL_QE_HOST" 1
+			
 			((COUNT=$COUNT+1))		
 		done
 	fi
