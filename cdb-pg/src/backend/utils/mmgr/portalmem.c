@@ -248,56 +248,6 @@ PortalDefineQuery(Portal portal,
 				  List *planTrees,
 				  MemoryContext queryContext)
 {
-	/* 
-	 * The following code block is a temporary gate keeper to disallow 
-	 * any queries or new cursors while there is already an open cursor.
-	 */
-	HASH_SEQ_STATUS status;
-	PortalHashEnt *hentry;
-	
-	hash_seq_init(&status, PortalHashTable);
-	
-	/* loop through existing portals (normally there will be one - that we just created) */
-	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
-	{
-		Portal		existing_portal = hentry->portal;
-		
-		/* if this portal is a cursor, allow only selected operations to go through */
-		if(existing_portal->is_cursor && Mpp_role == MPP_ROLE_DISPATCH && existing_portal != portal)
-		{
-			if (strcmp(commandTag, "FETCH") != 0 &&
-				strcmp(commandTag, "MOVE") != 0 &&
-				strcmp(commandTag, "CLOSE CURSOR") != 0 && 
-				strcmp(commandTag, "BEGIN") != 0 &&
-				strcmp(commandTag, "COMMIT") != 0 &&
-				strcmp(commandTag, "ROLLBACK") != 0)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_MPP_FEATURE_NOT_YET),
-						 errmsg("cannot run %s while there is an open cursor", commandTag),
-						 errhint("you should CLOSE the cursor or finish the transaction before attempting other operations")));
-			}
-
-			/* we need to be able to tell the difference between a "rollback;" and a "rollback to foo;"*/
-			if (strcmp(commandTag, "ROLLBACK") == 0)
-			{
-				const char *s=sourceText;
-
-				s += strlen("rollback");
-				/* skip white space */
-				while (*s && !isalnum(*s))
-					s++;
-				if (*s && strncasecmp(s, "to", 2) == 0)
-				{
-					ereport(ERROR,
-							(errcode(ERRCODE_MPP_FEATURE_NOT_YET),
-							 errmsg("Cannot run '%s' while there is an open cursor", sourceText),
-							 errhint("you must CLOSE the open cursor before performing this operation")));
-				}
-			}
-		}
-	}
-	/* End temp block */
 	
 	AssertArg(PortalIsValid(portal));
 	AssertState(portal->queryContext == NULL);	/* else defined already */

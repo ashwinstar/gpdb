@@ -1222,7 +1222,8 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 	if (Mpp_role != MPP_ROLE_DISPATCH)
 		return NULL;
 
-	elog(DEBUG4, "allocateGang: allocatedReaderGangsN %d, availableReaderGangsN %d",
+	elog(DEBUG4, "allocateGang for portal %s: allocatedReaderGangsN %d, availableReaderGangsN %d",
+		 (portal_name ? portal_name : "<unnamed>"),
 		 list_length(allocatedReaderGangsN),
 		 list_length(availableReaderGangsN));
 
@@ -1794,79 +1795,80 @@ freeGangsForPortal(char *portal_name)
 	 */
 	if (allocatedReaderGangsN != NIL)
 	{
-		Gang	   *gp = linitial(allocatedReaderGangsN);
-
-		Assert(gp != NULL);
+		ListCell   *cur_item;
+		ListCell   *prev_item = NULL;
 		
-		while (gp != NULL)
+		cur_item = list_head(allocatedReaderGangsN);
+		
+		while (cur_item != NULL)
 		{
+			Gang	   *gp = (Gang *) lfirst(cur_item);
 			
-			if(isTargetPortal(gp->portal_name, portal_name))
+			if (isTargetPortal(gp->portal_name, portal_name))
 			{
-				elog(DEBUG5, "Returning a reader N gang to the available list");
-	
+				elog(DEBUG4, "Returning a reader N-gang to the available list");
+				
+				/* cur_item must be removed */
+				allocatedReaderGangsN = list_delete_cell(allocatedReaderGangsN, cur_item, prev_item);
+				
 				/* we only return the gang to the available list if it is good */
 				if (cleanupGang(gp))
 					availableReaderGangsN = lappend(availableReaderGangsN, gp);
 				
-				allocatedReaderGangsN = list_delete_first(allocatedReaderGangsN);
-				if (allocatedReaderGangsN != NIL)
-					gp = linitial(allocatedReaderGangsN);
+				if (prev_item)
+					cur_item = lnext(prev_item);
 				else
-					gp = NULL;
+					cur_item = list_head(allocatedReaderGangsN);
 			}
 			else
 			{
-				/*
-				 * TODO: until we actually enable multiple portals to execute, and not only
-				 * one at a time like currently, we should never get here! all reader gangs
-				 * must be of the portal that wants to free them - since there is only one.
-				 */
-				Assert(false);
+				elog(DEBUG4, "Skipping the release of a reader N-gang. It is used by another portal");
 				
-				/* TODO: uncomment this message when the assert is removed
-				elog(DEBUG5, "Skipping the release of a reader N gang. It is used by another portal");*/
+				/* cur_item must be preserved */
+				prev_item = cur_item;
+				cur_item = lnext(prev_item);
 			}
-
 		}
 	}
-		
+	
 	if (allocatedReaderGangs1 != NIL)
 	{
-		Gang	   *gp = linitial(allocatedReaderGangs1);
-
-		while (gp != NULL)
+		ListCell   *cur_item;
+		ListCell   *prev_item = NULL;
+		
+		cur_item = list_head(allocatedReaderGangs1);
+		
+		while (cur_item != NULL)
 		{
-			if(isTargetPortal(gp->portal_name, portal_name))
+			Gang	   *gp = (Gang *) lfirst(cur_item);
+			
+			if (isTargetPortal(gp->portal_name, portal_name))
 			{
-				elog(DEBUG5, "Returning a reader 1 gang to the available list");
-
+				elog(DEBUG4, "Returning a reader 1-gang to the available list");
+				
+				/* cur_item must be removed */
+				allocatedReaderGangs1 = list_delete_cell(allocatedReaderGangs1, cur_item, prev_item);
+				
 				/* we only return the gang to the available list if it is good */
 				if (cleanupGang(gp))
-				{
 					availableReaderGangs1 = lappend(availableReaderGangs1, gp);
-				}
-				allocatedReaderGangs1 = list_delete_first(allocatedReaderGangs1);
-				if (allocatedReaderGangs1 != NIL)
-					gp = linitial(allocatedReaderGangs1);
+				
+				if (prev_item)
+					cur_item = lnext(prev_item);
 				else
-					gp = NULL;
+					cur_item = list_head(allocatedReaderGangs1);
 			}
 			else
 			{
-				/*
-				 * TODO: until we actually enable multiple portals to execute, and not only
-				 * one at a time like currently, we should never get here! all reader gangs
-				 * must be of the portal that wants to free them - since there is only one.
-				 */
-				Assert(false);
+				elog(DEBUG4, "Skipping the release of a reader 1-gang. It is used by another portal");
 				
-				/* TODO: uncomment this message when the assert is removed
-				elog(DEBUG5, "Skipping the release of a reader 1 gang. It is used by another portal");*/
+				/* cur_item must be preserved */
+				prev_item = cur_item;
+				cur_item = lnext(prev_item);
 			}
 		}
 	}
-
+	
 	MemoryContextSwitchTo(oldContext);
 
 	elog(DEBUG4, "freeGangsForPortal done. Total gangs in the system: allocated-N %d, available-N %d allocated-1 %d available-1 %d",

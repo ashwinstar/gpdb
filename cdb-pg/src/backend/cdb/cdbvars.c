@@ -68,6 +68,9 @@ int			mpp_connections_per_thread; /* How many libpq connections are
 int			Mpp_segment = UNDEF_SEGMENT;		/* What content this QE is
 												 * handling. */
 
+bool		Mpp_write_shared_snapshot;	/* tell the writer QE to write the 
+										 * shared snapshot */
+
 /*
  * TCP port the Interconnect listens on for incoming connections from other
  * backends.  Assigned by initMotionLayerIPC() at process startup.  This port
@@ -340,6 +343,8 @@ assign_interconnect_setup_timeout(int newval, bool doit, GucSource source)
 	return true;
 }
 
+
+
 /*
  * Show hook routine for "mpp_session_role" option.
  *
@@ -405,7 +410,6 @@ show_interconnect_setup_timeout(void)
 
 	return buffer.data;
 }
-
 
 /* --------------------------------------------------------------------------------------------------
  * Logging

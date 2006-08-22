@@ -120,6 +120,8 @@ extern void discardDtxTransaction(void);
 extern bool isTMInRecovery(void);
 extern void setRecoverTMOn(void);
 
+extern void verify_shared_snapshot_ready(void);
+
 void		getTmLock(void);
 void		releaseTmLock(void);
 

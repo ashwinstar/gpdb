@@ -809,7 +809,7 @@ dispatchDtxCommand(const char *cmd, bool dispatchToMirrors)
 
 	initStringInfo(&errbuf);
 	results = cdbdisp_dispatchRMCommand(cmd,
-										/* withSnapshot */false,
+										/* withSnapshot */true,
 										dispatchToMirrors,
 										&errbuf, &resultCount);
 
@@ -1880,3 +1880,54 @@ dumpRMOnlyDtx(HTAB *htab, StringInfoData *buff)
 	appendStringInfo(buff, ")");
 
 }
+
+
+/*
+ * When called, a SET command is dispatched and the writer gang
+ * writes the shared snapshot. This function actually does nothing
+ * useful besides making sure that a writer gang is alive and has
+ * set the shared snapshot so that the readers could access it.
+ *
+ * At this point this function is added as a helper for cursor 
+ * query execution since in MPP cursor queries don't use writer
+ * gangs. However, it could be used for other purposes as well.
+ *
+ * See declaration of assign_mpp_write_shared_snapshot(...) for more
+ * information.
+ */
+void verify_shared_snapshot_ready(void)
+{
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		char cmdbuf[35];
+		strcpy(cmdbuf, "set mpp_write_shared_snapshot=true" );
+		
+		CdbDoCommand(cmdbuf, true, true);
+	}
+}
+
+/*
+ * Force the writer QE to write the shared snapshot. Will get called
+ * after a "set mpp_write_shared_snapshot=<true/false>" is executed 
+ * in dispatch mode.
+ *
+ * See verify_shared_snapshot_ready(...) for additional information.
+ */
+bool
+assign_mpp_write_shared_snapshot(bool newval, bool doit, GucSource source)
+{
+	elog(LOG, "SET mpp_write_shared_snapshot: %s, doit=%s",
+		 (newval ? "true" : "false"), (doit ? "true" : "false"));
+
+	/* make sure newval is "true". if it's "false" this could be a part
+	 * of a ROLLBACK so we don't want to set the snapshot then.
+	 */
+	if (doit && newval)
+	{
+		if(Mpp_role == MPP_ROLE_EXECUTE)
+			ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());			
+	}
+
+	return true;
+}
+

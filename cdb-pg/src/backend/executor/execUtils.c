@@ -1291,13 +1291,18 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 		AccumSliceReq(&inv, &req);
 	}
 
-	/* Get the gangs we'll use. */
+	/* 
+	 * Get the gangs we'll use. 
+	 *
+	 * As a general rule the first gang is a writer and the rest are readers.
+	 * If this happens to be a cursor query then all gangs are readers.
+	 */
 	if (inv.numNgangs > 0)
 	{
 		inv.vecNgangs = (Gang **) palloc(sizeof(Gang *) * inv.numNgangs);
 		for (i = 0; i < inv.numNgangs; i++)
 		{
-			if (i == 0)
+			if (i == 0 && !queryDesc->cursor_query)
 			{
 				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_WRITER, getMPPSegmentCount(), 0, queryDesc->portal_name);
 				Assert(inv.vecNgangs[i] != NULL);
@@ -1610,13 +1615,14 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		CdbDispatchResults *pr = estate->primaryResults;
 		CdbDispatchResults *mr = estate->mirrorResults;
 		CdbDispatchCmdThreads  *dThreads = estate->dispatchThreads;
+		
 		/*
-		 * If we are closing a cursor before all the tuples of the query
+		 * If we are finishing a query before all the tuples of the query
 		 * plan were fetched we must call ExecSquelchNode before checking
 		 * the dispatch results in order to tell the nodes below we no longer
 		 * need any more tuples.
 		 */
-		if(queryDesc->cursor_query && !estate->es_got_eos)
+		if(!estate->es_got_eos)
 			ExecSquelchNode(queryDesc->planstate);
 		
 		/*

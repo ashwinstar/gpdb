@@ -194,6 +194,18 @@ extern bool Debug_print_slice_table;
  */
 extern int mpp_command_count;
 
+/* 
+ * Mpp_write_shared_snapshot
+ *
+ * The value of this variable is actually meaningless. We use it simply
+ * in order to have a mechanism of dispatching a SET query that will
+ * allocate writer gangs that will write the shared snapshot and make
+ * it available for the reader gangs. This is currently only needed 
+ * before DECLARE'ing a cursor, since a cursor query uses only reader
+ * gangs. But should be used for other things if it makes sense to do so.
+ */
+extern bool Mpp_write_shared_snapshot;
+
 /*
  * Parameter mpp_connections_per_thread
  *
@@ -222,6 +234,7 @@ extern bool assign_mpp_connections_per_thread(int newval, bool doit, GucSource s
 extern const char *show_mpp_connections_per_thread(void);
 extern bool assign_interconnect_setup_timeout(int newval, bool doit, GucSource source);
 extern const char *show_interconnect_setup_timeout(void);
+extern bool assign_mpp_write_shared_snapshot(bool newval, bool doit, GucSource source);
 
 extern char *mpp_fault_action_string;	/* Use by guc.c as user defined fault
 										 * action */

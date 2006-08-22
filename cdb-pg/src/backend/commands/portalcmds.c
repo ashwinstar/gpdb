@@ -29,6 +29,8 @@
 #include "rewrite/rewriteHandler.h"
 #include "tcop/pquery.h"
 #include "utils/memutils.h"
+#include "cdb/cdbgang.h"
+#include "cdb/cdbtm.h"
 
 
 /*
@@ -155,6 +157,15 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 			portal->cursorOptions |= CURSOR_OPT_NO_SCROLL;
 	}
 
+	/*
+	 * Before starting this portal, we need to make sure that the shared
+	 * snapshot is already set by a writer gang, or the cursor query readers
+	 * will timeout waiting for one that may not exist (in some cases).
+	 * Therefore we insert a small hack here and dispatch a SET query that
+	 * will do it for us. This is also done in the bind-execute protocol.
+	 */
+	verify_shared_snapshot_ready();
+	
 	/*
 	 * Start execution, inserting parameters if any.
 	 */

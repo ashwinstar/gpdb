@@ -1209,16 +1209,6 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	is_named = (stmt_name[0] != '\0');
 	if (is_named)
 	{
-		/* MPP TEMP start: this is unnecessary after multiple cursors are working (see MPP-742) */
-		unnamed_stmt_pstmt = NULL;
-		if (unnamed_stmt_context)
-		{
-			DropDependentPortals(unnamed_stmt_context);
-			MemoryContextDelete(unnamed_stmt_context);
-		}
-		unnamed_stmt_context = NULL;
-		/* MPP TEMP end */
-		
 		/* Named prepared statement --- parse in MessageContext */
 		oldcontext = MemoryContextSwitchTo(MessageContext);
 	}
@@ -1664,7 +1654,18 @@ exec_bind_message(StringInfo input_message)
 					  pstmt->query_list,
 					  pstmt->plan_list,
 					  pstmt->context);
-
+	
+	/*
+	 * If this is a cursor query - before starting the portal, we need to 
+	 * make sure that the shared snapshot is already set by a writer gang, 
+	 * or the cursor query readers will timeout waiting for one that may not 
+	 * exist (in some cases). Therefore we insert a small hack here and 
+	 * dispatch a SET query that will do it for us. (This is also done in 
+	 * performOpenCursor() for the simple query protocol).
+	 */
+	if(portal->is_cursor)
+		verify_shared_snapshot_ready();
+	
 	PortalStart(portal, params, InvalidSnapshot);
 
 	/*

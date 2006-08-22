@@ -1070,6 +1070,16 @@ static struct config_bool ConfigureNamesBool[] =
     	false, NULL, NULL
     },
     
+	{
+		{"mpp_write_shared_snapshot", PGC_USERSET, UNGROUPED,
+			gettext_noop("Forces the writer gang to set the shared snapshot."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+    	&Mpp_write_shared_snapshot,
+    	false, assign_mpp_write_shared_snapshot, NULL
+    },
+	
     {
     	{"mpp_use_snapshop_during_callback", PGC_USERSET, UNGROUPED,
     		gettext_noop("For debugging.. If SPI should try to send snapshot on callback to QD."),
