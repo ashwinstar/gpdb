@@ -167,8 +167,13 @@ OBTAIN_PARAM () {
 	ERROR_CHK $? "obtain primary hostname list" 2
 	BAL_HOSTNAME_ARRAY=$PRI_HOSTNAME_ARRAY" "`$ECHO $PRI_HOSTNAME_ARRAY|$CUT -d" " -f1`
 	PRI_HOST_COUNT=`$ECHO $PRI_HOSTNAME_ARRAY|$WC -w`
+	if [ $BALANCE -ne 1 ];then
 	PRI_SEGMENT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir, port, hostname, content from $CONFIG_TABLE where content<>-1 order by hostname;"`)
 	ERROR_CHK $? "obtain segment instance directory suffix" 2
+	else
+	PRI_SEGMENT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir, port, hostname, content from $CONFIG_TABLE where content<>-1 order by port;"`)
+	ERROR_CHK $? "obtain segment instance directory suffix" 2
+	fi
 	PRI_SEGMENT_ARRAY_COUNT=${#PRI_SEGMENT_ARRAY[@]}
 	if [ $BALANCE -eq 1 ];then
 		if [ $PRI_HOST_COUNT -eq 1 ] || [ $PRI_SEG_PER_HOST -eq $PRI_HOST_COUNT ];then
@@ -192,6 +197,10 @@ OBTAIN_PARAM () {
 			fi
 			((DIR_COUNT=$DIR_COUNT+1))
 		done
+		#Check to ensure that we have no duplicate dir names
+		if [ `$ECHO ${MIRROR_DATADIRECTORY[@]}|$TR ' ' '\n'|$SORT -u|$WC -l` -ne ${#MIRROR_DATADIRECTORY[@]} ];then
+			ERROR_EXIT "[FATAL]:-Duplicate segment instance directory names entered" 2
+		fi
 	else
 		#Check that number of lines in file match number of primay segment instances
 		if [ $MIRROR_COUNT_FILE -ne $PRI_SEGMENT_ARRAY_COUNT ];then
@@ -245,6 +254,12 @@ CALC_MIRROR_PORT_BASE () {
 	else
 		((MIRROR_PORT_BASE=${MIN_PORT}+$MIRROR_OFFSET-1))
 	fi
+	#Now to ensure that calculated MIRROR_PORT_BASE lies between MAX_MIRROR_PORT and MIN_MIRROR_PORT
+	if [ $MIRROR_PORT_BASE -ge $MAX_MIR_PORT ] || [ $MIRROR_PORT_BASE -le $MIN_MIR_PORT ];then
+		LOG_MSG "[FATAL]:-Value of MIRROR_OFFSET supplied via -p option out of range"
+		LOG_MSG "[FATAL]:-With value supplied, calculated a mirror port base of $MIRROR_PORT_BASE"
+		ERROR_EXIT "[FATAL]:-Mirror port base range must be between $MIN_MIR_PORT and $MAX_MIR_PORT" 2
+	fi
 	LOG_MSG "[INFO]:-Setting mirror port base = $MIRROR_PORT_BASE"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -265,10 +280,13 @@ CREATE_MIRROR_ARRAY () {
 	ARRAY_VECTOR=0
 	HOST_COUNT=1
 	MIRIDX=0
-	USE_BALANCE_ARRAY=(${PRI_HOSTNAME_ARRAY[@]})
-	BAL_COUNT=1
-	BAL_TOGGLE=0
-	((BAL_MAX=$PRI_HOST_COUNT-1))
+	USE_BALANCE_ARRAY=(`$ECHO ${PRI_HOSTNAME_ARRAY[@]}|$TR '\n' ' '`)
+	((LOOP_MAX=$PRI_SEG_PER_HOST-1))
+	((HOST_MAX=$PRI_HOST_COUNT-2))
+	MIR_DIR_VECTOR=0
+	COUNT=0
+	LOOP=0
+	MIR_COUNT=0
         while [ $HOST_COUNT -le $PRI_HOST_COUNT ]
         do
                 MIRROR_LIST=(${MIRROR_LIST[@]} ${MIRROR_DATADIRECTORY[@]})
@@ -277,16 +295,40 @@ CREATE_MIRROR_ARRAY () {
 	for PRIDETAILS in "${PRI_SEGMENT_ARRAY[@]}"
 	do
 		CUR_HOST=`$ECHO $PRIDETAILS|$CUT -d"|" -f3`
-		#Spread the mirrors
+		CUR_SEGMENT=`$ECHO $PRIDETAILS|$CUT -d"|" -f1|$AWK -F"/" '{print $NF}'`
+		CUR_PORT=`$ECHO $PRIDETAILS|$CUT -d"|" -f2`
 		if [ $BALANCE -eq 1 ];then
-			MIRROR_HOSTNAME=${USE_BALANCE_ARRAY[$BAL_COUNT]}
-			USED_HOSTNAME=$USED_HOSTNAME" "$MIRROR_HOSTNAME
-			((MIRROR_PORT=$BAL_PORT_BASE+$MIRROR_OFFSET+`$ECHO $USED_HOSTNAME|$TR ' ' '\n'|$GREP -c $MIRROR_HOSTNAME`))
-			if [ $BAL_COUNT -eq $BAL_MAX ];then
-                                BAL_COUNT=0
+			CHOICE_ARRAY=(`$ECHO ${USE_BALANCE_ARRAY[@]}|$TR ' ' '\n'|$GREP -v $CUR_HOST|tr '\n' ' '`)
+			MIRROR_HOSTNAME=${CHOICE_ARRAY[$LOOP]}
+			while [ `$ECHO ${USED_HOSTNAME[@]}|$TR ' ' '\n'|$GREP -c $MIRROR_HOSTNAME` -eq $PRI_SEG_PER_HOST ]
+			do
+				if [ $LOOP -lt $LOOP_MAX ] || [ $LOOP -lt $HOST_MAX ];then
+					((LOOP=$LOOP+1))
+				else
+					LOOP=0
+				fi
+				MIRROR_HOSTNAME=${CHOICE_ARRAY[$LOOP]}
+			done
+			if [ $LOOP -lt $LOOP_MAX ] || [ $LOOP -lt $HOST_MAX ];then
+				((LOOP=$LOOP+1))
 			else
-				((BAL_COUNT=$BAL_COUNT+1))
-                        fi
+				LOOP=0
+			fi
+			USED_HOSTNAME=("${USED_HOSTNAME[@]}" "$MIRROR_HOSTNAME")
+			((COUNT=$COUNT+1))
+			((MIRROR_PORT=$CUR_PORT+$MIRROR_OFFSET))
+			MIRROR_CHK=${MIRROR_HOSTNAME}${MIRROR_DATADIRECTORY[$MIR_COUNT]}
+			while [ `$ECHO ${MIRROR_USED[@]}|$TR ' ' '\n'|$GREP -c $MIRROR_CHK` -eq 1 ]
+			do
+				if [ $MIR_COUNT -eq $LOOP_MAX ];then
+					MIR_COUNT=0
+				else
+					((MIR_COUNT=$MIR_COUNT+1))
+				fi 	
+				MIRROR_CHK=${MIRROR_HOSTNAME}${MIRROR_DATADIRECTORY[$MIR_COUNT]}
+			done	
+			MIRROR_DIR=${MIRROR_DATADIRECTORY[$MIR_COUNT]}/$CUR_SEGMENT
+			MIRROR_USED=(${MIRROR_USED[@]} ${MIRROR_CHK})
                 else
 			if [ x"" == x"$MIRROR_MACHINE_LIST_FILE" ];then
 				MIRROR_HOSTNAME=`$ECHO $BAL_HOSTNAME_ARRAY|$CUT -d" " -f$BALANCE_COUNT`
@@ -299,8 +341,8 @@ CREATE_MIRROR_ARRAY () {
                                 ((BALANCE_COUNT=$BALANCE_COUNT+1))
                                 ARRAY_VECTOR=0
                         fi
+			MIRROR_DIR=${MIRROR_LIST[$DIR_VECTOR]}/`$ECHO $PRIDETAILS|$CUT -d"|" -f1|$AWK -F"/" '{print $NF}'`
                 fi
-		MIRROR_DIR=${MIRROR_LIST[$DIR_VECTOR]}/`$ECHO $PRIDETAILS|$CUT -d"|" -f1|$AWK -F"/" '{print $NF}'`
 		((MIRROR_DBID=$MAX_DBID+$DIR_VECTOR))
 		((DIR_VECTOR=$DIR_VECTOR+1))
 		MIRROR_CONTENT=`$ECHO $PRIDETAILS|$CUT -d"|" -f4`
