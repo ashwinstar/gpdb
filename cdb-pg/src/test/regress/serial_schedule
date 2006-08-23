@@ -44,7 +44,7 @@ test: create_table
 test: create_function_2
 test: copy
 test: constraints
-test: triggers
+ignore: triggers
 test: create_misc
 test: create_aggregate
 test: create_operator
@@ -68,7 +68,7 @@ test: aggregates
 test: transactions
 ignore: random
 test: random
-test: portals
+ignore: portals
 test: arrays
 test: btree_index
 test: hash_index
