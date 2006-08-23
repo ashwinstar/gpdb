@@ -56,7 +56,7 @@ SELECT '' AS "xxx", *
   FROM J1_TBL t1 (a, b, c) ORDER BY 2,3;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e) ORDER BY 2,3;
+  FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e) ORDER BY 2,3,4,5,6;
 
 SELECT '' AS "xxx", t1.a, t2.e
   FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)
@@ -70,26 +70,26 @@ SELECT '' AS "xxx", t1.a, t2.e
 --
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL CROSS JOIN J2_TBL ORDER BY 2,3;
+  FROM J1_TBL CROSS JOIN J2_TBL ORDER BY 2,3,4,5,6;
 
 -- ambiguous column
 SELECT '' AS "xxx", i, k, t
-  FROM J1_TBL CROSS JOIN J2_TBL ORDER BY 2,3;
+  FROM J1_TBL CROSS JOIN J2_TBL ORDER BY 2,3,4;
 
 -- resolve previous ambiguity by specifying the table name
 SELECT '' AS "xxx", t1.i, k, t
-  FROM J1_TBL t1 CROSS JOIN J2_TBL t2 ORDER BY 2,3;
+  FROM J1_TBL t1 CROSS JOIN J2_TBL t2 ORDER BY 2,3,4;
 
 SELECT '' AS "xxx", ii, tt, kk
   FROM (J1_TBL CROSS JOIN J2_TBL)
-    AS tx (ii, jj, tt, ii2, kk) ORDER BY 2,3;
+    AS tx (ii, jj, tt, ii2, kk) ORDER BY 2,3,4;
 
 SELECT '' AS "xxx", tx.ii, tx.jj, tx.kk
   FROM (J1_TBL t1 (a, b, c) CROSS JOIN J2_TBL t2 (d, e))
-    AS tx (ii, jj, tt, ii2, kk) ORDER BY 2,3;
+    AS tx (ii, jj, tt, ii2, kk) ORDER BY 2,3,4;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL CROSS JOIN J2_TBL a CROSS JOIN J2_TBL b ORDER BY 2,3;
+  FROM J1_TBL CROSS JOIN J2_TBL a CROSS JOIN J2_TBL b ORDER BY 2,3,4,5,6,7,8;
 
 
 --
@@ -106,11 +106,11 @@ SELECT '' AS "xxx", *
 
 -- Inner equi-join on specified column
 SELECT '' AS "xxx", *
-  FROM J1_TBL INNER JOIN J2_TBL USING (i) ORDER BY 2,3;
+  FROM J1_TBL INNER JOIN J2_TBL USING (i) ORDER BY 2,3,4,5;
 
 -- Same as above, slightly different syntax
 SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL USING (i) ORDER BY 2,3;
+  FROM J1_TBL JOIN J2_TBL USING (i) ORDER BY 2,3,4,5;
 
 SELECT '' AS "xxx", *
   FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, d) USING (a)
@@ -127,18 +127,18 @@ SELECT '' AS "xxx", *
 --
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL NATURAL JOIN J2_TBL ORDER BY 2,3;
+  FROM J1_TBL NATURAL JOIN J2_TBL ORDER BY 2,3,4,5;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (a, d) ORDER BY 2,3;
+  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (a, d) ORDER BY 2,3,4,5;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (d, a) ORDER BY 2,3;
+  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (d, a) ORDER BY 2,3,4,5;
 
 -- mismatch number of columns
 -- currently, Postgres will fill in with underlying names
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b) NATURAL JOIN J2_TBL t2 (a) ORDER BY 2,3;
+  FROM J1_TBL t1 (a, b) NATURAL JOIN J2_TBL t2 (a) ORDER BY 2,3,4,5;
 
 
 --
@@ -146,10 +146,10 @@ SELECT '' AS "xxx", *
 --
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.i) ORDER BY 2,3;
+  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.i) ORDER BY 2,3,4,5,6;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.k) ORDER BY 2,3;
+  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.k) ORDER BY 2,3,4,5,6;
 
 
 --
@@ -157,7 +157,7 @@ SELECT '' AS "xxx", *
 --
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i <= J2_TBL.k) ORDER BY 2,3;
+  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i <= J2_TBL.k) ORDER BY 2,3,4,5,6;
 
 
 --
@@ -174,10 +174,10 @@ SELECT '' AS "xxx", *
   ORDER BY i, k, t;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL RIGHT OUTER JOIN J2_TBL USING (i) ORDER BY 2,3;
+  FROM J1_TBL RIGHT OUTER JOIN J2_TBL USING (i) ORDER BY 2,3,4,5;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL RIGHT JOIN J2_TBL USING (i) ORDER BY 2,3;
+  FROM J1_TBL RIGHT JOIN J2_TBL USING (i) ORDER BY 2,3,4,5;
 
 SELECT '' AS "xxx", *
   FROM J1_TBL FULL OUTER JOIN J2_TBL USING (i)
@@ -188,10 +188,10 @@ SELECT '' AS "xxx", *
   ORDER BY i, k, t;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (k = 1) ORDER BY 2,3;
+  FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (k = 1) ORDER BY 2,3,4,5;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (i = 1) ORDER BY 2,3;
+  FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (i = 1) ORDER BY 2,3,4,5;
 
 
 --
@@ -218,7 +218,7 @@ INSERT INTO t3 VALUES ( 'aa', 13 );
 INSERT INTO t3 VALUES ( 'bb', 23 );
 INSERT INTO t3 VALUES ( 'cc', 33 );
 
-SELECT * FROM t1 FULL JOIN t2 USING (name) FULL JOIN t3 USING (name) ORDER BY 1,2,3;
+SELECT * FROM t1 FULL JOIN t2 USING (name) FULL JOIN t3 USING (name) ORDER BY 1,2,3,4;
 
 --
 -- Test interactions of join syntax and subqueries
@@ -311,24 +311,24 @@ insert into y values (4,null);
 select * from x ORDER BY 1,2;
 select * from y ORDER BY 1,2;
 
-select * from x left join y on (x1 = y1 and x2 is not null) ORDER BY 1,2;
-select * from x left join y on (x1 = y1 and y2 is not null) ORDER BY 1,2;
+select * from x left join y on (x1 = y1 and x2 is not null) ORDER BY 1,2,3,4;
+select * from x left join y on (x1 = y1 and y2 is not null) ORDER BY 1,2,3,4;
 
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1) ORDER BY 1,2;
+on (x1 = xx1) ORDER BY 1,2,3,4;
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1 and x2 is not null) ORDER BY 1,2;
+on (x1 = xx1 and x2 is not null) ORDER BY 1,2,3,4;
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1 and y2 is not null) ORDER BY 1,2;
+on (x1 = xx1 and y2 is not null) ORDER BY 1,2,3,4;
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1 and xx2 is not null) ORDER BY 1,2;
+on (x1 = xx1 and xx2 is not null) ORDER BY 1,2,3,4;
 -- these should NOT give the same answers as above
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1) where (x2 is not null) ORDER BY 1,2;
+on (x1 = xx1) where (x2 is not null) ORDER BY 1,2,3,4;
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1) where (y2 is not null) ORDER BY 1,2;
+on (x1 = xx1) where (y2 is not null) ORDER BY 1,2,3,4;
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1) where (xx2 is not null) ORDER BY 1,2;
+on (x1 = xx1) where (xx2 is not null) ORDER BY 1,2,3,4;
 
 --
 -- regression test: check for bug with propagation of implied equality
