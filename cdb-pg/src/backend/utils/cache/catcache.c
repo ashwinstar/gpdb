@@ -21,7 +21,6 @@
 #include "access/valid.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
-#include "catalog/pg_proc.h"    /* CDB */
 #include "catalog/pg_type.h"
 #include "catalog/indexing.h"
 #include "miscadmin.h"
@@ -36,6 +35,10 @@
 #include "utils/resowner.h"
 #include "utils/syscache.h"
 
+/* CDB temp kludge... delete when no longer needed */
+#include "catalog/heap.h"               /*CDB*/
+#include "catalog/pg_attribute.h"       /*CDB*/
+#include "catalog/pg_proc.h"            /*CDB*/
 
  /* #define CACHEDEBUG */	/* turns DEBUG elogs on */
 
@@ -1078,13 +1081,52 @@ IndexScanOK(CatCache *cache, ScanKey cur_skey)
 	return true;
 }
 
+
 /*
- * CdbCatCacheKludge
+ * CdbCatCacheKludgeAtt
+ *     Fabricate "mpp_segment_id" pg_attribute entry in lieu of catalog upgrade.
+ *     (Temporary kludge, remove in next release in which initdb is required)
+ */
+static CatCTup *
+CdbCatCacheKludgeAtt(CatCache *cache, Oid relid, uint32 hashValue, Index hashIndex)
+
+{
+	CatCTup            *ct;
+    Datum               datum;
+	Form_pg_attribute   attstruct;
+	HeapTuple	        ntp;
+    bool                isnull;
+
+    /* Build "mpp_segment_id" pg_attribute tuple from hard-coded prototype. */
+    attstruct = SystemAttributeDefinition(MppSegmentIdAttributeNumber, false);
+    ntp = heap_addheader(Natts_pg_attribute, false, ATTRIBUTE_TUPLE_SIZE,
+                         attstruct);
+    attstruct = (Form_pg_attribute)GETSTRUCT(ntp);
+
+    /* Fill in the relation OID */
+    attstruct->attrelid = relid;
+    attstruct->attstattarget = -1;
+    attstruct->attcacheoff = -1;
+
+    /* Add to cache. */
+    ct = CatalogCacheCreateEntry(cache, ntp, hashValue, hashIndex, false);
+
+    /* immediately set the refcount to 1 */
+    ResourceOwnerEnlargeCatCacheRefs(CurrentResourceOwner);
+    ct->refcount++;
+    ResourceOwnerRememberCatCacheRef(CurrentResourceOwner, &ct->tuple);
+
+	heap_freetuple(ntp);
+    return ct;
+}                               /* CdbCatCacheKludgeAtt */
+
+/*
+ * CdbCatCacheKludgeProc
  *     Fabricate "tidtoi8" pg_proc entry in lieu of catalog upgrade.
  *     (Temporary kludge, remove in next release in which initdb is required)
  */
 static CatCTup *
-CdbCatCacheKludge(CatCache *cache, uint32 hashValue, Index hashIndex)
+CdbCatCacheKludgeProc(CatCache *cache, uint32 hashValue, Index hashIndex)
 
 {
 	CatCTup        *ct;
@@ -1118,7 +1160,7 @@ CdbCatCacheKludge(CatCache *cache, uint32 hashValue, Index hashIndex)
     HeapTupleSetOid(ntp, CDB_PROC_TIDTOI8);
 
     /* Add to cache. */
-    ct = CatalogCacheCreateEntry(cache, ntp,hashValue, hashIndex, false);
+    ct = CatalogCacheCreateEntry(cache, ntp, hashValue, hashIndex, false);
 
     /* immediately set the refcount to 1 */
     ResourceOwnerEnlargeCatCacheRefs(CurrentResourceOwner);
@@ -1127,7 +1169,7 @@ CdbCatCacheKludge(CatCache *cache, uint32 hashValue, Index hashIndex)
 
 	heap_freetuple(ntp);
     return ct;
-}                               /* CdbCatCacheKludge */
+}                               /* CdbCatCacheKludgeProc */
 
 
 /*
@@ -1257,7 +1299,7 @@ SearchCatCache(CatCache *cache,
 		}
 	}
 
-	/*
+    /*
 	 * Tuple was not found in cache, so we have to try to retrieve it directly
 	 * from the relation.  If found, we will add it to the cache; if not
 	 * found, we will add a negative cache entry instead.
@@ -1300,14 +1342,20 @@ SearchCatCache(CatCache *cache,
 	heap_close(relation, AccessShareLock);
 
     /*
-     * CDB: Fabricate "tidtoi8" pg_proc entry in lieu of catalog upgrade.
+     * CDB: Fabricate catalog entries in lieu of catalog upgrade.
      * (Temporary kludge, remove in next release in which initdb is required)
      */
     if (ct == NULL &&
-        cache->id == PROCOID &&
-        cur_skey[0].sk_argument == ObjectIdGetDatum(CDB_PROC_TIDTOI8) &&
         !IsBootstrapProcessingMode())
-        ct = CdbCatCacheKludge(cache, hashValue, hashIndex);
+    {
+        if (cache->id == PROCOID &&
+            v1 == ObjectIdGetDatum(CDB_PROC_TIDTOI8))
+            ct = CdbCatCacheKludgeProc(cache, hashValue, hashIndex);
+        else if (cache->id == ATTNUM &&
+                 v2 == Int16GetDatum(MppSegmentIdAttributeNumber))
+            ct = CdbCatCacheKludgeAtt(cache, DatumGetObjectId(v1),
+                                      hashValue, hashIndex);
+    }
 
     /*
 	 * If tuple was not found, we need to build a negative cache entry
