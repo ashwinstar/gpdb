@@ -7442,18 +7442,22 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         }
 		
         policydef = PQgetvalue(res, 0, 0);
-        policydef[strlen(policydef)-1] = '\0';
-        policydef++;
-        policycol = nextToken(&policydef, ",");
-        appendPQExpBuffer(q, " distributed by (%s",
-						  fmtId(tbinfo->attnames[atoi(policycol)-1]));
-        for (; (policycol = nextToken(&policydef, ",")) != NULL;)
-        {
-            appendPQExpBuffer(q, " ,%s",
+		
+		if(strlen(policydef) > 0) /* avoid empty policy tables */
+		{
+			policydef[strlen(policydef)-1] = '\0';
+			policydef++;
+			policycol = nextToken(&policydef, ",");
+			appendPQExpBuffer(q, " distributed by (%s",
 							  fmtId(tbinfo->attnames[atoi(policycol)-1]));
-        }
-        appendPQExpBuffer(q, ")");
-        PQclear(res);
+			for (; (policycol = nextToken(&policydef, ",")) != NULL;)
+			{
+				appendPQExpBuffer(q, " ,%s",
+								  fmtId(tbinfo->attnames[atoi(policycol)-1]));
+			}
+			appendPQExpBuffer(q, ")");
+		}
+		PQclear(res);
 		
 		appendPQExpBuffer(q, ";\n");
 
