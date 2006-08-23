@@ -6,7 +6,7 @@ VACUUM;
 --
 SELECT relname, relhasindex
    FROM pg_class
-   WHERE relhasindex AND relkind != 't'
+   WHERE relhasindex AND relkind != 't' AND relname NOT LIKE 'mpp_%'
    ORDER BY relname;
        relname       | relhasindex 
 ---------------------+-------------
