@@ -1102,7 +1102,7 @@ motion_for_join_with_unique(PlannerInfo    *root,
 
     /* Does inner rel have post-join UniquePath marked for repartitioning? */
     if (IsA(inner_path, UniquePath) &&
-        ((UniquePath *)outer_path)->must_repartition)
+        ((UniquePath *)inner_path)->must_repartition)
     {
         inner_unique = (UniquePath *)inner_path;
         inner_path = inner_unique->subpath;
