@@ -34,6 +34,7 @@
 #include "cdb/cdbvars.h"        /* Mpp_role, Mpp_segment, currentSliceId */
 
 extern char **environ;
+bool update_process_title = true;
 
 
 /*------
@@ -235,82 +236,80 @@ save_ps_display_args(int argc, char **argv)
 
 /*
  * Call this once during subprocess startup to set the identification
- * values.	At this point, the original argv[] array may be overwritten.
+ * values.  At this point, the original argv[] array may be overwritten.
  */
 void
 init_ps_display(const char *username, const char *dbname,
-				const char *host_info)
+                const char *host_info, const char *initial_str)
 {
-	Assert(username);
-	Assert(dbname);
-	Assert(host_info);
+    Assert(username);
+    Assert(dbname);
+    Assert(host_info);
 	
 	StrNCpy(ps_username, username, sizeof(ps_username));    /*CDB*/
 
 #ifndef PS_USE_NONE
-	/* no ps display for stand-alone backend */
-	if (!IsUnderPostmaster)
-		return;
+    /* no ps display for stand-alone backend */
+    if (!IsUnderPostmaster)
+        return;
 
-	/* no ps display if you didn't call save_ps_display_args() */
-	if (!save_argv)
-		return;
+    /* no ps display if you didn't call save_ps_display_args() */
+    if (!save_argv)
+        return;
 #ifdef PS_USE_CLOBBER_ARGV
-	/* If ps_buffer is a pointer, it might still be null */
-	if (!ps_buffer)
-		return;
+    /* If ps_buffer is a pointer, it might still be null */
+    if (!ps_buffer)
+        return;
 #endif
 
-	/*
-	 * Overwrite argv[] to point at appropriate space, if needed
-	 */
+    /*
+     * Overwrite argv[] to point at appropriate space, if needed
+     */
 
 #ifdef PS_USE_CHANGE_ARGV
-	save_argv[0] = ps_buffer;
-	save_argv[1] = NULL;
+    save_argv[0] = ps_buffer;
+    save_argv[1] = NULL;
 #endif   /* PS_USE_CHANGE_ARGV */
 
 #ifdef PS_USE_CLOBBER_ARGV
-	{
-		int			i;
+    {
+        int         i;
 
-		/* make extra argv slots point at end_of_area (a NUL) */
-		for (i = 1; i < save_argc; i++)
-			save_argv[i] = ps_buffer + ps_buffer_size;
-	}
+        /* make extra argv slots point at end_of_area (a NUL) */
+        for (i = 1; i < save_argc; i++)
+            save_argv[i] = ps_buffer + ps_buffer_size;
+    }
 #endif   /* PS_USE_CLOBBER_ARGV */
 
-	/*
-	 * Make fixed prefix of ps display.
-	 */
+    /*
+     * Make fixed prefix of ps display.
+     */
 
 #ifdef PS_USE_SETPROCTITLE
 
-	/*
-	 * apparently setproctitle() already adds a `progname:' prefix to the ps
-	 * line
-	 */
-	snprintf(ps_buffer, ps_buffer_size,
-			 "%s %s ",
-			 username, dbname);
+    /*
+     * apparently setproctitle() already adds a `progname:' prefix to the ps
+     * line
+     */
+    snprintf(ps_buffer, ps_buffer_size,
+             "%s %s %s ",
+             username, dbname, host_info);
 #else
-	snprintf(ps_buffer, ps_buffer_size,
-			 "postgres: %s %s ",
-			 username, dbname);
+    snprintf(ps_buffer, ps_buffer_size,
+             "postgres: %s %s %s ",
+             username, dbname, host_info);
 #endif
 
     ps_buffer_fixed_size = strlen(ps_buffer);
 
+    set_ps_display(initial_str, true);
+    
     /* CDB */
     StrNCpy(ps_host_info, host_info, sizeof(ps_host_info));
     ps_host_info_size = snprintf(ps_buffer + ps_buffer_fixed_size,
                                  ps_buffer_size - ps_buffer_fixed_size,
                                  "%s ", host_info);
     ps_buffer_fixed_size += ps_host_info_size;
-
-#ifdef WIN32
-	pgwin32_update_ident(ps_buffer);
-#endif
 #endif   /* not PS_USE_NONE */
 }
 
@@ -321,22 +320,25 @@ init_ps_display(const char *username, const char *dbname,
  * indication of what you're currently doing passed in the argument.
  */
 void
-set_ps_display(const char *activity)
+set_ps_display(const char *activity, bool force)
 {
     char   *cp = ps_buffer + ps_buffer_fixed_size;
     char   *ep = ps_buffer + ps_buffer_size;
 
+    if (!force && !update_process_title)
+        return;
+
 #ifndef PS_USE_NONE
-	/* no ps display for stand-alone backend */
-	if (!IsUnderPostmaster)
-		return;
+    /* no ps display for stand-alone backend */
+    if (!IsUnderPostmaster)
+        return;
 
 #ifdef PS_USE_CLOBBER_ARGV
-	/* If ps_buffer is a pointer, it might still be null */
-	if (!ps_buffer)
-		return;
+    /* If ps_buffer is a pointer, it might still be null */
+    if (!ps_buffer)
+        return;
 #endif
-
+    
     /* Drop the remote host and port from the fixed prefix. */
     if (ps_host_info_size > 0)
     {
@@ -368,39 +370,55 @@ set_ps_display(const char *activity)
     /* Append caller's activity string. */
     StrNCpy(cp, activity, ep-cp);
 
-	/* Transmit new setting to kernel, if necessary */
+    /* Transmit new setting to kernel, if necessary */
 
 #ifdef PS_USE_SETPROCTITLE
-	setproctitle("%s", ps_buffer);
+    setproctitle("%s", ps_buffer);
 #endif
 
 #ifdef PS_USE_PSTAT
-	{
-		union pstun pst;
+    {
+        union pstun pst;
 
-		pst.pst_command = ps_buffer;
-		pstat(PSTAT_SETCMD, pst, strlen(ps_buffer), 0, 0);
-	}
+        pst.pst_command = ps_buffer;
+        pstat(PSTAT_SETCMD, pst, strlen(ps_buffer), 0, 0);
+    }
 #endif   /* PS_USE_PSTAT */
 
 #ifdef PS_USE_PS_STRINGS
-	PS_STRINGS->ps_nargvstr = 1;
-	PS_STRINGS->ps_argvstr = ps_buffer;
+    PS_STRINGS->ps_nargvstr = 1;
+    PS_STRINGS->ps_argvstr = ps_buffer;
 #endif   /* PS_USE_PS_STRINGS */
 
 #ifdef PS_USE_CLOBBER_ARGV
-	{
-		int			buflen;
+    {
+        int         buflen;
 
-		/* pad unused memory */
-		buflen = strlen(ps_buffer);
-		MemSet(ps_buffer + buflen, PS_PADDING, ps_buffer_size - buflen);
-	}
+        /* pad unused memory */
+        buflen = strlen(ps_buffer);
+        MemSet(ps_buffer + buflen, PS_PADDING, ps_buffer_size - buflen);
+    }
 #endif   /* PS_USE_CLOBBER_ARGV */
 
-#ifdef WIN32
-	pgwin32_update_ident(ps_buffer);
-#endif
+#ifdef PS_USE_WIN32
+    {
+        /*
+         * Win32 does not support showing any changed arguments. To make it
+         * at all possible to track which backend is doing what, we create a
+         * named object that can be viewed with for example Process Explorer.
+         */
+        static HANDLE ident_handle = INVALID_HANDLE_VALUE;
+        char        name[PS_BUFFER_SIZE + 32];
+
+        if (ident_handle != INVALID_HANDLE_VALUE)
+            CloseHandle(ident_handle);
+
+        sprintf(name, "pgident: %s", ps_buffer);
+
+        ident_handle = CreateEvent(NULL, TRUE, FALSE, name);
+    }
+#endif   /* PS_USE_WIN32 */
+
 #endif   /* not PS_USE_NONE */
 }
 

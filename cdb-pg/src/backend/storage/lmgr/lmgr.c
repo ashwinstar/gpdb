@@ -26,6 +26,7 @@
 #include "storage/procarray.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"        /* CDB: get_rel_name() */
+#include "cdb/cdbvars.h"
 
 
 
@@ -232,6 +233,12 @@ CdbLockRelation(Relation relation, LOCKMODE reqmode, bool nowait)
         else if (lockmode == RowExclusiveLock)
             lockmode = ExclusiveLock;
     }
+    
+    if (mpp_is_callback)
+	{
+		ConditionalLockRelation(relation, lockmode);
+		return lockmode != reqmode;	
+	}
 
     if (nowait)
     {

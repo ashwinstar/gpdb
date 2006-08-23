@@ -3,14 +3,14 @@
  * fe-auth.c
  *	   The front-end (client) authorization routines
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTE: the error message strings returned by this module must not
  * exceed INITIAL_EXPBUFFER_SIZE (currently 256 bytes).
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-auth.c,v 1.107.2.2 2006/03/06 17:59:42 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-auth.c,v 1.119 2006/07/14 14:52:27 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -48,9 +48,8 @@
 #endif
 
 #include "libpq-fe.h"
-#include "libpq-int.h"
 #include "fe-auth.h"
-#include "libpq/crypt.h"
+#include "libpq/md5.h"
 
 
 #ifdef KRB5
@@ -188,10 +187,10 @@ pg_krb5_destroy(struct krb5_info *info)
 
 
 /*
- * pg_krb5_authname -- returns a pointer to static space containing whatever
- *					   name the user has authenticated to the system
-  */
-static const char *
+ * pg_krb5_authname -- returns a copy of whatever name the user
+ *					   has authenticated to the system, or NULL
+ */
+static char *
 pg_krb5_authname(char *PQerrormsg)
 {
 	char *tmp_name;
@@ -520,7 +519,7 @@ char *
 pg_fe_getauthname(char *PQerrormsg)
 {
 #ifdef KRB5
-	const char *krb5_name = NULL;
+	char       *krb5_name = NULL;
 #endif
 	const char *name = NULL;
 	char	   *authn;
@@ -576,4 +575,41 @@ pg_fe_getauthname(char *PQerrormsg)
 	pgunlock_thread();
 
 	return authn;
+}
+
+
+/*
+ * PQencryptPassword -- exported routine to encrypt a password
+ *
+ * This is intended to be used by client applications that wish to send
+ * commands like ALTER USER joe PASSWORD 'pwd'.  The password need not
+ * be sent in cleartext if it is encrypted on the client side.  This is
+ * good because it ensures the cleartext password won't end up in logs,
+ * pg_stat displays, etc.  We export the function so that clients won't
+ * be dependent on low-level details like whether the enceyption is MD5
+ * or something else.
+ *
+ * Arguments are the cleartext password, and the SQL name of the user it
+ * is for.
+ *
+ * Return value is a malloc'd string, or NULL if out-of-memory.  The client
+ * may assume the string doesn't contain any special characters that would
+ * require escaping.
+ */
+char *
+PQencryptPassword(const char *passwd, const char *user)
+{
+	char	   *crypt_pwd;
+
+	crypt_pwd = malloc(MD5_PASSWD_LEN + 1);
+	if (!crypt_pwd)
+		return NULL;
+
+	if (!pg_md5_encrypt(passwd, user, strlen(user), crypt_pwd))
+	{
+		free(crypt_pwd);
+		return NULL;
+	}
+
+	return crypt_pwd;
 }

@@ -3,10 +3,10 @@
  * timestamp.h
  *	  Definitions for the SQL92 "timestamp" and "interval" types.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/timestamp.h,v 1.57 2005/10/15 02:49:46 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/timestamp.h,v 1.62 2006/07/13 16:49:20 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -144,10 +144,12 @@ typedef struct
 #endif   /* HAVE_INT64_TIMESTAMP */
 
 
-#define TIMESTAMP_NOBEGIN(j)	do {(j) = DT_NOBEGIN;} while (0)
+#define TIMESTAMP_NOBEGIN(j)	\
+	do {(j) = DT_NOBEGIN;} while (0)
 #define TIMESTAMP_IS_NOBEGIN(j) ((j) == DT_NOBEGIN)
 
-#define TIMESTAMP_NOEND(j)		do {(j) = DT_NOEND;} while (0)
+#define TIMESTAMP_NOEND(j)		\
+	do {(j) = DT_NOEND;} while (0)
 #define TIMESTAMP_IS_NOEND(j)	((j) == DT_NOEND)
 
 #define TIMESTAMP_NOT_FINITE(j) (TIMESTAMP_IS_NOBEGIN(j) || TIMESTAMP_IS_NOEND(j))
@@ -176,6 +178,12 @@ typedef double fsec_t;
 #define INTERVAL_TYPMOD(p,r) ((((r) & INTERVAL_RANGE_MASK) << 16) | ((p) & INTERVAL_PRECISION_MASK))
 #define INTERVAL_PRECISION(t) ((t) & INTERVAL_PRECISION_MASK)
 #define INTERVAL_RANGE(t) (((t) >> 16) & INTERVAL_RANGE_MASK)
+
+#ifdef HAVE_INT64_TIMESTAMP
+#define TimestampTzPlusMilliseconds(tz,ms) ((tz) + ((ms) * 1000))
+#else
+#define TimestampTzPlusMilliseconds(tz,ms) ((tz) + ((ms) / 1000.0))
+#endif
 
 
 /* Set at postmaster start */
@@ -234,6 +242,7 @@ extern Datum interval_cmp(PG_FUNCTION_ARGS);
 extern Datum interval_hash(PG_FUNCTION_ARGS);
 extern Datum interval_smaller(PG_FUNCTION_ARGS);
 extern Datum interval_larger(PG_FUNCTION_ARGS);
+extern Datum interval_justify_interval(PG_FUNCTION_ARGS);
 extern Datum interval_justify_hours(PG_FUNCTION_ARGS);
 extern Datum interval_justify_days(PG_FUNCTION_ARGS);
 
@@ -266,7 +275,6 @@ extern Datum interval_mul(PG_FUNCTION_ARGS);
 extern Datum mul_d_interval(PG_FUNCTION_ARGS);
 extern Datum interval_div(PG_FUNCTION_ARGS);
 extern Datum interval_accum(PG_FUNCTION_ARGS);
-extern Datum interval_amalg(PG_FUNCTION_ARGS);
 extern Datum interval_avg(PG_FUNCTION_ARGS);
 
 extern Datum timestamp_mi(PG_FUNCTION_ARGS);
@@ -284,6 +292,8 @@ extern Datum timestamptz_trunc(PG_FUNCTION_ARGS);
 extern Datum timestamptz_part(PG_FUNCTION_ARGS);
 
 extern Datum now(PG_FUNCTION_ARGS);
+extern Datum statement_timestamp(PG_FUNCTION_ARGS);
+extern Datum clock_timestamp(PG_FUNCTION_ARGS);
 
 extern Datum pgsql_postmaster_start_time(PG_FUNCTION_ARGS);
 
@@ -291,7 +301,11 @@ extern Datum pgsql_postmaster_start_time(PG_FUNCTION_ARGS);
 
 extern TimestampTz GetCurrentTimestamp(void);
 
+extern void TimestampDifference(TimestampTz start_time, TimestampTz stop_time,
+								long *secs, int *microsecs);
+
 extern TimestampTz time_t_to_timestamptz(time_t tm);
+extern time_t timestamptz_to_time_t(TimestampTz t);
 
 extern int	tm2timestamp(struct pg_tm * tm, fsec_t fsec, int *tzp, Timestamp *dt);
 extern int timestamp2tm(Timestamp dt, int *tzp, struct pg_tm * tm,

@@ -43,7 +43,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/error/elog.c,v 1.167.2.1 2005/11/22 18:23:23 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/error/elog.c,v 1.169 2006/03/05 15:58:46 momjian Exp
  *
  *-------------------------------------------------------------------------
  */
@@ -1707,7 +1707,7 @@ log_line_prefix(StringInfo buf)
 				if (MyProcPort)
 				{
 					appendStringInfo(buf, "%lx.%x",
-								   (long) (MyProcPort->session_start.tv_sec),
+									 (long) (MyProcPort->session_start),
 									 MyProcPid);
 				}
 				break;
@@ -1739,7 +1739,7 @@ log_line_prefix(StringInfo buf)
 
 					strftime(strfbuf, sizeof(strfbuf),
 					/* leave room for milliseconds... */
-					/* Win32 timezone names are too long so don't print them. */
+					/* Win32 timezone names are too long so don't print them */
 #ifndef WIN32
 							 "%Y-%m-%d %H:%M:%S     %Z",
 #else
@@ -1773,12 +1773,11 @@ log_line_prefix(StringInfo buf)
 			case 's':
 				if (MyProcPort)
 				{
-					time_t		stamp_time = MyProcPort->session_start.tv_sec;
 					char		strfbuf[128];
 
 					strftime(strfbuf, sizeof(strfbuf),
 							 "%Y-%m-%d %H:%M:%S %Z",
-							 localtime(&stamp_time));
+							 localtime(&MyProcPort->session_start));
 					appendStringInfoString(buf, strfbuf);
 				}
 				break;

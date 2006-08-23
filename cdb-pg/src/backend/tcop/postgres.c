@@ -848,10 +848,6 @@ exec_simple_query(const char *query_string)
 	MemoryContext oldcontext;
 	List	   *parsetree_list;
 	ListCell   *parsetree_item;
-	struct timeval start_t,
-				stop_t;
-	bool		save_log_duration = log_duration;
-	int			save_log_min_duration_statement = log_min_duration_statement;
 	bool		save_log_statement_stats = log_statement_stats;
 	char	   *prepare_string = NULL;
 	bool		was_logged = false;
@@ -864,14 +860,9 @@ exec_simple_query(const char *query_string)
 	pgstat_report_activity(query_string);
 
 	/*
-	 * We use save_log_* so "SET log_duration = true"  and "SET
-	 * log_min_duration_statement = true" don't report incorrect time because
-	 * gettimeofday() wasn't called. Similarly, log_statement_stats has to be
-	 * captured once.
+	 * We use save_log_statement_stats so ShowUsage doesn't report incorrect
+	 * results because ResetUsage wasn't called.
 	 */
-	if (save_log_duration || save_log_min_duration_statement != -1)
-		gettimeofday(&start_t, NULL);
-
 	if (save_log_statement_stats)
 		ResetUsage();
 
@@ -911,7 +902,8 @@ exec_simple_query(const char *query_string)
 	 */
 	parsetree_list = pg_parse_query(query_string);
 
-	if (log_statement != LOGSTMT_NONE || save_log_min_duration_statement != -1)
+	/* Log immediately if dictated by log_statement */
+	if (log_statement != LOGSTMT_NONE)
 		was_logged = log_after_parse(parsetree_list, query_string,
 									 &prepare_string);
 
@@ -942,7 +934,7 @@ exec_simple_query(const char *query_string)
 		 */
 		commandTag = CreateCommandTag(parsetree);
 
-		set_ps_display(commandTag);
+		set_ps_display(commandTag, false);
 
 		BeginCommand(commandTag, dest);
 
@@ -1099,44 +1091,42 @@ exec_simple_query(const char *query_string)
 	QueryContext = NULL;
 
 	/*
-	 * Combine processing here as we need to calculate the query duration in
-	 * both instances.
+	 * Emit duration logging if appropriate.
 	 */
-	if (save_log_duration || save_log_min_duration_statement != -1)
+	if (log_duration || log_min_duration_statement >= 0)
 	{
-		long		usecs;
+		long		secs;
+		int			usecs;
+		int			msecs;
 
-		gettimeofday(&stop_t, NULL);
-		if (stop_t.tv_usec < start_t.tv_usec)
-		{
-			stop_t.tv_sec--;
-			stop_t.tv_usec += 1000000;
-		}
-		usecs = (long) (stop_t.tv_sec - start_t.tv_sec) * 1000000 +
-			(long) (stop_t.tv_usec - start_t.tv_usec);
-
-		/* Only print duration if we previously printed the statement. */
-		if (was_logged && save_log_duration)
-			ereport(LOG,
-					(errmsg("duration: %ld.%03ld ms",
-							(long) ((stop_t.tv_sec - start_t.tv_sec) * 1000 +
-								  (stop_t.tv_usec - start_t.tv_usec) / 1000),
-						 (long) (stop_t.tv_usec - start_t.tv_usec) % 1000)));
+		TimestampDifference(GetCurrentStatementStartTimestamp(),
+							GetCurrentTimestamp(),
+							&secs, &usecs);
+		msecs = usecs / 1000;
 
 		/*
-		 * Output a duration_statement to the log if the query has exceeded
-		 * the min duration, or if we are to print all durations.
+		 * The odd-looking test for log_min_duration_statement being
+		 * exceeded is designed to avoid integer overflow with very
+		 * long durations: don't compute secs * 1000 until we've
+		 * verified it will fit in int.
 		 */
-		if (save_log_min_duration_statement == 0 ||
-			(save_log_min_duration_statement > 0 &&
-			 usecs >= save_log_min_duration_statement * 1000))
-			ereport(LOG,
-					(errmsg("duration: %ld.%03ld ms  statement: %s%s",
-							(long) ((stop_t.tv_sec - start_t.tv_sec) * 1000 +
-								  (stop_t.tv_usec - start_t.tv_usec) / 1000),
-							(long) (stop_t.tv_usec - start_t.tv_usec) % 1000,
-							query_string,
-							prepare_string ? prepare_string : "")));
+		if (log_duration ||
+			log_min_duration_statement == 0 ||
+			(log_min_duration_statement > 0 &&
+			 (secs > log_min_duration_statement / 1000 ||
+			  secs * 1000 + msecs >= log_min_duration_statement)))
+		{
+			if (was_logged)
+				ereport(LOG,
+						(errmsg("duration: %ld.%03d ms",
+								secs, msecs)));
+			else
+				ereport(LOG,
+						(errmsg("duration: %ld.%03d ms  statement: %s%s",
+								secs, msecs,
+								query_string,
+								prepare_string ? prepare_string : "")));
+		}
 	}
 
 	if (save_log_statement_stats)
@@ -1175,7 +1165,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 
 	pgstat_report_activity(query_string);
 
-	set_ps_display("PARSE");
+	set_ps_display("PARSE", false);
 
 	if (save_log_statement_stats)
 		ResetUsage();
@@ -1404,7 +1394,7 @@ exec_bind_message(StringInfo input_message)
 
 	pgstat_report_activity("<BIND>");
 
-	set_ps_display("BIND");
+	set_ps_display("BIND", false);
 
 	/*
 	 * Start up a transaction command so we can call functions etc. (Note that
@@ -1693,10 +1683,6 @@ exec_execute_message(const char *portal_name, long max_rows)
 	Portal		portal;
 	bool		completed;
 	char		completionTag[COMPLETION_TAG_BUFSIZE];
-	struct timeval start_t,
-				stop_t;
-	bool		save_log_duration = log_duration;
-	int			save_log_min_duration_statement = log_min_duration_statement;
 	bool		save_log_statement_stats = log_statement_stats;
 	bool		execute_is_fetch = false;
 
@@ -1748,17 +1734,12 @@ exec_execute_message(const char *portal_name, long max_rows)
 		pgstat_report_activity("<EXECUTE>");
 	}
 
-	set_ps_display(portal->commandTag);
+	set_ps_display(portal->commandTag, false);
 
 	/*
-	 * We use save_log_* so "SET log_duration = true"  and "SET
-	 * log_min_duration_statement = true" don't report incorrect time because
-	 * gettimeofday() wasn't called. Similarly, log_statement_stats has to be
-	 * captured once.
+	 * We use save_log_statement_stats so ShowUsage doesn't report incorrect
+	 * results because ResetUsage wasn't called.
 	 */
-	if (save_log_duration || save_log_min_duration_statement != -1)
-		gettimeofday(&start_t, NULL);
-
 	if (save_log_statement_stats)
 		ResetUsage();
 
@@ -1842,45 +1823,43 @@ exec_execute_message(const char *portal_name, long max_rows)
 	}
 
 	/*
-	 * Combine processing here as we need to calculate the query duration in
-	 * both instances.
-	 */
-	if (save_log_duration || save_log_min_duration_statement != -1)
-	{
-		long		usecs;
-
-		gettimeofday(&stop_t, NULL);
-		if (stop_t.tv_usec < start_t.tv_usec)
-		{
-			stop_t.tv_sec--;
-			stop_t.tv_usec += 1000000;
-		}
-		usecs = (long) (stop_t.tv_sec - start_t.tv_sec) * 1000000 +
-			(long) (stop_t.tv_usec - start_t.tv_usec);
-
-		/* Only print duration if we previously printed the statement. */
-		if (log_statement == LOGSTMT_ALL && save_log_duration)
-			ereport(LOG,
-					(errmsg("duration: %ld.%03ld ms",
-							(long) ((stop_t.tv_sec - start_t.tv_sec) * 1000 +
-								  (stop_t.tv_usec - start_t.tv_usec) / 1000),
-						 (long) (stop_t.tv_usec - start_t.tv_usec) % 1000)));
-
-		/*
-		 * Output a duration_statement to the log if the query has exceeded
-		 * the min duration, or if we are to print all durations.
-		 */
-		if (save_log_min_duration_statement == 0 ||
-			(save_log_min_duration_statement > 0 &&
-			 usecs >= save_log_min_duration_statement * 1000))
-			ereport(LOG,
-					(errmsg("duration: %ld.%03ld ms  statement: %sEXECUTE %s  [PREPARE:  %s]",
-							(long) ((stop_t.tv_sec - start_t.tv_sec) * 1000 +
-								  (stop_t.tv_usec - start_t.tv_usec) / 1000),
-							(long) (stop_t.tv_usec - start_t.tv_usec) % 1000,
-							(execute_is_fetch) ? "FETCH from " : "",
-						  (*portal_name != '\0') ? portal_name : "<unnamed>",
-							portal->sourceText ? portal->sourceText : "")));
+ 	 * Emit duration logging if appropriate.
+  	 */
+ 	if (log_duration || log_min_duration_statement >= 0)
+  	{
+ 		long		secs;
+ 		int			usecs;
+ 		int			msecs;
+ 
+ 		TimestampDifference(GetCurrentStatementStartTimestamp(),
+ 							GetCurrentTimestamp(),
+ 							&secs, &usecs);
+ 		msecs = usecs / 1000;
+ 
+ 		/*
+ 		 * The odd-looking test for log_min_duration_statement being
+ 		 * exceeded is designed to avoid integer overflow with very
+ 		 * long durations: don't compute secs * 1000 until we've
+ 		 * verified it will fit in int.
+ 		 */
+ 		if (log_duration ||
+ 			log_min_duration_statement == 0 ||
+ 			(log_min_duration_statement > 0 &&
+ 			 (secs > log_min_duration_statement / 1000 ||
+ 			  secs * 1000 + msecs >= log_min_duration_statement)))
+ 		{
+ 			if (log_statement == LOGSTMT_ALL)	/* already logged? */
+ 				ereport(LOG,
+						(errmsg("duration: %ld.%03d ms",
+ 								secs, msecs)));
+ 			else
+ 				ereport(LOG,
+ 						(errmsg("duration: %ld.%03d ms  statement: [protocol] %sEXECUTE %s  [PREPARE:  %s]",
+ 								secs, msecs,
+ 								execute_is_fetch ? "FETCH from " : "",
+ 								(*portal_name) ? portal_name : "<unnamed>",
+  							portal->sourceText ? portal->sourceText : "")));
+ 		}
 	}
 
 	if (save_log_statement_stats)
@@ -2030,6 +2009,10 @@ start_xact_command(void)
 {
 	if (!xact_started)
 	{
+		/* Cancel any active statement timeout before committing */
+		disable_sig_alarm(true);
+
+		/* Now commit the command */
 		ereport(DEBUG3,
 				(errmsg_internal("StartTransactionCommand")));
 		StartTransactionCommand();
@@ -2615,7 +2598,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 	if (!IsUnderPostmaster)
 		MemoryContextInit();
 
-	set_ps_display("startup");
+	set_ps_display("startup", false);
 
 	SetProcessingMode(InitProcessing);
 
@@ -3329,14 +3312,14 @@ PostgresMain(int argc, char *argv[], const char *username)
 		{
 			if (IsTransactionOrTransactionBlock())
 			{
-				set_ps_display("idle in transaction");
+				set_ps_display("idle in transaction", false);
 				pgstat_report_activity("<IDLE> in transaction");
 			}
 			else
 			{
 				pgstat_report_tabstat();
 
-				set_ps_display("idle");
+				set_ps_display("idle", false);
 				pgstat_report_activity("<IDLE>");
 			}
 
@@ -3389,6 +3372,9 @@ PostgresMain(int argc, char *argv[], const char *username)
                     if (Mpp_role != MPP_ROLE_EXECUTE)
                         mpp_command_count++;
 
+					/* Set statement_timestamp() */
+ 					SetCurrentStatementStartTimestamp();
+ 					
                     query_string = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
 
@@ -3407,6 +3393,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 					SnapshotInfo *snapInfo;
 					int 	txnOptions;
 
+					/* Set statement_timestamp() */
+ 					SetCurrentStatementStartTimestamp();
+ 					
 					/* get the client command serial# */
 					mpp_command_count = pq_getmsgint(&input_message, 4);
 										
@@ -3496,6 +3485,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 
                     if (Mpp_role != MPP_ROLE_EXECUTE)
                         mpp_command_count++;
+                        
+                    /* Set statement_timestamp() */
+ 					SetCurrentStatementStartTimestamp();
 
                     stmt_name = pq_getmsgstring(&input_message);
 					query_string = pq_getmsgstring(&input_message);
@@ -3526,6 +3518,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 				break;
 				
 			case 'B':			/* bind */
+				/* Set statement_timestamp() */
+				SetCurrentStatementStartTimestamp();
 
                 if (Mpp_role != MPP_ROLE_EXECUTE)
                     mpp_command_count++;
@@ -3545,6 +3539,9 @@ PostgresMain(int argc, char *argv[], const char *username)
                     if (Mpp_role != MPP_ROLE_EXECUTE)
                         mpp_command_count++;
 
+					/* Set statement_timestamp() */
+					SetCurrentStatementStartTimestamp();
+
 					portal_name = pq_getmsgstring(&input_message);
 					max_rows = pq_getmsgint(&input_message, 4);
 					pq_getmsgend(&input_message);
@@ -3556,6 +3553,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 			case 'F':			/* fastpath function call */
                 if (Mpp_role != MPP_ROLE_EXECUTE)
                     mpp_command_count++;
+                    
+                /* Set statement_timestamp() */
+ 				SetCurrentStatementStartTimestamp();
 
 				/* Tell the collector what we're doing */
 				pgstat_report_activity("<FASTPATH> function call");
@@ -3641,6 +3641,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 				{
 					int			describe_type;
 					const char *describe_target;
+
+					/* Set statement_timestamp() (needed for xact) */
+					SetCurrentStatementStartTimestamp();
 
 					describe_type = pq_getmsgbyte(&input_message);
 					describe_target = pq_getmsgstring(&input_message);
@@ -3848,32 +3851,29 @@ static void
 log_disconnections(int code, Datum arg)
 {
 	Port	   *port = MyProcPort;
-	struct timeval end;
+	long		secs;
+	int			usecs;
+	int			msecs;
 	int			hours,
 				minutes,
 				seconds;
 
-	gettimeofday(&end, NULL);
-	if (end.tv_usec < port->session_start.tv_usec)
-	{
-		end.tv_sec--;
-		end.tv_usec += 1000000;
-	}
-	end.tv_sec -= port->session_start.tv_sec;
-	end.tv_usec -= port->session_start.tv_usec;
+	TimestampDifference(port->SessionStartTime,
+						GetCurrentTimestamp(),
+						&secs, &usecs);
+	msecs = usecs / 1000;
 
-	/* for stricter accuracy here we could round - this is close enough */
-	hours = end.tv_sec / SECS_PER_HOUR;
-	end.tv_sec %= SECS_PER_HOUR;
-	minutes = end.tv_sec / SECS_PER_MINUTE;
-	seconds = end.tv_sec % SECS_PER_MINUTE;
+	hours = secs / SECS_PER_HOUR;
+	secs %= SECS_PER_HOUR;
+	minutes = secs / SECS_PER_MINUTE;
+	seconds = secs % SECS_PER_MINUTE;
 
 	ereport(LOG,
-			(errmsg("disconnection: session time: %d:%02d:%02d.%02d "
+			(errmsg("disconnection: session time: %d:%02d:%02d.%03d "
 					"user=%s database=%s host=%s%s%s",
-					hours, minutes, seconds, (int) (end.tv_usec / 10000),
+					hours, minutes, seconds, msecs,
 					port->user_name, port->database_name, port->remote_host,
-				  port->remote_port[0] ? " port=" : "", port->remote_port)));
+					port->remote_port[0] ? " port=" : "", port->remote_port)));
 }
 
 int
@@ -3932,7 +3932,7 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 	if (!IsUnderPostmaster)
 		MemoryContextInit();
 
-	set_ps_display("startup");
+	set_ps_display("startup", false);
 
 	SetProcessingMode(InitProcessing);
 
@@ -4562,7 +4562,7 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 		 */
 		if (send_rfq)
 		{
-			set_ps_display("idle");
+			set_ps_display("idle", false);
 
 			ReadyForQuery(whereToSendOutput);
 			send_rfq = false;

@@ -20,6 +20,7 @@
 #include "access/twophase.h"
 #include "access/xlog.h"
 #include "miscadmin.h"
+#include "pgstat.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/seqserver.h"
@@ -90,6 +91,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, MultiXactShmemSize());
 		size = add_size(size, LWLockShmemSize());
 		size = add_size(size, ProcArrayShmemSize());
+		size = add_size(size, BackendStatusShmemSize());
 		size = add_size(size, SharedSnapshotShmemSize());
 		size = add_size(size, SInvalShmemSize());
 		size = add_size(size, FreeSpaceShmemSize());
@@ -174,6 +176,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 */
 	InitProcGlobal();
 	CreateSharedProcArray();
+	CreateSharedBackendStatus();
 	
 	/*
 	 * Set up Shared snapshot slots

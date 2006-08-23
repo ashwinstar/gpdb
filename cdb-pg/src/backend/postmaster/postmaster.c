@@ -101,7 +101,6 @@
 #include "commands/async.h"
 #include "lib/dllist.h"
 #include "libpq/auth.h"
-#include "libpq/crypt.h"
 #include "libpq/libpq.h"
 #include "libpq/pqcomm.h"
 #include "libpq/pqsignal.h"
@@ -2208,9 +2207,6 @@ reaper(SIGNAL_ARGS)
 		{
 			AutoVacPID = 0;
 			autovac_stopped();
-			/* Tell the collector about process termination */
-			pgstat_beterm(pid);
-
 			if (exitstatus != 0)
 				HandleChildCrash(pid, exitstatus,
 								 _("autovacuum process"));
@@ -2371,8 +2367,6 @@ CleanupBackend(int pid,
 #ifdef EXEC_BACKEND
 			ShmemBackendArrayRemove(pid);
 #endif
-			/* Tell the collector about backend termination */
-			pgstat_beterm(pid);
 			break;
 		}
 	}
@@ -2418,8 +2412,6 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 #ifdef EXEC_BACKEND
 			ShmemBackendArrayRemove(pid);
 #endif
-			/* Tell the collector about backend termination */
-			pgstat_beterm(pid);
 			/* Keep looping so we can signal remaining backends */
 		}
 		else
@@ -2711,6 +2703,8 @@ BackendRun(Port *port)
 	char	  **av;
 	int			maxac;
 	int			ac;
+    long        secs;
+    int         usecs;
 	char		protobuf[32];
 	int			i;
 
@@ -2747,8 +2741,9 @@ BackendRun(Port *port)
 
 	ClientAuthInProgress = true;	/* limit visibility of log messages */
 
-	/* save start time for end of session reporting */
-	gettimeofday(&(port->session_start), NULL);
+	/* save process start time */
+    port->SessionStartTime = GetCurrentTimestamp();
+    port->session_start = timestamptz_to_time_t(port->SessionStartTime);
 
 	/* set these to empty in case they are needed before we set them up */
 	port->remote_host = "";
@@ -2852,10 +2847,10 @@ BackendRun(Port *port)
 	 * title for ps.  It's good to do this as early as possible in startup.
 	 */
     if ( SyncMaster )
-        init_ps_display("mppsyncagent process", "", "");
+        init_ps_display("mppsyncagent process", "", "", "");
     else
-	    init_ps_display(port->user_name, port->database_name, remote_ps_data);
-	set_ps_display("authentication");
+	    init_ps_display(port->user_name, port->database_name, remote_ps_data,
+        	update_process_title ? "authentication" : "");
 
 	/*
 	 * Now perform authentication exchange.
@@ -2880,8 +2875,10 @@ BackendRun(Port *port)
 	 * generator state.  We have to clobber the static random_seed *and* start
 	 * a new random sequence in the random() library function.
 	 */
-	random_seed = 0;
-	srandom((unsigned int) (MyProcPid ^ port->session_start.tv_usec));
+    random_seed = 0;
+    /* slightly hacky way to get integer microseconds part of timestamptz */
+    TimestampDifference(0, port->SessionStartTime, &secs, &usecs);
+    srandom((unsigned int) (MyProcPid ^ usecs));
 
 	/* ----------------
 	 * Now, build the argv vector that will be given to PostgresMain.

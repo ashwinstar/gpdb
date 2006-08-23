@@ -1062,7 +1062,7 @@ WaitOnLock(LOCKMETHODID lockmethodid, LOCALLOCK *locallock,
 	new_status = (char *) palloc(len + 8 + 1);
 	memcpy(new_status, old_status, len);
 	strcpy(new_status + len, " waiting");
-	set_ps_display(new_status);
+	set_ps_display(new_status, false);
 	new_status[len] = '\0';		/* truncate off " waiting" */
 
 	awaitedLock = locallock;
@@ -1104,7 +1104,7 @@ WaitOnLock(LOCKMETHODID lockmethodid, LOCALLOCK *locallock,
 
 	awaitedLock = NULL;
 
-	set_ps_display(new_status);
+	set_ps_display(new_status, false);
 	pfree(new_status);
 
 	LOCK_PRINT("WaitOnLock: wakeup on lock",

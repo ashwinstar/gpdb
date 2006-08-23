@@ -386,8 +386,7 @@ SeqServerMain(int argc, char *argv[])
 	on_exit_reset();
 
 	/* Identify myself via ps */
-	init_ps_display("seqserver process", "", "");
-	set_ps_display("");
+	init_ps_display("seqserver process", "", "", "");
 
 	SetProcessingMode(InitProcessing);
 
