@@ -7078,17 +7078,21 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			}
 			
 			policydef = PQgetvalue(res, 0, 0);
-			policydef[strlen(policydef)-1] = '\0';
-			policydef++;
-			policycol = nextToken(&policydef, ",");
-			appendPQExpBuffer(q, " distributed by (%s",
-							  fmtId(tbinfo->attnames[atoi(policycol)-1]));
-			for (; (policycol = nextToken(&policydef, ",")) != NULL;)
+			
+			if(strlen(policydef) > 0) /* make sure it's not an empty policy table... */
 			{
-				appendPQExpBuffer(q, " ,%s",
+				policydef[strlen(policydef)-1] = '\0';
+				policydef++;
+				policycol = nextToken(&policydef, ",");
+				appendPQExpBuffer(q, " distributed by (%s",
 								  fmtId(tbinfo->attnames[atoi(policycol)-1]));
+				for (; (policycol = nextToken(&policydef, ",")) != NULL;)
+				{
+					appendPQExpBuffer(q, " ,%s",
+									  fmtId(tbinfo->attnames[atoi(policycol)-1]));
+				}
+				appendPQExpBuffer(q, ")");
 			}
-			appendPQExpBuffer(q, ")");
 			PQclear(res);
 		}
 		/* END MPP ADDITION */
