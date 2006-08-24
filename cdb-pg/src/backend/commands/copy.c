@@ -177,6 +177,7 @@ typedef struct CopyStateData
 	/* for CSV format */
 	bool		in_quote;
 	bool		last_was_esc;
+	bool		ready_to_send_rows; /* mainly used when we copy out with header */
 	
 	/* for TEXT format */
 	bool		esc_in_prevbuf;		/* escape was last character of the data input buffer */
@@ -392,8 +393,13 @@ CopySendData(CopyState cstate, const void *databuf, int datasize)
 				 * We don't want to use CopySendEndOfRow() b/c it adds row endings and
 				 * also b/c it's intended for a single row at a time. Therefore we need
 				 * to flush the data buf here instead.
+				 *
+				 * we must make sure that ready_to_send_rows is set since in the case
+				 * of 'copy to stdout with csv header' we need to send the header with	
+				 * CopySendEndOfRow() and therefore skip sending each part of the header
+				 * here.
 				 */
-				if (Mpp_role == MPP_ROLE_DISPATCH)
+				if (Mpp_role == MPP_ROLE_DISPATCH && cstate->ready_to_send_rows)
 				{
 					/* Dump the accumulated rows/data as one CopyData message */
 					(void) pq_putmessage('d', cstate->fe_msgbuf->data, cstate->fe_msgbuf->len);
@@ -1177,6 +1183,8 @@ DoCopy(const CopyStmt *stmt)
 static void
 DoCopyTo(CopyState cstate)
 {
+	cstate->ready_to_send_rows = true;
+	
 	PG_TRY();
 	{
 		if (cstate->fe_copy)
@@ -1610,25 +1618,30 @@ CopyToDispatch(CopyState cstate)
 	}
 	else
 	{
-		/*
-		 * For non-binary copy, we need to convert null_print to client
-		 * encoding, because it will be sent directly with CopySendString.
-		 */
-		/*
-		 * MPP: in here we only care about this if we need to print the
-		 * header. We rely on the segdb server copy out to do the conversion
-		 * before sending the data rows out. We don't need to repeat it here
-		 */
-		if (cstate->need_transcoding)
-			cstate->null_print = (char *)
-				pg_server_to_client(cstate->null_print,
-									strlen(cstate->null_print));
-		
 		/* if a header has been requested send the line */
 		if (cstate->header_line)
 		{
 			bool		hdr_delim = false;
 
+			/*
+			 * For non-binary copy, we need to convert null_print to client
+			 * encoding, because it will be sent directly with CopySendString.
+			 *
+			 * MPP: in here we only care about this if we need to print the
+			 * header. We rely on the segdb server copy out to do the conversion
+			 * before sending the data rows out. We don't need to repeat it here
+			 */
+			if (cstate->need_transcoding)
+				cstate->null_print = (char *)
+					pg_server_to_client(cstate->null_print,
+										strlen(cstate->null_print));
+			
+			/* 
+			 * tell CopySendData that we are not ready with complete rows yet b/c
+			 * we send the header on an attribute (not row) granularity.
+			 */
+			cstate->ready_to_send_rows = false;
+			
 			foreach(cur, cstate->attnumlist)
 			{
 				int			attnum = lfirst_int(cur);
@@ -1643,8 +1656,11 @@ CopyToDispatch(CopyState cstate)
 				CopyAttributeOutCSV(cstate, colname, false,
 									list_length(cstate->attnumlist) == 1);
 			}
-
+			
 			CopySendEndOfRow(cstate);
+
+			/* header is done. we are now ready to send data rows */
+			cstate->ready_to_send_rows = true; 
 		}
 	}
 	
