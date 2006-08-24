@@ -529,7 +529,7 @@ InitPostgres(const char *dbname, const char *username)
 	InitializeClientEncoding();
 
 	/* initialize statistics collection for this backend */
-	if (IsUnderPostmaster)
+	if (!bootstrap)
 		pgstat_bestart();
 		
 	/* 
