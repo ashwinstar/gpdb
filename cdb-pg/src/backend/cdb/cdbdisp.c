@@ -243,31 +243,28 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 		if(!(*dispatchThreads))
 		{
 			/* the maximum number of command parameter blocks we'll possibly need is
-			 * one for each slice on the primary and mirror gangs. Set the minimum
-			 * just to be safe */
-			int paramCount = max_threads * 4 * Min(maxSlices, 5);
+			 * one for each slice on the primary and mirror gangs. Max sure that we
+			 * have enough -- once we've created the command block we're stuck with it
+			 * for the duration of this statement (including CDB-DTM ). 
+			 * 1 * maxthreads * slices for each primary
+			 * 1 * maxthreads * slices for each mirror
+			 * X 2 for good measure ? */
+			int paramCount = max_threads * 4 * Max(maxSlices, 5);
+
+			elog(DEBUG4, "dispatcher: allocating command array with maxslices %d", maxSlices);
 			
 			*dispatchThreads = cdbdisp_makeDispatchThreads(paramCount);
 		}
 		else
 		{
-			/* Only reallocate when we need to. There is a race here:
-			 * we know that we have threads running using the
+			/* If we attempt to reallocate, there is a race here: we
+			 * know that we have threads running using the
 			 * dispatchCommandParamsAr! If we reallocate we
-			 * potentially yank it out from under them! */
+			 * potentially yank it out from under them! Don't do
+			 * it! */
 			if ((*dispatchThreads)->dispatchCommandParmsArSize < ((*dispatchThreads)->threadCount + max_threads))
 			{
-				elog(LOG, "BUG: Reallocating dispatchCommandParmsAr");
-
-				(*dispatchThreads)->dispatchCommandParmsAr =
-					(DispatchCommandParms *) repalloc((*dispatchThreads)->dispatchCommandParmsAr,
-													  ((*dispatchThreads)->threadCount + max_threads) *
-													  sizeof(DispatchCommandParms));
-				memset((*dispatchThreads)->dispatchCommandParmsAr + (*dispatchThreads)->threadCount, 0,
-					   ((*dispatchThreads)->threadCount + max_threads - (*dispatchThreads)->dispatchCommandParmsArSize) *
-					   sizeof(DispatchCommandParms));
-
-				(*dispatchThreads)->dispatchCommandParmsArSize = (*dispatchThreads)->threadCount + max_threads;
+				elog(ERROR, "Attempted to reallocate dispatchCommandParmsAr while other threads still running size %d new threadcount %d", (*dispatchThreads)->dispatchCommandParmsArSize, ((*dispatchThreads)->threadCount + max_threads));
 			}
 		}
 
