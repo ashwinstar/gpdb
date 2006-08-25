@@ -783,6 +783,8 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	
 	double nB, zB = sizeBufFile(NULL); /* Passes = overflow batches */
 	
+	elog(DEBUG1, "hashagg Q = %g, zH = %g, zB = %g", memquota, zH, zB);
+	elog(DEBUG1, "hashagg ngroups = %g, numaggs = %d, keywidth = %d, transpace = %d", ngroups, numaggs, keywidth, transpace);
 	
 	if ( memquota >= ngroups*zH + nK*zH + 2*zB )
 	{
