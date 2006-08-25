@@ -24,7 +24,7 @@ SELECT '' AS six, (@@ f1) AS center
 
 SELECT '' AS two, (@@ f1) AS center
    FROM POLYGON_TBL
-   WHERE (# f1) > 2;
+   WHERE (# f1) > 2 ORDER BY f1 USING <<;
 
 -- "is horizontal" function
 SELECT '' AS two, p1.f1
@@ -89,17 +89,17 @@ SELECT '' AS twenty, b.f1 / p.f1 AS rotation
 
 SET geqo TO 'off';
 
-SELECT '' AS eight, npoints(f1) AS npoints, f1 AS path FROM PATH_TBL;
+SELECT '' AS eight, npoints(f1) AS npoints, f1 AS path FROM PATH_TBL ORDER BY f1 USING <;
 
-SELECT '' AS four, path(f1) FROM POLYGON_TBL;
+SELECT '' AS four, path(f1) FROM POLYGON_TBL ORDER BY f1 USING <<;
 
 -- translation
 SELECT '' AS eight, p1.f1 + point '(10,10)' AS dist_add
-   FROM PATH_TBL p1;
+   FROM PATH_TBL p1 ORDER BY f1 USING <;
 
 -- scaling and rotation
 SELECT '' AS eight, p1.f1 * point '(2,-1)' AS dist_mul
-   FROM PATH_TBL p1;
+   FROM PATH_TBL p1 ORDER BY f1 USING <;
 
 RESET geqo;
 
@@ -115,7 +115,7 @@ SELECT '' AS twentyfour, p.f1, poly.f1, p.f1 @ poly.f1 AS contained
    FROM POLYGON_TBL poly, POINT_TBL p;
 
 SELECT '' AS four, npoints(f1) AS npoints, f1 AS polygon
-   FROM POLYGON_TBL;
+   FROM POLYGON_TBL ORDER BY f1 USING <<;
 
 SELECT '' AS four, polygon(f1)
    FROM BOX_TBL;
