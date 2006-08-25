@@ -790,9 +790,6 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 			}
 		}
 		
-		entry = lnext(entry);
-		if (entry != NULL)
-			elog(ERROR,"Distributed tables can only inherit from one parent table");
 	}
 
 	/*
