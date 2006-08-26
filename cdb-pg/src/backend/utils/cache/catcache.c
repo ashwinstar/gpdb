@@ -1092,10 +1092,8 @@ CdbCatCacheKludgeAtt(CatCache *cache, Oid relid, uint32 hashValue, Index hashInd
 
 {
 	CatCTup            *ct;
-    Datum               datum;
 	Form_pg_attribute   attstruct;
 	HeapTuple	        ntp;
-    bool                isnull;
 
     /* Build "mpp_segment_id" pg_attribute tuple from hard-coded prototype. */
     attstruct = SystemAttributeDefinition(MppSegmentIdAttributeNumber, false);
@@ -1979,7 +1977,7 @@ PrepareToInvalidateCacheTuple(Relation relation,
 	 */
 	Assert(RelationIsValid(relation));
 	Assert(HeapTupleIsValid(tuple));
-	Assert(PointerIsValid(function));
+	Assert(function != NULL);
 	Assert(CacheHdr != NULL);
 
 	reloid = RelationGetRelid(relation);

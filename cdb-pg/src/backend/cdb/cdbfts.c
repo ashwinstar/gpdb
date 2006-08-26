@@ -3,7 +3,7 @@
  * cdbfts.c
  *	  Provides fault tolerance service routines for mpp.
  *
- * Copyright (c) 2003-2004, Greenplum
+ * Copyright (c) 2003-2006, Greenplum
  *
  *-------------------------------------------------------------------------
  */
@@ -581,7 +581,7 @@ markSegDBPersistentState(int dbid, bool state)
 				 errmsg("FTS: could not format command string")));
 	}
 
-	if (SPI_OK_SELECT != (cmd, false, 0))
+	if (SPI_OK_SELECT != SPI_execute(cmd, false, 0))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
