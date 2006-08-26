@@ -467,7 +467,9 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	 * There are several cases where we cannot push down clauses. Restrictions
 	 * involving the subquery are checked by subquery_is_pushdown_safe().
 	 * Restrictions on individual clauses are checked by
-	 * qual_is_pushdown_safe().
+	 * qual_is_pushdown_safe().  Also, we don't want to push down
+	 * pseudoconstant clauses; better to have the gating node above the
+	 * subquery.
 	 *
 	 * Non-pushed-down clauses will get evaluated as qpquals of the
 	 * SubqueryScan node.
@@ -487,7 +489,8 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
 			Node	   *clause = (Node *) rinfo->clause;
 
-			if (qual_is_pushdown_safe(subquery, rti, clause, differentTypes))
+			if (!rinfo->pseudoconstant &&
+				qual_is_pushdown_safe(subquery, rti, clause, differentTypes))
 			{
 				/* Push it down */
 				subquery_push_qual(subquery, rte, rti, clause);

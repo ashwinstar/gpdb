@@ -723,7 +723,7 @@ create_append_path(RelOptInfo *rel, List *subpaths)
  *	  pathnode.
  */
 ResultPath *
-create_result_path(RelOptInfo *rel, Path *subpath, List *constantqual)
+create_result_path(RelOptInfo *rel, Path *subpath, List *quals)
 {
 	ResultPath *pathnode = makeNode(ResultPath);
 
@@ -736,7 +736,7 @@ create_result_path(RelOptInfo *rel, Path *subpath, List *constantqual)
 		pathnode->path.pathkeys = NIL;
 
 	pathnode->subpath = subpath;
-	pathnode->constantqual = constantqual;
+	pathnode->quals = quals;
 
 	/* Ideally should define cost_result(), but I'm too lazy */
 	if (subpath)
@@ -757,6 +757,14 @@ create_result_path(RelOptInfo *rel, Path *subpath, List *constantqual)
         pathnode->path.motionHazard = false;
         pathnode->path.rescannable = true;
 	}
+
+	/*
+	 * In theory we should include the qual eval cost as well, but
+	 * at present that doesn't accomplish much except duplicate work that
+	 * will be done again in make_result; since this is only used for
+	 * degenerate cases, nothing interesting will be done with the path
+	 * cost values...
+	 */
 
 	return pathnode;
 }

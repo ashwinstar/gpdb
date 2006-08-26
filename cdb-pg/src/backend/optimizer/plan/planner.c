@@ -291,6 +291,9 @@ subquery_planner(Query *parse, double tuple_fraction,
 	 */
 	root->hasHavingQual = (parse->havingQual != NULL);
 
+	/* Clear this flag; might get set in distribute_qual_to_rels */
+	root->hasPseudoConstantQuals = false;
+
 	/*
 	 * Do expression preprocessing on targetlist and quals.
 	 */
@@ -384,7 +387,13 @@ subquery_planner(Query *parse, double tuple_fraction,
 	if (root->hasOuterJoins)
 		reduce_outer_joins(root);
 
-	/*
+    /*$$$$$$$*/
+    if (DEBUG1 >= log_min_messages && 
+        root->in_info_list)
+        elog_node_display(DEBUG1, "preopt", root, true);
+    /*$$$$$$$*/
+    
+    /*
 	 * Do the main planning.  If we have an inherited target relation, that
 	 * needs special processing, else go straight to grouping_planner.
 	 */

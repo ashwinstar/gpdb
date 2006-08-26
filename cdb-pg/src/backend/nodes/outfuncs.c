@@ -1246,7 +1246,7 @@ _outResultPath(StringInfo str, ResultPath *node)
 	_outPathInfo(str, (Path *) node);
 
 	WRITE_NODE_FIELD(subpath);
-	WRITE_NODE_FIELD(constantqual);
+	WRITE_NODE_FIELD(quals);
 }
 
 static void
