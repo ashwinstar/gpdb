@@ -783,10 +783,10 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	
 	double nB, zB = sizeBufFile(NULL); /* Passes = overflow batches */
 	
-	elog(DEBUG1, "hashagg Q = %g, zH = %g, zB = %g", memquota, zH, zB);
-	elog(DEBUG1, "hashagg ngroups = %g, numaggs = %d, keywidth = %d, transpace = %d", ngroups, numaggs, keywidth, transpace);
+	elog(DEBUG2, "hashagg ngroups = %g, numaggs = %d, keywidth = %d, transpace = %d", ngroups, numaggs, keywidth, transpace);
+	elog(DEBUG2, "hashagg memquota = %g, zH = %g, zB = %g", memquota, zH, zB);
 	
-	if ( memquota >= ngroups*zH + nK*zH + 2*zB )
+	if ( memquota >= ngroups*zH + 2*zB )
 	{
 		/* Use default strategy when we expect the whole operation to 
 		 * fit in memory.  This strategy hedges its bet by allocating 
@@ -794,7 +794,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 		 */
 		if ( nK > INT_MAX || ngroups > INT_MAX )
 		{
-			elog(DEBUG1, "hashagg table bigger than int type!");
+			elog(DEBUG2, "hashagg table bigger than int type!");
 			return false;
 		}
 		
@@ -808,18 +808,15 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 		 * rather than a batch file, this leaves a batch file for
 		 * overflow within a subsequent pass. 
 		 */
-		double a,d;
+		double d = memquota*memquota - 4 * zB * ngroups * zH;
 		
-		a = memquota - zB;
-		d = a*a + 4*zB*(memquota - ngroups*zH);
-		
-		if ( d < 0 || d > a )
+		if ( d < 0 )
 		{
-			elog(DEBUG1, "hashagg can't calculate memory usage!");
+			elog(DEBUG2, "hashagg can't calculate memory usage!");
 			return false;
 		}
-		
-		nB = ceil((a - sqrt(d))/(2*zB));
+
+		nB = ceil((memquota-sqrt(d))/(2*zB));
 	}
 	
 	nH = floor((memquota - nB*zB)/zH);
@@ -837,6 +834,10 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	if (p_nbuckets) *p_nbuckets = (int)nK;
 	if (p_nentries) *p_nentries = (int)nH;
 	if (p_nbatches) *p_nbatches = (int)nB;
+	
+	elog(DEBUG2, "hashagg nbuckets = %d, nentries = %d, nbatches = %d", (int)nK, (int)nH, (int)nB);
+	elog(DEBUG1, "hashagg expected memory footprint = %d", 
+		(int)( nH*entrywidth + nK*sizeof(HashAggEntry*) + nB*zB));
 	
 	return true;
 }
