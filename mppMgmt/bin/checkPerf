@@ -651,7 +651,7 @@ class CheckPerf:
                 else:
                     logger.warning("Host information missing %s" % \
                         (th.host))
-            wrCmd= "dd if=/dev/zero of=%s  count=%d bs=%d" %  \
+            wrCmd= "dd if=/dev/zero of=%s  count=%u bs=%u" %  \
                     (fileName, thBlkCount, blockSize)
             self.pool.putRequest(threadpool.WorkRequest(self.execSSHCmd,\
                 [wrCmd, th], None,None))
@@ -704,13 +704,13 @@ class CheckPerf:
                         (th.host))
                 th.runCmd= "dd if=%s of=/dev/null count=%d bs=%d" %  \
                     (fileName, blkCount, blockSize)
-                th.tSize=blkCount * blockSize
-                print "Performing Read Test(%s) on %s, reading %d bytes from"\
+                th.tSize=int(blkCount * blockSize)
+                print "Performing Read Test(%s) on %s, reading %u bytes from"\
                     "%s \n" % (eachDir, th.host, th.tSize, fileName)
                 logger.info("Read I/O Command %s:%s" % (th.host, th.runCmd))
             readRes=self.cmdParallel(rdCmd, cmdTitle, useSessionCmd=True)
         else :
-            print "Performing Read Test(%s), reading %d bytes from %s \n" % \
+            print "Performing Read Test(%s), reading %u bytes from %s \n" % \
                 (eachDir, blkCount *blockSize, fileName)
             rdCmd="dd if=%s of=/dev/null count=%d bs=%d" %  \
                 (fileName, blkCount, blockSize)
@@ -742,10 +742,10 @@ class CheckPerf:
                 else:
                     logger.warning("Host information missing %s" % \
                         (th.host))
-                th.runCmd="dd if=/dev/zero of=%s/ddFile count=%d bs=%d" % \
+                th.runCmd="dd if=/dev/zero of=%s/ddFile count=%u bs=%u" % \
                     (dirName, blkCount, blockSize)
                 th.tSize=int(blkCount * blockSize)
-                print "Performing Write Test(%s) on %s, writing %d bytes to"\
+                print "Performing Write Test(%s) on %s, writing %u bytes to"\
                     "%s/ddFile \n" % (eachDir, th.host, th.tSize, eachDir)
                 logger.info("Write I/O Command %s:%s" % \
                     (th.host, th.runCmd))
@@ -753,7 +753,7 @@ class CheckPerf:
         else:
             print "Performing Write Test(%s), writing %d bytes to %s/ddFile \n" % \
                 (eachDir, blkCount *blockSize, dirName)
-            wrCmd="dd if=/dev/zero of=%s/ddFile count=%d bs=%d" % \
+            wrCmd="dd if=/dev/zero of=%s/ddFile count=%u bs=%u" % \
                 (dirName, blkCount, blockSize)
             logger.info("Write Command : %s " % wrCmd)
             writeRes=self.cmdParallel(wrCmd, cmdTitle, \

@@ -26,7 +26,7 @@ Tolerance=0.05
 # Ranage  : 1, 20
 # Default : 5
 #
-RptCount=5
+RptCount=1
 
 
 #
@@ -45,21 +45,21 @@ baseDir=""
 # Directory_List= "Path_to_dir1", "Path_to_dir2", "Path_to_dir2"
 # Directory_List= "Path_to_dir1", 
 #
-DirectoryList= "/dbfast1/dirOne",
+DirectoryList= "/dbfast/dirOne",
 #
 # BlockSize: Sice of the block to be used for dd test
 # Range : String (int Followed by String [kK][Mm][gG][bB])
 # Example : 1024, 1KB, 1MB, 10MB
 # Default : 1K
 #
-BlockSize=1K
+BlockSize=8K
 #
 # FileSize: 
 # Range : String (int Followed by String [kK][Mm][gG][bB])
 # Example : 1024, 1KB, 1MB, 10MB
 # Default : 0MB
 #
-FileSize=1000Mb
+FileSize=0
 
 #
 # NOTE: 
@@ -92,4 +92,4 @@ PacketSize=1024
 # Default : 100
 #
 PacketNumber=100
-
+0
