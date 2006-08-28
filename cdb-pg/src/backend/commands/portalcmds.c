@@ -31,6 +31,7 @@
 #include "utils/memutils.h"
 #include "cdb/cdbgang.h"
 #include "cdb/cdbtm.h"
+#include "cdb/cdbvars.h"
 
 
 /*
@@ -63,12 +64,7 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 	if (!(stmt->options & CURSOR_OPT_HOLD))
 		RequireTransactionChain((void *) stmt, "DECLARE CURSOR");
 
-	if (stmt->options & CURSOR_OPT_HOLD)
-		ereport(ERROR,
-				(errcode(ERRCODE_MPP_FEATURE_NOT_YET),
-				 errmsg("holdable cursors are not yet supported in bizgres MPP")));
-	
-	if (stmt->options & CURSOR_OPT_SCROLL)
+	if (Mpp_role != MPP_ROLE_UTILITY && (stmt->options & CURSOR_OPT_SCROLL))
 		ereport(ERROR,
 				(errcode(ERRCODE_MPP_FEATURE_NOT_YET),
 				 errmsg("scrollable cursors are not yet supported in bizgres MPP")));
@@ -395,7 +391,12 @@ PersistHoldablePortal(Portal portal)
 		 * Rewind the executor: we need to store the entire result set in the
 		 * tuplestore, so that subsequent backward FETCHs can be processed.
 		 */
-		ExecutorRewind(queryDesc);
+		/*
+		 * We don't allow scanning backwards in MPP! skip this call and 
+		 * skip the reset position call few lines down.
+		 */
+		if(Mpp_role == MPP_ROLE_UTILITY)
+			ExecutorRewind(queryDesc);
 
 		/* Change the destination to output to the tuplestore */
 		queryDesc->dest = CreateDestReceiver(DestTuplestore, portal);
@@ -422,30 +423,39 @@ PersistHoldablePortal(Portal portal)
 		 */
 		MemoryContextSwitchTo(portal->holdContext);
 
-		if (!portal->atEnd)
+		/*
+		 * Since we don't allow backward scan in MPP we didn't do the 
+		 * ExecutorRewind() call few lines just above. Therefore we 
+		 * don't want to reset the position because we are already in
+		 * the position we need to be. Allow this only in utility mode.
+		 */
+		if(Mpp_role == MPP_ROLE_UTILITY)
 		{
-			long		store_pos;
-
-			if (portal->posOverflow)	/* oops, cannot trust portalPos */
-				ereport(ERROR,
-						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-						 errmsg("could not reposition held cursor")));
-
-			tuplestore_rescan(portal->holdStore);
-
-			for (store_pos = 0; store_pos < portal->portalPos; store_pos++)
+			if (!portal->atEnd)
 			{
-				HeapTuple	tup;
-				bool		should_free;
+				long		store_pos;
 
-				tup = tuplestore_gettuple(portal->holdStore, true,
-										  &should_free);
+				if (portal->posOverflow)	/* oops, cannot trust portalPos */
+					ereport(ERROR,
+							(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+							 errmsg("could not reposition held cursor")));
 
-				if (tup == NULL)
-					elog(ERROR, "unexpected end of tuple stream");
+				tuplestore_rescan(portal->holdStore);
 
-				if (should_free)
-					pfree(tup);
+				for (store_pos = 0; store_pos < portal->portalPos; store_pos++)
+				{
+					HeapTuple	tup;
+					bool		should_free;
+
+					tup = tuplestore_gettuple(portal->holdStore, true,
+											  &should_free);
+
+					if (tup == NULL)
+						elog(ERROR, "unexpected end of tuple stream");
+
+					if (should_free)
+						pfree(tup);
+				}
 			}
 		}
 	}
