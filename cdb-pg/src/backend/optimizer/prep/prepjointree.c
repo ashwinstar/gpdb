@@ -73,7 +73,7 @@ static Node *find_jointree_node_for_rel(Node *jtnode, int relid);
  * Returns the possibly-modified version of the given qual-tree node.
  */
 Node *
-pull_up_IN_clauses(PlannerInfo *root, Node *node)
+pull_up_IN_clauses(PlannerInfo *root, Node **jointree_inout, Node *node)
 {
 	if (node == NULL)
 		return NULL;
@@ -83,9 +83,7 @@ pull_up_IN_clauses(PlannerInfo *root, Node *node)
 		Node	   *subst;
 
 		/* Is it a convertible IN clause?  If not, return it as-is */
-		subst = convert_IN_to_join(root, sublink);
-		if (subst == NULL)
-			return node;
+		subst = convert_sublink_to_join(root, jointree_inout, sublink);
 		return subst;
 	}
 	if (and_clause(node))
@@ -96,11 +94,12 @@ pull_up_IN_clauses(PlannerInfo *root, Node *node)
 		foreach(l, ((BoolExpr *) node)->args)
 		{
 			Node	   *oldclause = (Node *) lfirst(l);
+            Node       *newclause = pull_up_IN_clauses(root, jointree_inout, oldclause);
 
-			newclauses = lappend(newclauses,
-								 pull_up_IN_clauses(root, oldclause));
+			if (newclause)
+                newclauses = lappend(newclauses, newclause);
 		}
-		return (Node *) make_andclause(newclauses);
+		return (Node *)make_ands_explicit(newclauses);
 	}
 	/* Stop if not an AND */
 	return node;
@@ -185,6 +184,7 @@ pull_up_subqueries(PlannerInfo *root, Node *jtnode, bool below_outer_join)
 			subroot->in_info_list = NIL;
 			if (subquery->hasSubLinks)
 				subquery->jointree->quals = pull_up_IN_clauses(subroot,
+                                                  (Node**)&subquery->jointree,
 												  subquery->jointree->quals);
 
 			/*
@@ -353,9 +353,36 @@ pull_up_subqueries(PlannerInfo *root, Node *jtnode, bool below_outer_join)
 		FromExpr   *f = (FromExpr *) jtnode;
 		ListCell   *l;
 
-		foreach(l, f->fromlist)
-			lfirst(l) = pull_up_subqueries(root, lfirst(l),
-										   below_outer_join);
+        foreach(l, f->fromlist)
+        {
+            Node   *oldkid = (Node *)lfirst(l);
+            Node   *newkid = pull_up_subqueries(root, oldkid, below_outer_join);
+
+            /* CDB: Collapse subquery FROM clause into current FROM clause,
+             * so correlated refs from subquery will be in the right scope.
+             * Otherwise deconstruct_jointree() complains about them.
+             */
+            if (IsA(oldkid, RangeTblRef) &&
+                IsA(newkid, FromExpr))
+            {
+                FromExpr   *fkid = (FromExpr *)newkid;
+                ListCell   *lkid;
+
+                /* Replace RangeTblRef with subquery FROM list. */
+                foreach(lkid, fkid->fromlist)
+                {
+                    if (lfirst(l) == oldkid)
+                        lfirst(l) = lfirst(lkid);
+                    else
+                        l = lappend_cell(f->fromlist, l, lfirst(lkid));
+                }
+
+                /* Pull up subquery WHERE clause. */
+                f->quals = make_and_qual(f->quals, fkid->quals);
+            }
+            else
+                lfirst(l) = newkid;
+        }
 	}
 	else if (IsA(jtnode, JoinExpr))
 	{

@@ -86,6 +86,10 @@ typedef struct finalize_primnode_context
 static List *convert_sublink_opers(List *lefthand, List *operOids,
 					  List *targetlist, int rtindex,
 					  List **righthandIds);
+static Node *cdb_convert_EXISTS_to_join(PlannerInfo *root, Node **jointree_inout,
+                                        SubLink *sublink);
+static Node *convert_IN_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink);
+static InClauseInfo *make_inclauseinfo(SubLink *sublink, int rtindex);
 static bool subplan_is_hashable(SubLink *slink, SubPlan *node);
 static Node *replace_correlation_vars_mutator(Node *node, void *context);
 static Node *process_sublinks_mutator(Node *node, bool *isTopQual);
@@ -709,48 +713,297 @@ subplan_is_hashable(SubLink *slink, SubPlan *node)
 	return true;
 }
 
+
 /*
- * convert_IN_to_join: can we convert an IN SubLink to join style?
+ * cdb_subselect_add_to_jointree
+ *
+ * Creates a RangeTblRef node and joins it with the given jointree.
+ */
+static void
+cdb_subselect_add_to_jointree(PlannerInfo *root, Node **jointree_inout, int rtindex)
+{
+    RangeTblRef    *rtr = makeNode(RangeTblRef);
+
+	rtr->rtindex = rtindex;
+
+    switch ((*jointree_inout)->type)
+    {
+        case T_FromExpr:
+        {
+            FromExpr   *fromexpr = (FromExpr *)(*jointree_inout);
+
+            fromexpr->fromlist = lappend(fromexpr->fromlist, rtr);
+            break;
+        }
+#if 0
+        case T_JoinExpr:
+        {
+            JoinExpr   *joinexpr = (JoinExpr *)(*jointree_inout);
+
+            break;
+        }
+#endif
+        default:
+            Insist(0);
+    }
+}                               /* cdb_subselect_add_to_jointree */
+
+/*
+ * cdb_subselect_drop_distinct
+ */
+static void
+cdb_subselect_drop_distinct(Query *subselect)
+{
+    if (subselect->limitCount == NULL &&
+        subselect->limitOffset == NULL)
+    {
+        /* Delete DISTINCT. */
+        subselect->distinctClause = NIL;
+
+        /* Delete GROUP BY if subquery has no aggregates and no HAVING. */
+        if (!subselect->hasAggs &&
+            subselect->havingQual == NULL)
+            subselect->groupClause = NIL;
+    }
+}                               /* cdb_subselect_drop_distinct */
+
+/*
+ * cdb_subselect_drop_orderby
+ */
+static void
+cdb_subselect_drop_orderby(Query *subselect)
+{
+    if (subselect->limitCount == NULL &&
+        subselect->limitOffset == NULL)
+    {
+        /* Delete ORDER BY. */
+        subselect->sortClause = NIL;
+    }
+}                               /* cdb_subselect_drop_orderby */
+
+/*
+ * convert_sublink_to_join: can we convert a SubLink to join style?
  *
  * The caller has found a SubLink at the top level of WHERE, but has not
  * checked the properties of the SubLink at all.  Decide whether it is
- * appropriate to process this SubLink in join style.  If not, return NULL.
- * If so, build the qual clause(s) to replace the SubLink, and return them.
+ * appropriate to process this SubLink in join style.  If so, build the
+ * qual clause(s) to replace the SubLink, and return them.  Else return
+ * the original sublink.  In either case the subquery is modified in
+ * place to remove unnecessary clauses.
  *
  * Side effects of a successful conversion include adding the SubLink's
  * subselect to the query's rangetable and adding an InClauseInfo node to
  * its in_info_list.
  */
 Node *
-convert_IN_to_join(PlannerInfo *root, SubLink *sublink)
+convert_sublink_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink)
 {
-	Query	   *parse = root->parse;
-	Query	   *subselect = (Query *) sublink->subselect;
-	Relids		left_varnos;
-    Relids      correlating_varnos;
-	int			rtindex;
-	RangeTblEntry *rte;
-	RangeTblRef *rtr;
-	InClauseInfo *ininfo;
-	List	   *exprs;
+    Node   *result = (Node *)sublink;
+	Query  *subselect = (Query *)sublink->subselect;
+
+    Assert(IsA(sublink, SubLink) &&
+           IsA(subselect, Query));
+
+    switch (sublink->subLinkType)
+    {
+        case EXISTS_SUBLINK:
+            result = cdb_convert_EXISTS_to_join(root, jointree_inout, sublink);
+            break;
+
+        case ALL_SUBLINK:
+            cdb_subselect_drop_orderby(subselect);
+            cdb_subselect_drop_distinct(subselect);
+            break;
+
+        case ANY_SUBLINK:
+            cdb_subselect_drop_orderby(subselect);
+            cdb_subselect_drop_distinct(subselect);
+            result = convert_IN_to_join(root, jointree_inout, sublink);
+            break;
+
+        case MULTIEXPR_SUBLINK:
+        case EXPR_SUBLINK:
+            cdb_subselect_drop_orderby(subselect);
+            break;
+
+        case ARRAY_SUBLINK:
+            break;
+
+        default:
+            Insist(0);
+    }
+    return result;
+}                               /* convert_sublink_to_join */
+
+/*
+ * cdb_convert_EXISTS_to_join
+ */
+Node *
+cdb_convert_EXISTS_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink)
+{
+	Query	       *parse = root->parse;
+	Query	       *subselect = (Query *)sublink->subselect;
+	InClauseInfo   *ininfo;
+    Node           *limitqual = NULL;
+    Node           *lnode;
+    Node           *rnode;
+    Node           *node;
+    NullTest       *ntest;
+	RangeTblEntry  *rte;
+	int			    rtindex;
 
     Assert(IsA(subselect, Query));
 
     /*
-	 * The sublink type must be "op ANY".
-	 */
-	if (sublink->subLinkType != ANY_SUBLINK)
-		return NULL;
+     * 'LIMIT n' makes EXISTS false when n <= 0, and doesn't affect the outcome
+     * when n > 0.  Delete subquery's LIMIT and build (0 < n) expr to be ANDed
+     * into the parent qual.
+     */
+    if (subselect->limitCount)
+    {
+        rnode = copyObject(subselect->limitCount);
+        IncrementVarSublevelsUp(rnode, -1, 1);
+        lnode = (Node *)makeConst(INT4OID, sizeof(int4), Int32GetDatum(0),
+                                  false, true);
+        limitqual = (Node *)make_op(NULL, list_make1(makeString("<")),
+                                    lnode, rnode);
+        subselect->limitCount = NULL;
+    }
 
-	/*
-	 * The left-hand expressions must contain some Vars of the current query,
-	 * else it's not gonna be a join.
-	 */
-	left_varnos = pull_varnos((Node *) sublink->lefthand);
-#if 0   /*CDB*/
-	if (bms_is_empty(left_varnos))
-		return NULL;
-#endif  /*CDB*/
+    /* CDB TODO: Set-returning function in tlist could return empty set. */
+    if (expression_returns_set((Node *)subselect->targetList))
+        ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_YET),
+                        errmsg("Set-returning function in EXISTS subquery: not yet implemented")
+                        ));
+
+    /*
+     * Trivial EXISTS subquery can be eliminated altogether.  If subquery has
+     * aggregates without GROUP BY or HAVING, its result is exactly one row
+     * (assuming no errors), unless that row is discarded by LIMIT/OFFSET.
+     */
+    if (subselect->hasAggs &&
+        subselect->groupClause == NIL &&
+        subselect->havingQual == NULL)
+    {
+        /*
+         * 'OFFSET m' falsifies EXISTS for m >= 1, and doesn't affect the
+         * outcome for m < 1, given that the subquery yields at most one row.
+         * Delete subquery's OFFSET and build (m < 1) expr to be anded with
+         * the current query's WHERE clause.
+         */
+        if (subselect->limitOffset)
+        {
+            lnode = copyObject(subselect->limitOffset);
+            IncrementVarSublevelsUp(lnode, -1, 1);
+            rnode = (Node *)makeConst(INT4OID, sizeof(int4), Int32GetDatum(1),
+                                      false, true);
+            node = (Node *)make_op(NULL, list_make1(makeString("<")), lnode, rnode);
+            limitqual = make_and_qual(limitqual, node);
+        }
+
+        /* Replace trivial EXISTS(...) with TRUE if no LIMIT/OFFSET. */
+        if (limitqual == NULL)
+            limitqual = makeBoolConst(true, false);
+
+        return limitqual;
+    }
+
+    /* Delete targetlist, ORDER BY and DISTINCT. */
+    subselect->targetList = NULL;
+    subselect->sortClause = NIL;
+    subselect->distinctClause = NIL;
+
+    /* HAVING is the only place that could still contain aggregates. */
+    if (subselect->havingQual == NULL)
+        subselect->hasAggs = false;
+
+    /* If HAVING has no aggregates, demote it to WHERE. */
+    else if (!checkExprHasAggs(subselect->havingQual))
+    {
+        subselect->jointree->quals = make_and_qual(subselect->jointree->quals,
+                                                   subselect->havingQual);
+        subselect->havingQual = NULL;
+        subselect->hasAggs = false;
+    }
+
+    /* Delete GROUP BY if no aggregates. */
+    if (!subselect->hasAggs)
+        subselect->groupClause = NIL;
+
+    /* Determine the index of the subquery RTE that we'll create below. */
+	rtindex = list_length(parse->rtable) + 1;
+
+    /* Build an InClauseInfo struct, noting the relids involved in subquery. */
+    ininfo = make_inclauseinfo(sublink, rtindex);
+
+    /* If uncorrelated, the subquery will be executed only once.  Add LIMIT 1
+     * and let the SubLink remain unflattened.  It will become an InitPlan.
+     * (CDB TODO: Would it be better to go ahead and convert these to joins?)
+     */
+    if (bms_is_empty(ininfo->correlating))
+    {
+        subselect->limitCount = (Node *)makeConst(INT4OID, sizeof(int4), Int32GetDatum(1),
+                                                  false, true);
+        return make_and_qual(limitqual, (Node *)sublink);
+    }
+
+    /* Make a subquery RTE in the current query level. */
+    rte = addRangeTableEntryForSubquery(NULL,
+										subselect,
+										makeAlias("EXISTS_subquery", NIL),
+										false);
+	parse->rtable = lappend(parse->rtable, rte);
+
+    /* Add the new subquery RTE to the jointree. */
+    cdb_subselect_add_to_jointree(root, jointree_inout, rtindex);
+
+    /* Tell join planner to quell duplication of outer query result rows. */
+	root->in_info_list = lappend(root->in_info_list, ininfo);
+
+#if 0
+    /*
+     * Update FROM clause, placing the subselect into the right-hand side
+     * of a LEFT JOIN.
+     */
+
+    /* Replace targetlist with TRUE. (Any non-NULL value would do.) */
+    node = makeBoolConst(true, false);
+    tle = makeTargetEntry((Expr *)node, 1, NULL, false);
+    /* $$$$ tle->resname must be filled in $$$$$$ */
+    subselect->targetList = list_make1(tle);
+
+    /* Make a Var node referencing the subplan's result. */
+	lnode = (Node *)makeVar(rtindex, tle->resno,
+							exprType((Node *)tle->expr),
+							exprTypmod((Node *)tle->expr),
+							0);
+	ininfo->sub_targetlist = list_make1(copyObject(lnode));
+
+    /* Build (t IS NOT NULL) predicate. */
+    ntest = makeNode(NullTest);
+	ntest->nulltesttype = IS_NOT_NULL;
+	ntest->arg = (Expr *)lnode;
+
+    return make_and_qual(limitqual, (Node *)ntest);
+#endif
+
+    return limitqual;
+}                               /* cdb_convert_EXISTS_to_join */
+
+/*
+ * convert_IN_to_join: can we convert an IN SubLink to join style?
+ */
+Node *
+convert_IN_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink)
+{
+	Query	   *parse = root->parse;
+	Query	   *subselect = (Query *) sublink->subselect;
+	int			rtindex;
+	RangeTblEntry *rte;
+	InClauseInfo *ininfo;
+	List	   *exprs;
+
+    Assert(IsA(subselect, Query));
 
 	/*
 	 * The left-hand expressions mustn't be volatile.  (Perhaps we should test
@@ -758,9 +1011,32 @@ convert_IN_to_join(PlannerInfo *root, SubLink *sublink)
 	 * directly at the sublink ...)
 	 */
 	if (contain_volatile_functions((Node *) sublink->lefthand))
-		return NULL;
+		return (Node *)sublink;
 
-	/*
+#if 0
+    /*
+     * Transform
+     *      c IN (SELECT e ... WHERE/HAVING q)
+     * to
+     *      EXISTS (SELECT ... WHERE/HAVING q AND c = e)
+     */
+#endif
+
+    /* Determine the index of the subquery RTE that we'll create below. */
+	rtindex = list_length(parse->rtable) + 1;
+
+    /* Build an InClauseInfo struct, noting the relids involved in subquery. */
+    ininfo = make_inclauseinfo(sublink, rtindex);
+
+    /*
+     * If uncorrelated, and no Vars of current level on lhs, the subquery
+     * will be executed only once.  It will become an InitPlan.
+     */
+    if (bms_is_empty(ininfo->lefthand) &&
+        bms_is_empty(ininfo->correlating))
+		return (Node *)sublink;
+
+    /*
 	 * Okay, pull up the sub-select into top range table and jointree.
 	 *
 	 * We rely here on the assumption that the outer query has no references
@@ -773,27 +1049,12 @@ convert_IN_to_join(PlannerInfo *root, SubLink *sublink)
 										makeAlias("IN_subquery", NIL),
 										false);
 	parse->rtable = lappend(parse->rtable, rte);
-	rtindex = list_length(parse->rtable);
-	rtr = makeNode(RangeTblRef);
-	rtr->rtindex = rtindex;
-	parse->jointree->fromlist = lappend(parse->jointree->fromlist, rtr);
 
-	/*
-	 * Now build the InClauseInfo node.
-	 */
-	ininfo = makeNode(InClauseInfo);
-	ininfo->lefthand = left_varnos;
-	ininfo->righthand = bms_make_singleton(rtindex);
+    /* Add the new subquery RTE to the jointree. */
+    cdb_subselect_add_to_jointree(root, jointree_inout, rtindex);
+
+    /* Tell join planner to quell duplication of outer query result rows. */
 	root->in_info_list = lappend(root->in_info_list, ininfo);
-
-    /*
-     * CDB: Get relids of current query that are referenced by subquery.
-     */
-	correlating_varnos = pull_varnos_of_level((Node *) subselect, 1);
-    ininfo->correlating = correlating_varnos;
-    ininfo->allrelids = bms_union(left_varnos, correlating_varnos);
-    ininfo->allrelids = bms_add_member(ininfo->allrelids, rtindex);
-    ininfo->op_is_equality = cdb_op_is_equality(sublink->operOids);
 
     /*
 	 * Build the result qual expressions.  As a side effect,
@@ -806,7 +1067,32 @@ convert_IN_to_join(PlannerInfo *root, SubLink *sublink)
 								  rtindex,
 								  &ininfo->sub_targetlist);
 	return (Node *) make_ands_explicit(exprs);
-}
+}                               /* convert_IN_to_join */
+
+/*
+ * make_inclauseinfo
+ *
+ * Returns a newly allocated InClauseInfo node.
+ */
+InClauseInfo *
+make_inclauseinfo(SubLink *sublink, int rtindex)
+{
+	InClauseInfo   *ininfo;
+
+	ininfo = makeNode(InClauseInfo);
+
+	ininfo->lefthand = pull_varnos((Node *) sublink->lefthand);
+	ininfo->righthand = bms_make_singleton(rtindex);
+
+    ininfo->correlating = pull_varnos_of_level(sublink->subselect, 1);
+    ininfo->allrelids = bms_union(ininfo->lefthand, ininfo->correlating);
+    ininfo->allrelids = bms_add_member(ininfo->allrelids, rtindex);
+    ininfo->op_is_equality = cdb_op_is_equality(sublink->operOids);
+
+    ininfo->sub_targetlist = NULL;
+    return ininfo;
+}                               /* make_inclauseinfo */
+
 
 /*
  * Replace correlation vars (uplevel vars) with Params.
