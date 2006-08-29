@@ -177,7 +177,7 @@
 # - Planner Cost Constants -
 
 #effective_cache_size = 500			# typically 8KB each
-#random_page_cost = 5			# units are one sequential page fetch
+#random_page_cost = 100			# units are one sequential page fetch
 					# cost
 #cpu_tuple_cost = 0.01			# (same)
 #cpu_index_tuple_cost = 0.001		# (same)
