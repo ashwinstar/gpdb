@@ -23,7 +23,7 @@
 /* NB: cost-estimation code should use the variables, not these constants! */
 /* If you change these, update backend/utils/misc/postgresql.sample.conf */
 #define DEFAULT_EFFECTIVE_CACHE_SIZE  500.0	/* measured in pages */
-#define DEFAULT_RANDOM_PAGE_COST  5.0
+#define DEFAULT_RANDOM_PAGE_COST  100.0
 #define DEFAULT_CPU_TUPLE_COST	0.01
 #define DEFAULT_CPU_INDEX_TUPLE_COST 0.001
 #define DEFAULT_CPU_OPERATOR_COST  0.0025
