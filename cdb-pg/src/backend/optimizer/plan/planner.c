@@ -389,9 +389,9 @@ subquery_planner(Query *parse, double tuple_fraction,
 		reduce_outer_joins(root);
 
     /*$$$$$$$*/
-    if (DEBUG1 >= log_min_messages &&
+    if (DEBUG5 >= log_min_messages &&
         root->in_info_list)
-        elog_node_display(DEBUG1, "preopt", root, true);
+        elog_node_display(DEBUG5, "preopt", root, true);
     /*$$$$$$$*/
 
     /*

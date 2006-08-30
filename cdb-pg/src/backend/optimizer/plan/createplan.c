@@ -21,6 +21,7 @@
 
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/print.h"        /*$$$*/
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/plancat.h"
@@ -663,6 +664,11 @@ create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path)
 	 *----------
 	 */
 	uniq_exprs = best_path->distinct_on_exprs;  /*CDB*/
+    if (!uniq_exprs)    /*$$$*/
+    {
+        elog_node_display(LOG, "create_unique_plan", best_path, true); 
+        elog_node_display(LOG, "create_unique_plan", ctx->root->in_info_list, true); 
+    }
     Insist(uniq_exprs);
 
 	/* initialize modified subplan tlist as just the "required" vars */
