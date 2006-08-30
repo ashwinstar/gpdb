@@ -1266,10 +1266,13 @@ _outUniquePath(StringInfo str, UniquePath *node)
 	WRITE_NODE_TYPE("UNIQUEPATH");
 
 	_outPathInfo(str, (Path *) node);
-
-	WRITE_NODE_FIELD(subpath);
 	WRITE_ENUM_FIELD(umethod, UniquePathMethod);
 	WRITE_FLOAT_FIELD(rows, "%.0f");
+    WRITE_BITMAPSET_FIELD(dedup_relids);    /*CDB*/
+    WRITE_BOOL_FIELD(must_repartition);     /*CDB*/
+	WRITE_NODE_FIELD(distinct_on_exprs);    /*CDB*/
+
+	WRITE_NODE_FIELD(subpath);
 }
 
 static void

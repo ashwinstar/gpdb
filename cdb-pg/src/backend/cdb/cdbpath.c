@@ -939,7 +939,14 @@ cdbpath_motion_for_join(PlannerInfo    *root,
     {
         /* Add Unique operator on top if original subpath was Unique. */
         if (IsA(*p_outer_path, UniquePath))
-            outer.path = (Path *)create_unique_path(root, outer.path->parent, outer.path);
+        {
+            UniquePath *oldunique = (UniquePath *)(*p_outer_path);
+
+            outer.path = (Path *)create_unique_common_path(root,
+                                                           outer.path,
+                                                           oldunique->distinct_on_exprs,
+                                                           oldunique->dedup_relids);
+        }
 
         /* Give modified subpath to caller. */
         *p_outer_path = outer.path;
@@ -950,7 +957,14 @@ cdbpath_motion_for_join(PlannerInfo    *root,
     {
         /* Add Unique operator on top if original subpath was Unique. */
         if (IsA(*p_inner_path, UniquePath))
-            inner.path = (Path *)create_unique_path(root, inner.path->parent, inner.path);
+        {
+            UniquePath *oldunique = (UniquePath *)(*p_inner_path);
+
+            inner.path = (Path *)create_unique_common_path(root,
+                                                           inner.path,
+                                                           oldunique->distinct_on_exprs,
+                                                           oldunique->dedup_relids);
+        }
 
         /* Give modified subpath to caller. */
         *p_inner_path = inner.path;
@@ -1319,8 +1333,8 @@ cdbpath_dedup_fixup_unique(UniquePath *uniquePath, CdbpathDedupFixupContext *ctx
     }
     list_free_deep(eq);
 
-    Assert(distinct_head);
     uniquePath->distinct_on_exprs = list_concat(distinct_head, distinct_tail);
+    Insist(uniquePath->distinct_on_exprs);
 
     /* To repartition, add a MotionPath below this UniquePath. */
     if (uniquePath->must_repartition)

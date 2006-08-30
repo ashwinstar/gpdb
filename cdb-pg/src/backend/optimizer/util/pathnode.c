@@ -805,7 +805,7 @@ create_material_path(RelOptInfo *rel, Path *subpath)
  *	  Creates a path representing elimination of distinct rows from the
  *	  input data.
  */
-static UniquePath *
+UniquePath *
 create_unique_common_path(PlannerInfo *root,
                           Path        *subpath,
                           List        *distinct_on_exprs,

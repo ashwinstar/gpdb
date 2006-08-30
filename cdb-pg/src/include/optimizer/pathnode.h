@@ -56,6 +56,10 @@ extern UniquePath *create_unique_path(PlannerInfo *root, RelOptInfo *rel,
 UniquePath *create_unique_rowid_path(PlannerInfo *root, 
                                      Path        *subpath, 
                                      Relids       dedup_relids);
+UniquePath *create_unique_common_path(PlannerInfo *root,
+                                      Path        *subpath,
+                                      List        *distinct_on_exprs,
+                                      Relids       dedup_relids);
 extern Path *create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel, List *pathkeys);
 extern Path *create_functionscan_path(PlannerInfo *root, RelOptInfo *rel);
 
