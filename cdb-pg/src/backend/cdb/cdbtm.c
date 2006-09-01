@@ -219,7 +219,7 @@ rollbackDtxTransaction(void)
 
 
 	/*
-	 * temporary ignore this call if it is in phase 2 commit, which can not be
+	 * temporary ignore this call if it is in phase 2 commit, which cannot be
 	 * rolled back. We may need to handle this case for FTS
 	 */
 	if (currentGxact->state == DTX_STATE_2P_COMMIT)
@@ -372,9 +372,21 @@ condRollbackDtxTransaction(void)
 	/*
 	 * if the process is in the middle of blowing up... then we don't do
 	 * anything here.  we can resolve any in-doubt transactions later.
+	 * 
+	 * We can't dispatch -- but we *do* need to free up shared-memory
+	 * entries.
 	 */
 	if (proc_exit_inprogress)
+	{
+		/* we're about to drop connections to any gangs -- so we'll free up
+		 * our structure too, while we're at it.
+		 *
+		 * Other states will have to be managed by recovery-mode ?*/
+		if (currentGxact->state == DTX_STATE_IN_PROGRESS)
+			releaseGxact();
+
 		return DTX_OK;
+	}
 
 
 	ereport(DEBUG2,
@@ -578,7 +590,7 @@ restoreGxact(TMGXACT * gxact)
 	if (*shmNumGxacts >= max_tm_gxacts)
 	{
 		ereport(ERROR,
-				(errmsg("can not allocate global transaction")));
+				(errmsg("cannot allocate global transaction")));
 	}
 
 	currentGxact = shmGxactArray[(*shmNumGxacts)++];
@@ -1023,7 +1035,7 @@ allocGxact(void)
 		dumpAllDtx();
 		releaseTmLock();
 		ereport(ERROR,
-				(errmsg("can not allocate global transaction")));
+				(errmsg("cannot allocate global transaction")));
 	}
 
 	gxact = shmGxactArray[(*shmNumGxacts)++];
@@ -1287,7 +1299,7 @@ generateGID(char *gid)
 
 	if (t == (time_t) -1)
 	{
-		elog(PANIC, "can not generate global transaction id");
+		elog(PANIC, "cannot generate global transaction id");
 	}
 
 	/* tm lock acquired by caller */
