@@ -810,7 +810,7 @@ formatDtxState(DtxState state)
 }	/* formatDtxState */
 
 bool
-dispatchDtxCommand(const char *cmd, bool dispatchToMirrors)
+dispatchDtxCommand(const char *cmd, bool dispatchToMirrors, bool withSnapshot)
 {
 	int		i, resultCount, numOfFailed = 0;
 
@@ -821,7 +821,7 @@ dispatchDtxCommand(const char *cmd, bool dispatchToMirrors)
 
 	initStringInfo(&errbuf);
 	results = cdbdisp_dispatchRMCommand(cmd,
-										/* withSnapshot */true,
+										withSnapshot,
 										dispatchToMirrors,
 										&errbuf, &resultCount);
 
@@ -885,6 +885,7 @@ execDtxCommand(void)
 				cmdbuf[100];
 	int			ret = DTX_OK;
 	bool		dispatchToMirrors = true;
+	bool		needSnapshot = false;
 
 	switch (currentGxact->state)
 	{
@@ -910,6 +911,8 @@ execDtxCommand(void)
 			}
 			else
 				cmd = "BEGIN";
+
+			needSnapshot = true;
 
 			setTxnBegan();
 
@@ -977,7 +980,7 @@ execDtxCommand(void)
 									  formatDtxState(currentGxact->state))));
 	}
 
-	if (dispatchDtxCommand(cmd, dispatchToMirrors))
+	if (dispatchDtxCommand(cmd, dispatchToMirrors, needSnapshot))
 	{
 		/* everything went swell. */
 		return DTX_OK;

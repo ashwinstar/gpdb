@@ -102,7 +102,7 @@ extern int	condRollbackDtxTransaction(void);
 
 extern bool isCurrentDtxDirty(void);
 
-extern bool dispatchDtxCommand(const char *cmd, bool dispatchToMirrors);
+extern bool dispatchDtxCommand(const char *cmd, bool dispatchToMirrors, bool withSnapshot);
 
 extern int	startTMXactScan(void);
 extern TMGXACT *getNextTMXact(int index);
