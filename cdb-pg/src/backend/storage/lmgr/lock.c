@@ -44,7 +44,6 @@
 
 #include "cdb/cdbvars.h"
 
-
 /* This configuration variable is used to set the lock table size */
 int			max_locks_per_xact; /* set by guc.c */
 
@@ -582,16 +581,7 @@ LockAcquire(LOCKMETHODID lockmethodid,
 	 */
 	MemSet(&proclocktag, 0, sizeof(PROCLOCKTAG));		/* must clear padding */
 	proclocktag.lock = MAKE_OFFSET(lock);
-	
-	elog(DEBUG1,"mpp_is_callback %d, mpp_qd_proc_offset = %ld",mpp_is_callback,mpp_qd_proc_offset);
-	
-	if (mpp_is_callback && mpp_qd_proc_offset!=-1)
-	{
-		elog(NOTICE,"Doing funny stuff with locks");
-		proclocktag.proc = mpp_qd_proc_offset;
-	}
-	else
-		proclocktag.proc = MAKE_OFFSET(MyProc);
+	proclocktag.proc = MAKE_OFFSET(MyProc);
 
 	/*
 	 * Find or create a proclock entry with this tag
@@ -633,12 +623,6 @@ LockAcquire(LOCKMETHODID lockmethodid,
 		proclock->releaseMask = 0;
 		/* Add proclock to appropriate lists */
 		SHMQueueInsertBefore(&lock->procLocks, &proclock->lockLink);
-		if (mpp_is_callback && mpp_qd_proc_offset!=-1)
-		{
-			elog(NOTICE,"Doing funny stuff with locks 2");
-			SHMQueueInsertBefore(&((PGPROC *)MAKE_PTR(mpp_qd_proc_offset))->procLocks, &proclock->procLink);
-		}
-		else
 		SHMQueueInsertBefore(&MyProc->procLocks, &proclock->procLink);
 		PROCLOCK_PRINT("LockAcquire: new", proclock);
 	}
@@ -697,7 +681,6 @@ LockAcquire(LOCKMETHODID lockmethodid,
 	 * We shouldn't already hold the desired lock; else locallock table is
 	 * broken.
 	 */
-	if (!mpp_is_callback)
 	if (proclock->holdMask & LOCKBIT_ON(lockmode))
 		elog(ERROR, "lock %s on object %u/%u/%u is already held",
 			 lock_mode_names[lockmode],
@@ -754,7 +737,6 @@ LockAcquire(LOCKMETHODID lockmethodid,
 			return LOCKACQUIRE_NOT_AVAIL;
 		}
 
-		elog(NOTICE,"Waiting on Lock");
 		/*
 		 * Set bitmask of locks this process already holds on this object.
 		 */
