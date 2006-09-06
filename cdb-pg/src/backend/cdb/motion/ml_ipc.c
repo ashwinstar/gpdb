@@ -15,6 +15,7 @@
 #include "utils/memutils.h"
 #include "utils/hsearch.h"
 #include "miscadmin.h"
+#include "libpq/libpq-be.h"
 
 #include "cdb/tupchunklist.h"
 #include "cdb/ml_ipc.h"
@@ -1406,8 +1407,18 @@ setupListeningSocket(int backlog, int *listenerSocketFd, int *listenerPort)
 
 	memset(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
-	saddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	saddr.sin_port = htons(0);	/* system picks port */
+
+	/* We use INADDR_ANY if we don't have a valid address for
+	 * ourselves (e.g. QD local connections tend to be AF_UNIX */
+	if (MyProcPort->laddr.addr.ss_family != AF_INET)
+		saddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	else
+		saddr.sin_addr = ((struct sockaddr_in *)&MyProcPort->laddr.addr)->sin_addr;
+
+	saddr.sin_port = 0;	/* system picks port */
+
+    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        ereport(DEBUG1, (errmsg("binding listener %s", inet_ntoa(saddr.sin_addr))));
 
 	/*
 	 * we let the system pick the TCP port here so we don't have to
@@ -1757,9 +1768,6 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
 	struct sockaddr_in  saddr;
     int                 sockopt;
 	int                 n;
-#if 0   /* port number conservation not working yet */
-    int                 outgoingPort;
-#endif
 
     Assert(conn->cdbProc);
     Assert(conn->state == mcsSetupOutgoingConnection);
@@ -1808,19 +1816,20 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
 		                errdetail("%m%s", "setsockopt(SO_REUSEADDR)")
                 ));
 
-#if 0   /* port number conservation not working yet */
-    /*
-     * we can run out of ports if we aren't careful, so we try to reuse
-     * them as much as possible
-     */
-    outgoingPort = getOutgoingPort(pEntry);
-    snprintf(conn->localHostAndPort, sizeof(conn->localHostAndPort),
-             "tcp:%d", outgoingPort);
-
     memset(&saddr, 0, sizeof(saddr));
     saddr.sin_family = AF_INET;
-    saddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    saddr.sin_port = htons(outgoingPort);
+
+	/* We use INADDR_ANY if we don't have a valid address for
+	 * ourselves (e.g. QD local connections tend to be AF_UNIX */
+	if (MyProcPort->laddr.addr.ss_family != AF_INET)
+		saddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	else
+		saddr.sin_addr = ((struct sockaddr_in *)&MyProcPort->laddr.addr)->sin_addr;
+
+    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        ereport(DEBUG1, (errmsg("bind outbound  %s", inet_ntoa(saddr.sin_addr))));
+
+    saddr.sin_port = 0; /* pick any available outbound port */
 
     if (bind(conn->sockfd, (struct sockaddr *) &saddr, sizeof(saddr)) < 0)
     {
@@ -1828,12 +1837,10 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
         ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 			            errmsg("Interconnect error setting up outgoing "
                                "connection."),
-                        errdetail("Could not bind to local port %s. %m%s",
-                                  conn->localHostAndPort,
-                                  "bind")
-                ));
+                        errdetail("Could not bind to local addr %s. %m",
+                                  inet_ntoa(saddr.sin_addr))
+					));
     }
-#endif
 
     /*
      * Get ipaddr to connect to.
@@ -1941,27 +1948,6 @@ updateOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportSta
         case 0:
             sendRegisterMessage(transportStates, pEntry, conn);
             return;
-
-#if 0   /* port number conservation not working yet */
-        /* An old connection between same endpoints might be in TIME_WAIT. */
-        case EADDRINUSE:
-        case EINVAL:
-        case ECONNREFUSED:
-            errno = errnoSave;
-            ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-		                  errmsg("Interconnect could not connect to seg%d %s from "
-                                 "local port %s; will try another port. %m%s",
-                                 conn->remoteContentId,
-                                 conn->remoteHostAndPort,
-                                 conn->localHostAndPort,
-                                 "connect")
-                    ));
-
-            /* Try a different port number for the next connection attempt. */
-            zapOutgoingPort(pEntry);
-            break;
-#endif
-
         default:
             errno = errnoSave;
             ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
