@@ -620,9 +620,9 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	int			i;
 #endif
 
-	Assert(0 < node->motionID &&
-           node->motionID <= sliceTable->nMotions &&
-           node->numInputSegs > 0);
+	Assert(node->motionID > 0);
+	Assert(node->motionID <= sliceTable->nMotions);
+    Assert(node->numInputSegs > 0);
 
 	/*
 	 * create state structure
