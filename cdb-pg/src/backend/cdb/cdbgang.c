@@ -848,6 +848,8 @@ thread_DoConnect(void *arg)
 		appendPQExpBuffer(&buffer, " -c temp_buffers=%d", num_temp_buffers);
         appendPQExpBuffer(&buffer, " -c mpp_log_interconnect=%s",
                            cdbvars_show_mpp_log_interconnect());
+		appendPQExpBuffer(&buffer, " -c mpp_hybrid_hash_agg=%s", 
+						   mpp_hybrid_hash_agg ? "on" : "off");
          
         if (mpp_use_snapshop_during_callback)   
         	appendPQExpBuffer(&buffer, " -c mpp_use_snapshop_during_callback=true");
