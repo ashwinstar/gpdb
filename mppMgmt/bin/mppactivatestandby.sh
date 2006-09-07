@@ -83,7 +83,7 @@ USAGE () {
 		$ECHO "      Standby activation options:"
 		$ECHO "      -d, <standby MASTER_DATA_DIRECTORY> [mandatory]"
 		$ECHO "      -f, force activation if mppsyncmaster process not running [optional]"
-		$ECHO "          Only use this option if it is known that the mppsynmaster process is not"
+		$ECHO "          Only use this option if it is known that the mppsyncmaster process is not"
 		$ECHO "          running AND the standby master segment is upto date AND consistent"
 		$ECHO "      -c, <new standby master hostname> create a new standby master instance following"
 		$ECHO "          successful activation of the standby master instance"
