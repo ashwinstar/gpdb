@@ -64,13 +64,14 @@ extern Path *create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel, List *
 extern Path *create_functionscan_path(PlannerInfo *root, RelOptInfo *rel);
 
 extern NestPath *create_nestloop_path(PlannerInfo *root,
-					 RelOptInfo *joinrel,
-					 JoinType jointype,
-					 Path *outer_path,
-					 Path *inner_path,
-					 List *restrict_clauses,
-                     List *mergeclause_list,    /*CDB*/
-					 List *pathkeys);
+									  RelOptInfo *joinrel,
+									  JoinType jointype,
+									  Path *outer_path,
+									  Path *inner_path,
+									  List *restrict_clauses,
+									  List *mergeclause_list,    /*CDB*/
+									  List *pathkeys,
+									  Path *alternate); /*CDB*/
 
 extern MergePath *create_mergejoin_path(PlannerInfo *root,
 					  RelOptInfo *joinrel,

@@ -118,7 +118,14 @@ ExecHashJoin(HashJoinState *node)
 			(outerNode->plan->startup_cost < hashNode->ps.plan->total_cost &&
 			 !node->hj_OuterNotEmpty))
 		{
-			node->hj_FirstOuterTupleSlot = ExecProcNode(outerNode);
+			TupleTableSlot *slot;
+
+			if (node->outer_q != NULL)
+				slot = dequeueTQ(node->outer_q);
+			else
+				slot = ExecProcNode(outerNode);
+
+			node->hj_FirstOuterTupleSlot = slot;
 			if (TupIsNull(node->hj_FirstOuterTupleSlot))
 			{
 				node->hj_OuterNotEmpty = false;
@@ -175,6 +182,8 @@ ExecHashJoin(HashJoinState *node)
 		 * set it again.)
 		 */
 		node->hj_OuterNotEmpty = false;
+
+		elog(DEBUG4, "HashJoin built table with %f tuples", hashtable->totalTuples);
 	}
 
 	/*
@@ -333,6 +342,8 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	 */
 	ExecAssignExprContext(estate, &hjstate->js.ps);
 
+	hjstate->outer_q = NULL;
+
 	/*
 	 * initialize child expressions
 	 */
@@ -458,9 +469,13 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 int
 ExecCountSlotsHashJoin(HashJoin *node)
 {
-	return ExecCountSlotsNode(outerPlan(node)) +
-		ExecCountSlotsNode(innerPlan(node)) +
-		HASHJOIN_NSLOTS;
+	int count=0;
+
+	count = ExecCountSlotsNode(outerPlan(node));
+	count += ExecCountSlotsNode(innerPlan(node));
+	count += HASHJOIN_NSLOTS;
+
+	return count;
 }
 
 /* ----------------------------------------------------------------
@@ -531,7 +546,22 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 		if (!TupIsNull(slot))
 			hjstate->hj_FirstOuterTupleSlot = NULL;
 		else
-			slot = ExecProcNode(outerNode);
+		{
+			if (hjstate->outer_q != NULL)
+			{
+				slot = dequeueTQ(hjstate->outer_q);
+				if (slot == NULL)
+				{
+					/* exhausted queued tuples */
+					pfree(hjstate->outer_q);
+					hjstate->outer_q = NULL;
+
+					slot = ExecProcNode(outerNode);
+				}
+			}
+			else
+				slot = ExecProcNode(outerNode);
+		}
 		if (!TupIsNull(slot))
 		{
 			/*
@@ -930,4 +960,57 @@ ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 	 */
 	if (((PlanState *) node)->lefttree->chgParam == NULL)
 		ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
+}
+
+executorTupleQueue *
+makeTQ(int size)
+{
+	executorTupleQueue *tq = palloc(sizeof(executorTupleQueue) + ((size-1) * sizeof(HeapTuple)));
+
+	tq->maxsize = size;
+	tq->size = 0;
+	tq->pos = 0;
+	tq->slot = NULL;
+
+	return tq;
+}
+
+void
+enqueueTQ(executorTupleQueue *tq, TupleTableSlot *slot)
+{
+	HeapTuple newt=NULL;
+
+	Assert(tq != NULL);
+	Assert(tq->size < tq->maxsize);
+
+	if (slot == NULL)
+		return;
+
+	if (tq->slot == NULL)
+		tq->slot = slot;
+
+	newt = ExecFetchSlotTuple(slot);
+	tq->tuples[tq->size] = heap_copytuple(newt);
+	tq->size++;
+}
+
+TupleTableSlot *dequeueTQ(executorTupleQueue *tq)
+{
+	HeapTuple curtup;
+	TupleTableSlot *tts;
+
+	Assert(tq != NULL);
+
+	if (tq->pos >= tq->size)
+		return NULL;
+
+	curtup = tq->tuples[tq->pos];
+	if (curtup == NULL)
+		return NULL;
+
+	tq->pos++;
+
+	tts = ExecStoreTuple(curtup, tq->slot, InvalidBuffer, true /* ignored, buffer is invalid */);
+
+	return tts;
 }

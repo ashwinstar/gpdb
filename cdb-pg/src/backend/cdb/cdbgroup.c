@@ -701,9 +701,6 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	return result_plan;
 }
 
-
-
-
 /*
  * Function make_two_stage_agg_plan
  * 
@@ -752,7 +749,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	result_plan = create_plan(root, path);
 	current_pathkeys = path->pathkeys;
 	result_plan->flow = cdbpathtoplan_create_flow(root, path, current_pathkeys, result_plan);
-	
+
 	/* Instead of the flat target list produced by create_plan above, use
 	 * the sub_tlist constructed in cdb_grouping_planner.  This consists 
 	 * of just the (levelsup==0) vars mentioned in the SELECT and HAVING
@@ -773,7 +770,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	}
 	else
 	{
-		result_plan->targetlist = sub_tlist;
+		plan_pushdown_tlist(result_plan, sub_tlist);
 	}
 	adapt_flow_to_targetlist(result_plan);
 	
@@ -1063,8 +1060,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 									ctx->agg_counts->numAggs,
 									result_plan);
 	mark_passthru_locus(result_plan, true, (current_pathkeys != NULL ));
-	
-	
+
 	/* Marshal implicit results. Return explicit result. */
 	ctx->current_pathkeys = current_pathkeys;
 	return result_plan;
@@ -1560,9 +1556,10 @@ Oid lookup_agg_transtype(Aggref *aggref)
  */
 void adapt_flow_to_targetlist(Plan *plan)
 {
-	Assert( plan != NULL && plan->flow != NULL );
-	
-	if ( plan->flow->hashExpr != NIL )
+	Assert(plan != NULL);
+	Assert(plan->flow != NULL);
+
+	if (plan->flow->hashExpr != NIL)
 	{
 		ListCell *c;
 		bool miss = FALSE;
@@ -1570,10 +1567,10 @@ void adapt_flow_to_targetlist(Plan *plan)
 		foreach(c, plan->flow->hashExpr)
 		{
 			Node *expr = (Node*)lfirst(c);
-			if ( ( miss = tlist_member(expr, plan->targetlist) == NULL ) )
+			if ((miss = tlist_member(expr, plan->targetlist) == NULL))
 				break;
 		}
-		if ( miss )
+		if (miss)
 		{
 			list_free_deep(plan->flow->hashExpr);
 			plan->flow->hashExpr = NIL;

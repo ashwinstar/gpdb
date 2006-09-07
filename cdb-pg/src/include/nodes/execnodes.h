@@ -1226,6 +1226,17 @@ typedef struct JoinState
 	List	   *joinqual;		/* JOIN quals (in addition to ps.qual) */
 } JoinState;
 
+/* Structure for partial materialize of outer relation in Nested loop and hash joins */
+typedef struct executorTupleQueue
+{
+	int			maxsize;
+	int			size;
+	int			pos;
+	TupleTableSlot *slot;
+
+	HeapTuple	tuples[1];
+} executorTupleQueue;
+
 /* ----------------
  *	 NestLoopState information
  *
@@ -1241,6 +1252,11 @@ typedef struct NestLoopState
 	bool		nl_MatchedOuter;
     bool        nl_Untouched;           /*CDB*/
     bool        nl_QuitIfEmptyInner;    /*CDB*/
+
+	executorTupleQueue *outer_q;
+
+	bool		shared_outer;
+
 	TupleTableSlot *nl_NullInnerTupleSlot;
 } NestLoopState;
 
@@ -1331,8 +1347,30 @@ typedef struct HashJoinState
 	bool		hj_NeedNewOuter;
 	bool		hj_MatchedOuter;
 	bool		hj_OuterNotEmpty;
+
+	executorTupleQueue *outer_q;
 } HashJoinState;
 
+
+/* ----------------
+ *	 AdpativeNestLoopState information
+ *
+ *   Record state for two possible subplans.
+ *   along with a tuple queue for shared results from the outer plan of
+ *   each
+ * ----------------
+ */
+typedef struct AdaptiveNestLoopState
+{
+	PlanState			ps;
+	NestLoopState		*main;
+	HashJoinState		*alternate;
+
+	executorTupleQueue	*outer_q;
+
+	int					nl_strategy_threshold;
+	int					nl_strategy;
+} AdaptiveNestLoopState;
 
 /* ----------------------------------------------------------------
  *				 Materialization State Information

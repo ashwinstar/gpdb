@@ -1036,12 +1036,13 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 					 * Otherwise, just replace the subplan's flat tlist with
 					 * the desired tlist.
 					 */
-					result_plan->targetlist = sub_tlist;
+					plan_pushdown_tlist(result_plan, sub_tlist);
 				}
-					if ( Mpp_role == MPP_ROLE_DISPATCH )
-					{
-						adapt_flow_to_targetlist(result_plan);
-					}
+
+				if (Mpp_role == MPP_ROLE_DISPATCH)
+				{
+					adapt_flow_to_targetlist(result_plan);
+				}
 
 				/*
 				 * Also, account for the cost of evaluation of the sub_tlist.
@@ -1970,4 +1971,24 @@ postprocess_setop_tlist(List *new_tlist, List *orig_tlist)
 	if (orig_tlist_item != NULL)
 		elog(ERROR, "resjunk output columns are not implemented");
 	return new_tlist;
+}
+
+/*
+ * Push this target list down into the plan
+ */
+void
+plan_pushdown_tlist(Plan *plan, List *tl)
+{
+	Assert(is_projection_capable_plan(plan));
+
+	switch (nodeTag(plan))
+	{
+		case T_AdaptiveNestLoop:
+			plan->lefttree->targetlist = tl;
+			plan->righttree->targetlist = tl;
+			/* fallthrough */
+		default:
+			plan->targetlist = tl;
+			break;
+	}
 }

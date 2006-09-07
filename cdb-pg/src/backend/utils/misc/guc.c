@@ -1062,6 +1062,16 @@ static struct config_bool ConfigureNamesBool[] =
     },
 
     {
+        {"mpp_enable_adaptive_nestloop", PGC_USERSET, UNGROUPED,
+            gettext_noop("Enables execute-time switching of join strategy"),
+			NULL,
+            GUC_NOT_IN_SAMPLE
+        },
+        &enable_adaptive_nestloop,
+        true, NULL, NULL
+    },
+
+    {
     	{"mpp_is_writer", PGC_BACKEND, UNGROUPED,
     		gettext_noop("If qExec is the single writer process."),
     		NULL,

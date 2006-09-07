@@ -369,7 +369,9 @@ typedef struct Join
 typedef struct NestLoop
 {
 	Join		join;
-    bool        outernotreferencedbyinner;  /* true => inner has no OUTER Var */
+
+    bool		outernotreferencedbyinner;  /* true => inner has no OUTER Var */
+	bool		shared_outer;
 } NestLoop;
 
 /* ----------------
@@ -391,6 +393,18 @@ typedef struct HashJoin
 	Join		join;
 	List	   *hashclauses;
 } HashJoin;
+
+/* ----------------
+ *		adaptive nest loop node: not a proper join node, has joins as child plans
+ * ----------------
+ */
+typedef struct AdaptiveNestLoop
+{
+	Plan		plan;
+
+	/* Plan-B structures */
+	int			nl_strategy_threshold; /* how many outer tuples before we change join strategy */
+} AdaptiveNestLoop;
 
 /* ----------------
  *		materialization node

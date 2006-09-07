@@ -455,6 +455,17 @@ _outNestLoop(StringInfo str, NestLoop *node)
 	_outJoinPlanInfo(str, (Join *) node);
 
     WRITE_BOOL_FIELD(outernotreferencedbyinner);
+	WRITE_BOOL_FIELD(shared_outer);
+}
+
+static void
+_outAdaptiveNestLoop(StringInfo str, AdaptiveNestLoop *node)
+{
+	WRITE_NODE_TYPE("ADAPTIVENESTLOOP");
+
+	_outPlanInfo(str, (Plan *)node);
+
+    WRITE_INT_FIELD(nl_strategy_threshold);
 }
 
 static void
@@ -2647,6 +2658,9 @@ _outNode(StringInfo str, void *obj)
 			case T_NestLoop:
 				_outNestLoop(str, obj);
 				break;
+			case T_AdaptiveNestLoop:
+				_outAdaptiveNestLoop(str, obj);
+				break;
 			case T_MergeJoin:
 				_outMergeJoin(str, obj);
 				break;
@@ -3124,8 +3138,8 @@ nodeToStringFast(void *obj)
 {
 	StringInfoData str;
 
-        /* see stringinfo.h for an explanation of this maneuver */
-        initStringInfo(&str);
+	/* see stringinfo.h for an explanation of this maneuver */
+	initStringInfo(&str);
 	_outNode(&str, obj);
 	return str.data;
 }
@@ -3143,8 +3157,8 @@ nodeToStringBigFast(void *obj)
 	StringInfoData str;
 	int bufsize = 8*1024;
 
-        /* see stringinfo.h for an explanation of this maneuver */
-        initStringInfoOfSize(&str, bufsize);
+	/* see stringinfo.h for an explanation of this maneuver */
+	initStringInfoOfSize(&str, bufsize);
 	_outNode(&str, obj);
 	return str.data;
 }

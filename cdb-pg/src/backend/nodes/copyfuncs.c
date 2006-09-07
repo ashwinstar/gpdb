@@ -421,6 +421,23 @@ _copyNestLoop(NestLoop *from)
 	CopyJoinFields((Join *) from, (Join *) newnode);
 
     COPY_SCALAR_FIELD(outernotreferencedbyinner);   /*CDB*/
+    COPY_SCALAR_FIELD(shared_outer);
+
+    return newnode;
+}
+
+/*
+ * _copyAdaptiveNestLoop
+ */
+static AdaptiveNestLoop *
+_copyAdaptiveNestLoop(AdaptiveNestLoop *from)
+{
+	AdaptiveNestLoop   *newnode = makeNode(AdaptiveNestLoop);
+
+	CopyPlanFields((Plan *) from, (Plan *) newnode);
+
+    COPY_SCALAR_FIELD(nl_strategy_threshold);
+
     return newnode;
 }
 
@@ -2940,6 +2957,9 @@ copyObject(void *from)
 			break;
 		case T_NestLoop:
 			retval = _copyNestLoop(from);
+			break;
+		case T_AdaptiveNestLoop:
+			retval = _copyAdaptiveNestLoop(from);
 			break;
 		case T_MergeJoin:
 			retval = _copyMergeJoin(from);

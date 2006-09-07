@@ -24,8 +24,11 @@
 
 #include "executor/execdebug.h"
 #include "executor/nodeNestloop.h"
-#include "utils/memutils.h"
+#include "executor/nodeHash.h"
+#include "executor/nodeHashjoin.h"
+#include "executor/hashjoin.h"
 
+#include "utils/memutils.h"
 
 /* ----------------------------------------------------------------
  *		ExecNestLoop(node)
@@ -115,9 +118,24 @@ ExecNestLoop(NestLoopState *node)
 		 */
 		if (node->nl_NeedNewOuter)
 		{
-			ENL1_printf("getting new outer tuple");
-			outerTupleSlot = ExecProcNode(outerPlan);
+			if (node->outer_q == NULL)
+			{
+				ENL1_printf("getting new outer tuple");
+				outerTupleSlot = ExecProcNode(outerPlan);
+			}
+			else
+			{
+				/* retrieve from our queue of reserved outer tuples */
+				outerTupleSlot = dequeueTQ(node->outer_q);
+				if (outerTupleSlot == NULL)
+				{
+					/* queued tuples exhausted, get them normally. */ 
+					pfree(node->outer_q);
+					node->outer_q = NULL;
 
+					outerTupleSlot = ExecProcNode(outerPlan);
+				}
+			}
 			/*
 			 * if there are no more outer tuples, then the join is complete..
 			 */
@@ -273,6 +291,10 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	nlstate->js.ps.plan = (Plan *) node;
 	nlstate->js.ps.state = estate;
 
+	nlstate->outer_q = NULL;
+
+	nlstate->shared_outer = node->shared_outer;
+
 	/*
 	 * Miscellaneous initialization
 	 *
@@ -303,7 +325,9 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	 * nodeIndexscan doesn't actually care about REWIND, there's no point
 	 * in dealing with that refinement.)
 	 */
-	outerPlanState(nlstate) = ExecInitNode(outerPlan(node), estate, eflags);
+	if (!node->shared_outer)
+		outerPlanState(nlstate) = ExecInitNode(outerPlan(node), estate, eflags);
+
 	innerPlanState(nlstate) = ExecInitNode(innerPlan(node), estate,
 										   eflags | EXEC_FLAG_REWIND);
 
@@ -358,9 +382,13 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 int
 ExecCountSlotsNestLoop(NestLoop *node)
 {
-	return ExecCountSlotsNode(outerPlan(node)) +
-		ExecCountSlotsNode(innerPlan(node)) +
-		NESTLOOP_NSLOTS;
+	int count;
+
+	count = ExecCountSlotsNode(outerPlan(node));
+	count += ExecCountSlotsNode(innerPlan(node));
+	count += NESTLOOP_NSLOTS;
+
+	return count;
 }
 
 /* ----------------------------------------------------------------
@@ -386,9 +414,10 @@ ExecEndNestLoop(NestLoopState *node)
 	ExecClearTuple(node->js.ps.ps_ResultTupleSlot);
 
 	/*
-	 * close down subplans
+	 * close down subplans.
 	 */
-	ExecEndNode(outerPlanState(node));
+	if (!node->shared_outer)
+		ExecEndNode(outerPlanState(node));
 	ExecEndNode(innerPlanState(node));
 
 	NL1_printf("ExecEndNestLoop: %s\n",
@@ -419,3 +448,4 @@ ExecReScanNestLoop(NestLoopState *node, ExprContext *exprCtxt)
 	node->nl_MatchedOuter = false;
 	/* CDB: We intentionally leave node->nl_Untouched unchanged on ReScan. */
 }
+

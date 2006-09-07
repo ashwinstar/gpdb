@@ -2083,6 +2083,23 @@ _readNestLoop(void)
 	readJoinInfo((Join *)local_node);
 
     READ_BOOL_FIELD(outernotreferencedbyinner); /*CDB*/
+    READ_BOOL_FIELD(shared_outer);
+
+    READ_DONE();
+}
+
+/*
+ * _readAdaptiveNestLoop
+ */
+static AdaptiveNestLoop *
+_readAdaptiveNestLoop(void)
+{
+	READ_LOCALS(AdaptiveNestLoop);
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_INT_FIELD(nl_strategy_threshold);
+
     READ_DONE();
 }
 
@@ -2564,6 +2581,7 @@ typedef struct ParseNodeInfo
  */
 static ParseNodeInfo infoAr[] =
 {
+	{"ADAPTIVENESTLOOP", (ReadFn)_readAdaptiveNestLoop},
 	{"AEXPR", (ReadFn)_readAExpr},
 	{"AGG", (ReadFn)_readAgg},
 	{"AGGREF", (ReadFn)_readAggref},

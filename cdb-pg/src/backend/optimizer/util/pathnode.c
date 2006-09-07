@@ -1307,7 +1307,8 @@ create_nestloop_path(PlannerInfo *root,
 					 Path *inner_path,
 					 List *restrict_clauses,
                      List *mergeclause_list,    /*CDB*/
-					 List *pathkeys)
+					 List *pathkeys,
+					 Path *alternate) /*CDB*/
 {
 	NestPath       *pathnode;
     CdbPathLocus    join_locus;
@@ -1350,17 +1351,19 @@ create_nestloop_path(PlannerInfo *root,
         inner_path = (Path *)create_material_path(inner_path->parent, inner_path);
 
     pathnode = makeNode(NestPath);
-	pathnode->path.pathtype = T_NestLoop;
-	pathnode->path.parent = joinrel;
-	pathnode->jointype = jointype;
-	pathnode->outerjoinpath = outer_path;
-	pathnode->innerjoinpath = inner_path;
-	pathnode->joinrestrictinfo = restrict_clauses;
-	pathnode->path.pathkeys = pathkeys;
+	pathnode->jpath.path.pathtype = T_NestLoop;
+	pathnode->jpath.path.parent = joinrel;
+	pathnode->jpath.jointype = jointype;
+	pathnode->jpath.outerjoinpath = outer_path;
+	pathnode->jpath.innerjoinpath = inner_path;
+	pathnode->jpath.joinrestrictinfo = restrict_clauses;
+	pathnode->jpath.path.pathkeys = pathkeys;
 
-    pathnode->path.locus = join_locus;
-    pathnode->path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
-    pathnode->path.rescannable = outer_path->rescannable;
+    pathnode->jpath.path.locus = join_locus;
+    pathnode->jpath.path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
+    pathnode->jpath.path.rescannable = outer_path->rescannable;
+
+	pathnode->alternate = alternate;
 
 	cost_nestloop(pathnode, root);
 

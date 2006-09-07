@@ -98,6 +98,7 @@
 #include "executor/nodeMergejoin.h"
 #include "executor/nodeMotion.h"
 #include "executor/nodeNestloop.h"
+#include "executor/nodeAdaptiveNestloop.h"
 #include "executor/nodeResult.h"
 #include "executor/nodeSeqscan.h"
 #include "executor/nodeSetOp.h"
@@ -210,6 +211,10 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			/*
 			 * join nodes
 			 */
+		case T_AdaptiveNestLoop:
+			result = (PlanState *) ExecInitAdaptiveNestLoop((AdaptiveNestLoop *) node,
+															estate, eflags);
+			break;
 		case T_NestLoop:
 			result = (PlanState *) ExecInitNestLoop((NestLoop *) node,
 													estate, eflags);
@@ -392,6 +397,9 @@ ExecProcNode(PlanState *node)
 			/*
 			 * join nodes
 			 */
+		case T_AdaptiveNestLoopState:
+			result = ExecAdaptiveNestLoop((AdaptiveNestLoopState *) node);
+			break;
 		case T_NestLoopState:
 			result = ExecNestLoop((NestLoopState *) node);
 			break;
@@ -571,6 +579,8 @@ ExecCountSlotsNode(Plan *node)
 			/*
 			 * join nodes
 			 */
+		case T_AdaptiveNestLoop:
+			return ExecCountSlotsAdaptiveNestLoop((AdaptiveNestLoop *) node);
 		case T_NestLoop:
 			return ExecCountSlotsNestLoop((NestLoop *) node);
 
@@ -757,6 +767,9 @@ ExecEndNode(PlanState *node)
 			/*
 			 * join nodes
 			 */
+		case T_AdaptiveNestLoopState:
+			ExecEndAdaptiveNestLoop((AdaptiveNestLoopState *) node);
+			break;
 		case T_NestLoopState:
 			ExecEndNestLoop((NestLoopState *) node);
 			break;

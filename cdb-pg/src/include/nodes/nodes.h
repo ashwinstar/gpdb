@@ -72,6 +72,7 @@ typedef enum NodeTag
 	T_SetOp,
 	T_Limit,
 	T_Motion,
+	T_AdaptiveNestLoop,
 
 	/*
 	 * TAGS FOR PLAN STATE NODES (execnodes.h)
@@ -104,6 +105,7 @@ typedef enum NodeTag
 	T_SetOpState,
 	T_LimitState,
 	T_MotionState,
+	T_AdaptiveNestLoopState,
 
 	/*
 	 * TAGS FOR PRIMITIVE NODES (primnodes.h)

@@ -114,9 +114,14 @@ static FunctionScan *make_functionscan(List *qptlist, List *qpqual,
 static BitmapAnd *make_bitmap_and(List *bitmapplans);
 static BitmapOr *make_bitmap_or(List *bitmapplans);
 static NestLoop *make_nestloop(List *tlist,
-			  List *joinclauses, List *otherclauses,
-			  Plan *lefttree, Plan *righttree,
-			  JoinType jointype);
+							   List *joinclauses, List *otherclauses,
+							   Plan *lefttree, Plan *righttree,
+							   JoinType jointype);
+static AdaptiveNestLoop *make_adaptivenestloop(List *tlist,
+												List *joinclauses, List *otherclauses,
+												Plan *lefttree, Plan *righttree,
+												JoinType jointype, int strategy_threshold,
+												HashJoin *alternate);
 static HashJoin *make_hashjoin(List *tlist,
 			  List *joinclauses, List *otherclauses,
 			  List *hashclauses,
@@ -1361,13 +1366,13 @@ create_nestloop_plan(CreatePlanContext *ctx,
 					 Plan *outer_plan,
 					 Plan *inner_plan)
 {
-	List	   *tlist = build_relation_tlist(best_path->path.parent);
-	List	   *joinrestrictclauses = best_path->joinrestrictinfo;
-	List	   *joinclauses;
-	List	   *otherclauses;
-	NestLoop   *join_plan;
+	List		*tlist = build_relation_tlist(best_path->jpath.path.parent);
+	List		*joinrestrictclauses = best_path->jpath.joinrestrictinfo;
+	List		*joinclauses;
+	List		*otherclauses;
+	NestLoop	*join_plan;
 
-	if (IsA(best_path->innerjoinpath, IndexPath))
+	if (IsA(best_path->jpath.innerjoinpath, IndexPath))
 	{
 		/*
 		 * An index is being used to reduce the number of tuples scanned in
@@ -1383,7 +1388,7 @@ create_nestloop_plan(CreatePlanContext *ctx,
 		 * We can skip this if the index path is an ordinary indexpath and not
 		 * a special innerjoin path.
 		 */
-		IndexPath  *innerpath = (IndexPath *) best_path->innerjoinpath;
+		IndexPath  *innerpath = (IndexPath *) best_path->jpath.innerjoinpath;
 
 		if (innerpath->isjoininner)
 		{
@@ -1391,10 +1396,10 @@ create_nestloop_plan(CreatePlanContext *ctx,
 				select_nonredundant_join_clauses(ctx->root,
 												 joinrestrictclauses,
 												 innerpath->indexclauses,
-										 IS_OUTER_JOIN(best_path->jointype));
+										 IS_OUTER_JOIN(best_path->jpath.jointype));
 		}
 	}
-	else if (IsA(best_path->innerjoinpath, BitmapHeapPath))
+	else if (IsA(best_path->jpath.innerjoinpath, BitmapHeapPath))
 	{
 		/*
 		 * Same deal for bitmapped index scans.
@@ -1409,7 +1414,7 @@ create_nestloop_plan(CreatePlanContext *ctx,
 		 * wary of UPDATE/DELETE/SELECT FOR UPDATE target relations; see
 		 * notes above about EvalPlanQual.)
 		 */
-		BitmapHeapPath *innerpath = (BitmapHeapPath *) best_path->innerjoinpath;
+		BitmapHeapPath *innerpath = (BitmapHeapPath *) best_path->jpath.innerjoinpath;
 
 		if (innerpath->isjoininner)
 		{
@@ -1423,13 +1428,13 @@ create_nestloop_plan(CreatePlanContext *ctx,
 				select_nonredundant_join_clauses(ctx->root,
 												 joinrestrictclauses,
 												 bitmapclauses,
-										 IS_OUTER_JOIN(best_path->jointype));
+										 IS_OUTER_JOIN(best_path->jpath.jointype));
 		}
 	}
 
 	/* Get the join qual clauses (in plain expression form) */
 	/* Any pseudoconstant clauses are ignored here */
-	if (IS_OUTER_JOIN(best_path->jointype))
+	if (IS_OUTER_JOIN(best_path->jpath.jointype))
 	{
 		extract_actual_join_clauses(joinrestrictclauses,
 									&joinclauses, &otherclauses);
@@ -1445,14 +1450,43 @@ create_nestloop_plan(CreatePlanContext *ctx,
 	joinclauses = order_qual_clauses(ctx->root, joinclauses);
 	otherclauses = order_qual_clauses(ctx->root, otherclauses);
 
+	if (best_path->alternate != NULL)
+	{
+		Plan		*alternate_inner = NULL;
+		HashJoin	*alternate_plan = NULL;
+		int			strategy_threshold;
+
+		AdaptiveNestLoop *anl_plan;
+
+		strategy_threshold = Min(cdbpath_rows(best_path->jpath.outerjoinpath) * 2,
+								 cdbpath_rows(best_path->jpath.outerjoinpath) + 10);
+
+		alternate_inner = create_subplan(ctx, ((HashPath *)best_path->alternate)->jpath.innerjoinpath);
+
+		alternate_plan = create_hashjoin_plan(ctx, (HashPath *)best_path->alternate, outer_plan, alternate_inner);
+
+		anl_plan = make_adaptivenestloop(tlist,
+										  joinclauses,
+										  otherclauses,
+										  outer_plan,
+										  inner_plan,
+										  best_path->jpath.jointype,
+										  strategy_threshold,
+										  alternate_plan);
+
+		copy_path_costsize(&((NestLoop *)anl_plan->plan.lefttree)->join.plan, &best_path->jpath.path);
+
+		return (NestLoop *)anl_plan;
+	}
+
 	join_plan = make_nestloop(tlist,
 							  joinclauses,
 							  otherclauses,
 							  outer_plan,
 							  inner_plan,
-							  best_path->jointype);
+							  best_path->jpath.jointype);
 
-	copy_path_costsize(&join_plan->join.plan, &best_path->path);
+	copy_path_costsize(&join_plan->join.plan, &best_path->jpath.path);
 
 	return join_plan;
 }
@@ -2188,7 +2222,39 @@ make_nestloop(List *tlist,
 	plan->righttree = righttree;
 	node->join.jointype = jointype;
 	node->join.joinqual = joinclauses;
+
     node->outernotreferencedbyinner = false;    /*CDB*/
+
+	return node;
+}
+
+static AdaptiveNestLoop *
+make_adaptivenestloop(List *tlist,
+					  List *joinclauses,
+					  List *otherclauses,
+					  Plan *lefttree,
+					  Plan *righttree,
+					  JoinType jointype,
+					  int strategy_threshold,
+					  HashJoin *alternate_join)
+{
+	AdaptiveNestLoop	*node = makeNode(AdaptiveNestLoop);
+	NestLoop			*planA;
+	Plan				*plan = &node->plan;
+
+	plan->targetlist = tlist;
+	plan->qual = otherclauses;
+	plan->lefttree = NULL;
+	plan->righttree = NULL;
+
+	planA = make_nestloop(tlist, joinclauses, otherclauses,
+						  lefttree, righttree, jointype);
+	planA->shared_outer = true;
+
+	plan->lefttree = (Plan *)planA;
+	plan->righttree = (Plan *)alternate_join;
+
+	node->nl_strategy_threshold = strategy_threshold;
 
 	return node;
 }

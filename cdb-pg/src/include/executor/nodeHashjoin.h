@@ -26,4 +26,8 @@ extern void ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt);
 extern void ExecHashJoinSaveTuple(HeapTuple heapTuple, uint32 hashvalue,
 					  BufFile **fileptr);
 
+extern executorTupleQueue *makeTQ(int size);
+extern void enqueueTQ(executorTupleQueue *tq, TupleTableSlot *slot);
+extern TupleTableSlot *dequeueTQ(executorTupleQueue *tq);
+
 #endif   /* NODEHASHJOIN_H */

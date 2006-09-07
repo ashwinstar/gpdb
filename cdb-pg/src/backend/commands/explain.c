@@ -40,7 +40,6 @@
 #include "cdb/cdblink.h"                /* getMPPSegmentCount() */
 #include "cdb/cdbpullup.h"              /* cdbpullup_targetlist() */
 
-
 typedef struct ExplainState
 {
     /* options */
@@ -470,6 +469,7 @@ explain_outNode(StringInfo str,
 {
 	char	   *pname = NULL;
 	int			i;
+	bool		skip_outer=false;
 
 	if (plan == NULL)
 	{
@@ -491,7 +491,16 @@ explain_outNode(StringInfo str,
 		case T_BitmapOr:
 			pname = "BitmapOr";
 			break;
+		case T_AdaptiveNestLoop:
+			pname = "Adaptive Nested Loop";
+
+			appendStringInfo(str, "%s (threshold %d)", pname,
+							 ((AdaptiveNestLoop *)plan)->nl_strategy_threshold);
+			pname = "";
+			break;
 		case T_NestLoop:
+			if (((NestLoop *)plan)->shared_outer)
+				skip_outer = true;
 			switch (((NestLoop *) plan)->join.jointype)
 			{
 				case JOIN_INNER:
@@ -960,7 +969,7 @@ explain_outNode(StringInfo str,
 	}
 
 	/* lefttree */
-	if (outerPlan(plan))
+	if (outerPlan(plan) && !skip_outer)
 	{
 		for (i = 0; i < indent; i++)
 			appendStringInfo(str, "  ");

@@ -945,8 +945,8 @@ cost_group(Path *path, PlannerInfo *root,
 void
 cost_nestloop(NestPath *path, PlannerInfo *root)
 {
-	Path	   *outer_path = path->outerjoinpath;
-	Path	   *inner_path = path->innerjoinpath;
+	Path	   *outer_path = path->jpath.outerjoinpath;
+	Path	   *inner_path = path->jpath.innerjoinpath;
 	Cost		startup_cost = 0;
 	Cost		run_cost = 0;
 	Cost		cpu_per_tuple;
@@ -977,7 +977,7 @@ cost_nestloop(NestPath *path, PlannerInfo *root)
 	 * selectivity.  (This assumes that all the quals attached to the join are
 	 * IN quals, which should be true.)
 	 */
-	joininfactor = join_in_selectivity(path, root);
+	joininfactor = join_in_selectivity(&path->jpath, root);
 
 	/* cost of source data */
 
@@ -1013,13 +1013,13 @@ cost_nestloop(NestPath *path, PlannerInfo *root)
 	ntuples = outer_path_rows * inner_path_rows * joininfactor;
 
 	/* CPU costs */
-	cost_qual_eval(&restrict_qual_cost, path->joinrestrictinfo);
+	cost_qual_eval(&restrict_qual_cost, path->jpath.joinrestrictinfo);
 	startup_cost += restrict_qual_cost.startup;
 	cpu_per_tuple = cpu_tuple_cost + restrict_qual_cost.per_tuple;
 	run_cost += cpu_per_tuple * ntuples;
 
-	path->path.startup_cost = startup_cost;
-	path->path.total_cost = startup_cost + run_cost;
+	path->jpath.path.startup_cost = startup_cost;
+	path->jpath.path.total_cost = startup_cost + run_cost;
 }
 
 /*

@@ -325,6 +325,11 @@ plan_tree_walker(Node *node,
 			/* Abstract: really should see only subclasses. */
 			return walk_join_node_fields((Join *) node, walker, context);
 
+		case T_AdaptiveNestLoop:
+			if (walk_join_node_fields((Join *)(((AdaptiveNestLoop *)node)->plan.lefttree), walker, context))
+				return true;
+			break;
+
 		case T_NestLoop:
 			if (walk_join_node_fields((Join *) node, walker, context))
 				return true;
@@ -798,11 +803,43 @@ plan_tree_mutator(Node *node,
 
 				FLATCOPY(newloopscan, loopscan, NestLoop);
 				JOINMUTATE(newloopscan, loopscan);
+
 				/* A NestLoop is really just a Join. */
 				return (Node *) newloopscan;
 			}
 			break;
+		case T_AdaptiveNestLoop:
+			/* two child plans, one NestLoop, one HashJoin */
+			{
+				AdaptiveNestLoop   *loop = (AdaptiveNestLoop *) node;
+				AdaptiveNestLoop   *newloop;
 
+				FLATCOPY(newloop, loop, AdaptiveNestLoop);
+
+				{
+					NestLoop   *loopscan = (NestLoop *)loop->plan.lefttree;
+					NestLoop   *newloopscan;
+
+					FLATCOPY(newloopscan, loopscan, NestLoop);
+					JOINMUTATE(newloopscan, loopscan);
+
+					newloop->plan.lefttree = (Plan *)newloopscan;
+				}
+
+				{
+					HashJoin   *hjoin = (HashJoin *)loop->plan.righttree;
+					HashJoin   *newhjoin;
+				
+					FLATCOPY(newhjoin, hjoin, HashJoin);
+					JOINMUTATE(newhjoin, hjoin);
+					MUTATE(newhjoin->hashclauses, hjoin->hashclauses, List *);
+
+					newloop->plan.righttree = (Plan *)newhjoin;
+				}
+
+				return (Node *) newloop;
+			}
+			break;
 		case T_MergeJoin:
 			{
 				MergeJoin  *merge = (MergeJoin *) node;

@@ -454,6 +454,17 @@ _outNestLoop(StringInfo str, NestLoop *node)
 	_outJoinPlanInfo(str, (Join *) node);
 
     WRITE_BOOL_FIELD(outernotreferencedbyinner);    /*CDB*/
+	WRITE_BOOL_FIELD(shared_outer);
+}
+
+static void
+_outAdaptiveNestLoop(StringInfo str, AdaptiveNestLoop *node)
+{
+	WRITE_NODE_TYPE("ADAPTIVENESTLOOP");
+
+	_outPlanInfo(str, (Plan *) node);
+
+    WRITE_INT_FIELD(nl_strategy_threshold);
 }
 
 static void
@@ -2661,6 +2672,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_NestLoop:
 				_outNestLoop(str, obj);
+				break;
+			case T_AdaptiveNestLoop:
+				_outAdaptiveNestLoop(str, obj);
 				break;
 			case T_MergeJoin:
 				_outMergeJoin(str, obj);

@@ -24,7 +24,6 @@
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 
-
 static void sort_inner_and_outer(PlannerInfo *root, RelOptInfo *joinrel,
 					 RelOptInfo *outerrel, RelOptInfo *innerrel,
 					 List *restrictlist, List *mergeclause_list,
@@ -47,6 +46,14 @@ static List *select_mergejoin_clauses(RelOptInfo *joinrel,
 						 List *restrictlist,
 						 JoinType jointype);
 
+
+static List *
+hashclauses_for_join(List *restrictList,
+					 RelOptInfo *outerrel,
+					 RelOptInfo *innerrel,
+					 JoinType jointype);
+
+bool enable_adaptive_nestloop = true;
 
 /*
  * add_paths_to_joinrel
@@ -442,6 +449,20 @@ match_unsorted_outer(PlannerInfo *root,
 
 		if (nestjoinOK)
 		{
+			Path *alternate;
+
+			if (!enable_adaptive_nestloop)
+				alternate = NULL;
+			else
+				alternate = (Path *)create_hashjoin_path(root,
+														 joinrel,
+														 jointype,
+														 outerpath,
+														 inner_cheapest_total,
+														 restrictlist,
+														 mergeclause_list,         /*CDB*/
+														 hashclauses_for_join(restrictlist, outerrel, innerrel, jointype));
+
 			/*
 			 * Always consider a nestloop join with this outer and
 			 * cheapest-total-cost inner.  When appropriate, also consider
@@ -457,7 +478,8 @@ match_unsorted_outer(PlannerInfo *root,
 										  inner_cheapest_total,
 										  restrictlist,
                                           mergeclause_list,         /*CDB*/
-										  merge_pathkeys));
+										  merge_pathkeys,
+										  alternate));
 			if (matpath != NULL)
 				add_path(root, joinrel, (Path *)
 						 create_nestloop_path(root,
@@ -467,7 +489,8 @@ match_unsorted_outer(PlannerInfo *root,
 											  matpath,
 											  restrictlist,
                                               mergeclause_list,     /*CDB*/
-											  merge_pathkeys));
+											  merge_pathkeys,
+											  alternate));
 			if (inner_cheapest_startup != inner_cheapest_total)
 				add_path(root, joinrel, (Path *)
 						 create_nestloop_path(root,
@@ -477,7 +500,8 @@ match_unsorted_outer(PlannerInfo *root,
 											  inner_cheapest_startup,
 											  restrictlist,
                                               mergeclause_list,     /*CDB*/
-											  merge_pathkeys));
+											  merge_pathkeys,
+											  alternate));
 			if (bestinnerjoin != NULL)
 				add_path(root, joinrel, (Path *)
 						 create_nestloop_path(root,
@@ -487,7 +511,8 @@ match_unsorted_outer(PlannerInfo *root,
 											  bestinnerjoin,
 											  restrictlist,
                                               mergeclause_list,     /*CDB*/
-											  merge_pathkeys));
+											  merge_pathkeys,
+											  alternate));
 		}
 
 		/* Can't do anything else if outer path needs to be unique'd */
@@ -662,33 +687,18 @@ match_unsorted_outer(PlannerInfo *root,
 	}
 }
 
-/*
- * hash_inner_and_outer
- *	  Create hashjoin join paths by explicitly hashing both the outer and
- *	  inner keys of each available hash clause.
- *
- * 'joinrel' is the join relation
- * 'outerrel' is the outer join relation
- * 'innerrel' is the inner join relation
- * 'restrictlist' contains all of the RestrictInfo nodes for restriction
- *		clauses that apply to this join
- * 'jointype' is the type of join to do
- */
-static void
-hash_inner_and_outer(PlannerInfo *root,
-					 RelOptInfo *joinrel,
+static List *
+hashclauses_for_join(List *restrictlist,
 					 RelOptInfo *outerrel,
 					 RelOptInfo *innerrel,
-					 List *restrictlist,
-                     List *mergeclause_list,    /*CDB*/
 					 JoinType jointype)
 {
 	bool		isouterjoin;
-	List	   *hashclauses;
-	ListCell   *l;
+	ListCell	*l;
+	List		*clauses = NIL;
 
 	/*
-	 * Hashjoin only supports inner, left, and IN joins.
+	 * Hash only supports inner, left, and IN joins.
 	 */
 	switch (jointype)
 	{
@@ -702,7 +712,7 @@ hash_inner_and_outer(PlannerInfo *root,
 			isouterjoin = true;
 			break;
 		default:
-			return;
+			return NULL;
 	}
 
 	/*
@@ -712,7 +722,6 @@ hash_inner_and_outer(PlannerInfo *root,
 	 * Scan the join's restrictinfo list to find hashjoinable clauses that are
 	 * usable with this pair of sub-relations.
 	 */
-	hashclauses = NIL;
 	foreach(l, restrictlist)
 	{
 		RestrictInfo *restrictinfo = (RestrictInfo *) lfirst(l);
@@ -744,8 +753,55 @@ hash_inner_and_outer(PlannerInfo *root,
 		else
 			continue;			/* no good for these input relations */
 
-		hashclauses = lappend(hashclauses, restrictinfo);
+		clauses = lappend(clauses, restrictinfo);
 	}
+
+	return clauses;
+}
+
+/*
+ * hash_inner_and_outer
+ *	  Create hashjoin join paths by explicitly hashing both the outer and
+ *	  inner keys of each available hash clause.
+ *
+ * 'joinrel' is the join relation
+ * 'outerrel' is the outer join relation
+ * 'innerrel' is the inner join relation
+ * 'restrictlist' contains all of the RestrictInfo nodes for restriction
+ *		clauses that apply to this join
+ * 'jointype' is the type of join to do
+ */
+static void
+hash_inner_and_outer(PlannerInfo *root,
+					 RelOptInfo *joinrel,
+					 RelOptInfo *outerrel,
+					 RelOptInfo *innerrel,
+					 List *restrictlist,
+                     List *mergeclause_list,    /*CDB*/
+					 JoinType jointype)
+{
+	bool		isouterjoin;
+	List	   *hashclauses;
+
+	/*
+	 * Hashjoin only supports inner, left, and IN joins.
+	 */
+	switch (jointype)
+	{
+		case JOIN_INNER:
+		case JOIN_IN:
+		case JOIN_UNIQUE_OUTER:
+		case JOIN_UNIQUE_INNER:
+			isouterjoin = false;
+			break;
+		case JOIN_LEFT:
+			isouterjoin = true;
+			break;
+		default:
+			return;
+	}
+
+	hashclauses = hashclauses_for_join(restrictlist, outerrel, innerrel, jointype);
 
 	/* If we found any usable hashclauses, make a path */
 	if (hashclauses)

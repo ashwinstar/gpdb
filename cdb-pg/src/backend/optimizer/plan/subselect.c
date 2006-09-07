@@ -1351,6 +1351,7 @@ finalize_plan(Plan *plan, List *rtable,
 			  Bitmapset *outer_params, Bitmapset *valid_params)
 {
 	finalize_primnode_context context;
+	bool		skip_subtrees=false;
 
 	if (plan == NULL)
 		return NULL;
@@ -1479,11 +1480,32 @@ finalize_plan(Plan *plan, List *rtable,
 			}
 			break;
 
+		case T_AdaptiveNestLoop:
+		   	{
+				Plan *tmp;
+
+				context.paramids = bms_add_members(context.paramids,
+												   finalize_plan(plan->lefttree,
+																 rtable,
+																 outer_params,
+																 valid_params));
+
+				tmp = plan->righttree->lefttree;
+				plan->righttree->lefttree = NULL;
+
+				context.paramids = bms_add_members(context.paramids,
+												   finalize_plan(plan->righttree,
+																 rtable,
+																 outer_params,
+																 valid_params));
+				plan->righttree->lefttree = tmp;
+				skip_subtrees = true;
+			}
+			break;
 		case T_NestLoop:
 			finalize_primnode((Node *) ((Join *) plan)->joinqual,
 							  &context);
 			break;
-
 		case T_MergeJoin:
 			finalize_primnode((Node *) ((Join *) plan)->joinqual,
 							  &context);
@@ -1526,18 +1548,21 @@ finalize_plan(Plan *plan, List *rtable,
 				 (int) nodeTag(plan));
 	}
 
-	/* Process left and right child plans, if any */
-	context.paramids = bms_add_members(context.paramids,
-									   finalize_plan(plan->lefttree,
-													 rtable,
-													 outer_params,
-													 valid_params));
+	if (!skip_subtrees)
+	{
+		/* Process left and right child plans, if any */
+		context.paramids = bms_add_members(context.paramids,
+										   finalize_plan(plan->lefttree,
+														 rtable,
+														 outer_params,
+														 valid_params));
 
-	context.paramids = bms_add_members(context.paramids,
-									   finalize_plan(plan->righttree,
+		context.paramids = bms_add_members(context.paramids,
+										   finalize_plan(plan->righttree,
 													 rtable,
-													 outer_params,
-													 valid_params));
+														 outer_params,
+														 valid_params));
+	}
 
 	/* Now we have all the paramids */
 
