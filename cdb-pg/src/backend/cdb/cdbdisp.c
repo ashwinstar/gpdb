@@ -673,7 +673,10 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
 	char	*szSnapshotInfo = NULL;
 	int		nsegdb = getMPPSegmentCount();
 	
-    elog(DEBUG3, "cdbdisp_dispatchCommand: %.50s", szCommand);
+	if (DEBUG5 >= log_min_messages)
+    	elog(DEBUG3, "cdbdisp_dispatchCommand: %s", szCommand);
+    else
+    	elog(DEBUG3, "cdbdisp_dispatchCommand: %.50s", szCommand);
 
     *pPrimaryResults = NULL;
     if (pMirrorResults)
