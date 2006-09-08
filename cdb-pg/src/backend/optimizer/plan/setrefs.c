@@ -238,6 +238,7 @@ set_plan_references(Plan *plan, List *rtable)
 			break;
 		case T_AdaptiveNestLoop:
 
+			/* main, and main-inner */
 			set_plan_references(plan->lefttree, rtable);
 
 			/* If we have an alternate plan; we have to fixup its
@@ -251,6 +252,9 @@ set_plan_references(Plan *plan, List *rtable)
 
 			/* Now initialize the shared-outer */
 			set_plan_references(plan->lefttree->lefttree, rtable);
+
+			/* Now initialize the alternate-inner */
+			set_plan_references(plan->righttree->righttree, rtable);
 
 			plan->targetlist = plan->lefttree->targetlist;
 

@@ -129,11 +129,11 @@ ExecNestLoop(NestLoopState *node)
 				outerTupleSlot = dequeueTQ(node->outer_q);
 				if (outerTupleSlot == NULL)
 				{
-					/* queued tuples exhausted, get them normally. */ 
+					/* queued tuples exhausted */ 
 					pfree(node->outer_q);
 					node->outer_q = NULL;
 
-					outerTupleSlot = ExecProcNode(outerPlan);
+					return NULL;
 				}
 			}
 			/*
