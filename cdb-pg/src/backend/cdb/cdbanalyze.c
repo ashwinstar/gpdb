@@ -138,7 +138,12 @@ cdbanalyze_callback(StringInfo sqlstmt,
 	tmp = SPI_getvalue(tup, tupdesc, Anum_pg_class_max_tuples);
 	if (SPI_result != 0 && !tmp)
 		goto fail;
-	if (!tmp)
+		
+	/*
+	 * CTAS can cause this to happen, because the QD creates it's toast index before the QEs have had time
+	 * to initialize their tables, but otherwise we shouldn't see null returned.
+	 */
+	if (!tmp && strcmp(sqlstmt->data,"pg_toast")==0)
 		ereport(NOTICE, (errcode(ERRCODE_MPP_COMMAND_ERROR),
 			   errmsg("NULL returned instead of statistics from segment databases."),
 					  errdetail("Segment db catalog query : %s",
