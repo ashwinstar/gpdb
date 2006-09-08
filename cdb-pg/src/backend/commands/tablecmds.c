@@ -484,10 +484,12 @@ DefineRelation_int(CreateStmt *stmt,
 	{
 		Oid			toastRelationId = InvalidOid;
 		Relation	pg_class_desc;
+		Relation	pg_type_desc;
 		Oid 		comptypeOid = InvalidOid;
 		Oid			toastIndexId = InvalidOid;
 	
 		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+		pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
 	
 		/*
 		 * Pre-Allocate an OID for the relation, and one for the toast table (just in case).
@@ -498,7 +500,7 @@ DefineRelation_int(CreateStmt *stmt,
 	
 		relationId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
 		
-		comptypeOid = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+		comptypeOid = GetNewRelFileNode(tablespaceId, false,  pg_type_desc);
 									
 		toastRelationId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
 		
@@ -510,9 +512,12 @@ DefineRelation_int(CreateStmt *stmt,
 		stmt->comptypeOid = comptypeOid;
 		stmt->toastOid = toastRelationId;
 		stmt->toastIndexOid = toastIndexId;
-		stmt->toastComptypeOid = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+		
+		stmt->toastComptypeOid = GetNewRelFileNode(tablespaceId, false,  pg_type_desc);
 		stmt->relKind = relkind;
 		stmt->relation->schemaname = get_namespace_name(namespaceId);	
+		
+		heap_close(pg_type_desc, RowExclusiveLock);
 	}
 	else if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
