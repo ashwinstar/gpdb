@@ -26,6 +26,7 @@
 
 #include "commands/tablespace.h"
 #include "catalog/catalog.h"
+#include "catalog/pg_type.h"
 
 #include "cdb/cdbfts.h"         /* isFTSEnabled() */
 #include "cdb/cdbllize.h"
@@ -253,16 +254,23 @@ apply_motion(Plan *plan, Query *query)
 				if (!OidIsValid(query->intoOid))
 				{
 					Relation	pg_class_desc;
+					Relation	pg_type_desc;
 
 					Oid reltablespace = GetDefaultTablespace();
 				
 					pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+					pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
 										
 					query->intoOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
 					
-					query->intoComptypeOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+					query->intoComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+					
+					query->intoToastOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+					
+					query->intoToastComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
 					
 					heap_close(pg_class_desc, RowExclusiveLock);
+					heap_close(pg_type_desc, RowExclusiveLock);
 					
 				}
 				
