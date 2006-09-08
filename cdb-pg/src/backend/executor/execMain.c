@@ -1284,7 +1284,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		 * AlterTableCreateToastTable ends with CommandCounterIncrement(), so
 		 * that the TOAST table will be visible for insertion.
 		 */
-		AlterTableCreateToastTable(intoRelationId, true);
+		AlterTableCreateToastTableWithOid(intoRelationId, true, parseTree->intoToastOid, parseTree->intoToastIndexOid, &parseTree->intoToastComptypeOid);
 
 		/*
 		 * And open the constructed table for writing.

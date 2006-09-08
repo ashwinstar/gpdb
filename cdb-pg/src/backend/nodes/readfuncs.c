@@ -259,6 +259,18 @@ _readQuery(void)
     {                           /* braces required, macro doesn't have 'em */
         READ_OID_FIELD(intoComptypeOid);
     }
+    if (pg_strtok_peek_fldname("intoToastOid"))
+    {                           
+        READ_OID_FIELD(intoToastOid);
+    }
+    if (pg_strtok_peek_fldname("intoToastIndexOid"))
+    {                           
+        READ_OID_FIELD(intoToastIndexOid);
+    }
+    if (pg_strtok_peek_fldname("intoToastComptypeOid"))
+    {                           
+        READ_OID_FIELD(intoToastComptypeOid);
+    }
 	local_node->intoPolicy = NULL;
 	
 

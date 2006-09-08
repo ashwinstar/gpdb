@@ -127,6 +127,9 @@ typedef struct Query
 	
 	Oid			intoOid;			/* Oid of table for SELECT INTO */
 	Oid			intoComptypeOid;
+	Oid		    intoToastOid;		/* if toast table needed, use this for the relOid of the toast */
+	Oid		    intoToastIndexOid;		/* if toast table needed, use this for the relOid of the index */
+	Oid			intoToastComptypeOid;
 	MppPolicy  *intoPolicy;			/* Used only on the QD... Doesn't need to be serialized */
 } Query;
 

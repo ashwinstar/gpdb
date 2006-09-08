@@ -2156,8 +2156,14 @@ _outQuery(StringInfo str, Query *node)
 	/* CDB: The reader checks for the name of this field. */
     if (node->intoOid != 0)
 	    appendStringInfo(str, " :intoOid %d", (int)node->intoOid);
-	 if (node->intoComptypeOid != 0)
+	if (node->intoComptypeOid != 0)
 	    appendStringInfo(str, " :intoComptypeOid %d", (int)node->intoComptypeOid);
+	if (node->intoToastOid != 0)
+	    appendStringInfo(str, " :intoToastOid %d", (int)node->intoToastOid);
+	if (node->intoToastIndexOid != 0)
+	    appendStringInfo(str, " :intoToastIndexOid %d", (int)node->intoToastIndexOid);
+	if (node->intoToastComptypeOid != 0)
+	    appendStringInfo(str, " :intoToastComptypeOid %d", (int)node->intoToastComptypeOid);
 	
 }
 

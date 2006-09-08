@@ -1743,6 +1743,9 @@ _copyQuery(Query *from)
 	COPY_NODE_FIELD(resultRelations);
 	COPY_SCALAR_FIELD(intoOid);
 	COPY_SCALAR_FIELD(intoComptypeOid);
+	COPY_SCALAR_FIELD(intoToastOid);
+	COPY_SCALAR_FIELD(intoToastIndexOid);
+	COPY_SCALAR_FIELD(intoToastComptypeOid);
 	if (from->intoPolicy)
 	{
 		COPY_POINTER_FIELD(intoPolicy,sizeof(MppPolicy) + from->intoPolicy->nattrs*sizeof(from->intoPolicy->attrs[0]));

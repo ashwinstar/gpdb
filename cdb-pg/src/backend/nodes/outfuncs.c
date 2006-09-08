@@ -2174,6 +2174,12 @@ _outQuery(StringInfo str, Query *node)
 		WRITE_OID_FIELD(intoOid);
 	if (node->intoComptypeOid != 0)
 		WRITE_OID_FIELD(intoComptypeOid);
+	if (node->intoToastOid != 0)
+		WRITE_OID_FIELD(intoToastOid);
+	if (node->intoToastIndexOid != 0)
+		WRITE_OID_FIELD(intoToastIndexOid);
+	if (node->intoToastComptypeOid != 0)
+		WRITE_OID_FIELD(intoToastComptypeOid);
 	
 }
 
