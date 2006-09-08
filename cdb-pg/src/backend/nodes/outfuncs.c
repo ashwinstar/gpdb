@@ -1589,6 +1589,9 @@ _outAlterTableStmt(StringInfo str, AlterTableStmt *node)
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(cmds);
 	WRITE_ENUM_FIELD(relkind, ObjectType);
+	WRITE_OID_FIELD(toastOid);
+	WRITE_OID_FIELD(toastIndexOid);
+	WRITE_OID_FIELD(toastComptypeOid);
 }
 
 static void

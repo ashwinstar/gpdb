@@ -191,11 +191,11 @@ static void validateForeignKeyConstraint(FkConstraint *fkconstraint,
 static void createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 						 Oid constrOid);
 static char *fkMatchTypeToString(char match_type);
-static void ATController(Relation rel, List *cmds, bool recurse);
+static void ATController(Relation rel, List *cmds, bool recurse, Oid *toastOid, Oid *toastIndexOid, Oid *toastCmptypeOid);
 static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		  bool recurse, bool recursing);
-static void ATRewriteCatalogs(List **wqueue);
-static void ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd);
+static void ATRewriteCatalogs(List **wqueue, Oid *toastOid, Oid *toastIndexOid, Oid *toastCmptypeOid);
+static void ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, Oid *toastOid, Oid *toastIndexOid, Oid *toastCmptypeOid);
 static void ATRewriteTables(List **wqueue);
 static void ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap);
 static AlteredTableInfo *ATGetQueueEntry(List **wqueue, Relation rel);
@@ -1963,7 +1963,8 @@ AlterTable(AlterTableStmt *stmt)
 {
 	ATController(relation_openrv(stmt->relation, AccessExclusiveLock),
 				 stmt->cmds,
-				 interpretInhOption(stmt->relation->inhOpt));
+				 interpretInhOption(stmt->relation->inhOpt),
+				 &stmt->toastOid, &stmt->toastIndexOid, &stmt->toastComptypeOid);
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 		CdbDispatchUtilityStatement((Node *) stmt);
@@ -1979,11 +1980,12 @@ AlterTableInternal(Oid relid, List *cmds, bool recurse)
 {
 	ATController(relation_open(relid, AccessExclusiveLock),
 				 cmds,
-				 recurse);
+				 recurse,
+				 NULL, NULL, NULL);
 }
 
 static void
-ATController(Relation rel, List *cmds, bool recurse)
+ATController(Relation rel, List *cmds, bool recurse, Oid *toastOid, Oid *toastIndexOid, Oid *toastCmptypeOid)
 {
 	List	   *wqueue = NIL;
 	ListCell   *lcmd;
@@ -2000,7 +2002,7 @@ ATController(Relation rel, List *cmds, bool recurse)
 	relation_close(rel, NoLock);
 
 	/* Phase 2: update system catalogs */
-	ATRewriteCatalogs(&wqueue);
+	ATRewriteCatalogs(&wqueue, toastOid, toastIndexOid, toastCmptypeOid);
 
 	/* Phase 3: scan/rewrite tables as needed */
 	ATRewriteTables(&wqueue);
@@ -2194,7 +2196,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
  * conflicts).
  */
 static void
-ATRewriteCatalogs(List **wqueue)
+ATRewriteCatalogs(List **wqueue, Oid *toastOid, Oid *toastIndexOid, Oid *toastCmptypeOid)
 {
 	int			pass;
 	ListCell   *ltab;
@@ -2225,7 +2227,7 @@ ATRewriteCatalogs(List **wqueue)
 			rel = relation_open(tab->relid, NoLock);
 
 			foreach(lcmd, subcmds)
-				ATExecCmd(tab, rel, (AlterTableCmd *) lfirst(lcmd));
+				ATExecCmd(tab, rel, (AlterTableCmd *) lfirst(lcmd), toastOid, toastIndexOid, toastCmptypeOid);
 
 			/*
 			 * After the ALTER TYPE pass, do cleanup work (this is not done in
@@ -2245,13 +2247,54 @@ ATRewriteCatalogs(List **wqueue)
 	 */
 	foreach(ltab, *wqueue)
 	{
+		Oid tOid = InvalidOid;
+		Oid tiOid = InvalidOid;
 		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
 
 		if (tab->relkind == RELKIND_RELATION &&
 			(tab->subcmds[AT_PASS_ADD_COL] ||
 			 tab->subcmds[AT_PASS_ALTER_TYPE] ||
 			 tab->subcmds[AT_PASS_COL_ATTRS]))
-			AlterTableCreateToastTable(tab->relid, true);
+		{
+			
+			if (Mpp_role == MPP_ROLE_DISPATCH && toastOid != NULL && *toastOid == InvalidOid)
+			{
+				Relation	pg_class_desc;
+				Relation	rel;
+			
+				pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+				rel = heap_open(tab->relid, AccessExclusiveLock);
+			
+				if (rel->rd_rel->reltoastrelid == InvalidOid)
+				{
+					/*
+					 * Pre-Allocate an OID for the toast table and toast index, just in case needed.
+					 *
+					 * The OID will be the relfilenode as well, so make sure it doesn't collide
+					 * with either pg_class OIDs or existing physical files.
+					 */
+												
+					*toastOid = GetNewRelFileNode(rel->rd_rel->reltablespace, false,  pg_class_desc);
+					
+					*toastIndexOid = GetNewRelFileNode(rel->rd_rel->reltablespace, false,  pg_class_desc);
+					
+					tOid = *toastOid;
+					tiOid = *toastIndexOid;
+					elog(DEBUG1,"Pre-allocating toast Oid %ud, %ud",tOid,tiOid);
+				}
+											
+				heap_close(rel, NoLock);
+				heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
+				
+			}
+			if (Mpp_role == MPP_ROLE_EXECUTE && toastOid != NULL)
+			{
+				tOid = *toastOid;
+				tiOid = *toastIndexOid;
+			}
+			
+			AlterTableCreateToastTableWithOid(tab->relid, true, tOid, tiOid, toastCmptypeOid);
+		}
 	}
 }
 
@@ -2259,7 +2302,7 @@ ATRewriteCatalogs(List **wqueue)
  * ATExecCmd: dispatch a subcommand to appropriate execution routine
  */
 static void
-ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
+ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, Oid *toastOid, Oid *toastIndexOid, Oid *toastCmptypeOid)
 {
 	switch (cmd->subtype)
 	{
@@ -2306,7 +2349,45 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			ATExecAlterColumnType(tab, rel, cmd->name, (TypeName *) cmd->def);
 			break;
 		case AT_ToastTable:		/* CREATE TOAST TABLE */
-			AlterTableCreateToastTable(RelationGetRelid(rel), false);
+		{
+			Oid tOid = InvalidOid;
+			Oid tiOid = InvalidOid;
+			if (Mpp_role == MPP_ROLE_DISPATCH && toastOid != NULL && *toastOid == InvalidOid)
+			{
+				Relation	pg_class_desc;
+				Relation	rel;
+			
+				pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+				rel = heap_open(tab->relid, AccessExclusiveLock);
+			
+				if (rel->rd_rel->reltoastrelid == InvalidOid)
+				{
+					/*
+					 * Pre-Allocate an OID for the toast table and toast index, just in case needed.
+					 *
+					 * The OID will be the relfilenode as well, so make sure it doesn't collide
+					 * with either pg_class OIDs or existing physical files.
+					 */
+												
+					*toastOid = GetNewRelFileNode(rel->rd_rel->reltablespace, false,  pg_class_desc);
+					
+					*toastIndexOid = GetNewRelFileNode(rel->rd_rel->reltablespace, false,  pg_class_desc);
+					
+					tOid = *toastOid;
+					tiOid = *toastIndexOid;
+				}
+											
+				heap_close(rel, NoLock);
+				heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
+				
+			}
+			if (Mpp_role == MPP_ROLE_EXECUTE && toastOid != NULL)
+			{
+				tOid = *toastOid;
+				tiOid = *toastIndexOid;
+			}
+			AlterTableCreateToastTableWithOid(RelationGetRelid(rel), false, tOid, tiOid, toastCmptypeOid);
+		}
 			break;
 		case AT_ChangeOwner:	/* ALTER OWNER */
 			ATExecChangeOwner(RelationGetRelid(rel),

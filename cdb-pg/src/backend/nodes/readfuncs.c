@@ -598,6 +598,10 @@ _readAlterTableStmt(void)
 	READ_NODE_FIELD(cmds);
 	READ_ENUM_FIELD(relkind, ObjectType);
 	
+	READ_OID_FIELD(toastOid);
+	READ_OID_FIELD(toastIndexOid);
+	READ_OID_FIELD(toastComptypeOid);
+	
 	READ_DONE();
 }
 

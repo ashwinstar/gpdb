@@ -817,6 +817,9 @@ typedef struct AlterTableStmt
 	RangeVar   *relation;		/* table to work on */
 	List	   *cmds;			/* list of subcommands */
 	ObjectType	relkind;		/* type of object */
+	Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
+	Oid		    toastIndexOid;		/* if toast table needed, use this for the relOid of the index */
+	Oid			toastComptypeOid;
 } AlterTableStmt;
 
 typedef enum AlterTableType
