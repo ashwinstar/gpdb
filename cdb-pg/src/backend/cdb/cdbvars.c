@@ -54,6 +54,8 @@ char       *mpp_qd_callback_info;	/* info for QE to call back to QD */
 
 bool 		mpp_is_callback;		/* are we executing a callback query? */
 
+SHMEM_OFFSET mpp_qd_proc_offset;	/* the proc entry for the original backend on the QD */
+
 int         mpp_command_count;          /* num of commands from client */
 
 bool		Debug_print_prelim_plan;	/* Shall we log argument of

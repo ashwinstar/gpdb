@@ -1102,12 +1102,12 @@ static struct config_bool ConfigureNamesBool[] =
     },
     
     {
-    	{"mpp_is_callback", PGC_USERSET, UNGROUPED,
+    	{"mpp_is_callback", PGC_BACKEND, UNGROUPED,
     		gettext_noop("Are we executing on behalf of a callback from the QE to QD."),
     		NULL,
     		GUC_NOT_IN_SAMPLE
     	},
-    	&mpp_use_snapshop_during_callback,
+    	&mpp_is_callback,
     	false, NULL, NULL
     },
 
@@ -1741,6 +1741,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&mpp_segments_for_planner,
 		0, 0, INT_MAX, NULL, NULL
+	},
+	
+	{
+		{"mpp_qd_proc_offset", PGC_BACKEND, CLIENT_CONN,
+			gettext_noop("The shmmem offset of the original QD backend that is handling this query"),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		(int *)&mpp_qd_proc_offset,
+		-1, -1, INT_MAX, NULL, NULL
 	},
 
 
@@ -2396,7 +2406,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 	
 	{
-		{"mpp_qd_callback_info", PGC_USERSET, UNGROUPED,
+		{"mpp_qd_callback_info", PGC_BACKEND, CLIENT_CONN,
 			gettext_noop("Sets the QD callback information for the QEs in this session."),
 			gettext_noop("Right now, this is the port information"),
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
