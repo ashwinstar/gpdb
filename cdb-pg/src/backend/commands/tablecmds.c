@@ -191,12 +191,12 @@ static void validateForeignKeyConstraint(FkConstraint *fkconstraint,
 static void createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 						 Oid constrOid);
 static char *fkMatchTypeToString(char match_type);
-static void ATController(Relation rel, List *cmds, bool recurse, Oid *toastOid, Oid *toastIndexOid, Oid *toastCmptypeOid);
+static void ATController(Relation rel, List *cmds, bool recurse, Oid *relOid, Oid *comptypeOid, Oid *toastOid, Oid *toastIndexOid, Oid *toastComptypeOid);
 static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		  bool recurse, bool recursing);
 static void ATRewriteCatalogs(List **wqueue, Oid *toastOid, Oid *toastIndexOid, Oid *toastCmptypeOid);
-static void ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, Oid *toastOid, Oid *toastIndexOid, Oid *toastCmptypeOid);
-static void ATRewriteTables(List **wqueue);
+static void ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, Oid *toastOid, Oid *toastIndexOid, Oid *toastComptypeOid);
+static void ATRewriteTables(List **wqueue, Oid *relOid, Oid *comptypeOid, Oid *toastOid, Oid *toastIndexOid, Oid *toastComptypeOid);
 static void ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap);
 static AlteredTableInfo *ATGetQueueEntry(List **wqueue, Relation rel);
 static void ATSimplePermissions(Relation rel, bool allowView);
@@ -1964,7 +1964,7 @@ AlterTable(AlterTableStmt *stmt)
 	ATController(relation_openrv(stmt->relation, AccessExclusiveLock),
 				 stmt->cmds,
 				 interpretInhOption(stmt->relation->inhOpt),
-				 &stmt->toastOid, &stmt->toastIndexOid, &stmt->toastComptypeOid);
+				 &stmt->relOid, &stmt->comptypeOid, &stmt->toastOid, &stmt->toastIndexOid, &stmt->toastComptypeOid);
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 		CdbDispatchUtilityStatement((Node *) stmt);
@@ -1981,11 +1981,11 @@ AlterTableInternal(Oid relid, List *cmds, bool recurse)
 	ATController(relation_open(relid, AccessExclusiveLock),
 				 cmds,
 				 recurse,
-				 NULL, NULL, NULL);
+				 NULL, NULL, NULL, NULL, NULL);
 }
 
 static void
-ATController(Relation rel, List *cmds, bool recurse, Oid *toastOid, Oid *toastIndexOid, Oid *toastCmptypeOid)
+ATController(Relation rel, List *cmds, bool recurse, Oid *relOid, Oid *comptypeOid, Oid *toastOid, Oid *toastIndexOid, Oid *toastCmptypeOid)
 {
 	List	   *wqueue = NIL;
 	ListCell   *lcmd;
@@ -2005,7 +2005,7 @@ ATController(Relation rel, List *cmds, bool recurse, Oid *toastOid, Oid *toastIn
 	ATRewriteCatalogs(&wqueue, toastOid, toastIndexOid, toastCmptypeOid);
 
 	/* Phase 3: scan/rewrite tables as needed */
-	ATRewriteTables(&wqueue);
+	ATRewriteTables(&wqueue, relOid, comptypeOid, toastOid, toastIndexOid, toastCmptypeOid);
 }
 
 /*
@@ -2448,7 +2448,7 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, Oid *toastOid
  * ATRewriteTables: ALTER TABLE phase 3
  */
 static void
-ATRewriteTables(List **wqueue)
+ATRewriteTables(List **wqueue, Oid *relOid, Oid *comptypeOid, Oid *toastOid, Oid *toastIndexOid, Oid *toastComptypeOid)
 {
 	ListCell   *ltab;
 
@@ -2514,7 +2514,8 @@ ATRewriteTables(List **wqueue)
 			snprintf(NewHeapName, sizeof(NewHeapName),
 					 "pg_temp_%u", tab->relid);
 
-			OIDNewHeap = make_new_heap(tab->relid, NewHeapName, NewTableSpace);
+			OIDNewHeap = make_new_heap(tab->relid, NewHeapName, NewTableSpace,
+							relOid, comptypeOid, toastOid, toastIndexOid, toastComptypeOid);
 
 			/*
 			 * Copy the heap data into the new table with the desired

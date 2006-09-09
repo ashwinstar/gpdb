@@ -597,7 +597,8 @@ _readAlterTableStmt(void)
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(cmds);
 	READ_ENUM_FIELD(relkind, ObjectType);
-	
+	READ_OID_FIELD(relOid);
+	READ_OID_FIELD(comptypeOid);
 	READ_OID_FIELD(toastOid);
 	READ_OID_FIELD(toastIndexOid);
 	READ_OID_FIELD(toastComptypeOid);
@@ -1629,6 +1630,11 @@ _readClusterStmt(void)
 
 	READ_NODE_FIELD(relation);
 	READ_STRING_FIELD(indexname);
+	READ_OID_FIELD(relOid);
+	READ_OID_FIELD(comptypeOid);
+	READ_OID_FIELD(toastOid);
+	READ_OID_FIELD(toastIndexOid);
+	READ_OID_FIELD(toastComptypeOid);
 	
 	READ_DONE();
 }

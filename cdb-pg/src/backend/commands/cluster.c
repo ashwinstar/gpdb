@@ -26,6 +26,7 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_type.h"
 #include "commands/cluster.h"
 #include "commands/tablecmds.h"
 #include "miscadmin.h"
@@ -53,8 +54,8 @@ typedef struct
 } RelToCluster;
 
 
-static void cluster_rel(RelToCluster *rv, bool recheck);
-static void rebuild_relation(Relation OldHeap, Oid indexOid);
+static void cluster_rel(RelToCluster *rv, bool recheck, ClusterStmt *stmt);
+static void rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt);
 static void copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex);
 static List *get_tables_to_cluster(MemoryContext cluster_context);
 
@@ -160,7 +161,7 @@ cluster(ClusterStmt *stmt)
 		heap_close(rel, NoLock);
 
 		/* Do the job */
-		cluster_rel(&rvtc, false);
+		cluster_rel(&rvtc, false, stmt);
 	}
 	else
 	{
@@ -208,7 +209,7 @@ cluster(ClusterStmt *stmt)
 			StartTransactionCommand();
 			/* functions in indexes may want a snapshot set */
 			ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-			cluster_rel(rvtc, true);
+			cluster_rel(rvtc, true, stmt);
 			CommitTransactionCommand();
 		}
 
@@ -240,7 +241,7 @@ cluster(ClusterStmt *stmt)
  * them incrementally while we load the table.
  */
 static void
-cluster_rel(RelToCluster *rvtc, bool recheck)
+cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt)
 {
 	Relation	OldHeap;
 
@@ -304,7 +305,7 @@ cluster_rel(RelToCluster *rvtc, bool recheck)
 	check_index_is_clusterable(OldHeap, rvtc->indexOid, recheck);
 
 	/* rebuild_relation does all the dirty work */
-	rebuild_relation(OldHeap, rvtc->indexOid);
+	rebuild_relation(OldHeap, rvtc->indexOid, stmt);
 
 	/* NB: rebuild_relation does heap_close() on OldHeap */
 }
@@ -496,7 +497,7 @@ mark_index_clustered(Relation rel, Oid indexOid)
  * NB: this routine closes OldHeap at the right time; caller should not.
  */
 static void
-rebuild_relation(Relation OldHeap, Oid indexOid)
+rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
 {
 	Oid			tableOid = RelationGetRelid(OldHeap);
 	Oid			tableSpace = OldHeap->rd_rel->reltablespace;
@@ -519,7 +520,8 @@ rebuild_relation(Relation OldHeap, Oid indexOid)
 	 */
 	snprintf(NewHeapName, sizeof(NewHeapName), "pg_temp_%u", tableOid);
 
-	OIDNewHeap = make_new_heap(tableOid, NewHeapName, tableSpace);
+	OIDNewHeap = make_new_heap(tableOid, NewHeapName, tableSpace,
+					&stmt->relOid, &stmt->comptypeOid, &stmt->toastOid, &stmt->toastIndexOid, &stmt->toastComptypeOid);
 
 	/*
 	 * We don't need CommandCounterIncrement() because make_new_heap did it.
@@ -563,15 +565,54 @@ rebuild_relation(Relation OldHeap, Oid indexOid)
  * Create the new table that we will fill with correctly-ordered data.
  */
 Oid
-make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace)
+make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
+			  Oid *relFileOid, Oid *comptypeOid, Oid * toastOid, Oid *toastIndexOid, Oid *toastComptypeOid)
 {
 	TupleDesc	OldHeapDesc,
 				tupdesc;
-	Oid			OIDNewHeap;
+	Oid			OIDNewHeap = InvalidOid;
 	Relation	OldHeap;
+	Oid 		tOid = InvalidOid;
+	Oid			tiOid = InvalidOid;
 
 	OldHeap = heap_open(OIDOldHeap, AccessExclusiveLock);
 	OldHeapDesc = RelationGetDescr(OldHeap);
+
+
+	if (Mpp_role == MPP_ROLE_DISPATCH && relFileOid != NULL & toastOid != NULL)
+	{
+		Relation	pg_class_desc;
+		Relation	pg_type_desc;
+
+	
+		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+		pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
+	
+		/*
+		 * Pre-Allocate an OID for the relfilenode, and one for the toast table (just in case).
+		 *
+		 * The OID will be the relfilenode as well, so make sure it doesn't collide
+		 * with either pg_class OIDs or existing physical files.
+		 */
+	
+		*relFileOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
+		OIDNewHeap = *relFileOid;
+		
+		*comptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_type_desc);
+									
+		*toastOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
+		
+		*toastIndexOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
+									
+		heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
+		
+		*toastComptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_type_desc);
+
+		heap_close(pg_type_desc, RowExclusiveLock);
+		
+		tOid = *toastOid;
+		tiOid = *toastIndexOid;
+	}
 
 	/*
 	 * Need to make a copy of the tuple descriptor, since
@@ -582,7 +623,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace)
 	OIDNewHeap = heap_create_with_catalog(NewName,
 										  RelationGetNamespace(OldHeap),
 										  NewTableSpace,
-										  InvalidOid,
+										  OIDNewHeap,
 										  OldHeap->rd_rel->relowner,
 										  tupdesc,
 										  OldHeap->rd_rel->relkind,
@@ -591,9 +632,11 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace)
 										  0,
 										  ONCOMMIT_NOOP,
                                           NULL,                         /*CDB*/
-										  allowSystemTableMods
-										  ,NULL);
+										  allowSystemTableMods,
+										  comptypeOid);
 
+	*relFileOid = OIDNewHeap;
+	
 	/*
 	 * Advance command counter so that the newly-created relation's catalog
 	 * tuples will be visible to heap_open.
@@ -605,7 +648,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace)
 	 * AlterTableCreateToastTable ends with CommandCounterIncrement(), so that
 	 * the TOAST table will be visible for insertion.
 	 */
-	AlterTableCreateToastTable(OIDNewHeap, true);
+	AlterTableCreateToastTableWithOid(OIDNewHeap, true, tOid, tiOid, toastComptypeOid);
 
 	heap_close(OldHeap, NoLock);
 

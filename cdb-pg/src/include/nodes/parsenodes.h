@@ -817,6 +817,8 @@ typedef struct AlterTableStmt
 	RangeVar   *relation;		/* table to work on */
 	List	   *cmds;			/* list of subcommands */
 	ObjectType	relkind;		/* type of object */
+	Oid         relOid;			/* If the heap is re-created, create  with this relOid */
+	Oid         comptypeOid;	
 	Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
 	Oid		    toastIndexOid;		/* if toast table needed, use this for the relOid of the index */
 	Oid			toastComptypeOid;
@@ -1725,6 +1727,11 @@ typedef struct ClusterStmt
 	NodeTag		type;
 	RangeVar   *relation;		/* relation being indexed, or NULL if all */
 	char	   *indexname;		/* original index defined */
+	Oid         relOid;			/* create table with this relOid */
+	Oid         comptypeOid;			/* create table with this composite type Oid */
+	Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
+	Oid		    toastIndexOid;		/* if toast table needed, use this for the relOid of the index */
+	Oid			toastComptypeOid;
 } ClusterStmt;
 
 /* ----------------------
