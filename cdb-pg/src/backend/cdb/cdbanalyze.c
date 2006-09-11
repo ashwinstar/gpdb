@@ -270,6 +270,9 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 	int			mcv_nvalues = 0;
 	Datum		*histogram_values = 0;
 	int			histogram_nvalues = 0;
+	float 		tuples_this_segdb = 0.0;
+	float		totalrows = 0.0;
+	bool		special_stadistinct_handling = false;
 	
 	
 	Cdbanalyze_columns_Ctx *ctx = (Cdbanalyze_columns_Ctx *) context;
@@ -298,6 +301,7 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 		if (!tup)
 			goto fail;
 	
+
 	
 		dat = SPI_getbinval(tup, tupdesc, Anum_pg_statistic_stanullfrac, &isnull);
 		if (SPI_result != 0)
@@ -312,7 +316,13 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 		if (!isnull)
 			nullfrac +=  DatumGetFloat4(dat);
 			
-			 
+		
+		dat = SPI_getbinval(tup, tupdesc, Anum_pg_statistic_stavalues4 + 1, &isnull);
+		if (SPI_result != 0)
+			goto fail;
+			
+		tuples_this_segdb = DatumGetFloat4(dat);
+		totalrows += tuples_this_segdb;
 			 
 		dat = SPI_getbinval(tup, tupdesc, Anum_pg_statistic_stawidth, &isnull);
 		if (SPI_result != 0)
@@ -338,9 +348,23 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 		{
 			if ((DatumGetFloat4(dat) > 0 && distinct < 0) ||
 				(DatumGetFloat4(dat) < 0 && distinct > 0))
-				elog(NOTICE,"Analyze bug:  Sign reversed");
-				
-			distinct +=  DatumGetFloat4(dat);
+				{
+					special_stadistinct_handling = true;
+					if (distinct < 0.0)
+					{
+						// Turn back into # of disinct values, rather than percent
+						distinct  = -(distinct * (totalrows/(float)(i+1)));
+					}
+				}
+			
+			if (special_stadistinct_handling && DatumGetFloat4(dat) < 0)
+			{
+				if (tuples_this_segdb == 0)
+					tuples_this_segdb = 1;
+				distinct += -(distinct * tuples_this_segdb);
+			}
+			else
+				distinct +=  DatumGetFloat4(dat);
 		}
 		
 		/*
@@ -436,14 +460,23 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 	
 	correlation /= (float)correlationcount;
 	
+	totalrows /= (float)SPI_processed;		// actually, the average per segDB
+	
 	ctx->stats->stanullfrac = nullfrac/(float)SPI_processed;
 	
 	ctx->stats->stawidth = (short)(avgwidth/SPI_processed);
 	
 	ctx->stats->stadistinct = distinct/(float)SPI_processed;
 	
-	//if (ctx->stats->stadistinct > 0.1 * totalrows)
-	//		ctx->stats->stadistinct = -(ctx->stats->stadistinct / totalrows);
+	/*
+	 * If we estimated the number of distinct values at more than 10% of
+	 * the total row count (a very arbitrary limit), then assume that
+	 * stadistinct should scale with the row count rather than be a fixed
+	 * value.
+	 */
+	if (special_stadistinct_handling && totalrows > 0.0)
+	if (ctx->stats->stadistinct > 0.1 * totalrows)
+		ctx->stats->stadistinct = -(ctx->stats->stadistinct / totalrows);
 	
 	/*
 	 * Fill in the slots with info gathered above.  We can't do this at the same
