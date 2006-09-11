@@ -4347,8 +4347,8 @@ CopyReadAttributesText(CopyState cstate, char *nulls,
 	scan_start = cstate->line_buf.data + cstate->line_buf.cursor;
 	cur = list_head(cstate->attnumlist);
 	
-	/* if cur is NULL then we have a zero column table (usually not the case) */
-	if(cur != NULL)
+	/* check for zero column table case */
+	if(num_phys_attrs > 0)
 	{
 		attnum = lfirst_int(cur);
 		m = attnum - 1;
@@ -4727,8 +4727,13 @@ CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 	cstate->attribute_buf.cursor = 0;
 
 	cur = list_head(cstate->attnumlist);
-	attnum = lfirst_int(cur);
-	m = attnum - 1;
+	
+	if(num_phys_attrs > 0)
+	{		
+		attnum = lfirst_int(cur);
+		m = attnum - 1;
+	}
+
 	input_len = 0;
 	attribute = 1;
 
@@ -4740,14 +4745,26 @@ CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 		/* finished processing attributes in line */
 		if (cstate->line_buf.cursor >= cstate->line_buf.len - 1)
 		{
+				
 			/* check whether raw input matched null marker */
 			input_len = end_cursor - start_cursor;
-			if (!saw_quote && input_len == cstate->null_print_len &&
-			strncmp(&cstate->line_buf.data[start_cursor], cstate->null_print, input_len) == 0)
-				nulls[m] = 'n';
-			else
-				nulls[m] = ' ';
+			
+			/* make sure this is not a zero column table*/
+			if(num_phys_attrs > 0)
+			{
+				if (!saw_quote && input_len == cstate->null_print_len &&
+					strncmp(&cstate->line_buf.data[start_cursor], cstate->null_print, input_len) == 0)
+					nulls[m] = 'n';
+				else
+					nulls[m] = ' ';				
+			}
 
+			/* if zero column table and data is trying to get in */
+			if(num_phys_attrs == 0 && input_len > 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+						 errmsg("extra data after last expected column")));
+			
 			if (in_quote)
 				ereport(ERROR,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
@@ -4768,11 +4785,15 @@ CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 		{
 			/* check whether raw input matched null marker */
 			input_len = end_cursor - start_cursor;
-			if (!saw_quote && input_len == cstate->null_print_len &&
-			strncmp(&cstate->line_buf.data[start_cursor], cstate->null_print, input_len) == 0)
-				nulls[m] = 'n';
-			else
-				nulls[m] = ' ';
+			
+			if(num_phys_attrs > 0)
+			{
+				if (!saw_quote && input_len == cstate->null_print_len &&
+				strncmp(&cstate->line_buf.data[start_cursor], cstate->null_print, input_len) == 0)
+					nulls[m] = 'n';
+				else
+					nulls[m] = ' ';
+			}
 
 			/* terminate attr string with '\0' */
 			appendStringInfoCharMacro(&cstate->attribute_buf, '\0');
@@ -4787,9 +4808,14 @@ CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 						 errmsg("extra data after last expected column")));
 
 			saw_quote = false;
-			attnum = lfirst_int(cur);
-			m = attnum - 1;
-			attr_offsets[m] = cstate->attribute_buf.cursor;
+			
+			if(num_phys_attrs > 0)
+			{
+				attnum = lfirst_int(cur);
+				m = attnum - 1;
+				attr_offsets[m] = cstate->attribute_buf.cursor;
+			}
+			
 			start_cursor = cstate->line_buf.cursor;
 
 			/*
