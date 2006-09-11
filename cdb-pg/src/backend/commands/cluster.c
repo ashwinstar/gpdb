@@ -592,7 +592,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	OldHeapDesc = RelationGetDescr(OldHeap);
 
 
-	if (Mpp_role == MPP_ROLE_DISPATCH && relFileOid != NULL & toastOid != NULL)
+	if (Mpp_role == MPP_ROLE_DISPATCH && relFileOid != NULL && toastOid != NULL)
 	{
 		Relation	pg_class_desc;
 		Relation	pg_type_desc;
