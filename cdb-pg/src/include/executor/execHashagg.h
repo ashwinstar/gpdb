@@ -16,6 +16,7 @@
 #define EXECHASHAGG_H
 
 #include "storage/buffile.h"
+#include "executor/nodeAgg.h" /* Must see AggStatePerGroupData. */
 
 typedef struct BatchFileInfo
 {
@@ -49,7 +50,7 @@ typedef struct HashAggEntry
 	struct HashAggEntry	   *next; /* Next entry in chain. */
 	uint32					hashvalue;
 	HeapTuple				heaptuple; /* Tuple representing the grouping key. */
-	AggStatePerGroup		pergroup; /* 0 or more AggStatePerGroupData */
+	AggStatePerGroupData	pergroup[1]; /* 0 or more AggStatePerGroupData */
 } HashAggEntry;
 
 

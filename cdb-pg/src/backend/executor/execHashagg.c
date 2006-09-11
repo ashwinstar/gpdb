@@ -728,18 +728,24 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 		hashslot->tts_isnull[varNumber] = inputslot->tts_isnull[varNumber];
 	}
 	
-	/* For now we just allocate single entries.
-	*
-	 * TODO -- Allocate them all at once (we know how many we're willing
-	 *         to hold in memory) or in blocks (since we may tie up more
-	 *         virtual memory than necessary, otherwise).
+	/* For now we just allocate single entries, but maybe we should consider
+	 * allocating them all at once (since we know how many we're willing to
+	 * hold in memory) or in blocks (to avoid tying up more virtual memory 
+	 * than necessary).  We should also consider the impact of holding on
+	 * to hash entry memory longer than necessary.  Right now we release the
+	 * contents of the hash table all at once, but (for a bit of extra
+	 * processing  time) we could release them piecemeal, hopefully, to release
+	 * memory for use by other QEs.
 	 */
 	MemoryContextSwitchTo(aggstate->transcontext);
 	
-	entry = (HashAggEntry*)palloc0(sizeof(HashAggEntry));
+	if (aggstate->numaggs == 0) 
+		entry = (HashAggEntry*)palloc0(sizeof(HashAggEntry));
+	else
+		entry = (HashAggEntry*)palloc0(sizeof(HashAggEntry) + 
+						(aggstate->numaggs-1) * sizeof(AggStatePerGroupData));
 	entry->heaptuple = ExecCopySlotTuple(hashslot);
 	entry->hashvalue = hashvalue;
-	entry->pergroup = (AggStatePerGroup)palloc0(aggstate->numaggs * sizeof(AggStatePerGroupData));
 	
 	MemoryContextSwitchTo(oldContext);
 	return entry;
