@@ -16,14 +16,14 @@ INSERT INTO DEFAULT_TBL VALUES (1, 'bruce');
 INSERT INTO DEFAULT_TBL (i, f) VALUES (2, 987.654);
 INSERT INTO DEFAULT_TBL (x) VALUES ('marc');
 INSERT INTO DEFAULT_TBL VALUES (3, null, 1.0);
-SELECT '' AS five, * FROM DEFAULT_TBL;
+SELECT '' AS five, * FROM DEFAULT_TBL ORDER BY 2,3,4;
  five |  i  |   x    |    f    
 ------+-----+--------+---------
-      |   1 | thomas | 57.0613
       |   1 | bruce  | 123.456
+      |   1 | thomas | 57.0613
       |   2 | vadim  | 987.654
-      | 100 | marc   | 123.456
       |   3 |        |       1
+      | 100 | marc   | 123.456
 (5 rows)
 
 CREATE SEQUENCE DEFAULT_SEQ;
@@ -33,11 +33,11 @@ INSERT INTO DEFAULTEXPR_TBL VALUES (-1, -2);
 INSERT INTO DEFAULTEXPR_TBL (i1) VALUES (-3);
 INSERT INTO DEFAULTEXPR_TBL (i2) VALUES (-4);
 INSERT INTO DEFAULTEXPR_TBL (i2) VALUES (NULL);
-SELECT '' AS four, * FROM DEFAULTEXPR_TBL;
+SELECT '' AS four, * FROM DEFAULTEXPR_TBL ORDER BY 2,3;
  four | i1  | i2 
 ------+-----+----
-      |  -1 | -2
       |  -3 |  1
+      |  -1 | -2
       | 102 | -4
       | 102 |   
 (4 rows)
@@ -72,11 +72,11 @@ ERROR:  new row for relation "check_tbl" violates check constraint "check_con"
 INSERT INTO CHECK_TBL VALUES (6);
 INSERT INTO CHECK_TBL VALUES (1);
 ERROR:  new row for relation "check_tbl" violates check constraint "check_con"
-SELECT '' AS three, * FROM CHECK_TBL;
+SELECT '' AS three, * FROM CHECK_TBL ORDER BY 2;
  three | x 
 -------+---
-       | 5
        | 4
+       | 5
        | 6
 (3 rows)
 
@@ -94,7 +94,7 @@ ERROR:  new row for relation "check2_tbl" violates check constraint "sequence_co
 INSERT INTO CHECK2_TBL VALUES (6, 'check failed', 11);
 ERROR:  new row for relation "check2_tbl" violates check constraint "sequence_con"
 INSERT INTO CHECK2_TBL VALUES (7, 'check ok', 7);
-SELECT '' AS two, * from CHECK2_TBL;
+SELECT '' AS two, * from CHECK2_TBL ORDER BY 2,3,4;
  two | x |    y     | z  
 -----+---+----------+----
      | 4 | check ok | -2
@@ -112,7 +112,7 @@ CREATE TABLE INSERT_TBL (x INT DEFAULT nextval('insert_seq'),
 	CHECK (x + z = 0));
 INSERT INTO INSERT_TBL(x,z) VALUES (2, -2);
 ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"
-SELECT '' AS zero, * FROM INSERT_TBL;
+SELECT '' AS zero, * FROM INSERT_TBL ORDER BY 2,3,4;
  zero | x | y | z 
 ------+---+---+---
 (0 rows)
@@ -268,7 +268,7 @@ CREATE TABLE COPY_TBL (x INT, y TEXT, z INT,
 	CONSTRAINT COPY_CON
 	CHECK (x > 3 AND y <> 'check failed' AND x < 7 ));
 COPY COPY_TBL FROM '@abs_srcdir@/data/constro.data';
-SELECT '' AS two, * FROM COPY_TBL;
+SELECT '' AS two, * FROM COPY_TBL ORDER BY 2,3,4;
  two | x |       y       | z 
 -----+---+---------------+---
      | 4 | !check failed | 5
@@ -278,7 +278,7 @@ SELECT '' AS two, * FROM COPY_TBL;
 COPY COPY_TBL FROM '@abs_srcdir@/data/constrf.data';
 ERROR:  new row for relation "copy_tbl" violates check constraint "copy_con"
 CONTEXT:  COPY copy_tbl, line 2: "7	check failed	6"
-SELECT * FROM COPY_TBL;
+SELECT * FROM COPY_TBL ORDER BY 1,2,3;
  x |       y       | z 
 ---+---------------+---
  4 | !check failed | 5
@@ -298,7 +298,7 @@ INSERT INTO PRIMARY_TBL VALUES (4, 'three');
 INSERT INTO PRIMARY_TBL VALUES (5, 'one');
 INSERT INTO PRIMARY_TBL (t) VALUES ('six');
 ERROR:  null value in column "i" violates not-null constraint
-SELECT '' AS four, * FROM PRIMARY_TBL;
+SELECT '' AS four, * FROM PRIMARY_TBL ORDER BY 2,3;
  four | i |   t   
 ------+---+-------
       | 1 | one
@@ -318,16 +318,15 @@ INSERT INTO PRIMARY_TBL VALUES (4, 'three');
 INSERT INTO PRIMARY_TBL VALUES (5, 'one');
 INSERT INTO PRIMARY_TBL (t) VALUES ('six');
 ERROR:  null value in column "i" violates not-null constraint
-SELECT '' AS three, * FROM PRIMARY_TBL;
+SELECT '' AS three, * FROM PRIMARY_TBL ORDER BY 2,3;
  three | i |   t   
 -------+---+-------
        | 1 | one
-       | 2 | two
        | 1 | three
+       | 2 | two
        | 4 | three
        | 5 | one
 (5 rows)
-
 DROP TABLE PRIMARY_TBL;
 --
 -- Unique keys
@@ -342,16 +341,17 @@ INSERT INTO UNIQUE_TBL VALUES (4, 'four');
 INSERT INTO UNIQUE_TBL VALUES (5, 'one');
 INSERT INTO UNIQUE_TBL (t) VALUES ('six');
 INSERT INTO UNIQUE_TBL (t) VALUES ('seven');
-SELECT '' AS five, * FROM UNIQUE_TBL;
+SELECT '' AS five, * FROM UNIQUE_TBL ORDER BY 2,3;
  five | i |   t   
 ------+---+-------
       | 1 | one
       | 2 | two
       | 4 | four
       | 5 | one
-      |   | six
       |   | seven
+      |   | six
 (6 rows)
+
 
 DROP TABLE UNIQUE_TBL;
 CREATE TABLE UNIQUE_TBL (i int, t text,
@@ -364,12 +364,12 @@ INSERT INTO UNIQUE_TBL VALUES (1, 'one');
 ERROR:  duplicate key violates unique constraint "unique_tbl_i_key"
 INSERT INTO UNIQUE_TBL VALUES (5, 'one');
 INSERT INTO UNIQUE_TBL (t) VALUES ('six');
-SELECT '' AS five, * FROM UNIQUE_TBL;
+SELECT '' AS five, * FROM UNIQUE_TBL ORDER BY 2,3;
  five | i |   t   
 ------+---+-------
       | 1 | one
-      | 2 | two
       | 1 | three
+      | 2 | two
       | 5 | one
       |   | six
 (5 rows)
