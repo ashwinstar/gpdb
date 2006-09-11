@@ -162,6 +162,11 @@ cluster(ClusterStmt *stmt)
 
 		/* Do the job */
 		cluster_rel(&rvtc, false, stmt);
+		
+		if (Mpp_role == MPP_ROLE_DISPATCH)
+		{
+			CdbDispatchUtilityStatement((Node *) stmt);
+		}
 	}
 	else
 	{
@@ -210,6 +215,15 @@ cluster(ClusterStmt *stmt)
 			/* functions in indexes may want a snapshot set */
 			ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 			cluster_rel(rvtc, true, stmt);
+			
+			if (Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				
+				stmt->relation = makeNode(RangeVar);
+				stmt->relation->schemaname = get_namespace_name(get_rel_namespace(rvtc->tableOid));
+				stmt->relation->relname = get_rel_name(rvtc->tableOid);
+				CdbDispatchUtilityStatement((Node *) stmt);
+			}
 			CommitTransactionCommand();
 		}
 
@@ -218,12 +232,11 @@ cluster(ClusterStmt *stmt)
 
 		/* Clean up working storage */
 		MemoryContextDelete(cluster_context);
+		
+		
 	}
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-		CdbDispatchUtilityStatement((Node *) stmt);
-	}
+	
 }
 
 /*
