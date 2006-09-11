@@ -1510,26 +1510,31 @@ CopyToDispatch(CopyState cstate)
 	 * append column list. NOTE: if not specified originally, attnumlist will
 	 * include all non-dropped columns of the table by default
 	 */
-	appendStringInfo(&cdbcopy_cmd, "(");
-	is_first_col = true;
-	foreach(cur, cstate->attnumlist)
+	if(num_phys_attrs > 0) /* don't append anything for zero column table */
 	{
-		int			attnum = lfirst_int(cur);
-		int			m = attnum - 1;
-		
-		/* We don't add dropped attributes */
-		if (attr[m]->attisdropped)
-			continue;
-		
-		if (is_first_col)
-			appendStringInfo(&cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[m]->attname)));
-		else
-			appendStringInfo(&cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[m]->attname)));
-		
-		is_first_col = false;
-	}
 
-	appendStringInfo(&cdbcopy_cmd, ")");
+		appendStringInfo(&cdbcopy_cmd, "(");
+		is_first_col = true;
+		foreach(cur, cstate->attnumlist)
+		{
+			int			attnum = lfirst_int(cur);
+			int			m = attnum - 1;
+			
+			/* We don't add dropped attributes */
+			if (attr[m]->attisdropped)
+				continue;
+			
+			if (is_first_col)
+				appendStringInfo(&cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[m]->attname)));
+			else
+				appendStringInfo(&cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[m]->attname)));
+			
+			is_first_col = false;
+		}
+
+		appendStringInfo(&cdbcopy_cmd, ")");
+	}
+	
 	appendStringInfo(&cdbcopy_cmd, " TO STDOUT WITH");
 	
 	if (cstate->binary)
@@ -2066,8 +2071,9 @@ CopyFromDispatch(CopyState cstate)
 	 */
 	policy = cstate->rel->rd_cdbpolicy;
 	
+	/* policy should be PARTITIONED (normal tables) or ENTRY (no column tables) */
 	Insist(policy &&
-           policy->ptype == POLICYTYPE_PARTITIONED);
+           policy->ptype != POLICYTYPE_UNDEFINED);
 	
 	p_nattrs = policy->nattrs;	/* number of partitioning keys */
 	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1);		/* Create hash API
@@ -2085,76 +2091,81 @@ CopyFromDispatch(CopyState cstate)
 	 * append column list. NOTE: if not specified originally, attnumlist will
 	 * include all non-dropped columns of the table by default
 	 */
-	appendStringInfo(&cdbcopy_cmd, "(");
-	is_first_col = true;
-	foreach(cur, cstate->attnumlist)
+	if(num_phys_attrs > 0) /* don't append anything for zero column table */
 	{
-		int			attnum = lfirst_int(cur);
-		int			m = attnum - 1;
-
-		/* We don't add dropped attributes */
-		if (attr[m]->attisdropped)
-			continue;
+		appendStringInfo(&cdbcopy_cmd, "(");
 		
-		/* append column string. quote it if needed */
-		if (is_first_col)
-			appendStringInfo(&cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[m]->attname)));
-		else
-			appendStringInfo(&cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[m]->attname)));
-
-		is_first_col = false;
-	}
-	
-	/*
-	 * In order to maintain consistency between the primary and mirror segment data, we
-	 * want to evaluate all table columns that are not participating in this COPY command
-	 * and have a non-constant default values on the dispatcher. If we let them evaluate
-	 * on the primary and mirror executors separately - they will get different values.
-	 * Also, if the distribution column is not participating and it has any default value,
-	 * we have to evaluate it on the dispatcher only too, so that it wouldn't hash as a null
-	 * and inserted as a default value on the segment databases.
-	 *
-	 * Therefore, we include these columns in the column list for the executor COPY.
-	 * The default values will be evaluated on the dispatcher COPY and the results for
-	 * the added columns will be appended to each data row that is shipped to the segments.	
-	 */
-	extra_attr_count = 0;
-	
-	for (i = 0; i < num_defaults; i++)
-	{
-		bool add_to_list = false;
-		
-		/* check 1: is this default for a distribution column? */
-		for (p_index = 0; p_index < p_nattrs; p_index++)
+		is_first_col = true;
+		foreach(cur, cstate->attnumlist)
 		{
-			h_attnum = policy->attrs[p_index];	
-			
-			if(h_attnum - 1 == defmap[i])
-				add_to_list = true;
-		}
-		
-		/* check 2: is this a non constant default? */
-		if(defexprs[i]->expr->type != T_Const)
-			add_to_list = true;
-		
-		if(add_to_list)
-		{
+			int			attnum = lfirst_int(cur);
+			int			m = attnum - 1;
+
 			/* We don't add dropped attributes */
-			if (attr[defmap[i]]->attisdropped)
+			if (attr[m]->attisdropped)
 				continue;
 			
 			/* append column string. quote it if needed */
 			if (is_first_col)
-				appendStringInfo(&cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[defmap[i]]->attname)));
+				appendStringInfo(&cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[m]->attname)));
 			else
-				appendStringInfo(&cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[defmap[i]]->attname)));
-			
-			extra_attr_count++;
-			is_first_col = false;			
-		}
-	}
+				appendStringInfo(&cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[m]->attname)));
 
-	appendStringInfo(&cdbcopy_cmd, ")");
+			is_first_col = false;
+		}
+		
+		/*
+		 * In order to maintain consistency between the primary and mirror segment data, we
+		 * want to evaluate all table columns that are not participating in this COPY command
+		 * and have a non-constant default values on the dispatcher. If we let them evaluate
+		 * on the primary and mirror executors separately - they will get different values.
+		 * Also, if the distribution column is not participating and it has any default value,
+		 * we have to evaluate it on the dispatcher only too, so that it wouldn't hash as a null
+		 * and inserted as a default value on the segment databases.
+		 *
+		 * Therefore, we include these columns in the column list for the executor COPY.
+		 * The default values will be evaluated on the dispatcher COPY and the results for
+		 * the added columns will be appended to each data row that is shipped to the segments.	
+		 */
+		extra_attr_count = 0;
+		
+		for (i = 0; i < num_defaults; i++)
+		{
+			bool add_to_list = false;
+			
+			/* check 1: is this default for a distribution column? */
+			for (p_index = 0; p_index < p_nattrs; p_index++)
+			{
+				h_attnum = policy->attrs[p_index];	
+				
+				if(h_attnum - 1 == defmap[i])
+					add_to_list = true;
+			}
+			
+			/* check 2: is this a non constant default? */
+			if(defexprs[i]->expr->type != T_Const)
+				add_to_list = true;
+			
+			if(add_to_list)
+			{
+				/* We don't add dropped attributes */
+				if (attr[defmap[i]]->attisdropped)
+					continue;
+				
+				/* append column string. quote it if needed */
+				if (is_first_col)
+					appendStringInfo(&cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[defmap[i]]->attname)));
+				else
+					appendStringInfo(&cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[defmap[i]]->attname)));
+				
+				extra_attr_count++;
+				is_first_col = false;			
+			}
+		}
+
+		appendStringInfo(&cdbcopy_cmd, ")");
+	}
+	
 	appendStringInfo(&cdbcopy_cmd, " FROM STDIN WITH");
 
 	if (cstate->binary)
@@ -4335,8 +4346,14 @@ CopyReadAttributesText(CopyState cstate, char *nulls,
 	/* cursor is now > 0 if we copy WITH OIDS */
 	scan_start = cstate->line_buf.data + cstate->line_buf.cursor;
 	cur = list_head(cstate->attnumlist);
-	attnum = lfirst_int(cur);
-	m = attnum - 1;
+	
+	/* if cur is NULL then we have a zero column table (usually not the case) */
+	if(cur != NULL)
+	{
+		attnum = lfirst_int(cur);
+		m = attnum - 1;
+	}
+	
 	chunk_start = cstate->line_buf.cursor;
 	chunk_len = 0;
 	attr_pre_len = 0;
