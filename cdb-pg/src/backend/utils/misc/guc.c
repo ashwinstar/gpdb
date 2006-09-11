@@ -1068,7 +1068,7 @@ static struct config_bool ConfigureNamesBool[] =
             GUC_NOT_IN_SAMPLE
         },
         &enable_adaptive_nestloop,
-        false, NULL, NULL
+        true, NULL, NULL
     },
 
     {

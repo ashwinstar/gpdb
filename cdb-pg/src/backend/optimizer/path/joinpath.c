@@ -53,7 +53,7 @@ hashclauses_for_join(List *restrictList,
 					 RelOptInfo *innerrel,
 					 JoinType jointype);
 
-bool enable_adaptive_nestloop = false;
+bool enable_adaptive_nestloop = true;
 
 /*
  * add_paths_to_joinrel
