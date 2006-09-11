@@ -1097,6 +1097,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												groupColIdx,
 												numGroups,
 												agg_counts.numAggs,
+												agg_counts.transitionSpace,
 												result_plan);
 				/* Hashed aggregation produces randomly-ordered results */
 				current_pathkeys = NIL;
@@ -1151,6 +1152,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												groupColIdx,
 												numGroups,
 												agg_counts.numAggs,
+												agg_counts.transitionSpace,
 												result_plan);
 
 				if ( Mpp_role == MPP_ROLE_DISPATCH )

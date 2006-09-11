@@ -751,7 +751,7 @@ create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path)
 								 numGroupCols,
 								 groupColIdx,
 								 numGroups,
-								 0,
+								 0, 0,
 								 subplan);
 	}
 	else
@@ -2668,7 +2668,7 @@ Agg *
 make_agg(PlannerInfo *root, List *tlist, List *qual,
 		 AggStrategy aggstrategy,
 		 int numGroupCols, AttrNumber *grpColIdx,
-		 long numGroups, int numAggs,
+		 long numGroups, int numAggs, int transSpace,
 		 Plan *lefttree)
 {
 	Agg		   *node = makeNode(Agg);
@@ -2680,6 +2680,7 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 	node->numCols = numGroupCols;
 	node->grpColIdx = grpColIdx;
 	node->numGroups = numGroups;
+	node->transSpace = transSpace;
 
 	copy_plan_costsize(plan, lefttree); /* only care about copying size */
 	cost_agg(&agg_path, root,

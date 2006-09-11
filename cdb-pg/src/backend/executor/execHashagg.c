@@ -1,7 +1,11 @@
 /*-------------------------------------------------------------------------
  *
  * execBatch.c
- *		CDB addition to support hybrid hash aggregation algorithm.
+ *		CDB additions to support hybrid hash aggregation algorithm.
+ *		This file could be merged into nodeAgg.c.  The separation is
+ *		only to help isolate MPP-only code from future merges with
+ *		PG code.  Note, however, that nodeAgg.c is also modified to 
+ *		make use of this code.
  *
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
@@ -69,7 +73,7 @@ create_agg_hash_table(AggState *aggstate)
 								(double)agg->numGroups, 
 								aggstate->numaggs,
 								agg->plan.plan_width, /* Too big. TODO Use hash slot */
-								16, /* WAG. TODO Get thru Agg from optimizer counts */
+								agg->transSpace,
 								&est_nbucket, 
 								&est_nentry, 
 								&est_nbatch ) )
@@ -219,13 +223,12 @@ agg_hash_initial_pass(AggState *aggstate)
 	ht = aggstate->hhashtable;
 	Assert(ht && ht->state == HASHAGG_BEFORE_FIRST_PASS);
 
-	/*
-	 * Process outer-plan tuples, until we exhaust the outer plan.
-	 */
-
 	elog(HHA_MSG_LVL,
 		"hybrid hash aggregation: initial pass -- beginning to load hash table");
 
+	/*
+	 * Process outer-plan tuples, until we exhaust the outer plan.
+	 */
 	ht->pass = 0;
 	for (;;)
 	{
@@ -308,7 +311,8 @@ agg_hash_initial_pass(AggState *aggstate)
  * - reads the input tuples for the next batch, 
  * - builds a hash table with an entry per group, 
  * - spills tuples for groups that won't fit in the hash table to an 
- *   overflow batch to process later in the pass.
+ *   overflow batch to process later in the same pass (following a call
+ *   to agg_hash_continue_pass).
  */
 bool
 agg_hash_next_pass(AggState *aggstate)
@@ -577,7 +581,7 @@ get_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
 
 /* Function: lookup_agg_hash_entry
  *
- * Returns a pointer to the old or new hash table entry corresonding
+ * Returns a pointer to the old or new hash table entry corresponding
  * to the given input tuple of the AggState or NULL, if there is no
  * such entry (and the table is full).
  *
@@ -695,7 +699,7 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *has
 
 /* Function: makeHashAggEntry
  *
- * Allocate a new hash agg entry for the given input tuple an hash key
+ * Allocate a new hash agg entry for the given input tuple and hash key
  * of the given AggState. This includes installing the grouping key heap tuple.  
  *
  * It is the caller's responsibility to link the entry into the hash table
@@ -1033,6 +1037,10 @@ batch_get_tuple(HashAggTable *hashtable,
 	return ExecStoreTuple(heapTuple, tupleSlot, InvalidBuffer, true);
 }
 
+/*
+ * batch_rewind
+ *		reposition batch so next read will start at the beginning
+ */
 void
 batch_rewind(HashAggTable *hashtable, int batch)
 {
@@ -1055,6 +1063,10 @@ batch_rewind(HashAggTable *hashtable, int batch)
 }
 
 
+/*
+ * batch_close
+ *		close a batch file thus releasing its file and memory space
+ */
 void 
 batch_close(HashAggTable *hashtable, int batch)
 {

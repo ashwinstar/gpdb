@@ -504,6 +504,7 @@ _outAgg(StringInfo str, Agg *node)
 		appendStringInfo(str, " %d", node->grpColIdx[i]);
 
 	WRITE_LONG_FIELD(numGroups);
+	WRITE_INT_FIELD(transSpace);
 }
 
 static void

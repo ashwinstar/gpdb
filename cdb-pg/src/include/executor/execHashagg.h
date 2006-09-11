@@ -47,9 +47,9 @@ typedef struct BatchTupleHeader
 typedef struct HashAggEntry
 {
 	struct HashAggEntry	   *next; /* Next entry in chain. */
-	AggStatePerGroup		pergroup; /* 0 or more AggStatePerGroupData */
 	uint32					hashvalue;
 	HeapTuple				heaptuple; /* Tuple representing the grouping key. */
+	AggStatePerGroup		pergroup; /* 0 or more AggStatePerGroupData */
 } HashAggEntry;
 
 

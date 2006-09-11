@@ -469,6 +469,7 @@ typedef struct Agg
 	int			numCols;		/* number of grouping columns */
 	AttrNumber *grpColIdx;		/* their indexes in the target list */
 	long		numGroups;		/* estimated number of groups in input */
+	int			transSpace;		/* est storage per group for byRef transition values */
 } Agg;
 
 /* ----------------

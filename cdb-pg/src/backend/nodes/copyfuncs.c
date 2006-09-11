@@ -554,6 +554,7 @@ _copyAgg(Agg *from)
 	if (from->numCols > 0)
 		COPY_POINTER_FIELD(grpColIdx, from->numCols * sizeof(AttrNumber));
 	COPY_SCALAR_FIELD(numGroups);
+	COPY_SCALAR_FIELD(transSpace);
 
 	return newnode;
 }

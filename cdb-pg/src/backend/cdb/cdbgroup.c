@@ -608,6 +608,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 										groupColIdx,
 										numGroups,
 										ctx->agg_counts->numAggs,
+										ctx->agg_counts->transitionSpace,
 										result_plan);
 		/* Hashed aggregation produces randomly-ordered results */
 		current_pathkeys = NIL;
@@ -653,6 +654,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 										groupColIdx,
 										numGroups,
 										ctx->agg_counts->numAggs,
+										ctx->agg_counts->transitionSpace,
 										result_plan);
 		mark_passthru_locus(result_plan, true, (current_pathkeys != NULL ));
 	}
@@ -896,6 +898,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 									groupColIdx,
 									numGroups,
 									ctx->agg_counts->numAggs,
+									ctx->agg_counts->transitionSpace,
 									result_plan);
 									
 	/* May lose useful locus and sort. Unlikely, but could do better. */
@@ -1058,6 +1061,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 									prelimGroupColIdx,
 									numGroups,
 									ctx->agg_counts->numAggs,
+									ctx->agg_counts->transitionSpace,
 									result_plan);
 	mark_passthru_locus(result_plan, true, (current_pathkeys != NULL ));
 

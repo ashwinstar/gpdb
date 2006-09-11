@@ -2169,6 +2169,7 @@ _readAgg(void)
 	READ_INT_FIELD(numCols);
 	READ_INT_ARRAY(grpColIdx, numCols, AttrNumber);
 	READ_LONG_FIELD(numGroups);
+	READ_INT_FIELD(transSpace);
 
 	READ_DONE();
 }
