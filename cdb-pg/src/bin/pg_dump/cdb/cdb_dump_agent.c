@@ -7419,7 +7419,6 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		/* dump distributed by clause */
 		
 		appendPQExpBuffer(query,
-                          //"select attrnums from pg_class as c, mpp_distribution_policy as p where relname = '%s' and c.oid = p.localoid",
 						  "SELECT attrnums from pg_namespace as n, pg_class as c, mpp_distribution_policy as p "
 						  "WHERE c.relname = '%s' "
 						  "AND n.nspname='%s' "
@@ -7432,30 +7431,48 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		
         if (PQntuples(res) != 1)
         {
-            if (PQntuples(res) < 1)
-                mpp_err_msg( logError, pszProgName, "query to obtain definition of table \"%s\" returned no data\n",
-							 tbinfo->dobj.name);
-            else
-                mpp_err_msg( logError, pszProgName, "query to obtain definition of table \"%s\" returned more than one definition\n",
-							 tbinfo->dobj.name);
-            exit_nicely();
-        }
-		
-        policydef = PQgetvalue(res, 0, 0);
-		
-		if(strlen(policydef) > 0) /* avoid empty policy tables */
-		{
-			policydef[strlen(policydef)-1] = '\0';
-			policydef++;
-			policycol = nextToken(&policydef, ",");
-			appendPQExpBuffer(q, " distributed by (%s",
-							  fmtId(tbinfo->attnames[atoi(policycol)-1]));
-			for (; (policycol = nextToken(&policydef, ",")) != NULL;)
+			/*
+			 * There is no entry in the policy table for this table. Report 
+			 * an error unless this is a zero attribute table (actual_atts == 0).
+			 */
+            if (PQntuples(res) < 1 && actual_atts > 0)
 			{
-				appendPQExpBuffer(q, " ,%s",
-								  fmtId(tbinfo->attnames[atoi(policycol)-1]));
+				mpp_err_msg( logError, pszProgName, "query to obtain distribution policy of table \"%s\" returned no data\n",
+							 tbinfo->dobj.name);
+				exit_nicely();
 			}
-			appendPQExpBuffer(q, ")");
+			
+			/*
+			 * There is more than 1 entry in the policy table for this table. Report an error.
+			 */			
+			if (PQntuples(res) > 1)
+			{
+                mpp_err_msg( logError, pszProgName, "query to obtain distribution policy of table \"%s\" returned more than one policy\n",
+							 tbinfo->dobj.name);
+				exit_nicely();
+			}
+        }
+		else
+		{
+			/*
+			 * There is exactly 1 policy entry for this table (either a concrete one or NULL).
+			 */
+			policydef = PQgetvalue(res, 0, 0);
+			
+			if(strlen(policydef) > 0) /* avoid empty policy tables */
+			{
+				policydef[strlen(policydef)-1] = '\0';
+				policydef++;
+				policycol = nextToken(&policydef, ",");
+				appendPQExpBuffer(q, " distributed by (%s",
+								  fmtId(tbinfo->attnames[atoi(policycol)-1]));
+				for (; (policycol = nextToken(&policydef, ",")) != NULL;)
+				{
+					appendPQExpBuffer(q, " ,%s",
+									  fmtId(tbinfo->attnames[atoi(policycol)-1]));
+				}
+				appendPQExpBuffer(q, ")");
+			}
 		}
 		PQclear(res);
 		
