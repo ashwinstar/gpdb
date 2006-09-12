@@ -151,6 +151,10 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 			ExecReScanNestLoop((NestLoopState *) node, exprCtxt);
 			break;
 
+		case T_AdaptiveNestLoopState:
+			ExecReScanAdaptiveNestLoop((AdaptiveNestLoopState *) node, exprCtxt);
+			break;
+
 		case T_MergeJoinState:
 			ExecReScanMergeJoin((MergeJoinState *) node, exprCtxt);
 			break;
