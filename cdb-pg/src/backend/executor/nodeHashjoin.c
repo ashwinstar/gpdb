@@ -23,6 +23,7 @@
 #include "optimizer/clauses.h"
 #include "utils/memutils.h"
 
+#include "miscadmin.h" /* work_mem */
 
 static TupleTableSlot *ExecHashJoinOuterGetTuple(PlanState *outerNode,
 						  HashJoinState *hjstate,
@@ -965,7 +966,15 @@ ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 executorTupleQueue *
 makeTQ(int size)
 {
-	executorTupleQueue *tq = palloc(sizeof(executorTupleQueue) + ((size-1) * sizeof(HeapTuple)));
+	int tq_size;
+	executorTupleQueue *tq = NULL;
+
+	tq_size = sizeof(executorTupleQueue) + ((size-1) * sizeof(HeapTuple));
+
+	if (tq_size > (work_mem*1024))
+		return NULL;
+
+	tq = palloc0(tq_size);
 
 	tq->maxsize = size;
 	tq->size = 0;

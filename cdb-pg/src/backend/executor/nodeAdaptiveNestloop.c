@@ -39,19 +39,25 @@ ExecAdaptiveNestLoop(AdaptiveNestLoopState *node)
 		int i;
 		TupleTableSlot *slot;
 
-		for (i=0; i < node->nl_strategy_threshold; i++)
+		if (node->outer_q != NULL)
 		{
-			slot = ExecProcNode(outerPlanState(node->main));
-			if (TupIsNull(slot))
-				break;
-			enqueueTQ(node->outer_q, slot);
+			for (i=0; i < node->nl_strategy_threshold; i++)
+			{
+				slot = ExecProcNode(outerPlanState(node->main));
+				if (TupIsNull(slot))
+					break;
+				enqueueTQ(node->outer_q, slot);
+			}
+
+			elog(DEBUG4, "read %d tuple from outer relation threshold %d", i, node->nl_strategy_threshold);
 		}
 
-		elog(DEBUG4, "read %d tuple from outer relation threshold %d", i, node->nl_strategy_threshold);
-
 		/* did we get more tuples than are allowed for loop ? Or
-		 * are we working on a non-hashable join ? */
-		if (i < node->nl_strategy_threshold || node->alternate == NULL)
+		 * are we working on a non-hashable join ? Or do we have insufficient room 
+		 * for our queue */
+		if (i < node->nl_strategy_threshold ||
+			node->alternate == NULL ||
+			node->outer_q == NULL)
 		{
 			node->nl_strategy = NL_STRATEGY_LOOP;
 
@@ -70,8 +76,9 @@ ExecAdaptiveNestLoop(AdaptiveNestLoopState *node)
 			ExecSquelchNode(innerPlanState(node->main));
 		}
 
-		elog(DEBUG2, "nested join picked strategy: %s",
-			 node->nl_strategy == NL_STRATEGY_LOOP ? "nested loop" : "hash join");
+		elog(DEBUG2, "nested join picked strategy: %s read %d thresh %d",
+			 (node->nl_strategy == NL_STRATEGY_LOOP ? "nested loop" : "hash join"),
+			 i, node->nl_strategy_threshold);
 	}
 
 	if (node->nl_strategy == NL_STRATEGY_LOOP)
@@ -118,7 +125,14 @@ ExecInitAdaptiveNestLoop(AdaptiveNestLoop *node, EState *estate, int eflags)
 	/* initialize adaptive state */
 	anlstate->nl_strategy = NL_STRATEGY_UNDECIDED;
 	anlstate->nl_strategy_threshold = node->nl_strategy_threshold;
+
 	anlstate->outer_q = makeTQ(anlstate->nl_strategy_threshold);
+
+	/* if our threshold is too large to queue up tuples within work_mem we're in trouble. */
+	if (anlstate->outer_q == NULL)
+	{
+		elog(DEBUG1, "AdaptiveNL: insufficient memory for %d tuples", node->nl_strategy_threshold);
+	}
 
 	/* Initialize our child plans */
 
