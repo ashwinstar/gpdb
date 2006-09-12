@@ -451,7 +451,7 @@ match_unsorted_outer(PlannerInfo *root,
 		{
 			Path *alternate;
 
-			if (!enable_adaptive_nestloop)
+			if (!enable_adaptive_nestloop || !enable_hashjoin)
 				alternate = NULL;
 			else
 				alternate = (Path *)create_hashjoin_path(root,
