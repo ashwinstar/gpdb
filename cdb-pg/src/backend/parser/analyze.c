@@ -1944,14 +1944,6 @@ transformFKConstraints(ParseState *pstate, CreateStmtContext *cxt,
 		}
 	}
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Bizgres MPP")));
-		return;
-	}
-
 	/*
 	 * For CREATE TABLE or ALTER TABLE ADD COLUMN, gin up an ALTER TABLE ADD
 	 * CONSTRAINT command to execute after the basic command is complete. (If

@@ -4091,10 +4091,6 @@ ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
 	Oid			indexOid;
 	Oid			constrOid;
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-		ereport(WARNING,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Bizgres MPP")));
 	/*
 	 * Grab an exclusive lock on the pk table, so that someone doesn't delete
 	 * rows out from under us. (Although a lesser lock would do for that
@@ -4720,6 +4716,17 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 	ListCell   *pk_attr;
 	ObjectAddress trigobj,
 				constrobj;
+				
+	/*
+	 * Special for MPP: Ignore foreign keys for now, with warning
+	 */
+	{
+		if (Mpp_role == MPP_ROLE_DISPATCH)
+			ereport(WARNING,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Bizgres MPP")));
+		return;
+	}
 
 	/*
 	 * Reconstruct a RangeVar for my relation (not passed in, unfortunately).
