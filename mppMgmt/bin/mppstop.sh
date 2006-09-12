@@ -226,7 +226,8 @@ PROMPT_CONTINUE () {
 
 PROCESS_SHUTDOWN () {
 		if [ $MODE == "smart" ]; then
-		CONNECTED=` env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c "select count(*) from pg_stat_activity;"`
+#		count connected processes, but don't count ourself.
+		CONNECTED=` env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c "select count(*) from pg_stat_activity where procpid != pg_backend_pid();"`
 			if [ $CONNECTED -gt 0 ];then
 				LOG_MSG "[WARN]:-There are other connections to this instance, shutdown mode smart aborted"
 				LOG_MSG "[WARN]:-Either remove connections, or use mppstop.sh -f or -i."
