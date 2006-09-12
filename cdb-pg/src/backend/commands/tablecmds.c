@@ -4720,6 +4720,7 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 	/*
 	 * Special for MPP: Ignore foreign keys for now, with warning
 	 */
+	if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE)
 	{
 		if (Mpp_role == MPP_ROLE_DISPATCH)
 			ereport(WARNING,
