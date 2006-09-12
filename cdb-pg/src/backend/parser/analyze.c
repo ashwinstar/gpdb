@@ -1539,9 +1539,6 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 
 			}
 		}
-		if (distributedBy)
-			elog(NOTICE, "Table doesn't have 'distributed by' clause, defaulting to primary key columns");
-
 
 	}
 
@@ -1613,10 +1610,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 				}
 			}
 		}
-		if (distributedBy)
-			elog(NOTICE, "Table doesn't have 'distributed by' clause, defaulting to unique column(s)");
-
-
+		
 	}
 
 	if (distributedBy == NIL)
