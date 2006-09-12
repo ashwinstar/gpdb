@@ -321,6 +321,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	 */
 	for (i = 0; i < newThreads; i++)
 	{
+		int		pthread_err = 0;
 		DispatchCommandParms *pParms = &((*dispatchThreads)->dispatchCommandParmsAr + (*dispatchThreads)->threadCount)[i];
 
 		Assert(pParms != NULL);
@@ -328,10 +329,30 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 		elog(DEBUG4, "dispatchToGang: Creating thread %d of %d for CommandDispatch",
 			 i + 1, newThreads);
 
-		if (0 != pthread_create(&pParms->thread, NULL, thread_DispatchCommand, pParms))
+		pthread_err = pthread_create(&pParms->thread, NULL, thread_DispatchCommand, pParms);
+		if (pthread_err != 0)
 		{
-			elog(FATAL, "dispatchToGang: Failed to create thread %d of %d",
-				 i + 1, newThreads);
+			int j;
+
+			/* Error during thread create (this should be caused by
+			 * resource constraints). If we leave the threads running,
+			 * they'll immediately have some problems -- so we need to
+			 * join them, and *then* we can issue our FATAL error */
+
+			pleaseCancel = true;
+
+			for (j = 0; j < (*dispatchThreads)->threadCount + (i - 1); j++)
+			{
+				DispatchCommandParms *pParms;
+
+				pParms = &(*dispatchThreads)->dispatchCommandParmsAr[j];
+				pthread_join(pParms->thread, NULL);
+			}
+
+			ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
+							errmsg("dispatchToGang: failed to create thread %d of %d", i + 1, newThreads),
+							errdetail("pthread_create() failed with err %d", pthread_err),
+							errhint("mpp_connections_per_thread controls the number of threads created during MPP dispatch, current setting is %d increase the setting to spawn fewer threads", mpp_connections_per_thread)));
 		}
 
 	}
