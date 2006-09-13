@@ -190,7 +190,7 @@ INSERT INTO FKTABLE VALUES (100, 2);
 SELECT * FROM FKTABLE ORDER BY 1,2;
 
 -- Check PKTABLE
-SELECT * FROM PKTABLE ORDER BY 1,2,3;
+SELECT * FROM PKTABLE ORDER BY 1,2;
 
 -- Delete a row from PK TABLE (should fail)
 DELETE FROM PKTABLE WHERE ptest1=1;
@@ -208,7 +208,7 @@ UPDATE PKTABLE SET ptest1=0 WHERE ptest1=2;
 UPDATE PKTABLE SET ptest1=0 WHERE ptest1=4;
 
 -- Check PKTABLE for updates
-SELECT * FROM PKTABLE ORDER BY 1,2,3;
+SELECT * FROM PKTABLE ORDER BY 1,2;
 
 DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
@@ -712,9 +712,9 @@ DROP TABLE pktable, fktable CASCADE;
 
 CREATE TEMP TABLE pktable (
         id1     INT4 PRIMARY KEY,
-        id2     VARCHAR(4) UNIQUE,
-        id3     REAL UNIQUE,
-        UNIQUE(id1, id2, id3)
+        id2     VARCHAR(4) /*UNIQUE*/,
+        id3     REAL /*UNIQUE,*/
+        /*UNIQUE(id1, id2, id3)*/
 );
 
 CREATE TEMP TABLE fktable (
