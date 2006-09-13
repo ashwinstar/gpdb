@@ -158,7 +158,12 @@ apply_motion(Plan *plan, Query *query)
 				int			maxattrs = 200;
 				
 				if (query->intoPolicy != NULL)
+				{
 					targetPolicy = query->intoPolicy;
+					Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
+					Assert(query->intoPolicy->nattrs > 0);
+					Assert(query->intoPolicy->nattrs <= 200);
+				}
 				else
 				{
 					/* User did not specify a DISTRIBUTED BY clause */
@@ -231,8 +236,11 @@ apply_motion(Plan *plan, Query *query)
 						{
 							TargetEntry *target = get_tle_by_resno(plan->targetlist, targetPolicy->attrs[i]);
 							if (i>0)
-							strcat(columns, ", ");
-							strcat(columns, target->resname);
+								strcat(columns, ", ");
+							if (target->resname)
+								strcat(columns, target->resname);
+							else
+								strcat(columns, "???");
 						
 						}
 					
