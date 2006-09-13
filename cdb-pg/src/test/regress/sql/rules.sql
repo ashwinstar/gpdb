@@ -280,17 +280,17 @@ update rtest_emp set ename = 'wieck', salary = '6000.00' where ename = 'wiecx';
 update rtest_emp set salary = '7000.00' where ename = 'wieck';
 delete from rtest_emp where ename = 'gates';
 
-select ename, who = current_user as "matches user", action, newsal, oldsal from rtest_emplog order by ename, action, newsal ORDER BY 1,2;
+select ename, who = current_user as "matches user", action, newsal, oldsal from rtest_emplog order by ename, action, newsal;
 insert into rtest_empmass values ('meyer', '4000.00');
 insert into rtest_empmass values ('maier', '5000.00');
 insert into rtest_empmass values ('mayr', '6000.00');
 insert into rtest_emp select * from rtest_empmass;
-select ename, who = current_user as "matches user", action, newsal, oldsal from rtest_emplog order by ename, action, newsal ORDER BY 1,2;
+select ename, who = current_user as "matches user", action, newsal, oldsal from rtest_emplog order by ename, action, newsal;
 update rtest_empmass set salary = salary + '1000.00';
 update rtest_emp set salary = rtest_empmass.salary from rtest_empmass where rtest_emp.ename = rtest_empmass.ename;
-select ename, who = current_user as "matches user", action, newsal, oldsal from rtest_emplog order by ename, action, newsal ORDER BY 1,2;
+select ename, who = current_user as "matches user", action, newsal, oldsal from rtest_emplog order by ename, action, newsal;
 delete from rtest_emp using rtest_empmass where rtest_emp.ename = rtest_empmass.ename;
-select ename, who = current_user as "matches user", action, newsal, oldsal from rtest_emplog order by ename, action, newsal ORDER BY 1,2;
+select ename, who = current_user as "matches user", action, newsal, oldsal from rtest_emplog order by ename, action, newsal;
 
 --
 -- Multiple cascaded qualified instead rule test

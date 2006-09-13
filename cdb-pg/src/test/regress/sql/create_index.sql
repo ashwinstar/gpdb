@@ -187,7 +187,7 @@ CREATE INDEX hash_f8_index ON hash_f8_heap USING hash (random float8_ops);
 -- Test functional index
 --
 CREATE TABLE func_index_heap (f1 text, f2 text);
-CREATE UNIQUE INDEX func_index_index on func_index_heap (textcat(f1,f2));
+CREATE INDEX func_index_index on func_index_heap (textcat(f1,f2));
 
 INSERT INTO func_index_heap VALUES('ABC','DEF');
 INSERT INTO func_index_heap VALUES('AB','CDEFG');
@@ -203,7 +203,7 @@ INSERT INTO func_index_heap VALUES('QWERTY');
 --
 DROP TABLE func_index_heap;
 CREATE TABLE func_index_heap (f1 text, f2 text);
-CREATE UNIQUE INDEX func_index_index on func_index_heap ((f1 || f2) text_ops);
+CREATE  INDEX func_index_index on func_index_heap ((f1 || f2) text_ops);
 
 INSERT INTO func_index_heap VALUES('ABC','DEF');
 INSERT INTO func_index_heap VALUES('AB','CDEFG');
@@ -217,6 +217,6 @@ INSERT INTO func_index_heap VALUES('QWERTY');
 -- Also try building functional, expressional, and partial indexes on
 -- tables that already contain data.
 --
-create unique index hash_f8_index_1 on hash_f8_heap(abs(random));
-create unique index hash_f8_index_2 on hash_f8_heap((seqno + 1), random);
-create unique index hash_f8_index_3 on hash_f8_heap(random) where seqno > 1000;
+create index hash_f8_index_1 on hash_f8_heap(abs(random));
+create index hash_f8_index_2 on hash_f8_heap((seqno + 1), random);
+create index hash_f8_index_3 on hash_f8_heap(random) where seqno > 1000;
