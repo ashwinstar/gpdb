@@ -25,7 +25,7 @@ INSERT INTO SUBSELECT_TBL VALUES (3, 3, 3);
 INSERT INTO SUBSELECT_TBL VALUES (6, 7, 8);
 INSERT INTO SUBSELECT_TBL VALUES (8, 9, NULL);
 
-SELECT '' AS eight, * FROM SUBSELECT_TBL ORDER BY 2,3;
+SELECT '' AS eight, * FROM SUBSELECT_TBL ORDER BY 2,3,4;
 
 -- Uncorrelated subselects
 
@@ -42,23 +42,23 @@ SELECT '' AS six, f1 AS "Uncorrelated Field" FROM SUBSELECT_TBL
 SELECT '' AS three, f1, f2
   FROM SUBSELECT_TBL
   WHERE (f1, f2) NOT IN (SELECT f2, CAST(f3 AS int4) FROM SUBSELECT_TBL
-                         WHERE f3 IS NOT NULL) ORDER BY 2;
+                         WHERE f3 IS NOT NULL) ORDER BY 2,3;
 
 -- Correlated subselects
 
 SELECT '' AS six, f1 AS "Correlated Field", f2 AS "Second Field"
   FROM SUBSELECT_TBL upper
-  WHERE f1 IN (SELECT f2 FROM SUBSELECT_TBL WHERE f1 = upper.f1) ORDER BY 2;
+  WHERE f1 IN (SELECT f2 FROM SUBSELECT_TBL WHERE f1 = upper.f1) ORDER BY 2,3;
 
 SELECT '' AS six, f1 AS "Correlated Field", f3 AS "Second Field"
   FROM SUBSELECT_TBL upper
   WHERE f1 IN
-    (SELECT f2 FROM SUBSELECT_TBL WHERE CAST(upper.f2 AS float) = f3) ORDER BY 2;
+    (SELECT f2 FROM SUBSELECT_TBL WHERE CAST(upper.f2 AS float) = f3) ORDER BY 2,3;
 
 SELECT '' AS six, f1 AS "Correlated Field", f3 AS "Second Field"
   FROM SUBSELECT_TBL upper
   WHERE f3 IN (SELECT upper.f1 + f2 FROM SUBSELECT_TBL
-               WHERE f2 = CAST(f3 AS integer)) ORDER BY 2;
+               WHERE f2 = CAST(f3 AS integer)) ORDER BY 2,3;
 
 SELECT '' AS five, f1 AS "Correlated Field"
   FROM SUBSELECT_TBL
@@ -72,7 +72,7 @@ SELECT '' AS five, f1 AS "Correlated Field"
 SELECT '' AS eight, ss.f1 AS "Correlated Field", ss.f3 AS "Second Field"
   FROM SUBSELECT_TBL ss
   WHERE f1 NOT IN (SELECT f1+1 FROM INT4_TBL
-                   WHERE f1 != ss.f1 AND f1 < 2147483647) ORDER BY 2;
+                   WHERE f1 != ss.f1 AND f1 < 2147483647) ORDER BY 2,3;
 
 select q1, float8(count(*)) / (select count(*) from int8_tbl)
 from int8_tbl group by q1 order by q1;
@@ -188,7 +188,7 @@ END) AS "Status",
 END) AS "Status_OK"
 FROM orderstest ord;
 
-SELECT * FROM orders_view ORDER BY 1;
+SELECT * FROM orders_view ORDER BY 1,2;
 
 DROP TABLE orderstest cascade;
 
@@ -220,7 +220,7 @@ insert into parts (partnum, cost) values (1, 1234.56);
 insert into shipped_view (ordnum, partnum, value)
     values (0, 1, (select cost from parts where partnum = 1));
 
-select * from shipped_view ORDER BY 1;
+select * from shipped_view ORDER BY 1,2;
 
 create rule shipped_view_update as on update to shipped_view do instead
     update shipped set partnum = new.partnum, value = new.value
@@ -231,7 +231,7 @@ update shipped_view set value = 11
       on (a.f1 = (select f1 from int4_tbl c where c.f1=b.f1))
     where ordnum = a.f1;
 
-select * from shipped_view ORDER BY 1;
+select * from shipped_view ORDER BY 1,2;
 
 select f1, ss1 as relabel from
     (select *, (select sum(f1) from int4_tbl b where f1 >= a.f1) as ss1
