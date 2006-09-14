@@ -177,7 +177,7 @@ ANALYZE tenk1;
 set enable_seqscan to off;
 set enable_bitmapscan to off;
 -- 5 values, sorted 
-SELECT unique1 FROM tenk1 WHERE unique1 < 5;
+SELECT unique1 FROM tenk1 WHERE unique1 < 5 ORDER BY 1;
 reset enable_seqscan;
 reset enable_bitmapscan;
 

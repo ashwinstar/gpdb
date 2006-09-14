@@ -22,7 +22,7 @@ EXECUTE q2('regression');
 
 PREPARE q3(text, int, float, boolean, oid, smallint) AS
 	SELECT * FROM tenk1 WHERE string4 = $1 AND (four = $2 OR
-	ten = $3::bigint OR true = $4 OR oid = $5 OR odd = $6::int);
+	ten = $3::bigint OR true = $4 OR oid = $5 OR odd = $6::int) ORDER BY 1,2,3,4;
 
 EXECUTE q3('AAAAxx', 5::smallint, 10.5::float, false, 500::oid, 4::bigint);
 
@@ -42,4 +42,4 @@ PREPARE q4(nonexistenttype) AS SELECT $1;
 PREPARE q5(int, text) AS
 	SELECT * FROM tenk1 WHERE unique1 = $1 OR stringu1 = $2;
 CREATE TEMPORARY TABLE q5_prep_results AS EXECUTE q5(200, 'DTAAAA');
-SELECT * FROM q5_prep_results;
+SELECT * FROM q5_prep_results ORDER BY 1,2,3,4;
