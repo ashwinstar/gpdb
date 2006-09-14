@@ -655,142 +655,142 @@ SELECT timestamptz(date '1994-01-01', time with time zone '11:00-5') AS "Jan_01_
  Sat Jan 01 08:00:00 1994 PST
 (1 row)
 
-SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL;
+SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL ORDER BY 2;
  64 |            one_year             
 ----+---------------------------------
-    | Thu Dec 31 16:00:00 1970 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01.40 1998 PST
-    | Fri Jan 02 00:00:00 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Sun Sep 22 18:19:20 2002 PDT
-    | Thu Mar 15 04:14:02 2001 PST
-    | Thu Mar 15 02:14:03 2001 PST
-    | Thu Mar 15 01:14:05 2001 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Mon Feb 16 17:32:01 1998 PST
+    | -infinity
     | Thu Feb 16 17:32:01 0096 PST BC
     | Sun Feb 16 17:32:01 0098 PST
     | Fri Feb 16 17:32:01 0598 PST
     | Wed Feb 16 17:32:01 1098 PST
+    | Sun Feb 16 17:32:01 1698 PST
     | Fri Feb 16 17:32:01 1798 PST
-    | Mon Feb 16 17:32:01 1998 PST
+    | Wed Feb 16 17:32:01 1898 PST
+    | Thu Dec 31 16:00:00 1970 PST
     | Fri Feb 28 17:32:01 1997 PST
+    | Fri Feb 28 17:32:01 1997 PST
+    | Sat Mar 01 17:32:01 1997 PST
     | Tue Dec 30 17:32:01 1997 PST
-    | Sun Mar 01 17:32:01 1998 PST
-    | Wed Dec 30 17:32:01 1998 PST
-    | Sun Dec 31 17:32:01 2000 PST
-    | -infinity
-    | infinity
-    | Tue Feb 10 17:32:02 1998 PST
+    | Wed Dec 31 17:32:01 1997 PST
+    | Thu Jan 01 17:32:01 1998 PST
+    | Fri Jan 02 00:00:00 1998 PST
+    | Fri Jan 02 03:04:05 1998 PST
+    | Tue Feb 10 09:32:01 1998 PST
+    | Tue Feb 10 09:32:01 1998 PST
+    | Tue Feb 10 09:32:01 1998 PST
+    | Tue Feb 10 17:32:00 1998 PST
+    | Tue Feb 10 17:32:01 1998 PST
+    | Tue Feb 10 17:32:01 1998 PST
+    | Tue Feb 10 17:32:01 1998 PST
+    | Tue Feb 10 17:32:01 1998 PST
+    | Tue Feb 10 17:32:01 1998 PST
+    | Tue Feb 10 17:32:01 1998 PST
+    | Tue Feb 10 17:32:01 1998 PST
+    | Tue Feb 10 17:32:01 1998 PST
+    | Tue Feb 10 17:32:01 1998 PST
+    | Tue Feb 10 17:32:01 1998 PST
+    | Tue Feb 10 17:32:01 1998 PST
+    | Tue Feb 10 17:32:01 1998 PST
+    | Tue Feb 10 17:32:01 1998 PST
+    | Tue Feb 10 17:32:01 1998 PST
+    | Tue Feb 10 17:32:01.40 1998 PST
     | Tue Feb 10 17:32:01.50 1998 PST
     | Tue Feb 10 17:32:01.60 1998 PST
-    | Fri Jan 02 03:04:05 1998 PST
-    | Wed Jun 10 17:32:01 1998 PDT
-    | Thu Mar 15 08:14:01 2001 PST
-    | Thu Mar 15 03:14:04 2001 PST
-    | Tue Feb 10 17:32:00 1998 PST
-    | Tue Feb 10 09:32:01 1998 PST
-    | Tue Feb 10 09:32:01 1998 PST
-    | Tue Feb 10 09:32:01 1998 PST
-    | Wed Jun 10 18:32:01 1998 PDT
+    | Tue Feb 10 17:32:02 1998 PST
     | Wed Feb 11 17:32:01 1998 PST
     | Thu Feb 12 17:32:01 1998 PST
     | Fri Feb 13 17:32:01 1998 PST
     | Sat Feb 14 17:32:01 1998 PST
     | Sun Feb 15 17:32:01 1998 PST
-    | Sun Feb 16 17:32:01 1698 PST
-    | Wed Feb 16 17:32:01 1898 PST
-    | Sun Feb 16 17:32:01 2098 PST
-    | Fri Feb 28 17:32:01 1997 PST
-    | Sat Mar 01 17:32:01 1997 PST
-    | Wed Dec 31 17:32:01 1997 PST
-    | Thu Jan 01 17:32:01 1998 PST
+    | Mon Feb 16 17:32:01 1998 PST
+    | Mon Feb 16 17:32:01 1998 PST
     | Sat Feb 28 17:32:01 1998 PST
+    | Sun Mar 01 17:32:01 1998 PST
+    | Wed Jun 10 17:32:01 1998 PDT
+    | Wed Jun 10 18:32:01 1998 PDT
+    | Wed Dec 30 17:32:01 1998 PST
     | Thu Dec 31 17:32:01 1998 PST
+    | Sun Dec 31 17:32:01 2000 PST
     | Mon Jan 01 17:32:01 2001 PST
+    | Thu Mar 15 01:14:05 2001 PST
+    | Thu Mar 15 02:14:03 2001 PST
+    | Thu Mar 15 03:14:04 2001 PST
+    | Thu Mar 15 04:14:02 2001 PST
+    | Thu Mar 15 08:14:01 2001 PST
     | Mon Dec 31 17:32:01 2001 PST
     | Tue Jan 01 17:32:01 2002 PST
+    | Sun Sep 22 18:19:20 2002 PDT
+    | Sun Feb 16 17:32:01 2098 PST
+    | infinity
 (64 rows)
 
-SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL;
+SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL ORDER BY 2;
  64 |            one_year             
 ----+---------------------------------
-    | Tue Dec 31 16:00:00 1968 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01.40 1996 PST
-    | Tue Jan 02 00:00:00 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Fri Sep 22 18:19:20 2000 PDT
-    | Mon Mar 15 04:14:02 1999 PST
-    | Mon Mar 15 02:14:03 1999 PST
-    | Mon Mar 15 01:14:05 1999 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Fri Feb 16 17:32:01 1996 PST
+    | -infinity
     | Mon Feb 16 17:32:01 0098 PST BC
     | Thu Feb 16 17:32:01 0096 PST
     | Tue Feb 16 17:32:01 0596 PST
     | Sun Feb 16 17:32:01 1096 PST
+    | Thu Feb 16 17:32:01 1696 PST
     | Tue Feb 16 17:32:01 1796 PST
-    | Fri Feb 16 17:32:01 1996 PST
+    | Sun Feb 16 17:32:01 1896 PST
+    | Tue Dec 31 16:00:00 1968 PST
     | Tue Feb 28 17:32:01 1995 PST
+    | Tue Feb 28 17:32:01 1995 PST
+    | Wed Mar 01 17:32:01 1995 PST
     | Sat Dec 30 17:32:01 1995 PST
-    | Fri Mar 01 17:32:01 1996 PST
-    | Mon Dec 30 17:32:01 1996 PST
-    | Thu Dec 31 17:32:01 1998 PST
-    | -infinity
-    | infinity
-    | Sat Feb 10 17:32:02 1996 PST
+    | Sun Dec 31 17:32:01 1995 PST
+    | Mon Jan 01 17:32:01 1996 PST
+    | Tue Jan 02 00:00:00 1996 PST
+    | Tue Jan 02 03:04:05 1996 PST
+    | Sat Feb 10 09:32:01 1996 PST
+    | Sat Feb 10 09:32:01 1996 PST
+    | Sat Feb 10 09:32:01 1996 PST
+    | Sat Feb 10 17:32:00 1996 PST
+    | Sat Feb 10 17:32:01 1996 PST
+    | Sat Feb 10 17:32:01 1996 PST
+    | Sat Feb 10 17:32:01 1996 PST
+    | Sat Feb 10 17:32:01 1996 PST
+    | Sat Feb 10 17:32:01 1996 PST
+    | Sat Feb 10 17:32:01 1996 PST
+    | Sat Feb 10 17:32:01 1996 PST
+    | Sat Feb 10 17:32:01 1996 PST
+    | Sat Feb 10 17:32:01 1996 PST
+    | Sat Feb 10 17:32:01 1996 PST
+    | Sat Feb 10 17:32:01 1996 PST
+    | Sat Feb 10 17:32:01 1996 PST
+    | Sat Feb 10 17:32:01 1996 PST
+    | Sat Feb 10 17:32:01 1996 PST
+    | Sat Feb 10 17:32:01.40 1996 PST
     | Sat Feb 10 17:32:01.50 1996 PST
     | Sat Feb 10 17:32:01.60 1996 PST
-    | Tue Jan 02 03:04:05 1996 PST
-    | Mon Jun 10 17:32:01 1996 PDT
-    | Mon Mar 15 08:14:01 1999 PST
-    | Mon Mar 15 03:14:04 1999 PST
-    | Sat Feb 10 17:32:00 1996 PST
-    | Sat Feb 10 09:32:01 1996 PST
-    | Sat Feb 10 09:32:01 1996 PST
-    | Sat Feb 10 09:32:01 1996 PST
-    | Mon Jun 10 18:32:01 1996 PDT
+    | Sat Feb 10 17:32:02 1996 PST
     | Sun Feb 11 17:32:01 1996 PST
     | Mon Feb 12 17:32:01 1996 PST
     | Tue Feb 13 17:32:01 1996 PST
     | Wed Feb 14 17:32:01 1996 PST
     | Thu Feb 15 17:32:01 1996 PST
-    | Thu Feb 16 17:32:01 1696 PST
-    | Sun Feb 16 17:32:01 1896 PST
-    | Thu Feb 16 17:32:01 2096 PST
-    | Tue Feb 28 17:32:01 1995 PST
-    | Wed Mar 01 17:32:01 1995 PST
-    | Sun Dec 31 17:32:01 1995 PST
-    | Mon Jan 01 17:32:01 1996 PST
+    | Fri Feb 16 17:32:01 1996 PST
+    | Fri Feb 16 17:32:01 1996 PST
     | Wed Feb 28 17:32:01 1996 PST
+    | Fri Mar 01 17:32:01 1996 PST
+    | Mon Jun 10 17:32:01 1996 PDT
+    | Mon Jun 10 18:32:01 1996 PDT
+    | Mon Dec 30 17:32:01 1996 PST
     | Tue Dec 31 17:32:01 1996 PST
+    | Thu Dec 31 17:32:01 1998 PST
     | Fri Jan 01 17:32:01 1999 PST
+    | Mon Mar 15 01:14:05 1999 PST
+    | Mon Mar 15 02:14:03 1999 PST
+    | Mon Mar 15 03:14:04 1999 PST
+    | Mon Mar 15 04:14:02 1999 PST
+    | Mon Mar 15 08:14:01 1999 PST
     | Fri Dec 31 17:32:01 1999 PST
     | Sat Jan 01 17:32:01 2000 PST
+    | Fri Sep 22 18:19:20 2000 PDT
+    | Thu Feb 16 17:32:01 2096 PST
+    | infinity
 (64 rows)
 
 --
@@ -870,6 +870,10 @@ SELECT CAST(cast(date 'today' + time with time zone '03:30'
 SELECT t.d1 + i.f1 AS "102" FROM TIMESTAMP_TBL t, INTERVAL_TBL i
   WHERE t.d1 BETWEEN '1990-01-01' AND '2001-01-01'
     AND i.f1 BETWEEN '00:00' AND '23:00' ORDER BY 1;
+NOTICE:  Query planner will use default statistics for table "timestamp_tbl"
+HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
+NOTICE:  Query planner will use default statistics for table "interval_tbl"
+HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
              102             
 -----------------------------
  Wed Feb 28 17:33:01 1996
@@ -1086,6 +1090,8 @@ SELECT t.d1 - i.f1 AS "102" FROM TIMESTAMP_TBL t, INTERVAL_TBL i
 (102 rows)
 
 SELECT t.f1 + i.f1 AS "80" FROM TIME_TBL t, INTERVAL_TBL i ORDER BY 1;
+NOTICE:  Query planner will use default statistics for table "time_tbl"
+HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
      80      
 -------------
  00:00:00
@@ -1256,6 +1262,8 @@ SELECT t.f1 - i.f1 AS "80" FROM TIME_TBL t, INTERVAL_TBL i ORDER BY 1;
 (80 rows)
 
 SELECT t.f1 + i.f1 AS "100" FROM TIMETZ_TBL t, INTERVAL_TBL i ORDER BY 1;
+NOTICE:  Query planner will use default statistics for table "timetz_tbl"
+HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
       100       
 ----------------
  00:00:00-07
@@ -1585,6 +1593,8 @@ SELECT (time '00:00', interval '1 hour')
 (1 row)
 
 CREATE TABLE TEMP_TIMESTAMP (f1 timestamp with time zone);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'f1' as the Bizgres MPP data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 -- get some candidate input values
 INSERT INTO TEMP_TIMESTAMP (f1)
   SELECT d1 FROM TIMESTAMP_TBL
@@ -1616,6 +1626,8 @@ SELECT '' AS "16", f1 AS "timestamp"
 SELECT '' AS "160", d.f1 AS "timestamp", t.f1 AS "interval", d.f1 + t.f1 AS plus
   FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
   ORDER BY plus, "timestamp", "interval";
+NOTICE:  Query planner will use default statistics for table "temp_timestamp"
+HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
  160 |          timestamp           |           interval            |             plus             
 -----+------------------------------+-------------------------------+------------------------------
      | Thu Jan 01 00:00:00 1970 PST | @ 14 secs ago                 | Wed Dec 31 23:59:46 1969 PST
@@ -2243,6 +2255,10 @@ SELECT '' AS ten, ABSTIME_TBL.f1 AS abstime, RELTIME_TBL.f1 AS reltime
     FROM ABSTIME_TBL, RELTIME_TBL
    WHERE (ABSTIME_TBL.f1 + RELTIME_TBL.f1) < abstime 'Jan 14 14:00:00 1971'
    ORDER BY abstime, reltime;
+NOTICE:  Query planner will use default statistics for table "abstime_tbl"
+HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
+NOTICE:  Query planner will use default statistics for table "reltime_tbl"
+HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
  ten |           abstime            |    reltime    
 -----+------------------------------+---------------
      | Sat May 10 23:59:12 1947 PST | @ 14 secs ago
