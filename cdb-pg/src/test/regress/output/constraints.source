@@ -133,13 +133,13 @@ INSERT INTO INSERT_TBL VALUES (5, 'check failed', -5);
 ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"
 INSERT INTO INSERT_TBL VALUES (7, '!check failed', -7);
 INSERT INTO INSERT_TBL(y) VALUES ('-!NULL-');
-SELECT '' AS four, * FROM INSERT_TBL;
+SELECT '' AS four, * FROM INSERT_TBL ORDER BY 2,3,4;
  four | x |       y       | z  
 ------+---+---------------+----
       | 3 | Y             | -3
-      | 7 | -NULL-        | -7
-      | 7 | !check failed | -7
       | 4 | -!NULL-       | -4
+      | 7 | !check failed | -7
+      | 7 | -NULL-        | -7
 (4 rows)
 
 INSERT INTO INSERT_TBL(y,z) VALUES ('check failed', 4);
@@ -148,15 +148,15 @@ INSERT INTO INSERT_TBL(x,y) VALUES (5, 'check failed');
 ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"
 INSERT INTO INSERT_TBL(x,y) VALUES (5, '!check failed');
 INSERT INTO INSERT_TBL(y) VALUES ('-!NULL-');
-SELECT '' AS six, * FROM INSERT_TBL;
+SELECT '' AS six, * FROM INSERT_TBL ORDER BY 2,3,4;
  six | x |       y       | z  
 -----+---+---------------+----
      | 3 | Y             | -3
-     | 7 | -NULL-        | -7
-     | 7 | !check failed | -7
      | 4 | -!NULL-       | -4
      | 5 | !check failed | -5
      | 6 | -!NULL-       | -6
+     | 7 | !check failed | -7
+     | 7 | -NULL-        | -7
 (6 rows)
 
 SELECT 'seven' AS one, nextval('insert_seq');
@@ -177,15 +177,15 @@ SELECT 'eight' AS one, currval('insert_seq');
 -- constraint-condition results.  Postgres used to reject this, but it
 -- was wrong:
 INSERT INTO INSERT_TBL VALUES (null, null, null);
-SELECT '' AS nine, * FROM INSERT_TBL;
+SELECT '' AS nine, * FROM INSERT_TBL ORDER BY 2,3,4;
  nine | x |       y       | z  
 ------+---+---------------+----
       | 3 | Y             | -3
-      | 7 | -NULL-        | -7
-      | 7 | !check failed | -7
       | 4 | -!NULL-       | -4
       | 5 | !check failed | -5
       | 6 | -!NULL-       | -6
+      | 7 | !check failed | -7
+      | 7 | -NULL-        | -7
       |   |               |   
 (7 rows)
 
@@ -202,7 +202,7 @@ INSERT INTO INSERT_CHILD(x,z,cy) VALUES (6,-7,7);
 ERROR:  new row for relation "insert_child" violates check constraint "insert_tbl_check"
 INSERT INTO INSERT_CHILD(x,y,z,cy) VALUES (6,'check failed',-6,7);
 ERROR:  new row for relation "insert_child" violates check constraint "insert_con"
-SELECT * FROM INSERT_CHILD;
+SELECT * FROM INSERT_CHILD ORDER BY 1,2,3;
  x |   y    | z  | cx | cy 
 ---+--------+----+----+----
  7 | -NULL- | -7 | 42 | 11
@@ -219,7 +219,7 @@ INSERT INTO tmp VALUES (null, 'Y', null);
 INSERT INTO tmp VALUES (5, '!check failed', null);
 INSERT INTO tmp VALUES (null, 'try again', null);
 INSERT INTO INSERT_TBL(y) select yd from tmp;
-SELECT '' AS three, * FROM INSERT_TBL;
+SELECT '' AS three, * FROM INSERT_TBL ORDER BY 2,3,4;
  three | x |       y       | z  
 -------+---+---------------+----
        | 4 | Y             | -4
@@ -231,14 +231,14 @@ INSERT INTO INSERT_TBL SELECT * FROM tmp WHERE yd = 'try again';
 INSERT INTO INSERT_TBL(y,z) SELECT yd, -7 FROM tmp WHERE yd = 'try again';
 INSERT INTO INSERT_TBL(y,z) SELECT yd, -8 FROM tmp WHERE yd = 'try again';
 ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"
-SELECT '' AS four, * FROM INSERT_TBL;
+SELECT '' AS four, * FROM INSERT_TBL ORDER BY 2,3,4;
  four | x |       y       | z  
 ------+---+---------------+----
       | 4 | Y             | -4
       | 5 | !check failed | -5
       | 6 | try again     | -6
-      |   | try again     |   
       | 7 | try again     | -7
+      |   | try again     |   
 (5 rows)
 
 DROP TABLE tmp;
@@ -327,6 +327,7 @@ SELECT '' AS three, * FROM PRIMARY_TBL ORDER BY 2,3;
        | 4 | three
        | 5 | one
 (5 rows)
+
 DROP TABLE PRIMARY_TBL;
 --
 -- Unique keys
@@ -351,7 +352,6 @@ SELECT '' AS five, * FROM UNIQUE_TBL ORDER BY 2,3;
       |   | seven
       |   | six
 (6 rows)
-
 
 DROP TABLE UNIQUE_TBL;
 CREATE TABLE UNIQUE_TBL (i int, t text,
