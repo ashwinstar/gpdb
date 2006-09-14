@@ -101,7 +101,7 @@ SELECT class, b, c
 
 SELECT class, c FROM e_star* x WHERE x.c NOTNULL ORDER BY 1,2;
 
-SELECT * FROM f_star* x WHERE x.c ISNULL ORDER BY !;
+SELECT * FROM f_star* x WHERE x.c ISNULL ORDER BY 1;
 
 -- grouping and aggregation on inherited sets have been busted in the past...
 
