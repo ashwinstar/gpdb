@@ -46,7 +46,7 @@ SELECT '' AS four, c AS cidr, masklen(c) AS "masklen(cidr)",
   WHERE masklen(c) <= 8 ORDER BY 2;
 
 SELECT '' AS six, c AS cidr, i AS inet FROM INET_TBL
-  WHERE c = i ORDER BY 2;
+  WHERE c = i ORDER BY 2,3;
 
 SELECT '' AS ten, i, c,
   i < c AS lt, i <= c AS le, i = c AS eq, 

@@ -21,14 +21,14 @@ INSERT INTO INT8_TBL(q1) VALUES ('');
 
 SELECT * FROM INT8_TBL order by q1, q2;
 
-SELECT '' AS five, q1 AS plus, -q1 AS minus FROM INT8_TBL order by 1, 2;
+SELECT '' AS five, q1 AS plus, -q1 AS minus FROM INT8_TBL order by 1, 2, 3;
 
-SELECT '' AS five, q1, q2, q1 + q2 AS plus FROM INT8_TBL order by 1, 2;
-SELECT '' AS five, q1, q2, q1 - q2 AS minus FROM INT8_TBL order by 1, 2;
-SELECT '' AS three, q1, q2, q1 * q2 AS multiply FROM INT8_TBL order by 1, 2;
+SELECT '' AS five, q1, q2, q1 + q2 AS plus FROM INT8_TBL order by 1, 2, 3;
+SELECT '' AS five, q1, q2, q1 - q2 AS minus FROM INT8_TBL order by 1, 2,3 ;
+SELECT '' AS three, q1, q2, q1 * q2 AS multiply FROM INT8_TBL order by 1, 2,3;
 SELECT '' AS three, q1, q2, q1 * q2 AS multiply FROM INT8_TBL
- WHERE q1 < 1000 or (q2 > 0 and q2 < 1000) order by 1, 2;
-SELECT '' AS five, q1, q2, q1 / q2 AS divide FROM INT8_TBL order by 1, 2;
+ WHERE q1 < 1000 or (q2 > 0 and q2 < 1000) order by 1, 2,3;
+SELECT '' AS five, q1, q2, q1 / q2 AS divide FROM INT8_TBL order by 1, 2,3;
 
 SELECT '' AS five, q1, float8(q1) FROM INT8_TBL order by 1, 2;
 SELECT '' AS five, q2, float8(q2) FROM INT8_TBL order by 1, 2;
@@ -39,16 +39,16 @@ SELECT '' AS five, q1 * 2 AS "twice int4" FROM INT8_TBL order by 1, 2;
 -- TO_CHAR()
 --
 SELECT '' AS to_char_1, to_char(q1, '9G999G999G999G999G999'), to_char(q2, '9,999,999,999,999,999') 
-	FROM INT8_TBL  order by 1, 2;
+	FROM INT8_TBL  order by 1, 2,3;
 
 SELECT '' AS to_char_2, to_char(q1, '9G999G999G999G999G999D999G999'), to_char(q2, '9,999,999,999,999,999.999,999') 
-	FROM INT8_TBL  order by 1, 2;	
+	FROM INT8_TBL  order by 1, 2,3;	
 
 SELECT '' AS to_char_3, to_char( (q1 * -1), '9999999999999999PR'), to_char( (q2 * -1), '9999999999999999.999PR') 
-	FROM INT8_TBL  order by 1, 2;
+	FROM INT8_TBL  order by 1, 2,3;
 
 SELECT '' AS to_char_4, to_char( (q1 * -1), '9999999999999999S'), to_char( (q2 * -1), 'S9999999999999999') 
-	FROM INT8_TBL  order by 1, 2;
+	FROM INT8_TBL  order by 1, 2,3;
 
 SELECT '' AS to_char_5,  to_char(q2, 'MI9999999999999999')     FROM INT8_TBL  order by 1, 2;	
 SELECT '' AS to_char_6,  to_char(q2, 'FMS9999999999999999')    FROM INT8_TBL  order by 1, 2;

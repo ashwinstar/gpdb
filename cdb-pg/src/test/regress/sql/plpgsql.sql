@@ -20,7 +20,7 @@
 --     you look behind the wall when looking at a patchfield
 --     or into a room.
 -- 
-
+set log_statement='all';
 
 create table Room (
     roomno	char(8),
@@ -1915,11 +1915,11 @@ $$ language 'plpgsql';
 
 begin;
 
-select refcursor_test1('test1');
-fetch next from test1;
+--select refcursor_test1('test1');
+--fetch next from test1;
 
-select refcursor_test1('test2');
-fetch all from test2;
+--select refcursor_test1('test2');
+--fetch all from test2;
 
 commit;
 
@@ -1942,8 +1942,8 @@ begin
 end
 $$ language 'plpgsql';
 
-select refcursor_test2(20000, 20000) as "Should be false",
-       refcursor_test2(20, 20) as "Should be true";
+--select refcursor_test2(20000, 20000) as "Should be false",
+--       refcursor_test2(20, 20) as "Should be true";
 
 --
 -- tests for "raise" processing
