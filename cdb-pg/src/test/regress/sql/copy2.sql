@@ -151,17 +151,6 @@ c\.d
 
 COPY testeoc TO stdout CSV;
 
---test that we read consecutive LFs properly
-
-CREATE TEMP TABLE testnl (a int, b text, c int);
-
-COPY testnl FROM stdin CSV;
-1,"a field with two LFs
-
-inside",2
-\.
-
-
 DROP TABLE x, y;
 DROP FUNCTION fn_x_before();
 DROP FUNCTION fn_x_after();
