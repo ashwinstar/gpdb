@@ -1931,9 +1931,11 @@ void verify_shared_snapshot_ready(void)
 bool
 assign_mpp_write_shared_snapshot(bool newval, bool doit, GucSource source)
 {
-	elog(LOG, "SET mpp_write_shared_snapshot: %s, doit=%s",
+	
+#if FALSE
+	elog(DEBUG1, "SET mpp_write_shared_snapshot: %s, doit=%s",
 		 (newval ? "true" : "false"), (doit ? "true" : "false"));
-
+#endif
 	/* make sure newval is "true". if it's "false" this could be a part
 	 * of a ROLLBACK so we don't want to set the snapshot then.
 	 */
