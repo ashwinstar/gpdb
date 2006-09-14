@@ -3,18 +3,18 @@
 --
 
 CREATE TABLE update_test (
+	c   INT DEFAULT 1,
     a   INT DEFAULT 10,
     b   INT
-    ,c   INT DEFAULT 1
-) DISTRIBUTED BY (c);
+);
 
-INSERT INTO update_test VALUES (5, 10);
-INSERT INTO update_test VALUES (10, 15);
+INSERT INTO update_test(a,b) VALUES (5, 10);
+INSERT INTO update_test(a,b) VALUES (10, 15);
 
-SELECT * FROM update_test;
+SELECT a,b FROM update_test ORDER BY a,b;
 
 UPDATE update_test SET a = DEFAULT, b = DEFAULT;
 
-SELECT * FROM update_test;
+SELECT a,b FROM update_test ORDER BY a,b;
 
 DROP TABLE update_test;

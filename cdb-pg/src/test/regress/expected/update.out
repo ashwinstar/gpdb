@@ -2,25 +2,25 @@
 -- UPDATE ... SET <col> = DEFAULT;
 --
 CREATE TABLE update_test (
+	c   INT DEFAULT 1,
     a   INT DEFAULT 10,
     b   INT
-    ,c   INT DEFAULT 1
-) DISTRIBUTED BY (c);
-INSERT INTO update_test VALUES (5, 10);
-INSERT INTO update_test VALUES (10, 15);
-SELECT * FROM update_test;
- a  | b  | c 
-----+----+---
-  5 | 10 | 1
- 10 | 15 | 1
+);
+INSERT INTO update_test(a,b) VALUES (5, 10);
+INSERT INTO update_test(a,b) VALUES (10, 15);
+SELECT a,b FROM update_test ORDER BY a,b;
+ a  | b  
+----+----
+  5 | 10
+ 10 | 15
 (2 rows)
 
 UPDATE update_test SET a = DEFAULT, b = DEFAULT;
-SELECT * FROM update_test;
- a  | b | c 
-----+---+---
- 10 |   | 1
- 10 |   | 1
+SELECT a,b FROM update_test ORDER BY a,b;
+ a  | b 
+----+---
+ 10 |  
+ 10 |  
 (2 rows)
 
 DROP TABLE update_test;
