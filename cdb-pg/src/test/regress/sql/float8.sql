@@ -2,7 +2,7 @@
 -- FLOAT8
 --
 
-CREATE TABLE FLOAT8_TBL(f1 float8);
+CREATE TABLE FLOAT8_TBL(i INT DEFAULT 1, f1 float8);
 
 INSERT INTO FLOAT8_TBL(f1) VALUES ('    0.0   ');
 INSERT INTO FLOAT8_TBL(f1) VALUES ('1004.30  ');
@@ -41,19 +41,19 @@ SELECT 'Infinity'::float8 + 100.0;
 SELECT 'Infinity'::float8 / 'Infinity'::float8;
 SELECT 'nan'::float8 / 'nan'::float8;
 
-SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY 2;
+SELECT '' AS five, f1 FROM FLOAT8_TBL ORDER BY 2;
 
-SELECT '' AS four, f.* FROM FLOAT8_TBL f WHERE f.f1 <> '1004.3' ORDER BY 2;
+SELECT '' AS four, f.f1 FROM FLOAT8_TBL f WHERE f.f1 <> '1004.3' ORDER BY 2;
 
-SELECT '' AS one, f.* FROM FLOAT8_TBL f WHERE f.f1 = '1004.3' ORDER BY 2;
+SELECT '' AS one, f.f1 FROM FLOAT8_TBL f WHERE f.f1 = '1004.3' ORDER BY 2;
 
-SELECT '' AS three, f.* FROM FLOAT8_TBL f WHERE '1004.3' > f.f1 ORDER BY 2;
+SELECT '' AS three, f.f1 FROM FLOAT8_TBL f WHERE '1004.3' > f.f1 ORDER BY 2;
 
-SELECT '' AS three, f.* FROM FLOAT8_TBL f WHERE  f.f1 < '1004.3' ORDER BY 2;
+SELECT '' AS three, f.f1 FROM FLOAT8_TBL f WHERE  f.f1 < '1004.3' ORDER BY 2;
 
-SELECT '' AS four, f.* FROM FLOAT8_TBL f WHERE '1004.3' >= f.f1 ORDER BY 2;
+SELECT '' AS four, f.f1 FROM FLOAT8_TBL f WHERE '1004.3' >= f.f1 ORDER BY 2;
 
-SELECT '' AS four, f.* FROM FLOAT8_TBL f WHERE  f.f1 <= '1004.3' ORDER BY 2;
+SELECT '' AS four, f.f1 FROM FLOAT8_TBL f WHERE  f.f1 <= '1004.3' ORDER BY 2;
 
 SELECT '' AS three, f.f1, f.f1 * '-10' AS x 
    FROM FLOAT8_TBL f
@@ -65,7 +65,7 @@ SELECT '' AS three, f.f1, f.f1 + '-10' AS x
 
 SELECT '' AS three, f.f1, f.f1 / '-10' AS x
    FROM FLOAT8_TBL f
-   WHERE f.f1 > '0.0' ORDER BY 2
+   WHERE f.f1 > '0.0' ORDER BY 2;
 
 SELECT '' AS three, f.f1, f.f1 - '-10' AS x
    FROM FLOAT8_TBL f
@@ -119,7 +119,7 @@ SELECT ||/ float8 '27' AS three;
 SELECT '' AS five, f.f1, ||/f.f1 AS cbrt_f1 FROM FLOAT8_TBL f ORDER BY 2;
 
 
-SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY 2;
+SELECT '' AS five, f1 FROM FLOAT8_TBL ORDER BY 2;
 
 UPDATE FLOAT8_TBL
    SET f1 = FLOAT8_TBL.f1 * '-1'
@@ -137,7 +137,7 @@ SELECT '' AS bad, exp(f.f1) from FLOAT8_TBL f;
 
 SELECT '' AS bad, f.f1 / '0.0' from FLOAT8_TBL f;
 
-SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY 2;
+SELECT '' AS five, f1 FROM FLOAT8_TBL ORDER BY 2;
 
 -- test for over- and underflow 
 INSERT INTO FLOAT8_TBL(f1) VALUES ('10e400');
@@ -163,5 +163,5 @@ INSERT INTO FLOAT8_TBL(f1) VALUES ('-1.2345678901234e+200');
 
 INSERT INTO FLOAT8_TBL(f1) VALUES ('-1.2345678901234e-200');
 
-SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY 2;
+SELECT '' AS five, f1 FROM FLOAT8_TBL ORDER BY 2;
 
