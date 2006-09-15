@@ -82,6 +82,7 @@ AggregateCreateWithOid(const char *aggName,
 	Oid			sortop = InvalidOid;	/* can be omitted */
 	Oid			rettype;
 	Oid			finaltype;
+	Oid			prelimrettype;
 	Oid			fnArgs[2];		/* we only deal with 1- and 2-arg fns */
 	int			nargs_transfn;
 	TupleDesc	tupDesc;
@@ -117,8 +118,15 @@ AggregateCreateWithOid(const char *aggName,
 		fnArgs[1] = aggBaseType;
 		nargs_transfn = 2;
 	}
+
 	transfn = lookup_agg_function(aggtransfnName, nargs_transfn, fnArgs,
 								  &rettype);
+	
+	elog(DEBUG5,"AggregateCreateWithOid: successfully located transition "
+				"function %s with return type %d", 
+				func_signature_string(aggtransfnName, nargs_transfn, fnArgs), 
+				rettype);
+	
 
 	/*
 	 * Return type of transfn (possibly after refinement by
@@ -161,9 +169,35 @@ AggregateCreateWithOid(const char *aggName,
 	/* handle prelimfn, if supplied */
 	if (aggprelimfnName)
 	{
+		/* 
+		 * The preliminary state function (pfunc) input arguments are the results of the 
+		 * state transition function (sfunc) and therefore must be of the same types.
+		 */
+		fnArgs[0] = rettype;
+		fnArgs[1] = rettype;
+		
+		/*
+		 * Check that such a function name and prototype exists in the catalog.
+		 */		
+		prelimfn = lookup_agg_function(aggprelimfnName, 2, fnArgs, &prelimrettype);
+		
+		elog(DEBUG5,"AggregateCreateWithOid: successfully located preliminary "
+					"function %s with return type %d", 
+					func_signature_string(aggprelimfnName, 2, fnArgs), 
+					prelimrettype);
+		
+		Assert(OidIsValid(prelimrettype));
+		
+		/*
+		 * The preliminary return type must be of the same type as the internal 
+		 * state. (See similar error checking for transition types above)
+		 */
+		if (prelimrettype != rettype)
 			ereport(ERROR,
-					(errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-					 errmsg("preliminary aggregation not available for user-define aggregates yet")));
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("return type of preliminary function %s is not %s",
+							NameListToString(aggprelimfnName),
+							format_type_be(rettype))));		
 	}
 
 	/* handle finalfn, if supplied */
