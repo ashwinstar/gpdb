@@ -573,7 +573,7 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-					 errmsg("Type %u can't be hashed yet.", type)));
+					 errmsg("Type %u is not hashable.", type)));
 
 	}							/* switch(type) */
 
