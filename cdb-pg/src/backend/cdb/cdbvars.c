@@ -96,7 +96,7 @@ bool		enable_agg_restruct = TRUE;
 /* MPP Experimental Feature GUCs */
 bool		mpp_enable_agg_distinct = FALSE;
 bool		mpp_enable_preunique = FALSE;
-bool		mpp_hybrid_hash_agg = FALSE;
+bool		mpp_hybrid_hash_agg = TRUE;
 
 /* ----------------
  * Non-GUC globals

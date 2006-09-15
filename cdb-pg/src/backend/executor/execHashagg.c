@@ -25,6 +25,7 @@
 #include "executor/tuptable.h"
 #include "executor/nodeAgg.h"
 #include "utils/datum.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "access/htup.h"
 #include "cdb/cdbvars.h"
@@ -48,6 +49,55 @@ static HashAggEntry *makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputs
 
 #define HHA_MSG_LVL DEBUG2
 
+/* Function: est_hash_tuple_size
+ *
+ * Estimate the average memory requirement for the grouping key HeapTuple
+ * in a hash table entry.
+ *
+ * This function purports to know (perhaps too much) about the format in
+ * which a tuple representing a grouping key (non-aggregated attrbutes,
+ * actually) will be stored.  But it's all guess work, so no sense being
+ * too fussy.
+ */
+static Size est_hash_tuple_size(TupleTableSlot *hashslot, List *hash_needed)
+{
+	Form_pg_attribute *attrs;
+	Form_pg_attribute attr;
+	int natts;
+	ListCell *lc;
+	Size len; 
+	TupleDesc tupleDescriptor;
+	
+	
+	tupleDescriptor = hashslot->tts_tupleDescriptor;
+	attrs = tupleDescriptor->attrs;
+	natts = tupleDescriptor->natts;
+	
+	len = offsetof(HeapTupleHeaderData, t_bits);
+	len += BITMAPLEN(natts);
+	
+	if (tupleDescriptor->tdhasoid) 
+		len += sizeof(Oid);
+	
+	len = MAXALIGN(len);
+	
+	/* Add data sizes to len. */
+	foreach( lc, hash_needed )
+	{
+		int varNumber = lfirst_int(lc) - 1;
+		attr = attrs[varNumber];
+		
+		Assert( !attr->attisdropped );
+		
+		len = att_align(len, attr->attalign);
+		len += get_typavgwidth(attr->atttypid, attr->atttypmod);
+	}
+
+	len = MAXALIGN(HEAPTUPLESIZE + len);
+	
+	return len;
+}
+
 /* Function: create_agg_hash_table
  *
  * Creates and initializes a hash table for the given AggState.  Should be
@@ -66,13 +116,14 @@ create_agg_hash_table(AggState *aggstate)
 	int est_nbucket;
 	int est_nentry;
 	int est_nbatch;
-	Agg *agg = (Agg*)aggstate->ss.ps.plan;
 	MemoryContext oldcontext;
+	Agg *agg = (Agg*)aggstate->ss.ps.plan;
+	
 	
 	if ( !calcHashAggTableSizes( 1024.0 * (double)work_mem, 
 								(double)agg->numGroups, 
 								aggstate->numaggs,
-								agg->plan.plan_width, /* Too big. TODO Use hash slot */
+								est_hash_tuple_size(aggstate->ss.ss_ScanTupleSlot, aggstate->hash_needed),
 								agg->transSpace,
 								&est_nbucket, 
 								&est_nentry, 
@@ -766,6 +817,19 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
  * This function must agree with the other code regarding memory usage,
  * e.g., for hash entries (execHashagg.c:makeHashAggEntry), batch files
  * (buffile.c:makeBufFile), etc.
+ *
+ * The approach taken is to try to minimize number of batches (nB)
+ * thereby maximizing number of hash entries (nH) within the given 
+ * memory quota (usually just work_mem in bytes). 
+ *
+ * Very roughly, with entry sizes zB and zH and memory quota Q, 
+ * nH = (Q - zB*nB)/zH.
+ * 
+ * Memory used will be zB*nB + zH*nH = zB*nB + (Q-zB*nB).  We want this
+ * to approximate Q.  Q =  zB*nB + (Q-zB*nB) is quadratic in nB and may 
+ * be solved by formula.
+ * 
+ * The actual estimate is a little more complex.
  */
 #define NGROUP_PER_BUCKET 10.0
 #define OVERHEAD_PER_ENTRY ((double)sizeof(uint32))/NGROUP_PER_BUCKET

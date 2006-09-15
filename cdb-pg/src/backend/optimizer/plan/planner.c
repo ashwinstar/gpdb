@@ -1645,12 +1645,12 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 
 	if ( mpp_hybrid_hash_agg )
 	{
-		/* TODO - Stash transition space estimate in Agg somewhere so execHashagg.c can use it! */
 		if ( !calcHashAggTableSizes(
 				1024.0 * (double)work_mem,
 				dNumGroups,
 				agg_counts->numAggs,
-				cheapest_path_width,
+				/* The following estimate is very rough but good enough for planning. */
+				sizeof(HeapTupleData) + sizeof(HeapTupleHeaderData) + cheapest_path_width,
 				agg_counts->transitionSpace,
 				NULL,
 				NULL,
