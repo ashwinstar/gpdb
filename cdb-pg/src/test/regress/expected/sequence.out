@@ -34,18 +34,8 @@ SELECT nextval('sequence_test'::regclass);
        2
 (1 row)
 
-SELECT currval('sequence_test'::text);
- currval 
----------
-       2
-(1 row)
-
-SELECT currval('sequence_test'::regclass);
- currval 
----------
-       2
-(1 row)
-
+--SELECT currval('sequence_test'::text);
+--SELECT currval('sequence_test'::regclass);
 SELECT setval('sequence_test'::text, 32);
  setval 
 --------

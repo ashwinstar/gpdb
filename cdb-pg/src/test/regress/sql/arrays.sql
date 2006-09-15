@@ -35,14 +35,14 @@ INSERT INTO arrtest (a, b[1:2], c, d[1:2])
    VALUES ('{}', '{3,4}', '{foo,bar}', '{bar,foo}');
 
 
-SELECT * FROM arrtest;
+SELECT * FROM arrtest ORDER BY 1,2,3,4;
 
 SELECT arrtest.a[1],
           arrtest.b[1][1][1],
           arrtest.c[1],
           arrtest.d[1][1], 
           arrtest.e[0]
-   FROM arrtest;
+   FROM arrtest ORDER BY 1,2,3,4;
 
 SELECT a[1], b[1][1][1], c[1], d[1][1], e[0]
    FROM arrtest;
@@ -51,16 +51,16 @@ SELECT a[1:3],
           b[1:1][1:2][1:2],
           c[1:2], 
           d[1:1][1:2]
-   FROM arrtest;
+   FROM arrtest ORDER BY 1,2,3,4;
 
 SELECT array_dims(a) AS a,array_dims(b) AS b,array_dims(c) AS c
-   FROM arrtest;
+   FROM arrtest ORDER BY 1,2;
 
 -- returns nothing 
 SELECT *
    FROM arrtest
    WHERE a[1] < 5 and 
-         c = '{"foobar"}'::_name;
+         c = '{"foobar"}'::_name ORDER BY 1,2,3,4;
 
 UPDATE arrtest
   SET a[1:2] = '{16,25}'
@@ -75,13 +75,13 @@ UPDATE arrtest
   SET c[2:2] = '{"new_word"}'
   WHERE array_dims(c) is not null;
 
-SELECT a,b,c FROM arrtest;
+SELECT a,b,c FROM arrtest ORDER BY 1,2,3;
 
 SELECT a[1:3],
           b[1:1][1:2][1:2],
           c[1:2], 
           d[1:1][2:2]
-   FROM arrtest;
+   FROM arrtest ORDER BY 1,2,3,4;
 
 --
 -- array expressions and operators

@@ -16,8 +16,8 @@ CREATE SEQUENCE sequence_test;
  
 SELECT nextval('sequence_test'::text);
 SELECT nextval('sequence_test'::regclass);
-SELECT currval('sequence_test'::text);
-SELECT currval('sequence_test'::regclass);
+--SELECT currval('sequence_test'::text);
+--SELECT currval('sequence_test'::regclass);
 SELECT setval('sequence_test'::text, 32);
 SELECT nextval('sequence_test'::regclass);
 SELECT setval('sequence_test'::text, 99, false);
