@@ -531,7 +531,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	}
 	else
 	{
-		result_plan->targetlist = sub_tlist;
+		plan_pushdown_tlist(result_plan, sub_tlist);
 	}
 	adapt_flow_to_targetlist(result_plan);
 

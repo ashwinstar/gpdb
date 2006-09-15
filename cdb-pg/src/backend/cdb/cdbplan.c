@@ -809,33 +809,16 @@ plan_tree_mutator(Node *node,
 			}
 			break;
 		case T_AdaptiveNestLoop:
-			/* two child plans, one NestLoop, one HashJoin */
+			/* This may walk the shared_outer twice; but it has copied
+			 * it as part of the mutate, so the underlying nodes don't
+			 * get confused
+			 */
 			{
 				AdaptiveNestLoop   *loop = (AdaptiveNestLoop *) node;
 				AdaptiveNestLoop   *newloop;
 
 				FLATCOPY(newloop, loop, AdaptiveNestLoop);
-
-				{
-					NestLoop   *loopscan = (NestLoop *)loop->plan.lefttree;
-					NestLoop   *newloopscan;
-
-					FLATCOPY(newloopscan, loopscan, NestLoop);
-					JOINMUTATE(newloopscan, loopscan);
-
-					newloop->plan.lefttree = (Plan *)newloopscan;
-				}
-
-				{
-					HashJoin   *hjoin = (HashJoin *)loop->plan.righttree;
-					HashJoin   *newhjoin;
-				
-					FLATCOPY(newhjoin, hjoin, HashJoin);
-					JOINMUTATE(newhjoin, hjoin);
-					MUTATE(newhjoin->hashclauses, hjoin->hashclauses, List *);
-
-					newloop->plan.righttree = (Plan *)newhjoin;
-				}
+				PLANMUTATE(newloop, loop);
 
 				return (Node *) newloop;
 			}
