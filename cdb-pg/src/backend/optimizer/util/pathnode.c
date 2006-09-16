@@ -694,15 +694,25 @@ create_append_path(RelOptInfo *rel, List *subpaths)
 
         /*
          * CDB: This function is called only when combining rel scans in an
-         * inheritance tree.  We assume - and CREATE TABLE enforces - that
-         * all tables in an inheritance tree are distributed alike; but
-         * check a little just for luck.
+         * inheritance tree.  If all the scans are distributed alike, set
+         * the result locus to match.  Otherwise, if all are partitioned,
+         * set it to strewn.  A mixture of partitioned and non-partitioned
+         * scans should not occur.
+         *
+         * CDB TODO: When the scans are not all partitioned alike, and the
+         * result is joined with another rel, consider pushing the join
+         * below the Append so that child tables that are properly
+         * distributed can be joined in place.
          */
         if (l == list_head(subpaths))
             pathnode->path.locus = subpath->locus;
-        else if (pathnode->path.locus.locustype != subpath->locus.locustype ||
-                 CdbPathLocus_Degree(pathnode->path.locus) !=
-                    CdbPathLocus_Degree(subpath->locus))
+        else if (cdbpathlocus_compare(CdbPathLocus_Comparison_Equal,
+                                      pathnode->path.locus, subpath->locus))
+        {}
+        else if (CdbPathLocus_IsPartitioned(pathnode->path.locus) &&
+                 CdbPathLocus_IsPartitioned(subpath->locus))
+            CdbPathLocus_MakeStrewn(&pathnode->path.locus);
+        else
             ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
                             errmsg_internal("Table inherits from parent with "
                                             "incompatible distribution") ));
