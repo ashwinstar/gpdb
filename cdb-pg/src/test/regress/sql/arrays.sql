@@ -45,7 +45,7 @@ SELECT arrtest.a[1],
    FROM arrtest ORDER BY 1,2,3,4;
 
 SELECT a[1], b[1][1][1], c[1], d[1][1], e[0]
-   FROM arrtest;
+   FROM arrtest ORDER BY 1,2,3,4;
 
 SELECT a[1:3],
           b[1:1][1:2][1:2],
@@ -62,9 +62,9 @@ SELECT *
    WHERE a[1] < 5 and 
          c = '{"foobar"}'::_name ORDER BY 1,2,3,4;
 
-UPDATE arrtest
-  SET a[1:2] = '{16,25}'
-  WHERE NOT a = '{}'::_int2;
+--UPDATE arrtest
+--  SET a[1:2] = '{16,25}'
+--  WHERE NOT a = '{}'::_int2;
 
 UPDATE arrtest
   SET b[1:1][1:1][1:2] = '{113, 117}',
@@ -126,7 +126,7 @@ SELECT t.f[1][3][1] AS "131", t.f[2][2][1] AS "221" FROM (
 ) AS t;
 SELECT ARRAY[[[[[['hello'],['world']]]]]];
 SELECT ARRAY[ARRAY['hello'],ARRAY['world']];
-SELECT ARRAY(select f2 from arrtest_f order by f2) AS "ARRAY";
+SELECT ARRAY(select f2 from arrtest_f order by f2) AS "ARRAY" ORDER BY 1;
 
 -- functions
 SELECT array_append(array[42], 6) AS "{42,6}";

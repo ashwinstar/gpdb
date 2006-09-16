@@ -82,17 +82,17 @@ COMMENT ON SEQUENCE sequence_test2 IS NULL;
 -- Test lastval()
 CREATE SEQUENCE seq;
 SELECT nextval('seq');
-SELECT lastval();
+--SELECT lastval();
 SELECT setval('seq', 99);
-SELECT lastval();
+--SELECT lastval();
 
 CREATE SEQUENCE seq2;
 SELECT nextval('seq2');
-SELECT lastval();
+--SELECT lastval();
 
 DROP SEQUENCE seq2;
 -- should fail
-SELECT lastval();
+--SELECT lastval();
 
 CREATE USER seq_user;
 
@@ -101,7 +101,7 @@ SET LOCAL SESSION AUTHORIZATION seq_user;
 CREATE SEQUENCE seq3;
 SELECT nextval('seq3');
 REVOKE ALL ON seq3 FROM seq_user;
-SELECT lastval();
+--SELECT lastval();
 ROLLBACK;
 
 DROP USER seq_user;
