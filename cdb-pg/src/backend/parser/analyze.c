@@ -766,7 +766,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	 * Child tables should distribute the same as their parent tables.
 	 * So, pick up the INHERITS clause.
 	 */
-	
+	/*
 	if (Mpp_role == MPP_ROLE_DISPATCH && stmt->inhRelations != NIL)
 	{
 		ListCell   *entry = list_head(cxt.inhRelations);
@@ -777,7 +777,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 
 		MppPolicy  *oldTablePolicy = MppPolicyFetch(CurrentMemoryContext, relId);
 
-		if (oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
+		if (oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED && stmt->distributedBy == NIL)
 		{
 			stmt->policy = oldTablePolicy;
 
@@ -790,7 +790,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 			}
 		}
 		
-	}
+	}*/
 
 	/*
 	 * Run through each primary element in the table creation clause. Separate
@@ -828,7 +828,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 					 * For MPP distributed tables, default to the same distribution as the first LIKE table,
 					 * unless we also have INHERITS
 					 */
-					if (Mpp_role == MPP_ROLE_DISPATCH && stmt->distributedBy == NIL && isBeginning && stmt->policy == NULL)
+					if (Mpp_role == MPP_ROLE_DISPATCH && stmt->distributedBy == NIL && stmt->inhRelations == NIL && isBeginning && stmt->policy == NULL)
 					{
 						InhRelation *e = (InhRelation *) element;
 						Oid			relId = RangeVarGetRelid(e->relation, false);
@@ -1498,317 +1498,345 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 	 * such as CREATE TABLE x (LIKE y), we might already have the policy set
 	 */
 
-	if (*policyp != NULL)
-		return;
-
-
-	policy = (MppPolicy *) palloc(sizeof(MppPolicy) + maxattrs * sizeof(policy->attrs[0]));
-	policy->ptype = POLICYTYPE_PARTITIONED;
-	policy->nattrs = 0;
-	policy->attrs[0] = 1;
-
-	/*
-	 * If distributedBy is NIL, the user did not explicitly say what he wanted for
-	 * a distribution policy.  So, we need to assign one.
-	 */
-
-	if (distributedBy == NIL && cxt && cxt->pkey != NULL)
+	if (*policyp == NULL)
 	{
+
+
+		policy = (MppPolicy *) palloc(sizeof(MppPolicy) + maxattrs * sizeof(policy->attrs[0]));
+		policy->ptype = POLICYTYPE_PARTITIONED;
+		policy->nattrs = 0;
+		policy->attrs[0] = 1;
+	
 		/*
-		 * We have a PRIMARY KEY, so let's assign the default distribution to be the key
+		 * If distributedBy is NIL, the user did not explicitly say what he wanted for
+		 * a distribution policy.  So, we need to assign one.
 		 */
-
-		IndexStmt  *index = cxt->pkey;
-		List	   *indexParams;
-		ListCell   *ip = NULL;
-
-		Assert(index->indexParams != NULL);
-		indexParams = index->indexParams;
-
-		foreach(ip, indexParams)
+		 
+		
+	
+		if (distributedBy == NIL && cxt && cxt->pkey != NULL)
 		{
-			IndexElem  *iparam = lfirst(ip);
-
-			if (iparam && iparam->name != 0)
+			/*
+			 * We have a PRIMARY KEY, so let's assign the default distribution to be the key
+			 */
+	
+			IndexStmt  *index = cxt->pkey;
+			List	   *indexParams;
+			ListCell   *ip = NULL;
+	
+			Assert(index->indexParams != NULL);
+			indexParams = index->indexParams;
+	
+			foreach(ip, indexParams)
 			{
-
-				if (distributedBy)
-					distributedBy = lappend(distributedBy, (Node *) makeString(iparam->name));
-				else
-					distributedBy = list_make1((Node *) makeString(iparam->name));
-
-			}
-		}
-
-	}
-
-
-	if (cxt && cxt->ixconstraints != NULL)
-	{
-
-		ListCell   *lc = NULL;
-
-		foreach(lc, cxt->ixconstraints)
-		{
-			Constraint *cons = lfirst(lc);
-
-			if (cons->contype == CONSTR_UNIQUE)
-			{
-
-				if (uniqueindex == NULL)
-					uniqueindex = cons;
-				numUniqueIndexes++;
-				if (cxt->pkey)
+				IndexElem  *iparam = lfirst(ip);
+	
+				if (iparam && iparam->name != 0)
 				{
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("Bizgres MPP does not allow having both PRIMARY KEY and UNIQUE contraints")));
+	
+					if (distributedBy)
+						distributedBy = lappend(distributedBy, (Node *) makeString(iparam->name));
+					else
+						distributedBy = list_make1((Node *) makeString(iparam->name));
+	
 				}
 			}
+	
 		}
-		if (numUniqueIndexes > 1)
+	
+	
+		if (cxt && cxt->ixconstraints != NULL)
 		{
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("Bizgres MPP does not allow having multiple UNIQUE contraints")));
-		}
-	}
-
-	if (distributedBy == NIL && cxt && cxt->ixconstraints != NULL && numUniqueIndexes > 0)
-	{
-		/*
-		 * No explicit distributed by clause, and no primary key.
-		 * If there is a UNIQUE clause, let's use that
-		 */
-
-		ListCell   *lc = NULL;
-
-		foreach(lc, cxt->ixconstraints)
-		{
-
-			Constraint *constraint = lfirst(lc);
-
-			if (constraint->contype == CONSTR_UNIQUE)
+	
+			ListCell   *lc = NULL;
+	
+			foreach(lc, cxt->ixconstraints)
 			{
-
-				ListCell   *ip = NULL;
-
-
-				foreach(ip, constraint->keys)
+				Constraint *cons = lfirst(lc);
+	
+				if (cons->contype == CONSTR_UNIQUE)
 				{
-					Value	   *v = lfirst(ip);
-
-					if (v && v->val.str != 0)
+	
+					if (uniqueindex == NULL)
+						uniqueindex = cons;
+					numUniqueIndexes++;
+					if (cxt->pkey)
 					{
-
-						if (distributedBy)
-							distributedBy = lappend(distributedBy, (Node *) makeString(v->val.str));
-						else
-							distributedBy = list_make1((Node *) makeString(v->val.str));
-
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("Bizgres MPP does not allow having both PRIMARY KEY and UNIQUE contraints")));
 					}
 				}
 			}
+			if (numUniqueIndexes > 1)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("Bizgres MPP does not allow having multiple UNIQUE contraints")));
+			}
 		}
-		
-	}
-
-	if (distributedBy == NIL)
-	{
-		/*
-		 * if we get here, we haven't a clue what to use for the distribution columns.
-		 */
-
-		bool	assignedDefault = false;
-		
-		/* If we have no attributes, make sure that we don't create a bogus policy! */
-		if (cxt && list_length(cxt->columns) == 0)
-		{
-			elog(NOTICE, "Table has no attributes to distribute on.");
-			pfree(policy);
-			return;
-		}
-		else
+	
+		if (distributedBy == NIL && cxt && cxt->ixconstraints != NULL && numUniqueIndexes > 0)
 		{
 			/*
-			 * table has one or more attributes and there is still no distribution
-			 * key. pick a default one. the winner is the first attribute that is
-			 * an mpp-hashable data type.
+			 * No explicit distributed by clause, and no primary key.
+			 * If there is a UNIQUE clause, let's use that
 			 */
-			ListCell   *columns;
-			ColumnDef  *column = NULL;
-
-			/* we will distribute on at most one column */
-			policy->nattrs = 1;
-			
-			colindex = 0;
-			foreach(columns, cxt->columns)
+	
+			ListCell   *lc = NULL;
+	
+			foreach(lc, cxt->ixconstraints)
 			{
-				Oid typeOid;
-				bool isArray;
-
-				column = (ColumnDef *) lfirst(columns);
-				colindex++;
-
-				typeOid = typenameTypeId(column->typname);
-				isArray = (column->typname->arrayBounds == NIL ? false : true);
-
-				/*
-				 * if we can hash on this type, or if it's an array type (which
-				 * we can always hash) this column with be our default key.
-				 */
-				if(isMppHashable(typeOid) || isArray)
+	
+				Constraint *constraint = lfirst(lc);
+	
+				if (constraint->contype == CONSTR_UNIQUE)
 				{
-					policy->attrs[0] = colindex;
-					assignedDefault = true;
-					ereport(NOTICE,
-							(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
-							 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column " 
-								    "named '%s' as the Bizgres MPP data distribution key for this "
-								    "table. ", column->colname),
-						     errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
-						     		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
-					break;
-				}			
+	
+					ListCell   *ip = NULL;
+	
+	
+					foreach(ip, constraint->keys)
+					{
+						Value	   *v = lfirst(ip);
+	
+						if (v && v->val.str != 0)
+						{
+	
+							if (distributedBy)
+								distributedBy = lappend(distributedBy, (Node *) makeString(v->val.str));
+							else
+								distributedBy = list_make1((Node *) makeString(v->val.str));
+	
+						}
+					}
+				}
+			}
+			
+		}
+		
+		/*
+		 * if we still don't know what distribution to use, and this is an inherited table,
+		 * set the distribution based on the parent (or one of the parents)
+		 */
+		
+		if (distributedBy == NIL && cxt->inhRelations != NIL)
+		{
+			ListCell   *entry = list_head(cxt->inhRelations);
+		
+			RangeVar   *parent = (RangeVar *) lfirst(entry);
+			
+			Oid			relId = RangeVarGetRelid(parent, false);
+	
+			MppPolicy  *oldTablePolicy = MppPolicyFetch(CurrentMemoryContext, relId);
+	
+			if (oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
+			{
+				*policyp = oldTablePolicy;
+	
+				elog(NOTICE, "Table has parent, setting distribution columns to match parent table");
 				
 			}
 			
-			if(!assignedDefault)
-			{
-				/*
-				 * There was no eligible distribution column to default to. This table
-				 * will be partitioned on an empty distribution key list. In other words
-				 * tuples coming into the system will be randomly assigned a bucket.
-				 */
-				policy->nattrs = 0;
-				elog(NOTICE, "Table doesn't have 'distributed by' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.");
-			}
 		}
-	}
-	else
-	{
-		/*
-		 * We have a DISTRIBUTED BY column list, either specified by the user
-		 * or defaulted to a primary key or unique column. Process it now and
-		 * set the distribution policy.
-		 */
-		policy->nattrs = 0;
-		foreach(keys, distributedBy)
+	
+		if (distributedBy == NIL && *policyp == NULL)
 		{
-			char	   *key = strVal(lfirst(keys));
-			bool		found = false;
-			ColumnDef  *column = NULL;
-			ListCell   *columns;
-
-			colindex = 0;
-			foreach(columns, cxt->columns)
+			/*
+			 * if we get here, we haven't a clue what to use for the distribution columns.
+			 */
+	
+			bool	assignedDefault = false;
+			
+			/* If we have no attributes, make sure that we don't create a bogus policy! */
+			if (cxt && list_length(cxt->columns) == 0)
 			{
-				column = (ColumnDef *) lfirst(columns);
-				Assert(IsA(column, ColumnDef));
-				colindex++;
-				if (strcmp(column->colname, key) == 0)
-				{
-					Oid typeOid = typenameTypeId(column->typname);
-					bool isArray = (column->typname->arrayBounds == NIL ? false : true);
-					
-					/*
-					 * To be a part of a distribution key, this type must be supported
-					 * for hashing internally in mpp. We check if the base type is
-					 * supported for hashing or if it is an array type (we support
-					 * hashing on all array types).
-					 */
-					if(!isMppHashable(typeOid) && !isArray)
-					{
-						ereport(ERROR,
-								(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
-								 errmsg("type \"%s\" can't be a part of a distribution key",
-										strVal(linitial(column->typname->names)))));						
-					}
-					
-					found = true;
-					break;
-				}
+				elog(NOTICE, "Table has no attributes to distribute on.");
+				pfree(policy);
+				return;
 			}
-
-			if (found)
-			{
-				/* good, the columns exists */
-			}
-#if 0
-			else if (SystemAttributeByName(key, cxt->hasoids) != NULL)
+			else
 			{
 				/*
-				* column will be a system column in the new table, so
-				* accept it.
-				*/
-				found = true;
-			}
-#endif
-			else if (cxt->inhRelations)
-			{
-				/* try inherited tables */
-				ListCell   *inher;
-
-				foreach(inher, cxt->inhRelations)
+				 * table has one or more attributes and there is still no distribution
+				 * key. pick a default one. the winner is the first attribute that is
+				 * an mpp-hashable data type.
+				 */
+				ListCell   *columns;
+				ColumnDef  *column = NULL;
+	
+				/* we will distribute on at most one column */
+				policy->nattrs = 1;
+				
+				colindex = 0;
+				foreach(columns, cxt->columns)
 				{
-					RangeVar   *inh = (RangeVar *) lfirst(inher);
-					Relation	rel;
-					int			count;
-
-					Assert(IsA(inh, RangeVar));
-					rel = heap_openrv(inh, AccessShareLock);
-					if (rel->rd_rel->relkind != RELKIND_RELATION)
-						ereport(ERROR,
-								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						   errmsg("inherited relation \"%s\" is not a table",
-								  inh->relname)));
-					for (count = 0; count < rel->rd_att->natts; count++)
+					Oid typeOid;
+					bool isArray;
+	
+					column = (ColumnDef *) lfirst(columns);
+					colindex++;
+	
+					typeOid = typenameTypeId(column->typname);
+					isArray = (column->typname->arrayBounds == NIL ? false : true);
+	
+					/*
+					 * if we can hash on this type, or if it's an array type (which
+					 * we can always hash) this column with be our default key.
+					 */
+					if(isMppHashable(typeOid) || isArray)
 					{
-						Form_pg_attribute inhattr = rel->rd_att->attrs[count];
-						char	   *inhname = NameStr(inhattr->attname);
-
-						if (inhattr->attisdropped)
-							continue;
-						if (strcmp(key, inhname) == 0)
-						{
-							found = true;
-
-							break;
-						}
-					}
-					heap_close(rel, NoLock);
-					if (found)
-						elog(WARNING, "'distributed by' clause refers to columns of inherited table");
-
-					if (found)
+						policy->attrs[0] = colindex;
+						assignedDefault = true;
+						ereport(NOTICE,
+								(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
+								 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column " 
+									    "named '%s' as the Bizgres MPP data distribution key for this "
+									    "table. ", column->colname),
+							     errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
+							     		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
 						break;
-
-
+					}			
+					
+				}
+				
+				if(!assignedDefault)
+				{
+					/*
+					 * There was no eligible distribution column to default to. This table
+					 * will be partitioned on an empty distribution key list. In other words
+					 * tuples coming into the system will be randomly assigned a bucket.
+					 */
+					policy->nattrs = 0;
+					elog(NOTICE, "Table doesn't have 'distributed by' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.");
 				}
 			}
-
-			/*
-			* In the ALTER TABLE case, don't complain about index keys
-			* not created in the command; they may well exist already.
-			* DefineIndex will complain about them if not, and will also
-			* take care of marking them NOT NULL.
-			*/
-			if (!found && !cxt->isalter)
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_COLUMN),
-						 errmsg("column \"%s\" named in 'DISTRIBUTED BY' clause does not exist",
-								key)));
-
-			policy->attrs[policy->nattrs++] = colindex;
-
-
-			/* we should check for duplicate column usage */
 		}
-
+		else if (*policyp == NULL)
+		{
+			/*
+			 * We have a DISTRIBUTED BY column list, either specified by the user
+			 * or defaulted to a primary key or unique column. Process it now and
+			 * set the distribution policy.
+			 */
+			policy->nattrs = 0;
+			foreach(keys, distributedBy)
+			{
+				char	   *key = strVal(lfirst(keys));
+				bool		found = false;
+				ColumnDef  *column = NULL;
+				ListCell   *columns;
+	
+				colindex = 0;
+				foreach(columns, cxt->columns)
+				{
+					column = (ColumnDef *) lfirst(columns);
+					Assert(IsA(column, ColumnDef));
+					colindex++;
+					if (strcmp(column->colname, key) == 0)
+					{
+						Oid typeOid = typenameTypeId(column->typname);
+						bool isArray = (column->typname->arrayBounds == NIL ? false : true);
+						
+						/*
+						 * To be a part of a distribution key, this type must be supported
+						 * for hashing internally in mpp. We check if the base type is
+						 * supported for hashing or if it is an array type (we support
+						 * hashing on all array types).
+						 */
+						if(!isMppHashable(typeOid) && !isArray)
+						{
+							ereport(ERROR,
+									(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+									 errmsg("type \"%s\" can't be a part of a distribution key",
+											strVal(linitial(column->typname->names)))));						
+						}
+						
+						found = true;
+						break;
+					}
+				}
+	
+				if (found)
+				{
+					/* good, the columns exists */
+				}
+	#if 0
+				else if (SystemAttributeByName(key, cxt->hasoids) != NULL)
+				{
+					/*
+					* column will be a system column in the new table, so
+					* accept it.
+					*/
+					found = true;
+				}
+	#endif
+				else if (cxt->inhRelations)
+				{
+					/* try inherited tables */
+					ListCell   *inher;
+	
+					foreach(inher, cxt->inhRelations)
+					{
+						RangeVar   *inh = (RangeVar *) lfirst(inher);
+						Relation	rel;
+						int			count;
+	
+						Assert(IsA(inh, RangeVar));
+						rel = heap_openrv(inh, AccessShareLock);
+						if (rel->rd_rel->relkind != RELKIND_RELATION)
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							   errmsg("inherited relation \"%s\" is not a table",
+									  inh->relname)));
+						for (count = 0; count < rel->rd_att->natts; count++)
+						{
+							Form_pg_attribute inhattr = rel->rd_att->attrs[count];
+							char	   *inhname = NameStr(inhattr->attname);
+	
+							if (inhattr->attisdropped)
+								continue;
+							if (strcmp(key, inhname) == 0)
+							{
+								found = true;
+	
+								break;
+							}
+						}
+						heap_close(rel, NoLock);
+						if (found)
+							elog(NOTICE, "'distributed by' clause refers to columns of inherited table");
+	
+						if (found)
+							break;
+	
+	
+					}
+				}
+	
+				/*
+				* In the ALTER TABLE case, don't complain about index keys
+				* not created in the command; they may well exist already.
+				* DefineIndex will complain about them if not, and will also
+				* take care of marking them NOT NULL.
+				*/
+				if (!found && !cxt->isalter)
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_COLUMN),
+							 errmsg("column \"%s\" named in 'DISTRIBUTED BY' clause does not exist",
+									key)));
+	
+				policy->attrs[policy->nattrs++] = colindex;
+	
+	
+				/* we should check for duplicate column usage */
+			}
+	
+		}
+	
+	
+		*policyp = policy;	
 	}
-
-
-	*policyp = policy;	
 	
 	if (cxt && cxt->pkey)		/* Primary key	specified.	Make sure
 								 * distribution columns match */
