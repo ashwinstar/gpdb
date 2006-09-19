@@ -1264,6 +1264,10 @@ ExecCallTriggerFunc(TriggerData *trigdata,
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 	MemoryContext oldContext;
+	
+	Assert(finfo != NULL);
+	Assert(tgindx >= 0 && tgindx <= 200);
+	Assert(trigdata != NULL);
 
 	finfo += tgindx;
 
@@ -1406,6 +1410,8 @@ ExecBRInsertTriggers(EState *estate, ResultRelInfo *relinfo,
 		LocTriggerData.tg_trigtuple = oldtuple = newtuple;
 		LocTriggerData.tg_trigtuplebuf = InvalidBuffer;
 		LocTriggerData.tg_trigger = trigger;
+		Assert(relinfo->ri_TrigFunctions != NULL);
+		Assert(tgindx[i] >= 0 && tgindx[i] <= 200);
 		newtuple = ExecCallTriggerFunc(&LocTriggerData,
 									   tgindx[i],
 									   relinfo->ri_TrigFunctions,
