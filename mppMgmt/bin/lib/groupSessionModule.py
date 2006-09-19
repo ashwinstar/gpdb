@@ -66,14 +66,15 @@ try:
     import readline
     #Read in the saved command history, if any
     histfile = os.path.join(os.environ["HOME"], ".gshist")
+    # Set the maximum number of commands to 100
+    readline.set_history_length(500)
     try:
-            readline.read_history_file(histfile)
+        readline.read_history_file(histfile)
     except IOError:
-            pass
+        pass
     atexit.register(readline.write_history_file, histfile)
 except:
     pass
-
 
 class groupSession(cmd.Cmd):
     "A group of sessions attached to a set of remote hosts"

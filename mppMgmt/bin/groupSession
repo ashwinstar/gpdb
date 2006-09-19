@@ -60,17 +60,6 @@ except ImportError, e:
     print "Error Importing necessary modules: %s " % str(e)
     raise SystemExit, -1
 
-try:
-    import readline
-    #Read in the saved command history, if any
-    histfile = os.path.join(os.environ["HOME"], ".gshist")
-    try:
-            readline.read_history_file(histfile)
-    except IOError:
-            pass
-    atexit.register(readline.write_history_file, histfile)
-except:
-    pass
 
 if __name__ == '__main__': 
     # Process options
