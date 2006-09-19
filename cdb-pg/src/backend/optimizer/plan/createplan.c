@@ -1475,6 +1475,7 @@ create_nestloop_plan(CreatePlanContext *ctx,
 										  alternate_plan);
 
 		copy_path_costsize(&((NestLoop *)anl_plan->plan.lefttree)->join.plan, &best_path->jpath.path);
+		copy_path_costsize((Plan *)anl_plan, &best_path->jpath.path);
 
 		return (NestLoop *)anl_plan;
 	}
