@@ -1942,6 +1942,10 @@ CopyFromDispatch(CopyState cstate)
 	resultRelInfo->ri_RangeTableIndex = 1;		/* dummy */
 	resultRelInfo->ri_RelationDesc = cstate->rel;
 	resultRelInfo->ri_TrigDesc = CopyTriggerDesc(cstate->rel->trigdesc);
+	if (resultRelInfo->ri_TrigDesc)
+		resultRelInfo->ri_TrigFunctions = (FmgrInfo *)
+            palloc0(resultRelInfo->ri_TrigDesc->numtriggers * sizeof(FmgrInfo));
+    resultRelInfo->ri_TrigInstrument = NULL;
 
 	ExecOpenIndices(resultRelInfo);
 
@@ -3115,12 +3119,16 @@ CopyFromExec(CopyState cstate)
 	/*
 	 * We need a ResultRelInfo so we can use the regular executor's
 	 * index-entry-making machinery.  (There used to be a huge amount of
-									   * code here that basically duplicated execUtils.c ...)
+	 * code here that basically duplicated execUtils.c ...)
 	 */
 	resultRelInfo = makeNode(ResultRelInfo);
 	resultRelInfo->ri_RangeTableIndex = 1;		/* dummy */
 	resultRelInfo->ri_RelationDesc = cstate->rel;
 	resultRelInfo->ri_TrigDesc = CopyTriggerDesc(cstate->rel->trigdesc);
+	if (resultRelInfo->ri_TrigDesc)
+		resultRelInfo->ri_TrigFunctions = (FmgrInfo *)
+            palloc0(resultRelInfo->ri_TrigDesc->numtriggers * sizeof(FmgrInfo));
+    resultRelInfo->ri_TrigInstrument = NULL;
 
 	ExecOpenIndices(resultRelInfo);
 
@@ -3559,8 +3567,8 @@ CopyFromExec(CopyState cstate)
 				if (resultRelInfo->ri_TrigDesc &&
 					resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_INSERT] > 0)
 				{
-					HeapTuple	newtuple;
-
+					HeapTuple	newtuple;				
+					Assert(resultRelInfo->ri_TrigFunctions != NULL);
 					newtuple = ExecBRInsertTriggers(estate, resultRelInfo, tuple);
 
 					if (newtuple == NULL)		/* "do nothing" */
