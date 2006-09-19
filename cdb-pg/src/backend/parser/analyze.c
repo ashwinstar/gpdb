@@ -760,37 +760,6 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	cxt.hasoids = interpretOidsOption(stmt->hasoids);
 
 	stmt->policy = NULL;
-	
-	
-	/*
-	 * Child tables should distribute the same as their parent tables.
-	 * So, pick up the INHERITS clause.
-	 */
-	/*
-	if (Mpp_role == MPP_ROLE_DISPATCH && stmt->inhRelations != NIL)
-	{
-		ListCell   *entry = list_head(cxt.inhRelations);
-	
-		RangeVar   *parent = (RangeVar *) lfirst(entry);
-		
-		Oid			relId = RangeVarGetRelid(parent, false);
-
-		MppPolicy  *oldTablePolicy = MppPolicyFetch(CurrentMemoryContext, relId);
-
-		if (oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED && stmt->distributedBy == NIL)
-		{
-			stmt->policy = oldTablePolicy;
-
-			elog(NOTICE, "Table has parent, setting distribution columns to match parent table");
-			
-			if (stmt->distributedBy != NIL)
-			{
-				elog(WARNING,"Ignoring DISTRIBUTED BY clause");
-				stmt->distributedBy = NIL;
-			}
-		}
-		
-	}*/
 
 	/*
 	 * Run through each primary element in the table creation clause. Separate
@@ -1728,11 +1697,58 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 				ListCell   *columns;
 	
 				colindex = 0;
+				
+				if (cxt->inhRelations)
+				{
+					/* try inherited tables */
+					ListCell   *inher;
+	
+					foreach(inher, cxt->inhRelations)
+					{
+						RangeVar   *inh = (RangeVar *) lfirst(inher);
+						Relation	rel;
+						int			count;
+	
+						Assert(IsA(inh, RangeVar));
+						rel = heap_openrv(inh, AccessShareLock);
+						if (rel->rd_rel->relkind != RELKIND_RELATION)
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							   errmsg("inherited relation \"%s\" is not a table",
+									  inh->relname)));
+						for (count = 0; count < rel->rd_att->natts; count++)
+						{
+							Form_pg_attribute inhattr = rel->rd_att->attrs[count];
+							char	   *inhname = NameStr(inhattr->attname);
+	
+							if (inhattr->attisdropped)
+								continue;
+							colindex++;
+							if (strcmp(key, inhname) == 0)
+							{
+								found = true;
+	
+								break;
+							}
+						}
+						heap_close(rel, NoLock);
+						if (found)
+							elog(DEBUG1, "'distributed by' clause refers to columns of inherited table");
+	
+						if (found)
+							break;
+	
+	
+					}
+				}
+				
+				if (!found)
 				foreach(columns, cxt->columns)
 				{
 					column = (ColumnDef *) lfirst(columns);
 					Assert(IsA(column, ColumnDef));
 					colindex++;
+
 					if (strcmp(column->colname, key) == 0)
 					{
 						Oid typeOid = typenameTypeId(column->typname);
@@ -1771,48 +1787,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 					found = true;
 				}
 	#endif
-				else if (cxt->inhRelations)
-				{
-					/* try inherited tables */
-					ListCell   *inher;
-	
-					foreach(inher, cxt->inhRelations)
-					{
-						RangeVar   *inh = (RangeVar *) lfirst(inher);
-						Relation	rel;
-						int			count;
-	
-						Assert(IsA(inh, RangeVar));
-						rel = heap_openrv(inh, AccessShareLock);
-						if (rel->rd_rel->relkind != RELKIND_RELATION)
-							ereport(ERROR,
-									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-							   errmsg("inherited relation \"%s\" is not a table",
-									  inh->relname)));
-						for (count = 0; count < rel->rd_att->natts; count++)
-						{
-							Form_pg_attribute inhattr = rel->rd_att->attrs[count];
-							char	   *inhname = NameStr(inhattr->attname);
-	
-							if (inhattr->attisdropped)
-								continue;
-							if (strcmp(key, inhname) == 0)
-							{
-								found = true;
-	
-								break;
-							}
-						}
-						heap_close(rel, NoLock);
-						if (found)
-							elog(NOTICE, "'distributed by' clause refers to columns of inherited table");
-	
-						if (found)
-							break;
-	
-	
-					}
-				}
+				
 	
 				/*
 				* In the ALTER TABLE case, don't complain about index keys
@@ -1856,10 +1831,58 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			iparam = lfirst(ip);
 			if (iparam->name != 0)
 			{
+				bool	found = false;
 				ColumnDef  *column = NULL;
 				ListCell   *columns;
 
 				colindex = 0;
+				
+				if (cxt->inhRelations)
+				{
+					/* try inherited tables */
+					ListCell   *inher;
+	
+					foreach(inher, cxt->inhRelations)
+					{
+						RangeVar   *inh = (RangeVar *) lfirst(inher);
+						Relation	rel;
+						int			count;
+	
+						Assert(IsA(inh, RangeVar));
+						rel = heap_openrv(inh, AccessShareLock);
+						if (rel->rd_rel->relkind != RELKIND_RELATION)
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							   errmsg("inherited relation \"%s\" is not a table",
+									  inh->relname)));
+						for (count = 0; count < rel->rd_att->natts; count++)
+						{
+							Form_pg_attribute inhattr = rel->rd_att->attrs[count];
+							char	   *inhname = NameStr(inhattr->attname);
+	
+							if (inhattr->attisdropped)
+								continue;
+							colindex++;
+	
+							if (strcmp(iparam->name, inhname) == 0)
+							{
+								found = true;
+	
+								break;
+							}
+						}
+						heap_close(rel, NoLock);
+						if (found)
+							elog(DEBUG1, "'distributed by' clause refers to columns of inherited table");
+	
+						if (found)
+							break;
+	
+	
+					}
+				}
+				
+				if (!found)
 				foreach(columns, cxt->columns)
 				{
 					column = (ColumnDef *) lfirst(columns);
@@ -1867,7 +1890,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 					colindex++;
 					if (strcmp(column->colname, iparam->name) == 0)
 					{
-						/* found = true; */
+						found = true;
 						break;
 					}
 				}
