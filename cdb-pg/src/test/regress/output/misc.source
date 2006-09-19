@@ -4,10 +4,10 @@
 --
 -- BTREE
 --
-UPDATE onek
-   SET unique1 = onek.unique1 + 1;
-UPDATE onek
-   SET unique1 = onek.unique1 - 1;
+--UPDATE onek
+--   SET unique1 = onek.unique1 + 1;
+--UPDATE onek
+--   SET unique1 = onek.unique1 - 1;
 --
 -- BTREE partial
 --
@@ -567,6 +567,7 @@ SELECT user_relns() AS user_relns
      user_relns      
 ---------------------
  a
+ a_dummy_seq
  a_star
  abstime_tbl
  aggtest
@@ -665,7 +666,7 @@ SELECT user_relns() AS user_relns
  toyemp
  varchar_tbl
  xacttest
-(99 rows)
+(100 rows)
 
 SELECT name(equipment(hobby_construct(text 'skywalking', text 'mer'))) ORDER BY 1;
  name 

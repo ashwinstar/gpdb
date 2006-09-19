@@ -5,11 +5,11 @@
 --
 -- BTREE
 --
-UPDATE onek
-   SET unique1 = onek.unique1 + 1;
+--UPDATE onek
+--   SET unique1 = onek.unique1 + 1;
 
-UPDATE onek
-   SET unique1 = onek.unique1 - 1;
+--UPDATE onek
+--   SET unique1 = onek.unique1 - 1;
 
 --
 -- BTREE partial

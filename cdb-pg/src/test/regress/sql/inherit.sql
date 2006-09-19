@@ -1,7 +1,7 @@
 --
 -- Test inheritance features
 --
-CREATE TABLE a (aa TEXT);
+CREATE TABLE a (dummy serial, aa TEXT);
 CREATE TABLE b (bb TEXT) INHERITS (a);
 CREATE TABLE c (cc TEXT) INHERITS (a);
 CREATE TABLE d (dd TEXT) INHERITS (b,c,a);
