@@ -478,6 +478,7 @@ ExecEvalVar(ExprState *exprstate, ExprContext *econtext,
 
 #ifdef USE_ASSERT_CHECKING
 
+	Assert(slot!=NULL);
 	/*
 	 * Some checks that are only applied for user attribute numbers (bogus
 	 * system attnums will be caught inside slot_getattr).
