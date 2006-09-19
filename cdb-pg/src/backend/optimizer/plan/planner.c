@@ -1729,6 +1729,9 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 	if (tuple_fraction >= 1.0)
 		tuple_fraction /= dNumGroups;
 
+	if (!enable_groupagg)
+		return true;
+
 	if (compare_fractional_path_costs(&hashed_p, &sorted_p,
 									  tuple_fraction) < 0)
 	{

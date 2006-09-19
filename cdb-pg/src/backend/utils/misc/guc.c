@@ -452,6 +452,14 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 	{
+		{"enable_groupagg", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of grouping aggregation plans."),
+			NULL
+		},
+		&enable_groupagg,
+		true, NULL, NULL
+	},
+	{
 		{"enable_nestloop", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables the planner's use of nested-loop join plans."),
 			NULL

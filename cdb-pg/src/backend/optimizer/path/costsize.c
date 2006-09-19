@@ -97,10 +97,10 @@ bool		enable_bitmapscan = true;
 bool		enable_tidscan = true;
 bool		enable_sort = true;
 bool		enable_hashagg = true;
+bool		enable_groupagg = true;
 bool		enable_nestloop = true;
 bool		enable_mergejoin = true;
 bool		enable_hashjoin = true;
-
 
 static bool cost_qual_eval_walker(Node *node, QualCost *total);
 static Selectivity approx_selectivity(PlannerInfo *root, List *quals,
