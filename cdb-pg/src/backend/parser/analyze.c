@@ -1616,28 +1616,85 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			 */
 	
 			bool	assignedDefault = false;
+
+			/*
+			 * table has one or more attributes and there is still no distribution
+			 * key. pick a default one. the winner is the first attribute that is
+			 * an mpp-hashable data type.
+			 */
+			bool		found = false;
+			ListCell   *columns;
+			ColumnDef  *column = NULL;
+
+			/* we will distribute on at most one column */
+			policy->nattrs = 1;
 			
-			/* If we have no attributes, make sure that we don't create a bogus policy! */
-			if (cxt && list_length(cxt->columns) == 0)
+			colindex = 0;
+			
+			if (cxt->inhRelations)
 			{
-				elog(NOTICE, "Table has no attributes to distribute on.");
-				pfree(policy);
-				return;
-			}
-			else
-			{
-				/*
-				 * table has one or more attributes and there is still no distribution
-				 * key. pick a default one. the winner is the first attribute that is
-				 * an mpp-hashable data type.
-				 */
-				ListCell   *columns;
-				ColumnDef  *column = NULL;
-	
-				/* we will distribute on at most one column */
-				policy->nattrs = 1;
+				/* try inherited tables */
+				ListCell   *inher;
+
+				foreach(inher, cxt->inhRelations)
+				{
+					RangeVar   *inh = (RangeVar *) lfirst(inher);
+					Relation	rel;
+					int			count;
+
+					Assert(IsA(inh, RangeVar));
+					rel = heap_openrv(inh, AccessShareLock);
+					if (rel->rd_rel->relkind != RELKIND_RELATION)
+						ereport(ERROR,
+								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						   errmsg("inherited relation \"%s\" is not a table",
+								  inh->relname)));
+					for (count = 0; count < rel->rd_att->natts; count++)
+					{
+						Form_pg_attribute inhattr = rel->rd_att->attrs[count];
+						Oid typeOid = inhattr->atttypid;
+						bool isArray = inhattr->attndims > 0;
+						
+
+						if (inhattr->attisdropped)
+							continue;
+						colindex++;
+						if(isMppHashable(typeOid) || isArray)
+						{
+							char	   *inhname = NameStr(inhattr->attname);
+							policy->attrs[0] = colindex;
+							assignedDefault = true;
+							ereport(NOTICE,
+									(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
+									 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column " 
+										    "named '%s' as the Bizgres MPP data distribution key for this "
+										    "table. ", inhname),
+								     errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
+								     		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
+							found = true;
+							break;
+						}			
+					}
+					heap_close(rel, NoLock);
+					if (found)
+						elog(DEBUG1, "'distributed by' clause refers to columns of inherited table");
+
+					if (found)
+						break;
+
+
+				}
+				 
 				
-				colindex = 0;
+				/* If we have no attributes, make sure that we don't create a bogus policy! */
+				if (!found && cxt && list_length(cxt->columns) == 0)
+				{
+					elog(NOTICE, "Table has no attributes to distribute on.");
+					pfree(policy);
+					return;
+				}
+			 
+				if (!found)
 				foreach(columns, cxt->columns)
 				{
 					Oid typeOid;
