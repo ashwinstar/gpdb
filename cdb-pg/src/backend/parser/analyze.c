@@ -1591,20 +1591,23 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 		
 		if (distributedBy == NIL && cxt->inhRelations != NIL)
 		{
-			ListCell   *entry = list_head(cxt->inhRelations);
-		
-			RangeVar   *parent = (RangeVar *) lfirst(entry);
+			ListCell   *entry;
 			
-			Oid			relId = RangeVarGetRelid(parent, false);
-	
-			MppPolicy  *oldTablePolicy = MppPolicyFetch(CurrentMemoryContext, relId);
-	
-			if (oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
+			foreach(entry, cxt->inhRelations)
 			{
-				*policyp = oldTablePolicy;
-	
-				elog(NOTICE, "Table has parent, setting distribution columns to match parent table");
+				RangeVar   *parent = (RangeVar *) lfirst(entry);
 				
+				Oid			relId = RangeVarGetRelid(parent, false);
+		
+				MppPolicy  *oldTablePolicy = MppPolicyFetch(CurrentMemoryContext, relId);
+		
+				if (oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED && oldTablePolicy->nattrs > 0)
+				{
+					*policyp = oldTablePolicy;
+		
+					elog(NOTICE, "Table has parent, setting distribution columns to match parent table");
+					break;
+				}
 			}
 		}
 	
