@@ -629,7 +629,13 @@ inheritance_planner(PlannerInfo *root, List *inheritlist)
 				case CdbLocusType_Hashed:
 				case CdbLocusType_Strewn:
 					/* Loci of inheritance set must match. */
-					locus_ok = locus_ok && locustype == append_locustype;
+					locus_ok = locus_ok && (locustype == append_locustype ||
+						(locustype == CdbLocusType_Hashed && append_locustype == CdbLocusType_Strewn) ||
+						(locustype == CdbLocusType_Strewn && append_locustype == CdbLocusType_Hashed));
+					if (locus_ok && locustype != append_locustype)
+						ereport(NOTICE, (
+							errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							errmsg("This SQL statement involving inheritance has not been tested... Verify correct answers!") ));
 					break;
 				case CdbLocusType_Null:
 				case CdbLocusType_SingleQE:
