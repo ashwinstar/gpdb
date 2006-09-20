@@ -4,6 +4,7 @@
 --
 
 CREATE TABLE CASE_TBL (
+  dummy serial,
   i integer,
   f double precision
 );
@@ -63,8 +64,8 @@ SELECT CASE WHEN 1=0 THEN 1/0 WHEN 1=1 THEN 1 ELSE 2/0 END;
 SELECT CASE 1 WHEN 0 THEN 1/0 WHEN 1 THEN 1 ELSE 2/0 END;
 
 -- However we do not currently suppress folding of potentially
--- reachable subexpressions
-SELECT CASE WHEN i > 100 THEN 1/0 ELSE 0 END FROM case_tbl;
+-- reachable subexpressions  (but MPP does... So we get different answer from postgres).
+--SELECT CASE WHEN i > 100 THEN 1/0 ELSE 0 END FROM case_tbl;
 
 -- Test for cases involving untyped literals in test expression
 SELECT CASE 'a' WHEN 'a' THEN 1 ELSE 2 END;
@@ -113,14 +114,14 @@ SELECT '' AS "Five",
 --  defined in the SQL92 standard.
 --
 
-SELECT * FROM CASE_TBL WHERE COALESCE(f,i) = 4 ORDER BY 1;
+SELECT i,f FROM CASE_TBL WHERE COALESCE(f,i) = 4 ORDER BY 1;
 
-SELECT * FROM CASE_TBL WHERE NULLIF(f,i) = 2 ORDER BY 1;
+SELECT i,f FROM CASE_TBL WHERE NULLIF(f,i) = 2 ORDER BY 1;
 
 SELECT COALESCE(a.f, b.i, b.j)
   FROM CASE_TBL a, CASE2_TBL b ORDER BY 1;
 
-SELECT *
+SELECT a.i,a.f,b.i,b.j
   FROM CASE_TBL a, CASE2_TBL b
   WHERE COALESCE(a.f, b.i, b.j) = 2 ORDER BY 1,2;
 
@@ -128,7 +129,7 @@ SELECT '' AS Five, NULLIF(a.i,b.i) AS "NULLIF(a.i,b.i)",
   NULLIF(b.i, 4) AS "NULLIF(b.i,4)"
   FROM CASE_TBL a, CASE2_TBL b ORDER BY 2,3;
 
-SELECT '' AS "Two", *
+SELECT '' AS "Two", a.i,a.f,b.i,b.j
   FROM CASE_TBL a, CASE2_TBL b
   WHERE COALESCE(f,b.i) = 2 ORDER BY 2,3;
 
@@ -140,21 +141,21 @@ UPDATE CASE_TBL
   SET i = CASE WHEN i >= 3 THEN (- i)
                 ELSE (2 * i) END;
 
-SELECT * FROM CASE_TBL ORDER BY 1,2;
+SELECT i,f FROM CASE_TBL ORDER BY 1,2;
 
 UPDATE CASE_TBL
   SET i = CASE WHEN i >= 2 THEN (2 * i)
                 ELSE (3 * i) END;
 
-SELECT * FROM CASE_TBL ORDER BY 1,2;
+SELECT i,f FROM CASE_TBL ORDER BY 1,2;
 
-UPDATE CASE_TBL
-  SET i = CASE WHEN b.i >= 2 THEN (2 * j)
-                ELSE (3 * j) END
-  FROM CASE2_TBL b
-  WHERE j = -CASE_TBL.i;
+--UPDATE CASE_TBL
+--  SET i = CASE WHEN b.i >= 2 THEN (2 * j)
+--                ELSE (3 * j) END
+--  FROM CASE2_TBL b
+--  WHERE j = -CASE_TBL.i;
 
-SELECT * FROM CASE_TBL ORDER BY 1,2;
+SELECT i,f FROM CASE_TBL ORDER BY 1,2;
 
 --
 -- Clean up
@@ -162,4 +163,3 @@ SELECT * FROM CASE_TBL ORDER BY 1,2;
 
 DROP TABLE CASE_TBL;
 DROP TABLE CASE2_TBL;
-
