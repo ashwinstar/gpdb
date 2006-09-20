@@ -4647,7 +4647,7 @@ CopyReadBinaryAttribute(CopyState cstate, int column_no, FmgrInfo *flinfo, Oid t
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
 		buf = htonl((uint32) fld_size); /* change to network byte order */
-		appendBinaryStringInfo(&cstate->line_buf, (char *) &fld_size, sizeof(int32));
+		appendBinaryStringInfo(&cstate->line_buf, (char *) &buf, sizeof(buf));
 	}
 
 	if (fld_size == -1)
