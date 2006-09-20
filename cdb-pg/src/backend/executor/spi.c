@@ -329,7 +329,8 @@ int connect_back_to_qd(void)
 	appendStringInfo(&buffer, "options='");
 	
 	appendStringInfo(&buffer, " -c mpp_is_callback=true");
- 
+	appendStringInfo(&buffer, " -c mpp_qd_proc_offset=%ld",(long)mpp_qd_proc_offset);
+ 	appendStringInfo(&buffer, " -c mpp_session_id=%d",mpp_session_id);
 
 	switch (client_min_messages)
 	{
@@ -1313,7 +1314,7 @@ SPI_cursor_open(const char *name, void *plan,
 				FmgrInfo finfo;
 				Datum val;
 				
-				if (Nulls[i] == 'n')
+				if (Nulls && Nulls[i] == 'n')
 				{
 					outputbytes = "";
 				}
@@ -2087,6 +2088,8 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 			paramLengths = palloc(nargs*sizeof(int));
 			paramFormats = palloc(nargs*sizeof(int));
 
+			Assert(plan->argtypes != NULL);
+
 			for (i=0;i<nargs;i++)
 			{
 				char	   *outputbytes=0;
@@ -2095,7 +2098,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				FmgrInfo finfo;
 				Datum val;
 				
-				if (Nulls[i] == 'n')
+				if (Nulls && Nulls[i] == 'n')
 				{
 					outputbytes = "";
 				}
@@ -2166,7 +2169,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 					elog(ERROR,"Could not find parameter marker in SQL query");
 					
 				appendBinaryStringInfo(&newquery, query, (parmloc-query));
-				if (Nulls[i] == 'n')
+				if (Nulls && Nulls[i] == 'n')
 					appendStringInfo(&newquery, " NULL");
 				else
 					appendStringInfo(&newquery, "'%s'",paramValues[i]);
