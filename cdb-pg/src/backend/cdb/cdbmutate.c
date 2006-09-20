@@ -223,8 +223,25 @@ apply_motion(Plan *plan, Query *query)
 					/* do we know how to partition? */
 					if (targetPolicy->nattrs == 0)
 					{
-						/* If not, Distribute on column 1 */
-						targetPolicy->attrs[targetPolicy->nattrs++] = 1;
+						/* 
+						 * hash on the first hashable column we can find.
+						 */
+						int i;
+						for (i = 0; i < list_length(plan->targetlist); i++)
+						{
+							TargetEntry *target = get_tle_by_resno(plan->targetlist, targetPolicy->attrs[i]);
+							if (target)
+							{
+								Oid typeOid = exprType((Node *) target->expr);
+								bool isArray = false;  /* How do I find this out? */
+								 
+								if(isMppHashable(typeOid) || isArray)
+								{
+									targetPolicy->attrs[targetPolicy->nattrs++] = i+1;
+									break;
+								}
+							}
+						}
 					}
 					
 					if (query->intoPolicy == NULL)
