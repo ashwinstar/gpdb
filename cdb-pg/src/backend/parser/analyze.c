@@ -1606,7 +1606,6 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 				elog(NOTICE, "Table has parent, setting distribution columns to match parent table");
 				
 			}
-			
 		}
 	
 		if (distributedBy == NIL && *policyp == NULL)
@@ -1622,9 +1621,17 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			 * key. pick a default one. the winner is the first attribute that is
 			 * an mpp-hashable data type.
 			 */
-			bool		found = false;
+			
 			ListCell   *columns;
 			ColumnDef  *column = NULL;
+			
+			/* If we have no attributes, make sure that we don't create a bogus policy! */
+			if (cxt && list_length(cxt->columns) == 0 && !cxt->inhRelations)
+			{
+				elog(NOTICE, "Table has no attributes to distribute on.");
+				pfree(policy);
+				return;
+			}
 
 			/* we will distribute on at most one column */
 			policy->nattrs = 1;
@@ -1633,6 +1640,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			
 			if (cxt->inhRelations)
 			{
+				bool		found = false;
 				/* try inherited tables */
 				ListCell   *inher;
 
@@ -1655,7 +1663,6 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 						Oid typeOid = inhattr->atttypid;
 						bool isArray = inhattr->attndims > 0;
 						
-
 						if (inhattr->attisdropped)
 							continue;
 						colindex++;
@@ -1667,7 +1674,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 							ereport(NOTICE,
 									(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
 									 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column " 
-										    "named '%s' as the Bizgres MPP data distribution key for this "
+										    "named '%s' from parent table as the Bizgres MPP data distribution key for this "
 										    "table. ", inhname),
 								     errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
 								     		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
@@ -1676,25 +1683,17 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 						}			
 					}
 					heap_close(rel, NoLock);
-					if (found)
-						elog(DEBUG1, "'distributed by' clause refers to columns of inherited table");
 
-					if (found)
+					if (assignedDefault)
 						break;
-
-
 				}
+
+			}
 				 
 				
-				/* If we have no attributes, make sure that we don't create a bogus policy! */
-				if (!found && cxt && list_length(cxt->columns) == 0)
-				{
-					elog(NOTICE, "Table has no attributes to distribute on.");
-					pfree(policy);
-					return;
-				}
+				
 			 
-				if (!found)
+			if (!assignedDefault)
 				foreach(columns, cxt->columns)
 				{
 					Oid typeOid;
@@ -1726,17 +1725,17 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 					
 				}
 				
-				if(!assignedDefault)
-				{
-					/*
-					 * There was no eligible distribution column to default to. This table
-					 * will be partitioned on an empty distribution key list. In other words
-					 * tuples coming into the system will be randomly assigned a bucket.
-					 */
-					policy->nattrs = 0;
-					elog(NOTICE, "Table doesn't have 'distributed by' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.");
-				}
+			if(!assignedDefault)
+			{
+				/*
+				 * There was no eligible distribution column to default to. This table
+				 * will be partitioned on an empty distribution key list. In other words
+				 * tuples coming into the system will be randomly assigned a bucket.
+				 */
+				policy->nattrs = 0;
+				elog(NOTICE, "Table doesn't have 'distributed by' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.");
 			}
+			
 		}
 		else if (*policyp == NULL)
 		{
