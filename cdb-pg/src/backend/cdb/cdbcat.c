@@ -235,3 +235,118 @@ MppPolicyStore(Oid tbloid, const MppPolicy *policy)
      */
     heap_close(mpp_policy_rel, NoLock);
 }                               /* MppPolicyStore */
+
+/*
+ * Sets the policy of a table into the mpp_distribution_policy table
+ * from a MppPolicy structure.
+ *
+ */
+void
+MppPolicyReplace(Oid tbloid, const MppPolicy *policy)
+{
+	Relation	mpp_policy_rel;
+	HeapTuple	mpp_policy_tuple = NULL;
+	ScanKeyData policy_key[1];
+	SysScanDesc mpp_policy_scan;
+
+	ArrayType  *attrnums;
+
+	char		nulls[2];
+	Datum		values[2];
+	char		repl[2];
+
+	Insist(policy->ptype == POLICYTYPE_PARTITIONED);
+
+    /*
+     * Open and lock the mpp_distribution_policy catalog.
+     */
+	mpp_policy_rel = heap_open(MppPolicyRelationId, RowExclusiveLock);
+
+	/*
+	 * Convert C arrays into Postgres arrays.
+	 */
+	if (policy->nattrs > 0)
+	{
+		int			i;
+		Datum	   *akey;
+
+		akey = (Datum *) palloc(policy->nattrs * sizeof(Datum));
+		for (i = 0; i < policy->nattrs; i++)
+			akey[i] = Int16GetDatum(policy->attrs[i]);
+		attrnums = construct_array(akey, policy->nattrs,
+								   INT2OID, 2, true, 's');
+	}
+	else
+	{
+		attrnums = NULL;
+	}
+
+	nulls[0] = ' ';
+	nulls[1] = ' ';
+	values[0] = ObjectIdGetDatum(tbloid);
+
+	if (attrnums)
+		values[1] = PointerGetDatum(attrnums);
+	else
+		nulls[1] = 'n';
+		
+	repl[0] = ' ';
+	repl[1] = 'r';
+
+	
+
+	/*
+	 * Set up a ScanKey for the value of the localoid field
+	 */
+	ScanKeyInit(&policy_key[0], Anum_mpp_policy_localoid, BTEqualStrategyNumber,
+				F_OIDEQ, ObjectIdGetDatum(tbloid));
+
+	/*
+	 * Begin the scan
+	 */						
+	mpp_policy_scan = systable_beginscan(mpp_policy_rel,
+										 MppPolicyLocalOidIndexId,
+										 true,
+										 SnapshotNow,
+										 1,
+										 policy_key);
+
+	/*
+	 * Read first (and only ) tuple
+	 */
+	mpp_policy_tuple = systable_getnext(mpp_policy_scan);
+	if (HeapTupleIsValid(mpp_policy_tuple))
+	{
+		
+		HeapTuple newtuple = heap_modifytuple(mpp_policy_tuple, RelationGetDescr(mpp_policy_rel), values,
+								nulls, repl);
+								
+		simple_heap_update(mpp_policy_rel, &mpp_policy_tuple->t_self, newtuple);
+		/* update catalog indexes */
+		CatalogUpdateIndexes(mpp_policy_rel, newtuple);
+		heap_freetuple(newtuple);
+	}
+	else
+	{
+		mpp_policy_tuple = heap_formtuple(RelationGetDescr(mpp_policy_rel), values, nulls);
+		simple_heap_insert(mpp_policy_rel, mpp_policy_tuple);
+		/* update catalog indexes */
+		CatalogUpdateIndexes(mpp_policy_rel, mpp_policy_tuple);
+	}
+	
+	
+
+	/*
+	 * Cleanup the scan and relation objects.
+	 */
+	systable_endscan(mpp_policy_scan);
+	
+	
+
+	/*
+     * Close the mpp_distribution_policy relcache entry without unlocking.
+     * We have updated the catalog: consequently the lock must be held until
+     * end of transaction.
+     */
+    heap_close(mpp_policy_rel, NoLock);
+}                               /* MppPolicyReplace */

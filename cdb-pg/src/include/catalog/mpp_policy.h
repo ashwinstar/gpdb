@@ -92,5 +92,8 @@ MppPolicyFetch(MemoryContext mcxt, Oid tbloid);
 void
 MppPolicyStore(Oid tbloid, const MppPolicy *policy);
 
+void
+MppPolicyReplace(Oid tbloid, const MppPolicy *policy);
+
 
 #endif /*_MPP_POLICY_H_*/
