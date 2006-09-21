@@ -3801,9 +3801,12 @@ ATExecDropColumn(Relation rel, const char *colName,
 		{
 			if (attnum == policy->attrs[ia])
 			{
-				ereport(ERROR,
+				policy->nattrs = 0;
+				rel->rd_cdbpolicy = MppPolicyCopy(GetMemoryChunkContext(rel), policy);
+				MppPolicyReplace(rel->rd_id, policy);
+				ereport(NOTICE,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("You cannot drop a column that is used for the distribution of the table")));
+						 errmsg("Dropping a column that is part of the distribution policy forces a NULL distribution policy")));
 			}
 		}
 	}
@@ -4726,7 +4729,7 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Bizgres MPP")));
-		return;
+		//return;
 	}
 
 	/*
@@ -5023,9 +5026,12 @@ ATPrepAlterColumnType(List **wqueue,
 		{
 			if (attnum == policy->attrs[ia])
 			{
-				ereport(ERROR,
+				policy->nattrs = 0;
+				rel->rd_cdbpolicy = MppPolicyCopy(GetMemoryChunkContext(rel), policy);
+				MppPolicyReplace(rel->rd_id, policy);
+				ereport(NOTICE,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("You cannot alter the datatype of a column that is used for the distribution of the table")));
+						 errmsg("Changing the datatype of a column that is part of the distribution policy forces a NULL distribution policy")));
 			}
 		}
 	}
