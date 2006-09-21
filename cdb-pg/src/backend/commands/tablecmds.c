@@ -4979,7 +4979,6 @@ ATPrepAlterColumnType(List **wqueue,
 	Oid			targettype;
 	Node	   *transform;
 	NewColumnValue *newval;
-	MppPolicy  *policy;
 	ParseState *pstate = make_parsestate(NULL);
 
 	/* lookup the attribute so we can check inheritance status */
@@ -5016,25 +5015,7 @@ ATPrepAlterColumnType(List **wqueue,
 
 	/* make sure datatype is legal for a column */
 	CheckAttributeType(colName, targettype);
-	
-	policy = rel->rd_cdbpolicy;
-	if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
-	{
-		int			ia = 0;
 
-		for (ia = 0; ia < policy->nattrs; ia++)
-		{
-			if (attnum == policy->attrs[ia])
-			{
-				policy->nattrs = 0;
-				rel->rd_cdbpolicy = MppPolicyCopy(GetMemoryChunkContext(rel), policy);
-				MppPolicyReplace(rel->rd_id, policy);
-				ereport(NOTICE,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("Changing the datatype of a column that is part of the distribution policy forces a NULL distribution policy")));
-			}
-		}
-	}
 
 	/*
 	 * Set up an expression to transform the old data value to the new type.
@@ -5135,6 +5116,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	ScanKeyData key[3];
 	SysScanDesc scan;
 	HeapTuple	depTup;
+	MppPolicy * policy = NULL;
 
 	attrelation = heap_open(AttributeRelationId, RowExclusiveLock);
 
@@ -5248,10 +5230,29 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 						Assert(foundObject.objectSubId == 0);
 						if (!list_member_oid(tab->changedIndexOids, foundObject.objectId))
 						{
+							char * indexdefstring = pg_get_indexdef_string(foundObject.objectId);
 							tab->changedIndexOids = lappend_oid(tab->changedIndexOids,
 													   foundObject.objectId);
-							tab->changedIndexDefs = lappend(tab->changedIndexDefs,
-							   pg_get_indexdef_string(foundObject.objectId));
+							tab->changedIndexDefs = lappend(tab->changedIndexDefs,indexdefstring);
+						
+							if (Mpp_role == MPP_ROLE_DISPATCH && indexdefstring &&strstr(indexdefstring," UNIQUE ")!=0)
+							{
+								policy = rel->rd_cdbpolicy;
+								if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
+								{
+									int			ia = 0;
+							
+									for (ia = 0; ia < policy->nattrs; ia++)
+									{
+										if (attnum == policy->attrs[ia])
+										{
+											ereport(ERROR,
+													(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+													 errmsg("Changing the type of a column that is part of the distribution policy and used in a unique index is not allowed")));
+										}
+									}
+								}
+							}
 						}
 					}
 					else if (relKind == RELKIND_SEQUENCE)
@@ -5277,6 +5278,27 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 									 foundObject.objectId))
 				{
 					char *defstring = pg_get_constraintdef_string(foundObject.objectId);
+	
+					if (Mpp_role == MPP_ROLE_DISPATCH)
+					if (strstr(defstring," UNIQUE")!=0 ||
+						strstr(defstring,"PRIMARY KEY")!=0 )
+					{
+						policy = rel->rd_cdbpolicy;
+						if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
+						{
+							int			ia = 0;
+					
+							for (ia = 0; ia < policy->nattrs; ia++)
+							{
+								if (attnum == policy->attrs[ia])
+								{
+									ereport(ERROR,
+											(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+											 errmsg("Changing the type of a column that is used in a UNIQUE or PRIMARY KEY constraint is not allowed")));
+								}
+							}
+						}
+					}
 
 					/*
 					 * Put NORMAL dependencies at the front of the list and
@@ -5391,6 +5413,25 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	systable_endscan(scan);
 
 	heap_close(depRel, RowExclusiveLock);
+	
+	policy = rel->rd_cdbpolicy;
+	if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
+	{
+		int			ia = 0;
+
+		for (ia = 0; ia < policy->nattrs; ia++)
+		{
+			if (attnum == policy->attrs[ia])
+			{
+				policy->nattrs = 0;
+				rel->rd_cdbpolicy = MppPolicyCopy(GetMemoryChunkContext(rel), policy);
+				MppPolicyReplace(rel->rd_id, policy);
+				ereport(NOTICE,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("Changing the datatype of a column that is part of the distribution policy forces a NULL distribution policy")));
+			}
+		}
+	}
 
 	/*
 	 * Here we go --- change the recorded column type.	(Note heapTup is a
