@@ -86,14 +86,13 @@ static bool motion_expr_walker(Node *node, char *not_used);
 
 static bool
 doesUpdateAffectPartitionCols(Plan         *plan,
-                              Query        *query,
-                              int           nattrs,
-                              AttrNumber   *attrs);
+                              Query        *query);
 static void
 warn_ctid_without_segid(Query *query, Plan *plan);
 
 static bool has_ctid_outside_tlist_walker(Node *node, void* unused);
 
+static bool DoesDistributionHaveDependencies(Oid relOid, MppPolicy * policy);
 
 /* ------------------------------------------------------------------------- *
  * Function apply_motion() and apply_motion_mutator() add motion nodes to
@@ -129,11 +128,16 @@ apply_motion(Plan *plan, Query *query)
     Assert(plan->flow && plan->flow->flotype != FLOW_REPLICATED);
 
 	/* Does query have a target relation?  (INSERT/DELETE/UPDATE) */
+	
+	/*
+	 *  NOTE: This code makes the assumption that if we are working on a heirarchy of tables,
+	 *  all the tables are distributed, or all are on the entry DB.  Any mixture will fail
+	 */
     if (query->resultRelation > 0)
     {
 	    RangeTblEntry  *rte;
         Relation        relation;
-
+		
         rte = rt_fetch(query->resultRelation, query->rtable);
 	    Assert(rte->rtekind == RTE_RELATION);
 
@@ -270,8 +274,6 @@ apply_motion(Plan *plan, Query *query)
 							     		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
 					}
 				}
-				
-				targetPolicyType = targetPolicy->ptype;
 				
 				query->intoPolicy = targetPolicy;
 				
@@ -450,12 +452,30 @@ apply_motion(Plan *plan, Query *query)
 					 * Make sure we are not updating any of the partitioning columns
 					 */
 					if (query->commandType == CMD_UPDATE &&
-						doesUpdateAffectPartitionCols(plan,
-                                                      query,
-                                                      targetPolicy->nattrs,
-                                                      targetPolicy->attrs))
+						doesUpdateAffectPartitionCols(plan,query))
 					{
-						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+						if (query->resultRelations == NIL)
+						{
+							RangeTblEntry  *rte;
+	        	
+	        				rte = rt_fetch(query->resultRelation, query->rtable);
+		     
+							if (!DoesDistributionHaveDependencies(rte->relid,targetPolicy))
+							{
+								targetPolicy->nattrs = 0;
+								MppPolicyReplace(rte->relid, targetPolicy);
+								ereport(NOTICE,
+										(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+										 errmsg("Updating a column that is part of the distribution policy forces a NULL distribution policy")));
+						
+							}
+							else
+							ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+										errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns if any are part of a UNIQUE or PRIMARY KEY constraint")
+										));
+						}
+						else
+							ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
 										errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns")
 										));
 					}
@@ -1236,22 +1256,36 @@ isAnyColChangedByUpdate(Index       targetvarno,
  */
 bool
 doesUpdateAffectPartitionCols(Plan         *plan,
-                              Query        *query,
-                              int           nattrs,
-                              AttrNumber   *attrs)
+                              Query        *query)
 {
     Append     *append;
     ListCell   *rticell;
     ListCell   *plancell;
-
-    /*
-     * Single target relation?
-     */
+    MppPolicy  *policy;
+    
     if (query->resultRelations == NIL)
+    {
+	    RangeTblEntry  *rte;
+        Relation        relation;
+
+        rte = rt_fetch(query->resultRelation, query->rtable);
+	    Assert(rte->rtekind == RTE_RELATION);
+
+        /* Get a copy of the rel's MppPolicy from the relcache. */
+        relation = relation_open(rte->relid, NoLock);
+        policy = RelationGetPartitioningKey(relation);
+        relation_close(relation, NoLock);
+    
+
+	    /*
+	     * Single target relation?
+	     */
+    
         return isAnyColChangedByUpdate(query->resultRelation,
                                        plan->targetlist,
-                                       nattrs,
-                                       attrs);
+                                       policy->nattrs,
+                                       policy->attrs);
+    }
 
     /*
      * Multiple target relations (inheritance)...
@@ -1268,8 +1302,19 @@ doesUpdateAffectPartitionCols(Plan         *plan,
     {
         int     rti = lfirst_int(rticell);
         Plan   *subplan = (Plan *)lfirst(plancell);
+        
+        RangeTblEntry  *rte;
+        Relation        relation;
 
-        if (isAnyColChangedByUpdate(rti, subplan->targetlist, nattrs, attrs))
+        rte = rt_fetch(rti, query->rtable);
+	    Assert(rte->rtekind == RTE_RELATION);
+
+        /* Get a copy of the rel's MppPolicy from the relcache. */
+        relation = relation_open(rte->relid, NoLock);
+        policy = RelationGetPartitioningKey(relation);
+        relation_close(relation, NoLock);
+
+        if (isAnyColChangedByUpdate(rti, subplan->targetlist, policy->nattrs, policy->attrs))
             return true;
     }
 
@@ -1416,3 +1461,146 @@ has_ctid_outside_tlist_walker(Node *node, void* unused)
 	return plan_tree_walker(node, has_ctid_outside_tlist_walker, NULL);
 }                               /* has_ctid_outside_tlist_walker */
 
+#include "catalog/catalog.h"
+#include "catalog/indexing.h"
+#include "catalog/dependency.h"
+#include "catalog/pg_constraint.h"
+#include "catalog/pg_depend.h"
+#include "miscadmin.h"
+#include "utils/builtins.h"
+#include "utils/fmgroids.h"
+
+bool
+DoesDistributionHaveDependencies(Oid relOid, MppPolicy * policy)
+{
+
+	Relation	depRel;
+	ScanKeyData key[3];
+	SysScanDesc scan;
+	HeapTuple	depTup;
+	AttrNumber  attnum;
+	int			ia;
+
+	if (Mpp_role != MPP_ROLE_DISPATCH || policy == NULL)
+		return false;
+	
+	/*
+	 * Find everything that depends on the column (constraints, indexes, etc)
+	 * See if we have any UNIQUE indexes, or UNIQUE or PRIMARY KEY constraints
+	 */
+	depRel = heap_open(DependRelationId, RowExclusiveLock);
+	
+	for (ia=0;ia < policy->nattrs; ia++)
+	{
+		attnum = policy->attrs[ia];
+
+		ScanKeyInit(&key[0],
+					Anum_pg_depend_refclassid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(RelationRelationId));
+		ScanKeyInit(&key[1],
+					Anum_pg_depend_refobjid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(relOid));
+		ScanKeyInit(&key[2],
+					Anum_pg_depend_refobjsubid,
+					BTEqualStrategyNumber, F_INT4EQ,
+					Int32GetDatum((int32) attnum));
+	
+		scan = systable_beginscan(depRel, DependReferenceIndexId, true,
+								  SnapshotNow, 3, key);
+	
+		while (HeapTupleIsValid(depTup = systable_getnext(scan)))
+		{
+			Form_pg_depend foundDep = (Form_pg_depend) GETSTRUCT(depTup);
+			ObjectAddress foundObject;
+	
+			/* We don't expect any PIN dependencies on columns */
+			if (foundDep->deptype == DEPENDENCY_PIN)
+				return true;
+	
+			foundObject.classId = foundDep->classid;
+			foundObject.objectId = foundDep->objid;
+			foundObject.objectSubId = foundDep->objsubid;
+	
+			switch (getObjectClass(&foundObject))
+			{
+				case OCLASS_CLASS:
+					{
+						char		relKind = get_rel_relkind(foundObject.objectId);
+	
+						if (relKind == RELKIND_INDEX)
+						{
+	
+							char * indexdefstring = pg_get_indexdef_string(foundObject.objectId);
+						
+							if (indexdefstring &&strstr(indexdefstring," UNIQUE ")!=0)
+							{
+								systable_endscan(scan);
+	
+								heap_close(depRel, RowExclusiveLock);
+								return true;
+							}
+							
+						}
+						else if (relKind == RELKIND_SEQUENCE)
+						{
+							/*
+							 * This must be a SERIAL column's sequence.  We need
+							 * not do anything to it.
+							 */
+							Assert(foundObject.objectSubId == 0);
+						}
+						else
+						{
+							/* Not expecting any other direct dependencies... */
+							elog(ERROR, "unexpected object depending on column: %s",
+								 getObjectDescription(&foundObject));
+						}
+						break;
+					}
+	
+				case OCLASS_CONSTRAINT:
+					{
+						char *defstring = pg_get_constraintdef_string(foundObject.objectId);
+		
+						if (strstr(defstring," UNIQUE")!=0 ||
+							strstr(defstring,"PRIMARY KEY")!=0 )
+						{
+							systable_endscan(scan);
+		
+							heap_close(depRel, RowExclusiveLock);
+							return true;
+						}
+					}
+	
+					break;
+	
+				case OCLASS_REWRITE:
+				case OCLASS_DEFAULT:
+				case OCLASS_PROC:
+				case OCLASS_TYPE:
+				case OCLASS_CAST:
+				case OCLASS_CONVERSION:
+				case OCLASS_LANGUAGE:
+				case OCLASS_OPERATOR:
+				case OCLASS_OPCLASS:
+				case OCLASS_TRIGGER:
+				case OCLASS_SCHEMA:
+					break;
+	
+				default:
+					elog(ERROR, "unrecognized object class: %u",
+						 foundObject.classId);
+			}
+		}
+	
+		systable_endscan(scan);
+	}
+
+	heap_close(depRel, RowExclusiveLock);
+	
+	
+
+	return false;
+}
