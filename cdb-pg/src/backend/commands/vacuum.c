@@ -32,6 +32,7 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_index.h"
+#include "catalog/indexing.h"
 #include "commands/dbcommands.h"
 #include "commands/vacuum.h"
 #include "cdb/cdbanalyze.h"
@@ -754,6 +755,10 @@ vacuum_set_xid_limits(VacuumStmt *vacstmt, bool sharedRel,
  *		pg_class would've been obsoleted.  Of course, this only works for
  *		fixed-size never-null columns, but these are.
  *
+ *		MPP: In the case of a QD update of a table *other* than pg_class, we
+ *		don't violate the no-overwrite semantics; because to do so bypasses
+ *		the WAL -- and so bypasses mirroring to our standby-QD.
+ *
  *		This routine is shared by full VACUUM, lazy VACUUM, and stand-alone
  *		ANALYZE.
  */
@@ -774,7 +779,66 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 	 * CDB: Query the segment db local catalogs to get summary statistics.
 	 */
 	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
 		cdbanalyze_get_relstats(rel, &num_pages, &num_tuples);
+
+		/* See comment above, we can use the 'normal' tuple update
+		 * mechanism (which will happily get mirrored out to the
+		 * warm-QD) provided that we're not analyzing pg_class
+		 * itself */
+		if (relid != RelationRelationId)
+		{
+			int			i;
+			HeapTuple	stup, oldtup;
+			Datum		values[Natts_pg_class];
+			char		nulls[Natts_pg_class];
+			char		replaces[Natts_pg_class];
+
+			/*
+			 * update number of tuples and number of pages in pg_class
+			 */
+			rd = heap_open(RelationRelationId, RowExclusiveLock);
+
+			oldtup = SearchSysCache(RELOID,
+								  ObjectIdGetDatum(relid),
+								  0, 0, 0);
+
+			if (!HeapTupleIsValid(oldtup))
+				elog(ERROR, "pg_class entry for relid %u vanished during vacuuming",
+					 relid);
+
+			for (i = 0; i < Natts_pg_class; ++i)
+			{
+				if (i == (Anum_pg_class_reltuples - 1))
+					replaces[i] = 'r';
+				else if (i == (Anum_pg_class_relpages - 1))
+					replaces[i] = 'r';
+				else
+					replaces[i] = ' ';
+				nulls[i] = ' ';
+			}
+
+			values[Anum_pg_class_relpages - 1] = Int32GetDatum(num_pages);
+			values[Anum_pg_class_reltuples - 1] = Float4GetDatum(num_tuples);
+
+			stup = heap_modifytuple(oldtup,
+									RelationGetDescr(rd),
+									values,
+									nulls,
+									replaces);
+			ReleaseSysCache(oldtup);
+			simple_heap_update(rd, &stup->t_self, stup);
+
+			/* update indexes too */
+			CatalogUpdateIndexes(rd, stup);
+
+			heap_freetuple(stup);
+			heap_close(rd, RowExclusiveLock);
+
+			/* done with this relation */
+			return;
+		}
+	}
 
 	/*
 	 * update number of tuples and number of pages in pg_class
