@@ -553,7 +553,7 @@ insert into def_test default values;
 alter table def_test alter column c1 set default 10;
 alter table def_test alter column c2 set default 'new_default';
 insert into def_test default values;
-select * from def_test;
+select * from def_test order by 1,2;
 
 -- set defaults to an incorrect type: this should fail
 alter table def_test alter column c1 set default 'wrong_datatype';
@@ -574,7 +574,7 @@ alter table def_view_test alter column c1 set default 45;
 insert into def_view_test default values;
 alter table def_view_test alter column c2 set default 'view_default';
 insert into def_view_test default values;
-select * from def_view_test;
+select * from def_view_test order by 1,2;
 
 drop rule def_view_test_ins on def_view_test;
 drop view def_view_test;
@@ -646,7 +646,7 @@ alter table atacc1 drop xmin;
 
 -- try creating a view and altering that, should fail
 create view myview as select * from atacc1;
-select * from myview;
+select * from myview order by 1,2,3;
 alter table myview drop d;
 drop view myview;
 
@@ -689,17 +689,17 @@ create index "testing_idx" on atacc1("........pg.dropped.1........");
 -- test create as and select into
 insert into atacc1 values (21, 22, 23);
 create table test1 as select * from atacc1;
-select * from test1;
+select * from test1 order by 1,2;
 drop table test1;
 select * into test2 from atacc1;
-select * from test2;
+select * from test2 order by 1,2;
 drop table test2;
 
 -- try dropping all columns
 alter table atacc1 drop c;
 alter table atacc1 drop d;
 alter table atacc1 drop b;
-select * from atacc1;
+select * from atacc1 order by 1,2;
 
 drop table atacc1;
 
@@ -710,10 +710,10 @@ alter table parent drop a;
 create table child (d varchar(255)) inherits (parent);
 insert into child values (12, 13, 'testing');
 
-select * from parent;
+select * from parent order by 1,2,3;
 select * from child;
 alter table parent drop c;
-select * from parent;
+select * from parent order by 1,2;
 select * from child;
 
 drop table child;
@@ -729,17 +729,17 @@ copy test("........pg.dropped.1........") to stdout;
 copy test from stdin;
 10	11	12
 \.
-select * from test;
+select * from test order by 1;
 copy test from stdin;
 21	22
 \.
-select * from test;
+select * from test order by 1;
 copy test(a) from stdin;
 copy test("........pg.dropped.1........") from stdin;
 copy test(b,c) from stdin;
 31	32
 \.
-select * from test;
+select * from test order by 1;
 drop table test;
 
 -- test inheritance
@@ -787,7 +787,7 @@ alter table c1 drop column f1;
 -- should work
 alter table p1 drop column f1;
 -- c1.f1 is still there, but no longer inherited
-select f1 from c1;
+select f1 from c1 order by 1;
 alter table c1 drop column f1;
 select f1 from c1;
 
@@ -878,8 +878,8 @@ create table altinhoid () inherits (altwithoid) without oids;
 
 insert into altinhoid values (1);
 
-select oid > 0, * from altwithoid;
-select oid > 0, * from altinhoid;
+select oid > 0, * from altwithoid order by col;
+select oid > 0, * from altinhoid order by col;
 
 alter table altwithoid set without oids;
 alter table altinhoid set without oids;
@@ -901,9 +901,9 @@ insert into p1 values (1,2,'abc');
 insert into c1 values(11,'xyz',33,0); -- should fail
 insert into c1 values(11,'xyz',33,22);
 
-select * from p1;
+select * from p1 order by 1,2,3;
 update p1 set a1 = a1 + 1, f2 = upper(f2);
-select * from p1;
+select * from p1 order by 1,2,3;
 
 drop table p1 cascade;
 
@@ -920,10 +920,10 @@ drop domain mytype cascade;
 
 select * from foo;
 insert into foo values('qq','rr');
-select * from foo;
+select * from foo order by 1,2;
 update foo set f3 = 'zz';
-select * from foo;
-select f3,max(f1) from foo group by f3;
+select * from foo order by 1,2;
+select f3,max(f1) from foo group by f3 order by f3;
 
 -- Simple tests for alter table column type
 alter table foo alter f1 TYPE integer; -- fails
@@ -934,24 +934,24 @@ create table anothertab (atcol1 serial8, atcol2 boolean,
 
 insert into anothertab (atcol1, atcol2) values (default, true);
 insert into anothertab (atcol1, atcol2) values (default, false);
-select * from anothertab;
+select * from anothertab order by 1,2;
 
 alter table anothertab alter column atcol1 type boolean; -- fails
 alter table anothertab alter column atcol1 type integer;
 
-select * from anothertab;
+select * from anothertab order by 1,2;
 
 insert into anothertab (atcol1, atcol2) values (45, null); -- fails
 insert into anothertab (atcol1, atcol2) values (default, null);
 
-select * from anothertab;
+select * from anothertab order by 1,2;
 
 alter table anothertab alter column atcol2 type text
       using case when atcol2 is true then 'IT WAS TRUE' 
                  when atcol2 is false then 'IT WAS FALSE'
                  else 'IT WAS NULL!' end;
 
-select * from anothertab;
+select * from anothertab order by 1,2;
 alter table anothertab alter column atcol1 type boolean
         using case when atcol1 % 2 = 0 then true else false end; -- fails
 alter table anothertab alter column atcol1 drop default;
@@ -962,7 +962,7 @@ alter table anothertab drop constraint anothertab_chk;
 alter table anothertab alter column atcol1 type boolean
         using case when atcol1 % 2 = 0 then true else false end;
 
-select * from anothertab;
+select * from anothertab order by 1,2;
 
 drop table anothertab;
 
@@ -972,13 +972,13 @@ insert into another values(1, 'one');
 insert into another values(2, 'two');
 insert into another values(3, 'three');
 
-select * from another;
+select * from another order by 1,2;
 
 alter table another
   alter f1 type text using f2 || ' more',
   alter f2 type bigint using f1 * 10;
 
-select * from another;
+select * from another order by 1,2;
 
 drop table another;
 
@@ -1031,9 +1031,9 @@ drop schema alter1;
 insert into alter2.t1(f2) values(13);
 insert into alter2.t1(f2) values(14);
 
-select * from alter2.t1;
+select * from alter2.t1 order by 1;
 
-select * from alter2.v1;
+select * from alter2.v1 order by 1;
 
 select alter2.plus1(41);
 
