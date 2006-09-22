@@ -132,7 +132,7 @@ static void transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
 static void transformIndexConstraints(ParseState *pstate,
 						  CreateStmtContext *cxt);
 static void transformDistributedBy(ParseState *pstate,
-		   CreateStmtContext *cxt, List *distributedBy, MppPolicy ** policy);
+		   CreateStmtContext *cxt, List *distributedBy, MppPolicy ** policy, List *likeDistributedBy);
 static void transformFKConstraints(ParseState *pstate,
 					   CreateStmtContext *cxt,
 					   bool skipValidation,
@@ -745,6 +745,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	CreateStmtContext cxt;
 	Query	   *q;
 	ListCell   *elements;
+	List  	   *likeDistributedBy = NIL;
 
 	cxt.stmtType = "CREATE TABLE";
 	cxt.relation = stmt->relation;
@@ -806,9 +807,16 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 
 						if (oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
 						{
-							stmt->policy = oldTablePolicy;
-
-							elog(NOTICE, "Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table");
+							int ia;
+					
+							for (ia=0;ia<oldTablePolicy->nattrs;ia++)
+							{
+								char * attname = get_attname(relId, oldTablePolicy->attrs[ia]);
+								if (likeDistributedBy)
+										likeDistributedBy = lappend(likeDistributedBy, (Node *) makeString(attname));
+									else
+										likeDistributedBy = list_make1((Node *) makeString(attname));
+							}
 						}
 					}
 				}
@@ -836,7 +844,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	/*
 	 * Postprocess MPP distribution columns
 	 */
-	transformDistributedBy(pstate, &cxt, stmt->distributedBy, &stmt->policy);
+	transformDistributedBy(pstate, &cxt, stmt->distributedBy, &stmt->policy, likeDistributedBy);
 
 
 	/*
@@ -1438,9 +1446,9 @@ transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt)
 	}
 }
 
-/*************************************/
+/****************stmt->policy*********************/
 static void
-transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distributedBy, MppPolicy ** policyp)
+transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distributedBy, MppPolicy ** policyp, List *likeDistributedBy)
 {
 
 
@@ -1462,13 +1470,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 		return;
 	}
 
-	/*
-	 * Usually, when we get here, no policy has been assigned yet.	But in some cases,
-	 * such as CREATE TABLE x (LIKE y), we might already have the policy set
-	 */
-
-	if (*policyp == NULL)
-	{
+ 
+ 
 
 
 		policy = (MppPolicy *) palloc(sizeof(MppPolicy) + maxattrs * sizeof(policy->attrs[0]));
@@ -1617,6 +1620,12 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 					break;
 				}
 			}
+		}
+		
+		if (distributedBy == NIL && likeDistributedBy != NIL)
+		{
+			distributedBy = likeDistributedBy;
+			elog(NOTICE, "Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table");
 		}
 	
 		if (distributedBy == NIL)
@@ -1878,7 +1887,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 	
 	
 		*policyp = policy;	
-	}
+ 
 	
 	if (cxt && cxt->pkey)		/* Primary key	specified.	Make sure
 								 * distribution columns match */
