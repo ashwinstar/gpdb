@@ -775,6 +775,9 @@ thread_DoConnect(void *arg)
 
 		appendPQExpBuffer(&buffer, " -c mpp_qd_callback_info=port=%d",PostPortNumber);
 		
+		appendPQExpBuffer(&buffer, " -c mpp_is_callback=%d",mpp_is_callback);
+		appendPQExpBuffer(&buffer, " -c mpp_qd_proc_offset=%ld",(long)MAKE_OFFSET(MyProc));
+		
 		/* user-settable GUC variables */
 
 		/*
