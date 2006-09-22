@@ -1603,15 +1603,23 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 		
 				if (oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED && oldTablePolicy->nattrs > 0)
 				{
-					*policyp = oldTablePolicy;
-		
+					int ia;
+					
+					for (ia=0;ia<oldTablePolicy->nattrs;ia++)
+					{
+						char * attname = get_attname(relId, oldTablePolicy->attrs[ia]);
+						if (distributedBy)
+								distributedBy = lappend(distributedBy, (Node *) makeString(attname));
+							else
+								distributedBy = list_make1((Node *) makeString(attname));
+					}
 					elog(NOTICE, "Table has parent, setting distribution columns to match parent table");
 					break;
 				}
 			}
 		}
 	
-		if (distributedBy == NIL && *policyp == NULL)
+		if (distributedBy == NIL)
 		{
 			/*
 			 * if we get here, we haven't a clue what to use for the distribution columns.
@@ -1740,7 +1748,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			}
 			
 		}
-		else if (*policyp == NULL)
+		else 
 		{
 			/*
 			 * We have a DISTRIBUTED BY column list, either specified by the user
