@@ -104,6 +104,27 @@ static const int transitionState[8][8] =
    #define GET_SEQ_NODE_NO(shmGIDSeq)				((segno & 0xFF000000) >> 24)
 */
 
+/* here are some flag options relationed to the txnOptions field of 
+ * PQsendMppQuery
+ */
+ 
+/* bit 1 is for auto-explicit begin
+ * bits 2-3 for iso level  00 read-committed
+ *						   01 read-uncommitted
+ *						   10 repeatable-read
+ *						   11 serializable
+ * bit 4 is for read-only
+ */
+#define MPP_OPT_AUTOBEGIN         0x0001   /* auto-explicitly start a transaction. */
+#define MPP_OPT_READ_COMMITTED    0x0002   /* iso level to read-committed 
+											(only useful with autobegin) */
+#define MPP_OPT_READ_UNCOMMITTED  0x0004
+#define MPP_OPT_REPEATABLE_READ   0x0006
+#define MPP_OPT_SERIALIZABLE 	  0x0008
+
+#define MPP_OPT_READ_ONLY         0x0010
+
+
 
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
@@ -598,6 +619,69 @@ restoreGxact(TMGXACT * gxact)
 		memcpy(currentGxact, gxact, sizeof(TMGXACT));
 }
 
+/* mppTxnOptions:
+ * Generates an int containing the appropriate flags to direct the remote
+ * segdb QE process to perform any needed transaction commands before or
+ * after the statement.
+ */
+int
+mppTxnOptions(bool autoBegin)
+{
+	int options = 0;
+
+	if (autoBegin)
+		options |= MPP_OPT_AUTOBEGIN;
+
+	if (XactIsoLevel == XACT_READ_COMMITTED)
+		options |= MPP_OPT_READ_COMMITTED;
+	else if (XactIsoLevel == MPP_OPT_REPEATABLE_READ)
+		options |= MPP_OPT_REPEATABLE_READ;
+	else if (XactIsoLevel == MPP_OPT_SERIALIZABLE)
+		options |= MPP_OPT_SERIALIZABLE;
+
+	if (XactReadOnly)
+		options |= MPP_OPT_READ_ONLY;
+		
+	return options;
+	
+}
+
+/* unpackMppTxnOptions:
+ * Unpack an int containing the appropriate flags to direct the remote
+ * segdb QE process to perform any needed transaction commands before or
+ * after the statement.
+ */
+void
+unpackMppTxnOptions(int txnOptions, int *isoLevel, bool *readOnly)
+{
+
+	if (txnOptions & MPP_OPT_READ_COMMITTED)
+		*isoLevel = XACT_READ_COMMITTED;
+	else if (txnOptions & MPP_OPT_SERIALIZABLE)
+		*isoLevel = XACT_SERIALIZABLE;
+	else if( txnOptions & MPP_OPT_REPEATABLE_READ)
+		*isoLevel = XACT_REPEATABLE_READ;
+	else
+		*isoLevel = XACT_READ_UNCOMMITTED;
+
+	if (txnOptions & MPP_OPT_READ_ONLY)
+		*readOnly = true;
+	else
+		*readOnly = false;
+
+}
+
+/* isMppTxOptionsAutoBegin:
+ * Return the AutoBegin flag.
+ */
+bool
+isMppTxOptionsAutoBegin(int txnOptions)
+{
+	return (txnOptions & MPP_OPT_AUTOBEGIN);
+}
+
+								
+
 /* Marks the state such that a BEGIN has been executed on
  * the remote QEs.	This is part of the code that supports the DTM from
  * not having to explicitly issue a BEGIN at the beginning of a tranaction
@@ -891,26 +975,16 @@ execDtxCommand(void)
 	{
 		case DTX_STATE_IN_PROGRESS:
 
-			if (XactIsoLevel != DefaultXactIsoLevel)
-			{
-				switch (XactIsoLevel)
-				{
-					case XACT_READ_UNCOMMITTED:
-						cmd = "BEGIN ISOLATION LEVEL READ UNCOMMITTED";
-						break;
-					case XACT_READ_COMMITTED:
-						cmd = "BEGIN ISOLATION LEVEL READ COMMITTED";
-						break;
-					case XACT_REPEATABLE_READ:
-						cmd = "BEGIN ISOLATION LEVEL REPEATABLE READ";
-						break;
-					case XACT_SERIALIZABLE:
-						cmd = "BEGIN ISOLATION LEVEL SERIALIZABLE";
-						break;
-				}
-			}
-			else
-				cmd = "BEGIN";
+			/* 
+			 * Be explicit about both the isolation level and the access mode
+			 * since in MPP our QEs are in a another process.
+			 */
+			sprintf(cmdbuf, "BEGIN ISOLATION LEVEL %s, READ %s", 
+					IsoLevelAsUpperString(XactIsoLevel),
+					(XactReadOnly ? "ONLY" : "WRITE"));
+			cmd = cmdbuf;
+
+			elog(DEBUG3, "execDtxCommand %s.", cmdbuf);
 
 			needSnapshot = true;
 

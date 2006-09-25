@@ -65,23 +65,6 @@ typedef enum
 
 
 
-/* here are some flag options relationed to the txnOptions field of 
- * PQsendMppQuery
- */
- 
-/* bit 1 is for auto-explicit begin
- * bits 2-3 for iso level  00 read-committed
- *						   01 read-uncommitted
- *						   10 repeatable-read
- *						   11 serializable
- */
-#define MPP_OPT_AUTOBEGIN         0x0001   /* auto-explicitly start a transaction. */
-#define MPP_OPT_READ_COMMITTED    0x0002   /* iso level to read-committed 
-											(only useful with autobegin) */
-#define MPP_OPT_READ_UNCOMMITTED  0x0004
-#define MPP_OPT_REPEATABLE_READ   0x0006
-#define MPP_OPT_SERIALIZABLE 	  0x0008
-
 
 
 /* state variables for how much of the log file has been flushed */
@@ -124,6 +107,11 @@ extern void verify_shared_snapshot_ready(void);
 
 void		getTmLock(void);
 void		releaseTmLock(void);
+
+int			mppTxnOptions(bool autoBegin);
+void		unpackMppTxnOptions(int txnOptions, int *isoLevel, bool *readOnly);
+bool		isMppTxOptionsAutoBegin(int txnOptions);
+
 
 /* Marks the state such that a BEGIN has been executed on
  * the remote QEs. 

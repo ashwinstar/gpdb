@@ -4435,6 +4435,29 @@ TransStateAsString(TransState state)
 }
 
 /*
+ * IsoLevelAsUpperString
+ *		Formatting helper.
+ */
+const char *
+IsoLevelAsUpperString(int IsoLevel)
+{
+	switch (IsoLevel)
+	{
+		case XACT_READ_UNCOMMITTED:
+			return "READ UNCOMMITTED";
+		case XACT_READ_COMMITTED:
+			return "READ COMMITTED";
+		case XACT_REPEATABLE_READ:
+			return "REPEATABLE READ";
+		case XACT_SERIALIZABLE:
+			return "SERIALIZABLE";
+		default:
+			return "UNKNOWN";
+	}
+}
+
+
+/*
  * xactGetCommittedChildren
  *
  * Gets the list of committed children of the current transaction.	The return

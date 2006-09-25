@@ -3430,15 +3430,15 @@ PostgresMain(int argc, char *argv[], const char *username)
 							elog(DEBUG1,"QD Got snapshot from QE, xid = %d",snapInfo->currentTransactionId);
 							ActiveSnapshot = CopySnapshot(QDSentSnapshot);
 						}
-					}					
+					}
+										
+					elog(DEBUG5, "Received QD snapshot: %s", snapshot_string);
 					
 					/* get the transaction options */
 					txnOptions = pq_getmsgint(&input_message, 4);
 					
-					if (txnOptions & MPP_OPT_AUTOBEGIN)
+					if (isMppTxOptionsAutoBegin(txnOptions))
 					{
-						const char *beginStmt;
-				
 						/* TODO: eventually all of the qExecs should really form
 						 *       a verbose BEGIN stmt explicitly calling out
 						 * 		 the desired Isolation level.  But currently the
@@ -3455,15 +3455,19 @@ PostgresMain(int argc, char *argv[], const char *username)
 							if (!IsTransactionOrTransactionBlock())
 							{
 								/* build the right beginStmt based on the options */
-								if (txnOptions & MPP_OPT_READ_COMMITTED)
-									beginStmt = "BEGIN ISOLATION LEVEL READ COMMITTED";
-								else if (txnOptions & MPP_OPT_SERIALIZABLE)
-									beginStmt = "BEGIN ISOLATION LEVEL SERIALIZABLE";
-								else if( txnOptions & MPP_OPT_REPEATABLE_READ)
-									beginStmt = "BEGIN ISOLATION LEVEL REPEATABLE READ";
-								else
-									beginStmt = "BEGIN ISOLATION LEVEL READ UNCOMMITTED";
-						
+								char beginStmt[100];
+				
+								int ExplicitIsoLevel;
+								bool ExplicitReadOnly;
+								unpackMppTxnOptions(txnOptions,
+									&ExplicitIsoLevel, &ExplicitReadOnly);
+								
+								sprintf(beginStmt, "BEGIN ISOLATION LEVEL %s, READ %s", 
+									IsoLevelAsUpperString(ExplicitIsoLevel),
+									(ExplicitReadOnly ? "ONLY" : "WRITE"));
+
+								elog(DEBUG5, "Explict %s.",beginStmt);
+
 								/* kick off an explict BEGIN */
 								exec_simple_query(beginStmt);
 							}
@@ -3474,8 +3478,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 					/* get the query string and kick off processing. */
 					query_string = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
-					
-					elog(DEBUG5, "Received QD snapshot: %s", snapshot_string);
+
+					elog(DEBUG5, "MPP dispatched stmt from QD: %s.",query_string);
 					
 					exec_simple_query(query_string);
 					send_rfq = true;

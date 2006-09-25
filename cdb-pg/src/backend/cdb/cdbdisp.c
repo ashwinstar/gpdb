@@ -2541,6 +2541,8 @@ serializeSnapshot(void)
 		 */
 		szSnapshotInfo = pstrdup("NONE");
 	}
+
+	elog(DEBUG5, "serializeSnapshot string is \"%s\".", szSnapshotInfo);
 	
 	return szSnapshotInfo;
 }
@@ -2562,14 +2564,7 @@ generateTxnOptions( bool shouldStart )
 	/*set auto-begin */
 	if (shouldStart)
 	{
-		options |= MPP_OPT_AUTOBEGIN;
-	
-		if (XactIsoLevel == XACT_READ_COMMITTED)
-			options |= MPP_OPT_READ_COMMITTED;
-		else if (XactIsoLevel == MPP_OPT_REPEATABLE_READ)
-			options |= MPP_OPT_REPEATABLE_READ;
-		else if (XactIsoLevel == MPP_OPT_SERIALIZABLE)
-			options |= MPP_OPT_SERIALIZABLE;
+		options = mppTxnOptions(true /* AutoBegin */);
 		
 		/* at this point we've decided that are going to begin a transaction.
 		 * so we need to let the DTM know this so that if anything bad happens
@@ -2578,8 +2573,6 @@ generateTxnOptions( bool shouldStart )
 		setTxnBegan();
 		
 	}
-	
-	
 	
 	return options;
 	

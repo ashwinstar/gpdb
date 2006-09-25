@@ -2058,18 +2058,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 		 * txnOptions is used only if we send the query via PQsendMppQuery
 		 * Otherwise, we need to do an explicit BEGIN.
 		 */
-		txnOptions = MPP_OPT_AUTOBEGIN;
-		/* generate our transactions options. */
-		if (XactIsoLevel == XACT_READ_COMMITTED)
-			txnOptions |= MPP_OPT_READ_COMMITTED;
-		else if (XactIsoLevel == MPP_OPT_REPEATABLE_READ)
-			txnOptions |= MPP_OPT_REPEATABLE_READ;
-		else if (XactIsoLevel == MPP_OPT_SERIALIZABLE)
-			txnOptions |= MPP_OPT_SERIALIZABLE;	
-		
-	
-		
-		
+		txnOptions = mppTxnOptions(true /* AutoBegin */);
 		
 		_SPI_current->processed = 0;
 		_SPI_current->lastoid = InvalidOid;
@@ -2269,22 +2258,19 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 			elog(NOTICE,"mpp_use_snapshop_during_callback is false, using standard calls");
 			
 			if (PQtransactionStatus(_QD_conn) != PQTRANS_INTRANS) /* Only BEGIN if not already in txn */
-			{
-				char * beginStmt;
+			{				
+				char beginStmt[100];
+
+				int ExplicitIsoLevel;
+				bool ExplicitReadOnly;
+				unpackMppTxnOptions(txnOptions, &ExplicitIsoLevel, &ExplicitReadOnly);
 				
-				elog(DEBUG1,"Sending BEGIN");
-				
-				/* build the right beginStmt based on the options */
-				if (txnOptions & MPP_OPT_READ_COMMITTED)
-					beginStmt = "BEGIN ISOLATION LEVEL READ COMMITTED";
-				else if (txnOptions & MPP_OPT_SERIALIZABLE)
-					beginStmt = "BEGIN ISOLATION LEVEL SERIALIZABLE";
-				else if( txnOptions & MPP_OPT_REPEATABLE_READ)
-					beginStmt = "BEGIN ISOLATION LEVEL REPEATABLE READ";
-				else
-					beginStmt = "BEGIN ISOLATION LEVEL READ UNCOMMITTED";
-		
-				
+				sprintf(beginStmt, "BEGIN ISOLATION LEVEL %s, READ %s", 
+					IsoLevelAsUpperString(ExplicitIsoLevel),
+					(ExplicitReadOnly ? "ONLY" : "WRITE"));
+
+				elog(DEBUG1, "Sending %s.",beginStmt);
+
 				/* kick off an explict BEGIN */
 				pgres = PQexec(_QD_conn, beginStmt);
 				if (PQresultStatus(pgres) != PGRES_COMMAND_OK)
