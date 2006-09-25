@@ -24,10 +24,12 @@
 #include "access/gistscan.h"
 #include "access/hash.h"
 #include "access/rtree.h"
+#include "cdb/cdbvars.h"
 #include "storage/bufmgr.h"
 #include "storage/proc.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
+#include "utils/resscheduler.h"
 
 
 /*
@@ -238,7 +240,12 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 			 * the top of the recursion.
 			 */
 			if (owner == TopTransactionResourceOwner)
+			{
 				ProcReleaseLocks(isCommit);
+				
+				if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+					ResProcReleaseLocks();
+			}
 		}
 		else
 		{

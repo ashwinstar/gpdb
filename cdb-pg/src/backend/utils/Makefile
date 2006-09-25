@@ -8,7 +8,7 @@ subdir = src/backend/utils/
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-SUBDIRS     := adt cache error fmgr hash init mb misc mmgr resowner sort time
+SUBDIRS     := adt cache error fmgr hash init mb misc mmgr resowner resscheduler sort time
 SUBDIROBJS  := $(SUBDIRS:%=%/SUBSYS.o)
 
 

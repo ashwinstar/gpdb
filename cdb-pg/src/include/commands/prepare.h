@@ -32,6 +32,7 @@ typedef struct
 	/* dynahash.c requires key to be first field */
 	char		stmt_name[NAMEDATALEN];
 	char	   *query_string;	/* text of query, or NULL */
+	NodeTag		sourceTag;		/* Original statement NodeTag */
 	const char *commandTag;		/* command tag (a constant!), or NULL */
 	List	   *query_list;		/* list of queries */
 	List	   *plan_list;		/* list of plans */
@@ -51,6 +52,7 @@ extern void ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
 /* Low-level access to stored prepared statements */
 extern void StorePreparedStatement(const char *stmt_name,
 					   const char *query_string,
+					   NodeTag	   sourceTag,
 					   const char *commandTag,
 					   List *query_list,
 					   List *plan_list,

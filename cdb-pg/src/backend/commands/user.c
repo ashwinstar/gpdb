@@ -27,6 +27,7 @@
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
+#include "utils/resscheduler.h"
 #include "utils/syscache.h"
 
 
@@ -96,7 +97,9 @@ CreateRole(CreateRoleStmt *stmt)
 	List	   *rolemembers = NIL;		/* roles to be members of this role */
 	List	   *adminmembers = NIL;		/* roles to be admins of this role */
 	char	   *validUntil = NULL;		/* time the login is valid until */
+	char	   *resqueue = NULL;		/* resource queue for this role */
 	DefElem    *dpassword = NULL;
+	DefElem    *dresqueue = NULL;
 	DefElem    *dissuper = NULL;
 	DefElem    *dinherit = NULL;
 	DefElem    *dcreaterole = NULL;
@@ -225,6 +228,14 @@ CreateRole(CreateRoleStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			dvalidUntil = defel;
 		}
+		else if (strcmp(defel->defname, "resourceQueue") == 0)
+		{
+			if (dresqueue)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dresqueue = defel;
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -252,6 +263,8 @@ CreateRole(CreateRoleStmt *stmt)
 		adminmembers = (List *) dadminmembers->arg;
 	if (dvalidUntil)
 		validUntil = strVal(dvalidUntil->arg);
+	if (dresqueue)
+		resqueue = strVal(linitial((List *) dresqueue->arg));
 
 	/* Check some permissions first */
 	if (issuper)
@@ -337,6 +350,29 @@ CreateRole(CreateRoleStmt *stmt)
 
 	else
 		new_record_nulls[Anum_pg_authid_rolvaliduntil - 1] = 'n';
+
+	if (resqueue && (Mpp_role == MPP_ROLE_DISPATCH))
+	{
+		Oid		queueid;
+
+		if (strcmp(resqueue, "none") == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_RESERVED_NAME),
+					 errmsg("resource queue name \"%s\" is reserved",
+							resqueue)));
+
+		queueid = GetResQueueIdForName(resqueue);
+		if (queueid == InvalidOid)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("resource queue \"%s\" does not exist",
+							resqueue)));
+
+		new_record[Anum_pg_authid_rolresqueue - 1] = 
+		ObjectIdGetDatum(queueid);
+	}
+	else
+		new_record_nulls[Anum_pg_authid_rolresqueue - 1] = 'n';
 
 	new_record_nulls[Anum_pg_authid_rolconfig - 1] = 'n';
 
@@ -435,9 +471,11 @@ AlterRole(AlterRoleStmt *stmt)
 	int			createdb = -1;	/* Can the user create databases? */
 	int			canlogin = -1;	/* Can this user login? */
 	int			connlimit = -1; /* maximum connections allowed */
+	char	   *resqueue = NULL;		/* resource queue for this role */
 	List	   *rolemembers = NIL;		/* roles to be added/removed */
 	char	   *validUntil = NULL;		/* time the login is valid until */
 	DefElem    *dpassword = NULL;
+	DefElem    *dresqueue = NULL;
 	DefElem    *dissuper = NULL;
 	DefElem    *dinherit = NULL;
 	DefElem    *dcreaterole = NULL;
@@ -532,6 +570,14 @@ AlterRole(AlterRoleStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			dvalidUntil = defel;
 		}
+		else if (strcmp(defel->defname, "resourceQueue") == 0)
+		{
+			if (dresqueue)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dresqueue = defel;
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -555,6 +601,8 @@ AlterRole(AlterRoleStmt *stmt)
 		rolemembers = (List *) drolemembers->arg;
 	if (dvalidUntil)
 		validUntil = strVal(dvalidUntil->arg);
+	if (dresqueue)
+		resqueue = strVal(linitial((List *) dresqueue->arg));
 
 	/*
 	 * Scan the pg_authid relation to be certain the user exists. Note we
@@ -681,6 +729,30 @@ AlterRole(AlterRoleStmt *stmt)
 								Int32GetDatum(-1));
 		new_record_repl[Anum_pg_authid_rolvaliduntil - 1] = 'r';
 	}
+
+	/* resource queue */
+	if (resqueue && (Mpp_role == MPP_ROLE_DISPATCH))
+	{
+		Oid			queueid;
+
+		if ( strcmp(resqueue, "none") == 0)
+		{
+			new_record_nulls[Anum_pg_authid_rolresqueue - 1] = 'n';
+		}
+		else
+		{
+			queueid = GetResQueueIdForName(resqueue);
+			if (queueid == InvalidOid)
+				ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("resource queue \"%s\" does not exist",
+							resqueue)));
+			new_record[Anum_pg_authid_rolresqueue - 1] = 
+			ObjectIdGetDatum(GetResQueueIdForName(resqueue));
+		}
+		new_record_repl[Anum_pg_authid_rolresqueue - 1] = 'r';
+	}
+
 
 	new_tuple = heap_modifytuple(tuple, pg_authid_dsc, new_record,
 								 new_record_nulls, new_record_repl);

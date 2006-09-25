@@ -44,6 +44,7 @@
 #include "storage/proc.h"
 #include "storage/procarray.h"
 #include "storage/spin.h"
+#include "utils/resscheduler.h"
 #include "utils/timestamp.h"
 
 #include "utils/tqual.h"  /*SharedLocalSnapshotSlot*/
@@ -293,6 +294,9 @@ InitProcess(void)
 	 * Add our PGPROC to the PGPROC array in shared memory.
 	 */
 	ProcArrayAdd(MyProc);
+
+	/* Set wait portal (do not check if resource scheduling is enabled) */
+	MyProc->waitPortalId = INVALID_PORTALID;
 
 	/*
 	 * Arrange to clean up at backend exit.
@@ -1271,4 +1275,118 @@ handle_sig_alarm(SIGNAL_ARGS)
 		(void) CheckStatementTimeout();
 
 	errno = save_errno;
+}
+
+
+/*
+ * ResProcSleep -- put a process to sleep (that is waiting for a resource lock).
+ *
+ * Notes:
+ * 	Locktable's masterLock must be held at entry, and will be held
+ * 	at exit.
+ *
+ *	This is merely a version of ProcSleep modified for resource locks.
+ *	The logic here could have been merged into ProcSleep, however it was
+ *	requested to keep as much as possible of this resource lock code 
+ *	seperate from its standard lock relatives - in the interest of not
+ *	introducing new bugs or performance regressions into the lock code.
+ */
+int
+ResProcSleep(LOCKMODE lockmode, LOCK *lock, PROCLOCK *proclock)
+{
+
+	LockMethod	lockMethodTable = LockMethods[RESOURCE_LOCKMETHOD];
+	PROC_QUEUE	*waitQueue = &(lock->waitProcs);
+	PGPROC		*proc;
+	/* Variables for self lock check. */
+	SHM_QUEUE	*oprocLocks;
+	PROCLOCK	*oproclock;
+	PGPROC		*oproc;
+	bool		selflock = true;		/* initialize result for error. */
+
+	/*
+	 * Don't check my held locks, as we just add at the end of the queue.
+	 */
+	proc = (PGPROC *) &(waitQueue->links);
+	SHMQueueInsertBefore(&(proc->links), &(MyProc->links));
+	waitQueue->size++;
+
+	lock->waitMask |= LOCKBIT_ON(lockmode);
+
+	/*
+	 * reflect this in PGPROC object, too.
+	 */
+	MyProc->waitLock = lock;
+	MyProc->waitProcLock = (PROCLOCK *) proclock;
+	MyProc->waitLockMode = lockmode;
+
+	MyProc->waitStatus = STATUS_ERROR;	/* initialize result for error */
+
+	waitingForLock = true;
+
+	/*
+	 * Check to see if I am going to deadlock against myself, scan the 
+	 * locks list of proclocks and see if every other holder has 
+	 * pid equal to MyProc->pid or not. 
+	 *
+	 * Note that we start with selflock true, so if there are no holders
+	 * we count this as a self deadlock too (will not happen with cost
+	 * thresholds as we specifically allow overcommit in this case)
+	 */
+	oprocLocks = &(lock->procLocks);
+	oproclock = (PROCLOCK *) SHMQueueNext(oprocLocks, oprocLocks, 
+										  offsetof( PROCLOCK, lockLink));
+
+	while(oproclock)
+	{
+		/* If we hold the lock. */
+		if (oproclock->holdMask & LOCKBIT_ON(lockmode))
+		{
+			/* Get the proc entry for this proclock. */
+			oproc = (PGPROC *) MAKE_PTR(oproclock->tag.proc);
+
+			/* If someone else holds the lock, we cannot be self deadlocking.*/
+			if ( oproc->pid != MyProc->pid)
+			{
+				selflock = false;
+				break;				/* seen enough - stop looking. */
+			}
+		}
+
+		/* Get the next proclock. */
+		oproclock = (PROCLOCK *) SHMQueueNext(oprocLocks, &oproclock->lockLink, 
+											  offsetof( PROCLOCK, lockLink));
+	}
+
+	/* Now check the status of the self lock footgun. */
+	if (selflock)
+	{
+		LWLockRelease(lockMethodTable->masterLock);
+		ereport(ERROR,
+				(errcode(ERRCODE_T_R_DEADLOCK_DETECTED),
+				 errmsg("deadlock detected, locking against self")));
+	}
+
+	/* Ok to wait.*/
+	LWLockRelease(lockMethodTable->masterLock);
+
+	if (!enable_sig_alarm(DeadlockTimeout, false))
+   		elog(FATAL, "could not set timer for (resource lock) process wakeup");
+
+	/*
+	 * Sleep on the semaphore.
+	 */
+	PGSemaphoreLock(&MyProc->sem, true);
+
+	if (!disable_sig_alarm(false))
+		elog(FATAL, "could not disable timer for (resource lock) process wakeup");
+
+	/*
+	 * Have been awakened, so continue.
+	 */
+	LWLockAcquire(lockMethodTable->masterLock, LW_EXCLUSIVE);
+
+	waitingForLock = false;
+
+	return MyProc->waitStatus;
 }

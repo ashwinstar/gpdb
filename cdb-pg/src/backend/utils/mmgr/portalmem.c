@@ -24,6 +24,7 @@
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 #include "utils/portal.h"
+#include "utils/resscheduler.h"
 #include "cdb/cdbvars.h"
 
 /*
@@ -198,6 +199,15 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 	portal->atStart = true;
 	portal->atEnd = true;		/* disallow fetches until query is set */
 
+	/* set portal id and queue id if have enabled resource scheduling */
+	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	{
+		portal->portalId = ResCreatePortalId(name, true);
+		portal->queueId = GetResQueueId();
+	}
+	
+
+
 	portal->is_cursor = false; /* default value */
 	
 	/* put portal in table (sets portal->name) */
@@ -239,10 +249,13 @@ CreateNewPortal(void)
  * responsible for ensuring that the passed sourceText (if any), parse and
  * plan trees have adequate lifetime.  Also, queryContext must accurately
  * describe the location of the parse and plan trees.
+ * The souce (i.e original parsetree is passed in - only used if rource
+ * scheduling is enabled.
  */
 void
 PortalDefineQuery(Portal portal,
 				  const char *sourceText,
+				  NodeTag	  sourceTag,
 				  const char *commandTag,
 				  List *parseTrees,
 				  List *planTrees,
@@ -257,6 +270,7 @@ PortalDefineQuery(Portal portal,
 	Assert(commandTag != NULL || parseTrees == NIL);
 
 	portal->sourceText = sourceText;
+	portal->sourceTag = sourceTag;
 	portal->commandTag = commandTag;
 	portal->parseTrees = parseTrees;
 	portal->planTrees = planTrees;

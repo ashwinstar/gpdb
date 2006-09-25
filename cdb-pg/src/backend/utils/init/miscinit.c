@@ -30,6 +30,7 @@
 #endif
 
 #include "catalog/pg_authid.h"
+#include "cdb/cdbvars.h"
 #include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "postmaster/autovacuum.h"
@@ -41,6 +42,7 @@
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
+#include "utils/resscheduler.h"
 #include "utils/syscache.h"
 
 
@@ -453,6 +455,14 @@ InitializeSessionUserId(const char *rolename)
 							rolename)));
 	}
 
+	/*
+	 * If resource scheduling is enabled, then set cached value for the
+	 * queue. Do this even in standalone backend mode, just in case someone
+	 * gives the superuser a resource queue.
+	 */
+	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+		SetResQueueId();
+
 	/* Record username and superuser status as GUC settings too */
 	SetConfigOption("session_authorization", rolename,
 					PGC_BACKEND, PGC_S_OVERRIDE);
@@ -594,6 +604,10 @@ SetCurrentRoleId(Oid roleid, bool is_superuser)
 		SetRoleIsActive = true;
 
 	SetOuterUserId(roleid);
+
+	/* If resource scheduling enabled, set the cached queue for the new role.*/
+	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+		SetResQueueId();
 
 	SetConfigOption("is_superuser",
 					is_superuser ? "on" : "off",

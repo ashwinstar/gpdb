@@ -133,15 +133,16 @@ static void doNegateFloat(Value *v);
 
 %type <node>	stmt schema_stmt
 		AlterDatabaseStmt AlterDatabaseSetStmt AlterDomainStmt AlterGroupStmt
-		AlterObjectSchemaStmt AlterOwnerStmt AlterSeqStmt AlterTableStmt
-		AlterUserStmt AlterUserSetStmt AlterRoleStmt AlterRoleSetStmt
-		AnalyzeStmt CdbExecStmt ClosePortalStmt ClusterStmt CommentStmt
-		ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
+		AlterObjectSchemaStmt AlterOwnerStmt AlterQueueStmt AlterSeqStmt 
+		AlterTableStmt AlterUserStmt AlterUserSetStmt AlterRoleStmt 
+		AlterRoleSetStmt AnalyzeStmt CdbExecStmt ClosePortalStmt ClusterStmt 
+		CommentStmt ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
 		CreateDomainStmt CreateGroupStmt CreateOpClassStmt CreatePLangStmt
-		CreateSchemaStmt CreateSeqStmt CreateStmt CreateTableSpaceStmt
-		CreateAssertStmt CreateTrigStmt CreateUserStmt CreateRoleStmt
+		CreateQueueStmt CreateSchemaStmt CreateSeqStmt CreateStmt 
+		CreateTableSpaceStmt CreateAssertStmt CreateTrigStmt 
+		CreateUserStmt CreateRoleStmt
 		CreatedbStmt DeclareCursorStmt DefineStmt DeleteStmt
-		DropGroupStmt DropOpClassStmt DropPLangStmt DropStmt
+		DropGroupStmt DropOpClassStmt DropPLangStmt DropQueueStmt DropStmt
 		DropAssertStmt DropTrigStmt DropRuleStmt DropCastStmt DropRoleStmt
 		DropUserStmt DropdbStmt DropTableSpaceStmt ExplainStmt FetchStmt
 		GrantStmt GrantRoleStmt IndexStmt InsertStmt ListenStmt LoadStmt
@@ -180,6 +181,9 @@ static void doNegateFloat(Value *v);
 
 %type <list>	OptRoleList
 %type <defelt>	OptRoleElem
+
+%type <list>	OptQueueList
+%type <defelt>	OptQueueElem
 
 %type <str>		OptSchemaName
 %type <list>	OptSchemaEltList
@@ -311,6 +315,7 @@ static void doNegateFloat(Value *v);
 %type <ival>	Iconst SignedIconst
 %type <str>		Sconst comment_text
 %type <str>		RoleId opt_granted_by opt_boolean ColId_or_Sconst
+%type <str>		QueueId
 %type <list>	var_list var_list_or_default
 %type <str>		ColId ColLabel var_name type_name param_name
 %type <node>	var_value zone_value
@@ -339,7 +344,7 @@ static void doNegateFloat(Value *v);
  */
 
 /* ordinary key words in alphabetical order */
-%token <keyword> ABORT_P ABSOLUTE_P ACCESS ACTION ADD ADMIN AFTER
+%token <keyword> ABORT_P ABSOLUTE_P ACCESS ACTION ACTIVE ADD ADMIN AFTER
 	AGGREGATE ALL ALSO ALTER ANALYSE ANALYZE AND ANY ARRAY AS ASC
 	ASSERTION ASSIGNMENT ASYMMETRIC AT AUTHORIZATION
 
@@ -349,7 +354,8 @@ static void doNegateFloat(Value *v);
 	CACHE CALLED CASCADE CASE CAST MPPEXEC CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLUMN COMMENT COMMIT
-	COMMITTED CONNECTION CONSTRAINT CONSTRAINTS CONVERSION_P CONVERT COPY CREATE CREATEDB
+	COMMITTED CONNECTION CONSTRAINT CONSTRAINTS CONVERSION_P CONVERT COPY COST
+	CREATE CREATEDB
 	CREATEROLE CREATEUSER CROSS CSV CURRENT_DATE CURRENT_ROLE CURRENT_TIME
 	CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
@@ -393,10 +399,10 @@ static void doNegateFloat(Value *v);
 	PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE
 
-	QUOTE
+	QUEUE QUOTE
 
 	READ REAL RECHECK REFERENCES REINDEX RELATIVE_P RELEASE RENAME
-	REPEATABLE REPLACE RESET RESTART RESTRICT RETURNS REVOKE RIGHT
+	REPEATABLE REPLACE RESET RESOURCE RESTART RESTRICT RETURNS REVOKE RIGHT
 	ROLE ROLLBACK ROW ROWS RULE
 
 	SAVEPOINT SCHEMA SCROLL SECOND_P SECURITY SELECT SEQUENCE
@@ -405,7 +411,7 @@ static void doNegateFloat(Value *v);
 	STATISTICS STDIN STDOUT STORAGE STRICT_P SUBSTRING SUPERUSER_P SYMMETRIC
 	SYSID SYSTEM_P
 
-	TABLE TABLESPACE TEMP TEMPLATE TEMPORARY THEN TIME TIMESTAMP
+	TABLE TABLESPACE TEMP TEMPLATE TEMPORARY THEN THRESHOLD TIME TIMESTAMP
 	TO TOAST TRAILING TRANSACTION TREAT TRIGGER TRIM TRUE_P
 	TRUNCATE TRUSTED TYPE_P
 
@@ -500,6 +506,7 @@ stmt :
 			| AlterGroupStmt
 			| AlterObjectSchemaStmt
 			| AlterOwnerStmt
+			| AlterQueueStmt
 			| AlterSeqStmt
 			| AlterTableStmt
 			| AlterRoleSetStmt
@@ -523,6 +530,7 @@ stmt :
 			| CreateGroupStmt
 			| CreateOpClassStmt
 			| CreatePLangStmt
+			| CreateQueueStmt
 			| CreateSchemaStmt
 			| CreateSeqStmt
 			| CreateStmt
@@ -540,6 +548,7 @@ stmt :
 			| DropGroupStmt
 			| DropOpClassStmt
 			| DropPLangStmt
+			| DropQueueStmt
 			| DropRuleStmt
 			| DropStmt
 			| DropTableSpaceStmt
@@ -579,6 +588,72 @@ stmt :
 			| ViewStmt
 			| /*EMPTY*/
 				{ $$ = NULL; }
+		;
+
+/*****************************************************************************
+ *
+ * Create a new Postgres Resource Queue
+ *
+ *****************************************************************************/
+
+CreateQueueStmt:
+			CREATE RESOURCE QUEUE QueueId OptQueueList
+				{
+					CreateQueueStmt *n = makeNode(CreateQueueStmt);
+					n->queue = $4;
+					n->options = $5;
+					$$ = (Node *)n;
+				}
+		;
+
+/*
+ * Options for CREATE and ALTER RESOURCE QUEUE 
+ */
+OptQueueList:
+			OptQueueList OptQueueElem				{ $$ = lappend($1, $2); }
+			| /* EMPTY */							{ $$ = NIL; }
+		;
+
+OptQueueElem:
+			ACTIVE THRESHOLD NumericOnly
+				{
+					$$ = makeDefElem("activelimit", (Node *)$3);
+				}
+			| COST THRESHOLD FloatOnly
+				{
+					$$ = makeDefElem("costlimit", (Node *)$3);
+				}
+		;
+
+/*****************************************************************************
+ *
+ * Alter a postgrse Resource Queue
+ *
+ *****************************************************************************/
+
+AlterQueueStmt:
+			ALTER RESOURCE QUEUE QueueId OptQueueList
+				 {
+					AlterQueueStmt *n = makeNode(AlterQueueStmt);
+					n->queue = $4;
+					n->options = $5;
+					$$ = (Node *)n;
+				 }
+		;
+
+/*****************************************************************************
+ *
+ * Drop a postgrse Resource Queue
+ *
+ *****************************************************************************/
+
+DropQueueStmt:
+			DROP RESOURCE QUEUE QueueId
+				 {
+					DropQueueStmt *n = makeNode(DropQueueStmt);
+					n->queue = $4;
+					$$ = (Node *)n;
+				 }
 		;
 
 /*****************************************************************************
@@ -686,6 +761,10 @@ OptRoleElem:
 			| VALID UNTIL Sconst
 				{
 					$$ = makeDefElem("validUntil", (Node *)makeString($3));
+				}
+			| RESOURCE QUEUE any_name
+				{
+					$$ = makeDefElem("resourceQueue", (Node *)$3);
 				}
 		/*	Supported but not documented for roles, for use by ALTER GROUP. */
 			| USER name_list
@@ -8144,6 +8223,7 @@ AexprConst: Iconst
 Iconst:		ICONST									{ $$ = $1; };
 Sconst:		SCONST									{ $$ = $1; };
 RoleId:		ColId									{ $$ = $1; };
+QueueId:	ColId									{ $$ = $1; };
 
 SignedIconst: ICONST								{ $$ = $1; }
 			| '-' ICONST							{ $$ = - $2; }
@@ -8208,6 +8288,7 @@ unreserved_keyword:
 			| ABSOLUTE_P
 			| ACCESS
 			| ACTION
+			| ACTIVE
 			| ADD
 			| ADMIN
 			| AFTER
@@ -8238,6 +8319,7 @@ unreserved_keyword:
 			| CONSTRAINTS
 			| CONVERSION_P
 			| COPY
+			| COST
 			| CREATEDB
 			| CREATEROLE
 			| CREATEUSER
@@ -8341,6 +8423,7 @@ unreserved_keyword:
 			| PRIVILEGES
 			| PROCEDURAL
 			| PROCEDURE
+			| QUEUE
 			| QUOTE
 			| READ
 			| RECHECK
@@ -8351,6 +8434,7 @@ unreserved_keyword:
 			| REPEATABLE
 			| REPLACE
 			| RESET
+			| RESOURCE
 			| RESTART
 			| RESTRICT
 			| RETURNS
@@ -8386,6 +8470,7 @@ unreserved_keyword:
 			| TEMP
 			| TEMPLATE
 			| TEMPORARY
+			| THRESHOLD
 			| TOAST
 			| TRANSACTION
 			| TRIGGER

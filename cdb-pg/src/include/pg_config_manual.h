@@ -226,7 +226,7 @@
 /*
  * Enable debugging print statements for lock-related operations.
  */
-/* #define LOCK_DEBUG */
+#define LOCK_DEBUG 1
 
 /*
  * Enable debugging print statements for WAL-related operations; see
@@ -239,6 +239,7 @@
  * see also the trace_sort GUC var.  For 8.1 this is enabled by default.
  */
 #define TRACE_SORT 1
+
 
 /*
  * Other debug #defines (documentation, anyone?)

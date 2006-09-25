@@ -1176,6 +1176,30 @@ typedef struct DropPLangStmt
 } DropPLangStmt;
 
 /* ----------------------
+ *	Create/Alter/Drop Resource Queue Statements
+ * ----------------------
+ */
+typedef struct CreateQueueStmt
+{
+	NodeTag		type;
+	char	   *queue;			/* resource queue name */
+	List	   *options;		/* List of DefElem nodes */
+} CreateQueueStmt;
+
+typedef struct AlterQueueStmt
+{
+	NodeTag		type;
+	char	   *queue;			/* resource queue  name */
+	List	   *options;		/* List of DefElem nodes */
+} AlterQueueStmt;
+
+typedef struct DropQueueStmt
+{
+	NodeTag		type;
+	char	   *queue;			/* resource queue to remove */
+} DropQueueStmt;
+
+/* ----------------------
  *	Create/Alter/Drop Role Statements
  *
  * Note: these node types are also used for the backwards-compatible

@@ -113,6 +113,15 @@ typedef struct PortalData
 	 * a previous transaction
 	 */
 
+	/*
+	 * if Resource Scheduling is enabled, we need to save the original
+	 * statement type, keep a unique id for name portals (i.e CURSORS) and
+	 * remember which queue wanted a lock on this portal.
+	 */
+	uint32		portalId;		/* id of this portal 0 for unnamed */
+	NodeTag	    sourceTag;		/* nodetag for the original query */
+	Oid			queueId;		/* Oid of queue locking this portal */
+
 	/* The query or queries the portal will execute */
 	const char *sourceText;		/* text of query, if known (may be NULL) */
 	const char *commandTag;		/* command tag for original query */
@@ -205,6 +214,7 @@ extern void DropDependentPortals(MemoryContext queryContext);
 extern Portal GetPortalByName(const char *name);
 extern void PortalDefineQuery(Portal portal,
 				  const char *sourceText,
+				  NodeTag	  sourceTag,
 				  const char *commandTag,
 				  List *parseTrees,
 				  List *planTrees,

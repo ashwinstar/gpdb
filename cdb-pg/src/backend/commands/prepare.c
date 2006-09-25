@@ -51,6 +51,7 @@ PrepareQuery(PrepareStmt *stmt)
 	Query	   *query;
 	List	   *query_list,
 			   *plan_list;
+	NodeTag		srctag;
 
 	/*
 	 * Disallow empty-string statement name (conflicts with protocol-level
@@ -65,21 +66,26 @@ PrepareQuery(PrepareStmt *stmt)
 	{
 		case CMD_SELECT:
 			commandTag = "SELECT";
+			srctag = T_SelectStmt;
 			break;
 		case CMD_INSERT:
 			commandTag = "INSERT";
+			srctag = T_InsertStmt;
 			break;
 		case CMD_UPDATE:
 			commandTag = "UPDATE";
+			srctag = T_UpdateStmt;
 			break;
 		case CMD_DELETE:
 			commandTag = "DELETE";
+			srctag = T_DeleteStmt;
 			break;
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PSTATEMENT_DEFINITION),
 					 errmsg("utility statements cannot be prepared")));
 			commandTag = NULL;	/* keep compiler quiet */
+			srctag = T_Query;
 			break;
 	}
 
@@ -111,6 +117,7 @@ PrepareQuery(PrepareStmt *stmt)
 	 */
 	StorePreparedStatement(stmt->name,
 						   debug_query_string,
+						   srctag,
 						   commandTag,
 						   query_list,
 						   plan_list,
@@ -195,6 +202,7 @@ ExecuteQuery(ExecuteStmt *stmt, ParamListInfo params,
 
 	PortalDefineQuery(portal,
 					  query_string,
+					  entry->sourceTag,
 					  entry->commandTag,
 					  query_list,
 					  plan_list,
@@ -291,10 +299,13 @@ InitQueryHashTable(void)
  * Exception: commandTag is presumed to be a pointer to a constant string,
  * or possibly NULL, so it need not be copied.	Note that commandTag should
  * be NULL only if the original query (before rewriting) was empty.
+ * The original query nodetag is saved as well, only used if resource 
+ * scheduling is enabled.
  */
 void
 StorePreparedStatement(const char *stmt_name,
 					   const char *query_string,
+					   NodeTag	   sourceTag,
 					   const char *commandTag,
 					   List *query_list,
 					   List *plan_list,
@@ -356,6 +367,7 @@ StorePreparedStatement(const char *stmt_name,
 
 	/* Fill in the hash table entry with copied data */
 	entry->query_string = qstring;
+	entry->sourceTag = sourceTag;
 	entry->commandTag = commandTag;
 	entry->query_list = query_list;
 	entry->plan_list = plan_list;

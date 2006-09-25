@@ -32,6 +32,7 @@
 #include "commands/lockcmds.h"
 #include "commands/portalcmds.h"
 #include "commands/prepare.h"
+#include "commands/queue.h"
 #include "commands/proclang.h"
 #include "commands/schemacmds.h"
 #include "commands/sequence.h"
@@ -317,6 +318,7 @@ check_xact_readonly(Node *parsetree)
 		case T_AlterDatabaseSetStmt:
 		case T_AlterDomainStmt:
 		case T_AlterFunctionStmt:
+		case T_AlterQueueStmt:
 		case T_AlterRoleStmt:
 		case T_AlterRoleSetStmt:
 		case T_AlterObjectSchemaStmt:
@@ -331,6 +333,7 @@ check_xact_readonly(Node *parsetree)
 		case T_CreatedbStmt:
 		case T_CreateDomainStmt:
 		case T_CreateFunctionStmt:
+		case T_CreateQueueStmt:
 		case T_CreateRoleStmt:
 		case T_IndexStmt:
 		case T_CreatePLangStmt:
@@ -349,6 +352,7 @@ check_xact_readonly(Node *parsetree)
 		case T_DropdbStmt:
 		case T_DropTableSpaceStmt:
 		case T_RemoveFuncStmt:
+		case T_DropQueueStmt:
 		case T_DropRoleStmt:
 		case T_DropPLangStmt:
 		case T_RemoveOperStmt:
@@ -1213,6 +1217,21 @@ ProcessUtility(Node *parsetree,
 			break;
 
 			/*
+			 * ********************* RESOOURCE QUEUE statements ****
+			 */
+		case T_CreateQueueStmt:
+			CreateQueue((CreateQueueStmt *) parsetree);
+			break;
+
+		case T_AlterQueueStmt:
+			AlterQueue((AlterQueueStmt *) parsetree);
+			break;
+
+		case T_DropQueueStmt:
+			DropQueue((DropQueueStmt *) parsetree);
+			break;
+
+			/*
 			 * ******************************** ROLE statements ****
 			 */
 		case T_CreateRoleStmt:
@@ -1896,6 +1915,18 @@ CreateCommandTag(Node *parsetree)
 
 		case T_DropPLangStmt:
 			tag = "DROP LANGUAGE";
+			break;
+
+		case T_CreateQueueStmt:
+			tag = "CREATE QUEUE";
+			break;
+
+		case T_AlterQueueStmt:
+			tag = "ALTER QUEUE";
+			break;
+
+		case T_DropQueueStmt:
+			tag = "DROP QUEUE";
 			break;
 
 		case T_CreateRoleStmt:

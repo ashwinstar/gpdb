@@ -1533,6 +1533,28 @@ _equalCdbExecStmt(CdbExecStmt *a, CdbExecStmt *b)
 	return true;
 }
 
+static bool
+_equalCreateQueueStmt(CreateQueueStmt *a, CreateQueueStmt *b)
+{
+	COMPARE_STRING_FIELD(queue);
+	COMPARE_NODE_FIELD(options);
+	return true;
+}
+
+static bool
+_equalAlterQueueStmt(AlterQueueStmt *a, AlterQueueStmt *b)
+{
+	COMPARE_STRING_FIELD(queue);
+	COMPARE_NODE_FIELD(options);
+	return true;
+}
+
+static bool
+_equalDropQueueStmt(DropQueueStmt *a, DropQueueStmt *b)
+{
+	COMPARE_STRING_FIELD(queue);
+	return true;
+}
 
 /*
  * stuff from parsenodes.h
@@ -2262,7 +2284,15 @@ equal(void *a, void *b)
 		case T_CdbExecStmt:
 			retval = _equalCdbExecStmt(a, b);
 			break;
-
+		case T_CreateQueueStmt:
+			retval = _equalCreateQueueStmt(a, b);
+			break;
+		case T_AlterQueueStmt:
+			retval = _equalAlterQueueStmt(a, b);
+			break;
+		case T_DropQueueStmt:
+			retval = _equalDropQueueStmt(a, b);
+			break;
 		case T_A_Expr:
 			retval = _equalAExpr(a, b);
 			break;

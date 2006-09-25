@@ -66,6 +66,7 @@
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
+#include "utils/resscheduler.h"
 #include "pgstat.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
@@ -295,6 +296,8 @@ const char *const config_group_names[] =
 	gettext_noop("Resource Usage / Free Space Map"),
 	/* RESOURCES_KERNEL */
 	gettext_noop("Resource Usage / Kernel Resources"),
+	/* RESOURCES_MGM */
+	gettext_noop("Resource Usage / Resources Management"),
 	/* WAL */
 	gettext_noop("Write-Ahead Log"),
 	/* WAL_SETTINGS */
@@ -1119,6 +1122,23 @@ static struct config_bool ConfigureNamesBool[] =
     	false, NULL, NULL
     },
 
+	{
+		{"resource_scheduler", PGC_POSTMASTER, RESOURCES_MGM,
+			gettext_noop("Enable resource scheduling."),
+			NULL
+		},
+		&ResourceScheduler,
+		false, NULL, NULL
+	},
+	{
+		{"resource_select_only", PGC_POSTMASTER, RESOURCES_MGM,
+			gettext_noop("Enable resource locking of SELECT only."),
+			NULL
+		},
+		&ResourceSelectOnly,
+		true, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -1678,6 +1698,25 @@ static struct config_int ConfigureNamesInt[] =
 		&tcp_keepalives_count,
 		0, 0, INT_MAX, assign_tcp_keepalives_count, show_tcp_keepalives_count
 	},
+
+	{
+		{"max_resource_queues", PGC_POSTMASTER, RESOURCES_MGM,
+			gettext_noop("Maximum number of resource queues."),
+			NULL
+		},
+		&MaxResourceQueues,
+		8, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"max_resource_portals_per_transaction", PGC_POSTMASTER, RESOURCES_MGM,
+			gettext_noop("Maximum number of resource queues."),
+			NULL
+		},
+		&MaxResourcePortalsPerXact,
+		64, 0, INT_MAX, NULL, NULL
+	},
+
 
 
 

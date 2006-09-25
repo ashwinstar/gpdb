@@ -19,6 +19,7 @@
 #include "access/subtrans.h"
 #include "access/twophase.h"
 #include "access/xlog.h"
+#include "cdb/cdbvars.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/bgwriter.h"
@@ -36,6 +37,7 @@
 #include "storage/procarray.h"
 #include "storage/sinval.h"
 #include "storage/spin.h"
+#include "utils/resscheduler.h"
 
 #include "cdb/cdbfts.h"
 #include "cdb/cdbtm.h"
@@ -83,6 +85,11 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 												 sizeof(ShmemIndexEnt)));
 		size = add_size(size, BufferShmemSize());
 		size = add_size(size, LockShmemSize());
+		if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+		{
+			size = add_size(size, ResSchedulerShmemSize());
+			size = add_size(size, ResPortalIncrementShmemSize());
+		}
 		size = add_size(size, ProcGlobalShmemSize());
 		size = add_size(size, XLOGShmemSize());
 		size = add_size(size, CLOGShmemSize());
@@ -170,6 +177,16 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 */
 	InitLocks();
 	InitLockTable();
+
+	/*
+	 * Set up resource schedular
+	 */
+	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	{
+		InitResScheduler();
+		InitResLocks();
+		InitResPortalIncrementHash();
+	}
 
 	/*
 	 * Set up process table

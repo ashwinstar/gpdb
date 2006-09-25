@@ -30,6 +30,7 @@
 #include "miscadmin.h"
 #include "storage/proc.h"
 #include "utils/memutils.h"
+#include "utils/resscheduler.h"
 
 
 /* One edge in the waits-for graph */
@@ -256,7 +257,14 @@ DeadLockCheck(PGPROC *proc)
 #endif
 
 		/* See if any waiters for the lock can be woken up now */
-		ProcLockWakeup(GetLocksMethodTable(lock), lock);
+		if (lock->tag.locktag_type == LOCKTAG_RESOURCE_QUEUE)
+		{
+			ResProcLockWakeup(lock);
+		}
+		else
+		{
+			ProcLockWakeup(GetLocksMethodTable(lock), lock);
+		}
 	}
 	return false;
 }
@@ -878,6 +886,11 @@ DescribeLockTag(StringInfo buf, const LOCKTAG *lock)
 							 _("object %u of class %u of database %u"),
 							 lock->locktag_field3,
 							 lock->locktag_field2,
+							 lock->locktag_field1);
+			break;
+		case LOCKTAG_RESOURCE_QUEUE:
+			appendStringInfo(buf,
+							 _("resource queue %u"),
 							 lock->locktag_field1);
 			break;
 		case LOCKTAG_USERLOCK:

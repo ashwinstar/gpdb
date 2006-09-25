@@ -1541,6 +1541,7 @@ SPI_cursor_open(const char *name, void *plan,
 	 */
 	PortalDefineQuery(portal,
 					  NULL,		/* unfortunately don't have sourceText */
+					  T_SelectStmt,
 					  "SELECT", /* nor the raw parse tree... */
 					  list_make1(queryTree),
 					  list_make1(planTree),

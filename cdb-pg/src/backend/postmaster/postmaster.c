@@ -125,6 +125,7 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
+#include "utils/resscheduler.h"
 
 #include "cdb/cdbgang.h"                /* cdbgang_parse_mppqeid_params */
 #include "cdb/cdblogsync.h"

@@ -41,6 +41,7 @@
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/resowner.h"
+#include "utils/resscheduler.h"
 
 #include "cdb/cdbvars.h"
 
@@ -49,6 +50,12 @@ int			max_locks_per_xact; /* set by guc.c */
 
 #define NLOCKENTS() \
 	mul_size(max_locks_per_xact, add_size(MaxBackends, max_prepared_xacts))
+
+#define NRESLOCKENTS() \
+	MaxResourceQueues
+
+#define NRESPROCLOCKENTS() \
+	mul_size(MaxResourceQueues, MaxBackends)
 
 
 /* Record that's written to 2PC state file when a lock is persisted */
@@ -61,10 +68,11 @@ typedef struct TwoPhaseLockRecord
 
 /*
  * map from lock method id to the lock table data structures
+ * exported so resqueue.c can examine them.
  */
-static LockMethod LockMethods[MAX_LOCK_METHODS];
-static HTAB *LockMethodLockHash[MAX_LOCK_METHODS];
-static HTAB *LockMethodProcLockHash[MAX_LOCK_METHODS];
+LockMethod LockMethods[MAX_LOCK_METHODS];
+HTAB *LockMethodLockHash[MAX_LOCK_METHODS];
+HTAB *LockMethodProcLockHash[MAX_LOCK_METHODS];
 static HTAB *LockMethodLocalHash[MAX_LOCK_METHODS];
 
 /* exported so lmgr.c can initialize it */
@@ -240,16 +248,23 @@ LockMethodTableInit(const char *tabName,
 	HASHCTL		info;
 	int			hash_flags;
 	bool		found;
-	long		init_table_size,
-				max_table_size;
+	long		max_lock_table_size;
+	long		max_plock_table_size;
 
 	if (numModes >= MAX_LOCKMODES)
 		elog(ERROR, "too many lock types %d (limit is %d)",
 			 numModes, MAX_LOCKMODES - 1);
 
-	/* Compute init/max size to request for lock hashtables */
-	max_table_size = NLOCKENTS();
-	init_table_size = max_table_size / 2;
+	/* Compute max size to request for lock hashtables */
+	max_lock_table_size = NLOCKENTS();
+	max_plock_table_size = NLOCKENTS();
+
+	/* Allow for extra entries if resource locking is enabled. */
+	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	{
+		add_size(max_lock_table_size, NRESLOCKENTS() );
+		add_size(max_plock_table_size, NRESPROCLOCKENTS() );
+	}
 
 	/* Allocate a string for the shmem index table lookups. */
 	/* This is just temp space in this routine, so palloc is OK. */
@@ -292,8 +307,8 @@ LockMethodTableInit(const char *tabName,
 
 	sprintf(shmemName, "%s (lock hash)", tabName);
 	LockMethodLockHash[lockmethodid] = ShmemInitHash(shmemName,
-													 init_table_size,
-													 max_table_size,
+													 max_lock_table_size / 2,
+													 max_lock_table_size,
 													 &info,
 													 hash_flags);
 
@@ -310,11 +325,12 @@ LockMethodTableInit(const char *tabName,
 	hash_flags = (HASH_ELEM | HASH_FUNCTION);
 
 	sprintf(shmemName, "%s (proclock hash)", tabName);
-	LockMethodProcLockHash[lockmethodid] = ShmemInitHash(shmemName,
-														 init_table_size,
-														 max_table_size,
-														 &info,
-														 hash_flags);
+	LockMethodProcLockHash[lockmethodid] = ShmemInitHash(
+													shmemName,
+													max_plock_table_size / 2,
+													max_plock_table_size,
+													&info,
+													hash_flags);
 
 	if (!LockMethodProcLockHash[lockmethodid])
 		elog(FATAL, "could not initialize lock table \"%s\"", tabName);
@@ -1451,6 +1467,7 @@ LockReleaseAll(LOCKMETHODID lockmethodid, bool allLocks)
 
 		PROCLOCK_PRINT("LockReleaseAll", proclock);
 		LOCK_PRINT("LockReleaseAll", lock, 0);
+
 		Assert(lock->nRequested >= 0);
 		Assert(lock->nGranted >= 0);
 		Assert(lock->nGranted <= lock->nRequested);
@@ -1884,16 +1901,25 @@ Size
 LockShmemSize(void)
 {
 	Size		size;
-	long		max_table_size = NLOCKENTS();
+	long		max_lock_table_size = NLOCKENTS();
+	long		max_plock_table_size = NLOCKENTS();
+
+	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	{
+		add_size(max_lock_table_size, NRESLOCKENTS() );
+		add_size(max_plock_table_size, NRESPROCLOCKENTS() );
+	}
 
 	/* lock method headers */
 	size = MAX_LOCK_METHODS * MAXALIGN(sizeof(LockMethodData));
 
 	/* lockHash table */
-	size = add_size(size, hash_estimate_size(max_table_size, sizeof(LOCK)));
+	size = add_size(size, hash_estimate_size(max_lock_table_size, 
+											 sizeof(LOCK)));
 
 	/* proclockHash table */
-	size = add_size(size, hash_estimate_size(max_table_size, sizeof(PROCLOCK)));
+	size = add_size(size, hash_estimate_size(max_plock_table_size, 
+											 sizeof(PROCLOCK)));
 
 	/*
 	 * Note we count only one pair of hash tables, since the userlocks table

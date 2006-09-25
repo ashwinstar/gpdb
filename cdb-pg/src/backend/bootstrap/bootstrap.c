@@ -28,6 +28,7 @@
 #include "bootstrap/bootstrap.h"
 #include "catalog/index.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbvars.h"
 #include "executor/executor.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
@@ -46,6 +47,7 @@
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/relcache.h"
+#include "utils/resscheduler.h"
 
 extern int	optind;
 extern char *optarg;
@@ -423,6 +425,8 @@ BootstrapMain(int argc, char *argv[])
 			StartupXLOG();
 			LoadFreeSpaceMap();
 			BuildFlatFiles(false);
+			if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+				InitResQueues();
 			proc_exit(0);		/* startup done */
 
 		case BS_XLOG_BGWRITER:

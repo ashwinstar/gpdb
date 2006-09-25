@@ -44,6 +44,7 @@
 #include "utils/portal.h"
 #include "utils/relcache.h"
 #include "utils/resowner.h"
+#include "utils/resscheduler.h"
 #include "pgstat.h"
 
 #include "cdb/cdbgang.h"
@@ -1721,6 +1722,10 @@ CommitTransaction(void)
 	/* Close any open regular cursors */
 	AtCommit_Portals();
 
+	/* Perform any Resource Scheduler commit procesing. */
+	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+		AtCommit_ResScheduler();
+
 	/*
 	 * Let ON COMMIT management do its thing (must happen after closing
 	 * cursors, to avoid dangling-reference problems)
@@ -2172,6 +2177,11 @@ AbortTransaction(void)
 	 */
 	AfterTriggerEndXact(false);
 	AtAbort_Portals();
+
+	/* Perform any Resource Scheduler abort procesing. */
+	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+		AtAbort_ResScheduler();
+
 	AtEOXact_LargeObject(false);	/* 'false' means it's abort */
 	AtAbort_Notify();
 	AtEOXact_UpdateFlatFiles(false);

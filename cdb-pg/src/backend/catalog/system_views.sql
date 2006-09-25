@@ -19,6 +19,7 @@ CREATE VIEW pg_roles AS
         '********'::text as rolpassword,
         rolvaliduntil,
         rolconfig,
+		rolresqueue,
         oid
     FROM pg_authid;
 

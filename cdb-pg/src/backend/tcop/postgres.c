@@ -982,6 +982,7 @@ exec_simple_query(const char *query_string)
 
 		PortalDefineQuery(portal,
 						  query_string,
+						  nodeTag(parsetree),
 						  commandTag,
 						  querytree_list,
 						  plantree_list,
@@ -1325,8 +1326,11 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	 */
 	if (is_named)
 	{
+		Node	   *parsetree = (Node *) linitial(parsetree_list);
+
 		StorePreparedStatement(stmt_name,
 							   query_string,
+							   nodeTag(parsetree),
 							   commandTag,
 							   querytree_list,
 							   plantree_list,
@@ -1334,13 +1338,15 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	}
 	else
 	{
-		PreparedStatement *pstmt;
+		PreparedStatement	*pstmt;
+		Node				*parsetree = (Node *) linitial(parsetree_list);
 
 		pstmt = (PreparedStatement *) palloc0(sizeof(PreparedStatement));
 		/* query_string needs to be copied into unnamed_stmt_context */
 		pstmt->query_string = pstrdup(query_string);
 		/* the rest is there already */
 		pstmt->commandTag = commandTag;
+		pstmt->sourceTag = nodeTag(parsetree);
 		pstmt->query_list = querytree_list;
 		pstmt->plan_list = plantree_list;
 		pstmt->argtype_list = param_list;
@@ -1640,6 +1646,7 @@ exec_bind_message(StringInfo input_message)
 	 */
 	PortalDefineQuery(portal,
 					  pstmt->query_string,
+					  pstmt->sourceTag,
 					  pstmt->commandTag,
 					  pstmt->query_list,
 					  pstmt->plan_list,

@@ -17,6 +17,7 @@
 
 #include "commands/prepare.h"
 #include "commands/trigger.h"
+#include "cdb/cdbvars.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "tcop/tcopprot.h"
@@ -24,6 +25,7 @@
 #include "tcop/utility.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
+#include "utils/resscheduler.h"
 
 
 /*
@@ -562,6 +564,7 @@ PortalRun(Portal portal, long count,
 		  char *completionTag)
 {
 	bool		result;
+	bool		releaseResourceLock = false;
 	ResourceOwner saveTopTransactionResourceOwner;
 	MemoryContext saveTopTransactionContext;
 	Portal		saveActivePortal;
@@ -593,6 +596,16 @@ PortalRun(Portal portal, long count,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("portal \"%s\" cannot be run", portal->name)));
 	portal->status = PORTAL_ACTIVE;
+
+	/*
+	 * If resource scheduling is enabled, lock the portal here.
+	 * Skip this if we are superuser!
+	 */
+	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler && !superuser())
+	{
+		releaseResourceLock = ResLockPortal(portal);
+	}
+
 
 	/*
 	 * Set up global portal context pointers.
@@ -721,6 +734,18 @@ PortalRun(Portal portal, long count,
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+
+
+	/*
+	 * If resource scheduling is enabled, release the resource lock here.
+	 * Skip if we are superuser!
+	 */
+	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler && !superuser())
+	{
+		if (releaseResourceLock)
+			ResUnLockPortal(portal);
+	}
+
 
 	if (saveMemoryContext == saveTopTransactionContext)
 		MemoryContextSwitchTo(TopTransactionContext);

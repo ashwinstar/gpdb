@@ -2822,6 +2822,38 @@ _copySnapshotInfo(SnapshotInfo *from)
 	return newnode;
 }
 
+static CreateQueueStmt *
+_copyCreateQueueStmt(CreateQueueStmt *from)
+{
+	CreateQueueStmt *newnode = makeNode(CreateQueueStmt);
+
+	COPY_STRING_FIELD(queue);
+	COPY_NODE_FIELD(options);
+
+	return newnode;
+}
+
+static AlterQueueStmt *
+_copyAlterQueueStmt(AlterQueueStmt *from)
+{
+	AlterQueueStmt *newnode = makeNode(AlterQueueStmt);
+
+	COPY_STRING_FIELD(queue);
+	COPY_NODE_FIELD(options);
+
+	return newnode;
+}
+
+static DropQueueStmt *
+_copyDropQueueStmt(DropQueueStmt *from)
+{
+	DropQueueStmt *newnode = makeNode(DropQueueStmt);
+
+	COPY_STRING_FIELD(queue);
+
+	return newnode;
+}
+
 
 /* ****************************************************************
  *					pg_list.h copy functions
@@ -3385,7 +3417,15 @@ copyObject(void *from)
 		case T_DeallocateStmt:
 			retval = _copyDeallocateStmt(from);
 			break;
-
+		case T_CreateQueueStmt:
+			retval = _copyCreateQueueStmt(from);
+			break;
+		case T_AlterQueueStmt:
+			retval = _copyAlterQueueStmt(from);
+			break;
+		case T_DropQueueStmt:
+			retval = _copyDropQueueStmt(from);
+			break;
 		case T_A_Expr:
 			retval = _copyAExpr(from);
 			break;

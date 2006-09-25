@@ -28,6 +28,7 @@ static const char *const LockTagTypeNames[] = {
 	"tuple",
 	"transactionid",
 	"object",
+	"resource queue",
 	"userlock"
 };
 
@@ -234,6 +235,16 @@ pg_lock_status(PG_FUNCTION_ARGS)
 				nulls[4] = 'n';
 				nulls[6] = 'n';
 				nulls[7] = 'n';
+				nulls[8] = 'n';
+				break;
+			case LOCKTAG_RESOURCE_QUEUE:
+				values[1] = ObjectIdGetDatum(proc->databaseId);
+				values[7] = ObjectIdGetDatum(lock->tag.locktag_field1);
+				nulls[2] = 'n';
+				nulls[3] = 'n';
+				nulls[4] = 'n';
+				nulls[5] = 'n';
+				nulls[6] = 'n';
 				nulls[8] = 'n';
 				break;
 			case LOCKTAG_OBJECT:

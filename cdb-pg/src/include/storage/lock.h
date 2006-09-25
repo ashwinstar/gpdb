@@ -64,11 +64,16 @@ typedef int LOCKMODE;
 typedef uint16 LOCKMETHODID;
 
 /* MAX_LOCK_METHODS is the number of distinct lock control tables allowed */
-#define MAX_LOCK_METHODS	3
+#define MAX_LOCK_METHODS	4
 
 #define INVALID_LOCKMETHOD	0
 #define DEFAULT_LOCKMETHOD	1
 #define USER_LOCKMETHOD		2
+#ifdef USER_LOCKS
+#define RESOURCE_LOCKMETHOD	3
+#else
+#define RESOURCE_LOCKMETHOD	USER_LOCKMETHOD
+#endif
 
 #define LockMethodIsValid(lockmethodid) ((lockmethodid) != INVALID_LOCKMETHOD)
 
@@ -100,6 +105,9 @@ typedef struct LockMethodData
 
 typedef LockMethodData *LockMethod;
 
+extern LockMethod LockMethods[MAX_LOCK_METHODS];
+extern HTAB *LockMethodLockHash[MAX_LOCK_METHODS];
+extern HTAB *LockMethodProcLockHash[MAX_LOCK_METHODS];
 
 /*
  * LOCKTAG is the key information needed to look up a LOCK item in the
@@ -128,6 +136,8 @@ typedef enum LockTagType
 	 * pg_description, but notice that we are constraining SUBID to 16 bits.
 	 * Also, we use DB OID = 0 for shared objects such as tablespaces.
 	 */
+	LOCKTAG_RESOURCE_QUEUE,
+	/* ID info for resource queue is QUEUE ID */
 	LOCKTAG_USERLOCK			/* reserved for contrib/userlock */
 	/* ID info for a userlock is defined by user_locks.c */
 } LockTagType;
@@ -285,6 +295,10 @@ typedef struct PROCLOCK
 	LOCKMASK	releaseMask;	/* bitmask for lock types to be released */
 	SHM_QUEUE	lockLink;		/* list link in LOCK's list of proclocks */
 	SHM_QUEUE	procLink;		/* list link in PGPROC's list of proclocks */
+	int			nLocks;			/* total number of times lock is held by 
+								   this process, used by resource scheduler */
+	SHM_QUEUE	portalLinks;	/* list of ResPortalIncrements for this 
+								   proclock, used by resource scheduler */
 } PROCLOCK;
 
 #define PROCLOCK_LOCKMETHOD(proclock) \

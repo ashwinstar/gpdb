@@ -93,6 +93,12 @@ struct PGPROC
 								 * awaited by this backend */
 
 	struct XidCache subxids;	/* cache for subtransaction XIDs */
+
+	/*
+	 * Info for Resource Scheduling, what portal (i.e statement) we might
+	 * be waiting on.
+	 */
+	uint32		waitPortalId;	/* portal id we are waiting on */
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
@@ -153,5 +159,6 @@ extern void ProcSendSignal(int pid);
 extern bool enable_sig_alarm(int delayms, bool is_statement_timeout);
 extern bool disable_sig_alarm(bool is_statement_timeout);
 extern void handle_sig_alarm(SIGNAL_ARGS);
+extern int	ResProcSleep(LOCKMODE lockmode, LOCK *lock, PROCLOCK *proclock);
 
 #endif   /* PROC_H */
