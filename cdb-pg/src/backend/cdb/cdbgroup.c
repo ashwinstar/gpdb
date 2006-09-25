@@ -969,6 +969,8 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	/* Move the root query aside into a newly allocated Query node. */
 	subquery = makeNode(Query);
 	memcpy(subquery, parse, sizeof(Query));
+	subquery->targetList = copyObject(prelim_tlist);
+	subquery->havingQual = NIL;
 	
 	/* Subquery attributes shouldn't be marked as junk, else they'll be
 	 * skipped by addRangeTableEntryForSubquery. */
