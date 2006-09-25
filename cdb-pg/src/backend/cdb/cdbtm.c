@@ -677,7 +677,7 @@ unpackMppTxnOptions(int txnOptions, int *isoLevel, bool *readOnly)
 bool
 isMppTxOptionsAutoBegin(int txnOptions)
 {
-	return (txnOptions & MPP_OPT_AUTOBEGIN);
+	return ((txnOptions & MPP_OPT_AUTOBEGIN) != 0);
 }
 
 								
@@ -975,14 +975,24 @@ execDtxCommand(void)
 	{
 		case DTX_STATE_IN_PROGRESS:
 
-			/* 
-			 * Be explicit about both the isolation level and the access mode
-			 * since in MPP our QEs are in a another process.
+			/*
+			 * Temporarly, don't add options unless they differ from
+			 * the default...  In some cases we are issuing 2 BEGINs in a
+			 * row.  The 2nd BEGIN will only get a warning if it has no options...
 			 */
-			sprintf(cmdbuf, "BEGIN ISOLATION LEVEL %s, READ %s", 
-					IsoLevelAsUpperString(XactIsoLevel),
-					(XactReadOnly ? "ONLY" : "WRITE"));
-			cmd = cmdbuf;
+			if (DefaultXactIsoLevel != XactIsoLevel || DefaultXactReadOnly != XactReadOnly)
+			{
+				/* 
+				 * Be explicit about both the isolation level and the access mode
+				 * since in MPP our QEs are in a another process.
+				 */
+				sprintf(cmdbuf, "BEGIN ISOLATION LEVEL %s, READ %s", 
+						IsoLevelAsUpperString(XactIsoLevel),
+						(XactReadOnly ? "ONLY" : "WRITE"));
+				cmd = cmdbuf;
+			}
+			else
+				cmd = "BEGIN";
 
 			elog(DEBUG3, "execDtxCommand %s.", cmdbuf);
 
