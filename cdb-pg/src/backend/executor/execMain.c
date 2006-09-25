@@ -1205,7 +1205,10 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 */
 	intoRelationDesc = NULL;
 
-	if (do_select_into && !(eflags & EXEC_FLAG_EXPLAIN_ONLY))
+	if (do_select_into && 
+		/* Only create the table if root slice */
+		(Mpp_role != MPP_ROLE_EXECUTE || currentSliceId == estate->es_cur_root_idx) && 
+		!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 	{
 		char	   *intoName;
 		Oid			namespaceId;
