@@ -249,6 +249,7 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 		pSegDB->pszHost	= strdup(PQgetvalue(pRes, i, i_host));
         pSegDB->pszDBName = PQdb(pConn);
 		pSegDB->pszDBUser = PQuser(pConn);
+		pSegDB->pszDBPswd = PQpass(pConn);
 		
 		if(pSegDB->role == ROLE_MASTER)
 			mpp_err_msg("INFO", "mpp_dump", "Master (dbid 1)\n");
@@ -441,6 +442,7 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 		targetSegDB->pszHost	= strdup(PQgetvalue(pRes, i, i_host));
         targetSegDB->pszDBName = PQdb(pConn);
 		targetSegDB->pszDBUser = PQuser(pConn);
+		targetSegDB->pszDBPswd = PQpass(pConn);
 		
 		if(targetSegDB->role == ROLE_MASTER)
 			mpp_err_msg("INFO", "mpp_restore", "Master (dbid 1)\n");
@@ -466,7 +468,10 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 			sourceSegDB->isValid	= prevSourceSegDB->isValid;
 			sourceSegDB->pszHost	= prevSourceSegDB->pszHost;
 			sourceSegDB->pszDBName  = prevSourceSegDB->pszDBName;
-			sourceSegDB->pszDBUser  = prevSourceSegDB->pszDBUser;		
+			sourceSegDB->pszDBUser  = prevSourceSegDB->pszDBUser;	
+			if(prevSourceSegDB->pszDBPswd)
+				sourceSegDB->pszDBPswd  = prevSourceSegDB->pszDBPswd;		
+
 		}
 		else
 		{
@@ -481,6 +486,8 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 			sourceSegDB->pszHost	= targetSegDB->pszHost;
 			sourceSegDB->pszDBName  = targetSegDB->pszDBName;
 			sourceSegDB->pszDBUser  = targetSegDB->pszDBUser;
+			if(targetSegDB->pszDBPswd)
+				sourceSegDB->pszDBPswd  = targetSegDB->pszDBPswd;
 		}
 		
 		x++;

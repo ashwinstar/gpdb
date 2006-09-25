@@ -219,11 +219,10 @@ static char*  formCDatabaseFilePathName( char* pszBackupDirectory, char* pszBack
 static char*  formGenericFilePathName( char *keyword, char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID );
 static void   dumpMain(bool oids, const char* dumpencoding, int outputBlobs, int plainText, RestoreOptions *ropt);
 static void   dumpTimestamp(Archive *AH, char *msg);
+static void   dumpDatabaseDefinition(PGconn *conn);
 /* MPP additions end */
 
-/* from pg_dumpall */
-static void dumpCreateDB(PGconn *conn);
-static PGresult * executeQuery(PGconn *conn, const char *query);
+
 extern void reset(void);
 
 
@@ -725,7 +724,7 @@ main(int argc, char **argv)
         forkMPPCatalogDumper();
 		
 		mpp_err_msg( logInfo, pszProgName, "Dumping CREATE DATABASE statement\n");
-		dumpCreateDB(g_conn);
+		dumpDatabaseDefinition(g_conn);
     }
 
 	/*
@@ -9191,53 +9190,37 @@ char* formGenericFilePathName( char* keyword, char* pszBackupDirectory, char* ps
     return pszBackupFileName;
 }
 
-
 /*
- * Run a query, return the results, exit program on failure.
- */
-static PGresult *
-executeQuery(PGconn *conn, const char *query)
-{
-    PGresult   *res;
-	
-    if (g_verbose)
-        mpp_err_msg( logInfo, pszProgName, "executing %s\n", query);
-	
-    res = PQexec(conn, query);
-    if (!res ||
-        PQresultStatus(res) != PGRES_TUPLES_OK)
-    {
-        mpp_err_msg( logError, pszProgName, "query failed: %s", PQerrorMessage(conn));
-        mpp_err_msg( logInfo, pszProgName, "query was: %s\n", query);
-        PQfinish(conn);
-        exit(1);
-    }
-	
-    return res;
-}
-
-/*
- * Dump commands to create our database.
+ * Dump the database definition.
  *
- * To minimize the number of reconnections (and possibly ensuing
-											* password prompts) required by the output script, we emit all CREATE
- * DATABASE commands during the initial phase of the script, and then
- * run pg_dump for each database to dump the contents of that
- * database.  We skip databases marked not datallowconn, since we'd be
- * unable to connect to them anyway (and besides, we don't want to
-									 * dump template0).
+ * This is a very similar version to pg_dump's dumpDatabase() but
+ * we make it more straight forward here and write it to the file.
  */
-static void
-dumpCreateDB(PGconn *conn)
+static void 
+dumpDatabaseDefinition(PGconn *conn)
 {
     PGresult   *res;
     FILE       *fcat;
-    int         i;
     char       *pszBackupFileName;
-    const char *target_dbname; /* the db we are dumping */
+	PQExpBuffer dbQry = createPQExpBuffer();
+	PQExpBuffer creaQry = createPQExpBuffer();
+	CatalogId	dbCatId;
+	int			ntups;
+	int			i_tableoid,
+				i_oid,
+				i_dba,
+				i_encoding,
+				i_tablespace;
+	const char *datname,
+				*dba,
+				*encoding,
+				*tablespace;
 	
-	target_dbname = PQdb(conn);
+	datname = PQdb(conn); /* the database we are dumping */
 	
+	/* Make sure we are in proper schema */
+	selectSourceSchema("pg_catalog");
+
     pszBackupFileName = formCDatabaseFilePathName( g_pszCDBOutputDirectory,
 												   g_CDBDumpKey, g_role, g_dbID );
     
@@ -9255,89 +9238,70 @@ dumpCreateDB(PGconn *conn)
     
     fprintf(fcat, "--\n-- Database creation\n--\n\n");
 	
-    res = executeQuery(conn,
-                       "SELECT datname, "
-                       "coalesce(usename, (select usename from pg_shadow where usesysid=(select datdba from pg_database where datname='template0'))), "
-                       "pg_encoding_to_char(d.encoding), "
-                       "datistemplate, datacl, "
-                       "(SELECT spcname FROM pg_tablespace t WHERE t.oid = d.dattablespace) AS dattablespace "
-					   "FROM pg_database d LEFT JOIN pg_shadow u ON (datdba = usesysid) "
-                       "WHERE datallowconn ORDER BY 1");
+	appendPQExpBuffer(dbQry, "SELECT tableoid, oid, "
+					  "(SELECT rolname FROM pg_catalog.pg_roles WHERE oid = datdba) as dba, "
+					  "pg_encoding_to_char(encoding) as encoding, "
+					  "(SELECT spcname FROM pg_tablespace t WHERE t.oid = dattablespace) as tablespace "
+					  "FROM pg_database "
+					  "WHERE datname = ");
+	appendStringLiteral(dbQry, datname, true);
+		
+	res = PQexec(conn, dbQry->data);
+	check_sql_result(res, conn, dbQry->data, PGRES_TUPLES_OK);
 	
-    for (i = 0; i < PQntuples(res); i++)
-    {
-        PQExpBuffer buf;
-        char       *dbname = PQgetvalue(res, i, 0);
-        char       *dbowner = PQgetvalue(res, i, 1);
-        char       *dbencoding = PQgetvalue(res, i, 2);
-        char       *dbistemplate = PQgetvalue(res, i, 3);
-        char       *dbacl = PQgetvalue(res, i, 4);
-        char       *dbtablespace = PQgetvalue(res, i, 5);
-        char       *fdbname;
-		
-        //if (strcmp(dbname, "template1") == 0)
-        //    continue;
-		
-		/* dump only the definition of our requested database */
-        if (strcmp(dbname, target_dbname) != 0)
-            continue;
-		
-        buf = createPQExpBuffer();
-		
-        /* needed for buildACLCommands() */
-        fdbname = strdup(fmtId(dbname));
-		
-        /*
-		 if (outputClean)
-		 appendPQExpBuffer(buf, "DROP DATABASE %s;\n", fdbname);
-		 */
-		
-        appendPQExpBuffer(buf, "CREATE DATABASE %s", fdbname);
-		
-        appendPQExpBuffer(buf, " WITH TEMPLATE = template1");
-		
-        if (strlen(dbowner) != 0)
-            appendPQExpBuffer(buf, " OWNER = %s",
-                              fmtId(dbowner));
-		
-        appendPQExpBuffer(buf, " ENCODING = ");
-        appendStringLiteral(buf, dbencoding, true);
-		
-        /* Output tablespace if it isn't default */
-        if (strcmp(dbtablespace, "pg_default") != 0)
-            appendPQExpBuffer(buf, " TABLESPACE = %s",
-                              fmtId(dbtablespace));
-		
-        appendPQExpBuffer(buf, ";\n");
-		
-        if (strcmp(dbistemplate, "t") == 0)
-        {
-            appendPQExpBuffer(buf, "UPDATE pg_database SET datistemplate = 't' WHERE datname = ");
-            appendStringLiteral(buf, dbname, true);
-            appendPQExpBuffer(buf, ";\n");
-        }
-		
-        if (!aclsSkip &&
-            !buildACLCommands(fdbname, "DATABASE", dbacl, dbowner,
-                              g_fout->remoteVersion, buf))
-        {
-            mpp_err_msg( logError, pszProgName, "%s: could not parse ACL list (%s) for database \"%s\"\n",
-						 pszProgName , dbacl, fdbname);
-            PQfinish(conn);
-            exit(1);
-        }
-		
-        /*
-		 ahprintf(AH, "%s", buf->data);
-		 */
-		if ( fcat != NULL )
-			fprintf(fcat, "%s\n\n", buf->data);
+	ntups = PQntuples(res);
+	
+	if (ntups <= 0)
+	{
+		write_msg(NULL, "missing pg_database entry for database \"%s\"\n",
+				  datname);
+		exit_nicely();
+	}
+	
+	if (ntups != 1)
+	{
+		write_msg(NULL, "query returned more than one (%d) pg_database entry for database \"%s\"\n",
+				  ntups, datname);
+		exit_nicely();
+	}
+	
+	i_tableoid = PQfnumber(res, "tableoid");
+	i_oid = PQfnumber(res, "oid");
+	i_dba = PQfnumber(res, "dba");
+	i_encoding = PQfnumber(res, "encoding");
+	i_tablespace = PQfnumber(res, "tablespace");
+	
+	dbCatId.tableoid = atooid(PQgetvalue(res, 0, i_tableoid));
+	dbCatId.oid = atooid(PQgetvalue(res, 0, i_oid));
+	dba = PQgetvalue(res, 0, i_dba);
+	encoding = PQgetvalue(res, 0, i_encoding);
+	tablespace = PQgetvalue(res, 0, i_tablespace);
+	
+	appendPQExpBuffer(creaQry, "CREATE DATABASE %s WITH TEMPLATE = template1",
+					  fmtId(datname));
+	if (strlen(encoding) > 0)
+	{
+		appendPQExpBuffer(creaQry, " ENCODING = ");
+		appendStringLiteral(creaQry, encoding, true);
+	}
+	if (strlen(dba) > 0)
+	{
+		appendPQExpBuffer(creaQry, " OWNER = ");
+		appendStringLiteral(creaQry, dba, true);
+	}
+	
+	if (strlen(tablespace) > 0 && strcmp(tablespace, "pg_default") != 0)
+		appendPQExpBuffer(creaQry, " TABLESPACE = %s",
+						  fmtId(tablespace));
+	appendPQExpBuffer(creaQry, ";\n");
+	
+	/* write the CREATE DATABASE command to the file */
+	if ( fcat != NULL )
+		fprintf(fcat, "%s", creaQry->data);
         
-		destroyPQExpBuffer(buf);
-        free(fdbname);
-    }
-	
     PQclear(res);
+	destroyPQExpBuffer(dbQry);
+	destroyPQExpBuffer(creaQry);
 	
 	if ( fcat != NULL )
 		fclose(fcat);
