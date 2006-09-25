@@ -970,7 +970,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	subquery = makeNode(Query);
 	memcpy(subquery, parse, sizeof(Query));
 	subquery->targetList = copyObject(prelim_tlist);
-	subquery->havingQual = NIL;
+	subquery->havingQual = NULL;
 	
 	/* Subquery attributes shouldn't be marked as junk, else they'll be
 	 * skipped by addRangeTableEntryForSubquery. */
@@ -1233,7 +1233,7 @@ bool cdbpathlocus_collocates(CdbPathLocus locus, List *pathkeys)
 	 * Therefore, for now, a true result guarantees collocation, a false
 	 * result means we're unsure.
 	 */
-	CdbPathLocus_MakeHashed(&x, pathkeys);
+	CdbPathLocus_MakeHashed(&x, list_make1(pathkeys));
 	return cdbpathlocus_compare(CdbPathLocus_Comparison_Contains, x, locus);
 }
 
