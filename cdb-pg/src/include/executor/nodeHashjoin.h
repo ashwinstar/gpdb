@@ -29,5 +29,6 @@ extern void ExecHashJoinSaveTuple(HeapTuple heapTuple, uint32 hashvalue,
 extern executorTupleQueue *makeTQ(int size);
 extern void enqueueTQ(executorTupleQueue *tq, TupleTableSlot *slot);
 extern TupleTableSlot *dequeueTQ(executorTupleQueue *tq);
+extern void releaseTQ(executorTupleQueue *tq);
 
 #endif   /* NODEHASHJOIN_H */

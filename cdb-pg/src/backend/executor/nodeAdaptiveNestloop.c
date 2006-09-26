@@ -49,7 +49,7 @@ ExecAdaptiveNestLoop(AdaptiveNestLoopState *node)
 				enqueueTQ(node->outer_q, slot);
 			}
 
-			elog(DEBUG4, "read %d tuple from outer relation threshold %d", i, node->nl_strategy_threshold);
+			elog(DEBUG2, "read %d tuple from outer relation threshold %d", i, node->nl_strategy_threshold);
 		}
 
 		/* did we get more tuples than are allowed for loop ? Or
@@ -87,7 +87,7 @@ ExecAdaptiveNestLoop(AdaptiveNestLoopState *node)
 		return ExecProcNode((PlanState *)node->alternate);
 	else
 	{
-		elog(ERROR, "ExecNestLoop(): unknown join strategy");
+		elog(ERROR, "ExecAdaptiveNestLoop(): unknown join strategy");
 		return NULL;
 	}
 }
@@ -203,12 +203,21 @@ ExecEndAdaptiveNestLoop(AdaptiveNestLoopState *node)
 void
 ExecReScanAdaptiveNestLoop(AdaptiveNestLoopState *node, ExprContext *exprCtxt)
 {
+	if (node->outer_q != NULL)
+	{
+		releaseTQ(node->outer_q);
+		pfree(node->outer_q);
+		node->outer_q = NULL;
+	}
+
 	if (node->nl_strategy == NL_STRATEGY_LOOP)
 	{
+		node->main->outer_q = NULL;
 		ExecReScanNestLoop(node->main, exprCtxt);
 	}
 	else /* forward rescan request to hash alternate */
 	{
+		node->alternate->outer_q = NULL;
 		ExecReScanHashJoin(node->alternate, exprCtxt);
 	}
 }

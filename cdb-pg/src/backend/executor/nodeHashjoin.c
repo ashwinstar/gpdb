@@ -1023,3 +1023,13 @@ TupleTableSlot *dequeueTQ(executorTupleQueue *tq)
 
 	return tts;
 }
+
+void releaseTQ(executorTupleQueue *tq)
+{
+	TupleTableSlot *tts;
+
+	while ((tts = dequeueTQ(tq)) != NULL)
+	{
+		ExecClearTuple(tts);
+	}
+}
