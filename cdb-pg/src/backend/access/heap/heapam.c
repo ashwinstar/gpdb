@@ -1102,7 +1102,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 
 	if (relation->rd_rel->relhasoids)
 	{
-#ifdef NOT_USED
+#ifdef NOT_USECreateTupleDescD
 		/* this is redundant with an Assert in HeapTupleSetOid */
 		Assert(tup->t_data->t_infomask & HEAP_HASOID);
 #endif
@@ -1121,6 +1121,8 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	else
 	{
 		/* check there is not space for an OID */
+		if (tup->t_data->t_infomask & HEAP_HASOID)
+			elog(DEBUG1,"relation->rl_rel->relhasoids is false, but tup->t_data->t_infomask has HEAP_HASOID");
 		Assert(!(tup->t_data->t_infomask & HEAP_HASOID));
 	}
 
