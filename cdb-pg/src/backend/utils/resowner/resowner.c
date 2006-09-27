@@ -259,6 +259,9 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 				LockReassignCurrentOwner();
 			else
 				LockReleaseCurrentOwner();
+
+			if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+				ResProcReleaseCurrentOwner();
 		}
 	}
 	else if (phase == RESOURCE_RELEASE_AFTER_LOCKS)

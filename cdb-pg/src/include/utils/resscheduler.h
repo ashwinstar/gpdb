@@ -79,11 +79,12 @@ ResSchedulerData	*ResScheduler;
 #define INVALID_PORTALID 				(-1)
 typedef struct ResPortalIncrement
 {
-	int			pid;						/* Process this increment is for. */
-	uint32		portalId;					/* Portal Id */
-	SHM_QUEUE	portalLink;					/* List link in PROCLOCKS list 
-											   of ResPortalIncrements. */
-	/* The increments - use Cost as it has a suitably lareg range. */
+	int			pid;					/* Process this increment is for. */
+	uint32		portalId;				/* Portal Id */
+	ResourceOwner	owner;				/* Resource Owner. */
+	SHM_QUEUE	portalLink;				/* List link in PROCLOCKS list 
+										   of ResPortalIncrements. */
+	/* The increments - use Cost as it has a suitably large range. */
 	Cost		increments[NUM_RES_LIMIT_TYPES];
 } ResPortalIncrement;
 
@@ -132,9 +133,11 @@ extern PGPROC 			*ResProcWakeup(PGPROC *proc, int waitStatus);
 extern void				ResRemoveFromWaitQueue(PGPROC *proc);
 extern void				ResLockWaitCancel(void);
 extern void				ResProcReleaseLocks(void);
+extern void				ResProcReleaseCurrentOwner(void);
 extern void				ResLockReleaseAll(void);
 extern ResPortalIncrement	*ResIncrementAdd(ResPortalIncrement *incSet,
-											PROCLOCK *proclock);
+											PROCLOCK *proclock,
+											ResourceOwner owner);
 extern ResPortalIncrement	*ResIncrementFind(ResPortalTag *portaltag);
 extern bool					ResIncrementRemove(ResPortalTag *portaltag);
 extern bool					ResPortalIncrementHashTableInit(void);

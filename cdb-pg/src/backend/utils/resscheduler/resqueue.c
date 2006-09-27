@@ -184,7 +184,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	/*
 	 * Add an increment to the increment hash for this process
 	 */
-	incrementSet = ResIncrementAdd(incrementSet, proclock);
+	incrementSet = ResIncrementAdd(incrementSet, proclock, owner);
 	if (!incrementSet)
 	{
 		LWLockRelease(masterLock);
@@ -1028,6 +1028,160 @@ ResProcReleaseLocks(void)
 
 
 /*
+ * ResProcReleaseCurrentOwner -- Release all resource locks that are held by 
+ * the current resource owner for current process.
+ */
+void
+ResProcReleaseCurrentOwner(void)
+{
+	LOCKMODE		lockmode = ExclusiveLock;
+	LockMethod		lockMethodTable;
+	LWLockId		masterLock;
+	LOCK			*lock;
+	PROCLOCK		*proclock;
+	SHM_QUEUE		*procLocks = &(MyProc->procLocks);
+	SHM_QUEUE		*portalLinks;
+
+
+	/* Setup the lock method bits. */
+	lockMethodTable = LockMethods[RESOURCE_LOCKMETHOD];
+	if (!lockMethodTable)
+		elog(ERROR, "unrecognized lock method: %d", RESOURCE_LOCKMETHOD);
+
+
+	/* We are going to examine the shared lock table. */
+	masterLock = lockMethodTable->masterLock;
+	LWLockAcquire(masterLock, LW_EXCLUSIVE);
+
+	proclock = (PROCLOCK *) SHMQueueNext(procLocks, procLocks,
+										 offsetof(PROCLOCK, procLink));
+
+	while (proclock)
+	{
+
+		PROCLOCK	*nextplock;
+
+		/* Get link first, since we may unlink/delete this one. */
+		nextplock = (PROCLOCK *) SHMQueueNext(procLocks, &proclock->procLink,
+											  offsetof(PROCLOCK, procLink));
+
+		Assert(proclock->tag.proc == MAKE_OFFSET(MyProc));
+		
+		lock = (LOCK *) MAKE_PTR(proclock->tag.lock);
+
+		/*
+		 * if the lock is a resource lock, then release it.
+		 */
+		if (lock->tag.locktag_lockmethodid == RESOURCE_LOCKMETHOD)
+		{
+
+			proclock->releaseMask = proclock->holdMask;
+
+			Assert(lock->nRequested >= 0);
+			Assert(lock->nGranted >= 0);
+			Assert(lock->nGranted <= lock->nRequested);
+			Assert((proclock->holdMask & ~lock->grantMask) == 0);
+
+
+			/*
+			 * Release the lock.
+			 * (LockReleaseAll checks return of Ungrant... maybe you should too
+			 * TODO - discuss)
+			 *
+			 * We need to release the lock as many times as we have acquired it,
+			 * so need to iterate through the portal increment list.
+			 */
+			if (proclock->releaseMask & LOCKBIT_ON(lockmode))
+			{
+
+				ResPortalIncrement		*incrementSet;
+				ResPortalIncrement		*nextiSet;
+				ResPortalTag			portalTag;
+
+				/* List of portal increments for this proclock. */
+				portalLinks = &(proclock->portalLinks);
+
+				incrementSet = (ResPortalIncrement *) SHMQueueNext(portalLinks, 
+									portalLinks,
+									offsetof(ResPortalIncrement, portalLink));
+
+				while (incrementSet)
+				{
+
+					/* 
+					 * Get link first, since we will unlink/delete this one,
+					 * and compute a portalTag for removing the increment set
+					 * itself.
+					 */
+					nextiSet = (ResPortalIncrement *) SHMQueueNext(portalLinks, 
+									&incrementSet->portalLink,
+									offsetof(ResPortalIncrement, portalLink));
+					MemSet(&portalTag, 0, sizeof(ResPortalTag));
+					portalTag.pid = MyProc->pid;
+					portalTag.portalId = incrementSet->portalId;
+
+					/* 
+					 * If the increment is owned by current resource owner
+					 * then release the corrosponding lock.
+					 */
+					if (incrementSet->owner == CurrentResourceOwner)
+					{
+						elog(DEBUG1, "releasing portal %u pid %d",
+									 portalTag.portalId, portalTag.pid);
+
+						/* 
+						 * If still holding the lock now, ungrant and decrement 
+						 * the limit counters. 
+						 */
+						if (incrementSet->portalId != MyProc->waitPortalId)
+						{
+							ResUnGrantLock(lock, proclock);
+							ResLockUpdateLimit(lock, proclock, incrementSet, 
+											   false);
+						}
+
+						/* 
+						 * Unlink this portalId, and delete it from the portal 
+						 * hash.
+						 */
+						if (!ResIncrementRemove(&portalTag))
+						{
+							LWLockRelease(masterLock);
+							elog(ERROR, 
+								 "no increment to remove for portal %u pid %d",
+								 portalTag.portalId, portalTag.pid);
+						}
+
+					}
+
+					/* Get the next increment set to process. */
+					incrementSet = nextiSet;
+				}
+
+			}
+
+			Assert((lock->nRequested >= 0) && (lock->nGranted >= 0));
+			Assert(lock->nGranted <= lock->nRequested);
+
+			proclock->releaseMask = 0;
+			ResCleanUpLock(lock, proclock);
+
+		}
+
+		/*
+		 * Set next proclock.
+		 */
+		proclock = nextplock;
+
+	}
+
+	LWLockRelease(masterLock);
+
+	return;
+}
+
+
+/*
  * ResLockReleaseAll -- Release all resource locks that are held by the 
  *	current process.
  */
@@ -1217,7 +1371,8 @@ ResPortalIncrementHashTableInit()
  */
 ResPortalIncrement *
 ResIncrementAdd(ResPortalIncrement *incSet,
-				PROCLOCK *proclock)
+				PROCLOCK *proclock,
+				ResourceOwner owner)
 {
 	ResPortalIncrement	*incrementSet;
 	ResPortalTag		portaltag;
@@ -1246,6 +1401,7 @@ ResIncrementAdd(ResPortalIncrement *incSet,
 	{
 		incrementSet->pid = incSet->pid;
 		incrementSet->portalId = incSet->portalId;
+		incrementSet->owner = owner;
 		for (i = 0 ; i < NUM_RES_LIMIT_TYPES ; i++)
 		{
 			incrementSet->increments[i] = incSet->increments[i];
