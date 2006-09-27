@@ -16,6 +16,7 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
+#include "miscadmin.h"
 
 #include <limits.h>
 
@@ -120,7 +121,7 @@ static NestLoop *make_nestloop(List *tlist,
 static AdaptiveNestLoop *make_adaptivenestloop(List *tlist,
 												List *joinclauses, List *otherclauses,
 												Plan *lefttree, Plan *righttree,
-												JoinType jointype, int strategy_threshold,
+												JoinType jointype,
 												HashJoin *alternate);
 static HashJoin *make_hashjoin(List *tlist,
 			  List *joinclauses, List *otherclauses,
@@ -1454,12 +1455,10 @@ create_nestloop_plan(CreatePlanContext *ctx,
 	{
 		Plan		*alternate_inner = NULL;
 		HashJoin	*alternate_plan = NULL;
-		int			strategy_threshold;
+		int			max_queue_len;
+		double		strategy_threshold_1, strategy_threshold_2;
 
 		AdaptiveNestLoop *anl_plan;
-
-		strategy_threshold = Min(cdbpath_rows(best_path->jpath.outerjoinpath) * 2,
-								 cdbpath_rows(best_path->jpath.outerjoinpath) + 10);
 
 		alternate_inner = create_subplan(ctx, ((HashPath *)best_path->alternate)->jpath.innerjoinpath);
 
@@ -1471,11 +1470,30 @@ create_nestloop_plan(CreatePlanContext *ctx,
 										  outer_plan,
 										  inner_plan,
 										  best_path->jpath.jointype,
-										  strategy_threshold,
 										  alternate_plan);
 
 		copy_path_costsize(&((NestLoop *)anl_plan->plan.lefttree)->join.plan, &best_path->jpath.path);
 		copy_path_costsize((Plan *)anl_plan, &best_path->jpath.path);
+
+		/* Come up with our threshold for switching join strategies */
+
+		/* estimates off by a factor of two; or ten rows, whichever is least */
+		strategy_threshold_1 = Min(cdbpath_rows(best_path->jpath.outerjoinpath) * 2,
+								   cdbpath_rows(best_path->jpath.outerjoinpath) + 10);
+
+		/* Use estimated costs to figure out the "cost crossover"
+		 * point between strategies; but no smaller than the first
+		 * guess from above: use the ratio of the costs and multiply
+		 * by the estimated rows. */
+		strategy_threshold_2 = (anl_plan->plan.righttree->total_cost / anl_plan->plan.lefttree->total_cost);
+		strategy_threshold_2 = strategy_threshold_2 * cdbpath_rows(&best_path->jpath.path);
+
+		/* set the threshold to use at most work_mem*1024 bytes for our queue */
+		max_queue_len = (work_mem * 1024)/(best_path->jpath.outerjoinpath->parent->width);
+
+		anl_plan->nl_strategy_threshold = Min(max_queue_len, Max(strategy_threshold_1, strategy_threshold_2));
+		elog(DEBUG5, "AdaptiveNL: thresh_1 %f thresh_2 %f max_queue %d final thresh %d", 
+			 strategy_threshold_1, strategy_threshold_2, max_queue_len, anl_plan->nl_strategy_threshold);
 
 		return (NestLoop *)anl_plan;
 	}
@@ -2236,7 +2254,6 @@ make_adaptivenestloop(List *tlist,
 					  Plan *lefttree,
 					  Plan *righttree,
 					  JoinType jointype,
-					  int strategy_threshold,
 					  HashJoin *alternate_join)
 {
 	AdaptiveNestLoop	*node = makeNode(AdaptiveNestLoop);
@@ -2255,7 +2272,7 @@ make_adaptivenestloop(List *tlist,
 	plan->lefttree = (Plan *)planA;
 	plan->righttree = (Plan *)alternate_join;
 
-	node->nl_strategy_threshold = strategy_threshold;
+	node->nl_strategy_threshold = 1;
 
 	return node;
 }
