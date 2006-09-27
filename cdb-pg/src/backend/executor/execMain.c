@@ -94,7 +94,8 @@ static void initResultRelInfo(ResultRelInfo *resultRelInfo,
 				  Index resultRelationIndex,
 				  List *rangeTable,
 				  CmdType operation,
-				  bool doInstrument);
+				  bool doInstrument,
+				  bool needLock);
 static TupleTableSlot *ExecutePlan(EState *estate, PlanState *planstate,
 			CmdType operation,
 			long numberTuples,
@@ -114,7 +115,6 @@ static void ExecCheckXactReadOnly(Query *parsetree);
 static void EvalPlanQualStart(evalPlanQual *epq, EState *estate,
 				  evalPlanQual *priorepq);
 static void EvalPlanQualStop(evalPlanQual *epq);
-
 /* end of local decls */
 
 
@@ -941,8 +941,12 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 
 	/*
 	 * if there is a result relation, initialize result relation stuff
+	 * 
+	 * CDB: Note that we need this info even if we aren't the slice that will be doing
+	 * the actual updating, since it's where we learn things, such as if the row needs to 
+	 * contain OIDs or not.
 	 */
-	if (parseTree->resultRelation != 0 && operation != CMD_SELECT && (estate->es_cur_slice_idx == estate->es_cur_root_idx))
+	if (parseTree->resultRelation != 0 && operation != CMD_SELECT) 
 	{
 		List	   *resultRelations = parseTree->resultRelations;
 		int			numResultRelations;
@@ -967,7 +971,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 								  lfirst_int(l),
 								  rangeTable,
 								  operation,
-								  estate->es_instrument);
+								  estate->es_instrument,
+								  (Mpp_role != MPP_ROLE_EXECUTE || Mpp_is_writer));
 				resultRelInfo++;
 			}
 		}
@@ -982,7 +987,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 							  parseTree->resultRelation,
 							  rangeTable,
 							  operation,
-							  estate->es_instrument);
+							  estate->es_instrument,
+							  (Mpp_role != MPP_ROLE_EXECUTE || Mpp_is_writer));
 		}
 
 		estate->es_result_relations = resultRelInfos;
@@ -1207,7 +1213,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 
 	if (do_select_into && 
 		/* Only create the table if root slice */
-		(Mpp_role != MPP_ROLE_EXECUTE || currentSliceId == estate->es_cur_root_idx) && 
+		(Mpp_role != MPP_ROLE_EXECUTE || Mpp_is_writer) && 
 		!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 	{
 		char	   *intoName;
@@ -1323,7 +1329,8 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 				  Index resultRelationIndex,
 				  List *rangeTable,
 				  CmdType operation,
-				  bool doInstrument)
+				  bool doInstrument,
+				  bool needLock)
 {
 	Oid			resultRelationOid;
 	Relation	resultRelationDesc;
@@ -1332,7 +1339,10 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 	
 	/* CDB: QD must acquire X lock on whole relation if distributed. */
     resultRelationDesc = heap_open(resultRelationOid, NoLock);
-    CdbLockRelation(resultRelationDesc, RowExclusiveLock, false);
+    
+    /* CDB: Only the root slice needs to get the locks, because only the root slice will do updating */
+    if (needLock)
+    	CdbLockRelation(resultRelationDesc, RowExclusiveLock, false);
 	
 	switch (resultRelationDesc->rd_rel->relkind)
 	{
@@ -1390,6 +1400,7 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 	 * entries for the tuples we add/update.  We need not do this for a
 	 * DELETE, however, since deletion doesn't affect indexes.
 	 */
+	if (needLock) /* only needed by the root slice who will do the actual updating */
 	if (resultRelationDesc->rd_rel->relhasindex &&
 		operation != CMD_DELETE)
 		ExecOpenIndices(resultRelInfo);
@@ -1577,6 +1588,7 @@ ExecutePlan(EState *estate,
 	/*
 	 * Process BEFORE EACH STATEMENT triggers
 	 */
+	if (Mpp_role != MPP_ROLE_EXECUTE || Mpp_is_writer)
 	switch (operation)
 	{
 		case CMD_UPDATE:
@@ -1805,6 +1817,7 @@ lnext:	;
 	/*
 	 * Process AFTER EACH STATEMENT triggers
 	 */
+	if (Mpp_role != MPP_ROLE_EXECUTE || Mpp_is_writer)
 	switch (operation)
 	{
 		case CMD_UPDATE:
