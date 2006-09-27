@@ -184,6 +184,7 @@ apply_motion(Plan *plan, Query *query)
 					foreach(exp1, hashExpr)
 					{
 						AttrNumber	n;
+						bool found_expr = false;
 						/* See if this Expr is a column of the result table */
 						
 						for(n=1;n<=list_length(plan->targetlist);n++)
@@ -192,36 +193,42 @@ apply_motion(Plan *plan, Query *query)
 							
 							TargetEntry *target = get_tle_by_resno(plan->targetlist, n);
 							
-							/* If subplan expr is a Var, copy to preserve its EXPLAIN info. */
-				            if (IsA(target->expr, Var))
-				            {
-				                new_var = copyObject(target->expr);
-				                new_var->varno = OUTER;
-				                new_var->varattno = n;
-				            }
-				
-				            /*
-					         * Make a Var that references the target list entry at this offset,
-					         * using OUTER as the varno
-					         */
-				            else
-						        new_var = makeVar(OUTER,
-				                                  n,
-				                                  exprType((Node *) target->expr),
-				                                  exprTypmod((Node *) target->expr),
-				                                  0);
-				
-							if (equal(lfirst(exp1),new_var))
+							if (!target->resjunk)
 							{
-								/* If it is, use it to partition the result table, to avoid
-								 * unnecessary redistibution of data */
-								
-								targetPolicy->attrs[targetPolicy->nattrs++] = n;
-								break;
+								/* If subplan expr is a Var, copy to preserve its EXPLAIN info. */
+					            if (IsA(target->expr, Var))
+					            {
+					                new_var = copyObject(target->expr);
+					                new_var->varno = OUTER;
+					                new_var->varattno = n;
+					            }
+					
+					            /*
+						         * Make a Var that references the target list entry at this offset,
+						         * using OUTER as the varno
+						         */
+					            else
+							        new_var = makeVar(OUTER,
+					                                  n,
+					                                  exprType((Node *) target->expr),
+					                                  exprTypmod((Node *) target->expr),
+					                                  0);
+					
+								if (equal(lfirst(exp1),new_var))
+								{
+									/* If it is, use it to partition the result table, to avoid
+									 * unnecessary redistibution of data */
+									targetPolicy->attrs[targetPolicy->nattrs++] = n;
+									found_expr = true;
+									break;
+									 
+								}
+								 
 							}
-							
-							
 						}
+						
+						if (!found_expr) 
+							break;
 					}
 
 					/* do we know how to partition? */
