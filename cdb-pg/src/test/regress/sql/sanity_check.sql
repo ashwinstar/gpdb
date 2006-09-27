@@ -8,6 +8,7 @@ VACUUM;
 SELECT relname, relhasindex
    FROM pg_class
    WHERE relhasindex AND relkind != 't' AND relname NOT LIKE 'mpp_%'
+   AND relname <> 'pg_resqueue'
    ORDER BY relname;
 
 --

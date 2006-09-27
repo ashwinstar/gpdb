@@ -7,6 +7,7 @@ VACUUM;
 SELECT relname, relhasindex
    FROM pg_class
    WHERE relhasindex AND relkind != 't' AND relname NOT LIKE 'mpp_%'
+   AND relname <> 'pg_resqueue'
    ORDER BY relname;
        relname       | relhasindex 
 ---------------------+-------------
@@ -57,7 +58,6 @@ SELECT relname, relhasindex
  pg_operator         | t
  pg_pltemplate       | t
  pg_proc             | t
- pg_resqueue         | t
  pg_rewrite          | t
  pg_shdepend         | t
  pg_statistic        | t
@@ -69,7 +69,7 @@ SELECT relname, relhasindex
  shighway            | t
  tenk1               | t
  tenk2               | t
-(59 rows)
+(58 rows)
 
 --
 -- another sanity check: every system catalog that has OIDs should have
