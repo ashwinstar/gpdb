@@ -61,6 +61,7 @@
 #include "executor/execdebug.h"
 #include "executor/nodeAppend.h"
 #include "parser/parsetree.h"
+#include "cdb/cdbvars.h"
 
 static bool exec_append_initialize_next(AppendState *appendstate);
 
@@ -187,6 +188,14 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 		/* normal case, scan all subplans */
 		appendstate->as_firstplan = 0;
 		appendstate->as_lastplan = nplans - 1;
+	}
+	if (node->isTarget && Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
+	{
+		elog(ERROR,"Internal Error: Append that is a target must be executed by a writer gang");
+	}
+	if (node->isTarget && Mpp_role == MPP_ROLE_EXECUTE && estate->es_cur_slice_idx != estate->es_cur_root_idx)
+	{
+		elog(DEBUG1,"Internal Error: Append that is a target should be executed in the root slice of the plan");
 	}
 
 	/*
