@@ -93,7 +93,7 @@ CdbExecQuery(struct CdbExecStmt * stmt, struct _DestReceiver *dest, char *comple
         /* Set global sliceid variable for elog. */
         currentSliceId = sliceTable->localSlice;
 
-        /* Force commandType to SELECT if not a root slice. */
+        /* Non root slices don't need update privileges. */
         if (sliceTable->localSlice != slice->rootIndex)
         {
             ListCell       *rtcell;
@@ -108,12 +108,6 @@ CdbExecQuery(struct CdbExecStmt * stmt, struct _DestReceiver *dest, char *comple
                     0 != (rte->requiredPerms & removeperms))
                     rte->requiredPerms &= ~removeperms;
             }
-
-            query->commandType = CMD_SELECT;
-
-            query->resultRelation = 0;
-            query->resultRelations = NIL;
-            query->rowMarks = NIL;
         }
     }
 
