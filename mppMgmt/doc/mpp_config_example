@@ -61,13 +61,14 @@ PORT_BASE=50000
 # mppcreatecluster.sh and chown them to the appropriate user.
 
 
-declare -a DATA_DIRECTORY=(/mppdata/dbfast1 /mppdata/dbfast2)
+declare -a DATA_DIRECTORY=(/dbfast1 /dbfast2)
 # declare -a DATA_DIRECTORY=(/mpp_primary /mpp_primary)
 
 
-# The host name of the MPP master instance.
+# The host name of the MPP master instance. Must match the output
+# of the 'hostname' system command
 
-MASTER_HOSTNAME=host01
+MASTER_HOSTNAME=hostname
 
 # The location where the data directory will be created on the MPP 
 # master host. 
@@ -77,7 +78,7 @@ MASTER_HOSTNAME=host01
 # create this directory on the master host before running 
 # mppcreatecluster.sh and chown it to the appropriate user.
 
-MASTER_DIRECTORY=/mppdata/dbfast1
+MASTER_DIRECTORY=/dbfast1
 
 
 # The port number for the MPP master instance. This is the port number 
@@ -166,6 +167,6 @@ ENCODING=UNICODE
 # mppcreatecluster.sh and chown them to the appropriate user.
 
 
-#declare -a MIRROR_DATA_DIRECTORY=(/mppdata/dbfast3 /mppdata/dbfast4)
+#declare -a MIRROR_DATA_DIRECTORY=(/dbfast3 /dbfast4)
 #declare -a MIRROR_DATA_DIRECTORY=(/mpp_mirror /mpp_mirror)
 

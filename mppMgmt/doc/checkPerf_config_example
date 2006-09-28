@@ -1,81 +1,92 @@
 #
-# This is a config file for checkPerf utility.
-# Review spec (checkPerf.spec) in the mppMgmt/lib directory
-# for more details.
+# This is a configuration file for the checkPerf utility.
 # syntax for this file is based on python module configobj-4.3.2.
 #
-
-#
-# Section, General Configuration
-# This section contains configuration that is applicable to the utility
-# and all sub sections that follow
+#############################################################
+# GENERAL CHECKPERF CONFIGURATION SECTION
+#############################################################
+# This section contains configuration parameters applicable to the
+# entire checkPerf utility
 #
 [ "CheckPerf" ]
 #
-# Tolerance, variance allowed
-# All the hosts that are below the tolerance will be listed.
-# Example All hosts below the maximum I/O for dd tests
+# Tolerance is the acceptable percentage of variance allowed between
+# the average results of all hosts and the results of an individual
+# hosts. All hosts with performance lower than the allowed tolerance
+# will be listed in the output report. 
+# For example, all hosts that are 5% below the maximum I/O for dd tests
 # Type    : Float
-# Range   : 0.01 0.99
+# Range   : 0.01 - 0.99
 # Default : 0.05
 #
 Tolerance=0.05
 #
-# No of times each test should be performed.
+# The number of times each test should be performed. In most
+# cases one time is sufficient, however you may want to run 
+# a test several times and see the average performance results
+# of multiple tests.
 # Type    : Integer
-# Ranage  : 1, 20
+# Range  : 1, 20
 # Default : 5
 #
 RptCount=1
-
-
 #
-# Stating Directory, Directoy on each Host where the user has 
-# read/write persmissions.
-# Will be used to host software.
+# A base directory that exists on each host that will be used
+# to install and run the checkPerf software. The user who runs
+# checkPerf must have read/write access to this directory.
 #
-baseDir=""
-
-
-# Section Disk I/O Test
+baseDir=/home/bgadmin
+#
+#
+#############################################################
+# DISK I/O CONFIGURATION SECTION
+#############################################################
+# This section contains configuration parameters applicable to the
+# disk I/O performance test (dd)
 #
 [ "Disk Performance"]
 #
-# Directory List, List of directories to test I/O performance.
-# Directory_List= "Path_to_dir1", "Path_to_dir2", "Path_to_dir2"
-# Directory_List= "Path_to_dir1", 
+# The directory path (or list of directory paths) on which to
+# test I/O performance. These would typically be your MPP primary
+# segment data directories, and perhaps your mirror data directories
+# as well.
+# EXAMPLE: Directory_List= "/dbfast1", "/dbfast2" 
+# EXAMPLE: Directory_List= "/mppdatadir" 
 #
-DirectoryList= "/dbfast/dirOne",
+DirectoryList= "/dbfast1", "/dbfast2" 
 #
-# BlockSize: Sice of the block to be used for dd test
+# Block size to be used for dd test. 8K is the same as the
+# PostgreSQL/Bizgres MPP page size.
 # Range : String (int Followed by String [kK][Mm][gG][bB])
 # Example : 1024, 1KB, 1MB, 10MB
 # Default : 1K
 #
 BlockSize=8K
 #
-# FileSize: 
+# NOTE: Leaving FileSize and Count set to 0 will cause
+# the dd test to use 2 * total_RAM of the host machine, 
+# giving you the best measure of true disk I/O performance
+# rather than using memory for caching.
+#
+# File size to use for dd test. If set to 0, value will be
+# calculated as 2 * total_RAM of the host machine. 
 # Range : String (int Followed by String [kK][Mm][gG][bB])
 # Example : 1024, 1KB, 1MB, 10MB
 # Default : 0MB
 #
 FileSize=0
-
 #
-# NOTE: 
-# :: If FileSize is not zero, Count is obtained from fileSize  and blockSize
-# :: If FileSize and Count are set to 0, the fileSize with double the RAM Size
-#    on that host
 #
-
-#  Count No of blocks
+# Number of blocks to use for dd test. If FileSize is not 0, 
+# Count is obtained from FileSize and BlockSize
 # Range : Integer
 # Default : 0
 #
 Count=0
-
 #
-# Network Test
+#############################################################
+# NETWORK TEST CONFIGURATION SECTION - NOT IMPLEMENTED YET
+#############################################################
 #
 ["Network Bandwidth"]
 #
@@ -92,4 +103,3 @@ PacketSize=1024
 # Default : 100
 #
 PacketNumber=100
-0
