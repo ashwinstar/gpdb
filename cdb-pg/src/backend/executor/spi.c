@@ -2791,6 +2791,7 @@ _SPI_pquery(QueryDesc *queryDesc, long tcount)
 		ResetUsage();
 #endif
 
+	if (!cdbpathlocus_querysegmentcatalogs)
 	AfterTriggerBeginQuery();
 
 	ExecutorStart(queryDesc, 0);
@@ -2806,6 +2807,7 @@ _SPI_pquery(QueryDesc *queryDesc, long tcount)
 			elog(ERROR, "consistency check on SPI tuple count failed");
 	}
 
+	if (!cdbpathlocus_querysegmentcatalogs)
 	/* Take care of any queued AFTER triggers */
 	AfterTriggerEndQuery(queryDesc->estate);
 	
