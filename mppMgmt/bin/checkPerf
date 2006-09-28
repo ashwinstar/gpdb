@@ -918,6 +918,7 @@ def checkPerfMain(argv):
     exKeys=False
     setupKeys=True
     repeatCount=elpTime=-1
+    Tolerance=0
     verbose=False
     debug=False
     detFlag=False
@@ -951,7 +952,7 @@ def checkPerfMain(argv):
             elif (switch == '-e' or switch == '--elapse_time'):
                 elpTime = int(val);
             elif (switch == '-t' or switch == '--tolerance'):
-                elpTime = floar(val);
+                Tolerance = float(val);
             elif (switch == '--detailed'):
                 detFlag= True
             elif (switch == '--no-dd-test'):
@@ -1059,6 +1060,8 @@ def checkPerfMain(argv):
         confObj['CheckPerf']['RptCount']=int(repeatCount)
     if elpTime >= 0:
         confObj['CheckPerf']['ElapseTime']=int(elpTime)
+    if Tolerance >= 0:
+        confObj['CheckPerf']['ElapseTime']=int(Tolerance)
     if not chkPerf.populateConfig(confObj):
         raise SystemExit, 1
 
