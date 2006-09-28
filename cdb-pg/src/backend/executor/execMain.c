@@ -1767,6 +1767,11 @@ lnext:	;
 			 */
 			slot = ExecFilterJunk(junkfilter, slot);
 		}
+		
+		if (operation != CMD_SELECT && Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
+		{
+			elog(ERROR,"Internal Error: INSERT/UPDATE/DELETE must be executed by a writer gang");
+		}
 
 		/*
 		 * now that we have a tuple, do the appropriate thing with it.. either
