@@ -493,7 +493,7 @@ static struct config_bool ConfigureNamesBool[] =
 						 "constraints guarantee that no rows match the query.")
 		},
 		&constraint_exclusion,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 	{
 		{"geqo", PGC_USERSET, QUERY_TUNING_GEQO,

@@ -199,7 +199,7 @@
 					# histogram bins)
 #mpp_analyze_relative_error = 0.25	# range 0.0 - 1.0 (target relative
 					# error fraction)
-#constraint_exclusion = off
+#constraint_exclusion = on
 #from_collapse_limit = 8
 #join_collapse_limit = 8		# 1 disables collapsing of explicit
 					# JOINs
