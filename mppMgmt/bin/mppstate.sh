@@ -303,9 +303,7 @@ VERSION_INFO () {
 MIRROR_LIST () {
 		GET_QE_MIRROR_DETAILS
 		EXIT_STATUS=0
-		GET_MIRROR_TYPE
 		LOG_MSG "[INFO]:-Mirror list"
-		LOG_MSG "[INFO]:-Mirror type = $MIR_TYPE"
 		if [ ${#QE_MIRROR_ARRAY[@]} -ne 0 ]; then
 				for MNODE in "${QE_MIRROR_ARRAY[@]}"
 						do
@@ -485,10 +483,8 @@ fi
 CLUSTER_CONFIG () {
 		GET_QE_PRIMARY_DETAILS
 		GET_QE_MIRROR_DETAILS
-		GET_MIRROR_TYPE
-		$ECHO "[INFO]:-Mirror type = $MIR_TYPE"
 		if [ ${#QE_MIRROR_ARRAY[@]} -ne 0 ]; then
-				$ECHO "[INFO]:-Primary to mirror mapping "
+				LOG_MSG "[INFO]:-Primary to mirror mapping "
 				ARRAY_MAX=${#QE_MIRROR_ARRAY[@]}
 				COUNT=0
 				while [ $COUNT -lt $ARRAY_MAX ]
