@@ -406,6 +406,11 @@ CHK_EXISTS_TABLE () {
 		TABLENAME=$1
 		MASTER_PORT=$2
 		QD_DBNAME=$3
+		if [ $# -ne 3 ];then
+		ERROR_EXIT "[FATAL]:-Incorrect number of parameters passed expected 3 got $#" 2;fi
+		DB_THERE=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $DEFAULTDB -c"select count(*) from pg_database where datname='$QD_DBNAME';"`
+		if [ $DB_THERE -eq 0 ];then
+			ERROR_EXIT "[FATAL]:-Database $QD_DBNAME does not exist" 2;fi
 		LOG_MSG "[INFO]:-Checking for table $TABLENAME in database $QD_DBNAME"
 		if [ `$ECHO $TABLENAME|$GREP -c "\."` -eq 1 ];then
 			SCHEMA_NAME=`$ECHO $TABLENAME|$CUT -d"." -f1`
@@ -450,17 +455,41 @@ EVENT_MAIL () {
 }
 
 GET_DISTRIB_COLS () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	if [ $# -ne 3 ];then
+		ERROR_EXIT "[FATAL]:-Incorrect # parameters supplied, got $# expected 3" 2;fi
 	T_NAME=$1
 	if [ `$ECHO $1|$GREP -c "\."` -eq 1 ];then
 		T_NAME=`$ECHO $1|$CUT -d"." -f2`
+		S_NAME=`$ECHO $1|$CUT -d"." -f1`
+		DISTRIB_COLS=`${EXPORT_LIB_PATH};$PSQL -p $2 $3 -A -t -c"select attrnums from  mpp_distribution_policy  where localoid in (select oid from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}'));"`
+		if [ x"" == x"$DISTRIB_COLS" ];then
+			DISTRIB_COLS='';fi
+	else
+		LOG_MSG "[WARN]:-Incorrect table name sent to function, should be schema.tablename"
+		ERROR_EXIT "[FATAL]:-Error in $FUNCNAME parameters" 2
 	fi
-	DISTRIB_COLS=`${EXPORT_LIB_PATH};$PSQL -p $2 $3 -A -t -c"select attrnums from  mpp_distribution_policy  where localoid in (select oid from pg_class where relname='${T_NAME}');"`
-	if [ x"" == x"$DISTRIB_COLS" ];then
-		DISTRIB_COLS=0;fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+GET_TABLE_TYPE () {
+	if [ $# -ne 3 ];then
+		ERROR_EXIT "[FATAL]:-Incorrect # parameters supplied, got $# expected 3" 2;fi
+	T_NAME=$1
+	if [ `$ECHO $1|$GREP -c "\."` -eq 1 ];then
+		T_NAME=`$ECHO $1|$CUT -d"." -f2`
+		S_NAME=`$ECHO $1|$CUT -d"." -f1`
+		TAB_TYPE=`${EXPORT_LIB_PATH};$PSQL -p $2 $3 -A -t -c"select count(*) from pg_depend where objid in (select oid from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}')) and refobjid not in (select relnamespace from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}'));"`
+		if [ $TAB_TYPE -eq 1 ];then
+			TAB_TYPE_TXT="Child table"
+			TAB_PARENT_NAME=(`${EXPORT_LIB_PATH};$PSQL -p $2 $3 -R" " -A -t -c"select relname from pg_class where oid in (select refobjid from pg_depend  where objid in (select oid from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}')) and refobjid not in (select relnamespace from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}')));"`)
+		else
+			TAB_TYPE_TXT="Not child table"
+		fi
+	else
+		LOG_MSG "[WARN]:-Incorrect table name sent to function, should be schema.tablename"
+		ERROR_EXIT "[FATAL]:-Error in $FUNCNAME parameters" 2
+	fi
+}
+	
 CHK_FILE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		FILENAME=$1
@@ -675,13 +704,13 @@ GET_MIRROR_TYPE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	MIR_NUM=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(distinct hostname) - (select count(distinct hostname) from $CONFIG_TABLE where content<>-1 and hostname not in (select hostname from $CONFIG_TABLE where definedprimary='t' and content<>-1)) from $CONFIG_TABLE where content in (select content from $CONFIG_TABLE where hostname in (select hostname from $CONFIG_TABLE where content=0 and definedprimary='t') and content <>-1 and definedprimary='f');"`
 	if [ $MIR_NUM -eq 0 ];then
-		MIR_TYPE="No Mirror";fi
+		MIR_TYPE="No Mirror";MIR_TYPE_NUM=0;fi
 	if [ $MIR_NUM -ge 1 ] && [ $MIR_NUM -le 2 ];then
-		MIR_TYPE="Group";fi
+		MIR_TYPE="Group";MIR_TYPE_NUM=1;fi
 	if [ $MIR_NUM -ge 3 ];then
-		MIR_TYPE="Spread";fi
+		MIR_TYPE="Spread";MIR_TYPE_NUM=2;fi
 	if [ $MIR_NUM -lt 0 ];then
-		MIR_TYPE="Separate Hosts";fi
+		MIR_TYPE="Separate Hosts";MIR_TYPE_NUM=3;fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
