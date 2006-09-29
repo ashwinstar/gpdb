@@ -1,0 +1,907 @@
+#!/bin/bash
+#	Filename:-		mppcreatepart.sh
+#	Version:-		$Revision$
+#	Updated:-		$Date$
+#	Status:-		Beta testing complete
+#	Author:-		G Coombe
+#	Contact:-		gcoombe@greenplum.com
+#	Release date:-		July 2006
+#	Release stat:-		Greenplum Co internal
+#                               Copyright (c) Metapa 2005. All Rights Reserved.
+#                               Copyright (c) Greenplum 2005. All Rights Reserved
+#	Brief descn:-		Creates child tables from a parent table and
+#				generates rules for data loading.
+#******************************************************************************
+# Update History
+#******************************************************************************
+# Ver	Date		Who		Update
+#******************************************************************************
+# Detailed Description
+#******************************************************************************
+#
+#******************************************************************************
+# Prep Code
+# Source required functions file, this required for script to run
+# exit if cannot locate this file. Change location of FUNCTIONS variable
+# as required.
+WORKDIR=`dirname $0`
+FUNCTIONS=$WORKDIR/mpp_bash_functions.sh
+if [ -f $FUNCTIONS ]; then
+		. $FUNCTIONS
+else
+		echo "[FATAL:]-Cannot source $FUNCTIONS file Script Exits!"
+		exit 2
+fi
+#******************************************************************************
+# Location Variables
+#******************************************************************************
+
+#******************************************************************************
+# Command Variables
+#******************************************************************************
+
+#******************************************************************************
+# Script Specific Variables
+#******************************************************************************
+INTERACTIVE=1
+VERBOSE=1
+WAIT="-w"
+TIME=`$DATE +%H":"%M":"%S`
+CUR_DATE=`$DATE +%Y%m%d`
+PROG_NAME=`$BASENAME $0`
+QD_NAME=`hostname`
+EXIT_STATUS=0
+RULE_GEN=0
+COPY_REC=0
+TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP.$$
+IDX_TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP_IDX.$$
+TMP_OUTPUT_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP_SQL_OUT.$$
+CHILD_COUNT_REC=0
+ABORT=0
+CREATE_PART_INDEX=0
+PROCESS_CONVERSION=0
+STEP_BACK=0
+#******************************************************************************
+# Functions
+#******************************************************************************
+#
+USAGE () {
+		$ECHO	
+		$ECHO "      `basename $0`"
+		$ECHO
+		$ECHO "      Generates a number of child tables for the specified parent table"
+		$ECHO "      and associated rules if -r option supplied"
+		$ECHO "      Will secure the parent table if records exist within that table and"
+		$ECHO "      inserts records back into the partitioned tables when creation of"
+		$ECHO "      child tables and rules have completed successfully"
+		$ECHO
+		$ECHO "      Usage:"
+		$ECHO "      $0 [OPTIONS]"
+		$ECHO
+		$ECHO "      General options:"
+		$ECHO "      -?, display this help message & exit" 
+		$ECHO "      -v, display version information & exit"
+		$ECHO
+		$ECHO "      Logging options:"
+		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
+		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
+		$ECHO "      -a, don't ask to confirm generation process [default:- ask]"
+		$ECHO
+		$ECHO "      Connection options:"
+		$ECHO "      -d, <Master instance directory> name of alternative Master instance to run against [optional]"
+		$ECHO "      -x, <Alternative database name> run against another database within the MPP instance"
+		$ECHO
+		$ECHO "      Child table generation options:"
+		$ECHO "      -t, <schema.tablename> name of parent table for which to generate "
+		$ECHO "          child tables including schema in which table resides [mandatory]"
+		$ECHO "      -f, <column name> column on which partitioning will occur [mandatory]"
+		$ECHO "      -p, <d,r or l> d=date range r=numeric range l=list partitioning type [mandatory]"
+		$ECHO "      -r, also generate rules for loading to match constraint type via insert"
+		$ECHO "      -b, show child table record counts (only applicable if original table contained"
+		$ECHO "          records prior to process running) will display all counts < 0"
+		$ECHO "      -i, <column name1, column name2, ...> create additional indexes for each child table"
+		$ECHO "          on column names, if more than one column name separate with a comma"
+		$ECHO "      -u, create an index on the partition column supplied in -f option"
+		$ECHO "      -m, <conversion command> to be applied to check constraint and insert rule checks"
+		$ECHO "          For example, if a numeric contains timestamp in format 1138576193.697, supplying"
+		$ECHO "          -m to_timestamp will convert the contents of the field to a timestamp format prior"
+		$ECHO "          to check and rules being evaluated"
+		$ECHO
+		$ECHO "      Date range partitioning options:"
+		$ECHO "      Use this partitioning policy for date, timestamp and timestamp with time zone columns"
+		$ECHO "      Unless -m <conversion command> has been supplied and performs a compatible conversion"
+		$ECHO "      -c, <Constraint type> m (monthly), w (weekly), d (daily) or h (hourly) [mandatory]"
+		$ECHO "          Only user hourly if partition column is of type timestamp, or a suitable -m"
+		$ECHO "          conversion command has been supplied"
+		$ECHO "      -s, <start date> date to commence from format YYYY-MM-DD [mandatory]"
+		$ECHO "      -n, <number> number of child tables to create from <start date> [mandatory]"
+		$ECHO
+		$ECHO "      Numeric range partitioning options:"
+		$ECHO "      Use this partitioning policy for numeric columns"
+		$ECHO "      -s, <number> value to start range at [mandatory]"
+		$ECHO "      -e, <number> value to end range at [mandatory]"
+		$ECHO "      -g, <number> increment to apply between -s and -e [mandatory]"
+		$ECHO
+		$ECHO "      List partitioning options:"
+		$ECHO "      Use this partitioning policy for character columns"
+		$ECHO "      -o, <value list> comma separated list of values, example -c CA,MS,NY,WS [mandatory]"
+		$ECHO
+		$ECHO "      Return codes:"
+		$ECHO "      0 No problems encountered with requested operation"
+		$ECHO "      1 Warning generated, but partitioning operational"
+		$ECHO "      2 Fatal error, unable to complete partitioning request"
+		$ECHO
+		exit $EXIT_STATUS
+}
+
+UNKNOWN_OPTION () {
+		$ECHO
+		$ECHO "[ERROR]:-Unknown option $1"
+		USAGE
+}
+
+PROMPT_CONTINUE () {
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		SUFFIX_COUNT=${#SUFFIX_ARRAY[@]}
+		LOG_MSG "[INFO]:------------------------------------"
+		LOG_MSG "[INFO]:-Partitioning generation parameters:"
+		LOG_MSG "[INFO]:------------------------------------"
+		LOG_MSG "[INFO]:-Database                   = $QD_DBNAME"
+		LOG_MSG "[INFO]:-Parent table               = $PARENT_TABLE_NAME"
+		case $PART_TYPE in 
+			d )
+			LOG_MSG "[INFO]:-Partition type             = date"
+			LOG_MSG "[INFO]:-Date range column          = $PART_COLUMN"
+			LOG_MSG "[INFO]:-Date range column type     = $PART_COL_TYPE"
+			LOG_MSG "[INFO]:-Constraint type requested  = $CONSTRAINT_TXT"
+			LOG_MSG "[INFO]:-Start date                 = $START_DATE_OR_VALUE"
+			LOG_MSG "[INFO]:-End date (calculated)      = $END_DATE"
+			;;
+			r )
+			LOG_MSG "[INFO]:-Partition type             = range"
+			LOG_MSG "[INFO]:-Range column               = $PART_COLUMN"
+			LOG_MSG "[INFO]:-Range column type          = $PART_COL_TYPE"
+			LOG_MSG "[INFO]:-Range start value          = $START_DATE_OR_VALUE"
+			LOG_MSG "[INFO]:-Range end value            = $END_VALUE"
+			LOG_MSG "[INFO]:-Range step count value     = $NUMERIC_INCREMENT"
+			;;
+			l )
+			LOG_MSG "[INFO]:-Partition type             = list"
+			LOG_MSG "[INFO]:-List column                = $PART_COLUMN"
+			LOG_MSG "[INFO]:-List column type           = $PART_COL_TYPE"
+			LOG_MSG "[INFO]:-List values                = $PART_LIST"
+			;;
+		esac
+		LOG_MSG "[INFO]:-Suffix start               = ${SUFFIX_ARRAY[0]}" 
+		LOG_MSG "[INFO]:-Suffix end                 = ${SUFFIX_ARRAY[$SUFFIX_COUNT-1]}" 
+		LOG_MSG "[INFO]:-Number of partition tables = ${#SUFFIX_ARRAY[@]}"
+		if [ $RULE_GEN -eq 0 ];then
+		LOG_MSG "[INFO]:-Rule generation            = Off"
+		else
+		LOG_MSG "[INFO]:-Rule generation            = On";fi
+		if [ $COPY_REC -eq 0 ];then
+		LOG_MSG "[INFO]:-Transfer existing records  = Off"
+		else
+		LOG_MSG "[INFO]:-Transfer existing records  = On";fi
+		if [ $CREATE_PART_INDEX -eq 1 ];then
+		LOG_MSG "[INFO]:-Index partition column     = On"
+		else
+		LOG_MSG "[INFO]:-Index partition column     = Off";fi
+		if [ x"" != x"$INDEX_COLUMN" ];then
+		LOG_MSG "[INFO]:-Create additional indexes  = On"
+		else
+		LOG_MSG "[INFO]:-Create additional indexes  = Off";fi	
+		if [ $CHILD_COUNT_REC -eq 1 ];then
+		LOG_MSG "[INFO]:-Count child table records  = On"
+		else
+		LOG_MSG "[INFO]:-Count child table records  = Off";fi
+		if [ x"" != x"$CONVERSION_CMD" ];then
+		LOG_MSG "[INFO]:-Apply specific conversion  = On"
+		LOG_MSG "[INFO]:-Conversion command         = $CONVERSION_CMD"
+		else
+		LOG_MSG "[INFO]:-Apply specific conversion  = Off";fi
+		$ECHO
+		$ECHO "Continue with child generation process yY|nN >"
+		read REPLY
+		if [ -z $REPLY ]; then
+				LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+				exit 1
+		fi
+		if [ $REPLY != Y ] && [ $REPLY != y ]; then
+				LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+				exit 1
+		fi
+		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}	
+
+
+CHK_PARAM () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Checking mandatory general options"
+	#Make sure a table name has been supplied
+	if [ x"" == x"$PARENT_TABLE_NAME" ];then
+		ERROR_EXIT "[FATAL]:-Mandatory parameter -t <parent table name> not supplied" 2
+	else
+	#Make sure that a schema name has been prefixed to table name
+		if [ `$ECHO $PARENT_TABLE_NAME|$GREP -c "\."` -eq 1 ];then
+			LOG_MSG "[INFO]:-Schema name supplied, processing"
+			SCHEMA_NAME=`$ECHO $PARENT_TABLE_NAME|$CUT -d"." -f1`
+			TABLE_NAME=`$ECHO $PARENT_TABLE_NAME|$CUT -d"." -f2`
+		else
+			ERROR_EXIT "[FATAL]:-Schema name not supplied" 2
+		fi
+	fi	
+	#Make sure the partitioning column has been supplied
+	if [ x"" == x"$PART_COLUMN" ];then
+		ERROR_EXIT "[FATAL]:-Mandatory parameter -f not supplied" 2
+	fi
+	#Make sure that partitioning type has been supplied
+	if [ x"" == x"$PART_TYPE" ];then
+		ERROR_EXIT "[FATAL]:-Mandatory parameter -p not supplied" 2
+	fi
+	#Now check the mandatory parameters asociated with partitioning types of d r or l
+	case $PART_TYPE in
+		d ) 
+			if [ x"" == x"$CONSTRAINT_TYPE" ];then
+				ERROR_EXIT "[FATAL]:-Mandatory parameter -c not supplied for -p<date> option" 2;fi
+			if [ x"" == x"$START_DATE_OR_VALUE" ];then
+				ERROR_EXIT "[FATAL]:-Mandatory parameter -s not supplied for -p<date> option" 2;fi
+			if [ x"" == x"$GENERATION_COUNT" ];then
+				ERROR_EXIT "[FATAL]:-Mandatory parameter -n not supplied for -p<date> option" 2;fi
+			;;
+		r )
+			if [ x"" == x"$START_DATE_OR_VALUE" ];then
+				ERROR_EXIT "[FATAL]:-Mandatory parameter -s not supplied for -p<range> option" 2;fi	
+			if [ x"" == x"$END_VALUE" ];then
+				ERROR_EXIT "[FATAL]:-Mandatory parameter -e not supplied for -p<range> option" 2;fi
+			if [ x"" == x"$NUMERIC_INCREMENT" ];then
+				ERROR_EXIT "[FATAL]:-Mandatory parameter -g not supplied for -p<range> option" 2;fi
+			;;
+		l )
+			if [ x"" == x"$PART_LIST" ];then
+				ERROR_EXIT "[FATAL]:-Mandatory parameter -o not supplied for -p<list> option" 2;fi
+			;;
+		* )
+			ERROR_EXIT "[FATAL]:-Mandatory parameter -p has invalid value, must be d,r or l" 2
+			;;
+	esac
+
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+DATE_CHK () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	if [ `$ECHO $START_DATE_OR_VALUE|$EGREP -c "[A-Z]|[a-z]"` -ne 0 ] || [ `$ECHO $START_DATE_OR_VALUE|$WC -c` -ne 11 ];then
+		ERROR_EXIT "[FATAL]:-Invalid start date supplied [ $START_DATE_OR_VALUE ]" 2;fi
+	if [ `$ECHO $START_DATE_OR_VALUE|$CUT -d"-" -f2` -lt 1 ] || [ `$ECHO $START_DATE_OR_VALUE|$CUT -d"-" -f2` -gt 12 ];then
+		 ERROR_EXIT "[FATAL]:-Invalid month in start date" 2;fi
+	if [ `$ECHO $START_DATE_OR_VALUE|$CUT -d"-" -f3` -lt 1 ] || [ `$ECHO $START_DATE_OR_VALUE|$CUT -d"-" -f3` -gt 31 ];then
+		ERROR_EXIT "[FATAL]:-Invalid day in start date" 2;fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+VALIDATE_PARAM () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	#Check to ensure that the table exists
+	CHK_EXISTS_TABLE $PARENT_TABLE_NAME $MASTER_PORT $QD_DBNAME
+	if [ $EXISTS -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Parent table $PARENT_TABLE_NAME does not exist in $QD_DBNAME database" 2
+	else
+	#Check to see if table has any child tables already
+		HAS_CHILD_TABLES=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relhassubclass from pg_class where relname = '$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}');"`
+		ERROR_CHK $? "check for child tables" 2
+	if [ $HAS_CHILD_TABLES == 't' ];then
+		LOG_MSG "[FATAL]:-Table $PARENT_TABLE_NAME already has child tables defined."
+		ERROR_EXIT "[FATAL]:-Use mppaddpart.sh to increase number of child tables" 2
+	fi
+	#Check that partition column exists
+	COL_THERE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')) and attname='${PART_COLUMN}' and attnum > 0;"`
+	ERROR_CHK $? "check for \"$PART_COLUMN\" column" 2
+	if [ $COL_THERE -ne 1 ];then
+		ERROR_EXIT "[FATAL]:-Column $PART_COLUMN does not exist in $PARENT_TABLE_NAME" 2
+	fi
+	#Now check if alternative columns have been provided for indexing
+	if [ x"" != x"$INDEX_COLUMN" ];then
+		if [ `$ECHO $INDEX_COLUMN|$GREP -c ","` -ne 0 ];then
+			INDEX_ARRAY_LIST=(`$ECHO $INDEX_COLUMN|$TR ',' ' '`)
+		else
+			INDEX_ARRAY_LIST=($INDEX_COLUMN)
+		fi
+		for INDEX_NAME in ${INDEX_ARRAY_LIST[@]}
+		do
+		COL_THERE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')) and attname='${INDEX_NAME}' and attnum > 0;"`
+		ERROR_CHK $? "check for \"$INDEX_NAME\" column in $TABLE_NAME" 2
+		if [ $COL_THERE -ne 1 ];then
+			ERROR_EXIT "[FATAL]:-Column $INDEX_NAME requested for indexing does not exist in $PARENT_TABLE_NAME" 2
+		fi
+		done
+	fi
+	#Now validate specific partition options
+	case $PART_TYPE in
+		d ) #Validate date range options
+			case $CONSTRAINT_TYPE in
+				m ) CONSTRAINT_TXT=Monthly ;;
+				w ) CONSTRAINT_TXT=Weekly ;;
+				d ) CONSTRAINT_TXT=Daily ;;
+				h ) CONSTRAINT_TXT=Hourly ;;
+				* ) ERROR_EXIT "[FATAL]:-Incorrect value $CONSTRAINT_TYPE supplied for -c <constraint type>" 2 ;;
+			esac
+			DATE_CHK
+			if [ $GENERATION_COUNT -le 0 ];then
+				ERROR_EXIT "[FATAL]:-Invalid value supplied with -n option for date partitioning" 2
+			fi
+			;;
+		r ) #Validate numeric range options
+			if [ `$ECHO $START_DATE_OR_VALUE|$EGREP -c "[A-Z]|[a-z]"` -ne 0 ];then
+				ERROR_EXIT "[FATAL]:-Invalid value supplied with -s option for numeric partitioning" 2
+			fi
+			if [ `$ECHO $END_VALUE|$EGREP -c "[A-Z]|[a-z]"` -ne 0 ];then
+				ERROR_EXIT "[FATAL]:-Invalid value supplied with -e option for numeric partitioning" 2
+			fi
+			if [ `$ECHO $NUMERIC_INCREMENT|$EGREP -c "[A-Z]|[a-z]"` -ne 0 ];then
+				ERROR_EXIT "[FATAL]:-Invalid value supplied with -g option for numeric partitioning" 2
+			fi 
+			if [ $START_DATE_OR_VALUE -eq 0 ] && [ $START_DATE_OR_VALUE -eq $END_VALUE ];then
+				ERROR_EXIT "[FATAL]:-Start and end values both zero for numeric partitioning" 2
+			fi
+			if [ $NUMERIC_INCREMENT -eq 0 ];then
+				ERROR_EXIT "[FATAL]:-Increment value is zero for numeric partitioning" 2
+			fi
+			if [ $START_DATE_OR_VALUE -lt 0 ] || [ $END_VALUE -lt 0 ] || [ $NUMERIC_INCREMENT -lt 0 ];then
+				ERROR_EXIT "[FATAL]:-Negative value supplied to -s, -e or -g for numeric partitioning" 2
+			fi
+			if [ $START_DATE_OR_VALUE -gt $END_VALUE ];then
+				ERROR_EXIT "[FATAL]:-Value supplied via -s greater than -e value for numeric partitioning" 2
+			fi
+			;;
+		l ) #Validate list partitioning options
+			if [ `$ECHO $PART_LIST|$GREP -c ","` -eq 0 ];then
+				ERROR_EXIT "[FATAL]:-No \",\" within partition list for list partitioning" 2
+			fi	
+			;;
+		esac
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+VALIDATE_PROCESS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	#Check to see if parent table has any records, if so enter into transfer record mode
+	LOG_MSG "[INFO]:-Checking record count on $PARENT_TABLE_NAME, please wait..."
+	PARENT_TABLE_REC_NUM=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from $PARENT_TABLE_NAME;"`
+	ERROR_CHK $? "get table record count for $PARENT_TABLE_NAME" 2
+	if [ $PARENT_TABLE_REC_NUM -ne 0 ];then
+		LOG_MSG "[INFO]:-Counted $PARENT_TABLE_REC_NUM records in $PARENT_TABLE_NAME"
+		LOG_MSG "[INFO]:-Changing processing to tuple transfer mode"
+		COPY_REC=1	
+	fi
+	#Now validate the columns to ensure that they are the correct data type for the partitioning requested
+	#First get column type
+	PART_COL_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select typname from pg_type where oid in (select atttypid from pg_attribute where attname='${PART_COLUMN}'and attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')));"`
+	ERROR_CHK $? "get \"$PART_COLUMN\" data type" 2
+	LOG_MSG "[INFO]:-Partition column \"$PART_COLUMN\" is of type $PART_COL_TYPE"
+	LOG_MSG "[INFO]:-Validating this data type against partition type selected"
+	case $PART_TYPE in 
+		d ) #Expect the column to be of type date, timestamp or timestamptz and no additional conversion has been appiled
+			#If constraint type hourly, then can only be applied to a timestamp field
+			if [ `$ECHO $PART_COL_TYPE|$GREP -c "timestamp"` -eq 0 ] && [ $CONSTRAINT_TYPE == "h" ] && [ x"" == x"$CONVERSION_CMD" ];then
+				ERROR_EXIT "[FATAL]:-Column \"$PART_COLUMN\" is not type timestamp and hourly partitioning requested" 2
+			fi
+			if [ `$ECHO $PART_COL_TYPE|$EGREP -c "date|timestamp"` -eq 0 ] && [ x"" == x"$CONVERSION_CMD" ];then
+				ERROR_EXIT "[FATAL]:-Column \"$PART_COLUMN\" is not a date or timestamp type" 2
+			else
+				LOG_MSG "[INFO]:-Skipping column type check as constraint command being applied"
+			fi
+			if [ $PART_COL_TYPE == "date" ];then
+				DATE_TYPE=0
+			else
+				DATE_TYPE=1
+			fi
+			;;
+		r ) #Expect the column to be of type int2, int4, int8, numeric, float4 or float8
+			if [ `$ECHO $PART_COL_TYPE|$EGREP -c "int|numeric|float"` -eq 0 ];then	
+				ERROR_EXIT "[FATAL]:-Column \"$PART_COLUMN\" is not a int, numeric or float type" 2
+			fi
+			;;
+		l ) #Expect the column to be of type text, bpchar or varchar
+			if [ `$ECHO $PART_COL_TYPE|$EGREP -c "text|bpchar|varchar"` -eq 0 ];then
+				ERROR_EXIT "[FATAL]:-Column \"$PART_COLUMN\" is not a text, char(n) or varchar(n) type" 2
+			fi
+			;;
+		esac
+	#Now set up the number of itterations for range and list partitioning
+	case $PART_TYPE in 
+		r ) #Here the number of itterations is defined by start value, end value and increment value
+		    	COUNT=0
+			GENERATION_COUNT=0
+			while [ $COUNT -le $END_VALUE ]
+			do
+				((COUNT=$COUNT+$NUMERIC_INCREMENT))
+				((GENERATION_COUNT=$GENERATION_COUNT+1))
+			done
+			LOG_MSG "[INFO]:-Will generate $GENERATION_COUNT child tables for range partitioning selected"
+			START_VALUE=$START_DATE_OR_VALUE
+			;;
+		l ) #Here the number of itterations will be defined by the number of values in the list
+			GENERATION_COUNT=`$ECHO $PART_LIST|$AWK -F"," '{print NF}'`
+			LOG_MSG "[INFO]:-Will generate $GENERATION_COUNT child tables for list partitioning selected"
+			;;
+	esac
+	#Check to see if an additional conversion command has been applied and if so it is valid for partition column
+	if [ x"" != x"$CONVERSION_CMD" ];then
+		LOG_MSG "[INFO]:-Checking to ensure that $CONVERSION_CMD can be applied to $PART_COLUMN" 
+		$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select ${CONVERSION_CMD}(${PART_COLUMN}) from $PARENT_TABLE_NAME limit 1;" >/dev/null 2>&1
+		if [ $? -ne 0 ];then
+			ERROR_EXIT "[FATAL]:-Conversion $CONVERSION_CMD fails on column $PART_COLUMN" 2
+		else
+			LOG_MSG "[INFO]:-Conversion $CONVERSION_CMD completes on column $PART_COLUMN"
+			PROCESS_CONVERSION=1
+		fi
+	fi
+		
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+SELECT_PROCESS_TYPE () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	PARENT_COLUMN_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -R" " $QD_DBNAME -c "select attname from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}' )) and attnum > 0;"`)
+	ERROR_CHK $? "obtain parent column list for $TABLE_NAME" 2
+	case $PART_TYPE in 
+		d )
+			LOG_MSG "[INFO]:-Selected process type date partitioning"
+			START_DATE=$START_DATE_OR_VALUE
+			case $CONSTRAINT_TYPE in
+				m ) TYPE_NAME=month
+				    PROCESS_MONTHLY ;;
+				d ) TYPE_NAME=daily
+				    PROCESS_DAILY ;;
+				w ) TYPE_NAME=week
+				    PROCESS_WEEKLY ;;
+				h ) ((GENERATION_COUNT=$GENERATION_COUNT*24))
+				    TYPE_NAME=hour
+				    PROCESS_HOURLY ;;
+			esac
+			;;
+		r )
+			LOG_MSG "[INFO]:-Selected process type range partitioning"
+			TYPE_NAME=range
+			PROCESS_NUMERIC
+			;;
+		l )
+			LOG_MSG "[INFO]:-Selected process type list partitioning"
+			TYPE_NAME=list
+			PROCESS_LIST
+			;;
+	esac
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+PROCESS_NUMERIC () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Please wait generating numeric range array..."
+	COUNT=$START_VALUE
+	while [ $COUNT -le $END_VALUE ]
+	do
+		CURRENT_COUNT=$COUNT
+		((COUNT=$COUNT+$NUMERIC_INCREMENT))
+		TO=$CURRENT_COUNT
+		((FROM=$COUNT-1))
+		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${TO}_to_${FROM}_${TYPE_NAME}")
+		if [ $PROCESS_CONVERSION -eq 1 ];then
+			RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}($PART_COLUMN)~>=$CURRENT_COUNT~AND~${CONVERSION_CMD}($PART_COLUMN)~<=$FROM")
+		else
+			RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>=$CURRENT_COUNT~AND~$PART_COLUMN~<=$FROM")
+		fi
+	done
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+PROCESS_LIST () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Please wait generating list array..."
+	for LIST_ITEM in `$ECHO $PART_LIST|$TR ',' ' '`
+	do
+		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${LIST_ITEM}_${TYPE_NAME}")
+		if [ $PROCESS_CONVERSION -eq 1 ];then
+			RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}($PART_COLUMN)~=~'${LIST_ITEM}'")
+		else
+			RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~=~'${LIST_ITEM}'")
+		fi
+	done 
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+PROCESS_HOURLY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	VECTOR=1
+	HOUR_ARRAY=(00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23)
+	HOUR_VECTOR=0	
+	LOG_MSG "[INFO]:-Please wait generating hourly array..."
+	while [ $VECTOR -le $GENERATION_COUNT ]
+	do
+		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "`$ECHO $START_DATE|$TR '-' '_'`_${HOUR_ARRAY[$HOUR_VECTOR]}_${TYPE_NAME}")
+		if [ $PROCESS_CONVERSION -eq 1 ];then
+			RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}($PART_COLUMN)~>='$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:00:00'~AND~${CONVERSION_CMD}($PART_COLUMN)~<=~'$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:59:59'")
+		else
+			RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>='$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:00:00'~AND~$PART_COLUMN~<=~'$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:59:59'")
+		fi
+		((VECTOR=$VECTOR+1))
+		if [ $HOUR_VECTOR -ge 23 ];then
+			START_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$START_DATE' +1;"`
+			HOUR_VECTOR=0
+		else
+			((HOUR_VECTOR=$HOUR_VECTOR+1))
+		fi
+	done
+	END_DATE=$START_DATE
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+	
+PROCESS_DAILY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	VECTOR=1
+	LOG_MSG "[INFO]:-Please wait generating daily array..."
+	while [ $VECTOR -le $GENERATION_COUNT ]
+	do
+		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} `$ECHO $START_DATE|$TR '-' '_'`"_${TYPE_NAME}")
+		if [ $DATE_TYPE -eq 0 ];then
+			if [ $PROCESS_CONVERSION -eq 1 ];then
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}($PART_COLUMN)~=~'$START_DATE}'")
+			else
+				RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~=~'$START_DATE}'")	
+			fi
+		else
+			if [ $PROCESS_CONVERSION -eq 1 ];then
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}($PART_COLUMN)~>='$START_DATE~00:00:00'~AND~${CONVERSION_CMD}($PART_COLUMN)~<=~'$START_DATE~23:59:59'")
+			else
+				RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>='$START_DATE~00:00:00'~AND~$PART_COLUMN~<=~'$START_DATE~23:59:59'")
+			fi
+		fi
+		START_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$START_DATE' +1;"`
+		((VECTOR=$VECTOR+1))
+	done
+	END_DATE=$START_DATE
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+PROCESS_WEEKLY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	START_WEEK_NUM=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(extract (week from date '$START_DATE'),2,'0');"`
+	WEEK_START_DATE=$START_DATE
+	LOG_MSG "[INFO]:-Please wait generating weekly array..."
+	VECTOR=1
+	while [ $VECTOR -le $GENERATION_COUNT ]
+	do
+		PREV_DATE=$START_DATE
+		START_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$START_DATE' +1;"`
+		CURRENT_WEEK_NUM=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(extract (week from date '$START_DATE'),2,'0');"`
+		if [ $CURRENT_WEEK_NUM -ne $START_WEEK_NUM ];then
+			SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} `$ECHO $START_DATE|$CUT -d"-" -f1-2|$TR '-' '_'`"_W${START_WEEK_NUM}_${TYPE_NAME}")
+			START_WEEK_NUM="$CURRENT_WEEK_NUM"
+			if [ $DATE_TYPE -eq 0 ];then
+				if [ $PROCESS_CONVERSION -eq 1 ];then
+					RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}($PART_COLUMN)~>=~'$WEEK_START_DATE'~AND~${CONVERSION_CMD}($PART_COLUMN)~<~'$START_DATE'")
+				else	
+					RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>=~'$WEEK_START_DATE'~AND~$PART_COLUMN~<~'$START_DATE'")
+				fi
+			else
+				if [ $PROCESS_CONVERSION -eq 1 ];then
+					RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}($PART_COLUMN)~>=~'$WEEK_START_DATE~00:00:00'~AND~${CONVERSION_CMD}($PART_COLUMN)~<~'$START_DATE~00:00:00'")
+				else
+					RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>=~'$WEEK_START_DATE~00:00:00'~AND~$PART_COLUMN~<~'$START_DATE~00:00:00'")
+				fi
+			fi
+			WEEK_START_DATE=$START_DATE
+			((VECTOR=$VECTOR+1))
+		fi
+	done
+	END_DATE=$WEEK_START_DATE
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+PROCESS_MONTHLY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Please wait generating monthy array..."
+	CURRENT_MONTH=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(EXTRACT(MONTH FROM DATE '$START_DATE'),2,'0');"`
+	VECTOR=1
+	DAY_COUNT=1
+	while [ $VECTOR -le $GENERATION_COUNT ]
+	do
+		NEXT_MONTH=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(EXTRACT(MONTH FROM DATE '$START_DATE' +$DAY_COUNT),2,'0');"`
+		while [ "$CURRENT_MONTH" == "$NEXT_MONTH" ]
+		do
+			((DAY_COUNT=$DAY_COUNT+1))
+			NEXT_MONTH=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(EXTRACT(MONTH FROM DATE '$START_DATE' +$DAY_COUNT),2,'0');"`
+		done
+		END_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT DATE('$START_DATE') + $DAY_COUNT;"`
+		START_YEAR=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT EXTRACT(YEAR FROM DATE '$START_DATE' + $DAY_COUNT -1);"`
+		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "$START_YEAR"_"${CURRENT_MONTH}_${TYPE_NAME}")
+		if [ `$ECHO $CURRENT_MONTH|$AWK '{print $1}'|$WC -c` -eq 1 ];then CURRENT_MONTH="0$CURRENT_MONTH";fi
+		if [ $DATE_TYPE -eq 0 ];then
+			if [ $PROCESS_CONVERSION -eq 1 ];then
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}(${PART_COLUMN})~>=~'$START_YEAR-$CURRENT_MONTH-01'~AND~${CONVERSION_CMD}($PART_COLUMN)~<~'$END_DATE'")
+			else
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${PART_COLUMN}~>=~'$START_YEAR-$CURRENT_MONTH-01'~AND~$PART_COLUMN~<~'$END_DATE'")
+			fi
+		else
+			if [ $PROCESS_CONVERSION -eq 1 ];then
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}(${PART_COLUMN})~>=~'$START_YEAR-$CURRENT_MONTH-01~00:00:00'~AND~${CONVERSION_CMD}($PART_COLUMN)~<~'$END_DATE~00:00:00'")
+			else
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${PART_COLUMN}~>=~'$START_YEAR-$CURRENT_MONTH-01~00:00:00'~AND~$PART_COLUMN~<~'$END_DATE~00:00:00'")
+			fi
+		fi
+		CURRENT_MONTH="$NEXT_MONTH"
+		((VECTOR=$VECTOR+1))
+	done
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+SECURE_DATA () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+#	LOG_MSG "[INFO]:-Commencing alter table on $PARENT_TABLE_NAME"
+	LOG_MSG "[INFO]:-Creating temporary holding table to secure records"
+	SECURE_TABLE_NAME="${PARENT_TABLE_NAME}_pre_part_orig_$$"
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "create table ${SECURE_TABLE_NAME} (like $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
+	ERROR_CHK $? "create temporary holding table" 2
+	LOG_MSG "[INFO]:-Commencing record transfer, please wait..."
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into ${SECURE_TABLE_NAME} (select * from $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
+	ERROR_CHK $? "secure records to temporary table" 2
+	LOG_MSG "[INFO]:-Clearing down $PARENT_TABLE_NAME"
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "truncate table $PARENT_TABLE_NAME;" >/dev/null 2>&1
+	ERROR_CHK $? "truncate $PARENT_TABLE_NAME" 2
+	STEP_BACK=1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+REVERT_BACK () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	RM_TMP_FILE
+#This function needs to be re-written due to changes in previous function. (26/09/2006)
+	case $STEP_BACK in
+		1 )
+			LOG_MSG "[INFO]:-Copying records back to original table"
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into $PARENT_TABLE_NAME (select * from ${SECURE_TABLE_NAME});" >> $LOG_FILE 2>&1
+			ERROR_CHK $? "copy back records to original table" 2
+			LOG_MSG "[INFO]:-Removing temporary holding table"
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "drop table ${SECURE_TABLE_NAME};" >> $LOG_FILE 2>&1
+			ERROR_CHK $? "drop table ${SECURE_TABLE_NAME}"
+			;;
+		2 )
+			LOG_MSG "[INFO]:-Removing child tables"
+			for SUFFIX in "${SUFFIX_ARRAY[@]}"
+			do
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "drop table ${PARENT_TABLE_NAME}_${SUFFIX} cascade;" >> $LOG_FILE 2>&1
+			ERROR_CHK $? "drop child table ${PARENT_TABLE_NAME}_${SUFFIX}" 1
+			done
+			LOG_MSG "[INFO]:-Copying records back to original table"
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into $PARENT_TABLE_NAME (select * from ${SECURE_TABLE_NAME});" >> $LOG_FILE 2>&1
+			ERROR_CHK $? "copy back records to original table" 2
+			LOG_MSG "[INFO]:-Removing temporary holding table"
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "drop table ${SECURE_TABLE_NAME};" >> $LOG_FILE 2>&1
+			ERROR_CHK $? "drop table ${SECURE_TABLE_NAME}" 1
+			LOG_MSG "[INFO]:-Removing reference for subclass for $PARENT_TABLE_NAME"
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "update pg_class set relhassubclass='f' where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');" >> $LOG_FILE 2>&1
+			ERROR_CHK $? "updated relhassubclass in pg_class" 1
+			;;
+	esac
+	LOG_MSG "[INFO]:-Completed revert back"
+	exit $EXIT_STATUS
+}
+
+GENERATE_SQL () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Generating SQL file to build child tables"
+	VECTOR=0
+	((COL_COUNT=${#PARENT_COLUMN_LIST[@]}-1))
+		$ECHO "BEGIN;" >> $TMP_FILE
+		if [ $CREATE_PART_INDEX -eq 1 ] || [ x"" != x"$INDEX_COLUMN" ];then $ECHO "BEGIN;" >> $IDX_TMP_FILE;fi
+	for SUFFIX in "${SUFFIX_ARRAY[@]}"
+	do
+		#Check if a table of that name exists
+		CHK_EXISTS_TABLE ${PARENT_TABLE_NAME}_$SUFFIX $MASTER_PORT $QD_DBNAME 
+		if [ $EXISTS -gt 0 ];then	
+			$ECHO "CREATE TABLE ${PARENT_TABLE_NAME}_$SUFFIX" >> $TMP_FILE
+			$ECHO "(CHECK ( `$ECHO ${RULE_ARRAY[$VECTOR]}|$TR '~' ' '` ) )" >> $TMP_FILE
+			$ECHO "INHERITS (${PARENT_TABLE_NAME});" >> $TMP_FILE
+			$ECHO >> $TMP_FILE
+			if [ $CREATE_PART_INDEX -eq 1 ];then
+				$ECHO "CREATE INDEX ${TABLE_NAME}_idx__${PART_COLUMN}_${SUFFIX} on ${PARENT_TABLE_NAME}_${SUFFIX} ($PART_COLUMN);" >> $IDX_TMP_FILE
+			fi
+			if [ x"" != x"$INDEX_COLUMN" ];then
+				for ADDITIONAL_INDEX in `$ECHO ${INDEX_COLUMN[@]}|$TR ',' ' '`
+				do
+				$ECHO "CREATE INDEX ${TABLE_NAME}_idx_${ADDITIONAL_INDEX}_${SUFFIX} on ${PARENT_TABLE_NAME}_${SUFFIX} ($ADDITIONAL_INDEX);" >> $IDX_TMP_FILE
+				done
+			fi
+			if [ $RULE_GEN -eq 1 ];then
+			$ECHO "CREATE OR REPLACE RULE ${TABLE_NAME}_rule_${SUFFIX}" >> $TMP_FILE
+			$ECHO "AS ON INSERT TO ${PARENT_TABLE_NAME}" >> $TMP_FILE
+			$ECHO "WHERE ( `$ECHO ${RULE_ARRAY[$VECTOR]}|$TR '~' ' '` )" >> $TMP_FILE
+			$ECHO "DO INSTEAD INSERT INTO ${PARENT_TABLE_NAME}_$SUFFIX" >> $TMP_FILE
+			$ECHO "VALUES (" >> $TMP_FILE
+			COL_VEC=0
+			while [ $COL_VEC -lt $COL_COUNT ]
+			do
+			$ECHO "NEW.${PARENT_COLUMN_LIST[$COL_VEC]},"  >> $TMP_FILE
+			((COL_VEC=$COL_VEC+1))
+			done
+			$ECHO "NEW.${PARENT_COLUMN_LIST[$COL_VEC]});"  >> $TMP_FILE	
+			$ECHO >> $TMP_FILE
+			((VECTOR=$VECTOR+1))
+			fi
+		else
+			ABORT=1
+			LOG_MSG "[WARN]:-Table ${PARENT_TABLE_NAME}_$SUFFIX already exists"
+		fi
+	done
+	$ECHO "COMMIT;" >> $TMP_FILE
+		if [ $CREATE_PART_INDEX -eq 1 ] || [ x"" != x"$INDEX_COLUMN" ];then $ECHO "COMMIT;" >> $IDX_TMP_FILE;fi
+	if [ $ABORT -eq 1 ];then
+		RM_TMP_FILE
+		if [ $COPY_REC -eq 1 ];then
+			REVERT_BACK
+		fi
+		ERROR_EXIT "[FATAL]:-Unable to contine, some child tables already exist." 2
+	fi	
+	LOG_MSG "[INFO]:-Completed generation of SQL file to build child tables"
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+RUN_GENERATE_SQL () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Running generated SQL file"
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -f $TMP_FILE > $TMP_OUTPUT_FILE 2>&1
+	if [ `$GREP -ci ERROR $TMP_OUTPUT_FILE` -ne 0 ];then
+		LOG_MSG "[FATAL]:-Error generated from SQL file, dumping out to log file"
+		$CAT $TMP_OUTPUT_FILE >> $LOG_FILE
+		RM_TMP_FILE
+		if [ $COPY_REC -eq 1 ];then
+			REVERT_BACK
+		fi
+		ERROR_EXIT "[FATAL]:-Failed to run SQL file, check log file for error messages." 2
+	else
+		LOG_MSG "[INFO]:-Completed run of generated SQL file"
+	fi			
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+RUN_INDEX_SQL () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Running generated index creation SQL file"
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -f $IDX_TMP_FILE > $TMP_OUTPUT_FILE 2>&1
+	if [ `$GREP -ci ERROR $TMP_OUTPUT_FILE` -ne 0 ];then
+		LOG_MSG "[FATAL]:-Error generated from SQL IDX file, dumping out to log file"
+		$CAT $TMP_OUTPUT_FILE >> $LOG_FILE
+                RM_TMP_FILE
+		if [ $COPY_REC -eq 1 ];then	
+			REVERT_BACK
+		fi
+		ERROR_EXIT "[FATAL]:-Failed to run index creation SQL file, check log file for error messages." 2
+	else
+		LOG_MSG "[INFO]:-Completed run of generated SQL file"
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+COPY_DATA () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Starting record insert into new partitioned master table"
+	STEP_BACK=2
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "INSERT into $PARENT_TABLE_NAME (select * from $SECURE_TABLE_NAME);" >> $LOG_FILE 2>&1
+	if [ $? -ne 0 ];then
+		LOG_MSG "[WARN]:-Failed to copy records to new partitioned master table"
+		REVERT_BACK
+	else
+		LOG_MSG "[INFO]:-Successfully copied records to new partitioned master table"
+	fi	
+	LOG_MSG "[INFO]:-Removing secured table $SECURE_TABLE_NAME"
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "DROP TABLE ${SECURE_TABLE_NAME};" >> $LOG_FILE 2>&1
+	ERROR_CHK $? "drop of ${SECURE_TABLE_NAME}" 2
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+ANALYZE_CHILD_TABLES () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "ANALYZE ${PARENT_TABLE_NAME};" >> $LOG_FILE 2>&1
+	for SUFFIX in "${SUFFIX_ARRAY[@]}"
+	do
+	LOG_MSG "[INFO]:-Running analyze on ${PARENT_TABLE_NAME}_$SUFFIX"
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "ANALYZE ${PARENT_TABLE_NAME}_$SUFFIX;" >> $LOG_FILE 2>&1
+	done
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+DISPLAY_COUNTS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	MASTER_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT COUNT(*) from only ${PARENT_TABLE_NAME};"`
+	LOG_MSG "[INFO]:-Master table $TABLE_NAME has record count = $MASTER_COUNT"
+	for SUFFIX in "${SUFFIX_ARRAY[@]}"
+	do
+		SUFFIX_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT COUNT(*) from ${PARENT_TABLE_NAME}_$SUFFIX;"`
+		if [ $SUFFIX_COUNT -gt 0 ];then
+		LOG_MSG "[INFO]:-Table suffix $SUFFIX has record count = $SUFFIX_COUNT"
+		fi
+	done
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+RM_TMP_FILE () {
+	$RM -f $TMP_FILE
+	$RM -f $IDX_TMP_FILE
+	$RM -f $TMP_OUTPUT_FILE
+}
+#******************************************************************************
+# Main Section
+#******************************************************************************
+trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
+if [ $# -ne 0 ]; then
+		while getopts ":vt:'?'aql:d:c:x:p:rn:s:f:bi:e:g:o:um:" opt;do
+			case $opt in
+				v ) VERSION_INFO ;;
+				'?' ) USAGE ;;
+				d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
+				x ) ALT_DB_NAME=$OPTARG ;;
+				a ) unset INTERACTIVE ;;
+				q ) unset VERBOSE ;;
+				l ) LOG_DIR=$OPTARG ;;
+				t ) PARENT_TABLE_NAME=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
+				f ) PART_COLUMN=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
+				m ) CONVERSION_CMD=$OPTARG ;;
+				p ) PART_TYPE=$OPTARG ;;
+				r ) RULE_GEN=1 ;;
+				b ) CHILD_COUNT_REC=1 ;;
+				u ) CREATE_PART_INDEX=1 ;;
+				i ) INDEX_COLUMN=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
+				c ) CONSTRAINT_TYPE=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
+				s ) START_DATE_OR_VALUE=$OPTARG ;;
+				n ) GENERATION_COUNT=$OPTARG ;;
+				e ) END_VALUE=$OPTARG ;;
+				g ) NUMERIC_INCREMENT=$OPTARG ;;
+				o ) PART_LIST=$OPTARG ;;
+				* ) USAGE ;;
+				esac
+		done	
+fi
+if [ x"" != x"$LOG_DIR" ];then
+	CHK_DIR $LOG_DIR
+	if [ $EXISTS -eq 1 ]; then
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+	else
+		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
+	fi
+fi
+LOG_MSG "[INFO]:-Start Main"
+LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+if [ x"" != x"$MPPHOME" ];then
+	APP_PATH=${MPPHOME}/bin
+else
+	APP_PATH=${BIZHOME}/bin
+fi
+CHK_ON_PASSIVE_STANDBY
+GET_QD_DB_NAME
+if [ x"" != x"$ALT_DB_NAME" ];then 
+		QD_DBNAME=$ALT_DB_NAME
+fi
+CHK_PARAM
+VALIDATE_PARAM
+VALIDATE_PROCESS
+SELECT_PROCESS_TYPE
+if [ x"" != x"$INTERACTIVE" ];then
+	PROMPT_CONTINUE
+fi
+GENERATE_SQL
+if [ $COPY_REC -eq 1 ];then
+	SECURE_DATA
+fi
+RUN_GENERATE_SQL
+if [ $COPY_REC -eq 1 ];then
+	COPY_DATA
+	if [ $CHILD_COUNT_REC -eq 1 ];then
+		DISPLAY_COUNTS
+	fi
+fi
+if [ x"" != x"$INDEX_COLUMN" ] || [ $CREATE_PART_INDEX -eq 1 ];then
+	RUN_INDEX_SQL
+fi
+ANALYZE_CHILD_TABLES
+RM_TMP_FILE
+LOG_MSG "[INFO]:-End Main"
+exit $EXIT_STATUS
