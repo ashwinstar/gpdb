@@ -64,8 +64,8 @@ USAGE () {
 	$ECHO
         $ECHO "      `basename $0`"
 	$ECHO
-        $ECHO "    Reports the data skew for a table within an MPP database."
-	$ECHO "      Reports the segments with the most and least number of records,"
+        $ECHO "      Reports the data skew for a table within an MPP database."
+	$ECHO "      Displays the segments with the most and least number of records,"
 	$ECHO "      calculates the variance of records between these two segments,"
 	$ECHO "      and reports the elapsed response time for the segment host."
         $ECHO
@@ -76,6 +76,9 @@ USAGE () {
         $ECHO "      -?, display this help message & exit"
         $ECHO "      -v, display version information & exit"
 	$ECHO
+	$ECHO "      Connection options:"
+        $ECHO "      -d, <master instance directory> name of alternative master instance to connect [optional]"
+	$ECHO
 	$ECHO "      Logging options:"
 	$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
 	$ECHO "      -q, quiet mode, only useful where -f option also used"
@@ -84,11 +87,8 @@ USAGE () {
 	$ECHO "      -t, <table name> [mandatory]"
 	$ECHO "      -a, <database name> alternative database name [default ${QD_DBNAME}]"
 	$ECHO "      -f, display full results output [default summary]"
-	$ECHO "      -c, display distribution columns for table, do not compute skew"
+	$ECHO "      -c, display information for table, do not compute skew"
 	$ECHO "      -m, use mirror segment hosts for skew analysis [default primary segments]"
-	$ECHO
-	$ECHO "      Connection options:"
-        $ECHO "      -d, <master instance directory> name of alternative master instance to connect [optional]"
         $ECHO
         $ECHO "      Return codes:"
         $ECHO "      0 No problems encountered with requested operation"
@@ -100,12 +100,16 @@ USAGE () {
 
 GET_DISTRIB_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	if [ `$ECHO $DISTRIB_COLS |$GREP -c "{"` -ne 0 ];then
-		LOG_MSG "[INFO]:-Obtaining OID for $TABLENAME on QD"
+	GET_TABLE_TYPE $TARGETTBL $MASTER_PORT $QD_DBNAME
+	PARENT_TAB_TYPE=$TAB_TYPE
+	PARENT_TAB_PARENT_NAME=$TAB_PARENT_NAME
+	if [ $DISTRIB_COLS != "0" ];then
+		LOG_MSG "[INFO]:-Obtaining OID for $TABLENAME on Master instance"
 		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$TABLENAME' and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 		ERROR_CHK $? "obtain table oid value" 2
 	TOTAL_COLS=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select max(attnum) from pg_attribute where attrelid=${TABLE_OID};"`
 	ERROR_CHK $? "obtain table column count" 2
+	LOG_MSG "[INFO]:-------------------------------------------"
 	LOG_MSG "[INFO]:-Distribution columns for $TARGETTBL"
 	LOG_MSG "[INFO]:-------------------------------------------"
 	COLNUM=0
@@ -115,21 +119,35 @@ GET_DISTRIB_INFO () {
 		((COLNUM=$COLNUM+1))
 		LOG_MSG "[INFO]:-Distribution column $COLNUM at DDL position $ATT_NUM is named $DIS_COL_NAME"
 	done
+	LOG_MSG "[INFO]:-------------------------------------------"
 	LOG_MSG "[INFO]:-Total columns in table $TARGETTBL = $TOTAL_COLS"
 	LOG_MSG "[INFO]:-------------------------------------------"
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Child table check indicates $TARGETTBL is $TAB_TYPE_TXT"
 	if [ $PARTITIONED == 't' ];then
+		PARENT_TABLE_COUNT=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from only $TARGETTBL;"`
+		LOG_MSG "[INFO]:-Parent table physically contains $PARENT_TABLE_COUNT records"	
 		LOG_MSG "[INFO]:-Table $TARGETTBL is type Partitioned"
-		PARENT_TABLE_RELFILENODE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relfilenode from pg_class where relname='$TABLENAME' and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
-		CHILD_NAME_ARRAY=(`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relname from pg_class where relkind='r' and relfilenode in (select inhrelid from pg_inherits where inhparent=$PARENT_TABLE_RELFILENODE);"|$TR '\n' ' '`)
+		PARENT_TABLE_RELFILENODE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select oid from pg_class where relname='$TABLENAME' and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+		CHILD_NAME_ARRAY=(`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relname from pg_class where relkind='r' and oid in (select inhrelid from pg_inherits where inhparent=$PARENT_TABLE_RELFILENODE);"|$TR '\n' ' '`)
+		LOG_MSG "[INFO]:-------------------------------------------"
+		LOG_MSG "[INFO]:-Child table details"
+		LOG_MSG "[INFO]:-------------------------------------------"
 		for C_NAME in ${CHILD_NAME_ARRAY[@]}
 		do
-			LOG_MSG "[INFO]:-Has child table $C_NAME"
+			GET_DISTRIB_COLS ${SCHEMA_NAME}.$C_NAME $MASTER_PORT $QD_DBNAME
+			GET_TABLE_TYPE ${SCHEMA_NAME}.$C_NAME $MASTER_PORT $QD_DBNAME
+			LOG_MSG "[INFO]:-Table=$C_NAME distribution columns=$DISTRIB_COLS"
 		done	
+		LOG_MSG "[INFO]:-------------------------------------------"
+		if [ $PARENT_TAB_TYPE -eq 1 ];then
+			LOG_MSG "[INFO]:-Table $TABLENAME is also a child table"
+			LOG_MSG "[INFO]:-Parent table is $PARENT_TAB_PARENT_NAME"
+		fi
 	fi
 	else
 		LOG_MSG "[INFO]:-Distribution columns are of type special"
 	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 GET_NODE_COUNT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
@@ -138,6 +156,7 @@ GET_NODE_COUNT () {
 		T_NAME=`$ECHO $TARGETTBL|$CUT -d. -f2`
 	fi
 	SEGCOUNT=0
+	DIS_COL_ARRAY=(`$PSQL -p $MASTER_PORT  $QD_DBNAME -R" " -A -t -c "select  a.attname from pg_class c,  mpp_distribution_policy d, pg_attribute a where c.oid = d.localoid and a.attrelid = d.localoid and  a.attnum = ANY ( d.attrnums ) and c.relname='$T_NAME' and c.relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`)
 	NUM_SEGMENTS=`$PSQL -p $MASTER_PORT  $QD_DBNAME -A -t -c "select count(*) from $CONFIG_TABLE where content<>-1 and isprimary='t';"`
 	ERROR_CHK $? "obtain number of segment instances" 2
 	if [ $NUM_SEGMENTS = 1 ];then
@@ -180,7 +199,7 @@ GET_NODE_COUNT () {
 		((REC_COUNT=$REC_COUNT+$RECS))
 	done
 	MinSkew=10000000000000
-	MaxSkew=0
+	MaxSkew=-1
 	while read DATA
 	do
 		Port=`$ECHO $DATA|$TAIL -1|$CUT -d'|' -f2`
@@ -219,14 +238,20 @@ GET_NODE_COUNT () {
 	LOG_MSG "-------------------------------------------------------------------"
 	LOG_MSG "[INFO]:-Table of results for Table $TARGETTBL in database $QD_DBNAME"
 	if [ $PARTITIONED == 't' ];then
-	LOG_MSG "[INFO]:-Table $TARGETTBL is type Partitioned"
+		LOG_MSG "[INFO]:-Table $TARGETTBL is type Partitioned and $TAB_TYPE_TXT"
+		PARENT_TABLE_COUNT=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from only $TARGETTBL;"`
+		LOG_MSG "[INFO]:-Parent table physically contains $PARENT_TABLE_COUNT records"	
 	else
-	LOG_MSG "[INFO]:-Table $TARGETTBL is type Un-Partitioned"
+	LOG_MSG "[INFO]:-Table $TARGETTBL is type Un-Partitioned and $TAB_TYPE_TXT"
+	fi
+	if [ $TAB_TYPE -eq 1 ];then
+		LOG_MSG "[INFO]:-Parent table list = ${TAB_PARENT_NAME[@]}"
 	fi
 	LOG_MSG "-------------------------------------------------------------------"
-	LOG_MSG "[INFO]:-Distribution columns = $DISTRIB_COLS"
+	LOG_MSG "[INFO]:-Attribute Number of Distribution Column(s) = $DISTRIB_COLS"
+	LOG_MSG "[INFO]:-Distribution Column Name(s)                = `$ECHO ${DIS_COL_ARRAY[@]}`"
 	LOG_MSG "-------------------------------------------------------------------"
-	LOG_MSG "[INFO]:-Total records = $REC_COUNT"
+	LOG_MSG "[INFO]:-Total records                              = $REC_COUNT"
 	LOG_MSG "-------------------------------------------------------------------"
 	LOG_MSG "[INFO]:-Distribution for $TYPE_TEXT"
 	LOG_MSG "-------------------------------------------------------------------"
@@ -302,11 +327,12 @@ if [ x"" != x"$TARGETTBL" ];then
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Table $TARGETTBL does not exist" 2
 	else
-		GET_DISTRIB_COLS $TABLENAME $MASTER_PORT $QD_DBNAME
+		GET_DISTRIB_COLS $TARGETTBL $MASTER_PORT $QD_DBNAME
 		if [ $DISTRIB -eq 1 ];then
 			GET_DISTRIB_INFO
 		else
-		GET_NODE_COUNT
+			GET_TABLE_TYPE $TARGETTBL $MASTER_PORT $QD_DBNAME
+			GET_NODE_COUNT
 		fi
 	fi
 else
