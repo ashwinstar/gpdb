@@ -29,6 +29,7 @@
 #include "rewrite/rewriteHandler.h"
 #include "tcop/pquery.h"
 #include "utils/memutils.h"
+#include "utils/resscheduler.h"
 #include "cdb/cdbgang.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
@@ -163,6 +164,18 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 	 */
 	verify_shared_snapshot_ready();
 	
+	/*
+	 * If Resource Scheduling is enabled, then record if this portal is
+	 * holdable or not in the portal's increment record.
+	 */
+	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	{
+		if (portal->cursorOptions & CURSOR_OPT_HOLD )
+		{
+			ResIncrementUpdate(-1, portal->portalId, true, false);
+		}
+	}
+
 	/*
 	 * Start execution, inserting parameters if any.
 	 */

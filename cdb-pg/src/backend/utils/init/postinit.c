@@ -48,6 +48,7 @@
 #include "utils/guc.h"
 #include "utils/portal.h"
 #include "utils/relcache.h"
+#include "utils/resscheduler.h"
 #include "utils/syscache.h"
 #include "utils/tqual.h"  		/* SharedSnapshot */
 #include "pgstat.h"
@@ -626,6 +627,10 @@ ShutdownPostgres(int code, Datum arg)
 {
 	/* Make sure we've killed any active transaction */
 	AbortOutOfAnyTransaction();
+
+	/* Final cleanup for any resource locks (holdable cursors). */
+	if (ResourceScheduler)
+		ResLockReleaseAll(true, true, true);
 
 	/*
 	 * User locks are not released by transaction end, so be sure to release

@@ -1014,7 +1014,7 @@ ResLockWaitCancel(void)
  *	at main transaction commit or abort.
  */
 void
-ResProcReleaseLocks(void)
+ResProcReleaseLocks(bool isCommit, bool releaseHold)
 {
 	if (!MyProc)
 		return;
@@ -1023,7 +1023,7 @@ ResProcReleaseLocks(void)
 	ResLockWaitCancel();
 
 	/* release resource locks*/
-	ResLockReleaseAll();
+	ResLockReleaseAll(true, isCommit, releaseHold);
 }
 
 
@@ -1032,161 +1032,23 @@ ResProcReleaseLocks(void)
  * the current resource owner for current process.
  */
 void
-ResProcReleaseCurrentOwner(void)
+ResProcReleaseCurrentOwner(bool isCommit, bool releaseHold)
 {
-	LOCKMODE		lockmode = ExclusiveLock;
-	LockMethod		lockMethodTable;
-	LWLockId		masterLock;
-	LOCK			*lock;
-	PROCLOCK		*proclock;
-	SHM_QUEUE		*procLocks = &(MyProc->procLocks);
-	SHM_QUEUE		*portalLinks;
-
-
-	/* Setup the lock method bits. */
-	lockMethodTable = LockMethods[RESOURCE_LOCKMETHOD];
-	if (!lockMethodTable)
-		elog(ERROR, "unrecognized lock method: %d", RESOURCE_LOCKMETHOD);
-
-
-	/* We are going to examine the shared lock table. */
-	masterLock = lockMethodTable->masterLock;
-	LWLockAcquire(masterLock, LW_EXCLUSIVE);
-
-	proclock = (PROCLOCK *) SHMQueueNext(procLocks, procLocks,
-										 offsetof(PROCLOCK, procLink));
-
-	while (proclock)
-	{
-
-		PROCLOCK	*nextplock;
-
-		/* Get link first, since we may unlink/delete this one. */
-		nextplock = (PROCLOCK *) SHMQueueNext(procLocks, &proclock->procLink,
-											  offsetof(PROCLOCK, procLink));
-
-		Assert(proclock->tag.proc == MAKE_OFFSET(MyProc));
-		
-		lock = (LOCK *) MAKE_PTR(proclock->tag.lock);
-
-		/*
-		 * if the lock is a resource lock, then release it.
-		 */
-		if (lock->tag.locktag_lockmethodid == RESOURCE_LOCKMETHOD)
-		{
-
-			proclock->releaseMask = proclock->holdMask;
-
-			Assert(lock->nRequested >= 0);
-			Assert(lock->nGranted >= 0);
-			Assert(lock->nGranted <= lock->nRequested);
-			Assert((proclock->holdMask & ~lock->grantMask) == 0);
-
-
-			/*
-			 * Release the lock.
-			 * (LockReleaseAll checks return of Ungrant... maybe you should too
-			 * TODO - discuss)
-			 *
-			 * We need to release the lock as many times as we have acquired it,
-			 * so need to iterate through the portal increment list.
-			 */
-			if (proclock->releaseMask & LOCKBIT_ON(lockmode))
-			{
-
-				ResPortalIncrement		*incrementSet;
-				ResPortalIncrement		*nextiSet;
-				ResPortalTag			portalTag;
-
-				/* List of portal increments for this proclock. */
-				portalLinks = &(proclock->portalLinks);
-
-				incrementSet = (ResPortalIncrement *) SHMQueueNext(portalLinks, 
-									portalLinks,
-									offsetof(ResPortalIncrement, portalLink));
-
-				while (incrementSet)
-				{
-
-					/* 
-					 * Get link first, since we will unlink/delete this one,
-					 * and compute a portalTag for removing the increment set
-					 * itself.
-					 */
-					nextiSet = (ResPortalIncrement *) SHMQueueNext(portalLinks, 
-									&incrementSet->portalLink,
-									offsetof(ResPortalIncrement, portalLink));
-					MemSet(&portalTag, 0, sizeof(ResPortalTag));
-					portalTag.pid = MyProc->pid;
-					portalTag.portalId = incrementSet->portalId;
-
-					/* 
-					 * If the increment is owned by current resource owner
-					 * then release the corrosponding lock.
-					 */
-					if (incrementSet->owner == CurrentResourceOwner)
-					{
-						elog(DEBUG1, "releasing portal %u pid %d",
-									 portalTag.portalId, portalTag.pid);
-
-						/* 
-						 * If still holding the lock now, ungrant and decrement 
-						 * the limit counters. 
-						 */
-						if (incrementSet->portalId != MyProc->waitPortalId)
-						{
-							ResUnGrantLock(lock, proclock);
-							ResLockUpdateLimit(lock, proclock, incrementSet, 
-											   false);
-						}
-
-						/* 
-						 * Unlink this portalId, and delete it from the portal 
-						 * hash.
-						 */
-						if (!ResIncrementRemove(&portalTag))
-						{
-							LWLockRelease(masterLock);
-							elog(ERROR, 
-								 "no increment to remove for portal %u pid %d",
-								 portalTag.portalId, portalTag.pid);
-						}
-
-					}
-
-					/* Get the next increment set to process. */
-					incrementSet = nextiSet;
-				}
-
-			}
-
-			Assert((lock->nRequested >= 0) && (lock->nGranted >= 0));
-			Assert(lock->nGranted <= lock->nRequested);
-
-			proclock->releaseMask = 0;
-			ResCleanUpLock(lock, proclock);
-
-		}
-
-		/*
-		 * Set next proclock.
-		 */
-		proclock = nextplock;
-
-	}
-
-	LWLockRelease(masterLock);
-
-	return;
+	ResLockReleaseAll(false, isCommit, releaseHold);
 }
 
 
 /*
  * ResLockReleaseAll -- Release all resource locks that are held by the 
- *	current process.
+ *	current process, or just the current resourceowner if !isAllOwners.
+ *
+ * Notes
+ *	The merging of ResProcReleaseCurrentOwner() with this function complicates
+ *	the logic a little, but seems worthwhile as otherwise almost all of the 
+*	code is duplicated in these two functions, which seems clumsy.
  */
 void
-ResLockReleaseAll(void)
+ResLockReleaseAll(bool isAllOwners, bool isCommit, bool releaseHold)
 {
 	LOCKMODE		lockmode = ExclusiveLock;
 	LockMethod		lockMethodTable;
@@ -1195,7 +1057,7 @@ ResLockReleaseAll(void)
 	PROCLOCK		*proclock;
 	SHM_QUEUE		*procLocks = &(MyProc->procLocks);
 	SHM_QUEUE		*portalLinks;
-
+	bool			foundHoldable;		/* Found lock for a holdable cursor? */
 
 	/* Setup the lock method bits. */
 	lockMethodTable = LockMethods[RESOURCE_LOCKMETHOD];
@@ -1214,6 +1076,7 @@ ResLockReleaseAll(void)
 	{
 
 		PROCLOCK	*nextplock;
+		foundHoldable = false;
 
 		/* Get link first, since we may unlink/delete this one. */
 		nextplock = (PROCLOCK *) SHMQueueNext(procLocks, &proclock->procLink,
@@ -1274,29 +1137,68 @@ ResLockReleaseAll(void)
 					portalTag.pid = MyProc->pid;
 					portalTag.portalId = incrementSet->portalId;
 
-					elog(DEBUG1, "releasing portal %u pid %d",
-								 portalTag.portalId, portalTag.pid);
-
 					/* 
-					 * If still holding the lock now, ungrant and decrement 
-					 * the limit counters. 
+					 * If we are releasing all owners or otherwise
+					 * if the increment is owned by current resource owner
+					 * then release the corrosponding lock.
 					 */
-					if (incrementSet->portalId != MyProc->waitPortalId)
+					if (isAllOwners ||
+						incrementSet->owner == CurrentResourceOwner)
 					{
-						ResUnGrantLock(lock, proclock);
-						ResLockUpdateLimit(lock, proclock, incrementSet, false);
-					}
+						/*
+						 * If we are aborting the transaction that created a
+						 * holdabel portal, then it is going to be destroyed,
+						 * otherwise we record that the portal has passed a
+						 * commit.
+						 */
+						if (incrementSet->isHold && !releaseHold)
+						{ 
+							if (!isCommit && !incrementSet->isCommitted)
+								incrementSet->isHold = false;
+	
+							else if (isCommit && !incrementSet->isCommitted)
+							{
+								incrementSet->isCommitted = true;
+								foundHoldable = true;
+							}
+						}
 
-					/* 
-					 * Unlink this portalId, and delete it from the portal 
-					 * hash.
-					 */
-					if (!ResIncrementRemove(&portalTag))
-					{
-						LWLockRelease(masterLock);
-						elog(ERROR, 
-							 "no increment to remove for portal %u pid %d",
-							 portalTag.portalId, portalTag.pid);
+						/*
+						 * if we have specified that all resource locks are to 
+						 * be released, then do them all, otherwise only do the
+						 * non holdable portals.
+						 */
+						if (releaseHold ||
+						    (!releaseHold && !incrementSet->isHold))
+						{
+							elog(DEBUG1, "releasing portal %u pid %d",
+										 portalTag.portalId, portalTag.pid);
+
+							/* 
+							 * If still holding the lock now, ungrant and 
+							 * decrement the limit counters. 
+							 */
+							if (incrementSet->portalId != MyProc->waitPortalId)
+							{
+								ResUnGrantLock(lock, proclock);
+								ResLockUpdateLimit(lock, proclock, 
+												  incrementSet, false);
+							}
+
+							/* 
+							 * Unlink this portalId, and delete it from the 
+							 * portal hash.
+							 */
+							if (!ResIncrementRemove(&portalTag))
+							{
+								LWLockRelease(masterLock);
+								elog(ERROR, 
+								 "no increment to remove for portal %u pid %d",
+									 portalTag.portalId, portalTag.pid);
+							}
+
+						}
+
 					}
 
 					/* Get the next increment set to process. */
@@ -1308,8 +1210,11 @@ ResLockReleaseAll(void)
 			Assert((lock->nRequested >= 0) && (lock->nGranted >= 0));
 			Assert(lock->nGranted <= lock->nRequested);
 
-			proclock->releaseMask = 0;
-			ResCleanUpLock(lock, proclock);
+			if (!foundHoldable || releaseHold)
+			{
+				proclock->releaseMask = 0;
+				ResCleanUpLock(lock, proclock);
+			}
 
 		}
 
@@ -1402,6 +1307,8 @@ ResIncrementAdd(ResPortalIncrement *incSet,
 		incrementSet->pid = incSet->pid;
 		incrementSet->portalId = incSet->portalId;
 		incrementSet->owner = owner;
+		incrementSet->isHold = false;		/* Is not set till actual open. */
+		incrementSet->isCommitted = false;
 		for (i = 0 ; i < NUM_RES_LIMIT_TYPES ; i++)
 		{
 			incrementSet->increments[i] = incSet->increments[i];
@@ -1549,4 +1456,47 @@ ResQueueHashFind(Oid queueid)
 		return NULL;
 
 	return (ResQueue) queue;
+}
+
+/*
+ * ResIncrementUpdate -- change Holdable and first commit flags for a portal
+ *	increment.
+ *
+ * Notes
+ *	Unlike most other such routines, the LW lock explicitly acquired.
+ *	This is because it is called from places external to the resource lock
+ *	setup/teardown.
+ */
+void
+ResIncrementUpdate(int pid, uint32 portalId, bool isHold, bool isCommitted)
+{
+	ResPortalTag			portalTag;
+	ResPortalIncrement		*incrementSet;
+
+	/* Take LW lock before messing with the portal hash. */
+	LWLockAcquire(LockMgrLock, LW_EXCLUSIVE);
+
+	if ( pid < 0)
+		pid = MyProc->pid;
+
+	/* Prepare a search tag, find the increment and update it.*/
+	MemSet(&portalTag, 0, sizeof(ResPortalTag));
+	portalTag.pid = pid;
+	portalTag.portalId = portalId;
+	
+	incrementSet = ResIncrementFind(&portalTag);
+	
+	if (incrementSet)
+	{
+		/* 
+		 * Don't worry about the not found case - there are then more serious 
+		 * problems that will be made apparent in later checks.
+		 */
+		incrementSet->isHold = isHold;
+		incrementSet->isCommitted = isCommitted;
+	}
+
+	LWLockRelease(LockMgrLock);
+
+	return;
 }

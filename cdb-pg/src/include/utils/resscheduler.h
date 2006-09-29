@@ -82,6 +82,8 @@ typedef struct ResPortalIncrement
 	int			pid;					/* Process this increment is for. */
 	uint32		portalId;				/* Portal Id */
 	ResourceOwner	owner;				/* Resource Owner. */
+	bool		isHold;					/* Holdable cursor? */
+	bool		isCommitted;			/* 1st commit complete? */
 	SHM_QUEUE	portalLink;				/* List link in PROCLOCKS list 
 										   of ResPortalIncrements. */
 	/* The increments - use Cost as it has a suitably large range. */
@@ -132,9 +134,11 @@ extern void				ResProcLockWakeup(LOCK *lock);
 extern PGPROC 			*ResProcWakeup(PGPROC *proc, int waitStatus);
 extern void				ResRemoveFromWaitQueue(PGPROC *proc);
 extern void				ResLockWaitCancel(void);
-extern void				ResProcReleaseLocks(void);
-extern void				ResProcReleaseCurrentOwner(void);
-extern void				ResLockReleaseAll(void);
+extern void				ResProcReleaseLocks(bool isCommit, bool releaseHold);
+extern void				ResProcReleaseCurrentOwner(bool isCommit, 
+												   bool releaseHold);
+extern void				ResLockReleaseAll(bool isAllOwners, bool isCommit, 
+										  bool releaseHold);
 extern ResPortalIncrement	*ResIncrementAdd(ResPortalIncrement *incSet,
 											PROCLOCK *proclock,
 											ResourceOwner owner);
@@ -144,6 +148,8 @@ extern bool					ResPortalIncrementHashTableInit(void);
 extern bool 			ResQueueHashTableInit(void);
 extern ResQueue			ResQueueHashNew(Oid queueid);
 extern ResQueue			ResQueueHashFind(Oid queueid);
+extern void				ResIncrementUpdate(int pid, uint32 portalId, 
+										   bool isHold, bool isCommitted);
 
 
 /*
