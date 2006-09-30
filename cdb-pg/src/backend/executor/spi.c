@@ -172,8 +172,8 @@ can_execute_this_locally(const char * src)
 	 * Ok, we have an SQL statement, that probably can only be dispatched by the QD
 	 */
 	 
-	/**** TEMP ****/
-	elog(ERROR, "Functions that execute SQL statements are not yet supported");
+	if (!mpp_enable_functions)
+		elog(ERROR, "Functions that execute SQL statements from the segDBs are not yet supported");
 
 	return false;
 }
@@ -766,7 +766,6 @@ SPI_execute_snapshot(void *plan,
 					 bool read_only, long tcount)
 {
 	int			res;
-	elog(NOTICE,"SPI_execute_snapshot");
 
 	if (plan == NULL || tcount < 0)
 		return SPI_ERROR_ARGUMENT;
@@ -2007,6 +2006,12 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 	/* Be sure to restore ActiveSnapshot on error exit */
 	saveActiveSnapshot = ActiveSnapshot;
 	
+	if (Mpp_role == MPP_ROLE_EXECUTE)
+	{
+		if (!Mpp_is_primary && !read_only)
+			elog(WARNING,"Stored procedure running on mirror...");
+	}
+	
 	/* 
 	 * If we can't execute this SQL statement locally, let's connect back to the QD
 	 * and ask it to execute the command for us.
@@ -2038,7 +2043,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 		
 		if (_QD_conn == NULL)
 		{
-			elog(ERROR,"We can't execute this SQL statement because we can't connect back to the QD");
+			elog(ERROR,"We can't execute this SQL statement because we can't connect back to the masterDB");
 		}
 		
 		/*

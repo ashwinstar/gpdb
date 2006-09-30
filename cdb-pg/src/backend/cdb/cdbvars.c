@@ -52,6 +52,8 @@ int 		mpp_session_id;    /* global unique id for session. */
 
 char       *mpp_qd_callback_info;	/* info for QE to call back to QD */
 
+bool		mpp_enable_functions; 	/* allow functions that call back from QE to QD */
+
 bool 		mpp_is_callback;		/* are we executing a callback query? */
 
 SHMEM_OFFSET mpp_qd_proc_offset;	/* the proc entry for the original backend on the QD */

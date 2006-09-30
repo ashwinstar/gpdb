@@ -163,6 +163,10 @@ extern bool mpp_use_snapshop_during_callback;
 extern SHMEM_OFFSET mpp_qd_proc_offset;
 
 /*
+ * Allow callback query?
+ */
+extern bool mpp_enable_functions;
+/*
  * Are we executing a callback query?
  */
 extern bool mpp_is_callback;

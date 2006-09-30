@@ -1101,6 +1101,16 @@ static struct config_bool ConfigureNamesBool[] =
     	&Mpp_write_shared_snapshot,
     	false, assign_mpp_write_shared_snapshot, NULL
     },
+    
+    {
+    	{"mpp_enable_functions", PGC_USERSET, UNGROUPED,
+    		gettext_noop("Enable functions that must use the callback from the QE to QD."),
+    		NULL,
+    		GUC_NOT_IN_SAMPLE
+    	},
+    	&mpp_enable_functions,
+    	false, NULL, NULL
+    },
 	
     {
     	{"mpp_use_snapshop_during_callback", PGC_USERSET, UNGROUPED,

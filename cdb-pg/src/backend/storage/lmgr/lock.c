@@ -597,7 +597,14 @@ LockAcquire(LOCKMETHODID lockmethodid,
 	 */
 	MemSet(&proclocktag, 0, sizeof(PROCLOCKTAG));		/* must clear padding */
 	proclocktag.lock = MAKE_OFFSET(lock);
-	proclocktag.proc = MAKE_OFFSET(MyProc);
+	
+	if (mpp_enable_functions && mpp_is_callback && mpp_qd_proc_offset!=-1 && Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		elog(DEBUG1,"Special callback lock handling: my proc = %ld, but using mpp_qd_proc_offset = %ld",(long)MAKE_OFFSET(MyProc),(long)mpp_qd_proc_offset);
+		proclocktag.proc = mpp_qd_proc_offset;
+	}
+	else
+		proclocktag.proc = MAKE_OFFSET(MyProc);
 
 	/*
 	 * Find or create a proclock entry with this tag
@@ -639,6 +646,11 @@ LockAcquire(LOCKMETHODID lockmethodid,
 		proclock->releaseMask = 0;
 		/* Add proclock to appropriate lists */
 		SHMQueueInsertBefore(&lock->procLocks, &proclock->lockLink);
+		if (mpp_enable_functions && mpp_is_callback && mpp_qd_proc_offset!=-1 && Mpp_role == MPP_ROLE_DISPATCH)
+		{
+			SHMQueueInsertBefore(&((PGPROC *)MAKE_PTR(mpp_qd_proc_offset))->procLocks, &proclock->procLink);
+		}
+		else
 		SHMQueueInsertBefore(&MyProc->procLocks, &proclock->procLink);
 		PROCLOCK_PRINT("LockAcquire: new", proclock);
 	}
@@ -697,6 +709,22 @@ LockAcquire(LOCKMETHODID lockmethodid,
 	 * We shouldn't already hold the desired lock; else locallock table is
 	 * broken.
 	 */
+	if (mpp_enable_functions && mpp_is_callback)
+	{
+		if (proclock->holdMask & LOCKBIT_ON(lockmode))
+		{
+			elog(LOG, "lock %s on object %u/%u/%u is already held",
+				 lock_mode_names[lockmode],
+				 lock->tag.locktag_field1, lock->tag.locktag_field2,
+				 lock->tag.locktag_field3);
+			//GrantLock(lock, proclock, lockmode);
+			//GrantLockLocal(locallock, owner);
+			LWLockRelease(masterLock);
+			return LOCKACQUIRE_ALREADY_HELD;
+		}
+		
+	}
+	else
 	if (proclock->holdMask & LOCKBIT_ON(lockmode))
 		elog(ERROR, "lock %s on object %u/%u/%u is already held",
 			 lock_mode_names[lockmode],
@@ -711,8 +739,16 @@ LockAcquire(LOCKMETHODID lockmethodid,
 	if (lockMethodTable->conflictTab[lockmode] & lock->waitMask)
 		status = STATUS_FOUND;
 	else
+		{
+			if (mpp_enable_functions && mpp_is_callback && mpp_qd_proc_offset!=-1 && Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				status = LockCheckConflicts(lockMethodTable, lockmode,
+									lock, proclock, (PGPROC *)MAKE_PTR(mpp_qd_proc_offset));
+			}
+			else
 		status = LockCheckConflicts(lockMethodTable, lockmode,
 									lock, proclock, MyProc);
+		}
 
 	if (status == STATUS_OK)
 	{
@@ -729,7 +765,7 @@ LockAcquire(LOCKMETHODID lockmethodid,
 		 * blocking, remove useless table entries and return NOT_AVAIL without
 		 * waiting.
 		 */
-		if (dontWait)
+		if (dontWait || (Mpp_role == MPP_ROLE_EXECUTE && mpp_is_callback && mpp_enable_functions))
 		{
 			if (proclock->holdMask == 0)
 			{
@@ -750,9 +786,13 @@ LockAcquire(LOCKMETHODID lockmethodid,
 			LWLockRelease(masterLock);
 			if (locallock->nLocks == 0)
 				RemoveLocalLock(locallock);
+			if (Mpp_role == MPP_ROLE_EXECUTE && mpp_is_callback && mpp_enable_functions)
+				elog(ERROR,"Callback routine cannot wait on locks");
 			return LOCKACQUIRE_NOT_AVAIL;
 		}
 
+		if (Mpp_role == MPP_ROLE_EXECUTE && mpp_is_callback && mpp_enable_functions)
+			elog(DEBUG1,"Waiting on Lock");
 		/*
 		 * Set bitmask of locks this process already holds on this object.
 		 */

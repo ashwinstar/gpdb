@@ -772,7 +772,7 @@ thread_DoConnect(void *arg)
 		if (!q->isprimary)
 			appendPQExpBuffer(&buffer, " -c mpp_is_primary=false");
 
-
+		appendPQExpBuffer(&buffer, " -c mpp_enable_functions=%d",mpp_enable_functions);
 		appendPQExpBuffer(&buffer, " -c mpp_qd_callback_info=port=%d",PostPortNumber);
 		
 		appendPQExpBuffer(&buffer, " -c mpp_is_callback=%d",mpp_is_callback);
