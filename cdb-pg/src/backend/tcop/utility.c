@@ -511,6 +511,13 @@ ProcessUtility(Node *parsetree,
 							ListCell   *lc;
 
 							BeginTransactionBlock();
+							
+							/* start transaction on all QE. the false means we dont
+							 * need a BEGIN to be dispatched at this time. we'll
+							 * let cdbdisp figure it out.
+							 */
+							startDtxTransaction(false);
+						
 							foreach(lc, stmt->options)
 							{
 								DefElem    *item = (DefElem *) lfirst(lc);
@@ -525,12 +532,6 @@ ProcessUtility(Node *parsetree,
 												  true);
 							}
 						}
-
-						/* start transaction on all QE. the false means we dont
-						 * need a BEGIN to be dispatched at this time. we'll
-						 * let cdbdisp figure it out.
-						 */
-						startDtxTransaction(false);
 
 						break;
 
