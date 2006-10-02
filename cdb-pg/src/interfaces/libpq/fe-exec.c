@@ -676,52 +676,62 @@ PQsendMppQuery(PGconn      *conn,
                int          flags,
                int          mpp_command_count)
 {
-        if (!PQsendQueryStart(conn))
-            return 0;
+	int query_total_size;
 
-        if (!query)
-        {
-            printfPQExpBuffer(&conn->errorMessage,
-                              libpq_gettext("command string is a null pointer\n"));
-            return 0;
-        }
+	if (!PQsendQueryStart(conn))
+		return 0;
 
-        if (!snapshotInfo)
-        {
-        	printfPQExpBuffer(&conn->errorMessage,
-        					  "snapshotInfo string is a null pointer\n");
-        	return 0;				
-        }
+	if (!query)
+	{
+		printfPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("command string is a null pointer\n"));
+		return 0;
+	}
 
+	if (!snapshotInfo)
+	{
+		printfPQExpBuffer(&conn->errorMessage,
+						  "snapshotInfo string is a null pointer\n");
+		return 0;				
+	}
 
-        /* construct the outgoing MppQuery message */
-        if (pqPutMsgStart('M', false, conn) < 0 ||
-                pqPutInt(mpp_command_count, 4, conn ) < 0 ||
-                pqPuts(snapshotInfo, conn ) < 0 ||
-                pqPutInt(flags, 4, conn ) < 0 ||
-                pqPuts(query, conn) < 0 ||
-                pqPutMsgEnd(conn) < 0)
-        {
-                pqHandleSendFailure(conn);
-                return 0;
-        }
+	/* construct the outgoing MppQuery message we want to check that
+	 * we have sufficient space up-front, before we start messing
+	 * around with our transmit state */
+	query_total_size = 16 /* overhead */ + 
+		4 /* comamnd count */ + (strlen(snapshotInfo) + 1) /* snapshot */ +
+		4 /* flags */ + (strlen(query) + 1) /* query text */;
 
-        /* remember we are using simple query protocol */
-        conn->queryclass = PGQUERY_SIMPLE;
+	if (pqCheckOutBufferSpace(query_total_size, conn))
+		return 0;
 
-        /*
-         * Give the data a push.  In nonblock mode, don't complain if we're unable
-         * to send it all; PQgetResult() will do any additional flushing needed.
-         */
-        if (pqFlush(conn) < 0)
-        {
-                pqHandleSendFailure(conn);
-                return 0;
-        }
+	if (pqPutMsgStart('M', false, conn) < 0 ||
+		pqPutInt(mpp_command_count, 4, conn ) < 0 ||
+		pqPuts(snapshotInfo, conn ) < 0 ||
+		pqPutInt(flags, 4, conn ) < 0 ||
+		pqPuts(query, conn) < 0 ||
+		pqPutMsgEnd(conn) < 0)
+	{
+		pqHandleSendFailure(conn);
+		return 0;
+	}
 
-        /* OK, it's launched! */
-        conn->asyncStatus = PGASYNC_BUSY;
-        return 1;
+	/* remember we are using simple query protocol */
+	conn->queryclass = PGQUERY_SIMPLE;
+
+	/*
+	 * Give the data a push.  In nonblock mode, don't complain if we're unable
+	 * to send it all; PQgetResult() will do any additional flushing needed.
+	 */
+	if (pqFlush(conn) < 0)
+	{
+		pqHandleSendFailure(conn);
+		return 0;
+	}
+
+	/* OK, it's launched! */
+	conn->asyncStatus = PGASYNC_BUSY;
+	return 1;
 }
 
 
