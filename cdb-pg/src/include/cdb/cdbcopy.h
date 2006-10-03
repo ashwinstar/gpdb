@@ -39,14 +39,14 @@ typedef struct CdbCopy
 	int			total_segs;		/* total number of segments in cdb */
 	int		   *mirror_map;		/* indicates how many db's each segment has */
 	bool		copy_in;		/* direction: true for COPY FROM false for COPY TO */
-	bool		data_errors;	/* true if any data
-								 * parsing/partitioning/inserting error
-								 * occured */
+	bool		local_data_err; /* data error occured locally */
+	bool		remote_data_err;/* data error occured on a remote COPY session */
 	bool		io_errors;		/* true if any I/O error occured trying to
 								 * communicate with segDB's */
 	SegDbState		**segdb_state;
 	
 	StringInfoData	err_msg;		/* error message for cdbcopy operations */
+	StringInfoData  err_context; /* error context from QE error */
 	StringInfoData	copy_out_buf;/* holds a chunk of data from the database */
 		
 	List			*outseglist;    /* segs that currently take part in copy out. 

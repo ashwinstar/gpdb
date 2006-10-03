@@ -25,6 +25,7 @@
 #include "cdb/cdbfts.h"
 #include "cdb/cdbcopy.h"
 #include "cdb/cdbgang.h"
+#include "cdb/cdbdispatchresult.h"
 
 
 /*
@@ -44,13 +45,15 @@ makeCdbCopy(bool is_copy_in)
 	c->mirror_map = NULL;
 	c->primary_writer = NULL;
 	c->mirror_writer = NULL;
-	c->data_errors = false;
+	c->local_data_err = false;
+	c->remote_data_err = false;	
 	c->io_errors = false;
 	c->copy_in = is_copy_in;
 	c->outseglist = NIL;
 	initStringInfo(&(c->err_msg));
+	initStringInfo(&(c->err_context));
 	initStringInfo(&(c->copy_out_buf));	
-
+	
 	/* init total_segs */
 	c->total_segs = getMPPSegmentCount();
 
@@ -142,7 +145,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	c->err_msg.len = 0;
 	c->err_msg.data[0] = '\0';
 	c->err_msg.cursor = 0;
-
+	
 	for (seg = 0; seg < c->total_segs; seg++)
 	{
 		for (db = 0; db < c->mirror_map[seg]; db++)
@@ -168,7 +171,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 			{
 
 				appendStringInfo(&(c->err_msg),
-								 "MPPCOPY - COPY command failed to start on %s segment %d with error: %s\n",
+								 "COPY command failed to start on %s segment %d with error: %s\n",
 								 (db == 0 ? "primary" : "mirror"), seg, PQresultErrorMessage(res));
 
 				return -1;
@@ -308,7 +311,7 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 					{
 						appendStringInfo(&(c->err_msg), "MPPCOPY - Error from segment %d: %s\n",
 										 source_seg, PQresultErrorMessage(res));
-						c->data_errors = true;
+						c->remote_data_err = true;
 					}
 					
 					/* free the PGresult object */
@@ -369,6 +372,8 @@ cdbCopyEnd(CdbCopy *c)
 	int			db;
 	int			failed_count = 0;
 	bool		err_header = false;
+	bool		primary_had_error; /* flag to consolidate pri/mir errors */
+	bool		first_error = true;
 
 	/* clean err message */
 	c->err_msg.len = 0;
@@ -380,6 +385,8 @@ cdbCopyEnd(CdbCopy *c)
 
 	for (seg = 0; seg < c->total_segs; seg++)
 	{
+		primary_had_error = false; 
+		
 		for (db = 0; db < c->mirror_map[seg]; db++)
 		{
 			/* don't close COPY session if not in progress */
@@ -410,10 +417,11 @@ cdbCopyEnd(CdbCopy *c)
 
 				if (!err_header)
 					appendStringInfo(&(c->err_msg),
-					"MPPCOPY - Failed to complete COPY on the following:\n");
+					"Failed to complete COPY on the following:\n");
 				err_header = true;
 
-				appendStringInfo(&(c->err_msg), "%s segment %d, dbid %d, attempt blocked\n", (db == 0 ? "primary" : "mirror"),
+				appendStringInfo(&(c->err_msg), "%s segment %d, dbid %d, attempt blocked\n", 
+								 (db == 0 ? "primary" : "mirror"),
 								 seg, q->segment_database_info->dbid);
 				c->io_errors = true;
 			}
@@ -430,9 +438,46 @@ cdbCopyEnd(CdbCopy *c)
 				/* if the COPY command had a data error */
 				if (PQresultStatus(res) == PGRES_FATAL_ERROR)
 				{
-					appendStringInfo(&(c->err_msg), "MPPCOPY - Data error from %s segment %d: %s\n",
-									 (db == 0 ? "primary" : "mirror"), seg, PQresultErrorMessage(res));
-					c->data_errors = true;
+					if(db == 0)
+						primary_had_error = true;
+					
+					/* 
+					 * Always append error from the primary. Append error from 
+					 * mirror only if its primary didn't have an error. 
+					 *
+					 * For now, we only report the first error we get from the
+					 * QE's.
+					 *
+					 * We get the error message in pieces so that we could append
+					 * whoami to the primary error message only.
+					 */
+					if((db == 0 || (db != 0 && !primary_had_error)) && first_error)
+					{
+						char   *pri = PQresultErrorField(res, PG_DIAG_MESSAGE_PRIMARY);
+						char   *dtl = PQresultErrorField(res, PG_DIAG_MESSAGE_DETAIL);
+						char   *ctx = PQresultErrorField(res, PG_DIAG_CONTEXT);
+												
+						appendStringInfo(&(c->err_msg), "%s", pri);
+						
+						if (q->whoami)
+							appendStringInfo(&(c->err_msg),"  (%s)", q->whoami);
+						
+						if (dtl)
+							appendStringInfo(&(c->err_msg), "\n%s", dtl);
+						
+						/*
+						 * note that due to cdb_tidy_message() in elog.c "If more than 
+						 * one line, move lines after the first to errdetail" so we save
+						 * the context in another stringInfo and fetch it in the error
+						 * callback in copy.c, so it wouldn't appear as DETAIL...
+						 */
+						if (ctx)
+							appendStringInfo(&(c->err_context), "%s", ctx);
+						
+						/* Indicate that the err_msg already was filled with one error */
+						first_error = false;
+					}
+					c->remote_data_err = true;
 				}
 
 				/* free the PGresult object */
@@ -447,7 +492,7 @@ cdbCopyEnd(CdbCopy *c)
 			{
 				if (!err_header)
 					appendStringInfo(&(c->err_msg),
-					"MPPCOPY - Failed to complete COPY on the following:\n");
+					"ERROR - Failed to complete COPY on the following:\n");
 				err_header = true;
 
 				/* command error */

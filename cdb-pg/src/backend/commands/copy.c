@@ -51,6 +51,8 @@
 #include "cdb/cdblink.h"
 #include "cdb/cdbcopy.h"
 #include "cdb/cdbhash.h"
+#include "cdb/cdbdispatchresult.h"
+
 
 #define ISOCTAL(c) (((c) >= '0') && ((c) <= '7'))
 #define OCTVALUE(c) ((c) - '0')
@@ -173,6 +175,9 @@ typedef struct CopyStateData
 	bool		end_marker;
 	char		*begloc;
 	char		*endloc;
+	bool		error_on_executor;  /* true if errors arrived from the executors COPY (QEs)*/
+	StringInfoData  executor_err_context;  /* error context text from QE */
+
 	
 	/* for CSV format */
 	bool		in_quote;
@@ -1017,7 +1022,6 @@ DoCopy(const CopyStmt *stmt)
 		 pg_database_encoding_max_length() > 1);
 	cstate->client_only_encoding = PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding);
 
-
 	cstate->copy_dest = COPY_FILE;		/* default */
 	cstate->copy_file = NULL;
 	cstate->fe_msgbuf = NULL;
@@ -1026,6 +1030,8 @@ DoCopy(const CopyStmt *stmt)
 	if (is_from)
 	{							/* copy from file to database */
 		cstate->is_copy_in = true;
+		cstate->error_on_executor = false;
+		initStringInfo(&(cstate->executor_err_context));
 		
 		if (cstate->rel->rd_rel->relkind != RELKIND_RELATION)
 		{
@@ -1697,7 +1703,7 @@ CopyToDispatch(CopyState cstate)
 		
 		if(done)
 		{
-			if(cdbCopy->data_errors || cdbCopy->io_errors)
+			if(cdbCopy->remote_data_err || cdbCopy->local_data_err || cdbCopy->io_errors)
 				appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
 
 			break;
@@ -1711,7 +1717,7 @@ CopyToDispatch(CopyState cstate)
 	/*
 	 * report all accumulated errors back to the client.
 	 */
-	if (cdbCopy->data_errors)
+	if (cdbCopy->remote_data_err || cdbCopy->local_data_err)
 		ereport(ERROR,
 				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 				 errmsg("%s", cdbcopy_err.data)));
@@ -1741,6 +1747,15 @@ copy_in_error_callback(void *arg)
 
 	CopyState	cstate = (CopyState) arg;
 	
+	/*
+	 * If we saved the error context from a QE in cdbcopy.c append it here.
+	 */
+	if(Mpp_role == MPP_ROLE_DISPATCH && cstate->executor_err_context.len > 0)
+	{
+		errcontext("%s", cstate->executor_err_context.data);
+		return;
+	}
+	
 	if (cstate->binary)
 	{
 		/* can't usefully display the data */
@@ -1760,7 +1775,7 @@ copy_in_error_callback(void *arg)
 			if (Mpp_role == MPP_ROLE_EXECUTE)
 				errcontext("COPY %s, line %d of this segment db input data, column %s",
 						   cstate->cur_relname, cstate->cur_lineno, cstate->cur_attname);
-			else
+			else if(!cstate->error_on_executor)
 				errcontext("COPY %s, line %d, column %s",
 						   cstate->cur_relname, cstate->cur_lineno, cstate->cur_attname);
 		}
@@ -1787,7 +1802,7 @@ copy_in_error_callback(void *arg)
 
 				if (Mpp_role == MPP_ROLE_EXECUTE)
 					errcontext("COPY %s, line %d of this segment db input data: \"%s\"", cstate->cur_relname, cstate->cur_lineno, cstate->line_buf.data);
-				else
+				else if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
 					errcontext("COPY %s, line %d: \"%s\"", cstate->cur_relname, cstate->cur_lineno, cstate->line_buf.data);
 			}
 			else
@@ -1802,7 +1817,7 @@ copy_in_error_callback(void *arg)
 				 */
 				if (Mpp_role == MPP_ROLE_EXECUTE)
 					errcontext("COPY %s, line %d of this segment db input data", cstate->cur_relname, cstate->cur_lineno);
-				else
+				else if(!cstate->error_on_executor)
 					errcontext("COPY %s, line %d", cstate->cur_relname, cstate->cur_lineno);
 			}
 		}
@@ -2326,10 +2341,10 @@ CopyFromDispatch(CopyState cstate)
             memcmp(readSig, BinarySignature, sizeof(BinarySignature)) != 0)
 		{
 			appendStringInfo(&cdbcopy_err, "COPY file signature not recognized");
-			cdbCopy->data_errors = true;
+			cdbCopy->local_data_err = true;
 		}
 
-		if (!cdbCopy->data_errors)
+		if (!cdbCopy->local_data_err)
 		{
 			/* Flags field */
 			if(!CopyGetInt32(cstate, &tmp))
@@ -2342,25 +2357,25 @@ CopyFromDispatch(CopyState cstate)
 			if ((tmp >> 16) != 0)
 			{
 				appendStringInfo(&cdbcopy_err, "unrecognized critical flags in COPY file header");
-				cdbCopy->data_errors = true;
+				cdbCopy->local_data_err = true;
 			}
 		}
 
 		tmp = 0;
-        if (!cdbCopy->data_errors)
+        if (!cdbCopy->local_data_err)
 		{
 			/* Header extension length */
 			if (!CopyGetInt32(cstate, &tmp) ||
 				tmp < 0)
 			{
 				appendStringInfo(&cdbcopy_err, "invalid COPY file header (missing length)");
-				cdbCopy->data_errors = true;
+				cdbCopy->local_data_err = true;
 			}
 			
 			appendBinaryStringInfo(&header_buf, (char *) &tmp, sizeof(int32));
 		}
 
-		if (!cdbCopy->data_errors)
+		if (!cdbCopy->local_data_err)
 		{
 			/* Skip extension header, if present */
 			while (tmp-- > 0)
@@ -2374,7 +2389,7 @@ CopyFromDispatch(CopyState cstate)
 				if (cstate->fe_eof)
 				{
 					appendStringInfo(&cdbcopy_err, "invalid COPY file header (wrong length)");
-					cdbCopy->data_errors = true;
+					cdbCopy->local_data_err = true;
 				}
 			}
 		}
@@ -2382,7 +2397,7 @@ CopyFromDispatch(CopyState cstate)
 		/*
 		 * Send binary header to all databases if the header is valid.
 		 */
-		if (!cdbCopy->data_errors)
+		if (!cdbCopy->local_data_err)
 		{
 			for (i = 0; i < cdbCopy->total_segs; i++)
 			{
@@ -2724,7 +2739,7 @@ CopyFromDispatch(CopyState cstate)
 					{
 						appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY: row field count is %d, expected %d",
 										 (int) fld_count, attr_count + extra_attr_count);
-						cdbCopy->data_errors = true;
+						cdbCopy->local_data_err = true;
 						no_more_data = true;
 						break;
 					}
@@ -2741,7 +2756,7 @@ CopyFromDispatch(CopyState cstate)
 						if (isnull || loaded_oid == InvalidOid)
 						{
 							appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY: invalid OID in COPY data");
-							cdbCopy->data_errors = true;
+							cdbCopy->local_data_err = true;
 							no_more_data = true;
 							break;
 						}
@@ -2871,7 +2886,7 @@ CopyFromDispatch(CopyState cstate)
 					
 				}
 
-				if (cdbCopy->data_errors)	/* if data error occured,
+				if (cdbCopy->local_data_err)	/* if data error occured,
 											* break out of all loops */
 				{
 					no_more_data = true;
@@ -3013,13 +3028,20 @@ CopyFromDispatch(CopyState cstate)
 	CHECK_FOR_INTERRUPTS();
 
 
-	if (cdbCopy->data_errors || cdbCopy->io_errors)
+	if (cdbCopy->remote_data_err || cdbCopy->local_data_err || cdbCopy->io_errors)
 		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
 
+	if (cdbCopy->remote_data_err)
+	{
+		cstate->error_on_executor = true;
+		if(cdbCopy->err_context.len > 0)
+			appendStringInfo(&cstate->executor_err_context, cdbCopy->err_context.data);
+	}
+		
 	/*
 	 * report all accumulated errors back to the client.
 	 */
-	if (cdbCopy->data_errors)
+	if (cdbCopy->remote_data_err || cdbCopy->local_data_err)
 		ereport(ERROR,
 				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 				 errmsg("%s", cdbcopy_err.data)));
