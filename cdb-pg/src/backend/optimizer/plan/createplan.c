@@ -1485,11 +1485,15 @@ create_nestloop_plan(CreatePlanContext *ctx,
 		 * point between strategies; but no smaller than the first
 		 * guess from above: use the ratio of the costs and multiply
 		 * by the estimated rows. */
+		elog(DEBUG2, "AdaptiveNL: strategy_threshold_2 div  %f / %f ", anl_plan->plan.righttree->total_cost, anl_plan->plan.lefttree->total_cost);
 		strategy_threshold_2 = (anl_plan->plan.righttree->total_cost / anl_plan->plan.lefttree->total_cost);
+		elog(DEBUG2, "AdaptiveNL: strategy_threshold_2  %f ", strategy_threshold_2);
 		strategy_threshold_2 = strategy_threshold_2 * cdbpath_rows(&best_path->jpath.path);
 
 		/* set the threshold to use at most work_mem*1024 bytes for our queue */
+		elog(DEBUG2, "AdaptiveNL: max_queue_len div  %d / %d ", work_mem * 1024, best_path->jpath.outerjoinpath->parent->width);
 		max_queue_len = (work_mem * 1024)/(best_path->jpath.outerjoinpath->parent->width);
+		elog(DEBUG2, "AdaptiveNL: max_queue_len  %d ", max_queue_len);
 
 		anl_plan->nl_strategy_threshold = Min(max_queue_len, Max(strategy_threshold_1, strategy_threshold_2));
 		elog(DEBUG5, "AdaptiveNL: thresh_1 %f thresh_2 %f max_queue %d final thresh %d", 
