@@ -1543,6 +1543,9 @@ CopyToDispatch(CopyState cstate)
 	
 	appendStringInfo(&cdbcopy_cmd, " TO STDOUT WITH");
 	
+	if (cstate->oids)
+		appendStringInfo(&cdbcopy_cmd, " OIDS");
+	
 	if (cstate->binary)
 	{
 		appendStringInfo(&cdbcopy_cmd, " BINARY");
@@ -2187,6 +2190,9 @@ CopyFromDispatch(CopyState cstate)
 	
 	appendStringInfo(&cdbcopy_cmd, " FROM STDIN WITH");
 
+	if (cstate->oids)
+		appendStringInfo(&cdbcopy_cmd, " OIDS");
+	
 	if (cstate->binary)
 	{
 		appendStringInfo(&cdbcopy_cmd, " BINARY");
