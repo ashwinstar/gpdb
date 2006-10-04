@@ -8,6 +8,7 @@
 #ifndef ML_IPC_H
 #define ML_IPC_H
 
+#include "cdb/cdbselect.h"
 #include "cdb/cdbinterconnect.h"
 #include "cdb/cdbmotion.h"
 

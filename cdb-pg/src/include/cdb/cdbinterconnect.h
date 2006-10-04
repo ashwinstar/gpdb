@@ -88,7 +88,7 @@ typedef struct ChunkTransportStateEntry
 	 * are established, read interest is turned on.  It is turned off when an
 	 * EOS (End of Stream) message is read.
 	 */
-	fd_set		readSet;
+	mpp_fd_set	readSet;
 	
 	/* highest file descriptor in the readSet. */
 	int			highReadSock;

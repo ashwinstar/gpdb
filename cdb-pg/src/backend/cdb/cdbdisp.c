@@ -35,6 +35,7 @@
 #include "optimizer/planmain.h"
 #include "cdb/cdbplan.h"
 
+#include "cdb/cdbselect.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbfts.h"
@@ -45,7 +46,6 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbllize.h"
-
 
 
 /*
@@ -1065,7 +1065,6 @@ thread_DispatchCommand(void *arg)
 	for (;;)
 	{							/* some QEs running */
 		struct timeval tv;
-		fd_set		input_mask;
 		int			max_sock;
 		int			sock;
 		int			n;
@@ -1074,7 +1073,7 @@ thread_DispatchCommand(void *arg)
 		 * Which QEs are still running and could send results to us?
 		 */
 		max_sock = -1;
-		FD_ZERO(&input_mask);
+		MPP_FD_ZERO(pParms->mask);
 
 		for (i = 0; i < db_count; i++)
 		{						/* loop to check connection status */
@@ -1090,7 +1089,7 @@ thread_DispatchCommand(void *arg)
 			if (sock >= 0 &&
 				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 			{
-				FD_SET(sock, &input_mask);
+				MPP_FD_SET(sock, pParms->mask);
 				max_sock = max_sock < sock ? sock : max_sock;
 			}
 
@@ -1127,7 +1126,7 @@ thread_DispatchCommand(void *arg)
 		tv.tv_usec = 0;
 
 		/* Block here until input is available. */
-		n = select(max_sock + 1, &input_mask, NULL, NULL, &tv);
+		n = select(max_sock + 1, (fd_set *)pParms->mask, NULL, NULL, &tv);
 
 		if (n < 0)
 		{
@@ -1163,7 +1162,7 @@ thread_DispatchCommand(void *arg)
 			/* Skip this connection if it has no input available. */
 			sock = PQsocket(segdbDesc->conn);
 			if (sock >= 0 &&
-				!FD_ISSET(sock, &input_mask))
+				!MPP_FD_ISSET(sock, pParms->mask))
 				continue;
 
 			/* Receive and process results from this QE. */

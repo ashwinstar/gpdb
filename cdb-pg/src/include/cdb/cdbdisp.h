@@ -15,6 +15,8 @@
 
 #include "lib/stringinfo.h"         /* StringInfo */
 
+#include "cdb/cdbselect.h"
+
 struct CdbDispatchResult;           /* #include "cdb/cdbdispatchresult.h" */
 struct CdbDispatchResults;          /* #include "cdb/cdbdispatchresult.h" */
 struct pg_result;                   /* #include "libpq-fe.h" */
@@ -64,6 +66,11 @@ typedef struct DispatchCommandParms
 	 * that this thread is responsible for dispatching the command to.
 	 */
 	struct CdbDispatchResult **dispatchResultPtrArray;
+
+	/*
+	 * mpp_fd_set supports more file descriptors than an ordinary fd_set
+	 */
+	mpp_fd_set	mask;
 	
 	/*
 	 * The pthread_t thread handle.
