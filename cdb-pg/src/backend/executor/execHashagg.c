@@ -220,7 +220,7 @@ void destroy_agg_hash_table(AggState *aggstate)
 {
 	Agg *agg = (Agg*)aggstate->ss.ps.plan;
 	
-	if ( agg->aggstrategy == AGG_HASHED && mpp_hybrid_hash_agg && aggstate->hhashtable != NULL )
+	if ( agg->aggstrategy == AGG_HASHED && aggstate->hhashtable != NULL )
 	{
 		reset_agg_hash_table(aggstate);
 

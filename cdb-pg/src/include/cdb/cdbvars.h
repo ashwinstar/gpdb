@@ -150,7 +150,7 @@ extern bool Mpp_is_writer;
  * This run time parameter indicates a unique id to identify a particular user
  * session throughout the entire MPP array.
  */
-extern int mpp_session_id; ;
+extern int mpp_session_id;
 
 
 /* Parameter mpp_qd_callback_info
@@ -377,12 +377,6 @@ extern bool mpp_enable_agg_distinct;
  * the tactic is used whenever possible.
  */
 extern bool mpp_enable_preunique;
-
-/* Should hashed aggregation use the "hybrid" approach (spilling to disk
- * as necessary to constrain the size of the in-memory hash table) or not.
- * If not, an all-in-memory hash is used.
- */
-extern bool mpp_hybrid_hash_agg;
 
 
 /* --------------------------------------------------------------------------------------------------

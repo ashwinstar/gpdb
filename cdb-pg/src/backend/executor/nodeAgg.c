@@ -190,18 +190,11 @@ typedef struct AggHashEntryData
 	AggStatePerGroupData pergroup[1];	/* VARIABLE LENGTH ARRAY */
 } AggHashEntryData;				/* VARIABLE LENGTH STRUCT */
 
-/* MPP needs to see this in execHashAgg.c
-static void initialize_aggregates(AggState *aggstate,
-					  AggStatePerAgg peragg,
-					  AggStatePerGroup pergroup);
-*/
+
 static void advance_transition_function(AggState *aggstate,
 							AggStatePerAgg peraggstate,
 							AggStatePerGroup pergroupstate,
 							Datum newVal, bool isNull);
-/* MPP needs to see this in execHashAgg.c 
-static void advance_aggregates(AggState *aggstate, AggStatePerGroup pergroup);
-*/
 static void process_sorted_aggregate(AggState *aggstate,
 						 AggStatePerAgg peraggstate,
 						 AggStatePerGroup pergroupstate);
@@ -211,17 +204,9 @@ static void finalize_aggregate(AggState *aggstate,
 				   Datum *resultVal, bool *resultIsNull);
 static Bitmapset *find_unaggregated_cols(AggState *aggstate);
 static bool find_unaggregated_cols_walker(Node *node, Bitmapset **colnos);
-static void build_hash_table(AggState *aggstate);
-static AggHashEntry lookup_hash_entry(AggState *aggstate,
-				  TupleTableSlot *inputslot);
 static TupleTableSlot *agg_retrieve_direct(AggState *aggstate);
-static void agg_fill_hash_table(AggState *aggstate);
 static TupleTableSlot *agg_retrieve_hash_table(AggState *aggstate);
 static Datum GetAggInitVal(Datum textInitVal, Oid transtype);
-
-/* MPP - Hybrid Hash Aggregation */
-static TupleTableSlot *exec_hybrid_hash_agg(AggState *aggstate);
-
 
 /*
  * Initialize all aggregates for a new group of input values.
@@ -654,34 +639,6 @@ get_agg_hash_collist(AggState *aggstate)
 }
 
 /*
- * Initialize the hash table to empty.
- *
- * The hash table always lives in the aggcontext memory context.
- */
-static void
-build_hash_table(AggState *aggstate)
-{
-	Agg		   *node = (Agg *) aggstate->ss.ps.plan;
-	MemoryContext tmpmem = aggstate->tmpcontext->ecxt_per_tuple_memory;
-	Size		entrysize;
-
-	Assert(node->aggstrategy == AGG_HASHED);
-	Assert(node->numGroups > 0);
-
-	entrysize = sizeof(AggHashEntryData) +
-		(aggstate->numaggs - 1) *sizeof(AggStatePerGroupData);
-
-	aggstate->hashtable = BuildTupleHashTable(node->numCols,
-											  node->grpColIdx,
-											  aggstate->eqfunctions,
-											  aggstate->hashfunctions,
-											  node->numGroups,
-											  entrysize,
-											  aggstate->aggcontext,
-											  tmpmem);
-}
-
-/*
  * Estimate per-hash-table-entry overhead for the planner.
  *
  * Note that the estimate does not include space for pass-by-reference
@@ -699,52 +656,6 @@ hash_agg_entry_size(int numAggs)
 	/* Account for hashtable overhead (assuming fill factor = 1) */
 	entrysize += 3 * sizeof(void *);
 	return entrysize;
-}
-
-/*
- * Find or create a hashtable entry for the tuple group containing the
- * given tuple.
- *
- * When called, CurrentMemoryContext should be the per-query context.
- */
-static AggHashEntry
-lookup_hash_entry(AggState *aggstate, TupleTableSlot *inputslot)
-{
-	TupleTableSlot *hashslot = aggstate->hashslot;
-	ListCell   *l;
-	AggHashEntry entry;
-	bool		isnew;
-
-	/* if first time through, initialize hashslot by cloning input slot */
-	if (hashslot->tts_tupleDescriptor == NULL)
-	{
-		ExecSetSlotDescriptor(hashslot, inputslot->tts_tupleDescriptor,false);
-		/* Make sure all unused columns are NULLs */
-		ExecStoreAllNullTuple(hashslot);
-	}
-
-	/* transfer just the needed columns into hashslot */
-	slot_getsomeattrs(inputslot, linitial_int(aggstate->hash_needed));
-	foreach(l, aggstate->hash_needed)
-	{
-		int		varNumber = lfirst_int(l) - 1;
-
-		hashslot->tts_values[varNumber] = inputslot->tts_values[varNumber];
-		hashslot->tts_isnull[varNumber] = inputslot->tts_isnull[varNumber];
-	}
-
-	/* find or create the hashtable entry using the filtered tuple */
-	entry = (AggHashEntry) LookupTupleHashEntry(aggstate->hashtable,
-												hashslot,
-												&isnew);
-
-	if (isnew)
-	{
-		/* initialize aggregates for new tuple group */
-		initialize_aggregates(aggstate, aggstate->peragg, entry->pergroup);
-	}
-
-	return entry;
 }
 
 /*
@@ -768,15 +679,52 @@ ExecAgg(AggState *node)
 
 	if (((Agg *) node->ss.ps.plan)->aggstrategy == AGG_HASHED)
 	{
-		if ( mpp_hybrid_hash_agg )
+		TupleTableSlot *tuple = NULL;
+
+		/*
+		 * ExecAgg processing for hashed aggregation -- returns the
+		 * next result tuple or NULL. When returning NULL also sets
+		 * aggstate to prevent future calls.
+		 */
+	
+		if (node->hhashtable == NULL)
 		{
-			return exec_hybrid_hash_agg(node);
+			node->hhashtable = create_agg_hash_table(node);
+			agg_hash_initial_pass(node);
+			node->hhashtable->state = HASHAGG_BETWEEN_PASSES;
 		}
-		else
+	
+		for (;;)
 		{
-			if (!node->table_filled)
-				agg_fill_hash_table(node);
-			return agg_retrieve_hash_table(node);
+			tuple = agg_retrieve_hash_table(node);
+			node->agg_done = false; /* Not done 'til batches used up. */
+		
+			if (tuple != NULL)
+				return tuple;
+		
+			switch (node->hhashtable->state)
+			{
+				case HASHAGG_BETWEEN_PASSES:
+					if (!agg_hash_next_pass(node))
+					{
+						node->hhashtable->state = HASHAGG_END_OF_PASSES;
+						continue;
+					}
+					node->hhashtable->state = HASHAGG_IN_A_PASS;
+					continue;
+		
+				case HASHAGG_IN_A_PASS:
+					if (!agg_hash_continue_pass(node))
+						node->hhashtable->state = HASHAGG_BETWEEN_PASSES;
+					continue;
+
+				case HASHAGG_END_OF_PASSES:
+					node->agg_done = true;
+					return NULL;
+			
+				case HASHAGG_BEFORE_FIRST_PASS:
+					elog(ERROR,"hybrid hash aggregation sequencing error");
+			}
 		}
 	}
 	else
@@ -982,52 +930,7 @@ agg_retrieve_direct(AggState *aggstate)
 }
 
 /*
- * ExecAgg for hashed case: phase 1, read input and build hash table
- */
-static void
-agg_fill_hash_table(AggState *aggstate)
-{
-	PlanState  *outerPlan;
-	ExprContext *tmpcontext;
-	AggHashEntry entry;
-	TupleTableSlot *outerslot;
-
-	/*
-	 * get state info from node
-	 */
-	outerPlan = outerPlanState(aggstate);
-	/* tmpcontext is the per-input-tuple expression context */
-	tmpcontext = aggstate->tmpcontext;
-
-	/*
-	 * Process each outer-plan tuple, and then fetch the next one, until we
-	 * exhaust the outer plan.
-	 */
-	for (;;)
-	{
-		outerslot = ExecProcNode(outerPlan);
-		if (TupIsNull(outerslot))
-			break;
-		/* set up for advance_aggregates call */
-		tmpcontext->ecxt_scantuple = outerslot;
-
-		/* Find or build hashtable entry for this tuple's group */
-		entry = lookup_hash_entry(aggstate, outerslot);
-
-		/* Advance the aggregates */
-		advance_aggregates(aggstate, entry->pergroup);
-
-		/* Reset per-input-tuple context after each tuple */
-		ResetExprContext(tmpcontext);
-	}
-
-	aggstate->table_filled = true;
-	/* Initialize to walk the hash table */
-	ResetTupleHashIterator(aggstate->hashtable, &aggstate->hashiter);
-}
-
-/*
- * ExecAgg for hashed case: phase 2, retrieving groups from hash table
+ * ExecAgg for hashed case: retrieve groups from hash table
  */
 static TupleTableSlot *
 agg_retrieve_hash_table(AggState *aggstate)
@@ -1058,54 +961,19 @@ agg_retrieve_hash_table(AggState *aggstate)
 	 */
 	while (!aggstate->agg_done)
 	{
-		if ( mpp_hybrid_hash_agg )
+		HashAggEntry *entry = agg_hash_iter(aggstate->hhashtable);
+			
+		if (entry == NULL)
 		{
-			/* MPP Hybrid Hash Agg way */
-			HashAggEntry *entry = agg_hash_iter(aggstate->hhashtable);
-			
-			if ( entry == NULL )
-			{
-				aggstate->agg_done = TRUE;
-				return NULL;
-			}
-			
-			ResetExprContext(econtext);
-			
-			ExecStoreTuple(entry->heaptuple, firstSlot, InvalidBuffer, false);
-			
-			pergroup = entry->pergroup;
+			aggstate->agg_done = TRUE;
+			return NULL;
 		}
-		else
-		{
-			/* PostgreSQL In-Memory way */
-			AggHashEntry entry;
-			/*
-			 * Find the next entry in the hash table
-			 */
-			entry = (AggHashEntry) ScanTupleHashTable(&aggstate->hashiter);
-			if (entry == NULL)
-			{
-				/* No more entries in hashtable, so done */
-				aggstate->agg_done = TRUE;
-				return NULL;
-			}
-
-			/*
-			 * Clear the per-output-tuple context for each group
-			 */
-			ResetExprContext(econtext);
-
-			/*
-			 * Store the copied first input tuple in the tuple table slot reserved
-			 * for it, so that it can be used in ExecProject.
-			 */
-			ExecStoreTuple(entry->shared.firstTuple,
-						   firstSlot,
-						   InvalidBuffer,
-						   false);
-
-			pergroup = entry->pergroup;
-		}
+			
+		ResetExprContext(econtext);
+			
+		ExecStoreTuple(entry->heaptuple, firstSlot, InvalidBuffer, false);
+			
+		pergroup = entry->pergroup;
 
 		/*
 		 * Finalize each aggregate calculation, and stash results in the
@@ -1316,10 +1184,6 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 
 	if (node->aggstrategy == AGG_HASHED)
 	{
-		if ( !mpp_hybrid_hash_agg )
-		{
-			build_hash_table(aggstate);
-		}
 		aggstate->hash_needed = get_agg_hash_collist(aggstate);
 		aggstate->table_filled = false;
 	}
@@ -1597,7 +1461,7 @@ ExecEndAgg(AggState *node)
 	}
 	
 	/* Clean up hybrid hash agg. */
-	if ( ((Agg*)node->ss.ps.plan)->aggstrategy == AGG_HASHED && mpp_hybrid_hash_agg )
+	if ( ((Agg*)node->ss.ps.plan)->aggstrategy == AGG_HASHED)
 		destroy_agg_hash_table(node);
 
 	/*
@@ -1674,7 +1538,7 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 	if (((Agg *) node->ss.ps.plan)->aggstrategy == AGG_HASHED)
 	{
 		/* Rebuild an empty hash table */
-		build_hash_table(node);
+		//build_hash_table(node);
 		node->table_filled = false;
 	}
 	else
@@ -1711,58 +1575,3 @@ aggregate_dummy(PG_FUNCTION_ARGS)
 		 fcinfo->flinfo->fn_oid);
 	return (Datum) 0;			/* keep compiler quiet */
 }
-
-/* MPP - Hybrid Hash Aggregation */
-
-/* Function: exec_hybrid_hash_agg
- *
- * ExecAgg processing for hashed aggregation -- returns the next result
- * tuple or NULL. When returning NULL also sets aggstate to prevent future
- * calls.
- */
-TupleTableSlot *
-exec_hybrid_hash_agg(AggState *aggstate)
-{
-	TupleTableSlot *tuple = NULL;
-	
-	if ( aggstate->hhashtable == NULL )
-	{
-		aggstate->hhashtable = create_agg_hash_table(aggstate);
-		agg_hash_initial_pass(aggstate);
-		aggstate->hhashtable->state = HASHAGG_BETWEEN_PASSES;
-	}
-	
-	for (;;)
-	{
-		tuple = agg_retrieve_hash_table(aggstate);
-		aggstate->agg_done = false; /* Not done 'til batches used up. */
-		
-		if ( tuple != NULL )
-			return tuple;
-		
-		switch ( aggstate->hhashtable->state )
-		{
-		case HASHAGG_BETWEEN_PASSES:
-			if ( ! agg_hash_next_pass(aggstate) )
-			{
-				aggstate->hhashtable->state = HASHAGG_END_OF_PASSES;
-				continue;
-			}
-			aggstate->hhashtable->state = HASHAGG_IN_A_PASS;
-			continue;
-		
-		case HASHAGG_IN_A_PASS:
-			if ( ! agg_hash_continue_pass(aggstate) )
-				aggstate->hhashtable->state = HASHAGG_BETWEEN_PASSES;
-			continue;
-
-		case HASHAGG_END_OF_PASSES:
-			aggstate->agg_done = true;
-			return NULL;
-			
-		case HASHAGG_BEFORE_FIRST_PASS:
-			elog(ERROR,"hybrid hash aggregation sequencing error");
-		}
-	}
-}
-

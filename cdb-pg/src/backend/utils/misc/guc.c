@@ -1041,17 +1041,6 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
-
-	{
-		{"mpp_hybrid_hash_agg", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
-			gettext_noop("Experimental feature: hybrid hashed aggregation."),
-			NULL,
-            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&mpp_hybrid_hash_agg,
-		false, NULL, NULL
-	},
-
 	{
 		{"mpp_is_primary", PGC_BACKEND, UNGROUPED,
 			gettext_noop("Reports session type as primary or mirror."),

@@ -1649,25 +1649,18 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 	/* plus the per-hash-entry overhead */
 	hashentrysize += hash_agg_entry_size(agg_counts->numAggs);
 
-	if ( mpp_hybrid_hash_agg )
-	{
-		if ( !calcHashAggTableSizes(
-				1024.0 * (double)work_mem,
-				dNumGroups,
-				agg_counts->numAggs,
-				/* The following estimate is very rough but good enough for planning. */
-				sizeof(HeapTupleData) + sizeof(HeapTupleHeaderData) + cheapest_path_width,
-				agg_counts->transitionSpace,
-				NULL,
-				NULL,
-				NULL )
-			)
-			return false;
-	}
-	else if (hashentrysize * dNumGroups > work_mem * 1024L)
-	{
+	if (!calcHashAggTableSizes(
+			1024.0 * (double)work_mem,
+			dNumGroups,
+			agg_counts->numAggs,
+			/* The following estimate is very rough but good enough for planning. */
+			sizeof(HeapTupleData) + sizeof(HeapTupleHeaderData) + cheapest_path_width,
+			agg_counts->transitionSpace,
+			NULL,
+			NULL,
+			NULL )
+		)
 		return false;
-	}
 
 	/*
 	 * See if the estimated cost is no more than doing it the other way. While
