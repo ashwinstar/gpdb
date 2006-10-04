@@ -236,8 +236,8 @@ PROCESS_CHILD_NAME () {
 				fi
 				;;
 		* )
+				
 				LOG_MSG "[FATAL]:-Obtained type as $TYPE_NAME expected hour, daily, week, month, range or list"
-				ERROR_EXIT "[FATAL]:-Unable to continue"
 				;;
 		esac
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -257,7 +257,7 @@ PROCESS_CHILD_INDEX () {
 
 PROCESS_CHILD_CONSTRAINT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	CHILD_CONSTRAINT_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'));"`	
+	CHILD_CONSTRAINT_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`	
 	ERROR_CHK $? "obtain child table constraint text" 2
 	#Now process the constraint text to act as a template for new constraints
 	if [ $TYPE_NAME != "range" ];then
@@ -316,8 +316,12 @@ GATHER_INFO () {
 			MAX_DATE_NUMBER=0
 			for CHILD_ITEM in "${CHILD_NAME_ARRAY[@]}"
 			do
-				CHILD_CONSTRAINT_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_ITEM' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'));"`	
-				DATE_TEXT=`$ECHO $CHILD_CONSTRAINT_TEXT|$CUT -d"'" -f4|awk '{print $1}'`
+				CHILD_CONSTRAINT_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_ITEM' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`	
+				if [ $TYPE_NAME == "daily" ];then
+					DATE_TEXT=`$ECHO $CHILD_CONSTRAINT_TEXT|$CUT -d"'" -f2|awk '{print $1}'`
+				else
+					DATE_TEXT=`$ECHO $CHILD_CONSTRAINT_TEXT|$CUT -d"'" -f4|awk '{print $1}'`
+				fi
 				if [ `$ECHO $DATE_TEXT|$TR -d '-'` -gt $MAX_DATE_NUMBER ];then
 					MAX_DATE_NUMBER=`$ECHO $DATE_TEXT|$TR -d '-'`
 					MAX_DATE_TEXT=$DATE_TEXT
@@ -329,7 +333,7 @@ GATHER_INFO () {
 			MAX_RANGE=0
 			for CHILD_ITEM in "${CHILD_NAME_ARRAY[@]}"
 			do
-				CHILD_CONSTRAINT_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_ITEM' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'));"`
+				CHILD_CONSTRAINT_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_ITEM' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`
 				CURRENT_RANGE=`$ECHO $CHILD_CONSTRAINT_TEXT|$TR -d ')'|$AWK '{print $NF}'`
 				if [ $CURRENT_RANGE -gt $MAX_RANGE ];then
 					MAX_RANGE=$CURRENT_RANGE
@@ -342,7 +346,7 @@ GATHER_INFO () {
 			LOG_MSG "[INFO]:-Obtained range step count as $RANGE_GAP"
 			;;
 	esac
-	PART_COLUMN_NUM=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select conkey from pg_constraint where conrelid in (select oid from pg_class where relname='${CHILD_NAME_ARRAY[0]}' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'));"`
+	PART_COLUMN_NUM=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select conkey from pg_constraint where conrelid in (select oid from pg_class where relname='${CHILD_NAME_ARRAY[0]}' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`
 	ERROR_CHK $? "obtained partition column" 2
 	COLUMN_CONSTRAINT_TEXT=$CHILD_CONSTRAINT_TEXT	
 	LOG_MSG "[INFO]:-Obtained partition column number as $PART_COLUMN_NUM"
@@ -365,7 +369,7 @@ GATHER_INFO () {
 	case $TYPE_NAME in 
 		hour|daily|week|month)
 		DATE_TYPE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select definition from pg_rules where tablename='$TABLE_NAME' limit 1;"|$GREP -ci "::timestamp"`
-		ERROR_CHK $? "timestamp PSQL check" 2
+		ERROR_CHK $? "timestamp PSQL check" 1
 		;;
 	esac
 	LOG_MSG	"[INFO]:-End Function $FUNCNAME"
@@ -395,7 +399,7 @@ VALIDATE_LIST_TYPE () {
 	fi
 	for CHILD_LIST_ITEM in ${CHILD_NAME_ARRAY[@]}
 	do
-		CHILD_LIST_ITEM_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_LIST_ITEM'and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'));"`
+		CHILD_LIST_ITEM_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_LIST_ITEM'and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`
 		for LIST_ITEM_CHK in ${PART_LIST_ARRAY[@]}
 		do
 			LOG_MSG "[INFO]:-Checking for list item $LIST_ITEM_CHK in $CHILD_LIST_ITEM"
