@@ -386,6 +386,7 @@ ResDestroyQueue(Oid queueid)
 
 	ResQueue		queue = ResQueueHashFind(queueid);
 	bool			allzero = true;
+	bool			result;
 	int				i;
 	
 
@@ -420,17 +421,20 @@ ResDestroyQueue(Oid queueid)
 	}
 
 	/*
-	 * No non-zero current values for the queue, may be able to destroy it.
+	 * No non-zero current values for the queue, are able to destroy it.
 	 *
-	 * It is a little more subtle than just this - we need to check that
-	 * a session isn't still expecting this queue to be here (e.g. user
-	 * logs on then later admin alters his resource queue, and wants to
-	 * to drop the one he used to be in - of course he is still using it!)
+	 * Some care is needed, as this leaves the possibility of a connected
+	 * user still using this queue via a ALTER ROLE ... RESOURCE QUEUE while
+	 * he is connected. However this is no worse than being able to DROP a 
+	 * ROLE that is corrently connected!
 	 */
 	if (allzero)
 	{
-		elog(WARNING, "in-memory queue destruction still to be implemented");
-		return true;
+		result = ResQueueHashRemove(queueid);
+		if (result)
+			ResScheduler->num_queues--;
+
+		return result;
 	}
 	else
 	{

@@ -148,6 +148,7 @@ extern bool					ResPortalIncrementHashTableInit(void);
 extern bool 			ResQueueHashTableInit(void);
 extern ResQueue			ResQueueHashNew(Oid queueid);
 extern ResQueue			ResQueueHashFind(Oid queueid);
+extern bool				ResQueueHashRemove(Oid queueid);
 extern void				ResIncrementUpdate(int pid, uint32 portalId, 
 										   bool isHold, bool isCommitted);
 

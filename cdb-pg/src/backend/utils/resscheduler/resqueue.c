@@ -1458,6 +1458,26 @@ ResQueueHashFind(Oid queueid)
 	return (ResQueue) queue;
 }
 
+
+/*
+ * ResQueueHashRemove -- remove the queue for a given oid.
+ */
+bool 
+ResQueueHashRemove(Oid queueid)
+{
+	bool				found;
+	void				*queue;
+
+	queue = hash_search(ResQueueHash,
+					    (void *) &queueid,
+					    HASH_REMOVE, &found);
+	if (!queue)
+		return false;
+
+	return true;
+}
+
+
 /*
  * ResIncrementUpdate -- change Holdable and first commit flags for a portal
  *	increment.
