@@ -17,12 +17,12 @@
 
 /* 8-bit bytes 32 or 64-bit ints */
 
-typedef long int mpp_fd_set[65536/(sizeof(long int) * 8)];
+typedef int32 mpp_fd_set[65536/(sizeof(int32) * 8)];
 
 #define MPP_FD_ZERO(setp) (memset((char *)setp, 0, sizeof(mpp_fd_set)))
 
-#define MPP_FD_WORD(fd) (fd / (sizeof(long int) * 8))
-#define MPP_FD_BIT(fd) (1 << (fd % (sizeof(long int) * 8)))
+#define MPP_FD_WORD(fd) (fd >> 5)
+#define MPP_FD_BIT(fd) (1 << (fd & 0x1f))
 
 #define MPP_FD_SET(fd, set) (set[MPP_FD_WORD(fd)] = (set[MPP_FD_WORD(fd)]) | MPP_FD_BIT(fd))
 #define MPP_FD_CLR(fd, set) (set[MPP_FD_WORD(fd)] &= ~MPP_FD_BIT(fd))
