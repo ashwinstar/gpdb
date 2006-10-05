@@ -2594,7 +2594,7 @@ flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, Mo
 		/* check for stop message before sending anything  */
 		timeout.tv_sec = 0;
 		timeout.tv_usec = 0;
-		FD_ZERO(&rset);
+		MPP_FD_ZERO(rset);
 		MPP_FD_SET(conn->sockfd, rset);
 
 		/*
