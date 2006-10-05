@@ -169,11 +169,29 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 			if ( (c->copy_in && (PQresultStatus(res) != PGRES_COPY_IN)) ||
 				 (!c->copy_in && (PQresultStatus(res) != PGRES_COPY_OUT)) )
 			{
-
-				appendStringInfo(&(c->err_msg),
-								 "COPY command failed to start on %s segment %d with error: %s\n",
-								 (db == 0 ? "primary" : "mirror"), seg, PQresultErrorMessage(res));
-
+				char   *pri = PQresultErrorField(res, PG_DIAG_MESSAGE_PRIMARY);
+				char   *dtl = PQresultErrorField(res, PG_DIAG_MESSAGE_DETAIL);
+				char   *ctx = PQresultErrorField(res, PG_DIAG_CONTEXT);
+				
+				appendStringInfo(&(c->err_msg), "Failed to start COPY - %s", pri);
+				
+				if (q->whoami)
+					appendStringInfo(&(c->err_msg),"  (%s)", q->whoami);
+				
+				if (dtl)
+					appendStringInfo(&(c->err_msg), "\n%s", dtl);
+				
+				/*
+				 * note that due to cdb_tidy_message() in elog.c "If more than 
+				 * one line, move lines after the first to errdetail" so we save
+				 * the context in another stringInfo and fetch it in the error
+				 * callback in copy.c, so it wouldn't appear as DETAIL...
+				 */
+				if (ctx)
+					appendStringInfo(&(c->err_context), "%s", ctx);
+					
+				PQclear(res);
+				
 				return -1;
 			}
 			else
@@ -222,12 +240,12 @@ cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 		{
 			if (result == 0)
 				appendStringInfo(&(c->err_msg),
-								 "MPPCOPY - Failed to send data to %s segment %d, attempt blocked\n",
-							   (db == 0 ? "primary" : "mirror"), target_seg);
+								 "Failed to send data to %s segment %d, attempt blocked\n",
+								 (db == 0 ? "primary" : "mirror"), target_seg);
 
 			if (result == -1)
 				appendStringInfo(&(c->err_msg),
-					  "MPPCOPY - Failed to send data to %s segment %d: %s\n",
+								 "Failed to send data to %s segment %d: %s\n",
 								 (db == 0 ? "primary" : "mirror"), target_seg, PQerrorMessage(q->conn));
 
 			c->io_errors = true;

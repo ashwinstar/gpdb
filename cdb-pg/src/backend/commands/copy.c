@@ -1613,13 +1613,9 @@ CopyToDispatch(CopyState cstate)
 		/* TODO: end COPY in all the segdbs in progress */
 		//cdbCopyEnd(cdbCopy);
 		
-		/* get error message from CopyEnd */
-		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
-		
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				 errmsg("%s. Closing all other existing COPY sessions.",
-						cdbcopy_err.data)));
+				 errmsg("%s", cdbcopy_err.data)));
 	}
 	
 	if (cstate->binary)
@@ -2307,8 +2303,7 @@ CopyFromDispatch(CopyState cstate)
 
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				 errmsg("%sClosing all other existing COPY sessions.",
-						cdbcopy_err.data)));
+				 errmsg("%s", cdbcopy_err.data)));
 	}
 
 
