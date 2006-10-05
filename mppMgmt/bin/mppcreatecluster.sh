@@ -77,6 +77,7 @@ START_SYNC="-1"
 QE_MIRROR_ARRAY=""
 MPP_PASSWD=mpparray
 TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
+TMP_FILE=/tmp/cluster_tmp_file.$$
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -157,7 +158,8 @@ CHK_PARAMS () {
 		unset PORT_BASE SEG_PREFIX DATA_DIRECTORY
 
 		#Make sure it is not a dos file with CTRL M at end of each line
-		$DOS2UNIX $CLUSTER_CONFIG > /dev/null 2>&1
+		$CAT $CLUSTER_CONFIG|$SED -e 's/$//g' > $TMP_FILE
+		$MV $TMP_FILE $CLUSTER_CONFIG
 		LOG_MSG "[INFO]:-Dumping $CLUSTER_CONFIG to logfile for reference"
 		$CAT $CLUSTER_CONFIG|$GREP -v "^#" >> $LOG_FILE
 		LOG_MSG "[INFO]:-Completed $CLUSTER_CONFIG dump to logfile"
@@ -304,7 +306,7 @@ CHK_PARAMS () {
 			fi
 		fi
 		((QE_MAX_CONNECT=$MASTER_MAX_CONNECT*$QE_CONNECT_FACTOR))
-		LOG_MSG "[INFO]:-Setting segment instance MAX_CONNECTIONS to $QD_MAX_CONNECT"
+		LOG_MSG "[INFO]:-Setting segment instance MAX_CONNECTIONS to $DEFAULT_QD_MAX_CONNECT"
 		MASTER_SHARED_BUFFERS=$DEFAULT_BUFFERS
 		QE_SHARED_BUFFERS=$DEFAULT_BUFFERS
 		#Number of QE hosts in this configuration
@@ -376,6 +378,7 @@ CHK_QES () {
 			for I in "${QE_PRIMARY_ARRAY[@]}"
 			do
 				SET_VAR $I
+				POSTGRES_PORT_CHK $MPP_PORT $MPP_HOSTNAME
 				LOG_MSG "[INFO]:-Checking $MPP_HOSTNAME for dir $MPP_DIR"
 				CHK_DIR $MPP_DIR $MPP_HOSTNAME
 				if [ $EXISTS -eq 0 ]; then
@@ -411,6 +414,7 @@ CHK_QES () {
 				for I in "${QE_MIRROR_ARRAY[@]}"
 				do
 					SET_VAR $I
+					POSTGRES_PORT_CHK $MPP_PORT $MPP_HOSTNAME
 					LOG_MSG "[INFO]:-Checking $MPP_HOSTNAME for dir $MPP_DIR"
 					CHK_DIR $MPP_DIR $MPP_HOSTNAME
 					if [ $EXISTS -eq 0 ]; then
