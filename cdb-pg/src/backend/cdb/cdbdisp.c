@@ -522,8 +522,6 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 	}							/* loop over threads */
 
 	/* reset thread state (will be destroyed later on in finishCommand) */
-	dispatchThreads->dispatchCommandParmsAr = NULL;
-    dispatchThreads->dispatchCommandParmsArSize = 0;
     dispatchThreads->threadCount = 0;
 			
 	/* Reset dispatcher state. */
@@ -2589,13 +2587,12 @@ cdbdisp_makeDispatchThreads(int paramCount)
 	CdbDispatchCmdThreads *dThreads = palloc0(sizeof(*dThreads));
 
 	dThreads->dispatchCommandParmsAr =
-								(DispatchCommandParms *) palloc0(paramCount *
-								sizeof(DispatchCommandParms));
+		(DispatchCommandParms *) palloc0(paramCount * sizeof(DispatchCommandParms));
 	
 	dThreads->dispatchCommandParmsArSize = paramCount;
 
     dThreads->threadCount = 0;
-	
+
     return dThreads;
 }                               /* cdbdisp_makeDispatchThreads */
 
@@ -2609,7 +2606,7 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 
 	DispatchCommandParms *pParms;
 	int i;
-	
+
 	if (!dThreads)
         return;
 
@@ -2639,7 +2636,9 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 		pParms->txnOptions = 0;
 	}
 	
+	pfree(dThreads->dispatchCommandParmsAr);	
 	dThreads->dispatchCommandParmsAr = NULL;
+
     dThreads->dispatchCommandParmsArSize = 0;
     dThreads->threadCount = 0;
 		
