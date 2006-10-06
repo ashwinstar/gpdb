@@ -1537,8 +1537,7 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 
 	if (((Agg *) node->ss.ps.plan)->aggstrategy == AGG_HASHED)
 	{
-		/* Rebuild an empty hash table */
-		//build_hash_table(node);
+		destroy_agg_hash_table(node);
 		node->table_filled = false;
 	}
 	else
