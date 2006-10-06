@@ -196,7 +196,9 @@ CreateQueue(CreateQueueStmt *stmt)
 	}
 	else
 	{
-		elog(WARNING, "queue not activated as resource scheduling is disabled");
+		ereport(WARNING,
+				(errmsg("resource scheduling is disabled"),
+				 errhint("To enable set resource_scheduler=on")));
 	}
 
 	/* Finish up scan and close resource queue catalog. */
@@ -383,7 +385,9 @@ AlterQueue(AlterQueueStmt *stmt)
 	}
 	else
 	{
-		elog(WARNING, "queue not activated as resource scheduling is disabled");
+		ereport(WARNING,
+				(errmsg("resource scheduling is disabled"),
+				 errhint("To enable set resource_scheduler=on")));
 	}
 
 	/* Finish up scan and close resource queue catalog. */
@@ -494,7 +498,9 @@ DropQueue(DropQueueStmt *stmt)
 	}
 	else
 	{
-		elog(WARNING, "resource scheduling is off");
+		ereport(WARNING,
+				(errmsg("resource scheduling is disabled"),
+				 errhint("To enable set resource_scheduler=on")));
 	}
 
 	/* Finish up scan and close resource queue catalog. */
