@@ -355,6 +355,16 @@ AlterQueue(AlterQueueStmt *stmt)
 	}
 
 	/*
+	 * Check we are not going to set all the thresholds to be invalid.
+	 */
+	if (thresholds[RES_COUNT_LIMIT] == INVALID_RES_LIMIT_THRESHOLD &&
+		thresholds[RES_COUNT_LIMIT] == INVALID_RES_LIMIT_THRESHOLD)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("at least one threshold must be different from %d",
+						INVALID_RES_LIMIT_THRESHOLD)));
+
+	/*
 	 * update the tuple in the pg_resqueue table
 	 */
 	new_tuple = heap_modifytuple(tuple, pg_resqueue_dsc, new_record, 
