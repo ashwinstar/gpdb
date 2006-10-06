@@ -81,13 +81,18 @@ ResSchedulerShmemSize(void)
 
 /*
  * ResPortalIncrementShmemSize -- Estimate the size of the increment hash.
+ *
+ * Notes
+ *	We allow one extra slot for unnamed portals, as it is simpler to not
+ *	count them at all.
  */
 Size 
 ResPortalIncrementShmemSize(void)
 {
 
 	Size	size;
-	Size	max_table_size = mul_size(MaxResourcePortalsPerXact, MaxBackends);
+	Size	max_table_size = mul_size(add_size(MaxResourcePortalsPerXact, 1), 
+									  MaxBackends);
 
 	size = hash_estimate_size(max_table_size, sizeof(ResPortalIncrement));
 
@@ -852,18 +857,6 @@ ResCreatePortalId(const char *name, bool create)
 	/* Unnamed portal. */
 	if (name[0] == '\0')
 	{
-		/*
-		 * Check we have not exhaused the # of trackable portals.
-		 */
-		if (portalId >= MaxResourcePortalsPerXact)
-		{
-			ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-				 errmsg("insufficient portal ids available"),
-			errhint("Increase max_resource_portals_per_transaction.")));
-
-		}
-
 		id = 0;
 		return id;
 	}
@@ -880,8 +873,8 @@ ResCreatePortalId(const char *name, bool create)
 
 	/* 
 	 * Search for a id we can re-use from a closed portal - we want to do this
-	 * so we can have MaxResourcePortalsPerXact *open* tracked portals in a
-	 * transaction.
+	 * so we can have MaxResourcePortalsPerXact *open* tracked (named) portals 
+	 * in a transaction.
 	 */
 	for (id = 1; id <= portalId; id++)
 	{

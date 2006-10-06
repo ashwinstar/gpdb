@@ -1237,13 +1237,16 @@ ResLockReleaseAll(bool isAllOwners, bool isCommit, bool releaseHold)
  * Notes:
  *	This stores the possible increments that a given statement will cause to
  *	be added to the limits for a resource queue.
+ *	We allocate one extra slot for each backend, to free us from counting
+ *	un-named portals.
  */
 bool
 ResPortalIncrementHashTableInit()
 {
-	HASHCTL			info;
-	Size			max_table_size = mul_size(MaxResourcePortalsPerXact, MaxBackends);
-	int				hash_flags;
+	HASHCTL		info;
+	Size		max_table_size = mul_size(add_size(MaxResourcePortalsPerXact,1),
+										  MaxBackends);
+	int			hash_flags;
 
 
 	/* Set key and entry sizes. */
