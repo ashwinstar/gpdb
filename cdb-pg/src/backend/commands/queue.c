@@ -358,7 +358,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	 * Check we are not going to set all the thresholds to be invalid.
 	 */
 	if (thresholds[RES_COUNT_LIMIT] == INVALID_RES_LIMIT_THRESHOLD &&
-		thresholds[RES_COUNT_LIMIT] == INVALID_RES_LIMIT_THRESHOLD)
+		thresholds[RES_COST_LIMIT] == INVALID_RES_LIMIT_THRESHOLD)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("at least one threshold must be different from %d",
