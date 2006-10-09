@@ -59,6 +59,7 @@ CHILD_COUNT_REC=0
 ABORT=0
 COPY_REC=0
 PROCESS_COPY_REC=0
+CHILD_TABLE_ID="_child_depth_"
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -67,7 +68,7 @@ USAGE () {
 		$ECHO	
 		$ECHO "      `basename $0`"
 		$ECHO
-		$ECHO "      Adds a specified number of child tables for a specified parent table"
+		$ECHO "      Adds a specified number of child tables for a named parent table"
 		$ECHO "      and associated rules and indexes if in place on current child tables"
 		$ECHO "      Assumes that current child tables, rules and indexes initially created "
 		$ECHO "      via use of mppcreatepart.sh script"
@@ -124,7 +125,7 @@ PROMPT_CONTINUE () {
 		case $TYPE_NAME in
                 hour|daily|week|month )
 		LOG_MSG "[INFO]:-Max date obtained          = $MAX_DATE_TEXT"
-		LOG_MSG "[INFO]:-End date calculated        = $END_DATE"
+		LOG_MSG "[INFO]:-End date calculated        = $CORRECTED_END_DATE"
 		;;
 		range )
 		LOG_MSG "[INFO]:-Range max value obtained   = $MAX_RANGE"
@@ -138,6 +139,7 @@ PROMPT_CONTINUE () {
 		done
 		;;
 		esac
+		LOG_MSG "[INFO]:-Partition depth            = $DEPTH"
 		LOG_MSG "[INFO]:-Number of new child tables = ${#SUFFIX_ARRAY[@]}"
 		if [ $RULE_GEN -eq 0 ];then
 		LOG_MSG "[INFO]:-Rule generation            = Off"
@@ -212,13 +214,15 @@ VALIDATE_PARAMS () {
 PROCESS_CHILD_NAME () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Obtain name of child table and set up child naming convention to be
-	#<parent table_name>_<range information>_<range type>
+	#<parent_table_name>_child_depth_[$DEPTH]_[$CUR_TYPES]_<range data>_<range_type>
 	#Where range type is
 	# hour, daily, week, month, range or list 
 	CHILD_NAME=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select relname from pg_class where oid in (select inhrelid from pg_inherits where inhparent in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}'))) limit 1;"`
 	ERROR_CHK $? "obtain child table name" 2
 	TYPE_NAME=`$ECHO $CHILD_NAME|$AWK -F"_" '{print $NF}'`
 	LOG_MSG "[INFO]:-Child table partition type is $TYPE_NAME"
+	DEPTH=`$ECHO $CHILD_NAME|$SED -e s/\$CHILD_TABLE_ID//g|$AWK -F"" '{print $2}'|$AWK -F"_" '{print $1}'`
+	CUR_TYPES=`$ECHO $CHILD_NAME|$SED -e s/\$CHILD_TABLE_ID//g|$AWK -F"" '{print $2}'|$AWK -F"_" '{print $2}'`
 	case $TYPE_NAME in
 		hour|daily|week|month )
 				if [ x"" == x"$GENERATION_COUNT" ];then
@@ -428,6 +432,7 @@ PROCESS_DATA () {
 		range ) PROCESS_RANGE ;;
 		list  ) PROCESS_LIST ;;
 	esac
+	CORRECTED_END_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$END_DATE' -1;"`
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -576,16 +581,39 @@ PROCESS_RANGE () {
 GENERATE_SQL () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
         LOG_MSG "[INFO]:-Generating SQL file to build child tables"
+        CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}//gi|$AWK -F"" '{print $1}'`
+#	case $TYPE_NAME in
+#       		hour )
+#                CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_[0-9]*_[0-9]*_hour$//g`
+#                ;;
+#                daily )
+#                CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_[0-9]*_daily$//g`
+#                ;;
+#                week )
+#                CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_w[0-9]*_week$//g`
+#                ;;
+#                month )
+#                CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_month$//g`
+#                ;;
+#                list )
+                #CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[a-z]*[A-Z]*_list$//g`
+#                CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}//gi|$AWK -F"" '{print $1}'`
+#                ;;
+#                range )
+#                CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_to_[0-9]*_range$//g`
+#		;;
+#	esac
         VECTOR=0
         ((COL_COUNT=${#PARENT_COLUMN_LIST[@]}-1))
                 $ECHO "BEGIN;" >> $TMP_FILE
                 if [ $INDEX_GEN -eq 1 ];then $ECHO "BEGIN;" >> $IDX_TMP_FILE;fi
         for SUFFIX in "${SUFFIX_ARRAY[@]}"
         do
-                #Check if a table of that name exists
-                CHK_EXISTS_TABLE ${PARENT_TABLE_NAME}_$SUFFIX $MASTER_PORT $QD_DBNAME
+		CHILD_TAB_FULL=${SCHEMA_NAME}.${CHILD_STRING}${CHILD_TABLE_ID}${DEPTH}_${CUR_TYPES}_$SUFFIX
+		CHILD_NAME=${CHILD_STRING}${CHILD_TABLE_ID}${DEPTH}_${CUR_TYPES}_$SUFFIX
+		CHK_EXISTS_TABLE $CHILD_TAB_FULL $MASTER_PORT $QD_DBNAME
                 if [ $EXISTS -gt 0 ];then
-                        $ECHO "CREATE TABLE ${PARENT_TABLE_NAME}_$SUFFIX" >> $TMP_FILE
+                        $ECHO "CREATE TABLE $CHILD_TAB_FULL" >> $TMP_FILE
                         $ECHO "(CHECK ( `$ECHO ${RULE_ARRAY[$VECTOR]}|$TR '~' ' '` ) )" >> $TMP_FILE
                         $ECHO "INHERITS (${PARENT_TABLE_NAME});" >> $TMP_FILE
                         $ECHO >> $TMP_FILE
@@ -593,14 +621,14 @@ GENERATE_SQL () {
 				for INDEX_ITEM in ${CHILD_INDEX_COL_ARRAY[@]}
 				do
 				ADDITIONAL_INDEX=`$ECHO $INDEX_ITEM|$SED -e 's/)//g'|$SED -e 's/(//g'`
-                                $ECHO "CREATE INDEX ${TABLE_NAME}_idx_${ADDITIONAL_INDEX}_$SUFFIX on ${PARENT_TABLE_NAME}_${SUFFIX} ($ADDITIONAL_INDEX);" >> $IDX_TMP_FILE
+				$ECHO "CREATE INDEX idx_${ADDITIONAL_INDEX}_${CHILD_NAME} on ${CHILD_NAME} ($ADDITIONAL_INDEX);" >> $IDX_TMP_FILE
 				done
                         fi
                         if [ $RULE_GEN -eq 1 ];then
-                        $ECHO "CREATE OR REPLACE RULE rule_${TABLE_NAME}_$SUFFIX" >> $TMP_FILE
+			$ECHO "CREATE OR REPLACE RULE rule_${CHILD_NAME}" >> $TMP_FILE
                         $ECHO "AS ON INSERT TO ${PARENT_TABLE_NAME}" >> $TMP_FILE
                         $ECHO "WHERE ( `$ECHO ${RULE_ARRAY[$VECTOR]}|$TR '~' ' '` )" >> $TMP_FILE
-                        $ECHO "DO INSTEAD INSERT INTO ${PARENT_TABLE_NAME}_$SUFFIX" >> $TMP_FILE
+                        $ECHO "DO INSTEAD INSERT INTO ${CHILD_NAME}" >> $TMP_FILE
                         $ECHO "VALUES (" >> $TMP_FILE
                         COL_VEC=0
                         while [ $COL_VEC -lt $COL_COUNT ]
@@ -614,7 +642,7 @@ GENERATE_SQL () {
                         fi
                 else
                         ABORT=1
-                        LOG_MSG "[WARN]:-Table ${PARENT_TABLE_NAME}_$SUFFIX already exists"
+                        LOG_MSG "[WARN]:-Table $CHILD_TAB_FULL already exists"
                 fi
         done
         $ECHO "COMMIT;" >> $TMP_FILE
@@ -701,7 +729,8 @@ ANALYZE_CHILD_TABLES () {
         LOG_MSG "[INFO]:-Start Function $FUNCNAME"
         for SUFFIX in "${SUFFIX_ARRAY[@]}"
         do
-        $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "ANALYZE ${PARENT_TABLE_NAME}_$SUFFIX;" >> $LOG_FILE 2>&1
+		CHILD_TAB_FULL=${SCHEMA_NAME}.${CHILD_STRING}${CHILD_TABLE_ID}${DEPTH}_${CUR_TYPES}_$SUFFIX
+        	$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "ANALYZE $CHILD_TAB_FULL;" >> $LOG_FILE 2>&1
         done
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
