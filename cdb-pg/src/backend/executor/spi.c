@@ -330,7 +330,8 @@ int connect_back_to_qd(void)
 	
 	appendStringInfo(&buffer, " -c mpp_is_callback=true");
 	appendStringInfo(&buffer, " -c mpp_qd_proc_offset=%ld",(long)mpp_qd_proc_offset);
- 	appendStringInfo(&buffer, " -c mpp_session_id=%d",mpp_session_id);
+	if (mpp_session_id > 0)
+ 		appendStringInfo(&buffer, " -c mpp_session_id=%d",mpp_session_id);
 
 	switch (client_min_messages)
 	{
