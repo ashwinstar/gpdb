@@ -1031,3 +1031,37 @@ DisplayXidCache(void)
 }
 
 #endif   /* XIDCACHE_DEBUG */
+
+PGPROC *FindProcByMppSessionId(long mpp_session_id)
+{
+		/* Find the guy who should manage our locks */
+		ProcArrayStruct *arrayP = procArray;
+		int			index;
+
+		Assert(mpp_session_id > 0);
+		
+		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+		for (index = 0; index < arrayP->numProcs; index++)
+		{
+			PGPROC	   *proc = arrayP->procs[index];
+			
+			if (proc->pid == MyProc->pid)
+				continue;
+				
+			if (!proc->mppIsWriter)
+				continue;
+				
+			//if (proc->pid == 0)
+			//	continue;			 /* skip prepared transactions ? */
+			if (proc->mppSessionId == mpp_session_id)
+			{
+				 
+				LWLockRelease(ProcArrayLock);
+				return proc;
+			}
+		}
+		
+		LWLockRelease(ProcArrayLock);
+		return NULL;
+	}
