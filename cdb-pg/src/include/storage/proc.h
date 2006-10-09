@@ -75,6 +75,7 @@ struct PGPROC
 	Oid			roleId;			/* OID of role using this backend */
     int         mppSessionId;   /* serial num of the qDisp process */
     int         mppLocalProcessSerial;  /* this backend's PGPROC serial num */
+    bool		mppIsWriter;	/* The writer gang member, holder of locks */
 
 	/* Info about LWLock the process is currently waiting for, if any. */
 	bool		lwWaiting;		/* true if waiting for an LW lock */

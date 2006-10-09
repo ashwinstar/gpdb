@@ -286,9 +286,14 @@ InitProcess(void)
      * its mpp_session_id down to all of its qExecs.  If this is a qExec,
      * we have already received the mpp_session_id from the qDisp.
      */
-    if (Mpp_role == MPP_ROLE_DISPATCH)
+    if (Mpp_role == MPP_ROLE_DISPATCH && (mpp_session_id == -1 || !mpp_is_callback))
         mpp_session_id = mppLocalProcessSerial;
     MyProc->mppSessionId = mpp_session_id;
+    
+    MyProc->mppIsWriter = Mpp_is_writer;
+    
+    if (Mpp_role == MPP_ROLE_DISPATCH)
+    	MyProc->mppIsWriter = !mpp_is_callback;
 
     /*
 	 * Add our PGPROC to the PGPROC array in shared memory.
@@ -384,6 +389,7 @@ InitDummyProcess(int proctype)
 	MyProc->roleId = InvalidOid;
     MyProc->mppLocalProcessSerial = 0;
     MyProc->mppSessionId = 0;
+    MyProc->mppIsWriter = false;
 	MyProc->lwWaiting = false;
 	MyProc->lwExclusive = false;
 	MyProc->lwWaitLink = NULL;
@@ -556,6 +562,7 @@ ProcKill(int code, Datum arg)
 
     MyProc->mppLocalProcessSerial = 0;
     MyProc->mppSessionId = 0;
+    MyProc->mppIsWriter = false;
 
     /* Return PGPROC structure (and semaphore) to freelist */
 	MyProc->links.next = procglobal->freeProcs;
