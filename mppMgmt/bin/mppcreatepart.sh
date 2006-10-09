@@ -51,7 +51,7 @@ CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
 QD_NAME=`hostname`
 EXIT_STATUS=0
-RULE_GEN=0
+RULE_GEN=1
 COPY_REC=0
 TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP.$$
 IDX_TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP_IDX.$$
@@ -61,6 +61,9 @@ ABORT=0
 CREATE_PART_INDEX=0
 PROCESS_CONVERSION=0
 STEP_BACK=0
+CHILD_TABLE_ID="_child_depth_"
+REQD_CHAR=30
+MAX_CHAR=64
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -96,7 +99,7 @@ USAGE () {
 		$ECHO "          child tables including schema in which table resides [mandatory]"
 		$ECHO "      -f, <column name> column on which partitioning will occur [mandatory]"
 		$ECHO "      -p, <d,r or l> d=date range r=numeric range l=list partitioning type [mandatory]"
-		$ECHO "      -r, also generate rules for loading to match constraint type via insert"
+		$ECHO "      -r, do not generate rules for loading to match constraint type via insert"
 		$ECHO "      -b, show child table record counts (only applicable if original table contained"
 		$ECHO "          records prior to process running) will display all counts < 0"
 		$ECHO "      -i, <column name1, column name2, ...> create additional indexes for each child table"
@@ -125,6 +128,7 @@ USAGE () {
 		$ECHO "      List partitioning options:"
 		$ECHO "      Use this partitioning policy for character columns"
 		$ECHO "      -o, <value list> comma separated list of values, example -c CA,MS,NY,WS [mandatory]"
+#		$ECHO "         To add a null check/rule constraint add text NULL to the list"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -155,7 +159,7 @@ PROMPT_CONTINUE () {
 			LOG_MSG "[INFO]:-Date range column type     = $PART_COL_TYPE"
 			LOG_MSG "[INFO]:-Constraint type requested  = $CONSTRAINT_TXT"
 			LOG_MSG "[INFO]:-Start date                 = $START_DATE_OR_VALUE"
-			LOG_MSG "[INFO]:-End date (calculated)      = $END_DATE"
+			LOG_MSG "[INFO]:-End date (calculated)      = $CORRECTED_END_DATE"
 			;;
 			r )
 			LOG_MSG "[INFO]:-Partition type             = range"
@@ -172,6 +176,7 @@ PROMPT_CONTINUE () {
 			LOG_MSG "[INFO]:-List values                = $PART_LIST"
 			;;
 		esac
+		LOG_MSG "[INFO]:-Partition depth            = $DEPTH"
 		LOG_MSG "[INFO]:-Suffix start               = ${SUFFIX_ARRAY[0]}" 
 		LOG_MSG "[INFO]:-Suffix end                 = ${SUFFIX_ARRAY[$SUFFIX_COUNT-1]}" 
 		LOG_MSG "[INFO]:-Number of partition tables = ${#SUFFIX_ARRAY[@]}"
@@ -231,6 +236,20 @@ CHK_PARAM () {
 			ERROR_EXIT "[FATAL]:-Schema name not supplied" 2
 		fi
 	fi	
+	#Check to ensure that max name length will not be breached
+	#First see if the parent table is also a child
+	if [ `$ECHO $TABLE_NAME|$GREP -c $CHILD_TABLE_ID` -eq 1 ];then
+		CHK_TAB_NAME=`$ECHO $TABLE_NAME|$SED -e s/\$CHILD_TABLE_ID//g|$AWK -F"" '{print $1}'`
+	else
+		CHK_TAB_NAME=$TABLE_NAME
+	fi
+	TABLE_NAME_CHAR_COUNT=`$ECHO $CHK_TAB_NAME|$TR -d '\n'|$WC -c`
+	((TOTAL_CHAR_COUNT=$TABLE_NAME_CHAR_COUNT+$REQD_CHAR))	
+	if [ $TOTAL_CHAR_COUNT -ge $MAX_CHAR ];then
+		LOG_MSG "[FATAL]:-Table name supplied is too long, when child tables, constraints and"
+		LOG_MSG "[FATAL]:-rules created they will exceed max char length of 64 bytes"
+		ERROR_EXIT "[FATAL]:-Unable to continue" 2
+	fi
 	#Make sure the partitioning column has been supplied
 	if [ x"" == x"$PART_COLUMN" ];then
 		ERROR_EXIT "[FATAL]:-Mandatory parameter -f not supplied" 2
@@ -271,7 +290,7 @@ CHK_PARAM () {
 
 DATE_CHK () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	if [ `$ECHO $START_DATE_OR_VALUE|$EGREP -c "[A-Z]|[a-z]"` -ne 0 ] || [ `$ECHO $START_DATE_OR_VALUE|$WC -c` -ne 11 ];then
+	if [ `$ECHO $START_DATE_OR_VALUE|$EGREP -c "[A-Z]|[a-z]|_"` -ne 0 ] || [ `$ECHO $START_DATE_OR_VALUE|$WC -c` -ne 11 ];then
 		ERROR_EXIT "[FATAL]:-Invalid start date supplied [ $START_DATE_OR_VALUE ]" 2;fi
 	if [ `$ECHO $START_DATE_OR_VALUE|$CUT -d"-" -f2` -lt 1 ] || [ `$ECHO $START_DATE_OR_VALUE|$CUT -d"-" -f2` -gt 12 ];then
 		 ERROR_EXIT "[FATAL]:-Invalid month in start date" 2;fi
@@ -438,7 +457,6 @@ VALIDATE_PROCESS () {
 			PROCESS_CONVERSION=1
 		fi
 	fi
-		
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -461,6 +479,7 @@ SELECT_PROCESS_TYPE () {
 				    TYPE_NAME=hour
 				    PROCESS_HOURLY ;;
 			esac
+			CORRECTED_END_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$END_DATE' -1;"`
 			;;
 		r )
 			LOG_MSG "[INFO]:-Selected process type range partitioning"
@@ -473,6 +492,18 @@ SELECT_PROCESS_TYPE () {
 			PROCESS_LIST
 			;;
 	esac
+	#Now check to see if the supplied table name has format child_depth_[0-9]_<table name>_<partition suffix>
+	if [ `$ECHO $TABLE_NAME|$GREP -c "${CHILD_TABLE_ID}"` -eq 0 ];then
+		#Parent table is not itself a child table
+		DEPTH=1
+		CUR_TYPES=`$ECHO $TYPE_NAME|$CUT -b1`
+	else
+		CURRENT_DEPTH=`$ECHO $TABLE_NAME|$SED -e s/\$CHILD_TABLE_ID//g|$AWK -F"" '{print $2}'|$AWK -F"_" '{print $1}'`
+		PREV_TYPES=`$ECHO $TABLE_NAME|$SED -e s/\$CHILD_TABLE_ID//g|$AWK -F"" '{print $2}'|$AWK -F"_" '{print $2}'`
+		((DEPTH=$CURRENT_DEPTH+1))
+		PARENT_TYPE_NAME=`$ECHO $TABLE_NAME|$AWK -F"_" '{print $NF}'`
+		CUR_TYPES="$PREV_TYPES`$ECHO $TYPE_NAME|$CUT -b1`"
+	fi	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -638,14 +669,17 @@ PROCESS_MONTHLY () {
 
 SECURE_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-#	LOG_MSG "[INFO]:-Commencing alter table on $PARENT_TABLE_NAME"
 	LOG_MSG "[INFO]:-Creating temporary holding table to secure records"
-	SECURE_TABLE_NAME="${PARENT_TABLE_NAME}_pre_part_orig_$$"
+	SECURE_TABLE_NAME="${PARENT_TABLE_NAME}_part_temp_$$"
 	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "create table ${SECURE_TABLE_NAME} (like $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
 	ERROR_CHK $? "create temporary holding table" 2
 	LOG_MSG "[INFO]:-Commencing record transfer, please wait..."
 	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into ${SECURE_TABLE_NAME} (select * from $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
 	ERROR_CHK $? "secure records to temporary table" 2
+	SECURE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(*) from $PARENT_TABLE_NAME;"`
+	LOG_MSG "[INFO]:-Parent table has $SECURE_COUNT records"
+	SECURE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(*) from ${SECURE_TABLE_NAME};"`
+	LOG_MSG "[INFO]:-Secure table has $SECURE_COUNT records"
 	LOG_MSG "[INFO]:-Clearing down $PARENT_TABLE_NAME"
 	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "truncate table $PARENT_TABLE_NAME;" >/dev/null 2>&1
 	ERROR_CHK $? "truncate $PARENT_TABLE_NAME" 2
@@ -695,29 +729,56 @@ GENERATE_SQL () {
 	((COL_COUNT=${#PARENT_COLUMN_LIST[@]}-1))
 		$ECHO "BEGIN;" >> $TMP_FILE
 		if [ $CREATE_PART_INDEX -eq 1 ] || [ x"" != x"$INDEX_COLUMN" ];then $ECHO "BEGIN;" >> $IDX_TMP_FILE;fi
+	#Check to see if the parent is already a child
+	if [ $DEPTH -gt 1 ];then
+		case $PARENT_TYPE_NAME in 
+			hour )
+				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_[0-9]*_[0-9]*_hour$//g`
+				;;
+			daily )
+				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_[0-9]*_daily$//g`
+				;;
+			week )
+				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_w[0-9]*_week$//g`
+				;;
+			month )
+				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_month$//g`
+				;;
+			list )
+				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[a-z]*[A-Z]*_list$//g`
+				;;
+			range )
+				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_to_[0-9]*_range$//g`
+		esac
+	else
+		CHILD_STRING=$TABLE_NAME
+	fi
 	for SUFFIX in "${SUFFIX_ARRAY[@]}"
 	do
 		#Check if a table of that name exists
-		CHK_EXISTS_TABLE ${PARENT_TABLE_NAME}_$SUFFIX $MASTER_PORT $QD_DBNAME 
+#		CHK_EXISTS_TABLE ${PARENT_TABLE_NAME}_$SUFFIX $MASTER_PORT $QD_DBNAME 
+		CHILD_TAB_FULL=${SCHEMA_NAME}.${CHILD_STRING}${CHILD_TABLE_ID}${DEPTH}_${CUR_TYPES}_$SUFFIX
+		CHILD_NAME=${CHILD_STRING}${CHILD_TABLE_ID}${DEPTH}_${CUR_TYPES}_$SUFFIX
+		CHK_EXISTS_TABLE $CHILD_TAB_FULL $MASTER_PORT $QD_DBNAME 
 		if [ $EXISTS -gt 0 ];then	
-			$ECHO "CREATE TABLE ${PARENT_TABLE_NAME}_$SUFFIX" >> $TMP_FILE
+			$ECHO "CREATE TABLE ${CHILD_TAB_FULL}" >> $TMP_FILE
 			$ECHO "(CHECK ( `$ECHO ${RULE_ARRAY[$VECTOR]}|$TR '~' ' '` ) )" >> $TMP_FILE
 			$ECHO "INHERITS (${PARENT_TABLE_NAME});" >> $TMP_FILE
 			$ECHO >> $TMP_FILE
 			if [ $CREATE_PART_INDEX -eq 1 ];then
-				$ECHO "CREATE INDEX ${TABLE_NAME}_idx__${PART_COLUMN}_${SUFFIX} on ${PARENT_TABLE_NAME}_${SUFFIX} ($PART_COLUMN);" >> $IDX_TMP_FILE
+				$ECHO "CREATE INDEX idx_${PART_COLUMN}_${CHILD_NAME} on ${CHILD_NAME} ($PART_COLUMN);" >> $IDX_TMP_FILE
 			fi
 			if [ x"" != x"$INDEX_COLUMN" ];then
 				for ADDITIONAL_INDEX in `$ECHO ${INDEX_COLUMN[@]}|$TR ',' ' '`
 				do
-				$ECHO "CREATE INDEX ${TABLE_NAME}_idx_${ADDITIONAL_INDEX}_${SUFFIX} on ${PARENT_TABLE_NAME}_${SUFFIX} ($ADDITIONAL_INDEX);" >> $IDX_TMP_FILE
+				$ECHO "CREATE INDEX idx_${ADDITIONAL_INDEX}_${CHILD_NAME} on ${CHILD_NAME} ($ADDITIONAL_INDEX);" >> $IDX_TMP_FILE
 				done
 			fi
 			if [ $RULE_GEN -eq 1 ];then
-			$ECHO "CREATE OR REPLACE RULE ${TABLE_NAME}_rule_${SUFFIX}" >> $TMP_FILE
+			$ECHO "CREATE OR REPLACE RULE rule_${CHILD_NAME}" >> $TMP_FILE
 			$ECHO "AS ON INSERT TO ${PARENT_TABLE_NAME}" >> $TMP_FILE
 			$ECHO "WHERE ( `$ECHO ${RULE_ARRAY[$VECTOR]}|$TR '~' ' '` )" >> $TMP_FILE
-			$ECHO "DO INSTEAD INSERT INTO ${PARENT_TABLE_NAME}_$SUFFIX" >> $TMP_FILE
+			$ECHO "DO INSTEAD INSERT INTO ${CHILD_NAME}" >> $TMP_FILE
 			$ECHO "VALUES (" >> $TMP_FILE
 			COL_VEC=0
 			while [ $COL_VEC -lt $COL_COUNT ]
@@ -731,7 +792,7 @@ GENERATE_SQL () {
 			fi
 		else
 			ABORT=1
-			LOG_MSG "[WARN]:-Table ${PARENT_TABLE_NAME}_$SUFFIX already exists"
+			LOG_MSG "[WARN]:-Table ${CHILD_TAB_FULL} already exists"
 		fi
 	done
 	$ECHO "COMMIT;" >> $TMP_FILE
@@ -804,8 +865,9 @@ ANALYZE_CHILD_TABLES () {
 	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "ANALYZE ${PARENT_TABLE_NAME};" >> $LOG_FILE 2>&1
 	for SUFFIX in "${SUFFIX_ARRAY[@]}"
 	do
-	LOG_MSG "[INFO]:-Running analyze on ${PARENT_TABLE_NAME}_$SUFFIX"
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "ANALYZE ${PARENT_TABLE_NAME}_$SUFFIX;" >> $LOG_FILE 2>&1
+	CHILD_TAB_FULL=${SCHEMA_NAME}.${CHILD_STRING}${CHILD_TABLE_ID}${DEPTH}_${CUR_TYPES}_$SUFFIX
+	LOG_MSG "[INFO]:-Running analyze on $CHILD_TAB_FULL"
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "ANALYZE $CHILD_TAB_FULL ;" >> $LOG_FILE 2>&1
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -816,9 +878,10 @@ DISPLAY_COUNTS () {
 	LOG_MSG "[INFO]:-Master table $TABLE_NAME has record count = $MASTER_COUNT"
 	for SUFFIX in "${SUFFIX_ARRAY[@]}"
 	do
-		SUFFIX_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT COUNT(*) from ${PARENT_TABLE_NAME}_$SUFFIX;"`
+		CHILD_TAB_FULL=${SCHEMA_NAME}.${CHILD_STRING}${CHILD_TABLE_ID}${DEPTH}_${CUR_TYPES}_$SUFFIX
+		SUFFIX_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT COUNT(*) from $CHILD_TAB_FULL;"`
 		if [ $SUFFIX_COUNT -gt 0 ];then
-		LOG_MSG "[INFO]:-Table suffix $SUFFIX has record count = $SUFFIX_COUNT"
+		LOG_MSG "[INFO]:-Table suffix $CHILD_TAB_FULL has record count = $SUFFIX_COUNT"
 		fi
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -846,7 +909,7 @@ if [ $# -ne 0 ]; then
 				f ) PART_COLUMN=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
 				m ) CONVERSION_CMD=$OPTARG ;;
 				p ) PART_TYPE=$OPTARG ;;
-				r ) RULE_GEN=1 ;;
+				r ) RULE_GEN=0 ;;
 				b ) CHILD_COUNT_REC=1 ;;
 				u ) CREATE_PART_INDEX=1 ;;
 				i ) INDEX_COLUMN=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
