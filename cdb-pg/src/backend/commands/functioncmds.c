@@ -114,6 +114,14 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 					 errmsg("type \"%s\" does not exist", typnam)));
 
 		/* Otherwise, go ahead and make a shell type */
+		if (Mpp_role == MPP_ROLE_EXECUTE)
+		{
+			ereport(DEBUG1,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("type \"%s\" is not yet defined", typnam),
+				 errdetail("Creating a shell type definition.")));
+		}
+		else
 		ereport(NOTICE,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("type \"%s\" is not yet defined", typnam),
