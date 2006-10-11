@@ -26,6 +26,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+
 /*
  * Declaration for old-style function pointer type.  This is now used only
  * in fmgr_oldstyle() and is no longer exported.
@@ -196,7 +198,28 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 		finfo->fn_retset = fbp->retset;
 		finfo->fn_addr = fbp->func;
 		finfo->fn_oid = functionId;
-		return;
+		
+		if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_primary)
+		{
+			/*
+			 * These built-in functions don't work if we are on a mirror, since
+			 * they won't give the same result as the primary gets.
+			 * 
+			 * Skip the fastpath return, so they will be detected below.
+			 * 
+			 */
+			if (functionId != 274 /* timeofday */ &&
+				functionId != 1574 /* nextval */ &&
+				functionId != 1575 /* currval */ &&
+				functionId != 1576 /* setval */ &&
+				functionId != 1598 /* random */ &&
+				functionId != 1765 /* setval */ &&
+				functionId != 2559 /* lastval */
+				)
+			return;
+		}
+		else
+			return;
 	}
 
 	/* Otherwise we need the pg_proc entry */
@@ -210,6 +233,18 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 	finfo->fn_nargs = procedureStruct->pronargs;
 	finfo->fn_strict = procedureStruct->proisstrict;
 	finfo->fn_retset = procedureStruct->proretset;
+	
+	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_primary)
+	{
+		if (strcmp(NameStr(procedureStruct->proname),"plpgsql_validator")!=0)
+		{
+			if (procedureStruct->provolatile == PROVOLATILE_VOLATILE)
+				elog(ERROR,"Volatile function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
+			if (procedureStruct->provolatile == PROVOLATILE_STABLE)
+				elog(ERROR,"Stable function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
+				
+		}
+	}
 
 	if (procedureStruct->prosecdef && !ignore_security)
 	{
