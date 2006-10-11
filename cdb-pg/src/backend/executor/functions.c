@@ -32,6 +32,8 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
+#include "cdb/cdbvars.h"
+
 
 /*
  * We have an execution_state record for each query in a function.	Each
@@ -198,6 +200,14 @@ init_sql_fcache(FmgrInfo *finfo)
 	/* Remember if function is STABLE/IMMUTABLE */
 	fcache->readonly_func =
 		(procedureStruct->provolatile != PROVOLATILE_VOLATILE);
+		
+	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_primary)
+	{
+		if (procedureStruct->provolatile == PROVOLATILE_VOLATILE)
+			elog(ERROR,"Volatile function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
+		if (procedureStruct->provolatile == PROVOLATILE_STABLE)
+			elog(ERROR,"Stable function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
+	}
 
 	/* Now look up the actual result type */
 	typeTuple = SearchSysCache(TYPEOID,
