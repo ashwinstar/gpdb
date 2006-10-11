@@ -234,9 +234,10 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 	finfo->fn_strict = procedureStruct->proisstrict;
 	finfo->fn_retset = procedureStruct->proretset;
 	
-	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_primary)
+	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_primary && procedureStruct->provolatile != PROVOLATILE_IMMUTABLE)
 	{
-		if (strcmp(NameStr(procedureStruct->proname),"plpgsql_validator")!=0)
+		if (strstr(NameStr(procedureStruct->proname),"_validator")!=0 && 
+			strstr(NameStr(procedureStruct->proname),"_call_handler")!=0)
 		{
 			if (procedureStruct->provolatile == PROVOLATILE_VOLATILE)
 				elog(ERROR,"Volatile function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
