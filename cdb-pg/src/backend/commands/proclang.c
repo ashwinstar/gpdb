@@ -161,7 +161,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 										 false, /* isAgg */
 										 false, /* security_definer */
 										 false, /* isStrict */
-										 PROVOLATILE_VOLATILE,
+										 PROVOLATILE_IMMUTABLE,
 										 buildoidvector(funcargtypes, 1),
 										 PointerGetDatum(NULL),
 										 PointerGetDatum(NULL),
