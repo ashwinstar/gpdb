@@ -35,7 +35,7 @@ RptCount=1
 # to install and run the checkPerf software. The user who runs
 # checkPerf must have read/write access to this directory.
 #
-baseDir=/home/bgadmin
+baseDir="/home/bgadmin"
 #
 #
 #############################################################
@@ -49,11 +49,12 @@ baseDir=/home/bgadmin
 # The directory path (or list of directory paths) on which to
 # test I/O performance. These would typically be your MPP primary
 # segment data directories, and perhaps your mirror data directories
-# as well.
-# EXAMPLE: Directory_List= "/dbfast1", "/dbfast2" 
-# EXAMPLE: Directory_List= "/mppdatadir" 
+# as well. Note that the extra comma is required at the end of the 
+# list and each directory is in quotes.
+# EXAMPLE: Directory_List= "/dbfast1", "/dbfast2", 
+# EXAMPLE: Directory_List= "/mppdatadir", 
 #
-DirectoryList= "/dbfast1", "/dbfast2" 
+DirectoryList="/dbfast1", "/dbfast2", 
 #
 # Block size to be used for dd test. 8K is the same as the
 # PostgreSQL/Bizgres MPP page size.
