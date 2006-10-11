@@ -13,16 +13,119 @@
 #include "postgres.h"
 
 #include "libpq-fe.h"
+#include "libpq-int.h"
 #include "miscadmin.h"
+#include "utils/memutils.h"
 
 #include "cdb/cdbconn.h"            /* me */
 #include "cdb/cdbutil.h"            /* CdbComponentDatabaseInfo */
 #include "cdb/cdbvars.h"
 
 
+extern ErrorData  * MppGetErrorData(void);
+static void MPPnoticeReceiver(void * arg, const PGresult * res)
+{
+	PGMessageField *pfield;
+	int elevel = INFO;
+	int errorcode = ERRCODE_SUCCESSFUL_COMPLETION;
+	char * file = "";
+	int line = 0;
+	char * func = "";
+	char  message[1024];
+	char * detail = NULL;
+	char * hint = NULL;
+	char * context = NULL;
+	
+	SegmentDatabaseDescriptor    *segdbDesc = (SegmentDatabaseDescriptor    *) arg;
+	if (!res)
+		return;
+	message[0] = '\0';
+	for (pfield = res->errFields; pfield != NULL; pfield = pfield->next)
+	{
+		switch (pfield->code)
+		{
+			case PG_DIAG_SEVERITY:
+				if (strcmp(pfield->contents,"WARNING")==0)
+					elevel = WARNING;
+				else if (strcmp(pfield->contents,"NOTICE")==0)
+					elevel = NOTICE;
+				else if (strcmp(pfield->contents,"DEBUG")==0)
+					elevel = DEBUG1;
+				else 
+					elevel = INFO;
+			case PG_DIAG_SQLSTATE:
+				break;
+			case PG_DIAG_MESSAGE_PRIMARY:
+				strcpy(message, pfield->contents);
+				if (segdbDesc)
+				{
+					cdbconn_setSliceIndex(segdbDesc, -1);
+				}
+				if (segdbDesc && segdbDesc->whoami)
+				{
+					strcat(message,"  (");
+					strcat(message, segdbDesc->whoami);
+					strcat(message,")");
+				}
+				break;
+			case PG_DIAG_MESSAGE_DETAIL:
+				detail = pfield->contents;
+				break;
+			case PG_DIAG_MESSAGE_HINT:
+				hint = pfield->contents;
+				break;
+			case PG_DIAG_STATEMENT_POSITION:
+			case PG_DIAG_INTERNAL_POSITION:
+			case PG_DIAG_INTERNAL_QUERY:
+				break;
+			case PG_DIAG_CONTEXT:
+				context = pfield->contents;
+				break;
+			case PG_DIAG_SOURCE_FILE:
+				file = pfield->contents;
+				break;
+			case PG_DIAG_SOURCE_LINE:
+				line = atol(pfield->contents);
+				break;
+			case PG_DIAG_SOURCE_FUNCTION:
+				func = pfield->contents;
+				break;
+			case PG_DIAG_MPP_PROCESS_TAG:
+				break;
+			default:
+				break;
+			
+		}
+	}
+	
+	if (errstart(elevel, file, line, func))
+	{
+		ErrorData  *edata = MppGetErrorData();
+		MemoryContext oldcontext;
+		oldcontext = MemoryContextSwitchTo(ErrorContext);
+		
+		
+		edata->sqlerrcode = errorcode;
+			
+		edata->message = pstrdup(message);
+		
+		
+		if (detail)
+			edata->detail = pstrdup(detail);
+		if (hint)
+			edata->hint = pstrdup(hint);
+		if (context)
+			edata->context = pstrdup(context);
+		MemoryContextSwitchTo(oldcontext);
+		errfinish(0);
+	} 
+	 
+}
+
+
 /* Initialize a QE connection descriptor in storage provided by the caller. */
 void
-cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor        *segdbDesc,
+cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc,
                               struct CdbComponentDatabaseInfo  *cdbinfo,
                               const char                       *dbname,
                               const char                       *user)
@@ -152,6 +255,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
      */
     else
     {
+    	PQsetNoticeReceiver(segdbDesc->conn, &MPPnoticeReceiver, segdbDesc);
         /* Command the QE to initialize its motion layer.
          * Wait for it to respond giving us the TCP port number
          * where it listens for connections from the gang below.
