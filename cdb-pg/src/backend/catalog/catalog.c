@@ -276,7 +276,7 @@ GetNewOid(Relation relation)
 		{
 			if (Mpp_role == MPP_ROLE_EXECUTE)
 			{
-				elog(WARNING,"Allocating Oid %u on relid %u in EXECUTE mode",result,relation->rd_id);
+				elog(DEBUG1,"Allocating Oid %u on relid %u in EXECUTE mode",result,relation->rd_id);
 			}
 			if (Mpp_role == MPP_ROLE_DISPATCH)
 			{
@@ -337,7 +337,7 @@ GetNewOidWithIndex(Relation relation, Relation indexrel)
 		if (Mpp_role == MPP_ROLE_EXECUTE)
 		{
 			if (relation->rd_id != 2604 /* pg_attrdef */ && relation->rd_id != 2606 /* pg_constraint */ && relation->rd_id != 2615 /* pg_namespace */) 
-				elog(WARNING,"Allocating Oid %u with index on relid %u in EXECUTE mode",newOid,relation->rd_id);
+				elog(DEBUG1,"Allocating Oid %u with index on relid %u in EXECUTE mode",newOid,relation->rd_id);
 			else
 				elog(DEBUG1,"Allocating Oid %u with index in EXECUTE mode",newOid);
 		}
@@ -418,9 +418,9 @@ GetNewRelFileNode(Oid reltablespace, bool relisshared, Relation pg_class)
 	if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
 		if (pg_class)
-			elog(WARNING,"Calling GetNewRelFileNode (with pg_class) in EXECUTE mode.  New relOid = %d", rnode.relNode );
+			elog(DEBUG1,"Calling GetNewRelFileNode (with pg_class) in EXECUTE mode.  New relOid = %d", rnode.relNode );
 		else
-			elog(WARNING,"Calling GetNewRelFileNode in EXECUTE mode.  New relOid = %d", rnode.relNode );
+			elog(DEBUG1,"Calling GetNewRelFileNode in EXECUTE mode.  New relOid = %d", rnode.relNode );
 	}
 
 	return rnode.relNode;

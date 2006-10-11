@@ -304,27 +304,30 @@ ExecuteGrantStmt_Relation(GrantStmt *stmt)
 		 * GRANT case.)
 		 */
 		this_privileges = privileges & ACL_OPTION_TO_PRIVS(avail_goptions);
-		if (stmt->is_grant)
+		if (Mpp_role != MPP_ROLE_EXECUTE)
 		{
-			if (this_privileges == 0)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-						 errmsg("no privileges were granted")));
-			else if (!all_privs && this_privileges != privileges)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-						 errmsg("not all privileges were granted")));
-		}
-		else
-		{
-			if (this_privileges == 0)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-						 errmsg("no privileges could be revoked")));
-			else if (!all_privs && this_privileges != privileges)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-						 errmsg("not all privileges could be revoked")));
+			if (stmt->is_grant)
+			{
+				if (this_privileges == 0)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
+							 errmsg("no privileges were granted")));
+				else if (!all_privs && this_privileges != privileges)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
+							 errmsg("not all privileges were granted")));
+			}
+			else
+			{
+				if (this_privileges == 0)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
+							 errmsg("no privileges could be revoked")));
+				else if (!all_privs && this_privileges != privileges)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
+							 errmsg("not all privileges could be revoked")));
+			}
 		}
 
 		/*
@@ -483,27 +486,30 @@ ExecuteGrantStmt_Database(GrantStmt *stmt)
 		 * GRANT case.)
 		 */
 		this_privileges = privileges & ACL_OPTION_TO_PRIVS(avail_goptions);
-		if (stmt->is_grant)
+		if (Mpp_role != MPP_ROLE_EXECUTE)
 		{
-			if (this_privileges == 0)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-						 errmsg("no privileges were granted")));
-			else if (!all_privs && this_privileges != privileges)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-						 errmsg("not all privileges were granted")));
-		}
-		else
-		{
-			if (this_privileges == 0)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-						 errmsg("no privileges could be revoked")));
-			else if (!all_privs && this_privileges != privileges)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-						 errmsg("not all privileges could be revoked")));
+			if (stmt->is_grant)
+			{
+				if (this_privileges == 0)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
+							 errmsg("no privileges were granted")));
+				else if (!all_privs && this_privileges != privileges)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
+							 errmsg("not all privileges were granted")));
+			}
+			else
+			{
+				if (this_privileges == 0)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
+							 errmsg("no privileges could be revoked")));
+				else if (!all_privs && this_privileges != privileges)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
+							 errmsg("not all privileges could be revoked")));
+			}
 		}
 
 		/*
@@ -658,27 +664,30 @@ ExecuteGrantStmt_Function(GrantStmt *stmt)
 		 * GRANT case.)
 		 */
 		this_privileges = privileges & ACL_OPTION_TO_PRIVS(avail_goptions);
-		if (stmt->is_grant)
+		if (Mpp_role != MPP_ROLE_EXECUTE)
 		{
-			if (this_privileges == 0)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-						 errmsg("no privileges were granted")));
-			else if (!all_privs && this_privileges != privileges)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-						 errmsg("not all privileges were granted")));
-		}
-		else
-		{
-			if (this_privileges == 0)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-						 errmsg("no privileges could be revoked")));
-			else if (!all_privs && this_privileges != privileges)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-						 errmsg("not all privileges could be revoked")));
+			if (stmt->is_grant)
+			{
+				if (this_privileges == 0)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
+							 errmsg("no privileges were granted")));
+				else if (!all_privs && this_privileges != privileges)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
+							 errmsg("not all privileges were granted")));
+			}
+			else
+			{
+				if (this_privileges == 0)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
+							 errmsg("no privileges could be revoked")));
+				else if (!all_privs && this_privileges != privileges)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
+							 errmsg("not all privileges could be revoked")));
+			}
 		}
 
 		/*
@@ -841,27 +850,30 @@ ExecuteGrantStmt_Language(GrantStmt *stmt)
 		 * GRANT case.)
 		 */
 		this_privileges = privileges & ACL_OPTION_TO_PRIVS(avail_goptions);
-		if (stmt->is_grant)
+		if (Mpp_role != MPP_ROLE_EXECUTE)
 		{
-			if (this_privileges == 0)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-						 errmsg("no privileges were granted")));
-			else if (!all_privs && this_privileges != privileges)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-						 errmsg("not all privileges were granted")));
-		}
-		else
-		{
-			if (this_privileges == 0)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-						 errmsg("no privileges could be revoked")));
-			else if (!all_privs && this_privileges != privileges)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-						 errmsg("not all privileges could be revoked")));
+			if (stmt->is_grant)
+			{
+				if (this_privileges == 0)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
+							 errmsg("no privileges were granted")));
+				else if (!all_privs && this_privileges != privileges)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
+							 errmsg("not all privileges were granted")));
+			}
+			else
+			{
+				if (this_privileges == 0)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
+							 errmsg("no privileges could be revoked")));
+				else if (!all_privs && this_privileges != privileges)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
+							 errmsg("not all privileges could be revoked")));
+			}
 		}
 
 		/*
@@ -1016,27 +1028,30 @@ ExecuteGrantStmt_Namespace(GrantStmt *stmt)
 		 * GRANT case.)
 		 */
 		this_privileges = privileges & ACL_OPTION_TO_PRIVS(avail_goptions);
-		if (stmt->is_grant)
+		if (Mpp_role != MPP_ROLE_EXECUTE)
 		{
-			if (this_privileges == 0)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-						 errmsg("no privileges were granted")));
-			else if (!all_privs && this_privileges != privileges)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-						 errmsg("not all privileges were granted")));
-		}
-		else
-		{
-			if (this_privileges == 0)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-						 errmsg("no privileges could be revoked")));
-			else if (!all_privs && this_privileges != privileges)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-						 errmsg("not all privileges could be revoked")));
+			if (stmt->is_grant)
+			{
+				if (this_privileges == 0)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
+							 errmsg("no privileges were granted")));
+				else if (!all_privs && this_privileges != privileges)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
+							 errmsg("not all privileges were granted")));
+			}
+			else
+			{
+				if (this_privileges == 0)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
+							 errmsg("no privileges could be revoked")));
+				else if (!all_privs && this_privileges != privileges)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
+							 errmsg("not all privileges could be revoked")));
+			}
 		}
 
 		/*
@@ -1195,27 +1210,30 @@ ExecuteGrantStmt_Tablespace(GrantStmt *stmt)
 		 * GRANT case.)
 		 */
 		this_privileges = privileges & ACL_OPTION_TO_PRIVS(avail_goptions);
-		if (stmt->is_grant)
+		if (Mpp_role != MPP_ROLE_EXECUTE)
 		{
-			if (this_privileges == 0)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-						 errmsg("no privileges were granted")));
-			else if (!all_privs && this_privileges != privileges)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-						 errmsg("not all privileges were granted")));
-		}
-		else
-		{
-			if (this_privileges == 0)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-						 errmsg("no privileges could be revoked")));
-			else if (!all_privs && this_privileges != privileges)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-						 errmsg("not all privileges could be revoked")));
+			if (stmt->is_grant)
+			{
+				if (this_privileges == 0)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
+							 errmsg("no privileges were granted")));
+				else if (!all_privs && this_privileges != privileges)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
+							 errmsg("not all privileges were granted")));
+			}
+			else
+			{
+				if (this_privileges == 0)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
+							 errmsg("no privileges could be revoked")));
+				else if (!all_privs && this_privileges != privileges)
+					ereport(WARNING,
+							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
+							 errmsg("not all privileges could be revoked")));
+			}
 		}
 
 		/*

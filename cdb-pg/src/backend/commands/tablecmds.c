@@ -999,6 +999,13 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 				 * Yes, try to merge the two column definitions. They must
 				 * have the same type and typmod.
 				 */
+				if (Mpp_role == MPP_ROLE_EXECUTE)
+				{
+					ereport(DEBUG1,
+						(errmsg("merging multiple inherited definitions of column \"%s\"",
+								attributeName)));
+				}
+				else
 				ereport(NOTICE,
 						(errmsg("merging multiple inherited definitions of column \"%s\"",
 								attributeName)));
@@ -1143,6 +1150,13 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 				 * Yes, try to merge the two column definitions. They must
 				 * have the same type and typmod.
 				 */
+				if (Mpp_role == MPP_ROLE_EXECUTE)
+				{
+					ereport(DEBUG1,
+					   (errmsg("merging column \"%s\" with inherited definition",
+							   attributeName)));
+				}
+				else
 				ereport(NOTICE,
 				   (errmsg("merging column \"%s\" with inherited definition",
 						   attributeName)));
@@ -3166,6 +3180,14 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 			heap_freetuple(tuple);
 
 			/* Inform the user about the merge */
+			if (Mpp_role == MPP_ROLE_EXECUTE)
+			{
+				ereport(DEBUG1,
+			  (errmsg("merging definition of column \"%s\" for child \"%s\"",
+					  colDef->colname, RelationGetRelationName(rel))));
+				
+			}
+			else
 			ereport(NOTICE,
 			  (errmsg("merging definition of column \"%s\" for child \"%s\"",
 					  colDef->colname, RelationGetRelationName(rel))));
@@ -3804,7 +3826,8 @@ ATExecDropColumn(Relation rel, const char *colName,
 				policy->nattrs = 0;
 				rel->rd_cdbpolicy = MppPolicyCopy(GetMemoryChunkContext(rel), policy);
 				MppPolicyReplace(rel->rd_id, policy);
-				ereport(NOTICE,
+				if (Mpp_role != MPP_ROLE_EXECUTE)
+				    ereport(NOTICE,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("Dropping a column that is part of the distribution policy forces a NULL distribution policy")));
 			}
@@ -4233,7 +4256,7 @@ ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
 		 * generate a warning if not, since otherwise costly seqscans will be
 		 * incurred to check FK validity.
 		 */
-		if (!op_in_opclass(oprid(o), opclasses[i]))
+		if (Mpp_role != MPP_ROLE_EXECUTE && !op_in_opclass(oprid(o), opclasses[i]))
 			ereport(WARNING,
 					(errmsg("foreign key constraint \"%s\" "
 							"will require costly sequential scans",
@@ -4955,7 +4978,7 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 					 errmsg("constraint \"%s\" does not exist",
 							constrName)));
 		/* Otherwise if more than one constraint deleted, notify */
-		else if (deleted > 1)
+		else if (deleted > 1 && Mpp_role != MPP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errmsg("multiple constraints named \"%s\" were dropped",
 							constrName)));
@@ -5426,7 +5449,8 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 				policy->nattrs = 0;
 				rel->rd_cdbpolicy = MppPolicyCopy(GetMemoryChunkContext(rel), policy);
 				MppPolicyReplace(rel->rd_id, policy);
-				ereport(NOTICE,
+				if (Mpp_role != MPP_ROLE_EXECUTE)
+					ereport(NOTICE,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("Changing the datatype of a column that is part of the distribution policy forces a NULL distribution policy")));
 			}

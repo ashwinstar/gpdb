@@ -3012,6 +3012,11 @@ BeginTransactionBlock(void)
 		case TBLOCK_SUBINPROGRESS:
 		case TBLOCK_ABORT:
 		case TBLOCK_SUBABORT:
+			if (Mpp_role == MPP_ROLE_EXECUTE)
+			ereport(DEBUG1,
+					(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
+					 errmsg("there is already a transaction in progress")));
+			else
 			ereport(WARNING,
 					(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
 					 errmsg("there is already a transaction in progress")));
@@ -3179,6 +3184,13 @@ EndTransactionBlock(void)
 			 * put us back into the default state.
 			 */
 		case TBLOCK_STARTED:
+			if (Mpp_role == MPP_ROLE_EXECUTE)
+			{
+				ereport(DEBUG1,
+					(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
+					 errmsg("there is no transaction in progress")));
+			}
+			else
 			ereport(WARNING,
 					(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
 					 errmsg("there is no transaction in progress")));
@@ -3271,6 +3283,13 @@ UserAbortTransactionBlock(void)
 			 * default state.
 			 */
 		case TBLOCK_STARTED:
+			if (Mpp_role == MPP_ROLE_EXECUTE)
+			{
+				ereport(DEBUG1,
+					(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
+					 errmsg("there is no transaction in progress")));
+			}
+			else
 			ereport(WARNING,
 					(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
 					 errmsg("there is no transaction in progress")));

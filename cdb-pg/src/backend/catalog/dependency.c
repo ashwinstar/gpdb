@@ -55,6 +55,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+
 
 /* expansible list of ObjectAddresses */
 typedef struct
@@ -541,6 +543,12 @@ recursiveDeletion(const ObjectAddress *object,
 							getObjectDescription(&owningObject))));
 		else if (behavior == DROP_RESTRICT)
 		{
+			if (msglevel == NOTICE && Mpp_role == MPP_ROLE_EXECUTE)
+			ereport(DEBUG1,
+					(errmsg("%s depends on %s",
+							getObjectDescription(&owningObject),
+							objDescription)));
+			else
 			ereport(msglevel,
 					(errmsg("%s depends on %s",
 							getObjectDescription(&owningObject),
@@ -548,9 +556,16 @@ recursiveDeletion(const ObjectAddress *object,
 			ok = false;
 		}
 		else
+		{
+			if (Mpp_role == MPP_ROLE_EXECUTE)
+			ereport(DEBUG1,
+					(errmsg("drop cascades to %s",
+							getObjectDescription(&owningObject))));
+			else
 			ereport(msglevel,
 					(errmsg("drop cascades to %s",
 							getObjectDescription(&owningObject))));
+		}
 
 		if (!recursiveDeletion(&owningObject, behavior, msglevel,
 							   object, oktodelete, depRel))
@@ -700,6 +715,12 @@ deleteDependentObjects(const ObjectAddress *object,
 									getObjectDescription(&otherObject))));
 				else if (behavior == DROP_RESTRICT)
 				{
+					if (msglevel == NOTICE && Mpp_role == MPP_ROLE_EXECUTE)
+					ereport(DEBUG1,
+							(errmsg("%s depends on %s",
+									getObjectDescription(&otherObject),
+									objDescription)));
+					else
 					ereport(msglevel,
 							(errmsg("%s depends on %s",
 									getObjectDescription(&otherObject),
@@ -707,9 +728,16 @@ deleteDependentObjects(const ObjectAddress *object,
 					ok = false;
 				}
 				else
+				{
+					if (Mpp_role == MPP_ROLE_EXECUTE)
+					ereport(DEBUG1,
+							(errmsg("drop cascades to %s",
+									getObjectDescription(&otherObject))));
+					else
 					ereport(msglevel,
 							(errmsg("drop cascades to %s",
 									getObjectDescription(&otherObject))));
+				}
 
 				if (!recursiveDeletion(&otherObject, behavior, msglevel,
 									   object, oktodelete, depRel))
