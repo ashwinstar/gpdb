@@ -37,7 +37,7 @@ CREATE FUNCTION user_relns()
 CREATE FUNCTION pt_in_widget(point, widget)
    RETURNS bool
    AS '@abs_builddir@/regress@DLSUFFIX@'
-   LANGUAGE 'C';
+   LANGUAGE 'C' IMMUTABLE ;
 
 CREATE FUNCTION overpaid(emp)
    RETURNS bool
@@ -57,7 +57,7 @@ CREATE FUNCTION interpt_pp(path, path)
 CREATE FUNCTION reverse_name(name)
    RETURNS name
    AS '@abs_builddir@/regress@DLSUFFIX@'
-   LANGUAGE 'c';
+   LANGUAGE 'c' IMMUTABLE ;
 
 CREATE FUNCTION oldstyle_length(int4, text)
    RETURNS int4

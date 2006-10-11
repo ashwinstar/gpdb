@@ -5,22 +5,22 @@
 CREATE FUNCTION widget_in(cstring)
    RETURNS widget
    AS '@abs_builddir@/regress@DLSUFFIX@'
-   LANGUAGE 'C' STRICT;
+   LANGUAGE 'C' IMMUTABLE STRICT;
 
 CREATE FUNCTION widget_out(widget)
    RETURNS cstring
    AS '@abs_builddir@/regress@DLSUFFIX@'
-   LANGUAGE 'C' STRICT;
+   LANGUAGE 'C' IMMUTABLE STRICT;
 
 CREATE FUNCTION int44in(cstring)
    RETURNS city_budget
    AS '@abs_builddir@/regress@DLSUFFIX@'
-   LANGUAGE 'C' STRICT;
+   LANGUAGE 'C' IMMUTABLE STRICT;
 
 CREATE FUNCTION int44out(city_budget)
    RETURNS cstring
    AS '@abs_builddir@/regress@DLSUFFIX@'
-   LANGUAGE 'C' STRICT;
+   LANGUAGE 'C' IMMUTABLE STRICT;
 
 CREATE FUNCTION check_primary_key ()
 	RETURNS trigger
@@ -55,7 +55,7 @@ CREATE FUNCTION set_ttdummy (int4)
 CREATE FUNCTION do_sleep (int4)
         RETURNS void
         AS '@abs_builddir@/regress@DLSUFFIX@'
-        LANGUAGE 'C' STRICT;
+        LANGUAGE 'C' IMMUTABLE STRICT;
 
 -- Things that shouldn't work:
 

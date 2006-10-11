@@ -264,7 +264,7 @@ create function trigtest() returns trigger as $$
 begin
 	raise notice '% % % %', TG_RELNAME, TG_OP, TG_WHEN, TG_LEVEL;
 	return new;
-end;$$ language plpgsql;
+end;$$ language plpgsql immutable;
 
 create trigger trigtest_b_row_tg before insert or update or delete on trigtest
 for each row execute procedure trigtest();
