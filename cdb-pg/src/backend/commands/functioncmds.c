@@ -87,7 +87,7 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 						 errmsg("SQL function cannot return shell type %s",
 								TypeNameToString(returnType))));
-			else
+			else if (Mpp_role != MPP_ROLE_EXECUTE)
 				ereport(NOTICE,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("return type %s is only a shell",
@@ -194,7 +194,7 @@ examine_parameter_list(List *parameters, Oid languageOid,
 							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 						   errmsg("SQL function cannot accept shell type %s",
 								  TypeNameToString(t))));
-				else
+				else if (Mpp_role != MPP_ROLE_EXECUTE)
 					ereport(NOTICE,
 							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 							 errmsg("argument type %s is only a shell",
