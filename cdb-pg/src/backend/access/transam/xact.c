@@ -1603,7 +1603,8 @@ StartTransaction(void)
 							 * die
 							 */
 							ereport(FATAL,
-									(errmsg("Reader qExec timed out waiting for Writer to set the shared snapshot."),
+									(errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+									 errmsg("Reader qExec timed out waiting for Writer to set the shared snapshot."),
 									 errdetail("We are waiting for the shared snapshot to have XID: %d but the value "
 								  "is currently: %d. Our slotindex is: %d \n"
 								  "Dump of all sharedsnapshots in shmem: %s",

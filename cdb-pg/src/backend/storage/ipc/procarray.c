@@ -563,7 +563,14 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 				CHECK_FOR_INTERRUPTS();
 
 				if (count >= segmate_timeout)
-					elog(ERROR, "Reader qExec timed out waiting for Writer to set the shared snapshot");
+					ereport(ERROR,
+							(errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+							 errmsg("Reader qExec timed out waiting for Writer to set the shared snapshot."),
+							 errdetail("We are waiting for the shared snapshot to have XID: %d but the value "
+									   "is currently: %d. Our slotindex is: %d \n"
+									   "Dump of all sharedsnapshots in shmem: %s",
+									   QDSentXID, SharedLocalSnapshotSlot->QDxid,
+									   SharedLocalSnapshotSlot->slotindex, SharedSnapshotDump())));
 			}
 		}
 	}
