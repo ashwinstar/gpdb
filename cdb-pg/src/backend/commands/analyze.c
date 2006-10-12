@@ -429,7 +429,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 		vac_update_relstats(onerel,
 							RelationGetNumberOfBlocks(onerel),
 							totalrows,
-							hasindex);
+							hasindex, false);
 		for (ind = 0; ind < nindexes; ind++)
 		{
 			AnlIndexData *thisdata = &indexdata[ind];
@@ -439,7 +439,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 			vac_update_relstats(Irel[ind],
 								RelationGetNumberOfBlocks(Irel[ind]),
 								totalindexrows,
-								false);
+								false, false);
 		}
 
 		/* report results to the stats collector, too */

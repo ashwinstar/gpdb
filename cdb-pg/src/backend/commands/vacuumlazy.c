@@ -178,7 +178,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	vac_update_relstats(onerel,
 						vacrelstats->rel_pages,
 						vacrelstats->rel_tuples,
-						hasindex);
+						hasindex, false);
 
 	/* report results to the stats collector, too */
 	pgstat_report_vacuum(RelationGetRelid(onerel), onerel->rd_rel->relisshared,
@@ -645,7 +645,7 @@ lazy_scan_index(Relation indrel, LVRelStats *vacrelstats)
 	vac_update_relstats(indrel,
 						stats->num_pages,
 						stats->num_index_tuples,
-						false);
+						false, false);
 
 	ereport(elevel,
 			(errmsg("index \"%s\" now contains %.0f row versions in %u pages",
@@ -721,7 +721,7 @@ lazy_vacuum_index(Relation indrel,
 	vac_update_relstats(indrel,
 						stats->num_pages,
 						stats->num_index_tuples,
-						false);
+						false, false);
 
 	ereport(elevel,
 			(errmsg("index \"%s\" now contains %.0f row versions in %u pages",

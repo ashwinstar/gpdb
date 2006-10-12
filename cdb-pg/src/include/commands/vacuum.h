@@ -116,9 +116,9 @@ extern void vac_open_indexes(Relation relation, LOCKMODE lockmode,
 				 int *nindexes, Relation **Irel);
 extern void vac_close_indexes(int nindexes, Relation *Irel, LOCKMODE lockmode);
 extern void vac_update_relstats(Relation rel,
-					BlockNumber num_pages,
-					double num_tuples,
-					bool hasindex);
+								BlockNumber num_pages,
+								double num_tuples,
+								bool hasindex, bool inplace);
 extern void vacuum_set_xid_limits(VacuumStmt *vacstmt, bool sharedRel,
 					  TransactionId *oldestXmin,
 					  TransactionId *freezeLimit);

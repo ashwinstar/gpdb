@@ -764,7 +764,7 @@ vacuum_set_xid_limits(VacuumStmt *vacstmt, bool sharedRel,
  */
 void
 vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
-					bool hasindex)
+					bool hasindex, bool inplace)
 {
 	Relation	rd;
 	HeapTupleData rtup;
@@ -778,8 +778,10 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 	/*
 	 * CDB: Query the segment db local catalogs to get summary statistics.
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (!inplace && Mpp_role == MPP_ROLE_DISPATCH)
 	{
+		elog(DEBUG5, "vac_update_relstats(): doing out-of-place update for vacuum");
+
 		cdbanalyze_get_relstats(rel, &num_pages, &num_tuples);
 
 		/* See comment above, we can use the 'normal' tuple update
@@ -1345,7 +1347,7 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 
 	/* update statistics in pg_class */
 	vac_update_relstats(onerel, vacrelstats->rel_pages,
-						vacrelstats->rel_tuples, vacrelstats->hasindex);
+						vacrelstats->rel_tuples, vacrelstats->hasindex, true);
 
 	/* report results to the stats collector, too */
 	pgstat_report_vacuum(RelationGetRelid(onerel), onerel->rd_rel->relisshared,
@@ -3119,7 +3121,7 @@ scan_index(Relation indrel, double num_tuples)
 	/* now update statistics in pg_class */
 	vac_update_relstats(indrel,
 						stats->num_pages, stats->num_index_tuples,
-						false);
+						false, true);
 
 	ereport(elevel,
 			(errmsg("index \"%s\" now contains %.0f row versions in %u pages",
@@ -3186,7 +3188,7 @@ vacuum_index(VacPageList vacpagelist, Relation indrel,
 	/* now update statistics in pg_class */
 	vac_update_relstats(indrel,
 						stats->num_pages, stats->num_index_tuples,
-						false);
+						false, true);
 
 	ereport(elevel,
 			(errmsg("index \"%s\" now contains %.0f row versions in %u pages",
