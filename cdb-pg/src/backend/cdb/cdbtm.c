@@ -1773,6 +1773,7 @@ abortRMInDoubtTransactions(HTAB *htab)
 								/* startTrans */		false,
 								/* withSnapshot */		false,
 								/* toMirrors */			true,
+								/* toPrimaries */		true,
 								&primaryResults, &mirrorResults, &dispatchThreads);
 
 		/*
@@ -2001,7 +2002,7 @@ void verify_shared_snapshot_ready(void)
 		char cmdbuf[35];
 		strcpy(cmdbuf, "set mpp_write_shared_snapshot=true" );
 		
-		CdbDoCommand(cmdbuf, true, true);
+		CdbDoCommand(cmdbuf, true, true, true, true);
 	}
 }
 

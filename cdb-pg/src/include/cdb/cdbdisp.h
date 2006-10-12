@@ -214,6 +214,7 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
                         bool						startTransaction,
                         bool						withSnapshot,
                         bool						dispatchToMirrors,
+						bool						dispatchToPrimaries,
                         struct CdbDispatchResults **pPrimaryResults,    /* OUT */
                         struct CdbDispatchResults **pMirrorResults,		/* OUT */
 						struct CdbDispatchCmdThreads **pDispatchThreads);  /* OUT */
@@ -260,7 +261,7 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
  * transaction or not.
  */
 void
-CdbDoCommand(const char *szCommand, bool cancelOnError, bool startTransaction);
+CdbDoCommand(const char *szCommand, bool cancelOnError, bool startTransaction, bool dispatchToMirrors, bool dispatchToPrimaries);
 
 
 /*

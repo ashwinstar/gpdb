@@ -1074,7 +1074,8 @@ ProcessUtility(Node *parsetree,
 
 					appendStringInfo(&buffer, "LOAD '%s'", stmt->filename);
 
-					CdbDoCommand(buffer.data, false, /*no txn*/ false);
+					CdbDoCommand(buffer.data, false, /*no txn*/ false, 
+								 /* mirrors */ true, /* primaries */ true);
 				}
 			}
 			break;
@@ -1162,7 +1163,8 @@ ProcessUtility(Node *parsetree,
 
 					appendStringInfo(&buffer, "RESET %s", n->name);
 
-					CdbDoCommand(buffer.data, false, /*no txn*/ false);
+					CdbDoCommand(buffer.data, false, /*no txn*/ false, 
+								 /* mirrors */ true, /* primaries */ true);
 				}
 			}
 			break;
@@ -1266,7 +1268,7 @@ ProcessUtility(Node *parsetree,
 						 errmsg("must be superuser to do CHECKPOINT")));
 			if (Mpp_role == MPP_ROLE_DISPATCH)
 			{
-				CdbDoCommand("CHECKPOINT", false, false);
+				CdbDoCommand("CHECKPOINT", false, false, /* mirrors */ true, /* primaries */ true);
 			}
 			RequestCheckpoint(true, false);
 			break;
@@ -1310,7 +1312,8 @@ ProcessUtility(Node *parsetree,
 						appendStringInfo(&buffer, "REINDEX DATABASE \"%s\"", stmt->name);
 
 
-						CdbDoCommand(buffer.data, false, /*no txn*/ false);
+						CdbDoCommand(buffer.data, false, /*no txn*/ false, 
+									 /* mirrors */ true, /* primaries */ true);
 					}
 				}
 			}

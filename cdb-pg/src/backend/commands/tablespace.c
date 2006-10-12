@@ -540,7 +540,8 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		}
 		
 		elog(NOTICE,"%s",buffer.data);
-		CdbDoCommand(buffer.data, false, /*no txn */ false);
+		CdbDoCommand(buffer.data, false, /*no txn */ false, 
+					 /* mirrors */ true, /* primaries */ true);
 
 	}
 #else							/* !HAVE_SYMLINK */
@@ -659,7 +660,8 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 		appendStringInfo(&buffer, "DROP TABLESPACE \"%s\"", stmt->tablespacename);
 		
 
-		CdbDoCommand(buffer.data, false, /*no txn */ false);
+		CdbDoCommand(buffer.data, false, /*no txn */ false, 
+					 /* mirrors */ true, /* primaries */ true);
 
 	}
 #else							/* !HAVE_SYMLINK */

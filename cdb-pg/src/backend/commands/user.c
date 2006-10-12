@@ -946,7 +946,8 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 			list_free(namelist);
 		}
 	
-		CdbDoCommand(buffer.data, false, /*start txn*/ true);
+		CdbDoCommand(buffer.data, false, /*start txn*/ true, 
+					 /* mirrors */ true, /* primaries */ true);
 
 	}
 }
@@ -1233,7 +1234,8 @@ RenameRole(const char *oldname, const char *newname)
 
 		appendStringInfo(&buffer, "ALTER ROLE %s RENAME TO %s", oldname, newname);
 
-		CdbDoCommand(buffer.data, false, /*start txn*/ true);
+		CdbDoCommand(buffer.data, false, /*start txn*/ true, 
+					 /* mirrors */ true, /* primaries */ true);
 
 	}
 }

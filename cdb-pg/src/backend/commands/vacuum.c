@@ -464,8 +464,6 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 
 		pszVacuum = serializeNode((Node *) q, NULL);
 
-		pfree(q);
-
 		Assert(pszVacuum != NULL);
 
 		elog(DEBUG5, "Command %s", pszVacuum);
@@ -475,17 +473,80 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 		pfree(pszVacuum);
 
 
-
 		/*
+		 * Our rule is that VACUUM gets dispatched to primaries and mirrors
+		 * while ANALYZE should get dispatched only to the primaries. Therefore,
+		 * if our vacstmt includes both a VACUUM and an ANALYZE clauses we 
+		 * dispatch it to the primaries only and create an identical statement
+		 * without the ANALYZE clause to dispatch to the mirrors.
+		 *
+		 * For example: "VACUUM FULL ANALYZE" - the original statement will get
+		 * dispatched to the primaries while "VACUUM FULL" will get dispatched
+		 * to the mirrors.
+		 *
+		 * We execute the commands using CdbDoCommand() which is a
 		 * Combination of CdbDispatchCommand and then CdbCheckDispatchResult.
 		 * If it fails on any of the targets, ereport(ERROR, ...) is called.
-		 * call CdbDoCommandNoTxn since it can not start in a transaction
+		 * call CdbDoCommandNoTxn since it can not start in a transaction.
+		 *
 		 */
-		CdbDoCommand(buffer.data, true, /*no txn */false);
-
-		pfree(buffer.data);
-
-		elog(DEBUG2, "Sent vacuum command to QEs");
+		if((vacstmt->vacuum && !vacstmt->analyze) || (!vacstmt->vacuum && vacstmt->analyze))
+		{
+			/* statement is either VACUUM with no ANALYZE, or ANALYZE with no VACUUM */
+			
+			bool dispatchToMirrors = vacstmt->vacuum;
+			
+			CdbDoCommand(buffer.data, true, /*no txn */false, 
+						 /* mirrors */ dispatchToMirrors, /* primaries */ true);
+			
+			elog(DEBUG2, "Sent %s command to QEs", (vacstmt->vacuum ? "vacuum" : "analyze"));
+		}
+		else
+		{
+			/* the statement is VACUUM [OPTIONS] ANALYZE */
+			
+			char	   *pszVacuumNoAnalyze;
+			
+			/* 
+			 * dispatch the full statment to primaries only 
+			 */
+			CdbDoCommand(buffer.data, true, /*no txn */false, /* mirrors */ false, /* primaries */ true);
+			
+			elog(DEBUG2, "Sent vacuum analyze command to primary QEs");
+			
+			/* reset buffer for reuse */
+			buffer.len = 0;
+			buffer.data[0] = '\0';
+			buffer.cursor = 0;
+			
+			Assert(((VacuumStmt *)q->utilityStmt)->analyze);
+							
+			/* strip off ANALYZE from statement */
+			((VacuumStmt *)q->utilityStmt)->analyze = false; 
+			
+			pszVacuumNoAnalyze = serializeNode((Node *) q, NULL);
+			
+			Assert(pszVacuumNoAnalyze != NULL);
+			
+			elog(DEBUG5, "Command %s", pszVacuumNoAnalyze);
+			
+			appendStringInfo(&buffer, "mppexec '%s' ''", pszVacuumNoAnalyze);
+			
+			pfree(pszVacuumNoAnalyze);
+			
+			/* 
+			 * dispatch analyze-stripped vacuum statement to mirrors only 
+			 */
+			CdbDoCommand(buffer.data, true, /*no txn */false, /* mirrors */ true, /* primaries */ false);
+			
+			elog(DEBUG2, "Sent vacuum command to mirror QEs");
+			
+			/* must reset to original value since it's a pointer to vacstmt. We'll need it later */
+			((VacuumStmt *)q->utilityStmt)->analyze = true; 
+		}
+		
+		pfree(q);
+		pfree(buffer.data);		
 	}
 
 

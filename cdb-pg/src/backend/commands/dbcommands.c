@@ -779,7 +779,8 @@ dropdb(const char *dbname, bool missing_ok)
 
 
 
-		CdbDoCommand(buffer.data, false, /*no txn */ false);
+		CdbDoCommand(buffer.data, false, /*no txn */ false, 
+					 /* mirrors */ true, /* primaries */ true);
 
 	}
 
@@ -1047,7 +1048,8 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 
 		appendStringInfo(&buffer, "ALTER DATABASE \"%s\" CONNECTION LIMIT %d", stmt->dbname, connlimit);
 
-		CdbDoCommand(buffer.data, false, /*start txn*/ true);
+		CdbDoCommand(buffer.data, false, /*start txn*/ true, 
+					 /* mirrors */ true, /* primaries */ true);
 
 	}
 
@@ -1194,7 +1196,8 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 		
 		}
 	
-		CdbDoCommand(buffer.data, false, /*start txn*/ true);
+		CdbDoCommand(buffer.data, false, /*start txn*/ true, 
+					 /* mirrors */ true, /* primaries */ true);
 
 	}
 
@@ -1319,7 +1322,8 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId, const char *newownername)
 
 		appendStringInfo(&buffer, "ALTER DATABASE \"%s\" OWNER TO \"%s\"", dbname, newownername);
 
-		CdbDoCommand(buffer.data, false, /*start txn*/ true);
+		CdbDoCommand(buffer.data, false, /*start txn*/ true, 
+					 /* mirrors */ true, /* primaries */ true);
 
 	}
 
