@@ -552,7 +552,7 @@ LockAcquire(LOCKMETHODID lockmethodid,
 	 */
 	lockHolderProcPtr = MyProc;
 	
-	if (lockmethodid == DEFAULT_LOCKMETHOD && locktag->locktag_type != LOCKTAG_TRANSACTION && locktag->locktag_field1 != 0 && locktag->locktag_field2 > 32760)
+	if (lockmethodid == DEFAULT_LOCKMETHOD && locktag->locktag_type != LOCKTAG_TRANSACTION)
 	{
 		if (Mpp_role == MPP_ROLE_EXECUTE && (mpp_is_callback || !Mpp_is_writer))
 		{
@@ -568,7 +568,7 @@ LockAcquire(LOCKMETHODID lockmethodid,
 				
 			}
 			else
-				elog(WARNING,"Could not find writer proc entry!");
+				elog(DEBUG1,"Could not find writer proc entry!");
 	
 				elog(DEBUG1,"Reader gang member trying to acquire a lock [%u,%u] %s %d",
 					 locktag->locktag_field1, locktag->locktag_field2,
