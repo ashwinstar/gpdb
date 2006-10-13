@@ -340,6 +340,7 @@ typedef struct LOCALLOCK
 	LOCK	   *lock;			/* associated LOCK object in shared mem */
 	PROCLOCK   *proclock;		/* associated PROCLOCK object in shmem */
 	bool		isTempObject;	/* true if lock is on a temporary object */
+	bool		isFake;			/* For MPP */
 	int			nLocks;			/* total number of times lock is held */
 	int			numLockOwners;	/* # of relevant ResourceOwners */
 	int			maxLockOwners;	/* allocated size of array */

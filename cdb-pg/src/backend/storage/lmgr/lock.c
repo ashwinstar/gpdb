@@ -42,6 +42,7 @@
 #include "utils/ps_status.h"
 #include "utils/resowner.h"
 #include "utils/resscheduler.h"
+#include "storage/procarray.h"
 
 #include "cdb/cdbvars.h"
 
@@ -467,6 +468,7 @@ LockAcquire(LOCKMETHODID lockmethodid,
 	LWLockId	masterLock;
 	LockMethod	lockMethodTable;
 	int			status;
+	PGPROC		*lockHolderProcPtr;
 
 #ifdef LOCK_DEBUG
 	if (Trace_userlocks && lockmethodid == USER_LOCKMETHOD)
@@ -508,6 +510,7 @@ LockAcquire(LOCKMETHODID lockmethodid,
 		locallock->lock = NULL;
 		locallock->proclock = NULL;
 		locallock->isTempObject = isTempObject;
+		locallock->isFake = false;
 		locallock->nLocks = 0;
 		locallock->numLockOwners = 0;
 		locallock->maxLockOwners = 8;
@@ -540,6 +543,52 @@ LockAcquire(LOCKMETHODID lockmethodid,
 		GrantLockLocal(locallock, owner);
 		return LOCKACQUIRE_ALREADY_HELD;
 	}
+	
+	/*
+	 * lockHolder is the the gang member that should hold and manage locks for this
+	 * transaction.  In Utility mode, or on the QD, it's allways myself.
+	 * 
+	 * On the QEs, it should normally be the Writer gang member.
+	 */
+	lockHolderProcPtr = MyProc;
+	
+	if (lockmethodid == DEFAULT_LOCKMETHOD && locktag->locktag_type != LOCKTAG_TRANSACTION && locktag->locktag_field1 != 0 && locktag->locktag_field2 > 32760)
+	{
+		if (Mpp_role == MPP_ROLE_EXECUTE && (mpp_is_callback || !Mpp_is_writer))
+		{
+		
+			/* Find the guy who should manage our locks */
+			PGPROC * proc = FindProcByMppSessionId(mpp_session_id);
+			
+			if (proc != NULL)
+			{
+	
+				elog(DEBUG1,"Found writer proc entry.  My Pid %d, his pid %d", MyProc-> pid, proc->pid);
+				lockHolderProcPtr = proc;
+				
+			}
+			else
+				elog(WARNING,"Could not find writer proc entry!");
+	
+				elog(DEBUG1,"Reader gang member trying to acquire a lock [%u,%u] %s %d",
+					 locktag->locktag_field1, locktag->locktag_field2,
+					 lock_mode_names[lockmode], (int)locktag->locktag_type);
+			
+			
+		}
+		else if (mpp_enable_functions && mpp_is_callback && mpp_qd_proc_offset!=-1 && Mpp_role == MPP_ROLE_DISPATCH)
+		{
+			lockHolderProcPtr = (PGPROC *)MAKE_PTR(mpp_qd_proc_offset);
+			elog(DEBUG1,"QD callback trying to acquire a lock [%u,%u] %s %d",
+					 locktag->locktag_field1, locktag->locktag_field2,
+					 lock_mode_names[lockmode], (int)locktag->locktag_type);
+			
+		}
+	}
+	
+	
+	
+	
 
 	/*
 	 * Otherwise we've got to mess with the shared lock table.
@@ -583,6 +632,8 @@ LockAcquire(LOCKMETHODID lockmethodid,
 		MemSet(lock->requested, 0, sizeof(int) * MAX_LOCKMODES);
 		MemSet(lock->granted, 0, sizeof(int) * MAX_LOCKMODES);
 		LOCK_PRINT("LockAcquire: new", lock, lockmode);
+		if (MyProc != lockHolderProcPtr)
+			elog(DEBUG1,"Reader trying to get new lock writer never saw");
 	}
 	else
 	{
@@ -590,6 +641,65 @@ LockAcquire(LOCKMETHODID lockmethodid,
 		Assert((lock->nRequested >= 0) && (lock->requested[lockmode] >= 0));
 		Assert((lock->nGranted >= 0) && (lock->granted[lockmode] >= 0));
 		Assert(lock->nGranted <= lock->nRequested);
+		
+		/*
+		 * If I'm not the writer gang, I can do some special stuff
+		 */
+		if (MyProc != lockHolderProcPtr)
+		{
+			SHM_QUEUE		*procLocks = &(lock->procLocks);
+			proclock = (PROCLOCK *) SHMQueueNext(procLocks, procLocks,
+											 offsetof(PROCLOCK, lockLink));
+			while(proclock)
+			{
+				
+				if (MAKE_OFFSET(MyProc) != proclock->tag.proc && proclock->tag.proc != 0)
+				{
+					PGPROC		*otherProc = (PGPROC *)MAKE_PTR(proclock->tag.proc);
+					if (otherProc->mppSessionId == mpp_session_id)
+					{
+						/*
+						 * One of the owners of the lock is a member of my own session
+						 * 
+						 * If he already has the lock, we don't need to take it out ourselves,
+						 * whether or not it would conflict.
+						 * 
+						 */
+						if (proclock->holdMask & LOCKBIT_ON(lockmode))
+						{	
+							
+							LWLockRelease(masterLock);
+							elog(DEBUG1,"Another gang member already owns this lock");
+							/*
+							 * Although we don't really take the lock, we set up a 
+							 * fake locallock to keep track of what we've done, so 
+							 * lockRelease can do the right thing
+							 */
+							locallock->isFake = true;
+							GrantLockLocal(locallock, owner);
+							return LOCKACQUIRE_ALREADY_HELD;
+						}
+						if (lockmode == AccessShareLock)
+						{
+							
+							LWLockRelease(masterLock);
+							elog(DEBUG1,"Another gang member already owns some stronger kind of lock");
+							/* 
+							 * If we are a reader gang member, and we are only trying to get an
+							 * AccessShareLock, we know that such a lock is superseeded by any 
+							 * other (stronger) lock on the object by other gang members.
+							 */
+							locallock->isFake = true;
+							GrantLockLocal(locallock, owner);
+							return LOCKACQUIRE_ALREADY_HELD;
+						}
+						
+					}
+				}
+				proclock = (PROCLOCK *) SHMQueueNext(procLocks, &proclock->lockLink,
+											 offsetof(PROCLOCK, lockLink));
+			}
+		}
 	}
 
 	/*
@@ -598,13 +708,8 @@ LockAcquire(LOCKMETHODID lockmethodid,
 	MemSet(&proclocktag, 0, sizeof(PROCLOCKTAG));		/* must clear padding */
 	proclocktag.lock = MAKE_OFFSET(lock);
 	
-	if (mpp_enable_functions && mpp_is_callback && mpp_qd_proc_offset!=-1 && Mpp_role == MPP_ROLE_DISPATCH)
-	{
-		elog(DEBUG1,"Special callback lock handling: my proc = %ld, but using mpp_qd_proc_offset = %ld",(long)MAKE_OFFSET(MyProc),(long)mpp_qd_proc_offset);
-		proclocktag.proc = mpp_qd_proc_offset;
-	}
-	else
-		proclocktag.proc = MAKE_OFFSET(MyProc);
+
+	proclocktag.proc = MAKE_OFFSET(MyProc);
 
 	/*
 	 * Find or create a proclock entry with this tag
@@ -641,17 +746,20 @@ LockAcquire(LOCKMETHODID lockmethodid,
 	 * If new, initialize the new entry
 	 */
 	if (!found)
-	{
+	{	
 		proclock->holdMask = 0;
 		proclock->releaseMask = 0;
 		/* Add proclock to appropriate lists */
 		SHMQueueInsertBefore(&lock->procLocks, &proclock->lockLink);
-		if (mpp_enable_functions && mpp_is_callback && mpp_qd_proc_offset!=-1 && Mpp_role == MPP_ROLE_DISPATCH)
+
+		if (proclocktag.proc != MAKE_OFFSET(MyProc))
 		{
-			SHMQueueInsertBefore(&((PGPROC *)MAKE_PTR(mpp_qd_proc_offset))->procLocks, &proclock->procLink);
+			/* This path is not yet used */
+			elog(NOTICE,"Reader trying allocate proc entry for writer ??");
+			SHMQueueInsertBefore(&lockHolderProcPtr->procLocks, &proclock->procLink);
 		}
 		else
-		SHMQueueInsertBefore(&MyProc->procLocks, &proclock->procLink);
+			SHMQueueInsertBefore(&MyProc->procLocks, &proclock->procLink);
 		PROCLOCK_PRINT("LockAcquire: new", proclock);
 	}
 	else
@@ -709,7 +817,7 @@ LockAcquire(LOCKMETHODID lockmethodid,
 	 * We shouldn't already hold the desired lock; else locallock table is
 	 * broken.
 	 */
-	if (mpp_enable_functions && mpp_is_callback)
+	if (Mpp_role != MPP_ROLE_UTILITY)
 	{
 		if (proclock->holdMask & LOCKBIT_ON(lockmode))
 		{
@@ -717,8 +825,25 @@ LockAcquire(LOCKMETHODID lockmethodid,
 				 lock_mode_names[lockmode],
 				 lock->tag.locktag_field1, lock->tag.locktag_field2,
 				 lock->tag.locktag_field3);
-			//GrantLock(lock, proclock, lockmode);
-			//GrantLockLocal(locallock, owner);
+			if (MyProc == lockHolderProcPtr)
+			{
+				elog(NOTICE, "Writer found lock %s on object %u/%u/%u that I didn't know I held",
+						 lock_mode_names[lockmode],
+						 lock->tag.locktag_field1, lock->tag.locktag_field2,
+						 lock->tag.locktag_field3);
+				GrantLock(lock, proclock, lockmode);
+				GrantLockLocal(locallock, owner);
+			}
+			else
+			{
+				if (MyProc != lockHolderProcPtr)
+					elog(NOTICE, "Reader found lock %s on object %u/%u/%u is already held by writer",
+						 lock_mode_names[lockmode],
+						 lock->tag.locktag_field1, lock->tag.locktag_field2,
+						 lock->tag.locktag_field3);
+				lock->nRequested--;
+				lock->requested[lockmode]--;
+			}
 			LWLockRelease(masterLock);
 			return LOCKACQUIRE_ALREADY_HELD;
 		}
@@ -738,20 +863,18 @@ LockAcquire(LOCKMETHODID lockmethodid,
 	 */
 	if (lockMethodTable->conflictTab[lockmode] & lock->waitMask)
 		status = STATUS_FOUND;
-	else
-		{
-			if (mpp_enable_functions && mpp_is_callback && mpp_qd_proc_offset!=-1 && Mpp_role == MPP_ROLE_DISPATCH)
-			{
-				status = LockCheckConflicts(lockMethodTable, lockmode,
-									lock, proclock, (PGPROC *)MAKE_PTR(mpp_qd_proc_offset));
-			}
-			else
+	else	
 		status = LockCheckConflicts(lockMethodTable, lockmode,
 									lock, proclock, MyProc);
-		}
+
 
 	if (status == STATUS_OK)
 	{
+		if (MyProc != lockHolderProcPtr)
+					elog(DEBUG1, "Reader found lock %s on object %u/%u/%u doesn't conflict ",
+						 lock_mode_names[lockmode],
+						 lock->tag.locktag_field1, lock->tag.locktag_field2,
+						 lock->tag.locktag_field3);
 		/* No conflict with held or previously requested locks */
 		GrantLock(lock, proclock, lockmode);
 		GrantLockLocal(locallock, owner);
@@ -765,7 +888,7 @@ LockAcquire(LOCKMETHODID lockmethodid,
 		 * blocking, remove useless table entries and return NOT_AVAIL without
 		 * waiting.
 		 */
-		if (dontWait || (Mpp_role == MPP_ROLE_EXECUTE && mpp_is_callback && mpp_enable_functions))
+		if (dontWait)
 		{
 			if (proclock->holdMask == 0)
 			{
@@ -786,13 +909,33 @@ LockAcquire(LOCKMETHODID lockmethodid,
 			LWLockRelease(masterLock);
 			if (locallock->nLocks == 0)
 				RemoveLocalLock(locallock);
-			if (Mpp_role == MPP_ROLE_EXECUTE && mpp_is_callback && mpp_enable_functions)
-				elog(ERROR,"Callback routine cannot wait on locks");
 			return LOCKACQUIRE_NOT_AVAIL;
+		}
+		
+		if (Mpp_role == MPP_ROLE_EXECUTE)
+		{
+			if (!Mpp_is_writer)
+				elog(NOTICE,"Reader gang member waiting on a lock [%u,%u] %s",
+					 locktag->locktag_field1, locktag->locktag_field2,
+					 lock_mode_names[lockmode]);
+			 else
+				 elog(DEBUG1,"Writer gang member waiting on a lock [%u,%u] %s",
+					 locktag->locktag_field1, locktag->locktag_field2,
+					 lock_mode_names[lockmode]);
 		}
 
 		if (Mpp_role == MPP_ROLE_EXECUTE && mpp_is_callback && mpp_enable_functions)
-			elog(DEBUG1,"Waiting on Lock");
+		{
+			elog(NOTICE,"Call back wants to wait on Lock");
+			lock->nRequested--;
+			lock->requested[lockmode]--;
+			LWLockRelease(masterLock);
+			if (locallock->nLocks == 0)
+				RemoveLocalLock(locallock);
+			return LOCKACQUIRE_ALREADY_HELD;
+		}
+		
+		
 		/*
 		 * Set bitmask of locks this process already holds on this object.
 		 */
@@ -1111,6 +1254,7 @@ WaitOnLock(LOCKMETHODID lockmethodid, LOCALLOCK *locallock,
 	int			len;
 
 	Assert(lockmethodid < NumLockMethods);
+	Assert(!locallock->isFake);
 
 	LOCK_PRINT("WaitOnLock: sleeping on lock",
 			   locallock->lock, locallock->tag.mode);
@@ -1272,7 +1416,7 @@ LockRelease(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
 	 */
 	if (!locallock || locallock->nLocks <= 0)
 	{
-		elog(WARNING, "you don't own a lock of type %s",
+		elog(ERROR, "you don't own a lock of type %s",
 			 lock_mode_names[lockmode]);
 		return FALSE;
 	}
@@ -1323,6 +1467,12 @@ LockRelease(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
 
 	if (locallock->nLocks > 0)
 		return TRUE;
+		
+	if (locallock->isFake)
+	{
+		RemoveLocalLock(locallock);
+		return TRUE;
+	}
 
 	/*
 	 * Otherwise we've got to mess with the shared lock table.
@@ -1413,13 +1563,13 @@ LockReleaseAll(LOCKMETHODID lockmethodid, bool allLocks)
 
 	while ((locallock = (LOCALLOCK *) hash_seq_search(&status)) != NULL)
 	{
-		if (locallock->proclock == NULL || locallock->lock == NULL)
+		if (locallock->proclock == NULL || locallock->lock == NULL || locallock->isFake)
 		{
 			/*
 			 * We must've run out of shared memory while trying to set up this
 			 * lock.  Just forget the local entry.
 			 */
-			Assert(locallock->nLocks == 0);
+			Assert(locallock->isFake || locallock->nLocks == 0);
 			RemoveLocalLock(locallock);
 			continue;
 		}
