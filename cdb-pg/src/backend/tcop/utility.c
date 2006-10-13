@@ -162,7 +162,8 @@ DropErrorMsgNonExistent(RangeVar *rel, char rightkind, bool missing_ok)
 			}
             else
             {
-                ereport(NOTICE, (errmsg(rentry->skipping_msg, rel->relname)));
+            	if (Mpp_role != MPP_ROLE_EXECUTE)
+                	ereport(NOTICE, (errmsg(rentry->skipping_msg, rel->relname)));
                 break;
             }
     	}

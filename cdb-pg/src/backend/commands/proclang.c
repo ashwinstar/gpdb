@@ -97,6 +97,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 		 * Give a notice if we are ignoring supplied parameters.
 		 */
 		if (stmt->plhandler)
+			if (Mpp_role != MPP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errmsg("using pg_pltemplate information instead of CREATE LANGUAGE parameters")));
 
@@ -205,6 +206,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 			 */
 			if (funcrettype == OPAQUEOID)
 			{
+				if (Mpp_role != MPP_ROLE_EXECUTE)
 				ereport(WARNING,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("changing return type of function %s from \"opaque\" to \"language_handler\"",

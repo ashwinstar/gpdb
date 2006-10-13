@@ -426,6 +426,7 @@ DefineView(ViewStmt *stmt)
 	{
 		view->istemp = isViewOnTempTable(viewParse);
 		if (view->istemp)
+			if (Mpp_role != MPP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errmsg("view \"%s\" will be a temporary view",
 							view->relname)));

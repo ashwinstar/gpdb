@@ -338,6 +338,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 	 */
 	if (vacstmt->vacuum && vacstmt->full)
 	{
+		if (Mpp_role == MPP_ROLE_DISPATCH)
 		ereport(NOTICE,
 				(errcode(ERRCODE_WARNING),
 				 errmsg("'VACUUM FULL' is not safe for large tables and has "

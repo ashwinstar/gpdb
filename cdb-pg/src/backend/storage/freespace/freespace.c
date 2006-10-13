@@ -70,6 +70,8 @@
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
 
+#include "cdb/cdbvars.h"
+
 
 /* Initial value for average-request moving average */
 #define INITIAL_AVERAGE ((Size) (BLCKSZ / 32))
@@ -714,7 +716,8 @@ PrintFreeSpaceMapStatistics(int elevel)
 			  needed, MaxFSMPages, MaxFSMRelations,
 			  (double) FreeSpaceShmemSize() / 1024.0)));
 
-	CheckFreeSpaceMapStatistics(NOTICE, numRels, needed);
+	if (Mpp_role != MPP_ROLE_DISPATCH) /* not interesting on the dispatch node */
+		CheckFreeSpaceMapStatistics(NOTICE, numRels, needed);
 	/* Print to server logs too because is deals with a config variable. */
 	CheckFreeSpaceMapStatistics(LOG, numRels, needed);
 }

@@ -133,6 +133,7 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 			constrrelid = RangeVarGetRelid(rel, true);
 		}
 		if (needconstrrelid && constrrelid == InvalidOid)
+			if (Mpp_role != MPP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("could not determine referenced table for constraint \"%s\"",
@@ -289,6 +290,7 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 		 */
 		if (funcrettype == OPAQUEOID)
 		{
+			if (Mpp_role != MPP_ROLE_EXECUTE)
 			ereport(WARNING,
 					(errmsg("changing return type of function %s from \"opaque\" to \"trigger\"",
 							NameListToString(stmt->funcname))));

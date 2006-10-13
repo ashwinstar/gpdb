@@ -728,6 +728,7 @@ RemoveFunction(RemoveFuncStmt *stmt)
 	if (((Form_pg_proc) GETSTRUCT(tup))->prolang == INTERNALlanguageId)
 	{
 		/* "Helpful" NOTICE when removing a builtin function ... */
+		if (Mpp_role != MPP_ROLE_EXECUTE)
 		ereport(NOTICE,
 				(errcode(ERRCODE_WARNING),
 				 errmsg("removing built-in function \"%s\"",

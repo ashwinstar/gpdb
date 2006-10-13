@@ -157,6 +157,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	{
 		/* No need for a WARNING if we already complained during VACUUM */
 		if (!vacstmt->vacuum)
+			if (Mpp_role != MPP_ROLE_EXECUTE)
 			ereport(WARNING,
 					(errmsg("skipping \"%s\" --- only table or database owner can analyze it",
 							RelationGetRelationName(onerel))));
@@ -172,6 +173,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	{
 		/* No need for a WARNING if we already complained during VACUUM */
 		if (!vacstmt->vacuum)
+			if (Mpp_role != MPP_ROLE_EXECUTE)
 			ereport(WARNING,
 					(errmsg("skipping \"%s\" --- cannot analyze indexes, views, or special system tables",
 							RelationGetRelationName(onerel))));

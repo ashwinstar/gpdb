@@ -4966,6 +4966,7 @@ EmitWarningsOnPlaceholders(const char *className)
 			strncmp(className, var->name, nameLen) == 0 &&
 			var->name[nameLen] == GUC_QUALIFIER_SEPARATOR)
 		{
+			if (Mpp_role != MPP_ROLE_EXECUTE)
 			ereport(INFO,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("unrecognized configuration parameter \"%s\"", var->name)));

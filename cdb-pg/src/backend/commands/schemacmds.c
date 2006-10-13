@@ -203,6 +203,7 @@ RemoveSchema(List *names, DropBehavior behavior, bool missing_ok)
 		}
 		else
 		{
+			if (Mpp_role != MPP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_SCHEMA),
 					 errmsg("schema \"%s\" does not exist, skipping", 

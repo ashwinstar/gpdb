@@ -121,6 +121,7 @@ DropConversionCommand(List *name, DropBehavior behavior, bool missing_ok)
 		}
 		else
 		{
+			if (Mpp_role != MPP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("conversion \"%s\" does not exist, skipping",

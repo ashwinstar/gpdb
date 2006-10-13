@@ -145,6 +145,7 @@ CreateRole(CreateRoleStmt *stmt)
 		}
 		else if (strcmp(defel->defname, "sysid") == 0)
 		{
+			if (Mpp_role != MPP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errmsg("SYSID can no longer be specified")));
 		}
@@ -1208,6 +1209,7 @@ RenameRole(const char *oldname, const char *newname)
 		repl_repl[Anum_pg_authid_rolpassword - 1] = 'r';
 		repl_null[Anum_pg_authid_rolpassword - 1] = 'n';
 
+		if (Mpp_role != MPP_ROLE_EXECUTE)
 		ereport(NOTICE,
 				(errmsg("MD5 password cleared because of role rename")));
 	}
@@ -1413,6 +1415,7 @@ AddRoleMems(const char *rolename, Oid roleid,
 			(!admin_opt ||
 			 ((Form_pg_auth_members) GETSTRUCT(authmem_tuple))->admin_option))
 		{
+			if (Mpp_role != MPP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errmsg("role \"%s\" is already a member of role \"%s\"",
 							membername, rolename)));
