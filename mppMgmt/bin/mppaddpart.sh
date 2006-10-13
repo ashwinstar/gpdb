@@ -581,28 +581,7 @@ PROCESS_RANGE () {
 GENERATE_SQL () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
         LOG_MSG "[INFO]:-Generating SQL file to build child tables"
-        CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}//gi|$AWK -F"" '{print $1}'`
-#	case $TYPE_NAME in
-#       		hour )
-#                CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_[0-9]*_[0-9]*_hour$//g`
-#                ;;
-#                daily )
-#                CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_[0-9]*_daily$//g`
-#                ;;
-#                week )
-#                CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_w[0-9]*_week$//g`
-#                ;;
-#                month )
-#                CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_month$//g`
-#                ;;
-#                list )
-                #CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[a-z]*[A-Z]*_list$//g`
-#                CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}//gi|$AWK -F"" '{print $1}'`
-#                ;;
-#                range )
-#                CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_to_[0-9]*_range$//g`
-#		;;
-#	esac
+        CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}//g|$AWK -F"" '{print $1}'`
         VECTOR=0
         ((COL_COUNT=${#PARENT_COLUMN_LIST[@]}-1))
                 $ECHO "BEGIN;" >> $TMP_FILE
