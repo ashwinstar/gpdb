@@ -61,8 +61,17 @@ static void MPPnoticeReceiver(void * arg, const PGresult * res)
 					elevel = WARNING;
 				else if (strcmp(pfield->contents,"NOTICE")==0)
 					elevel = NOTICE;
-				else if (strcmp(pfield->contents,"DEBUG")==0)
+				else if (strcmp(pfield->contents,"DEBUG1")==0 ||
+					     strcmp(pfield->contents,"DEBUG")==0)
 					elevel = DEBUG1;
+				else if (strcmp(pfield->contents,"DEBUG2")==0)
+					elevel = DEBUG2;
+				else if (strcmp(pfield->contents,"DEBUG3")==0)
+					elevel = DEBUG3;
+				else if (strcmp(pfield->contents,"DEBUG4")==0)
+					elevel = DEBUG4;
+				else if (strcmp(pfield->contents,"DEBUG5")==0)
+					elevel = DEBUG5;
 				else 
 					elevel = INFO;
 				break;
