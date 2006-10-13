@@ -2521,9 +2521,3 @@ write_stderr(const char *fmt,...)
 #endif
 	va_end(ap);
 }
-
-ErrorData  * MppGetErrorData(void)
-{
-	return &errordata[errordata_stack_depth];
-}
-

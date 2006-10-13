@@ -358,6 +358,4 @@ write_stderr(const char *fmt,...)
    the supplied arguments. */
 __attribute__((format(printf, 1, 2)));
 
-extern ErrorData  * MppGetErrorData(void);
-
 #endif   /* ELOG_H */
