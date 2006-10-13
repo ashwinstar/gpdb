@@ -288,6 +288,9 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 		elevel = INFO;
 	else
 		elevel = DEBUG2;
+		
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
 
 	/*
 	 * We cannot run VACUUM inside a user transaction block; if we were inside

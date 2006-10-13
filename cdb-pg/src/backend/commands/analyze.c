@@ -123,6 +123,9 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 		elevel = INFO;
 	else
 		elevel = DEBUG2;
+		
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
 
 	/*
 	 * Use the current context for storing analysis info.  vacuum.c ensures

@@ -51,6 +51,8 @@
 #include "utils/memutils.h"
 #include "utils/pg_rusage.h"
 
+#include "cdb/cdbvars.h"
+
 
 /*
  * Space/time tradeoff parameters: do these need to be user-tunable?
@@ -140,6 +142,9 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 		elevel = INFO;
 	else
 		elevel = DEBUG2;
+		
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
 
 	vacuum_set_xid_limits(vacstmt, onerel->rd_rel->relisshared,
 						  &OldestXmin, &FreezeLimit);
