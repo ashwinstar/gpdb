@@ -677,7 +677,7 @@ LockAcquire(LOCKMETHODID lockmethodid,
 							 */
 							locallock->isFake = true;
 							GrantLockLocal(locallock, owner);
-							return LOCKACQUIRE_ALREADY_HELD;
+							return LOCKACQUIRE_OK;
 						}
 						if (lockmode == AccessShareLock)
 						{
@@ -691,7 +691,7 @@ LockAcquire(LOCKMETHODID lockmethodid,
 							 */
 							locallock->isFake = true;
 							GrantLockLocal(locallock, owner);
-							return LOCKACQUIRE_ALREADY_HELD;
+							return LOCKACQUIRE_OK;
 						}
 						
 					}
