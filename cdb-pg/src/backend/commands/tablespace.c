@@ -539,7 +539,6 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 			}
 		}
 		
-		elog(NOTICE,"%s",buffer.data);
 		CdbDoCommand(buffer.data, false, /*no txn */ false, 
 					 /* mirrors */ true, /* primaries */ true);
 
