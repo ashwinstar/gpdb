@@ -2161,7 +2161,6 @@ _outQuery(StringInfo str, Query *node)
     if (node->intoHasOids)
     {
     	appendStringInfoLiteral(str, " :intoHasOids true");
-    	elog(NOTICE,"Into has Oids");
     }
 	    
 	/* CDB: The reader checks for the name of this field. */
