@@ -237,6 +237,9 @@ subquery_planner(Query *parse, double tuple_fraction,
             mpp_singleton_segindex = mpp_session_id % segmentCount;
     }
 
+    /* CDB: Stash current query level's relids before pulling up subqueries. */
+    root->currlevel_relids = get_relids_in_jointree((Node *)parse->jointree);
+
     /*
 	 * Look for IN clauses at the top level of WHERE, and transform them into
 	 * joins.  Note that this step only handles IN clauses originally at top
@@ -1027,28 +1030,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				 * evaluation, we must insert a Result node to project the
 				 * desired tlist.
 				 */
-				if (!is_projection_capable_plan(result_plan))
-				{
-					result_plan = (Plan *) make_result(sub_tlist, NULL,
-													   result_plan);
-					if ( Mpp_role == MPP_ROLE_DISPATCH )
-					{
-						mark_passthru_locus(result_plan, true, true);
-					}
-				}
-				else
-				{
-					/*
-					 * Otherwise, just replace the subplan's flat tlist with
-					 * the desired tlist.
-					 */
-					plan_pushdown_tlist(result_plan, sub_tlist);
-				}
-
-				if (Mpp_role == MPP_ROLE_DISPATCH)
-				{
-					adapt_flow_to_targetlist(result_plan);
-				}
+				result_plan = plan_pushdown_tlist(result_plan, sub_tlist);
 
 				/*
 				 * Also, account for the cost of evaluation of the sub_tlist.
@@ -1975,24 +1957,4 @@ postprocess_setop_tlist(List *new_tlist, List *orig_tlist)
 	if (orig_tlist_item != NULL)
 		elog(ERROR, "resjunk output columns are not implemented");
 	return new_tlist;
-}
-
-/*
- * Push this target list down into the plan
- */
-void
-plan_pushdown_tlist(Plan *plan, List *tl)
-{
-	Assert(is_projection_capable_plan(plan));
-
-	switch (nodeTag(plan))
-	{
-		case T_AdaptiveNestLoop:
-			plan->lefttree->targetlist = tl;
-			plan->righttree->targetlist = tl;
-			/* fallthrough */
-		default:
-			plan->targetlist = tl;
-			break;
-	}
 }

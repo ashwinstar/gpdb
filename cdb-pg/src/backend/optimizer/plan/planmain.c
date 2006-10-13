@@ -124,11 +124,6 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	root->full_join_clauses = NIL;
 	root->oj_info_list = NIL;
 
-    root->adedup = (InClauseInfo **)
-        palloc0(sizeof(root->adedup[0]) * list_length(root->in_info_list));
-    root->ndedup = 0;
-    root->dedup_relids = NULL;
-
 	/*
 	 * Construct RelOptInfo nodes for all base relations in query.
 	 */
@@ -175,7 +170,18 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	if (!final_rel || !final_rel->cheapest_total_path)
 		elog(ERROR, "failed to construct the join relation");
 
-	/*
+    /*
+     * CDB: Subquery duplicate suppression should be all finished by now.
+     *
+     * CDB TODO: If query has DISTINCT, GROUP BY with just MIN/MAX aggs, or
+     * LIMIT 1, consider paths in which subquery duplicate suppression has
+     * not been completed.  (Would have to change set_cheapest_dedup() to not
+     * discard them.)
+     */
+    Insist(final_rel->cheapest_startup_path->subq_complete &&
+           final_rel->cheapest_total_path->subq_complete);
+
+    /*
 	 * If there's grouping going on, estimate the number of result groups. We
 	 * couldn't do this any earlier because it depends on relation size
 	 * estimates that were set up above.

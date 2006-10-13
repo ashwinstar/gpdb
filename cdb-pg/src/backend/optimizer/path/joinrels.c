@@ -20,6 +20,8 @@
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 
+#include "cdb/cdbdef.h"                 /* CdbSwap */
+
 
 static List *make_rels_by_clause_joins(PlannerInfo *root,
 						  RelOptInfo *old_rel,
@@ -362,11 +364,11 @@ has_join_restriction(PlannerInfo *root, RelOptInfo *rel)
 /*
  * cdb_add_subquery_join_paths
  *
- * When a subquery from a search condition has been flattened into a join,
- * the join may need some special mojo.  A row of the main query must not
- * join with more than one row of the subquery, or in case it does, the
- * consequent multiple result rows must be collapsed to a single row
- * afterwards.
+ * Each input rel may have a special pathlist containing paths in which some
+ * flattened subqueries have been completely evaluated except for duplicate
+ * suppression.  Here we consider joins taking input from those paths.  By
+ * postponing duplicate suppression until additional subqueries are brought
+ * into the join, a single duplicate suppression can cover multiple subqueries.
  */
 static void
 cdb_add_subquery_join_paths(PlannerInfo    *root,
@@ -377,97 +379,90 @@ cdb_add_subquery_join_paths(PlannerInfo    *root,
 					        JoinType        swapjointype,
 					        List           *restrictlist)
 {
-    ListCell   *cell;
-    int         ndedup = 0;
+    CdbRelDedupInfo    *dedup1 = rel1->dedup_info;
+    CdbRelDedupInfo    *dedup2 = rel2->dedup_info;
+    List               *save1_pathlist;
+    Path               *save1_cheapest_startup;
+    Path               *save1_cheapest_total;
+    List               *save2_pathlist;
+    Path               *save2_cheapest_startup;
+    Path               *save2_cheapest_total;
 
-    Assert(root->ndedup == 0 && root->adedup != NULL);
+    /* If only one input's later_dedup_pathlist is nonempty, let it be rel2. */
+    if (!dedup2 ||
+        !dedup2->later_dedup_pathlist)
+    {
+        CdbSwap(RelOptInfo*, rel1, rel2);
+        CdbSwap(CdbRelDedupInfo*, dedup1, dedup2);
+        CdbSwap(JoinType, jointype, swapjointype);
+        Assert(dedup2 && dedup2->later_dedup_pathlist);
+    }
 
-    foreach(cell, root->in_info_list)
-	{
-        InClauseInfo   *ininfo = (InClauseInfo *)lfirst(cell);
+    /* Consider joins between rel1's main paths and rel2's main paths. */
+    if (rel1->pathlist && rel2->pathlist)
+    {
+        add_paths_to_joinrel(root, joinrel, rel1, rel2, jointype, restrictlist);
+        add_paths_to_joinrel(root, joinrel, rel2, rel1, swapjointype, restrictlist);
+    }
 
-        /*
-         * Skip if duplicate removal already handled in subplan.
-         *
-         * CDB TODO: Consider delaying the duplicate removal in case a
-         * later join might reduce the amount of data thus making duplicate
-         * removal cheaper.  For now, we remove dups as early as possible.
-         */
-        if (bms_is_subset(ininfo->allrelids, rel1->relids) ||
-            bms_is_subset(ininfo->allrelids, rel2->relids))
-            continue;
+    /* Save rel2's main pathlist ptrs. */
+    save2_pathlist = rel2->pathlist;
+    save2_cheapest_startup = rel2->cheapest_startup_path;
+    save2_cheapest_total = rel2->cheapest_total_path;
 
-        /*
-         * If joinrel includes all baserels needed for evaluating the
-         * clause, consider ordinary join followed by duplicate removal.
-         * Add to post-join duplicate removal list for add_path().
-         */
-        if (bms_is_subset(ininfo->allrelids, joinrel->relids))
-        {
-            if (ndedup == 0)
-                root->dedup_relids = bms_copy(joinrel->relids);
-            root->dedup_relids = bms_difference(root->dedup_relids, ininfo->righthand);
-            root->adedup[ndedup++] = ininfo;
-        }
+    /* Swap in rel2's later_dedup_pathlist. */
+    rel2->pathlist = dedup2->later_dedup_pathlist;
+    rel2->cheapest_startup_path = dedup2->cheapest_startup_path;
+    rel2->cheapest_total_path = dedup2->cheapest_total_path;
 
-        /*
-         * If either input rel happens to be exactly a subquery result,
-         * consider suppressing duplicates before or during the join.
-         */
-        if (bms_equal(ininfo->righthand, rel1->relids) ||
-            bms_equal(ininfo->righthand, rel2->relids))
-        {
-            RelOptInfo *subqrel = bms_equal(ininfo->righthand, rel1->relids)
-                                ? rel1
-                                : rel2;
-            RelOptInfo *curqrel = (subqrel == rel1)
-                                ? rel2
-                                : rel1;
+    /* Consider joins between rel1's main paths and rel2's later_dedup paths. */
+    if (rel1->pathlist)
+    {
+        add_paths_to_joinrel(root, joinrel, rel1, rel2, jointype, restrictlist);
+        add_paths_to_joinrel(root, joinrel, rel2, rel1, swapjointype, restrictlist);
+    }
 
-            Assert(jointype == JOIN_INNER);
+    /* Finished if rel1 doesn't have later_dedup paths. */
+    if (!dedup1 ||
+        !dedup1->later_dedup_pathlist)
+    {
+        /* Restore rel2's main pathlist ptrs. */
+        rel2->pathlist = save2_pathlist;
+        rel2->cheapest_startup_path = save2_cheapest_startup;
+        rel2->cheapest_total_path = save2_cheapest_total;
+        return;
+    }
 
-	        /*
-	         * JOIN_IN matches each row of outer rel (current query) with at
-             * most one row of the inner rel (subquery), using modified join
-             * logic in the executor.  It doesn't need an extra step for
-             * duplicate removal.  Consider it if all of the baserels needed
-             * for evaluating the clause are present.
-	         */
-            if (bms_is_subset(ininfo->allrelids, joinrel->relids))
-		        add_paths_to_joinrel(root, joinrel, curqrel, subqrel, JOIN_IN,
-							         restrictlist);
+    /* Save rel1's main pathlist ptrs. */
+    save1_pathlist = rel1->pathlist;
+    save1_cheapest_startup = rel1->cheapest_startup_path;
+    save1_cheapest_total = rel1->cheapest_total_path;
 
-            /*
-             * JOIN_UNIQUE removes duplicates from the rel containing the
-             * subquery result, then does an ordinary equijoin.
-             *
-             * CDB TODO: We wouldn't have to do anything special if we knew
-             * that the subquery result rows were already distinct.
-             *
-             * CDB TODO: Correlated subquery could use JOIN_UNIQUE if all outer
-             * refs can be pulled up into the join operator (or inner indexscan).
-             */
-            if (ininfo->op_is_equality &&
-                !ininfo->correlating)
-            {
-		        add_paths_to_joinrel(root, joinrel, curqrel, subqrel, JOIN_UNIQUE_INNER,
-							         restrictlist);
-		        add_paths_to_joinrel(root, joinrel, subqrel, curqrel, JOIN_UNIQUE_OUTER,
-							         restrictlist);
-            }
-        }
-	}
+    /* Swap in rel1's later_dedup_pathlist. */
+    rel1->pathlist = dedup1->later_dedup_pathlist;
+    rel1->cheapest_startup_path = dedup1->cheapest_startup_path;
+    rel1->cheapest_total_path = dedup1->cheapest_total_path;
 
-    /*
-	 * Consider paths using each rel as both outer and inner (i.e., normal
-     * join planning).  Set root->ndedup so add_path() will apply duplicate
-     * removal to the paths for any subquery clauses that are completed by
-     * this join.
-     */
-    root->ndedup = ndedup;
+    /* Consider joins between later_dedup paths of both rel1 and rel2. */
     add_paths_to_joinrel(root, joinrel, rel1, rel2, jointype, restrictlist);
     add_paths_to_joinrel(root, joinrel, rel2, rel1, swapjointype, restrictlist);
-    root->ndedup = 0;
+
+    /* Restore rel2's main pathlist ptrs. */
+    rel2->pathlist = save2_pathlist;
+    rel2->cheapest_startup_path = save2_cheapest_startup;
+    rel2->cheapest_total_path = save2_cheapest_total;
+
+    /* Consider joins between rel1's later_dedup paths and rel2's main paths. */
+    if (rel2->pathlist)
+    {
+        add_paths_to_joinrel(root, joinrel, rel1, rel2, jointype, restrictlist);
+        add_paths_to_joinrel(root, joinrel, rel2, rel1, swapjointype, restrictlist);
+    }
+
+    /* Restore rel1's main pathlist ptrs. */
+    rel1->pathlist = save1_pathlist;
+    rel1->cheapest_startup_path = save1_cheapest_startup;
+    rel1->cheapest_total_path = save1_cheapest_total;
 }                               /* cdb_add_subquery_join_paths */
 
 
@@ -499,7 +494,6 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 
 	/* We should never try to join two overlapping sets of rels. */
 	Assert(!bms_overlap(rel1->relids, rel2->relids));
-    Assert(root->ndedup == 0);
 
 	/* Construct Relids set that identifies the joinrel. */
 	joinrelids = bms_union(rel1->relids, rel2->relids);
@@ -602,14 +596,19 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	joinrel = build_join_rel(root, joinrelids, rel1, rel2, jointype,
 							 &restrictlist);
 
-    /*
-     * CDB: Handle removal of duplicates introduced by flattened subqueries.
-     */
+    /* Reversed jointype is useful when rel2 becomes outer and rel1 is inner. */
     swapjointype = (jointype == JOIN_LEFT)  ? JOIN_RIGHT
                  : (jointype == JOIN_RIGHT) ? JOIN_LEFT
                  :                            jointype;
 
-    if (root->in_info_list)
+    /*
+     * CDB: Consider plans in which an upstream subquery's duplicate
+     * suppression is either postponed yet further downstream, or subsumed
+     * in this join by the use of the JOIN_IN technique on behalf of another
+     * subquery.
+     */
+    if ((rel1->dedup_info && rel1->dedup_info->later_dedup_pathlist) ||
+        (rel2->dedup_info && rel2->dedup_info->later_dedup_pathlist))
         cdb_add_subquery_join_paths(root,
                                     joinrel,
                                     rel1,

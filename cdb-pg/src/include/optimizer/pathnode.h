@@ -21,11 +21,28 @@
 /*
  * prototypes for pathnode.c
  */
+
+Path *
+pathnode_copy_node(const Path *s);
+
+CdbVisitOpt
+pathnode_walk_node(Path            *path,
+			       CdbVisitOpt    (*walker)(Path *path, void *context),
+			       void            *context);
+CdbVisitOpt
+pathnode_walk_kids(Path            *path,
+			       CdbVisitOpt    (*walker)(Path *path, void *context),
+			       void            *context);
+CdbVisitOpt
+pathnode_walk_list(List            *pathlist,
+			       CdbVisitOpt    (*walker)(Path *path, void *context),
+			       void            *context);
+
 extern int compare_path_costs(Path *path1, Path *path2,
 				   CostSelector criterion);
 extern int compare_fractional_path_costs(Path *path1, Path *path2,
 							  double fraction);
-extern void set_cheapest(RelOptInfo *parent_rel);
+extern void set_cheapest(PlannerInfo *root, RelOptInfo *parent_rel);    /*CDB*/
 extern void add_path(PlannerInfo *root, RelOptInfo *parent_rel, Path *new_path);
 
 extern Path *create_seqscan_path(PlannerInfo *root, RelOptInfo *rel);
@@ -51,15 +68,12 @@ extern AppendPath *create_append_path(RelOptInfo *rel, List *subpaths);
 extern ResultPath *create_result_path(RelOptInfo *rel, Path *subpath,
 				   List *quals);
 extern MaterialPath *create_material_path(RelOptInfo *rel, Path *subpath);
-extern UniquePath *create_unique_path(PlannerInfo *root, RelOptInfo *rel,
-				   Path *subpath);
-UniquePath *create_unique_rowid_path(PlannerInfo *root, 
-                                     Path        *subpath, 
+UniquePath *create_unique_exprlist_path(PlannerInfo    *root,
+                                        Path           *subpath,
+                                        List           *distinct_on_exprs);
+UniquePath *create_unique_rowid_path(PlannerInfo *root,
+                                     Path        *subpath,
                                      Relids       dedup_relids);
-UniquePath *create_unique_common_path(PlannerInfo *root,
-                                      Path        *subpath,
-                                      List        *distinct_on_exprs,
-                                      Relids       dedup_relids);
 extern Path *create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel, List *pathkeys);
 extern Path *create_functionscan_path(PlannerInfo *root, RelOptInfo *rel);
 
@@ -71,7 +85,7 @@ extern NestPath *create_nestloop_path(PlannerInfo *root,
 									  List *restrict_clauses,
 									  List *mergeclause_list,    /*CDB*/
 									  List *pathkeys,
-									  Path *alternate); /*CDB*/
+									  HashPath *alternate);
 
 extern MergePath *create_mergejoin_path(PlannerInfo *root,
 					  RelOptInfo *joinrel,
@@ -94,19 +108,6 @@ extern HashPath *create_hashjoin_path(PlannerInfo *root,
                      List *mergeclause_list,    /*CDB*/
 					 List *hashclauses);
 
-CdbVisitOpt
-pathnode_walk_node(Path            *path,
-			       CdbVisitOpt    (*walker)(Path *path, void *context),    
-			       void            *context);
-CdbVisitOpt
-pathnode_walk_kids(Path            *path,
-			       CdbVisitOpt    (*walker)(Path *path, void *context),    
-			       void            *context);
-CdbVisitOpt
-pathnode_walk_list(List            *pathlist,
-			       CdbVisitOpt    (*walker)(Path *path, void *context),    
-			       void            *context);
-
 
 /*
  * prototypes for relnode.c
@@ -121,5 +122,6 @@ extern RelOptInfo *build_join_rel(PlannerInfo *root,
 			   RelOptInfo *inner_rel,
 			   JoinType jointype,
 			   List **restrictlist_ptr);
+CdbRelDedupInfo *cdb_make_rel_dedup_info(PlannerInfo *root, RelOptInfo *rel);
 
 #endif   /* PATHNODE_H */

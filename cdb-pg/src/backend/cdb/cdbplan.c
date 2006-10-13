@@ -325,11 +325,6 @@ plan_tree_walker(Node *node,
 			/* Abstract: really should see only subclasses. */
 			return walk_join_node_fields((Join *) node, walker, context);
 
-		case T_AdaptiveNestLoop:
-			if (walk_join_node_fields((Join *)(((AdaptiveNestLoop *)node)->plan.lefttree), walker, context))
-				return true;
-			break;
-
 		case T_NestLoop:
 			if (walk_join_node_fields((Join *) node, walker, context))
 				return true;
@@ -407,6 +402,11 @@ plan_tree_walker(Node *node,
 				return true;
 
 			break;
+
+		case T_AdaptiveNestLoop:
+			if (walk_plan_node_fields((Plan *) node, walker, context))
+				return true;
+            break;
 
 		case T_Flow:
 			/* Nothing to walk in Flow nodes at present. */
@@ -1038,6 +1038,7 @@ plan_tree_mutator(Node *node,
 				{
 					case RTE_RELATION:	/* ordinary relation reference */
 					case RTE_SPECIAL:	/* special rule relation (NEW or OLD) */
+                    case RTE_VOID:      /* deleted entry */
 						/* No extras. */
 						break;
 

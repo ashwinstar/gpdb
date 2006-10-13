@@ -4,6 +4,7 @@
  *	  Routines to determine which indexes are usable for scanning a
  *	  given relation, and create Paths accordingly.
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -164,6 +165,12 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 	foreach(l, indexpaths)
 	{
 		IndexPath  *ipath = (IndexPath *) lfirst(l);
+
+        /* CDB: Flag RelOptInfo if at most one row can satisfy index quals. */
+        if (ipath->num_leading_eq > 0 &&
+            ipath->num_leading_eq == ipath->indexinfo->ncolumns &&
+            ipath->indexinfo->unique)
+            rel->onerow = true;
 
 		add_path(root, rel, (Path *) ipath);
 
@@ -1177,13 +1184,11 @@ best_inner_indexscan(PlannerInfo *root, RelOptInfo *rel,
 	MemoryContext oldcontext;
 
 	/*
-	 * Nestloop only supports inner, left, and IN joins.
+	 * Nestloop only supports inner and left joins.
 	 */
 	switch (jointype)
 	{
 		case JOIN_INNER:
-		case JOIN_IN:
-		case JOIN_UNIQUE_OUTER:
 			isouterjoin = false;
 			break;
 		case JOIN_LEFT:

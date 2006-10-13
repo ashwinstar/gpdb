@@ -469,7 +469,6 @@ explain_outNode(StringInfo str,
 {
 	char	   *pname = NULL;
 	int			i;
-	bool		skip_outer=false;
 
 	if (plan == NULL)
 	{
@@ -492,15 +491,13 @@ explain_outNode(StringInfo str,
 			pname = "BitmapOr";
 			break;
 		case T_AdaptiveNestLoop:
-			pname = "Adaptive Nested Loop";
+			pname = "Adaptive Join Choice";
 
 			appendStringInfo(str, "%s (threshold %d)", pname,
 							 ((AdaptiveNestLoop *)plan)->nl_strategy_threshold);
 			pname = "";
 			break;
 		case T_NestLoop:
-			if (((NestLoop *)plan)->shared_outer)
-				skip_outer = true;
 			switch (((NestLoop *) plan)->join.jointype)
 			{
 				case JOIN_INNER:
@@ -516,7 +513,7 @@ explain_outNode(StringInfo str,
 					pname = "Nested Loop Right Join";
 					break;
 				case JOIN_IN:
-					pname = "Nested Loop IN Join";
+					pname = "Nested Loop EXISTS Join";
 					break;
 				default:
 					pname = "Nested Loop ??? Join";
@@ -539,7 +536,7 @@ explain_outNode(StringInfo str,
 					pname = "Merge Right Join";
 					break;
 				case JOIN_IN:
-					pname = "Merge IN Join";
+					pname = "Merge EXISTS Join";
 					break;
 				default:
 					pname = "Merge ??? Join";
@@ -562,7 +559,7 @@ explain_outNode(StringInfo str,
 					pname = "Hash Right Join";
 					break;
 				case JOIN_IN:
-					pname = "Hash IN Join";
+					pname = "Hash EXISTS Join";
 					break;
 				default:
 					pname = "Hash ??? Join";
@@ -969,7 +966,7 @@ explain_outNode(StringInfo str,
 	}
 
 	/* lefttree */
-	if (outerPlan(plan) && !skip_outer)
+	if (outerPlan(plan))
 	{
 		for (i = 0; i < indent; i++)
 			appendStringInfo(str, "  ");

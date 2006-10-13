@@ -228,6 +228,7 @@ markTargetListOrigin(ParseState *pstate, TargetEntry *tle,
 			break;
 		case RTE_SPECIAL:
 		case RTE_FUNCTION:
+        case RTE_VOID:
 			/* not a simple relation, leave it unmarked */
 			break;
 	}
@@ -985,6 +986,9 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 			 * its result columns as RECORD, which is not allowed.
 			 */
 			break;
+        case RTE_VOID:
+            Insist(0);
+            break;
 	}
 
 	/*

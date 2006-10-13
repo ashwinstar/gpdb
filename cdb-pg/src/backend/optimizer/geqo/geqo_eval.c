@@ -159,6 +159,7 @@ gimme_tree(Gene *tour, int num_gene, GeqoEvalData *evaldata)
 	int			stack_depth;
 	RelOptInfo *joinrel;
 	int			rel_count;
+    MemoryContext   oldcontext;
 
 	/*
 	 * Create a stack to hold not-yet-joined relations.
@@ -226,8 +227,13 @@ gimme_tree(Gene *tour, int num_gene, GeqoEvalData *evaldata)
 			if (!joinrel)
 				break;
 
-			/* Find and save the cheapest paths for this rel */
-			set_cheapest(joinrel);
+			/*
+             * Find and save the cheapest paths for this rel
+             * CDB: Use joinrel's memory context for any objects allocated.
+             */
+	        oldcontext = MemoryContextSwitchTo(GetMemoryChunkContext(joinrel));
+			set_cheapest(evaldata->root, joinrel);
+            MemoryContextSwitchTo(oldcontext);
 
 			/* Pop the stack and replace the inputs with their join */
 			stack_depth--;

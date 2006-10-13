@@ -287,6 +287,10 @@ print_rt(List *rtable)
 				printf("%d\t%s\t[special]",
 					   i, name);
 				break;
+			case RTE_VOID:
+				printf("%d\t%s\t[void]",
+					   i, name);
+				break;
 			default:
 				printf("%d\t%s\t[unknown rtekind]",
 					   i, name);
@@ -316,8 +320,8 @@ print_expr(Node *expr, List *rtable)
 	if (IsA(expr, Var))
 	{
 		Var		   *var = (Var *) expr;
-		char	   *relname,
-				   *attname;
+		const char *relname;
+		const char *attname;
 
 		switch (var->varno)
 		{
@@ -471,7 +475,7 @@ print_slot(TupleTableSlot *slot)
 		printf("tuple is null.\n");
 	else if (!slot->tts_tupleDescriptor)
 		printf("no tuple descriptor.\n");
-	else 
+	else
 		debugtup(slot, NULL);
 	
 	fflush(stdout);

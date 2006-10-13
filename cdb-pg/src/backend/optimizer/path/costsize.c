@@ -257,6 +257,7 @@ cost_index(IndexPath *path, PlannerInfo *root,
 	 * the fraction of main-table tuples we will have to retrieve) and its
 	 * correlation to the main-table tuple order.
 	 */
+    index->num_leading_eq = 0;
 	OidFunctionCall7(index->amcostestimate,
 					 PointerGetDatum(root),
 					 PointerGetDatum(index),
@@ -265,7 +266,18 @@ cost_index(IndexPath *path, PlannerInfo *root,
 					 PointerGetDatum(&indexTotalCost),
 					 PointerGetDatum(&indexSelectivity),
 					 PointerGetDatum(&indexCorrelation));
-					 
+					
+    /*
+     * CDB: Note whether all of the key columns are matched by equality
+     * predicates.
+     *
+     * The index->num_leading_eq field is kludgily used as an implicit result
+     * parameter from the amcostestimate proc, to avoid changing its externally
+     * exposed interface. Transfer to IndexPath, then zap to discourage misuse.
+     */
+    path->num_leading_eq = index->num_leading_eq;
+    index->num_leading_eq = 0;
+
 	/*
 	 * clamp index correlation to 99% or less, so that we always account for at least a little bit
 	 * of random_page_cost in our calculation.  Otherwise, perfectly correlated indexes look too fast.
@@ -1733,8 +1745,7 @@ set_baserel_size_estimates(PlannerInfo *root, RelOptInfo *rel)
  *
  * It's important that the results for symmetric JoinTypes be symmetric,
  * eg, (rel1, rel2, JOIN_LEFT) should produce the same result as (rel2,
- * rel1, JOIN_RIGHT).  Also, JOIN_IN should produce the same result as
- * JOIN_UNIQUE_INNER, likewise JOIN_REVERSE_IN == JOIN_UNIQUE_OUTER.
+ * rel1, JOIN_RIGHT).
  *
  * We set only the rows field here.  The width field was already set by
  * build_joinrel_tlist, and baserestrictcost is not used for join rels.
@@ -1749,7 +1760,6 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 	Selectivity selec;
 	double		nrows;
     double      adjnrows;
-	UniquePath *upath;
 
 	/*
 	 * Compute joinclause selectivity.	Note that we are only considering
@@ -1770,10 +1780,6 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 	 * of being even smarter?)  (XXX this is not really right, because it
 	 * assumes all the restriction clauses are join clauses; we should figure
 	 * pushed-down clauses separately.)
-	 *
-	 * For JOIN_IN and variants, the Cartesian product is figured with respect
-	 * to a unique-ified input, and then we can clamp to the size of the other
-	 * input.
 	 */
 	switch (jointype)
 	{
@@ -1795,22 +1801,6 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 			if (nrows < outer_rel->rows)
 				nrows = outer_rel->rows;
 			if (nrows < inner_rel->rows)
-				nrows = inner_rel->rows;
-			break;
-		case JOIN_IN:
-		case JOIN_UNIQUE_INNER:
-			upath = create_unique_path(root, inner_rel,
-									   inner_rel->cheapest_total_path);
-			nrows = outer_rel->rows * upath->rows * selec;
-			if (nrows > outer_rel->rows)
-				nrows = outer_rel->rows;
-			break;
-		case JOIN_REVERSE_IN:
-		case JOIN_UNIQUE_OUTER:
-			upath = create_unique_path(root, outer_rel,
-									   outer_rel->cheapest_total_path);
-			nrows = upath->rows * inner_rel->rows * selec;
-			if (nrows > inner_rel->rows)
 				nrows = inner_rel->rows;
 			break;
 		default:
@@ -1846,7 +1836,6 @@ static Selectivity
 join_in_selectivity(JoinPath *path, PlannerInfo *root)
 {
 	RelOptInfo *innerrel;
-	UniquePath *innerunique;
 	Selectivity selec;
 	double		nrows;
 
@@ -1864,10 +1853,7 @@ join_in_selectivity(JoinPath *path, PlannerInfo *root)
 	if (IsA(path->innerjoinpath, UniquePath))
 		return 1.0;
 	innerrel = path->innerjoinpath->parent;
-	innerunique = create_unique_path(root,
-									 innerrel,
-									 innerrel->cheapest_total_path);
-	if (innerunique->rows >= innerrel->rows)
+    if (innerrel->onerow)
 		return 1.0;
 
 	/*
@@ -1903,23 +1889,16 @@ join_in_selectivity(JoinPath *path, PlannerInfo *root)
 void
 set_function_size_estimates(PlannerInfo *root, RelOptInfo *rel)
 {
-	RangeTblEntry *rte;
-
-	/* Should only be applied to base relations that are functions */
-	Assert(rel->relid > 0);
-	rte = rt_fetch(rel->relid, root->parse->rtable);
-	Assert(rte->rtekind == RTE_FUNCTION);
-
 	/*
 	 * Estimate number of rows the function itself will return.
 	 *
 	 * XXX no idea how to do this yet; but we can at least check whether
 	 * function returns set or not...
 	 */
-	if (expression_returns_set(rte->funcexpr))
-		rel->tuples = 1000;
-	else
-		rel->tuples = 1;
+    if (rel->onerow)
+        rel->tuples = 1;
+    else
+	    rel->tuples = 1000;
 
 	/* Now estimate number of output rows, etc */
 	set_baserel_size_estimates(root, rel);

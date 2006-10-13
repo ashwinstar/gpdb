@@ -1097,16 +1097,7 @@ adjust_inherited_attrs_mutator(Node *node,
 											  adjust_inherited_attrs_mutator,
 														  (void *) context);
 		/* now fix InClauseInfo's relid sets */
-		ininfo->lefthand = adjust_relid_set(ininfo->lefthand,
-											context->old_rt_index,
-											context->new_rt_index);
 		ininfo->righthand = adjust_relid_set(ininfo->righthand,
-											 context->old_rt_index,
-											 context->new_rt_index);
-		ininfo->correlating = adjust_relid_set(ininfo->correlating,     /*CDB*/
-											   context->old_rt_index,
-											   context->new_rt_index);
-		ininfo->allrelids = adjust_relid_set(ininfo->allrelids,         /*CDB*/
 											 context->old_rt_index,
 											 context->new_rt_index);
 		return (Node *) ininfo;

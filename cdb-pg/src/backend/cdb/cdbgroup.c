@@ -47,7 +47,7 @@
 
 #include "cdb/cdbllize.h"
 #include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() */
-#include "cdb/cdbpath.h" 
+#include "cdb/cdbpath.h"
 #include "cdb/cdbvars.h"
 
 #include "cdb/cdbsetop.h"
@@ -57,7 +57,7 @@
 /*
  * MppGroupPrep represents a strategy by which to precondition the
  * argument to  a parallel aggregation plan.
- * 
+ *
  * MPP_GRP_PREP_NONE
  *    Use the input plan as is.
  * MPP_GRP_PREP_HASH_GROUPS
@@ -69,8 +69,8 @@
  *    Use hash on grouping attributes to convert replicated input into
  *    input partitioned to collocate groups.
  * MPP_GRP_PREP_CULL_DISTINCT
- *    Use hash on the sole distinct expression used as an aggregate 
- *    argument to convert replicated input into input partitioned to 
+ *    Use hash on the sole distinct expression used as an aggregate
+ *    argument to convert replicated input into input partitioned to
  *    collocate groups.
  * MPP_GRP_PREP_CULL_QE
  *    Focus a replicated input on the utility QE.
@@ -166,13 +166,13 @@ typedef struct two_stage_agg_context
 
 static Plan * make_one_stage_agg_plan(PlannerInfo *root, MppGroupContext *ctx);
 static Plan * make_two_stage_agg_plan(PlannerInfo *root, MppGroupContext *ctx);
-static List *make_subplan_tlist(List *tlist, Node *havingQual, 
+static List *make_subplan_tlist(List *tlist, Node *havingQual,
 						List *grp_clauses, int *pnum, AttrNumber **pcols);
 static List *generate_subquery_tlist(Index varno, List *input_tlist);
-static void generate_two_stage_tlists(List *tlist, List *sub_tlist, 
-						Node *havingQual, 
+static void generate_two_stage_tlists(List *tlist, List *sub_tlist,
+						Node *havingQual,
 						int numGroupCols, AttrNumber *groupColIdx,
-						List **p_prelim_tlist, List **p_final_tlist, 
+						List **p_prelim_tlist, List **p_final_tlist,
 						List **p_final_qual);
 static Expr *deconstruct_expr(Expr *expr, two_stage_agg_context *ctx);
 static Node* deconstruct_expr_mutator(Node *node, two_stage_agg_context *ctx);
@@ -180,30 +180,30 @@ static Aggref *split_aggref(Aggref *aggref, two_stage_agg_context *ctx);
 static Oid lookup_agg_transtype(Aggref *aggref);
 
 /*
- * Function: cdb_grouping_planner 
+ * Function: cdb_grouping_planner
  *
- * This is basically an extension of the function grouping_planner() from 
- * planner.c.  It (conditionally) replaces the logic in the "normal case" 
- * (the aggregation/grouping branch) of the main "if" statement. 
+ * This is basically an extension of the function grouping_planner() from
+ * planner.c.  It (conditionally) replaces the logic in the "normal case"
+ * (the aggregation/grouping branch) of the main "if" statement.
  *
- * The result is a Plan for one- or two-stage grouping/aggregation or NULL. 
+ * The result is a Plan for one- or two-stage grouping/aggregation or NULL.
  *
- * A NULL result means that the ordinary sequential planner will produce 
+ * A NULL result means that the ordinary sequential planner will produce
  * a correct (and preferred) result, so the "normal case" code should  be
  * used.
- * 
- * A non-NULL result is taken as a partially formed Plan to be processed 
+ *
+ * A non-NULL result is taken as a partially formed Plan to be processed
  * by the trailing sort/distinct/limit logic of grouping_planner().  In
  * otherwords, after any associated changes to the local environment (see
  * the calling code), the resulting plan should be treated as if from the
  *  "normal case" or the function optimize_minmax_aggregates().
  *
- * The pointer at location pcurrent_pathkeys is updated to refer to the 
+ * The pointer at location pcurrent_pathkeys is updated to refer to the
  * ordering pathkey or NIL, if there is none.
  */
 
 Plan *
-cdb_grouping_planner(PlannerInfo* root, 
+cdb_grouping_planner(PlannerInfo* root,
 					AggClauseCounts *agg_counts,
 					List *tlist,
 					Path *best_path,
@@ -225,17 +225,17 @@ cdb_grouping_planner(PlannerInfo* root,
 	CdbPathLocus output_locus;
 	
 	Assert( !has_groups || root->group_pathkeys != NULL );
-	Assert( agg_counts->numDistinctAggs != 1 
+	Assert( agg_counts->numDistinctAggs != 1
 			|| agg_counts->distinctExpr != NULL );
 	
-	/* 
+	/*
 	 * First choose a one-stage plan.  Since there's always a way to do this,
-	 * it serves as our default choice. 
+	 * it serves as our default choice.
 	 */
 	group_type = MPP_GRP_TYPE_BASEPLAN;
 	group_prep = MPP_GRP_PREP_NONE;
 	
-	if ( CdbPathLocus_IsRoot(input_locus) 
+	if ( CdbPathLocus_IsRoot(input_locus)
 		|| CdbPathLocus_IsGeneral(input_locus)
 		|| CdbPathLocus_IsSingleQE(input_locus)
 		|| CdbPathLocus_IsReplicated(input_locus) )
@@ -258,7 +258,7 @@ cdb_grouping_planner(PlannerInfo* root,
 		}	
 		
 		/* Note that we could explore other approaches to using the base
-		 * plan on a grouped query.  For example, cull a replicated input 
+		 * plan on a grouped query.  For example, cull a replicated input
 		 * locus to obtain a group-wise hashed one, but it isn't clear that
 		 * this is worthwhile.
 		 */
@@ -270,7 +270,7 @@ cdb_grouping_planner(PlannerInfo* root,
 		CdbPathLocus_MakeSingleQE(&output_locus);
 	}
 	
-	/* 
+	/*
 	 * If the sequential planner can handle the situation with no Motion
 	 * involved, let it do so.  Don't bother to investigate the 2-stage
 	 * approach.
@@ -281,22 +281,22 @@ cdb_grouping_planner(PlannerInfo* root,
 		return NULL;
 	}
 	
-	/* 
-	 * At this point, we're committed to producing a one- or two-stage 
-	 * plan with motion.  Calculate the subplan target list to use in 
+	/*
+	 * At this point, we're committed to producing a one- or two-stage
+	 * plan with motion.  Calculate the subplan target list to use in
 	 * the first stage.  Also note the location of any grouping attributes
 	 * in the target list.
 	 */
-	sub_tlist = make_subplan_tlist(tlist, 
-									root->parse->havingQual, 
-									root->parse->groupClause, 
-									&ctx.numGroupCols, 
+	sub_tlist = make_subplan_tlist(tlist,
+									root->parse->havingQual,
+									root->parse->groupClause,
+									&ctx.numGroupCols,
 									&ctx.groupColIdx);
-			 
-	/* 
-	 * Now look into doing a two-stage plan. Sometimes this isn't possible. 
+			
+	/*
+	 * Now look into doing a two-stage plan. Sometimes this isn't possible.
 	 */
-	if (has_aggs && 
+	if (has_aggs &&
 		agg_counts->numDistinctAggs<=1 &&
 		!agg_counts->missing_prelimfunc)
 	{
@@ -310,24 +310,24 @@ cdb_grouping_planner(PlannerInfo* root,
 		/* We can to do a two-stage plan.  But do we want to?  If not,
 		 * fall out of the if and stick with the one-stage approach. */
 		if ( ! enable_agg_restruct
-			|| CdbPathLocus_IsRoot(input_locus) 
+			|| CdbPathLocus_IsRoot(input_locus)
 			|| CdbPathLocus_IsGeneral(input_locus)
 			|| CdbPathLocus_IsSingleQE(input_locus)
 			|| CdbPathLocus_IsReplicated(input_locus) )
 		{
-			; /* Already collocated, don't bother.  This code is purely 
-			   * defensive since we will have taken an early exit above. 
+			; /* Already collocated, don't bother.  This code is purely
+			   * defensive since we will have taken an early exit above.
 			   */
 		}
 		else if ( has_groups && agg_counts->numDistinctAggs==1 && !mpp_enable_agg_distinct )
 		{
-			; /* If we continue, we'll use an initial redistibute motion to 
+			; /* If we continue, we'll use an initial redistibute motion to
 			   * allow use of 2-phase aggregation with the lone agg distinct.
-			   * Here, that is not enabled, so we bail out and use the 
+			   * Here, that is not enabled, so we bail out and use the
 			   * 1-phase plan.
 			   *
 			   * Since HashAgg can't handle distinct, the 2-phase plan will be
-			   *    (Agg (Sort (Motion (Agg (Sort (Motion R)))))) 
+			   *    (Agg (Sort (Motion (Agg (Sort (Motion R))))))
 			   * which we probably won't like.  However, the 2-phase approach
 			   * may be enabled using the GUC mpp_enable_agg_distinct.
 			   */
@@ -340,8 +340,8 @@ cdb_grouping_planner(PlannerInfo* root,
 						
 				/* Need collocation on "distincted" argument value. */
 				distinct_pathkeys = cdb_make_pathkey_for_expr(
-										root, 
-										(Node*)agg_counts->distinctExpr, 
+										root,
+										(Node*)agg_counts->distinctExpr,
 										list_make1(makeString("=")));
 
 				if ( cdbpathlocus_collocates(input_locus, distinct_pathkeys) )
@@ -368,7 +368,7 @@ cdb_grouping_planner(PlannerInfo* root,
 		}
 		
 		/* If we found a two-stage approach, compare it to the one-stage
-		 * approach in hand and decide which we prefer. 
+		 * approach in hand and decide which we prefer.
 		 *
 		 * The cost of the one stage approach will include
 		 * - the base plan,
@@ -382,11 +382,11 @@ cdb_grouping_planner(PlannerInfo* root,
 		 * - intermediate focus or hash motion, and
 		 * - final aggregation.
 		 *
-		 * We assume that the cost of the input plan and final Agg balance.  
-		 * So the one-stage incremental cost is the cost  to move all the 
-		 * tuples.  The two-stage incremental cost is the cost to move all 
-		 * the tuples (only if preconditioning for distinct aggregation), the 
-		 * cost of the stage-one aggregation, and the cost of relocate a tuple 
+		 * We assume that the cost of the input plan and final Agg balance.
+		 * So the one-stage incremental cost is the cost  to move all the
+		 * tuples.  The two-stage incremental cost is the cost to move all
+		 * the tuples (only if preconditioning for distinct aggregation), the
+		 * cost of the stage-one aggregation, and the cost of relocate a tuple
 		 * per group.  We just need to compare these incremental costs.
 		 */
 		switch ( group_type_2s )
@@ -398,7 +398,7 @@ cdb_grouping_planner(PlannerInfo* root,
 			group_type = group_type_2s;
 			output_locus = output_locus_2s;
 			break;
-		 
+		
 		case MPP_GRP_TYPE_NONE:
 			break; /* No 2-stage plan, use the 1-stage plan. */
 			
@@ -412,8 +412,8 @@ cdb_grouping_planner(PlannerInfo* root,
 		}
 	}
 	
-	/* 
-	 * Package up byproducts for the actual planner. 
+	/*
+	 * Package up byproducts for the actual planner.
 	 */
 	ctx.prep = group_prep;
 	ctx.type = group_type;
@@ -444,7 +444,7 @@ cdb_grouping_planner(PlannerInfo* root,
 	{
 		result_plan = make_two_stage_agg_plan(root, &ctx);
 	}
-	else 
+	else
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
@@ -458,7 +458,7 @@ cdb_grouping_planner(PlannerInfo* root,
 
 /*
  * Function make_one_stage_agg_plan
- * 
+ *
  * Construct a one-stage aggregation plan by redistributing the result
  * of the input plan appropriately
  */
@@ -490,13 +490,13 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	ctx->current_pathkeys = NIL; /* Initialize to be tidy. */
 
 	/*
-	 * The argument to the "lower" Agg node will use a "flattened" tlist 
-	 * (having just the (levelsup==0) vars mentioned in the SELECT targetlist 
-	 * and HAVING qual plus entries for any GROUP BY expressions that are not 
+	 * The argument to the "lower" Agg node will use a "flattened" tlist
+	 * (having just the (levelsup==0) vars mentioned in the SELECT targetlist
+	 * and HAVING qual plus entries for any GROUP BY expressions that are not
 	 * simple Vars.  This is the same sub_tlist as that used for 1-stage
 	 * aggregation in grouping_planner.
 	 */
-	 
+	
 	/* Create the base plan. */
 	switch ( ctx->prep )
 	{
@@ -523,40 +523,30 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	 * base plan can't project. (This may be unnecessary, but, if so,
 	 * the Result node will be removed later.)
 	 */
-	if (!is_projection_capable_plan(result_plan))
-	{
-		result_plan = (Plan *) make_result(sub_tlist, NULL,
-										   result_plan);
-		mark_passthru_locus(result_plan, true, true);
-	}
-	else
-	{
-		plan_pushdown_tlist(result_plan, sub_tlist);
-	}
-	adapt_flow_to_targetlist(result_plan);
+    result_plan = plan_pushdown_tlist(result_plan, sub_tlist);
 
 	/* Account for the cost of evaluation of the sub_tlist. */
 	cost_qual_eval(&tlist_cost, sub_tlist);
 	result_plan->startup_cost += tlist_cost.startup;
-	result_plan->total_cost += 
+	result_plan->total_cost +=
 		tlist_cost.startup +
 		tlist_cost.per_tuple * result_plan->plan_rows;
 	
-	/* Precondition the input by adjusting its locus prior to adding 
+	/* Precondition the input by adjusting its locus prior to adding
 	 * the Agg or Group node to the base plan, if needed.
-	 * 
-	 * In accounting for cost of motion, our rule is no increase in startup 
-	 * cost (doesn't sound right, but that's what to use for now) and a 
-	 * per row cost added to total cost (also doubtful). 
+	 *
+	 * In accounting for cost of motion, our rule is no increase in startup
+	 * cost (doesn't sound right, but that's what to use for now) and a
+	 * per row cost added to total cost (also doubtful).
 	 */
 	motion_cost_per_row = (mpp_motion_cost_per_row > 0.0) ?
-				mpp_motion_cost_per_row : 
+				mpp_motion_cost_per_row :
 				2.0 * cpu_tuple_cost;
 
 	switch ( ctx->prep )
 	{
 	case MPP_GRP_PREP_NONE:
-			break; 
+			break;
 			
 	case MPP_GRP_PREP_HASH_GROUPS:
 			Assert(numGroupCols > 0);
@@ -691,7 +681,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	else if (root->hasHavingQual)
 	{
 		/* No aggregates, and no GROUP BY, but a HAVING qual is a
-		 * degenerate case discussed in grouping_planner.  We can 
+		 * degenerate case discussed in grouping_planner.  We can
 		 * just throw away the plan-so-far and let the caller handle
 		 * the whole enchilada.
 		 */
@@ -705,7 +695,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 
 /*
  * Function make_two_stage_agg_plan
- * 
+ *
  * Construct a two-stage aggregation plan.
  */
 static Plan *
@@ -740,7 +730,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 							(long)ctx->dNumGroups;
 	
 	motion_cost_per_row = (mpp_motion_cost_per_row > 0.0) ?
-				mpp_motion_cost_per_row : 
+				mpp_motion_cost_per_row :
 				2.0 * cpu_tuple_cost;
 
 	ctx->current_pathkeys = NIL;
@@ -753,38 +743,28 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	result_plan->flow = cdbpathtoplan_create_flow(root, path, current_pathkeys, result_plan);
 
 	/* Instead of the flat target list produced by create_plan above, use
-	 * the sub_tlist constructed in cdb_grouping_planner.  This consists 
+	 * the sub_tlist constructed in cdb_grouping_planner.  This consists
 	 * of just the (levelsup==0) vars mentioned in the SELECT and HAVING
-	 * clauses plus entries for any GROUP BY expressions that are not 
-	 * simple Vars.  (This is the same sub_tlist as used in 1-stage 
+	 * clauses plus entries for any GROUP BY expressions that are not
+	 * simple Vars.  (This is the same sub_tlist as used in 1-stage
 	 * aggregation and in normal aggregation in grouping_planner).
 	 *
 	 * If the base plan is of a type that can't project, add a Result
-	 * node to carry the new target list, else install it directly.  
-	 * (Though the result node may not always be necessary, it is safe, 
+	 * node to carry the new target list, else install it directly.
+	 * (Though the result node may not always be necessary, it is safe,
 	 * and superfluous Result nodes are removed later.)
 	 */
-	if (!is_projection_capable_plan(result_plan))
-	{
-		result_plan = (Plan *) make_result(sub_tlist, NULL,
-										   result_plan);
-		mark_passthru_locus(result_plan, true, true);
-	}
-	else
-	{
-		plan_pushdown_tlist(result_plan, sub_tlist);
-	}
-	adapt_flow_to_targetlist(result_plan);
+	result_plan = plan_pushdown_tlist(result_plan, sub_tlist);
 	
 	/* Account for the cost of evaluation of the sub_tlist. */
 	cost_qual_eval(&tlist_cost, sub_tlist);
 	result_plan->startup_cost += tlist_cost.startup;
-	result_plan->total_cost += 
+	result_plan->total_cost +=
 		tlist_cost.startup +
 		tlist_cost.per_tuple * result_plan->plan_rows;
 	
 	/* At this point result_plan produces the input relation for two-stage
-	 * aggregation.  
+	 * aggregation.
 	 *
 	 * Begin by preconditioning the input, if necessary, to collocate on
 	 * non-distinct values of a single DISTINCT argument.
@@ -792,7 +772,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	switch ( ctx->prep )
 	{
 	case MPP_GRP_PREP_NONE:
-		break; 
+		break;
 			
 	case MPP_GRP_PREP_HASH_DISTINCT:
 		Assert( ctx->agg_counts->numDistinctAggs == 1
@@ -819,8 +799,8 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	/*
 	 * Get the target lists for the preliminary and final aggregations and
 	 * the qual (HAVING clause) for the final aggregation based on the target
-	 * list of the base plan. Grouping attributes go on front of preliminary 
-	 * target list. 
+	 * list of the base plan. Grouping attributes go on front of preliminary
+	 * target list.
 	 */
 	generate_two_stage_tlists(tlist,
 					sub_tlist,
@@ -831,8 +811,8 @@ make_two_stage_agg_plan(PlannerInfo *root,
 					&final_tlist,
 					&final_qual);
 	
-	/* 
-	 * Since the grouping attributes, if any, are on the front and in order 
+	/*
+	 * Since the grouping attributes, if any, are on the front and in order
 	 * on the preliminary targetlist, we need a different vector of grouping
 	 * attribute numbers: (1, 2, 3, ...).  Later, we'll need
 	 */
@@ -857,15 +837,15 @@ make_two_stage_agg_plan(PlannerInfo *root,
 			if (!pathkeys_contained_in(root->group_pathkeys,
 									   current_pathkeys))
 			{
-				/* TODO -- Investigate WHY we might sort here!  
+				/* TODO -- Investigate WHY we might sort here!
 				 *
-				 * Good reasons would be that one of the grouping 
-				 * expressions isn't "hashable" or that too may groups 
-				 * are anticipated.  
+				 * Good reasons would be that one of the grouping
+				 * expressions isn't "hashable" or that too may groups
+				 * are anticipated.
 				 *
-				 * A bad reason would be that the final result will be in 
+				 * A bad reason would be that the final result will be in
 				 * order of the grouping key.  (Redistribution will remove
-				 * the ordering.) 
+				 * the ordering.)
 				 */
 				result_plan = (Plan *)
 				make_sort_from_groupcols(root,
@@ -887,8 +867,8 @@ make_two_stage_agg_plan(PlannerInfo *root,
 		}
 	}
 		
-	/* 
-	 * Add the Preliminary Agg Node 
+	/*
+	 * Add the Preliminary Agg Node
 	 */
 	result_plan = (Plan *) make_agg(root,
 									prelim_tlist,
@@ -905,7 +885,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	mark_plan_strewn(result_plan);
 	current_pathkeys = NIL;
 	
-	/* 
+	/*
 	 * Add Intermediate Motion to Gather or Hash on Groups
 	  */
 	switch ( ctx->type )
@@ -935,8 +915,8 @@ make_two_stage_agg_plan(PlannerInfo *root,
 		break; /* Never */
 	}
 	
-	/* 
-	 * Add Sort on Groups if needed for AGG_SORTED strategy 
+	/*
+	 * Add Sort on Groups if needed for AGG_SORTED strategy
 	 */
 	if (aggstrategy == AGG_SORTED)
 	{
@@ -949,18 +929,18 @@ make_two_stage_agg_plan(PlannerInfo *root,
 		mark_sort_locus(result_plan);
 	}
 
-	/* 
-	 * Add a SubqueryScan node to renumber the range of the query.  
+	/*
+	 * Add a SubqueryScan node to renumber the range of the query.
 	 *
-	 * The result of the preliminary aggregation my contain targets that 
-	 * have no representatives in the range of its outer relation.  We 
+	 * The result of the preliminary aggregation my contain targets that
+	 * have no representatives in the range of its outer relation.  We
 	 * resolve this be treating the preliminary aggregation as a subquery.
-	 * 
+	 *
 	 * However, this breaks the correspondence between the Plan tree and
-	 * the Query tree that is assumed by the later call to set_plan_references.  
+	 * the Query tree that is assumed by the later call to set_plan_references.
 	 * So we also push the Query node from the root structure down into a new
 	 * subquery RTE and scribble over the original Query node to make it into
-	 * Simple SELECT * FROM a Subquery RTE. 
+	 * Simple SELECT * FROM a Subquery RTE.
 	 *
 	 * Note that the final Agg should refer to the attributes of the result
 	 * SubqueryScan plan node.
@@ -993,8 +973,8 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	
 	/* Construct a range table entry referring to it. */
 	newrte = addRangeTableEntryForSubquery(NULL,
-										   subquery, 
-										   makeAlias("partial_aggregation", NULL), 
+										   subquery,
+										   makeAlias("partial_aggregation", NULL),
 										   TRUE);
 	newrtable = list_make1(newrte);
 
@@ -1077,23 +1057,23 @@ make_two_stage_agg_plan(PlannerInfo *root,
 /*
  * Function make_subplan_tlist
  *
- * The input to the "lower" Agg node will use a "flattened" tlist (having 
+ * The input to the "lower" Agg node will use a "flattened" tlist (having
  * just the (levelsup==0) vars mentioned in the targetlist and HAVING qual.
- * This is similar to the target list produced by make_subplanTargetList 
+ * This is similar to the target list produced by make_subplanTargetList
  * and used for 1-stage aggregation in grouping_planner.
  *
- * The result target list contains entries for all the simple Var attributes 
- * of the original SELECT and HAVING clauses, plus entries for any GROUP BY 
+ * The result target list contains entries for all the simple Var attributes
+ * of the original SELECT and HAVING clauses, plus entries for any GROUP BY
  * expressions that are not simple Vars.
  *
- * The implicit results, delivered through pointers pnum and pcols, are the 
+ * The implicit results, delivered through pointers pnum and pcols, are the
  * number of grouping attributes and a vector of their positions (which are
  * equal to their resno's) in the target list.
  *
  * Note that there are no similar results for sort or distinct attributes
  * since they don't necessarily appear in the subplan list.
  */
-List *make_subplan_tlist(List *tlist, Node *havingQual, List *grp_clauses, 
+List *make_subplan_tlist(List *tlist, Node *havingQual, List *grp_clauses,
 						   int *pnum, AttrNumber **pcols)
 {
 	List	   *sub_tlist;
@@ -1193,8 +1173,8 @@ generate_subquery_tlist(Index varno, List *input_tlist)
 		/* We don't have to mark resjunk here, the second stage handles it. */
 		tle = makeTargetEntry((Expr *) expr,
 							  (AttrNumber) resno++,
-							  (inputtle->resname == NULL) ? 
-									NULL : 
+							  (inputtle->resname == NULL) ?
+									NULL :
 									pstrdup(inputtle->resname),
 							  false);
 		tle->ressortgroupref = inputtle->ressortgroupref;
@@ -1209,7 +1189,7 @@ generate_subquery_tlist(Index varno, List *input_tlist)
  * Function: cdbpathlocus_collocates
  *
  * Is a relation with the given locus guaranteed to collocate tuples with
- * non-distinct values of the key.  
+ * non-distinct values of the key.
  */
 bool cdbpathlocus_collocates(CdbPathLocus locus, List *pathkeys)
 {
@@ -1222,7 +1202,7 @@ bool cdbpathlocus_collocates(CdbPathLocus locus, List *pathkeys)
 		return false;  /* Or would HashedOJ ok, too? */
 	
 	
-	/* TODO - Here we cheap out and just compare the loci on expression 
+	/* TODO - Here we cheap out and just compare the loci on expression
 	 * containment.  We should test for existence of a subset of matching
 	 * expressions.  For example
 	 *
@@ -1289,15 +1269,15 @@ CdbPathLocus cdbpathlocus_from_flow(Flow *flow)
  *	numGroupCols - number of grouping attributes
  *	groupColIdx - resnos (= attr numbers) of the grouping attributes
  *
- * Output is pointers to 
+ * Output is pointers to
  *
  *	prelim_tlist - the target list of the preliminary Agg node.
  *	final_tlist - the target list of the final Agg node.
  *	final_qual - the qual of the final Agg node.
  */
-void generate_two_stage_tlists(List *tlist, 
+void generate_two_stage_tlists(List *tlist,
 						List *sub_tlist,
-						Node *havingQual, 
+						Node *havingQual,
 						int numGroupCols,
 						AttrNumber *groupColIdx,
 						List **p_prelim_tlist,
@@ -1320,17 +1300,17 @@ void generate_two_stage_tlists(List *tlist,
 	
 	/* Use consistent varno in final tlist entries.  It will refer to the
 	 * sole RTE (a Subquery RTE) of a SubqueryScan. */
-	ctx_data.final_varno = 1; 
+	ctx_data.final_varno = 1;
 	
 	/* Initialize temporaries to hold the two parts of the preliminary
 	 * target list under construction. */
 	ctx_data.grps_tlist = NIL;
 	ctx_data.refs_tlist = NIL;
 	
-	/* 
+	/*
 	 * Begin constructing the target list for the preliminary Agg node
 	 * by placing targets for the grouping attributes on the grps_tlist
-	 * temporary. Make sure ressortgroupref matches the original. Copying 
+	 * temporary. Make sure ressortgroupref matches the original. Copying
 	 * the expression may be overkill, but it is safe.
 	 */
 	for ( i = 0; i < numGroupCols; i++ )
@@ -1349,7 +1329,7 @@ void generate_two_stage_tlists(List *tlist,
 		ctx_data.grps_tlist = lappend(ctx_data.grps_tlist, prelim_tle);
 	}
 	
-	/* 
+	/*
 	 * Derive the final target list with entries corresponding to the input
 	 * target list, but referring to the attributes of the prelimnary target
 	 * list rather than to the input attributes.  Note that this involves
@@ -1372,7 +1352,7 @@ void generate_two_stage_tlists(List *tlist,
 		final_tlist = lappend(final_tlist, final_tle);
 	}
 	
-	/* 
+	/*
 	 * Derive the final qual while augmenting the preliminary target list. */
 	final_qual = (List*)deconstruct_expr((Expr*)ctx_data.havingQual, &ctx_data);
 	
@@ -1386,7 +1366,7 @@ void generate_two_stage_tlists(List *tlist,
 }
 
 
-/* 
+/*
  * Function: deconstruct_expr
  *
  * Prepare an expression for execution within 2-stage aggregation.
@@ -1400,8 +1380,8 @@ Expr *deconstruct_expr(Expr *expr, two_stage_agg_context *ctx)
 }
 
 /*
- * Function: deconstruct_expr_mutator 
- * 
+ * Function: deconstruct_expr_mutator
+ *
  * Work for deconstruct_expr.
  */
 Node* deconstruct_expr_mutator(Node *node, two_stage_agg_context *ctx)
@@ -1424,8 +1404,8 @@ Node* deconstruct_expr_mutator(Node *node, two_stage_agg_context *ctx)
 	tle = tlist_member(node, ctx->grps_tlist);
 	if ( tle != NULL )
 	{
-		return  (Node*) makeVar(ctx->final_varno, tle->resno, 
-								exprType((Node*)tle->expr), 
+		return  (Node*) makeVar(ctx->final_varno, tle->resno,
+								exprType((Node*)tle->expr),
 								exprTypmod((Node*)tle->expr), 0);
 	}
 
@@ -1434,19 +1414,19 @@ Node* deconstruct_expr_mutator(Node *node, two_stage_agg_context *ctx)
 }
 
 
-/* 
+/*
  * Function: split_aggref
  *
  * Find or add a partial-stage Aggref expression for the argument in the
  * preliminary target list under construction.  Return the final-starge
- * Aggref with a single Var node argument referring to the partial-stage 
- * Aggref. 
+ * Aggref with a single Var node argument referring to the partial-stage
+ * Aggref.
  *
  * Note that he result type of the partial-stage Aggref will be the transition
  * type of the aggregate function.
  *
  * At execution, the function used to compute the transition type in the
- * lower aggregation will be the normal accumulator function for the 
+ * lower aggregation will be the normal accumulator function for the
  * aggregate function.  The final function, however, will not be used.
  * The  result will be the ending transition value.
  *
@@ -1470,7 +1450,7 @@ Aggref *split_aggref(Aggref *aggref, two_stage_agg_context *ctx)
 	
 	/*
 	 * We may have seen an Aggref just like this one already.  Look for
-	 * the preliminary form of such in the preliminary Aggref target 
+	 * the preliminary form of such in the preliminary Aggref target
 	 * list to date.
 	 */
 	foreach( cell, ctx->refs_tlist )
@@ -1481,7 +1461,7 @@ Aggref *split_aggref(Aggref *aggref, two_stage_agg_context *ctx)
 		/* Check similarity, avoid aggtype and aggstage (which we control)
 		 * and don't bother with agglevelsup (which is always 0 here).
 		 */
-		if ( aggref->aggfnoid == ref->aggfnoid 
+		if ( aggref->aggfnoid == ref->aggfnoid
 			&& aggref->aggstar == ref->aggstar
 			&& aggref->aggdistinct == ref->aggdistinct
 			&& equal(aggref->target, ref->target) )
@@ -1532,7 +1512,7 @@ Aggref *split_aggref(Aggref *aggref, two_stage_agg_context *ctx)
 
 /* Function lookup_agg_transtype
  *
- * Return the transition type Oid of the given aggregate fuction or throw 
+ * Return the transition type Oid of the given aggregate fuction or throw
  * an error, if none.
  */
 Oid lookup_agg_transtype(Aggref *aggref)
@@ -1554,7 +1534,7 @@ Oid lookup_agg_transtype(Aggref *aggref)
 }
 
 /* Function:  adapt_flow_to_targetlist
- * 
+ *
  * Sometimes we replace the targetlist (especially subplan of an Agg).
  * In this case, we need to assure that any hash expressions in the
  * node's flow remain in the targetlist OR null out the hash leaving,

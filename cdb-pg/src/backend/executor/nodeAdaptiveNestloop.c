@@ -3,7 +3,7 @@
  * nodeNestloop.c
  *	  routines to support nest-loop joins
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -36,7 +36,7 @@ ExecAdaptiveNestLoop(AdaptiveNestLoopState *node)
 {
 	if (node->nl_strategy == NL_STRATEGY_UNDECIDED)
 	{
-		int i;
+		int i = 0;
 		TupleTableSlot *slot;
 
 		if (node->outer_q != NULL)
@@ -53,7 +53,7 @@ ExecAdaptiveNestLoop(AdaptiveNestLoopState *node)
 		}
 
 		/* did we get more tuples than are allowed for loop ? Or
-		 * are we working on a non-hashable join ? Or do we have insufficient room 
+		 * are we working on a non-hashable join ? Or do we have insufficient room
 		 * for our queue */
 		if (i < node->nl_strategy_threshold ||
 			node->alternate == NULL ||
@@ -108,20 +108,6 @@ ExecInitAdaptiveNestLoop(AdaptiveNestLoop *node, EState *estate, int eflags)
 	anlstate->ps.plan = (Plan *)node;
 	anlstate->ps.state = estate;
 
-	/*
-	 * Miscellaneous initialization
-	 *
-	 * create expression context for node
-	 */
-	ExecAssignExprContext(estate, &anlstate->ps);
-
-	/*
-	 * initialize child expression
-	 */
-	anlstate->ps.targetlist = (List *)
-		ExecInitExpr((Expr *) node->plan.targetlist,
-					 (PlanState *)anlstate);
-
 	/* initialize adaptive state */
 	anlstate->nl_strategy = NL_STRATEGY_UNDECIDED;
 	anlstate->nl_strategy_threshold = node->nl_strategy_threshold;
@@ -151,17 +137,16 @@ ExecInitAdaptiveNestLoop(AdaptiveNestLoop *node, EState *estate, int eflags)
 	/* children are ready to go. */
 
 	/*
-	 * tuple table initialization
+	 * tuple table initialization (not used, is it really necessary?)
 	 */
 #define ADAPTIVENESTLOOP_NSLOTS 1
 	ExecInitResultTupleSlot(estate, &anlstate->ps);
-
 	ExecAssignResultTypeFromTL(&anlstate->ps);
 
-	/* we're capable of projecting, we don't use this right now, but we could */
-	ExecAssignProjectionInfo(&anlstate->ps);
+	/* no projection is done */
+	anlstate->ps.ps_ProjInfo = NULL;
 
-	return anlstate;
+    return anlstate;
 }
 
 int
@@ -184,16 +169,12 @@ ExecCountSlotsAdaptiveNestLoop(AdaptiveNestLoop *node)
 void
 ExecEndAdaptiveNestLoop(AdaptiveNestLoopState *node)
 {
-	ExecFreeExprContext(&node->ps);
-
-	/*
-	 * clean out the tuple table
-	 */
-	ExecClearTuple(node->ps.ps_ResultTupleSlot);
+    /* Unshare the outer subplan. */
+	node->ps.plan->righttree->lefttree = NULL;
+    node->main->shared_outer = false;
 
 	ExecEndNode((PlanState *)node->main);
 	ExecEndNode((PlanState *)node->alternate);
-
 }
 
 /* ----------------------------------------------------------------

@@ -16,6 +16,7 @@
 
 #include "postgres.h"
 
+#include "catalog/pg_type.h"                /* INT4OID, INT8OID */
 #include "nodes/makefuncs.h"
 #ifdef OPTIMIZER_DEBUG
 #include "nodes/print.h"
@@ -44,8 +45,7 @@ int			geqo_threshold;
 
 
 static void set_base_rel_pathlists(PlannerInfo *root);
-static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
-					   RangeTblEntry *rte);
+static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel);
 static void set_inherited_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 						   Index rti, RangeTblEntry *rte,
 						   List *inheritlist);
@@ -196,7 +196,7 @@ set_base_rel_pathlists(PlannerInfo *root)
 		else
 		{
 			/* Plain relation */
-			set_plain_rel_pathlist(root, rel, rte);
+			set_plain_rel_pathlist(root, rel);
 		}
 
 #ifdef OPTIMIZER_DEBUG
@@ -210,7 +210,7 @@ set_base_rel_pathlists(PlannerInfo *root)
  *	  Build access paths for a plain relation (no subquery, no inheritance)
  */
 static void
-set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
+set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel)
 {
 	/* Mark rel with estimated output rows, width, etc */
 	set_baserel_size_estimates(root, rel);
@@ -225,6 +225,10 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 */
 	if (create_or_index_quals(root, rel))
 		set_baserel_size_estimates(root, rel);
+
+    /* CDB: Attach subquery duplicate suppression info. */
+    if (root->in_info_list)
+        rel->dedup_info = cdb_make_rel_dedup_info(root, rel);
 
 	/*
 	 * Generate paths and add them to the rel's pathlist.
@@ -244,7 +248,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	create_tidscan_paths(root, rel);
 
 	/* Now find the cheapest of the paths for this rel */
-	set_cheapest(rel);
+	set_cheapest(root, rel);
 }
 
 /*
@@ -375,7 +379,7 @@ set_inherited_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		/*
 		 * Compute the child's access paths, and save the cheapest.
 		 */
-		set_plain_rel_pathlist(root, childrel, childrte);
+		set_plain_rel_pathlist(root, childrel);
 
 		subpaths = lappend(subpaths, childrel->cheapest_total_path);
 
@@ -413,7 +417,7 @@ set_inherited_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	add_path(root, rel, (Path *) create_append_path(rel, subpaths));
 
 	/* Select cheapest path (pretty easy in this case...) */
-	set_cheapest(rel);
+	set_cheapest(root, rel);
 }
 
 /* quick-and-dirty test to see if any joining is needed */
@@ -506,6 +510,39 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 
 	pfree(differentTypes);
 
+    /*
+     * CDB: Does the subquery return at most one row?
+     */
+    rel->onerow = false;
+
+    /* Set-returning function in tlist could give any number of rows. */
+    if (expression_returns_set((Node *)parse->targetList))
+    {}
+
+    /* Always one row if aggregate function without GROUP BY. */
+    else if (!parse->groupClause &&
+             (parse->hasAggs || parse->havingQual))
+        rel->onerow = true;
+
+    /* Just a targetlist with no FROM clause? */
+    else if (!parse->jointree->fromlist)
+        rel->onerow = true;
+
+    /* LIMIT 1 or less? */
+    else if (parse->limitCount &&
+             IsA(parse->limitCount, Const) &&
+             !((Const *)parse->limitCount)->constisnull)
+    {
+        Const  *cnst = (Const *)parse->limitCount;
+
+        if (cnst->consttype == INT4OID &&
+            DatumGetInt32(cnst->constvalue) <= 1)
+            rel->onerow = true;
+        else if (cnst->consttype == INT8OID &&
+                 DatumGetInt64(cnst->constvalue) <= 1)
+            rel->onerow = true;
+    }
+
 	/*
 	 * We can safely pass the outer tuple_fraction down to the subquery if the
 	 * outer level has no joining, aggregation, or sorting to do. Otherwise
@@ -527,7 +564,14 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 									&subquery_pathkeys);
 	
 	/* Copy number of output rows from subplan */
-	rel->tuples = rel->subplan->plan_rows;
+    if (rel->onerow)
+        rel->tuples = 1;
+    else
+	    rel->tuples = rel->subplan->plan_rows;
+
+    /* CDB: Attach subquery duplicate suppression info. */
+    if (root->in_info_list)
+        rel->dedup_info = cdb_make_rel_dedup_info(root, rel);
 
 	/* Mark rel with estimated output rows, width, etc */
 	set_baserel_size_estimates(root, rel);
@@ -539,7 +583,7 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	add_path(root, rel, create_subqueryscan_path(root, rel, pathkeys));
 
 	/* Select cheapest path (pretty easy in this case...) */
-	set_cheapest(rel);
+	set_cheapest(root, rel);
 }
 
 /*
@@ -549,6 +593,13 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 static void
 set_function_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
+    /* CDB: Could the function return more than one row? */
+    rel->onerow = !expression_returns_set(rte->funcexpr);
+
+    /* CDB: Attach subquery duplicate suppression info. */
+    if (root->in_info_list)
+        rel->dedup_info = cdb_make_rel_dedup_info(root, rel);
+
 	/* Mark rel with estimated output rows, width, etc */
 	set_function_size_estimates(root, rel);
 
@@ -556,7 +607,7 @@ set_function_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	add_path(root, rel, create_functionscan_path(root, rel));
 
 	/* Select cheapest path (pretty easy in this case...) */
-	set_cheapest(rel);
+	set_cheapest(root, rel);
 }
 
 /*
@@ -691,7 +742,7 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels)
 			rel = (RelOptInfo *) lfirst(x);
 
 			/* Find and save the cheapest paths for this rel */
-			set_cheapest(rel);
+			set_cheapest(root, rel);
 
 #ifdef OPTIMIZER_DEBUG
 			debug_print_rel(root, rel);

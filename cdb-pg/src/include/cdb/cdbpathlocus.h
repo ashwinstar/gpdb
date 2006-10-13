@@ -192,6 +192,9 @@ CdbPathLocus
 cdbpathlocus_from_baserel(struct PlannerInfo   *root,
                           struct RelOptInfo    *rel);
 CdbPathLocus
+cdbpathlocus_from_exprs(struct PlannerInfo     *root,
+                        List                   *hash_on_exprs);
+CdbPathLocus
 cdbpathlocus_from_subquery(struct PlannerInfo   *root,
                            struct RelOptInfo    *rel);
 
@@ -216,21 +219,32 @@ cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
 /************************************************************************/
 
 /*
+ * cdbpathlocus_is_hashed_on_exprs
+ *
+ * This function tests whether grouping on a given set of exprs can be done
+ * in place without motion.
+ *
+ * For a hashed locus, returns false if the partkey has a column whose
+ * equivalence class contains no expr belonging to the given list.
+ */
+bool
+cdbpathlocus_is_hashed_on_exprs(CdbPathLocus locus, List *exprlist);
+
+/*
  * cdbpathlocus_is_hashed_on_relids
  *
- * Used when a subquery predicate (such as "x IN (SELECT ...)") has been 
+ * Used when a subquery predicate (such as "x IN (SELECT ...)") has been
  * flattened into a join with the tables of the current query.  A row of
  * the cross-product of the current query's tables might join with more
  * than one row from the subquery and thus be duplicated.  Removing such
  * duplicates after the join is called deduping.  If a row's duplicates
  * might occur in more than one partition, a Motion operator will be
- * needed to bring them together.  This function tests whether the join 
+ * needed to bring them together.  This function tests whether the join
  * result (whose locus is given) can be deduped in place without motion.
  *
- * For a hashed locus, returns false if the partkey has a column whose 
- * equivalence class contains no Var node belonging to the given set of 
- * relids.  Caller should specify the relids of the tables of the current 
- * query, excluding the subquery.
+ * For a hashed locus, returns false if the partkey has a column whose
+ * equivalence class contains no Var node belonging to the given set of
+ * relids.  Caller should specify the relids of the non-subquery tables.
  */
 bool
 cdbpathlocus_is_hashed_on_relids(CdbPathLocus locus, Bitmapset *relids);

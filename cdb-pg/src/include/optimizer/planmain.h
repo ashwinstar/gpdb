@@ -63,6 +63,7 @@ extern Result *make_result(List *tlist, Node *resconstantqual, Plan *subplan);
 extern bool is_projection_capable_plan(Plan *plan);
 extern Sort *make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree,
                                      List *pathkeys);
+extern Plan *plan_pushdown_tlist(Plan *plan, List *tlist);      /*CDB*/
 
 /*
  * prototypes for plan/initsplan.c
@@ -72,7 +73,7 @@ extern int	join_collapse_limit;
 
 extern void add_base_rels_to_query(PlannerInfo *root, Node *jtnode);
 extern void build_base_rel_tlists(PlannerInfo *root, List *final_tlist);
-extern void add_vars_to_targetlist(PlannerInfo *root, List *vars, 
+extern void add_vars_to_targetlist(PlannerInfo *root, List *vars,
                                    Relids where_needed);
 extern List *deconstruct_jointree(PlannerInfo *root);
 extern void process_implied_equality(PlannerInfo *root,
@@ -87,5 +88,6 @@ extern void process_implied_equality(PlannerInfo *root,
 extern Plan *set_plan_references(Plan *plan, List *rtable);
 extern void fix_opfuncids(Node *node);
 extern void set_opfuncid(OpExpr *opexpr);
+extern bool cdb_expr_requires_full_eval(Node *node);
 
 #endif   /* PLANMAIN_H */

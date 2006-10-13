@@ -40,8 +40,7 @@ hash_inner_and_outer(PlannerInfo *root,
                      List *restrictlist,
                      List *mergeclause_list,    /*CDB*/
                      JoinType jointype);
-static List *select_mergejoin_clauses(RelOptInfo *joinrel,
-						 RelOptInfo *outerrel,
+static List *select_mergejoin_clauses(RelOptInfo *outerrel,
 						 RelOptInfo *innerrel,
 						 List *restrictlist,
 						 JoinType jointype);
@@ -76,7 +75,14 @@ add_paths_to_joinrel(PlannerInfo *root,
 {
 	List	   *mergeclause_list = NIL;
 
-	/*
+    Assert(outerrel->pathlist &&
+           outerrel->cheapest_startup_path &&
+           outerrel->cheapest_total_path);
+    Assert(innerrel->pathlist &&
+           innerrel->cheapest_startup_path &&
+           innerrel->cheapest_total_path);
+
+    /*
 	 * Find potential mergejoin clauses.  We can skip this if we are not
 	 * interested in doing a mergejoin.  However, mergejoin is currently our
 	 * only way of implementing full outer joins, so override mergejoin
@@ -85,8 +91,7 @@ add_paths_to_joinrel(PlannerInfo *root,
 #if 0  /*CDB*/
 	if (enable_mergejoin || jointype == JOIN_FULL)
 #endif /*CDB*/
-		mergeclause_list = select_mergejoin_clauses(joinrel,
-													outerrel,
+		mergeclause_list = select_mergejoin_clauses(outerrel,
 													innerrel,
 													restrictlist,
 													jointype);
@@ -169,9 +174,6 @@ sort_inner_and_outer(PlannerInfo *root,
 	{
 		case JOIN_INNER:
 		case JOIN_LEFT:
-		case JOIN_IN:
-		case JOIN_UNIQUE_OUTER:
-		case JOIN_UNIQUE_INNER:
 			useallclauses = false;
 			break;
 		case JOIN_RIGHT:
@@ -190,22 +192,9 @@ sort_inner_and_outer(PlannerInfo *root,
 	 * assuming here that a sort is required.  We will consider
 	 * cheapest-startup-cost input paths later, and only if they don't need a
 	 * sort.
-	 *
-	 * If unique-ification is requested, do it and then handle as a plain
-	 * inner join.
 	 */
 	outer_path = outerrel->cheapest_total_path;
 	inner_path = innerrel->cheapest_total_path;
-	if (jointype == JOIN_UNIQUE_OUTER)
-	{
-		outer_path = (Path *) create_unique_path(root, outerrel, outer_path);
-		jointype = JOIN_INNER;
-	}
-	else if (jointype == JOIN_UNIQUE_INNER)
-	{
-		inner_path = (Path *) create_unique_path(root, innerrel, inner_path);
-		jointype = JOIN_INNER;
-	}
 
 	/*
 	 * Each possible ordering of the available mergejoin clauses will generate
@@ -303,6 +292,7 @@ sort_inner_and_outer(PlannerInfo *root,
 	}
 }
 
+
 /*
  * match_unsorted_outer
  *	  Creates possible join paths for processing a single join relation
@@ -344,7 +334,6 @@ match_unsorted_outer(PlannerInfo *root,
 					 List *mergeclause_list,
 					 JoinType jointype)
 {
-	JoinType	save_jointype = jointype;
 	bool		nestjoinOK;
 	bool		useallclauses;
 	Path	   *inner_cheapest_startup = innerrel->cheapest_startup_path;
@@ -354,7 +343,7 @@ match_unsorted_outer(PlannerInfo *root,
 	ListCell   *l;
 
 	/*
-	 * Nestloop only supports inner, left, and IN joins.  Also, if we are
+	 * Nestloop only supports inner and left joins.  Also, if we are
 	 * doing a right or full join, we must use *all* the mergeclauses as join
 	 * clauses, else we will not have a valid plan.  (Although these two flags
 	 * are currently inverses, keep them separate for clarity and possible
@@ -364,9 +353,6 @@ match_unsorted_outer(PlannerInfo *root,
 	{
 		case JOIN_INNER:
 		case JOIN_LEFT:
-		case JOIN_IN:
-		case JOIN_UNIQUE_OUTER:
-		case JOIN_UNIQUE_INNER:
 			nestjoinOK = true;
 			useallclauses = false;
 			break;
@@ -383,18 +369,7 @@ match_unsorted_outer(PlannerInfo *root,
 			break;
 	}
 
-	/*
-	 * If we need to unique-ify the inner path, we will consider only the
-	 * cheapest inner.
-	 */
-	if (jointype == JOIN_UNIQUE_INNER)
-	{
-		inner_cheapest_total = (Path *)
-			create_unique_path(root, innerrel, inner_cheapest_total);
-		inner_cheapest_startup = inner_cheapest_total;
-		jointype = JOIN_INNER;
-	}
-	else if (nestjoinOK)
+    if (nestjoinOK)
 	{
 		/*
 		 * If the cheapest inner path is a join or seqscan, we should consider
@@ -403,6 +378,10 @@ match_unsorted_outer(PlannerInfo *root,
 		 */
 		if (!(IsA(inner_cheapest_total, IndexPath) ||
 			  IsA(inner_cheapest_total, BitmapHeapPath) ||
+              (IsA(inner_cheapest_total, UniquePath) &&                 /*CDB*/
+               ((UniquePath *)inner_cheapest_total)->umethod == UNIQUE_PATH_SORT) ||
+              (IsA(inner_cheapest_total, UniquePath) &&                 /*CDB*/
+               ((UniquePath *)inner_cheapest_total)->umethod == UNIQUE_PATH_HASH) ||
 			  IsA(inner_cheapest_total, TidPath)))
 			matpath = (Path *)
 				create_material_path(innerrel, inner_cheapest_total);
@@ -428,18 +407,6 @@ match_unsorted_outer(PlannerInfo *root,
 		int			sortkeycnt;
 
 		/*
-		 * If we need to unique-ify the outer path, it's pointless to consider
-		 * any but the cheapest outer.
-		 */
-		if (save_jointype == JOIN_UNIQUE_OUTER)
-		{
-			if (outerpath != outerrel->cheapest_total_path)
-				continue;
-			outerpath = (Path *) create_unique_path(root, outerrel, outerpath);
-			jointype = JOIN_INNER;
-		}
-
-		/*
 		 * The result will have this sort order (even if it is implemented as
 		 * a nestloop, and even if some of the mergeclauses are implemented by
 		 * qpquals rather than as true mergeclauses):
@@ -447,76 +414,116 @@ match_unsorted_outer(PlannerInfo *root,
 		merge_pathkeys = build_join_pathkeys(root, joinrel, jointype,
 											 outerpath->pathkeys);
 
-		if (nestjoinOK)
+        /*
+         * Consider nested joins.
+         */
+        if (nestjoinOK)
 		{
-			Path *alternate;
+		    HashPath   *alternate = NULL;
+            List       *hashclauses;
 
-			if (!enable_adaptive_nestloop || !enable_hashjoin)
-				alternate = NULL;
-			else
-				alternate = (Path *)create_hashjoin_path(root,
-														 joinrel,
-														 jointype,
-														 outerpath,
-														 inner_cheapest_total,
-														 restrictlist,
-														 mergeclause_list,         /*CDB*/
-														 hashclauses_for_join(restrictlist, outerrel, innerrel, jointype));
+            /*
+             * CDB: Consider Adaptive NJ path with inner indexscan.
+             */
+            if (bestinnerjoin &&
+                enable_adaptive_nestloop &&
+                enable_hashjoin)
+            {
+                /*
+                 * Build HJ path.  If outer rel size exceeds a threshold,
+                 * executor will choose this alternate path instead of the NJ.
+                 */
+                hashclauses = hashclauses_for_join(restrictlist,
+                                                   outerrel,
+                                                   innerrel,
+                                                   jointype);
+                alternate = create_hashjoin_path(root,
+											     joinrel,
+											     jointype,
+											     outerpath,
+											     inner_cheapest_total,
+											     restrictlist,
+											     mergeclause_list,
+											     hashclauses);
+                if (alternate)
+                {
+		            add_path(root, joinrel, (Path *)
+				             create_nestloop_path(root,
+									              joinrel,
+									              jointype,
+									              outerpath,
+									              bestinnerjoin,
+									              restrictlist,
+                                                  mergeclause_list,     /*CDB*/
+                                                  NIL,          /* unordered */
+									              alternate));
 
-			/*
-			 * Always consider a nestloop join with this outer and
-			 * cheapest-total-cost inner.  When appropriate, also consider
-			 * using the materialized form of the cheapest inner, the
-			 * cheapest-startup-cost inner path, and the best innerjoin
-			 * indexpath.
-			 */
-			add_path(root, joinrel, (Path *)
-					 create_nestloop_path(root,
-										  joinrel,
-										  jointype,
-										  outerpath,
-										  inner_cheapest_total,
-										  restrictlist,
+                    /*
+                     * Any existing ordering of the outer rel will not be
+                     * preserved if the executor chooses the HJ alternative; so
+                     * plain nonadaptive NJ paths should be considered too, if
+                     * the outer rel has an ordering that might be exploited
+                     * downstream to avoid a sort.
+                     */
+                    if (merge_pathkeys)
+                        alternate = NULL;
+                }
+            } /* end adaptive NJ */
+
+	        /*
+	         * Always consider a nestloop join with this outer and
+	         * cheapest-total-cost inner.  When appropriate, also consider
+	         * using the materialized form of the cheapest inner, the
+	         * cheapest-startup-cost inner path, and the best innerjoin
+	         * indexpath.
+	         */
+	        add_path(root, joinrel, (Path *)
+			         create_nestloop_path(root,
+								          joinrel,
+								          jointype,
+								          outerpath,
+								          inner_cheapest_total,
+								          restrictlist,
                                           mergeclause_list,         /*CDB*/
-										  merge_pathkeys,
-										  alternate));
-			if (matpath != NULL)
-				add_path(root, joinrel, (Path *)
-						 create_nestloop_path(root,
-											  joinrel,
-											  jointype,
-											  outerpath,
-											  matpath,
-											  restrictlist,
+								          merge_pathkeys,
+								          NULL));
+	        if (matpath != NULL)
+		        add_path(root, joinrel, (Path *)
+				         create_nestloop_path(root,
+									          joinrel,
+									          jointype,
+									          outerpath,
+									          matpath,
+									          restrictlist,
                                               mergeclause_list,     /*CDB*/
-											  merge_pathkeys,
-											  alternate));
-			if (inner_cheapest_startup != inner_cheapest_total)
-				add_path(root, joinrel, (Path *)
-						 create_nestloop_path(root,
-											  joinrel,
-											  jointype,
-											  outerpath,
-											  inner_cheapest_startup,
-											  restrictlist,
+									          merge_pathkeys,
+									          NULL));
+	        if (inner_cheapest_startup != inner_cheapest_total)
+		        add_path(root, joinrel, (Path *)
+				         create_nestloop_path(root,
+									          joinrel,
+									          jointype,
+									          outerpath,
+									          inner_cheapest_startup,
+									          restrictlist,
                                               mergeclause_list,     /*CDB*/
-											  merge_pathkeys,
-											  alternate));
-			if (bestinnerjoin != NULL)
-				add_path(root, joinrel, (Path *)
-						 create_nestloop_path(root,
-											  joinrel,
-											  jointype,
-											  outerpath,
-											  bestinnerjoin,
-											  restrictlist,
-                                              mergeclause_list,     /*CDB*/
-											  merge_pathkeys,
-											  alternate));
+									          merge_pathkeys,
+									          NULL));
+	        if (bestinnerjoin && !alternate)
+		        add_path(root, joinrel, (Path *)
+				         create_nestloop_path(root,
+									          joinrel,
+									          jointype,
+									          outerpath,
+									          bestinnerjoin,
+									          restrictlist,
+                                              mergeclause_list,
+									          merge_pathkeys,
+									          NULL));
 		}
 
 		/* Can't do anything else if outer path needs to be unique'd */
-		if (save_jointype == JOIN_UNIQUE_OUTER)
+		if (IsA(outerpath, UniquePath))     /* CDB - is this still needed? */
 			continue;
 
 		/* Look for useful mergeclauses (if any) */
@@ -568,7 +575,7 @@ match_unsorted_outer(PlannerInfo *root,
 									   innersortkeys));
 
 		/* Can't do anything else if inner path needs to be unique'd */
-		if (save_jointype == JOIN_UNIQUE_INNER)
+		if (IsA(inner_cheapest_total, UniquePath))  /* CDB - still need this? */
 			continue;
 
 		/*
@@ -698,14 +705,11 @@ hashclauses_for_join(List *restrictlist,
 	List		*clauses = NIL;
 
 	/*
-	 * Hash only supports inner, left, and IN joins.
+	 * Hash only supports inner and left joins.
 	 */
 	switch (jointype)
 	{
 		case JOIN_INNER:
-		case JOIN_IN:
-		case JOIN_UNIQUE_OUTER:
-		case JOIN_UNIQUE_INNER:
 			isouterjoin = false;
 			break;
 		case JOIN_LEFT:
@@ -784,14 +788,11 @@ hash_inner_and_outer(PlannerInfo *root,
 	List	   *hashclauses;
 
 	/*
-	 * Hashjoin only supports inner, left, and IN joins.
+	 * Hashjoin only supports inner and left joins.
 	 */
 	switch (jointype)
 	{
 		case JOIN_INNER:
-		case JOIN_IN:
-		case JOIN_UNIQUE_OUTER:
-		case JOIN_UNIQUE_INNER:
 			isouterjoin = false;
 			break;
 		case JOIN_LEFT:
@@ -814,21 +815,6 @@ hash_inner_and_outer(PlannerInfo *root,
 		Path	   *cheapest_startup_outer = outerrel->cheapest_startup_path;
 		Path	   *cheapest_total_outer = outerrel->cheapest_total_path;
 		Path	   *cheapest_total_inner = innerrel->cheapest_total_path;
-
-		/* Unique-ify if need be */
-		if (jointype == JOIN_UNIQUE_OUTER)
-		{
-			cheapest_total_outer = (Path *)
-				create_unique_path(root, outerrel, cheapest_total_outer);
-			cheapest_startup_outer = cheapest_total_outer;
-			jointype = JOIN_INNER;
-		}
-		else if (jointype == JOIN_UNIQUE_INNER)
-		{
-			cheapest_total_inner = (Path *)
-				create_unique_path(root, innerrel, cheapest_total_inner);
-			jointype = JOIN_INNER;
-		}
 
 		add_path(root, joinrel, (Path *)
 				 create_hashjoin_path(root,
@@ -862,8 +848,7 @@ hash_inner_and_outer(PlannerInfo *root,
  * currently of interest.
  */
 static List *
-select_mergejoin_clauses(RelOptInfo *joinrel,
-						 RelOptInfo *outerrel,
+select_mergejoin_clauses(RelOptInfo *outerrel,
 						 RelOptInfo *innerrel,
 						 List *restrictlist,
 						 JoinType jointype)

@@ -4460,12 +4460,22 @@ btcostestimate(PG_FUNCTION_ARGS)
 		indexBoundQuals = lappend(indexBoundQuals, rinfo);
 	}
 
-	/*
+    /*
+     * CDB: Tell caller whether every column has a matching '=' clause.
+     *
+     * CDB TODO: The full_eq_match flag doesn't really belong in IndexOptInfo.
+     * That's just a kludgy way to return an extra result parameter, because
+     * we don't have access here to the IndexPath node where this flag belongs.
+     */
+    index->num_leading_eq = eqQualHere ? indexcol+1 : indexcol;
+
+    /*
 	 * If index is unique and we found an '=' clause for each column, we can
 	 * just assume numIndexTuples = 1 and skip the expensive
 	 * clauselist_selectivity calculations.
 	 */
-	if (index->unique && indexcol == index->ncolumns - 1 && eqQualHere)
+	if (index->unique &&
+        index->num_leading_eq == index->ncolumns)
 		numIndexTuples = 1.0;
 	else
 	{

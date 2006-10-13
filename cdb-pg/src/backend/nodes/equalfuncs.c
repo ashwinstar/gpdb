@@ -648,13 +648,8 @@ _equalOuterJoinInfo(OuterJoinInfo *a, OuterJoinInfo *b)
 static bool
 _equalInClauseInfo(InClauseInfo *a, InClauseInfo *b)
 {
-	COMPARE_BITMAPSET_FIELD(allrelids);                     /*CDB*/
-	COMPARE_BITMAPSET_FIELD(lefthand);
 	COMPARE_BITMAPSET_FIELD(righthand);
-	COMPARE_BITMAPSET_FIELD(correlating);                   /*CDB*/
 	COMPARE_NODE_FIELD(sub_targetlist);
-
-    COMPARE_SCALAR_FIELD(op_is_equality);                   /*CDB*/
 
     return true;
 }

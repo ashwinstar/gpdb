@@ -1491,6 +1491,8 @@ _readRangeTblEntry(void)
 			READ_ENUM_FIELD(jointype, JoinType);
 			READ_NODE_FIELD(joinaliasvars);
 			break;
+        case RTE_VOID:                                                  /*CDB*/
+            break;
 		default:
 			elog(ERROR, "unrecognized RTE kind: %d",
 				 (int) local_node->rtekind);

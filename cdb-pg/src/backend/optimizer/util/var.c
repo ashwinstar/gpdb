@@ -240,41 +240,77 @@ contain_var_clause_walker(Node *node, void *context)
  * Will recurse into sublinks.	Also, may be invoked directly on a Query.
  */
 static bool
-contain_vars_of_level_cbVar(Var *var, void *context, int sublevelsup)
+contain_vars_of_level_cbVar(Var *var, void *unused, int sublevelsup)
 {
 	if ((int)var->varlevelsup == sublevelsup)
 		return true;		    /* abort tree traversal and return true */
     return false;
 }
 
+static bool
+contain_vars_of_level_cbAggref(Aggref *aggref, void *unused, int sublevelsup)
+{
+	if ((int)aggref->agglevelsup == sublevelsup)
+        return true;
+
+    /* visit aggregate's args */
+	return cdb_walk_vars((Node *)aggref->target,
+                         contain_vars_of_level_cbVar,
+                         contain_vars_of_level_cbAggref,
+                         NULL,
+                         sublevelsup);
+}
+
 bool
 contain_vars_of_level(Node *node, int levelsup)
 {
-	return cdb_walk_vars(node, contain_vars_of_level_cbVar, NULL, NULL, levelsup);
+	return cdb_walk_vars(node,
+                         contain_vars_of_level_cbVar,
+                         contain_vars_of_level_cbAggref,
+                         NULL,
+                         levelsup);
 }
 
 /*
- * contain_vars_above_level
- *	  Recursively scan a clause to discover whether it contains any Var nodes
- *	  above the specified query level.	(For example, pass zero to detect
- *	  all nonlocal Vars.)
+ * contain_vars_of_level_or_above
+ *	  Recursively scan a clause to discover whether it contains any Var or
+ *    Aggref nodes of the specified query level or above.  For example,
+ *    pass 1 to detect all nonlocal Vars.
  *
  *	  Returns true if any such Var found.
  *
  * Will recurse into sublinks.	Also, may be invoked directly on a Query.
  */
 static bool
-contain_vars_above_level_cbVar(Var *var, void *context, int sublevelsup)
+contain_vars_of_level_or_above_cbVar(Var *var, void *unused, int sublevelsup)
 {
-	if ((int)var->varlevelsup > sublevelsup)
+	if ((int)var->varlevelsup >= sublevelsup)
 		return true;		    /* abort tree traversal and return true */
     return false;
 }
 
-bool
-contain_vars_above_level(Node *node, int levelsup)
+static bool
+contain_vars_of_level_or_above_cbAggref(Aggref *aggref, void *unused, int sublevelsup)
 {
-	return cdb_walk_vars(node, contain_vars_above_level_cbVar, NULL, NULL, levelsup);
+	if ((int)aggref->agglevelsup >= sublevelsup)
+        return true;
+
+    /* visit aggregate's args */
+	return cdb_walk_vars((Node *)aggref->target,
+                         contain_vars_of_level_or_above_cbVar,
+                         contain_vars_of_level_or_above_cbAggref,
+                         NULL,
+                         sublevelsup);
+}
+
+bool
+contain_vars_of_level_or_above(Node *node, int levelsup)
+{
+	return cdb_walk_vars(node,
+                         contain_vars_of_level_or_above_cbVar,
+                         contain_vars_of_level_or_above_cbAggref,
+                         NULL,
+                         levelsup);
 }
 
 
@@ -455,7 +491,7 @@ flatten_join_alias_vars_mutator(Node *node,
 		Node	   *newvar;
 
 		/* No change unless Var belongs to a JOIN of the target level */
-		if (var->varlevelsup != context->sublevels_up)
+		if ((int)var->varlevelsup != context->sublevels_up)
 			return node;		/* no need to copy, really */
 		rte = rt_fetch(var->varno, context->root->parse->rtable);
 		if (rte->rtekind != RTE_JOIN)
@@ -524,16 +560,8 @@ flatten_join_alias_vars_mutator(Node *node,
 														  (void *) context);
 		/* now fix InClauseInfo's relid sets */
 		if (context->sublevels_up == 0)
-		{
-			ininfo->lefthand = alias_relid_set(context->root,
-											   ininfo->lefthand);
 			ininfo->righthand = alias_relid_set(context->root,
 												ininfo->righthand);
-			ininfo->correlating = alias_relid_set(context->root,        /*CDB*/
-												  ininfo->correlating);
-			ininfo->allrelids = alias_relid_set(context->root,          /*CDB*/
-												ininfo->allrelids);
-		}
 		return (Node *) ininfo;
 	}
 

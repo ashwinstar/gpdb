@@ -341,7 +341,16 @@ pull_up_subqueries(PlannerInfo *root, Node *jtnode, bool below_outer_join)
 			parse->hasSubLinks |= subquery->hasSubLinks;
 			/* subquery won't be pulled up if it hasAggs, so no work there */
 
-			/*
+            /*
+             * CDB: Wipe old RTE so subquery parse tree won't be sent to QEs.
+             */
+            Assert(rte->rtekind == RTE_SUBQUERY);
+            rte->rtekind = RTE_VOID;
+            rte->subquery = NULL;
+            rte->alias = NULL;
+            rte->eref = NULL;
+
+            /*
 			 * Return the adjusted subquery jointree to replace the
 			 * RangeTblRef entry in my jointree.
 			 */
@@ -850,25 +859,10 @@ fix_in_clause_relids(List *in_info_list, int varno, Relids subrelids)
 	{
 		InClauseInfo *ininfo = (InClauseInfo *) lfirst(l);
 
-		if (bms_is_member(varno, ininfo->lefthand))
-		{
-			ininfo->lefthand = bms_del_member(ininfo->lefthand, varno);
-			ininfo->lefthand = bms_add_members(ininfo->lefthand, subrelids);
-		}
 		if (bms_is_member(varno, ininfo->righthand))
 		{
 			ininfo->righthand = bms_del_member(ininfo->righthand, varno);
 			ininfo->righthand = bms_add_members(ininfo->righthand, subrelids);
-		}
-		if (bms_is_member(varno, ininfo->correlating))      /*CDB*/
-		{
-			ininfo->correlating = bms_del_member(ininfo->correlating, varno);
-			ininfo->correlating = bms_add_members(ininfo->correlating, subrelids);
-		}
-		if (bms_is_member(varno, ininfo->allrelids))        /*CDB*/
-		{
-			ininfo->allrelids = bms_del_member(ininfo->allrelids, varno);
-			ininfo->allrelids = bms_add_members(ininfo->allrelids, subrelids);
 		}
 	}
 }

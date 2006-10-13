@@ -34,7 +34,9 @@ typedef enum
 {
     CdbVisit_Walk = 1,          /* proceed in normal sequence */    
     CdbVisit_Skip,              /* no more calls for current node or its kids */
-    CdbVisit_Stop               /* break out of traversal, no more callbacks */
+    CdbVisit_Stop,              /* break out of traversal, no more callbacks */
+    CdbVisit_Failure,           /* break out of traversal, no more callbacks */
+    CdbVisit_Success            /* break out of traversal, no more callbacks */
 } CdbVisitOpt;
 
 

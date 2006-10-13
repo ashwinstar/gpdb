@@ -26,6 +26,4 @@ extern Plan *planner(Query *parse, bool isCursor, int cursorOptions,
 extern Plan *subquery_planner(Query *parse, double tuple_fraction,
 				 List **subquery_pathkeys);
 
-extern void plan_pushdown_tlist(Plan *result_plan, List *sub_tlist);
-
 #endif   /* PLANNER_H */

@@ -296,7 +296,7 @@ check_ungrouped_columns_walker(Node *node,
 	{
 		Var		   *var = (Var *) node;
 		RangeTblEntry *rte;
-		char	   *attname;
+		const char *attname;
 
 		if (var->varlevelsup != context->sublevels_up)
 			return false;		/* it's not local to my query, ignore */

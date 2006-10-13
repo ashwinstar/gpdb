@@ -211,7 +211,9 @@ searchRangeTable(ParseState *pstate, RangeVar *relation)
 				rte->rtekind == RTE_RELATION &&
 				rte->relid == relId)
 				return rte;
-			if (strcmp(rte->eref->aliasname, refname) == 0)
+			if (rte->eref != NULL &&
+                rte->eref->aliasname != NULL &&
+                strcmp(rte->eref->aliasname, refname) == 0)
 				return rte;
 		}
 
@@ -1416,9 +1418,11 @@ expandRelAttrs(ParseState *pstate, RangeTblEntry *rte,
  * "*" is returned if the given attnum is InvalidAttrNumber --- this case
  * occurs when a Var represents a whole tuple of a relation.
  */
-char *
+const char *
 get_rte_attribute_name(RangeTblEntry *rte, AttrNumber attnum)
 {
+    const char *name;
+
 	if (attnum == InvalidAttrNumber)
 		return "*";
 
@@ -1441,13 +1445,18 @@ get_rte_attribute_name(RangeTblEntry *rte, AttrNumber attnum)
 	/*
 	 * Otherwise use the column name from eref.  There should always be one.
 	 */
-	if (attnum > 0 && attnum <= list_length(rte->eref->colnames))
+	if (rte->eref != NULL &&
+        attnum > 0 &&
+        attnum <= list_length(rte->eref->colnames))
 		return strVal(list_nth(rte->eref->colnames, attnum - 1));
 
 	/* else caller gave us a bogus attnum */
-	elog(ERROR, "invalid attnum %d for rangetable entry %s",
-		 attnum, rte->eref->aliasname);
-	return NULL;				/* keep compiler quiet */
+    name = (rte->eref && rte->eref->aliasname) ? rte->eref->aliasname
+                                               : "*BOGUS*";
+    ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
+                      errmsg_internal("invalid attnum %d for rangetable entry %s",
+                                      attnum, name) ));
+	return name;
 }
 
 /*

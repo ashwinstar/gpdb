@@ -89,7 +89,6 @@ static List *convert_sublink_opers(List *lefthand, List *operOids,
 static Node *cdb_convert_EXISTS_to_join(PlannerInfo *root, Node **jointree_inout,
                                         SubLink *sublink);
 static Node *convert_IN_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink);
-static InClauseInfo *make_inclauseinfo(SubLink *sublink, int rtindex);
 static bool subplan_is_hashable(SubLink *slink, SubPlan *node);
 static Node *replace_correlation_vars_mutator(Node *node, void *context);
 static Node *process_sublinks_mutator(Node *node, bool *isTopQual);
@@ -148,7 +147,7 @@ cdb_op_is_equality(List *operOids)
 		proctup = (Form_pg_proc)GETSTRUCT(tup);
 
         if (!proctup->proisstrict ||
-            proctup->provolatile)
+            proctup->provolatile == PROVOLATILE_VOLATILE)
             result = false;
 
 		ReleaseSysCache(tup);
@@ -848,7 +847,6 @@ cdb_convert_EXISTS_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *su
     Node           *lnode;
     Node           *rnode;
     Node           *node;
-    NullTest       *ntest;
 	RangeTblEntry  *rte;
 	int			    rtindex;
 
@@ -930,24 +928,34 @@ cdb_convert_EXISTS_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *su
     if (!subselect->hasAggs)
         subselect->groupClause = NIL;
 
-    /* Determine the index of the subquery RTE that we'll create below. */
-	rtindex = list_length(parse->rtable) + 1;
-
-    /* Build an InClauseInfo struct, noting the relids involved in subquery. */
-    ininfo = make_inclauseinfo(sublink, rtindex);
-
-    /* If uncorrelated, the subquery will be executed only once.  Add LIMIT 1
+    /*
+     * If uncorrelated, the subquery will be executed only once.  Add LIMIT 1
      * and let the SubLink remain unflattened.  It will become an InitPlan.
      * (CDB TODO: Would it be better to go ahead and convert these to joins?)
      */
-    if (bms_is_empty(ininfo->correlating))
+    if (!contain_vars_of_level_or_above(sublink->subselect, 1))
     {
         subselect->limitCount = (Node *)makeConst(INT4OID, sizeof(int4), Int32GetDatum(1),
                                                   false, true);
         return make_and_qual(limitqual, (Node *)sublink);
     }
 
-    /* Make a subquery RTE in the current query level. */
+    /*
+     * Build an InClauseInfo struct.
+     */
+	ininfo = makeNode(InClauseInfo);
+    ininfo->sub_targetlist = NULL;
+
+    /* Determine the index of the subquery RTE that we'll create below. */
+	rtindex = list_length(parse->rtable) + 1;
+	ininfo->righthand = bms_make_singleton(rtindex);
+
+    /* Tell join planner to quell duplication of outer query result rows. */
+	root->in_info_list = lappend(root->in_info_list, ininfo);
+
+    /*
+     * Make a subquery RTE in the current query level.
+     */
     rte = addRangeTableEntryForSubquery(NULL,
 										subselect,
 										makeAlias("EXISTS_subquery", NIL),
@@ -956,9 +964,6 @@ cdb_convert_EXISTS_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *su
 
     /* Add the new subquery RTE to the jointree. */
     cdb_subselect_add_to_jointree(root, jointree_inout, rtindex);
-
-    /* Tell join planner to quell duplication of outer query result rows. */
-	root->in_info_list = lappend(root->in_info_list, ininfo);
 
 #if 0
     /*
@@ -1002,6 +1007,7 @@ convert_IN_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink)
 	RangeTblEntry *rte;
 	InClauseInfo *ininfo;
 	List	   *exprs;
+    bool        correlated;
 
     Assert(IsA(subselect, Query));
 
@@ -1013,6 +1019,15 @@ convert_IN_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink)
 	if (contain_volatile_functions((Node *) sublink->lefthand))
 		return (Node *)sublink;
 
+    /*
+     * If uncorrelated, and no Var nodes on lhs, the subquery will be executed
+     * only once.  It will become an InitPlan.
+     */
+    correlated = contain_vars_of_level_or_above(sublink->subselect, 1);
+    if (!correlated &&
+        !contain_vars_of_level_or_above((Node *)sublink->lefthand, 0))
+		return (Node *)sublink;
+
 #if 0
     /*
      * Transform
@@ -1022,19 +1037,22 @@ convert_IN_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink)
      */
 #endif
 
+    /*
+     * Build an InClauseInfo struct.
+     */
+	ininfo = makeNode(InClauseInfo);
+    ininfo->sub_targetlist = NULL;
+
     /* Determine the index of the subquery RTE that we'll create below. */
 	rtindex = list_length(parse->rtable) + 1;
+	ininfo->righthand = bms_make_singleton(rtindex);
 
-    /* Build an InClauseInfo struct, noting the relids involved in subquery. */
-    ininfo = make_inclauseinfo(sublink, rtindex);
+    /* Uncorrelated "=ANY" subqueries can use JOIN_UNIQUE dedup technique. */
+    ininfo->try_join_unique = (!correlated &&
+                               cdb_op_is_equality(sublink->operOids));
 
-    /*
-     * If uncorrelated, and no Vars of current level on lhs, the subquery
-     * will be executed only once.  It will become an InitPlan.
-     */
-    if (bms_is_empty(ininfo->lefthand) &&
-        bms_is_empty(ininfo->correlating))
-		return (Node *)sublink;
+    /* Tell join planner to quell duplication of outer query result rows. */
+	root->in_info_list = lappend(root->in_info_list, ininfo);
 
     /*
 	 * Okay, pull up the sub-select into top range table and jointree.
@@ -1053,9 +1071,6 @@ convert_IN_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink)
     /* Add the new subquery RTE to the jointree. */
     cdb_subselect_add_to_jointree(root, jointree_inout, rtindex);
 
-    /* Tell join planner to quell duplication of outer query result rows. */
-	root->in_info_list = lappend(root->in_info_list, ininfo);
-
     /*
 	 * Build the result qual expressions.  As a side effect,
 	 * ininfo->sub_targetlist is filled with a list of Vars representing the
@@ -1068,30 +1083,6 @@ convert_IN_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink)
 								  &ininfo->sub_targetlist);
 	return (Node *) make_ands_explicit(exprs);
 }                               /* convert_IN_to_join */
-
-/*
- * make_inclauseinfo
- *
- * Returns a newly allocated InClauseInfo node.
- */
-InClauseInfo *
-make_inclauseinfo(SubLink *sublink, int rtindex)
-{
-	InClauseInfo   *ininfo;
-
-	ininfo = makeNode(InClauseInfo);
-
-	ininfo->lefthand = pull_varnos((Node *) sublink->lefthand);
-	ininfo->righthand = bms_make_singleton(rtindex);
-
-    ininfo->correlating = pull_varnos_of_level(sublink->subselect, 1);
-    ininfo->allrelids = bms_union(ininfo->lefthand, ininfo->correlating);
-    ininfo->allrelids = bms_add_member(ininfo->allrelids, rtindex);
-    ininfo->op_is_equality = cdb_op_is_equality(sublink->operOids);
-
-    ininfo->sub_targetlist = NULL;
-    return ininfo;
-}                               /* make_inclauseinfo */
 
 
 /*
@@ -1351,7 +1342,6 @@ finalize_plan(Plan *plan, List *rtable,
 			  Bitmapset *outer_params, Bitmapset *valid_params)
 {
 	finalize_primnode_context context;
-	bool		skip_subtrees=false;
 
 	if (plan == NULL)
 		return NULL;
@@ -1480,32 +1470,11 @@ finalize_plan(Plan *plan, List *rtable,
 			}
 			break;
 
-		case T_AdaptiveNestLoop:
-		   	{
-				Plan *tmp;
-
-				context.paramids = bms_add_members(context.paramids,
-												   finalize_plan(plan->lefttree,
-																 rtable,
-																 outer_params,
-																 valid_params));
-
-				tmp = plan->righttree->lefttree;
-				plan->righttree->lefttree = NULL;
-
-				context.paramids = bms_add_members(context.paramids,
-												   finalize_plan(plan->righttree,
-																 rtable,
-																 outer_params,
-																 valid_params));
-				plan->righttree->lefttree = tmp;
-				skip_subtrees = true;
-			}
-			break;
 		case T_NestLoop:
 			finalize_primnode((Node *) ((Join *) plan)->joinqual,
 							  &context);
 			break;
+
 		case T_MergeJoin:
 			finalize_primnode((Node *) ((Join *) plan)->joinqual,
 							  &context);
@@ -1532,6 +1501,7 @@ finalize_plan(Plan *plan, List *rtable,
 							  &context);
 			break;
 
+		case T_AdaptiveNestLoop:
 		case T_Hash:
 		case T_Agg:
 		case T_SeqScan:
@@ -1548,21 +1518,18 @@ finalize_plan(Plan *plan, List *rtable,
 				 (int) nodeTag(plan));
 	}
 
-	if (!skip_subtrees)
-	{
-		/* Process left and right child plans, if any */
-		context.paramids = bms_add_members(context.paramids,
-										   finalize_plan(plan->lefttree,
-														 rtable,
-														 outer_params,
-														 valid_params));
-
-		context.paramids = bms_add_members(context.paramids,
-										   finalize_plan(plan->righttree,
+	/* Process left and right child plans, if any */
+	context.paramids = bms_add_members(context.paramids,
+									   finalize_plan(plan->lefttree,
 													 rtable,
-														 outer_params,
-														 valid_params));
-	}
+													 outer_params,
+													 valid_params));
+
+	context.paramids = bms_add_members(context.paramids,
+									   finalize_plan(plan->righttree,
+													 rtable,
+													 outer_params,
+													 valid_params));
 
 	/* Now we have all the paramids */
 

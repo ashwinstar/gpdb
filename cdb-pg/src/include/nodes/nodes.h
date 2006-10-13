@@ -202,6 +202,7 @@ typedef enum NodeTag
 
     /* Tags for MPP planner nodes (relation.h) */
     T_CdbMotionPath = 580,
+    T_CdbRelDedupInfo,
 
 	/*
 	 * TAGS FOR MEMORY NODES (memnodes.h)

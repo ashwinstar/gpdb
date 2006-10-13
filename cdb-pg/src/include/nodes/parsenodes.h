@@ -508,7 +508,8 @@ typedef enum RTEKind
 	RTE_SUBQUERY,				/* subquery in FROM */
 	RTE_JOIN,					/* join */
 	RTE_SPECIAL,				/* special rule relation (NEW or OLD) */
-	RTE_FUNCTION				/* function in FROM */
+	RTE_FUNCTION,				/* function in FROM */
+    RTE_VOID                    /* CDB: deleted RTE */
 } RTEKind;
 
 typedef struct RangeTblEntry

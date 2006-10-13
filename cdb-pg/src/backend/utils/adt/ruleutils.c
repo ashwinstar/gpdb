@@ -184,7 +184,9 @@ static Node *get_rule_sortgroupclause(SortClause *srt, List *tlist,
 						 bool force_colno,
 						 deparse_context *context);
 static void get_names_for_var(Var *var, int levelsup, deparse_context *context,
-				  char **schemaname, char **refname, char **attname);
+				  const char **schemaname,
+                  const char **refname,
+                  const char **attname);
 static RangeTblEntry *find_rte_by_refname(const char *refname,
 					deparse_context *context);
 static const char *get_simple_binary_op_name(OpExpr *expr);
@@ -1975,7 +1977,7 @@ get_basic_select_query(Query *query, deparse_context *context,
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(l);
 		char	   *colname;
-		char	   *attname;
+		const char *attname;
 
 		if (tle->resjunk)
 			continue;			/* ignore junk entries */
@@ -1995,8 +1997,8 @@ get_basic_select_query(Query *query, deparse_context *context,
 		if (tle->expr && IsA(tle->expr, Var))
 		{
 			Var		   *var = (Var *) (tle->expr);
-			char	   *schemaname;
-			char	   *refname;
+			const char *schemaname;
+			const char *refname;
 
 			get_names_for_var(var, 0, context,
 							  &schemaname, &refname, &attname);
@@ -2506,7 +2508,9 @@ get_rte_for_var(Var *var, int levelsup, deparse_context *context,
  */
 static void
 get_names_for_var(Var *var, int levelsup, deparse_context *context,
-				  char **schemaname, char **refname, char **attname)
+				  const char  **schemaname,
+                  const char  **refname,
+                  const char  **attname)
 {
 	RangeTblEntry *rte;
 	AttrNumber	attnum;
@@ -2517,7 +2521,8 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
     /* Emit results */
 	*schemaname = NULL;			/* default assumptions */
 
-    if (rte == NULL)
+    if (rte == NULL ||
+        rte->rtekind == RTE_VOID)
     {
         *attname = NULL;
         *refname = "*BOGUS*";
@@ -2773,6 +2778,9 @@ get_name_for_var_field(Var *var, int fieldno,
 				}
 			}
 			break;
+        case RTE_VOID:
+            /* No references should exist to a deleted RTE. */
+            break;
 	}
 
 	/*
@@ -3176,9 +3184,9 @@ get_rule_expr(Node *node, deparse_context *context,
 		case T_Var:
 			{
 				Var		   *var = (Var *) node;
-				char	   *schemaname;
-				char	   *refname;
-				char	   *attname;
+				const char *schemaname;
+				const char *refname;
+				const char *attname;
 
 				get_names_for_var(var, 0, context,
 								  &schemaname, &refname, &attname);

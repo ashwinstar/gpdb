@@ -43,20 +43,6 @@ Cost        cdbpath_motion_cost_per_row = 0.0;
 int         cdbpath_segments = 1;
 
 
-/* Prototypes */
-static CdbPathLocus
-motion_for_join_with_unique(PlannerInfo    *root,
-                            Path          **p_outer_path,       /* INOUT */
-                            Path          **p_inner_path,       /* INOUT */
-                            List           *mergeclause_list,   /* equijoin RestrictInfo list */
-                            List           *outer_pathkeys,
-                            List           *inner_pathkeys,
-                            bool            outer_require_existing_order,
-                            bool            inner_require_existing_order,
-                            bool            outer_ok_to_replicate,
-                            bool            inner_ok_to_replicate);
-
-
 /*
  * cdbpath_cost_motion
  *    Fills in the cost estimate fields in a MotionPath node.
@@ -681,31 +667,6 @@ cdbpath_motion_for_join(PlannerInfo    *root,
             Assert(0);
     }
 
-    /*
-     * If either source has a UniquePath node on top, consider whether the
-     * duplicate removal should precede or follow any Motion of the data to
-     * the join locus.
-     *
-     * Skip the special treatment when dedup_relids is non-NULL and
-     * must_repartition is false.  In that case the Unique operator should
-     * be evaluated in its original locus, preceding the join Motion.
-     */
-    if (   (   IsA(outer.path, UniquePath)
-            && (   ((UniquePath *)outer.path)->dedup_relids == NULL
-                || ((UniquePath *)outer.path)->must_repartition
-                ))
-        || (   IsA(inner.path, UniquePath)
-            && (   ((UniquePath *)inner.path)->dedup_relids == NULL
-                || ((UniquePath *)inner.path)->must_repartition
-                )))
-        return motion_for_join_with_unique(root, p_outer_path, p_inner_path,
-                                           mergeclause_list,
-                                           outer_pathkeys, inner_pathkeys,
-                                           outer.require_existing_order,
-                                           inner.require_existing_order,
-                                           outer.ok_to_replicate,
-                                           inner.ok_to_replicate);
-
     /* Get rel sizes. */
     outer.bytes = cdbpath_rows(outer.path) * outer.path->parent->width;
     inner.bytes = cdbpath_rows(inner.path) * inner.path->parent->width;
@@ -933,42 +894,14 @@ cdbpath_motion_for_join(PlannerInfo    *root,
     }
 
     /*
-     * Ok to join.  Finalize outer subpath.
+     * Ok to join.
      */
+
+    /* Give modified subpaths to caller. */
     if (IsA(outer.path, CdbMotionPath))
-    {
-        /* Add Unique operator on top if original subpath was Unique. */
-        if (IsA(*p_outer_path, UniquePath))
-        {
-            UniquePath *oldunique = (UniquePath *)(*p_outer_path);
-
-            outer.path = (Path *)create_unique_common_path(root,
-                                                           outer.path,
-                                                           oldunique->distinct_on_exprs,
-                                                           oldunique->dedup_relids);
-        }
-
-        /* Give modified subpath to caller. */
         *p_outer_path = outer.path;
-    }
-
-    /* Add finishing touches to inner subpath. */
     if (IsA(inner.path, CdbMotionPath))
-    {
-        /* Add Unique operator on top if original subpath was Unique. */
-        if (IsA(*p_inner_path, UniquePath))
-        {
-            UniquePath *oldunique = (UniquePath *)(*p_inner_path);
-
-            inner.path = (Path *)create_unique_common_path(root,
-                                                           inner.path,
-                                                           oldunique->distinct_on_exprs,
-                                                           oldunique->dedup_relids);
-        }
-
-        /* Give modified subpath to caller. */
         *p_inner_path = inner.path;
-    }
 
     /* Tell caller where the join will be done. */
     return cdbpathlocus_join(outer.path->locus, inner.path->locus);
@@ -980,247 +913,6 @@ fail:                           /* can't do this join */
 
 
 /*
- * motion_for_join_with_unique
- *
- * Helper called by cdbpath_motion_for_join() when the top node of either
- * subpath is...
- *      - a UniquePath with dedup_relids == NULL
- *      - a UniquePath with must_repartition == true
- * These cases arise when a subquery predicate has been flattened to a join.
- *
- * Returns the join locus if ok, or a null locus otherwise.
- */
-CdbPathLocus
-motion_for_join_with_unique(PlannerInfo    *root,
-                            Path          **p_outer_path,       /* INOUT */
-                            Path          **p_inner_path,       /* INOUT */
-                            List           *mergeclause_list,   /* equijoin RestrictInfo list */
-                            List           *outer_pathkeys,
-                            List           *inner_pathkeys,
-                            bool            outer_require_existing_order,
-                            bool            inner_require_existing_order,
-                            bool            outer_ok_to_replicate,
-                            bool            inner_ok_to_replicate)
-{
-    CdbPathLocus    jlocus;
-    Path           *outer_path = *p_outer_path;
-    Path           *inner_path = *p_inner_path;
-    UniquePath     *outer_unique = NULL;
-    UniquePath     *inner_unique = NULL;
-    JoinType        jointype;
-
-    /*
-     * Handle pre-join UniquePath (from JOIN_UNIQUE_INNER / JOIN_UNIQUE_OUTER).
-     *
-     * A Unique operator may be used immediately below a Join operator,
-     * to remove duplicate rows from the output of a subquery that
-     * has been pulled up into the current query's FROM clause.
-     * Other uses of the Unique operator, such as SELECT DISTINCT, aren't
-     * seen here; they don't occur in the Path structure at present.
-     * So if a subpath has a Unique operator, we can assume that we're
-     * equijoining its output columns with outputs of the other subpath;
-     * and the motion we choose for the join suffices for the Unique
-     * operator also.  So Unique doesn't need motion logic of its own.
-     * All we have to do is lift the Unique node above the Motion node.
-     *
-     * The Unique operator is meant to ensure that a row of the opposite
-     * rel (the current query) joins with at most one row of the Unique rel
-     * (the subquery).  If the opposite rel were replicated, a row might
-     * find a match on more than one QE because in such a plan the subquery
-     * rows would be only locally unique.  Adjust ok_to_replicate flags
-     * so that we won't consider replicating the non-Unique rel.
-     *
-     * The foregoing comments pertain to Unique operators added below a
-     * join of type JOIN_UNIQUE_OUTER or JOIN_UNIQUE_INNER.  These have
-     * dedup_relids == NULL.
-     */
-
-    /* Strip pre-join UniquePath from outer rel. */
-    if (IsA(outer_path, UniquePath) &&
-        ((UniquePath *)outer_path)->dedup_relids == NULL)
-    {
-        outer_unique = (UniquePath *)outer_path;
-        outer_path = outer_unique->subpath;
-        inner_ok_to_replicate = false;
-        Assert(!outer_unique->must_repartition);
-    }
-
-    /* Strip pre-join UniquePath from inner rel. */
-    if (IsA(inner_path, UniquePath) &&
-        ((UniquePath *)inner_path)->dedup_relids == NULL)
-    {
-        inner_unique = (UniquePath *)outer_path;
-        inner_path = inner_unique->subpath;
-        outer_ok_to_replicate = false;
-        Assert(!inner_unique->must_repartition);
-    }
-
-    /* Choose a jointype that maps to the necessary *_ok_to_replicate flags. */
-    if (outer_ok_to_replicate)
-        jointype = inner_ok_to_replicate ? JOIN_INNER : JOIN_RIGHT;
-    else
-        jointype = inner_ok_to_replicate ? JOIN_LEFT : JOIN_FULL;
-
-    /* Recur into cdbpath_motion_for_join, minus a pre-join UniquePath. */
-    if (outer_unique || inner_unique)
-    {
-        /* Decide where to do the join.  Add outer & inner Motion if needed. */
-        jlocus = cdbpath_motion_for_join(root,
-                                         jointype,
-                                         &outer_path,
-                                         &inner_path,
-                                         mergeclause_list,
-                                         outer_pathkeys,
-                                         inner_pathkeys,
-                                         outer_require_existing_order,
-                                         inner_require_existing_order);
-        if (CdbPathLocus_IsNull(jlocus))
-            return jlocus;
-
-        /* If we removed outer UniquePath, add a new one if Motion was added. */
-        if (!outer_unique)
-            *p_outer_path = outer_path;
-        else if (outer_unique &&
-                 outer_path != outer_unique->subpath)
-            *p_outer_path = (Path *)create_unique_path(root, outer_path->parent, outer_path);
-
-        /* If we removed inner UniquePath, add a new one if Motion was added. */
-        if (!inner_unique)
-            *p_inner_path = inner_path;
-        else if (inner_unique &&
-                 inner_path != inner_unique->subpath)
-            *p_inner_path = (Path *)create_unique_path(root, inner_path->parent, inner_path);
-
-        /* Success. */
-        return jlocus;
-    }
-
-    /*
-     * A different case occurs when a post-join Unique operator with
-     * dedup_relids != NULL was already present atop a lower-level path
-     * that was chosen as an input to the current join.  Depending on the
-     * locus chosen for the join, the Unique operator can sometimes be
-     * lifted above the new Motion operator; if so, we might be able to
-     * eliminate a repartitioning preceding the Unique operator.
-     * NB: Here it's not necessary to restrict the use of a replicated locus.
-     */
-
-    /* Does outer rel have post-join UniquePath marked for repartitioning? */
-    if (IsA(outer_path, UniquePath) &&
-        ((UniquePath *)outer_path)->must_repartition)
-    {
-        outer_unique = (UniquePath *)outer_path;
-        outer_path = outer_unique->subpath;
-        Assert(!bms_is_empty(outer_unique->dedup_relids));
-    }
-
-    /* Does inner rel have post-join UniquePath marked for repartitioning? */
-    if (IsA(inner_path, UniquePath) &&
-        ((UniquePath *)inner_path)->must_repartition)
-    {
-        inner_unique = (UniquePath *)inner_path;
-        inner_path = inner_unique->subpath;
-        Assert(!bms_is_empty(inner_unique->dedup_relids));
-    }
-
-    Assert(outer_unique || inner_unique);
-
-    /* Decide where to do the join.  Add outer & inner Motion if needed. */
-    jlocus = cdbpath_motion_for_join(root,
-                                     jointype,
-                                     &outer_path,
-                                     &inner_path,
-                                     mergeclause_list,
-                                     outer_pathkeys,
-                                     inner_pathkeys,
-                                     outer_require_existing_order,
-                                     inner_require_existing_order);
-    if (CdbPathLocus_IsNull(jlocus))
-        return jlocus;
-
-    /* Reinsert outer UniquePath above MotionPath, saving a repartition. */
-    if (outer_unique &&
-        outer_path != outer_unique->subpath &&
-        cdbpathlocus_is_hashed_on_relids(outer_path->locus, outer_unique->dedup_relids))
-    {
-        outer_unique = create_unique_rowid_path(root,
-                                                outer_path,
-                                                outer_unique->dedup_relids);
-        Assert(!outer_unique->must_repartition);
-        outer_path = (Path *)outer_unique;
-    }
-    /* Couldn't avoid repartition? Retry, leaving outer UniquePath in place. */
-    else if (outer_unique)
-    {
-        /* CDB TODO: If no Motion was added to outer_path, could consider
-         * doing the Join first and moving the UniquePath (and its
-         * repartitioning) up above the Join.  Usually would save one Motion.
-         */
-        outer_path = *p_outer_path;                 /* restore original */
-        inner_path = *p_inner_path;                 /* restore original */
-        outer_unique->must_repartition = false;     /* this time, don't strip */
-        jlocus = cdbpath_motion_for_join(root,
-                                         jointype,
-                                         &outer_path,
-                                         &inner_path,
-                                         mergeclause_list,
-                                         outer_pathkeys,
-                                         inner_pathkeys,
-                                         outer_require_existing_order,
-                                         inner_require_existing_order);
-        outer_unique->must_repartition = true;      /* restore original */
-        if (!CdbPathLocus_IsNull(jlocus))
-        {
-            *p_outer_path = outer_path;
-            *p_inner_path = inner_path;
-        }
-        return jlocus;
-    }
-
-    /* Reinsert inner UniquePath above MotionPath, saving a repartition. */
-    if (inner_unique &&
-        inner_path != inner_unique->subpath &&
-        cdbpathlocus_is_hashed_on_relids(inner_path->locus, inner_unique->dedup_relids))
-    {
-        inner_unique = create_unique_rowid_path(root,
-                                                inner_path,
-                                                inner_unique->dedup_relids);
-        Assert(!inner_unique->must_repartition);
-        inner_path = (Path *)inner_unique;
-    }
-    /* Couldn't avoid repartition? Retry, leaving inner UniquePath in place. */
-    else if (inner_unique)
-    {
-        /* CDB TODO: If no Motion was added to inner_path, could consider
-         * doing the Join first and moving the UniquePath (and its
-         * repartitioning) up above the Join.  Usually would save one Motion.
-         */
-        outer_path = *p_outer_path;                 /* restore original */
-        inner_path = *p_inner_path;                 /* restore original */
-        inner_unique->must_repartition = false;     /* this time, don't strip */
-        jlocus = cdbpath_motion_for_join(root,
-                                         jointype,
-                                         &inner_path,
-                                         &inner_path,
-                                         mergeclause_list,
-                                         inner_pathkeys,
-                                         inner_pathkeys,
-                                         inner_require_existing_order,
-                                         inner_require_existing_order);
-        inner_unique->must_repartition = true;      /* restore original */
-    }
-
-    /* Give caller the updated subpaths and join locus. */
-    if (!CdbPathLocus_IsNull(jlocus))
-    {
-        *p_outer_path = outer_path;
-        *p_inner_path = inner_path;
-    }
-    return jlocus;
-}                               /* motion_for_join_with_unique */
-
-
-/*
  * cdbpath_dedup_fixup
  *      Modify path to support unique rowid operation for subquery preds.
  */
@@ -1228,7 +920,7 @@ motion_for_join_with_unique(PlannerInfo    *root,
 typedef struct CdbpathDedupFixupContext
 {
     PlannerInfo    *root;
-    Relids          dedup_relids;
+    Relids          distinct_on_rowid_relids;
     List           *rowid_vars;
     int             append_depth;
 } CdbpathDedupFixupContext;
@@ -1262,7 +954,7 @@ cdbpath_dedup_pickvars(List *vars, Relids relids_to_keep)
 static CdbVisitOpt
 cdbpath_dedup_fixup_unique(UniquePath *uniquePath, CdbpathDedupFixupContext *ctx)
 {
-    Relids      downstream_relids = ctx->dedup_relids;
+    Relids      downstream_relids = ctx->distinct_on_rowid_relids;
     List       *partkey = NIL;
     List       *distinct_head = NIL;
     List       *distinct_tail = NIL;
@@ -1270,20 +962,12 @@ cdbpath_dedup_fixup_unique(UniquePath *uniquePath, CdbpathDedupFixupContext *ctx
     ListCell   *cell;
 
     /* Done with this node unless it must remove duplicates by row id. */
-    if (bms_is_empty(uniquePath->dedup_relids))
+    if (bms_is_empty(uniquePath->distinct_on_rowid_relids))
         return CdbVisit_Walk;   /* onward to visit the kids */
 
-    /* Don't dedup here if a downstream Unique op will take care of it. */
-    if (!bms_is_empty(downstream_relids) &&
-        bms_is_subset(downstream_relids, uniquePath->dedup_relids))
-    {
-        /* CDB TODO: adjust downstream cost estimates? */
-        uniquePath->umethod = UNIQUE_PATH_NOOP;
-        return CdbVisit_Walk;
-    }
-
     /* Find set of relids for which subpath must produce row ids. */
-    ctx->dedup_relids = bms_union(ctx->dedup_relids, uniquePath->dedup_relids);
+    ctx->distinct_on_rowid_relids = bms_union(ctx->distinct_on_rowid_relids,
+                                              uniquePath->distinct_on_rowid_relids);
 
     /* Visit descendants to get list of row id vars and add to targetlists. */
     pathnode_walk_node(uniquePath->subpath, cdbpath_dedup_fixup_walker, ctx);
@@ -1303,7 +987,7 @@ cdbpath_dedup_fixup_unique(UniquePath *uniquePath, CdbpathDedupFixupContext *ctx
          * When walking the inner subpath of a join, skip exprs from outer side
          * that are needed downstream of the join but are not needed here.
          */
-        if (!bms_is_member(var->varno, uniquePath->dedup_relids))
+        if (!bms_is_member(var->varno, uniquePath->distinct_on_rowid_relids))
             continue;
 
         /* Is this Var a ctid? */
@@ -1358,8 +1042,8 @@ cdbpath_dedup_fixup_unique(UniquePath *uniquePath, CdbpathDedupFixupContext *ctx
     /* Prune row id var list to remove items not needed downstream. */
     ctx->rowid_vars = cdbpath_dedup_pickvars(ctx->rowid_vars, downstream_relids);
 
-    bms_free(ctx->dedup_relids);
-    ctx->dedup_relids = downstream_relids;
+    bms_free(ctx->distinct_on_rowid_relids);
+    ctx->distinct_on_rowid_relids = downstream_relids;
     return CdbVisit_Skip;       /* we visited kids already; done with subtree */
 }                               /* cdbpath_dedup_fixup_unique */
 
@@ -1405,7 +1089,7 @@ cdbpath_dedup_fixup_baserel(Path *path, CdbpathDedupFixupContext *ctx)
     }
 
     /* Make sure these vars are in our baserel's targetlist. */
-    add_vars_to_targetlist(ctx->root, rowid_vars, ctx->dedup_relids);
+    add_vars_to_targetlist(ctx->root, rowid_vars, ctx->distinct_on_rowid_relids);
 
     /* Update output row width. */
     set_rel_width(ctx->root, rel);
@@ -1484,7 +1168,7 @@ cdbpath_dedup_fixup_walker(Path *path, void *context)
         return cdbpath_dedup_fixup_unique((UniquePath *)path, ctx);
 
     /* If no fixup needed, return and keep looking for Unique ops in subpath. */
-    if (!bms_overlap(path->parent->relids, ctx->dedup_relids))
+    if (!bms_overlap(path->parent->relids, ctx->distinct_on_rowid_relids))
         return CdbVisit_Walk;
 
     /* Alter this node to produce row ids for an ancestral Unique operator. */
@@ -1528,7 +1212,7 @@ cdbpath_dedup_fixup(PlannerInfo *root, Path *path)
     CdbpathDedupFixupContext    context;
 
     context.root = root;
-    context.dedup_relids = NULL;
+    context.distinct_on_rowid_relids = NULL;
     context.rowid_vars = NIL;
     context.append_depth = 0;
 

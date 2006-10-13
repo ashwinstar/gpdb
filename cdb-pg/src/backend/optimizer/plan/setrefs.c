@@ -92,7 +92,6 @@ static bool fix_opfuncids_walker(Node *node, void *context);
 static void set_sa_opfuncid(ScalarArrayOpExpr *opexpr);
 
 static List *cdb_build_identity_tlist(List *newtlist, Plan *subplan, Index subvarno);
-static bool cdb_expr_requires_full_eval(Node *node);
 static Plan *cdb_insert_result_node(Plan *plan, List *rtable);
 
 
@@ -137,7 +136,6 @@ Plan *
 set_plan_references(Plan *plan, List *rtable)
 {
 	ListCell	*l;
-	bool		skip_left=false, skip_right=false;
 
 	if (plan == NULL)
 		return NULL;
@@ -231,37 +229,40 @@ set_plan_references(Plan *plan, List *rtable)
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
 			fix_expr_references(plan, (Node *) ((Join *) plan)->joinqual);
-
-			if (((NestLoop *)plan)->shared_outer)
-				skip_left = true;
-
 			break;
 		case T_AdaptiveNestLoop:
+        {
+            Plan   *nj_plan = plan->lefttree;
+            Plan   *hj_plan = plan->righttree;
 
-			/* main, and main-inner */
-			set_plan_references(plan->lefttree, rtable);
+            /* HJ has no outer subplan of its own. */
+            Assert(IsA(hj_plan, HashJoin) &&
+                   hj_plan->lefttree == NULL);
 
-			/* If we have an alternate plan; we have to fixup its
-			 * expression references too: this is reproduced from T_HashJoin */
-			set_join_references((Join *)plan->righttree, rtable);
-			fix_expr_references(plan->righttree, (Node *)plan->righttree->targetlist);
-			fix_expr_references(plan->righttree, (Node *)plan->righttree->qual);
-			fix_expr_references(plan->righttree, (Node *)((Join *)plan->righttree)->joinqual);
-			fix_expr_references(plan->righttree,
-								(Node *)((HashJoin *)plan->righttree)->hashclauses);
+            /* NJ has outer subplan for both.  At runtime HJ can borrow it. */
+            Assert(IsA(nj_plan, NestLoop) &&
+                   nj_plan->lefttree != NULL);
 
-			/* Now initialize the shared-outer */
-			set_plan_references(plan->lefttree->lefttree, rtable);
+            /* Build temporary fake outer subplan for HJ, nought but a tlist. */
+            hj_plan->lefttree = makeNode(Plan);
+            hj_plan->lefttree->targetlist = copyObject(nj_plan->lefttree->targetlist);
 
-			/* Now initialize the alternate-inner */
-			set_plan_references(plan->righttree->righttree, rtable);
-
-			plan->targetlist = plan->lefttree->targetlist;
-
-			skip_left = true;
-			skip_right = true;
-
+            /* Build phony tlist for EXPLAIN.  NJ & HJ tlists are equivalent. */
+            plan->targetlist = cdb_build_identity_tlist(NIL, nj_plan, OUTER);
+            Assert(plan->qual == NIL);
 			break;
+        }
+        case T_Plan:
+            /*
+             * Occurs only as a temporary fake outer subplan (created just
+             * above) for Adaptive NJ's HJ child.  This allows the HJ's outer
+             * subplan references to be fixed up normally while avoiding double
+             * fixup of the real outer subplan.  By the time we arrive here,
+             * this node has served its purpose and is no longer needed.
+             * Vanish, returning a null ptr to replace the temporary fake ptr.
+             */
+            Assert(!plan->lefttree && !plan->righttree && !plan->initPlan);
+            return NULL;
 		case T_MergeJoin:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                 return cdb_insert_result_node(plan, rtable);
@@ -398,14 +399,8 @@ set_plan_references(Plan *plan, List *rtable)
 	 * Fortunately, that consideration doesn't apply to SubPlan nodes; else
 	 * we'd need two passes over the expression trees.
 	 */
-	if (!skip_left)
-	{
-		plan->lefttree = set_plan_references(plan->lefttree, rtable);
-	}
-	if (!skip_right)
-	{
-		plan->righttree = set_plan_references(plan->righttree, rtable);
-	}
+	plan->lefttree = set_plan_references(plan->lefttree, rtable);
+	plan->righttree = set_plan_references(plan->righttree, rtable);
 
 	foreach(l, plan->initPlan)
 	{
@@ -664,7 +659,6 @@ static void
 adjust_plan_varnos(Plan *plan, int rtoffset)
 {
 	ListCell	*l;
-	bool		skip_subtrees=false;
 
 	if (plan == NULL)
 		return;
@@ -733,26 +727,6 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 			adjust_expr_varnos((Node *) plan->qual, rtoffset);
 			adjust_expr_varnos((Node *) ((Join *) plan)->joinqual, rtoffset);
 			break;
-		case T_AdaptiveNestLoop:
-			if (plan->lefttree != NULL)
-				adjust_plan_varnos(plan->lefttree, rtoffset);
-
-			if (plan->righttree != NULL)
-			{
-				Plan *alternate = plan->righttree;
-
-				adjust_expr_varnos((Node *)alternate->targetlist, rtoffset);
-				adjust_expr_varnos((Node *)alternate->qual, rtoffset);
-				adjust_expr_varnos((Node *) ((Join *)alternate)->joinqual, rtoffset);
-				adjust_expr_varnos((Node *) ((HashJoin *)alternate)->hashclauses,
-								   rtoffset);
-
-				adjust_plan_varnos(alternate->righttree, rtoffset);
-				alternate->lefttree = plan->lefttree;
-			}
-
-			skip_subtrees = true;
-			break;
 		case T_MergeJoin:
 			adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
 			adjust_expr_varnos((Node *) plan->qual, rtoffset);
@@ -767,6 +741,7 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 			adjust_expr_varnos((Node *) ((HashJoin *) plan)->hashclauses,
 							   rtoffset);
 			break;
+		case T_AdaptiveNestLoop:
 		case T_Hash:
 		case T_Material:
 		case T_Sort:
@@ -833,17 +808,14 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 			break;
 	}
 
-	if (!skip_subtrees)
-	{
-		/*
-		 * Now recurse into child plans.
-		 *
-		 * We don't need to (and in fact mustn't) recurse into subqueries, so no
-		 * need to examine initPlan list.
-		 */
-		adjust_plan_varnos(plan->lefttree, rtoffset);
-		adjust_plan_varnos(plan->righttree, rtoffset);
-	}
+	/*
+	 * Now recurse into child plans.
+	 *
+	 * We don't need to (and in fact mustn't) recurse into subqueries, so no
+	 * need to examine initPlan list.
+	 */
+	adjust_plan_varnos(plan->lefttree, rtoffset);
+	adjust_plan_varnos(plan->righttree, rtoffset);
 }
 
 /*

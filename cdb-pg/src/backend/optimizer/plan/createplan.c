@@ -20,9 +20,9 @@
 
 #include <limits.h>
 
+#include "catalog/pg_type.h"    /* INT4OID */
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
-#include "nodes/print.h"        /*$$$*/
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/planner.h"
@@ -38,6 +38,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbgroup.h"       /* adapt_flow_to_targetlist() */
+#include "cdb/cdbllize.h"       /* pull_up_Flow() */
 #include "cdb/cdbpath.h"        /* cdbpath_rows() */
 #include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() etc. */
 #include "cdb/cdbpullup.h"      /* cdbpullup_targetlist() */
@@ -77,7 +79,7 @@ static SubqueryScan *create_subqueryscan_plan(CreatePlanContext *ctx, Path *best
 						 List *tlist, List *scan_clauses);
 static FunctionScan *create_functionscan_plan(CreatePlanContext *ctx, Path *best_path,
 						 List *tlist, List *scan_clauses);
-static NestLoop *create_nestloop_plan(CreatePlanContext *ctx, NestPath *best_path,
+static Plan *create_nestloop_plan(CreatePlanContext *ctx, NestPath *best_path,
 					 Plan *outer_plan, Plan *inner_plan);
 static MergeJoin *create_mergejoin_plan(CreatePlanContext *ctx, MergePath *best_path,
 					  Plan *outer_plan, Plan *inner_plan);
@@ -90,7 +92,7 @@ static void fix_indexqual_references(List *indexquals, IndexPath *index_path,
 						 List **indexsubtype);
 static Node *fix_indexqual_operand(Node *node, IndexOptInfo *index,
 					  Oid *opclass);
-static List *get_switched_clauses(List *clauses, Relids outerrelids);
+static List *get_switched_clauses(Relids innerrelids, List *clauses);
 static List *order_qual_clauses(PlannerInfo *root, List *clauses);
 static void copy_path_costsize(Plan *dest, Path *src);
 static void copy_plan_costsize(Plan *dest, Plan *src);
@@ -120,10 +122,8 @@ static NestLoop *make_nestloop(List *tlist,
 							   Plan *lefttree, Plan *righttree,
 							   JoinType jointype);
 static AdaptiveNestLoop *make_adaptivenestloop(List *tlist,
-												List *joinclauses, List *otherclauses,
-												Plan *lefttree, Plan *righttree,
-												JoinType jointype,
-												HashJoin *alternate);
+					                           Plan *lefttree,
+					                           Plan *righttree);
 static HashJoin *make_hashjoin(List *tlist,
 			  List *joinclauses, List *otherclauses,
 			  List *hashclauses,
@@ -469,7 +469,14 @@ create_join_plan(CreatePlanContext *ctx, JoinPath *best_path)
 	Plan	   *inner_plan;
 	Plan	   *plan;
 
-	outer_plan = create_subplan(ctx, best_path->outerjoinpath);
+    if (best_path->outerjoinpath)
+	    outer_plan = create_subplan(ctx, best_path->outerjoinpath);
+    else
+    {
+        /* Adaptive NJ alternate path is an HJ with no outer subpath. */
+        outer_plan = NULL;
+    }
+
 	inner_plan = create_subplan(ctx, best_path->innerjoinpath);
 
 	switch (best_path->path.pathtype)
@@ -487,10 +494,10 @@ create_join_plan(CreatePlanContext *ctx, JoinPath *best_path)
 												 inner_plan);
 			break;
 		case T_NestLoop:
-			plan = (Plan *) create_nestloop_plan(ctx,
-												 (NestPath *) best_path,
-												 outer_plan,
-												 inner_plan);
+			plan = create_nestloop_plan(ctx,
+										(NestPath *) best_path,
+										outer_plan,
+										inner_plan);
 			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d",
@@ -628,6 +635,67 @@ create_material_plan(CreatePlanContext *ctx, MaterialPath *best_path)
 	return plan;
 }
 
+
+/*
+ * create_limit1_plan
+ *    CDB: Create a Plan whose output is limited to one row.
+ */
+static Plan *
+create_limit1_plan(CreatePlanContext *ctx, UniquePath *uniquepath)
+{
+    Limit  *limitplan;
+	Plan   *subplan;
+
+    Assert(uniquepath->umethod == UNIQUE_PATH_LIMIT1);
+
+    /* Bring partitioned subpath result to a single QE. */
+    if (CdbPathLocus_IsPartitioned(uniquepath->subpath->locus))
+    {
+        /* Insert a MotionPath node atop our subpath. */
+        uniquepath->subpath = cdbpath_create_motion_path(ctx->root,
+                                                         uniquepath->subpath,
+                                                         NIL,
+                                                         false,
+                                                         uniquepath->path.locus);
+        Insist(uniquepath->subpath &&
+               CdbPathLocus_IsSingleQE(uniquepath->subpath->locus));
+
+        /* Build subplan. */
+        subplan = create_subplan(ctx, uniquepath->subpath);
+        Insist(IsA(subplan, Motion));
+
+        /* Insert a LIMIT 1 node beneath the Motion node. */
+        limitplan = makeNode(Limit);
+        copy_plan_costsize(&limitplan->plan, subplan->lefttree);
+        limitplan->plan.plan_rows = 1;
+        limitplan->plan.targetlist = subplan->lefttree->targetlist;
+        limitplan->plan.qual = NIL;
+        limitplan->plan.lefttree = subplan->lefttree;
+        limitplan->plan.righttree = NULL;
+        limitplan->limitOffset = NULL;
+        limitplan->limitCount = (Node *)makeConst(INT4OID, sizeof(int4),
+                                                  Int32GetDatum(1),
+                                                  false, true);
+        subplan->lefttree = (Plan *)limitplan;
+    }
+    else
+        subplan = create_subplan(ctx, uniquepath->subpath);
+
+    /* Top off the subplan with a LIMIT 1 node. */
+    limitplan = makeNode(Limit);
+    copy_path_costsize(&limitplan->plan, &uniquepath->path);
+    limitplan->plan.targetlist = subplan->targetlist;
+    limitplan->plan.qual = NIL;
+    limitplan->plan.lefttree = subplan;
+    limitplan->plan.righttree = NULL;
+    limitplan->limitOffset = NULL;
+    limitplan->limitCount = (Node *)makeConst(INT4OID, sizeof(int4),
+                                              Int32GetDatum(1),
+                                              false, true);
+    return (Plan *)limitplan;
+}                               /* create_limit1_plan */
+
+
 /*
  * create_unique_plan
  *	  Create a Unique plan for 'best_path' and (recursively) plans
@@ -649,11 +717,16 @@ create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path)
 	int			groupColPos;
 	ListCell   *l;
 
-    subplan = create_subplan(ctx, best_path->subpath);
+	/* Return naked subplan if we don't need to do any actual unique-ifying */
+	if (best_path->umethod == UNIQUE_PATH_NOOP ||
+        best_path->path.parent->onerow)
+		return create_subplan(ctx, best_path->subpath);
 
-	/* Done if we don't need to do any actual unique-ifying */
-	if (best_path->umethod == UNIQUE_PATH_NOOP)
-		return subplan;
+    /* Result will surely be unique if we produce only its first row. */
+    if (best_path->umethod == UNIQUE_PATH_LIMIT1)
+        return create_limit1_plan(ctx, best_path);
+
+    subplan = create_subplan(ctx, best_path->subpath);
 
 	/*----------
 	 * As constructed, the subplan has a "flat" tlist containing just the
@@ -671,11 +744,6 @@ create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path)
 	 *----------
 	 */
 	uniq_exprs = best_path->distinct_on_exprs;  /*CDB*/
-    if (!uniq_exprs)    /*$$$*/
-    {
-        elog_node_display(LOG, "create_unique_plan", best_path, true); 
-        elog_node_display(LOG, "create_unique_plan", ctx->root->in_info_list, true); 
-    }
     Insist(uniq_exprs);
 
 	/* initialize modified subplan tlist as just the "required" vars */
@@ -701,17 +769,12 @@ create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path)
 		}
 	}
 
+	/*
+	 * If the top plan node can't do projections, we need to add a Result
+	 * node to help it along.
+	 */
 	if (newitems)
-	{
-		/*
-		 * If the top plan node can't do projections, we need to add a Result
-		 * node to help it along.
-		 */
-		if (!is_projection_capable_plan(subplan))
-			subplan = (Plan *) make_result(newtlist, NULL, subplan);
-		else
-			plan_pushdown_tlist(subplan, newtlist);
-	}
+		subplan = plan_pushdown_tlist(subplan, newtlist);
 
 	/*
 	 * Build control information showing which subplan output columns are to
@@ -1362,7 +1425,7 @@ create_functionscan_plan(CreatePlanContext *ctx, Path *best_path,
  *
  *****************************************************************************/
 
-static NestLoop *
+static Plan *
 create_nestloop_plan(CreatePlanContext *ctx,
 					 NestPath *best_path,
 					 Plan *outer_plan,
@@ -1452,62 +1515,6 @@ create_nestloop_plan(CreatePlanContext *ctx,
 	joinclauses = order_qual_clauses(ctx->root, joinclauses);
 	otherclauses = order_qual_clauses(ctx->root, otherclauses);
 
-	do {
-		if (best_path->alternate != NULL)
-		{
-			Plan		*alternate_inner = NULL;
-			HashJoin	*alternate_plan = NULL;
-			int			max_queue_len;
-			double		strategy_threshold_1, strategy_threshold_2;
-
-			AdaptiveNestLoop *anl_plan;
-
-			if (((HashPath *)best_path->alternate)->jpath.innerjoinpath->pathtype == T_Unique)
-				break;
-
-			alternate_inner = create_subplan(ctx, ((HashPath *)best_path->alternate)->jpath.innerjoinpath);
-
-			alternate_plan = create_hashjoin_plan(ctx, (HashPath *)best_path->alternate, outer_plan, alternate_inner);
-
-			anl_plan = make_adaptivenestloop(tlist,
-											 joinclauses,
-											 otherclauses,
-											 outer_plan,
-											 inner_plan,
-											 best_path->jpath.jointype,
-											 alternate_plan);
-
-			copy_path_costsize(&((NestLoop *)anl_plan->plan.lefttree)->join.plan, &best_path->jpath.path);
-			copy_path_costsize((Plan *)anl_plan, &best_path->jpath.path);
-
-			/* Come up with our threshold for switching join strategies */
-
-			/* estimates off by a factor of two; or ten rows, whichever is least */
-			strategy_threshold_1 = Min(cdbpath_rows(best_path->jpath.outerjoinpath) * 2,
-									   cdbpath_rows(best_path->jpath.outerjoinpath) + 10);
-
-			/* Use estimated costs to figure out the "cost crossover"
-			 * point between strategies; but no smaller than the first
-			 * guess from above: use the ratio of the costs and multiply
-			 * by the estimated rows. */
-			strategy_threshold_2 = (anl_plan->plan.righttree->total_cost / anl_plan->plan.lefttree->total_cost);
-			strategy_threshold_2 = strategy_threshold_2 * cdbpath_rows(&best_path->jpath.path);
-
-			/* set the threshold to use at most work_mem*1024 bytes for our queue -- in some queries the
-			 * estimated width will be zero! */
-			if (best_path->jpath.outerjoinpath->parent->width > 0)
-				max_queue_len = (work_mem * 1024)/(best_path->jpath.outerjoinpath->parent->width);
-			else
-				max_queue_len = (work_mem * 1024)/(20);
-
-			anl_plan->nl_strategy_threshold = Min(max_queue_len, Max(strategy_threshold_1, strategy_threshold_2));
-			elog(DEBUG5, "AdaptiveNL: thresh_1 %f thresh_2 %f max_queue %d final thresh %d", 
-				 strategy_threshold_1, strategy_threshold_2, max_queue_len, anl_plan->nl_strategy_threshold);
-
-			return (NestLoop *)anl_plan;
-		}
-	} while (0);
-
 	join_plan = make_nestloop(tlist,
 							  joinclauses,
 							  otherclauses,
@@ -1517,7 +1524,66 @@ create_nestloop_plan(CreatePlanContext *ctx,
 
 	copy_path_costsize(&join_plan->join.plan, &best_path->jpath.path);
 
-	return join_plan;
+    /*
+     * Adaptive NJ:  Add AdaptiveNestLoop node above NJ and HJ.
+     */
+    if (best_path->alternate != NULL)
+	{
+        RelOptInfo *joinrel = best_path->jpath.path.parent;
+        Path       *alternate_path = (Path *)best_path->alternate;
+        Path       *outer_path = best_path->jpath.outerjoinpath;
+		Plan       *alternate_plan;
+		int			max_queue_len;
+		double		strategy_threshold_1, strategy_threshold_2;
+		AdaptiveNestLoop *anl_plan;
+
+        /* Alternate (HJ) path has no outer subpath. */
+        Assert(IsA(alternate_path, HashPath));
+        Assert(best_path->alternate->jpath.outerjoinpath == NULL);
+
+        /* Result rel of Adaptive NJ is same as result rel of its NJ and HJ. */
+        Assert(joinrel == alternate_path->parent);
+
+        /* Restore NJ's original estimated cost. */
+        join_plan->join.plan.startup_cost = best_path->nj_startup_cost;
+        join_plan->join.plan.total_cost = best_path->nj_total_cost;
+
+	    join_plan->shared_outer = true;
+
+		alternate_plan = create_subplan(ctx, alternate_path);
+
+		anl_plan = make_adaptivenestloop(tlist, (Plan *)join_plan, alternate_plan);
+
+		copy_path_costsize((Plan *)anl_plan, &best_path->jpath.path);
+
+		/* Come up with our threshold for switching join strategies */
+
+		/* estimates off by a factor of two; or ten rows, whichever is least */
+		strategy_threshold_1 = Min(cdbpath_rows(outer_path) * 2,
+								   cdbpath_rows(outer_path) + 10);
+
+		/* Use estimated costs to figure out the "cost crossover"
+		 * point between strategies; but no smaller than the first
+		 * guess from above: use the ratio of the costs and multiply
+		 * by the estimated rows. */
+		strategy_threshold_2 = alternate_plan->total_cost / join_plan->join.plan.total_cost;
+		strategy_threshold_2 = strategy_threshold_2 * cdbpath_rows(&best_path->jpath.path);
+
+		/* set the threshold to use at most work_mem*1024 bytes for our queue -- in some queries the
+		 * estimated width will be zero! */
+		if (joinrel->width > 0)
+			max_queue_len = (work_mem * 1024)/joinrel->width;
+		else
+			max_queue_len = (work_mem * 1024)/(20);
+
+		anl_plan->nl_strategy_threshold = Min(max_queue_len, Max(strategy_threshold_1, strategy_threshold_2));
+		elog(DEBUG5, "AdaptiveNL: thresh_1 %f thresh_2 %f max_queue %d final thresh %d",
+			 strategy_threshold_1, strategy_threshold_2, max_queue_len, anl_plan->nl_strategy_threshold);
+
+		return (Plan *)anl_plan;
+	}
+
+	return (Plan *)join_plan;
 }
 
 static MergeJoin *
@@ -1558,8 +1624,9 @@ create_mergejoin_plan(CreatePlanContext *ctx,
 	 * Rearrange mergeclauses, if needed, so that the outer variable is always
 	 * on the left.
 	 */
-	mergeclauses = get_switched_clauses(best_path->path_mergeclauses,
-							 best_path->jpath.outerjoinpath->parent->relids);
+	mergeclauses =
+        get_switched_clauses(best_path->jpath.innerjoinpath->parent->relids,
+                             best_path->path_mergeclauses);
 
 	/* Sort clauses into best execution order */
 	/* NB: do NOT reorder the mergeclauses */
@@ -1644,8 +1711,9 @@ create_hashjoin_plan(CreatePlanContext *ctx,
 	 * Rearrange hashclauses, if needed, so that the outer variable is always
 	 * on the left.
 	 */
-	hashclauses = get_switched_clauses(best_path->path_hashclauses,
-							 best_path->jpath.outerjoinpath->parent->relids);
+	hashclauses =
+        get_switched_clauses(best_path->jpath.innerjoinpath->parent->relids,
+                             best_path->path_hashclauses);
 
 	/* Sort clauses into best execution order */
 	joinclauses = order_qual_clauses(ctx->root, joinclauses);
@@ -1870,9 +1938,13 @@ fix_indexqual_operand(Node *node, IndexOptInfo *index, Oid *opclass)
  *	  clauses, if needed, so the outer join variable is on the left and
  *	  the inner is on the right.  The original data structure is not touched;
  *	  a modified list is returned.
+ *
+ * CDB:  Caller specifies inner relids instead of outer relids, because with
+ * Adaptive NJ there can be HashPlan nodes whose outer relids are not directly
+ * accessible because outerjoinpath == NULL.
  */
 static List *
-get_switched_clauses(List *clauses, Relids outerrelids)
+get_switched_clauses(Relids innerrelids, List *clauses)
 {
 	List	   *t_list = NIL;
 	ListCell   *l;
@@ -1883,7 +1955,7 @@ get_switched_clauses(List *clauses, Relids outerrelids)
 		OpExpr	   *clause = (OpExpr *) restrictinfo->clause;
 
 		Assert(is_opclause(clause));
-		if (bms_is_subset(restrictinfo->right_relids, outerrelids))
+		if (bms_is_subset(restrictinfo->left_relids, innerrelids))
 		{
 			/*
 			 * Duplicate just enough of the structure to allow commuting the
@@ -2259,30 +2331,17 @@ make_nestloop(List *tlist,
 
 static AdaptiveNestLoop *
 make_adaptivenestloop(List *tlist,
-					  List *joinclauses,
-					  List *otherclauses,
 					  Plan *lefttree,
-					  Plan *righttree,
-					  JoinType jointype,
-					  HashJoin *alternate_join)
+					  Plan *righttree)
 {
 	AdaptiveNestLoop	*node = makeNode(AdaptiveNestLoop);
-	NestLoop			*planA;
-	Plan				*plan = &node->plan;
 
-	plan->targetlist = tlist;
-	plan->qual = otherclauses;
-	plan->lefttree = NULL;
-	plan->righttree = NULL;
+	node->plan.targetlist = tlist;
+	node->plan.qual = NIL;
+	node->plan.lefttree = lefttree;
+	node->plan.righttree = righttree;
 
-	planA = make_nestloop(tlist, joinclauses, otherclauses,
-						  lefttree, righttree, jointype);
-	planA->shared_outer = true;
-
-	plan->lefttree = (Plan *)planA;
-	plan->righttree = (Plan *)alternate_join;
-
-	node->nl_strategy_threshold = 1;
+    node->nl_strategy_threshold = 1;
 
 	return node;
 }
@@ -3072,9 +3131,73 @@ is_projection_capable_plan(Plan *plan)
 		case T_Limit:
 		case T_Append:
 		case T_Motion:
+        case T_AdaptiveNestLoop:
 			return false;
 		default:
 			break;
 	}
 	return true;
 }
+
+
+/*
+ * plan_pushdown_tlist
+ *
+ * If the given Plan node does projection, the same node is returned after
+ * replacing its targetlist with the given targetlist.
+ *
+ * Otherwise, returns a Result node with the given targetlist, inserted atop
+ * the given plan.
+ */
+Plan *
+plan_pushdown_tlist(Plan *plan, List *tlist)
+{
+	if (is_projection_capable_plan(plan))
+    {
+		plan->targetlist = tlist;
+
+        /*
+         * If the node's Flow is partitioned on an expr that is no longer in
+         * the new targetlist, null out the hash, leaving a strewn flow.
+         */
+        if (plan->flow)
+            adapt_flow_to_targetlist(plan);
+    }
+
+    /*
+     * Adaptive NJ doesn't do projection, but left (NJ) & right (HJ) kids do.
+     *
+     * Let kids evaluate the targetlist.  But if the expr is so complex as to
+     * require a Result node, insert that above the Adaptive NJ; otherwise,
+     * setPlanReferences() later would put a Result node above each of the
+     * kids, which would make navigation slightly more complicated.  Also,
+     * don't insert SubPlan nodes in the kids' targetlists, because we don't
+     * want them to be duplicated or multiply referenced.
+     */
+    else if (IsA(plan, AdaptiveNestLoop) &&
+             !cdb_expr_requires_full_eval((Node *)tlist) &&
+             !contain_subplans((Node *)tlist))
+    {
+		plan->targetlist = tlist;
+        plan->lefttree = plan_pushdown_tlist(plan->lefttree, tlist);
+        plan->righttree = plan_pushdown_tlist(plan->righttree, tlist);
+
+        /* Copy kid's distribution. Left & right are same. Ordering is lost. */
+		if (plan->lefttree->flow)
+            plan->flow = pull_up_Flow(plan, plan->lefttree, false);
+    }
+
+    else
+    {
+        Plan   *subplan = plan;
+
+	    /* Insert a Result node to evaluate the targetlist. */
+        plan = (Plan *)make_result(tlist, NULL, subplan);
+
+        /* Propagate the subplan's distribution and ordering properties. */
+		if (subplan->flow)
+            plan->flow = pull_up_Flow(plan, subplan, true);
+	}
+    return plan;
+}                               /* plan_pushdown_tlist */
+

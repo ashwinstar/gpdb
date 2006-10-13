@@ -1394,13 +1394,10 @@ _copyInClauseInfo(InClauseInfo *from)
 {
 	InClauseInfo *newnode = makeNode(InClauseInfo);
 
-	COPY_BITMAPSET_FIELD(lefthand);
 	COPY_BITMAPSET_FIELD(righthand);
-    COPY_BITMAPSET_FIELD(correlating);                  /*CDB*/
-    COPY_BITMAPSET_FIELD(allrelids);                    /*CDB*/
 	COPY_NODE_FIELD(sub_targetlist);
 
-    COPY_SCALAR_FIELD(op_is_equality);                  /*CDB*/
+    COPY_SCALAR_FIELD(try_join_unique);                 /*CDB*/
 
 	return newnode;
 }

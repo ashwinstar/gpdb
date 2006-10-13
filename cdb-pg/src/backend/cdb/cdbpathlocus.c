@@ -215,6 +215,35 @@ cdbpathlocus_from_baserel(struct PlannerInfo   *root,
 
 
 /*
+ * cdbpathlocus_from_exprs
+ *
+ * Returns a locus specifying hashed distribution on a list of exprs.
+ */
+CdbPathLocus
+cdbpathlocus_from_exprs(struct PlannerInfo *root,
+                        List               *hash_on_exprs)
+{
+    CdbPathLocus    locus;
+    List           *partkey = NIL;
+    List           *eq = list_make1(makeString("="));
+    ListCell       *cell;
+
+    foreach(cell, hash_on_exprs)
+    {
+        Node           *expr = (Node *)lfirst(cell);
+        List           *pathkey;
+
+        pathkey = cdb_make_pathkey_for_expr(root, expr, eq);
+        partkey = lappend(partkey, pathkey);
+    }
+
+    CdbPathLocus_MakeHashed(&locus, partkey);
+    list_free_deep(eq);
+    return locus;
+}                               /* cdbpathlocus_from_exprs */
+
+
+/*
  * cdbpathlocus_from_subquery
  *
  * Returns a locus describing the distribution of a subquery.
@@ -472,6 +501,76 @@ cdbpathlocus_join(CdbPathLocus a, CdbPathLocus b)
 
 
 /*
+ * cdbpathlocus_is_hashed_on_exprs
+ *
+ * This function tests whether grouping on a given set of exprs can be done
+ * in place without motion.
+ *
+ * For a hashed locus, returns false if the partkey has a column whose
+ * equivalence class contains no expr belonging to the given list.
+ */
+bool
+cdbpathlocus_is_hashed_on_exprs(CdbPathLocus locus, List *exprlist)
+{
+    ListCell       *partkeycell;
+    ListCell       *pathkeycell;
+    List           *pathkey;
+    PathKeyItem    *item;
+
+    if (!CdbPathLocus_IsHashed(locus) &&
+        !CdbPathLocus_IsHashedOJ(locus))
+    {
+        Assert(CdbLocusType_IsValid(locus.locustype));
+        return !CdbPathLocus_IsStrewn(locus);
+    }
+
+    Assert(CdbPathLocus_Degree(locus) > 0);
+
+    foreach(partkeycell, locus.partkey)
+    {
+        if (CdbPathLocus_IsHashed(locus))
+        {
+            /* Does pathkey have an expr that is equal() to one in exprlist? */
+            pathkey = (List *)lfirst(partkeycell);
+            foreach(pathkeycell, pathkey)
+            {
+                item = (PathKeyItem *)lfirst(pathkeycell);
+                Assert(IsA(item, PathKeyItem));
+                if (list_member(exprlist, item->key))
+                    break;
+            }
+            if (!pathkeycell)
+                return false;
+        }
+        else                    /* CdbPathLocus_IsHashedOJ */
+        {
+            List       *pathkeylist = (List *)lfirst(partkeycell);
+            ListCell   *pathkeylistcell;
+            foreach(pathkeylistcell, pathkeylist)
+            {
+                /* Does some expr in pathkey match some item in exprlist? */
+                pathkey = (List *)lfirst(pathkeylistcell);
+                foreach(pathkeycell, pathkey)
+                {
+                    item = (PathKeyItem *)lfirst(pathkeycell);
+                    Assert(IsA(item, PathKeyItem));
+                    if (list_member(exprlist, item->key))
+                            break;
+                }
+                if (pathkeycell)
+                    break;
+            }
+            if (!pathkeylistcell)
+                return false;
+        }
+    }
+
+    /* Every column of the partkey contains an expr in exprlist. */
+    return true;
+}                               /* cdbpathlocus_is_hashed_on_exprs */
+
+
+/*
  * cdbpathlocus_is_hashed_on_relids
  *
  * Used when a subquery predicate (such as "x IN (SELECT ...)") has been
@@ -485,8 +584,7 @@ cdbpathlocus_join(CdbPathLocus a, CdbPathLocus b)
  *
  * For a hashed locus, returns false if the partkey has a column whose
  * equivalence class contains no Var node belonging to the given set of
- * relids.  Caller should specify the relids of the tables of the current
- * query, excluding the subquery.
+ * relids.  Caller should specify the relids of the non-subquery tables.
  */
 bool
 cdbpathlocus_is_hashed_on_relids(CdbPathLocus locus, Bitmapset *relids)

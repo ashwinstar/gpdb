@@ -32,7 +32,7 @@ extern bool contain_var_reference(Node *node, int varno, int varattno,
 					  int levelsup);
 extern bool contain_var_clause(Node *node);
 extern bool contain_vars_of_level(Node *node, int levelsup);
-extern bool contain_vars_above_level(Node *node, int levelsup);
+extern bool contain_vars_of_level_or_above(Node *node, int levelsup);
 extern int	find_minimum_var_level(Node *node);
 extern List *pull_var_clause(Node *node, bool includeUpperVars);
 

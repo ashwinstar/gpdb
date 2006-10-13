@@ -3192,6 +3192,7 @@ range_table_walker(List *rtable,
 		{
 			case RTE_RELATION:
 			case RTE_SPECIAL:
+            case RTE_VOID:
 				/* nothing to do */
 				break;
 			case RTE_SUBQUERY:
@@ -3728,6 +3729,7 @@ range_table_mutator(List *rtable,
 		{
 			case RTE_RELATION:
 			case RTE_SPECIAL:
+            case RTE_VOID:
 				/* we don't bother to copy eref, aliases, etc; OK? */
 				break;
 			case RTE_SUBQUERY:

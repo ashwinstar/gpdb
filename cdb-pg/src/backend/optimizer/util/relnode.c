@@ -3,6 +3,7 @@
  * relnode.c
  *	  Relation-node lookup/construction routines
  *
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -14,6 +15,8 @@
  */
 #include "postgres.h"
 
+#include "nodes/print.h"        /*$$$*/
+#include "utils/guc.h"          /*$$$*/
 #include "optimizer/cost.h"
 #include "optimizer/joininfo.h"
 #include "optimizer/pathnode.h"
@@ -46,7 +49,6 @@ static List *subbuild_joinrel_restrictlist(RelOptInfo *joinrel,
 							  List *joininfo_list);
 static void subbuild_joinrel_joinlist(RelOptInfo *joinrel,
 						  List *joininfo_list);
-
 
 /*
  * build_base_rel
@@ -122,8 +124,9 @@ make_reloptinfo(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	rel->pathlist = NIL;
 	rel->cheapest_startup_path = NULL;
 	rel->cheapest_total_path = NULL;
-	rel->cheapest_unique_path = NULL;
-	rel->relid = relid;
+    rel->dedup_info = NULL;
+    rel->onerow = false;
+    rel->relid = relid;
 	rel->rtekind = rte->rtekind;
 	/* min_attr, max_attr, attr_needed, attr_widths are set below */
 	rel->indexlist = NIL;
@@ -149,7 +152,7 @@ make_reloptinfo(PlannerInfo *root, int relid, RelOptKind reloptkind)
 			/* Subquery or function --- set up attr range and arrays */
 			/* Note: 0 is included in range to support whole-row Vars */
             /* CDB: Allow internal use of sysattrs (<0) for subquery dedup. */
-        	rel->min_attr = FirstLowInvalidHeapAttributeNumber + 1;     /*CDB*/  
+        	rel->min_attr = FirstLowInvalidHeapAttributeNumber + 1;     /*CDB*/
 			rel->max_attr = list_length(rte->eref->colnames);
 			rel->attr_needed = (Relids *)
 				palloc0((rel->max_attr - rel->min_attr + 1) * sizeof(Relids));
@@ -177,6 +180,9 @@ make_reloptinfo(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	}
 
 	root->base_rel_array[relid] = rel;
+
+    if (DEBUG1 >= log_min_messages)
+        elog_node_display(LOG, "make_reloptinfo", rel, true);
 
 	return rel;
 }
@@ -340,7 +346,11 @@ build_join_rel(PlannerInfo *root,
 														   outer_rel,
 														   inner_rel,
 														   jointype);
-		return joinrel;
+
+        /* CDB: Join between single-row inputs produces a single-row joinrel. */
+        Assert(joinrel->onerow == (outer_rel->onerow && inner_rel->onerow));
+
+        return joinrel;
 	}
 
 	/*
@@ -355,7 +365,8 @@ build_join_rel(PlannerInfo *root,
 	joinrel->pathlist = NIL;
 	joinrel->cheapest_startup_path = NULL;
 	joinrel->cheapest_total_path = NULL;
-	joinrel->cheapest_unique_path = NULL;
+    joinrel->dedup_info = NULL;
+    joinrel->onerow = false;
 	joinrel->relid = 0;			/* indicates not a baserel */
 	joinrel->rtekind = RTE_JOIN;
 	joinrel->min_attr = 0;
@@ -372,6 +383,10 @@ build_join_rel(PlannerInfo *root,
 	joinrel->joininfo = NIL;
 	joinrel->index_outer_relids = NULL;
 	joinrel->index_inner_paths = NIL;
+
+    /* CDB: Join between single-row inputs produces a single-row joinrel. */
+    if (outer_rel->onerow && inner_rel->onerow)
+        joinrel->onerow = true;
 
 	/*
 	 * Create a new tlist containing just the vars that need to be output from
@@ -397,6 +412,12 @@ build_join_rel(PlannerInfo *root,
 	if (restrictlist_ptr)
 		*restrictlist_ptr = restrictlist;
 	build_joinrel_joinlist(joinrel, outer_rel, inner_rel);
+
+    /*
+     * CDB: Attach subquery duplicate suppression info if needed.
+     */
+    if (root->in_info_list)
+        joinrel->dedup_info = cdb_make_rel_dedup_info(root, joinrel);
 
 	/*
 	 * Set estimates of the joinrel's size.
@@ -621,3 +642,145 @@ subbuild_joinrel_joinlist(RelOptInfo *joinrel,
 		}
 	}
 }
+
+
+/*
+ * cdb_make_rel_dedup_info
+ *
+ * When a subquery from a search condition has been flattened into a join,
+ * the join may need some special mojo.  A row of the main query must not
+ * join with more than one row of the subquery, or in case it does, the
+ * consequent multiple result rows must be collapsed to a single row
+ * afterwards.
+ *
+ * This function creates and returns a CdbRelDedupInfo structure for
+ * planning subquery duplicate suppression.  Returns NULL if the rel
+ * doesn't need a CdbRelOptInfo at this time.
+ *
+ * The reltargetlist should be complete before calling this function.
+ */
+CdbRelDedupInfo *
+cdb_make_rel_dedup_info(PlannerInfo *root, RelOptInfo *rel)
+{
+    CdbRelDedupInfo    *dedup;
+    ListCell           *cell;
+    Relids              prejoin_dedup_subqrelids;
+    Relids              spent_subqrelids;
+    InClauseInfo       *join_unique_ininfo;
+    bool                partial;
+    bool                try_postjoin_dedup;
+    int                 subqueries_unfinished;
+
+    /* Return NULL if rel has no tables from flattened subqueries. */
+    if (bms_is_subset(rel->relids, root->currlevel_relids))
+        return NULL;
+
+    /*
+     * Does rel include any subquery tables which are not referenced
+     * downstream?
+     *
+     * When the columns of the inner rel of a join are not needed by
+     * downstream operators, and all tables of the inner rel come from
+     * flattened subqueries, then the JOIN_IN jointype can be used,
+     * telling the executor to produce only the first matching inner row
+     * for each outer row.
+     */
+    spent_subqrelids = bms_difference(rel->relids, root->currlevel_relids);
+    foreach(cell, rel->reltargetlist)
+    {
+        Var    *var = (Var *)lfirst(cell);
+
+        Assert(IsA(var, Var) && var->varlevelsup == 0);
+        spent_subqrelids = bms_del_member(spent_subqrelids, var->varno);
+    }
+    if (bms_is_empty(spent_subqrelids))
+    {
+        bms_free(spent_subqrelids);
+        spent_subqrelids = NULL;
+    }
+
+    /*
+     * Determine set of flattened subqueries whose inputs are all included in
+     * this rel.
+     *
+     * (A subquery can be identified by its set of relids: the righthand relids
+     * in its InClauseInfo.)
+     *
+     * Post-join duplicate removal can be applied to a rel that contains the
+     * sublink's lefthand relids, the subquery's own tables (the sublink's
+     * righthand relids), and the relids of outer references.  For subqueries
+     * in search conditions, it is sufficient to test whether the sublink's
+     * righthand relids are a subset of spent_subqrelids.
+     */
+    prejoin_dedup_subqrelids = NULL;
+    join_unique_ininfo = NULL;
+    partial = false;
+    try_postjoin_dedup = false;
+    subqueries_unfinished = list_length(root->in_info_list);
+    foreach(cell, root->in_info_list)
+    {
+        InClauseInfo   *ininfo = (InClauseInfo *)lfirst(cell);
+
+        /* Got all of the subquery's own tables? */
+        if (bms_is_subset(ininfo->righthand, rel->relids))
+        {
+            /* Early dedup (JOIN_UNIQUE, JOIN_IN) can be applied to this rel. */
+            prejoin_dedup_subqrelids =
+                bms_add_members(prejoin_dedup_subqrelids, ininfo->righthand);
+
+            /* Got all the correlating and left-hand relids too? */
+            if (bms_is_subset(ininfo->righthand, spent_subqrelids))
+            {
+                try_postjoin_dedup = true;
+                subqueries_unfinished--;
+            }
+            else
+                partial = true;
+
+            /* Does rel have exactly the relids of uncorrelated "= ANY" subq? */
+            if (ininfo->try_join_unique &&
+                bms_equal(ininfo->righthand, rel->relids))
+                join_unique_ininfo = ininfo;
+        }
+        else if (bms_overlap(ininfo->righthand, rel->relids))
+            partial = true;
+    }
+
+    /* Exit if didn't find anything interesting. */
+    if (!spent_subqrelids &&
+        !prejoin_dedup_subqrelids)
+        return NULL;
+
+    /*
+     * A heuristic to avoid placing more than one Unique op in series.
+     *
+     * If rel includes some but not all of a sublink's required inputs,
+     * that subquery will become eligible for late (post-join) dedup at a
+     * later stage, after the missing tables are joined.  There may also be
+     * another sublink whose required inputs are all present; in which case
+     * we refrain from considering late dedup until both sublinks have been
+     * fully evaluated and can be deduped together.
+     *
+     * (Also, this allows cdp_is_path_deduped() to assume that a Unique op will
+     * dedup all of the sublinks whose righthand relids are covered by the rel.)
+     */
+    if (partial)
+        try_postjoin_dedup = false;
+
+    /*
+     * Create CdbRelDedupInfo.
+     */
+    dedup = makeNode(CdbRelDedupInfo);
+
+    dedup->prejoin_dedup_subqrelids = prejoin_dedup_subqrelids;
+    dedup->spent_subqrelids = spent_subqrelids;
+    dedup->try_postjoin_dedup = try_postjoin_dedup;
+    dedup->no_more_subqueries = (subqueries_unfinished == 0);
+    dedup->join_unique_ininfo = join_unique_ininfo;
+    dedup->later_dedup_pathlist = NIL;
+    dedup->cheapest_startup_path = NULL;
+    dedup->cheapest_total_path = NULL;
+
+    return dedup;
+}                               /* cdb_make_rel_dedup_info */
+

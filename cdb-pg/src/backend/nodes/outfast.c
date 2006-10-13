@@ -1357,7 +1357,6 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 	WRITE_NODE_FIELD(pathlist);
 	WRITE_NODE_FIELD(cheapest_startup_path);
 	WRITE_NODE_FIELD(cheapest_total_path);
-	WRITE_NODE_FIELD(cheapest_unique_path);
 	WRITE_UINT_FIELD(relid);
 	WRITE_ENUM_FIELD(rtekind, RTEKind);
 	WRITE_UINT_FIELD(min_attr);
@@ -1435,7 +1434,6 @@ _outInClauseInfo(StringInfo str, InClauseInfo *node)
 {
 	WRITE_NODE_TYPE("INCLAUSEINFO");
 
-	WRITE_BITMAPSET_FIELD(lefthand);
 	WRITE_BITMAPSET_FIELD(righthand);
 	WRITE_NODE_FIELD(sub_targetlist);
 }
@@ -2234,6 +2232,8 @@ _outRangeTblEntry(StringInfo str, RangeTblEntry *node)
 			WRITE_ENUM_FIELD(jointype, JoinType);
 			WRITE_NODE_FIELD(joinaliasvars);
 			break;
+        case RTE_VOID:                                                  /*CDB*/
+            break;
 		default:
 			elog(ERROR, "unrecognized RTE kind: %d", (int) node->rtekind);
 			break;

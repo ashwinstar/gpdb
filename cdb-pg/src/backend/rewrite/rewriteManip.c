@@ -176,16 +176,8 @@ OffsetVarNodes_walker(Node *node, OffsetVarNodes_context *context)
 		InClauseInfo *ininfo = (InClauseInfo *) node;
 
 		if (context->sublevels_up == 0)
-		{
-			ininfo->lefthand = offset_relid_set(ininfo->lefthand,
-												context->offset);
 			ininfo->righthand = offset_relid_set(ininfo->righthand,
 												 context->offset);
-			ininfo->correlating = offset_relid_set(ininfo->correlating, /*CDB*/
-												   context->offset);
-			ininfo->allrelids = offset_relid_set(ininfo->allrelids,     /*CDB*/
-												 context->offset);
-		}
 		/* fall through to examine children */
 	}
 	if (IsA(node, Query))
@@ -318,20 +310,9 @@ ChangeVarNodes_walker(Node *node, ChangeVarNodes_context *context)
 		InClauseInfo *ininfo = (InClauseInfo *) node;
 
 		if (context->sublevels_up == 0)
-		{
-			ininfo->lefthand = adjust_relid_set(ininfo->lefthand,
-												context->rt_index,
-												context->new_index);
 			ininfo->righthand = adjust_relid_set(ininfo->righthand,
 												 context->rt_index,
 												 context->new_index);
-			ininfo->correlating = adjust_relid_set(ininfo->correlating, /*CDB*/
-												   context->rt_index,
-												   context->new_index);
-			ininfo->allrelids = adjust_relid_set(ininfo->allrelids,     /*CDB*/
-												 context->rt_index,
-												 context->new_index);
-		}
 		/* fall through to examine children */
 	}
 	if (IsA(node, Query))
@@ -543,8 +524,7 @@ rangeTableEntry_used_walker(Node *node,
 		InClauseInfo *ininfo = (InClauseInfo *) node;
 
 		if (context->sublevels_up == 0 &&
-			(bms_is_member(context->rt_index, ininfo->lefthand) ||
-			 bms_is_member(context->rt_index, ininfo->righthand)))
+			bms_is_member(context->rt_index, ininfo->righthand))
 			return true;
 		/* fall through to examine children */
 	}

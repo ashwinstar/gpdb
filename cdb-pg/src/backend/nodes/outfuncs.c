@@ -1194,6 +1194,7 @@ _outIndexPath(StringInfo str, IndexPath *node)
 	WRITE_FLOAT_FIELD(indextotalcost, "%.2f");
 	WRITE_FLOAT_FIELD(indexselectivity, "%.4f");
 	WRITE_FLOAT_FIELD(rows, "%.0f");
+    WRITE_INT_FIELD(num_leading_eq);
 }
 
 static void
@@ -1280,9 +1281,9 @@ _outUniquePath(StringInfo str, UniquePath *node)
 	_outPathInfo(str, (Path *) node);
 	WRITE_ENUM_FIELD(umethod, UniquePathMethod);
 	WRITE_FLOAT_FIELD(rows, "%.0f");
-    WRITE_BITMAPSET_FIELD(dedup_relids);    /*CDB*/
-    WRITE_BOOL_FIELD(must_repartition);     /*CDB*/
-	WRITE_NODE_FIELD(distinct_on_exprs);    /*CDB*/
+    WRITE_BOOL_FIELD(must_repartition);                 /*CDB*/
+    WRITE_BITMAPSET_FIELD(distinct_on_rowid_relids);    /*CDB*/
+	WRITE_NODE_FIELD(distinct_on_exprs);                /*CDB*/
 
 	WRITE_NODE_FIELD(subpath);
 }
@@ -1293,6 +1294,13 @@ _outNestPath(StringInfo str, NestPath *node)
 	WRITE_NODE_TYPE("NESTPATH");
 
 	_outJoinPathInfo(str, (JoinPath *) node);
+
+    if (node->alternate)
+    {
+        WRITE_FLOAT_FIELD(nj_startup_cost, "%.2f");
+	    WRITE_FLOAT_FIELD(nj_total_cost, "%.2f");
+	    WRITE_NODE_FIELD(alternate);
+    }
 }
 
 static void
@@ -1356,20 +1364,20 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 	WRITE_NODE_TYPE("RELOPTINFO");
 
 	/* NB: this isn't a complete set of fields */
-	WRITE_ENUM_FIELD(type, NodeTag);
 	WRITE_ENUM_FIELD(reloptkind, RelOptKind);
 	WRITE_BITMAPSET_FIELD(relids);
 	WRITE_FLOAT_FIELD(rows, "%.0f");
 	WRITE_INT_FIELD(width);
 	WRITE_NODE_FIELD(reltargetlist);
-	WRITE_NODE_FIELD(pathlist);
-	WRITE_NODE_FIELD(cheapest_startup_path);
-	WRITE_NODE_FIELD(cheapest_total_path);
-	WRITE_NODE_FIELD(cheapest_unique_path);
+	/* Skip writing Path ptrs to avoid endless recursion */
+	/* WRITE_NODE_FIELD(pathlist);              */
+	/* WRITE_NODE_FIELD(cheapest_startup_path); */
+	/* WRITE_NODE_FIELD(cheapest_total_path);   */
+	WRITE_NODE_FIELD(dedup_info);
 	WRITE_UINT_FIELD(relid);
 	WRITE_ENUM_FIELD(rtekind, RTEKind);
-	WRITE_UINT_FIELD(min_attr);
-	WRITE_UINT_FIELD(max_attr);
+	WRITE_INT_FIELD(min_attr);
+	WRITE_INT_FIELD(max_attr);
 	WRITE_NODE_FIELD(indexlist);
 	WRITE_UINT_FIELD(pages);
 	WRITE_FLOAT_FIELD(tuples, "%.0f");
@@ -1383,6 +1391,8 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 static void
 _outIndexOptInfo(StringInfo str, IndexOptInfo *node)
 {
+    int i;
+
 	WRITE_NODE_TYPE("INDEXOPTINFO");
 
 	/* NB: this isn't a complete set of fields */
@@ -1391,10 +1401,43 @@ _outIndexOptInfo(StringInfo str, IndexOptInfo *node)
 	WRITE_UINT_FIELD(pages);
 	WRITE_FLOAT_FIELD(tuples, "%.0f");
 	WRITE_INT_FIELD(ncolumns);
+
+	appendStringInfoLiteral(str, " :classlist");
+	for (i = 0; i < node->ncolumns; i++)
+		appendStringInfo(str, " %u", node->classlist[i]);
+
+	appendStringInfoLiteral(str, " :indexkeys");
+	for (i = 0; i < node->ncolumns; i++)
+		appendStringInfo(str, " %d", node->indexkeys[i]);
+
+	appendStringInfoLiteral(str, " :ordering");
+	for (i = 0; i < node->ncolumns; i++)
+		appendStringInfo(str, " %u", node->ordering[i]);
+
+    WRITE_OID_FIELD(relam);
+	WRITE_OID_FIELD(amcostestimate);
 	WRITE_NODE_FIELD(indexprs);
 	WRITE_NODE_FIELD(indpred);
 	WRITE_BOOL_FIELD(predOK);
 	WRITE_BOOL_FIELD(unique);
+	WRITE_BOOL_FIELD(amoptionalkey);
+	WRITE_BOOL_FIELD(cdb_default_stats_used);
+}
+
+static void
+_outCdbRelDedupInfo(StringInfo str, CdbRelDedupInfo *node)
+{
+	WRITE_NODE_TYPE("CdbRelDedupInfo");
+
+	WRITE_BITMAPSET_FIELD(prejoin_dedup_subqrelids);
+	WRITE_BITMAPSET_FIELD(spent_subqrelids);
+	WRITE_BOOL_FIELD(try_postjoin_dedup);
+	WRITE_BOOL_FIELD(no_more_subqueries);
+	WRITE_NODE_FIELD(join_unique_ininfo);
+	/* Skip writing Path ptrs to avoid endless recursion */
+	/* WRITE_NODE_FIELD(later_dedup_pathlist);  */
+	/* WRITE_NODE_FIELD(cheapest_startup_path); */
+	/* WRITE_NODE_FIELD(cheapest_total_path);   */
 }
 
 static void
@@ -1454,13 +1497,9 @@ _outInClauseInfo(StringInfo str, InClauseInfo *node)
 {
 	WRITE_NODE_TYPE("INCLAUSEINFO");
 
-	WRITE_BITMAPSET_FIELD(lefthand);
 	WRITE_BITMAPSET_FIELD(righthand);
-	WRITE_BITMAPSET_FIELD(correlating);                 /*CDB*/
-    WRITE_BITMAPSET_FIELD(allrelids);                   /*CDB*/
+    WRITE_BOOL_FIELD(try_join_unique);                  /*CDB*/
 	WRITE_NODE_FIELD(sub_targetlist);
-
-    WRITE_BOOL_FIELD(op_is_equality);                   /*CDB*/
 }
 
 /*****************************************************************************
@@ -2169,7 +2208,7 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(resultRelations);
 	
 	/*
-     * CDB: This field was added after the MPP 2.1p2 release.  
+     * CDB: This field was added after the MPP 2.1p2 release.
      * This got left out by mistake, but is needed by CTAS.
      * It doesn't need to get stored in the catalog if false.
      */
@@ -2251,6 +2290,8 @@ _outRangeTblEntry(StringInfo str, RangeTblEntry *node)
 			WRITE_ENUM_FIELD(jointype, JoinType);
 			WRITE_NODE_FIELD(joinaliasvars);
 			break;
+        case RTE_VOID:                                                  /*CDB*/
+            break;
 		default:
 			elog(ERROR, "unrecognized RTE kind: %d", (int) node->rtekind);
 			break;
@@ -2888,6 +2929,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_IndexOptInfo:
 				_outIndexOptInfo(str, obj);
+				break;
+			case T_CdbRelDedupInfo:
+				_outCdbRelDedupInfo(str, obj);
 				break;
 			case T_PathKeyItem:
 				_outPathKeyItem(str, obj);
