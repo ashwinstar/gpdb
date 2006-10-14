@@ -108,6 +108,20 @@ ExecInitAdaptiveNestLoop(AdaptiveNestLoop *node, EState *estate, int eflags)
 	anlstate->ps.plan = (Plan *)node;
 	anlstate->ps.state = estate;
 
+	/*
+	 * Miscellaneous initialization
+	 *
+	 * create expression context for node
+	 */
+	ExecAssignExprContext(estate, &anlstate->ps);
+
+	/*
+	 * initialize child expression
+	 */
+	anlstate->ps.targetlist = (List *)
+		ExecInitExpr((Expr *) node->plan.targetlist,
+					 (PlanState *)anlstate);
+
 	/* initialize adaptive state */
 	anlstate->nl_strategy = NL_STRATEGY_UNDECIDED;
 	anlstate->nl_strategy_threshold = node->nl_strategy_threshold;
@@ -143,10 +157,10 @@ ExecInitAdaptiveNestLoop(AdaptiveNestLoop *node, EState *estate, int eflags)
 	ExecInitResultTupleSlot(estate, &anlstate->ps);
 	ExecAssignResultTypeFromTL(&anlstate->ps);
 
-	/* no projection is done */
-	anlstate->ps.ps_ProjInfo = NULL;
+	/* we're capable of projecting, we don't use this right now, but we could */
+	ExecAssignProjectionInfo(&anlstate->ps);
 
-    return anlstate;
+	return anlstate;
 }
 
 int
@@ -169,6 +183,8 @@ ExecCountSlotsAdaptiveNestLoop(AdaptiveNestLoop *node)
 void
 ExecEndAdaptiveNestLoop(AdaptiveNestLoopState *node)
 {
+	ExecFreeExprContext(&node->ps);
+
     /* Unshare the outer subplan. */
 	node->ps.plan->righttree->lefttree = NULL;
     node->main->shared_outer = false;
