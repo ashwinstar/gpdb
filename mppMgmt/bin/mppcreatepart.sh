@@ -114,7 +114,7 @@ USAGE () {
 		$ECHO "      Use this partitioning policy for date, timestamp and timestamp with time zone columns"
 		$ECHO "      Unless -m <conversion command> has been supplied and performs a compatible conversion"
 		$ECHO "      -c, <Constraint type> m (monthly), w (weekly), d (daily) or h (hourly) [mandatory]"
-		$ECHO "          Only user hourly if partition column is of type timestamp, or a suitable -m"
+		$ECHO "          Only use hourly if partition column is of type timestamp, or a suitable -m"
 		$ECHO "          conversion command has been supplied"
 		$ECHO "      -s, <start date> date to commence from format YYYY-MM-DD [mandatory]"
 		$ECHO "      -n, <number> number of child tables to create from <start date> [mandatory]"
@@ -128,6 +128,7 @@ USAGE () {
 		$ECHO "      List partitioning options:"
 		$ECHO "      Use this partitioning policy for character columns"
 		$ECHO "      -o, <value list> comma separated list of values, example -c CA,MS,NY,WS [mandatory]"
+		$ECHO "         Ensure no spaces between list items and , seperator"
 #		$ECHO "         To add a null check/rule constraint add text NULL to the list"
 		$ECHO
 		$ECHO "      Return codes:"
