@@ -1042,6 +1042,11 @@ AlterFunction(AlterFunctionStmt *stmt)
 
 	heap_close(rel, NoLock);
 	heap_freetuple(tup);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 }
 
 /*

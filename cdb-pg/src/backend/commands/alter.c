@@ -211,6 +211,10 @@ ExecAlterObjectSchemaStmt(AlterObjectSchemaStmt *stmt)
 			elog(ERROR, "unrecognized AlterObjectSchemaStmt type: %d",
 				 (int) stmt->objectType);
 	}
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 }
 
 /*

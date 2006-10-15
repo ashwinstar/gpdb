@@ -782,6 +782,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CommentStmt:
+			/* NOTE: Not currently dispatched to QEs */
 			CommentObject((CommentStmt *) parsetree);
 			break;
 

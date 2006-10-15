@@ -3067,6 +3067,11 @@ AfterTriggerSetState(ConstraintsSetStmt *stmt)
 									 !IsSubTransaction());
 		}
 	}
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 }
 
 
