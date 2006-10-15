@@ -1021,12 +1021,16 @@ convert_IN_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink)
 
     /*
      * If uncorrelated, and no Var nodes on lhs, the subquery will be executed
-     * only once.  It will become an InitPlan.
+     * only once.  It should become an InitPlan, but make_subplan() doesn't
+     * handle that case, so just flatten it for now.
+     * CDB TODO: Let it become an InitPlan, so its QEs can be recycled.
      */
     correlated = contain_vars_of_level_or_above(sublink->subselect, 1);
+#if 0
     if (!correlated &&
         !contain_vars_of_level_or_above((Node *)sublink->lefthand, 0))
 		return (Node *)sublink;
+#endif
 
 #if 0
     /*
