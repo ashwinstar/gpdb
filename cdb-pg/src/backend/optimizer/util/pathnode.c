@@ -21,7 +21,6 @@
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "nodes/plannodes.h"
-#include "nodes/print.h"        /*$$$*/
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
@@ -481,9 +480,6 @@ cdb_set_cheapest_dedup(PlannerInfo *root, RelOptInfo *rel)
 	Path               *save_cheapest_total;
     Path               *subpath;
     UniquePath         *upath;
-
-    if (DEBUG1 >= log_min_messages)
-        elog_node_display(LOG, "cdb_set_cheapest_dedup", rel, true);
 
     /*
      * If rel has only 1 row, joining with it cannot produce duplicates.

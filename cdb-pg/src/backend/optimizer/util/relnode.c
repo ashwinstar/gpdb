@@ -15,8 +15,6 @@
  */
 #include "postgres.h"
 
-#include "nodes/print.h"        /*$$$*/
-#include "utils/guc.h"          /*$$$*/
 #include "optimizer/cost.h"
 #include "optimizer/joininfo.h"
 #include "optimizer/pathnode.h"
@@ -180,9 +178,6 @@ make_reloptinfo(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	}
 
 	root->base_rel_array[relid] = rel;
-
-    if (DEBUG1 >= log_min_messages)
-        elog_node_display(LOG, "make_reloptinfo", rel, true);
 
 	return rel;
 }
