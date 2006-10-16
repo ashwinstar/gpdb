@@ -66,7 +66,7 @@ static Datum ExecEvalAggref(AggrefExprState *aggref,
 static Datum ExecEvalVar(ExprState *exprstate, ExprContext *econtext,
 			bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalWholeRowVar(ExprState *exprstate, ExprContext *econtext,
-			bool *isNull, ExprDoneCond *isDone);
+					bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalConst(ExprState *exprstate, ExprContext *econtext,
 			  bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
@@ -448,6 +448,7 @@ ExecEvalVar(ExprState *exprstate, ExprContext *econtext,
 	if (isDone)
 		*isDone = ExprSingleResult;
 
+	Assert(econtext->ecxt_scantuple != NULL || econtext->ecxt_innertuple != NULL || econtext->ecxt_outertuple != NULL);
 	/*
 	 * Get the slot and attribute number we want
 	 *
@@ -478,7 +479,7 @@ ExecEvalVar(ExprState *exprstate, ExprContext *econtext,
 
 #ifdef USE_ASSERT_CHECKING
 
-	Assert(slot!=NULL);
+	Assert(slot != NULL);
 	/*
 	 * Some checks that are only applied for user attribute numbers (bogus
 	 * system attnums will be caught inside slot_getattr).
@@ -633,7 +634,6 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 	int			thisParamKind = expression->paramkind;
 	AttrNumber	thisParamId = expression->paramid;
 
-
 	if (isDone)
 		*isDone = ExprSingleResult;
 
@@ -670,7 +670,6 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 				Assert(prm->execPlan == NULL);
 			}
 		}
-
 		*isNull = prm->isnull;
 		return prm->value;
 	}
@@ -1239,7 +1238,7 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 	/* isDone is filled below */
 	rsinfo.setResult = NULL;
 	rsinfo.setDesc = NULL;
-
+	 
 	/*
 	 * Normally the passed expression tree will be a FuncExprState, since the
 	 * grammar only allows a function call at the top level of a table
@@ -2946,7 +2945,7 @@ ExecInitExpr(Expr *node, PlanState *parent)
 	{
 		case T_Var:
 			{
-				Var	   *var = (Var *) node;
+				Var		   *var = (Var *) node;
 
 				state = (ExprState *) makeNode(ExprState);
 				if (var->varattno != InvalidAttrNumber)
