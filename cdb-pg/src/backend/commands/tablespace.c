@@ -232,7 +232,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-		static CdbComponentDatabases *cdb_component_dbs = NULL;
+		CdbComponentDatabases *cdb_component_dbs = NULL;
 		int i;
 		
 		char * firsthost = NULL;
