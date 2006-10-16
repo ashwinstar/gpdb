@@ -185,7 +185,8 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *username, char *
 		 * "could not send" -- libpq protocol error
 		 */
 		if (strstr(errorMsg, "FATAL:") == NULL &&
-			strstr(errorMsg, "could not ") == NULL)
+			strstr(errorMsg, "could not ") == NULL &&
+			strcmp(errorMsg, "timeout expired\n") != 0)
 		{
 			/* non-fatal connection errors are ignored */
 			if (DEBUG3 >= log_min_messages)
