@@ -174,6 +174,9 @@ can_execute_this_locally(const char * src)
 	 
 	if (!mpp_enable_functions)
 		elog(ERROR, "Functions that execute SQL statements from the segDBs are not yet supported");
+		
+	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_primary)
+		elog(ERROR, "Functions that execute SQL statements from the mirrorDBs are not supported");
 
 	return false;
 }
