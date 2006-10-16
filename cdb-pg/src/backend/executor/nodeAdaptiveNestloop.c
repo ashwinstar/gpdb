@@ -169,9 +169,6 @@ ExecCountSlotsAdaptiveNestLoop(AdaptiveNestLoop *node)
 void
 ExecEndAdaptiveNestLoop(AdaptiveNestLoopState *node)
 {
-    /* Unshare the outer subplan. */
-	node->ps.plan->righttree->lefttree = NULL;
-
 	ExecEndNode((PlanState *)node->main);
     node->main->shared_outer = false;
 
