@@ -1708,7 +1708,15 @@ disconnectAndDestroyGang(Gang * gp)
 				 segdbDesc->whoami, status);
 
 			if (status == PQTRANS_ACTIVE)
-				PQrequestCancel(segdbDesc->conn);
+			{
+				char errbuf[256];
+				PGcancel * cn = PQgetCancel(segdbDesc->conn);
+				if (PQcancel(cn, errbuf, 256)==0)
+				{	
+					elog(LOG,"Unable to cancel: %s",errbuf);
+				}
+				PQfreeCancel(cn);
+			}
 
 			PQfinish(segdbDesc->conn);
 

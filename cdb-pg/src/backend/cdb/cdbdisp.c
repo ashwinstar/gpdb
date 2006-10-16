@@ -1400,8 +1400,12 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 				segdbDesc->conn &&
 				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 			{
+				
+				char errbuf[256];
+				PGcancel * cn = PQgetCancel(segdbDesc->conn);
+				
 				if (DEBUG4 >= log_min_messages)
-					write_stderr("Calling PQrequestCancel for %s\n",
+					write_stderr("Calling PQcancel for %s\n",
 							     segdbDesc->whoami);
 
 				/*
@@ -1411,7 +1415,12 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 				 * PQbackendPID(segdbDesc->conn); kill(pid, SIGINT);
 				 */
 				dispatchResult->requestedCancel = true;
-				PQrequestCancel(segdbDesc->conn);
+				
+				if (PQcancel(cn, errbuf, 256)==0)
+				{	
+					elog(LOG,"Unable to cancel: %s",errbuf);
+				}
+				PQfreeCancel(cn);
 			}
 		}
 	}
