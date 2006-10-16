@@ -444,6 +444,7 @@ initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName
 	appendPQExpBuffer(buffer, "port=%u ", q->port);
 	appendPQExpBuffer(buffer, "dbname=%s ", dbName);
 	appendPQExpBuffer(buffer, "user=%s ", user);
+	appendPQExpBuffer(buffer, "connect_timeout=%d ", mpp_segment_connect_timeout);
 }
 
 /* set seg db states */
