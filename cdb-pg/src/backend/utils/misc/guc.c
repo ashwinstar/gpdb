@@ -1769,6 +1769,15 @@ static struct config_int ConfigureNamesInt[] =
 		&interconnect_setup_timeout,
 		10, INT_MIN, INT_MAX, assign_interconnect_setup_timeout, show_interconnect_setup_timeout
 	},
+
+	{
+		{"mpp_segment_connect_timeout", PGC_USERSET, UNGROUPED,
+			gettext_noop("Timeout (in seconds) for connections between QD and segment databases"),
+			gettext_noop("Used when establishing new connections to segments (0 indicates 'wait forever')")	
+		},
+		&mpp_segment_connect_timeout,
+		60, INT_MIN, INT_MAX, NULL, NULL
+	},
 	
 	{
 		{"mpp_session_id", PGC_BACKEND, CLIENT_CONN,

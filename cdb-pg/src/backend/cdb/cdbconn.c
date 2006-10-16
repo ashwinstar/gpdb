@@ -27,6 +27,7 @@ extern int	pq_putmessage(char msgtype, const char *s, size_t len);
 #include "cdb/cdbutil.h"            /* CdbComponentDatabaseInfo */
 #include "cdb/cdbvars.h"
 
+int		mpp_segment_connect_timeout = 60;
 
 //extern ErrorData  * MppGetErrorData(void);
 static void MPPnoticeReceiver(void * arg, const PGresult * res)
@@ -324,6 +325,8 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
         appendPQExpBuffer(&buffer, "dbname=%s ", segdbDesc->dbname);
 
     appendPQExpBuffer(&buffer, "user=%s ", segdbDesc->username);
+
+    appendPQExpBuffer(&buffer, "connect_timeout=%d ", mpp_segment_connect_timeout);
 
     /*
      * Call libpq to connect

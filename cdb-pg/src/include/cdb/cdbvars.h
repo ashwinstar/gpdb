@@ -248,6 +248,8 @@ extern bool assign_mpp_set_read_only(bool newval, bool doit, GucSource source);
 extern const char *show_mpp_set_read_only(void);
 extern const char *role_to_string(MppRoleValue role);
 
+extern int	mpp_segment_connect_timeout; /* GUC var - timeout specifier for gang creation */
+
 /*
  * Parameter Mpp_max_packet_size
  *
