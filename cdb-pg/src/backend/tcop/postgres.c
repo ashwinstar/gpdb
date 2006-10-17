@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/tcop/postgres.c,v 1.468.2.4 2006/04/18 00:52:41 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/tcop/postgres.c,v 1.468.2.6 2006/08/13 22:18:22 tgl Exp $
  *
  * NOTES
  *	  this is the "main" module of the postgres backend and
@@ -1515,32 +1515,32 @@ exec_bind_message(StringInfo input_message)
 			if (!isNull)
 			{
 				const char *pvalue = pq_getmsgbytes(input_message, plength);
-					int16		pformat;
-					StringInfoData pbuf;
-					char		csave;
+				int16		pformat;
+				StringInfoData pbuf;
+				char		csave;
 
-					if (numPFormats > 1)
-						pformat = pformats[i];
-					else if (numPFormats > 0)
-						pformat = pformats[0];
-					else
-						pformat = 0;	/* default = text */
+				if (numPFormats > 1)
+					pformat = pformats[i];
+				else if (numPFormats > 0)
+					pformat = pformats[0];
+				else
+					pformat = 0;	/* default = text */
 
-					/*
-					 * Rather than copying data around, we just set up a phony
+				/*
+				 * Rather than copying data around, we just set up a phony
 				 * StringInfo pointing to the correct portion of the message
 				 * buffer.	We assume we can scribble on the message buffer so
 				 * as to maintain the convention that StringInfos have a
 				 * trailing null.  This is grotty but is a big win when
 				 * dealing with very large parameter strings.
-					 */
-					pbuf.data = (char *) pvalue;
-					pbuf.maxlen = plength + 1;
-					pbuf.len = plength;
-					pbuf.cursor = 0;
+				 */
+				pbuf.data = (char *) pvalue;
+				pbuf.maxlen = plength + 1;
+				pbuf.len = plength;
+				pbuf.cursor = 0;
 
-					csave = pbuf.data[plength];
-					pbuf.data[plength] = '\0';
+				csave = pbuf.data[plength];
+				pbuf.data[plength] = '\0';
 
 					if (pformat == 0)
 					{
@@ -1690,7 +1690,9 @@ exec_execute_message(const char *portal_name, long max_rows)
 	Portal		portal;
 	bool		completed;
 	char		completionTag[COMPLETION_TAG_BUFSIZE];
+	const char *sourceText = NULL;
 	bool		save_log_statement_stats = log_statement_stats;
+	bool		is_xact_command;
 	bool		execute_is_fetch = false;
 
 	/* Adjust destination to tell printtup.c what to do */
@@ -1705,15 +1707,6 @@ exec_execute_message(const char *portal_name, long max_rows)
 				 errmsg("portal \"%s\" does not exist", portal_name)));
 
 	/*
-	 * If we re-issue an Execute protocol request against an existing portal,
-	 * then we are only fetching more rows rather than completely re-executing
-	 * the query from the start. atStart is never reset for a v3 portal, so we
-	 * are safe to use this check.
-	 */
-	if (!portal->atStart)
-		execute_is_fetch = true;
-
-	/*
 	 * If the original query was a null string, just return
 	 * EmptyQueryResponse.
 	 */
@@ -1724,6 +1717,17 @@ exec_execute_message(const char *portal_name, long max_rows)
 		return;
 	}
 
+	/* Does the portal contain a transaction command? */
+	is_xact_command = IsTransactionStmtList(portal->parseTrees);
+
+	/*
+	 * If we re-issue an Execute protocol request against an existing portal,
+	 * then we are only fetching more rows rather than completely re-executing
+	 * the query from the start. atStart is never reset for a v3 portal, so we
+	 * are safe to use this check.
+	 */
+	execute_is_fetch = !portal->atStart;
+
 	/* Should we display the portal names here? */
 	if (execute_is_fetch)
 	{
@@ -1732,8 +1736,18 @@ exec_execute_message(const char *portal_name, long max_rows)
 	}
 	else if (portal->sourceText)
 	{
-		debug_query_string = portal->sourceText;
-		pgstat_report_activity(portal->sourceText);
+		/*
+		 * We must copy the sourceText into MessageContext in case the
+		 * portal is destroyed during finish_xact_command.  Can avoid
+		 * the copy if it's not an xact command, though.
+		 */
+		if (is_xact_command)
+			sourceText = pstrdup(portal->sourceText);
+		else
+			sourceText = portal->sourceText;
+
+		debug_query_string = sourceText;
+		pgstat_report_activity(sourceText);
 	}
 	else
 	{
@@ -1751,12 +1765,11 @@ exec_execute_message(const char *portal_name, long max_rows)
 		ResetUsage();
 
 	if (log_statement == LOGSTMT_ALL)
-		/* We have the portal, so output the source query. */
 		ereport(LOG,
 				(errmsg("statement: %sEXECUTE %s  [PREPARE:  %s]",
 						(execute_is_fetch) ? "FETCH from " : "",
 						(*portal_name != '\0') ? portal_name : "<unnamed>",
-						portal->sourceText ? portal->sourceText : "")));
+						sourceText ? sourceText : "")));
 
 	BeginCommand(portal->commandTag, dest);
 
@@ -1802,7 +1815,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 
 	if (completed)
 	{
-		if (IsTransactionStmtList(portal->parseTrees))
+		if (is_xact_command)
 		{
 			/*
 			 * If this was a transaction control statement, commit it.	We
@@ -2044,7 +2057,7 @@ finish_xact_command(void)
 
 		/* Now commit the command */
 		ereport(DEBUG3,
-				(errmsg_internal("finish_xact_command CommitTransactionCommand")));
+				(errmsg_internal("CommitTransactionCommand")));
 
 		CommitTransactionCommand();
 
@@ -3574,11 +3587,17 @@ PostgresMain(int argc, char *argv[], const char *username)
 				/* start an xact for this function invocation */
 				start_xact_command();
 
+				/*
+				 * Note: we may at this point be inside an aborted
+				 * transaction.  We can't throw error for that until
+				 * we've finished reading the function-call message, so
+				 * HandleFunctionRequest() must check for it after doing so.
+				 * Be careful not to do anything that assumes we're inside a
+				 * valid transaction here.
+				 */
+
 				/* switch back to message context */
 				MemoryContextSwitchTo(MessageContext);
-
-				/* set snapshot in case function needs one */
-				ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 
 				if (HandleFunctionRequest(&input_message) == EOF)
 				{

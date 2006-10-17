@@ -19,7 +19,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/pgarch.c,v 1.18 2005/10/15 02:49:23 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/pgarch.c,v 1.18.2.2 2006/05/30 17:08:20 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -357,6 +357,10 @@ pgarch_ArchiverCopyLoop(void)
 
 		for (;;)
 		{
+			/* Abandon processing if we notice our postmaster has died */
+			if (!PostmasterIsAlive(true))
+				return;
+
 			if (pgarch_archiveXlog(xlog))
 			{
 				/* successful */

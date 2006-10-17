@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/connect.c,v 1.26.2.1 2005/11/30 12:50:37 meskes Exp $ */
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/connect.c,v 1.26.2.4 2006/06/21 11:38:26 meskes Exp $ */
 
 #define POSTGRES_ECPG_INTERNAL
 #include "postgres_fe.h"
@@ -227,6 +227,9 @@ ECPGnoticeReceiver(void *arg, const PGresult *result)
 	if (sqlstate == NULL)
 		sqlstate = ECPG_SQLSTATE_ECPG_INTERNAL_ERROR;
 
+	if (message == NULL)  /* Shouldn't happen, but need to be sure */
+		message = "No message received";
+
 	/* these are not warnings */
 	if (strncmp(sqlstate, "00", 2) == 0)
 		return;
@@ -403,6 +406,7 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 							ECPGfree(realname);
 						if (dbname)
 							ECPGfree(dbname);
+						ecpg_finish(this);
 						return false;
 					}
 				}
@@ -456,10 +460,6 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 		const char *errmsg = PQerrorMessage(this->connection);
 		char	   *db = realname ? realname : "<DEFAULT>";
 
-		ecpg_finish(this);
-#ifdef ENABLE_THREAD_SAFETY
-		pthread_mutex_unlock(&connections_mutex);
-#endif
 		ECPGlog("connect: could not open database %s on %s port %s %s%s%s%s in line %d\n\t%s\n",
 				db,
 				host ? host : "<DEFAULT>",
@@ -467,6 +467,11 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 				options ? "with options " : "", options ? options : "",
 				user ? "for user " : "", user ? user : "",
 				lineno, errmsg);
+
+		ecpg_finish(this);
+#ifdef ENABLE_THREAD_SAFETY
+		pthread_mutex_unlock(&connections_mutex);
+#endif
 
 		ECPGraise(lineno, ECPG_CONNECT, ECPG_SQLSTATE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION, db);
 		if (host)
