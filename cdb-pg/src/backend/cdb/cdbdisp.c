@@ -1370,7 +1370,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 	/*
 	 * Are there any QEs that should be canceled?
 	 *
-	 * CDB TODO: PQrequestCancel() is expensive, and we do them
+	 * CDB TODO: PQcancel() is expensive, and we do them
 	 *			 serially.	Just do a few each time; save some
 	 *			 for the next timeout.
 	 */
@@ -1418,7 +1418,8 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 				
 				if (PQcancel(cn, errbuf, 256)==0)
 				{	
-					elog(LOG,"Unable to cancel: %s",errbuf);
+					if (LOG >= log_min_messages)
+						write_stderr("Unable to cancel: %s\n", errbuf);
 				}
 				PQfreeCancel(cn);
 			}
