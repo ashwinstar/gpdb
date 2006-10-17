@@ -391,7 +391,9 @@ createGang(GangType type, int size, int content, char *portal_name)
 		disconnectAndDestroyGang(newGangDefinition);
 
 		if (errorOut)
-			elog(ERROR, "MPP detects segment failures, system is reconnected");
+		{
+			elog(ERROR, "MPP detected segment failure(s), system is reconnected in %s mode", isFtsReadOnlySet() ? "read-only" : "read-write");
+		}
 
 		newGangDefinition = NULL;
 	}
