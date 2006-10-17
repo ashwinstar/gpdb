@@ -1620,14 +1620,30 @@ cleanupGang(Gang * gp)
 		SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
 
 		/*
-		 * TODO: Perform cancellation of "still running" queries
+		 * Note, we cancel all "still running" queries
 		 */
 		/* PQstatus() is smart enough to handle NULL */
 		if (PQstatus(segdbDesc->conn) == CONNECTION_OK)
 		{
-
 			PGresult   *pRes;
 			int			retry = 0;
+
+			PGTransactionStatusType status =
+				PQtransactionStatus(segdbDesc->conn);
+
+			if (status == PQTRANS_ACTIVE)
+			{
+				char errbuf[256];
+				PGcancel * cn = PQgetCancel(segdbDesc->conn);
+
+				elog(DEBUG2, "cleanupGang: segment %d is active, cancelling", segdbDesc->segindex);
+
+				if (PQcancel(cn, errbuf, 256)==0)
+				{	
+					elog(LOG,"Unable to cancel: %s", errbuf);
+				}
+				PQfreeCancel(cn);
+			}
 
 			while (NULL != (pRes = PQgetResult(segdbDesc->conn)))
 			{
