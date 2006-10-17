@@ -1683,6 +1683,12 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 						Oid typeOid = inhattr->atttypid;
 						bool isArray = inhattr->attndims > 0;
 						
+						/*
+						 * if this type is a domain type, get its base type.
+						 */
+						if (get_typtype(typeOid) == 'd')
+							typeOid = getBaseType(typeOid);
+						
 						if (inhattr->attisdropped)
 							continue;
 						colindex++;
@@ -1725,6 +1731,12 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 					typeOid = typenameTypeId(column->typname);
 					isArray = (column->typname->arrayBounds == NIL ? false : true);
 	
+					/*
+					 * if this type is a domain type, get its base type.
+					 */
+					if (get_typtype(typeOid) == 'd')
+						typeOid = getBaseType(typeOid);
+					
 					/*
 					 * if we can hash on this type, or if it's an array type (which
 					 * we can always hash) this column with be our default key.
@@ -1829,6 +1841,12 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 					{
 						Oid typeOid = typenameTypeId(column->typname);
 						bool isArray = (column->typname->arrayBounds == NIL ? false : true);
+						
+						/*
+						 * if this type is a domain type, get its base type.
+						 */
+						if (get_typtype(typeOid) == 'd')
+							typeOid = getBaseType(typeOid);
 						
 						/*
 						 * To be a part of a distribution key, this type must be supported
@@ -2600,6 +2618,12 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 					Oid typeOid = typenameTypeId(target->typname);
 					bool isArray = (target->typname->arrayBounds == NIL ? false : true);
 					
+					/*
+					 * if this type is a domain type, get its base type.
+					 */
+					if (get_typtype(typeOid) == 'd')
+						typeOid = getBaseType(typeOid);
+										
 					/*
 					 * To be a part of a distribution key, this type must be supported
 					 * for hashing internally in mpp. We check if the base type is
