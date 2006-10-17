@@ -28,6 +28,7 @@
 #include "utils/acl.h"
 #include "fmgr.h"
 #include "optimizer/geqo_random.h"
+#include "utils/lsyscache.h"
 #include "cdb/cdbhash.h"
 
 
@@ -209,6 +210,12 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	uint32		nanbuf;
 	uint32		invalidbuf;
 
+	/*
+	 * if this type is a domain type, get its base type.
+	 */
+	if (get_typtype(type) == 'd')
+		type = getBaseType(type);
+	
 	/*
 	 * Select the hash to be performed according to the field type we are adding to the
 	 * hash.
@@ -649,6 +656,12 @@ cdbhashreduce(CdbHash *h)
 
 bool isMppHashable(Oid typid)
 {
+	/*
+	 * if this type is a domain type, get its base type.
+	 */
+	if (get_typtype(typid) == 'd')
+		typid = getBaseType(typid);
+	
 	switch(typid)
 	{
 		case INT2OID:		

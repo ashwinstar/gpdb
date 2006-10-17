@@ -2903,13 +2903,11 @@ CopyFromDispatch(CopyState cstate)
 					h_key = values[h_attnum - 1];		/* value of this attr			   */
 					
 					/*
-					 * get the data type of this attribute. If it's
-					 * a domain type get the base type, if it's an
+					 * get the data type of this attribute. If it's an
 					 * array type use anyarray, or else just use as is.
+					 * (base types for domains are handled in cdbhash.c).
 					 */
-					if (get_typtype(attr[h_attnum - 1]->atttypid) == 'd')
-						h_oid = getBaseType(attr[h_attnum - 1]->atttypid);
-					else if(attr[h_attnum - 1]->attndims > 0)
+					if(attr[h_attnum - 1]->attndims > 0)
 						h_oid = ANYARRAYOID;
 					else
 						h_oid = attr[h_attnum - 1]->atttypid;
