@@ -600,7 +600,9 @@ GENERATE_SQL () {
 				for INDEX_ITEM in ${CHILD_INDEX_COL_ARRAY[@]}
 				do
 				ADDITIONAL_INDEX=`$ECHO $INDEX_ITEM|$SED -e 's/)//g'|$SED -e 's/(//g'`
-				$ECHO "CREATE INDEX idx_${ADDITIONAL_INDEX}_${CHILD_NAME} on ${CHILD_NAME} ($ADDITIONAL_INDEX);" >> $IDX_TMP_FILE
+				COL_ATT_NUM=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select attnum from pg_attribute where attname='$ADDITIONAL_INDEX' and attrelid in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'));"` >> $LOG_FILE 2>&1
+                                ERROR_CHK $? "obtain column attribute number" 2
+				$ECHO "CREATE INDEX idx_${COL_ATT_NUM}_${CHILD_NAME} on ${CHILD_NAME} ($ADDITIONAL_INDEX);" >> $IDX_TMP_FILE
 				done
                         fi
                         if [ $RULE_GEN -eq 1 ];then

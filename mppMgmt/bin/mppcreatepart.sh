@@ -128,8 +128,8 @@ USAGE () {
 		$ECHO "      List partitioning options:"
 		$ECHO "      Use this partitioning policy for character columns"
 		$ECHO "      -o, <value list> comma separated list of values, example -c CA,MS,NY,WS [mandatory]"
-		$ECHO "         Ensure no spaces between list items and , seperator"
-#		$ECHO "         To add a null check/rule constraint add text NULL to the list"
+		$ECHO "          Ensure that no spaces are included in between list items and comma separator"
+		#$ECHO "          To add a null check/rule constraint add text NULL to the list"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -767,12 +767,17 @@ GENERATE_SQL () {
 			$ECHO "INHERITS (${PARENT_TABLE_NAME});" >> $TMP_FILE
 			$ECHO >> $TMP_FILE
 			if [ $CREATE_PART_INDEX -eq 1 ];then
-				$ECHO "CREATE INDEX idx_${PART_COLUMN}_${CHILD_NAME} on ${CHILD_NAME} ($PART_COLUMN);" >> $IDX_TMP_FILE
+				COL_ATT_NUM=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select attnum from pg_attribute where attname='$PART_COLUMN' and attrelid in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'));"` >> $LOG_FILE 2>&1
+				ERROR_CHK $? "obtain column attribute number" 2
+				$ECHO "CREATE INDEX idx_${COL_ATT_NUM}_${CHILD_NAME} on ${CHILD_NAME} ($PART_COLUMN);" >> $IDX_TMP_FILE
 			fi
 			if [ x"" != x"$INDEX_COLUMN" ];then
 				for ADDITIONAL_INDEX in `$ECHO ${INDEX_COLUMN[@]}|$TR ',' ' '`
 				do
-				$ECHO "CREATE INDEX idx_${ADDITIONAL_INDEX}_${CHILD_NAME} on ${CHILD_NAME} ($ADDITIONAL_INDEX);" >> $IDX_TMP_FILE
+				COL_ATT_NUM=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select attnum from pg_attribute where attname='$ADDITIONAL_INDEX' and attrelid in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'));"` >> $LOG_FILE 2>&1
+                                ERROR_CHK $? "obtain column attribute number" 2
+
+				$ECHO "CREATE INDEX idx_${COL_ATT_NUM}_${CHILD_NAME} on ${CHILD_NAME} ($ADDITIONAL_INDEX);" >> $IDX_TMP_FILE
 				done
 			fi
 			if [ $RULE_GEN -eq 1 ];then
