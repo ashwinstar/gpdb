@@ -147,7 +147,7 @@ CREATE VIEW pg_locks AS
     FROM pg_lock_status() AS L
     (locktype text, database oid, relation oid, page int4, tuple int2,
      transactionid xid, classid oid, objid oid, objsubid int2,
-     transaction xid, pid int4, mode text, granted boolean);
+     transaction xid, pid int4, mode text, granted boolean, mppSessionId int4, mppIsWriter boolean);
 
 CREATE VIEW pg_prepared_xacts AS
     SELECT P.transaction, P.gid, P.prepared,

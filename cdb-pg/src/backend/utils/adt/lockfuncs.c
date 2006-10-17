@@ -64,7 +64,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 
 		/* build tupdesc for result tuples */
 		/* this had better match pg_locks view in system_views.sql */
-		tupdesc = CreateTemplateTupleDesc(13, false);
+		tupdesc = CreateTemplateTupleDesc(15, false);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "locktype",
 						   TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "database",
@@ -90,6 +90,10 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 12, "mode",
 						   TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 13, "granted",
+						   BOOLOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 14, "mppSessionId",
+						   INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 15, "mppIsWriter",
 						   BOOLOID, -1, 0);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
@@ -120,8 +124,8 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		LOCKMODE	mode = 0;
 		const char *locktypename;
 		char		tnbuf[32];
-		Datum		values[13];
-		char		nulls[13];
+		Datum		values[15];
+		char		nulls[15];
 		HeapTuple	tuple;
 		Datum		result;
 
@@ -269,6 +273,10 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		values[11] = DirectFunctionCall1(textin,
 									 CStringGetDatum(GetLockmodeName(mode)));
 		values[12] = BoolGetDatum(granted);
+		
+		values[13] = Int32GetDatum(proc->mppSessionId);
+		
+		values[14] = Int32GetDatum(proc->mppIsWriter);
 
 		tuple = heap_formtuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);
