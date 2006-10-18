@@ -1890,6 +1890,16 @@ _readLockStmt(void)
 	READ_DONE();
 }
 
+static ConstraintsSetStmt *
+_readConstraintsSetStmt(void)
+{
+	READ_LOCALS(ConstraintsSetStmt);
+	READ_NODE_FIELD(constraints);
+	READ_BOOL_FIELD(deferred);
+	
+	READ_DONE();
+}
+
 
 /*
  * _readPlan
@@ -2639,6 +2649,7 @@ static ParseNodeInfo infoAr[] =
 	{"COMPTYPESTMT", (ReadFn)_readCompositeTypeStmt},
 	{"CONST", (ReadFn)_readConst},
 	{"CONSTRAINT", (ReadFn)_readConstraint},
+	{"CONSTRAINTSSETSTMT", (ReadFn)_readConstraintsSetStmt},
 	{"CONVERTROWTYPEEXPR", (ReadFn)_readConvertRowtypeExpr},
 	{"CREATECAST", (ReadFn)_readCreateCastStmt},
 	{"CREATECONVERSION", (ReadFn)_readCreateConversionStmt},

@@ -1992,6 +1992,13 @@ _outLockStmt(StringInfo str, LockStmt *node)
 	WRITE_BOOL_FIELD(nowait);
 }
 
+static void
+_outConstraintsSetStmt(StringInfo str, ConstraintsSetStmt *node)
+{
+	WRITE_NODE_TYPE("CONSTRAINTSSETSTMT");
+	WRITE_NODE_FIELD(constraints);
+	WRITE_BOOL_FIELD(deferred);
+}
 
 static void
 _outSelectStmt(StringInfo str, SelectStmt *node)
@@ -2168,6 +2175,7 @@ _outQuery(StringInfo str, Query *node)
 			case T_LockStmt:
 			case T_CopyStmt:
 			case T_ReindexStmt:
+			case T_ConstraintsSetStmt:
 			case T_VariableResetStmt:
 			case T_CreateTrigStmt:
 			case T_DefineStmt:
@@ -2970,6 +2978,10 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_ReindexStmt:
 				_outReindexStmt(str, obj);
+				break;
+				
+			case T_ConstraintsSetStmt:
+				_outConstraintsSetStmt(str, obj);
 				break;
 				
 			case T_CreateFunctionStmt:
