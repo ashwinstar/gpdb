@@ -35,7 +35,7 @@ fi
 # Calculate the MPP version string from the CVS tag.
 # If there is no version set, get the name from CVS/Tag,
 # otherwise default to the head of cvs.
-RAW_VERSION=
+RAW_VERSION=$Name$
 if [ -z "$RAW_VERSION" ] ; then
     if [ -r CVS/Tag ] ; then
         #Source is from a tag
