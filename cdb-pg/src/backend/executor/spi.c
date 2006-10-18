@@ -165,6 +165,9 @@ can_execute_this_locally(const char * src)
 
 	}
 	
+	elog(DEBUG1,"SPI running SQL, local=%d:  %s",can_run_local, src);
+	
+	
 	if (can_run_local) 
 		return true;
 
@@ -2821,6 +2824,8 @@ _SPI_pquery(QueryDesc *queryDesc, long tcount)
 	AfterTriggerEndQuery(queryDesc->estate);
 	
 	ExecutorEnd(queryDesc);
+	
+	_SPI_current->processed = queryDesc->es_processed; /* Mpp: Dispatched queries fill in this at Executor End */
 
 #ifdef SPI_EXECUTOR_STATS
 	if (ShowExecutorStats)
