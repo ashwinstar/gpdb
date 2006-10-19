@@ -196,6 +196,7 @@ static void ATController(Relation rel, List *cmds, bool recurse, TableOidInfo * 
 static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		  bool recurse, bool recursing);
 static void ATRewriteCatalogs(List **wqueue, TableOidInfo * oidInfo);
+static void ATAddToastIfNeeded(List **wqueue, TableOidInfo * oidInfo);
 static void ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, TableOidInfo * oidInfo);
 static void ATRewriteTables(List **wqueue, TableOidInfo * oidInfo);
 static void ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap);
@@ -2021,6 +2022,8 @@ ATController(Relation rel, List *cmds, bool recurse, TableOidInfo * oidInfo)
 
 	/* Phase 3: scan/rewrite tables as needed */
 	ATRewriteTables(&wqueue, oidInfo);
+	
+	ATAddToastIfNeeded(&wqueue, oidInfo);
 }
 
 /*
@@ -2215,7 +2218,6 @@ ATRewriteCatalogs(List **wqueue, TableOidInfo * oidInfo)
 {
 	int			pass;
 	ListCell   *ltab;
-	int			m = 0;
 
 	/*
 	 * We process all the tables "in parallel", one pass at a time.  This is
@@ -2256,6 +2258,18 @@ ATRewriteCatalogs(List **wqueue, TableOidInfo * oidInfo)
 			relation_close(rel, NoLock);
 		}
 	}
+
+}
+
+
+static void
+ATAddToastIfNeeded(List **wqueue, TableOidInfo * oidInfo)
+{
+
+	ListCell   *ltab;
+	int			m = 0;
+
+	
 
 	/*
 	 * Do an implicit CREATE TOAST TABLE if we executed any subcommands that
@@ -2313,7 +2327,7 @@ ATRewriteCatalogs(List **wqueue, TableOidInfo * oidInfo)
 				tiOid = oidInfo[m].toastIndexOid;
 				toastComptypeOid = &oidInfo[m].toastComptypeOid;
 			}
-			
+			elog(LOG,"Create Toast %d with Oid %u",m,tOid);
 			AlterTableCreateToastTableWithOid(tab->relid, true, tOid, tiOid, toastComptypeOid);
 			m++;
 			Assert(m<10);
