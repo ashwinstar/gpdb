@@ -30,6 +30,16 @@ typedef enum QuerySource
 	QSRC_PLANNER				/* added in planner by splicing parse tree */
 } QuerySource;
 
+
+typedef struct TableOidInfo
+{
+	Oid         relOid;			/* If the heap is (re-)created, create  with this relOid */
+	Oid         comptypeOid;	
+	Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
+	Oid		    toastIndexOid;		/* if toast table needed, use this for the relOid of the index */
+	Oid			toastComptypeOid;
+} TableOidInfo;
+
 /*
  * Grantable rights are encoded so that we can OR them together in a bitmask.
  * The present representation of AclItem limits us to 16 distinct rights,
@@ -125,11 +135,8 @@ typedef struct Query
 	 */
 	List	   *resultRelations;	/* integer list of RT indexes, or NIL */
 	
-	Oid			intoOid;			/* Oid of table for SELECT INTO */
-	Oid			intoComptypeOid;
-	Oid		    intoToastOid;		/* if toast table needed, use this for the relOid of the toast */
-	Oid		    intoToastIndexOid;		/* if toast table needed, use this for the relOid of the index */
-	Oid			intoToastComptypeOid;
+	TableOidInfo	intoOidInfo;
+	 
 	MppPolicy  *intoPolicy;			/* Used only on the QD... Doesn't need to be serialized */
 } Query;
 
@@ -808,6 +815,9 @@ typedef enum DropBehavior
 	DROP_CASCADE				/* remove dependent objects too */
 } DropBehavior;
 
+
+
+
 /* ----------------------
  *	Alter Table
  * ----------------------
@@ -818,11 +828,7 @@ typedef struct AlterTableStmt
 	RangeVar   *relation;		/* table to work on */
 	List	   *cmds;			/* list of subcommands */
 	ObjectType	relkind;		/* type of object */
-	Oid         relOid;			/* If the heap is re-created, create  with this relOid */
-	Oid         comptypeOid;	
-	Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
-	Oid		    toastIndexOid;		/* if toast table needed, use this for the relOid of the index */
-	Oid			toastComptypeOid;
+	TableOidInfo oidInfo[10];	/* Allow for up to 10 deep nesting of heirarchy of tables to alter */
 } AlterTableStmt;
 
 typedef enum AlterTableType
@@ -1014,11 +1020,7 @@ typedef struct CreateStmt
 	OnCommitAction oncommit;	/* what do we do at COMMIT? */
 	char	   *tablespacename; /* table space to use, or NULL */
 	List       *distributedBy;   /* what columns we distribute the data by */
-	Oid         relOid;			/* create table with this relOid */
-	Oid         comptypeOid;			/* create table with this composite type Oid */
-	Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
-	Oid		    toastIndexOid;		/* if toast table needed, use this for the relOid of the index */
-	Oid			toastComptypeOid;
+	TableOidInfo oidInfo;
 	char	    relKind;         /* CDB: force relkind to this */
 	MppPolicy  *policy;
 } CreateStmt;
@@ -1752,11 +1754,7 @@ typedef struct ClusterStmt
 	NodeTag		type;
 	RangeVar   *relation;		/* relation being indexed, or NULL if all */
 	char	   *indexname;		/* original index defined */
-	Oid         relOid;			/* create table with this relOid */
-	Oid         comptypeOid;			/* create table with this composite type Oid */
-	Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
-	Oid		    toastIndexOid;		/* if toast table needed, use this for the relOid of the index */
-	Oid			toastComptypeOid;
+	TableOidInfo oidInfo;
 } ClusterStmt;
 
 /* ----------------------

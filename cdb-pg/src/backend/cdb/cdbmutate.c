@@ -285,7 +285,7 @@ apply_motion(Plan *plan, Query *query)
 				query->intoPolicy = targetPolicy;
 				
 				/* This probably should be done somewhere better */
-				if (!OidIsValid(query->intoOid))
+				if (!OidIsValid(query->intoOidInfo.relOid))
 				{
 					Relation	pg_class_desc;
 					Relation	pg_type_desc;
@@ -295,13 +295,13 @@ apply_motion(Plan *plan, Query *query)
 					pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 					pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
 										
-					query->intoOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+					query->intoOidInfo.relOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
 					
-					query->intoComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+					query->intoOidInfo.comptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
 					
-					query->intoToastOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+					query->intoOidInfo.toastOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
 					
-					query->intoToastComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+					query->intoOidInfo.toastComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
 					
 					heap_close(pg_class_desc, RowExclusiveLock);
 					heap_close(pg_type_desc, RowExclusiveLock);

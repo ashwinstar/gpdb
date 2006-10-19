@@ -1230,8 +1230,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		 * find namespace to create in, check permissions
 		 */
 		intoName = parseTree->into->relname;
-		intoOid = parseTree->intoOid;
-		intoComptypeOid = parseTree->intoComptypeOid;
+		intoOid = parseTree->intoOidInfo.relOid;
+		intoComptypeOid = parseTree->intoOidInfo.comptypeOid;
 		
 		namespaceId = RangeVarGetCreationNamespace(parseTree->into);
 
@@ -1293,7 +1293,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		 * AlterTableCreateToastTable ends with CommandCounterIncrement(), so
 		 * that the TOAST table will be visible for insertion.
 		 */
-		AlterTableCreateToastTableWithOid(intoRelationId, true, parseTree->intoToastOid, parseTree->intoToastIndexOid, &parseTree->intoToastComptypeOid);
+		AlterTableCreateToastTableWithOid(intoRelationId, true, parseTree->intoOidInfo.toastOid, parseTree->intoOidInfo.toastIndexOid, &parseTree->intoOidInfo.toastComptypeOid);
 
 		/*
 		 * And open the constructed table for writing.

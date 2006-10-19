@@ -138,10 +138,10 @@ DefineSequence(CreateSeqStmt *seq)
 	/*
 	 * Create relation (and fill *null & *value)
 	 */
-	stmt->relOid = 0;
-	stmt->comptypeOid = 0;
-	stmt->toastOid = 0;
-	stmt->toastIndexOid = 0;
+	stmt->oidInfo.relOid = 0;
+	stmt->oidInfo.comptypeOid = 0;
+	stmt->oidInfo.toastOid = 0;
+	stmt->oidInfo.toastIndexOid = 0;
 	
 	if (shouldDispatch)
 	{
@@ -151,7 +151,7 @@ DefineSequence(CreateSeqStmt *seq)
 	else if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
 
-			stmt->relOid = seq->relOid;
+			stmt->oidInfo.relOid = seq->relOid;
 	
 	}
 	stmt->tableElts = NIL;
@@ -236,15 +236,15 @@ DefineSequence(CreateSeqStmt *seq)
 	stmt->oncommit = ONCOMMIT_NOOP;
 	stmt->tablespacename = NULL;
 	stmt->relKind = RELKIND_SEQUENCE;
-	stmt->comptypeOid = seq->comptypeOid;
+	stmt->oidInfo.comptypeOid = seq->comptypeOid;
 
 	seqoid = DefineRelation(stmt, RELKIND_SEQUENCE);
 
-	stmt->relOid = seq->relOid = seqoid;
+	stmt->oidInfo.relOid = seq->relOid = seqoid;
 
 	if (shouldDispatch)
 	{
-		seq->comptypeOid = stmt->comptypeOid;
+		seq->comptypeOid = stmt->oidInfo.comptypeOid;
 		CdbDispatchUtilityStatement((Node *)seq);
 	}
 

@@ -534,7 +534,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
 	snprintf(NewHeapName, sizeof(NewHeapName), "pg_temp_%u", tableOid);
 
 	OIDNewHeap = make_new_heap(tableOid, NewHeapName, tableSpace,
-					&stmt->relOid, &stmt->comptypeOid, &stmt->toastOid, &stmt->toastIndexOid, &stmt->toastComptypeOid);
+					&stmt->oidInfo.relOid, &stmt->oidInfo.comptypeOid, &stmt->oidInfo.toastOid, &stmt->oidInfo.toastIndexOid, &stmt->oidInfo.toastComptypeOid);
 
 	/*
 	 * We don't need CommandCounterIncrement() because make_new_heap did it.

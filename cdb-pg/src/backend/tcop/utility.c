@@ -667,10 +667,10 @@ ProcessUtility(Node *parsetree,
 				 */
 				CommandCounterIncrement();
 				
-				elog(DEBUG1,"CreateStmt: rel Oid %d toast Oid %d",relOid, ((CreateStmt *) parsetree)->toastOid);
+				elog(DEBUG1,"CreateStmt: rel Oid %d toast Oid %d",relOid, ((CreateStmt *) parsetree)->oidInfo.toastOid);
 		
 				if (relKind != RELKIND_COMPOSITE_TYPE)
-					AlterTableCreateToastTableWithOid(relOid, true, ((CreateStmt *) parsetree)->toastOid, ((CreateStmt *) parsetree)->toastIndexOid, &(((CreateStmt *) parsetree)->toastComptypeOid));
+					AlterTableCreateToastTableWithOid(relOid, true, ((CreateStmt *) parsetree)->oidInfo.toastOid, ((CreateStmt *) parsetree)->oidInfo.toastIndexOid, &(((CreateStmt *) parsetree)->oidInfo.toastComptypeOid));
 			}
 			break;
 

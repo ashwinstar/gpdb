@@ -1739,11 +1739,11 @@ _copyQuery(Query *from)
 	COPY_NODE_FIELD(limitCount);
 	COPY_NODE_FIELD(setOperations);
 	COPY_NODE_FIELD(resultRelations);
-	COPY_SCALAR_FIELD(intoOid);
-	COPY_SCALAR_FIELD(intoComptypeOid);
-	COPY_SCALAR_FIELD(intoToastOid);
-	COPY_SCALAR_FIELD(intoToastIndexOid);
-	COPY_SCALAR_FIELD(intoToastComptypeOid);
+	COPY_SCALAR_FIELD(intoOidInfo.relOid);
+	COPY_SCALAR_FIELD(intoOidInfo.comptypeOid);
+	COPY_SCALAR_FIELD(intoOidInfo.toastOid);
+	COPY_SCALAR_FIELD(intoOidInfo.toastIndexOid);
+	COPY_SCALAR_FIELD(intoOidInfo.toastComptypeOid);
 	if (from->intoPolicy)
 	{
 		COPY_POINTER_FIELD(intoPolicy,sizeof(MppPolicy) + from->intoPolicy->nattrs*sizeof(from->intoPolicy->attrs[0]));
@@ -1985,11 +1985,11 @@ _copyCreateStmt(CreateStmt *from)
 	COPY_SCALAR_FIELD(oncommit);
 	COPY_STRING_FIELD(tablespacename);
 	COPY_NODE_FIELD(distributedBy);
-	COPY_SCALAR_FIELD(relOid);
-	COPY_SCALAR_FIELD(comptypeOid);
-	COPY_SCALAR_FIELD(toastOid);
-	COPY_SCALAR_FIELD(toastIndexOid);
-	COPY_SCALAR_FIELD(toastComptypeOid);
+	COPY_SCALAR_FIELD(oidInfo.relOid);
+	COPY_SCALAR_FIELD(oidInfo.comptypeOid);
+	COPY_SCALAR_FIELD(oidInfo.toastOid);
+	COPY_SCALAR_FIELD(oidInfo.toastIndexOid);
+	COPY_SCALAR_FIELD(oidInfo.toastComptypeOid);
 	COPY_SCALAR_FIELD(relKind);
 	COPY_POINTER_FIELD(policy,sizeof(MppPolicy) + from->policy->nattrs*sizeof(from->policy->attrs[0]));
 

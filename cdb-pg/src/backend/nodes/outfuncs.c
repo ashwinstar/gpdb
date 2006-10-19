@@ -1521,11 +1521,11 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_ENUM_FIELD(oncommit, OnCommitAction);
 	WRITE_STRING_FIELD(tablespacename);
 	WRITE_NODE_FIELD(distributedBy);
-	WRITE_OID_FIELD(relOid);
-	WRITE_OID_FIELD(comptypeOid);
-	WRITE_OID_FIELD(toastOid);
-	WRITE_OID_FIELD(toastIndexOid);
-	WRITE_OID_FIELD(toastComptypeOid);
+	WRITE_OID_FIELD(oidInfo.relOid);
+	WRITE_OID_FIELD(oidInfo.comptypeOid);
+	WRITE_OID_FIELD(oidInfo.toastOid);
+	WRITE_OID_FIELD(oidInfo.toastIndexOid);
+	WRITE_OID_FIELD(oidInfo.toastComptypeOid);
 	WRITE_CHAR_FIELD(relKind);
 }
 
@@ -1624,16 +1624,20 @@ _outTruncateStmt(StringInfo str, TruncateStmt *node)
 static void
 _outAlterTableStmt(StringInfo str, AlterTableStmt *node)
 {
+	int m;
 	WRITE_NODE_TYPE("ALTERTABLESTMT");
 
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(cmds);
 	WRITE_ENUM_FIELD(relkind, ObjectType);
-	WRITE_OID_FIELD(relOid);
-	WRITE_OID_FIELD(comptypeOid);
-	WRITE_OID_FIELD(toastOid);
-	WRITE_OID_FIELD(toastIndexOid);
-	WRITE_OID_FIELD(toastComptypeOid);
+	for (m = 0; m < 9; m++)
+	{
+		WRITE_OID_FIELD(oidInfo[m].relOid);
+		WRITE_OID_FIELD(oidInfo[m].comptypeOid);
+		WRITE_OID_FIELD(oidInfo[m].toastOid);
+		WRITE_OID_FIELD(oidInfo[m].toastIndexOid);
+		WRITE_OID_FIELD(oidInfo[m].toastComptypeOid);
+	}
 }
 
 static void
@@ -1733,11 +1737,11 @@ _outClusterStmt(StringInfo str, ClusterStmt *node)
 
 	WRITE_NODE_FIELD(relation);
 	WRITE_STRING_FIELD(indexname);
-	WRITE_OID_FIELD(relOid);
-	WRITE_OID_FIELD(comptypeOid);
-	WRITE_OID_FIELD(toastOid);
-	WRITE_OID_FIELD(toastIndexOid);
-	WRITE_OID_FIELD(toastComptypeOid);
+	WRITE_OID_FIELD(oidInfo.relOid);
+	WRITE_OID_FIELD(oidInfo.comptypeOid);
+	WRITE_OID_FIELD(oidInfo.toastOid);
+	WRITE_OID_FIELD(oidInfo.toastIndexOid);
+	WRITE_OID_FIELD(oidInfo.toastComptypeOid);
 }
 
 static void
@@ -2228,16 +2232,18 @@ _outQuery(StringInfo str, Query *node)
      * because we don't want it written into the catalog.  Allows downward
      * compatibility in case the database is opened using an older release.
      */
-    if (node->intoOid != 0)
-		WRITE_OID_FIELD(intoOid);
-	if (node->intoComptypeOid != 0)
-		WRITE_OID_FIELD(intoComptypeOid);
-	if (node->intoToastOid != 0)
-		WRITE_OID_FIELD(intoToastOid);
-	if (node->intoToastIndexOid != 0)
-		WRITE_OID_FIELD(intoToastIndexOid);
-	if (node->intoToastComptypeOid != 0)
-		WRITE_OID_FIELD(intoToastComptypeOid);
+    if (node->intoOidInfo.relOid != 0)
+    {
+		appendStringInfo(str, " :intoOid %d", (int)node->intoOidInfo.relOid);
+	 
+		WRITE_OID_FIELD(intoOidInfo.comptypeOid);
+	
+		WRITE_OID_FIELD(intoOidInfo.toastOid);
+	
+		WRITE_OID_FIELD(intoOidInfo.toastIndexOid);
+	
+		WRITE_OID_FIELD(intoOidInfo.toastComptypeOid);
+    }
 	
 }
 

@@ -685,8 +685,8 @@ _equalQuery(Query *a, Query *b)
 	COMPARE_NODE_FIELD(limitCount);
 	COMPARE_NODE_FIELD(setOperations);
 	COMPARE_NODE_FIELD(resultRelations);
-	COMPARE_SCALAR_FIELD(intoOid);
-	COMPARE_SCALAR_FIELD(intoComptypeOid);
+	COMPARE_SCALAR_FIELD(intoOidInfo.relOid);
+	COMPARE_SCALAR_FIELD(intoOidInfo.comptypeOid);
 	COMPARE_SCALAR_FIELD(intoPolicy);
 
 	return true;
@@ -889,10 +889,10 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 	COMPARE_SCALAR_FIELD(oncommit);
 	COMPARE_STRING_FIELD(tablespacename);
 	COMPARE_NODE_FIELD(distributedBy);
-	COMPARE_SCALAR_FIELD(relOid);
-	COMPARE_SCALAR_FIELD(comptypeOid);
-	COMPARE_SCALAR_FIELD(toastOid);
-	COMPARE_SCALAR_FIELD(toastIndexOid);
+	COMPARE_SCALAR_FIELD(oidInfo.relOid);
+	COMPARE_SCALAR_FIELD(oidInfo.comptypeOid);
+	COMPARE_SCALAR_FIELD(oidInfo.toastOid);
+	COMPARE_SCALAR_FIELD(oidInfo.toastIndexOid);
 	COMPARE_SCALAR_FIELD(relKind);
 
 	return true;

@@ -1777,11 +1777,11 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oncommit = $10;
 					n->tablespacename = $11;
 					n->distributedBy = $12;
-					n->relOid = 0;
-					n->comptypeOid = 0;
-					n->toastOid = 0;
-					n->toastIndexOid = 0;
-					n->toastComptypeOid = 0;
+					n->oidInfo.relOid = 0;
+					n->oidInfo.comptypeOid = 0;
+					n->oidInfo.toastOid = 0;
+					n->oidInfo.toastIndexOid = 0;
+					n->oidInfo.toastComptypeOid = 0;
 					n->relKind = RELKIND_RELATION;
 					n->policy = 0;
 					
@@ -1803,11 +1803,11 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oncommit = $11;
 					n->tablespacename = $12;
 					n->distributedBy = $13;
-					n->relOid = 0;
-					n->comptypeOid = 0;
-					n->toastOid = 0;
-					n->toastIndexOid = 0;
-					n->toastComptypeOid = 0;
+					n->oidInfo.relOid = 0;
+					n->oidInfo.comptypeOid = 0;
+					n->oidInfo.toastOid = 0;
+					n->oidInfo.toastIndexOid = 0;
+					n->oidInfo.toastComptypeOid = 0;
 					n->relKind = RELKIND_RELATION;
 					n->policy = 0;
 					

@@ -251,25 +251,18 @@ _readQuery(void)
      * by the planner and not present in nodes stored persistently.  So if
      * it's missing, just let the field stay 0.
      */
-    if (pg_strtok_peek_fldname("intoOid"))
-    {                           /* braces required, macro doesn't have 'em */
-        READ_OID_FIELD(intoOid);
-    }
-    if (pg_strtok_peek_fldname("intoComptypeOid"))
-    {                           /* braces required, macro doesn't have 'em */
-        READ_OID_FIELD(intoComptypeOid);
-    }
-    if (pg_strtok_peek_fldname("intoToastOid"))
-    {                           
-        READ_OID_FIELD(intoToastOid);
-    }
-    if (pg_strtok_peek_fldname("intoToastIndexOid"))
-    {                           
-        READ_OID_FIELD(intoToastIndexOid);
-    }
-    if (pg_strtok_peek_fldname("intoToastComptypeOid"))
-    {                           
-        READ_OID_FIELD(intoToastComptypeOid);
+    if (pg_strtok_peek_fldname("intoOidInfo.relOid"))
+    {                            
+        READ_OID_FIELD(intoOidInfo.relOid);
+     
+        READ_OID_FIELD(intoOidInfo.comptypeOid);
+                             
+        READ_OID_FIELD(intoOidInfo.toastOid);
+                             
+        READ_OID_FIELD(intoOidInfo.toastIndexOid);
+                            
+        READ_OID_FIELD(intoOidInfo.toastComptypeOid);
+ 
     }
 	local_node->intoPolicy = NULL;
 	
@@ -592,16 +585,20 @@ _readTruncateStmt(void)
 static AlterTableStmt *
 _readAlterTableStmt(void)
 {
+	int m;
 	READ_LOCALS(AlterTableStmt);
 
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(cmds);
 	READ_ENUM_FIELD(relkind, ObjectType);
-	READ_OID_FIELD(relOid);
-	READ_OID_FIELD(comptypeOid);
-	READ_OID_FIELD(toastOid);
-	READ_OID_FIELD(toastIndexOid);
-	READ_OID_FIELD(toastComptypeOid);
+	for (m = 0; m < 9; m++)
+	{
+		READ_OID_FIELD(oidInfo[m].relOid);
+		READ_OID_FIELD(oidInfo[m].comptypeOid);
+		READ_OID_FIELD(oidInfo[m].toastOid);
+		READ_OID_FIELD(oidInfo[m].toastIndexOid);
+		READ_OID_FIELD(oidInfo[m].toastComptypeOid);
+	}
 	
 	READ_DONE();
 }
@@ -1532,11 +1529,11 @@ _readCreateStmt(void)
 	READ_ENUM_FIELD(oncommit,OnCommitAction);
 	READ_STRING_FIELD(tablespacename);
 	READ_NODE_FIELD(distributedBy);
-	READ_OID_FIELD(relOid);
-	READ_OID_FIELD(comptypeOid);
-	READ_OID_FIELD(toastOid);
-	READ_OID_FIELD(toastIndexOid);
-	READ_OID_FIELD(toastComptypeOid);
+	READ_OID_FIELD(oidInfo.relOid);
+	READ_OID_FIELD(oidInfo.comptypeOid);
+	READ_OID_FIELD(oidInfo.toastOid);
+	READ_OID_FIELD(oidInfo.toastIndexOid);
+	READ_OID_FIELD(oidInfo.toastComptypeOid);
 	READ_CHAR_FIELD(relKind);
 	local_node->policy = NULL;
 
@@ -1632,11 +1629,11 @@ _readClusterStmt(void)
 
 	READ_NODE_FIELD(relation);
 	READ_STRING_FIELD(indexname);
-	READ_OID_FIELD(relOid);
-	READ_OID_FIELD(comptypeOid);
-	READ_OID_FIELD(toastOid);
-	READ_OID_FIELD(toastIndexOid);
-	READ_OID_FIELD(toastComptypeOid);
+	READ_OID_FIELD(oidInfo.relOid);
+	READ_OID_FIELD(oidInfo.comptypeOid);
+	READ_OID_FIELD(oidInfo.toastOid);
+	READ_OID_FIELD(oidInfo.toastIndexOid);
+	READ_OID_FIELD(oidInfo.toastComptypeOid);
 	
 	READ_DONE();
 }

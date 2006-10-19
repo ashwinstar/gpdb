@@ -227,7 +227,7 @@ select * from rtest_v1 ORDER BY 1,2;
  5 |   
 (8 rows)
 
-select * from rtest_v1 where b isnull;
+select * from rtest_v1 where b isnull ORDER BY 1,2;
  a | b 
 ---+---
  1 |  

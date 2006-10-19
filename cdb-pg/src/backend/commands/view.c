@@ -108,13 +108,13 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 	List	   *attrList;
 	ListCell   *t;
 
-	createStmt->relOid = viewOid;
+	createStmt->oidInfo.relOid = viewOid;
 	if (comptypeOid)
-		createStmt->comptypeOid = *comptypeOid;
+		createStmt->oidInfo.comptypeOid = *comptypeOid;
 	else
-		createStmt->comptypeOid = 0;
-	createStmt->toastOid = 0;
-	createStmt->toastIndexOid = 0;
+		createStmt->oidInfo.comptypeOid = 0;
+	createStmt->oidInfo.toastOid = 0;
+	createStmt->oidInfo.toastIndexOid = 0;
 	/*
 	 * create a list of ColumnDef nodes based on the names and types of the
 	 * (non-junk) targetlist items from the view's SELECT list.
@@ -225,7 +225,7 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 		 */
 		newviewOid =  DefineRelation(createStmt, RELKIND_VIEW);
 		if(comptypeOid)
-			*comptypeOid = createStmt->comptypeOid;
+			*comptypeOid = createStmt->oidInfo.comptypeOid;
 		return newviewOid;
 	}
 }

@@ -203,7 +203,7 @@ select * from rtest_v1 ORDER BY 1,2;
 -- now with only one target attribute
 insert into rtest_v1 (a) select a from rtest_t3;
 select * from rtest_v1 ORDER BY 1,2;
-select * from rtest_v1 where b isnull;
+select * from rtest_v1 where b isnull ORDER BY 1,2;
 
 -- let attribute a differ (must be done on rtest_t1 - see above)
 update rtest_t1 set a = a + 10 where b isnull;

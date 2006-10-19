@@ -1116,10 +1116,10 @@ DefineCompositeType(const RangeVar *typevar, List *coldeflist, Oid relOid, Oid c
 {
 	CreateStmt *createStmt = makeNode(CreateStmt);
 
-	createStmt->relOid = relOid;
-	createStmt->comptypeOid = comptypeOid;
-	createStmt->toastOid = 0;
-	createStmt->toastIndexOid = 0;
+	createStmt->oidInfo.relOid = relOid;
+	createStmt->oidInfo.comptypeOid = comptypeOid;
+	createStmt->oidInfo.toastOid = 0;
+	createStmt->oidInfo.toastIndexOid = 0;
 
 	if (coldeflist == NIL)
 		ereport(ERROR,
