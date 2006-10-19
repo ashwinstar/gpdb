@@ -457,6 +457,14 @@ ProcessUtility(Node *parsetree,
 						break;
 
 					case TRANS_STMT_PREPARE:
+						if (Mpp_role == MPP_ROLE_DISPATCH)
+						{
+							ereport(ERROR, (
+											errcode(ERRCODE_MPP_COMMAND_ERROR),
+									 errmsg("PREPARE TRANSACTION is not yet supported in Bizgres MPP.")
+											));
+			
+						}
 						if (!PrepareTransactionBlock(stmt->gid))
 						{
 							/* report unsuccessful commit in completionTag */
