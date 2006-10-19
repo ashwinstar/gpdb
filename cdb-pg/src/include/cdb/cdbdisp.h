@@ -33,7 +33,9 @@ typedef struct DispatchCommandParms
 	/*
 	 * The SQL command
 	 */
-	char	   *szCommand;
+	char		*szCommand;
+	char		*query_text;
+	int			query_text_len;
 	
 	/*
 	 * serialized snapshot string

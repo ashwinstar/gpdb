@@ -655,6 +655,123 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
 	}
 }
 
+/*
+ * Our goal is to build one copy of the MPP query stucture, and to
+ * have each dispatcher connection hold pointers into the single copy.
+ * 
+ * So the code below does the same work, roughly as:
+ * 
+ * 	if (pqPutMsgStart('M', false, conn) < 0 ||
+ *		pqPutInt(mpp_command_count, 4, conn ) < 0 ||
+ *		pqPuts(snapshotInfo, conn ) < 0 ||
+ *		pqPutInt(flags, 4, conn ) < 0 ||
+ *		pqPuts(query, conn) < 0 ||
+ *		pqPutMsgEnd(conn) < 0)
+ *
+ * The remaining work (protocol xmit state, mostly) is done by
+ * PQsendMppQuery_shared().
+ */
+char *
+PQbuildMppQueryString(const char  *query,
+					  const char  *snapshotInfo,
+					  int          flags,
+					  int          mpp_command_count,
+					  int         *final_len)
+{
+	int	tmp, len;
+	int	total_query_len, query_len, snapshot_len;
+	char *shared_query, *pos;
+
+	snapshot_len = strlen(snapshotInfo) + 1;
+	query_len = strlen(query) + 1;
+
+	total_query_len = 5 /* overhead */ + 
+		4 /* comamnd count */ + snapshot_len +
+		4 /* flags */ + query_len;
+
+	shared_query = malloc(total_query_len);
+	if (shared_query == NULL)
+		return NULL;
+
+	pos = shared_query;
+
+	*pos++ = 'M';
+
+	pos += 4; /* place holder for message length */
+
+	tmp = htonl(mpp_command_count);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+
+	memcpy(pos, snapshotInfo, snapshot_len);
+	pos += snapshot_len;
+
+	tmp = htonl(flags);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+
+	memcpy(pos, query, query_len);
+	pos += query_len;
+
+	len = pos - shared_query - 1;
+
+	/* fill in length placeholder */
+	tmp = htonl(len);
+	memcpy(shared_query+1, &tmp, 4);
+
+	if (final_len)
+		*final_len = len + 1;
+
+	return shared_query;
+}
+
+int
+PQsendMppQuery_shared(PGconn *conn, char *shared_query, int query_len)
+{
+	if (!PQsendQueryStart(conn))
+		return 0;
+
+	if (!shared_query)
+	{
+		printfPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("shared mpp-query string is a null pointer\n"));
+		return 0;
+	}
+
+	if (conn->outBuffer_shared)
+	{
+		printfPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("Cannot overwrite shared query string\n"));
+		return 0;
+	}
+
+	if (conn->outBuffer)
+		free(conn->outBuffer);
+
+	conn->outBuffer = shared_query;
+	conn->outBuffer_shared = true;
+
+	conn->outMsgStart = 0;
+	conn->outMsgEnd = query_len;
+	conn->outCount = query_len;
+
+	/* remember we are using simple query protocol */
+	conn->queryclass = PGQUERY_SIMPLE;
+
+	/*
+	 * Give the data a push.  In nonblock mode, don't complain if we're unable
+	 * to send it all; PQgetResult() will do any additional flushing needed.
+	 */
+	if (pqFlush(conn) < 0)
+	{
+		pqHandleSendFailure(conn);
+		return 0;
+	}
+
+	/* OK, it's launched! */
+	conn->asyncStatus = PGASYNC_BUSY;
+	return 1;
+}
 
 /* Special MPP-only method for executing SQL statements.  Specifies a global
  * transaction context that the statement should be executed within.

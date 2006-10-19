@@ -1847,6 +1847,7 @@ makeEmptyPGconn(void)
 	conn->outBufSize = 16 * 1024;
 	conn->outBuffer = (char *) malloc(conn->outBufSize);
 	conn->nonblocking = FALSE;
+	conn->outBuffer_shared = false;
 	initPQExpBuffer(&conn->errorMessage);
 	initPQExpBuffer(&conn->workBuffer);
 
@@ -1939,7 +1940,7 @@ freePGconn(PGconn *conn)
 		free(conn->lobjfuncs);
 	if (conn->inBuffer)
 		free(conn->inBuffer);
-	if (conn->outBuffer)
+	if (conn->outBuffer && !conn->outBuffer_shared)
 		free(conn->outBuffer);
 	termPQExpBuffer(&conn->errorMessage);
 	termPQExpBuffer(&conn->workBuffer);

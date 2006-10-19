@@ -854,8 +854,20 @@ pqSendSome(PGconn *conn, int len)
 
 	/* shift the remaining contents of the buffer */
 	if (remaining > 0)
-		memmove(conn->outBuffer, ptr, remaining);
+	{
+		if (conn->outBuffer_shared)
+			conn->outBuffer = ptr;
+		else
+			memmove(conn->outBuffer, ptr, remaining);
+	}
 	conn->outCount = remaining;
+
+	if (remaining == 0 && conn->outBuffer_shared)
+	{
+		conn->outBuffer_shared = false;
+		conn->outBuffer = malloc(16384);
+		conn->outBufSize = 16384;
+	}
 
 	return result;
 }

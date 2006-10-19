@@ -333,6 +333,8 @@ struct pg_conn
 	int			outBufSize;		/* allocated size of buffer */
 	int			outCount;		/* number of chars waiting in buffer */
 
+	bool		outBuffer_shared;
+
 	/* State for constructing messages in outBuffer */
 	int			outMsgStart;	/* offset to msg start (length word); if -1,
 								 * msg has no length word */

@@ -342,6 +342,15 @@ extern int PQsendMppQuery(PGconn       *conn,
                           int           flags,
                           int           mpp_command_count);
 
+extern char *PQbuildMppQueryString(const char  *query,
+								   const char  *snapshotInfo,
+								   int          flags,
+								   int          mpp_command_count,
+								   int         *final_len);
+
+extern int PQsendMppQuery_shared(PGconn       *conn,
+								 char         *query,
+								 int          query_len);
 
 /* Interface for multiple-result or asynchronous queries */
 extern int	PQsendQuery(PGconn *conn, const char *query);

@@ -59,10 +59,9 @@ static bool
 
 static
 void dispatchCommand(CdbDispatchResult *dispatchResult,
-                     const char        *szCommand,
-                     const char		   *szSnapshot,
-                     int 			  	txnOptions,
-                     int 			  	cmdID);
+                     const char        *query_text,
+                     int 			  	query_len,
+                     const char        *debug_text);
 							
 static void
 handleSelectError(DispatchCommandParms *pParms,
@@ -210,6 +209,8 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 		x,
 		newThreads = 0;	
 
+	MemoryContext oldContext;
+
 	Assert(Mpp_role == MPP_ROLE_DISPATCH &&
 		   gp &&
 		   gp->size > 0 &&
@@ -237,39 +238,37 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	segdbs_in_thread_pool = 0;
 	max_threads = 1 + (gp->size - 1) / mpp_connections_per_thread;
 
+	oldContext = MemoryContextSwitchTo(TopMemoryContext);
+
+	if (!(*dispatchThreads))
 	{
-		MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
+		/* the maximum number of command parameter blocks we'll possibly need is
+		 * one for each slice on the primary and mirror gangs. Max sure that we
+		 * have enough -- once we've created the command block we're stuck with it
+		 * for the duration of this statement (including CDB-DTM ). 
+		 * 1 * maxthreads * slices for each primary
+		 * 1 * maxthreads * slices for each mirror
+		 * X 2 for good measure ? */
+		int paramCount = max_threads * 4 * Max(maxSlices, 5);
 
-		if(!(*dispatchThreads))
-		{
-			/* the maximum number of command parameter blocks we'll possibly need is
-			 * one for each slice on the primary and mirror gangs. Max sure that we
-			 * have enough -- once we've created the command block we're stuck with it
-			 * for the duration of this statement (including CDB-DTM ). 
-			 * 1 * maxthreads * slices for each primary
-			 * 1 * maxthreads * slices for each mirror
-			 * X 2 for good measure ? */
-			int paramCount = max_threads * 4 * Max(maxSlices, 5);
-
-			elog(DEBUG4, "dispatcher: allocating command array with maxslices %d", maxSlices);
+		elog(DEBUG4, "dispatcher: allocating command array with maxslices %d", maxSlices);
 			
-			*dispatchThreads = cdbdisp_makeDispatchThreads(paramCount);
-		}
-		else
-		{
-			/* If we attempt to reallocate, there is a race here: we
-			 * know that we have threads running using the
-			 * dispatchCommandParamsAr! If we reallocate we
-			 * potentially yank it out from under them! Don't do
-			 * it! */
-			if ((*dispatchThreads)->dispatchCommandParmsArSize < ((*dispatchThreads)->threadCount + max_threads))
-			{
-				elog(ERROR, "Attempted to reallocate dispatchCommandParmsAr while other threads still running size %d new threadcount %d", (*dispatchThreads)->dispatchCommandParmsArSize, ((*dispatchThreads)->threadCount + max_threads));
-			}
-		}
-
-		MemoryContextSwitchTo(oldContext);
+		*dispatchThreads = cdbdisp_makeDispatchThreads(paramCount);
 	}
+	else
+	{
+		/* If we attempt to reallocate, there is a race here: we
+		 * know that we have threads running using the
+		 * dispatchCommandParamsAr! If we reallocate we
+		 * potentially yank it out from under them! Don't do
+		 * it! */
+		if ((*dispatchThreads)->dispatchCommandParmsArSize < ((*dispatchThreads)->threadCount + max_threads))
+		{
+			elog(ERROR, "Attempted to reallocate dispatchCommandParmsAr while other threads still running size %d new threadcount %d", (*dispatchThreads)->dispatchCommandParmsArSize, ((*dispatchThreads)->threadCount + max_threads));
+		}
+	}
+
+	MemoryContextSwitchTo(oldContext);
 
 	/*
 	 * Create the thread parms structures based targetSet parameter.
@@ -328,6 +327,20 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 
 		elog(DEBUG4, "dispatchToGang: Creating thread %d of %d for CommandDispatch",
 			 i + 1, newThreads);
+
+		/* TODO: By default the amount of stack handed to each of these
+		 * threads is quite large (1MB on most of our target
+		 * platforms) -- we don't need it, and it is easy to
+		 * change. We should consider using some multiple of
+		 * PTHREAD_STACK_MIN.
+		 *
+		 * pthread_attr_t t_atts;
+		 * size_t stksize;
+		 * pthread_attr_init(&t_atts);
+		 * pthread_attr_getstacksize(&t_atts, &stksize);
+		 * pthread_attr_setstacksize(&t_atts, Min(16*PTHREAD_STACK_MIN, stksize));
+		 * pthread_err = pthread_create(&pParms->thread, &t_atts, thread_DispatchCommand, pParms);
+		 */
 
 		pthread_err = pthread_create(&pParms->thread, NULL, thread_DispatchCommand, pParms);
 		if (pthread_err != 0)
@@ -1031,6 +1044,15 @@ thread_DispatchCommand(void *arg)
 	int							i, db_count = pParms->db_count;
 	int							timeoutCounter = 0;
 
+	pParms->query_text = PQbuildMppQueryString(pParms->szCommand, pParms->szSnapshot, pParms->txnOptions, pParms->cmdID, &pParms->query_text_len);
+
+	if (pParms->query_text == NULL)
+	{
+		write_stderr("could not build query string\n");
+		dispatchResult->stillRunning = false;
+		return NULL;
+	}
+
 	/*
 	 * The pParms contains an array of SegmentDatabaseDescriptors
 	 * to send commands through to.
@@ -1058,7 +1080,8 @@ thread_DispatchCommand(void *arg)
             /* Kick off the command over the libpq connection.
              * If unsuccessful, proceed anyway, and check for lost connection below.
              */
-            dispatchCommand(dispatchResult, pParms->szCommand, pParms->szSnapshot, pParms->txnOptions, pParms->cmdID);
+
+            dispatchCommand(dispatchResult, pParms->query_text, pParms->query_text_len, pParms->szCommand);
             dispatchResult->hasDispatched = true;
         }
 
@@ -1096,7 +1119,7 @@ thread_DispatchCommand(void *arg)
 				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 			{
 				MPP_FD_SET(sock, pParms->mask);
-				max_sock = max_sock < sock ? sock : max_sock;
+				max_sock = Max(max_sock, sock);
 			}
 
 			/* Lost the connection. */
@@ -1214,6 +1237,12 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 							  segdbDesc->whoami,
 							  msg ? msg : "");
 
+		if (DEBUG4 >= log_min_messages)
+		{
+			/* Don't use elog, it's not thread-safe */
+			write_stderr("Lost connection: %s\n", segdbDesc->whoami);
+		}
+
 		/* Free the PGconn object at once whenever we notice it's gone bad. */
 		PQfinish(segdbDesc->conn);
 		segdbDesc->conn = NULL;
@@ -1267,10 +1296,9 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
  */
 static void
 dispatchCommand(CdbDispatchResult  *dispatchResult,
-                const char         *szCommand,
-                const char		   *szSnapshot,
-                int txnOptions,
-                int cmdID)
+                const char		   *query_text,
+                int				   query_text_len,
+                const char         *szCommand)
 {
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 	PGconn	   *conn = segdbDesc->conn;
@@ -1283,7 +1311,7 @@ dispatchCommand(CdbDispatchResult  *dispatchResult,
 	 * Submit the command asynchronously.
 	 */
 	
-	if (0 == PQsendMppQuery(conn, szCommand, szSnapshot, txnOptions, cmdID))
+	if (PQsendMppQuery_shared(conn, (char *)query_text, query_text_len) == 0)
 	{
 		/* Note the error. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
@@ -1291,6 +1319,8 @@ dispatchCommand(CdbDispatchResult  *dispatchResult,
 						   "Command could not be sent to segment db %s;  %s",
 							  segdbDesc->whoami,
 							  PQerrorMessage(conn));
+		PQfinish(conn);
+		segdbDesc->conn = NULL;
 	}
 
 	/*
@@ -2641,6 +2671,13 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 		{
 			pfree(pParms->dispatchResultPtrArray);
 			pParms->dispatchResultPtrArray = NULL;
+		}
+		if (pParms->query_text)
+		{
+			/* NOTE: query_text gets malloc()ed by the pqlib code, use
+			 * free() not pfree() */
+			free(pParms->query_text);
+			pParms->query_text = NULL;
 		}
 		if (pParms->szCommand)
 		{
