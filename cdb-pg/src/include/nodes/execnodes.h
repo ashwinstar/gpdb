@@ -535,10 +535,12 @@ typedef struct EState
 	
 	bool es_got_eos;				/* was end-of-stream recieved? */
 
+	bool cancelUnfinished;		/* when we're cleaning up, we need to make sure that we know it */
+
     /* results from qExec processes */
     struct CdbDispatchResults  *primaryResults;
     struct CdbDispatchResults  *mirrorResults;
-	
+
 	/* dispatch threads for this command */
 	struct CdbDispatchCmdThreads  *dispatchThreads;
 

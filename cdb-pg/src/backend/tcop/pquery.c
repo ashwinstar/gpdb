@@ -603,9 +603,26 @@ PortalRun(Portal portal, long count,
 	 */
 	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler && !superuser())
 	{
-		releaseResourceLock = ResLockPortal(portal);
-	}
+		/* If we throw an error inside ResLockPortal -- we have to
+		 * clean up after ourselves, this portal may have dispatched
+		 * to the QEs already! */
+		PG_TRY();
+		{
+			releaseResourceLock = ResLockPortal(portal);
+		}
+		PG_CATCH();
+		{
+			QueryDesc  *queryDesc;
 
+			queryDesc = PortalGetQueryDesc(portal);
+
+			mppExecutorCleanup(queryDesc->estate);
+			ReleaseGangs(queryDesc);
+
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+	}
 
 	/*
 	 * Set up global portal context pointers.
@@ -735,7 +752,6 @@ PortalRun(Portal portal, long count,
 	}
 	PG_END_TRY();
 
-
 	/*
 	 * If resource scheduling is enabled, release the resource lock here.
 	 * Skip if we are superuser!
@@ -745,7 +761,6 @@ PortalRun(Portal portal, long count,
 		if (releaseResourceLock)
 			ResUnLockPortal(portal);
 	}
-
 
 	if (saveMemoryContext == saveTopTransactionContext)
 		MemoryContextSwitchTo(TopTransactionContext);

@@ -605,6 +605,13 @@ AtAbort_Portals(void)
 		/* let portalcmds.c clean up the state it knows about */
 		if (PointerIsValid(portal->cleanup))
 		{
+			QueryDesc  *queryDesc;
+			/* we need to make sure that the executor knows to
+			 * shutdown without waiting for work to finish properly */
+			queryDesc = PortalGetQueryDesc(portal);
+			if (queryDesc && queryDesc->estate)
+				queryDesc->estate->cancelUnfinished = true;
+
 			(*portal->cleanup) (portal);
 			portal->cleanup = NULL;
 		}

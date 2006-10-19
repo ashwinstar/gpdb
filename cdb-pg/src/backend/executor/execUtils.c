@@ -241,6 +241,7 @@ CreateExecutorState(void)
 	estate->es_interconnect_is_setup = false;
 	estate->es_seqserver_is_setup = false;
 	estate->es_got_eos = false;
+	estate->cancelUnfinished = false;
 	estate->primaryResults = NULL;
 	estate->mirrorResults = NULL;
 	estate->dispatchThreads = NULL;
@@ -1601,12 +1602,12 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 {
 	EState	   *estate;
 	Slice      *currentSlice;
-	
+
 	/* caller must have switched into per-query memory context already */
 	estate = queryDesc->estate;
-	
+
 	currentSlice = getCurrentSlice(estate);
-	
+
 	/*
 	 * If QD, wait for QEs to finish and check their results.
 	 */	
@@ -1615,7 +1616,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		CdbDispatchResults *pr = estate->primaryResults;
 		CdbDispatchResults *mr = estate->mirrorResults;
 		CdbDispatchCmdThreads  *dThreads = estate->dispatchThreads;
-		
+
 		/*
 		 * If we are finishing a query before all the tuples of the query
 		 * plan were fetched we must call ExecSquelchNode before checking
@@ -1624,17 +1625,17 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		 */
 		if(!estate->es_got_eos)
 			ExecSquelchNode(queryDesc->planstate);
-		
+
 		/*
 		 * Wait for completion of all QEs.
 		 */
-		CdbCheckDispatchResult(dThreads, false);	
-		
+		CdbCheckDispatchResult(dThreads, estate->cancelUnfinished);
+
 		/* If top slice was delegated to QEs, get num of rows processed. */
 		if (sliceRunsOnQE(currentSlice))
 			estate->es_processed +=
 				cdbdisp_sumCmdTuples(pr, estate->es_cur_slice_idx);
-		
+
 		/*
 		 * Check and free the results of all gangs. If any QE had an
 		 * error, report it and exit to our error handler via PG_THROW.
@@ -1645,14 +1646,14 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		estate->dispatchThreads = NULL;
 		cdbdisp_finishCommand(pr, mr, dThreads);
 	}
-	
+
 	/* Teardown the Sequence Server */
 	if(estate->es_seqserver_is_setup)
 	{
 		TeardownSequenceServer();
 		estate->es_seqserver_is_setup = false;
 	}
-	
+
 	/* Teardown the Interconnect */
 	if(estate->es_interconnect_is_setup)
 	{

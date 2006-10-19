@@ -648,22 +648,22 @@ ExecutorEnd(QueryDesc *queryDesc)
 		/*
 		 * we got an error. do all the necessary cleanup.
 		 */
-		mppExecutorCleanup(estate);		
+		mppExecutorCleanup(estate);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-		
+
 	ExecEndPlan(queryDesc->planstate, estate);
 
 	/*
 	 * Release any gangs we may have assigned.
 	 */
 	ReleaseGangs(queryDesc);
-	
+
 	/* 
 	 * Remove our own query's motion layer. 
 	 */
-	RemoveMotionLayer(estate->motionlayer_context, true);	
+	RemoveMotionLayer(estate->motionlayer_context, true);
 
 	/*
 	 * Must switch out of context before destroying it

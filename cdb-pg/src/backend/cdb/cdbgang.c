@@ -461,7 +461,7 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
 			 */
 			elog(DEBUG4,
 				 "building Gang for %s.  Gang is reader size %d for content %d", 
-										(portal_name ? portal_name : "unnamed portal"), size, content);
+				 (portal_name ? portal_name : "unnamed portal"), size, content);
 			break;
 
 		case GANGTYPE_UNALLOCATED:
@@ -1593,7 +1593,7 @@ cleanupGang(Gang * gp)
 	if (gp == NULL)
 		return true;
 
-	elog(DEBUG5, "cleanupGang: cleaning gang type %d, was used for portal: %s", gp->type, (gp->portal_name ? gp->portal_name : "(unnamed)"));
+	elog(DEBUG5, "cleanupGang: cleaning gang type %d size %d, was used for portal: %s", gp->type, gp->size, (gp->portal_name ? gp->portal_name : "(unnamed)"));
 
 	/* disassociate this gang with any portal that it may have belonged to */
 	if (gp->portal_name)
@@ -1630,26 +1630,11 @@ cleanupGang(Gang * gp)
 			PGresult   *pRes;
 			int			retry = 0;
 
-			PGTransactionStatusType status =
-				PQtransactionStatus(segdbDesc->conn);
-
-			if (status == PQTRANS_ACTIVE)
-			{
-				char errbuf[256];
-				PGcancel * cn = PQgetCancel(segdbDesc->conn);
-
-				elog(DEBUG2, "cleanupGang: segment %d is active, cancelling", segdbDesc->segindex);
-
-				if (PQcancel(cn, errbuf, 256)==0)
-				{	
-					elog(LOG,"Unable to cancel: %s", errbuf);
-				}
-				PQfreeCancel(cn);
-			}
+			ExecStatusType stat;
 
 			while (NULL != (pRes = PQgetResult(segdbDesc->conn)))
 			{
-				ExecStatusType stat = PQresultStatus(pRes);
+				stat = PQresultStatus(pRes);
 
 				elog(LOG, "(%s) Leftover result at freeGang time: %s %s",
 					 segdbDesc->whoami,
@@ -1802,19 +1787,24 @@ freeGangsForPortal(char *portal_name)
 		 list_length(allocatedReaderGangsN), list_length(availableReaderGangsN),
 		 list_length(allocatedReaderGangs1), list_length(availableReaderGangs1));
 
-	if (!cleanupGang(primaryWriterGang))
+	/* the primary and mirror writer gangs "belong" to the unnamed portal -- if we have multiple active
+	 * portals trying to release, we can't just release and re-release the writers each time ! */
+	if (!portal_name)
 	{
-		primaryWriterGang = NULL; /* cleanupGang called disconnectAndDestroyGang() already */
-		disconnectAndDestroyAllGangs();
-		elog(ERROR, "freeGangsForPortal: Bad PRIMARY WRITER gang");
-		return;
-	}
-	if (!cleanupGang(mirrorWriterGang))
-	{
-		mirrorWriterGang = NULL; /* cleanupGang called disconnectAndDestroyGang() already */
-		disconnectAndDestroyAllGangs();
-		elog(ERROR, "freeGangsForPortal: Bad MIRROR WRITER gang");
-		return;
+		if (!cleanupGang(primaryWriterGang))
+		{
+			primaryWriterGang = NULL; /* cleanupGang called disconnectAndDestroyGang() already */
+			disconnectAndDestroyAllGangs();
+			elog(ERROR, "freeGangsForPortal: Bad PRIMARY WRITER gang");
+			return;
+		}
+		if (!cleanupGang(mirrorWriterGang))
+		{
+			mirrorWriterGang = NULL; /* cleanupGang called disconnectAndDestroyGang() already */
+			disconnectAndDestroyAllGangs();
+			elog(ERROR, "freeGangsForPortal: Bad MIRROR WRITER gang");
+			return;
+		}
 	}
 
 	/*
