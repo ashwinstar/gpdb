@@ -127,7 +127,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
 		
-	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
+	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_primary)
 		elevel = DEBUG2; /* the mirrors usually just repeat what the primaries say */
 
 	/*
