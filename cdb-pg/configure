@@ -35,7 +35,7 @@ fi
 # Calculate the MPP version string from the CVS tag.
 # If there is no version set, get the name from CVS/Tag,
 # otherwise default to the head of cvs.
-RAW_VERSION=$Name$
+RAW_VERSION=
 if [ -z "$RAW_VERSION" ] ; then
     if [ -r CVS/Tag ] ; then
         #Source is from a tag
@@ -50,10 +50,10 @@ else
     MPP_VERSION=`echo $RAW_VERSION | sed -e 's,Release-,,' -e 's,-build-.*,,' -e 's,_,.,g'`
     MPP_BUILDNUMBER=`echo $RAW_VERSION | sed -e 's,.*build-,,'`
 fi
+MPP_VERSION_IN="src/include/catalog/mpp_version.in"
 MPP_VERSION_HEADER="src/include/catalog/mpp_version.h"
-if grep '\$\$' $MPP_VERSION_HEADER > /dev/null 2>&1 ; then
-    cat $MPP_VERSION_HEADER | sed 's,\$.*\$\$,'$MPP_VERSION' build '$MPP_BUILDNUMBER',' > $MPP_VERSION_HEADER.new
-    mv $MPP_VERSION_HEADER.new $MPP_VERSION_HEADER
+if grep '\$\$' $MPP_VERSION_IN > /dev/null 2>&1 ; then
+    sed "s,\\$.*\\$\\$,$MPP_VERSION build $MPP_BUILDNUMBER," $MPP_VERSION_IN > $MPP_VERSION_HEADER
 fi
 
 # Work around bugs in pre-3.0 UWIN ksh.
