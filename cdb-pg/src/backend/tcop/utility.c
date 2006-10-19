@@ -372,100 +372,6 @@ check_xact_readonly(Node *parsetree)
 	}
 }
 
-
-
-/* MPP utility command handling. */
-
-/*
- * The possible actions for a utility command.	These values are of
- * interest only as arguments to the local function CdbSentry.	They
- * indicate the level of support provided by following code for a
- * dispatcher process.
- */
-typedef enum
-{
-	CDB_ACCEPT,					/* This action issues no message and thus
-								 * allows the code that follows it to execute.
-								 * It is suitable when the command is
-								 * currently fully supported by MPP. */
-	CDB_WARN,					/* This action issues a warning and then
-								 * allows the code that follows it to execute.
-								 * It is intended for cases where MPP support
-								 * is not implemented yet and PostgreSQL
-								 * support is enabled as a convenience.  The
-								 * user is told that support may change or be
-								 * rescinded. */
-	CDB_NONCE,					/* This action issues an error and thus
-								 * prevents the code that follows from
-								 * executing.  The message indicates to the
-								 * user that this a temporary restriction that
-								 * will be removed in a future release. */
-	CDB_REJECT					/* This action issues an error and thus
-								 * prevents the code that follows from
-								 * executing.  The message indicates to the
-								 * user that no MPP support is anticipated. */
-}	CdbAction;
-
-/*
- * Guard for the cases in ProcessUtilty.
- *
- */
-static void
-CdbSentry(CdbAction dispatch, Node *parsetree, const char *altname)
-{
-	CdbAction	action = (CdbAction) NULL;
-	const char *cmdname;
-
-	switch (Mpp_role)
-	{
-		case MPP_ROLE_UTILITY:
-		case MPP_ROLE_EXECUTE:
-			action = CDB_ACCEPT;
-			break;
-		case MPP_ROLE_DISPATCH:
-			action = dispatch;
-			break;
-		default:
-			Assert(false);		/* Should be impossible */
-	}
-
-	if (action == CDB_ACCEPT)
-	{
-		return;
-	}
-
-	if (altname == NULL)
-		cmdname = CreateCommandTag(parsetree);
-	else
-		cmdname = altname;
-
-	switch (action)
-	{
-		case CDB_WARN:
-			ereport(WARNING, (
-							  errcode(ERRCODE_WARNING_MPP_INTERIM_FEATURE),
-							  errmsg("Bizgres MPP support for %s may change or be revoked in the future.", cmdname)
-							  ));
-			return;
-
-		case CDB_NONCE:
-			ereport(WARNING, (
-							errcode(ERRCODE_MPP_FEATURE_NOT_YET),
-							errmsg("Bizgres MPP support for %s is not available yet.", cmdname)
-							));
-			return;
-		case CDB_REJECT:
-			ereport(ERROR, (
-							errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
-						  errmsg("Bizgres MPP does not support %s.", cmdname)
-							));
-			return;
-		default:
-			Assert(false);		/* Should be impossible */
-	}
-}
-
-
 /*
  * ProcessUtility
  *		general utility function invoker
@@ -812,9 +718,9 @@ ProcessUtility(Node *parsetree,
 		case T_CdbExecStmt:
 
 			/*
-			 * CdbSentry isn't appropriate here since this command should run
-			 * only in the EXECUTE role, i.e., it is supplied by a dispatch
-			 * process to a qexec process. The cryptic message avoids mention
+			 * This command should run only in the EXECUTE role, 
+			 * i.e., it is supplied by a dispatch process to a qexec process. 
+			 * The cryptic message avoids mention
 			 * of roles to discourage experimentation by users.
 			 */
 			if (Mpp_role != MPP_ROLE_EXECUTE)
@@ -1031,27 +937,42 @@ ProcessUtility(Node *parsetree,
 
 			/* Query-level asynchronous notification */
 		case T_NotifyStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
 			{
 				NotifyStmt *stmt = (NotifyStmt *) parsetree;
+				
+				if (Mpp_role == MPP_ROLE_EXECUTE)
+					ereport(ERROR, (
+								errcode(ERRCODE_MPP_COMMAND_ERROR),
+						 errmsg("Notify command cannot run in a function running on a segDB.")
+								));
 
 				Async_Notify(stmt->relation->relname);
 			}
 			break;
 
 		case T_ListenStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
 			{
 				ListenStmt *stmt = (ListenStmt *) parsetree;
+				
+				if (Mpp_role == MPP_ROLE_EXECUTE)
+					ereport(ERROR, (
+								errcode(ERRCODE_MPP_COMMAND_ERROR),
+						 errmsg("Listen command cannot run in a function running on a segDB.")
+								));
 
 				Async_Listen(stmt->relation->relname);
 			}
 			break;
 
 		case T_UnlistenStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
 			{
 				UnlistenStmt *stmt = (UnlistenStmt *) parsetree;
+				
+				if (Mpp_role == MPP_ROLE_EXECUTE)
+					ereport(ERROR, (
+								errcode(ERRCODE_MPP_COMMAND_ERROR),
+						 errmsg("Unlisten command cannot run in a function running on a segDB.")
+								));
 
 				Async_Unlisten(stmt->relation->relname);
 			}
