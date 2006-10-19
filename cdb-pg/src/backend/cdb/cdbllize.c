@@ -15,7 +15,6 @@
 
 #include "postgres.h"
 #include "miscadmin.h"
-#include "catalog/pg_proc.h"	/* for PROVOLATILE_VOLATILE */
 #include "optimizer/clauses.h"
 #include "nodes/primnodes.h"
 #include "nodes/parsenodes.h"
@@ -77,8 +76,6 @@ typedef struct PlanProfile
 	int sliceDepth;
 	
 	bool hasNonRootSubplan;
-	
-	bool hasVolatiles;
 
 }	PlanProfile;
 
@@ -184,7 +181,6 @@ cdbparallelize(Plan *plan,
     /* Initialize the PlanProfile result ... */
 	context->resultSegments = false;
 	context->hasNonRootSubplan = false;
-	context->hasVolatiles = false;
 
 	context->local = NULL;
 	pushLocals(context, query->rtable);
@@ -269,14 +265,6 @@ cdbparallelize(Plan *plan,
 					errdetail("The query contains a multi-row subquery.")
 			));
 		}
-		else if ( context->hasVolatiles )
-		{
-			ereport(ERROR, (
-					errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					errmsg(notyet),
-					errdetail("The query contains a volatile function or operator.")
-			));
-		}
 		
 		/* From this point on, since part of plan is parallel, we have to
 		 * regard the whole plan as parallel. */
@@ -339,23 +327,6 @@ prescan_walker(Node *node, PlanProfile * context)
 {
 	if (node == NULL)
 		return false;
-	
-	if( node->type == T_FuncExpr )
-	{
-		FuncExpr *expr = (FuncExpr*)node;
-		char flag = func_volatile(expr->funcid);
-		
-		if ( flag == PROVOLATILE_VOLATILE )
-			context->hasVolatiles = TRUE;;
-	}
-	else if ( node->type == T_OpExpr )
-	{
-		OpExpr *expr = (OpExpr*)node;
-		char flag = op_volatile(expr->opno);
-		
-		if ( flag == PROVOLATILE_VOLATILE )
-			context->hasVolatiles = TRUE;
-	}
 
 	switch (nodeTag(node))
 	{
@@ -413,7 +384,7 @@ prescan_walker(Node *node, PlanProfile * context)
 				/* Recur into the args list. */
 				return expression_tree_walker((Node *) subplan->args, prescan_walker, context);
 			}
-		
+
 		case T_Flow:
 			/*
 			 * Since this function is where Flow nodes are generated, we can't
