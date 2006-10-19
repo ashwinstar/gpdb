@@ -503,10 +503,20 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			
 			bool dispatchToMirrors = vacstmt->vacuum;
 			
-			CdbDoCommand(buffer.data, true, /*no txn */false, 
-						 /* mirrors */ dispatchToMirrors, /* primaries */ true);
+			/* Mpp-895 stagger vacuum dispatch to primaries first, then mirrors, to avoid i/o contention */
 			
-			elog(DEBUG2, "Sent %s command to QEs", (vacstmt->vacuum ? "vacuum" : "analyze"));
+			CdbDoCommand(buffer.data, true, /*no txn */false, 
+						 /* mirrors */ false, /* primaries */ true);
+			
+			elog(DEBUG2, "Sent %s command to primary QEs", (vacstmt->vacuum ? "vacuum" : "analyze"));
+			
+			if (dispatchToMirrors)
+			{
+				CdbDoCommand(buffer.data, true, /*no txn */false, 
+							 /* mirrors */ true, /* primaries */ false);
+				
+				elog(DEBUG2, "Sent %s command to mirror QEs", (vacstmt->vacuum ? "vacuum" : "analyze"));
+			}
 		}
 		else
 		{
