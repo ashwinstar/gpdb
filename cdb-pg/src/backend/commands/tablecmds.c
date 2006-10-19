@@ -2544,11 +2544,12 @@ ATRewriteTables(List **wqueue, TableOidInfo * oidInfo)
 					 "pg_temp_%u", tab->relid);
 
 			if (oidInfo != NULL)
-				OIDNewHeap = make_new_heap(tab->relid, NewHeapName, NewTableSpace,
-							&oidInfo[m].relOid, &oidInfo[m].comptypeOid, &oidInfo[m].toastOid, &oidInfo[m].toastIndexOid, &oidInfo[m].toastComptypeOid);
+			{
+				OIDNewHeap = make_new_heap(tab->relid, NewHeapName, NewTableSpace,&oidInfo[m]);
+							 
+			}
 			else
-				OIDNewHeap = make_new_heap(tab->relid, NewHeapName, NewTableSpace,
-							NULL, NULL, NULL, NULL, NULL);
+				OIDNewHeap = make_new_heap(tab->relid, NewHeapName, NewTableSpace, NULL);
 
 			/*
 			 * Copy the heap data into the new table with the desired

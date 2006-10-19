@@ -534,7 +534,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
 	snprintf(NewHeapName, sizeof(NewHeapName), "pg_temp_%u", tableOid);
 
 	OIDNewHeap = make_new_heap(tableOid, NewHeapName, tableSpace,
-					&stmt->oidInfo.relOid, &stmt->oidInfo.comptypeOid, &stmt->oidInfo.toastOid, &stmt->oidInfo.toastIndexOid, &stmt->oidInfo.toastComptypeOid);
+					&stmt->oidInfo);
 
 	/*
 	 * We don't need CommandCounterIncrement() because make_new_heap did it.
@@ -579,7 +579,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
  */
 Oid
 make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
-			  Oid *relFileOid, Oid *comptypeOid, Oid * toastOid, Oid *toastIndexOid, Oid *toastComptypeOid)
+			  TableOidInfo * oidInfo)
 {
 	TupleDesc	OldHeapDesc,
 				tupdesc;
@@ -587,12 +587,14 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	Relation	OldHeap;
 	Oid 		tOid = InvalidOid;
 	Oid			tiOid = InvalidOid;
+	Oid			*comptypeOid = NULL;
+	Oid			*toastComptypeOid = NULL;
 
 	OldHeap = heap_open(OIDOldHeap, AccessExclusiveLock);
 	OldHeapDesc = RelationGetDescr(OldHeap);
 
 
-	if (Mpp_role == MPP_ROLE_DISPATCH && relFileOid != NULL && toastOid != NULL)
+	if (Mpp_role == MPP_ROLE_DISPATCH && oidInfo != NULL)
 	{
 		Relation	pg_class_desc;
 		Relation	pg_type_desc;
@@ -608,23 +610,33 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 		 * with either pg_class OIDs or existing physical files.
 		 */
 	
-		*relFileOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
-		OIDNewHeap = *relFileOid;
+		oidInfo->relOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
+		OIDNewHeap = oidInfo->relOid;
 		
-		*comptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_type_desc);
+		oidInfo->comptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_type_desc);
 									
-		*toastOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
+		oidInfo->toastOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
 		
-		*toastIndexOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
+		oidInfo->toastIndexOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
 									
 		heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
 		
-		*toastComptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_type_desc);
+		oidInfo->toastComptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_type_desc);
 
 		heap_close(pg_type_desc, RowExclusiveLock);
 		
-		tOid = *toastOid;
-		tiOid = *toastIndexOid;
+		tOid = oidInfo->toastOid;
+		tiOid = oidInfo->toastIndexOid;
+		toastComptypeOid = &oidInfo->toastComptypeOid;
+		comptypeOid = &oidInfo->comptypeOid;
+	}
+	else if (Mpp_role == MPP_ROLE_EXECUTE && oidInfo != NULL)
+	{
+		toastComptypeOid = &oidInfo->toastComptypeOid;
+		comptypeOid = &oidInfo->comptypeOid;
+	    OIDNewHeap = oidInfo->relOid;
+	    tOid = oidInfo->toastOid;
+		tiOid = oidInfo->toastIndexOid;
 	}
 
 	/*
@@ -648,7 +660,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 										  allowSystemTableMods,
 										  comptypeOid);
 
-	*relFileOid = OIDNewHeap;
+	oidInfo->relOid = OIDNewHeap;
 	
 	/*
 	 * Advance command counter so that the newly-created relation's catalog
