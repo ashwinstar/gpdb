@@ -616,8 +616,11 @@ PortalRun(Portal portal, long count,
 
 			queryDesc = PortalGetQueryDesc(portal);
 
-			mppExecutorCleanup(queryDesc->estate);
-			ReleaseGangs(queryDesc);
+			if (queryDesc)
+			{
+				mppExecutorCleanup(queryDesc->estate);
+				ReleaseGangs(queryDesc);
+			}
 
 			PG_RE_THROW();
 		}
