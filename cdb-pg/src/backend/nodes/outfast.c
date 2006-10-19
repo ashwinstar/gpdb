@@ -1759,6 +1759,13 @@ _outRemoveFuncStmt(StringInfo str, RemoveFuncStmt *node)
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
 }
 
+static void
+_outAlterFunctionStmt(StringInfo str, AlterFunctionStmt *node)
+{
+	WRITE_NODE_TYPE("ALTERFUNCTIONSTMT");
+	WRITE_NODE_FIELD(func);
+	WRITE_NODE_FIELD(actions);
+}
 
 static void
 _outRemoveAggrStmt(StringInfo str, RemoveAggrStmt *node)
@@ -2110,6 +2117,7 @@ _outQuery(StringInfo str, Query *node)
 			
 			case T_CreateFunctionStmt:
 			case T_RemoveFuncStmt:
+			case T_AlterFunctionStmt:
 			case T_RemoveAggrStmt:
 			case T_RemoveOperStmt:
 			
@@ -2936,6 +2944,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_RemoveFuncStmt:
 				_outRemoveFuncStmt(str, obj);
+				break;
+			case T_AlterFunctionStmt:
+				_outAlterFunctionStmt(str, obj);
 				break;
 			case T_RemoveAggrStmt:
 				_outRemoveAggrStmt(str, obj);

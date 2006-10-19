@@ -1726,6 +1726,16 @@ _readRemoveFuncStmt(void)
 	READ_DONE();
 }
 
+static AlterFunctionStmt *
+_readAlterFunctionStmt(void)
+{
+	READ_LOCALS(AlterFunctionStmt);
+	READ_NODE_FIELD(func);
+	READ_NODE_FIELD(actions);
+	
+	READ_DONE();
+}
+
 static RemoveAggrStmt *
 _readRemoveAggrStmt(void)
 {
@@ -2619,6 +2629,7 @@ static ParseNodeInfo infoAr[] =
 	{"AGGREF", (ReadFn)_readAggref},
 	{"ALIAS", (ReadFn)_readAlias},
 	{"ALTERDOMAINSTMT", (ReadFn)_readAlterDomainStmt},
+	{"ALTERFUNCTIONSTMT", (ReadFn)_readAlterFunctionStmt},
 	{"ALTERROLESETSTMT", (ReadFn)_readAlterRoleSetStmt},
 	{"ALTERROLESTMT", (ReadFn)_readAlterRoleStmt},
 	{"ALTERSEQSTMT", (ReadFn)_readAlterSeqStmt},
