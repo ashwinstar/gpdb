@@ -1656,6 +1656,19 @@ _outRenameStmt(StringInfo str, RenameStmt *node)
 }
 
 static void
+_outAlterObjectSchemaStmt(StringInfo str, AlterObjectSchemaStmt *node)
+{
+	WRITE_NODE_TYPE("ALTEROBJECTSCHEMASTMT");
+	
+	WRITE_NODE_FIELD(relation);
+	WRITE_NODE_FIELD(object);
+	WRITE_NODE_FIELD(objarg);
+	WRITE_STRING_FIELD(addname);
+	WRITE_STRING_FIELD(newschema);
+	WRITE_ENUM_FIELD(objectType,ObjectType);
+}
+
+static void
 _outCreateSeqStmt(StringInfo str, CreateSeqStmt *node)
 {
 	WRITE_NODE_TYPE("CREATESEQSTMT");
@@ -2100,6 +2113,7 @@ _outQuery(StringInfo str, Query *node)
 			case T_CreatePLangStmt:
 			case T_DropPLangStmt:
 			case T_AlterOwnerStmt:
+			case T_AlterObjectSchemaStmt:
 			
 			case T_RenameStmt:
 			case T_IndexStmt:
@@ -3015,10 +3029,14 @@ _outNode(StringInfo str, void *obj)
 				_outAlterRoleSetStmt(str, obj);
 				break;
 
+			case T_AlterObjectSchemaStmt:
+				_outAlterObjectSchemaStmt(str, obj);
+				break;
+				
 			case T_RenameStmt:
 				_outRenameStmt(str, obj);
-				break;
-
+				break;			
+				
 			case T_CreateSeqStmt:
 				_outCreateSeqStmt(str, obj);
 				break;

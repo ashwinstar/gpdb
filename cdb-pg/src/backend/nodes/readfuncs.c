@@ -667,6 +667,20 @@ _readAlterRoleSetStmt(void)
 	
 }
 
+static AlterObjectSchemaStmt *
+_readAlterObjectSchemaStmt(void)
+{
+	READ_LOCALS(AlterObjectSchemaStmt);
+	
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(object);
+	READ_NODE_FIELD(objarg);
+	READ_STRING_FIELD(addname);
+	READ_STRING_FIELD(newschema);
+	READ_ENUM_FIELD(objectType,ObjectType);
+	
+	READ_DONE();
+}
 
 
 static RenameStmt *
@@ -2630,6 +2644,7 @@ static ParseNodeInfo infoAr[] =
 	{"ALIAS", (ReadFn)_readAlias},
 	{"ALTERDOMAINSTMT", (ReadFn)_readAlterDomainStmt},
 	{"ALTERFUNCTIONSTMT", (ReadFn)_readAlterFunctionStmt},
+	{"ALTEROBJECTSCHEMASTMT", (ReadFn)_readAlterObjectSchemaStmt},
 	{"ALTERROLESETSTMT", (ReadFn)_readAlterRoleSetStmt},
 	{"ALTERROLESTMT", (ReadFn)_readAlterRoleStmt},
 	{"ALTERSEQSTMT", (ReadFn)_readAlterSeqStmt},
