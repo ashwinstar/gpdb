@@ -551,6 +551,13 @@ InitPostgres(const char *dbname, const char *username)
 	 * If we are in EXECUTE mode AND we are the WRITER then we'll create and register a 
 	 * SharedSnapshotSlot
 	 */
+    /*$$$$$$$ FIX ME $$$$$$$$$*/
+    if (Mpp_segment == -1 && Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
+    {
+        elog(LOG, "InitPostgres for entry db singleton QE: Shared snapshot not implemented.  Punt!"); 
+    }
+    else
+    /*$$$$$$$$$$$$$$$$$$$$$$$*/
 	if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
 		SharedSnapshotSlot *slot;

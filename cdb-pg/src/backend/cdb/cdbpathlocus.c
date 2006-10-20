@@ -180,7 +180,7 @@ cdbpathlocus_from_baserel(struct PlannerInfo   *root,
 	
 	if ( Mpp_role != MPP_ROLE_DISPATCH )
 	{
-		CdbPathLocus_MakeRoot(&result);
+		CdbPathLocus_MakeEntry(&result);
 		return result;
 	}
 
@@ -208,7 +208,7 @@ cdbpathlocus_from_baserel(struct PlannerInfo   *root,
 
     /* Normal catalog access */
     else
-        CdbPathLocus_MakeRoot(&result);
+        CdbPathLocus_MakeEntry(&result);
 
     return result;
 }                               /* cdbpathlocus_from_baserel */
@@ -248,37 +248,27 @@ cdbpathlocus_from_exprs(struct PlannerInfo *root,
  *
  * Returns a locus describing the distribution of a subquery.
  * The subquery plan should have been generated already.
+ *
+ * 'subqplan' is the subquery plan.
+ * 'subqrelid' is the subquery RTE index in the current query level, for
+ *      building Var nodes that reference the subquery's result columns.
  */
 CdbPathLocus
-cdbpathlocus_from_subquery(struct PlannerInfo   *root,
-                           struct RelOptInfo    *rel)
+cdbpathlocus_from_subquery(struct PlannerInfo  *root,
+                           struct Plan         *subqplan,
+                           Index                subqrelid)
 {
     CdbPathLocus    locus;
-    Plan           *plan = rel->subplan;
-    Flow           *flow = plan->flow;
+    Flow           *flow = subqplan->flow;
 
-	if ( Mpp_role != MPP_ROLE_DISPATCH )
-	{
-		CdbPathLocus_MakeRoot(&locus);
-		return locus;
-	}
-	
-    CdbPathLocus_MakeNull(&locus);
-
-    /* Absence of a Flow node means the plan contains operators
-     * whose parallelization is delegated to the post-parallelizer.
-     * We don't know the output locus because the p.p. isn't
-     * called until later.
-     */
-    if (!flow)
-        goto done;
+    Insist(flow);
 
     /* Flow node was made from CdbPathLocus by cdbpathtoplan_create_flow() */
     switch (flow->flotype)
     {
         case FLOW_SINGLETON:
             if (flow->segindex == -1)
-                CdbPathLocus_MakeRoot(&locus);
+                CdbPathLocus_MakeEntry(&locus);
             else
                 CdbPathLocus_MakeSingleQE(&locus);
             break;
@@ -293,14 +283,14 @@ cdbpathlocus_from_subquery(struct PlannerInfo   *root,
             foreach(hashexprcell, flow->hashExpr)
             {
                 Node           *expr = (Node *)lfirst(hashexprcell);
-                TargetEntry    *tle = tlist_member(expr, plan->targetlist);
+                TargetEntry    *tle = tlist_member(expr, subqplan->targetlist);
                 Var            *var;
                 List           *pathkey;
                 if (!tle)
                     break;
 
 				Assert(tle->resno >= 1);
-                var = makeVar(rel->relid,
+                var = makeVar(subqrelid,
                               tle->resno,
                               exprType((Node *) tle->expr),
                               exprTypmod((Node *) tle->expr),
@@ -317,14 +307,9 @@ cdbpathlocus_from_subquery(struct PlannerInfo   *root,
             break;
         }
         default:
-            Assert(false);
+            CdbPathLocus_MakeNull(&locus);
+            Insist(0);
     }
-
-done:
-    if (CdbPathLocus_IsNull(locus))
-        ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_YET),
-                        errmsg("Unsupported subquery")
-                       ));
     return locus;
 }                               /* cdbpathlocus_from_subquery */
 
@@ -424,6 +409,9 @@ cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
 
 /*
  * cdbpathlocus_join
+ *
+ * Determine locus to describe the result of a join.  Any necessary Motion has
+ * already been applied to the sources.
  */
 CdbPathLocus
 cdbpathlocus_join(CdbPathLocus a, CdbPathLocus b)
@@ -433,18 +421,6 @@ cdbpathlocus_join(CdbPathLocus a, CdbPathLocus b)
     List           *equivpathkeylist;
     CdbPathLocus    ojlocus;
 
-    /* Do both input rels have same locus? */
-    if (cdbpathlocus_compare(CdbPathLocus_Comparison_Equal, a, b))
-        return a;
-
-    /* Join will be done on qDisp if either rel is on qDisp,
-     * because qDisp can only receive rows, not send them (for now).
-     */
-    if (CdbPathLocus_IsRoot(a))
-        return a;
-    if (CdbPathLocus_IsRoot(b))
-        return b;
-
     /* If one rel is general or replicated, result stays with the other rel. */
     if (CdbPathLocus_IsGeneral(a) ||
         CdbPathLocus_IsReplicated(a))
@@ -452,6 +428,24 @@ cdbpathlocus_join(CdbPathLocus a, CdbPathLocus b)
     if (CdbPathLocus_IsGeneral(b) ||
         CdbPathLocus_IsReplicated(b))
         return a;
+
+    /* Join sequentially in single process if sources are in single process. */
+    if (CdbPathLocus_IsEntry(a))
+    {
+        Assert(CdbPathLocus_IsBottleneck(b));
+        return a;
+    }
+    if (CdbPathLocus_IsEntry(b))
+    {
+        Assert(CdbPathLocus_IsSingleQE(a));
+        return b;
+    }
+    if (CdbPathLocus_IsSingleQE(a))
+    {
+        Assert(CdbPathLocus_IsSingleQE(b));
+        return a;
+    }
+    Assert(!CdbPathLocus_IsSingleQE(b));
 
     /* This is an outer join, or one or both inputs are outer join results. */
 

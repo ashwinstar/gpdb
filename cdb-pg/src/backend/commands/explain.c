@@ -647,6 +647,7 @@ explain_outNode(StringInfo str,
 				Motion	   *pMotion = (Motion *) plan;
                 int         nSenders = pMotion->numInputSegs;
                 int         nReceivers = pMotion->numOutputSegs;
+                bool        senderIsEntryDb = false;
 
 				switch (pMotion->motionType)
 				{
@@ -668,8 +669,15 @@ explain_outNode(StringInfo str,
 						pname = "Motion ???";
 						break;
 				}
-                appendStringInfo(str, "%s %d:%d  (slice%d)", pname,
-                                 nSenders, nReceivers, pMotion->motionID);
+                if (nSenders == 1 &&
+                    plan->lefttree &&
+                    plan->lefttree->flow &&
+                    plan->lefttree->flow->flotype == FLOW_SINGLETON &&
+                    plan->lefttree->flow->segindex == -1)
+                    senderIsEntryDb = true;
+                appendStringInfo(str, "%s %d:%d  (slice%d%s)", pname,
+                                 nSenders, nReceivers, pMotion->motionID,
+                                 senderIsEntryDb ? " on entry db" : "");
                 pname = "";
 			}
 

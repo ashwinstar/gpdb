@@ -26,51 +26,51 @@
  * cdbpathtoplan_create_flow
  */
 Flow *
-cdbpathtoplan_create_flow(PlannerInfo    *root,
-                          Path     *path,
-                          List     *pathkeys,
-                          Plan     *plan)
+cdbpathtoplan_create_flow(PlannerInfo  *root,
+                          CdbPathLocus  locus,
+                          Relids        relids,
+                          List         *pathkeys,
+                          Plan         *plan)
 {
     Flow       *flow = NULL;
 
     /* Distribution */
-    if (CdbPathLocus_IsRoot(path->locus))
+    if (CdbPathLocus_IsEntry(locus))
     {
         flow = makeFlow(FLOW_SINGLETON);
         flow->segindex = -1;
     }
-    else if (CdbPathLocus_IsSingleQE(path->locus))
+    else if (CdbPathLocus_IsSingleQE(locus))
     {
         flow = makeFlow(FLOW_SINGLETON);
         flow->segindex = 0;
     }
-    else if (CdbPathLocus_IsGeneral(path->locus))
+    else if (CdbPathLocus_IsGeneral(locus))
     {
         flow = makeFlow(FLOW_SINGLETON);
         flow->segindex = 0;
     }
-    else if (CdbPathLocus_IsReplicated(path->locus))
+    else if (CdbPathLocus_IsReplicated(locus))
     {
         flow = makeFlow(FLOW_REPLICATED);
     }
-    else if (CdbPathLocus_IsHashed(path->locus) ||
-             CdbPathLocus_IsHashedOJ(path->locus))
+    else if (CdbPathLocus_IsHashed(locus) ||
+             CdbPathLocus_IsHashedOJ(locus))
     {
         flow = makeFlow(FLOW_PARTITIONED);
-        flow->hashExpr = cdbpathlocus_get_partkey_exprs(path->locus,
-                                                        path->parent->relids,
+        flow->hashExpr = cdbpathlocus_get_partkey_exprs(locus,
+                                                        relids,
                                                         plan->targetlist);
         /*
          * hashExpr can be NIL if the rel is partitioned on columns that aren't
          * projected (i.e. are not present in the result of this Path operator).
          */
     }
-    else if (CdbPathLocus_IsStrewn(path->locus))
+    else if (CdbPathLocus_IsStrewn(locus))
         flow = makeFlow(FLOW_PARTITIONED);
     else
-        Assert(false);
+        Insist(0);
 	
-
     /* Ordering */
     if (pathkeys)
     {
@@ -81,7 +81,7 @@ cdbpathtoplan_create_flow(PlannerInfo    *root,
     }
 
     flow->req_move = MOVEMENT_NONE;
-	flow->locustype = path->locus.locustype;
+	flow->locustype = locus.locustype;
     return flow;
 }                               /* cdbpathtoplan_create_flow */
 
@@ -95,10 +95,11 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
                                  Plan          *subplan)
 {
     Motion *motion = NULL;
+    Path   *subpath = path->subpath;
     int     numInputSegs;
 
     /* How many processes in source gang? */
-    if (CdbPathLocus_IsBottleneck(path->subpath->locus))
+    if (CdbPathLocus_IsBottleneck(subpath->locus))
         numInputSegs = 1;
     else
         numInputSegs = getMPPSegmentCount();
@@ -108,8 +109,11 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
      * what kind of gang will be needed to execute the subplan.
      */
     subplan->flow = cdbpathtoplan_create_flow(root,
-                                              path->subpath,
-                                              path->subpath->pathkeys,
+                                              subpath->locus,
+                                              subpath->parent
+                                                ? subpath->parent->relids
+                                                : NULL,
+                                              subpath->pathkeys,
                                               subplan);
 
     /* Send all tuples to a single process? */

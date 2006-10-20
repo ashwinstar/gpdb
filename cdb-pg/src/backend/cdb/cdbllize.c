@@ -200,7 +200,7 @@ cdbparallelize(Plan *plan,
 		case CMD_DELETE:
 			{
 				/* Since this is a data modification command, we need to
-				 * include information about the result relation in the 
+				 * include information about the result relation in the
 				 * summary of relations touched. */
 				Oid			reloid;
                 Relation    relation;
@@ -287,8 +287,8 @@ cdbparallelize(Plan *plan,
 
 /* ----------------------------------------------------------------------- *
  * Functions prescan() and prescan_walker() use the plan_tree_walker()
- * framework to visit the nodes of the plan tree in order to check for 
- * unsupported usages and collect information for use in finalizing the 
+ * framework to visit the nodes of the plan tree in order to check for
+ * unsupported usages and collect information for use in finalizing the
  * plan.  The walker exits with an error only due an unexpected problems.
  *
  * The plan and query arguments should not be null.
@@ -310,16 +310,16 @@ prescan(Plan *plan, PlanProfile * context)
  * plan produced by the MPP optimizer for dispatch on the QD.  There
  * are two main task performed:
  *
- * 1. Since the optimizer isn't in a position to view plan globally, 
+ * 1. Since the optimizer isn't in a position to view plan globally,
  *    it may generate plans that we can't execute.  This function is
  *    responsible for detecting potential problem usages:
  *
  *    Example: Non-initplan subplans are legal in sequential contexts
  *    but not in parallel contexs.
  *
- * 2. The function specifies (by marking Flow nodes) what (if any) 
- *    motions need to be applied to initplans prior to dispatch.  
- *    As in the case of the main plan, the actual Motion node is 
+ * 2. The function specifies (by marking Flow nodes) what (if any)
+ *    motions need to be applied to initplans prior to dispatch.
+ *    As in the case of the main plan, the actual Motion node is
  *    attached later.
  */
 bool
@@ -347,7 +347,7 @@ prescan_walker(Node *node, PlanProfile * context)
 				SubPlan    *subplan = (SubPlan *) node;
 
 				/*
-				 * Note subqueries that have not been pulled off into 
+				 * Note subqueries that have not been pulled off into
 				 * initPlans.  We're not ready for these yet.
 				 */
 				if ( subplan->is_multirow || ! subplan->is_initplan )
@@ -508,7 +508,6 @@ makeFlow(FlowType flotype)
 	Flow	   *flow = makeNode(Flow);
 
 	flow->flotype = flotype;
-    flow->base_flotype = FLOW_UNDEFINED;
 	flow->req_move = MOVEMENT_NONE;
 	flow->locustype = CdbLocusType_Null;
 
@@ -527,7 +526,7 @@ pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
 	Flow	   *model_flow;
 	Flow	   *new_flow;
 
-	Assert(subplan && subplan->flow);
+	Insist(subplan && subplan->flow);
 
 	model_flow = subplan->flow;
 
@@ -549,35 +548,47 @@ pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
 	}
 
 	/* Pull up sort key info if requested. */
-    if (withSort && model_flow->numSortCols > 0)
+    if (withSort)
 	{
-		if (is_projection_capable_plan(plan))
-		{
-			/*
+        if (IsA(plan, Sort))
+        {
+	        Sort   *sort = (Sort *)plan;
+       	
+	        new_flow->numSortCols = sort->numCols;
+	        ARRAYCOPY(new_flow->sortColIdx, sort->sortColIdx, sort->numCols);
+	        ARRAYCOPY(new_flow->sortOperators, sort->sortOperators, sort->numCols);
+        }
+        else if (model_flow->numSortCols == 0)
+            new_flow->numSortCols = 0;
+        else if (is_projection_capable_plan(plan))
+	    {
+		    /*
              * Try to derive a sortColIdx to align with projected targetlist.
              * It might be shorter than the subplan's sortColIdx, maybe even
              * empty, if not all of the subplan's sort cols are projected.
              */
-			new_flow->numSortCols = cdbpullup_colIdx(plan,
+		    new_flow->numSortCols = cdbpullup_colIdx(plan,
                                                      subplan,
                                                      model_flow->numSortCols,
                                                      model_flow->sortColIdx,
                                                      &new_flow->sortColIdx);
-		}
-		else
-		{
-			/* Non-projecting so sort attributes are the same. */
+		    if (new_flow->numSortCols > 0)
+                ARRAYCOPY(new_flow->sortOperators,
+                          model_flow->sortOperators,
+                          new_flow->numSortCols);
+	    }
+	    else
+	    {
+		    /* Non-projecting so sort attributes are the same. */
             new_flow->numSortCols = model_flow->numSortCols;
-			ARRAYCOPY(new_flow->sortColIdx,
+		    ARRAYCOPY(new_flow->sortColIdx,
                       model_flow->sortColIdx,
                       new_flow->numSortCols);
-		}
-
-		if (new_flow->numSortCols > 0)
             ARRAYCOPY(new_flow->sortOperators,
                       model_flow->sortOperators,
                       new_flow->numSortCols);
-	}
+	    }
+	}   /* withSort */
 
 	new_flow->locustype = model_flow->locustype;
 	
@@ -773,11 +784,6 @@ adjustPlanFlow(Plan        *plan,
     if (flow->req_move != MOVEMENT_NONE)
         return false;
 
-    /* Tuples cannot be sent from QD to QEs via Motion nodes (for now). */
-    if (flow->flotype == FLOW_SINGLETON &&
-        flow->segindex < 0)
-        return false;
-
     switch (req_move)
 	{
         case MOVEMENT_FOCUS:
@@ -912,18 +918,30 @@ adjustPlanFlow(Plan        *plan,
     /*
      * Now we begin the transformation, if 'live'.
      *
+     * Make our changes to a shallow copy of the original Flow node.
+     * Later, after applying the requested motion, apply_motion_mutator()
+     * will restore the original Flow ptr and discard the modified copy.
+     *
+     * Note that the original Flow node describes the present Plan node's
+     * own result distribution and ordering: i.e. the input to the future
+     * Motion.   The temporary modified Flow describes the result of the
+     * requested Motion: the input to the next operator downstream.
+     */
+    if (!flow->flow_before_req_move)
+    {
+        plan->flow = (Flow *)palloc(sizeof(*plan->flow));
+        *plan->flow = *flow;
+        plan->flow->flow_before_req_move = flow;
+        flow = plan->flow;
+    }
+
+    /*
      * Set flag to tell apply_motion() to insert a Motion node
      * immediately above this node (= downstream).  Overwrite the
      * present Plan node's Flow node to describe the distribution
      * and ordering that the future Motion node will produce.
-     *
-     * On return there is no longer any Flow node that specifically
-     * describes the present Plan node's own result distribution and
-     * ordering, i.e. the input to the future Motion.
      */
     flow->req_move = req_move;
-    if (flow->base_flotype == FLOW_UNDEFINED)
-        flow->base_flotype = flow->flotype;
 
     switch (req_move)
     {

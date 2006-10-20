@@ -18,7 +18,6 @@
 #include "catalog/mpp_configuration.h"
 #include "catalog/mpp_mpp.h"
 #include "catalog/mpp_policy.h"
-#include "catalog/mpp_version.h"
 
 
 

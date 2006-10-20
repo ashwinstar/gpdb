@@ -155,17 +155,28 @@ static Sort *make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
  *	  Returns a Plan tree.
  */
 Plan *
-create_plan(PlannerInfo *root, Path *best_path)
+create_plan(PlannerInfo *root, Path *path)
 {
     CreatePlanContext   ctx;
+    Plan               *plan;
 
     ctx.root = root;
 
-    /* CDB: Modify path to support unique rowid operation for subquery preds. */
+    /* Modify path to support unique rowid operation for subquery preds. */
     if (root->in_info_list)
-        cdbpath_dedup_fixup(root, best_path);
+        cdbpath_dedup_fixup(root, path);
 
-    return create_subplan(&ctx, best_path);
+    /* Generate the Plan tree. */
+    plan = create_subplan(&ctx, path);
+
+	/* Decorate the top node of the plan with a Flow node. */
+	plan->flow = cdbpathtoplan_create_flow(root,
+                                           path->locus,
+                                           path->parent ? path->parent->relids
+                                                        : NULL,
+                                           path->pathkeys,
+                                           plan);
+    return plan;
 }                               /* create_plan */
 
 
@@ -677,6 +688,11 @@ create_limit1_plan(CreatePlanContext *ctx, UniquePath *uniquepath)
                                                   Int32GetDatum(1),
                                                   false, true);
         subplan->lefttree = (Plan *)limitplan;
+
+        /* Motion node's subplan is required to have a Flow node. */
+        limitplan->plan.flow = pull_up_Flow((Plan *)limitplan,
+                                            limitplan->plan.lefttree,
+                                            false);
     }
     else
         subplan = create_subplan(ctx, uniquepath->subpath);
@@ -852,10 +868,29 @@ Plan *
 create_motion_plan(CreatePlanContext *ctx, CdbMotionPath *path)
 {
     Motion *motion;
-    Plan   *subplan = create_subplan(ctx, path->subpath);
+    Path   *subpath = path->subpath;
+    Plan   *subplan;
+
+    /*
+     * singleQE-->entry:  Elide the motion.  The subplan will run in the same
+     * process with its parent: either the qDisp (if it is a top slice) or a
+     * singleton gang on the entry db (otherwise).
+     */
+    if (CdbPathLocus_IsEntry(path->path.locus) &&
+        CdbPathLocus_IsSingleQE(subpath->locus))
+    {
+        /* Push the MotionPath's locus and pathkeys down onto subpath. */
+        subpath->locus = path->path.locus;
+        subpath->pathkeys = path->path.pathkeys;
+
+        subplan = create_subplan(ctx, subpath);
+        return subplan;
+    }
+
+    subplan = create_subplan(ctx, subpath);
 
     /* Only the needed columns should be projected from base rel. */
-    disuse_physical_tlist(subplan, path->subpath);
+    disuse_physical_tlist(subplan, subpath);
 
     /* Add motion operator. */
     motion = cdbpathtoplan_create_motion_plan(ctx->root, path, subplan);

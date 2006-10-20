@@ -266,15 +266,16 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_FLOAT_FIELD(total_cost, "%.2f");
 	WRITE_FLOAT_FIELD(plan_rows, "%.0f");
 	WRITE_INT_FIELD(plan_width);
-	WRITE_NODE_FIELD(targetlist);
-	WRITE_NODE_FIELD(qual);
-	WRITE_BITMAPSET_FIELD(extParam);
-	WRITE_BITMAPSET_FIELD(allParam);
-	WRITE_INT_FIELD(nParamExec);
-	WRITE_NODE_FIELD(flow);
-	WRITE_ENUM_FIELD(dispatch,DispatchMethod);
 	WRITE_INT_FIELD(nMotionNodes);
 	WRITE_INT_FIELD(nInitPlans);
+	WRITE_INT_FIELD(nParamExec);
+	WRITE_BITMAPSET_FIELD(extParam);
+	WRITE_BITMAPSET_FIELD(allParam);
+	WRITE_ENUM_FIELD(dispatch,DispatchMethod);
+
+	WRITE_NODE_FIELD(flow);
+	WRITE_NODE_FIELD(targetlist);
+	WRITE_NODE_FIELD(qual);
 	WRITE_NODE_FIELD(sliceTable);
 
     WRITE_NODE_FIELD(lefttree);
@@ -1099,7 +1100,6 @@ _outFlow(StringInfo str, Flow *node)
 	WRITE_NODE_TYPE("FLOW");
 
 	WRITE_ENUM_FIELD(flotype, FlowType);
-	WRITE_ENUM_FIELD(base_flotype, FlowType);
 	WRITE_ENUM_FIELD(req_move, Movement);
 	WRITE_ENUM_FIELD(locustype, CdbLocusType);
 	WRITE_INT_FIELD(segindex);
@@ -1116,6 +1116,8 @@ _outFlow(StringInfo str, Flow *node)
 		appendStringInfo(str, " %u", node->sortOperators[i]);
 	
 	WRITE_NODE_FIELD(hashExpr);
+
+	WRITE_NODE_FIELD(flow_before_req_move);
 }
 
 /*****************************************************************************

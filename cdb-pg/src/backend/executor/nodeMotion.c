@@ -434,8 +434,8 @@ execMotionSortedReceiver(MotionState * node)
         /* Receive the successor of the tuple that we returned last time. */
         recvRC = RecvTupleFrom(node->ps.state->motionlayer_context,
 							   node->ps.state->interconnect_context,
-							   motion->motionID, 
-							   &inputTuple, 
+							   motion->motionID,
+							   &inputTuple,
 							   node->routeIdNext);
 
         /* Substitute it in the pq for its predecessor. */
@@ -644,7 +644,12 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	/* QD must fill in the global slice table. */
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-		MemoryContext oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
+		MemoryContext   oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
+        Flow           *sendFlow;
+
+        /* Top node of subplan should have a Flow node. */
+        Insist(node->plan.lefttree && node->plan.lefttree->flow);
+        sendFlow = node->plan.lefttree->flow;
 
         /* Sending slice table entry hasn't been filled in yet. */
         Assert(sendSlice->rootIndex == -1 &&
@@ -665,17 +670,35 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
         sendSlice->rootIndex = recvSlice->rootIndex;
 
 		/* The gang beneath a Motion will be a reader. */
-		sendSlice->gangType = GANGTYPE_READER;
+		sendSlice->gangType = GANGTYPE_PRIMARY_READER;
         sendSlice->gangSize = node->numInputSegs;
 
-        /* QD is always the receiver for any Motion nodes that it executes. */
+        /* Does sending slice need 1-gang with read-only access to entry db? */
+        if (sendFlow->flotype == FLOW_SINGLETON &&
+            sendFlow->segindex == -1)
+            sendSlice->gangType = GANGTYPE_ENTRYDB_READER;
+
+        /* Sending to a single receiving process on the entry db? */
         if (node->motionType == MOTIONTYPE_FIXED &&
-            node->numOutputSegs == 1 &&
-            node->outputSegIdx[0] == -1)
+            node->numOutputSegs == 1)
         {
-            motionstate->isReceiver = true;
-            thisSlice = recvSlice;
-            thatSlice = sendSlice;
+            /* Is receiving slice a root slice that runs here in the qDisp? */
+            if (recvSlice->sliceIndex == recvSlice->rootIndex)
+            {
+                /* QD is always the receiver when executing a Motion node. */
+                motionstate->isReceiver = true;
+                thisSlice = recvSlice;
+                thatSlice = sendSlice;
+                Assert(recvSlice->gangType == GANGTYPE_UNALLOCATED);
+                Assert(node->outputSegIdx[0] == -1);
+            }
+            else
+            {
+                Assert(recvSlice->gangSize == 1);
+                Assert(node->outputSegIdx[0] >= 0
+                         ? recvSlice->gangType == GANGTYPE_PRIMARY_READER
+                         : recvSlice->gangType == GANGTYPE_ENTRYDB_READER);
+            }
         }
 
 		estate->es_cur_slice_idx = sendSlice->sliceIndex;
@@ -1100,9 +1123,9 @@ evalHashKey(ExprContext *econtext, List *hashkeys, List *hashtypes, CdbHash * h)
 
 	/*
 	 * If we have 1 or more distribution keys for this relation, hash
-	 * them. However, If this happens to be a relation with an empty 
+	 * them. However, If this happens to be a relation with an empty
 	 * policy (partitioning policy with a NULL distribution key list)
-	 * then we have no hash key value to feed in, so use cdbhashnokey() 
+	 * then we have no hash key value to feed in, so use cdbhashnokey()
 	 * to assign a hash value for us.
 	 */
 	if(list_length(hashkeys) > 0)
@@ -1252,8 +1275,8 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 	
 	sendRC = SendTuple(node->ps.state->motionlayer_context,
 					   node->ps.state->interconnect_context,
-					   motion->motionID, 
-					   tuple, 
+					   motion->motionID,
+					   tuple,
 					   targetRoute);
 
 	Assert(sendRC == SEND_COMPLETE || sendRC == STOP_SENDING);

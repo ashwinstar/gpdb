@@ -501,6 +501,13 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	 * its never for a very long time.
 	 *
 	 */
+    /*$$$$$$$ FIX ME $$$$$$$$$*/
+    if (Mpp_segment == -1 && Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
+    {
+        elog(DEBUG5, "GetSnapshotData for entry db singleton QE: Shared snapshot not implemented.  Punt!"); 
+    }
+    else
+    /*$$$$$$$$$$$$$$$$$$$$$$$*/
 	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
 	{
 		int	   	count = 0;

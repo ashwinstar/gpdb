@@ -2086,7 +2086,7 @@ create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel, List *pathkeys)
 	pathnode->parent = rel;
 	pathnode->pathkeys = pathkeys;
 
-    pathnode->locus = cdbpathlocus_from_subquery(root, rel);
+    pathnode->locus = cdbpathlocus_from_subquery(root, rel->subplan, rel->relid);
     pathnode->motionHazard = true;          /* better safe than sorry */
     pathnode->rescannable = false;
 
@@ -2110,8 +2110,8 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel)
 	pathnode->pathkeys = NIL;	/* for now, assume unordered result */
 
     /* MPP TODO: handle function scan */
-    /* Assign all function evaluations to the query dispatcher, for now. */
-    CdbPathLocus_MakeRoot(&pathnode->locus);
+    /* Perform all function evaluations on the entry db, for now. */
+    CdbPathLocus_MakeEntry(&pathnode->locus);
     pathnode->motionHazard = false;
 	
 	/* For now, be conservative. */

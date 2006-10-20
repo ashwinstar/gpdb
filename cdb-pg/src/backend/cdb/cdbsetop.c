@@ -75,7 +75,7 @@ MppSetOpType choose_setop_type(List *planlist)
 				has_partitioned = TRUE;
 				break;
 				
-			case CdbLocusType_Root:
+			case CdbLocusType_Entry:
 				ok_general = ok_partitioned = ok_replicated = ok_single_qe = FALSE;
 				break;
 				
@@ -143,7 +143,7 @@ void adjust_setop_arguments(List *planlist, MppSetOpType setop_type)
 					adjusted_plan = (Plan *)make_motion_hash_all_targets(NULL, subplan);
 					break;
 				case CdbLocusType_Null:
-				case CdbLocusType_Root:
+				case CdbLocusType_Entry:
 				case CdbLocusType_Replicated:
 				default:
 					ereport(ERROR, (
@@ -168,7 +168,7 @@ void adjust_setop_arguments(List *planlist, MppSetOpType setop_type)
 					adjusted_plan = (Plan*)make_motion_gather_to_QD(subplan, false);				
 					break;
 
-				case CdbLocusType_Root:
+				case CdbLocusType_Entry:
 				case CdbLocusType_General:
 					break;
 					
@@ -200,7 +200,7 @@ void adjust_setop_arguments(List *planlist, MppSetOpType setop_type)
 				case CdbLocusType_General:
 					break;
 					
-				case CdbLocusType_Root:
+				case CdbLocusType_Entry:
 				case CdbLocusType_Null:
 				case CdbLocusType_Replicated:
 				default:
@@ -240,7 +240,7 @@ void adjust_setop_arguments(List *planlist, MppSetOpType setop_type)
 
 /*
  * Copy a Flow node.  Only the declarative part is preserved.  Not, e.g.,
- * any required movement or transformation.  Hash information is preserved 
+ * any required movement or transformation.  Hash information is preserved
  * only if withExprs is true. Sort specifications are preserved only
  * if withSort is true.
  *
@@ -281,12 +281,12 @@ Flow *copyFlow(Flow *model_flow, bool withExprs, bool withSort)
 	{
 		new_flow->numSortCols = model_flow->numSortCols;
 		ARRAYCOPY(
-			new_flow->sortColIdx, 
-			model_flow->sortColIdx, 
+			new_flow->sortColIdx,
+			model_flow->sortColIdx,
 			model_flow->numSortCols * sizeof(AttrNumber) );
 		ARRAYCOPY(
-			new_flow->sortOperators, 
-			model_flow->sortOperators, 
+			new_flow->sortOperators,
+			model_flow->sortOperators,
 			model_flow->numSortCols * sizeof(Oid) );
 	}
 
@@ -335,7 +335,7 @@ Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 	
 	flow = makeFlow(FLOW_SINGLETON);
 	flow->segindex = segindex;
-	flow->locustype = (segindex==-1)? CdbLocusType_Root : CdbLocusType_SingleQE;
+	flow->locustype = (segindex==-1)? CdbLocusType_Entry : CdbLocusType_SingleQE;
 	
 	if ( keep_ordering && subplan->flow->numSortCols > 0 )
 	{
@@ -352,7 +352,7 @@ Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 		}
 		
 		motion = make_sorted_union_motion(
-			subplan, 
+			subplan,
 			false, /* sendToSecondary */
 			numInputSegs,
 			segindex,
@@ -365,7 +365,7 @@ Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 	else
 	{
 		motion = make_union_motion(
-			subplan, 
+			subplan,
 			false, /* sendToSecondary */
 			numInputSegs,
 			segindex);
@@ -391,7 +391,7 @@ Motion* make_motion_hash_all_targets(PlannerInfo *root, Plan *subplan)
 /*
  * make_motion_hash
  *		Add a Motion node atop the given subplan to hash collocate
- *      tuples non-distinct on the values of the hash expressions.  This 
+ *      tuples non-distinct on the values of the hash expressions.  This
  *      motion should only be applied to a non-replicated, non-root subplan.
  */
 Motion* make_motion_hash(PlannerInfo *root, Plan *subplan, List *hashexprs)
@@ -409,7 +409,7 @@ Motion* make_motion_hash(PlannerInfo *root, Plan *subplan, List *hashexprs)
 	flow->locustype = CdbLocusType_Hashed;
 	
 	motion = make_hashed_motion(
-		subplan, 
+		subplan,
 		false, /* sendToSecondary */
 		numInputSegs,
 		hashexprs);
@@ -420,7 +420,7 @@ Motion* make_motion_hash(PlannerInfo *root, Plan *subplan, List *hashexprs)
 
 /*
  * makeHashExprsFromNonjunkTargets
- *		Make a list of hash expressions over all non-resjunk targets in 
+ *		Make a list of hash expressions over all non-resjunk targets in
  *		the targetlist are in the given target list.  This will align
  *		with the sort attributes used as input to a SetOp or Unique
  *		operator.
@@ -463,7 +463,7 @@ void mark_append_locus(Plan *plan, MppSetOpType optype)
 		mark_plan_replicated(plan);
 		break;
 	case PSETOP_SEQUENTIAL_QD:
-		mark_plan_root(plan);
+		mark_plan_entry(plan);
 		break;
 	case PSETOP_SEQUENTIAL_QE:
 		mark_plan_singleQE(plan);
@@ -510,49 +510,20 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 					errcode(ERRCODE_CDB_INTERNAL_ERROR),
 					errmsg("unexpected subplan hash expression") ));
 			}
-			hash = lappend(hash, makeVar(1, i, 
-										exprType((Node*)tle->expr), 
+			hash = lappend(hash, makeVar(1, i,
+										exprType((Node*)tle->expr),
 										exprTypmod((Node*)tle->expr), 0));
 		}
 		flow->hashExpr = hash;
 	}
 
-	flow->req_move = MOVEMENT_NONE;
-	flow->base_flotype = flow->flotype;
-	
 	plan->flow = flow;
 }
 
 
 void mark_sort_locus(Plan *plan)
 {
-	Flow *flow;
-	Sort *sort;
-
-	Assert( 
-		plan != NULL && 
-		IsA(plan,Sort) && 
-		plan->flow == NULL && 
-		plan->lefttree->flow != NULL 
-	);
-	
-	sort = (Sort*)plan;
-	flow = (Flow*)copyObject(plan->lefttree->flow);
-	flow->req_move = MOVEMENT_NONE;
-	flow->base_flotype = flow->flotype;
-	flow->numSortCols = sort->numCols;
-	ARRAYCOPY(
-		flow->sortColIdx, 
-		sort->sortColIdx, 
-		sort->numCols * sizeof(sort->sortColIdx[0])
-	);
-	ARRAYCOPY(
-		flow->sortOperators, 
-		sort->sortOperators, 
-		sort->numCols * sizeof(sort->sortOperators[0])
-	);
-	
-	plan->flow = flow;
+	plan->flow = pull_up_Flow(plan, plan->lefttree, true);
 }	
 
 void mark_plan_general(Plan* plan)
@@ -577,12 +548,12 @@ void mark_plan_replicated(Plan* plan)
 	plan->flow->locustype = CdbLocusType_Replicated;
 }
 
-void mark_plan_root(Plan* plan)
+void mark_plan_entry(Plan* plan)
 {
 	Assert( is_plan_node((Node*)plan) && plan->flow == NULL );
 	plan->flow = makeFlow(FLOW_SINGLETON);
 	plan->flow->segindex = -1;
-	plan->flow->locustype = CdbLocusType_Root;
+	plan->flow->locustype = CdbLocusType_Entry;
 }
 
 void mark_plan_singleQE(Plan* plan)

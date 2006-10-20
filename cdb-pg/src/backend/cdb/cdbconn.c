@@ -406,7 +406,8 @@ cdbconn_setSliceIndex(SegmentDatabaseDescriptor    *segdbDesc,
             appendPQExpBuffer(scratchbuf, " slice%d", sliceIndex);
     }
     else
-        appendPQExpBuffer(scratchbuf, "secondary entry db");
+        appendPQExpBuffer(scratchbuf, 
+                          q->isprimary ? "entry db" : "mirror entry db");
 
     /* Format the connection info. */
     appendPQExpBuffer(scratchbuf, " %s:%d",

@@ -2361,30 +2361,7 @@ _readMotion(void)
 
 
 /*
- * _readFlow
- */
-static Flow *
-_readFlow(void)
-{
-	READ_LOCALS(Flow);
-
-	READ_ENUM_FIELD(flotype, FlowType);
-	READ_ENUM_FIELD(base_flotype, FlowType);
-	READ_ENUM_FIELD(req_move, Movement);
-	READ_ENUM_FIELD(locustype, CdbLocusType);
-	READ_INT_FIELD(segindex);
-	
-	READ_INT_FIELD(numSortCols);
-	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
-	READ_OID_ARRAY(sortOperators, numSortCols);
-
-	READ_NODE_FIELD(hashExpr);
-
-	READ_DONE();
-}
-
-/*
- * _readFlow
+ * _readVacuumStmt
  */
 static VacuumStmt *
 _readVacuumStmt(void)
@@ -2528,8 +2505,6 @@ void readPlanInfo(Plan *local_node)
 	READ_BITMAPSET_FIELD(extParam);
 	READ_BITMAPSET_FIELD(allParam);
 	READ_INT_FIELD(nParamExec);
-	READ_NODE_FIELD(flow);
-	READ_ENUM_FIELD(dispatch, DispatchMethod);
 	READ_INT_FIELD(nMotionNodes);
 	READ_INT_FIELD(nInitPlans);
 	READ_NODE_FIELD(sliceTable);
@@ -2537,6 +2512,13 @@ void readPlanInfo(Plan *local_node)
     READ_NODE_FIELD(lefttree);
     READ_NODE_FIELD(righttree);
     READ_NODE_FIELD(initPlan);
+
+    /*
+     * Fields that are used only by the qDisp don't need to be serialized for
+     * dispatching to qExecs (in outfast.c), and are not read here:
+     *      flow
+     *      dispatch
+     */
 }
 
 void readJoinInfo(Join *local_node)
@@ -2699,7 +2681,6 @@ static ParseNodeInfo infoAr[] =
 	{"FIELDSELECT", (ReadFn)_readFieldSelect},
 	{"FIELDSTORE", (ReadFn)_readFieldStore},
 	{"FKCONSTRAINT", (ReadFn)_outFkConstraint},
-	{"FLOW", (ReadFn)_readFlow},
 	{"FROMEXPR", (ReadFn)_readFromExpr},
 	{"FUNCCALL", (ReadFn)_readFuncCall},
 	{"FUNCEXPR", (ReadFn)_readFuncExpr},

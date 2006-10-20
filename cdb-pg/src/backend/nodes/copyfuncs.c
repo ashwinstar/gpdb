@@ -1294,7 +1294,6 @@ _copyFlow(Flow *from)
 	Flow   *newnode = makeNode(Flow);
 
 	COPY_SCALAR_FIELD(flotype);
-	COPY_SCALAR_FIELD(base_flotype);
 	COPY_SCALAR_FIELD(req_move);
 	COPY_SCALAR_FIELD(locustype);
 	COPY_SCALAR_FIELD(segindex);
@@ -1302,6 +1301,7 @@ _copyFlow(Flow *from)
 	COPY_POINTER_FIELD(sortColIdx, from->numSortCols*sizeof(AttrNumber));
 	COPY_POINTER_FIELD(sortOperators, from->numSortCols*sizeof(Oid));	
 	COPY_NODE_FIELD(hashExpr);
+	COPY_NODE_FIELD(flow_before_req_move);
 
 	return newnode;
 }

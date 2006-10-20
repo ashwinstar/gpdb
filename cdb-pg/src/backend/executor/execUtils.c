@@ -1212,11 +1212,14 @@ InitRootSlices(QueryDesc *queryDesc)
 typedef struct SliceReq
 {
 	int			numNgangs;
-	int			num1gangs;
+	int			num1gangs_primary_reader;
+    int         num1gangs_entrydb_reader;
 	int			nxtNgang;
-	int			nxt1gang;
+	int			nxt1gang_primary_reader;
+	int			nxt1gang_entrydb_reader;
 	Gang	  **vecNgangs;
-	Gang	  **vec1gangs;
+	Gang	  **vec1gangs_primary_reader;
+	Gang	  **vec1gangs_entrydb_reader;
 	Gang	   *mirrorWriterGang;
 	bool		writer;
 
@@ -1314,27 +1317,39 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 			}
 			else
 			{
-				inv.vecNgangs[i] = allocateGang(GANGTYPE_READER, getMPPSegmentCount(), 0, queryDesc->portal_name);
+				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_READER, getMPPSegmentCount(), 0, queryDesc->portal_name);
 			}
 		}
 	}
-	if (inv.num1gangs > 0)
+	if (inv.num1gangs_primary_reader > 0)
 	{
-		inv.vec1gangs = (Gang **) palloc(sizeof(Gang *) * inv.num1gangs);
-		for (i = 0; i < inv.num1gangs; i++)
+		inv.vec1gangs_primary_reader = (Gang **) palloc(sizeof(Gang *) * inv.num1gangs_primary_reader);
+		for (i = 0; i < inv.num1gangs_primary_reader; i++)
 		{
-			inv.vec1gangs[i] = allocateGang(GANGTYPE_READER, 1, utility_segment_index, queryDesc->portal_name);
+			inv.vec1gangs_primary_reader[i] = allocateGang(GANGTYPE_PRIMARY_READER, 1, utility_segment_index, queryDesc->portal_name);
+		}
+	}
+	if (inv.num1gangs_entrydb_reader > 0)
+	{
+		inv.vec1gangs_entrydb_reader = (Gang **) palloc(sizeof(Gang *) * inv.num1gangs_entrydb_reader);
+		for (i = 0; i < inv.num1gangs_entrydb_reader; i++)
+		{
+			inv.vec1gangs_entrydb_reader[i] = allocateGang(GANGTYPE_ENTRYDB_READER, 1, -1, queryDesc->portal_name);
 		}
 	}
 
 	/* Use the gangs to construct the CdbProcess lists in slices. */
 
-	inv.nxtNgang = inv.nxt1gang = 0;
+	inv.nxtNgang = 0;
+    inv.nxt1gang_primary_reader = 0;
+    inv.nxt1gang_entrydb_reader = 0;
 	AssociateSlicesToProcesses(sliceMap, 0, &inv);		/* Main tree. */
 
 	for (i = sliceTable->nMotions + 1; i < nslices; i++)
 	{
-		inv.nxtNgang = inv.nxt1gang = 0;
+		inv.nxtNgang = 0;
+        inv.nxt1gang_primary_reader = 0;
+        inv.nxt1gang_entrydb_reader = 0;
 		AssociateSlicesToProcesses(sliceMap, i, &inv);	/* An initPlan */
 	}
 
@@ -1342,8 +1357,10 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 	pfree(sliceMap);
 	if (inv.vecNgangs != NULL)
 		pfree(inv.vecNgangs);
-	if (inv.vec1gangs != NULL)
-		pfree(inv.vec1gangs);
+	if (inv.vec1gangs_primary_reader != NULL)
+		pfree(inv.vec1gangs_primary_reader);
+	if (inv.vec1gangs_entrydb_reader != NULL)
+		pfree(inv.vec1gangs_entrydb_reader);
 
 }
 
@@ -1359,18 +1376,22 @@ ReleaseGangs(QueryDesc *queryDesc)
 void
 InitSliceReq(SliceReq * req)
 {
-	req->numNgangs = req->num1gangs = 0;
+	req->numNgangs = 0;
+    req->num1gangs_primary_reader = 0;
+    req->num1gangs_entrydb_reader = 0;
 	req->writer = FALSE;
 	req->vecNgangs = NULL;
-	req->vec1gangs = NULL;
+	req->vec1gangs_primary_reader = NULL;
+	req->vec1gangs_entrydb_reader = NULL;
 	req->mirrorWriterGang = NULL;
 }
 
 void
 AccumSliceReq(SliceReq * inv, SliceReq * req)
 {
-	inv->numNgangs = (inv->numNgangs >= req->numNgangs) ? inv->numNgangs : req->numNgangs;
-	inv->num1gangs = (inv->num1gangs >= req->num1gangs) ? inv->num1gangs : req->num1gangs;
+	inv->numNgangs = Max(inv->numNgangs, req->numNgangs);
+	inv->num1gangs_primary_reader = Max(inv->num1gangs_primary_reader, req->num1gangs_primary_reader); 
+	inv->num1gangs_entrydb_reader = Max(inv->num1gangs_entrydb_reader, req->num1gangs_entrydb_reader);
 	inv->writer = (inv->writer || req->writer);
 }
 
@@ -1392,13 +1413,18 @@ InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			/* Roots that run on the  QD don't need a gang. */
 			break;
 
+		case GANGTYPE_ENTRYDB_READER:
+            Assert(slice->gangSize == 1);
+			req->num1gangs_entrydb_reader++;
+			break;
+
 		case GANGTYPE_PRIMARY_WRITER:
 			req->writer = TRUE;
 			/* fall through */
-		case GANGTYPE_READER:
+		case GANGTYPE_PRIMARY_READER:
 			if (slice->gangSize == 1 && getMPPSegmentCount() != 1)
 			{
-				req->num1gangs++;
+				req->num1gangs_primary_reader++;
 			}
 			else
 			{
@@ -1442,6 +1468,13 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			slice->primaryProcesses = getCdbProcessesForQD(true);
 			break;
 
+		case GANGTYPE_ENTRYDB_READER:
+			slice->primaryGang = req->vec1gangs_entrydb_reader[req->nxt1gang_entrydb_reader];
+			Assert(slice->primaryGang != NULL);
+			slice->primaryProcesses = getCdbProcessList(slice->primaryGang);
+			req->nxt1gang_entrydb_reader++;
+			break;
+
 		case GANGTYPE_PRIMARY_WRITER:
 			Assert(slice->gangSize == getMPPSegmentCount());
 			Assert(req->numNgangs > 0 && req->nxtNgang == 0 && req->writer);
@@ -1459,21 +1492,20 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			req->nxtNgang++;
 			break;
 
-		case GANGTYPE_READER:
+		case GANGTYPE_PRIMARY_READER:
 			if (slice->gangSize == 1 && getMPPSegmentCount() != 1)
 			{
-				slice->primaryGang = req->vec1gangs[req->nxt1gang];
-				slice->primaryProcesses = getCdbProcessList(slice->primaryGang);
-				req->nxt1gang++;
+				slice->primaryGang = req->vec1gangs_primary_reader[req->nxt1gang_primary_reader];
+				req->nxt1gang_primary_reader++;
 			}
 			else
 			{
 				Assert(slice->gangSize == getMPPSegmentCount());
 				slice->primaryGang = req->vecNgangs[req->nxtNgang];
-				slice->primaryProcesses = getCdbProcessList(slice->primaryGang);
 				req->nxtNgang++;
 			}
 			Assert(slice->primaryGang != NULL);
+			slice->primaryProcesses = getCdbProcessList(slice->primaryGang);
 			break;
 
 		case GANGTYPE_MIRROR_WRITER:

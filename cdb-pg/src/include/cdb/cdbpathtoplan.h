@@ -3,7 +3,7 @@
  * cdbpathtoplan.h
  *
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -14,10 +14,11 @@
 
 
 Flow *
-cdbpathtoplan_create_flow(PlannerInfo   *root,
-                          Path     *path,
-                          List     *pathkeys,
-                          Plan     *plan);
+cdbpathtoplan_create_flow(PlannerInfo  *root,
+                          CdbPathLocus  locus,
+                          Relids        relids,
+                          List         *pathkeys,
+                          Plan         *plan);
 
 Motion *
 cdbpathtoplan_create_motion_plan(PlannerInfo   *root,

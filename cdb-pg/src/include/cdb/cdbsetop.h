@@ -100,7 +100,7 @@ extern
 void mark_plan_replicated(Plan* plan);
 
 extern
-void mark_plan_root(Plan* plan);
+void mark_plan_entry(Plan* plan);
 
 extern
 void mark_plan_singleQE(Plan* plan);

@@ -272,8 +272,6 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_BITMAPSET_FIELD(extParam);
 	WRITE_BITMAPSET_FIELD(allParam);
 	WRITE_INT_FIELD(nParamExec);
-	WRITE_NODE_FIELD(flow);
-	WRITE_ENUM_FIELD(dispatch,DispatchMethod);
 	WRITE_INT_FIELD(nMotionNodes);
 	WRITE_INT_FIELD(nInitPlans);
 	WRITE_NODE_FIELD(sliceTable);
@@ -281,6 +279,13 @@ _outPlanInfo(StringInfo str, Plan *node)
     WRITE_NODE_FIELD(lefttree);
     WRITE_NODE_FIELD(righttree);
     WRITE_NODE_FIELD(initPlan);
+
+    /*
+     * Fields that are used only by the qDisp don't need to be serialized for
+     * dispatching to qExecs:
+     *      flow
+     *      dispatch
+     */
 }
 
 /*
@@ -1087,32 +1092,6 @@ _outFromExpr(StringInfo str, FromExpr *node)
 	WRITE_NODE_FIELD(quals);
 }
 
-static void
-_outFlow(StringInfo str, Flow *node)
-{
-	int i;
-	
-	WRITE_NODE_TYPE("FLOW");
-
-	WRITE_ENUM_FIELD(flotype, FlowType);
-	WRITE_ENUM_FIELD(base_flotype, FlowType);
-	WRITE_ENUM_FIELD(req_move, Movement);
-	WRITE_ENUM_FIELD(locustype, CdbLocusType);
-	WRITE_INT_FIELD(segindex);
-	
-	/* This array format as in Group and Sort nodes. */
-	WRITE_INT_FIELD(numSortCols);
-	
-	appendStringInfoLiteral(str, " :sortColIdx");
-	for ( i = 0; i < node->numSortCols; i++ )
-		appendStringInfo(str, " %d", node->sortColIdx[i]);
-	
-	appendStringInfoLiteral(str, " :sortOperators");
-	for ( i = 0; i < node->numSortCols; i++ )
-		appendStringInfo(str, " %u", node->sortOperators[i]);
-	
-	WRITE_NODE_FIELD(hashExpr);
-}
 
 /*****************************************************************************
  *
@@ -2851,9 +2830,6 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_FromExpr:
 				_outFromExpr(str, obj);
-				break;
-			case T_Flow:
-				_outFlow(str, obj);
 				break;
 			case T_RemoteParamData:
 				_outRemoteParamData(str, obj);

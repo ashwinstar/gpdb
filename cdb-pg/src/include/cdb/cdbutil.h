@@ -4,6 +4,7 @@
  *	  Header file for routines in cdbutil.c and results returned by
  *	  those routines.
  *
+ * Copyright (c) 2005-2006, greenplum inc
  *
  *-------------------------------------------------------------------------
  */

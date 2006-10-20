@@ -25,7 +25,6 @@
 #include "executor/nodeAgg.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
-#include "nodes/print.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
@@ -45,7 +44,6 @@
 #include "cdb/cdbllize.h"
 #include "cdb/cdbpath.h"        /* cdbpath_segments */
 #include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() */
-#include "cdb/cdbvars.h"
 #include "cdb/cdbgroup.h" /* grouping_planner extensions */
 #include "cdb/cdbsetop.h" /* motion utilities */
 
@@ -391,12 +389,6 @@ subquery_planner(Query *parse, double tuple_fraction,
 	if (root->hasOuterJoins)
 		reduce_outer_joins(root);
 
-    /*$$$$$$$*/
-    if (DEBUG5 >= log_min_messages &&
-        root->in_info_list)
-        elog_node_display(DEBUG5, "preopt", root, true);
-    /*$$$$$$$*/
-
     /*
 	 * Do the main planning.  If we have an inherited target relation, that
 	 * needs special processing, else go straight to grouping_planner.
@@ -628,7 +620,7 @@ inheritance_planner(PlannerInfo *root, List *inheritlist)
 			{
 				switch ( locustype )
 				{
-				case CdbLocusType_Root:
+				case CdbLocusType_Entry:
 				case CdbLocusType_Hashed:
 				case CdbLocusType_Strewn:
 					/* Loci of inheritance set must match. */
@@ -713,8 +705,8 @@ inheritance_planner(PlannerInfo *root, List *inheritlist)
 	{
 		switch ( append_locustype )
 		{
-		case CdbLocusType_Root:
-			mark_plan_root(plan);
+		case CdbLocusType_Entry:
+			mark_plan_entry(plan);
 			break;
 			
 		case CdbLocusType_Hashed:
@@ -991,9 +983,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				 * right tlist, and it has no sort order.
 				 */
 				current_pathkeys = NIL;
-
-				/* CDB: No need for flow, since this case occurs only outside
-				 * outside the QD (MPP dispatch role). */
+                mark_plan_entry(result_plan);
 			}
 
 		}
@@ -1006,15 +996,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			 */
 			result_plan = create_plan(root, best_path);
 			current_pathkeys = best_path->pathkeys;
-
-			if ( Mpp_role == MPP_ROLE_DISPATCH )
-			{
-				/* Decorate the top node of the plan with a Flow node. */
-				result_plan->flow = cdbpathtoplan_create_flow(root,
-															  best_path,
-															  current_pathkeys,
-															  result_plan);
-			}
 
 			/*
 			 * create_plan() returns a plan with just a "flat" tlist of
@@ -1067,6 +1048,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 										groupColIdx);
 			}
 
+            Assert(result_plan->flow);
 
 			/*
 			 * Insert AGG or GROUP node if needed, plus an explicit sort step
@@ -1089,12 +1071,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												result_plan);
 				/* Hashed aggregation produces randomly-ordered results */
 				current_pathkeys = NIL;
-
-				if ( Mpp_role == MPP_ROLE_DISPATCH )
-				{
-					mark_passthru_locus(result_plan, true, true);
-					adapt_flow_to_targetlist(result_plan);
-				}
 			}
 			else if (parse->hasAggs)
 			{
@@ -1113,10 +1089,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 													 result_plan);
 						current_pathkeys = group_pathkeys;
 
-						if ( Mpp_role == MPP_ROLE_DISPATCH )
-						{
-							mark_sort_locus(result_plan);
-						}
+						/* Decorate the Sort node with a Flow node. */
+						mark_sort_locus(result_plan);
 					}
 					aggstrategy = AGG_SORTED;
 
@@ -1142,12 +1116,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												agg_counts.numAggs,
 												agg_counts.transitionSpace,
 												result_plan);
-
-				if ( Mpp_role == MPP_ROLE_DISPATCH )
-				{
-					mark_passthru_locus(result_plan, true, true);
-					adapt_flow_to_targetlist(result_plan);
-				}
 			}
 			else if (parse->groupClause)
 			{
@@ -1166,10 +1134,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												 groupColIdx,
 												 result_plan);
 					current_pathkeys = group_pathkeys;
-					if ( Mpp_role == MPP_ROLE_DISPATCH )
-					{
-						mark_sort_locus(result_plan);
-					}
+					mark_sort_locus(result_plan);
 				}
 
 				result_plan = (Plan *) make_group(root,
@@ -1180,10 +1145,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												  dNumGroups,
 												  result_plan);
 				/* The Group node won't change sort ordering */
-				if ( Mpp_role == MPP_ROLE_DISPATCH )
-				{
-					mark_passthru_locus(result_plan, true, true);
-				}
 			}
 			else if (root->hasHavingQual)
 			{
@@ -1202,10 +1163,23 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				result_plan = (Plan *) make_result(tlist,
 												   parse->havingQual,
 												   NULL);
-				/* CDB: TODO mark this as General locus? */
+				/* Result will be only one row anyway; no sort order */
+				current_pathkeys = NIL;
+				mark_plan_general(result_plan);
 			}
+
 		}						/* end of non-minmax-aggregate case */
 	}							/* end of if (setOperations) */
+
+    /*
+     * Decorate the top node with a Flow node if it doesn't have one yet.
+     * (In such cases we require the next-to-top node to have a Flow node
+     * from which we can obtain the distribution info.)
+     */
+    if (!result_plan->flow)
+        result_plan->flow = pull_up_Flow(result_plan,
+                                         result_plan->lefttree,
+                                         (current_pathkeys != NIL));
 
 	/*
 	 * MPP: If there's a DISTINCT clause and we're not collocated on the
@@ -1213,8 +1187,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	 */
 	 if ( Mpp_role == MPP_ROLE_DISPATCH && parse->distinctClause != NULL)
 	 {
-		Assert( result_plan->flow );
-		
 		if ( result_plan->flow->flotype == FLOW_PARTITIONED )
 		{
 			List *distinctExprs = NIL;
@@ -1235,18 +1207,15 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 													   parse->sortClause,
 													   result_plan);
 						current_pathkeys = sort_pathkeys;
-						if ( Mpp_role == MPP_ROLE_DISPATCH )
-						{
-							mark_sort_locus(result_plan);
-						}
+						mark_sort_locus(result_plan);
 					}
 				}
 
 				result_plan = (Plan *) make_unique(result_plan, parse->distinctClause);
-				if ( Mpp_role == MPP_ROLE_DISPATCH )
-				{
-					mark_passthru_locus(result_plan, TRUE, TRUE);
-				}
+
+                result_plan->flow = pull_up_Flow(result_plan,
+                                                 result_plan->lefttree,
+                                                 true);
 				
 				/* Is this right? */
 				result_plan->plan_rows = dNumGroups;
@@ -1287,10 +1256,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 										   parse->sortClause,
 										   result_plan);
 			current_pathkeys = sort_pathkeys;
-			if ( Mpp_role == MPP_ROLE_DISPATCH )
-			{
-				mark_sort_locus(result_plan);
-			}
+			mark_sort_locus(result_plan);
 		}
 	}
 
@@ -1300,10 +1266,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	if (parse->distinctClause)
 	{
 		result_plan = (Plan *) make_unique(result_plan, parse->distinctClause);
-		if ( Mpp_role == MPP_ROLE_DISPATCH )
-		{
-			mark_passthru_locus(result_plan, TRUE, TRUE);
-		}
+        result_plan->flow = pull_up_Flow(result_plan,
+                                         result_plan->lefttree,
+                                         true);
 		
 		/*
 		 * If there was grouping or aggregation, leave plan_rows as-is (ie,
@@ -1345,7 +1310,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												  precount,
 												  0,
 												  precount_est);
-				mark_passthru_locus(result_plan, TRUE, TRUE);
+                result_plan->flow = pull_up_Flow(result_plan,
+                                                 result_plan->lefttree,
+                                                 true);
 			}
 			
 			/* Focus on QE [merge to preserve order], prior to final LIMIT. */
@@ -1367,12 +1334,12 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 										  parse->limitCount,
 										  offset_est,
 										  count_est);
-		
-		if ( Mpp_role == MPP_ROLE_DISPATCH )
-		{
-			mark_passthru_locus(result_plan, TRUE, TRUE);
-		}
+        result_plan->flow = pull_up_Flow(result_plan,
+                                         result_plan->lefttree,
+                                         true);
 	}
+
+    Insist(result_plan->flow);
 
 	/*
 	 * Return the actual output ordering in query_pathkeys for possible use by

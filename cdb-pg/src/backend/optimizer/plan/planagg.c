@@ -3,6 +3,7 @@
  * planagg.c
  *	  Special planning for aggregate queries.
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -29,6 +30,8 @@
 #include "parser/parse_expr.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+
+#include "cdb/cdbllize.h"                   /* pull_up_Flow() */
 
 
 typedef struct
@@ -481,7 +484,8 @@ make_agg_subplan(PlannerInfo *root, MinMaxAggInfo *info)
 	 */
 	plan = create_plan(&subroot, (Path *) info->path);
 
-	plan->targetlist = copyObject(subparse->targetList);
+    /* Replace the plan's tlist with a copy of the one we built above. */
+    plan = plan_pushdown_tlist(plan, copyObject(subparse->targetList));
 
 	if (IsA(plan, Result))
 		iplan = plan->lefttree;
@@ -499,6 +503,9 @@ make_agg_subplan(PlannerInfo *root, MinMaxAggInfo *info)
 							   subparse->limitOffset,
 							   subparse->limitCount,
 							   0, 1);
+
+    /* Decorate the Limit node with a Flow node. */
+    plan->flow = pull_up_Flow(plan, plan->lefttree, false);
 
 	/*
 	 * Convert the plan into an InitPlan, and make a Param for its result.

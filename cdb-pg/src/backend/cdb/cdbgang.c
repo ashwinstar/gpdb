@@ -423,18 +423,15 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
 
 	char	   *username = GetUserNameFromId(GetSessionUserId());
 
-	MemoryContext oldContext;
-	MemoryContext permanentContext = TopMemoryContext;
-
-	/*
+    Assert(CurrentMemoryContext == TopMemoryContext);
+    
+    /*
 	 * Get the structure representing the configured segment
 	 * databases.  This structure is fetched into a permanent memory
 	 * context -- probably the TopMemoryContext. We also allocate
 	 * space for and partially construct the data structure pointed to
 	 * by ClusterDefn and headed by CdbClusterDescriptor.
 	 */
-	oldContext = MemoryContextSwitchTo(permanentContext);
-
 	newGangDefinition = (Gang *) palloc0(sizeof(Gang));
 
 	newGangDefinition->type = type;
@@ -447,23 +444,25 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
 		case GANGTYPE_PRIMARY_WRITER:
 			elog(DEBUG4, "building Gang for %s. Gang is primary writer", (portal_name ? portal_name : "unnamed portal"));
 			break;
-
 		case GANGTYPE_MIRROR_WRITER:
 			elog(DEBUG4, "building Gang for %s. Gang is mirror writer", (portal_name ? portal_name : "unnamed portal"));
 			break;
-
-		case GANGTYPE_READER:
+		case GANGTYPE_ENTRYDB_READER:
+            elog(DEBUG4, "Building gang of 1 process for entry db, portal %s",
+			     (portal_name ? portal_name : "unnamed portal"));
+		    Assert(size == 1 && content == -1);
+            break;
+		case GANGTYPE_PRIMARY_READER:
 			/*
 			 * Must be size 1 or size numsegments
 			 */
-			/*
-			 * If size 1, then content tells us what?
-			 */
-			elog(DEBUG4,
-				 "building Gang for %s.  Gang is reader size %d for content %d", 
-				 (portal_name ? portal_name : "unnamed portal"), size, content);
+            if (size == 1)
+			    elog(DEBUG4, "Building gang of 1 process for seg%d, portal %s",
+				     content, (portal_name ? portal_name : "unnamed portal"));
+            else
+			    elog(DEBUG4, "Building gang of %d processes for portal %s",
+				     size, (portal_name ? portal_name : "unnamed portal"));
 			break;
-
 		case GANGTYPE_UNALLOCATED:
 			Assert(FALSE);
 			newGangDefinition = NULL;
@@ -481,11 +480,29 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
 	if (cdb_component_dbs == NULL || cdb_component_dbs->total_segments <= 0
 		|| cdb_component_dbs->total_segment_dbs <= 0)
 	{
-		MemoryContextSwitchTo(oldContext);
 		elog(ERROR, "building Gang:  MPP schema not populated");
 		pfree(username);
 		return NULL;
 	}
+
+    /* 1-gang on entry db? */
+    if (type == GANGTYPE_ENTRYDB_READER)
+    {
+        Assert(size == 1);
+
+        /* Build segdb descriptor. */
+        segdbDesc = (SegmentDatabaseDescriptor *)palloc0(sizeof(*segdbDesc));
+		cdbconn_initSegmentDescriptor(segdbDesc,
+									  &cdb_component_dbs->entry_db_info[0],
+									  myDatabaseName,
+									  username);
+	    newGangDefinition->size = 1;
+	    newGangDefinition->segdb_count = 1;
+	    newGangDefinition->db_descriptors = segdbDesc;
+
+	    pfree(username);
+	    return newGangDefinition;
+    }
 
 	/* if mirroring is not configured */
 	if (cdb_component_dbs->total_segment_dbs == cdb_component_dbs->total_segments)
@@ -512,10 +529,6 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
 											  total_segments *
 											  sizeof
 											  (SegmentDatabaseDescriptor));
-
-
-	MemoryContextSwitchTo(oldContext);
-
 
 	Assert(cdb_component_dbs->total_segment_dbs > 0);
 
@@ -588,7 +601,7 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
 					 */
 					CondSetMPPReadonly();
 				}
-				else if (type == GANGTYPE_READER && size == 1 &&
+				else if (type == GANGTYPE_PRIMARY_READER && size == 1 &&
 						 content != p->segindex)
 				{
 					last_segindex = p->segindex;
@@ -612,7 +625,7 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
 												  username);
 
 					seg_count++;
-					if (type == GANGTYPE_READER && size == 1)
+					if (type == GANGTYPE_PRIMARY_READER && size == 1)
 						/* we are done */
 						break;
 				}
@@ -764,7 +777,8 @@ thread_DoConnect(void *arg)
 
 		appendPQExpBufferStr(&buffer, "options='");
 
-		if (pParms->type != GANGTYPE_READER)
+		if (pParms->type == GANGTYPE_PRIMARY_WRITER ||
+            pParms->type == GANGTYPE_MIRROR_WRITER)
 			appendPQExpBufferStr(&buffer, "-c mpp_is_writer=true ");
 
 		appendPQExpBuffer(&buffer,
@@ -853,10 +867,10 @@ thread_DoConnect(void *arg)
 		appendPQExpBuffer(&buffer, " -c temp_buffers=%d", num_temp_buffers);
         appendPQExpBuffer(&buffer, " -c mpp_log_interconnect=%s",
                            cdbvars_show_mpp_log_interconnect());
-         
-        if (mpp_use_snapshop_during_callback)   
+
+        if (mpp_use_snapshop_during_callback)
         	appendPQExpBuffer(&buffer, " -c mpp_use_snapshop_during_callback=true");
-        else               
+        else
         	appendPQExpBuffer(&buffer, " -c mpp_use_snapshop_during_callback=false");
 
 		if (StatementTimeout != 0)
@@ -1280,15 +1294,15 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 			}
 			break;
 
-		case GANGTYPE_READER:
+        case GANGTYPE_PRIMARY_READER:
+        case GANGTYPE_ENTRYDB_READER:
 			/*
 			 * Must be size 1 or size numsegments
 			 * If size 1, then content tells us which segment we want
 			 */
-			elog(DEBUG4, "Building Gang for %s. Gang is reader size %d", (portal_name ? portal_name : "unnamed portal"), size);
 			if (size != 1)
 			{
-
+                Assert(type == GANGTYPE_PRIMARY_READER);
 				if (availableReaderGangsN != NIL)		/* There are gangs
 														 * already created */
 				{
@@ -1335,43 +1349,57 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 				if (availableReaderGangs1 != NIL)		/* There are gangs
 														 * already created */
 				{
-					gp = linitial(availableReaderGangs1);
+                    ListCell       *cell = list_head(availableReaderGangs1);
+                    ListCell       *nextcell;
+                    ListCell       *prevcell = NULL;
 
-					Assert(gp->type == type && gp->size == 1);
-					/*
-					 * does it have the right content ?
-					 */
-					if (gp->db_descriptors[0].segindex == content)
-					{
-						elog(DEBUG4, "reusing an available reader 1-gang for content: %d, portal: %s", content, (portal_name ? portal_name : "unnamed"));
+                    /* Look for a gang with the requested segment index. */
+                    while (cell)
+                    {
+                        nextcell = lnext(cell);
+                        gp = (Gang *)lfirst(cell);
+					    Assert(gp->size == 1);
+					    if (gp->db_descriptors[0].segindex == content)
+                            break;
+                        prevcell = cell;
+                        cell = nextcell;
+                    }
+
+                    /* Remove gang from freelist and reuse. */
+                    if (cell)
+				    {
+					    elog(DEBUG4, "reusing an available reader 1-gang for seg%d, portal: %s", content, (portal_name ? portal_name : "unnamed"));
+
+                        availableReaderGangs1 =
+                            list_delete_cell(availableReaderGangs1, cell, prevcell);
 						
-						/* make sure no memory is still allocated for previous portal name that this gang belonged to */
-						if(gp->portal_name)
-							pfree(gp->portal_name);
+					    /* make sure no memory is still allocated for previous portal name that this gang belonged to */
+					    if(gp->portal_name)
+						    pfree(gp->portal_name);
 						
-						/* let the gang know which portal it is being assigned to */
-						gp->portal_name = (portal_name ? pstrdup(portal_name) : (char *) NULL);
-						
-						availableReaderGangs1 =
-							list_delete_first(availableReaderGangs1);
-					}
+					    /* let the gang know which portal it is being assigned to */
+					    gp->portal_name = (portal_name ? pstrdup(portal_name) : (char *) NULL);
+				    }
 					else
 						gp = NULL;
 				}
 				if (gp == NULL) /* no pre-created gang exists */
 				{
-					elog(DEBUG4, "creating a new reader 1-gang for content: %d, portal: %s", content, (portal_name ? portal_name : "unnamed"));
+					elog(DEBUG4, "creating a new reader 1-gang for seg%d, portal: %s", content, (portal_name ? portal_name : "unnamed"));
 					gp = createGang(type, size, content, portal_name);
 					/* try again */
-					if (gp->size == 0)
+					if (gp == NULL || gp->size != size)
 						gp = createGang(type, size, content, portal_name);
 				}
-				if (gp == NULL)
-					elog(ERROR, "No reader gang allocated");
+				if (gp == NULL || gp->size != size)
+                {
+                    if (content == -1)
+					    elog(ERROR, "Unable to allocate a reader 1-gang for entry db; portal: %s", (portal_name ? portal_name : "unnamed"));
+                    else
+					    elog(ERROR, "Unable to allocate a reader 1-gang for seg%d; portal: %s", content, (portal_name ? portal_name : "unnamed"));
+                }
 				allocatedReaderGangs1 = lappend(allocatedReaderGangs1, gp);
-
 			}
-
 			break;
 
 		default:
@@ -1477,13 +1505,16 @@ getCdbProcessList(Gang * gang)
 			 * We don't do this for reader 1-gangs
 			 *
 			 */
-
-			if (gang->type != GANGTYPE_READER || gang->size > 1)
-				while (segdbDesc->segindex > listsize)
+			if (gang->size > 1 ||
+                gang->type == GANGTYPE_PRIMARY_WRITER ||
+                gang->type == GANGTYPE_MIRROR_WRITER)
+            {
+                while (segdbDesc->segindex > listsize)
 				{
 					list = lappend(list, NULL);
 					listsize++;
 				}
+            }
 
 			process->listenerAddr = pstrdup(qeinfo->hostip);
 			process->listenerPort = segdbDesc->motionListener;
@@ -1499,11 +1530,14 @@ getCdbProcessList(Gang * gang)
 			listsize++;
 		}
 
-		if ((gang->type != GANGTYPE_READER || gang->size > 1) && listsize < getMPPSegmentCount())
-		{
-			if (gang->type == GANGTYPE_PRIMARY_WRITER)
-				elog(ERROR, "Primary gang smaller than number of segments");
+		if (gang->type == GANGTYPE_PRIMARY_WRITER &&
+            listsize < getMPPSegmentCount())
+			elog(ERROR, "Primary gang smaller than number of segments");
 
+		if (gang->size > 1 ||
+            gang->type == GANGTYPE_PRIMARY_WRITER ||
+            gang->type == GANGTYPE_MIRROR_WRITER)
+		{
 			while (listsize < getMPPSegmentCount())
 			{
 				list = lappend(list, NULL);
@@ -1764,8 +1798,8 @@ disconnectAndDestroyGang(Gang * gp)
 /*
  * freeGangsForPortal
  *
- * Free all gangs that were allocated for a specific portal 
- * (could either be a cursor name or an unnamed portal) 
+ * Free all gangs that were allocated for a specific portal
+ * (could either be a cursor name or an unnamed portal)
  *
  * Be careful when moving gangs onto the available list, if
  * cleanupGang() tells us that the gang has a problem, the gang has
@@ -1809,7 +1843,7 @@ freeGangsForPortal(char *portal_name)
 
 	/*
 	 * Now we iterate through the list of allocated reader gangs
-	 * and we free all the gangs that belong to the portal that 
+	 * and we free all the gangs that belong to the portal that
 	 * was specified by our caller.
 	 */
 	if (allocatedReaderGangsN != NIL)
@@ -2194,7 +2228,7 @@ bool isTargetPortal(char *p1, char *p2)
 {
 	/* both are unnamed portals (represented as NULL) */
 	if (!p1 && !p2)
-		return true; 
+		return true;
 	
 	/* one is unnamed, the other is named */
 	if (!p1 || !p2)

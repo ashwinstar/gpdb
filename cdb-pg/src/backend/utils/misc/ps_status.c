@@ -358,7 +358,7 @@ set_ps_display(const char *activity, bool force)
 
     /* Which segment is accessed by this qExec? */
     if (Mpp_role == MPP_ROLE_EXECUTE &&
-        Mpp_segment >= 0)
+        Mpp_segment >= -1)
         cp += snprintf(cp, ep-cp, "%s%d ",
                        Mpp_is_primary ? "seg" : "mir",
                        Mpp_segment);

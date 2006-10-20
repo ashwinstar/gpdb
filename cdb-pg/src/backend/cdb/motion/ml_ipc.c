@@ -2252,7 +2252,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
         msg.sendSliceIndex == pEntry->motNodeId &&
         pEntry->valid &&
         msg.recvSliceIndex == transportStates->sliceId &&
-        msg.srcContentId >= 0 &&
+        msg.srcContentId >= -1 &&
         msg.srcSessionId == mpp_session_id &&
 		msg.srcCommandCount <= mpp_command_count)
     {

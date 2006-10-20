@@ -1476,6 +1476,10 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 			if (!dispatchResult->stillRunning)
 				continue;
 
+            /* Skip the entry db. */
+            if (segdbDesc->segindex < 0)
+                continue;
+
 			if (!FtsTestConnection(segdbDesc->segment_database_info, segdbDesc->username, segdbDesc->dbname))
 			{
 				/* Note the error. */

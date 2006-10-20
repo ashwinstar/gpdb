@@ -38,6 +38,7 @@
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 
+#include "cdb/cdbllize.h"                   /* pull_up_Flow() */
 #include "cdb/cdbvars.h"
 #include "cdb/cdbsetop.h"
 
@@ -188,10 +189,7 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 							  NIL,
 							  rtr->rtindex,
 							  subplan);
-		if ( Mpp_role == MPP_ROLE_DISPATCH )
-		{
-			mark_passthru_locus(plan, FALSE, FALSE); /* CDB: no hash/sort keys */
-		}
+		mark_passthru_locus(plan, FALSE, FALSE); /* CDB: no hash/sort keys */
 
 		/*
 		 * We don't bother to determine the subquery's output ordering since
@@ -241,10 +239,7 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 												 refnames_tlist),
 							NULL,
 							plan);
-			if ( Mpp_role == MPP_ROLE_DISPATCH )
-			{
-				mark_passthru_locus(plan, FALSE, FALSE); /* CDB */
-			}
+            plan->flow = pull_up_Flow(plan, plan->lefttree, false);
 		}
 		return plan;
 	}
@@ -339,7 +334,7 @@ generate_union_plan(SetOperationStmt *op, PlannerInfo *root,
 			plan = (Plan *) make_sort_from_sortclauses(root, sortList, plan);
 			mark_sort_locus(plan); /* CDB */
 			plan = (Plan *) make_unique(plan, sortList);
-			mark_passthru_locus(plan, TRUE, TRUE); /* CDB */
+            plan->flow = pull_up_Flow(plan, plan->lefttree, true);
 		}
 		*sortClauses = sortList;
 	}
@@ -441,7 +436,7 @@ generate_nonunion_plan(SetOperationStmt *op, PlannerInfo *root,
 			break;
 	}
 	plan = (Plan *) make_setop(cmd, plan, sortList, list_length(op->colTypes) + 1);
-	mark_passthru_locus(plan, TRUE, TRUE); /* CDB */
+    plan->flow = pull_up_Flow(plan, plan->lefttree, true);
 
 	*sortClauses = sortList;
 

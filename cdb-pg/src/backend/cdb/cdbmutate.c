@@ -77,12 +77,11 @@ make_motion(Plan       *lefttree,
 			
 static Node *apply_motion_mutator(Node *node, ApplyMotionState * context);
 
-static void validateMotionNodeParms(MotionType motionType,
+static bool validateMotionNodeParms(MotionType motionType,
 						bool sendToSecondary, bool sendSorted,
 						List *hashExpr,
 						int numOutputSegs, int *outputSegIdx,
 				int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators);
-static bool motion_expr_walker(Node *node, char *not_used);
 
 static bool
 doesUpdateAffectPartitionCols(Plan         *plan,
@@ -149,7 +148,7 @@ apply_motion(Plan *plan, Query *query)
         if (targetPolicy)
             targetPolicyType = targetPolicy->ptype;
     }
- 
+
 	switch (query->commandType)
 	{
 		case CMD_SELECT:
@@ -221,20 +220,20 @@ apply_motion(Plan *plan, Query *query)
 									targetPolicy->attrs[targetPolicy->nattrs++] = n;
 									found_expr = true;
 									break;
-									 
+									
 								}
-								 
+								
 							}
 						}
 						
-						if (!found_expr) 
+						if (!found_expr)
 							break;
 					}
 
 					/* do we know how to partition? */
 					if (targetPolicy->nattrs == 0)
 					{
-						/* 
+						/*
 						 * hash on the first hashable column we can find.
 						 */
 						int i;
@@ -245,7 +244,7 @@ apply_motion(Plan *plan, Query *query)
 							{
 								Oid typeOid = exprType((Node *) target->expr);
 								bool isArray = false;  /* How do I find this out? */
-								 
+								
 								if(isMppHashable(typeOid) || isArray)
 								{
 									targetPolicy->attrs[targetPolicy->nattrs++] = i+1;
@@ -466,7 +465,7 @@ apply_motion(Plan *plan, Query *query)
 							RangeTblEntry  *rte;
 	        	
 	        				rte = rt_fetch(query->resultRelation, query->rtable);
-		     
+		
 							if (!DoesDistributionHaveDependencies(rte->relid,targetPolicy))
 							{
 								targetPolicy->nattrs = 0;
@@ -632,10 +631,8 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 
     /* Descending into a subquery or a new slice? */
     saveSliceDepth = context->sliceDepth;
-	Assert( !IsA(node,Query) ); /* TODO validate that following test is vestigial. */
-    if (IsA(node, Query))
-        context->sliceDepth = 0;
-    else if (IsA(node, Motion))
+	Assert( !IsA(node,Query) );
+    if (IsA(node, Motion))
         context->sliceDepth++;
     else if (flow && flow->req_move != MOVEMENT_NONE )
         context->sliceDepth++;
@@ -676,9 +673,11 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     {
         Motion *motion = (Motion *)newnode;
 
+        /* Motion node and its subplan are required to have Flow nodes. */
+        Assert(flow && motion->plan.lefttree->flow);
+
         /* Motion nodes can't specify motion. */
-        Assert(flow == NULL ||
-               flow->req_move == MOVEMENT_NONE);
+        Assert(flow->req_move == MOVEMENT_NONE && !flow->flow_before_req_move);
 
         /* Assign unique node number to the new node. */
         assignMotionID(newnode, context, node);
@@ -689,20 +688,17 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
             motion->outputSegIdx[0] >= 0 &&
             context->sliceDepth == 0)
         {
-            if (flow)
-            {
-                Assert(flow->flotype == FLOW_SINGLETON &&
-                       flow->segindex == motion->outputSegIdx[0]);
-                flow->segindex = -1;
-            }
+            Assert(flow->flotype == FLOW_SINGLETON &&
+                   flow->segindex == motion->outputSegIdx[0]);
+            flow->segindex = -1;
             motion->outputSegIdx[0] = -1;
         }
         goto done;
     }
 
     /*
-     * If no Flow node, we're in a portion of the tree that was
-     * finished by the planner and contains no Motion nodes.
+     * If no Flow node, we're in a portion of the tree that was finished by
+     * the planner and already contains any needed Motion nodes.
      */
     if (!flow)
         goto done;
@@ -711,28 +707,14 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 
     /* How many sending processes? */
     numInputSegs = 1;
-    if (flow->req_move != MOVEMENT_NONE &&
-        flow->base_flotype != FLOW_SINGLETON)
-    {
-        Assert(flow->base_flotype != FLOW_UNDEFINED);
+    if (flow->flow_before_req_move &&
+        flow->flow_before_req_move->flotype != FLOW_SINGLETON)
         numInputSegs = getMPPSegmentCount();
-    }
 
     /* Add motion atop the copied node, if necessary. */
     switch (flow->req_move)
     {
         case MOVEMENT_FOCUS:
-            /*
-             * TODO Fix this branch (which requires, in turn,
-             * extending our Flow support) to specify sort order,
-             * whether to send to secondary, and which segment is
-             * this one.  (Or should we specify "dispatcher" and
-             * let plan state specify the actual segment number?).
-             *
-             * So make_union_motion( newnode, flow->sendToSecondary,
-             * ThisSegmentNumber ); or something.
-             */
-
             /* If top slice is a singleton, let it execute on qDisp. */
             if (flow->segindex >= 0 &&
                 context->sliceDepth == 0)
@@ -755,15 +737,11 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
                                                     numInputSegs,
                                                     flow->segindex);
             }
-            /* Assign unique node number to the new node. */
-            assignMotionID(newnode, context, NULL);
             break;
 
         case MOVEMENT_BROADCAST:
             newnode = (Node *) make_broadcast_motion(plan, sendToSecondary,
                                                      numInputSegs);
-            /* Assign unique node number to the new node. */
-            assignMotionID(newnode, context, NULL);
             break;
 
         case MOVEMENT_REPARTITION:
@@ -772,8 +750,6 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
                                                  numInputSegs,
                                                  flow->hashExpr
                                                  );
-            /* Assign unique node number to the new node. */
-            assignMotionID(newnode, context, NULL);
             break;
 
         case MOVEMENT_NONE:
@@ -790,6 +766,24 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
             Insist(0);
             break;
     }
+
+    /*
+     * After adding Motion node, assign slice id and restore subplan's Flow.
+     */
+    if (flow->flow_before_req_move)
+    {
+        Assert(flow->req_move != MOVEMENT_NONE &&
+               IsA(newnode, Motion) &&
+               plan == ((Motion *)newnode)->plan.lefttree);
+
+        /* Assign unique node number to the new node. */
+        assignMotionID(newnode, context, NULL);
+
+        /* Replace the subplan's modified Flow with the original. */
+        plan->flow = flow->flow_before_req_move;
+    }
+    else
+        Assert(flow->req_move == MOVEMENT_NONE);
 
 done:
     /*
@@ -853,10 +847,16 @@ make_motion(Plan       *lefttree,
     Plan   *plan = &node->plan;
     List   *hashDataTypes = NIL;
 
-    validateMotionNodeParms(motionType,	sendToSecondary, sendSorted,
-			hashExpr,
-			numOutputSegs, outputSegIdx,
-			numSortCols, sortColIdx, sortOperators);
+    Assert(lefttree->flow);
+    Assert(validateMotionNodeParms(motionType,	
+                                   sendToSecondary,
+                                   sendSorted,
+                                   hashExpr,
+                                   numOutputSegs,
+                                   outputSegIdx,
+                                   numSortCols,
+                                   sortColIdx,
+                                   sortOperators));
 
     /* Build list of hash key expression data types. */
     if (hashExpr)
@@ -944,7 +944,7 @@ make_motion(Plan       *lefttree,
 			flow = makeFlow(FLOW_SINGLETON);
 			flow->segindex = node->outputSegIdx[0];
 			flow->locustype = ( flow->segindex<0 ) ?
-								CdbLocusType_Root :
+								CdbLocusType_Entry :
 								CdbLocusType_SingleQE;
 		}
 		else
@@ -1059,7 +1059,7 @@ makeDefaultSegIdxArray(int numSegs)
  * make_motion
  * --------------------------------------------------------------------
  */
-void
+bool
 validateMotionNodeParms(MotionType motionType,
 						bool sendToSecondary, bool sendSorted,
 						List *hashExpr,
@@ -1123,33 +1123,9 @@ validateMotionNodeParms(MotionType motionType,
 		 */
 		Assert(numSortCols == 0 && sortColIdx == NULL && sortOperators == NULL);
 	}
+    return true;
 }
 
-/* --------------------------------------------------------------------
- * motion_expr_walker -- replaces occurrences of INNER with OUTER
- * for Var's varno in hashexpr for motion nodes.
- * This came about because the join nodes args for the right subtree were
- * changed by setrefs to be INNER.	We grabbed them after that change.
- * But the motion node has no inner subtree, just an outer.
- * --------------------------------------------------------------------
- */
-bool
-motion_expr_walker(Node *node, char *not_used)
-{
-	if (node == NULL)
-		return false;
-
-	if (IsA(node, Var))
-	{
-		((Var *)node)->varno = OUTER;
-		return false;
-	}
-	else
-	{
-		return expression_tree_walker(node, motion_expr_walker, (void *) not_used);
-	}
-
-}
 
 /* ----------------------------------------------------------------
  * getExprListFromTargetList
@@ -1269,7 +1245,7 @@ doesUpdateAffectPartitionCols(Plan         *plan,
     ListCell   *rticell;
     ListCell   *plancell;
     MppPolicy  *policy;
-    
+
     if (query->resultRelations == NIL)
     {
 	    RangeTblEntry  *rte;
@@ -1282,12 +1258,12 @@ doesUpdateAffectPartitionCols(Plan         *plan,
         relation = relation_open(rte->relid, NoLock);
         policy = RelationGetPartitioningKey(relation);
         relation_close(relation, NoLock);
-    
+
 
 	    /*
 	     * Single target relation?
 	     */
-    
+
         return isAnyColChangedByUpdate(query->resultRelation,
                                        plan->targetlist,
                                        policy->nattrs,
@@ -1309,7 +1285,7 @@ doesUpdateAffectPartitionCols(Plan         *plan,
     {
         int     rti = lfirst_int(rticell);
         Plan   *subplan = (Plan *)lfirst(plancell);
-        
+
         RangeTblEntry  *rte;
         Relation        relation;
 

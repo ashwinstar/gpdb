@@ -15,6 +15,7 @@
 #include "nodes/pg_list.h"      /* List */
 #include "nodes/bitmapset.h"    /* Bitmapset */
 
+struct Plan;                    /* defined in plannodes.h */
 struct RelOptInfo;              /* defined in relation.h */
 struct PlannerInfo;				/* defined in relation.h */
 
@@ -37,13 +38,19 @@ extern bool cdbpathlocus_querysegmentcatalogs;
 typedef enum CdbLocusType
 {
     CdbLocusType_Null,
-    CdbLocusType_Root,          /* root executor (qDisp) */
-    CdbLocusType_SingleQE,      /* single qExec */
+    CdbLocusType_Entry,         /* a single backend process on the entry db:
+                                 * usually the qDisp itself, but could be a
+                                 * qExec started by the entry postmaster.
+                                 */
+    CdbLocusType_SingleQE,      /* a single backend process on any db: the
+                                 * qDisp itself, or a qExec started by a
+                                 * segment postmaster or the entry postmaster.
+                                 */
     CdbLocusType_General,       /* compatible with any locus (data is
                                  * self-contained in the query plan or
                                  * generally available in any qExec or qDisp) */
-    CdbLocusType_Replicated,    /* replicated over all qExecs of gang */
-    CdbLocusType_Hashed,        /* hash partitioned over all qExecs of gang */
+    CdbLocusType_Replicated,    /* replicated over all qExecs of an N-gang */
+    CdbLocusType_Hashed,        /* hash partitioned over all qExecs of N-gang */
     CdbLocusType_HashedOJ,      /* result of hash partitioned outer join */
     CdbLocusType_Strewn,        /* partitioned on no known function */
     CdbLocusType_End            /* = last valid CdbLocusType + 1 */
@@ -120,13 +127,33 @@ typedef struct CdbPathLocus
 #define CdbPathLocus_Degree(locus)          \
             (list_length((locus).partkey))
 
+/*
+ * CdbPathLocus_IsEqual
+ *
+ * Returns true if one CdbPathLocus is exactly the same as the other.
+ * To test for logical equivalence, use cdbpathlocus_compare() instead.
+ */
 #define CdbPathLocus_IsEqual(a, b)              \
             ((a).locustype == (b).locustype &&  \
              (a).partkey == (b).partkey)        \
 
+/*
+ * CdbPathLocus_IsBottleneck
+ *
+ * Returns true if the locus indicates confinement to a single process:
+ * either a singleton qExec (1-gang) on a segment db or the entry db, or
+ * the qDisp process.
+ */
 #define CdbPathLocus_IsBottleneck(locus)        \
-            (CdbPathLocus_IsRoot(locus) ||      \
+            (CdbPathLocus_IsEntry(locus) ||     \
              CdbPathLocus_IsSingleQE(locus))
+
+/*
+ * CdbPathLocus_IsPartitioned
+ *
+ * Returns true if the locus indicates partitioning across an N-gang, such
+ * that each qExec has a disjoint subset of the rows.
+ */
 #define CdbPathLocus_IsPartitioned(locus)       \
             (CdbPathLocus_IsHashed(locus) ||    \
              CdbPathLocus_IsHashedOJ(locus) ||  \
@@ -134,9 +161,9 @@ typedef struct CdbPathLocus
 
 #define CdbPathLocus_IsNull(locus)          \
             ((locus).locustype == CdbLocusType_Null)
-#define CdbPathLocus_IsRoot(locus)          \
-            ((locus).locustype == CdbLocusType_Root)
-#define CdbPathLocus_IsSingleQE(locus)    \
+#define CdbPathLocus_IsEntry(locus)         \
+            ((locus).locustype == CdbLocusType_Entry)
+#define CdbPathLocus_IsSingleQE(locus)      \
             ((locus).locustype == CdbLocusType_SingleQE)
 #define CdbPathLocus_IsGeneral(locus)       \
             ((locus).locustype == CdbLocusType_General)
@@ -158,8 +185,8 @@ typedef struct CdbPathLocus
 
 #define CdbPathLocus_MakeNull(plocus)                   \
             CdbPathLocus_Make((plocus), CdbLocusType_Null, NIL)
-#define CdbPathLocus_MakeRoot(plocus)                   \
-            CdbPathLocus_Make((plocus), CdbLocusType_Root, NIL)
+#define CdbPathLocus_MakeEntry(plocus)                  \
+            CdbPathLocus_Make((plocus), CdbLocusType_Entry, NIL)
 #define CdbPathLocus_MakeSingleQE(plocus)               \
             CdbPathLocus_Make((plocus), CdbLocusType_SingleQE, NIL)
 #define CdbPathLocus_MakeGeneral(plocus)                \
@@ -195,8 +222,9 @@ CdbPathLocus
 cdbpathlocus_from_exprs(struct PlannerInfo     *root,
                         List                   *hash_on_exprs);
 CdbPathLocus
-cdbpathlocus_from_subquery(struct PlannerInfo   *root,
-                           struct RelOptInfo    *rel);
+cdbpathlocus_from_subquery(struct PlannerInfo  *root,
+                           struct Plan         *subqplan,
+                           Index                subqrelid);
 
 CdbPathLocus
 cdbpathlocus_join(CdbPathLocus a, CdbPathLocus b);

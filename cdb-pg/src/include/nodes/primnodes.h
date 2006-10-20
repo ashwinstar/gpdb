@@ -973,15 +973,13 @@ typedef struct Flow
 {
 	NodeTag		type;			/* T_Flow */
 	FlowType	flotype;		/* Type of flow produced by the plan. */
-	FlowType	base_flotype;	/* Type of flow produced by the plan prior
-	                             * to application of any req_move. */
 	
 	/* What motion (including none) should be applied to this Plan's output. */
 	Movement	req_move;
 	
 	/* Locus type (optimizer flow characterization).
 	 */
-	 CdbLocusType	locustype;
+	CdbLocusType	locustype;
 	
 	/* If flotype is FLOW_SINGLETON, then this is the segment (-1 for entry)
 	 * on which tuples occur.  If req_move is MOVEMENT_FOCUS, then this is
@@ -994,11 +992,15 @@ typedef struct Flow
 	AttrNumber	*sortColIdx;		/* their indexes in target list */
 	Oid			*sortOperators;		/* OID of operators to sort them by */
 	
-	/* If flotype is FLOW_PARTITIONED and req_move is MOVEMENT_REPARTITION,
-	 * these express the desired partitioning for a hash motion,
+	/* If req_move is MOVEMENT_REPARTITION, these express the desired 
+     * partitioning for a hash motion.  Else if flotype is FLOW_PARTITIONED,
+     * this is the partitioning key.  Otherwise NIL. 
 	 * otherwise, they are NIL. */
-	List	*hashExpr;				/* list of hash expressions */
-		
+	List       *hashExpr;			/* list of hash expressions */
+
+    /* The original Flow ptr is saved here upon setting req_move. */
+    struct Flow    *flow_before_req_move;
+	
 } Flow;
 
 typedef struct RemoteParamData
@@ -1014,11 +1016,11 @@ typedef struct RemoteParamData
  */
 typedef enum GangType
 {
-	GANGTYPE_UNALLOCATED,
-	GANGTYPE_READER, /* A 1-gang or an N-gang */
-	GANGTYPE_PRIMARY_WRITER, /* An N-gang */
-	GANGTYPE_MIRROR_WRITER /* An N-gang */
-	
+	GANGTYPE_UNALLOCATED,       /* a root slice executed by the qDisp */
+    GANGTYPE_ENTRYDB_READER,    /* a 1-gang with read access to the entry db */	
+	GANGTYPE_PRIMARY_READER,    /* a 1-gang or N-gang to read the segment dbs */
+	GANGTYPE_PRIMARY_WRITER,    /* the N-gang that can update the segment dbs */
+	GANGTYPE_MIRROR_WRITER      /* the N-gang that updates segment mirror dbs */
 } GangType;
 
 

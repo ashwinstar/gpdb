@@ -3,6 +3,7 @@
  * cdbutil.c
  *	  Internal utility support functions for mpp/PostgreSQL.
  *
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * IDENTIFICATION
  *	  $Id$
@@ -162,20 +163,14 @@ getMppMpp(void)
 	/*
 	 * Validate the mpp_role against the content.
 	 * If the role is DISPATCH, we must be an entry database,
-	 * and if the role is EXECUTE, we must be a segment database.
+	 * If the role is EXECUTE, we can be either a segment database or an
+     * entry database.
 	 */
 	if (Mpp_role == MPP_ROLE_DISPATCH && MppIdentity.segindex >= 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
 				 errmsg("Cannot have a Mpp_role of dispatch when connected to a segment database."
-						)));
-	}
-	else if (Mpp_role == MPP_ROLE_EXECUTE && MppIdentity.segindex < 0)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-				 errmsg("Cannot have a Mpp_role of execute when connected to an entry database."
 						)));
 	}
 

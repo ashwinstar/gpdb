@@ -227,6 +227,8 @@ cdb_grouping_planner(PlannerInfo* root,
 	Assert( !has_groups || root->group_pathkeys != NULL );
 	Assert( agg_counts->numDistinctAggs != 1
 			|| agg_counts->distinctExpr != NULL );
+
+    CdbPathLocus_MakeNull(&output_locus);
 	
 	/*
 	 * First choose a one-stage plan.  Since there's always a way to do this,
@@ -235,10 +237,7 @@ cdb_grouping_planner(PlannerInfo* root,
 	group_type = MPP_GRP_TYPE_BASEPLAN;
 	group_prep = MPP_GRP_PREP_NONE;
 	
-	if ( CdbPathLocus_IsRoot(input_locus)
-		|| CdbPathLocus_IsGeneral(input_locus)
-		|| CdbPathLocus_IsSingleQE(input_locus)
-		|| CdbPathLocus_IsReplicated(input_locus) )
+	if ( !CdbPathLocus_IsPartitioned(input_locus) )
 	{
 		/* Can use base plan with no motion yielding same locus. */
 		group_prep = MPP_GRP_PREP_NONE;
@@ -251,7 +250,7 @@ cdb_grouping_planner(PlannerInfo* root,
 			group_prep = MPP_GRP_PREP_NONE;
 			output_locus = input_locus; /* may be less discriminating that group locus */
 		}
-		else if ( CdbPathLocus_IsPartitioned(input_locus) )
+		else
 		{
 			group_prep = MPP_GRP_PREP_HASH_GROUPS;
 			CdbPathLocus_MakeHashed(&output_locus, root->group_pathkeys);
@@ -265,7 +264,6 @@ cdb_grouping_planner(PlannerInfo* root,
 	}
 	else if ( has_aggs ) /* and not grouped and not single or replicated  */
 	{
-		Assert(CdbPathLocus_IsPartitioned(input_locus));
 		group_prep = MPP_GRP_PREP_FOCUS_QE;
 		CdbPathLocus_MakeSingleQE(&output_locus);
 	}
@@ -310,10 +308,7 @@ cdb_grouping_planner(PlannerInfo* root,
 		/* We can to do a two-stage plan.  But do we want to?  If not,
 		 * fall out of the if and stick with the one-stage approach. */
 		if ( ! enable_agg_restruct
-			|| CdbPathLocus_IsRoot(input_locus)
-			|| CdbPathLocus_IsGeneral(input_locus)
-			|| CdbPathLocus_IsSingleQE(input_locus)
-			|| CdbPathLocus_IsReplicated(input_locus) )
+			|| !CdbPathLocus_IsPartitioned(input_locus) )
 		{
 			; /* Already collocated, don't bother.  This code is purely
 			   * defensive since we will have taken an early exit above.
@@ -473,7 +468,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	AttrNumber *groupColIdx = ctx->groupColIdx;
 	Path       *best_path = ctx->best_path;
 	Path       *cheapest_path = ctx->cheapest_path;
-	Path       *path;
+	Path       *path = NULL;
 	bool        use_hashed_grouping = ctx->use_hashed_grouping;
 	long		numGroups = (ctx->dNumGroups < 0) ? 0 :
 	                        (ctx->dNumGroups > LONG_MAX) ? LONG_MAX :
@@ -516,7 +511,6 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	}
 	result_plan = create_plan(root, path);
 	current_pathkeys = path->pathkeys;
-	result_plan->flow = cdbpathtoplan_create_flow(root, path, current_pathkeys, result_plan);
 	
 	/* Instead of the flat target list produced above, use the sub_tlist
 	 * constructed in cdb_grouping_planner.  Add a Result node if the
@@ -525,6 +519,8 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	 */
     result_plan = plan_pushdown_tlist(result_plan, sub_tlist);
 
+    Assert(result_plan->flow);
+    
 	/* Account for the cost of evaluation of the sub_tlist. */
 	cost_qual_eval(&tlist_cost, sub_tlist);
 	result_plan->startup_cost += tlist_cost.startup;
@@ -581,7 +577,9 @@ make_one_stage_agg_plan(PlannerInfo *root,
 			break; /* Never */
 	}
 	
-	/*
+    Assert(result_plan->flow);
+    
+    /*
 	 * Insert AGG or GROUP node if needed, plus an explicit sort step
 	 * if necessary.
 	 *
@@ -602,7 +600,6 @@ make_one_stage_agg_plan(PlannerInfo *root,
 										result_plan);
 		/* Hashed aggregation produces randomly-ordered results */
 		current_pathkeys = NIL;
-		mark_passthru_locus(result_plan, true, false);
 	}
 	else if (parse->hasAggs)
 	{
@@ -646,7 +643,6 @@ make_one_stage_agg_plan(PlannerInfo *root,
 										ctx->agg_counts->numAggs,
 										ctx->agg_counts->transitionSpace,
 										result_plan);
-		mark_passthru_locus(result_plan, true, (current_pathkeys != NULL ));
 	}
 	else if (parse->groupClause)
 	{
@@ -676,7 +672,6 @@ make_one_stage_agg_plan(PlannerInfo *root,
 										  ctx->dNumGroups,
 										  result_plan);
 		/* The Group node won't change sort ordering */
-		mark_passthru_locus(result_plan, true, true);
 	}
 	else if (root->hasHavingQual)
 	{
@@ -688,6 +683,16 @@ make_one_stage_agg_plan(PlannerInfo *root,
 		return NULL;
 	}
 	
+    /* 
+     * Decorate the top node with a Flow node if it doesn't have one yet.
+     * (In such cases we require the next-to-top node to have a Flow node 
+     * from which we can obtain the distribution info.)
+     */
+    if (!result_plan->flow)
+        result_plan->flow = pull_up_Flow(result_plan, 
+                                         result_plan->lefttree, 
+                                         (current_pathkeys != NIL));
+
 	/* Marshal implicit results. Return explicit result. */
 	ctx->current_pathkeys = current_pathkeys;
 	return result_plan;
@@ -740,7 +745,6 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	 */
 	result_plan = create_plan(root, path);
 	current_pathkeys = path->pathkeys;
-	result_plan->flow = cdbpathtoplan_create_flow(root, path, current_pathkeys, result_plan);
 
 	/* Instead of the flat target list produced by create_plan above, use
 	 * the sub_tlist constructed in cdb_grouping_planner.  This consists
@@ -1045,7 +1049,9 @@ make_two_stage_agg_plan(PlannerInfo *root,
 									ctx->agg_counts->numAggs,
 									ctx->agg_counts->transitionSpace,
 									result_plan);
-	mark_passthru_locus(result_plan, true, (current_pathkeys != NULL ));
+    result_plan->flow = pull_up_Flow(result_plan, 
+                                     result_plan->lefttree, 
+                                     (current_pathkeys != NIL));
 
 	/* Marshal implicit results. Return explicit result. */
 	ctx->current_pathkeys = current_pathkeys;
@@ -1190,12 +1196,15 @@ generate_subquery_tlist(Index varno, List *input_tlist)
  *
  * Is a relation with the given locus guaranteed to collocate tuples with
  * non-distinct values of the key.
+ *
+ * CDB TODO: Could cdbpathlocus_is_hashed_on_exprs() take the place of
+ * this function?
  */
 bool cdbpathlocus_collocates(CdbPathLocus locus, List *pathkeys)
 {
 	CdbPathLocus x;
 	
-	if ( CdbPathLocus_IsRoot(locus) || CdbPathLocus_IsSingleQE(locus) )
+	if ( CdbPathLocus_IsBottleneck(locus) )
 		return true;
 	
 	if ( !CdbPathLocus_IsHashed(locus) )
@@ -1229,17 +1238,16 @@ CdbPathLocus cdbpathlocus_from_flow(Flow *flow)
 {
     CdbPathLocus    locus;
 
+    CdbPathLocus_MakeNull(&locus);
+
     if (!flow)
-    {
-	    CdbPathLocus_MakeNull(&locus);
         return locus;
-    }
 
     switch (flow->flotype)
     {
         case FLOW_SINGLETON:
             if (flow->segindex == -1)
-                CdbPathLocus_MakeRoot(&locus);
+                CdbPathLocus_MakeEntry(&locus);
             else
                 CdbPathLocus_MakeSingleQE(&locus);
             break;
@@ -1250,7 +1258,7 @@ CdbPathLocus cdbpathlocus_from_flow(Flow *flow)
 			CdbPathLocus_MakeStrewn(&locus);
             break;
         default:
-            Assert(false);
+            Insist(0);
     }
     return locus;
 }
@@ -1542,24 +1550,18 @@ Oid lookup_agg_transtype(Aggref *aggref)
  */
 void adapt_flow_to_targetlist(Plan *plan)
 {
+	ListCell   *c;
+
 	Assert(plan != NULL);
 	Assert(plan->flow != NULL);
 
-	if (plan->flow->hashExpr != NIL)
+	foreach(c, plan->flow->hashExpr)
 	{
-		ListCell *c;
-		bool miss = FALSE;
-		
-		foreach(c, plan->flow->hashExpr)
-		{
-			Node *expr = (Node*)lfirst(c);
-			if ((miss = tlist_member(expr, plan->targetlist) == NULL))
-				break;
-		}
-		if (miss)
-		{
-			list_free_deep(plan->flow->hashExpr);
-			plan->flow->hashExpr = NIL;
-		}
+		Node *expr = (Node*)lfirst(c);
+		if (!tlist_member(expr, plan->targetlist))
+        {
+		    plan->flow->hashExpr = NIL;
+			break;
+        }
 	}
 }
