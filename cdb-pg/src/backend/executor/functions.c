@@ -165,6 +165,8 @@ init_sql_fcache(FmgrInfo *finfo)
 	List	   *queryTree_list;
 	Datum		tmp;
 	bool		isNull;
+	ListCell * list_item;
+	bool	can_run_local = true;
 
 	fcache = (SQLFunctionCachePtr) palloc0(sizeof(SQLFunctionCache));
 
@@ -199,14 +201,9 @@ init_sql_fcache(FmgrInfo *finfo)
 	/* Remember if function is STABLE/IMMUTABLE */
 	fcache->readonly_func =
 		(procedureStruct->provolatile != PROVOLATILE_VOLATILE);
+
 		
-	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_primary)
-	{
-		if (procedureStruct->provolatile == PROVOLATILE_VOLATILE)
-			elog(ERROR,"Volatile function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
-		if (procedureStruct->provolatile == PROVOLATILE_STABLE)
-			elog(ERROR,"Stable function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
-	}
+	
 
 	/* Now look up the actual result type */
 	typeTuple = SearchSysCache(TYPEOID,
@@ -272,6 +269,63 @@ init_sql_fcache(FmgrInfo *finfo)
 	src = DatumGetCString(DirectFunctionCall1(textout, tmp));
 
 	queryTree_list = pg_parse_and_rewrite(src, argOidVect, nargs);
+	
+	/*
+	 * If we have only SELECT statements with no FROM clauses, we should
+	 * be able to execute them locally, even on the QE.  Most often, this is something 
+	 * like   SELECT $1
+	 * Functions use that type of SELECT to evaluate expressions, so without those,
+	 * no functions would be useful.
+	 * 
+	 * We also need to execute certain catalog queries locally.  The Fault-Tolerance system
+	 * does queries of mpp_configuration, and some DDL and Utility commands do selects from the 
+	 * catalog table, etc.    So, if the FROM clause consists only of catalog tables, we 
+	 * will run the query locally.
+	 * 
+	 */
+	if (Mpp_role == MPP_ROLE_EXECUTE)
+	{
+		foreach(list_item, queryTree_list)
+		{
+			Node	   *parsetree = (Node *) lfirst(list_item);
+			if (IsA(parsetree,SelectStmt))
+			{
+				SelectStmt * s = (SelectStmt *)parsetree;
+				if (s->into != NULL || s->op != SETOP_NONE)
+				{
+					can_run_local = false;
+					break;
+				}
+					
+				if (s->fromClause != NULL)
+				{
+					can_run_local = false;
+				}
+			}
+			else
+				can_run_local = false;
+				
+		}
+			
+		if (!can_run_local)
+		{
+			if (procedureStruct->provolatile == PROVOLATILE_VOLATILE)
+				elog(ERROR,"Volatile SQL function %s cannot be executed from the segment databases",NameStr(procedureStruct->proname));	
+			else if (procedureStruct->provolatile == PROVOLATILE_STABLE)
+				elog(ERROR,"Stable SQL function %s cannot be executed from the segment databases",NameStr(procedureStruct->proname));
+			else 
+				elog(ERROR,"SQL function %s cannot be executed from the segment databases",NameStr(procedureStruct->proname));		
+		}
+		
+		if (!Mpp_is_primary)
+		{
+			if (procedureStruct->provolatile == PROVOLATILE_VOLATILE)
+				elog(ERROR,"Volatile SQL function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
+			else if (procedureStruct->provolatile == PROVOLATILE_STABLE)
+				elog(ERROR,"Stable SQL function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
+		}
+			
+	}
 
 	/*
 	 * If the function has any arguments declared as polymorphic types, then
@@ -312,7 +366,7 @@ postquel_start(execution_state *es, SQLFunctionCachePtr fcache)
 	Snapshot	snapshot;
 
 	Assert(es->qd == NULL);
-
+	
 	/*
 	 * In a read-only function, use the surrounding query's snapshot;
 	 * otherwise take a new snapshot for each query.  The snapshot should
