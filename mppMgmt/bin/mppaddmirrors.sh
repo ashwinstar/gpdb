@@ -392,6 +392,12 @@ CHK_MIRROR_DIR () {
 			$TRUSTED_SHELL $MIRROR_HOSTNAME "$RM -f $W_DIR/tmp_test_file"
 			LOG_MSG "[INFO]:-Write test passed MIRROR_DATADIR on Segment host $MIRROR_HOSTNAME"
 		fi
+		#Get the primary hostname
+		PRI_HOST=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content=${MIRROR_CONTENT};"`
+		ERROR_CHK $? "obtain primary hostname" 2
+		LOG_MSG "[INFO]:-Checking ssh access from $PRI_HOST to $MIRROR_HOSTNAME"
+		$SSH $PRI_HOST "$SSH $MIRROR_HOSTNAME \"hostname\""
+		ERROR_CHK $? "check inter host ssh access from $PRI_HOST to $MIRROR_HOSTNAME" 2	
 	done
 
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -519,6 +525,8 @@ else
 	LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
 	fi
 fi
+LOG_MSG "[INFO]:-Start Main"
+LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 if [ x"" == x"$MIRROR_MASTER_DATA_DIRECTORY" ];then
 	ERROR_EXIT "[FATAL]:-Must supply -d <MASTER_DATA_DIRECTORY> option"
 else
