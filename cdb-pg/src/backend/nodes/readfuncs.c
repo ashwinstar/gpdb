@@ -591,13 +591,19 @@ _readAlterTableStmt(void)
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(cmds);
 	READ_ENUM_FIELD(relkind, ObjectType);
-	for (m = 0; m < 9; m++)
+	READ_INT_FIELD(oidInfoCount);
+	local_node->oidInfo = NULL;
+	if (local_node->oidInfoCount > 0)
 	{
-		READ_OID_FIELD(oidInfo[m].relOid);
-		READ_OID_FIELD(oidInfo[m].comptypeOid);
-		READ_OID_FIELD(oidInfo[m].toastOid);
-		READ_OID_FIELD(oidInfo[m].toastIndexOid);
-		READ_OID_FIELD(oidInfo[m].toastComptypeOid);
+		local_node->oidInfo = palloc0(sizeof(TableOidInfo) * local_node->oidInfoCount);
+		for (m = 0; m < local_node->oidInfoCount; m++)
+		{
+			READ_OID_FIELD(oidInfo[m].relOid);
+			READ_OID_FIELD(oidInfo[m].comptypeOid);
+			READ_OID_FIELD(oidInfo[m].toastOid);
+			READ_OID_FIELD(oidInfo[m].toastIndexOid);
+			READ_OID_FIELD(oidInfo[m].toastComptypeOid);
+		}
 	}
 	
 	READ_DONE();

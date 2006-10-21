@@ -1632,7 +1632,8 @@ _outAlterTableStmt(StringInfo str, AlterTableStmt *node)
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(cmds);
 	WRITE_ENUM_FIELD(relkind, ObjectType);
-	for (m = 0; m < 9; m++)
+	WRITE_INT_FIELD(oidInfoCount);
+	for (m = 0; m < node->oidInfoCount; m++)
 	{
 		WRITE_OID_FIELD(oidInfo[m].relOid);
 		WRITE_OID_FIELD(oidInfo[m].comptypeOid);

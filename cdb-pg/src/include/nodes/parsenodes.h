@@ -828,8 +828,9 @@ typedef struct AlterTableStmt
 	RangeVar   *relation;		/* table to work on */
 	List	   *cmds;			/* list of subcommands */
 	ObjectType	relkind;		/* type of object */
-	TableOidInfo oidInfo[10];	/* Allow for up to 10 deep nesting of heirarchy of tables to alter */
-} AlterTableStmt;
+	int			oidInfoCount;
+	TableOidInfo *oidInfo;		/* Allow for heirarchy of tables to alter */
+} AlterTableStmt;	
 
 typedef enum AlterTableType
 {

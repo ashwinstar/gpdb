@@ -192,13 +192,13 @@ static void validateForeignKeyConstraint(FkConstraint *fkconstraint,
 static void createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 						 Oid constrOid);
 static char *fkMatchTypeToString(char match_type);
-static void ATController(Relation rel, List *cmds, bool recurse, TableOidInfo * oidInfo);
+static void ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOidInfo ** oidInfo);
 static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		  bool recurse, bool recursing);
-static void ATRewriteCatalogs(List **wqueue, TableOidInfo * oidInfo);
-static void ATAddToastIfNeeded(List **wqueue, TableOidInfo * oidInfo);
-static void ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, TableOidInfo * oidInfo);
-static void ATRewriteTables(List **wqueue, TableOidInfo * oidInfo);
+static void ATRewriteCatalogs(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo);
+static void ATAddToastIfNeeded(List **wqueue, int oidInfoCount,TableOidInfo * oidInfo);
+static void ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, int oidInfoCount, TableOidInfo * oidInfo);
+static void ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo);
 static void ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap);
 static AlteredTableInfo *ATGetQueueEntry(List **wqueue, Relation rel);
 static void ATSimplePermissions(Relation rel, bool allowView);
@@ -1980,7 +1980,8 @@ AlterTable(AlterTableStmt *stmt)
 	ATController(relation_openrv(stmt->relation, AccessExclusiveLock),
 				 stmt->cmds,
 				 interpretInhOption(stmt->relation->inhOpt),
-				 &stmt->oidInfo[0]);
+				 &stmt->oidInfoCount,
+				 &stmt->oidInfo);
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 		CdbDispatchUtilityStatement((Node *) stmt);
@@ -1997,14 +1998,19 @@ AlterTableInternal(Oid relid, List *cmds, bool recurse)
 	ATController(relation_open(relid, AccessExclusiveLock),
 				 cmds,
 				 recurse,
+				 0,
 				 NULL);
 }
 
 static void
-ATController(Relation rel, List *cmds, bool recurse, TableOidInfo * oidInfo)
+ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOidInfo ** oidInfo)
 {
 	List	   *wqueue = NIL;
 	ListCell   *lcmd;
+	int			ltabcount = 0;
+	ListCell	*ltab;
+	int			ocount = 0;
+	TableOidInfo * oids = NULL;
 
 	/* Phase 1: preliminary examination of commands, create work queue */
 	foreach(lcmd, cmds)
@@ -2016,14 +2022,30 @@ ATController(Relation rel, List *cmds, bool recurse, TableOidInfo * oidInfo)
 
 	/* Close the relation, but keep lock until commit */
 	relation_close(rel, NoLock);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH && oidInfoCount != NULL)
+	{
+		foreach(ltab, wqueue)
+		{
+			ltabcount++;
+		}
+		*oidInfoCount = ltabcount;
+		ocount = ltabcount;
+		*oidInfo = palloc0(sizeof(TableOidInfo)*ltabcount);
+	}
+	
+	if (oidInfoCount != NULL)
+		ocount = *oidInfoCount;
+	if (oidInfo != NULL)
+		oids = *oidInfo;
 
 	/* Phase 2: update system catalogs */
-	ATRewriteCatalogs(&wqueue, oidInfo);
+	ATRewriteCatalogs(&wqueue, ocount, oids);
 
 	/* Phase 3: scan/rewrite tables as needed */
-	ATRewriteTables(&wqueue, oidInfo);
+	ATRewriteTables(&wqueue, ocount, oids);
 	
-	ATAddToastIfNeeded(&wqueue, oidInfo);
+	ATAddToastIfNeeded(&wqueue, ocount, oids);
 }
 
 /*
@@ -2214,7 +2236,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
  * conflicts).
  */
 static void
-ATRewriteCatalogs(List **wqueue, TableOidInfo * oidInfo)
+ATRewriteCatalogs(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 {
 	int			pass;
 	ListCell   *ltab;
@@ -2245,7 +2267,7 @@ ATRewriteCatalogs(List **wqueue, TableOidInfo * oidInfo)
 			rel = relation_open(tab->relid, NoLock);
 
 			foreach(lcmd, subcmds)
-				ATExecCmd(tab, rel, (AlterTableCmd *) lfirst(lcmd), oidInfo);
+				ATExecCmd(tab, rel, (AlterTableCmd *) lfirst(lcmd), oidInfoCount, oidInfo);
 
 			/*
 			 * After the ALTER TYPE pass, do cleanup work (this is not done in
@@ -2263,7 +2285,7 @@ ATRewriteCatalogs(List **wqueue, TableOidInfo * oidInfo)
 
 
 static void
-ATAddToastIfNeeded(List **wqueue, TableOidInfo * oidInfo)
+ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 {
 
 	ListCell   *ltab;
@@ -2288,11 +2310,13 @@ ATAddToastIfNeeded(List **wqueue, TableOidInfo * oidInfo)
 			 tab->subcmds[AT_PASS_COL_ATTRS]))
 		{
 			
-			if (Mpp_role == MPP_ROLE_DISPATCH && oidInfo != NULL && oidInfo[m].toastOid == InvalidOid)
+			if (Mpp_role == MPP_ROLE_DISPATCH && oidInfo != NULL)
 			{
 				Relation	pg_class_desc;
 				Relation	rel;
-			
+				
+				Assert(m<oidInfoCount);
+				
 				pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 				rel = heap_open(tab->relid, AccessExclusiveLock);
 			
@@ -2323,6 +2347,7 @@ ATAddToastIfNeeded(List **wqueue, TableOidInfo * oidInfo)
 			}
 			if (Mpp_role == MPP_ROLE_EXECUTE && oidInfo != NULL)
 			{
+				Assert(m<oidInfoCount);
 				tOid = oidInfo[m].toastOid;
 				tiOid = oidInfo[m].toastIndexOid;
 				toastComptypeOid = &oidInfo[m].toastComptypeOid;
@@ -2330,7 +2355,7 @@ ATAddToastIfNeeded(List **wqueue, TableOidInfo * oidInfo)
 			elog(LOG,"Create Toast %d with Oid %u",m,tOid);
 			AlterTableCreateToastTableWithOid(tab->relid, true, tOid, tiOid, toastComptypeOid);
 			m++;
-			Assert(m<10);
+			
 		}
 	}
 }
@@ -2339,7 +2364,7 @@ ATAddToastIfNeeded(List **wqueue, TableOidInfo * oidInfo)
  * ATExecCmd: dispatch a subcommand to appropriate execution routine
  */
 static void
-ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, TableOidInfo * oidInfo)
+ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, int oidInfoCount, TableOidInfo * oidInfo)
 {
 	switch (cmd->subtype)
 	{
@@ -2390,10 +2415,12 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, TableOidInfo 
 			Oid tOid = InvalidOid;
 			Oid tiOid = InvalidOid;
 			Oid	*toastComptypeOid = NULL;
-			if (Mpp_role == MPP_ROLE_DISPATCH && oidInfo != NULL && oidInfo[0].toastOid == InvalidOid)
+			if (Mpp_role == MPP_ROLE_DISPATCH && oidInfo != NULL )
 			{
 				Relation	pg_class_desc;
 				Relation	rel;
+				Assert(oidInfo != NULL);
+				Assert(oidInfoCount > 0);
 			
 				pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 				rel = heap_open(tab->relid, AccessExclusiveLock);
@@ -2423,6 +2450,8 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, TableOidInfo 
 			}
 			if (Mpp_role == MPP_ROLE_EXECUTE && oidInfo != NULL)
 			{
+				Assert(oidInfo != NULL);
+				Assert(oidInfoCount > 0);
 				tOid = oidInfo[0].toastOid;
 				tiOid = oidInfo[0].toastIndexOid;
 				toastComptypeOid = &oidInfo[0].toastComptypeOid;
@@ -2490,7 +2519,7 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, TableOidInfo 
  * ATRewriteTables: ALTER TABLE phase 3
  */
 static void
-ATRewriteTables(List **wqueue, TableOidInfo * oidInfo)
+ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 {
 	ListCell   *ltab;
 	int			m = 0;
@@ -2556,9 +2585,12 @@ ATRewriteTables(List **wqueue, TableOidInfo * oidInfo)
 			 */
 			snprintf(NewHeapName, sizeof(NewHeapName),
 					 "pg_temp_%u", tab->relid);
+					 
+			
 
 			if (oidInfo != NULL)
 			{
+				Assert(m<oidInfoCount);
 				OIDNewHeap = make_new_heap(tab->relid, NewHeapName, NewTableSpace,&oidInfo[m]);
 							 
 			}
@@ -2613,7 +2645,6 @@ ATRewriteTables(List **wqueue, TableOidInfo * oidInfo)
 				ATExecSetTableSpace(tab->relid, tab->newTableSpace);
 		}
 		m++;
-		Assert(m<10);
 		
 	}
 
@@ -5183,6 +5214,11 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	SysScanDesc scan;
 	HeapTuple	depTup;
 	MppPolicy * policy = NULL;
+	bool		sourceIsInt = false;
+	bool		targetIsInt = false;
+	bool		sourceIsVarlenA = false;
+	bool		targetIsVarlenA = false;
+	bool		hashCompatible = false;
 
 	attrelation = heap_open(AttributeRelationId, RowExclusiveLock);
 
@@ -5209,6 +5245,31 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	tform = (Form_pg_type) GETSTRUCT(typeTuple);
 	targettype = HeapTupleGetOid(typeTuple);
 
+	if (targettype == INT4OID ||
+		targettype == INT2OID ||
+		targettype == INT8OID)
+		sourceIsInt = true;
+		
+	if (attTup->atttypid == INT4OID || 
+		attTup->atttypid == INT2OID ||
+		attTup->atttypid == INT8OID)
+		targetIsInt = true;
+		
+	if (targettype == VARCHAROID ||
+		targettype == CHAROID ||
+		targettype == TEXTOID)
+		targetIsVarlenA = true;
+	
+	if (attTup->atttypid == VARCHAROID || 
+		attTup->atttypid == CHAROID ||
+		attTup->atttypid == TEXTOID)
+		sourceIsVarlenA = true;
+		
+	if (sourceIsInt && targetIsInt)
+		hashCompatible = true;
+	else if (sourceIsVarlenA && targetIsVarlenA)
+		hashCompatible = true;
+		
 	/*
 	 * If there is a default expression for the column, get it and ensure we
 	 * can coerce it to the new datatype.  (We must do this before changing
@@ -5301,7 +5362,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 													   foundObject.objectId);
 							tab->changedIndexDefs = lappend(tab->changedIndexDefs,indexdefstring);
 						
-							if (Mpp_role == MPP_ROLE_DISPATCH && indexdefstring &&strstr(indexdefstring," UNIQUE ")!=0)
+							if (Mpp_role == MPP_ROLE_DISPATCH && indexdefstring &&strstr(indexdefstring," UNIQUE ")!=0 && !hashCompatible)
 							{
 								policy = rel->rd_cdbpolicy;
 								if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
@@ -5345,7 +5406,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 				{
 					char *defstring = pg_get_constraintdef_string(foundObject.objectId);
 	
-					if (Mpp_role == MPP_ROLE_DISPATCH)
+					if (Mpp_role == MPP_ROLE_DISPATCH && !hashCompatible)
 					if (strstr(defstring," UNIQUE")!=0 ||
 						strstr(defstring,"PRIMARY KEY")!=0 )
 					{
@@ -5481,7 +5542,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	heap_close(depRel, RowExclusiveLock);
 	
 	policy = rel->rd_cdbpolicy;
-	if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
+	if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED && !hashCompatible)
 	{
 		int			ia = 0;
 

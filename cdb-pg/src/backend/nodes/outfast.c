@@ -1552,8 +1552,9 @@ _outAlterTableStmt(StringInfo str, AlterTableStmt *node)
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(cmds);
 	WRITE_ENUM_FIELD(relkind, ObjectType);
-	for (m = 0; m < 9; m++)
-	{
+	appendStringInfo(str, " :oidInfoCount %d", node->oidInfoCount); /* the name helps me debug */
+	for (m = 0; m < node->oidInfoCount; m++)
+	{	
 		WRITE_OID_FIELD(oidInfo[m].relOid);
 		WRITE_OID_FIELD(oidInfo[m].comptypeOid);
 		WRITE_OID_FIELD(oidInfo[m].toastOid);
