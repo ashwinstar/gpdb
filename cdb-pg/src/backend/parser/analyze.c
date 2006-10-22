@@ -351,8 +351,6 @@ transformStmt(ParseState *pstate, Node *parseTree,
 
 		case T_ExecuteStmt:
 			result = transformExecuteStmt(pstate, (ExecuteStmt *) parseTree);
-			if (((ExecuteStmt *) parseTree)->into != NULL)
-				elog(ERROR, "CREATE TABLE AS EXECUTE is not yet implemented");
 			break;
 
 			/*
