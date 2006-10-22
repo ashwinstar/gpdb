@@ -276,7 +276,7 @@ GATHER_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	PROCESS_CHILD_NAME
 	#Obtain list of columns in parent table
-	PARENT_COLUMN_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -R" " $QD_DBNAME -c "select attname from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}' )) and attnum > 0;"`)
+	PARENT_COLUMN_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -R" " $QD_DBNAME -c "select attname from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}' )) and attnum > 0 order by attnum;"`)
         ERROR_CHK $? "obtain parent column list for $TABLE_NAME" 2
 	#***********************************************
 	#		RULES
