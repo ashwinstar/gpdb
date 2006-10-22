@@ -28,6 +28,10 @@
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 
+#include "commands/tablespace.h"
+#include "catalog/catalog.h"
+#include "catalog/pg_type.h"
+
 
 /*
  * The hash table in which prepared queries are stored. This is
@@ -196,7 +200,34 @@ ExecuteQuery(ExecuteStmt *stmt, ParamListInfo params,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("prepared statement is not a SELECT")));
 		query->into = copyObject(stmt->into);
+		
+		query->intoPolicy = palloc0(sizeof(MppPolicy)- sizeof(query->intoPolicy->attrs) + 255 * sizeof(query->intoPolicy->attrs[0]));
+		query->intoPolicy->nattrs = 1;			
+		query->intoPolicy->ptype = POLICYTYPE_PARTITIONED;
+		query->intoPolicy->attrs[0] = 1;
 
+		/* This probably should be done somewhere better */
+				{
+					Relation	pg_class_desc;
+					Relation	pg_type_desc;
+
+					Oid reltablespace = GetDefaultTablespace();
+				
+					pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+					pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
+										
+					query->intoOidInfo.relOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+					
+					query->intoOidInfo.comptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+					
+					query->intoOidInfo.toastOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+					
+					query->intoOidInfo.toastComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+					
+					heap_close(pg_class_desc, RowExclusiveLock);
+					heap_close(pg_type_desc, RowExclusiveLock);
+					
+				}
 		MemoryContextSwitchTo(oldContext);
 	}
 
