@@ -439,7 +439,11 @@ EVENT_MAIL () {
 	MAIL_SUBJECT=$1;shift
 	MAIL_MESSAGE=$1
 	if [ ! -f $MAILFILE ] && [ ! -f $HMAILFILE ] ;then
-		LOG_MSG "[WARN]:-No $MAILFILE or $HMAILFILE unable to proceed"
+		LOG_MSG "[WARN]:-No $MAILFILE or"
+		LOG_MSG "[WARN]:-$HMAILFILE"
+		LOG_MSG "[WARN]:-Unable to send email notification"
+		LOG_MSG "[INFO]:-To enable email notification, create $MAILFILE"
+		LOG_MSG "[INFO]:-or $HMAILFILE containing required email addresses"
 		EXIT_STATUS=1
 	else
 		if [ -f $HMAILFILE ];then MAILFILE=$HMAILFILE;fi
