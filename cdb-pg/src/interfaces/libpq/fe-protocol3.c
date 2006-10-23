@@ -55,7 +55,6 @@ static int	getReadyForQuery(PGconn *conn);
 static int build_startup_packet(const PGconn *conn, char *packet,
 					 const PQEnvironmentOption * options);
 
-
 /*
  * parseInput: if appropriate, parse input data from backend
  * until input is exhausted or a stopping state is reached.
@@ -181,7 +180,7 @@ pqParseInput3(PGconn *conn)
 			else
 			{
 				pqInternalNotice(&conn->noticeHooks,
-						"message type 0x%02x arrived from server while idle",
+								 "message type 0x%02x arrived from server while idle",
 								 id);
 				/* Discard the unexpected message */
 				conn->inCursor += msgLength;
@@ -235,7 +234,7 @@ pqParseInput3(PGconn *conn)
 						if (conn->result == NULL)
 						{
 							conn->result = PQmakeEmptyPGresult(conn,
-														   PGRES_COMMAND_OK);
+															   PGRES_COMMAND_OK);
 							if (!conn->result)
 								return;
 						}
@@ -356,25 +355,36 @@ pqParseInput3(PGconn *conn)
 					 */
 					break;
                 case 'Y':       /* CDB: execution stats for EXPLAIN ANALYZE */
-                    if (conn->result)
-                    {
-                        conn->result->cdbStatBuf = pqResultAlloc(conn->result,
-                                                                 msgLength,
-                                                                 true);
-                        if (conn->result->cdbStatBuf)
-                        {
-                            conn->result->cdbStatLen = msgLength;
-                            memcpy(conn->result->cdbStatBuf,
-                                   conn->inBuffer + conn->inCursor,
-                                   msgLength);
-                        }
-                    }
+					/* for certain queries, the stats may arrive
+					 * before the completion status -- for this case
+					 * we're responsible for allocating the result
+					 * struct */
+					if (conn->result == NULL)
+					{
+						conn->result = PQmakeEmptyPGresult(conn,
+														   PGRES_COMMAND_OK);
+					}
+
+					if (conn->result)
+					{
+						conn->result->cdbStatBuf = pqResultAlloc(conn->result,
+																 msgLength,
+																 true);
+						if (conn->result->cdbStatBuf)
+						{
+							conn->result->cdbStatLen = msgLength;
+							memcpy(conn->result->cdbStatBuf,
+								   conn->inBuffer + conn->inCursor,
+								   msgLength);
+						}
+					}
+
                     conn->inCursor += msgLength;
                     break;
                 default:
 					printfPQExpBuffer(&conn->errorMessage,
 									  libpq_gettext(
-													"unexpected response from server; first received character was \"%c\"\n"),
+										  "unexpected response from server; first received character was \"%c\"\n"),
 									  id);
 					/* build an error result holding the error message */
 					pqSaveErrorResult(conn);

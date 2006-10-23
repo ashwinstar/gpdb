@@ -653,6 +653,10 @@ ExecutorEnd(QueryDesc *queryDesc)
 	}
 	PG_END_TRY();
 
+    if (queryDesc->estate->es_sliceTable && 
+        queryDesc->estate->es_sliceTable->doInstrument)
+        cdbexplain_sendExecStats(queryDesc);
+
 	ExecEndPlan(queryDesc->planstate, estate);
 
 	/*

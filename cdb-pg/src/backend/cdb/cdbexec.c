@@ -195,11 +195,6 @@ CdbExecQuery(struct CdbExecStmt * stmt, struct _DestReceiver *dest, char *comple
      */
 	(void) PortalRun(portal, FETCH_ALL, dest, dest, completionTag);
 
-    /* If EXPLAIN ANALYZE, send statistics to qDisp. */
-    if (sliceTable &&
-        sliceTable->doInstrument)
-        cdbexplain_sendExecStats(PortalGetQueryDesc(portal));
-
 	PortalDrop(portal, false);
 
 	/* Restore state prior to return. */
