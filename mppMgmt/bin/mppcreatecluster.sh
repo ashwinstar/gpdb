@@ -453,7 +453,7 @@ CHK_QES () {
 RUN_OS_CHKS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	QE_ARCH_TYPE=`$TRUSTED_SHELL $MPP_HOSTNAME $HOST_ARCH_TYPE`
-	if [ $QD_ARCH_TYPE != $QE_ARCH_TYPE ];then
+	if [ "$QD_ARCH_TYPE" != "$QE_ARCH_TYPE" ];then
 		ERROR_EXIT "[FATAL]:-Host $MPP_HOSTNAME architecture variance with master has architecture type $QE_ARCH_TYPE master is $QD_ARCH_TYPE" 2
 	else
 		LOG_MSG "[INFO]:-Architecture for $MPP_HOSTNAME is $QE_ARCH_TYPE, same as Master"
