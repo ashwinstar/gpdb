@@ -63,7 +63,7 @@ findCmdInPath() {
 				fi
 		done
 		echo $cmdtofind
-		return "Problem in mppbash_functions, command '$cmdtofind' not found in COMMAND path. You will need to edit the script named mppbash_functions.sh to properly locate the needed commands for your platform."
+		return "Problem in mpp_bash_functions, command '$cmdtofind' not found in COMMAND path. You will need to edit the script named mppbash_functions.sh to properly locate the needed commands for your platform."
 }
 
 findMppPath() {
@@ -93,7 +93,6 @@ DD=`findCmdInPath dd`
 DIRNAME=`findCmdInPath dirname`
 DF=`findCmdInPath df`
 DU=`findCmdInPath du`
-DOS2UNIX=`findCmdInPath dos2unix`
 ECHO=`findCmdInPath echo`
 #ETHTOOL=`findCmdInPath ethtool`
 EXPR=`findCmdInPath expr`
