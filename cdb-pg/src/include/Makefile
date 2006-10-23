@@ -45,14 +45,15 @@ install: all installdirs
 	  chmod $(INSTALL_DATA_MODE) $(DESTDIR)$(includedir_server)/$$dir/*.h  || exit; \
 	done
 # These headers are needed for PGXS
-	$(INSTALL_DATA) $(srcdir)/cdb/cdbcat.h   $(DESTDIR)$(includedir)
-	$(INSTALL_DATA) $(srcdir)/cdb/cdbdef.h   $(DESTDIR)$(includedir)
-	$(INSTALL_DATA) $(srcdir)/cdb/cdbhash.h   $(DESTDIR)$(includedir)
-	$(INSTALL_DATA) $(srcdir)/cdb/cdbpathlocus.h   $(DESTDIR)$(includedir)
+	$(INSTALL_DATA) $(srcdir)/cdb/cdbcat.h   $(DESTDIR)$(includedir_internal_cdb)
+	$(INSTALL_DATA) $(srcdir)/cdb/cdbdef.h   $(DESTDIR)$(includedir_internal_cdb)
+	$(INSTALL_DATA) $(srcdir)/cdb/cdbhash.h   $(DESTDIR)$(includedir_internal_cdb)
+	$(INSTALL_DATA) $(srcdir)/cdb/cdbpathlocus.h   $(DESTDIR)$(includedir_internal_cdb)
 
 
 installdirs:
-	$(mkinstalldirs) $(DESTDIR)$(includedir)/libpq $(DESTDIR)$(includedir_internal)/libpq
+	$(mkinstalldirs) $(DESTDIR)$(includedir)/libpq $(DESTDIR)$(includedir_internal)/libpq \
+	    $(DESTDIR)$(includedir_internal_cdb)
 	$(mkinstalldirs) $(addprefix $(DESTDIR)$(includedir_server)/, $(SUBDIRS))
 
 
