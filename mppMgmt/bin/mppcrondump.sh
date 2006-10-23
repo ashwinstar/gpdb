@@ -110,6 +110,13 @@ USAGE () {
 		$ECHO "      Set the shell to /bin/bash (default for cron is /bin/sh"
 		$ECHO "      Dump the template1 database, start process 5 minutes past midnight on a daily basis"
 		$ECHO
+		$ECHO "      Mail configuration"
+		$ECHO "      This utility will send an email to a list of email addresses contained in a file"
+		$ECHO "      named mail_contacts. This file can be located in the MPP super user home directory"
+		$ECHO "      or the utility bin directory. The format of the file is one email address per line"
+		$ECHO "      If no mail_contacts file is found in either location, a warning message will be"
+		$ECHO "      displayed."
+		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
 		$ECHO "      1 Warning generated, but dump completed"
