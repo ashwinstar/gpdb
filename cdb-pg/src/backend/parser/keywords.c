@@ -273,6 +273,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"procedure", PROCEDURE},
 	{"queue", QUEUE},
 	{"quote", QUOTE},
+	{"randomly", RANDOMLY},
 	{"read", READ},
 	{"real", REAL},
 	{"recheck", RECHECK},

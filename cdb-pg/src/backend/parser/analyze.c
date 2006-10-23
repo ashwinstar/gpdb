@@ -1763,6 +1763,20 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			 * set the distribution policy.
 			 */
 			policy->nattrs = 0;
+			if (distributedBy->length == 1 && distributedBy->head->data.ptr_value == NULL)
+			{ 
+				if (cxt && cxt->pkey)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("PRIMARY KEY and DISTRIBUTED RANDOMLY are incompatible"
+									)));
+				else if (uniqueindex)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("UNIQUE and DISTRIBUTED RANDOMLY are incompatible"
+									)));
+			}
+			else
 			foreach(keys, distributedBy)
 			{
 				char	   *key = strVal(lfirst(keys));
