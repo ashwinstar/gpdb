@@ -187,11 +187,18 @@ cdbexplain_recvExecStats(struct PlanState          *planstate,
             hdr->segindex < 0 ||
             hdr->segindex >= mppSegmentCount)
         {
+			int segindex;
+
+			if (!dispatchResult->segdbDesc)
+				segindex = -1;
+			else
+				segindex = dispatchResult->segdbDesc->segindex;
+
             ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
                             errmsg_internal("Invalid execution statistics "
                                             "response returned from seg%d.  "
                                             "length=%d",
-                                            dispatchResult->segdbDesc->segindex,
+                                            segindex,
                                             pgresult->cdbStatLen),
                             errhint("Please verify that all instances are using "
                                     "the correct %s software version.",
@@ -329,6 +336,9 @@ cdbexplain_sendStatWalker(PlanState *planstate, void *context)
     si->total = instr->total;
     si->ntuples = instr->ntuples;
     si->nloops = instr->nloops;
+
+	elog(DEBUG4, "sending QEx statistics: total %f ntuples %f nloops %f",
+		 si->total, si->ntuples, si->nloops);
 
     /* Append to message. */
     appendBinaryStringInfo(&ctx->buf, (char *)si, sizeof(*si));
