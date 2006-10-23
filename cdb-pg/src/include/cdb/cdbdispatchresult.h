@@ -242,6 +242,12 @@ cdbdisp_dumpDispatchResults(struct CdbDispatchResults  *gangResults,
 int
 cdbdisp_sumCmdTuples(CdbDispatchResults *results, int sliceIndex);
 
+/*
+ * max of the lastOid values returned from the QEs
+ */
+Oid
+cdbdisp_maxLastOid(CdbDispatchResults *results, int sliceIndex);
+
 /* Return ptr to first resultArray entry for a given sliceIndex. */
 CdbDispatchResult *
 cdbdisp_resultBegin(CdbDispatchResults *results, int sliceIndex);

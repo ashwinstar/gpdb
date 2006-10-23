@@ -675,6 +675,7 @@ ExecutorEnd(QueryDesc *queryDesc)
 	MemoryContextSwitchTo(oldcontext);
 
 	queryDesc->es_processed = estate->es_processed;
+	queryDesc->es_lastoid = estate->es_lastoid;
 
 	/*
 	 * Release EState and per-query memory context.  This should release

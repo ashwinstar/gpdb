@@ -197,18 +197,16 @@ ProcessQuery(Query *parsetree,
 	if (completionTag)
 	{
 		Oid			lastOid;
-		
+
 		switch (operation)
 		{
 			case CMD_SELECT:
 				strcpy(completionTag, "SELECT");
 				break;
-			case CMD_INSERT:
-				/*
+			case CMD_INSERT:	
 				if (queryDesc->es_processed == 1)
-					lastOid = queryDesc->estate->es_lastoid;
+					lastOid = queryDesc->es_lastoid;
 				else
-				*/
 					lastOid = InvalidOid;
 				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
 						 "INSERT %u %u", lastOid, queryDesc->es_processed);

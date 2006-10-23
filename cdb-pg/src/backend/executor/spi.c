@@ -2826,7 +2826,8 @@ _SPI_pquery(QueryDesc *queryDesc, long tcount)
 	ExecutorEnd(queryDesc);
 	
 	_SPI_current->processed = queryDesc->es_processed; /* Mpp: Dispatched queries fill in this at Executor End */
-
+	_SPI_current->lastoid = queryDesc->es_lastoid;
+	
 #ifdef SPI_EXECUTOR_STATS
 	if (ShowExecutorStats)
 		ShowUsage("SPI EXECUTOR STATS");

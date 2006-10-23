@@ -1665,8 +1665,12 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 
 		/* If top slice was delegated to QEs, get num of rows processed. */
 		if (sliceRunsOnQE(currentSlice))
+		{
 			estate->es_processed +=
 				cdbdisp_sumCmdTuples(pr, estate->es_cur_slice_idx);
+			estate->es_lastoid = 
+				cdbdisp_maxLastOid(pr, estate->es_cur_slice_idx);
+		}
 
 		/*
 		 * Check and free the results of all gangs. If any QE had an
