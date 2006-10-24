@@ -283,7 +283,10 @@ parseCmd(const char *cmd)
 		cmdtype = SYNC_CLOSE;
 	}
 	else
-		elog(FATAL, "QDSYNC: invalid command '%s'", cmd);
+		ereport(FATAL,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("QDSYNC: invalid command '%s'", cmd),
+				 errhint("Failover-QD needs to be 'activated' before issuing queries")));
 
 	if (strstr(cmd, "resync") != NULL)
 		resync = true;
