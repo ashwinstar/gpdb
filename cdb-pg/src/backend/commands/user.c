@@ -371,6 +371,11 @@ CreateRole(CreateRoleStmt *stmt)
 
 		new_record[Anum_pg_authid_rolresqueue - 1] = 
 		ObjectIdGetDatum(queueid);
+
+		if (!ResourceScheduler)
+			ereport(WARNING,
+				(errmsg("resource scheduling is disabled"),
+				 errhint("To enable set resource_scheduler=on")));
 	}
 	else
 		new_record_nulls[Anum_pg_authid_rolresqueue - 1] = 'n';
@@ -752,6 +757,11 @@ AlterRole(AlterRoleStmt *stmt)
 			ObjectIdGetDatum(GetResQueueIdForName(resqueue));
 		}
 		new_record_repl[Anum_pg_authid_rolresqueue - 1] = 'r';
+
+		if (!ResourceScheduler)
+			ereport(WARNING,
+				(errmsg("resource scheduling is disabled"),
+				 errhint("To enable set resource_scheduler=on")));
 	}
 
 
