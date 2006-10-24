@@ -219,6 +219,7 @@ cdb_grouping_planner(PlannerInfo* root,
 	bool has_groups = root->parse->groupClause != NIL;
 	bool has_aggs = agg_counts->numAggs > 0;
 	CdbPathLocus input_locus = cheapest_path->locus;
+	ListCell *lc;
 	
 	MppGroupPrep group_prep;
 	MppGroupType group_type;
@@ -290,6 +291,24 @@ cdb_grouping_planner(PlannerInfo* root,
 									root->parse->groupClause,
 									&ctx.numGroupCols,
 									&ctx.groupColIdx);
+	
+	/* Where we need to and we can, add column names to the sub_tlist 
+	 * entries to make EXPLAIN output look nice.  Note that we could dig 
+	 * further than this (if we come up empty handed) by probing the range 
+	 * table (root->parse->rtable), but this covers the ordinary cases. 
+	 */
+	foreach(lc, sub_tlist)
+	{
+		TargetEntry *tle = (TargetEntry*)lfirst(lc);
+		
+		if ( IsA(tle->expr, Var) && tle->resname == NULL )
+		{
+			TargetEntry *vartle = tlist_member((Node*)tle->expr, tlist);
+			
+			if ( vartle != NULL && vartle->resname != NULL )
+				tle->resname = pstrdup(vartle->resname);
+		}
+	}
 			
 	/*
 	 * Now look into doing a two-stage plan. Sometimes this isn't possible.
@@ -967,7 +986,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 			tle->resjunk = false;
 			if ( tle->resname == NULL )
 			{
-				const char *fmt = "junk_attr_%d";
+				const char *fmt = "unnamed_attr_%d";
 				char buf[32]; /* big enuf for fmt */
 				sprintf(buf,fmt,tle->resno);
 				tle->resname = pstrdup(buf);
