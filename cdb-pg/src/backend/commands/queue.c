@@ -92,21 +92,26 @@ CreateQueue(CreateQueueStmt *stmt)
 				 defel->defname);
 	}
 
+	/* Perform range checks on the various thresholds.*/
 	if (dactivelimit)
+	{
 		activelimit = (Cost) defGetInt64(dactivelimit);
 		if (!(activelimit == INVALID_RES_LIMIT_THRESHOLD || (activelimit > 0)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("active threshold cannot be less than %d or equal to 0", 
 							INVALID_RES_LIMIT_THRESHOLD)));
+	}
 
 	if (dcostlimit)
+	{
 		costlimit = (Cost) defGetNumeric(dcostlimit);
 		if (!(costlimit == INVALID_RES_LIMIT_THRESHOLD || (costlimit > 0)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("cost threshold cannot be less than %d or equal to 0", 
 							INVALID_RES_LIMIT_THRESHOLD)));
+	}
 
 	/*
 	 * Check that at least one threshold is to be set.
@@ -115,6 +120,13 @@ CreateQueue(CreateQueueStmt *stmt)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("at least one threshold must be specified")));
+
+	/* Check all thresholds are not invalid. */
+	if (activelimit == INVALID_RES_LIMIT_THRESHOLD &&
+		costlimit   == INVALID_RES_LIMIT_THRESHOLD)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("at least one valid threshold must be specified")));
 
 	/*
 	 * Check for an illegal name ('none' is used to signify no queue in ALTER
@@ -269,21 +281,26 @@ AlterQueue(AlterQueueStmt *stmt)
 				 defel->defname);
 	}
 
+	/* Perform range checks on the various thresholds. */
 	if (dactivelimit)
+	{
 		activelimit = (Cost) defGetInt64(dactivelimit);
 		if (!(activelimit == INVALID_RES_LIMIT_THRESHOLD || (activelimit > 0)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("active threshold cannot be less than %d or equal to 0", 
 							INVALID_RES_LIMIT_THRESHOLD)));
+	}
 
 	if (dcostlimit)
+	{
 		costlimit = (Cost) defGetNumeric(dcostlimit);
 		if (!(costlimit == INVALID_RES_LIMIT_THRESHOLD || (costlimit > 0)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("cost threshold must be equal to %d or greater than 0", 
 							INVALID_RES_LIMIT_THRESHOLD)));
+	}
 
 	/*
 	 * Check that at least one threshold is to be set.
