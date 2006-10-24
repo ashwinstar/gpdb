@@ -367,6 +367,10 @@ set_ps_display(const char *activity, bool force)
     if (mpp_command_count > 0)
         cp += snprintf(cp, ep-cp, "cmd%d ", mpp_command_count);
 
+	  /* Add slice number information */
+ 	  if (currentSliceId > 0)
+    	  cp += snprintf(cp, ep-cp,"slice%d ", currentSliceId);
+
     /* Append caller's activity string. */
     StrNCpy(cp, activity, ep-cp);
 

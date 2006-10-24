@@ -52,6 +52,7 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ps_status.h"
 
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_class.h"
@@ -237,6 +238,8 @@ Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPol
             estate->es_instrument = sliceTable->doInstrument;
             queryDesc->doInstrument = sliceTable->doInstrument;
 		}
+    /* calling set_ps_display so that slice number shows during execution */
+    set_ps_display("MPPEXEC", false);
 	}
 
 	/*
