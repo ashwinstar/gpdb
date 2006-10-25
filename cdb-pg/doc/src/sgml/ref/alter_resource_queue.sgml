@@ -128,7 +128,7 @@ ALTER RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> [ ACTIVE 
   </para>
 
   <para>
-   Use <xref linkend="SQL-ALTERROLE" endterm="SQL-ALTERRESOURCEQUEUE-title"> 
+   Use <xref linkend="SQL-ALTERROLE" endterm="SQL-ALTERROLE-title"> 
    to add or remove users from a resource queue.  
   </para>
 
