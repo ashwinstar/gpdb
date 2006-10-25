@@ -992,7 +992,7 @@ void add_path(PlannerInfo *root, RelOptInfo *parent_rel, Path *new_path)
     if (!parent_rel->reltargetlist &&
         !parent_rel->onerow &&
         !bms_overlap(parent_rel->relids, root->currlevel_relids))
-        new_path = (Path *)create_limit1_path(new_path);
+        ; /* new_path = (Path *)create_limit1_path(new_path); -- BCH Tentative fix for MPP-942 */
 
     /*
      * CDB: Note whether duplicate suppression has been completed for all
