@@ -55,8 +55,12 @@ CreateQueue(CreateQueueStmt *stmt)
 	Cost		activelimit = INVALID_RES_LIMIT_THRESHOLD;	
 	Cost		costlimit = INVALID_RES_LIMIT_THRESHOLD;
 
+	/* overcommit indicator */
+	bool		overcommit = false;
+
 	DefElem     *dactivelimit = NULL;
 	DefElem     *dcostlimit = NULL;
+	DefElem     *dovercommit = NULL;
 	bool		queueok = false;
 
 
@@ -87,6 +91,14 @@ CreateQueue(CreateQueueStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			dcostlimit = defel;
 		}
+		else if (strcmp(defel->defname, "overcommit") == 0)
+		{
+			if (dovercommit)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dovercommit = defel;
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -111,6 +123,11 @@ CreateQueue(CreateQueueStmt *stmt)
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("cost threshold cannot be less than %d or equal to 0", 
 							INVALID_RES_LIMIT_THRESHOLD)));
+	}
+
+	if(dovercommit)
+	{
+		overcommit = intVal(dovercommit->arg);
 	}
 
 	/*
@@ -176,6 +193,9 @@ CreateQueue(CreateQueueStmt *stmt)
 	new_record[Anum_pg_resqueue_rsqcostlimit - 1] = 
 		Float4GetDatum(costlimit);
 
+	new_record[Anum_pg_resqueue_rsqovercommit - 1] = 
+		BoolGetDatum(overcommit);
+
 
 	tuple = heap_formtuple(pg_resqueue_dsc, new_record, new_record_nulls);
 
@@ -196,7 +216,7 @@ CreateQueue(CreateQueueStmt *stmt)
 		thresholds[RES_COUNT_LIMIT] = activelimit;
 		thresholds[RES_COST_LIMIT] = costlimit;
 
-		queueok = ResCreateQueue(queueid, thresholds);
+		queueok = ResCreateQueue(queueid, thresholds, overcommit);
 
 		LWLockRelease(LockMgrLock);
 
@@ -244,8 +264,12 @@ AlterQueue(AlterQueueStmt *stmt)
 	Cost		activelimit = INVALID_RES_LIMIT_THRESHOLD;
 	Cost		costlimit = INVALID_RES_LIMIT_THRESHOLD;
 
+	/* overcommit indicator */
+	bool		overcommit = false;
+
 	DefElem     *dactivelimit = NULL;
 	DefElem     *dcostlimit = NULL;
+	DefElem     *dovercommit = NULL;
 	bool		queueok = false;
 
 
@@ -276,6 +300,14 @@ AlterQueue(AlterQueueStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			dcostlimit = defel;
 		}
+		else if (strcmp(defel->defname, "overcommit") == 0)
+		{
+			if (dovercommit)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dovercommit = defel;
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -302,13 +334,18 @@ AlterQueue(AlterQueueStmt *stmt)
 							INVALID_RES_LIMIT_THRESHOLD)));
 	}
 
+	if (dovercommit)
+	{
+		overcommit = intVal(dovercommit->arg);
+	}
+
 	/*
 	 * Check that at least one threshold is to be set.
 	 */
-	if (!dactivelimit && !dcostlimit)
+	if (!dactivelimit && !dcostlimit && !dovercommit)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("at least one threshold must be specified")));
+				 errmsg("at least one threshold or overcommit must be specified")));
 
 
 	/*
@@ -344,6 +381,10 @@ AlterQueue(AlterQueueStmt *stmt)
 	thresholds[RES_COST_LIMIT] = 
 		((Form_pg_resqueue) GETSTRUCT(tuple))->rsqcostlimit;
 
+	/* Also set overcommit if it was *not* specified. */
+	if (!dovercommit)
+		overcommit = ((Form_pg_resqueue) GETSTRUCT(tuple))->rsqovercommit;
+
 
 	/*
 	 * Build a tuple to update.
@@ -369,6 +410,14 @@ AlterQueue(AlterQueueStmt *stmt)
 		new_record_repl[Anum_pg_resqueue_rsqcostlimit - 1] = 'r';
 
 		thresholds[RES_COST_LIMIT] = costlimit;
+	}
+
+	if (dovercommit)
+	{
+		new_record[Anum_pg_resqueue_rsqovercommit - 1] = 
+			BoolGetDatum(overcommit);
+		new_record_repl[Anum_pg_resqueue_rsqovercommit - 1] = 'r';
+
 	}
 
 	/*
@@ -401,7 +450,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	{
 		LWLockAcquire(LockMgrLock, LW_EXCLUSIVE);
 
-		queueok = ResAlterQueue(queueid, thresholds);
+		queueok = ResAlterQueue(queueid, thresholds, overcommit);
 
 		LWLockRelease(LockMgrLock);
 

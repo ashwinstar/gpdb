@@ -179,6 +179,7 @@ InitResQueues(void)
 	Form_pg_resqueue	queueform;
 	Oid					queueid;
 	int					numQueues = 0;
+	bool				overcommit;
 	Cost				thresholds[NUM_RES_LIMIT_TYPES];
 	char				*queuename;
 	bool				queuesok = true;
@@ -217,8 +218,9 @@ InitResQueues(void)
 		queuename = NameStr(queueform->rsqname);
 		thresholds[RES_COUNT_LIMIT] = queueform->rsqcountlimit;
 		thresholds[RES_COST_LIMIT] = queueform->rsqcostlimit;
+		overcommit = queueform->rsqovercommit;
 
-		queuesok = ResCreateQueue(queueid, thresholds);
+		queuesok = ResCreateQueue(queueid, thresholds, overcommit);
 	}
 	heap_endscan(scan);
 	
@@ -249,7 +251,7 @@ InitResQueues(void)
  *	calling this - unless we are the startup process.
  */
 bool
-ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES])
+ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
 {
 
 	ResQueue		queue = ResQueueHashNew(queueid);
@@ -264,6 +266,9 @@ ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES])
 
 	/* Set the number of limits 0 initially. */
 	queue->num_limits = 0;
+
+	/* Set overcommit.*/
+	queue->overcommit = overcommit;
 
 	/* Now run through all the possible limit types.*/
 	for (i = 0 ; i < NUM_RES_LIMIT_TYPES; i++)
@@ -305,7 +310,7 @@ ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES])
  *	calling this.
  */
 bool
-ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES])
+ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
 {
 
 	ResQueue		queue = ResQueueHashFind(queueid);
@@ -344,7 +349,7 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES])
 	}
 
 	/*
-	 * No non-sero current values for the queue, we can alter it,
+	 * No non-zero current values for the queue, we can alter it,
 	 */
 	if (allzero)
 	{
@@ -367,6 +372,10 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES])
 			}
 	
 		}
+
+		/* alter the overcommit if that has changed. */
+		if (queue->overcommit != overcommit)
+			queue->overcommit = overcommit;
 	
 		return true;
 	}

@@ -201,7 +201,26 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	 */
 
 	status = ResLockCheckLimit(lock, proclock, incrementSet, true);
-	if (status ==  STATUS_OK)
+	if (status == STATUS_ERROR)
+	{
+		/*
+		 * The requested lock has individual increments that are larger than
+		 * some of the thresholds for the corrosponding queue, and overcommit
+		 * is not enabled for them. So abort and clean up.
+		 */
+
+		/* Set bitmask of locks like we are going to wait. */
+		MyProc->heldLocks = proclock->holdMask; 
+
+		/* Set the wait portalId so the increments get cleaned up.  */
+		MyProc->waitPortalId = incrementSet->portalId;
+
+		LWLockRelease(masterLock);
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				 errmsg("statement requires more resources than resource queue allows")));
+	}
+	else if (status ==  STATUS_OK)
 	{
 		/* 
 		 * The requested lock will *not* exhaust the limit for this resource
@@ -450,6 +469,7 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock,
 				  ResPortalIncrement *incrementSet, bool increment)
 {
 	bool			over_limit = false;
+	bool			will_overcommit = false;
 	int				status = STATUS_OK;
 	Cost			increment_amt;
 	int				i;
@@ -503,14 +523,32 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock,
 				{
 					increment_amt = -1 * incrementSet->increments[i];
 				}
-				/*
-				 * A little bit of subtlety here, allow statements that
-				 * blowout the limit if noone else is active!
-				 */
-				if ((limits[i].current_value + increment_amt > 
-					limits[i].threshold_value) &&
-					(limits[i].current_value > 0.1))
-					over_limit = true;
+
+				/* Check if this will overcommit */
+				if (increment_amt > limits[i].threshold_value)
+					will_overcommit = true;
+
+				if (queue->overcommit)
+				{
+					/*
+					 * Autocommit is enabled, allow statements that
+					 * blowout the limit if noone else is active!
+					 */
+					if ((limits[i].current_value + increment_amt > 
+						limits[i].threshold_value) &&
+						(limits[i].current_value > 0.1))
+						over_limit = true;
+				} 
+				else
+				{
+					/*
+					 * No autocommit, so always fail statements that
+					 * blowout the limit.
+					 */
+					if (limits[i].current_value + increment_amt > 
+						limits[i].threshold_value)
+						over_limit = true;
+				}
 
 				elog(DEBUG1, "checking cost limit threshold %.2f current %.2f",
 					 limits[i].threshold_value, limits[i].current_value);
@@ -523,7 +561,9 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock,
 		}
 	}
 
-	if (over_limit)
+	if (will_overcommit && !queue->overcommit)
+		status = STATUS_ERROR;
+	else if (over_limit)
 		status = STATUS_FOUND;
 
 	return status;
@@ -600,8 +640,10 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock,
 				}
 				limits[i].current_value += increment_amt;
 				Assert((limits[i].current_value <= limits[i].threshold_value) ||
-					   (limits[i].current_value - increment_amt < 0.1) ||
-						(increment_amt - limits[i].current_value < 0.1));
+					   ((limits[i].current_value - increment_amt < 0.1)
+						&& queue->overcommit) ||
+						((increment_amt - limits[i].current_value < 0.1)
+						&& queue->overcommit));
 
 				elog(DEBUG1, "setting cost limit threshold %.2f current %.2f",
 					 limits[i].threshold_value, limits[i].current_value);

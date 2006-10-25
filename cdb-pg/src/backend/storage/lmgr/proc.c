@@ -1337,8 +1337,8 @@ ResProcSleep(LOCKMODE lockmode, LOCK *lock, PROCLOCK *proclock)
 	 * pid equal to MyProc->pid or not. 
 	 *
 	 * Note that we start with selflock true, so if there are no holders
-	 * we count this as a self deadlock too (will not happen with cost
-	 * thresholds as we specifically allow overcommit in this case)
+	 * we count this as a self deadlock too (however we trap this situation
+	 * earlier in ResLockAcquire).
 	 */
 	oprocLocks = &(lock->procLocks);
 	oproclock = (PROCLOCK *) SHMQueueNext(oprocLocks, oprocLocks, 

@@ -64,6 +64,7 @@ typedef struct ResQueueData
 {
 	Oid				queueid;			/* Id for this queue */
 	int				num_limits;			/* Number of limits in this queue */
+	bool			overcommit;			/* Does queue allow overcommit? */
 	ResLimitData	limits[NUM_RES_LIMIT_TYPES];	/* The limits */
 } ResQueueData;
 typedef ResQueueData	*ResQueue;
@@ -161,8 +162,10 @@ extern Size ResPortalIncrementShmemSize(void);
 extern void	InitResScheduler(void);
 extern void InitResPortalIncrementHash(void);
 extern void	InitResQueues(void);
-extern bool ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES]);
-extern bool ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES]);
+extern bool ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], 
+						   bool overcommit);
+extern bool ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], 
+						  bool overcommit);
 extern bool ResDestroyQueue(Oid queueid);
 extern void InitResLocks(void);
 extern bool ResLockPortal(Portal portal);
