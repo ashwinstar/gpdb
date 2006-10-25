@@ -52,6 +52,8 @@ static char * pg_roles =
 	"CREATE VIEW pg_catalog.pg_roles AS "
 	"SELECT pg_authid.rolname, pg_authid.rolsuper, pg_authid.rolinherit, pg_authid.rolcreaterole, pg_authid.rolcreatedb, pg_authid.rolcatupdate, pg_authid.rolcanlogin, pg_authid.rolconnlimit, '********'::text AS rolpassword, pg_authid.rolvaliduntil, pg_authid.rolconfig, pg_authid.rolresqueue, pg_authid.oid FROM pg_authid";
    
+   
+static bool verbose = false;
  
 static void MyNoticeProcessor (void *arg, const char *message)
 {
@@ -129,6 +131,8 @@ static void run_sql_command(PGconn * conn, char * cmd)
 	PGresult   *res;
 	char		SqlState[6];
 	
+	if (verbose)
+		printf("%s\n",cmd);
 	res = PQexec(conn, cmd);
     if (PQresultStatus(res) != PGRES_COMMAND_OK)
     {
@@ -139,7 +143,7 @@ static void run_sql_command(PGconn * conn, char * cmd)
     	if (strcmp(SqlState,"42P07")!=0 &&  /* Table already exists */
     	    strcmp(SqlState,"42701")!=0)	/* Column already exists */
     	{
-	        fprintf(stderr, " %s: command failed: %s %s", cmd,SqlState, PQerrorMessage(conn));
+	        fprintf(stderr, " %s: command failed: \n%s %s\n", cmd,SqlState, PQerrorMessage(conn));
 	        PQclear(res);
 	        PQfinish(conn);
 	        fprintf(stderr," UPGRADE FAILED\n");
@@ -166,8 +170,9 @@ help(void)
 	printf(_("\nConnection options:\n"));
 	printf(_("  -h, --host=HOSTNAME      database server host or socket directory\n"));
 	printf(_("  -p, --port=PORT          database server port number\n"));
-	printf(_("  -U, --username=NAME      connect as specified database user\n"));
+	printf(_("  -U, --username=NAME      connect as specified database user (must be superuser!)\n"));
 	printf(_("  -W, --password           force password prompt (should happen automatically)\n"));
+	printf(_("  -v                       verbose output\n"));
 
 
 }
@@ -229,7 +234,7 @@ main(int argc, char **argv)
     char * version = 0;
     bool isMPP;
     bool force_password = false;
-    bool verbose = false;
+    
     
     if (argc > 1)
 	{
@@ -246,7 +251,7 @@ main(int argc, char **argv)
 	}
 
 
-    while ((c = getopt_long(argc, argv, "h:p:U:vVW",
+    while ((c = getopt_long(argc, argv, "h:p:U:vW",
                             long_options, &optindex)) != -1)
        {
         switch (c)
@@ -274,7 +279,7 @@ main(int argc, char **argv)
                 /* Actual help option given */
                 if (strcmp(argv[optind - 1], "-?") == 0 || strcmp(argv[optind - 1], "--help") == 0)
                 {
-                    //usage();
+                    help();
                     exit(EXIT_SUCCESS);
                 }
                 
@@ -457,7 +462,12 @@ main(int argc, char **argv)
 		   	segdbs[i].conn = connect_to_db(conninfo,false);
 		   
 		   	if (d ==0)
+		   	{
+		   		if (verbose)
+		    	printf("\nupdating segdb content %d definedprimary %d dbid %d\n\n",segdbs[i].content,segdbs[i].definedprimary,segdbs[i].dbid);
+		   		
 		   		run_sql_command(segdbs[i].conn, "update pg_database set datallowconn = 't' where datname='template0'");
+		   	}
 	    	
 	    }
 	    
@@ -470,6 +480,9 @@ main(int argc, char **argv)
 	    	
 		    conn = segdbs[i].conn;
 		    
+		    if (verbose)
+		    	printf("\nupdating segdb content %d definedprimary %d dbid %d for database %s\n\n",segdbs[i].content,segdbs[i].definedprimary,segdbs[i].dbid,databasenames[d]);
+		    
 		    run_sql_command(conn, pg_resqueue);
 		    
 		    run_sql_command(conn, pg_resqueue_index1);
@@ -480,15 +493,15 @@ main(int argc, char **argv)
 		    
 		    if (d==0)
 		  	{
-		  		run_sql_command(conn, "vacuum full pg_authid");
+		  		run_sql_command(conn, "VACUUM FULL pg_authid");
 		  	}
 		    
 		    run_sql_command(conn, pg_authid_index1);
 		    
-		    run_sql_command(conn, "drop view pg_catalog.pg_roles cascade");
+		    run_sql_command(conn, "DROP VIEW pg_catalog.pg_roles CASCADE");
 		    run_sql_command(conn, pg_roles);
 		   	    
-		   	run_sql_command(conn, "drop view pg_catalog.pg_locks cascade");
+		   	run_sql_command(conn, "DROP VIEW pg_catalog.pg_locks CASCADE");
 		  	run_sql_command(conn, pg_locks);
 		  	
 		  	
@@ -496,8 +509,8 @@ main(int argc, char **argv)
 		    if (strcmp(databasenames[d],"template1")==0 ||
 		    	strcmp(databasenames[d],"template0")==0)
 		    	{
-		    		run_sql_command(conn, "vacuum full");
-		    		run_sql_command(conn, "vacuum freeze");
+		    		run_sql_command(conn, "VACUUM FULL");
+		    		run_sql_command(conn, "VACUUM FREEZE");
 		    	}
 	    }
     	
@@ -506,6 +519,9 @@ main(int argc, char **argv)
 	
 	for (i = 0; i < segdbcount; i++)
     { 	
+    	if (verbose)
+		    	printf("\nupdating segdb content %d definedprimary %d dbid %d\n\n",segdbs[i].content,segdbs[i].definedprimary,segdbs[i].dbid);
+	
 	    conn = segdbs[i].conn;
 		run_sql_command(conn, "update pg_database set datallowconn = 'f' where datname='template0'");
     }
