@@ -541,7 +541,7 @@ index_create(Oid heapRelationId,
 		indexRelationId = GetNewRelFileNode(tableSpaceId, shared_relation,
 											pg_class);
 	else
-		if (Mpp_role == MPP_ROLE_EXECUTE)
+		if (IsUnderPostmaster)
 		{
 			CheckNewRelFileNodeIsOk(indexRelationId, tableSpaceId, shared_relation, pg_class);
 		}

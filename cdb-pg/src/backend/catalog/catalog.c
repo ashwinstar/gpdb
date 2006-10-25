@@ -492,7 +492,7 @@ CheckNewRelFileNodeIsOk(Oid newOid, Oid reltablespace, bool relisshared, Relatio
 
 	pfree(rpath);
 	
-	if (collides)
+	if (collides && !relisshared)
 		elog(ERROR,"QE tried to re-use a relfilenode already in use.  refilenode = %d", newOid );	
 
 

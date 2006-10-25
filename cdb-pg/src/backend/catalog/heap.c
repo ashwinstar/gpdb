@@ -719,7 +719,7 @@ heap_create_with_catalog(const char *relname,
 		relid = GetNewRelFileNode(reltablespace, shared_relation,
 								  pg_class_desc);
 	else							
-		if (Mpp_role == MPP_ROLE_EXECUTE)
+		if (IsUnderPostmaster)
 		{
 			CheckNewRelFileNodeIsOk(relid, reltablespace, shared_relation, pg_class_desc);
 		}

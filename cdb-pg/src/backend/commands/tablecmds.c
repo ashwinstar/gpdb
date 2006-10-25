@@ -537,7 +537,6 @@ DefineRelation_int(CreateStmt *stmt,
 	}
 	else
 	{
-		stmt->oidInfo.relOid = InvalidOid;
 		stmt->oidInfo.toastOid = InvalidOid;
 		stmt->oidInfo.toastIndexOid = InvalidOid;
 	}
@@ -548,17 +547,31 @@ DefineRelation_int(CreateStmt *stmt,
 	 * If we are creating pg_resqueue, it means we are upgrading a 2.2 system.
 	 * We need to create it with the right OIDs as if it had been created by initdb.
 	 */
-	if (namespaceId == PG_CATALOG_NAMESPACE && tablespaceId==GLOBALTABLESPACE_OID && strcmp(relname,"pg_resqueue")==0)
+	if (namespaceId == PG_CATALOG_NAMESPACE)
 	{
-		relationId = ResQueueRelationId; 
-		stmt->oidInfo.relOid = relationId;
-		stmt->oidInfo.comptypeOid = 10288;
-		stmt->oidInfo.toastOid = InvalidOid;
-		stmt->oidInfo.toastIndexOid = InvalidOid;
-		allowSystemTableMods = true;
-		shared_relation = true;
-	} 
+		if(tablespaceId==GLOBALTABLESPACE_OID && strcmp(relname,"pg_resqueue")==0)
+		{
+			relationId = ResQueueRelationId; 
+			stmt->oidInfo.comptypeOid = 10288;
+			stmt->oidInfo.toastOid = InvalidOid;
+			stmt->oidInfo.toastIndexOid = InvalidOid;
+			allowSystemTableMods = true;
+			shared_relation = true;
+		} 
 		
+		if (strcmp(relname,"pg_roles")==0)
+		{
+			/* Important that this number not be used for something else on 2.2 systems */
+			relationId = 10317; 
+		}
+		if (strcmp(relname,"pg_locks")==0)
+		{
+			/* Important that this number not be used for something else on 2.2 systems */
+			relationId = 10348; 
+		}
+		stmt->oidInfo.relOid = relationId;
+	}
+	
     if (stmt->oidInfo.relOid)
         elog(DEBUG4, "DefineRelation relOid=%d schemaname=%s shouldDispatch=%d",
              stmt->oidInfo.relOid,
