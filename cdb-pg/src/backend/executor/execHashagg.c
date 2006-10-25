@@ -845,6 +845,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 					   int *p_nbatches	/* Calculated # of passes. */
 					   )
 {
+	bool force = ( p_nbuckets != NULL || p_nentries != NULL || p_nbatches != NULL );
 
 	int entrywidth = sizeof(HashAggEntry) 
 					+ numaggs * sizeof(AggStatePerGroupData) 
@@ -859,19 +860,19 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	
 	elog(DEBUG2, "hashagg ngroups = %g, numaggs = %d, keywidth = %d, transpace = %d", ngroups, numaggs, keywidth, transpace);
 	elog(DEBUG2, "hashagg memquota = %g, zH = %g, zB = %g", memquota, zH, zB);
+
+	if ( nK > INT_MAX || ngroups > INT_MAX )
+	{
+		elog(DEBUG2, "hashagg table size bigger than int type!");
+		return false;
+	}
 	
 	if ( memquota >= ngroups*zH + 2*zB )
 	{
 		/* Use default strategy when we expect the whole operation to 
 		 * fit in memory.  This strategy hedges its bet by allocating 
 		 * 2 batches in case the estimate is low and we overflow anyway.
-		 */
-		if ( nK > INT_MAX || ngroups > INT_MAX )
-		{
-			elog(DEBUG2, "hashagg table bigger than int type!");
-			return false;
-		}
-		
+		 */		
 		nB = 2;
 	}
 	else
@@ -886,8 +887,13 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 		
 		if ( d < 0 )
 		{
-			elog(DEBUG2, "hashagg can't calculate memory usage!");
-			return false;
+			if ( force )
+				d = 0;
+			else
+			{
+				elog(DEBUG2, "hashagg can't calculate memory usage!");
+				return false;
+			}
 		}
 
 		nB = ceil((memquota-sqrt(d))/(2*zB));
@@ -897,7 +903,17 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	
 	if ( nB > INT_MAX || nH > INT_MAX )
 	{
-		return false; /* Too many groups. */
+		if ( force )
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("hybrid hash aggregation faillure - too many passes or hash entries")));
+		}
+		else
+		{
+			elog(DEBUG2, "number of passes or hash entries bigger than int type!");
+			return false; /* Too many groups. */
+		}
 	}
 	
 	nK = ceil(nH/NGROUP_PER_BUCKET);
