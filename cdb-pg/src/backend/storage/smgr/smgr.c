@@ -28,6 +28,10 @@
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 
+#include "catalog/pg_tablespace.h"
+#include "catalog/pg_resqueue.h"
+#include "catalog/indexing.h"
+
 
 /*
  * This struct of function pointers defines the API between smgr.c and
@@ -356,12 +360,23 @@ smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo)
 							isRedo);
 
 	if (!(*(smgrsw[reln->smgr_which].smgr_create)) (reln, isRedo))
-		ereport(ERROR,
+	{
+		/* 
+		 * Special code for allowing upgrade from Bizgres MPP 2.2 to 2.3.
+		 */
+		if (errno==EEXIST && reln->smgr_rnode.spcNode == GLOBALTABLESPACE_OID && reln->smgr_rnode.dbNode == 0 && 
+			(reln->smgr_rnode.relNode == ResQueueRelationId || reln->smgr_rnode.relNode == ResQueueOidIndexId || reln->smgr_rnode.relNode == ResQueueRsqnameIndexId || reln->smgr_rnode.relNode == AuthIdRolResQueueIndexId) )
+		{
+			isRedo = true;
+		}
+		else
+		    ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not create relation %u/%u/%u: %m",
 						reln->smgr_rnode.spcNode,
 						reln->smgr_rnode.dbNode,
 						reln->smgr_rnode.relNode)));
+	}
 
 	if (isRedo)
 		return;

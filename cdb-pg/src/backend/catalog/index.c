@@ -508,6 +508,12 @@ index_create(Oid heapRelationId,
 	 * we can at least prevent this mistake under normal multi-user operation.
 	 */
 	if (shared_relation && IsUnderPostmaster)
+		/* 
+		 * Special test for allowing upgrade from Bizgres MPP 2.2 to 2.3.
+		 */
+		if (indexRelationId != ResQueueOidIndexId && 
+			indexRelationId != ResQueueRsqnameIndexId && 
+			indexRelationId != AuthIdRolResQueueIndexId)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("shared indexes cannot be created after initdb")));
@@ -738,6 +744,20 @@ index_create(Oid heapRelationId,
 	else
 		Assert(indexRelation->rd_indexcxt != NULL);
 
+	/*
+	 * If we are playing tricks to upgrade Bizgres MPP 2.2 to 2.3, we might be doing a CREATE INDEX 
+	 * on a shared index that already exists.  If so, we don't need or want to recreate it.
+	 * 
+	 * Does the index data already exist?
+	 */
+	 if (indexRelationId == ResQueueOidIndexId || 
+			indexRelationId == ResQueueRsqnameIndexId || 
+			indexRelationId == AuthIdRolResQueueIndexId)
+	 {
+	 	if (RelationGetNumberOfBlocks(indexRelation) > 0)
+	 		skip_build = true;
+	 }
+	 
 	/*
 	 * If this is bootstrap (initdb) time, then we don't actually fill in the
 	 * index yet.  We'll be creating more indexes and classes later, so we

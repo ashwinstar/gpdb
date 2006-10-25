@@ -30,6 +30,9 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_tablespace.h"
+#include "catalog/pg_resqueue.h"
+#include "catalog/pg_authid.h"
 #include "commands/cluster.h"
 #include "commands/defrem.h"
 #include "commands/tablecmds.h"
@@ -335,6 +338,7 @@ DefineRelation_int(CreateStmt *stmt,
 	ListCell   *listptr;
 	int			i;
 	AttrNumber	attnum;
+	bool		shared_relation = false;
 
 	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH &&
                                  IsNormalProcessingMode() &&
@@ -396,7 +400,12 @@ DefineRelation_int(CreateStmt *stmt,
 	if (OidIsValid(tablespaceId))
 	{
 		AclResult	aclresult;
-
+		/* 
+		 * Special code for allowing upgrade from Bizgres MPP 2.2 to 2.3.
+		 */
+		if (namespaceId == PG_CATALOG_NAMESPACE && tablespaceId==GLOBALTABLESPACE_OID && strcmp(relname,"pg_resqueue")==0)
+			aclresult = ACLCHECK_OK;
+		else
 		aclresult = pg_tablespace_aclcheck(tablespaceId, GetUserId(),
 										   ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
@@ -533,6 +542,23 @@ DefineRelation_int(CreateStmt *stmt,
 		stmt->oidInfo.toastIndexOid = InvalidOid;
 	}
 
+	/* 
+	 * Special code for allowing upgrade from Bizgres MPP 2.2 to 2.3.
+	 * 
+	 * If we are creating pg_resqueue, it means we are upgrading a 2.2 system.
+	 * We need to create it with the right OIDs as if it had been created by initdb.
+	 */
+	if (namespaceId == PG_CATALOG_NAMESPACE && tablespaceId==GLOBALTABLESPACE_OID && strcmp(relname,"pg_resqueue")==0)
+	{
+		relationId = ResQueueRelationId; 
+		stmt->oidInfo.relOid = relationId;
+		stmt->oidInfo.comptypeOid = 10288;
+		stmt->oidInfo.toastOid = InvalidOid;
+		stmt->oidInfo.toastIndexOid = InvalidOid;
+		allowSystemTableMods = true;
+		shared_relation = true;
+	} 
+		
     if (stmt->oidInfo.relOid)
         elog(DEBUG4, "DefineRelation relOid=%d schemaname=%s shouldDispatch=%d",
              stmt->oidInfo.relOid,
@@ -558,7 +584,7 @@ DefineRelation_int(CreateStmt *stmt,
 										  GetUserId(),
 										  descriptor,
 										  relkind,
-										  false,
+										  shared_relation,
 										  localHasOids,
 										  parentOidCount,
 										  stmt->oncommit,
@@ -6348,22 +6374,7 @@ AlterTableCreateToastTableWithOid(Oid relOid, bool silent, Oid newOid, Oid newIn
 	 */
 	rel = heap_open(relOid, AccessExclusiveLock);
 
-	/*
-	 * Toast table is shared if and only if its parent is.
-	 *
-	 * We cannot allow toasting a shared relation after initdb (because
-	 * there's no way to mark it toasted in other databases' pg_class).
-	 * Unfortunately we can't distinguish initdb from a manually started
-	 * standalone backend (toasting happens after the bootstrap phase, so
-	 * checking IsBootstrapProcessingMode() won't work).  However, we can at
-	 * least prevent this mistake under normal multi-user operation.
-	 */
-	shared_relation = rel->rd_rel->relisshared;
-	if (shared_relation && IsUnderPostmaster)
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("shared tables cannot be toasted after initdb")));
-
+	
 	/*
 	 * Is it already toasted?
 	 */
@@ -6398,6 +6409,22 @@ AlterTableCreateToastTableWithOid(Oid relOid, bool silent, Oid newOid, Oid newIn
 						RelationGetRelationName(rel))));
 	}
 
+	/*
+	 * Toast table is shared if and only if its parent is.
+	 *
+	 * We cannot allow toasting a shared relation after initdb (because
+	 * there's no way to mark it toasted in other databases' pg_class).
+	 * Unfortunately we can't distinguish initdb from a manually started
+	 * standalone backend (toasting happens after the bootstrap phase, so
+	 * checking IsBootstrapProcessingMode() won't work).  However, we can at
+	 * least prevent this mistake under normal multi-user operation.
+	 */
+	shared_relation = rel->rd_rel->relisshared;
+	if (shared_relation && IsUnderPostmaster)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("shared tables cannot be toasted after initdb")));
+	
 	/*
 	 * Create the toast table and its index
 	 */
