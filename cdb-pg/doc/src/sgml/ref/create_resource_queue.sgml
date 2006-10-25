@@ -20,7 +20,7 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-CREATE RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> [ ACTIVE THRESHOLD <replaceable class="PARAMETER">integer</replaceable>] [ COST THRESHOLD <replaceable class="PARAMETER">float</replaceable> ]
+CREATE RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> [ ACTIVE THRESHOLD <replaceable class="PARAMETER">integer</replaceable>] [ COST THRESHOLD <replaceable class="PARAMETER">float</replaceable> ] [ NOOVERCOMMIT | OVERCOMMIT ]
 </synopsis>
  </refsynopsisdiv>
 
@@ -93,6 +93,24 @@ CREATE RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> [ ACTIVE
         (meaning no limit).
        </para>
       </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>NOOVERCOMMIT</literal></term>
+      <term><literal>OVERCOMMIT</literal></term>
+       <listitem>
+       <para>
+       These clauses determine whether the <literal>resource queue</literal>
+       will allow statements whose potential <literal>cost</literal> is 
+       larger than the queue's <literal>cost threshold</literal> to execute.
+       </para>
+       <para>
+       In the default <literal>NOOVERCOMMIT</literal> case, such statements
+       produce an error. If <literal>OVERCOMMIT</literal> is set for the 
+       queue, then they will be allowed to run when there is no other
+       statements in the queue.
+       </para>
+       </listitem>
      </varlistentry>
      </variablelist>
  </refsect1> 
