@@ -30,6 +30,7 @@ typedef struct xl_tblspc_create_rec
 typedef struct xl_tblspc_drop_rec
 {
 	Oid			ts_id;
+	char		ts_path[1];		/* VARIABLE LENGTH STRING */
 } xl_tblspc_drop_rec;
 
 

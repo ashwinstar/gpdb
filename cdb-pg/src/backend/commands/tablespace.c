@@ -76,7 +76,7 @@
 char	   *default_tablespace = NULL;
 
 
-static bool remove_tablespace_directories(Oid tablespaceoid, bool redo);
+static bool remove_tablespace_directories(Oid tablespaceoid, bool redo, char *location);
 static void set_short_version(const char *path);
 
 
@@ -565,6 +565,9 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	HeapTuple	tuple;
 	ScanKeyData entry[1];
 	Oid			tablespaceoid;
+	Datum		loc_dat;
+	char		*location;
+	bool		isnull;
 
 	/* don't call this in a transaction block */
 	PreventTransactionChain((void *) stmt, "DROP TABLESPACE");
@@ -588,6 +591,19 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 						tablespacename)));
 
 	tablespaceoid = HeapTupleGetOid(tuple);
+
+	loc_dat = heap_getattr(tuple, (Anum_pg_tablespace_spclocation),
+						   (RelationGetDescr(rel)), &isnull);
+
+	if (isnull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("tablespace \"%s\" has no physical location information!",
+						tablespacename)));
+
+	location =
+		DatumGetCString(DirectFunctionCall1(textout, loc_dat));
+	elog(DEBUG3, "DropTablespace: %s physical location: %s", tablespacename, location);
 
 	/* Must be tablespace owner */
 	if (!pg_tablespace_ownercheck(tablespaceoid, GetUserId()))
@@ -621,7 +637,7 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	/*
 	 * Try to remove the physical infrastructure
 	 */
-	if (!remove_tablespace_directories(tablespaceoid, false))
+	if (!remove_tablespace_directories(tablespaceoid, false, location))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("tablespace \"%s\" is not empty",
@@ -630,13 +646,18 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	/* Record the filesystem change in XLOG */
 	{
 		xl_tblspc_drop_rec xlrec;
-		XLogRecData rdata[1];
+		XLogRecData rdata[2];
 
 		xlrec.ts_id = tablespaceoid;
 		rdata[0].data = (char *) &xlrec;
 		rdata[0].len = sizeof(xl_tblspc_drop_rec);
 		rdata[0].buffer = InvalidBuffer;
-		rdata[0].next = NULL;
+		rdata[0].next = &(rdata[1]);
+
+		rdata[1].data = (char *) location;
+		rdata[1].len = strlen(location) + 1;
+		rdata[1].buffer = InvalidBuffer;
+		rdata[1].next = NULL;
 
 		(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_DROP, rdata);
 	}
@@ -678,13 +699,14 @@ DropTableSpace(DropTableSpaceStmt *stmt)
  * redo indicates we are redoing a drop from XLOG; okay if nothing there
  */
 static bool
-remove_tablespace_directories(Oid tablespaceoid, bool redo)
+remove_tablespace_directories(Oid tablespaceoid, bool redo, char *phys)
 {
 	char	   *location;
 	DIR		   *dirdesc;
 	struct dirent *de;
 	char	   *subfile;
 	struct stat st;
+	char	*tempstr;
 
 	location = (char *) palloc(10 + 10 + 1);
 	sprintf(location, "pg_tblspc/%u", tablespaceoid);
@@ -785,6 +807,23 @@ remove_tablespace_directories(Oid tablespaceoid, bool redo)
 	}
 
 	pfree(location);
+
+	/* Now we have removed all of our linkage to the physical
+	 * location; remove the per-segment location that we built at
+	 * CreateTablespace() time */
+ 	tempstr = palloc(MAXPGPATH);
+ 	if (Mpp_is_primary)
+		sprintf(tempstr,"%s/seg%d",phys,Mpp_segment);
+	else
+		sprintf(tempstr,"%s/mir%d",phys,Mpp_segment);
+	
+	if (rmdir(tempstr) < 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not remove subdirectory \"%s\": %m",
+						tempstr)));
+	
+	pfree(tempstr);
 
 	return true;
 }
@@ -1219,7 +1258,7 @@ tblspc_redo(XLogRecPtr lsn, XLogRecord *record)
 	{
 		xl_tblspc_drop_rec *xlrec = (xl_tblspc_drop_rec *) XLogRecGetData(record);
 
-		if (!remove_tablespace_directories(xlrec->ts_id, true))
+		if (!remove_tablespace_directories(xlrec->ts_id, true, xlrec->ts_path))
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					 errmsg("tablespace %u is not empty",
