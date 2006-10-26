@@ -916,12 +916,9 @@ DoCopy(const CopyStmt *stmt)
 
 	/*
 	 * Open and lock the relation, using the appropriate lock type.
-     *
-     * CDB: The proper lock mode depends on whether the relation is local or
-     * distributed.  That info is obtained by heap_openrv().  Therefore we
-     * use CdbLockRelation() instead of getting the lock from heap_openrv().
-	 */
-	cstate->rel = heap_openrv(relation, NoLock);
+     */
+     
+	cstate->rel = heap_openrv(relation, (is_from ? RowExclusiveLock : AccessShareLock));
 
 	/* check read-only transaction */
 	if (XactReadOnly && is_from && !isTempNamespace(RelationGetNamespace(cstate->rel)))
@@ -941,8 +938,6 @@ DoCopy(const CopyStmt *stmt)
 				 errmsg("must be superuser to COPY to or from a file"),
 				 errhint("Anyone can COPY to stdout or from stdin. "
 						 "psql's \\copy command also works for anyone.")));
-
-    CdbLockRelation(cstate->rel, (is_from ? RowExclusiveLock : AccessShareLock), false);
 
     /*
 	 * Don't allow COPY w/ OIDs to or from a table without them
