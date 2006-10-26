@@ -421,6 +421,10 @@ cdbpathlocus_join(CdbPathLocus a, CdbPathLocus b)
     List           *equivpathkeylist;
     CdbPathLocus    ojlocus;
 
+    /* Do both input rels have same locus? */
+    if (cdbpathlocus_compare(CdbPathLocus_Comparison_Equal, a, b))
+        return a;
+
     /* If one rel is general or replicated, result stays with the other rel. */
     if (CdbPathLocus_IsGeneral(a) ||
         CdbPathLocus_IsReplicated(a))
@@ -429,27 +433,10 @@ cdbpathlocus_join(CdbPathLocus a, CdbPathLocus b)
         CdbPathLocus_IsReplicated(b))
         return a;
 
-    /* Join sequentially in single process if sources are in single process. */
-    if (CdbPathLocus_IsEntry(a))
-    {
-        Assert(CdbPathLocus_IsBottleneck(b));
-        return a;
-    }
-    if (CdbPathLocus_IsEntry(b))
-    {
-        Assert(CdbPathLocus_IsSingleQE(a));
-        return b;
-    }
-    if (CdbPathLocus_IsSingleQE(a))
-    {
-        Assert(CdbPathLocus_IsSingleQE(b));
-        return a;
-    }
-    Assert(!CdbPathLocus_IsSingleQE(b));
-
     /* This is an outer join, or one or both inputs are outer join results. */
 
-    Assert(CdbPathLocus_Degree(a) == CdbPathLocus_Degree(b));
+    Assert(CdbPathLocus_Degree(a) > 0 &&
+           CdbPathLocus_Degree(a) == CdbPathLocus_Degree(b));
 
     if (CdbPathLocus_IsHashed(a) &&
         CdbPathLocus_IsHashed(b))

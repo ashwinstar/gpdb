@@ -95,32 +95,27 @@ cdbpath_create_motion_path(PlannerInfo     *root,
 {
     CdbMotionPath      *pathnode;
 
-    /* No motion needed if subpath locus is exactly as requested. */
-    if (CdbPathLocus_IsEqual(subpath->locus, locus))
-        return subpath;
-
     /* Moving subpath output to a single executor process (qDisp or qExec)? */
     if (CdbPathLocus_IsBottleneck(locus))
     {
-        /* No motion needed if subpath can run anywhere giving same output. */
-        if (CdbPathLocus_IsGeneral(subpath->locus))
+        /* entry-->entry or singleQE-->singleQE?  No motion needed. */
+        if (CdbPathLocus_IsEqual(subpath->locus, locus))
             return subpath;
 
-        /* replicated-->singleton would give redundant copies of the rows. */
-        if (CdbPathLocus_IsReplicated(subpath->locus))
-            goto invalid_motion_request;
-
-        /* root-->singleQE?  Don't move.  Parent & subpath will run on qDisp. */
+        /* entry-->singleQE?  Don't move.  Slice's QE will run on entry db. */
         if (CdbPathLocus_IsEntry(subpath->locus))
             return subpath;
 
-        /* singleQE-->root?  Don't move.  Parent & subpath will run on qDisp. */
+        /* singleQE-->entry?  Don't move.  Slice's QE will run on entry db. */
         if (CdbPathLocus_IsSingleQE(subpath->locus))
         {
-            /* Create CdbMotionPath node to indicate that a qDisp singleton
-             * gang is required for the slice that includes the subpath and
-             * parent Path.  No actual motion will occur.
+            /* Create CdbMotionPath node to indicate that the slice must be
+             * dispatched to a singleton gang running on the entry db.  We
+             * merely use this node to note that the path has 'Entry' locus;
+             * no corresponding Motion node will be created in the Plan tree.
              */
+            Assert(CdbPathLocus_IsEntry(locus));
+
             pathnode = makeNode(CdbMotionPath);
             pathnode->path.pathtype = T_Motion;
             pathnode->path.parent = subpath->parent;
@@ -137,10 +132,18 @@ cdbpath_create_motion_path(PlannerInfo     *root,
             return (Path *)pathnode;
         }
 
-        /* Fail if caller wants no motion. */
+        /* No motion needed if subpath can run anywhere giving same output. */
+        if (CdbPathLocus_IsGeneral(subpath->locus))
+            return subpath;
+
+        /* Fail if caller refuses motion. */
         if (require_existing_order &&
             !pathkeys)
             return NULL;
+
+        /* replicated-->singleton would give redundant copies of the rows. */
+        if (CdbPathLocus_IsReplicated(subpath->locus))
+            goto invalid_motion_request;
 
         /* Must be partitioned-->singleton.
          *  If caller gave pathkeys, they'll be used for Merge Receive.
@@ -196,8 +199,9 @@ cdbpath_create_motion_path(PlannerInfo     *root,
     /* If subplan uses no tables, it can run on qDisp or a singleton qExec. */
     else if (CdbPathLocus_IsGeneral(subpath->locus))
     {
-        /* No motion needed if general-->replicated. */
-        if (CdbPathLocus_IsReplicated(locus))
+        /* No motion needed if general-->general or general-->replicated. */
+        if (CdbPathLocus_IsGeneral(locus) ||
+            CdbPathLocus_IsReplicated(locus))
             return subpath;
 
         /* Must be general-->partitioned. */
@@ -646,10 +650,6 @@ cdbpath_motion_for_join(PlannerInfo    *root,
     CdbpathMfjRel   outer;
     CdbpathMfjRel   inner;
 
-    /* If both sources have exactly the same locus, no motion is needed. */
-    if (CdbPathLocus_IsEqual((*p_outer_path)->locus, (*p_inner_path)->locus))
-        return (*p_outer_path)->locus;
-
     outer.path  = *p_outer_path;
     inner.path  = *p_inner_path;
     outer.locus = outer.path->locus;
@@ -728,7 +728,7 @@ cdbpath_motion_for_join(PlannerInfo    *root,
      */
     else if (CdbPathLocus_IsBottleneck(outer.locus) ||
              CdbPathLocus_IsBottleneck(inner.locus))
-    {                                       /* singleQE or root */
+    {                                       /* singleQE or entry db */
         CdbpathMfjRel  *single = &outer;
         CdbpathMfjRel  *other = &inner;
         bool            single_immovable = outer.require_existing_order &&
@@ -736,22 +736,29 @@ cdbpath_motion_for_join(PlannerInfo    *root,
         bool            other_immovable = inner.require_existing_order &&
                                           !inner_pathkeys;
 
-        /* entry x singleQE => entry (no motion needed). */
-        if (CdbPathLocus_IsEntry(outer.locus) &&
-            CdbPathLocus_IsSingleQE(inner.locus))
-            return outer.locus;
-        if (CdbPathLocus_IsEntry(inner.locus) &&
-            CdbPathLocus_IsSingleQE(outer.locus))
-            return inner.locus;
+        /*
+         * If each of the sources has a single-process locus, then assign both
+         * sources and the join to run in the same process, without motion.
+         * The slice will be run on the entry db if either source requires it.
+         */
+        if (CdbPathLocus_IsEntry(single->locus))
+        {
+            if (CdbPathLocus_IsBottleneck(other->locus))
+                return single->locus;
+        }
+        else if (CdbPathLocus_IsSingleQE(single->locus))
+        {
+            if (CdbPathLocus_IsEntry(other->locus))
+                return other->locus;
+        }
 
-        /* Let 'single' be the source that is the singleQE or entry. */
-        if (!CdbPathLocus_IsBottleneck(single->locus))
+        /* Let 'single' be the source whose locus is singleQE or entry. */
+        else
         {
             CdbSwap(CdbpathMfjRel*, single, other);
             CdbSwap(bool, single_immovable, other_immovable);
-            Assert(CdbPathLocus_IsBottleneck(single->locus));
         }
-
+        Assert(CdbPathLocus_IsBottleneck(single->locus));
         Assert(CdbPathLocus_IsPartitioned(other->locus));
 
         /* If the bottlenecked rel can't be moved, bring the other rel to it. */
