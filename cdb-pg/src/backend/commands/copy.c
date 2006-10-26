@@ -3570,7 +3570,7 @@ CopyFromExec(CopyState cstate)
 						ExecInsertIndexTuples(slot, &(tuple->t_self), estate, false);
 
 					/* AFTER ROW INSERT Triggers */
-					//ExecARInsertTriggers(estate, resultRelInfo, tuple);
+					ExecARInsertTriggers(estate, resultRelInfo, tuple);
 					
 					/*
 					 * We count only tuples not suppressed by a BEFORE INSERT trigger;
