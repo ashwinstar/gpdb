@@ -30,6 +30,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
 #include "utils/int8.h"
+#include "utils/lsyscache.h"
 
 
 static int64
@@ -163,9 +164,22 @@ calculate_database_size(Oid dbOid)
 Datum
 pg_database_size_oid(PG_FUNCTION_ARGS)
 {
+	int64		size = 0;
 	Oid			dbOid = PG_GETARG_OID(0);
+	size = calculate_database_size(dbOid);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		StringInfoData buffer;
+		
+		initStringInfo(&buffer);
 
-	PG_RETURN_INT64(calculate_database_size(dbOid));
+		appendStringInfo(&buffer, "select pg_database_size(%u)", dbOid);
+		
+		size += get_size_from_segDBs(buffer.data);
+		
+	}
+	PG_RETURN_INT64(size);
 }
 
 Datum
@@ -254,9 +268,23 @@ calculate_tablespace_size(Oid tblspcOid)
 Datum
 pg_tablespace_size_oid(PG_FUNCTION_ARGS)
 {
+	int64		size = 0;
 	Oid			tblspcOid = PG_GETARG_OID(0);
 
-	PG_RETURN_INT64(calculate_tablespace_size(tblspcOid));
+	size = calculate_tablespace_size(tblspcOid);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		StringInfoData buffer;
+		
+		initStringInfo(&buffer);
+		
+		appendStringInfo(&buffer, "select pg_tablespace_size(%u)", tblspcOid);
+		
+		size += get_size_from_segDBs(buffer.data);
+		
+	}
+	PG_RETURN_INT64(size);
 }
 
 Datum
@@ -341,13 +369,28 @@ pg_relation_size_oid(PG_FUNCTION_ARGS)
 {
 	Oid			relOid = PG_GETARG_OID(0);
 	Relation	rel;
-	int64		size;
+	int64		size = 0;
 
 	rel = relation_open(relOid, AccessShareLock);
 
 	size = calculate_relation_size(&(rel->rd_node));
 
 	relation_close(rel, AccessShareLock);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		StringInfoData buffer;
+		
+		initStringInfo(&buffer);
+		
+		appendStringInfo(&buffer, "select pg_relation_size('%s.%s')", get_namespace_name(get_rel_namespace(relOid)),get_rel_name(relOid));
+		
+		size += get_size_from_segDBs(buffer.data);
+		
+	}
+
+
+	PG_RETURN_INT64(size);
 
 	PG_RETURN_INT64(size);
 }
@@ -445,9 +488,23 @@ calculate_total_relation_size(Oid Relid)
 Datum
 pg_total_relation_size_oid(PG_FUNCTION_ARGS)
 {
+	int64		size = 0;
 	Oid			relid = PG_GETARG_OID(0);
+	
+	size = calculate_total_relation_size(relid);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		StringInfoData buffer;
+		
+		initStringInfo(&buffer);
+		
+		appendStringInfo(&buffer, "select pg_total_relation_size('%s.%s')", get_namespace_name(get_rel_namespace(relid)),get_rel_name(relid));
+		
+		size += get_size_from_segDBs(buffer.data);
+	}
 
-	PG_RETURN_INT64(calculate_total_relation_size(relid));
+	PG_RETURN_INT64(size);
 }
 
 Datum
