@@ -3195,7 +3195,7 @@ CopyFromExec(CopyState cstate)
 	/*
 	 * Prepare to catch AFTER triggers.
 	 */
-	//AfterTriggerBeginQuery();
+	AfterTriggerBeginQuery();
 
 	/*
 	 * Check BEFORE STATEMENT insertion triggers. It's debateable whether
@@ -3204,7 +3204,7 @@ CopyFromExec(CopyState cstate)
 	 * consistency with the EACH ROW triggers that we already fire on
 	 * COPY.
 	 */
-	//ExecBSInsertTriggers(estate, resultRelInfo);
+	ExecBSInsertTriggers(estate, resultRelInfo);
 
 	if (!cstate->binary)
 		file_has_oids = cstate->oids;	/* must rely on user to tell us this... */
@@ -3606,12 +3606,12 @@ CopyFromExec(CopyState cstate)
 	/*
 	 * Execute AFTER STATEMENT insertion triggers
 	 */
-	//ExecASInsertTriggers(estate, resultRelInfo);
+	ExecASInsertTriggers(estate, resultRelInfo);
 
 	/*
 	 * Handle queued AFTER triggers
 	 */
-	//AfterTriggerEndQuery(estate);
+	AfterTriggerEndQuery(estate);
 
 	pfree(attr_offsets);
 
