@@ -25,6 +25,55 @@
 #include "utils/syscache.h"
 #include "utils/relcache.h"
 
+#include "libpq-fe.h"
+#include "lib/stringinfo.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
+#include "utils/int8.h"
+
+
+static int64
+get_size_from_segDBs(const char * cmd)
+{
+
+	int64	size = 0;
+	int		i;
+	int 	resultCount = 0;
+	struct pg_result **results = NULL;
+	
+	StringInfoData errbuf;
+
+	initStringInfo(&errbuf);
+
+	results = cdbdisp_dispatchRMCommand(cmd, true, true, &errbuf, &resultCount);
+
+	if (errbuf.len > 0)
+		ereport(ERROR, (errmsg("dbsize error (gathered %d results from cmd '%s')", resultCount, cmd),
+						errdetail("%s", errbuf.data)));
+										
+	for (i = 0; i < resultCount; i++)
+	{
+		if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+		{
+			elog(ERROR,"dbsize: resultStatus not tuples_Ok");
+		}
+		else
+		{
+			int64 tempsize = 0;
+			(void) scanint8(PQgetvalue(results[i], 0, 0), false, &tempsize);
+			 size += tempsize;
+		}
+	}
+
+	pfree(errbuf.data);
+
+	for (i = 0; i < resultCount; i++)
+		PQclear(results[i]);
+
+	free(results);
+	
+	return size;
+}
 
 /* Return physical size of directory contents, or 0 if dir doesn't exist */
 static int64
@@ -122,6 +171,7 @@ pg_database_size_oid(PG_FUNCTION_ARGS)
 Datum
 pg_database_size_name(PG_FUNCTION_ARGS)
 {
+	int64		size = 0;
 	Name		dbName = PG_GETARG_NAME(0);
 	Oid			dbOid = get_database_oid(NameStr(*dbName));
 
@@ -130,8 +180,21 @@ pg_database_size_name(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
 				 errmsg("database \"%s\" does not exist",
 						NameStr(*dbName))));
+						
+	size = calculate_database_size(dbOid);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		StringInfoData buffer;
+		
+		initStringInfo(&buffer);
 
-	PG_RETURN_INT64(calculate_database_size(dbOid));
+		appendStringInfo(&buffer, "select pg_database_size('%s')", NameStr(*dbName));
+		
+		size += get_size_from_segDBs(buffer.data);
+		
+	}
+	PG_RETURN_INT64(size);
 }
 
 
@@ -199,6 +262,7 @@ pg_tablespace_size_oid(PG_FUNCTION_ARGS)
 Datum
 pg_tablespace_size_name(PG_FUNCTION_ARGS)
 {
+	int64		size = 0;
 	Name		tblspcName = PG_GETARG_NAME(0);
 	Oid			tblspcOid = get_tablespace_oid(NameStr(*tblspcName));
 
@@ -208,7 +272,20 @@ pg_tablespace_size_name(PG_FUNCTION_ARGS)
 				 errmsg("tablespace \"%s\" does not exist",
 						NameStr(*tblspcName))));
 
-	PG_RETURN_INT64(calculate_tablespace_size(tblspcOid));
+	size = calculate_tablespace_size(tblspcOid);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		StringInfoData buffer;
+		
+		initStringInfo(&buffer);
+		
+		appendStringInfo(&buffer, "select pg_tablespace_size('%s')", NameStr(*tblspcName));
+		
+		size += get_size_from_segDBs(buffer.data);
+		
+	}
+	PG_RETURN_INT64(size);
 }
 
 
@@ -282,15 +359,33 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 	RangeVar   *relrv;
 	Relation	rel;
 	int64		size;
-
+	
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
 	rel = relation_openrv(relrv, AccessShareLock);
 
 	size = calculate_relation_size(&(rel->rd_node));
 
 	relation_close(rel, AccessShareLock);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		char * rawname;
+		StringInfoData buffer;
+		
+		initStringInfo(&buffer);
+		
+		rawname = DatumGetCString(DirectFunctionCall1(textout,
+													  PointerGetDatum(relname)));
+		
+		appendStringInfo(&buffer, "select pg_relation_size('%s')", rawname);
+		
+		size += get_size_from_segDBs(buffer.data);
+		
+	}
+
 
 	PG_RETURN_INT64(size);
+	
 }
 
 
@@ -358,6 +453,7 @@ pg_total_relation_size_oid(PG_FUNCTION_ARGS)
 Datum
 pg_total_relation_size_name(PG_FUNCTION_ARGS)
 {
+	int64		size = 0;
 	text	   *relname = PG_GETARG_TEXT_P(0);
 	RangeVar   *relrv;
 	Oid			relid;
@@ -365,7 +461,24 @@ pg_total_relation_size_name(PG_FUNCTION_ARGS)
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
 	relid = RangeVarGetRelid(relrv, false);
 
-	PG_RETURN_INT64(calculate_total_relation_size(relid));
+	size = calculate_total_relation_size(relid);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		char * rawname;
+		StringInfoData buffer;
+		
+		initStringInfo(&buffer);
+		
+		rawname = DatumGetCString(DirectFunctionCall1(textout,
+													  PointerGetDatum(relname)));
+		
+		appendStringInfo(&buffer, "select pg_total_relation_size('%s')", rawname);
+		
+		size += get_size_from_segDBs(buffer.data);
+	}
+
+	PG_RETURN_INT64(size);
 }
 
 /*
