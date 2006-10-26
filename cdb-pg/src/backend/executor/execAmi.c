@@ -197,10 +197,7 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 			break;
 		
 		case T_MotionState:
-			ereport(ERROR, (
-				errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				errmsg("unsupported call to rescan Motion operator")
-				));
+			ExecReScanMotion((MotionState *) node, exprCtxt);
 			break;
 
 		default:

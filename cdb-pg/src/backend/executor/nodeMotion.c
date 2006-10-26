@@ -1307,6 +1307,28 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 	return;
 }
 
+
+/*
+ * ExecReScanMotion
+ *
+ * Motion nodes do not allow rescan after a tuple has been fetched.
+ *
+ * When the planner knows that a NestLoop cannot have more than one outer
+ * tuple, it can omit the usual Materialize operator atop the inner subplan,
+ * which can lead to invocation of ExecReScanMotion before the motion node's
+ * first tuple is fetched.  Rescan can be implemented as a no-op in this case.
+ * (After ExecNestLoop fetches an outer tuple, it invokes rescan on the inner
+ * subplan before fetching the first inner tuple.  That doesn't bother us,
+ * provided there is only one outer tuple.)
+ */
+void
+ExecReScanMotion(MotionState *node, ExprContext *exprCtxt)
+{
+    Insist(node->isReceiver);
+    Insist(node->numTuplesToParent == 0);
+}
+
+
 /*
  * Mark this node as "stopped." When ExecProcNode() is called on a
  * stopped motion node it should behave as if there are no tuples
