@@ -93,6 +93,8 @@ USAGE () {
 		$ECHO "      -z, force startup of segment instance marked as invalid"
 		$ECHO "      -y, do not start master standby server [default:- start standby server process]"
 		$ECHO "      -s, switch master log file, moves current logfile to <log file>.YYYYMMDD"
+		$ECHO "      -e, switch segment instance log files, moves current logfile to <log file>.YYYYMMDD"
+		$ECHO "          not applicable in master maintenance mode startup"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -241,6 +243,11 @@ PROMPT_CONTINUE () {
 			LOG_MSG "[INFO]:-Switch type                = Move"
 			fi
 		fi
+		if [ x"" == x"$SWITCH_QE_LOG" ];then
+		LOG_MSG "[INFO]:-Segment switch log file    = Off"
+		else
+		LOG_MSG "[INFO]:-Segment switch log file    = On"
+		fi
 		if [ x"" != x"$START_SYNC" ] && [ $STANDBY_COUNT -ne 0 ];then
 		LOG_MSG "[INFO]:-Master standby start       = On"
 		else
@@ -302,6 +309,21 @@ PROCESS_STARTUP () {
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
 				if [ "$QE_VALID" == "t" ] || [ $START_INVALID -eq 1 ];then
+				if [ x"" != x"$SWITCH_QE_LOG" ];then
+					LOG_MSG "[INFO]:-Processing switch log request for $QE_NAME ${QE_DIR}.log"
+					IS_THERE=`$TRUSTED_SHELL $QE_NAME "if [ -f ${QE_DIR}.log_$CUR_DATE ]; then $ECHO 1;else $ECHO 0;fi"`
+					if [ $IS_THERE -eq 0 ];then
+						LOG_MSG "[INFO]:-Moving log file to ${QE_DIR}.log_$CUR_DATE"
+						$TRUSTED_SHELL $QE_NAME "$MV ${QE_DIR}.log ${QE_DIR}.log_$CUR_DATE"
+						ERROR_CHK $? "move ${QE_DIR}.log ${QE_DIR}.log_$CUR_DATE" 1
+					else
+						LOG_MSG "[INFO]:-Appending log file to ${QE_DIR}.log_$CUR_DATE"
+						$TRUSTED_SHELL $QE_NAME "$CAT ${QE_DIR}.log >> ${QE_DIR}.log_$CUR_DATE"
+						ERROR_CHK $? "append ${QE_DIR}.log to ${QE_DIR}.log_$CUR_DATE" 1
+						$TRUSTED_SHELL $QE_NAME "$RM ${QE_DIR}.log;$TOUCH ${QE_DIR}.log"
+						ERROR_CHK $? "clear down ${QE_DIR}.log" 1
+					fi
+				fi
 					LOG_MSG "[INFO]:-Starting Segment instance $QE_NAME directory $QE_DIR"
 					$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" 
 				RETVAL=$?
@@ -388,7 +410,7 @@ fi
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt'?'abqyznsml:d:" opt;do
+		while getopts ":vt'?'abqyznsml:d:e" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -399,6 +421,7 @@ if [ $# -ne 0 ]; then
 						n ) WAIT="-W" ;; 
 						m ) ADMIN=1 ;;
 						s ) SWITCH_LOG=1 ;;
+						e ) SWITCH_QE_LOG=1 ;;
 						z ) START_INVALID=1 ;;
 						l ) LOG_DIR=$OPTARG ;;
 						y ) unset START_SYNC ;;
