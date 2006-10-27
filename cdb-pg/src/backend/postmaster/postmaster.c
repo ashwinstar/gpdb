@@ -1381,6 +1381,7 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 	ProtocolVersion proto;
 	MemoryContext oldcontext;
     char       *mppqeid = NULL;
+    char       *mppqdid = NULL;
 
 	if (pq_getbytes((char *) &len, 4) == EOF)
 	{
@@ -1537,6 +1538,8 @@ retry1:
 				port->cmdline_options = pstrdup(valptr);
 			else if (strcmp(nameptr, "mppqeid") == 0)
 				mppqeid = valptr;
+			else if (strcmp(nameptr, "mppqdid") == 0)
+				mppqdid = valptr;
 			else
 			{
 				/* Assume it's a generic GUC option */
@@ -1626,6 +1629,8 @@ retry1:
      */
     if (mppqeid)
         cdbgang_parse_mppqeid_params(port, mppqeid);
+    else if (mppqdid)
+    	cdbgang_parse_mppqdid_params(port, mppqdid);
 
 	/*
 	 * Done putting stuff in TopMemoryContext.

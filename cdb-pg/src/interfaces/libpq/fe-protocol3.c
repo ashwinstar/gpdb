@@ -1547,6 +1547,16 @@ build_startup_packet(const PGconn *conn, char *packet,
 			strcpy(packet + packet_len, conn->mppqeid);
 		packet_len += strlen(conn->mppqeid) + 1;
 	}
+	/* CDB: Add qExec startup data */
+	if (conn->mppqdid && conn->mppqdid[0])
+	{
+		if (packet)
+			strcpy(packet + packet_len, "mppqdid");
+		packet_len += strlen("mppqdid") + 1;
+		if (packet)
+			strcpy(packet + packet_len, conn->mppqdid);
+		packet_len += strlen(conn->mppqdid) + 1;
+	}
 
 	/* Add any environment-driven GUC settings needed */
 	for (next_eo = options; next_eo->envName; next_eo++)

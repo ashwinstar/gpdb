@@ -272,6 +272,7 @@ struct pg_conn
 	char	   *krbsrvname;		/* Kerberos service name */
 #endif
     char       *mppqeid;        /* MPP: session id & startup info for qExec */
+    char       *mppqdid;        /* MPP: session id & startup info for QD callback */
 
 	/* Optional file to write trace info to */
 	FILE	   *Pfdebug;

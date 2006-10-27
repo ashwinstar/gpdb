@@ -1112,7 +1112,7 @@ static struct config_bool ConfigureNamesBool[] =
     },
     
     {
-    	{"mpp_is_callback", PGC_BACKEND, UNGROUPED,
+    	{"mpp_is_callback", PGC_BACKEND, CLIENT_CONN,
     		gettext_noop("Are we executing on behalf of a callback from the QE to QD."),
     		NULL,
     		GUC_NOT_IN_SAMPLE

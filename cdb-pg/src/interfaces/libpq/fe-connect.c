@@ -184,6 +184,10 @@ static const PQconninfoOption PQconninfoOptions[] = {
     /* CDB: qExec wants some info from qDisp before GUCs are processed */
     {"mppqeid", NULL, "", NULL,
 	"MPP-Debug-qeid", "D", 40},
+	
+	{"mppqdid", NULL, "", NULL,
+	"MPP-Debug-qdid", "D", 40},
+	
 
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,
@@ -416,6 +420,9 @@ connectOptions1(PGconn *conn, const char *conninfo)
 #endif
 	tmp = conninfo_getval(connOptions, "mppqeid");
 	conn->mppqeid = tmp ? strdup(tmp) : NULL;
+	
+	tmp = conninfo_getval(connOptions, "mppqdid");
+	conn->mppqdid = tmp ? strdup(tmp) : NULL;
 
 	/*
 	 * Free the option info - all is in conn now
@@ -1917,6 +1924,8 @@ freePGconn(PGconn *conn)
 #endif
     if (conn->mppqeid)          /* CDB */
         free(conn->mppqeid);
+    if (conn->mppqdid)          /* CDB */
+        free(conn->mppqdid);
 
 	/* Note that conn->Pfdebug is not ours to close or free */
 	pg_freeaddrinfo_all(conn->addrlist_family, conn->addrlist);

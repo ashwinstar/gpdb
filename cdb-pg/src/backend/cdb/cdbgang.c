@@ -1175,6 +1175,50 @@ bad:
 }	/* cdbgang_parse_mppqeid_params */
 
 
+void
+cdbgang_parse_mppqdid_params(struct Port *port, const char *mppqdid_value)
+{
+	char	   *mppqdid = pstrdup(mppqdid_value);
+	char	   *cp;
+	char	   *np = mppqdid;
+
+	/* The presence of an mppqdid string means this is a callback from QE to QD. */
+	SetConfigOption("mpp_is_callback", "true",
+					PGC_POSTMASTER, PGC_S_OVERRIDE);
+
+	/* mpp_session_id */
+	if (mppqeid_next_param(&cp, &np))
+		SetConfigOption("mpp_session_id", cp,
+						PGC_POSTMASTER, PGC_S_OVERRIDE);
+
+	/* PgStartTime */
+	if (mppqeid_next_param(&cp, &np))
+	{
+#ifdef HAVE_INT64_TIMESTAMP
+		if (!scanint8(cp, true, &PgStartTime))
+			goto bad;
+#else
+		PgStartTime = strtod(cp, NULL);
+#endif
+	}
+	Assert(mpp_is_callback);
+
+	/* Too few items, or too many? */
+	if (!cp || np)
+		goto bad;
+
+	if (mpp_session_id <= 0 ||
+		PgStartTime <= 0)
+		goto bad;
+
+	pfree(mppqdid);
+	return;
+
+bad:
+	elog(FATAL, "QD callback dispatched with invalid option: 'mppqdid=%s'", mppqdid_value);
+}	/* cdbgang_parse_mppqeid_params */
+
+
 
 /*
  * This is the main routine.   It allocates a gang to a query.

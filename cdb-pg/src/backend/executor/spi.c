@@ -315,6 +315,27 @@ SPI_finish(void)
 	return SPI_OK_FINISH;
 }
 
+/* for callback to QD */
+static void
+build_mppqdid_params(StringInfoData * buf)
+{
+	appendStringInfo(buf, "mppqdid=");
+
+	appendStringInfo(buf, "%d;", mpp_session_id);
+
+#ifdef HAVE_INT64_TIMESTAMP
+	appendStringInfo(buf, INT64_FORMAT ";", PgStartTime);
+#else
+	appendStringInfo(buf, "%.14a;", PgStartTime);
+#endif
+
+	/* change last semicolon to space */
+	Assert(buf->data[buf->len - 1] == ';');
+	buf->data[buf->len - 1] = ' ';
+}	/* build_mppqdid_params */
+
+
+
 int connect_back_to_qd(void)
 {
 	 
@@ -333,16 +354,15 @@ int connect_back_to_qd(void)
 	initStringInfo(&buffer);
 		
 		
+	build_mppqdid_params(&buffer);
+		
 	/*
 	 * Setting options is mostly just to help with debugging.
 	 */
 	appendStringInfo(&buffer, "options='");
-	
-	appendStringInfo(&buffer, " -c mpp_is_callback=true");
-	appendStringInfo(&buffer, " -c mpp_qd_proc_offset=%ld",(long)mpp_qd_proc_offset);
-	if (mpp_session_id > 0)
- 		appendStringInfo(&buffer, " -c mpp_session_id=%d",mpp_session_id);
 
+	appendStringInfo(&buffer, " -c mpp_qd_proc_offset=%ld",(long)mpp_qd_proc_offset);
+	
 	switch (client_min_messages)
 	{
 		case DEBUG5:
@@ -478,7 +498,6 @@ int connect_back_to_qd(void)
 	}
 	appendStringInfo(&buffer, "' ");
 	/* End of options */
-	
 	
 	/* Set up connection back to the QD */
 	

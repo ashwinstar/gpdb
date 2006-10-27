@@ -77,4 +77,6 @@ SetSeqServerInfo(QueryDesc *queryDesc);
 void
 cdbgang_parse_mppqeid_params(struct Port *port, const char* mppqeid_value);
 
+void
+cdbgang_parse_mppqdid_params(struct Port *port, const char* mppqdid_value);
 #endif   /* _CDBGANG_H_ */
