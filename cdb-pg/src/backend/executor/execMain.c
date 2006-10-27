@@ -60,6 +60,7 @@
 #include "cdb/cdbcat.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"      /* cdbdisp_sumCmdTuples() */
+#include "cdb/cdbexplain.h"             /* cdbexplain_sendExecStats() */
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbsubplan.h"
 #include "cdb/cdbvars.h"
