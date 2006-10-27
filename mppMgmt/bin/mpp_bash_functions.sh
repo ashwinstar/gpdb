@@ -597,7 +597,7 @@ BUILD_MASTER_PG_HBA_FILE () {
         $ECHO "local    all         $USER_NAME         $PG_METHOD" >> ${MPP_DIR}/$PG_HBA
         $ECHO "local    all         all                $PG_METHOD" >> ${MPP_DIR}/$PG_HBA
         LOG_MSG "[INFO]:-Setting local host access"
-        $ECHO "host     all         $USER_NAME         127.0.0.0/0     trust" >> ${MPP_DIR}/$PG_HBA
+        $ECHO "host     all         $USER_NAME         127.0.0.1/32     trust" >> ${MPP_DIR}/$PG_HBA
         $ECHO "host     all         $USER_NAME         $IP_ALLOW       md5" >> ${MPP_DIR}/$PG_HBA
         $ECHO "host     all         all                $IP_ALLOW       trust" >> ${MPP_DIR}/$PG_HBA
         LOG_MSG "[INFO]:-Complete Master $PG_HBA configuration"
