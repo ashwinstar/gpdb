@@ -202,9 +202,6 @@ init_sql_fcache(FmgrInfo *finfo)
 	fcache->readonly_func =
 		(procedureStruct->provolatile != PROVOLATILE_VOLATILE);
 
-		
-	
-
 	/* Now look up the actual result type */
 	typeTuple = SearchSysCache(TYPEOID,
 							   ObjectIdGetDatum(rettype),
@@ -349,7 +346,7 @@ init_sql_fcache(FmgrInfo *finfo)
 			else if (procedureStruct->provolatile == PROVOLATILE_STABLE)
 				elog(ERROR,"Stable SQL function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
 		}
-			
+
 	}
 
 	/*
@@ -391,7 +388,7 @@ postquel_start(execution_state *es, SQLFunctionCachePtr fcache)
 	Snapshot	snapshot;
 
 	Assert(es->qd == NULL);
-	
+
 	/*
 	 * In a read-only function, use the surrounding query's snapshot;
 	 * otherwise take a new snapshot for each query.  The snapshot should
