@@ -300,29 +300,27 @@ init_sql_fcache(FmgrInfo *finfo)
 				{
 					can_run_local = false;
 					break;
-					
-					if (q->rtable != NULL)
+                }
+				if (q->rtable != NULL)
+				{
+					ListCell * f;
+					foreach(f,q->rtable)
 					{
-						ListCell * f;
-						foreach(f,q->rtable)
+						Node * fr = (Node *) lfirst(f);
+						RangeVar * r;
+						if (!IsA(fr,RangeVar))
 						{
-							Node * fr = (Node *) lfirst(f);
-							RangeVar * r;
-							if (!IsA(fr,RangeVar))
-							{
-								can_run_local = false;
-								break;
-							}
-							r = (RangeVar *)fr;
-							if (r->schemaname && strcmp(r->schemaname,"pg_catalog")!=0)
-								can_run_local = false;
-							if (r->schemaname==NULL && r->relname && strncmp(r->relname,"pg_",3)!=0)
-								can_run_local = false;
-								
-							if (!can_run_local)
-								break;
+							can_run_local = false;
+							break;
 						}
-						
+						r = (RangeVar *)fr;
+						if (r->schemaname && strcmp(r->schemaname,"pg_catalog")!=0)
+							can_run_local = false;
+						if (r->schemaname==NULL && r->relname && strncmp(r->relname,"pg_",3)!=0)
+							can_run_local = false;
+							
+						if (!can_run_local)
+							break;
 					}
 				}
 			}
