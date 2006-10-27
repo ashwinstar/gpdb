@@ -23,6 +23,7 @@
 #include "nodes/print.h"
 
 #include "optimizer/planmain.h" /* for is_projection_capable_plan() */
+#include "optimizer/var.h"      /* for contain_vars_of_level_or_above() */
 #include "parser/parsetree.h"	/* for rt_fetch() */
 #include "utils/lsyscache.h"	/* for getatttypetypmod() */
 #include "parser/parse_oper.h"	/* for compatible_oper_opid() */
@@ -408,15 +409,42 @@ prescan_walker(Node *node, PlanProfile * context)
 		case T_BitmapIndexScan:
 		case T_BitmapHeapScan:
 		case T_TidScan:
-			{
-				Plan	   *plan = (Plan *) node;
-				
-				if ( plan->dispatch == DISPATCH_PARALLEL )
-					context->dispatchParallel = TRUE;
-					
-				return plan_tree_walker(node, prescan_walker, context);
+			if ( ((Plan *)node)->dispatch == DISPATCH_PARALLEL )
+				context->dispatchParallel = TRUE;
+			return plan_tree_walker(node, prescan_walker, context);
 
 		case T_FunctionScan:
+        {
+            /*
+             * Disallow outer references in function scans, for now.
+             *
+             * NB: A Var node with varlevelsup==0 in the function expr can only
+             * come from an outer reference in a subquery that was pulled up
+             * into the current query level.
+             *
+             * CDB TODO: Build plans such that a function scan's required
+             * inputs are produced upstream of the function invocation.
+             */
+            RangeTblEntry  *rte = rt_fetch(((Scan *)node)->scanrelid,
+                                           localRangeTable(context));
+
+            Assert(rte->rtekind == RTE_FUNCTION);
+
+            if (rte->funcexpr &&
+                IsA(rte->funcexpr, FuncExpr) &&
+                contain_vars_of_level_or_above(rte->funcexpr, 0))
+            {
+			    ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+					            errmsg("Cannot parallelize that query yet."),
+                                errdetail("In a subquery FROM clause, a "
+                                          "function invocation cannot contain "
+                                          "a correlated reference.")
+					    ));
+            }
+
+			return plan_tree_walker(node, prescan_walker, context);
+        }
+
 		case T_NestLoop:
 		case T_MergeJoin:
 		case T_HashJoin:
@@ -487,15 +515,7 @@ prescan_walker(Node *node, PlanProfile * context)
 		default:
 			return plan_tree_walker(node, prescan_walker, context);
 	}
-
-	/*
-	 * Breaking out of the above switch indicates an error report.
-	 */
-	ereport(ERROR, (
-			errcode(ERRCODE_MPP_INTERNAL_ERROR),
-			errmsg("Unexpected error post-processing plan.")
-		));
-	}
+    /* not reached */
 }
 
 
