@@ -716,12 +716,14 @@ LockAcquire(LOCKMETHODID lockmethodid,
 								lock->nRequested++;
 								lock->requested[lockmode]++;
 								GrantLock(lock, proclock, lockmode);
+								LWLockRelease(masterLock);
+								
 								locallock->isFake = true;
 								GrantLockLocal(locallock, owner);
 								return LOCKACQUIRE_OK;
 							}
 							
-							
+							LWLockRelease(masterLock);
 							if (mpp_is_callback)
 								elog(ERROR,"Session has deadlocked itself due to function callback");
 							else
