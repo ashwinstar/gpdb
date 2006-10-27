@@ -90,6 +90,7 @@ can_execute_this_locally(const char * src)
 	List * raw_parsetree_list;
 	ListCell * list_item;
 	bool	can_run_local = true;
+	bool	is_a_select = true;
 	
 	/*
 	 * Utility mode never uses (or needs) the special callback code
@@ -158,7 +159,10 @@ can_execute_this_locally(const char * src)
 			}
 		}
 		else
+		{
 			can_run_local = false;
+			is_a_select = false;
+		}
 			
 		if (!can_run_local)
 			break;
@@ -178,8 +182,8 @@ can_execute_this_locally(const char * src)
 	if (!mpp_enable_functions)
 		elog(ERROR, "Functions that execute SQL statements from the segDBs are not yet supported");
 		
-	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_primary)
-		elog(ERROR, "Functions that execute SQL statements from the mirrorDBs are not supported");
+	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_primary && !is_a_select)
+		elog(ERROR, "Functions that execute non-SELECT SQL statements from the mirrorDBs are not supported");
 
 	return false;
 }
@@ -2012,12 +2016,6 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 	
 	/* Be sure to restore ActiveSnapshot on error exit */
 	saveActiveSnapshot = ActiveSnapshot;
-	
-	if (Mpp_role == MPP_ROLE_EXECUTE)
-	{
-		if (!Mpp_is_primary && !read_only)
-			elog(WARNING,"Stored procedure running on mirror...");
-	}
 	
 	/* 
 	 * If we can't execute this SQL statement locally, let's connect back to the QD
