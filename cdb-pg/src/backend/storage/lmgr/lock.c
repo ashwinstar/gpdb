@@ -653,9 +653,10 @@ LockAcquire(LOCKMETHODID lockmethodid,
 			while(proclock)
 			{
 				
-				if (MAKE_OFFSET(MyProc) != proclock->tag.proc && proclock->tag.proc != 0)
+				if (MAKE_OFFSET(MyProc) != proclock->tag.proc && proclock->tag.proc != 0 && proclock->tag.lock == MAKE_OFFSET(lock))
 				{
 					PGPROC		*otherProc = (PGPROC *)MAKE_PTR(proclock->tag.proc);
+
 					if (otherProc->mppSessionId == mpp_session_id)
 					{
 						/*
@@ -694,6 +695,38 @@ LockAcquire(LOCKMETHODID lockmethodid,
 							return LOCKACQUIRE_OK;
 						}
 						
+						/*
+						 * If we don't conflict, it's still OK
+						 */
+						if ((lockMethodTable->conflictTab[lockmode] & lock->waitMask) ||
+						    (lockMethodTable->conflictTab[lockmode] & lock->grantMask))
+						{
+							/*
+							 * If we get here, we want to acquire a stronger lock than some other gang member
+							 * has, and we conflict.  We will deadlock if we let this happen
+							 */
+							
+							/*
+							 * We can try granting the higher lock to the other guy
+							 */
+						
+							if (LockCheckConflicts(lockMethodTable, lockmode,
+								lock, proclock, otherProc) == STATUS_OK)
+							{
+								lock->nRequested++;
+								lock->requested[lockmode]++;
+								GrantLock(lock, proclock, lockmode);
+								locallock->isFake = true;
+								GrantLockLocal(locallock, owner);
+								return LOCKACQUIRE_OK;
+							}
+							
+							
+							if (mpp_is_callback)
+								elog(ERROR,"Session has deadlocked itself due to function callback");
+							else
+								elog(ERROR,"Session has deadlocked itself");
+						}
 					}
 				}
 				proclock = (PROCLOCK *) SHMQueueNext(procLocks, &proclock->lockLink,
