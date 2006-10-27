@@ -2324,6 +2324,15 @@ StartTransactionCommand(void)
 			 */
 		case TBLOCK_INPROGRESS:
 		case TBLOCK_SUBINPROGRESS:
+			/* There may be reader gangs waiting for us to update the
+			 * QDSentXID -- make sure the state of the sharedsnapshot
+			 * slot properly tracks the qd-xid */
+			if (Mpp_role == MPP_ROLE_EXECUTE && Mpp_is_writer && SharedLocalSnapshotSlot != NULL)
+			{
+				SharedLocalSnapshotSlot->xid = s->transactionId;
+				SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
+				SharedLocalSnapshotSlot->QDxid = QDSentXID;
+			}
 			break;
 
 			/*
