@@ -679,7 +679,7 @@ LockAcquire(LOCKMETHODID lockmethodid,
 							GrantLockLocal(locallock, owner);
 							return LOCKACQUIRE_OK;
 						}
-						if (lockmode == AccessShareLock)
+						if (proclock->holdMask >= LOCKBIT_ON(lockmode))
 						{
 							
 							LWLockRelease(masterLock);
