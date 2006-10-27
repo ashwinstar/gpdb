@@ -32,6 +32,7 @@
 #include "executor/nodeLimit.h"
 #include "executor/nodeMaterial.h"
 #include "executor/nodeMergejoin.h"
+#include "executor/nodeMotion.h"
 #include "executor/nodeNestloop.h"
 #include "executor/nodeAdaptiveNestloop.h"
 #include "executor/nodeResult.h"
