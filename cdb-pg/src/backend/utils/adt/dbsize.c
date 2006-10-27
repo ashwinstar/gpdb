@@ -392,7 +392,6 @@ pg_relation_size_oid(PG_FUNCTION_ARGS)
 
 	PG_RETURN_INT64(size);
 
-	PG_RETURN_INT64(size);
 }
 
 Datum
