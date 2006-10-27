@@ -488,12 +488,19 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
     /* 1-gang on entry db? */
     if (type == GANGTYPE_ENTRYDB_READER)
     {
+    	CdbComponentDatabaseInfo  *cdbinfo = &cdb_component_dbs->entry_db_info[0];
+    	
+    	/* we want to make sure we use localhost */
+    	cdbinfo->hostip = "127.0.0.1";
+		
+		
         Assert(size == 1);
 
+		
         /* Build segdb descriptor. */
         segdbDesc = (SegmentDatabaseDescriptor *)palloc0(sizeof(*segdbDesc));
 		cdbconn_initSegmentDescriptor(segdbDesc,
-									  &cdb_component_dbs->entry_db_info[0],
+									  cdbinfo,
 									  myDatabaseName,
 									  username);
 	    newGangDefinition->size = 1;
