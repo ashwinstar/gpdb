@@ -748,7 +748,7 @@ cdbpath_motion_for_join(PlannerInfo    *root,
         }
         else if (CdbPathLocus_IsSingleQE(single->locus))
         {
-            if (CdbPathLocus_IsEntry(other->locus))
+            if (CdbPathLocus_IsBottleneck(other->locus))
                 return other->locus;
         }
 
