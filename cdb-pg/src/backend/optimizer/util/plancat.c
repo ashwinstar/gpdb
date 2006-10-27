@@ -40,6 +40,11 @@
 #include "catalog/catalog.h"
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
+#include "cdb/cdbdisp.h"
+#include "libpq-fe.h"
+#include "lib/stringinfo.h"
+#include "utils/int8.h"
+#include "utils/lsyscache.h"
 
 
 static void estimate_rel_size(Relation rel, int32 *attr_widths,
@@ -287,6 +292,14 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 	double		reltuples;
 	double		density;
     int32       tuple_width;
+    BlockNumber curpages = 0;
+	int64	size = 0;
+	int		i;
+	int 	resultCount = 0;
+	struct pg_result **results = NULL;
+	
+	StringInfoData errbuf;
+	StringInfoData buffer;
 
     *default_stats_used = false;
 
@@ -297,64 +310,114 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
         estimate_rel_size(rel, attr_widths, pages, tuples);
         return;
     }
-
-    /* Rely on statistics observed by ANALYZE, if available. */
-    relpages = (BlockNumber)rel->rd_rel->relpages;
-    reltuples = rel->rd_rel->reltuples;
-
-	/* If it's an index, don't count the metapage. */
+	
+	/* coerce values in pg_class to more desirable types */
+	relpages = (BlockNumber) rel->rd_rel->relpages;
+	reltuples = (double) rel->rd_rel->reltuples;
+	
+	/*
+	 * Asking the QE for the size of the relation is a bit expensive.
+	 * Do we want to do it all the time?  Or only for tables that have never had analyze run?
+	 */
+	 
+	if (relpages > 1 && reltuples > 1.0)
+	{
+		
+		/*
+		 * Let's trust the values we had from analyze, even though they might be out of date.
+		 */
+		 
+		curpages = relpages;
+	}
+	else
+	{
+		/*
+		 * Let's ask the QEs for the size of the relation
+		 */
+		initStringInfo(&buffer);
+		initStringInfo(&errbuf);
+		
+		/* 
+		 * Safer to pass names than oids, just in case they get out of sync between QD and QE,
+		 * which might happen with a toast table or index, I think (but maybe not)
+		 */
+		appendStringInfo(&buffer, "select pg_relation_size('%s.%s')", get_namespace_name(get_rel_namespace(rel->rd_id)),get_rel_name(rel->rd_id));
+	
+		/* 
+		 * In the future, it would be better to send the command to only one QE.
+		 */
+		results = cdbdisp_dispatchRMCommand(buffer.data, false, false, &errbuf, &resultCount);
+	
+		if (errbuf.len > 0)
+			ereport(ERROR, (errmsg("cdb_estimate_rel_size error (gathered %d results from cmd '%s')", resultCount, buffer.data),
+							errdetail("%s", errbuf.data)));
+											
+		for (i = 0; i < resultCount; i++)
+		{
+			if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+			{
+				elog(ERROR,"cdb_estimate_rel_size: resultStatus not tuples_Ok");
+			}
+			else
+			{
+				int64 tempsize = 0;
+				(void) scanint8(PQgetvalue(results[i], 0, 0), false, &tempsize);
+				 size += tempsize;
+			}
+		}
+	
+		pfree(errbuf.data);
+	
+		for (i = 0; i < resultCount; i++)
+			PQclear(results[i]);
+	
+		free(results);
+		
+		size /= resultCount;   /* average size per primary segment */
+		
+		curpages = size / BLCKSZ;  /* average blocks per primary segment DB */
+		
+		if (curpages == 0 && size > 0)
+			curpages = 1;
+	}
+	
+	/* report estimated # pages */
+	*pages = curpages;
+	/* quick exit if rel is clearly empty */
+	if (curpages == 0)
+	{
+		*tuples = 0;
+		return;
+	}
+	
+	/*
+	 * If it's an index, discount the metapage.  This is a kluge
+	 * because it assumes more than it ought to about index contents;
+	 * it's reasonably OK for btrees but a bit suspect otherwise.
+	 */
 	if (rel->rd_rel->relkind == RELKIND_INDEX &&
-		relpages > 1)
+		relpages > 0)
+	{
+		curpages--;
 		relpages--;
+	}
+	/* estimate number of tuples from previous tuple density (as of last analyze) */
+	if (relpages > 0 && reltuples > 0.0)
+		density = reltuples / (double) relpages;
+	else
+	{
+        /*
+         * When we have no data because the relation was truncated,
+         * estimate tuples per page from attribute datatypes.
+         * (CDB: The code that was here has been moved into the
+         * estimate_tuple_width function below.)
+         */
+        estimate_tuple_width(rel, attr_widths, &tuple_width, &density);
+	}
+	*tuples = ceil(density * curpages);
+	
+	elog(DEBUG2,"cdb_estimate_rel_size  estimated %g tuples and %d pages",*tuples,(int)*pages);
 
-    /* Anything missing? */
-    if (relpages < 1 || reltuples < 1)
-    {
-        int         the_default = 100;
-        BlockNumber default_pages = (BlockNumber)the_default;
-        double      default_tuples = the_default;
-
-        *default_stats_used = true;
-
-        /* If table has no statistics, table and indexes use defaults. */
-        if (baserel->rd_rel->relpages <= 1 &&
-            baserel->rd_rel->reltuples < 1)
-        {
-            *pages = default_pages;
-            *tuples = default_tuples;
-            return;
-        }
-
-        /* Maybe index can use row count from base table. */
-        if (rel != baserel &&
-            reltuples < 1)
-            reltuples = Max(baserel->rd_rel->reltuples, relOptInfo->tuples);
-
-        /* Still nothing? */
-        if (relpages <= 1 && reltuples < 1)
-        {
-            *pages = default_pages;
-            *tuples = default_tuples;
-            return;
-        }
-
-        /* Guess #rows from #pages. */
-        else if (reltuples < 1)
-        {
-            estimate_tuple_width(rel, attr_widths, &tuple_width, &density);
-            reltuples = density * relpages;
-        }
-
-        /* Guess #pages from #rows. */
-        else if (relpages < 1)
-        {
-            estimate_tuple_width(rel, attr_widths, &tuple_width, &density);
-            relpages = (BlockNumber)(reltuples / density);
-        }
-    }
-
-    *pages = Max(1, relpages);
-    *tuples = ceil(reltuples);
 }                               /* cdb_estimate_rel_size */
 
 
