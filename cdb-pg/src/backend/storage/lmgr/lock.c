@@ -641,7 +641,19 @@ LockAcquire(LOCKMETHODID lockmethodid,
 		Assert((lock->nRequested >= 0) && (lock->requested[lockmode] >= 0));
 		Assert((lock->nGranted >= 0) && (lock->granted[lockmode] >= 0));
 		Assert(lock->nGranted <= lock->nRequested);
-		
+	}
+	
+	/*
+	 * Create the hash key for the proclock table.
+	 */
+	MemSet(&proclocktag, 0, sizeof(PROCLOCKTAG));		/* must clear padding */
+	proclocktag.lock = MAKE_OFFSET(lock);
+
+	proclocktag.proc = MAKE_OFFSET(MyProc);
+	
+	
+	
+	if (found)
 		/*
 		 * If I'm not the writer gang, I can do some special stuff
 		 */
@@ -705,7 +717,7 @@ LockAcquire(LOCKMETHODID lockmethodid,
 							 * If we get here, we want to acquire a stronger lock than some other gang member
 							 * has, and we conflict.  We will deadlock if we let this happen
 							 */
-							
+							elog(DEBUG1,"Another gang member already owns some potentially conflicting lock");
 							/*
 							 * We can try granting the higher lock to the other guy
 							 */
@@ -713,10 +725,12 @@ LockAcquire(LOCKMETHODID lockmethodid,
 							if (LockCheckConflicts(lockMethodTable, lockmode,
 								lock, proclock, otherProc) == STATUS_OK)
 							{
+							
 								lock->nRequested++;
 								lock->requested[lockmode]++;
 								GrantLock(lock, proclock, lockmode);
 								LWLockRelease(masterLock);
+								elog(DEBUG1,"Doing special magic with locks");
 								
 								locallock->isFake = true;
 								GrantLockLocal(locallock, owner);
@@ -735,16 +749,9 @@ LockAcquire(LOCKMETHODID lockmethodid,
 											 offsetof(PROCLOCK, lockLink));
 			}
 		}
-	}
-
-	/*
-	 * Create the hash key for the proclock table.
-	 */
-	MemSet(&proclocktag, 0, sizeof(PROCLOCKTAG));		/* must clear padding */
-	proclocktag.lock = MAKE_OFFSET(lock);
 	
 
-	proclocktag.proc = MAKE_OFFSET(MyProc);
+	
 
 	/*
 	 * Find or create a proclock entry with this tag
