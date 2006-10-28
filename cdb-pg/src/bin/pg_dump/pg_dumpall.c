@@ -42,6 +42,7 @@ static const char *progname;
 
 static void help(void);
 
+static void dumpResQueues(PGconn *conn);
 static void dumpRoles(PGconn *conn);
 static void dumpRoleMembership(PGconn *conn);
 static void dumpGroups(PGconn *conn);
@@ -65,6 +66,7 @@ static bool output_clean = false;
 static bool skip_acls = false;
 static bool verbose = false;
 static bool ignoreVersion = false;
+static bool	resource_queues = false;
 
 /* flags for -X long options */
 static int	disable_dollar_quoting = 0;
@@ -106,6 +108,7 @@ main(int argc, char *argv[])
 		{"verbose", no_argument, NULL, 'v'},
 		{"no-privileges", no_argument, NULL, 'x'},
 		{"no-acl", no_argument, NULL, 'x'},
+		{"resource-queues", no_argument, NULL, 'r'},
 
 		/*
 		 * the following options don't have an equivalent short option letter,
@@ -164,7 +167,7 @@ main(int argc, char *argv[])
 
 	pgdumpopts = createPQExpBuffer();
 
-	while ((c = getopt_long(argc, argv, "acdDgh:ioOp:sS:U:vWxX:", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "acdDgh:ioOp:rsS:U:vWxX:", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -216,6 +219,10 @@ main(int argc, char *argv[])
 #else
 				appendPQExpBuffer(pgdumpopts, " -p \"%s\"", pgport);
 #endif
+				break;
+
+			case 'r':
+				resource_queues = true;
 				break;
 
 			case 's':
@@ -317,6 +324,10 @@ main(int argc, char *argv[])
 
 	if (!data_only)
 	{
+		/* Dump Resource Queues */
+		if (server_version >= 80100 && resource_queues)
+			dumpResQueues(conn);
+
 		/* Dump roles (users) */
 		dumpRoles(conn);
 
@@ -369,6 +380,7 @@ help(void)
 	printf(_("  -g, --globals-only       dump only global objects, no databases\n"));
 	printf(_("  -o, --oids               include OIDs in dump\n"));
 	printf(_("  -O, --no-owner           skip restoration of object ownership\n"));
+	printf(_("  -r, --resource-queues    dump resource queue data\n"));
 	printf(_("  -s, --schema-only        dump only the schema, no data\n"));
 	printf(_("  -S, --superuser=NAME     specify the superuser user name to use in the dump\n"));
 	printf(_("  -x, --no-privileges      do not dump privileges (grant/revoke)\n"));
@@ -391,6 +403,69 @@ help(void)
 }
 
 
+/*
+ * Dump resource queues
+ */
+static void
+dumpResQueues(PGconn *conn)
+{
+	PQExpBuffer buf = createPQExpBuffer();
+	PGresult   *res;
+	int			i_rsqname,
+				i_rsqcountlimit,
+				i_rsqcostlimit,
+				i_rsqovercommit;
+	int			i;
+
+	printfPQExpBuffer(buf,
+					  "SELECT rsqname, rsqcountlimit, rsqcostlimit, "
+					  "rsqovercommit "
+					  "FROM pg_resqueue "
+					  "ORDER BY 1");
+	res = executeQuery(conn, buf->data);
+
+	i_rsqname = PQfnumber(res, "rsqname");
+	i_rsqcountlimit = PQfnumber(res, "rsqcountlimit");
+	i_rsqcostlimit = PQfnumber(res, "rsqcostlimit");
+	i_rsqovercommit = PQfnumber(res, "rsqovercommit");
+
+	if (PQntuples(res) > 0)
+		printf("--\n-- Resource Queues\n--\n\n");
+
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		const char *rsqname;
+
+		rsqname = PQgetvalue(res, i, i_rsqname);
+
+		resetPQExpBuffer(buf);
+
+		appendPQExpBuffer(buf, "CREATE RESOURCE QUEUE %s", fmtId(rsqname));
+
+		if (strcmp(PQgetvalue(res, i, i_rsqcountlimit), "-1") != 0)
+			appendPQExpBuffer(buf, " ACTIVE THRESHOLD %s",
+							  PQgetvalue(res, i, i_rsqcountlimit));
+
+
+		if (strcmp(PQgetvalue(res, i, i_rsqcostlimit), "-1") != 0)
+			appendPQExpBuffer(buf, " COST THRESHOLD %.2f",
+							  atof(PQgetvalue(res, i, i_rsqcostlimit)));
+
+		if (strcmp(PQgetvalue(res, i, i_rsqovercommit), "t") == 0)
+			appendPQExpBuffer(buf, " OVERCOMMIT");
+		else
+			appendPQExpBuffer(buf, " NOOVERCOMMIT");
+
+		appendPQExpBuffer(buf, ";\n");
+
+		printf("%s", buf->data);
+	}
+
+	PQclear(res);
+
+	printf("\n\n");
+}
+
 
 /*
  * Dump roles
@@ -409,18 +484,31 @@ dumpRoles(PGconn *conn)
 				i_rolcanlogin,
 				i_rolconnlimit,
 				i_rolpassword,
-				i_rolvaliduntil;
+				i_rolvaliduntil,
+				i_rolqueuename;
 	int			i;
 
 	/* note: rolconfig is dumped later */
 	if (server_version >= 80100)
-		printfPQExpBuffer(buf,
-						  "SELECT rolname, rolsuper, rolinherit, "
-						  "rolcreaterole, rolcreatedb, rolcatupdate, "
-						  "rolcanlogin, rolconnlimit, rolpassword, "
-						  "rolvaliduntil "
-						  "FROM pg_authid "
-						  "ORDER BY 1");
+		if (resource_queues)
+			printfPQExpBuffer(buf,
+							  "SELECT rolname, rolsuper, rolinherit, "
+							  "rolcreaterole, rolcreatedb, rolcatupdate, "
+							  "rolcanlogin, rolconnlimit, rolpassword, "
+							  "rolvaliduntil, "
+							  "(SELECT rsqname FROM pg_resqueue WHERE "
+							  "pg_resqueue.oid = rolresqueue) AS rolqueuename "
+							  "FROM pg_authid "
+							  "ORDER BY 1");
+		else
+			printfPQExpBuffer(buf,
+							  "SELECT rolname, rolsuper, rolinherit, "
+							  "rolcreaterole, rolcreatedb, rolcatupdate, "
+							  "rolcanlogin, rolconnlimit, rolpassword, "
+							  "rolvaliduntil "
+							  "FROM pg_authid "
+							  "ORDER BY 1");
+
 	else
 		printfPQExpBuffer(buf,
 						  "SELECT usename as rolname, "
@@ -462,6 +550,11 @@ dumpRoles(PGconn *conn)
 	i_rolconnlimit = PQfnumber(res, "rolconnlimit");
 	i_rolpassword = PQfnumber(res, "rolpassword");
 	i_rolvaliduntil = PQfnumber(res, "rolvaliduntil");
+	
+	if (server_version >= 80100 && resource_queues)
+		i_rolqueuename = PQfnumber(res, "rolqueuename");
+	else
+		i_rolqueuename = -1;
 
 	if (PQntuples(res) > 0)
 		printf("--\n-- Roles\n--\n\n");
@@ -524,6 +617,13 @@ dumpRoles(PGconn *conn)
 		if (!PQgetisnull(res, i, i_rolvaliduntil))
 			appendPQExpBuffer(buf, " VALID UNTIL '%s'",
 							  PQgetvalue(res, i, i_rolvaliduntil));
+
+		if (server_version >= 80100 && resource_queues)
+		{
+			if (!PQgetisnull(res, i, i_rolqueuename))
+				appendPQExpBuffer(buf, " RESOURCE QUEUE %s",
+								  PQgetvalue(res, i, i_rolqueuename));
+		}
 
 		appendPQExpBuffer(buf, ";\n");
 

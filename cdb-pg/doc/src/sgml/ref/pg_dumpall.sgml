@@ -194,6 +194,17 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>-r</option></term>
+      <term><option>--resource-queues</option></term>
+      <listitem>
+       <para>
+        Dump <literal>resource queues</literal> and <literal>role</literal>
+        to <literal>resource queue</literal> associations. 
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-s</option></term>
       <term><option>--schema-only</option></term>
       <listitem>
