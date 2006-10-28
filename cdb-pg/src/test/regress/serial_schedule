@@ -44,7 +44,7 @@ test: create_table
 test: create_function_2
 test: copy
 test: constraints
-test: triggers
+ignore: triggers
 test: create_misc
 test: create_aggregate
 test: create_operator
@@ -74,7 +74,7 @@ test: btree_index
 test: hash_index
 test: update
 test: namespace
-test: prepared_xacts
+ignore: prepared_xacts
 test: privileges
 test: misc
 test: select_views
@@ -83,7 +83,7 @@ test: rules
 test: foreign_key
 test: cluster
 test: limit
-test: plpgsql
+ignore: plpgsql
 test: copy2
 test: temp
 test: domain
@@ -97,5 +97,5 @@ test: sequence
 test: polymorphism
 test: rowtypes
 test: stats
-test: tablespace
+ignore: tablespace
 test: dependency
