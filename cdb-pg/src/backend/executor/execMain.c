@@ -1351,7 +1351,13 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
     
     /* CDB: Only the root slice needs to get the locks, because only the root slice will do updating */
     if (needLock)
-    	CdbLockRelation(resultRelationDesc, RowExclusiveLock, false);
+   	{
+   		if (operation == CMD_UPDATE || operation == CMD_DELETE)
+    		CdbLockRelation(resultRelationDesc, RowExclusiveLock, false);
+    	else
+    		LockRelation(resultRelationDesc, RowExclusiveLock);
+    		
+   	}
 	
 	switch (resultRelationDesc->rd_rel->relkind)
 	{

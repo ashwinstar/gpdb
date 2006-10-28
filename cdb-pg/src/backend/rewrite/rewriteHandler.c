@@ -137,7 +137,15 @@ AcquireRewriteLocks(Query *parsetree)
 				
                 /* Target of INSERT/UPDATE/DELETE? */
                 if (rt_index == parsetree->resultRelation)
-                    CdbLockRelation(rel, RowExclusiveLock, false);
+                {
+                	/* 
+                	 * If it's an UPDATE or DELETE, we need special handling
+                	 */
+                	if (parsetree->commandType == CMD_INSERT)
+                		LockRelation(rel, RowExclusiveLock);
+                	else
+                    	CdbLockRelation(rel, RowExclusiveLock, false);
+                }
 
                 /* FOR UPDATE/SHARE? */
 				else if (list_member_int(parsetree->rowMarks, rt_index))
@@ -148,7 +156,7 @@ AcquireRewriteLocks(Query *parsetree)
 
                 /* Ordinary source relation */
 				else
-                    CdbLockRelation(rel, AccessShareLock, false);
+                    LockRelation(rel, AccessShareLock);
 
                 /* Close the relcache entry without releasing the lock. */
                 heap_close(rel, NoLock);

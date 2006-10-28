@@ -155,11 +155,15 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	 * analyze.c will eventually do the corresponding heap_close(), but *not*
 	 * release the lock.
      *
-     * CDB: Acquire ExclusiveLock if it is a distributed relation.
+     * CDB: Acquire ExclusiveLock if it is a distributed relation and we are
+     * doing UPDATE or DELETE activity
 	 */
 	pstate->p_target_relation = heap_openrv(relation, NoLock);
 
-    CdbLockRelation(pstate->p_target_relation, RowExclusiveLock, false);
+	if (pstate->p_is_insert && !pstate->p_is_update)
+		LockRelation(pstate->p_target_relation, RowExclusiveLock);
+	else
+    	CdbLockRelation(pstate->p_target_relation, RowExclusiveLock, false);
 
 	/*
 	 * Now build an RTE.

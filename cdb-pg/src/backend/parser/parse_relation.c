@@ -1014,7 +1014,7 @@ lockSourceRel(Relation srcrel, ParseState *pstate, char *refname)
 	
     /* Default: Don't let the relation definition be changed by other xacts. */
     if (pstate == NULL)
-        CdbLockRelation(srcrel, AccessShareLock, false);
+        LockRelation(srcrel, AccessShareLock);
 
     /* User wants result rows to be locked FOR UPDATE or FOR SHARE. */
     else

@@ -228,9 +228,7 @@ CdbLockRelation(Relation relation, LOCKMODE reqmode, bool nowait)
     if (relation->rd_cdbpolicy &&
         relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
     {
-        if (lockmode == RowShareLock)
-            lockmode = ShareLock;
-        else if (lockmode == RowExclusiveLock)
+        if (lockmode == RowExclusiveLock)
             lockmode = ExclusiveLock;
     }
 
