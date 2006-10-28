@@ -1978,13 +1978,13 @@ PostPrepare_Locks(TransactionId xid)
 
 	while ((locallock = (LOCALLOCK *) hash_seq_search(&status)) != NULL)
 	{
-		if (locallock->proclock == NULL || locallock->lock == NULL)
+		if (locallock->proclock == NULL || locallock->lock == NULL || locallock->isFake)
 		{
 			/*
 			 * We must've run out of shared memory while trying to set up this
 			 * lock.  Just forget the local entry.
 			 */
-			Assert(locallock->nLocks == 0);
+			Assert(locallock->isFake || locallock->nLocks == 0);
 			RemoveLocalLock(locallock);
 			continue;
 		}
