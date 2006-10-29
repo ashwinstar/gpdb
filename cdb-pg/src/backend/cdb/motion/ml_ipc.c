@@ -94,31 +94,33 @@ struct timeval tval;
  */
 static void setupListeningSocket(int backlog, int *listenerSocketFd, int *listenerPort);
 
-static ChunkTransportStateEntry *createChunkTransportState(ChunkTransportState *transportStates, 
-													  Slice *sendSlice, 
+static ChunkTransportStateEntry *createChunkTransportState(ChunkTransportState *transportStates,
+													  Slice *sendSlice,
 													  Slice *recvSlice,
-													  int numPrimaryConns, 
+													  int numPrimaryConns,
 													  int numMirrorConns);
 
-static inline ChunkTransportStateEntry *getChunkTransportState(ChunkTransportState *transportStates, 
+static inline ChunkTransportStateEntry *getChunkTransportState(ChunkTransportState *transportStates,
 														  int motNodeID);
 
-static ChunkTransportStateEntry *removeChunkTransportState(ChunkTransportState *transportStates, 
+static ChunkTransportStateEntry *removeChunkTransportState(ChunkTransportState *transportStates,
 													  int16 motNodeID);
 
 static void setupSeqServerConnection(char *hostname, int port);
 
-static ChunkTransportStateEntry *startOutgoingConnections(ChunkTransportState *transportStates, 
-													 Slice *sendSlice, 
+static ChunkTransportStateEntry *startOutgoingConnections(ChunkTransportState *transportStates,
+													 Slice *sendSlice,
 													 int *pOutgoingCount);
 
 static void setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn);
 static void updateOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn, int errnoSave);
+#ifdef UNUSED
 static int  getOutgoingPort(ChunkTransportStateEntry *pEntry);
+#endif
 static void zapOutgoingPort(ChunkTransportStateEntry *pEntry);
 
 static void sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn * conn);
-static bool readRegisterMessage(ChunkTransportState *transportStates, 
+static bool readRegisterMessage(ChunkTransportState *transportStates,
 								MotionConn *conn);
 static MotionConn *acceptIncomingConnection(void);
 
@@ -191,11 +193,7 @@ CleanUpMotionLayerIPC(void)
 {
 	
 	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-    	elog(DEBUG2, "Cleaning Up Motion Layer IPC...");
-
-#ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "CleanUpMotionLayerIPC()");
-#endif
+    	elog(DEBUG3, "Cleaning Up Motion Layer IPC...");
 
 	/* close down the Interconnect listener socket. */
     if (listenerFd >= 0)
@@ -213,9 +211,9 @@ CleanUpMotionLayerIPC(void)
 /* See ml_ipc.h */
 bool
 SendTupleChunkToAMS(MotionLayerState *mlStates,
-					ChunkTransportState *transportStates, 
-					int16 motNodeID, 
-					int16 targetRoute, 
+					ChunkTransportState *transportStates,
+					int16 motNodeID,
+					int16 targetRoute,
 					TupleChunkListItem tcItem)
 {
 	int			i,
@@ -300,9 +298,8 @@ SendTupleChunkToAMS(MotionLayerState *mlStates,
 /* See ml_ipc.h */
 void
 SendEosToAMS(MotionLayerState *mlStates,
-			 ChunkTransportState *transportStates, 
-			 int16 motNodeID, 
-			 int16 targetRoute, 
+			 ChunkTransportState *transportStates,
+			 int motNodeID,
 			 TupleChunkListItem tcItem)
 {
 	ChunkTransportStateEntry *pEntry;
@@ -314,13 +311,13 @@ SendEosToAMS(MotionLayerState *mlStates,
 	/* check em' */
 	ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
-#ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG5, "SendEosToAMS() Entering motnode %d targetroute %d", motNodeID, targetRoute);
-#endif
-
 	pEntry = getChunkTransportState(transportStates, motNodeID);
 
-	/* we want to add our tcItem onto each of the outgoing buffers */
+    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        elog(DEBUG3, "Interconnect seg%d slice%d sending end-of-stream to slice%d",
+             Mpp_segment, motNodeID, pEntry->recvSlice->sliceIndex);
+
+    /* we want to add our tcItem onto each of the outgoing buffers */
 	doBroadcast(mlStates, transportStates, pEntry, tcItem);
 
 	/* now flush all of the buffers. */
@@ -340,8 +337,8 @@ SendEosToAMS(MotionLayerState *mlStates,
 /* See ml_ipc.h */
 TupleChunkListItem
 RecvTupleChunkFromAny(MotionLayerState *mlStates,
-					  ChunkTransportState *transportStates, 
-					  int16 motNodeID, 
+					  ChunkTransportState *transportStates,
+					  int16 motNodeID,
 					  int16 *srcRoute)
 {
 	ChunkTransportStateEntry *pEntry;
@@ -459,8 +456,8 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
 
 /* See ml_ipc.h */
 TupleChunkListItem
-RecvTupleChunkFrom(ChunkTransportState *transportStates, 
-				   int16 motNodeID, 
+RecvTupleChunkFrom(ChunkTransportState *transportStates,
+				   int16 motNodeID,
 				   int16 srcRoute)
 {
 	ChunkTransportStateEntry *pEntry;
@@ -557,19 +554,30 @@ RecvTupleChunk(ChunkTransportState *transportStates,
 /* DeregisterReadInterest is called on receiving nodes when they
  * believe that they're done with the receiver */
 void
-DeregisterReadInterest(ChunkTransportState *transportStates, int16 motNodeID, int16 srcRoute)
+DeregisterReadInterest(ChunkTransportState *transportStates,
+                       int                  motNodeID,
+                       int                  srcRoute,
+                       const char          *reason)
 {
 	ChunkTransportStateEntry *pEntry;
 	MotionConn *conn;
 
 	Insist(transportStates && transportStates->activated);
 
-#ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG4, "DeregisterReadInterest(%d, %d)", motNodeID, srcRoute);
-#endif
-
 	pEntry = getChunkTransportState(transportStates, motNodeID);
 	conn = pEntry->conns + srcRoute;
+
+    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+    {
+        elog(DEBUG3, "Interconnect finished receiving "
+             "from seg%d slice%d %s pid=%d sockfd=%d; %s",
+             conn->remoteContentId,
+             pEntry->sendSlice->sliceIndex,
+             conn->remoteHostAndPort,
+             conn->cdbProc->pid,
+             conn->sockfd,
+             reason);
+    }
 
 	/*
 	 * we also mark the connection as "done." The way synchronization works is
@@ -578,7 +586,7 @@ DeregisterReadInterest(ChunkTransportState *transportStates, int16 motNodeID, in
 	 * that Teardown should complete, otherwise we deadlock the entire query
 	 * (QEs wait in their Teardown calls, while the QD waits for them to
 	 * finish)
-	 */
+     */
 	shutdown(conn->sockfd, SHUT_WR);
 
 	MPP_FD_CLR(conn->sockfd, pEntry->readSet);
@@ -643,7 +651,8 @@ TeardownSequenceServer(void)
 	 */
 	if (seqserverFd != -1)
 	{
-		elog(DEBUG4, "tearing down seqserver connection");
+	    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+		    elog(DEBUG3, "tearing down seqserver connection");
 		shutdown(seqserverFd, SHUT_RDWR);
 		close(seqserverFd);
 		seqserverFd = -1;
@@ -655,7 +664,7 @@ TeardownSequenceServer(void)
 /* See ml_ipc.h */
 void
 SetupInterconnect(ChunkTransportState **ppTransportStates,
-				  SliceTable * mySliceTable, 
+				  SliceTable * mySliceTable,
 				  int mySliceId,
 				  MotionLayerState *mlStates)
 {
@@ -1118,7 +1127,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 	if (list_length((*ppTransportStates)->incompleteConns) != 0)
 	{
         if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-            elog(DEBUG1, "Incomplete connections after known connections done, cleaning %d",
+            elog(DEBUG2, "Incomplete connections after known connections done, cleaning %d",
 			     list_length((*ppTransportStates)->incompleteConns));
 
 		while ((cell = list_head((*ppTransportStates)->incompleteConns)) != NULL)
@@ -1157,21 +1166,15 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
  * tons of stuff volatile in TeardownInterconnect().
  */
 static void
-forceEosToPeer(MotionLayerState *mlStates,
-			   ChunkTransportState *transportStates,
-			   int16 motNodeID, 
-			   int16 targetRoute)
+forceEosToPeers(MotionLayerState       *mlStates,
+			    ChunkTransportState    *transportStates,
+			    int                     motNodeID)
 {
-
-#ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG5, "forceEosToPeer(%d, %d)", motNodeID, targetRoute);
-#endif
-
 	Insist(transportStates);
 	
 	transportStates->teardownActive = true;
 
-	SendEndOfStream(mlStates, transportStates, motNodeID, targetRoute);
+	SendEndOfStream(mlStates, transportStates, motNodeID);
 
 	transportStates->teardownActive = false;
 }
@@ -1203,21 +1206,33 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 	Slice	   *mySlice;
 	MotionConn *conn;
 
-	/* multi-phase shutdown, mark all as shutdown */
-    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
-        ereport(LOG, (errmsg("Interconnect cleanup state: %s; setup was %s",
-		                     forceEOS ? "force" : "normal",
-                             transportStates->activated ? "completed" : "exited")
-                ));
-
 	Insist(transportStates->sliceTable != NULL);
 
-	/* if setup did not complete, log the slicetable */
-    if (!transportStates->activated &&
-        mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-		elog_node_display(DEBUG2, "local slice table", transportStates->sliceTable, true);
-
 	mySlice = (Slice *) list_nth(transportStates->sliceTable->slices, transportStates->sliceId);
+
+    /* Log the start of TeardownInterconnect. */
+    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
+    {
+        int     elevel = 0;
+
+        if (forceEOS || !transportStates->activated)
+             elevel = LOG;
+        else if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+             elevel = DEBUG4;
+
+        if (elevel)
+            ereport(LOG, (errmsg("Interconnect seg%d slice%d cleanup state: "
+                                 "%s; setup was %s",
+                                 Mpp_segment, mySlice->sliceIndex,
+                                 forceEOS ? "force" : "normal",
+                                 transportStates->activated ? "completed" : "exited")
+                    ));
+
+	    /* if setup did not complete, log the slicetable */
+        if (!transportStates->activated &&
+            mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+		    elog_node_display(DEBUG3, "local slice table", transportStates->sliceTable, true);
+    }
 
 	/*
 	 * phase 1 mark all sockets (senders and receivers) with
@@ -1233,13 +1248,13 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 	 * NOTE: we don't use foreach() here because we want to trim from the
 	 * list as we go.
 	 */
+	if (transportStates->incompleteConns &&
+        mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+    	elog(DEBUG2, "Found incomplete conn. length %d", list_length(transportStates->incompleteConns));
+
 	while ((cell = list_head(transportStates->incompleteConns)) != NULL)
 	{
 		MotionConn *conn = (MotionConn *) lfirst(cell);
-
-#ifdef AMS_VERBOSE_LOGGING
-		elog(LOG, "Found incomplete conn. length %d", list_length(transportStates->incompleteConns));
-#endif
 
 		/* they're incomplete, so just slam them shut. */
 		if (conn->sockfd != -1)
@@ -1274,20 +1289,17 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 	{
         /* cleanup a Sending motion node. */
         if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-		    elog(DEBUG2, "shutdown outgoing connections for motion id: %d",
-			     mySlice->sliceIndex);
+            elog(DEBUG3, "Interconnect seg%d slice%d closing connections to slice%d",
+                 Mpp_segment, mySlice->sliceIndex, mySlice->parentIndex);
 
 		pEntry = getChunkTransportState(transportStates, mySlice->sliceIndex);
+
+		if (forceEOS)
+			forceEosToPeers(mlStates, transportStates, mySlice->sliceIndex);
 
 		for (i = 0; i < pEntry->numConns; i++)
 		{
 			conn = pEntry->conns + i;
-
-			if (forceEOS)
-			{
-				forceEosToPeer(mlStates, transportStates, mySlice->sliceIndex, i);
-			}
-
 			if (conn->sockfd >= 0)
                 shutdown(conn->sockfd, SHUT_WR);
 		}
@@ -1308,7 +1320,8 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 		pEntry = removeChunkTransportState(transportStates, aSlice->sliceIndex);
 
         if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-		    elog(DEBUG2, "close connections for motion Id: %d", pEntry->motNodeId);
+            elog(DEBUG3, "Interconnect closing connections from slice%d",
+                 aSlice->sliceIndex);
 
 		/*
 		 * receivers know that they no longer care about data from
@@ -1337,10 +1350,6 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 	if (mySlice->parentIndex != -1)
 	{
 		/* cleanup a Sending motion node. */
-        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-		    elog(DEBUG2, "close outgoing connections for motion id: %d",
-			     mySlice->sliceIndex);
-
 		pEntry = removeChunkTransportState(transportStates, mySlice->sliceIndex);
 
 		for (i = 0; i < pEntry->numConns; i++)
@@ -1373,8 +1382,10 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 	transportStates->activated = false;
 	transportStates->sliceTable = NULL;
 
+#ifdef AMS_VERBOSE_LOGGING
 	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-        ereport(DEBUG1, (errmsg("TeardownInterconnect successful") ));
+        elog(DEBUG4, "TeardownInterconnect successful");
+#endif
 }
 
 
@@ -1421,7 +1432,7 @@ setupListeningSocket(int backlog, int *listenerSocketFd, int *listenerPort)
 	saddr.sin_port = 0;	/* system picks port */
 
     if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-        ereport(DEBUG1, (errmsg("binding listener %s", inet_ntoa(saddr.sin_addr))));
+        ereport(DEBUG4, (errmsg("binding listener %s", inet_ntoa(saddr.sin_addr))));
 
 	/*
 	 * we let the system pick the TCP port here so we don't have to
@@ -1478,9 +1489,9 @@ error:
  */
 ChunkTransportStateEntry *
 createChunkTransportState(ChunkTransportState *transportStates,
-						  Slice *sendSlice, 
-						  Slice *recvSlice, 
-						  int numPrimaryConns, 
+						  Slice *sendSlice,
+						  Slice *recvSlice,
+						  int numPrimaryConns,
 						  int numMirrorConns)
 {
 	ChunkTransportStateEntry *pEntry;
@@ -1602,7 +1613,7 @@ getChunkTransportState(ChunkTransportState *transportState, int motNodeID)
  *	 The ChunkTransportState that was removed from the hashtab hashtable.
  */
 static ChunkTransportStateEntry *
-removeChunkTransportState(ChunkTransportState *transportStates, 
+removeChunkTransportState(ChunkTransportState *transportStates,
 						  int16 motNodeID)
 {
 	ChunkTransportStateEntry *pEntry = NULL;
@@ -1691,8 +1702,8 @@ setupSeqServerConnection(char *seqServerHost, int seqServerPort )
  *	 Initialized ChunkTransportState for the Sending Motion Node Id.
  */
 ChunkTransportStateEntry *
-startOutgoingConnections(ChunkTransportState *transportStates, 
-						 Slice *sendSlice, 
+startOutgoingConnections(ChunkTransportState *transportStates,
+						 Slice *sendSlice,
 						 int *pOutgoingCount)
 {
 	ChunkTransportStateEntry *pEntry;
@@ -1706,11 +1717,10 @@ startOutgoingConnections(ChunkTransportState *transportStates,
 	recvSlice = (Slice *) list_nth(transportStates->sliceTable->slices, sendSlice->parentIndex);
 
     if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-        ereport(DEBUG2, (errmsg("Setting up SENDING motion node %d",
-		                        sendSlice->sliceIndex)
-                ));
+        elog(DEBUG4, "Interconnect seg%d slice%d setting up sending motion node",
+             Mpp_segment, sendSlice->sliceIndex);
 
-	pEntry = createChunkTransportState(transportStates, 
+	pEntry = createChunkTransportState(transportStates,
 									   sendSlice,
 									   recvSlice,
 									   list_length(recvSlice->primaryProcesses),
@@ -1830,7 +1840,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
 		saddr.sin_addr = ((struct sockaddr_in *)&MyProcPort->laddr.addr)->sin_addr;
 
     if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-        ereport(DEBUG1, (errmsg("bind outbound  %s", inet_ntoa(saddr.sin_addr))));
+        ereport(DEBUG4, (errmsg("bind outbound  %s", inet_ntoa(saddr.sin_addr))));
 
     saddr.sin_port = 0; /* pick any available outbound port */
 
@@ -1877,8 +1887,10 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
                     sizeof(conn->remoteHostAndPort));
 
     if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-        ereport(DEBUG1, (errmsg("Connecting to seg%d %s pid=%d sockfd=%d",
+        ereport(DEBUG1, (errmsg("Interconnect connecting to seg%d slice%d %s "
+                                "pid=%d sockfd=%d",
                                 conn->remoteContentId,
+                                pEntry->recvSlice->sliceIndex,
                                 conn->remoteHostAndPort,
                                 conn->cdbProc->pid,
                                 conn->sockfd)
@@ -1970,6 +1982,7 @@ updateOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportSta
 }                               /* updateOutgoingConnection */
 
 
+#ifdef UNUSED
 /*
  * getOutgoingPort
  *
@@ -1999,6 +2012,7 @@ getOutgoingPort(ChunkTransportStateEntry *pEntry)
                              outgoingPort) ));
     return outgoingPort;
 }                               /* getOutgoingPort */
+#endif  /*UNUSED*/
 
 
 /*
@@ -2077,18 +2091,16 @@ sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEnt
 
     	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
             ereport(LOG, (errmsg("Interconnect sending registration message "
-                                 "to seg%d pid=%d remote=%s "
-                                 "from local=%s sockfd=%d: "
-                                 "recvSlice=%d sendSlice=%d "
-                                 "srcContentId=%d",
+                                 "to seg%d slice%d %s pid=%d "
+                                 "from seg%d slice%d %s sockfd=%d",
                                  conn->remoteContentId,
-                                 conn->cdbProc->pid,
-                                 conn->remoteHostAndPort,
-                                 conn->localHostAndPort,
-                                 conn->sockfd,
                                  pEntry->recvSlice->sliceIndex,
+                                 conn->remoteHostAndPort,
+                                 conn->cdbProc->pid,
+                                 Mpp_segment,
                                  pEntry->sendSlice->sliceIndex,
-                                 Mpp_segment)
+                                 conn->localHostAndPort,
+                                 conn->sockfd)
                     ));
 
         regMsg->msgBytes = sizeof(*regMsg);
@@ -2154,7 +2166,7 @@ sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEnt
  * when socket becomes read-ready.
  */
 static bool
-readRegisterMessage(ChunkTransportState *transportStates, 
+readRegisterMessage(ChunkTransportState *transportStates,
 					MotionConn *conn)
 {
    	int     bytesToReceive;
@@ -2272,17 +2284,6 @@ readRegisterMessage(ChunkTransportState *transportStates,
 
  			return true;
 		}
-		else if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
-		{
-			/* message looks good */
-			ereport(LOG, (errmsg("Interconnect got registration message "
-							     "from %s sockfd=%d: recvSlice=%d sendSlice=%d "
-								 "srcContentId=%d srcPid=%d",
-								 conn->remoteHostAndPort, conn->sockfd,
-								 msg.recvSliceIndex, msg.sendSliceIndex,
-								 msg.srcContentId, msg.srcPid)
-						));
-		}
     }
     else
 	{
@@ -2345,6 +2346,21 @@ readRegisterMessage(ChunkTransportState *transportStates,
                                   msg.sendSliceIndex, msg.srcContentId,
                                   msg.srcPid, msg.srcListenerPort)
                 ));
+	}
+
+	/* message looks good */
+	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
+	{
+		ereport(LOG, (errmsg("Interconnect seg%d slice%d sockfd=%d accepted "
+                             "registration message from seg%d slice%d %s pid=%d",
+                             Mpp_segment,
+							 msg.recvSliceIndex,
+                             conn->sockfd,
+							 msg.srcContentId,
+                             msg.sendSliceIndex,
+                             conn->remoteHostAndPort,
+							 msg.srcPid)
+					));
 	}
 
     /* Copy caller's temporary MotionConn to its assigned slot. */
@@ -2501,12 +2517,11 @@ acceptIncomingConnection(void)
                 ));
     }
 
-    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
-        ereport(LOG, (errmsg("Interconnect got incoming connection "
-                             "from remote=%s to local=%s.  sockfd=%d.",
-                             conn->remoteHostAndPort, conn->localHostAndPort,
-                             newsockfd)
-                         ));
+    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        elog(DEBUG4, "Interconnect got incoming connection "
+             "from remote=%s to local=%s sockfd=%d",
+             conn->remoteHostAndPort, conn->localHostAndPort, newsockfd);
+
     return conn;
 }                               /* acceptIncomingConnection */
 
@@ -2933,7 +2948,8 @@ doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
 	pEntry = getChunkTransportState(transportStates, motNodeID);
 
     if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-    	elog(DEBUG2, "sending stop message from slice %d to node %d", transportStates->sliceId, motNodeID);
+        elog(DEBUG3, "Interconnect needs no more input from slice%d; notifying senders to stop.",
+             motNodeID);
 
 	/*
 	 * Note: we're only concerned with receivers here, so mirrors
@@ -2968,7 +2984,8 @@ doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
 			}
 		}
 		/* CRITICAL TO AVOID DEADLOCK */
-		DeregisterReadInterest(transportStates, motNodeID, i);
+		DeregisterReadInterest(transportStates, motNodeID, i,
+                               "no more input needed");
 	}
 }
 
@@ -3061,8 +3078,6 @@ flushInterconnectListenerBacklog(void)
 				i;
 	mpp_fd_set	rset;
 	struct timeval timeout;
-	struct sockaddr_in peer;
-	socklen_t	peerlen;
 
 	do
 	{
@@ -3076,14 +3091,48 @@ flushInterconnectListenerBacklog(void)
 		{
 			for (i = 0; i < pendingConn; i++)
 			{
-				peerlen = sizeof(peer);
-				newfd = accept(listenerFd, (struct sockaddr *) & peer, &peerlen);
+                struct sockaddr_storage remoteAddr;
+                struct sockaddr_storage localAddr;
+                char        remoteHostAndPort[64];
+                char        localHostAndPort[64];
+                socklen_t   addrsize;
+
+	            addrsize = sizeof(remoteAddr);
+				newfd = accept(listenerFd, (struct sockaddr *)&remoteAddr, &addrsize);
 				if (newfd < 0)
 				{
-                    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-					    elog(DEBUG2, "flushInterconnectListenerBacklog: %m%s", "accept");
+                    ereport(DEBUG3, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                                     errmsg("Interconnect error while clearing incoming connections."),
+                                     errdetail("%m%s sockfd=%d", "accept", newfd)
+                            ));
 					continue;
 				}
+
+                /* Get remote and local host:port strings for message. */
+                format_sockaddr((struct sockaddr *)&remoteAddr, remoteHostAndPort,
+                                sizeof(remoteHostAndPort));
+                addrsize = sizeof(localAddr);
+                if (getsockname(newfd, (struct sockaddr *)&localAddr, &addrsize))
+                {
+                    ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                                  errmsg("Interconnect error while clearing incoming connections."),
+                                  errdetail("%m%s sockfd=%d remote=%s",
+		                                    "getsockname",
+                                            newfd,
+                                            remoteHostAndPort)
+                            ));
+                }
+                else
+                {
+                    format_sockaddr((struct sockaddr *)&localAddr, localHostAndPort,
+                                    sizeof(localHostAndPort));
+                    ereport(DEBUG2, (errmsg("Interconnect clearing incoming connection "
+                                            "from remote=%s to local=%s.  sockfd=%d.",
+                                            remoteHostAndPort, localHostAndPort,
+                                            newfd)
+                                     ));
+                }
+
 				/* shutdown this socket */
 				flushIncomingData(newfd);
 				shutdown(newfd, SHUT_WR);
@@ -3092,8 +3141,10 @@ flushInterconnectListenerBacklog(void)
 		}
 		else if (pendingConn < 0 && errno != EINTR)
 		{
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-                            errmsg("%m during listener cleanup") ));
+            ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                          errmsg("Interconnect error during listener cleanup."),
+                          errdetail("%m%s sockfd=%d", "select", listenerFd)
+                    ));
 		}
 
 		/*

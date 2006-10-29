@@ -320,8 +320,10 @@ execMotionUnsortedReceiver(MotionState * node)
 
 	if (recvRC == END_OF_STREAM)
 	{
+#ifdef CDB_MOTION_DEBUG
         if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-		    elog(DEBUG2, "motionID=%d saw END_OF_STREAM", motion->motionID);
+		    elog(DEBUG4, "motionID=%d saw end of stream", motion->motionID);
+#endif
         Assert(node->numTuplesFromAMS == node->numTuplesToParent &&
                node->numTuplesFromChild == 0 &&
                node->numTuplesToAMS == 0);
@@ -1164,32 +1166,14 @@ evalHashKey(ExprContext *econtext, List *hashkeys, List *hashtypes, CdbHash * h)
 void
 doSendEndOfStream(Motion * motion, MotionState * node)
 {
-	SendReturnCode sendRC;
-	int			targetRoute;
-
 	/*
 	 * We have no more child tuples, but we have not successfully sent an
 	 * End-of-Stream token yet.
-	 *
-	 * NOTE:  If there is only one destination, we do not broadcast the
-	 * end-of-stream; we only send it to the single dest.
 	 */
-	if (motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs == 1)
-		targetRoute = 0;
-	else
-		targetRoute = BROADCAST_SEGIDX;
-
-
-	sendRC = SendEndOfStream(node->ps.state->motionlayer_context,
-							 node->ps.state->interconnect_context,
-							 motion->motionID, targetRoute);
-
-	Assert(sendRC == SEND_COMPLETE);
-
+	SendEndOfStream(node->ps.state->motionlayer_context,
+					node->ps.state->interconnect_context,
+					motion->motionID);
 	node->sentEndOfStream = true;
-
-    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
-	    elog(DEBUG2, "motionID=%d node->sentEndOfStream=%d", motion->motionID, node->sentEndOfStream);
 }
 
 

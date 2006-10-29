@@ -2,7 +2,7 @@
 * ml_ipc.h
 *	Motion Layer IPC Layer.
 *
-* Copyright (c) 2005, Greenplum
+* Copyright (c) 2005-2006, Greenplum
 *-------------------------------------------------------------------------
 */
 #ifndef ML_IPC_H
@@ -127,18 +127,16 @@ extern bool SendTupleChunkToAMS(MotionLayerState *mlStates,
 								TupleChunkListItem tcItem);
 
 /* The SendEosToAMS() function is used to send an "End Of Stream" message to
- * the specified targetRoute. (generally this is a broadcast)
+ * all connected receivers (generally this is a broadcast)
  *
  * PARAMETERS:
  *	 - motNodeID:	motion node Id that the tcItem belongs to.
- *	 - targetRoute: route to send this tcItem out over.
  *	 - tcItem:		The tuple-chunk data to send.
  *
  */
 extern void SendEosToAMS(MotionLayerState *mlStates,
 						 ChunkTransportState *transportStates, 
-						 int16 motNodeID, 
-						 int16 targetRoute, 
+						 int motNodeID, 
 						 TupleChunkListItem tcItem);
 
 /* The RecvTupleChunkFromAny() function attempts to receive one or more tuple
@@ -187,9 +185,11 @@ extern TupleChunkListItem RecvTupleChunkFrom(ChunkTransportState *transportState
  *	 - srcRoute:  which connection to turn off reads for.
  *
  */
-extern void DeregisterReadInterest(ChunkTransportState *transportStates, 
-								   int16 motNodeID, 
-								   int16 srcRoute);
+void
+DeregisterReadInterest(ChunkTransportState *transportStates, 
+                       int                  motNodeID, 
+                       int                  srcRoute,
+                       const char          *reason);
 
 /*
  * doSendStopMessage() actually does the work of sending the stop message.

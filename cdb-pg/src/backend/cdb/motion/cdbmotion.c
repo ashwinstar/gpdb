@@ -99,15 +99,15 @@ static ChunkSorterEntry *getChunkSorterEntry(MotionLayerState *mlStates,
 											 MotionNodeEntry * motNodeEntry,
 											 int16 srcRoute);
 static bool addChunkToSorter(MotionLayerState *mlStates,
-							 ChunkTransportState *transportStates, 
-							 MotionNodeEntry * pMNEntry, 
+							 ChunkTransportState *transportStates,
+							 MotionNodeEntry * pMNEntry,
 							 TupleChunkListItem tcItem,
-							 int16 motNodeID, 
+							 int16 motNodeID,
 							 int16 srcRoute);
 
 static void processIncomingChunks(MotionLayerState *mlStates,
-								  ChunkTransportState *transportStates, 
-								  MotionNodeEntry * pMNEntry, 
+								  ChunkTransportState *transportStates,
+								  MotionNodeEntry * pMNEntry,
 								  int16 motNodeID,
 								  int16 srcRoute);
 
@@ -126,7 +126,7 @@ static void statRecvTuple(MotionNodeEntry * pMNEntry,
  * FUNCTION DEFINITIONS
  */
 
-/* 
+/*
  * This function deletes the Motion Layer state at the end of a query
  * execution.
  */
@@ -137,6 +137,7 @@ RemoveMotionLayer(MotionLayerState *mlStates, bool flushCommLayer)
 	if (Mpp_role == MPP_ROLE_UTILITY)
 		return;
 
+#ifdef AMS_VERBOSE_LOGGING
 	/* Emit statistics to log */
 	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
 		elog(LOG, "RemoveMotionLayer(): dumping stats\n"
@@ -150,6 +151,7 @@ RemoveMotionLayer(MotionLayerState *mlStates, bool flushCommLayer)
 			 mlStates->stat_total_bytes_recvd,
 			 mlStates->stat_tuple_bytes_recvd,
 			 mlStates->stat_total_chunkproc_calls);
+#endif
 
 	/*
 	 * free our some resources to be safe. The rest will get freed with
@@ -187,9 +189,9 @@ initMotionLayerStructs(MotionLayerState **mlStates)
 	/*
 	 * Create the memory-contexts that we will use within the Motion Layer.
 	 *
-	 * We make the Motion Layer memory-context a child of the ExecutorState 
+	 * We make the Motion Layer memory-context a child of the ExecutorState
 	 * Context, as it lives inside of the estate of a specific query and needs
-	 * to get freed when the query is finished. 
+	 * to get freed when the query is finished.
 	 *
 	 * The tuple-serial memory-context is a child of the Motion Layer
 	 * memory-context
@@ -202,7 +204,7 @@ initMotionLayerStructs(MotionLayerState **mlStates)
 							  ALLOCSET_SMALL_MINSIZE,
 							  ALLOCSET_SMALL_INITSIZE,
 							  ALLOCSET_DEFAULT_MAXSIZE); /* use a setting bigger than "small" */
-							  
+							
 	
 	/*
 	 * Switch to the Motion Layer memory context, so that we can clean things
@@ -212,7 +214,7 @@ initMotionLayerStructs(MotionLayerState **mlStates)
 
 	Assert(*mlStates == NULL);
 	*mlStates = palloc0(sizeof(MotionLayerState));
-    
+
 	(*mlStates)->mnEntries = palloc0(MNE_INITIAL_COUNT * sizeof(MotionNodeEntry));
 	(*mlStates)->mneCount = MNE_INITIAL_COUNT;
 
@@ -256,7 +258,7 @@ initMotionLayerStructs(MotionLayerState **mlStates)
 	(*mlStates)->stat_total_bytes_recvd = 0;
 	(*mlStates)->stat_tuple_bytes_recvd = 0;
 	(*mlStates)->stat_total_chunkproc_calls = 0;
-							  
+							
 }
 
 
@@ -366,7 +368,7 @@ setExpectedReceivers(MotionLayerState *mlStates, int16 motNodeID, int expectedRe
 
 void
 SendStopMessage(MotionLayerState *mlStates,
-				ChunkTransportState *transportStates, 
+				ChunkTransportState *transportStates,
 				int16 motNodeID)
 {
 	MotionNodeEntry *pEntry = getMotionNodeEntry(mlStates, motNodeID, "SendStopMessage");
@@ -380,10 +382,10 @@ SendStopMessage(MotionLayerState *mlStates,
  *
  */
 SendReturnCode
-SendTuple(MotionLayerState *mlStates, 
-		  ChunkTransportState *transportStates, 
-		  int16 motNodeID, 
-		  HeapTuple tuple, 
+SendTuple(MotionLayerState *mlStates,
+		  ChunkTransportState *transportStates,
+		  int16 motNodeID,
+		  HeapTuple tuple,
 		  int16 targetRoute)
 {
 	MotionNodeEntry *pMNEntry;
@@ -442,18 +444,13 @@ SendTuple(MotionLayerState *mlStates,
 }
 
 
-/* Sends a token to one or all peer Motion Nodes, indicating that this motion
+/* Sends a token to all peer Motion Nodes, indicating that this motion
  * node has no more tuples to send out.
- *
- * The send operation is nonblocking, and will return SEND_INCOMPLETE if the
- * send would block.  When this value is returned, the caller must try again
- * until the SEND_COMPLETE value is returned.
  */
-SendReturnCode
-SendEndOfStream(MotionLayerState *mlStates,
-				ChunkTransportState *transportStates, 
-				int16 motNodeID, 
-				int16 targetRoute)
+void
+SendEndOfStream(MotionLayerState       *mlStates,
+                ChunkTransportState    *transportStates,
+                int                     motNodeID)
 {
 	MotionNodeEntry *pMNEntry;
 	uint8	   *pData;
@@ -478,7 +475,7 @@ SendEndOfStream(MotionLayerState *mlStates,
 	SetChunkDataSize(pData, 0);
 	SetChunkType(pData, TC_END_OF_STREAM);
 
-	SendEosToAMS(mlStates, transportStates, motNodeID, targetRoute, &s_eos_chunk_data);
+	SendEosToAMS(mlStates, transportStates, motNodeID, &s_eos_chunk_data);
 
 	/*
 	 * We increment our own "stream-ends received" count when we send our own,
@@ -488,16 +485,14 @@ SendEndOfStream(MotionLayerState *mlStates,
 
 	/* We record EOS as if a tuple were sent. */
 	statSendEOS(mlStates, pMNEntry);
-
-	return SEND_COMPLETE;
 }
 
 /* An unordered receiver will call this with srcRoute == ANY_ROUTE */
 ReceiveReturnCode
 RecvTupleFrom(MotionLayerState *mlStates,
-			  ChunkTransportState *transportStates, 
-			  int16 motNodeID, 
-			  HeapTuple *tup_i, 
+			  ChunkTransportState *transportStates,
+			  int16 motNodeID,
+			  HeapTuple *tup_i,
 			  int16 srcRoute)
 {
 	MotionNodeEntry *pMNEntry;
@@ -611,8 +606,8 @@ RecvTupleFrom(MotionLayerState *mlStates,
  */
 static void
 processIncomingChunks(MotionLayerState *mlStates,
-					  ChunkTransportState *transportStates, 
-					  MotionNodeEntry * pMNEntry, 
+					  ChunkTransportState *transportStates,
+					  MotionNodeEntry * pMNEntry,
 					  int16 motNodeID,
 					  int16 srcRoute)
 {
@@ -704,7 +699,7 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
 		{
 			/* Print chunk-sorter entry statistics. */
 
-			elog(DEBUG1, "Chunk-sorter entry [src=%d,mn=%d] statistics:\n"
+			elog(DEBUG4, "Chunk-sorter entry [src=%d,mn=%d] statistics:\n"
 				 "\tAvailable Tuples High-Watermark:  %u",
 				 ChunkSorterKey_route(pCSEntry->key),
 				 ChunkSorterKey_id(pCSEntry->key),
@@ -778,9 +773,9 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
         if (pMNEntry->stat_total_bytes_sent > 0 ||
             pMNEntry->sel_wr_wait > 0)
         {
-            elog(LOG, "Motion node %d in slice%d sent %u tuples, "
+            elog(LOG, "Interconnect seg%d slice%d sent %u tuples, "
                  "%u total bytes, %u tuple bytes, %u chunks; waited %u usec.",
-		         motNodeID,
+		         Mpp_segment,
                  currentSliceId,
 		         pMNEntry->stat_total_sends,
 		         pMNEntry->stat_total_bytes_sent,
@@ -792,10 +787,11 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
         if (pMNEntry->stat_total_bytes_recvd > 0 ||
             pMNEntry->sel_rd_wait > 0)
         {
-            elog(LOG, "Motion node %d in slice%d received %u tuples, "
+            elog(LOG, "Interconnect seg%d slice%d received from slice%d: %u tuples, "
                  "%u total bytes, %u tuple bytes, %u chunks; waited %u usec.",
-		         motNodeID,
+                 Mpp_segment,
                  currentSliceId,
+		         motNodeID,
 		         pMNEntry->stat_total_recvs,
 		         pMNEntry->stat_total_bytes_recvd,
 		         pMNEntry->stat_tuple_bytes_recvd,
@@ -979,10 +975,10 @@ materializeChunk(TupleChunkListItem * tcItem)
  */
 static bool
 addChunkToSorter(MotionLayerState *mlStates,
-				 ChunkTransportState *transportStates, 
-				 MotionNodeEntry * pMNEntry, 
+				 ChunkTransportState *transportStates,
+				 MotionNodeEntry * pMNEntry,
 				 TupleChunkListItem tcItem,
-				 int16 motNodeID, 
+				 int16 motNodeID,
 				 int16 srcRoute)
 {
 	MemoryContext oldCtxt;
@@ -1109,36 +1105,8 @@ addChunkToSorter(MotionLayerState *mlStates,
 			 * Since we received an end-of-stream.	Then we no longer need
 			 * read interest in the interconnect.
 			 */
-			DeregisterReadInterest(transportStates, motNodeID, srcRoute);
-
-			break;
-
-		case TC_ABORT_STREAM:
-
-			/*
-			 * Since this indicates an error condition, there maybe partial
-			 * tuple data in the list.
-			 */
-
-			elog(DEBUG2, "Received TC_ABORT_STREAM from [src=%d,mn=%d].",
-				 srcRoute, motNodeID);
-
-			/* Make sure that we haven't already received end-of-stream! */
-
-			if (chunkSorterEntry->end_of_stream)
-			{
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-					errmsg("Received end-of-stream chunk from [src=%d,mn=%d]"
-						   " when already marked as at end-of-stream.",
-						   srcRoute, motNodeID)));
-			}
-
-			/* Mark the state as "end of stream." */
-			chunkSorterEntry->end_of_stream = true;
-			pMNEntry->num_stream_ends_recvd++;
-
-			DeregisterReadInterest(transportStates, motNodeID, srcRoute);
-
+			DeregisterReadInterest(transportStates, motNodeID, srcRoute,
+                                   "end of stream");
 			break;
 
 		default:

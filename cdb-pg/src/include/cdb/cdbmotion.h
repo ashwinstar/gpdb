@@ -4,7 +4,7 @@
  *
  *
  *
- * Copyright (c) 2004, Greenplum
+ * Copyright (c) 2004-2006, Greenplum
  *
  *-------------------------------------------------------------------------
  */
@@ -81,35 +81,19 @@ extern void RemoveMotionLayer(MotionLayerState *ml_states, bool flushCommLayer);
  *		STOP_SENDING - Receiver no longer wants to receive from us.
  */
 extern SendReturnCode SendTuple(MotionLayerState *mlStates,
-								ChunkTransportState *transportStates, 
-								int16 motNodeID, 
-								HeapTuple tuple, 
+								ChunkTransportState *transportStates,
+								int16 motNodeID,
+								HeapTuple tuple,
 								int16 targetRoute);
 
 
 /* Send or broadcast an END_OF_STREAM token to the corresponding motion-node
  * on other segments.
- *
- * The send operation is nonblocking, and will return SEND_INCOMPLETE if the
- * send would block.  When this value is returned, the caller must try again
- * until the SEND_COMPLETE value is returned.
- *
- * RETURN: Possible return values are:
- *
- *		SEND_COMPLETE - The token was accepted by the AMS.	Note that the
- *				token may still be in the AMS send-buffers, but as far as the
- *				motion node is concerned, the send is done.
- *
- *		SEND_INCOMPLETE - The END_OF_STREAM token could not be sent.
- *				  This generally means that the send-buffers
- *				  were full and the operation should be tried
- *				  later.  (Real errors are signalled via ereport().)
  */
-extern SendReturnCode SendEndOfStream(MotionLayerState *mlStates,
-									  ChunkTransportState *transportStates, 
-									  int16 motNodeID, 
-									  int16 targetRoute);
-
+void
+SendEndOfStream(MotionLayerState       *mlStates,
+                ChunkTransportState    *transportStates,
+                int                     motNodeID);
 
 /* Receive a tuple from the corresponding motion-node on any query-executor
  * in the process-group.  This function returns immediately without blocking;
@@ -126,8 +110,8 @@ extern SendReturnCode SendEndOfStream(MotionLayerState *mlStates,
  *		END_OF_STREAM - No tuple was received, and no more are expected.
  */
 extern ReceiveReturnCode RecvTupleFrom(MotionLayerState *mlStates,
-									   ChunkTransportState *transportStates, 
-									   int16 motNodeID, 
+									   ChunkTransportState *transportStates,
+									   int16 motNodeID,
 									   HeapTuple *tup_i,
 									   int16 srcRoute);
 
