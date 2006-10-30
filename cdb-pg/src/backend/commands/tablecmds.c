@@ -1745,11 +1745,6 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 	/* keep the system catalog indexes current */
 	CatalogUpdateIndexes(relrelation, reltup);
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-		CdbDispatchUtilityStatement((Node *) stmt);
-	}
-
 	heap_freetuple(reltup);
 	heap_close(relrelation, RowExclusiveLock);
 
