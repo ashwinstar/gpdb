@@ -689,6 +689,23 @@ _readAlterObjectSchemaStmt(void)
 }
 
 
+
+static AlterOwnerStmt *
+_readAlterOwnerStmt(void)
+{
+	READ_LOCALS(AlterOwnerStmt);
+
+	READ_ENUM_FIELD(objectType,ObjectType);
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(object);
+	READ_NODE_FIELD(objarg);
+	READ_STRING_FIELD(addname);
+	READ_STRING_FIELD(newowner);
+
+	READ_DONE();
+}
+
+
 static RenameStmt *
 _readRenameStmt(void)
 {
@@ -2633,6 +2650,7 @@ static ParseNodeInfo infoAr[] =
 	{"ALTERDOMAINSTMT", (ReadFn)_readAlterDomainStmt},
 	{"ALTERFUNCTIONSTMT", (ReadFn)_readAlterFunctionStmt},
 	{"ALTEROBJECTSCHEMASTMT", (ReadFn)_readAlterObjectSchemaStmt},
+	{"ALTEROWNERSTMT", (ReadFn)_readAlterOwnerStmt},
 	{"ALTERROLESETSTMT", (ReadFn)_readAlterRoleSetStmt},
 	{"ALTERROLESTMT", (ReadFn)_readAlterRoleStmt},
 	{"ALTERSEQSTMT", (ReadFn)_readAlterSeqStmt},

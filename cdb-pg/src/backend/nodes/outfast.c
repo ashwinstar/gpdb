@@ -1617,6 +1617,19 @@ _outAlterRoleSetStmt(StringInfo str, AlterRoleSetStmt *node)
 }
 
 
+static  void
+_outAlterOwnerStmt(StringInfo str, AlterOwnerStmt *node)
+{
+	WRITE_NODE_TYPE("ALTEROWNERSTMT");
+
+	WRITE_ENUM_FIELD(objectType,ObjectType);
+	WRITE_NODE_FIELD(relation);
+	WRITE_NODE_FIELD(object);
+	WRITE_NODE_FIELD(objarg);
+	WRITE_STRING_FIELD(addname);
+	WRITE_STRING_FIELD(newowner);
+
+}
 
 
 
@@ -3008,6 +3021,9 @@ _outNode(StringInfo str, void *obj)
 
 			case T_AlterObjectSchemaStmt:
 				_outAlterObjectSchemaStmt(str, obj);
+				break;
+			case T_AlterOwnerStmt:
+				_outAlterOwnerStmt(str, obj);
 				break;
 				
 			case T_RenameStmt:
