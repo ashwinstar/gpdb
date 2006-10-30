@@ -632,6 +632,16 @@ log_after_parse(List *raw_parsetree_list, const char *query_string,
 		}
 	}
 
+    /* Log only the first 200 chars of MPPEXEC statement. */
+    if (log_this_statement &&
+        list_length(raw_parsetree_list) == 1 &&
+        IsA(linitial(raw_parsetree_list), CdbExecStmt) &&
+        strlen(query_string) > 200)
+    {
+        ereport(LOG, (errmsg("statement: %.*s...", 200, query_string)));
+        return true;
+    }
+    
 	if (log_this_statement)
 	{
 		ereport(LOG,
