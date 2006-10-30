@@ -311,20 +311,6 @@ RenameSchema(const char *oldname, const char *newname)
 	heap_close(rel, NoLock);
 	heap_freetuple(tup);
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-
-		StringInfoData buffer;
-
-		initStringInfo(&buffer);
-
-		appendStringInfo(&buffer, "ALTER SCHEMA \"%s\" RENAME TO \"%s\" ", oldname, newname);
-
-		CdbDoCommand(buffer.data, false, /*start txn*/ true, 
-					 /* mirrors */ true, /* primaries */ true);
-
-	}
-
 }
 
 /*

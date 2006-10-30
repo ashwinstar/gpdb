@@ -101,10 +101,18 @@ ExecRenameStmt(RenameStmt *stmt)
 
 		case OBJECT_ROLE:
 			RenameRole(stmt->subname, stmt->newname);
+			if (Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				CdbDispatchUtilityStatement((Node *) stmt);
+			}
 			break;
 
 		case OBJECT_SCHEMA:
 			RenameSchema(stmt->subname, stmt->newname);
+			if (Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				CdbDispatchUtilityStatement((Node *) stmt);
+			}
 			break;
 
 		case OBJECT_TABLESPACE:
