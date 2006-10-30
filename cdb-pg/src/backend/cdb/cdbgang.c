@@ -427,7 +427,7 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
 	int			last_segindex = -1;
 	int			i;
 
-	char	   *username = GetUserNameFromId(GetSessionUserId());
+	char	   *username = GetUserNameFromId(GetAuthenticatedUserId());
 
     Assert(CurrentMemoryContext == TopMemoryContext);
 

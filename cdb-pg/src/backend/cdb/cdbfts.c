@@ -408,7 +408,7 @@ initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName
 	/* Username, like dbname (see below) must be passed in as an argument if
 	 * calling from a pthread_create()ed thread */
 	if (user == NULL)
-		user = GetUserNameFromId(GetSessionUserId());
+		user = GetUserNameFromId(GetAuthenticatedUserId());
 
 	initPQExpBuffer(buffer);
 

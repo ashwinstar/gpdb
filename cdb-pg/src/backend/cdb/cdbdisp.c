@@ -2148,7 +2148,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 	initStringInfoOfSize(&strinfo, datasize);
 
-	appendStringInfoLiteral(&strinfo, "mppexec '");
+	appendStringInfo(&strinfo, "mppexec %d %d %d '",GetSessionUserId(),GetOuterUserId(),GetUserId());
 	appendBinaryStringInfo(&strinfo, squery, squery_len);
 	appendStringInfoLiteral(&strinfo, "' '");
 	appendBinaryStringInfo(&strinfo, splan, splan_len);
@@ -2474,7 +2474,7 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 
 	Assert(szCommand != NULL);
 
-	appendStringInfoLiteral(&buffer, "mppexec '");
+	appendStringInfo(&buffer, "mppexec %d %d %d '",GetSessionUserId(),GetOuterUserId(),GetUserId());
 	appendBinaryStringInfo(&buffer, szCommand, szCommand_len);
 	appendStringInfoLiteral(&buffer, "' ''");
 

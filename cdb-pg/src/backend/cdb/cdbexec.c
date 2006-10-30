@@ -19,7 +19,7 @@
 #include "cdb/cdbvars.h"
 #include "tcop/pquery.h"                /* CreateNewPortal, PortalRun, etc */
 #include "tcop/utility.h"               /* CreateQueryTag() */
-
+#include "miscadmin.h"
 
 /*
  * Implements the 'MPPEXEC' utility statement.
@@ -169,33 +169,54 @@ CdbExecQuery(struct CdbExecStmt * stmt, struct _DestReceiver *dest, char *comple
 		plan = NULL;
 		paramLI = NULL;
 	}
+	
+	SetSessionAuthorization(stmt->SessionUserId, superuser_arg(stmt->SessionUserId));  /* Set the session UserId */
+	
+	if (stmt->OuterUserId != InvalidOid && stmt->OuterUserId != GetSessionUserId()) 
+		SetCurrentRoleId(stmt->OuterUserId, superuser_arg(stmt->OuterUserId));	/* Set the outer UserId */
 
-	/*
-	 * Create a new portal to run the query in
-	 */
-	portal = CreateNewPortal();
-
-	PortalDefineQuery(portal,
-					  "",
-					  nodeTag((Node *) query),
-					  CreateQueryTag(query),
-					  list_make1(query),
-					  list_make1(plan),
-					  qctx);
-
-
-	/*
-	 * Start the portal.  Note that ExecutorStart is called in here for
-	 * SELECT, but deferred until PortalRun for other DML.
-	 */
-	PortalStart(portal, paramLI, ActiveSnapshot);
-
-	/*
-	 * Run the portal to completion.
-     */
-	(void) PortalRun(portal, FETCH_ALL, dest, dest, completionTag);
-
-	PortalDrop(portal, false);
+	if (stmt->CurrentUserId != InvalidOid)
+		SetUserId(stmt->CurrentUserId);
+		
+		
+	PG_TRY();
+	{
+		/*
+		 * Create a new portal to run the query in
+		 */
+		portal = CreateNewPortal();
+	
+		PortalDefineQuery(portal,
+						  "",
+						  nodeTag((Node *) query),
+						  CreateQueryTag(query),
+						  list_make1(query),
+						  list_make1(plan),
+						  qctx);
+	
+	
+		/*
+		 * Start the portal.  Note that ExecutorStart is called in here for
+		 * SELECT, but deferred until PortalRun for other DML.
+		 */
+		PortalStart(portal, paramLI, ActiveSnapshot);
+	
+		/*
+		 * Run the portal to completion.
+	     */
+		(void) PortalRun(portal, FETCH_ALL, dest, dest, completionTag);
+	
+		PortalDrop(portal, false);
+	}
+	PG_CATCH();
+	{
+		SetUserId(GetOuterUserId());
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+	
+	SetUserId(GetOuterUserId());
+	 
 
 	/* Restore state prior to return. */
 	if (paramLI != NULL)

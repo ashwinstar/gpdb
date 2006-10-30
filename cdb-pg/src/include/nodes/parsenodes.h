@@ -1960,6 +1960,16 @@ typedef struct DeallocateStmt
 typedef struct CdbExecStmt
 {
 	NodeTag		type;
+	/*
+	 * CDB: The UserId we need to check against can change based on a number
+	 * of things:  SECURITY DEFINER functions, SET SESSION AUTHORIZATION,
+	 * SET ROLE, etc.
+	 */
+	 
+	Oid	SessionUserId;
+	Oid	OuterUserId;
+	Oid	CurrentUserId;
+	
 	Node *		ser_query;		/* Serialized query tree. */
 	Node *		ser_plan;		/* Serialized plan tree. */
 	List *		ser_params;		/* List of serialized ParamInfoData structs. */

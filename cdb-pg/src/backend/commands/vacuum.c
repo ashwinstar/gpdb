@@ -475,7 +475,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 
 		elog(DEBUG5, "Command %s", pszVacuum);
 
-		appendStringInfo(&buffer, "mppexec '%s' ''", pszVacuum);
+		appendStringInfo(&buffer, "mppexec %d %d %d '%s' ''", GetSessionUserId(),GetOuterUserId(),GetUserId(),pszVacuum);
 
 		pfree(pszVacuum);
 
@@ -547,7 +547,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			
 			elog(DEBUG5, "Command %s", pszVacuumNoAnalyze);
 			
-			appendStringInfo(&buffer, "mppexec '%s' ''", pszVacuumNoAnalyze);
+			appendStringInfo(&buffer, "mppexec %d %d %d '%s' ''", GetSessionUserId(),GetOuterUserId(),GetUserId(),pszVacuumNoAnalyze);
 			
 			pfree(pszVacuumNoAnalyze);
 			

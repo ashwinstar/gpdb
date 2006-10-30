@@ -375,6 +375,16 @@ SetSessionUserId(Oid userid, bool is_superuser)
 	CurrentUserId = userid;
 }
 
+/*
+ * GetAuthenticatedUserId
+ */
+Oid
+GetAuthenticatedUserId(void)
+{
+	AssertState(OidIsValid(AuthenticatedUserId));
+	return AuthenticatedUserId;
+}
+
 
 /*
  * Initialize user identity during normal backend startup
@@ -540,11 +550,6 @@ SetSessionAuthorization(Oid userid, bool is_superuser)
 	/* Must have authenticated already, else can't make permission check */
 	AssertState(OidIsValid(AuthenticatedUserId));
 
-	/*
-	 * This Mpp_role check isn't really a good way to allow this, because it opens some security holes.
-	 * But until I find a better way, this allows SET SESSION AUTHORIZATION to work
-	 */
-	if (Mpp_role != MPP_ROLE_EXECUTE)
 	if (userid != AuthenticatedUserId &&
 		!AuthenticatedUserIsSuperuser)
 		ereport(ERROR,
