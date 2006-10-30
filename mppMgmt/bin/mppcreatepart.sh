@@ -311,8 +311,16 @@ VALIDATE_PARAM () {
 		HAS_CHILD_TABLES=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relhassubclass from pg_class where relname = '$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}');"`
 		ERROR_CHK $? "check for child tables" 2
 	if [ $HAS_CHILD_TABLES == 't' ];then
-		LOG_MSG "[FATAL]:-Table $PARENT_TABLE_NAME already has child tables defined."
-		ERROR_EXIT "[FATAL]:-Use mppaddpart.sh to increase number of child tables" 2
+		LOG_MSG "[WARN]:-Table $PARENT_TABLE_NAME appears to have child tables"
+		LOG_MSG "[INFO]:-Checking for child tables"
+		CHILD_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_inherits where inhparent in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}'));"`
+		ERROR_CHK $? "obtain child table count" 2
+		if [ $CHILD_COUNT -ne 0 ];then
+			LOG_MSG "[FATAL]:-Table $PARENT_TABLE_NAME has $CHILD_COUNT child tables defined."
+			ERROR_EXIT "[FATAL]:-Use mppaddpart.sh to increase number of child tables" 2
+		else
+			LOG_MSG "[INFO]:-Table $PARENT_TABLE_NAME has $CHILD_COUNT child tables, will continue"
+		fi
 	fi
 	#Check that partition column exists
 	COL_THERE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')) and attname='${PART_COLUMN}' and attnum > 0;"`
