@@ -23,6 +23,6 @@ extern void RemoveSchema(List *names, DropBehavior behavior, bool missing_ok);
 extern void RemoveSchemaById(Oid schemaOid);
 
 extern void RenameSchema(const char *oldname, const char *newname);
-extern void AlterSchemaOwner(const char *name, Oid newOwnerId, const char *newownername);
+extern void AlterSchemaOwner(const char *name, Oid newOwnerId);
 
 #endif   /* SCHEMACMDS_H */

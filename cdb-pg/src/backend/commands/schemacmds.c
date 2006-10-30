@@ -331,7 +331,7 @@ RenameSchema(const char *oldname, const char *newname)
  * Change schema owner
  */
 void
-AlterSchemaOwner(const char *name, Oid newOwnerId, const char *newownername)
+AlterSchemaOwner(const char *name, Oid newOwnerId)
 {
 	HeapTuple	tup;
 	Relation	rel;
