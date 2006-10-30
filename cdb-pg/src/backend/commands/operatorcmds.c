@@ -346,5 +346,10 @@ AlterOperatorOwner(List *name, TypeName *typeName1, TypeName *typeName2,
 
 	heap_close(rel, NoLock);
 	heap_freetuple(tup);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 
 }
