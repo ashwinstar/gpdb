@@ -357,6 +357,7 @@ cdb_grouping_planner(PlannerInfo* root,
 										root,
 										(Node*)agg_counts->distinctExpr,
 										list_make1(makeString("=")));
+				distinct_pathkeys = list_make1(distinct_pathkeys);
 
 				if ( cdbpathlocus_collocates(input_locus, distinct_pathkeys) )
 				{
@@ -1214,14 +1215,20 @@ generate_subquery_tlist(Index varno, List *input_tlist)
  * Function: cdbpathlocus_collocates
  *
  * Is a relation with the given locus guaranteed to collocate tuples with
- * non-distinct values of the key.
+ * non-distinct values of the key.  The key is a list of pathkeys (each of
+ * which is a list of PathKeyItem*).
  *
- * CDB TODO: Could cdbpathlocus_is_hashed_on_exprs() take the place of
- * this function?
+ * Collocation is guaranteed if the locus specifies a single process or
+ * if the result is partitioned on a subset of the keys that must be
+ * collocated.
+ *
+ * We ignore onther sorts of collocation, e.g., replication or partitioning
+ * on a range since these cannot occur at the moment (MPP 2.3).
  */
 bool cdbpathlocus_collocates(CdbPathLocus locus, List *pathkeys)
 {
-	CdbPathLocus x;
+	ListCell *lc;
+	List *exprs = NIL;
 	
 	if ( CdbPathLocus_IsBottleneck(locus) )
 		return true;
@@ -1229,20 +1236,21 @@ bool cdbpathlocus_collocates(CdbPathLocus locus, List *pathkeys)
 	if ( !CdbPathLocus_IsHashed(locus) )
 		return false;  /* Or would HashedOJ ok, too? */
 	
-	
-	/* TODO - Here we cheap out and just compare the loci on expression
-	 * containment.  We should test for existence of a subset of matching
-	 * expressions.  For example
-	 *
-	 *  The members of a group defined by key (A,B) are collocated under
-	 *  the loci Hashed(A), Hashed(B), Hashed(A,B), and Hashed(B,A), but
-	 *  not by locus Hash(A,B,C).
-	 *
-	 * Therefore, for now, a true result guarantees collocation, a false
-	 * result means we're unsure.
+	/* Extract a list of expressions from the pathkeys.  Since the locus
+	 * presumably knows all about attribute equivalence classes, we use
+	 * only the first item in each input path key. 
 	 */
-	CdbPathLocus_MakeHashed(&x, list_make1(pathkeys));
-	return cdbpathlocus_compare(CdbPathLocus_Comparison_Contains, x, locus);
+	foreach( lc, pathkeys )
+	{
+		PathKeyItem *item;
+		List *lst = (List*)lfirst(lc);
+		Assert( list_length(lst) > 0 );
+		item = (PathKeyItem*)linitial(lst);
+		exprs = lappend(exprs, item->key);
+	}
+	
+	/* Check for containment of locus in exprs. */
+	return cdbpathlocus_is_hashed_on_exprs(locus, exprs);
 }
 
 
