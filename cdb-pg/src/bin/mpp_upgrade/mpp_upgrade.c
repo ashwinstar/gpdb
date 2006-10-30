@@ -434,7 +434,7 @@ main(int argc, char **argv)
     	segdbs[i].dbid = atol(PQgetvalue(res, i, 2));
     	segdbs[i].isprimary = PQgetvalue(res, i, 3)[0] == 't';
     	segdbs[i].valid = PQgetvalue(res, i, 4)[0] == 't';
-    	if (i == 0 && segdbs[i].content == -1)
+    	if (i == 0 && segdbs[i].content == -1 && host != NULL)
     		segdbs[i].hostname = host;
     	else 
     		segdbs[i].hostname = strdup(PQgetvalue(res, i, 5));
