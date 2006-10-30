@@ -1212,7 +1212,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
  * ALTER DATABASE name OWNER TO newowner
  */
 void
-AlterDatabaseOwner(const char *dbname, Oid newOwnerId, const char *newownername)
+AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 {
 	HeapTuple	tuple;
 	Relation	rel;
@@ -1313,19 +1313,6 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId, const char *newownername)
 	/* Close pg_database, but keep lock till commit */
 	heap_close(rel, NoLock);
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-
-		StringInfoData buffer;
-
-		initStringInfo(&buffer);
-
-		appendStringInfo(&buffer, "ALTER DATABASE \"%s\" OWNER TO \"%s\"", dbname, newownername);
-
-		CdbDoCommand(buffer.data, false, /*start txn*/ true, 
-					 /* mirrors */ true, /* primaries */ true);
-
-	}
 
 	/*
 	 * We don't bother updating the flat file since ALTER DATABASE OWNER

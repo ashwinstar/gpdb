@@ -418,20 +418,6 @@ AlterSchemaOwner(const char *name, Oid newOwnerId, const char *newownername)
 		changeDependencyOnOwner(NamespaceRelationId, HeapTupleGetOid(tup),
 								newOwnerId);
 		
-
-		if (Mpp_role == MPP_ROLE_DISPATCH)
-		{
-
-			StringInfoData buffer;
-
-			initStringInfo(&buffer);
-
-			appendStringInfo(&buffer, "ALTER SCHEMA \"%s\" OWNER TO \"%s\" ", name, newownername);
-
-			CdbDoCommand(buffer.data, false, /*start txn*/ true, 
-						 /* mirrors */ true, /* primaries */ true);
-
-		}
 	}
 
 	ReleaseSysCache(tup);

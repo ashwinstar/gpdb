@@ -57,7 +57,7 @@ extern void dropdb(const char *dbname, bool missing_ok);
 extern void RenameDatabase(const char *oldname, const char *newname);
 extern void AlterDatabase(AlterDatabaseStmt *stmt);
 extern void AlterDatabaseSet(AlterDatabaseSetStmt *stmt);
-extern void AlterDatabaseOwner(const char *dbname, Oid newOwnerId, const char *newownername);
+extern void AlterDatabaseOwner(const char *dbname, Oid newOwnerId);
 
 extern Oid	get_database_oid(const char *dbname);
 extern char *get_database_name(Oid dbid);

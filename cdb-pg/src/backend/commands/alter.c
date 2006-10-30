@@ -239,7 +239,7 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 			break;
 
 		case OBJECT_DATABASE:
-			AlterDatabaseOwner((char *) linitial(stmt->object), newowner, stmt->newowner);
+			AlterDatabaseOwner((char *) linitial(stmt->object), newowner);
 			break;
 
 		case OBJECT_FUNCTION:
@@ -273,5 +273,26 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 		default:
 			elog(ERROR, "unrecognized AlterOwnerStmt type: %d",
 				 (int) stmt->objectType);
+	}
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		if (stmt->objectType == OBJECT_DATABASE)
+		{
+			/* 
+			 * The database name is hacked into a list without a node! So, you can't serialize it normally.
+			 */
+
+			StringInfoData buffer;
+	
+			initStringInfo(&buffer);
+	
+			appendStringInfo(&buffer, "ALTER DATABASE \"%s\" OWNER TO \"%s\"", (char *) linitial(stmt->object), stmt->newowner);
+	
+			CdbDoCommand(buffer.data, false, /*start txn*/ true, 
+						 /* mirrors */ true, /* primaries */ true);
+
+		}
+		else
+			CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }
