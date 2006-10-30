@@ -403,7 +403,26 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 	int64		size;
 	
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
-	rel = relation_openrv(relrv, AccessShareLock);
+	
+	if (Mpp_role == MPP_ROLE_EXECUTE && relrv->schemaname != NULL)
+	{
+		Oid namespaceId;
+		Oid relOid;
+		/*
+		 * Do this the hard way, because the optimizer wants to be able to use this
+		 * function on relations the user might not have direct access to.
+		 */
+
+		namespaceId =  GetSysCacheOid(NAMESPACENAME,
+								 CStringGetDatum(relrv->schemaname),
+								 0, 0, 0);
+		relOid = get_relname_relid(relrv->relname, namespaceId);
+		
+		/* Let relation_open do the rest */
+		rel = relation_open(relOid, AccessShareLock);
+	}
+	else
+		rel = relation_openrv(relrv, AccessShareLock);
 
 	size = calculate_relation_size(&(rel->rd_node));
 
