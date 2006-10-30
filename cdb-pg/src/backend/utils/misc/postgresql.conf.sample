@@ -347,6 +347,9 @@
 #log_statement = 'none'			# none, mod, ddl, all
 #log_hostname = off
 
+#mpp_log_gang = terse                   # off, terse, verbose, debug
+                                        #  logging of qExec worker process
+                                        #  creation and reallocation events
 #mpp_log_interconnect = terse           # off, terse, verbose, debug
                                         #  logging of MPP interconnect events
 

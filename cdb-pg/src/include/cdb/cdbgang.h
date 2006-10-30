@@ -39,7 +39,7 @@ typedef struct Gang
 
 extern Gang *allocateGang(GangType type, int size, int content, char *portal_name);
 
-extern List *getCdbProcessList(Gang *gang);
+extern List *getCdbProcessList(Gang *gang, int sliceIndex);
 
 extern List *getCdbProcessesForQD(int isPrimary);
 

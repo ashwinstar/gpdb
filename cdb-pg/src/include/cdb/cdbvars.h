@@ -154,10 +154,10 @@ extern int mpp_session_id;
 
 
 /* Parameter mpp_qd_callback_info
- * 
+ *
  * This is the port of the QD, sent down to the QEs
  */
- 
+
 extern char * mpp_qd_callback_info;
 extern bool mpp_use_snapshop_during_callback;
 extern SHMEM_OFFSET mpp_qd_proc_offset;
@@ -199,13 +199,13 @@ extern bool Debug_print_slice_table;
  */
 extern int mpp_command_count;
 
-/* 
+/*
  * Mpp_write_shared_snapshot
  *
  * The value of this variable is actually meaningless. We use it simply
  * in order to have a mechanism of dispatching a SET query that will
  * allocate writer gangs that will write the shared snapshot and make
- * it available for the reader gangs. This is currently only needed 
+ * it available for the reader gangs. This is currently only needed
  * before DECLARE'ing a cursor, since a cursor query uses only reader
  * gangs. But should be used for other things if it makes sense to do so.
  */
@@ -315,6 +315,25 @@ const char *
 cdbvars_verbosity_to_string(CdbVars_Verbosity verbosity);
 
 /*
+ * mpp_log_gang (string)
+ *
+ * Should creation, reallocation and cleanup of gangs of QE processes be logged?
+ * "OFF"     -> only errors are logged
+ * "TERSE"   -> terse logging of routine events, e.g. creation of new qExecs
+ * "VERBOSE" -> gang allocation per command is logged
+ * "DEBUG"   -> additional events are logged at severity level DEBUG1 to DEBUG5
+ *
+ * The messages that are enabled by the TERSE and VERBOSE settings are
+ * written with a severity level of LOG.
+ */
+extern CdbVars_Verbosity    mpp_log_gang;
+
+const char *
+cdbvars_assign_mpp_log_gang(const char *newval, bool doit, GucSource source);
+const char *
+cdbvars_show_mpp_log_gang(void);
+
+/*
  * mpp_log_interconnect (string)
  *
  * Should connections between internal processes be logged?  (qDisp/qExec/etc)
@@ -363,10 +382,10 @@ extern bool enable_agg_restruct;
 
 /* ----- Experimental Features ----- */
 
-/* May MPP redistribute on the argument of a lone aggregate distinct in 
- * order to use 2-phase aggregation?  
- * 
- * The code does not currently use planner estimates for this.  If enabled, 
+/* May MPP redistribute on the argument of a lone aggregate distinct in
+ * order to use 2-phase aggregation?
+ *
+ * The code does not currently use planner estimates for this.  If enabled,
  * the tactic is used whenever possible.
  */
 extern bool mpp_enable_agg_distinct;
@@ -374,8 +393,8 @@ extern bool mpp_enable_agg_distinct;
 /* May MPP apply Unique operator (and possibly a Sort) in parallel prior
  * to the collocation motion for a Unique operator?  The idea is to reduce
  * the number of rows moving over the interconnect.
- * 
- * The code does not currently use planner estimates for this.  If enabled, 
+ *
+ * The code does not currently use planner estimates for this.  If enabled,
  * the tactic is used whenever possible.
  */
 extern bool mpp_enable_preunique;

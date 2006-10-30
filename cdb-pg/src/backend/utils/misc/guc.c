@@ -96,7 +96,7 @@
 #endif
 
 /* XXX these should appear in other modules' header files */
-extern bool Log_disconnections; 
+extern bool Log_disconnections;
 extern DLLIMPORT bool check_function_bodies;
 extern int	CommitDelay;
 extern int	CommitSiblings;
@@ -229,6 +229,7 @@ static int	max_identifier_length;
 static int	block_size;
 static bool integer_datetimes;
 static bool standard_conforming_strings;
+static char *mpp_log_gang_str;
 static char *mpp_log_interconnect_str;
 
 
@@ -1080,7 +1081,7 @@ static struct config_bool ConfigureNamesBool[] =
     	&Mpp_is_writer,
     	false, NULL, NULL
     },
-    
+
 	{
 		{"mpp_write_shared_snapshot", PGC_USERSET, UNGROUPED,
 			gettext_noop("Forces the writer gang to set the shared snapshot."),
@@ -1090,7 +1091,7 @@ static struct config_bool ConfigureNamesBool[] =
     	&Mpp_write_shared_snapshot,
     	false, assign_mpp_write_shared_snapshot, NULL
     },
-    
+
     {
     	{"mpp_enable_functions", PGC_USERSET, UNGROUPED,
     		gettext_noop("Enable functions that must use the callback from the QE to QD."),
@@ -1110,7 +1111,7 @@ static struct config_bool ConfigureNamesBool[] =
     	&mpp_use_snapshop_during_callback,
     	true, NULL, NULL
     },
-    
+
     {
     	{"mpp_is_callback", PGC_BACKEND, CLIENT_CONN,
     		gettext_noop("Are we executing on behalf of a callback from the QE to QD."),
@@ -2451,6 +2452,15 @@ static struct config_string ConfigureNamesString[] =
        "continue", NULL, NULL
     },
 
+	{
+		{"mpp_log_gang", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Sets the verbosity of logged messages pertaining to creation and management of MPP worker processes."),
+			gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\".")
+		},
+		&mpp_log_gang_str,
+		"terse", cdbvars_assign_mpp_log_gang, cdbvars_show_mpp_log_gang
+	},
+	
 	{
 		{"mpp_log_interconnect", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Sets the verbosity of logged messages pertaining to connections between MPP worker processes."),

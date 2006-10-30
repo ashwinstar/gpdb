@@ -1295,8 +1295,8 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 		AccumSliceReq(&inv, &req);
 	}
 
-	/* 
-	 * Get the gangs we'll use. 
+	/*
+	 * Get the gangs we'll use.
 	 *
 	 * As a general rule the first gang is a writer and the rest are readers.
 	 * If this happens to be a cursor query then all gangs are readers.
@@ -1390,7 +1390,7 @@ void
 AccumSliceReq(SliceReq * inv, SliceReq * req)
 {
 	inv->numNgangs = Max(inv->numNgangs, req->numNgangs);
-	inv->num1gangs_primary_reader = Max(inv->num1gangs_primary_reader, req->num1gangs_primary_reader); 
+	inv->num1gangs_primary_reader = Max(inv->num1gangs_primary_reader, req->num1gangs_primary_reader);
 	inv->num1gangs_entrydb_reader = Max(inv->num1gangs_entrydb_reader, req->num1gangs_entrydb_reader);
 	inv->writer = (inv->writer || req->writer);
 }
@@ -1471,7 +1471,8 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 		case GANGTYPE_ENTRYDB_READER:
 			slice->primaryGang = req->vec1gangs_entrydb_reader[req->nxt1gang_entrydb_reader];
 			Assert(slice->primaryGang != NULL);
-			slice->primaryProcesses = getCdbProcessList(slice->primaryGang);
+			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
+                                                        slice->sliceIndex);
 			req->nxt1gang_entrydb_reader++;
 			break;
 
@@ -1482,10 +1483,12 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 
 			slice->primaryGang = req->vecNgangs[req->nxtNgang];
 			Assert(slice->primaryGang != NULL);
-			slice->primaryProcesses = getCdbProcessList(slice->primaryGang);
+			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
+                                                        slice->sliceIndex);
 			slice->mirrorGang = req->mirrorWriterGang;
 			if (slice->mirrorGang != NULL)
-				slice->mirrorProcesses = getCdbProcessList(slice->mirrorGang);
+				slice->mirrorProcesses = getCdbProcessList(slice->mirrorGang,
+                                                        slice->sliceIndex);
 			else
 				slice->mirrorProcesses = NIL;
 
@@ -1505,7 +1508,8 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 				req->nxtNgang++;
 			}
 			Assert(slice->primaryGang != NULL);
-			slice->primaryProcesses = getCdbProcessList(slice->primaryGang);
+			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
+                                                        slice->sliceIndex);
 			break;
 
 		case GANGTYPE_MIRROR_WRITER:
@@ -1668,7 +1672,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		{
 			estate->es_processed +=
 				cdbdisp_sumCmdTuples(pr, estate->es_cur_slice_idx);
-			estate->es_lastoid = 
+			estate->es_lastoid =
 				cdbdisp_maxLastOid(pr, estate->es_cur_slice_idx);
 		}
 
@@ -1699,8 +1703,8 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 }
 
 /*
- * Cleanup the MPP-specific parts of the query executor. 
- * 
+ * Cleanup the MPP-specific parts of the query executor.
+ *
  * Will normally be called after an error from within a CATCH block.
  */
 void mppExecutorCleanup(EState *estate)
@@ -1723,7 +1727,7 @@ void mppExecutorCleanup(EState *estate)
 	/* Clean up the interconnect. */
 	if (estate->es_interconnect_is_setup)
 	{
-		TeardownInterconnect(estate->interconnect_context, estate->motionlayer_context, true /* force EOS */); 
+		TeardownInterconnect(estate->interconnect_context, estate->motionlayer_context, true /* force EOS */);
 		estate->es_interconnect_is_setup = false;
 	}
 }

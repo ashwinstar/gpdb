@@ -1153,11 +1153,14 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 	(*ppTransportStates)->activated = true;
 
     if (mpp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
-        ereport(LOG, (errmsg("SetupInterconnect+%dms: Activated %d incoming, "
-                             "%d outgoing routes.",
-                             gettime_elapsed_ms(startTime),
-                             incoming_count, outgoing_count)
-					));
+    {
+        elapsed_ms = gettime_elapsed_ms(startTime);
+        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE ||
+            elapsed_ms >= 0.1 * 1000 * interconnect_setup_timeout)
+            elog(LOG, "SetupInterconnect+%dms: Activated %d incoming, "
+                 "%d outgoing routes.",
+                 elapsed_ms, incoming_count, outgoing_count);
+    }
 }                               /* SetupInterconnect */
 
 

@@ -72,7 +72,7 @@ int			mpp_connections_per_thread; /* How many libpq connections are
 int			Mpp_segment = UNDEF_SEGMENT;		/* What content this QE is
 												 * handling. */
 
-bool		Mpp_write_shared_snapshot;	/* tell the writer QE to write the 
+bool		Mpp_write_shared_snapshot;	/* tell the writer QE to write the
 										 * shared snapshot */
 
 /*
@@ -414,10 +414,25 @@ show_interconnect_setup_timeout(void)
 	return buffer.data;
 }
 
+
 /* --------------------------------------------------------------------------------------------------
  * Logging
  */
 
+
+/*
+ * mpp_log_gangs (string)
+ *
+ * Should creation, reallocation and cleanup of gangs of QE processes be logged?
+ * "OFF"     -> only errors are logged
+ * "TERSE"   -> terse logging of routine events, e.g. creation of new qExecs
+ * "VERBOSE" -> gang allocation per command is logged
+ * "DEBUG"   -> additional events are logged at severity level DEBUG1 to DEBUG5
+ *
+ * The messages that are enabled by the TERSE and VERBOSE settings are
+ * written with a severity level of LOG.
+ */
+CdbVars_Verbosity   mpp_log_gang;
 
 /*
  * mpp_log_interconnect (string)
@@ -480,7 +495,31 @@ cdbvars_verbosity_to_string(CdbVars_Verbosity verbosity)
 
 
 /*
+ * cdbvars_assign_mpp_log_gangs
+ * cdbvars_show_mpp_log_gangs
+ */
+const char *
+cdbvars_assign_mpp_log_gang(const char *newval, bool doit, GucSource source)
+{
+	CdbVars_Verbosity v = cdbvars_string_to_verbosity(newval);
+
+	if (v == CDBVARS_VERBOSITY_UNDEFINED)
+        return NULL;
+	if (doit)
+		mpp_log_gang = v;
+	return newval;
+}                               /* cdbvars_assign_mpp_log_gangs */
+
+const char *
+cdbvars_show_mpp_log_gang(void)
+{
+	return cdbvars_verbosity_to_string(mpp_log_gang);
+}                               /* cdbvars_show_mpp_log_gangs */
+
+
+/*
  * cdbvars_assign_mpp_log_interconnect
+ * cdbvars_show_mpp_log_interconnect
  */
 const char *
 cdbvars_assign_mpp_log_interconnect(const char *newval, bool doit, GucSource source)
@@ -494,10 +533,6 @@ cdbvars_assign_mpp_log_interconnect(const char *newval, bool doit, GucSource sou
 	return newval;
 }                               /* cdbvars_assign_mpp_log_interconnect */
 
-
-/*
- * cdbvars_show_mpp_log_interconnect
- */
 const char *
 cdbvars_show_mpp_log_interconnect(void)
 {

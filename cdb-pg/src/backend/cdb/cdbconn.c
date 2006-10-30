@@ -4,7 +4,7 @@
  *
  * SegmentDatabaseDescriptor methods
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -73,7 +73,7 @@ static void MPPnoticeReceiver(void * arg, const PGresult * res)
 					elevel = DEBUG4;
 				else if (strcmp(pfield->contents,"DEBUG5")==0)
 					elevel = DEBUG5;
-				else 
+				else
 					elevel = INFO;
 				break;
 			case PG_DIAG_SQLSTATE:
@@ -119,7 +119,7 @@ static void MPPnoticeReceiver(void * arg, const PGresult * res)
 		}
 	}
 	
-	if (elevel < client_min_messages &&  elevel  != INFO) 
+	if (elevel < client_min_messages &&  elevel  != INFO)
 		return;
 
     /*
@@ -201,7 +201,7 @@ static void MPPnoticeReceiver(void * arg, const PGresult * res)
 		{
 			appendPQExpBufferChar(&msgbuf, PG_DIAG_SOURCE_FUNCTION);
 			appendBinaryPQExpBuffer(&msgbuf, func, strlen(func)+1);
-		} 
+		}
 		
 		}
 		else
@@ -225,8 +225,8 @@ static void MPPnoticeReceiver(void * arg, const PGresult * res)
 	termPQExpBuffer(&msgbuf);
 	
 	pq_flush();	
-	 
-	 
+	
+	
 }
 
 
@@ -350,11 +350,8 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
                           PQerrorMessage(segdbDesc->conn));
 
         /* Don't use elog, it's not thread-safe */
-        if (DEBUG2 >= log_min_messages)
-        {
-            fputs(segdbDesc->error_message.data, stderr);
-            fputs("\n", stderr);
-        }
+        if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+            write_stderr("%s\n", segdbDesc->error_message.data);
 
         PQfinish(segdbDesc->conn);
         segdbDesc->conn = NULL;
@@ -372,8 +369,8 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
         segdbDesc->motionListener = PQmotionListener(segdbDesc->conn);
 
         /* Don't use elog, it's not thread-safe */
-        if (DEBUG3 >= log_min_messages)
-            fprintf(stderr, "Connected to %s motionListener=%d with options %s\n",
+        if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+            write_stderr("Connected to %s motionListener=%d with options %s\n",
                     segdbDesc->whoami,
                     segdbDesc->motionListener,
                     buffer.data);
@@ -406,7 +403,7 @@ cdbconn_setSliceIndex(SegmentDatabaseDescriptor    *segdbDesc,
             appendPQExpBuffer(scratchbuf, " slice%d", sliceIndex);
     }
     else
-        appendPQExpBuffer(scratchbuf, 
+        appendPQExpBuffer(scratchbuf,
                           q->isprimary ? "entry db" : "mirror entry db");
 
     /* Format the connection info. */
