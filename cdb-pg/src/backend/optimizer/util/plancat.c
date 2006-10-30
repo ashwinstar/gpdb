@@ -349,33 +349,43 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		results = cdbdisp_dispatchRMCommand(buffer.data, false, false, &errbuf, &resultCount);
 	
 		if (errbuf.len > 0)
-			ereport(ERROR, (errmsg("cdb_estimate_rel_size error (gathered %d results from cmd '%s')", resultCount, buffer.data),
-							errdetail("%s", errbuf.data)));
-											
-		for (i = 0; i < resultCount; i++)
 		{
-			if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
-			{
-				elog(ERROR,"cdb_estimate_rel_size: resultStatus not tuples_Ok");
-			}
-			else
-			{
-				int64 tempsize = 0;
-				(void) scanint8(PQgetvalue(results[i], 0, 0), false, &tempsize);
-				 size += tempsize;
-			}
+			ereport(WARNING, (errmsg("cdb_estimate_rel_size error (gathered %d results from cmd '%s')", resultCount, buffer.data),
+							errdetail("%s", errbuf.data)));
+			pfree(errbuf.data);
+			
+			curpages = 100;
 		}
-	
-		pfree(errbuf.data);
-	
-		for (i = 0; i < resultCount; i++)
-			PQclear(results[i]);
-	
-		free(results);
+		else
+		{
+											
+			for (i = 0; i < resultCount; i++)
+			{
+				if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+				{
+					elog(ERROR,"cdb_estimate_rel_size: resultStatus not tuples_Ok");
+				}
+				else
+				{
+					int64 tempsize = 0;
+					(void) scanint8(PQgetvalue(results[i], 0, 0), false, &tempsize);
+					 size += tempsize;
+				}
+			}
 		
-		size /= resultCount;   /* average size per primary segment */
+			pfree(errbuf.data);
 		
-		curpages = size / BLCKSZ;  /* average blocks per primary segment DB */
+			for (i = 0; i < resultCount; i++)
+				PQclear(results[i]);
+		
+			free(results);
+		 
+		
+			size /= resultCount;   /* average size per primary segment */
+			
+			curpages = size / BLCKSZ;  /* average blocks per primary segment DB */
+		
+		}
 		
 		if (curpages == 0 && size > 0)
 			curpages = 1;
