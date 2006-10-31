@@ -399,6 +399,14 @@ extern bool mpp_enable_agg_distinct;
  */
 extern bool mpp_enable_preunique;
 
+/* The maximum number of times on average that the hybrid hashed aggregation
+ * algorithm will plan to spill an input row to disk before including it in
+ * an aggregation.  Increasing this parameter will cause the planner to choose 
+ * hybrid hashed aggregation at lower settings of work_mem than it otherwise
+ * would.
+ */
+extern double mpp_hashagg_rewrite_limit;
+
 
 /* --------------------------------------------------------------------------------------------------
  * Non-GUC globals

@@ -94,6 +94,7 @@ int			interconnect_setup_timeout;
 double      mpp_motion_cost_per_row = 0;
 int         mpp_segments_for_planner = 0;
 bool		enable_agg_restruct = TRUE;
+double		mpp_hashagg_rewrite_limit = 1;
 
 /* MPP Experimental Feature GUCs */
 bool		mpp_enable_agg_distinct = FALSE;

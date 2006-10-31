@@ -903,6 +903,8 @@ thread_DoConnect(void *arg)
 			appendPQExpBuffer(&buffer, " -c commit_siblings=%d", CommitSiblings);
 		if (interconnect_setup_timeout != 10)
 			appendPQExpBuffer(&buffer, " -c mpp_interconnect_setup_timeout=%d", interconnect_setup_timeout);
+		if (mpp_hashagg_rewrite_limit != 1.0)
+			appendPQExpBuffer(&buffer, " -c mpp_hashagg_rewrite_limit=%f", mpp_hashagg_rewrite_limit);
 
 		appendPQExpBuffer(&buffer, " -c DateStyle=");
 		switch (DateStyle)

@@ -845,6 +845,8 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 					   int *p_nbatches	/* Calculated # of passes. */
 					   )
 {
+	double rewrite_fudge = 1.0;
+	
 	bool force = ( p_nbuckets != NULL || p_nentries != NULL || p_nbatches != NULL );
 
 	int entrywidth = sizeof(HashAggEntry) 
@@ -885,6 +887,25 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 		 */
 		double d = memquota*memquota - 4 * zB * ngroups * zH;
 		
+		/* By default we plan on writing input tuples back to disk 
+		 * once, but the user can increase this.  We creep up to
+		 * user's limit in order the choose the smallest rewrite
+		 * limit that will work.  (This tends to minimize the number
+		 * of rewrites at the expense of a larger number of passes.
+		 */
+		while ( d < 0 && rewrite_fudge < mpp_hashagg_rewrite_limit )
+		{
+			rewrite_fudge++;
+			rewrite_fudge = ( rewrite_fudge > mpp_hashagg_rewrite_limit ) ?
+				mpp_hashagg_rewrite_limit :
+				rewrite_fudge;
+			
+			d = memquota*memquota - (4 * zB * ngroups * zH)/rewrite_fudge;
+		}
+		
+		/* The optimizer can decide against the strategy, but the executor
+		 * has to go with the choice even if it doesn't look so good.
+		 */
 		if ( d < 0 )
 		{
 			if ( force )
@@ -897,6 +918,8 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 		}
 
 		nB = ceil((memquota-sqrt(d))/(2*zB));
+		
+		nB = ( nB < 2 ) ? 2 : nB;
 	}
 	
 	nH = floor((memquota - nB*zB)/zH);
@@ -926,7 +949,8 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	if (p_nbatches) *p_nbatches = (int)nB;
 	
 	elog(DEBUG2, "hashagg nbuckets = %d, nentries = %d, nbatches = %d", (int)nK, (int)nH, (int)nB);
-	elog(DEBUG1, "hashagg expected memory footprint = %d", 
+	elog(DEBUG1, "hashagg rewrite fudge = %f, expected memory footprint = %d", 
+		rewrite_fudge,
 		(int)( nH*entrywidth + nK*sizeof(HashAggEntry*) + nB*zB));
 	
 	return true;

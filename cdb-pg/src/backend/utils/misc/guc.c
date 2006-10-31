@@ -1935,6 +1935,15 @@ static struct config_real ConfigureNamesReal[] =
 	},
 
 	{
+		{"mpp_hashagg_rewrite_limit", PGC_USERSET, QUERY_TUNING_COST,
+            gettext_noop("Maximum number of times on average that hybrid hashed aggregation"),
+            gettext_noop("may plan to spill an input row to disk before aggregating it.")
+		},
+		&mpp_hashagg_rewrite_limit,
+		1.0, 1.0, 100.0, NULL, NULL
+	},
+
+	{
 		{"mpp_analyze_relative_error", PGC_USERSET, QUERY_TUNING_OTHER,
 		 gettext_noop("target relative error fraction for row sampling during analyze"),
 		 NULL
