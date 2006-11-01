@@ -144,7 +144,13 @@ PROMPT_CONTINUE () {
 		if [ $ARCHIVE -eq 0 ];then
 		LOG_MSG "[INFO]:-Archive records            = Off"
 		if [ ${#CHILD_WITH_REC_ARRAY[@]} -ne 0 ];then
+			LOG_MSG "[INFO]:-----------------WARNING-------------------"
 			LOG_MSG "[WARN]:-Child tables have records"
+			LOG_MSG "[WARN]:-Records in child tables will be DELETED"
+			LOG_MSG "[INFO]:-To save records abort this current session"
+			LOG_MSG "[INFO]:-Then use -s <archive tablename> option"
+			LOG_MSG "[INFO]:-------------------------------------------"
+			EXIT_STATUS=1
 		fi
 		else
 		LOG_MSG "[INFO]:-Archive records            = On"
