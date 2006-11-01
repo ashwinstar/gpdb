@@ -475,7 +475,7 @@ main(int argc, char **argv)
 	    }
 	    
 	    /*
-	     * We now have a connection open to template1 on every segDB (0 is masterDB)
+	     * We now have a connection open to the database on every segDB (0 is masterDB)
 	     */
 	    
 	    for (i = 0; i < segdbcount; i++)
@@ -507,6 +507,8 @@ main(int argc, char **argv)
 		   	run_sql_command(conn, "DROP VIEW pg_catalog.pg_locks CASCADE");
 		  	run_sql_command(conn, pg_locks);
 		  	
+		  	
+		  	run_sql_command(conn, "UPDATE pg_catalog.pg_proc SET probin='$libdir/plpgsql' WHERE proname IN ('plpgsql_call_handler', 'plpgsql_validator') AND substr(probin,1,1)='/' ");
 		  	
 		    
 		    if (strcmp(databasenames[d],"template1")==0 ||
