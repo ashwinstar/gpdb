@@ -54,6 +54,7 @@ EXIT_STATUS=0
 RULE_GEN=0
 INDEX_GEN=0
 TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP.$$
+TMP_OUTPUT_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP_SQL_OUT.$$
 IDX_TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP_IDX.$$
 CHILD_COUNT_REC=0
 ABORT=0
@@ -681,10 +682,11 @@ RESTORE_PARENT_REC () {
 RUN_GENERATE_SQL () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Running generated SQL file"
-	$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -f $TMP_FILE >> $LOG_FILE 2>&1
-	if [ $? -ne 0 ];then
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -f $TMP_FILE > $TMP_OUTPUT_FILE 2>&1
+	if [ `$GREP -ci ERROR $TMP_OUTPUT_FILE` -ne 0 ];then
+		LOG_MSG "[FATAL]:-Error generated from SQL file, dumping out to log file"
+		$CAT $TMP_OUTPUT_FILE >> $LOG_FILE
 		RM_TMP_FILE
-		ERROR_EXIT "[FATAL]:-Failed to run SQL file, check log file for error messages." 2
 	else
 		LOG_MSG "[INFO]:-Completed run of generated SQL file"
 	fi			
@@ -707,6 +709,7 @@ RUN_INDEX_SQL () {
 RM_TMP_FILE () {
         $RM -f $TMP_FILE
         $RM -f $IDX_TMP_FILE
+	$RM -f $TMP_OUTPUT_FILE
 }
 
 ANALYZE_CHILD_TABLES () {
