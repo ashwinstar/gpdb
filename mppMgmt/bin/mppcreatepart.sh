@@ -383,7 +383,7 @@ VALIDATE_PARAM () {
 			fi
 			;;
 		l ) #Validate list partitioning options
-			if [ `$ECHO $PART_LIST|$GREP -c ","` -eq 0 ];then
+			if [ `$ECHO $PART_LIST|$GREP -c ","` -eq 0 ] && [ `$ECHO $PART_LIST|$WC -w` -ne 1 ];then
 				ERROR_EXIT "[FATAL]:-No \",\" within partition list for list partitioning" 2
 			fi	
 			;;
