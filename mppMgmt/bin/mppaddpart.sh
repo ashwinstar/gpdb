@@ -267,7 +267,7 @@ PROCESS_CHILD_CONSTRAINT () {
 	if [ $TYPE_NAME != "range" ];then
 	CHILD_CONSTRAINT_TEXT_TEMPLATE=`$ECHO $CHILD_CONSTRAINT_TEXT|$SED -e 's/AND/~/g'|$TR '~' '\n'|$AWK -F"'" '{print $1"'~SWAP'"NR$3}'|$SED -e 's/^ /AND /g'|$TR '\n' ' '`
 	else
-	CHILD_CONSTRAINT_TEXT_TEMPLATE=`$ECHO $CHILD_CONSTRAINT_TEXT|$SED -e 's/ AND /~/g'|$TR '~' '\n'|$SED -e 's/[0-9])/ )/g'|$AWK '{print $1" "$2" SWAP"NR$4}'|$TR '\n' '~'|$SED -e 's/))~/))/g'|$SED -e 's/~/ AND /g'`
+	CHILD_CONSTRAINT_TEXT_TEMPLATE=`$ECHO $CHILD_CONSTRAINT_TEXT|$SED -e 's/AND/~/g'|$TR '~' '\n'|$SED -e 's/[0-9])/1 )/g'|$AWK '{print $1" "$2" SWAP"NR$4}'|$TR '\n' '~'|$SED -e 's/))~/))/g'|$SED -e 's/~/ AND /g'`
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -432,7 +432,10 @@ PROCESS_DATA () {
 		range ) PROCESS_RANGE ;;
 		list  ) PROCESS_LIST ;;
 	esac
-	CORRECTED_END_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$END_DATE' -1;"`
+	case $TYPE_NAME in
+		hour|daily|week|month )
+		CORRECTED_END_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$END_DATE' -1;"` ;;
+	esac
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
