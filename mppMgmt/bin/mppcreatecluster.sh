@@ -62,13 +62,13 @@ MPP_USER=$USER_NAME
 # System table names
 MPP_TBL=mpp_mpp
 MPP_CONFIGURATION_TBL=mpp_configuration
+MAX_QD_CONNECTIONS=25
 unset PG_CONF_ADD_FILE
 EXIT_STATUS=0
 # ED_FILE search text values
 PORT_TXT="#port"
 LOG_STATEMENT_TXT="#log_statement ="
 MAX_CONNECT_TXT="max_connections ="
-SHARED_BUFFER_TXT="shared_buffers ="
 LISTEN_ADR_TXT="listen_addresses"
 CHKPOINT_SEG_TXT="checkpoint_segments"
 LOG_STATS_TXT="stats_command_string="
@@ -77,7 +77,6 @@ START_SYNC="-1"
 QE_MIRROR_ARRAY=""
 MPP_PASSWD=mpparray
 TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
-TMP_FILE=/tmp/cluster_tmp_file.$$
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -114,7 +113,7 @@ USAGE () {
 		$ECHO "      -s, standby_hostname [optional]"
 		$ECHO "      -i, do not initialize standby sync process [default:- start process]"
 		$ECHO "      -o, create Master only, do not configure Segment instance hosts"
-		$ECHO "      -m, maximum number of connections for master instance [default ${DEFAULT_QD_MAX_CONNECT}]"
+		$ECHO "      -m, maximum number of connections for master instance [default ${MAX_QD_CONNECTIONS}]"
 		$ECHO "      -e, <password>, password to set for MPP superuser in database [default $MPP_PASSWD]"
 		$ECHO "      -n, <locale>, setting for locale to be set when database initialized [default $DEFAULT_LOCALE_SETTING]"
 		$ECHO
@@ -158,8 +157,7 @@ CHK_PARAMS () {
 		unset PORT_BASE SEG_PREFIX DATA_DIRECTORY
 
 		#Make sure it is not a dos file with CTRL M at end of each line
-		$CAT $CLUSTER_CONFIG|$SED -e 's/$//g' > $TMP_FILE
-		$MV $TMP_FILE $CLUSTER_CONFIG
+		$DOS2UNIX $CLUSTER_CONFIG > /dev/null 2>&1
 		LOG_MSG "[INFO]:-Dumping $CLUSTER_CONFIG to logfile for reference"
 		$CAT $CLUSTER_CONFIG|$GREP -v "^#" >> $LOG_FILE
 		LOG_MSG "[INFO]:-Completed $CLUSTER_CONFIG dump to logfile"
@@ -186,18 +184,9 @@ CHK_PARAMS () {
 		else
 			LOG_MSG "[INFO]:-Locale set to $LOCALE_SETTING in $CLUSTER_CONFIG"
 		fi
-		#Make sure that locale is available on this system
-		LOCALE_COUNT=`$LOCALE |$CUT -d'=' -f2|$TR -d '\"'|$EGREP -i '[a-z]|[0-9]'|$GREP -ci "$LOCALE_SETTING"`
-		if [ $LOCALE_COUNT -eq 0 ];then
-			ERROR_EXIT "[FATAL]:-Locale $LOCALE_SETTING not set on master system."
-		else
-			LOG_MSG "[INFO]:-Locale $LOCALE_SETTING set master system"
-		fi 
 		LOG_MSG "[INFO]:-Dump current system locale to log file"
 		$LOCALE >> $LOG_FILE
 		LOG_MSG "[INFO]:-End of system locale dump"
-		QD_ARCH_TYPE=`$HOST_ARCH_TYPE`
-		QD_OS_TYPE=$OS_TYPE
 		#Check the other files that are required to be able to continue
 		FILE_LIST=($MACHINE_LIST_FILE)
 		for FILE in "${FILE_LIST[@]}"
@@ -296,20 +285,6 @@ CHK_PARAMS () {
 				EXIT_STATUS=1
 				ENCODING="SQL_ASCII"
 		fi
-		#MASTER_MAX_CONNECT
-		if [ ! $MASTER_MAX_CONNECT ];then
-			LOG_MSG "[WARN]:-MASTER_MAX_CONNECT not set, will set to default value $DEFAULT_QD_MAX_CONNECT"
-			EXIT_STATUS=1
-			MASTER_MAX_CONNECT=$DEFAULT_QD_MAX_CONNECT
-		else
-			if [ $MASTER_MAX_CONNECT -lt 1 ];then
-				ERROR_EXIT "[FATAL]:-MASTER_MAX_CONNECT less than 1"
-			fi
-		fi
-		((QE_MAX_CONNECT=$MASTER_MAX_CONNECT*$QE_CONNECT_FACTOR))
-		LOG_MSG "[INFO]:-Setting segment instance MAX_CONNECTIONS to $DEFAULT_QD_MAX_CONNECT"
-		MASTER_SHARED_BUFFERS=$DEFAULT_BUFFERS
-		QE_SHARED_BUFFERS=$DEFAULT_BUFFERS
 		#Number of QE hosts in this configuration
 		((NUM_QES=${#MACHINE_LIST[*]}))
 		if [ $NUM_QES -eq 0 ]; then
@@ -355,7 +330,6 @@ CHK_QES () {
 			do
 				PING_HOST $QE_ID 
 				GET_IP_ADDRESS 
-				RUN_OS_CHKS
 				#Check to ensure have required QE directories
 				for DIR in "${DATA_DIRECTORY[@]}"
 				do
@@ -380,7 +354,6 @@ CHK_QES () {
 			for I in "${QE_PRIMARY_ARRAY[@]}"
 			do
 				SET_VAR $I
-				POSTGRES_PORT_CHK $MPP_PORT $MPP_HOSTNAME
 				LOG_MSG "[INFO]:-Checking $MPP_HOSTNAME for dir $MPP_DIR"
 				CHK_DIR $MPP_DIR $MPP_HOSTNAME
 				if [ $EXISTS -eq 0 ]; then
@@ -408,14 +381,14 @@ CHK_QES () {
                                          $TRUSTED_SHELL $MPP_HOSTNAME "$RM -f ${W_DIR}/tmp_file_test"
                                          LOG_MSG "[INFO]:-Write test passed on $MPP_HOSTNAME $W_DIR directory"
                                 fi
+
 			done
-			#Check for mirror directories if mirroring configured
+			#Check for mirror directories if nirroring configured
 			if [ $MIRRORING -ne 0 ]; then
 				LOG_MSG "[INFO]:-Mirror segment instance directory check"
 				for I in "${QE_MIRROR_ARRAY[@]}"
 				do
 					SET_VAR $I
-					POSTGRES_PORT_CHK $MPP_PORT $MPP_HOSTNAME
 					LOG_MSG "[INFO]:-Checking $MPP_HOSTNAME for dir $MPP_DIR"
 					CHK_DIR $MPP_DIR $MPP_HOSTNAME
 					if [ $EXISTS -eq 0 ]; then
@@ -448,31 +421,6 @@ CHK_QES () {
 			LOG_MSG "[INFO]:-Skipping segment instance checks"
 		fi	
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-RUN_OS_CHKS () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MPP_HOSTNAME=$QE_ID
-	QE_ARCH_TYPE=`$TRUSTED_SHELL $MPP_HOSTNAME $HOST_ARCH_TYPE`
-	if [ "$QD_ARCH_TYPE" != "$QE_ARCH_TYPE" ];then
-		ERROR_EXIT "[FATAL]:-Host $MPP_HOSTNAME architecture variance with master has architecture type $QE_ARCH_TYPE master is $QD_ARCH_TYPE" 2
-	else
-		LOG_MSG "[INFO]:-Architecture for $MPP_HOSTNAME is $QE_ARCH_TYPE, same as Master"
-	fi
-	QE_OS_TYPE=`$TRUSTED_SHELL $MPP_HOSTNAME "uname -s|$TR '[A-Z]' '[a-z]'"`
-	if [ $QD_OS_TYPE != $QE_OS_TYPE ];then
-		ERROR_EXIT "[FATAL]:-Host $MPP_HOSTNAME OS variance with master has OS $QE_OS_TYPE  master is OS $QD_OS_TYPE" 2
-	else
-		LOG_MSG "[INFO]:-OS for $MPP_HOSTNAME is $QE_OS_TYPE, same as Master"
-	fi
-	LOCALE_THERE=`$SSH $MPP_HOSTNAME "$LOCALE |$CUT -d'=' -f2|$TR -d '\"'|$EGREP -i '[a-z]|[0-9]'|$GREP -ci '$LOCALE_SETTING'"`
-
-	if [ $LOCALE_THERE -eq 0 ];then
-		ERROR_EXIT "[FATAL]:-Host $MPP_HOSTNAME does not have required locale set as $LOCALE_SETTING" 2
-	else
-		LOG_MSG "[INFO]:-Locale check for host $MPP_HOSTNAME passed, set as $LOCALE_SETTING"
-	fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_IP_ADDRESS () {
@@ -517,42 +465,96 @@ GET_HOST_ID () {
 
 
 CREATE_QE_ARRAY () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	. $CLUSTER_CONFIG
-	if [ x"" != x"$MACHINE_LIST_FILE_ALT" ];then
-		MACHINE_LIST_FILE=$MACHINE_LIST_FILE_ALT
-	fi
-	MACHINE_LIST=(`$CAT $MACHINE_LIST_FILE|$TR '\n' ' '`)
-	#Build QD array
-	QD_PRIMARY_ARRAY="-1:'t':1:'t':'t':${MASTER_HOSTNAME}:${MASTER_PORT}:${MASTER_DIRECTORY}/${SEG_PREFIX}-1"
-	CONTENT=0
-	DBID=2
-	PORT=$PORT_BASE
-	DIR_VECTOR=0
-	MACHINE_VECTOR=0
-	if [ $MIRRORING -eq 1 ];then
-		MIRROR_MACHINE_ARRAY=(`$ECHO ${MACHINE_LIST[@]}|tr ' ' '\n'|grep -v "^${MACHINE_LIST[0]}$"|tr '\n' ' '` "${MACHINE_LIST[0]}")
-	fi
-	for HOST in "${MACHINE_LIST[@]}"
-	do
-		for DIR in "${DATA_DIRECTORY[@]}"
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		. $CLUSTER_CONFIG
+		if [ x"" != x"$MACHINE_LIST_FILE_ALT" ];then
+                        MACHINE_LIST_FILE=$MACHINE_LIST_FILE_ALT
+                fi
+		if [ `$CAT ${MACHINE_LIST_FILE}|$GREP -c "${MASTER_HOSTNAME}\$"` -eq 0 ]; then
+				declare -a MACHINE_LIST=(`$CAT $MACHINE_LIST_FILE`)
+		else
+				declare -a MACHINE_LIST=($MASTER_HOSTNAME `$CAT $MACHINE_LIST_FILE|$GREP -v "${MASTER_HOSTNAME}\$"`)
+		fi
+		NUM_QE_HOSTS="${#MACHINE_LIST[@]}"
+		MIRROR_HOST_LIST=("${MACHINE_LIST[@]}" "${MACHINE_LIST[@]}")
+		DBID_COUNT=2
+##		DB_COUNT=1
+		DB_COUNT=0
+		LISTENERID_COUNT=2
+		CONTENT_COUNT=0
+		SEG_COUNT=0
+##		SEG_COUNT=1
+		DIR_INDEX=0
+		ARRAY_INDEX=0
+		PORT_COUNT=1
+		((QD_LISTNERID=$LISTENERID_COUNT-1))
+		QDHOSTID_COUNT=1
+		QE_PORT=$PORT_BASE
+		((QDSEG_COUNT=$SEG_COUNT-1))
+		((QDDBID_COUNT=$DBID_COUNT-1))
+		((QDDB_COUNT=$DB_COUNT-1))
+		((QDCONTENT_COUNT=$CONTENT_COUNT-1))
+##		QD_PRIMARY_ARRAY=${MASTER_HOSTNAME}:${QDHOSTID_COUNT}:${QD_LISTNERID}:${MASTER_PORT}:${MASTER_DIRECTORY}/${SEG_PREFIX}${QDSEG_COUNT}:${QDDBID_COUNT}:${DATABASE_NAME}${QDDB_COUNT}:${QDCONTENT_COUNT}
+		QD_PRIMARY_ARRAY=${MASTER_HOSTNAME}:${QDHOSTID_COUNT}:${QD_LISTNERID}:${MASTER_PORT}:${MASTER_DIRECTORY}/${SEG_PREFIX}${QDCONTENT_COUNT}:${QDDBID_COUNT}:${DATABASE_NAME}${QDCONTENT_COUNT}:${QDCONTENT_COUNT}
+		QE_NAME_INDEX=0
+		for QE_NAME in "${MACHINE_LIST[@]}"
 		do
-			((PORT=$PORT+1))
-			QE_PRIMARY_ARRAY=(${QE_PRIMARY_ARRAY[@]} "$CONTENT:'t':$DBID:'t':'t':$HOST:$PORT:$DIR/$SEG_PREFIX$CONTENT")
-			if [ $MIRRORING -eq 1 ];then
-				((DBID=$DBID+1))
-				((M_PORT=$MIRROR_PORT_BASE+$PORT-$PORT_BASE))
-				QE_MIRROR_ARRAY=(${QE_MIRROR_ARRAY[@]} "$CONTENT:'t':$DBID:'f':'t':${MIRROR_MACHINE_ARRAY[$MACHINE_VECTOR]}:$M_PORT:${MIRROR_DATA_DIRECTORY[$DIR_VECTOR]}/$SEG_PREFIX$CONTENT")
-				((DIR_VECTOR=$DIR_VECTOR+1))
-			fi
-			((DBID=$DBID+1))
-			((CONTENT=$CONTENT+1))
+			QE_DIR_INDEX=0
+			QE_MIR_VECTOR=0
+			for MPP_DIR in "${DATA_DIRECTORY[@]}"
+			do
+				GET_HOST_ID $QE_NAME
+				((MPP_PORT=$PORT_BASE+$PORT_COUNT))
+				QE_PRIMARY_ARRAY[$ARRAY_INDEX]=${QE_NAME}:${MPP_INDEX}:${LISTENERID_COUNT}:${MPP_PORT}:${MPP_DIR}/${SEG_PREFIX}${SEG_COUNT}:${DBID_COUNT}:${DATABASE_PREFIX}${DB_COUNT}:$CONTENT_COUNT
+				POSTGRES_PORT_CHK $MPP_PORT $QE_NAME
+				((LISTENERID_COUNT=$LISTENERID_COUNT+1))
+				((DIR_INDEX=$DIR_INDEX+1))
+				((MPP_DIR_INDEX=$MPP_DIR_INDEX+1))
+				if [ $MIRRORING -eq 1 ]; then
+				#Have mirroring configured, process mirror QE's
+					LOG_MSG "[INFO]:-Configuring mirror for segment instance $QE_NAME"
+					MPP_DIR=${MIRROR_DATA_DIRECTORY[$QE_MIR_VECTOR]}/${SEG_PREFIX}${SEG_COUNT}
+					if [ $NUM_QE_HOSTS -le 2 ]; then
+						IDX=0
+						while [ $IDX -le $NUM_QE_HOSTS ]
+						do
+							if [ $QE_NAME ==  "${MACHINE_LIST[$IDX]}" ]; then
+								((IDX=$IDX+1))
+								break
+							fi
+							((IDX=$IDX+1))
+						done
+						MIR_IDX=$IDX
+					else
+						((MIR_IDX=$QE_NAME_INDEX+$QE_DIR_INDEX+1))
+					fi
+					QE_NAME="${MIRROR_HOST_LIST[$MIR_IDX]}"
+					HOST_INDEX=0
+					GET_HOST_ID $QE_NAME
+					((HOST_INDEX=$HOST_INDEX+1))
+					((MIRROR_MPP_PORT=$MIRROR_PORT_BASE+$PORT_COUNT))
+					((DBID_COUNT=$DBID_COUNT+1))
+					QE_MIRROR_ARRAY[$ARRAY_INDEX]=${QE_NAME}:${MPP_INDEX}:${LISTENERID_COUNT}:${MIRROR_MPP_PORT}:${MPP_DIR}:${DBID_COUNT}:${DATABASE_PREFIX}${DB_COUNT}:$CONTENT_COUNT
+					POSTGRES_PORT_CHK $MIRROR_MPP_PORT $QE_NAME
+					((LISTENERID_COUNT=$LISTENERID_COUNT+1))
+					((QE_DIR_INDEX=$QE_DIR_INDEX+1))
+					((QE_MIR_VECTOR=$QE_MIR_VECTOR+1))
+				fi
+				if [ $NUM_QE_HOSTS -ne 1 ]; then
+					((QE_DIR_INDEX=$QE_DIR_INDEX+1))
+				fi
+				((SEG_COUNT=$SEG_COUNT+1))
+				((PORT_COUNT=$PORT_COUNT+1))
+				((ARRAY_INDEX=$ARRAY_INDEX+1))
+				((DBID_COUNT=$DBID_COUNT+1))
+				((DB_COUNT=$DB_COUNT+1))
+				((CONTENT_COUNT=$CONTENT_COUNT+1))
+			done
+			PORT_COUNT=1
+			((QE_DIR_INDEX=$QE_DIR_INDEX+1))
+			((QE_NAME_INDEX=$QE_NAME_INDEX+1))
 		done
-		((MACHINE_VECTOR=$MACHINE_VECTOR+1))
-		PORT=$PORT_BASE
-		DIR_VECTOR=0
-	done
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 DISPLAY_CONFIG () {
@@ -589,11 +591,8 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Master LOCALE        = $LOCALE_SETTING"
 		LOG_MSG "[INFO]:-MPP segment prefix   = $SEG_PREFIX"
 		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME"
-		LOG_MSG "[INFO]:-Master connections   = $MASTER_MAX_CONNECT"
-		LOG_MSG "[INFO]:-Master buffers       = $MASTER_SHARED_BUFFERS"
+		LOG_MSG "[INFO]:-Master connections   = $MAX_QD_CONNECTIONS"
 		LOG_MSG "[INFO]:-Master IP allow      = $IP_ALLOW"
-		LOG_MSG "[INFO]:-Segment connections  = $QE_MAX_CONNECT"
-		LOG_MSG "[INFO]:-Segment buffers      = $QE_SHARED_BUFFERS"
 		LOG_MSG "[INFO]:-Checkpoint segments  = $CHECK_POINT_SEGMENTS"
 		LOG_MSG "[INFO]:-Encoding             = $ENCODING"
 		LOG_MSG "[INFO]:-Pg Conf add file     = $PG_ADD"
@@ -676,11 +675,14 @@ DISPLAY_CONFIG () {
 
 SET_VAR () {
 		I=$1
-		MPP_HOSTNAME=`$ECHO $I|$CUT -d: -f6`
-		MPP_PORT=`$ECHO $I|$CUT -d: -f7`
-		MPP_DIR=`$ECHO $I|$CUT -d: -f8`
-		MPP_DBID=`$ECHO $I|$CUT -d: -f3`
-		MPP_CONTENT=`$ECHO $I|$CUT -d: -f1`
+		MPP_HOSTNAME=`$ECHO $I|$CUT -d: -f1`
+		MPP_HOSTID=`$ECHO $I|$CUT -d: -f2`
+		MPP_LISTENID=`$ECHO $I|$CUT -d: -f3`
+		MPP_PORT=`$ECHO $I|$CUT -d: -f4`
+		MPP_DIR=`$ECHO $I|$CUT -d: -f5`
+		MPP_DBID=`$ECHO $I|$CUT -d: -f6`
+		MPP_DBNAME=`$ECHO $I|$CUT -d: -f7`
+		MPP_CONTENT=`$ECHO $I|$CUT -d: -f8`
 }
 
 CREATE_QD_DB () {
@@ -705,12 +707,9 @@ CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Setting Master logging option"
 		ED_FILE ${MPP_DIR}/$PG_CONF "$LOG_STATEMENT_TXT" log_statement=all 0
 		ERROR_CHK $? "set log_statement=all in ${MPP_DIR}/$PG_CONF" 1
-		LOG_MSG "[INFO]:-Setting Master instance maximum connections to ${MASTER_MAX_CONNECT}"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${MASTER_MAX_CONNECT}" 0
-		ERROR_CHK $? "set max_connections=${MASTER_MAX_CONNECT} in ${MPP_DIR}/$PG_CONF" 1
-		LOG_MSG "[INFO]:-Setting Master instance shared buffers to ${MASTER_SHARED_BUFFERS}"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${MASTER_SHARED_BUFFERS}" 0
-		ERROR_CHK $? "set shared_buffers=${MASTER_SHARED_BUFFERS} in ${MPP_DIR}/$PG_CONF" 1	
+		LOG_MSG "[INFO]:-Setting Master instance maximum connections to ${MAX_QD_CONNECTIONS}"
+		ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${MAX_QD_CONNECTIONS}" 0
+		ERROR_CHK $? "set max_connections=${MAX_QD_CONNECTIONS} in ${MPP_DIR}/$PG_CONF" 1
 		LOG_MSG "[INFO]:-Setting Master instance check point segments"
 		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" "checkpoint_segments=$CHECK_POINT_SEGMENTS" 0
 		ERROR_CHK $? "set checkpoint_segments=$CHECK_POINT_SEGMENTS in ${MPP_DIR}/$PG_CONF" 1
@@ -749,8 +748,8 @@ CREATE_QD_DB () {
 		BACKOUT_COMMAND "$ECHO \"Stopping Master instance\""
 		LOG_MSG "[INFO]:-Compleleted starting the Master in admin mode"
 		$SLEEP 2
-		UPDATE_MPP $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 0 X
-		UPDATE_MPPCONFIGURATION  $MPP_PORT $MPP_DBID $MPP_CONTENT t  $MPP_HOSTNAME $MPP_PORT $MPP_DIR
+		UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 0 X
+		UPDATE_MPPCONFIGURATION  $MPP_DBNAME $MPP_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT t  $MPP_HOSTNAME $MPP_PORT $MPP_DIR
 		LOAD_QE_SYSTEM_DATA $DEFAULTDB
 		SET_VAR $QD_PRIMARY_ARRAY
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -759,15 +758,18 @@ CREATE_QD_DB () {
 
 UPDATE_MPPCONFIGURATION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		U_PT=$1
-		U_DBID=$2
-		U_CONTENT=$3
-		U_PRIMARY=$4	
-		U_HOSTNAME=$5
-		U_PORT=$6
-		U_DIR=$7
+		U_DB=$1
+		U_PT=$2
+		U_DBID=$3
+		U_DBNAME=$4
+		U_CONTENT=$5
+		U_PRIMARY=$6	
+		U_HOSTNAME=$7
+		U_PORT=$8
+		U_DIR=$9
+		
 		U_DB=$DEFAULTDB
-		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $MPP_CONFIGURATION_TBL where content=${U_CONTENT} and definedprimary='${U_PRIMARY}';" ` >> $LOG_FILE 2>&1
+		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $MPP_CONFIGURATION_TBL where content=${U_CONTENT} and definedprimary='${U_PRIMARY}';" 2>/dev/null` >> $LOG_FILE 2>&1
 		ERROR_CHK $? "obtain psql count Master mpp_configuration" 2
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_CONTENT to system configuration table"				
@@ -789,7 +791,7 @@ LOAD_QE_SYSTEM_DATA () {
 				do
 				SET_VAR $I
 				LOG_MSG "[INFO]:-Adding segment $MPP_HOSTNAME to Master system tables"
-				UPDATE_MPPCONFIGURATION  $MASTER_PORT $MPP_DBID  $MPP_CONTENT t $MPP_HOSTNAME $MPP_PORT $MPP_DIR
+				UPDATE_MPPCONFIGURATION $QD_DBNAME $MASTER_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT t $MPP_HOSTNAME $MPP_PORT $MPP_DIR
 				LOG_MSG "[INFO]:-Successfully added segment $MPP_HOSTNAME to Master system tables"
 		done
 		if [ $MIRRORING -eq 1 ]; then
@@ -797,7 +799,7 @@ LOAD_QE_SYSTEM_DATA () {
 				do
 					SET_VAR $I
 					LOG_MSG "[INFO]:-Adding segment $MPP_HOSTNAME to Master system tables as mirror"
-					UPDATE_MPPCONFIGURATION $MASTER_PORT $MPP_DBID $MPP_CONTENT f  $MPP_HOSTNAME $MPP_PORT $MPP_DIR
+					UPDATE_MPPCONFIGURATION $QD_DBNAME $MASTER_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT f  $MPP_HOSTNAME $MPP_PORT $MPP_DIR
 					LOG_MSG "[INFO]:-Successfully added segment $MPP_HOSTNAME to Master system tables as mirror"
 				done
 		fi
@@ -806,14 +808,15 @@ LOAD_QE_SYSTEM_DATA () {
 
 UPDATE_MPP () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		U_DB=$1
 		U_DB=$DEFAULTDB
-		U_PT=$1
-		U_MPPNAME="$2"
-		U_NUMSEG=$3
-		U_DBID=$4
-		U_CONTENT=$5
-		TYPE=$6
-		U_HOST=$7
+		U_PT=$2
+		U_MPPNAME="$3"
+		U_NUMSEG=$4
+		U_DBID=$5
+		U_CONTENT=$6
+		TYPE=$7
+		U_HOST=$8
 		if [ $TYPE -eq 0 ]; then
 				$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
 				ERROR_CHK $? "add $U_DBID to Master mpp_mpp" 2
@@ -835,7 +838,7 @@ CREATE_QES_PRIMARY () {
 			PROCESS_QE
 			LOG_MSG "[INFO]:-Processing segment $MPP_HOSTNAME"
 			LOG_MSG "[INFO]:-Successfully started segment instance on $MPP_HOSTNAME"
-			UPDATE_MPP $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+			UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
 		done
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -848,7 +851,7 @@ CREATE_QES_MIRROR () {
 			PROCESS_QE
 			LOG_MSG "[INFO]:-Processing Mirror segment $MPP_HOSTNAME"
 			LOG_MSG "[INFO]:-Successfully started segment mirror instance on $MPP_HOSTNAME"
-			UPDATE_MPP $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+			UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
 		done
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -864,12 +867,6 @@ PROCESS_QE () {
 		ED_FILE ${MPP_DIR}/$PG_CONF "$PORT_TXT" port=$MPP_PORT 0 $MPP_HOSTNAME
 		ED_FILE ${MPP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $MPP_HOSTNAME
 		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $MPP_HOSTNAME
-		LOG_MSG "[INFO]:-Setting Segment instance maximum connections to ${QE_MAX_CONNECT}"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${QE_MAX_CONNECT}" 0 $MPP_HOSTNAME
-		ERROR_CHK $? "set max_connections=${QE_MAX_CONNECT} in ${MPP_DIR}/$PG_CONF" 1
-		LOG_MSG "[INFO]:-Setting Segment shared buffers to ${QE_SHARED_BUFFERS}"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${QE_SHARED_BUFFERS}" 0 $MPP_HOSTNAME
-		ERROR_CHK $? "set shared_buffers=${QE_SHARED_BUFFERS} in ${MPP_DIR}/$PG_CONF" 1
 		if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
 			LOG_MSG "[INFO]:-Processing additional configuration parameters"
 			for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
@@ -999,7 +996,7 @@ while getopts ":v'?'aiqe:c:l:p:m:h:on:s:" opt
 				e ) MPP_PASSWD=$OPTARG ;;
 				p ) PG_CONF_ADD_FILE=$OPTARG ;;
 				h ) MACHINE_LIST_FILE_ALT=$OPTARG ;;
-				m ) MASTER_MAX_CONNECT=$OPTARG ;;
+				m ) MAX_QD_CONNECTIONS=$OPTARG ;;
 				o ) QD_ONLY=1 ;;
 				s ) STANDBY_HOSTNAME=$OPTARG ;;
 				n ) LOCALE_SETTING=$OPTARG ;;
