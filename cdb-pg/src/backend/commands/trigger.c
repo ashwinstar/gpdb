@@ -313,7 +313,19 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 												  CStringGetDatum(trigname));
 	values[Anum_pg_trigger_tgfoid - 1] = ObjectIdGetDatum(funcoid);
 	values[Anum_pg_trigger_tgtype - 1] = Int16GetDatum(tgtype);
-	values[Anum_pg_trigger_tgenabled - 1] = BoolGetDatum(true);
+	
+	/*
+	 * Special for MPP: Ignore foreign keys for now
+	 */
+	if ((!mpp_enable_functions) && (stmt->isconstraint) && (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE))
+	{
+		/*
+		 * Create the tigger as disabled 
+		 */
+		values[Anum_pg_trigger_tgenabled - 1] = BoolGetDatum(false);
+	}
+	else
+		values[Anum_pg_trigger_tgenabled - 1] = BoolGetDatum(true);
 	values[Anum_pg_trigger_tgisconstraint - 1] = BoolGetDatum(stmt->isconstraint);
 	values[Anum_pg_trigger_tgconstrname - 1] = DirectFunctionCall1(namein,
 												CStringGetDatum(constrname));
@@ -450,11 +462,6 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 	/* Keep lock on target rel until end of xact */
 	heap_close(rel, NoLock);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-		CdbDispatchUtilityStatement((Node *) stmt);
-	}
-
 	return trigoid;
 }
 

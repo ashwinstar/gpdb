@@ -1102,6 +1102,11 @@ ProcessUtility(Node *parsetree,
 
 		case T_CreateTrigStmt:
 			CreateTrigger((CreateTrigStmt *) parsetree, false);
+			if (Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				CdbDispatchUtilityStatement((Node *) parsetree);
+			}
+			
 			break;
 
 		case T_DropPropertyStmt:

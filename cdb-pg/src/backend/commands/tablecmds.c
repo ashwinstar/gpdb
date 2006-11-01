@@ -4859,8 +4859,7 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 		if (Mpp_role == MPP_ROLE_DISPATCH)
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Bizgres MPP")));
-		return;
+				 errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Bizgres MPP, will not be enforced.")));
 	}
 
 	/*
