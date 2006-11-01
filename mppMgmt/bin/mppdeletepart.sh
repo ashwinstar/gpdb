@@ -96,10 +96,12 @@ USAGE () {
 		$ECHO "      -d, <Master instance directory> name of alternative Master instance to run against [optional]"
 		$ECHO
 		$ECHO "      Child table deletion options:"
-		$ECHO "      -t, <Parent table name> name of parent table from which to delete child tables [mandatory]"
+		$ECHO "      -t, <parent table name> name of parent table from which to delete child tables [mandatory]"
 		$ECHO "      -r, <#> rolling window to keep based upon constraint type, for example if constraint"
 		$ECHO "          type is m (months) -r 18 will keep a rolling window of 18 months"
-		$ECHO "      -s, <table name> secure records to table name prior to deletion of child table"
+		$ECHO "      -s, <archive table name> secure records to archive table prior to deletion of child table"
+		$ECHO "          This cannot be the parent table. To create an archive table, run following in psql session"
+		$ECHO "          psql=# create table <archive table name> (like <parent table name>);"
 		$ECHO "      -f, force deletion if child tables are also parent tables"
 		$ECHO "      -x, <Alternative database name>"
 		$ECHO
@@ -167,7 +169,11 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-$C_NAME"
 		done
 		$ECHO
-		$ECHO "Continue with child deletion process yY|nN >"
+		if [ ${#CHILD_WITH_REC_ARRAY[@]} -ne 0 ];then
+			$ECHO "Continue with child deletion AND records contained in those child tables yY|nN >"
+		else
+			$ECHO "Continue with child deletion process yY|nN >"
+		fi
 		read REPLY
 		if [ -z $REPLY ]; then
 				LOG_MSG "[WARN]:-User abort requested, Script Exits!"
@@ -199,6 +205,11 @@ CHK_PARAM () {
 			ARCHIVE_TABLE_NAME=`$ECHO $ARCHIVE_TABLE|$CUT -d"." -f2`
 		else
 			ERROR_EXIT "[FATAL]:-Table name supplied via -s not prefixed with schema name" 2
+		fi
+		if [ $PARENT_TABLE_NAME == $ARCHIVE_TABLE ];then
+			LOG_MSG "[FATAL]:-Cannot secure records into the parent table"
+			LOG_MSG "[INFO]:-Create a new table like the parent table"
+			ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		fi
 	fi	
 	if [ x"" == x"$DELETION_WINDOW" ];then
