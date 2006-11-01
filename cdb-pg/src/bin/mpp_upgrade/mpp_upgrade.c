@@ -53,6 +53,18 @@ static char * pg_roles =
 	"SELECT pg_authid.rolname, pg_authid.rolsuper, pg_authid.rolinherit, pg_authid.rolcreaterole, pg_authid.rolcreatedb, pg_authid.rolcatupdate, pg_authid.rolcanlogin, pg_authid.rolconnlimit, '********'::text AS rolpassword, pg_authid.rolvaliduntil, pg_authid.rolconfig, pg_authid.rolresqueue, pg_authid.oid FROM pg_authid";
    
    
+static char * newconfinfo =
+"\n"
+"#---------------------------------------------------------------------------\n"
+"# RESOURCE SCHEDULING\n"
+"#---------------------------------------------------------------------------\n"
+"\n"
+"#resource_scheduler = off       # enable resource scheduling\n"
+"#max_resource_queues = 8        # no. of resource queues to create.\n"
+"#max_resource_portals_per_transaction = 64  # no. of portals per backend.\n"
+"#resource_select_only = on      # resource lock SELECT queries only.\n\n";
+
+   
 static bool verbose = false;
  
 static void MyNoticeProcessor (void *arg, const char *message)
@@ -207,6 +219,8 @@ main(int argc, char **argv)
     
     char ** databasenames;
     int	databasecount = 0;
+    
+    char * masterDir = NULL;
     
     static struct option long_options[] =
     {
@@ -439,6 +453,8 @@ main(int argc, char **argv)
     	else 
     		segdbs[i].hostname = strdup(PQgetvalue(res, i, 5));
     	segdbs[i].port = strdup(PQgetvalue(res, i, 6));
+    	if (i == 0 && segdbs[i].content == -1)
+    		masterDir = strdup(PQgetvalue(res,i,7));
     }
     
     
@@ -531,6 +547,40 @@ main(int argc, char **argv)
 		run_sql_command(conn, "update pg_database set datallowconn = 'f' where datname='template0'");
     }
 		 
+		 
+	if (masterDir)
+	{
+		FILE * fp;
+		char conffilename[1024];
+		char * conf;
+		sprintf(conffilename, "%s/postgresql.conf",masterDir);
+		fp = fopen(conffilename,"r+");
+		if (fp == NULL)
+			fprintf(stderr,"Can't add comments to postgresql.conf, can't open the file\n");
+		else
+		{
+			size_t s;
+			conf = malloc(64000);
+			s = fread(conf,1,63999,fp);
+			conf[s] = '\0';
+			
+			if (strstr(conf,"resource_scheduler")!=0)
+				printf("postgresql.conf already upgraded, skipping that step.\n");
+			else
+			{
+			
+				strcat(conf,newconfinfo);
+				
+				fseek(fp,0,SEEK_SET);
+				
+				fwrite(conf,1,strlen(conf),fp);
+			}
+			fclose(fp);
+			
+			
+		}
+		
+	}
 	
    
 
