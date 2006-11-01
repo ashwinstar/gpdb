@@ -187,10 +187,11 @@ CHK_PARAMS () {
 			LOG_MSG "[INFO]:-Locale set to $LOCALE_SETTING in $CLUSTER_CONFIG"
 		fi
 		#Make sure that locale is available on this system
-		QD_LOCALE_TXT=`$ECHO $LOCALE_SETTING|cut -d"." -f1`
-		LOCALE_COUNT=`$LOCALE -a|$GREP -ic $QD_LOCALE_TXT`
+		LOCALE_COUNT=`$LOCALE |$CUT -d'=' -f2|$TR -d '\"'|$EGREP -i '[a-z]|[0-9]'|$GREP -ci "$LOCALE_SETTING"`
 		if [ $LOCALE_COUNT -eq 0 ];then
-			ERROR_EXIT "[FATAL]:-Locale $LOCALE_SETTING not found on this system."
+			ERROR_EXIT "[FATAL]:-Locale $LOCALE_SETTING not set on master system."
+		else
+			LOG_MSG "[INFO]:-Locale $LOCALE_SETTING set master system"
 		fi 
 		LOG_MSG "[INFO]:-Dump current system locale to log file"
 		$LOCALE >> $LOG_FILE
@@ -354,6 +355,7 @@ CHK_QES () {
 			do
 				PING_HOST $QE_ID 
 				GET_IP_ADDRESS 
+				RUN_OS_CHKS
 				#Check to ensure have required QE directories
 				for DIR in "${DATA_DIRECTORY[@]}"
 				do
@@ -406,7 +408,6 @@ CHK_QES () {
                                          $TRUSTED_SHELL $MPP_HOSTNAME "$RM -f ${W_DIR}/tmp_file_test"
                                          LOG_MSG "[INFO]:-Write test passed on $MPP_HOSTNAME $W_DIR directory"
                                 fi
-				RUN_OS_CHKS
 			done
 			#Check for mirror directories if mirroring configured
 			if [ $MIRRORING -ne 0 ]; then
@@ -431,7 +432,6 @@ CHK_QES () {
                                                 $TRUSTED_SHELL $MPP_HOSTNAME "$RM -f ${W_DIR}/tmp_file_test"
                                                 LOG_MSG "[INFO]:-Write test passed on $MPP_HOSTNAME $W_DIR directory"
 					fi
-					RUN_OS_CHKS
 				done
 			else
 				LOG_MSG "[INFO]:-Mirror segment instance directory check skipped, mirroring=Off"
@@ -452,6 +452,7 @@ CHK_QES () {
 
 RUN_OS_CHKS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	MPP_HOSTNAME=$QE_ID
 	QE_ARCH_TYPE=`$TRUSTED_SHELL $MPP_HOSTNAME $HOST_ARCH_TYPE`
 	if [ "$QD_ARCH_TYPE" != "$QE_ARCH_TYPE" ];then
 		ERROR_EXIT "[FATAL]:-Host $MPP_HOSTNAME architecture variance with master has architecture type $QE_ARCH_TYPE master is $QD_ARCH_TYPE" 2
@@ -464,11 +465,12 @@ RUN_OS_CHKS () {
 	else
 		LOG_MSG "[INFO]:-OS for $MPP_HOSTNAME is $QE_OS_TYPE, same as Master"
 	fi
-	QE_LOCALE_COUNT=`$TRUSTED_SHELL $MPP_HOSTNAME "$LOCALE -a|grep -ic $QD_LOCALE_TXT"`
-	if [ $QE_LOCALE_COUNT -eq 0 ];then
-		ERROR_EXIT "[FATAL]:-Host $MPP_HOSTNAME does not have required locale." 2
+	LOCALE_THERE=`$SSH $MPP_HOSTNAME "$LOCALE |$CUT -d'=' -f2|$TR -d '\"'|$EGREP -i '[a-z]|[0-9]'|$GREP -ci '$LOCALE_SETTING'"`
+
+	if [ $LOCALE_THERE -eq 0 ];then
+		ERROR_EXIT "[FATAL]:-Host $MPP_HOSTNAME does not have required locale set as $LOCALE_SETTING" 2
 	else
-		LOG_MSG "[INFO]:-Locale check for host $MPP_HOSTNAME passed"
+		LOG_MSG "[INFO]:-Locale check for host $MPP_HOSTNAME passed, set as $LOCALE_SETTING"
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
