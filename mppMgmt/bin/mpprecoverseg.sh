@@ -388,9 +388,14 @@ FORCE_RECOVER () {
 	if [ x"" == x"$FAIL_QE_DIR" ] || [ x"" == x"$FAIL_QE_HOST" ] || [ "$FAIL_QE_DIR" == "$FAIL_QE_HOST" ];then
 		ERROR_EXIT "[FATAL]:Option -z string $FORCE_RECOVER_STRING incorrect" 2;fi
 	GET_QD_DB_NAME
+	CHK_MIRRORS_CONFIGURED
+	if [ $MIRROR_COUNT -eq 1 ];then
+		ERROR_EXIT "[FATAL]:-Mirrors not configured on this MPP instance" 2
+	fi
 	#Obtain hostname for segment instance directory that is to be recovered
 	FAILED_INSTANCE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`
 	ERROR_CHK $? "obtain failed instance count" 2
+	LOG_MSG "[INFO]:-Failed instance count = $FAILED_INSTANCE_COUNT"
 	if [ $FAILED_INSTANCE_COUNT -eq 0 ];then
 		ERROR_EXIT "[FATAL]:-Could not locate $FAIL_QE_DIR for host $FAIL_QE_HOST" 2;fi
 	if [ $FAILED_INSTANCE_COUNT -gt 1 ];then
@@ -401,8 +406,8 @@ FORCE_RECOVER () {
 	#Get active mirror details
 	ACTIVE_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where dbid<>$FAIL_QE_DBID and content in (select content from $CONFIG_TABLE where dbid=${FAIL_QE_DBID});"`)
 	ERROR_CHK $? "obtain recovery segment instance details" 2
-	if [ $#{ACTIVE_INSTANCE_COUNT[@]} -ne 1 ];then
-		ERROR_EXIT "[FATAL]:-Did not locate 1 recovery segment instance, obtained  $#{ACTIVE_INSTANCE_COUNT[@]}" 2
+	if [ ${#ACTIVE_INSTANCE_ARRAY[@]} -ne 1 ];then
+		ERROR_EXIT "[FATAL]:-Did not locate 1 recovery segment instance, obtained  ${#ACTIVE_INSTANCE_COUNT[@]}" 2
 	fi
 	MIR_SET_VAR "${ACTIVE_INSTANCE_ARRAY[@]}"	
 	ARRAY_INDEX=1
@@ -453,7 +458,10 @@ if [ ! $MASTER_DATA_DIRECTORY ]; then
 fi
 CHK_ON_PASSIVE_STANDBY
 GET_SETTING
-
+CHK_MIRRORS_CONFIGURED
+if [ $MIRROR_COUNT -eq 1 ];then
+	ERROR_EXIT "[FATAL]:-Mirrors not configured on this MPP instance" 2
+fi
 if [ "$FAIL_TYPE" == "shutdown" ];then
     LOG_MSG "[INFO]:-Recovering in 'shutdown' mode: simple restart required"
     STOP_DATABASE
