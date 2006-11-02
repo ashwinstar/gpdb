@@ -549,6 +549,8 @@ markSegDBPersistentState(int dbid, bool state)
 	PGresult   *rs;
 	CdbComponentDatabaseInfo *q;
 
+	char		*user;
+
 	PQExpBuffer entryBuffer = NULL;
 	PGconn *entryConn = NULL;
 
@@ -580,14 +582,14 @@ markSegDBPersistentState(int dbid, bool state)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: could not format command string")));
+				 errmsg("FTS: could not format command string (get dbid)")));
 	}
 
 	if (SPI_OK_SELECT != SPI_execute(cmd, false, 0))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: SPI_execute failed")));
+				 errmsg("FTS: SPI_execute failed (%s)", cmd)));
 	}
 
 	if (SPI_processed != 1)
@@ -613,14 +615,14 @@ markSegDBPersistentState(int dbid, bool state)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: could not format command string")));
+				 errmsg("FTS: could not format command string (get partners)")));
 	}
 
 	if (SPI_OK_SELECT != SPI_execute(cmd, false, 0))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: SPI_execute failed")));
+				 errmsg("FTS: SPI_execute failed (%s)", cmd)));
 	}
 
 	/* again we should have exactly one row (or zero if no mirror exists) */
@@ -655,6 +657,33 @@ markSegDBPersistentState(int dbid, bool state)
 		partnerdefinedprimary = (tmp[0] == 't') ? 1 : 0;
 	}
 
+	/* As a final step: we need to re-connect with privileges which
+	 * allow catalog updates */
+	if (snprintf(cmd, sizeof(cmd),
+				 "select rolname from pg_catalog.pg_roles where rolcatupdate ='t' and rolsuper = 't' limit 1;") >= sizeof(cmd))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("FTS: could not format command string (get rolname)")));
+	}
+
+	if (SPI_OK_SELECT != SPI_execute(cmd, false, 0))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("FTS: SPI_execute failed (%s)", cmd)));
+	}
+
+	if (SPI_processed != 1)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("FTS: found %d rows with limit 1!", SPI_processed)));
+	}
+
+	tupdesc = SPI_tuptable->tupdesc;
+	user = strdup(SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 1));
+
 	SPI_finish();
 
 	/* We now have the full row of the partner db, all of the
@@ -677,9 +706,11 @@ markSegDBPersistentState(int dbid, bool state)
 
 	/*
 	 * initialize libpq connection buffer, we only need to initialize it
-	 * once
+	 * once.
 	 */
-	initPQConnectionBuffer(q, NULL, NULL, entryBuffer, true);
+	initPQConnectionBuffer(q, user, NULL, entryBuffer, true);
+
+	free(user);
 
 	/*
 	 * Call libpq to connect
@@ -698,7 +729,7 @@ markSegDBPersistentState(int dbid, bool state)
 		free(entryBuffer->data);
 		PQfinish(entryConn);
 		entryConn = NULL;
-		elog(PANIC, "FTS: setting segDB state failed, error connecting to entry db, error: %s", error_message);
+		elog(FATAL, "FTS: setting segDB state failed, error connecting to entry db, error: %s", error_message);
 	}
 
 	/* finally, we're ready to actually get some stuff done. */
@@ -764,7 +795,7 @@ markSegDBPersistentState(int dbid, bool state)
 	PQfinish(entryConn);
 	free(entryBuffer->data);
 
-	elog(PANIC, "FTS: setting segDB state failed");
+	elog(FATAL, "FTS: setting segDB state failed");
 }
 
 /*
