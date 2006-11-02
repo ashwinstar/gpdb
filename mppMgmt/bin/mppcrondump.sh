@@ -92,7 +92,11 @@ USAGE () {
 		$ECHO "      -p, dump primary segment instances only [default dump primary and mirror]"
 		$ECHO "      -m, dump mirror segment instances only [default dump primary and mirror]"
 		$ECHO "      -c, clear old dump directories [default do not clear]"
+		$ECHO "          will remove the oldest dump directory except the current dump directory"
+		$ECHO "          named $DUMP_DATE if it exists, NOTE:-deletes all dump sets within that directory"
 		$ECHO "      -o, clear dump files only, do not run a dump"
+		$ECHO "          will remove the oldest dump directory except the current dump directory"
+		$ECHO "          named $DUMP_DATE if it exists, NOTE:-deletes all dump sets within that directory"
 		$ECHO "      -z, do not use compression [default use compression]"
 		$ECHO "      -x, database name to dump [mandatory]"
 		$ECHO "      -r, rollback dump files if dump failure detected [default no rollback]"
@@ -708,7 +712,6 @@ fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 OPTIONS_LIST="$*"
-CHK_DB_QD_SET
 if [ x"" == x"$DUMP_DATABASE" ];then
 	ERROR_EXIT "[FATAL]:-Must supply -x <database name to dump> " 2
 fi
