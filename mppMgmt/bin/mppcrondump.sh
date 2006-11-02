@@ -341,7 +341,7 @@ CHK_DUMP_SPACE () {
 	for DBID in ${DBID_LIST[@]}
 	do
 		CHK_DATA
-		DIR_HOST_FREE_K=`$TRUSTED_SHELL $DIR_HOST "$DF -k $DIR|$TAIL -1|$AWK '{print \\$4}'"`
+		DIR_HOST_FREE_K=`$TRUSTED_SHELL $DIR_HOST "$DF -k $DIR|$TAIL -1|$TR -s ' '|$TR ' ' '\n'|$TAIL -3|$HEAD -1"`
 		LOG_MSG "[INFO]:-Host $DIR_HOST Directory $DIR has free space $DIR_HOST_FREE_K K"
 		SEG=`$BASENAME $DIR`
 		DIR_HOST_USED_K=`$ECHO ${ACTUAL_DB_SIZE[@]}|$GREP $DIR_HOST|$GREP $SEG|$AWK -F'|' '{print $NF}'`
@@ -708,6 +708,7 @@ fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 OPTIONS_LIST="$*"
+CHK_DB_QD_SET
 if [ x"" == x"$DUMP_DATABASE" ];then
 	ERROR_EXIT "[FATAL]:-Must supply -x <database name to dump> " 2
 fi
