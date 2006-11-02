@@ -532,7 +532,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 				snapshot->xmax = SharedLocalSnapshotSlot->snapshot.xmax;
 				snapshot->xcnt = SharedLocalSnapshotSlot->snapshot.xcnt;
 
-				/*
+			    /*
 				 * We don't need to worry about making our copy of the xip
 				 * array Since we don't dispatch the next stmt to the WRITER
 				 * until everybody finishes then this won't change out from
@@ -554,6 +554,11 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 				elog(DEBUG5, "Reader qExec setting shared local snapshot to: xmin: %d xmax: %d curcid: %d",
 					 snapshot->xmin, snapshot->xmax, snapshot->curcid);
 
+				if (log_min_messages <= DEBUG5 || client_min_messages <= DEBUG5)
+				{
+					ShowSubtransactionsForSharedSnapshot(SharedLocalSnapshotSlot->subcnt,SharedLocalSnapshotSlot->subxids);
+				}
+				
 				return snapshot;
 			}
 			else
@@ -714,6 +719,15 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		SharedLocalSnapshotSlot->snapshot.xcnt = snapshot->xcnt;
 
 		/*
+		 * Copy all active subtransctions to shared snapshot.
+		 *
+		 */
+        GetSubtransactionsForSharedSnapshot(
+        	&SharedLocalSnapshotSlot->subcnt,
+        	SharedLocalSnapshotSlot->subxids);
+		elog(DEBUG5,"Writer qExec count of subtransaction ids %u",SharedLocalSnapshotSlot->subcnt);
+
+		/*
 		 * The handling of snapshot->xip looks very strange.  The reason is
 		 * that while snapshot->xip is a pointer...  the shmem snapshot.xip is
 		 * actually the array itself stored where the pointer should go. This
@@ -737,6 +751,21 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	}
 
 	return snapshot;
+}
+
+/*
+ *	CheckSharedSnapshotForSubtransaction
+ */
+bool
+CheckSharedSnapshotForSubtransaction(TransactionId xid)
+{
+	uint32 sub;
+	for(sub = 0; sub < SharedLocalSnapshotSlot->subcnt; sub++)
+	{
+		if (TransactionIdEquals(xid, SharedLocalSnapshotSlot->subxids[sub]))
+			return true;
+	}
+	return true;
 }
 
 /*

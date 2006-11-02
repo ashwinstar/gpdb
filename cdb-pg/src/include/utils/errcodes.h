@@ -318,6 +318,7 @@
 #define ERRCODE_STATEMENT_TOO_COMPLEX		MAKE_SQLSTATE('5','4', '0','0','1')
 #define ERRCODE_TOO_MANY_COLUMNS			MAKE_SQLSTATE('5','4', '0','1','1')
 #define ERRCODE_TOO_MANY_ARGUMENTS			MAKE_SQLSTATE('5','4', '0','2','3')
+#define ERRCODE_MPP_SUBTRANS_LIMIT_EXCEEDED	MAKE_SQLSTATE('5','4', '0','3','0')
 
 /* Class 55 - Object Not In Prerequisite State (class borrowed from DB2) */
 #define ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE	MAKE_SQLSTATE('5','5', '0','0','0')
