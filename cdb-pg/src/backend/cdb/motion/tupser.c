@@ -105,6 +105,9 @@ InitSerTupInfo(TupleDesc tupdesc, SerTupInfo * pSerInfo)
 		 */
 		attrInfo->atttypid = tupdesc->attrs[i]->atttypid;
 		
+		if (attrInfo->atttypid == RECORDOID)
+			elog(ERROR,"Can't serialize transient record types");
+		
 		/*
 		 * Ok, we want the Binary input/output routines for the type if they exist,
 		 * else we want the normal text input/output routines.
@@ -533,7 +536,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 						DatumGetByteaP(FunctionCall3(&attrInfo->send_finfo,
 													 attr,
 													 ObjectIdGetDatum(attrInfo->send_typio_param),
-													 Int32GetDatum(-1) ));              // Is this right?  
+													 Int32GetDatum(tupdesc->attrs[i]->atttypmod) ));
 				else
 				{
 					ereport(ERROR,
@@ -790,7 +793,7 @@ DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup)
 	    	pSerInfo->values[i] = FunctionCall3(&attrInfo->recv_finfo,
 											PointerGetDatum(&attr_data),
 							   ObjectIdGetDatum(attrInfo->recv_typio_param),
-							   Int32GetDatum(-1) );              // Is this right?  
+							   Int32GetDatum(tupdesc->attrs[i]->atttypmod) );  
 		else
 		{
 			ereport(ERROR,
