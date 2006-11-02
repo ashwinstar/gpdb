@@ -302,6 +302,7 @@ CHK_PARAMS () {
 		#Get IP address of the master host
 
 		MASTER_IP_ADDRESS_ALL=(`$IFCONFIG $IFCONFIG_TXT |$GREP "inet "|$GREP -v "127.0.0"|$AWK '{print $2}'|$CUT -d: -f2`)
+		MASTER_IPV6_LOCAL_ADDRESS_ALL=(`$IFCONFIG $IFCONFIG_TXT |$GREP inet6|$CUT -d' ' -f2`)
 		ERROR_CHK $? "obtain IP address of Master host" 2
 		MASTER_IP_ADDRESS=(`$ECHO ${MASTER_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
 		LOG_MSG "[INFO]:-Master IP address array = ${MASTER_IP_ADDRESS[@]}"
