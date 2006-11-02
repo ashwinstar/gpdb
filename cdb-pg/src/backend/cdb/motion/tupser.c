@@ -150,20 +150,20 @@ InitSerTupInfo(TupleDesc tupdesc, SerTupInfo * pSerInfo)
 								format_type_be(attrInfo->atttypid))));
 		
 				attrInfo->typsend = pt->typoutput;
+				attrInfo->send_typio_param = getTypeIOParam(typeTuple);
 				attrInfo->typisvarlena = (!pt->typbyval) && (pt->typlen == -1);
 				attrInfo->typrecv = pt->typinput;
 				attrInfo->recv_typio_param = getTypeIOParam(typeTuple);
-				
 			}
 			else
 			{
 				/* Use binary routines */
 		
 				attrInfo->typsend = pt->typsend;
+				attrInfo->send_typio_param = getTypeIOParam(typeTuple);
 				attrInfo->typisvarlena = (!pt->typbyval) && (pt->typlen == -1);
 				attrInfo->typrecv  = pt->typreceive;
 				attrInfo->recv_typio_param = getTypeIOParam(typeTuple);
-				
 			}
 			
 			ReleaseSysCache(typeTuple);
@@ -536,7 +536,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 						DatumGetByteaP(FunctionCall3(&attrInfo->send_finfo,
 													 attr,
 													 ObjectIdGetDatum(attrInfo->send_typio_param),
-													 Int32GetDatum(tupdesc->attrs[i]->atttypmod) ));
+													 Int32GetDatum(tupdesc->attrs[i]->atttypmod)));
 				else
 				{
 					ereport(ERROR,
