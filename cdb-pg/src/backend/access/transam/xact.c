@@ -191,11 +191,6 @@ static CommandId currentCommandId;
 static TimestampTz xactStartTimestamp;
 static TimestampTz stmtStartTimestamp;
 
-/*
- * Total number of SAVEPOINT commands executed by this transaction.
- *
- */
-static int currentSavepointTotal;
 
 /*
  * GID to be used for preparing the current transaction.  This is also
@@ -514,38 +509,27 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 	if (xid == BootstrapTransactionId)
 		return false;
 
-	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
+	/*
+	 * We will return true for the Xid of the current subtransaction, any of
+	 * its subcommitted children, any of its parents, or any of their
+	 * previously subcommitted children.  However, a transaction being aborted
+	 * is no longer "current", even though it may still have an entry on the
+	 * state stack.
+	 */
+	for (s = CurrentTransactionState; s != NULL; s = s->parent)
 	{
-		/*
-		 * On the Reader, we do not have real transaction and subtransaction
-		 * data structures here.
-		 */
-		return CheckSharedSnapshotForSubtransaction(xid);
-	}
-	else
-	{
-		/*
-		 * We will return true for the Xid of the current subtransaction, any of
-		 * its subcommitted children, any of its parents, or any of their
-		 * previously subcommitted children.  However, a transaction being aborted
-		 * is no longer "current", even though it may still have an entry on the
-		 * state stack.
-		 */
-		for (s = CurrentTransactionState; s != NULL; s = s->parent)
-		{
-			ListCell   *cell;
+		ListCell   *cell;
 
-			if (s->state == TRANS_ABORT)
-				continue;
-			if (!TransactionIdIsValid(s->transactionId))
-				continue;			/* it can't have any child XIDs either */
-			if (TransactionIdEquals(xid, s->transactionId))
+		if (s->state == TRANS_ABORT)
+			continue;
+		if (!TransactionIdIsValid(s->transactionId))
+			continue;			/* it can't have any child XIDs either */
+		if (TransactionIdEquals(xid, s->transactionId))
+			return true;
+		foreach(cell, s->childXids)
+		{
+			if (TransactionIdEquals(xid, lfirst_xid(cell)))
 				return true;
-			foreach(cell, s->childXids)
-			{
-				if (TransactionIdEquals(xid, lfirst_xid(cell)))
-					return true;
-			}
 		}
 	}
 
@@ -1391,64 +1375,6 @@ AtSubCleanup_Memory(void)
  *						interface routines
  * ----------------------------------------------------------------
  */
-
-/* MPP routine for fetching the currently active subtransaction ids.
- */
-void
-GetSubtransactionsForSharedSnapshot(uint32 *subcnt, TransactionId *subxids)
-{
-	TransactionState s;
-
-	*subcnt = 0;
-
-	/*
-	 * Scan the transaction stack for active subtransactions.
-	 */
-	for (s = CurrentTransactionState; s != NULL; s = s->parent)
-	{
-		ListCell   *cell;
-
-		if (!TransactionIdIsValid(s->transactionId))
-			continue;			/* it can't have any child XIDs either */
-		
-		if (s->nestingLevel >= 2)
-		{
-			/*
-			 * Ignore aborted subtransactions.
-			 */
-			if (s->state == TRANS_ABORT)
-				continue;
-
-			Assert(*subcnt <= MaxMppSavePoints);
-			elog(DEBUG5,"Adding subtransaction xid %u as #%u to shared snapshot",s->transactionId,*subcnt);
-			subxids[(*subcnt)++] = s->transactionId;
-		}
-
-		/* subcommitted child XIDs
-		 */
-		foreach(cell, s->childXids)
-		{
-			Assert(*subcnt <= MaxMppSavePoints);
-			elog(DEBUG5,"Adding subcommitted child xid %u as #%u to shared snapshot",lfirst_xid(cell),*subcnt);
-			subxids[(*subcnt)++] = lfirst_xid(cell);
-		}
-	}
-}
-
-/* MPP routine for showing currently active subtransaction ids.
- */
-void
-ShowSubtransactionsForSharedSnapshot(uint32 subcnt, TransactionId *subxids)
-{
-    uint32 sub;
-	elog(DEBUG5,"Reader qExec count of subtransaction ids %u",SharedLocalSnapshotSlot->subcnt);
-	for (sub = 0; sub < subcnt; sub++)
-	{
-		elog(DEBUG5,"Reader qExec subtransaction xid %u as #%u from shared snapshot",subxids[sub],sub);
-	}
-
-}
-
 /* MPP routine for setting the transaction id.	this is needed for the shared
  * shapshot for segmates.
  *
@@ -1503,8 +1429,6 @@ StartTransaction(void)
 	/*
 	 * Let's just make sure the state stack is empty
 	 */
-
-
 	s = &TopTransactionStateData;
 	CurrentTransactionState = s;
 
@@ -1540,7 +1464,6 @@ StartTransaction(void)
 	s->subTransactionId = TopSubTransactionId;
 	currentSubTransactionId = TopSubTransactionId;
 	currentCommandId = FirstCommandId;
-	currentSavepointTotal = 0;
 
 	/*
 	 * must initialize resource-management stuff first
@@ -4344,13 +4267,6 @@ PushTransaction(void)
 	TransactionState p = CurrentTransactionState;
 	TransactionState s;
 	Oid			currentUser;
-
-	currentSavepointTotal++;
-	if (currentSavepointTotal >= MaxMppSavePoints)
-		ereport(ERROR,
-				(errcode(ERRCODE_MPP_SUBTRANS_LIMIT_EXCEEDED),
-				 errmsg("cannot have more than 100 subtransactions in a transaction")));
-	
 
 	/*
 	 * At present, GetUserId cannot fail, but let's not assume that.  Get the

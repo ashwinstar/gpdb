@@ -78,8 +78,6 @@ typedef struct SharedSnapshotSlot
 	TransactionId   QDxid;
 	CommandId		QDcid;
 	bool			ready;
-	uint32		    subcnt;		/* # of subtransaction ids in subxids[] */
-	TransactionId   subxids[MaxMppSavePoints];
 	SnapshotData	snapshot;
 
 } SharedSnapshotSlot;
@@ -168,7 +166,5 @@ extern void FreeXactSnapshot(void);
 
 /* in procarray.c; declared here to avoid including tqual.h in procarray.h: */
 extern Snapshot GetSnapshotData(Snapshot snapshot, bool serializable);
-extern bool CheckSharedSnapshotForSubtransaction(TransactionId xid);
-
 
 #endif   /* TQUAL_H */
