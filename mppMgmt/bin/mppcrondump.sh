@@ -712,6 +712,7 @@ fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 OPTIONS_LIST="$*"
+CHK_DB_QD_SET
 if [ x"" == x"$DUMP_DATABASE" ];then
 	ERROR_EXIT "[FATAL]:-Must supply -x <database name to dump> " 2
 fi
