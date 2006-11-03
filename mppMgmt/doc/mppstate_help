@@ -1,13 +1,13 @@
 COMMAND NAME: mppstate.sh
 
-Shows the status of a running Bizgres MPP database management server instance.
+Shows the status of a running Greenplum database database management server instance.
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
 mppstate.sh [-d <data_directory>] [-s] [-m] [-c] [-p] [-n] [-b] 
-{[-e] [-r <number>] [-g “search_string”]} [-i] [-f] [-q] [-l <log_directory>]
+{[-e] [-r <number>] [-g ï¿½search_stringï¿½]} [-i] [-f] [-q] [-l <log_directory>]
 
 mppstate.sh [-t | -? | -v]
 
@@ -19,9 +19,9 @@ DESCRIPTION
 The mppstate.sh script is analogous to functionality offered by the PostgreSQL 
 pg_controldata command, which displays information about a running database 
 server instance. There is additional information you may want to know about a 
-Bizgres MPP database instance, since it is comprised of multiple PostgreSQL 
+Greenplum database database instance, since it is comprised of multiple PostgreSQL 
 instances spanning multiple machines. The mppstate.sh script provides the 
-following status information for a Bizgres MPP system:
+following status information for a Greenplum database system:
 
 * The location of the MPP master data directory.
 
@@ -47,7 +47,7 @@ $MASTER_DATA_DIRECTORY will be used.
 
 -s
 
-Optional. Displays status information for the Bizgres MPP system such as the 
+Optional. Displays status information for the Greenplum database system such as the 
 master data directory and port, and the segment content ID, data directory, 
 port, primary or mirror status, and valid status for each segment instance 
 in the system. This is the default option.
@@ -66,7 +66,7 @@ segments.
 
 -p
 
-List the port numbers used throughout the Bizgres MPP system.
+List the port numbers used throughout the Greenplum database system.
 
 
 -n
@@ -93,11 +93,11 @@ specified search string.
 
 -b
 
-Display a brief summary of the state of the Bizgres MPP system.
+Display a brief summary of the state of the Greenplum database system.
 
 
 -i
-Display the Bizgres MPP software version information.
+Display the Greenplum database software version information.
 
 
 -f
@@ -135,11 +135,11 @@ Displays the version, status, last updated date, and check sum of this script.
 EXAMPLES
 *****************************************************
 
-Show the complete status information of a Bizgres MPP system:
+Show the complete status information of a Greenplum database system:
 
 mppstate.sh
 
-Show the status summary of a Bizgres MPP system:
+Show the status summary of a Greenplum database system:
 
 mppstate.sh -b
 

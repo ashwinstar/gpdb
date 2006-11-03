@@ -726,7 +726,7 @@ help(const char *progname)
 			 "                           use SESSION AUTHORIZATION commands instead of\n"
 			 "                           OWNER TO commands\n"));
 	/* START MPP ADDITION */
-	printf(_("  --mpp-syntax             dump with bizgres MPP syntax\n"));
+	printf(_("  --mpp-syntax             dump with Greenplum database syntax\n"));
 	/* END MPP ADDITION */
 
 	printf(_("\nConnection options:\n"));

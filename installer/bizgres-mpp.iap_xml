@@ -3210,7 +3210,7 @@ For your convenience, a file called bizgres_path.sh has been placed in the top l
 			<property name="installerInfoData">
 				<object class="com.zerog.ia.installer.util.InstallerInfoData" objectID="089e8867af38">
 					<property name="installerTitle">
-						<string><![CDATA[Bizgres MPP 2.2.0.1 Build 6]]></string>
+						<string><![CDATA[Greenplum database 2.2.0.1 Build 6]]></string>
 					</property>
 					<property name="installerName">
 						<string><![CDATA[BizgresMPP]]></string>

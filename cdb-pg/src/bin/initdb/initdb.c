@@ -69,7 +69,7 @@ int			optreset;
 
 
 /* version string we expect back from postgres */
-#define PG_VERSIONSTR "postgres (Bizgres MPP) " PG_VERSION "\n"
+#define PG_VERSIONSTR "postgres (Greenplum database) " PG_VERSION "\n"
 
 /*
  * these values are passed in by makefile defines
@@ -2292,7 +2292,7 @@ main(int argc, char *argv[])
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("initdb (Bizgres MPP) " PG_VERSION);
+			puts("initdb (Greenplum database) " PG_VERSION);
 			exit(0);
 		}
 	}

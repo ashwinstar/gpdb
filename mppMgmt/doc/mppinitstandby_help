@@ -1,6 +1,6 @@
 COMMAND NAME: mppinitstandby.sh
 
-Adds and/or initializes a standby MPP master host for a Bizgres MPP system.
+Adds and/or initializes a standby MPP master host for a Greenplum database system.
 
 
 *****************************************************
@@ -18,14 +18,14 @@ DESCRIPTION
 *****************************************************
 
 The mppinitstandby.sh script will create a backup MPP master host 
-if one has not already been created for your Bizgres MPP system. Before 
-running this script, make sure that the Bizgres MPP software is installed 
+if one has not already been created for your Greenplum database system. Before 
+running this script, make sure that the Greenplum database software is installed 
 on the backup master host and that you have exchanged SSH keys between 
-hosts. See the "Bizgres MPP Administrator Guide" for instructions.
+hosts. See the "Greenplum database Administrator Guide" for instructions.
 
 The script will perform the following steps:
 
-* Shutdown your Bizgres MPP system
+* Shutdown your Greenplum database system
 
 * Update the MPP system catalog to add the new backup master host 
   information (use the -n option to skip this step)
@@ -34,7 +34,7 @@ The script will perform the following steps:
 
 * Start the synchronization process (if the -i option is supplied)
 
-* Restart your Bizgres MPP system
+* Restart your Greenplum database system
 
 A backup MPP master host serves as a `warm standby' in the event of 
 the primary MPP master host becoming unoperational. The backup master 
@@ -93,12 +93,12 @@ Displays the version, status, last updated date, and check sum of this script.
 EXAMPLES
 *****************************************************
 
-Add a backup MPP master host to your Bizgres MPP system:
+Add a backup MPP master host to your Greenplum database system:
 
 mppinitstandby.sh -s host09
 
 
-Add a backup MPP master host to your Bizgres MPP system and start the data 
+Add a backup MPP master host to your Greenplum database system and start the data 
 synchronization process with the primary MPP master host:
 
 mppinitstandby.sh -s host09 -i

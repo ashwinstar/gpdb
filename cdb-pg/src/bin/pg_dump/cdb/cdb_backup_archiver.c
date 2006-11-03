@@ -206,7 +206,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 	if (ropt->filename || ropt->compression)
 		sav = SetOutput(AH, ropt->filename, ropt->compression);
 
-	ahprintf(AH, "--\n-- Bizgres MPP database dump\n--\n\n");
+	ahprintf(AH, "--\n-- Greenplum database database dump\n--\n\n");
 
 	if (AH->public.verbose)
 		dumpTimestamp(AH, "Started on", AH->createDate);
@@ -369,7 +369,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 	if (AH->public.verbose)
 		dumpTimestamp(AH, "Completed on", time(NULL));
 
-	ahprintf(AH, "--\n-- Bizgres MPP database dump complete\n--\n\n");
+	ahprintf(AH, "--\n-- Greenplum database database dump complete\n--\n\n");
 
 	/*
 	 * Clean up & we're done.

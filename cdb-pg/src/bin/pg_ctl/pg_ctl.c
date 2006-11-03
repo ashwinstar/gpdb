@@ -39,7 +39,7 @@ typedef long pgpid_t;
 #define WHITESPACE "\f\n\r\t\v" /* as defined by isspace() */
 
 /* postmaster version ident string */
-#define PM_VERSIONSTR "postmaster (Bizgres MPP) " PG_VERSION "\n"
+#define PM_VERSIONSTR "postmaster (Greenplum database) " PG_VERSION "\n"
 
 
 typedef enum
@@ -1315,7 +1315,7 @@ main(int argc, char **argv)
 		}
 		else if (strcmp(argv[1], "-V") == 0 || strcmp(argv[1], "--version") == 0)
 		{
-			printf("%s (Bizgres MPP) %s\n", progname, PG_VERSION);
+			printf("%s (Greenplum database) %s\n", progname, PG_VERSION);
 			exit(0);
 		}
 	}

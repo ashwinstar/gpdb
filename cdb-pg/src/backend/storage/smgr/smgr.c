@@ -362,7 +362,7 @@ smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo)
 	if (!(*(smgrsw[reln->smgr_which].smgr_create)) (reln, isRedo))
 	{
 		/* 
-		 * Special code for allowing upgrade from Bizgres MPP 2.2 to 2.3.
+		 * Special code for allowing upgrade from Greenplum database 2.2 to 2.3.
 		 */
 		if (errno==EEXIST && reln->smgr_rnode.spcNode == GLOBALTABLESPACE_OID && reln->smgr_rnode.dbNode == 0 && 
 			(reln->smgr_rnode.relNode == ResQueueRelationId || reln->smgr_rnode.relNode == ResQueueOidIndexId || reln->smgr_rnode.relNode == ResQueueRsqnameIndexId || reln->smgr_rnode.relNode == AuthIdRolResQueueIndexId) )

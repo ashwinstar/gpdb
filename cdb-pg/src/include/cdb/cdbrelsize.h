@@ -1,0 +1,19 @@
+/*-------------------------------------------------------------------------
+ *
+ * cdbrelsize.h
+ *
+ * Get the max size of the relation across the segDBs
+ *
+ * Copyright (c) 2006, greenplum inc
+ *
+ *
+ *-------------------------------------------------------------------------
+ */
+#ifndef CDBRELSIZE_H_
+#define CDBRELSIZE_H_
+
+
+int64 cdbRelSize(Oid relOid);
+
+
+#endif /*CDBRELSIZE_H_*/

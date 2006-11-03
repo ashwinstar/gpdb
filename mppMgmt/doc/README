@@ -1,8 +1,8 @@
 **************************************************
-BIZGRES MPP MANAGEMENT OVERVIEW
+GREENPLUM DATABASE MANAGEMENT OVERVIEW
 **************************************************
 
-The following Bizgres MPP management scripts are available:
+The following Greenplum database management scripts are available:
 
 * groupSession - Performs SSH key exchange between hosts.
                  Runs an interactive session to execute
@@ -11,17 +11,17 @@ The following Bizgres MPP management scripts are available:
 		 a session.
 
 * mppactivatestandby.sh - Activates the backup master as the active MPP master 
-                          instance for a Bizgres MPP system and optionally
+                          instance for a Greenplum database system and optionally
                           specifies a new backup master host.
 
-* mppaddmirrors.sh - Adds mirror segments to a Bizgres MPP system that was 
+* mppaddmirrors.sh - Adds mirror segments to a Greenplum database system that was 
                      initially configured without mirroring.
 
 * mpp_bash_functions.sh - This is sourced by the other management
 			  scripts and contains global parameters
 			  and functions.
 
-* mppcreatecluster.sh - Initializes a Bizgres MPP system using 
+* mppcreatecluster.sh - Initializes a Greenplum database system using 
 		        values in a configuration file.
 
 * mppcrondump.sh - A wrapper script for mpp_dump, which allows you to schedule
@@ -32,21 +32,21 @@ The following Bizgres MPP management scripts are available:
              database at a later time.
 
 * mppinitstandby.sh - Adds and/or initializes a standby MPP master host for 
-                      a Bizgres MPP system
+                      a Greenplum database system
 
-* mpprebuildcluster.sh - Rebuilds a Bizgres MPP master using a SQL 
-                         script file containing the Bizgres MPP schema 
+* mpprebuildcluster.sh - Rebuilds a Greenplum database master using a SQL 
+                         script file containing the Greenplum database schema 
                          and MPP system catalog information, and then 
                          recreates all of the segment instances using the 
                          information found in the MPP system catalog tables.
 
 * mpprebuildseg.sh - Rebuilds segment instances from the MPP system catalog 
-                     tables of a Bizgres MPP master instance.
+                     tables of a Greenplum database master instance.
 
 * mpprecoverseg.sh - Recovers a failed primary or mirror segment
                      instance.
 
-* mpp_restore - Located in $MPPHOME/bin. Restores Bizgres MPP databases 
+* mpp_restore - Located in $MPPHOME/bin. Restores Greenplum database databases 
                 that were backed up using mpp_dump.
 
 * mppsizecalc.sh - Shows the disk space usage for a given database, table, 
@@ -56,13 +56,13 @@ The following Bizgres MPP management scripts are available:
                segment instances.
 
 * mppstart.sh - Starts the master instance and all segment 
-		instances in a Bizgres MPP system.
+		instances in a Greenplum database system.
 
 * mppstate.sh - Displays status and system information for a
-	        Bizgres MPP database system.
+	        Greenplum database database system.
 
 * mppstop.sh - Stops and/or restarts the master instance and all 
-               segment instances in a Bizgres MPP system.
+               segment instances in a Greenplum database system.
 
 **************************************************
 ENVIRONMENT SETUP

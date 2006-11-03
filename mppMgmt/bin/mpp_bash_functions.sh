@@ -603,7 +603,7 @@ BUILD_MASTER_PG_HBA_FILE () {
         $ECHO "#IPV6 local" >> ${MPP_DIR}/$PG_HBA
         for ADDR in "${MASTER_IPV6_LOCAL_ADDRESS_ALL[@]}"
         do
-        	$ECHO "host     all         $USER_NAME         $ADDR/0         trust" >> ${MPP_DIR}/$PG_HBA
+        	$ECHO "host     all         $USER_NAME         $ADDR/0       trust" >> ${MPP_DIR}/$PG_HBA
         done
         $ECHO "#other " >> ${MPP_DIR}/$PG_HBA
         

@@ -41,10 +41,8 @@
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
 #include "cdb/cdbdisp.h"
-#include "libpq-fe.h"
-#include "lib/stringinfo.h"
-#include "utils/int8.h"
-#include "utils/lsyscache.h"
+#include "cdb/cdbrelsize.h"
+
 
 
 static void estimate_rel_size(Relation rel, int32 *attr_widths,
@@ -294,12 +292,6 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
     int32       tuple_width;
     BlockNumber curpages = 0;
 	int64	size = 0;
-	int		i;
-	int 	resultCount = 0;
-	struct pg_result **results = NULL;
-	
-	StringInfoData errbuf;
-	StringInfoData buffer;
 
     *default_stats_used = false;
 
@@ -332,59 +324,19 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 	else
 	{
 		/*
-		 * Let's ask the QEs for the size of the relation
-		 */
-		initStringInfo(&buffer);
-		initStringInfo(&errbuf);
-		
-		/* 
-		 * Safer to pass names than oids, just in case they get out of sync between QD and QE,
-		 * which might happen with a toast table or index, I think (but maybe not)
-		 */
-		appendStringInfo(&buffer, "select pg_relation_size('%s.%s')", get_namespace_name(get_rel_namespace(rel->rd_id)),get_rel_name(rel->rd_id));
-	
-		/* 
+		 * Let's ask the QEs for the size of the relation.
 		 * In the future, it would be better to send the command to only one QE.
 		 */
-		results = cdbdisp_dispatchRMCommand(buffer.data, false, false, &errbuf, &resultCount);
-	
-		if (errbuf.len > 0)
+		size = cdbRelSize(rel->rd_id);
+		
+		if (size < 0)
 		{
-			ereport(WARNING, (errmsg("cdb_estimate_rel_size error (gathered %d results from cmd '%s')", resultCount, buffer.data),
-							errdetail("%s", errbuf.data)));
-			pfree(errbuf.data);
-			
 			curpages = 100;
+			*default_stats_used = true;
 		}
 		else
 		{
-											
-			for (i = 0; i < resultCount; i++)
-			{
-				if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
-				{
-					elog(ERROR,"cdb_estimate_rel_size: resultStatus not tuples_Ok");
-				}
-				else
-				{
-					int64 tempsize = 0;
-					(void) scanint8(PQgetvalue(results[i], 0, 0), false, &tempsize);
-					 size += tempsize;
-				}
-			}
-		
-			pfree(errbuf.data);
-		
-			for (i = 0; i < resultCount; i++)
-				PQclear(results[i]);
-		
-			free(results);
-		 
-		
-			size /= resultCount;   /* average size per primary segment */
-			
 			curpages = size / BLCKSZ;  /* average blocks per primary segment DB */
-		
 		}
 		
 		if (curpages == 0 && size > 0)

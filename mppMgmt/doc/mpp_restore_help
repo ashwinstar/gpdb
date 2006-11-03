@@ -1,6 +1,6 @@
 COMMAND NAME: mpp_restore
 
-Restores Bizgres MPP databases that were backed up using mpp_dump.
+Restores Greenplum database databases that were backed up using mpp_dump.
 
 *****************************************************
 SYNOPSIS
@@ -20,14 +20,14 @@ DESCRIPTION
 
 
 The mpp_restore utility recreates the data definitions (schema) and 
-user data in a Bizgres MPP database using the script files created 
+user data in a Greenplum database database using the script files created 
 by an mpp_dump operation. The use of this script assumes:
 
 1. You have backup files created by an mpp_dump operation.
 
-2. Your Bizgres MPP system up and running.
+2. Your Greenplum database system up and running.
 
-3. Your Bizgres MPP system has the exact same number of segment 
+3. Your Greenplum database system has the exact same number of segment 
    instances as the system that was backed up using mpp_dump. 
 
 4. (optional) The mpp_restore script uses the information in 
@@ -45,7 +45,7 @@ backup process. It issues the commands necessary to reconstruct the database
 to the state it was in at the time it was saved.
 
 The functionality of mpp_restore is modified to accommodate the
-distributed nature of a Bizgres MPP database, and to use files 
+distributed nature of a Greenplum database database, and to use files 
 created by an mpp_dump operation. Keep in mind that a database in Bizgres 
 MPP is actually comprised of several PostgreSQL instances (the master 
 and all segments), each of which must be restored individually. 
@@ -79,7 +79,7 @@ ON THE SEGMENT HOSTS
 Note that the 14 digit timestamp is the number that uniquely identifies 
 the backup job to be restored, and is part of the filename for each 
 dump file created by a mpp_dump operation. This timestamp must be passed 
-to the mpp_restore utility when restoring a Bizgres MPP database.
+to the mpp_restore utility when restoring a Greenplum database database.
 
 
 

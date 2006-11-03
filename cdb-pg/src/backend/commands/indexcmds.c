@@ -51,6 +51,7 @@
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
+#include "cdb/cdbrelsize.h"
 
 /* non-export function prototypes */
 static void CheckPredicate(Expr *predicate);
@@ -393,6 +394,7 @@ DefineIndex(RangeVar *heapRelation,
 		if (unique || primary)
 		{
 			MppPolicy  *policy = rel->rd_cdbpolicy;
+			bool changespolicy = false;
 
 			if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
 			{
@@ -401,6 +403,15 @@ DefineIndex(RangeVar *heapRelation,
 				for (ia = 0; ia < policy->nattrs && ia < numberOfAttributes; ia++)
 				{
 					if (indexInfo->ii_KeyAttrNumbers[ia] != policy->attrs[ia])
+					{
+						changespolicy = true;
+						
+					}
+				}
+				
+				if (changespolicy)
+				{
+					if (1)//if (cdbRelSize(rel->rd_id) != 0)
 					{
 						if (primary)
 
@@ -411,11 +422,25 @@ DefineIndex(RangeVar *heapRelation,
 							ereport(ERROR,
 									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 									 errmsg("you can only create a unique index on the distribution column(s)")));
-
 					}
-
-
+					else
+					{
+						policy = (MppPolicy *) palloc(sizeof(MppPolicy) + numberOfAttributes * sizeof(policy->attrs[0]));
+						policy->ptype = POLICYTYPE_PARTITIONED;
+						policy->nattrs = 0;
+						policy->attrs[0] = 1;
+						for (ia=0; ia < numberOfAttributes; ia++)
+						{
+							policy->attrs[policy->nattrs++] = indexInfo->ii_KeyAttrNumbers[ia];	
+						}
+						MppPolicyStore(rel->rd_id, policy);
+						if (primary)
+							elog(NOTICE,"Updating distribution policy to match new primary key.");
+						else
+							elog(NOTICE,"Updating distribution policy to match new unique index.");
+					}	
 				}
+				
 			}
 		}
 	}
@@ -474,7 +499,7 @@ DefineIndex(RangeVar *heapRelation,
 	}
 
 	/* 
-     * Special code for allowing upgrade from Bizgres MPP 2.2 to 2.3.
+     * Special code for allowing upgrade from Greenplum database 2.2 to 2.3.
      */
 	if (namespaceId == PG_CATALOG_NAMESPACE && tablespaceId==GLOBALTABLESPACE_OID && relationId == ResQueueRelationId)
 	{

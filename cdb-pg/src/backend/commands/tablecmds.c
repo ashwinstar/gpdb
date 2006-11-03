@@ -72,6 +72,7 @@
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
+#include "cdb/cdbrelsize.h"
 
 
 
@@ -401,7 +402,7 @@ DefineRelation_int(CreateStmt *stmt,
 	{
 		AclResult	aclresult;
 		/* 
-		 * Special code for allowing upgrade from Bizgres MPP 2.2 to 2.3.
+		 * Special code for allowing upgrade from Greenplum database 2.2 to 2.3.
 		 */
 		if (namespaceId == PG_CATALOG_NAMESPACE && tablespaceId==GLOBALTABLESPACE_OID && strcmp(relname,"pg_resqueue")==0)
 			aclresult = ACLCHECK_OK;
@@ -542,7 +543,7 @@ DefineRelation_int(CreateStmt *stmt,
 	}
 
 	/* 
-	 * Special code for allowing upgrade from Bizgres MPP 2.2 to 2.3.
+	 * Special code for allowing upgrade from Greenplum database 2.2 to 2.3.
 	 * 
 	 * If we are creating pg_resqueue, it means we are upgrading a 2.2 system.
 	 * We need to create it with the right OIDs as if it had been created by initdb.
@@ -4859,7 +4860,7 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 		if (Mpp_role == MPP_ROLE_DISPATCH)
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Bizgres MPP, will not be enforced.")));
+				 errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Greenplum database, will not be enforced.")));
 	}
 
 	/*
@@ -5401,6 +5402,8 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 								if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
 								{
 									int			ia = 0;
+									
+									if (cdbRelSize(rel->rd_id) != 0)
 							
 									for (ia = 0; ia < policy->nattrs; ia++)
 									{
@@ -5448,6 +5451,8 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 						{
 							int			ia = 0;
 					
+							if (cdbRelSize(rel->rd_id) != 0)
+							
 							for (ia = 0; ia < policy->nattrs; ia++)
 							{
 								if (attnum == policy->attrs[ia])
@@ -5579,6 +5584,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	{
 		int			ia = 0;
 
+		if (cdbRelSize(rel->rd_id) != 0)
 		for (ia = 0; ia < policy->nattrs; ia++)
 		{
 			if (attnum == policy->attrs[ia])

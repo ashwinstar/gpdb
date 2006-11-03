@@ -461,7 +461,7 @@ ProcessUtility(Node *parsetree,
 						{
 							ereport(ERROR, (
 											errcode(ERRCODE_MPP_COMMAND_ERROR),
-									 errmsg("PREPARE TRANSACTION is not yet supported in Bizgres MPP.")
+									 errmsg("PREPARE TRANSACTION is not yet supported in Greenplum database.")
 											));
 			
 						}

@@ -1,6 +1,6 @@
 COMMAND NAME: mppskew.sh
 
-Shows data distribution information for a Bizgres MPP table.
+Shows data distribution information for a Greenplum database table.
 
 *****************************************************
 SYNOPSIS

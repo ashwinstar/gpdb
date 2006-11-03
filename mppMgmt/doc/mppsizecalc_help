@@ -19,7 +19,7 @@ DESCRIPTION
 *****************************************************
 
 The mppsizecalc.sh script can be used to determine the disk space usage 
-for a Bizgres MPP database, table, or index. mppsizecalc.sh displays the 
+for a Greenplum database database, table, or index. mppsizecalc.sh displays the 
 following information:
 
 * The total disk space usage for the specified database.

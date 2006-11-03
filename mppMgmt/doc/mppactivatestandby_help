@@ -1,8 +1,8 @@
 COMMAND NAME: mppactivatestandby.sh
 
 Activates a standby master host and makes it the active master for the 
-Bizgres MPP system, or configures a host to be the standby master for a 
-Bizgres MPP system.
+Greenplum database system, or configures a host to be the standby master for a 
+Greenplum database system.
 
 
 *****************************************************
@@ -20,7 +20,7 @@ DESCRIPTION
 *****************************************************
 
 The mppactivatestandby.sh script activates a backup master host and brings it 
-into operation as the active master instance for a Bizgres MPP system. You 
+into operation as the active master instance for a Greenplum database system. You 
 must run this script from the master host you are activating, not the failed 
 master host you are disabling. Running this script assumes you have a backup 
 master host configured for the system (see mppinitstandby.sh).
@@ -35,7 +35,7 @@ The script will perform the following steps:
 
 * (optional) Make the host specified with the -c option the new standby master
 
-* Restart the Bizgres MPP system with the new master host
+* Restart the Greenplum database system with the new master host
 
 A backup MPP master host serves as a warm standby in the event of the 
 primary MPP master host becoming unoperational. The backup master is kept up 
@@ -108,7 +108,7 @@ EXAMPLES
 *****************************************************
 
 Activate the backup master host and make it the active master instance for a 
-Bizgres MPP system (run from backup master host you are activating):
+Greenplum database system (run from backup master host you are activating):
 
 mppactivatestandby.sh -d /mppdata -c new_standby_host
 

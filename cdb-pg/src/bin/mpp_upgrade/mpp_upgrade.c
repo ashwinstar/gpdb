@@ -171,8 +171,8 @@ static void run_sql_command(PGconn * conn, char * cmd)
 static void
 help(void)
 {
-	printf("mpp_upgrade is used to upgrade a Bizgres 2.2 system to a Bizgres MPP 2.3 system.\n\n");
-	printf("mpp_upgrade must be run from the master database node after upgrading the Bizgres MPP software.\n\n");
+	printf("mpp_upgrade is used to upgrade a Greenplum (Bizgres MPP) 2.2 system to a Greenplum database 2.3 system.\n\n");
+	printf("mpp_upgrade must be run from the master database node after upgrading the Greenplum database software.\n\n");
 	printf("Usage:\n");
 	printf("  mpp_upgrade [OPTION]...\n");
 
@@ -259,7 +259,7 @@ main(int argc, char **argv)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("mpp_upgrade (Bizgres MPP) " PG_VERSION);
+			puts("mpp_upgrade (Greenplum database) " PG_VERSION);
 			exit(0);
 		}
 	}
@@ -384,21 +384,21 @@ main(int argc, char **argv)
 
     printf("mpp_upgrade:  Version of system:  %s\n", version);
 
-    if (strstr(version,"Bizgres MPP")!= 0)
+    if (strstr(version,"Greenplum database")!= 0 || strstr(version,"Bizgres MPP")!= 0)
         isMPP = 1;
     else
         isMPP = 0;
         
     if (!isMPP)
     {	
-    	fprintf(stderr,"This is not a Bizgres MPP system");
+    	fprintf(stderr,"This is not a Greenplum database system");
     	PQfinish(conn);
     	exit(1);
     }
 
 	if (strncmp(version,"PostgreSQL 8.1.5",strlen("PostgreSQL 8.1.5"))!=0)
 	{
-		fprintf(stderr,"You must upgrade the Bizgres MPP software to Bizgres MPP 2.3, and restart the system, before running this utility\n");
+		fprintf(stderr,"You must upgrade the Greenplum database software to Greenplum database 2.3, and restart the system, before running this utility\n");
 		PQfinish(conn);
 		exit(1);
 		

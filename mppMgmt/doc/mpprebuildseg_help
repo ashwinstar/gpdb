@@ -1,7 +1,7 @@
 COMMAND NAME: mpprebuildseg.sh
 
 Rebuilds segment instances from the MPP system catalog tables of 
-a Bizgres MPP master instance.
+a Greenplum database master instance.
 
 *****************************************************
 SYNOPSIS
@@ -18,13 +18,13 @@ DESCRIPTION
 *****************************************************
 
 The mpprebuildseg.sh script builds segment instances using configuration 
-information contained in the MPP system catalog tables of a Bizgres MPP 
+information contained in the MPP system catalog tables of a Greenplum database 
 master instance. The use of this script assumes that you have:
 
 * Built a master instance from a backup file using mpprebuildcluster.sh -m.
 
 * Have edited the MPP system catalog tables on the MPP master instance to 
-  reflect your desired system configuration. See the Bizgres MPP 
+  reflect your desired system configuration. See the Greenplum database 
   Administrator Guide for the MPP schema reference. 
 
 
@@ -38,7 +38,7 @@ Required. The data directory of the MPP master instance.
 
 -n <encoding>
 
-Sets the default character set encoding for the Bizgres MPP system. 
+Sets the default character set encoding for the Greenplum database system. 
 Defaults to UNICODE. See Character Set Support in the PostgreSQL 
 documentation for more information on the supported character set 
 encodings.

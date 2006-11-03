@@ -19,13 +19,13 @@ DESCRIPTION
 *****************************************************
 
 mppcrondump.sh is a wrapper script for mpp_dump. It allows you to schedule 
-routine backups of a Bizgres MPP database using cron (a scheduling utility 
+routine backups of a Greenplum database database using cron (a scheduling utility 
 for Linux and Unix operating systems). Cron jobs that call mppcrondump.sh 
 should be scheduled on the MPP master host.
 
 Here is an example of the crontab file, which schedules a nightly dump of the 
 customers database at one minute past midnight. Note that the SHELL is set to 
-/bin/bash and the PATH includes the location of the Bizgres MPP management 
+/bin/bash and the PATH includes the location of the Greenplum database management 
 scripts  this is required to run mppcrondump.sh. 
 
 SHELL=/bin/bash
@@ -38,7 +38,7 @@ HOME=/home/bgadmin
 
 
 
-# Bizgres MPP nightly database dump job
+# Greenplum database nightly database dump job
 
 01 0 * * * bgadmin mppcrondump.sh -x customers -a -q >> 
 mpp_custdump.log
@@ -50,7 +50,7 @@ OPTIONS
 
 -x <database_name>
 
-Required. The name of the Bizgres MPP database to dump.
+Required. The name of the Greenplum database database to dump.
 
 
 -s <schema_name>

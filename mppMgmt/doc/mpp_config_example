@@ -2,7 +2,7 @@
 
 # A configuration file is needed by the mppcreatecluster.sh
 # script to tell it how to configure the master and segment 
-# instances in your Bizgres MPP system. This file can be named 
+# instances in your Greenplum database system. This file can be named 
 # whatever you like, and is referenced when you run mppcreatecluster.sh. 
 
 ################################################
@@ -16,7 +16,7 @@ ARRAY_NAME="MPP Test"
 
 
 # This specifies the file that contains the list of segment host names 
-# that comprise the Bizgres MPP system  the master host is assumed to 
+# that comprise the Greenplum database system  the master host is assumed to 
 # be the host from which you are running the script. If the host list 
 # file does not reside in the same directory where the mppcreatecluster.sh 
 # script is executed, specify the absolute path to the file.
@@ -26,7 +26,7 @@ MACHINE_LIST_FILE=/home/bgadmin/host_file
 
 # Prefix used to name the data directories on the master and segment
 # instances. The naming convention for data directories in a 
-# Bizgres MPP system is SEG_PREFIXnumber where number starts with 0 
+# Greenplum database system is SEG_PREFIXnumber where number starts with 0 
 # (zero) for the MPP master and is incremented by one for each segment 
 # instance created. So for example, if you choose the prefix mpp, your 
 # master instance data directory would be named mpp0, and the segment 
@@ -83,7 +83,7 @@ MASTER_DIRECTORY=/dbfast1
 
 # The port number for the MPP master instance. This is the port number 
 # that users and client connections will use when accessing the 
-# Bizgres MPP system.
+# Greenplum database system.
 
 MASTER_PORT=5432
 
@@ -116,11 +116,11 @@ TRUSTED_SHELL=ssh
 # checkpoints, in log file segments (each segment is normally 16 
 # megabytes). This will set the checkpoint_segments parameter 
 # in the postgresql.conf file for each segment instance in the 
-# Bizgres MPP system.
+# Greenplum database system.
 
 CHECK_POINT_SEGMENTS=8
 
-# The character set encoding to use. Bizgres MPP supports the 
+# The character set encoding to use. Greenplum database supports the 
 # same character sets as PostgreSQL. See 'Character Set Support'
 # in the PostgreSQL documentation for allowed character sets. 
 
@@ -145,7 +145,7 @@ ENCODING=UNICODE
 # Data mirroring is optional. Mirroring can be configured
 # at system initialization time. 
 # You can also set up mirrors later
-# after Bizgres MPP has been set up, using mppaddmirrors.sh. 
+# after Greenplum database has been set up, using mppaddmirrors.sh. 
 # Uncomment these parameters to set up mirroring.
 
 # The base port number on which mirror segment instances will be 

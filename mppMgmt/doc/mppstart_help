@@ -1,6 +1,6 @@
 COMMAND NAME: mppstart.sh
 
-Starts a Bizgres MPP database management server instance.
+Starts a Greenplum database database management server instance.
 
 *****************************************************
 SYNOPSIS
@@ -17,13 +17,13 @@ DESCRIPTION
 
 The mppstart.sh script is analogous to functionality offered 
 by the PostgreSQL pg_ctl and postmaster commands, which are used 
-to start the database server. When you start a Bizgres MPP database 
+to start the database server. When you start a Greenplum database database 
 management server instance, you are actually starting several postmaster 
 processes at once (the MPP master and all of the segment instances). 
 The mppstart.sh script handles the startup of the individual instances. 
 Each instance is started sequentially by default.
 
-Before you can start a Bizgres MPP database server, you must have 
+Before you can start a Greenplum database database server, you must have 
 initialized the system using mppcreatecluster.sh first.
 
 *****************************************************
@@ -102,7 +102,7 @@ Displays the version, status, last updated date, and checksum of this script.
 EXAMPLES
 *****************************************************
 
-Start a Bizgres MPP database management server instance:
+Start a Greenplum database database management server instance:
 
 mppstart.sh
 

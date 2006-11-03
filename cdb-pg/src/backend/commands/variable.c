@@ -481,7 +481,7 @@ assign_XactIsoLevel(const char *value, bool doit, GucSource source)
 		if (doit)
 		{
 			if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE) 
-				elog(ERROR, "Bizgres MPP does not support SERIALIZABLE transactions.");
+				elog(ERROR, "Greenplum database does not support SERIALIZABLE transactions.");
 			XactIsoLevel = XACT_SERIALIZABLE;
 		}
 	}
@@ -490,7 +490,7 @@ assign_XactIsoLevel(const char *value, bool doit, GucSource source)
 		if (doit)
 		{
 			if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE) 
-				elog(ERROR, "Bizgres MPP does not support REPEATABLE READ transactions.");
+				elog(ERROR, "Greenplum database does not support REPEATABLE READ transactions.");
 			XactIsoLevel = XACT_REPEATABLE_READ;
 		}
 	}

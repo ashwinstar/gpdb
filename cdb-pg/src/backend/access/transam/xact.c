@@ -1485,9 +1485,9 @@ StartTransaction(void)
 	if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE)
 	{
 		if (XactIsoLevel == XACT_REPEATABLE_READ)
-			elog(ERROR, "Bizgres MPP does not support REPEATABLE READ transactions.");
+			elog(ERROR, "Greenplum database does not support REPEATABLE READ transactions.");
 		else if (XactIsoLevel == XACT_SERIALIZABLE)
-			elog(ERROR, "Bizgres MPP does not support SERIALIZABLE transactions.");
+			elog(ERROR, "Greenplum database does not support SERIALIZABLE transactions.");
 	}
 
 	/*

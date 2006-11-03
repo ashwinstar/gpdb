@@ -86,7 +86,7 @@ main(int argc, char *argv[])
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("pg_controldata (Bizgres MPP) " PG_VERSION);
+			puts("pg_controldata (Greenplum database) " PG_VERSION);
 			exit(0);
 		}
 	}

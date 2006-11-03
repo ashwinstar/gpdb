@@ -20,13 +20,13 @@ The mpprecoverseg.sh script recovers a failed segment instance if
 you have mirroring enabled. A segment instance can fail for several 
 reasons, such as the host goes down, the segment instance process is 
 killed, or the data directory gets corrupted. When a segment instance 
-goes down it is marked as invalid in the Bizgres MPP global system 
+goes down it is marked as invalid in the Greenplum database global system 
 catalog. In order to bring the segment instance back into operation 
 again, you must first correct the problem that made it fail in the 
 first place, and then recover the segment instance in the 
-Bizgres MPP system.
+Greenplum database system.
 
-The Bizgres MPP can run in two modes with regards to mirroring and fault 
+The Greenplum database can run in two modes with regards to mirroring and fault 
 tolerance  continue (read-write) mode and read-only mode. This mode is 
 set with the mpp_fault_action parameter in postgresql.conf at startup.
 

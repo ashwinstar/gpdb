@@ -183,7 +183,7 @@ CREATE RESOURCE QUEUE myqueue ACTIVE THRESHOLD 30 COST THRESHOLD 5000.00;
 
   <para>
    There is no <command>CREATE RESOURCE QUEUE</command> in the SQL standard.
-   Resource scheduling is a feature of Bizgres and Bizgres MPP.
+   Resource scheduling is a feature of Bizgres and Greenplum database.
   </para>
    </refsect1>
 

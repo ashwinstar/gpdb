@@ -1,6 +1,6 @@
 COMMAND NAME: mppstop.sh
 
-Stops a Bizgres MPP database management server instance.
+Stops a Greenplum database database management server instance.
 
 *****************************************************
 SYNOPSIS
@@ -18,13 +18,13 @@ DESCRIPTION
 
 The mppstop.sh script is analogous to functionality offered by the 
 PostgreSQL pg_ctl and postmaster commands, which are used to stop the 
-database server. When you stop a Bizgres MPP database management server 
+database server. When you stop a Greenplum database database management server 
 instance, you are actually stopping several postmaster processes at 
 once (the MPP master and all of the segment instances). The mppstop.sh 
 script handles the shutdown of the individual instances. Each instance 
 is shutdown sequentially by default.
 
-Before you can stop a Bizgres MPP database server, you must have started 
+Before you can stop a Greenplum database database server, you must have started 
 it using mppstart.sh first.
 
 
@@ -113,12 +113,12 @@ Displays the version, status, last updated date, and check sum of this script.
 EXAMPLES
 *****************************************************
 
-Stop a Bizgres MPP database management server instance in smart mode:
+Stop a Greenplum database database management server instance in smart mode:
 
 mppstop.sh
 
 
-Stop a Bizgres MPP database management server instance in fast mode:
+Stop a Greenplum database database management server instance in fast mode:
 
 mppstop.sh -f
 

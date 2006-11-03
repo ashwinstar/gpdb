@@ -170,7 +170,7 @@ cleanup:
 
 static void usage(void)
 {
-	printf(("%s restores a Bizgres MPP database from an archive created by mpp_dump.\n\n"), pszProgName );
+	printf(("%s restores a Greenplum database database from an archive created by mpp_dump.\n\n"), pszProgName );
 	printf(("Usage:\n"));
 	printf(("  %s [OPTIONS]\n"), pszProgName );
 
@@ -332,7 +332,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("mpp_restore (Bizgres MPP) " PG_VERSION);
+			puts("mpp_restore (Greenplum database) " PG_VERSION);
 			exit(0);
 		}
 	}

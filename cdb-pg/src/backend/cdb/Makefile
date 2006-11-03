@@ -32,7 +32,7 @@ OBJS = cdbanalyze.o \
 	   cdbplan.o cdbpullup.o \
 	   cdbsetop.o cdbsrlz.o cdbsubplan.o \
 	   cdbtm.o cdbtmlog.o \
-	   cdbutil.o \
+	   cdbutil.o cdbrelsize.o \
 	   cdbvars.o
 
 ifeq ($(PORTNAME),cygwin)

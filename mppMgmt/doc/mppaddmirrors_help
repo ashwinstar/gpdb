@@ -1,6 +1,6 @@
 COMMAND NAME: mppaddmirrors.sh
 
-Adds mirror segments to a Bizgres MPP system that was initially configured 
+Adds mirror segments to a Greenplum database system that was initially configured 
 without mirroring.
 
 
@@ -19,8 +19,8 @@ DESCRIPTION
 *****************************************************
 
 The mppaddmirrors.sh script configures mirror segment instances for an existing 
-Bizgres MPP system that was initially configured with primary segment instances 
-only. The script will shut down your Bizgres MPP system while it creates the 
+Greenplum database system that was initially configured with primary segment instances 
+only. The script will shut down your Greenplum database system while it creates the 
 mirrors, and then restart it with mirroring enabled.
 
 CREATING THE MIRROR DATA DIRECTORIES
@@ -129,13 +129,13 @@ Displays the version, status, last updated date, and check sum of this script.
 EXAMPLES
 *****************************************************
 
-Add mirroring to an existing Bizgres MPP system using the same set of hosts 
+Add mirroring to an existing Greenplum database system using the same set of hosts 
 as your primary data:
 
 mppaddmirrors.sh -d /mpp_master_data -p 20000
 
 
-Add mirroring to an existing Bizgres MPP system using a different set of hosts 
+Add mirroring to an existing Greenplum database system using a different set of hosts 
 from your primary data:
 
 mppaddmirrors.sh -d /mpp_master_data -p 20000 -m mirror_config_file

@@ -57,7 +57,7 @@ baseDir="/home/bgadmin"
 DirectoryList="/dbfast1", "/dbfast2", 
 #
 # Block size to be used for dd test. 8K is the same as the
-# PostgreSQL/Bizgres MPP page size.
+# PostgreSQL/Greenplum database page size.
 # Range : String (int Followed by String [kK][Mm][gG][bB])
 # Example : 1024, 1KB, 1MB, 10MB
 # Default : 1K

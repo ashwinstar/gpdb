@@ -2,10 +2,10 @@
 ABOUT MPP DEMO
 ******************************************************************
 
-The MPP demo program will setup a virtual Bizgres MPP system on a 
+The MPP demo program will setup a virtual Greenplum database system on a 
 single host. It creates and starts a MPP master instance and three 
 segment instances within the same directory. Running MPP demo is a good 
-way to test your initial installation before deploying the Bizgres MPP 
+way to test your initial installation before deploying the Greenplum database 
 software on a multi-host array. It is also a good way to become familiar 
 with the system without investing the time involved in a multi-host setup.
 
@@ -48,7 +48,7 @@ RUNNING MPP DEMO
 
 	make
 
-6. If setup completes correctly, you will have a virtual Bizgres MPP 
+6. If setup completes correctly, you will have a virtual Greenplum database 
    system running on the local host. You can connect to it using the 
    psql client program as follows:
 
@@ -58,8 +58,8 @@ RUNNING MPP DEMO
 
 	\q
 
-8. See the Bizgres MPP User Guide for more information on using 
-   your Bizgres MPP system.
+8. See the Greenplum database User Guide for more information on using 
+   your Greenplum database system.
 
 
 ******************************************************************
@@ -70,6 +70,6 @@ REMOVING MPP DEMO
 
 	make clean
 
-2. This will stop all Bizgres MPP demo server processes and remove all 
+2. This will stop all Greenplum database demo server processes and remove all 
    files and directories created by the MPP demo program.
 

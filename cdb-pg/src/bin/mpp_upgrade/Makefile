@@ -5,7 +5,7 @@
 #
 #-------------------------------------------------------------------------
 
-PGFILEDESC = "mpp_upgrade -- upgrades a Bizgres MPP 2.2 system to a 2.3 system"
+PGFILEDESC = "mpp_upgrade -- upgrades a Greenplum database 2.2 system to a 2.3 system"
 subdir = src/bin/mpp_upgrade
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
