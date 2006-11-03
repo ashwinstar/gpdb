@@ -384,7 +384,7 @@ main(int argc, char **argv)
 
     printf("mpp_upgrade:  Version of system:  %s\n", version);
 
-    if (strstr(version,"Greenplum Database")!= 0 || strstr(version,"Bizgres MPP")!= 0)
+    if (strstr(version,"Greenplum Database")!= 0 || strstr(version,"Greenplum database")!= 0 || strstr(version,"Bizgres MPP")!= 0)
         isMPP = 1;
     else
         isMPP = 0;
