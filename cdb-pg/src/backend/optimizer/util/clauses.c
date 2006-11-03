@@ -448,6 +448,8 @@ count_agg_clauses_walker(Node *node, AggClauseCounts *counts)
 												inputType,
 												agg_arg_types[0]);
 			pfree(agg_arg_types);
+			
+			counts->missing_prelimfunc = true; /* CDB: Disable 2P aggregation */
 		}
 
 		/*
