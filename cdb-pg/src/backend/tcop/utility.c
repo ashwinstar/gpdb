@@ -461,7 +461,7 @@ ProcessUtility(Node *parsetree,
 						{
 							ereport(ERROR, (
 											errcode(ERRCODE_MPP_COMMAND_ERROR),
-									 errmsg("PREPARE TRANSACTION is not yet supported in Greenplum database.")
+									 errmsg("PREPARE TRANSACTION is not yet supported in Greenplum Database.")
 											));
 			
 						}

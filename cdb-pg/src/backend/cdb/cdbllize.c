@@ -248,7 +248,7 @@ cdbparallelize(Plan *plan,
 	
 	if ( context->dispatchParallel )
 	{
-		const char *notyet="Greenplum database does not yet support that query.";
+		const char *notyet="Greenplum Database does not yet support that query.";
 		
 		if ( uses_correlation )
 		{

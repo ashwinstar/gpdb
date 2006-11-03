@@ -1534,7 +1534,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("Greenplum database does not allow having both PRIMARY KEY and UNIQUE contraints")));
+								 errmsg("Greenplum Database does not allow having both PRIMARY KEY and UNIQUE contraints")));
 					}
 				}
 			}
@@ -1542,7 +1542,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("Greenplum database does not allow having multiple UNIQUE contraints")));
+						 errmsg("Greenplum Database does not allow having multiple UNIQUE contraints")));
 			}
 		}
 	
@@ -1692,7 +1692,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 							ereport(NOTICE,
 									(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
 									 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column " 
-										    "named '%s' from parent table as the Greenplum database data distribution key for this "
+										    "named '%s' from parent table as the Greenplum Database data distribution key for this "
 										    "table. ", inhname),
 								     errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
 								     		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
@@ -1734,7 +1734,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 						ereport(NOTICE,
 								(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
 								 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column " 
-									    "named '%s' as the Greenplum database data distribution key for this "
+									    "named '%s' as the Greenplum Database data distribution key for this "
 									    "table. ", column->colname),
 							     errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
 							     		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));

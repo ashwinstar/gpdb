@@ -417,7 +417,7 @@ PostmasterMain(int argc, char *argv[])
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("postmaster (Greenplum database) " PG_VERSION);
+			puts("postmaster (Greenplum Database) " PG_VERSION);
 			ExitPostmaster(0);
 		}
 	}

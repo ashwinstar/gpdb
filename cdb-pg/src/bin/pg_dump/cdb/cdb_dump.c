@@ -484,7 +484,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("mpp_dump (Greenplum database) " PG_VERSION);
+			puts("mpp_dump (Greenplum Database) " PG_VERSION);
 			goto cleanup;
 		}
 	}
@@ -1059,7 +1059,7 @@ int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* 
 	 */
 	pParm0 = &pParmAr->pData[0];
 	
-	fprintf( fRpt, "\nGreenplum database Backup Report\n" );
+	fprintf( fRpt, "\nGreenplum Database Backup Report\n" );
 	fprintf( fRpt, "Timestamp Key: %s\n", pParm0->pOptionsData->pszKey );
 
 	fprintf( fRpt, "mpp_dump Command Line: %s\n",  

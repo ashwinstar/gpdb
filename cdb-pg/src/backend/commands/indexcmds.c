@@ -499,7 +499,7 @@ DefineIndex(RangeVar *heapRelation,
 	}
 
 	/* 
-     * Special code for allowing upgrade from Greenplum database 2.2 to 2.3.
+     * Special code for allowing upgrade from Greenplum Database 2.2 to 2.3.
      */
 	if (namespaceId == PG_CATALOG_NAMESPACE && tablespaceId==GLOBALTABLESPACE_OID && relationId == ResQueueRelationId)
 	{

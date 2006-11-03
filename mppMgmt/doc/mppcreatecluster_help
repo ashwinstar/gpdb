@@ -1,6 +1,6 @@
 COMMAND NAME: mppcreatecluster.sh
 
-Initializes a Greenplum database system by using configuration parameters specified in
+Initializes a Greenplum Database system by using configuration parameters specified in
 the mpp_config file of System Initialization Parameters.
 
 
@@ -20,9 +20,9 @@ mppcreatecluster.sh [-? | -v]
 DESCRIPTION
 *****************************************************
 
-The mppcreatecluster.sh script will create a Greenplum database DBMS instance using 
-the values defined in a Greenplum database configuration file. Before running this 
-script, make sure that you have installed the Greenplum database software on all 
+The mppcreatecluster.sh script will create a Greenplum Database DBMS instance using 
+the values defined in a Greenplum Database configuration file. Before running this 
+script, make sure that you have installed the Greenplum Database software on all 
 the hosts in the array.
 
 The functionality of mppcreatecluster.sh is analogous to PostgreSQLs initdb 
@@ -30,14 +30,14 @@ script, which creates the data storage directories, generates the shared
 catalog tables and configuration files, and creates a template database, which 
 is a template used to create other databases. 
 
-In a Greenplum database DBMS, each database instance (the master and all segments) 
+In a Greenplum Database DBMS, each database instance (the master and all segments) 
 must be initialized across all of the hosts in the system in such a way that 
 they can all work together as a unified DBMS. The mppcreatecluster.sh script 
 takes care of initializing the database on the MPP master and on each segment 
 instance, and configuring the system as a whole.
 
 Before running mppcreatecluster.sh, you must set the $MPPHOME or $BIZHOME 
-environment variable to point to the location of your Greenplum database installation 
+environment variable to point to the location of your Greenplum Database installation 
 on the master host.
 
 This script performs the following tasks:
@@ -58,9 +58,9 @@ This script performs the following tasks:
 
 * Initializes the mirror segment instances (if mirroring is configured).
 
-* Configures the Greenplum database system and checks for errors.
+* Configures the Greenplum Database system and checks for errors.
 
-* Starts the Greenplum database system.
+* Starts the Greenplum Database system.
 
 
 *****************************************************
@@ -82,13 +82,13 @@ mpp_config file.
 -p <postgresql_conf_param_file>
 
 Optional. The name of a file that contains global postgresql.conf parameter 
-settings that you want to set for Greenplum database. These settings will be used 
+settings that you want to set for Greenplum Database. These settings will be used 
 when the individual master and segment instances are initialized.
 
 -s <standby_master_host>
 
 Optional. If you wish to configure a backup master host, specify the host name 
-using this option. You must have the Greenplum database software installed and 
+using this option. You must have the Greenplum Database software installed and 
 configured on the backup master host.
 
 -i
@@ -108,7 +108,7 @@ default is 25.
 
 -e <superuser_password>
 
-The password to set for the Greenplum database database super user. Defaults to 
+The password to set for the Greenplum Database database super user. Defaults to 
 'mpparray'. You can always change the super user password at a later time 
 using the ALTER ROLE command. Client connections over the network require 
 a password login for the database super user account (for example, the 
@@ -116,7 +116,7 @@ bgadmin user).
 
 -n <encoding>
 
-Sets the default character set encoding for the Greenplum database system. Defaults to 
+Sets the default character set encoding for the Greenplum Database system. Defaults to 
 UNICODE. See Character Set Support in the PostgreSQL documentation for more 
 information on the supported character set encodings.
 
@@ -146,12 +146,12 @@ Displays the version, status, last updated date, and check sum of this script.
 EXAMPLES
 *****************************************************
 
-Initialize a Greenplum database array:
+Initialize a Greenplum Database array:
 
 mppcreatecluster.sh -c mpp_config -e mypassword
 
 
-Initialize a Greenplum database array with an optional standby MPP master host:
+Initialize a Greenplum Database array with an optional standby MPP master host:
 
 mppcreatecluster.sh -c mpp_config -s host09 -i -e mypassword
 

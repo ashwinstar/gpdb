@@ -402,7 +402,7 @@ DefineRelation_int(CreateStmt *stmt,
 	{
 		AclResult	aclresult;
 		/* 
-		 * Special code for allowing upgrade from Greenplum database 2.2 to 2.3.
+		 * Special code for allowing upgrade from Greenplum Database 2.2 to 2.3.
 		 */
 		if (namespaceId == PG_CATALOG_NAMESPACE && tablespaceId==GLOBALTABLESPACE_OID && strcmp(relname,"pg_resqueue")==0)
 			aclresult = ACLCHECK_OK;
@@ -543,7 +543,7 @@ DefineRelation_int(CreateStmt *stmt,
 	}
 
 	/* 
-	 * Special code for allowing upgrade from Greenplum database 2.2 to 2.3.
+	 * Special code for allowing upgrade from Greenplum Database 2.2 to 2.3.
 	 * 
 	 * If we are creating pg_resqueue, it means we are upgrading a 2.2 system.
 	 * We need to create it with the right OIDs as if it had been created by initdb.
@@ -4860,7 +4860,7 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 		if (Mpp_role == MPP_ROLE_DISPATCH)
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Greenplum database, will not be enforced.")));
+				 errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Greenplum Database, will not be enforced.")));
 	}
 
 	/*

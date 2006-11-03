@@ -68,7 +68,7 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 	if (Mpp_role != MPP_ROLE_UTILITY && (stmt->options & CURSOR_OPT_SCROLL))
 		ereport(ERROR,
 				(errcode(ERRCODE_MPP_FEATURE_NOT_YET),
-				 errmsg("scrollable cursors are not yet supported in Greenplum database")));
+				 errmsg("scrollable cursors are not yet supported in Greenplum Database")));
 	
 	/*
 	 * Because the planner is not cool about not scribbling on its input, we

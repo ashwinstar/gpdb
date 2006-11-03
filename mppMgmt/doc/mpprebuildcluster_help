@@ -1,7 +1,7 @@
 COMMAND NAME: mpprebuildcluster.sh
 
-Rebuilds a Greenplum database master using a SQL script file containing the 
-Greenplum database schema and MPP system catalog information, and then recreates 
+Rebuilds a Greenplum Database master using a SQL script file containing the 
+Greenplum Database schema and MPP system catalog information, and then recreates 
 all of the segment instances using the information found in the MPP 
 system catalog tables.
 
@@ -21,9 +21,9 @@ mpprebuildcluster.sh [-? | -v]
 DESCRIPTION
 *****************************************************
 
-The mpprebuildcluster.sh script will rebuild a Greenplum database system using a SQL 
+The mpprebuildcluster.sh script will rebuild a Greenplum Database system using a SQL 
 script file. This SQL script file must contain commands for creating the 
-Greenplum database schema and loading system catalog data from another Greenplum database 
+Greenplum Database schema and loading system catalog data from another Greenplum Database 
 installation. There are two ways to get the SQL script file that 
 mpprebuildcluster.sh needs:
 
@@ -33,21 +33,21 @@ mpprebuildcluster.sh needs:
 * pg_dump  PostgreSQL provides a utility called pg_dump, which backs up a 
             single PostgreSQL database. You can use this utility to backup 
             the pg_catalog schema of the master host, which contains the 
-            Greenplum database system catalog tables. For example, run the following 
+            Greenplum Database system catalog tables. For example, run the following 
             command on the master host:
             pg_dump -f mpp_catalog -Fp -n pg_catalog -p 5432 template1
 
 The use of the mpprebuildcluster.sh script assumes that you have an existing 
-or previous Greenplum database system that you want to recreate. By default this 
+or previous Greenplum Database system that you want to recreate. By default this 
 script uses the same hosts, ports, and data directories as the reference 
-Greenplum database system. You can use the -o option to reconfigure the system to 
+Greenplum Database system. You can use the -o option to reconfigure the system to 
 a new master host. 
 
 If you want to alter any other information in the system configuration 
 (such as segment hosts, data directory locations, or ports) use the -m option.
 This option will create the MPP master instance only. After the MPP master is 
 created, you can manually edit the MPP system catalog tables to change the 
-system configuration (see Greenplum database Schema Reference on page 128). After 
+system configuration (see Greenplum Database Schema Reference on page 128). After 
 editing the system catalog tables, use the mpprebuildseg.sh script, which 
 rebuilds the segment instances using the information found in the MPP 
 masters system catalog tables.
@@ -55,7 +55,7 @@ masters system catalog tables.
 The use of this script also assumes that you have the same number of segment 
 instances as the reference system you are rebuilding. If you are expanding 
 your system or are dramatically changing your system configuration, you 
-should use mppcreatecluster.sh to create a new Greenplum database system from scratch.
+should use mppcreatecluster.sh to create a new Greenplum Database system from scratch.
 
 
 *****************************************************
@@ -64,7 +64,7 @@ OPTIONS
 
 -s <sql_file>
 
-Required. A SQL file containing the Greenplum database schema and system catalog 
+Required. A SQL file containing the Greenplum Database schema and system catalog 
 information. This is the mpp_catalog_0_<dbid>_<timestamp> file created on 
 the MPP master host by the mpp_dump operation. You can also do a pg_dump 
 operation on a MPP master host to get a SQL file that can be used by 
@@ -92,7 +92,7 @@ one used by your production MPP master instance.
 
 -m
 
-Optional. This option creates the MPP master instance only (the Greenplum database 
+Optional. This option creates the MPP master instance only (the Greenplum Database 
 schema and system catalog), but does not create the segment instances as 
 specified in the system catalog. The default behavior is to rebuild all 
 segment instances as they existed when the backup file was created.
@@ -108,7 +108,7 @@ masters system catalog tables.
 
 -o
 
-Optional. Use this option if you are rebuilding the Greenplum database system using 
+Optional. Use this option if you are rebuilding the Greenplum Database system using 
 a different master host than the one from which the backup SQL file was 
 created. This option will override the master hostname found in the system 
 catalog and set it to the current host name.
@@ -147,7 +147,7 @@ the hosts allowed to connect to a MPP master instance. The default is
 
 -n <encoding>
 
-Sets the default character set encoding for the Greenplum database system. Defaults 
+Sets the default character set encoding for the Greenplum Database system. Defaults 
 to UNICODE. See Character Set Support in the PostgreSQL documentation for 
 more information on the supported character set encodings.
 
@@ -171,20 +171,20 @@ Displays the version, status, last updated date, and check sum of this script.
 EXAMPLES
 *****************************************************
 
-Rebuild an entire Greenplum database system (master and segment instances) using 
+Rebuild an entire Greenplum Database system (master and segment instances) using 
 the exact same array configuration as in the SQL backup file:
 
 mpprebuildcluster.sh -s mpp_catalog_0_1_2005103112453 -d /home/bgadmin/tmp
 
 
-Rebuild an entire Greenplum database system (master and segment instances) using 
+Rebuild an entire Greenplum Database system (master and segment instances) using 
 the same array configuration as in the SQL backup file, but change the 
 master host instance configuration to the current host:
 
 mpprebuildcluster.sh -s mpp_catalog_0_1_2005103112453 -d /home/bgadmin/tmp -o
 
 
-Rebuild the MPP master host only (the Greenplum database schema and system catalog):
+Rebuild the MPP master host only (the Greenplum Database schema and system catalog):
 
 mpprebuildcluster.sh -s mpp_catalog_0_1_2005103112453 -d /home/bgadmin/tmp 
 -o -m

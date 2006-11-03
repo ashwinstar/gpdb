@@ -212,7 +212,7 @@ main(int argc, char **argv)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("pg_restore (Greenplum database) " PG_VERSION);
+			puts("pg_restore (Greenplum Database) " PG_VERSION);
 			exit(0);
 		}
 	}

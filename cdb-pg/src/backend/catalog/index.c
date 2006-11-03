@@ -509,7 +509,7 @@ index_create(Oid heapRelationId,
 	 */
 	if (shared_relation && IsUnderPostmaster)
 		/* 
-		 * Special test for allowing upgrade from Greenplum database 2.2 to 2.3.
+		 * Special test for allowing upgrade from Greenplum Database 2.2 to 2.3.
 		 */
 		if (indexRelationId != ResQueueOidIndexId && 
 			indexRelationId != ResQueueRsqnameIndexId && 
@@ -745,7 +745,7 @@ index_create(Oid heapRelationId,
 		Assert(indexRelation->rd_indexcxt != NULL);
 
 	/*
-	 * If we are playing tricks to upgrade Greenplum database 2.2 to 2.3, we might be doing a CREATE INDEX 
+	 * If we are playing tricks to upgrade Greenplum Database 2.2 to 2.3, we might be doing a CREATE INDEX 
 	 * on a shared index that already exists.  If so, we don't need or want to recreate it.
 	 * 
 	 * Does the index data already exist?

@@ -31,8 +31,8 @@ list file, then the currently logged in user will be used.
 
 Greenplum recommends performing the key exchange process twice: once 
 as root and once as the bgadmin user (the user designated to own your 
-Greenplum database installation). The Greenplum database management scripts require 
-that the same non-root user be created on all hosts in the Greenplum database 
+Greenplum Database installation). The Greenplum Database management scripts require 
+that the same non-root user be created on all hosts in the Greenplum Database 
 system, and the scripts must be able to connect as that user to all hosts 
 without a password prompt. When exchanging SSH keys, hit the ENTER key 
 when prompted for the ssh-agent pass key phrase (do not enter a pass 

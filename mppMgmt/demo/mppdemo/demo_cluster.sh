@@ -128,10 +128,10 @@ done
 
 echo ""
 echo "**************************************************************************************************"
-echo "This is a demo of the Greenplum database module.  We'll perform a local cluster installation with 1"
+echo "This is a demo of the Greenplum Database module.  We'll perform a local cluster installation with 1"
 echo "master instance and 3 segment instances all on this machine."
 echo ""
-echo "In order to run the Greenplum database module, you must either have the BIZHOME environment variable"
+echo "In order to run the Greenplum Database module, you must either have the BIZHOME environment variable"
 echo "set, or the MPPHOME environment variable set to the location of the MPP install."
 echo "You must also have the following port numbers free ${MASTER_DEMO_PORT} ${DEMO_SEG_PORTS[@]}"
 echo ""

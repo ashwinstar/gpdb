@@ -292,10 +292,10 @@ SHELL=${CONFIG_SHELL-/bin/sh}
 : ${ac_max_here_lines=38}
 
 # Identity of this package.
-PACKAGE_NAME='Greenplum database'
+PACKAGE_NAME='Greenplum Database'
 PACKAGE_TARNAME='postgresql'
 PACKAGE_VERSION='8.1.5'
-PACKAGE_STRING='Greenplum database 8.1.5'
+PACKAGE_STRING='Greenplum Database 8.1.5'
 PACKAGE_BUGREPORT='support@greenplum.com'
 
 ac_unique_file="src/backend/access/common/heaptuple.c"
@@ -3433,7 +3433,7 @@ else
 fi
 
 cat >>confdefs.h <<_ACEOF
-#define PG_VERSION_STR "PostgreSQL $PACKAGE_VERSION (Greenplum database $MPP_VERSION build $MPP_BUILDNUMBER) on $host, compiled by $cc_string"
+#define PG_VERSION_STR "PostgreSQL $PACKAGE_VERSION (Greenplum Database $MPP_VERSION build $MPP_BUILDNUMBER) on $host, compiled by $cc_string"
 _ACEOF
 
 
