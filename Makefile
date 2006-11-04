@@ -3,7 +3,7 @@ MPPMGMT=mppMgmt
 ISCONFIG=$(MPPPGDIR)/GNUmakefile
 
 RELEASE=`$(CURDIR)/releasetag`
-MPPDIR=mpp-pgsql$(RELEASE)
+MPPDIR=gp-pgsql$(RELEASE)
 MPPDOCDIR=$(CURDIR)/docs/release
 
 TARBALL=/tmp/$(MPPDIR).tar.gz

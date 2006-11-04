@@ -63,7 +63,7 @@ static void ComputeIndexAttrs(IndexInfo *indexInfo, Oid *classOidP,
 static Oid GetIndexOpClass(List *opclass, Oid attrType,
 				char *accessMethodName, Oid accessMethodId);
 static bool relationHasPrimaryKey(Relation rel);
-
+static bool relationHasUniqueIndex(Relation rel);
 
 /*
  * DefineIndex
@@ -411,7 +411,7 @@ DefineIndex(RangeVar *heapRelation,
 				
 				if (changespolicy)
 				{
-					if (1)//if (cdbRelSize(rel->rd_id) != 0)
+					if (cdbRelSize(rel->rd_id) != 0 || relationHasPrimaryKey(rel) || relationHasUniqueIndex(rel))
 					{
 						if (primary)
 
@@ -433,7 +433,7 @@ DefineIndex(RangeVar *heapRelation,
 						{
 							policy->attrs[policy->nattrs++] = indexInfo->ii_KeyAttrNumbers[ia];	
 						}
-						MppPolicyStore(rel->rd_id, policy);
+						MppPolicyReplace(rel->rd_id, policy);
 						if (primary)
 							elog(NOTICE,"Updating distribution policy to match new primary key.");
 						else
@@ -1024,6 +1024,45 @@ relationHasPrimaryKey(Relation rel)
 	return result;
 }
 
+
+/*
+ * relationHasPrimaryKey -
+ *
+ *	See whether an existing relation has a primary key.
+ */
+static bool
+relationHasUniqueIndex(Relation rel)
+{
+	bool		result = false;
+	List	   *indexoidlist;
+	ListCell   *indexoidscan;
+
+	/*
+	 * Get the list of index OIDs for the table from the relcache, and look up
+	 * each one in the pg_index syscache until we find one marked unique
+	 */
+	indexoidlist = RelationGetIndexList(rel);
+
+	foreach(indexoidscan, indexoidlist)
+	{
+		Oid			indexoid = lfirst_oid(indexoidscan);
+		HeapTuple	indexTuple;
+
+		indexTuple = SearchSysCache(INDEXRELID,
+									ObjectIdGetDatum(indexoid),
+									0, 0, 0);
+		if (!HeapTupleIsValid(indexTuple))		/* should not happen */
+			elog(ERROR, "cache lookup failed for index %u", indexoid);
+		result = ((Form_pg_index) GETSTRUCT(indexTuple))->indisunique;
+		ReleaseSysCache(indexTuple);
+		if (result)
+			break;
+	}
+
+	list_free(indexoidlist);
+
+	return result;
+}
 
 /*
  * RemoveIndex
