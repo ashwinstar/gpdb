@@ -35,7 +35,8 @@
 #include "parser/parse_clause.h"
 #include "parser/parse_expr.h"
 #include "rewrite/rewriteManip.h"
-#include "cdb/cdbllize.h"
+
+#include "cdb/cdbpath.h"                    /* cdbpath_rows() */
 
 
 /* These parameters are set by GUC */
@@ -300,6 +301,7 @@ set_inherited_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	 * Initialize to compute size estimates for whole inheritance tree
 	 */
 	rel->rows = 0;
+	rel->tuples = 0;
 	rel->width = 0;
 
 	/*
@@ -388,7 +390,8 @@ set_inherited_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		 * simplicity, we use the largest widths from any child as the parent
 		 * estimates.
 		 */
-		rel->rows += childrel->rows;
+        rel->tuples += childrel->tuples;
+		rel->rows += cdbpath_rows(childrel->cheapest_total_path);
 		if (childrel->width > rel->width)
 			rel->width = childrel->width;
 

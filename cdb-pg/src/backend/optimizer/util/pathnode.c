@@ -43,6 +43,7 @@ static UniquePath  *create_limit1_path(Path *subpath);
 static List *translate_sub_tlist(List *tlist, int relid);
 static bool query_is_distinct_for(Query *query, List *colnos);
 static bool hash_safe_tlist(List *tlist);
+static Path    *create_adaptive_join_path(PlannerInfo *root, Path *oldjoin);
 
 #define FLATCOPY(newnode, node, nodetype)  \
 	( (newnode) = makeNode(nodetype), \
@@ -461,6 +462,32 @@ set_cheapest(PlannerInfo *root, RelOptInfo *parent_rel)
 
 	parent_rel->cheapest_startup_path = cheapest_startup_path;
 	parent_rel->cheapest_total_path = cheapest_total_path;
+
+    /* CDB: If cheapest path is NJ, consider adaptive NJ/HJ. */
+    if (IsA(cheapest_total_path, NestPath) &&
+        enable_adaptive_nestloop)
+    {
+        Path   *new_path = create_adaptive_join_path(root, cheapest_total_path);
+
+        /* For now, subquery duplicate suppression property must match. */
+        if (new_path)
+        {
+            new_path->subq_complete = (!parent_rel->dedup_info ||
+                                       cdb_is_path_deduped(new_path));
+            if (new_path->subq_complete != cheapest_total_path->subq_complete)
+            {
+                pfree(new_path);
+                new_path = NULL;
+            }
+        }
+
+        /* Stuff new HJ or adaptive join in front of pathlist. */
+        if (new_path)
+        {
+            parent_rel->pathlist = lcons(new_path, parent_rel->pathlist);
+            parent_rel->cheapest_total_path = new_path;
+        }
+    }
 }                               /* set_cheapest */
 
 
@@ -2171,8 +2198,7 @@ create_nestloop_path(PlannerInfo *root,
 					 Path *inner_path,
 					 List *restrict_clauses,
                      List *mergeclause_list,    /*CDB*/
-					 List *pathkeys,
-					 HashPath *alternate)
+					 List *pathkeys)
 {
 	NestPath       *pathnode;
     CdbPathLocus    join_locus;
@@ -2206,29 +2232,6 @@ create_nestloop_path(PlannerInfo *root,
     if (CdbPathLocus_IsNull(join_locus))
         return NULL;
 
-    /* Adaptive NJ:  An HJ may take the place of our NJ at runtime. */
-    if (alternate)
-    {
-        Assert(IsA(alternate, HashPath) &&
-               alternate->jpath.path.parent == joinrel);
-
-        /* HJ doesn't preserve ordering, so ANJ result has to be unordered. */
-        Assert(!pathkeys);
-
-        /* Ensure NJ's outer subpath can substitute for HJ's outer subpath. */
-        if (!cdbpathlocus_compare(CdbPathLocus_Comparison_Equal,
-                                  alternate->jpath.path.locus,
-                                  join_locus) ||
-            !cdbpathlocus_compare(CdbPathLocus_Comparison_Equal,
-                                  alternate->jpath.outerjoinpath->locus,
-                                  outer_path->locus))
-            return NULL;
-
-        /* Copy the HJ node so we can delete its outer subpath. */
-        alternate = (HashPath *)pathnode_copy_node((Path *)alternate);
-        alternate->jpath.outerjoinpath = NULL;
-    }
-
     /* Outer might not be ordered anymore after motion. */
     if (!outer_path->pathkeys)
         pathkeys = NIL;
@@ -2260,25 +2263,10 @@ create_nestloop_path(PlannerInfo *root,
     pathnode->jpath.path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
     pathnode->jpath.path.rescannable = outer_path->rescannable;
 
-	pathnode->alternate = alternate;
+	pathnode->alternate = NULL;
+    pathnode->outer_lookahead_rows = 0;
 
 	cost_nestloop(pathnode, root);
-
-    /* Adaptive NJ */
-    if (alternate)
-    {
-        if (alternate->jpath.path.motionHazard)
-            pathnode->jpath.path.motionHazard = true;
-        if (!alternate->jpath.path.rescannable)
-            pathnode->jpath.path.rescannable = false;
-
-        pathnode->nj_startup_cost = pathnode->jpath.path.startup_cost;
-        pathnode->nj_total_cost = pathnode->jpath.path.total_cost;
-
-        /* Should ANJ cost differ from plain NJ?  Fudge ANJ cost here. */
-        pathnode->jpath.path.total_cost = 0.5 *
-            (pathnode->jpath.path.total_cost + alternate->jpath.path.total_cost);
-    }
 
 	return pathnode;
 }
@@ -2419,6 +2407,8 @@ create_mergejoin_path(PlannerInfo *root,
  * 'restrict_clauses' are the RestrictInfo nodes to apply at the join
  * 'hashclauses' are the RestrictInfo nodes to use as hash clauses
  *		(this should be a subset of the restrict_clauses list)
+ * 'freeze_outer_path' is true if the outer_path should be used exactly as
+ *      given, without adding other operators such as Motion.
  */
 HashPath *
 create_hashjoin_path(PlannerInfo *root,
@@ -2428,7 +2418,8 @@ create_hashjoin_path(PlannerInfo *root,
 					 Path *inner_path,
 					 List *restrict_clauses,
                      List *mergeclause_list,    /*CDB*/
-					 List *hashclauses)
+					 List *hashclauses,
+                     bool  freeze_outer_path)
 {
     HashPath       *pathnode;
     CdbPathLocus    join_locus;
@@ -2445,7 +2436,7 @@ create_hashjoin_path(PlannerInfo *root,
                                          mergeclause_list,
                                          NIL,   /* don't care about ordering */
                                          NIL,
-                                         false,
+                                         freeze_outer_path,
                                          false);
     if (CdbPathLocus_IsNull(join_locus))
         return NULL;
@@ -2476,3 +2467,164 @@ create_hashjoin_path(PlannerInfo *root,
 
 	return pathnode;
 }
+
+
+/*
+ * create_adaptive_join_path
+ *      Returns a HashPath or an adaptive NestPath or NULL.
+ */
+Path *
+create_adaptive_join_path(PlannerInfo *root, Path *oldpath)
+{
+    JoinPath       *oldjoin = (JoinPath *)oldpath;
+    JoinPath       *altjoin = NULL;
+    NestPath       *adaptive_nestpath;
+    Path           *bigpath;
+    RelOptInfo     *joinrel = oldjoin->path.parent;
+    Path           *outerpath = oldjoin->outerjoinpath;
+    RelOptInfo     *outerrel = outerpath->parent;
+    RelOptInfo     *innerrel = oldjoin->innerjoinpath->parent;
+	List	       *hashclauses = NIL;
+	List	       *mergeclauses = NIL;
+    double          save_outer_rows;
+    double          oldslope;
+    double          crossover_rows;
+    double          nbytes;
+
+    Assert(IsA(oldjoin, NestPath));
+
+    /* HJ doesn't support right or full outer join. */
+    if (oldjoin->jointype != JOIN_INNER &&
+        oldjoin->jointype != JOIN_LEFT &&
+        oldjoin->jointype != JOIN_IN)
+        return NULL;
+
+    /* If outer rel yields one row at most, stick with NJ. */
+    if (outerrel->onerow)
+        return NULL;
+
+    /* cdbpath_motion_for_join() doesn't accept replicated inputs, for now. */
+    if (CdbPathLocus_IsReplicated(outerpath->locus))
+        return NULL;
+
+    /* Does the join have any predicates that are hashjoinable? */
+    hashclauses = hashclauses_for_join(oldjoin->joinrestrictinfo,
+                                       outerrel,
+                                       innerrel,
+                                       oldjoin->jointype);
+    if (!hashclauses)
+        return NULL;
+
+    /* Gather mergejoinable predicates for motion planning. */
+    mergeclauses = select_mergejoin_clauses(outerrel,
+                                            innerrel,
+                                            oldjoin->joinrestrictinfo,
+                                            oldjoin->jointype);
+
+    /* Build HJ between old outer path and inner rel's cheapest total path. */
+    altjoin = (JoinPath *)create_hashjoin_path(root,
+                                               joinrel,
+                                               oldjoin->jointype,
+                                               outerpath,
+                                               innerrel->cheapest_total_path,
+                                               oldjoin->joinrestrictinfo,
+                                               mergeclauses,
+                                               hashclauses,
+                                               true);
+    if (!altjoin)
+        goto no_hj;
+
+    /* How fast does NJ cost grow if outer rel has more rows than we expect? */
+    save_outer_rows = outerrel->rows;                   /* save */
+    outerrel->rows = 2 * outerrel->rows + 100;
+
+    bigpath = pathnode_copy_node((Path *)oldjoin);
+    Assert(IsA(bigpath, NestPath));
+    cost_nestloop((NestPath *)bigpath, root);
+    oldslope = (bigpath->total_cost - oldjoin->path.total_cost) /
+               (outerrel->rows - save_outer_rows);
+    pfree(bigpath);
+
+    outerrel->rows = save_outer_rows;                   /* restore */
+
+    /*
+     * Find number of outer rows at which NJ total cost == HJ startup cost.
+     * At that point the NJ is as costly as materializing the inner rel for HJ.
+     */
+    if (oldslope < 1e-6)
+        crossover_rows = 0;
+    else
+        crossover_rows = (altjoin->path.startup_cost - oldjoin->path.total_cost)
+                         / oldslope;
+
+    /* If NJ doesn't win with just one outer row, use HJ non-adaptively. */
+    crossover_rows = ceil(crossover_rows);
+    if (crossover_rows <= 1)
+        goto nonadaptive_hj;
+
+    /*
+     * Does the HJ produce exactly the same result as the NJ (modulo ordering)?
+     * If not, it must not be used in an Adaptive Join.
+     */
+
+    /* HJ outer path must be exactly as given (executor limitation). */
+    if (altjoin->outerjoinpath != outerpath)
+        goto no_hj;
+
+    /* Join type should be the same. */
+    if (altjoin->jointype != oldjoin->jointype)
+        goto no_hj;
+
+    /* HJ result distribution must match the old join. */
+    if (!cdbpathlocus_compare(CdbPathLocus_Comparison_Equal,
+                              oldjoin->path.locus,
+                              altjoin->path.locus))
+        goto no_hj;
+
+    /* Estimate the memory for prefetching outer rows for Adaptive Join. */
+    nbytes = (outerrel->width + sizeof(HeapTupleHeaderData) + 32) *
+             crossover_rows;
+
+    /* If AJ would use too much memory, stick with NJ. */
+    if (nbytes > 0.25 * 1024 * work_mem)
+        goto no_hj;
+
+    /*
+     * Ok, create adaptive join path by copying and modifying the NJ.
+     */
+    adaptive_nestpath = (NestPath *)pathnode_copy_node((Path *)oldjoin);
+    Assert(IsA(adaptive_nestpath, NestPath));
+
+    /* Fill in the Adaptive Join fields. */
+    adaptive_nestpath->alternate = (HashPath *)altjoin;
+    adaptive_nestpath->outer_lookahead_rows = (int)crossover_rows;
+
+    /* HJ doesn't preserve ordering.  Therefore AJ result is unordered. */
+    adaptive_nestpath->jpath.path.pathkeys = NIL;
+
+    /* Zap HJ's duplicate ptr to the outer subpath which it shares with NJ. */
+    altjoin->outerjoinpath = NULL;
+
+    /* Merge the result properties. */
+    if (altjoin->path.motionHazard)
+        adaptive_nestpath->jpath.path.motionHazard = true;
+    if (!altjoin->path.rescannable)
+        adaptive_nestpath->jpath.path.rescannable = false;
+
+    /* Success! */
+    return (Path *)adaptive_nestpath;
+
+    /* Use HJ non-adaptively. */
+nonadaptive_hj:
+    return (Path *)altjoin;
+
+    /* No dice. Stick with NJ. */
+no_hj:
+    if (mergeclauses)
+        list_free(mergeclauses);
+    if (hashclauses)
+        list_free(hashclauses);
+    if (altjoin)
+        pfree(altjoin);
+    return NULL;
+}                               /* create_adaptive_join_path */

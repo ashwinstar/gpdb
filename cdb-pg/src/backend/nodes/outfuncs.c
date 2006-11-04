@@ -1297,12 +1297,8 @@ _outNestPath(StringInfo str, NestPath *node)
 
 	_outJoinPathInfo(str, (JoinPath *) node);
 
-    if (node->alternate)
-    {
-        WRITE_FLOAT_FIELD(nj_startup_cost, "%.2f");
-	    WRITE_FLOAT_FIELD(nj_total_cost, "%.2f");
-	    WRITE_NODE_FIELD(alternate);
-    }
+    WRITE_INT_FIELD(outer_lookahead_rows);
+    WRITE_NODE_FIELD(alternate);
 }
 
 static void

@@ -492,10 +492,6 @@ explain_outNode(StringInfo str,
 			break;
 		case T_AdaptiveNestLoop:
 			pname = "Adaptive Join Choice";
-
-			appendStringInfo(str, "%s (threshold %d)", pname,
-							 ((AdaptiveNestLoop *)plan)->nl_strategy_threshold);
-			pname = "";
 			break;
 		case T_NestLoop:
 			switch (((NestLoop *) plan)->join.jointype)
@@ -876,6 +872,12 @@ explain_outNode(StringInfo str,
 							"outer", OUTER, outerPlan(plan),
 							"inner", INNER, innerPlan(plan),
 							str, indent, es);
+			break;
+		case T_AdaptiveNestLoop:
+	        for (i = 0; i < indent; i++)
+		        appendStringInfo(str, "  ");
+            appendStringInfo(str, "  Hash join will be chosen if outer row count >= %d",
+							 ((AdaptiveNestLoop *)plan)->nl_strategy_threshold);
 			break;
 		case T_Agg:
 			show_upper_qual(plan->qual,
