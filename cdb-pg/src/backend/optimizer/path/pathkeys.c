@@ -1250,13 +1250,20 @@ cdb_make_pathkey_for_expr(PlannerInfo    *root,
 
     /* Get oid of the sort operator that would be used for a
      * sort-merge equijoin on a pair of exprs of the same type.
+     * Then find or create canonical pathkey for this expr.
      */
-    if (eqopoid == InvalidOid ||
-        !op_mergejoinable(eqopoid, &leftsortop, &rightsortop))
-        leftsortop = InvalidOid;
+    if (eqopoid != InvalidOid &&
+        op_mergejoinable(eqopoid, &leftsortop, &rightsortop))
+        item = makePathKeyItem((Node *)expr, leftsortop, true);
 
-    /* Find or create canonical pathkey for this expr. */
-    item = makePathKeyItem((Node *)expr, leftsortop, false);
+    /* Don't balk if caller wants to repartition on an expr whose type has no
+     * mergejoinable "=" operator.  Hope the executor knows how to hash it.
+     * E.g., cdbpath_dedup_fixup_unique() repartitions on CTID without
+     * bothering to insert a coercion to INT8.
+     */
+    else
+        item = makePathKeyItem((Node *)expr, InvalidOid, false);
+
     return make_canonical_pathkey(root, item);
 }                               /* cdb_make_pathkey_for_expr */
 
