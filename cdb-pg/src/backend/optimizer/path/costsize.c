@@ -1280,7 +1280,6 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
 	List	   *hashclauses = path->path_hashclauses;
 	Cost		startup_cost = 0;
 	Cost		run_cost = 0;
-	Cost		cpu_per_tuple;
 	Selectivity hash_selec;
 	QualCost	hash_qual_cost;
 	QualCost	qp_qual_cost;
@@ -1446,10 +1445,14 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
 	 * evaluate the hashjoin quals.  (Note: charging the full qual eval cost
 	 * at each tuple is pessimistic, since we don't evaluate the quals unless
 	 * the hash values match exactly.)
+     *
+     * CDB: Assume there are no rows that pass the hash value comparison but
+     * fail the full qual eval.  Thus the full comparison is charged for just 
+     * 'hashjointuples', i.e. those rows that pass the hashjoin quals.
 	 */
 	startup_cost += hash_qual_cost.startup;
 	run_cost += hash_qual_cost.per_tuple *
-		outer_path_rows * clamp_row_est(inner_path_rows * innerbucketsize) *
+		hashjointuples * inner_path_rows * innerbucketsize *
 		joininfactor;
 
 	/*
@@ -1457,10 +1460,12 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
 	 * cpu_tuple_cost plus the cost of evaluating additional restriction
 	 * clauses that are to be applied at the join.	(This is pessimistic since
 	 * not all of the quals may get evaluated at each tuple.)
+     *
+     * CDB: Charge the cpu_tuple_cost only for tuples that pass all the quals.
 	 */
 	startup_cost += qp_qual_cost.startup;
-	cpu_per_tuple = cpu_tuple_cost + qp_qual_cost.per_tuple;
-	run_cost += cpu_per_tuple * hashjointuples * joininfactor;
+    run_cost += qp_qual_cost.per_tuple * hashjointuples;
+    run_cost += cpu_tuple_cost * path->jpath.path.parent->rows;
 
 	/*
 	 * Bias against putting larger relation on inside.	We don't want an
@@ -1474,9 +1479,13 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
 	 * there's a disable_cost component in the input paths' startup cost, that
 	 * unfairly penalizes the hash.  Probably it'd be better to keep track of
 	 * disable penalty separately from cost.
+     *
+     * CDB: Reduced the rate of inflation.  Square root was too much.  Try
+     * to bias just enough to favor (small HJ large) over (large HJ small)
+     * without swamping the actual cost estimate.
 	 */
 	if (innerbytes > outerbytes && outerbytes > 0)
-		run_cost *= sqrt(innerbytes / outerbytes);
+		run_cost *= 0.1 * log(innerbytes/outerbytes) + 1;
 
 	path->jpath.path.startup_cost = startup_cost;
 	path->jpath.path.total_cost = startup_cost + run_cost;

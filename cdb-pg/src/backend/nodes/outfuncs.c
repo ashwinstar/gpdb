@@ -1383,7 +1383,8 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 	WRITE_NODE_FIELD(baserestrictinfo);
 	WRITE_NODE_FIELD(joininfo);
 	WRITE_BITMAPSET_FIELD(index_outer_relids);
-	WRITE_NODE_FIELD(index_inner_paths);
+	/* Skip writing Path ptrs to avoid endless recursion */
+	/* WRITE_NODE_FIELD(index_inner_paths);     */
 }
 
 static void

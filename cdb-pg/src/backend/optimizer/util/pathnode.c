@@ -2493,6 +2493,7 @@ create_adaptive_join_path(PlannerInfo *root, Path *oldpath)
     double          nbytes;
 
     Assert(IsA(oldjoin, NestPath));
+    Assert(((NestPath *)oldjoin)->alternate == NULL);
 
     /* HJ doesn't support right or full outer join. */
     if (oldjoin->jointype != JOIN_INNER &&
@@ -2617,7 +2618,8 @@ create_adaptive_join_path(PlannerInfo *root, Path *oldpath)
 
     /* Use HJ non-adaptively. */
 nonadaptive_hj:
-    return (Path *)altjoin;
+    if (enable_hashjoin)
+        return (Path *)altjoin;
 
     /* No dice. Stick with NJ. */
 no_hj:
