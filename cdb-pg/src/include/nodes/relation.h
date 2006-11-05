@@ -741,6 +741,15 @@ typedef struct JoinPath
 } JoinPath;
 
 /*
+ * IsJoinPath
+ *      Returns true if the node type is one that derives from JoinPath.
+ */
+#define IsJoinPath(node)        \
+    (IsA((node), NestPath) ||   \
+     IsA((node), HashPath) ||   \
+     IsA((node), MergePath))
+
+/*
  * A nested-loop path has special fields which may be used if it falls back to
  * plan-B during execution.
  */
@@ -748,11 +757,10 @@ typedef struct JoinPath
 typedef struct NestPath
 {
 	JoinPath            jpath;
-	struct HashPath    *alternate;
 
-    /* For Adaptive NJ, the costs of plain NJ are saved here... */
-    Cost                nj_startup_cost;
-    Cost                nj_total_cost;
+    /* Adaptive Join */
+	struct HashPath    *alternate;
+    int                 outer_lookahead_rows;
 } NestPath;
 
 /*

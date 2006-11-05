@@ -359,6 +359,11 @@ cdbvars_show_mpp_log_interconnect(void);
 
 
 /*
+ * enable_adaptive_nestloop
+ */
+extern bool enable_adaptive_nestloop;
+
+/*
  * "mpp_motion_cost_per_row"
  *
  * If >0, the planner uses this value -- instead of 2 * "cpu_tuple_cost" --

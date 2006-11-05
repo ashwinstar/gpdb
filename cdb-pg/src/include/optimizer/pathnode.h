@@ -84,8 +84,7 @@ extern NestPath *create_nestloop_path(PlannerInfo *root,
 									  Path *inner_path,
 									  List *restrict_clauses,
 									  List *mergeclause_list,    /*CDB*/
-									  List *pathkeys,
-									  HashPath *alternate);
+									  List *pathkeys);
 
 extern MergePath *create_mergejoin_path(PlannerInfo *root,
 					  RelOptInfo *joinrel,
@@ -106,8 +105,8 @@ extern HashPath *create_hashjoin_path(PlannerInfo *root,
 					 Path *inner_path,
 					 List *restrict_clauses,
                      List *mergeclause_list,    /*CDB*/
-					 List *hashclauses);
-
+					 List *hashclauses,
+                     bool  freeze_outer_path);
 
 /*
  * prototypes for relnode.c

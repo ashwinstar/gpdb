@@ -68,13 +68,21 @@ extern void create_tidscan_paths(PlannerInfo *root, RelOptInfo *rel);
  * joinpath.c
  *	   routines to create join paths
  */
-extern bool enable_adaptive_nestloop;
 extern void add_paths_to_joinrel(PlannerInfo *root, RelOptInfo *joinrel,
 					 RelOptInfo *outerrel,
 					 RelOptInfo *innerrel,
 					 JoinType jointype,
 					 List *restrictlist);
-
+List *
+hashclauses_for_join(List *restrictlist,
+					 RelOptInfo *outerrel,
+					 RelOptInfo *innerrel,
+					 JoinType jointype);
+List *
+select_mergejoin_clauses(RelOptInfo *outerrel,
+						 RelOptInfo *innerrel,
+						 List *restrictlist,
+						 JoinType jointype);
 /*
  * joinrels.c
  *	  routines to determine which relations to join
