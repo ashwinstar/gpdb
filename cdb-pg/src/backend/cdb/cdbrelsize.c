@@ -60,6 +60,7 @@ int64 cdbRelSize(Oid relOid)
 		ereport(WARNING, (errmsg("cdbRelSize error (gathered %d results from cmd '%s')", resultCount, buffer.data),
 						errdetail("%s", errbuf.data)));
 		pfree(errbuf.data);
+		pfree(buffer.data);
 		
 		return -1;
 	}
@@ -82,13 +83,12 @@ int64 cdbRelSize(Oid relOid)
 		}
 	
 		pfree(errbuf.data);
-	
+		pfree(buffer.data);
+
 		for (i = 0; i < resultCount; i++)
 			PQclear(results[i]);
 	
 		free(results);
-
-	
 	}
 	
 	return size;
