@@ -2556,7 +2556,7 @@ create_adaptive_join_path(PlannerInfo *root, Path *oldpath)
     if (oldslope < 1e-6)
         crossover_rows = 0;
     else
-        crossover_rows = (altjoin->path.startup_cost - oldjoin->path.total_cost)
+        crossover_rows = (altjoin->path.startup_cost - oldjoin->path.startup_cost)
                          / oldslope;
 
     /* If NJ doesn't win with just one outer row, use HJ non-adaptively. */
