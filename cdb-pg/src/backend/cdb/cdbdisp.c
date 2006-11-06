@@ -1048,7 +1048,8 @@ thread_DispatchCommand(void *arg)
 
 	if (pParms->query_text == NULL)
 	{
-		write_stderr("could not build query string\n");
+		write_stderr("could not build query string, total length %d\n", pParms->query_text_len);
+		pParms->query_text_len = 0;
 		dispatchResult->stillRunning = false;
 		return NULL;
 	}

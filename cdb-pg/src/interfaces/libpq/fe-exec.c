@@ -691,7 +691,12 @@ PQbuildMppQueryString(const char  *query,
 
 	shared_query = malloc(total_query_len);
 	if (shared_query == NULL)
+	{
+		/* tell our caller how much memory we wanted */
+		if (final_len != NULL)
+			*final_len = total_query_len;
 		return NULL;
+	}
 
 	pos = shared_query;
 
