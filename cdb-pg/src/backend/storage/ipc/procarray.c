@@ -553,7 +553,12 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 
 				elog(DEBUG5, "Reader qExec setting shared local snapshot to: xmin: %d xmax: %d curcid: %d",
 					 snapshot->xmin, snapshot->xmax, snapshot->curcid);
-
+				
+				if (log_min_messages <= DEBUG5 || client_min_messages <= DEBUG5)
+				{
+					ShowSubtransactionsForSharedSnapshot(SharedLocalSnapshotSlot->subcnt,SharedLocalSnapshotSlot->subxids);
+				}
+	
 				return snapshot;
 			}
 			else
@@ -712,6 +717,15 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		SharedLocalSnapshotSlot->snapshot.xmin = snapshot->xmin;
 		SharedLocalSnapshotSlot->snapshot.xmax = snapshot->xmax;
 		SharedLocalSnapshotSlot->snapshot.xcnt = snapshot->xcnt;
+
+ 		/*
+		 * Copy all active subtransctions to shared snapshot.
+		 *
+		 */
+        GetSubtransactionsForSharedSnapshot(
+        	&SharedLocalSnapshotSlot->subcnt,
+        	SharedLocalSnapshotSlot->subxids);
+		elog(DEBUG5,"Writer qExec count of subtransaction ids %u",SharedLocalSnapshotSlot->subcnt);
 
 		/*
 		 * The handling of snapshot->xip looks very strange.  The reason is

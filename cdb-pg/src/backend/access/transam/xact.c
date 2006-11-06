@@ -191,6 +191,12 @@ static CommandId currentCommandId;
 static TimestampTz xactStartTimestamp;
 static TimestampTz stmtStartTimestamp;
 
+ 
+/*
+ * Total number of SAVEPOINT commands executed by this transaction.
+ *
+ */
+static int currentSavepointTotal;
 
 /*
  * GID to be used for preparing the current transaction.  This is also
@@ -496,6 +502,7 @@ bool
 TransactionIdIsCurrentTransactionId(TransactionId xid)
 {
 	TransactionState s;
+	bool isCurrentTransactionId = false;
 
 	/*
 	 * We always say that BootstrapTransactionId is "not my transaction ID"
@@ -508,6 +515,42 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 	 */
 	if (xid == BootstrapTransactionId)
 		return false;
+
+
+
+    /*$$$$$$$ FIX ME $$$$$$$$$*/
+    if (Mpp_segment == -1 && Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
+    {
+        elog(DEBUG5, "GetSnapshotData for entry db singleton QE: Shared snapshot not implemented.  Punt!"); 
+    }
+    else
+    /*$$$$$$$$$$$$$$$$$$$$$$$*/
+	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer &&
+		SharedLocalSnapshotSlot != NULL && 
+		SharedLocalSnapshotSlot->xid == TopTransactionStateData.transactionId)
+	{
+		/*
+		 * In qExec Readers, we do not have real transaction and subtransaction
+		 * state.  The Writer copies the active subtransactions information
+		 * into the shared snapshot.
+		 */
+
+		if (TransactionIdEquals(xid,TopTransactionStateData.transactionId))
+		{
+			isCurrentTransactionId = true;
+		    elog(DEBUG5,"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = true -- TOP", xid);
+		}
+		else
+		{
+	    	isCurrentTransactionId = CheckSharedSnapshotForSubtransaction(xid);
+		    elog(DEBUG5,"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = %s -- Subtransaction",
+				 xid, (isCurrentTransactionId ? "true" : "false"));
+		}
+		
+
+		return isCurrentTransactionId;
+	}
+
 
 	/*
 	 * We will return true for the Xid of the current subtransaction, any of
@@ -1405,6 +1448,79 @@ SetSharedTransactionId(void)
 }
 
 
+/* MPP routine for fetching the currently active subtransaction ids.
+ */
+void
+GetSubtransactionsForSharedSnapshot(uint32 *subcnt, TransactionId *subxids)
+{
+	TransactionState s;
+
+	*subcnt = 0;
+
+	/*
+	 * Scan the transaction stack for active subtransactions.
+	 */
+	for (s = CurrentTransactionState; s != NULL; s = s->parent)
+	{
+		ListCell   *cell;
+
+		if (!TransactionIdIsValid(s->transactionId))
+			continue;			/* it can't have any child XIDs either */
+		
+		if (s->nestingLevel >= 2)
+		{
+			/*
+			 * Ignore aborted subtransactions.
+			 */
+			if (s->state == TRANS_ABORT)
+				continue;
+
+			Assert(*subcnt <= MaxMppSavePoints);
+			elog(DEBUG5,"Adding subtransaction xid %u as #%u to shared snapshot",s->transactionId,*subcnt);
+			subxids[(*subcnt)++] = s->transactionId;
+		}
+
+		/* subcommitted child XIDs
+		 */
+		foreach(cell, s->childXids)
+		{
+			Assert(*subcnt <= MaxMppSavePoints);
+			elog(DEBUG5,"Adding subcommitted child xid %u as #%u to shared snapshot",lfirst_xid(cell),*subcnt);
+			subxids[(*subcnt)++] = lfirst_xid(cell);
+		}
+	}
+}
+
+
+/*
+ *	CheckSharedSnapshotForSubtransaction
+ */
+bool
+CheckSharedSnapshotForSubtransaction(TransactionId xid)
+{
+	uint32 sub;
+	for(sub = 0; sub < SharedLocalSnapshotSlot->subcnt; sub++)
+	{
+		if (TransactionIdEquals(xid, SharedLocalSnapshotSlot->subxids[sub]))
+			return true;
+	}
+	return false;
+}
+
+/* MPP debug routine for showing currently active subtransaction ids.
+ */
+void
+ShowSubtransactionsForSharedSnapshot(uint32 subcnt, TransactionId *subxids)
+{
+    uint32 sub;
+	elog(DEBUG5,"Reader qExec count of subtransaction ids %u",SharedLocalSnapshotSlot->subcnt);
+	for (sub = 0; sub < subcnt; sub++)
+	{
+		elog(DEBUG5,"Reader qExec subtransaction xid %u as #%u from shared snapshot",subxids[sub],sub);
+	}
+
+}
+
 /* MPP routine for marking when a sequence makes a mark in the xlog.  we need
  * to keep track of this because sequences are the only reason a reader should
  * ever write to the xlog during commit.  As a result, we keep track of such
@@ -1464,6 +1580,7 @@ StartTransaction(void)
 	s->subTransactionId = TopSubTransactionId;
 	currentSubTransactionId = TopSubTransactionId;
 	currentCommandId = FirstCommandId;
+	currentSavepointTotal = 0;
 
 	/*
 	 * must initialize resource-management stuff first
@@ -4268,6 +4385,12 @@ PushTransaction(void)
 	TransactionState s;
 	Oid			currentUser;
 
+	currentSavepointTotal++;
+	if (currentSavepointTotal >= MaxMppSavePoints)
+		ereport(ERROR,
+				(errcode(ERRCODE_MPP_SUBTRANS_LIMIT_EXCEEDED),
+				 errmsg("cannot have more than 100 subtransactions in a transaction")));
+	
 	/*
 	 * At present, GetUserId cannot fail, but let's not assume that.  Get the
 	 * ID before entering the critical code sequence.

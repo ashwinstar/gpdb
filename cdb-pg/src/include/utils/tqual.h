@@ -78,6 +78,8 @@ typedef struct SharedSnapshotSlot
 	TransactionId   QDxid;
 	CommandId		QDcid;
 	bool			ready;
+	uint32		    subcnt;		/* # of subtransaction ids in subxids[] */
+	TransactionId   subxids[MaxMppSavePoints];
 	SnapshotData	snapshot;
 
 } SharedSnapshotSlot;
