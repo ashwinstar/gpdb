@@ -1004,19 +1004,23 @@ DoCopy(const CopyStmt *stmt)
 	 */
 	initStringInfo(&cstate->attribute_buf);
 	initStringInfo(&cstate->line_buf);
-	cstate->line_buf_converted = false;
 	cstate->processed = 0;
 
 	/*
 	 * Set up encoding conversion info.  Even if the client and server
 	 * encodings are the same, we must apply pg_client_to_server() to
-	 * validate data in multibyte encodings.
+	 * validate data in multibyte encodings. However, transcoding must
+	 * be skipped for COPY FROM in executor mode since data already arrived 
+	 * in server encoding (was validated and trancoded by dispatcher mode 
+	 * COPY).
 	 */
 	cstate->client_encoding = pg_get_client_encoding();
 	cstate->need_transcoding =
-		(cstate->client_encoding != GetDatabaseEncoding() ||
-		 pg_database_encoding_max_length() > 1);
+		((cstate->client_encoding != GetDatabaseEncoding() ||
+		  pg_database_encoding_max_length() > 1) &&
+		 (!is_from || (Mpp_role != MPP_ROLE_EXECUTE)) );
 	cstate->client_only_encoding = PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding);
+	cstate->line_buf_converted = (Mpp_role == MPP_ROLE_EXECUTE ? true : false);
 
 	cstate->copy_dest = COPY_FILE;		/* default */
 	cstate->copy_file = NULL;
