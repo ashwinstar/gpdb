@@ -598,7 +598,19 @@ BUILD_MASTER_PG_HBA_FILE () {
         $ECHO "local    all         all                $PG_METHOD" >> ${MPP_DIR}/$PG_HBA
         LOG_MSG "[INFO]:-Setting local host access"
         $ECHO "host     all         $USER_NAME         127.0.0.1/32    trust" >> ${MPP_DIR}/$PG_HBA
-        
+
+        $ECHO "#Master IP addresses " >> ${MPP_DIR}/$PG_HBA
+        for ADDR in "${MASTER_IP_ADDRESS_ALL[@]}"
+        do
+        	$ECHO "host     all         $USER_NAME         $ADDR/0       trust" >> ${MPP_DIR}/$PG_HBA
+        done
+
+        $ECHO "#Standby Master IP addressess " >> ${MPP_DIR}/$PG_HBA
+        for ADDR in "${STANDBY_IP_ADDRESS_ALL[@]}"
+        do
+        	$ECHO "host     all         $USER_NAME         $ADDR/0       trust" >> ${MPP_DIR}/$PG_HBA
+        done
+
         # Add all local IPV6 addresses
         $ECHO "#IPV6 local" >> ${MPP_DIR}/$PG_HBA
         for ADDR in "${MASTER_IPV6_LOCAL_ADDRESS_ALL[@]}"
