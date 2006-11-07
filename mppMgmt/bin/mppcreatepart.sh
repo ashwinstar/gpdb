@@ -64,6 +64,7 @@ STEP_BACK=0
 CHILD_TABLE_ID="_child_depth_"
 REQD_CHAR=30
 MAX_CHAR=64
+KEEP_TMP=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -89,6 +90,7 @@ USAGE () {
 		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
 		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
 		$ECHO "      -a, don't ask to confirm generation process [default:- ask]"
+		$ECHO "      -k, keep temporary files [default:- delete] used for diagnostics"
 		$ECHO
 		$ECHO "      Connection options:"
 		$ECHO "      -d, <Master instance directory> name of alternative Master instance to run against [optional]"
@@ -901,16 +903,20 @@ DISPLAY_COUNTS () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 RM_TMP_FILE () {
-	$RM -f $TMP_FILE
-	$RM -f $IDX_TMP_FILE
-	$RM -f $TMP_OUTPUT_FILE
+	if [ $KEEP_TMP -eq 0 ];then
+		$RM -f $TMP_FILE
+		$RM -f $IDX_TMP_FILE
+		$RM -f $TMP_OUTPUT_FILE
+	else
+		LOG_MSG "[INFO]:-Keeping temporary files in /tmp as -k option supplied"
+	fi
 }
 #******************************************************************************
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt:'?'aql:d:c:x:p:rn:s:f:bi:e:g:o:um:" opt;do
+		while getopts ":vt:'?'aql:d:c:x:p:rn:s:f:bi:e:g:o:um:k" opt;do
 			case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
@@ -933,6 +939,7 @@ if [ $# -ne 0 ]; then
 				e ) END_VALUE=$OPTARG ;;
 				g ) NUMERIC_INCREMENT=$OPTARG ;;
 				o ) PART_LIST=$OPTARG ;;
+				k ) KEEP_TMP=1 ;;
 				* ) USAGE ;;
 				esac
 		done	
