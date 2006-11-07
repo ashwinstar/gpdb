@@ -130,7 +130,23 @@ CHECK_PARAM () {
 			LOG_MSG "[INFO]:-Calling close down routine"
 			$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$MPPSTOP -d $MASTER_DATA_DIRECTORY -m"
 		fi
+	else
+		#Do not have a directory, but check to ensure we do not have a sync process
+		GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
+		if [ $PID -ne 0 ];then
+			LOG_MSG "[FATAL]:-Have a warm master standby process PID=$PID on $MASTER_STANDBY_HOSTNAME"
+			LOG_MSG "[FATAL]:-But no $MASTER_DATA_DIRECTORY directory on $MASTER_STANDBY_HOSTNAME"
+			LOG_MSG "[INFO]:-Manually remove this process on $MASTER_STANDBY_HOSTNAME and re-run this utility"
+			ERROR_EXIT "[FATAL]:-Unable to continue"
+		fi
+		if [ $EXIT_STATUS -ne 0 ];then
+			LOG_MSG "[FATAL]:-No $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME but, have a possible"
+			LOG_MSG "[FATAL]:-Warm master standby process on $MASTER_STANDBY_HOSTNAME"
+			LOG_MSG "[INFO]:-Manually remove this process on $MASTER_STANDBY_HOSTNAME and re-run this utility"
+			ERROR_EXIT "[FATAL]:-Unable to continue"
+		fi
 	fi
+	
 	#Now check to ensure that hostname supplied matches unix hostname output
 	SSH_HOSTNAME=`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME $HOSTNAME|$TR -d ' '`
 	ERROR_CHK $? "obtain remote hostname value" 2
