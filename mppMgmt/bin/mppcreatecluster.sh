@@ -77,6 +77,7 @@ START_SYNC="-1"
 QE_MIRROR_ARRAY=""
 MPP_PASSWD=mpparray
 TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
+TMP_FILE=/tmp/cluster_tmp_file.$$
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -157,7 +158,8 @@ CHK_PARAMS () {
 		unset PORT_BASE SEG_PREFIX DATA_DIRECTORY
 
 		#Make sure it is not a dos file with CTRL M at end of each line
-		$DOS2UNIX $CLUSTER_CONFIG > /dev/null 2>&1
+		$CAT $CLUSTER_CONFIG|$SED -e 's/^M$//g' > $TMP_FILE
+		$MV $TMP_FILE $CLUSTER_CONFIG
 		LOG_MSG "[INFO]:-Dumping $CLUSTER_CONFIG to logfile for reference"
 		$CAT $CLUSTER_CONFIG|$GREP -v "^#" >> $LOG_FILE
 		LOG_MSG "[INFO]:-Completed $CLUSTER_CONFIG dump to logfile"
@@ -302,8 +304,8 @@ CHK_PARAMS () {
 		#Get IP address of the master host
 
 		MASTER_IP_ADDRESS_ALL=(`$IFCONFIG $IFCONFIG_TXT |$GREP "inet "|$GREP -v "127.0.0"|$AWK '{print $2}'|$CUT -d: -f2`)
-		MASTER_IPV6_LOCAL_ADDRESS_ALL=(`$IFCONFIG $IFCONFIG_TXT |$GREP inet6|$CUT -d' ' -f2`)
 		ERROR_CHK $? "obtain IP address of Master host" 2
+		MASTER_IPV6_LOCAL_ADDRESS_ALL=(`$IFCONFIG $IFCONFIG_TXT |$GREP inet6|$CUT -d' ' -f2`)
 		MASTER_IP_ADDRESS=(`$ECHO ${MASTER_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
 		LOG_MSG "[INFO]:-Master IP address array = ${MASTER_IP_ADDRESS[@]}"
 		if [ x"" != x"$STANDBY_HOSTNAME" ];then
