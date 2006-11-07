@@ -2669,7 +2669,8 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 	/*
 	 * pfree the memory allocated for the dispatchCommandParmsAr
 	 */
-	for (i = 0; i < dThreads->threadCount; i++)
+	elog(DEBUG3, "destroydispatchthreads: threadcount %d array size %d", dThreads->threadCount, dThreads->dispatchCommandParmsArSize);
+	for (i = 0; i < dThreads->dispatchCommandParmsArSize; i++)
 	{
 		pParms = &(dThreads->dispatchCommandParmsAr[i]);
 		if (pParms->dispatchResultPtrArray)
