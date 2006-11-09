@@ -879,7 +879,7 @@ explain_outNode(StringInfo str,
 		case T_AdaptiveNestLoop:
 	        for (i = 0; i < indent; i++)
 		        appendStringInfo(str, "  ");
-            appendStringInfo(str, "  Hash join will be chosen if outer row count >= %d\n",
+            appendStringInfo(str, "  Hash Join will be chosen if outer row count >= %d\n",
 							 ((AdaptiveNestLoop *)plan)->nl_strategy_threshold);
 			break;
 		case T_Agg:
@@ -995,6 +995,13 @@ explain_outNode(StringInfo str,
 						IsA(plan, BitmapHeapScan) ? outer_plan : NULL,
 						indent + 3, es);
 	}
+    else if (skip_outer)
+    {
+		for (i = 0; i < indent; i++)
+			appendStringInfo(str, "  ");
+		appendStringInfo(str, "  ->  ");
+		appendStringInfo(str, "See first subplan of Hash Join\n");
+    }
 
 	/* righttree */
 	if (innerPlan(plan))
