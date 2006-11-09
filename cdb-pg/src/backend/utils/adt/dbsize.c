@@ -534,7 +534,21 @@ pg_total_relation_size_name(PG_FUNCTION_ARGS)
 	Oid			relid;
 
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
-	relid = RangeVarGetRelid(relrv, false);
+	
+	if (Mpp_role == MPP_ROLE_EXECUTE && relrv->schemaname != NULL)
+	{
+		Oid namespaceId;
+		/*
+		 * Do this the hard way to avoid access check we don't want
+		 */
+
+		namespaceId =  GetSysCacheOid(NAMESPACENAME,
+								 CStringGetDatum(relrv->schemaname),
+								 0, 0, 0);
+		relid = get_relname_relid(relrv->relname, namespaceId);
+	}
+	else
+		relid = RangeVarGetRelid(relrv, false);
 
 	size = calculate_total_relation_size(relid);
 	
