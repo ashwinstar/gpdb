@@ -95,6 +95,11 @@ ExecHashJoin(HashJoinState *node)
 	 */
 	if (hashtable == NULL)
 	{
+		/* MPP-989: for MPP reading from the outer here causes a
+		 * deadlock hazard. We need to fix this properly at some point
+		 * -- so that we'll be able to avoid building the hash table
+		 * when we have an empty outer relation */
+#if 0 /* MPP-989 */
 		/*
 		 * If the outer relation is completely empty, we can quit without
 		 * building the hash table.  However, for an inner join it is only a
@@ -141,6 +146,10 @@ ExecHashJoin(HashJoinState *node)
 		}
 		else
 			node->hj_FirstOuterTupleSlot = NULL;
+#endif
+		/* see MPP-989 comment above, for now we assume that we have
+		 * at least one row on the outer. */
+		node->hj_FirstOuterTupleSlot = NULL;
 
 		/*
 		 * create the hash table
