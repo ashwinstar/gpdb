@@ -1129,11 +1129,11 @@ exec_simple_query(const char *query_string)
 		{
 			if (was_logged)
 				ereport(LOG,
-						(errmsg("duration: %ld.%03d ms",
+						(errmsg("duration: %ld.%03d sec",
 								secs, msecs)));
 			else
 				ereport(LOG,
-						(errmsg("duration: %ld.%03d ms  statement: %s%s",
+						(errmsg("duration: %ld.%03d sec statement: %s%s",
 								secs, msecs,
 								query_string,
 								prepare_string ? prepare_string : "")));
