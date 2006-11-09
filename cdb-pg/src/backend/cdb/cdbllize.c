@@ -449,6 +449,7 @@ prescan_walker(Node *node, PlanProfile * context)
 		case T_MergeJoin:
 		case T_HashJoin:
 		case T_Hash:
+        case T_AdaptiveNestLoop:
 			/*
 			 * Keep walking in search of subqueries with unfinished plans.
 			 */

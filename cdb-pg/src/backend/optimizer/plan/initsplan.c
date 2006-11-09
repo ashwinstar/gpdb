@@ -850,15 +850,9 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 
 			/*
 			 * Check for hash or mergejoinable operators.
-			 *
-			 * We don't bother setting the hashjoin info if we're not going to
-			 * need it.  We do want to know about mergejoinable ops in all
-			 * cases, however, because we use mergejoinable ops for other
-			 * purposes such as detecting redundant clauses.
 			 */
 			check_mergejoinable(restrictinfo);
-			if (enable_hashjoin)
-				check_hashjoinable(restrictinfo);
+			check_hashjoinable(restrictinfo);
 
 			/*
 			 * Add clause to the join lists of all the relevant relations.

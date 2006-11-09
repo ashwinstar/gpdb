@@ -422,21 +422,33 @@ set_cheapest(PlannerInfo *root, RelOptInfo *parent_rel)
 	ListCell   *p;
 	Path	   *cheapest_startup_path;
 	Path	   *cheapest_total_path;
+    CdbRelDedupInfo    *dedup_info = parent_rel->dedup_info;
 
 	Assert(IsA(parent_rel, RelOptInfo));
 
     /* CDB: Add paths incorporating subquery duplicate suppression. */
-    if (parent_rel->dedup_info &&
-        parent_rel->dedup_info->later_dedup_pathlist)
+    if (dedup_info &&
+        dedup_info->later_dedup_pathlist)
+    {
         cdb_set_cheapest_dedup(root, parent_rel);
 
-    if (!parent_rel->pathlist)
-    {
-        /* ok if later_dedup_pathlist has paths but main pathlist has none. */
-        if (parent_rel->dedup_info->later_dedup_pathlist)
+        /* If main pathlist is empty, put the later_dedup paths there. */
+        if (!parent_rel->pathlist &&
+            dedup_info->later_dedup_pathlist)
+        {
+            parent_rel->pathlist = dedup_info->later_dedup_pathlist;
+            parent_rel->cheapest_startup_path = dedup_info->cheapest_startup_path;
+            parent_rel->cheapest_total_path = dedup_info->cheapest_total_path;
+            dedup_info->later_dedup_pathlist = NIL;
+            dedup_info->cheapest_startup_path = NULL;
+            dedup_info->cheapest_total_path = NULL;
+            Assert(parent_rel->cheapest_total_path);
             return;
-		elog(ERROR, "could not devise a query plan for the given query");
+        }
     }
+
+    if (!parent_rel->pathlist)
+		elog(ERROR, "could not devise a query plan for the given query");
 
     cheapest_startup_path = cheapest_total_path = (Path *) linitial(parent_rel->pathlist);
 
@@ -2494,6 +2506,7 @@ create_adaptive_join_path(PlannerInfo *root, Path *oldpath)
 
     Assert(IsA(oldjoin, NestPath));
     Assert(((NestPath *)oldjoin)->alternate == NULL);
+    Insist(innerrel && innerrel->cheapest_total_path);
 
     /* HJ doesn't support right or full outer join. */
     if (oldjoin->jointype != JOIN_INNER &&

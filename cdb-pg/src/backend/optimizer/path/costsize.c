@@ -1298,9 +1298,6 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
 	Selectivity joininfactor;
 	ListCell   *hcl;
 
-	if (!enable_hashjoin)
-		startup_cost += disable_cost;
-
 	/*
 	 * Compute cost and selectivity of the hashquals and qpquals (other
 	 * restriction clauses) separately.  We use approx_selectivity here for

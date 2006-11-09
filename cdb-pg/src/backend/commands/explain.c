@@ -469,6 +469,7 @@ explain_outNode(StringInfo str,
 {
 	char	   *pname = NULL;
 	int			i;
+	bool		skip_outer=false;
 
 	if (plan == NULL)
 	{
@@ -494,6 +495,8 @@ explain_outNode(StringInfo str,
 			pname = "Adaptive Join Choice";
 			break;
 		case T_NestLoop:
+			if (((NestLoop *)plan)->shared_outer)
+				skip_outer = true;
 			switch (((NestLoop *) plan)->join.jointype)
 			{
 				case JOIN_INNER:
@@ -976,7 +979,7 @@ explain_outNode(StringInfo str,
 	}
 
 	/* lefttree */
-	if (outerPlan(plan))
+	if (outerPlan(plan) && !skip_outer)
 	{
 		for (i = 0; i < indent; i++)
 			appendStringInfo(str, "  ");
