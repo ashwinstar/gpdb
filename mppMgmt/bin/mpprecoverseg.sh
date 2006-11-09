@@ -435,6 +435,18 @@ UPDATE_STATUS () {
 
 START_DATABASE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Starting up the MPP instance in admin mode... Please wait..."
+	$MPPSTART -m
+	ERROR_CHK $? "start MPP instance in admin mode" 2
+	LOG_MSG "[INFO]:-Resetting invalid segment status values"
+	for DBID in ${FAILED_INST_LIST[@]}
+	do
+		env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set valid='t' where dbid=${DBID}"
+		ERROR_CHK $? "reset dbid $DBID as valid" 1
+	done
+	LOG_MSG "[INFO]:-Commencing shutdown of the MPP instance from admin mode... Please wait..."
+	$MPPSTOP -m
+	ERROR_CHK $? "stop MPP instance from admin mode" 2
         LOG_MSG "[INFO]:-Starting up the MPP instance... Please wait ..."
         $MPPSTART -a
         RETVAL=$?
