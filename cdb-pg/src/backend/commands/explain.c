@@ -876,7 +876,7 @@ explain_outNode(StringInfo str,
 		case T_AdaptiveNestLoop:
 	        for (i = 0; i < indent; i++)
 		        appendStringInfo(str, "  ");
-            appendStringInfo(str, "  Hash join will be chosen if outer row count >= %d",
+            appendStringInfo(str, "  Hash join will be chosen if outer row count >= %d\n",
 							 ((AdaptiveNestLoop *)plan)->nl_strategy_threshold);
 			break;
 		case T_Agg:
