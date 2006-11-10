@@ -641,7 +641,7 @@ CHK_DB_RUNNING () {
 			LOG_MSG "[FATAL]:-However, error reported on test psql access to master instance"
 			LOG_MSG "[INFO]:-Check ps output for a postmaster process on the above port"
 			LOG_MSG "[INFO]:-Check the master postgres logfile for errors and also the utility log file"
-			ERROR_EXIT "[FATAL]:-Unable to continue"
+			ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
