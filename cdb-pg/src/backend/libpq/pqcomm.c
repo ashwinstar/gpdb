@@ -115,7 +115,7 @@ static char PqRecvBuffer[PQ_BUFFER_SIZE];
 static int	PqRecvPointer;		/* Next index to read a byte from PqRecvBuffer */
 static int	PqRecvLength;		/* End of data available in PqRecvBuffer */
 
-static pthread_mutex_t send_mutex = PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP;
+static pthread_mutex_t send_mutex = PTHREAD_MUTEX_INITIALIZER;
 /*
  * Message status
  */
