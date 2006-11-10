@@ -230,13 +230,16 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	/*
 	 * The most threads we could have is segdb_count / mpp_connections_per_thread, rounded up.
 	 * This is equivalent to 1 + (segdb_count-1) / mpp_connections_per_thread.
-	 * We allocate enough memory for this many DispoatchCommandParms structures,
+	 * We allocate enough memory for this many DispatchCommandParms structures,
 	 * even though we may not use them all.
+	 *
+	 * We can only use gp->size here if we're not dealing with a
+	 * singleton gang. It is safer to use the actual segment count.
 	 */
 	Assert(mpp_connections_per_thread > 0);
 
 	segdbs_in_thread_pool = 0;
-	max_threads = 1 + (gp->size - 1) / mpp_connections_per_thread;
+	max_threads = 1 + (getMPPSegmentCount() - 1) / mpp_connections_per_thread;
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
@@ -251,7 +254,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 		 * X 2 for good measure ? */
 		int paramCount = max_threads * 4 * Max(maxSlices, 5);
 
-		elog(DEBUG4, "dispatcher: allocating command array with maxslices %d", maxSlices);
+		elog(DEBUG4, "dispatcher: allocating command array with maxslices %d paramCount %d", maxSlices, paramCount);
 			
 		*dispatchThreads = cdbdisp_makeDispatchThreads(paramCount);
 	}
