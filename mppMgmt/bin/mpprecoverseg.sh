@@ -481,7 +481,7 @@ FORCE_RECOVER () {
 	#Get active mirror details
 	ACTIVE_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where dbid<>$FAIL_QE_DBID and content in (select content from $CONFIG_TABLE where dbid=${FAIL_QE_DBID});"`)
 	ERROR_CHK $? "obtain recovery segment instance details" 2
-	if [ $#{ACTIVE_INSTANCE_COUNT[@]} -ne 1 ];then
+	if [ ${#ACTIVE_INSTANCE_COUNT[@]} -ne 1 ];then
 		ERROR_EXIT "[FATAL]:-Did not locate 1 recovery segment instance, obtained  $#{ACTIVE_INSTANCE_COUNT[@]}" 2
 	fi
 	MIR_SET_VAR "${ACTIVE_INSTANCE_ARRAY[@]}"	
