@@ -64,6 +64,7 @@
  *------------------------
  */
 #include "postgres.h"
+#include <pthread.h>
 
 #include <signal.h>
 #include <errno.h>
@@ -88,6 +89,7 @@
 #include "miscadmin.h"
 #include "storage/ipc.h"
 #include "utils/guc.h"
+#include "cdb/cdbvars.h"
 
 /*
  * Configuration options
@@ -113,6 +115,7 @@ static char PqRecvBuffer[PQ_BUFFER_SIZE];
 static int	PqRecvPointer;		/* Next index to read a byte from PqRecvBuffer */
 static int	PqRecvLength;		/* End of data available in PqRecvBuffer */
 
+static pthread_mutex_t send_mutex = PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP;
 /*
  * Message status
  */
@@ -1011,13 +1014,17 @@ int
 pq_flush(void)
 {
 	int			res;
-
+	
 	/* No-op if reentrant call */
 	if (PqCommBusy)
 		return 0;
+	if (Mpp_role == MPP_ROLE_DISPATCH && IsUnderPostmaster)
+		pthread_mutex_lock(&send_mutex);
 	PqCommBusy = true;
 	res = internal_flush();
 	PqCommBusy = false;
+	if (Mpp_role == MPP_ROLE_DISPATCH && IsUnderPostmaster)
+		pthread_mutex_unlock(&send_mutex);
 	return res;
 }
 
@@ -1110,8 +1117,10 @@ internal_flush(void)
 int
 pq_putmessage(char msgtype, const char *s, size_t len)
 {
+	if (Mpp_role == MPP_ROLE_DISPATCH && IsUnderPostmaster)
+		pthread_mutex_lock(&send_mutex);
 	if (DoingCopyOut || PqCommBusy)
-		return 0;
+		goto end;
 	PqCommBusy = true;
 	if (msgtype)
 		if (internal_putbytes(&msgtype, 1))
@@ -1127,10 +1136,15 @@ pq_putmessage(char msgtype, const char *s, size_t len)
 	if (internal_putbytes(s, len))
 		goto fail;
 	PqCommBusy = false;
+end:
+	if (Mpp_role == MPP_ROLE_DISPATCH && IsUnderPostmaster)
+		pthread_mutex_unlock(&send_mutex);
 	return 0;
 
 fail:
 	PqCommBusy = false;
+	if (Mpp_role == MPP_ROLE_DISPATCH && IsUnderPostmaster)
+		pthread_mutex_unlock(&send_mutex);
 	return EOF;
 }
 
