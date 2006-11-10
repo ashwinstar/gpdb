@@ -478,6 +478,7 @@ FORCE_RECOVER () {
 	FAILED_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid, content from $CONFIG_TABLE where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`)
 	ERROR_CHK $? "obtain failed segment instance details" 2
 	FAIL_SET_VAR "${FAILED_INSTANCE_ARRAY[@]}" 
+	FAILED_INST_LIST=($FAIL_QE_DBID)
 	#Get active mirror details
 	ACTIVE_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where dbid<>$FAIL_QE_DBID and content in (select content from $CONFIG_TABLE where dbid=${FAIL_QE_DBID});"`)
 	ERROR_CHK $? "obtain recovery segment instance details" 2
