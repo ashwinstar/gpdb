@@ -172,10 +172,24 @@ ExecMotion(MotionState * node)
 		gettimeofday(&startTime, NULL);
 #endif
 
+		if (node->ps.state->active_recv_id >= 0)
+		{
+			if (node->ps.state->active_recv_id != motion->motionID)
+			{
+				elog(LOG, "DEADLOCK HAZARD: Updating active_motion_id from %d to %d",
+					 node->ps.state->active_recv_id, motion->motionID);
+				node->ps.state->active_recv_id = motion->motionID;
+			}
+		} else
+			node->ps.state->active_recv_id = motion->motionID;
+
 		if (motion->sendSorted)
 			tuple = execMotionSortedReceiver(node);
 		else
 			tuple = execMotionUnsortedReceiver(node);
+
+		if (tuple == NULL)
+			node->ps.state->active_recv_id = -1;
 
 #ifdef MEASURE_MOTION_TIME
 		gettimeofday(&stopTime, NULL);
@@ -304,7 +318,6 @@ execMotionUnsortedReceiver(MotionState * node)
 
 	AssertState(motion->motionType == MOTIONTYPE_HASH ||
 	 (motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs <= 1));
-
 
 	if (node->stopRequested)
 	{

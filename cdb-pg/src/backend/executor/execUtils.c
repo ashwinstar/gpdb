@@ -239,13 +239,13 @@ CreateExecutorState(void)
 	estate->interconnect_context = NULL;
 	estate->motionlayer_context = NULL;
 	estate->es_interconnect_is_setup = false;
+	estate->active_recv_id = -1;
 	estate->es_seqserver_is_setup = false;
 	estate->es_got_eos = false;
 	estate->cancelUnfinished = false;
 	estate->primaryResults = NULL;
 	estate->mirrorResults = NULL;
 	estate->dispatchThreads = NULL;
-	
 
 	/*
 	 * Return the executor state structure

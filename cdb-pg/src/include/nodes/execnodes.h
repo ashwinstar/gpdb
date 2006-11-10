@@ -526,6 +526,7 @@ typedef struct EState
  	SliceTable *es_sliceTable;
 	struct MotionState **es_slice_map;
 	
+	int active_recv_id;
 	void *motionlayer_context;  /* Motion Layer state */
 	void *interconnect_context; /* Interconnect state */
 	
