@@ -484,7 +484,7 @@ execMotionSortedReceiver(MotionState * node)
 		}
 
         /* At EOS, drop this sender from the priority queue. */
-        else
+        else if(!CdbHeap_IsEmpty(hp))
             CdbHeap_DeleteMin(hp);
 	}
 
