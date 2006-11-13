@@ -9286,8 +9286,7 @@ dumpDatabaseDefinition(PGconn *conn)
 	}
 	if (strlen(dba) > 0)
 	{
-		appendPQExpBuffer(creaQry, " OWNER = ");
-		appendStringLiteral(creaQry, dba, true);
+		appendPQExpBuffer(creaQry, " OWNER = %s", dba);
 	}
 	
 	if (strlen(tablespace) > 0 && strcmp(tablespace, "pg_default") != 0)
