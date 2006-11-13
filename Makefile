@@ -58,7 +58,7 @@ copydocs :
 	else  echo "Copying Documentation" ;  \
 	echo "Copying  $(MPPDOCDIR)/README "; \
 	cp $(MPPDOCDIR)/README $(INSTLOC)/docs/README ; \
-	echo "Copying $(MPPDOCDIR)/pdf/GP*.pdf " ; \
+	echo "Copying $(MPPDOCDIR)/pdf/MPP*.pdf " ; \
 	cp $(MPPDOCDIR)/pdf/GP*.pdf $(INSTLOC)/docs/; \
 	fi 
 
