@@ -636,7 +636,7 @@ ShutdownPostgres(int code, Datum arg)
 	AbortOutOfAnyTransaction();
 
 	/* Final cleanup for any resource locks (holdable cursors). */
-	if (ResourceScheduler)
+	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
 		ResLockReleaseAll(true, true, true);
 
 	/*
