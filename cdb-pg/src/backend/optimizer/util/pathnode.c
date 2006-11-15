@@ -2257,10 +2257,18 @@ create_nestloop_path(PlannerInfo *root,
     if (!outer_path->parent->onerow)
     {
         if (!inner_path->rescannable)
-            inner_path = (Path *)create_material_path(inner_path->parent, inner_path);
+		{
+			/* In order for materialize to fully fetch the underlying (required to avoid our
+			 * deadlock hazard) we must set cdb_strict! */
+			inner_path = (Path *)create_material_path(inner_path->parent, inner_path);
+			((MaterialPath *)inner_path)->cdb_strict = true;
+		}
         else if (inner_path != unmoved_inner_path &&
                  inner_path->motionHazard)
+		{
             inner_path = (Path *)create_material_path(inner_path->parent, inner_path);
+            ((MaterialPath *)inner_path)->cdb_strict = true;
+		}
     }
 
     pathnode = makeNode(NestPath);
