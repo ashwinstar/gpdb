@@ -313,12 +313,6 @@ DISPLAY_PARAM () {
 BUILD_MPP_MASTER () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing rebuild of MPP instance"
-	if [ `$GREP -c "${MPP_LIBRARY_PATH}/plpgsql.so" ${SHARE_PATH}/$SCHEMA_FILE` -eq 0 ];then
-		LOG_MSG "[INFO]:-Setting path for plpgsql.so"
-		ED_FILE ${SHARE_PATH}/$SCHEMA_FILE plpgsql.so "AS '${MPP_LIBRARY_PATH}/plpgsql.so'" 1
-	else
-		LOG_MSG "[INFO]:-Path correct for plpgsql.so, skipping edit"
-	fi
 	LOG_MSG "[INFO]:-Creating Master database"
 	RUN_COMMAND "$INITDB -E $ENCODING --locale=$LOCALE_SETTING  -D $MASTER_DATA_DIRECTORY"
 	BACKOUT_COMMAND "$RM -Rf $MASTER_DATA_DIRECTORY"

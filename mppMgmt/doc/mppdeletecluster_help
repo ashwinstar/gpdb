@@ -18,7 +18,7 @@ DESCRIPTION
 
 The mppdeletecluster.sh script will perform the following actions:
 
-* Stop all postmaster processes (the segment instances and MPP master 
+* Stop all postmaster processes (the segment instances and master 
   instance).
 
 * Delete all data directories.
@@ -35,12 +35,12 @@ OPTIONS
 
 -d <data_directory>
 
-Required. The MPP master host data directory.
+Required. The master host data directory.
 
 -f
 
 Force a delete even if backup files are found in the data directories. The 
-default is to not delete Greenplum Database instances if backup files (created 
+default is to not delete Greenplum instances if backup files (created 
 by mpp_dump) are present.
 
 -l <logfile_directory>
@@ -62,12 +62,12 @@ EXAMPLES
 
 Delete a Greenplum Database system:
 
-mppdeletecluster.sh -d /mppdata/mpp0
+mppdeletecluster.sh -d /gpdata/gp-1
 
 
 Delete a Greenplum Database system even if backup files are present:
 
-mppdeletecluster.sh -d /mppdata/mpp0 -f
+mppdeletecluster.sh -d /gpdata/gp-1 -f
 
 
 *****************************************************

@@ -1948,6 +1948,18 @@ _outFuncWithArgs(StringInfo str, FuncWithArgs *node)
 }
 
 static void
+_outGrantRoleStmt(StringInfo str, GrantRoleStmt *node)
+{	
+	WRITE_NODE_TYPE("GRANTROLESTMT");	
+	WRITE_NODE_FIELD(granted_roles);
+	WRITE_NODE_FIELD(grantee_roles);
+	WRITE_BOOL_FIELD(is_grant);
+	WRITE_BOOL_FIELD(admin_opt);
+	WRITE_STRING_FIELD(grantor);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);		
+}
+
+static void
 _outLockStmt(StringInfo str, LockStmt *node)
 {
 	WRITE_NODE_TYPE("LOCKSTMT");
@@ -2139,6 +2151,7 @@ _outQuery(StringInfo str, Query *node)
 			case T_TransactionStmt:
 			case T_CdbExecStmt:
 			case T_GrantStmt:
+			case T_GrantRoleStmt:
 			case T_LockStmt:
 			case T_CopyStmt:
 			case T_ReindexStmt:
@@ -2921,6 +2934,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_FuncWithArgs:
 				_outFuncWithArgs(str, obj);
+				break;
+			case T_GrantRoleStmt:
+				_outGrantRoleStmt(str, obj);
 				break;
 			case T_LockStmt:
 				_outLockStmt(str, obj);

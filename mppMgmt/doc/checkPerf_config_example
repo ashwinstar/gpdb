@@ -47,7 +47,7 @@ baseDir="/home/bgadmin"
 [ "Disk Performance"]
 #
 # The directory path (or list of directory paths) on which to
-# test I/O performance. These would typically be your MPP primary
+# test I/O performance. These would typically be your Greenplum primary
 # segment data directories, and perhaps your mirror data directories
 # as well. Note that the extra comma is required at the end of the 
 # list and each directory is in quotes.

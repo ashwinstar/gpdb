@@ -1293,6 +1293,11 @@ GrantRole(GrantRoleStmt *stmt)
 	 * Set flag to update flat auth file at commit.
 	 */
 	auth_file_update_needed();
+
+    if (Mpp_role == MPP_ROLE_DISPATCH)
+    {
+        CdbDispatchUtilityStatement((Node *) stmt);
+    }
 }
 
 /*

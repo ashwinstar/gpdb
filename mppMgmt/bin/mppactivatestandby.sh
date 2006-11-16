@@ -218,7 +218,7 @@ UPDATE_CATALOG () {
 	    ADMIN_SHUTDOWN
 	    ERROR_EXIT "[FATAL]:-Unable to contine, unable to update $CONFIG_TABLE catalog" 2
 	fi
-	LOG_MSG "Deleting original master host details"
+	LOG_MSG "[INFO]:-Deleting original master host details"
 	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"delete from $CONFIG_TABLE where dbid=$MASTER_STANDBY_DBID;"
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
@@ -255,7 +255,7 @@ DISPLAY_PARAM () {
 		LOG_MSG "[INFO]:-MPP Build new Master standby      = On"
 		LOG_MSG "[INFO]:-MPP new Master standby hostname   = $NEW_STANDBY_MASTER"
 	fi
-	if [ x"" != x"$FORCE_ACTIVATE" ];then
+	if [ $FORCE_ACTIVATE -eq 1 ];then
 		LOG_MSG "[WARN]:-Force Master standby activation   = On"
 	else
 		LOG_MSG "[INFO]:-Force Master standby activation   = Off"

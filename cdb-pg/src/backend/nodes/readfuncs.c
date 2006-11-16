@@ -1923,6 +1923,20 @@ _readFuncWithArgs(void)
 	READ_DONE();		 	
 }
 
+static GrantRoleStmt *
+_readGrantRoleStmt(void)
+{
+	READ_LOCALS(GrantRoleStmt);
+	READ_NODE_FIELD(granted_roles);
+	READ_NODE_FIELD(grantee_roles);
+	READ_BOOL_FIELD(is_grant);
+	READ_BOOL_FIELD(admin_opt);
+	READ_STRING_FIELD(grantor);
+	READ_ENUM_FIELD(behavior, DropBehavior);		
+	
+	READ_DONE();
+}
+
 static LockStmt *
 _readLockStmt(void)
 {
@@ -2711,6 +2725,7 @@ static ParseNodeInfo infoAr[] =
 	{"FUNCTIONPARAMETER", (ReadFn)_readFunctionParameter},
 	{"FUNCTIONSCAN", (ReadFn)_readFunctionScan},
 	{"FUNCWITHARGS", (ReadFn)_readFuncWithArgs},
+	{"GRANTROLESTMT", (ReadFn)_readGrantRoleStmt},	
 	{"GRANTSTMT", (ReadFn)_readGrantStmt},
 	{"GROUP", (ReadFn)_readGroup},
 	{"GROUPCLAUSE", (ReadFn)_readGroupClause},
