@@ -4099,7 +4099,7 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 	/*
 	 * Done reading the line. Convert it to server encoding.
 	 */
-	if (cstate->need_transcoding)
+	if (cstate->need_transcoding && cstate->line_done)
 	{
 		cvt = (char *) pg_client_to_server(cstate->line_buf.data,
 										   cstate->line_buf.len);
