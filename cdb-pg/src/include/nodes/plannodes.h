@@ -359,7 +359,9 @@ typedef struct Join
 {
 	Plan		plan;
 	JoinType	jointype;
-	List	   *joinqual;		/* JOIN quals (in addition to plan.qual) */
+	List		*joinqual;		/* JOIN quals (in addition to plan.qual) */
+
+	bool		prefetch_inner; /* to avoid deadlock in MPP */
 } Join;
 
 /* ----------------

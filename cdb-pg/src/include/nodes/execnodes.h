@@ -1259,6 +1259,7 @@ typedef struct NestLoopState
 	executorTupleQueue *outer_q;
 
 	bool		shared_outer;
+	bool		prefetch_inner;
 
 	TupleTableSlot *nl_NullInnerTupleSlot;
 } NestLoopState;

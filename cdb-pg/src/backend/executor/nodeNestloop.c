@@ -104,6 +104,27 @@ ExecNestLoop(NestLoopState *node)
 	 */
 	ResetExprContext(econtext);
 
+	if (node->prefetch_inner)
+	{
+		innerTupleSlot = ExecProcNode(innerPlan);
+		econtext->ecxt_innertuple = innerTupleSlot;
+
+		if (TupIsNull(innerTupleSlot))
+		{
+            /* CDB: Quit if empty inner implies no outer rows can match. */
+            if (node->nl_QuitIfEmptyInner)
+            {
+                ExecSquelchNode(outerPlan);
+                return NULL;
+            }
+		}
+
+		ExecReScan(innerPlan, econtext);
+		ResetExprContext(econtext);
+
+		node->prefetch_inner = false;
+	}
+
 	/*
 	 * Ok, everything is setup for the join so now loop until we return a
 	 * qualifying join tuple.
@@ -294,6 +315,8 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	nlstate->outer_q = NULL;
 
 	nlstate->shared_outer = node->shared_outer;
+
+	nlstate->prefetch_inner = node->join.prefetch_inner;
 
 	/*
 	 * Miscellaneous initialization

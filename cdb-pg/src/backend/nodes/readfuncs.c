@@ -2578,6 +2578,8 @@ void readJoinInfo(Join *local_node)
 
 	readPlanInfo((Plan *)local_node);
 
+	READ_BOOL_FIELD(prefetch_inner);
+
 	READ_ENUM_FIELD(jointype, JoinType);
 	READ_NODE_FIELD(joinqual);
 }
