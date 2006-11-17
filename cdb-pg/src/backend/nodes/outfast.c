@@ -1848,6 +1848,18 @@ _outCreateOpClassStmt(StringInfo str, CreateOpClassStmt *node)
 	WRITE_BOOL_FIELD(isDefault);
 	WRITE_OID_FIELD(opclassOid);
 }
+
+static void
+_outCreateOpClassItem(StringInfo str, CreateOpClassItem *node)
+{
+	WRITE_NODE_TYPE("CREATEOPCLASSITEM");
+	WRITE_INT_FIELD(itemtype);
+	WRITE_NODE_FIELD(name);
+	WRITE_NODE_FIELD(args);
+	WRITE_INT_FIELD(number);
+	WRITE_BOOL_FIELD(recheck);
+	WRITE_NODE_FIELD(storedtype);
+}
 	
 static void
 _outRemoveOpClassStmt(StringInfo str, RemoveOpClassStmt *node)
@@ -2145,6 +2157,7 @@ _outQuery(StringInfo str, Query *node)
 			case T_CreateCastStmt:
 			case T_DropCastStmt:
 			case T_CreateOpClassStmt:
+			case T_CreateOpClassItem:
 			case T_RemoveOpClassStmt:
 			case T_CreateConversionStmt:
 			
@@ -2989,6 +3002,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_CreateOpClassStmt:
 				_outCreateOpClassStmt(str,obj);
+				break;
+			case T_CreateOpClassItem:
+				_outCreateOpClassItem(str,obj);
 				break;
 			case T_RemoveOpClassStmt:
 				_outRemoveOpClassStmt(str,obj);

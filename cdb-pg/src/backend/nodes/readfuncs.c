@@ -1862,6 +1862,20 @@ _readCreateOpClassStmt(void)
 				
 	READ_DONE();
 }
+
+static CreateOpClassItem *
+_readCreateOpClassItem(void)
+{
+	READ_LOCALS(CreateOpClassItem);
+	READ_INT_FIELD(itemtype);
+	READ_NODE_FIELD(name);
+	READ_NODE_FIELD(args);
+	READ_INT_FIELD(number);
+	READ_BOOL_FIELD(recheck);
+	READ_NODE_FIELD(storedtype);
+				
+	READ_DONE();
+}
 	
 static RemoveOpClassStmt *
 _readRemoveOpClassStmt(void)
@@ -2700,6 +2714,7 @@ static ParseNodeInfo infoAr[] =
 	{"CREATEDOMAINSTMT", (ReadFn)_readCreateDomainStmt},
 	{"CREATEFUNCSTMT", (ReadFn)_readCreateFunctionStmt},
 	{"CREATEOPCLASS", (ReadFn)_readCreateOpClassStmt},
+	{"CREATEOPCLASSITEM", (ReadFn)_readCreateOpClassItem},
 	{"CREATEPLANGSTMT", (ReadFn)_readCreatePLangStmt},
 	{"CREATEROLESTMT", (ReadFn)_readCreateRoleStmt},
 	{"CREATESCHEMASTMT", (ReadFn)_readCreateSchemaStmt},
