@@ -20,10 +20,10 @@
  * point, but for now that seems useless complexity.
  *
  *
- * Copyright (c) 2003-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2006, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/tidbitmap.c,v 1.8 2005/10/15 02:49:19 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/tidbitmap.c,v 1.10 2006/07/13 17:47:01 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -33,8 +33,8 @@
 
 #include "access/htup.h"
 #include "nodes/tidbitmap.h"
+#include "storage/bufpage.h"
 #include "utils/hsearch.h"
-
 
 /*
  * The maximum number of tuples per page is not large (typically 256 with
