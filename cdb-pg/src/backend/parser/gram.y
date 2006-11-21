@@ -5176,11 +5176,11 @@ DeallocateStmt: DEALLOCATE name
  *
  *		QUERY :
  *
- *				MPPEXEC query plan [ ( parameter [, ...] ) ] [ sliceinfo ]
+ *				MPPEXEC query plan [ ( parameter [, ...] ) ] [ sliceinfo localSlice]
  *
  *****************************************************************************/
 
-CdbExecStmt:	MPPEXEC Iconst Iconst Iconst cdb_string cdb_string opt_cdb_string_list opt_cdb_string
+CdbExecStmt:	MPPEXEC Iconst Iconst Iconst cdb_string cdb_string opt_cdb_string_list opt_cdb_string Iconst
 				{
 					CdbExecStmt *n = makeNode(CdbExecStmt);
 					n->SessionUserId = $2;
@@ -5190,6 +5190,7 @@ CdbExecStmt:	MPPEXEC Iconst Iconst Iconst cdb_string cdb_string opt_cdb_string_l
 					n->ser_plan = ($6);
 					n->ser_params = ($7);
 					n->ser_sliceinfo = ($8);
+					n->localSlice = $9;
 					$$ = (Node *)n;
 				}
 		;

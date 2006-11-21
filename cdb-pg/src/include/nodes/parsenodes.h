@@ -1969,6 +1969,8 @@ typedef struct CdbExecStmt
 	Oid	SessionUserId;
 	Oid	OuterUserId;
 	Oid	CurrentUserId;
+
+	int			localSlice;		/* local slice to run */
 	
 	Node *		ser_query;		/* Serialized query tree. */
 	Node *		ser_plan;		/* Serialized plan tree. */

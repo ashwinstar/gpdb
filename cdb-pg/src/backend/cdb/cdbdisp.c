@@ -83,6 +83,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 							 const char            *szCommand,
 							 const char			   *szSnapshot,
 							 int					txnOptions,
+							 int					sliceId,
 							 CdbDispatchResult     *dispatchResult);
 
 static int
@@ -298,6 +299,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
                                      szCommand,
                                      szSnapshotInfo,
                                      txnOptions,
+									 sliceIndex,
                                      qeResult);
 
 		/*
@@ -389,6 +391,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
                              const char            *szCommand,
                              const char			   *szSnapshot,
                              int					txnOptions,
+                             int					sliceId,
                              CdbDispatchResult     *dispatchResult)
 {
 	DispatchCommandParms *pParms;
@@ -406,7 +409,21 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 
 	if (segdbs_in_thread_pool % mpp_connections_per_thread == 0)
 	{
-		pParms->szCommand = pstrdup(szCommand);
+		if (sliceId >= 0 &&
+			strncmp("mppexec", szCommand, 7) == 0)
+		{
+			/* Complete the mppexec command for this slice. */
+			StringInfoData si;
+
+			initStringInfoOfSize(&si, strlen(szCommand) + 10);
+			appendStringInfo(&si, "%s %d", szCommand, sliceId);
+			pParms->szCommand = si.data;
+		}
+		else
+		{
+			/* non "mppexec" just gets duplicated */
+			pParms->szCommand = pstrdup(szCommand);
+		}
 		pParms->szSnapshot = pstrdup(szSnapshot);
 		pParms->txnOptions = txnOptions;
 		pParms->cmdID = mpp_command_count;
@@ -2201,6 +2218,14 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		appendStringInfoLiteral(&strinfo, ")");
 	}
 
+	ssliceinfo = serializeNode((Node *) sliceTbl, &ssliceinfo_len);
+
+	appendStringInfoLiteral(&strinfo, " '");
+	appendBinaryStringInfo(&strinfo, ssliceinfo, ssliceinfo_len);
+	appendStringInfoLiteral(&strinfo, "'");
+
+	pfree(ssliceinfo);
+
 	/*
 	 * Hang on to the command so far.  It will serve as the prefix for each
 	 * of the MPPEXEC commands we dispatch.  Clear the buffer for use in
@@ -2208,6 +2233,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 */
 	mppexecPrefix = strinfo.data;
 	mppexecPrefix_len = strinfo.len;
+
 	initStringInfoOfSize(&strinfo, datasize);
 
 	/*
@@ -2291,25 +2317,11 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		}
 
 		/*
-		 * Set up the slice info parameter for this slice and use it to
-		 * construct a finished MPPEXEC command.
-		 */
-		sliceTbl->localSlice = slice->sliceIndex;
-		ssliceinfo = serializeNode((Node *) sliceTbl, &ssliceinfo_len);
-
-		appendBinaryStringInfo(&strinfo, mppexecPrefix, mppexecPrefix_len);
-		appendStringInfoLiteral(&strinfo, " '");
-		appendBinaryStringInfo(&strinfo, ssliceinfo, ssliceinfo_len);
-		appendStringInfoLiteral(&strinfo, "'");
-
-		pfree(ssliceinfo);
-
-		/*
 		 * Dispatch the plan to our primaryGang.
 		 * Doesn't wait for it to finish.
 		 */
 		cdbdisp_dispatchToGang(pDispatchThreads,
-							   strinfo.data,
+							   mppexecPrefix,
 						       szSnapshotInfo,
 						       txnOptions,
                                primaryGang,
@@ -2323,24 +2335,18 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		if (mirrorGang != NULL && (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL))
 		{
             cdbdisp_dispatchToGang(pDispatchThreads,
-								   strinfo.data,
+								   mppexecPrefix,
             					   szSnapshotInfo,
             					   txnOptions,
                                    mirrorGang,
                                    *pMirrorResults,
                                    slice->sliceIndex, sliceLim);
 		}
-
-		/* Empty the buffer for reuse. */
-		truncateStringInfo(&strinfo, 0);
 	}
 
-
-    pfree(strinfo.data);
     pfree(szSnapshotInfo);
     pfree(mppexecPrefix);
     pfree(sliceVector);
-
 
 	sliceTbl->localSlice = oldLocalSlice;
 

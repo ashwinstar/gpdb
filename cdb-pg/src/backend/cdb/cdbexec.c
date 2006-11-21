@@ -79,6 +79,8 @@ CdbExecQuery(struct CdbExecStmt * stmt, struct _DestReceiver *dest, char *comple
 
         sliceTable = (SliceTable *) deserializeNode(cstr);
 
+		sliceTable->localSlice = stmt->localSlice;
+
         if (!sliceTable ||
             !IsA(sliceTable, SliceTable) ||
             sliceTable->localSlice < 0 ||
