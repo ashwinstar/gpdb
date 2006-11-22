@@ -602,20 +602,20 @@ BUILD_MASTER_PG_HBA_FILE () {
         $ECHO "#Master IP addresses " >> ${MPP_DIR}/$PG_HBA
         for ADDR in "${MASTER_IP_ADDRESS_ALL[@]}"
         do
-        	$ECHO "host     all         $USER_NAME         $ADDR/0       trust" >> ${MPP_DIR}/$PG_HBA
+        	$ECHO "host     all         $USER_NAME         $ADDR/32       trust" >> ${MPP_DIR}/$PG_HBA
         done
 
         $ECHO "#Standby Master IP addressess " >> ${MPP_DIR}/$PG_HBA
         for ADDR in "${STANDBY_IP_ADDRESS_ALL[@]}"
         do
-        	$ECHO "host     all         $USER_NAME         $ADDR/0       trust" >> ${MPP_DIR}/$PG_HBA
+        	$ECHO "host     all         $USER_NAME         $ADDR/32       trust" >> ${MPP_DIR}/$PG_HBA
         done
 
         # Add all local IPV6 addresses
         $ECHO "#IPV6 local" >> ${MPP_DIR}/$PG_HBA
         for ADDR in "${MASTER_IPV6_LOCAL_ADDRESS_ALL[@]}"
         do
-        	$ECHO "host     all         $USER_NAME         $ADDR/0       trust" >> ${MPP_DIR}/$PG_HBA
+        	$ECHO "host     all         $USER_NAME         $ADDR/128       trust" >> ${MPP_DIR}/$PG_HBA
         done
         $ECHO "#other " >> ${MPP_DIR}/$PG_HBA
         
