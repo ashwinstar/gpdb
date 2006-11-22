@@ -5180,7 +5180,7 @@ DeallocateStmt: DEALLOCATE name
  *
  *****************************************************************************/
 
-CdbExecStmt:	MPPEXEC Iconst Iconst Iconst cdb_string cdb_string opt_cdb_string_list opt_cdb_string Iconst
+CdbExecStmt:	MPPEXEC Iconst Iconst Iconst cdb_string cdb_string opt_cdb_string_list opt_cdb_string SignedIconst
 				{
 					CdbExecStmt *n = makeNode(CdbExecStmt);
 					n->SessionUserId = $2;

@@ -409,8 +409,12 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 
 	if (segdbs_in_thread_pool % mpp_connections_per_thread == 0)
 	{
-		if (sliceId >= 0 &&
-			strncmp("mppexec", szCommand, 7) == 0)
+		/* create database emits an mppexec statement, but has sliceid
+		 * of -1; so we've actually got to examine the command text --
+		 * otherwise we'll get a parser error on the QE (it is
+		 * expecting the slice at the end of the command, no matter
+		 * what) */
+		if (strncmp("mppexec", szCommand, 7) == 0)
 		{
 			/* Complete the mppexec command for this slice. */
 			StringInfoData si;
