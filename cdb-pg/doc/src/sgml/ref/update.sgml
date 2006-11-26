@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/update.sgml,v 1.33.2.2 2006/03/08 22:59:17 tgl Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/update.sgml,v 1.41 2006/09/16 00:30:20 momjian Exp $
 PostgreSQL documentation
 -->
 
@@ -20,9 +20,12 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-UPDATE [ ONLY ] <replaceable class="PARAMETER">table</replaceable> SET <replaceable class="PARAMETER">column</replaceable> = { <replaceable class="PARAMETER">expression</replaceable> | DEFAULT } [, ...]
+UPDATE [ ONLY ] <replaceable class="PARAMETER">table</replaceable> [ [ AS ] <replaceable class="parameter">alias</replaceable> ]
+    SET { <replaceable class="PARAMETER">column</replaceable> = { <replaceable class="PARAMETER">expression</replaceable> | DEFAULT } |
+          ( <replaceable class="PARAMETER">column</replaceable> [, ...] ) = ( { <replaceable class="PARAMETER">expression</replaceable> | DEFAULT } [, ...] ) } [, ...]
     [ FROM <replaceable class="PARAMETER">fromlist</replaceable> ]
     [ WHERE <replaceable class="PARAMETER">condition</replaceable> ]
+    [ RETURNING * | <replaceable class="parameter">output_expression</replaceable> [ AS <replaceable class="parameter">output_name</replaceable> ] [, ...] ]
 </synopsis>
  </refsynopsisdiv>
 
@@ -52,10 +55,20 @@ UPDATE [ ONLY ] <replaceable class="PARAMETER">table</replaceable> SET <replacea
   </para>
 
   <para>
+   The optional <literal>RETURNING</> clause causes <command>UPDATE</>
+   to compute and return value(s) based on each row actually updated.
+   Any expression using the table's columns, and/or columns of other
+   tables mentioned in <literal>FROM</literal>, can be computed.
+   The new (post-update) values of the table's columns are used.
+   The syntax of the <literal>RETURNING</> list is identical to that of the
+   output list of <command>SELECT</>.
+  </para>
+
+  <para>
    You must have the <literal>UPDATE</literal> privilege on the table
    to update it, as well as the <literal>SELECT</literal>
    privilege to any table whose values are read in the
-   <replaceable class="parameter">expression</replaceable>s or
+   <replaceable class="parameter">expressions</replaceable> or
    <replaceable class="parameter">condition</replaceable>.
   </para>
  </refsect1>
@@ -74,13 +87,28 @@ UPDATE [ ONLY ] <replaceable class="PARAMETER">table</replaceable> SET <replacea
    </varlistentry>
 
    <varlistentry>
+    <term><replaceable class="parameter">alias</replaceable></term>
+    <listitem>
+     <para>
+      A substitute name for the target table. When an alias is
+      provided, it completely hides the actual name of the table.  For
+      example, given <literal>UPDATE foo AS f</>, the remainder of the
+      <command>UPDATE</command> statement must refer to this table as
+      <literal>f</> not <literal>foo</>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
     <term><replaceable class="PARAMETER">column</replaceable></term>
     <listitem>
      <para>
       The name of a column in <replaceable
       class="PARAMETER">table</replaceable>.
       The column name can be qualified with a subfield name or array
-      subscript, if needed.
+      subscript, if needed.  Do not include the table's name in the
+      specification of a target column &mdash; for example,
+      <literal>UPDATE tab SET tab.col = 1</> is invalid.
      </para>
     </listitem>
    </varlistentry>
@@ -131,6 +159,28 @@ UPDATE [ ONLY ] <replaceable class="PARAMETER">table</replaceable> SET <replacea
      </para>
     </listitem>
    </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">output_expression</replaceable></term>
+    <listitem>
+     <para>
+      An expression to be computed and returned by the <command>UPDATE</>
+      command after each row is updated.  The expression may use any
+      column names of the <replaceable class="PARAMETER">table</replaceable>
+      or table(s) listed in <literal>FROM</>.
+      Write <literal>*</> to return all columns.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">output_name</replaceable></term>
+    <listitem>
+     <para>
+      A name to use for a returned column.
+     </para>
+    </listitem>
+   </varlistentry>
   </variablelist>
  </refsect1>
 
@@ -148,6 +198,14 @@ UPDATE <replaceable class="parameter">count</replaceable>
    0, no rows matched the <replaceable
    class="parameter">condition</replaceable> (this is not considered
    an error).
+  </para>
+
+  <para>
+   If the <command>UPDATE</> command contains a <literal>RETURNING</>
+   clause, the result will be similar to that of a <command>SELECT</>
+   statement containing the columns and values defined in the
+   <literal>RETURNING</> list, computed over the row(s) updated by the
+   command.
   </para>
  </refsect1>
 
@@ -197,6 +255,24 @@ UPDATE weather SET temp_lo = temp_lo+1, temp_hi = temp_lo+15, prcp = DEFAULT
   </para>
 
   <para>
+   Perform the same operation and return the updated entries:
+
+<programlisting>
+UPDATE weather SET temp_lo = temp_lo+1, temp_hi = temp_lo+15, prcp = DEFAULT
+  WHERE city = 'San Francisco' AND date = '2003-07-03'
+  RETURNING temp_lo, temp_hi, prcp;
+</programlisting>
+  </para>
+
+  <para>
+   Use the alternative column-list syntax to do the same update:
+<programlisting>
+UPDATE weather SET (temp_lo, temp_hi, prcp) = (temp_lo+1, temp_lo+15, DEFAULT)
+  WHERE city = 'San Francisco' AND date = '2003-07-03';
+</programlisting>
+  </para>
+
+  <para>
    Increment the sales count of the salesperson who manages the
    account for Acme Corporation, using the <literal>FROM</literal>
    clause syntax:
@@ -240,8 +316,21 @@ COMMIT;
 
   <para>
    This command conforms to the <acronym>SQL</acronym> standard, except
-   that the <literal>FROM</literal> clause is a
-   <productname>PostgreSQL</productname> extension.
+   that the <literal>FROM</literal> and <literal>RETURNING</> clauses
+   are <productname>PostgreSQL</productname> extensions.
+  </para>
+
+  <para>
+   According to the standard, the column-list syntax should allow a list
+   of columns to be assigned from a single row-valued expression, such
+   as a sub-select:
+<programlisting>
+UPDATE accounts SET (contact_last_name, contact_first_name) =
+    (SELECT last_name, first_name FROM salesmen
+     WHERE salesmen.id = accounts.sales_id);
+</programlisting>
+   This is not currently implemented &mdash; the source must be a list
+   of independent expressions.
   </para>
 
   <para>
@@ -253,20 +342,3 @@ COMMIT;
   </para>
  </refsect1>
 </refentry>
-
-<!-- Keep this comment at the end of the file
-Local variables:
-mode: sgml
-sgml-omittag:nil
-sgml-shorttag:t
-sgml-minimize-attributes:nil
-sgml-always-quote-attributes:t
-sgml-indent-step:1
-sgml-indent-data:t
-sgml-parent-document:nil
-sgml-default-dtd-file:"../reference.ced"
-sgml-exposed-tags:nil
-sgml-local-catalogs:"/usr/lib/sgml/catalog"
-sgml-local-ecat-files:nil
-End:
--->

@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/psql-ref.sgml,v 1.154.2.1 2005/12/09 19:19:28 momjian Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/psql-ref.sgml,v 1.174 2006/10/31 02:29:15 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -94,9 +94,10 @@ PostgreSQL documentation
       <para>
        If the command string contains multiple SQL commands, they are
        processed in a single transaction, unless there are explicit
-       BEGIN/COMMIT commands included in the string to divide it into
-       multiple transactions.  This is different from the behavior when
-       the same string is fed to <application>psql</application>'s standard input.
+       <command>BEGIN</>/<command>COMMIT</> commands included in the
+       string to divide it into multiple transactions.  This is
+       different from the behavior when the same string is fed to
+       <application>psql</application>'s standard input.
       </para>
       </listitem>
     </varlistentry>
@@ -463,6 +464,29 @@ PostgreSQL documentation
       </listitem>
     </varlistentry>
 
+     <varlistentry>
+      <term><option>-1</option></term>
+      <term><option>--single-transaction</option></term>
+      <listitem>
+       <para>
+        When <application>psql</application> executes a script with the
+        <option>-f</> option, adding this option wraps
+        <command>BEGIN</>/<command>COMMIT</> around the script to execute it
+        as a single transaction.  This ensures that either all the commands
+        complete successfully, or no changes are applied.  
+       </para>
+
+       <para>
+        If the script itself uses <command>BEGIN</>, <command>COMMIT</>,
+        or <command>ROLLBACK</>, this option will not have the desired
+        effects.
+        Also, if the script contains any command that cannot be executed
+        inside a transaction block, specifying this option will cause that
+        command (and hence the whole transaction) to fail.
+       </para>
+      </listitem>
+     </varlistentry>
+
     <varlistentry>
       <term><option>-?</></term>
       <term><option>--help</></term>
@@ -599,7 +623,7 @@ testdb=&gt;
     <para>
     To include whitespace into an argument you may quote it with a
     single quote. To include a single quote into such an argument,
-    precede it by a backslash. Anything contained in single quotes is
+    use two single quotes. Anything contained in single quotes is
     furthermore subject to C-like substitutions for
     <literal>\n</literal> (new line), <literal>\t</literal> (tab),
     <literal>\</literal><replaceable>digits</replaceable> (octal), and
@@ -693,52 +717,50 @@ testdb=&gt;
       </varlistentry>
 
       <varlistentry>
-        <term><literal>\connect</literal> (or <literal>\c</literal>) <literal>[ <replaceable class="parameter">dbname</replaceable> [ <replaceable class="parameter">username</replaceable> ] ]</literal></term>
+        <term><literal>\connect</literal> (or <literal>\c</literal>) <literal>[ <replaceable class="parameter">dbname</replaceable> [ <replaceable class="parameter">username</replaceable> ] [ <replaceable class="parameter">host</replaceable> ] [ <replaceable class="parameter">port</replaceable> ] ]</literal></term>
         <listitem>
         <para>
-        Establishes a connection to a new database and/or under a user
-        name. The previous connection is closed. If <replaceable
-        class="parameter">dbname</replaceable> is <literal>-</literal>
-        the current database name is assumed.
-        </para>
-
-        <para>
-        If <replaceable class="parameter">username</replaceable> is
-        omitted the current user name is assumed. </para>
-
-        <para>
-        As a special rule, <command>\connect</command> without any
-        arguments will connect to the default database as the default
-        user (as you would have gotten by starting
-        <application>psql</application> without any arguments).
+        Establishes a new connection to a <productname>PostgreSQL</>
+        server. If the new connection is successfully made, the
+        previous connection is closed. If any of <replaceable
+        class="parameter">dbname</replaceable>, <replaceable
+        class="parameter">username</replaceable>, <replaceable
+        class="parameter">host</replaceable> or <replaceable
+        class="parameter">port</replaceable> are omitted or specified
+        as <literal>-</literal>, the value of that parameter from the
+        previous connection is used. If there is no previous
+        connection, the <application>libpq</application> default for
+        the parameter's value is used.
         </para>
 
         <para>
         If the connection attempt failed (wrong user name, access
-        denied, etc.), the previous connection will be kept if and only
-        if <application>psql</application> is in interactive mode. When
-        executing a non-interactive script, processing will immediately
-        stop with an error. This distinction was chosen as a user
-        convenience against typos on the one hand, and a safety
-        mechanism that scripts are not accidentally acting on the wrong
-        database on the other hand.
+        denied, etc.), the previous connection will only be kept if
+        <application>psql</application> is in interactive mode. When
+        executing a non-interactive script, processing will
+        immediately stop with an error. This distinction was chosen as
+        a user convenience against typos on the one hand, and a safety
+        mechanism that scripts are not accidentally acting on the
+        wrong database on the other hand.
         </para>
         </listitem>
       </varlistentry>
 
       <varlistentry>
-        <term><literal>\copy <replaceable class="parameter">table</replaceable>
-        [ ( <replaceable class="parameter">column_list</replaceable> ) ]
+        <term><literal>\copy { <replaceable class="parameter">table</replaceable> [ ( <replaceable class="parameter">column_list</replaceable> ) ] | ( <replaceable class="parameter">query</replaceable> ) }
         { <literal>from</literal> | <literal>to</literal> }
         { <replaceable class="parameter">filename</replaceable> | stdin | stdout | pstdin | pstdout }
         [ with ]
+            [ binary ]
             [ oids ]
             [ delimiter [ as ] '<replaceable class="parameter">character</replaceable>' ]
             [ null [ as ] '<replaceable class="parameter">string</replaceable>' ]
-            [ csv [ quote [ as ] '<replaceable class="parameter">character</replaceable>' ]
-            [ escape [ as ] '<replaceable class="parameter">character</replaceable>' ]
-            [ force quote <replaceable class="parameter">column_list</replaceable> ]
-            [ force not null <replaceable class="parameter">column_list</replaceable> ] ]</literal>
+            [ csv
+              [ header ]
+              [ quote [ as ] '<replaceable class="parameter">character</replaceable>' ]
+              [ escape [ as ] '<replaceable class="parameter">character</replaceable>' ]
+              [ force quote <replaceable class="parameter">column_list</replaceable> ]
+              [ force not null <replaceable class="parameter">column_list</replaceable> ] ]</literal>
         </term>
 
         <listitem>
@@ -764,9 +786,7 @@ testdb=&gt;
         </para>
 
         <para>
-        <literal>\copy <replaceable
-        class="parameter">table</replaceable> from <replaceable
-        class="parameter">stdin | stdout</replaceable></literal>
+        <literal>\copy ... from stdin | to stdout</literal>
         reads/writes based on the command input and output respectively.
         All rows are read from the same source that issued the command,
         continuing until <literal>\.</literal> is read or the stream
@@ -839,7 +859,7 @@ testdb=&gt;
         <listitem>
         <para>
         Lists all available aggregate functions, together with the data
-        type they operate on. If <replaceable
+        types they operate on. If <replaceable
         class="parameter">pattern</replaceable>
         is specified, only aggregates whose names match the pattern are shown.
         </para>
@@ -979,15 +999,16 @@ testdb=&gt;
         <listitem>
         <para>
         This is not the actual command name: the letters
-        <literal>i</literal>, <literal>s</literal>, <literal>t</literal>,
-        <literal>v</literal>, <literal>S</literal> stand for index,
-        sequence, table, view, and system table, respectively. You can
-        specify any or all of these letters, in any order, to obtain a
-        listing of all the matching objects.  The letter S restricts the
-        listing to system objects; without <literal>S</literal>, only
-        non-system objects are shown.  If <literal>+</literal> is appended
-        to the command name, each object is listed with its associated
-        description, if any.
+        <literal>i</literal>, <literal>s</literal>,
+        <literal>t</literal>, <literal>v</literal>,
+        <literal>S</literal> stand for index, sequence, table, view,
+        and system table, respectively. You can specify any or all of
+        these letters, in any order, to obtain a listing of all the
+        matching objects.  The letter <literal>S</literal> restricts
+        the listing to system objects; without <literal>S</literal>,
+        only non-system objects are shown.  If <literal>+</literal> is
+        appended to the command name, each object is listed with its
+        associated description, if any.
         </para>
 
         <para>
@@ -1049,10 +1070,9 @@ testdb=&gt;
         </para>
 
         <para>
-        The commands <command>GRANT</command> and
-        <command>REVOKE</command> are used to set access privileges.
-        See <xref linkend="sql-grant" endterm="sql-grant-title">
-        for more information.
+        The <xref linkend="sql-grant" endterm="sql-grant-title"> and
+        <xref linkend="sql-revoke" endterm="sql-revoke-title">
+        commands are used to set access privileges.
         </para>
         </listitem>
       </varlistentry>
@@ -1378,6 +1398,18 @@ lo_import 152801
         </listitem>
       </varlistentry>
 
+      <varlistentry>
+        <term><literal>\password [ <replaceable class="parameter">username</replaceable> ]</literal></term>
+        <listitem>
+        <para>
+        Changes the password of the specified user (by default, the current
+        user).  This command prompts for the new password, encrypts it, and
+        sends it to the server as an <command>ALTER ROLE</> command.  This
+        makes sure that the new password does not appear in cleartext in the
+        command history, the server log, or elsewhere.
+        </para>
+        </listitem>
+      </varlistentry>
 
       <varlistentry>
         <term><literal>\pset <replaceable class="parameter">parameter</replaceable> [ <replaceable class="parameter">value</replaceable> ]</literal></term>
@@ -1755,10 +1787,9 @@ lo_import 152801
         </para>
 
         <para>
-        The commands <command>GRANT</command> and
-        <command>REVOKE</command> are used to set access privileges.
-        See <xref linkend="sql-grant" endterm="sql-grant-title"> for
-        more information.
+        The <xref linkend="sql-grant" endterm="sql-grant-title"> and
+        <xref linkend="sql-revoke" endterm="sql-revoke-title">
+        commands are used to set access privileges.
         </para>
 
         <para>
@@ -1794,34 +1825,85 @@ lo_import 152801
     </variablelist>
   </para>
 
+  <refsect3 id="APP-PSQL-patterns">
+   <title id="APP-PSQL-patterns-title">Patterns</title>
+
+   <indexterm>
+    <primary>patterns</primary>
+    <secondary>in psql and pg_dump</secondary>
+   </indexterm>
+
   <para>
    The various <literal>\d</> commands accept a <replaceable
    class="parameter">pattern</replaceable> parameter to specify the
-   object name(s) to be displayed.  <literal>*</> means <quote>any
-   sequence of characters</> and <literal>?</> means <quote>any single
-   character</>.  (This notation is comparable to Unix shell file name
-   patterns.)  Advanced users can also use regular-expression
-   notations such as character classes, for example <literal>[0-9]</>
-   to match <quote>any digit</>.  To make any of these
-   pattern-matching characters be interpreted literally, surround it
-   with double quotes.
+   object name(s) to be displayed.  In the simplest case, a pattern
+   is just the exact name of the object.  The characters within a
+   pattern are normally folded to lower case, just as in SQL names;
+   for example, <literal>\dt FOO</> will display the table named
+   <literal>foo</>.  As in SQL names, placing double quotes around
+   a pattern stops folding to lower case.  Should you need to include
+   an actual double quote character in a pattern, write it as a pair
+   of double quotes within a double-quote sequence; again this is in
+   accord with the rules for SQL quoted identifiers.  For example,
+   <literal>\dt "FOO""BAR"</> will display the table named
+   <literal>FOO"BAR</> (not <literal>foo"bar</>).  Unlike the normal
+   rules for SQL names, you can put double quotes around just part
+   of a pattern, for instance <literal>\dt FOO"FOO"BAR</> will display
+   the table named <literal>fooFOObar</>.
   </para>
 
   <para>
-   A pattern that contains an (unquoted) dot is interpreted as a schema
+   Within a pattern, <literal>*</> matches any sequence of characters
+   (including no characters) and <literal>?</> matches any single character.
+   (This notation is comparable to Unix shell file name patterns.)
+   For example, <literal>\dt int*</> displays all tables whose names
+   begin with <literal>int</>.  But within double quotes, <literal>*</>
+   and <literal>?</> lose these special meanings and are just matched
+   literally.
+  </para>
+
+  <para>
+   A pattern that contains a dot (<literal>.</>) is interpreted as a schema
    name pattern followed by an object name pattern.  For example,
-   <literal>\dt foo*.bar*</> displays all tables in schemas whose name
-   starts with <literal>foo</> and whose table name
-   starts with <literal>bar</>.  If no dot appears, then the pattern
+   <literal>\dt foo*.bar*</> displays all tables whose table name
+   starts with <literal>bar</> that are in schemas whose schema name
+   starts with <literal>foo</>.  When no dot appears, then the pattern
    matches only objects that are visible in the current schema search path.
+   Again, a dot within double quotes loses its special meaning and is matched
+   literally.
+  </para>
+
+  <para>
+   Advanced users can use regular-expression notations such as character
+   classes, for example <literal>[0-9]</> to match any digit.  All regular
+   expression special characters work as specified in
+   <xref linkend="functions-posix-regexp">, except for <literal>.</> which
+   is taken as a separator as mentioned above, <literal>*</> which is
+   translated to the regular-expression notation <literal>.*</>, and
+   <literal>?</> which is translated to <literal>.</>.  You can emulate
+   these pattern characters at need by writing
+   <literal>?</> for <literal>.</>,
+   <literal>(<replaceable class="parameter">R</replaceable>+|)</literal> for
+   <literal><replaceable class="parameter">R</replaceable>*</literal>, or
+   <literal>(<replaceable class="parameter">R</replaceable>|)</literal> for
+   <literal><replaceable class="parameter">R</replaceable>?</literal>.
+   Remember that the pattern must match the whole name, unlike the usual
+   interpretation of regular expressions; write <literal>*</> at the beginning
+   and/or end if you don't wish the pattern to be anchored.
+   Note that within double quotes, all regular expression special characters
+   lose their special meanings and are matched literally.  Also, the regular
+   expression special characters are matched literally in operator name
+   patterns (i.e., the argument of <literal>\do</>).
   </para>
 
   <para>
    Whenever the <replaceable class="parameter">pattern</replaceable> parameter
    is omitted completely, the <literal>\d</> commands display all objects
-   that are visible in the current schema search path.  To see all objects
-   in the database, use the pattern <literal>*.*</>.
+   that are visible in the current schema search path &mdash; this is
+   equivalent to using the pattern <literal>*</>.
+   To see all objects in the database, use the pattern <literal>*.*</>.
   </para>
+  </refsect3>
  </refsect2>
 
  <refsect2>
@@ -1978,6 +2060,33 @@ bar
         <para>
         The current client character set encoding.
         </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term><varname>FETCH_COUNT</varname></term>
+        <listitem>
+        <para>
+        If this variable is set to an integer value &gt; 0,
+        the results of <command>SELECT</command> queries are fetched
+        and displayed in groups of that many rows, rather than the
+        default behavior of collecting the entire result set before
+        display.  Therefore only a
+        limited amount of memory is used, regardless of the size of
+        the result set.  Settings of 100 to 1000 are commonly used
+        when enabling this feature.
+        Keep in mind that when using this feature, a query may
+        fail after having already displayed some rows.
+        </para>
+        <tip>
+        <para>
+        Although you can use any output format with this feature,
+        the default <literal>aligned</> format tends to look bad
+        because each group of <varname>FETCH_COUNT</varname> rows
+        will be formatted separately, leading to varying column
+        widths across the row groups.  The other output formats work better.
+        </para>
+        </tip>
         </listitem>
       </varlistentry>
 
@@ -2236,30 +2345,27 @@ testdb=&gt; <userinput>SELECT * FROM :foo;</userinput>
     copy the contents of a file into a table column. First load the file into a
     variable and then proceed as above.
 <programlisting>
-testdb=&gt; <userinput>\set content '\'' `cat my_file.txt` '\''</userinput>
+testdb=&gt; <userinput>\set content '''' `cat my_file.txt` ''''</userinput>
 testdb=&gt; <userinput>INSERT INTO my_table VALUES (:content);</userinput>
 </programlisting>
-    One possible problem with this approach is that <filename>my_file.txt</filename>
+    One problem with this approach is that <filename>my_file.txt</filename>
     might contain single quotes. These need to be escaped so that
     they don't cause a syntax error when the second line is processed. This
     could be done with the program <command>sed</command>:
 <programlisting>
-testdb=&gt; <userinput>\set content '\'' `sed -e "s/'/\\\\\\'/g" &lt; my_file.txt` '\''</userinput>
+testdb=&gt; <userinput>\set content '''' `sed -e "s/'/''/g" &lt; my_file.txt` ''''</userinput>
 </programlisting>
-    Observe the correct number of backslashes (6)! It works
-    this way: After <application>psql</application> has parsed this
-    line, it passes <literal>sed -e "s/'/\\\'/g" &lt; my_file.txt</literal>
-    to the shell. The shell will do its own thing inside the double
-    quotes and execute <command>sed</command> with the arguments
-    <literal>-e</literal> and <literal>s/'/\\'/g</literal>. When
-    <command>sed</command> parses this it will replace the two
-    backslashes with a single one and then do the substitution. Perhaps
+    If you are using non-standard-conforming strings then you'll also need
+    to double backslashes.  This is a bit tricky:
+<programlisting>
+testdb=&gt; <userinput>\set content '''' `sed -e "s/'/''/g" -e 's/\\/\\\\/g' &lt; my_file.txt` ''''</userinput>
+</programlisting>
+    Note the use of different shell quoting conventions so that neither
+    the single quote marks nor the backslashes are special to the shell.
+    Backslashes are still special to <command>sed</command>, however, so
+    we need to double them.  (Perhaps
     at one point you thought it was great that all Unix commands use the
-    same escape character. And this is ignoring the fact that you might
-    have to escape all backslashes as well because
-    <acronym>SQL</acronym> text constants are also subject to certain
-    interpretations. In that case you might be better off preparing the
-    file externally.
+    same escape character.)
     </para>
 
     <para>
@@ -2444,7 +2550,7 @@ testdb=&gt; <userinput>\set content '\'' `sed -e "s/'/\\\\\\'/g" &lt; my_file.tx
          <literal>%]</literal>. Multiple pairs of these may occur within
          the prompt.  For example,
 <programlisting>
-testdb=&gt; \set PROMPT1 '%[%033[1;33;40m%]%n@%/%R%[%033[0m%#%] '
+testdb=&gt; \set PROMPT1 '%[%033[1;33;40m%]%n@%/%R%[%033[0m%]%# '
 </programlisting>
          results in a boldfaced (<literal>1;</literal>) yellow-on-black
          (<literal>33;40</literal>) prompt on VT100-compatible, color-capable
@@ -2674,7 +2780,7 @@ Field separator is "oo".
 
     <listitem>
      <para>
-      Set the console font to <quote>Lucida Console</>, because the
+      Set the console font to <literal>Lucida Console</>, because the
       raster font does not work with the ANSI code page.
      </para>
     </listitem>
@@ -2799,20 +2905,3 @@ second | four
  </refsect1>
 
 </refentry>
-
-<!-- Keep this comment at the end of the file
-Local variables:
-mode: sgml
-sgml-omittag:nil
-sgml-shorttag:t
-sgml-minimize-attributes:nil
-sgml-always-quote-attributes:t
-sgml-indent-step:1
-sgml-indent-data:t
-sgml-parent-document:nil
-sgml-default-dtd-file:"../reference.ced"
-sgml-exposed-tags:nil
-sgml-local-catalogs:"/usr/lib/sgml/catalog"
-sgml-local-ecat-files:nil
-End:
--->

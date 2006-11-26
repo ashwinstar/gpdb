@@ -1,4 +1,4 @@
-<!-- $PostgreSQL: pgsql/doc/src/sgml/ref/pg_restore.sgml,v 1.56 2005/11/01 21:09:50 tgl Exp $ -->
+<!-- $PostgreSQL: pgsql/doc/src/sgml/ref/pg_restore.sgml,v 1.63 2006/10/14 23:07:22 tgl Exp $ -->
 
 <refentry id="APP-PGRESTORE">
  <refmeta>
@@ -165,6 +165,7 @@
        <variablelist>
         <varlistentry>
          <term><literal>t</></term>
+         <term><literal>tar</></term>
          <listitem>
           <para>
            The archive is a <command>tar</command> archive. Using this
@@ -177,6 +178,7 @@
 
         <varlistentry>
          <term><literal>c</></term>
+         <term><literal>custom</></term>
          <listitem>
           <para>
            The archive is in the custom format of
@@ -359,21 +361,6 @@
      </varlistentry>
 
      <varlistentry>
-      <term><option>-X use-set-session-authorization</option></term>
-      <term><option>--use-set-session-authorization</option></term>
-      <listitem>
-       <para>
-        Output SQL-standard <command>SET SESSION AUTHORIZATION</> commands
-        instead of <command>ALTER OWNER</> commands to determine object
-        ownership.  This makes the dump more standards compatible, but
-        depending on the history of the objects in the dump, may not restore
-        properly.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
-      <term><option>-X disable-triggers</></term>
       <term><option>--disable-triggers</></term>
       <listitem>
        <para>
@@ -391,6 +378,41 @@
         should also specify a superuser name with <option>-S</>, or
         preferably run <application>pg_restore</application> as a
         <productname>PostgreSQL</> superuser.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--use-set-session-authorization</option></term>
+      <listitem>
+       <para>
+        Output SQL-standard <command>SET SESSION AUTHORIZATION</> commands
+        instead of <command>ALTER OWNER</> commands to determine object
+        ownership.  This makes the dump more standards compatible, but
+        depending on the history of the objects in the dump, may not restore
+        properly.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-data-for-failed-tables</option></term>
+      <listitem>
+       <para>
+        By default, table data is restored even if the creation command
+        for the table failed (e.g., because it already exists).
+        With this option, data for such a table is skipped.
+        This behavior is useful when the target database may already
+        contain the desired table contents.  For example,
+        auxiliary tables for <productname>PostgreSQL</> extensions
+        such as <productname>PostGIS</> may already be loaded in
+        the target database; specifying this option prevents duplicate
+        or obsolete data from being loaded into them.
+       </para>
+
+       <para>
+        This option is effective only when restoring directly into a
+        database, not when producing SQL script output.
        </para>
       </listitem>
      </varlistentry>
@@ -448,6 +470,21 @@
        </para>
       </listitem>
      </varlistentry>
+
+     <varlistentry>
+      <term><option>-1</option></term>
+      <term><option>--single-transaction</option></term>
+      <listitem>
+       <para>
+        Execute the restore as a single transaction (that is, wrap the
+        emitted commands in <command>BEGIN</>/<command>COMMIT</>).  This
+        ensures that either all the commands complete successfully, or no
+        changes are applied. This option implies
+        <option>--exit-on-error</>.
+       </para>
+      </listitem>
+     </varlistentry>
+
     </variablelist>
    </para>
  </refsect1>
@@ -634,20 +671,3 @@ CREATE DATABASE foo WITH TEMPLATE template0;
   </simplelist>
  </refsect1>
 </refentry>
-
-<!-- Keep this comment at the end of the file
-Local variables:
-mode: sgml
-sgml-omittag:nil
-sgml-shorttag:t
-sgml-minimize-attributes:nil
-sgml-always-quote-attributes:t
-sgml-indent-step:1
-sgml-indent-data:t
-sgml-parent-document:nil
-sgml-default-dtd-file:"../reference.ced"
-sgml-exposed-tags:nil
-sgml-local-catalogs:"/usr/lib/sgml/catalog"
-sgml-local-ecat-files:nil
-End:
--->

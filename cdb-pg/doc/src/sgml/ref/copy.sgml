@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/copy.sgml,v 1.70.2.3 2006/04/22 03:03:19 momjian Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/copy.sgml,v 1.77 2006/09/18 19:54:01 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -33,7 +33,7 @@ COPY <replaceable class="parameter">tablename</replaceable> [ ( <replaceable cla
                 [ ESCAPE [ AS ] '<replaceable class="parameter">escape</replaceable>' ]
                 [ FORCE NOT NULL <replaceable class="parameter">column</replaceable> [, ...] ]
 
-COPY <replaceable class="parameter">tablename</replaceable> [ ( <replaceable class="parameter">column</replaceable> [, ...] ) ]
+COPY { <replaceable class="parameter">tablename</replaceable> [ ( <replaceable class="parameter">column</replaceable> [, ...] ) ] | ( <replaceable class="parameter">query</replaceable> ) }
     TO { '<replaceable class="parameter">filename</replaceable>' | STDOUT }
     [ [ WITH ] 
           [ BINARY ]
@@ -57,7 +57,8 @@ COPY <replaceable class="parameter">tablename</replaceable> [ ( <replaceable cla
    files. <command>COPY TO</command> copies the contents of a table
    <emphasis>to</> a file, while <command>COPY FROM</command> copies
    data <emphasis>from</> a file to a table (appending the data to
-   whatever is in the table already).
+   whatever is in the table already).  <command>COPY TO</command>
+   can also copy the results of a <command>SELECT</> query.
   </para>
 
   <para>
@@ -97,7 +98,19 @@ COPY <replaceable class="parameter">tablename</replaceable> [ ( <replaceable cla
      <listitem>
      <para>
       An optional list of columns to be copied.  If no column list is
-      specified, all columns will be used.
+      specified, all columns of the table will be copied.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">query</replaceable></term>
+    <listitem>
+     <para>
+      A <xref linkend="sql-select" endterm="sql-select-title"> or
+      <xref linkend="sql-values" endterm="sql-values-title"> command
+      whose results are to be copied.
+      Note that parentheses are required around the query.
      </para>
     </listitem>
    </varlistentry>
@@ -107,7 +120,8 @@ COPY <replaceable class="parameter">tablename</replaceable> [ ( <replaceable cla
     <listitem>
      <para>
       The absolute path name of the input or output file.  Windows users
-      might need to double backslashes used as path separators.
+      might need to use an <literal>E''</> string and double backslashes
+      used as path separators.
      </para>
     </listitem>
    </varlistentry>
@@ -147,7 +161,8 @@ COPY <replaceable class="parameter">tablename</replaceable> [ ( <replaceable cla
      <para>
       Specifies copying the OID for each row.  (An error is raised if
       <literal>OIDS</literal> is specified for a table that does not
-      have OIDs.)
+      have OIDs, or in the case of copying a <replaceable
+      class="parameter">query</replaceable>.)
      </para>
     </listitem>
    </varlistentry>
@@ -255,11 +270,26 @@ COPY <replaceable class="parameter">tablename</replaceable> [ ( <replaceable cla
  </refsect1>
 
  <refsect1>
+  <title>Outputs</title>
+
+  <para>
+   On successful completion, a <command>COPY</> command returns a command
+   tag of the form
+<screen>
+COPY <replaceable class="parameter">count</replaceable>
+</screen>
+   The <replaceable class="parameter">count</replaceable> is the number
+   of rows copied.
+  </para>
+ </refsect1>
+
+ <refsect1>
   <title>Notes</title>
 
    <para>
     <command>COPY</command> can only be used with plain tables, not
-    with views.
+    with views.  However, you can write <literal>COPY (SELECT * FROM
+    <replaceable class="parameter">viewname</replaceable>) TO ...</literal>.
    </para>
 
    <para>
@@ -305,8 +335,8 @@ COPY <replaceable class="parameter">tablename</replaceable> [ ( <replaceable cla
     server in the case of <command>COPY TO</command>, but for
     <command>COPY FROM</command> you do have the option of reading from
     a file specified by a relative path. The path will be interpreted
-    relative to the working directory of the server process (somewhere below
-    the data directory), not the client's working directory.
+    relative to the working directory of the server process (normally
+    the cluster's data directory), not the client's working directory.
    </para>
 
    <para>
@@ -722,14 +752,9 @@ COPY country FROM '/usr1/proj/bray/sql/country_data';
   </para>
 
   <para>
-   To copy into a file just the countries whose names start with 'A'
-   using a temporary table which is automatically deleted:
+   To copy into a file just the countries whose names start with 'A':
 <programlisting>
-BEGIN;
-CREATE TEMP TABLE a_list_countries AS
-    SELECT * FROM country WHERE country_name LIKE 'A%';
-COPY a_list_countries TO '/usr1/proj/bray/sql/a_list_countries.copy';
-ROLLBACK;
+COPY (SELECT * FROM country WHERE country_name LIKE 'A%') TO '/usr1/proj/bray/sql/a_list_countries.copy';
 </programlisting>
   </para>
 
@@ -792,20 +817,3 @@ COPY [ BINARY ] <replaceable class="parameter">tablename</replaceable> [ WITH OI
   </para>
  </refsect1>
 </refentry>
-
-<!-- Keep this comment at the end of the file
-Local variables:
-mode: sgml
-sgml-omittag:nil
-sgml-shorttag:t
-sgml-minimize-attributes:nil
-sgml-always-quote-attributes:t
-sgml-indent-step:1
-sgml-indent-data:t
-sgml-parent-document:nil
-sgml-default-dtd-file:"../reference.ced"
-sgml-exposed-tags:nil
-sgml-local-catalogs:"/usr/lib/sgml/catalog"
-sgml-local-ecat-files:nil
-End:
--->
