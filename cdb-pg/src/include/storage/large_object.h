@@ -5,10 +5,10 @@
  *	  zillions of large objects (internal, external, jaquith, inversion).
  *	  Now we only support inversion.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/large_object.h,v 1.32.2.1 2006/04/26 00:35:35 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/storage/large_object.h,v 1.35 2006/09/07 15:37:25 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -77,6 +77,6 @@ extern int	inv_drop(Oid lobjId);
 extern int	inv_seek(LargeObjectDesc *obj_desc, int offset, int whence);
 extern int	inv_tell(LargeObjectDesc *obj_desc);
 extern int	inv_read(LargeObjectDesc *obj_desc, char *buf, int nbytes);
-extern int	inv_write(LargeObjectDesc *obj_desc, char *buf, int nbytes);
+extern int	inv_write(LargeObjectDesc *obj_desc, const char *buf, int nbytes);
 
 #endif   /* LARGE_OBJECT_H */

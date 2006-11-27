@@ -5,10 +5,10 @@
  *	  along with the relation's initial contents.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_aggregate.h,v 1.52 2005/10/15 02:49:42 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_aggregate.h,v 1.58 2006/10/04 00:30:07 momjian Exp $
  *
  * NOTES
  *	  the genbki.sh script reads this file and generates .bki
@@ -146,21 +146,51 @@ DATA(insert ( 2245	bpchar_smaller	bpchar_smaller	-				1058	1042	_null_ ));
  */
 DATA(insert ( 2147	int8inc		int8pl		-					0	20		0 ));
 
-/* variance */
-DATA(insert ( 2148	int8_accum		numeric_amalg	numeric_variance	0	1231	"{0,0,0}" ));
-DATA(insert ( 2149	int4_accum		numeric_amalg	numeric_variance	0	1231	"{0,0,0}" ));
-DATA(insert ( 2150	int2_accum		numeric_amalg	numeric_variance	0	1231	"{0,0,0}" ));
-DATA(insert ( 2151	float4_accum	float8_amalg	float8_variance		0	1022	"{0,0,0}" ));
-DATA(insert ( 2152	float8_accum	float8_amalg	float8_variance		0	1022	"{0,0,0}" ));
-DATA(insert ( 2153	numeric_accum 	numeric_amalg	 numeric_variance	0	1231	"{0,0,0}" ));
+/* variance: historical Postgres syntax for var_samp */
+DATA(insert ( 2148	int8_accum		numeric_amalg	numeric_var_samp	0	1231	"{0,0,0}" ));
+DATA(insert ( 2149	int4_accum		numeric_amalg	numeric_var_samp	0	1231	"{0,0,0}" ));
+DATA(insert ( 2150	int2_accum		numeric_amalg	numeric_var_samp	0	1231	"{0,0,0}" ));
+DATA(insert ( 2151	float4_accum	float8_amalg	float8_var_samp 0	1022	"{0,0,0}" ));
+DATA(insert ( 2152	float8_accum	float8_amalg	float8_var_samp 0	1022	"{0,0,0}" ));
+DATA(insert ( 2153	numeric_accum  	numeric_amalg	numeric_var_samp 0	1231	"{0,0,0}" ));
 
-/* stddev */
-DATA(insert ( 2154	int8_accum		numeric_amalg	numeric_stddev		0	1231	"{0,0,0}" ));
-DATA(insert ( 2155	int4_accum		numeric_amalg	numeric_stddev		0	1231	"{0,0,0}" ));
-DATA(insert ( 2156	int2_accum		numeric_amalg	numeric_stddev		0	1231	"{0,0,0}" ));
-DATA(insert ( 2157	float4_accum	float8_amalg	float8_stddev		0	1022	"{0,0,0}" ));
-DATA(insert ( 2158	float8_accum	float8_amalg	float8_stddev		0	1022	"{0,0,0}" ));
-DATA(insert ( 2159	numeric_accum	numeric_amalg	numeric_stddev		0	1231	"{0,0,0}" ));
+/* stddev_pop */
+DATA(insert ( 2724	int8_accum		numeric_amalg	numeric_stddev_pop		0	1231	"{0,0,0}" ));
+DATA(insert ( 2725	int4_accum		numeric_amalg	numeric_stddev_pop		0	1231	"{0,0,0}" ));
+DATA(insert ( 2726	int2_accum		numeric_amalg	numeric_stddev_pop		0	1231	"{0,0,0}" ));
+DATA(insert ( 2727	float4_accum	float8_amalg	float8_stddev_pop	0	1022	"{0,0,0}" ));
+DATA(insert ( 2728	float8_accum	float8_amalg	float8_stddev_pop	0	1022	"{0,0,0}" ));
+DATA(insert ( 2729	numeric_accum	numeric_amalg	numeric_stddev_pop	0	1231	"{0,0,0}" ));
+
+/* stddev_samp */
+DATA(insert ( 2712	int8_accum		numeric_amalg	numeric_stddev_samp		0	1231	"{0,0,0}" ));
+DATA(insert ( 2713	int4_accum		numeric_amalg	numeric_stddev_samp		0	1231	"{0,0,0}" ));
+DATA(insert ( 2714	int2_accum		numeric_amalg	numeric_stddev_samp		0	1231	"{0,0,0}" ));
+DATA(insert ( 2715	float4_accum	float8_amalg	float8_stddev_samp	0	1022	"{0,0,0}" ));
+DATA(insert ( 2716	float8_accum	float8_amalg	float8_stddev_samp	0	1022	"{0,0,0}" ));
+DATA(insert ( 2717	numeric_accum	numeric_amalg	numeric_stddev_samp 0	1231	"{0,0,0}" ));
+
+/* stddev: historical Postgres syntax for stddev_samp */
+DATA(insert ( 2154	int8_accum		numeric_amalg	numeric_stddev_samp		0	1231	"{0,0,0}" ));
+DATA(insert ( 2155	int4_accum		numeric_amalg	numeric_stddev_samp		0	1231	"{0,0,0}" ));
+DATA(insert ( 2156	int2_accum		numeric_amalg	numeric_stddev_samp		0	1231	"{0,0,0}" ));
+DATA(insert ( 2157	float4_accum	float8_amalg	float8_stddev_samp	0	1022	"{0,0,0}" ));
+DATA(insert ( 2158	float8_accum	float8_amalg	float8_stddev_samp	0	1022	"{0,0,0}" ));
+DATA(insert ( 2159	numeric_accum	numeric_amalg	numeric_stddev_samp 0	1231	"{0,0,0}" ));
+
+/* SQL2003 binary regression aggregates */
+DATA(insert ( 2818	int8inc_float8_float8		-	-				0	20		"0" ));
+DATA(insert ( 2819	float8_regr_accum	-	float8_regr_sxx			0	1022	"{0,0,0,0,0,0}" ));
+DATA(insert ( 2820	float8_regr_accum	-	float8_regr_syy			0	1022	"{0,0,0,0,0,0}" ));
+DATA(insert ( 2821	float8_regr_accum	-	float8_regr_sxy			0	1022	"{0,0,0,0,0,0}" ));
+DATA(insert ( 2822	float8_regr_accum	-	float8_regr_avgx		0	1022	"{0,0,0,0,0,0}" ));
+DATA(insert ( 2823	float8_regr_accum	-	float8_regr_avgy		0	1022	"{0,0,0,0,0,0}" ));
+DATA(insert ( 2824	float8_regr_accum	-	float8_regr_r2			0	1022	"{0,0,0,0,0,0}" ));
+DATA(insert ( 2825	float8_regr_accum	-	float8_regr_slope		0	1022	"{0,0,0,0,0,0}" ));
+DATA(insert ( 2826	float8_regr_accum	-	float8_regr_intercept	0	1022	"{0,0,0,0,0,0}" ));
+DATA(insert ( 2827	float8_regr_accum	-	float8_covar_pop		0	1022	"{0,0,0,0,0,0}" ));
+DATA(insert ( 2828	float8_regr_accum	-	float8_covar_samp		0	1022	"{0,0,0,0,0,0}" ));
+DATA(insert ( 2829	float8_regr_accum	-	float8_corr				0	1022	"{0,0,0,0,0,0}" ));
 
 /* boolean-and and boolean-or */
 DATA(insert ( 2517	booland_statefunc	booland_statefunc	-			0	16		_null_ ));
@@ -186,7 +216,8 @@ DATA(insert ( 6013	array_add 	array_add		  -					0	1007	"{}" ));
  */
 extern Oid AggregateCreate(const char *aggName,
 				Oid aggNamespace,
-				Oid aggBaseType,
+				Oid *aggArgTypes,
+				int numArgs,
 				List *aggtransfnName,
 				List *aggprelimfnName,
 				List *aggfinalfnName,
@@ -198,7 +229,8 @@ extern Oid AggregateCreate(const char *aggName,
 extern Oid
 AggregateCreateWithOid(const char *aggName,
 				Oid aggNamespace,
-				Oid aggBaseType,
+				Oid *aggArgTypes,
+				int numArgs,
 				List *aggtransfnName,
 				List *aggprelimfnName,
 				List *aggfinalfnName,

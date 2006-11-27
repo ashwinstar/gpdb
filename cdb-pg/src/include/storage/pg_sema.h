@@ -10,10 +10,10 @@
  * be provided by each port.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/pg_sema.h,v 1.7 2004/12/31 22:03:42 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/storage/pg_sema.h,v 1.10 2006/10/04 00:30:10 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -52,6 +52,11 @@ typedef struct PGSemaphoreData
 	int			semId;			/* semaphore set identifier */
 	int			semNum;			/* semaphore number within set */
 } PGSemaphoreData;
+#endif
+
+#ifdef USE_WIN32_SEMAPHORES
+
+typedef HANDLE PGSemaphoreData;
 #endif
 
 typedef PGSemaphoreData *PGSemaphore;

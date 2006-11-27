@@ -3,8 +3,8 @@
  * dest.h
  *	  support for communication destinations
  *
- * Whenever the backend executes a query, the results
- * have to go someplace.
+ * Whenever the backend executes a query that returns tuples, the results
+ * have to go someplace.  For example:
  *
  *	  - stdout is the destination only when we are running a
  *		standalone backend (no postmaster) and are returning results
@@ -51,10 +51,10 @@
  * calls in portal and cursor manipulations.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/tcop/dest.h,v 1.48.2.1 2005/11/22 18:23:28 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/tcop/dest.h,v 1.52 2006/08/30 23:34:22 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -84,7 +84,9 @@ typedef enum
 	DestRemote,					/* results sent to frontend process */
 	DestRemoteExecute,			/* sent to frontend, in Execute command */
 	DestSPI,					/* results sent to SPI manager */
-	DestTuplestore				/* results sent to Tuplestore */
+	DestTuplestore,				/* results sent to Tuplestore */
+	DestIntoRel,				/* results sent to relation (SELECT INTO) */
+	DestCopyOut					/* results sent to COPY TO code */
 } CommandDest;
 
 /* ----------------

@@ -4,21 +4,17 @@
  *	  POSTGRES buffer manager definitions.
  *
  *
- * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/bufmgr.h,v 1.97 2005/10/15 02:49:46 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/storage/bufmgr.h,v 1.101 2006/07/13 16:49:20 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef BUFMGR_H
 #define BUFMGR_H
 
-#include "access/xlogdefs.h"
 #include "storage/buf.h"
-#include "storage/lock.h"
-#include "storage/relfilenode.h"
 #include "utils/rel.h"
 
 typedef void *Block;
@@ -116,9 +112,9 @@ extern DLLIMPORT int32 *LocalRefCount;
  */
 extern Buffer ReadBuffer(Relation reln, BlockNumber blockNum);
 extern void ReleaseBuffer(Buffer buffer);
+extern void UnlockReleaseBuffer(Buffer buffer);
+extern void MarkBufferDirty(Buffer buffer);
 extern void IncrBufferRefCount(Buffer buffer);
-extern void WriteBuffer(Buffer buffer);
-extern void WriteNoReleaseBuffer(Buffer buffer);
 extern Buffer ReleaseAndReadBuffer(Buffer buffer, Relation relation,
 					 BlockNumber blockNum);
 
@@ -134,9 +130,9 @@ extern BlockNumber BufferGetBlockNumber(Buffer buffer);
 extern BlockNumber RelationGetNumberOfBlocks(Relation relation);
 extern void RelationTruncate(Relation rel, BlockNumber nblocks);
 extern void FlushRelationBuffers(Relation rel);
-extern void DropRelFileNodeBuffers(RelFileNode rnode, bool isLocalBuf,
+extern void DropRelFileNodeBuffers(RelFileNode rnode, bool istemp,
 					   BlockNumber firstDelBlock);
-extern void DropBuffers(Oid dbid);
+extern void DropDatabaseBuffers(Oid dbid);
 
 #ifdef NOT_USED
 extern void PrintPinnedBufs(void);

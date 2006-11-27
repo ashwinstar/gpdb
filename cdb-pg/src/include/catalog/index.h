@@ -1,21 +1,19 @@
 /*-------------------------------------------------------------------------
  *
  * index.h
- *	  prototypes for index.c.
+ *	  prototypes for catalog/index.c.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/index.h,v 1.64 2005/10/15 02:49:42 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/index.h,v 1.71 2006/08/25 04:06:55 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef INDEX_H
 #define INDEX_H
 
-#include "access/itup.h"
-#include "catalog/pg_index.h"
 #include "nodes/execnodes.h"
 
 
@@ -37,10 +35,12 @@ extern Oid index_create(Oid heapRelationId,
 			 Oid accessMethodObjectId,
 			 Oid tableSpaceId,
 			 Oid *classObjectId,
-			 bool primary,
+			 Datum reloptions,
+			 bool isprimary,
 			 bool isconstraint,
 			 bool allow_system_table_mods,
-			 bool skip_build);
+			 bool skip_build,
+			 bool concurrent);
 
 extern void index_drop(Oid indexId);
 
@@ -52,24 +52,22 @@ extern void FormIndexDatum(IndexInfo *indexInfo,
 			   Datum *values,
 			   bool *isnull);
 
-extern void IndexCloseAndUpdateStats(Relation heap, double heapTuples,
-						 Relation index, double indexTuples);
-
-extern void setRelhasindex(Oid relid, bool hasindex,
-			   bool isprimary, Oid reltoastidxid);
-
 extern Oid setNewRelfilenode(Relation relation);
 
 extern Oid setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode);
 
-extern void index_build(Relation heapRelation, Relation indexRelation,
-			IndexInfo *indexInfo);
+extern void index_build(Relation heapRelation,
+			Relation indexRelation,
+			IndexInfo *indexInfo,
+			bool isprimary);
 
 extern double IndexBuildHeapScan(Relation heapRelation,
 				   Relation indexRelation,
 				   IndexInfo *indexInfo,
 				   IndexBuildCallback callback,
 				   void *callback_state);
+
+extern void validate_index(Oid heapId, Oid indexId, Snapshot snapshot);
 
 extern void reindex_index(Oid indexId);
 extern bool reindex_relation(Oid relid, bool toast_too);

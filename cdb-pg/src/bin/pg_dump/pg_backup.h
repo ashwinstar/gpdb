@@ -15,7 +15,7 @@
  *
  *
  * IDENTIFICATION
- *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup.h,v 1.37 2005/10/15 02:49:38 momjian Exp $
+ *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup.h,v 1.44 2006/10/14 23:07:22 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -28,7 +28,6 @@
 #include "pg_dump.h"
 
 #include "libpq-fe.h"
-#include "pqexpbuffer.h"
 
 
 #define atooid(x)  ((Oid) strtoul((x), NULL, 10))
@@ -59,6 +58,10 @@ typedef struct _Archive
 
 	int			minRemoteVersion;		/* allowable range */
 	int			maxRemoteVersion;
+
+	/* info needed for string escaping */
+	int			encoding;		/* libpq code for client_encoding */
+	bool		std_strings;	/* standard_conforming_strings */
 
 	/* error handling */
 	bool		exit_on_error;	/* whether to exit on SQL errors... */
@@ -106,18 +109,18 @@ typedef struct _restoreOptions
 	char	   *pghost;
 	char	   *username;
 	int			ignoreVersion;
+	int			noDataForFailedTables;
 	int			requirePassword;
 	int			oidOrder;
 	int			origOrder;
 	int			rearrange;
 	int			exit_on_error;
-
-	bool	   *idWanted;
-	bool		limitToList;
 	int			compression;
-
 	int			suppressDumpWarnings;	/* Suppress output of WARNING entries
 										 * to stderr */
+	bool		single_txn;
+
+	bool	   *idWanted;		/* array showing which dump IDs to emit */
 } RestoreOptions;
 
 /*
@@ -173,8 +176,9 @@ extern void PrintTOCSummary(Archive *AH, RestoreOptions *ropt);
 
 extern RestoreOptions *NewRestoreOptions(void);
 
-/* Rearrange TOC entries */
-extern void SortTocFromFile(Archive *AH, RestoreOptions *ropt);
+/* Rearrange and filter TOC entries */
+extern void SortTocFromFile(Archive *AHX, RestoreOptions *ropt);
+extern void InitDummyWantedList(Archive *AHX, RestoreOptions *ropt);
 
 /* Convenience functions used only when writing DATA */
 extern int	archputs(const char *s, Archive *AH);
@@ -182,5 +186,8 @@ extern int
 archprintf(Archive *AH, const char *fmt,...)
 /* This extension allows gcc to check the format string */
 __attribute__((format(printf, 2, 3)));
+
+#define appendStringLiteralAH(buf,str,AH) \
+	appendStringLiteral(buf, str, (AH)->encoding, (AH)->std_strings)
 
 #endif   /* PG_BACKUP_H */

@@ -17,7 +17,7 @@
  *
  *
  * IDENTIFICATION
- *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_archiver.h,v 1.68.2.1 2006/02/05 20:58:57 tgl Exp $
+ *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_archiver.h,v 1.73 2006/10/04 00:30:05 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -326,6 +326,9 @@ extern void WriteDataChunks(ArchiveHandle *AH);
 extern teReqs TocIDRequired(ArchiveHandle *AH, DumpId id, RestoreOptions *ropt);
 extern bool checkSeek(FILE *fp);
 
+#define appendStringLiteralAHX(buf,str,AH) \
+	appendStringLiteral(buf, str, (AH)->public.encoding, (AH)->public.std_strings)
+
 /*
  * Mandatory routines for each supported format
  */
@@ -350,9 +353,6 @@ extern void InitArchiveFmt_Tar(ArchiveHandle *AH);
 
 extern bool isValidTarHeader(char *header);
 
-extern OutputContext SetOutput(ArchiveHandle *AH, char *filename, int compression);
-extern void ResetOutput(ArchiveHandle *AH, OutputContext savedContext);
-extern int	RestoringToDB(ArchiveHandle *AH);
 extern int	ReconnectToServer(ArchiveHandle *AH, const char *dbname, const char *newUser);
 
 int			ahwrite(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH);

@@ -4,10 +4,10 @@
  *	  shared memory management structures
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/shmem.h,v 1.45 2005/08/20 23:26:35 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/storage/shmem.h,v 1.49 2006/10/15 22:04:08 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -61,7 +61,8 @@ typedef struct SHM_QUEUE
 } SHM_QUEUE;
 
 /* shmem.c */
-extern void InitShmemAllocation(void *seghdr, bool init);
+extern void InitShmemAccess(void *seghdr);
+extern void InitShmemAllocation(void);
 extern void *ShmemAlloc(Size size);
 extern bool ShmemIsValid(unsigned long addr);
 extern void InitShmemIndex(void);
@@ -70,6 +71,9 @@ extern HTAB *ShmemInitHash(const char *name, long init_size, long max_size,
 extern void *ShmemInitStruct(const char *name, Size size, bool *foundPtr);
 extern Size add_size(Size s1, Size s2);
 extern Size mul_size(Size s1, Size s2);
+
+/* ipci.c */
+extern void RequestAddinShmemSpace(Size size);
 
 /* size constants for the shmem index table */
  /* max size of data structure string name */

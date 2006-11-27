@@ -3,10 +3,10 @@
  * pg_dump.h
  *	  Common header file for the pg_dump utility
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/bin/pg_dump/pg_dump.h,v 1.122 2005/10/15 02:49:39 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_dump/pg_dump.h,v 1.130 2006/10/09 23:36:59 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -41,6 +41,35 @@ typedef struct
 
 typedef int DumpId;
 
+/*
+ * Data structures for simple lists of OIDs and strings.  The support for
+ * these is very primitive compared to the backend's List facilities, but
+ * it's all we need in pg_dump.
+ */
+
+typedef struct SimpleOidListCell
+{
+	struct SimpleOidListCell *next;
+	Oid			val;
+} SimpleOidListCell;
+
+typedef struct SimpleOidList
+{
+	SimpleOidListCell *head;
+	SimpleOidListCell *tail;
+} SimpleOidList;
+
+typedef struct SimpleStringListCell
+{
+	struct SimpleStringListCell *next;
+	char		val[1];			/* VARIABLE LENGTH FIELD */
+} SimpleStringListCell;
+
+typedef struct SimpleStringList
+{
+	SimpleStringListCell *head;
+	SimpleStringListCell *tail;
+} SimpleStringList;
 
 /*
  * The data structures used to store system catalog information.  Every
@@ -62,6 +91,7 @@ typedef enum
 	/* When modifying this enum, update priority tables in pg_dump_sort.c! */
 	DO_NAMESPACE,
 	DO_TYPE,
+	DO_SHELL_TYPE,
 	DO_FUNC,
 	DO_AGG,
 	DO_OPERATOR,
@@ -89,6 +119,7 @@ typedef struct _dumpableObject
 	DumpId		dumpId;			/* assigned by AssignDumpId() */
 	char	   *name;			/* object name (should never be NULL) */
 	struct _namespaceInfo *namespace;	/* containing namespace, or NULL */
+	bool		dump;			/* true if we want to dump this object */
 	DumpId	   *dependencies;	/* dumpIds of objects this one depends on */
 	int			nDeps;			/* number of valid dependencies */
 	int			allocDeps;		/* allocated size of dependencies[] */
@@ -99,7 +130,6 @@ typedef struct _namespaceInfo
 	DumpableObject dobj;
 	char	   *rolname;		/* name of owner, or empty string */
 	char	   *nspacl;
-	bool		dump;			/* true if need to dump definition */
 } NamespaceInfo;
 
 typedef struct _typeInfo
@@ -111,17 +141,25 @@ typedef struct _typeInfo
 	 * produce something different than typname
 	 */
 	char	   *rolname;		/* name of owner, or empty string */
-	Oid			typinput;
 	Oid			typelem;
 	Oid			typrelid;
 	char		typrelkind;		/* 'r', 'v', 'c', etc */
 	char		typtype;		/* 'b', 'c', etc */
 	bool		isArray;		/* true if user-defined array type */
 	bool		isDefined;		/* true if typisdefined */
+	/* If it's a dumpable base type, we create a "shell type" entry for it */
+	struct _shellTypeInfo *shellType;	/* shell-type entry, or NULL */
 	/* If it's a domain, we store links to its constraints here: */
 	int			nDomChecks;
 	struct _constraintInfo *domChecks;
 } TypeInfo;
+
+typedef struct _shellTypeInfo
+{
+	DumpableObject dobj;
+
+	TypeInfo   *baseType;		/* back link to associated base type */
+} ShellTypeInfo;
 
 typedef struct _funcInfo
 {
@@ -138,8 +176,7 @@ typedef struct _funcInfo
 typedef struct _aggInfo
 {
 	FuncInfo	aggfn;
-	bool		anybasetype;	/* is the basetype "any"? */
-	char	   *fmtbasetype;	/* formatted type name */
+	/* we don't require any other fields at the moment */
 } AggInfo;
 
 typedef struct _oprInfo
@@ -171,17 +208,17 @@ typedef struct _tableInfo
 	char	   *relacl;
 	char		relkind;
 	char	   *reltablespace;	/* relation tablespace */
+	char	   *reloptions;		/* options specified by WITH (...) */
 	bool		hasindex;		/* does it have any indexes? */
 	bool		hasrules;		/* does it have any rules? */
 	bool		hasoids;		/* does it have OIDs? */
 	int			ncheck;			/* # of CHECK expressions */
 	int			ntrig;			/* # of triggers */
-	/* these two are set only if table is a SERIAL column's sequence: */
+	/* these two are set only if table is a sequence owned by a column: */
 	Oid			owning_tab;		/* OID of table owning sequence */
 	int			owning_col;		/* attr # of column owning sequence */
 
 	bool		interesting;	/* true if need to collect more data */
-	bool		dump;			/* true if we want to dump it */
 
 	/*
 	 * These fields are computed only if we decide the table is interesting
@@ -196,7 +233,6 @@ typedef struct _tableInfo
 	char	   *typstorage;		/* type storage scheme */
 	bool	   *attisdropped;	/* true if attr is dropped; don't dump it */
 	bool	   *attislocal;		/* true if attr has local definition */
-	bool	   *attisserial;	/* true if attr is serial or bigserial */
 
 	/*
 	 * Note: we need to store per-attribute notnull, default, and constraint
@@ -239,6 +275,7 @@ typedef struct _indxInfo
 	TableInfo  *indextable;		/* link to table the index is for */
 	char	   *indexdef;
 	char	   *tablespace;		/* tablespace in which index is stored */
+	char	   *options;		/* options specified by WITH (...) */
 	int			indnkeys;
 	Oid		   *indkeys;
 	bool		indisclustered;
@@ -297,6 +334,7 @@ typedef struct _procLangInfo
 	Oid			lanplcallfoid;
 	Oid			lanvalidator;
 	char	   *lanacl;
+	char	   *lanowner;		/* name of owner, or empty string */
 } ProcLangInfo;
 
 typedef struct _castInfo
@@ -330,9 +368,7 @@ extern char g_opaque_type[10];	/* name for the opaque type */
  *	common utility functions
  */
 
-extern TableInfo *getSchemaData(int *numTablesPtr,
-			  const bool schemaOnly,
-			  const bool dataOnly);
+extern TableInfo *getSchemaData(int *numTablesPtr);
 
 typedef enum _OidOptions
 {
@@ -356,6 +392,16 @@ extern TableInfo *findTableByOid(Oid oid);
 extern TypeInfo *findTypeByOid(Oid oid);
 extern FuncInfo *findFuncByOid(Oid oid);
 extern OprInfo *findOprByOid(Oid oid);
+
+extern void simple_oid_list_append(SimpleOidList *list, Oid val);
+extern void simple_string_list_append(SimpleStringList *list, const char *val);
+extern bool simple_oid_list_member(SimpleOidList *list, Oid val);
+extern bool simple_string_list_member(SimpleStringList *list, const char *val);
+
+extern char *pg_strdup(const char *string);
+extern void *pg_malloc(size_t size);
+extern void *pg_calloc(size_t nmemb, size_t size);
+extern void *pg_realloc(void *ptr, size_t size);
 
 extern void check_conn_and_db(void);
 extern void exit_nicely(void);

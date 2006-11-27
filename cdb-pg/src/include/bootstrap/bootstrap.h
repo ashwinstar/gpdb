@@ -4,19 +4,17 @@
  *	  include file for the bootstrapping code
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/bootstrap/bootstrap.h,v 1.39 2004/12/31 22:03:22 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/bootstrap/bootstrap.h,v 1.44 2006/10/04 00:30:07 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef BOOTSTRAP_H
 #define BOOTSTRAP_H
 
-#include "access/itup.h"
 #include "nodes/execnodes.h"
-#include "utils/rel.h"
 
 /*
  * MAXATTR is the maximum number of attributes in a relation supported
@@ -52,8 +50,19 @@ extern char *CleanUpStr(char *s);
 extern int	EnterString(char *str);
 extern void build_indices(void);
 
-extern int	Int_yylex(void);
-extern void Int_yyerror(const char *str);
+extern void boot_get_type_io_data(Oid typid,
+					  int16 *typlen,
+					  bool *typbyval,
+					  char *typalign,
+					  char *typdelim,
+					  Oid *typioparam,
+					  Oid *typinput,
+					  Oid *typoutput);
+
+extern int	boot_yyparse(void);
+
+extern int	boot_yylex(void);
+extern void boot_yyerror(const char *str);
 
 #define BS_XLOG_NOP			0
 #define BS_XLOG_BOOTSTRAP	1

@@ -5,10 +5,10 @@
  *	  strategy.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/buf_internals.h,v 1.81.2.2 2005/11/22 18:23:28 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/storage/buf_internals.h,v 1.88 2006/10/19 18:32:47 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -87,6 +87,17 @@ typedef struct buftag
 )
 
 /*
+ * The shared buffer mapping table is partitioned to reduce contention.
+ * To determine which partition lock a given tag requires, compute the tag's
+ * hash code with BufTableHashCode(), then apply BufMappingPartitionLock().
+ * NB: NUM_BUFFER_PARTITIONS must be a power of 2!
+ */
+#define BufTableHashPartition(hashcode) \
+	((hashcode) % NUM_BUFFER_PARTITIONS)
+#define BufMappingPartitionLock(hashcode) \
+	((LWLockId) (FirstBufMappingLock + BufTableHashPartition(hashcode)))
+
+/*
  *	BufferDesc -- shared descriptor/state data for a single shared buffer.
  *
  * Note: buf_hdr_lock must be held to examine or change the tag, flags,
@@ -138,28 +149,20 @@ typedef struct sbufdesc
 #define FREENEXT_NOT_IN_LIST	(-2)
 
 /*
- * Macros for acquiring/releasing a buffer header's spinlock.  The
- * NoHoldoff cases may be used when we know that we hold some LWLock
- * and therefore interrupts are already held off.  Do not apply these
- * to local buffers!
+ * Macros for acquiring/releasing a shared buffer header's spinlock.
+ * Do not apply these to local buffers!
  *
  * Note: as a general coding rule, if you are using these then you probably
- * want to be using a volatile-qualified pointer to the buffer header, to
+ * need to be using a volatile-qualified pointer to the buffer header, to
  * ensure that the compiler doesn't rearrange accesses to the header to
  * occur before or after the spinlock is acquired/released.
  */
-#define LockBufHdr(bufHdr)	\
-	SpinLockAcquire(&(bufHdr)->buf_hdr_lock)
-#define UnlockBufHdr(bufHdr)  \
-	SpinLockRelease(&(bufHdr)->buf_hdr_lock)
-#define LockBufHdr_NoHoldoff(bufHdr)  \
-	SpinLockAcquire_NoHoldoff(&(bufHdr)->buf_hdr_lock)
-#define UnlockBufHdr_NoHoldoff(bufHdr)	\
-	SpinLockRelease_NoHoldoff(&(bufHdr)->buf_hdr_lock)
+#define LockBufHdr(bufHdr)		SpinLockAcquire(&(bufHdr)->buf_hdr_lock)
+#define UnlockBufHdr(bufHdr)	SpinLockRelease(&(bufHdr)->buf_hdr_lock)
 
 
 /* in buf_init.c */
-extern BufferDesc *BufferDescriptors;
+extern DLLIMPORT BufferDesc *BufferDescriptors;
 
 /* in localbuf.c */
 extern BufferDesc *LocalBufferDescriptors;
@@ -190,14 +193,15 @@ extern void StrategyInitialize(bool init);
 /* buf_table.c */
 extern Size BufTableShmemSize(int size);
 extern void InitBufTable(int size);
-extern int	BufTableLookup(BufferTag *tagPtr);
-extern int	BufTableInsert(BufferTag *tagPtr, int buf_id);
-extern void BufTableDelete(BufferTag *tagPtr);
+extern uint32 BufTableHashCode(BufferTag *tagPtr);
+extern int	BufTableLookup(BufferTag *tagPtr, uint32 hashcode);
+extern int	BufTableInsert(BufferTag *tagPtr, uint32 hashcode, int buf_id);
+extern void BufTableDelete(BufferTag *tagPtr, uint32 hashcode);
 
 /* localbuf.c */
 extern BufferDesc *LocalBufferAlloc(Relation reln, BlockNumber blockNum,
 				 bool *foundPtr);
-extern void WriteLocalBuffer(Buffer buffer, bool release);
+extern void MarkLocalBufferDirty(Buffer buffer);
 extern void DropRelFileNodeLocalBuffers(RelFileNode rnode,
 							BlockNumber firstDelBlock);
 extern void AtEOXact_LocalBuffers(bool isCommit);

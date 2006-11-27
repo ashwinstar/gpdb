@@ -5,20 +5,17 @@
  *
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/heap.h,v 1.76 2005/10/15 02:49:42 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/heap.h,v 1.85 2006/07/13 16:49:19 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef HEAP_H
 #define HEAP_H
 
-#include "catalog/pg_attribute.h"
-#include "nodes/parsenodes.h"
 #include "parser/parse_node.h"
-#include "utils/rel.h"
 
 
 typedef struct RawColumnDefault
@@ -55,15 +52,23 @@ extern Oid heap_create_with_catalog(const char *relname,
 						 bool oidislocal,
 						 int oidinhcount,
 						 OnCommitAction oncommit,
-                         const struct MppPolicy *policy,    /*CDB*/
+                         const struct MppPolicy *policy,    /* MPP */
+						 Datum reloptions,
 						 bool allow_system_table_mods,
-						 Oid *comptypeOid);
+						 Oid *comptypeOid /* MPP */);
 
 extern void heap_drop_with_catalog(Oid relid);
 
 extern void heap_truncate(List *relids);
 
 extern void heap_truncate_check_FKs(List *relations, bool tempTables);
+
+extern List *heap_truncate_find_FKs(List *relationIds);
+
+extern void InsertPgClassTuple(Relation pg_class_desc,
+				   Relation new_rel_desc,
+				   Oid new_rel_oid,
+				   Datum reloptions);
 
 extern List *AddRelationRawConstraints(Relation rel,
 						  List *rawColDefaults,

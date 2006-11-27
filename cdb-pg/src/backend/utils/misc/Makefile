@@ -4,7 +4,7 @@
 #    Makefile for utils/misc
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/backend/utils/misc/Makefile,v 1.24 2005/10/03 22:52:23 tgl Exp $
+#    $PostgreSQL: pgsql/src/backend/utils/misc/Makefile,v 1.26 2006/07/25 03:51:21 tgl Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -14,7 +14,7 @@ include $(top_builddir)/src/Makefile.global
 
 override CPPFLAGS := -I$(srcdir) $(CPPFLAGS)
 
-OBJS = guc.o help_config.o pg_rusage.o ps_status.o superuser.o
+OBJS = guc.o help_config.o pg_rusage.o ps_status.o superuser.o tzparser.o
 
 # This location might depend on the installation directories. Therefore
 # we can't subsitute it into pg_config.h.
@@ -33,9 +33,7 @@ guc.o: $(srcdir)/guc-file.c
 
 $(srcdir)/guc-file.c: guc-file.l
 ifdef FLEX
-	$(FLEX) $(FLEXFLAGS) $<
-	sed -e 's/^yy/GUC_yy/g' -e 's/\([^a-zA-Z0-9_]\)yy/\1GUC_yy/g' lex.yy.c > $@
-	rm -f lex.yy.c
+	$(FLEX) $(FLEXFLAGS) -o'$@' $<
 else
 	@$(missing) flex $< $@
 endif
