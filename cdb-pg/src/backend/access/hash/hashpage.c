@@ -3,12 +3,12 @@
  * hashpage.c
  *	  Hash table page management code for the Postgres hash access method
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/hash/hashpage.c,v 1.52.2.1 2005/11/22 18:23:03 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/hash/hashpage.c,v 1.61 2006/11/19 21:33:23 tgl Exp $
  *
  * NOTES
  *	  Postgres hash pages look like ordinary relation pages.  The opaque
@@ -32,9 +32,11 @@
 #include "access/hash.h"
 #include "miscadmin.h"
 #include "storage/lmgr.h"
+#include "storage/smgr.h"
 #include "utils/lsyscache.h"
 
 
+static BlockNumber _hash_alloc_buckets(Relation rel, uint32 nblocks);
 static void _hash_splitbucket(Relation rel, Buffer metabuf,
 				  Bucket obucket, Bucket nbucket,
 				  BlockNumber start_oblkno,
@@ -102,18 +104,17 @@ _hash_droplock(Relation rel, BlockNumber whichlock, int access)
  *		requested buffer and its reference count has been incremented
  *		(ie, the buffer is "locked and pinned").
  *
- *		XXX P_NEW is not used because, unlike the tree structures, we
- *		need the bucket blocks to be at certain block numbers.	we must
- *		depend on the caller to call _hash_pageinit on the block if it
- *		knows that this is a new block.
+ *		blkno == P_NEW is allowed, but it is caller's responsibility to
+ *		ensure that only one process can extend the index at a time.
+ *
+ *		All call sites should call either _hash_checkpage or _hash_pageinit
+ *		on the returned page, depending on whether the block is expected
+ *		to be valid or not.
  */
 Buffer
 _hash_getbuf(Relation rel, BlockNumber blkno, int access)
 {
 	Buffer		buf;
-
-	if (blkno == P_NEW)
-		elog(ERROR, "hash AM does not use P_NEW");
 
 	buf = ReadBuffer(rel, blkno);
 
@@ -127,22 +128,18 @@ _hash_getbuf(Relation rel, BlockNumber blkno, int access)
 /*
  *	_hash_relbuf() -- release a locked buffer.
  *
- * Lock and pin (refcount) are both dropped.  Note that either read or
- * write lock can be dropped this way, but if we modified the buffer,
- * this is NOT the right way to release a write lock.
+ * Lock and pin (refcount) are both dropped.
  */
 void
 _hash_relbuf(Relation rel, Buffer buf)
 {
-	LockBuffer(buf, BUFFER_LOCK_UNLOCK);
-	ReleaseBuffer(buf);
+	UnlockReleaseBuffer(buf);
 }
 
 /*
  *	_hash_dropbuf() -- release an unlocked buffer.
  *
- * This is used to unpin a buffer on which we hold no lock.  It is assumed
- * that the buffer is not dirty.
+ * This is used to unpin a buffer on which we hold no lock.
  */
 void
 _hash_dropbuf(Relation rel, Buffer buf)
@@ -157,31 +154,16 @@ _hash_dropbuf(Relation rel, Buffer buf)
  *		for it.  It is an error to call _hash_wrtbuf() without a write lock
  *		and a pin on the buffer.
  *
- * NOTE: actually, the buffer manager just marks the shared buffer page
- * dirty here; the real I/O happens later.	This is okay since we are not
- * relying on write ordering anyway.  The WAL mechanism is responsible for
- * guaranteeing correctness after a crash.
+ * NOTE: this routine should go away when/if hash indexes are WAL-ified.
+ * The correct sequence of operations is to mark the buffer dirty, then
+ * write the WAL record, then release the lock and pin; so marking dirty
+ * can't be combined with releasing.
  */
 void
 _hash_wrtbuf(Relation rel, Buffer buf)
 {
-	LockBuffer(buf, BUFFER_LOCK_UNLOCK);
-	WriteBuffer(buf);
-}
-
-/*
- *	_hash_wrtnorelbuf() -- write a hash page to disk, but do not release
- *						 our reference or lock.
- *
- *		It is an error to call _hash_wrtnorelbuf() without a write lock
- *		and a pin on the buffer.
- *
- * See above NOTE.
- */
-void
-_hash_wrtnorelbuf(Relation rel, Buffer buf)
-{
-	WriteNoReleaseBuffer(buf);
+	MarkBufferDirty(buf);
+	UnlockReleaseBuffer(buf);
 }
 
 /*
@@ -202,11 +184,10 @@ _hash_chgbufaccess(Relation rel,
 				   int from_access,
 				   int to_access)
 {
+	if (from_access == HASH_WRITE)
+		MarkBufferDirty(buf);
 	if (from_access != HASH_NOLOCK)
 		LockBuffer(buf, BUFFER_LOCK_UNLOCK);
-	if (from_access == HASH_WRITE)
-		WriteNoReleaseBuffer(buf);
-
 	if (to_access != HASH_NOLOCK)
 		LockBuffer(buf, to_access);
 }
@@ -240,21 +221,29 @@ _hash_metapinit(Relation rel)
 			 RelationGetRelationName(rel));
 
 	/*
-	 * Determine the target fill factor (tuples per bucket) for this index.
-	 * The idea is to make the fill factor correspond to pages about 3/4ths
-	 * full.  We can compute it exactly if the index datatype is fixed-width,
-	 * but for var-width there's some guessing involved.
+	 * Determine the target fill factor (in tuples per bucket) for this index.
+	 * The idea is to make the fill factor correspond to pages about as full
+	 * as the user-settable fillfactor parameter says.	We can compute it
+	 * exactly if the index datatype is fixed-width, but for var-width there's
+	 * some guessing involved.
 	 */
 	data_width = get_typavgwidth(RelationGetDescr(rel)->attrs[0]->atttypid,
 								 RelationGetDescr(rel)->attrs[0]->atttypmod);
-	item_width = MAXALIGN(sizeof(HashItemData)) + MAXALIGN(data_width) +
+	item_width = MAXALIGN(sizeof(IndexTupleData)) + MAXALIGN(data_width) +
 		sizeof(ItemIdData);		/* include the line pointer */
-	ffactor = (BLCKSZ * 3 / 4) / item_width;
+	ffactor = RelationGetTargetPageUsage(rel, HASH_DEFAULT_FILLFACTOR) / item_width;
 	/* keep to a sane range */
 	if (ffactor < 10)
 		ffactor = 10;
 
-	metabuf = _hash_getbuf(rel, HASH_METAPAGE, HASH_WRITE);
+	/*
+	 * We initialize the metapage, the first two bucket pages, and the
+	 * first bitmap page in sequence, using P_NEW to cause smgrextend()
+	 * calls to occur.  This ensures that the smgr level has the right
+	 * idea of the physical index length.
+	 */
+	metabuf = _hash_getbuf(rel, P_NEW, HASH_WRITE);
+	Assert(BufferGetBlockNumber(metabuf) == HASH_METAPAGE);
 	pg = BufferGetPage(metabuf);
 	_hash_pageinit(pg, BufferGetPageSize(metabuf));
 
@@ -307,7 +296,8 @@ _hash_metapinit(Relation rel)
 	 */
 	for (i = 0; i <= 1; i++)
 	{
-		buf = _hash_getbuf(rel, BUCKET_TO_BLKNO(metap, i), HASH_WRITE);
+		buf = _hash_getbuf(rel, P_NEW, HASH_WRITE);
+		Assert(BufferGetBlockNumber(buf) == BUCKET_TO_BLKNO(metap, i));
 		pg = BufferGetPage(buf);
 		_hash_pageinit(pg, BufferGetPageSize(buf));
 		pageopaque = (HashPageOpaque) PageGetSpecialPointer(pg);
@@ -320,8 +310,7 @@ _hash_metapinit(Relation rel)
 	}
 
 	/*
-	 * Initialize first bitmap page.  Can't do this until we create the first
-	 * two buckets, else smgr will complain.
+	 * Initialize first bitmap page
 	 */
 	_hash_initbitmap(rel, metap, 3);
 
@@ -356,6 +345,7 @@ _hash_expandtable(Relation rel, Buffer metabuf)
 	Bucket		old_bucket;
 	Bucket		new_bucket;
 	uint32		spare_ndx;
+	BlockNumber firstblock = InvalidBlockNumber;
 	BlockNumber start_oblkno;
 	BlockNumber start_nblkno;
 	uint32		maxbucket;
@@ -380,8 +370,8 @@ _hash_expandtable(Relation rel, Buffer metabuf)
 	/* Write-lock the meta page */
 	_hash_chgbufaccess(rel, metabuf, HASH_NOLOCK, HASH_WRITE);
 
+	_hash_checkpage(rel, metabuf, LH_META_PAGE);
 	metap = (HashMetaPage) BufferGetPage(metabuf);
-	_hash_checkpage(rel, (Page) metap, LH_META_PAGE);
 
 	/*
 	 * Check to see if split is still needed; someone else might have already
@@ -392,6 +382,40 @@ _hash_expandtable(Relation rel, Buffer metabuf)
 	if (metap->hashm_ntuples <=
 		(double) metap->hashm_ffactor * (metap->hashm_maxbucket + 1))
 		goto fail;
+
+	/*
+	 * Can't split anymore if maxbucket has reached its maximum possible value.
+	 *
+	 * Ideally we'd allow bucket numbers up to UINT_MAX-1 (no higher because
+	 * the calculation maxbucket+1 mustn't overflow).  Currently we restrict
+	 * to half that because of overflow looping in _hash_log2() and
+	 * insufficient space in hashm_spares[].  It's moot anyway because an
+	 * index with 2^32 buckets would certainly overflow BlockNumber and
+	 * hence _hash_alloc_buckets() would fail, but if we supported buckets
+	 * smaller than a disk block then this would be an independent constraint.
+	 */
+	if (metap->hashm_maxbucket >= (uint32) 0x7FFFFFFE)
+		goto fail;
+
+	/*
+	 * If the split point is increasing (hashm_maxbucket's log base 2
+	 * increases), we need to allocate a new batch of bucket pages.
+	 */
+	new_bucket = metap->hashm_maxbucket + 1;
+	spare_ndx = _hash_log2(new_bucket + 1);
+	if (spare_ndx > metap->hashm_ovflpoint)
+	{
+		Assert(spare_ndx == metap->hashm_ovflpoint + 1);
+		/*
+		 * The number of buckets in the new splitpoint is equal to the
+		 * total number already in existence, i.e. new_bucket.  Currently
+		 * this maps one-to-one to blocks required, but someday we may need
+		 * a more complicated calculation here.
+		 */
+		firstblock = _hash_alloc_buckets(rel, new_bucket);
+		if (firstblock == InvalidBlockNumber)
+			goto fail;			/* can't split due to BlockNumber overflow */
+	}
 
 	/*
 	 * Determine which bucket is to be split, and attempt to lock the old
@@ -406,7 +430,6 @@ _hash_expandtable(Relation rel, Buffer metabuf)
 	 * lock.  This should be okay because no one else should be trying to lock
 	 * the new bucket yet...
 	 */
-	new_bucket = metap->hashm_maxbucket + 1;
 	old_bucket = (new_bucket & metap->hashm_lowmask);
 
 	start_oblkno = BUCKET_TO_BLKNO(metap, old_bucket);
@@ -442,20 +465,21 @@ _hash_expandtable(Relation rel, Buffer metabuf)
 	 * increases), we need to adjust the hashm_spares[] array and
 	 * hashm_ovflpoint so that future overflow pages will be created beyond
 	 * this new batch of bucket pages.
-	 *
-	 * XXX should initialize new bucket pages to prevent out-of-order page
-	 * creation?  Don't wanna do it right here though.
 	 */
-	spare_ndx = _hash_log2(metap->hashm_maxbucket + 1);
 	if (spare_ndx > metap->hashm_ovflpoint)
 	{
-		Assert(spare_ndx == metap->hashm_ovflpoint + 1);
 		metap->hashm_spares[spare_ndx] = metap->hashm_spares[metap->hashm_ovflpoint];
 		metap->hashm_ovflpoint = spare_ndx;
 	}
 
 	/* now we can compute the new bucket's primary block number */
 	start_nblkno = BUCKET_TO_BLKNO(metap, new_bucket);
+
+	/* if we added a splitpoint, should match result of _hash_alloc_buckets */
+	if (firstblock != InvalidBlockNumber &&
+		firstblock != start_nblkno)
+		elog(PANIC, "unexpected hash relation size: %u, should be %u",
+			 firstblock, start_nblkno);
 
 	Assert(!_hash_has_active_scan(rel, new_bucket));
 
@@ -505,6 +529,79 @@ fail:
 
 
 /*
+ * _hash_alloc_buckets -- allocate a new splitpoint's worth of bucket pages
+ *
+ * This does not need to initialize the new bucket pages; we'll do that as
+ * each one is used by _hash_expandtable().  But we have to extend the logical
+ * EOF to the end of the splitpoint; otherwise the first overflow page
+ * allocated beyond the splitpoint will represent a noncontiguous access,
+ * which can confuse md.c (and will probably be forbidden by future changes
+ * to md.c).
+ *
+ * We do this by writing a page of zeroes at the end of the splitpoint range.
+ * We expect that the filesystem will ensure that the intervening pages read
+ * as zeroes too.  On many filesystems this "hole" will not be allocated
+ * immediately, which means that the index file may end up more fragmented
+ * than if we forced it all to be allocated now; but since we don't scan
+ * hash indexes sequentially anyway, that probably doesn't matter.
+ *
+ * XXX It's annoying that this code is executed with the metapage lock held.
+ * We need to interlock against _hash_getovflpage() adding a new overflow page
+ * concurrently, but it'd likely be better to use LockRelationForExtension
+ * for the purpose.  OTOH, adding a splitpoint is a very infrequent operation,
+ * so it may not be worth worrying about.
+ *
+ * Returns the first block number in the new splitpoint's range, or
+ * InvalidBlockNumber if allocation failed due to BlockNumber overflow.
+ */
+static BlockNumber
+_hash_alloc_buckets(Relation rel, uint32 nblocks)
+{
+	BlockNumber	firstblock;
+	BlockNumber	lastblock;
+	BlockNumber	endblock;
+	char		zerobuf[BLCKSZ];
+
+	/*
+	 * Since we hold metapage lock, no one else is either splitting or
+	 * allocating a new page in _hash_getovflpage(); hence it's safe to
+	 * assume that the relation length isn't changing under us.
+	 */
+	firstblock = RelationGetNumberOfBlocks(rel);
+	lastblock = firstblock + nblocks - 1;
+
+	/*
+	 * Check for overflow in block number calculation; if so, we cannot
+	 * extend the index anymore.
+	 */
+	if (lastblock < firstblock || lastblock == InvalidBlockNumber)
+		return InvalidBlockNumber;
+
+	/* Note: we assume RelationGetNumberOfBlocks did RelationOpenSmgr for us */
+
+	MemSet(zerobuf, 0, sizeof(zerobuf));
+
+	/*
+	 * XXX If the extension results in creation of new segment files,
+	 * we have to make sure that each non-last file is correctly filled out to
+	 * RELSEG_SIZE blocks.  This ought to be done inside mdextend, but
+	 * changing the smgr API seems best left for development cycle not late
+	 * beta.  Temporary fix for bug #2737.
+	 */
+#ifndef LET_OS_MANAGE_FILESIZE
+	for (endblock = firstblock | (RELSEG_SIZE - 1);
+		 endblock < lastblock;
+		 endblock += RELSEG_SIZE)
+		smgrextend(rel->rd_smgr, endblock, zerobuf, rel->rd_istemp);
+#endif
+
+	smgrextend(rel->rd_smgr, lastblock, zerobuf, rel->rd_istemp);
+
+	return firstblock;
+}
+
+
+/*
  * _hash_splitbucket -- split 'obucket' into 'obucket' and 'nbucket'
  *
  * We are splitting a bucket that consists of a base bucket page and zero
@@ -537,7 +634,6 @@ _hash_splitbucket(Relation rel,
 	BlockNumber nblkno;
 	bool		null;
 	Datum		datum;
-	HashItem	hitem;
 	HashPageOpaque oopaque;
 	HashPageOpaque nopaque;
 	IndexTuple	itup;
@@ -555,14 +651,14 @@ _hash_splitbucket(Relation rel,
 	 * either bucket.
 	 */
 	oblkno = start_oblkno;
-	nblkno = start_nblkno;
 	obuf = _hash_getbuf(rel, oblkno, HASH_WRITE);
-	nbuf = _hash_getbuf(rel, nblkno, HASH_WRITE);
+	_hash_checkpage(rel, obuf, LH_BUCKET_PAGE);
 	opage = BufferGetPage(obuf);
-	npage = BufferGetPage(nbuf);
-
-	_hash_checkpage(rel, opage, LH_BUCKET_PAGE);
 	oopaque = (HashPageOpaque) PageGetSpecialPointer(opage);
+
+	nblkno = start_nblkno;
+	nbuf = _hash_getbuf(rel, nblkno, HASH_WRITE);
+	npage = BufferGetPage(nbuf);
 
 	/* initialize the new bucket's primary page */
 	_hash_pageinit(npage, BufferGetPageSize(nbuf));
@@ -602,8 +698,8 @@ _hash_splitbucket(Relation rel,
 			_hash_wrtbuf(rel, obuf);
 
 			obuf = _hash_getbuf(rel, oblkno, HASH_WRITE);
+			_hash_checkpage(rel, obuf, LH_OVERFLOW_PAGE);
 			opage = BufferGetPage(obuf);
-			_hash_checkpage(rel, opage, LH_OVERFLOW_PAGE);
 			oopaque = (HashPageOpaque) PageGetSpecialPointer(opage);
 			ooffnum = FirstOffsetNumber;
 			omaxoffnum = PageGetMaxOffsetNumber(opage);
@@ -616,8 +712,7 @@ _hash_splitbucket(Relation rel,
 		 * It is annoying to call the hash function while holding locks, but
 		 * releasing and relocking the page for each tuple is unappealing too.
 		 */
-		hitem = (HashItem) PageGetItem(opage, PageGetItemId(opage, ooffnum));
-		itup = &(hitem->hash_itup);
+		itup = (IndexTuple) PageGetItem(opage, PageGetItemId(opage, ooffnum));
 		datum = index_getattr(itup, 1, itupdesc, &null);
 		Assert(!null);
 
@@ -631,9 +726,7 @@ _hash_splitbucket(Relation rel,
 			 * current page in the new bucket, we must allocate a new overflow
 			 * page and place the tuple on that page instead.
 			 */
-			itemsz = IndexTupleDSize(hitem->hash_itup)
-				+ (sizeof(HashItemData) - sizeof(IndexTupleData));
-
+			itemsz = IndexTupleDSize(*itup);
 			itemsz = MAXALIGN(itemsz);
 
 			if (PageGetFreeSpace(npage) < itemsz)
@@ -642,13 +735,13 @@ _hash_splitbucket(Relation rel,
 				_hash_chgbufaccess(rel, nbuf, HASH_WRITE, HASH_NOLOCK);
 				/* chain to a new overflow page */
 				nbuf = _hash_addovflpage(rel, metabuf, nbuf);
+				_hash_checkpage(rel, nbuf, LH_OVERFLOW_PAGE);
 				npage = BufferGetPage(nbuf);
-				_hash_checkpage(rel, npage, LH_OVERFLOW_PAGE);
 				/* we don't need nopaque within the loop */
 			}
 
 			noffnum = OffsetNumberNext(PageGetMaxOffsetNumber(npage));
-			if (PageAddItem(npage, (Item) hitem, itemsz, noffnum, LP_USED)
+			if (PageAddItem(npage, (Item) itup, itemsz, noffnum, LP_USED)
 				== InvalidOffsetNumber)
 				elog(ERROR, "failed to add index item to \"%s\"",
 					 RelationGetRelationName(rel));

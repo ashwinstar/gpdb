@@ -4,11 +4,11 @@
  *	  Support routines for external and compressed storage of
  *	  variable size attributes.
  *
- * Copyright (c) 2000-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/heap/tuptoaster.c,v 1.53.2.3 2006/01/17 17:33:20 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/heap/tuptoaster.c,v 1.66 2006/10/05 23:33:33 tgl Exp $
  *
  *
  * INTERFACE ROUTINES
@@ -30,12 +30,10 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#include "access/heapam.h"
 #include "access/genam.h"
+#include "access/heapam.h"
 #include "access/tuptoaster.h"
 #include "catalog/catalog.h"
-#include "utils/rel.h"
-#include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/pg_lzcompress.h"
 #include "utils/typcache.h"
@@ -102,15 +100,12 @@ heap_tuple_untoast_attr(varattrib *attr)
 			 * Fetch it from the toast heap and decompress.
 			 * ----------
 			 */
-			varattrib  *tmp;
+			PGLZ_Header *tmp;
 
-			tmp = toast_fetch_datum(attr);
-			result = (varattrib *) palloc(attr->va_content.va_external.va_rawsize
-										  + VARHDRSZ);
-			VARATT_SIZEP(result) = attr->va_content.va_external.va_rawsize
-				+ VARHDRSZ;
-			pglz_decompress((PGLZ_Header *) tmp, VARATT_DATA(result));
-
+			tmp = (PGLZ_Header *) toast_fetch_datum(attr);
+			result = (varattrib *) palloc(PGLZ_RAW_SIZE(tmp) + VARHDRSZ);
+			VARATT_SIZEP(result) = PGLZ_RAW_SIZE(tmp) + VARHDRSZ;
+			pglz_decompress(tmp, VARATT_DATA(result));
 			pfree(tmp);
 		}
 		else
@@ -126,11 +121,11 @@ heap_tuple_untoast_attr(varattrib *attr)
 		/*
 		 * This is a compressed value inside of the main tuple
 		 */
-		result = (varattrib *) palloc(attr->va_content.va_compressed.va_rawsize
-									  + VARHDRSZ);
-		VARATT_SIZEP(result) = attr->va_content.va_compressed.va_rawsize
-			+ VARHDRSZ;
-		pglz_decompress((PGLZ_Header *) attr, VARATT_DATA(result));
+		PGLZ_Header *tmp = (PGLZ_Header *) attr;
+
+		result = (varattrib *) palloc(PGLZ_RAW_SIZE(tmp) + VARHDRSZ);
+		VARATT_SIZEP(result) = PGLZ_RAW_SIZE(tmp) + VARHDRSZ;
+		pglz_decompress(tmp, VARATT_DATA(result));
 	}
 	else
 
@@ -159,21 +154,18 @@ heap_tuple_untoast_attr_slice(varattrib *attr, int32 sliceoffset, int32 slicelen
 
 	if (VARATT_IS_COMPRESSED(attr))
 	{
-		varattrib  *tmp;
+		PGLZ_Header *tmp;
 
 		if (VARATT_IS_EXTERNAL(attr))
-			tmp = toast_fetch_datum(attr);
+			tmp = (PGLZ_Header *) toast_fetch_datum(attr);
 		else
-		{
-			tmp = attr;			/* compressed in main tuple */
-		}
+			tmp = (PGLZ_Header *) attr;		/* compressed in main tuple */
 
-		preslice = (varattrib *) palloc(attr->va_content.va_external.va_rawsize
-										+ VARHDRSZ);
-		VARATT_SIZEP(preslice) = attr->va_content.va_external.va_rawsize + VARHDRSZ;
-		pglz_decompress((PGLZ_Header *) tmp, VARATT_DATA(preslice));
+		preslice = (varattrib *) palloc(PGLZ_RAW_SIZE(tmp) + VARHDRSZ);
+		VARATT_SIZEP(preslice) = PGLZ_RAW_SIZE(tmp) + VARHDRSZ;
+		pglz_decompress(tmp, VARATT_DATA(preslice));
 
-		if (tmp != attr)
+		if (tmp != (PGLZ_Header *) attr)
 			pfree(tmp);
 	}
 	else
@@ -182,7 +174,7 @@ heap_tuple_untoast_attr_slice(varattrib *attr, int32 sliceoffset, int32 slicelen
 		if (VARATT_IS_EXTERNAL(attr))
 		{
 			/* fast path */
-			return (toast_fetch_datum_slice(attr, sliceoffset, slicelength));
+			return toast_fetch_datum_slice(attr, sliceoffset, slicelength);
 		}
 		else
 			preslice = attr;
@@ -774,7 +766,6 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 		result_tuple->t_len = new_len;
 		result_tuple->t_self = newtup->t_self;
 		result_tuple->t_tableOid = newtup->t_tableOid;
-		result_tuple->t_datamcxt = CurrentMemoryContext;
 		new_data = (HeapTupleHeader) ((char *) result_tuple + HEAPTUPLESIZE);
 		result_tuple->t_data = new_data;
 
@@ -847,7 +838,6 @@ toast_flatten_tuple_attribute(Datum value,
 	if (tupleDesc == NULL)
 		return value;			/* not a composite type */
 
-	tupleDesc = CreateTupleDescCopy(tupleDesc);
 	att = tupleDesc->attrs;
 	numAttrs = tupleDesc->natts;
 
@@ -895,7 +885,7 @@ toast_flatten_tuple_attribute(Datum value,
 	 */
 	if (!need_change)
 	{
-		FreeTupleDesc(tupleDesc);
+		ReleaseTupleDesc(tupleDesc);
 		return value;
 	}
 
@@ -934,7 +924,7 @@ toast_flatten_tuple_attribute(Datum value,
 	for (i = 0; i < numAttrs; i++)
 		if (toast_free[i])
 			pfree(DatumGetPointer(toast_values[i]));
-	FreeTupleDesc(tupleDesc);
+	ReleaseTupleDesc(tupleDesc);
 
 	return PointerGetDatum(new_data);
 }
@@ -954,12 +944,12 @@ Datum
 toast_compress_datum(Datum value)
 {
 	varattrib  *tmp;
+	int32		valsize = VARATT_SIZE(value) - VARHDRSZ;
 
-	tmp = (varattrib *) palloc(sizeof(PGLZ_Header) + VARATT_SIZE(value));
-	pglz_compress(VARATT_DATA(value), VARATT_SIZE(value) - VARHDRSZ,
-				  (PGLZ_Header *) tmp,
-				  PGLZ_strategy_default);
-	if (VARATT_SIZE(tmp) < VARATT_SIZE(value))
+	tmp = (varattrib *) palloc(PGLZ_MAX_OUTPUT(valsize));
+	if (pglz_compress(VARATT_DATA(value), valsize,
+					  (PGLZ_Header *) tmp, PGLZ_strategy_default) &&
+		VARATT_SIZE(tmp) < VARATT_SIZE(value))
 	{
 		/* successful compression */
 		VARATT_SIZEP(tmp) |= VARATT_FLAG_COMPRESSED;
@@ -1008,7 +998,7 @@ toast_save_datum(Relation rel, Datum value)
 	 */
 	toastrel = heap_open(rel->rd_rel->reltoastrelid, RowExclusiveLock);
 	toasttupDesc = toastrel->rd_att;
-	toastidx = index_open(toastrel->rd_rel->reltoastidxid);
+	toastidx = index_open(toastrel->rd_rel->reltoastidxid, RowExclusiveLock);
 
 	/*
 	 * Create the varattrib reference
@@ -1046,12 +1036,6 @@ toast_save_datum(Relation rel, Datum value)
 	 */
 	data_p = VARATT_DATA(value);
 	data_todo = VARATT_SIZE(value) - VARHDRSZ;
-
-	/*
-	 * We must explicitly lock the toast index because we aren't using an
-	 * index scan here.
-	 */
-	LockRelation(toastidx, RowExclusiveLock);
 
 	/*
 	 * Split up the item into chunks
@@ -1102,8 +1086,7 @@ toast_save_datum(Relation rel, Datum value)
 	/*
 	 * Done - close toast relation and return the reference
 	 */
-	UnlockRelation(toastidx, RowExclusiveLock);
-	index_close(toastidx);
+	index_close(toastidx, RowExclusiveLock);
 	heap_close(toastrel, RowExclusiveLock);
 
 	return PointerGetDatum(result);
@@ -1134,7 +1117,7 @@ toast_delete_datum(Relation rel, Datum value)
 	 */
 	toastrel = heap_open(attr->va_content.va_external.va_toastrelid,
 						 RowExclusiveLock);
-	toastidx = index_open(toastrel->rd_rel->reltoastidxid);
+	toastidx = index_open(toastrel->rd_rel->reltoastidxid, RowExclusiveLock);
 
 	/*
 	 * Setup a scan key to fetch from the index by va_valueid (we don't
@@ -1148,8 +1131,8 @@ toast_delete_datum(Relation rel, Datum value)
 	/*
 	 * Find the chunks by index
 	 */
-	toastscan = index_beginscan(toastrel, toastidx, SnapshotToast,
-								1, &toastkey);
+	toastscan = index_beginscan(toastrel, toastidx,
+								SnapshotToast, 1, &toastkey);
 	while ((toasttup = index_getnext(toastscan, ForwardScanDirection)) != NULL)
 	{
 		/*
@@ -1162,7 +1145,7 @@ toast_delete_datum(Relation rel, Datum value)
 	 * End scan and close relations
 	 */
 	index_endscan(toastscan);
-	index_close(toastidx);
+	index_close(toastidx, RowExclusiveLock);
 	heap_close(toastrel, RowExclusiveLock);
 }
 
@@ -1206,7 +1189,7 @@ toast_fetch_datum(varattrib *attr)
 	toastrel = heap_open(attr->va_content.va_external.va_toastrelid,
 						 AccessShareLock);
 	toasttupDesc = toastrel->rd_att;
-	toastidx = index_open(toastrel->rd_rel->reltoastidxid);
+	toastidx = index_open(toastrel->rd_rel->reltoastidxid, AccessShareLock);
 
 	/*
 	 * Setup a scan key to fetch from the index by va_valueid
@@ -1225,8 +1208,8 @@ toast_fetch_datum(varattrib *attr)
 	 */
 	nextidx = 0;
 
-	toastscan = index_beginscan(toastrel, toastidx, SnapshotToast,
-								1, &toastkey);
+	toastscan = index_beginscan(toastrel, toastidx,
+								SnapshotToast, 1, &toastkey);
 	while ((ttup = index_getnext(toastscan, ForwardScanDirection)) != NULL)
 	{
 		/*
@@ -1286,7 +1269,7 @@ toast_fetch_datum(varattrib *attr)
 	 * End scan and close relations
 	 */
 	index_endscan(toastscan);
-	index_close(toastidx);
+	index_close(toastidx, AccessShareLock);
 	heap_close(toastrel, AccessShareLock);
 
 	return result;
@@ -1344,7 +1327,7 @@ toast_fetch_datum_slice(varattrib *attr, int32 sliceoffset, int32 length)
 		VARATT_SIZEP(result) |= VARATT_FLAG_COMPRESSED;
 
 	if (length == 0)
-		return (result);		/* Can save a lot of work at this point! */
+		return result;			/* Can save a lot of work at this point! */
 
 	startchunk = sliceoffset / TOAST_MAX_CHUNK_SIZE;
 	endchunk = (sliceoffset + length - 1) / TOAST_MAX_CHUNK_SIZE;
@@ -1359,7 +1342,7 @@ toast_fetch_datum_slice(varattrib *attr, int32 sliceoffset, int32 length)
 	toastrel = heap_open(attr->va_content.va_external.va_toastrelid,
 						 AccessShareLock);
 	toasttupDesc = toastrel->rd_att;
-	toastidx = index_open(toastrel->rd_rel->reltoastidxid);
+	toastidx = index_open(toastrel->rd_rel->reltoastidxid, AccessShareLock);
 
 	/*
 	 * Setup a scan key to fetch from the index. This is either two keys or
@@ -1400,8 +1383,8 @@ toast_fetch_datum_slice(varattrib *attr, int32 sliceoffset, int32 length)
 	 * The index is on (valueid, chunkidx) so they will come in order
 	 */
 	nextidx = startchunk;
-	toastscan = index_beginscan(toastrel, toastidx, SnapshotToast,
-								nscankeys, toastkey);
+	toastscan = index_beginscan(toastrel, toastidx,
+								SnapshotToast, nscankeys, toastkey);
 	while ((ttup = index_getnext(toastscan, ForwardScanDirection)) != NULL)
 	{
 		/*
@@ -1465,7 +1448,7 @@ toast_fetch_datum_slice(varattrib *attr, int32 sliceoffset, int32 length)
 	 * End scan and close relations
 	 */
 	index_endscan(toastscan);
-	index_close(toastidx);
+	index_close(toastidx, AccessShareLock);
 	heap_close(toastrel, AccessShareLock);
 
 	return result;

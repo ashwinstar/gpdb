@@ -3,12 +3,12 @@
  * hio.c
  *	  POSTGRES heap access method input/output code.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/heap/hio.c,v 1.58.2.2 2006/01/06 00:15:58 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/heap/hio.c,v 1.63 2006/07/03 22:45:37 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -93,6 +93,11 @@ RelationPutHeapTuple(Relation relation,
  *	any committed data of other transactions.  (See heap_insert's comments
  *	for additional constraints needed for safe usage of this behavior.)
  *
+ *	We always try to avoid filling existing pages further than the fillfactor.
+ *	This is OK since this routine is not consulted when updating a tuple and
+ *	keeping it on the same page, which is the scenario fillfactor is meant
+ *	to reserve space for.
+ *
  *	ereport(ERROR) is allowed here, so this routine *must* be called
  *	before any (unlogged) changes are made in buffer pool.
  */
@@ -102,7 +107,8 @@ RelationGetBufferForTuple(Relation relation, Size len,
 {
 	Buffer		buffer = InvalidBuffer;
 	Page		pageHeader;
-	Size		pageFreeSpace;
+	Size		pageFreeSpace,
+				saveFreeSpace;
 	BlockNumber targetBlock,
 				otherBlock;
 	bool		needLock;
@@ -118,6 +124,10 @@ RelationGetBufferForTuple(Relation relation, Size len,
 				 errmsg("row is too big: size %lu, maximum size %lu",
 						(unsigned long) len,
 						(unsigned long) MaxTupleSize)));
+
+	/* Compute desired extra freespace due to fillfactor option */
+	saveFreeSpace = RelationGetTargetPageFreeSpace(relation,
+												   HEAP_DEFAULT_FILLFACTOR);
 
 	if (otherBuffer != InvalidBuffer)
 		otherBlock = BufferGetBlockNumber(otherBuffer);
@@ -137,8 +147,14 @@ RelationGetBufferForTuple(Relation relation, Size len,
 	 * When use_fsm is false, we either put the tuple onto the existing target
 	 * page or extend the relation.
 	 */
-
-	targetBlock = relation->rd_targblock;
+	if (len + saveFreeSpace <= MaxTupleSize)
+		targetBlock = relation->rd_targblock;
+	else
+	{
+		/* can't fit, don't screw up FSM request tracking by trying */
+		targetBlock = InvalidBlockNumber;
+		use_fsm = false;
+	}
 
 	if (targetBlock == InvalidBlockNumber && use_fsm)
 	{
@@ -146,7 +162,8 @@ RelationGetBufferForTuple(Relation relation, Size len,
 		 * We have no cached target page, so ask the FSM for an initial
 		 * target.
 		 */
-		targetBlock = GetPageWithFreeSpace(&relation->rd_node, len);
+		targetBlock = GetPageWithFreeSpace(&relation->rd_node,
+										   len + saveFreeSpace);
 
 		/*
 		 * If the FSM knows nothing of the rel, try the last page before we
@@ -202,7 +219,7 @@ RelationGetBufferForTuple(Relation relation, Size len,
 		 */
 		pageHeader = (Page) BufferGetPage(buffer);
 		pageFreeSpace = PageGetFreeSpace(pageHeader);
-		if (len <= pageFreeSpace)
+		if (len + saveFreeSpace <= pageFreeSpace)
 		{
 			/* use this page as future insert target, too */
 			relation->rd_targblock = targetBlock;
@@ -235,7 +252,7 @@ RelationGetBufferForTuple(Relation relation, Size len,
 		targetBlock = RecordAndGetPageWithFreeSpace(&relation->rd_node,
 													targetBlock,
 													pageFreeSpace,
-													len);
+													len + saveFreeSpace);
 	}
 
 	/*

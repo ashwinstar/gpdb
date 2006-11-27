@@ -3,12 +3,12 @@
  * hashsearch.c
  *	  search code for postgres hash tables
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/hash/hashsearch.c,v 1.41 2005/10/18 01:06:23 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/hash/hashsearch.c,v 1.45 2006/07/14 14:52:17 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,7 +16,6 @@
 
 #include "access/hash.h"
 #include "pgstat.h"
-#include "storage/lmgr.h"
 
 
 /*
@@ -37,7 +36,6 @@ _hash_next(IndexScanDesc scan, ScanDirection dir)
 	Page		page;
 	OffsetNumber offnum;
 	ItemPointer current;
-	HashItem	hitem;
 	IndexTuple	itup;
 
 	/* we still have the buffer pinned and read-locked */
@@ -53,10 +51,9 @@ _hash_next(IndexScanDesc scan, ScanDirection dir)
 	/* if we're here, _hash_step found a valid tuple */
 	current = &(scan->currentItemData);
 	offnum = ItemPointerGetOffsetNumber(current);
+	_hash_checkpage(rel, buf, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 	page = BufferGetPage(buf);
-	_hash_checkpage(rel, page, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
-	hitem = (HashItem) PageGetItem(page, PageGetItemId(page, offnum));
-	itup = &hitem->hash_itup;
+	itup = (IndexTuple) PageGetItem(page, PageGetItemId(page, offnum));
 	scan->xs_ctup.t_self = itup->t_tid;
 
 	return true;
@@ -77,8 +74,8 @@ _hash_readnext(Relation rel,
 	if (BlockNumberIsValid(blkno))
 	{
 		*bufp = _hash_getbuf(rel, blkno, HASH_READ);
+		_hash_checkpage(rel, *bufp, LH_OVERFLOW_PAGE);
 		*pagep = BufferGetPage(*bufp);
-		_hash_checkpage(rel, *pagep, LH_OVERFLOW_PAGE);
 		*opaquep = (HashPageOpaque) PageGetSpecialPointer(*pagep);
 	}
 }
@@ -98,8 +95,8 @@ _hash_readprev(Relation rel,
 	if (BlockNumberIsValid(blkno))
 	{
 		*bufp = _hash_getbuf(rel, blkno, HASH_READ);
+		_hash_checkpage(rel, *bufp, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 		*pagep = BufferGetPage(*bufp);
-		_hash_checkpage(rel, *pagep, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 		*opaquep = (HashPageOpaque) PageGetSpecialPointer(*pagep);
 	}
 }
@@ -126,7 +123,6 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 	Page		page;
 	HashPageOpaque opaque;
 	HashMetaPage metap;
-	HashItem	hitem;
 	IndexTuple	itup;
 	ItemPointer current;
 	OffsetNumber offnum;
@@ -168,8 +164,8 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 
 	/* Read the metapage */
 	metabuf = _hash_getbuf(rel, HASH_METAPAGE, HASH_READ);
+	_hash_checkpage(rel, metabuf, LH_META_PAGE);
 	metap = (HashMetaPage) BufferGetPage(metabuf);
-	_hash_checkpage(rel, (Page) metap, LH_META_PAGE);
 
 	/*
 	 * Compute the target bucket number, and convert to block number.
@@ -198,8 +194,8 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 
 	/* Fetch the primary bucket page for the bucket */
 	buf = _hash_getbuf(rel, blkno, HASH_READ);
+	_hash_checkpage(rel, buf, LH_BUCKET_PAGE);
 	page = BufferGetPage(buf);
-	_hash_checkpage(rel, page, LH_BUCKET_PAGE);
 	opaque = (HashPageOpaque) PageGetSpecialPointer(page);
 	Assert(opaque->hasho_bucket == bucket);
 
@@ -216,10 +212,9 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 
 	/* if we're here, _hash_step found a valid tuple */
 	offnum = ItemPointerGetOffsetNumber(current);
+	_hash_checkpage(rel, buf, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 	page = BufferGetPage(buf);
-	_hash_checkpage(rel, page, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
-	hitem = (HashItem) PageGetItem(page, PageGetItemId(page, offnum));
-	itup = &hitem->hash_itup;
+	itup = (IndexTuple) PageGetItem(page, PageGetItemId(page, offnum));
 	scan->xs_ctup.t_self = itup->t_tid;
 
 	return true;
@@ -248,14 +243,13 @@ _hash_step(IndexScanDesc scan, Buffer *bufP, ScanDirection dir)
 	OffsetNumber maxoff;
 	OffsetNumber offnum;
 	BlockNumber blkno;
-	HashItem	hitem;
 	IndexTuple	itup;
 
 	current = &(scan->currentItemData);
 
 	buf = *bufP;
+	_hash_checkpage(rel, buf, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 	page = BufferGetPage(buf);
-	_hash_checkpage(rel, page, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 	opaque = (HashPageOpaque) PageGetSpecialPointer(page);
 
 	/*
@@ -345,8 +339,7 @@ _hash_step(IndexScanDesc scan, Buffer *bufP, ScanDirection dir)
 		}
 
 		/* get ready to check this tuple */
-		hitem = (HashItem) PageGetItem(page, PageGetItemId(page, offnum));
-		itup = &hitem->hash_itup;
+		itup = (IndexTuple) PageGetItem(page, PageGetItemId(page, offnum));
 	} while (!_hash_checkqual(scan, itup));
 
 	/* if we made it to here, we've found a valid tuple */

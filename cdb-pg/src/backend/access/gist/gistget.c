@@ -4,17 +4,16 @@
  *	  fetch tuples from a GiST scan.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/gist/gistget.c,v 1.52.2.1 2005/11/22 18:23:03 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/gist/gistget.c,v 1.62 2006/11/12 06:55:53 neilc Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "access/itup.h"
 #include "access/gist_private.h"
 #include "executor/execdebug.h"
 #include "pgstat.h"
@@ -40,6 +39,7 @@ killtuple(Relation r, GISTScanOpaque so, ItemPointer iptr)
 					maxoff;
 
 		LockBuffer(buffer, GIST_SHARE);
+		gistcheckpage(r, buffer);
 		p = (Page) BufferGetPage(buffer);
 
 		if (buffer == so->curbuf && XLByteEQ(so->stack->lsn, PageGetLSN(p)))
@@ -176,6 +176,7 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 		/* First of all, we need lock buffer */
 		Assert(so->curbuf != InvalidBuffer);
 		LockBuffer(so->curbuf, GIST_SHARE);
+		gistcheckpage(scan->indexRelation, so->curbuf);
 		p = BufferGetPage(so->curbuf);
 		opaque = GistPageGetOpaque(p);
 		resetoffset = false;
@@ -224,7 +225,8 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 			continue;
 		}
 
-		if (!GistPageIsLeaf(p) || resetoffset || ItemPointerIsValid(&scan->currentItemData) == false)
+		if (!GistPageIsLeaf(p) || resetoffset ||
+			!ItemPointerIsValid(&scan->currentItemData))
 		{
 			if (ScanDirectionIsBackward(dir))
 				n = PageGetMaxOffsetNumber(p);
@@ -241,7 +243,7 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 				n = OffsetNumberNext(n);
 		}
 
-		/* wonderfull, we can look at page */
+		/* wonderful, we can look at page */
 
 		for (;;)
 		{
@@ -268,7 +270,8 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 					return ntids;
 				}
 
-				so->curbuf = ReleaseAndReadBuffer(so->curbuf, scan->indexRelation,
+				so->curbuf = ReleaseAndReadBuffer(so->curbuf,
+												  scan->indexRelation,
 												  stk->block);
 				/* XXX	go up */
 				break;
@@ -328,13 +331,15 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 }
 
 /*
- * Similar to index_keytest, but first decompress the key in the
- * IndexTuple before passing it to the sk_func (and we have previously
- * overwritten the sk_func to use the user-defined Consistent method,
- * so we actually invoke that). Note that this function is always
- * invoked in a short-lived memory context, so we don't need to worry
- * about cleaning up allocated memory (either here or in the
- * implementation of any Consistent methods).
+ * gistindex_keytest() -- does this index tuple satisfy the scan key(s)?
+ *
+ * We must decompress the key in the IndexTuple before passing it to the
+ * sk_func (and we have previously overwritten the sk_func to use the
+ * user-defined Consistent method, so we actually are invoking that).
+ *
+ * Note that this function is always invoked in a short-lived memory context,
+ * so we don't need to worry about cleaning up allocated memory, either here
+ * or in the implementation of any Consistent methods.
  */
 static bool
 gistindex_keytest(IndexTuple tuple,
@@ -355,8 +360,7 @@ gistindex_keytest(IndexTuple tuple,
 	IncrIndexProcessed();
 
 	/*
-	 * Tuple doesn't restore after crash recovery because of inclomplete
-	 * insert
+	 * Tuple doesn't restore after crash recovery because of incomplete insert
 	 */
 	if (!GistPageIsLeaf(p) && GistTupleIsInvalid(tuple))
 		return true;
@@ -372,19 +376,23 @@ gistindex_keytest(IndexTuple tuple,
 							  key->sk_attno,
 							  giststate->tupdesc,
 							  &isNull);
-		/* is the index entry NULL? */
-		if (isNull)
+
+		if (key->sk_flags & SK_ISNULL)
 		{
-			/* XXX eventually should check if SK_ISNULL */
+			/*
+			 * is the compared-to datum NULL? on non-leaf page it's possible
+			 * to have nulls in childs :(
+			 */
+
+			if (isNull || !GistPageIsLeaf(p))
+				return true;
 			return false;
 		}
-		/* is the compared-to datum NULL? */
-		if (key->sk_flags & SK_ISNULL)
+		else if (isNull)
 			return false;
 
 		gistdentryinit(giststate, key->sk_attno - 1, &de,
 					   datum, r, p, offset,
-					   IndexTupleSize(tuple) - sizeof(IndexTupleData),
 					   FALSE, isNull);
 
 		/*

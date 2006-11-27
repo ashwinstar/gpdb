@@ -3,12 +3,12 @@
  * genam.c
  *	  general index access method routines
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/index/genam.c,v 1.49.2.1 2005/11/22 18:23:04 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/index/genam.c,v 1.59 2006/10/04 00:29:48 momjian Exp $
  *
  * NOTES
  *	  many of the old access method routines have been turned into
@@ -89,8 +89,6 @@ RelationGetIndexScan(Relation indexRelation,
 	scan->is_multiscan = false; /* caller may change this */
 	scan->kill_prior_tuple = false;
 	scan->ignore_killed_tuples = true;	/* default setting */
-	scan->keys_are_unique = false;		/* may be set by index AM */
-	scan->got_tuple = false;
 
 	scan->opaque = NULL;
 
@@ -98,12 +96,8 @@ RelationGetIndexScan(Relation indexRelation,
 	ItemPointerSetInvalid(&scan->currentMarkData);
 
 	ItemPointerSetInvalid(&scan->xs_ctup.t_self);
-	scan->xs_ctup.t_datamcxt = NULL;
 	scan->xs_ctup.t_data = NULL;
 	scan->xs_cbuf = InvalidBuffer;
-
-	scan->unique_tuple_pos = 0;
-	scan->unique_tuple_mark = 0;
 
 	pgstat_initstats(&scan->xs_pgstat_info, indexRelation);
 
@@ -185,9 +179,9 @@ systable_beginscan(Relation heapRelation,
 	Relation	irel;
 
 	if (indexOK &&
-		!IsIgnoringSystemIndexes() &&
+		!IgnoreSystemIndexes &&
 		!ReindexIsProcessingIndex(indexId))
-		irel = index_open(indexId);
+		irel = index_open(indexId, AccessShareLock);
 	else
 		irel = NULL;
 
@@ -212,8 +206,8 @@ systable_beginscan(Relation heapRelation,
 			key[i].sk_attno = i + 1;
 		}
 
-		sysscan->iscan = index_beginscan(heapRelation, irel, snapshot,
-										 nkeys, key);
+		sysscan->iscan = index_beginscan(heapRelation, irel,
+										 snapshot, nkeys, key);
 		sysscan->scan = NULL;
 	}
 	else
@@ -258,7 +252,7 @@ systable_endscan(SysScanDesc sysscan)
 	if (sysscan->irel)
 	{
 		index_endscan(sysscan->iscan);
-		index_close(sysscan->irel);
+		index_close(sysscan->irel, AccessShareLock);
 	}
 	else
 		heap_endscan(sysscan->scan);

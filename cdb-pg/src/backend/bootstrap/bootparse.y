@@ -2,15 +2,15 @@
 /*-------------------------------------------------------------------------
  *
  * bootparse.y
- *	  yacc parser grammar for the "backend" initialization program.
+ *	  yacc grammar for the "bootstrap" mode (BKI file format)
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/bootstrap/bootparse.y,v 1.78 2005/08/26 03:07:00 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/bootstrap/bootparse.y,v 1.84 2006/08/25 04:06:46 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -34,6 +34,7 @@
 #include "catalog/pg_class.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_tablespace.h"
+#include "catalog/toasting.h"
 #include "commands/defrem.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -80,6 +81,8 @@ int num_columns_read = 0;
 
 %}
 
+%name-prefix="boot_yy"
+
 %union
 {
 	List		*list;
@@ -98,7 +101,7 @@ int num_columns_read = 0;
 
 %token <ival> CONST_P ID
 %token OPEN XCLOSE XCREATE INSERT_TUPLE
-%token XDECLARE INDEX ON USING XBUILD INDICES UNIQUE
+%token XDECLARE INDEX ON USING XBUILD INDICES UNIQUE XTOAST
 %token COMMA EQUALS LPAREN RPAREN
 %token OBJ_ID XBOOTSTRAP XSHARED_RELATION XWITHOUT_OIDS NULLVAL
 %start TopLevel
@@ -125,6 +128,7 @@ Boot_Query :
 		| Boot_InsertStmt
 		| Boot_DeclareIndexStmt
 		| Boot_DeclareUniqueIndexStmt
+		| Boot_DeclareToastStmt
 		| Boot_BuildIndsStmt
 		;
 
@@ -209,6 +213,7 @@ Boot_CreateStmt:
 													  0,
 													  ONCOMMIT_NOOP,
 													  NULL,			/*CDB*/
+													  (Datum) 0,
 													  true,
 													  0);
 						elog(DEBUG4, "relation created with oid %u", id);
@@ -253,9 +258,9 @@ Boot_DeclareIndexStmt:
 								LexIDStr($8),
 								NULL,
 								$10,
-								NULL, NIL,
+								NULL, NIL, NIL,
 								false, false, false,
-								false, false, true, false, 0);
+								false, false, true, false, false, 0);
 					do_end();
 				}
 		;
@@ -271,9 +276,19 @@ Boot_DeclareUniqueIndexStmt:
 								LexIDStr($9),
 								NULL,
 								$11,
-								NULL, NIL,
+								NULL, NIL, NIL,
 								true, false, false,
-								false, false, true, false, 0);
+								false, false, true, false, false, 0);
+					do_end();
+				}
+		;
+
+Boot_DeclareToastStmt:
+		  XDECLARE XTOAST oidspec oidspec ON boot_ident
+				{
+					do_start();
+
+					BootstrapToastTable(LexIDStr($6), $3, $4);
 					do_end();
 				}
 		;

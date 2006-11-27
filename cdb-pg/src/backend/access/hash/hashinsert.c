@@ -3,12 +3,12 @@
  * hashinsert.c
  *	  Item insertion in hash tables for Postgres.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/hash/hashinsert.c,v 1.39 2005/10/18 01:06:23 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/hash/hashinsert.c,v 1.43 2006/07/14 14:52:17 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,27 +16,24 @@
 #include "postgres.h"
 
 #include "access/hash.h"
-#include "storage/lmgr.h"
 
 
 static OffsetNumber _hash_pgaddtup(Relation rel, Buffer buf,
-			   Size itemsize, HashItem hitem);
+			   Size itemsize, IndexTuple itup);
 
 
 /*
- *	_hash_doinsert() -- Handle insertion of a single HashItem in the table.
+ *	_hash_doinsert() -- Handle insertion of a single index tuple.
  *
  *		This routine is called by the public interface routines, hashbuild
- *		and hashinsert.  By here, hashitem is completely filled in.
- *		The datum to be used as a "key" is in the hashitem.
+ *		and hashinsert.  By here, itup is completely filled in.
  */
 void
-_hash_doinsert(Relation rel, HashItem hitem)
+_hash_doinsert(Relation rel, IndexTuple itup)
 {
 	Buffer		buf;
 	Buffer		metabuf;
 	HashMetaPage metap;
-	IndexTuple	itup;
 	BlockNumber blkno;
 	Page		page;
 	HashPageOpaque pageopaque;
@@ -51,7 +48,6 @@ _hash_doinsert(Relation rel, HashItem hitem)
 	 * Compute the hash key for the item.  We do this first so as not to need
 	 * to hold any locks while running the hash function.
 	 */
-	itup = &(hitem->hash_itup);
 	if (rel->rd_rel->relnatts != 1)
 		elog(ERROR, "hash indexes support only one index key");
 	datum = index_getattr(itup, 1, RelationGetDescr(rel), &isnull);
@@ -59,9 +55,7 @@ _hash_doinsert(Relation rel, HashItem hitem)
 	hashkey = _hash_datum2hashkey(rel, datum);
 
 	/* compute item size too */
-	itemsz = IndexTupleDSize(hitem->hash_itup)
-		+ (sizeof(HashItemData) - sizeof(IndexTupleData));
-
+	itemsz = IndexTupleDSize(*itup);
 	itemsz = MAXALIGN(itemsz);	/* be safe, PageAddItem will do this but we
 								 * need to be consistent */
 
@@ -73,8 +67,8 @@ _hash_doinsert(Relation rel, HashItem hitem)
 
 	/* Read the metapage */
 	metabuf = _hash_getbuf(rel, HASH_METAPAGE, HASH_READ);
+	_hash_checkpage(rel, metabuf, LH_META_PAGE);
 	metap = (HashMetaPage) BufferGetPage(metabuf);
-	_hash_checkpage(rel, (Page) metap, LH_META_PAGE);
 
 	/*
 	 * Check whether the item can fit on a hash page at all. (Eventually, we
@@ -111,8 +105,8 @@ _hash_doinsert(Relation rel, HashItem hitem)
 
 	/* Fetch the primary bucket page for the bucket */
 	buf = _hash_getbuf(rel, blkno, HASH_WRITE);
+	_hash_checkpage(rel, buf, LH_BUCKET_PAGE);
 	page = BufferGetPage(buf);
-	_hash_checkpage(rel, page, LH_BUCKET_PAGE);
 	pageopaque = (HashPageOpaque) PageGetSpecialPointer(page);
 	Assert(pageopaque->hasho_bucket == bucket);
 
@@ -151,13 +145,13 @@ _hash_doinsert(Relation rel, HashItem hitem)
 			/* should fit now, given test above */
 			Assert(PageGetFreeSpace(page) >= itemsz);
 		}
-		_hash_checkpage(rel, page, LH_OVERFLOW_PAGE);
+		_hash_checkpage(rel, buf, LH_OVERFLOW_PAGE);
 		pageopaque = (HashPageOpaque) PageGetSpecialPointer(page);
 		Assert(pageopaque->hasho_bucket == bucket);
 	}
 
 	/* found page with enough space, so add the item here */
-	(void) _hash_pgaddtup(rel, buf, itemsz, hitem);
+	(void) _hash_pgaddtup(rel, buf, itemsz, itup);
 
 	/* write and release the modified page */
 	_hash_wrtbuf(rel, buf);
@@ -199,16 +193,16 @@ static OffsetNumber
 _hash_pgaddtup(Relation rel,
 			   Buffer buf,
 			   Size itemsize,
-			   HashItem hitem)
+			   IndexTuple itup)
 {
 	OffsetNumber itup_off;
 	Page		page;
 
+	_hash_checkpage(rel, buf, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 	page = BufferGetPage(buf);
-	_hash_checkpage(rel, page, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 
 	itup_off = OffsetNumberNext(PageGetMaxOffsetNumber(page));
-	if (PageAddItem(page, (Item) hitem, itemsize, itup_off, LP_USED)
+	if (PageAddItem(page, (Item) itup, itemsize, itup_off, LP_USED)
 		== InvalidOffsetNumber)
 		elog(ERROR, "failed to add index item to \"%s\"",
 			 RelationGetRelationName(rel));

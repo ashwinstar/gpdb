@@ -3,12 +3,12 @@
  * hash.c
  *	  Implementation of Margo Seltzer's Hashing package for postgres.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/hash/hash.c,v 1.81 2005/10/15 02:49:08 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/hash/hash.c,v 1.91 2006/07/14 14:52:17 momjian Exp $
  *
  * NOTES
  *	  This file contains only the public interface routines.
@@ -20,12 +20,8 @@
 
 #include "access/genam.h"
 #include "access/hash.h"
-#include "access/heapam.h"
-#include "access/xlogutils.h"
 #include "catalog/index.h"
 #include "commands/vacuum.h"
-#include "executor/executor.h"
-#include "miscadmin.h"
 
 
 /* Working state for hashbuild and its callback */
@@ -51,6 +47,7 @@ hashbuild(PG_FUNCTION_ARGS)
 	Relation	heap = (Relation) PG_GETARG_POINTER(0);
 	Relation	index = (Relation) PG_GETARG_POINTER(1);
 	IndexInfo  *indexInfo = (IndexInfo *) PG_GETARG_POINTER(2);
+	IndexBuildResult *result;
 	double		reltuples;
 	HashBuildState buildstate;
 
@@ -72,10 +69,15 @@ hashbuild(PG_FUNCTION_ARGS)
 	reltuples = IndexBuildHeapScan(heap, index, indexInfo,
 								   hashbuildCallback, (void *) &buildstate);
 
-	/* since we just counted the # of tuples, may as well update stats */
-	IndexCloseAndUpdateStats(heap, reltuples, index, buildstate.indtuples);
+	/*
+	 * Return statistics
+	 */
+	result = (IndexBuildResult *) palloc(sizeof(IndexBuildResult));
 
-	PG_RETURN_VOID();
+	result->heap_tuples = reltuples;
+	result->index_tuples = buildstate.indtuples;
+
+	PG_RETURN_POINTER(result);
 }
 
 /*
@@ -91,7 +93,6 @@ hashbuildCallback(Relation index,
 {
 	HashBuildState *buildstate = (HashBuildState *) state;
 	IndexTuple	itup;
-	HashItem	hitem;
 
 	/* form an index tuple and point it at the heap tuple */
 	itup = index_form_tuple(RelationGetDescr(index), values, isnull);
@@ -104,13 +105,10 @@ hashbuildCallback(Relation index,
 		return;
 	}
 
-	hitem = _hash_formitem(itup);
-
-	_hash_doinsert(index, hitem);
+	_hash_doinsert(index, itup);
 
 	buildstate->indtuples += 1;
 
-	pfree(hitem);
 	pfree(itup);
 }
 
@@ -132,7 +130,6 @@ hashinsert(PG_FUNCTION_ARGS)
 	Relation	heapRel = (Relation) PG_GETARG_POINTER(4);
 	bool		checkUnique = PG_GETARG_BOOL(5);
 #endif
-	HashItem	hitem;
 	IndexTuple	itup;
 
 	/* generate an index tuple */
@@ -154,11 +151,8 @@ hashinsert(PG_FUNCTION_ARGS)
 		PG_RETURN_BOOL(false);
 	}
 
-	hitem = _hash_formitem(itup);
+	_hash_doinsert(rel, itup);
 
-	_hash_doinsert(rel, hitem);
-
-	pfree(hitem);
 	pfree(itup);
 
 	PG_RETURN_BOOL(true);
@@ -486,11 +480,11 @@ hashrestrpos(PG_FUNCTION_ARGS)
 Datum
 hashbulkdelete(PG_FUNCTION_ARGS)
 {
-	Relation	rel = (Relation) PG_GETARG_POINTER(0);
-	IndexBulkDeleteCallback callback = (IndexBulkDeleteCallback) PG_GETARG_POINTER(1);
-	void	   *callback_state = (void *) PG_GETARG_POINTER(2);
-	IndexBulkDeleteResult *result;
-	BlockNumber num_pages;
+	IndexVacuumInfo *info = (IndexVacuumInfo *) PG_GETARG_POINTER(0);
+	IndexBulkDeleteResult *stats = (IndexBulkDeleteResult *) PG_GETARG_POINTER(1);
+	IndexBulkDeleteCallback callback = (IndexBulkDeleteCallback) PG_GETARG_POINTER(2);
+	void	   *callback_state = (void *) PG_GETARG_POINTER(3);
+	Relation	rel = info->index;
 	double		tuples_removed;
 	double		num_index_tuples;
 	double		orig_ntuples;
@@ -513,8 +507,8 @@ hashbulkdelete(PG_FUNCTION_ARGS)
 	 * each bucket.
 	 */
 	metabuf = _hash_getbuf(rel, HASH_METAPAGE, HASH_READ);
+	_hash_checkpage(rel, metabuf, LH_META_PAGE);
 	metap = (HashMetaPage) BufferGetPage(metabuf);
-	_hash_checkpage(rel, (Page) metap, LH_META_PAGE);
 	orig_maxbucket = metap->hashm_maxbucket;
 	orig_ntuples = metap->hashm_ntuples;
 	memcpy(&local_metapage, metap, sizeof(local_metapage));
@@ -555,8 +549,8 @@ loop_top:
 			vacuum_delay_point();
 
 			buf = _hash_getbuf(rel, blkno, HASH_WRITE);
+			_hash_checkpage(rel, buf, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 			page = BufferGetPage(buf);
-			_hash_checkpage(rel, page, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 			opaque = (HashPageOpaque) PageGetSpecialPointer(page);
 			Assert(opaque->hasho_bucket == cur_bucket);
 
@@ -565,12 +559,12 @@ loop_top:
 			maxoffno = PageGetMaxOffsetNumber(page);
 			while (offno <= maxoffno)
 			{
-				HashItem	hitem;
+				IndexTuple	itup;
 				ItemPointer htup;
 
-				hitem = (HashItem) PageGetItem(page,
-											   PageGetItemId(page, offno));
-				htup = &(hitem->hash_itup.t_tid);
+				itup = (IndexTuple) PageGetItem(page,
+												PageGetItemId(page, offno));
+				htup = &(itup->t_tid);
 				if (callback(htup, callback_state))
 				{
 					/* delete the item from the page */
@@ -614,8 +608,8 @@ loop_top:
 
 	/* Write-lock metapage and check for split since we started */
 	metabuf = _hash_getbuf(rel, HASH_METAPAGE, HASH_WRITE);
+	_hash_checkpage(rel, metabuf, LH_META_PAGE);
 	metap = (HashMetaPage) BufferGetPage(metabuf);
-	_hash_checkpage(rel, (Page) metap, LH_META_PAGE);
 
 	if (cur_maxbucket != metap->hashm_maxbucket)
 	{
@@ -653,14 +647,37 @@ loop_top:
 	_hash_wrtbuf(rel, metabuf);
 
 	/* return statistics */
+	if (stats == NULL)
+		stats = (IndexBulkDeleteResult *) palloc0(sizeof(IndexBulkDeleteResult));
+	stats->num_index_tuples = num_index_tuples;
+	stats->tuples_removed += tuples_removed;
+	/* hashvacuumcleanup will fill in num_pages */
+
+	PG_RETURN_POINTER(stats);
+}
+
+/*
+ * Post-VACUUM cleanup.
+ *
+ * Result: a palloc'd struct containing statistical info for VACUUM displays.
+ */
+Datum
+hashvacuumcleanup(PG_FUNCTION_ARGS)
+{
+	IndexVacuumInfo *info = (IndexVacuumInfo *) PG_GETARG_POINTER(0);
+	IndexBulkDeleteResult *stats = (IndexBulkDeleteResult *) PG_GETARG_POINTER(1);
+	Relation	rel = info->index;
+	BlockNumber num_pages;
+
+	/* If hashbulkdelete wasn't called, return NULL signifying no change */
+	if (stats == NULL)
+		PG_RETURN_POINTER(NULL);
+
+	/* update statistics */
 	num_pages = RelationGetNumberOfBlocks(rel);
+	stats->num_pages = num_pages;
 
-	result = (IndexBulkDeleteResult *) palloc0(sizeof(IndexBulkDeleteResult));
-	result->num_pages = num_pages;
-	result->num_index_tuples = num_index_tuples;
-	result->tuples_removed = tuples_removed;
-
-	PG_RETURN_POINTER(result);
+	PG_RETURN_POINTER(stats);
 }
 
 
@@ -671,6 +688,6 @@ hash_redo(XLogRecPtr lsn, XLogRecord *record)
 }
 
 void
-hash_desc(char *buf, uint8 xl_info, char *rec)
+hash_desc(StringInfo buf, uint8 xl_info, char *rec)
 {
 }

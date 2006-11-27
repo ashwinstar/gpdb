@@ -1,4 +1,4 @@
-$PostgreSQL: pgsql/src/backend/access/nbtree/README,v 1.8 2003/11/29 19:51:40 pgsql Exp $
+$PostgreSQL: pgsql/src/backend/access/nbtree/README,v 1.14 2006/11/01 19:43:17 tgl Exp $
 
 This directory contains a correct implementation of Lehman and Yao's
 high-concurrency B-tree management algorithm (P. Lehman and S. Yao,
@@ -67,13 +67,22 @@ move right until we find a page whose right-link matches the page we
 came from.  (Actually, it's even harder than that; see deletion discussion
 below.)
 
-Read locks on a page are held for as long as a scan is examining a page.
-But nbtree.c arranges to drop the read lock, but not the buffer pin,
-on the current page of a scan before control leaves nbtree.  When we
-come back to resume the scan, we have to re-grab the read lock and
-then move right if the current item moved (see _bt_restscan()).  Keeping
-the pin ensures that the current item cannot move left or be deleted
-(see btbulkdelete).
+Page read locks are held only for as long as a scan is examining a page.
+To minimize lock/unlock traffic, an index scan always searches a leaf page
+to identify all the matching items at once, copying their heap tuple IDs
+into backend-local storage.  The heap tuple IDs are then processed while
+not holding any page lock within the index.  We do continue to hold a pin
+on the leaf page, to protect against concurrent deletions (see below).
+In this state the scan is effectively stopped "between" pages, either
+before or after the page it has pinned.  This is safe in the presence of
+concurrent insertions and even page splits, because items are never moved
+across pre-existing page boundaries --- so the scan cannot miss any items
+it should have seen, nor accidentally return the same item twice.  The scan
+must remember the page's right-link at the time it was scanned, since that
+is the page to move right to; if we move right to the current right-link
+then we'd re-scan any items moved by a page split.  We don't similarly
+remember the left-link, since it's best to use the most up-to-date
+left-link when trying to move left (see detailed move-left algorithm below).
 
 In most cases we release our lock and pin on a page before attempting
 to acquire pin and lock on the page we are moving to.  In a few places
@@ -119,14 +128,34 @@ item doesn't fit on the split page where it needs to go!
 The deletion algorithm
 ----------------------
 
-Deletions of leaf items are handled by getting a super-exclusive lock on
-the target page, so that no other backend has a pin on the page when the
-deletion starts.  This means no scan is pointing at the page, so no other
-backend can lose its place due to the item deletion.
+Before deleting a leaf item, we get a super-exclusive lock on the target
+page, so that no other backend has a pin on the page when the deletion
+starts.  This is not necessary for correctness in terms of the btree index
+operations themselves; as explained above, index scans logically stop
+"between" pages and so can't lose their place.  The reason we do it is to
+provide an interlock between non-full VACUUM and indexscans.  Since VACUUM
+deletes index entries before deleting tuples, the super-exclusive lock
+guarantees that VACUUM can't delete any heap tuple that an indexscanning
+process might be about to visit.  (This guarantee works only for simple
+indexscans that visit the heap in sync with the index scan, not for bitmap
+scans.  We only need the guarantee when using non-MVCC snapshot rules such
+as SnapshotNow, so in practice this is only important for system catalog
+accesses.)
 
-The above does not work for deletion of items in internal pages, since
-other backends keep no lock nor pin on a page they have descended past.
-Instead, when a backend is ascending the tree using its stack, it must
+Because a page can be split even while someone holds a pin on it, it is
+possible that an indexscan will return items that are no longer stored on
+the page it has a pin on, but rather somewhere to the right of that page.
+To ensure that VACUUM can't prematurely remove such heap tuples, we require
+btbulkdelete to obtain super-exclusive lock on every leaf page in the index,
+even pages that don't contain any deletable tuples.  This guarantees that
+the btbulkdelete call cannot return while any indexscan is still holding
+a copy of a deleted index tuple.  Note that this requirement does not say
+that btbulkdelete must visit the pages in any particular order.  (See also
+on-the-fly deletion, below.) 
+
+There is no such interlocking for deletion of items in internal pages,
+since backends keep no lock nor pin on a page they have descended past.
+Hence, when a backend is ascending the tree using its stack, it must
 be prepared for the possibility that the item it wants is to the left of
 the recorded position (but it can't have moved left out of the recorded
 page).  Since we hold a lock on the lower page (per L&Y) until we have
@@ -172,26 +201,25 @@ When we delete the last remaining child of a parent page, we mark the
 parent page "half-dead" as part of the atomic update that deletes the
 child page.  This implicitly transfers the parent's key space to its right
 sibling (which it must have, since we never delete the overall-rightmost
-page of a level).  No future insertions into the parent level are allowed
-to insert keys into the half-dead page --- they must move right to its
-sibling, instead.  The parent remains empty and can be deleted in a
-separate atomic action.  (However, if it's the rightmost child of its own
-parent, it might have to stay half-dead for awhile, until it's also the
-only child.)
-
-Note that an empty leaf page is a valid tree state, but an empty interior
-page is not legal (an interior page must have children to delegate its
-key space to).  So an interior page *must* be marked half-dead as soon
-as its last child is deleted.
+page of a level).  Searches ignore the half-dead page and immediately move
+right.  We need not worry about insertions into a half-dead page --- insertions
+into upper tree levels happen only as a result of splits of child pages, and
+the half-dead page no longer has any children that could split.  Therefore
+the page stays empty even when we don't have lock on it, and we can complete
+its deletion in a second atomic action.
 
 The notion of a half-dead page means that the key space relationship between
 the half-dead page's level and its parent's level may be a little out of
 whack: key space that appears to belong to the half-dead page's parent on the
-parent level may really belong to its right sibling.  We can tolerate this,
-however, because insertions and deletions on upper tree levels are always
-done by reference to child page numbers, not keys.  The only cost is that
-searches may sometimes descend to the half-dead page and then have to move
-right, rather than going directly to the sibling page.
+parent level may really belong to its right sibling.  To prevent any possible
+problems, we hold lock on the deleted child page until we have finished
+deleting any now-half-dead parent page(s).  This prevents any insertions into
+the transferred keyspace until the operation is complete.  The reason for
+doing this is that a sufficiently large number of insertions into the
+transferred keyspace, resulting in multiple page splits, could propagate keys
+from that keyspace into the parent level, resulting in transiently
+out-of-order keys in that level.  It is thought that that wouldn't cause any
+serious problem, but it seems too risky to allow.
 
 A deleted page cannot be reclaimed immediately, since there may be other
 processes waiting to reference it (ie, search processes that just left the
@@ -201,7 +229,7 @@ accordingly.  Searches and forward scans simply follow the right-link
 until they find a non-dead page --- this will be where the deleted page's
 key-space moved to.
 
-Stepping left in a backward scan is complicated because we must consider
+Moving left in a backward scan is complicated because we must consider
 the possibility that the left sibling was just split (meaning we must find
 the rightmost page derived from the left sibling), plus the possibility
 that the page we were just on has now been deleted and hence isn't in the
@@ -265,10 +293,69 @@ as part of the atomic update for the delete (either way, the metapage has
 to be the last page locked in the update to avoid deadlock risks).  This
 avoids race conditions if two such operations are executing concurrently.
 
-VACUUM needs to do a linear scan of an index to search for empty leaf
-pages and half-dead parent pages that can be deleted, as well as deleted
-pages that can be reclaimed because they are older than all open
-transactions.
+VACUUM needs to do a linear scan of an index to search for deleted pages
+that can be reclaimed because they are older than all open transactions.
+For efficiency's sake, we'd like to use the same linear scan to search for
+deletable tuples.  Before Postgres 8.2, btbulkdelete scanned the leaf pages
+in index order, but it is possible to visit them in physical order instead.
+The tricky part of this is to avoid missing any deletable tuples in the
+presence of concurrent page splits: a page split could easily move some
+tuples from a page not yet passed over by the sequential scan to a
+lower-numbered page already passed over.  (This wasn't a concern for the
+index-order scan, because splits always split right.)  To implement this,
+we provide a "vacuum cycle ID" mechanism that makes it possible to
+determine whether a page has been split since the current btbulkdelete
+cycle started.  If btbulkdelete finds a page that has been split since
+it started, and has a right-link pointing to a lower page number, then
+it temporarily suspends its sequential scan and visits that page instead.
+It must continue to follow right-links and vacuum dead tuples until
+reaching a page that either hasn't been split since btbulkdelete started,
+or is above the location of the outer sequential scan.  Then it can resume
+the sequential scan.  This ensures that all tuples are visited.  It may be
+that some tuples are visited twice, but that has no worse effect than an
+inaccurate index tuple count (and we can't guarantee an accurate count
+anyway in the face of concurrent activity).  Note that this still works
+if the has-been-recently-split test has a small probability of false
+positives, so long as it never gives a false negative.  This makes it
+possible to implement the test with a small counter value stored on each
+index page.
+
+On-the-fly deletion of index tuples
+-----------------------------------
+
+If a process visits a heap tuple and finds that it's dead and removable
+(ie, dead to all open transactions, not only that process), then we can
+return to the index and mark the corresponding index entry "known dead",
+allowing subsequent index scans to skip visiting the heap tuple.  The
+"known dead" marking uses the LP_DELETE bit in ItemIds.  This is currently
+only done in plain indexscans, not bitmap scans, because only plain scans
+visit the heap and index "in sync" and so there's not a convenient way
+to do it for bitmap scans.
+
+Once an index tuple has been marked LP_DELETE it can actually be removed
+from the index immediately; since index scans only stop "between" pages,
+no scan can lose its place from such a deletion.  We separate the steps
+because we allow LP_DELETE to be set with only a share lock (it's exactly
+like a hint bit for a heap tuple), but physically removing tuples requires
+exclusive lock.  In the current code we try to remove LP_DELETE tuples when
+we are otherwise faced with having to split a page to do an insertion (and
+hence have exclusive lock on it already).
+
+This leaves the index in a state where it has no entry for a dead tuple
+that still exists in the heap.  This is not a problem for the current
+implementation of VACUUM, but it could be a problem for anything that
+explicitly tries to find index entries for dead tuples.  (However, the
+same situation is created by REINDEX, since it doesn't enter dead
+tuples into the index.)
+
+It's sufficient to have an exclusive lock on the index page, not a
+super-exclusive lock, to do deletion of LP_DELETE items.  It might seem
+that this breaks the interlock between VACUUM and indexscans, but that is
+not so: as long as an indexscanning process has a pin on the page where
+the index item used to be, VACUUM cannot complete its btbulkdelete scan
+and so cannot remove the heap tuple.  This is another reason why
+btbulkdelete has to get super-exclusive lock on every leaf page, not only
+the ones where it actually sees items to delete.
 
 WAL considerations
 ------------------
@@ -316,7 +403,17 @@ Other things that are handy to know
 
 Page zero of every btree is a meta-data page.  This page stores the
 location of the root page --- both the true root and the current effective
-root ("fast" root).
+root ("fast" root).  To avoid fetching the metapage for every single index
+search, we cache a copy of the meta-data information in the index's
+relcache entry (rd_amcache).  This is a bit ticklish since using the cache
+implies following a root page pointer that could be stale.  We require
+every metapage update to send out a SI "relcache inval" message on the
+index relation.  That ensures that each backend will flush its cached copy
+not later than the start of its next transaction.  Therefore, stale
+pointers cannot be used for longer than the current transaction, which
+reduces the problem to the same one already dealt with for concurrent
+VACUUM --- we can just imagine that each open transaction is potentially
+"already in flight" to the old root.
 
 The algorithm assumes we can fit at least three items per page
 (a "high key" and two real data items).  Therefore it's unsafe
@@ -325,15 +422,26 @@ work sometimes, but could cause failures later on depending on
 what else gets put on their page.
 
 "ScanKey" data structures are used in two fundamentally different ways
-in this code.  Searches for the initial position for a scan, as well as
-insertions, use scankeys in which the comparison function is a 3-way
-comparator (<0, =0, >0 result).  These scankeys are built within the
-btree code (eg, by _bt_mkscankey()) and used by _bt_compare().  Once we
-are positioned, sequential examination of tuples in a scan is done by
-_bt_checkkeys() using scankeys in which the comparison functions return
-booleans --- for example, int4lt might be used.  These scankeys are the
-ones originally passed in from outside the btree code.  Same
-representation, but different comparison functions!
+in this code, which we describe as "search" scankeys and "insertion"
+scankeys.  A search scankey is the kind passed to btbeginscan() or
+btrescan() from outside the btree code.  The sk_func pointers in a search
+scankey point to comparison functions that return boolean, such as int4lt.
+There might be more than one scankey entry for a given index column, or
+none at all.  (We require the keys to appear in index column order, but
+the order of multiple keys for a given column is unspecified.)  An
+insertion scankey uses the same array-of-ScanKey data structure, but the
+sk_func pointers point to btree comparison support functions (ie, 3-way
+comparators that return int4 values interpreted as <0, =0, >0).  In an
+insertion scankey there is exactly one entry per index column.  Insertion
+scankeys are built within the btree code (eg, by _bt_mkscankey()) and are
+used to locate the starting point of a scan, as well as for locating the
+place to insert a new index tuple.  (Note: in the case of an insertion
+scankey built from a search scankey, there might be fewer keys than
+index columns, indicating that we have no constraints for the remaining
+index columns.)  After we have located the starting point of a scan, the
+original search scankey is consulted as each index entry is sequentially
+scanned to decide whether to return the entry and whether the scan can
+stop (see _bt_checkkeys()).
 
 Notes about data representation
 -------------------------------

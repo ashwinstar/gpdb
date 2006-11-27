@@ -3,12 +3,12 @@
  * hashutil.c
  *	  Utility code for Postgres hash implementation.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/hash/hashutil.c,v 1.42 2005/05/11 01:26:01 neilc Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/hash/hashutil.c,v 1.49 2006/07/03 22:45:36 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,7 +16,8 @@
 
 #include "access/genam.h"
 #include "access/hash.h"
-#include "access/iqual.h"
+#include "access/reloptions.h"
+#include "executor/execdebug.h"
 
 
 /*
@@ -25,40 +26,39 @@
 bool
 _hash_checkqual(IndexScanDesc scan, IndexTuple itup)
 {
-	return index_keytest(itup, RelationGetDescr(scan->indexRelation),
-						 scan->numberOfKeys, scan->keyData);
-}
+	TupleDesc	tupdesc = RelationGetDescr(scan->indexRelation);
+	ScanKey		key = scan->keyData;
+	int			scanKeySize = scan->numberOfKeys;
 
-/*
- * _hash_formitem -- construct a hash index entry
- */
-HashItem
-_hash_formitem(IndexTuple itup)
-{
-	int			nbytes_hitem;
-	HashItem	hitem;
-	Size		tuplen;
+	IncrIndexProcessed();
 
-	/* disallow nulls in hash keys */
-	if (IndexTupleHasNulls(itup))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("hash indexes cannot contain null keys")));
+	while (scanKeySize > 0)
+	{
+		Datum		datum;
+		bool		isNull;
+		Datum		test;
 
-	/*
-	 * make a copy of the index tuple (XXX do we still need to copy?)
-	 *
-	 * HashItemData used to have more fields than IndexTupleData, but no
-	 * longer...
-	 */
-	tuplen = IndexTupleSize(itup);
-	nbytes_hitem = tuplen +
-		(sizeof(HashItemData) - sizeof(IndexTupleData));
+		datum = index_getattr(itup,
+							  key->sk_attno,
+							  tupdesc,
+							  &isNull);
 
-	hitem = (HashItem) palloc(nbytes_hitem);
-	memcpy(&(hitem->hash_itup), itup, tuplen);
+		/* assume sk_func is strict */
+		if (isNull)
+			return false;
+		if (key->sk_flags & SK_ISNULL)
+			return false;
 
-	return hitem;
+		test = FunctionCall2(&key->sk_func, datum, key->sk_argument);
+
+		if (!DatumGetBool(test))
+			return false;
+
+		key++;
+		scanKeySize--;
+	}
+
+	return true;
 }
 
 /*
@@ -110,12 +110,51 @@ _hash_log2(uint32 num)
  * _hash_checkpage -- sanity checks on the format of all hash pages
  */
 void
-_hash_checkpage(Relation rel, Page page, int flags)
+_hash_checkpage(Relation rel, Buffer buf, int flags)
 {
-	Assert(page);
+	Page		page = BufferGetPage(buf);
 
 	/*
-	 * When checking the metapage, always verify magic number and version.
+	 * ReadBuffer verifies that every newly-read page passes
+	 * PageHeaderIsValid, which means it either contains a reasonably sane
+	 * page header or is all-zero.	We have to defend against the all-zero
+	 * case, however.
+	 */
+	if (PageIsNew(page))
+		ereport(ERROR,
+				(errcode(ERRCODE_INDEX_CORRUPTED),
+			 errmsg("index \"%s\" contains unexpected zero page at block %u",
+					RelationGetRelationName(rel),
+					BufferGetBlockNumber(buf)),
+				 errhint("Please REINDEX it.")));
+
+	/*
+	 * Additionally check that the special area looks sane.
+	 */
+	if (((PageHeader) (page))->pd_special !=
+		(BLCKSZ - MAXALIGN(sizeof(HashPageOpaqueData))))
+		ereport(ERROR,
+				(errcode(ERRCODE_INDEX_CORRUPTED),
+				 errmsg("index \"%s\" contains corrupted page at block %u",
+						RelationGetRelationName(rel),
+						BufferGetBlockNumber(buf)),
+				 errhint("Please REINDEX it.")));
+
+	if (flags)
+	{
+		HashPageOpaque opaque = (HashPageOpaque) PageGetSpecialPointer(page);
+
+		if ((opaque->hasho_flag & flags) == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INDEX_CORRUPTED),
+				   errmsg("index \"%s\" contains corrupted page at block %u",
+						  RelationGetRelationName(rel),
+						  BufferGetBlockNumber(buf)),
+					 errhint("Please REINDEX it.")));
+	}
+
+	/*
+	 * When checking the metapage, also verify magic number and version.
 	 */
 	if (flags == LH_META_PAGE)
 	{
@@ -130,25 +169,23 @@ _hash_checkpage(Relation rel, Page page, int flags)
 		if (metap->hashm_version != HASH_VERSION)
 			ereport(ERROR,
 					(errcode(ERRCODE_INDEX_CORRUPTED),
-					 errmsg("index \"%s\" has wrong hash version", RelationGetRelationName(rel)),
+					 errmsg("index \"%s\" has wrong hash version",
+							RelationGetRelationName(rel)),
 					 errhint("Please REINDEX it.")));
 	}
+}
 
-	/*
-	 * These other checks are for debugging purposes only.
-	 */
-#ifdef USE_ASSERT_CHECKING
-	Assert(((PageHeader) (page))->pd_lower >= SizeOfPageHeaderData);
-	Assert(((PageHeader) (page))->pd_upper <=
-		   (BLCKSZ - MAXALIGN(sizeof(HashPageOpaqueData))));
-	Assert(((PageHeader) (page))->pd_special ==
-		   (BLCKSZ - MAXALIGN(sizeof(HashPageOpaqueData))));
-	Assert(PageGetPageSize(page) == BLCKSZ);
-	if (flags)
-	{
-		HashPageOpaque opaque = (HashPageOpaque) PageGetSpecialPointer(page);
+Datum
+hashoptions(PG_FUNCTION_ARGS)
+{
+	Datum		reloptions = PG_GETARG_DATUM(0);
+	bool		validate = PG_GETARG_BOOL(1);
+	bytea	   *result;
 
-		Assert(opaque->hasho_flag & flags);
-	}
-#endif   /* USE_ASSERT_CHECKING */
+	result = default_reloptions(reloptions, validate,
+								HASH_MIN_FILLFACTOR,
+								HASH_DEFAULT_FILLFACTOR);
+	if (result)
+		PG_RETURN_BYTEA_P(result);
+	PG_RETURN_NULL();
 }

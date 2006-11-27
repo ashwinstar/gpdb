@@ -3,12 +3,12 @@
  * nbtinsert.c
  *	  Item insertion in Lehman and Yao btrees for Postgres.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/nbtree/nbtinsert.c,v 1.127.2.1 2005/11/22 18:23:04 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/nbtree/nbtinsert.c,v 1.146 2006/11/11 01:14:18 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,13 +17,16 @@
 
 #include "access/heapam.h"
 #include "access/nbtree.h"
+#include "access/transam.h"
 #include "miscadmin.h"
+#include "utils/inval.h"
 
 
 typedef struct
 {
 	/* context data for _bt_checksplitloc */
 	Size		newitemsz;		/* size of new item to be inserted */
+	int			fillfactor;		/* needed when splitting rightmost page */
 	bool		is_leaf;		/* T if splitting a leaf page */
 	bool		is_rightmost;	/* T if splitting a rightmost page */
 
@@ -38,18 +41,18 @@ typedef struct
 
 static Buffer _bt_newroot(Relation rel, Buffer lbuf, Buffer rbuf);
 
-static TransactionId _bt_check_unique(Relation rel, BTItem btitem,
+static TransactionId _bt_check_unique(Relation rel, IndexTuple itup,
 				 Relation heapRel, Buffer buf,
 				 ScanKey itup_scankey);
 static void _bt_insertonpg(Relation rel, Buffer buf,
 			   BTStack stack,
 			   int keysz, ScanKey scankey,
-			   BTItem btitem,
+			   IndexTuple itup,
 			   OffsetNumber afteritem,
 			   bool split_only_page);
 static Buffer _bt_split(Relation rel, Buffer buf, OffsetNumber firstright,
 		  OffsetNumber newitemoff, Size newitemsz,
-		  BTItem newitem, bool newitemonleft);
+		  IndexTuple newitem, bool newitemonleft);
 static OffsetNumber _bt_findsplitloc(Relation rel, Page page,
 				 OffsetNumber newitemoff,
 				 Size newitemsz,
@@ -58,29 +61,29 @@ static void _bt_checksplitloc(FindSplitData *state, OffsetNumber firstright,
 				  int leftfree, int rightfree,
 				  bool newitemonleft, Size firstrightitemsz);
 static void _bt_pgaddtup(Relation rel, Page page,
-			 Size itemsize, BTItem btitem,
+			 Size itemsize, IndexTuple itup,
 			 OffsetNumber itup_off, const char *where);
 static bool _bt_isequal(TupleDesc itupdesc, Page page, OffsetNumber offnum,
 			int keysz, ScanKey scankey);
+static void _bt_vacuum_one_page(Relation rel, Buffer buffer);
 
 
 /*
- *	_bt_doinsert() -- Handle insertion of a single btitem in the tree.
+ *	_bt_doinsert() -- Handle insertion of a single index tuple in the tree.
  *
  *		This routine is called by the public interface routines, btbuild
- *		and btinsert.  By here, btitem is filled in, including the TID.
+ *		and btinsert.  By here, itup is filled in, including the TID.
  */
 void
-_bt_doinsert(Relation rel, BTItem btitem,
+_bt_doinsert(Relation rel, IndexTuple itup,
 			 bool index_is_unique, Relation heapRel)
 {
-	IndexTuple	itup = &(btitem->bti_itup);
 	int			natts = rel->rd_rel->relnatts;
 	ScanKey		itup_scankey;
 	BTStack		stack;
 	Buffer		buf;
 
-	/* we need a scan key to do our search, so build one */
+	/* we need an insertion scan key to do our search, so build one */
 	itup_scankey = _bt_mkscankey(rel, itup);
 
 top:
@@ -121,7 +124,7 @@ top:
 	{
 		TransactionId xwait;
 
-		xwait = _bt_check_unique(rel, btitem, heapRel, buf, itup_scankey);
+		xwait = _bt_check_unique(rel, itup, heapRel, buf, itup_scankey);
 
 		if (TransactionIdIsValid(xwait))
 		{
@@ -135,7 +138,7 @@ top:
 	}
 
 	/* do the insertion */
-	_bt_insertonpg(rel, buf, stack, natts, itup_scankey, btitem, 0, false);
+	_bt_insertonpg(rel, buf, stack, natts, itup_scankey, itup, 0, false);
 
 	/* be tidy */
 	_bt_freestack(stack);
@@ -150,7 +153,7 @@ top:
  * conflict is detected, no return --- just ereport().
  */
 static TransactionId
-_bt_check_unique(Relation rel, BTItem btitem, Relation heapRel,
+_bt_check_unique(Relation rel, IndexTuple itup, Relation heapRel,
 				 Buffer buf, ScanKey itup_scankey)
 {
 	TupleDesc	itupdesc = RelationGetDescr(rel);
@@ -179,7 +182,7 @@ _bt_check_unique(Relation rel, BTItem btitem, Relation heapRel,
 		HeapTupleData htup;
 		Buffer		hbuffer;
 		ItemId		curitemid;
-		BTItem		cbti;
+		IndexTuple	curitup;
 		BlockNumber nblkno;
 
 		/*
@@ -216,8 +219,8 @@ _bt_check_unique(Relation rel, BTItem btitem, Relation heapRel,
 					break;		/* we're past all the equal tuples */
 
 				/* okay, we gotta fetch the heap tuple ... */
-				cbti = (BTItem) PageGetItem(page, curitemid);
-				htup.t_self = cbti->bti_itup.t_tid;
+				curitup = (IndexTuple) PageGetItem(page, curitemid);
+				htup.t_self = curitup->t_tid;
 				if (heap_fetch(heapRel, SnapshotDirty, &htup, &hbuffer,
 							   true, NULL))
 				{
@@ -241,8 +244,33 @@ _bt_check_unique(Relation rel, BTItem btitem, Relation heapRel,
 					}
 
 					/*
-					 * Otherwise we have a definite conflict.
+					 * Otherwise we have a definite conflict.  But before
+					 * complaining, look to see if the tuple we want to insert
+					 * is itself now committed dead --- if so, don't complain.
+					 * This is a waste of time in normal scenarios but we must
+					 * do it to support CREATE INDEX CONCURRENTLY.
 					 */
+					htup.t_self = itup->t_tid;
+					if (heap_fetch(heapRel, SnapshotSelf, &htup, &hbuffer,
+								   false, NULL))
+					{
+						/* Normal case --- it's still live */
+						ReleaseBuffer(hbuffer);
+					}
+					else if (htup.t_data != NULL)
+					{
+						/*
+						 * It's been deleted, so no error, and no need to
+						 * continue searching
+						 */
+						break;
+					}
+					else
+					{
+						/* couldn't find the tuple?? */
+						elog(ERROR, "failed to fetch tuple being inserted");
+					}
+
 					ereport(ERROR,
 							(errcode(ERRCODE_UNIQUE_VIOLATION),
 					errmsg("duplicate key violates unique constraint \"%s\"",
@@ -260,6 +288,8 @@ _bt_check_unique(Relation rel, BTItem btitem, Relation heapRel,
 												 hbuffer) == HEAPTUPLE_DEAD)
 					{
 						curitemid->lp_flags |= LP_DELETE;
+						opaque->btpo_flags |= BTP_HAS_GARBAGE;
+						/* be sure to mark the proper buffer dirty... */
 						if (nbuf != InvalidBuffer)
 							SetBufferCommitInfoNeedsSave(nbuf);
 						else
@@ -324,14 +354,15 @@ _bt_check_unique(Relation rel, BTItem btitem, Relation heapRel,
  *			   child page on the parent.
  *			+  updates the metapage if a true root or fast root is split.
  *
- *		On entry, we must have the right buffer on which to do the
- *		insertion, and the buffer must be pinned and locked.  On return,
- *		we will have dropped both the pin and the write lock on the buffer.
+ *		On entry, we must have the right buffer in which to do the
+ *		insertion, and the buffer must be pinned and write-locked.	On return,
+ *		we will have dropped both the pin and the lock on the buffer.
  *
  *		If 'afteritem' is >0 then the new tuple must be inserted after the
  *		existing item of that number, noplace else.  If 'afteritem' is 0
  *		then the procedure finds the exact spot to insert it by searching.
- *		(keysz and scankey parameters are used ONLY if afteritem == 0.)
+ *		(keysz and scankey parameters are used ONLY if afteritem == 0.
+ *		The scankey must be an insertion-type scankey.)
  *
  *		NOTE: if the new key is equal to one or more existing keys, we can
  *		legitimately place it anywhere in the series of equal keys --- in fact,
@@ -360,7 +391,7 @@ _bt_insertonpg(Relation rel,
 			   BTStack stack,
 			   int keysz,
 			   ScanKey scankey,
-			   BTItem btitem,
+			   IndexTuple itup,
 			   OffsetNumber afteritem,
 			   bool split_only_page)
 {
@@ -373,9 +404,7 @@ _bt_insertonpg(Relation rel,
 	page = BufferGetPage(buf);
 	lpageop = (BTPageOpaque) PageGetSpecialPointer(page);
 
-	itemsz = IndexTupleDSize(btitem->bti_itup)
-		+ (sizeof(BTItemData) - sizeof(IndexTupleData));
-
+	itemsz = IndexTupleDSize(*itup);
 	itemsz = MAXALIGN(itemsz);	/* be safe, PageAddItem will do this but we
 								 * need to be consistent */
 
@@ -423,11 +452,29 @@ _bt_insertonpg(Relation rel,
 		 */
 		bool		movedright = false;
 
-		while (PageGetFreeSpace(page) < itemsz &&
-			   !P_RIGHTMOST(lpageop) &&
-			   _bt_compare(rel, keysz, scankey, page, P_HIKEY) == 0 &&
-			   random() > (MAX_RANDOM_VALUE / 100))
+		while (PageGetFreeSpace(page) < itemsz)
 		{
+			Buffer		rbuf;
+
+			/*
+			 * before considering moving right, see if we can obtain enough
+			 * space by erasing LP_DELETE items
+			 */
+			if (P_ISLEAF(lpageop) && P_HAS_GARBAGE(lpageop))
+			{
+				_bt_vacuum_one_page(rel, buf);
+				if (PageGetFreeSpace(page) >= itemsz)
+					break;		/* OK, now we have enough space */
+			}
+
+			/*
+			 * nope, so check conditions (b) and (c) enumerated above
+			 */
+			if (P_RIGHTMOST(lpageop) ||
+				_bt_compare(rel, keysz, scankey, page, P_HIKEY) != 0 ||
+				random() <= (MAX_RANDOM_VALUE / 100))
+				break;
+
 			/*
 			 * step right to next non-dead page
 			 *
@@ -437,7 +484,7 @@ _bt_insertonpg(Relation rel,
 			 * pages won't do because we don't know when they will get
 			 * de-linked from the tree.
 			 */
-			Buffer		rbuf = InvalidBuffer;
+			rbuf = InvalidBuffer;
 
 			for (;;)
 			{
@@ -489,7 +536,7 @@ _bt_insertonpg(Relation rel,
 
 		/* split the buffer into left and right halves */
 		rbuf = _bt_split(rel, buf, firstright,
-						 newitemoff, itemsz, btitem, newitemonleft);
+						 newitemoff, itemsz, itup, newitemonleft);
 
 		/*----------
 		 * By here,
@@ -529,6 +576,8 @@ _bt_insertonpg(Relation rel,
 		 */
 		if (split_only_page)
 		{
+			Assert(!P_ISLEAF(lpageop));
+
 			metabuf = _bt_getbuf(rel, BTREE_METAPAGE, BT_WRITE);
 			metapg = BufferGetPage(metabuf);
 			metad = BTPageGetMeta(metapg);
@@ -544,24 +593,28 @@ _bt_insertonpg(Relation rel,
 		/* Do the update.  No ereport(ERROR) until changes are logged */
 		START_CRIT_SECTION();
 
-		_bt_pgaddtup(rel, page, itemsz, btitem, newitemoff, "page");
+		_bt_pgaddtup(rel, page, itemsz, itup, newitemoff, "page");
+
+		MarkBufferDirty(buf);
 
 		if (BufferIsValid(metabuf))
 		{
 			metad->btm_fastroot = itup_blkno;
 			metad->btm_fastlevel = lpageop->btpo.level;
+			MarkBufferDirty(metabuf);
 		}
 
 		/* XLOG stuff */
 		if (!rel->rd_istemp)
 		{
 			xl_btree_insert xlrec;
+			BlockNumber xldownlink;
 			xl_btree_metadata xlmeta;
 			uint8		xlinfo;
 			XLogRecPtr	recptr;
-			XLogRecData rdata[3];
+			XLogRecData rdata[4];
 			XLogRecData *nextrdata;
-			BTItemData	truncitem;
+			IndexTupleData trunctuple;
 
 			xlrec.target.node = rel->rd_node;
 			ItemPointerSet(&(xlrec.target.tid), itup_blkno, itup_off);
@@ -570,6 +623,22 @@ _bt_insertonpg(Relation rel,
 			rdata[0].len = SizeOfBtreeInsert;
 			rdata[0].buffer = InvalidBuffer;
 			rdata[0].next = nextrdata = &(rdata[1]);
+
+			if (P_ISLEAF(lpageop))
+				xlinfo = XLOG_BTREE_INSERT_LEAF;
+			else
+			{
+				xldownlink = ItemPointerGetBlockNumber(&(itup->t_tid));
+				Assert(ItemPointerGetOffsetNumber(&(itup->t_tid)) == P_HIKEY);
+
+				nextrdata->data = (char *) &xldownlink;
+				nextrdata->len = sizeof(BlockNumber);
+				nextrdata->buffer = InvalidBuffer;
+				nextrdata->next = nextrdata + 1;
+				nextrdata++;
+
+				xlinfo = XLOG_BTREE_INSERT_UPPER;
+			}
 
 			if (BufferIsValid(metabuf))
 			{
@@ -583,26 +652,22 @@ _bt_insertonpg(Relation rel,
 				nextrdata->buffer = InvalidBuffer;
 				nextrdata->next = nextrdata + 1;
 				nextrdata++;
+
 				xlinfo = XLOG_BTREE_INSERT_META;
 			}
-			else if (P_ISLEAF(lpageop))
-				xlinfo = XLOG_BTREE_INSERT_LEAF;
-			else
-				xlinfo = XLOG_BTREE_INSERT_UPPER;
 
 			/* Read comments in _bt_pgaddtup */
 			if (!P_ISLEAF(lpageop) && newitemoff == P_FIRSTDATAKEY(lpageop))
 			{
-				truncitem = *btitem;
-				truncitem.bti_itup.t_info = sizeof(BTItemData);
-				nextrdata->data = (char *) &truncitem;
-				nextrdata->len = sizeof(BTItemData);
+				trunctuple = *itup;
+				trunctuple.t_info = sizeof(IndexTupleData);
+				nextrdata->data = (char *) &trunctuple;
+				nextrdata->len = sizeof(IndexTupleData);
 			}
 			else
 			{
-				nextrdata->data = (char *) btitem;
-				nextrdata->len = IndexTupleDSize(btitem->bti_itup) +
-					(sizeof(BTItemData) - sizeof(IndexTupleData));
+				nextrdata->data = (char *) itup;
+				nextrdata->len = IndexTupleDSize(*itup);
 			}
 			nextrdata->buffer = buf;
 			nextrdata->buffer_std = true;
@@ -622,18 +687,21 @@ _bt_insertonpg(Relation rel,
 
 		END_CRIT_SECTION();
 
-		/* Write out the updated page and release pin/lock */
+		/* release buffers; send out relcache inval if metapage changed */
 		if (BufferIsValid(metabuf))
-			_bt_wrtbuf(rel, metabuf);
+		{
+			CacheInvalidateRelcache(rel);
+			_bt_relbuf(rel, metabuf);
+		}
 
-		_bt_wrtbuf(rel, buf);
+		_bt_relbuf(rel, buf);
 	}
 }
 
 /*
  *	_bt_split() -- split a page in the btree.
  *
- *		On entry, buf is the page to split, and is write-locked and pinned.
+ *		On entry, buf is the page to split, and is pinned and write-locked.
  *		firstright is the item index of the first item to be moved to the
  *		new right page.  newitemoff etc. tell us about the new item that
  *		must be inserted along with the data from the old page.
@@ -643,7 +711,7 @@ _bt_insertonpg(Relation rel,
  */
 static Buffer
 _bt_split(Relation rel, Buffer buf, OffsetNumber firstright,
-		  OffsetNumber newitemoff, Size newitemsz, BTItem newitem,
+		  OffsetNumber newitemoff, Size newitemsz, IndexTuple newitem,
 		  bool newitemonleft)
 {
 	Buffer		rbuf;
@@ -660,7 +728,7 @@ _bt_split(Relation rel, Buffer buf, OffsetNumber firstright,
 	BlockNumber itup_blkno = 0;
 	Size		itemsz;
 	ItemId		itemid;
-	BTItem		item;
+	IndexTuple	item;
 	OffsetNumber leftoff,
 				rightoff;
 	OffsetNumber maxoff;
@@ -672,7 +740,7 @@ _bt_split(Relation rel, Buffer buf, OffsetNumber firstright,
 	rightpage = BufferGetPage(rbuf);
 
 	_bt_pageinit(leftpage, BufferGetPageSize(buf));
-	_bt_pageinit(rightpage, BufferGetPageSize(rbuf));
+	/* rightpage was already initialized by _bt_getbuf */
 
 	/* init btree private data */
 	oopaque = (BTPageOpaque) PageGetSpecialPointer(origpage);
@@ -680,14 +748,18 @@ _bt_split(Relation rel, Buffer buf, OffsetNumber firstright,
 	ropaque = (BTPageOpaque) PageGetSpecialPointer(rightpage);
 
 	/* if we're splitting this page, it won't be the root when we're done */
+	/* also, clear the SPLIT_END and HAS_GARBAGE flags in both pages */
 	lopaque->btpo_flags = oopaque->btpo_flags;
-	lopaque->btpo_flags &= ~BTP_ROOT;
+	lopaque->btpo_flags &= ~(BTP_ROOT | BTP_SPLIT_END | BTP_HAS_GARBAGE);
 	ropaque->btpo_flags = lopaque->btpo_flags;
 	lopaque->btpo_prev = oopaque->btpo_prev;
 	lopaque->btpo_next = BufferGetBlockNumber(rbuf);
 	ropaque->btpo_prev = BufferGetBlockNumber(buf);
 	ropaque->btpo_next = oopaque->btpo_next;
 	lopaque->btpo.level = ropaque->btpo.level = oopaque->btpo.level;
+	/* Since we already have write-lock on both pages, ok to read cycleid */
+	lopaque->btpo_cycleid = _bt_vacuum_cycleid(rel);
+	ropaque->btpo_cycleid = lopaque->btpo_cycleid;
 
 	/*
 	 * If the page we're splitting is not the rightmost page at its level in
@@ -702,7 +774,7 @@ _bt_split(Relation rel, Buffer buf, OffsetNumber firstright,
 	{
 		itemid = PageGetItemId(origpage, P_HIKEY);
 		itemsz = ItemIdGetLength(itemid);
-		item = (BTItem) PageGetItem(origpage, itemid);
+		item = (IndexTuple) PageGetItem(origpage, itemid);
 		if (PageAddItem(rightpage, (Item) item, itemsz, rightoff,
 						LP_USED) == InvalidOffsetNumber)
 			elog(PANIC, "failed to add hikey to the right sibling");
@@ -726,7 +798,7 @@ _bt_split(Relation rel, Buffer buf, OffsetNumber firstright,
 		/* existing item at firstright will become first on right page */
 		itemid = PageGetItemId(origpage, firstright);
 		itemsz = ItemIdGetLength(itemid);
-		item = (BTItem) PageGetItem(origpage, itemid);
+		item = (IndexTuple) PageGetItem(origpage, itemid);
 	}
 	if (PageAddItem(leftpage, (Item) item, itemsz, leftoff,
 					LP_USED) == InvalidOffsetNumber)
@@ -742,7 +814,7 @@ _bt_split(Relation rel, Buffer buf, OffsetNumber firstright,
 	{
 		itemid = PageGetItemId(origpage, i);
 		itemsz = ItemIdGetLength(itemid);
-		item = (BTItem) PageGetItem(origpage, itemid);
+		item = (IndexTuple) PageGetItem(origpage, itemid);
 
 		/* does new item belong before this one? */
 		if (i == newitemoff)
@@ -816,18 +888,43 @@ _bt_split(Relation rel, Buffer buf, OffsetNumber firstright,
 		sopaque = (BTPageOpaque) PageGetSpecialPointer(spage);
 		if (sopaque->btpo_prev != ropaque->btpo_prev)
 			elog(PANIC, "right sibling's left-link doesn't match");
+
+		/*
+		 * Check to see if we can set the SPLIT_END flag in the right-hand
+		 * split page; this can save some I/O for vacuum since it need not
+		 * proceed to the right sibling.  We can set the flag if the right
+		 * sibling has a different cycleid: that means it could not be part of
+		 * a group of pages that were all split off from the same ancestor
+		 * page.  If you're confused, imagine that page A splits to A B and
+		 * then again, yielding A C B, while vacuum is in progress.  Tuples
+		 * originally in A could now be in either B or C, hence vacuum must
+		 * examine both pages.	But if D, our right sibling, has a different
+		 * cycleid then it could not contain any tuples that were in A when
+		 * the vacuum started.
+		 */
+		if (sopaque->btpo_cycleid != ropaque->btpo_cycleid)
+			ropaque->btpo_flags |= BTP_SPLIT_END;
 	}
 
 	/*
 	 * Right sibling is locked, new siblings are prepared, but original page
 	 * is not updated yet. Log changes before continuing.
 	 *
-	 * NO EREPORT(ERROR) till right sibling is updated.
+	 * NO EREPORT(ERROR) till right sibling is updated.  We can get away with
+	 * not starting the critical section till here because we haven't been
+	 * scribbling on the original page yet, and we don't care about the new
+	 * sibling until it's linked into the btree.
 	 */
 	START_CRIT_SECTION();
 
+	MarkBufferDirty(buf);
+	MarkBufferDirty(rbuf);
+
 	if (!P_RIGHTMOST(ropaque))
+	{
 		sopaque->btpo_prev = BufferGetBlockNumber(rbuf);
+		MarkBufferDirty(sbuf);
+	}
 
 	/* XLOG stuff */
 	if (!rel->rd_istemp)
@@ -851,7 +948,8 @@ _bt_split(Relation rel, Buffer buf, OffsetNumber firstright,
 		 * Direct access to page is not good but faster - we should implement
 		 * some new func in page API.  Note we only store the tuples
 		 * themselves, knowing that the item pointers are in the same order
-		 * and can be reconstructed by scanning the tuples.
+		 * and can be reconstructed by scanning the tuples.  See comments for
+		 * _bt_restore_page().
 		 */
 		xlrec.leftlen = ((PageHeader) leftpage)->pd_special -
 			((PageHeader) leftpage)->pd_upper;
@@ -907,16 +1005,22 @@ _bt_split(Relation rel, Buffer buf, OffsetNumber firstright,
 	 * original.  Note that this is not a waste of time, since we also require
 	 * (in the page management code) that the center of a page always be
 	 * clean, and the most efficient way to guarantee this is just to compact
-	 * the data by reinserting it into a new left page.
+	 * the data by reinserting it into a new left page.  (XXX the latter
+	 * comment is probably obsolete.)
+	 *
+	 * It's a bit weird that we don't fill in the left page till after writing
+	 * the XLOG entry, but not really worth changing.  Note that we use the
+	 * origpage data (specifically its BTP_ROOT bit) while preparing the XLOG
+	 * entry, so simply reshuffling the code won't do.
 	 */
 
 	PageRestoreTempPage(leftpage, origpage);
 
 	END_CRIT_SECTION();
 
-	/* write and release the old right sibling */
+	/* release the old right sibling */
 	if (!P_RIGHTMOST(ropaque))
-		_bt_wrtbuf(rel, sbuf);
+		_bt_relbuf(rel, sbuf);
 
 	/* split's done */
 	return rbuf;
@@ -931,14 +1035,12 @@ _bt_split(Relation rel, Buffer buf, OffsetNumber firstright,
  * it needs to go into!)
  *
  * If the page is the rightmost page on its level, we instead try to arrange
- * for twice as much free space on the right as on the left.  In this way,
- * when we are inserting successively increasing keys (consider sequences,
- * timestamps, etc) we will end up with a tree whose pages are about 67% full,
+ * to leave the left split page fillfactor% full.  In this way, when we are
+ * inserting successively increasing keys (consider sequences, timestamps,
+ * etc) we will end up with a tree whose pages are about fillfactor% full,
  * instead of the 50% full result that we'd get without this special case.
- * (We could bias it even further to make the initially-loaded tree more full.
- * But since the steady-state load for a btree is about 70%, we'd likely just
- * be making more page-splitting work for ourselves later on, when we start
- * seeing updates to existing tuples.)
+ * This is the same as nbtsort.c produces for a newly-created tree.  Note
+ * that leaf and nonleaf pages use different fillfactors.
  *
  * We are passed the intended insert position of the new tuple, expressed as
  * the offsetnumber of the tuple it must go in front of.  (This could be
@@ -975,6 +1077,14 @@ _bt_findsplitloc(Relation rel,
 	state.is_leaf = P_ISLEAF(opaque);
 	state.is_rightmost = P_RIGHTMOST(opaque);
 	state.have_split = false;
+	if (state.is_leaf)
+		state.fillfactor = RelationGetFillFactor(rel,
+												 BTREE_DEFAULT_FILLFACTOR);
+	else
+		state.fillfactor = BTREE_NONLEAF_FILLFACTOR;
+	state.newitemonleft = false;	/* these just to keep compiler quiet */
+	state.firstright = 0;
+	state.best_delta = 0;
 
 	/* Total free space available on a btree page, after fixed overhead */
 	leftspace = rightspace =
@@ -1090,7 +1200,7 @@ _bt_checksplitloc(FindSplitData *state, OffsetNumber firstright,
 	 */
 	if (!state->is_leaf)
 		rightfree += (int) firstrightitemsz -
-			(int) (MAXALIGN(sizeof(BTItemData)) + sizeof(ItemIdData));
+			(int) (MAXALIGN(sizeof(IndexTupleData)) + sizeof(ItemIdData));
 
 	/*
 	 * If feasible split point, remember best delta.
@@ -1102,10 +1212,11 @@ _bt_checksplitloc(FindSplitData *state, OffsetNumber firstright,
 		if (state->is_rightmost)
 		{
 			/*
-			 * On a rightmost page, try to equalize right free space with
-			 * twice the left free space.  See comments for _bt_findsplitloc.
+			 * If splitting a rightmost page, try to put (100-fillfactor)% of
+			 * free space on left page. See comments for _bt_findsplitloc.
 			 */
-			delta = (2 * leftfree) - rightfree;
+			delta = (state->fillfactor * leftfree)
+				- ((100 - state->fillfactor) * rightfree);
 		}
 		else
 		{
@@ -1172,18 +1283,18 @@ _bt_insert_parent(Relation rel,
 		/* create a new root node and update the metapage */
 		rootbuf = _bt_newroot(rel, buf, rbuf);
 		/* release the split buffers */
-		_bt_wrtbuf(rel, rootbuf);
-		_bt_wrtbuf(rel, rbuf);
-		_bt_wrtbuf(rel, buf);
+		_bt_relbuf(rel, rootbuf);
+		_bt_relbuf(rel, rbuf);
+		_bt_relbuf(rel, buf);
 	}
 	else
 	{
 		BlockNumber bknum = BufferGetBlockNumber(buf);
 		BlockNumber rbknum = BufferGetBlockNumber(rbuf);
 		Page		page = BufferGetPage(buf);
-		BTItem		new_item;
+		IndexTuple	new_item;
 		BTStackData fakestack;
-		BTItem		ritem;
+		IndexTuple	ritem;
 		Buffer		pbuf;
 
 		if (stack == NULL)
@@ -1199,18 +1310,18 @@ _bt_insert_parent(Relation rel,
 			stack = &fakestack;
 			stack->bts_blkno = BufferGetBlockNumber(pbuf);
 			stack->bts_offset = InvalidOffsetNumber;
-			/* bts_btitem will be initialized below */
+			/* bts_btentry will be initialized below */
 			stack->bts_parent = NULL;
 			_bt_relbuf(rel, pbuf);
 		}
 
 		/* get high key from left page == lowest key on new right page */
-		ritem = (BTItem) PageGetItem(page,
-									 PageGetItemId(page, P_HIKEY));
+		ritem = (IndexTuple) PageGetItem(page,
+										 PageGetItemId(page, P_HIKEY));
 
 		/* form an index tuple that points at the new right page */
-		new_item = _bt_formitem(&(ritem->bti_itup));
-		ItemPointerSet(&(new_item->bti_itup.t_tid), rbknum, P_HIKEY);
+		new_item = CopyIndexTuple(ritem);
+		ItemPointerSet(&(new_item->t_tid), rbknum, P_HIKEY);
 
 		/*
 		 * Find the parent buffer and get the parent page.
@@ -1219,19 +1330,18 @@ _bt_insert_parent(Relation rel,
 		 * want to find parent pointing to where we are, right ?	- vadim
 		 * 05/27/97
 		 */
-		ItemPointerSet(&(stack->bts_btitem.bti_itup.t_tid),
-					   bknum, P_HIKEY);
+		ItemPointerSet(&(stack->bts_btentry.t_tid), bknum, P_HIKEY);
 
 		pbuf = _bt_getstackbuf(rel, stack, BT_WRITE);
 
-		/* Now we can write and unlock the children */
-		_bt_wrtbuf(rel, rbuf);
-		_bt_wrtbuf(rel, buf);
+		/* Now we can unlock the children */
+		_bt_relbuf(rel, rbuf);
+		_bt_relbuf(rel, buf);
 
 		/* Check for error only after writing children */
 		if (pbuf == InvalidBuffer)
-			elog(ERROR, "failed to re-find parent key in \"%s\"",
-				 RelationGetRelationName(rel));
+			elog(ERROR, "failed to re-find parent key in \"%s\" for split pages %u/%u",
+				 RelationGetRelationName(rel), bknum, rbknum);
 
 		/* Recursively update the parent */
 		_bt_insertonpg(rel, pbuf, stack->bts_parent,
@@ -1281,7 +1391,7 @@ _bt_getstackbuf(Relation rel, BTStack stack, int access)
 						minoff,
 						maxoff;
 			ItemId		itemid;
-			BTItem		item;
+			IndexTuple	item;
 
 			minoff = P_FIRSTDATAKEY(opaque);
 			maxoff = PageGetMaxOffsetNumber(page);
@@ -1311,8 +1421,8 @@ _bt_getstackbuf(Relation rel, BTStack stack, int access)
 				 offnum = OffsetNumberNext(offnum))
 			{
 				itemid = PageGetItemId(page, offnum);
-				item = (BTItem) PageGetItem(page, itemid);
-				if (BTItemSame(item, &stack->bts_btitem))
+				item = (IndexTuple) PageGetItem(page, itemid);
+				if (BTEntrySame(item, &stack->bts_btentry))
 				{
 					/* Return accurate pointer to where link is now */
 					stack->bts_blkno = blkno;
@@ -1326,8 +1436,8 @@ _bt_getstackbuf(Relation rel, BTStack stack, int access)
 				 offnum = OffsetNumberPrev(offnum))
 			{
 				itemid = PageGetItemId(page, offnum);
-				item = (BTItem) PageGetItem(page, itemid);
-				if (BTItemSame(item, &stack->bts_btitem))
+				item = (IndexTuple) PageGetItem(page, itemid);
+				if (BTEntrySame(item, &stack->bts_btentry))
 				{
 					/* Return accurate pointer to where link is now */
 					stack->bts_blkno = blkno;
@@ -1374,16 +1484,15 @@ _bt_newroot(Relation rel, Buffer lbuf, Buffer rbuf)
 {
 	Buffer		rootbuf;
 	Page		lpage,
-				rpage,
 				rootpage;
 	BlockNumber lbkno,
 				rbkno;
 	BlockNumber rootblknum;
 	BTPageOpaque rootopaque;
 	ItemId		itemid;
-	BTItem		item;
+	IndexTuple	item;
 	Size		itemsz;
-	BTItem		new_item;
+	IndexTuple	new_item;
 	Buffer		metabuf;
 	Page		metapg;
 	BTMetaPageData *metad;
@@ -1391,7 +1500,6 @@ _bt_newroot(Relation rel, Buffer lbuf, Buffer rbuf)
 	lbkno = BufferGetBlockNumber(lbuf);
 	rbkno = BufferGetBlockNumber(rbuf);
 	lpage = BufferGetPage(lbuf);
-	rpage = BufferGetPage(rbuf);
 
 	/* get a new root page */
 	rootbuf = _bt_getbuf(rel, P_NEW, BT_WRITE);
@@ -1412,6 +1520,7 @@ _bt_newroot(Relation rel, Buffer lbuf, Buffer rbuf)
 	rootopaque->btpo_flags = BTP_ROOT;
 	rootopaque->btpo.level =
 		((BTPageOpaque) PageGetSpecialPointer(lpage))->btpo.level + 1;
+	rootopaque->btpo_cycleid = 0;
 
 	/* update metapage data */
 	metad->btm_root = rootblknum;
@@ -1424,15 +1533,18 @@ _bt_newroot(Relation rel, Buffer lbuf, Buffer rbuf)
 	 * first item in a non-leaf page, it implicitly has minus-infinity key
 	 * value, so we need not store any actual key in it.
 	 */
-	itemsz = sizeof(BTItemData);
-	new_item = (BTItem) palloc(itemsz);
-	new_item->bti_itup.t_info = itemsz;
-	ItemPointerSet(&(new_item->bti_itup.t_tid), lbkno, P_HIKEY);
+	itemsz = sizeof(IndexTupleData);
+	new_item = (IndexTuple) palloc(itemsz);
+	new_item->t_info = itemsz;
+	ItemPointerSet(&(new_item->t_tid), lbkno, P_HIKEY);
 
 	/*
 	 * Insert the left page pointer into the new root page.  The root page is
 	 * the rightmost page on its level so there is no "high key" in it; the
 	 * two items will go into positions P_HIKEY and P_FIRSTKEY.
+	 *
+	 * Note: we *must* insert the two items in item-number order, for the
+	 * benefit of _bt_restore_page().
 	 */
 	if (PageAddItem(rootpage, (Item) new_item, itemsz, P_HIKEY, LP_USED) == InvalidOffsetNumber)
 		elog(PANIC, "failed to add leftkey to new root page");
@@ -1444,9 +1556,9 @@ _bt_newroot(Relation rel, Buffer lbuf, Buffer rbuf)
 	 */
 	itemid = PageGetItemId(lpage, P_HIKEY);
 	itemsz = ItemIdGetLength(itemid);
-	item = (BTItem) PageGetItem(lpage, itemid);
-	new_item = _bt_formitem(&(item->bti_itup));
-	ItemPointerSet(&(new_item->bti_itup.t_tid), rbkno, P_HIKEY);
+	item = (IndexTuple) PageGetItem(lpage, itemid);
+	new_item = CopyIndexTuple(item);
+	ItemPointerSet(&(new_item->t_tid), rbkno, P_HIKEY);
 
 	/*
 	 * insert the right page pointer into the new root page.
@@ -1454,6 +1566,9 @@ _bt_newroot(Relation rel, Buffer lbuf, Buffer rbuf)
 	if (PageAddItem(rootpage, (Item) new_item, itemsz, P_FIRSTKEY, LP_USED) == InvalidOffsetNumber)
 		elog(PANIC, "failed to add rightkey to new root page");
 	pfree(new_item);
+
+	MarkBufferDirty(rootbuf);
+	MarkBufferDirty(metabuf);
 
 	/* XLOG stuff */
 	if (!rel->rd_istemp)
@@ -1487,18 +1602,17 @@ _bt_newroot(Relation rel, Buffer lbuf, Buffer rbuf)
 		PageSetTLI(rootpage, ThisTimeLineID);
 		PageSetLSN(metapg, recptr);
 		PageSetTLI(metapg, ThisTimeLineID);
-		PageSetLSN(lpage, recptr);
-		PageSetTLI(lpage, ThisTimeLineID);
-		PageSetLSN(rpage, recptr);
-		PageSetTLI(rpage, ThisTimeLineID);
 	}
 
 	END_CRIT_SECTION();
 
-	/* write and let go of metapage buffer */
-	_bt_wrtbuf(rel, metabuf);
+	/* send out relcache inval for metapage change */
+	CacheInvalidateRelcache(rel);
 
-	return (rootbuf);
+	/* done with metapage */
+	_bt_relbuf(rel, metabuf);
+
+	return rootbuf;
 }
 
 /*
@@ -1510,32 +1624,32 @@ _bt_newroot(Relation rel, Buffer lbuf, Buffer rbuf)
  *		the buffer afterwards, either.
  *
  *		The main difference between this routine and a bare PageAddItem call
- *		is that this code knows that the leftmost data item on a non-leaf
+ *		is that this code knows that the leftmost index tuple on a non-leaf
  *		btree page doesn't need to have a key.  Therefore, it strips such
- *		items down to just the item header.  CAUTION: this works ONLY if
- *		we insert the items in order, so that the given itup_off does
- *		represent the final position of the item!
+ *		tuples down to just the tuple header.  CAUTION: this works ONLY if
+ *		we insert the tuples in order, so that the given itup_off does
+ *		represent the final position of the tuple!
  */
 static void
 _bt_pgaddtup(Relation rel,
 			 Page page,
 			 Size itemsize,
-			 BTItem btitem,
+			 IndexTuple itup,
 			 OffsetNumber itup_off,
 			 const char *where)
 {
 	BTPageOpaque opaque = (BTPageOpaque) PageGetSpecialPointer(page);
-	BTItemData	truncitem;
+	IndexTupleData trunctuple;
 
 	if (!P_ISLEAF(opaque) && itup_off == P_FIRSTDATAKEY(opaque))
 	{
-		memcpy(&truncitem, btitem, sizeof(BTItemData));
-		truncitem.bti_itup.t_info = sizeof(BTItemData);
-		btitem = &truncitem;
-		itemsize = sizeof(BTItemData);
+		trunctuple = *itup;
+		trunctuple.t_info = sizeof(IndexTupleData);
+		itup = &trunctuple;
+		itemsize = sizeof(IndexTupleData);
 	}
 
-	if (PageAddItem(page, (Item) btitem, itemsize, itup_off,
+	if (PageAddItem(page, (Item) itup, itemsize, itup_off,
 					LP_USED) == InvalidOffsetNumber)
 		elog(PANIC, "failed to add item to the %s for \"%s\"",
 			 where, RelationGetRelationName(rel));
@@ -1551,15 +1665,13 @@ static bool
 _bt_isequal(TupleDesc itupdesc, Page page, OffsetNumber offnum,
 			int keysz, ScanKey scankey)
 {
-	BTItem		btitem;
 	IndexTuple	itup;
 	int			i;
 
 	/* Better be comparing to a leaf item */
 	Assert(P_ISLEAF((BTPageOpaque) PageGetSpecialPointer(page)));
 
-	btitem = (BTItem) PageGetItem(page, PageGetItemId(page, offnum));
-	itup = &(btitem->bti_itup);
+	itup = (IndexTuple) PageGetItem(page, PageGetItemId(page, offnum));
 
 	for (i = 1; i <= keysz; i++)
 	{
@@ -1588,4 +1700,49 @@ _bt_isequal(TupleDesc itupdesc, Page page, OffsetNumber offnum,
 
 	/* if we get here, the keys are equal */
 	return true;
+}
+
+/*
+ * _bt_vacuum_one_page - vacuum just one index page.
+ *
+ * Try to remove LP_DELETE items from the given page.  The passed buffer
+ * must be exclusive-locked, but unlike a real VACUUM, we don't need a
+ * super-exclusive "cleanup" lock (see nbtree/README).
+ */
+static void
+_bt_vacuum_one_page(Relation rel, Buffer buffer)
+{
+	OffsetNumber deletable[MaxOffsetNumber];
+	int			ndeletable = 0;
+	OffsetNumber offnum,
+				minoff,
+				maxoff;
+	Page		page = BufferGetPage(buffer);
+	BTPageOpaque opaque = (BTPageOpaque) PageGetSpecialPointer(page);
+
+	/*
+	 * Scan over all items to see which ones need deleted according to
+	 * LP_DELETE flags.
+	 */
+	minoff = P_FIRSTDATAKEY(opaque);
+	maxoff = PageGetMaxOffsetNumber(page);
+	for (offnum = minoff;
+		 offnum <= maxoff;
+		 offnum = OffsetNumberNext(offnum))
+	{
+		ItemId		itemId = PageGetItemId(page, offnum);
+
+		if (ItemIdDeleted(itemId))
+			deletable[ndeletable++] = offnum;
+	}
+
+	if (ndeletable > 0)
+		_bt_delitems(rel, buffer, deletable, ndeletable);
+
+	/*
+	 * Note: if we didn't find any LP_DELETE items, then the page's
+	 * BTP_HAS_GARBAGE hint bit is falsely set.  We do not bother expending a
+	 * separate write to clear it, however.  We will clear it when we split
+	 * the page.
+	 */
 }

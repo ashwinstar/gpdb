@@ -3,16 +3,15 @@
  * indexam.c
  *	  general index access method routines
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/index/indexam.c,v 1.86 2005/10/15 02:49:09 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/index/indexam.c,v 1.95 2006/10/04 00:29:48 momjian Exp $
  *
  * INTERFACE ROUTINES
  *		index_open		- open an index relation by relation OID
- *		index_openrv	- open an index relation specified by a RangeVar
  *		index_close		- close an index relation
  *		index_beginscan - start a scan of an index with amgettuple
  *		index_beginscan_multi - start a scan of an index with amgetmulti
@@ -122,26 +121,23 @@ static IndexScanDesc index_beginscan_internal(Relation indexRelation,
 /* ----------------
  *		index_open - open an index relation by relation OID
  *
- *		Note: we acquire no lock on the index.	A lock is not needed when
- *		simply examining the index reldesc; the index's schema information
- *		is considered to be protected by the lock that the caller had better
- *		be holding on the parent relation.	Some type of lock should be
- *		obtained on the index before physically accessing it, however.
- *		This is handled automatically for most uses by index_beginscan
- *		and index_endscan for scan cases, or by ExecOpenIndices and
- *		ExecCloseIndices for update cases.	Other callers will need to
- *		obtain their own locks.
+ *		If lockmode is not "NoLock", the specified kind of lock is
+ *		obtained on the index.	(Generally, NoLock should only be
+ *		used if the caller knows it has some appropriate lock on the
+ *		index already.)
+ *
+ *		An error is raised if the index does not exist.
  *
  *		This is a convenience routine adapted for indexscan use.
  *		Some callers may prefer to use relation_open directly.
  * ----------------
  */
 Relation
-index_open(Oid relationId)
+index_open(Oid relationId, LOCKMODE lockmode)
 {
 	Relation	r;
 
-	r = relation_open(relationId, NoLock);
+	r = relation_open(relationId, lockmode);
 
 	if (r->rd_rel->relkind != RELKIND_INDEX)
 		ereport(ERROR,
@@ -155,41 +151,26 @@ index_open(Oid relationId)
 }
 
 /* ----------------
- *		index_openrv - open an index relation specified
- *		by a RangeVar node
+ *		index_close - close an index relation
  *
- *		As above, but relation is specified by a RangeVar.
- * ----------------
- */
-Relation
-index_openrv(const RangeVar *relation)
-{
-	Relation	r;
-
-	r = relation_openrv(relation, NoLock);
-
-	if (r->rd_rel->relkind != RELKIND_INDEX)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is not an index",
-						RelationGetRelationName(r))));
-
-	pgstat_initstats(&r->pgstat_info, r);
-
-	return r;
-}
-
-/* ----------------
- *		index_close - close a index relation
+ *		If lockmode is not "NoLock", we then release the specified lock.
  *
- *		presently the relcache routines do all the work we need
- *		to open/close index relations.
+ *		Note that it is often sensible to hold a lock beyond index_close;
+ *		in that case, the lock is released automatically at xact end.
  * ----------------
  */
 void
-index_close(Relation relation)
+index_close(Relation relation, LOCKMODE lockmode)
 {
+	LockRelId	relid = relation->rd_lockInfo.lockRelId;
+
+	Assert(lockmode >= NoLock && lockmode < MAX_LOCKMODES);
+
+	/* The relcache does the real work... */
 	RelationClose(relation);
+
+	if (lockmode != NoLock)
+		UnlockRelationId(&relid, lockmode);
 }
 
 /* ----------------
@@ -228,7 +209,8 @@ index_insert(Relation indexRelation,
  * index_getnext on this scan; index_getnext_indexitem will not use the
  * heapRelation link (nor the snapshot).  However, the caller had better
  * be holding some kind of lock on the heap relation in any case, to ensure
- * no one deletes it (or the index) out from under us.
+ * no one deletes it (or the index) out from under us.	Caller must also
+ * be holding a lock on the index.
  */
 IndexScanDesc
 index_beginscan(Relation heapRelation,
@@ -287,24 +269,12 @@ index_beginscan_internal(Relation indexRelation,
 	FmgrInfo   *procedure;
 
 	RELATION_CHECKS;
-
-	RelationIncrementReferenceCount(indexRelation);
-
-	/*
-	 * Acquire AccessShareLock for the duration of the scan
-	 *
-	 * Note: we could get an SI inval message here and consequently have to
-	 * rebuild the relcache entry.	The refcount increment above ensures that
-	 * we will rebuild it and not just flush it...
-	 */
-	LockRelation(indexRelation, AccessShareLock);
-
-	/*
-	 * LockRelation can clean rd_aminfo structure, so fill procedure after
-	 * LockRelation
-	 */
-
 	GET_REL_PROCEDURE(ambeginscan);
+
+	/*
+	 * We hold a reference count to the relcache entry throughout the scan.
+	 */
+	RelationIncrementReferenceCount(indexRelation);
 
 	/*
 	 * Tell the AM to open a scan.
@@ -346,10 +316,6 @@ index_rescan(IndexScanDesc scan, ScanKey key)
 	}
 
 	scan->kill_prior_tuple = false;		/* for safety */
-	scan->keys_are_unique = false;		/* may be set by index AM */
-	scan->got_tuple = false;
-	scan->unique_tuple_pos = 0;
-	scan->unique_tuple_mark = 0;
 
 	FunctionCall2(procedure,
 				  PointerGetDatum(scan),
@@ -378,10 +344,7 @@ index_endscan(IndexScanDesc scan)
 	/* End the AM's scan */
 	FunctionCall1(procedure, PointerGetDatum(scan));
 
-	/* Release index lock and refcount acquired by index_beginscan */
-
-	UnlockRelation(scan->indexRelation, AccessShareLock);
-
+	/* Release index refcount acquired by index_beginscan */
 	RelationDecrementReferenceCount(scan->indexRelation);
 
 	/* Release the scan data structure itself */
@@ -399,8 +362,6 @@ index_markpos(IndexScanDesc scan)
 
 	SCAN_CHECKS;
 	GET_SCAN_PROCEDURE(ammarkpos);
-
-	scan->unique_tuple_mark = scan->unique_tuple_pos;
 
 	FunctionCall1(procedure, PointerGetDatum(scan));
 }
@@ -423,13 +384,6 @@ index_restrpos(IndexScanDesc scan)
 
 	scan->kill_prior_tuple = false;		/* for safety */
 
-	/*
-	 * We do not reset got_tuple; so if the scan is actually being
-	 * short-circuited by index_getnext, the effective position restoration is
-	 * done by restoring unique_tuple_pos.
-	 */
-	scan->unique_tuple_pos = scan->unique_tuple_mark;
-
 	FunctionCall1(procedure, PointerGetDatum(scan));
 }
 
@@ -439,8 +393,7 @@ index_restrpos(IndexScanDesc scan)
  * The result is the next heap tuple satisfying the scan keys and the
  * snapshot, or NULL if no more matching tuples exist.	On success,
  * the buffer containing the heap tuple is pinned (the pin will be dropped
- * at the next index_getnext or index_endscan).  The index TID corresponding
- * to the heap tuple can be obtained if needed from scan->currentItemData.
+ * at the next index_getnext or index_endscan).
  * ----------------
  */
 HeapTuple
@@ -451,65 +404,6 @@ index_getnext(IndexScanDesc scan, ScanDirection direction)
 
 	SCAN_CHECKS;
 	GET_SCAN_PROCEDURE(amgettuple);
-
-	/*
-	 * If we already got a tuple and it must be unique, there's no need to
-	 * make the index AM look through any additional tuples.  (This can save a
-	 * useful amount of work in scenarios where there are many dead tuples due
-	 * to heavy update activity.)
-	 *
-	 * To do this we must keep track of the logical scan position
-	 * (before/on/after tuple).  Also, we have to be sure to release scan
-	 * resources before returning NULL; if we fail to do so then a multi-index
-	 * scan can easily run the system out of free buffers.	We can release
-	 * index-level resources fairly cheaply by calling index_rescan.  This
-	 * means there are two persistent states as far as the index AM is
-	 * concerned: on-tuple and rescanned.  If we are actually asked to
-	 * re-fetch the single tuple, we have to go through a fresh indexscan
-	 * startup, which penalizes that (infrequent) case.
-	 */
-	if (scan->keys_are_unique && scan->got_tuple)
-	{
-		int			new_tuple_pos = scan->unique_tuple_pos;
-
-		if (ScanDirectionIsForward(direction))
-		{
-			if (new_tuple_pos <= 0)
-				new_tuple_pos++;
-		}
-		else
-		{
-			if (new_tuple_pos >= 0)
-				new_tuple_pos--;
-		}
-		if (new_tuple_pos == 0)
-		{
-			/*
-			 * We are moving onto the unique tuple from having been off it. We
-			 * just fall through and let the index AM do the work. Note we
-			 * should get the right answer regardless of scan direction.
-			 */
-			scan->unique_tuple_pos = 0; /* need to update position */
-		}
-		else
-		{
-			/*
-			 * Moving off the tuple; must do amrescan to release index-level
-			 * pins before we return NULL.	Since index_rescan will reset my
-			 * state, must save and restore...
-			 */
-			int			unique_tuple_mark = scan->unique_tuple_mark;
-
-			index_rescan(scan, NULL /* no change to key */ );
-
-			scan->keys_are_unique = true;
-			scan->got_tuple = true;
-			scan->unique_tuple_pos = new_tuple_pos;
-			scan->unique_tuple_mark = unique_tuple_mark;
-
-			return NULL;
-		}
-	}
 
 	/* just make sure this is false... */
 	scan->kill_prior_tuple = false;
@@ -571,14 +465,6 @@ index_getnext(IndexScanDesc scan, ScanDirection direction)
 	}
 
 	/* Success exit */
-	scan->got_tuple = true;
-
-	/*
-	 * If we just fetched a known-unique tuple, then subsequent calls will go
-	 * through the short-circuit code above.  unique_tuple_pos has been
-	 * initialized to 0, which is the correct state ("on row").
-	 */
-
 	return heapTuple;
 }
 
@@ -591,8 +477,8 @@ index_getnext(IndexScanDesc scan, ScanDirection direction)
  * (which most callers of this routine will probably want to suppress by
  * setting scan->ignore_killed_tuples = false).
  *
- * On success (TRUE return), the found index TID is in scan->currentItemData,
- * and its heap TID is in scan->xs_ctup.t_self.  scan->xs_cbuf is untouched.
+ * On success (TRUE return), the heap TID of the found index entry is in
+ * scan->xs_ctup.t_self.  scan->xs_cbuf is untouched.
  * ----------------
  */
 bool
@@ -672,10 +558,12 @@ index_getmulti(IndexScanDesc scan,
  * ----------------
  */
 IndexBulkDeleteResult *
-index_bulk_delete(Relation indexRelation,
+index_bulk_delete(IndexVacuumInfo *info,
+				  IndexBulkDeleteResult *stats,
 				  IndexBulkDeleteCallback callback,
 				  void *callback_state)
 {
+	Relation	indexRelation = info->index;
 	FmgrInfo   *procedure;
 	IndexBulkDeleteResult *result;
 
@@ -683,8 +571,9 @@ index_bulk_delete(Relation indexRelation,
 	GET_REL_PROCEDURE(ambulkdelete);
 
 	result = (IndexBulkDeleteResult *)
-		DatumGetPointer(FunctionCall3(procedure,
-									  PointerGetDatum(indexRelation),
+		DatumGetPointer(FunctionCall4(procedure,
+									  PointerGetDatum(info),
+									  PointerGetDatum(stats),
 									  PointerGetDatum((Pointer) callback),
 									  PointerGetDatum(callback_state)));
 
@@ -698,26 +587,20 @@ index_bulk_delete(Relation indexRelation,
  * ----------------
  */
 IndexBulkDeleteResult *
-index_vacuum_cleanup(Relation indexRelation,
-					 IndexVacuumCleanupInfo *info,
+index_vacuum_cleanup(IndexVacuumInfo *info,
 					 IndexBulkDeleteResult *stats)
 {
+	Relation	indexRelation = info->index;
 	FmgrInfo   *procedure;
 	IndexBulkDeleteResult *result;
 
 	RELATION_CHECKS;
-
-	/* It's okay for an index AM not to have a vacuumcleanup procedure */
-	if (!RegProcedureIsValid(indexRelation->rd_am->amvacuumcleanup))
-		return stats;
-
 	GET_REL_PROCEDURE(amvacuumcleanup);
 
 	result = (IndexBulkDeleteResult *)
-		DatumGetPointer(FunctionCall3(procedure,
-									  PointerGetDatum(indexRelation),
-									  PointerGetDatum((Pointer) info),
-									  PointerGetDatum((Pointer) stats)));
+		DatumGetPointer(FunctionCall2(procedure,
+									  PointerGetDatum(info),
+									  PointerGetDatum(stats)));
 
 	return result;
 }

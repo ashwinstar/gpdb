@@ -19,10 +19,10 @@
  * data across crashes.  During database startup, we simply force the
  * currently-active page of SUBTRANS to zeroes.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/backend/access/transam/subtrans.c,v 1.11.2.1 2005/11/22 18:23:05 momjian Exp $
+ * $PostgreSQL: pgsql/src/backend/access/transam/subtrans.c,v 1.17 2006/07/13 16:49:13 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -30,6 +30,7 @@
 
 #include "access/slru.h"
 #include "access/subtrans.h"
+#include "access/transam.h"
 #include "utils/tqual.h"
 
 
@@ -86,7 +87,7 @@ SubTransSetParent(TransactionId xid, TransactionId parent)
 
 	*ptr = parent;
 
-	SubTransCtl->shared->page_status[slotno] = SLRU_PAGE_DIRTY;
+	SubTransCtl->shared->page_dirty[slotno] = true;
 
 	LWLockRelease(SubtransControlLock);
 }
@@ -110,9 +111,9 @@ SubTransGetParent(TransactionId xid)
 	if (!TransactionIdIsNormal(xid))
 		return InvalidTransactionId;
 
-	LWLockAcquire(SubtransControlLock, LW_EXCLUSIVE);
+	/* lock is acquired by SimpleLruReadPage_ReadOnly */
 
-	slotno = SimpleLruReadPage(SubTransCtl, pageno, xid);
+	slotno = SimpleLruReadPage_ReadOnly(SubTransCtl, pageno, xid);
 	ptr = (TransactionId *) SubTransCtl->shared->page_buffer[slotno];
 	ptr += entryno;
 
@@ -142,7 +143,6 @@ SubTransGetTopmostTransaction(TransactionId xid)
 				previousXid = xid;
 
 	/* Can't ask about stuff that might not be around anymore */
-	/* Joe had this Assert commented out... Why? */
 	Assert(TransactionIdFollowsOrEquals(xid, TransactionXmin));
 
 	while (TransactionIdIsValid(parentXid))
@@ -165,14 +165,14 @@ SubTransGetTopmostTransaction(TransactionId xid)
 Size
 SUBTRANSShmemSize(void)
 {
-	return SimpleLruShmemSize();
+	return SimpleLruShmemSize(NUM_SUBTRANS_BUFFERS);
 }
 
 void
 SUBTRANSShmemInit(void)
 {
 	SubTransCtl->PagePrecedes = SubTransPagePrecedes;
-	SimpleLruInit(SubTransCtl, "SUBTRANS Ctl",
+	SimpleLruInit(SubTransCtl, "SUBTRANS Ctl", NUM_SUBTRANS_BUFFERS,
 				  SubtransControlLock, "pg_subtrans");
 	/* Override default assumption that writes should be fsync'd */
 	SubTransCtl->do_fsync = false;
@@ -200,7 +200,7 @@ BootStrapSUBTRANS(void)
 
 	/* Make sure it's written out */
 	SimpleLruWritePage(SubTransCtl, slotno, NULL);
-	Assert(SubTransCtl->shared->page_status[slotno] == SLRU_PAGE_CLEAN);
+	Assert(!SubTransCtl->shared->page_dirty[slotno]);
 
 	LWLockRelease(SubtransControlLock);
 }

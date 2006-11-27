@@ -4,11 +4,11 @@
  *	  routines to support running postgres in 'bootstrap' mode
  *	bootstrap mode is used to create the initial template database
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/bootstrap/bootstrap.c,v 1.208.2.2 2006/06/08 23:55:54 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/bootstrap/bootstrap.c,v 1.226 2006/11/21 00:49:54 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -24,29 +24,24 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "access/xlog.h"
+#include "access/xact.h"
 #include "bootstrap/bootstrap.h"
 #include "catalog/index.h"
 #include "catalog/pg_type.h"
 #include "cdb/cdbvars.h"
-#include "executor/executor.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "postmaster/bgwriter.h"
 #include "storage/freespace.h"
 #include "storage/ipc.h"
-#include "storage/pg_shmem.h"
 #include "storage/proc.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/flatfiles.h"
 #include "utils/fmgroids.h"
-#include "utils/guc.h"
-#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
-#include "utils/relcache.h"
 #include "utils/resscheduler.h"
 
 extern int	optind;
@@ -55,9 +50,6 @@ extern char *optarg;
 
 #define ALLOC(t, c)		((t *) calloc((unsigned)(c), sizeof(t)))
 
-extern int	Int_yyparse(void);
-
-static void usage(void);
 static void bootstrap_signals(void);
 static void ShutdownDummyProcess(int code, Datum arg);
 static hashnode *AddStr(char *str, int strlength, int mderef);
@@ -251,17 +243,20 @@ BootstrapMain(int argc, char *argv[])
 	if (!IsUnderPostmaster)
 		InitializeGUCOptions();
 
-	/* Ignore the initial -boot argument, if present */
-	if (argc > 1 && strcmp(argv[1], "-boot") == 0)
+	/* Ignore the initial --boot argument, if present */
+	if (argc > 1 && strcmp(argv[1], "--boot") == 0)
 	{
 		argv++;
 		argc--;
 	}
 
-	while ((flag = getopt(argc, argv, "B:c:d:D:Fo:p:x:-:")) != -1)
+	while ((flag = getopt(argc, argv, "B:c:d:D:Fr:x:y:-:")) != -1)
 	{
 		switch (flag)
 		{
+			case 'B':
+				SetConfigOption("shared_buffers", optarg, PGC_POSTMASTER, PGC_S_ARGV);
+				break;
 			case 'D':
 				userDoption = optarg;
 				break;
@@ -281,17 +276,14 @@ BootstrapMain(int argc, char *argv[])
 			case 'F':
 				SetConfigOption("fsync", "false", PGC_POSTMASTER, PGC_S_ARGV);
 				break;
-			case 'o':
+			case 'r':
 				StrNCpy(OutputFileName, optarg, MAXPGPATH);
 				break;
 			case 'x':
 				xlogop = atoi(optarg);
 				break;
-			case 'p':
+			case 'y':
 				dbname = strdup(optarg);
-				break;
-			case 'B':
-				SetConfigOption("shared_buffers", optarg, PGC_POSTMASTER, PGC_S_ARGV);
 				break;
 			case 'c':
 			case '-':
@@ -321,7 +313,9 @@ BootstrapMain(int argc, char *argv[])
 					break;
 				}
 			default:
-				usage();
+				write_stderr("Try \"%s --help\" for more information.\n",
+							 progname);
+				proc_exit(1);
 				break;
 		}
 	}
@@ -332,7 +326,10 @@ BootstrapMain(int argc, char *argv[])
 		optind++;
 	}
 	if (!dbname || argc != optind)
-		usage();
+	{
+		write_stderr("%s: invalid command-line arguments\n", progname);
+		proc_exit(1);
+	}
 
 	/*
 	 * Identify myself via ps
@@ -363,6 +360,8 @@ BootstrapMain(int argc, char *argv[])
 			proc_exit(1);
 		/* If timezone is not set, determine what the OS uses */
 		pg_timezone_initialize();
+		/* If timezone_abbreviations is not set, select default */
+		pg_timezone_abbrev_initialize();
 	}
 
 	/* Validate we have been given a reasonable-looking DataDir */
@@ -378,27 +377,24 @@ BootstrapMain(int argc, char *argv[])
 		CreateDataDirLockFile(false);
 
 	SetProcessingMode(BootstrapProcessing);
-	IgnoreSystemIndexes(true);
+	IgnoreSystemIndexes = true;
 
 	BaseInit();
 
 	/*
-	 * We aren't going to do the full InitPostgres pushups, but there are a
-	 * couple of things that need to get lit up even in a dummy process.
+	 * When we are a dummy process, we aren't going to do the full
+	 * InitPostgres pushups, but there are a couple of things that need to get
+	 * lit up even in a dummy process.
 	 */
 	if (IsUnderPostmaster)
 	{
-		/* set up proc.c to get use of LWLocks */
-		switch (xlogop)
-		{
-			case BS_XLOG_BGWRITER:
-				InitDummyProcess(DUMMY_PROC_BGWRITER);
-				break;
-
-			default:
-				InitDummyProcess(DUMMY_PROC_DEFAULT);
-				break;
-		}
+		/*
+		 * Create a PGPROC so we can use LWLocks.  In the EXEC_BACKEND case,
+		 * this was already done by SubPostmasterMain().
+		 */
+#ifndef EXEC_BACKEND
+		InitDummyProcess();
+#endif
 
 		/* finish setting up bufmgr.c */
 		InitBufferPoolBackend();
@@ -427,14 +423,8 @@ BootstrapMain(int argc, char *argv[])
 		case BS_XLOG_STARTUP:
 			bootstrap_signals();
 			StartupXLOG();
-			/*
-			 * These next two functions don't consider themselves critical,
-			 * but we'd best PANIC anyway if they fail.
-			 */
-			START_CRIT_SECTION();
 			LoadFreeSpaceMap();
 			BuildFlatFiles(false);
-			END_CRIT_SECTION();
 			if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
 				InitResQueues();
 			proc_exit(0);		/* startup done */
@@ -450,11 +440,17 @@ BootstrapMain(int argc, char *argv[])
 			proc_exit(1);
 	}
 
+	/*
+	 * We must be getting invoked for bootstrap mode
+	 */
+	Assert(!IsUnderPostmaster);
+
 	SetProcessingMode(BootstrapProcessing);
 
 	/*
-	 * backend initialization
+	 * Do backend-like initialization for bootstrap mode
 	 */
+	InitProcess();
 	(void) InitPostgres(dbname, NULL);
 
 	/*
@@ -478,11 +474,8 @@ BootstrapMain(int argc, char *argv[])
 
 	/*
 	 * Process bootstrap input.
-	 *
-	 * the sed script boot.sed renamed yyparse to Int_yyparse for the
-	 * bootstrap parser to avoid conflicts with the normal SQL parser
 	 */
-	Int_yyparse();
+	boot_yyparse();
 
 	/* Perform a checkpoint to ensure everything's down to disk */
 	SetProcessingMode(NormalProcessing);
@@ -502,24 +495,6 @@ BootstrapMain(int argc, char *argv[])
  *						misc functions
  * ----------------------------------------------------------------
  */
-
-/* usage:
- *		usage help for the bootstrap backend
- */
-static void
-usage(void)
-{
-	write_stderr("Usage:\n"
-				 "  postgres -boot [OPTION]... DBNAME\n"
-				 "  -c NAME=VALUE    set run-time parameter\n"
-				 "  -d 1-5           debug level\n"
-				 "  -D datadir       data directory\n"
-				 "  -F               turn off fsync\n"
-				 "  -o file          send debug output to file\n"
-				 "  -x num           internal use\n");
-
-	proc_exit(1);
-}
 
 /*
  * Set up signal handling for a bootstrap process
@@ -613,6 +588,7 @@ boot_openrel(char *relname)
 
 	if (Typ == NULL)
 	{
+		/* We can now load the pg_type data */
 		rel = heap_open(TypeRelationId, NoLock);
 		scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
 		i = 0;
@@ -829,6 +805,10 @@ void
 InsertOneValue(char *value, int i)
 {
 	Oid			typoid;
+	int16		typlen;
+	bool		typbyval;
+	char		typalign;
+	char		typdelim;
 	Oid			typioparam;
 	Oid			typinput;
 	Oid			typoutput;
@@ -840,55 +820,21 @@ InsertOneValue(char *value, int i)
 
 	if (Typ != NULL)
 	{
-		struct typmap **app;
-		struct typmap *ap;
-
-		elog(DEBUG5, "Typ != NULL");
 		typoid = boot_reldesc->rd_att->attrs[i]->atttypid;
-		app = Typ;
-		while (*app && (*app)->am_oid != typoid)
-			++app;
-		ap = *app;
-		if (ap == NULL)
-			elog(ERROR, "could not find atttypid %u in Typ list", typoid);
-
-		/* XXX this should match getTypeIOParam() */
-		if (ap->am_typ.typtype == 'c')
-			typioparam = typoid;
-		else
-			typioparam = ap->am_typ.typelem;
-
-		typinput = ap->am_typ.typinput;
-		typoutput = ap->am_typ.typoutput;
 	}
 	else
 	{
-		int			typeindex;
-
-		/* XXX why is typoid determined differently in this path? */
+		/* XXX why is typoid determined differently in this case? */
 		typoid = attrtypes[i]->atttypid;
-		for (typeindex = 0; typeindex < n_types; typeindex++)
-		{
-			if (TypInfo[typeindex].oid == typoid)
-				break;
-		}
-		if (typeindex >= n_types)
-			elog(ERROR, "type oid %u not found", typoid);
-		elog(DEBUG5, "Typ == NULL, typeindex = %u", typeindex);
-
-		/* XXX there are no composite types in TypInfo */
-		typioparam = TypInfo[typeindex].elem;
-
-		typinput = TypInfo[typeindex].inproc;
-		typoutput = TypInfo[typeindex].outproc;
 	}
 
-	values[i] = OidFunctionCall3(typinput,
-								 CStringGetDatum(value),
-								 ObjectIdGetDatum(typioparam),
-								 Int32GetDatum(-1));
-	prt = DatumGetCString(OidFunctionCall1(typoutput,
-										   values[i]));
+	boot_get_type_io_data(typoid,
+						  &typlen, &typbyval, &typalign,
+						  &typdelim, &typioparam,
+						  &typinput, &typoutput);
+
+	values[i] = OidInputFunctionCall(typinput, value, typioparam, -1);
+	prt = OidOutputFunctionCall(typoutput, values[i]);
 	elog(DEBUG4, "inserted -> %s", prt);
 	pfree(prt);
 }
@@ -994,6 +940,83 @@ gettype(char *type)
 	err_out();
 	/* not reached, here to make compiler happy */
 	return 0;
+}
+
+/* ----------------
+ *		boot_get_type_io_data
+ *
+ * Obtain type I/O information at bootstrap time.  This intentionally has
+ * almost the same API as lsyscache.c's get_type_io_data, except that
+ * we only support obtaining the typinput and typoutput routines, not
+ * the binary I/O routines.  It is exported so that array_in and array_out
+ * can be made to work during early bootstrap.
+ * ----------------
+ */
+void
+boot_get_type_io_data(Oid typid,
+					  int16 *typlen,
+					  bool *typbyval,
+					  char *typalign,
+					  char *typdelim,
+					  Oid *typioparam,
+					  Oid *typinput,
+					  Oid *typoutput)
+{
+	if (Typ != NULL)
+	{
+		/* We have the boot-time contents of pg_type, so use it */
+		struct typmap **app;
+		struct typmap *ap;
+
+		app = Typ;
+		while (*app && (*app)->am_oid != typid)
+			++app;
+		ap = *app;
+		if (ap == NULL)
+			elog(ERROR, "type OID %u not found in Typ list", typid);
+
+		*typlen = ap->am_typ.typlen;
+		*typbyval = ap->am_typ.typbyval;
+		*typalign = ap->am_typ.typalign;
+		*typdelim = ap->am_typ.typdelim;
+
+		/* XXX this logic must match getTypeIOParam() */
+		if (OidIsValid(ap->am_typ.typelem))
+			*typioparam = ap->am_typ.typelem;
+		else
+			*typioparam = typid;
+
+		*typinput = ap->am_typ.typinput;
+		*typoutput = ap->am_typ.typoutput;
+	}
+	else
+	{
+		/* We don't have pg_type yet, so use the hard-wired TypInfo array */
+		int			typeindex;
+
+		for (typeindex = 0; typeindex < n_types; typeindex++)
+		{
+			if (TypInfo[typeindex].oid == typid)
+				break;
+		}
+		if (typeindex >= n_types)
+			elog(ERROR, "type OID %u not found in TypInfo", typid);
+
+		*typlen = TypInfo[typeindex].len;
+		*typbyval = TypInfo[typeindex].byval;
+		*typalign = TypInfo[typeindex].align;
+		/* We assume typdelim is ',' for all boot-time types */
+		*typdelim = ',';
+
+		/* XXX this logic must match getTypeIOParam() */
+		if (OidIsValid(TypInfo[typeindex].elem))
+			*typioparam = TypInfo[typeindex].elem;
+		else
+			*typioparam = typid;
+
+		*typinput = TypInfo[typeindex].inproc;
+		*typoutput = TypInfo[typeindex].outproc;
+	}
 }
 
 /* ----------------
@@ -1200,11 +1223,12 @@ AddStr(char *str, int strlength, int mderef)
  *	index_register() -- record an index that has been set up for building
  *						later.
  *
- *		At bootstrap time, we define a bunch of indices on system catalogs.
- *		We postpone actually building the indices until just before we're
- *		finished with initialization, however.	This is because more classes
- *		and indices may be defined, and we want to be sure that all of them
- *		are present in the index.
+ *		At bootstrap time, we define a bunch of indexes on system catalogs.
+ *		We postpone actually building the indexes until just before we're
+ *		finished with initialization, however.	This is because the indexes
+ *		themselves have catalog entries, and those have to be included in the
+ *		indexes on those catalogs.	Doing it in two phases is the simplest
+ *		way of making sure the indexes have the right contents at the end.
  */
 void
 index_register(Oid heap,
@@ -1216,7 +1240,7 @@ index_register(Oid heap,
 
 	/*
 	 * XXX mao 10/31/92 -- don't gc index reldescs, associated info at
-	 * bootstrap time.	we'll declare the indices now, but want to create them
+	 * bootstrap time.	we'll declare the indexes now, but want to create them
 	 * later.
 	 */
 
@@ -1250,6 +1274,10 @@ index_register(Oid heap,
 	MemoryContextSwitchTo(oldcxt);
 }
 
+
+/*
+ * build_indices -- fill in all the indexes registered earlier
+ */
 void
 build_indices(void)
 {
@@ -1258,15 +1286,13 @@ build_indices(void)
 		Relation	heap;
 		Relation	ind;
 
+		/* need not bother with locks during bootstrap */
 		heap = heap_open(ILHead->il_heap, NoLock);
-		ind = index_open(ILHead->il_ind);
-		index_build(heap, ind, ILHead->il_info);
+		ind = index_open(ILHead->il_ind, NoLock);
 
-		/*
-		 * In normal processing mode, index_build would close the heap and
-		 * index, but in bootstrap mode it will not.
-		 */
+		index_build(heap, ind, ILHead->il_info, false);
 
-		/* XXX Probably we ought to close the heap and index here? */
+		index_close(ind, NoLock);
+		heap_close(heap, NoLock);
 	}
 }

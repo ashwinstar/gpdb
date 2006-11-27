@@ -3,10 +3,10 @@
  * varsup.c
  *	  postgres OID & XID variables support routines
  *
- * Copyright (c) 2000-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/transam/varsup.c,v 1.68.2.1 2005/11/22 18:23:05 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/transam/varsup.c,v 1.76 2006/11/05 22:42:07 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,9 +17,9 @@
 #include "access/subtrans.h"
 #include "access/transam.h"
 #include "miscadmin.h"
-#include "storage/ipc.h"
+#include "postmaster/autovacuum.h"
+#include "storage/pmsignal.h"
 #include "storage/proc.h"
-#include "cdb/cdbvars.h"
 #include "utils/builtins.h"
 
 
@@ -49,20 +49,31 @@ GetNewTransactionId(bool isSubXact)
 
 	xid = ShmemVariableCache->nextXid;
 
-	/*
+	/*----------
 	 * Check to see if it's safe to assign another XID.  This protects against
 	 * catastrophic data loss due to XID wraparound.  The basic rules are:
-	 * warn if we're past xidWarnLimit, and refuse to execute transactions if
-	 * we're past xidStopLimit, unless we are running in a standalone backend
-	 * (which gives an escape hatch to the DBA who ignored all those
-	 * warnings).
+	 *
+	 * If we're past xidVacLimit, start trying to force autovacuum cycles.
+	 * If we're past xidWarnLimit, start issuing warnings.
+	 * If we're past xidStopLimit, refuse to execute transactions, unless
+	 * we are running in a standalone backend (which gives an escape hatch
+	 * to the DBA who somehow got past the earlier defenses).
 	 *
 	 * Test is coded to fall out as fast as possible during normal operation,
-	 * ie, when the warn limit is set and we haven't violated it.
+	 * ie, when the vac limit is set and we haven't violated it.
+	 *----------
 	 */
-	if (TransactionIdFollowsOrEquals(xid, ShmemVariableCache->xidWarnLimit) &&
-		TransactionIdIsValid(ShmemVariableCache->xidWarnLimit))
+	if (TransactionIdFollowsOrEquals(xid, ShmemVariableCache->xidVacLimit) &&
+		TransactionIdIsValid(ShmemVariableCache->xidVacLimit))
 	{
+		/*
+		 * To avoid swamping the postmaster with signals, we issue the
+		 * autovac request only once per 64K transaction starts.  This
+		 * still gives plenty of chances before we get into real trouble.
+		 */
+		if (IsUnderPostmaster && (xid % 65536) == 0)
+			SendPostmasterSignal(PMSIGNAL_START_AUTOVAC);
+
 		if (IsUnderPostmaster &&
 		 TransactionIdFollowsOrEquals(xid, ShmemVariableCache->xidStopLimit))
 			ereport(ERROR,
@@ -71,7 +82,7 @@ GetNewTransactionId(bool isSubXact)
 							NameStr(ShmemVariableCache->limit_datname)),
 					 errhint("Stop the postmaster and use a standalone backend to vacuum database \"%s\".",
 							 NameStr(ShmemVariableCache->limit_datname))));
-		else
+		else if (TransactionIdFollowsOrEquals(xid, ShmemVariableCache->xidWarnLimit))
 			ereport(WARNING,
 			(errmsg("database \"%s\" must be vacuumed within %u transactions",
 					NameStr(ShmemVariableCache->limit_datname),
@@ -133,17 +144,28 @@ GetNewTransactionId(bool isSubXact)
 	 */
 	if (MyProc != NULL)
 	{
+		/*
+		 * Use volatile pointer to prevent code rearrangement; other backends
+		 * could be examining my subxids info concurrently, and we don't want
+		 * them to see an invalid intermediate state, such as incrementing
+		 * nxids before filling the array entry.  Note we are assuming that
+		 * TransactionId and int fetch/store are atomic.
+		 */
+		volatile PGPROC *myproc = MyProc;
+
 		if (!isSubXact)
-			MyProc->xid = xid;
+			myproc->xid = xid;
 		else
 		{
-			if (MyProc->subxids.nxids < PGPROC_MAX_CACHED_SUBXIDS)
+			int			nxids = myproc->subxids.nxids;
+
+			if (nxids < PGPROC_MAX_CACHED_SUBXIDS)
 			{
-				MyProc->subxids.xids[MyProc->subxids.nxids] = xid;
-				MyProc->subxids.nxids++;
+				myproc->subxids.xids[nxids] = xid;
+				myproc->subxids.nxids = nxids + 1;
 			}
 			else
-				MyProc->subxids.overflowed = true;
+				myproc->subxids.overflowed = true;
 		}
 	}
 
@@ -176,12 +198,13 @@ void
 SetTransactionIdLimit(TransactionId oldest_datfrozenxid,
 					  Name oldest_datname)
 {
+	TransactionId xidVacLimit;
 	TransactionId xidWarnLimit;
 	TransactionId xidStopLimit;
 	TransactionId xidWrapLimit;
 	TransactionId curXid;
 
-	Assert(TransactionIdIsValid(oldest_datfrozenxid));
+	Assert(TransactionIdIsNormal(oldest_datfrozenxid));
 
 	/*
 	 * The place where we actually get into deep trouble is halfway around
@@ -220,8 +243,28 @@ SetTransactionIdLimit(TransactionId oldest_datfrozenxid,
 	if (xidWarnLimit < FirstNormalTransactionId)
 		xidWarnLimit -= FirstNormalTransactionId;
 
+	/*
+	 * We'll start trying to force autovacuums when oldest_datfrozenxid
+	 * gets to be more than autovacuum_freeze_max_age transactions old.
+	 *
+	 * Note: guc.c ensures that autovacuum_freeze_max_age is in a sane
+	 * range, so that xidVacLimit will be well before xidWarnLimit.
+	 *
+	 * Note: autovacuum_freeze_max_age is a PGC_POSTMASTER parameter so that
+	 * we don't have to worry about dealing with on-the-fly changes in its
+	 * value.  It doesn't look practical to update shared state from a GUC
+	 * assign hook (too many processes would try to execute the hook,
+	 * resulting in race conditions as well as crashes of those not
+	 * connected to shared memory).  Perhaps this can be improved someday.
+	 */
+	xidVacLimit = oldest_datfrozenxid + autovacuum_freeze_max_age;
+	if (xidVacLimit < FirstNormalTransactionId)
+		xidVacLimit += FirstNormalTransactionId;
+
 	/* Grab lock for just long enough to set the new limit values */
 	LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
+	ShmemVariableCache->oldestXid = oldest_datfrozenxid;
+	ShmemVariableCache->xidVacLimit = xidVacLimit;
 	ShmemVariableCache->xidWarnLimit = xidWarnLimit;
 	ShmemVariableCache->xidStopLimit = xidStopLimit;
 	ShmemVariableCache->xidWrapLimit = xidWrapLimit;
@@ -230,9 +273,21 @@ SetTransactionIdLimit(TransactionId oldest_datfrozenxid,
 	LWLockRelease(XidGenLock);
 
 	/* Log the info */
-	ereport(LOG,
+	ereport(DEBUG1,
 	   (errmsg("transaction ID wrap limit is %u, limited by database \"%s\"",
 			   xidWrapLimit, NameStr(*oldest_datname))));
+
+	/*
+	 * If past the autovacuum force point, immediately signal an autovac
+	 * request.  The reason for this is that autovac only processes one
+	 * database per invocation.  Once it's finished cleaning up the oldest
+	 * database, it'll call here, and we'll signal the postmaster to start
+	 * another iteration immediately if there are still any old databases.
+	 */
+	if (TransactionIdFollowsOrEquals(curXid, xidVacLimit) &&
+		IsUnderPostmaster)
+		SendPostmasterSignal(PMSIGNAL_START_AUTOVAC);
+
 	/* Give an immediate warning if past the wrap warn point */
 	if (TransactionIdFollowsOrEquals(curXid, xidWarnLimit))
 		ereport(WARNING,

@@ -9,56 +9,264 @@
  *
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/backend/access/transam/xlogutils.c,v 1.39 2005/10/15 02:49:11 momjian Exp $
+ * $PostgreSQL: pgsql/src/backend/access/transam/xlogutils.c,v 1.48 2006/10/04 00:29:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/xlogutils.h"
-#include "storage/bufmgr.h"
+#include "storage/bufpage.h"
 #include "storage/smgr.h"
 #include "utils/hsearch.h"
 
 
 /*
- *
- * Storage related support functions
- *
+ * During XLOG replay, we may see XLOG records for incremental updates of
+ * pages that no longer exist, because their relation was later dropped or
+ * truncated.  (Note: this is only possible when full_page_writes = OFF,
+ * since when it's ON, the first reference we see to a page should always
+ * be a full-page rewrite not an incremental update.)  Rather than simply
+ * ignoring such records, we make a note of the referenced page, and then
+ * complain if we don't actually see a drop or truncate covering the page
+ * later in replay.
  */
+typedef struct xl_invalid_page_key
+{
+	RelFileNode node;			/* the relation */
+	BlockNumber blkno;			/* the page */
+} xl_invalid_page_key;
 
+typedef struct xl_invalid_page
+{
+	xl_invalid_page_key key;	/* hash key ... must be first */
+	bool		present;		/* page existed but contained zeroes */
+} xl_invalid_page;
+
+static HTAB *invalid_page_tab = NULL;
+
+
+/* Log a reference to an invalid page */
+static void
+log_invalid_page(RelFileNode node, BlockNumber blkno, bool present)
+{
+	xl_invalid_page_key key;
+	xl_invalid_page *hentry;
+	bool		found;
+
+	/*
+	 * Log references to invalid pages at DEBUG1 level.  This allows some
+	 * tracing of the cause (note the elog context mechanism will tell us
+	 * something about the XLOG record that generated the reference).
+	 */
+	if (present)
+		elog(DEBUG1, "page %u of relation %u/%u/%u is uninitialized",
+			 blkno, node.spcNode, node.dbNode, node.relNode);
+	else
+		elog(DEBUG1, "page %u of relation %u/%u/%u does not exist",
+			 blkno, node.spcNode, node.dbNode, node.relNode);
+
+	if (invalid_page_tab == NULL)
+	{
+		/* create hash table when first needed */
+		HASHCTL		ctl;
+
+		memset(&ctl, 0, sizeof(ctl));
+		ctl.keysize = sizeof(xl_invalid_page_key);
+		ctl.entrysize = sizeof(xl_invalid_page);
+		ctl.hash = tag_hash;
+
+		invalid_page_tab = hash_create("XLOG invalid-page table",
+									   100,
+									   &ctl,
+									   HASH_ELEM | HASH_FUNCTION);
+	}
+
+	/* we currently assume xl_invalid_page_key contains no padding */
+	key.node = node;
+	key.blkno = blkno;
+	hentry = (xl_invalid_page *)
+		hash_search(invalid_page_tab, (void *) &key, HASH_ENTER, &found);
+
+	if (!found)
+	{
+		/* hash_search already filled in the key */
+		hentry->present = present;
+	}
+	else
+	{
+		/* repeat reference ... leave "present" as it was */
+	}
+}
+
+/* Forget any invalid pages >= minblkno, because they've been dropped */
+static void
+forget_invalid_pages(RelFileNode node, BlockNumber minblkno)
+{
+	HASH_SEQ_STATUS status;
+	xl_invalid_page *hentry;
+
+	if (invalid_page_tab == NULL)
+		return;					/* nothing to do */
+
+	hash_seq_init(&status, invalid_page_tab);
+
+	while ((hentry = (xl_invalid_page *) hash_seq_search(&status)) != NULL)
+	{
+		if (RelFileNodeEquals(hentry->key.node, node) &&
+			hentry->key.blkno >= minblkno)
+		{
+			elog(DEBUG2, "page %u of relation %u/%u/%u has been dropped",
+				 hentry->key.blkno, hentry->key.node.spcNode,
+				 hentry->key.node.dbNode, hentry->key.node.relNode);
+
+			if (hash_search(invalid_page_tab,
+							(void *) &hentry->key,
+							HASH_REMOVE, NULL) == NULL)
+				elog(ERROR, "hash table corrupted");
+		}
+	}
+}
+
+/* Forget any invalid pages in a whole database */
+static void
+forget_invalid_pages_db(Oid dbid)
+{
+	HASH_SEQ_STATUS status;
+	xl_invalid_page *hentry;
+
+	if (invalid_page_tab == NULL)
+		return;					/* nothing to do */
+
+	hash_seq_init(&status, invalid_page_tab);
+
+	while ((hentry = (xl_invalid_page *) hash_seq_search(&status)) != NULL)
+	{
+		if (hentry->key.node.dbNode == dbid)
+		{
+			elog(DEBUG2, "page %u of relation %u/%u/%u has been dropped",
+				 hentry->key.blkno, hentry->key.node.spcNode,
+				 hentry->key.node.dbNode, hentry->key.node.relNode);
+
+			if (hash_search(invalid_page_tab,
+							(void *) &hentry->key,
+							HASH_REMOVE, NULL) == NULL)
+				elog(ERROR, "hash table corrupted");
+		}
+	}
+}
+
+/* Complain about any remaining invalid-page entries */
+void
+XLogCheckInvalidPages(void)
+{
+	HASH_SEQ_STATUS status;
+	xl_invalid_page *hentry;
+	bool		foundone = false;
+
+	if (invalid_page_tab == NULL)
+		return;					/* nothing to do */
+
+	hash_seq_init(&status, invalid_page_tab);
+
+	/*
+	 * Our strategy is to emit WARNING messages for all remaining entries and
+	 * only PANIC after we've dumped all the available info.
+	 */
+	while ((hentry = (xl_invalid_page *) hash_seq_search(&status)) != NULL)
+	{
+		if (hentry->present)
+			elog(WARNING, "page %u of relation %u/%u/%u was uninitialized",
+				 hentry->key.blkno, hentry->key.node.spcNode,
+				 hentry->key.node.dbNode, hentry->key.node.relNode);
+		else
+			elog(WARNING, "page %u of relation %u/%u/%u did not exist",
+				 hentry->key.blkno, hentry->key.node.spcNode,
+				 hentry->key.node.dbNode, hentry->key.node.relNode);
+		foundone = true;
+	}
+
+	if (foundone)
+		elog(PANIC, "WAL contains references to invalid pages");
+}
+
+
+/*
+ * XLogReadBuffer
+ *		Read a page during XLOG replay
+ *
+ * This is functionally comparable to ReadBuffer followed by
+ * LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE): you get back a pinned
+ * and locked buffer.  (Getting the lock is not really necessary, since we
+ * expect that this is only used during single-process XLOG replay, but
+ * some subroutines such as MarkBufferDirty will complain if we don't.)
+ *
+ * If "init" is true then the caller intends to rewrite the page fully
+ * using the info in the XLOG record.  In this case we will extend the
+ * relation if needed to make the page exist, and we will not complain about
+ * the page being "new" (all zeroes).
+ *
+ * If "init" is false then the caller needs the page to be valid already.
+ * If the page doesn't exist or contains zeroes, we return InvalidBuffer.
+ * In this case the caller should silently skip the update on this page.
+ * (In this situation, we expect that the page was later dropped or truncated.
+ * If we don't see evidence of that later in the WAL sequence, we'll complain
+ * at the end of WAL replay.)
+ */
 Buffer
-XLogReadBuffer(bool extend, Relation reln, BlockNumber blkno)
+XLogReadBuffer(Relation reln, BlockNumber blkno, bool init)
 {
 	BlockNumber lastblock = RelationGetNumberOfBlocks(reln);
 	Buffer		buffer;
 
-	if (blkno >= lastblock)
+	Assert(blkno != P_NEW);
+
+	if (blkno < lastblock)
 	{
-		buffer = InvalidBuffer;
-		if (extend)				/* we do this in recovery only - no locks */
+		/* page exists in file */
+		buffer = ReadBuffer(reln, blkno);
+	}
+	else
+	{
+		/* hm, page doesn't exist in file */
+		if (!init)
 		{
-			Assert(InRecovery);
-			while (lastblock <= blkno)
-			{
-				if (buffer != InvalidBuffer)
-					ReleaseBuffer(buffer);		/* must be WriteBuffer()? */
-				buffer = ReadBuffer(reln, P_NEW);
-				lastblock++;
-			}
+			log_invalid_page(reln->rd_node, blkno, false);
+			return InvalidBuffer;
 		}
-		if (buffer != InvalidBuffer)
-			LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
-		return (buffer);
+		/* OK to extend the file */
+		/* we do this in recovery only - no rel-extension lock needed */
+		Assert(InRecovery);
+		buffer = InvalidBuffer;
+		while (blkno >= lastblock)
+		{
+			if (buffer != InvalidBuffer)
+				ReleaseBuffer(buffer);
+			buffer = ReadBuffer(reln, P_NEW);
+			lastblock++;
+		}
+		Assert(BufferGetBlockNumber(buffer) == blkno);
 	}
 
-	buffer = ReadBuffer(reln, blkno);
-	if (buffer != InvalidBuffer)
-		LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
-	return (buffer);
+	LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
+
+	if (!init)
+	{
+		/* check that page has been initialized */
+		Page		page = (Page) BufferGetPage(buffer);
+
+		if (PageIsNew((PageHeader) page))
+		{
+			UnlockReleaseBuffer(buffer);
+			log_invalid_page(reln->rd_node, blkno, true);
+			return InvalidBuffer;
+		}
+	}
+
+	return buffer;
 }
 
 
@@ -142,7 +350,7 @@ _xl_new_reldesc(void)
 	if (_xlast < _xlcnt)
 	{
 		_xlrelarr[_xlast].reldata.rd_rel = &(_xlpgcarr[_xlast]);
-		return (&(_xlrelarr[_xlast]));
+		return &(_xlrelarr[_xlast]);
 	}
 
 	/* reuse */
@@ -151,7 +359,7 @@ _xl_new_reldesc(void)
 	_xl_remove_hash_entry(res);
 
 	_xlast--;
-	return (res);
+	return res;
 }
 
 
@@ -159,6 +367,7 @@ void
 XLogInitRelationCache(void)
 {
 	_xl_init_rel_cache();
+	invalid_page_tab = NULL;
 }
 
 void
@@ -185,6 +394,9 @@ XLogCloseRelationCache(void)
 
 /*
  * Open a relation during XLOG replay
+ *
+ * Note: this once had an API that allowed NULL return on failure, but it
+ * no longer does; any failure results in elog().
  */
 Relation
 XLogOpenRelation(RelFileNode rnode)
@@ -225,7 +437,7 @@ XLogOpenRelation(RelFileNode rnode)
 			hash_search(_xlrelcache, (void *) &rnode, HASH_ENTER, &found);
 
 		if (found)
-			elog(PANIC, "XLogOpenRelation: file found on insert into cache");
+			elog(PANIC, "xlog relation already present on insert into cache");
 
 		hentry->rdesc = res;
 
@@ -250,31 +462,71 @@ XLogOpenRelation(RelFileNode rnode)
 	_xlrelarr[0].lessRecently = res;
 	res->lessRecently->moreRecently = res;
 
-	return (&(res->reldata));
+	return &(res->reldata);
 }
 
 /*
- * Close a relation during XLOG replay
+ * Drop a relation during XLOG replay
  *
  * This is called when the relation is about to be deleted; we need to ensure
  * that there is no dangling smgr reference in the xlog relation cache.
  *
  * Currently, we don't bother to physically remove the relation from the
  * cache, we just let it age out normally.
+ *
+ * This also takes care of removing any open "invalid-page" records for
+ * the relation.
  */
 void
-XLogCloseRelation(RelFileNode rnode)
+XLogDropRelation(RelFileNode rnode)
 {
-	XLogRelDesc *rdesc;
 	XLogRelCacheEntry *hentry;
 
 	hentry = (XLogRelCacheEntry *)
 		hash_search(_xlrelcache, (void *) &rnode, HASH_FIND, NULL);
 
-	if (!hentry)
-		return;					/* not in cache so no work */
+	if (hentry)
+	{
+		XLogRelDesc *rdesc = hentry->rdesc;
 
-	rdesc = hentry->rdesc;
+		RelationCloseSmgr(&(rdesc->reldata));
+	}
 
-	RelationCloseSmgr(&(rdesc->reldata));
+	forget_invalid_pages(rnode, 0);
+}
+
+/*
+ * Drop a whole database during XLOG replay
+ *
+ * As above, but for DROP DATABASE instead of dropping a single rel
+ */
+void
+XLogDropDatabase(Oid dbid)
+{
+	HASH_SEQ_STATUS status;
+	XLogRelCacheEntry *hentry;
+
+	hash_seq_init(&status, _xlrelcache);
+
+	while ((hentry = (XLogRelCacheEntry *) hash_seq_search(&status)) != NULL)
+	{
+		XLogRelDesc *rdesc = hentry->rdesc;
+
+		if (hentry->rnode.dbNode == dbid)
+			RelationCloseSmgr(&(rdesc->reldata));
+	}
+
+	forget_invalid_pages_db(dbid);
+}
+
+/*
+ * Truncate a relation during XLOG replay
+ *
+ * We don't need to do anything to the fake relcache, but we do need to
+ * clean up any open "invalid-page" records for the dropped pages.
+ */
+void
+XLogTruncateRelation(RelFileNode rnode, BlockNumber nblocks)
+{
+	forget_invalid_pages(rnode, nblocks);
 }
