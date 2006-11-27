@@ -26,10 +26,11 @@ INTDIR=.\Release
 
 REFDOCDIR= ../../../doc/src/sgml/ref
 
-CPP_PROJ=/nologo $(OPT) /W3 /GX /D "WIN32" $(DEBUGDEF) /D "_CONSOLE" /D\
- "_MBCS" /Fp"$(INTDIR)\psql.pch" /YX /Fo"$(INTDIR)\\" /Fd"$(INTDIR)\\" /FD /c \
+CPP_PROJ=/nologo $(OPT) /W3 /EHsc /D "WIN32" $(DEBUGDEF) /D "_CONSOLE" /D\
+ "_MBCS" /Fp"$(INTDIR)\psql.pch" /Fo"$(INTDIR)\\" /Fd"$(INTDIR)\\" /FD /c \
  /I ..\..\include /I ..\..\interfaces\libpq /I ..\..\include\port\win32 \
- /D "HAVE_STRDUP" /D "FRONTEND"
+ /I ..\..\include\port\win32_msvc /I ..\pg_dump /I ..\..\backend \
+ /D "HAVE_STRDUP" /D "FRONTEND" /D "_CRT_SECURE_NO_DEPRECATE"
 
 CPP_OBJS=$(INTDIR)/
 CPP_SBRS=.
@@ -56,9 +57,13 @@ CLEAN :
 	-@erase "$(INTDIR)\exec.obj"
 	-@erase "$(INTDIR)\getopt.obj"
 	-@erase "$(INTDIR)\getopt_long.obj"
+	-@erase "$(INTDIR)\snprintf.obj"
 	-@erase "$(INTDIR)\path.obj"
+	-@erase "$(INTDIR)\strlcpy.obj"
 	-@erase "$(INTDIR)\pgstrcasecmp.obj"
 	-@erase "$(INTDIR)\sprompt.obj"
+	-@erase "$(INTDIR)\dumputils.obj"
+	-@erase "$(INTDIR)\keywords.obj"
 	-@erase "$(INTDIR)\*psql.pch"
 	-@erase "$(OUTDIR)\psql.exe"
 	-@erase "$(INTDIR)\..\..\port\pg_config_paths.h"
@@ -88,9 +93,13 @@ LINK32_OBJS= \
 	"$(INTDIR)\exec.obj" \
 	"$(INTDIR)\getopt.obj" \
 	"$(INTDIR)\getopt_long.obj" \
+	"$(INTDIR)\snprintf.obj" \
 	"$(INTDIR)\path.obj" \
+	"$(INTDIR)\strlcpy.obj" \
 	"$(INTDIR)\pgstrcasecmp.obj" \
-	"$(INTDIR)\sprompt.obj"
+	"$(INTDIR)\sprompt.obj" \
+	"$(INTDIR)\dumputils.obj" \
+	"$(INTDIR)\keywords.obj" 
 
 !IFDEF DEBUG
 LINK32_OBJS	= $(LINK32_OBJS) "..\..\interfaces\libpq\Debug\libpqddll.lib"
@@ -134,9 +143,19 @@ LINK32_OBJS	= $(LINK32_OBJS) "..\..\interfaces\libpq\Release\libpqdll.lib"
     $(CPP_PROJ) ..\..\port\getopt_long.c
 <<
 
+"$(INTDIR)\snprintf.obj" : "$(INTDIR)" ..\..\port\snprintf.c
+    $(CPP) @<<
+    $(CPP_PROJ) ..\..\port\snprintf.c
+<<
+
 "$(INTDIR)\path.obj" : "$(INTDIR)" ..\..\port\path.c
     $(CPP) @<<
     $(CPP_PROJ) ..\..\port\path.c
+<<
+
+"$(INTDIR)\strlcpy.obj" : "$(INTDIR)" ..\..\port\strlcpy.c
+    $(CPP) @<<
+    $(CPP_PROJ) ..\..\port\strlcpy.c
 <<
 
 "$(INTDIR)\pgstrcasecmp.obj" : ..\..\port\pgstrcasecmp.c
@@ -147,6 +166,16 @@ LINK32_OBJS	= $(LINK32_OBJS) "..\..\interfaces\libpq\Release\libpqdll.lib"
 "$(INTDIR)\sprompt.obj" : "$(INTDIR)" ..\..\port\sprompt.c
     $(CPP) @<<
     $(CPP_PROJ) ..\..\port\sprompt.c
+<<
+
+"$(INTDIR)\dumputils.obj" : "$(INTDIR)" ..\pg_dump\dumputils.c
+    $(CPP) @<<
+    $(CPP_PROJ) ..\pg_dump\dumputils.c
+<<
+
+"$(INTDIR)\keywords.obj" : "$(INTDIR)" ..\..\backend\parser\keywords.c
+    $(CPP) @<<
+    $(CPP_PROJ) ..\..\backend\parser\keywords.c
 <<
 
 "sql_help.h" : create_help.pl

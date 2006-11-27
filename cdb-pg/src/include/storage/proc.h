@@ -5,17 +5,16 @@
  *
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/proc.h,v 1.84 2005/10/15 02:49:46 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/storage/proc.h,v 1.91 2006/10/04 00:30:10 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef _PROC_H_
 #define _PROC_H_
 
-#include "access/xlog.h"
 #include "storage/lock.h"
 #include "storage/pg_sema.h"
 
@@ -53,7 +52,8 @@ struct XidCache
  * so that the prepared transactions appear to be still running and are
  * correctly shown as holding locks.  A prepared transaction PGPROC can be
  * distinguished from a real one at need by the fact that it has pid == 0.
- * The semaphore and lock-related fields in a prepared-xact PGPROC are unused.
+ * The semaphore and lock-activity fields in a prepared-xact PGPROC are unused,
+ * but its myProcLocks[] lists are valid.
  */
 struct PGPROC
 {
@@ -61,14 +61,15 @@ struct PGPROC
 	SHM_QUEUE	links;			/* list link if process is in a list */
 
 	PGSemaphoreData sem;		/* ONE semaphore to sleep on */
-	int			waitStatus;		/* STATUS_OK or STATUS_ERROR after wakeup */
+	int			waitStatus;		/* STATUS_WAITING, STATUS_OK or STATUS_ERROR */
 
 	TransactionId xid;			/* transaction currently being executed by
 								 * this proc */
 
 	TransactionId xmin;			/* minimal running XID as it was when we were
-								 * starting our xact: vacuum must not remove
-								 * tuples deleted by xid >= xmin ! */
+								 * starting our xact, excluding LAZY VACUUM:
+								 * vacuum must not remove tuples deleted by
+								 * xid >= xmin ! */
 
 	int			pid;			/* This backend's process id, or 0 */
 	Oid			databaseId;		/* OID of database this backend is using */
@@ -76,6 +77,8 @@ struct PGPROC
     int         mppSessionId;   /* serial num of the qDisp process */
     int         mppLocalProcessSerial;  /* this backend's PGPROC serial num */
     bool		mppIsWriter;	/* The writer gang member, holder of locks */
+
+	bool		inVacuum;		/* true if current xact is a LAZY VACUUM */
 
 	/* Info about LWLock the process is currently waiting for, if any. */
 	bool		lwWaiting;		/* true if waiting for an LW lock */
@@ -90,8 +93,12 @@ struct PGPROC
 	LOCKMASK	heldLocks;		/* bitmask for lock types already held on this
 								 * lock object by this backend */
 
-	SHM_QUEUE	procLocks;		/* list of PROCLOCK objects for locks held or
-								 * awaited by this backend */
+	/*
+	 * All PROCLOCK objects for locks held or awaited by this backend are
+	 * linked into one of these lists, according to the partition number of
+	 * their lock.
+	 */
+	SHM_QUEUE	myProcLocks[NUM_LOCK_PARTITIONS];
 
 	struct XidCache subxids;	/* cache for subtransaction XIDs */
 
@@ -109,7 +116,7 @@ extern DLLIMPORT PGPROC *MyProc;
 
 
 /*
- * There is one ProcGlobal struct for the whole installation.
+ * There is one ProcGlobal struct for the whole database cluster.
  */
 typedef struct PROC_HDR
 {
@@ -122,9 +129,10 @@ typedef struct PROC_HDR
     int         mppLocalProcessCounter;
 } PROC_HDR;
 
-
-#define DUMMY_PROC_DEFAULT	0
-#define DUMMY_PROC_BGWRITER 1
+/*
+ * We set aside some extra PGPROC structures for "dummy" processes,
+ * ie things that aren't full-fledged backends but need shmem access.
+ */
 #define NUM_DUMMY_PROCS		2
 
 
@@ -142,19 +150,18 @@ extern int	ProcGlobalSemas(void);
 extern Size ProcGlobalShmemSize(void);
 extern void InitProcGlobal(void);
 extern void InitProcess(void);
-extern void InitDummyProcess(int proctype);
+extern void InitProcessPhase2(void);
+extern void InitDummyProcess(void);
 extern bool HaveNFreeProcs(int n);
 extern void ProcReleaseLocks(bool isCommit);
 
 extern void ProcQueueInit(PROC_QUEUE *queue);
-extern int ProcSleep(LockMethod lockMethodTable, LOCKMODE lockmode,
-		  LOCK *lock, PROCLOCK *proclock);
+extern int	ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable);
 extern PGPROC *ProcWakeup(PGPROC *proc, int waitStatus);
 extern void ProcLockWakeup(LockMethod lockMethodTable, LOCK *lock);
 extern bool LockWaitCancel(void);
 
 extern void ProcWaitForSignal(void);
-extern void ProcCancelWaitForSignal(void);
 extern void ProcSendSignal(int pid);
 
 extern bool enable_sig_alarm(int delayms, bool is_statement_timeout);

@@ -1,9 +1,9 @@
 # PostgreSQL Client Authentication Configuration File
 # ===================================================
 #
-# Refer to the PostgreSQL Administrator's Guide, chapter "Client
-# Authentication" for a complete description.  A short synopsis
-# follows.
+# Refer to the "Client Authentication" section in the
+# PostgreSQL documentation for a complete description
+# of this file.  A short synopsis follows.
 #
 # This file controls: which hosts are allowed to connect, how clients
 # are authenticated, which PostgreSQL user names they can use, which
@@ -35,7 +35,7 @@
 # an IP address and netmask in separate columns to specify the set of hosts.
 #
 # METHOD can be "trust", "reject", "md5", "crypt", "password",
-# "krb5", "ident", or "pam".  Note that "password" sends passwords
+# "krb5", "ident", "pam" or "ldap".  Note that "password" sends passwords
 # in clear text; "md5" is preferred since it sends encrypted passwords.
 #
 # OPTION is the ident map or the name of the PAM service, depending on METHOD.

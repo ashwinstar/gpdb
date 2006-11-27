@@ -2,11 +2,11 @@
  *
  *	  Cyrillic and MULE_INTERNAL
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/cyrillic_and_mic/cyrillic_and_mic.c,v 1.11.2.1 2006/05/21 20:05:48 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/cyrillic_and_mic/cyrillic_and_mic.c,v 1.14 2006/05/30 22:12:14 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,6 +16,8 @@
 #include "mb/pg_wchar.h"
 
 #define ENCODING_GROWTH_RATE 4
+
+PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(koi8r_to_mic);
 PG_FUNCTION_INFO_V1(mic_to_koi8r);

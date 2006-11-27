@@ -1,18 +1,13 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/help.c,v 1.106 2005/10/15 02:49:40 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/help.c,v 1.115 2006/10/06 17:14:00 petere Exp $
  */
 #include "postgres_fe.h"
-#include "common.h"
-#include "input.h"
-#include "print.h"
-#include "help.h"
 
 #include <signal.h>
-#include <errno.h>
 
 #ifndef WIN32
 #ifdef HAVE_PWD_H
@@ -25,11 +20,13 @@
 #endif
 
 #include "pqsignal.h"
-#include "libpq-fe.h"
 
-#include "settings.h"
 #include "common.h"
+#include "help.h"
+#include "input.h"
+#include "settings.h"
 #include "sql_help.h"
+
 
 /*
  * PLEASE:
@@ -78,7 +75,7 @@ usage(void)
 #endif   /* WIN32 */
 	}
 
-/* If this " is the start of the string then it ought to end there to fit in 80 columns >> " */
+/* >>> If this " is the start of the string then it ought to end there to fit in 80 columns >> " */
 	printf(_("This is psql %s, the PostgreSQL interactive terminal.\n\n"),
 		   PG_VERSION);
 	puts(_("Usage:"));
@@ -92,6 +89,7 @@ usage(void)
 	printf(_("  -d DBNAME       specify database name to connect to (default: \"%s\")\n"), env);
 	puts(_("  -c COMMAND      run only single command (SQL or internal) and exit"));
 	puts(_("  -f FILENAME     execute commands from file, then exit"));
+	puts(_("  -1 (\"one\")      execute command file as a single transaction"));
 	puts(_("  -l              list available databases, then exit"));
 	puts(_("  -v NAME=VALUE   set psql variable NAME to VALUE"));
 	puts(_("  -X              do not read startup file (~/.psqlrc)"));
@@ -172,7 +170,7 @@ slashUsage(unsigned short int pager)
 	 * in 80 columns >> "
 	 */
 	fprintf(output, _("General\n"));
-	fprintf(output, _("  \\c[onnect] [DBNAME|- [USER]]\n"
+	fprintf(output, _("  \\c[onnect] [DBNAME|- USER|- HOST|- PORT|-]\n"
 			"                 connect to new database (currently \"%s\")\n"),
 			PQdb(pset.db));
 	fprintf(output, _("  \\cd [DIR]      change the current working directory\n"));
@@ -404,7 +402,7 @@ print_copyright(void)
 {
 	puts(
 		 "PostgreSQL Data Base Management System\n\n"
-		 "Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group\n\n"
+		 "Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group\n\n"
 		 "This software is based on Postgres95, formerly known as Postgres, which\n"
 		 "contains the following notice:\n\n"
 	"Portions Copyright(c) 1994, Regents of the University of California\n\n"

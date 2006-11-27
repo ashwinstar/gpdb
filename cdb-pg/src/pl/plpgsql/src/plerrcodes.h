@@ -7,9 +7,9 @@
  * with some sort of sed hackery, but no time for that now.  It's likely
  * that an exact mapping will not be what's wanted anyhow ...
  *
- * Copyright (c) 2003-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/pl/plpgsql/src/plerrcodes.h,v 1.6 2005/01/01 20:44:32 tgl Exp $
+ * $PostgreSQL: pgsql/src/pl/plpgsql/src/plerrcodes.h,v 1.9 2006/06/16 23:29:27 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -709,6 +709,14 @@
 
 {
 	"raise_exception", ERRCODE_RAISE_EXCEPTION
+},
+
+{
+	"no_data_found", ERRCODE_NO_DATA_FOUND
+},
+
+{
+	"too_many_rows", ERRCODE_TOO_MANY_ROWS
 },
 
 {

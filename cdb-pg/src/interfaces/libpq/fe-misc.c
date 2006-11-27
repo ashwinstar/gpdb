@@ -19,25 +19,22 @@
  * routines.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-misc.c,v 1.122.2.1 2005/11/22 18:23:30 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-misc.c,v 1.130 2006/10/04 00:30:13 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 
 #include "postgres_fe.h"
 
-#include <errno.h>
 #include <signal.h>
 #include <time.h>
 
-#ifndef WIN32_CLIENT_ONLY
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#endif
 
 #ifdef WIN32
 #include "win32.h"
@@ -60,6 +57,7 @@
 #include "libpq-int.h"
 #include "pqsignal.h"
 #include "mb/pg_wchar.h"
+#include "pg_config_paths.h"
 
 
 static int	pqPutMsgBytes(const void *buf, size_t len, PGconn *conn);
@@ -1102,7 +1100,7 @@ pqSocketPoll(int sock, int forRead, int forWrite, time_t end_time)
 int
 PQmblen(const char *s, int encoding)
 {
-	return (pg_encoding_mblen(encoding, s));
+	return pg_encoding_mblen(encoding, s);
 }
 
 /*
@@ -1112,7 +1110,7 @@ PQmblen(const char *s, int encoding)
 int
 PQdsplen(const char *s, int encoding)
 {
-	return (pg_encoding_dsplen(encoding, s));
+	return pg_encoding_dsplen(encoding, s);
 }
 
 /*
@@ -1127,7 +1125,7 @@ PQenv2encoding(void)
 	str = getenv("PGCLIENTENCODING");
 	if (str && *str != '\0')
 		encoding = pg_char_to_encoding(str);
-	return (encoding);
+	return encoding;
 }
 
 

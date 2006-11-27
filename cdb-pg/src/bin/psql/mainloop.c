@@ -1,26 +1,18 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/mainloop.c,v 1.68 2005/10/15 02:49:40 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/mainloop.c,v 1.84 2006/10/04 00:30:06 momjian Exp $
  */
 #include "postgres_fe.h"
 #include "mainloop.h"
 
-#include "pqexpbuffer.h"
 
 #include "command.h"
 #include "common.h"
 #include "input.h"
-#include "prompt.h"
-#include "psqlscan.h"
 #include "settings.h"
-
-#ifndef WIN32
-#include <setjmp.h>
-sigjmp_buf	main_loop_jmp;
-#endif
 
 
 /*
@@ -37,11 +29,14 @@ MainLoop(FILE *source)
 	PQExpBuffer query_buf;		/* buffer for query being accumulated */
 	PQExpBuffer previous_buf;	/* if there isn't anything in the new buffer
 								 * yet, use this one for \e, etc. */
+	PQExpBuffer history_buf;	/* earlier lines of a multi-line command, not
+								 * yet saved to readline history */
 	char	   *line;			/* current line of input */
 	int			added_nl_pos;
 	bool		success;
+	bool		line_saved_in_history;
 	volatile int successResult = EXIT_SUCCESS;
-	volatile backslashResult slashCmdStatus = CMD_UNKNOWN;
+	volatile backslashResult slashCmdStatus = PSQL_CMD_UNKNOWN;
 	volatile promptStatus_t prompt_status = PROMPT_READY;
 	volatile int count_eof = 0;
 	volatile bool die_on_error = false;
@@ -49,7 +44,7 @@ MainLoop(FILE *source)
 	/* Save the prior command source */
 	FILE	   *prev_cmd_source;
 	bool		prev_cmd_interactive;
-	unsigned int prev_lineno;
+	uint64		prev_lineno;
 
 	/* Save old settings */
 	prev_cmd_source = pset.cur_cmd_source;
@@ -66,7 +61,8 @@ MainLoop(FILE *source)
 
 	query_buf = createPQExpBuffer();
 	previous_buf = createPQExpBuffer();
-	if (!query_buf || !previous_buf)
+	history_buf = createPQExpBuffer();
+	if (!query_buf || !previous_buf || !history_buf)
 	{
 		psql_error("out of memory\n");
 		exit(EXIT_FAILURE);
@@ -76,16 +72,14 @@ MainLoop(FILE *source)
 	while (successResult == EXIT_SUCCESS)
 	{
 		/*
-		 * Welcome code for Control-C
+		 * Clean up after a previous Control-C
 		 */
 		if (cancel_pressed)
 		{
 			if (!pset.cur_cmd_interactive)
 			{
 				/*
-				 * You get here if you stopped a script with Ctrl-C and a
-				 * query cancel was issued. In that case we don't do the
-				 * longjmp, so the query routine can finish nicely.
+				 * You get here if you stopped a script with Ctrl-C.
 				 */
 				successResult = EXIT_USER;
 				break;
@@ -94,18 +88,24 @@ MainLoop(FILE *source)
 			cancel_pressed = false;
 		}
 
-#ifndef WIN32
-		if (sigsetjmp(main_loop_jmp, 1) != 0)
+		/*
+		 * Establish longjmp destination for exiting from wait-for-input. We
+		 * must re-do this each time through the loop for safety, since the
+		 * jmpbuf might get changed during command execution.
+		 */
+		if (sigsetjmp(sigint_interrupt_jmp, 1) != 0)
 		{
 			/* got here with longjmp */
 
 			/* reset parsing state */
-			resetPQExpBuffer(query_buf);
 			psql_scan_finish(scan_state);
 			psql_scan_reset(scan_state);
+			resetPQExpBuffer(query_buf);
+			resetPQExpBuffer(history_buf);
 			count_eof = 0;
-			slashCmdStatus = CMD_UNKNOWN;
+			slashCmdStatus = PSQL_CMD_UNKNOWN;
 			prompt_status = PROMPT_READY;
+			cancel_pressed = false;
 
 			if (pset.cur_cmd_interactive)
 				putc('\n', stdout);
@@ -116,34 +116,12 @@ MainLoop(FILE *source)
 			}
 		}
 
-		/*
-		 * establish the control-C handler only after main_loop_jmp is ready
-		 */
-		pqsignal(SIGINT, handle_sigint);		/* control-C => cancel */
-#else							/* WIN32 */
-		setup_cancel_handler();
-#endif
-
 		fflush(stdout);
 
-		if (slashCmdStatus == CMD_NEWEDIT)
-		{
-			/*
-			 * just returned from editing the line? then just copy to the
-			 * input buffer
-			 */
-			line = pg_strdup(query_buf->data);
-			/* reset parsing state since we are rescanning whole line */
-			resetPQExpBuffer(query_buf);
-			psql_scan_reset(scan_state);
-			slashCmdStatus = CMD_UNKNOWN;
-			prompt_status = PROMPT_READY;
-		}
-
 		/*
-		 * otherwise, get another line
+		 * get another line
 		 */
-		else if (pset.cur_cmd_interactive)
+		if (pset.cur_cmd_interactive)
 		{
 			/* May need to reset prompt, eg after \r command */
 			if (query_buf->len == 0)
@@ -168,12 +146,12 @@ MainLoop(FILE *source)
 
 				if (count_eof < GetVariableNum(pset.vars, "IGNOREEOF", 0, 10, false))
 				{
-					if (!QUIET())
+					if (!pset.quiet)
 						printf(_("Use \"\\q\" to leave %s.\n"), pset.progname);
 					continue;
 				}
 
-				puts(QUIET() ? "" : "\\q");
+				puts(pset.quiet ? "" : "\\q");
 			}
 			break;
 		}
@@ -190,8 +168,7 @@ MainLoop(FILE *source)
 		}
 
 		/* echo back if flag is set */
-		if (!pset.cur_cmd_interactive &&
-			VariableEquals(pset.vars, "ECHO", "all"))
+		if (pset.echo == PSQL_ECHO_ALL && !pset.cur_cmd_interactive)
 			puts(line);
 		fflush(stdout);
 
@@ -205,13 +182,14 @@ MainLoop(FILE *source)
 			added_nl_pos = -1;	/* flag we didn't add one */
 
 		/* Setting this will not have effect until next line. */
-		die_on_error = GetVariableBool(pset.vars, "ON_ERROR_STOP");
+		die_on_error = pset.on_error_stop;
 
 		/*
 		 * Parse line, looking for command separators.
 		 */
 		psql_scan_setup(scan_state, line, strlen(line));
 		success = true;
+		line_saved_in_history = false;
 
 		while (success || !die_on_error)
 		{
@@ -226,12 +204,22 @@ MainLoop(FILE *source)
 			 * single-line mode.
 			 */
 			if (scan_result == PSCAN_SEMICOLON ||
-				(scan_result == PSCAN_EOL &&
-				 GetVariableBool(pset.vars, "SINGLELINE")))
+				(scan_result == PSCAN_EOL && pset.singleline))
 			{
+				/*
+				 * Save query in history.  We use history_buf to accumulate
+				 * multi-line queries into a single history entry.
+				 */
+				if (pset.cur_cmd_interactive && !line_saved_in_history)
+				{
+					pg_append_history(line, history_buf);
+					pg_send_history(history_buf);
+					line_saved_in_history = true;
+				}
+
 				/* execute query */
 				success = SendQuery(query_buf->data);
-				slashCmdStatus = success ? CMD_SEND : CMD_ERROR;
+				slashCmdStatus = success ? PSQL_CMD_SEND : PSQL_CMD_ERROR;
 
 				resetPQExpBuffer(previous_buf);
 				appendPQExpBufferStr(previous_buf, query_buf->data);
@@ -247,26 +235,41 @@ MainLoop(FILE *source)
 				 * If we added a newline to query_buf, and nothing else has
 				 * been inserted in query_buf by the lexer, then strip off the
 				 * newline again.  This avoids any change to query_buf when a
-				 * line contains only a backslash command.
+				 * line contains only a backslash command.	Also, in this
+				 * situation we force out any previous lines as a separate
+				 * history entry; we don't want SQL and backslash commands
+				 * intermixed in history if at all possible.
 				 */
 				if (query_buf->len == added_nl_pos)
+				{
 					query_buf->data[--query_buf->len] = '\0';
+					pg_send_history(history_buf);
+				}
 				added_nl_pos = -1;
 
+				/* save backslash command in history */
+				if (pset.cur_cmd_interactive && !line_saved_in_history)
+				{
+					pg_append_history(line, history_buf);
+					pg_send_history(history_buf);
+					line_saved_in_history = true;
+				}
+
+				/* execute backslash command */
 				slashCmdStatus = HandleSlashCmds(scan_state,
 												 query_buf->len > 0 ?
 												 query_buf : previous_buf);
 
-				success = slashCmdStatus != CMD_ERROR;
+				success = slashCmdStatus != PSQL_CMD_ERROR;
 
-				if ((slashCmdStatus == CMD_SEND || slashCmdStatus == CMD_NEWEDIT) &&
+				if ((slashCmdStatus == PSQL_CMD_SEND || slashCmdStatus == PSQL_CMD_NEWEDIT) &&
 					query_buf->len == 0)
 				{
 					/* copy previous buffer to current for handling */
 					appendPQExpBufferStr(query_buf, previous_buf->data);
 				}
 
-				if (slashCmdStatus == CMD_SEND)
+				if (slashCmdStatus == PSQL_CMD_SEND)
 				{
 					success = SendQuery(query_buf->data);
 
@@ -277,8 +280,20 @@ MainLoop(FILE *source)
 					/* flush any paren nesting info after forced send */
 					psql_scan_reset(scan_state);
 				}
-
-				if (slashCmdStatus == CMD_TERMINATE)
+				else if (slashCmdStatus == PSQL_CMD_NEWEDIT)
+				{
+					/* rescan query_buf as new input */
+					psql_scan_finish(scan_state);
+					free(line);
+					line = pg_strdup(query_buf->data);
+					resetPQExpBuffer(query_buf);
+					/* reset parsing state since we are rescanning whole line */
+					psql_scan_reset(scan_state);
+					psql_scan_setup(scan_state, line, strlen(line));
+					line_saved_in_history = false;
+					prompt_status = PROMPT_READY;
+				}
+				else if (slashCmdStatus == PSQL_CMD_TERMINATE)
 					break;
 			}
 
@@ -288,10 +303,14 @@ MainLoop(FILE *source)
 				break;
 		}
 
+		/* Add line to pending history if we didn't execute anything yet */
+		if (pset.cur_cmd_interactive && !line_saved_in_history)
+			pg_append_history(line, history_buf);
+
 		psql_scan_finish(scan_state);
 		free(line);
 
-		if (slashCmdStatus == CMD_TERMINATE)
+		if (slashCmdStatus == PSQL_CMD_TERMINATE)
 		{
 			successResult = EXIT_SUCCESS;
 			break;
@@ -313,6 +332,11 @@ MainLoop(FILE *source)
 	if (query_buf->len > 0 && !pset.cur_cmd_interactive &&
 		successResult == EXIT_SUCCESS)
 	{
+		/* save query in history */
+		if (pset.cur_cmd_interactive)
+			pg_send_history(history_buf);
+
+		/* execute query */
 		success = SendQuery(query_buf->data);
 
 		if (!success && die_on_error)
@@ -322,17 +346,17 @@ MainLoop(FILE *source)
 	}
 
 	/*
-	 * Reset SIGINT handler because main_loop_jmp will be invalid as soon as
-	 * we exit this routine.  If there is an outer MainLoop instance, it will
-	 * re-enable ^C catching as soon as it gets back to the top of its loop
-	 * and resets main_loop_jmp to point to itself.
+	 * Let's just make real sure the SIGINT handler won't try to use
+	 * sigint_interrupt_jmp after we exit this routine.  If there is an outer
+	 * MainLoop instance, it will reset sigint_interrupt_jmp to point to
+	 * itself at the top of its loop, before any further interactive input
+	 * happens.
 	 */
-#ifndef WIN32
-	pqsignal(SIGINT, SIG_DFL);
-#endif
+	sigint_interrupt_enabled = false;
 
 	destroyPQExpBuffer(query_buf);
 	destroyPQExpBuffer(previous_buf);
+	destroyPQExpBuffer(history_buf);
 
 	psql_scan_destroy(scan_state);
 

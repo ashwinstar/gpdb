@@ -6,12 +6,12 @@
  *	  message integrity and endpoint authentication.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/be-secure.c,v 1.59.2.2 2006/05/12 22:44:43 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/be-secure.c,v 1.74 2006/10/06 17:13:59 petere Exp $
  *
  *	  Since the server static private key ($DataDir/server.key)
  *	  will normally be stored unencrypted so that the database
@@ -95,13 +95,13 @@
 #endif
 
 #include "libpq/libpq.h"
-#include "miscadmin.h"
 #include "tcop/tcopprot.h"
 
 
 #ifdef USE_SSL
 
 #define ROOT_CERT_FILE			"root.crt"
+#define ROOT_CRL_FILE			"root.crl"
 #define SERVER_CERT_FILE		"server.crt"
 #define SERVER_PRIVATE_KEY_FILE "server.key"
 
@@ -110,7 +110,7 @@ static DH  *load_dh_buffer(const char *, size_t);
 static DH  *tmp_dh_cb(SSL *s, int is_export, int keylength);
 static int	verify_cb(int, X509_STORE_CTX *);
 static void info_cb(const SSL *ssl, int type, int args);
-static int	initialize_SSL(void);
+static void initialize_SSL(void);
 static void destroy_SSL(void);
 static int	open_server_SSL(Port *);
 static void close_SSL(Port *);
@@ -204,13 +204,11 @@ KWbuHn491xNO25CQWMtem80uKw+pTnisBRF/454n1Jnhub144YRBoN8CAQI=\n\
 int
 secure_initialize(void)
 {
-	int			r = 0;
-
 #ifdef USE_SSL
-	r = initialize_SSL();
+	initialize_SSL();
 #endif
 
-	return r;
+	return 0;
 }
 
 /*
@@ -486,7 +484,7 @@ my_SSL_set_fd(SSL *s, int fd)
 	SSL_set_bio(s, bio, bio);
 	ret = 1;
 err:
-	return (ret);
+	return ret;
 }
 
 /*
@@ -712,7 +710,7 @@ info_cb(const SSL *ssl, int type, int args)
 /*
  *	Initialize global SSL context.
  */
-static int
+static void
 initialize_SSL(void)
 {
 	struct stat buf;
@@ -796,14 +794,43 @@ initialize_SSL(void)
 	}
 	else
 	{
+		/*
+		 * Check the Certificate Revocation List (CRL) if file exists.
+		 * http://searchsecurity.techtarget.com/sDefinition/0,,sid14_gci803160,
+		 * 00.html
+		 */
+		X509_STORE *cvstore = SSL_CTX_get_cert_store(SSL_context);
+
+		if (cvstore)
+		{
+			/* Set the flags to check against the complete CRL chain */
+			if (X509_STORE_load_locations(cvstore, ROOT_CRL_FILE, NULL) != 0)
+/* OpenSSL 0.96 does not support X509_V_FLAG_CRL_CHECK */
+#ifdef X509_V_FLAG_CRL_CHECK
+				X509_STORE_set_flags(cvstore,
+						  X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+#else
+				ereport(LOG,
+						(errmsg("SSL certificate revocation list file \"%s\" ignored",
+								ROOT_CRL_FILE),
+				  errdetail("SSL library does not support certificate revocation lists.")));
+#endif
+			else
+			{
+				/* Not fatal - we do not require CRL */
+				ereport(LOG,
+						(errmsg("SSL certificate revocation list file \"%s\" not found, skipping: %s",
+								ROOT_CRL_FILE, SSLerrmessage()),
+					 errdetail("Certificates will not be checked against revocation list.")));
+			}
+		}
+
 		SSL_CTX_set_verify(SSL_context,
 						   (SSL_VERIFY_PEER |
 							SSL_VERIFY_FAIL_IF_NO_PEER_CERT |
 							SSL_VERIFY_CLIENT_ONCE),
 						   verify_cb);
 	}
-
-	return 0;
 }
 
 /*
@@ -960,11 +987,11 @@ SSLerrmessage(void)
 
 	errcode = ERR_get_error();
 	if (errcode == 0)
-		return "No SSL error reported";
+		return _("no SSL error reported");
 	errreason = ERR_reason_error_string(errcode);
 	if (errreason != NULL)
 		return errreason;
-	snprintf(errbuf, sizeof(errbuf), "SSL error code %lu", errcode);
+	snprintf(errbuf, sizeof(errbuf), _("SSL error code %lu"), errcode);
 	return errbuf;
 }
 

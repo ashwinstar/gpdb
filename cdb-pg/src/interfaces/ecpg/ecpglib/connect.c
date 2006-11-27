@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/connect.c,v 1.26.2.4 2006/06/21 11:38:26 meskes Exp $ */
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/connect.c,v 1.37 2006/11/08 10:46:47 meskes Exp $ */
 
 #define POSTGRES_ECPG_INTERNAL
 #include "postgres_fe.h"
@@ -26,6 +26,12 @@ ecpg_actual_connection_init(void)
 {
 	pthread_key_create(&actual_connection_key, NULL);
 }
+
+void
+ecpg_pthreads_init(void)
+{
+	pthread_once(&actual_connection_key_once, ecpg_actual_connection_init);
+}
 #endif
 
 static struct connection *
@@ -43,13 +49,10 @@ ecpg_get_connection_nr(const char *connection_name)
 		 * connection and hope the user knows what they're doing (i.e. using
 		 * their own mutex to protect that connection from concurrent accesses
 		 */
+		/* if !ret then  we  got the connection from TSD */
 		if (NULL == ret)
-		{
-			ECPGlog("no TSD connection, going for global\n");
+			/* no TSD connection, going for global */
 			ret = actual_connection;
-		}
-		else
-			ECPGlog("got the TSD connection\n");
 #else
 		ret = actual_connection;
 #endif
@@ -84,13 +87,10 @@ ECPGget_connection(const char *connection_name)
 		 * connection and hope the user knows what they're doing (i.e. using
 		 * their own mutex to protect that connection from concurrent accesses
 		 */
+		/* if !ret then  we  got the connection from TSD */
 		if (NULL == ret)
-		{
-			ECPGlog("no TSD connection here either, using global\n");
+			/* no TSD connection here either, using global */
 			ret = actual_connection;
-		}
-		else
-			ECPGlog("got TSD connection\n");
 #else
 		ret = actual_connection;
 #endif
@@ -227,7 +227,7 @@ ECPGnoticeReceiver(void *arg, const PGresult *result)
 	if (sqlstate == NULL)
 		sqlstate = ECPG_SQLSTATE_ECPG_INTERNAL_ERROR;
 
-	if (message == NULL)  /* Shouldn't happen, but need to be sure */
+	if (message == NULL)		/* Shouldn't happen, but need to be sure */
 		message = "No message received";
 
 	/* these are not warnings */
@@ -277,6 +277,9 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 
 	ECPGinit_sqlca(sqlca);
 
+	/* clear auto_mem structure because some error handling functions might access it */
+	ECPGclear_auto_mem();
+
 	if (INFORMIX_MODE(compat))
 	{
 		char	   *envname;
@@ -295,34 +298,29 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 
 	}
 
-	if ((this = (struct connection *) ECPGalloc(sizeof(struct connection), lineno)) == NULL)
-		return false;
-
 	if (dbname == NULL && connection_name == NULL)
 		connection_name = "DEFAULT";
+
+#if ENABLE_THREAD_SAFETY
+	ecpg_pthreads_init();
+#endif
+
+	/* check if the identifier is unique */
+	if (ECPGget_connection(connection_name))
+	{
+		ECPGfree(dbname);
+		ECPGlog("connect: connection identifier %s is already in use\n",
+				connection_name);
+		return false;
+	}
+
+	if ((this = (struct connection *) ECPGalloc(sizeof(struct connection), lineno)) == NULL)
+		return false;
 
 	if (dbname != NULL)
 	{
 		/* get the detail information out of dbname */
-		if (strchr(dbname, '@') != NULL)
-		{
-			/* old style: dbname[@server][:port] */
-			tmp = strrchr(dbname, ':');
-			if (tmp != NULL)	/* port number given */
-			{
-				port = ECPGstrdup(tmp + 1, lineno);
-				*tmp = '\0';
-			}
-
-			tmp = strrchr(dbname, '@');
-			if (tmp != NULL)	/* host name given */
-			{
-				host = ECPGstrdup(tmp + 1, lineno);
-				*tmp = '\0';
-			}
-			realname = ECPGstrdup(dbname, lineno);
-		}
-		else if (strncmp(dbname, "tcp:", 4) == 0 || strncmp(dbname, "unix:", 5) == 0)
+		if (strncmp(dbname, "tcp:", 4) == 0 || strncmp(dbname, "unix:", 5) == 0)
 		{
 			int			offset = 0;
 
@@ -375,14 +373,17 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 							ECPGraise(lineno, ECPG_CONNECT, ECPG_SQLSTATE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION, realname ? realname : "<DEFAULT>");
 							if (host)
 								ECPGfree(host);
-							if (port)
-								ECPGfree(port);
+
+							/*
+							 * port not set yet if (port) ECPGfree(port);
+							 */
 							if (options)
 								ECPGfree(options);
 							if (realname)
 								ECPGfree(realname);
 							if (dbname)
 								ECPGfree(dbname);
+							free(this);
 							return false;
 						}
 					}
@@ -406,7 +407,7 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 							ECPGfree(realname);
 						if (dbname)
 							ECPGfree(dbname);
-						ecpg_finish(this);
+						free(this);
 						return false;
 					}
 				}
@@ -414,11 +415,26 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 					host = ECPGstrdup(dbname + offset, lineno);
 
 			}
-			else
-				realname = ECPGstrdup(dbname, lineno);
 		}
 		else
-			realname = ECPGstrdup(dbname, lineno);
+		{
+			/* old style: dbname[@server][:port] */
+			tmp = strrchr(dbname, ':');
+			if (tmp != NULL)	/* port number given */
+			{
+				port = ECPGstrdup(tmp + 1, lineno);
+				*tmp = '\0';
+			}
+
+			tmp = strrchr(dbname, '@');
+			if (tmp != NULL)	/* host name given */
+			{
+				host = ECPGstrdup(tmp + 1, lineno);
+				*tmp = '\0';
+			}
+
+			realname = (strlen(dbname) > 0) ? ECPGstrdup(dbname, lineno) : NULL;
+		}
 	}
 	else
 		realname = NULL;
@@ -441,7 +457,6 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 
 	all_connections = this;
 #ifdef ENABLE_THREAD_SAFETY
-	pthread_once(&actual_connection_key_once, ecpg_actual_connection_init);
 	pthread_setspecific(actual_connection_key, all_connections);
 #endif
 	actual_connection = all_connections;

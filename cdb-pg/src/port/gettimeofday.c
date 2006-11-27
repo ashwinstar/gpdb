@@ -2,7 +2,7 @@
  * gettimeofday.c
  *	  Win32 gettimeofday() replacement
  *
- * $PostgreSQL: pgsql/src/port/gettimeofday.c,v 1.6 2005/05/16 05:52:13 neilc Exp $
+ * $PostgreSQL: pgsql/src/port/gettimeofday.c,v 1.9 2006/03/04 04:44:07 momjian Exp $
  *
  * Copyright (c) 2003 SRA, Inc.
  * Copyright (c) 2003 SKC, Inc.
@@ -32,10 +32,13 @@
 
 
 /* FILETIME of Jan 1 1970 00:00:00. */
-static const unsigned __int64 epoch = 116444736000000000L;
+static const unsigned __int64 epoch = UINT64CONST(116444736000000000);
 
 /*
  * timezone information is stored outside the kernel so tzp isn't used anymore.
+ *
+ * Note: this function is not for Win32 high precision timing purpose. See
+ * elapsed_time().
  */
 int
 gettimeofday(struct timeval * tp, struct timezone * tzp)

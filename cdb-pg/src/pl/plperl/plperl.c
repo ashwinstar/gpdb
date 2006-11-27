@@ -1,39 +1,7 @@
 /**********************************************************************
  * plperl.c - perl as a procedural language for PostgreSQL
  *
- * IDENTIFICATION
- *
- *	  This software is copyrighted by Mark Hollomon
- *	  but is shameless cribbed from pltcl.c by Jan Wieck.
- *
- *	  The author hereby grants permission  to  use,  copy,	modify,
- *	  distribute,  and	license this software and its documentation
- *	  for any purpose, provided that existing copyright notices are
- *	  retained	in	all  copies  and  that	this notice is included
- *	  verbatim in any distributions. No written agreement, license,
- *	  or  royalty  fee	is required for any of the authorized uses.
- *	  Modifications to this software may be  copyrighted  by  their
- *	  author  and  need  not  follow  the licensing terms described
- *	  here, provided that the new terms are  clearly  indicated  on
- *	  the first page of each file where they apply.
- *
- *	  IN NO EVENT SHALL THE AUTHOR OR DISTRIBUTORS BE LIABLE TO ANY
- *	  PARTY  FOR  DIRECT,	INDIRECT,	SPECIAL,   INCIDENTAL,	 OR
- *	  CONSEQUENTIAL   DAMAGES  ARISING	OUT  OF  THE  USE  OF  THIS
- *	  SOFTWARE, ITS DOCUMENTATION, OR ANY DERIVATIVES THEREOF, EVEN
- *	  IF  THE  AUTHOR  HAVE BEEN ADVISED OF THE POSSIBILITY OF SUCH
- *	  DAMAGE.
- *
- *	  THE  AUTHOR  AND	DISTRIBUTORS  SPECIFICALLY	 DISCLAIM	ANY
- *	  WARRANTIES,  INCLUDING,  BUT	NOT  LIMITED  TO,  THE	IMPLIED
- *	  WARRANTIES  OF  MERCHANTABILITY,	FITNESS  FOR  A  PARTICULAR
- *	  PURPOSE,	AND NON-INFRINGEMENT.  THIS SOFTWARE IS PROVIDED ON
- *	  AN "AS IS" BASIS, AND THE AUTHOR	AND  DISTRIBUTORS  HAVE  NO
- *	  OBLIGATION   TO	PROVIDE   MAINTENANCE,	 SUPPORT,  UPDATES,
- *	  ENHANCEMENTS, OR MODIFICATIONS.
- *
- * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plperl/plperl.c,v 1.94.2.5 2006/01/28 16:21:33 adunstan Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plperl/plperl.c,v 1.122 2006/11/13 17:13:57 adunstan Exp $
  *
  **********************************************************************/
 
@@ -51,31 +19,20 @@
 #include "commands/trigger.h"
 #include "executor/spi.h"
 #include "funcapi.h"
+#include "mb/pg_wchar.h"
+#include "miscadmin.h"
+#include "nodes/makefuncs.h"
+#include "parser/parse_type.h"
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/typcache.h"
-#include "miscadmin.h"
-#include "mb/pg_wchar.h"
+#include "utils/hsearch.h"
 
 /* perl stuff */
+#include "plperl.h"
 
-/* stop perl from hijacking stdio and other stuff */
-#ifdef WIN32
-#define WIN32IO_IS_STDIO
-#endif 
-
-#include "EXTERN.h"
-#include "perl.h"
-#include "XSUB.h"
-#include "ppport.h"
-#include "spi_internal.h"
-
-/* just in case these symbols aren't provided */
-#ifndef pTHX_
-#define pTHX_
-#define pTHX void
-#endif
-
+PG_MODULE_MAGIC;
 
 /**********************************************************************
  * The information we cache about loaded procedures
@@ -99,6 +56,14 @@ typedef struct plperl_proc_desc
 	SV		   *reference;
 } plperl_proc_desc;
 
+/* hash table entry for proc desc  */
+
+typedef struct plperl_proc_entry
+{
+	char proc_name[NAMEDATALEN];
+	plperl_proc_desc *proc_data;
+} plperl_proc_entry;
+
 /*
  * The information we cache for the duration of a single call to a
  * function.
@@ -106,21 +71,58 @@ typedef struct plperl_proc_desc
 typedef struct plperl_call_data
 {
 	plperl_proc_desc *prodesc;
-	FunctionCallInfo  fcinfo;
-	Tuplestorestate  *tuple_store;
-	TupleDesc		  ret_tdesc;
-	AttInMetadata	 *attinmeta;
-	MemoryContext	  tmp_cxt;
+	FunctionCallInfo fcinfo;
+	Tuplestorestate *tuple_store;
+	TupleDesc	ret_tdesc;
+	AttInMetadata *attinmeta;
+	MemoryContext tmp_cxt;
 } plperl_call_data;
 
+/**********************************************************************
+ * The information we cache about prepared and saved plans
+ **********************************************************************/
+typedef struct plperl_query_desc
+{
+	char		qname[sizeof(long) * 2 + 1];
+	void	   *plan;
+	int			nargs;
+	Oid		   *argtypes;
+	FmgrInfo   *arginfuncs;
+	Oid		   *argtypioparams;
+} plperl_query_desc;
+
+/* hash table entry for query desc  */
+
+typedef struct plperl_query_entry
+{
+	char query_name[NAMEDATALEN];
+	plperl_query_desc *query_data;
+} plperl_query_entry;
 
 /**********************************************************************
  * Global data
  **********************************************************************/
-static bool plperl_firstcall = true;
+
+typedef enum
+{
+	INTERP_NONE,
+	INTERP_HELD,
+	INTERP_TRUSTED,
+	INTERP_UNTRUSTED,
+	INTERP_BOTH
+} InterpState;
+
+static InterpState interp_state = INTERP_NONE;
+static bool can_run_two = false;
+
 static bool plperl_safe_init_done = false;
-static PerlInterpreter *plperl_interp = NULL;
-static HV  *plperl_proc_hash = NULL;
+static PerlInterpreter *plperl_trusted_interp = NULL;
+static PerlInterpreter *plperl_untrusted_interp = NULL;
+static PerlInterpreter *plperl_held_interp = NULL;
+static bool can_run_two;
+static bool trusted_context;
+static HTAB  *plperl_proc_hash = NULL;
+static HTAB  *plperl_query_hash = NULL;
 
 static bool plperl_use_strict = false;
 
@@ -130,12 +132,11 @@ static plperl_call_data *current_call_data = NULL;
 /**********************************************************************
  * Forward declarations
  **********************************************************************/
-static void plperl_init_all(void);
-static void plperl_init_interp(void);
-
 Datum		plperl_call_handler(PG_FUNCTION_ARGS);
 Datum		plperl_validator(PG_FUNCTION_ARGS);
-void		plperl_init(void);
+void		_PG_init(void);
+
+static void plperl_init_interp(void);
 
 static Datum plperl_func_handler(PG_FUNCTION_ARGS);
 
@@ -145,6 +146,9 @@ static plperl_proc_desc *compile_plperl_function(Oid fn_oid, bool is_trigger);
 static SV  *plperl_hash_from_tuple(HeapTuple tuple, TupleDesc tupdesc);
 static void plperl_init_shared_libs(pTHX);
 static HV  *plperl_spi_execute_fetch_result(SPITupleTable *, int, int);
+static SV  *newSVstring(const char *str);
+static SV **hv_store_string(HV *hv, const char *key, SV *val);
+static SV **hv_fetch_string(HV *hv, const char *key);
 
 /*
  * This routine is a crock, and so is everyplace that calls it.  The problem
@@ -164,16 +168,22 @@ perm_fmgr_info(Oid functionId, FmgrInfo *finfo)
 }
 
 
-/* Perform initialization during postmaster startup. */
-
+/*
+ * _PG_init()			- library load-time initialization
+ *
+ * DO NOT make this static nor change its name!
+ */
 void
-plperl_init(void)
+_PG_init(void)
 {
-	if (!plperl_firstcall)
+	/* Be sure we do initialization only once (should be redundant now) */
+	static bool inited = false;
+    HASHCTL     hash_ctl;
+
+	if (inited)
 		return;
 
-	DefineCustomBoolVariable(
-							 "plperl.use_strict",
+	DefineCustomBoolVariable("plperl.use_strict",
 	  "If true, will compile trusted and untrusted perl code in strict mode",
 							 NULL,
 							 &plperl_use_strict,
@@ -182,20 +192,25 @@ plperl_init(void)
 
 	EmitWarningsOnPlaceholders("plperl");
 
+	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
+
+	hash_ctl.keysize = NAMEDATALEN;
+	hash_ctl.entrysize = sizeof(plperl_proc_entry);
+
+	plperl_proc_hash = hash_create("PLPerl Procedures",
+								   32,
+								   &hash_ctl,
+								   HASH_ELEM);
+
+	hash_ctl.entrysize = sizeof(plperl_query_entry);
+	plperl_query_hash = hash_create("PLPerl Queries",
+									32,
+									&hash_ctl,
+									HASH_ELEM);
+
 	plperl_init_interp();
-	plperl_firstcall = false;
-}
 
-
-/* Perform initialization during backend startup. */
-
-static void
-plperl_init_all(void)
-{
-	if (plperl_firstcall)
-		plperl_init();
-
-	/* We don't need to do anything yet when a new backend starts. */
+	inited = true;
 }
 
 /* Each of these macros must represent a single string literal */
@@ -225,12 +240,16 @@ plperl_init_all(void)
 	"    { " \
 	"      $res .= _plperl_to_pg_array($elem); " \
 	"    } " \
-	"    else " \
+	"    elsif (defined($elem)) " \
 	"    { " \
 	"      my $str = qq($elem); " \
 	"      $str =~ s/([\"\\\\])/\\\\$1/g; " \
 	"      $res .= qq(\"$str\"); " \
 	"    } " \
+	"    else " \
+	"    { "\
+	"      $res .= 'NULL' ; " \
+	"    } "\
 	"  } " \
 	"  return qq({$res}); " \
 	"} "
@@ -243,7 +262,8 @@ plperl_init_all(void)
 	"$PLContainer->permit_only(':default');" \
 	"$PLContainer->permit(qw[:base_math !:base_io sort time]);" \
 	"$PLContainer->share(qw[&elog &spi_exec_query &return_next " \
-	"&spi_query &spi_fetchrow " \
+	"&spi_query &spi_fetchrow &spi_cursor_close " \
+	"&spi_prepare &spi_exec_prepared &spi_query_prepared &spi_freeplan " \
 	"&_plperl_to_pg_array " \
 	"&DEBUG &LOG &INFO &NOTICE &WARNING &ERROR %_SHARED ]);" \
 	"sub ::mksafefunc {" \
@@ -266,6 +286,90 @@ plperl_init_all(void)
 	"      elog(ERROR,'trusted Perl functions disabled - " \
 	"      please upgrade Perl Safe module to version 2.09 or later');}]); }"
 
+#define TEST_FOR_MULTI \
+	"use Config; " \
+	"$Config{usemultiplicity} eq 'define' or "  \
+    "($Config{usethreads} eq 'define' " \
+	" and $Config{useithreads} eq 'define')"
+
+
+/********************************************************************
+ *
+ * We start out by creating a "held" interpreter that we can use in
+ * trusted or untrusted mode (but not both) as the need arises. Later, we
+ * assign that interpreter if it is available to either the trusted or 
+ * untrusted interpreter. If it has already been assigned, and we need to
+ * create the other interpreter, we do that if we can, or error out.
+ * We detect if it is safe to run two interpreters during the setup of the
+ * dummy interpreter.
+ */
+
+
+static void 
+check_interp(bool trusted)
+{
+	if (interp_state == INTERP_HELD)
+	{
+		if (trusted)
+		{
+			plperl_trusted_interp = plperl_held_interp;
+			interp_state = INTERP_TRUSTED;
+		}
+		else
+		{
+			plperl_untrusted_interp = plperl_held_interp;
+			interp_state = INTERP_UNTRUSTED;
+		}
+		plperl_held_interp = NULL;
+		trusted_context = trusted;
+	}
+	else if (interp_state == INTERP_BOTH || 
+			 (trusted && interp_state == INTERP_TRUSTED) ||
+			 (!trusted && interp_state == INTERP_UNTRUSTED))
+	{
+		if (trusted_context != trusted)
+		{
+			if (trusted)
+				PERL_SET_CONTEXT(plperl_trusted_interp);
+			else
+				PERL_SET_CONTEXT(plperl_untrusted_interp);
+			trusted_context = trusted;
+		}
+	}
+	else if (can_run_two)
+	{
+		PERL_SET_CONTEXT(plperl_held_interp);
+		plperl_init_interp();
+		if (trusted)
+			plperl_trusted_interp = plperl_held_interp;
+		else
+			plperl_untrusted_interp = plperl_held_interp;
+		interp_state = INTERP_BOTH;
+		plperl_held_interp = NULL;
+		trusted_context = trusted;
+	}
+	else
+	{
+		elog(ERROR, 
+			 "can not allocate second Perl interpreter on this platform");
+
+	}
+	
+}
+
+
+static void
+restore_context (bool old_context)
+{
+	if (trusted_context != old_context)
+	{
+		if (old_context)
+			PERL_SET_CONTEXT(plperl_trusted_interp);
+		else
+			PERL_SET_CONTEXT(plperl_untrusted_interp);
+		trusted_context = old_context;
+	}
+}
 
 static void
 plperl_init_interp(void)
@@ -276,13 +380,13 @@ plperl_init_interp(void)
 
 #ifdef WIN32
 
-	/* 
+	/*
 	 * The perl library on startup does horrible things like call
-	 * setlocale(LC_ALL,""). We have protected against that on most
-	 * platforms by setting the environment appropriately. However, on
-	 * Windows, setlocale() does not consult the environment, so we need
-	 * to save the existing locale settings before perl has a chance to 
-	 * mangle them and restore them after its dirty deeds are done.
+	 * setlocale(LC_ALL,""). We have protected against that on most platforms
+	 * by setting the environment appropriately. However, on Windows,
+	 * setlocale() does not consult the environment, so we need to save the
+	 * existing locale settings before perl has a chance to mangle them and
+	 * restore them after its dirty deeds are done.
 	 *
 	 * MSDN ref:
 	 * http://msdn.microsoft.com/library/en-us/vclib/html/_crt_locale.asp
@@ -291,78 +395,89 @@ plperl_init_interp(void)
 	 * subsequent calls to the interpreter don't mess with the locale
 	 * settings.
 	 *
-	 * We restore them using Perl's POSIX::setlocale() function so that
-	 * Perl doesn't have a different idea of the locale from Postgres.
+	 * We restore them using Perl's POSIX::setlocale() function so that Perl
+	 * doesn't have a different idea of the locale from Postgres.
 	 *
 	 */
 
-	char *loc;
-	char *save_collate, *save_ctype, *save_monetary, *save_numeric, *save_time;
-	char buf[1024];
+	char	   *loc;
+	char	   *save_collate,
+			   *save_ctype,
+			   *save_monetary,
+			   *save_numeric,
+			   *save_time;
+	char		buf[1024];
 
-	loc = setlocale(LC_COLLATE,NULL);
+	loc = setlocale(LC_COLLATE, NULL);
 	save_collate = loc ? pstrdup(loc) : NULL;
-	loc = setlocale(LC_CTYPE,NULL);
+	loc = setlocale(LC_CTYPE, NULL);
 	save_ctype = loc ? pstrdup(loc) : NULL;
-	loc = setlocale(LC_MONETARY,NULL);
+	loc = setlocale(LC_MONETARY, NULL);
 	save_monetary = loc ? pstrdup(loc) : NULL;
-	loc = setlocale(LC_NUMERIC,NULL);
+	loc = setlocale(LC_NUMERIC, NULL);
 	save_numeric = loc ? pstrdup(loc) : NULL;
-	loc = setlocale(LC_TIME,NULL);
+	loc = setlocale(LC_TIME, NULL);
 	save_time = loc ? pstrdup(loc) : NULL;
-
 #endif
 
-	plperl_interp = perl_alloc();
-	if (!plperl_interp)
+
+	plperl_held_interp = perl_alloc();
+	if (!plperl_held_interp)
 		elog(ERROR, "could not allocate Perl interpreter");
 
-	perl_construct(plperl_interp);
-	perl_parse(plperl_interp, plperl_init_shared_libs, 3, embedding, NULL);
-	perl_run(plperl_interp);
+	perl_construct(plperl_held_interp);
+	perl_parse(plperl_held_interp, plperl_init_shared_libs, 
+			   3, embedding, NULL);
+	perl_run(plperl_held_interp);
 
-	plperl_proc_hash = newHV();
+	if (interp_state == INTERP_NONE)
+	{
+		SV *res;
+
+		res = eval_pv(TEST_FOR_MULTI,TRUE);
+		can_run_two = SvIV(res); 
+		interp_state = INTERP_HELD;
+	}
 
 #ifdef WIN32
 
-	eval_pv("use POSIX qw(locale_h);", TRUE); /* croak on failure */
+	eval_pv("use POSIX qw(locale_h);", TRUE);	/* croak on failure */
 
 	if (save_collate != NULL)
 	{
-		snprintf(buf, sizeof(buf),"setlocale(%s,'%s');",
-				 "LC_COLLATE",save_collate);
-		eval_pv(buf,TRUE);
+		snprintf(buf, sizeof(buf), "setlocale(%s,'%s');",
+				 "LC_COLLATE", save_collate);
+		eval_pv(buf, TRUE);
 		pfree(save_collate);
 	}
 	if (save_ctype != NULL)
 	{
-		snprintf(buf, sizeof(buf),"setlocale(%s,'%s');",
-				 "LC_CTYPE",save_ctype);
-		eval_pv(buf,TRUE);
+		snprintf(buf, sizeof(buf), "setlocale(%s,'%s');",
+				 "LC_CTYPE", save_ctype);
+		eval_pv(buf, TRUE);
 		pfree(save_ctype);
 	}
 	if (save_monetary != NULL)
 	{
-		snprintf(buf, sizeof(buf),"setlocale(%s,'%s');",
-				 "LC_MONETARY",save_monetary);
-		eval_pv(buf,TRUE);
+		snprintf(buf, sizeof(buf), "setlocale(%s,'%s');",
+				 "LC_MONETARY", save_monetary);
+		eval_pv(buf, TRUE);
 		pfree(save_monetary);
 	}
 	if (save_numeric != NULL)
 	{
-		snprintf(buf, sizeof(buf),"setlocale(%s,'%s');",
-				 "LC_NUMERIC",save_numeric);
-		eval_pv(buf,TRUE);
+		snprintf(buf, sizeof(buf), "setlocale(%s,'%s');",
+				 "LC_NUMERIC", save_numeric);
+		eval_pv(buf, TRUE);
 		pfree(save_numeric);
 	}
 	if (save_time != NULL)
 	{
-		snprintf(buf, sizeof(buf),"setlocale(%s,'%s');",
-				 "LC_TIME",save_time);
-		eval_pv(buf,TRUE);
+		snprintf(buf, sizeof(buf), "setlocale(%s,'%s');",
+				 "LC_TIME", save_time);
+		eval_pv(buf, TRUE);
 		pfree(save_time);
 	}
-
 #endif
 
 }
@@ -500,55 +615,61 @@ plperl_trigger_build_args(FunctionCallInfo fcinfo)
 												)
 		);
 
-	hv_store(hv, "name", 4, newSVpv(tdata->tg_trigger->tgname, 0), 0);
-	hv_store(hv, "relid", 5, newSVpv(relid, 0), 0);
+	hv_store_string(hv, "name", newSVstring(tdata->tg_trigger->tgname));
+	hv_store_string(hv, "relid", newSVstring(relid));
 
 	if (TRIGGER_FIRED_BY_INSERT(tdata->tg_event))
 	{
 		event = "INSERT";
 		if (TRIGGER_FIRED_FOR_ROW(tdata->tg_event))
-			hv_store(hv, "new", 3,
-					 plperl_hash_from_tuple(tdata->tg_trigtuple, tupdesc),
-					 0);
+			hv_store_string(hv, "new",
+							plperl_hash_from_tuple(tdata->tg_trigtuple,
+												   tupdesc));
 	}
 	else if (TRIGGER_FIRED_BY_DELETE(tdata->tg_event))
 	{
 		event = "DELETE";
 		if (TRIGGER_FIRED_FOR_ROW(tdata->tg_event))
-			hv_store(hv, "old", 3,
-					 plperl_hash_from_tuple(tdata->tg_trigtuple, tupdesc),
-					 0);
+			hv_store_string(hv, "old",
+							plperl_hash_from_tuple(tdata->tg_trigtuple,
+												   tupdesc));
 	}
 	else if (TRIGGER_FIRED_BY_UPDATE(tdata->tg_event))
 	{
 		event = "UPDATE";
 		if (TRIGGER_FIRED_FOR_ROW(tdata->tg_event))
 		{
-			hv_store(hv, "old", 3,
-					 plperl_hash_from_tuple(tdata->tg_trigtuple, tupdesc),
-					 0);
-			hv_store(hv, "new", 3,
-					 plperl_hash_from_tuple(tdata->tg_newtuple, tupdesc),
-					 0);
+			hv_store_string(hv, "old",
+							plperl_hash_from_tuple(tdata->tg_trigtuple,
+												   tupdesc));
+			hv_store_string(hv, "new",
+							plperl_hash_from_tuple(tdata->tg_newtuple,
+												   tupdesc));
 		}
 	}
 	else
 		event = "UNKNOWN";
 
-	hv_store(hv, "event", 5, newSVpv(event, 0), 0);
-	hv_store(hv, "argc", 4, newSViv(tdata->tg_trigger->tgnargs), 0);
+	hv_store_string(hv, "event", newSVstring(event));
+	hv_store_string(hv, "argc", newSViv(tdata->tg_trigger->tgnargs));
 
 	if (tdata->tg_trigger->tgnargs > 0)
 	{
 		AV		   *av = newAV();
 
 		for (i = 0; i < tdata->tg_trigger->tgnargs; i++)
-			av_push(av, newSVpv(tdata->tg_trigger->tgargs[i], 0));
-		hv_store(hv, "args", 4, newRV_noinc((SV *) av), 0);
+			av_push(av, newSVstring(tdata->tg_trigger->tgargs[i]));
+		hv_store_string(hv, "args", newRV_noinc((SV *) av));
 	}
 
-	hv_store(hv, "relname", 7,
-			 newSVpv(SPI_getrelname(tdata->tg_relation), 0), 0);
+	hv_store_string(hv, "relname",
+					newSVstring(SPI_getrelname(tdata->tg_relation)));
+
+	hv_store_string(hv, "table_name",
+					newSVstring(SPI_getrelname(tdata->tg_relation)));
+
+	hv_store_string(hv, "table_schema",
+					newSVstring(SPI_getnspname(tdata->tg_relation)));
 
 	if (TRIGGER_FIRED_BEFORE(tdata->tg_event))
 		when = "BEFORE";
@@ -556,7 +677,7 @@ plperl_trigger_build_args(FunctionCallInfo fcinfo)
 		when = "AFTER";
 	else
 		when = "UNKNOWN";
-	hv_store(hv, "when", 4, newSVpv(when, 0), 0);
+	hv_store_string(hv, "when", newSVstring(when));
 
 	if (TRIGGER_FIRED_FOR_ROW(tdata->tg_event))
 		level = "ROW";
@@ -564,7 +685,7 @@ plperl_trigger_build_args(FunctionCallInfo fcinfo)
 		level = "STATEMENT";
 	else
 		level = "UNKNOWN";
-	hv_store(hv, "level", 5, newSVpv(level, 0), 0);
+	hv_store_string(hv, "level", newSVstring(level));
 
 	return newRV_noinc((SV *) hv);
 }
@@ -590,7 +711,7 @@ plperl_modify_tuple(HV *hvTD, TriggerData *tdata, HeapTuple otup)
 
 	tupdesc = tdata->tg_relation->rd_att;
 
-	svp = hv_fetch(hvTD, "new", 3, FALSE);
+	svp = hv_fetch_string(hvTD, "new");
 	if (!svp)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
@@ -610,31 +731,35 @@ plperl_modify_tuple(HV *hvTD, TriggerData *tdata, HeapTuple otup)
 	while ((val = hv_iternextsv(hvNew, &key, &klen)))
 	{
 		int			attn = SPI_fnumber(tupdesc, key);
+		Oid			typinput;
+		Oid			typioparam;
+		int32		atttypmod;
+		FmgrInfo	finfo;
 
 		if (attn <= 0 || tupdesc->attrs[attn - 1]->attisdropped)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
 					 errmsg("Perl hash contains nonexistent column \"%s\"",
 							key)));
+		/* XXX would be better to cache these lookups */
+		getTypeInputInfo(tupdesc->attrs[attn - 1]->atttypid,
+						 &typinput, &typioparam);
+		fmgr_info(typinput, &finfo);
+		atttypmod = tupdesc->attrs[attn - 1]->atttypmod;
 		if (SvOK(val) && SvTYPE(val) != SVt_NULL)
 		{
-			Oid			typinput;
-			Oid			typioparam;
-			FmgrInfo	finfo;
-
-			/* XXX would be better to cache these lookups */
-			getTypeInputInfo(tupdesc->attrs[attn - 1]->atttypid,
-							 &typinput, &typioparam);
-			fmgr_info(typinput, &finfo);
-			modvalues[slotsused] = FunctionCall3(&finfo,
-										   CStringGetDatum(SvPV(val, PL_na)),
-												 ObjectIdGetDatum(typioparam),
-						 Int32GetDatum(tupdesc->attrs[attn - 1]->atttypmod));
+			modvalues[slotsused] = InputFunctionCall(&finfo,
+													 SvPV(val, PL_na),
+													 typioparam,
+													 atttypmod);
 			modnulls[slotsused] = ' ';
 		}
 		else
 		{
-			modvalues[slotsused] = (Datum) 0;
+			modvalues[slotsused] = InputFunctionCall(&finfo,
+													 NULL,
+													 typioparam,
+													 atttypmod);
 			modnulls[slotsused] = 'n';
 		}
 		modattrs[slotsused] = attn;
@@ -670,8 +795,6 @@ plperl_call_handler(PG_FUNCTION_ARGS)
 	Datum		retval;
 	plperl_call_data *save_call_data;
 
-	plperl_init_all();
-
 	save_call_data = current_call_data;
 	PG_TRY();
 	{
@@ -703,10 +826,13 @@ plperl_validator(PG_FUNCTION_ARGS)
 	Oid			funcoid = PG_GETARG_OID(0);
 	HeapTuple	tuple;
 	Form_pg_proc proc;
+	char		functyptype;
+	int			numargs;
+	Oid		   *argtypes;
+	char	  **argnames;
+	char	   *argmodes;
 	bool		istrigger = false;
-	plperl_proc_desc *prodesc;
-
-	plperl_init_all();
+	int			i;
 
 	/* Get the new function's pg_proc entry */
 	tuple = SearchSysCache(PROCOID,
@@ -716,23 +842,53 @@ plperl_validator(PG_FUNCTION_ARGS)
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
 	proc = (Form_pg_proc) GETSTRUCT(tuple);
 
-	/* we assume OPAQUE with no arguments means a trigger */
-	if (proc->prorettype == TRIGGEROID ||
-		(proc->prorettype == OPAQUEOID && proc->pronargs == 0))
-		istrigger = true;
+	functyptype = get_typtype(proc->prorettype);
+
+	/* Disallow pseudotype result */
+	/* except for TRIGGER, RECORD, or VOID */
+	if (functyptype == 'p')
+	{
+		/* we assume OPAQUE with no arguments means a trigger */
+		if (proc->prorettype == TRIGGEROID ||
+			(proc->prorettype == OPAQUEOID && proc->pronargs == 0))
+			istrigger = true;
+		else if (proc->prorettype != RECORDOID &&
+				 proc->prorettype != VOIDOID)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("plperl functions cannot return type %s",
+							format_type_be(proc->prorettype))));
+	}
+
+	/* Disallow pseudotypes in arguments (either IN or OUT) */
+	numargs = get_func_arg_info(tuple,
+								&argtypes, &argnames, &argmodes);
+	for (i = 0; i < numargs; i++)
+	{
+		if (get_typtype(argtypes[i]) == 'p')
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("plperl functions cannot take type %s",
+							format_type_be(argtypes[i]))));
+	}
 
 	ReleaseSysCache(tuple);
 
-	prodesc = compile_plperl_function(funcoid, istrigger);
+	/* Postpone body checks if !check_function_bodies */
+	if (check_function_bodies)
+	{
+		(void) compile_plperl_function(funcoid, istrigger);
+	}
 
 	/* the result of a validator is ignored */
 	PG_RETURN_VOID();
 }
 
 
-/* Uses mksafefunc/mkunsafefunc to create an anonymous sub whose text is
- * supplied in s, and returns a reference to the closure. */
-
+/*
+ * Uses mksafefunc/mkunsafefunc to create an anonymous sub whose text is
+ * supplied in s, and returns a reference to the closure.
+ */
 static SV  *
 plperl_create_sub(char *s, bool trusted)
 {
@@ -750,8 +906,8 @@ plperl_create_sub(char *s, bool trusted)
 	ENTER;
 	SAVETMPS;
 	PUSHMARK(SP);
-	XPUSHs(sv_2mortal(newSVpv("my $_TD=$_[0]; shift;", 0)));
-	XPUSHs(sv_2mortal(newSVpv(s, 0)));
+	XPUSHs(sv_2mortal(newSVstring("our $_TD; local $_TD=$_[0]; shift;")));
+	XPUSHs(sv_2mortal(newSVstring(s)));
 	PUTBACK;
 
 	/*
@@ -875,26 +1031,21 @@ plperl_call_perl_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo)
 			tupType = HeapTupleHeaderGetTypeId(td);
 			tupTypmod = HeapTupleHeaderGetTypMod(td);
 			tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
-			tupdesc = CreateTupleDescCopy(tupdesc);
 			/* Build a temporary HeapTuple control structure */
 			tmptup.t_len = HeapTupleHeaderGetDatumLength(td);
 			tmptup.t_data = td;
 
 			hashref = plperl_hash_from_tuple(&tmptup, tupdesc);
 			XPUSHs(sv_2mortal(hashref));
-			FreeTupleDesc(tupdesc);
+			ReleaseTupleDesc(tupdesc);
 		}
 		else
 		{
 			char	   *tmp;
 
-			tmp = DatumGetCString(FunctionCall1(&(desc->arg_out_func[i]),
-												fcinfo->arg[i]));
-			sv = newSVpv(tmp, 0);
-#if PERL_BCDVERSION >= 0x5006000L
-			if (GetDatabaseEncoding() == PG_UTF8)
-				SvUTF8_on(sv);
-#endif
+			tmp = OutputFunctionCall(&(desc->arg_out_func[i]),
+									 fcinfo->arg[i]);
+			sv = newSVstring(tmp);
 			XPUSHs(sv_2mortal(sv));
 			pfree(tmp);
 		}
@@ -955,7 +1106,7 @@ plperl_call_perl_trigger_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo,
 
 	tg_trigger = ((TriggerData *) fcinfo->context)->tg_trigger;
 	for (i = 0; i < tg_trigger->tgnargs; i++)
-		XPUSHs(sv_2mortal(newSVpv(tg_trigger->tgargs[i], 0)));
+		XPUSHs(sv_2mortal(newSVstring(tg_trigger->tgargs[i])));
 	PUTBACK;
 
 	/* Do NOT use G_KEEPERR here */
@@ -1001,10 +1152,11 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 	Datum		retval;
 	ReturnSetInfo *rsi;
 	SV		   *array_ret = NULL;
+	bool       oldcontext = trusted_context;
 
 	/*
-	 * Create the call_data beforing connecting to SPI, so that it is
-	 * not allocated in the SPI memory context
+	 * Create the call_data beforing connecting to SPI, so that it is not
+	 * allocated in the SPI memory context
 	 */
 	current_call_data = (plperl_call_data *) palloc0(sizeof(plperl_call_data));
 	current_call_data->fcinfo = fcinfo;
@@ -1028,6 +1180,8 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 					 errmsg("set-valued function called in context that "
 							"cannot accept a set")));
 	}
+
+	check_interp(prodesc->lanpltrusted);
 
 	perlret = plperl_call_perl_func(prodesc, fcinfo);
 
@@ -1082,8 +1236,9 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 		/* Return NULL if Perl code returned undef */
 		if (rsi && IsA(rsi, ReturnSetInfo))
 			rsi->isDone = ExprEndResult;
+		retval = InputFunctionCall(&prodesc->result_in_func, NULL,
+								   prodesc->result_typioparam, -1);
 		fcinfo->isnull = true;
-		retval = (Datum) 0;
 	}
 	else if (prodesc->fn_retistuple)
 	{
@@ -1129,16 +1284,16 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 
 		val = SvPV(perlret, PL_na);
 
-		retval = FunctionCall3(&prodesc->result_in_func,
-							   CStringGetDatum(val),
-							   ObjectIdGetDatum(prodesc->result_typioparam),
-							   Int32GetDatum(-1));
+		retval = InputFunctionCall(&prodesc->result_in_func, val,
+								   prodesc->result_typioparam, -1);
 	}
 
 	if (array_ret == NULL)
 		SvREFCNT_dec(perlret);
 
 	current_call_data = NULL;
+	restore_context(oldcontext);
+
 	return retval;
 }
 
@@ -1151,10 +1306,11 @@ plperl_trigger_handler(PG_FUNCTION_ARGS)
 	Datum		retval;
 	SV		   *svTD;
 	HV		   *hvTD;
+	bool       oldcontext = trusted_context;
 
 	/*
-	 * Create the call_data beforing connecting to SPI, so that it is
-	 * not allocated in the SPI memory context
+	 * Create the call_data beforing connecting to SPI, so that it is not
+	 * allocated in the SPI memory context
 	 */
 	current_call_data = (plperl_call_data *) palloc0(sizeof(plperl_call_data));
 	current_call_data->fcinfo = fcinfo;
@@ -1166,6 +1322,8 @@ plperl_trigger_handler(PG_FUNCTION_ARGS)
 	/* Find or compile the function */
 	prodesc = compile_plperl_function(fcinfo->flinfo->fn_oid, true);
 	current_call_data->prodesc = prodesc;
+
+	check_interp(prodesc->lanpltrusted);
 
 	svTD = plperl_trigger_build_args(fcinfo);
 	perlret = plperl_call_perl_trigger_func(prodesc, fcinfo, svTD);
@@ -1237,6 +1395,7 @@ plperl_trigger_handler(PG_FUNCTION_ARGS)
 		SvREFCNT_dec(perlret);
 
 	current_call_data = NULL;
+	restore_context(oldcontext);
 	return retval;
 }
 
@@ -1247,10 +1406,11 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 	HeapTuple	procTup;
 	Form_pg_proc procStruct;
 	char		internal_proname[64];
-	int			proname_len;
 	plperl_proc_desc *prodesc = NULL;
 	int			i;
-	SV		  **svp;
+	plperl_proc_entry *hash_entry;
+	bool found;
+	bool oldcontext = trusted_context;
 
 	/* We'll need the pg_proc tuple in any case... */
 	procTup = SearchSysCache(PROCOID,
@@ -1261,24 +1421,24 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 	procStruct = (Form_pg_proc) GETSTRUCT(procTup);
 
 	/************************************************************
-	 * Build our internal proc name from the functions Oid
+	 * Build our internal proc name from the function's Oid
 	 ************************************************************/
 	if (!is_trigger)
 		sprintf(internal_proname, "__PLPerl_proc_%u", fn_oid);
 	else
 		sprintf(internal_proname, "__PLPerl_proc_%u_trigger", fn_oid);
 
-	proname_len = strlen(internal_proname);
-
 	/************************************************************
 	 * Lookup the internal proc name in the hashtable
 	 ************************************************************/
-	svp = hv_fetch(plperl_proc_hash, internal_proname, proname_len, FALSE);
-	if (svp)
+	hash_entry = hash_search(plperl_proc_hash, internal_proname, 
+							 HASH_FIND, NULL);
+
+	if (hash_entry)
 	{
 		bool		uptodate;
 
-		prodesc = (plperl_proc_desc *) SvIV(*svp);
+		prodesc = hash_entry->proc_data;
 
 		/************************************************************
 		 * If it's present, must check whether it's still up to date.
@@ -1290,14 +1450,16 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 
 		if (!uptodate)
 		{
-			/* need we delete old entry? */
+			free(prodesc); /* are we leaking memory here? */
 			prodesc = NULL;
+			hash_search(plperl_proc_hash, internal_proname,
+						HASH_REMOVE,NULL);
 		}
 	}
 
 	/************************************************************
 	 * If we haven't found it in the hashtable, we analyze
-	 * the functions arguments and returntype and store
+	 * the function's arguments and return type and store
 	 * the in-/out-functions in the prodesc block and create
 	 * a new hashtable entry for it.
 	 *
@@ -1465,7 +1627,13 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 		/************************************************************
 		 * Create the procedure in the interpreter
 		 ************************************************************/
+
+		check_interp(prodesc->lanpltrusted);
+
 		prodesc->reference = plperl_create_sub(proc_source, prodesc->lanpltrusted);
+
+		restore_context(oldcontext);
+
 		pfree(proc_source);
 		if (!prodesc->reference)	/* can this happen? */
 		{
@@ -1475,8 +1643,9 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 				 internal_proname);
 		}
 
-		hv_store(plperl_proc_hash, internal_proname, proname_len,
-				 newSViv((IV) prodesc), 0);
+		hash_entry = hash_search(plperl_proc_hash, internal_proname,
+								 HASH_ENTER, &found);
+		hash_entry->proc_data = prodesc;
 	}
 
 	ReleaseSysCache(procTup);
@@ -1503,36 +1672,27 @@ plperl_hash_from_tuple(HeapTuple tuple, TupleDesc tupdesc)
 		char	   *outputstr;
 		Oid			typoutput;
 		bool		typisvarlena;
-		int			namelen;
-		SV		   *sv;
 
 		if (tupdesc->attrs[i]->attisdropped)
 			continue;
 
 		attname = NameStr(tupdesc->attrs[i]->attname);
-		namelen = strlen(attname);
 		attr = heap_getattr(tuple, i + 1, tupdesc, &isnull);
 
 		if (isnull)
 		{
 			/* Store (attname => undef) and move on. */
-			hv_store(hv, attname, namelen, newSV(0), 0);
+			hv_store_string(hv, attname, newSV(0));
 			continue;
 		}
 
 		/* XXX should have a way to cache these lookups */
-
 		getTypeOutputInfo(tupdesc->attrs[i]->atttypid,
 						  &typoutput, &typisvarlena);
 
-		outputstr = DatumGetCString(OidFunctionCall1(typoutput, attr));
+		outputstr = OidOutputFunctionCall(typoutput, attr);
 
-		sv = newSVpv(outputstr, 0);
-#if PERL_BCDVERSION >= 0x5006000L
-		if (GetDatabaseEncoding() == PG_UTF8)
-			SvUTF8_on(sv);
-#endif
-		hv_store(hv, attname, namelen, sv, 0);
+		hv_store_string(hv, attname, newSVstring(outputstr));
 
 		pfree(outputstr);
 	}
@@ -1618,12 +1778,12 @@ plperl_spi_execute_fetch_result(SPITupleTable *tuptable, int processed,
 
 	result = newHV();
 
-	hv_store(result, "status", strlen("status"),
-			 newSVpv((char *) SPI_result_code_string(status), 0), 0);
-	hv_store(result, "processed", strlen("processed"),
-			 newSViv(processed), 0);
+	hv_store_string(result, "status",
+					newSVstring(SPI_result_code_string(status)));
+	hv_store_string(result, "processed",
+					newSViv(processed));
 
-	if (status == SPI_OK_SELECT)
+	if (status > 0 && tuptable)
 	{
 		AV		   *rows;
 		SV		   *row;
@@ -1635,8 +1795,8 @@ plperl_spi_execute_fetch_result(SPITupleTable *tuptable, int processed,
 			row = plperl_hash_from_tuple(tuptable->vals[i], tuptable->tupdesc);
 			av_push(rows, row);
 		}
-		hv_store(result, "rows", strlen("rows"),
-				 newRV_noinc((SV *) rows), 0);
+		hv_store_string(result, "rows",
+						newRV_noinc((SV *) rows));
 	}
 
 	SPI_freetuptable(tuptable);
@@ -1683,14 +1843,14 @@ plperl_return_next(SV *sv)
 
 	if (!current_call_data->ret_tdesc)
 	{
-		TupleDesc tupdesc;
+		TupleDesc	tupdesc;
 
 		Assert(!current_call_data->tuple_store);
 		Assert(!current_call_data->attinmeta);
 
 		/*
-		 * This is the first call to return_next in the current
-		 * PL/Perl function call, so memoize some lookups
+		 * This is the first call to return_next in the current PL/Perl
+		 * function call, so memoize some lookups
 		 */
 		if (prodesc->fn_retistuple)
 			(void) get_call_result_type(fcinfo, NULL, &tupdesc);
@@ -1713,14 +1873,13 @@ plperl_return_next(SV *sv)
 		}
 
 		MemoryContextSwitchTo(old_cxt);
-	}		
+	}
 
 	/*
 	 * Producing the tuple we want to return requires making plenty of
-	 * palloc() allocations that are not cleaned up. Since this
-	 * function can be called many times before the current memory
-	 * context is reset, we need to do those allocations in a
-	 * temporary context.
+	 * palloc() allocations that are not cleaned up. Since this function can
+	 * be called many times before the current memory context is reset, we
+	 * need to do those allocations in a temporary context.
 	 */
 	if (!current_call_data->tmp_cxt)
 	{
@@ -1741,18 +1900,22 @@ plperl_return_next(SV *sv)
 	}
 	else
 	{
-		Datum		ret = (Datum) 0;
-		bool		isNull = true;
+		Datum		ret;
+		bool		isNull;
 
 		if (SvOK(sv) && SvTYPE(sv) != SVt_NULL)
 		{
 			char	   *val = SvPV(sv, PL_na);
 
-			ret = FunctionCall3(&prodesc->result_in_func,
-								PointerGetDatum(val),
-								ObjectIdGetDatum(prodesc->result_typioparam),
-								Int32GetDatum(-1));
+			ret = InputFunctionCall(&prodesc->result_in_func, val,
+									prodesc->result_typioparam, -1);
 			isNull = false;
+		}
+		else
+		{
+			ret = InputFunctionCall(&prodesc->result_in_func, NULL,
+									prodesc->result_typioparam, -1);
+			isNull = true;
 		}
 
 		tuple = heap_form_tuple(current_call_data->ret_tdesc, &ret, &isNull);
@@ -1786,16 +1949,20 @@ plperl_spi_query(char *query)
 	PG_TRY();
 	{
 		void	   *plan;
-		Portal		portal = NULL;
+		Portal		portal;
 
 		/* Create a cursor for the query */
 		plan = SPI_prepare(query, 0, NULL);
-		if (plan)
-			portal = SPI_cursor_open(NULL, plan, NULL, NULL, false);
-		if (portal)
-			cursor = newSVpv(portal->name, 0);
-		else
-			cursor = newSV(0);
+		if (plan == NULL)
+			elog(ERROR, "SPI_prepare() failed:%s",
+				 SPI_result_code_string(SPI_result));
+
+		portal = SPI_cursor_open(NULL, plan, NULL, NULL, false);
+		SPI_freeplan(plan);
+		if (portal == NULL)
+			elog(ERROR, "SPI_cursor_open() failed:%s",
+				 SPI_result_code_string(SPI_result));
+		cursor = newSVstring(portal->name);
 
 		/* Commit the inner transaction, return to outer xact context */
 		ReleaseCurrentSubTransaction();
@@ -1862,14 +2029,16 @@ plperl_spi_fetchrow(char *cursor)
 		Portal		p = SPI_cursor_find(cursor);
 
 		if (!p)
-			row = newSV(0);
+		{
+			row = &PL_sv_undef;
+		}
 		else
 		{
 			SPI_cursor_fetch(p, true, 1);
 			if (SPI_processed == 0)
 			{
 				SPI_cursor_close(p);
-				row = newSV(0);
+				row = &PL_sv_undef;
 			}
 			else
 			{
@@ -1920,4 +2089,506 @@ plperl_spi_fetchrow(char *cursor)
 	PG_END_TRY();
 
 	return row;
+}
+
+void
+plperl_spi_cursor_close(char *cursor)
+{
+	Portal		p = SPI_cursor_find(cursor);
+
+	if (p)
+		SPI_cursor_close(p);
+}
+
+SV *
+plperl_spi_prepare(char *query, int argc, SV **argv)
+{
+	plperl_query_desc *qdesc;
+	plperl_query_entry *hash_entry;
+	bool        found;
+	void	   *plan;
+	int			i;
+
+	MemoryContext oldcontext = CurrentMemoryContext;
+	ResourceOwner oldowner = CurrentResourceOwner;
+
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(oldcontext);
+
+	/************************************************************
+	 * Allocate the new querydesc structure
+	 ************************************************************/
+	qdesc = (plperl_query_desc *) malloc(sizeof(plperl_query_desc));
+	MemSet(qdesc, 0, sizeof(plperl_query_desc));
+	snprintf(qdesc->qname, sizeof(qdesc->qname), "%lx", (long) qdesc);
+	qdesc->nargs = argc;
+	qdesc->argtypes = (Oid *) malloc(argc * sizeof(Oid));
+	qdesc->arginfuncs = (FmgrInfo *) malloc(argc * sizeof(FmgrInfo));
+	qdesc->argtypioparams = (Oid *) malloc(argc * sizeof(Oid));
+
+	PG_TRY();
+	{
+		/************************************************************
+		 * Lookup the argument types by name in the system cache
+		 * and remember the required information for input conversion
+		 ************************************************************/
+		for (i = 0; i < argc; i++)
+		{
+			List	   *names;
+			HeapTuple	typeTup;
+
+			/* Parse possibly-qualified type name and look it up in pg_type */
+			names = stringToQualifiedNameList(SvPV(argv[i], PL_na),
+											  "plperl_spi_prepare");
+			typeTup = typenameType(NULL, makeTypeNameFromNameList(names));
+			qdesc->argtypes[i] = HeapTupleGetOid(typeTup);
+			perm_fmgr_info(((Form_pg_type) GETSTRUCT(typeTup))->typinput,
+						   &(qdesc->arginfuncs[i]));
+			qdesc->argtypioparams[i] = getTypeIOParam(typeTup);
+			ReleaseSysCache(typeTup);
+		}
+
+		/************************************************************
+		 * Prepare the plan and check for errors
+		 ************************************************************/
+		plan = SPI_prepare(query, argc, qdesc->argtypes);
+
+		if (plan == NULL)
+			elog(ERROR, "SPI_prepare() failed:%s",
+				 SPI_result_code_string(SPI_result));
+
+		/************************************************************
+		 * Save the plan into permanent memory (right now it's in the
+		 * SPI procCxt, which will go away at function end).
+		 ************************************************************/
+		qdesc->plan = SPI_saveplan(plan);
+		if (qdesc->plan == NULL)
+			elog(ERROR, "SPI_saveplan() failed: %s",
+				 SPI_result_code_string(SPI_result));
+
+		/* Release the procCxt copy to avoid within-function memory leak */
+		SPI_freeplan(plan);
+
+		/* Commit the inner transaction, return to outer xact context */
+		ReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+
+		/*
+		 * AtEOSubXact_SPI() should not have popped any SPI context, but just
+		 * in case it did, make sure we remain connected.
+		 */
+		SPI_restore_connection();
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		free(qdesc->argtypes);
+		free(qdesc->arginfuncs);
+		free(qdesc->argtypioparams);
+		free(qdesc);
+
+		/* Save error info */
+		MemoryContextSwitchTo(oldcontext);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		/* Abort the inner transaction */
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+
+		/*
+		 * If AtEOSubXact_SPI() popped any SPI context of the subxact, it will
+		 * have left us in a disconnected state.  We need this hack to return
+		 * to connected state.
+		 */
+		SPI_restore_connection();
+
+		/* Punt the error to Perl */
+		croak("%s", edata->message);
+
+		/* Can't get here, but keep compiler quiet */
+		return NULL;
+	}
+	PG_END_TRY();
+
+	/************************************************************
+	 * Insert a hashtable entry for the plan and return
+	 * the key to the caller.
+	 ************************************************************/
+
+	hash_entry = hash_search(plperl_query_hash, qdesc->qname,
+							 HASH_ENTER,&found);
+	hash_entry->query_data = qdesc;
+
+	return newSVstring(qdesc->qname);
+}
+
+HV *
+plperl_spi_exec_prepared(char *query, HV *attr, int argc, SV **argv)
+{
+	HV		   *ret_hv;
+	SV		  **sv;
+	int			i,
+				limit,
+				spi_rv;
+	char	   *nulls;
+	Datum	   *argvalues;
+	plperl_query_desc *qdesc;
+	plperl_query_entry *hash_entry;
+
+	/*
+	 * Execute the query inside a sub-transaction, so we can cope with errors
+	 * sanely
+	 */
+	MemoryContext oldcontext = CurrentMemoryContext;
+	ResourceOwner oldowner = CurrentResourceOwner;
+
+	BeginInternalSubTransaction(NULL);
+	/* Want to run inside function's memory context */
+	MemoryContextSwitchTo(oldcontext);
+
+	PG_TRY();
+	{
+		/************************************************************
+		 * Fetch the saved plan descriptor, see if it's o.k.
+		 ************************************************************/
+
+		hash_entry = hash_search(plperl_query_hash, query,
+										 HASH_FIND,NULL);
+		if (hash_entry == NULL)
+			elog(ERROR, "spi_exec_prepared: Invalid prepared query passed");
+
+		qdesc = hash_entry->query_data;
+
+		if (qdesc == NULL)
+			elog(ERROR, "spi_exec_prepared: panic - plperl_query_hash value vanished");
+
+		if (qdesc->nargs != argc)
+			elog(ERROR, "spi_exec_prepared: expected %d argument(s), %d passed",
+				 qdesc->nargs, argc);
+
+		/************************************************************
+		 * Parse eventual attributes
+		 ************************************************************/
+		limit = 0;
+		if (attr != NULL)
+		{
+			sv = hv_fetch_string(attr, "limit");
+			if (*sv && SvIOK(*sv))
+				limit = SvIV(*sv);
+		}
+		/************************************************************
+		 * Set up arguments
+		 ************************************************************/
+		if (argc > 0)
+		{
+			nulls = (char *) palloc(argc);
+			argvalues = (Datum *) palloc(argc * sizeof(Datum));
+		}
+		else
+		{
+			nulls = NULL;
+			argvalues = NULL;
+		}
+
+		for (i = 0; i < argc; i++)
+		{
+			if (SvTYPE(argv[i]) != SVt_NULL)
+			{
+				argvalues[i] = InputFunctionCall(&qdesc->arginfuncs[i],
+												 SvPV(argv[i], PL_na),
+												 qdesc->argtypioparams[i],
+												 -1);
+				nulls[i] = ' ';
+			}
+			else
+			{
+				argvalues[i] = InputFunctionCall(&qdesc->arginfuncs[i],
+												 NULL,
+												 qdesc->argtypioparams[i],
+												 -1);
+				nulls[i] = 'n';
+			}
+		}
+
+		/************************************************************
+		 * go
+		 ************************************************************/
+		spi_rv = SPI_execute_plan(qdesc->plan, argvalues, nulls,
+							 current_call_data->prodesc->fn_readonly, limit);
+		ret_hv = plperl_spi_execute_fetch_result(SPI_tuptable, SPI_processed,
+												 spi_rv);
+		if (argc > 0)
+		{
+			pfree(argvalues);
+			pfree(nulls);
+		}
+
+		/* Commit the inner transaction, return to outer xact context */
+		ReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+
+		/*
+		 * AtEOSubXact_SPI() should not have popped any SPI context, but just
+		 * in case it did, make sure we remain connected.
+		 */
+		SPI_restore_connection();
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		/* Save error info */
+		MemoryContextSwitchTo(oldcontext);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		/* Abort the inner transaction */
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+
+		/*
+		 * If AtEOSubXact_SPI() popped any SPI context of the subxact, it will
+		 * have left us in a disconnected state.  We need this hack to return
+		 * to connected state.
+		 */
+		SPI_restore_connection();
+
+		/* Punt the error to Perl */
+		croak("%s", edata->message);
+
+		/* Can't get here, but keep compiler quiet */
+		return NULL;
+	}
+	PG_END_TRY();
+
+	return ret_hv;
+}
+
+SV *
+plperl_spi_query_prepared(char *query, int argc, SV **argv)
+{
+	int			i;
+	char	   *nulls;
+	Datum	   *argvalues;
+	plperl_query_desc *qdesc;
+	plperl_query_entry *hash_entry;
+	SV		   *cursor;
+	Portal		portal = NULL;
+
+	/*
+	 * Execute the query inside a sub-transaction, so we can cope with errors
+	 * sanely
+	 */
+	MemoryContext oldcontext = CurrentMemoryContext;
+	ResourceOwner oldowner = CurrentResourceOwner;
+
+	BeginInternalSubTransaction(NULL);
+	/* Want to run inside function's memory context */
+	MemoryContextSwitchTo(oldcontext);
+
+	PG_TRY();
+	{
+		/************************************************************
+		 * Fetch the saved plan descriptor, see if it's o.k.
+		 ************************************************************/
+		hash_entry = hash_search(plperl_query_hash, query,
+										 HASH_FIND,NULL);
+		if (hash_entry == NULL)
+			elog(ERROR, "spi_exec_prepared: Invalid prepared query passed");
+
+		qdesc = hash_entry->query_data;
+
+		if (qdesc == NULL)
+			elog(ERROR, "spi_query_prepared: panic - plperl_query_hash value vanished");
+
+		if (qdesc->nargs != argc)
+			elog(ERROR, "spi_query_prepared: expected %d argument(s), %d passed",
+				 qdesc->nargs, argc);
+
+		/************************************************************
+		 * Set up arguments
+		 ************************************************************/
+		if (argc > 0)
+		{
+			nulls = (char *) palloc(argc);
+			argvalues = (Datum *) palloc(argc * sizeof(Datum));
+		}
+		else
+		{
+			nulls = NULL;
+			argvalues = NULL;
+		}
+
+		for (i = 0; i < argc; i++)
+		{
+			if (SvTYPE(argv[i]) != SVt_NULL)
+			{
+				argvalues[i] = InputFunctionCall(&qdesc->arginfuncs[i],
+												 SvPV(argv[i], PL_na),
+												 qdesc->argtypioparams[i],
+												 -1);
+				nulls[i] = ' ';
+			}
+			else
+			{
+				argvalues[i] = InputFunctionCall(&qdesc->arginfuncs[i],
+												 NULL,
+												 qdesc->argtypioparams[i],
+												 -1);
+				nulls[i] = 'n';
+			}
+		}
+
+		/************************************************************
+		 * go
+		 ************************************************************/
+		portal = SPI_cursor_open(NULL, qdesc->plan, argvalues, nulls,
+								 current_call_data->prodesc->fn_readonly);
+		if (argc > 0)
+		{
+			pfree(argvalues);
+			pfree(nulls);
+		}
+		if (portal == NULL)
+			elog(ERROR, "SPI_cursor_open() failed:%s",
+				 SPI_result_code_string(SPI_result));
+
+		cursor = newSVstring(portal->name);
+
+		/* Commit the inner transaction, return to outer xact context */
+		ReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+
+		/*
+		 * AtEOSubXact_SPI() should not have popped any SPI context, but just
+		 * in case it did, make sure we remain connected.
+		 */
+		SPI_restore_connection();
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		/* Save error info */
+		MemoryContextSwitchTo(oldcontext);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		/* Abort the inner transaction */
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+
+		/*
+		 * If AtEOSubXact_SPI() popped any SPI context of the subxact, it will
+		 * have left us in a disconnected state.  We need this hack to return
+		 * to connected state.
+		 */
+		SPI_restore_connection();
+
+		/* Punt the error to Perl */
+		croak("%s", edata->message);
+
+		/* Can't get here, but keep compiler quiet */
+		return NULL;
+	}
+	PG_END_TRY();
+
+	return cursor;
+}
+
+void
+plperl_spi_freeplan(char *query)
+{
+	void	   *plan;
+	plperl_query_desc *qdesc;
+	plperl_query_entry *hash_entry;
+
+	hash_entry = hash_search(plperl_query_hash, query,
+										 HASH_FIND,NULL);
+	if (hash_entry == NULL)
+		elog(ERROR, "spi_exec_prepared: Invalid prepared query passed");
+
+	qdesc = hash_entry->query_data;
+
+	if (qdesc == NULL)
+		elog(ERROR, "spi_exec_freeplan: panic - plperl_query_hash value vanished");
+
+	/*
+	 * free all memory before SPI_freeplan, so if it dies, nothing will be
+	 * left over
+	 */
+	hash_search(plperl_query_hash, query, 
+				HASH_REMOVE,NULL);
+
+	plan = qdesc->plan;
+	free(qdesc->argtypes);
+	free(qdesc->arginfuncs);
+	free(qdesc->argtypioparams);
+	free(qdesc);
+
+	SPI_freeplan(plan);
+}
+
+/*
+ * Create a new SV from a string assumed to be in the current database's
+ * encoding.
+ */
+static SV *
+newSVstring(const char *str)
+{
+	SV		   *sv;
+
+	sv = newSVpv(str, 0);
+#if PERL_BCDVERSION >= 0x5006000L
+	if (GetDatabaseEncoding() == PG_UTF8)
+		SvUTF8_on(sv);
+#endif
+	return sv;
+}
+
+/*
+ * Store an SV into a hash table under a key that is a string assumed to be
+ * in the current database's encoding.
+ */
+static SV **
+hv_store_string(HV *hv, const char *key, SV *val)
+{
+	int32	klen = strlen(key);
+
+	/*
+	 * This seems nowhere documented, but under Perl 5.8.0 and up,
+	 * hv_store() recognizes a negative klen parameter as meaning
+	 * a UTF-8 encoded key.  It does not appear that hashes track
+	 * UTF-8-ness of keys at all in Perl 5.6.
+	 */
+#if PERL_BCDVERSION >= 0x5008000L
+	if (GetDatabaseEncoding() == PG_UTF8)
+		klen = -klen;
+#endif
+	return hv_store(hv, key, klen, val, 0);
+}
+
+/*
+ * Fetch an SV from a hash table under a key that is a string assumed to be
+ * in the current database's encoding.
+ */
+static SV **
+hv_fetch_string(HV *hv, const char *key)
+{
+	int32	klen = strlen(key);
+
+	/* See notes in hv_store_string */
+#if PERL_BCDVERSION >= 0x5008000L
+	if (GetDatabaseEncoding() == PG_UTF8)
+		klen = -klen;
+#endif
+	return hv_fetch(hv, key, klen, 0);
 }

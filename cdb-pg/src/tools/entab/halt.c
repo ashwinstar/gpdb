@@ -2,12 +2,15 @@
 **
 **		halt.c
 **
+** $PostgreSQL: pgsql/src/tools/entab/halt.c,v 1.10 2006/07/11 21:21:59 alvherre Exp $
+**
 **		This is used to print out error messages and exit
 */
 
 #include <stdarg.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <errno.h>
 
 

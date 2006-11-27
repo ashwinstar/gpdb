@@ -1,3 +1,5 @@
+/* $PostgreSQL: pgsql/src/tutorial/funcs.c,v 1.16 2006/09/27 16:19:42 tgl Exp $ */
+
 /******************************************************************************
   These are user-defined functions that can be bound to a Postgres backend
   and called by Postgres to execute SQL functions of the same name.
@@ -13,6 +15,8 @@
 
 #include "executor/executor.h"	/* for GetAttributeByName() */
 #include "utils/geo_decls.h"	/* for point type */
+
+PG_MODULE_MAGIC;
 
 
 /* These prototypes just prevent possible warnings from gcc. */
@@ -81,13 +85,14 @@ copytext(text *t)
 text *
 concat_text(text *arg1, text *arg2)
 {
-	int32		new_text_size = VARSIZE(arg1) + VARSIZE(arg2) - VARHDRSZ;
+	int32		arg1_size = VARSIZE(arg1) - VARHDRSZ;
+	int32		arg2_size = VARSIZE(arg2) - VARHDRSZ;
+	int32		new_text_size = arg1_size + arg2_size + VARHDRSZ;
 	text	   *new_text = (text *) palloc(new_text_size);
 
-	memset((void *) new_text, 0, new_text_size);
 	VARATT_SIZEP(new_text) = new_text_size;
-	strncpy(VARDATA(new_text), VARDATA(arg1), VARSIZE(arg1) - VARHDRSZ);
-	strncat(VARDATA(new_text), VARDATA(arg2), VARSIZE(arg2) - VARHDRSZ);
+	memcpy(VARDATA(new_text), VARDATA(arg1), arg1_size);
+	memcpy(VARDATA(new_text) + arg1_size, VARDATA(arg2), arg2_size);
 	return new_text;
 }
 
@@ -102,6 +107,6 @@ c_overpaid(HeapTupleHeader t,	/* the current instance of EMP */
 
 	salary = DatumGetInt32(GetAttributeByName(t, "salary", &isnull));
 	if (isnull)
-		return (false);
+		return false;
 	return salary > limit;
 }

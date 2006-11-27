@@ -3,12 +3,12 @@
  * sprompt.c
  *	  simple_prompt() routine
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/sprompt.c,v 1.12.2.3 2006/03/05 05:33:19 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/port/sprompt.c,v 1.18 2006/10/04 00:30:14 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -32,7 +32,6 @@
 #include <termios.h>
 #endif
 
-bool		prompt_state = false;
 extern char *simple_prompt(const char *prompt, int maxlen, bool echo);
 
 char *
@@ -57,8 +56,6 @@ simple_prompt(const char *prompt, int maxlen, bool echo)
 	if (!destination)
 		return NULL;
 
-	prompt_state = true;		/* disable SIGINT */
-
 	/*
 	 * Do not try to collapse these into one "w+" mode file. Doesn't work on
 	 * some platforms (eg, HPUX 10.20).
@@ -67,7 +64,7 @@ simple_prompt(const char *prompt, int maxlen, bool echo)
 	termout = fopen(DEVTTY, "w");
 	if (!termin || !termout
 #ifdef WIN32
-		/* See DEVTTY comment for msys */
+	/* See DEVTTY comment for msys */
 		|| (getenv("OSTYPE") && strcmp(getenv("OSTYPE"), "msys") == 0)
 #endif
 		)
@@ -158,8 +155,6 @@ simple_prompt(const char *prompt, int maxlen, bool echo)
 		fclose(termin);
 		fclose(termout);
 	}
-
-	prompt_state = false;		/* SIGINT okay again */
 
 	return destination;
 }

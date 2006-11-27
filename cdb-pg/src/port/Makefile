@@ -15,7 +15,7 @@
 #		for use only by the backend binaries
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/port/Makefile,v 1.29.2.2 2006/07/14 16:45:48 tgl Exp $
+#    $PostgreSQL: pgsql/src/port/Makefile,v 1.33 2006/07/14 16:45:43 tgl Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -32,11 +32,14 @@ LIBOBJS_SRV := $(LIBOBJS:%.o=%_srv.o)
 all: libpgport.a libpgport_srv.a
 
 # libpgport is needed by some contrib
-install: all
-	$(INSTALL_STLIB) libpgport.a $(DESTDIR)$(libdir)
+install: all installdirs
+	$(INSTALL_STLIB) libpgport.a '$(DESTDIR)$(libdir)/libpgport.a'
+
+installdirs:
+	$(mkinstalldirs) '$(DESTDIR)$(libdir)'
 
 uninstall:
-	$(RM) $(DESTDIR)$(libdir)/libpgport.a
+	rm -f '$(DESTDIR)$(libdir)/libpgport.a'
 
 libpgport.a: $(LIBOBJS)
 	$(AR) $(AROPT) $@ $^
@@ -63,6 +66,10 @@ thread_srv.o: thread.c
 	$(CC) $(CFLAGS) $(subst -DFRONTEND,, $(CPPFLAGS)) -c $< -o $@
 
 # Dependency is to ensure that path changes propagate
+#
+# We create a separate file rather than put these in pg_config.h
+# because many of these values come from makefiles and are not
+# available to configure.
 pg_config_paths.h: $(top_builddir)/src/Makefile.global
 	echo "#define PGBINDIR \"$(bindir)\"" >$@
 	echo "#define PGSHAREDIR \"$(datadir)\"" >>$@

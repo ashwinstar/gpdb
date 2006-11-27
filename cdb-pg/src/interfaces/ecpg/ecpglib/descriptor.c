@@ -1,6 +1,6 @@
 /* dynamic SQL support routines
  *
- * $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/descriptor.c,v 1.12.6.4 2006/07/05 10:50:06 meskes Exp $
+ * $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/descriptor.c,v 1.20 2006/10/04 00:30:11 momjian Exp $
  */
 
 #define POSTGRES_ECPG_INTERNAL
@@ -249,7 +249,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 				data_var.ind_varcharsize = varcharsize;
 				data_var.ind_arrsize = arrsize;
 				data_var.ind_offset = offset;
-				if ((data_var.ind_arrsize == 0 || data_var.ind_varcharsize == 0) && data_var.ind_pointer != NULL)
+				if (data_var.ind_arrsize == 0 || data_var.ind_varcharsize == 0)
 					data_var.ind_value = *((void **) (data_var.ind_pointer));
 				else
 					data_var.ind_value = data_var.ind_pointer;
@@ -349,9 +349,10 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 					return false;
 				}
 				/* allocate storage if needed */
-				if (arrsize == 0 && var != NULL && *(void **) var == NULL)
+				if (arrsize == 0 && *(void **) var == NULL)
 				{
-					void *mem = (void *) ECPGalloc(offset * ntuples, lineno);
+					void	   *mem = (void *) ECPGalloc(offset * ntuples, lineno);
+
 					if (!mem)
 						return false;
 					*(void **) var = mem;
@@ -398,7 +399,12 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 		ECPGfree(oldlocale);
 	}
 	else if (data_var.ind_type != ECPGt_NO_INDICATOR && data_var.ind_pointer != NULL)
-	/* ind_type != NO_INDICATOR should always have ind_pointer != NULL but since this might be changed manually in the .c file let's play it safe */
+
+		/*
+		 * ind_type != NO_INDICATOR should always have ind_pointer != NULL but
+		 * since this might be changed manually in the .c file let's play it
+		 * safe
+		 */
 	{
 		/*
 		 * this is like ECPGstore_result but since we don't have a data
@@ -415,7 +421,8 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 		/* allocate storage if needed */
 		if (data_var.ind_arrsize == 0 && data_var.ind_value == NULL)
 		{
-			void *mem = (void *) ECPGalloc(data_var.ind_offset * ntuples, lineno);
+			void	   *mem = (void *) ECPGalloc(data_var.ind_offset * ntuples, lineno);
+
 			if (!mem)
 				return false;
 			*(void **) data_var.ind_pointer = mem;
@@ -520,7 +527,7 @@ ECPGset_desc(int lineno, const char *desc_name, int index,...)
 		{
 			case ECPGd_data:
 				{
-					if (!ECPGstore_input(lineno, true, var, &tobeinserted, &malloced))
+					if (!ECPGstore_input(lineno, true, var, &tobeinserted, &malloced, false))
 					{
 						ECPGfree(var);
 						return false;

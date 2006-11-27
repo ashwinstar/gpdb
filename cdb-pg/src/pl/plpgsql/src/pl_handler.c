@@ -1,39 +1,17 @@
-/**********************************************************************
+/*-------------------------------------------------------------------------
+ *
  * pl_handler.c		- Handler for the PL/pgSQL
  *			  procedural language
  *
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_handler.c,v 1.26 2005/10/15 02:49:50 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_handler.c,v 1.33 2006/10/19 18:32:48 tgl Exp $
  *
- *	  This software is copyrighted by Jan Wieck - Hamburg.
- *
- *	  The author hereby grants permission  to  use,  copy,	modify,
- *	  distribute,  and	license this software and its documentation
- *	  for any purpose, provided that existing copyright notices are
- *	  retained	in	all  copies  and  that	this notice is included
- *	  verbatim in any distributions. No written agreement, license,
- *	  or  royalty  fee	is required for any of the authorized uses.
- *	  Modifications to this software may be  copyrighted  by  their
- *	  author  and  need  not  follow  the licensing terms described
- *	  here, provided that the new terms are  clearly  indicated  on
- *	  the first page of each file where they apply.
- *
- *	  IN NO EVENT SHALL THE AUTHOR OR DISTRIBUTORS BE LIABLE TO ANY
- *	  PARTY  FOR  DIRECT,	INDIRECT,	SPECIAL,   INCIDENTAL,	 OR
- *	  CONSEQUENTIAL   DAMAGES  ARISING	OUT  OF  THE  USE  OF  THIS
- *	  SOFTWARE, ITS DOCUMENTATION, OR ANY DERIVATIVES THEREOF, EVEN
- *	  IF  THE  AUTHOR  HAVE BEEN ADVISED OF THE POSSIBILITY OF SUCH
- *	  DAMAGE.
- *
- *	  THE  AUTHOR  AND	DISTRIBUTORS  SPECIFICALLY	 DISCLAIM	ANY
- *	  WARRANTIES,  INCLUDING,  BUT	NOT  LIMITED  TO,  THE	IMPLIED
- *	  WARRANTIES  OF  MERCHANTABILITY,	FITNESS  FOR  A  PARTICULAR
- *	  PURPOSE,	AND NON-INFRINGEMENT.  THIS SOFTWARE IS PROVIDED ON
- *	  AN "AS IS" BASIS, AND THE AUTHOR	AND  DISTRIBUTORS  HAVE  NO
- *	  OBLIGATION   TO	PROVIDE   MAINTENANCE,	 SUPPORT,  UPDATES,
- *	  ENHANCEMENTS, OR MODIFICATIONS.
- *
- **********************************************************************/
+ *-------------------------------------------------------------------------
+ */
 
 #include "plpgsql.h"
 #include "pl.tab.h"
@@ -41,47 +19,38 @@
 #include "access/heapam.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "funcapi.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-extern DLLIMPORT bool check_function_bodies;
+PG_MODULE_MAGIC;
 
-static bool plpgsql_firstcall = true;
-
-static void plpgsql_init_all(void);
+PLpgSQL_plugin **plugin_ptr = NULL;
 
 
 /*
- * plpgsql_init()			- postmaster-startup safe initialization
+ * _PG_init()			- library load-time initialization
  *
- * DO NOT make this static --- it has to be callable by preload
+ * DO NOT make this static nor change its name!
  */
 void
-plpgsql_init(void)
+_PG_init(void)
 {
-	/* Do initialization only once */
-	if (!plpgsql_firstcall)
+	/* Be sure we do initialization only once (should be redundant now) */
+	static bool inited = false;
+
+	if (inited)
 		return;
 
 	plpgsql_HashTableInit();
 	RegisterXactCallback(plpgsql_xact_cb, NULL);
-	plpgsql_firstcall = false;
-}
 
-/*
- * plpgsql_init_all()		- Initialize all
- */
-static void
-plpgsql_init_all(void)
-{
-	/* Execute any postmaster-startup safe initialization */
-	plpgsql_init();
+	/* Set up a rendezvous point with optional instrumentation plugin */
+	plugin_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
 
-	/*
-	 * Any other initialization that must be done each time a new backend
-	 * starts -- currently none
-	 */
+	inited = true;
 }
 
 /* ----------
@@ -99,9 +68,6 @@ plpgsql_call_handler(PG_FUNCTION_ARGS)
 	PLpgSQL_function *func;
 	Datum		retval;
 	int			rc;
-
-	/* perform initialization */
-	plpgsql_init_all();
 
 	/*
 	 * Connect to SPI manager
@@ -147,13 +113,12 @@ plpgsql_validator(PG_FUNCTION_ARGS)
 	HeapTuple	tuple;
 	Form_pg_proc proc;
 	char		functyptype;
+	int			numargs;
+	Oid		   *argtypes;
+	char	  **argnames;
+	char	   *argmodes;
 	bool		istrigger = false;
-	bool		haspolyresult;
-	bool		haspolyarg;
 	int			i;
-
-	/* perform initialization */
-	plpgsql_init_all();
 
 	/* Get the new function's pg_proc entry */
 	tuple = SearchSysCache(PROCOID,
@@ -173,32 +138,30 @@ plpgsql_validator(PG_FUNCTION_ARGS)
 		if (proc->prorettype == TRIGGEROID ||
 			(proc->prorettype == OPAQUEOID && proc->pronargs == 0))
 			istrigger = true;
-		else if (proc->prorettype == ANYARRAYOID ||
-				 proc->prorettype == ANYELEMENTOID)
-			haspolyresult = true;
 		else if (proc->prorettype != RECORDOID &&
-				 proc->prorettype != VOIDOID)
+				 proc->prorettype != VOIDOID &&
+				 proc->prorettype != ANYARRAYOID &&
+				 proc->prorettype != ANYELEMENTOID)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("plpgsql functions cannot return type %s",
 							format_type_be(proc->prorettype))));
 	}
 
-	/* Disallow pseudotypes in arguments */
+	/* Disallow pseudotypes in arguments (either IN or OUT) */
 	/* except for ANYARRAY or ANYELEMENT */
-	haspolyarg = false;
-	for (i = 0; i < proc->pronargs; i++)
+	numargs = get_func_arg_info(tuple,
+								&argtypes, &argnames, &argmodes);
+	for (i = 0; i < numargs; i++)
 	{
-		if (get_typtype(proc->proargtypes.values[i]) == 'p')
+		if (get_typtype(argtypes[i]) == 'p')
 		{
-			if (proc->proargtypes.values[i] == ANYARRAYOID ||
-				proc->proargtypes.values[i] == ANYELEMENTOID)
-				haspolyarg = true;
-			else
+			if (argtypes[i] != ANYARRAYOID &&
+				argtypes[i] != ANYELEMENTOID)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("plpgsql functions cannot take type %s",
-							  format_type_be(proc->proargtypes.values[i]))));
+								format_type_be(argtypes[i]))));
 		}
 	}
 

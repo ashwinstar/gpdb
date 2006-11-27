@@ -3,7 +3,7 @@
  * 1996-06-05 by Arthur David Olson (arthur_david_olson@nih.gov).
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/timezone/localtime.c,v 1.12 2005/10/15 02:49:51 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/timezone/localtime.c,v 1.16 2006/10/18 16:43:14 tgl Exp $
  */
 
 /*
@@ -122,7 +122,7 @@ detzcode(const char *codep)
 }
 
 int
-tzload(const char *name, struct state * sp)
+tzload(const char *name, char *canonname, struct state *sp)
 {
 	const char *p;
 	int			i;
@@ -130,36 +130,11 @@ tzload(const char *name, struct state * sp)
 
 	if (name == NULL && (name = TZDEFAULT) == NULL)
 		return -1;
-	{
-		int			doaccess;
-		char		fullname[MAXPGPATH];
-
-		if (name[0] == ':')
-			++name;
-		doaccess = name[0] == '/';
-		if (!doaccess)
-		{
-			p = pg_TZDIR();
-			if (p == NULL)
-				return -1;
-			if ((strlen(p) + strlen(name) + 1) >= sizeof fullname)
-				return -1;
-			(void) strcpy(fullname, p);
-			(void) strcat(fullname, "/");
-			(void) strcat(fullname, name);
-
-			/*
-			 * Set doaccess if '.' (as in "../") shows up in name.
-			 */
-			if (strchr(name, '.') != NULL)
-				doaccess = TRUE;
-			name = fullname;
-		}
-		if (doaccess && access(name, R_OK) != 0)
-			return -1;
-		if ((fid = open(name, O_RDONLY | PG_BINARY)) == -1)
-			return -1;
-	}
+	if (name[0] == ':')
+		++name;
+	fid = pg_open_tzfile(name, canonname);
+	if (fid < 0)
+		return -1;
 	{
 		struct tzhead *tzhp;
 		union
@@ -456,7 +431,7 @@ getrule(const char *strp, struct rule * rulep)
  * calculate the Epoch-relative time that rule takes effect.
  */
 static pg_time_t
-transtime(const pg_time_t janfirst, int year,
+transtime(pg_time_t janfirst, int year,
 		  const struct rule * rulep, long offset)
 {
 	int			leapyear;
@@ -587,7 +562,7 @@ tzparse(const char *name, struct state * sp, int lastditch)
 		if (name == NULL)
 			return -1;
 	}
-	load_result = tzload(TZDEFRULES, sp);
+	load_result = tzload(TZDEFRULES, NULL, sp);
 	if (load_result != 0)
 		sp->leapcnt = 0;		/* so, we're off a little */
 	if (*name != '\0')
@@ -794,7 +769,7 @@ tzparse(const char *name, struct state * sp, int lastditch)
 static void
 gmtload(struct state * sp)
 {
-	if (tzload(gmt, sp) != 0)
+	if (tzload(gmt, NULL, sp) != 0)
 		(void) tzparse(gmt, sp, TRUE);
 }
 
@@ -1089,6 +1064,31 @@ pg_next_dst_boundary(const pg_time_t *timep,
 	*after_gmtoff = ttisp->tt_gmtoff;
 	*after_isdst = ttisp->tt_isdst;
 	return 1;
+}
+
+/*
+ * If the given timezone uses only one GMT offset, store that offset
+ * into *gmtoff and return TRUE, else return FALSE.
+ */
+bool
+pg_get_timezone_offset(const pg_tz *tz, long int *gmtoff)
+{
+	/*
+	 * The zone could have more than one ttinfo, if it's historically used
+	 * more than one abbreviation.  We return TRUE as long as they all have
+	 * the same gmtoff.
+	 */
+	const struct state *sp;
+	int			i;
+
+	sp = &tz->state;
+	for (i = 1; i < sp->typecnt; i++)
+	{
+		if (sp->ttis[i].tt_gmtoff != sp->ttis[0].tt_gmtoff)
+			return false;
+	}
+	*gmtoff = sp->ttis[0].tt_gmtoff;
+	return true;
 }
 
 /*

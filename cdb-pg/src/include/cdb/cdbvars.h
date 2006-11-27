@@ -160,7 +160,7 @@ extern int mpp_session_id;
 
 extern char * mpp_qd_callback_info;
 extern bool mpp_use_snapshop_during_callback;
-extern SHMEM_OFFSET mpp_qd_proc_offset;
+extern unsigned long mpp_qd_proc_offset;
 
 /*
  * Allow callback query?

@@ -3,12 +3,12 @@
  * ip.c
  *	  IPv6-aware network access.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/ip.c,v 1.32.2.1 2005/11/22 18:23:09 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/ip.c,v 1.38 2006/10/19 23:17:39 tgl Exp $
  *
  * This file and the IPV6 implementation were initially provided by
  * Nigel Kukard <nkukard@lbsd.net>, Linux Based Systems Design
@@ -20,8 +20,6 @@
 /* This is intended to be used in both frontend and backend, so use c.h */
 #include "c.h"
 
-#ifndef WIN32_CLIENT_ONLY
-#include <errno.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -33,7 +31,6 @@
 #endif
 #include <arpa/inet.h>
 #include <sys/file.h>
-#endif
 
 #include "libpq/ip.h"
 
@@ -67,6 +64,8 @@ int
 pg_getaddrinfo_all(const char *hostname, const char *servname,
 				   const struct addrinfo * hintp, struct addrinfo ** result)
 {
+	int			rc;
+
 	/* not all versions of getaddrinfo() zero *result on failure */
 	*result = NULL;
 
@@ -76,8 +75,36 @@ pg_getaddrinfo_all(const char *hostname, const char *servname,
 #endif
 
 	/* NULL has special meaning to getaddrinfo(). */
-	return getaddrinfo((!hostname || hostname[0] == '\0') ? NULL : hostname,
-					   servname, hintp, result);
+	rc = getaddrinfo((!hostname || hostname[0] == '\0') ? NULL : hostname,
+					 servname, hintp, result);
+
+#ifdef _AIX
+	/*
+	 * It seems some versions of AIX's getaddrinfo don't reliably zero
+	 * sin_port when servname is NULL, so clean up after it.
+	 */
+	if (servname == NULL && rc == 0)
+	{
+		struct addrinfo *addr;
+
+		for (addr = *result; addr; addr = addr->ai_next)
+		{
+			switch (addr->ai_family)
+			{
+				case AF_INET:
+					((struct sockaddr_in *) addr->ai_addr)->sin_port = htons(0);
+					break;
+#ifdef HAVE_IPV6
+				case AF_INET6:
+					((struct sockaddr_in6 *) addr->ai_addr)->sin6_port = htons(0);
+					break;
+#endif
+			}
+		}
+	}
+#endif
+
+	return rc;
 }
 
 

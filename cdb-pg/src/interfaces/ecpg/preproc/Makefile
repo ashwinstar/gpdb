@@ -2,9 +2,9 @@
 #
 # Makefile for src/interfaces/ecpg/preproc
 #
-# Copyright (c) 1998-2005, PostgreSQL Global Development Group
+# Copyright (c) 1998-2006, PostgreSQL Global Development Group
 #
-# $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/Makefile,v 1.114 2005/03/14 17:27:50 momjian Exp $
+# $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/Makefile,v 1.121 2006/08/28 16:13:11 tgl Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -14,12 +14,13 @@ top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
 MAJOR_VERSION= 4
-MINOR_VERSION= 1
+MINOR_VERSION= 2
 PATCHLEVEL=1
 
-override CPPFLAGS := -I$(srcdir)/../include -I$(srcdir) $(CPPFLAGS) \
-	-DMAJOR_VERSION=$(MAJOR_VERSION) \
-	-DMINOR_VERSION=$(MINOR_VERSION) -DPATCHLEVEL=$(PATCHLEVEL)
+override CPPFLAGS := -I../include -I$(top_srcdir)/src/interfaces/ecpg/include \
+	-I$(srcdir) -DMAJOR_VERSION=$(MAJOR_VERSION) \
+	-DMINOR_VERSION=$(MINOR_VERSION) -DPATCHLEVEL=$(PATCHLEVEL) \
+	 $(CPPFLAGS)
 
 ifeq ($(GCC), yes)
 override CFLAGS += -Wno-error
@@ -62,20 +63,20 @@ c_keywords.o ecpg_keywords.o keywords.o preproc.o: preproc.h
 distprep: $(srcdir)/preproc.c $(srcdir)/preproc.h $(srcdir)/pgc.c
 
 install: all installdirs
-	$(INSTALL_PROGRAM) ecpg$(X) $(DESTDIR)$(bindir)
+	$(INSTALL_PROGRAM) ecpg$(X) '$(DESTDIR)$(bindir)'
 
 installdirs:
-	$(mkinstalldirs) $(DESTDIR)$(bindir)
+	$(mkinstalldirs) '$(DESTDIR)$(bindir)'
 
 uninstall:
-	rm -f $(DESTDIR)$(bindir)/ecpg$(X)
+	rm -f '$(DESTDIR)$(bindir)/ecpg$(X)'
 
 clean distclean:
 	rm -f *.o ecpg$(X)
 # garbage from partial builds
 	@rm -f y.tab.c y.tab.h
 # garbage from development
-	@rm -f core a.out *~ *.output *.tab.c
+	@rm -f core a.out *.output *.tab.c
 
 # `make clean' does not remove preproc.c, preproc.h, or pgc.c since we
 # want to ship those files in the distribution for people with

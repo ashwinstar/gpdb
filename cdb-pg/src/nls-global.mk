@@ -1,4 +1,4 @@
-# $PostgreSQL: pgsql/src/nls-global.mk,v 1.10 2004/06/01 03:32:28 momjian Exp $
+# $PostgreSQL: pgsql/src/nls-global.mk,v 1.12 2006/04/05 13:40:15 petere Exp $
 
 # Common rules for Native Language Support (NLS)
 #
@@ -65,15 +65,15 @@ endif # not XGETTEXT
 install-po: all-po installdirs-po
 ifneq (,$(LANGUAGES))
 	for lang in $(LANGUAGES); do \
-	  $(INSTALL_DATA) po/$$lang.mo $(DESTDIR)$(localedir)/$$lang/LC_MESSAGES/$(CATALOG_NAME).mo || exit 1; \
+	  $(INSTALL_DATA) po/$$lang.mo '$(DESTDIR)$(localedir)'/$$lang/LC_MESSAGES/$(CATALOG_NAME).mo || exit 1; \
 	done
 endif
 
 installdirs-po:
-	$(mkinstalldirs) $(foreach lang, $(LANGUAGES), $(DESTDIR)$(localedir)/$(lang)/LC_MESSAGES)
+	$(mkinstalldirs) $(foreach lang, $(LANGUAGES), '$(DESTDIR)$(localedir)'/$(lang)/LC_MESSAGES)
 
 uninstall-po:
-	rm -f $(foreach lang, $(LANGUAGES), $(DESTDIR)$(localedir)/$(lang)/LC_MESSAGES/$(CATALOG_NAME).mo)
+	rm -f $(foreach lang, $(LANGUAGES), '$(DESTDIR)$(localedir)'/$(lang)/LC_MESSAGES/$(CATALOG_NAME).mo)
 
 
 clean-po:
@@ -91,19 +91,22 @@ maintainer-check-po: $(PO_FILES)
 init-po: po/$(CATALOG_NAME).pot
 
 
+define merge-lang
+@printf 'merging $(1) '
+@if $(MSGMERGE) $(srcdir)/po/$(1).po $< -o po/$(1).po.new $(addprefix --compendium=,$(shell find $(top_srcdir) -name $(1).po -printf '%p ')); \
+then \
+    mv $(srcdir)/po/$(1).po po/$(1).po.old; \
+    mv po/$(1).po.new $(srcdir)/po/$(1).po; \
+else \
+    echo "msgmerge for $(1) failed"; \
+    rm -f po/$(1).po.new; \
+fi
+
+endef
+
 update-po: po/$(CATALOG_NAME).pot
 ifdef MSGMERGE
-	@for lang in $(LANGUAGES); do \
-	  echo "merging $$lang:"; \
-	  if $(MSGMERGE) $(srcdir)/po/$$lang.po $< -o po/$$lang.po.new; \
-	  then \
-	    mv $(srcdir)/po/$$lang.po po/$$lang.po.old; \
-	    mv po/$$lang.po.new $(srcdir)/po/$$lang.po; \
-	  else \
-	    echo "msgmerge for $$lang failed"; \
-	    rm -f po/$$lang.po.new; \
-	  fi; \
-	done
+	$(foreach lang,$(LANGUAGES),$(call merge-lang,$(lang)))
 else
 	@echo "You don't have 'msgmerge'." ; exit 1
 endif

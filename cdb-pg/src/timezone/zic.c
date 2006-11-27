@@ -3,7 +3,7 @@
  * 1996-06-05 by Arthur David Olson (arthur_david_olson@nih.gov).
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/timezone/zic.c,v 1.16 2005/10/15 02:49:51 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/timezone/zic.c,v 1.19 2006/10/24 15:11:03 tgl Exp $
  */
 
 #include "postgres.h"
@@ -13,6 +13,9 @@
 #endif
 #include <limits.h>
 #include <locale.h>
+
+extern int	optind;
+extern char *optarg;
 
 #include "private.h"
 #include "pgtz.h"
@@ -2380,18 +2383,18 @@ eitol(int i)
 int
 link(const char *oldpath, const char *newpath)
 {
-	if (!CopyFileEx(oldpath, newpath, NULL, NULL, FALSE, 0))
+	if (!CopyFile(oldpath, newpath, FALSE))
 		return -1;
 	return 0;
 }
 #endif
 
 /*
- *	This allows zic to compile by just assigning a dummy value.
+ *	This allows zic to compile by just returning a dummy value.
  *	localtime.c references it, but no one uses it from zic.
  */
-char *
-pg_TZDIR(void)
+int
+pg_open_tzfile(const char *name, char *canonname)
 {
-	return NULL;
+	return -1;
 }

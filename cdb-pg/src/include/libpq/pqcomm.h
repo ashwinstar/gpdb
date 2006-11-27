@@ -6,31 +6,22 @@
  * NOTE: for historical reasons, this does not correspond to pqcomm.c.
  * pqcomm.c's routines are declared in libpq.h.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/libpq/pqcomm.h,v 1.98 2005/10/15 02:49:44 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/libpq/pqcomm.h,v 1.101 2006/06/07 22:24:45 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef PQCOMM_H
 #define PQCOMM_H
 
-#ifdef WIN32
-#include <winsock.h>
-/* workaround for clashing defines of "ERROR" */
-#ifdef ELOG_H
-#undef ERROR
-#define ERROR	PGERROR
-#endif
-#else							/* not WIN32 */
 #include <sys/socket.h>
 #include <netdb.h>
 #ifdef HAVE_SYS_UN_H
 #include <sys/un.h>
 #endif
 #include <netinet/in.h>
-#endif   /* not WIN32 */
 
 #ifdef HAVE_STRUCT_SOCKADDR_STORAGE
 
@@ -76,9 +67,9 @@ typedef struct
 
 /* Configure the UNIX socket location for the well known port. */
 
-#define UNIXSOCK_PATH(path,port,defpath) \
+#define UNIXSOCK_PATH(path, port, sockdir) \
 		snprintf(path, sizeof(path), "%s/.s.PGSQL.%d", \
-				((defpath) && *(defpath) != '\0') ? (defpath) : \
+				((sockdir) && *(sockdir) != '\0') ? (sockdir) : \
 				DEFAULT_PGSOCKET_DIR, \
 				(port))
 

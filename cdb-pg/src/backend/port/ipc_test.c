@@ -16,18 +16,17 @@
  *	   the parallel regression tests for a more complete test.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/port/ipc_test.c,v 1.18 2005/10/15 02:49:22 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/port/ipc_test.c,v 1.21 2006/07/14 05:28:28 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include <errno.h>
 #include <unistd.h>
 
 #include "miscadmin.h"
@@ -47,15 +46,12 @@ volatile uint32 InterruptHoldoffCount = 0;
 volatile uint32 CritSectionCount = 0;
 
 bool		IsUnderPostmaster = false;
+bool		assert_enabled = true;
 
 int			MaxBackends = 32;
 int			NBuffers = 64;
 
 char	   *DataDir = ".";
-
-#ifndef assert_enabled
-bool		assert_enabled = true;
-#endif
 
 
 #define MAX_ON_EXITS 20

@@ -3,27 +3,25 @@
  * port.h
  *	  Header for src/port/ compatibility functions.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/port.h,v 1.84.2.6 2006/04/24 04:03:38 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/port.h,v 1.105 2006/10/19 20:56:22 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
-
-#ifndef WIN32_CLIENT_ONLY
-/* for thread.c */
-#include <pwd.h>
-#include <netdb.h>
-#endif
+#ifndef PG_PORT_H
+#define PG_PORT_H
 
 #include <ctype.h>
+#include <netdb.h>
+#include <pwd.h>
 
 /* non-blocking */
 extern bool pg_set_noblock(int sock);
 extern bool pg_set_block(int sock);
 
-/* Portable path handling for Unix/Win32 */
+/* Portable path handling for Unix/Win32 (in path.c) */
 
 extern char *first_dir_separator(const char *filename);
 extern char *last_dir_separator(const char *filename);
@@ -45,15 +43,13 @@ extern void get_pkglib_path(const char *my_exec_path, char *ret_path);
 extern void get_locale_path(const char *my_exec_path, char *ret_path);
 extern void get_doc_path(const char *my_exec_path, char *ret_path);
 extern void get_man_path(const char *my_exec_path, char *ret_path);
-extern void set_pglocale_pgservice(const char *argv0, const char *app);
 extern bool get_home_path(char *ret_path);
 extern void get_parent_directory(char *path);
 
 /*
  *	is_absolute_path
  *
- *	By making this a macro we prevent the need for libpq to include
- *	path.c which uses exec.c.
+ *	By making this a macro we avoid needing to include path.c in libpq.
  */
 #ifndef WIN32
 #define is_absolute_path(filename) \
@@ -65,13 +61,15 @@ extern void get_parent_directory(char *path);
 ( \
 	((filename)[0] == '/') || \
 	(filename)[0] == '\\' || \
-	(isalpha((filename)[0]) && (filename)[1] == ':' && \
+	(isalpha((unsigned char) ((filename)[0])) && (filename)[1] == ':' && \
 	((filename)[2] == '\\' || (filename)[2] == '/')) \
 )
 #endif
 
+/* Portable locale initialization (in exec.c) */
+extern void set_pglocale_pgservice(const char *argv0, const char *app);
 
-/* Portable way to find binaries */
+/* Portable way to find binaries (in exec.c) */
 extern int	find_my_exec(const char *argv0, char *retpath);
 extern int find_other_exec(const char *argv0, const char *target,
 				const char *versionstr, char *retpath);
@@ -97,8 +95,24 @@ extern int find_other_exec(const char *argv0, const char *target,
  *	It also requires double-quotes around the executable name and
  *	any files used for redirection.  Other args can use single-quotes.
  *
- *	See the "Notes" section about quotes at:
- *		http://home.earthlink.net/~rlively/MANUALS/COMMANDS/C/CMD.HTM
+ *	Generated using Win32 "CMD /?":
+ *
+ *	1. If all of the following conditions are met, then quote characters
+ *	on the command line are preserved:
+ *
+ *	 - no /S switch
+ *	 - exactly two quote characters
+ *	 - no special characters between the two quote characters, where special
+ *	   is one of: &<>()@^|
+ *	 - there are one or more whitespace characters between the the two quote
+ *	   characters
+ *	 - the string between the two quote characters is the name of an
+ *	   executable file.
+ *
+ *	 2. Otherwise, old behavior is to see if the first character is a quote
+ *	 character and if so, strip the leading character and remove the last
+ *	 quote character on the command line, preserving any text after the last
+ *	 quote character.
  */
 #if defined(WIN32) && !defined(__CYGWIN__)
 #define SYSTEMQUOTE "\""
@@ -119,7 +133,7 @@ extern unsigned char pg_tolower(unsigned char ch);
 
 /*
  * Versions of libintl >= 0.13 try to replace printf() and friends with
- * macros to their own versions that understand the %$ format.  We do the
+ * macros to their own versions that understand the %$ format.	We do the
  * same, so disable their macros, if they exist.
  */
 #ifdef vsnprintf
@@ -174,8 +188,7 @@ __attribute__((format(printf, 1, 2)));
 #define fprintf			pg_fprintf
 #define printf			pg_printf
 #endif
-
-#endif /* USE_REPL_SNPRINTF */
+#endif   /* USE_REPL_SNPRINTF */
 
 /* Portable prompt handling */
 extern char *simple_prompt(const char *prompt, int maxlen, bool echo);
@@ -187,6 +200,10 @@ extern char *simple_prompt(const char *prompt, int maxlen, bool echo);
  *	pgpipe, but in other cases we define rename to pgrename just on Win32.
  */
 #ifndef WIN32
+/*
+ *	The function prototypes are not supplied because every C file
+ *	includes this file.
+ */
 #define pgpipe(a)			pipe(a)
 #define piperead(a,b,c)		read(a,b,c)
 #define pipewrite(a,b,c)	write(a,b,c)
@@ -221,7 +238,7 @@ extern int	pgrename(const char *from, const char *to);
 extern int	pgunlink(const char *path);
 
 /* Include this first so later includes don't see these defines */
-#ifdef WIN32_CLIENT_ONLY
+#ifdef WIN32_ONLY_COMPILER
 #include <io.h>
 #endif
 
@@ -247,12 +264,15 @@ extern bool rmtree(char *path, bool rmtopdir);
 
 #if defined(WIN32) && !defined(__CYGWIN__)
 
-/* open() replacement to allow delete of held files and passing
- * of special options. */
-#ifndef WIN32_CLIENT_ONLY
-extern int	win32_open(const char *, int,...);
+/* open() and fopen() replacements to allow deletion of open files and
+ * passing of other special options.
+ */
+extern int	pgwin32_open(const char *, int,...);
+extern FILE *pgwin32_fopen(const char *, const char *);
 
-#define		open(a,b,...)	win32_open(a,b,##__VA_ARGS__)
+#ifndef FRONTEND
+#define		open(a,b,c) pgwin32_open(a,b,c)
+#define		fopen(a,b) pgwin32_fopen(a,b)
 #endif
 
 #define popen(a,b) _popen(a,b)
@@ -304,15 +324,17 @@ extern double rint(double x);
 #endif
 
 #ifndef HAVE_INET_ATON
-#ifndef WIN32_CLIENT_ONLY
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#endif
 extern int	inet_aton(const char *cp, struct in_addr * addr);
 #endif
 
 #ifndef HAVE_STRDUP
-extern char *strdup(char const *);
+extern char *strdup(const char *str);
+#endif
+
+#if !HAVE_DECL_STRLCPY
+extern size_t strlcpy(char *dst, const char *src, size_t siz);
 #endif
 
 #ifndef HAVE_RANDOM
@@ -340,3 +362,15 @@ extern int pqGethostbyname(const char *name,
 				char *buffer, size_t buflen,
 				struct hostent ** result,
 				int *herrno);
+
+extern void pg_qsort(void *base, size_t nel, size_t elsize,
+					 int (*cmp) (const void *, const void *));
+
+#define qsort(a,b,c,d) pg_qsort(a,b,c,d)
+
+typedef int (*qsort_arg_comparator) (const void *a, const void *b, void *arg);
+
+extern void qsort_arg(void *base, size_t nel, size_t elsize,
+		  qsort_arg_comparator cmp, void *arg);
+
+#endif   /* PG_PORT_H */

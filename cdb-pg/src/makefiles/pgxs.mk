@@ -1,6 +1,6 @@
 # PGXS: PostgreSQL extensions makefile
 
-# $PostgreSQL: pgsql/src/makefiles/pgxs.mk,v 1.6 2005/09/27 17:43:31 tgl Exp $ 
+# $PostgreSQL: pgsql/src/makefiles/pgxs.mk,v 1.9 2006/07/21 00:24:04 tgl Exp $ 
 
 # This file contains generic rules to build many kinds of simple
 # extension modules.  You only need to set a few variables and include
@@ -89,82 +89,82 @@ endif # MODULE_big
 install: all installdirs
 ifneq (,$(DATA)$(DATA_built))
 	@for file in $(addprefix $(srcdir)/, $(DATA)) $(DATA_built); do \
-	  echo "$(INSTALL_DATA) $$file $(DESTDIR)$(datadir)/contrib"; \
-	  $(INSTALL_DATA) $$file $(DESTDIR)$(datadir)/contrib; \
+	  echo "$(INSTALL_DATA) $$file '$(DESTDIR)$(datadir)/contrib'"; \
+	  $(INSTALL_DATA) $$file '$(DESTDIR)$(datadir)/contrib'; \
 	done
 endif # DATA
 ifdef MODULES
 	@for file in $(addsuffix $(DLSUFFIX), $(MODULES)); do \
-	  echo "$(INSTALL_SHLIB) $$file $(DESTDIR)$(pkglibdir)"; \
-	  $(INSTALL_SHLIB) $$file $(DESTDIR)$(pkglibdir); \
+	  echo "$(INSTALL_SHLIB) $$file '$(DESTDIR)$(pkglibdir)'"; \
+	  $(INSTALL_SHLIB) $$file '$(DESTDIR)$(pkglibdir)'; \
 	done
 endif # MODULES
 ifdef DOCS
 ifdef docdir
 	@for file in $(addprefix $(srcdir)/, $(DOCS)); do \
-	  echo "$(INSTALL_DATA) $$file $(DESTDIR)$(docdir)/contrib"; \
-	  $(INSTALL_DATA) $$file $(DESTDIR)$(docdir)/contrib; \
+	  echo "$(INSTALL_DATA) $$file '$(DESTDIR)$(docdir)/contrib'"; \
+	  $(INSTALL_DATA) $$file '$(DESTDIR)$(docdir)/contrib'; \
 	done
 endif # docdir
 endif # DOCS
 ifdef PROGRAM
-	$(INSTALL_PROGRAM) $(PROGRAM)$(X) $(DESTDIR)$(bindir)
+	$(INSTALL_PROGRAM) $(PROGRAM)$(X) '$(DESTDIR)$(bindir)'
 endif # PROGRAM
 ifdef MODULE_big
-	$(INSTALL_SHLIB) $(shlib) $(DESTDIR)$(pkglibdir)/$(MODULE_big)$(DLSUFFIX)
+	$(INSTALL_SHLIB) $(shlib) '$(DESTDIR)$(pkglibdir)/$(MODULE_big)$(DLSUFFIX)'
 endif # MODULE_big
 ifdef SCRIPTS
 	@for file in $(addprefix $(srcdir)/, $(SCRIPTS)); do \
-	  echo "$(INSTALL_SCRIPT) $$file $(DESTDIR)$(bindir)"; \
-	  $(INSTALL_SCRIPT) $$file $(DESTDIR)$(bindir); \
+	  echo "$(INSTALL_SCRIPT) $$file '$(DESTDIR)$(bindir)'"; \
+	  $(INSTALL_SCRIPT) $$file '$(DESTDIR)$(bindir)'; \
 	done
 endif # SCRIPTS
 ifdef SCRIPTS_built
 	@for file in $(SCRIPTS_built); do \
-	  echo "$(INSTALL_SCRIPT) $$file $(DESTDIR)$(bindir)"; \
-	  $(INSTALL_SCRIPT) $$file $(DESTDIR)$(bindir); \
+	  echo "$(INSTALL_SCRIPT) $$file '$(DESTDIR)$(bindir)'"; \
+	  $(INSTALL_SCRIPT) $$file '$(DESTDIR)$(bindir)'; \
 	done
 endif # SCRIPTS_built
 
 
 installdirs:
 ifneq (,$(DATA)$(DATA_built))
-	$(mkinstalldirs) $(DESTDIR)$(datadir)/contrib
+	$(mkinstalldirs) '$(DESTDIR)$(datadir)/contrib'
 endif
 ifneq (,$(MODULES)$(MODULE_big))
-	$(mkinstalldirs) $(DESTDIR)$(pkglibdir)
+	$(mkinstalldirs) '$(DESTDIR)$(pkglibdir)'
 endif
 ifdef DOCS
 ifdef docdir
-	$(mkinstalldirs) $(DESTDIR)$(docdir)/contrib
+	$(mkinstalldirs) '$(DESTDIR)$(docdir)/contrib'
 endif # docdir
 endif # DOCS
 ifneq (,$(PROGRAM)$(SCRIPTS)$(SCRIPTS_built))
-	$(mkinstalldirs) $(DESTDIR)$(bindir)
+	$(mkinstalldirs) '$(DESTDIR)$(bindir)'
 endif
 
 
 uninstall:
 ifneq (,$(DATA)$(DATA_built))
-	rm -f $(addprefix $(DESTDIR)$(datadir)/contrib/, $(notdir $(DATA) $(DATA_built)))
+	rm -f $(addprefix '$(DESTDIR)$(datadir)'/contrib/, $(notdir $(DATA) $(DATA_built)))
 endif
 ifdef MODULES
-	rm -f $(addprefix $(DESTDIR)$(pkglibdir)/, $(addsuffix $(DLSUFFIX), $(MODULES)))
+	rm -f $(addprefix '$(DESTDIR)$(pkglibdir)'/, $(addsuffix $(DLSUFFIX), $(MODULES)))
 endif
 ifdef DOCS
-	rm -f $(addprefix $(DESTDIR)$(docdir)/contrib/, $(DOCS))
+	rm -f $(addprefix '$(DESTDIR)$(docdir)'/contrib/, $(DOCS))
 endif
 ifdef PROGRAM
-	rm -f $(DESTDIR)$(bindir)/$(PROGRAM)$(X)
+	rm -f '$(DESTDIR)$(bindir)/$(PROGRAM)$(X)'
 endif
 ifdef MODULE_big
-	rm -f $(DESTDIR)$(pkglibdir)/$(MODULE_big)$(DLSUFFIX)
+	rm -f '$(DESTDIR)$(pkglibdir)/$(MODULE_big)$(DLSUFFIX)'
 endif
 ifdef SCRIPTS
-	rm -f $(addprefix $(DESTDIR)$(bindir)/, $(SCRIPTS))
+	rm -f $(addprefix '$(DESTDIR)$(bindir)'/, $(SCRIPTS))
 endif
 ifdef SCRIPTS_built
-	rm -f $(addprefix $(DESTDIR)$(bindir)/, $(SCRIPTS_built))
+	rm -f $(addprefix '$(DESTDIR)$(bindir)'/, $(SCRIPTS_built))
 endif
 
 
@@ -210,6 +210,9 @@ ifndef REGRESS_OPTS
 REGRESS_OPTS = --dbname=$(CONTRIB_TESTDB)
 endif
 
+# where to find psql for running the tests
+PSQLDIR = $(bindir)
+
 # When doing a VPATH build, must copy over the test .sql and .out
 # files so that the driver script can find them.  We have to use an
 # absolute path for the targets, because otherwise make will try to
@@ -230,16 +233,16 @@ endif # VPATH
 .PHONY: submake
 submake:
 ifndef PGXS
-	$(MAKE) -C $(top_builddir)/src/test/regress pg_regress
+	$(MAKE) -C $(top_builddir)/src/test/regress pg_regress$(X)
 endif
 
 # against installed postmaster
 installcheck: submake
-	$(SHELL) $(top_builddir)/src/test/regress/pg_regress $(REGRESS_OPTS) $(REGRESS)
+	$(top_builddir)/src/test/regress/pg_regress --psqldir=$(PSQLDIR) $(REGRESS_OPTS) $(REGRESS)
 
 # in-tree test doesn't work yet (no way to install my shared library)
 #check: all submake
-#	$(SHELL) $(top_builddir)/src/test/regress/pg_regress --temp-install \
+#	$(top_builddir)/src/test/regress/pg_regress --temp-install \
 #	  --top-builddir=$(top_builddir) $(REGRESS_OPTS) $(REGRESS)
 check:
 	@echo "'make check' is not supported."

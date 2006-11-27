@@ -1,40 +1,18 @@
 %{
-/**********************************************************************
+/*-------------------------------------------------------------------------
+ *
  * scan.l		- Scanner for the PL/pgSQL
  *			  procedural language
  *
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ *
  * IDENTIFICATION
- *    $PostgreSQL: pgsql/src/pl/plpgsql/src/scan.l,v 1.42.2.1 2006/08/14 00:46:59 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/scan.l,v 1.54 2006/08/14 21:14:42 tgl Exp $
  *
- *    This software is copyrighted by Jan Wieck - Hamburg.
- *
- *    The author hereby grants permission  to  use,  copy,  modify,
- *    distribute,  and  license this software and its documentation
- *    for any purpose, provided that existing copyright notices are
- *    retained  in  all  copies  and  that  this notice is included
- *    verbatim in any distributions. No written agreement, license,
- *    or  royalty  fee  is required for any of the authorized uses.
- *    Modifications to this software may be  copyrighted  by  their
- *    author  and  need  not  follow  the licensing terms described
- *    here, provided that the new terms are  clearly  indicated  on
- *    the first page of each file where they apply.
- *
- *    IN NO EVENT SHALL THE AUTHOR OR DISTRIBUTORS BE LIABLE TO ANY
- *    PARTY  FOR  DIRECT,   INDIRECT,   SPECIAL,   INCIDENTAL,   OR
- *    CONSEQUENTIAL   DAMAGES  ARISING  OUT  OF  THE  USE  OF  THIS
- *    SOFTWARE, ITS DOCUMENTATION, OR ANY DERIVATIVES THEREOF, EVEN
- *    IF  THE  AUTHOR  HAVE BEEN ADVISED OF THE POSSIBILITY OF SUCH
- *    DAMAGE.
- *
- *    THE  AUTHOR  AND  DISTRIBUTORS  SPECIFICALLY   DISCLAIM   ANY
- *    WARRANTIES,  INCLUDING,  BUT  NOT  LIMITED  TO,  THE  IMPLIED
- *    WARRANTIES  OF  MERCHANTABILITY,  FITNESS  FOR  A  PARTICULAR
- *    PURPOSE,  AND NON-INFRINGEMENT.  THIS SOFTWARE IS PROVIDED ON
- *    AN "AS IS" BASIS, AND THE AUTHOR  AND  DISTRIBUTORS  HAVE  NO
- *    OBLIGATION   TO   PROVIDE   MAINTENANCE,   SUPPORT,  UPDATES,
- *    ENHANCEMENTS, OR MODIFICATIONS.
- *
- **********************************************************************/
+ *-------------------------------------------------------------------------
+ */
 
 #include "plpgsql.h"
 
@@ -71,6 +49,7 @@ bool plpgsql_SpaceScanned = false;
 %option nodefault
 %option nounput
 %option noyywrap
+%option prefix="plpgsql_base_yy"
 
 %option case-insensitive
 
@@ -135,6 +114,7 @@ dolqinside		[^$]+
 \.\.			{ return K_DOTDOT;			}
 alias			{ return K_ALIAS;			}
 begin			{ return K_BEGIN;			}
+by				{ return K_BY;   			}
 close			{ return K_CLOSE;			}
 constant		{ return K_CONSTANT;		}
 continue		{ return K_CONTINUE;		}
@@ -157,6 +137,7 @@ get				{ return K_GET;				}
 if				{ return K_IF;				}
 in				{ return K_IN;				}
 info			{ return K_INFO;			}
+insert			{ return K_INSERT;			}
 into			{ return K_INTO;			}
 is				{ return K_IS;				}
 log				{ return K_LOG;				}
@@ -174,7 +155,7 @@ result_oid		{ return K_RESULT_OID;		}
 return			{ return K_RETURN;			}
 reverse			{ return K_REVERSE;			}
 row_count		{ return K_ROW_COUNT;		}
-select			{ return K_SELECT;			}
+strict			{ return K_STRICT;	    	}
 then			{ return K_THEN;			}
 to				{ return K_TO;				}
 type			{ return K_TYPE;			}
@@ -491,7 +472,7 @@ plpgsql_scanner_init(const char *str, int functype)
 	 * Hack: skip any initial newline, so that in the common coding layout
 	 *		CREATE FUNCTION ... AS '
 	 *			code body
-	 *		' LANGUAGE 'plpgsql';
+	 *		' LANGUAGE plpgsql;
 	 * we will think "line 1" is what the programmer thinks of as line 1.
 	 *----------
 	 */

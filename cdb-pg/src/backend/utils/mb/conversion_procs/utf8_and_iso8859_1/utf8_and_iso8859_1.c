@@ -2,11 +2,11 @@
  *
  *	  ISO8859_1 <--> UTF8
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/utf8_and_iso8859_1/utf8_and_iso8859_1.c,v 1.12.2.1 2006/05/21 20:05:49 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/utf8_and_iso8859_1/utf8_and_iso8859_1.c,v 1.18 2006/10/04 00:30:03 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -14,6 +14,8 @@
 #include "postgres.h"
 #include "fmgr.h"
 #include "mb/pg_wchar.h"
+
+PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(iso8859_1_to_utf8);
 PG_FUNCTION_INFO_V1(utf8_to_iso8859_1);
@@ -54,7 +56,7 @@ iso8859_1_to_utf8(PG_FUNCTION_ARGS)
 		else
 		{
 			*dest++ = (c >> 6) | 0xc0;
-			*dest++ = (c & 0x003f) | 0x80;
+			*dest++ = (c & 0x003f) | HIGHBIT;
 		}
 		src++;
 		len--;
@@ -91,7 +93,7 @@ utf8_to_iso8859_1(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			int		l = pg_utf_mblen(src);
+			int			l = pg_utf_mblen(src);
 
 			if (l > len || !pg_utf8_islegal(src, l))
 				report_invalid_encoding(PG_UTF8, (const char *) src, len);

@@ -12,7 +12,7 @@
  * The error constants are taken from the Frambak Bakfram LGSOCKET
  * library guys who in turn took them from the Winsock FAQ.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  */
@@ -25,13 +25,19 @@
 #endif
 #define NOCRYPT
 
-#include <windows.h>
-#include <winsock.h>
-#include <stdio.h>
-#include "win32.h"
 #include "postgres_fe.h"
-#include "libpq-fe.h"
-#include "libpq-int.h"
+
+#include "win32.h"
+
+/* Declared here to avoid pulling in all includes, which causes name collissions */
+#ifdef ENABLE_NLS
+extern char *
+libpq_gettext(const char *msgid)
+__attribute__((format_arg(1)));
+#else
+#define libpq_gettext(x) (x)
+#endif
+
 
 static struct WSErrorEntry
 {

@@ -1,3 +1,5 @@
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/extern.h,v 1.20 2006/10/04 00:30:11 momjian Exp $ */
+
 #ifndef _ECPG_LIB_EXTERN_H
 #define _ECPG_LIB_EXTERN_H
 
@@ -25,6 +27,10 @@ void		ECPGadd_mem(void *ptr, int lineno);
 bool ECPGget_data(const PGresult *, int, int, int, enum ECPGttype type,
 			 enum ECPGttype, char *, char *, long, long, long,
 			 enum ARRAY_TYPE, enum COMPAT_MODE, bool);
+
+#ifdef ENABLE_THREAD_SAFETY
+void		ecpg_pthreads_init(void);
+#endif
 struct connection *ECPGget_connection(const char *);
 char	   *ECPGalloc(long, int);
 char	   *ECPGrealloc(void *, long, int);
@@ -124,7 +130,7 @@ PGresult  **ECPGdescriptor_lvalue(int line, const char *descriptor);
 
 bool ECPGstore_result(const PGresult *results, int act_field,
 				 const struct statement * stmt, struct variable * var);
-bool		ECPGstore_input(const int, const bool, const struct variable *, const char **, bool *);
+bool		ECPGstore_input(const int, const bool, const struct variable *, const char **, bool *, bool);
 
 #if defined(__GNUC__) && (defined (__powerpc__) || defined(__amd64__) || defined(__x86_64__))
  /* work around a gcc/ABI bug with va_lists on ppc+amd64 */

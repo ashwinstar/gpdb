@@ -3,7 +3,7 @@
  * copydir.c
  *	  copies a directory
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	While "xcopy /e /i /q" works fine for copying directories, on Windows XP
@@ -11,7 +11,7 @@
  *	as a service.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/copydir.c,v 1.16 2005/10/29 00:31:52 petere Exp $
+ *	  $PostgreSQL: pgsql/src/port/copydir.c,v 1.18 2006/07/18 22:36:46 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -75,7 +75,7 @@ copydir(char *fromdir, char *todir, bool recurse)
 		snprintf(fromfile, MAXPGPATH, "%s/%s", fromdir, xlde->d_name);
 		snprintf(tofile, MAXPGPATH, "%s/%s", todir, xlde->d_name);
 
-		if (stat(fromfile, &fst) < 0)
+		if (lstat(fromfile, &fst) < 0)
 			ereport(ERROR,
 					(errcode_for_file_access(),
 					 errmsg("could not stat file \"%s\": %m", fromfile)));

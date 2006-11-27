@@ -4,30 +4,30 @@
  *	  POSTGRES low-level lock mechanism
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/lock.h,v 1.91 2005/10/15 02:49:46 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/storage/lock.h,v 1.101 2006/10/04 00:30:10 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef LOCK_H_
 #define LOCK_H_
 
+#include "nodes/pg_list.h"
 #include "storage/itemptr.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
 
 
-/* originally in procq.h */
+/* struct PGPROC is declared in proc.h, but must forward-reference it */
+typedef struct PGPROC PGPROC;
+
 typedef struct PROC_QUEUE
 {
 	SHM_QUEUE	links;			/* head of list of PGPROC objects */
 	int			size;			/* number of entries in list */
 } PROC_QUEUE;
-
-/* struct PGPROC is declared in proc.h, but must forward-reference it */
-typedef struct PGPROC PGPROC;
 
 /* GUC variables */
 extern int	max_locks_per_xact;
@@ -55,59 +55,70 @@ typedef int LOCKMODE;
 #define LOCKBIT_ON(lockmode) (1 << (lockmode))
 #define LOCKBIT_OFF(lockmode) (~(1 << (lockmode)))
 
+
 /*
- * There is normally only one lock method, the default one.
- * If user locks are enabled, an additional lock method is present.
+ * This data structure defines the locking semantics associated with a
+ * "lock method".  The semantics specify the meaning of each lock mode
+ * (by defining which lock modes it conflicts with), and also whether locks
+ * of this method are transactional (ie, are released at transaction end).
+ * All of this data is constant and is kept in const tables.
+ *
+ * numLockModes -- number of lock modes (READ,WRITE,etc) that
+ *		are defined in this lock method.  Must be less than MAX_LOCKMODES.
+ *
+ * transactional -- TRUE if locks are released automatically at xact end.
+ *
+ * conflictTab -- this is an array of bitmasks showing lock
+ *		mode conflicts.  conflictTab[i] is a mask with the j-th bit
+ *		turned on if lock modes i and j conflict.  Lock modes are
+ *		numbered 1..numLockModes; conflictTab[0] is unused.
+ *
+ * lockModeNames -- ID strings for debug printouts.
+ *
+ * trace_flag -- pointer to GUC trace flag for this lock method.
+ */
+typedef struct LockMethodData
+{
+	int			numLockModes;
+	bool		transactional;
+	const LOCKMASK *conflictTab;
+	const char *const * lockModeNames;
+	const bool *trace_flag;
+} LockMethodData;
+
+typedef const LockMethodData *LockMethod;
+
+/*
  * Lock methods are identified by LOCKMETHODID.  (Despite the declaration as
  * uint16, we are constrained to 256 lockmethods by the layout of LOCKTAG.)
  */
 typedef uint16 LOCKMETHODID;
 
-/* MAX_LOCK_METHODS is the number of distinct lock control tables allowed */
-#define MAX_LOCK_METHODS	4
-
-#define INVALID_LOCKMETHOD	0
+/* These identify the known lock methods */
 #define DEFAULT_LOCKMETHOD	1
 #define USER_LOCKMETHOD		2
-#ifdef USER_LOCKS
 #define RESOURCE_LOCKMETHOD	3
-#else
-#define RESOURCE_LOCKMETHOD	USER_LOCKMETHOD
-#endif
-
-#define LockMethodIsValid(lockmethodid) ((lockmethodid) != INVALID_LOCKMETHOD)
-
-extern int	NumLockMethods;
-
 
 /*
- * This is the control structure for a lock table. It lives in shared
- * memory.	Currently, none of these fields change after startup.  In addition
- * to the LockMethodData, a lock table has a shared "lockHash" table holding
- * per-locked-object lock information, and a shared "proclockHash" table
- * holding per-lock-holder/waiter lock information.
- *
- * masterLock -- LWLock used to synchronize access to the table
- *
- * numLockModes -- number of lock types (READ,WRITE,etc) that
- *		are defined on this lock table
- *
- * conflictTab -- this is an array of bitmasks showing lock
- *		type conflicts. conflictTab[i] is a mask with the j-th bit
- *		turned on if lock types i and j conflict.
+ * These are the valid values of type LOCKMODE for all the standard lock
+ * methods (both DEFAULT and USER).
  */
-typedef struct LockMethodData
-{
-	LWLockId	masterLock;
-	int			numLockModes;
-	LOCKMASK	conflictTab[MAX_LOCKMODES];
-} LockMethodData;
 
-typedef LockMethodData *LockMethod;
+/* NoLock is not a lock mode, but a flag value meaning "don't get a lock" */
+#define NoLock					0
 
-extern LockMethod LockMethods[MAX_LOCK_METHODS];
-extern HTAB *LockMethodLockHash[MAX_LOCK_METHODS];
-extern HTAB *LockMethodProcLockHash[MAX_LOCK_METHODS];
+#define AccessShareLock			1		/* SELECT */
+#define RowShareLock			2		/* SELECT FOR UPDATE/FOR SHARE */
+#define RowExclusiveLock		3		/* INSERT, UPDATE, DELETE */
+#define ShareUpdateExclusiveLock 4		/* VACUUM (non-FULL) */
+#define ShareLock				5		/* CREATE INDEX */
+#define ShareRowExclusiveLock	6		/* like EXCLUSIVE MODE, but allows ROW
+										 * SHARE */
+#define ExclusiveLock			7		/* blocks ROW SHARE/SELECT...FOR
+										 * UPDATE */
+#define AccessExclusiveLock		8		/* ALTER TABLE, DROP TABLE, VACUUM
+										 * FULL, and unqualified LOCK TABLE */
+
 
 /*
  * LOCKTAG is the key information needed to look up a LOCK item in the
@@ -136,10 +147,9 @@ typedef enum LockTagType
 	 * pg_description, but notice that we are constraining SUBID to 16 bits.
 	 * Also, we use DB OID = 0 for shared objects such as tablespaces.
 	 */
-	LOCKTAG_RESOURCE_QUEUE,
-	/* ID info for resource queue is QUEUE ID */
-	LOCKTAG_USERLOCK			/* reserved for contrib/userlock */
-	/* ID info for a userlock is defined by user_locks.c */
+	LOCKTAG_RESOURCE_QUEUE,		/* ID info for resource queue is QUEUE ID */
+	LOCKTAG_USERLOCK,			/* reserved for old contrib/userlock code */
+	LOCKTAG_ADVISORY			/* advisory user locks */
 } LockTagType;
 
 /*
@@ -148,9 +158,7 @@ typedef enum LockTagType
  * to widen Oid, BlockNumber, or TransactionId to more than 32 bits.
  *
  * We include lockmethodid in the locktag so that a single hash table in
- * shared memory can store locks of different lockmethods.	For largely
- * historical reasons, it's passed to the lock.c routines as a separate
- * argument and then stored into the locktag.
+ * shared memory can store locks of different lockmethods.
  */
 typedef struct LOCKTAG
 {
@@ -172,42 +180,56 @@ typedef struct LOCKTAG
 	 (locktag).locktag_field2 = (reloid), \
 	 (locktag).locktag_field3 = 0, \
 	 (locktag).locktag_field4 = 0, \
-	 (locktag).locktag_type = LOCKTAG_RELATION)
+	 (locktag).locktag_type = LOCKTAG_RELATION, \
+	 (locktag).locktag_lockmethodid = DEFAULT_LOCKMETHOD)
 
 #define SET_LOCKTAG_RELATION_EXTEND(locktag,dboid,reloid) \
 	((locktag).locktag_field1 = (dboid), \
 	 (locktag).locktag_field2 = (reloid), \
 	 (locktag).locktag_field3 = 0, \
 	 (locktag).locktag_field4 = 0, \
-	 (locktag).locktag_type = LOCKTAG_RELATION_EXTEND)
+	 (locktag).locktag_type = LOCKTAG_RELATION_EXTEND, \
+	 (locktag).locktag_lockmethodid = DEFAULT_LOCKMETHOD)
 
 #define SET_LOCKTAG_PAGE(locktag,dboid,reloid,blocknum) \
 	((locktag).locktag_field1 = (dboid), \
 	 (locktag).locktag_field2 = (reloid), \
 	 (locktag).locktag_field3 = (blocknum), \
 	 (locktag).locktag_field4 = 0, \
-	 (locktag).locktag_type = LOCKTAG_PAGE)
+	 (locktag).locktag_type = LOCKTAG_PAGE, \
+	 (locktag).locktag_lockmethodid = DEFAULT_LOCKMETHOD)
 
 #define SET_LOCKTAG_TUPLE(locktag,dboid,reloid,blocknum,offnum) \
 	((locktag).locktag_field1 = (dboid), \
 	 (locktag).locktag_field2 = (reloid), \
 	 (locktag).locktag_field3 = (blocknum), \
 	 (locktag).locktag_field4 = (offnum), \
-	 (locktag).locktag_type = LOCKTAG_TUPLE)
+	 (locktag).locktag_type = LOCKTAG_TUPLE, \
+	 (locktag).locktag_lockmethodid = DEFAULT_LOCKMETHOD)
 
 #define SET_LOCKTAG_TRANSACTION(locktag,xid) \
 	((locktag).locktag_field1 = (xid), \
 	 (locktag).locktag_field2 = 0, \
 	 (locktag).locktag_field3 = 0, \
 	 (locktag).locktag_field4 = 0, \
-	 (locktag).locktag_type = LOCKTAG_TRANSACTION)
+	 (locktag).locktag_type = LOCKTAG_TRANSACTION, \
+	 (locktag).locktag_lockmethodid = DEFAULT_LOCKMETHOD)
 
 #define SET_LOCKTAG_OBJECT(locktag,dboid,classoid,objoid,objsubid) \
 	((locktag).locktag_field1 = (dboid), \
 	 (locktag).locktag_field2 = (classoid), \
 	 (locktag).locktag_field3 = (objoid), \
 	 (locktag).locktag_field4 = (objsubid), \
-	 (locktag).locktag_type = LOCKTAG_OBJECT)
+	 (locktag).locktag_type = LOCKTAG_OBJECT, \
+	 (locktag).locktag_lockmethodid = DEFAULT_LOCKMETHOD)
+
+#define SET_LOCKTAG_ADVISORY(locktag,id1,id2,id3,id4) \
+	((locktag).locktag_field1 = (id1), \
+	 (locktag).locktag_field2 = (id2), \
+	 (locktag).locktag_field3 = (id3), \
+	 (locktag).locktag_field4 = (id4), \
+	 (locktag).locktag_type = LOCKTAG_ADVISORY, \
+	 (locktag).locktag_lockmethodid = USER_LOCKMETHOD)
 
 
 /*
@@ -255,7 +277,9 @@ typedef struct LOCK
  *
  * PROCLOCKTAG is the key information needed to look up a PROCLOCK item in the
  * proclock hashtable.	A PROCLOCKTAG value uniquely identifies the combination
- * of a lockable object and a holder/waiter for that object.
+ * of a lockable object and a holder/waiter for that object.  (We can use
+ * pointers here because the PROCLOCKTAG need only be unique for the lifespan
+ * of the PROCLOCK, and it will never outlive the lock or the proc.)
  *
  * Internally to a backend, it is possible for the same lock to be held
  * for different purposes: the backend tracks transaction locks separately
@@ -281,8 +305,9 @@ typedef struct LOCK
  */
 typedef struct PROCLOCKTAG
 {
-	SHMEM_OFFSET lock;			/* link to per-lockable-object information */
-	SHMEM_OFFSET proc;			/* link to PGPROC of owning backend */
+	/* NB: we assume this struct contains no padding! */
+	LOCK	   *myLock;			/* link to per-lockable-object information */
+	PGPROC	   *myProc;			/* link to PGPROC of owning backend */
 } PROCLOCKTAG;
 
 typedef struct PROCLOCK
@@ -302,7 +327,7 @@ typedef struct PROCLOCK
 } PROCLOCK;
 
 #define PROCLOCK_LOCKMETHOD(proclock) \
-	LOCK_LOCKMETHOD(*((LOCK *) MAKE_PTR((proclock).tag.lock)))
+	LOCK_LOCKMETHOD(*((proclock).tag.myLock))
 
 /*
  * Each backend also maintains a local hash table with information about each
@@ -339,7 +364,7 @@ typedef struct LOCALLOCK
 	/* data */
 	LOCK	   *lock;			/* associated LOCK object in shared mem */
 	PROCLOCK   *proclock;		/* associated PROCLOCK object in shmem */
-	bool		isTempObject;	/* true if lock is on a temporary object */
+	uint32		hashcode;		/* copy of LOCKTAG's hash value */
 	bool		isFake;			/* For MPP */
 	int			nLocks;			/* total number of times lock is held */
 	int			numLockOwners;	/* # of relevant ResourceOwners */
@@ -352,16 +377,15 @@ typedef struct LOCALLOCK
 
 /*
  * This struct holds information passed from lmgr internals to the lock
- * listing user-level functions (lockfuncs.c).	For each PROCLOCK in the
- * system, the SHMEM_OFFSET, PROCLOCK itself, and associated PGPROC and
- * LOCK objects are stored.  (Note there will often be multiple copies
- * of the same PGPROC or LOCK.)  We do not store the SHMEM_OFFSET of the
- * PGPROC or LOCK separately, since they're in the PROCLOCK's tag fields.
+ * listing user-level functions (in lockfuncs.c).	For each PROCLOCK in
+ * the system, copies of the PROCLOCK object and associated PGPROC and
+ * LOCK objects are stored.  Note there will often be multiple copies
+ * of the same PGPROC or LOCK --- to detect whether two are the same,
+ * compare the PROCLOCK tag fields.
  */
-typedef struct
+typedef struct LockData
 {
 	int			nelements;		/* The length of each of the arrays */
-	SHMEM_OFFSET *proclockaddrs;
 	PROCLOCK   *proclocks;
 	PGPROC	   *procs;
 	LOCK	   *locks;
@@ -378,25 +402,33 @@ typedef enum
 
 
 /*
+ * The lockmgr's shared hash tables are partitioned to reduce contention.
+ * To determine which partition a given locktag belongs to, compute the tag's
+ * hash code with LockTagHashCode(), then apply one of these macros.
+ * NB: NUM_LOCK_PARTITIONS must be a power of 2!
+ */
+#define LockHashPartition(hashcode) \
+	((hashcode) % NUM_LOCK_PARTITIONS)
+#define LockHashPartitionLock(hashcode) \
+	((LWLockId) (FirstLockMgrLock + LockHashPartition(hashcode)))
+
+
+/*
  * function prototypes
  */
 extern void InitLocks(void);
-extern LockMethod GetLocksMethodTable(LOCK *lock);
-extern LOCKMETHODID LockMethodTableInit(const char *tabName,
-					const LOCKMASK *conflictsP,
-					int numModes);
-extern LOCKMETHODID LockMethodTableRename(LOCKMETHODID lockmethodid);
-extern LockAcquireResult LockAcquire(LOCKMETHODID lockmethodid,
-			LOCKTAG *locktag,
-			bool isTempObject,
+extern LockMethod GetLocksMethodTable(const LOCK *lock);
+extern uint32 LockTagHashCode(const LOCKTAG *locktag);
+extern LockAcquireResult LockAcquire(const LOCKTAG *locktag,
 			LOCKMODE lockmode,
 			bool sessionLock,
 			bool dontWait);
-extern bool LockRelease(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
+extern bool LockRelease(const LOCKTAG *locktag,
 			LOCKMODE lockmode, bool sessionLock);
 extern void LockReleaseAll(LOCKMETHODID lockmethodid, bool allLocks);
 extern void LockReleaseCurrentOwner(void);
 extern void LockReassignCurrentOwner(void);
+extern List *GetLockConflicts(const LOCKTAG *locktag, LOCKMODE lockmode);
 extern void AtPrepare_Locks(void);
 extern void PostPrepare_Locks(TransactionId xid);
 extern int LockCheckConflicts(LockMethod lockMethodTable,
@@ -404,17 +436,10 @@ extern int LockCheckConflicts(LockMethod lockMethodTable,
 				   LOCK *lock, PROCLOCK *proclock, PGPROC *proc);
 extern void GrantLock(LOCK *lock, PROCLOCK *proclock, LOCKMODE lockmode);
 extern void GrantAwaitedLock(void);
-extern void RemoveFromWaitQueue(PGPROC *proc);
+extern void RemoveFromWaitQueue(PGPROC *proc, uint32 hashcode);
 extern Size LockShmemSize(void);
-extern bool DeadLockCheck(PGPROC *proc);
-extern void DeadLockReport(void);
-extern void RememberSimpleDeadLock(PGPROC *proc1,
-					   LOCKMODE lockmode,
-					   LOCK *lock,
-					   PGPROC *proc2);
-extern void InitDeadLockChecking(void);
 extern LockData *GetLockStatusData(void);
-extern const char *GetLockmodeName(LOCKMODE mode);
+extern const char *GetLockmodeName(LOCKMETHODID lockmethodid, LOCKMODE mode);
 
 extern void lock_twophase_recover(TransactionId xid, uint16 info,
 					  void *recdata, uint32 len);
@@ -422,6 +447,14 @@ extern void lock_twophase_postcommit(TransactionId xid, uint16 info,
 						 void *recdata, uint32 len);
 extern void lock_twophase_postabort(TransactionId xid, uint16 info,
 						void *recdata, uint32 len);
+
+extern bool DeadLockCheck(PGPROC *proc);
+extern void DeadLockReport(void);
+extern void RememberSimpleDeadLock(PGPROC *proc1,
+					   LOCKMODE lockmode,
+					   LOCK *lock,
+					   PGPROC *proc2);
+extern void InitDeadLockChecking(void);
 
 #ifdef LOCK_DEBUG
 extern void DumpLocks(PGPROC *proc);

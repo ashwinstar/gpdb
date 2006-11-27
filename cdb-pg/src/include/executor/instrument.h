@@ -5,9 +5,9 @@
  *
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 2001-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/executor/instrument.h,v 1.12 2005/10/15 02:49:44 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/executor/instrument.h,v 1.16 2006/06/09 19:30:56 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -76,8 +76,7 @@ typedef struct Instrumentation
 
 extern Instrumentation *InstrAlloc(int n);
 extern void InstrStartNode(Instrumentation *instr);
-extern void InstrStopNode(Instrumentation *instr, bool returnedTuple);
-extern void InstrStopNodeMulti(Instrumentation *instr, double nTuples);
+extern void InstrStopNode(Instrumentation *instr, double nTuples);
 extern void InstrEndLoop(Instrumentation *instr);
 
 #endif   /* INSTRUMENT_H */

@@ -5,10 +5,10 @@
  *
  *	  Should be moved/renamed...	- vadim 07/28/98
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/tqual.h,v 1.59 2005/10/15 02:49:46 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/tqual.h,v 1.64 2006/10/04 00:30:11 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,8 +16,9 @@
 #define TQUAL_H
 
 #include "access/htup.h"
-#include "access/xact.h"
 #include "storage/buf.h"
+#include "utils/timestamp.h"  /* TimestampTz */
+#include "access/xact.h"   /* MaxMppSavePoints */
 
 
 /*
@@ -38,10 +39,17 @@ typedef struct SnapshotData
 {
 	TransactionId xmin;			/* XID < xmin are visible to me */
 	TransactionId xmax;			/* XID >= xmax are invisible to me */
-	CommandId	curcid;			/* in my xact, CID < curcid are visible */
 	uint32		xcnt;			/* # of xact ids in xip[] */
 	TransactionId *xip;			/* array of xact IDs in progress */
 	/* note: all ids in xip[] satisfy xmin <= xip[i] < xmax */
+	int32		subxcnt;		/* # of xact ids in subxip[], -1 if overflow */
+	TransactionId *subxip;		/* array of subxact IDs in progress */
+
+	/*
+	 * note: all ids in subxip[] are >= xmin, but we don't bother filtering
+	 * out any that are >= xmax
+	 */
+	CommandId	curcid;			/* in my xact, CID < curcid are visible */
 } SnapshotData;
 
 typedef SnapshotData *Snapshot;
@@ -54,6 +62,15 @@ typedef SnapshotData *Snapshot;
 #define SnapshotToast				((Snapshot) 0x4)
 
 extern DLLIMPORT Snapshot SnapshotDirty;
+
+/* This macro encodes the knowledge of which snapshots are MVCC-safe */
+#define IsMVCCSnapshot(snapshot)  \
+	((snapshot) != SnapshotNow && \
+	 (snapshot) != SnapshotSelf && \
+	 (snapshot) != SnapshotAny && \
+	 (snapshot) != SnapshotToast && \
+	 (snapshot) != SnapshotDirty)
+
 
 extern DLLIMPORT Snapshot SerializableSnapshot;
 extern DLLIMPORT Snapshot LatestSnapshot;
@@ -93,8 +110,9 @@ extern SharedSnapshotSlot *SharedLocalSnapshotSlot;
  *		True iff heap tuple satisfies a time qual.
  *
  * Notes:
- *		Assumes heap tuple is valid.
- *		Beware of multiple evaluations of snapshot argument.
+ *	Assumes heap tuple is valid.
+ *	Beware of multiple evaluations of snapshot argument.
+ *	Hint bits in the HeapTuple's t_infomask may be updated as a side effect.
  */
 #define HeapTupleSatisfiesVisibility(tuple, snapshot, buffer) \
 ((snapshot) == SnapshotNow ? \

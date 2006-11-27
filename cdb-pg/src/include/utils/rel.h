@@ -5,10 +5,10 @@
  *
  *
  * Portions Copyright (c) 2005-2006, Greenplum Inc.
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/rel.h,v 1.87 2005/10/15 02:49:46 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/rel.h,v 1.92 2006/10/04 00:30:10 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -116,6 +116,7 @@ typedef struct RelationAmInfo
 	FmgrInfo	ambulkdelete;
 	FmgrInfo	amvacuumcleanup;
 	FmgrInfo	amcostestimate;
+	FmgrInfo	amoptions;
 } RelationAmInfo;
 
 
@@ -157,6 +158,13 @@ typedef struct RelationData
     bool        rd_cdbDefaultStatsWarningIssued;
 	bool		rd_isLocalBuf;  /* CDB: true => rel uses the local buffer mgr */
 
+	/*
+	 * rd_options is set whenever rd_rel is loaded into the relcache entry.
+	 * Note that you can NOT look into rd_rel for this data.  NULL means "use
+	 * defaults".
+	 */
+	bytea	   *rd_options;		/* parsed pg_class.reloptions */
+
 	/* These are non-NULL only for an index relation: */
 	Form_pg_index rd_index;		/* pg_index tuple describing this index */
 	struct HeapTupleData *rd_indextuple;		/* all of pg_index tuple */
@@ -171,6 +179,13 @@ typedef struct RelationData
 	 * cached, namely those with subtype zero.	The arrays are indexed by
 	 * strategy or support number, which is a sufficient identifier given that
 	 * restriction.
+	 *
+	 * Note: rd_amcache is available for index AMs to cache private data about
+	 * an index.  This must be just a cache since it may get reset at any time
+	 * (in particular, it will get reset by a relcache inval message for the
+	 * index).	If used, it must point to a single memory chunk palloc'd in
+	 * rd_indexcxt.  A relcache reset will include freeing that chunk and
+	 * setting rd_amcache = NULL.
 	 */
 	MemoryContext rd_indexcxt;	/* private memory cxt for this stuff */
 	RelationAmInfo *rd_aminfo;	/* lookup info for funcs found in pg_am */
@@ -179,6 +194,7 @@ typedef struct RelationData
 	FmgrInfo   *rd_supportinfo; /* lookup info for support procedures */
 	List	   *rd_indexprs;	/* index expression trees, if any */
 	List	   *rd_indpred;		/* index predicate tree, if any */
+	void	   *rd_amcache;		/* available for use by index AM */
 
 	/* statistics collection area */
 	PgStat_Info pgstat_info;
@@ -195,6 +211,45 @@ typedef RelationData *Relation;
  */
 typedef Relation *RelationPtr;
 
+
+/*
+ * StdRdOptions
+ *		Standard contents of rd_options for heaps and generic indexes.
+ *
+ * RelationGetFillFactor() and RelationGetTargetPageFreeSpace() can only
+ * be applied to relations that use this format or a superset for
+ * private options data.
+ */
+typedef struct StdRdOptions
+{
+	int32		vl_len;			/* required to be a bytea */
+	int			fillfactor;		/* page fill factor in percent (0..100) */
+} StdRdOptions;
+
+#define HEAP_MIN_FILLFACTOR			10
+#define HEAP_DEFAULT_FILLFACTOR		100
+
+/*
+ * RelationGetFillFactor
+ *		Returns the relation's fillfactor.  Note multiple eval of argument!
+ */
+#define RelationGetFillFactor(relation, defaultff) \
+	((relation)->rd_options ? \
+	 ((StdRdOptions *) (relation)->rd_options)->fillfactor : (defaultff))
+
+/*
+ * RelationGetTargetPageUsage
+ *		Returns the relation's desired space usage per page in bytes.
+ */
+#define RelationGetTargetPageUsage(relation, defaultff) \
+	(BLCKSZ * RelationGetFillFactor(relation, defaultff) / 100)
+
+/*
+ * RelationGetTargetPageFreeSpace
+ *		Returns the relation's desired freespace per page in bytes.
+ */
+#define RelationGetTargetPageFreeSpace(relation, defaultff) \
+	(BLCKSZ * (100 - RelationGetFillFactor(relation, defaultff)) / 100)
 
 /*
  * RelationIsValid

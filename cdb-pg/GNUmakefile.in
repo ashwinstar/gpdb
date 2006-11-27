@@ -1,7 +1,7 @@
 #
 # PostgreSQL top level makefile
 #
-# $PostgreSQL: pgsql/GNUmakefile.in,v 1.42.2.1 2006/08/18 19:58:34 adunstan Exp $
+# $PostgreSQL: pgsql/GNUmakefile.in,v 1.45 2006/08/18 19:58:05 adunstan Exp $
 #
 
 subdir =
@@ -12,18 +12,24 @@ all:
 #	$(MAKE) -C doc all
 	$(MAKE) -C src all
 	$(MAKE) -C config all
-	@echo "All of MPP successfully made. Ready to install."
+	@echo "All of Greenplum Database successfully made. Ready to install."
 
 install:
 #	$(MAKE) -C doc $@
 	$(MAKE) -C src $@
 	$(MAKE) -C config $@
-	@echo "MPP installation complete."
+	@echo "Greenplum Database installation complete."
 
-installdirs uninstall distprep:
+installdirs uninstall:
 #	$(MAKE) -C doc $@
 	$(MAKE) -C src $@
 	$(MAKE) -C config $@
+
+distprep:
+	$(MAKE) -C doc $@
+	$(MAKE) -C src $@
+	$(MAKE) -C config $@
+	$(MAKE) -C contrib $@
 
 # clean, distclean, etc should apply to contrib too, even though
 # it's not built by default
@@ -103,6 +109,10 @@ distdir:
 	  fi || exit; \
 	done
 	$(MAKE) -C $(distdir) distprep
+	#$(MAKE) -C $(distdir)/doc/src/sgml/ HISTORY INSTALL regress_README
+	#cp $(distdir)/doc/src/sgml/HISTORY $(distdir)/
+	#cp $(distdir)/doc/src/sgml/INSTALL $(distdir)/
+	#cp $(distdir)/doc/src/sgml/regress_README $(distdir)/src/test/regress/README
 	$(MAKE) -C $(distdir) distclean
 	rm -f $(distdir)/README.CVS
 

@@ -1,3 +1,5 @@
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/pgtypeslib/common.c,v 1.14 2006/07/30 16:28:58 meskes Exp $ */
+
 #include "postgres_fe.h"
 
 #include "extern.h"

@@ -1,39 +1,17 @@
-/**********************************************************************
+/*-------------------------------------------------------------------------
+ *
  * pl_funcs.c		- Misc functions for the PL/pgSQL
  *			  procedural language
  *
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_funcs.c,v 1.46.2.1 2005/11/22 18:23:30 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_funcs.c,v 1.55 2006/09/22 21:39:58 tgl Exp $
  *
- *	  This software is copyrighted by Jan Wieck - Hamburg.
- *
- *	  The author hereby grants permission  to  use,  copy,	modify,
- *	  distribute,  and	license this software and its documentation
- *	  for any purpose, provided that existing copyright notices are
- *	  retained	in	all  copies  and  that	this notice is included
- *	  verbatim in any distributions. No written agreement, license,
- *	  or  royalty  fee	is required for any of the authorized uses.
- *	  Modifications to this software may be  copyrighted  by  their
- *	  author  and  need  not  follow  the licensing terms described
- *	  here, provided that the new terms are  clearly  indicated  on
- *	  the first page of each file where they apply.
- *
- *	  IN NO EVENT SHALL THE AUTHOR OR DISTRIBUTORS BE LIABLE TO ANY
- *	  PARTY  FOR  DIRECT,	INDIRECT,	SPECIAL,   INCIDENTAL,	 OR
- *	  CONSEQUENTIAL   DAMAGES  ARISING	OUT  OF  THE  USE  OF  THIS
- *	  SOFTWARE, ITS DOCUMENTATION, OR ANY DERIVATIVES THEREOF, EVEN
- *	  IF  THE  AUTHOR  HAVE BEEN ADVISED OF THE POSSIBILITY OF SUCH
- *	  DAMAGE.
- *
- *	  THE  AUTHOR  AND	DISTRIBUTORS  SPECIFICALLY	 DISCLAIM	ANY
- *	  WARRANTIES,  INCLUDING,  BUT	NOT  LIMITED  TO,  THE	IMPLIED
- *	  WARRANTIES  OF  MERCHANTABILITY,	FITNESS  FOR  A  PARTICULAR
- *	  PURPOSE,	AND NON-INFRINGEMENT.  THIS SOFTWARE IS PROVIDED ON
- *	  AN "AS IS" BASIS, AND THE AUTHOR	AND  DISTRIBUTORS  HAVE  NO
- *	  OBLIGATION   TO	PROVIDE   MAINTENANCE,	 SUPPORT,  UPDATES,
- *	  ENHANCEMENTS, OR MODIFICATIONS.
- *
- **********************************************************************/
+ *-------------------------------------------------------------------------
+ */
 
 #include "plpgsql.h"
 #include "pl.tab.h"
@@ -403,7 +381,7 @@ plpgsql_convert_ident(const char *s, char **output, int numidents)
 			/* Normal identifier: extends till dot or whitespace */
 			const char *thisstart = s;
 
-			while (*s && *s != '.' && !isspace((unsigned char) *s))
+			while (*s && *s != '.' && !scanner_isspace(*s))
 				s++;
 			/* Downcase and truncate to NAMEDATALEN */
 			curident = downcase_truncate_identifier(thisstart, s - thisstart,
@@ -422,11 +400,11 @@ plpgsql_convert_ident(const char *s, char **output, int numidents)
 		/* If not done, skip whitespace, dot, whitespace */
 		if (*s)
 		{
-			while (*s && isspace((unsigned char) *s))
+			while (*s && scanner_isspace(*s))
 				s++;
 			if (*s++ != '.')
 				elog(ERROR, "expected dot between identifiers: %s", sstart);
-			while (*s && isspace((unsigned char) *s))
+			while (*s && scanner_isspace(*s))
 				s++;
 			if (*s == '\0')
 				elog(ERROR, "expected another identifier: %s", sstart);
@@ -461,8 +439,6 @@ plpgsql_stmt_typename(PLpgSQL_stmt *stmt)
 			return "for with integer loopvar";
 		case PLPGSQL_STMT_FORS:
 			return "for over select rows";
-		case PLPGSQL_STMT_SELECT:
-			return "select into variables";
 		case PLPGSQL_STMT_EXIT:
 			return "exit";
 		case PLPGSQL_STMT_RETURN:
@@ -507,7 +483,6 @@ static void dump_loop(PLpgSQL_stmt_loop *stmt);
 static void dump_while(PLpgSQL_stmt_while *stmt);
 static void dump_fori(PLpgSQL_stmt_fori *stmt);
 static void dump_fors(PLpgSQL_stmt_fors *stmt);
-static void dump_select(PLpgSQL_stmt_select *stmt);
 static void dump_exit(PLpgSQL_stmt_exit *stmt);
 static void dump_return(PLpgSQL_stmt_return *stmt);
 static void dump_return_next(PLpgSQL_stmt_return_next *stmt);
@@ -558,9 +533,6 @@ dump_stmt(PLpgSQL_stmt *stmt)
 			break;
 		case PLPGSQL_STMT_FORS:
 			dump_fors((PLpgSQL_stmt_fors *) stmt);
-			break;
-		case PLPGSQL_STMT_SELECT:
-			dump_select((PLpgSQL_stmt_select *) stmt);
 			break;
 		case PLPGSQL_STMT_EXIT:
 			dump_exit((PLpgSQL_stmt_exit *) stmt);
@@ -727,6 +699,10 @@ dump_fori(PLpgSQL_stmt_fori *stmt)
 	printf("    upper = ");
 	dump_expr(stmt->upper);
 	printf("\n");
+	dump_ind();
+	printf("    by = ");
+	dump_expr(stmt->by);
+	printf("\n");
 	dump_indent -= 2;
 
 	dump_stmts(stmt->body);
@@ -747,29 +723,6 @@ dump_fors(PLpgSQL_stmt_fors *stmt)
 
 	dump_ind();
 	printf("    ENDFORS\n");
-}
-
-static void
-dump_select(PLpgSQL_stmt_select *stmt)
-{
-	dump_ind();
-	printf("SELECT ");
-	dump_expr(stmt->query);
-	printf("\n");
-
-	dump_indent += 2;
-	if (stmt->rec != NULL)
-	{
-		dump_ind();
-		printf("    target = %d %s\n", stmt->rec->recno, stmt->rec->refname);
-	}
-	if (stmt->row != NULL)
-	{
-		dump_ind();
-		printf("    target = %d %s\n", stmt->row->rowno, stmt->row->refname);
-	}
-	dump_indent -= 2;
-
 }
 
 static void
@@ -909,6 +862,23 @@ dump_execsql(PLpgSQL_stmt_execsql *stmt)
 	printf("EXECSQL ");
 	dump_expr(stmt->sqlstmt);
 	printf("\n");
+
+	dump_indent += 2;
+	if (stmt->rec != NULL)
+	{
+		dump_ind();
+		printf("    INTO%s target = %d %s\n",
+			   stmt->strict ? " STRICT" : "",
+			   stmt->rec->recno, stmt->rec->refname);
+	}
+	if (stmt->row != NULL)
+	{
+		dump_ind();
+		printf("    INTO%s target = %d %s\n",
+			   stmt->strict ? " STRICT" : "",
+			   stmt->row->rowno, stmt->row->refname);
+	}
+	dump_indent -= 2;
 }
 
 static void
@@ -923,12 +893,16 @@ dump_dynexecute(PLpgSQL_stmt_dynexecute *stmt)
 	if (stmt->rec != NULL)
 	{
 		dump_ind();
-		printf("    target = %d %s\n", stmt->rec->recno, stmt->rec->refname);
+		printf("    INTO%s target = %d %s\n",
+			   stmt->strict ? " STRICT" : "",
+			   stmt->rec->recno, stmt->rec->refname);
 	}
-	else if (stmt->row != NULL)
+	if (stmt->row != NULL)
 	{
 		dump_ind();
-		printf("    target = %d %s\n", stmt->row->rowno, stmt->row->refname);
+		printf("    INTO%s target = %d %s\n",
+			   stmt->strict ? " STRICT" : "",
+			   stmt->row->rowno, stmt->row->refname);
 	}
 	dump_indent -= 2;
 }

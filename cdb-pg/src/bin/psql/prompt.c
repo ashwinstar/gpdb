@@ -1,19 +1,11 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/prompt.c,v 1.40.2.1 2006/01/03 23:32:34 tgl Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/prompt.c,v 1.48 2006/08/29 15:19:51 tgl Exp $
  */
 #include "postgres_fe.h"
-#include "prompt.h"
-
-#include "libpq-fe.h"
-
-#include "settings.h"
-#include "common.h"
-#include "input.h"
-#include "variables.h"
 
 #ifdef WIN32
 #include <io.h>
@@ -24,6 +16,12 @@
 #include <unistd.h>
 #include <netdb.h>
 #endif
+
+#include "common.h"
+#include "input.h"
+#include "prompt.h"
+#include "settings.h"
+
 
 /*--------------------------
  * get_prompt
@@ -74,12 +72,11 @@ get_prompt(promptStatus_t status)
 	bool		esc = false;
 	const char *p;
 	const char *prompt_string = "? ";
-	const char *prompt_name = NULL;
 
 	switch (status)
 	{
 		case PROMPT_READY:
-			prompt_name = "PROMPT1";
+			prompt_string = pset.prompt1;
 			break;
 
 		case PROMPT_CONTINUE:
@@ -88,21 +85,18 @@ get_prompt(promptStatus_t status)
 		case PROMPT_DOLLARQUOTE:
 		case PROMPT_COMMENT:
 		case PROMPT_PAREN:
-			prompt_name = "PROMPT2";
+			prompt_string = pset.prompt2;
 			break;
 
 		case PROMPT_COPY:
-			prompt_name = "PROMPT3";
+			prompt_string = pset.prompt3;
 			break;
 	}
-
-	if (prompt_name)
-		prompt_string = GetVariable(pset.vars, prompt_name);
 
 	destination[0] = '\0';
 
 	for (p = prompt_string;
-		 p && *p && strlen(destination) < MAX_PROMPT_SIZE;
+		 *p && strlen(destination) < MAX_PROMPT_SIZE;
 		 p++)
 	{
 		memset(buf, 0, MAX_PROMPT_SIZE + 1);
@@ -184,7 +178,7 @@ get_prompt(promptStatus_t status)
 						case PROMPT_READY:
 							if (!pset.db)
 								buf[0] = '!';
-							else if (!GetVariableBool(pset.vars, "SINGLELINE"))
+							else if (!pset.singleline)
 								buf[0] = '=';
 							else
 								buf[0] = '^';
@@ -249,14 +243,13 @@ get_prompt(promptStatus_t status)
 					/* execute command */
 				case '`':
 					{
-						FILE	   *fd = NULL;
+						FILE	   *fd;
 						char	   *file = pg_strdup(p + 1);
 						int			cmdend;
 
 						cmdend = strcspn(file, "`");
 						file[cmdend] = '\0';
-						if (file)
-							fd = popen(file, "r");
+						fd = popen(file, "r");
 						if (fd)
 						{
 							fgets(buf, MAX_PROMPT_SIZE - 1, fd);

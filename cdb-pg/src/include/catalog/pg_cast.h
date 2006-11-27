@@ -9,9 +9,9 @@
  *
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Copyright (c) 2002-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_cast.h,v 1.24 2005/10/21 15:45:06 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_cast.h,v 1.26 2006/03/05 15:58:54 momjian Exp $
  *
  * NOTES
  *	  the genbki.sh script reads this file and generates .bki
@@ -250,7 +250,7 @@ DATA(insert (  718	604 1544 e ));
  * INET category
  */
 DATA(insert (  650	869    0 i ));
-DATA(insert (  869	650    0 i ));
+DATA(insert (  869	650 1715 a ));
 
 /*
  * BitString category

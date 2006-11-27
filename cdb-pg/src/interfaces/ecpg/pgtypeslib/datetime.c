@@ -1,3 +1,5 @@
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/pgtypeslib/datetime.c,v 1.32 2006/10/04 00:30:11 momjian Exp $ */
+
 #include "postgres_fe.h"
 
 #include <time.h>
@@ -10,6 +12,22 @@
 #include "pgtypes_error.h"
 #include "pgtypes_date.h"
 
+date *
+PGTYPESdate_new(void)
+{
+	date	   *result;
+
+	result = (date *) pgtypes_alloc(sizeof(date));
+	/* result can be NULL if we run out of memory */
+	return result;
+}
+
+void
+PGTYPESdate_free(date * d)
+{
+	free(d);
+}
+
 date
 PGTYPESdate_from_timestamp(timestamp dt)
 {
@@ -17,16 +35,16 @@ PGTYPESdate_from_timestamp(timestamp dt)
 
 	dDate = 0;					/* suppress compiler warning */
 
-	if (TIMESTAMP_NOT_FINITE(dt))
-		return
-
+	if (!TIMESTAMP_NOT_FINITE(dt))
+	{
 #ifdef HAVE_INT64_TIMESTAMP
 		/* Microseconds to days */
-			dDate = (dt / USECS_PER_DAY);
+		dDate = (dt / USECS_PER_DAY);
 #else
 		/* Seconds to days */
-			dDate = (dt / (double) SECS_PER_DAY);
+		dDate = (dt / (double) SECS_PER_DAY);
 #endif
+	}
 
 	return dDate;
 }
@@ -228,7 +246,7 @@ PGTYPESdate_fmt_asc(date dDate, char *fmtstring, char *outbuf)
 					replace_type = PGTYPES_TYPE_UINT_4_LZ;
 					break;
 				case PGTYPES_FMTDATE_YEAR_DIGITS_SHORT:
-					replace_val.uint_val = tm.tm_year % 1000;
+					replace_val.uint_val = tm.tm_year % 100;
 					replace_type = PGTYPES_TYPE_UINT_2_LZ;
 					break;
 				default:
@@ -535,7 +553,7 @@ PGTYPESdate_defmt_asc(date * d, char *fmt, char *str)
 		 * matches
 		 */
 		free(str_copy);
-		errno = PGTYPES_DATE_ERR_ENOTDMY;
+		errno = PGTYPES_DATE_ERR_ENOSHORTDATE;
 		return -1;
 	}
 

@@ -1,44 +1,23 @@
 %{
-/**********************************************************************
+/*-------------------------------------------------------------------------
+ *
  * gram.y				- Parser for the PL/pgSQL
  *						  procedural language
  *
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/gram.y,v 1.82.2.2 2006/08/14 00:46:59 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/gram.y,v 1.95 2006/08/14 21:14:41 tgl Exp $
  *
- *	  This software is copyrighted by Jan Wieck - Hamburg.
- *
- *	  The author hereby grants permission  to  use,  copy,	modify,
- *	  distribute,  and	license this software and its documentation
- *	  for any purpose, provided that existing copyright notices are
- *	  retained	in	all  copies  and  that	this notice is included
- *	  verbatim in any distributions. No written agreement, license,
- *	  or  royalty  fee	is required for any of the authorized uses.
- *	  Modifications to this software may be  copyrighted  by  their
- *	  author  and  need  not  follow  the licensing terms described
- *	  here, provided that the new terms are  clearly  indicated  on
- *	  the first page of each file where they apply.
- *
- *	  IN NO EVENT SHALL THE AUTHOR OR DISTRIBUTORS BE LIABLE TO ANY
- *	  PARTY  FOR  DIRECT,	INDIRECT,	SPECIAL,   INCIDENTAL,	 OR
- *	  CONSEQUENTIAL   DAMAGES  ARISING	OUT  OF  THE  USE  OF  THIS
- *	  SOFTWARE, ITS DOCUMENTATION, OR ANY DERIVATIVES THEREOF, EVEN
- *	  IF  THE  AUTHOR  HAVE BEEN ADVISED OF THE POSSIBILITY OF SUCH
- *	  DAMAGE.
- *
- *	  THE  AUTHOR  AND	DISTRIBUTORS  SPECIFICALLY	 DISCLAIM	ANY
- *	  WARRANTIES,  INCLUDING,  BUT	NOT  LIMITED  TO,  THE	IMPLIED
- *	  WARRANTIES  OF  MERCHANTABILITY,	FITNESS  FOR  A  PARTICULAR
- *	  PURPOSE,	AND NON-INFRINGEMENT.  THIS SOFTWARE IS PROVIDED ON
- *	  AN "AS IS" BASIS, AND THE AUTHOR	AND  DISTRIBUTORS  HAVE  NO
- *	  OBLIGATION   TO	PROVIDE   MAINTENANCE,	 SUPPORT,  UPDATES,
- *	  ENHANCEMENTS, OR MODIFICATIONS.
- *
- **********************************************************************/
+ *-------------------------------------------------------------------------
+ */
 
 #include "plpgsql.h"
 
 #include "parser/parser.h"
+
 
 static PLpgSQL_expr		*read_sql_construct(int until,
 											int until2,
@@ -49,19 +28,26 @@ static PLpgSQL_expr		*read_sql_construct(int until,
 											int *endtoken);
 static	PLpgSQL_expr	*read_sql_stmt(const char *sqlstart);
 static	PLpgSQL_type	*read_datatype(int tok);
-static	PLpgSQL_stmt	*make_select_stmt(int lineno);
+static	PLpgSQL_stmt	*make_execsql_stmt(const char *sqlstart, int lineno);
 static	PLpgSQL_stmt	*make_fetch_stmt(int lineno, int curvar);
 static	PLpgSQL_stmt	*make_return_stmt(int lineno);
 static	PLpgSQL_stmt	*make_return_next_stmt(int lineno);
 static	void			 check_assignable(PLpgSQL_datum *datum);
+static	void			 read_into_target(PLpgSQL_rec **rec, PLpgSQL_row **row,
+										  bool *strict);
 static	PLpgSQL_row		*read_into_scalar_list(const char *initial_name,
 											   PLpgSQL_datum *initial_datum);
+static PLpgSQL_row		*make_scalar_list1(const char *initial_name,
+										   PLpgSQL_datum *initial_datum,
+										   int lineno);
 static	void			 check_sql_expr(const char *stmt);
 static	void			 plpgsql_sql_error_callback(void *arg);
 static	void			 check_labels(const char *start_label,
 									  const char *end_label);
 
 %}
+
+%name-prefix="plpgsql_yy"
 
 %union {
 		int32					ival;
@@ -76,6 +62,7 @@ static	void			 check_labels(const char *start_label,
 		{
 			char *name;
 			int  lineno;
+			PLpgSQL_datum   *scalar;
 			PLpgSQL_rec     *rec;
 			PLpgSQL_row     *row;
 		}						forvariable;
@@ -135,9 +122,8 @@ static	void			 check_labels(const char *start_label,
 %type <loop_body>	loop_body
 %type <stmt>	proc_stmt pl_block
 %type <stmt>	stmt_assign stmt_if stmt_loop stmt_while stmt_exit
-%type <stmt>	stmt_return stmt_raise stmt_execsql
-%type <stmt>	stmt_for stmt_select stmt_perform
-%type <stmt>	stmt_dynexecute stmt_getdiag
+%type <stmt>	stmt_return stmt_raise stmt_execsql stmt_execsql_insert
+%type <stmt>	stmt_dynexecute stmt_for stmt_perform stmt_getdiag
 %type <stmt>	stmt_open stmt_fetch stmt_close stmt_null
 
 %type <list>	proc_exceptions
@@ -161,6 +147,7 @@ static	void			 check_labels(const char *start_label,
 %token	K_ALIAS
 %token	K_ASSIGN
 %token	K_BEGIN
+%token	K_BY
 %token	K_CLOSE
 %token	K_CONSTANT
 %token	K_CONTINUE
@@ -183,6 +170,7 @@ static	void			 check_labels(const char *start_label,
 %token	K_IF
 %token	K_IN
 %token	K_INFO
+%token	K_INSERT
 %token	K_INTO
 %token	K_IS
 %token	K_LOG
@@ -200,7 +188,7 @@ static	void			 check_labels(const char *start_label,
 %token	K_RESULT_OID
 %token	K_RETURN
 %token	K_REVERSE
-%token	K_SELECT
+%token	K_STRICT
 %token	K_THEN
 %token	K_TO
 %token	K_TYPE
@@ -393,12 +381,16 @@ decl_statement	: decl_varname decl_const decl_datatype decl_notnull decl_defval
 						strcpy(buf, "SELECT ");
 						cp1 = new->refname;
 						cp2 = buf + strlen(buf);
+						/*
+						 * Don't trust standard_conforming_strings here;
+						 * it might change before we use the string.
+						 */
 						if (strchr(cp1, '\\') != NULL)
 							*cp2++ = ESCAPE_STRING_SYNTAX;
 						*cp2++ = '\'';
 						while (*cp1)
 						{
-							if (SQL_STR_DOUBLE(*cp1))
+							if (SQL_STR_DOUBLE(*cp1, true))
 								*cp2++ = *cp1;
 							*cp2++ = *cp1++;
 						}
@@ -600,8 +592,6 @@ proc_stmt		: pl_block ';'
 						{ $$ = $1; }
 				| stmt_for
 						{ $$ = $1; }
-				| stmt_select
-						{ $$ = $1; }
 				| stmt_exit
 						{ $$ = $1; }
 				| stmt_return
@@ -609,6 +599,8 @@ proc_stmt		: pl_block ';'
 				| stmt_raise
 						{ $$ = $1; }
 				| stmt_execsql
+						{ $$ = $1; }
+				| stmt_execsql_insert
 						{ $$ = $1; }
 				| stmt_dynexecute
 						{ $$ = $1; }
@@ -880,13 +872,25 @@ for_control		:
 							new->cmd_type = PLPGSQL_STMT_DYNFORS;
 							new->lineno   = $1;
 							if ($2.rec)
+							{
 								new->rec = $2.rec;
+								check_assignable((PLpgSQL_datum *) new->rec);
+							}
 							else if ($2.row)
+							{
 								new->row = $2.row;
+								check_assignable((PLpgSQL_datum *) new->row);
+							}
+							else if ($2.scalar)
+							{
+								/* convert single scalar to list */
+								new->row = make_scalar_list1($2.name, $2.scalar, $2.lineno);
+								/* no need for check_assignable */
+							}
 							else
 							{
-								plpgsql_error_lineno = $1;
-								yyerror("loop variable of loop over rows must be a record or row variable");
+								plpgsql_error_lineno = $2.lineno;
+								yyerror("loop variable of loop over rows must be a record or row variable or list of scalar variables");
 							}
 							new->query = expr;
 
@@ -933,16 +937,54 @@ for_control		:
 							{
 								/* Saw "..", so it must be an integer loop */
 								PLpgSQL_expr		*expr2;
+								PLpgSQL_expr		*expr_by;
 								PLpgSQL_var			*fvar;
 								PLpgSQL_stmt_fori	*new;
+								char				*varname;
 
 								/* First expression is well-formed */
 								check_sql_expr(expr1->query);
 
-								expr2 = plpgsql_read_expression(K_LOOP, "LOOP");
 
+								expr2 = read_sql_construct(K_BY,
+														   K_LOOP,
+														   "LOOP",
+														   "SELECT ",
+														   true,
+														   false,
+														   &tok);
+
+								if (tok == K_BY) 
+									expr_by = plpgsql_read_expression(K_LOOP, "LOOP");
+								else
+								{
+									/*
+									 * If there is no BY clause we will assume 1
+									 */
+									char buf[1024];
+									PLpgSQL_dstring		ds;
+
+									plpgsql_dstring_init(&ds);
+
+									expr_by = palloc0(sizeof(PLpgSQL_expr));
+									expr_by->dtype      		= PLPGSQL_DTYPE_EXPR;
+									strcpy(buf, "SELECT 1");
+									plpgsql_dstring_append(&ds, buf);
+									expr_by->query			    = pstrdup(plpgsql_dstring_get(&ds));
+									expr_by->plan				= NULL;
+								}
+
+								/* should have had a single variable name */
+								plpgsql_error_lineno = $2.lineno;
+								if ($2.scalar && $2.row)
+									ereport(ERROR,
+											(errcode(ERRCODE_SYNTAX_ERROR),
+											 errmsg("integer FOR loop must have just one target variable")));
+
+								/* create loop's private variable */
+								plpgsql_convert_ident($2.name, &varname, 1);
 								fvar = (PLpgSQL_var *)
-									plpgsql_build_variable($2.name,
+									plpgsql_build_variable(varname,
 														   $2.lineno,
 														   plpgsql_build_datatype(INT4OID,
 																				  -1),
@@ -958,6 +1000,7 @@ for_control		:
 								new->reverse  = reverse;
 								new->lower	  = expr1;
 								new->upper	  = expr2;
+								new->by		  = expr_by;
 
 								$$ = (PLpgSQL_stmt *) new;
 							}
@@ -985,13 +1028,25 @@ for_control		:
 								new->cmd_type = PLPGSQL_STMT_FORS;
 								new->lineno   = $1;
 								if ($2.rec)
+								{
 									new->rec = $2.rec;
+									check_assignable((PLpgSQL_datum *) new->rec);
+								}
 								else if ($2.row)
+								{
 									new->row = $2.row;
+									check_assignable((PLpgSQL_datum *) new->row);
+								}
+								else if ($2.scalar)
+								{
+									/* convert single scalar to list */
+									new->row = make_scalar_list1($2.name, $2.scalar, $2.lineno);
+									/* no need for check_assignable */
+								}
 								else
 								{
-									plpgsql_error_lineno = $1;
-									yyerror("loop variable of loop over rows must be record or row variable");
+									plpgsql_error_lineno = $2.lineno;
+									yyerror("loop variable of loop over rows must be a record or row variable or list of scalar variables");
 								}
 
 								new->query = expr1;
@@ -1001,51 +1056,75 @@ for_control		:
 					}
 				;
 
+/*
+ * Processing the for_variable is tricky because we don't yet know if the
+ * FOR is an integer FOR loop or a loop over query results.  In the former
+ * case, the variable is just a name that we must instantiate as a loop
+ * local variable, regardless of any other definition it might have.
+ * Therefore, we always save the actual identifier into $$.name where it
+ * can be used for that case.  We also save the outer-variable definition,
+ * if any, because that's what we need for the loop-over-query case.  Note
+ * that we must NOT apply check_assignable() or any other semantic check
+ * until we know what's what.
+ *
+ * However, if we see a comma-separated list of names, we know that it
+ * can't be an integer FOR loop and so it's OK to check the variables
+ * immediately.  In particular, for T_WORD followed by comma, we should
+ * complain that the name is not known rather than say it's a syntax error.
+ * Note that the non-error result of this case sets *both* $$.scalar and
+ * $$.row; see the for_control production.
+ */
 for_variable	: T_SCALAR
 					{
-						char		*name;
+						int			tok;
 
-						plpgsql_convert_ident(yytext, &name, 1);
-						$$.name = name;
+						$$.name = pstrdup(yytext);
 						$$.lineno  = plpgsql_scanner_lineno();
+						$$.scalar = yylval.scalar;
 						$$.rec = NULL;
 						$$.row = NULL;
+						/* check for comma-separated list */
+						tok = yylex();
+						plpgsql_push_back_token(tok);
+						if (tok == ',')
+							$$.row = read_into_scalar_list($$.name, $$.scalar);
 					}
 				| T_WORD
 					{
-						char		*name;
+						int			tok;
 
-						plpgsql_convert_ident(yytext, &name, 1);
-						$$.name = name;
+						$$.name = pstrdup(yytext);
 						$$.lineno  = plpgsql_scanner_lineno();
+						$$.scalar = NULL;
 						$$.rec = NULL;
 						$$.row = NULL;
+						/* check for comma-separated list */
+						tok = yylex();
+						plpgsql_push_back_token(tok);
+						if (tok == ',')
+						{
+							plpgsql_error_lineno = $$.lineno;
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("\"%s\" is not a scalar variable",
+											$$.name)));
+						}
 					}
 				| T_RECORD
 					{
-						char		*name;
-
-						plpgsql_convert_ident(yytext, &name, 1);
-						$$.name = name;
+						$$.name = pstrdup(yytext);
 						$$.lineno  = plpgsql_scanner_lineno();
+						$$.scalar = NULL;
 						$$.rec = yylval.rec;
 						$$.row = NULL;
 					}
 				| T_ROW
 					{
-						char		*name;
-
-						plpgsql_convert_ident(yytext, &name, 1);
-						$$.name = name;
+						$$.name = pstrdup(yytext);
 						$$.lineno  = plpgsql_scanner_lineno();
+						$$.scalar = NULL;
 						$$.row = yylval.row;
 						$$.rec = NULL;
-					}
-				;
-
-stmt_select		: K_SELECT lno
-					{
-						$$ = make_select_stmt($2);
 					}
 				;
 
@@ -1175,14 +1254,28 @@ loop_body		: proc_sect K_END K_LOOP opt_label ';'
 
 stmt_execsql	: execsql_start lno
 					{
-						PLpgSQL_stmt_execsql	*new;
+						$$ = make_execsql_stmt($1, $2);
+					}
+				;
 
-						new = palloc(sizeof(PLpgSQL_stmt_execsql));
-						new->cmd_type = PLPGSQL_STMT_EXECSQL;
-						new->lineno   = $2;
-						new->sqlstmt  = read_sql_stmt($1);
+/* this matches any otherwise-unrecognized starting keyword */
+execsql_start	: T_WORD
+					{ $$ = pstrdup(yytext); }
+				| T_ERROR
+					{ $$ = pstrdup(yytext); }
+				;
 
-						$$ = (PLpgSQL_stmt *)new;
+stmt_execsql_insert : K_INSERT lno K_INTO
+					{
+						/*
+						 * We have to special-case INSERT so that its INTO
+						 * won't be treated as an INTO-variables clause.
+						 *
+						 * Fortunately, this is the only valid use of INTO
+						 * in a pl/pgsql SQL command, and INTO is already
+						 * a fully reserved word in the main grammar.
+						 */
+						$$ = make_execsql_stmt("INSERT INTO", $2);
 					}
 				;
 
@@ -1192,46 +1285,24 @@ stmt_dynexecute : K_EXECUTE lno
 						PLpgSQL_expr *expr;
 						int endtoken;
 
-						expr = read_sql_construct(K_INTO, ';', "INTO|;", "SELECT ",
+						expr = read_sql_construct(K_INTO, ';', "INTO|;",
+												  "SELECT ",
 												  true, true, &endtoken);
 
 						new = palloc(sizeof(PLpgSQL_stmt_dynexecute));
 						new->cmd_type = PLPGSQL_STMT_DYNEXECUTE;
-						new->lineno   = $2;
-						new->query    = expr;
+						new->lineno = $2;
+						new->query = expr;
+						new->into = false;
+						new->strict = false;
 						new->rec = NULL;
 						new->row = NULL;
 
-						/*
-						 * If we saw "INTO", look for a following row
-						 * var, record var, or list of scalars.
-						 */
+						/* If we found "INTO", collect the argument */
 						if (endtoken == K_INTO)
 						{
-							switch (yylex())
-							{
-								case T_ROW:
-									check_assignable((PLpgSQL_datum *) yylval.row);
-									new->row = yylval.row;
-									break;
-
-								case T_RECORD:
-									check_assignable((PLpgSQL_datum *) yylval.row);
-									new->rec = yylval.rec;
-									break;
-
-								case T_SCALAR:
-									new->row = read_into_scalar_list(yytext, yylval.scalar);
-									break;
-
-								default:
-									plpgsql_error_lineno = $2;
-									ereport(ERROR,
-											(errcode(ERRCODE_SYNTAX_ERROR),
-											 errmsg("syntax error at \"%s\"", yytext),
-											 errdetail("Expected record variable, row variable, "
-													   "or list of scalar variables.")));
-							}
+							new->into = true;
+							read_into_target(&new->rec, &new->row, &new->strict);
 							if (yylex() != ';')
 								yyerror("syntax error");
 						}
@@ -1416,12 +1487,6 @@ cursor_variable	: T_SCALAR
 						}
 						$$ = yylval.scalar->dno;
 					}
-				;
-
-execsql_start	: T_WORD
-					{ $$ = pstrdup(yytext); }
-				| T_ERROR
-					{ $$ = pstrdup(yytext); }
 				;
 
 exception_sect	:
@@ -1808,25 +1873,26 @@ read_datatype(int tok)
 }
 
 static PLpgSQL_stmt *
-make_select_stmt(int lineno)
+make_execsql_stmt(const char *sqlstart, int lineno)
 {
 	PLpgSQL_dstring		ds;
 	int					nparams = 0;
 	int					params[MAX_EXPR_PARAMS];
 	char				buf[32];
+	PLpgSQL_stmt_execsql *execsql;
 	PLpgSQL_expr		*expr;
 	PLpgSQL_row			*row = NULL;
 	PLpgSQL_rec			*rec = NULL;
 	int					tok;
 	bool				have_into = false;
+	bool				have_strict = false;
 
 	plpgsql_dstring_init(&ds);
-	plpgsql_dstring_append(&ds, "SELECT ");
+	plpgsql_dstring_append(&ds, sqlstart);
 
-	while (1)
+	for (;;)
 	{
 		tok = yylex();
-
 		if (tok == ';')
 			break;
 		if (tok == 0)
@@ -1845,30 +1911,8 @@ make_select_stmt(int lineno)
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("INTO specified more than once")));
 			}
-			tok = yylex();
-			switch (tok)
-			{
-				case T_ROW:
-					row = yylval.row;
-					have_into = true;
-					break;
-
-				case T_RECORD:
-					rec = yylval.rec;
-					have_into = true;
-					break;
-
-				case T_SCALAR:
-					row = read_into_scalar_list(yytext, yylval.scalar);
-					have_into = true;
-					break;
-
-				default:
-					/* Treat the INTO as non-special */
-					plpgsql_dstring_append(&ds, " INTO ");
-					plpgsql_push_back_token(tok);
-					break;
-			}
+			have_into = true;
+			read_into_target(&rec, &row, &have_strict);
 			continue;
 		}
 
@@ -1915,30 +1959,16 @@ make_select_stmt(int lineno)
 
 	check_sql_expr(expr->query);
 
-	if (have_into)
-	{
-		PLpgSQL_stmt_select *select;
+	execsql = palloc(sizeof(PLpgSQL_stmt_execsql));
+	execsql->cmd_type = PLPGSQL_STMT_EXECSQL;
+	execsql->lineno  = lineno;
+	execsql->sqlstmt = expr;
+	execsql->into	 = have_into;
+	execsql->strict	 = have_strict;
+	execsql->rec	 = rec;
+	execsql->row	 = row;
 
-		select = palloc0(sizeof(PLpgSQL_stmt_select));
-		select->cmd_type = PLPGSQL_STMT_SELECT;
-		select->lineno   = lineno;
-		select->rec		 = rec;
-		select->row		 = row;
-		select->query	 = expr;
-
-		return (PLpgSQL_stmt *)select;
-	}
-	else
-	{
-		PLpgSQL_stmt_execsql *execsql;
-
-		execsql = palloc(sizeof(PLpgSQL_stmt_execsql));
-		execsql->cmd_type = PLPGSQL_STMT_EXECSQL;
-		execsql->lineno   = lineno;
-		execsql->sqlstmt  = expr;
-
-		return (PLpgSQL_stmt *)execsql;
-	}
+	return (PLpgSQL_stmt *) execsql;
 }
 
 
@@ -1946,31 +1976,12 @@ static PLpgSQL_stmt *
 make_fetch_stmt(int lineno, int curvar)
 {
 	int					tok;
-	PLpgSQL_row		   *row = NULL;
-	PLpgSQL_rec		   *rec = NULL;
+	PLpgSQL_rec		   *rec;
+	PLpgSQL_row		   *row;
 	PLpgSQL_stmt_fetch *fetch;
 
 	/* We have already parsed everything through the INTO keyword */
-
-	tok = yylex();
-	switch (tok)
-	{
-		case T_ROW:
-			row = yylval.row;
-			break;
-
-		case T_RECORD:
-			rec = yylval.rec;
-			break;
-
-		case T_SCALAR:
-			row = read_into_scalar_list(yytext, yylval.scalar);
-			break;
-
-		default:
-			yyerror("syntax error");
-	}
-
+	read_into_target(&rec, &row, NULL);
 	tok = yylex();
 	if (tok != ';')
 		yyerror("syntax error");
@@ -2133,6 +2144,54 @@ check_assignable(PLpgSQL_datum *datum)
 }
 
 /*
+ * Read the argument of an INTO clause.  On entry, we have just read the
+ * INTO keyword.
+ */
+static void
+read_into_target(PLpgSQL_rec **rec, PLpgSQL_row **row, bool *strict)
+{
+	int			tok;
+
+	/* Set default results */
+	*rec = NULL;
+	*row = NULL;
+	if (strict)
+		*strict = false;
+
+	tok = yylex();
+	if (strict && tok == K_STRICT)
+	{
+		*strict = true;
+		tok = yylex();
+	}
+
+	switch (tok)
+	{
+		case T_ROW:
+			*row = yylval.row;
+			check_assignable((PLpgSQL_datum *) *row);
+			break;
+
+		case T_RECORD:
+			*rec = yylval.rec;
+			check_assignable((PLpgSQL_datum *) *rec);
+			break;
+
+		case T_SCALAR:
+			*row = read_into_scalar_list(yytext, yylval.scalar);
+			break;
+
+		default:
+			plpgsql_error_lineno = plpgsql_scanner_lineno();
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("syntax error at \"%s\"", yytext),
+					 errdetail("Expected record variable, row variable, "
+							   "or list of scalar variables following INTO.")));
+	}
+}
+
+/*
  * Given the first datum and name in the INTO list, continue to read
  * comma-separated scalar variables until we run out. Then construct
  * and return a fake "row" variable that represents the list of
@@ -2177,13 +2236,13 @@ read_into_scalar_list(const char *initial_name,
 				plpgsql_error_lineno = plpgsql_scanner_lineno();
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("\"%s\" is not a variable",
+						 errmsg("\"%s\" is not a scalar variable",
 								yytext)));
 		}
 	}
 
 	/*
-	 * We read an extra, non-comma character from yylex(), so push it
+	 * We read an extra, non-comma token from yylex(), so push it
 	 * back onto the input stream
 	 */
 	plpgsql_push_back_token(tok);
@@ -2201,6 +2260,37 @@ read_into_scalar_list(const char *initial_name,
 		row->fieldnames[nfields] = fieldnames[nfields];
 		row->varnos[nfields] = varnos[nfields];
 	}
+
+	plpgsql_adddatum((PLpgSQL_datum *)row);
+
+	return row;
+}
+
+/*
+ * Convert a single scalar into a "row" list.  This is exactly
+ * like read_into_scalar_list except we never consume any input.
+ * In fact, since this can be invoked long after the source
+ * input was actually read, the lineno has to be passed in.
+ */
+static PLpgSQL_row *
+make_scalar_list1(const char *initial_name,
+				  PLpgSQL_datum *initial_datum,
+				  int lineno)
+{
+	PLpgSQL_row		*row;
+
+	check_assignable(initial_datum);
+
+	row = palloc(sizeof(PLpgSQL_row));
+	row->dtype = PLPGSQL_DTYPE_ROW;
+	row->refname = pstrdup("*internal*");
+	row->lineno = lineno;
+	row->rowtupdesc = NULL;
+	row->nfields = 1;
+	row->fieldnames = palloc(sizeof(char *));
+	row->varnos = palloc(sizeof(int));
+	row->fieldnames[0] = pstrdup(initial_name);
+	row->varnos[0] = initial_datum->dno;
 
 	plpgsql_adddatum((PLpgSQL_datum *)row);
 
@@ -2295,5 +2385,8 @@ check_labels(const char *start_label, const char *end_label)
 		}
 	}
 }
+
+/* Needed to avoid conflict between different prefix settings: */
+#undef yylex
 
 #include "pl_scan.c"

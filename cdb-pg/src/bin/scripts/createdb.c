@@ -2,10 +2,10 @@
  *
  * createdb
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/bin/scripts/createdb.c,v 1.15 2005/06/21 04:02:33 tgl Exp $
+ * $PostgreSQL: pgsql/src/bin/scripts/createdb.c,v 1.21 2006/06/01 00:15:36 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -183,11 +183,12 @@ main(int argc, char *argv[])
 
 	if (comment)
 	{
+		conn = connectDatabase(dbname, host, port, username, password, progname);
+
 		printfPQExpBuffer(&sql, "COMMENT ON DATABASE %s IS ", fmtId(dbname));
-		appendStringLiteral(&sql, comment, false);
+		appendStringLiteralConn(&sql, comment, conn);
 		appendPQExpBuffer(&sql, ";\n");
 
-		conn = connectDatabase(dbname, host, port, username, password, progname);
 		if (echo)
 			printf("%s", sql.data);
 		result = PQexec(conn, sql.data);
@@ -200,6 +201,7 @@ main(int argc, char *argv[])
 			exit(1);
 		}
 
+		PQclear(result);
 		PQfinish(conn);
 		if (!quiet)
 		{

@@ -3,12 +3,12 @@
  * keywords.c
  *	  lexical token lookup for reserved words in PostgreSQL
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/keywords.c,v 1.70 2005/10/15 02:49:47 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/keywords.c,v 1.76 2006/09/03 12:24:07 meskes Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -32,7 +32,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"absolute", ABSOLUTE_P},
 	{"access", ACCESS},
 	{"action", ACTION},
-	{"add", ADD},
+	{"add", ADD_P},
 	{"admin", ADMIN},
 	{"after", AFTER},
 	{"aggregate", AGGREGATE},
@@ -81,6 +81,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"comment", COMMENT},
 	{"commit", COMMIT},
 	{"committed", COMMITTED},
+	{"concurrently", CONCURRENTLY},
 	{"connection", CONNECTION},
 	{"constraint", CONSTRAINT},
 	{"constraints", CONSTRAINTS},
@@ -155,9 +156,10 @@ static ScanKeyword ScanKeywords[] = {
 	{"group", GROUP_P},
 	{"handler", HANDLER},
 	{"having", HAVING},
-	{"header", HEADER},
+	{"header", HEADER_P},
 	{"hold", HOLD},
 	{"hour", HOUR_P},
+	{"if", IF_P},
 	{"ilike", ILIKE},
 	{"immediate", IMMEDIATE},
 	{"immutable", IMMUTABLE},
@@ -166,6 +168,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"including", INCLUDING},
 	{"increment", INCREMENT},
 	{"index", INDEX},
+	{"indexes", INDEXES},
 	{"inherit", INHERIT},
 	{"inherits", INHERITS},
 	{"initially", INITIALLY},
@@ -246,6 +249,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"out", OUT_P},
 	{"outer", OUTER_P},
 	{"overlaps", OVERLAPS},
+	{"owned", OWNED},
 	{"owner", OWNER},
 	{"partial", PARTIAL},
 	{"password", PASSWORD},
@@ -262,6 +266,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"quote", QUOTE},
 	{"read", READ},
 	{"real", REAL},
+	{"reassign", REASSIGN},
 	{"recheck", RECHECK},
 	{"references", REFERENCES},
 	{"reindex", REINDEX},
@@ -273,6 +278,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"reset", RESET},
 	{"restart", RESTART},
 	{"restrict", RESTRICT},
+	{"returning", RETURNING},
 	{"returns", RETURNS},
 	{"revoke", REVOKE},
 	{"right", RIGHT},
@@ -321,7 +327,6 @@ static ScanKeyword ScanKeywords[] = {
 	{"time", TIME},
 	{"timestamp", TIMESTAMP},
 	{"to", TO},
-	{"toast", TOAST},
 	{"trailing", TRAILING},
 	{"transaction", TRANSACTION},
 	{"treat", TREAT},

@@ -1,3 +1,5 @@
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/pgtypeslib/numeric.c,v 1.33 2006/10/04 00:30:12 momjian Exp $ */
+
 #include "postgres_fe.h"
 #include <ctype.h>
 #include <limits.h>
@@ -133,6 +135,19 @@ PGTYPESnumeric_new(void)
 		free(var);
 		return NULL;
 	}
+
+	return var;
+}
+
+decimal *
+PGTYPESdecimal_new(void)
+{
+	decimal    *var;
+
+	if ((var = (decimal *) pgtypes_alloc(sizeof(decimal))) == NULL)
+		return NULL;
+
+	memset(var, 0, sizeof(decimal));
 
 	return var;
 }
@@ -368,7 +383,7 @@ PGTYPESnumeric_from_asc(char *str, char **endptr)
 	char	   *realptr;
 	char	  **ptr = (endptr != NULL) ? endptr : &realptr;
 
-	if (!value)	
+	if (!value)
 		return (NULL);
 
 	ret = set_var_from_str(str, ptr, value);
@@ -384,10 +399,21 @@ PGTYPESnumeric_from_asc(char *str, char **endptr)
 char *
 PGTYPESnumeric_to_asc(numeric *num, int dscale)
 {
+	numeric    *numcopy = PGTYPESnumeric_new();
+	char	   *s;
+
 	if (dscale < 0)
 		dscale = num->dscale;
 
-	return (get_str_from_var(num, dscale));
+	if (PGTYPESnumeric_copy(num, numcopy) < 0)
+	{
+		PGTYPESnumeric_free(numcopy);
+		return NULL;
+	}
+	/* get_str_from_var may change its argument */
+	s = get_str_from_var(numcopy, dscale);
+	PGTYPESnumeric_free(numcopy);
+	return (s);
 }
 
 /* ----------
@@ -412,6 +438,12 @@ void
 PGTYPESnumeric_free(numeric *var)
 {
 	digitbuf_free(var->buf);
+	free(var);
+}
+
+void
+PGTYPESdecimal_free(decimal *var)
+{
 	free(var);
 }
 
@@ -1437,30 +1469,58 @@ PGTYPESnumeric_from_double(double d, numeric *dst)
 {
 	char		buffer[100];
 	numeric    *tmp;
+	int			i;
 
 	if (sprintf(buffer, "%f", d) == 0)
 		return -1;
 
 	if ((tmp = PGTYPESnumeric_from_asc(buffer, NULL)) == NULL)
 		return -1;
-	if (PGTYPESnumeric_copy(tmp, dst) != 0)
-		return -1;
+	i = PGTYPESnumeric_copy(tmp, dst);
 	PGTYPESnumeric_free(tmp);
+	if (i != 0)
+		return -1;
+
+	errno = 0;
 	return 0;
 }
 
 static int
-numericvar_to_double_no_overflow(numeric *var, double *dp)
+numericvar_to_double(numeric *var, double *dp)
 {
 	char	   *tmp;
 	double		val;
 	char	   *endptr;
+	numeric    *varcopy = PGTYPESnumeric_new();
 
-	if ((tmp = get_str_from_var(var, var->dscale)) == NULL)
+	if (PGTYPESnumeric_copy(var, varcopy) < 0)
+	{
+		PGTYPESnumeric_free(varcopy);
+		return -1;
+	}
+
+	tmp = get_str_from_var(varcopy, varcopy->dscale);
+	PGTYPESnumeric_free(varcopy);
+
+	if (tmp == NULL)
 		return -1;
 
-	/* unlike float8in, we ignore ERANGE from strtod */
+	/*
+	 * strtod does not reset errno to 0 in case of success.
+	 */
+	errno = 0;
 	val = strtod(tmp, &endptr);
+	if (errno == ERANGE)
+	{
+		free(tmp);
+		if (val == 0)
+			errno = PGTYPES_NUM_UNDERFLOW;
+		else
+			errno = PGTYPES_NUM_OVERFLOW;
+		return -1;
+	}
+
+	/* can't free tmp yet, endptr points still into it */
 	if (*endptr != '\0')
 	{
 		/* shouldn't happen ... */
@@ -1468,8 +1528,8 @@ numericvar_to_double_no_overflow(numeric *var, double *dp)
 		errno = PGTYPES_NUM_BAD_NUMERIC;
 		return -1;
 	}
-	*dp = val;
 	free(tmp);
+	*dp = val;
 	return 0;
 }
 
@@ -1479,7 +1539,7 @@ PGTYPESnumeric_to_double(numeric *nv, double *dp)
 	double		tmp;
 	int			i;
 
-	if ((i = numericvar_to_double_no_overflow(nv, &tmp)) != 0)
+	if ((i = numericvar_to_double(nv, &tmp)) != 0)
 		return -1;
 	*dp = tmp;
 	return 0;
@@ -1507,28 +1567,26 @@ PGTYPESnumeric_to_int(numeric *nv, int *ip)
 int
 PGTYPESnumeric_to_long(numeric *nv, long *lp)
 {
-	int			i;
-	long		l = 0;
+	char	   *s = PGTYPESnumeric_to_asc(nv, 0);
+	char	   *endptr;
 
-	for (i = 1; i < nv->weight + 2; i++)
+	if (s == NULL)
+		return -1;
+
+	errno = 0;
+	*lp = strtol(s, &endptr, 10);
+	if (endptr == s)
+		/* this should not happen actually */
+		return -1;
+	if (errno == ERANGE)
 	{
-		l *= 10;
-		l += nv->buf[i];
-	}
-	if (nv->buf[i] >= 5)
-	{
-		/* round up */
-		l++;
-	}
-	if (l > LONG_MAX || l < 0)
-	{
-		errno = PGTYPES_NUM_OVERFLOW;
+		if (*lp == LONG_MIN)
+			errno = PGTYPES_NUM_UNDERFLOW;
+		else
+			errno = PGTYPES_NUM_OVERFLOW;
 		return -1;
 	}
-
-	if (nv->sign == NUMERIC_NEG)
-		l *= -1;
-	*lp = l;
+	free(s);
 	return 0;
 }
 

@@ -15,9 +15,9 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/pg_config/pg_config.c,v 1.17.2.2 2006/06/07 12:19:37 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_config/pg_config.c,v 1.22 2006/10/04 00:30:04 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -43,10 +43,10 @@ cleanup_path(char *path)
 	char	   *ptr;
 
 	/*
-	 *	GetShortPathName() will fail if the path does not exist, or short names
-	 *	are disabled on this file system.  In both cases, we just return the
-	 *	original path.  This is particularly useful for --sysconfdir, which
-	 *	might not exist.
+	 * GetShortPathName() will fail if the path does not exist, or short names
+	 * are disabled on this file system.  In both cases, we just return the
+	 * original path.  This is particularly useful for --sysconfdir, which
+	 * might not exist.
 	 */
 	GetShortPathName(path, path, MAXPGPATH - 1);
 
@@ -213,7 +213,7 @@ show_pgxs(bool all)
 	if (all)
 		printf("PGXS = ");
 	get_pkglib_path(mypath, path);
-	strncat(path, "/pgxs/src/makefiles/pgxs.mk", MAXPGPATH - 1);
+	strncat(path, "/pgxs/src/makefiles/pgxs.mk", MAXPGPATH - 1 - strlen(path));
 	cleanup_path(path);
 	printf("%s\n", path);
 }

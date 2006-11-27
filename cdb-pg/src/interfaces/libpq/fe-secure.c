@@ -6,12 +6,12 @@
  *	  message integrity and endpoint authentication.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-secure.c,v 1.73.2.1 2006/01/24 16:38:50 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-secure.c,v 1.89 2006/10/06 17:14:01 petere Exp $
  *
  * NOTES
  *	  [ Most of these notes are wrong/obsolete, but perhaps not all ]
@@ -84,7 +84,6 @@
 #include <ctype.h>
 
 #include "libpq-fe.h"
-#include "libpq-int.h"
 #include "fe-auth.h"
 #include "pqsignal.h"
 
@@ -110,38 +109,30 @@
 #endif
 #endif
 
-#ifndef HAVE_STRDUP
-#include "strdup.h"
-#endif
-
 #ifdef USE_SSL
 #include <openssl/ssl.h>
-#include <openssl/dh.h>
 #endif   /* USE_SSL */
 
 
 #ifdef USE_SSL
 
 #ifndef WIN32
-#define USERCERTFILE	".postgresql/postgresql.crt"
-#define USERKEYFILE		".postgresql/postgresql.key"
-#define ROOTCERTFILE	".postgresql/root.crt"
-#define DHFILEPATTERN	"%s/.postgresql/dh%d.pem"
+#define USER_CERT_FILE		".postgresql/postgresql.crt"
+#define USER_KEY_FILE		".postgresql/postgresql.key"
+#define ROOT_CERT_FILE		".postgresql/root.crt"
+#define ROOT_CRL_FILE		".postgresql/root.crl"
 #else
 /* On Windows, the "home" directory is already PostgreSQL-specific */
-#define USERCERTFILE	"postgresql.crt"
-#define USERKEYFILE		"postgresql.key"
-#define ROOTCERTFILE	"root.crt"
-#define DHFILEPATTERN	"%s/dh%d.pem"
+#define USER_CERT_FILE		"postgresql.crt"
+#define USER_KEY_FILE		"postgresql.key"
+#define ROOT_CERT_FILE		"root.crt"
+#define ROOT_CRL_FILE		"root.crl"
 #endif
 
 #ifdef NOT_USED
 static int	verify_peer(PGconn *);
 #endif
 static int	verify_cb(int ok, X509_STORE_CTX *ctx);
-static DH  *load_dh_file(int keylength);
-static DH  *load_dh_buffer(const char *, size_t);
-static DH  *tmp_dh_cb(SSL *s, int is_export, int keylength);
 static int	client_cert_cb(SSL *, X509 **, EVP_PKEY **);
 static int	init_ssl_system(PGconn *conn);
 static int	initialize_SSL(PGconn *);
@@ -156,62 +147,6 @@ static void SSLerrfree(char *buf);
 static bool pq_initssllib = true;
 
 static SSL_CTX *SSL_context = NULL;
-#endif
-
-/* ------------------------------------------------------------ */
-/*						 Hardcoded values						*/
-/* ------------------------------------------------------------ */
-
-/*
- *	Hardcoded DH parameters, used in empheral DH keying.
- *	As discussed above, EDH protects the confidentiality of
- *	sessions even if the static private key is compromised,
- *	so we are *highly* motivated to ensure that we can use
- *	EDH even if the user... or an attacker... deletes the
- *	~/.postgresql/dh*.pem files.
- *
- *	It's not critical that users have EPH keys, but it doesn't
- *	hurt and if it's missing someone will demand it, so....
- */
-#ifdef USE_SSL
-
-static const char file_dh512[] =
-"-----BEGIN DH PARAMETERS-----\n\
-MEYCQQD1Kv884bEpQBgRjXyEpwpy1obEAxnIByl6ypUM2Zafq9AKUJsCRtMIPWak\n\
-XUGfnHy9iUsiGSa6q6Jew1XpKgVfAgEC\n\
------END DH PARAMETERS-----\n";
-
-static const char file_dh1024[] =
-"-----BEGIN DH PARAMETERS-----\n\
-MIGHAoGBAPSI/VhOSdvNILSd5JEHNmszbDgNRR0PfIizHHxbLY7288kjwEPwpVsY\n\
-jY67VYy4XTjTNP18F1dDox0YbN4zISy1Kv884bEpQBgRjXyEpwpy1obEAxnIByl6\n\
-ypUM2Zafq9AKUJsCRtMIPWakXUGfnHy9iUsiGSa6q6Jew1XpL3jHAgEC\n\
------END DH PARAMETERS-----\n";
-
-static const char file_dh2048[] =
-"-----BEGIN DH PARAMETERS-----\n\
-MIIBCAKCAQEA9kJXtwh/CBdyorrWqULzBej5UxE5T7bxbrlLOCDaAadWoxTpj0BV\n\
-89AHxstDqZSt90xkhkn4DIO9ZekX1KHTUPj1WV/cdlJPPT2N286Z4VeSWc39uK50\n\
-T8X8dryDxUcwYc58yWb/Ffm7/ZFexwGq01uejaClcjrUGvC/RgBYK+X0iP1YTknb\n\
-zSC0neSRBzZrM2w4DUUdD3yIsxx8Wy2O9vPJI8BD8KVbGI2Ou1WMuF040zT9fBdX\n\
-Q6MdGGzeMyEstSr/POGxKUAYEY18hKcKctaGxAMZyAcpesqVDNmWn6vQClCbAkbT\n\
-CD1mpF1Bn5x8vYlLIhkmuquiXsNV6TILOwIBAg==\n\
------END DH PARAMETERS-----\n";
-
-static const char file_dh4096[] =
-"-----BEGIN DH PARAMETERS-----\n\
-MIICCAKCAgEA+hRyUsFN4VpJ1O8JLcCo/VWr19k3BCgJ4uk+d+KhehjdRqNDNyOQ\n\
-l/MOyQNQfWXPeGKmOmIig6Ev/nm6Nf9Z2B1h3R4hExf+zTiHnvVPeRBhjdQi81rt\n\
-Xeoh6TNrSBIKIHfUJWBh3va0TxxjQIs6IZOLeVNRLMqzeylWqMf49HsIXqbcokUS\n\
-Vt1BkvLdW48j8PPv5DsKRN3tloTxqDJGo9tKvj1Fuk74A+Xda1kNhB7KFlqMyN98\n\
-VETEJ6c7KpfOo30mnK30wqw3S8OtaIR/maYX72tGOno2ehFDkq3pnPtEbD2CScxc\n\
-alJC+EL7RPk5c/tgeTvCngvc1KZn92Y//EI7G9tPZtylj2b56sHtMftIoYJ9+ODM\n\
-sccD5Piz/rejE3Ome8EOOceUSCYAhXn8b3qvxVI1ddd1pED6FHRhFvLrZxFvBEM9\n\
-ERRMp5QqOaHJkM+Dxv8Cj6MqrCbfC4u+ZErxodzuusgDgvZiLF22uxMZbobFWyte\n\
-OvOzKGtwcTqO/1wV5gKkzu1ZVswVUQd5Gg8lJicwqRWyyNRczDDoG9jVDxmogKTH\n\
-AaqLulO7R8Ifa1SwF2DteSGVtgWEN8gDpN3RBmmPTDngyF2DHb5qmpnznwtFKdTL\n\
-KWbuHn491xNO25CQWMtem80uKw+pTnisBRF/454n1Jnhub144YRBoN8CAQI=\n\
------END DH PARAMETERS-----\n";
 #endif
 
 /* ------------------------------------------------------------ */
@@ -622,146 +557,6 @@ verify_peer(PGconn *conn)
 #endif   /* NOT_USED */
 
 /*
- *	Load precomputed DH parameters.
- *
- *	To prevent "downgrade" attacks, we perform a number of checks
- *	to verify that the DBA-generated DH parameters file contains
- *	what we expect it to contain.
- */
-static DH  *
-load_dh_file(int keylength)
-{
-	char		homedir[MAXPGPATH];
-	char		fnbuf[MAXPGPATH];
-	FILE	   *fp;
-	DH		   *dh;
-	int			codes;
-
-	if (!pqGetHomeDirectory(homedir, sizeof(homedir)))
-		return NULL;
-
-	/* attempt to open file.  It's not an error if it doesn't exist. */
-	snprintf(fnbuf, sizeof(fnbuf), DHFILEPATTERN, homedir, keylength);
-
-	if ((fp = fopen(fnbuf, "r")) == NULL)
-		return NULL;
-
-/*	flock(fileno(fp), LOCK_SH); */
-	dh = PEM_read_DHparams(fp, NULL, NULL, NULL);
-/*	flock(fileno(fp), LOCK_UN); */
-	fclose(fp);
-
-	/* is the prime the correct size? */
-	if (dh != NULL && 8 * DH_size(dh) < keylength)
-		dh = NULL;
-
-	/* make sure the DH parameters are usable */
-	if (dh != NULL)
-	{
-		if (DH_check(dh, &codes))
-			return NULL;
-		if (codes & DH_CHECK_P_NOT_PRIME)
-			return NULL;
-		if ((codes & DH_NOT_SUITABLE_GENERATOR) &&
-			(codes & DH_CHECK_P_NOT_SAFE_PRIME))
-			return NULL;
-	}
-
-	return dh;
-}
-
-/*
- *	Load hardcoded DH parameters.
- *
- *	To prevent problems if the DH parameters files don't even
- *	exist, we can load DH parameters hardcoded into this file.
- */
-static DH  *
-load_dh_buffer(const char *buffer, size_t len)
-{
-	BIO		   *bio;
-	DH		   *dh = NULL;
-
-	bio = BIO_new_mem_buf((char *) buffer, len);
-	if (bio == NULL)
-		return NULL;
-	dh = PEM_read_bio_DHparams(bio, NULL, NULL, NULL);
-	BIO_free(bio);
-
-	return dh;
-}
-
-/*
- *	Generate an empheral DH key.  Because this can take a long
- *	time to compute, we can use precomputed parameters of the
- *	common key sizes.
- *
- *	Since few sites will bother to precompute these parameter
- *	files, we also provide a fallback to the parameters provided
- *	by the OpenSSL project.
- *
- *	These values can be static (once loaded or computed) since
- *	the OpenSSL library can efficiently generate random keys from
- *	the information provided.
- */
-static DH  *
-tmp_dh_cb(SSL *s, int is_export, int keylength)
-{
-	DH		   *r = NULL;
-	static DH  *dh = NULL;
-	static DH  *dh512 = NULL;
-	static DH  *dh1024 = NULL;
-	static DH  *dh2048 = NULL;
-	static DH  *dh4096 = NULL;
-
-	switch (keylength)
-	{
-		case 512:
-			if (dh512 == NULL)
-				dh512 = load_dh_file(keylength);
-			if (dh512 == NULL)
-				dh512 = load_dh_buffer(file_dh512, sizeof file_dh512);
-			r = dh512;
-			break;
-
-		case 1024:
-			if (dh1024 == NULL)
-				dh1024 = load_dh_file(keylength);
-			if (dh1024 == NULL)
-				dh1024 = load_dh_buffer(file_dh1024, sizeof file_dh1024);
-			r = dh1024;
-			break;
-
-		case 2048:
-			if (dh2048 == NULL)
-				dh2048 = load_dh_file(keylength);
-			if (dh2048 == NULL)
-				dh2048 = load_dh_buffer(file_dh2048, sizeof file_dh2048);
-			r = dh2048;
-			break;
-
-		case 4096:
-			if (dh4096 == NULL)
-				dh4096 = load_dh_file(keylength);
-			if (dh4096 == NULL)
-				dh4096 = load_dh_buffer(file_dh4096, sizeof file_dh4096);
-			r = dh4096;
-			break;
-
-		default:
-			if (dh == NULL)
-				dh = load_dh_file(keylength);
-			r = dh;
-	}
-
-	/* this may take a long time, but it may be necessary... */
-	if (r == NULL || 8 * DH_size(r) < keylength)
-		r = DH_generate_parameters(keylength, DH_GENERATOR_2, NULL, NULL);
-
-	return r;
-}
-
-/*
  *	Callback used by SSL to load client cert and key.
  *	This callback is only called when the server wants a
  *	client cert.
@@ -791,7 +586,7 @@ client_cert_cb(SSL *ssl, X509 **x509, EVP_PKEY **pkey)
 	}
 
 	/* read the user certificate */
-	snprintf(fnbuf, sizeof(fnbuf), "%s/%s", homedir, USERCERTFILE);
+	snprintf(fnbuf, sizeof(fnbuf), "%s/%s", homedir, USER_CERT_FILE);
 	if ((fp = fopen(fnbuf, "r")) == NULL)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
@@ -813,7 +608,7 @@ client_cert_cb(SSL *ssl, X509 **x509, EVP_PKEY **pkey)
 	fclose(fp);
 
 	/* read the user key */
-	snprintf(fnbuf, sizeof(fnbuf), "%s/%s", homedir, USERKEYFILE);
+	snprintf(fnbuf, sizeof(fnbuf), "%s/%s", homedir, USER_KEY_FILE);
 	if (stat(fnbuf, &buf) == -1)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
@@ -881,7 +676,7 @@ static unsigned long
 pq_threadidcallback(void)
 {
 	/*
-	 * This is not starndard-compliant.  pthread_self() returns pthread_t, and
+	 * This is not standards-compliant.  pthread_self() returns pthread_t, and
 	 * shouldn't be cast to unsigned long, but CRYPTO_set_id_callback requires
 	 * it, so we have to do it.
 	 */
@@ -983,9 +778,11 @@ initialize_SSL(PGconn *conn)
 	/* Set up to verify server cert, if root.crt is present */
 	if (pqGetHomeDirectory(homedir, sizeof(homedir)))
 	{
-		snprintf(fnbuf, sizeof(fnbuf), "%s/%s", homedir, ROOTCERTFILE);
+		snprintf(fnbuf, sizeof(fnbuf), "%s/%s", homedir, ROOT_CERT_FILE);
 		if (stat(fnbuf, &buf) == 0)
 		{
+			X509_STORE *cvstore;
+
 			if (!SSL_CTX_load_verify_locations(SSL_context, fnbuf, NULL))
 			{
 				char	   *err = SSLerrmessage();
@@ -997,13 +794,31 @@ initialize_SSL(PGconn *conn)
 				return -1;
 			}
 
+			if ((cvstore = SSL_CTX_get_cert_store(SSL_context)) != NULL)
+			{
+				/* setting the flags to check against the complete CRL chain */
+				if (X509_STORE_load_locations(cvstore, ROOT_CRL_FILE, NULL) != 0)
+/* OpenSSL 0.96 does not support X509_V_FLAG_CRL_CHECK */
+#ifdef X509_V_FLAG_CRL_CHECK
+					X509_STORE_set_flags(cvstore,
+						  X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+				/* if not found, silently ignore;  we do not require CRL */
+#else
+				{
+					char	   *err = SSLerrmessage();
+
+					printfPQExpBuffer(&conn->errorMessage,
+									  libpq_gettext("SSL library does not support CRL certificates (file \"%s\")\n"),
+									  fnbuf);
+					SSLerrfree(err);
+					return -1;
+				}
+#endif
+			}
+
 			SSL_CTX_set_verify(SSL_context, SSL_VERIFY_PEER, verify_cb);
 		}
 	}
-
-	/* set up empheral DH keys */
-	SSL_CTX_set_tmp_dh_callback(SSL_context, tmp_dh_cb);
-	SSL_CTX_set_options(SSL_context, SSL_OP_SINGLE_DH_USE);
 
 	/* set up mechanism to provide client certificate, if available */
 	SSL_CTX_set_client_cert_cb(SSL_context, client_cert_cb);
@@ -1181,7 +996,7 @@ close_SSL(PGconn *conn)
  * return NULL if it doesn't recognize the error code.  We don't
  * want to return NULL ever.
  */
-static char ssl_nomem[] = "Out of memory allocating error description";
+static char ssl_nomem[] = "out of memory allocating error description";
 
 #define SSL_ERR_LEN 128
 
@@ -1198,7 +1013,7 @@ SSLerrmessage(void)
 	errcode = ERR_get_error();
 	if (errcode == 0)
 	{
-		strcpy(errbuf, "No SSL error reported");
+		snprintf(errbuf, SSL_ERR_LEN, libpq_gettext("no SSL error reported"));
 		return errbuf;
 	}
 	errreason = ERR_reason_error_string(errcode);
@@ -1208,7 +1023,7 @@ SSLerrmessage(void)
 		errbuf[SSL_ERR_LEN - 1] = '\0';
 		return errbuf;
 	}
-	snprintf(errbuf, SSL_ERR_LEN, "SSL error code %lu", errcode);
+	snprintf(errbuf, SSL_ERR_LEN, libpq_gettext("SSL error code %lu"), errcode);
 	return errbuf;
 }
 
@@ -1220,9 +1035,9 @@ SSLerrfree(char *buf)
 }
 
 /*
- *	Return pointer to SSL object.
+ *	Return pointer to OpenSSL object.
  */
-SSL *
+void *
 PQgetssl(PGconn *conn)
 {
 	if (!conn)

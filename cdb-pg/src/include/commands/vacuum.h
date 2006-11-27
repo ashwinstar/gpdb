@@ -4,10 +4,10 @@
  *	  header file for postgres vacuum cleaner and statistics analyzer
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/commands/vacuum.h,v 1.62 2005/10/15 02:49:44 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/commands/vacuum.h,v 1.68 2006/11/05 22:42:10 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -15,12 +15,11 @@
 #define VACUUM_H
 
 #include "access/htup.h"
-#include "catalog/pg_attribute.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
 #include "nodes/parsenodes.h"
+#include "storage/lock.h"
 #include "utils/rel.h"
-
 
 /*----------
  * ANALYZE builds one of these structs for each attribute (column) that is
@@ -105,9 +104,10 @@ typedef struct VacAttrStats
 } VacAttrStats;
 
 
-/* Default statistics target (GUC parameter) */
+/* GUC parameters */
 extern DLLIMPORT int default_statistics_target; /* DLLIMPORT for PostGIS */
 extern DLLIMPORT double analyze_relative_error;
+extern int	vacuum_freeze_min_age;
 
 
 /* in commands/vacuum.c */
@@ -116,12 +116,15 @@ extern void vac_open_indexes(Relation relation, LOCKMODE lockmode,
 				 int *nindexes, Relation **Irel);
 extern void vac_close_indexes(int nindexes, Relation *Irel, LOCKMODE lockmode);
 extern void vac_update_relstats(Relation rel,
-								BlockNumber num_pages,
-								double num_tuples,
-								bool hasindex, bool inplace);
+					BlockNumber num_pages,
+					double num_tuples,
+					bool hasindex,
+					bool inplace,
+					TransactionId frozenxid);
 extern void vacuum_set_xid_limits(VacuumStmt *vacstmt, bool sharedRel,
 					  TransactionId *oldestXmin,
 					  TransactionId *freezeLimit);
+extern void vac_update_datfrozenxid(void);
 extern bool vac_is_partial_index(Relation indrel);
 extern void vacuum_delay_point(void);
 

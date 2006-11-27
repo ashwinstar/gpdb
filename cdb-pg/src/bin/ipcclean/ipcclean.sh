@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# $PostgreSQL: pgsql/src/bin/ipcclean/ipcclean.sh,v 1.15.6.2 2006/03/03 21:52:47 momjian Exp $
+# $PostgreSQL: pgsql/src/bin/ipcclean/ipcclean.sh,v 1.18 2006/03/03 21:52:37 momjian Exp $
 #
 
 CMDNAME=`basename $0`
@@ -47,17 +47,6 @@ EffectiveUser=`id -n -u 2>/dev/null || whoami 2>/dev/null`
 # List of platform-specific hacks
 # Feel free to add yours here.
 #-----------------------------------
-#
-# This is QNX 4.25
-#
-if [ `uname` = 'QNX' ]; then
-    if ps -eA  | grep -s '[p]ostmaster' >/dev/null 2>&1 ; then
-        echo "$CMDNAME: a postmaster is still running" 1>&2
-        exit 1
-    fi
-    rm -f /dev/shmem/PgS*
-    exit $?
-fi
 #
 # This is based on RedHat 5.2.
 #

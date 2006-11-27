@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/timestamp.h,v 1.62 2006/07/13 16:49:20 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/timestamp.h,v 1.64 2006/10/04 00:30:11 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -160,12 +160,14 @@ typedef int32 fsec_t;
 #else
 
 typedef double fsec_t;
+#endif
 
-/* round off to MAX_TIMESTAMP_PRECISION decimal places */
-/* note: this is also used for rounding off intervals */
+/*
+ *	Round off to MAX_TIMESTAMP_PRECISION decimal places.
+ *	Note: this is also used for rounding off intervals.
+ */
 #define TS_PREC_INV 1000000.0
 #define TSROUND(j) (rint(((double) (j)) * TS_PREC_INV) / TS_PREC_INV)
-#endif
 
 #define TIMESTAMP_MASK(b) (1 << (b))
 #define INTERVAL_MASK(b) (1 << (b))
@@ -303,7 +305,7 @@ extern Datum pgsql_postmaster_start_time(PG_FUNCTION_ARGS);
 extern TimestampTz GetCurrentTimestamp(void);
 
 extern void TimestampDifference(TimestampTz start_time, TimestampTz stop_time,
-								long *secs, int *microsecs);
+					long *secs, int *microsecs);
 
 extern TimestampTz time_t_to_timestamptz(time_t tm);
 extern time_t timestamptz_to_time_t(TimestampTz t);

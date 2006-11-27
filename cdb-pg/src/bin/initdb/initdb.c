@@ -4,7 +4,7 @@
  *
  * initdb creates (initializes) a PostgreSQL database cluster (site,
  * instance, installation, whatever).  A database cluster is a
- * collection of PostgreSQL databases all managed by the same postmaster.
+ * collection of PostgreSQL databases all managed by the same server.
  *
  * To create the database cluster, we create the directory that contains
  * all its data, create the files that hold the global tables, create
@@ -38,11 +38,11 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions taken from FreeBSD.
  *
- * $PostgreSQL: pgsql/src/bin/initdb/initdb.c,v 1.99.2.3 2006/05/27 18:07:22 tgl Exp $
+ * $PostgreSQL: pgsql/src/bin/initdb/initdb.c,v 1.125 2006/10/04 18:58:08 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -57,11 +57,13 @@
 #ifdef HAVE_LANGINFO_H
 #include <langinfo.h>
 #endif
+#include <time.h>
 
 #include "libpq/pqsignal.h"
 #include "mb/pg_wchar.h"
 #include "getaddrinfo.h"
 #include "getopt_long.h"
+#include "miscadmin.h"
 
 #ifndef HAVE_INT_OPTRESET
 int			optreset;
@@ -100,6 +102,7 @@ static const char *progname;
 static char *encodingid = "0";
 static char *bki_file;
 static char *desc_file;
+static char *shdesc_file;
 static char *hba_file;
 static char *ident_file;
 static char *conf_file;
@@ -118,6 +121,7 @@ static int	output_errno = 0;
 /* defaults */
 static int	n_connections = 10;
 static int	n_buffers = 50;
+static int	n_fsm_pages = 20000;
 
 /*
  * Warning messages for authentication methods
@@ -137,7 +141,7 @@ static char *authwarning = NULL;
  * (no quoting to worry about).
  */
 static const char *boot_options = "-F";
-static const char *backend_options = "-F -O -c mpp_session_role=utility -c search_path=pg_catalog -c exit_on_error=true";
+static const char *backend_options = "--single -F -O -c mpp_session_role=utility -c search_path=pg_catalog -c exit_on_error=true";
 
 
 /* path to 'initdb' binary directory */
@@ -166,13 +170,11 @@ static void set_input(char **dest, char *filename);
 static void check_input(char *path);
 static void set_short_version(char *short_version, char *extrapath);
 static void set_null_conf(void);
-static void test_connections(void);
-static void test_buffers(void);
+static void test_config_settings(void);
 static void setup_config(void);
 static void bootstrap_template1(char *short_version);
 static void setup_auth(void);
 static void get_set_pwd(void);
-static void unlimit_systables(void);
 static void setup_depend(void);
 static void setup_sysviews(void);
 static void setup_description(void);
@@ -187,9 +189,14 @@ static void make_postgres(void);
 static void trapsig(int signum);
 static void check_ok(void);
 static char *escape_quotes(const char *src);
+static int	locale_date_order(const char *locale);
 static bool chklocale(const char *locale);
 static void setlocales(void);
 static void usage(const char *progname);
+
+#ifdef WIN32
+static int	CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo);
+#endif
 
 
 /*
@@ -415,6 +422,7 @@ readfile(char *path)
 	}
 
 	fclose(infile);
+	free(buffer);
 	result[nlines] = NULL;
 
 	return result;
@@ -631,8 +639,6 @@ get_id(void)
 
 	pw = getpwuid(geteuid());
 
-#ifndef __BEOS__				/* no root check on BEOS */
-
 	if (geteuid() == 0)			/* 0 is root's uid */
 	{
 		fprintf(stderr,
@@ -643,7 +649,6 @@ get_id(void)
 				progname);
 		exit(1);
 	}
-#endif
 #else							/* the windows code */
 
 	struct passwd_win32
@@ -772,7 +777,11 @@ struct encoding_match encoding_match_list[] = {
 	{PG_LATIN10, "iso885916"},
 
 	{PG_WIN1252, "CP1252"},
+	{PG_WIN1253, "CP1253"},
+	{PG_WIN1254, "CP1254"},
+	{PG_WIN1255, "CP1255"},
 	{PG_WIN1256, "CP1256"},
+	{PG_WIN1257, "CP1257"},
 	{PG_WIN1258, "CP1258"},
 #ifdef NOT_VERIFIED
 	{PG_WIN874, "???"},
@@ -1053,10 +1062,12 @@ set_short_version(char *short_version, char *extrapath)
 				progname, path, strerror(errno));
 		exit_nicely();
 	}
+	free(path);
 }
 
 /*
- * set up an empty config file so we can check buffers and connections
+ * set up an empty config file so we can check config settings by launching
+ * a test backend
  */
 static void
 set_null_conf(void)
@@ -1079,77 +1090,112 @@ set_null_conf(void)
 				progname, path, strerror(errno));
 		exit_nicely();
 	}
+	free(path);
 }
 
 /*
- * check how many connections we can sustain
+ * Determine platform-specific config settings
+ *
+ * Use reasonable values if kernel will let us, else scale back.  Probe
+ * for max_connections first since it is subject to more constraints than
+ * shared_buffers.
  */
 static void
-test_connections(void)
+test_config_settings(void)
 {
+	/*
+	 * These macros define the minimum shared_buffers we want for a given
+	 * max_connections value, and the max_fsm_pages setting to be used for a
+	 * given shared_buffers value.	The arrays show the settings to try.
+	 */
+
+#define MIN_BUFS_FOR_CONNS(nconns)	((nconns) * 10)
+#define FSM_FOR_BUFS(nbuffers)	((nbuffers) > 1000 ? 50 * (nbuffers) : 20000)
+
+	static const int trial_conns[] = {
+		200, 100, 50, 40, 30, 20, 10
+	};
+	static const int trial_bufs[] = {
+		16000, 4096, 3584, 3072, 2560, 2048, 1536,
+		1000, 900, 800, 700, 600, 500,
+		400, 300, 200, 100, 50
+	};
+
 	char		cmd[MAXPGPATH];
-	static const int conns[] = {200, 100, 50, 40, 30, 20, 10};
-	static const int len = sizeof(conns) / sizeof(int);
+	const int	connslen = sizeof(trial_conns) / sizeof(int);
+	const int	bufslen = sizeof(trial_bufs) / sizeof(int);
 	int			i,
-				status;
+				status,
+				test_conns,
+				test_buffs,
+				test_max_fsm,
+				ok_buffers = 0;
+
 
 	printf(_("selecting default max_connections ... "));
 	fflush(stdout);
 
-	for (i = 0; i < len; i++)
+	for (i = 0; i < connslen; i++)
 	{
+		test_conns = trial_conns[i];
+		test_buffs = MIN_BUFS_FOR_CONNS(test_conns);
+		test_max_fsm = FSM_FOR_BUFS(test_buffs);
+
 		snprintf(cmd, sizeof(cmd),
-				 "%s\"%s\" -boot -x0 %s "
-				 "-c shared_buffers=%d -c max_connections=%d template1 "
-				 "< \"%s\" > \"%s\" 2>&1%s",
+				 "%s\"%s\" --boot -x0 %s "
+				 "-c max_connections=%d "
+				 "-c shared_buffers=%d "
+				 "-c max_fsm_pages=%d "
+				 "template1 < \"%s\" > \"%s\" 2>&1%s",
 				 SYSTEMQUOTE, backend_exec, boot_options,
-				 conns[i] * 5, conns[i],
+				 test_conns, test_buffs, test_max_fsm,
 				 DEVNULL, DEVNULL, SYSTEMQUOTE);
 		status = system(cmd);
 		if (status == 0)
+		{
+			ok_buffers = test_buffs;
 			break;
+		}
 	}
-	if (i >= len)
-		i = len - 1;
-	n_connections = conns[i];
+	if (i >= connslen)
+		i = connslen - 1;
+	n_connections = trial_conns[i];
 
 	printf("%d\n", n_connections);
-}
 
-/*
- * check how many buffers we can run with
- */
-static void
-test_buffers(void)
-{
-	char		cmd[MAXPGPATH];
-	static const int bufs[] = {16000, 8000, 1000, 900, 800, 700, 600, 500,
-	400, 300, 200, 100, 50};
-	static const int len = sizeof(bufs) / sizeof(int);
-	int			i,
-				status;
-
-	printf(_("selecting default shared_buffers ... "));
+	printf(_("selecting default shared_buffers/max_fsm_pages ... "));
 	fflush(stdout);
 
-	for (i = 0; i < len; i++)
+	for (i = 0; i < bufslen; i++)
 	{
+		test_buffs = trial_bufs[i];
+		if (test_buffs <= ok_buffers)
+		{
+			test_buffs = ok_buffers;
+			break;
+		}
+		test_max_fsm = FSM_FOR_BUFS(test_buffs);
+
 		snprintf(cmd, sizeof(cmd),
-				 "%s\"%s\" -boot -x0 %s "
-				 "-c shared_buffers=%d -c max_connections=%d template1 "
-				 "< \"%s\" > \"%s\" 2>&1%s",
+				 "%s\"%s\" --boot -x0 %s "
+				 "-c max_connections=%d "
+				 "-c shared_buffers=%d "
+				 "-c max_fsm_pages=%d "
+				 "template1 < \"%s\" > \"%s\" 2>&1%s",
 				 SYSTEMQUOTE, backend_exec, boot_options,
-				 bufs[i], n_connections,
+				 n_connections, test_buffs, test_max_fsm,
 				 DEVNULL, DEVNULL, SYSTEMQUOTE);
 		status = system(cmd);
 		if (status == 0)
 			break;
 	}
-	if (i >= len)
-		i = len - 1;
-	n_buffers = bufs[i];
+	n_buffers = test_buffs;
+	n_fsm_pages = FSM_FOR_BUFS(n_buffers);
 
-	printf("%d\n", n_buffers);
+	if ((n_buffers * (BLCKSZ/1024)) % 1024 == 0)
+		printf("%dMB/%d\n", (n_buffers * (BLCKSZ/1024)) / 1024, n_fsm_pages);
+	else
+		printf("%dkB/%d\n", n_buffers * (BLCKSZ/1024), n_fsm_pages);
 }
 
 /*
@@ -1172,8 +1218,16 @@ setup_config(void)
 	snprintf(repltok, sizeof(repltok), "max_connections = %d", n_connections);
 	conflines = replace_token(conflines, "#max_connections = 100", repltok);
 
-	snprintf(repltok, sizeof(repltok), "shared_buffers = %d", n_buffers);
-	conflines = replace_token(conflines, "#shared_buffers = 16000", repltok);
+	if ((n_buffers * (BLCKSZ/1024)) % 1024 == 0)
+		snprintf(repltok, sizeof(repltok), "shared_buffers = %dMB",
+				 (n_buffers * (BLCKSZ/1024)) / 1024);
+	else
+		snprintf(repltok, sizeof(repltok), "shared_buffers = %dkB",
+				 n_buffers * (BLCKSZ/1024));
+	conflines = replace_token(conflines, "#shared_buffers = 32MB", repltok);
+
+	snprintf(repltok, sizeof(repltok), "max_fsm_pages = %d", n_fsm_pages);
+	conflines = replace_token(conflines, "#max_fsm_pages = 1638400", repltok);
 
 #if DEF_PGPORT != 5432
 	snprintf(repltok, sizeof(repltok), "#port = %d", DEF_PGPORT);
@@ -1195,6 +1249,21 @@ setup_config(void)
 	snprintf(repltok, sizeof(repltok), "lc_time = '%s'",
 			 escape_quotes(lc_time));
 	conflines = replace_token(conflines, "#lc_time = 'C'", repltok);
+
+	switch (locale_date_order(lc_time))
+	{
+		case DATEORDER_YMD:
+			strcpy(repltok, "datestyle = 'iso, ymd'");
+			break;
+		case DATEORDER_DMY:
+			strcpy(repltok, "datestyle = 'iso, dmy'");
+			break;
+		case DATEORDER_MDY:
+		default:
+			strcpy(repltok, "datestyle = 'iso, mdy'");
+			break;
+	}
+	conflines = replace_token(conflines, "#datestyle = 'iso, mdy'", repltok);
 
 	snprintf(path, sizeof(path), "%s/postgresql.conf", pg_data);
 
@@ -1346,7 +1415,7 @@ bootstrap_template1(char *short_version)
 	unsetenv("PGCLIENTENCODING");
 
 	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" -boot -x1 %s %s template1",
+			 "\"%s\" --boot -x1 %s %s template1",
 			 backend_exec, boot_options, talkargs);
 
 	PG_CMD_OPEN;
@@ -1488,6 +1557,9 @@ get_set_pwd(void)
 	PG_CMD_PRINTF2("ALTER USER \"%s\" WITH PASSWORD E'%s';\n",
 				   username, escape_quotes(pwd1));
 
+	/* MM: pwd1 is no longer needed, freeing it */
+	free(pwd1);
+
 	PG_CMD_CLOSE;
 
 	check_ok();
@@ -1501,44 +1573,6 @@ get_set_pwd(void)
 				progname);
 		exit_nicely();
 	}
-}
-
-/*
- * toast sys tables
- */
-static void
-unlimit_systables(void)
-{
-	PG_CMD_DECL;
-	char	  **line;
-	static char *systables_setup[] = {
-		"ALTER TABLE pg_attrdef CREATE TOAST TABLE;\n",
-		"ALTER TABLE pg_authid CREATE TOAST TABLE;\n",
-		"ALTER TABLE pg_constraint CREATE TOAST TABLE;\n",
-		"ALTER TABLE pg_database CREATE TOAST TABLE;\n",
-		"ALTER TABLE pg_description CREATE TOAST TABLE;\n",
-		"ALTER TABLE pg_proc CREATE TOAST TABLE;\n",
-		"ALTER TABLE pg_rewrite CREATE TOAST TABLE;\n",
-		"ALTER TABLE pg_statistic CREATE TOAST TABLE;\n",
-		NULL
-	};
-
-	fputs(_("enabling unlimited row size for system tables ... "), stdout);
-	fflush(stdout);
-
-	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" %s template1 >%s",
-			 backend_exec, backend_options,
-			 DEVNULL);
-
-	PG_CMD_OPEN;
-
-	for (line = systables_setup; *line != NULL; line++)
-		PG_CMD_PUTS(*line);
-
-	PG_CMD_CLOSE;
-
-	check_ok();
 }
 
 /*
@@ -1637,10 +1671,10 @@ setup_sysviews(void)
 	sysviews_setup = readfile(system_views_file);
 
 	/*
-	 * We use -N here to avoid backslashing stuff in system_views.sql
+	 * We use -j here to avoid backslashing stuff in system_views.sql
 	 */
 	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" %s -N template1 >%s",
+			 "\"%s\" %s -j template1 >%s",
 			 backend_exec, backend_options,
 			 DEVNULL);
 
@@ -1667,7 +1701,7 @@ setup_description(void)
 {
 	PG_CMD_DECL;
 
-	fputs(_("loading pg_description ... "), stdout);
+	fputs(_("loading system objects' descriptions ... "), stdout);
 	fflush(stdout);
 
 	snprintf(cmd, sizeof(cmd),
@@ -1690,6 +1724,19 @@ setup_description(void)
 				" SELECT t.objoid, c.oid, t.objsubid, t.description "
 				"  FROM tmp_pg_description t, pg_class c "
 				"    WHERE c.relname = t.classname;\n");
+
+	PG_CMD_PUTS("CREATE TEMP TABLE tmp_pg_shdescription ( "
+				" objoid oid, "
+				" classname name, "
+				" description text) WITHOUT OIDS;\n");
+
+	PG_CMD_PRINTF1("COPY tmp_pg_shdescription FROM E'%s';\n",
+				   escape_quotes(shdesc_file));
+
+	PG_CMD_PUTS("INSERT INTO pg_shdescription "
+				" SELECT t.objoid, c.oid, t.description "
+				"  FROM tmp_pg_shdescription t, pg_class c "
+				"   WHERE c.relname = t.classname;\n");
 
 	PG_CMD_CLOSE;
 
@@ -1821,10 +1868,10 @@ setup_schema(void)
 	lines = readfile(info_schema_file);
 
 	/*
-	 * We use -N here to avoid backslashing stuff in information_schema.sql
+	 * We use -j here to avoid backslashing stuff in information_schema.sql
 	 */
 	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" %s -N template1 >%s",
+			 "\"%s\" %s -j template1 >%s",
 			 backend_exec, backend_options,
 			 DEVNULL);
 
@@ -2083,7 +2130,7 @@ check_ok(void)
  *
  * Note: this is used to process both postgresql.conf entries and SQL
  * string literals.  Since postgresql.conf strings are defined to treat
- * backslashes as escapes, we have to double backslashes here.  Hence,
+ * backslashes as escapes, we have to double backslashes here.	Hence,
  * when using this for a SQL string literal, use E'' syntax.
  *
  * We do not need to worry about encoding considerations because all
@@ -2099,11 +2146,65 @@ escape_quotes(const char *src)
 
 	for (i = 0, j = 0; i < len; i++)
 	{
-		if (SQL_STR_DOUBLE(src[i]))
+		if (SQL_STR_DOUBLE(src[i], true))
 			result[j++] = src[i];
 		result[j++] = src[i];
 	}
 	result[j] = '\0';
+	return result;
+}
+
+/*
+ * Determine likely date order from locale
+ */
+static int
+locale_date_order(const char *locale)
+{
+	struct tm	testtime;
+	char		buf[128];
+	char	   *posD;
+	char	   *posM;
+	char	   *posY;
+	char	   *save;
+	size_t		res;
+	int			result;
+
+	result = DATEORDER_MDY;		/* default */
+
+	save = setlocale(LC_TIME, NULL);
+	if (!save)
+		return result;
+	save = xstrdup(save);
+
+	setlocale(LC_TIME, locale);
+
+	memset(&testtime, 0, sizeof(testtime));
+	testtime.tm_mday = 22;
+	testtime.tm_mon = 10;		/* November, should come out as "11" */
+	testtime.tm_year = 133;		/* 2033 */
+
+	res = strftime(buf, sizeof(buf), "%x", &testtime);
+
+	setlocale(LC_TIME, save);
+	free(save);
+
+	if (res == 0)
+		return result;
+
+	posM = strstr(buf, "11");
+	posD = strstr(buf, "22");
+	posY = strstr(buf, "33");
+
+	if (!posM || !posD || !posY)
+		return result;
+
+	if (posY < posM && posM < posD)
+		result = DATEORDER_YMD;
+	else if (posD < posM)
+		result = DATEORDER_DMY;
+	else
+		result = DATEORDER_MDY;
+
 	return result;
 }
 
@@ -2190,6 +2291,91 @@ setlocales(void)
 
 }
 
+#ifdef WIN32
+typedef		BOOL(WINAPI * __CreateRestrictedToken) (HANDLE, DWORD, DWORD, PSID_AND_ATTRIBUTES, DWORD, PLUID_AND_ATTRIBUTES, DWORD, PSID_AND_ATTRIBUTES, PHANDLE);
+
+#define DISABLE_MAX_PRIVILEGE	0x1
+
+/*
+ * Create a restricted token and execute the specified process with it.
+ *
+ * Returns 0 on failure, non-zero on success, same as CreateProcess().
+ *
+ * On NT4, or any other system not containing the required functions, will
+ * NOT execute anything.
+ */
+static int
+CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo)
+{
+	BOOL		b;
+	STARTUPINFO si;
+	HANDLE		origToken;
+	HANDLE		restrictedToken;
+	SID_IDENTIFIER_AUTHORITY NtAuthority = {SECURITY_NT_AUTHORITY};
+	SID_AND_ATTRIBUTES dropSids[2];
+	__CreateRestrictedToken _CreateRestrictedToken = NULL;
+	HANDLE		Advapi32Handle;
+
+	ZeroMemory(&si, sizeof(si));
+	si.cb = sizeof(si);
+
+	Advapi32Handle = LoadLibrary("ADVAPI32.DLL");
+	if (Advapi32Handle != NULL)
+	{
+		_CreateRestrictedToken = (__CreateRestrictedToken) GetProcAddress(Advapi32Handle, "CreateRestrictedToken");
+	}
+
+	if (_CreateRestrictedToken == NULL)
+	{
+		fprintf(stderr, "WARNING: Unable to create restricted tokens on this platform\n");
+		if (Advapi32Handle != NULL)
+			FreeLibrary(Advapi32Handle);
+		return 0;
+	}
+
+	/* Open the current token to use as a base for the restricted one */
+	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &origToken))
+	{
+		fprintf(stderr, "Failed to open process token: %lu\n", GetLastError());
+		return 0;
+	}
+
+	/* Allocate list of SIDs to remove */
+	ZeroMemory(&dropSids, sizeof(dropSids));
+	if (!AllocateAndInitializeSid(&NtAuthority, 2,
+		 SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0,
+								  0, &dropSids[0].Sid) ||
+		!AllocateAndInitializeSid(&NtAuthority, 2,
+	SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_POWER_USERS, 0, 0, 0, 0, 0,
+								  0, &dropSids[1].Sid))
+	{
+		fprintf(stderr, "Failed to allocate SIDs: %lu\n", GetLastError());
+		return 0;
+	}
+
+	b = _CreateRestrictedToken(origToken,
+							   DISABLE_MAX_PRIVILEGE,
+							   sizeof(dropSids) / sizeof(dropSids[0]),
+							   dropSids,
+							   0, NULL,
+							   0, NULL,
+							   &restrictedToken);
+
+	FreeSid(dropSids[1].Sid);
+	FreeSid(dropSids[0].Sid);
+	CloseHandle(origToken);
+	FreeLibrary(Advapi32Handle);
+
+	if (!b)
+	{
+		fprintf(stderr, "Failed to create restricted token: %lu\n", GetLastError());
+		return 0;
+	}
+
+	return CreateProcessAsUser(restrictedToken, NULL, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, processInfo);
+}
+#endif
+
 /*
  * print help text
  */
@@ -2260,11 +2446,15 @@ main(int argc, char *argv[])
 				ret;
 	int			option_index;
 	char	   *short_version;
-    char       *effective_user;
+	char	   *effective_user;
 	char	   *pgdenv;			/* PGDATA value gotten from and sent to
 								 * environment */
 	char		bin_dir[MAXPGPATH];
 	char	   *pg_data_native;
+
+#ifdef WIN32
+	char	   *restrict_env;
+#endif
 	static const char *subdirs[] = {
 		"global",
 		"pg_xlog",
@@ -2367,6 +2557,7 @@ main(int argc, char *argv[])
 		}
 	}
 
+
 	/* Non-option argument specifies data directory */
 	if (optind < argc)
 	{
@@ -2450,6 +2641,50 @@ main(int argc, char *argv[])
 	pg_data_native = pg_data;
 	canonicalize_path(pg_data);
 
+#ifdef WIN32
+
+	/*
+	 * Before we execute another program, make sure that we are running with a
+	 * restricted token. If not, re-execute ourselves with one.
+	 */
+
+	if ((restrict_env = getenv("PG_RESTRICT_EXEC")) == NULL
+		|| strcmp(restrict_env, "1") != 0)
+	{
+		PROCESS_INFORMATION pi;
+		char	   *cmdline;
+
+		ZeroMemory(&pi, sizeof(pi));
+
+		cmdline = xstrdup(GetCommandLine());
+
+		putenv("PG_RESTRICT_EXEC=1");
+
+		if (!CreateRestrictedProcess(cmdline, &pi))
+		{
+			fprintf(stderr, "Failed to re-exec with restricted token: %lu.\n", GetLastError());
+		}
+		else
+		{
+			/*
+			 * Successfully re-execed. Now wait for child process to capture
+			 * exitcode.
+			 */
+			DWORD		x;
+
+			CloseHandle(pi.hThread);
+			WaitForSingleObject(pi.hProcess, INFINITE);
+
+			if (!GetExitCodeProcess(pi.hProcess, &x))
+			{
+				fprintf(stderr, "Failed to get exit code from subprocess: %lu\n", GetLastError());
+				exit(1);
+			}
+			exit(x);
+		}
+	}
+#endif
+
 	/*
 	 * we have to set PGDATA for postgres rather than pass it on the command
 	 * line to avoid dumb quoting problems on Windows, and we would especially
@@ -2518,6 +2753,7 @@ main(int argc, char *argv[])
 
 	set_input(&bki_file, "postgres.bki");
 	set_input(&desc_file, "postgres.description");
+	set_input(&shdesc_file, "postgres.shdescription");
 	set_input(&hba_file, "pg_hba.conf.sample");
 	set_input(&ident_file, "pg_ident.conf.sample");
 	set_input(&conf_file, "postgresql.conf.sample");
@@ -2535,12 +2771,14 @@ main(int argc, char *argv[])
 				"VERSION=%s\n"
 				"PGDATA=%s\nshare_path=%s\nPGPATH=%s\n"
 				"POSTGRES_SUPERUSERNAME=%s\nPOSTGRES_BKI=%s\n"
-				"POSTGRES_DESCR=%s\nPOSTGRESQL_CONF_SAMPLE=%s\n"
+				"POSTGRES_DESCR=%s\nPOSTGRES_SHDESCR=%s\n"
+				"POSTGRESQL_CONF_SAMPLE=%s\n"
 				"PG_HBA_SAMPLE=%s\nPG_IDENT_SAMPLE=%s\n",
 				PG_VERSION,
 				pg_data, share_path, bin_path,
 				username, bki_file,
-				desc_file, conf_file,
+				desc_file, shdesc_file,
+				conf_file,
 				hba_file, ident_file);
 		if (show_setting)
 			exit(0);
@@ -2548,6 +2786,7 @@ main(int argc, char *argv[])
 
 	check_input(bki_file);
 	check_input(desc_file);
+	check_input(shdesc_file);
 	check_input(hba_file);
 	check_input(ident_file);
 	check_input(conf_file);
@@ -2693,33 +2932,23 @@ main(int argc, char *argv[])
 	}
 
 	/* Create required subdirectories */
+	printf(_("creating subdirectories ... "));
+	fflush(stdout);
 
 	for (i = 0; i < (sizeof(subdirs) / sizeof(char *)); i++)
 	{
-		printf(_("creating directory %s/%s ... "), pg_data, subdirs[i]);
-		fflush(stdout);
-
 		if (!mkdatadir(subdirs[i]))
 			exit_nicely();
-		else
-			check_ok();
 	}
+
+	check_ok();
 
 	/* Top level PG_VERSION is checked by bootstrapper, so make it first */
 	set_short_version(short_version, NULL);
 
-	/*
-	 * Determine platform-specific config settings
-	 *
-	 * Use reasonable values if kernel will let us, else scale back.  Probe
-	 * for max_connections first since it is subject to more constraints than
-	 * shared_buffers.
-	 */
-
+	/* Select suitable configuration settings */
 	set_null_conf();
-
-	test_connections();
-	test_buffers();
+	test_config_settings();
 
 	/* Now create all the text config files */
 	setup_config();
@@ -2737,8 +2966,6 @@ main(int argc, char *argv[])
 	setup_auth();
 	if (pwprompt || pwfilename)
 		get_set_pwd();
-
-	unlimit_systables();
 
 	setup_depend();
 
@@ -2769,7 +2996,7 @@ main(int argc, char *argv[])
 	get_parent_directory(bin_dir);
 
 	printf(_("\nSuccess. You can now start the database server using:\n\n"
-			 "    %s%s%spostmaster%s -D %s%s%s\n"
+			 "    %s%s%spostgres%s -D %s%s%s\n"
 			 "or\n"
 			 "    %s%s%spg_ctl%s -D %s%s%s -l logfile start\n\n"),
 	   QUOTE_PATH, bin_dir, (strlen(bin_dir) > 0) ? DIR_SEP : "", QUOTE_PATH,

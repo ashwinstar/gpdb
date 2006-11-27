@@ -1,4 +1,4 @@
-# $PostgreSQL: pgsql/src/pl/plpython/Makefile,v 1.23 2005/08/12 21:44:51 momjian Exp $
+# $PostgreSQL: pgsql/src/pl/plpython/Makefile,v 1.26 2006/07/21 00:24:04 tgl Exp $
 
 subdir = src/pl/plpython
 top_builddir = ../../..
@@ -60,6 +60,8 @@ SHLIB_LINK = $(BE_DLLLIBS) $(python_libspec) $(python_additional_libs)
 
 REGRESS_OPTS = --dbname=$(PL_TESTDB) --load-language=plpythonu
 REGRESS = plpython_schema plpython_populate plpython_function plpython_test plpython_error plpython_drop
+# where to find psql for running the tests
+PSQLDIR = $(bindir)
 
 include $(top_srcdir)/src/Makefile.shlib
 
@@ -89,7 +91,7 @@ endif
 
 install: all installdirs
 ifeq ($(enable_shared), yes)
-	$(INSTALL_SHLIB) $(shlib) $(DESTDIR)$(pkglibdir)/plpython$(DLSUFFIX)
+	$(INSTALL_SHLIB) $(shlib) '$(DESTDIR)$(pkglibdir)/plpython$(DLSUFFIX)'
 else
 	@echo "*****"; \
 	 echo "* PL/Python was not installed due to lack of shared library support."; \
@@ -97,17 +99,17 @@ else
 endif
 
 installdirs:
-	$(mkinstalldirs) $(DESTDIR)$(pkglibdir)
+	$(mkinstalldirs) '$(DESTDIR)$(pkglibdir)'
 
 uninstall:
-	rm -f $(DESTDIR)$(pkglibdir)/plpython$(DLSUFFIX)
+	rm -f '$(DESTDIR)$(pkglibdir)/plpython$(DLSUFFIX)'
 
 installcheck: submake
-	$(SHELL) $(top_builddir)/src/test/regress/pg_regress $(REGRESS_OPTS) $(REGRESS)
+	$(top_builddir)/src/test/regress/pg_regress --psqldir=$(PSQLDIR) $(REGRESS_OPTS) $(REGRESS)
 
 .PHONY: submake
 submake:
-	$(MAKE) -C $(top_builddir)/src/test/regress pg_regress
+	$(MAKE) -C $(top_builddir)/src/test/regress pg_regress$(X)
 
 clean distclean maintainer-clean: clean-lib
 	rm -f $(OBJS)

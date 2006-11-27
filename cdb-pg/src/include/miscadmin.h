@@ -10,10 +10,10 @@
  *	  Over time, this has also become the preferred place for widely known
  *	  resource-limitation stuff, such as work_mem and check_stack_depth().
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/miscadmin.h,v 1.183.2.1 2005/11/22 18:23:27 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/miscadmin.h,v 1.190 2006/10/19 18:32:47 tgl Exp $
  *
  * NOTES
  *	  some of the information in this file should be moved to other files.
@@ -70,8 +70,8 @@ extern volatile bool ProcDiePending;
 
 /* these are marked volatile because they are examined by signal handlers: */
 extern volatile bool ImmediateInterruptOK;
-extern volatile uint32 InterruptHoldoffCount;
-extern volatile uint32 CritSectionCount;
+extern DLLIMPORT volatile uint32 InterruptHoldoffCount;
+extern DLLIMPORT volatile uint32 CritSectionCount;
 
 /* in tcop/postgres.c */
 extern void ProcessInterrupts(void);
@@ -83,7 +83,6 @@ do { \
 	if (InterruptPending) \
 		ProcessInterrupts(); \
 } while(0)
-
 #else							/* WIN32 */
 
 #define CHECK_FOR_INTERRUPTS() \
@@ -93,7 +92,6 @@ do { \
 	if (InterruptPending) \
 		ProcessInterrupts(); \
 } while(0)
-
 #endif   /* WIN32 */
 
 
@@ -127,13 +125,13 @@ extern bool IsUnderPostmaster;
 
 extern bool ExitOnAnyError;
 
-extern char *DataDir;
+extern DLLIMPORT char *DataDir;
 
 extern DLLIMPORT int NBuffers;
 extern int	MaxBackends;
 
 extern DLLIMPORT int MyProcPid;
-extern struct Port *MyProcPort;
+extern DLLIMPORT struct Port *MyProcPort;
 extern long MyCancelKey;
 
 extern char OutputFileName[];
@@ -309,8 +307,10 @@ extern bool InitPostgres(const char *dbname, const char *username);
 extern void BaseInit(void);
 
 /* in utils/init/miscinit.c */
-extern void IgnoreSystemIndexes(bool mode);
-extern bool IsIgnoringSystemIndexes(void);
+extern bool IgnoreSystemIndexes;
+extern char *shared_preload_libraries_string;
+extern char *local_preload_libraries_string;
+
 extern void SetReindexProcessing(Oid heapOid, Oid indexOid);
 extern void ResetReindexProcessing(void);
 extern bool ReindexIsProcessingHeap(Oid heapOid);
@@ -321,6 +321,7 @@ extern void TouchSocketLockFile(void);
 extern void RecordSharedMemoryInLockFile(unsigned long id1,
 							 unsigned long id2);
 extern void ValidatePgVersion(const char *path);
-extern void process_preload_libraries(char *preload_libraries_string);
+extern void process_shared_preload_libraries(void);
+extern void process_local_preload_libraries(void);
 
 #endif   /* MISCADMIN_H */

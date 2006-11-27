@@ -4,9 +4,9 @@
  *	   Win32 open() replacement
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/port/open.c,v 1.11 2005/10/15 02:49:51 momjian Exp $
+ * $PostgreSQL: pgsql/src/port/open.c,v 1.17 2006/10/04 00:30:14 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,7 +19,6 @@
 #include <fcntl.h>
 #include <assert.h>
 
-int			win32_open(const char *fileName, int fileFlags,...);
 
 static int
 openFlagsToCreateFileFlags(int openFlags)
@@ -54,7 +53,7 @@ openFlagsToCreateFileFlags(int openFlags)
  *	 - handle other flags? (eg FILE_FLAG_NO_BUFFERING/FILE_FLAG_WRITE_THROUGH)
  */
 int
-win32_open(const char *fileName, int fileFlags,...)
+pgwin32_open(const char *fileName, int fileFlags,...)
 {
 	int			fd;
 	HANDLE		h;
@@ -106,10 +105,44 @@ win32_open(const char *fileName, int fileFlags,...)
 	}
 
 	/* _open_osfhandle will, on error, set errno accordingly */
-	if ((fd = _open_osfhandle((long) h, fileFlags & O_APPEND)) < 0 ||
-		(fileFlags & (O_TEXT | O_BINARY) && (_setmode(fd, fileFlags & (O_TEXT | O_BINARY)) < 0)))
+	if ((fd = _open_osfhandle((long) h, fileFlags & O_APPEND)) < 0)
 		CloseHandle(h);			/* will not affect errno */
+	else if (fileFlags & (O_TEXT | O_BINARY) &&
+			 _setmode(fd, fileFlags & (O_TEXT | O_BINARY)) < 0)
+	{
+		_close(fd);
+		return -1;
+	}
+
 	return fd;
+}
+
+FILE *
+pgwin32_fopen(const char *fileName, const char *mode)
+{
+	int			openmode = 0;
+	int			fd;
+
+	if (strstr(mode, "r+"))
+		openmode |= O_RDWR;
+	else if (strchr(mode, 'r'))
+		openmode |= O_RDONLY;
+	if (strstr(mode, "w+"))
+		openmode |= O_RDWR | O_CREAT | O_TRUNC;
+	else if (strchr(mode, 'w'))
+		openmode |= O_WRONLY | O_CREAT | O_TRUNC;
+	if (strchr(mode, 'a'))
+		openmode |= O_WRONLY | O_CREAT | O_APPEND;
+
+	if (strchr(mode, 'b'))
+		openmode |= O_BINARY;
+	if (strchr(mode, 't'))
+		openmode |= O_TEXT;
+
+	fd = pgwin32_open(fileName, openmode);
+	if (fd == -1)
+		return NULL;
+	return _fdopen(fd, mode);
 }
 
 #endif

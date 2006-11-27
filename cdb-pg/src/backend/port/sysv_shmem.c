@@ -6,17 +6,16 @@
  * These routines represent a fairly thin layer on top of SysV shared
  * memory functionality.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/port/sysv_shmem.c,v 1.44 2005/10/15 02:49:22 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/port/sysv_shmem.c,v 1.47 2006/07/14 05:28:28 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include <errno.h>
 #include <signal.h>
 #include <unistd.h>
 #include <sys/file.h>
@@ -426,7 +425,7 @@ PGSharedMemoryReAttach(void)
 	UsedShmemSegAddr = origUsedShmemSegAddr;
 #endif
 
-	elog(DEBUG3, "Attaching to %p", UsedShmemSegAddr);
+	elog(DEBUG3, "attaching to %p", UsedShmemSegAddr);
 	hdr = (void *) PGSharedMemoryAttach((IpcMemoryKey) UsedShmemSegID, &shmid);
 	if (hdr == NULL)
 		elog(FATAL, "could not reattach to shared memory (key=%d, addr=%p): %m",

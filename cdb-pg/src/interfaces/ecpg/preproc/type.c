@@ -1,3 +1,5 @@
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/type.c,v 1.71 2006/08/13 10:18:30 meskes Exp $ */
+
 #include "postgres_fe.h"
 
 #include "extern.h"
@@ -247,7 +249,7 @@ ECPGdump_a_type(FILE *o, const char *name, struct ECPGtype * type,
 									  ind_name,
 									  type->size,
 									  type->u.element,
-									  (ind_type->type == ECPGt_NO_INDICATOR) ? ind_type : ind_type->u.element,
+									  (ind_type == NULL) ? NULL : ((ind_type->type == ECPGt_NO_INDICATOR) ? ind_type : ind_type->u.element),
 									  NULL, prefix, ind_prefix);
 					break;
 				default:
@@ -284,14 +286,16 @@ ECPGdump_a_type(FILE *o, const char *name, struct ECPGtype * type,
 				mmerror(INDICATOR_NOT_SIMPLE, ET_FATAL, "Indicator for simple datatype has to be simple.\n");
 
 			ECPGdump_a_simple(o, name, type->type, make_str("1"), (arr_str_siz && strcmp(arr_str_siz, "0") != 0) ? arr_str_siz : make_str("1"), struct_sizeof, prefix);
-			ECPGdump_a_simple(o, ind_name, ind_type->type, ind_type->size, (arr_str_siz && strcmp(arr_str_siz, "0") != 0) ? arr_str_siz : make_str("-1"), ind_struct_sizeof, ind_prefix);
+			if (ind_type != NULL)
+				ECPGdump_a_simple(o, ind_name, ind_type->type, ind_type->size, (arr_str_siz && strcmp(arr_str_siz, "0") != 0) ? arr_str_siz : make_str("-1"), ind_struct_sizeof, ind_prefix);
 			break;
 		case ECPGt_descriptor:
 			if (indicator_set && (ind_type->type == ECPGt_struct || ind_type->type == ECPGt_array))
 				mmerror(INDICATOR_NOT_SIMPLE, ET_FATAL, "Indicator for simple datatype has to be simple.\n");
 
 			ECPGdump_a_simple(o, name, type->type, NULL, make_str("-1"), NULL, prefix);
-			ECPGdump_a_simple(o, ind_name, ind_type->type, ind_type->size, make_str("-1"), NULL, ind_prefix);
+			if (ind_type != NULL)
+				ECPGdump_a_simple(o, ind_name, ind_type->type, ind_type->size, make_str("-1"), NULL, ind_prefix);
 			break;
 		default:
 			if (indicator_set && (ind_type->type == ECPGt_struct || ind_type->type == ECPGt_array))

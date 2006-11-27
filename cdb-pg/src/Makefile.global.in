@@ -1,5 +1,5 @@
 # -*-makefile-*-
-# $PostgreSQL: pgsql/src/Makefile.global.in,v 1.220 2005/09/27 17:39:32 tgl Exp $
+# $PostgreSQL: pgsql/src/Makefile.global.in,v 1.232 2006/10/08 17:15:33 tgl Exp $
 
 #------------------------------------------------------------------------------
 # All PostgreSQL makefiles include this file and use the variables it sets,
@@ -118,16 +118,18 @@ localedir := @localedir@
 
 else # PGXS case
 
-bindir := $(shell pg_config --bindir)
-datadir := $(shell pg_config --sharedir)
-sysconfdir := $(shell pg_config --sysconfdir)
-libdir := $(shell pg_config --libdir)
-pkglibdir := $(shell pg_config --pkglibdir)
-includedir := $(shell pg_config --includedir)
-pkgincludedir := $(shell pg_config --pkgincludedir)
-mandir := $(shell pg_config --mandir)
-docdir := $(shell pg_config --docdir)
-localedir := $(shell pg_config --localedir)
+PG_CONFIG = pg_config
+
+bindir := $(shell $(PG_CONFIG) --bindir)
+datadir := $(shell $(PG_CONFIG) --sharedir)
+sysconfdir := $(shell $(PG_CONFIG) --sysconfdir)
+libdir := $(shell $(PG_CONFIG) --libdir)
+pkglibdir := $(shell $(PG_CONFIG) --pkglibdir)
+includedir := $(shell $(PG_CONFIG) --includedir)
+pkgincludedir := $(shell $(PG_CONFIG) --pkgincludedir)
+mandir := $(shell $(PG_CONFIG) --mandir)
+docdir := $(shell $(PG_CONFIG) --docdir)
+localedir := $(shell $(PG_CONFIG) --localedir)
 
 endif # PGXS
 
@@ -156,6 +158,7 @@ enable_shared	= @enable_shared@
 enable_rpath	= @enable_rpath@
 enable_nls	= @enable_nls@
 enable_debug	= @enable_debug@
+enable_dtrace	= @enable_dtrace@
 enable_thread_safety	= @enable_thread_safety@
 
 python_includespec	= @python_includespec@
@@ -211,10 +214,14 @@ YACC = @YACC@
 YFLAGS = @YFLAGS@
 FLEX = @FLEX@
 FLEXFLAGS = @FLEXFLAGS@ $(LFLAGS)
+DTRACE = @DTRACE@
+DTRACEFLAGS = @DTRACEFLAGS@
 
 # Linking
 
 LIBS = @LIBS@
+LDAP_LIBS_FE = @LDAP_LIBS_FE@
+LDAP_LIBS_BE = @LDAP_LIBS_BE@
 LD = @LD@
 with_gnu_ld = @with_gnu_ld@
 ld_R_works = @ld_R_works@
@@ -223,7 +230,6 @@ LDFLAGS_SL = @LDFLAGS_SL@
 LDREL = -r
 LDOUT = -o
 RANLIB = @RANLIB@
-LORDER = @LORDER@
 X = @EXEEXT@
 
 # Perl 
@@ -306,6 +312,9 @@ HAVE_POSIX_SIGNALS= @HAVE_POSIX_SIGNALS@
 # systems now.  May be applicable to other systems to?
 ELF_SYSTEM= @ELF_SYS@
 
+# Backend stack size limit has to be hard-wired on Windows (it's in bytes)
+WIN32_STACK_RLIMIT=4194304
+
 # Pull in platform-specific magic
 include $(top_builddir)/src/Makefile.port
 
@@ -331,23 +340,19 @@ libpq_srcdir = $(top_srcdir)/src/interfaces/libpq
 libpq_builddir = $(top_builddir)/src/interfaces/libpq
 endif
 
-# This is for use for libraries linking to libpq.  Because libpqport
-# isn't created with the same link flags as libpq, it can't be used.
-libpq = -L$(libpq_builddir) -lpq
+# This macro is for use by libraries linking to libpq.  (Because libpgport
+# isn't created with the same link flags as libpq, it can't be used.)
+libpq := -L$(libpq_builddir) -lpq
   
-# If doing static linking, shared library dependency can't be
-# used so we specify pthread libs for every usage of libpq
+# If doing static linking, shared library dependency info isn't available,
+# so add in the libraries that libpq depends on.
 ifeq ($(enable_shared), no)
-libpq += $(PTHREAD_LIBS)
-else
-# AIX libraries do not remember their required libs so we have to force
-# thread dependent libraires in the link
-ifeq ($(PORTNAME), aix)
-libpq += $(PTHREAD_LIBS)
-endif
+libpq += $(filter -lintl -lssl -lcrypto -lkrb5 -lcrypt, $(LIBS)) \
+	$(LDAP_LIBS_FE) $(PTHREAD_LIBS)
 endif
 
-# Force clients to pull symbols from the non-shared library libpgport 
+# This macro is for use by client executables (not libraries) that use libpq.
+# We force clients to pull symbols from the non-shared library libpgport 
 # rather than pulling some libpgport symbols from libpq just because 
 # libpq uses those functions too.  This makes applications less 
 # dependent on changes in libpq's usage of pgport.  To do this we link to
@@ -412,7 +417,7 @@ endif
 #
 # substitute implementations of C library routines (see src/port/)
 
-LIBOBJS = @LIBOBJS@ copydir.o dirmod.o exec.o noblock.o path.o pipe.o pgsleep.o pgstrcasecmp.o sprompt.o thread.o
+LIBOBJS = @LIBOBJS@ copydir.o dirmod.o exec.o noblock.o path.o pipe.o pgsleep.o pgstrcasecmp.o qsort.o qsort_arg.o sprompt.o thread.o
 
 LIBS := -lpgport $(LIBS)
 # add location of libpgport.a to LDFLAGS
@@ -485,6 +490,11 @@ $(top_builddir)/src/include/pg_config.h: $(top_builddir)/src/include/stamp-h
 $(top_builddir)/src/include/stamp-h: $(top_srcdir)/src/include/pg_config.h.in $(top_builddir)/config.status
 	cd $(top_builddir) && ./config.status src/include/pg_config.h
 
+# Also remake ecpg_config.h from ecpg_config.h.in if the latter changed. Values in it can
+# only change if pg_config.h has changed, so include this file to its dependencies.
+$(top_builddir)/src/interfaces/ecpg/include/ecpg_config.h: $(top_builddir)/src/include/pg_config.h $(top_builddir)/src/interfaces/ecpg/include/ecpg_config.h.in $(top_builddir)/config.status
+	cd $(top_builddir) && ./config.status src/interfaces/ecpg/include/ecpg_config.h
+
 # When configure changes, rerun configure with the same options as
 # last time. To change configure, you need to run autoconf manually.
 $(top_builddir)/config.status: $(top_srcdir)/configure
@@ -511,17 +521,6 @@ install-strip:
 # Next time we invoke make we will have top-notch information about
 # whether this file needs to be updated. The dependency files are kept
 # in the .deps subdirectory of each directory.
-#
-# The sed command is necessary to post-process the dependency file:
-# Each dependency file becomes a target of its own, without
-# dependencies or commands. This is because if you happen to remove a
-# file that is a dependency (say, you rename a header file) the
-# dependency would point to a non-existing file and make would fail.
-# But if the file is listed as a target of its own, without
-# prerequisites and commands, and doesn't exist then make will
-# consider it updated. (That in turn also has the nice side effect
-# that make will update all files that depended on the now removed
-# file.)
 
 autodepend = @autodepend@
 
@@ -532,38 +531,27 @@ COMPILE.c = $(CC) $(CFLAGS) $(CPPFLAGS) -c
 endif
 
 DEPDIR = .deps
-df = $(DEPDIR)/$(*F)
-
-# This converts a .d file in the current directory to a .P file in the .deps
-# subdirectory, with the dummy targets as explained above.
-define postprocess-depend
-@if test ! -d $(DEPDIR); then mkdir $(DEPDIR); fi
-@cp $*.d $(df).P
-@sed -e 's/#.*//' -e 's/^[^:]*: *//' -e 's/ *\\$$//' \
-     -e '/^$$/ d' -e 's/$$/ :/' < $*.d >> $(df).P
-@rm -f $*.d
-endef
 
 ifeq ($(GCC), yes)
 
 # GCC allows us to create object and dependency file in one invocation.
 %.o : %.c
-	$(COMPILE.c) -o $@ $< -MMD
-	$(postprocess-depend)
+	@if test ! -d $(DEPDIR); then mkdir -p $(DEPDIR); fi
+	$(COMPILE.c) -o $@ $< -MMD -MP -MF $(DEPDIR)/$(*F).Po
 
 endif # GCC
 
 # Include all the dependency files generated for the current
 # directory. List /dev/null as dummy because if the wildcard expands
 # to nothing then make would complain.
--include $(wildcard $(DEPDIR)/*.P) /dev/null
+-include $(wildcard $(DEPDIR)/*.Po) /dev/null
 
 # hook for clean-up
 clean distclean maintainer-clean: clean-deps
 
 .PHONY: clean-deps
 clean-deps:
-	@rm -rf $(DEPDIR) *.d
+	@rm -rf $(DEPDIR)
 
 endif # autodepend
 

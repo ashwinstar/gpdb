@@ -4,12 +4,12 @@
  *	  functions related to setting up a connection to the backend
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.323.2.2 2006/05/21 20:19:44 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.338 2006/10/06 17:14:00 petere Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -21,13 +21,7 @@
 #include <fcntl.h>
 #include <ctype.h>
 #include <time.h>
-#ifndef WIN32_CLIENT_ONLY
 #include <unistd.h>
-#endif
-
-#ifndef HAVE_STRDUP
-#include "strdup.h"
-#endif
 
 #include "libpq-fe.h"
 #include "libpq-int.h"
@@ -61,6 +55,19 @@
 #else
 #include <pthread.h>
 #endif
+#endif
+
+#ifdef USE_LDAP
+#ifdef WIN32
+#include <winldap.h>
+#else
+/* OpenLDAP deprecates RFC 1823, but we want standard conformance */
+#define LDAP_DEPRECATED 1
+#include <ldap.h>
+typedef struct timeval LDAP_TIMEVAL;
+#endif
+static int ldapServiceLookup(const char *purl, PQconninfoOption *options,
+				  PQExpBuffer errorMessage);
 #endif
 
 #include "libpq/ip.h"
@@ -519,6 +526,13 @@ connectOptions2(PGconn *conn)
 	else
 		conn->sslmode = strdup(DefaultSSLMode);
 
+	/*
+	 * Only if we get this far is it appropriate to try to connect. (We need a
+	 * state flag, rather than just the boolean result of this function, in
+	 * case someone tries to PQreset() the PGconn.)
+	 */
+	conn->options_valid = true;
+
 	return true;
 }
 
@@ -701,7 +715,7 @@ connectFailureMessage(PGconn *conn, int errorno)
 		printfPQExpBuffer(&conn->errorMessage,
 						  libpq_gettext("could not connect to server: %s\n"
 							"\tIs the server running locally and accepting\n"
-							  "\tconnections on Unix domain socket \"%s\"?\n"),
+							"\tconnections on Unix domain socket \"%s\"?\n"),
 						  SOCK_STRERROR(errorno, sebuf, sizeof(sebuf)),
 						  service);
 	}
@@ -742,6 +756,9 @@ connectDBStart(PGconn *conn)
 
 	if (!conn)
 		return 0;
+
+	if (!conn->options_valid)
+		goto connect_errReturn;
 
 	/* Ensure our buffers are empty */
 	conn->inStart = conn->inCursor = conn->inEnd = 0;
@@ -1017,7 +1034,7 @@ keep_going:						/* We will come back to here until there is
 				/*
 				 * Try to initiate a connection to one of the addresses
 				 * returned by pg_getaddrinfo_all().  conn->addr_cur is the
-				 * next one to try.	We fail when we run out of addresses
+				 * next one to try. We fail when we run out of addresses
 				 * (reporting the error returned for the *last* alternative,
 				 * which may not be what users expect :-().
 				 */
@@ -1828,6 +1845,8 @@ makeEmptyPGconn(void)
 	conn->status = CONNECTION_BAD;
 	conn->asyncStatus = PGASYNC_IDLE;
 	conn->xactStatus = PQTRANS_IDLE;
+	conn->options_valid = false;
+	conn->nonblocking = false;
 	conn->setenv_state = SETENV_STATE_IDLE;
 	conn->client_encoding = PG_SQL_ASCII;
 	conn->std_strings = false;	/* unless server says differently */
@@ -1853,7 +1872,6 @@ makeEmptyPGconn(void)
 	conn->inBuffer = (char *) malloc(conn->inBufSize);
 	conn->outBufSize = 16 * 1024;
 	conn->outBuffer = (char *) malloc(conn->outBufSize);
-	conn->nonblocking = FALSE;
 	conn->outBuffer_shared = false;
 	initPQExpBuffer(&conn->errorMessage);
 	initPQExpBuffer(&conn->workBuffer);
@@ -1928,6 +1946,8 @@ freePGconn(PGconn *conn)
         free(conn->mppqdid);
 
 	/* Note that conn->Pfdebug is not ours to close or free */
+	if (conn->last_query)
+		free(conn->last_query);
 	pg_freeaddrinfo_all(conn->addrlist_family, conn->addrlist);
 	notify = conn->notifyHead;
 	while (notify != NULL)
@@ -2102,7 +2122,7 @@ PQresetPoll(PGconn *conn)
  * A copy is needed to be able to cancel a running query from a different
  * thread. If the same structure is used all structure members would have
  * to be individually locked (if the entire structure was locked, it would
- * be impossible to cancel a synchronous query becuase the structure would
+ * be impossible to cancel a synchronous query because the structure would
  * have to stay locked for the duration of the query).
  */
 PGcancel *
@@ -2352,7 +2372,426 @@ pqPacketSend(PGconn *conn, char pack_type,
 	return STATUS_OK;
 }
 
+#ifdef USE_LDAP
 
+#define LDAP_URL	"ldap://"
+#define LDAP_DEF_PORT	389
+#define PGLDAP_TIMEOUT 2
+
+#define ld_is_sp_tab(x) ((x) == ' ' || (x) == '\t')
+#define ld_is_nl_cr(x) ((x) == '\r' || (x) == '\n')
+
+
+/*
+ *		ldapServiceLookup
+ *
+ * Search the LDAP URL passed as first argument, treat the result as a
+ * string of connection options that are parsed and added to the array of
+ * options passed as second argument.
+ *
+ * LDAP URLs must conform to RFC 1959 without escape sequences.
+ *	ldap://host:port/dn?attributes?scope?filter?extensions
+ *
+ * Returns
+ *	0 if the lookup was successful,
+ *	1 if the connection to the LDAP server could be established but
+ *	  the search was unsuccessful,
+ *	2 if a connection could not be established, and
+ *	3 if a fatal error occurred.
+ *
+ * An error message is returned in the third argument for return codes 1 and 3.
+ */
+static int
+ldapServiceLookup(const char *purl, PQconninfoOption *options,
+				  PQExpBuffer errorMessage)
+{
+	int			port = LDAP_DEF_PORT,
+				scope,
+				rc,
+				msgid,
+				size,
+				state,
+				oldstate,
+				i;
+	bool		found_keyword;
+	char	   *url,
+			   *hostname,
+			   *portstr,
+			   *endptr,
+			   *dn,
+			   *scopestr,
+			   *filter,
+			   *result,
+			   *p,
+			   *p1 = NULL,
+			   *optname = NULL,
+			   *optval = NULL;
+	char	   *attrs[2] = {NULL, NULL};
+	LDAP	   *ld = NULL;
+	LDAPMessage *res,
+			   *entry;
+	struct berval **values;
+	LDAP_TIMEVAL time = {PGLDAP_TIMEOUT, 0};
+
+	if ((url = strdup(purl)) == NULL)
+	{
+		printfPQExpBuffer(errorMessage, libpq_gettext("out of memory\n"));
+		return 3;
+	}
+
+	/*
+	 * Parse URL components, check for correctness.  Basically, url has '\0'
+	 * placed at component boundaries and variables are pointed at each
+	 * component.
+	 */
+
+	if (pg_strncasecmp(url, LDAP_URL, strlen(LDAP_URL)) != 0)
+	{
+		printfPQExpBuffer(errorMessage,
+		libpq_gettext("invalid LDAP URL \"%s\": scheme must be ldap://\n"), purl);
+		free(url);
+		return 3;
+	}
+
+	/* hostname */
+	hostname = url + strlen(LDAP_URL);
+	if (*hostname == '/')		/* no hostname? */
+		hostname = "localhost"; /* the default */
+
+	/* dn, "distinguished name" */
+	p = strchr(url + strlen(LDAP_URL), '/');
+	if (p == NULL || *(p + 1) == '\0' || *(p + 1) == '?')
+	{
+		printfPQExpBuffer(errorMessage, libpq_gettext(
+				 "invalid LDAP URL \"%s\": missing distinguished name\n"), purl);
+		free(url);
+		return 3;
+	}
+	*p = '\0';					/* terminate hostname */
+	dn = p + 1;
+
+	/* attribute */
+	if ((p = strchr(dn, '?')) == NULL || *(p + 1) == '\0' || *(p + 1) == '?')
+	{
+		printfPQExpBuffer(errorMessage, libpq_gettext(
+			"invalid LDAP URL \"%s\": must have exactly one attribute\n"), purl);
+		free(url);
+		return 3;
+	}
+	*p = '\0';
+	attrs[0] = p + 1;
+
+	/* scope */
+	if ((p = strchr(attrs[0], '?')) == NULL || *(p + 1) == '\0' || *(p + 1) == '?')
+	{
+		printfPQExpBuffer(errorMessage, libpq_gettext("invalid LDAP URL \"%s\": must have search scope (base/one/sub)\n"), purl);
+		free(url);
+		return 3;
+	}
+	*p = '\0';
+	scopestr = p + 1;
+
+	/* filter */
+	if ((p = strchr(scopestr, '?')) == NULL || *(p + 1) == '\0' || *(p + 1) == '?')
+	{
+		printfPQExpBuffer(errorMessage,
+					libpq_gettext("invalid LDAP URL \"%s\": no filter\n"), purl);
+		free(url);
+		return 3;
+	}
+	*p = '\0';
+	filter = p + 1;
+	if ((p = strchr(filter, '?')) != NULL)
+		*p = '\0';
+
+	/* port number? */
+	if ((p1 = strchr(hostname, ':')) != NULL)
+	{
+		long		lport;
+
+		*p1 = '\0';
+		portstr = p1 + 1;
+		errno = 0;
+		lport = strtol(portstr, &endptr, 10);
+		if (*portstr == '\0' || *endptr != '\0' || errno || lport < 0 || lport > 65535)
+		{
+			printfPQExpBuffer(errorMessage, libpq_gettext(
+						"invalid LDAP URL \"%s\": invalid port number\n"), purl);
+			free(url);
+			return 3;
+		}
+		port = (int) lport;
+	}
+
+	/* Allow only one attribute */
+	if (strchr(attrs[0], ',') != NULL)
+	{
+		printfPQExpBuffer(errorMessage, libpq_gettext(
+			"invalid LDAP URL \"%s\": must have exactly one attribute\n"), purl);
+		free(url);
+		return 3;
+	}
+
+	/* set scope */
+	if (pg_strcasecmp(scopestr, "base") == 0)
+		scope = LDAP_SCOPE_BASE;
+	else if (pg_strcasecmp(scopestr, "one") == 0)
+		scope = LDAP_SCOPE_ONELEVEL;
+	else if (pg_strcasecmp(scopestr, "sub") == 0)
+		scope = LDAP_SCOPE_SUBTREE;
+	else
+	{
+		printfPQExpBuffer(errorMessage, libpq_gettext("invalid LDAP URL \"%s\": must have search scope (base/one/sub)\n"), purl);
+		free(url);
+		return 3;
+	}
+
+	/* initialize LDAP structure */
+	if ((ld = ldap_init(hostname, port)) == NULL)
+	{
+		printfPQExpBuffer(errorMessage,
+						  libpq_gettext("could not create LDAP structure\n"));
+		free(url);
+		return 3;
+	}
+
+	/*
+	 * Initialize connection to the server.  We do an explicit bind because we
+	 * want to return 2 if the bind fails.
+	 */
+	if ((msgid = ldap_simple_bind(ld, NULL, NULL)) == -1)
+	{
+		/* error in ldap_simple_bind() */
+		free(url);
+		ldap_unbind(ld);
+		return 2;
+	}
+
+	/* wait some time for the connection to succeed */
+	res = NULL;
+	if ((rc = ldap_result(ld, msgid, LDAP_MSG_ALL, &time, &res)) == -1 ||
+		res == NULL)
+	{
+		if (res != NULL)
+		{
+			/* timeout */
+			ldap_msgfree(res);
+		}
+		/* error in ldap_result() */
+		free(url);
+		ldap_unbind(ld);
+		return 2;
+	}
+	ldap_msgfree(res);
+
+	/* search */
+	res = NULL;
+	if ((rc = ldap_search_st(ld, dn, scope, filter, attrs, 0, &time, &res))
+		!= LDAP_SUCCESS)
+	{
+		if (res != NULL)
+			ldap_msgfree(res);
+		printfPQExpBuffer(errorMessage,
+						  libpq_gettext("lookup on LDAP server failed: %s\n"),
+						  ldap_err2string(rc));
+		ldap_unbind(ld);
+		free(url);
+		return 1;
+	}
+
+	/* complain if there was not exactly one result */
+	if ((rc = ldap_count_entries(ld, res)) != 1)
+	{
+		printfPQExpBuffer(errorMessage,
+			 rc ? libpq_gettext("more than one entry found on LDAP lookup\n")
+						  : libpq_gettext("no entry found on LDAP lookup\n"));
+		ldap_msgfree(res);
+		ldap_unbind(ld);
+		free(url);
+		return 1;
+	}
+
+	/* get entry */
+	if ((entry = ldap_first_entry(ld, res)) == NULL)
+	{
+		/* should never happen */
+		printfPQExpBuffer(errorMessage,
+						  libpq_gettext("no entry found on LDAP lookup\n"));
+		ldap_msgfree(res);
+		ldap_unbind(ld);
+		free(url);
+		return 1;
+	}
+
+	/* get values */
+	if ((values = ldap_get_values_len(ld, entry, attrs[0])) == NULL)
+	{
+		printfPQExpBuffer(errorMessage,
+				  libpq_gettext("attribute has no values on LDAP lookup\n"));
+		ldap_msgfree(res);
+		ldap_unbind(ld);
+		free(url);
+		return 1;
+	}
+
+	ldap_msgfree(res);
+	free(url);
+
+	if (values[0] == NULL)
+	{
+		printfPQExpBuffer(errorMessage,
+				  libpq_gettext("attribute has no values on LDAP lookup\n"));
+		ldap_value_free_len(values);
+		ldap_unbind(ld);
+		return 1;
+	}
+
+	/* concatenate values to a single string */
+	for (size = 0, i = 0; values[i] != NULL; ++i)
+		size += values[i]->bv_len + 1;
+	if ((result = malloc(size + 1)) == NULL)
+	{
+		printfPQExpBuffer(errorMessage,
+						  libpq_gettext("out of memory\n"));
+		ldap_value_free_len(values);
+		ldap_unbind(ld);
+		return 3;
+	}
+	for (p = result, i = 0; values[i] != NULL; ++i)
+	{
+		strncpy(p, values[i]->bv_val, values[i]->bv_len);
+		p += values[i]->bv_len;
+		*(p++) = '\n';
+		if (values[i + 1] == NULL)
+			*(p + 1) = '\0';
+	}
+
+	ldap_value_free_len(values);
+	ldap_unbind(ld);
+
+	/* parse result string */
+	oldstate = state = 0;
+	for (p = result; *p != '\0'; ++p)
+	{
+		switch (state)
+		{
+			case 0:				/* between entries */
+				if (!ld_is_sp_tab(*p) && !ld_is_nl_cr(*p))
+				{
+					optname = p;
+					state = 1;
+				}
+				break;
+			case 1:				/* in option name */
+				if (ld_is_sp_tab(*p))
+				{
+					*p = '\0';
+					state = 2;
+				}
+				else if (ld_is_nl_cr(*p))
+				{
+					printfPQExpBuffer(errorMessage, libpq_gettext(
+					"missing \"=\" after \"%s\" in connection info string\n"),
+									  optname);
+					return 3;
+				}
+				else if (*p == '=')
+				{
+					*p = '\0';
+					state = 3;
+				}
+				break;
+			case 2:				/* after option name */
+				if (*p == '=')
+				{
+					state = 3;
+				}
+				else if (!ld_is_sp_tab(*p))
+				{
+					printfPQExpBuffer(errorMessage, libpq_gettext(
+					"missing \"=\" after \"%s\" in connection info string\n"),
+									  optname);
+					return 3;
+				}
+				break;
+			case 3:				/* before option value */
+				if (*p == '\'')
+				{
+					optval = p + 1;
+					p1 = p + 1;
+					state = 5;
+				}
+				else if (ld_is_nl_cr(*p))
+				{
+					optval = optname + strlen(optname); /* empty */
+					state = 0;
+				}
+				else if (!ld_is_sp_tab(*p))
+				{
+					optval = p;
+					state = 4;
+				}
+				break;
+			case 4:				/* in unquoted option value */
+				if (ld_is_sp_tab(*p) || ld_is_nl_cr(*p))
+				{
+					*p = '\0';
+					state = 0;
+				}
+				break;
+			case 5:				/* in quoted option value */
+				if (*p == '\'')
+				{
+					*p1 = '\0';
+					state = 0;
+				}
+				else if (*p == '\\')
+					state = 6;
+				else
+					*(p1++) = *p;
+				break;
+			case 6:				/* in quoted option value after escape */
+				*(p1++) = *p;
+				state = 5;
+				break;
+		}
+
+		if (state == 0 && oldstate != 0)
+		{
+			found_keyword = false;
+			for (i = 0; options[i].keyword; i++)
+			{
+				if (strcmp(options[i].keyword, optname) == 0)
+				{
+					if (options[i].val == NULL)
+						options[i].val = strdup(optval);
+					found_keyword = true;
+					break;
+				}
+			}
+			if (!found_keyword)
+			{
+				printfPQExpBuffer(errorMessage,
+						 libpq_gettext("invalid connection option \"%s\"\n"),
+								  optname);
+				return 1;
+			}
+			optname = NULL;
+			optval = NULL;
+		}
+		oldstate = state;
+	}
+
+	if (state == 5 || state == 6)
+	{
+		printfPQExpBuffer(errorMessage, libpq_gettext(
+				  "unterminated quoted string in connection info string\n"));
+		return 3;
+	}
+
+	return 0;
+}
+#endif
 
 #define MAXBUFSIZE 256
 
@@ -2447,6 +2886,27 @@ parseServiceInfo(PQconninfoOption *options, PQExpBuffer errorMessage)
 					char	   *key,
 							   *val;
 					bool		found_keyword;
+
+#ifdef USE_LDAP
+					if (strncmp(line, "ldap", 4) == 0)
+					{
+						int			rc = ldapServiceLookup(line, options, errorMessage);
+
+						/* if rc = 2, go on reading for fallback */
+						switch (rc)
+						{
+							case 0:
+								fclose(f);
+								return 0;
+							case 1:
+							case 3:
+								fclose(f);
+								return 3;
+							case 2:
+								continue;
+						}
+					}
+#endif
 
 					key = line;
 					val = strchr(line, '=');
@@ -2989,17 +3449,17 @@ PQsetClientEncoding(PGconn *conn, const char *encoding)
 	else
 	{
 		/*
-		 * In protocol 2 we have to assume the setting will stick, and
-		 * adjust our state immediately.  In protocol 3 and up we can
-		 * rely on the backend to report the parameter value, and we'll
-		 * change state at that time.
+		 * In protocol 2 we have to assume the setting will stick, and adjust
+		 * our state immediately.  In protocol 3 and up we can rely on the
+		 * backend to report the parameter value, and we'll change state at
+		 * that time.
 		 */
 		if (PG_PROTOCOL_MAJOR(conn->pversion) < 3)
 			pqSaveParameterStatus(conn, "client_encoding", encoding);
 		status = 0;				/* everything is ok */
 	}
 	PQclear(res);
-	return (status);
+	return status;
 }
 
 PGVerbosity
@@ -3156,8 +3616,17 @@ PasswordFromFile(char *hostname, char *port, char *dbname, char *username)
 	if (username == NULL || strlen(username) == 0)
 		return NULL;
 
+	/* 'localhost' matches pghost of '' or the default socket directory */
 	if (hostname == NULL)
 		hostname = DefaultHost;
+	else if (is_absolute_path(hostname))
+
+		/*
+		 * We should probably use canonicalize_path(), but then we have to
+		 * bring path.c into libpq, and it doesn't seem worth it.
+		 */
+		if (strcmp(hostname, DEFAULT_PGSOCKET_DIR) == 0)
+			hostname = DefaultHost;
 
 	if (port == NULL)
 		port = DEF_PGPORT_STR;
@@ -3311,4 +3780,3 @@ PQregisterThreadLock(pgthreadlock_t newhandler)
 
 	return prev;
 }
-

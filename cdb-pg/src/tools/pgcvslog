@@ -1,19 +1,23 @@
-:
+#!/bin/sh
+
+# $PostgreSQL: pgsql/src/tools/pgcvslog,v 1.32 2006/10/08 01:39:59 momjian Exp $
+
 # This utility is used to generate a compact list of changes
 # for each release, bjm 2000-02-22
 
 # Usage $0 file
 
-# all branches:	
+# All branches:	
 # cvs log -d '>1999-06-14 00:00:00 GMT' . > log
 #
-# head:
+# HEAD:
 # cvs log -d'>2000-05-29 00:00:00 GMT' -b .
-# branch:
+#
+# Branch:
 # cvs log -d'>2000-05-29 00:00:00 GMT' -rREL8_0_STABLE .
 #
-# date range
-# cvs log -d'2005-05-08<2005-05-29' -b .
+# Date range
+# cvs log -d'2005-05-08<2005-05-29' -rREL8_0_STABLE .
 #
 # To find branch time, look for "branches:" tag in CVS commit logs
 # e.g. "branches:  1.398.4;" matches "REL8_0_STABLE: 1.398.0.4".
@@ -27,7 +31,7 @@
 #	/cvsroot/pgsql/doc/src/FAQ/FAQ.html
 #
 
-if [ "X$1" == "X-h" ]
+if [ "X$1" = "X-h" ]
 then	HTML="Y"
 	shift
 else	HTML="N"

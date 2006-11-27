@@ -2,11 +2,11 @@
  *
  *	  GB18030 <--> UTF8
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/utf8_and_gb18030/utf8_and_gb18030.c,v 1.12.2.1 2006/05/21 20:05:49 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/utf8_and_gb18030/utf8_and_gb18030.c,v 1.16 2006/10/04 00:30:02 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,6 +16,8 @@
 #include "mb/pg_wchar.h"
 #include "../../Unicode/gb18030_to_utf8.map"
 #include "../../Unicode/utf8_to_gb18030.map"
+
+PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(gb18030_to_utf8);
 PG_FUNCTION_INFO_V1(utf8_to_gb18030);
@@ -62,7 +64,7 @@ utf8_to_gb18030(PG_FUNCTION_ARGS)
 	Assert(len >= 0);
 
 	UtfToLocal(src, dest, ULmapGB18030,
-			   sizeof(ULmapGB18030) / sizeof(pg_utf_to_local), PG_GB18030, len);
+			sizeof(ULmapGB18030) / sizeof(pg_utf_to_local), PG_GB18030, len);
 
 	PG_RETURN_VOID();
 }

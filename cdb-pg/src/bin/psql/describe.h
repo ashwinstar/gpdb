@@ -1,14 +1,13 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/describe.h,v 1.29 2005/08/14 18:49:30 tgl Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/describe.h,v 1.32 2006/07/14 14:52:26 momjian Exp $
  */
 #ifndef DESCRIBE_H
 #define DESCRIBE_H
 
-#include "settings.h"
 
 /* \da */
 extern bool describeAggregates(const char *pattern, bool verbose);
@@ -26,7 +25,7 @@ extern bool describeTypes(const char *pattern, bool verbose);
 extern bool describeOperators(const char *pattern);
 
 /* \du, \dg */
-extern bool describeRoles(const char *pattern);
+extern bool describeRoles(const char *pattern, bool verbose);
 
 /* \z (or \dp) */
 extern bool permissionsList(const char *pattern);

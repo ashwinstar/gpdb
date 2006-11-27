@@ -4,7 +4,7 @@
  *
  * Declarations for backend/utils/misc/ps_status.c
  *
- * $PostgreSQL: pgsql/src/include/utils/ps_status.h,v 1.26 2005/11/05 03:04:53 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/utils/ps_status.h,v 1.27 2006/06/27 22:16:44 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

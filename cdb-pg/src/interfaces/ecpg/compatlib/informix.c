@@ -1,3 +1,5 @@
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/compatlib/informix.c,v 1.48 2006/10/04 00:30:11 momjian Exp $ */
+
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -120,12 +122,15 @@ deccall3(decimal *arg1, decimal *arg2, decimal *result, int (*ptr) (numeric *, n
 int
 decadd(decimal *arg1, decimal *arg2, decimal *sum)
 {
+	errno = 0;
 	deccall3(arg1, arg2, sum, PGTYPESnumeric_add);
 
 	if (errno == PGTYPES_NUM_OVERFLOW)
 		return ECPG_INFORMIX_NUM_OVERFLOW;
-	else if (errno != 0)
+	else if (errno == PGTYPES_NUM_UNDERFLOW)
 		return ECPG_INFORMIX_NUM_UNDERFLOW;
+	else if (errno != 0)
+		return -1;
 	else
 		return 0;
 }
@@ -164,19 +169,21 @@ ecpg_strndup(const char *str, size_t len)
 int
 deccvasc(char *cp, int len, decimal *np)
 {
-	char		*str;
-	int		ret = 0;
-	numeric		*result;
+	char	   *str;
+	int			ret = 0;
+	numeric    *result;
 
 	rsetnull(CDECIMALTYPE, (char *) np);
 	if (risnull(CSTRINGTYPE, cp))
 		return 0;
 
-	str = ecpg_strndup(cp, len);	/* decimal_in always converts the complete string */
+	str = ecpg_strndup(cp, len);/* decimal_in always converts the complete
+								 * string */
 	if (!str)
 		ret = ECPG_INFORMIX_NUM_UNDERFLOW;
 	else
 	{
+		errno = 0;
 		result = PGTYPESnumeric_from_asc(str, NULL);
 		if (!result)
 		{
@@ -278,6 +285,7 @@ decdiv(decimal *n1, decimal *n2, decimal *result)
 
 	int			i;
 
+	errno = 0;
 	i = deccall3(n1, n2, result, PGTYPESnumeric_div);
 
 	if (i != 0)
@@ -302,6 +310,7 @@ decmul(decimal *n1, decimal *n2, decimal *result)
 {
 	int			i;
 
+	errno = 0;
 	i = deccall3(n1, n2, result, PGTYPESnumeric_mul);
 
 	if (i != 0)
@@ -323,6 +332,7 @@ decsub(decimal *n1, decimal *n2, decimal *result)
 {
 	int			i;
 
+	errno = 0;
 	i = deccall3(n1, n2, result, PGTYPESnumeric_sub);
 
 	if (i != 0)
@@ -369,13 +379,25 @@ dectoasc(decimal *np, char *cp, int len, int right)
 		return -1;
 
 	/*
-	 * TODO: have to take care of len here and create exponatial notion if
+	 * TODO: have to take care of len here and create exponential notation if
 	 * necessary
 	 */
-	strncpy(cp, str, len);
-	free(str);
-
-	return 0;
+	if ((int) (strlen(str) + 1) > len)
+	{
+		if (len > 1)
+		{
+			cp[0] = '*';
+			cp[1] = '\0';
+		}
+		free(str);
+		return -1;
+	}
+	else
+	{
+		strcpy(cp, str);
+		free(str);
+		return 0;
+	}
 }
 
 int
@@ -472,59 +494,7 @@ rdatestr(date d, char *str)
 int
 rstrdate(char *str, date * d)
 {
-	date		dat;
-	char		strbuf[10];
-	int			i,
-				j;
-
-	rsetnull(CDATETYPE, (char *) &dat);
-
-	/*
-	 * we have to flip the year month date around for postgres expects
-	 * yyyymmdd
-	 *
-	 */
-
-	for (i = 0, j = 0; i < 10; i++)
-	{
-		/* ignore non-digits */
-		if (isdigit((unsigned char) str[i]))
-		{
-
-			/* j only increments if it is a digit */
-			switch (j)
-			{
-					/* stick the month into the 4th, 5th position */
-				case 0:
-				case 1:
-					strbuf[j + 4] = str[i];
-					break;
-					/* stick the day into the 6th, and 7th position */
-				case 2:
-				case 3:
-					strbuf[j + 4] = str[i];
-					break;
-
-					/* stick the year into the first 4 positions */
-				case 4:
-				case 5:
-				case 6:
-				case 7:
-					strbuf[j - 4] = str[i];
-					break;
-
-			}
-			j++;
-		}
-	}
-	strbuf[8] = '\0';
-	dat = PGTYPESdate_from_asc(strbuf, NULL);
-
-	if (errno && errno != PGTYPES_DATE_BAD_DATE)
-		return ECPG_INFORMIX_BAD_DATE;
-
-	*d = dat;
-	return 0;
+	return rdefmtdate(d, "mm/dd/yyyy", str);
 }
 
 void
@@ -552,6 +522,7 @@ rdefmtdate(date * d, char *fmt, char *str)
 	/* TODO: take care of DBCENTURY environment variable */
 	/* PGSQL functions allow all centuries */
 
+	errno = 0;
 	if (PGTYPESdate_defmt_asc(d, fmt, str) == 0)
 		return 0;
 
@@ -574,6 +545,7 @@ rdefmtdate(date * d, char *fmt, char *str)
 int
 rfmtdate(date d, char *fmt, char *str)
 {
+	errno = 0;
 	if (PGTYPESdate_fmt_asc(d, fmt, str) == 0)
 		return 0;
 
@@ -616,20 +588,29 @@ dtcvasc(char *str, timestamp * ts)
 	int			i;
 	char	  **endptr = &str;
 
+	errno = 0;
 	ts_tmp = PGTYPEStimestamp_from_asc(str, endptr);
 	i = errno;
 	if (i)
+		/* TODO: rewrite to Informix error codes */
 		return i;
 	if (**endptr)
 	{
 		/* extra characters exist at the end */
 		return ECPG_INFORMIX_EXTRA_CHARS;
 	}
+	/* TODO: other Informix error codes missing */
 
 	/* everything went fine */
 	*ts = ts_tmp;
 
 	return 0;
+}
+
+int
+dtcvfmtasc(char *inbuf, char *fmtstr, timestamp * dtvalue)
+{
+	return PGTYPEStimestamp_defmt_asc(inbuf, fmtstr, dtvalue);
 }
 
 int
@@ -657,6 +638,7 @@ dttofmtasc(timestamp * ts, char *output, int str_len, char *fmtstr)
 int
 intoasc(interval * i, char *str)
 {
+	errno = 0;
 	str = PGTYPESinterval_to_asc(i);
 
 	if (!str)
@@ -665,13 +647,10 @@ intoasc(interval * i, char *str)
 	return 0;
 }
 
-/***************************************************************************
-						  rfmt.c  -  description
-							 -------------------
-	begin				 : Wed Apr 2 2003
-	copyright			 : (C) 2003 by Carsten Wolff
-	email				 : carsten.wolff@credativ.de
- ***************************************************************************/
+/*
+ *	rfmt.c	-  description
+ *	by Carsten Wolff <carsten.wolff@credativ.de>, Wed Apr 2 2003
+ */
 
 static struct
 {
@@ -798,17 +777,21 @@ rfmtlong(long lng_val, char *fmt, char *outbuf)
 		/* qualify, where we are in the value_string */
 		if (k < 0)
 		{
-			if (leftalign)
-			{
-				/* can't use strncat(,,0) here, Solaris would freek out */
-				temp[j] = '\0';
-				break;
-			}
 			blank = 1;
 			if (k == -2)
 				entity = 1;
 			else if (k == -1)
 				sign = 1;
+			if (leftalign)
+			{
+				/* can't use strncat(,,0) here, Solaris would freek out */
+				if (sign)
+					if (signdone)
+					{
+						temp[j] = '\0';
+						break;
+					}
+			}
 		}
 		/* if we're right side of the right-most dot, print '0' */
 		if (dotpos >= 0 && dotpos <= i)
@@ -830,6 +813,9 @@ rfmtlong(long lng_val, char *fmt, char *outbuf)
 			fmtchar = lastfmt;
 		else
 			fmtchar = fmt[i];
+		/* waiting for the sign */
+		if (k < 0 && leftalign && sign && !signdone && fmtchar != '+' && fmtchar != '-')
+			continue;
 		/* analyse this format-char */
 		switch (fmtchar)
 		{
@@ -854,9 +840,6 @@ rfmtlong(long lng_val, char *fmt, char *outbuf)
 					tmp[0] = ' ';
 				else
 					tmp[0] = value.val_string[k];
-				break;
-			case '<':
-				tmp[0] = value.val_string[k];
 				break;
 			case '-':
 				if (sign && value.sign == '-' && !signdone)
@@ -905,6 +888,9 @@ rfmtlong(long lng_val, char *fmt, char *outbuf)
 				else
 					tmp[0] = value.val_string[k];
 				break;
+			case '<':
+				tmp[0] = value.val_string[k];
+				break;
 			default:
 				tmp[0] = fmt[i];
 		}
@@ -951,8 +937,10 @@ byleng(char *str, int len)
 void
 ldchar(char *src, int len, char *dest)
 {
-	memmove(dest, src, len);
-	dest[len] = 0;
+	int			dlen = byleng(src, len);
+
+	memmove(dest, src, dlen);
+	dest[dlen] = '\0';
 }
 
 int
@@ -977,12 +965,6 @@ int
 rtypwidth(int sqltype, int sqllen)
 {
 	return 0;
-}
-
-int
-dtcvfmtasc(char *inbuf, char *fmtstr, timestamp * dtvalue)
-{
-	return PGTYPEStimestamp_defmt_asc(inbuf, fmtstr, dtvalue);
 }
 
 static struct var_list

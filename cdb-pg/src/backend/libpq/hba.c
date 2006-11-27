@@ -5,12 +5,12 @@
  *	  wherein you authenticate a user by seeing what IP address the system
  *	  says he comes from and possibly using ident).
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/hba.c,v 1.149 2005/10/17 16:24:19 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/hba.c,v 1.157 2006/11/05 22:42:08 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -29,13 +29,12 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
-#include "libpq/crypt.h"
+#include "libpq/ip.h"
 #include "libpq/libpq.h"
-#include "miscadmin.h"
-#include "nodes/pg_list.h"
 #include "storage/fd.h"
 #include "utils/flatfiles.h"
 #include "utils/guc.h"
+
 
 
 #define atooid(x)  ((Oid) strtoul((x), NULL, 10))
@@ -613,6 +612,10 @@ parse_hba_auth(ListCell **line_item, UserAuth *userauth_p,
 	else if (strcmp(token, "pam") == 0)
 		*userauth_p = uaPAM;
 #endif
+#ifdef USE_LDAP
+	else if (strcmp(token, "ldap") == 0)
+		*userauth_p = uaLDAP;
+#endif
 	else
 	{
 		*error_p = true;
@@ -661,7 +664,6 @@ parse_hba(List *line, int line_num, hbaPort *port,
 	line_item = list_head(line);
 	/* Check the record type. */
 	token = lfirst(line_item);
-
 	if (strcmp(token, "local") == 0)
 	{
 		/* Get the database. */
@@ -1003,15 +1005,13 @@ load_hba(void)
  *	dboid: gets database OID
  *	dbtablespace: gets database's default tablespace's OID
  *	dbfrozenxid: gets database's frozen XID
- *	dbvacuumxid: gets database's vacuum XID
  *
  * This is not much related to the other functions in hba.c, but we put it
  * here because it uses the next_token() infrastructure.
  */
 bool
 read_pg_database_line(FILE *fp, char *dbname, Oid *dboid,
-					  Oid *dbtablespace, TransactionId *dbfrozenxid,
-					  TransactionId *dbvacuumxid)
+					  Oid *dbtablespace, TransactionId *dbfrozenxid)
 {
 	char		buf[MAX_TOKEN];
 
@@ -1034,10 +1034,6 @@ read_pg_database_line(FILE *fp, char *dbname, Oid *dboid,
 	if (!isdigit((unsigned char) buf[0]))
 		elog(FATAL, "bad data in flat pg_database file");
 	*dbfrozenxid = atoxid(buf);
-	next_token(fp, buf, sizeof(buf));
-	if (!isdigit((unsigned char) buf[0]))
-		elog(FATAL, "bad data in flat pg_database file");
-	*dbvacuumxid = atoxid(buf);
 	/* expect EOL next */
 	if (next_token(fp, buf, sizeof(buf)))
 		elog(FATAL, "bad data in flat pg_database file");

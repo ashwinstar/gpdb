@@ -2,10 +2,10 @@
  *
  * createuser
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/bin/scripts/createuser.c,v 1.21 2005/10/15 02:49:41 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/scripts/createuser.c,v 1.34 2006/10/04 00:30:06 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,6 +17,12 @@
 
 static void help(const char *progname);
 
+enum trivalue
+{
+	TRI_DEFAULT,
+	TRI_NO,
+	TRI_YES
+};
 
 int
 main(int argc, char *argv[])
@@ -51,7 +57,6 @@ main(int argc, char *argv[])
 	const char *progname;
 	int			optindex;
 	int			c;
-
 	char	   *newuser = NULL;
 	char	   *host = NULL;
 	char	   *port = NULL;
@@ -59,15 +64,17 @@ main(int argc, char *argv[])
 	bool		password = false;
 	bool		echo = false;
 	bool		quiet = false;
-	int			createdb = 0;
-	int			superuser = 0;
-	int			createrole = 0;
-	int			inherit = 0;
-	int			login = 0;
 	char	   *conn_limit = NULL;
 	bool		pwprompt = false;
-	int			encrypted = 0;	/* 0 uses server default */
 	char	   *newpassword = NULL;
+
+	/* Tri-valued variables.  */
+	enum trivalue createdb = TRI_DEFAULT,
+				superuser = TRI_DEFAULT,
+				createrole = TRI_DEFAULT,
+				inherit = TRI_DEFAULT,
+				login = TRI_DEFAULT,
+				encrypted = TRI_DEFAULT;
 
 	PQExpBufferData sql;
 
@@ -103,36 +110,36 @@ main(int argc, char *argv[])
 				quiet = true;
 				break;
 			case 'd':
-				createdb = +1;
+				createdb = TRI_YES;
 				break;
 			case 'D':
-				createdb = -1;
+				createdb = TRI_NO;
 				break;
 			case 's':
 			case 'a':
-				superuser = +1;
+				superuser = TRI_YES;
 				break;
 			case 'S':
 			case 'A':
-				superuser = -1;
+				superuser = TRI_NO;
 				break;
 			case 'r':
-				createrole = +1;
+				createrole = TRI_YES;
 				break;
 			case 'R':
-				createrole = -1;
+				createrole = TRI_NO;
 				break;
 			case 'i':
-				inherit = +1;
+				inherit = TRI_YES;
 				break;
 			case 'I':
-				inherit = -1;
+				inherit = TRI_NO;
 				break;
 			case 'l':
-				login = +1;
+				login = TRI_YES;
 				break;
 			case 'L':
-				login = -1;
+				login = TRI_NO;
 				break;
 			case 'c':
 				conn_limit = optarg;
@@ -141,10 +148,10 @@ main(int argc, char *argv[])
 				pwprompt = true;
 				break;
 			case 'E':
-				encrypted = +1;
+				encrypted = TRI_YES;
 				break;
 			case 'N':
-				encrypted = -1;
+				encrypted = TRI_NO;
 				break;
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
@@ -187,93 +194,94 @@ main(int argc, char *argv[])
 
 	if (superuser == 0)
 	{
-		char	   *reply;
-
-		reply = simple_prompt("Shall the new role be a superuser? (y/n) ", 1, true);
-		if (check_yesno_response(reply) == 1)
-			superuser = +1;
+		if (yesno_prompt("Shall the new role be a superuser?"))
+			superuser = TRI_YES;
 		else
-			superuser = -1;
+			superuser = TRI_NO;
 	}
 
-	if (superuser == +1)
+	if (superuser == TRI_YES)
 	{
 		/* Not much point in trying to restrict a superuser */
-		createdb = +1;
-		createrole = +1;
+		createdb = TRI_YES;
+		createrole = TRI_YES;
 	}
 
 	if (createdb == 0)
 	{
-		char	   *reply;
-
-		reply = simple_prompt("Shall the new role be allowed to create databases? (y/n) ", 1, true);
-		if (check_yesno_response(reply) == 1)
-			createdb = +1;
+		if (yesno_prompt("Shall the new role be allowed to create databases?"))
+			createdb = TRI_YES;
 		else
-			createdb = -1;
+			createdb = TRI_NO;
 	}
 
 	if (createrole == 0)
 	{
-		char	   *reply;
-
-		reply = simple_prompt("Shall the new role be allowed to create more new roles? (y/n) ", 1, true);
-		if (check_yesno_response(reply) == 1)
-			createrole = +1;
+		if (yesno_prompt("Shall the new role be allowed to create more new roles?"))
+			createrole = TRI_YES;
 		else
-			createrole = -1;
+			createrole = TRI_NO;
 	}
 
 	if (inherit == 0)
-	{
-		/* silently default to YES */
-		inherit = +1;
-	}
+		inherit = TRI_YES;
 
 	if (login == 0)
-	{
-		/* silently default to YES */
-		login = +1;
-	}
+		login = TRI_YES;
+
+	conn = connectDatabase("postgres", host, port, username, password, progname);
 
 	initPQExpBuffer(&sql);
 
 	printfPQExpBuffer(&sql, "CREATE ROLE %s", fmtId(newuser));
 	if (newpassword)
 	{
-		if (encrypted == +1)
+		if (encrypted == TRI_YES)
 			appendPQExpBuffer(&sql, " ENCRYPTED");
-		if (encrypted == -1)
+		if (encrypted == TRI_NO)
 			appendPQExpBuffer(&sql, " UNENCRYPTED");
 		appendPQExpBuffer(&sql, " PASSWORD ");
-		appendStringLiteral(&sql, newpassword, false);
+
+		if (encrypted != TRI_NO)
+		{
+			char	   *encrypted_password;
+
+			encrypted_password = PQencryptPassword(newpassword,
+												   newuser);
+			if (!encrypted_password)
+			{
+				fprintf(stderr, _("Password encryption failed.\n"));
+				exit(1);
+			}
+			appendStringLiteralConn(&sql, encrypted_password, conn);
+			PQfreemem(encrypted_password);
+		}
+		else
+			appendStringLiteralConn(&sql, newpassword, conn);
 	}
-	if (superuser == +1)
+	if (superuser == TRI_YES)
 		appendPQExpBuffer(&sql, " SUPERUSER");
-	if (superuser == -1)
+	if (superuser == TRI_NO)
 		appendPQExpBuffer(&sql, " NOSUPERUSER");
-	if (createdb == +1)
+	if (createdb == TRI_YES)
 		appendPQExpBuffer(&sql, " CREATEDB");
-	if (createdb == -1)
+	if (createdb == TRI_NO)
 		appendPQExpBuffer(&sql, " NOCREATEDB");
-	if (createrole == +1)
+	if (createrole == TRI_YES)
 		appendPQExpBuffer(&sql, " CREATEROLE");
-	if (createrole == -1)
+	if (createrole == TRI_NO)
 		appendPQExpBuffer(&sql, " NOCREATEROLE");
-	if (inherit == +1)
+	if (inherit == TRI_YES)
 		appendPQExpBuffer(&sql, " INHERIT");
-	if (inherit == -1)
+	if (inherit == TRI_NO)
 		appendPQExpBuffer(&sql, " NOINHERIT");
-	if (login == +1)
+	if (login == TRI_YES)
 		appendPQExpBuffer(&sql, " LOGIN");
-	if (login == -1)
+	if (login == TRI_NO)
 		appendPQExpBuffer(&sql, " NOLOGIN");
 	if (conn_limit != NULL)
 		appendPQExpBuffer(&sql, " CONNECTION LIMIT %s", conn_limit);
 	appendPQExpBuffer(&sql, ";\n");
-
-	conn = connectDatabase("postgres", host, port, username, password, progname);
 
 	if (echo)
 		printf("%s", sql.data);
@@ -287,6 +295,7 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
+	PQclear(result);
 	PQfinish(conn);
 	if (!quiet)
 	{

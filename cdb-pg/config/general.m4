@@ -1,4 +1,4 @@
-# $PostgreSQL: pgsql/config/general.m4,v 1.3 2003/11/29 19:51:17 pgsql Exp $
+# $PostgreSQL: pgsql/config/general.m4,v 1.7 2006/10/30 22:15:04 petere Exp $
 
 # This file defines new macros to process configure command line
 # arguments, to replace the brain-dead AC_ARG_WITH and AC_ARG_ENABLE.
@@ -24,10 +24,11 @@ m4_define([pgac_arg_to_variable],
 # This is the base layer. TYPE is either "with" or "enable", depending
 # on what you like. NAME is the rest of the option name, HELP-STRING
 # as usual. ACTION-IF-YES is executed if the option is given without
-# and argument (or "yes", which is the same); similar for ACTION-IF-NO.
+# an argument (or "yes", which is the same); similar for ACTION-IF-NO.
 
 AC_DEFUN([PGAC_ARG],
 [
+pgac_args="$pgac_args pgac_arg_to_variable([$1],[$2])"
 m4_case([$1],
 
 enable, [
@@ -68,6 +69,22 @@ AC_ARG_WITH([$2], [$3], [
 )
 ])# PGAC_ARG
 
+# PGAC_ARG_CHECK()
+# ----------------
+# Checks if the user passed any --with/without/enable/disable
+# arguments that were not defined. Just prints out a warning message,
+# so this should be called near the end, so the user will see it.
+
+AC_DEFUN([PGAC_ARG_CHECK],
+[for pgac_var in `set | sed 's/=.*//' | $EGREP 'with_|enable_'`; do
+  for pgac_arg in $pgac_args with_gnu_ld; do
+    if test "$pgac_var" = "$pgac_arg"; then
+      continue 2
+    fi
+  done
+  pgac_txt=`echo $pgac_var | tr '_' '-'`
+  AC_MSG_WARN([option ignored: --$pgac_txt])
+done])# PGAC_ARG_CHECK
 
 # PGAC_ARG_BOOL(TYPE, NAME, DEFAULT, HELP-STRING, 
 #               [ACTION-IF-YES], [ACTION-IF-NO])

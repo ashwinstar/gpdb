@@ -1,3 +1,5 @@
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/pgtypeslib/interval.c,v 1.36 2006/10/04 00:30:11 momjian Exp $ */
+
 #include "postgres_fe.h"
 #include <time.h>
 #include <math.h>
@@ -305,16 +307,25 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct tm * tm, fse
 						tm->tm_mday += val * 7;
 						if (fval != 0)
 						{
-							int			sec;
+							int			extra_days;
 
-							fval *= 7 * SECS_PER_DAY;
-							sec = fval;
-							tm->tm_sec += sec;
+							fval *= 7;
+							extra_days = (int32) fval;
+							tm->tm_mday += extra_days;
+							fval -= extra_days;
+							if (fval != 0)
+							{
+								int			sec;
+
+								fval *= SECS_PER_DAY;
+								sec = fval;
+								tm->tm_sec += sec;
 #ifdef HAVE_INT64_TIMESTAMP
-							*fsec += (fval - sec) * 1000000;
+								*fsec += (fval - sec) * 1000000;
 #else
-							*fsec += fval - sec;
+								*fsec += fval - sec;
 #endif
+							}
 						}
 						tmask = (fmask & DTK_M(DAY)) ? 0 : DTK_M(DAY);
 						break;
@@ -323,16 +334,25 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct tm * tm, fse
 						tm->tm_mon += val;
 						if (fval != 0)
 						{
-							int			sec;
+							int			day;
 
-							fval *= DAYS_PER_MONTH * SECS_PER_DAY;
-							sec = fval;
-							tm->tm_sec += sec;
+							fval *= DAYS_PER_MONTH;
+							day = fval;
+							tm->tm_mday += day;
+							fval -= day;
+							if (fval != 0)
+							{
+								int			sec;
+
+								fval *= SECS_PER_DAY;
+								sec = fval;
+								tm->tm_sec += sec;
 #ifdef HAVE_INT64_TIMESTAMP
-							*fsec += (fval - sec) * 1000000;
+								*fsec += (fval - sec) * 1000000;
 #else
-							*fsec += fval - sec;
+								*fsec += fval - sec;
 #endif
+							}
 						}
 						tmask = DTK_M(MONTH);
 						break;
@@ -738,6 +758,22 @@ tm2interval(struct tm * tm, fsec_t fsec, interval * span)
 }	/* tm2interval() */
 
 interval *
+PGTYPESinterval_new(void)
+{
+	interval   *result;
+
+	result = (interval *) pgtypes_alloc(sizeof(interval));
+	/* result can be NULL if we run out of memory */
+	return result;
+}
+
+void
+PGTYPESinterval_free(interval * intvl)
+{
+	free(intvl);
+}
+
+interval *
 PGTYPESinterval_from_asc(char *str, char **endptr)
 {
 	interval   *result = NULL;
@@ -791,6 +827,7 @@ PGTYPESinterval_from_asc(char *str, char **endptr)
 		return NULL;
 	}
 
+	errno = 0;
 	return result;
 }
 
@@ -819,10 +856,10 @@ PGTYPESinterval_to_asc(interval * span)
 }
 
 int
-PGTYPESinterval_copy(interval * intvlsrc, interval * intrcldest)
+PGTYPESinterval_copy(interval * intvlsrc, interval * intvldest)
 {
-	intrcldest->time = intvlsrc->time;
-	intrcldest->month = intvlsrc->month;
+	intvldest->time = intvlsrc->time;
+	intvldest->month = intvlsrc->month;
 
 	return 0;
 }

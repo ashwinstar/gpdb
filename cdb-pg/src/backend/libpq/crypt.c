@@ -6,10 +6,10 @@
  *
  * Original coding by Todd A. Brandys
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/backend/libpq/crypt.c,v 1.67 2005/10/17 16:24:19 tgl Exp $
+ * $PostgreSQL: pgsql/src/backend/libpq/crypt.c,v 1.71 2006/07/14 14:52:19 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -21,11 +21,7 @@
 #endif
 
 #include "libpq/crypt.h"
-#include "libpq/libpq.h"
-#include "miscadmin.h"
-#include "storage/fd.h"
-#include "nodes/pg_list.h"
-#include "utils/timestamp.h"
+#include "libpq/md5.h"
 
 
 int

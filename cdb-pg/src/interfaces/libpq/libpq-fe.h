@@ -5,10 +5,10 @@
  *	  externs for functions used by frontend postgres applications.
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/interfaces/libpq/libpq-fe.h,v 1.120.2.2 2006/05/21 20:19:44 tgl Exp $
+ * $PostgreSQL: pgsql/src/interfaces/libpq/libpq-fe.h,v 1.134 2006/10/04 00:30:13 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -28,11 +28,6 @@ extern		"C"
  * such as Oid.
  */
 #include "postgres_ext.h"
-
-/* SSL type is needed here only to declare PQgetssl() */
-#ifdef USE_SSL
-#include <openssl/ssl.h>
-#endif
 
 /* Application-visible enum types */
 
@@ -132,7 +127,7 @@ typedef struct pg_cancel PGcancel;
 typedef struct pgNotify
 {
 	char	   *relname;		/* notification condition name */
-	int			be_pid;			/* process ID of server process */
+	int			be_pid;			/* process ID of notifying server process */
 	char	   *extra;			/* notification parameter */
 	/* Fields below here are private to libpq; apps should not use 'em */
 	struct pgNotify *next;		/* list link */
@@ -273,12 +268,9 @@ extern int	PQbackendPID(const PGconn *conn);
 extern int	PQclientEncoding(const PGconn *conn);
 extern int	PQsetClientEncoding(PGconn *conn, const char *encoding);
 
-#ifdef USE_SSL
-/* Get the SSL structure associated with a connection */
-extern SSL *PQgetssl(PGconn *conn);
-#else
+/* Get the OpenSSL structure associated with a connection. Returns NULL for
+ * unencrypted connections or if any other TLS library is in use. */
 extern void *PQgetssl(PGconn *conn);
-#endif
 
 /* Tell libpq whether it needs to initialize OpenSSL */
 extern void PQinitSSL(int do_init);
@@ -396,6 +388,7 @@ extern int	PQendcopy(PGconn *conn);
 /* Set blocking/nonblocking connection to the backend */
 extern int	PQsetnonblocking(PGconn *conn, int arg);
 extern int	PQisnonblocking(const PGconn *conn);
+extern int	PQisthreadsafe(void);
 
 /* Force the write buffer to be written (or at least try) */
 extern int	PQflush(PGconn *conn);
@@ -435,6 +428,14 @@ extern char *PQcmdTuples(PGresult *res);
 extern char *PQgetvalue(const PGresult *res, int tup_num, int field_num);
 extern int	PQgetlength(const PGresult *res, int tup_num, int field_num);
 extern int	PQgetisnull(const PGresult *res, int tup_num, int field_num);
+extern int	PQnparams(const PGresult *res);
+extern Oid	PQparamtype(const PGresult *res, int param_num);
+
+/* Describe prepared statements and portals */
+extern PGresult *PQdescribePrepared(PGconn *conn, const char *stmt);
+extern PGresult *PQdescribePortal(PGconn *conn, const char *portal);
+extern int	PQsendDescribePrepared(PGconn *conn, const char *stmt);
+extern int	PQsendDescribePortal(PGconn *conn, const char *portal);
 
 /* Delete a PGresult */
 extern void PQclear(PGresult *res);
@@ -458,13 +459,14 @@ extern PGresult *PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status);
 
 /* Quoting strings before inclusion in queries. */
 extern size_t PQescapeStringConn(PGconn *conn,
-								 char *to, const char *from, size_t length,
-								 int *error);
+				   char *to, const char *from, size_t length,
+				   int *error);
 extern unsigned char *PQescapeByteaConn(PGconn *conn,
 				  const unsigned char *from, size_t from_length,
 				  size_t *to_length);
 extern unsigned char *PQunescapeBytea(const unsigned char *strtext,
 				size_t *retbuflen);
+
 /* These forms are deprecated! */
 extern size_t PQescapeString(char *to, const char *from, size_t length);
 extern unsigned char *PQescapeBytea(const unsigned char *from, size_t from_length,
@@ -504,7 +506,7 @@ PQprintTuples(const PGresult *res,
 extern int	lo_open(PGconn *conn, Oid lobjId, int mode);
 extern int	lo_close(PGconn *conn, int fd);
 extern int	lo_read(PGconn *conn, int fd, char *buf, size_t len);
-extern int	lo_write(PGconn *conn, int fd, char *buf, size_t len);
+extern int	lo_write(PGconn *conn, int fd, const char *buf, size_t len);
 extern int	lo_lseek(PGconn *conn, int fd, int offset, int whence);
 extern Oid	lo_creat(PGconn *conn, int mode);
 extern Oid	lo_create(PGconn *conn, Oid lobjId);

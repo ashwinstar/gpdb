@@ -4,7 +4,7 @@
 #
 # Copyright (c) 1994, Regents of the University of California
 #
-# $PostgreSQL: pgsql/src/interfaces/ecpg/pgtypeslib/Makefile,v 1.26.2.1 2005/12/06 05:26:30 tgl Exp $
+# $PostgreSQL: pgsql/src/interfaces/ecpg/pgtypeslib/Makefile,v 1.30 2006/08/28 16:13:11 tgl Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -14,10 +14,11 @@ include $(top_builddir)/src/Makefile.global
 
 NAME= pgtypes
 SO_MAJOR_VERSION= 2
-SO_MINOR_VERSION= 1
+SO_MINOR_VERSION= 2
 DLTYPE= library
 
-override CPPFLAGS := -DFRONTEND -I$(top_srcdir)/src/interfaces/ecpg/include \
+override CPPFLAGS := -DFRONTEND \
+	-I../include -I$(top_srcdir)/src/interfaces/ecpg/include \
 	-I$(top_srcdir)/src/include/utils -I$(libpq_srcdir) $(CPPFLAGS)
 override CFLAGS += $(PTHREAD_CFLAGS)
 
@@ -46,7 +47,7 @@ pgstrcasecmp.c rint.c snprintf.c: % : $(top_srcdir)/src/port/%
 install: all installdirs install-lib
 
 installdirs:
-	$(mkinstalldirs) $(DESTDIR)$(libdir)
+	$(mkinstalldirs) '$(DESTDIR)$(libdir)'
 
 uninstall: uninstall-lib
 

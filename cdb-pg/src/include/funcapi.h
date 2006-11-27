@@ -7,9 +7,9 @@
  * or call FUNCAPI-callable functions or macros.
  *
  *
- * Copyright (c) 2002-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/funcapi.h,v 1.20.2.1 2005/11/22 18:23:27 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/funcapi.h,v 1.24 2006/10/04 00:30:06 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -165,11 +165,15 @@ extern TypeFuncClass get_func_result_type(Oid functionId,
 					 Oid *resultTypeId,
 					 TupleDesc *resultTupleDesc);
 
-extern char *get_func_result_name(Oid functionId);
-
 extern bool resolve_polymorphic_argtypes(int numargs, Oid *argtypes,
 							 char *argmodes,
 							 Node *call_expr);
+
+extern int get_func_arg_info(HeapTuple procTup,
+				  Oid **p_argtypes, char ***p_argnames,
+				  char **p_argmodes);
+
+extern char *get_func_result_name(Oid functionId);
 
 extern TupleDesc build_function_result_tupdesc_d(Datum proallargtypes,
 								Datum proargmodes,

@@ -3,17 +3,17 @@
  *
  * PostgreSQL transaction log manager
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/xlog.h,v 1.69 2005/10/15 02:49:42 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/access/xlog.h,v 1.75 2006/11/05 22:42:10 tgl Exp $
  */
 #ifndef XLOG_H
 #define XLOG_H
 
 #include "access/rmgr.h"
-#include "access/transam.h"
 #include "access/xlogdefs.h"
+#include "lib/stringinfo.h"
 #include "storage/buf.h"
 #include "utils/pg_crc.h"
 
@@ -139,6 +139,7 @@ extern XLogRecPtr ProcLastRecEnd;
 extern int	CheckPointSegments;
 extern int	XLOGbuffers;
 extern char *XLogArchiveCommand;
+extern int	XLogArchiveTimeout;
 extern char *XLOG_sync_method;
 extern const char XLOG_sync_method_default[];
 
@@ -152,7 +153,7 @@ extern XLogRecPtr XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata);
 extern void XLogFlush(XLogRecPtr RecPtr);
 
 extern void xlog_redo(XLogRecPtr lsn, XLogRecord *record);
-extern void xlog_desc(char *buf, uint8 xl_info, char *rec);
+extern void xlog_desc(StringInfo buf, uint8 xl_info, char *rec);
 
 extern void UpdateControlFile(void);
 extern Size XLOGShmemSize(void);
@@ -164,7 +165,8 @@ extern void InitXLOGAccess(void);
 extern void CreateCheckPoint(bool shutdown, bool force);
 extern void XLogPutNextOid(Oid nextOid);
 extern XLogRecPtr GetRedoRecPtr(void);
-extern TransactionId GetRecentNextXid(void);
+extern void GetNextXidAndEpoch(TransactionId *xid, uint32 *epoch);
+
 extern bool resync_xlog_to_mirror(void);
 
 #endif   /* XLOG_H */

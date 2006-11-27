@@ -1,9 +1,9 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/input.h,v 1.23 2005/01/01 05:43:08 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/input.h,v 1.28 2006/06/11 23:06:00 tgl Exp $
  */
 #ifndef INPUT_H
 #define INPUT_H
@@ -32,11 +32,16 @@
 #endif
 #endif
 
+#include "pqexpbuffer.h"
+
 
 char	   *gets_interactive(const char *prompt);
 char	   *gets_fromFile(FILE *source);
 
 void		initializeInput(int flags);
-bool		saveHistory(char *fname);
+bool		saveHistory(char *fname, bool encodeFlag);
+
+void		pg_append_history(const char *s, PQExpBuffer history_buf);
+void		pg_send_history(PQExpBuffer history_buf);
 
 #endif   /* INPUT_H */

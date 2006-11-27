@@ -4,9 +4,9 @@
  *	   Portable delay handling.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/port/pgsleep.c,v 1.6 2004/12/31 22:03:53 pgsql Exp $
+ * $PostgreSQL: pgsql/src/port/pgsleep.c,v 1.9 2006/10/04 00:30:14 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -14,6 +14,12 @@
 
 #include <unistd.h>
 #include <sys/time.h>
+
+/*
+ * In a Windows backend, we don't use this implementation, but rather
+ * the signal-aware version in src/backend/port/win32/signal.c.
+ */
+#if defined(FRONTEND) || !defined(WIN32)
 
 /*
  * pg_usleep --- delay the specified number of microseconds.
@@ -24,9 +30,6 @@
  *
  * On machines where "long" is 32 bits, the maximum delay is ~2000 seconds.
  */
-#ifdef pg_usleep
-#undef pg_usleep
-#endif
 void
 pg_usleep(long microsec)
 {
@@ -43,3 +46,5 @@ pg_usleep(long microsec)
 #endif
 	}
 }
+
+#endif   /* defined(FRONTEND) || !defined(WIN32) */

@@ -7,10 +7,10 @@
  * Client-side code should include postgres_fe.h instead.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1995, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/postgres.h,v 1.71 2005/04/14 01:38:21 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/postgres.h,v 1.75 2006/07/13 16:49:18 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -489,14 +489,13 @@ extern DLLIMPORT bool assert_enabled;
 /*
  * Trap
  *		Generates an exception if the given condition is true.
- *
  */
 #define Trap(condition, errorType) \
-		do { \
-			if ((assert_enabled) && (condition)) \
-				ExceptionalCondition(CppAsString(condition), (errorType), \
-									 __FILE__, __LINE__); \
-		} while (0)
+	do { \
+		if ((assert_enabled) && (condition)) \
+			ExceptionalCondition(CppAsString(condition), (errorType), \
+								 __FILE__, __LINE__); \
+	} while (0)
 
 /*
  *	TrapMacro is the same as Trap but it's intended for use in macros:
@@ -515,7 +514,6 @@ extern DLLIMPORT bool assert_enabled;
 #define AssertMacro(condition)	((void)true)
 #define AssertArg(condition)
 #define AssertState(condition)
-#define assert_enabled 0
 #else
 #define Assert(condition) \
 		Trap(!(condition), "FailedAssertion")
@@ -549,6 +547,7 @@ extern int SyncAgentMain(int, char **, const char *);
 /* these need to expand into some harmless, repeatable declaration */
 #define DATA(x)   extern int no_such_variable
 #define DESCR(x)  extern int no_such_variable
+#define SHDESCR(x) extern int no_such_variable
 
 typedef int4 aclitem;			/* PHONY definition for catalog use only */
 

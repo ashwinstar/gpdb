@@ -7,7 +7,7 @@
  *
  * 1999/1/15 Tatsuo Ishii
  *
- * $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/euc_tw_and_big5/big5.c,v 1.6.2.1 2005/11/22 18:23:24 momjian Exp $
+ * $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/euc_tw_and_big5/big5.c,v 1.7 2005/11/22 18:17:26 momjian Exp $
  */
 
 /* can be used in either frontend or backend */

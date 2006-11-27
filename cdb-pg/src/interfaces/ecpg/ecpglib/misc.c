@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/misc.c,v 1.26.2.1 2006/06/21 11:38:26 meskes Exp $ */
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/misc.c,v 1.32 2006/10/04 00:30:11 momjian Exp $ */
 
 #define POSTGRES_ECPG_INTERNAL
 #include "postgres_fe.h"
@@ -239,6 +239,7 @@ void
 ECPGlog(const char *format,...)
 {
 	va_list		ap;
+	struct sqlca_t *sqlca = ECPGget_sqlca();
 
 #ifdef ENABLE_THREAD_SAFETY
 	pthread_mutex_lock(&debug_mutex);
@@ -246,7 +247,8 @@ ECPGlog(const char *format,...)
 
 	if (simple_debug)
 	{
-		char	   *f = (char *) malloc(strlen(format) + 100);
+		int			bufsize = strlen(format) + 100;
+		char	   *f = (char *) malloc(bufsize);
 
 		if (f == NULL)
 		{
@@ -256,11 +258,24 @@ ECPGlog(const char *format,...)
 			return;
 		}
 
-		sprintf(f, "[%d]: %s", (int) getpid(), format);
+		/*
+		 * regression tests set this environment variable to get the same
+		 * output for every run.
+		 */
+		if (getenv("ECPG_REGRESSION"))
+			snprintf(f, bufsize, "[NO_PID]: %s", format);
+		else
+			snprintf(f, bufsize, "[%d]: %s", (int) getpid(), format);
 
 		va_start(ap, format);
 		vfprintf(debugstream, f, ap);
 		va_end(ap);
+
+		/* dump out internal sqlca variables */
+		if (getenv("ECPG_REGRESSION"))
+			fprintf(debugstream, "[NO_PID]: sqlca: code: %ld, state: %s\n",
+					sqlca->sqlcode, sqlca->sqlstate);
+
 		fflush(debugstream);
 
 		ECPGfree(f);
@@ -331,8 +346,8 @@ ECPGset_noind_null(enum ECPGttype type, void *ptr)
 static bool
 _check(unsigned char *ptr, int length)
 {
-	for (; ptr[--length] == 0xff && length >= 0; length--);
-	if (length < 0)
+	for (; length > 0 && ptr[--length] == 0xff;);
+	if (length <= 0)
 		return true;
 	return false;
 }

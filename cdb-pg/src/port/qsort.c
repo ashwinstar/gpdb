@@ -1,11 +1,15 @@
 /*
+ *	qsort.c: standard quicksort algorithm
+ *
  *	Modifications from vanilla NetBSD source:
  *	  Add do ... while() macro fix
  *	  Remove __inline, _DIAGASSERTs, __P
  *	  Remove ill-considered "swap_cnt" switch to insertion sort,
  *	  in favor of a simple check for presorted input.
  *
- *	$PostgreSQL: pgsql/src/port/qsort.c,v 1.8.2.1 2006/03/21 19:49:19 tgl Exp $
+ *	CAUTION: if you change this file, see also qsort_arg.c
+ *
+ *	$PostgreSQL: pgsql/src/port/qsort.c,v 1.12 2006/10/19 20:56:22 tgl Exp $
  */
 
 /*	$NetBSD: qsort.c,v 1.13 2003/08/07 16:43:42 agc Exp $	*/
@@ -42,11 +46,9 @@
 #include "c.h"
 
 
-static char *med3(char *, char *, char *,
-	 int (*) (const void *, const void *));
+static char *med3(char *a, char *b, char *c,
+	 int (*cmp) (const void *, const void *));
 static void swapfunc(char *, char *, size_t, int);
-
-#define min(a, b)	((a) < (b) ? (a) : (b))
 
 /*
  * Qsort routine based on J. L. Bentley and M. D. McIlroy,
@@ -94,11 +96,7 @@ int			swaptype;
 #define vecswap(a, b, n) if ((n) > 0) swapfunc((a), (b), (size_t)(n), swaptype)
 
 static char *
-med3(a, b, c, cmp)
-char	   *a,
-		   *b,
-		   *c;
-int			(*cmp) (const void *, const void *);
+med3(char *a, char *b, char *c, int (*cmp) (const void *, const void *))
 {
 	return cmp(a, b) < 0 ?
 		(cmp(b, c) < 0 ? b : (cmp(a, c) < 0 ? c : a))
@@ -106,11 +104,7 @@ int			(*cmp) (const void *, const void *);
 }
 
 void
-qsort(a, n, es, cmp)
-void	   *a;
-size_t		n,
-			es;
-int			(*cmp) (const void *, const void *);
+pg_qsort(void *a, size_t n, size_t es, int (*cmp) (const void *, const void *))
 {
 	char	   *pa,
 			   *pb,
@@ -188,9 +182,9 @@ loop:SWAPINIT(a, es);
 		pc -= es;
 	}
 	pn = (char *) a + n * es;
-	r = min(pa - (char *) a, pb - pa);
+	r = Min(pa - (char *) a, pb - pa);
 	vecswap(a, pb - r, r);
-	r = min(pd - pc, pn - pd - es);
+	r = Min(pd - pc, pn - pd - es);
 	vecswap(pb, pn - r, r);
 	if ((r = pb - pa) > es)
 		qsort(a, r / es, es, cmp);

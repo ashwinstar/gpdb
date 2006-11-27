@@ -8,3 +8,8 @@ if test "$GCC" != yes ; then
       ;;
   esac
 fi
+
+# Native memset() is faster, tested on:
+# 	AIX 5.1 and 5.2, XLC 6.0 (IBM's cc)
+# 	AIX 5.3 ML3, gcc 4.0.1
+MEMSET_LOOP_LIMIT=0

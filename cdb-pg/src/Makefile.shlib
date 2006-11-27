@@ -6,7 +6,7 @@
 # Copyright (c) 1998, Regents of the University of California
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/Makefile.shlib,v 1.98.2.1 2005/12/03 20:16:39 tgl Exp $
+#    $PostgreSQL: pgsql/src/Makefile.shlib,v 1.105 2006/09/19 15:36:07 tgl Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -96,8 +96,8 @@ override CFLAGS += $(CFLAGS_SL)
 soname = lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION)
 
 ifeq ($(PORTNAME), aix)
-  shlib			= lib$(NAME)$(DLSUFFIX)
-#   SHLIB_LINK		+= -lc
+  shlib			= lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION)
+  haslibarule   = yes
 endif
 
 ifeq ($(PORTNAME), darwin)
@@ -107,11 +107,11 @@ ifeq ($(PORTNAME), darwin)
   ifeq ($(DLTYPE), library)
     # linkable library
     DLSUFFIX		:= .dylib
-    LINK.shared		= $(COMPILER) -dynamiclib -install_name $(libdir)/lib$(NAME).$(SO_MAJOR_VERSION)$(DLSUFFIX) $(version_link) -multiply_defined suppress
+    LINK.shared		= $(COMPILER) -dynamiclib -install_name $(libdir)/lib$(NAME).$(SO_MAJOR_VERSION)$(DLSUFFIX) $(version_link) $(exported_symbols_list) -multiply_defined suppress
   else
     # loadable module (default case)
     DLSUFFIX		:= .so
-    LINK.shared		= $(COMPILER) -bundle
+    LINK.shared		= $(COMPILER) -bundle -multiply_defined suppress
   endif
   shlib			= lib$(NAME).$(SO_MAJOR_VERSION).$(SO_MINOR_VERSION)$(DLSUFFIX)
   shlib_major		= lib$(NAME).$(SO_MAJOR_VERSION)$(DLSUFFIX)
@@ -162,7 +162,7 @@ ifeq ($(PORTNAME), hpux)
     # can't use the CC-syntax rpath pattern here
     rpath =
     ifeq ($(enable_rpath), yes)
-      LINK.shared	= $(LD) +h $(soname) -b +b $(rpathdir)
+      LINK.shared	= $(LD) +h $(soname) -b +b '$(rpathdir)'
     else
       LINK.shared	= $(LD) +h $(soname) -b
     endif
@@ -186,14 +186,14 @@ ifeq ($(PORTNAME), irix)
 endif
 
 ifeq ($(PORTNAME), linux)
-  LINK.shared		= $(COMPILER) -shared -Wl,-soname,$(soname)
+  LINK.shared		= $(COMPILER) -shared -Wl,-soname,$(soname) $(exported_symbols_list)
 endif
 
 ifeq ($(PORTNAME), solaris)
   ifeq ($(GCC), yes)
     LINK.shared		= $(CC) -shared
   else
-    LINK.shared		= $(CC) -G
+    LINK.shared		= $(CC) -G $(CFLAGS)	# CFLAGS added for X86_64
   endif
   ifeq ($(with_gnu_ld), yes)
     LINK.shared		+= -Wl,-soname,$(soname)
@@ -246,12 +246,6 @@ ifeq ($(PORTNAME), win32)
   haslibarule   = yes
 endif
 
-ifeq ($(PORTNAME), beos)
-  shlib			= lib$(NAME)$(DLSUFFIX)
-  LINK.shared		= $(LD) -nostart
-  SHLIB_LINK		+= -ltermcap -lstdc++.r4 -lbind -lsocket -L/boot/develop/lib/x86
-endif
-
 ifeq ($(enable_rpath), yes)
 SHLIB_LINK += $(rpath)
 endif
@@ -272,17 +266,9 @@ all-static-lib: lib$(NAME).a
 
 all-shared-lib: $(shlib)
 
-ifndef LORDER
-MK_NO_LORDER := true
-endif
-
 ifndef haslibarule
 lib$(NAME).a: $(OBJS)
-ifdef MK_NO_LORDER
 	$(LINK.static) $@ $^
-else
-	$(LINK.static) $@ `$(LORDER) $^ | tsort`
-endif
 	$(RANLIB) $@
 endif #haslibarule
 
@@ -290,7 +276,6 @@ ifeq ($(enable_shared), yes)
 
 ifneq ($(PORTNAME), win32)
 ifneq ($(PORTNAME), cygwin)
-ifneq ($(PORTNAME), beos)
 ifneq ($(PORTNAME), aix)
 
 # Normal case
@@ -310,20 +295,15 @@ endif
 else # PORTNAME == aix
 
 # AIX case
-$(shlib): lib$(NAME).a
+$(shlib) lib$(NAME).a: $(OBJS)
+	$(LINK.static) lib$(NAME).a $^
+	$(RANLIB) lib$(NAME).a
 	$(MKLDEXPORT) lib$(NAME).a > lib$(NAME)$(EXPSUFF)
-	$(COMPILER) $(LDFLAGS_NO_L) $(LDFLAGS_SL) -o $@ $< -Wl,-bE:lib$(NAME)$(EXPSUFF) $(SHLIB_LINK)
+	$(COMPILER) $(LDFLAGS_NO_L) $(LDFLAGS_SL) -o $(shlib) lib$(NAME).a -Wl,-bE:lib$(NAME)$(EXPSUFF) $(SHLIB_LINK)
+	rm -f lib$(NAME).a
+	$(AR) $(AROPT) lib$(NAME).a $(shlib)
 	
 endif # PORTNAME == aix
-
-else # PORTNAME == beos
-
-# BEOS case
-$(shlib): $(OBJS)
-	ln -fs $(top_srcdir)/src/backend/postgres _APP_
-	$(CC) -Xlinker -soname=$@ $(LDFLAGS_SL) -o $@ _APP_ $(OBJS) $(SHLIB_LINK)
-
-endif # PORTNAME == beos
 
 else # PORTNAME == cygwin
 
@@ -366,29 +346,31 @@ endif # enable_shared
 install-lib: install-lib-static install-lib-shared
 
 install-lib-static: lib$(NAME).a
-	$(INSTALL_STLIB) $< $(DESTDIR)$(libdir)/lib$(NAME).a
+	$(INSTALL_STLIB) $< '$(DESTDIR)$(libdir)/lib$(NAME).a'
 ifeq ($(PORTNAME), darwin)
-	cd $(DESTDIR)$(libdir) && \
+	cd '$(DESTDIR)$(libdir)' && \
 	ranlib lib$(NAME).a
 endif
 
 ifeq ($(enable_shared), yes)
 install-lib-shared: $(shlib)
-	$(INSTALL_SHLIB) $< $(DESTDIR)$(libdir)/$(shlib)
+ifneq ($(PORTNAME), aix)		# we don't install $(shlib) on AIX
+	$(INSTALL_SHLIB) $< '$(DESTDIR)$(libdir)/$(shlib)'
 ifneq ($(PORTNAME), cygwin)
 ifneq ($(PORTNAME), win32)
 ifneq ($(shlib), $(shlib_major))
-	cd $(DESTDIR)$(libdir) && \
+	cd '$(DESTDIR)$(libdir)' && \
 	rm -f $(shlib_major) && \
 	$(LN_S) $(shlib) $(shlib_major)
 endif
 ifneq ($(shlib), $(shlib_bare))
-	cd $(DESTDIR)$(libdir) && \
+	cd '$(DESTDIR)$(libdir)' && \
 	rm -f $(shlib_bare) && \
 	$(LN_S) $(shlib) $(shlib_bare)
 endif
 endif # not win32
 endif # not cygwin
+endif # not aix
 endif # enable_shared
 
 
@@ -398,11 +380,11 @@ endif # enable_shared
 
 .PHONY: uninstall-lib
 uninstall-lib:
-	rm -f $(DESTDIR)$(libdir)/lib$(NAME).a
+	rm -f '$(DESTDIR)$(libdir)/lib$(NAME).a'
 ifeq ($(enable_shared), yes)
-	rm -f $(DESTDIR)$(libdir)/$(shlib_bare) \
-	  $(DESTDIR)$(libdir)/$(shlib_major) \
-	  $(DESTDIR)$(libdir)/$(shlib)
+	rm -f '$(DESTDIR)$(libdir)/$(shlib_bare)' \
+	  '$(DESTDIR)$(libdir)/$(shlib_major)' \
+	  '$(DESTDIR)$(libdir)/$(shlib)'
 endif # enable_shared
 
 

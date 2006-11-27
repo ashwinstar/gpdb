@@ -2,11 +2,11 @@
  *
  *	  ISO 8859 2-16 <--> UTF8
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/utf8_and_iso8859/utf8_and_iso8859.c,v 1.15.2.3 2006/05/21 20:05:49 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/utf8_and_iso8859/utf8_and_iso8859.c,v 1.23 2006/10/06 17:13:59 petere Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -14,19 +14,10 @@
 #include "postgres.h"
 #include "fmgr.h"
 #include "mb/pg_wchar.h"
-#include "../../Unicode/utf8_to_iso8859_2.map"
-#include "../../Unicode/utf8_to_iso8859_3.map"
-#include "../../Unicode/utf8_to_iso8859_4.map"
-#include "../../Unicode/utf8_to_iso8859_5.map"
-#include "../../Unicode/utf8_to_iso8859_6.map"
-#include "../../Unicode/utf8_to_iso8859_7.map"
-#include "../../Unicode/utf8_to_iso8859_8.map"
-#include "../../Unicode/utf8_to_iso8859_9.map"
-#include "../../Unicode/utf8_to_iso8859_10.map"
-#include "../../Unicode/utf8_to_iso8859_13.map"
-#include "../../Unicode/utf8_to_iso8859_14.map"
-#include "../../Unicode/utf8_to_iso8859_15.map"
-#include "../../Unicode/utf8_to_iso8859_16.map"
+#include "../../Unicode/iso8859_10_to_utf8.map"
+#include "../../Unicode/iso8859_13_to_utf8.map"
+#include "../../Unicode/iso8859_14_to_utf8.map"
+#include "../../Unicode/iso8859_15_to_utf8.map"
 #include "../../Unicode/iso8859_2_to_utf8.map"
 #include "../../Unicode/iso8859_3_to_utf8.map"
 #include "../../Unicode/iso8859_4_to_utf8.map"
@@ -35,11 +26,22 @@
 #include "../../Unicode/iso8859_7_to_utf8.map"
 #include "../../Unicode/iso8859_8_to_utf8.map"
 #include "../../Unicode/iso8859_9_to_utf8.map"
-#include "../../Unicode/iso8859_10_to_utf8.map"
-#include "../../Unicode/iso8859_13_to_utf8.map"
-#include "../../Unicode/iso8859_14_to_utf8.map"
-#include "../../Unicode/iso8859_15_to_utf8.map"
+#include "../../Unicode/utf8_to_iso8859_10.map"
+#include "../../Unicode/utf8_to_iso8859_13.map"
+#include "../../Unicode/utf8_to_iso8859_14.map"
+#include "../../Unicode/utf8_to_iso8859_15.map"
+#include "../../Unicode/utf8_to_iso8859_16.map"
+#include "../../Unicode/utf8_to_iso8859_2.map"
+#include "../../Unicode/utf8_to_iso8859_3.map"
+#include "../../Unicode/utf8_to_iso8859_4.map"
+#include "../../Unicode/utf8_to_iso8859_5.map"
+#include "../../Unicode/utf8_to_iso8859_6.map"
+#include "../../Unicode/utf8_to_iso8859_7.map"
+#include "../../Unicode/utf8_to_iso8859_8.map"
+#include "../../Unicode/utf8_to_iso8859_9.map"
 #include "../../Unicode/iso8859_16_to_utf8.map"
+
+PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(iso8859_to_utf8);
 PG_FUNCTION_INFO_V1(utf8_to_iso8859);
@@ -116,12 +118,12 @@ iso8859_to_utf8(PG_FUNCTION_ARGS)
 	unsigned char *src = (unsigned char *) PG_GETARG_CSTRING(2);
 	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
 	int			len = PG_GETARG_INT32(4);
-	int	i;
+	int			i;
 
 	Assert(PG_GETARG_INT32(1) == PG_UTF8);
 	Assert(len >= 0);
 
-	for (i=0;i<sizeof(maps)/sizeof(pg_conv_map);i++)
+	for (i = 0; i < sizeof(maps) / sizeof(pg_conv_map); i++)
 	{
 		if (encoding == maps[i].encoding)
 		{
@@ -132,7 +134,7 @@ iso8859_to_utf8(PG_FUNCTION_ARGS)
 
 	ereport(ERROR,
 			(errcode(ERRCODE_INTERNAL_ERROR),
-			 errmsg("unexpected encoding id %d for ISO-8859 charsets", encoding)));
+	   errmsg("unexpected encoding ID %d for ISO 8859 character sets", encoding)));
 
 	PG_RETURN_VOID();
 }
@@ -144,12 +146,12 @@ utf8_to_iso8859(PG_FUNCTION_ARGS)
 	unsigned char *src = (unsigned char *) PG_GETARG_CSTRING(2);
 	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
 	int			len = PG_GETARG_INT32(4);
-	int	i;
+	int			i;
 
 	Assert(PG_GETARG_INT32(0) == PG_UTF8);
 	Assert(len >= 0);
 
-	for (i=0;i<sizeof(maps)/sizeof(pg_conv_map);i++)
+	for (i = 0; i < sizeof(maps) / sizeof(pg_conv_map); i++)
 	{
 		if (encoding == maps[i].encoding)
 		{
@@ -160,7 +162,7 @@ utf8_to_iso8859(PG_FUNCTION_ARGS)
 
 	ereport(ERROR,
 			(errcode(ERRCODE_INTERNAL_ERROR),
-			 errmsg("unexpected encoding id %d for ISO-8859 charsets", encoding)));
+	   errmsg("unexpected encoding id %d for ISO-8859 charsets", encoding)));
 
 	PG_RETURN_VOID();
 }

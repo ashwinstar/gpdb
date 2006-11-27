@@ -3,14 +3,14 @@
  * fe-print.c
  *	  functions for pretty-printing query results
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * These functions were formerly part of fe-exec.c, but they
  * didn't really belong there.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-print.c,v 1.64.2.3 2006/04/19 16:15:34 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-print.c,v 1.73 2006/10/04 00:30:13 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -276,7 +276,7 @@ PQprint(FILE *fout, const PGresult *res, const PQprintOpt *po)
 				{
 					if (po->caption)
 						fprintf(fout,
-							  "<table %s><caption align=\"top\">%s</caption>\n",
+						   "<table %s><caption align=\"top\">%s</caption>\n",
 								po->tableOpt ? po->tableOpt : "",
 								po->caption);
 					else

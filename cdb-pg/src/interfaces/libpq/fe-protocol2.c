@@ -3,25 +3,23 @@
  * fe-protocol2.c
  *	  functions that are specific to frontend/backend protocol version 2
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-protocol2.c,v 1.19.2.1 2005/11/22 18:23:30 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-protocol2.c,v 1.26 2006/07/14 14:52:27 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres_fe.h"
 
-#include <errno.h>
 #include <ctype.h>
 #include <fcntl.h>
 
 #include "libpq-fe.h"
 #include "libpq-int.h"
 
-#include "mb/pg_wchar.h"
 
 #ifdef WIN32
 #include "win32.h"
@@ -1180,11 +1178,11 @@ pqEndcopy2(PGconn *conn)
 	 * and the flush fails
 	 */
 	if (pqFlush(conn) && pqIsnonblocking(conn))
-		return (1);
+		return 1;
 
 	/* non blocking connections may have to abort at this point. */
 	if (pqIsnonblocking(conn) && PQisBusy(conn))
-		return (1);
+		return 1;
 
 	/* Return to active duty */
 	conn->asyncStatus = PGASYNC_BUSY;
@@ -1420,7 +1418,7 @@ pqFunctionCall2(PGconn *conn, Oid fnid,
  */
 char *
 pqBuildStartupPacket2(PGconn *conn, int *packetlen,
-					  const PQEnvironmentOption * options)
+					  const PQEnvironmentOption *options)
 {
 	StartupPacket *startpacket;
 

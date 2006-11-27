@@ -1,3 +1,5 @@
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/include/pgtypes_numeric.h,v 1.16 2006/08/09 07:30:56 meskes Exp $ */
+
 #ifndef PGTYPES_NUMERIC
 #define PGTYPES_NUMERIC
 
@@ -39,7 +41,9 @@ extern		"C"
 #endif
 
 numeric    *PGTYPESnumeric_new(void);
+decimal    *PGTYPESdecimal_new(void);
 void		PGTYPESnumeric_free(numeric *);
+void		PGTYPESdecimal_free(decimal *);
 numeric    *PGTYPESnumeric_from_asc(char *, char **);
 char	   *PGTYPESnumeric_to_asc(numeric *, int);
 int			PGTYPESnumeric_add(numeric *, numeric *, numeric *);

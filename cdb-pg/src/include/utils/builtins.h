@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/builtins.h,v 1.267.2.1 2005/11/22 18:23:29 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/builtins.h,v 1.282 2006/09/18 22:40:40 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -98,6 +98,10 @@ extern Datum chartoi4(PG_FUNCTION_ARGS);
 extern Datum i4tochar(PG_FUNCTION_ARGS);
 extern Datum text_char(PG_FUNCTION_ARGS);
 extern Datum char_text(PG_FUNCTION_ARGS);
+
+/* domains.c */
+extern Datum domain_in(PG_FUNCTION_ARGS);
+extern Datum domain_recv(PG_FUNCTION_ARGS);
 
 /* int.c */
 extern Datum int2in(PG_FUNCTION_ARGS);
@@ -340,8 +344,22 @@ extern Datum setseed(PG_FUNCTION_ARGS);
 extern Datum float8_accum(PG_FUNCTION_ARGS);
 extern Datum float4_accum(PG_FUNCTION_ARGS);
 extern Datum float8_avg(PG_FUNCTION_ARGS);
-extern Datum float8_variance(PG_FUNCTION_ARGS);
-extern Datum float8_stddev(PG_FUNCTION_ARGS);
+extern Datum float8_var_pop(PG_FUNCTION_ARGS);
+extern Datum float8_var_samp(PG_FUNCTION_ARGS);
+extern Datum float8_stddev_pop(PG_FUNCTION_ARGS);
+extern Datum float8_stddev_samp(PG_FUNCTION_ARGS);
+extern Datum float8_regr_accum(PG_FUNCTION_ARGS);
+extern Datum float8_regr_sxx(PG_FUNCTION_ARGS);
+extern Datum float8_regr_syy(PG_FUNCTION_ARGS);
+extern Datum float8_regr_sxy(PG_FUNCTION_ARGS);
+extern Datum float8_regr_avgx(PG_FUNCTION_ARGS);
+extern Datum float8_regr_avgy(PG_FUNCTION_ARGS);
+extern Datum float8_covar_pop(PG_FUNCTION_ARGS);
+extern Datum float8_covar_samp(PG_FUNCTION_ARGS);
+extern Datum float8_corr(PG_FUNCTION_ARGS);
+extern Datum float8_regr_r2(PG_FUNCTION_ARGS);
+extern Datum float8_regr_slope(PG_FUNCTION_ARGS);
+extern Datum float8_regr_intercept(PG_FUNCTION_ARGS);
 extern Datum float48pl(PG_FUNCTION_ARGS);
 extern Datum float48mi(PG_FUNCTION_ARGS);
 extern Datum float48mul(PG_FUNCTION_ARGS);
@@ -388,6 +406,7 @@ extern Datum pg_cancel_backend(PG_FUNCTION_ARGS);
 extern Datum pg_reload_conf(PG_FUNCTION_ARGS);
 extern Datum pg_tablespace_databases(PG_FUNCTION_ARGS);
 extern Datum pg_rotate_logfile(PG_FUNCTION_ARGS);
+extern Datum pg_sleep(PG_FUNCTION_ARGS);
 
 /* not_in.c */
 extern Datum int4notin(PG_FUNCTION_ARGS);
@@ -443,6 +462,8 @@ extern Datum opaque_in(PG_FUNCTION_ARGS);
 extern Datum opaque_out(PG_FUNCTION_ARGS);
 extern Datum anyelement_in(PG_FUNCTION_ARGS);
 extern Datum anyelement_out(PG_FUNCTION_ARGS);
+extern Datum shell_in(PG_FUNCTION_ARGS);
+extern Datum shell_out(PG_FUNCTION_ARGS);
 
 /* regexp.c */
 extern Datum nameregexeq(PG_FUNCTION_ARGS);
@@ -532,6 +553,14 @@ extern Datum tidrecv(PG_FUNCTION_ARGS);
 extern Datum tidsend(PG_FUNCTION_ARGS);
 extern Datum tidtoi8(PG_FUNCTION_ARGS);     /*CDB*/
 extern Datum tideq(PG_FUNCTION_ARGS);
+extern Datum tidne(PG_FUNCTION_ARGS);
+extern Datum tidlt(PG_FUNCTION_ARGS);
+extern Datum tidle(PG_FUNCTION_ARGS);
+extern Datum tidgt(PG_FUNCTION_ARGS);
+extern Datum tidge(PG_FUNCTION_ARGS);
+extern Datum bttidcmp(PG_FUNCTION_ARGS);
+extern Datum tidlarger(PG_FUNCTION_ARGS);
+extern Datum tidsmaller(PG_FUNCTION_ARGS);
 extern Datum currtid_byreloid(PG_FUNCTION_ARGS);
 extern Datum currtid_byrelname(PG_FUNCTION_ARGS);
 
@@ -721,17 +750,26 @@ extern Datum network_family(PG_FUNCTION_ARGS);
 extern Datum network_broadcast(PG_FUNCTION_ARGS);
 extern Datum network_host(PG_FUNCTION_ARGS);
 extern Datum network_show(PG_FUNCTION_ARGS);
-extern Datum network_abbrev(PG_FUNCTION_ARGS);
+extern Datum inet_abbrev(PG_FUNCTION_ARGS);
+extern Datum cidr_abbrev(PG_FUNCTION_ARGS);
 extern double convert_network_to_scalar(Datum value, Oid typid);
 extern Datum text_cidr(PG_FUNCTION_ARGS);
 extern Datum text_inet(PG_FUNCTION_ARGS);
+extern Datum inet_to_cidr(PG_FUNCTION_ARGS);
 extern Datum inet_set_masklen(PG_FUNCTION_ARGS);
+extern Datum cidr_set_masklen(PG_FUNCTION_ARGS);
 extern Datum network_scan_first(Datum in);
 extern Datum network_scan_last(Datum in);
 extern Datum inet_client_addr(PG_FUNCTION_ARGS);
 extern Datum inet_client_port(PG_FUNCTION_ARGS);
 extern Datum inet_server_addr(PG_FUNCTION_ARGS);
 extern Datum inet_server_port(PG_FUNCTION_ARGS);
+extern Datum inetnot(PG_FUNCTION_ARGS);
+extern Datum inetand(PG_FUNCTION_ARGS);
+extern Datum inetor(PG_FUNCTION_ARGS);
+extern Datum inetpl(PG_FUNCTION_ARGS);
+extern Datum inetmi_int8(PG_FUNCTION_ARGS);
+extern Datum inetmi(PG_FUNCTION_ARGS);
 
 /* mac.c */
 extern Datum macaddr_in(PG_FUNCTION_ARGS);
@@ -803,8 +841,10 @@ extern Datum int2_accum(PG_FUNCTION_ARGS);
 extern Datum int4_accum(PG_FUNCTION_ARGS);
 extern Datum int8_accum(PG_FUNCTION_ARGS);
 extern Datum numeric_avg(PG_FUNCTION_ARGS);
-extern Datum numeric_variance(PG_FUNCTION_ARGS);
-extern Datum numeric_stddev(PG_FUNCTION_ARGS);
+extern Datum numeric_var_pop(PG_FUNCTION_ARGS);
+extern Datum numeric_var_samp(PG_FUNCTION_ARGS);
+extern Datum numeric_stddev_pop(PG_FUNCTION_ARGS);
+extern Datum numeric_stddev_samp(PG_FUNCTION_ARGS);
 extern Datum int2_sum(PG_FUNCTION_ARGS);
 extern Datum int4_sum(PG_FUNCTION_ARGS);
 extern Datum int8_sum(PG_FUNCTION_ARGS);
@@ -858,12 +898,31 @@ extern Datum show_all_settings(PG_FUNCTION_ARGS);
 
 /* lockfuncs.c */
 extern Datum pg_lock_status(PG_FUNCTION_ARGS);
+extern Datum pg_advisory_lock_int8(PG_FUNCTION_ARGS);
+extern Datum pg_advisory_lock_shared_int8(PG_FUNCTION_ARGS);
+extern Datum pg_try_advisory_lock_int8(PG_FUNCTION_ARGS);
+extern Datum pg_try_advisory_lock_shared_int8(PG_FUNCTION_ARGS);
+extern Datum pg_advisory_unlock_int8(PG_FUNCTION_ARGS);
+extern Datum pg_advisory_unlock_shared_int8(PG_FUNCTION_ARGS);
+extern Datum pg_advisory_lock_int4(PG_FUNCTION_ARGS);
+extern Datum pg_advisory_lock_shared_int4(PG_FUNCTION_ARGS);
+extern Datum pg_try_advisory_lock_int4(PG_FUNCTION_ARGS);
+extern Datum pg_try_advisory_lock_shared_int4(PG_FUNCTION_ARGS);
+extern Datum pg_advisory_unlock_int4(PG_FUNCTION_ARGS);
+extern Datum pg_advisory_unlock_shared_int4(PG_FUNCTION_ARGS);
+extern Datum pg_advisory_unlock_all(PG_FUNCTION_ARGS);
 
 /* access/transam/twophase.c */
 extern Datum pg_prepared_xact(PG_FUNCTION_ARGS);
 
 /* catalog/pg_conversion.c */
 extern Datum pg_convert_using(PG_FUNCTION_ARGS);
+
+/* commands/prepare.c */
+extern Datum pg_prepared_statement(PG_FUNCTION_ARGS);
+
+/* utils/mmgr/portalmem.c */
+extern Datum pg_cursor(PG_FUNCTION_ARGS);
 
 /* tqual.c */
 extern Datum mpp_global_xid_map(PG_FUNCTION_ARGS);

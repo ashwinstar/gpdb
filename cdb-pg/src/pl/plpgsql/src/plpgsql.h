@@ -1,39 +1,18 @@
-/**********************************************************************
+/*-------------------------------------------------------------------------
+ *
  * plpgsql.h		- Definitions for the PL/pgSQL
  *			  procedural language
  *
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/plpgsql.h,v 1.65.2.2 2006/03/02 05:34:17 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/plpgsql.h,v 1.81 2006/10/04 00:30:14 momjian Exp $
  *
- *	  This software is copyrighted by Jan Wieck - Hamburg.
- *
- *	  The author hereby grants permission  to  use,  copy,	modify,
- *	  distribute,  and	license this software and its documentation
- *	  for any purpose, provided that existing copyright notices are
- *	  retained	in	all  copies  and  that	this notice is included
- *	  verbatim in any distributions. No written agreement, license,
- *	  or  royalty  fee	is required for any of the authorized uses.
- *	  Modifications to this software may be  copyrighted  by  their
- *	  author  and  need  not  follow  the licensing terms described
- *	  here, provided that the new terms are  clearly  indicated  on
- *	  the first page of each file where they apply.
- *
- *	  IN NO EVENT SHALL THE AUTHOR OR DISTRIBUTORS BE LIABLE TO ANY
- *	  PARTY  FOR  DIRECT,	INDIRECT,	SPECIAL,   INCIDENTAL,	 OR
- *	  CONSEQUENTIAL   DAMAGES  ARISING	OUT  OF  THE  USE  OF  THIS
- *	  SOFTWARE, ITS DOCUMENTATION, OR ANY DERIVATIVES THEREOF, EVEN
- *	  IF  THE  AUTHOR  HAVE BEEN ADVISED OF THE POSSIBILITY OF SUCH
- *	  DAMAGE.
- *
- *	  THE  AUTHOR  AND	DISTRIBUTORS  SPECIFICALLY	 DISCLAIM	ANY
- *	  WARRANTIES,  INCLUDING,  BUT	NOT  LIMITED  TO,  THE	IMPLIED
- *	  WARRANTIES  OF  MERCHANTABILITY,	FITNESS  FOR  A  PARTICULAR
- *	  PURPOSE,	AND NON-INFRINGEMENT.  THIS SOFTWARE IS PROVIDED ON
- *	  AN "AS IS" BASIS, AND THE AUTHOR	AND  DISTRIBUTORS  HAVE  NO
- *	  OBLIGATION   TO	PROVIDE   MAINTENANCE,	 SUPPORT,  UPDATES,
- *	  ENHANCEMENTS, OR MODIFICATIONS.
- *
- **********************************************************************/
+ *-------------------------------------------------------------------------
+ */
+
 #ifndef PLPGSQL_H
 #define PLPGSQL_H
 
@@ -41,8 +20,8 @@
 
 #include "fmgr.h"
 #include "miscadmin.h"
-#include "executor/spi.h"
 #include "commands/trigger.h"
+#include "executor/spi.h"
 #include "utils/tuplestore.h"
 
 /**********************************************************************
@@ -101,7 +80,6 @@ enum
 	PLPGSQL_STMT_WHILE,
 	PLPGSQL_STMT_FORI,
 	PLPGSQL_STMT_FORS,
-	PLPGSQL_STMT_SELECT,
 	PLPGSQL_STMT_EXIT,
 	PLPGSQL_STMT_RETURN,
 	PLPGSQL_STMT_RETURN_NEXT,
@@ -200,6 +178,7 @@ typedef struct PLpgSQL_expr
 	/* fields for "simple expression" fast-path execution: */
 	Expr	   *expr_simple_expr;		/* NULL means not a simple expr */
 	Oid			expr_simple_type;
+
 	/*
 	 * if expr is simple AND in use in current xact, expr_simple_state is
 	 * valid.  Test validity by seeing if expr_simple_xid matches current XID.
@@ -419,6 +398,7 @@ typedef struct
 	PLpgSQL_var *var;
 	PLpgSQL_expr *lower;
 	PLpgSQL_expr *upper;
+	PLpgSQL_expr *by;
 	int			reverse;
 	List	   *body;			/* List of statements */
 } PLpgSQL_stmt_fori;
@@ -446,16 +426,6 @@ typedef struct
 	PLpgSQL_expr *query;
 	List	   *body;			/* List of statements */
 } PLpgSQL_stmt_dynfors;
-
-
-typedef struct
-{								/* SELECT ... INTO statement		*/
-	int			cmd_type;
-	int			lineno;
-	PLpgSQL_rec *rec;
-	PLpgSQL_row *row;
-	PLpgSQL_expr *query;
-} PLpgSQL_stmt_select;
 
 
 typedef struct
@@ -529,6 +499,12 @@ typedef struct
 	int			cmd_type;
 	int			lineno;
 	PLpgSQL_expr *sqlstmt;
+	bool		mod_stmt;		/* is the stmt INSERT/UPDATE/DELETE? */
+	/* note: mod_stmt is set when we plan the query */
+	bool		into;			/* INTO supplied? */
+	bool		strict;			/* INTO STRICT flag */
+	PLpgSQL_rec *rec;			/* INTO target, if record */
+	PLpgSQL_row *row;			/* INTO target, if row */
 } PLpgSQL_stmt_execsql;
 
 
@@ -536,9 +512,11 @@ typedef struct
 {								/* Dynamic SQL string to execute */
 	int			cmd_type;
 	int			lineno;
-	PLpgSQL_rec *rec;			/* INTO record or row variable */
-	PLpgSQL_row *row;
-	PLpgSQL_expr *query;
+	PLpgSQL_expr *query;		/* string expression */
+	bool		into;			/* INTO supplied? */
+	bool		strict;			/* INTO STRICT flag */
+	PLpgSQL_rec *rec;			/* INTO target, if record */
+	PLpgSQL_row *row;			/* INTO target, if row */
 } PLpgSQL_stmt_dynexecute;
 
 
@@ -593,6 +571,8 @@ typedef struct PLpgSQL_function
 	int			tg_op_varno;
 	int			tg_relid_varno;
 	int			tg_relname_varno;
+	int			tg_table_name_varno;
+	int			tg_table_schema_varno;
 	int			tg_nargs_varno;
 
 	int			ndatums;
@@ -638,7 +618,55 @@ typedef struct
 	PLpgSQL_function *err_func; /* current func */
 	PLpgSQL_stmt *err_stmt;		/* current stmt */
 	const char *err_text;		/* additional state info */
+	void	   *plugin_info;	/* reserved for use by optional plugin */
 } PLpgSQL_execstate;
+
+
+/*
+ * A PLpgSQL_plugin structure represents an instrumentation plugin.
+ * To instrument PL/pgSQL, a plugin library must access the rendezvous
+ * variable "PLpgSQL_plugin" and set it to point to a PLpgSQL_plugin struct.
+ * Typically the struct could just be static data in the plugin library.
+ * We expect that a plugin would do this at library load time (_PG_init()).
+ * It must also be careful to set the rendezvous variable back to NULL
+ * if it is unloaded (_PG_fini()).
+ *
+ * This structure is basically a collection of function pointers --- at
+ * various interesting points in pl_exec.c, we call these functions
+ * (if the pointers are non-NULL) to give the plugin a chance to watch
+ * what we are doing.
+ *
+ *	func_setup is called when we start a function, before we've initialized
+ *	the local variables defined by the function.
+ *
+ *	func_beg is called when we start a function, after we've initialized
+ *	the local variables.
+ *
+ *	func_end is called at the end of a function.
+ *
+ *	stmt_beg and stmt_end are called before and after (respectively) each
+ *	statement.
+ *
+ * Also, immediately before any call to func_setup, PL/pgSQL fills in the
+ * error_callback and assign_expr fields with pointers to its own
+ * plpgsql_exec_error_callback and exec_assign_expr functions.	This is
+ * a somewhat ad-hoc expedient to simplify life for debugger plugins.
+ */
+
+typedef struct
+{
+	/* Function pointers set up by the plugin */
+	void		(*func_setup) (PLpgSQL_execstate *estate, PLpgSQL_function *func);
+	void		(*func_beg) (PLpgSQL_execstate *estate, PLpgSQL_function *func);
+	void		(*func_end) (PLpgSQL_execstate *estate, PLpgSQL_function *func);
+	void		(*stmt_beg) (PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+	void		(*stmt_end) (PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+
+	/* Function pointers set by PL/pgSQL itself */
+	void		(*error_callback) (void *arg);
+	void		(*assign_expr) (PLpgSQL_execstate *estate, PLpgSQL_datum *target,
+											PLpgSQL_expr *expr);
+} PLpgSQL_plugin;
 
 
 /**********************************************************************
@@ -656,11 +684,13 @@ extern char *plpgsql_error_funcname;
 /* linkage to the real yytext variable */
 extern char *plpgsql_base_yytext;
 
-#define plpgsql_yytext plpgsql_base_yytext
+#define yytext plpgsql_base_yytext
 
 extern PLpgSQL_function *plpgsql_curr_compile;
 extern bool plpgsql_check_syntax;
 extern MemoryContext compile_tmp_cxt;
+
+extern PLpgSQL_plugin **plugin_ptr;
 
 /**********************************************************************
  * Function declarations
@@ -695,7 +725,7 @@ extern void plpgsql_compile_error_callback(void *arg);
  * Functions in pl_handler.c
  * ----------
  */
-extern void plpgsql_init(void);
+extern void _PG_init(void);
 extern Datum plpgsql_call_handler(PG_FUNCTION_ARGS);
 extern Datum plpgsql_validator(PG_FUNCTION_ARGS);
 

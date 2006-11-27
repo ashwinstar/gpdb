@@ -1,20 +1,21 @@
  
+* Major/minor release version number changes
+	o doc/bug.template
+	o bump Win32 interface version numbers
+		- src/include/pg_config.h.win32
+		- src/interfaces/libpq/libpq.rc.in
+		- src/port/win32ver.rc
+	o update doc/FAQ and doc/src/FAQ/FAQ.html
+	o bump library versions for _major_ releases
+		- src/interfaces/*/Makefile
+		- src/interfaces/*/*/Makefile
+	o copy FAQs from HEAD to top-most branch
+	o configure.in, and run autoconf or update configure (by packager)
+
 * Beta and Release Candidate (RC) changes
-	o configure.in, and run autoconf or update configure
 	o doc/bug.template
 	o src/include/pg_config.h.win32
-
-* Version numbers
-	o configure.in, and run autoconf or update configure
-	o doc/bug.template
-	o bump library versions
-		- src/interfaces/*/Makefile (major releases only)
-		- src/interfaces/*/*/Makefile (major releases only)
-	o bump interface version numbers
-		- src/interfaces/libpq/libpq.rc.in (major and minor releases)
-		- src/include/pg_config.h.win32 (major and minor releases)
-		- src/port/win32ver.rc (major and minor releases)
-	o update doc/FAQ and doc/src/FAQ/FAQ.html
+	o configure.in, and run autoconf or update configure (by packager)
 
 * Release notes
 	o scan cvs logs, use pgcvslog and flags in comments
@@ -42,8 +43,6 @@
 * Update timezone data to match latest zic database (see src/timezone/README)
 
 * Update inet/cidr data types with newest Bind patches
-
-* Update pg_upgrade to handle new version, or disable
 
 * Translation updates
 	Translations are kept in the project "pgtranslation" on PgFoundry.

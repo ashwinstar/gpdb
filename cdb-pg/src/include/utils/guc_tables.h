@@ -6,14 +6,16 @@
  * See src/backend/utils/misc/README for design notes.
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  *
- *	  $PostgreSQL: pgsql/src/include/utils/guc_tables.h,v 1.20.2.1 2006/02/12 22:32:57 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/include/utils/guc_tables.h,v 1.29 2006/10/03 21:11:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef GUC_TABLES_H
 #define GUC_TABLES_H 1
+
+#include "utils/guc.h"
 
 /*
  * GUC supports these types of variables:
@@ -130,6 +132,16 @@ struct config_generic
 #define GUC_CUSTOM_PLACEHOLDER	0x0080	/* placeholder for custom variable */
 #define GUC_SUPERUSER_ONLY		0x0100	/* show only to superusers */
 #define GUC_IS_NAME				0x0200	/* limit string to NAMEDATALEN-1 */
+
+#define GUC_UNIT_KB				0x0400	/* value is in 1 kB */
+#define GUC_UNIT_BLOCKS			0x0800	/* value is in blocks */
+#define GUC_UNIT_XBLOCKS		0x0C00	/* value is in xlog blocks */
+#define GUC_UNIT_MEMORY			0x0C00	/* mask for KB, BLOCKS, XBLOCKS */
+
+#define GUC_UNIT_MS				0x1000	/* value is in milliseconds */
+#define GUC_UNIT_S				0x2000	/* value is in seconds */
+#define GUC_UNIT_MIN			0x4000	/* value is in minutes */
+#define GUC_UNIT_TIME			0x7000	/* mask for MS, S, MIN */
 
 /* bit values in status field */
 #define GUC_HAVE_TENTATIVE	0x0001		/* tentative value is defined */

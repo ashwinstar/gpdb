@@ -4,18 +4,17 @@
  *	  functions that are specific to frontend/backend protocol version 3
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-protocol3.c,v 1.22.2.1 2005/11/22 18:23:30 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-protocol3.c,v 1.29 2006/10/04 00:30:13 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres_fe.h"
 
-#include <errno.h>
 #include <ctype.h>
 #include <fcntl.h>
 
@@ -47,13 +46,17 @@
 
 static void handleSyncLoss(PGconn *conn, char id, int msgLength);
 static int	getRowDescriptions(PGconn *conn);
+static int	getParamDescriptions(PGconn *conn);
 static int	getAnotherTuple(PGconn *conn, int msgLength);
 static int	getParameterStatus(PGconn *conn);
 static int	getNotify(PGconn *conn);
 static int	getCopyStart(PGconn *conn, ExecStatusType copytype);
 static int	getReadyForQuery(PGconn *conn);
+static void reportErrorPosition(PQExpBuffer msg, const char *query,
+					int loc, int encoding);
 static int build_startup_packet(const PGconn *conn, char *packet,
-					 const PQEnvironmentOption * options);
+					 const PQEnvironmentOption *options);
+
 
 /*
  * parseInput: if appropriate, parse input data from backend
@@ -180,7 +183,7 @@ pqParseInput3(PGconn *conn)
 			else
 			{
 				pqInternalNotice(&conn->noticeHooks,
-								 "message type 0x%02x arrived from server while idle",
+						"message type 0x%02x arrived from server while idle",
 								 id);
 				/* Discard the unexpected message */
 				conn->inCursor += msgLength;
@@ -234,7 +237,7 @@ pqParseInput3(PGconn *conn)
 						if (conn->result == NULL)
 						{
 							conn->result = PQmakeEmptyPGresult(conn,
-															   PGRES_COMMAND_OK);
+														   PGRES_COMMAND_OK);
 							if (!conn->result)
 								return;
 						}
@@ -259,7 +262,7 @@ pqParseInput3(PGconn *conn)
 					if (pqGetInt(&(conn->be_pid), 4, conn))
 						return;
 					if (pqGetInt(&(conn->be_key), 4, conn))
-						return;	
+						return;
 					break;
 				case 'w':  /* get the Cdb Motion Listener. */
 					if (pqGetInt(&(conn->motion_listener), 4, conn))
@@ -267,11 +270,19 @@ pqParseInput3(PGconn *conn)
 					conn->asyncStatus = PGASYNC_IDLE;
 					break;
 				case 'T':		/* Row Description */
-					if (conn->result == NULL)
+					if (conn->result == NULL ||
+						conn->queryclass == PGQUERY_DESCRIBE)
 					{
 						/* First 'T' in a query sequence */
 						if (getRowDescriptions(conn))
 							return;
+
+						/*
+						 * If we're doing a Describe, we're ready to pass the
+						 * result back to the client.
+						 */
+						if (conn->queryclass == PGQUERY_DESCRIBE)
+							conn->asyncStatus = PGASYNC_READY;
 					}
 					else
 					{
@@ -297,6 +308,17 @@ pqParseInput3(PGconn *conn)
 					if (conn->result == NULL)
 						conn->result = PQmakeEmptyPGresult(conn,
 														   PGRES_COMMAND_OK);
+
+					/*
+					 * If we're doing a Describe, we're ready to pass the
+					 * result back to the client.
+					 */
+					if (conn->queryclass == PGQUERY_DESCRIBE)
+						conn->asyncStatus = PGASYNC_READY;
+					break;
+				case 't':		/* Parameter Description */
+					if (getParamDescriptions(conn))
+						return;
 					break;
 				case 'D':		/* Data Row */
 					if (conn->result != NULL &&
@@ -384,7 +406,7 @@ pqParseInput3(PGconn *conn)
                 default:
 					printfPQExpBuffer(&conn->errorMessage,
 									  libpq_gettext(
-										  "unexpected response from server; first received character was \"%c\"\n"),
+													"unexpected response from server; first received character was \"%c\"\n"),
 									  id);
 					/* build an error result holding the error message */
 					pqSaveErrorResult(conn);
@@ -440,7 +462,8 @@ handleSyncLoss(PGconn *conn, char id, int msgLength)
 
 /*
  * parseInput subroutine to read a 'T' (row descriptions) message.
- * We build a PGresult structure containing the attribute data.
+ * We'll build a new PGresult structure (unless called for a Describe
+ * command for a prepared statement) containing the attribute data.
  * Returns: 0 if completed message, EOF if not enough data yet.
  *
  * Note that if we run out of data, we have to release the partially
@@ -454,12 +477,25 @@ getRowDescriptions(PGconn *conn)
 	int			nfields;
 	int			i;
 
-	result = PQmakeEmptyPGresult(conn, PGRES_TUPLES_OK);
+	/*
+	 * When doing Describe for a prepared statement, there'll already be a
+	 * PGresult created by getParamDescriptions, and we should fill data into
+	 * that.  Otherwise, create a new, empty PGresult.
+	 */
+	if (conn->queryclass == PGQUERY_DESCRIBE)
+	{
+		if (conn->result)
+			result = conn->result;
+		else
+			result = PQmakeEmptyPGresult(conn, PGRES_COMMAND_OK);
+	}
+	else
+		result = PQmakeEmptyPGresult(conn, PGRES_TUPLES_OK);
 	if (!result)
 		goto failure;
 
 	/* parseInput already read the 'T' label and message length. */
-	/* the next two bytes are the number of fields	*/
+	/* the next two bytes are the number of fields */
 	if (pqGetInt(&(result->numAttributes), 2, conn))
 		goto failure;
 	nfields = result->numAttributes;
@@ -519,6 +555,72 @@ getRowDescriptions(PGconn *conn)
 
 		if (format != 1)
 			result->binary = 0;
+	}
+
+	/* Success! */
+	conn->result = result;
+	return 0;
+
+failure:
+
+	/*
+	 * Discard incomplete result, unless it's from getParamDescriptions.
+	 *
+	 * Note that if we hit a bufferload boundary while handling the
+	 * describe-statement case, we'll forget any PGresult space we just
+	 * allocated, and then reallocate it on next try.  This will bloat the
+	 * PGresult a little bit but the space will be freed at PQclear, so it
+	 * doesn't seem worth trying to be smarter.
+	 */
+	if (result != conn->result)
+		PQclear(result);
+	return EOF;
+}
+
+/*
+ * parseInput subroutine to read a 't' (ParameterDescription) message.
+ * We'll build a new PGresult structure containing the parameter data.
+ * Returns: 0 if completed message, EOF if not enough data yet.
+ *
+ * Note that if we run out of data, we have to release the partially
+ * constructed PGresult, and rebuild it again next time.  Fortunately,
+ * that shouldn't happen often, since 't' messages usually fit in a packet.
+ */
+static int
+getParamDescriptions(PGconn *conn)
+{
+	PGresult   *result;
+	int			nparams;
+	int			i;
+
+	result = PQmakeEmptyPGresult(conn, PGRES_COMMAND_OK);
+	if (!result)
+		goto failure;
+
+	/* parseInput already read the 't' label and message length. */
+	/* the next two bytes are the number of parameters */
+	if (pqGetInt(&(result->numParameters), 2, conn))
+		goto failure;
+	nparams = result->numParameters;
+
+	/* allocate space for the parameter descriptors */
+	if (nparams > 0)
+	{
+		result->paramDescs = (PGresParamDesc *)
+			pqResultAlloc(result, nparams * sizeof(PGresParamDesc), TRUE);
+		if (!result->paramDescs)
+			goto failure;
+		MemSet(result->paramDescs, 0, nparams * sizeof(PGresParamDesc));
+	}
+
+	/* get parameter info */
+	for (i = 0; i < nparams; i++)
+	{
+		int			typid;
+
+		if (pqGetInt(&typid, 4, conn))
+			goto failure;
+		result->paramDescs[i].typid = typid;
 	}
 
 	/* Success! */
@@ -655,6 +757,8 @@ pqGetErrorNotice3(PGconn *conn, bool isError)
 	PQExpBufferData workBuf;
 	char		id;
 	const char *val;
+	const char *querytext = NULL;
+	int			querypos = 0;
 
 	/*
 	 * Since the fields might be pretty long, we create a temporary
@@ -707,22 +811,46 @@ pqGetErrorNotice3(PGconn *conn, bool isError)
 	val = PQresultErrorField(res, PG_DIAG_STATEMENT_POSITION);
 	if (val)
 	{
-		/* translator: %s represents a digit string */
-		appendPQExpBuffer(&workBuf, libpq_gettext(" at character %s"), val);
+		if (conn->verbosity != PQERRORS_TERSE && conn->last_query != NULL)
+		{
+			/* emit position as a syntax cursor display */
+			querytext = conn->last_query;
+			querypos = atoi(val);
+		}
+		else
+		{
+			/* emit position as text addition to primary message */
+			/* translator: %s represents a digit string */
+			appendPQExpBuffer(&workBuf, libpq_gettext(" at character %s"),
+							  val);
+		}
 	}
 	else
 	{
 		val = PQresultErrorField(res, PG_DIAG_INTERNAL_POSITION);
 		if (val)
 		{
-			/* translator: %s represents a digit string */
-			appendPQExpBuffer(&workBuf, libpq_gettext(" at character %s"),
-							  val);
+			querytext = PQresultErrorField(res, PG_DIAG_INTERNAL_QUERY);
+			if (conn->verbosity != PQERRORS_TERSE && querytext != NULL)
+			{
+				/* emit position as a syntax cursor display */
+				querypos = atoi(val);
+			}
+			else
+			{
+				/* emit position as text addition to primary message */
+				/* translator: %s represents a digit string */
+				appendPQExpBuffer(&workBuf, libpq_gettext(" at character %s"),
+								  val);
+			}
 		}
 	}
 	appendPQExpBufferChar(&workBuf, '\n');
 	if (conn->verbosity != PQERRORS_TERSE)
 	{
+		if (querytext && querypos > 0)
+			reportErrorPosition(&workBuf, querytext, querypos,
+								conn->client_encoding);
 		val = PQresultErrorField(res, PG_DIAG_MESSAGE_DETAIL);
 		if (val)
 			appendPQExpBuffer(&workBuf, libpq_gettext("DETAIL:  %s\n"), val);
@@ -785,6 +913,232 @@ fail:
 	PQclear(res);
 	termPQExpBuffer(&workBuf);
 	return EOF;
+}
+
+/*
+ * Add an error-location display to the error message under construction.
+ *
+ * The cursor location is measured in logical characters; the query string
+ * is presumed to be in the specified encoding.
+ */
+static void
+reportErrorPosition(PQExpBuffer msg, const char *query, int loc, int encoding)
+{
+#define DISPLAY_SIZE	60		/* screen width limit, in screen cols */
+#define MIN_RIGHT_CUT	10		/* try to keep this far away from EOL */
+
+	char	   *wquery;
+	int			slen,
+				cno,
+				i,
+			   *qidx,
+			   *scridx,
+				qoffset,
+				scroffset,
+				ibeg,
+				iend,
+				loc_line;
+	bool		mb_encoding,
+				beg_trunc,
+				end_trunc;
+
+	/* Convert loc from 1-based to 0-based; no-op if out of range */
+	loc--;
+	if (loc < 0)
+		return;
+
+	/* Need a writable copy of the query */
+	wquery = strdup(query);
+	if (wquery == NULL)
+		return;					/* fail silently if out of memory */
+
+	/*
+	 * Each character might occupy multiple physical bytes in the string, and
+	 * in some Far Eastern character sets it might take more than one screen
+	 * column as well.	We compute the starting byte offset and starting
+	 * screen column of each logical character, and store these in qidx[] and
+	 * scridx[] respectively.
+	 */
+
+	/* we need a safe allocation size... */
+	slen = strlen(wquery) + 1;
+
+	qidx = (int *) malloc(slen * sizeof(int));
+	if (qidx == NULL)
+	{
+		free(wquery);
+		return;
+	}
+	scridx = (int *) malloc(slen * sizeof(int));
+	if (scridx == NULL)
+	{
+		free(qidx);
+		free(wquery);
+		return;
+	}
+
+	/* We can optimize a bit if it's a single-byte encoding */
+	mb_encoding = (pg_encoding_max_length(encoding) != 1);
+
+	/*
+	 * Within the scanning loop, cno is the current character's logical
+	 * number, qoffset is its offset in wquery, and scroffset is its starting
+	 * logical screen column (all indexed from 0).	"loc" is the logical
+	 * character number of the error location.	We scan to determine loc_line
+	 * (the 1-based line number containing loc) and ibeg/iend (first character
+	 * number and last+1 character number of the line containing loc). Note
+	 * that qidx[] and scridx[] are filled only as far as iend.
+	 */
+	qoffset = 0;
+	scroffset = 0;
+	loc_line = 1;
+	ibeg = 0;
+	iend = -1;					/* -1 means not set yet */
+
+	for (cno = 0; wquery[qoffset] != '\0'; cno++)
+	{
+		char		ch = wquery[qoffset];
+
+		qidx[cno] = qoffset;
+		scridx[cno] = scroffset;
+
+		/*
+		 * Replace tabs with spaces in the writable copy.  (Later we might
+		 * want to think about coping with their variable screen width, but
+		 * not today.)
+		 */
+		if (ch == '\t')
+			wquery[qoffset] = ' ';
+
+		/*
+		 * If end-of-line, count lines and mark positions. Each \r or \n
+		 * counts as a line except when \r \n appear together.
+		 */
+		else if (ch == '\r' || ch == '\n')
+		{
+			if (cno < loc)
+			{
+				if (ch == '\r' ||
+					cno == 0 ||
+					wquery[qidx[cno - 1]] != '\r')
+					loc_line++;
+				/* extract beginning = last line start before loc. */
+				ibeg = cno + 1;
+			}
+			else
+			{
+				/* set extract end. */
+				iend = cno;
+				/* done scanning. */
+				break;
+			}
+		}
+
+		/* Advance */
+		if (mb_encoding)
+		{
+			int			w;
+
+			w = pg_encoding_dsplen(encoding, &wquery[qoffset]);
+			/* treat any non-tab control chars as width 1 */
+			if (w <= 0)
+				w = 1;
+			scroffset += w;
+			qoffset += pg_encoding_mblen(encoding, &wquery[qoffset]);
+		}
+		else
+		{
+			/* We assume wide chars only exist in multibyte encodings */
+			scroffset++;
+			qoffset++;
+		}
+	}
+	/* Fix up if we didn't find an end-of-line after loc */
+	if (iend < 0)
+	{
+		iend = cno;				/* query length in chars, +1 */
+		qidx[iend] = qoffset;
+		scridx[iend] = scroffset;
+	}
+
+	/* Print only if loc is within computed query length */
+	if (loc <= cno)
+	{
+		/* If the line extracted is too long, we truncate it. */
+		beg_trunc = false;
+		end_trunc = false;
+		if (scridx[iend] - scridx[ibeg] > DISPLAY_SIZE)
+		{
+			/*
+			 * We first truncate right if it is enough.  This code might be
+			 * off a space or so on enforcing MIN_RIGHT_CUT if there's a wide
+			 * character right there, but that should be okay.
+			 */
+			if (scridx[ibeg] + DISPLAY_SIZE >= scridx[loc] + MIN_RIGHT_CUT)
+			{
+				while (scridx[iend] - scridx[ibeg] > DISPLAY_SIZE)
+					iend--;
+				end_trunc = true;
+			}
+			else
+			{
+				/* Truncate right if not too close to loc. */
+				while (scridx[loc] + MIN_RIGHT_CUT < scridx[iend])
+				{
+					iend--;
+					end_trunc = true;
+				}
+
+				/* Truncate left if still too long. */
+				while (scridx[iend] - scridx[ibeg] > DISPLAY_SIZE)
+				{
+					ibeg++;
+					beg_trunc = true;
+				}
+			}
+		}
+
+		/* truncate working copy at desired endpoint */
+		wquery[qidx[iend]] = '\0';
+
+		/* Begin building the finished message. */
+		i = msg->len;
+		appendPQExpBuffer(msg, libpq_gettext("LINE %d: "), loc_line);
+		if (beg_trunc)
+			appendPQExpBufferStr(msg, "...");
+
+		/*
+		 * While we have the prefix in the msg buffer, compute its screen
+		 * width.
+		 */
+		scroffset = 0;
+		for (; i < msg->len; i += pg_encoding_mblen(encoding, &msg->data[i]))
+		{
+			int			w = pg_encoding_dsplen(encoding, &msg->data[i]);
+
+			if (w <= 0)
+				w = 1;
+			scroffset += w;
+		}
+
+		/* Finish up the LINE message line. */
+		appendPQExpBufferStr(msg, &wquery[qidx[ibeg]]);
+		if (end_trunc)
+			appendPQExpBufferStr(msg, "...");
+		appendPQExpBufferChar(msg, '\n');
+
+		/* Now emit the cursor marker line. */
+		scroffset += scridx[loc] - scridx[ibeg];
+		for (i = 0; i < scroffset; i++)
+			appendPQExpBufferChar(msg, ' ');
+		appendPQExpBufferChar(msg, '^');
+		appendPQExpBufferChar(msg, '\n');
+	}
+
+	/* Clean up. */
+	free(scridx);
+	free(qidx);
+	free(wquery);
 }
 
 
@@ -1199,7 +1553,7 @@ pqEndcopy3(PGconn *conn)
 	 * and the flush fails
 	 */
 	if (pqFlush(conn) && pqIsnonblocking(conn))
-		return (1);
+		return 1;
 
 	/* Return to active duty */
 	conn->asyncStatus = PGASYNC_BUSY;
@@ -1213,7 +1567,7 @@ pqEndcopy3(PGconn *conn)
 	 * with the CopyDone; are there corner cases where that doesn't happen?)
 	 */
 	if (pqIsnonblocking(conn) && PQisBusy(conn))
-		return (1);
+		return 1;
 
 	/* Wait for the completion response */
 	result = PQgetResult(conn);
@@ -1471,7 +1825,7 @@ pqFunctionCall3(PGconn *conn, Oid fnid,
  */
 char *
 pqBuildStartupPacket3(PGconn *conn, int *packetlen,
-					  const PQEnvironmentOption * options)
+					  const PQEnvironmentOption *options)
 {
 	char	   *startpacket;
 
@@ -1494,7 +1848,7 @@ pqBuildStartupPacket3(PGconn *conn, int *packetlen,
  */
 static int
 build_startup_packet(const PGconn *conn, char *packet,
-					 const PQEnvironmentOption * options)
+					 const PQEnvironmentOption *options)
 {
 	int			packet_len = 0;
 	const PQEnvironmentOption *next_eo;
@@ -1577,7 +1931,7 @@ build_startup_packet(const PGconn *conn, char *packet,
 		}
 	}
 
-    /* Add trailing terminator */
+	/* Add trailing terminator */
 	if (packet)
 		packet[packet_len] = '\0';
 	packet_len++;

@@ -1,6 +1,7 @@
 /*
  * this is a small part of c.h since we don't want to leak all postgres
  * definitions into ecpg programs
+ * $PostgreSQL: pgsql/src/interfaces/ecpg/include/ecpglib.h,v 1.70 2006/10/04 00:30:11 momjian Exp $
  */
 
 #ifndef _ECPGLIB_H
@@ -8,9 +9,9 @@
 
 #include "libpq-fe.h"
 #include "ecpgtype.h"
+#include "sqlca.h"
 #include <string.h>
 
-#ifndef __BEOS__
 #ifndef __cplusplus
 #ifndef bool
 #define bool char
@@ -23,9 +24,6 @@
 #define false	((bool) 0)
 #endif   /* ndef false */
 #endif   /* not C++ */
-#else							/* __BEOS__ */
-#include <SupportDefs.h>
-#endif   /* __BEOS__ */
 
 #ifndef TRUE
 #define TRUE	1
@@ -39,8 +37,6 @@
 extern		"C"
 {
 #endif
-
-struct sqlca_t;
 
 void		ECPGinit_sqlca(struct sqlca_t * sqlca);
 void		ECPGdebug(int, FILE *);
@@ -86,6 +82,10 @@ bool		ECPGdescribe(int, bool, const char *,...);
 
 /* dynamic result allocation */
 void		ECPGfree_auto_mem(void);
+
+#ifdef ENABLE_THREAD_SAFETY
+void		ecpg_pthreads_init();
+#endif
 
 #ifdef __cplusplus
 }

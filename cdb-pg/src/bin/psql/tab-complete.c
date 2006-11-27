@@ -1,9 +1,9 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/tab-complete.c,v 1.138.2.1 2005/11/14 17:46:07 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/tab-complete.c,v 1.156 2006/10/04 00:30:06 momjian Exp $
  */
 
 /*----------------------------------------------------------------------
@@ -53,7 +53,6 @@
 #include "pqexpbuffer.h"
 #include "common.h"
 #include "settings.h"
-
 
 #ifdef HAVE_RL_FILENAME_COMPLETION_FUNCTION
 #define filename_completion_function rl_filename_completion_function
@@ -140,14 +139,14 @@ static const SchemaQuery *completion_squery;	/* to pass a SchemaQuery */
 */
 #define COMPLETE_WITH_QUERY(query) \
 do { completion_charp = query; matches = completion_matches(text, complete_from_query); } while(0)
-#define COMPLETE_WITH_SCHEMA_QUERY(query,addon) \
+#define COMPLETE_WITH_SCHEMA_QUERY(query, addon) \
 do { completion_squery = &(query); completion_charp = addon; matches = completion_matches(text, complete_from_schema_query); } while(0)
 #define COMPLETE_WITH_LIST(list) \
 do { completion_charpp = list; matches = completion_matches(text, complete_from_list); } while(0)
 #define COMPLETE_WITH_CONST(string) \
 do { completion_charp = string; matches = completion_matches(text, complete_from_const); } while(0)
-#define COMPLETE_WITH_ATTR(table) \
-do {completion_charp = Query_for_list_of_attributes; completion_info_charp = table; matches = completion_matches(text, complete_from_query); } while(0)
+#define COMPLETE_WITH_ATTR(table, addon) \
+do {completion_charp = Query_for_list_of_attributes addon; completion_info_charp = table; matches = completion_matches(text, complete_from_query); } while(0)
 
 /*
  * Assembly instructions for schema queries
@@ -370,6 +369,10 @@ static const SchemaQuery Query_for_list_of_views = {
 "  UNION ALL SELECT 'all') ss "\
 " WHERE substring(name,1,%d)='%s'"
 
+/*
+ * Note: As of Pg 8.2, we no longer use relkind 's', but we keep it here
+ * for compatibility with older servers
+ */
 #define Query_for_list_of_system_relations \
 "SELECT pg_catalog.quote_ident(relname) "\
 "  FROM pg_catalog.pg_class c, pg_catalog.pg_namespace n "\
@@ -465,6 +468,7 @@ static const pgsql_thing_t words_after_create[] = {
 /* Forward declaration of functions */
 static char **psql_completion(char *text, int start, int end);
 static char *create_command_generator(const char *text, int state);
+static char *drop_command_generator(const char *text, int state);
 static char *complete_from_query(const char *text, int state);
 static char *complete_from_schema_query(const char *text, int state);
 static char *_complete_from_query(int is_schema_query,
@@ -475,6 +479,8 @@ static char *complete_from_list(const char *text, int state);
 static PGresult *exec_query(const char *query);
 
 static char *previous_word(int point, int skip);
+
+static int	find_open_parenthesis(int end);
 
 #if 0
 static char *quote_file_name(char *text, int match_type, char *quote_pointer);
@@ -519,11 +525,13 @@ psql_completion(char *text, int start, int end)
 			   *prev5_wd;
 
 	static const char *const sql_commands[] = {
-		"ABORT", "ALTER", "ANALYZE", "BEGIN", "CHECKPOINT", "CLOSE", "CLUSTER", "COMMENT",
-		"COMMIT", "COPY", "CREATE", "DEALLOCATE", "DECLARE", "DELETE FROM", "DROP", "END", "EXECUTE",
-		"EXPLAIN", "FETCH", "GRANT", "INSERT", "LISTEN", "LOAD", "LOCK", "MOVE", "NOTIFY",
-		"PREPARE", "REINDEX", "RELEASE", "RESET", "REVOKE", "ROLLBACK", "SAVEPOINT",
-		"SELECT", "SET", "SHOW", "START", "TRUNCATE", "UNLISTEN", "UPDATE", "VACUUM", NULL
+		"ABORT", "ALTER", "ANALYZE", "BEGIN", "CHECKPOINT", "CLOSE", "CLUSTER",
+		"COMMENT", "COMMIT", "COPY", "CREATE", "DEALLOCATE", "DECLARE",
+		"DELETE FROM", "DROP", "END", "EXECUTE", "EXPLAIN", "FETCH", "GRANT",
+		"INSERT", "LISTEN", "LOAD", "LOCK", "MOVE", "NOTIFY", "PREPARE",
+		"REASSIGN", "REINDEX", "RELEASE", "RESET", "REVOKE", "ROLLBACK",
+		"SAVEPOINT", "SELECT", "SET", "SHOW", "START", "TRUNCATE", "UNLISTEN",
+		"UPDATE", "VACUUM", NULL
 	};
 
 	static const char *const backslash_commands[] = {
@@ -534,7 +542,8 @@ psql_completion(char *text, int start, int end)
 		"\\e", "\\echo", "\\encoding",
 		"\\f", "\\g", "\\h", "\\help", "\\H", "\\i", "\\l",
 		"\\lo_import", "\\lo_export", "\\lo_list", "\\lo_unlink",
-		"\\o", "\\p", "\\pset", "\\q", "\\qecho", "\\r", "\\set", "\\t", "\\T",
+		"\\o", "\\p", "\\password", "\\pset", "\\q", "\\qecho", "\\r",
+		"\\set", "\\t", "\\T",
 		"\\timing", "\\unset", "\\x", "\\w", "\\z", "\\!", NULL
 	};
 
@@ -568,14 +577,18 @@ psql_completion(char *text, int start, int end)
 	else if (!prev_wd)
 		COMPLETE_WITH_LIST(sql_commands);
 
-/* CREATE or DROP but not ALTER (TABLE|DOMAIN|GROUP) sth DROP */
-	/* complete with something you can create or drop */
-	else if (pg_strcasecmp(prev_wd, "CREATE") == 0 ||
-			 (pg_strcasecmp(prev_wd, "DROP") == 0 &&
-			  pg_strcasecmp(prev3_wd, "TABLE") != 0 &&
-			  pg_strcasecmp(prev3_wd, "DOMAIN") != 0 &&
-			  pg_strcasecmp(prev3_wd, "GROUP") != 0))
+/* CREATE */
+	/* complete with something you can create */
+	else if (pg_strcasecmp(prev_wd, "CREATE") == 0)
 		matches = completion_matches(text, create_command_generator);
+
+/* DROP, except ALTER (TABLE|DOMAIN|GROUP) sth DROP */
+	/* complete with something you can drop */
+	else if (pg_strcasecmp(prev_wd, "DROP") == 0 &&
+			 pg_strcasecmp(prev3_wd, "TABLE") != 0 &&
+			 pg_strcasecmp(prev3_wd, "DOMAIN") != 0 &&
+			 pg_strcasecmp(prev3_wd, "GROUP") != 0)
+		matches = completion_matches(text, drop_command_generator);
 
 /* ALTER */
 
@@ -752,11 +765,28 @@ psql_completion(char *text, int start, int end)
 	else if (pg_strcasecmp(prev3_wd, "TABLE") == 0 &&
 			 (pg_strcasecmp(prev_wd, "ALTER") == 0 ||
 			  pg_strcasecmp(prev_wd, "RENAME") == 0))
-		COMPLETE_WITH_ATTR(prev2_wd);
+		COMPLETE_WITH_ATTR(prev2_wd, " UNION SELECT 'COLUMN'");
+
+	/*
+	 * If we have TABLE <sth> ALTER COLUMN|RENAME COLUMN, provide list of
+	 * columns
+	 */
+	else if (pg_strcasecmp(prev4_wd, "TABLE") == 0 &&
+			 (pg_strcasecmp(prev2_wd, "ALTER") == 0 ||
+			  pg_strcasecmp(prev2_wd, "RENAME") == 0) &&
+			 pg_strcasecmp(prev_wd, "COLUMN") == 0)
+		COMPLETE_WITH_ATTR(prev3_wd, "");
 
 	/* ALTER TABLE xxx RENAME yyy */
 	else if (pg_strcasecmp(prev4_wd, "TABLE") == 0 &&
 			 pg_strcasecmp(prev2_wd, "RENAME") == 0 &&
+			 pg_strcasecmp(prev_wd, "TO") != 0)
+		COMPLETE_WITH_CONST("TO");
+
+	/* ALTER TABLE xxx RENAME COLUMN yyy */
+	else if (pg_strcasecmp(prev5_wd, "TABLE") == 0 &&
+			 pg_strcasecmp(prev3_wd, "RENAME") == 0 &&
+			 pg_strcasecmp(prev2_wd, "COLUMN") == 0 &&
 			 pg_strcasecmp(prev_wd, "TO") != 0)
 		COMPLETE_WITH_CONST("TO");
 
@@ -773,7 +803,7 @@ psql_completion(char *text, int start, int end)
 	else if (pg_strcasecmp(prev4_wd, "TABLE") == 0 &&
 			 pg_strcasecmp(prev2_wd, "DROP") == 0 &&
 			 pg_strcasecmp(prev_wd, "COLUMN") == 0)
-		COMPLETE_WITH_ATTR(prev3_wd);
+		COMPLETE_WITH_ATTR(prev3_wd, "");
 	/* ALTER TABLE ALTER [COLUMN] <foo> */
 	else if ((pg_strcasecmp(prev3_wd, "ALTER") == 0 &&
 			  pg_strcasecmp(prev2_wd, "COLUMN") == 0) ||
@@ -923,7 +953,8 @@ psql_completion(char *text, int start, int end)
 		static const char *const list_COMMENT[] =
 		{"CAST", "CONVERSION", "DATABASE", "INDEX", "LANGUAGE", "RULE", "SCHEMA",
 			"SEQUENCE", "TABLE", "TYPE", "VIEW", "COLUMN", "AGGREGATE", "FUNCTION",
-		"OPERATOR", "TRIGGER", "CONSTRAINT", "DOMAIN", "LARGE OBJECT", NULL};
+			"OPERATOR", "TRIGGER", "CONSTRAINT", "DOMAIN", "LARGE OBJECT",
+		"TABLESPACE", "ROLE", NULL};
 
 		COMPLETE_WITH_LIST(list_COMMENT);
 	}
@@ -1016,16 +1047,25 @@ psql_completion(char *text, int start, int end)
 	 */
 	else if (pg_strcasecmp(prev4_wd, "INDEX") == 0 &&
 			 pg_strcasecmp(prev2_wd, "ON") == 0)
-		COMPLETE_WITH_ATTR(prev_wd);
+	{
+		if (find_open_parenthesis(end))
+			COMPLETE_WITH_ATTR(prev_wd, "");
+		else
+			COMPLETE_WITH_CONST("(");
+	}
+	else if (pg_strcasecmp(prev5_wd, "INDEX") == 0 &&
+			 pg_strcasecmp(prev3_wd, "ON") == 0 &&
+			 pg_strcasecmp(prev_wd, "(") == 0)
+		COMPLETE_WITH_ATTR(prev2_wd, "");
 	/* same if you put in USING */
 	else if (pg_strcasecmp(prev4_wd, "ON") == 0 &&
 			 pg_strcasecmp(prev2_wd, "USING") == 0)
-		COMPLETE_WITH_ATTR(prev3_wd);
+		COMPLETE_WITH_ATTR(prev3_wd, "");
 	/* Complete USING with an index method */
 	else if (pg_strcasecmp(prev_wd, "USING") == 0)
 	{
 		static const char *const index_mth[] =
-		{"BTREE", "RTREE", "HASH", "GIST", NULL};
+		{"BTREE", "HASH", "GIST", NULL};
 
 		COMPLETE_WITH_LIST(index_mth);
 	}
@@ -1053,8 +1093,8 @@ psql_completion(char *text, int start, int end)
 	/* Complete "AS ON <sth with a 'T' :)>" with a "TO" */
 	else if (pg_strcasecmp(prev3_wd, "AS") == 0 &&
 			 pg_strcasecmp(prev2_wd, "ON") == 0 &&
-			 (toupper((unsigned char) prev_wd[4]) == 'T' ||
-			  toupper((unsigned char) prev_wd[5]) == 'T'))
+			 (pg_toupper((unsigned char) prev_wd[4]) == 'T' ||
+			  pg_toupper((unsigned char) prev_wd[5]) == 'T'))
 		COMPLETE_WITH_CONST("TO");
 	/* Complete "AS ON <sth> TO" with a table name */
 	else if (pg_strcasecmp(prev4_wd, "AS") == 0 &&
@@ -1222,11 +1262,51 @@ psql_completion(char *text, int start, int end)
 			  pg_strcasecmp(prev3_wd, "AGGREGATE") == 0 &&
 			  prev_wd[strlen(prev_wd) - 1] == ')'))
 	{
-		static const char *const list_DROPCR[] =
-		{"CASCADE", "RESTRICT", NULL};
+		if ((pg_strcasecmp(prev3_wd, "DROP") == 0) && (pg_strcasecmp(prev2_wd, "FUNCTION") == 0))
+		{
+			if (find_open_parenthesis(end))
+			{
+				static const char func_args_query[] = "select pg_catalog.oidvectortypes(proargtypes)||')' from pg_proc where proname='%s'";
+				char	   *tmp_buf = malloc(strlen(func_args_query) + strlen(prev_wd));
 
-		COMPLETE_WITH_LIST(list_DROPCR);
+				sprintf(tmp_buf, func_args_query, prev_wd);
+				COMPLETE_WITH_QUERY(tmp_buf);
+				free(tmp_buf);
+			}
+			else
+			{
+				COMPLETE_WITH_CONST("(");
+			}
+		}
+		else
+		{
+			static const char *const list_DROPCR[] =
+			{"CASCADE", "RESTRICT", NULL};
+
+			COMPLETE_WITH_LIST(list_DROPCR);
+		}
 	}
+	else if (pg_strcasecmp(prev4_wd, "DROP") == 0 &&
+			 pg_strcasecmp(prev3_wd, "FUNCTION") == 0 &&
+			 pg_strcasecmp(prev_wd, "(") == 0)
+	{
+		static const char func_args_query[] = "select pg_catalog.oidvectortypes(proargtypes)||')' from pg_proc where proname='%s'";
+		char	   *tmp_buf = malloc(strlen(func_args_query) + strlen(prev2_wd));
+
+		sprintf(tmp_buf, func_args_query, prev2_wd);
+		COMPLETE_WITH_QUERY(tmp_buf);
+		free(tmp_buf);
+	}
+	/* DROP OWNED BY */
+	else if (pg_strcasecmp(prev2_wd, "DROP") == 0 &&
+			 pg_strcasecmp(prev_wd, "OWNED") == 0)
+		COMPLETE_WITH_CONST("BY");
+	else if (pg_strcasecmp(prev3_wd, "DROP") == 0 &&
+			 pg_strcasecmp(prev2_wd, "OWNED") == 0 &&
+			 pg_strcasecmp(prev_wd, "BY") == 0)
+		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
+
+
 
 /* EXPLAIN */
 
@@ -1301,7 +1381,8 @@ psql_completion(char *text, int start, int end)
 	{
 		static const char *const list_privileg[] =
 		{"SELECT", "INSERT", "UPDATE", "DELETE", "RULE", "REFERENCES",
-		"TRIGGER", "CREATE", "TEMPORARY", "EXECUTE", "USAGE", "ALL", NULL};
+			"TRIGGER", "CREATE", "CONNECT", "TEMPORARY", "EXECUTE", "USAGE",
+		"ALL", NULL};
 
 		COMPLETE_WITH_LIST(list_privileg);
 	}
@@ -1377,7 +1458,7 @@ psql_completion(char *text, int start, int end)
 	else if (rl_line_buffer[start - 1] == '(' &&
 			 pg_strcasecmp(prev3_wd, "INSERT") == 0 &&
 			 pg_strcasecmp(prev2_wd, "INTO") == 0)
-		COMPLETE_WITH_ATTR(prev_wd);
+		COMPLETE_WITH_ATTR(prev_wd, "");
 
 	/*
 	 * Complete INSERT INTO <table> with "VALUES" or "SELECT" or "DEFAULT
@@ -1409,10 +1490,12 @@ psql_completion(char *text, int start, int end)
 
 /* LOCK */
 	/* Complete LOCK [TABLE] with a list of tables */
-	else if (pg_strcasecmp(prev_wd, "LOCK") == 0 ||
-			 (pg_strcasecmp(prev_wd, "TABLE") == 0 &&
-			  pg_strcasecmp(prev2_wd, "LOCK") == 0))
-		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables, NULL);
+	else if (pg_strcasecmp(prev_wd, "LOCK") == 0)
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables,
+								   " UNION SELECT 'TABLE'");
+	else if (pg_strcasecmp(prev_wd, "TABLE") == 0 &&
+			 pg_strcasecmp(prev2_wd, "LOCK") == 0)
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables, "");
 
 	/* For the following, handle the case of a single table only for now */
 
@@ -1443,7 +1526,7 @@ psql_completion(char *text, int start, int end)
 	else if (pg_strcasecmp(prev_wd, "NOTIFY") == 0)
 		COMPLETE_WITH_QUERY("SELECT pg_catalog.quote_ident(relname) FROM pg_catalog.pg_listener WHERE substring(pg_catalog.quote_ident(relname),1,%d)='%s'");
 
-/* OWNER TO  - complete with available roles*/
+/* OWNER TO  - complete with available roles */
 	else if (pg_strcasecmp(prev2_wd, "OWNER") == 0 &&
 			 pg_strcasecmp(prev_wd, "TO") == 0)
 		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
@@ -1455,7 +1538,7 @@ psql_completion(char *text, int start, int end)
 	else if (pg_strcasecmp(prev4_wd, "FROM") == 0 &&
 			 pg_strcasecmp(prev2_wd, "ORDER") == 0 &&
 			 pg_strcasecmp(prev_wd, "BY") == 0)
-		COMPLETE_WITH_ATTR(prev3_wd);
+		COMPLETE_WITH_ATTR(prev3_wd, "");
 
 /* PREPARE xx AS */
 	else if (pg_strcasecmp(prev_wd, "AS") == 0 &&
@@ -1467,6 +1550,25 @@ psql_completion(char *text, int start, int end)
 		COMPLETE_WITH_LIST(list_PREPARE);
 	}
 
+/* REASSIGN OWNED BY xxx TO yyy */
+	else if (pg_strcasecmp(prev_wd, "REASSIGN") == 0)
+		COMPLETE_WITH_CONST("OWNED");
+	else if (pg_strcasecmp(prev_wd, "OWNED") == 0 &&
+			 pg_strcasecmp(prev2_wd, "REASSIGN") == 0)
+		COMPLETE_WITH_CONST("BY");
+	else if (pg_strcasecmp(prev_wd, "BY") == 0 &&
+			 pg_strcasecmp(prev2_wd, "OWNED") == 0 &&
+			 pg_strcasecmp(prev3_wd, "REASSIGN") == 0)
+		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
+	else if (pg_strcasecmp(prev2_wd, "BY") == 0 &&
+			 pg_strcasecmp(prev3_wd, "OWNED") == 0 &&
+			 pg_strcasecmp(prev4_wd, "REASSIGN") == 0)
+		COMPLETE_WITH_CONST("TO");
+	else if (pg_strcasecmp(prev_wd, "TO") == 0 &&
+			 pg_strcasecmp(prev3_wd, "BY") == 0 &&
+			 pg_strcasecmp(prev4_wd, "OWNED") == 0 &&
+			 pg_strcasecmp(prev5_wd, "REASSIGN") == 0)
+		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
 
 /* REINDEX */
 	else if (pg_strcasecmp(prev_wd, "REINDEX") == 0)
@@ -1596,7 +1698,11 @@ psql_completion(char *text, int start, int end)
 	else if (pg_strcasecmp(prev3_wd, "SET") == 0
 			 && pg_strcasecmp(prev2_wd, "SESSION") == 0
 			 && pg_strcasecmp(prev_wd, "AUTHORIZATION") == 0)
-		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
+		COMPLETE_WITH_QUERY(Query_for_list_of_roles " UNION SELECT 'DEFAULT'");
+	/* Complete RESET SESSION with AUTHORIZATION */
+	else if (pg_strcasecmp(prev2_wd, "RESET") == 0 &&
+			 pg_strcasecmp(prev_wd, "SESSION") == 0)
+		COMPLETE_WITH_CONST("AUTHORIZATION");
 	/* Complete SET <var> with "TO" */
 	else if (pg_strcasecmp(prev2_wd, "SET") == 0 &&
 			 pg_strcasecmp(prev4_wd, "UPDATE") != 0 &&
@@ -1659,7 +1765,7 @@ psql_completion(char *text, int start, int end)
 	 * make a list of attributes.
 	 */
 	else if (pg_strcasecmp(prev_wd, "SET") == 0)
-		COMPLETE_WITH_ATTR(prev2_wd);
+		COMPLETE_WITH_ATTR(prev2_wd, "");
 
 /* UPDATE xx SET yy = */
 	else if (pg_strcasecmp(prev2_wd, "SET") == 0 &&
@@ -1716,7 +1822,7 @@ psql_completion(char *text, int start, int end)
 /* WHERE */
 	/* Simple case of the word before the where being the table name */
 	else if (pg_strcasecmp(prev_wd, "WHERE") == 0)
-		COMPLETE_WITH_ATTR(prev2_wd);
+		COMPLETE_WITH_ATTR(prev2_wd, "");
 
 /* ... FROM ... */
 /* TODO: also include SRF ? */
@@ -1762,6 +1868,8 @@ psql_completion(char *text, int start, int end)
 		COMPLETE_WITH_QUERY(Query_for_list_of_encodings);
 	else if (strcmp(prev_wd, "\\h") == 0 || strcmp(prev_wd, "\\help") == 0)
 		COMPLETE_WITH_LIST(sql_commands);
+	else if (strcmp(prev_wd, "\\password") == 0)
+		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
 	else if (strcmp(prev_wd, "\\pset") == 0)
 	{
 		static const char *const my_list[] =
@@ -1844,7 +1952,7 @@ psql_completion(char *text, int start, int end)
    something of that sort.
 */
 
-/* This one gives you one from a list of things you can put after CREATE or DROP
+/* This one gives you one from a list of things you can put after CREATE
    as defined above.
 */
 static char *
@@ -1870,6 +1978,51 @@ create_command_generator(const char *text, int state)
 	return NULL;
 }
 
+/*
+ * This function gives you a list of things you can put after a DROP command.
+ * Very similar to create_command_generator, but has an additional entry for
+ * OWNED BY.  (We do it this way in order not to duplicate the
+ * words_after_create list.)
+ */
+static char *
+drop_command_generator(const char *text, int state)
+{
+	static int	list_index,
+				string_length;
+	const char *name;
+
+	if (state == 0)
+	{
+		/* If this is the first time for this completion, init some values */
+		list_index = 0;
+		string_length = strlen(text);
+
+		/*
+		 * DROP can be followed by "OWNED BY", which is not found in the list
+		 * for CREATE matches, so make it the first state. (We do not make it
+		 * the last state because it would be more difficult to detect when we
+		 * have to return NULL instead.)
+		 *
+		 * Make sure we advance to the next state.
+		 */
+		list_index++;
+		if (pg_strncasecmp("OWNED", text, string_length) == 0)
+			return pg_strdup("OWNED");
+	}
+
+	/*
+	 * In subsequent attempts, try to complete with the same items we use for
+	 * CREATE
+	 */
+	while ((name = words_after_create[list_index++ - 1].name))
+	{
+		if (pg_strncasecmp(name, text, string_length) == 0)
+			return pg_strdup(name);
+	}
+
+	/* if nothing matches, return NULL */
+	return NULL;
+}
 
 /* The following two functions are wrappers for _complete_from_query */
 
@@ -2121,7 +2274,7 @@ complete_from_list(const char *text, int state)
 		casesensitive = false;
 		list_index = 0;
 		state++;
-		return (complete_from_list(text, state));
+		return complete_from_list(text, state);
 	}
 
 	/* If no more matches, return null. */
@@ -2243,7 +2396,31 @@ previous_word(int point, int skip)
 	return s;
 }
 
+/* Find the parenthesis after the last word */
 
+
+static int
+find_open_parenthesis(int end)
+{
+	int			i = end - 1;
+
+	while ((rl_line_buffer[i] != ' ') && (i >= 0))
+	{
+		if (rl_line_buffer[i] == '(')
+			return 1;
+		i--;
+	}
+	while ((rl_line_buffer[i] == ' ') && (i >= 0))
+	{
+		i--;
+	}
+	if (rl_line_buffer[i] == '(')
+	{
+		return 1;
+	}
+	return 0;
+
+}
 
 #if 0
 

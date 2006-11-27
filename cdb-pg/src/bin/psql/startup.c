@@ -1,13 +1,16 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/startup.c,v 1.126.2.2 2005/11/22 18:23:27 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/startup.c,v 1.138 2006/10/04 00:30:06 momjian Exp $
  */
 #include "postgres_fe.h"
 
 #include <sys/types.h>
+#ifdef USE_SSL
+#include <openssl/ssl.h>
+#endif
 
 #ifndef WIN32
 #include <unistd.h>
@@ -24,7 +27,6 @@ int			optreset;
 
 #include <locale.h>
 
-#include "libpq-fe.h"
 
 #include "command.h"
 #include "common.h"
@@ -32,11 +34,8 @@ int			optreset;
 #include "help.h"
 #include "input.h"
 #include "mainloop.h"
-#include "print.h"
 #include "settings.h"
-#include "variables.h"
 
-#include "mb/pg_wchar.h"
 
 
 /*
@@ -76,6 +75,7 @@ struct adhoc_opts
 	char	   *action_string;
 	bool		no_readline;
 	bool		no_psqlrc;
+	bool		single_txn;
 };
 
 static int	parse_version(const char *versionString);
@@ -84,14 +84,14 @@ static void parse_psql_options(int argc, char *argv[],
 static void process_psqlrc(char *argv0);
 static void process_psqlrc_file(char *filename);
 static void showVersion(void);
+static void EstablishVariableSpace(void);
 
 #ifdef USE_SSL
 static void printSSLInfo(void);
 #endif
 
 #ifdef WIN32
-static void
-			checkWin32Codepage(void);
+static void checkWin32Codepage(void);
 #endif
 
 /*
@@ -126,39 +126,28 @@ main(int argc, char *argv[])
 		}
 	}
 
-	pset.progname = get_progname(argv[0]);
-
 #ifdef WIN32
 	setvbuf(stderr, NULL, _IONBF, 0);
-	setup_win32_locks();
 #endif
+
+	setup_cancel_handler();
+
+	pset.progname = get_progname(argv[0]);
+
+	pset.db = NULL;
 	setDecimalLocale();
+	pset.encoding = PQenv2encoding();
+	pset.queryFout = stdout;
+	pset.queryFoutPipe = false;
 	pset.cur_cmd_source = stdin;
 	pset.cur_cmd_interactive = false;
-	pset.encoding = PQenv2encoding();
 
-	pset.vars = CreateVariableSpace();
-	if (!pset.vars)
-	{
-		fprintf(stderr, _("%s: out of memory\n"), pset.progname);
-		exit(EXIT_FAILURE);
-	}
 	pset.popt.topt.format = PRINT_ALIGNED;
-	pset.queryFout = stdout;
 	pset.popt.topt.border = 1;
 	pset.popt.topt.pager = 1;
+	pset.popt.topt.start_table = true;
+	pset.popt.topt.stop_table = true;
 	pset.popt.default_footer = true;
-
-	SetVariable(pset.vars, "VERSION", PG_VERSION_STR);
-
-	/* Default values for variables */
-	SetVariableBool(pset.vars, "AUTOCOMMIT");
-	SetVariable(pset.vars, "VERBOSITY", "default");
-	SetVariable(pset.vars, "PROMPT1", DEFAULT_PROMPT1);
-	SetVariable(pset.vars, "PROMPT2", DEFAULT_PROMPT2);
-	SetVariable(pset.vars, "PROMPT3", DEFAULT_PROMPT3);
-
-	pset.verbosity = PQERRORS_DEFAULT;
 
 	pset.notty = (!isatty(fileno(stdin)) || !isatty(fileno(stdout)));
 
@@ -168,6 +157,17 @@ main(int argc, char *argv[])
 #else
 	pset.getPassword = false;
 #endif
+
+	EstablishVariableSpace();
+
+	SetVariable(pset.vars, "VERSION", PG_VERSION_STR);
+
+	/* Default values for variables */
+	SetVariableBool(pset.vars, "AUTOCOMMIT");
+	SetVariable(pset.vars, "VERBOSITY", "default");
+	SetVariable(pset.vars, "PROMPT1", DEFAULT_PROMPT1);
+	SetVariable(pset.vars, "PROMPT2", DEFAULT_PROMPT2);
+	SetVariable(pset.vars, "PROMPT3", DEFAULT_PROMPT3);
 
 	parse_psql_options(argc, argv, &options);
 
@@ -237,9 +237,6 @@ main(int argc, char *argv[])
 
 	SyncVariables();
 
-	/* Grab the backend server version */
-	pset.sversion = PQserverVersion(pset.db);
-
 	if (options.action == ACT_LIST_DB)
 	{
 		int			success = listAllDbs(false);
@@ -268,7 +265,7 @@ main(int argc, char *argv[])
 		if (!options.no_psqlrc)
 			process_psqlrc(argv[0]);
 
-		successResult = process_file(options.action_string);
+		successResult = process_file(options.action_string, options.single_txn);
 	}
 
 	/*
@@ -278,7 +275,7 @@ main(int argc, char *argv[])
 	{
 		PsqlScanState scan_state;
 
-		if (VariableEquals(pset.vars, "ECHO", "all"))
+		if (pset.echo == PSQL_ECHO_ALL)
 			puts(options.action_string);
 
 		scan_state = psql_scan_create();
@@ -286,7 +283,7 @@ main(int argc, char *argv[])
 						options.action_string,
 						strlen(options.action_string));
 
-		successResult = HandleSlashCmds(scan_state, NULL) != CMD_ERROR
+		successResult = HandleSlashCmds(scan_state, NULL) != PSQL_CMD_ERROR
 			? EXIT_SUCCESS : EXIT_FAILURE;
 
 		psql_scan_destroy(scan_state);
@@ -297,7 +294,7 @@ main(int argc, char *argv[])
 	 */
 	else if (options.action == ACT_SINGLE_QUERY)
 	{
-		if (VariableEquals(pset.vars, "ECHO", "all"))
+		if (pset.echo == PSQL_ECHO_ALL)
 			puts(options.action_string);
 
 		successResult = SendQuery(options.action_string)
@@ -312,7 +309,7 @@ main(int argc, char *argv[])
 		if (!options.no_psqlrc)
 			process_psqlrc(argv[0]);
 
-		if (!QUIET() && !pset.notty)
+		if (!pset.quiet && !pset.notty)
 		{
 			int			client_ver = parse_version(PG_VERSION);
 
@@ -425,6 +422,7 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 		{"list", no_argument, NULL, 'l'},
 		{"log-file", required_argument, NULL, 'L'},
 		{"no-readline", no_argument, NULL, 'n'},
+		{"single-transaction", no_argument, NULL, '1'},
 		{"output", required_argument, NULL, 'o'},
 		{"port", required_argument, NULL, 'p'},
 		{"pset", required_argument, NULL, 'P'},
@@ -453,7 +451,7 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 
 	memset(options, 0, sizeof *options);
 
-	while ((c = getopt_long(argc, argv, "aAc:d:eEf:F:h:HlL:no:p:P:qR:sStT:uU:v:VWxX?",
+	while ((c = getopt_long(argc, argv, "aAc:d:eEf:F:h:HlL:no:p:P:qR:sStT:uU:v:VWxX?1",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -606,6 +604,9 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 			case 'X':
 				options->no_psqlrc = true;
 				break;
+			case '1':
+				options->single_txn = true;
+				break;
 			case '?':
 				/* Actual help option given */
 				if (strcmp(argv[optind - 1], "-?") == 0 || strcmp(argv[optind - 1], "--help") == 0)
@@ -638,14 +639,14 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 			options->dbname = argv[optind];
 		else if (!options->username)
 			options->username = argv[optind];
-		else if (!QUIET())
+		else if (!pset.quiet)
 			fprintf(stderr, _("%s: warning: extra command-line argument \"%s\" ignored\n"),
 					pset.progname, argv[optind]);
 
 		optind++;
 	}
 
-	if (used_old_u_option && !QUIET())
+	if (used_old_u_option && !pset.quiet)
 		fprintf(stderr, _("%s: Warning: The -u option is deprecated. Use -U.\n"), pset.progname);
 
 }
@@ -690,9 +691,9 @@ process_psqlrc_file(char *filename)
 	sprintf(psqlrc, "%s-%s", filename, PG_VERSION);
 
 	if (access(psqlrc, R_OK) == 0)
-		(void) process_file(psqlrc);
+		(void) process_file(psqlrc, false);
 	else if (access(filename, R_OK) == 0)
-		(void) process_file(filename);
+		(void) process_file(filename, false);
 	free(psqlrc);
 }
 
@@ -737,7 +738,6 @@ printSSLInfo(void)
 #endif
 
 
-
 /*
  * checkWin32Codepage
  *
@@ -760,5 +760,159 @@ checkWin32Codepage(void)
 			   concp, wincp);
 	}
 }
-
 #endif
+
+
+/*
+ * Assign hooks for psql variables.
+ *
+ * This isn't an amazingly good place for them, but neither is anywhere else.
+ */
+
+static void
+autocommit_hook(const char *newval)
+{
+	pset.autocommit = ParseVariableBool(newval);
+}
+
+static void
+on_error_stop_hook(const char *newval)
+{
+	pset.on_error_stop = ParseVariableBool(newval);
+}
+
+static void
+quiet_hook(const char *newval)
+{
+	pset.quiet = ParseVariableBool(newval);
+}
+
+static void
+singleline_hook(const char *newval)
+{
+	pset.singleline = ParseVariableBool(newval);
+}
+
+static void
+singlestep_hook(const char *newval)
+{
+	pset.singlestep = ParseVariableBool(newval);
+}
+
+static void
+fetch_count_hook(const char *newval)
+{
+	pset.fetch_count = ParseVariableNum(newval, -1, -1, false);
+}
+
+static void
+echo_hook(const char *newval)
+{
+	if (newval == NULL)
+		pset.echo = PSQL_ECHO_NONE;
+	else if (strcmp(newval, "queries") == 0)
+		pset.echo = PSQL_ECHO_QUERIES;
+	else if (strcmp(newval, "all") == 0)
+		pset.echo = PSQL_ECHO_ALL;
+	else
+		pset.echo = PSQL_ECHO_NONE;
+}
+
+static void
+echo_hidden_hook(const char *newval)
+{
+	if (newval == NULL)
+		pset.echo_hidden = PSQL_ECHO_HIDDEN_OFF;
+	else if (strcmp(newval, "noexec") == 0)
+		pset.echo_hidden = PSQL_ECHO_HIDDEN_NOEXEC;
+	else if (pg_strcasecmp(newval, "off") == 0)
+		pset.echo_hidden = PSQL_ECHO_HIDDEN_OFF;
+	else
+		pset.echo_hidden = PSQL_ECHO_HIDDEN_ON;
+}
+
+static void
+on_error_rollback_hook(const char *newval)
+{
+	if (newval == NULL)
+		pset.on_error_rollback = PSQL_ERROR_ROLLBACK_OFF;
+	else if (pg_strcasecmp(newval, "interactive") == 0)
+		pset.on_error_rollback = PSQL_ERROR_ROLLBACK_INTERACTIVE;
+	else if (pg_strcasecmp(newval, "off") == 0)
+		pset.on_error_rollback = PSQL_ERROR_ROLLBACK_OFF;
+	else
+		pset.on_error_rollback = PSQL_ERROR_ROLLBACK_ON;
+}
+
+static void
+histcontrol_hook(const char *newval)
+{
+	if (newval == NULL)
+		pset.histcontrol = hctl_none;
+	else if (strcmp(newval, "ignorespace") == 0)
+		pset.histcontrol = hctl_ignorespace;
+	else if (strcmp(newval, "ignoredups") == 0)
+		pset.histcontrol = hctl_ignoredups;
+	else if (strcmp(newval, "ignoreboth") == 0)
+		pset.histcontrol = hctl_ignoreboth;
+	else
+		pset.histcontrol = hctl_none;
+}
+
+static void
+prompt1_hook(const char *newval)
+{
+	pset.prompt1 = newval ? newval : "";
+}
+
+static void
+prompt2_hook(const char *newval)
+{
+	pset.prompt2 = newval ? newval : "";
+}
+
+static void
+prompt3_hook(const char *newval)
+{
+	pset.prompt3 = newval ? newval : "";
+}
+
+static void
+verbosity_hook(const char *newval)
+{
+	if (newval == NULL)
+		pset.verbosity = PQERRORS_DEFAULT;
+	else if (strcmp(newval, "default") == 0)
+		pset.verbosity = PQERRORS_DEFAULT;
+	else if (strcmp(newval, "terse") == 0)
+		pset.verbosity = PQERRORS_TERSE;
+	else if (strcmp(newval, "verbose") == 0)
+		pset.verbosity = PQERRORS_VERBOSE;
+	else
+		pset.verbosity = PQERRORS_DEFAULT;
+
+	if (pset.db)
+		PQsetErrorVerbosity(pset.db, pset.verbosity);
+}
+
+
+static void
+EstablishVariableSpace(void)
+{
+	pset.vars = CreateVariableSpace();
+
+	SetVariableAssignHook(pset.vars, "AUTOCOMMIT", autocommit_hook);
+	SetVariableAssignHook(pset.vars, "ON_ERROR_STOP", on_error_stop_hook);
+	SetVariableAssignHook(pset.vars, "QUIET", quiet_hook);
+	SetVariableAssignHook(pset.vars, "SINGLELINE", singleline_hook);
+	SetVariableAssignHook(pset.vars, "SINGLESTEP", singlestep_hook);
+	SetVariableAssignHook(pset.vars, "FETCH_COUNT", fetch_count_hook);
+	SetVariableAssignHook(pset.vars, "ECHO", echo_hook);
+	SetVariableAssignHook(pset.vars, "ECHO_HIDDEN", echo_hidden_hook);
+	SetVariableAssignHook(pset.vars, "ON_ERROR_ROLLBACK", on_error_rollback_hook);
+	SetVariableAssignHook(pset.vars, "HISTCONTROL", histcontrol_hook);
+	SetVariableAssignHook(pset.vars, "PROMPT1", prompt1_hook);
+	SetVariableAssignHook(pset.vars, "PROMPT2", prompt2_hook);
+	SetVariableAssignHook(pset.vars, "PROMPT3", prompt3_hook);
+	SetVariableAssignHook(pset.vars, "VERBOSITY", verbosity_hook);
+}

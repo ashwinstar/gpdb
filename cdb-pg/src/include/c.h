@@ -10,10 +10,10 @@
  *
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/c.h,v 1.190.2.4 2006/08/10 01:45:17 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/c.h,v 1.214 2006/10/04 00:30:06 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -57,14 +57,18 @@ extern "C" {
 
 #include "pg_config.h"
 #include "pg_config_manual.h"	/* must be after pg_config.h */
-#if !defined(WIN32) && !defined(__CYGWIN__)
+#if !defined(WIN32) && !defined(__CYGWIN__)		/* win32 will include further
+												 * down */
 #include "pg_config_os.h"		/* must be before any system header files */
-#else
-#if defined(_MSC_VER) || defined(__BORLANDC__)
-#define WIN32_CLIENT_ONLY
-#endif
 #endif
 #include "postgres_ext.h"
+#include "pg_trace.h"
+
+#if defined(__BORLANDC__) || (_MSC_VER >= 1400)
+#define errcode __msvc_errcode
+#include <crtdefs.h>
+#undef errcode
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -85,13 +89,8 @@ extern "C" {
 #endif
 
 #if defined(WIN32) || defined(__CYGWIN__)
-#ifndef WIN32_CLIENT_ONLY
-/* We have to redefine some system functions after they are included above */
+/* We have to redefine some system functions after they are included above. */
 #include "pg_config_os.h"
-#else
-#include "port/win32.h"			/* We didn't run configure, but this is our
-								 * port file */
-#endif
 #endif
 
 /* Must be before gettext() games below */
@@ -175,11 +174,6 @@ extern "C" {
  * built-in definition of bool.
  */
 
-/* BeOS defines bool already, but the compiler chokes on the
- * #ifndef unless we wrap it in this check.
- */
-#ifndef __BEOS__
-
 #ifndef __cplusplus
 
 #ifndef bool
@@ -194,7 +188,6 @@ typedef char bool;
 #define false	((bool) 0)
 #endif
 #endif   /* not C++ */
-#endif   /* __BEOS__ */
 
 typedef bool *BoolPtr;
 
@@ -448,8 +441,8 @@ typedef struct varlena VarChar; /* var-length char, ie SQL varchar(n) */
 typedef struct
 {
 	int32		size;			/* these fields must match ArrayType! */
-	int			ndim;
-	int			flags;
+	int			ndim;			/* always 1 for int2vector */
+	int32		dataoffset;		/* always 0 for int2vector */
 	Oid			elemtype;
 	int			dim1;
 	int			lbound1;
@@ -459,8 +452,8 @@ typedef struct
 typedef struct
 {
 	int32		size;			/* these fields must match ArrayType! */
-	int			ndim;
-	int			flags;
+	int			ndim;			/* always 1 for oidvector */
+	int32		dataoffset;		/* always 0 for oidvector */
 	Oid			elemtype;
 	int			dim1;
 	int			lbound1;
@@ -483,7 +476,15 @@ typedef NameData *Name;
 
 #define NameStr(name)	((name).data)
 
-#define SQL_STR_DOUBLE(ch)	((ch) == '\'' || (ch) == '\\')
+/*
+ * Support macros for escaping strings.  escape_backslash should be TRUE
+ * if generating a non-standard-conforming string.	Prefixing a string
+ * with ESCAPE_STRING_SYNTAX guarantees it is non-standard-conforming.
+ * Beware of multiple evaluation of the "ch" argument!
+ */
+#define SQL_STR_DOUBLE(ch, escape_backslash)	\
+	((ch) == '\'' || ((ch) == '\\' && (escape_backslash)))
+
 #define ESCAPE_STRING_SYNTAX	'E'
 
 /* ----------------------------------------------------------------
@@ -616,8 +617,8 @@ typedef NameData *Name;
 	} while (0)
 
 
-/* Get a bit mask of the bits set in non-int32 aligned addresses */
-#define INT_ALIGN_MASK (sizeof(int32) - 1)
+/* Get a bit mask of the bits set in non-long aligned addresses */
+#define LONG_ALIGN_MASK (sizeof(long) - 1)
 
 /*
  * MemSet
@@ -627,9 +628,7 @@ typedef NameData *Name;
  *	overhead.	However, we have also found that the loop is faster than
  *	native libc memset() on some platforms, even those with assembler
  *	memset() functions.  More research needs to be done, perhaps with
- *	platform-specific MEMSET_LOOP_LIMIT values or tests in configure.
- *
- *	bjm 2002-10-08
+ *	MEMSET_LOOP_LIMIT tests in configure.
  */
 #define MemSet(start, val, len) \
 	do \
@@ -639,21 +638,24 @@ typedef NameData *Name;
 		int		_val = (val); \
 		Size	_len = (len); \
 \
-		if ((((long) _vstart) & INT_ALIGN_MASK) == 0 && \
-			(_len & INT_ALIGN_MASK) == 0 && \
+		if ((((long) _vstart) & LONG_ALIGN_MASK) == 0 && \
+			(_len & LONG_ALIGN_MASK) == 0 && \
 			_val == 0 && \
-			_len <= MEMSET_LOOP_LIMIT) \
+			_len <= MEMSET_LOOP_LIMIT && \
+			/* \
+			 *	If MEMSET_LOOP_LIMIT == 0, optimizer should find \
+			 *	the whole "if" false at compile time. \
+			 */ \
+			MEMSET_LOOP_LIMIT != 0) \
 		{ \
-			int32 *_start = (int32 *) _vstart; \
-			int32 *_stop = (int32 *) ((char *) _start + _len); \
+			long *_start = (long *) _vstart; \
+			long *_stop = (long *) ((char *) _start + _len); \
 			while (_start < _stop) \
 				*_start++ = 0; \
 		} \
 		else \
 			memset(_vstart, _val, _len); \
 	} while (0)
-
-#define MEMSET_LOOP_LIMIT  1024
 
 /*
  * MemSetAligned is the same as MemSet except it omits the test to see if
@@ -664,15 +666,16 @@ typedef NameData *Name;
 #define MemSetAligned(start, val, len) \
 	do \
 	{ \
-		int32  *_start = (int32 *) (start); \
+		long   *_start = (long *) (start); \
 		int		_val = (val); \
 		Size	_len = (len); \
 \
-		if ((_len & INT_ALIGN_MASK) == 0 && \
+		if ((_len & LONG_ALIGN_MASK) == 0 && \
 			_val == 0 && \
-			_len <= MEMSET_LOOP_LIMIT) \
+			_len <= MEMSET_LOOP_LIMIT && \
+			MEMSET_LOOP_LIMIT != 0) \
 		{ \
-			int32 *_stop = (int32 *) ((char *) _start + _len); \
+			long *_stop = (long *) ((char *) _start + _len); \
 			while (_start < _stop) \
 				*_start++ = 0; \
 		} \
@@ -690,15 +693,16 @@ typedef NameData *Name;
  * this approach.
  */
 #define MemSetTest(val, len) \
-	( ((len) & INT_ALIGN_MASK) == 0 && \
+	( ((len) & LONG_ALIGN_MASK) == 0 && \
 	(len) <= MEMSET_LOOP_LIMIT && \
+	MEMSET_LOOP_LIMIT != 0 && \
 	(val) == 0 )
 
 #define MemSetLoop(start, val, len) \
 	do \
 	{ \
-		int32 * _start = (int32 *) (start); \
-		int32 * _stop = (int32 *) ((char *) _start + (Size) (len)); \
+		long * _start = (long *) (start); \
+		long * _stop = (long *) ((char *) _start + (Size) (len)); \
 	\
 		while (_start < _stop) \
 			*_start++ = 0; \
@@ -711,7 +715,6 @@ typedef NameData *Name;
  */
 
 /* msb for char */
-#define CSIGNBIT (0x80)
 #define HIGHBIT					(0x80)
 #define IS_HIGHBIT_SET(ch)		((unsigned char)(ch) & HIGHBIT)
 
@@ -719,6 +722,7 @@ typedef NameData *Name;
 #define STATUS_ERROR			(-1)
 #define STATUS_EOF				(-2)
 #define STATUS_FOUND			(1)
+#define STATUS_WAITING			(2)
 
 
 /* ----------------------------------------------------------------

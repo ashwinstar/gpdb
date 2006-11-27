@@ -1,7 +1,6 @@
 /*
  * This file contains stuff needed to be as compatible to Informix as possible.
- *
- * $PostgreSQL: pgsql/src/interfaces/ecpg/include/ecpg_informix.h,v 1.16 2004/08/29 05:06:59 momjian Exp $
+ * $PostgreSQL: pgsql/src/interfaces/ecpg/include/ecpg_informix.h,v 1.18 2006/03/11 04:38:39 momjian Exp $
  */
 #ifndef _ECPG_INFORMIX_H
 #define _ECPG_INFORMIX_H

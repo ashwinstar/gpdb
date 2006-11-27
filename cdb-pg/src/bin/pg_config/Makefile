@@ -2,9 +2,9 @@
 #
 # Makefile for src/bin/pg_config
 #
-# Copyright (c) 1998-2005, PostgreSQL Global Development Group
+# Copyright (c) 1998-2006, PostgreSQL Global Development Group
 #
-# $PostgreSQL: pgsql/src/bin/pg_config/Makefile,v 1.15 2005/08/09 22:47:03 tgl Exp $
+# $PostgreSQL: pgsql/src/bin/pg_config/Makefile,v 1.17 2006/03/05 15:58:50 momjian Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -35,13 +35,13 @@ pg_config: $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) $(LIBS) -o $@$(X)
 
 install: all installdirs
-	$(INSTALL_SCRIPT) pg_config$(X) $(DESTDIR)$(bindir)/pg_config$(X)
+	$(INSTALL_SCRIPT) pg_config$(X) '$(DESTDIR)$(bindir)/pg_config$(X)'
 
 installdirs:
-	$(mkinstalldirs) $(DESTDIR)$(bindir)
+	$(mkinstalldirs) '$(DESTDIR)$(bindir)'
 
 uninstall:
-	rm -f $(DESTDIR)$(bindir)/pg_config$(X)
+	rm -f '$(DESTDIR)$(bindir)/pg_config$(X)'
 
 clean distclean maintainer-clean:
 	rm -f pg_config$(X) $(OBJS)

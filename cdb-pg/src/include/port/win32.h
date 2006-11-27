@@ -1,20 +1,27 @@
-/* $PostgreSQL: pgsql/src/include/port/win32.h,v 1.49.2.1 2006/08/10 01:45:17 momjian Exp $ */
+/* $PostgreSQL: pgsql/src/include/port/win32.h,v 1.63 2006/10/19 20:03:08 tgl Exp $ */
+
+#if defined(_MSC_VER) || defined(__BORLANDC__)
+#define WIN32_ONLY_COMPILER
+#endif
 
 /* undefine and redefine after #include */
 #undef mkdir
 
 #undef ERROR
+#define _WINSOCKAPI_
 #include <windows.h>
-#include <winsock.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#undef small
 #include <process.h>
 #include <signal.h>
 #include <errno.h>
-
+#include <direct.h>
+#include <sys/utime.h>			/* for non-unicode version */
 #undef near
 
 /* Must be here to avoid conflicting with prototype in windows.h */
 #define mkdir(a,b)	mkdir(a)
-
 
 #define HAVE_FSYNC_WRITETHROUGH
 #define HAVE_FSYNC_WRITETHROUGH_ONLY
@@ -28,7 +35,7 @@
 #define USES_WINSOCK
 
 /* defines for dynamic linking on Win32 platform */
-#if defined(__MINGW32__) || defined(__CYGWIN__)
+#if defined(WIN32) || defined(__CYGWIN__)
 
 #if __GNUC__ && ! defined (__declspec)
 #error You need egcs 1.1 or newer for compiling!
@@ -39,17 +46,11 @@
 #else							/* not BUILDING_DLL */
 #define DLLIMPORT __declspec (dllimport)
 #endif
-#elif defined(WIN32_CLIENT_ONLY)
-
-#if defined(_DLL)
-#define DLLIMPORT __declspec (dllexport)
-#else							/* not _DLL */
-#define DLLIMPORT __declspec (dllimport)
-#endif
 #else							/* not CYGWIN, not MSVC, not MingW */
 
 #define DLLIMPORT
 #endif
+
 
 /*
  *	IPC defines
@@ -111,12 +112,17 @@ int			semop(int semId, struct sembuf * sops, int flag);
 
 
 /*
- * Signal stuff
+ *	Signal stuff
+ *	WIN32 doesn't have wait(), so the return value for children
+ *	is simply the return value specified by the child, without
+ *	any additional information on whether the child terminated
+ *	on its own or via a signal.  These macros are also used
+ *	to interpret the return value of system().
  */
-#define WEXITSTATUS(w)	(((w) >> 8) & 0xff)
-#define WIFEXITED(w)	(((w) & 0xff) == 0)
-#define WIFSIGNALED(w)	(((w) & 0x7f) > 0 && (((w) & 0x7f) < 0x7f))
-#define WTERMSIG(w)		((w) & 0x7f)
+#define WEXITSTATUS(w)	(w)
+#define WIFEXITED(w)	(true)
+#define WIFSIGNALED(w)	(false)
+#define WTERMSIG(w)		(0)
 
 #define sigmask(sig) ( 1 << ((sig)-1) )
 
@@ -165,31 +171,16 @@ int			setitimer(int which, const struct itimerval * value, struct itimerval * ov
 /*
  * Supplement to <sys/types.h>.
  *
- * Perl already has conflicting defines for uid_t and gid_t.
+ * Perl already has typedefs for uid_t and gid_t.
  */
 #ifndef PLPERL_HAVE_UID_GID
 typedef int uid_t;
 typedef int gid_t;
-#else
-/* These are redefined by perl. */
-#define uid_t int
-#define gid_t int
 #endif
 typedef long key_t;
 
-#ifdef WIN32_CLIENT_ONLY
+#ifdef WIN32_ONLY_COMPILER
 typedef int pid_t;
-#endif
-
-#ifdef MSVC
-/*
- *	Certain "standard edition" versions of MSVC throw a warning
- *	that later generates an error for "inline" statements, but
- *	__inline seems to work.  e.g.  Microsoft Visual C++ .NET
- *	Version 7.1.3088
- */
-#define inline __inline
-#define __inline__ __inline
 #endif
 
 /*
@@ -238,11 +229,6 @@ HANDLE		pgwin32_create_signal_listener(pid_t pid);
 void		pgwin32_dispatch_queued_signals(void);
 void		pg_queue_signal(int signum);
 
-#ifndef FRONTEND
-#define pg_usleep(t) pgwin32_backend_usleep(t)
-void		pgwin32_backend_usleep(long microsec);
-#endif
-
 /* In backend/port/win32/socket.c */
 #ifndef FRONTEND
 #define socket(af, type, protocol) pgwin32_socket(af, type, protocol)
@@ -267,5 +253,57 @@ extern int	pgwin32_is_admin(void);
 extern int	pgwin32_is_service(void);
 #endif
 
-/* in backend/port/win32/error.c */
+/* in port/win32error.c */
 extern void _dosmaperr(unsigned long);
+
+
+/* Things that exist in MingW headers, but need to be added to MSVC */
+#ifdef WIN32_ONLY_COMPILER
+typedef long ssize_t;
+typedef unsigned short mode_t;
+
+/*
+ *	Certain "standard edition" versions of MSVC throw a warning
+ *	that later generates an error for "inline" statements, but
+ *	__inline seems to work.  e.g.  Microsoft Visual C++ .NET
+ *	Version 7.1.3088
+ */
+#define inline __inline
+#define __inline__ __inline
+
+#define _S_IRWXU	(_S_IREAD | _S_IWRITE | _S_IEXEC)
+#define _S_IXUSR	_S_IEXEC
+#define _S_IWUSR	_S_IWRITE
+#define _S_IRUSR	_S_IREAD
+#define S_IRUSR		_S_IRUSR
+#define S_IWUSR		_S_IWUSR
+#define S_IXUSR		_S_IXUSR
+#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
+#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
+
+#define F_OK 0
+#define W_OK 2
+#define R_OK 4
+
+#define isinf(x) ((_fpclass(x) == _FPCLASS_PINF) || (_fpclass(x) == _FPCLASS_NINF))
+#define isnan(x) _isnan(x)
+#define finite(x) _finite(x)
+
+#ifndef			BIG_ENDIAN
+#define			BIG_ENDIAN		4321
+#endif
+#ifndef			LITTLE_ENDIAN
+#define			LITTLE_ENDIAN	1234
+#endif
+#ifndef			PDP_ENDIAN
+#define			PDP_ENDIAN		3412
+#endif
+
+#ifndef BYTE_ORDER
+#define BYTE_ORDER LITTLE_ENDIAN
+#endif
+
+/* Pulled from Makefile.port in mingw */
+#define DLSUFFIX ".dll"
+
+#endif

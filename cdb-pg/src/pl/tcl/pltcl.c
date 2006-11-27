@@ -2,36 +2,7 @@
  * pltcl.c		- PostgreSQL support for Tcl as
  *				  procedural language (PL)
  *
- *	  This software is copyrighted by Jan Wieck - Hamburg.
- *
- *	  The author hereby grants permission  to  use,  copy,	modify,
- *	  distribute,  and	license this software and its documentation
- *	  for any purpose, provided that existing copyright notices are
- *	  retained	in	all  copies  and  that	this notice is included
- *	  verbatim in any distributions. No written agreement, license,
- *	  or  royalty  fee	is required for any of the authorized uses.
- *	  Modifications to this software may be  copyrighted  by  their
- *	  author  and  need  not  follow  the licensing terms described
- *	  here, provided that the new terms are  clearly  indicated  on
- *	  the first page of each file where they apply.
- *
- *	  IN NO EVENT SHALL THE AUTHOR OR DISTRIBUTORS BE LIABLE TO ANY
- *	  PARTY  FOR  DIRECT,	INDIRECT,	SPECIAL,   INCIDENTAL,	 OR
- *	  CONSEQUENTIAL   DAMAGES  ARISING	OUT  OF  THE  USE  OF  THIS
- *	  SOFTWARE, ITS DOCUMENTATION, OR ANY DERIVATIVES THEREOF, EVEN
- *	  IF  THE  AUTHOR  HAVE BEEN ADVISED OF THE POSSIBILITY OF SUCH
- *	  DAMAGE.
- *
- *	  THE  AUTHOR  AND	DISTRIBUTORS  SPECIFICALLY	 DISCLAIM	ANY
- *	  WARRANTIES,  INCLUDING,  BUT	NOT  LIMITED  TO,  THE	IMPLIED
- *	  WARRANTIES  OF  MERCHANTABILITY,	FITNESS  FOR  A  PARTICULAR
- *	  PURPOSE,	AND NON-INFRINGEMENT.  THIS SOFTWARE IS PROVIDED ON
- *	  AN "AS IS" BASIS, AND THE AUTHOR	AND  DISTRIBUTORS  HAVE  NO
- *	  OBLIGATION   TO	PROVIDE   MAINTENANCE,	 SUPPORT,  UPDATES,
- *	  ENHANCEMENTS, OR MODIFICATIONS.
- *
- * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/tcl/pltcl.c,v 1.98.2.2 2006/01/17 17:33:23 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/pl/tcl/pltcl.c,v 1.108 2006/10/04 00:30:14 momjian Exp $
  *
  **********************************************************************/
 
@@ -96,6 +67,7 @@ utf_e2u(unsigned char *src)
 #define  UTF_E2U(x)  (x)
 #endif   /* PLTCL_UTF */
 
+PG_MODULE_MAGIC;
 
 /**********************************************************************
  * The information we cache about loaded procedures
@@ -148,14 +120,13 @@ static pltcl_proc_desc *pltcl_current_prodesc = NULL;
 /**********************************************************************
  * Forward declarations
  **********************************************************************/
-static void pltcl_init_all(void);
-static void pltcl_init_interp(Tcl_Interp *interp);
-
-static void pltcl_init_load_unknown(Tcl_Interp *interp);
-
 Datum		pltcl_call_handler(PG_FUNCTION_ARGS);
 Datum		pltclu_call_handler(PG_FUNCTION_ARGS);
-void		pltcl_init(void);
+void		_PG_init(void);
+
+static void pltcl_init_all(void);
+static void pltcl_init_interp(Tcl_Interp *interp);
+static void pltcl_init_load_unknown(Tcl_Interp *interp);
 
 static Datum pltcl_func_handler(PG_FUNCTION_ARGS);
 
@@ -210,17 +181,15 @@ perm_fmgr_info(Oid functionId, FmgrInfo *finfo)
 	fmgr_info_cxt(functionId, finfo, TopMemoryContext);
 }
 
-/**********************************************************************
- * pltcl_init()		- Initialize all that's safe to do in the postmaster
+/*
+ * _PG_init()			- library load-time initialization
  *
- * DO NOT make this static --- it has to be callable by preload
- **********************************************************************/
+ * DO NOT make this static nor change its name!
+ */
 void
-pltcl_init(void)
+_PG_init(void)
 {
-	/************************************************************
-	 * Do initialization only once
-	 ************************************************************/
+	/* Be sure we do initialization only once (should be redundant now) */
 	if (pltcl_pm_init_done)
 		return;
 
@@ -264,20 +233,15 @@ pltcl_init(void)
 
 /**********************************************************************
  * pltcl_init_all()		- Initialize all
+ *
+ * This does initialization that can't be done in the postmaster, and
+ * hence is not safe to do at library load time.
  **********************************************************************/
 static void
 pltcl_init_all(void)
 {
 	/************************************************************
-	 * Execute postmaster-startup safe initialization
-	 ************************************************************/
-	if (!pltcl_pm_init_done)
-		pltcl_init();
-
-	/************************************************************
-	 * Any other initialization that must be done each time a new
-	 * backend starts:
-	 * - Try to load the unknown procedure from pltcl_modules
+	 * Try to load the unknown procedure from pltcl_modules
 	 ************************************************************/
 	if (!pltcl_be_init_done)
 	{
@@ -531,7 +495,6 @@ pltcl_func_handler(PG_FUNCTION_ARGS)
 					tupType = HeapTupleHeaderGetTypeId(td);
 					tupTypmod = HeapTupleHeaderGetTypMod(td);
 					tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
-					tupdesc = CreateTupleDescCopy(tupdesc);
 					/* Build a temporary HeapTuple control structure */
 					tmptup.t_len = HeapTupleHeaderGetDatumLength(td);
 					tmptup.t_data = td;
@@ -540,7 +503,7 @@ pltcl_func_handler(PG_FUNCTION_ARGS)
 					pltcl_build_tuple_argument(&tmptup, tupdesc, &list_tmp);
 					Tcl_DStringAppendElement(&tcl_cmd,
 											 Tcl_DStringValue(&list_tmp));
-					FreeTupleDesc(tupdesc);
+					ReleaseTupleDesc(tupdesc);
 				}
 			}
 			else
@@ -555,8 +518,8 @@ pltcl_func_handler(PG_FUNCTION_ARGS)
 				{
 					char	   *tmp;
 
-					tmp = DatumGetCString(FunctionCall1(&prodesc->arg_out_func[i],
-														fcinfo->arg[i]));
+					tmp = OutputFunctionCall(&prodesc->arg_out_func[i],
+											 fcinfo->arg[i]);
 					UTF_BEGIN;
 					Tcl_DStringAppendElement(&tcl_cmd, UTF_E2U(tmp));
 					UTF_END;
@@ -609,14 +572,17 @@ pltcl_func_handler(PG_FUNCTION_ARGS)
 		elog(ERROR, "SPI_finish() failed");
 
 	if (fcinfo->isnull)
-		retval = (Datum) 0;
+		retval = InputFunctionCall(&prodesc->result_in_func,
+								   NULL,
+								   prodesc->result_typioparam,
+								   -1);
 	else
 	{
 		UTF_BEGIN;
-		retval = FunctionCall3(&prodesc->result_in_func,
-							   PointerGetDatum(UTF_U2E(interp->result)),
-							   ObjectIdGetDatum(prodesc->result_typioparam),
-							   Int32GetDatum(-1));
+		retval = InputFunctionCall(&prodesc->result_in_func,
+								   UTF_U2E(interp->result),
+								   prodesc->result_typioparam,
+								   -1);
 		UTF_END;
 	}
 
@@ -682,6 +648,16 @@ pltcl_trigger_handler(PG_FUNCTION_ARGS)
 		/* The oid of the trigger relation for argument TG_relid */
 		stroid = DatumGetCString(DirectFunctionCall1(oidout,
 							ObjectIdGetDatum(trigdata->tg_relation->rd_id)));
+		Tcl_DStringAppendElement(&tcl_cmd, stroid);
+		pfree(stroid);
+
+		/* The name of the table the trigger is acting on: TG_table_name */
+		stroid = SPI_getrelname(trigdata->tg_relation);
+		Tcl_DStringAppendElement(&tcl_cmd, stroid);
+		pfree(stroid);
+
+		/* The schema of the table the trigger is acting on: TG_table_schema */
+		stroid = SPI_getnspname(trigdata->tg_relation);
 		Tcl_DStringAppendElement(&tcl_cmd, stroid);
 		pfree(stroid);
 
@@ -836,7 +812,6 @@ pltcl_trigger_handler(PG_FUNCTION_ARGS)
 	/* Use a TRY to ensure ret_values will get freed */
 	PG_TRY();
 	{
-
 		if (ret_numvals % 2 != 0)
 			elog(ERROR, "invalid return list from trigger - must have even # of elements");
 
@@ -902,11 +877,10 @@ pltcl_trigger_handler(PG_FUNCTION_ARGS)
 			modnulls[attnum - 1] = ' ';
 			fmgr_info(typinput, &finfo);
 			UTF_BEGIN;
-			modvalues[attnum - 1] =
-				FunctionCall3(&finfo,
-							  CStringGetDatum(UTF_U2E(ret_value)),
-							  ObjectIdGetDatum(typioparam),
-					   Int32GetDatum(tupdesc->attrs[attnum - 1]->atttypmod));
+			modvalues[attnum - 1] = InputFunctionCall(&finfo,
+												 (char *) UTF_U2E(ret_value),
+													  typioparam,
+									  tupdesc->attrs[attnum - 1]->atttypmod);
 			UTF_END;
 		}
 
@@ -1172,7 +1146,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 		{
 			/* trigger procedure has fixed args */
 			strcpy(proc_internal_args,
-				   "TG_name TG_relid TG_relatts TG_when TG_level TG_op __PLTcl_Tup_NEW __PLTcl_Tup_OLD args");
+				   "TG_name TG_relid TG_table_name TG_table_schema TG_relatts TG_when TG_level TG_op __PLTcl_Tup_NEW __PLTcl_Tup_OLD args");
 		}
 
 		/************************************************************
@@ -1689,10 +1663,6 @@ pltcl_process_SPI_result(Tcl_Interp *interp,
 
 	switch (spi_rc)
 	{
-		case SPI_OK_UTILITY:
-			Tcl_SetResult(interp, "0", TCL_VOLATILE);
-			break;
-
 		case SPI_OK_SELINTO:
 		case SPI_OK_INSERT:
 		case SPI_OK_DELETE:
@@ -1701,7 +1671,18 @@ pltcl_process_SPI_result(Tcl_Interp *interp,
 			Tcl_SetResult(interp, buf, TCL_VOLATILE);
 			break;
 
+		case SPI_OK_UTILITY:
+			if (tuptable == NULL)
+			{
+				Tcl_SetResult(interp, "0", TCL_VOLATILE);
+				break;
+			}
+			/* FALL THRU for utility returning tuples */
+
 		case SPI_OK_SELECT:
+		case SPI_OK_INSERT_RETURNING:
+		case SPI_OK_DELETE_RETURNING:
+		case SPI_OK_UPDATE_RETURNING:
 
 			/*
 			 * Process the tuples we got
@@ -1785,7 +1766,6 @@ pltcl_SPI_prepare(ClientData cdata, Tcl_Interp *interp,
 	pltcl_query_desc *qdesc;
 	void	   *plan;
 	int			i;
-	HeapTuple	typeTup;
 	Tcl_HashEntry *hashent;
 	int			hashnew;
 	Tcl_HashTable *query_hash;
@@ -1833,33 +1813,18 @@ pltcl_SPI_prepare(ClientData cdata, Tcl_Interp *interp,
 		 ************************************************************/
 		for (i = 0; i < nargs; i++)
 		{
-			char	   *argcopy;
-			List	   *names = NIL;
-			ListCell   *l;
-			TypeName   *typename;
+			List	   *names;
+			HeapTuple	typeTup;
 
-			/************************************************************
-			 * Use SplitIdentifierString() on a copy of the type name,
-			 * turn the resulting pointer list into a TypeName node
-			 * and call typenameType() to get the pg_type tuple.
-			 ************************************************************/
-			argcopy = pstrdup(args[i]);
-			SplitIdentifierString(argcopy, '.', &names);
-			typename = makeNode(TypeName);
-			foreach(l, names)
-				typename->names = lappend(typename->names, makeString(lfirst(l)));
-
-			typeTup = typenameType(typename);
+			/* Parse possibly-qualified type name and look it up in pg_type */
+			names = stringToQualifiedNameList(args[i],
+											  "pltcl_SPI_prepare");
+			typeTup = typenameType(NULL, makeTypeNameFromNameList(names));
 			qdesc->argtypes[i] = HeapTupleGetOid(typeTup);
 			perm_fmgr_info(((Form_pg_type) GETSTRUCT(typeTup))->typinput,
 						   &(qdesc->arginfuncs[i]));
 			qdesc->argtypioparams[i] = getTypeIOParam(typeTup);
 			ReleaseSysCache(typeTup);
-
-			list_free(typename->names);
-			pfree(typename);
-			list_free(names);
-			pfree(argcopy);
 		}
 
 		/************************************************************
@@ -2088,17 +2053,18 @@ pltcl_SPI_execute_plan(ClientData cdata, Tcl_Interp *interp,
 		{
 			if (nulls && nulls[j] == 'n')
 			{
-				/* don't try to convert the input for a null */
-				argvalues[j] = (Datum) 0;
+				argvalues[j] = InputFunctionCall(&qdesc->arginfuncs[j],
+												 NULL,
+												 qdesc->argtypioparams[j],
+												 -1);
 			}
 			else
 			{
 				UTF_BEGIN;
-				argvalues[j] =
-					FunctionCall3(&qdesc->arginfuncs[j],
-								  CStringGetDatum(UTF_U2E(callargs[j])),
-								  ObjectIdGetDatum(qdesc->argtypioparams[j]),
-								  Int32GetDatum(-1));
+				argvalues[j] = InputFunctionCall(&qdesc->arginfuncs[j],
+											   (char *) UTF_U2E(callargs[j]),
+												 qdesc->argtypioparams[j],
+												 -1);
 				UTF_END;
 			}
 		}
@@ -2232,8 +2198,7 @@ pltcl_set_tuple_values(Tcl_Interp *interp, CONST84 char *arrayname,
 		 ************************************************************/
 		if (!isnull && OidIsValid(typoutput))
 		{
-			outputstr = DatumGetCString(OidFunctionCall1(typoutput,
-														 attr));
+			outputstr = OidOutputFunctionCall(typoutput, attr);
 			UTF_BEGIN;
 			Tcl_SetVar2(interp, *arrptr, *nameptr, UTF_E2U(outputstr), 0);
 			UTF_END;
@@ -2302,8 +2267,7 @@ pltcl_build_tuple_argument(HeapTuple tuple, TupleDesc tupdesc,
 		 ************************************************************/
 		if (!isnull && OidIsValid(typoutput))
 		{
-			outputstr = DatumGetCString(OidFunctionCall1(typoutput,
-														 attr));
+			outputstr = OidOutputFunctionCall(typoutput, attr);
 			Tcl_DStringAppendElement(retval, attname);
 			UTF_BEGIN;
 			Tcl_DStringAppendElement(retval, UTF_E2U(outputstr));

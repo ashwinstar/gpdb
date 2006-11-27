@@ -1,12 +1,6 @@
-# HP-UX 10 has a select() in libcurses, so we need to get the libc version,
-# which we do by linking -lc before -lcurses.  (Unfortunately we can't
-# just not use libcurses.)  This also ensures that we get the POSIX signal
-# routines in libc, not the BSD-like ones in libBSD.
-LIBS := -lc $(LIBS)
-
-# On the other hand, if we don't have POSIX signals, we need to use the
-# libBSD signal routines.  (HPUX 9 and early HPUX 10 releases don't have
-# POSIX signals.)  Make sure libBSD comes before libc in that case.
+# If we don't have POSIX signals, we need to use the libBSD signal routines.
+# (HPUX 9 and early HPUX 10 releases don't have POSIX signals.)  Link in
+# libBSD only in that case.
 ifeq ($(HAVE_POSIX_SIGNALS), no)
    LIBS := -lBSD $(LIBS)
 endif
@@ -19,9 +13,9 @@ LIBS := -lxnet $(LIBS)
 # Set up rpath so that the executables don't need SHLIB_PATH to be set.
 # (Note: --disable-rpath is a really bad idea on this platform...)
 ifeq ($(with_gnu_ld), yes)
-   rpath = -Wl,-rpath -Wl,$(rpathdir)
+   rpath = -Wl,-rpath -Wl,'$(rpathdir)'
 else
-   rpath = -Wl,+b -Wl,$(rpathdir)
+   rpath = -Wl,+b -Wl,'$(rpathdir)'
 endif
 
 # catch null pointer dereferences

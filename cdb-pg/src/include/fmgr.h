@@ -8,10 +8,10 @@
  * or call fmgr-callable functions.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/fmgr.h,v 1.40 2005/10/15 02:49:41 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/fmgr.h,v 1.48 2006/10/04 00:30:06 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -20,6 +20,9 @@
 
 /* We don't want to include primnodes.h here, so make a stub reference */
 typedef struct Node *fmNodePtr;
+
+/* Likewise, avoid including stringinfo.h here */
+typedef struct StringInfoData *fmStringInfo;
 
 
 /*
@@ -291,17 +294,79 @@ typedef struct
 } Pg_finfo_record;
 
 /* Expected signature of an info function */
-typedef Pg_finfo_record *(*PGFInfoFunction) (void);
+typedef const Pg_finfo_record *(*PGFInfoFunction) (void);
 
-/* Macro to build an info function associated with the given function name */
-
+/*
+ *	Macro to build an info function associated with the given function name.
+ *	Win32 loadable functions usually link with 'dlltool --export-all', but it
+ *	doesn't hurt to add DLLIMPORT in case they don't.
+ */
 #define PG_FUNCTION_INFO_V1(funcname) \
-extern Pg_finfo_record * CppConcat(pg_finfo_,funcname) (void); \
-Pg_finfo_record * \
+extern DLLIMPORT const Pg_finfo_record * CppConcat(pg_finfo_,funcname)(void); \
+const Pg_finfo_record * \
 CppConcat(pg_finfo_,funcname) (void) \
 { \
-	static Pg_finfo_record my_finfo = { 1 }; \
+	static const Pg_finfo_record my_finfo = { 1 }; \
 	return &my_finfo; \
+} \
+extern int no_such_variable
+
+
+/*-------------------------------------------------------------------------
+ *		Support for verifying backend compatibility of loaded modules
+ *
+ * We require dynamically-loaded modules to include the macro call
+ *		PG_MODULE_MAGIC;
+ * so that we can check for obvious incompatibility, such as being compiled
+ * for a different major PostgreSQL version.
+ *
+ * To compile with versions of PostgreSQL that do not support this,
+ * you may put an #ifdef/#endif test around it.  Note that in a multiple-
+ * source-file module, the macro call should only appear once.
+ *
+ * The specific items included in the magic block are intended to be ones that
+ * are custom-configurable and especially likely to break dynamically loaded
+ * modules if they were compiled with other values.  Also, the length field
+ * can be used to detect definition changes.
+ *-------------------------------------------------------------------------
+ */
+
+/* Definition of the magic block structure */
+typedef struct
+{
+	int			len;			/* sizeof(this struct) */
+	int			version;		/* PostgreSQL major version */
+	int			funcmaxargs;	/* FUNC_MAX_ARGS */
+	int			indexmaxkeys;	/* INDEX_MAX_KEYS */
+	int			namedatalen;	/* NAMEDATALEN */
+} Pg_magic_struct;
+
+/* The actual data block contents */
+#define PG_MODULE_MAGIC_DATA \
+{ \
+	sizeof(Pg_magic_struct), \
+	PG_VERSION_NUM / 100, \
+	FUNC_MAX_ARGS, \
+	INDEX_MAX_KEYS, \
+	NAMEDATALEN \
+}
+
+/*
+ * Declare the module magic function.  It needs to be a function as the dlsym
+ * in the backend is only guaranteed to work on functions, not data
+ */
+typedef const Pg_magic_struct *(*PGModuleMagicFunction) (void);
+
+#define PG_MAGIC_FUNCTION_NAME Pg_magic_func
+#define PG_MAGIC_FUNCTION_NAME_STRING "Pg_magic_func"
+
+#define PG_MODULE_MAGIC \
+extern DLLIMPORT const Pg_magic_struct *PG_MAGIC_FUNCTION_NAME(void); \
+const Pg_magic_struct * \
+PG_MAGIC_FUNCTION_NAME(void) \
+{ \
+	static const Pg_magic_struct Pg_magic_data = PG_MODULE_MAGIC_DATA; \
+	return &Pg_magic_data; \
 } \
 extern int no_such_variable
 
@@ -391,11 +456,25 @@ extern Datum OidFunctionCall9(Oid functionId, Datum arg1, Datum arg2,
 				 Datum arg6, Datum arg7, Datum arg8,
 				 Datum arg9);
 
+/* Special cases for convenient invocation of datatype I/O functions. */
+extern Datum InputFunctionCall(FmgrInfo *flinfo, char *str,
+				  Oid typioparam, int32 typmod);
+extern Datum OidInputFunctionCall(Oid functionId, char *str,
+					 Oid typioparam, int32 typmod);
+extern char *OutputFunctionCall(FmgrInfo *flinfo, Datum val);
+extern char *OidOutputFunctionCall(Oid functionId, Datum val);
+extern Datum ReceiveFunctionCall(FmgrInfo *flinfo, fmStringInfo buf,
+					Oid typioparam, int32 typmod);
+extern Datum OidReceiveFunctionCall(Oid functionId, fmStringInfo buf,
+					   Oid typioparam, int32 typmod);
+extern bytea *SendFunctionCall(FmgrInfo *flinfo, Datum val);
+extern bytea *OidSendFunctionCall(Oid functionId, Datum val);
+
 
 /*
  * Routines in fmgr.c
  */
-extern Pg_finfo_record *fetch_finfo_record(void *filehandle, char *funcname);
+extern const Pg_finfo_record *fetch_finfo_record(void *filehandle, char *funcname);
 extern void clear_external_function_hash(void *filehandle);
 extern Oid	fmgr_internal_function(const char *proname);
 extern Oid	get_fn_expr_rettype(FmgrInfo *flinfo);
@@ -410,7 +489,8 @@ extern char *Dynamic_library_path;
 extern PGFunction load_external_function(char *filename, char *funcname,
 					   bool signalNotFound, void **filehandle);
 extern PGFunction lookup_external_function(void *filehandle, char *funcname);
-extern void load_file(char *filename);
+extern void load_file(const char *filename, bool restricted);
+extern void **find_rendezvous_variable(const char *varName);
 
 
 /*

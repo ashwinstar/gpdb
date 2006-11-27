@@ -1,18 +1,17 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/command.c,v 1.154.2.3 2006/03/04 04:30:51 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/command.c,v 1.174 2006/10/06 17:14:00 petere Exp $
  */
 #include "postgres_fe.h"
 #include "command.h"
 
-#ifdef WIN32_CLIENT_ONLY		/* needed for BCC */
+#ifdef __BORLANDC__				/* needed for BCC */
 #undef mkdir
 #endif
 
-#include <errno.h>
 #include <ctype.h>
 #ifdef HAVE_PWD_H
 #include <pwd.h>
@@ -27,14 +26,13 @@
 #include <io.h>
 #include <fcntl.h>
 #include <direct.h>
-#ifndef WIN32_CLIENT_ONLY
 #include <sys/types.h>			/* for umask() */
 #include <sys/stat.h>			/* for stat() */
-#endif
 #endif
 
 #include "libpq-fe.h"
 #include "pqexpbuffer.h"
+#include "dumputils.h"
 
 #include "common.h"
 #include "copy.h"
@@ -55,7 +53,7 @@ static backslashResult exec_command(const char *cmd,
 			 PsqlScanState scan_state,
 			 PQExpBuffer query_buf);
 static bool do_edit(const char *filename_arg, PQExpBuffer query_buf);
-static bool do_connect(const char *new_dbname, const char *new_user);
+static bool do_connect(char *dbname, char *user, char *host, char *port);
 static bool do_shell(const char *command);
 
 
@@ -81,7 +79,7 @@ backslashResult
 HandleSlashCmds(PsqlScanState scan_state,
 				PQExpBuffer query_buf)
 {
-	backslashResult status = CMD_SKIP_LINE;
+	backslashResult status = PSQL_CMD_SKIP_LINE;
 	char	   *cmd;
 	char	   *arg;
 
@@ -93,7 +91,7 @@ HandleSlashCmds(PsqlScanState scan_state,
 	/* And try to execute it */
 	status = exec_command(cmd, scan_state, query_buf);
 
-	if (status == CMD_UNKNOWN && strlen(cmd) > 1)
+	if (status == PSQL_CMD_UNKNOWN && strlen(cmd) > 1)
 	{
 		/*
 		 * If the command was not recognized, try to parse it as a one-letter
@@ -110,23 +108,23 @@ HandleSlashCmds(PsqlScanState scan_state,
 
 		status = exec_command(new_cmd, scan_state, query_buf);
 
-		if (status != CMD_UNKNOWN)
+		if (status != PSQL_CMD_UNKNOWN)
 		{
 			/* adjust cmd for possible messages below */
 			cmd[1] = '\0';
 		}
 	}
 
-	if (status == CMD_UNKNOWN)
+	if (status == PSQL_CMD_UNKNOWN)
 	{
 		if (pset.cur_cmd_interactive)
 			fprintf(stderr, _("Invalid command \\%s. Try \\? for help.\n"), cmd);
 		else
 			psql_error("invalid command \\%s\n", cmd);
-		status = CMD_ERROR;
+		status = PSQL_CMD_ERROR;
 	}
 
-	if (status != CMD_ERROR)
+	if (status != PSQL_CMD_ERROR)
 	{
 		/* eat any remaining arguments after a valid command */
 		/* note we suppress evaluation of backticks here */
@@ -154,6 +152,39 @@ HandleSlashCmds(PsqlScanState scan_state,
 }
 
 /*
+ * Read and interpret an argument to the \connect slash command.
+ */
+static char *
+read_connect_arg(PsqlScanState scan_state)
+{
+	char	   *result;
+	char		quote;
+
+	/*
+	 * Ideally we should treat the arguments as SQL identifiers.  But for
+	 * backwards compatibility with 7.2 and older pg_dump files, we have to
+	 * take unquoted arguments verbatim (don't downcase them). For now,
+	 * double-quoted arguments may be stripped of double quotes (as if SQL
+	 * identifiers).  By 7.4 or so, pg_dump files can be expected to
+	 * double-quote all mixed-case \connect arguments, and then we can get rid
+	 * of OT_SQLIDHACK.
+	 */
+	result = psql_scan_slash_option(scan_state, OT_SQLIDHACK, &quote, true);
+
+	if (!result)
+		return NULL;
+
+	if (quote)
+		return result;
+
+	if (*result == '\0' || strcmp(result, "-") == 0)
+		return NULL;
+
+	return result;
+}
+
+
+/*
  * Subroutine to actually try to execute a backslash command.
  */
 static backslashResult
@@ -163,8 +194,7 @@ exec_command(const char *cmd,
 {
 	bool		success = true; /* indicate here if the command ran ok or
 								 * failed */
-	bool		quiet = QUIET();
-	backslashResult status = CMD_SKIP_LINE;
+	backslashResult status = PSQL_CMD_SKIP_LINE;
 
 	/*
 	 * \a -- toggle field alignment This makes little sense but we keep it
@@ -173,9 +203,9 @@ exec_command(const char *cmd,
 	if (strcmp(cmd, "a") == 0)
 	{
 		if (pset.popt.topt.format != PRINT_ALIGNED)
-			success = do_pset("format", "aligned", &pset.popt, quiet);
+			success = do_pset("format", "aligned", &pset.popt, pset.quiet);
 		else
-			success = do_pset("format", "unaligned", &pset.popt, quiet);
+			success = do_pset("format", "unaligned", &pset.popt, pset.quiet);
 	}
 
 	/* \C -- override table title (formerly change HTML caption) */
@@ -184,53 +214,43 @@ exec_command(const char *cmd,
 		char	   *opt = psql_scan_slash_option(scan_state,
 												 OT_NORMAL, NULL, true);
 
-		success = do_pset("title", opt, &pset.popt, quiet);
+		success = do_pset("title", opt, &pset.popt, pset.quiet);
 		free(opt);
 	}
 
-	/*----------
-	 * \c or \connect -- connect to new database or as different user
+	/*
+	 * \c or \connect -- connect to database using the specified parameters.
 	 *
-	 * \c foo bar  connect to db "foo" as user "bar"
-	 * \c foo [-]  connect to db "foo" as current user
-	 * \c - bar    connect to current db as user "bar"
-	 * \c		   connect to default db as default user
-	 *----------
+	 * \c dbname user host port
+	 *
+	 * If any of these parameters are omitted or specified as '-', the current
+	 * value of the parameter will be used instead. If the parameter has no
+	 * current value, the default value for that parameter will be used. Some
+	 * examples:
+	 *
+	 * \c - - hst		Connect to current database on current port of host
+	 * "hst" as current user. \c - usr - prt   Connect to current database on
+	 * "prt" port of current host as user "usr". \c dbs			  Connect to
+	 * "dbs" database on current port of current host as current user.
 	 */
 	else if (strcmp(cmd, "c") == 0 || strcmp(cmd, "connect") == 0)
 	{
 		char	   *opt1,
-				   *opt2;
-		char		opt1q,
-					opt2q;
+				   *opt2,
+				   *opt3,
+				   *opt4;
 
-		/*
-		 * Ideally we should treat the arguments as SQL identifiers.  But for
-		 * backwards compatibility with 7.2 and older pg_dump files, we have
-		 * to take unquoted arguments verbatim (don't downcase them). For now,
-		 * double-quoted arguments may be stripped of double quotes (as if SQL
-		 * identifiers).  By 7.4 or so, pg_dump files can be expected to
-		 * double-quote all mixed-case \connect arguments, and then we can get
-		 * rid of OT_SQLIDHACK.
-		 */
-		opt1 = psql_scan_slash_option(scan_state,
-									  OT_SQLIDHACK, &opt1q, true);
-		opt2 = psql_scan_slash_option(scan_state,
-									  OT_SQLIDHACK, &opt2q, true);
+		opt1 = read_connect_arg(scan_state);
+		opt2 = read_connect_arg(scan_state);
+		opt3 = read_connect_arg(scan_state);
+		opt4 = read_connect_arg(scan_state);
 
-		if (opt2)
-			/* gave username */
-			success = do_connect(!opt1q && (strcmp(opt1, "-") == 0 || strcmp(opt1, "") == 0) ? "" : opt1,
-								 !opt2q && (strcmp(opt2, "-") == 0 || strcmp(opt2, "") == 0) ? "" : opt2);
-		else if (opt1)
-			/* gave database name */
-			success = do_connect(!opt1q && (strcmp(opt1, "-") == 0 || strcmp(opt1, "") == 0) ? "" : opt1, "");
-		else
-			/* connect to default db as default user */
-			success = do_connect(NULL, NULL);
+		success = do_connect(opt1, opt2, opt3, opt4);
 
 		free(opt1);
 		free(opt2);
+		free(opt3);
+		free(opt4);
 	}
 
 	/* \cd */
@@ -339,7 +359,7 @@ exec_command(const char *cmd,
 				break;
 			case 'g':
 				/* no longer distinct from \du */
-				success = describeRoles(pattern);
+				success = describeRoles(pattern, show_verbose);
 				break;
 			case 'l':
 				success = do_lo_list();
@@ -364,11 +384,11 @@ exec_command(const char *cmd,
 				success = listTables(&cmd[1], pattern, show_verbose);
 				break;
 			case 'u':
-				success = describeRoles(pattern);
+				success = describeRoles(pattern, show_verbose);
 				break;
 
 			default:
-				status = CMD_UNKNOWN;
+				status = PSQL_CMD_UNKNOWN;
 		}
 
 		if (pattern)
@@ -387,7 +407,7 @@ exec_command(const char *cmd,
 		if (!query_buf)
 		{
 			psql_error("no query buffer\n");
-			status = CMD_ERROR;
+			status = PSQL_CMD_ERROR;
 		}
 		else
 		{
@@ -396,7 +416,7 @@ exec_command(const char *cmd,
 			expand_tilde(&fname);
 			if (fname)
 				canonicalize_path(fname);
-			status = do_edit(fname, query_buf) ? CMD_NEWEDIT : CMD_ERROR;
+			status = do_edit(fname, query_buf) ? PSQL_CMD_NEWEDIT : PSQL_CMD_ERROR;
 			free(fname);
 		}
 	}
@@ -468,7 +488,7 @@ exec_command(const char *cmd,
 		char	   *fname = psql_scan_slash_option(scan_state,
 												   OT_NORMAL, NULL, false);
 
-		success = do_pset("fieldsep", fname, &pset.popt, quiet);
+		success = do_pset("fieldsep", fname, &pset.popt, pset.quiet);
 		free(fname);
 	}
 
@@ -486,7 +506,7 @@ exec_command(const char *cmd,
 			pset.gfname = pg_strdup(fname);
 		}
 		free(fname);
-		status = CMD_SEND;
+		status = PSQL_CMD_SEND;
 	}
 
 	/* help */
@@ -503,9 +523,9 @@ exec_command(const char *cmd,
 	else if (strcmp(cmd, "H") == 0 || strcmp(cmd, "html") == 0)
 	{
 		if (pset.popt.topt.format != PRINT_HTML)
-			success = do_pset("format", "html", &pset.popt, quiet);
+			success = do_pset("format", "html", &pset.popt, pset.quiet);
 		else
-			success = do_pset("format", "aligned", &pset.popt, quiet);
+			success = do_pset("format", "aligned", &pset.popt, pset.quiet);
 	}
 
 
@@ -523,7 +543,7 @@ exec_command(const char *cmd,
 		else
 		{
 			expand_tilde(&fname);
-			success = (process_file(fname) == EXIT_SUCCESS);
+			success = (process_file(fname, false) == EXIT_SUCCESS);
 			free(fname);
 		}
 	}
@@ -590,7 +610,7 @@ exec_command(const char *cmd,
 		}
 
 		else
-			status = CMD_UNKNOWN;
+			status = PSQL_CMD_UNKNOWN;
 
 		free(opt1);
 		free(opt2);
@@ -613,9 +633,64 @@ exec_command(const char *cmd,
 	{
 		if (query_buf && query_buf->len > 0)
 			puts(query_buf->data);
-		else if (!quiet)
+		else if (!pset.quiet)
 			puts(_("Query buffer is empty."));
 		fflush(stdout);
+	}
+
+	/* \password -- set user password */
+	else if (strcmp(cmd, "password") == 0)
+	{
+		char	   *pw1;
+		char	   *pw2;
+
+		pw1 = simple_prompt("Enter new password: ", 100, false);
+		pw2 = simple_prompt("Enter it again: ", 100, false);
+
+		if (strcmp(pw1, pw2) != 0)
+		{
+			fprintf(stderr, _("Passwords didn't match.\n"));
+			success = false;
+		}
+		else
+		{
+			char	   *opt0 = psql_scan_slash_option(scan_state, OT_SQLID, NULL, true);
+			char	   *user;
+			char	   *encrypted_password;
+
+			if (opt0)
+				user = opt0;
+			else
+				user = PQuser(pset.db);
+
+			encrypted_password = PQencryptPassword(pw1, user);
+
+			if (!encrypted_password)
+			{
+				fprintf(stderr, _("Password encryption failed.\n"));
+				success = false;
+			}
+			else
+			{
+				PQExpBufferData buf;
+				PGresult   *res;
+
+				initPQExpBuffer(&buf);
+				printfPQExpBuffer(&buf, "ALTER USER %s PASSWORD ",
+								  fmtId(user));
+				appendStringLiteralConn(&buf, encrypted_password, pset.db);
+				res = PSQLexec(buf.data, false);
+				termPQExpBuffer(&buf);
+				if (!res)
+					success = false;
+				else
+					PQclear(res);
+				PQfreemem(encrypted_password);
+			}
+		}
+
+		free(pw1);
+		free(pw2);
 	}
 
 	/* \pset -- set printing parameters */
@@ -632,7 +707,7 @@ exec_command(const char *cmd,
 			success = false;
 		}
 		else
-			success = do_pset(opt0, opt1, &pset.popt, quiet);
+			success = do_pset(opt0, opt1, &pset.popt, pset.quiet);
 
 		free(opt0);
 		free(opt1);
@@ -640,14 +715,14 @@ exec_command(const char *cmd,
 
 	/* \q or \quit */
 	else if (strcmp(cmd, "q") == 0 || strcmp(cmd, "quit") == 0)
-		status = CMD_TERMINATE;
+		status = PSQL_CMD_TERMINATE;
 
 	/* reset(clear) the buffer */
 	else if (strcmp(cmd, "r") == 0 || strcmp(cmd, "reset") == 0)
 	{
 		resetPQExpBuffer(query_buf);
 		psql_scan_reset(scan_state);
-		if (!quiet)
+		if (!pset.quiet)
 			puts(_("Query buffer reset (cleared)."));
 	}
 
@@ -659,8 +734,8 @@ exec_command(const char *cmd,
 
 		expand_tilde(&fname);
 		/* This scrolls off the screen when using /dev/tty */
-		success = saveHistory(fname ? fname : DEVTTY);
-		if (success && !quiet && fname)
+		success = saveHistory(fname ? fname : DEVTTY, false);
+		if (success && !pset.quiet && fname)
 			printf(gettext("Wrote history to file \"%s/%s\".\n"),
 				   pset.dirname ? pset.dirname : ".", fname);
 		if (!fname)
@@ -706,13 +781,7 @@ exec_command(const char *cmd,
 				free(opt);
 			}
 
-			if (SetVariable(pset.vars, opt0, newval))
-			{
-				/* Check for special variables */
-				if (strcmp(opt0, "VERBOSITY") == 0)
-					SyncVerbosityVariable();
-			}
-			else
+			if (!SetVariable(pset.vars, opt0, newval))
 			{
 				psql_error("\\%s: error\n", cmd);
 				success = false;
@@ -724,7 +793,7 @@ exec_command(const char *cmd,
 
 	/* \t -- turn off headers and row count */
 	else if (strcmp(cmd, "t") == 0)
-		success = do_pset("tuples_only", NULL, &pset.popt, quiet);
+		success = do_pset("tuples_only", NULL, &pset.popt, pset.quiet);
 
 
 	/* \T -- define html <table ...> attributes */
@@ -733,7 +802,7 @@ exec_command(const char *cmd,
 		char	   *value = psql_scan_slash_option(scan_state,
 												   OT_NORMAL, NULL, false);
 
-		success = do_pset("tableattr", value, &pset.popt, quiet);
+		success = do_pset("tableattr", value, &pset.popt, pset.quiet);
 		free(value);
 	}
 
@@ -741,7 +810,7 @@ exec_command(const char *cmd,
 	else if (strcmp(cmd, "timing") == 0)
 	{
 		pset.timing = !pset.timing;
-		if (!quiet)
+		if (!pset.quiet)
 		{
 			if (pset.timing)
 				puts(_("Timing is on."));
@@ -779,7 +848,7 @@ exec_command(const char *cmd,
 		if (!query_buf)
 		{
 			psql_error("no query buffer\n");
-			status = CMD_ERROR;
+			status = PSQL_CMD_ERROR;
 		}
 		else
 		{
@@ -836,7 +905,7 @@ exec_command(const char *cmd,
 
 	/* \x -- toggle expanded table representation */
 	else if (strcmp(cmd, "x") == 0)
-		success = do_pset("expanded", NULL, &pset.popt, quiet);
+		success = do_pset("expanded", NULL, &pset.popt, pset.quiet);
 
 	/* \z -- list table rights (equivalent to \dp) */
 	else if (strcmp(cmd, "z") == 0)
@@ -883,151 +952,175 @@ exec_command(const char *cmd,
 #endif
 
 	else
-		status = CMD_UNKNOWN;
+		status = PSQL_CMD_UNKNOWN;
 
 	if (!success)
-		status = CMD_ERROR;
+		status = PSQL_CMD_ERROR;
 
 	return status;
 }
 
-
-
-/* do_connect
- * -- handler for \connect
- *
- * Connects to a database (new_dbname) as a certain user (new_user).
- * The new user can be NULL. A db name of "-" is the same as the old one.
- * (That is, the one currently in pset. But pset.db can also be NULL. A NULL
- * dbname is handled by libpq.)
- * Returns true if all ok, false if the new connection couldn't be established.
- * The old connection will be kept if the session is interactive.
+/*
+ * Ask the user for a password; 'username' is the username the
+ * password is for, if one has been explicitly specified. Returns a
+ * malloc'd string.
  */
-static bool
-do_connect(const char *new_dbname, const char *new_user)
+static char *
+prompt_for_password(const char *username)
 {
-	PGconn	   *oldconn = pset.db;
-	const char *dbparam = NULL;
-	const char *userparam = NULL;
-	const char *pwparam = NULL;
-	char	   *password_prompt = NULL;
-	char	   *prompted_password = NULL;
-	bool		need_pass;
-	bool		success = false;
+	char	   *result;
 
-	/* Delete variables (in case we fail before setting them anew) */
-	UnsyncVariables();
-
-	/* If dbname is "" then use old name, else new one (even if NULL) */
-	if (oldconn && new_dbname && PQdb(oldconn) && strcmp(new_dbname, "") == 0)
-		dbparam = PQdb(oldconn);
-	else
-		dbparam = new_dbname;
-
-	/* If user is "" then use the old one */
-	if (new_user && PQuser(oldconn) && strcmp(new_user, "") == 0)
-		userparam = PQuser(oldconn);
-	else
-		userparam = new_user;
-
-	if (userparam == NULL)
-		password_prompt = strdup("Password: ");
+	if (username == NULL)
+		result = simple_prompt("Password: ", 100, false);
 	else
 	{
-		password_prompt = malloc(strlen(_("Password for user %s: ")) - 2 +
-								 strlen(userparam) + 1);
-		sprintf(password_prompt, _("Password for user %s: "), userparam);
+		char	   *prompt_text;
+
+		prompt_text = malloc(strlen(username) + 32);
+		sprintf(prompt_text, "Password for user \"%s\": ", username);
+		result = simple_prompt(prompt_text, 100, false);
+		free(prompt_text);
 	}
 
-	/* need to prompt for password? */
+	return result;
+}
+
+static bool
+param_is_newly_set(const char *old_val, const char *new_val)
+{
+	if (new_val == NULL)
+		return false;
+
+	if (old_val == NULL || strcmp(old_val, new_val) != 0)
+		return true;
+
+	return false;
+}
+
+/*
+ * do_connect -- handler for \connect
+ *
+ * Connects to a database with given parameters. If there exists an
+ * established connection, NULL values will be replaced with the ones
+ * in the current connection. Otherwise NULL will be passed for that
+ * parameter to PQsetdbLogin(), so the libpq defaults will be used.
+ *
+ * In interactive mode, if connection fails with the given parameters,
+ * the old connection will be kept.
+ */
+static bool
+do_connect(char *dbname, char *user, char *host, char *port)
+{
+	PGconn	   *o_conn = pset.db,
+			   *n_conn;
+	char	   *password = NULL;
+
+	if (!dbname)
+		dbname = PQdb(o_conn);
+	if (!user)
+		user = PQuser(o_conn);
+	if (!host)
+		host = PQhost(o_conn);
+	if (!port)
+		port = PQport(o_conn);
+
+	/*
+	 * If the user asked to be prompted for a password, ask for one now. If
+	 * not, use the password from the old connection, provided the username
+	 * has not changed. Otherwise, try to connect without a password first,
+	 * and then ask for a password if we got the appropriate error message.
+	 *
+	 * XXX: this behavior is broken. It leads to spurious connection attempts
+	 * in the postmaster's log, and doing a string comparison against the
+	 * returned error message is pretty fragile.
+	 */
 	if (pset.getPassword)
-		pwparam = prompted_password = simple_prompt(password_prompt, 100, false);
-
-	/*
-	 * Use old password (if any) if no new one given and we are reconnecting
-	 * as same user
-	 */
-	if (!pwparam && oldconn && PQuser(oldconn) && userparam &&
-		strcmp(PQuser(oldconn), userparam) == 0)
-		pwparam = PQpass(oldconn);
-
-	do
 	{
-		need_pass = false;
-		pset.db = PQsetdbLogin(PQhost(oldconn), PQport(oldconn),
-							   NULL, NULL, dbparam, userparam, pwparam);
+		password = prompt_for_password(user);
+	}
+	else if (o_conn && user && strcmp(PQuser(o_conn), user) == 0)
+	{
+		password = strdup(PQpass(o_conn));
+	}
 
-		if (PQstatus(pset.db) == CONNECTION_BAD &&
-			strcmp(PQerrorMessage(pset.db), PQnoPasswordSupplied) == 0 &&
-			!feof(stdin))
+	while (true)
+	{
+		n_conn = PQsetdbLogin(host, port, NULL, NULL,
+							  dbname, user, password);
+
+		/* We can immediately discard the password -- no longer needed */
+		if (password)
+			free(password);
+
+		if (PQstatus(n_conn) == CONNECTION_OK)
+			break;
+
+		/*
+		 * Connection attempt failed; either retry the connection attempt with
+		 * a new password, or give up.
+		 */
+		if (strcmp(PQerrorMessage(n_conn), PQnoPasswordSupplied) == 0)
 		{
-			PQfinish(pset.db);
-			need_pass = true;
-			free(prompted_password);
-			prompted_password = NULL;
-			pwparam = prompted_password = simple_prompt(password_prompt, 100, false);
+			PQfinish(n_conn);
+			password = prompt_for_password(user);
+			continue;
 		}
-	} while (need_pass);
 
-	free(prompted_password);
-	free(password_prompt);
-
-	/*
-	 * If connection failed, try at least keep the old one. That's probably
-	 * more convenient than just kicking you out of the program.
-	 */
-	if (!pset.db || PQstatus(pset.db) == CONNECTION_BAD)
-	{
+		/*
+		 * Failed to connect to the database. In interactive mode, keep the
+		 * previous connection to the DB; in scripting mode, close our
+		 * previous connection as well.
+		 */
 		if (pset.cur_cmd_interactive)
 		{
-			psql_error("%s", PQerrorMessage(pset.db));
-			PQfinish(pset.db);
-			if (oldconn)
-			{
+			psql_error("%s", PQerrorMessage(n_conn));
+
+			/* pset.db is left unmodified */
+			if (o_conn)
 				fputs(_("Previous connection kept\n"), stderr);
-				pset.db = oldconn;
-			}
-			else
-				pset.db = NULL;
 		}
 		else
 		{
-			/*
-			 * we don't want unpredictable things to happen in scripting mode
-			 */
-			psql_error("\\connect: %s", PQerrorMessage(pset.db));
-			PQfinish(pset.db);
-			if (oldconn)
-				PQfinish(oldconn);
-			pset.db = NULL;
-		}
-	}
-	else
-	{
-		if (!QUIET())
-		{
-			if (userparam != new_user)	/* no new user */
-				printf(_("You are now connected to database \"%s\".\n"), dbparam);
-			else if (dbparam != new_dbname)		/* no new db */
-				printf(_("You are now connected as new user \"%s\".\n"), new_user);
-			else
-				/* both new */
-				printf(_("You are now connected to database \"%s\" as user \"%s\".\n"),
-					   PQdb(pset.db), PQuser(pset.db));
+			psql_error("\\connect: %s", PQerrorMessage(n_conn));
+			if (o_conn)
+			{
+				PQfinish(o_conn);
+				pset.db = NULL;
+			}
 		}
 
-		if (oldconn)
-			PQfinish(oldconn);
-
-		success = true;
+		PQfinish(n_conn);
+		return false;
 	}
 
-	PQsetNoticeProcessor(pset.db, NoticeProcessor, NULL);
-
-	/* Update variables */
+	/*
+	 * Replace the old connection with the new one, and update
+	 * connection-dependent variables.
+	 */
+	PQsetNoticeProcessor(n_conn, NoticeProcessor, NULL);
+	pset.db = n_conn;
 	SyncVariables();
 
-	return success;
+	/* Tell the user about the new connection */
+	if (!pset.quiet)
+	{
+		printf(_("You are now connected to database \"%s\""), PQdb(pset.db));
+
+		if (param_is_newly_set(PQhost(o_conn), PQhost(pset.db)))
+			printf(_(" on host \"%s\""), PQhost(pset.db));
+
+		if (param_is_newly_set(PQport(o_conn), PQport(pset.db)))
+			printf(_(" at port \"%s\""), PQport(pset.db));
+
+		if (param_is_newly_set(PQuser(o_conn), PQuser(pset.db)))
+			printf(_(" as user \"%s\""), PQuser(pset.db));
+
+		printf(".\n");
+	}
+
+	if (o_conn)
+		PQfinish(o_conn);
+	return true;
 }
 
 
@@ -1043,6 +1136,7 @@ SyncVariables(void)
 	/* get stuff from connection */
 	pset.encoding = PQclientEncoding(pset.db);
 	pset.popt.topt.encoding = pset.encoding;
+	pset.sversion = PQserverVersion(pset.db);
 
 	SetVariable(pset.vars, "DBNAME", PQdb(pset.db));
 	SetVariable(pset.vars, "USER", PQuser(pset.db));
@@ -1051,7 +1145,7 @@ SyncVariables(void)
 	SetVariable(pset.vars, "ENCODING", pg_encoding_to_char(pset.encoding));
 
 	/* send stuff to it, too */
-	SyncVerbosityVariable();
+	PQsetErrorVerbosity(pset.db, pset.verbosity);
 }
 
 /*
@@ -1067,32 +1161,6 @@ UnsyncVariables(void)
 	SetVariable(pset.vars, "HOST", NULL);
 	SetVariable(pset.vars, "PORT", NULL);
 	SetVariable(pset.vars, "ENCODING", NULL);
-}
-
-/*
- * Update connection state from VERBOSITY variable
- */
-void
-SyncVerbosityVariable(void)
-{
-	switch (SwitchVariable(pset.vars, "VERBOSITY",
-						   "default", "terse", "verbose", NULL))
-	{
-		case 1:			/* default */
-			pset.verbosity = PQERRORS_DEFAULT;
-			break;
-		case 2:			/* terse */
-			pset.verbosity = PQERRORS_TERSE;
-			break;
-		case 3:			/* verbose */
-			pset.verbosity = PQERRORS_VERBOSE;
-			break;
-		default:				/* not set or unrecognized value */
-			pset.verbosity = PQERRORS_DEFAULT;
-			break;
-	}
-
-	PQsetErrorVerbosity(pset.db, pset.verbosity);
 }
 
 
@@ -1156,10 +1224,8 @@ do_edit(const char *filename_arg, PQExpBuffer query_buf)
 	bool		error = false;
 	int			fd;
 
-#ifndef WIN32_CLIENT_ONLY
 	struct stat before,
 				after;
-#endif
 
 	if (filename_arg)
 		fname = filename_arg;
@@ -1234,19 +1300,16 @@ do_edit(const char *filename_arg, PQExpBuffer query_buf)
 		}
 	}
 
-#ifndef WIN32_CLIENT_ONLY
 	if (!error && stat(fname, &before) != 0)
 	{
 		psql_error("%s: %s\n", fname, strerror(errno));
 		error = true;
 	}
-#endif
 
 	/* call editor */
 	if (!error)
 		error = !editFile(fname);
 
-#ifndef WIN32_CLIENT_ONLY
 	if (!error && stat(fname, &after) != 0)
 	{
 		psql_error("%s: %s\n", fname, strerror(errno));
@@ -1255,10 +1318,6 @@ do_edit(const char *filename_arg, PQExpBuffer query_buf)
 
 	if (!error && before.st_mtime != after.st_mtime)
 	{
-#else
-	if (!error)
-	{
-#endif
 		stream = fopen(fname, PG_BINARY_R);
 		if (!stream)
 		{
@@ -1267,7 +1326,7 @@ do_edit(const char *filename_arg, PQExpBuffer query_buf)
 		}
 		else
 		{
-			/* read file back in */
+			/* read file back into query_buf */
 			char		line[1024];
 
 			resetPQExpBuffer(query_buf);
@@ -1280,14 +1339,6 @@ do_edit(const char *filename_arg, PQExpBuffer query_buf)
 				error = true;
 			}
 
-#ifdef USE_READLINE
-#ifdef HAVE_REPLACE_HISTORY_ENTRY
-
-			replace_history_entry(where_history(), query_buf->data, NULL);
-#else
-			add_history(query_buf->data);
-#endif
-#endif
 			fclose(stream);
 		}
 
@@ -1316,11 +1367,12 @@ do_edit(const char *filename_arg, PQExpBuffer query_buf)
  * MainLoop() error code.
  */
 int
-process_file(char *filename)
+process_file(char *filename, bool single_txn)
 {
 	FILE	   *fd;
 	int			result;
 	char	   *oldfilename;
+	PGresult   *res;
 
 	if (!filename)
 		return EXIT_FAILURE;
@@ -1336,7 +1388,13 @@ process_file(char *filename)
 
 	oldfilename = pset.inputfile;
 	pset.inputfile = filename;
+
+	if (single_txn)
+		res = PSQLexec("BEGIN", false);
 	result = MainLoop(fd);
+	if (single_txn)
+		res = PSQLexec("COMMIT", false);
+
 	fclose(fd);
 	pset.inputfile = oldfilename;
 	return result;

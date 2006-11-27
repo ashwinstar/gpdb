@@ -4,17 +4,16 @@
  * (currently mule internal code (mic) is used)
  * Tatsuo Ishii
  *
- * $PostgreSQL: pgsql/src/backend/utils/mb/mbutils.c,v 1.52.2.1 2006/05/21 20:05:48 tgl Exp $
+ * $PostgreSQL: pgsql/src/backend/utils/mb/mbutils.c,v 1.59 2006/10/04 00:30:02 momjian Exp $
  */
 #include "postgres.h"
 
 #include "access/xact.h"
-#include "miscadmin.h"
+#include "catalog/namespace.h"
 #include "mb/pg_wchar.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
-#include "catalog/namespace.h"
 
 /*
  * We handle for actual FE and BE encoding setting encoding-identificator
@@ -25,10 +24,12 @@ static pg_enc2name *ClientEncoding = &pg_enc2name_tbl[PG_SQL_ASCII];
 static pg_enc2name *DatabaseEncoding = &pg_enc2name_tbl[PG_SQL_ASCII];
 
 /*
- * Caches for conversion function info. Note that these values are
- * allocated in TopMemoryContext so that they survive across
- * transactions. See SetClientEncoding() for more details.
+ * Caches for conversion function info. These values are allocated in
+ * MbProcContext. That context is a child of TopMemoryContext,
+ * which allows these values to survive across transactions. See
+ * SetClientEncoding() for more details.
  */
+static MemoryContext MbProcContext = NULL;
 static FmgrInfo *ToServerConvProc = NULL;
 static FmgrInfo *ToClientConvProc = NULL;
 
@@ -64,7 +65,7 @@ SetClientEncoding(int encoding, bool doit)
 	MemoryContext oldcontext;
 
 	if (!PG_VALID_FE_ENCODING(encoding))
-		return (-1);
+		return -1;
 
 	/* Can't do anything during startup, per notes above */
 	if (!backend_startup_complete)
@@ -80,28 +81,16 @@ SetClientEncoding(int encoding, bool doit)
 	 * Check for cases that require no conversion function.
 	 */
 	if (current_server_encoding == encoding ||
-		(current_server_encoding == PG_SQL_ASCII ||
-		 encoding == PG_SQL_ASCII))
+		current_server_encoding == PG_SQL_ASCII ||
+		encoding == PG_SQL_ASCII)
 	{
 		if (doit)
 		{
 			ClientEncoding = &pg_enc2name_tbl[encoding];
-
-			if (ToServerConvProc != NULL)
-			{
-				if (ToServerConvProc->fn_extra)
-					pfree(ToServerConvProc->fn_extra);
-				pfree(ToServerConvProc);
-			}
 			ToServerConvProc = NULL;
-
-			if (ToClientConvProc != NULL)
-			{
-				if (ToClientConvProc->fn_extra)
-					pfree(ToClientConvProc->fn_extra);
-				pfree(ToClientConvProc);
-			}
 			ToClientConvProc = NULL;
+			if (MbProcContext)
+				MemoryContextReset(MbProcContext);
 		}
 		return 0;
 	}
@@ -134,11 +123,29 @@ SetClientEncoding(int encoding, bool doit)
 	if (!doit)
 		return 0;
 
-	/*
-	 * load the fmgr info into TopMemoryContext so that it survives outside
-	 * transaction.
-	 */
-	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+	/* Before loading the new fmgr info, remove the old info, if any */
+	ToServerConvProc = NULL;
+	ToClientConvProc = NULL;
+	if (MbProcContext != NULL)
+	{
+		MemoryContextReset(MbProcContext);
+	}
+	else
+	{
+		/*
+		 * This is the first time through, so create the context. Make it a
+		 * child of TopMemoryContext so that these values survive across
+		 * transactions.
+		 */
+		MbProcContext = AllocSetContextCreate(TopMemoryContext,
+											  "MbProcContext",
+											  ALLOCSET_SMALL_MINSIZE,
+											  ALLOCSET_SMALL_INITSIZE,
+											  ALLOCSET_SMALL_MAXSIZE);
+	}
+
+	/* Load the fmgr info into MbProcContext */
+	oldcontext = MemoryContextSwitchTo(MbProcContext);
 	to_server = palloc(sizeof(FmgrInfo));
 	to_client = palloc(sizeof(FmgrInfo));
 	fmgr_info(to_server_proc, to_server);
@@ -146,21 +153,7 @@ SetClientEncoding(int encoding, bool doit)
 	MemoryContextSwitchTo(oldcontext);
 
 	ClientEncoding = &pg_enc2name_tbl[encoding];
-
-	if (ToServerConvProc != NULL)
-	{
-		if (ToServerConvProc->fn_extra)
-			pfree(ToServerConvProc->fn_extra);
-		pfree(ToServerConvProc);
-	}
 	ToServerConvProc = to_server;
-
-	if (ToClientConvProc != NULL)
-	{
-		if (ToClientConvProc->fn_extra)
-			pfree(ToClientConvProc->fn_extra);
-		pfree(ToClientConvProc);
-	}
 	ToClientConvProc = to_client;
 
 	return 0;
@@ -196,7 +189,7 @@ int
 pg_get_client_encoding(void)
 {
 	Assert(ClientEncoding);
-	return (ClientEncoding->encoding);
+	return ClientEncoding->encoding;
 }
 
 /*
@@ -206,7 +199,7 @@ const char *
 pg_get_client_encoding_name(void)
 {
 	Assert(ClientEncoding);
-	return (ClientEncoding->name);
+	return ClientEncoding->name;
 }
 
 /*
@@ -385,28 +378,27 @@ pg_client_to_server(const char *s, int len)
 	{
 		/*
 		 * No conversion is possible, but we must still validate the data,
-		 * because the client-side code might have done string escaping
-		 * using the selected client_encoding.  If the client encoding is
-		 * ASCII-safe then we just do a straight validation under that
-		 * encoding.  For an ASCII-unsafe encoding we have a problem:
-		 * we dare not pass such data to the parser but we have no way
-		 * to convert it.  We compromise by rejecting the data if it
-		 * contains any non-ASCII characters.
+		 * because the client-side code might have done string escaping using
+		 * the selected client_encoding.  If the client encoding is ASCII-safe
+		 * then we just do a straight validation under that encoding.  For an
+		 * ASCII-unsafe encoding we have a problem: we dare not pass such data
+		 * to the parser but we have no way to convert it.	We compromise by
+		 * rejecting the data if it contains any non-ASCII characters.
 		 */
 		if (PG_VALID_BE_ENCODING(ClientEncoding->encoding))
 			(void) pg_verify_mbstr(ClientEncoding->encoding, s, len, false);
 		else
 		{
-			int		i;
+			int			i;
 
 			for (i = 0; i < len; i++)
 			{
 				if (s[i] == '\0' || IS_HIGHBIT_SET(s[i]))
 					ereport(ERROR,
 							(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),
-							 errmsg("invalid byte value for encoding \"%s\": 0x%02x",
-									pg_enc2name_tbl[PG_SQL_ASCII].name,
-									(unsigned char) s[i])));
+					 errmsg("invalid byte value for encoding \"%s\": 0x%02x",
+							pg_enc2name_tbl[PG_SQL_ASCII].name,
+							(unsigned char) s[i])));
 			}
 		}
 		return (char *) s;
@@ -520,7 +512,7 @@ pg_mbstrlen(const char *mbstr)
 		mbstr += pg_mblen(mbstr);
 		len++;
 	}
-	return (len);
+	return len;
 }
 
 /* returns the length (counted in wchars) of a multibyte string
@@ -543,7 +535,7 @@ pg_mbstrlen_with_len(const char *mbstr, int limit)
 		mbstr += l;
 		len++;
 	}
-	return (len);
+	return len;
 }
 
 /*
@@ -573,7 +565,7 @@ pg_mbcliplen(const char *mbstr, int len, int limit)
 		len -= l;
 		mbstr += l;
 	}
-	return (clen);
+	return clen;
 }
 
 /*
@@ -600,7 +592,7 @@ pg_mbcharcliplen(const char *mbstr, int len, int limit)
 		len -= l;
 		mbstr += l;
 	}
-	return (clen);
+	return clen;
 }
 
 void
@@ -623,14 +615,14 @@ int
 GetDatabaseEncoding(void)
 {
 	Assert(DatabaseEncoding);
-	return (DatabaseEncoding->encoding);
+	return DatabaseEncoding->encoding;
 }
 
 const char *
 GetDatabaseEncodingName(void)
 {
 	Assert(DatabaseEncoding);
-	return (DatabaseEncoding->name);
+	return DatabaseEncoding->name;
 }
 
 Datum

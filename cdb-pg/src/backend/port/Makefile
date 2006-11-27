@@ -13,7 +13,7 @@
 # be converted to Method 2.  
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/backend/port/Makefile,v 1.20 2003/11/29 19:51:54 pgsql Exp $
+#    $PostgreSQL: pgsql/src/backend/port/Makefile,v 1.23 2006/04/28 17:09:16 momjian Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -25,12 +25,6 @@ OBJS+=dynloader.o pg_sema.o pg_shmem.o
 
 OBJS+=$(TAS)
 
-ifeq ($(PORTNAME), qnx4)
-OBJS+=qnx4/SUBSYS.o
-endif
-ifeq ($(PORTNAME), beos)
-OBJS+=beos/SUBSYS.o
-endif
 ifeq ($(PORTNAME), darwin)
 OBJS+=darwin/SUBSYS.o
 endif
@@ -43,16 +37,6 @@ all: SUBSYS.o
 SUBSYS.o: $(OBJS)
 	$(LD) $(LDREL) $(LDOUT) $@ $^
 
-qnx4/SUBSYS.o: qnx4.dir
-
-qnx4.dir:
-	$(MAKE) -C qnx4 all
-
-beos/SUBSYS.o: beos.dir
-
-beos.dir:
-	$(MAKE) -C beos all
-
 darwin/SUBSYS.o: darwin.dir
 
 darwin.dir:
@@ -64,16 +48,20 @@ win32.dir:
 	$(MAKE) -C win32 all
 
 tas.o: tas.s
+ifeq ($(PORTNAME), solaris)
+	# preprocess assembler file with cpp, used by x86
+	$(CC) $(CFLAGS) -c -P $<
+	mv $*.i $*_cpp.s
+	$(CC) $(CFLAGS) -c $*_cpp.s -o $@
+else
 	$(CC) $(CFLAGS) -c $<
+endif
 
 # IPC test program
 ipc_test: ipc_test.o pg_sema.o pg_shmem.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $(export_dynamic) $^ $(LIBS) -o $@
 
 distclean clean:
-	rm -f SUBSYS.o $(OBJS) ipc_test ipc_test.o
-	$(MAKE) -C beos clean
+	rm -f SUBSYS.o $(OBJS) ipc_test ipc_test.o tas_cpp.s
 	$(MAKE) -C darwin clean
-	$(MAKE) -C qnx4 clean
 	$(MAKE) -C win32 clean
-

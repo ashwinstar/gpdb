@@ -13,19 +13,17 @@
  * This code will also work on platforms where struct addrinfo is defined
  * in the system headers but no getaddrinfo() can be located.
  *
- * Copyright (c) 2003-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/getaddrinfo.h,v 1.17.2.1 2005/12/08 17:52:20 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/getaddrinfo.h,v 1.22 2006/10/04 00:30:06 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef GETADDRINFO_H
 #define GETADDRINFO_H
 
-#ifndef WIN32_CLIENT_ONLY
 #include <sys/socket.h>
 #include <netdb.h>
-#endif
 
 
 /* Various macros that ought to be in <netdb.h>, but might not be */
@@ -42,9 +40,11 @@
 #define EAI_MEMORY		(-10)
 #define EAI_SYSTEM		(-11)
 #else							/* WIN32 */
-#if defined(WIN32_CLIENT_ONLY)
-#define WSA_NOT_ENOUGH_MEMORY   (WSAENOBUFS)
-#define WSATYPE_NOT_FOUND       (WSABASEERR+109)
+#ifdef WIN32_ONLY_COMPILER
+#ifndef WSA_NOT_ENOUGH_MEMORY
+#define WSA_NOT_ENOUGH_MEMORY	(WSAENOBUFS)
+#endif
+#define WSATYPE_NOT_FOUND		(WSABASEERR+109)
 #endif
 #define EAI_AGAIN		WSATRY_AGAIN
 #define EAI_BADFLAGS	WSAEINVAL
@@ -91,6 +91,7 @@
 
 #ifndef HAVE_STRUCT_ADDRINFO
 
+#ifndef WIN32
 struct addrinfo
 {
 	int			ai_flags;
@@ -102,6 +103,24 @@ struct addrinfo
 	char	   *ai_canonname;
 	struct addrinfo *ai_next;
 };
+#else
+/*
+ *	The order of the structure elements on Win32 doesn't match the
+ *	order specified in the standard, but we have to match it for
+ *	IPv6 to work.
+ */
+struct addrinfo
+{
+	int			ai_flags;
+	int			ai_family;
+	int			ai_socktype;
+	int			ai_protocol;
+	size_t		ai_addrlen;
+	char	   *ai_canonname;
+	struct sockaddr *ai_addr;
+	struct addrinfo *ai_next;
+};
+#endif
 #endif   /* HAVE_STRUCT_ADDRINFO */
 
 

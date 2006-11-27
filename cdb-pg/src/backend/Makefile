@@ -4,11 +4,11 @@
 #
 # Copyright (c) 1994, Regents of the University of California
 #
-# $PostgreSQL: pgsql/src/backend/Makefile,v 1.110 2005/10/27 20:45:29 tgl Exp $
+# $PostgreSQL: pgsql/src/backend/Makefile,v 1.120 2006/10/08 17:15:33 tgl Exp $
 #
 #-------------------------------------------------------------------------
 
-PGFILEDESC = "PostgreSQL Database Backend"
+PGFILEDESC = "PostgreSQL Server"
 subdir = src/backend
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
@@ -19,18 +19,17 @@ DIRS := access bootstrap catalog parser commands executor lib libpq \
 
 SUBSYSOBJS := $(DIRS:%=%/SUBSYS.o)
 
-OBJS := $(SUBSYSOBJS) $(top_builddir)/src/port/libpgport_srv.a
-
-# We put libpgport into OBJS, so remove it from LIBS
-LIBS := $(patsubst -lpgport, , $(LIBS))
-
-ifeq ($(PORTNAME), qnx4)
-# This file crashes qnx4's wlink and is therefore not in
-# bootstrap/SUBSYS.o on that platform. (Wotta hack ... is it still
-# necessary?) [ Yes, until the Watcom compiler goes open source it's
-# effectively unsupported ]
-OBJS += bootstrap/bootstrap.o
+ifeq ($(enable_dtrace), yes)
+LOCALOBJS += utils/probes.o
 endif
+
+OBJS = $(SUBSYSOBJS) $(LOCALOBJS) $(top_builddir)/src/port/libpgport_srv.a
+
+# We put libpgport into OBJS, so remove it from LIBS; also add libldap
+LIBS := $(filter-out -lpgport, $(LIBS)) $(LDAP_LIBS_BE)
+
+# The backend doesn't need everything that's in LIBS, however
+LIBS := $(filter-out -lz -lreadline -ledit -ltermcap -lncurses -lcurses, $(LIBS))
 
 ##########################################################################
 
@@ -49,11 +48,11 @@ endif
 
 ifeq ($(PORTNAME), cygwin)
 
-postgres: $(OBJS) $(DLLINIT) postgres.def libpostgres.a
+postgres: $(OBJS) postgres.def libpostgres.a
 	$(DLLTOOL) --dllname $@$(X) --output-exp $@.exp --def postgres.def
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@$(X) -Wl,--base-file,$@.base $@.exp $(OBJS) $(LIBS)
 	$(DLLTOOL) --dllname $@$(X) --base-file $@.base --output-exp $@.exp --def postgres.def
-	$(CC) $(CFLAGS) $(LDFLAGS) -Wl,--stack,4194304 -o $@$(X) $@.exp $(OBJS) $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -Wl,--stack,$(WIN32_STACK_RLIMIT) -o $@$(X) $@.exp $(OBJS) $(LIBS)
 	rm -f $@.exp $@.base
 
 postgres.def: $(OBJS)
@@ -66,11 +65,11 @@ endif # cygwin
 
 ifeq ($(PORTNAME), win32)
 
-postgres: $(OBJS) $(DLLINIT) postgres.def libpostgres.a $(WIN32RES)
+postgres: $(OBJS) postgres.def libpostgres.a $(WIN32RES)
 	$(DLLTOOL) --dllname $@$(X) --output-exp $@.exp --def postgres.def
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@$(X) -Wl,--base-file,$@.base $@.exp $(OBJS) $(WIN32RES) $(LIBS)
 	$(DLLTOOL) --dllname $@$(X) --base-file $@.base --output-exp $@.exp --def postgres.def
-	$(CC) $(CFLAGS) $(LDFLAGS) -Wl,--stack=4194304 -o $@$(X) $@.exp $(OBJS) $(WIN32RES) $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -Wl,--stack=$(WIN32_STACK_RLIMIT) -o $@$(X) $@.exp $(OBJS) $(WIN32RES) $(LIBS)
 	rm -f $@.exp $@.base
 
 postgres.def: $(OBJS)
@@ -110,9 +109,6 @@ $(DIRS:%=%-recursive): $(top_builddir)/src/include/parser/parse.h $(top_builddir
 	$(MAKE) -C $(subst -recursive,,$@) all
 
 
-$(DLLINIT): $(DLLINIT:%.o=%.c)
-	$(MAKE) -C $(@D) $(@F)
-
 # The postgres.o target is needed by the rule in Makefile.global that
 # creates the exports file when MAKE_EXPORTS = true.
 postgres.o: $(OBJS)
@@ -143,6 +139,10 @@ $(top_builddir)/src/include/utils/fmgroids.h: utils/fmgroids.h
 	    $(LN_S) ../../../$(subdir)/utils/fmgroids.h .
 
 
+utils/probes.o: utils/probes.d $(SUBSYSOBJS)
+	$(DTRACE) $(DTRACEFLAGS) -G -s $^ -o $@
+
+
 ##########################################################################
 
 distprep:
@@ -156,49 +156,49 @@ distprep:
 install: all installdirs install-bin
 ifeq ($(PORTNAME), cygwin)
 ifeq ($(MAKE_DLL), true)
-	$(INSTALL_DATA) libpostgres.a $(DESTDIR)$(libdir)/libpostgres.a
+	$(INSTALL_DATA) libpostgres.a '$(DESTDIR)$(libdir)/libpostgres.a'
 endif
 endif
 ifeq ($(PORTNAME), win32)
 ifeq ($(MAKE_DLL), true)
-	$(INSTALL_DATA) libpostgres.a $(DESTDIR)$(libdir)/libpostgres.a
+	$(INSTALL_DATA) libpostgres.a '$(DESTDIR)$(libdir)/libpostgres.a'
 endif
 endif
 	$(MAKE) -C catalog install-data
-	$(INSTALL_DATA) $(srcdir)/libpq/pg_hba.conf.sample $(DESTDIR)$(datadir)/pg_hba.conf.sample
-	$(INSTALL_DATA) $(srcdir)/libpq/pg_ident.conf.sample $(DESTDIR)$(datadir)/pg_ident.conf.sample
-	$(INSTALL_DATA) $(srcdir)/utils/misc/postgresql.conf.sample $(DESTDIR)$(datadir)/postgresql.conf.sample
-	$(INSTALL_DATA) $(srcdir)/access/transam/recovery.conf.sample $(DESTDIR)$(datadir)/recovery.conf.sample
+	$(INSTALL_DATA) $(srcdir)/libpq/pg_hba.conf.sample '$(DESTDIR)$(datadir)/pg_hba.conf.sample'
+	$(INSTALL_DATA) $(srcdir)/libpq/pg_ident.conf.sample '$(DESTDIR)$(datadir)/pg_ident.conf.sample'
+	$(INSTALL_DATA) $(srcdir)/utils/misc/postgresql.conf.sample '$(DESTDIR)$(datadir)/postgresql.conf.sample'
+	$(INSTALL_DATA) $(srcdir)/access/transam/recovery.conf.sample '$(DESTDIR)$(datadir)/recovery.conf.sample'
 
 install-bin: postgres $(POSTGRES_IMP) installdirs
-	$(INSTALL_PROGRAM) postgres$(X) $(DESTDIR)$(bindir)/postgres$(X)
+	$(INSTALL_PROGRAM) postgres$(X) '$(DESTDIR)$(bindir)/postgres$(X)'
 ifneq ($(PORTNAME), win32)
 	@rm -f $(DESTDIR)$(bindir)/postmaster$(X) $(DESTDIR)$(bindir)/mppsyncmaster$(X)
 	ln -s postgres$(X) $(DESTDIR)$(bindir)/postmaster$(X)
 	ln -s postgres$(X) $(DESTDIR)$(bindir)/mppsyncmaster$(X)
 else
-	$(INSTALL_PROGRAM) postgres$(X) $(DESTDIR)$(bindir)/postmaster$(X)
+	$(INSTALL_PROGRAM) postgres$(X) '$(DESTDIR)$(bindir)/postmaster$(X)'
 endif
 ifeq ($(MAKE_EXPORTS), true)
-	$(INSTALL_DATA) $(POSTGRES_IMP) $(DESTDIR)$(pkglibdir)/$(POSTGRES_IMP)
+	$(INSTALL_DATA) $(POSTGRES_IMP) '$(DESTDIR)$(pkglibdir)/$(POSTGRES_IMP)'
 endif
 
 .PHONY: install-bin
 
 installdirs:
-	$(mkinstalldirs) $(DESTDIR)$(bindir) $(DESTDIR)$(datadir)
+	$(mkinstalldirs) '$(DESTDIR)$(bindir)' '$(DESTDIR)$(datadir)'
 ifeq ($(PORTNAME), cygwin)
 ifeq ($(MAKE_DLL), true)
-	$(mkinstalldirs) $(DESTDIR)$(libdir)
+	$(mkinstalldirs) '$(DESTDIR)$(libdir)'
 endif
 endif
 ifeq ($(PORTNAME), win32)
 ifeq ($(MAKE_DLL), true)
-	$(mkinstalldirs) $(DESTDIR)$(libdir)
+	$(mkinstalldirs) '$(DESTDIR)$(libdir)'
 endif
 endif
 ifeq ($(MAKE_EXPORTS), true)
-	$(mkinstalldirs) $(DESTDIR)$(pkglibdir)
+	$(mkinstalldirs) '$(DESTDIR)$(pkglibdir)'
 endif
 
 
@@ -207,29 +207,29 @@ endif
 uninstall:
 	rm -f $(DESTDIR)$(bindir)/postgres$(X) $(DESTDIR)$(bindir)/postmaster $(DESTDIR)$(bindir)/cdbsyncmaster
 ifeq ($(MAKE_EXPORTS), true)
-	rm -f $(DESTDIR)$(pkglibdir)/$(POSTGRES_IMP)
+	rm -f '$(DESTDIR)$(pkglibdir)/$(POSTGRES_IMP)'
 endif
 ifeq ($(PORTNAME), cygwin)
 ifeq ($(MAKE_DLL), true)
-	rm -f $(DESTDIR)$(libdir)/libpostgres.a
+	rm -f '$(DESTDIR)$(libdir)/libpostgres.a'
 endif
 endif
 ifeq ($(PORTNAME), win32)
 ifeq ($(MAKE_DLL), true)
-	rm -f $(DESTDIR)$(libdir)/libpostgres.a
+	rm -f '$(DESTDIR)$(libdir)/libpostgres.a'
 endif
 endif
 	$(MAKE) -C catalog uninstall-data
-	rm -f $(DESTDIR)$(datadir)/pg_hba.conf.sample \
-	      $(DESTDIR)$(datadir)/pg_service.conf.sample \
-	      $(DESTDIR)$(datadir)/pg_ident.conf.sample \
-              $(DESTDIR)$(datadir)/postgresql.conf.sample
+	rm -f '$(DESTDIR)$(datadir)/pg_hba.conf.sample' \
+	      '$(DESTDIR)$(datadir)/pg_ident.conf.sample' \
+              '$(DESTDIR)$(datadir)/postgresql.conf.sample' \
+	      '$(DESTDIR)$(datadir)/recovery.conf.sample'
 
 
 ##########################################################################
 
 clean:
-	rm -f postgres$(X) $(POSTGRES_IMP) \
+	rm -f $(LOCALOBJS) postgres$(X) $(POSTGRES_IMP) \
 		$(top_srcdir)/src/include/parser/parse.h \
 		$(top_builddir)/src/include/utils/fmgroids.h
 ifeq ($(PORTNAME), cygwin)

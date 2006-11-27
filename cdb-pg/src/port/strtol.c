@@ -1,5 +1,5 @@
 /*
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -43,6 +43,15 @@ static char sccsid[] = "@(#)strtol.c	5.4 (Berkeley) 2/23/91";
 
 
 #define const
+
+/*
+ *	Usage Tip:
+ *
+ *	strtol() doesn't give a unique return value to indicate that errno
+ *	should be consulted, so in most cases it is best to set errno = 0
+ *	before calling this function, and then errno != 0 can be tested
+ *	after the function completes.
+ */
 
 /*
  * Convert a string to a long integer.

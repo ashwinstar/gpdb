@@ -68,12 +68,14 @@ CLEAN :
 	-@erase "$(INTDIR)\wchar.obj"
 	-@erase "$(INTDIR)\encnames.obj"
 	-@erase "$(INTDIR)\pthread-win32.obj"
+	-@erase "$(INTDIR)\snprintf.obj"
+	-@erase "$(INTDIR)\strlcpy.obj"
 	-@erase "$(OUTDIR)\$(OUTFILENAME).lib"
 	-@erase "$(OUTDIR)\$(OUTFILENAME)dll.lib"
 	-@erase "$(OUTDIR)\libpq.res"
 	-@erase "$(OUTDIR)\$(OUTFILENAME).dll"
-	-@erase "*.pch"
-	-@erase "$(OUTDIR)\libpq.pch"
+#	-@erase "*.pch"
+#	-@erase "$(OUTDIR)\libpq.pch"
 	-@erase "$(OUTDIR)\$(OUTFILENAME)dll.exp"
 	-@erase "$(INTDIR)\pg_config_paths.h"
 
@@ -103,6 +105,8 @@ LIB32_OBJS= \
 	"$(INTDIR)\pqsignal.obj" \
 	"$(INTDIR)\wchar.obj" \
 	"$(INTDIR)\encnames.obj" \
+	"$(INTDIR)\snprintf.obj" \
+	"$(INTDIR)\strlcpy.obj" \
 	"$(INTDIR)\pthread-win32.obj"
 
 
@@ -117,9 +121,10 @@ pg_config_paths.h: win32.mak
 "$(OUTDIR)" :
     if not exist "$(OUTDIR)/$(NULL)" mkdir "$(OUTDIR)"
 
-CPP_PROJ=/nologo /W3 /GX $(OPT) /I "..\..\include" /I. /D "FRONTEND" $(DEBUGDEF) /D\
- "WIN32" /D "_WINDOWS" /Fp"$(INTDIR)\libpq.pch" /YX\
- /Fo"$(INTDIR)\\" /Fd"$(INTDIR)\\" /FD /c  /D "HAVE_VSNPRINTF" /D "HAVE_STRDUP"
+CPP_PROJ=/nologo /W3 /EHsc $(OPT) /I "..\..\include" /I "..\..\include\port\win32" /I "..\..\include\port\win32_msvc" /I "..\..\port" /I. /D "FRONTEND" $(DEBUGDEF) /D\
+ "WIN32" /D "_WINDOWS" /Fp"$(INTDIR)\libpq.pch" \
+ /Fo"$(INTDIR)\\" /Fd"$(INTDIR)\\" /FD /c  \
+ /D "HAVE_VSNPRINTF" /D "HAVE_STRDUP" /D "_CRT_SECURE_NO_DEPRECATE"
 
 !IFDEF USE_SSL
 CPP_PROJ=$(CPP_PROJ) /D USE_SSL
@@ -210,6 +215,16 @@ LINK32_OBJS= \
 "$(INTDIR)\encnames.obj" : ..\..\backend\utils\mb\encnames.c
 	$(CPP) @<<
 	$(CPP_PROJ) /I"." ..\..\backend\utils\mb\encnames.c
+<<
+
+"$(INTDIR)\snprintf.obj" : ..\..\port\snprintf.c
+	$(CPP) @<<
+	$(CPP_PROJ) /I"." ..\..\port\snprintf.c
+<<
+
+"$(INTDIR)\strlcpy.obj" : ..\..\port\strlcpy.c
+	$(CPP) @<<
+	$(CPP_PROJ) /I"." ..\..\port\strlcpy.c
 <<
 
 .c{$(CPP_OBJS)}.obj:

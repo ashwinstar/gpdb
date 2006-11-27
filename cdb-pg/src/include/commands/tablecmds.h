@@ -4,10 +4,10 @@
  *	  prototypes for tablecmds.c.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/commands/tablecmds.h,v 1.24 2005/10/15 02:49:44 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/commands/tablecmds.h,v 1.31 2006/10/04 00:30:08 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -24,11 +24,9 @@ extern void RemoveRelation(const RangeVar *relation, DropBehavior behavior);
 
 extern void AlterTable(AlterTableStmt *stmt);
 
+extern void ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing);
+
 extern void AlterTableInternal(Oid relid, List *cmds, bool recurse);
-
-extern void AlterTableCreateToastTable(Oid relOid, bool silent);
-
-extern void AlterTableCreateToastTableWithOid(Oid relOid, bool silent, Oid newOid, Oid newIndexOid, Oid * comptypeOid);
 
 extern void AlterTableNamespace(RangeVar *relation, const char *newschema);
 
@@ -47,6 +45,10 @@ extern void renameatt(Oid myrelid,
 extern void renamerel(Oid myrelid,
 		  const char *newrelname,
 		  RenameStmt *stmt);
+
+extern AttrNumber *varattnos_map(TupleDesc old, TupleDesc new);
+extern AttrNumber *varattnos_map_schema(TupleDesc old, List *schema);
+extern void change_varattnos_of_a_node(Node *node, const AttrNumber *newattno);
 
 extern void register_on_commit_action(Oid relid, OnCommitAction action);
 extern void remove_on_commit_action(Oid relid);

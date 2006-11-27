@@ -1,30 +1,27 @@
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/output.c,v 1.19 2006/10/04 00:30:12 momjian Exp $ */
+
 #include "postgres_fe.h"
 
 #include "extern.h"
 
+static void output_escaped_str(char *cmd);
+
 void
 output_line_number(void)
 {
-	if (input_filename)
-		fprintf(yyout, "\n#line %d \"%s\"\n", yylineno, input_filename);
+	char	   *line = hashline_number();
+
+	/* output_escaped_str(line); */
+	fprintf(yyout, "%s", line);
+	free(line);
 }
 
 void
-output_simple_statement(char *cmd)
+output_simple_statement(char *stmt)
 {
-	int			i,
-				j = strlen(cmd);;
-
-	/* output this char by char as we have to filter '\"' */
-	for (i = 0; i < j; i++)
-	{
-		if (cmd[i] != '"')
-			fputc(cmd[i], yyout);
-		else
-			fputs("\\\"", yyout);
-	}
+	output_escaped_str(stmt);
 	output_line_number();
-	free(cmd);
+	free(stmt);
 }
 
 /*
@@ -91,7 +88,12 @@ whenever_action(int mode)
 char *
 hashline_number(void)
 {
-	if (input_filename)
+	/* do not print line numbers if we are in debug mode */
+	if (input_filename
+#ifdef YYDEBUG
+		&& !yydebug
+#endif
+		)
 	{
 		char	   *line = mm_alloc(strlen("\n#line %d \"%s\"\n") + 21 + strlen(input_filename));
 
@@ -106,20 +108,8 @@ hashline_number(void)
 void
 output_statement(char *stmt, int mode, char *con)
 {
-	int			i,
-				j = strlen(stmt);
-
 	fprintf(yyout, "{ ECPGdo(__LINE__, %d, %d, %s, \"", compat, force_indicator, con ? con : "NULL");
-
-	/* output this char by char as we have to filter '\"' */
-	for (i = 0; i < j; i++)
-	{
-		if (stmt[i] != '"')
-			fputc(stmt[i], yyout);
-		else
-			fputs("\\\"", yyout);
-	}
-
+	output_escaped_str(stmt);
 	fputs("\", ", yyout);
 
 	/* dump variables to C file */
@@ -134,4 +124,28 @@ output_statement(char *stmt, int mode, char *con)
 	free(stmt);
 	if (connection != NULL)
 		free(connection);
+}
+
+
+static void
+output_escaped_str(char *str)
+{
+	int			i,
+				len = strlen(str);
+
+	/* output this char by char as we have to filter " and \n */
+	for (i = 0; i < len; i++)
+	{
+		if (str[i] == '"')
+			fputs("\\\"", yyout);
+		else if (str[i] == '\n')
+			fputs("\\\n", yyout);
+		else if (str[i] == '\r' && str[i + 1] == '\n')
+		{
+			fputs("\\\r\n", yyout);
+			i++;
+		}
+		else
+			fputc(str[i], yyout);
+	}
 }

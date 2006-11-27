@@ -1,14 +1,13 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/input.c,v 1.46 2005/10/15 02:49:40 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/input.c,v 1.60 2006/10/04 00:30:06 momjian Exp $
  */
 #include "postgres_fe.h"
 
 #include "input.h"
-#include "pqexpbuffer.h"
 #include "settings.h"
 #include "tab-complete.h"
 #include "common.h"
@@ -26,14 +25,15 @@ static bool useReadline;
 static bool useHistory;
 char	   *psql_history;
 
-
-enum histcontrol
-{
-	hctl_none = 0,
-	hctl_ignorespace = 1,
-	hctl_ignoredups = 2,
-	hctl_ignoreboth = hctl_ignorespace | hctl_ignoredups
-};
+/*
+ *	Preserve newlines in saved queries by mapping '\n' to NL_IN_HISTORY
+ *
+ *	It is assumed NL_IN_HISTORY will never be entered by the user
+ *	nor appear inside a multi-byte string.	0x00 is not properly
+ *	handled by the readline routines so it can not be used
+ *	for this purpose.
+ */
+#define NL_IN_HISTORY	0x01
 #endif
 
 #ifdef HAVE_ATEXIT
@@ -44,34 +44,35 @@ static void finishInput(int, void *);
 #endif
 
 
-#ifdef USE_READLINE
-static enum histcontrol
-GetHistControlConfig(void)
+/*
+ * gets_interactive()
+ *
+ * Gets a line of interactive input, using readline if desired.
+ * The result is a malloc'd string.
+ *
+ * Caller *must* have set up sigint_interrupt_jmp before calling.
+ */
+char *
+gets_interactive(const char *prompt)
 {
-	enum histcontrol HC;
-	const char *var;
+#ifdef USE_READLINE
+	if (useReadline)
+	{
+		char	   *result;
 
-	var = GetVariable(pset.vars, "HISTCONTROL");
+		/* Enable SIGINT to longjmp to sigint_interrupt_jmp */
+		sigint_interrupt_enabled = true;
 
-	if (!var)
-		HC = hctl_none;
-	else if (strcmp(var, "ignorespace") == 0)
-		HC = hctl_ignorespace;
-	else if (strcmp(var, "ignoredups") == 0)
-		HC = hctl_ignoredups;
-	else if (strcmp(var, "ignoreboth") == 0)
-		HC = hctl_ignoreboth;
-	else
-		HC = hctl_none;
+		/* On some platforms, readline is declared as readline(char *) */
+		result = readline((char *) prompt);
 
-	return HC;
-}
+		/* Disable SIGINT again */
+		sigint_interrupt_enabled = false;
+
+		return result;
+	}
 #endif
 
-
-static char *
-gets_basic(const char prompt[])
-{
 	fputs(prompt, stdout);
 	fflush(stdout);
 	return gets_fromFile(stdin);
@@ -79,83 +80,166 @@ gets_basic(const char prompt[])
 
 
 /*
- * gets_interactive()
- *
- * Gets a line of interactive input, using readline of desired.
- * The result is malloc'ed.
+ * Append the line to the history buffer, making sure there is a trailing '\n'
  */
-char *
-gets_interactive(const char *prompt)
+void
+pg_append_history(const char *s, PQExpBuffer history_buf)
 {
 #ifdef USE_READLINE
-	char	   *s;
-
-	static char *prev_hist = NULL;
-
-	if (useReadline)
-		/* On some platforms, readline is declared as readline(char *) */
-		s = readline((char *) prompt);
-	else
-		s = gets_basic(prompt);
-
 	if (useHistory && s && s[0])
 	{
-		enum histcontrol HC;
+		appendPQExpBufferStr(history_buf, s);
+		if (s[strlen(s) - 1] != '\n')
+			appendPQExpBufferChar(history_buf, '\n');
+	}
+#endif
+}
 
-		HC = GetHistControlConfig();
 
-		if (((HC & hctl_ignorespace) && s[0] == ' ') ||
-		  ((HC & hctl_ignoredups) && prev_hist && strcmp(s, prev_hist) == 0))
+/*
+ * Emit accumulated history entry to readline's history mechanism,
+ * then reset the buffer to empty.
+ *
+ * Note: we write nothing if history_buf is empty, so extra calls to this
+ * function don't hurt.  There must have been at least one line added by
+ * pg_append_history before we'll do anything.
+ */
+void
+pg_send_history(PQExpBuffer history_buf)
+{
+#ifdef USE_READLINE
+	static char *prev_hist = NULL;
+
+	char	   *s = history_buf->data;
+
+	if (useHistory && s[0])
+	{
+		if (((pset.histcontrol & hctl_ignorespace) &&
+			 s[0] == ' ') ||
+			((pset.histcontrol & hctl_ignoredups) &&
+			 prev_hist && strcmp(s, prev_hist) == 0))
 		{
 			/* Ignore this line as far as history is concerned */
 		}
 		else
 		{
-			free(prev_hist);
+			int			i;
+
+			/* Trim any trailing \n's (OK to scribble on history_buf) */
+			for (i = strlen(s) - 1; i >= 0 && s[i] == '\n'; i--)
+				;
+			s[i + 1] = '\0';
+			/* Save each previous line for ignoredups processing */
+			if (prev_hist)
+				free(prev_hist);
 			prev_hist = pg_strdup(s);
+			/* And send it to readline */
 			add_history(s);
 		}
 	}
 
-	return s;
-#else
-	return gets_basic(prompt);
+	resetPQExpBuffer(history_buf);
 #endif
 }
-
 
 
 /*
  * gets_fromFile
  *
  * Gets a line of noninteractive input from a file (which could be stdin).
+ * The result is a malloc'd string.
+ *
+ * Caller *must* have set up sigint_interrupt_jmp before calling.
+ *
+ * Note: we re-use a static PQExpBuffer for each call.	This is to avoid
+ * leaking memory if interrupted by SIGINT.
  */
 char *
 gets_fromFile(FILE *source)
 {
-	PQExpBufferData buffer;
+	static PQExpBuffer buffer = NULL;
+
 	char		line[1024];
 
-	initPQExpBuffer(&buffer);
+	if (buffer == NULL)			/* first time through? */
+		buffer = createPQExpBuffer();
+	else
+		resetPQExpBuffer(buffer);
 
-	while (fgets(line, sizeof(line), source) != NULL)
+	for (;;)
 	{
-		appendPQExpBufferStr(&buffer, line);
-		if (buffer.data[buffer.len - 1] == '\n')
+		char	   *result;
+
+		/* Enable SIGINT to longjmp to sigint_interrupt_jmp */
+		sigint_interrupt_enabled = true;
+
+		/* Get some data */
+		result = fgets(line, sizeof(line), source);
+
+		/* Disable SIGINT again */
+		sigint_interrupt_enabled = false;
+
+		/* EOF? */
+		if (result == NULL)
+			break;
+
+		appendPQExpBufferStr(buffer, line);
+
+		/* EOL? */
+		if (buffer->data[buffer->len - 1] == '\n')
 		{
-			buffer.data[buffer.len - 1] = '\0';
-			return buffer.data;
+			buffer->data[buffer->len - 1] = '\0';
+			return pg_strdup(buffer->data);
 		}
 	}
 
-	if (buffer.len > 0)
-		return buffer.data;		/* EOF after reading some bufferload(s) */
+	if (buffer->len > 0)		/* EOF after reading some bufferload(s) */
+		return pg_strdup(buffer->data);
 
 	/* EOF, so return null */
-	termPQExpBuffer(&buffer);
 	return NULL;
 }
 
+
+#ifdef USE_READLINE
+/*
+ * Convert newlines to NL_IN_HISTORY for safe saving in readline history file
+ */
+static void
+encode_history(void)
+{
+	HIST_ENTRY *cur_hist;
+	char	   *cur_ptr;
+
+	history_set_pos(0);
+	for (cur_hist = current_history(); cur_hist; cur_hist = next_history())
+	{
+		/* some platforms declare HIST_ENTRY.line as const char * */
+		for (cur_ptr = (char *) cur_hist->line; *cur_ptr; cur_ptr++)
+			if (*cur_ptr == '\n')
+				*cur_ptr = NL_IN_HISTORY;
+	}
+}
+
+/*
+ * Reverse the above encoding
+ */
+static void
+decode_history(void)
+{
+	HIST_ENTRY *cur_hist;
+	char	   *cur_ptr;
+
+	history_set_pos(0);
+	for (cur_hist = current_history(); cur_hist; cur_hist = next_history())
+	{
+		/* some platforms declare HIST_ENTRY.line as const char * */
+		for (cur_ptr = (char *) cur_hist->line; *cur_ptr; cur_ptr++)
+			if (*cur_ptr == NL_IN_HISTORY)
+				*cur_ptr = '\n';
+	}
+}
+#endif   /* USE_READLINE */
 
 
 /*
@@ -170,17 +254,17 @@ initializeInput(int flags)
 #ifdef USE_READLINE
 	if (flags & 1)
 	{
+		const char *histfile;
 		char		home[MAXPGPATH];
 
 		useReadline = true;
 		initialize_readline();
 
 		useHistory = true;
-		if (GetVariable(pset.vars, "HISTSIZE") == NULL)
-			SetVariable(pset.vars, "HISTSIZE", "500");
 		using_history();
 
-		if (GetVariable(pset.vars, "HISTFILE") == NULL)
+		histfile = GetVariable(pset.vars, "HISTFILE");
+		if (histfile == NULL)
 		{
 			if (get_home_path(home))
 			{
@@ -191,12 +275,15 @@ initializeInput(int flags)
 		}
 		else
 		{
-			psql_history = pg_strdup(GetVariable(pset.vars, "HISTFILE"));
+			psql_history = pg_strdup(histfile);
 			expand_tilde(&psql_history);
 		}
 
 		if (psql_history)
+		{
 			read_history(psql_history);
+			decode_history();
+		}
 	}
 #endif
 
@@ -208,25 +295,51 @@ initializeInput(int flags)
 }
 
 
-
+/*
+ * This function is for saving the readline history when user
+ * runs \s command or when psql finishes.
+ *
+ * We have an argument named encodeFlag to handle the cases differently.
+ * In case of call via \s we don't really need to encode \n as \x01,
+ * but when we save history for Readline we must do that conversion.
+ */
 bool
-saveHistory(char *fname)
+saveHistory(char *fname, bool encodeFlag)
 {
 #ifdef USE_READLINE
-	if (useHistory && fname)
+
+	/*
+	 * Suppressing the write attempt when HISTFILE is set to /dev/null may
+	 * look like a negligible optimization, but it's necessary on e.g. Darwin,
+	 * where write_history will fail because it tries to chmod the target
+	 * file.
+	 */
+	if (useHistory && fname &&
+		strcmp(fname, DEVNULL) != 0)
 	{
-		if (write_history(fname) == 0)
+		if (encodeFlag)
+			encode_history();
+
+		/*
+		 * return value of write_history is not standardized across GNU
+		 * readline and libedit.  Therefore, check for errno becoming set to
+		 * see if the write failed.
+		 */
+		errno = 0;
+		(void) write_history(fname);
+		if (errno == 0)
 			return true;
 
-		psql_error("could not save history to file \"%s\": %s\n", fname, strerror(errno));
+		psql_error("could not save history to file \"%s\": %s\n",
+				   fname, strerror(errno));
 	}
 #else
+	/* only get here in \s case, so complain */
 	psql_error("history is not supported by this installation\n");
 #endif
 
 	return false;
 }
-
 
 
 static void
@@ -241,11 +354,11 @@ finishInput(int exitstatus, void *arg)
 	{
 		int			hist_size;
 
-		hist_size = GetVariableNum(pset.vars, "HISTSIZE", -1, -1, true);
+		hist_size = GetVariableNum(pset.vars, "HISTSIZE", 500, -1, true);
 		if (hist_size >= 0)
 			stifle_history(hist_size);
 
-		saveHistory(psql_history);
+		saveHistory(psql_history, true);
 		free(psql_history);
 		psql_history = NULL;
 	}

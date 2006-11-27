@@ -3,10 +3,10 @@
  * pgtime.h
  *	  PostgreSQL internal timezone library
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/include/pgtime.h,v 1.11 2005/10/15 02:49:41 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/include/pgtime.h,v 1.14 2006/10/18 16:43:14 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -38,6 +38,7 @@ struct pg_tm
 };
 
 typedef struct pg_tz pg_tz;
+typedef struct pg_tzenum pg_tzenum;
 
 extern struct pg_tm *pg_localtime(const pg_time_t *timep, const pg_tz *tz);
 extern struct pg_tm *pg_gmtime(const pg_time_t *timep);
@@ -54,7 +55,12 @@ extern size_t pg_strftime(char *s, size_t max, const char *format,
 extern void pg_timezone_initialize(void);
 extern pg_tz *pg_tzset(const char *tzname);
 extern bool tz_acceptable(pg_tz *tz);
+extern bool pg_get_timezone_offset(const pg_tz *tz, long int *gmtoff);
 extern const char *pg_get_timezone_name(pg_tz *tz);
+
+extern pg_tzenum *pg_tzenumerate_start(void);
+extern pg_tz *pg_tzenumerate_next(pg_tzenum *dir);
+extern void pg_tzenumerate_end(pg_tzenum *dir);
 
 extern pg_tz *global_timezone;
 

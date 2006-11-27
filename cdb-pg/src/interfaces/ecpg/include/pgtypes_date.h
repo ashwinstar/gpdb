@@ -1,3 +1,5 @@
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/include/pgtypes_date.h,v 1.11 2006/10/04 00:30:11 momjian Exp $ */
+
 #ifndef PGTYPES_DATETIME
 #define PGTYPES_DATETIME
 
@@ -10,6 +12,8 @@ extern		"C"
 {
 #endif
 
+extern date *PGTYPESdate_new(void);
+extern void PGTYPESdate_free(date *);
 extern date PGTYPESdate_from_asc(char *, char **);
 extern char *PGTYPESdate_to_asc(date);
 extern date PGTYPESdate_from_timestamp(timestamp);

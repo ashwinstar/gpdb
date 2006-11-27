@@ -1,3 +1,5 @@
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/variable.c,v 1.41 2006/07/30 16:28:58 meskes Exp $ */
+
 #include "postgres_fe.h"
 
 #include "extern.h"

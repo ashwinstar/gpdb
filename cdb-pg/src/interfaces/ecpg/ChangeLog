@@ -1952,3 +1952,206 @@ Wed Oct  5 16:57:42 CEST 2005
 	- Set ecpg library version to 5.1.
 	- Set ecpg version to 4.1.1.
 
+Wed Nov 30 12:49:13 CET 2005
+
+	- Made several variables "const char *" instead of "char *" as
+	  proposed by Qingqing Zhou <zhouqq@cs.toronto.edu>.
+	- Replaced all strdup() calls by ECPGstrdup().
+
+Fri Dec  2 16:00:10 CET 2005
+
+	- Added special handling of CONNECTION variable that is used by ECPG
+	  instead of given to the backend.
+	  
+Fr Jan 13 17:29:30 CET 2006
+
+	- Fixed a fixed size buffer in preproc.y to be variable size since an
+	  overflow could occur on the fixed one.
+	  
+Tu Jan 17 18:53:03 CET 2006
+
+	- Data transferred binary is now put into the variables verbatim.
+	
+Tu Jan 24 10:59:21 CET 2006
+
+	- Synced parser and keyword list.
+	- Added another test case.
+	
+Sa Feb  4 21:35:03 CET 2006
+
+	- Added C bit fields to ecpg parser.
+	- Added some default rules to lexer.
+	- Added log output to prepare statement.
+	
+Mo Feb  6 21:21:19 CET 2006
+
+	- Added just another test case.
+	- Fixed missing continuation line character.
+	- Do not translate $-quoting.
+	
+Tu Feb  7 18:48:14 CET 2006
+
+	- Bit field notation belongs to a variable not a variable list.
+	- Output of line number only done by one function.
+
+Fri, 17 Mar 2006 16:38:19 +0100
+
+	- Fixed bug 2330: Wrong error code in case of a duplicate key.
+
+Mo Apr 24 11:40:05 CEST 2006
+
+	- Fixed memory leak bugs found by Martijn Oosterhout.
+
+We Mai 31 10:10:36 CEST 2006
+
+	- Fixed PGTYPESdate_from_timestamp because some characters got lost there.
+
+Tu Jun  6 12:09:56 CEST 2006
+
+	- Fixed two more memory leaks in ecpglib.
+	- Synced parser.
+
+Mo Jun 19 11:15:50 CEST 2006
+
+	- Do not use already free'ed errmsg, bug found by Joachim Wieland
+	  <joe@mcknight.de>.
+
+We Jun 21 09:24:53 CEST 2006
+
+	- Added fixes from the coverity report send in by Joachim Wieland
+	  <joe@mcknight.de>.
+	- Added missing error handling in a few functions in ecpglib.
+
+we Jun 21 13:37:00 CEST 2006
+
+	- Added some more coverity report patches send in by Martijn van
+	  Oosterhout <kleptog@svana.org>.
+
+Su Jun 25 11:27:46 CEST 2006
+
+	- Moved some free() calls that coverity correctly complains about.
+
+Mo Jun 26 11:05:25 CEST 2006
+
+	- Added some more coverity report patches send in by Joachim Wieland
+	  <joe@mcknight.de>.
+
+Mo Jun 26 16:08:23 CEST 2006
+
+	- Added missing braces to prevent a segfault after usage of an
+	  undeclared cursor.
+
+We Jul  5 12:17:28 CEST 2006
+
+	- Fixed most of the remaining Coverity bugs.
+
+Fr Jul 28 11:00:51 CEST 2006
+
+	- Added more SoC changes by Joachim Wieland <joe@mcknight.de>:
+		- SHOW statement puts result into a variable
+		- COPY TO STDOUT works
+		- Connection identifier has to be unique
+	- Variables should be free'ed only once.
+
+Tu Aug  1 15:04:52 CEST 2006
+
+	- Applied patch by Joachim Wieland <joe@mcknight.de> to fix segfault
+	  occuring when using --enable-thread-safety.
+
+We Aug  2 13:15:25 CEST 2006
+
+	- Synced parser and keyword list.
+	- Implemented EXEC SQL UNDEF.
+	- Applied first version of the regression test patch by Joachim
+	  Wieland <joe@mcknight.de>.
+
+Fr Aug  4 10:44:30 CEST 2006
+
+	- Applied test suite update by Joachim Wieland <joe@mcknight.de>.
+
+Mo Aug  7 14:56:44 CEST 2006
+
+	- Joachim fixed some bugs in numeric handling in pgtypeslib.
+
+Tu Aug  8 13:26:25 CEST 2006
+
+	- Made parser check for valid copy to/from stdin/stdout combinations.
+
+We Aug  9 09:28:56 CEST 2006
+
+	- Fixed error handling in numeric conversion (Joachim).
+	- Fixed some memory bugs that somehow reappeared.
+	- Also fixed a new Coverity report.
+
+Su Aug 13 11:01:13 CEST 2006
+
+	- Applied patch for VPATH builds by Alvaro Herrera
+	  <alvherre@commandprompt.com>
+	- Merged dyntest.pgc and dyntest2.pgc.
+
+Mo Aug 14 10:39:59 CEST 2006
+
+	- Added lots of SoC stuff made by Joachim.
+	- Fixed broken newline on Windows.
+	- Fixed a nasty buffer underrun that only occured when using Informix
+	  no_indicator NULL setting on timestamps and intervals.
+
+Fr 18. Aug 17:32:54 CEST 2006
+
+	- Changed lexer to no longer use the default rule.
+	- Synced parser and keyword list.
+	- Fixed parsing of CONNECT statement so it accepts a C string again.
+	- Fixed a buffer overrun that was masked on Linux systems.
+
+Sa 19. Aug 14:11:32 CEST 2006
+
+	- More SoC stuff.
+
+Tu 22. Aug 13:54:08 CEST 2006
+
+	- Descriptor values were quoted twice.
+
+We 23. Aug 09:32:14 CEST 2006
+
+	- Replaced double-quote-fix with a hopefully better version.
+	- Use initializer string length as size for character strings.
+	- Added ecpg_config.h file that is created via configure.
+
+Th 24. Aug 11:53:29 CEST 2006
+
+	- Fixed of by one variable size.
+	- Synced parser.
+
+Su 27. Aug 17:54:36 CEST 2006
+
+	- Enabled single-quoted connection targets.
+	- Fixed a memory leak/segfault in unsuccessful connection.
+
+Tu 29. Aug 14:21:31 CEST 2006
+
+	- Fixed parser and library to allow empty database names.
+	- Streamlined connection name parsing.
+
+Su 3. Sep 14:21:29 CEST 2006
+
+	- Synced parser.
+	- Added another regression test and fixed tcp test.
+
+Tu 5. Sep 11:49:08 CEST 2006
+
+	- Synced parser.
+	- Fixed ecpglib trying to read one character after end-of-string.
+	- Fixed port number setting in regression suite.
+	- Added some interval checks to regression suite.
+	- Started to cleanup complex tests.
+
+Th 14. Sep 09:47:03 CEST 2006
+
+	- Completely removed complex tests.
+	- Added missing constuctor/destructor for interval and date.
+
+We 8. Nov 10:53:42 CET 2006
+
+	- Applied patch by Peter Harris to free auto_mem struct in ECPGconnect.
+	- Set ecpg library version to 5.2.
+	- Set ecpg version to 4.2.1.

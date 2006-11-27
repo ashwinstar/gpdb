@@ -2,7 +2,7 @@
 #
 # Makefile for the pltcl shared object
 #
-# $PostgreSQL: pgsql/src/pl/tcl/Makefile,v 1.47 2005/05/24 17:07:41 tgl Exp $
+# $PostgreSQL: pgsql/src/pl/tcl/Makefile,v 1.50 2006/07/21 00:24:04 tgl Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -42,6 +42,8 @@ OBJS = pltcl.o
 
 REGRESS_OPTS = --dbname=$(PL_TESTDB) --load-language=pltcl
 REGRESS = pltcl_setup pltcl_queries
+# where to find psql for running the tests
+PSQLDIR = $(bindir)
 
 include $(top_srcdir)/src/Makefile.shlib
 
@@ -73,7 +75,7 @@ endif
 
 install: all installdirs
 ifeq ($(enable_shared), yes)
-	$(INSTALL_SHLIB) $(shlib) $(DESTDIR)$(pkglibdir)/$(NAME)$(DLSUFFIX)
+	$(INSTALL_SHLIB) $(shlib) '$(DESTDIR)$(pkglibdir)/$(NAME)$(DLSUFFIX)'
 else
 	@echo "*****"; \
 	 echo "* PL/Tcl was not installed due to lack of shared library support."; \
@@ -82,19 +84,19 @@ endif
 	$(MAKE) -C modules $@
 
 installdirs:
-	$(mkinstalldirs) $(DESTDIR)$(pkglibdir)
+	$(mkinstalldirs) '$(DESTDIR)$(pkglibdir)'
 	$(MAKE) -C modules $@
 
 uninstall:
-	rm -f $(DESTDIR)$(pkglibdir)/$(NAME)$(DLSUFFIX)
+	rm -f '$(DESTDIR)$(pkglibdir)/$(NAME)$(DLSUFFIX)'
 	$(MAKE) -C modules $@
 
 installcheck: submake
-	$(SHELL) $(top_builddir)/src/test/regress/pg_regress $(REGRESS_OPTS) $(REGRESS)
+	$(top_builddir)/src/test/regress/pg_regress --psqldir=$(PSQLDIR) $(REGRESS_OPTS) $(REGRESS)
 
 .PHONY: submake
 submake:
-	$(MAKE) -C $(top_builddir)/src/test/regress pg_regress
+	$(MAKE) -C $(top_builddir)/src/test/regress pg_regress$(X)
 
 else # TCL_SHARED_BUILD = 0
 

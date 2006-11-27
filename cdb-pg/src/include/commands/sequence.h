@@ -4,10 +4,10 @@
  *	  prototypes for sequence.c.
  *
  * Portions Copyright (c) 2006, Greenplum Inc.
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/commands/sequence.h,v 1.33 2005/10/02 23:50:12 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/commands/sequence.h,v 1.37 2006/07/11 13:54:24 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -15,6 +15,7 @@
 #define SEQUENCE_H
 
 #include "nodes/parsenodes.h"
+#include "storage/relfilenode.h"
 #include "access/xlog.h"
 #include "fmgr.h"
 
@@ -92,15 +93,11 @@ extern void DefineSequence(CreateSeqStmt *stmt);
 extern void AlterSequence(AlterSeqStmt *stmt);
 
 extern void seq_redo(XLogRecPtr lsn, XLogRecord *rptr);
-extern void seq_desc(char *buf, uint8 xl_info, char *rec);
+extern void seq_desc(StringInfo buf, uint8 xl_info, char *rec);
 
 /* Set the upper and lower bounds of a sequence */
 #ifndef INT64_IS_BUSTED
-#ifdef HAVE_LL_CONSTANTS
-#define SEQ_MAXVALUE	((int64) 0x7FFFFFFFFFFFFFFFLL)
-#else
-#define SEQ_MAXVALUE	((int64) 0x7FFFFFFFFFFFFFFF)
-#endif
+#define SEQ_MAXVALUE	INT64CONST(0x7FFFFFFFFFFFFFFF)
 #else							/* INT64_IS_BUSTED */
 #define SEQ_MAXVALUE	((int64) 0x7FFFFFFF)
 #endif   /* INT64_IS_BUSTED */

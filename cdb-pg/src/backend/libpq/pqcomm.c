@@ -27,10 +27,10 @@
  * the backend's "backend/libpq" is quite separate from "interfaces/libpq".
  * All that remains is similarities of names to trap the unwary...
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- *	$PostgreSQL: pgsql/src/backend/libpq/pqcomm.c,v 1.182.2.1 2006/01/24 16:38:50 tgl Exp $
+ *	$PostgreSQL: pgsql/src/backend/libpq/pqcomm.c,v 1.188 2006/10/04 00:29:53 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -67,7 +67,6 @@
 #include <pthread.h>
 
 #include <signal.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
 #include <unistd.h>
@@ -85,6 +84,7 @@
 #include <utime.h>
 #endif
 
+#include "libpq/ip.h"
 #include "libpq/libpq.h"
 #include "miscadmin.h"
 #include "storage/ipc.h"
@@ -596,6 +596,21 @@ StreamConnection(int server_fd, Port *port)
 			return STATUS_ERROR;
 		}
 
+#ifdef WIN32
+
+		/*
+		 * This is a Win32 socket optimization.  The ideal size is 32k.
+		 * http://support.microsoft.com/kb/823764/EN-US/
+		 */
+		on = PQ_BUFFER_SIZE * 4;
+		if (setsockopt(port->sock, SOL_SOCKET, SO_SNDBUF, (char *) &on,
+					   sizeof(on)) < 0)
+		{
+			elog(LOG, "setsockopt(SO_SNDBUF) failed: %m");
+			return STATUS_ERROR;
+		}
+#endif
+
 		/*
 		 * Also apply the current keepalive parameters.  If we fail to set a
 		 * parameter, don't error out, because these aren't universally
@@ -1014,7 +1029,7 @@ int
 pq_flush(void)
 {
 	int			res;
-	
+
 	/* No-op if reentrant call */
 	if (PqCommBusy)
 		return 0;

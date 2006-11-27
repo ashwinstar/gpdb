@@ -4,7 +4,7 @@
  *	  Interface to hba.c
  *
  *
- * $PostgreSQL: pgsql/src/include/libpq/hba.h,v 1.41 2005/10/15 02:49:44 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/libpq/hba.h,v 1.45 2006/11/05 22:42:10 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -26,6 +26,9 @@ typedef enum UserAuth
 #ifdef USE_PAM
 	,uaPAM
 #endif   /* USE_PAM */
+#ifdef USE_LDAP
+	,uaLDAP
+#endif
 } UserAuth;
 
 typedef struct Port hbaPort;
@@ -37,7 +40,6 @@ extern void load_role(void);
 extern int	hba_getauthmethod(hbaPort *port);
 extern int	authident(hbaPort *port);
 extern bool read_pg_database_line(FILE *fp, char *dbname, Oid *dboid,
-					  Oid *dbtablespace, TransactionId *dbfrozenxid,
-					  TransactionId *dbvacuumxid);
+					  Oid *dbtablespace, TransactionId *dbfrozenxid);
 
 #endif   /* HBA_H */

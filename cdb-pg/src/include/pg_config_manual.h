@@ -6,7 +6,7 @@
  * for developers.	If you edit any of these, be sure to do a *full*
  * rebuild (and an initdb if noted).
  *
- * $PostgreSQL: pgsql/src/include/pg_config_manual.h,v 1.18 2005/10/07 20:11:03 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/pg_config_manual.h,v 1.23 2006/09/18 22:40:40 tgl Exp $
  *------------------------------------------------------------------------
  */
 
@@ -44,8 +44,19 @@
 #define RELSEG_SIZE (0x40000000 / BLCKSZ)
 
 /*
+ * Size of a WAL file block.  This need have no particular relation to BLCKSZ.
+ * XLOG_BLCKSZ must be a power of 2, and if your system supports O_DIRECT I/O,
+ * XLOG_BLCKSZ must be a multiple of the alignment requirement for direct-I/O
+ * buffers, else direct I/O may fail.
+ *
+ * Changing XLOG_BLCKSZ requires an initdb.
+ */
+#define XLOG_BLCKSZ		8192
+
+/*
  * XLOG_SEG_SIZE is the size of a single WAL file.	This must be a power of 2
- * and larger than BLCKSZ (preferably, a great deal larger than BLCKSZ).
+ * and larger than XLOG_BLCKSZ (preferably, a great deal larger than
+ * XLOG_BLCKSZ).
  *
  * Changing XLOG_SEG_SIZE requires an initdb.
  */
@@ -54,7 +65,7 @@
 /*
  * Maximum number of arguments to a function.
  *
- * The minimum value is 8 (index creation uses 8-argument functions).
+ * The minimum value is 8 (index cost estimation uses 8-argument functions).
  * The maximum possible value is around 600 (limited by index tuple size in
  * pg_proc's index; BLCKSZ larger than 8K would allow more).  Values larger
  * than needed will waste memory and processing time, but do not directly
@@ -88,16 +99,6 @@
  * backslash sequences in the first place.
  */
 /* #define TCL_ARRAYS */
-
-/*
- * User locks are handled totally on the application side as long term
- * cooperative locks which extend beyond the normal transaction
- * boundaries.	Their purpose is to indicate to an application that
- * someone is `working' on an item.  Define this flag to enable user
- * locks.  You will need the loadable module user-locks.c to use this
- * feature.
- */
-#define USER_LOCKS
 
 /*
  * Define this if you want psql to _always_ ask for a username and a
@@ -155,15 +156,14 @@
 /*
  * Disable UNIX sockets for those operating system.
  */
-#if defined(__QNX__) || defined(__BEOS__) || defined(WIN32)
+#if defined(WIN32)
 #undef HAVE_UNIX_SOCKETS
 #endif
 
 /*
  * Define this if your operating system supports link()
  */
-#if !defined(__QNX__) && !defined(__BEOS__) && \
-	!defined(WIN32) && !defined(__CYGWIN__)
+#if !defined(WIN32) && !defined(__CYGWIN__)
 #define HAVE_WORKING_LINK 1
 #endif
 

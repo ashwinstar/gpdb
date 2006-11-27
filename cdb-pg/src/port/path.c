@@ -3,12 +3,12 @@
  * path.c
  *	  portable path handling routines
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/path.c,v 1.61.2.4 2006/02/01 12:42:00 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/port/path.c,v 1.70 2006/10/04 00:30:14 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -69,7 +69,7 @@ skip_drive(const char *path)
 		while (*path && !IS_DIR_SEP(*path))
 			path++;
 	}
-	else if (isalpha(path[0]) && path[1] == ':')
+	else if (isalpha((unsigned char) path[0]) && path[1] == ':')
 	{
 		path += 2;
 	}
@@ -174,7 +174,7 @@ join_path_components(char *ret_path,
 					 const char *head, const char *tail)
 {
 	if (ret_path != head)
-		StrNCpy(ret_path, head, MAXPGPATH);
+		strlcpy(ret_path, head, MAXPGPATH);
 
 	/*
 	 * Remove any leading "." and ".." in the tail component, adjusting head
@@ -388,8 +388,8 @@ path_is_prefix_of_path(const char *path1, const char *path2)
 const char *
 get_progname(const char *argv0)
 {
-	const char  *nodir_name;
-	char		*progname;
+	const char *nodir_name;
+	char	   *progname;
 
 	nodir_name = last_dir_separator(argv0);
 	if (nodir_name)
@@ -398,20 +398,20 @@ get_progname(const char *argv0)
 		nodir_name = skip_drive(argv0);
 
 	/*
-	 *	Make a copy in case argv[0] is modified by ps_status.
-	 *	Leaks memory, but called only once.
+	 * Make a copy in case argv[0] is modified by ps_status. Leaks memory, but
+	 * called only once.
 	 */
 	progname = strdup(nodir_name);
 	if (progname == NULL)
 	{
 		fprintf(stderr, "%s: out of memory\n", nodir_name);
-		exit(1);			/* This could exit the postmaster */
+		exit(1);				/* This could exit the postmaster */
 	}
 
 #if defined(__CYGWIN__) || defined(WIN32)
 	/* strip ".exe" suffix, regardless of case */
 	if (strlen(progname) > sizeof(EXE) - 1 &&
-		pg_strcasecmp(progname + strlen(progname) - (sizeof(EXE) - 1), EXE) == 0)
+	pg_strcasecmp(progname + strlen(progname) - (sizeof(EXE) - 1), EXE) == 0)
 		progname[strlen(progname) - (sizeof(EXE) - 1)] = '\0';
 #endif
 
@@ -493,7 +493,7 @@ make_relative_path(char *ret_path, const char *target_path,
 	 * Set up my_exec_path without the actual executable name, and
 	 * canonicalize to simplify comparison to bin_path.
 	 */
-	StrNCpy(ret_path, my_exec_path, MAXPGPATH);
+	strlcpy(ret_path, my_exec_path, MAXPGPATH);
 	trim_directory(ret_path);	/* remove my executable name */
 	canonicalize_path(ret_path);
 
@@ -502,7 +502,7 @@ make_relative_path(char *ret_path, const char *target_path,
 	 */
 	tail_start = (int) strlen(ret_path) - tail_len;
 	if (tail_start > 0 &&
-		IS_DIR_SEP(ret_path[tail_start-1]) &&
+		IS_DIR_SEP(ret_path[tail_start - 1]) &&
 		dir_strcmp(ret_path + tail_start, bin_path + prefix_len) == 0)
 	{
 		ret_path[tail_start] = '\0';
@@ -513,7 +513,7 @@ make_relative_path(char *ret_path, const char *target_path,
 	}
 
 no_match:
-	StrNCpy(ret_path, target_path, MAXPGPATH);
+	strlcpy(ret_path, target_path, MAXPGPATH);
 	canonicalize_path(ret_path);
 }
 
@@ -625,7 +625,7 @@ get_home_path(char *ret_path)
 
 	if (pqGetpwuid(geteuid(), &pwdstr, pwdbuf, sizeof(pwdbuf), &pwd) != 0)
 		return false;
-	StrNCpy(ret_path, pwd->pw_dir, MAXPGPATH);
+	strlcpy(ret_path, pwd->pw_dir, MAXPGPATH);
 	return true;
 #else
 	char		tmppath[MAX_PATH];
@@ -649,54 +649,6 @@ void
 get_parent_directory(char *path)
 {
 	trim_directory(path);
-}
-
-
-/*
- *	set_pglocale_pgservice
- *
- *	Set application-specific locale and service directory
- *
- *	This function takes an argv[0] rather than a full path.
- */
-void
-set_pglocale_pgservice(const char *argv0, const char *app)
-{
-	char		path[MAXPGPATH];
-	char		my_exec_path[MAXPGPATH];
-	char		env_path[MAXPGPATH + sizeof("PGSYSCONFDIR=")];	/* longer than
-																 * PGLOCALEDIR */
-
-	/* don't set LC_ALL in the backend */
-	if (strcmp(app, "postgres") != 0)
-		setlocale(LC_ALL, "");
-
-	if (find_my_exec(argv0, my_exec_path) < 0)
-		return;
-
-#ifdef ENABLE_NLS
-	get_locale_path(my_exec_path, path);
-	bindtextdomain(app, path);
-	textdomain(app);
-
-	if (getenv("PGLOCALEDIR") == NULL)
-	{
-		/* set for libpq to use */
-		snprintf(env_path, sizeof(env_path), "PGLOCALEDIR=%s", path);
-		canonicalize_path(env_path + 12);
-		putenv(strdup(env_path));
-	}
-#endif
-
-	if (getenv("PGSYSCONFDIR") == NULL)
-	{
-		get_etc_path(my_exec_path, path);
-
-		/* set for libpq to use */
-		snprintf(env_path, sizeof(env_path), "PGSYSCONFDIR=%s", path);
-		canonicalize_path(env_path + 13);
-		putenv(strdup(env_path));
-	}
 }
 
 

@@ -36,6 +36,9 @@
 /* Define to the default TCP port number as a string constant. */
 #undef DEF_PGPORT_STR
 
+/* Define to 1 to enable DTrace support. (--enable-dtrace) */
+#undef ENABLE_DTRACE
+
 /* Define to 1 if you want National Language Support. (--enable-nls) */
 #undef ENABLE_NLS
 
@@ -76,9 +79,17 @@
    don't. */
 #undef HAVE_DECL_F_FULLFSYNC
 
+/* Define to 1 if you have the declaration of `posix_fadvise', and to 0 if you
+   don't. */
+#undef HAVE_DECL_POSIX_FADVISE
+
 /* Define to 1 if you have the declaration of `snprintf', and to 0 if you
    don't. */
 #undef HAVE_DECL_SNPRINTF
+
+/* Define to 1 if you have the declaration of `strlcpy', and to 0 if you
+   don't. */
+#undef HAVE_DECL_STRLCPY
 
 /* Define to 1 if you have the declaration of `vsnprintf', and to 0 if you
    don't. */
@@ -150,6 +161,9 @@
 /* Define to 1 if you have the `getpwuid_r' function. */
 #undef HAVE_GETPWUID_R
 
+/* Define to 1 if you have the `getrlimit' function. */
+#undef HAVE_GETRLIMIT
+
 /* Define to 1 if you have the `getrusage' function. */
 #undef HAVE_GETRUSAGE
 
@@ -204,62 +218,29 @@
 /* Define to 1 if you have the <langinfo.h> header file. */
 #undef HAVE_LANGINFO_H
 
-/* Define to 1 if you have the `bind' library (-lbind). */
-#undef HAVE_LIBBIND
-
-/* Define to 1 if you have the `BSD' library (-lBSD). */
-#undef HAVE_LIBBSD
-
-/* Define to 1 if you have the `compat' library (-lcompat). */
-#undef HAVE_LIBCOMPAT
+/* Define to 1 if you have the <ldap.h> header file. */
+#undef HAVE_LDAP_H
 
 /* Define to 1 if you have the `crypto' library (-lcrypto). */
 #undef HAVE_LIBCRYPTO
 
-/* Define to 1 if you have the `cygipc' library (-lcygipc). */
-#undef HAVE_LIBCYGIPC
-
-/* Define to 1 if you have the `dl' library (-ldl). */
-#undef HAVE_LIBDL
-
-/* Define to 1 if you have the `dld' library (-ldld). */
-#undef HAVE_LIBDLD
-
 /* Define to 1 if you have the `eay32' library (-leay32). */
 #undef HAVE_LIBEAY32
 
-/* Define to 1 if you have the `gen' library (-lgen). */
-#undef HAVE_LIBGEN
+/* Define to 1 if you have the `ldap' library (-lldap). */
+#undef HAVE_LIBLDAP
 
-/* Define to 1 if you have the `IPC' library (-lIPC). */
-#undef HAVE_LIBIPC
-
-/* Define to 1 if you have the `lc' library (-llc). */
-#undef HAVE_LIBLC
-
-/* Define to 1 if you have the `ld' library (-lld). */
-#undef HAVE_LIBLD
+/* Define to 1 if you have the `ldap_r' library (-lldap_r). */
+#undef HAVE_LIBLDAP_R
 
 /* Define to 1 if you have the `m' library (-lm). */
 #undef HAVE_LIBM
 
-/* Define to 1 if you have the `nsl' library (-lnsl). */
-#undef HAVE_LIBNSL
-
 /* Define to 1 if you have the `pam' library (-lpam). */
 #undef HAVE_LIBPAM
 
-/* Define to 1 if you have the `PW' library (-lPW). */
-#undef HAVE_LIBPW
-
 /* Define if you have a function readline library */
 #undef HAVE_LIBREADLINE
-
-/* Define to 1 if you have the `resolv' library (-lresolv). */
-#undef HAVE_LIBRESOLV
-
-/* Define to 1 if you have the `socket' library (-lsocket). */
-#undef HAVE_LIBSOCKET
 
 /* Define to 1 if you have the `ssl' library (-lssl). */
 #undef HAVE_LIBSSL
@@ -267,14 +248,8 @@
 /* Define to 1 if you have the `ssleay32' library (-lssleay32). */
 #undef HAVE_LIBSSLEAY32
 
-/* Define to 1 if you have the `unix' library (-lunix). */
-#undef HAVE_LIBUNIX
-
-/* Define to 1 if you have the `util' library (-lutil). */
-#undef HAVE_LIBUTIL
-
-/* Define to 1 if you have the `wsock32' library (-lwsock32). */
-#undef HAVE_LIBWSOCK32
+/* Define to 1 if you have the `wldap32' library (-lwldap32). */
+#undef HAVE_LIBWLDAP32
 
 /* Define to 1 if you have the `z' library (-lz). */
 #undef HAVE_LIBZ
@@ -410,6 +385,9 @@
 /* Define to 1 if you have the <string.h> header file. */
 #undef HAVE_STRING_H
 
+/* Define to 1 if you have the `strlcpy' function. */
+#undef HAVE_STRLCPY
+
 /* Define to 1 if you have the `strtol' function. */
 #undef HAVE_STRTOL
 
@@ -487,6 +465,9 @@
 
 /* Define to 1 if you have the <sys/pstat.h> header file. */
 #undef HAVE_SYS_PSTAT_H
+
+/* Define to 1 if you have the <sys/resource.h> header file. */
+#undef HAVE_SYS_RESOURCE_H
 
 /* Define to 1 if you have the <sys/select.h> header file. */
 #undef HAVE_SYS_SELECT_H
@@ -567,17 +548,20 @@
 /* Define to 1 if you have the <wctype.h> header file. */
 #undef HAVE_WCTYPE_H
 
+/* Define to 1 if you have the <winldap.h> header file. */
+#undef HAVE_WINLDAP_H
+
 /* Define to the appropriate snprintf format for 64-bit ints, if any. */
 #undef INT64_FORMAT
 
 /* Define to build with Kerberos 5 support. (--with-krb5) */
 #undef KRB5
 
-/* Define to the location of locale files. */
-#undef LOCALEDIR
-
 /* Define as the maximum alignment requirement of any C data type. */
 #undef MAXIMUM_ALIGNOF
+
+/* Define bytes to use libc memset(). */
+#undef MEMSET_LOOP_LIMIT
 
 /* Define to the address where bug reports for this package should be sent. */
 #undef PACKAGE_BUGREPORT
@@ -598,8 +582,11 @@
    (--with-krb-srvnam=NAME) */
 #undef PG_KRB_SRVNAM
 
-/* PostgreSQL version */
+/* PostgreSQL version as a string */
 #undef PG_VERSION
+
+/* PostgreSQL version as a number */
+#undef PG_VERSION_NUM
 
 /* A string containing the version number, platform, and C compiler */
 #undef PG_VERSION_STR
@@ -637,6 +624,9 @@
    (--enable-integer-datetimes) */
 #undef USE_INTEGER_DATETIMES
 
+/* Define to 1 to build with LDAP support. (--with-ldap) */
+#undef USE_LDAP
+
 /* Define to select named POSIX semaphores. */
 #undef USE_NAMED_POSIX_SEMAPHORES
 
@@ -657,6 +647,9 @@
 
 /* Define to select unnamed POSIX semaphores. */
 #undef USE_UNNAMED_POSIX_SEMAPHORES
+
+/* Define to select Win32-style semaphores. */
+#undef USE_WIN32_SEMAPHORES
 
 /* Number of bits in a file offset, on hosts where this is settable. */
 #undef _FILE_OFFSET_BITS
