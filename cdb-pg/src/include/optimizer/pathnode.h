@@ -5,10 +5,10 @@
  *
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/optimizer/pathnode.h,v 1.62 2005/10/15 02:49:45 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/optimizer/pathnode.h,v 1.72 2006/10/04 00:30:09 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -51,11 +51,11 @@ extern IndexPath *create_index_path(PlannerInfo *root,
 				  List *clause_groups,
 				  List *pathkeys,
 				  ScanDirection indexscandir,
-				  bool isjoininner);
+				  RelOptInfo *outer_rel);
 extern BitmapHeapPath *create_bitmap_heap_path(PlannerInfo *root,
 						RelOptInfo *rel,
 						Path *bitmapqual,
-						bool isjoininner);
+						RelOptInfo *outer_rel);
 extern BitmapAndPath *create_bitmap_and_path(PlannerInfo *root,
 					   RelOptInfo *rel,
 					   List *bitmapquals);
@@ -63,10 +63,11 @@ extern BitmapOrPath *create_bitmap_or_path(PlannerInfo *root,
 					  RelOptInfo *rel,
 					  List *bitmapquals);
 extern TidPath *create_tidscan_path(PlannerInfo *root, RelOptInfo *rel,
-					List *tideval);
+					List *tidquals);
 extern AppendPath *create_append_path(RelOptInfo *rel, List *subpaths);
-extern ResultPath *create_result_path(RelOptInfo *rel, Path *subpath,
-				   List *quals);
+//extern ResultPath *create_result_path(RelOptInfo *rel, Path *subpath,
+//				   List *quals);
+extern ResultPath *create_result_path(List *quals);
 extern MaterialPath *create_material_path(RelOptInfo *rel, Path *subpath);
 UniquePath *create_unique_exprlist_path(PlannerInfo    *root,
                                         Path           *subpath,
@@ -76,6 +77,7 @@ UniquePath *create_unique_rowid_path(PlannerInfo *root,
                                      Relids       dedup_relids);
 extern Path *create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel, List *pathkeys);
 extern Path *create_functionscan_path(PlannerInfo *root, RelOptInfo *rel);
+extern Path *create_valuesscan_path(PlannerInfo *root, RelOptInfo *rel);
 
 extern NestPath *create_nestloop_path(PlannerInfo *root,
 									  RelOptInfo *joinrel,
@@ -111,8 +113,8 @@ extern HashPath *create_hashjoin_path(PlannerInfo *root,
 /*
  * prototypes for relnode.c
  */
-extern void build_base_rel(PlannerInfo *root, int relid);
-extern RelOptInfo *build_other_rel(PlannerInfo *root, int relid);
+extern RelOptInfo *build_simple_rel(PlannerInfo *root, int relid,
+				 RelOptKind reloptkind);
 extern RelOptInfo *find_base_rel(PlannerInfo *root, int relid);
 extern RelOptInfo *find_join_rel(PlannerInfo *root, Relids relids);
 extern RelOptInfo *build_join_rel(PlannerInfo *root,

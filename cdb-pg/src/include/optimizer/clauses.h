@@ -4,10 +4,10 @@
  *	  prototypes for clauses.c.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/optimizer/clauses.h,v 1.80 2005/10/15 02:49:45 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/optimizer/clauses.h,v 1.84 2006/07/01 18:38:33 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -68,7 +68,9 @@ extern bool has_distinct_clause(Query *query);
 extern bool has_distinct_on_clause(Query *query);
 
 extern int	NumRelids(Node *clause);
-extern void CommuteClause(OpExpr *clause);
+
+extern void CommuteOpExpr(OpExpr *clause);
+extern void CommuteRowCompareExpr(RowCompareExpr *clause);
 
 extern Node *strip_implicit_coercions(Node *node);
 

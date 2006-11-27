@@ -4,10 +4,10 @@
  *	  prototypes for nodeHash.c
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/executor/nodeHash.h,v 1.38 2005/10/15 02:49:44 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/executor/nodeHash.h,v 1.41 2006/06/27 21:31:20 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -26,7 +26,7 @@ extern void ExecReScanHash(HashState *node, ExprContext *exprCtxt);
 extern HashJoinTable ExecHashTableCreate(Hash *node, List *hashOperators);
 extern void ExecHashTableDestroy(HashJoinTable hashtable);
 extern void ExecHashTableInsert(HashJoinTable hashtable,
-					HeapTuple tuple,
+					TupleTableSlot *slot,
 					uint32 hashvalue);
 extern uint32 ExecHashGetHashValue(HashJoinTable hashtable,
 					 ExprContext *econtext,
@@ -35,7 +35,7 @@ extern void ExecHashGetBucketAndBatch(HashJoinTable hashtable,
 						  uint32 hashvalue,
 						  int *bucketno,
 						  int *batchno);
-extern HeapTuple ExecScanHashBucket(HashJoinState *hjstate,
+extern HashJoinTuple ExecScanHashBucket(HashJoinState *hjstate,
 				   ExprContext *econtext);
 extern void ExecHashTableReset(HashJoinTable hashtable);
 extern void ExecChooseHashTableSize(double ntuples, int tupwidth,

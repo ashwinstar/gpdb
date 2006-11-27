@@ -3,10 +3,10 @@
  * geqo_random.h
  *	  random number generator
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/optimizer/geqo_random.h,v 1.16 2004/12/31 22:03:36 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/optimizer/geqo_random.h,v 1.18 2006/03/05 15:58:57 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -28,7 +28,7 @@
 
 /* geqo_rand returns a random float value between 0 and 1 inclusive */
 
-#define geqo_rand() (((double) random()) / ((double) MAX_RANDOM_VALUE))
+#define geqo_rand() ((double) random() / (double) MAX_RANDOM_VALUE)
 
 /* geqo_randint returns integer value between lower and upper inclusive */
 

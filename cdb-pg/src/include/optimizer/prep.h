@@ -5,10 +5,10 @@
  *
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/optimizer/prep.h,v 1.52 2005/10/15 02:49:45 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/optimizer/prep.h,v 1.57 2006/10/04 00:30:09 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -24,7 +24,7 @@
  */
 extern Node *pull_up_IN_clauses(PlannerInfo *root, Node **jointree_inout, Node *node);
 extern Node *pull_up_subqueries(PlannerInfo *root, Node *jtnode,
-				   bool below_outer_join);
+				   bool below_outer_join, bool append_rel_member);
 extern void reduce_outer_joins(PlannerInfo *root);
 extern Relids get_relids_in_jointree(Node *jtnode);
 extern Relids get_relids_for_join(PlannerInfo *root, int joinrelid);
@@ -47,10 +47,13 @@ extern Plan *plan_set_operations(PlannerInfo *root, double tuple_fraction,
 
 extern List *find_all_inheritors(Oid parentrel);
 
-extern List *expand_inherited_rtentry(PlannerInfo *root, Index rti);
+extern void expand_inherited_tables(PlannerInfo *root);
 
-extern Node *adjust_inherited_attrs(Node *node,
-					   Index old_rt_index, Oid old_relid,
-					   Index new_rt_index, Oid new_relid);
+extern Node *adjust_appendrel_attrs(Node *node, AppendRelInfo *appinfo);
+
+extern Relids *adjust_appendrel_attr_needed(RelOptInfo *oldrel,
+							 AppendRelInfo *appinfo,
+							 AttrNumber new_min_attr,
+							 AttrNumber new_max_attr);
 
 #endif   /* PREP_H */

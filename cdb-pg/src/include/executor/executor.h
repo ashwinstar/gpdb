@@ -5,10 +5,10 @@
  *
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/executor/executor.h,v 1.120.2.2 2006/01/12 21:49:07 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/executor/executor.h,v 1.130 2006/10/04 00:30:08 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -18,7 +18,6 @@
 #include "executor/execdesc.h"
 
 #include "cdb/cdbdef.h"                 /* CdbVisitOpt */
-
 
 /*
  * The "eflags" argument to ExecutorStart and the various ExecInitNode
@@ -38,7 +37,7 @@
  * REWIND indicates that the plan node should try to efficiently support
  * rescans without parameter changes.  (Nodes must support ExecReScan calls
  * in any case, but if this flag was not given, they are at liberty to do it
- * through complete recalculation.  Note that a parameter change forces a
+ * through complete recalculation.	Note that a parameter change forces a
  * full recalculation in any case.)
  *
  * BACKWARD indicates that the plan node must respect the es_direction flag.
@@ -47,10 +46,10 @@
  * MARK indicates that the plan node must support Mark/Restore calls.
  * When this is not passed, no Mark/Restore will occur.
  */
-#define EXEC_FLAG_EXPLAIN_ONLY	0x0001		/* EXPLAIN, no ANALYZE */
-#define EXEC_FLAG_REWIND		0x0002		/* need efficient rescan */
-#define EXEC_FLAG_BACKWARD		0x0004		/* need backward scan */
-#define EXEC_FLAG_MARK			0x0008		/* need mark/restore */
+#define EXEC_FLAG_EXPLAIN_ONLY	0x0001	/* EXPLAIN, no ANALYZE */
+#define EXEC_FLAG_REWIND		0x0002	/* need efficient rescan */
+#define EXEC_FLAG_BACKWARD		0x0004	/* need backward scan */
+#define EXEC_FLAG_MARK			0x0008	/* need mark/restore */
 
 
 /*
@@ -135,6 +134,7 @@ extern void ExecConstraints(ResultRelInfo *resultRelInfo,
 				TupleTableSlot *slot, EState *estate);
 extern TupleTableSlot *EvalPlanQual(EState *estate, Index rti,
 			 ItemPointer tid, TransactionId priorXmax, CommandId curCid);
+extern DestReceiver *CreateIntoRelDestReceiver(void);
 
 /*
  * prototypes from functions in execProcnode.c
@@ -243,6 +243,7 @@ extern void end_tup_output(TupOutputState *tstate);
 extern EState *CreateExecutorState(void);
 extern void FreeExecutorState(EState *estate);
 extern ExprContext *CreateExprContext(EState *estate);
+extern ExprContext *CreateStandaloneExprContext(void);
 extern void FreeExprContext(ExprContext *econtext);
 extern void ReScanExprContext(ExprContext *econtext);
 
@@ -268,8 +269,7 @@ extern ExprContext *MakePerTupleExprContext(EState *estate);
 	} while (0)
 
 extern void ExecAssignExprContext(EState *estate, PlanState *planstate);
-extern void ExecAssignResultType(PlanState *planstate,
-					 TupleDesc tupDesc, bool shouldFree);
+extern void ExecAssignResultType(PlanState *planstate, TupleDesc tupDesc);
 extern void ExecAssignResultTypeFromTL(PlanState *planstate);
 extern TupleDesc ExecGetResultType(PlanState *planstate);
 extern ProjectionInfo *ExecBuildProjectionInfo(List *targetList,
@@ -278,9 +278,13 @@ extern ProjectionInfo *ExecBuildProjectionInfo(List *targetList,
 extern void ExecAssignProjectionInfo(PlanState *planstate);
 extern void ExecFreeExprContext(PlanState *planstate);
 extern TupleDesc ExecGetScanType(ScanState *scanstate);
-extern void ExecAssignScanType(ScanState *scanstate,
-				   TupleDesc tupDesc, bool shouldFree);
+extern void ExecAssignScanType(ScanState *scanstate, TupleDesc tupDesc);
 extern void ExecAssignScanTypeFromOuterPlan(ScanState *scanstate);
+
+extern bool ExecRelationIsTargetRelation(EState *estate, Index scanrelid);
+
+extern Relation ExecOpenScanRelation(EState *estate, Index scanrelid);
+extern void ExecCloseScanRelation(Relation scanrel);
 
 extern void ExecOpenIndices(ResultRelInfo *resultRelInfo);
 extern void ExecCloseIndices(ResultRelInfo *resultRelInfo);

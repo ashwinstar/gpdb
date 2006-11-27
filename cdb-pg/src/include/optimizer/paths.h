@@ -5,10 +5,10 @@
  *
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/optimizer/paths.h,v 1.88.2.1 2006/01/29 17:27:50 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/optimizer/paths.h,v 1.93 2006/06/06 17:59:58 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -34,16 +34,24 @@ extern void debug_print_rel(PlannerInfo *root, RelOptInfo *rel);
  * indxpath.c
  *	  routines to generate index paths
  */
+typedef enum
+{
+	/* Whether to use ScalarArrayOpExpr to build index qualifications */
+	SAOP_FORBID,				/* Do not use ScalarArrayOpExpr */
+	SAOP_ALLOW,					/* OK to use ScalarArrayOpExpr */
+	SAOP_REQUIRE				/* Require ScalarArrayOpExpr */
+} SaOpControl;
+
 extern void create_index_paths(PlannerInfo *root, RelOptInfo *rel);
 extern List *generate_bitmap_or_paths(PlannerInfo *root, RelOptInfo *rel,
 						 List *clauses, List *outer_clauses,
-						 bool isjoininner,
-						 Relids outer_relids);
+						 RelOptInfo *outer_rel);
 extern Path *best_inner_indexscan(PlannerInfo *root, RelOptInfo *rel,
-					 Relids outer_relids, JoinType jointype);
+					 RelOptInfo *outer_rel, JoinType jointype);
 extern List *group_clauses_by_indexkey(IndexOptInfo *index,
 						  List *clauses, List *outer_clauses,
 						  Relids outer_relids,
+						  SaOpControl saop_control,
 						  bool *found_clause);
 extern bool match_index_to_operand(Node *operand, int indexcol,
 					   IndexOptInfo *index);

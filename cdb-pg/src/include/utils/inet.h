@@ -4,15 +4,17 @@
  *	  Declarations for operations on INET datatypes.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/inet.h,v 1.20 2004/12/31 22:03:46 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/utils/inet.h,v 1.24 2006/07/11 13:54:24 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef INET_H
 #define INET_H
+
+#include "fmgr.h"
 
 /*
  *	This is the internal storage format for IP addresses
@@ -22,7 +24,6 @@ typedef struct
 {
 	unsigned char family;		/* PGSQL_AF_INET or PGSQL_AF_INET6 */
 	unsigned char bits;			/* number of bits in netmask */
-	unsigned char type;			/* 0 = inet, 1 = cidr */
 	unsigned char ipaddr[16];	/* up to 128 bits of address */
 } inet_struct;
 

@@ -4,10 +4,10 @@
  *	  Routines to support inter-object dependencies.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/dependency.h,v 1.17 2005/10/15 02:49:42 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/dependency.h,v 1.27 2006/08/21 00:57:26 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -112,6 +112,8 @@ typedef struct ObjectAddress
 	int32		objectSubId;	/* Subitem within the object (column of table) */
 } ObjectAddress;
 
+/* expansible list of ObjectAddresses (private in dependency.c) */
+typedef struct ObjectAddresses ObjectAddresses;
 
 /*
  * This enum covers all system catalogs whose OIDs can appear in
@@ -144,6 +146,9 @@ typedef enum ObjectClass
 extern void performDeletion(const ObjectAddress *object,
 				DropBehavior behavior);
 
+extern void performMultipleDeletions(const ObjectAddresses *objects,
+						 DropBehavior behavior);
+
 extern void deleteWhatDependsOn(const ObjectAddress *object,
 					bool showNotices);
 
@@ -159,6 +164,16 @@ extern void recordDependencyOnSingleRelExpr(const ObjectAddress *depender,
 extern ObjectClass getObjectClass(const ObjectAddress *object);
 
 extern char *getObjectDescription(const ObjectAddress *object);
+
+extern ObjectAddresses *new_object_addresses(void);
+
+extern void add_exact_object_address(const ObjectAddress *object,
+						 ObjectAddresses *addrs);
+
+extern bool object_address_present(const ObjectAddress *object,
+					   ObjectAddresses *addrs);
+
+extern void free_object_addresses(ObjectAddresses *addrs);
 
 /* in pg_depend.c */
 
@@ -176,6 +191,10 @@ extern long deleteDependencyRecordsFor(Oid classId, Oid objectId);
 extern long changeDependencyFor(Oid classId, Oid objectId,
 					Oid refClassId, Oid oldRefObjectId,
 					Oid newRefObjectId);
+
+extern bool sequenceIsOwned(Oid seqId, Oid *tableId, int32 *colId);
+
+extern void markSequenceUnowned(Oid seqId);
 
 /* in pg_shdepend.c */
 
@@ -200,5 +219,9 @@ extern char *checkSharedDependencies(Oid classId, Oid objectId);
 extern void copyTemplateDependencies(Oid templateDbId, Oid newDbId);
 
 extern void dropDatabaseDependencies(Oid databaseId);
+
+extern void shdepDropOwned(List *relids, DropBehavior behavior);
+
+extern void shdepReassignOwned(List *relids, Oid newrole);
 
 #endif   /* DEPENDENCY_H */

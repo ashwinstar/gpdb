@@ -6,10 +6,10 @@
  * The type cache exists to speed lookup of certain information about data
  * types that is not directly available from a type's pg_type row.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/typcache.h,v 1.8.2.1 2005/11/22 18:23:29 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/typcache.h,v 1.12 2006/10/04 00:30:11 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -57,8 +57,8 @@ typedef struct TypeCacheEntry
 
 	/*
 	 * Tuple descriptor if it's a composite type (row type).  NULL if not
-	 * composite or information hasn't yet been requested.  (NOTE: this is
-	 * actually just a link to information maintained by relcache.c.)
+	 * composite or information hasn't yet been requested.  (NOTE: this is a
+	 * reference-counted tupledesc.)
 	 */
 	TupleDesc	tupDesc;
 } TypeCacheEntry;
@@ -78,6 +78,8 @@ extern TupleDesc lookup_rowtype_tupdesc(Oid type_id, int32 typmod);
 
 extern TupleDesc lookup_rowtype_tupdesc_noerror(Oid type_id, int32 typmod,
 							   bool noError);
+
+extern TupleDesc lookup_rowtype_tupdesc_copy(Oid type_id, int32 typmod);
 
 extern void assign_record_type_typmod(TupleDesc tupDesc);
 

@@ -2,7 +2,7 @@
  *
  * spi.h
  *
- * $PostgreSQL: pgsql/src/include/executor/spi.h,v 1.53 2005/10/15 02:49:44 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/executor/spi.h,v 1.58 2006/10/04 00:30:08 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,25 +19,25 @@
  *	These are not needed by this file, but used by other programs
  *	using SPI
  */
-#include "nodes/primnodes.h"
-#include "nodes/relation.h"
-#include "nodes/execnodes.h"
-#include "nodes/plannodes.h"
+#include "access/heapam.h"
+#include "access/xact.h"
+#include "catalog/pg_language.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "executor/executor.h"
+#include "nodes/execnodes.h"
+#include "nodes/params.h"
+#include "nodes/plannodes.h"
+#include "nodes/primnodes.h"
+#include "nodes/relation.h"
+#include "tcop/dest.h"
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
 #include "tcop/utility.h"
-#include "tcop/dest.h"
-#include "nodes/params.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/portal.h"
 #include "utils/syscache.h"
-#include "catalog/pg_language.h"
-#include "access/heapam.h"
-#include "access/xact.h"
-#include "executor/executor.h"
 #include "executor/execdefs.h"
 
 typedef struct
@@ -71,6 +71,9 @@ typedef struct
 #define SPI_OK_DELETE			8
 #define SPI_OK_UPDATE			9
 #define SPI_OK_CURSOR			10
+#define SPI_OK_INSERT_RETURNING 11
+#define SPI_OK_DELETE_RETURNING 12
+#define SPI_OK_UPDATE_RETURNING 13
 
 extern DLLIMPORT uint32 SPI_processed;
 extern DLLIMPORT Oid SPI_lastoid;

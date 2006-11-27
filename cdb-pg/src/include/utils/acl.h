@@ -4,10 +4,10 @@
  *	  Definition of (and support for) access control list data structures.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/acl.h,v 1.86 2005/11/04 17:25:15 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/utils/acl.h,v 1.98 2006/10/04 00:30:10 momjian Exp $
  *
  * NOTES
  *	  An ACL array is simply an array of AclItems, representing the union
@@ -78,9 +78,9 @@ typedef struct AclItem
 #define ACLITEM_ALL_GOPTION_BITS	((AclMode) 0xFFFF << 16)
 
 /*
- * Definitions for convenient access to Acl (array of AclItem) and IdList
- * (array of Oid).	These are standard PostgreSQL arrays, but are restricted
- * to have one dimension.  We also ignore the lower bound when reading,
+ * Definitions for convenient access to Acl (array of AclItem).
+ * These are standard PostgreSQL arrays, but are restricted to have one
+ * dimension and no nulls.	We also ignore the lower bound when reading,
  * and set it to one when writing.
  *
  * CAUTION: as of PostgreSQL 7.1, these arrays are toastable (just like all
@@ -97,18 +97,8 @@ typedef ArrayType Acl;
 
 #define ACL_NUM(ACL)			(ARR_DIMS(ACL)[0])
 #define ACL_DAT(ACL)			((AclItem *) ARR_DATA_PTR(ACL))
-#define ACL_N_SIZE(N)			(ARR_OVERHEAD(1) + ((N) * sizeof(AclItem)))
+#define ACL_N_SIZE(N)			(ARR_OVERHEAD_NONULLS(1) + ((N) * sizeof(AclItem)))
 #define ACL_SIZE(ACL)			ARR_SIZE(ACL)
-
-/*
- * IdList		a one-dimensional array of Oid
- */
-typedef ArrayType IdList;
-
-#define IDLIST_NUM(IDL)			(ARR_DIMS(IDL)[0])
-#define IDLIST_DAT(IDL)			((Oid *) ARR_DATA_PTR(IDL))
-#define IDLIST_N_SIZE(N)		(ARR_OVERHEAD(1) + ((N) * sizeof(Oid)))
-#define IDLIST_SIZE(IDL)		ARR_SIZE(IDL)
 
 /*
  * fmgr macros for these types
@@ -122,13 +112,6 @@ typedef ArrayType IdList;
 #define PG_GETARG_ACL_P(n)		   DatumGetAclP(PG_GETARG_DATUM(n))
 #define PG_GETARG_ACL_P_COPY(n)    DatumGetAclPCopy(PG_GETARG_DATUM(n))
 #define PG_RETURN_ACL_P(x)		   PG_RETURN_POINTER(x)
-
-#define DatumGetIdListP(X)		   ((IdList *) PG_DETOAST_DATUM(X))
-#define DatumGetIdListPCopy(X)	   ((IdList *) PG_DETOAST_DATUM_COPY(X))
-#define PG_GETARG_IDLIST_P(n)	   DatumGetIdListP(PG_GETARG_DATUM(n))
-#define PG_GETARG_IDLIST_P_COPY(n) DatumGetIdListPCopy(PG_GETARG_DATUM(n))
-#define PG_RETURN_IDLIST_P(x)	   PG_RETURN_POINTER(x)
-
 
 /*
  * ACL modification opcodes for aclupdate
@@ -145,22 +128,23 @@ typedef ArrayType IdList;
 #define ACL_SELECT_CHR			'r'		/* formerly known as "read" */
 #define ACL_UPDATE_CHR			'w'		/* formerly known as "write" */
 #define ACL_DELETE_CHR			'd'
-#define ACL_RULE_CHR			'R'
 #define ACL_REFERENCES_CHR		'x'
 #define ACL_TRIGGER_CHR			't'
 #define ACL_EXECUTE_CHR			'X'
 #define ACL_USAGE_CHR			'U'
 #define ACL_CREATE_CHR			'C'
 #define ACL_CREATE_TEMP_CHR		'T'
+#define ACL_CONNECT_CHR			'c'
 
 /* string holding all privilege code chars, in order by bitmask position */
-#define ACL_ALL_RIGHTS_STR	"arwdRxtXUCT"
+#define ACL_ALL_RIGHTS_STR	"arwdRxtXUCTc"
 
 /*
  * Bitmasks defining "all rights" for each supported object type
  */
-#define ACL_ALL_RIGHTS_RELATION		(ACL_INSERT|ACL_SELECT|ACL_UPDATE|ACL_DELETE|ACL_RULE|ACL_REFERENCES|ACL_TRIGGER)
-#define ACL_ALL_RIGHTS_DATABASE		(ACL_CREATE|ACL_CREATE_TEMP)
+#define ACL_ALL_RIGHTS_RELATION		(ACL_INSERT|ACL_SELECT|ACL_UPDATE|ACL_DELETE|ACL_REFERENCES|ACL_TRIGGER)
+#define ACL_ALL_RIGHTS_SEQUENCE		(ACL_USAGE|ACL_SELECT|ACL_UPDATE)
+#define ACL_ALL_RIGHTS_DATABASE		(ACL_CREATE|ACL_CREATE_TEMP|ACL_CONNECT)
 #define ACL_ALL_RIGHTS_FUNCTION		(ACL_EXECUTE)
 #define ACL_ALL_RIGHTS_LANGUAGE		(ACL_USAGE)
 #define ACL_ALL_RIGHTS_NAMESPACE	(ACL_USAGE|ACL_CREATE)
@@ -186,6 +170,7 @@ typedef enum
 typedef enum AclObjectKind
 {
 	ACL_KIND_CLASS,				/* pg_class */
+	ACL_KIND_SEQUENCE,			/* pg_sequence */
 	ACL_KIND_DATABASE,			/* pg_database */
 	ACL_KIND_PROC,				/* pg_proc */
 	ACL_KIND_OPER,				/* pg_operator */
@@ -197,6 +182,26 @@ typedef enum AclObjectKind
 	ACL_KIND_TABLESPACE,		/* pg_tablespace */
 	MAX_ACL_KIND				/* MUST BE LAST */
 } AclObjectKind;
+
+/*
+ * The information about one Grant/Revoke statement, in internal format: object
+ * and grantees names have been turned into Oids, the privilege list is an
+ * AclMode bitmask.  If 'privileges' is ACL_NO_RIGHTS (the 0 value) and
+ * all_privs is true, it will be internally turned into the right kind of
+ * ACL_ALL_RIGHTS_*, depending on the object type (NB - this will modify the
+ * InternalGrant struct!)
+ */
+typedef struct
+{
+	bool		is_grant;
+	GrantObjectType objtype;
+	List	   *objects;
+	bool		all_privs;
+	AclMode		privileges;
+	List	   *grantees;
+	bool		grant_option;
+	DropBehavior behavior;
+} InternalGrant;
 
 /*
  * routines used internally
@@ -238,6 +243,7 @@ extern Datum hash_aclitem(PG_FUNCTION_ARGS);
  * prototypes for functions in aclchk.c
  */
 extern void ExecuteGrantStmt(GrantStmt *stmt);
+extern void ExecGrantStmt_oids(InternalGrant *istmt);
 
 extern AclMode pg_class_aclmask(Oid table_oid, Oid roleid,
 				 AclMode mask, AclMaskHow how);

@@ -5,10 +5,10 @@
  *
  * Code originally contributed by Adriaan Joubert.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/varbit.h,v 1.21 2004/12/31 22:03:46 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/utils/varbit.h,v 1.23 2006/03/05 15:59:08 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -58,7 +58,6 @@ typedef struct
 #define VARBITEND(PTR)		(((bits8 *) (PTR)) + VARSIZE(PTR))
 /* Mask that will cover exactly one byte, i.e. BITS_PER_BYTE bits */
 #define BITMASK 0xFF
-#define BITHIGH 0x80
 
 
 extern Datum bit_in(PG_FUNCTION_ARGS);

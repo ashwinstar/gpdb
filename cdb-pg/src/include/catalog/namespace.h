@@ -4,10 +4,10 @@
  *	  prototypes for functions in backend/catalog/namespace.c
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/namespace.h,v 1.37.2.1 2006/02/10 19:01:22 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/namespace.h,v 1.42 2006/05/01 23:22:43 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -44,6 +44,7 @@ extern bool TypeIsVisible(Oid typid);
 extern FuncCandidateList FuncnameGetCandidates(List *names, int nargs);
 extern bool FunctionIsVisible(Oid funcid);
 
+extern Oid	OpernameGetOprid(List *names, Oid oprleft, Oid oprright);
 extern FuncCandidateList OpernameGetCandidates(List *names, char oprkind);
 extern bool OperatorIsVisible(Oid oprid);
 

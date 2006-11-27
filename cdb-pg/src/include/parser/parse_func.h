@@ -4,10 +4,10 @@
  *
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/parser/parse_func.h,v 1.53 2004/12/31 22:03:38 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/parser/parse_func.h,v 1.57 2006/10/04 00:30:09 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -43,7 +43,8 @@ typedef enum
 
 extern Node *ParseFuncOrColumn(ParseState *pstate,
 				  List *funcname, List *fargs,
-				  bool agg_star, bool agg_distinct, bool is_column);
+				  bool agg_star, bool agg_distinct, bool is_column,
+				  int location);
 
 extern FuncDetailCode func_get_detail(List *funcname, List *fargs,
 				int nargs, Oid *argtypes,
@@ -71,11 +72,11 @@ extern const char *funcname_signature_string(const char *funcname,
 extern const char *func_signature_string(List *funcname,
 					  int nargs, const Oid *argtypes);
 
-extern Oid	find_aggregate_func(List *aggname, Oid basetype, bool noError);
-
 extern Oid LookupFuncName(List *funcname, int nargs, const Oid *argtypes,
 			   bool noError);
 extern Oid LookupFuncNameTypeNames(List *funcname, List *argtypes,
 						bool noError);
+extern Oid LookupAggNameTypeNames(List *aggname, List *argtypes,
+					   bool noError);
 
 #endif   /* PARSE_FUNC_H */

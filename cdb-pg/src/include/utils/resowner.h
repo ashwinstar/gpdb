@@ -9,10 +9,10 @@
  * See utils/resowner/README for more info.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/resowner.h,v 1.5 2004/12/31 22:03:46 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/utils/resowner.h,v 1.9 2006/10/04 00:30:11 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -21,7 +21,6 @@
 
 #include "storage/buf.h"
 #include "utils/catcache.h"
-#include "utils/rel.h"
 
 
 /*
@@ -106,5 +105,12 @@ extern void ResourceOwnerRememberRelationRef(ResourceOwner owner,
 								 Relation rel);
 extern void ResourceOwnerForgetRelationRef(ResourceOwner owner,
 							   Relation rel);
+
+/* support for tupledesc refcount management */
+extern void ResourceOwnerEnlargeTupleDescs(ResourceOwner owner);
+extern void ResourceOwnerRememberTupleDesc(ResourceOwner owner,
+							   TupleDesc tupdesc);
+extern void ResourceOwnerForgetTupleDesc(ResourceOwner owner,
+							 TupleDesc tupdesc);
 
 #endif   /* RESOWNER_H */

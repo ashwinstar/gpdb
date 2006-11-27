@@ -5,10 +5,10 @@
  *
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/optimizer/plancat.h,v 1.37 2005/07/23 21:05:48 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/optimizer/plancat.h,v 1.42 2006/10/04 00:30:09 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -18,9 +18,11 @@
 #include "nodes/relation.h"
 
 
-extern void get_relation_info(Oid relationObjectId, RelOptInfo *rel);
+extern void get_relation_info(PlannerInfo *root, Oid relationObjectId,
+				  bool inhparent, RelOptInfo *rel);
 
-extern List *get_relation_constraints(Oid relationObjectId, RelOptInfo *rel);
+extern bool relation_excluded_by_constraints(RelOptInfo *rel,
+								 RangeTblEntry *rte);
 
 extern List *build_physical_tlist(PlannerInfo *root, RelOptInfo *rel);
 

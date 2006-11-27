@@ -5,10 +5,10 @@
  *	  However, we define it here so that the format is documented.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_control.h,v 1.25.2.1 2005/11/22 18:23:27 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_control.h,v 1.33 2006/10/04 00:30:07 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,7 +22,7 @@
 
 
 /* Version identifier for this pg_control format */
-#define PG_CONTROL_VERSION	812
+#define PG_CONTROL_VERSION	822
 
 /*
  * Body of CheckPoint XLOG records.  This is declared here because we keep
@@ -36,6 +36,7 @@ typedef struct CheckPoint
 								 * transaction when we started (i.e. UNDO end
 								 * point) */
 	TimeLineID	ThisTimeLineID; /* current TLI */
+	uint32		nextXidEpoch;	/* higher-order bits of nextXid */
 	TransactionId nextXid;		/* next free XID */
 	Oid			nextOid;		/* next free OID */
 	MultiXactId nextMulti;		/* next free MultiXactId */
@@ -47,6 +48,7 @@ typedef struct CheckPoint
 #define XLOG_CHECKPOINT_SHUTDOWN		0x00
 #define XLOG_CHECKPOINT_ONLINE			0x10
 #define XLOG_NEXTOID					0x30
+#define XLOG_SWITCH						0x40
 
 
 /* System status indicator */
@@ -55,7 +57,8 @@ typedef enum DBState
 	DB_STARTUP = 0,
 	DB_SHUTDOWNED,
 	DB_SHUTDOWNING,
-	DB_IN_RECOVERY,
+	DB_IN_CRASH_RECOVERY,
+	DB_IN_ARCHIVE_RECOVERY,
 	DB_IN_PRODUCTION
 } DBState;
 
@@ -106,6 +109,8 @@ typedef struct ControlFileData
 
 	CheckPoint	checkPointCopy; /* copy of last check point record */
 
+	XLogRecPtr	minRecoveryPoint;		/* must replay xlog to here */
+
 	/*
 	 * This data is used to check for hardware-architecture compatibility of
 	 * the database and the backend executable.  We need not check endianness
@@ -126,9 +131,10 @@ typedef struct ControlFileData
 	 * This data is used to make sure that configuration of this database is
 	 * compatible with the backend executable.
 	 */
-	uint32		blcksz;			/* block size for this DB */
+	uint32		blcksz;			/* data block size for this DB */
 	uint32		relseg_size;	/* blocks per segment of large relation */
 
+	uint32		xlog_blcksz;	/* block size within WAL files */
 	uint32		xlog_seg_size;	/* size of each WAL segment */
 
 	uint32		nameDataLen;	/* catalog name field width */
@@ -145,5 +151,14 @@ typedef struct ControlFileData
 	/* CRC of all above ... MUST BE LAST! */
 	pg_crc32	crc;
 } ControlFileData;
+
+/*
+ * Physical size of the pg_control file.  Note that this is considerably
+ * bigger than the actually used size (ie, sizeof(ControlFileData)).
+ * The idea is to keep the physical size constant independent of format
+ * changes, so that ReadControlFile will deliver a suitable wrong-version
+ * message instead of a read error if it's looking at an incompatible file.
+ */
+#define PG_CONTROL_SIZE		8192
 
 #endif   /* PG_CONTROL_H */

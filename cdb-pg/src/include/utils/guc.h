@@ -4,16 +4,15 @@
  * External declarations pertaining to backend/utils/misc/guc.c and
  * backend/utils/misc/guc-file.l
  *
- * Copyright (c) 2000-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
- * $PostgreSQL: pgsql/src/include/utils/guc.h,v 1.63.2.1 2006/05/21 20:11:02 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/utils/guc.h,v 1.76 2006/10/19 18:32:47 tgl Exp $
  *--------------------------------------------------------------------
  */
 #ifndef GUC_H
 #define GUC_H
 
-#include "nodes/pg_list.h"
 #include "tcop/dest.h"
 #include "utils/array.h"
 
@@ -116,10 +115,9 @@ extern bool log_executor_stats;
 extern bool log_statement_stats;
 extern bool log_btree_build_stats;
 
-extern bool SQL_inheritance;
-extern bool Australian_timezones;
-
+extern DLLIMPORT bool check_function_bodies;
 extern bool default_with_oids;
+extern bool SQL_inheritance;
 
 extern int	log_min_error_statement;
 extern int	log_min_messages;
@@ -210,6 +208,8 @@ extern void ProcessGUCArray(ArrayType *array, GucSource source);
 extern ArrayType *GUCArrayAdd(ArrayType *array, const char *name, const char *value);
 extern ArrayType *GUCArrayDelete(ArrayType *array, const char *name);
 
+extern void pg_timezone_abbrev_initialize(void);
+
 #ifdef EXEC_BACKEND
 extern void write_nondefault_variables(GucContext context);
 extern void read_nondefault_variables(void);
@@ -220,9 +220,6 @@ extern void read_nondefault_variables(void);
  * having to include guc.h in some widely used headers that it really doesn't
  * belong in.
  */
-
-/* in utils/adt/datetime.c */
-extern bool ClearDateCache(bool newval, bool doit, GucSource source);
 
 /* in commands/tablespace.c */
 extern const char *assign_default_tablespace(const char *newval,

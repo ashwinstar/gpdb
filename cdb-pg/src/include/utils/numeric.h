@@ -5,14 +5,16 @@
  *
  * Original coding 1998, Jan Wieck.  Heavily revised 2003, Tom Lane.
  *
- * Copyright (c) 1998-2005, PostgreSQL Global Development Group
+ * Copyright (c) 1998-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/utils/numeric.h,v 1.20 2005/01/01 05:43:09 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/numeric.h,v 1.22 2006/07/11 13:54:24 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef _PG_NUMERIC_H_
 #define _PG_NUMERIC_H_
+
+#include "fmgr.h"
 
 /*
  * Hardcoded precision limit - arbitrary, but must be small enough that

@@ -20,10 +20,10 @@
  * for multiple subtypes or strategy numbers of a single opclass.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_amop.h,v 1.66 2005/10/15 02:49:42 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_amop.h,v 1.75 2006/10/04 00:30:07 momjian Exp $
  *
  * NOTES
  *	 the genbki.sh script reads this file and generates .bki
@@ -79,40 +79,6 @@ typedef FormData_pg_amop *Form_pg_amop;
  *		initial contents of pg_amop
  * ----------------
  */
-
-/*
- *	rtree box_ops
- */
-
-DATA(insert (	 425	0 1  f	493 ));
-DATA(insert (	 425	0 2  f	494 ));
-DATA(insert (	 425	0 3  f	500 ));
-DATA(insert (	 425	0 4  f	495 ));
-DATA(insert (	 425	0 5  f	496 ));
-DATA(insert (	 425	0 6  f	499 ));
-DATA(insert (	 425	0 7  f	498 ));
-DATA(insert (	 425	0 8  f	497 ));
-DATA(insert (	 425	0 9  f	2571 ));
-DATA(insert (	 425	0 10 f	2570 ));
-DATA(insert (	 425	0 11 f	2573 ));
-DATA(insert (	 425	0 12 f	2572 ));
-
-/*
- *	rtree poly_ops (supports polygons)
- */
-
-DATA(insert (	1993	0 1  f	485 ));
-DATA(insert (	1993	0 2  f	486 ));
-DATA(insert (	1993	0 3  f	492 ));
-DATA(insert (	1993	0 4  f	487 ));
-DATA(insert (	1993	0 5  f	488 ));
-DATA(insert (	1993	0 6  f	491 ));
-DATA(insert (	1993	0 7  f	490 ));
-DATA(insert (	1993	0 8  f	489 ));
-DATA(insert (	1993	0 9  f	2575 ));
-DATA(insert (	1993	0 10 f	2574 ));
-DATA(insert (	1993	0 11 f	2577 ));
-DATA(insert (	1993	0 12 f	2576 ));
 
 /*
  *	btree int2_ops
@@ -189,6 +155,16 @@ DATA(insert (	1989	0 2 f  611 ));
 DATA(insert (	1989	0 3 f  607 ));
 DATA(insert (	1989	0 4 f  612 ));
 DATA(insert (	1989	0 5 f  610 ));
+
+/*
+ * btree tid_ops
+ */
+
+DATA(insert (	2789	0 1 f 2799 ));
+DATA(insert (	2789	0 2 f 2801 ));
+DATA(insert (	2789	0 3 f 387  ));
+DATA(insert (	2789	0 4 f 2802 ));
+DATA(insert (	2789	0 5 f 2800 ));
 
 /*
  *	btree oidvector_ops
@@ -422,11 +398,11 @@ DATA(insert (	1974	0 5 f 1205 ));
  *	btree cidr
  */
 
-DATA(insert (	 432	0 1 f  822 ));
-DATA(insert (	 432	0 2 f  823 ));
-DATA(insert (	 432	0 3 f  820 ));
-DATA(insert (	 432	0 4 f  825 ));
-DATA(insert (	 432	0 5 f  824 ));
+DATA(insert (	 432	0 1 f 1203 ));
+DATA(insert (	 432	0 2 f 1204 ));
+DATA(insert (	 432	0 3 f 1201 ));
+DATA(insert (	 432	0 4 f 1206 ));
+DATA(insert (	 432	0 5 f 1205 ));
 
 /*
  *	btree numeric
@@ -557,7 +533,7 @@ DATA(insert (	 427	0 1 f 1054 ));
 /* char_ops */
 DATA(insert (	 431	0 1 f	92 ));
 /* cidr_ops */
-DATA(insert (	 433	0 1 f  820 ));
+DATA(insert (	 433	0 1 f 1201 ));
 /* date_ops */
 DATA(insert (	 435	0 1 f 1093 ));
 /* float4_ops */
@@ -635,6 +611,8 @@ DATA(insert (	2593	0 9  f	2571 ));
 DATA(insert (	2593	0 10 f	2570 ));
 DATA(insert (	2593	0 11 f	2573 ));
 DATA(insert (	2593	0 12 f	2572 ));
+DATA(insert (	2593	0 13 f	2863 ));
+DATA(insert (	2593	0 14 f	2862 ));
 
 /*
  *	gist poly_ops (supports polygons)
@@ -652,6 +630,8 @@ DATA(insert (	2594	0 9  t	2575 ));
 DATA(insert (	2594	0 10 t	2574 ));
 DATA(insert (	2594	0 11 t	2577 ));
 DATA(insert (	2594	0 12 t	2576 ));
+DATA(insert (	2594	0 13 t	2861 ));
+DATA(insert (	2594	0 14 t	2860 ));
 
 /*
  *	gist circle_ops
@@ -669,5 +649,247 @@ DATA(insert (	2595	0 9  t	2589 ));
 DATA(insert (	2595	0 10 t	1515 ));
 DATA(insert (	2595	0 11 t	1514 ));
 DATA(insert (	2595	0 12 t	2590 ));
+DATA(insert (	2595	0 13 t	2865 ));
+DATA(insert (	2595	0 14 t	2864 ));
+
+/*
+ * gin _int4_ops
+ */
+DATA(insert (	2745	0 1  f	2750 ));
+DATA(insert (	2745	0 2  f	2751 ));
+DATA(insert (	2745	0 3  t	2752 ));
+DATA(insert (	2745	0 4  t	1070 ));
+
+/*
+ * gin _text_ops
+ */
+DATA(insert (	2746	0 1  f	2750 ));
+DATA(insert (	2746	0 2  f	2751 ));
+DATA(insert (	2746	0 3  t	2752 ));
+DATA(insert (	2746	0 4  t	1070 ));
+
+/*
+ * gin _abstime_ops
+ */
+DATA(insert (	2753	0 1  f	2750 ));
+DATA(insert (	2753	0 2  f	2751 ));
+DATA(insert (	2753	0 3  t	2752 ));
+DATA(insert (	2753	0 4  t	1070 ));
+
+/*
+ * gin _bit_ops
+ */
+DATA(insert (	2754	0 1  f	2750 ));
+DATA(insert (	2754	0 2  f	2751 ));
+DATA(insert (	2754	0 3  t	2752 ));
+DATA(insert (	2754	0 4  t	1070 ));
+
+/*
+ * gin _bool_ops
+ */
+DATA(insert (	2755	0 1  f	2750 ));
+DATA(insert (	2755	0 2  f	2751 ));
+DATA(insert (	2755	0 3  t	2752 ));
+DATA(insert (	2755	0 4  t	1070 ));
+
+/*
+ * gin _bpchar_ops
+ */
+DATA(insert (	2756	0 1  f	2750 ));
+DATA(insert (	2756	0 2  f	2751 ));
+DATA(insert (	2756	0 3  t	2752 ));
+DATA(insert (	2756	0 4  t	1070 ));
+
+/*
+ * gin _bytea_ops
+ */
+DATA(insert (	2757	0 1  f	2750 ));
+DATA(insert (	2757	0 2  f	2751 ));
+DATA(insert (	2757	0 3  t	2752 ));
+DATA(insert (	2757	0 4  t	1070 ));
+
+/*
+ * gin _char_ops
+ */
+DATA(insert (	2758	0 1  f	2750 ));
+DATA(insert (	2758	0 2  f	2751 ));
+DATA(insert (	2758	0 3  t	2752 ));
+DATA(insert (	2758	0 4  t	1070 ));
+
+/*
+ * gin _cidr_ops
+ */
+DATA(insert (	2759	0 1  f	2750 ));
+DATA(insert (	2759	0 2  f	2751 ));
+DATA(insert (	2759	0 3  t	2752 ));
+DATA(insert (	2759	0 4  t	1070 ));
+
+/*
+ * gin _date_ops
+ */
+DATA(insert (	2760	0 1  f	2750 ));
+DATA(insert (	2760	0 2  f	2751 ));
+DATA(insert (	2760	0 3  t	2752 ));
+DATA(insert (	2760	0 4  t	1070 ));
+
+/*
+ * gin _float4_ops
+ */
+DATA(insert (	2761	0 1  f	2750 ));
+DATA(insert (	2761	0 2  f	2751 ));
+DATA(insert (	2761	0 3  t	2752 ));
+DATA(insert (	2761	0 4  t	1070 ));
+
+/*
+ * gin _float8_ops
+ */
+DATA(insert (	2762	0 1  f	2750 ));
+DATA(insert (	2762	0 2  f	2751 ));
+DATA(insert (	2762	0 3  t	2752 ));
+DATA(insert (	2762	0 4  t	1070 ));
+
+/*
+ * gin _inet_ops
+ */
+DATA(insert (	2763	0 1  f	2750 ));
+DATA(insert (	2763	0 2  f	2751 ));
+DATA(insert (	2763	0 3  t	2752 ));
+DATA(insert (	2763	0 4  t	1070 ));
+
+/*
+ * gin _int2_ops
+ */
+DATA(insert (	2764	0 1  f	2750 ));
+DATA(insert (	2764	0 2  f	2751 ));
+DATA(insert (	2764	0 3  t	2752 ));
+DATA(insert (	2764	0 4  t	1070 ));
+
+/*
+ * gin _int8_ops
+ */
+DATA(insert (	2765	0 1  f	2750 ));
+DATA(insert (	2765	0 2  f	2751 ));
+DATA(insert (	2765	0 3  t	2752 ));
+DATA(insert (	2765	0 4  t	1070 ));
+
+/*
+ * gin _interval_ops
+ */
+DATA(insert (	2766	0 1  f	2750 ));
+DATA(insert (	2766	0 2  f	2751 ));
+DATA(insert (	2766	0 3  t	2752 ));
+DATA(insert (	2766	0 4  t	1070 ));
+
+/*
+ * gin _macaddr_ops
+ */
+DATA(insert (	2767	0 1  f	2750 ));
+DATA(insert (	2767	0 2  f	2751 ));
+DATA(insert (	2767	0 3  t	2752 ));
+DATA(insert (	2767	0 4  t	1070 ));
+
+/*
+ * gin _name_ops
+ */
+DATA(insert (	2768	0 1  f	2750 ));
+DATA(insert (	2768	0 2  f	2751 ));
+DATA(insert (	2768	0 3  t	2752 ));
+DATA(insert (	2768	0 4  t	1070 ));
+
+/*
+ * gin _numeric_ops
+ */
+DATA(insert (	2769	0 1  f	2750 ));
+DATA(insert (	2769	0 2  f	2751 ));
+DATA(insert (	2769	0 3  t	2752 ));
+DATA(insert (	2769	0 4  t	1070 ));
+
+/*
+ * gin _oid_ops
+ */
+DATA(insert (	2770	0 1  f	2750 ));
+DATA(insert (	2770	0 2  f	2751 ));
+DATA(insert (	2770	0 3  t	2752 ));
+DATA(insert (	2770	0 4  t	1070 ));
+
+/*
+ * gin _oidvector_ops
+ */
+DATA(insert (	2771	0 1  f	2750 ));
+DATA(insert (	2771	0 2  f	2751 ));
+DATA(insert (	2771	0 3  t	2752 ));
+DATA(insert (	2771	0 4  t	1070 ));
+
+/*
+ * gin _time_ops
+ */
+DATA(insert (	2772	0 1  f	2750 ));
+DATA(insert (	2772	0 2  f	2751 ));
+DATA(insert (	2772	0 3  t	2752 ));
+DATA(insert (	2772	0 4  t	1070 ));
+
+/*
+ * gin _timestamptz_ops
+ */
+DATA(insert (	2773	0 1  f	2750 ));
+DATA(insert (	2773	0 2  f	2751 ));
+DATA(insert (	2773	0 3  t	2752 ));
+DATA(insert (	2773	0 4  t	1070 ));
+
+/*
+ * gin _timetz_ops
+ */
+DATA(insert (	2774	0 1  f	2750 ));
+DATA(insert (	2774	0 2  f	2751 ));
+DATA(insert (	2774	0 3  t	2752 ));
+DATA(insert (	2774	0 4  t	1070 ));
+
+/*
+ * gin _varbit_ops
+ */
+DATA(insert (	2775	0 1  f	2750 ));
+DATA(insert (	2775	0 2  f	2751 ));
+DATA(insert (	2775	0 3  t	2752 ));
+DATA(insert (	2775	0 4  t	1070 ));
+
+/*
+ * gin _varchar_ops
+ */
+DATA(insert (	2776	0 1  f	2750 ));
+DATA(insert (	2776	0 2  f	2751 ));
+DATA(insert (	2776	0 3  t	2752 ));
+DATA(insert (	2776	0 4  t	1070 ));
+
+/*
+ * gin _timestamp_ops
+ */
+DATA(insert (	2777	0 1  f	2750 ));
+DATA(insert (	2777	0 2  f	2751 ));
+DATA(insert (	2777	0 3  t	2752 ));
+DATA(insert (	2777	0 4  t	1070 ));
+
+/*
+ * gin _money_ops
+ */
+DATA(insert (	2778	0 1  f	2750 ));
+DATA(insert (	2778	0 2  f	2751 ));
+DATA(insert (	2778	0 3  t	2752 ));
+DATA(insert (	2778	0 4  t	1070 ));
+
+/*
+ * gin _reltime_ops
+ */
+DATA(insert (	2779	0 1  f	2750 ));
+DATA(insert (	2779	0 2  f	2751 ));
+DATA(insert (	2779	0 3  t	2752 ));
+DATA(insert (	2779	0 4  t	1070 ));
+
+/*
+ * gin _tinterval_ops
+ */
+DATA(insert (	2780	0 1  f	2750 ));
+DATA(insert (	2780	0 2  f	2751 ));
+DATA(insert (	2780	0 3  t	2752 ));
+DATA(insert (	2780	0 4  t	1070 ));
 
 #endif   /* PG_AMOP_H */

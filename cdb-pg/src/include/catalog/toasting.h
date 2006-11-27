@@ -18,6 +18,9 @@
  * toasting.c prototypes
  */
 extern void AlterTableCreateToastTable(Oid relOid);
+
+extern void AlterTableCreateToastTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid, Oid * comptypeOid);
+
 extern void BootstrapToastTable(char *relName,
 					Oid toastOid, Oid toastIndexOid);
 

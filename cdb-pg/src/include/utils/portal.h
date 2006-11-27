@@ -36,10 +36,10 @@
  * to look like NO SCROLL cursors.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/portal.h,v 1.57 2005/10/15 02:49:46 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/portal.h,v 1.71 2006/10/04 00:30:10 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -47,10 +47,8 @@
 #define PORTAL_H
 
 #include "executor/execdesc.h"
-#include "nodes/memnodes.h"
 #include "utils/resowner.h"
-#include "utils/tuplestore.h"
-
+#include "utils/timestamp.h"
 
 /*
  * We have several execution strategies for Portals, depending on what
@@ -64,6 +62,15 @@
  * supports holdable cursors (the Executor results can be dumped into a
  * tuplestore for access after transaction completion).
  *
+ * PORTAL_ONE_RETURNING: the portal contains a single INSERT/UPDATE/DELETE
+ * query with a RETURNING clause (plus possibly auxiliary queries added by
+ * rule rewriting).  On first execution, we run the portal to completion
+ * and dump the primary query's results into the portal tuplestore; the
+ * results are then returned to the client as demanded.  (We can't support
+ * suspension of the query partway through, because the AFTER TRIGGER code
+ * can't cope, and also because we don't want to risk failing to execute
+ * all the auxiliary queries.)
+ *
  * PORTAL_UTIL_SELECT: the portal contains a utility statement that returns
  * a SELECT-like result (for example, EXPLAIN or SHOW).  On first execution,
  * we run the statement and dump its results into the portal tuplestore;
@@ -72,10 +79,10 @@
  * PORTAL_MULTI_QUERY: all other cases.  Here, we do not support partial
  * execution: the portal's queries will be run to completion on first call.
  */
-
 typedef enum PortalStrategy
 {
 	PORTAL_ONE_SELECT,
+	PORTAL_ONE_RETURNING,
 	PORTAL_UTIL_SELECT,
 	PORTAL_MULTI_QUERY
 } PortalStrategy;
@@ -103,6 +110,7 @@ typedef struct PortalData
 {
 	/* Bookkeeping data */
 	const char *name;			/* portal's name */
+	const char *prepStmtName;	/* source prepared statement (NULL if none) */
 	MemoryContext heap;			/* subsidiary memory for portal */
 	ResourceOwner resowner;		/* resources owned by portal */
 	void		(*cleanup) (Portal portal);		/* cleanup hook */
@@ -127,15 +135,16 @@ typedef struct PortalData
 	const char *commandTag;		/* command tag for original query */
 	List	   *parseTrees;		/* parse tree(s) */
 	List	   *planTrees;		/* plan tree(s) */
-	MemoryContext queryContext; /* where the above trees live */
+	MemoryContext queryContext; /* where the parse trees live */
 
 	/*
 	 * Note: queryContext effectively identifies which prepared statement the
 	 * portal depends on, if any.  The queryContext is *not* owned by the
 	 * portal and is not to be deleted by portal destruction.  (But for a
 	 * cursor it is the same as "heap", and that context is deleted by portal
-	 * destruction.)
+	 * destruction.)  The plan trees may be in either queryContext or heap.
 	 */
+
 	ParamListInfo portalParams; /* params to pass to query */
 
 	/* Features/options */
@@ -144,7 +153,6 @@ typedef struct PortalData
 
 	/* Status data */
 	PortalStatus status;		/* see above */
-	bool		portalUtilReady;	/* PortalRunUtility complete? */
 
 	/* If not NULL, Executor is active; call ExecutorEnd eventually: */
 	QueryDesc  *queryDesc;		/* info needed for executor invocation */
@@ -155,9 +163,9 @@ typedef struct PortalData
 	int16	   *formats;		/* a format code for each column */
 
 	/*
-	 * Where we store tuples for a held cursor or a PORTAL_UTIL_SELECT query.
-	 * (A cursor held past the end of its transaction no longer has any active
-	 * executor state.)
+	 * Where we store tuples for a held cursor or a PORTAL_ONE_RETURNING or
+	 * PORTAL_UTIL_SELECT query.  (A cursor held past the end of its
+	 * transaction no longer has any active executor state.)
 	 */
 	Tuplestorestate *holdStore; /* store for holdable cursors */
 	MemoryContext holdContext;	/* memory containing holdStore */
@@ -176,7 +184,11 @@ typedef struct PortalData
 	bool		posOverflow;
 	long		portalPos;
 	
-	/* is this portal a CURSOR, or protocol level portal? */	
+	/* Presentation data, primarily used by the pg_cursors system view */
+	TimestampTz creation_time;	/* time at which this portal was defined */
+	bool		visible;		/* include this portal in pg_cursors? */
+	
+	/* MPP: is this portal a CURSOR, or protocol level portal? */	
 	bool		is_cursor;
 } PortalData;
 
@@ -191,6 +203,7 @@ typedef struct PortalData
  */
 #define PortalGetQueryDesc(portal)	((portal)->queryDesc)
 #define PortalGetHeapMemory(portal) ((portal)->heap)
+#define PortalGetPrimaryQuery(portal) PortalListGetPrimaryQuery((portal)->parseTrees)
 
 
 /* Prototypes for functions in utils/mmgr/portalmem.c */
@@ -213,12 +226,14 @@ extern void PortalDrop(Portal portal, bool isTopCommit);
 extern void DropDependentPortals(MemoryContext queryContext);
 extern Portal GetPortalByName(const char *name);
 extern void PortalDefineQuery(Portal portal,
+				  const char *prepStmtName,
 				  const char *sourceText,
 				  NodeTag	  sourceTag,
 				  const char *commandTag,
 				  List *parseTrees,
 				  List *planTrees,
 				  MemoryContext queryContext);
+extern Query *PortalListGetPrimaryQuery(List *parseTrees);
 extern void PortalCreateHoldStore(Portal portal);
 
 #endif   /* PORTAL_H */

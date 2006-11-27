@@ -3,9 +3,9 @@
  * syslogger.h
  *	  Exports from postmaster/syslogger.c.
  *
- * Copyright (c) 2004-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2004-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/postmaster/syslogger.h,v 1.5 2005/10/15 02:49:46 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/postmaster/syslogger.h,v 1.7 2006/10/19 18:32:47 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,8 +16,8 @@
 extern bool Redirect_stderr;
 extern int	Log_RotationAge;
 extern int	Log_RotationSize;
-extern char *Log_directory;
-extern char *Log_filename;
+extern DLLIMPORT char *Log_directory;
+extern DLLIMPORT char *Log_filename;
 extern bool Log_truncate_on_rotation;
 
 extern bool am_syslogger;

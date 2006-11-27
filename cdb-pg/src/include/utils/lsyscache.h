@@ -3,17 +3,19 @@
  * lsyscache.h
  *	  Convenience routines for common queries in the system catalog cache.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/lsyscache.h,v 1.101 2005/10/15 02:49:46 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/lsyscache.h,v 1.107 2006/10/04 00:30:10 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef LSYSCACHE_H
 #define LSYSCACHE_H
 
+#include "access/attnum.h"
 #include "access/htup.h"
+#include "nodes/pg_list.h"
 
 /* I/O function selector for get_type_io_data */
 typedef enum IOFuncSelector
@@ -31,6 +33,8 @@ extern void get_op_opclass_properties(Oid opno, Oid opclass,
 						  bool *recheck);
 extern Oid	get_opclass_member(Oid opclass, Oid subtype, int16 strategy);
 extern Oid	get_op_hash_function(Oid opno);
+extern void get_op_btree_interpretation(Oid opno,
+							List **opclasses, List **opstrats);
 extern Oid	get_opclass_proc(Oid opclass, Oid subtype, int16 procnum);
 extern char *get_attname(Oid relid, AttrNumber attnum);
 extern char *get_relid_attribute_name(Oid relid, AttrNumber attnum);
@@ -41,6 +45,8 @@ extern void get_atttypetypmod(Oid relid, AttrNumber attnum,
 				  Oid *typid, int32 *typmod);
 extern bool opclass_is_btree(Oid opclass);
 extern bool opclass_is_hash(Oid opclass);
+extern bool opclass_is_default(Oid opclass);
+extern Oid	get_opclass_input_type(Oid opclass);
 extern RegProcedure get_opcode(Oid opno);
 extern char *get_opname(Oid opno);
 extern void op_input_types(Oid opno, Oid *lefttype, Oid *righttype);
@@ -82,9 +88,9 @@ extern void get_type_io_data(Oid typid,
 				 Oid *typioparam,
 				 Oid *func);
 extern char get_typstorage(Oid typid);
-extern int32 get_typtypmod(Oid typid);
 extern Node *get_typdefault(Oid typid);
 extern char get_typtype(Oid typid);
+extern bool type_is_rowtype(Oid typid);
 extern Oid	get_typ_typrelid(Oid typid);
 extern Oid	get_element_type(Oid typid);
 extern Oid	get_array_type(Oid typid);
@@ -93,6 +99,7 @@ extern void getTypeOutputInfo(Oid type, Oid *typOutput, bool *typIsVarlena);
 extern void getTypeBinaryInputInfo(Oid type, Oid *typReceive, Oid *typIOParam);
 extern void getTypeBinaryOutputInfo(Oid type, Oid *typSend, bool *typIsVarlena);
 extern Oid	getBaseType(Oid typid);
+extern Oid	getBaseTypeAndTypmod(Oid typid, int32 *typmod);
 extern int32 get_typavgwidth(Oid typid, int32 typmod);
 extern int32 get_attavgwidth(Oid relid, AttrNumber attnum);
 extern bool get_attstatsslot(HeapTuple statstuple,

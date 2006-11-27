@@ -5,10 +5,10 @@
  *	  standard operators and index access methods.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/selfuncs.h,v 1.24 2005/10/15 02:49:46 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/selfuncs.h,v 1.36 2006/10/04 00:30:11 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,6 +16,7 @@
 #define SELFUNCS_H
 
 #include "fmgr.h"
+#include "access/htup.h"
 #include "nodes/relation.h"
 
 
@@ -62,6 +63,26 @@
 	} while (0)
 
 
+/* Return data from examine_variable and friends */
+typedef struct
+{
+	Node	   *var;			/* the Var or expression tree */
+	RelOptInfo *rel;			/* Relation, or NULL if not identifiable */
+	HeapTuple	statsTuple;		/* pg_statistic tuple, or NULL if none */
+	/* NB: if statsTuple!=NULL, it must be freed when caller is done */
+	Oid			vartype;		/* exposed type of expression */
+	Oid			atttype;		/* type to pass to get_attstatsslot */
+	int32		atttypmod;		/* typmod to pass to get_attstatsslot */
+	bool		isunique;		/* true if matched to a unique index */
+} VariableStatData;
+
+#define ReleaseVariableStats(vardata)  \
+	do { \
+		if (HeapTupleIsValid((vardata).statsTuple)) \
+			ReleaseSysCache((vardata).statsTuple); \
+	} while(0)
+
+
 typedef enum
 {
 	Pattern_Type_Like, Pattern_Type_Like_IC,
@@ -75,6 +96,23 @@ typedef enum
 
 
 /* selfuncs.c */
+
+extern void examine_variable(PlannerInfo *root, Node *node, int varRelid,
+				 VariableStatData *vardata);
+extern bool get_restriction_variable(PlannerInfo *root, List *args,
+						 int varRelid,
+						 VariableStatData *vardata, Node **other,
+						 bool *varonleft);
+extern void get_join_variables(PlannerInfo *root, List *args,
+				   VariableStatData *vardata1,
+				   VariableStatData *vardata2);
+extern double get_variable_numdistinct(VariableStatData *vardata);
+extern double mcv_selectivity(VariableStatData *vardata, FmgrInfo *opproc,
+				Datum constval, bool varonleft,
+				double *sumcommonp);
+extern double histogram_selectivity(VariableStatData *vardata, FmgrInfo *opproc,
+					  Datum constval, bool varonleft,
+					  int min_hist_size, int n_skip);
 
 extern Pattern_Prefix_Status pattern_fixed_prefix(Const *patt,
 					 Pattern_Type ptype,
@@ -112,6 +150,14 @@ extern Selectivity booltestsel(PlannerInfo *root, BoolTestType booltesttype,
 			Node *arg, int varRelid, JoinType jointype);
 extern Selectivity nulltestsel(PlannerInfo *root, NullTestType nulltesttype,
 			Node *arg, int varRelid);
+extern Selectivity scalararraysel(PlannerInfo *root,
+			   ScalarArrayOpExpr *clause,
+			   bool is_join_clause,
+			   int varRelid, JoinType jointype);
+extern int	estimate_array_length(Node *arrayexpr);
+extern Selectivity rowcomparesel(PlannerInfo *root,
+			  RowCompareExpr *clause,
+			  int varRelid, JoinType jointype);
 
 extern void mergejoinscansel(PlannerInfo *root, Node *clause,
 				 Selectivity *leftscan,
@@ -124,8 +170,8 @@ extern Selectivity estimate_hash_bucketsize(PlannerInfo *root, Node *hashkey,
 						 double nbuckets);
 
 extern Datum btcostestimate(PG_FUNCTION_ARGS);
-extern Datum rtcostestimate(PG_FUNCTION_ARGS);
 extern Datum hashcostestimate(PG_FUNCTION_ARGS);
 extern Datum gistcostestimate(PG_FUNCTION_ARGS);
+extern Datum gincostestimate(PG_FUNCTION_ARGS);
 
 #endif   /* SELFUNCS_H */

@@ -4,17 +4,17 @@
  *	  internal structures for hash joins
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/executor/hashjoin.h,v 1.37 2005/10/15 02:49:44 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/executor/hashjoin.h,v 1.41 2006/07/13 18:01:02 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef HASHJOIN_H
 #define HASHJOIN_H
 
-#include "access/htup.h"
+#include "fmgr.h"
 #include "storage/buffile.h"
 
 /* ----------------------------------------------------------------
@@ -65,8 +65,13 @@ typedef struct HashJoinTupleData
 {
 	struct HashJoinTupleData *next;		/* link to next tuple in same bucket */
 	uint32		hashvalue;		/* tuple's hash code */
-	HeapTupleData htup;			/* tuple header */
+	/* Tuple data, in MinimalTuple format, follows on a MAXALIGN boundary */
 } HashJoinTupleData;
+
+#define HJTUPLE_OVERHEAD  MAXALIGN(sizeof(HashJoinTupleData))
+#define HJTUPLE_MINTUPLE(hjtup)  \
+	((MinimalTuple) ((char *) (hjtup) + HJTUPLE_OVERHEAD))
+
 
 typedef struct HashJoinTableData
 {

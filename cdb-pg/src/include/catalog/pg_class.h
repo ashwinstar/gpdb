@@ -5,10 +5,10 @@
  *	  along with the relation's initial contents.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_class.h,v 1.90 2005/10/15 02:49:42 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_class.h,v 1.97 2006/11/05 22:42:10 tgl Exp $
  *
  * NOTES
  *	  the genbki.sh script reads this file and generates .bki
@@ -29,15 +29,6 @@
 /* ----------------
  *		pg_class definition.  cpp turns this into
  *		typedef struct FormData_pg_class
- * ----------------
- */
-
-/* ----------------
- *		This structure is actually variable-length (the last attribute is
- *		a POSTGRES array).	Hence, sizeof(FormData_pg_class) does not
- *		necessarily match the actual length of the structure.  Furthermore
- *		relacl may be a NULL field.  Hence, you MUST use heap_getattr()
- *		to get the relacl field ... and don't forget to check isNull.
  * ----------------
  */
 #define RelationRelationId	1259
@@ -74,16 +65,21 @@ CATALOG(pg_class,1259) BKI_BOOTSTRAP
 	bool		relhaspkey;		/* has PRIMARY KEY index */
 	bool		relhasrules;	/* has associated rules */
 	bool		relhassubclass; /* has derived classes */
+	TransactionId relfrozenxid;	/* all Xids < this are frozen in this rel */
 
 	/*
-	 * relacl may or may not be present, see note above!
+	 * VARIABLE LENGTH FIELDS start here.  These fields may be NULL, too.
+	 *
+	 * NOTE: these fields are not present in a relcache entry's rd_rel field.
 	 */
-	aclitem		relacl[1];		/* we declare this just for the catalog */
+
+	aclitem		relacl[1];		/* access permissions */
+	text		reloptions[1];	/* access-method-specific options */
 } FormData_pg_class;
 
-/* Size of fixed part of pg_class tuples, not counting relacl or padding */
+/* Size of fixed part of pg_class tuples, not counting var-length fields */
 #define CLASS_TUPLE_SIZE \
-	 (offsetof(FormData_pg_class,relhassubclass) + sizeof(bool))
+	 (offsetof(FormData_pg_class,relfrozenxid) + sizeof(TransactionId))
 
 /* ----------------
  *		Form_pg_class corresponds to a pointer to a tuple with
@@ -97,14 +93,7 @@ typedef FormData_pg_class *Form_pg_class;
  * ----------------
  */
 
-/* ----------------
- *		Natts_pg_class_fixed is used to tell routines that insert new
- *		pg_class tuples (as opposed to replacing old ones) that there's no
- *		relacl field.  This is a kluge.
- * ----------------
- */
-#define Natts_pg_class_fixed			24
-#define Natts_pg_class					25
+#define Natts_pg_class					27
 #define Anum_pg_class_relname			1
 #define Anum_pg_class_relnamespace		2
 #define Anum_pg_class_reltype			3
@@ -129,28 +118,31 @@ typedef FormData_pg_class *Form_pg_class;
 #define Anum_pg_class_relhaspkey		22
 #define Anum_pg_class_relhasrules		23
 #define Anum_pg_class_relhassubclass	24
-#define Anum_pg_class_relacl			25
+#define Anum_pg_class_relfrozenxid		25
+#define Anum_pg_class_relacl			26
+#define Anum_pg_class_reloptions		27
 
 /* ----------------
  *		initial contents of pg_class
  *
  * NOTE: only "bootstrapped" relations need to be declared here.  Be sure that
- * the OIDs listed here match those given in their CATALOG macros.
+ * the OIDs listed here match those given in their CATALOG macros, and that
+ * the relnatts values are correct.
  * ----------------
  */
 
-DATA(insert OID = 1247 (  pg_type		PGNSP 71 PGUID 0 1247 0 0 0 0 0 f f r 23 0 0 0 0 0 t f f f _null_ ));
+/* Note: "3" in the relfrozenxid column stands for FirstNormalTransactionId */
+DATA(insert OID = 1247 (  pg_type		PGNSP 71 PGUID 0 1247 0 0 0 0 0 f f r 23 0 0 0 0 0 t f f f 3 _null_ _null_ ));
 DESCR("");
-DATA(insert OID = 1249 (  pg_attribute	PGNSP 75 PGUID 0 1249 0 0 0 0 0 f f r 17 0 0 0 0 0 f f f f _null_ ));
+DATA(insert OID = 1249 (  pg_attribute	PGNSP 75 PGUID 0 1249 0 0 0 0 0 f f r 17 0 0 0 0 0 f f f f 3 _null_ _null_ ));
 DESCR("");
-DATA(insert OID = 1255 (  pg_proc		PGNSP 81 PGUID 0 1255 0 0 0 0 0 f f r 18 0 0 0 0 0 t f f f _null_ ));
+DATA(insert OID = 1255 (  pg_proc		PGNSP 81 PGUID 0 1255 0 0 0 0 0 f f r 18 0 0 0 0 0 t f f f 3 _null_ _null_ ));
 DESCR("");
-DATA(insert OID = 1259 (  pg_class		PGNSP 83 PGUID 0 1259 0 0 0 0 0 f f r 25 0 0 0 0 0 t f f f _null_ ));
+DATA(insert OID = 1259 (  pg_class		PGNSP 83 PGUID 0 1259 0 0 0 0 0 f f r 27 0 0 0 0 0 t f f f 3 _null_ _null_ ));
 DESCR("");
 
 #define		  RELKIND_INDEX			  'i'		/* secondary index */
 #define		  RELKIND_RELATION		  'r'		/* ordinary cataloged heap */
-#define		  RELKIND_SPECIAL		  's'		/* special (non-heap) */
 #define		  RELKIND_SEQUENCE		  'S'		/* SEQUENCE relation */
 #define		  RELKIND_UNCATALOGED	  'u'		/* temporary heap */
 #define		  RELKIND_TOASTVALUE	  't'		/* moved off huge values */
