@@ -3,10 +3,10 @@
  * slru.h
  *		Simple LRU buffering for transaction status logfiles
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/slru.h,v 1.14 2005/10/15 02:49:42 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/access/slru.h,v 1.19 2006/10/04 00:30:07 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,19 +17,16 @@
 
 
 /*
- * Number of page buffers.	Ideally this could be different for CLOG and
- * SUBTRANS, but the benefit doesn't seem to be worth any additional
- * notational cruft.
+ * Page status codes.  Note that these do not include the "dirty" bit.
+ * page_dirty can be TRUE only in the VALID or WRITE_IN_PROGRESS states;
+ * in the latter case it implies that the page has been re-dirtied since
+ * the write started.
  */
-#define NUM_SLRU_BUFFERS	8
-
-/* Page status codes */
 typedef enum
 {
 	SLRU_PAGE_EMPTY,			/* buffer is not in use */
 	SLRU_PAGE_READ_IN_PROGRESS, /* page is being read in */
-	SLRU_PAGE_CLEAN,			/* page is valid and not dirty */
-	SLRU_PAGE_DIRTY,			/* page is valid but needs write */
+	SLRU_PAGE_VALID,			/* page is valid and not being written */
 	SLRU_PAGE_WRITE_IN_PROGRESS /* page is being written out */
 } SlruPageStatus;
 
@@ -40,17 +37,30 @@ typedef struct SlruSharedData
 {
 	LWLockId	ControlLock;
 
+	/* Number of buffers managed by this SLRU structure */
+	int			num_slots;
+
 	/*
-	 * Info for each buffer slot.  Page number is undefined when status is
-	 * EMPTY.  lru_count is essentially the number of page switches since last
-	 * use of this page; the page with highest lru_count is the best candidate
-	 * to replace.
+	 * Arrays holding info for each buffer slot.  Page number is undefined
+	 * when status is EMPTY, as is page_lru_count.
 	 */
-	char	   *page_buffer[NUM_SLRU_BUFFERS];
-	SlruPageStatus page_status[NUM_SLRU_BUFFERS];
-	int			page_number[NUM_SLRU_BUFFERS];
-	unsigned int page_lru_count[NUM_SLRU_BUFFERS];
-	LWLockId	buffer_locks[NUM_SLRU_BUFFERS];
+	char	  **page_buffer;
+	SlruPageStatus *page_status;
+	bool	   *page_dirty;
+	int		   *page_number;
+	int		   *page_lru_count;
+	LWLockId   *buffer_locks;
+
+	/*----------
+	 * We mark a page "most recently used" by setting
+	 *		page_lru_count[slotno] = ++cur_lru_count;
+	 * The oldest page is therefore the one with the highest value of
+	 *		cur_lru_count - page_lru_count[slotno]
+	 * The counts will eventually wrap around, but this calculation still
+	 * works as long as no page's age exceeds INT_MAX counts.
+	 *----------
+	 */
+	int			cur_lru_count;
 
 	/*
 	 * latest_page_number is the page number of the current end of the log;
@@ -96,11 +106,13 @@ typedef SlruCtlData *SlruCtl;
 typedef struct SlruFlushData *SlruFlush;
 
 
-extern Size SimpleLruShmemSize(void);
-extern void SimpleLruInit(SlruCtl ctl, const char *name,
+extern Size SimpleLruShmemSize(int nslots);
+extern void SimpleLruInit(SlruCtl ctl, const char *name, int nslots,
 			  LWLockId ctllock, const char *subdir);
 extern int	SimpleLruZeroPage(SlruCtl ctl, int pageno);
 extern int	SimpleLruReadPage(SlruCtl ctl, int pageno, TransactionId xid);
+extern int SimpleLruReadPage_ReadOnly(SlruCtl ctl, int pageno,
+						   TransactionId xid);
 extern void SimpleLruWritePage(SlruCtl ctl, int slotno, SlruFlush fdata);
 extern void SimpleLruFlush(SlruCtl ctl, bool checkpoint);
 extern void SimpleLruTruncate(SlruCtl ctl, int cutoffPage);

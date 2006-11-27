@@ -4,20 +4,17 @@
  *	  POSTGRES definitions for external and compressed storage
  *	  of variable size attributes.
  *
- * Copyright (c) 2000-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/access/tuptoaster.h,v 1.23.2.2 2005/11/22 18:23:27 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/access/tuptoaster.h,v 1.28 2006/07/13 17:47:01 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef TUPTOASTER_H
 #define TUPTOASTER_H
 
-#include "access/heapam.h"
 #include "access/htup.h"
-#include "access/tupmacs.h"
-#include "utils/rel.h"
-
+#include "storage/bufpage.h"
 
 /*
  * This enables de-toasting of index entries.  Needed until VACUUM is

@@ -44,7 +44,7 @@ extern void renameatt(Oid myrelid,
 
 extern void renamerel(Oid myrelid,
 		  const char *newrelname,
-		  RenameStmt *stmt);
+		  RenameStmt *stmt /* MPP */);
 
 extern AttrNumber *varattnos_map(TupleDesc old, TupleDesc new);
 extern AttrNumber *varattnos_map_schema(TupleDesc old, List *schema);

@@ -6,21 +6,21 @@
  *	  changes should be made with care.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/gist.h,v 1.50 2005/10/15 02:49:42 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/access/gist.h,v 1.56 2006/10/04 00:30:06 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef GIST_H
 #define GIST_H
 
+#include "access/xlog.h"
+#include "access/xlogdefs.h"
 #include "storage/bufpage.h"
 #include "storage/off.h"
 #include "utils/rel.h"
-#include "access/xlog.h"
-#include "access/xlogdefs.h"
 
 /*
  * amproc indexes for GiST indexes.
@@ -33,6 +33,25 @@
 #define GIST_PICKSPLIT_PROC				6
 #define GIST_EQUAL_PROC					7
 #define GISTNProcs						7
+
+/*
+ * strategy numbers for GiST opclasses that want to implement the old
+ * RTREE behavior.
+ */
+#define RTLeftStrategyNumber			1
+#define RTOverLeftStrategyNumber		2
+#define RTOverlapStrategyNumber			3
+#define RTOverRightStrategyNumber		4
+#define RTRightStrategyNumber			5
+#define RTSameStrategyNumber			6
+#define RTContainsStrategyNumber		7		/* for @> */
+#define RTContainedByStrategyNumber		8		/* for <@ */
+#define RTOverBelowStrategyNumber		9
+#define RTBelowStrategyNumber			10
+#define RTAboveStrategyNumber			11
+#define RTOverAboveStrategyNumber		12
+#define RTOldContainsStrategyNumber		13		/* for old spelling of @> */
+#define RTOldContainedByStrategyNumber	14		/* for old spelling of <@ */
 
 /*
  * Page opaque data in a GiST index page.
@@ -58,37 +77,29 @@ typedef GISTPageOpaqueData *GISTPageOpaque;
 
 /*
  * This is the Split Vector to be returned by the PickSplit method.
+ * PickSplit should check spl_(r|l)datum_exists. If it is 'true',
+ * that corresponding spl_(r|l)datum already defined and
+ * PickSplit should use that value. PickSplit should always set
+ * spl_(r|l)datum_exists to false: GiST will check value to
+ * control supportng this feature by PickSplit...
  */
 typedef struct GIST_SPLITVEC
 {
 	OffsetNumber *spl_left;		/* array of entries that go left */
 	int			spl_nleft;		/* size of this array */
 	Datum		spl_ldatum;		/* Union of keys in spl_left */
-	Datum		spl_lattr[INDEX_MAX_KEYS];		/* Union of subkeys in
-												 * spl_left */
-	int			spl_lattrsize[INDEX_MAX_KEYS];
-	bool		spl_lisnull[INDEX_MAX_KEYS];
-	bool		spl_leftvalid;
+	bool		spl_ldatum_exists;		/* true, if spl_ldatum already exists. */
 
 	OffsetNumber *spl_right;	/* array of entries that go right */
 	int			spl_nright;		/* size of the array */
 	Datum		spl_rdatum;		/* Union of keys in spl_right */
-	Datum		spl_rattr[INDEX_MAX_KEYS];		/* Union of subkeys in
-												 * spl_right */
-	int			spl_rattrsize[INDEX_MAX_KEYS];
-	bool		spl_risnull[INDEX_MAX_KEYS];
-	bool		spl_rightvalid;
-
-	int		   *spl_idgrp;
-	int		   *spl_ngrp;		/* number in each group */
-	char	   *spl_grpflag;	/* flags of each group */
+	bool		spl_rdatum_exists;		/* true, if spl_rdatum already exists. */
 } GIST_SPLITVEC;
 
 /*
  * An entry on a GiST node.  Contains the key, as well as its own
  * location (rel,page,offset) which can supply the matching pointer.
- * The size of the key is in bytes, and leafkey is a flag to tell us
- * if the entry is in a leaf node.
+ * leafkey is a flag to tell us if the entry is in a leaf node.
  */
 typedef struct GISTENTRY
 {
@@ -96,7 +107,6 @@ typedef struct GISTENTRY
 	Relation	rel;
 	Page		page;
 	OffsetNumber offset;
-	int			bytes;
 	bool		leafkey;
 } GISTENTRY;
 
@@ -125,13 +135,13 @@ typedef struct
 	GISTENTRY	vector[1];
 } GistEntryVector;
 
-#define GEVHDRSZ	(offsetof(GistEntryVector, vector[0]))
+#define GEVHDRSZ	(offsetof(GistEntryVector, vector))
 
 /*
  * macro to initialize a GISTENTRY
  */
-#define gistentryinit(e, k, r, pg, o, b, l) \
+#define gistentryinit(e, k, r, pg, o, l) \
 	do { (e).key = (k); (e).rel = (r); (e).page = (pg); \
-		 (e).offset = (o); (e).bytes = (b); (e).leafkey = (l); } while (0)
+		 (e).offset = (o); (e).leafkey = (l); } while (0)
 
 #endif   /* GIST_H */

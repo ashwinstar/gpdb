@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/commands/explain.h,v 1.24 2004/12/31 22:03:28 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/commands/explain.h,v 1.28 2006/10/04 00:30:08 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,7 +17,7 @@
 
 
 extern void ExplainQuery(ExplainStmt *stmt, ParamListInfo params,
-						 DestReceiver *dest);
+			 DestReceiver *dest);
 
 extern TupleDesc ExplainResultDesc(ExplainStmt *stmt);
 

@@ -11,9 +11,9 @@
  * bms_is_empty() in preference to testing for NULL.)
  *
  *
- * Copyright (c) 2003-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/nodes/bitmapset.h,v 1.7 2005/06/08 23:02:05 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/nodes/bitmapset.h,v 1.8 2006/03/05 15:58:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -25,10 +25,9 @@
  */
 
 /* The unit size can be adjusted by changing these three declarations: */
+#define BITS_PER_BITMAPWORD 32
 typedef uint32 bitmapword;		/* must be an unsigned type */
 typedef int32 signedbitmapword; /* must be the matching signed type */
-#define BITS_PER_BITMAPWORD_LOG2    5
-#define BITS_PER_BITMAPWORD         (1 << BITS_PER_BITMAPWORD_LOG2)
 
 typedef struct Bitmapset
 {

@@ -1,82 +1,54 @@
 /*-------------------------------------------------------------------------
  *
  * params.h
- *	  Declarations of stuff needed to handle parameterized plans.
+ *	  Support for finding the values associated with Param nodes.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/nodes/params.h,v 1.28 2004/12/31 22:03:34 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/nodes/params.h,v 1.33 2006/10/04 00:30:09 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef PARAMS_H
 #define PARAMS_H
 
-#include "access/attnum.h"
-
-
-/* ----------------
- * The following are the possible values for the 'paramkind'
- * field of a Param node.
- *
- * PARAM_NAMED: The parameter has a name, i.e. something
- *				like `$.salary' or `$.foobar'.
- *				In this case field `paramname' must be a valid name.
- *
- * PARAM_NUM:	The parameter has only a numeric identifier,
- *				i.e. something like `$1', `$2' etc.
- *				The number is contained in the `paramid' field.
- *
- * PARAM_EXEC:	The parameter is an internal executor parameter.
- *				It has a number contained in the `paramid' field.
- *
- * PARAM_INVALID should never appear in a Param node; it's used to mark
- * the end of a ParamListInfo array.
- *
- * NOTE: As of PostgreSQL 7.3, named parameters aren't actually used and
- * so the code that handles PARAM_NAMED cases is dead code.  We leave it
- * in place since it might be resurrected someday.
- * ----------------
- */
-
-#define PARAM_NAMED			11
-#define PARAM_NUM			12
-#define PARAM_EXEC			15
-#define PARAM_EXEC_REMOTE	16
-#define PARAM_INVALID		100
-
 
 /* ----------------
  *	  ParamListInfo
  *
- *	  ParamListInfo entries are used to pass parameters into the executor
+ *	  ParamListInfo arrays are used to pass parameters into the executor
  *	  for parameterized plans.	Each entry in the array defines the value
- *	  to be substituted for a PARAM_NAMED or PARAM_NUM parameter.
+ *	  to be substituted for a PARAM_EXTERN parameter.  The "paramid"
+ *	  of a PARAM_EXTERN Param can range from 1 to numParams.
  *
- *		kind   : the kind of parameter (PARAM_NAMED or PARAM_NUM)
- *		name   : the parameter name (valid if kind == PARAM_NAMED)
- *		id	   : the parameter id (valid if kind == PARAM_NUM)
- *		ptype  : the type of the parameter value
- *		isnull : true if the value is null (if so 'value' is undefined)
- *		value  : the value that has to be substituted in the place
- *				 of the parameter.
+ *	  Although parameter numbers are normally consecutive, we allow
+ *	  ptype == InvalidOid to signal an unused array entry.
  *
- *	 ParamListInfo is to be used as an array of ParamListInfoData
- *	 records.  A dummy record with kind == PARAM_INVALID marks the end
- *	 of the array.
+ *	  PARAM_FLAG_CONST signals the planner that it may treat this parameter
+ *	  as a constant (i.e., generate a plan that works only for this value
+ *	  of the parameter).
+ *
+ *	  Although the data structure is really an array, not a list, we keep
+ *	  the old typedef name to avoid unnecessary code changes.
  * ----------------
  */
 
+#define PARAM_FLAG_CONST	0x0001		/* parameter is constant */
+
+typedef struct ParamExternData
+{
+	Datum		value;			/* parameter value */
+	bool		isnull;			/* is it NULL? */
+	uint16		pflags;			/* flag bits, see above */
+	Oid			ptype;			/* parameter's datatype, or 0 */
+} ParamExternData;
+
 typedef struct ParamListInfoData
 {
-	int			kind;
-	char	   *name;
-	AttrNumber	id;
-	Oid			ptype;
-	bool		isnull;
-	Datum		value;
+	int			numParams;		/* number of ParamExternDatas following */
+	ParamExternData params[1];	/* VARIABLE LENGTH ARRAY */
 } ParamListInfoData;
 
 typedef ParamListInfoData *ParamListInfo;
@@ -109,8 +81,5 @@ typedef struct ParamExecData
 
 /* Functions found in src/backend/nodes/params.c */
 extern ParamListInfo copyParamList(ParamListInfo from);
-extern ParamListInfo lookupParam(ParamListInfo paramList, int thisParamKind,
-			const char *thisParamName, AttrNumber thisParamId,
-			bool noError);
 
 #endif   /* PARAMS_H */

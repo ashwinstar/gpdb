@@ -4,10 +4,10 @@
  *	  POSTGRES relation scan descriptor definitions.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/relscan.h,v 1.41 2005/10/15 02:49:42 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/access/relscan.h,v 1.50 2006/10/04 00:30:07 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -15,6 +15,7 @@
 #define RELSCAN_H
 
 #include "access/skey.h"
+#include "storage/bufpage.h"
 #include "utils/tqual.h"
 
 
@@ -26,14 +27,23 @@ typedef struct HeapScanDescData
 	int			rs_nkeys;		/* number of scan keys */
 	ScanKey		rs_key;			/* array of scan key descriptors */
 	BlockNumber rs_nblocks;		/* number of blocks to scan */
+	bool		rs_pageatatime; /* verify visibility page-at-a-time? */
 
 	/* scan current state */
+	bool		rs_inited;		/* false = scan not init'd yet */
 	HeapTupleData rs_ctup;		/* current tuple in scan, if any */
+	BlockNumber rs_cblock;		/* current block # in scan, if any */
 	Buffer		rs_cbuf;		/* current buffer in scan, if any */
 	/* NB: if rs_cbuf is not InvalidBuffer, we hold a pin on that buffer */
 	ItemPointerData rs_mctid;	/* marked scan position, if any */
 
 	PgStat_Info rs_pgstat_info; /* statistics collector hook */
+
+	/* these fields only used in page-at-a-time mode */
+	int			rs_cindex;		/* current tuple's index in vistuples */
+	int			rs_mindex;		/* marked tuple's saved index */
+	int			rs_ntuples;		/* number of visible tuples on page */
+	OffsetNumber rs_vistuples[MaxHeapTuplesPerPage];	/* their offsets */
 } HeapScanDescData;
 
 typedef HeapScanDescData *HeapScanDesc;
@@ -57,12 +67,9 @@ typedef struct IndexScanDescData
 	bool		kill_prior_tuple;		/* last-returned tuple is dead */
 	bool		ignore_killed_tuples;	/* do not return killed entries */
 
-	/* set by index AM if scan keys satisfy index's uniqueness constraint */
-	bool		keys_are_unique;
-
-	/* scan current state */
-	bool		got_tuple;		/* true after successful index_getnext */
+	/* index access method's private state */
 	void	   *opaque;			/* access-method-specific info */
+	/* these fields are used by some but not all AMs: */
 	ItemPointerData currentItemData;	/* current index pointer */
 	ItemPointerData currentMarkData;	/* marked position, if any */
 
@@ -74,15 +81,6 @@ typedef struct IndexScanDescData
 	HeapTupleData xs_ctup;		/* current heap tuple, if any */
 	Buffer		xs_cbuf;		/* current heap buffer in scan, if any */
 	/* NB: if xs_cbuf is not InvalidBuffer, we hold a pin on that buffer */
-
-	/*
-	 * If keys_are_unique and got_tuple are both true, we stop calling the
-	 * index AM; it is then necessary for index_getnext to keep track of the
-	 * logical scan position for itself.  It does that using unique_tuple_pos:
-	 * -1 = before row, 0 = on row, +1 = after row.
-	 */
-	int			unique_tuple_pos;		/* logical position */
-	int			unique_tuple_mark;		/* logical marked position */
 
 	PgStat_Info xs_pgstat_info; /* statistics collector hook */
 } IndexScanDescData;

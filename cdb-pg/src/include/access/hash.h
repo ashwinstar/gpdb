@@ -4,10 +4,10 @@
  *	  header file for postgres hash access method implementation
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/hash.h,v 1.63 2005/10/15 02:49:42 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/access/hash.h,v 1.73 2006/07/13 16:49:19 momjian Exp $
  *
  * NOTES
  *		modeled after Margo Seltzer's hash implementation for unix.
@@ -22,6 +22,7 @@
 #include "access/sdir.h"
 #include "access/xlog.h"
 #include "fmgr.h"
+#include "storage/lock.h"
 
 /*
  * Mapping from hash bucket number to physical block number of bucket's
@@ -158,13 +159,6 @@ typedef struct HashMetaPageData
 
 typedef HashMetaPageData *HashMetaPage;
 
-typedef struct HashItemData
-{
-	IndexTupleData hash_itup;
-} HashItemData;
-
-typedef HashItemData *HashItem;
-
 /*
  * Maximum size of a hash index item (it's okay to have only one per page)
  */
@@ -173,6 +167,9 @@ typedef HashItemData *HashItem;
 	 sizeof(PageHeaderData) - \
 	 MAXALIGN(sizeof(HashPageOpaqueData)) - \
 	 sizeof(ItemIdData))
+
+#define HASH_MIN_FILLFACTOR			10
+#define HASH_DEFAULT_FILLFACTOR		75
 
 /*
  * Constants
@@ -240,6 +237,8 @@ extern Datum hashendscan(PG_FUNCTION_ARGS);
 extern Datum hashmarkpos(PG_FUNCTION_ARGS);
 extern Datum hashrestrpos(PG_FUNCTION_ARGS);
 extern Datum hashbulkdelete(PG_FUNCTION_ARGS);
+extern Datum hashvacuumcleanup(PG_FUNCTION_ARGS);
+extern Datum hashoptions(PG_FUNCTION_ARGS);
 
 /*
  * Datatype-specific hash functions in hashfunc.c.
@@ -267,7 +266,7 @@ extern Datum hash_any(register const unsigned char *k, register int keylen);
 /* private routines */
 
 /* hashinsert.c */
-extern void _hash_doinsert(Relation rel, HashItem hitem);
+extern void _hash_doinsert(Relation rel, IndexTuple itup);
 
 /* hashovfl.c */
 extern Buffer _hash_addovflpage(Relation rel, Buffer metabuf, Buffer buf);
@@ -285,7 +284,6 @@ extern Buffer _hash_getbuf(Relation rel, BlockNumber blkno, int access);
 extern void _hash_relbuf(Relation rel, Buffer buf);
 extern void _hash_dropbuf(Relation rel, Buffer buf);
 extern void _hash_wrtbuf(Relation rel, Buffer buf);
-extern void _hash_wrtnorelbuf(Relation rel, Buffer buf);
 extern void _hash_chgbufaccess(Relation rel, Buffer buf, int from_access,
 				   int to_access);
 extern void _hash_metapinit(Relation rel);
@@ -305,15 +303,14 @@ extern bool _hash_step(IndexScanDesc scan, Buffer *bufP, ScanDirection dir);
 
 /* hashutil.c */
 extern bool _hash_checkqual(IndexScanDesc scan, IndexTuple itup);
-extern HashItem _hash_formitem(IndexTuple itup);
 extern uint32 _hash_datum2hashkey(Relation rel, Datum key);
 extern Bucket _hash_hashkey2bucket(uint32 hashkey, uint32 maxbucket,
 					 uint32 highmask, uint32 lowmask);
 extern uint32 _hash_log2(uint32 num);
-extern void _hash_checkpage(Relation rel, Page page, int flags);
+extern void _hash_checkpage(Relation rel, Buffer buf, int flags);
 
 /* hash.c */
 extern void hash_redo(XLogRecPtr lsn, XLogRecord *record);
-extern void hash_desc(char *buf, uint8 xl_info, char *rec);
+extern void hash_desc(StringInfo buf, uint8 xl_info, char *rec);
 
 #endif   /* HASH_H */

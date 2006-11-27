@@ -5,10 +5,10 @@
  *
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/nodes/nodes.h,v 1.176.2.1 2005/11/22 18:23:28 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/nodes/nodes.h,v 1.188 2006/09/28 20:51:42 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -59,6 +59,7 @@ typedef enum NodeTag
 	T_TidScan,
 	T_SubqueryScan,
 	T_FunctionScan,
+	T_ValuesScan,
 	T_Join,
 	T_NestLoop,
 	T_MergeJoin,
@@ -92,6 +93,7 @@ typedef enum NodeTag
 	T_TidScanState,
 	T_SubqueryScanState,
 	T_FunctionScanState,
+	T_ValuesScanState,
 	T_JoinState,
 	T_NestLoopState,
 	T_MergeJoinState,
@@ -134,6 +136,7 @@ typedef enum NodeTag
 	T_CaseTestExpr,
 	T_ArrayExpr,
 	T_RowExpr,
+	T_RowCompareExpr,
 	T_CoalesceExpr,
 	T_MinMaxExpr,
 	T_NullIfExpr,
@@ -170,8 +173,10 @@ typedef enum NodeTag
 	T_CaseWhenState,
 	T_ArrayExprState,
 	T_RowExprState,
+	T_RowCompareExprState,
 	T_CoalesceExprState,
 	T_MinMaxExprState,
+	T_NullTestState,
 	T_CoerceToDomainState,
 	T_DomainConstraintState,
 
@@ -199,6 +204,7 @@ typedef enum NodeTag
 	T_InnerIndexscanInfo,
 	T_OuterJoinInfo,
 	T_InClauseInfo,
+	T_AppendRelInfo,
 
     /* Tags for MPP planner nodes (relation.h) */
     T_CdbMotionPath = 580,
@@ -253,9 +259,7 @@ typedef enum NodeTag
 	T_IndexStmt,
 	T_CreateFunctionStmt,
 	T_AlterFunctionStmt,
-	T_RemoveAggrStmt,
 	T_RemoveFuncStmt,
-	T_RemoveOperStmt,
 	T_RenameStmt,
 	T_RuleStmt,
 	T_NotifyStmt,
@@ -305,6 +309,8 @@ typedef enum NodeTag
 	T_DropTableSpaceStmt,
 	T_AlterObjectSchemaStmt,
 	T_AlterOwnerStmt,
+	T_DropOwnedStmt,
+	T_ReassignOwnedStmt,
 	T_CdbExecStmt,
 
 	T_A_Expr = 800,
@@ -336,6 +342,7 @@ typedef enum NodeTag
 	T_InhRelation,
 	T_FunctionParameter,
 	T_LockingClause,
+	T_RowMarkClause,
 
 	/*
 	 * TAGS FOR RANDOM OTHER STUFF
@@ -446,9 +453,9 @@ typedef double Cost;			/* execution cost (in page-access units) */
 typedef enum CmdType
 {
 	CMD_UNKNOWN,
-	CMD_SELECT,					/* select stmt (formerly retrieve) */
-	CMD_UPDATE,					/* update stmt (formerly replace) */
-	CMD_INSERT,					/* insert stmt (formerly append) */
+	CMD_SELECT,					/* select stmt */
+	CMD_UPDATE,					/* update stmt */
+	CMD_INSERT,					/* insert stmt */
 	CMD_DELETE,
 	CMD_UTILITY,				/* cmds like create, destroy, copy, vacuum,
 								 * etc. */
@@ -476,13 +483,6 @@ typedef enum JoinType
 	JOIN_LEFT,					/* pairs + unmatched outer tuples */
 	JOIN_FULL,					/* pairs + unmatched outer + unmatched inner */
 	JOIN_RIGHT,					/* pairs + unmatched inner tuples */
-
-	/*
-	 * SQL92 considers UNION JOIN to be a kind of join, so list it here for
-	 * parser convenience, even though it's not implemented like a join in the
-	 * executor.  (The planner must convert it to an Append plan.)
-	 */
-	JOIN_UNION,
 
 	/*
 	 * These are used for queries like WHERE foo IN (SELECT bar FROM ...).

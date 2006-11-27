@@ -4,10 +4,10 @@
  *	  POSTGRES heap access method definitions.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/heapam.h,v 1.105 2005/10/15 02:49:42 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/access/heapam.h,v 1.117 2006/11/05 22:42:10 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -45,7 +45,7 @@
 #define fastgetattr(tup, attnum, tupleDesc, isnull)					\
 (																	\
 	AssertMacro((attnum) > 0),										\
-	((isnull) ? (*(isnull) = false) : (dummyret)NULL),				\
+	(((isnull) != NULL) ? (*(isnull) = false) : (dummyret)NULL),				\
 	HeapTupleNoNulls(tup) ?											\
 	(																\
 		(tupleDesc)->attrs[(attnum)-1]->attcacheoff >= 0 ?			\
@@ -61,7 +61,7 @@
 	(																\
 		att_isnull((attnum)-1, (tup)->t_data->t_bits) ?				\
 		(															\
-			((isnull) ? (*(isnull) = true) : (dummyret)NULL),		\
+			(((isnull) != NULL) ? (*(isnull) = true) : (dummyret)NULL),		\
 			(Datum)NULL												\
 		)															\
 		:															\
@@ -100,7 +100,7 @@ extern Datum fastgetattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
 		( \
 			((attnum) > (int) (tup)->t_data->t_natts) ? \
 			( \
-				((isnull) ? (*(isnull) = true) : (dummyret)NULL), \
+				(((isnull) != NULL) ? (*(isnull) = true) : (dummyret)NULL), \
 				(Datum)NULL \
 			) \
 			: \
@@ -129,7 +129,8 @@ typedef enum
 } LockTupleMode;
 
 extern Relation relation_open(Oid relationId, LOCKMODE lockmode);
-extern Relation conditional_relation_open(Oid relationId, LOCKMODE lockmode, bool nowait);
+extern Relation try_relation_open(Oid relationId, LOCKMODE lockmode);
+extern Relation relation_open_nowait(Oid relationId, LOCKMODE lockmode);
 extern Relation relation_openrv(const RangeVar *relation, LOCKMODE lockmode);
 extern void relation_close(Relation relation, LOCKMODE lockmode);
 
@@ -168,6 +169,9 @@ extern HTSU_Result heap_lock_tuple(Relation relation, HeapTuple tuple,
 				Buffer *buffer, ItemPointer ctid,
 				TransactionId *update_xmax, CommandId cid,
 				LockTupleMode mode, bool nowait);
+extern void heap_inplace_update(Relation relation, HeapTuple tuple);
+extern bool heap_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid,
+							  Buffer buf);
 
 extern Oid	simple_heap_insert(Relation relation, HeapTuple tup);
 extern void simple_heap_delete(Relation relation, ItemPointer tid);
@@ -178,12 +182,18 @@ extern void heap_markpos(HeapScanDesc scan);
 extern void heap_restrpos(HeapScanDesc scan);
 
 extern void heap_redo(XLogRecPtr lsn, XLogRecord *rptr);
-extern void heap_desc(char *buf, uint8 xl_info, char *rec);
-extern XLogRecPtr log_heap_clean(Relation reln, Buffer buffer,
-			   OffsetNumber *unused, int uncnt);
+extern void heap_desc(StringInfo buf, uint8 xl_info, char *rec);
+extern void heap2_redo(XLogRecPtr lsn, XLogRecord *rptr);
+extern void heap2_desc(StringInfo buf, uint8 xl_info, char *rec);
+
 extern XLogRecPtr log_heap_move(Relation reln, Buffer oldbuf,
 			  ItemPointerData from,
 			  Buffer newbuf, HeapTuple newtup);
+extern XLogRecPtr log_heap_clean(Relation reln, Buffer buffer,
+			   OffsetNumber *unused, int uncnt);
+extern XLogRecPtr log_heap_freeze(Relation reln, Buffer buffer,
+								  TransactionId cutoff_xid,
+								  OffsetNumber *offsets, int offcnt);
 
 /* in common/heaptuple.c */
 extern Size heap_compute_data_size(TupleDesc tupleDesc,
@@ -216,7 +226,13 @@ extern void heap_deform_tuple(HeapTuple tuple, TupleDesc tupleDesc,
 				  Datum *values, bool *isnull);
 extern void heap_deformtuple(HeapTuple tuple, TupleDesc tupleDesc,
 				 Datum *values, char *nulls);
-extern void heap_freetuple(HeapTuple tuple);
+extern void heap_freetuple(HeapTuple htup);
+extern MinimalTuple heap_form_minimal_tuple(TupleDesc tupleDescriptor,
+						Datum *values, bool *isnull);
+extern void heap_free_minimal_tuple(MinimalTuple mtup);
+extern MinimalTuple heap_copy_minimal_tuple(MinimalTuple mtup);
+extern HeapTuple heap_tuple_from_minimal_tuple(MinimalTuple mtup);
+extern MinimalTuple minimal_tuple_from_heap_tuple(HeapTuple htup);
 extern HeapTuple heap_addheader(int natts, bool withoid,
 			   Size structlen, void *structure);
 

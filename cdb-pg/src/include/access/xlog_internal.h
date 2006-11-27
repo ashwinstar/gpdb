@@ -8,13 +8,15 @@
  * needed by rmgr routines (redo support for individual record types).
  * So the XLogRecord typedef and associated stuff appear in xlog.h.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/xlog_internal.h,v 1.9 2005/07/04 04:51:52 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/access/xlog_internal.h,v 1.17 2006/10/04 00:30:07 momjian Exp $
  */
 #ifndef XLOG_INTERNAL_H
 #define XLOG_INTERNAL_H
+
+#include <time.h>
 
 #include "access/xlog.h"
 #include "fmgr.h"
@@ -69,7 +71,7 @@ typedef struct XLogContRecord
 /*
  * Each page of XLOG file has a header like this:
  */
-#define XLOG_PAGE_MAGIC 0xD05D	/* can be used as WAL version indicator */
+#define XLOG_PAGE_MAGIC 0xD05E	/* can be used as WAL version indicator */
 
 typedef struct XLogPageHeaderData
 {
@@ -93,6 +95,7 @@ typedef struct XLogLongPageHeaderData
 	XLogPageHeaderData std;		/* standard header fields */
 	uint64		xlp_sysid;		/* system identifier from pg_control */
 	uint32		xlp_seg_size;	/* just as a cross-check */
+	uint32		xlp_xlog_blcksz;	/* just as a cross-check */
 } XLogLongPageHeaderData;
 
 #define SizeOfXLogLongPHD	MAXALIGN(sizeof(XLogLongPageHeaderData))
@@ -182,8 +185,8 @@ typedef XLogLongPageHeaderData *XLogLongPageHeader;
 
 /* Check if an xrecoff value is in a plausible range */
 #define XRecOffIsValid(xrecoff) \
-		((xrecoff) % BLCKSZ >= SizeOfXLogShortPHD && \
-		(BLCKSZ - (xrecoff) % BLCKSZ) >= SizeOfXLogRecord)
+		((xrecoff) % XLOG_BLCKSZ >= SizeOfXLogShortPHD && \
+		(XLOG_BLCKSZ - (xrecoff) % XLOG_BLCKSZ) >= SizeOfXLogRecord)
 
 /*
  * The XLog directory and control file (relative to $PGDATA)
@@ -228,17 +231,29 @@ typedef struct RmgrData
 {
 	const char *rm_name;
 	void		(*rm_redo) (XLogRecPtr lsn, XLogRecord *rptr);
-	void		(*rm_desc) (char *buf, uint8 xl_info, char *rec);
+	void		(*rm_desc) (StringInfo buf, uint8 xl_info, char *rec);
 	void		(*rm_startup) (void);
 	void		(*rm_cleanup) (void);
+	bool		(*rm_safe_restartpoint) (void);
 } RmgrData;
 
 extern const RmgrData RmgrTable[];
+
+/*
+ * Exported to support xlog switching from bgwriter
+ */
+extern time_t GetLastSegSwitchTime(void);
+extern XLogRecPtr RequestXLogSwitch(void);
 
 /*
  * These aren't in xlog.h because I'd rather not include fmgr.h there.
  */
 extern Datum pg_start_backup(PG_FUNCTION_ARGS);
 extern Datum pg_stop_backup(PG_FUNCTION_ARGS);
+extern Datum pg_switch_xlog(PG_FUNCTION_ARGS);
+extern Datum pg_current_xlog_location(PG_FUNCTION_ARGS);
+extern Datum pg_current_xlog_insert_location(PG_FUNCTION_ARGS);
+extern Datum pg_xlogfile_name_offset(PG_FUNCTION_ARGS);
+extern Datum pg_xlogfile_name(PG_FUNCTION_ARGS);
 
 #endif   /* XLOG_INTERNAL_H */

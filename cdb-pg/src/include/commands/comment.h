@@ -4,7 +4,7 @@
  *
  * Prototypes for functions in commands/comment.c
  *
- * Copyright (c) 1999-2005, PostgreSQL Global Development Group
+ * Copyright (c) 1999-2006, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -21,7 +21,8 @@
  * related routines.  CommentObject() implements the SQL "COMMENT ON"
  * command.  DeleteComments() deletes all comments for an object.
  * CreateComments creates (or deletes, if comment is NULL) a comment
- * for a specific key.
+ * for a specific key.	There are versions of these two methods for
+ * both normal and shared objects.
  *------------------------------------------------------------------
  */
 
@@ -30,5 +31,9 @@ extern void CommentObject(CommentStmt *stmt);
 extern void DeleteComments(Oid oid, Oid classoid, int32 subid);
 
 extern void CreateComments(Oid oid, Oid classoid, int32 subid, char *comment);
+
+extern void DeleteSharedComments(Oid oid, Oid classoid);
+
+extern void CreateSharedComments(Oid oid, Oid classoid, char *comment);
 
 #endif   /* COMMENT_H */

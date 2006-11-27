@@ -5,10 +5,10 @@
  *
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/nodes/plannodes.h,v 1.80.2.1 2005/11/22 18:23:28 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/nodes/plannodes.h,v 1.85 2006/08/02 01:59:47 joe Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -295,12 +295,15 @@ typedef struct BitmapHeapScan
 
 /* ----------------
  *		tid scan node
+ *
+ * tidquals is an implicitly OR'ed list of qual expressions of the form
+ * "CTID = pseudoconstant" or "CTID = ANY(pseudoconstant_array)".
  * ----------------
  */
 typedef struct TidScan
 {
 	Scan		scan;
-	List	   *tideval;
+	List	   *tidquals;		/* qual(s) involving CTID = something */
 } TidScan;
 
 /* ----------------
@@ -332,6 +335,16 @@ typedef struct FunctionScan
 	Scan		scan;
 	/* no other fields needed at present */
 } FunctionScan;
+
+/* ----------------
+ *		ValuesScan node
+ * ----------------
+ */
+typedef struct ValuesScan
+{
+	Scan		scan;
+	/* no other fields needed at present */
+} ValuesScan;
 
 /*
  * ==========
@@ -519,6 +532,9 @@ typedef struct SetOp
 
 /* ----------------
  *		limit node
+ *
+ * Note: as of Postgres 8.2, the offset and count expressions are expected
+ * to yield int8, rather than int4 as before.
  * ----------------
  */
 typedef struct Limit

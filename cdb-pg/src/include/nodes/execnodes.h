@@ -5,11 +5,10 @@
  *
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/nodes/execnodes.h,v 1.139.2.3 2005/11/28 23:46:25 tgl Exp $
- * $Id$
+ * $PostgreSQL: pgsql/src/include/nodes/execnodes.h,v 1.161 2006/09/28 20:51:42 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,9 +21,9 @@
 
 #include "access/relscan.h"
 #include "cdb/cdbhash.h"
-#include "executor/tuptable.h"
-#include "fmgr.h"
-#include "nodes/bitmapset.h"
+//#include "executor/tuptable.h"
+//#include "fmgr.h"
+//#include "nodes/bitmapset.h"
 #include "nodes/params.h"
 #include "nodes/plannodes.h"
 #include "nodes/tidbitmap.h"
@@ -49,6 +48,7 @@ struct CdbDispatchResults;              /* in cdbdispatchresult.h */
  *		Predicate			partial-index predicate, or NIL if none
  *		PredicateState		exec state for predicate, or NIL if none
  *		Unique				is it a unique index?
+ *		Concurrent			are we doing a concurrent index build?
  * ----------------
  */
 typedef struct IndexInfo
@@ -61,6 +61,7 @@ typedef struct IndexInfo
 	List	   *ii_Predicate;	/* list of Expr */
 	List	   *ii_PredicateState;		/* list of ExprState */
 	bool		ii_Unique;
+	bool		ii_Concurrent;
 } IndexInfo;
 
 /* ----------------
@@ -130,7 +131,7 @@ typedef struct ExprContext
 	Datum		domainValue_datum;
 	bool		domainValue_isNull;
 
-	/* Link to containing EState */
+	/* Link to containing EState (NULL if a standalone ExprContext) */
 	struct EState *ecxt_estate;
 
 	/* Functions to call back when ExprContext is shut down */
@@ -274,6 +275,7 @@ typedef struct JunkFilter
  *		TrigInstrument			optional runtime measurements for triggers
  *		ConstraintExprs			array of constraint-checking expr states
  *		junkFilter				for removing junk attributes from tuples
+ *		projectReturning		for computing a RETURNING list
  * ----------------
  */
 typedef struct ResultRelInfo
@@ -289,6 +291,7 @@ typedef struct ResultRelInfo
 	struct Instrumentation *ri_TrigInstrument;
 	List	  **ri_ConstraintExprs;
 	JunkFilter *ri_junkFilter;
+	ProjectionInfo *ri_projectReturning;
 } ResultRelInfo;
 
 /* ----------------
@@ -476,6 +479,8 @@ typedef struct EState
 	ResultRelInfo *es_result_relation_info;		/* currently active array elt */
 	JunkFilter *es_junkFilter;	/* currently active junk filter */
 
+	TupleTableSlot *es_trig_tuple_slot; /* for trigger output tuples */
+
 	Relation	es_into_relation_descriptor;	/* for SELECT INTO */
 	bool		es_into_relation_use_wal;
 
@@ -491,8 +496,6 @@ typedef struct EState
 	uint32		es_processed;	/* # of tuples processed */
 	Oid			es_lastoid;		/* last oid processed (by INSERT) */
 	List	   *es_rowMarks;	/* not good place, but there is no other */
-	bool		es_forUpdate;	/* true = FOR UPDATE, false = FOR SHARE */
-	bool		es_rowNoWait;	/* FOR UPDATE/SHARE NOWAIT option */
 
 	bool		es_instrument;	/* true requests runtime instrumentation */
 	bool		es_select_into; /* true if doing SELECT INTO */
@@ -513,12 +516,6 @@ typedef struct EState
 	bool	   *es_evTupleNull; /* local array of EPQ status */
 	HeapTuple  *es_evTuple;		/* shared array of EPQ substitute tuples */
 	bool		es_useEvalPlan; /* evaluating EPQ tuples? */
-
-	/*
-	 * this field added at end of struct to avoid post-release ABI breakage in
-	 * 8.1 series.	It'll be in a more logical place in 8.2.
-	 */
-	TupleTableSlot *es_trig_tuple_slot; /* for trigger output tuples */
 	
 	/* Additions for MPP plan slicing. */
 	int es_cur_root_idx;
@@ -548,6 +545,17 @@ typedef struct EState
 } EState;
 
 
+/* es_rowMarks is a list of these structs: */
+typedef struct ExecRowMark
+{
+	Relation	relation;		/* opened and RowShareLock'd relation */
+	Index		rti;			/* its range table index */
+	bool		forUpdate;		/* true = FOR UPDATE, false = FOR SHARE */
+	bool		noWait;			/* NOWAIT option */
+	char		resname[32];	/* name for its ctid junk attribute */
+} ExecRowMark;
+
+
 /* ----------------------------------------------------------------
  *				 Tuple Hash Tables
  *
@@ -560,7 +568,7 @@ typedef struct TupleHashTableData *TupleHashTable;
 typedef struct TupleHashEntryData
 {
 	/* firstTuple must be the first field in this struct! */
-	HeapTuple	firstTuple;		/* copy of first tuple in this group */
+	MinimalTuple firstTuple;	/* copy of first tuple in this group */
 	/* there may be additional data beyond the end of this struct */
 } TupleHashEntryData;			/* VARIABLE LENGTH STRUCT */
 
@@ -645,7 +653,7 @@ typedef struct GenericExprState
 typedef struct AggrefExprState
 {
 	ExprState	xprstate;
-	ExprState  *target;			/* state of my child node */
+	List	   *args;			/* states of argument expressions */
 	int			aggno;			/* ID number for agg within its plan node */
 } AggrefExprState;
 
@@ -756,7 +764,7 @@ typedef struct SubPlanState
 	ExprState	xprstate;
 	EState	   *sub_estate;		/* subselect plan has its own EState */
 	struct PlanState *planstate;	/* subselect plan's state tree */
-	List	   *exprs;			/* states of combining expression(s) */
+	ExprState  *testexpr;		/* state of combining expression */
 	List	   *args;			/* states of argument expression(s) */
 	bool		needShutdown;	/* TRUE = need to shutdown subplan */
 	HeapTuple	curTuple;		/* copy of most recent tuple from subplan */
@@ -865,6 +873,18 @@ typedef struct RowExprState
 } RowExprState;
 
 /* ----------------
+ *		RowCompareExprState node
+ * ----------------
+ */
+typedef struct RowCompareExprState
+{
+	ExprState	xprstate;
+	List	   *largs;			/* the left-hand input arguments */
+	List	   *rargs;			/* the right-hand input arguments */
+	FmgrInfo   *funcs;			/* array of comparison function info */
+} RowCompareExprState;
+
+/* ----------------
  *		CoalesceExprState node
  * ----------------
  */
@@ -884,6 +904,19 @@ typedef struct MinMaxExprState
 	List	   *args;			/* the arguments */
 	FmgrInfo	cfunc;			/* lookup info for comparison func */
 } MinMaxExprState;
+
+/* ----------------
+ *		NullTestState node
+ * ----------------
+ */
+typedef struct NullTestState
+{
+	ExprState	xprstate;
+	ExprState  *arg;			/* input expression */
+	bool		argisrow;		/* T if input is of a composite type */
+	/* used only if argisrow: */
+	TupleDesc	argdesc;		/* tupdesc for most recent input */
+} NullTestState;
 
 /* ----------------
  *		CoerceToDomainState node
@@ -1073,16 +1106,37 @@ typedef struct ScanState
  */
 typedef ScanState SeqScanState;
 
+/*
+ * These structs store information about index quals that don't have simple
+ * constant right-hand sides.  See comments for ExecIndexBuildScanKeys()
+ * for discussion.
+ */
+typedef struct
+{
+	ScanKey		scan_key;		/* scankey to put value into */
+	ExprState  *key_expr;		/* expr to evaluate to get value */
+} IndexRuntimeKeyInfo;
+
+typedef struct
+{
+	ScanKey		scan_key;		/* scankey to put value into */
+	ExprState  *array_expr;		/* expr to evaluate to get array value */
+	int			next_elem;		/* next array element to use */
+	int			num_elems;		/* number of elems in current array value */
+	Datum	   *elem_values;	/* array of num_elems Datums */
+	bool	   *elem_nulls;		/* array of num_elems is-null flags */
+} IndexArrayKeyInfo;
+
 /* ----------------
  *	 IndexScanState information
  *
  *		indexqualorig	   execution state for indexqualorig expressions
  *		ScanKeys		   Skey structures to scan index rel
  *		NumScanKeys		   number of Skey structs
- *		RuntimeKeyInfo	   array of exprstates for Skeys
- *						   that will be evaluated at runtime
- *		RuntimeContext	   expr context for evaling runtime Skeys
+ *		RuntimeKeys		   info about Skeys that must be evaluated at runtime
+ *		NumRuntimeKeys	   number of RuntimeKeys structs
  *		RuntimeKeysReady   true if runtime Skeys have been computed
+ *		RuntimeContext	   expr context for evaling runtime Skeys
  *		RelationDesc	   index relation descriptor
  *		ScanDesc		   index scan descriptor
  * ----------------
@@ -1093,9 +1147,10 @@ typedef struct IndexScanState
 	List	   *indexqualorig;
 	ScanKey		iss_ScanKeys;
 	int			iss_NumScanKeys;
-	ExprState **iss_RuntimeKeyInfo;
-	ExprContext *iss_RuntimeContext;
+	IndexRuntimeKeyInfo *iss_RuntimeKeys;
+	int			iss_NumRuntimeKeys;
 	bool		iss_RuntimeKeysReady;
+	ExprContext *iss_RuntimeContext;
 	Relation	iss_RelationDesc;
 	IndexScanDesc iss_ScanDesc;
 } IndexScanState;
@@ -1106,10 +1161,12 @@ typedef struct IndexScanState
  *		result			   bitmap to return output into, or NULL
  *		ScanKeys		   Skey structures to scan index rel
  *		NumScanKeys		   number of Skey structs
- *		RuntimeKeyInfo	   array of exprstates for Skeys
- *						   that will be evaluated at runtime
- *		RuntimeContext	   expr context for evaling runtime Skeys
+ *		RuntimeKeys		   info about Skeys that must be evaluated at runtime
+ *		NumRuntimeKeys	   number of RuntimeKeys structs
+ *		ArrayKeys		   info about Skeys that come from ScalarArrayOpExprs
+ *		NumArrayKeys	   number of ArrayKeys structs
  *		RuntimeKeysReady   true if runtime Skeys have been computed
+ *		RuntimeContext	   expr context for evaling runtime Skeys
  *		RelationDesc	   index relation descriptor
  *		ScanDesc		   index scan descriptor
  * ----------------
@@ -1120,9 +1177,12 @@ typedef struct BitmapIndexScanState
 	TIDBitmap  *biss_result;
 	ScanKey		biss_ScanKeys;
 	int			biss_NumScanKeys;
-	ExprState **biss_RuntimeKeyInfo;
-	ExprContext *biss_RuntimeContext;
+	IndexRuntimeKeyInfo *biss_RuntimeKeys;
+	int			biss_NumRuntimeKeys;
+	IndexArrayKeyInfo *biss_ArrayKeys;
+	int			biss_NumArrayKeys;
 	bool		biss_RuntimeKeysReady;
+	ExprContext *biss_RuntimeContext;
 	Relation	biss_RelationDesc;
 	IndexScanDesc biss_ScanDesc;
 } BitmapIndexScanState;
@@ -1133,9 +1193,6 @@ typedef struct BitmapIndexScanState
  *		bitmapqualorig	   execution state for bitmapqualorig expressions
  *		tbm				   bitmap obtained from child index scan(s)
  *		tbmres			   current-page data
- *		curslot			   current tbmres index or tuple offset on page
- *		minslot			   lowest tbmres index or tuple offset to try
- *		maxslot			   highest tbmres index or tuple offset to try
  * ----------------
  */
 typedef struct BitmapHeapScanState
@@ -1144,23 +1201,20 @@ typedef struct BitmapHeapScanState
 	List	   *bitmapqualorig;
 	TIDBitmap  *tbm;
 	TBMIterateResult *tbmres;
-	int			curslot;
-	int			minslot;
-	int			maxslot;
 } BitmapHeapScanState;
 
 /* ----------------
  *	 TidScanState information
  *
  *		NumTids		   number of tids in this scan
- *		TidPtr		   current tid in use
- *		TidList		   evaluated item pointers
+ *		TidPtr		   index of currently fetched tid
+ *		TidList		   evaluated item pointers (array of size NumTids)
  * ----------------
  */
 typedef struct TidScanState
 {
 	ScanState	ss;				/* its first field is NodeTag */
-	List	   *tss_tideval;	/* list of ExprState nodes */
+	List	   *tss_tidquals;	/* list of ExprState nodes */
 	int			tss_NumTids;
 	int			tss_TidPtr;
 	int			tss_MarkTidPtr;
@@ -1210,6 +1264,34 @@ typedef struct FunctionScanState
     ItemPointerData cdb_mark_ctid;
     Oid         cdb_fake_tableoid;
 } FunctionScanState;
+
+/* ----------------
+ *	 ValuesScanState information
+ *
+ *		ValuesScan nodes are used to scan the results of a VALUES list
+ *
+ *		rowcontext			per-expression-list context
+ *		exprlists			array of expression lists being evaluated
+ *		array_len			size of array
+ *		curr_idx			current array index (0-based)
+ *		marked_idx			marked position (for mark/restore)
+ *
+ *	Note: ss.ps.ps_ExprContext is used to evaluate any qual or projection
+ *	expressions attached to the node.  We create a second ExprContext,
+ *	rowcontext, in which to build the executor expression state for each
+ *	Values sublist.  Resetting this context lets us get rid of expression
+ *	state for each row, avoiding major memory leakage over a long values list.
+ * ----------------
+ */
+typedef struct ValuesScanState
+{
+	ScanState	ss;				/* its first field is NodeTag */
+	ExprContext *rowcontext;
+	List	  **exprlists;
+	int			array_len;
+	int			curr_idx;
+	int			marked_idx;
+} ValuesScanState;
 
 /* ----------------------------------------------------------------
  *				 Join State Information
@@ -1393,9 +1475,9 @@ typedef struct AdaptiveNestLoopState
 typedef struct MaterialState
 {
 	ScanState	ss;				/* its first field is NodeTag */
-	bool		randomAccess;
+	bool		randomAccess;	/* need random access to subplan output? */
 	bool		eof_underlying; /* reached end of underlying plan? */
-	void		*tuplestorestate;	/* private state of tuplestore.c */
+	void	   *tuplestorestate;	/* private state of tuplestore.c */
 } MaterialState;
 
 /* ----------------
@@ -1405,7 +1487,7 @@ typedef struct MaterialState
 typedef struct SortState
 {
 	ScanState	ss;				/* its first field is NodeTag */
-	bool		randomAccess;
+	bool		randomAccess;	/* need random access to sort output? */
 	bool		sort_Done;		/* sort completed yet? */
 	void	   *tuplesortstate; /* private state of tuplesort.c */
 } SortState;
@@ -1540,11 +1622,11 @@ typedef struct LimitState
 	PlanState	ps;				/* its first field is NodeTag */
 	ExprState  *limitOffset;	/* OFFSET parameter, or NULL if none */
 	ExprState  *limitCount;		/* COUNT parameter, or NULL if none */
-	long		offset;			/* current OFFSET value */
-	long		count;			/* current COUNT, if any */
+	int64		offset;			/* current OFFSET value */
+	int64		count;			/* current COUNT, if any */
 	bool		noCount;		/* if true, ignore count */
 	LimitStateCond lstate;		/* state machine status, as above */
-	long		position;		/* 1-based index of last tuple returned */
+	int64		position;		/* 1-based index of last tuple returned */
 	TupleTableSlot *subSlot;	/* tuple last obtained from subplan */
 } LimitState;
 
