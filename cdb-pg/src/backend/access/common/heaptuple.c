@@ -12,12 +12,12 @@
  *
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/common/heaptuple.c,v 1.102.2.1 2005/11/22 18:23:03 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/common/heaptuple.c,v 1.111 2006/10/04 00:29:47 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -26,11 +26,9 @@
 
 #include "access/heapam.h"
 #include "access/tuptoaster.h"
-#include "catalog/pg_type.h"
 #include "executor/tuptable.h"
 
 #include "cdb/cdbvars.h"                /* Mpp_segment */
-
 
 /* ----------------------------------------------------------------
  *						misc support routines
@@ -114,7 +112,7 @@ heap_fill_tuple(TupleDesc tupleDesc,
 	if (bit != NULL)
 	{
 		bitP = &bit[-1];
-		bitmask = CSIGNBIT;
+		bitmask = HIGHBIT;
 	}
 	else
 	{
@@ -131,7 +129,7 @@ heap_fill_tuple(TupleDesc tupleDesc,
 
 		if (bit != NULL)
 		{
-			if (bitmask != CSIGNBIT)
+			if (bitmask != HIGHBIT)
 				bitmask <<= 1;
 			else
 			{
@@ -213,7 +211,7 @@ DataFill(char *data,
 	if (bit != NULL)
 	{
 		bitP = &bit[-1];
-		bitmask = CSIGNBIT;
+		bitmask = HIGHBIT;
 	}
 	else
 	{
@@ -230,7 +228,7 @@ DataFill(char *data,
 
 		if (bit != NULL)
 		{
-			if (bitmask != CSIGNBIT)
+			if (bitmask != HIGHBIT)
 				bitmask <<= 1;
 			else
 			{
@@ -630,7 +628,6 @@ heap_copytuple(HeapTuple tuple)
 	newTuple->t_len = tuple->t_len;
 	newTuple->t_self = tuple->t_self;
 	newTuple->t_tableOid = tuple->t_tableOid;
-	newTuple->t_datamcxt = CurrentMemoryContext;
 	newTuple->t_data = (HeapTupleHeader) ((char *) newTuple + HEAPTUPLESIZE);
 	memcpy((char *) newTuple->t_data, (char *) tuple->t_data, tuple->t_len);
 	return newTuple;
@@ -654,7 +651,6 @@ heap_copytuple_with_tuple(HeapTuple src, HeapTuple dest)
 	dest->t_len = src->t_len;
 	dest->t_self = src->t_self;
 	dest->t_tableOid = src->t_tableOid;
-	dest->t_datamcxt = CurrentMemoryContext;
 	dest->t_data = (HeapTupleHeader) palloc(src->t_len);
 	memcpy((char *) dest->t_data, (char *) src->t_data, src->t_len);
 }
@@ -732,7 +728,6 @@ heap_form_tuple(TupleDesc tupleDescriptor,
 	 * HeapTupleData management structure are allocated in one chunk.
 	 */
 	tuple = (HeapTuple) palloc0(HEAPTUPLESIZE + len);
-	tuple->t_datamcxt = CurrentMemoryContext;
 	tuple->t_data = td = (HeapTupleHeader) ((char *) tuple + HEAPTUPLESIZE);
 
 	/*
@@ -840,7 +835,6 @@ heap_formtuple(TupleDesc tupleDescriptor,
 	 * HeapTupleData management structure are allocated in one chunk.
 	 */
 	tuple = (HeapTuple) palloc0(HEAPTUPLESIZE + len);
-	tuple->t_datamcxt = CurrentMemoryContext;
 	tuple->t_data = td = (HeapTupleHeader) ((char *) tuple + HEAPTUPLESIZE);
 
 	/*
@@ -1306,6 +1300,8 @@ slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
 	{
 		if (tuple == NULL)		/* internal error */
 			elog(ERROR, "cannot extract system attribute from virtual tuple");
+		if (slot->tts_mintuple) /* internal error */
+			elog(ERROR, "cannot extract system attribute from minimal tuple");
 		return heap_getsysattr(tuple, attnum, tupleDesc, isnull);
 	}
 
@@ -1490,6 +1486,8 @@ slot_attisnull(TupleTableSlot *slot, int attnum)
 	{
 		if (tuple == NULL)		/* internal error */
 			elog(ERROR, "cannot extract system attribute from virtual tuple");
+		if (slot->tts_mintuple) /* internal error */
+			elog(ERROR, "cannot extract system attribute from minimal tuple");
 		return heap_attisnull(tuple, attnum);
 	}
 
@@ -1516,19 +1514,180 @@ slot_attisnull(TupleTableSlot *slot, int attnum)
 	return heap_attisnull(tuple, attnum);
 }
 
-/* ----------------
- *		heap_freetuple
- * ----------------
+/*
+ * heap_freetuple
  */
 void
 heap_freetuple(HeapTuple htup)
 {
-	if (htup->t_data != NULL)
-		if (htup->t_datamcxt != NULL && (char *) (htup->t_data) !=
-			((char *) htup + HEAPTUPLESIZE))
-			pfree(htup->t_data);
-
 	pfree(htup);
+}
+
+
+/*
+ * heap_form_minimal_tuple
+ *		construct a MinimalTuple from the given values[] and isnull[] arrays,
+ *		which are of the length indicated by tupleDescriptor->natts
+ *
+ * This is exactly like heap_form_tuple() except that the result is a
+ * "minimal" tuple lacking a HeapTupleData header as well as room for system
+ * columns.
+ *
+ * The result is allocated in the current memory context.
+ */
+MinimalTuple
+heap_form_minimal_tuple(TupleDesc tupleDescriptor,
+						Datum *values,
+						bool *isnull)
+{
+	MinimalTuple tuple;			/* return tuple */
+	unsigned long len;
+	int			hoff;
+	bool		hasnull = false;
+	Form_pg_attribute *att = tupleDescriptor->attrs;
+	int			numberOfAttributes = tupleDescriptor->natts;
+	int			i;
+
+	if (numberOfAttributes > MaxTupleAttributeNumber)
+		ereport(ERROR,
+				(errcode(ERRCODE_TOO_MANY_COLUMNS),
+				 errmsg("number of columns (%d) exceeds limit (%d)",
+						numberOfAttributes, MaxTupleAttributeNumber)));
+
+	/*
+	 * Check for nulls and embedded tuples; expand any toasted attributes in
+	 * embedded tuples.  This preserves the invariant that toasting can only
+	 * go one level deep.
+	 *
+	 * We can skip calling toast_flatten_tuple_attribute() if the attribute
+	 * couldn't possibly be of composite type.  All composite datums are
+	 * varlena and have alignment 'd'; furthermore they aren't arrays. Also,
+	 * if an attribute is already toasted, it must have been sent to disk
+	 * already and so cannot contain toasted attributes.
+	 */
+	for (i = 0; i < numberOfAttributes; i++)
+	{
+		if (isnull[i])
+			hasnull = true;
+		else if (att[i]->attlen == -1 &&
+				 att[i]->attalign == 'd' &&
+				 att[i]->attndims == 0 &&
+				 !VARATT_IS_EXTENDED(values[i]))
+		{
+			values[i] = toast_flatten_tuple_attribute(values[i],
+													  att[i]->atttypid,
+													  att[i]->atttypmod);
+		}
+	}
+
+	/*
+	 * Determine total space needed
+	 */
+	len = offsetof(MinimalTupleData, t_bits);
+
+	if (hasnull)
+		len += BITMAPLEN(numberOfAttributes);
+
+	if (tupleDescriptor->tdhasoid)
+		len += sizeof(Oid);
+
+	hoff = len = MAXALIGN(len); /* align user data safely */
+
+	len += heap_compute_data_size(tupleDescriptor, values, isnull);
+
+	/*
+	 * Allocate and zero the space needed.
+	 */
+	tuple = (MinimalTuple) palloc0(len);
+
+	/*
+	 * And fill in the information.
+	 */
+	tuple->t_len = len;
+	tuple->t_natts = numberOfAttributes;
+	tuple->t_hoff = hoff + MINIMAL_TUPLE_OFFSET;
+
+	if (tupleDescriptor->tdhasoid)		/* else leave infomask = 0 */
+		tuple->t_infomask = HEAP_HASOID;
+
+	heap_fill_tuple(tupleDescriptor,
+					values,
+					isnull,
+					(char *) tuple + hoff,
+					&tuple->t_infomask,
+					(hasnull ? tuple->t_bits : NULL));
+
+	return tuple;
+}
+
+/*
+ * heap_free_minimal_tuple
+ */
+void
+heap_free_minimal_tuple(MinimalTuple mtup)
+{
+	pfree(mtup);
+}
+
+/*
+ * heap_copy_minimal_tuple
+ *		copy a MinimalTuple
+ *
+ * The result is allocated in the current memory context.
+ */
+MinimalTuple
+heap_copy_minimal_tuple(MinimalTuple mtup)
+{
+	MinimalTuple result;
+
+	result = (MinimalTuple) palloc(mtup->t_len);
+	memcpy(result, mtup, mtup->t_len);
+	return result;
+}
+
+/*
+ * heap_tuple_from_minimal_tuple
+ *		create a HeapTuple by copying from a MinimalTuple;
+ *		system columns are filled with zeroes
+ *
+ * The result is allocated in the current memory context.
+ * The HeapTuple struct, tuple header, and tuple data are all allocated
+ * as a single palloc() block.
+ */
+HeapTuple
+heap_tuple_from_minimal_tuple(MinimalTuple mtup)
+{
+	HeapTuple	result;
+	uint32		len = mtup->t_len + MINIMAL_TUPLE_OFFSET;
+
+	result = (HeapTuple) palloc(HEAPTUPLESIZE + len);
+	result->t_len = len;
+	ItemPointerSetInvalid(&(result->t_self));
+	result->t_tableOid = InvalidOid;
+	result->t_data = (HeapTupleHeader) ((char *) result + HEAPTUPLESIZE);
+	memcpy((char *) result->t_data + MINIMAL_TUPLE_OFFSET, mtup, mtup->t_len);
+	memset(result->t_data, 0, offsetof(HeapTupleHeaderData, t_natts));
+	return result;
+}
+
+/*
+ * minimal_tuple_from_heap_tuple
+ *		create a MinimalTuple by copying from a HeapTuple
+ *
+ * The result is allocated in the current memory context.
+ */
+MinimalTuple
+minimal_tuple_from_heap_tuple(HeapTuple htup)
+{
+	MinimalTuple result;
+	uint32		len;
+
+	Assert(htup->t_len > MINIMAL_TUPLE_OFFSET);
+	len = htup->t_len - MINIMAL_TUPLE_OFFSET;
+	result = (MinimalTuple) palloc(len);
+	memcpy(result, (char *) htup->t_data + MINIMAL_TUPLE_OFFSET, len);
+	result->t_len = len;
+	return result;
 }
 
 
@@ -1540,9 +1699,8 @@ heap_freetuple(HeapTuple htup)
  * presumed to contain no null fields and no varlena fields.
  *
  * This routine is really only useful for certain system tables that are
- * known to be fixed-width and null-free.  It is used in some places for
- * pg_class, but that is a gross hack (it only works because relacl can
- * be omitted from the tuple entirely in those places).
+ * known to be fixed-width and null-free.  Currently it is only used for
+ * pg_attribute tuples.
  * ----------------
  */
 HeapTuple
@@ -1566,7 +1724,6 @@ heap_addheader(int natts,		/* max domain index */
 	len = hoff + structlen;
 
 	tuple = (HeapTuple) palloc0(HEAPTUPLESIZE + len);
-	tuple->t_datamcxt = CurrentMemoryContext;
 	tuple->t_data = td = (HeapTupleHeader) ((char *) tuple + HEAPTUPLESIZE);
 
 	tuple->t_len = len;

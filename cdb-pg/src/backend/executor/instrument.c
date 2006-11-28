@@ -5,10 +5,10 @@
  *
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 2001-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2006, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/instrument.c,v 1.13 2005/10/15 02:49:17 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/instrument.c,v 1.18 2006/06/09 19:30:56 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -48,13 +48,12 @@ InstrStartNode(Instrumentation *instr)
 
 /* Exit from a plan node */
 void
-InstrStopNode(Instrumentation *instr, bool returnedTuple)
+InstrStopNode(Instrumentation *instr, double nTuples)
 {
 	instr_time	endtime;
 
 	/* count the returned tuples */
-	if (returnedTuple)
-		instr->tuplecount += 1;
+	instr->tuplecount += nTuples;
 
 	if (INSTR_TIME_IS_ZERO(instr->starttime))
 	{
@@ -91,17 +90,6 @@ InstrStopNode(Instrumentation *instr, bool returnedTuple)
 		instr->running = true;
 		instr->firsttuple = INSTR_TIME_GET_DOUBLE(instr->counter);
 	}
-}
-
-/* As above, but count multiple tuples returned at once */
-void
-InstrStopNodeMulti(Instrumentation *instr, double nTuples)
-{
-	/* count the returned tuples */
-	instr->tuplecount += nTuples;
-
-	/* delegate the rest */
-	InstrStopNode(instr, false);
 }
 
 /* Finish a run cycle for a plan node */

@@ -3,12 +3,12 @@
  * pg_operator.c
  *	  routines to support manipulation of the pg_operator relation
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/pg_operator.c,v 1.94 2005/10/15 02:49:14 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/pg_operator.c,v 1.98 2006/07/14 14:52:18 momjian Exp $
  *
  * NOTES
  *	  these routines moved here from commands/define.c and somewhat cleaned up.
@@ -18,9 +18,9 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/xact.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
-#include "catalog/namespace.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
@@ -175,8 +175,9 @@ OperatorLookup(List *operatorName,
 	Oid			operatorObjectId;
 	RegProcedure oprcode;
 
-	operatorObjectId = LookupOperName(operatorName, leftObjectId,
-									  rightObjectId, true);
+	operatorObjectId = LookupOperName(NULL, operatorName,
+									  leftObjectId, rightObjectId,
+									  true, -1);
 	if (!OidIsValid(operatorObjectId))
 	{
 		*defined = false;

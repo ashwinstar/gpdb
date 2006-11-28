@@ -11,12 +11,12 @@
  * is too slow to be very useful :-(
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/lmgr/spin.c,v 1.17.2.2 2006/07/22 21:04:46 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/lmgr/spin.c,v 1.21 2006/07/22 21:04:40 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */

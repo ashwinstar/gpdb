@@ -12,12 +12,12 @@
  * memory context given to inv_open (for LargeObjectDesc structs).
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/large_object/inv_api.c,v 1.113.2.1 2006/04/26 00:35:31 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/large_object/inv_api.c,v 1.120 2006/09/07 15:37:25 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -26,6 +26,7 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/tuptoaster.h"
+#include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_largeobject.h"
@@ -33,7 +34,6 @@
 #include "libpq/libpq-fs.h"
 #include "storage/large_object.h"
 #include "utils/fmgroids.h"
-#include "utils/lsyscache.h"
 #include "utils/resowner.h"
 
 
@@ -69,7 +69,7 @@ open_lo_relation(void)
 		if (lo_heap_r == NULL)
 			lo_heap_r = heap_open(LargeObjectRelationId, RowExclusiveLock);
 		if (lo_index_r == NULL)
-			lo_index_r = index_open(LargeObjectLOidPNIndexId);
+			lo_index_r = index_open(LargeObjectLOidPNIndexId, RowExclusiveLock);
 	}
 	PG_CATCH();
 	{
@@ -103,7 +103,7 @@ close_lo_relation(bool isCommit)
 				CurrentResourceOwner = TopTransactionResourceOwner;
 
 				if (lo_index_r)
-					index_close(lo_index_r);
+					index_close(lo_index_r, NoLock);
 				if (lo_heap_r)
 					heap_close(lo_heap_r, NoLock);
 			}
@@ -488,7 +488,7 @@ inv_read(LargeObjectDesc *obj_desc, char *buf, int nbytes)
 }
 
 int
-inv_write(LargeObjectDesc *obj_desc, char *buf, int nbytes)
+inv_write(LargeObjectDesc *obj_desc, const char *buf, int nbytes)
 {
 	int			nwritten = 0;
 	int			n;

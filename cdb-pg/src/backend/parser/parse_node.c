@@ -3,23 +3,23 @@
  * parse_node.c
  *	  various routines that make nodes for querytrees
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_node.c,v 1.90 2005/10/15 02:49:22 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_node.c,v 1.95 2006/10/04 00:29:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "catalog/pg_type.h"
+#include "mb/pg_wchar.h"
 #include "nodes/makefuncs.h"
 #include "parser/parsetree.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
-#include "parser/parse_node.h"
 #include "parser/parse_relation.h"
 #include "utils/builtins.h"
 #include "utils/int8.h"
@@ -44,9 +44,43 @@ make_parsestate(ParseState *parentParseState)
 	pstate->p_next_resno = 1;
 
 	if (parentParseState)
+	{
+		pstate->p_sourcetext = parentParseState->p_sourcetext;
 		pstate->p_variableparams = parentParseState->p_variableparams;
+	}
 
 	return pstate;
+}
+
+
+/*
+ * parser_errposition
+ *		Report a parse-analysis-time cursor position, if possible.
+ *
+ * This is expected to be used within an ereport() call.  The return value
+ * is a dummy (always 0, in fact).
+ *
+ * The locations stored in raw parsetrees are byte offsets into the source
+ * string.	We have to convert them to 1-based character indexes for reporting
+ * to clients.	(We do things this way to avoid unnecessary overhead in the
+ * normal non-error case: computing character indexes would be much more
+ * expensive than storing token offsets.)
+ */
+int
+parser_errposition(ParseState *pstate, int location)
+{
+	int			pos;
+
+	/* No-op if location was not provided */
+	if (location < 0)
+		return 0;
+	/* Can't do anything if source text is not available */
+	if (pstate == NULL || pstate->p_sourcetext == NULL)
+		return 0;
+	/* Convert offset to character number */
+	pos = pg_mbstrlen_with_len(pstate->p_sourcetext, location) + 1;
+	/* And pass it to the ereport mechanism */
+	return errposition(pos);
 }
 
 
@@ -224,7 +258,7 @@ transformArraySubscripts(ParseState *pstate,
 
 	/*
 	 * If doing an array store, coerce the source value to the right type.
-	 * (This should agree with the coercion done by updateTargetListEntry.)
+	 * (This should agree with the coercion done by transformAssignedExpr.)
 	 */
 	if (assignFrom != NULL)
 	{

@@ -7,12 +7,12 @@
  * detection and resolution algorithms.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/lmgr/deadlock.c,v 1.36 2005/10/29 00:31:51 petere Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/lmgr/deadlock.c,v 1.43 2006/09/22 23:20:13 tgl Exp $
  *
  *	Interface:
  *
@@ -25,7 +25,6 @@
  */
 #include "postgres.h"
 
-#include "catalog/pg_class.h"
 #include "lib/stringinfo.h"
 #include "miscadmin.h"
 #include "storage/proc.h"
@@ -54,9 +53,9 @@ typedef struct
  * Information saved about each edge in a detected deadlock cycle.	This
  * is used to print a diagnostic message upon failure.
  *
- * Note: because we want to examine this info after releasing the LockMgrLock,
- * we can't just store LOCK and PGPROC pointers; we must extract out all the
- * info we want to be able to print.
+ * Note: because we want to examine this info after releasing the lock
+ * manager's partition locks, we can't just store LOCK and PGPROC pointers;
+ * we must extract out all the info we want to be able to print.
  */
 typedef struct
 {
@@ -189,19 +188,11 @@ InitDeadLockChecking(void)
  * deadlock.  If resolution is impossible, return TRUE --- the caller
  * is then expected to abort the given proc's transaction.
  *
- * We can't block on user locks, so no sense testing for deadlock
- * because there is no blocking, and no timer for the block.  So,
- * only look at regular locks.
- *
- * We must have already locked the master lock before being called.
- * NOTE: although the lockmethod structure appears to allow each lock
- * table to have a different masterLock, all locks that can block had
- * better use the same LWLock, else this code will not be adequately
- * interlocked!
+ * Caller must already have locked all partitions of the lock tables.
  *
  * On failure, deadlock details are recorded in deadlockDetails[] for
  * subsequent printing by DeadLockReport().  That activity is separate
- * because we don't want to do it while holding the master lock.
+ * because we don't want to do it while holding all those LWLocks.
  */
 bool
 DeadLockCheck(PGPROC *proc)
@@ -497,7 +488,7 @@ FindLockCycleRecurse(PGPROC *checkProc,
 
 	while (proclock)
 	{
-		proc = (PGPROC *) MAKE_PTR(proclock->tag.proc);
+		proc = proclock->tag.myProc;
 
 		/* A proc never blocks itself */
 		if (proc != checkProc)
@@ -894,10 +885,20 @@ DescribeLockTag(StringInfo buf, const LOCKTAG *lock)
 							 lock->locktag_field1);
 			break;
 		case LOCKTAG_USERLOCK:
+			/* reserved for old contrib code, now on pgfoundry */
 			appendStringInfo(buf,
-							 _("user lock [%u,%u]"),
+							 _("user lock [%u,%u,%u]"),
 							 lock->locktag_field1,
-							 lock->locktag_field2);
+							 lock->locktag_field2,
+							 lock->locktag_field3);
+			break;
+		case LOCKTAG_ADVISORY:
+			appendStringInfo(buf,
+							 _("advisory lock [%u,%u,%u,%u]"),
+							 lock->locktag_field1,
+							 lock->locktag_field2,
+							 lock->locktag_field3,
+							 lock->locktag_field4);
 			break;
 		default:
 			appendStringInfo(buf,
@@ -943,7 +944,8 @@ DeadLockReport(void)
 		appendStringInfo(&buf,
 				  _("Process %d waits for %s on %s; blocked by process %d."),
 						 info->pid,
-						 GetLockmodeName(info->lockmode),
+						 GetLockmodeName(info->locktag.locktag_lockmethodid,
+										 info->lockmode),
 						 buf2.data,
 						 nextpid);
 	}

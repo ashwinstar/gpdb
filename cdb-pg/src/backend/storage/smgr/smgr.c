@@ -7,31 +7,30 @@
  *	  routines.
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/smgr/smgr.c,v 1.93.2.3 2006/03/30 22:11:59 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/smgr/smgr.c,v 1.101 2006/10/04 00:29:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/xact.h"
+#include "access/xlogutils.h"
 #include "commands/tablespace.h"
 #include "pgstat.h"
 #include "storage/bufmgr.h"
 #include "storage/freespace.h"
 #include "storage/ipc.h"
 #include "storage/smgr.h"
-#include "utils/hsearch.h"
 #include "utils/memutils.h"
 
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_resqueue.h"
 #include "catalog/indexing.h"
-
 
 /*
  * This struct of function pointers defines the API between smgr.c and
@@ -487,10 +486,10 @@ smgr_internal_unlink(RelFileNode rnode, int which, bool isLocalBuf, bool isRedo)
 	FreeSpaceMapForgetRel(&rnode);
 
 	/*
-	 * Tell the stats collector to forget it immediately, too.  Skip this
-	 * in recovery mode, since the stats collector likely isn't running
-	 * (and if it is, pgstats.c will get confused because we aren't a real
-	 * backend process).
+	 * Tell the stats collector to forget it immediately, too.	Skip this in
+	 * recovery mode, since the stats collector likely isn't running (and if
+	 * it is, pgstat.c will get confused because we aren't a real backend
+	 * process).
 	 */
 	if (!InRecovery)
 		pgstat_drop_relation(rnode.relNode);
@@ -958,13 +957,16 @@ smgr_redo(XLogRecPtr lsn, XLogRecord *record)
 					 reln->smgr_rnode.dbNode,
 					 reln->smgr_rnode.relNode,
 					 xlrec->blkno)));
+
+		/* Also tell xlogutils.c about it */
+		XLogTruncateRelation(xlrec->rnode, xlrec->blkno);
 	}
 	else
 		elog(PANIC, "smgr_redo: unknown op code %u", info);
 }
 
 void
-smgr_desc(char *buf, uint8 xl_info, char *rec)
+smgr_desc(StringInfo buf, uint8 xl_info, char *rec)
 {
 	uint8		info = xl_info & ~XLR_INFO_MASK;
 
@@ -972,18 +974,18 @@ smgr_desc(char *buf, uint8 xl_info, char *rec)
 	{
 		xl_smgr_create *xlrec = (xl_smgr_create *) rec;
 
-		sprintf(buf + strlen(buf), "file create: %u/%u/%u",
-				xlrec->rnode.spcNode, xlrec->rnode.dbNode,
-				xlrec->rnode.relNode);
+		appendStringInfo(buf, "file create: %u/%u/%u",
+						 xlrec->rnode.spcNode, xlrec->rnode.dbNode,
+						 xlrec->rnode.relNode);
 	}
 	else if (info == XLOG_SMGR_TRUNCATE)
 	{
 		xl_smgr_truncate *xlrec = (xl_smgr_truncate *) rec;
 
-		sprintf(buf + strlen(buf), "file truncate: %u/%u/%u to %u blocks",
-				xlrec->rnode.spcNode, xlrec->rnode.dbNode,
-				xlrec->rnode.relNode, xlrec->blkno);
+		appendStringInfo(buf, "file truncate: %u/%u/%u to %u blocks",
+						 xlrec->rnode.spcNode, xlrec->rnode.dbNode,
+						 xlrec->rnode.relNode, xlrec->blkno);
 	}
 	else
-		strcat(buf, "UNKNOWN");
+		appendStringInfo(buf, "UNKNOWN");
 }

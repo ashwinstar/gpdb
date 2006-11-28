@@ -9,25 +9,22 @@
  * See utils/resowner/README for more info.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/resowner/resowner.c,v 1.14.2.2 2005/12/08 19:19:31 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/resowner/resowner.c,v 1.22 2006/07/14 14:52:25 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "utils/resowner.h"
-#include "access/gistscan.h"
 #include "access/hash.h"
-#include "access/rtree.h"
 #include "cdb/cdbvars.h"
-#include "storage/bufmgr.h"
 #include "storage/proc.h"
 #include "utils/memutils.h"
+#include "utils/resowner.h"
 #include "utils/relcache.h"
 #include "utils/resscheduler.h"
 
@@ -60,6 +57,11 @@ typedef struct ResourceOwnerData
 	int			nrelrefs;		/* number of owned relcache pins */
 	Relation   *relrefs;		/* dynamically allocated array */
 	int			maxrelrefs;		/* currently allocated array size */
+
+	/* We have built-in support for remembering tupdesc references */
+	int			ntupdescs;		/* number of owned tupdesc references */
+	TupleDesc  *tupdescs;		/* dynamically allocated array */
+	int			maxtupdescs;	/* currently allocated array size */
 } ResourceOwnerData;
 
 
@@ -90,6 +92,7 @@ static void ResourceOwnerReleaseInternal(ResourceOwner owner,
 							 bool isCommit,
 							 bool isTopLevel);
 static void PrintRelCacheLeakWarning(Relation rel);
+static void PrintTupleDescLeakWarning(TupleDesc tupdesc);
 
 
 /*****************************************************************************
@@ -269,7 +272,7 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 		/*
 		 * Release catcache references.  Note that ReleaseCatCache will remove
 		 * the catref entry from my list, so I just have to iterate till there
-		 * are none.  Ditto for catcache lists.
+		 * are none.
 		 *
 		 * As with buffer pins, warn if any are left at commit time, and
 		 * release back-to-front for speed.
@@ -280,17 +283,23 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 				PrintCatCacheLeakWarning(owner->catrefs[owner->ncatrefs - 1]);
 			ReleaseCatCache(owner->catrefs[owner->ncatrefs - 1]);
 		}
+		/* Ditto for catcache lists */
 		while (owner->ncatlistrefs > 0)
 		{
 			if (isCommit)
 				PrintCatCacheListLeakWarning(owner->catlistrefs[owner->ncatlistrefs - 1]);
 			ReleaseCatCacheList(owner->catlistrefs[owner->ncatlistrefs - 1]);
 		}
+		/* Ditto for tupdesc references */
+		while (owner->ntupdescs > 0)
+		{
+			if (isCommit)
+				PrintTupleDescLeakWarning(owner->tupdescs[owner->ntupdescs - 1]);
+			DecrTupleDescRefCount(owner->tupdescs[owner->ntupdescs - 1]);
+		}
 
 		/* Clean up index scans too */
-		ReleaseResources_gist();
 		ReleaseResources_hash();
-		ReleaseResources_rtree();
 	}
 
 	/* Let add-on modules get a chance too */
@@ -317,6 +326,7 @@ ResourceOwnerDelete(ResourceOwner owner)
 	Assert(owner->ncatrefs == 0);
 	Assert(owner->ncatlistrefs == 0);
 	Assert(owner->nrelrefs == 0);
+	Assert(owner->ntupdescs == 0);
 
 	/*
 	 * Delete children.  The recursive call will delink the child from me, so
@@ -341,6 +351,8 @@ ResourceOwnerDelete(ResourceOwner owner)
 		pfree(owner->catlistrefs);
 	if (owner->relrefs)
 		pfree(owner->relrefs);
+	if (owner->tupdescs)
+		pfree(owner->tupdescs);
 
 	pfree(owner);
 }
@@ -754,4 +766,86 @@ PrintRelCacheLeakWarning(Relation rel)
 {
 	elog(WARNING, "relcache reference leak: relation \"%s\" not closed",
 		 RelationGetRelationName(rel));
+}
+
+/*
+ * Make sure there is room for at least one more entry in a ResourceOwner's
+ * tupdesc reference array.
+ *
+ * This is separate from actually inserting an entry because if we run out
+ * of memory, it's critical to do so *before* acquiring the resource.
+ */
+void
+ResourceOwnerEnlargeTupleDescs(ResourceOwner owner)
+{
+	int			newmax;
+
+	if (owner->ntupdescs < owner->maxtupdescs)
+		return;					/* nothing to do */
+
+	if (owner->tupdescs == NULL)
+	{
+		newmax = 16;
+		owner->tupdescs = (TupleDesc *)
+			MemoryContextAlloc(TopMemoryContext, newmax * sizeof(TupleDesc));
+		owner->maxtupdescs = newmax;
+	}
+	else
+	{
+		newmax = owner->maxtupdescs * 2;
+		owner->tupdescs = (TupleDesc *)
+			repalloc(owner->tupdescs, newmax * sizeof(TupleDesc));
+		owner->maxtupdescs = newmax;
+	}
+}
+
+/*
+ * Remember that a tupdesc reference is owned by a ResourceOwner
+ *
+ * Caller must have previously done ResourceOwnerEnlargeTupleDescs()
+ */
+void
+ResourceOwnerRememberTupleDesc(ResourceOwner owner, TupleDesc tupdesc)
+{
+	Assert(owner->ntupdescs < owner->maxtupdescs);
+	owner->tupdescs[owner->ntupdescs] = tupdesc;
+	owner->ntupdescs++;
+}
+
+/*
+ * Forget that a tupdesc reference is owned by a ResourceOwner
+ */
+void
+ResourceOwnerForgetTupleDesc(ResourceOwner owner, TupleDesc tupdesc)
+{
+	TupleDesc  *tupdescs = owner->tupdescs;
+	int			nt1 = owner->ntupdescs - 1;
+	int			i;
+
+	for (i = nt1; i >= 0; i--)
+	{
+		if (tupdescs[i] == tupdesc)
+		{
+			while (i < nt1)
+			{
+				tupdescs[i] = tupdescs[i + 1];
+				i++;
+			}
+			owner->ntupdescs = nt1;
+			return;
+		}
+	}
+	elog(ERROR, "tupdesc reference %p is not owned by resource owner %s",
+		 tupdesc, owner->name);
+}
+
+/*
+ * Debugging subroutine
+ */
+static void
+PrintTupleDescLeakWarning(TupleDesc tupdesc)
+{
+	elog(WARNING,
+		 "TupleDesc reference leak: TupleDesc %p (%u,%d) still referenced",
+		 tupdesc, tupdesc->tdtypeid, tupdesc->tdtypmod);
 }

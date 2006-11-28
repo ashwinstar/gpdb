@@ -3,27 +3,26 @@
  * pquery.c
  *	  POSTGRES process query command code
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/tcop/pquery.c,v 1.97.2.1 2005/11/22 18:23:20 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/tcop/pquery.c,v 1.111 2006/10/04 00:29:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
 
+#include "access/xact.h"
 #include "commands/prepare.h"
 #include "commands/trigger.h"
 #include "cdb/cdbvars.h"
-#include "executor/executor.h"
 #include "miscadmin.h"
-#include "tcop/tcopprot.h"
 #include "tcop/pquery.h"
+#include "tcop/tcopprot.h"
 #include "tcop/utility.h"
-#include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/resscheduler.h"
 
@@ -40,6 +39,7 @@ static void ProcessQuery(Query *parsetree,
 			 ParamListInfo params,
 			 DestReceiver *dest,
 			 char *completionTag);
+static void FillPortalStore(Portal portal);
 static uint32 RunFromStore(Portal portal, ScanDirection direction, long count,
 			 DestReceiver *dest);
 static long PortalRunSelect(Portal portal, bool forward, long count,
@@ -110,7 +110,8 @@ FreeQueryDesc(QueryDesc *qdesc)
 
 /*
  * ProcessQuery
- *		Execute a single plannable query within a PORTAL_MULTI_QUERY portal
+ *		Execute a single plannable query within a PORTAL_MULTI_QUERY
+ *		or PORTAL_ONE_RETURNING portal
  *
  *	parsetree: the query tree
  *	plan: the plan tree for the query
@@ -138,24 +139,6 @@ ProcessQuery(Query *parsetree,
 			(errmsg_internal("ProcessQuery")));
 
 	/*
-	 * Check for special-case destinations
-	 */
-	if (operation == CMD_SELECT)
-	{
-		if (parsetree->into != NULL)
-		{
-			/*
-			 * SELECT INTO table (a/k/a CREATE AS ... SELECT).
-			 *
-			 * Override the normal communication destination; execMain.c
-			 * special-cases this case.  (Perhaps would be cleaner to have an
-			 * additional destination type?)
-			 */
-			dest = None_Receiver;
-		}
-	}
-
-	/*
 	 * Must always set snapshot for plannable queries.	Note we assume that
 	 * caller will take care of restoring ActiveSnapshot on exit/error.
 	 */
@@ -174,9 +157,9 @@ ProcessQuery(Query *parsetree,
 	AfterTriggerBeginQuery();
 
 	/*
-	 * Call ExecStart to prepare the plan for execution
+	 * Call ExecutorStart to prepare the plan for execution
 	 */
-	ExecutorStart(queryDesc, false);
+	ExecutorStart(queryDesc, 0);
 
 	/*
 	 * Run the plan to completion.
@@ -241,27 +224,59 @@ ProcessQuery(Query *parsetree,
 PortalStrategy
 ChoosePortalStrategy(List *parseTrees)
 {
-	PortalStrategy strategy;
+	int			nSetTag;
+	ListCell   *lc;
 
-	strategy = PORTAL_MULTI_QUERY;		/* default assumption */
-
+	/*
+	 * PORTAL_ONE_SELECT and PORTAL_UTIL_SELECT need only consider the
+	 * single-Query-struct case, since there are no rewrite rules that can add
+	 * auxiliary queries to a SELECT or a utility command.
+	 */
 	if (list_length(parseTrees) == 1)
 	{
 		Query	   *query = (Query *) linitial(parseTrees);
 
-		if (query->commandType == CMD_SELECT &&
-			query->canSetTag &&
-			query->into == NULL)
-			strategy = PORTAL_ONE_SELECT;
-		else if (query->commandType == CMD_UTILITY &&
-				 query->canSetTag &&
-				 query->utilityStmt != NULL)
+		Assert(IsA(query, Query));
+		if (query->canSetTag)
 		{
-			if (UtilityReturnsTuples(query->utilityStmt))
-				strategy = PORTAL_UTIL_SELECT;
+			if (query->commandType == CMD_SELECT &&
+				query->into == NULL)
+				return PORTAL_ONE_SELECT;
+			if (query->commandType == CMD_UTILITY &&
+				query->utilityStmt != NULL)
+			{
+				if (UtilityReturnsTuples(query->utilityStmt))
+					return PORTAL_UTIL_SELECT;
+				/* it can't be ONE_RETURNING, so give up */
+				return PORTAL_MULTI_QUERY;
+			}
 		}
 	}
-	return strategy;
+
+	/*
+	 * PORTAL_ONE_RETURNING has to allow auxiliary queries added by rewrite.
+	 * Choose PORTAL_ONE_RETURNING if there is exactly one canSetTag query and
+	 * it has a RETURNING list.
+	 */
+	nSetTag = 0;
+	foreach(lc, parseTrees)
+	{
+		Query	   *query = (Query *) lfirst(lc);
+
+		Assert(IsA(query, Query));
+		if (query->canSetTag)
+		{
+			if (++nSetTag > 1)
+				return PORTAL_MULTI_QUERY;		/* no need to look further */
+			if (query->returningList == NIL)
+				return PORTAL_MULTI_QUERY;		/* no need to look further */
+		}
+	}
+	if (nSetTag == 1)
+		return PORTAL_ONE_RETURNING;
+
+	/* Else, it's the general case... */
+	return PORTAL_MULTI_QUERY;
 }
 
 /*
@@ -279,6 +294,8 @@ FetchPortalTargetList(Portal portal)
 {
 	if (portal->strategy == PORTAL_ONE_SELECT)
 		return ((Query *) linitial(portal->parseTrees))->targetList;
+	if (portal->strategy == PORTAL_ONE_RETURNING)
+		return (PortalGetPrimaryQuery(portal))->returningList;
 	if (portal->strategy == PORTAL_UTIL_SELECT)
 	{
 		Node	   *utilityStmt;
@@ -340,6 +357,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 	MemoryContext savePortalContext;
 	MemoryContext oldContext;
 	QueryDesc  *queryDesc;
+	int			eflags;
 
 	AssertArg(PortalIsValid(portal));
 	AssertState(portal->queryContext != NULL);	/* query defined? */
@@ -415,9 +433,18 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 				 */
 
 				/*
-				 * Call ExecStart to prepare the plan for execution
+				 * If it's a scrollable cursor, executor needs to support
+				 * REWIND and backwards scan.
 				 */
-				ExecutorStart(queryDesc, false);
+				if (portal->cursorOptions & CURSOR_OPT_SCROLL)
+					eflags = EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD;
+				else
+					eflags = 0; /* default run-to-completion flags */
+
+				/*
+				 * Call ExecutorStart to prepare the plan for execution
+				 */
+				ExecutorStart(queryDesc, eflags);
 
 				/*
 				 * This tells PortalCleanup to shut down the executor
@@ -428,6 +455,24 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 				 * Remember tuple descriptor (computed by ExecutorStart)
 				 */
 				portal->tupDesc = queryDesc->tupDesc;
+
+				/*
+				 * Reset cursor position data to "start of query"
+				 */
+				portal->atStart = true;
+				portal->atEnd = false;	/* allow fetches */
+				portal->portalPos = 0;
+				portal->posOverflow = false;
+				break;
+
+			case PORTAL_ONE_RETURNING:
+
+				/*
+				 * We don't start the executor until we are told to run the
+				 * portal.	We do need to set up the result tupdesc.
+				 */
+				portal->tupDesc =
+					ExecCleanTypeFromTL((PortalGetPrimaryQuery(portal))->returningList, false);
 
 				/*
 				 * Reset cursor position data to "start of query"
@@ -661,6 +706,7 @@ PortalRun(Portal portal, long count,
 		{
 			case PORTAL_ONE_SELECT:
 				(void) PortalRunSelect(portal, true, count, dest);
+
 				/* we know the query is supposed to set the tag */
 				if (completionTag && portal->commandTag)
 					strcpy(completionTag, portal->commandTag);
@@ -674,33 +720,22 @@ PortalRun(Portal portal, long count,
 				result = portal->atEnd;
 				break;
 
+			case PORTAL_ONE_RETURNING:
 			case PORTAL_UTIL_SELECT:
 
 				/*
-				 * If we have not yet run the utility statement, do so,
-				 * storing its results in the portal's tuplestore.
+				 * If we have not yet run the command, do so, storing its
+				 * results in the portal's tuplestore.
 				 */
-				if (!portal->portalUtilReady)
-				{
-					DestReceiver *treceiver;
-
-					PortalCreateHoldStore(portal);
-					treceiver = CreateDestReceiver(DestTuplestore, portal);
-					PortalRunUtility(portal, linitial(portal->parseTrees),
-									 treceiver, NULL);
-					(*treceiver->rDestroy) (treceiver);
-					portal->portalUtilReady = true;
-				}
+				if (!portal->holdStore)
+					FillPortalStore(portal);
 
 				/*
 				 * Now fetch desired portion of results.
 				 */
 				(void) PortalRunSelect(portal, true, count, dest);
 
-				/*
-				 * We know the query is supposed to set the tag; we assume
-				 * only the default tag is needed.
-				 */
+				/* we know the query is supposed to set the tag */
 				if (completionTag && portal->commandTag)
 					strcpy(completionTag, portal->commandTag);
 
@@ -784,7 +819,9 @@ PortalRun(Portal portal, long count,
 
 /*
  * PortalRunSelect
- *		Execute a portal's query in SELECT cases (also UTIL_SELECT).
+ *		Execute a portal's query in PORTAL_ONE_SELECT mode, and also
+ *		when fetching from a completed holdStore in PORTAL_ONE_RETURNING
+ *		and PORTAL_UTIL_SELECT cases.
  *
  * This handles simple N-rows-forward-or-backward cases.  For more complex
  * nonsequential access to a portal, see PortalRunFetch.
@@ -857,7 +894,7 @@ PortalRunSelect(Portal portal,
 			nprocessed = queryDesc->estate->es_processed;
 		}
 
-		if (direction != NoMovementScanDirection)
+		if (!ScanDirectionIsNoMovement(direction))
 		{
 			long		oldPos;
 
@@ -899,7 +936,7 @@ PortalRunSelect(Portal portal,
 			nprocessed = queryDesc->estate->es_processed;
 		}
 
-		if (direction != NoMovementScanDirection)
+		if (!ScanDirectionIsNoMovement(direction))
 		{
 			if (nprocessed > 0 && portal->atEnd)
 			{
@@ -930,6 +967,49 @@ PortalRunSelect(Portal portal,
 }
 
 /*
+ * FillPortalStore
+ *		Run the query and load result tuples into the portal's tuple store.
+ *
+ * This is used for PORTAL_ONE_RETURNING and PORTAL_UTIL_SELECT cases only.
+ */
+static void
+FillPortalStore(Portal portal)
+{
+	DestReceiver *treceiver;
+	char		completionTag[COMPLETION_TAG_BUFSIZE];
+
+	PortalCreateHoldStore(portal);
+	treceiver = CreateDestReceiver(DestTuplestore, portal);
+
+	switch (portal->strategy)
+	{
+		case PORTAL_ONE_RETURNING:
+
+			/*
+			 * Run the portal to completion just as for the default
+			 * MULTI_QUERY case, but send the primary query's output to the
+			 * tuplestore. Auxiliary query outputs are discarded.
+			 */
+			PortalRunMulti(portal, treceiver, None_Receiver, completionTag);
+			/* Override default completion tag with actual command result */
+			portal->commandTag = pstrdup(completionTag);
+			break;
+
+		case PORTAL_UTIL_SELECT:
+			PortalRunUtility(portal, linitial(portal->parseTrees),
+							 treceiver, NULL);
+			break;
+
+		default:
+			elog(ERROR, "unsupported portal strategy: %d",
+				 (int) portal->strategy);
+			break;
+	}
+
+	(*treceiver->rDestroy) (treceiver);
+}
+
+/*
  * RunFromStore
  *		Fetch tuples from the portal's tuple store.
  *
@@ -952,31 +1032,27 @@ RunFromStore(Portal portal, ScanDirection direction, long count,
 
 	(*dest->rStartup) (dest, CMD_SELECT, portal->tupDesc);
 
-	if (direction == NoMovementScanDirection)
+	if (ScanDirectionIsNoMovement(direction))
 	{
 		/* do nothing except start/stop the destination */
 	}
 	else
 	{
-		bool		forward = (direction == ForwardScanDirection);
+		bool		forward = ScanDirectionIsForward(direction);
 
 		for (;;)
 		{
 			MemoryContext oldcontext;
-			HeapTuple	tup;
-			bool		should_free;
+			bool		ok;
 
 			oldcontext = MemoryContextSwitchTo(portal->holdContext);
 
-			tup = tuplestore_getheaptuple(portal->holdStore, forward,
-										  &should_free);
+			ok = tuplestore_gettupleslot(portal->holdStore, forward, slot);
 
 			MemoryContextSwitchTo(oldcontext);
 
-			if (tup == NULL)
+			if (!ok)
 				break;
-
-			ExecStoreTuple(tup, slot, InvalidBuffer, should_free);
 
 			(*dest->receiveSlot) (slot, dest);
 
@@ -1066,7 +1142,8 @@ PortalRunUtility(Portal portal, Query *query,
 
 /*
  * PortalRunMulti
- *		Execute a portal's queries in the general case (multi queries).
+ *		Execute a portal's queries in the general case (multi queries
+ *		or non-SELECT-like queries)
  */
 static void
 PortalRunMulti(Portal portal,
@@ -1235,23 +1312,15 @@ PortalRunFetch(Portal portal,
 				result = DoPortalRunFetch(portal, fdirection, count, dest);
 				break;
 
+			case PORTAL_ONE_RETURNING:
 			case PORTAL_UTIL_SELECT:
 
 				/*
-				 * If we have not yet run the utility statement, do so,
-				 * storing its results in the portal's tuplestore.
+				 * If we have not yet run the command, do so, storing its
+				 * results in the portal's tuplestore.
 				 */
-				if (!portal->portalUtilReady)
-				{
-					DestReceiver *treceiver;
-
-					PortalCreateHoldStore(portal);
-					treceiver = CreateDestReceiver(DestTuplestore, portal);
-					PortalRunUtility(portal, linitial(portal->parseTrees),
-									 treceiver, NULL);
-					(*treceiver->rDestroy) (treceiver);
-					portal->portalUtilReady = true;
-				}
+				if (!portal->holdStore)
+					FillPortalStore(portal);
 
 				/*
 				 * Now fetch desired portion of results.
@@ -1325,6 +1394,7 @@ DoPortalRunFetch(Portal portal,
 	bool		forward;
 
 	Assert(portal->strategy == PORTAL_ONE_SELECT ||
+		   portal->strategy == PORTAL_ONE_RETURNING ||
 		   portal->strategy == PORTAL_UTIL_SELECT);
 
 	switch (fdirection)

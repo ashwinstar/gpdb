@@ -5,23 +5,21 @@
  *	  clients and standalone backends are supported here).
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/common/printtup.c,v 1.93 2005/11/03 17:11:30 alvherre Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/common/printtup.c,v 1.99 2006/10/04 00:29:47 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "access/printtup.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "tcop/pquery.h"
 #include "utils/lsyscache.h"
-#include "utils/portal.h"
 
 
 static void printtup_startup(DestReceiver *self, int operation,
@@ -129,10 +127,10 @@ printtup_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 	}
 
 	/*
-	 * If this is a retrieve, and we are supposed to emit row descriptions,
-	 * then we send back the tuple descriptor of the tuples.
+	 * If we are supposed to emit row descriptions, then send the tuple
+	 * descriptor of the tuples.
 	 */
-	if (operation == CMD_SELECT && myState->sendDescrip)
+	if (myState->sendDescrip)
 		SendRowDescriptionMessage(typeinfo,
 								  FetchPortalTargetList(portal),
 								  portal->formats);
@@ -177,7 +175,6 @@ SendRowDescriptionMessage(TupleDesc typeinfo, List *targetlist, int16 *formats)
 	{
 		Oid			atttypid = attrs[i]->atttypid;
 		int32		atttypmod = attrs[i]->atttypmod;
-		Oid			basetype;
 
 		pq_sendstring(&buf, NameStr(attrs[i]->attname));
 		/* column ID info appears in protocol 3.0 and up */
@@ -203,12 +200,7 @@ SendRowDescriptionMessage(TupleDesc typeinfo, List *targetlist, int16 *formats)
 			}
 		}
 		/* If column is a domain, send the base type and typmod instead */
-		basetype = getBaseType(atttypid);
-		if (basetype != atttypid)
-		{
-			atttypmod = get_typtypmod(atttypid);
-			atttypid = basetype;
-		}
+		atttypid = getBaseTypeAndTypmod(atttypid, &atttypmod);
 		pq_sendint(&buf, (int) atttypid, sizeof(atttypid));
 		pq_sendint(&buf, attrs[i]->attlen, sizeof(attrs[i]->attlen));
 		/* typmod appears in protocol 2.0 and up */
@@ -331,8 +323,7 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 			/* Text output */
 			char	   *outputstr;
 
-			outputstr = DatumGetCString(FunctionCall1(&thisState->finfo,
-													  attr));
+			outputstr = OutputFunctionCall(&thisState->finfo, attr);
 			pq_sendcountedtext(&buf, outputstr, strlen(outputstr), false);
 			pfree(outputstr);
 		}
@@ -341,9 +332,7 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 			/* Binary output */
 			bytea	   *outputbytes;
 
-			outputbytes = DatumGetByteaP(FunctionCall1(&thisState->finfo,
-													   attr));
-			/* We assume the result will not have been toasted */
+			outputbytes = SendFunctionCall(&thisState->finfo, attr);
 			pq_sendint(&buf, VARSIZE(outputbytes) - VARHDRSZ, 4);
 			pq_sendbytes(&buf, VARDATA(outputbytes),
 						 VARSIZE(outputbytes) - VARHDRSZ);
@@ -429,8 +418,7 @@ printtup_20(TupleTableSlot *slot, DestReceiver *self)
 		else
 			attr = origattr;
 
-		outputstr = DatumGetCString(FunctionCall1(&thisState->finfo,
-												  attr));
+		outputstr = OutputFunctionCall(&thisState->finfo, attr);
 		pq_sendcountedtext(&buf, outputstr, strlen(outputstr), true);
 		pfree(outputstr);
 
@@ -542,8 +530,7 @@ debugtup(TupleTableSlot *slot, DestReceiver *self)
 		else
 			attr = origattr;
 
-		value = DatumGetCString(OidFunctionCall1(typoutput,
-												 attr));
+		value = OidOutputFunctionCall(typoutput, attr);
 
 		printatt((unsigned) i + 1, typeinfo->attrs[i], value);
 
@@ -632,8 +619,7 @@ printtup_internal_20(TupleTableSlot *slot, DestReceiver *self)
 		else
 			attr = origattr;
 
-		outputbytes = DatumGetByteaP(FunctionCall1(&thisState->finfo,
-												   attr));
+		outputbytes = SendFunctionCall(&thisState->finfo, attr);
 		/* We assume the result will not have been toasted */
 		pq_sendint(&buf, VARSIZE(outputbytes) - VARHDRSZ, 4);
 		pq_sendbytes(&buf, VARDATA(outputbytes),

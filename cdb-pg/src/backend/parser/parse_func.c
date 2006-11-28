@@ -3,12 +3,12 @@
  * parse_func.c
  *		handle function calls in parser
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_func.c,v 1.182.2.1 2005/11/22 18:23:14 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_func.c,v 1.190 2006/10/04 00:29:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,8 +17,8 @@
 #include "access/heapam.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
 #include "funcapi.h"
-#include "lib/stringinfo.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_agg.h"
 #include "parser/parse_coerce.h"
@@ -34,8 +34,9 @@
 
 
 static Node *ParseComplexProjection(ParseState *pstate, char *funcname,
-					   Node *first_arg);
-static void unknown_attribute(ParseState *pstate, Node *relref, char *attname);
+					   Node *first_arg, int location);
+static void unknown_attribute(ParseState *pstate, Node *relref, char *attname,
+				  int location);
 
 
 /*
@@ -59,7 +60,8 @@ static void unknown_attribute(ParseState *pstate, Node *relref, char *attname);
  */
 Node *
 ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
-				  bool agg_star, bool agg_distinct, bool is_column)
+				  bool agg_star, bool agg_distinct, bool is_column,
+				  int location)
 {
 	Oid			rettype;
 	Oid			funcid;
@@ -83,7 +85,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		ereport(ERROR,
 				(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
 				 errmsg("cannot pass more than %d arguments to a function",
-						FUNC_MAX_ARGS)));
+						FUNC_MAX_ARGS),
+				 parser_errposition(pstate, location)));
 
 	/*
 	 * Extract arg type info in preparation for function lookup.
@@ -131,7 +134,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		{
 			retval = ParseComplexProjection(pstate,
 											strVal(linitial(funcname)),
-											first_arg);
+											first_arg,
+											location);
 			if (retval)
 				return retval;
 
@@ -174,12 +178,14 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 			   errmsg("%s(*) specified, but %s is not an aggregate function",
 					  NameListToString(funcname),
-					  NameListToString(funcname))));
+					  NameListToString(funcname)),
+					 parser_errposition(pstate, location)));
 		if (agg_distinct)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 			errmsg("DISTINCT specified, but %s is not an aggregate function",
-				   NameListToString(funcname))));
+				   NameListToString(funcname)),
+					 parser_errposition(pstate, location)));
 	}
 	else if (fdresult != FUNCDETAIL_AGGREGATE)
 	{
@@ -193,7 +199,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		{
 			Assert(nargs == 1);
 			Assert(list_length(funcname) == 1);
-			unknown_attribute(pstate, first_arg, strVal(linitial(funcname)));
+			unknown_attribute(pstate, first_arg, strVal(linitial(funcname)),
+							  location);
 		}
 
 		/*
@@ -206,7 +213,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 							func_signature_string(funcname, nargs,
 												  actual_arg_types)),
 					 errhint("Could not choose a best candidate function. "
-							 "You may need to add explicit type casts.")));
+							 "You may need to add explicit type casts."),
+					 parser_errposition(pstate, location)));
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_FUNCTION),
@@ -214,7 +222,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 							func_signature_string(funcname, nargs,
 												  actual_arg_types)),
 			errhint("No function matches the given name and argument types. "
-					"You may need to add explicit type casts.")));
+					"You may need to add explicit type casts."),
+					 parser_errposition(pstate, location)));
 	}
 
 	/*
@@ -250,9 +259,20 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 
 		aggref->aggfnoid = funcid;
 		aggref->aggtype = rettype;
-		aggref->target = linitial(fargs);
+		aggref->args = fargs;
 		aggref->aggstar = agg_star;
 		aggref->aggdistinct = agg_distinct;
+
+		/*
+		 * Reject attempt to call a parameterless aggregate without (*)
+		 * syntax.	This is mere pedantry but some folks insisted ...
+		 */
+		if (fargs == NIL && !agg_star)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("%s(*) must be used to call a parameterless aggregate function",
+							NameListToString(funcname)),
+					 parser_errposition(pstate, location)));
 
 		/* parse_agg.c does additional aggregate-specific processing */
 		transformAggregateCall(pstate, aggref);
@@ -262,7 +282,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		if (retset)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-					 errmsg("aggregates may not return sets")));
+					 errmsg("aggregates may not return sets"),
+					 parser_errposition(pstate, location)));
 	}
 
 	return retval;
@@ -726,11 +747,9 @@ func_get_detail(List *funcname,
 		if (nargs == 1 && fargs != NIL)
 		{
 			Oid			targetType;
-			TypeName   *tn = makeNode(TypeName);
 
-			tn->names = funcname;
-			tn->typmod = -1;
-			targetType = LookupTypeName(tn);
+			targetType = LookupTypeName(NULL,
+										makeTypeNameFromNameList(funcname));
 			if (OidIsValid(targetType) &&
 				!ISCOMPLEX(targetType))
 			{
@@ -953,7 +972,8 @@ make_fn_arguments(ParseState *pstate,
  *	  transformed expression tree.	If not, return NULL.
  */
 static Node *
-ParseComplexProjection(ParseState *pstate, char *funcname, Node *first_arg)
+ParseComplexProjection(ParseState *pstate, char *funcname, Node *first_arg,
+					   int location)
 {
 	TupleDesc	tupdesc;
 	int			i;
@@ -977,7 +997,7 @@ ParseComplexProjection(ParseState *pstate, char *funcname, Node *first_arg)
 									 ((Var *) first_arg)->varno,
 									 ((Var *) first_arg)->varlevelsup);
 		/* Return a Var if funcname matches a column, else NULL */
-		return scanRTEForColumn(pstate, rte, funcname);
+		return scanRTEForColumn(pstate, rte, funcname, location);
 	}
 
 	/*
@@ -1019,7 +1039,8 @@ ParseComplexProjection(ParseState *pstate, char *funcname, Node *first_arg)
  * helper routine for delivering "column does not exist" error message
  */
 static void
-unknown_attribute(ParseState *pstate, Node *relref, char *attname)
+unknown_attribute(ParseState *pstate, Node *relref, char *attname,
+				  int location)
 {
 	RangeTblEntry *rte;
 
@@ -1033,7 +1054,8 @@ unknown_attribute(ParseState *pstate, Node *relref, char *attname)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
 				 errmsg("column %s.%s does not exist",
-						rte->eref->aliasname, attname)));
+						rte->eref->aliasname, attname),
+				 parser_errposition(pstate, location)));
 	}
 	else
 	{
@@ -1044,18 +1066,21 @@ unknown_attribute(ParseState *pstate, Node *relref, char *attname)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
 					 errmsg("column \"%s\" not found in data type %s",
-							attname, format_type_be(relTypeId))));
+							attname, format_type_be(relTypeId)),
+					 parser_errposition(pstate, location)));
 		else if (relTypeId == RECORDOID)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
 			   errmsg("could not identify column \"%s\" in record data type",
-					  attname)));
+					  attname),
+					 parser_errposition(pstate, location)));
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("column notation .%s applied to type %s, "
 							"which is not a composite type",
-							attname, format_type_be(relTypeId))));
+							attname, format_type_be(relTypeId)),
+					 parser_errposition(pstate, location)));
 	}
 }
 
@@ -1099,65 +1124,6 @@ func_signature_string(List *funcname, int nargs, const Oid *argtypes)
 {
 	return funcname_signature_string(NameListToString(funcname),
 									 nargs, argtypes);
-}
-
-/*
- * find_aggregate_func
- *		Convenience routine to check that a function exists and is an
- *		aggregate.
- *
- * Note: basetype is ANYOID if we are looking for an aggregate on
- * all types.
- */
-Oid
-find_aggregate_func(List *aggname, Oid basetype, bool noError)
-{
-	Oid			oid;
-	HeapTuple	ftup;
-	Form_pg_proc pform;
-
-	oid = LookupFuncName(aggname, 1, &basetype, true);
-
-	if (!OidIsValid(oid))
-	{
-		if (noError)
-			return InvalidOid;
-		if (basetype == ANYOID)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_FUNCTION),
-					 errmsg("aggregate %s(*) does not exist",
-							NameListToString(aggname))));
-		else
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_FUNCTION),
-					 errmsg("aggregate %s(%s) does not exist",
-							NameListToString(aggname),
-							format_type_be(basetype))));
-	}
-
-	/* Make sure it's an aggregate */
-	ftup = SearchSysCache(PROCOID,
-						  ObjectIdGetDatum(oid),
-						  0, 0, 0);
-	if (!HeapTupleIsValid(ftup))	/* should not happen */
-		elog(ERROR, "cache lookup failed for function %u", oid);
-	pform = (Form_pg_proc) GETSTRUCT(ftup);
-
-	if (!pform->proisagg)
-	{
-		ReleaseSysCache(ftup);
-		if (noError)
-			return InvalidOid;
-		/* we do not use the (*) notation for functions... */
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("function %s(%s) is not an aggregate",
-					  NameListToString(aggname), format_type_be(basetype))));
-	}
-
-	ReleaseSysCache(ftup);
-
-	return oid;
 }
 
 /*
@@ -1219,7 +1185,7 @@ LookupFuncNameTypeNames(List *funcname, List *argtypes, bool noError)
 	{
 		TypeName   *t = (TypeName *) lfirst(args_item);
 
-		argoids[i] = LookupTypeName(t);
+		argoids[i] = LookupTypeName(NULL, t);
 
 		if (!OidIsValid(argoids[i]))
 			ereport(ERROR,
@@ -1231,4 +1197,89 @@ LookupFuncNameTypeNames(List *funcname, List *argtypes, bool noError)
 	}
 
 	return LookupFuncName(funcname, argcount, argoids, noError);
+}
+
+/*
+ * LookupAggNameTypeNames
+ *		Find an aggregate function given a name and list of TypeName nodes.
+ *
+ * This is almost like LookupFuncNameTypeNames, but the error messages refer
+ * to aggregates rather than plain functions, and we verify that the found
+ * function really is an aggregate.
+ */
+Oid
+LookupAggNameTypeNames(List *aggname, List *argtypes, bool noError)
+{
+	Oid			argoids[FUNC_MAX_ARGS];
+	int			argcount;
+	int			i;
+	ListCell   *lc;
+	Oid			oid;
+	HeapTuple	ftup;
+	Form_pg_proc pform;
+
+	argcount = list_length(argtypes);
+	if (argcount > FUNC_MAX_ARGS)
+		ereport(ERROR,
+				(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
+				 errmsg("functions cannot have more than %d arguments",
+						FUNC_MAX_ARGS)));
+
+	i = 0;
+	foreach(lc, argtypes)
+	{
+		TypeName   *t = (TypeName *) lfirst(lc);
+
+		argoids[i] = LookupTypeName(NULL, t);
+		if (!OidIsValid(argoids[i]))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("type \"%s\" does not exist",
+							TypeNameToString(t))));
+		i++;
+	}
+
+	oid = LookupFuncName(aggname, argcount, argoids, true);
+
+	if (!OidIsValid(oid))
+	{
+		if (noError)
+			return InvalidOid;
+		if (argcount == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_FUNCTION),
+					 errmsg("aggregate %s(*) does not exist",
+							NameListToString(aggname))));
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_FUNCTION),
+					 errmsg("aggregate %s does not exist",
+							func_signature_string(aggname,
+												  argcount, argoids))));
+	}
+
+	/* Make sure it's an aggregate */
+	ftup = SearchSysCache(PROCOID,
+						  ObjectIdGetDatum(oid),
+						  0, 0, 0);
+	if (!HeapTupleIsValid(ftup))	/* should not happen */
+		elog(ERROR, "cache lookup failed for function %u", oid);
+	pform = (Form_pg_proc) GETSTRUCT(ftup);
+
+	if (!pform->proisagg)
+	{
+		ReleaseSysCache(ftup);
+		if (noError)
+			return InvalidOid;
+		/* we do not use the (*) notation for functions... */
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("function %s is not an aggregate",
+						func_signature_string(aggname,
+											  argcount, argoids))));
+	}
+
+	ReleaseSysCache(ftup);
+
+	return oid;
 }

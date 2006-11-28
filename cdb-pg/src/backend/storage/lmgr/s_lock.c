@@ -4,12 +4,12 @@
  *	   Hardware-dependent implementation of spinlocks.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/lmgr/s_lock.c,v 1.40.2.2 2006/05/11 21:58:29 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/lmgr/s_lock.c,v 1.47 2006/10/04 00:29:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,7 +19,6 @@
 #include <unistd.h>
 
 #include "storage/s_lock.h"
-#include "miscadmin.h"
 
 
 static int	spins_per_delay = DEFAULT_SPINS_PER_DELAY;
@@ -120,7 +119,7 @@ s_lock(volatile slock_t *lock, const char *file, int line)
 
 			/* increase delay by a random fraction between 1X and 2X */
 			cur_delay += (int) (cur_delay *
-				  (((double) random()) / ((double) MAX_RANDOM_VALUE)) + 0.5);
+					  ((double) random() / (double) MAX_RANDOM_VALUE) + 0.5);
 			/* wrap back to minimum delay when max is exceeded */
 			if (cur_delay > MAX_DELAY_MSEC)
 				cur_delay = MIN_DELAY_MSEC;
@@ -281,26 +280,6 @@ tas_dummy()						/* really means: extern int tas(slock_t
 	asm("   .data");
 }
 #endif   /* sun3 */
-
-
-#if defined(__sparc__) || defined(__sparc)
-/*
- * sparc machines not using gcc
- */
-static void
-tas_dummy()						/* really means: extern int tas(slock_t
-								 * *lock); */
-{
-	asm("_tas:");
-
-	/*
-	 * Sparc atomic test and set (sparc calls it "atomic load-store")
-	 */
-	asm("ldstub [%r8], %r8");
-	asm("retl");
-	asm("nop");
-}
-#endif   /* __sparc || __sparc__ */
 #endif   /* not __GNUC__ */
 #endif   /* HAVE_SPINLOCKS */
 

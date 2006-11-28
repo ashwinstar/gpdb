@@ -38,12 +38,12 @@
  *
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/error/elog.c,v 1.169 2006/03/05 15:58:46 momjian Exp
+ *	  $PostgreSQL: pgsql/src/backend/utils/error/elog.c,v 1.176 2006/11/21 00:49:55 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -58,6 +58,8 @@
 #include <syslog.h>
 #endif
 
+#include "access/transam.h"
+#include "access/xact.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
@@ -67,12 +69,10 @@
 #include "storage/ipc.h"
 #include "tcop/tcopprot.h"
 #include "utils/memutils.h"
-#include "utils/guc.h"
 #include "utils/ps_status.h"
 
 #include "cdb/cdbvars.h"  /*Mpp_segment */
 #include "utils/ps_status.h"    /* get_ps_display_username() */
-
 
 /* Global variables */
 ErrorContextCallback *error_context_stack = NULL;
@@ -461,25 +461,23 @@ errfinish(int dummy,...)
 		 * fflush here is just to improve the odds that we get to see the
 		 * error message, in case things are so hosed that proc_exit crashes.
 		 * Any other code you might be tempted to add here should probably be
-		 * in an on_proc_exit callback instead.
+		 * in an on_proc_exit or on_shmem_exit callback instead.
 		 */
 		fflush(stdout);
 		fflush(stderr);
 
 		/*
-		 * If proc_exit is already running, we exit with nonzero exit code to
-		 * indicate that something's pretty wrong.  We also want to exit with
-		 * nonzero exit code if not running under the postmaster (for example,
-		 * if we are being run from the initdb script, we'd better return an
-		 * error status).
+		 * Do normal process-exit cleanup, then return exit code 1 to indicate
+		 * FATAL termination.  The postmaster may or may not consider this
+		 * worthy of panic, depending on which subprocess returns it.
 		 */
-		proc_exit(proc_exit_inprogress || !IsUnderPostmaster);
+		proc_exit(1);
 	}
 
 	if (elevel >= PANIC)
 	{
 		/*
-		 * Serious crash time. Postmaster will observe nonzero process exit
+		 * Serious crash time. Postmaster will observe SIGABRT process exit
 		 * status and kill the other backends too.
 		 *
 		 * XXX: what if we are *in* the postmaster?  abort() won't kill our
@@ -491,7 +489,15 @@ errfinish(int dummy,...)
 		abort();
 	}
 
-	/* We reach here if elevel <= WARNING. OK to return to caller. */
+	/*
+	 * We reach here if elevel <= WARNING. OK to return to caller.
+	 *
+	 * But check for cancel/die interrupt first --- this is so that the user
+	 * can stop a query emitting tons of notice or warning messages, even if
+	 * it's in a loop that otherwise fails to check for interrupts.
+	 */
+	CHECK_FOR_INTERRUPTS();
+	
     errno = saved_errno;                /*CDB*/
 }
 
@@ -1398,6 +1404,7 @@ write_syslog(int level, const char *line)
 		while (len > 0)
 		{
 			char		buf[PG_SYSLOG_LIMIT + 1];
+			const char *nlpos;
 			int			buflen;
 			int			i;
 
@@ -1409,12 +1416,15 @@ write_syslog(int level, const char *line)
 				continue;
 			}
 
-			strncpy(buf, line, PG_SYSLOG_LIMIT);
-			buf[PG_SYSLOG_LIMIT] = '\0';
-			if (strchr(buf, '\n') != NULL)
-				*strchr(buf, '\n') = '\0';
-
-			buflen = strlen(buf);
+			/* copy one line, or as much as will fit, to buf */
+			nlpos = strchr(line, '\n');
+			if (nlpos != NULL)
+				buflen = nlpos - line;
+			else
+				buflen = len;
+			buflen = Min(buflen, PG_SYSLOG_LIMIT);
+			memcpy(buf, line, buflen);
+			buf[buflen] = '\0';
 
 			/* trim to multibyte letter boundary */
 			buflen = pg_mbcliplen(buf, buflen, buflen);

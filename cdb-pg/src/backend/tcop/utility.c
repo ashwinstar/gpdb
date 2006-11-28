@@ -5,27 +5,28 @@
  *	  commands.  At one time acted as an interface between the Lisp and C
  *	  systems.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/tcop/utility.c,v 1.245 2005/10/15 02:49:27 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/tcop/utility.c,v 1.269 2006/10/04 00:29:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "access/twophase.h"
+#include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
+#include "catalog/toasting.h"
 #include "commands/alter.h"
 #include "commands/async.h"
 #include "commands/cluster.h"
 #include "commands/comment.h"
-#include "commands/copy.h"
 #include "commands/conversioncmds.h"
+#include "commands/copy.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/explain.h"
@@ -44,9 +45,6 @@
 #include "commands/vacuum.h"
 #include "commands/view.h"
 #include "miscadmin.h"
-#include "nodes/makefuncs.h"
-#include "parser/parse_expr.h"
-#include "parser/parse_type.h"
 #include "postmaster/bgwriter.h"
 #include "rewrite/rewriteDefine.h"
 #include "rewrite/rewriteRemove.h"
@@ -55,7 +53,6 @@
 #include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/guc.h"
-#include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "lib/stringinfo.h"
 
@@ -170,8 +167,7 @@ DropErrorMsgNonExistent(RangeVar *rel, char rightkind, bool missing_ok)
 			
 	}
 
-	Assert(rentry->kind != '\0');	   /* Should be impossible */
-
+	Assert(rentry->kind != '\0');		/* Should be impossible */
 }
 
 /*
@@ -194,7 +190,6 @@ CheckDropPermissions(RangeVar *rel, char rightkind, bool missing_ok)
 		DropErrorMsgNonExistent(rel, rightkind, missing_ok);
 		return false;
 	}
-
 
 	tuple = SearchSysCache(RELOID,
 						   ObjectIdGetDatum(relOid),
@@ -221,7 +216,7 @@ CheckDropPermissions(RangeVar *rel, char rightkind, bool missing_ok)
 						rel->relname)));
 
 	ReleaseSysCache(tuple);
-	
+
 	return true;
 }
 
@@ -347,7 +342,6 @@ check_xact_readonly(Node *parsetree)
 		case T_CreateTrigStmt:
 		case T_CompositeTypeStmt:
 		case T_ViewStmt:
-		case T_RemoveAggrStmt:
 		case T_DropCastStmt:
 		case T_DropStmt:
 		case T_DropdbStmt:
@@ -356,12 +350,13 @@ check_xact_readonly(Node *parsetree)
 		case T_DropQueueStmt:
 		case T_DropRoleStmt:
 		case T_DropPLangStmt:
-		case T_RemoveOperStmt:
 		case T_RemoveOpClassStmt:
 		case T_DropPropertyStmt:
 		case T_GrantStmt:
 		case T_GrantRoleStmt:
 		case T_TruncateStmt:
+		case T_DropOwnedStmt:
+		case T_ReassignOwnedStmt:
 			ereport(ERROR,
 					(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 					 errmsg("transaction is read-only")));
@@ -371,6 +366,7 @@ check_xact_readonly(Node *parsetree)
 			break;
 	}
 }
+
 
 /*
  * ProcessUtility
@@ -439,7 +435,6 @@ ProcessUtility(Node *parsetree,
 												  true);
 							}
 						}
-
 						break;
 
 					case TRANS_STMT_COMMIT:
@@ -584,7 +579,7 @@ ProcessUtility(Node *parsetree,
 				elog(DEBUG1,"CreateStmt: rel Oid %d toast Oid %d",relOid, ((CreateStmt *) parsetree)->oidInfo.toastOid);
 		
 				if (relKind != RELKIND_COMPOSITE_TYPE)
-					AlterTableCreateToastTableWithOid(relOid, true, ((CreateStmt *) parsetree)->oidInfo.toastOid, ((CreateStmt *) parsetree)->oidInfo.toastIndexOid, &(((CreateStmt *) parsetree)->oidInfo.toastComptypeOid));
+					AlterTableCreateToastTableWithOid(relOid, ((CreateStmt *) parsetree)->oidInfo.toastOid, ((CreateStmt *) parsetree)->oidInfo.toastIndexOid, &(((CreateStmt *) parsetree)->oidInfo.toastComptypeOid));
 			}
 			break;
 
@@ -648,12 +643,12 @@ ProcessUtility(Node *parsetree,
 							 * RemoveDomain does its own permissions checks
 							 */
 							RemoveDomain(names, stmt->behavior,
-									    stmt->missing_ok);
+										 stmt->missing_ok);
 							break;
 
 						case OBJECT_CONVERSION:
 							DropConversionCommand(names, stmt->behavior,
-									              stmt->missing_ok);
+												  stmt->missing_ok);
 							break;
 
 						case OBJECT_SCHEMA:
@@ -662,7 +657,7 @@ ProcessUtility(Node *parsetree,
 							 * RemoveSchema does its own permissions checks
 							 */
 							RemoveSchema(names, stmt->behavior,
-									    stmt->missing_ok);
+										 stmt->missing_ok);
 							break;
 
 						default:
@@ -688,11 +683,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_TruncateStmt:
-			{
-				TruncateStmt *stmt = (TruncateStmt *) parsetree;
-
-				ExecuteTruncate(stmt);
-			}
+			ExecuteTruncate((TruncateStmt *) parsetree);
 			break;
 
 		case T_CommentStmt:
@@ -702,12 +693,12 @@ ProcessUtility(Node *parsetree,
 
 		case T_CopyStmt:
 			{
-				uint64  processed = DoCopy((CopyStmt *) parsetree);
-			
+				uint64		processed = DoCopy((CopyStmt *) parsetree);
+
 				if (completionTag)
 					snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
 							 "COPY " UINT64_FORMAT, processed);
-			}	
+			}
 			break;
 
 		case T_PrepareStmt:
@@ -820,8 +811,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 			/*
-			 * ******************************** object creation / destruction ********************************
-			 *
+			 * **************** object creation / destruction *****************
 			 */
 		case T_DefineStmt:
 			{
@@ -830,12 +820,16 @@ ProcessUtility(Node *parsetree,
 				switch (stmt->kind)
 				{
 					case OBJECT_AGGREGATE:
-						DefineAggregate(stmt->defnames, stmt->definition, stmt->newOid);
+						DefineAggregate(stmt->defnames, stmt->args,
+										stmt->oldstyle, stmt->definition,
+										stmt->newOid);
 						break;
 					case OBJECT_OPERATOR:
+						Assert(stmt->args == NIL);
 						DefineOperator(stmt->defnames, stmt->definition, stmt->newOid);
 						break;
 					case OBJECT_TYPE:
+						Assert(stmt->args == NIL);
 						DefineType(stmt->defnames, stmt->definition, stmt->newOid, stmt->shadowOid);
 						break;
 					default:
@@ -874,6 +868,9 @@ ProcessUtility(Node *parsetree,
 			{
 				IndexStmt  *stmt = (IndexStmt *) parsetree;
 
+				if (stmt->concurrent)
+					PreventTransactionChain(stmt, "CREATE INDEX CONCURRENTLY");
+
 				CheckRelationOwnership(stmt->relation, true);
 
 				DefineIndex(stmt->relation,		/* relation */
@@ -884,6 +881,7 @@ ProcessUtility(Node *parsetree,
 							stmt->indexParams,	/* parameters */
 							(Expr *) stmt->whereClause,
 							stmt->rangetable,
+							stmt->options,
 							stmt->unique,
 							stmt->primary,
 							stmt->isconstraint,
@@ -891,6 +889,7 @@ ProcessUtility(Node *parsetree,
 							true,		/* check_rights */
 							false,		/* skip_build */
 							false,		/* quiet */
+							stmt->concurrent,	/* concurrent */
 							stmt);
 			}
 			break;
@@ -911,16 +910,27 @@ ProcessUtility(Node *parsetree,
 			AlterSequence((AlterSeqStmt *) parsetree);
 			break;
 
-		case T_RemoveAggrStmt:
-			RemoveAggregate((RemoveAggrStmt *) parsetree);
-			break;
-
 		case T_RemoveFuncStmt:
-			RemoveFunction((RemoveFuncStmt *) parsetree);
-			break;
+			{
+				RemoveFuncStmt *stmt = (RemoveFuncStmt *) parsetree;
 
-		case T_RemoveOperStmt:
-			RemoveOperator((RemoveOperStmt *) parsetree);
+				switch (stmt->kind)
+				{
+					case OBJECT_FUNCTION:
+						RemoveFunction(stmt);
+						break;
+					case OBJECT_AGGREGATE:
+						RemoveAggregate(stmt);
+						break;
+					case OBJECT_OPERATOR:
+						RemoveOperator(stmt);
+						break;
+					default:
+						elog(ERROR, "unrecognized object type: %d",
+							 (int) stmt->kind);
+						break;
+				}
+			}
 			break;
 
 		case T_CreatedbStmt:
@@ -990,12 +1000,9 @@ ProcessUtility(Node *parsetree,
 			{
 				LoadStmt   *stmt = (LoadStmt *) parsetree;
 
-				if (!superuser())
-					ereport(ERROR,
-							(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-							 errmsg("must be superuser to do LOAD")));
 				closeAllVfds(); /* probably not necessary... */
-				load_file(stmt->filename);
+				/* Allowed names are restricted if you're not superuser */
+				load_file(stmt->filename, !superuser());
 				
 				if (Mpp_role == MPP_ROLE_DISPATCH)
 				{
@@ -1121,12 +1128,12 @@ ProcessUtility(Node *parsetree,
 					case OBJECT_RULE:
 						/* RemoveRewriteRule checks permissions */
 						RemoveRewriteRule(relId, stmt->property,
-										  stmt->behavior);
+										  stmt->behavior, stmt->missing_ok);
 						break;
 					case OBJECT_TRIGGER:
 						/* DropTrigger checks permissions */
 						DropTrigger(relId, stmt->property,
-									stmt->behavior);
+									stmt->behavior, stmt->missing_ok);
 						break;
 					default:
 						elog(ERROR, "unrecognized object type: %d",
@@ -1187,6 +1194,14 @@ ProcessUtility(Node *parsetree,
 
 		case T_DropRoleStmt:
 			DropRole((DropRoleStmt *) parsetree);
+			break;
+
+		case T_DropOwnedStmt:
+			DropOwnedObjects((DropOwnedStmt *) parsetree);
+			break;
+
+		case T_ReassignOwnedStmt:
+			ReassignOwnedObjects((ReassignOwnedStmt *) parsetree);
 			break;
 
 		case T_LockStmt:
@@ -1322,7 +1337,7 @@ UtilityReturnsTuples(Node *parsetree)
 				switch (ChoosePortalStrategy(entry->query_list))
 				{
 					case PORTAL_ONE_SELECT:
-						return true;
+					case PORTAL_ONE_RETURNING:
 					case PORTAL_UTIL_SELECT:
 						return true;
 					case PORTAL_MULTI_QUERY:
@@ -1395,6 +1410,38 @@ UtilityTupleDescriptor(Node *parsetree)
 		default:
 			return NULL;
 	}
+}
+
+
+/*
+ * QueryReturnsTuples
+ *		Return "true" if this Query will send output to the destination.
+ */
+bool
+QueryReturnsTuples(Query *parsetree)
+{
+	switch (parsetree->commandType)
+	{
+		case CMD_SELECT:
+			/* returns tuples ... unless it's SELECT INTO */
+			if (parsetree->into == NULL)
+				return true;
+			break;
+		case CMD_INSERT:
+		case CMD_UPDATE:
+		case CMD_DELETE:
+			/* the forms with RETURNING return tuples */
+			if (parsetree->returningList)
+				return true;
+			break;
+		case CMD_UTILITY:
+			return UtilityReturnsTuples(parsetree->utilityStmt);
+		case CMD_UNKNOWN:
+		case CMD_NOTHING:
+			/* probably shouldn't get here */
+			break;
+	}
+	return false;				/* default */
 }
 
 
@@ -1760,16 +1807,21 @@ CreateCommandTag(Node *parsetree)
 			tag = "ALTER SEQUENCE";
 			break;
 
-		case T_RemoveAggrStmt:
-			tag = "DROP AGGREGATE";
-			break;
-
 		case T_RemoveFuncStmt:
-			tag = "DROP FUNCTION";
-			break;
-
-		case T_RemoveOperStmt:
-			tag = "DROP OPERATOR";
+			switch (((RemoveFuncStmt *) parsetree)->kind)
+			{
+				case OBJECT_FUNCTION:
+					tag = "DROP FUNCTION";
+					break;
+				case OBJECT_AGGREGATE:
+					tag = "DROP AGGREGATE";
+					break;
+				case OBJECT_OPERATOR:
+					tag = "DROP OPERATOR";
+					break;
+				default:
+					tag = "???";
+			}
 			break;
 
 		case T_CreatedbStmt:
@@ -1885,6 +1937,14 @@ CreateCommandTag(Node *parsetree)
 			tag = "DROP ROLE";
 			break;
 
+		case T_DropOwnedStmt:
+			tag = "DROP OWNED";
+			break;
+
+		case T_ReassignOwnedStmt:
+			tag = "REASSIGN OWNED";
+			break;
+
 		case T_LockStmt:
 			tag = "LOCK TABLE";
 			break;
@@ -1960,6 +2020,8 @@ CreateQueryTag(Query *parsetree)
 {
 	const char *tag;
 
+	Assert(IsA(parsetree, Query));
+
 	switch (parsetree->commandType)
 	{
 		case CMD_SELECT:
@@ -1972,7 +2034,7 @@ CreateQueryTag(Query *parsetree)
 				tag = "SELECT INTO";
 			else if (parsetree->rowMarks != NIL)
 			{
-				if (parsetree->forUpdate)
+				if (((RowMarkClause *) linitial(parsetree->rowMarks))->forUpdate)
 					tag = "SELECT FOR UPDATE";
 				else
 					tag = "SELECT FOR SHARE";
@@ -2000,4 +2062,395 @@ CreateQueryTag(Query *parsetree)
 	}
 
 	return tag;
+}
+
+
+/*
+ * GetCommandLogLevel
+ *		utility to get the minimum log_statement level for a command,
+ *		given a raw (un-analyzed) parsetree.
+ *
+ * This must handle all raw command types, but since the vast majority
+ * of 'em are utility commands, it seems sensible to keep it here.
+ */
+LogStmtLevel
+GetCommandLogLevel(Node *parsetree)
+{
+	LogStmtLevel lev;
+
+	switch (nodeTag(parsetree))
+	{
+		case T_InsertStmt:
+		case T_DeleteStmt:
+		case T_UpdateStmt:
+			lev = LOGSTMT_MOD;
+			break;
+
+		case T_SelectStmt:
+			if (((SelectStmt *) parsetree)->into)
+				lev = LOGSTMT_DDL;		/* CREATE AS, SELECT INTO */
+			else
+				lev = LOGSTMT_ALL;
+			break;
+
+		case T_TransactionStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_DeclareCursorStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_ClosePortalStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_FetchStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_CreateDomainStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_CreateSchemaStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_CreateStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_CreateTableSpaceStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_DropTableSpaceStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_DropStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_TruncateStmt:
+			lev = LOGSTMT_MOD;
+			break;
+
+		case T_CommentStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_CopyStmt:
+			if (((CopyStmt *) parsetree)->is_from)
+				lev = LOGSTMT_MOD;
+			else
+				lev = LOGSTMT_ALL;
+			break;
+
+		case T_RenameStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_AlterObjectSchemaStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_AlterOwnerStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_AlterTableStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_AlterDomainStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_AlterFunctionStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_GrantStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_GrantRoleStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_DefineStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_CompositeTypeStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_ViewStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_CreateFunctionStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_IndexStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_RuleStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_CreateSeqStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_AlterSeqStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_RemoveFuncStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_CreatedbStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_AlterDatabaseStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_AlterDatabaseSetStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_DropdbStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_NotifyStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_ListenStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_UnlistenStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_LoadStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_ClusterStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_VacuumStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_ExplainStmt:
+			{
+				ExplainStmt *stmt = (ExplainStmt *) parsetree;
+
+				/* Look through an EXPLAIN ANALYZE to the contained stmt */
+				if (stmt->analyze)
+					return GetCommandLogLevel((Node *) stmt->query);
+				/* Plain EXPLAIN isn't so interesting */
+				lev = LOGSTMT_ALL;
+			}
+			break;
+
+		case T_VariableSetStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_VariableShowStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_VariableResetStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_CreateTrigStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_DropPropertyStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_CreatePLangStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_DropPLangStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_CreateRoleStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_AlterRoleStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_AlterRoleSetStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_DropRoleStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_DropOwnedStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_ReassignOwnedStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_LockStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_ConstraintsSetStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_CheckPointStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_ReindexStmt:
+			lev = LOGSTMT_ALL;	/* should this be DDL? */
+			break;
+
+		case T_CreateConversionStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_CreateCastStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_DropCastStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_CreateOpClassStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_RemoveOpClassStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_PrepareStmt:
+			{
+				PrepareStmt *stmt = (PrepareStmt *) parsetree;
+
+				/* Look through a PREPARE to the contained stmt */
+				return GetCommandLogLevel((Node *) stmt->query);
+			}
+			break;
+
+		case T_ExecuteStmt:
+			{
+				ExecuteStmt *stmt = (ExecuteStmt *) parsetree;
+				PreparedStatement *pstmt;
+				ListCell   *l;
+
+				/* Look through an EXECUTE to the referenced stmt(s) */
+				lev = LOGSTMT_ALL;
+				pstmt = FetchPreparedStatement(stmt->name, false);
+				if (pstmt)
+				{
+					foreach(l, pstmt->query_list)
+					{
+						Query	   *query = (Query *) lfirst(l);
+						LogStmtLevel stmt_lev;
+
+						stmt_lev = GetQueryLogLevel(query);
+						lev = Min(lev, stmt_lev);
+					}
+				}
+			}
+			break;
+
+		case T_DeallocateStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_Query:
+
+			/*
+			 * In complicated situations (eg, EXPLAIN ANALYZE in an extended
+			 * Query protocol), we might find an already-analyzed query within
+			 * a utility statement.  Cope.
+			 */
+			lev = GetQueryLogLevel((Query *) parsetree);
+			break;
+
+		default:
+			elog(WARNING, "unrecognized node type: %d",
+				 (int) nodeTag(parsetree));
+			lev = LOGSTMT_ALL;
+			break;
+	}
+
+	return lev;
+}
+
+/*
+ * GetQueryLogLevel
+ *		utility to get the minimum log_statement level for a Query operation.
+ *
+ * This is exactly like GetCommandLogLevel, except it works on a Query
+ * that has already been through parse analysis (and possibly further).
+ */
+LogStmtLevel
+GetQueryLogLevel(Query *parsetree)
+{
+	LogStmtLevel lev;
+
+	Assert(IsA(parsetree, Query));
+
+	switch (parsetree->commandType)
+	{
+		case CMD_SELECT:
+			if (parsetree->into != NULL)
+				lev = LOGSTMT_DDL;		/* CREATE AS, SELECT INTO */
+			else
+				lev = LOGSTMT_ALL;
+			break;
+
+		case CMD_UPDATE:
+		case CMD_INSERT:
+		case CMD_DELETE:
+			lev = LOGSTMT_MOD;
+			break;
+
+		case CMD_UTILITY:
+			lev = GetCommandLogLevel(parsetree->utilityStmt);
+			break;
+
+		default:
+			elog(WARNING, "unrecognized commandType: %d",
+				 (int) parsetree->commandType);
+			lev = LOGSTMT_ALL;
+			break;
+	}
+
+	return lev;
 }

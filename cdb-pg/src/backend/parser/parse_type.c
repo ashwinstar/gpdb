@@ -4,12 +4,12 @@
  *		handle type operations for parser
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_type.c,v 1.77 2005/10/15 02:49:22 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_type.c,v 1.85 2006/10/04 00:29:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -18,11 +18,8 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "lib/stringinfo.h"
-#include "miscadmin.h"
 #include "nodes/makefuncs.h"
-#include "nodes/parsenodes.h"
 #include "parser/parser.h"
-#include "parser/parse_expr.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -36,9 +33,11 @@
  *
  * NB: even if the returned OID is not InvalidOid, the type might be
  * just a shell.  Caller should check typisdefined before using the type.
+ *
+ * pstate is only used for error location info, and may be NULL.
  */
 Oid
-LookupTypeName(const TypeName *typname)
+LookupTypeName(ParseState *pstate, const TypeName *typname)
 {
 	Oid			restype;
 
@@ -61,7 +60,8 @@ LookupTypeName(const TypeName *typname)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 				errmsg("improper %%TYPE reference (too few dotted names): %s",
-					   NameListToString(typname->names))));
+					   NameListToString(typname->names)),
+						 parser_errposition(pstate, typname->location)));
 				break;
 			case 2:
 				rel->relname = strVal(linitial(typname->names));
@@ -82,7 +82,8 @@ LookupTypeName(const TypeName *typname)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("improper %%TYPE reference (too many dotted names): %s",
-								NameListToString(typname->names))));
+								NameListToString(typname->names)),
+						 parser_errposition(pstate, typname->location)));
 				break;
 		}
 
@@ -93,7 +94,8 @@ LookupTypeName(const TypeName *typname)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
 					 errmsg("column \"%s\" of relation \"%s\" does not exist",
-							field, rel->relname)));
+							field, rel->relname),
+					 parser_errposition(pstate, typname->location)));
 		restype = get_atttype(relid, attnum);
 
 		/* this construct should never have an array indicator */
@@ -140,19 +142,16 @@ LookupTypeName(const TypeName *typname)
 }
 
 /*
- * TypeNameToString
- *		Produce a string representing the name of a TypeName.
+ * appendTypeNameToBuffer
+ *		Append a string representing the name of a TypeName to a StringInfo.
+ *		This is the shared guts of TypeNameToString and TypeNameListToString.
  *
  * NB: this must work on TypeNames that do not describe any actual type;
  * it is mostly used for reporting lookup errors.
  */
-char *
-TypeNameToString(const TypeName *typname)
+static void
+appendTypeNameToBuffer(const TypeName *typname, StringInfo string)
 {
-	StringInfoData string;
-
-	initStringInfo(&string);
-
 	if (typname->names != NIL)
 	{
 		/* Emit possibly-qualified name as-is */
@@ -161,14 +160,14 @@ TypeNameToString(const TypeName *typname)
 		foreach(l, typname->names)
 		{
 			if (l != list_head(typname->names))
-				appendStringInfoChar(&string, '.');
-			appendStringInfoString(&string, strVal(lfirst(l)));
+				appendStringInfoChar(string, '.');
+			appendStringInfoString(string, strVal(lfirst(l)));
 		}
 	}
 	else
 	{
 		/* Look up internally-specified type */
-		appendStringInfoString(&string, format_type_be(typname->typid));
+		appendStringInfoString(string, format_type_be(typname->typid));
 	}
 
 	/*
@@ -176,11 +175,49 @@ TypeNameToString(const TypeName *typname)
 	 * LookupTypeName
 	 */
 	if (typname->pct_type)
-		appendStringInfoString(&string, "%TYPE");
+		appendStringInfoString(string, "%TYPE");
 
 	if (typname->arrayBounds != NIL)
-		appendStringInfoString(&string, "[]");
+		appendStringInfoString(string, "[]");
+}
 
+/*
+ * TypeNameToString
+ *		Produce a string representing the name of a TypeName.
+ *
+ * NB: this must work on TypeNames that do not describe any actual type;
+ * it is mostly used for reporting lookup errors.
+ */
+char *
+TypeNameToString(const TypeName *typename)
+{
+	StringInfoData string;
+
+	initStringInfo(&string);
+	appendTypeNameToBuffer(typename, &string);
+	return string.data;
+}
+
+/*
+ * TypeNameListToString
+ *		Produce a string representing the name(s) of a List of TypeNames
+ */
+char *
+TypeNameListToString(List *typenames)
+{
+	StringInfoData string;
+	ListCell   *l;
+
+	initStringInfo(&string);
+	foreach(l, typenames)
+	{
+		TypeName   *typename = (TypeName *) lfirst(l);
+
+		Assert(IsA(typename, TypeName));
+		if (l != list_head(typenames))
+			appendStringInfoChar(&string, ',');
+		appendTypeNameToBuffer(typename, &string);
+	}
 	return string.data;
 }
 
@@ -191,21 +228,24 @@ TypeNameToString(const TypeName *typname)
  * a suitable error message if the type cannot be found or is not defined.
  */
 Oid
-typenameTypeId(const TypeName *typname)
+typenameTypeId(ParseState *pstate, const TypeName *typname)
 {
 	Oid			typoid;
 
-	typoid = LookupTypeName(typname);
+	typoid = LookupTypeName(pstate, typname);
 	if (!OidIsValid(typoid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("type \"%s\" does not exist",
-						TypeNameToString(typname))));
+						TypeNameToString(typname)),
+				 parser_errposition(pstate, typname->location)));
+
 	if (!get_typisdefined(typoid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("type \"%s\" is only a shell",
-						TypeNameToString(typname))));
+						TypeNameToString(typname)),
+				 parser_errposition(pstate, typname->location)));
 	return typoid;
 }
 
@@ -216,12 +256,12 @@ typenameTypeId(const TypeName *typname)
  * NB: caller must ReleaseSysCache the type tuple when done with it.
  */
 Type
-typenameType(const TypeName *typname)
+typenameType(ParseState *pstate, const TypeName *typname)
 {
 	Oid			typoid;
 	HeapTuple	tup;
 
-	typoid = LookupTypeName(typname);
+	typoid = LookupTypeName(pstate, typname);
 	if (!OidIsValid(typoid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -236,7 +276,8 @@ typenameType(const TypeName *typname)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("type \"%s\" is only a shell",
-						TypeNameToString(typname))));
+						TypeNameToString(typname)),
+				 parser_errposition(pstate, typname->location)));
 	return (Type) tup;
 }
 
@@ -317,7 +358,8 @@ typeTypeRelid(Type typ)
 
 /*
  * Given a type structure and a string, returns the internal representation
- * of that string
+ * of that string.	The "string" can be NULL to perform conversion of a NULL
+ * (which might result in failure, if the input function rejects NULLs).
  */
 Datum
 stringTypeDatum(Type tp, char *string, int32 atttypmod)
@@ -327,10 +369,8 @@ stringTypeDatum(Type tp, char *string, int32 atttypmod)
 
 	typinput = ((Form_pg_type) GETSTRUCT(tp))->typinput;
 	typioparam = getTypeIOParam(tp);
-	return OidFunctionCall3(typinput,
-							CStringGetDatum(string),
-							ObjectIdGetDatum(typioparam),
-							Int32GetDatum(atttypmod));
+	return OidInputFunctionCall(typinput, string,
+								typioparam, atttypmod);
 }
 
 /* given a typeid, return the type's typrelid (associated relation, if any) */
@@ -421,10 +461,11 @@ parseTypeString(const char *str, Oid *type_id, int32 *typmod)
 		stmt->whereClause != NULL ||
 		stmt->groupClause != NIL ||
 		stmt->havingClause != NULL ||
+		stmt->valuesLists != NIL ||
 		stmt->sortClause != NIL ||
 		stmt->limitOffset != NULL ||
 		stmt->limitCount != NULL ||
-		stmt->lockingClause != NULL ||
+		stmt->lockingClause != NIL ||
 		stmt->op != SETOP_NONE)
 		goto fail;
 	if (list_length(stmt->targetList) != 1)
@@ -448,7 +489,7 @@ parseTypeString(const char *str, Oid *type_id, int32 *typmod)
 	if (typname->setof)
 		goto fail;
 
-	*type_id = typenameTypeId(typname);
+	*type_id = typenameTypeId(NULL, typname);
 	*typmod = typname->typmod;
 
 	pfree(buf.data);

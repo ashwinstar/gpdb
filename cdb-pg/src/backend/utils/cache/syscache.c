@@ -3,12 +3,12 @@
  * syscache.c
  *	  System cache management routines
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/cache/syscache.c,v 1.101.2.1 2006/10/06 18:23:41 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/cache/syscache.c,v 1.108 2006/10/06 18:23:35 tgl Exp $
  *
  * NOTES
  *	  These routines allow the parser/planner/executor to perform
@@ -21,17 +21,15 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
-#include "access/transam.h"
-#include "utils/builtins.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
-#include "catalog/pg_authid.h"
 #include "catalog/pg_auth_members.h"
+#include "catalog/pg_authid.h"
 #include "catalog/pg_cast.h"
 #include "catalog/pg_conversion.h"
-#include "catalog/pg_index.h"
+#include "catalog/pg_database.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
@@ -41,9 +39,7 @@
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
-#include "utils/catcache.h"
 #include "utils/syscache.h"
-#include "miscadmin.h"
 
 
 /*---------------------------------------------------------------------------
@@ -54,14 +50,18 @@
 	the list sorted alphabetically and adjust the cache numbers
 	accordingly.
 
-	Add your entry to the cacheinfo[] array below.	All cache lists are
-	alphabetical, so add it in the proper place.  Specify the relation
-	OID, index OID, number of keys, and key attribute numbers.	If the
-	relation contains tuples that are associated with a particular relation
-	(for example, its attributes, rules, triggers, etc) then specify the
-	attribute number that contains the OID of the associated relation.
-	This is used by CatalogCacheFlushRelation() to remove the correct
-	tuples during a table drop or relcache invalidation event.
+	Add your entry to the cacheinfo[] array below. All cache lists are
+	alphabetical, so add it in the proper place.  Specify the relation OID,
+	index OID, number of keys, key attribute numbers, and number of hash
+	buckets.  If the relation contains tuples that are associated with a
+	particular relation (for example, its attributes, rules, triggers, etc)
+	then specify the attribute number that contains the OID of the associated
+	relation.  This is used by CatalogCacheFlushRelation() to remove the
+	correct tuples during a table drop or relcache invalidation event.
+
+	The number of hash buckets must be a power of 2.  It's reasonable to
+	set this to the number of entries that might be in the particular cache
+	in a medium-size database.
 
 	There must be a unique index underlying each syscache (ie, an index
 	whose key is the same as that of the cache).  If there is not one
@@ -89,6 +89,7 @@ struct cachedesc
 	int			reloidattr;		/* attr number of rel OID reference, or 0 */
 	int			nkeys;			/* # of keys needed for cache lookup */
 	int			key[4];			/* attribute numbers of key attrs */
+	int			nbuckets;		/* number of hash buckets for this cache */
 };
 
 static const struct cachedesc cacheinfo[] = {
@@ -101,7 +102,9 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}},
+		},
+		32
+	},
 	{AccessMethodRelationId,	/* AMNAME */
 		AmNameIndexId,
 		0,
@@ -111,7 +114,9 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}},
+		},
+		4
+	},
 	{AccessMethodRelationId,	/* AMOID */
 		AmOidIndexId,
 		0,
@@ -121,7 +126,9 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}},
+		},
+		4
+	},
 	{AccessMethodOperatorRelationId,	/* AMOPOPID */
 		AccessMethodOperatorIndexId,
 		0,
@@ -131,7 +138,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_amop_amopclaid,
 			0,
 			0
-	}},
+		},
+		64
+	},
 	{AccessMethodOperatorRelationId,	/* AMOPSTRATEGY */
 		AccessMethodStrategyIndexId,
 		0,
@@ -141,7 +150,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_amop_amopsubtype,
 			Anum_pg_amop_amopstrategy,
 			0
-	}},
+		},
+		64
+	},
 	{AccessMethodProcedureRelationId,	/* AMPROCNUM */
 		AccessMethodProcedureIndexId,
 		0,
@@ -151,7 +162,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_amproc_amprocsubtype,
 			Anum_pg_amproc_amprocnum,
 			0
-	}},
+		},
+		64
+	},
 	{AttributeRelationId,		/* ATTNAME */
 		AttributeRelidNameIndexId,
 		Anum_pg_attribute_attrelid,
@@ -161,7 +174,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_attribute_attname,
 			0,
 			0
-	}},
+		},
+		2048
+	},
 	{AttributeRelationId,		/* ATTNUM */
 		AttributeRelidNumIndexId,
 		Anum_pg_attribute_attrelid,
@@ -171,7 +186,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_attribute_attnum,
 			0,
 			0
-	}},
+		},
+		2048
+	},
 	{AuthMemRelationId,			/* AUTHMEMMEMROLE */
 		AuthMemMemRoleIndexId,
 		0,
@@ -181,7 +198,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_auth_members_roleid,
 			0,
 			0
-	}},
+		},
+		128
+	},
 	{AuthMemRelationId,			/* AUTHMEMROLEMEM */
 		AuthMemRoleMemIndexId,
 		0,
@@ -191,7 +210,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_auth_members_member,
 			0,
 			0
-	}},
+		},
+		128
+	},
 	{AuthIdRelationId,			/* AUTHNAME */
 		AuthIdRolnameIndexId,
 		0,
@@ -201,7 +222,9 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}},
+		},
+		128
+	},
 	{AuthIdRelationId,			/* AUTHOID */
 		AuthIdOidIndexId,
 		0,
@@ -211,7 +234,9 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}},
+		},
+		128
+	},
 	{
 		CastRelationId,			/* CASTSOURCETARGET */
 		CastSourceTargetIndexId,
@@ -222,7 +247,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_cast_casttarget,
 			0,
 			0
-	}},
+		},
+		256
+	},
 	{OperatorClassRelationId,	/* CLAAMNAMENSP */
 		OpclassAmNameNspIndexId,
 		0,
@@ -232,7 +259,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_opclass_opcname,
 			Anum_pg_opclass_opcnamespace,
 			0
-	}},
+		},
+		64
+	},
 	{OperatorClassRelationId,	/* CLAOID */
 		OpclassOidIndexId,
 		0,
@@ -242,7 +271,9 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}},
+		},
+		64
+	},
 	{ConversionRelationId,		/* CONDEFAULT */
 		ConversionDefaultIndexId,
 		0,
@@ -252,7 +283,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_conversion_conforencoding,
 			Anum_pg_conversion_contoencoding,
 			ObjectIdAttributeNumber,
-	}},
+		},
+		128
+	},
 	{ConversionRelationId,		/* CONNAMENSP */
 		ConversionNameNspIndexId,
 		0,
@@ -262,7 +295,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_conversion_connamespace,
 			0,
 			0
-	}},
+		},
+		128
+	},
 	{ConversionRelationId,		/* CONOID */
 		ConversionOidIndexId,
 		0,
@@ -272,7 +307,21 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}},
+		},
+		128
+	},
+	{DatabaseRelationId,		/* DATABASEOID */
+		DatabaseOidIndexId,
+		0,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		4
+	},
 	{IndexRelationId,			/* INDEXRELID */
 		IndexRelidIndexId,
 		Anum_pg_index_indrelid,
@@ -282,7 +331,9 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}},
+		},
+		1024
+	},
 	{InheritsRelationId,		/* INHRELID */
 		InheritsRelidSeqnoIndexId,
 		Anum_pg_inherits_inhrelid,
@@ -292,7 +343,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_inherits_inhseqno,
 			0,
 			0
-	}},
+		},
+		256
+	},
 	{LanguageRelationId,		/* LANGNAME */
 		LanguageNameIndexId,
 		0,
@@ -302,7 +355,9 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}},
+		},
+		4
+	},
 	{LanguageRelationId,		/* LANGOID */
 		LanguageOidIndexId,
 		0,
@@ -312,7 +367,9 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}},
+		},
+		4
+	},
 	{NamespaceRelationId,		/* NAMESPACENAME */
 		NamespaceNameIndexId,
 		0,
@@ -322,7 +379,9 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}},
+		},
+		256
+	},
 	{NamespaceRelationId,		/* NAMESPACEOID */
 		NamespaceOidIndexId,
 		0,
@@ -332,7 +391,9 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}},
+		},
+		256
+	},
 	{OperatorRelationId,		/* OPERNAMENSP */
 		OperatorNameNspIndexId,
 		0,
@@ -342,7 +403,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_operator_oprleft,
 			Anum_pg_operator_oprright,
 			Anum_pg_operator_oprnamespace
-	}},
+		},
+		1024
+	},
 	{OperatorRelationId,		/* OPEROID */
 		OperatorOidIndexId,
 		0,
@@ -352,7 +415,9 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}},
+		},
+		1024
+	},
 	{ProcedureRelationId,		/* PROCNAMEARGSNSP */
 		ProcedureNameArgsNspIndexId,
 		0,
@@ -362,7 +427,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_proc_proargtypes,
 			Anum_pg_proc_pronamespace,
 			0
-	}},
+		},
+		2048
+	},
 	{ProcedureRelationId,		/* PROCOID */
 		ProcedureOidIndexId,
 		0,
@@ -372,7 +439,9 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}},
+		},
+		2048
+	},
 	{RelationRelationId,		/* RELNAMENSP */
 		ClassNameNspIndexId,
 		ObjectIdAttributeNumber,
@@ -382,7 +451,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_class_relnamespace,
 			0,
 			0
-	}},
+		},
+		1024
+	},
 	{RelationRelationId,		/* RELOID */
 		ClassOidIndexId,
 		ObjectIdAttributeNumber,
@@ -392,7 +463,9 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}},
+		},
+		1024
+	},
 	{RewriteRelationId,			/* RULERELNAME */
 		RewriteRelRulenameIndexId,
 		Anum_pg_rewrite_ev_class,
@@ -402,7 +475,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_rewrite_rulename,
 			0,
 			0
-	}},
+		},
+		1024
+	},
 	{StatisticRelationId,		/* STATRELATT */
 		StatisticRelidAttnumIndexId,
 		Anum_pg_statistic_starelid,
@@ -412,7 +487,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_statistic_staattnum,
 			0,
 			0
-	}},
+		},
+		1024
+	},
 	{TypeRelationId,			/* TYPENAMENSP */
 		TypeNameNspIndexId,
 		Anum_pg_type_typrelid,
@@ -422,7 +499,9 @@ static const struct cachedesc cacheinfo[] = {
 			Anum_pg_type_typnamespace,
 			0,
 			0
-	}},
+		},
+		1024
+	},
 	{TypeRelationId,			/* TYPEOID */
 		TypeOidIndexId,
 		Anum_pg_type_typrelid,
@@ -432,7 +511,9 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0,
 			0
-	}}
+		},
+		1024
+	}
 };
 
 static CatCache *SysCache[
@@ -465,7 +546,8 @@ InitCatalogCache(void)
 										 cacheinfo[cacheId].indoid,
 										 cacheinfo[cacheId].reloidattr,
 										 cacheinfo[cacheId].nkeys,
-										 cacheinfo[cacheId].key);
+										 cacheinfo[cacheId].key,
+										 cacheinfo[cacheId].nbuckets);
 		if (!PointerIsValid(SysCache[cacheId]))
 			elog(ERROR, "could not initialize cache %u (%d)",
 				 cacheinfo[cacheId].reloid, cacheId);

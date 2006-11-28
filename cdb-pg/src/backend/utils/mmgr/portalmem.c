@@ -8,20 +8,23 @@
  * doesn't actually run the executor for them.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/portalmem.c,v 1.82.2.1 2005/11/22 18:23:25 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/portalmem.c,v 1.96 2006/10/04 00:30:04 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "miscadmin.h"
+#include "access/heapam.h"
+#include "access/xact.h"
+#include "catalog/pg_type.h"
 #include "commands/portalcmds.h"
-#include "executor/executor.h"
-#include "utils/hsearch.h"
+#include "funcapi.h"
+#include "miscadmin.h"
+#include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/portal.h"
 #include "utils/resscheduler.h"
@@ -54,12 +57,10 @@ static HTAB *PortalHashTable = NULL;
 
 #define PortalHashTableLookup(NAME, PORTAL) \
 do { \
-	PortalHashEnt *hentry; char key[MAX_PORTALNAME_LEN]; \
+	PortalHashEnt *hentry; \
 	\
-	MemSet(key, 0, MAX_PORTALNAME_LEN); \
-	StrNCpy(key, NAME, MAX_PORTALNAME_LEN); \
-	hentry = (PortalHashEnt*)hash_search(PortalHashTable, \
-										 key, HASH_FIND, NULL); \
+	hentry = (PortalHashEnt *) hash_search(PortalHashTable, \
+										   (NAME), HASH_FIND, NULL); \
 	if (hentry) \
 		PORTAL = hentry->portal; \
 	else \
@@ -68,12 +69,10 @@ do { \
 
 #define PortalHashTableInsert(PORTAL, NAME) \
 do { \
-	PortalHashEnt *hentry; bool found; char key[MAX_PORTALNAME_LEN]; \
+	PortalHashEnt *hentry; bool found; \
 	\
-	MemSet(key, 0, MAX_PORTALNAME_LEN); \
-	StrNCpy(key, NAME, MAX_PORTALNAME_LEN); \
-	hentry = (PortalHashEnt*)hash_search(PortalHashTable, \
-										 key, HASH_ENTER, &found); \
+	hentry = (PortalHashEnt *) hash_search(PortalHashTable, \
+										   (NAME), HASH_ENTER, &found); \
 	if (found) \
 		elog(ERROR, "duplicate portal name"); \
 	hentry->portal = PORTAL; \
@@ -83,12 +82,10 @@ do { \
 
 #define PortalHashTableDelete(PORTAL) \
 do { \
-	PortalHashEnt *hentry; char key[MAX_PORTALNAME_LEN]; \
+	PortalHashEnt *hentry; \
 	\
-	MemSet(key, 0, MAX_PORTALNAME_LEN); \
-	StrNCpy(key, PORTAL->name, MAX_PORTALNAME_LEN); \
-	hentry = (PortalHashEnt*)hash_search(PortalHashTable, \
-										 key, HASH_REMOVE, NULL); \
+	hentry = (PortalHashEnt *) hash_search(PortalHashTable, \
+										   PORTAL->name, HASH_REMOVE, NULL); \
 	if (hentry == NULL) \
 		elog(WARNING, "trying to delete portal name that does not exist"); \
 } while(0)
@@ -147,6 +144,34 @@ GetPortalByName(const char *name)
 }
 
 /*
+ * PortalListGetPrimaryQuery
+ *		Get the "primary" Query within a portal, ie, the one marked canSetTag.
+ *
+ * Returns NULL if no such Query.  If multiple Query structs within the
+ * portal are marked canSetTag, returns the first one.	Neither of these
+ * cases should occur in present usages of this function.
+ *
+ * Note: the reason this is just handed a List is so that prepared statements
+ * can share the code.	For use with a portal, use PortalGetPrimaryQuery
+ * rather than calling this directly.
+ */
+Query *
+PortalListGetPrimaryQuery(List *parseTrees)
+{
+	ListCell   *lc;
+
+	foreach(lc, parseTrees)
+	{
+		Query	   *query = (Query *) lfirst(lc);
+
+		Assert(IsA(query, Query));
+		if (query->canSetTag)
+			return query;
+	}
+	return NULL;
+}
+
+/*
  * CreatePortal
  *		Returns a new portal given a name.
  *
@@ -159,9 +184,9 @@ Portal
 CreatePortal(const char *name, bool allowDup, bool dupSilent)
 {
 	Portal		portal;
-	
+
 	AssertArg(PointerIsValid(name));
-	
+
 	portal = GetPortalByName(name);
 	if (PortalIsValid(portal))
 	{
@@ -193,12 +218,15 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 										   "Portal");
 
 	/* initialize portal fields that don't start off zero */
+	portal->status = PORTAL_NEW;
 	portal->cleanup = PortalCleanup;
 	portal->createSubid = GetCurrentSubTransactionId();
 	portal->strategy = PORTAL_MULTI_QUERY;
 	portal->cursorOptions = CURSOR_OPT_NO_SCROLL;
 	portal->atStart = true;
 	portal->atEnd = true;		/* disallow fetches until query is set */
+	portal->visible = true;
+	portal->creation_time = GetCurrentStatementStartTimestamp();
 
 	/* set portal id and queue id if have enabled resource scheduling */
 	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
@@ -255,6 +283,7 @@ CreateNewPortal(void)
  */
 void
 PortalDefineQuery(Portal portal,
+				  const char *prepStmtName,
 				  const char *sourceText,
 				  NodeTag	  sourceTag,
 				  const char *commandTag,
@@ -262,7 +291,6 @@ PortalDefineQuery(Portal portal,
 				  List *planTrees,
 				  MemoryContext queryContext)
 {
-	
 	AssertArg(PortalIsValid(portal));
 	AssertState(portal->queryContext == NULL);	/* else defined already */
 
@@ -270,6 +298,7 @@ PortalDefineQuery(Portal portal,
 
 	Assert(commandTag != NULL || parseTrees == NIL);
 
+	portal->prepStmtName = prepStmtName;
 	portal->sourceText = sourceText;
 	portal->sourceTag = sourceTag;
 	portal->commandTag = commandTag;
@@ -781,4 +810,102 @@ AtSubCleanup_Portals(SubTransactionId mySubid)
 		/* Zap it. */
 		PortalDrop(portal, false);
 	}
+}
+
+/* Find all available cursors */
+Datum
+pg_cursor(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+	HASH_SEQ_STATUS *hash_seq;
+	PortalHashEnt *hentry;
+
+	/* stuff done only on the first call of the function */
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		TupleDesc	tupdesc;
+
+		/* create a function context for cross-call persistence */
+		funcctx = SRF_FIRSTCALL_INIT();
+
+		/*
+		 * switch to memory context appropriate for multiple function calls
+		 */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		if (PortalHashTable)
+		{
+			hash_seq = (HASH_SEQ_STATUS *) palloc(sizeof(HASH_SEQ_STATUS));
+			hash_seq_init(hash_seq, PortalHashTable);
+			funcctx->user_fctx = (void *) hash_seq;
+		}
+		else
+			funcctx->user_fctx = NULL;
+
+		/*
+		 * build tupdesc for result tuples. This must match the definition of
+		 * the pg_cursors view in system_views.sql
+		 */
+		tupdesc = CreateTemplateTupleDesc(6, false);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "name",
+						   TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "statement",
+						   TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "is_holdable",
+						   BOOLOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "is_binary",
+						   BOOLOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "is_scrollable",
+						   BOOLOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "creation_time",
+						   TIMESTAMPTZOID, -1, 0);
+
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	/* stuff done on every call of the function */
+	funcctx = SRF_PERCALL_SETUP();
+	hash_seq = (HASH_SEQ_STATUS *) funcctx->user_fctx;
+
+	/* if the hash table is uninitialized, we're done */
+	if (hash_seq == NULL)
+		SRF_RETURN_DONE(funcctx);
+
+	/* loop until we find a visible portal or hit the end of the list */
+	while ((hentry = hash_seq_search(hash_seq)) != NULL)
+	{
+		if (hentry->portal->visible)
+			break;
+	}
+
+	if (hentry)
+	{
+		Portal		portal;
+		Datum		result;
+		HeapTuple	tuple;
+		Datum		values[6];
+		bool		nulls[6];
+
+		portal = hentry->portal;
+		MemSet(nulls, 0, sizeof(nulls));
+
+		values[0] = DirectFunctionCall1(textin, CStringGetDatum(portal->name));
+		if (!portal->sourceText)
+			nulls[1] = true;
+		else
+			values[1] = DirectFunctionCall1(textin,
+										CStringGetDatum(portal->sourceText));
+		values[2] = BoolGetDatum(portal->cursorOptions & CURSOR_OPT_HOLD);
+		values[3] = BoolGetDatum(portal->cursorOptions & CURSOR_OPT_BINARY);
+		values[4] = BoolGetDatum(portal->cursorOptions & CURSOR_OPT_SCROLL);
+		values[5] = TimestampTzGetDatum(portal->creation_time);
+
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		result = HeapTupleGetDatum(tuple);
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+
+	SRF_RETURN_DONE(funcctx);
 }

@@ -3,12 +3,12 @@
  * fastpath.c
  *	  routines to handle function requests from the frontend
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/tcop/fastpath.c,v 1.83.2.2 2006/06/11 15:49:36 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/tcop/fastpath.c,v 1.94 2006/10/19 22:44:11 tgl Exp $
  *
  * NOTES
  *	  This cruft is the server side of PQfn.
@@ -20,17 +20,17 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include "access/xact.h"
 #include "catalog/pg_proc.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
-#include "miscadmin.h"
 #include "mb/pg_wchar.h"
+#include "miscadmin.h"
 #include "tcop/fastpath.h"
 #include "tcop/tcopprot.h"
 #include "utils/acl.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
-#include "utils/tqual.h"
 
 
 /*
@@ -51,6 +51,7 @@ struct fp_info
 	Oid			namespace;		/* other stuff from pg_proc */
 	Oid			rettype;
 	Oid			argtypes[FUNC_MAX_ARGS];
+	char		fname[NAMEDATALEN];		/* function name for logging */
 };
 
 
@@ -155,8 +156,7 @@ SendFunctionResult(Datum retval, bool isnull, Oid rettype, int16 format)
 			char	   *outputstr;
 
 			getTypeOutputInfo(rettype, &typoutput, &typisvarlena);
-			outputstr = DatumGetCString(OidFunctionCall1(typoutput,
-														 retval));
+			outputstr = OidOutputFunctionCall(typoutput, retval);
 			pq_sendcountedtext(&buf, outputstr, strlen(outputstr), false);
 			pfree(outputstr);
 		}
@@ -167,9 +167,7 @@ SendFunctionResult(Datum retval, bool isnull, Oid rettype, int16 format)
 			bytea	   *outputbytes;
 
 			getTypeBinaryOutputInfo(rettype, &typsend, &typisvarlena);
-			outputbytes = DatumGetByteaP(OidFunctionCall1(typsend,
-														  retval));
-			/* We assume the result will not have been toasted */
+			outputbytes = OidSendFunctionCall(typsend, retval);
 			pq_sendint(&buf, VARSIZE(outputbytes) - VARHDRSZ, 4);
 			pq_sendbytes(&buf, VARDATA(outputbytes),
 						 VARSIZE(outputbytes) - VARHDRSZ);
@@ -232,6 +230,7 @@ fetch_fp_info(Oid func_id, struct fp_info * fip)
 	fip->namespace = pp->pronamespace;
 	fip->rettype = pp->prorettype;
 	memcpy(fip->argtypes, pp->proargtypes.values, pp->pronargs * sizeof(Oid));
+	strlcpy(fip->fname, NameStr(pp->proname), NAMEDATALEN);
 
 	ReleaseSysCache(func_htp);
 
@@ -277,6 +276,8 @@ HandleFunctionRequest(StringInfo msgBuf)
 	struct fp_info my_fp;
 	struct fp_info *fip;
 	bool		callit;
+	bool		was_logged = false;
+	char		msec_str[32];
 
 	/*
 	 * Read message contents if not already done.
@@ -304,8 +305,8 @@ HandleFunctionRequest(StringInfo msgBuf)
 						"commands ignored until end of transaction block")));
 
 	/*
-	 * Now that we know we are in a valid transaction, set snapshot in
-	 * case needed by function itself or one of the datatype I/O routines.
+	 * Now that we know we are in a valid transaction, set snapshot in case
+	 * needed by function itself or one of the datatype I/O routines.
 	 */
 	ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 
@@ -313,14 +314,9 @@ HandleFunctionRequest(StringInfo msgBuf)
 	 * Begin parsing the buffer contents.
 	 */
 	if (PG_PROTOCOL_MAJOR(FrontendProtocol) < 3)
-		(void) pq_getmsgstring(msgBuf);			/* dummy string */
+		(void) pq_getmsgstring(msgBuf); /* dummy string */
 
 	fid = (Oid) pq_getmsgint(msgBuf, 4);		/* function oid */
-
-	if (log_statement == LOGSTMT_ALL)
-		ereport(LOG,
-				(errmsg("fastpath function call: function OID %u",
-						fid)));
 
 	/*
 	 * There used to be a lame attempt at caching lookup info here. Now we
@@ -328,6 +324,15 @@ HandleFunctionRequest(StringInfo msgBuf)
 	 */
 	fip = &my_fp;
 	fetch_fp_info(fid, fip);
+
+	/* Log as soon as we have the function OID and name */
+	if (log_statement == LOGSTMT_ALL)
+	{
+		ereport(LOG,
+				(errmsg("fastpath function call: \"%s\" (OID %u)",
+						fip->fname, fid)));
+		was_logged = true;
+	}
 
 	/*
 	 * Check permission to access and call function.  Since we didn't go
@@ -385,7 +390,26 @@ HandleFunctionRequest(StringInfo msgBuf)
 		retval = (Datum) 0;
 	}
 
+	/* ensure we do at least one CHECK_FOR_INTERRUPTS per function call */
+	CHECK_FOR_INTERRUPTS();
+
 	SendFunctionResult(retval, fcinfo.isnull, fip->rettype, rformat);
+
+	/*
+	 * Emit duration logging if appropriate.
+	 */
+	switch (check_log_duration(msec_str, was_logged))
+	{
+		case 1:
+			ereport(LOG,
+					(errmsg("duration: %s ms", msec_str)));
+			break;
+		case 2:
+			ereport(LOG,
+					(errmsg("duration: %s ms  fastpath function call: \"%s\" (OID %u)",
+							msec_str, fip->fname, fid)));
+			break;
+	}
 
 	return 0;
 }
@@ -445,23 +469,25 @@ parse_fcall_arguments(StringInfo msgBuf, struct fp_info * fip,
 		if (argsize == -1)
 		{
 			fcinfo->argnull[i] = true;
-			continue;
 		}
-		fcinfo->argnull[i] = false;
-		if (argsize < 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+		else
+		{
+			fcinfo->argnull[i] = false;
+			if (argsize < 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				  errmsg("invalid argument size %d in function call message",
 						 argsize)));
 
-		/* Reset abuf to empty, and insert raw data into it */
-		abuf.len = 0;
-		abuf.data[0] = '\0';
-		abuf.cursor = 0;
+			/* Reset abuf to empty, and insert raw data into it */
+			abuf.len = 0;
+			abuf.data[0] = '\0';
+			abuf.cursor = 0;
 
-		appendBinaryStringInfo(&abuf,
-							   pq_getmsgbytes(msgBuf, argsize),
-							   argsize);
+			appendBinaryStringInfo(&abuf,
+								   pq_getmsgbytes(msgBuf, argsize),
+								   argsize);
+		}
 
 		if (numAFormats > 1)
 			aformat = aformats[i];
@@ -484,31 +510,36 @@ parse_fcall_arguments(StringInfo msgBuf, struct fp_info * fip,
 			 * have to do encoding conversion before calling the typinput
 			 * routine, though.
 			 */
-			pstring = pg_client_to_server(abuf.data, argsize);
-			fcinfo->arg[i] =
-				OidFunctionCall3(typinput,
-								 CStringGetDatum(pstring),
-								 ObjectIdGetDatum(typioparam),
-								 Int32GetDatum(-1));
+			if (argsize == -1)
+				pstring = NULL;
+			else
+				pstring = pg_client_to_server(abuf.data, argsize);
+
+			fcinfo->arg[i] = OidInputFunctionCall(typinput, pstring,
+												  typioparam, -1);
 			/* Free result of encoding conversion, if any */
-			if (pstring != abuf.data)
+			if (pstring && pstring != abuf.data)
 				pfree(pstring);
 		}
 		else if (aformat == 1)
 		{
 			Oid			typreceive;
 			Oid			typioparam;
+			StringInfo	bufptr;
 
 			/* Call the argument type's binary input converter */
 			getTypeBinaryInputInfo(fip->argtypes[i], &typreceive, &typioparam);
 
-			fcinfo->arg[i] = OidFunctionCall3(typreceive,
-											  PointerGetDatum(&abuf),
-											  ObjectIdGetDatum(typioparam),
-											  Int32GetDatum(-1));
+			if (argsize == -1)
+				bufptr = NULL;
+			else
+				bufptr = &abuf;
+
+			fcinfo->arg[i] = OidReceiveFunctionCall(typreceive, bufptr,
+													typioparam, -1);
 
 			/* Trouble if it didn't eat the whole buffer */
-			if (abuf.cursor != abuf.len)
+			if (argsize != -1 && abuf.cursor != abuf.len)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
 				errmsg("incorrect binary data format in function argument %d",
@@ -564,10 +595,14 @@ parse_fcall_arguments_20(StringInfo msgBuf, struct fp_info * fip,
 		Oid			typreceive;
 		Oid			typioparam;
 
+		getTypeBinaryInputInfo(fip->argtypes[i], &typreceive, &typioparam);
+
 		argsize = pq_getmsgint(msgBuf, 4);
 		if (argsize == -1)
 		{
 			fcinfo->argnull[i] = true;
+			fcinfo->arg[i] = OidReceiveFunctionCall(typreceive, NULL,
+													typioparam, -1);
 			continue;
 		}
 		fcinfo->argnull[i] = false;
@@ -586,13 +621,8 @@ parse_fcall_arguments_20(StringInfo msgBuf, struct fp_info * fip,
 							   pq_getmsgbytes(msgBuf, argsize),
 							   argsize);
 
-		/* Call the argument type's binary input converter */
-		getTypeBinaryInputInfo(fip->argtypes[i], &typreceive, &typioparam);
-
-		fcinfo->arg[i] = OidFunctionCall3(typreceive,
-										  PointerGetDatum(&abuf),
-										  ObjectIdGetDatum(typioparam),
-										  Int32GetDatum(-1));
+		fcinfo->arg[i] = OidReceiveFunctionCall(typreceive, &abuf,
+												typioparam, -1);
 
 		/* Trouble if it didn't eat the whole buffer */
 		if (abuf.cursor != abuf.len)

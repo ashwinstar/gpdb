@@ -4,12 +4,12 @@
  *	  System catalog cache for tuples matching a key.
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/cache/catcache.c,v 1.125.2.3 2006/10/06 18:23:41 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/cache/catcache.c,v 1.134 2006/10/06 18:23:35 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,17 +19,14 @@
 #include "access/hash.h"
 #include "access/heapam.h"
 #include "access/valid.h"
-#include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
-#include "catalog/indexing.h"
 #include "miscadmin.h"
 #ifdef CATCACHE_STATS
 #include "storage/ipc.h"		/* for on_proc_exit */
 #endif
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
-#include "utils/catcache.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
 #include "utils/resowner.h"
@@ -41,20 +38,6 @@
 #include "catalog/pg_proc.h"            /*CDB*/
 
  /* #define CACHEDEBUG */	/* turns DEBUG elogs on */
-
-/*
- * Constants related to size of the catcache.
- *
- * NCCBUCKETS must be a power of two and must be less than 64K (because
- * SharedInvalCatcacheMsg crams hash indexes into a uint16 field).	In
- * practice it should be a lot less, anyway, to avoid chewing up too much
- * space on hash bucket headers.
- *
- * MAXCCTUPLES could be as small as a few hundred, if per-backend memory
- * consumption is at a premium.
- */
-#define NCCBUCKETS 256			/* Hash buckets per CatCache */
-#define MAXCCTUPLES 5000		/* Maximum # of tuples in all caches */
 
 /*
  * Given a hash value and the size of the hash table, find the bucket
@@ -94,7 +77,7 @@ static uint32 CatalogCacheComputeTupleHashValue(CatCache *cache,
 								  HeapTuple tuple);
 
 #ifdef CATCACHE_STATS
-static void CatCachePrintStats(void);
+static void CatCachePrintStats(int code, Datum arg);
 #endif
 static void CatCacheRemoveCTup(CatCache *cache, CatCTup *ct);
 static void CatCacheRemoveCList(CatCache *cache, CatCList *cl);
@@ -102,7 +85,6 @@ static void CatalogCacheInitializeCache(CatCache *cache);
 static CatCTup *CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp,
 						uint32 hashValue, Index hashIndex,
 						bool negative);
-static void CatalogCacheCleanup(CatCTup *savect);
 static HeapTuple build_dummy_tuple(CatCache *cache, int nkeys, ScanKey skeys);
 
 
@@ -286,7 +268,7 @@ CatalogCacheComputeTupleHashValue(CatCache *cache, HeapTuple tuple)
 #ifdef CATCACHE_STATS
 
 static void
-CatCachePrintStats(void)
+CatCachePrintStats(int code, Datum arg)
 {
 	CatCache   *cache;
 	long		cc_searches = 0;
@@ -294,18 +276,14 @@ CatCachePrintStats(void)
 	long		cc_neg_hits = 0;
 	long		cc_newloads = 0;
 	long		cc_invals = 0;
-	long		cc_discards = 0;
 	long		cc_lsearches = 0;
 	long		cc_lhits = 0;
-
-	elog(DEBUG2, "catcache stats dump: %d/%d tuples in catcaches",
-		 CacheHdr->ch_ntup, CacheHdr->ch_maxtup);
 
 	for (cache = CacheHdr->ch_caches; cache; cache = cache->cc_next)
 	{
 		if (cache->cc_ntup == 0 && cache->cc_searches == 0)
 			continue;			/* don't print unused caches */
-		elog(DEBUG2, "catcache %s/%u: %d tup, %ld srch, %ld+%ld=%ld hits, %ld+%ld=%ld loads, %ld invals, %ld discards, %ld lsrch, %ld lhits",
+		elog(DEBUG2, "catcache %s/%u: %d tup, %ld srch, %ld+%ld=%ld hits, %ld+%ld=%ld loads, %ld invals, %ld lsrch, %ld lhits",
 			 cache->cc_relname,
 			 cache->cc_indexoid,
 			 cache->cc_ntup,
@@ -317,7 +295,6 @@ CatCachePrintStats(void)
 			 cache->cc_searches - cache->cc_hits - cache->cc_neg_hits - cache->cc_newloads,
 			 cache->cc_searches - cache->cc_hits - cache->cc_neg_hits,
 			 cache->cc_invals,
-			 cache->cc_discards,
 			 cache->cc_lsearches,
 			 cache->cc_lhits);
 		cc_searches += cache->cc_searches;
@@ -325,11 +302,10 @@ CatCachePrintStats(void)
 		cc_neg_hits += cache->cc_neg_hits;
 		cc_newloads += cache->cc_newloads;
 		cc_invals += cache->cc_invals;
-		cc_discards += cache->cc_discards;
 		cc_lsearches += cache->cc_lsearches;
 		cc_lhits += cache->cc_lhits;
 	}
-	elog(DEBUG2, "catcache totals: %d tup, %ld srch, %ld+%ld=%ld hits, %ld+%ld=%ld loads, %ld invals, %ld discards, %ld lsrch, %ld lhits",
+	elog(DEBUG2, "catcache totals: %d tup, %ld srch, %ld+%ld=%ld hits, %ld+%ld=%ld loads, %ld invals, %ld lsrch, %ld lhits",
 		 CacheHdr->ch_ntup,
 		 cc_searches,
 		 cc_hits,
@@ -339,7 +315,6 @@ CatCachePrintStats(void)
 		 cc_searches - cc_hits - cc_neg_hits - cc_newloads,
 		 cc_searches - cc_hits - cc_neg_hits,
 		 cc_invals,
-		 cc_discards,
 		 cc_lsearches,
 		 cc_lhits);
 }
@@ -372,8 +347,7 @@ CatCacheRemoveCTup(CatCache *cache, CatCTup *ct)
 		return;					/* nothing left to do */
 	}
 
-	/* delink from linked lists */
-	DLRemove(&ct->lrulist_elem);
+	/* delink from linked list */
 	DLRemove(&ct->cache_elem);
 
 	/* free associated tuple data */
@@ -573,11 +547,13 @@ AtEOXact_CatCache(bool isCommit)
 	if (assert_enabled)
 	{
 		CatCache   *ccp;
-		Dlelem	   *elt;
 
-		/* Check CatCLists */
 		for (ccp = CacheHdr->ch_caches; ccp; ccp = ccp->cc_next)
 		{
+			Dlelem	   *elt;
+			int			i;
+
+			/* Check CatCLists */
 			for (elt = DLGetHead(&ccp->cc_lists); elt; elt = DLGetSucc(elt))
 			{
 				CatCList   *cl = (CatCList *) DLE_VAL(elt);
@@ -586,16 +562,21 @@ AtEOXact_CatCache(bool isCommit)
 				Assert(cl->refcount == 0);
 				Assert(!cl->dead);
 			}
-		}
 
-		/* Check individual tuples */
-		for (elt = DLGetHead(&CacheHdr->ch_lrulist); elt; elt = DLGetSucc(elt))
-		{
-			CatCTup    *ct = (CatCTup *) DLE_VAL(elt);
+			/* Check individual tuples */
+			for (i = 0; i < ccp->cc_nbuckets; i++)
+			{
+				for (elt = DLGetHead(&ccp->cc_bucket[i]);
+					 elt;
+					 elt = DLGetSucc(elt))
+				{
+					CatCTup    *ct = (CatCTup *) DLE_VAL(elt);
 
-			Assert(ct->ct_magic == CT_MAGIC);
-			Assert(ct->refcount == 0);
-			Assert(!ct->dead);
+					Assert(ct->ct_magic == CT_MAGIC);
+					Assert(ct->refcount == 0);
+					Assert(!ct->dead);
+				}
+			}
 		}
 	}
 #endif
@@ -801,11 +782,26 @@ InitCatCache(int id,
 			 Oid indexoid,
 			 int reloidattr,
 			 int nkeys,
-			 const int *key)
+			 const int *key,
+			 int nbuckets)
 {
 	CatCache   *cp;
 	MemoryContext oldcxt;
 	int			i;
+
+	/*
+	 * nbuckets is the number of hash buckets to use in this catcache.
+	 * Currently we just use a hard-wired estimate of an appropriate size for
+	 * each cache; maybe later make them dynamically resizable?
+	 *
+	 * nbuckets must be a power of two.  We check this via Assert rather than
+	 * a full runtime check because the values will be coming from constant
+	 * tables.
+	 *
+	 * If you're confused by the power-of-two check, see comments in
+	 * bitmapset.c for an explanation.
+	 */
+	Assert(nbuckets > 0 && (nbuckets & -nbuckets) == nbuckets);
 
 	/*
 	 * first switch to the cache context so our allocations do not vanish at
@@ -817,17 +813,15 @@ InitCatCache(int id,
 	oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 
 	/*
-	 * if first time through, initialize the cache group header, including
-	 * global LRU list header
+	 * if first time through, initialize the cache group header
 	 */
 	if (CacheHdr == NULL)
 	{
 		CacheHdr = (CatCacheHeader *) palloc(sizeof(CatCacheHeader));
 		CacheHdr->ch_caches = NULL;
 		CacheHdr->ch_ntup = 0;
-		CacheHdr->ch_maxtup = MAXCCTUPLES;
-		DLInitList(&CacheHdr->ch_lrulist);
 #ifdef CATCACHE_STATS
+		/* set up to dump stats at backend exit */
 		on_proc_exit(CatCachePrintStats, 0);
 #endif
 	}
@@ -837,7 +831,7 @@ InitCatCache(int id,
 	 *
 	 * Note: we assume zeroing initializes the Dllist headers correctly
 	 */
-	cp = (CatCache *) palloc0(sizeof(CatCache) + NCCBUCKETS * sizeof(Dllist));
+	cp = (CatCache *) palloc0(sizeof(CatCache) + nbuckets * sizeof(Dllist));
 
 	/*
 	 * initialize the cache's relation information for the relation
@@ -852,7 +846,7 @@ InitCatCache(int id,
 	cp->cc_tupdesc = (TupleDesc) NULL;
 	cp->cc_reloidattr = reloidattr;
 	cp->cc_ntup = 0;
-	cp->cc_nbuckets = NCCBUCKETS;
+	cp->cc_nbuckets = nbuckets;
 	cp->cc_nkeys = nkeys;
 	for (i = 0; i < nkeys; ++i)
 		cp->cc_key[i] = key[i];
@@ -915,12 +909,7 @@ CatalogCacheInitializeCache(CatCache *cache)
 
 	CatalogCacheInitializeCache_DEBUG1;
 
-	/*
-	 * Open the relation without locking --- we only need the tupdesc, which
-	 * we assume will never change ...
-	 */
-	relation = heap_open(cache->cc_reloid, NoLock);
-	Assert(RelationIsValid(relation));
+	relation = heap_open(cache->cc_reloid, AccessShareLock);
 
 	/*
 	 * switch to the cache context so our allocations do not vanish at the end
@@ -947,7 +936,7 @@ CatalogCacheInitializeCache(CatCache *cache)
 	 */
 	MemoryContextSwitchTo(oldcxt);
 
-	heap_close(relation, NoLock);
+	heap_close(relation, AccessShareLock);
 
 	CACHE3_elog(DEBUG2, "CatalogCacheInitializeCache: %s, %d keys",
 				cache->cc_relname, cache->cc_nkeys);
@@ -1025,8 +1014,8 @@ InitCatCachePhase2(CatCache *cache, bool touch_index)
 	{
 		Relation	idesc;
 
-		idesc = index_open(cache->cc_indexoid);
-		index_close(idesc);
+		idesc = index_open(cache->cc_indexoid, AccessShareLock);
+		index_close(idesc, AccessShareLock);
 	}
 }
 
@@ -1258,13 +1247,11 @@ SearchCatCache(CatCache *cache,
 			continue;
 
 		/*
-		 * we found a match in the cache: move it to the front of the global
-		 * LRU list.  We also move it to the front of the list for its
-		 * hashbucket, in order to speed subsequent searches.  (The most
-		 * frequently accessed elements in any hashbucket will tend to be near
-		 * the front of the hashbucket's list.)
+		 * We found a match in the cache.  Move it to the front of the list
+		 * for its hashbucket, in order to speed subsequent searches.  (The
+		 * most frequently accessed elements in any hashbucket will tend to be
+		 * near the front of the hashbucket's list.)
 		 */
-		DLMoveToFront(&ct->lrulist_elem);
 		DLMoveToFront(&ct->cache_elem);
 
 		/*
@@ -1526,14 +1513,12 @@ SearchCatCacheList(CatCache *cache,
 			continue;
 
 		/*
-		 * We found a matching list: mark it as touched since the last
-		 * CatalogCacheCleanup() sweep.  Also move the list to the front of
-		 * the cache's list-of-lists, to speed subsequent searches. (We do not
+		 * We found a matching list.  Move the list to the front of the
+		 * cache's list-of-lists, to speed subsequent searches.  (We do not
 		 * move the members to the fronts of their hashbucket lists, however,
 		 * since there's no point in that unless they are searched for
 		 * individually.)
 		 */
-		cl->touched = true;
 		DLMoveToFront(&cl->cache_elem);
 
 		/* Bump the list's refcount and return it */
@@ -1616,10 +1601,7 @@ SearchCatCacheList(CatCache *cache,
 				if (ct->c_list)
 					continue;
 
-				/* Found a match, so move it to front */
-				DLMoveToFront(&ct->lrulist_elem);
-
-				break;
+				break;			/* A-OK */
 			}
 
 			if (elt == NULL)
@@ -1689,7 +1671,6 @@ SearchCatCacheList(CatCache *cache,
 	cl->refcount = 0;			/* for the moment */
 	cl->dead = false;
 	cl->ordered = ordered;
-	cl->touched = false;		/* we already moved members to front */
 	cl->nkeys = nkeys;
 	cl->hash_value = lHashValue;
 	cl->n_members = nmembers;
@@ -1766,11 +1747,10 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp,
 
 	/*
 	 * Finish initializing the CatCTup header, and add it to the cache's
-	 * linked lists and counts.
+	 * linked list and counts.
 	 */
 	ct->ct_magic = CT_MAGIC;
 	ct->my_cache = cache;
-	DLInitElem(&ct->lrulist_elem, (void *) ct);
 	DLInitElem(&ct->cache_elem, (void *) ct);
 	ct->c_list = NULL;
 	ct->refcount = 0;			/* for the moment */
@@ -1778,95 +1758,12 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp,
 	ct->negative = negative;
 	ct->hash_value = hashValue;
 
-	DLAddHead(&CacheHdr->ch_lrulist, &ct->lrulist_elem);
 	DLAddHead(&cache->cc_bucket[hashIndex], &ct->cache_elem);
 
 	cache->cc_ntup++;
 	CacheHdr->ch_ntup++;
 
-	/*
-	 * If we've exceeded the desired size of the caches, try to throw away the
-	 * least recently used entry(s).  NB: be careful not to throw away the
-	 * newly-built entry...
-	 */
-	if (CacheHdr->ch_ntup > CacheHdr->ch_maxtup)
-		CatalogCacheCleanup(ct);
-
 	return ct;
-}
-
-/*
- * CatalogCacheCleanup
- *		Try to reduce the size of the catcaches when they get too big
- *
- * savect can be NULL, or a specific CatCTup not to remove even if it
- * has zero refcount.
- */
-static void
-CatalogCacheCleanup(CatCTup *savect)
-{
-	int			tup_target;
-	CatCache   *ccp;
-	Dlelem	   *elt,
-			   *prevelt;
-
-	/*
-	 * Each time we have to do this, try to cut the cache size down to about
-	 * 90% of the maximum.
-	 */
-	tup_target = (CacheHdr->ch_maxtup * 9) / 10;
-
-	/*
-	 * Our strategy for managing CatCLists is that, each time we have to throw
-	 * away some cache entries, we first move-to-front all the members of
-	 * CatCLists that have been touched since the last cleanup sweep. Then we
-	 * do strict LRU elimination by individual tuples, zapping a list if any
-	 * of its members gets zapped.	Before PostgreSQL 8.1, we moved members to
-	 * front each time their owning list was touched, which was arguably more
-	 * fair in balancing list members against standalone tuples --- but the
-	 * overhead for large lists was horrendous.  This scheme is more heavily
-	 * biased towards preserving lists, but that is not necessarily bad
-	 * either.
-	 */
-	for (ccp = CacheHdr->ch_caches; ccp; ccp = ccp->cc_next)
-	{
-		for (elt = DLGetHead(&ccp->cc_lists); elt; elt = DLGetSucc(elt))
-		{
-			CatCList   *cl = (CatCList *) DLE_VAL(elt);
-
-			Assert(cl->cl_magic == CL_MAGIC);
-			if (cl->touched && !cl->dead)
-			{
-				int			i;
-
-				for (i = 0; i < cl->n_members; i++)
-					DLMoveToFront(&cl->members[i]->lrulist_elem);
-			}
-			cl->touched = false;
-		}
-	}
-
-	/* Now get rid of unreferenced tuples in reverse global LRU order */
-	for (elt = DLGetTail(&CacheHdr->ch_lrulist); elt; elt = prevelt)
-	{
-		CatCTup    *ct = (CatCTup *) DLE_VAL(elt);
-
-		prevelt = DLGetPred(elt);
-
-		if (ct->refcount == 0 &&
-			(ct->c_list == NULL || ct->c_list->refcount == 0) &&
-			ct != savect)
-		{
-#ifdef CATCACHE_STATS
-			ct->my_cache->cc_discards++;
-#endif
-			CatCacheRemoveCTup(ct->my_cache, ct);
-
-			/* Quit when we've removed enough tuples */
-			if (CacheHdr->ch_ntup <= tup_target)
-				break;
-		}
-	}
 }
 
 /*

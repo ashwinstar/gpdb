@@ -4,20 +4,20 @@
  *	  Utility and convenience functions for fmgr functions that return
  *	  sets and/or composite types.
  *
- * Copyright (c) 2002-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2006, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/fmgr/funcapi.c,v 1.26.2.1 2006/01/17 17:33:21 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/fmgr/funcapi.c,v 1.31 2006/07/11 16:35:33 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/heapam.h"
-#include "funcapi.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "funcapi.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
 #include "utils/array.h"
@@ -185,8 +185,7 @@ shutdown_MultiFuncCall(Datum arg)
  *		receives the actual datatype OID (this is mainly useful for scalar
  *		result types).	If resultTupleDesc isn't NULL, *resultTupleDesc
  *		receives a pointer to a TupleDesc when the result is of a composite
- *		type, or NULL when it's a scalar result.  NB: the tupledesc should
- *		be copied if it is to be accessed over a long period.
+ *		type, or NULL when it's a scalar result.
  *
  * One hard case that this handles is resolution of actual rowtypes for
  * functions returning RECORD (from either the function's OUT parameter
@@ -246,7 +245,7 @@ get_expr_result_type(Node *expr,
 			*resultTupleDesc = NULL;
 		result = get_type_func_class(typid);
 		if (result == TYPEFUNC_COMPOSITE && resultTupleDesc)
-			*resultTupleDesc = CreateTupleDescCopy(lookup_rowtype_tupdesc(typid, -1));
+			*resultTupleDesc = lookup_rowtype_tupdesc_copy(typid, -1);
 	}
 
 	return result;
@@ -363,7 +362,7 @@ internal_get_result_type(Oid funcid,
 	{
 		case TYPEFUNC_COMPOSITE:
 			if (resultTupleDesc)
-				*resultTupleDesc = CreateTupleDescCopy(lookup_rowtype_tupdesc(rettype, -1));
+				*resultTupleDesc = lookup_rowtype_tupdesc_copy(rettype, -1);
 			/* Named composite types can't have any polymorphic columns */
 			break;
 		case TYPEFUNC_SCALAR:
@@ -629,6 +628,109 @@ get_type_func_class(Oid typid)
 
 
 /*
+ * get_func_arg_info
+ *
+ * Fetch info about the argument types, names, and IN/OUT modes from the
+ * pg_proc tuple.  Return value is the total number of arguments.
+ * Other results are palloc'd.  *p_argtypes is always filled in, but
+ * *p_argnames and *p_argmodes will be set NULL in the default cases
+ * (no names, and all IN arguments, respectively).
+ *
+ * Note that this function simply fetches what is in the pg_proc tuple;
+ * it doesn't do any interpretation of polymorphic types.
+ */
+int
+get_func_arg_info(HeapTuple procTup,
+				  Oid **p_argtypes, char ***p_argnames, char **p_argmodes)
+{
+	Form_pg_proc procStruct = (Form_pg_proc) GETSTRUCT(procTup);
+	Datum		proallargtypes;
+	Datum		proargmodes;
+	Datum		proargnames;
+	bool		isNull;
+	ArrayType  *arr;
+	int			numargs;
+	Datum	   *elems;
+	int			nelems;
+	int			i;
+
+	/* First discover the total number of parameters and get their types */
+	proallargtypes = SysCacheGetAttr(PROCOID, procTup,
+									 Anum_pg_proc_proallargtypes,
+									 &isNull);
+	if (!isNull)
+	{
+		/*
+		 * We expect the arrays to be 1-D arrays of the right types; verify
+		 * that.  For the OID and char arrays, we don't need to use
+		 * deconstruct_array() since the array data is just going to look like
+		 * a C array of values.
+		 */
+		arr = DatumGetArrayTypeP(proallargtypes);		/* ensure not toasted */
+		numargs = ARR_DIMS(arr)[0];
+		if (ARR_NDIM(arr) != 1 ||
+			numargs < 0 ||
+			ARR_HASNULL(arr) ||
+			ARR_ELEMTYPE(arr) != OIDOID)
+			elog(ERROR, "proallargtypes is not a 1-D Oid array");
+		Assert(numargs >= procStruct->pronargs);
+		*p_argtypes = (Oid *) palloc(numargs * sizeof(Oid));
+		memcpy(*p_argtypes, ARR_DATA_PTR(arr),
+			   numargs * sizeof(Oid));
+	}
+	else
+	{
+		/* If no proallargtypes, use proargtypes */
+		numargs = procStruct->proargtypes.dim1;
+		Assert(numargs == procStruct->pronargs);
+		*p_argtypes = (Oid *) palloc(numargs * sizeof(Oid));
+		memcpy(*p_argtypes, procStruct->proargtypes.values,
+			   numargs * sizeof(Oid));
+	}
+
+	/* Get argument names, if available */
+	proargnames = SysCacheGetAttr(PROCOID, procTup,
+								  Anum_pg_proc_proargnames,
+								  &isNull);
+	if (isNull)
+		*p_argnames = NULL;
+	else
+	{
+		deconstruct_array(DatumGetArrayTypeP(proargnames),
+						  TEXTOID, -1, false, 'i',
+						  &elems, NULL, &nelems);
+		if (nelems != numargs)	/* should not happen */
+			elog(ERROR, "proargnames must have the same number of elements as the function has arguments");
+		*p_argnames = (char **) palloc(sizeof(char *) * numargs);
+		for (i = 0; i < numargs; i++)
+			(*p_argnames)[i] = DatumGetCString(DirectFunctionCall1(textout,
+																   elems[i]));
+	}
+
+	/* Get argument modes, if available */
+	proargmodes = SysCacheGetAttr(PROCOID, procTup,
+								  Anum_pg_proc_proargmodes,
+								  &isNull);
+	if (isNull)
+		*p_argmodes = NULL;
+	else
+	{
+		arr = DatumGetArrayTypeP(proargmodes);	/* ensure not toasted */
+		if (ARR_NDIM(arr) != 1 ||
+			ARR_DIMS(arr)[0] != numargs ||
+			ARR_HASNULL(arr) ||
+			ARR_ELEMTYPE(arr) != CHAROID)
+			elog(ERROR, "proargmodes is not a 1-D char array");
+		*p_argmodes = (char *) palloc(numargs * sizeof(char));
+		memcpy(*p_argmodes, ARR_DATA_PTR(arr),
+			   numargs * sizeof(char));
+	}
+
+	return numargs;
+}
+
+
+/*
  * get_func_result_name
  *
  * If the function has exactly one output parameter, and that parameter
@@ -686,16 +788,18 @@ get_func_result_name(Oid functionId)
 		numargs = ARR_DIMS(arr)[0];
 		if (ARR_NDIM(arr) != 1 ||
 			numargs < 0 ||
+			ARR_HASNULL(arr) ||
 			ARR_ELEMTYPE(arr) != CHAROID)
 			elog(ERROR, "proargmodes is not a 1-D char array");
 		argmodes = (char *) ARR_DATA_PTR(arr);
 		arr = DatumGetArrayTypeP(proargnames);	/* ensure not toasted */
 		if (ARR_NDIM(arr) != 1 ||
 			ARR_DIMS(arr)[0] != numargs ||
+			ARR_HASNULL(arr) ||
 			ARR_ELEMTYPE(arr) != TEXTOID)
 			elog(ERROR, "proargnames is not a 1-D text array");
 		deconstruct_array(arr, TEXTOID, -1, false, 'i',
-						  &argnames, &nargnames);
+						  &argnames, NULL, &nargnames);
 		Assert(nargnames == numargs);
 
 		/* scan for output argument(s) */
@@ -818,12 +922,14 @@ build_function_result_tupdesc_d(Datum proallargtypes,
 	numargs = ARR_DIMS(arr)[0];
 	if (ARR_NDIM(arr) != 1 ||
 		numargs < 0 ||
+		ARR_HASNULL(arr) ||
 		ARR_ELEMTYPE(arr) != OIDOID)
 		elog(ERROR, "proallargtypes is not a 1-D Oid array");
 	argtypes = (Oid *) ARR_DATA_PTR(arr);
 	arr = DatumGetArrayTypeP(proargmodes);		/* ensure not toasted */
 	if (ARR_NDIM(arr) != 1 ||
 		ARR_DIMS(arr)[0] != numargs ||
+		ARR_HASNULL(arr) ||
 		ARR_ELEMTYPE(arr) != CHAROID)
 		elog(ERROR, "proargmodes is not a 1-D char array");
 	argmodes = (char *) ARR_DATA_PTR(arr);
@@ -832,10 +938,11 @@ build_function_result_tupdesc_d(Datum proallargtypes,
 		arr = DatumGetArrayTypeP(proargnames);	/* ensure not toasted */
 		if (ARR_NDIM(arr) != 1 ||
 			ARR_DIMS(arr)[0] != numargs ||
+			ARR_HASNULL(arr) ||
 			ARR_ELEMTYPE(arr) != TEXTOID)
 			elog(ERROR, "proargnames is not a 1-D text array");
 		deconstruct_array(arr, TEXTOID, -1, false, 'i',
-						  &argnames, &nargnames);
+						  &argnames, NULL, &nargnames);
 		Assert(nargnames == numargs);
 	}
 
@@ -945,7 +1052,7 @@ TypeGetTupleDesc(Oid typeoid, List *colaliases)
 	if (functypclass == TYPEFUNC_COMPOSITE)
 	{
 		/* Composite data type, e.g. a table's row type */
-		tupdesc = CreateTupleDescCopy(lookup_rowtype_tupdesc(typeoid, -1));
+		tupdesc = lookup_rowtype_tupdesc_copy(typeoid, -1);
 
 		if (colaliases != NIL)
 		{

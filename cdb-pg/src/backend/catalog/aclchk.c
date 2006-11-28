@@ -3,12 +3,12 @@
  * aclchk.c
  *	  Routines to check access control permissions.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/aclchk.c,v 1.120.2.1 2005/11/22 18:23:06 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/aclchk.c,v 1.133 2006/11/16 14:41:49 petere Exp $
  *
  * NOTES
  *	  See acl.h.
@@ -17,12 +17,12 @@
  */
 #include "postgres.h"
 
+#include "access/genam.h"
 #include "access/heapam.h"
+#include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
-#include "catalog/namespace.h"
-#include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
@@ -33,6 +33,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
+#include "commands/dbcommands.h"
 #include "miscadmin.h"
 #include "parser/parse_func.h"
 #include "utils/acl.h"
@@ -43,15 +44,22 @@
 #include "cdb/cdbdisp.h"
 
 
-static void ExecuteGrantStmt_Relation(GrantStmt *stmt);
-static void ExecuteGrantStmt_Database(GrantStmt *stmt);
-static void ExecuteGrantStmt_Function(GrantStmt *stmt);
-static void ExecuteGrantStmt_Language(GrantStmt *stmt);
-static void ExecuteGrantStmt_Namespace(GrantStmt *stmt);
-static void ExecuteGrantStmt_Tablespace(GrantStmt *stmt);
+static void ExecGrant_Relation(InternalGrant *grantStmt);
+static void ExecGrant_Database(InternalGrant *grantStmt);
+static void ExecGrant_Function(InternalGrant *grantStmt);
+static void ExecGrant_Language(InternalGrant *grantStmt);
+static void ExecGrant_Namespace(InternalGrant *grantStmt);
+static void ExecGrant_Tablespace(InternalGrant *grantStmt);
 
+static List *objectNamesToOids(GrantObjectType objtype, List *objnames);
 static AclMode string_to_privilege(const char *privname);
 static const char *privilege_to_string(AclMode privilege);
+static AclMode restrict_and_check_grant(bool is_grant, AclMode avail_goptions,
+						 bool all_privs, AclMode privileges,
+						 Oid objectId, Oid grantorId,
+						 AclObjectKind objkind, char *objname);
+static AclMode pg_aclmask(AclObjectKind objkind, Oid table_oid, Oid roleid,
+		   AclMode mask, AclMaskHow how);
 
 
 #ifdef ACLDEBUG
@@ -98,15 +106,10 @@ merge_acl_with_grant(Acl *old_acl, bool is_grant,
 
 	foreach(j, grantees)
 	{
-		PrivGrantee *grantee = (PrivGrantee *) lfirst(j);
 		AclItem aclitem;
 		Acl		   *newer_acl;
 
-		if (grantee->rolname)
-			aclitem.	ai_grantee = get_roleid_checked(grantee->rolname);
-
-		else
-			aclitem.	ai_grantee = ACL_ID_PUBLIC;
+		aclitem.	ai_grantee = lfirst_oid(j);
 
 		/*
 		 * Grant options can only be granted to individual roles, not PUBLIC.
@@ -146,6 +149,93 @@ merge_acl_with_grant(Acl *old_acl, bool is_grant,
 	return new_acl;
 }
 
+/*
+ * Restrict the privileges to what we can actually grant, and emit
+ * the standards-mandated warning and error messages.
+ */
+static AclMode
+restrict_and_check_grant(bool is_grant, AclMode avail_goptions, bool all_privs,
+						 AclMode privileges, Oid objectId, Oid grantorId,
+						 AclObjectKind objkind, char *objname)
+{
+	AclMode		this_privileges;
+	AclMode		whole_mask;
+
+	switch (objkind)
+	{
+		case ACL_KIND_CLASS:
+			whole_mask = ACL_ALL_RIGHTS_RELATION;
+			break;
+		case ACL_KIND_SEQUENCE:
+			whole_mask = ACL_ALL_RIGHTS_SEQUENCE;
+			break;
+		case ACL_KIND_DATABASE:
+			whole_mask = ACL_ALL_RIGHTS_DATABASE;
+			break;
+		case ACL_KIND_PROC:
+			whole_mask = ACL_ALL_RIGHTS_FUNCTION;
+			break;
+		case ACL_KIND_LANGUAGE:
+			whole_mask = ACL_ALL_RIGHTS_LANGUAGE;
+			break;
+		case ACL_KIND_NAMESPACE:
+			whole_mask = ACL_ALL_RIGHTS_NAMESPACE;
+			break;
+		case ACL_KIND_TABLESPACE:
+			whole_mask = ACL_ALL_RIGHTS_TABLESPACE;
+			break;
+		default:
+			elog(ERROR, "unrecognized object kind: %d", objkind);
+			/* not reached, but keep compiler quiet */
+			return ACL_NO_RIGHTS;
+	}
+
+	/*
+	 * If we found no grant options, consider whether to issue a hard error.
+	 * Per spec, having any privilege at all on the object will get you by
+	 * here.
+	 */
+	if (avail_goptions == ACL_NO_RIGHTS)
+	{
+		if (pg_aclmask(objkind, objectId, grantorId,
+					   whole_mask | ACL_GRANT_OPTION_FOR(whole_mask),
+					   ACLMASK_ANY) == ACL_NO_RIGHTS)
+			aclcheck_error(ACLCHECK_NO_PRIV, objkind, objname);
+	}
+
+	/*
+	 * Restrict the operation to what we can actually grant or revoke, and
+	 * issue a warning if appropriate.	(For REVOKE this isn't quite what the
+	 * spec says to do: the spec seems to want a warning only if no privilege
+	 * bits actually change in the ACL. In practice that behavior seems much
+	 * too noisy, as well as inconsistent with the GRANT case.)
+	 */
+	this_privileges = privileges & ACL_OPTION_TO_PRIVS(avail_goptions);
+	if (is_grant)
+	{
+		if (this_privileges == 0)
+			ereport(WARNING,
+					(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
+				  errmsg("no privileges were granted for \"%s\"", objname)));
+		else if (!all_privs && this_privileges != privileges)
+			ereport(WARNING,
+					(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
+			 errmsg("not all privileges were granted for \"%s\"", objname)));
+	}
+	else
+	{
+		if (this_privileges == 0)
+			ereport(WARNING,
+					(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
+			  errmsg("no privileges could be revoked for \"%s\"", objname)));
+		else if (!all_privs && this_privileges != privileges)
+			ereport(WARNING,
+					(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
+					 errmsg("not all privileges could be revoked for \"%s\"", objname)));
+	}
+
+	return this_privileges;
+}
 
 /*
  * Called to execute the utility commands GRANT and REVOKE
@@ -153,76 +243,311 @@ merge_acl_with_grant(Acl *old_acl, bool is_grant,
 void
 ExecuteGrantStmt(GrantStmt *stmt)
 {
+	InternalGrant istmt;
+	ListCell   *cell;
+	char	   *errormsg;
+	AclMode		all_privileges;
+
+	/*
+	 * Turn the regular GrantStmt into the InternalGrant form.
+	 */
+	istmt.is_grant = stmt->is_grant;
+	istmt.objtype = stmt->objtype;
+	istmt.objects = objectNamesToOids(stmt->objtype, stmt->objects);
+	/* all_privs to be filled below */
+	/* privileges to be filled below */
+	istmt.grantees = NIL;
+	/* filled below */
+	istmt.grant_option = stmt->grant_option;
+	istmt.behavior = stmt->behavior;
+
+
+	/*
+	 * Convert the PrivGrantee list into an Oid list.  Note that at this point
+	 * we insert an ACL_ID_PUBLIC into the list if an empty role name is
+	 * detected (which is what the grammar uses if PUBLIC is found), so
+	 * downstream there shouldn't be any additional work needed to support
+	 * this case.
+	 */
+	foreach(cell, stmt->grantees)
+	{
+		PrivGrantee *grantee = (PrivGrantee *) lfirst(cell);
+
+		if (grantee->rolname == NULL)
+			istmt.grantees = lappend_oid(istmt.grantees, ACL_ID_PUBLIC);
+		else
+			istmt.grantees =
+				lappend_oid(istmt.grantees,
+							get_roleid_checked(grantee->rolname));
+	}
+
+	/*
+	 * Convert stmt->privileges, a textual list, into an AclMode bitmask.
+	 */
 	switch (stmt->objtype)
 	{
+			/*
+			 * Because this might be a sequence, we test both relation and
+			 * sequence bits, and later do a more limited test when we know
+			 * the object type.
+			 */
 		case ACL_OBJECT_RELATION:
-			ExecuteGrantStmt_Relation(stmt);
+			all_privileges = ACL_ALL_RIGHTS_RELATION | ACL_ALL_RIGHTS_SEQUENCE;
+			errormsg = _("invalid privilege type %s for relation");
+			break;
+		case ACL_OBJECT_SEQUENCE:
+			all_privileges = ACL_ALL_RIGHTS_SEQUENCE;
+			errormsg = _("invalid privilege type %s for sequence");
 			break;
 		case ACL_OBJECT_DATABASE:
-			ExecuteGrantStmt_Database(stmt);
+			all_privileges = ACL_ALL_RIGHTS_DATABASE;
+			errormsg = _("invalid privilege type %s for database");
 			break;
 		case ACL_OBJECT_FUNCTION:
-			ExecuteGrantStmt_Function(stmt);
+			all_privileges = ACL_ALL_RIGHTS_FUNCTION;
+			errormsg = _("invalid privilege type %s for function");
 			break;
 		case ACL_OBJECT_LANGUAGE:
-			ExecuteGrantStmt_Language(stmt);
+			all_privileges = ACL_ALL_RIGHTS_LANGUAGE;
+			errormsg = _("invalid privilege type %s for language");
 			break;
 		case ACL_OBJECT_NAMESPACE:
-			ExecuteGrantStmt_Namespace(stmt);
+			all_privileges = ACL_ALL_RIGHTS_NAMESPACE;
+			errormsg = _("invalid privilege type %s for schema");
 			break;
 		case ACL_OBJECT_TABLESPACE:
-			ExecuteGrantStmt_Tablespace(stmt);
+			all_privileges = ACL_ALL_RIGHTS_TABLESPACE;
+			errormsg = _("invalid privilege type %s for tablespace");
 			break;
 		default:
+			/* keep compiler quiet */
+			all_privileges = ACL_NO_RIGHTS;
+			errormsg = NULL;
 			elog(ERROR, "unrecognized GrantStmt.objtype: %d",
 				 (int) stmt->objtype);
 	}
-	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-			CdbDispatchUtilityStatement((Node *)stmt);
-	}
-}
-
-
-static void
-ExecuteGrantStmt_Relation(GrantStmt *stmt)
-{
-	AclMode		privileges;
-	bool		all_privs;
-	ListCell   *i;
 
 	if (stmt->privileges == NIL)
 	{
-		all_privs = true;
-		privileges = ACL_ALL_RIGHTS_RELATION;
+		istmt.all_privs = true;
+
+		/*
+		 * will be turned into ACL_ALL_RIGHTS_* by the internal routines
+		 * depending on the object type
+		 */
+		istmt.privileges = ACL_NO_RIGHTS;
 	}
 	else
 	{
-		all_privs = false;
-		privileges = ACL_NO_RIGHTS;
-		foreach(i, stmt->privileges)
+		istmt.all_privs = false;
+		istmt.privileges = ACL_NO_RIGHTS;
+
+		foreach(cell, stmt->privileges)
 		{
-			char	   *privname = strVal(lfirst(i));
+			char	   *privname = strVal(lfirst(cell));
 			AclMode		priv = string_to_privilege(privname);
 
-			if (priv & ~((AclMode) ACL_ALL_RIGHTS_RELATION))
+			if (priv & ~((AclMode) all_privileges))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_GRANT_OPERATION),
-						 errmsg("invalid privilege type %s for table",
+						 errmsg(errormsg,
 								privilege_to_string(priv))));
-			privileges |= priv;
+
+			istmt.privileges |= priv;
 		}
 	}
 
-	foreach(i, stmt->objects)
+	ExecGrantStmt_oids(&istmt);
+	
+		
+	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-		RangeVar   *relvar = (RangeVar *) lfirst(i);
-		Oid			relOid;
-		Relation	relation;
-		HeapTuple	tuple;
-		Form_pg_class pg_class_tuple;
+		CdbDispatchUtilityStatement((Node *)stmt);
+	}
+	
+}
+
+/*
+ * ExecGrantStmt_oids
+ *
+ * "Internal" entrypoint for granting and revoking privileges.
+ */
+void
+ExecGrantStmt_oids(InternalGrant *istmt)
+{
+	switch (istmt->objtype)
+	{
+		case ACL_OBJECT_RELATION:
+		case ACL_OBJECT_SEQUENCE:
+			ExecGrant_Relation(istmt);
+			break;
+		case ACL_OBJECT_DATABASE:
+			ExecGrant_Database(istmt);
+			break;
+		case ACL_OBJECT_FUNCTION:
+			ExecGrant_Function(istmt);
+			break;
+		case ACL_OBJECT_LANGUAGE:
+			ExecGrant_Language(istmt);
+			break;
+		case ACL_OBJECT_NAMESPACE:
+			ExecGrant_Namespace(istmt);
+			break;
+		case ACL_OBJECT_TABLESPACE:
+			ExecGrant_Tablespace(istmt);
+			break;
+		default:
+			elog(ERROR, "unrecognized GrantStmt.objtype: %d",
+				 (int) istmt->objtype);
+	}
+}
+
+/*
+ * objectNamesToOids
+ *
+ * Turn a list of object names of a given type into an Oid list.
+ */
+static List *
+objectNamesToOids(GrantObjectType objtype, List *objnames)
+{
+	List	   *objects = NIL;
+	ListCell   *cell;
+
+	Assert(objnames != NIL);
+
+	switch (objtype)
+	{
+		case ACL_OBJECT_RELATION:
+		case ACL_OBJECT_SEQUENCE:
+			foreach(cell, objnames)
+			{
+				RangeVar   *relvar = (RangeVar *) lfirst(cell);
+				Oid			relOid;
+
+				relOid = RangeVarGetRelid(relvar, false);
+				objects = lappend_oid(objects, relOid);
+			}
+			break;
+		case ACL_OBJECT_DATABASE:
+			foreach(cell, objnames)
+			{
+				char	   *dbname = strVal(lfirst(cell));
+				Oid			dbid;
+
+				dbid = get_database_oid(dbname);
+				if (!OidIsValid(dbid))
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_DATABASE),
+							 errmsg("database \"%s\" does not exist",
+									dbname)));
+				objects = lappend_oid(objects, dbid);
+			}
+			break;
+		case ACL_OBJECT_FUNCTION:
+			foreach(cell, objnames)
+			{
+				FuncWithArgs *func = (FuncWithArgs *) lfirst(cell);
+				Oid			funcid;
+
+				funcid = LookupFuncNameTypeNames(func->funcname,
+												 func->funcargs, false);
+				objects = lappend_oid(objects, funcid);
+			}
+			break;
+		case ACL_OBJECT_LANGUAGE:
+			foreach(cell, objnames)
+			{
+				char	   *langname = strVal(lfirst(cell));
+				HeapTuple	tuple;
+
+				tuple = SearchSysCache(LANGNAME,
+									   PointerGetDatum(langname),
+									   0, 0, 0);
+				if (!HeapTupleIsValid(tuple))
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_OBJECT),
+							 errmsg("language \"%s\" does not exist",
+									langname)));
+
+				objects = lappend_oid(objects, HeapTupleGetOid(tuple));
+
+				ReleaseSysCache(tuple);
+			}
+			break;
+		case ACL_OBJECT_NAMESPACE:
+			foreach(cell, objnames)
+			{
+				char	   *nspname = strVal(lfirst(cell));
+				HeapTuple	tuple;
+
+				tuple = SearchSysCache(NAMESPACENAME,
+									   CStringGetDatum(nspname),
+									   0, 0, 0);
+				if (!HeapTupleIsValid(tuple))
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_SCHEMA),
+							 errmsg("schema \"%s\" does not exist",
+									nspname)));
+
+				objects = lappend_oid(objects, HeapTupleGetOid(tuple));
+
+				ReleaseSysCache(tuple);
+			}
+			break;
+		case ACL_OBJECT_TABLESPACE:
+			foreach(cell, objnames)
+			{
+				char	   *spcname = strVal(lfirst(cell));
+				ScanKeyData entry[1];
+				HeapScanDesc scan;
+				HeapTuple	tuple;
+				Relation	relation;
+
+				relation = heap_open(TableSpaceRelationId, AccessShareLock);
+
+				ScanKeyInit(&entry[0],
+							Anum_pg_tablespace_spcname,
+							BTEqualStrategyNumber, F_NAMEEQ,
+							CStringGetDatum(spcname));
+
+				scan = heap_beginscan(relation, SnapshotNow, 1, entry);
+				tuple = heap_getnext(scan, ForwardScanDirection);
+				if (!HeapTupleIsValid(tuple))
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_OBJECT),
+					   errmsg("tablespace \"%s\" does not exist", spcname)));
+
+				objects = lappend_oid(objects, HeapTupleGetOid(tuple));
+
+				heap_endscan(scan);
+
+				heap_close(relation, AccessShareLock);
+			}
+			break;
+		default:
+			elog(ERROR, "unrecognized GrantStmt.objtype: %d",
+				 (int) objtype);
+	}
+
+	return objects;
+}
+
+/*
+ *	This processes both sequences and non-sequences.
+ */
+static void
+ExecGrant_Relation(InternalGrant *istmt)
+{
+	Relation	relation;
+	ListCell   *cell;
+
+	relation = heap_open(RelationRelationId, RowExclusiveLock);
+
+	foreach(cell, istmt->objects)
+	{
+		Oid			relOid = lfirst_oid(cell);
 		Datum		aclDatum;
+		Form_pg_class pg_class_tuple;
 		bool		isNull;
 		AclMode		avail_goptions;
 		AclMode		this_privileges;
@@ -230,6 +555,7 @@ ExecuteGrantStmt_Relation(GrantStmt *stmt)
 		Acl		   *new_acl;
 		Oid			grantorId;
 		Oid			ownerId;
+		HeapTuple	tuple;
 		HeapTuple	newtuple;
 		Datum		values[Natts_pg_class];
 		char		nulls[Natts_pg_class];
@@ -239,9 +565,6 @@ ExecuteGrantStmt_Relation(GrantStmt *stmt)
 		Oid		   *oldmembers;
 		Oid		   *newmembers;
 
-		/* open pg_class */
-		relation = heap_open(RelationRelationId, RowExclusiveLock);
-		relOid = RangeVarGetRelid(relvar, false);
 		tuple = SearchSysCache(RELOID,
 							   ObjectIdGetDatum(relOid),
 							   0, 0, 0);
@@ -254,14 +577,78 @@ ExecuteGrantStmt_Relation(GrantStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("\"%s\" is an index",
-							relvar->relname)));
+							NameStr(pg_class_tuple->relname))));
 
 		/* Composite types aren't tables either */
 		if (pg_class_tuple->relkind == RELKIND_COMPOSITE_TYPE)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("\"%s\" is a composite type",
-							relvar->relname)));
+							NameStr(pg_class_tuple->relname))));
+
+		/* Used GRANT SEQUENCE on a non-sequence? */
+		if (istmt->objtype == ACL_OBJECT_SEQUENCE &&
+			pg_class_tuple->relkind != RELKIND_SEQUENCE)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("\"%s\" is not a sequence",
+							NameStr(pg_class_tuple->relname))));
+
+		/* Adjust the default permissions based on whether it is a sequence */
+		if (istmt->all_privs && istmt->privileges == ACL_NO_RIGHTS)
+		{
+			if (pg_class_tuple->relkind == RELKIND_SEQUENCE)
+				this_privileges = ACL_ALL_RIGHTS_SEQUENCE;
+			else
+				this_privileges = ACL_ALL_RIGHTS_RELATION;
+		}
+		else
+			this_privileges = istmt->privileges;
+
+		/*
+		 * The GRANT TABLE syntax can be used for sequences and non-sequences,
+		 * so we have to look at the relkind to determine the supported
+		 * permissions.  The OR of table and sequence permissions were already
+		 * checked.
+		 */
+		if (istmt->objtype == ACL_OBJECT_RELATION)
+		{
+			if (pg_class_tuple->relkind == RELKIND_SEQUENCE)
+			{
+				/*
+				 * For backward compatibility, throw just a warning for
+				 * invalid sequence permissions when using the non-sequence
+				 * GRANT syntax is used.
+				 */
+				if (this_privileges & ~((AclMode) ACL_ALL_RIGHTS_SEQUENCE))
+				{
+					/*
+					 * Mention the object name because the user needs to know
+					 * which operations succeeded.	This is required because
+					 * WARNING allows the command to continue.
+					 */
+					ereport(WARNING,
+							(errcode(ERRCODE_INVALID_GRANT_OPERATION),
+							 errmsg("sequence \"%s\" only supports USAGE, SELECT, and UPDATE",
+									NameStr(pg_class_tuple->relname))));
+					this_privileges &= (AclMode) ACL_ALL_RIGHTS_SEQUENCE;
+				}
+			}
+			else
+			{
+				if (this_privileges & ~((AclMode) ACL_ALL_RIGHTS_RELATION))
+
+					/*
+					 * USAGE is the only permission supported by sequences but
+					 * not by non-sequences.  Don't mention the object name
+					 * because we didn't in the combined TABLE | SEQUENCE
+					 * check.
+					 */
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_GRANT_OPERATION),
+						  errmsg("invalid privilege type USAGE for table")));
+			}
+		}
 
 		/*
 		 * Get owner ID and working copy of existing ACL. If there's no ACL,
@@ -271,64 +658,28 @@ ExecuteGrantStmt_Relation(GrantStmt *stmt)
 		aclDatum = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_relacl,
 								   &isNull);
 		if (isNull)
-			old_acl = acldefault(ACL_OBJECT_RELATION, ownerId);
+			old_acl = acldefault(pg_class_tuple->relkind == RELKIND_SEQUENCE ?
+								 ACL_OBJECT_SEQUENCE : ACL_OBJECT_RELATION,
+								 ownerId);
 		else
 			old_acl = DatumGetAclPCopy(aclDatum);
 
 		/* Determine ID to do the grant as, and available grant options */
-		select_best_grantor(GetUserId(), privileges,
+		select_best_grantor(GetUserId(), this_privileges,
 							old_acl, ownerId,
 							&grantorId, &avail_goptions);
 
 		/*
-		 * If we found no grant options, consider whether to issue a hard
-		 * error.  Per spec, having any privilege at all on the object will
-		 * get you by here.
+		 * Restrict the privileges to what we can actually grant, and emit the
+		 * standards-mandated warning and error messages.
 		 */
-		if (avail_goptions == ACL_NO_RIGHTS)
-		{
-			if (pg_class_aclmask(relOid,
-								 grantorId,
-								 ACL_ALL_RIGHTS_RELATION | ACL_GRANT_OPTION_FOR(ACL_ALL_RIGHTS_RELATION),
-								 ACLMASK_ANY) == ACL_NO_RIGHTS)
-				aclcheck_error(ACLCHECK_NO_PRIV, ACL_KIND_CLASS,
-							   relvar->relname);
-		}
-
-		/*
-		 * Restrict the operation to what we can actually grant or revoke, and
-		 * issue a warning if appropriate.	(For REVOKE this isn't quite what
-		 * the spec says to do: the spec seems to want a warning only if no
-		 * privilege bits actually change in the ACL. In practice that
-		 * behavior seems much too noisy, as well as inconsistent with the
-		 * GRANT case.)
-		 */
-		this_privileges = privileges & ACL_OPTION_TO_PRIVS(avail_goptions);
-		if (Mpp_role != MPP_ROLE_EXECUTE)
-		{
-			if (stmt->is_grant)
-			{
-				if (this_privileges == 0)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-							 errmsg("no privileges were granted")));
-				else if (!all_privs && this_privileges != privileges)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-							 errmsg("not all privileges were granted")));
-			}
-			else
-			{
-				if (this_privileges == 0)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-							 errmsg("no privileges could be revoked")));
-				else if (!all_privs && this_privileges != privileges)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-							 errmsg("not all privileges could be revoked")));
-			}
-		}
+		this_privileges =
+			restrict_and_check_grant(istmt->is_grant, avail_goptions,
+									 istmt->all_privs, this_privileges,
+									 relOid, grantorId,
+								  pg_class_tuple->relkind == RELKIND_SEQUENCE
+									 ? ACL_KIND_SEQUENCE : ACL_KIND_CLASS,
+									 NameStr(pg_class_tuple->relname));
 
 		/*
 		 * Generate new ACL.
@@ -338,9 +689,9 @@ ExecuteGrantStmt_Relation(GrantStmt *stmt)
 		 */
 		noldmembers = aclmembers(old_acl, &oldmembers);
 
-		new_acl = merge_acl_with_grant(old_acl, stmt->is_grant,
-									   stmt->grant_option, stmt->behavior,
-									   stmt->grantees, this_privileges,
+		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
+									   istmt->grant_option, istmt->behavior,
+									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
 		nnewmembers = aclmembers(new_acl, &newmembers);
@@ -362,7 +713,7 @@ ExecuteGrantStmt_Relation(GrantStmt *stmt)
 
 		/* Update the shared dependency ACL info */
 		updateAclDependencies(RelationRelationId, relOid,
-							  ownerId, stmt->is_grant,
+							  ownerId, istmt->is_grant,
 							  noldmembers, oldmembers,
 							  nnewmembers, newmembers);
 
@@ -370,50 +721,27 @@ ExecuteGrantStmt_Relation(GrantStmt *stmt)
 
 		pfree(new_acl);
 
-		heap_close(relation, RowExclusiveLock);
-
 		/* prevent error when processing duplicate objects */
 		CommandCounterIncrement();
 	}
+
+	heap_close(relation, RowExclusiveLock);
 }
 
 static void
-ExecuteGrantStmt_Database(GrantStmt *stmt)
+ExecGrant_Database(InternalGrant *istmt)
 {
-	AclMode		privileges;
-	bool		all_privs;
-	ListCell   *i;
+	Relation	relation;
+	ListCell   *cell;
 
-	if (stmt->privileges == NIL)
-	{
-		all_privs = true;
-		privileges = ACL_ALL_RIGHTS_DATABASE;
-	}
-	else
-	{
-		all_privs = false;
-		privileges = ACL_NO_RIGHTS;
-		foreach(i, stmt->privileges)
-		{
-			char	   *privname = strVal(lfirst(i));
-			AclMode		priv = string_to_privilege(privname);
+	if (istmt->all_privs && istmt->privileges == ACL_NO_RIGHTS)
+		istmt->privileges = ACL_ALL_RIGHTS_DATABASE;
 
-			if (priv & ~((AclMode) ACL_ALL_RIGHTS_DATABASE))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_GRANT_OPERATION),
-						 errmsg("invalid privilege type %s for database",
-								privilege_to_string(priv))));
-			privileges |= priv;
-		}
-	}
+	relation = heap_open(DatabaseRelationId, RowExclusiveLock);
 
-	foreach(i, stmt->objects)
+	foreach(cell, istmt->objects)
 	{
-		char	   *dbname = strVal(lfirst(i));
-		Relation	relation;
-		ScanKeyData entry[1];
-		HeapScanDesc scan;
-		HeapTuple	tuple;
+		Oid			datId = lfirst_oid(cell);
 		Form_pg_database pg_database_tuple;
 		Datum		aclDatum;
 		bool		isNull;
@@ -431,18 +759,14 @@ ExecuteGrantStmt_Database(GrantStmt *stmt)
 		int			nnewmembers;
 		Oid		   *oldmembers;
 		Oid		   *newmembers;
+		HeapTuple	tuple;
 
-		relation = heap_open(DatabaseRelationId, RowExclusiveLock);
-		ScanKeyInit(&entry[0],
-					Anum_pg_database_datname,
-					BTEqualStrategyNumber, F_NAMEEQ,
-					CStringGetDatum(dbname));
-		scan = heap_beginscan(relation, SnapshotNow, 1, entry);
-		tuple = heap_getnext(scan, ForwardScanDirection);
+		tuple = SearchSysCache(DATABASEOID,
+							   ObjectIdGetDatum(datId),
+							   0, 0, 0);
 		if (!HeapTupleIsValid(tuple))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_DATABASE),
-					 errmsg("database \"%s\" does not exist", dbname)));
+			elog(ERROR, "cache lookup failed for database %u", datId);
+
 		pg_database_tuple = (Form_pg_database) GETSTRUCT(tuple);
 
 		/*
@@ -458,59 +782,19 @@ ExecuteGrantStmt_Database(GrantStmt *stmt)
 			old_acl = DatumGetAclPCopy(aclDatum);
 
 		/* Determine ID to do the grant as, and available grant options */
-		select_best_grantor(GetUserId(), privileges,
+		select_best_grantor(GetUserId(), istmt->privileges,
 							old_acl, ownerId,
 							&grantorId, &avail_goptions);
 
 		/*
-		 * If we found no grant options, consider whether to issue a hard
-		 * error.  Per spec, having any privilege at all on the object will
-		 * get you by here.
+		 * Restrict the privileges to what we can actually grant, and emit the
+		 * standards-mandated warning and error messages.
 		 */
-		if (avail_goptions == ACL_NO_RIGHTS)
-		{
-			if (pg_database_aclmask(HeapTupleGetOid(tuple),
-									grantorId,
-									ACL_ALL_RIGHTS_DATABASE | ACL_GRANT_OPTION_FOR(ACL_ALL_RIGHTS_DATABASE),
-									ACLMASK_ANY) == ACL_NO_RIGHTS)
-				aclcheck_error(ACLCHECK_NO_PRIV, ACL_KIND_DATABASE,
-							   NameStr(pg_database_tuple->datname));
-		}
-
-		/*
-		 * Restrict the operation to what we can actually grant or revoke, and
-		 * issue a warning if appropriate.	(For REVOKE this isn't quite what
-		 * the spec says to do: the spec seems to want a warning only if no
-		 * privilege bits actually change in the ACL. In practice that
-		 * behavior seems much too noisy, as well as inconsistent with the
-		 * GRANT case.)
-		 */
-		this_privileges = privileges & ACL_OPTION_TO_PRIVS(avail_goptions);
-		if (Mpp_role != MPP_ROLE_EXECUTE)
-		{
-			if (stmt->is_grant)
-			{
-				if (this_privileges == 0)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-							 errmsg("no privileges were granted")));
-				else if (!all_privs && this_privileges != privileges)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-							 errmsg("not all privileges were granted")));
-			}
-			else
-			{
-				if (this_privileges == 0)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-							 errmsg("no privileges could be revoked")));
-				else if (!all_privs && this_privileges != privileges)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-							 errmsg("not all privileges could be revoked")));
-			}
-		}
+		this_privileges =
+			restrict_and_check_grant(istmt->is_grant, avail_goptions,
+									 istmt->all_privs, istmt->privileges,
+									 datId, grantorId, ACL_KIND_DATABASE,
+									 NameStr(pg_database_tuple->datname));
 
 		/*
 		 * Generate new ACL.
@@ -520,9 +804,9 @@ ExecuteGrantStmt_Database(GrantStmt *stmt)
 		 */
 		noldmembers = aclmembers(old_acl, &oldmembers);
 
-		new_acl = merge_acl_with_grant(old_acl, stmt->is_grant,
-									   stmt->grant_option, stmt->behavior,
-									   stmt->grantees, this_privileges,
+		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
+									   istmt->grant_option, istmt->behavior,
+									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
 		nnewmembers = aclmembers(new_acl, &newmembers);
@@ -535,7 +819,8 @@ ExecuteGrantStmt_Database(GrantStmt *stmt)
 		replaces[Anum_pg_database_datacl - 1] = 'r';
 		values[Anum_pg_database_datacl - 1] = PointerGetDatum(new_acl);
 
-		newtuple = heap_modifytuple(tuple, RelationGetDescr(relation), values, nulls, replaces);
+		newtuple = heap_modifytuple(tuple, RelationGetDescr(relation), values,
+									nulls, replaces);
 
 		simple_heap_update(relation, &newtuple->t_self, newtuple);
 
@@ -544,57 +829,35 @@ ExecuteGrantStmt_Database(GrantStmt *stmt)
 
 		/* Update the shared dependency ACL info */
 		updateAclDependencies(DatabaseRelationId, HeapTupleGetOid(tuple),
-							  ownerId, stmt->is_grant,
+							  ownerId, istmt->is_grant,
 							  noldmembers, oldmembers,
 							  nnewmembers, newmembers);
 
+		ReleaseSysCache(tuple);
+
 		pfree(new_acl);
-
-		heap_endscan(scan);
-
-		heap_close(relation, RowExclusiveLock);
 
 		/* prevent error when processing duplicate objects */
 		CommandCounterIncrement();
 	}
+
+	heap_close(relation, RowExclusiveLock);
 }
 
 static void
-ExecuteGrantStmt_Function(GrantStmt *stmt)
+ExecGrant_Function(InternalGrant *istmt)
 {
-	AclMode		privileges;
-	bool		all_privs;
-	ListCell   *i;
+	Relation	relation;
+	ListCell   *cell;
 
-	if (stmt->privileges == NIL)
-	{
-		all_privs = true;
-		privileges = ACL_ALL_RIGHTS_FUNCTION;
-	}
-	else
-	{
-		all_privs = false;
-		privileges = ACL_NO_RIGHTS;
-		foreach(i, stmt->privileges)
-		{
-			char	   *privname = strVal(lfirst(i));
-			AclMode		priv = string_to_privilege(privname);
+	if (istmt->all_privs && istmt->privileges == ACL_NO_RIGHTS)
+		istmt->privileges = ACL_ALL_RIGHTS_FUNCTION;
 
-			if (priv & ~((AclMode) ACL_ALL_RIGHTS_FUNCTION))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_GRANT_OPERATION),
-						 errmsg("invalid privilege type %s for function",
-								privilege_to_string(priv))));
-			privileges |= priv;
-		}
-	}
+	relation = heap_open(ProcedureRelationId, RowExclusiveLock);
 
-	foreach(i, stmt->objects)
+	foreach(cell, istmt->objects)
 	{
-		FuncWithArgs *func = (FuncWithArgs *) lfirst(i);
-		Oid			oid;
-		Relation	relation;
-		HeapTuple	tuple;
+		Oid			funcId = lfirst_oid(cell);
 		Form_pg_proc pg_proc_tuple;
 		Datum		aclDatum;
 		bool		isNull;
@@ -604,6 +867,7 @@ ExecuteGrantStmt_Function(GrantStmt *stmt)
 		Acl		   *new_acl;
 		Oid			grantorId;
 		Oid			ownerId;
+		HeapTuple	tuple;
 		HeapTuple	newtuple;
 		Datum		values[Natts_pg_proc];
 		char		nulls[Natts_pg_proc];
@@ -613,14 +877,12 @@ ExecuteGrantStmt_Function(GrantStmt *stmt)
 		Oid		   *oldmembers;
 		Oid		   *newmembers;
 
-		oid = LookupFuncNameTypeNames(func->funcname, func->funcargs, false);
-
-		relation = heap_open(ProcedureRelationId, RowExclusiveLock);
 		tuple = SearchSysCache(PROCOID,
-							   ObjectIdGetDatum(oid),
+							   ObjectIdGetDatum(funcId),
 							   0, 0, 0);
 		if (!HeapTupleIsValid(tuple))
-			elog(ERROR, "cache lookup failed for function %u", oid);
+			elog(ERROR, "cache lookup failed for function %u", funcId);
+
 		pg_proc_tuple = (Form_pg_proc) GETSTRUCT(tuple);
 
 		/*
@@ -636,59 +898,19 @@ ExecuteGrantStmt_Function(GrantStmt *stmt)
 			old_acl = DatumGetAclPCopy(aclDatum);
 
 		/* Determine ID to do the grant as, and available grant options */
-		select_best_grantor(GetUserId(), privileges,
+		select_best_grantor(GetUserId(), istmt->privileges,
 							old_acl, ownerId,
 							&grantorId, &avail_goptions);
 
 		/*
-		 * If we found no grant options, consider whether to issue a hard
-		 * error.  Per spec, having any privilege at all on the object will
-		 * get you by here.
+		 * Restrict the privileges to what we can actually grant, and emit the
+		 * standards-mandated warning and error messages.
 		 */
-		if (avail_goptions == ACL_NO_RIGHTS)
-		{
-			if (pg_proc_aclmask(oid,
-								grantorId,
-								ACL_ALL_RIGHTS_FUNCTION | ACL_GRANT_OPTION_FOR(ACL_ALL_RIGHTS_FUNCTION),
-								ACLMASK_ANY) == ACL_NO_RIGHTS)
-				aclcheck_error(ACLCHECK_NO_PRIV, ACL_KIND_PROC,
-							   NameStr(pg_proc_tuple->proname));
-		}
-
-		/*
-		 * Restrict the operation to what we can actually grant or revoke, and
-		 * issue a warning if appropriate.	(For REVOKE this isn't quite what
-		 * the spec says to do: the spec seems to want a warning only if no
-		 * privilege bits actually change in the ACL. In practice that
-		 * behavior seems much too noisy, as well as inconsistent with the
-		 * GRANT case.)
-		 */
-		this_privileges = privileges & ACL_OPTION_TO_PRIVS(avail_goptions);
-		if (Mpp_role != MPP_ROLE_EXECUTE)
-		{
-			if (stmt->is_grant)
-			{
-				if (this_privileges == 0)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-							 errmsg("no privileges were granted")));
-				else if (!all_privs && this_privileges != privileges)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-							 errmsg("not all privileges were granted")));
-			}
-			else
-			{
-				if (this_privileges == 0)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-							 errmsg("no privileges could be revoked")));
-				else if (!all_privs && this_privileges != privileges)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-							 errmsg("not all privileges could be revoked")));
-			}
-		}
+		this_privileges =
+			restrict_and_check_grant(istmt->is_grant, avail_goptions,
+									 istmt->all_privs, istmt->privileges,
+									 funcId, grantorId, ACL_KIND_PROC,
+									 NameStr(pg_proc_tuple->proname));
 
 		/*
 		 * Generate new ACL.
@@ -698,9 +920,9 @@ ExecuteGrantStmt_Function(GrantStmt *stmt)
 		 */
 		noldmembers = aclmembers(old_acl, &oldmembers);
 
-		new_acl = merge_acl_with_grant(old_acl, stmt->is_grant,
-									   stmt->grant_option, stmt->behavior,
-									   stmt->grantees, this_privileges,
+		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
+									   istmt->grant_option, istmt->behavior,
+									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
 		nnewmembers = aclmembers(new_acl, &newmembers);
@@ -713,7 +935,8 @@ ExecuteGrantStmt_Function(GrantStmt *stmt)
 		replaces[Anum_pg_proc_proacl - 1] = 'r';
 		values[Anum_pg_proc_proacl - 1] = PointerGetDatum(new_acl);
 
-		newtuple = heap_modifytuple(tuple, RelationGetDescr(relation), values, nulls, replaces);
+		newtuple = heap_modifytuple(tuple, RelationGetDescr(relation), values,
+									nulls, replaces);
 
 		simple_heap_update(relation, &newtuple->t_self, newtuple);
 
@@ -721,8 +944,8 @@ ExecuteGrantStmt_Function(GrantStmt *stmt)
 		CatalogUpdateIndexes(relation, newtuple);
 
 		/* Update the shared dependency ACL info */
-		updateAclDependencies(ProcedureRelationId, oid,
-							  ownerId, stmt->is_grant,
+		updateAclDependencies(ProcedureRelationId, funcId,
+							  ownerId, istmt->is_grant,
 							  noldmembers, oldmembers,
 							  nnewmembers, newmembers);
 
@@ -730,48 +953,27 @@ ExecuteGrantStmt_Function(GrantStmt *stmt)
 
 		pfree(new_acl);
 
-		heap_close(relation, RowExclusiveLock);
-
 		/* prevent error when processing duplicate objects */
 		CommandCounterIncrement();
 	}
+
+	heap_close(relation, RowExclusiveLock);
 }
 
 static void
-ExecuteGrantStmt_Language(GrantStmt *stmt)
+ExecGrant_Language(InternalGrant *istmt)
 {
-	AclMode		privileges;
-	bool		all_privs;
-	ListCell   *i;
+	Relation	relation;
+	ListCell   *cell;
 
-	if (stmt->privileges == NIL)
-	{
-		all_privs = true;
-		privileges = ACL_ALL_RIGHTS_LANGUAGE;
-	}
-	else
-	{
-		all_privs = false;
-		privileges = ACL_NO_RIGHTS;
-		foreach(i, stmt->privileges)
-		{
-			char	   *privname = strVal(lfirst(i));
-			AclMode		priv = string_to_privilege(privname);
+	if (istmt->all_privs && istmt->privileges == ACL_NO_RIGHTS)
+		istmt->privileges = ACL_ALL_RIGHTS_LANGUAGE;
 
-			if (priv & ~((AclMode) ACL_ALL_RIGHTS_LANGUAGE))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_GRANT_OPERATION),
-						 errmsg("invalid privilege type %s for language",
-								privilege_to_string(priv))));
-			privileges |= priv;
-		}
-	}
+	relation = heap_open(LanguageRelationId, RowExclusiveLock);
 
-	foreach(i, stmt->objects)
+	foreach(cell, istmt->objects)
 	{
-		char	   *langname = strVal(lfirst(i));
-		Relation	relation;
-		HeapTuple	tuple;
+		Oid			langId = lfirst_oid(cell);
 		Form_pg_language pg_language_tuple;
 		Datum		aclDatum;
 		bool		isNull;
@@ -781,6 +983,7 @@ ExecuteGrantStmt_Language(GrantStmt *stmt)
 		Acl		   *new_acl;
 		Oid			grantorId;
 		Oid			ownerId;
+		HeapTuple	tuple;
 		HeapTuple	newtuple;
 		Datum		values[Natts_pg_language];
 		char		nulls[Natts_pg_language];
@@ -790,20 +993,19 @@ ExecuteGrantStmt_Language(GrantStmt *stmt)
 		Oid		   *oldmembers;
 		Oid		   *newmembers;
 
-		relation = heap_open(LanguageRelationId, RowExclusiveLock);
-		tuple = SearchSysCache(LANGNAME,
-							   PointerGetDatum(langname),
+		tuple = SearchSysCache(LANGOID,
+							   ObjectIdGetDatum(langId),
 							   0, 0, 0);
 		if (!HeapTupleIsValid(tuple))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("language \"%s\" does not exist", langname)));
+			elog(ERROR, "cache lookup failed for language %u", langId);
+
 		pg_language_tuple = (Form_pg_language) GETSTRUCT(tuple);
 
 		if (!pg_language_tuple->lanpltrusted)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("language \"%s\" is not trusted", langname),
+					 errmsg("language \"%s\" is not trusted",
+							NameStr(pg_language_tuple->lanname)),
 				   errhint("Only superusers may use untrusted languages.")));
 
 		/*
@@ -822,59 +1024,19 @@ ExecuteGrantStmt_Language(GrantStmt *stmt)
 			old_acl = DatumGetAclPCopy(aclDatum);
 
 		/* Determine ID to do the grant as, and available grant options */
-		select_best_grantor(GetUserId(), privileges,
+		select_best_grantor(GetUserId(), istmt->privileges,
 							old_acl, ownerId,
 							&grantorId, &avail_goptions);
 
 		/*
-		 * If we found no grant options, consider whether to issue a hard
-		 * error.  Per spec, having any privilege at all on the object will
-		 * get you by here.
+		 * Restrict the privileges to what we can actually grant, and emit the
+		 * standards-mandated warning and error messages.
 		 */
-		if (avail_goptions == ACL_NO_RIGHTS)
-		{
-			if (pg_language_aclmask(HeapTupleGetOid(tuple),
-									grantorId,
-									ACL_ALL_RIGHTS_LANGUAGE | ACL_GRANT_OPTION_FOR(ACL_ALL_RIGHTS_LANGUAGE),
-									ACLMASK_ANY) == ACL_NO_RIGHTS)
-				aclcheck_error(ACLCHECK_NO_PRIV, ACL_KIND_LANGUAGE,
-							   NameStr(pg_language_tuple->lanname));
-		}
-
-		/*
-		 * Restrict the operation to what we can actually grant or revoke, and
-		 * issue a warning if appropriate.	(For REVOKE this isn't quite what
-		 * the spec says to do: the spec seems to want a warning only if no
-		 * privilege bits actually change in the ACL. In practice that
-		 * behavior seems much too noisy, as well as inconsistent with the
-		 * GRANT case.)
-		 */
-		this_privileges = privileges & ACL_OPTION_TO_PRIVS(avail_goptions);
-		if (Mpp_role != MPP_ROLE_EXECUTE)
-		{
-			if (stmt->is_grant)
-			{
-				if (this_privileges == 0)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-							 errmsg("no privileges were granted")));
-				else if (!all_privs && this_privileges != privileges)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-							 errmsg("not all privileges were granted")));
-			}
-			else
-			{
-				if (this_privileges == 0)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-							 errmsg("no privileges could be revoked")));
-				else if (!all_privs && this_privileges != privileges)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-							 errmsg("not all privileges could be revoked")));
-			}
-		}
+		this_privileges =
+			restrict_and_check_grant(istmt->is_grant, avail_goptions,
+									 istmt->all_privs, istmt->privileges,
+									 langId, grantorId, ACL_KIND_LANGUAGE,
+									 NameStr(pg_language_tuple->lanname));
 
 		/*
 		 * Generate new ACL.
@@ -884,9 +1046,9 @@ ExecuteGrantStmt_Language(GrantStmt *stmt)
 		 */
 		noldmembers = aclmembers(old_acl, &oldmembers);
 
-		new_acl = merge_acl_with_grant(old_acl, stmt->is_grant,
-									   stmt->grant_option, stmt->behavior,
-									   stmt->grantees, this_privileges,
+		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
+									   istmt->grant_option, istmt->behavior,
+									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
 		nnewmembers = aclmembers(new_acl, &newmembers);
@@ -899,7 +1061,8 @@ ExecuteGrantStmt_Language(GrantStmt *stmt)
 		replaces[Anum_pg_language_lanacl - 1] = 'r';
 		values[Anum_pg_language_lanacl - 1] = PointerGetDatum(new_acl);
 
-		newtuple = heap_modifytuple(tuple, RelationGetDescr(relation), values, nulls, replaces);
+		newtuple = heap_modifytuple(tuple, RelationGetDescr(relation), values,
+									nulls, replaces);
 
 		simple_heap_update(relation, &newtuple->t_self, newtuple);
 
@@ -908,7 +1071,7 @@ ExecuteGrantStmt_Language(GrantStmt *stmt)
 
 		/* Update the shared dependency ACL info */
 		updateAclDependencies(LanguageRelationId, HeapTupleGetOid(tuple),
-							  ownerId, stmt->is_grant,
+							  ownerId, istmt->is_grant,
 							  noldmembers, oldmembers,
 							  nnewmembers, newmembers);
 
@@ -916,48 +1079,27 @@ ExecuteGrantStmt_Language(GrantStmt *stmt)
 
 		pfree(new_acl);
 
-		heap_close(relation, RowExclusiveLock);
-
 		/* prevent error when processing duplicate objects */
 		CommandCounterIncrement();
 	}
+
+	heap_close(relation, RowExclusiveLock);
 }
 
 static void
-ExecuteGrantStmt_Namespace(GrantStmt *stmt)
+ExecGrant_Namespace(InternalGrant *istmt)
 {
-	AclMode		privileges;
-	bool		all_privs;
-	ListCell   *i;
+	Relation	relation;
+	ListCell   *cell;
 
-	if (stmt->privileges == NIL)
-	{
-		all_privs = true;
-		privileges = ACL_ALL_RIGHTS_NAMESPACE;
-	}
-	else
-	{
-		all_privs = false;
-		privileges = ACL_NO_RIGHTS;
-		foreach(i, stmt->privileges)
-		{
-			char	   *privname = strVal(lfirst(i));
-			AclMode		priv = string_to_privilege(privname);
+	if (istmt->all_privs && istmt->privileges == ACL_NO_RIGHTS)
+		istmt->privileges = ACL_ALL_RIGHTS_NAMESPACE;
 
-			if (priv & ~((AclMode) ACL_ALL_RIGHTS_NAMESPACE))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_GRANT_OPERATION),
-						 errmsg("invalid privilege type %s for schema",
-								privilege_to_string(priv))));
-			privileges |= priv;
-		}
-	}
+	relation = heap_open(NamespaceRelationId, RowExclusiveLock);
 
-	foreach(i, stmt->objects)
+	foreach(cell, istmt->objects)
 	{
-		char	   *nspname = strVal(lfirst(i));
-		Relation	relation;
-		HeapTuple	tuple;
+		Oid			nspid = lfirst_oid(cell);
 		Form_pg_namespace pg_namespace_tuple;
 		Datum		aclDatum;
 		bool		isNull;
@@ -967,6 +1109,7 @@ ExecuteGrantStmt_Namespace(GrantStmt *stmt)
 		Acl		   *new_acl;
 		Oid			grantorId;
 		Oid			ownerId;
+		HeapTuple	tuple;
 		HeapTuple	newtuple;
 		Datum		values[Natts_pg_namespace];
 		char		nulls[Natts_pg_namespace];
@@ -976,14 +1119,12 @@ ExecuteGrantStmt_Namespace(GrantStmt *stmt)
 		Oid		   *oldmembers;
 		Oid		   *newmembers;
 
-		relation = heap_open(NamespaceRelationId, RowExclusiveLock);
-		tuple = SearchSysCache(NAMESPACENAME,
-							   CStringGetDatum(nspname),
+		tuple = SearchSysCache(NAMESPACEOID,
+							   ObjectIdGetDatum(nspid),
 							   0, 0, 0);
 		if (!HeapTupleIsValid(tuple))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_SCHEMA),
-					 errmsg("schema \"%s\" does not exist", nspname)));
+			elog(ERROR, "cache lookup failed for namespace %u", nspid);
+
 		pg_namespace_tuple = (Form_pg_namespace) GETSTRUCT(tuple);
 
 		/*
@@ -1000,59 +1141,19 @@ ExecuteGrantStmt_Namespace(GrantStmt *stmt)
 			old_acl = DatumGetAclPCopy(aclDatum);
 
 		/* Determine ID to do the grant as, and available grant options */
-		select_best_grantor(GetUserId(), privileges,
+		select_best_grantor(GetUserId(), istmt->privileges,
 							old_acl, ownerId,
 							&grantorId, &avail_goptions);
 
 		/*
-		 * If we found no grant options, consider whether to issue a hard
-		 * error.  Per spec, having any privilege at all on the object will
-		 * get you by here.
+		 * Restrict the privileges to what we can actually grant, and emit the
+		 * standards-mandated warning and error messages.
 		 */
-		if (avail_goptions == ACL_NO_RIGHTS)
-		{
-			if (pg_namespace_aclmask(HeapTupleGetOid(tuple),
-									 grantorId,
-									 ACL_ALL_RIGHTS_NAMESPACE | ACL_GRANT_OPTION_FOR(ACL_ALL_RIGHTS_NAMESPACE),
-									 ACLMASK_ANY) == ACL_NO_RIGHTS)
-				aclcheck_error(ACLCHECK_NO_PRIV, ACL_KIND_NAMESPACE,
-							   nspname);
-		}
-
-		/*
-		 * Restrict the operation to what we can actually grant or revoke, and
-		 * issue a warning if appropriate.	(For REVOKE this isn't quite what
-		 * the spec says to do: the spec seems to want a warning only if no
-		 * privilege bits actually change in the ACL. In practice that
-		 * behavior seems much too noisy, as well as inconsistent with the
-		 * GRANT case.)
-		 */
-		this_privileges = privileges & ACL_OPTION_TO_PRIVS(avail_goptions);
-		if (Mpp_role != MPP_ROLE_EXECUTE)
-		{
-			if (stmt->is_grant)
-			{
-				if (this_privileges == 0)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-							 errmsg("no privileges were granted")));
-				else if (!all_privs && this_privileges != privileges)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-							 errmsg("not all privileges were granted")));
-			}
-			else
-			{
-				if (this_privileges == 0)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-							 errmsg("no privileges could be revoked")));
-				else if (!all_privs && this_privileges != privileges)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-							 errmsg("not all privileges could be revoked")));
-			}
-		}
+		this_privileges =
+			restrict_and_check_grant(istmt->is_grant, avail_goptions,
+									 istmt->all_privs, istmt->privileges,
+									 nspid, grantorId, ACL_KIND_NAMESPACE,
+									 NameStr(pg_namespace_tuple->nspname));
 
 		/*
 		 * Generate new ACL.
@@ -1062,9 +1163,9 @@ ExecuteGrantStmt_Namespace(GrantStmt *stmt)
 		 */
 		noldmembers = aclmembers(old_acl, &oldmembers);
 
-		new_acl = merge_acl_with_grant(old_acl, stmt->is_grant,
-									   stmt->grant_option, stmt->behavior,
-									   stmt->grantees, this_privileges,
+		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
+									   istmt->grant_option, istmt->behavior,
+									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
 		nnewmembers = aclmembers(new_acl, &newmembers);
@@ -1077,7 +1178,8 @@ ExecuteGrantStmt_Namespace(GrantStmt *stmt)
 		replaces[Anum_pg_namespace_nspacl - 1] = 'r';
 		values[Anum_pg_namespace_nspacl - 1] = PointerGetDatum(new_acl);
 
-		newtuple = heap_modifytuple(tuple, RelationGetDescr(relation), values, nulls, replaces);
+		newtuple = heap_modifytuple(tuple, RelationGetDescr(relation), values,
+									nulls, replaces);
 
 		simple_heap_update(relation, &newtuple->t_self, newtuple);
 
@@ -1086,7 +1188,7 @@ ExecuteGrantStmt_Namespace(GrantStmt *stmt)
 
 		/* Update the shared dependency ACL info */
 		updateAclDependencies(NamespaceRelationId, HeapTupleGetOid(tuple),
-							  ownerId, stmt->is_grant,
+							  ownerId, istmt->is_grant,
 							  noldmembers, oldmembers,
 							  nnewmembers, newmembers);
 
@@ -1094,50 +1196,27 @@ ExecuteGrantStmt_Namespace(GrantStmt *stmt)
 
 		pfree(new_acl);
 
-		heap_close(relation, RowExclusiveLock);
-
 		/* prevent error when processing duplicate objects */
 		CommandCounterIncrement();
 	}
+
+	heap_close(relation, RowExclusiveLock);
 }
 
 static void
-ExecuteGrantStmt_Tablespace(GrantStmt *stmt)
+ExecGrant_Tablespace(InternalGrant *istmt)
 {
-	AclMode		privileges;
-	bool		all_privs;
-	ListCell   *i;
+	Relation	relation;
+	ListCell   *cell;
 
-	if (stmt->privileges == NIL)
-	{
-		all_privs = true;
-		privileges = ACL_ALL_RIGHTS_TABLESPACE;
-	}
-	else
-	{
-		all_privs = false;
-		privileges = ACL_NO_RIGHTS;
-		foreach(i, stmt->privileges)
-		{
-			char	   *privname = strVal(lfirst(i));
-			AclMode		priv = string_to_privilege(privname);
+	if (istmt->all_privs && istmt->privileges == ACL_NO_RIGHTS)
+		istmt->privileges = ACL_ALL_RIGHTS_TABLESPACE;
 
-			if (priv & ~((AclMode) ACL_ALL_RIGHTS_TABLESPACE))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_GRANT_OPERATION),
-						 errmsg("invalid privilege type %s for tablespace",
-								privilege_to_string(priv))));
-			privileges |= priv;
-		}
-	}
+	relation = heap_open(TableSpaceRelationId, RowExclusiveLock);
 
-	foreach(i, stmt->objects)
+	foreach(cell, istmt->objects)
 	{
-		char	   *spcname = strVal(lfirst(i));
-		Relation	relation;
-		ScanKeyData entry[1];
-		HeapScanDesc scan;
-		HeapTuple	tuple;
+		Oid			tblId = lfirst_oid(cell);
 		Form_pg_tablespace pg_tablespace_tuple;
 		Datum		aclDatum;
 		bool		isNull;
@@ -1155,18 +1234,21 @@ ExecuteGrantStmt_Tablespace(GrantStmt *stmt)
 		int			nnewmembers;
 		Oid		   *oldmembers;
 		Oid		   *newmembers;
+		ScanKeyData entry[1];
+		SysScanDesc scan;
+		HeapTuple	tuple;
 
-		relation = heap_open(TableSpaceRelationId, RowExclusiveLock);
+		/* There's no syscache for pg_tablespace, so must look the hard way */
 		ScanKeyInit(&entry[0],
-					Anum_pg_tablespace_spcname,
-					BTEqualStrategyNumber, F_NAMEEQ,
-					CStringGetDatum(spcname));
-		scan = heap_beginscan(relation, SnapshotNow, 1, entry);
-		tuple = heap_getnext(scan, ForwardScanDirection);
+					ObjectIdAttributeNumber,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(tblId));
+		scan = systable_beginscan(relation, TablespaceOidIndexId, true,
+								  SnapshotNow, 1, entry);
+		tuple = systable_getnext(scan);
 		if (!HeapTupleIsValid(tuple))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("tablespace \"%s\" does not exist", spcname)));
+			elog(ERROR, "cache lookup failed for tablespace %u", tblId);
+
 		pg_tablespace_tuple = (Form_pg_tablespace) GETSTRUCT(tuple);
 
 		/*
@@ -1182,59 +1264,19 @@ ExecuteGrantStmt_Tablespace(GrantStmt *stmt)
 			old_acl = DatumGetAclPCopy(aclDatum);
 
 		/* Determine ID to do the grant as, and available grant options */
-		select_best_grantor(GetUserId(), privileges,
+		select_best_grantor(GetUserId(), istmt->privileges,
 							old_acl, ownerId,
 							&grantorId, &avail_goptions);
 
 		/*
-		 * If we found no grant options, consider whether to issue a hard
-		 * error.  Per spec, having any privilege at all on the object will
-		 * get you by here.
+		 * Restrict the privileges to what we can actually grant, and emit the
+		 * standards-mandated warning and error messages.
 		 */
-		if (avail_goptions == ACL_NO_RIGHTS)
-		{
-			if (pg_tablespace_aclmask(HeapTupleGetOid(tuple),
-									  grantorId,
-									  ACL_ALL_RIGHTS_TABLESPACE | ACL_GRANT_OPTION_FOR(ACL_ALL_RIGHTS_TABLESPACE),
-									  ACLMASK_ANY) == ACL_NO_RIGHTS)
-				aclcheck_error(ACLCHECK_NO_PRIV, ACL_KIND_TABLESPACE,
-							   spcname);
-		}
-
-		/*
-		 * Restrict the operation to what we can actually grant or revoke, and
-		 * issue a warning if appropriate.	(For REVOKE this isn't quite what
-		 * the spec says to do: the spec seems to want a warning only if no
-		 * privilege bits actually change in the ACL. In practice that
-		 * behavior seems much too noisy, as well as inconsistent with the
-		 * GRANT case.)
-		 */
-		this_privileges = privileges & ACL_OPTION_TO_PRIVS(avail_goptions);
-		if (Mpp_role != MPP_ROLE_EXECUTE)
-		{
-			if (stmt->is_grant)
-			{
-				if (this_privileges == 0)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-							 errmsg("no privileges were granted")));
-				else if (!all_privs && this_privileges != privileges)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED),
-							 errmsg("not all privileges were granted")));
-			}
-			else
-			{
-				if (this_privileges == 0)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-							 errmsg("no privileges could be revoked")));
-				else if (!all_privs && this_privileges != privileges)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
-							 errmsg("not all privileges could be revoked")));
-			}
-		}
+		this_privileges =
+			restrict_and_check_grant(istmt->is_grant, avail_goptions,
+									 istmt->all_privs, istmt->privileges,
+									 tblId, grantorId, ACL_KIND_TABLESPACE,
+									 NameStr(pg_tablespace_tuple->spcname));
 
 		/*
 		 * Generate new ACL.
@@ -1244,9 +1286,9 @@ ExecuteGrantStmt_Tablespace(GrantStmt *stmt)
 		 */
 		noldmembers = aclmembers(old_acl, &oldmembers);
 
-		new_acl = merge_acl_with_grant(old_acl, stmt->is_grant,
-									   stmt->grant_option, stmt->behavior,
-									   stmt->grantees, this_privileges,
+		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
+									   istmt->grant_option, istmt->behavior,
+									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
 		nnewmembers = aclmembers(new_acl, &newmembers);
@@ -1259,7 +1301,8 @@ ExecuteGrantStmt_Tablespace(GrantStmt *stmt)
 		replaces[Anum_pg_tablespace_spcacl - 1] = 'r';
 		values[Anum_pg_tablespace_spcacl - 1] = PointerGetDatum(new_acl);
 
-		newtuple = heap_modifytuple(tuple, RelationGetDescr(relation), values, nulls, replaces);
+		newtuple = heap_modifytuple(tuple, RelationGetDescr(relation), values,
+									nulls, replaces);
 
 		simple_heap_update(relation, &newtuple->t_self, newtuple);
 
@@ -1267,19 +1310,20 @@ ExecuteGrantStmt_Tablespace(GrantStmt *stmt)
 		CatalogUpdateIndexes(relation, newtuple);
 
 		/* Update the shared dependency ACL info */
-		updateAclDependencies(TableSpaceRelationId, HeapTupleGetOid(tuple),
-							  ownerId, stmt->is_grant,
+		updateAclDependencies(TableSpaceRelationId, tblId,
+							  ownerId, istmt->is_grant,
 							  noldmembers, oldmembers,
 							  nnewmembers, newmembers);
 
-		pfree(new_acl);
+		systable_endscan(scan);
 
-		heap_endscan(scan);
-		heap_close(relation, RowExclusiveLock);
+		pfree(new_acl);
 
 		/* prevent error when processing duplicate objects */
 		CommandCounterIncrement();
 	}
+
+	heap_close(relation, RowExclusiveLock);
 }
 
 
@@ -1294,8 +1338,6 @@ string_to_privilege(const char *privname)
 		return ACL_UPDATE;
 	if (strcmp(privname, "delete") == 0)
 		return ACL_DELETE;
-	if (strcmp(privname, "rule") == 0)
-		return ACL_RULE;
 	if (strcmp(privname, "references") == 0)
 		return ACL_REFERENCES;
 	if (strcmp(privname, "trigger") == 0)
@@ -1310,6 +1352,10 @@ string_to_privilege(const char *privname)
 		return ACL_CREATE_TEMP;
 	if (strcmp(privname, "temp") == 0)
 		return ACL_CREATE_TEMP;
+	if (strcmp(privname, "connect") == 0)
+		return ACL_CONNECT;
+	if (strcmp(privname, "rule") == 0)
+		return 0;				/* ignore old RULE privileges */
 	ereport(ERROR,
 			(errcode(ERRCODE_SYNTAX_ERROR),
 			 errmsg("unrecognized privilege type \"%s\"", privname)));
@@ -1329,8 +1375,6 @@ privilege_to_string(AclMode privilege)
 			return "UPDATE";
 		case ACL_DELETE:
 			return "DELETE";
-		case ACL_RULE:
-			return "RULE";
 		case ACL_REFERENCES:
 			return "REFERENCES";
 		case ACL_TRIGGER:
@@ -1343,6 +1387,8 @@ privilege_to_string(AclMode privilege)
 			return "CREATE";
 		case ACL_CREATE_TEMP:
 			return "TEMP";
+		case ACL_CONNECT:
+			return "CONNECT";
 		default:
 			elog(ERROR, "unrecognized privilege: %d", (int) privilege);
 	}
@@ -1360,6 +1406,8 @@ static const char *const no_priv_msg[MAX_ACL_KIND] =
 {
 	/* ACL_KIND_CLASS */
 	gettext_noop("permission denied for relation %s"),
+	/* ACL_KIND_SEQUENCE */
+	gettext_noop("permission denied for sequence %s"),
 	/* ACL_KIND_DATABASE */
 	gettext_noop("permission denied for database %s"),
 	/* ACL_KIND_PROC */
@@ -1384,6 +1432,8 @@ static const char *const not_owner_msg[MAX_ACL_KIND] =
 {
 	/* ACL_KIND_CLASS */
 	gettext_noop("must be owner of relation %s"),
+	/* ACL_KIND_SEQUENCE */
+	gettext_noop("must be owner of sequence %s"),
 	/* ACL_KIND_DATABASE */
 	gettext_noop("must be owner of database %s"),
 	/* ACL_KIND_PROC */
@@ -1453,6 +1503,35 @@ has_rolcatupdate(Oid roleid)
 	return rolcatupdate;
 }
 
+/*
+ * Relay for the various pg_*_mask routines depending on object kind
+ */
+static AclMode
+pg_aclmask(AclObjectKind objkind, Oid table_oid, Oid roleid,
+		   AclMode mask, AclMaskHow how)
+{
+	switch (objkind)
+	{
+		case ACL_KIND_CLASS:
+		case ACL_KIND_SEQUENCE:
+			return pg_class_aclmask(table_oid, roleid, mask, how);
+		case ACL_KIND_DATABASE:
+			return pg_database_aclmask(table_oid, roleid, mask, how);
+		case ACL_KIND_PROC:
+			return pg_proc_aclmask(table_oid, roleid, mask, how);
+		case ACL_KIND_LANGUAGE:
+			return pg_language_aclmask(table_oid, roleid, mask, how);
+		case ACL_KIND_NAMESPACE:
+			return pg_namespace_aclmask(table_oid, roleid, mask, how);
+		case ACL_KIND_TABLESPACE:
+			return pg_tablespace_aclmask(table_oid, roleid, mask, how);
+		default:
+			elog(ERROR, "unrecognized objkind: %d",
+				 (int) objkind);
+			/* not reached, but keep compiler quiet */
+			return ACL_NO_RIGHTS;
+	}
+}
 
 /*
  * Exported routine for examining a user's privileges for a table
@@ -1496,9 +1575,9 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 	 *
 	 * As of 7.4 we have some updatable system views; those shouldn't be
 	 * protected in this way.  Assume the view rules can take care of
-	 * themselves.
+	 * themselves.	ACL_USAGE is if we ever have system sequences.
 	 */
-	if ((mask & (ACL_INSERT | ACL_UPDATE | ACL_DELETE)) &&
+	if ((mask & (ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_USAGE)) &&
 		IsSystemClass(classForm) &&
 		classForm->relkind != RELKIND_VIEW &&
 		!has_rolcatupdate(roleid) &&
@@ -1507,7 +1586,7 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 #ifdef ACLDEBUG
 		elog(DEBUG2, "permission denied for system catalog update");
 #endif
-		mask &= ~(ACL_INSERT | ACL_UPDATE | ACL_DELETE);
+		mask &= ~(ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_USAGE);
 	}
 
 	/*
@@ -1532,7 +1611,9 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 	if (isNull)
 	{
 		/* No ACL, so build default ACL */
-		acl = acldefault(ACL_OBJECT_RELATION, ownerId);
+		acl = acldefault(classForm->relkind == RELKIND_SEQUENCE ?
+						 ACL_OBJECT_SEQUENCE : ACL_OBJECT_RELATION,
+						 ownerId);
 		aclDatum = (Datum) 0;
 	}
 	else
@@ -1560,9 +1641,6 @@ pg_database_aclmask(Oid db_oid, Oid roleid,
 					AclMode mask, AclMaskHow how)
 {
 	AclMode		result;
-	Relation	pg_database;
-	ScanKeyData entry[1];
-	HeapScanDesc scan;
 	HeapTuple	tuple;
 	Datum		aclDatum;
 	bool		isNull;
@@ -1575,16 +1653,10 @@ pg_database_aclmask(Oid db_oid, Oid roleid,
 
 	/*
 	 * Get the database's ACL from pg_database
-	 *
-	 * There's no syscache for pg_database, so must look the hard way
 	 */
-	pg_database = heap_open(DatabaseRelationId, AccessShareLock);
-	ScanKeyInit(&entry[0],
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(db_oid));
-	scan = heap_beginscan(pg_database, SnapshotNow, 1, entry);
-	tuple = heap_getnext(scan, ForwardScanDirection);
+	tuple = SearchSysCache(DATABASEOID,
+						   ObjectIdGetDatum(db_oid),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
@@ -1592,9 +1664,8 @@ pg_database_aclmask(Oid db_oid, Oid roleid,
 
 	ownerId = ((Form_pg_database) GETSTRUCT(tuple))->datdba;
 
-	aclDatum = heap_getattr(tuple, Anum_pg_database_datacl,
-							RelationGetDescr(pg_database), &isNull);
-
+	aclDatum = SysCacheGetAttr(DATABASEOID, tuple, Anum_pg_database_datacl,
+							   &isNull);
 	if (isNull)
 	{
 		/* No ACL, so build default ACL */
@@ -1613,8 +1684,7 @@ pg_database_aclmask(Oid db_oid, Oid roleid,
 	if (acl && (Pointer) acl != DatumGetPointer(aclDatum))
 		pfree(acl);
 
-	heap_endscan(scan);
-	heap_close(pg_database, AccessShareLock);
+	ReleaseSysCache(tuple);
 
 	return result;
 }
@@ -1826,7 +1896,7 @@ pg_tablespace_aclmask(Oid spc_oid, Oid roleid,
 	AclMode		result;
 	Relation	pg_tablespace;
 	ScanKeyData entry[1];
-	HeapScanDesc scan;
+	SysScanDesc scan;
 	HeapTuple	tuple;
 	Datum		aclDatum;
 	bool		isNull;
@@ -1854,8 +1924,9 @@ pg_tablespace_aclmask(Oid spc_oid, Oid roleid,
 				ObjectIdAttributeNumber,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(spc_oid));
-	scan = heap_beginscan(pg_tablespace, SnapshotNow, 1, entry);
-	tuple = heap_getnext(scan, ForwardScanDirection);
+	scan = systable_beginscan(pg_tablespace, TablespaceOidIndexId, true,
+							  SnapshotNow, 1, entry);
+	tuple = systable_getnext(scan);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -1884,7 +1955,7 @@ pg_tablespace_aclmask(Oid spc_oid, Oid roleid,
 	if (acl && (Pointer) acl != DatumGetPointer(aclDatum))
 		pfree(acl);
 
-	heap_endscan(scan);
+	systable_endscan(scan);
 	heap_close(pg_tablespace, AccessShareLock);
 
 	return result;
@@ -2116,7 +2187,7 @@ pg_tablespace_ownercheck(Oid spc_oid, Oid roleid)
 {
 	Relation	pg_tablespace;
 	ScanKeyData entry[1];
-	HeapScanDesc scan;
+	SysScanDesc scan;
 	HeapTuple	spctuple;
 	Oid			spcowner;
 
@@ -2130,9 +2201,10 @@ pg_tablespace_ownercheck(Oid spc_oid, Oid roleid)
 				ObjectIdAttributeNumber,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(spc_oid));
-	scan = heap_beginscan(pg_tablespace, SnapshotNow, 1, entry);
+	scan = systable_beginscan(pg_tablespace, TablespaceOidIndexId, true,
+							  SnapshotNow, 1, entry);
 
-	spctuple = heap_getnext(scan, ForwardScanDirection);
+	spctuple = systable_getnext(scan);
 
 	if (!HeapTupleIsValid(spctuple))
 		ereport(ERROR,
@@ -2141,7 +2213,7 @@ pg_tablespace_ownercheck(Oid spc_oid, Oid roleid)
 
 	spcowner = ((Form_pg_tablespace) GETSTRUCT(spctuple))->spcowner;
 
-	heap_endscan(scan);
+	systable_endscan(scan);
 	heap_close(pg_tablespace, AccessShareLock);
 
 	return has_privs_of_role(roleid, spcowner);
@@ -2182,35 +2254,24 @@ pg_opclass_ownercheck(Oid opc_oid, Oid roleid)
 bool
 pg_database_ownercheck(Oid db_oid, Oid roleid)
 {
-	Relation	pg_database;
-	ScanKeyData entry[1];
-	HeapScanDesc scan;
-	HeapTuple	dbtuple;
+	HeapTuple	tuple;
 	Oid			dba;
 
 	/* Superusers bypass all permission checking. */
 	if (superuser_arg(roleid))
 		return true;
 
-	/* There's no syscache for pg_database, so must look the hard way */
-	pg_database = heap_open(DatabaseRelationId, AccessShareLock);
-	ScanKeyInit(&entry[0],
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(db_oid));
-	scan = heap_beginscan(pg_database, SnapshotNow, 1, entry);
-
-	dbtuple = heap_getnext(scan, ForwardScanDirection);
-
-	if (!HeapTupleIsValid(dbtuple))
+	tuple = SearchSysCache(DATABASEOID,
+						   ObjectIdGetDatum(db_oid),
+						   0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
 				 errmsg("database with OID %u does not exist", db_oid)));
 
-	dba = ((Form_pg_database) GETSTRUCT(dbtuple))->datdba;
+	dba = ((Form_pg_database) GETSTRUCT(tuple))->datdba;
 
-	heap_endscan(scan);
-	heap_close(pg_database, AccessShareLock);
+	ReleaseSysCache(tuple);
 
 	return has_privs_of_role(roleid, dba);
 }

@@ -3,12 +3,12 @@
  * ipci.c
  *	  POSTGRES inter-process communication initialization code.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/ipc/ipci.c,v 1.79 2005/10/15 02:49:25 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/ipc/ipci.c,v 1.89 2006/10/15 22:04:07 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,24 +16,19 @@
 
 #include "access/clog.h"
 #include "access/multixact.h"
+#include "access/nbtree.h"
 #include "access/subtrans.h"
 #include "access/twophase.h"
-#include "access/xlog.h"
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/seqserver.h"
-#include "storage/bufmgr.h"
 #include "storage/freespace.h"
 #include "storage/ipc.h"
-#include "storage/lmgr.h"
-#include "storage/lwlock.h"
-#include "storage/pg_sema.h"
 #include "storage/pg_shmem.h"
 #include "storage/pmsignal.h"
-#include "storage/proc.h"
 #include "storage/procarray.h"
 #include "storage/sinval.h"
 #include "storage/spin.h"
@@ -42,6 +37,30 @@
 #include "cdb/cdbfts.h"
 #include "cdb/cdbtm.h"
 #include "utils/tqual.h"
+
+static Size total_addin_request = 0;
+static bool addin_request_allowed = true;
+
+
+/*
+ * RequestAddinShmemSpace
+ *		Request that extra shmem space be allocated for use by
+ *		a loadable module.
+ *
+ * This is only useful if called from the _PG_init hook of a library that
+ * is loaded into the postmaster via shared_preload_libraries.  Once
+ * shared memory has been allocated, calls will be ignored.  (We could
+ * raise an error, but it seems better to make it a no-op, so that
+ * libraries containing such calls can be reloaded if needed.)
+ */
+void
+RequestAddinShmemSpace(Size size)
+{
+	if (IsUnderPostmaster || !addin_request_allowed)
+		return;					/* too late */
+	total_addin_request = add_size(total_addin_request, size);
+}
+
 
 /*
  * CreateSharedMemoryAndSemaphores
@@ -64,10 +83,9 @@
 void
 CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 {
-	PGShmemHeader *seghdr = NULL;
-
 	if (!IsUnderPostmaster)
 	{
+		PGShmemHeader *seghdr;
 		Size		size;
 		int			numSemas;
 
@@ -108,6 +126,10 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, ShmemBackendArraySize());
 #endif
 
+		/* freeze the addin request size and include it */
+		addin_request_allowed = false;
+		size = add_size(size, total_addin_request);
+
 		/* might as well round it off to a multiple of a typical page size */
 		size = add_size(size, 8192 - (size % 8192));
 
@@ -118,6 +140,8 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		 * Create the shmem segment
 		 */
 		seghdr = PGSharedMemoryCreate(size, makePrivate, port);
+
+		InitShmemAccess(seghdr);
 
 		/*
 		 * Create semaphores
@@ -135,18 +159,16 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		 */
 #ifdef EXEC_BACKEND
 		Assert(!makePrivate);
-		Assert(UsedShmemSegAddr != NULL);
-		seghdr = UsedShmemSegAddr;
 #else
 		elog(PANIC, "should be attached to shared memory already");
 #endif
 	}
 
-
 	/*
 	 * Set up shared memory allocation mechanism
 	 */
-	InitShmemAllocation(seghdr, !IsUnderPostmaster);
+	if (!IsUnderPostmaster)
+		InitShmemAllocation();
 
 	/*
 	 * Now initialize LWLocks, which do shared memory allocation and are
@@ -176,7 +198,6 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 * Set up lock manager
 	 */
 	InitLocks();
-	InitLockTable();
 
 	/*
 	 * Set up resource schedular
@@ -191,7 +212,8 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	/*
 	 * Set up process table
 	 */
-	InitProcGlobal();
+	if (!IsUnderPostmaster)
+		InitProcGlobal();
 	CreateSharedProcArray();
 	CreateSharedBackendStatus();
 	
@@ -221,6 +243,11 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	PMSignalInit();
 	BgWriterShmemInit();
 	SeqServerShmemInit();
+
+	/*
+	 * Set up other modules that need some shared memory space
+	 */
+	BTreeShmemInit();
 
 #ifdef EXEC_BACKEND
 

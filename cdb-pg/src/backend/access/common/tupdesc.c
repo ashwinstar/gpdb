@@ -3,12 +3,12 @@
  * tupdesc.c
  *	  POSTGRES tuple descriptor support code
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/common/tupdesc.c,v 1.112.2.1 2005/11/22 18:23:03 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/common/tupdesc.c,v 1.118 2006/07/14 14:52:16 momjian Exp $
  *
  * NOTES
  *	  some of the executor utility code such as "ExecTypeFromTL" should be
@@ -19,10 +19,10 @@
 
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "catalog/pg_type.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
+#include "utils/resowner.h"
 #include "utils/syscache.h"
 
 
@@ -84,6 +84,7 @@ CreateTemplateTupleDesc(int natts, bool hasoid)
 	desc->tdtypeid = RECORDOID;
 	desc->tdtypmod = -1;
 	desc->tdhasoid = hasoid;
+	desc->tdrefcount = -1;		/* assume not reference-counted */
 
 	return desc;
 }
@@ -116,6 +117,7 @@ CreateTupleDesc(int natts, bool hasoid, Form_pg_attribute *attrs)
 	desc->tdtypeid = RECORDOID;
 	desc->tdtypmod = -1;
 	desc->tdhasoid = hasoid;
+	desc->tdrefcount = -1;		/* assume not reference-counted */
 
 	return desc;
 }
@@ -214,6 +216,12 @@ FreeTupleDesc(TupleDesc tupdesc)
 {
 	int			i;
 
+	/*
+	 * Possibly this should assert tdrefcount == 0, to disallow explicit
+	 * freeing of un-refcounted tupdescs?
+	 */
+	Assert(tupdesc->tdrefcount <= 0);
+
 	if (tupdesc->constr)
 	{
 		if (tupdesc->constr->num_defval > 0)
@@ -247,11 +255,47 @@ FreeTupleDesc(TupleDesc tupdesc)
 }
 
 /*
+ * Increment the reference count of a tupdesc, and log the reference in
+ * CurrentResourceOwner.
+ *
+ * Do not apply this to tupdescs that are not being refcounted.  (Use the
+ * macro PinTupleDesc for tupdescs of uncertain status.)
+ */
+void
+IncrTupleDescRefCount(TupleDesc tupdesc)
+{
+	Assert(tupdesc->tdrefcount >= 0);
+
+	ResourceOwnerEnlargeTupleDescs(CurrentResourceOwner);
+	tupdesc->tdrefcount++;
+	ResourceOwnerRememberTupleDesc(CurrentResourceOwner, tupdesc);
+}
+
+/*
+ * Decrement the reference count of a tupdesc, remove the corresponding
+ * reference from CurrentResourceOwner, and free the tupdesc if no more
+ * references remain.
+ *
+ * Do not apply this to tupdescs that are not being refcounted.  (Use the
+ * macro ReleaseTupleDesc for tupdescs of uncertain status.)
+ */
+void
+DecrTupleDescRefCount(TupleDesc tupdesc)
+{
+	Assert(tupdesc->tdrefcount > 0);
+
+	ResourceOwnerForgetTupleDesc(CurrentResourceOwner, tupdesc);
+	if (--tupdesc->tdrefcount == 0)
+		FreeTupleDesc(tupdesc);
+}
+
+/*
  * Compare two TupleDesc structures for logical equality
  *
  * Note: we deliberately do not check the attrelid and tdtypmod fields.
  * This allows typcache.c to use this routine to see if a cached record type
  * matches a requested type, and is harmless for relcache.c's uses.
+ * We don't compare tdrefcount, either.
  */
 bool
 equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2)
@@ -499,7 +543,7 @@ BuildDescForRelation(List *schema)
 							attname)));
 
 		TupleDescInitEntry(desc, attnum, attname,
-						   typenameTypeId(entry->typname),
+						   typenameTypeId(NULL, entry->typname),
 						   atttypmod, attdim);
 
 		/* Fill in additional stuff not handled by TupleDescInitEntry */
@@ -550,6 +594,57 @@ BuildDescForRelation(List *schema)
 	{
 		pfree(constr);
 		desc->constr = NULL;
+	}
+
+	return desc;
+}
+
+/*
+ * BuildDescFromLists
+ *
+ * Build a TupleDesc given lists of column names (as String nodes),
+ * column type OIDs, and column typmods.  No constraints are generated.
+ *
+ * This is essentially a cut-down version of BuildDescForRelation for use
+ * with functions returning RECORD.
+ */
+TupleDesc
+BuildDescFromLists(List *names, List *types, List *typmods)
+{
+	int			natts;
+	AttrNumber	attnum;
+	ListCell   *l1;
+	ListCell   *l2;
+	ListCell   *l3;
+	TupleDesc	desc;
+
+	natts = list_length(names);
+	Assert(natts == list_length(types));
+	Assert(natts == list_length(typmods));
+
+	/*
+	 * allocate a new tuple descriptor
+	 */
+	desc = CreateTemplateTupleDesc(natts, false);
+
+	attnum = 0;
+
+	l2 = list_head(types);
+	l3 = list_head(typmods);
+	foreach(l1, names)
+	{
+		char	   *attname = strVal(lfirst(l1));
+		Oid			atttypid;
+		int32		atttypmod;
+
+		atttypid = lfirst_oid(l2);
+		l2 = lnext(l2);
+		atttypmod = lfirst_int(l3);
+		l3 = lnext(l3);
+
+		attnum++;
+
+		TupleDescInitEntry(desc, attnum, attname, atttypid, atttypmod, 0);
 	}
 
 	return desc;

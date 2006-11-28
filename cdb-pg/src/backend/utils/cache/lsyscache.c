@@ -3,21 +3,20 @@
  * lsyscache.c
  *	  Convenience routines for common queries in the system catalog cache.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/cache/lsyscache.c,v 1.129 2005/10/15 02:49:31 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/cache/lsyscache.c,v 1.138 2006/10/04 00:30:00 momjian Exp $
  *
  * NOTES
  *	  Eventually, the index information should go through here, too.
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
-#include "miscadmin.h"
 
 #include "access/hash.h"
-#include "access/tupmacs.h"
+#include "bootstrap/bootstrap.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_namespace.h"
@@ -26,10 +25,10 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
-#include "utils/catcache.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
@@ -181,6 +180,100 @@ get_op_hash_function(Oid opno)
 
 	/* Didn't find a match... */
 	return InvalidOid;
+}
+
+/*
+ * get_op_btree_interpretation
+ *		Given an operator's OID, find out which btree opclasses it belongs to,
+ *		and what strategy number it has within each one.  The results are
+ *		returned as an OID list and a parallel integer list.
+ *
+ * In addition to the normal btree operators, we consider a <> operator to be
+ * a "member" of an opclass if its negator is the opclass' equality operator.
+ * ROWCOMPARE_NE is returned as the strategy number for this case.
+ */
+void
+get_op_btree_interpretation(Oid opno, List **opclasses, List **opstrats)
+{
+	Oid			lefttype,
+				righttype;
+	CatCList   *catlist;
+	bool		op_negated;
+	int			i;
+
+	*opclasses = NIL;
+	*opstrats = NIL;
+
+	/*
+	 * Get the nominal left-hand input type of the operator; we will ignore
+	 * opclasses that don't have that as the expected input datatype.  This is
+	 * a kluge to avoid being confused by binary-compatible opclasses (such as
+	 * text_ops and varchar_ops, which share the same operators).
+	 */
+	op_input_types(opno, &lefttype, &righttype);
+	Assert(OidIsValid(lefttype));
+
+	/*
+	 * Find all the pg_amop entries containing the operator.
+	 */
+	catlist = SearchSysCacheList(AMOPOPID, 1,
+								 ObjectIdGetDatum(opno),
+								 0, 0, 0);
+
+	/*
+	 * If we can't find any opclass containing the op, perhaps it is a <>
+	 * operator.  See if it has a negator that is in an opclass.
+	 */
+	op_negated = false;
+	if (catlist->n_members == 0)
+	{
+		Oid			op_negator = get_negator(opno);
+
+		if (OidIsValid(op_negator))
+		{
+			op_negated = true;
+			ReleaseSysCacheList(catlist);
+			catlist = SearchSysCacheList(AMOPOPID, 1,
+										 ObjectIdGetDatum(op_negator),
+										 0, 0, 0);
+		}
+	}
+
+	/* Now search the opclasses */
+	for (i = 0; i < catlist->n_members; i++)
+	{
+		HeapTuple	op_tuple = &catlist->members[i]->tuple;
+		Form_pg_amop op_form = (Form_pg_amop) GETSTRUCT(op_tuple);
+		Oid			opclass_id;
+		StrategyNumber op_strategy;
+
+		opclass_id = op_form->amopclaid;
+
+		/* must be btree */
+		if (!opclass_is_btree(opclass_id))
+			continue;
+
+		/* must match operator input type exactly */
+		if (get_opclass_input_type(opclass_id) != lefttype)
+			continue;
+
+		/* Get the operator's btree strategy number */
+		op_strategy = (StrategyNumber) op_form->amopstrategy;
+		Assert(op_strategy >= 1 && op_strategy <= 5);
+
+		if (op_negated)
+		{
+			/* Only consider negators that are = */
+			if (op_strategy != BTEqualStrategyNumber)
+				continue;
+			op_strategy = ROWCOMPARE_NE;
+		}
+
+		*opclasses = lappend_oid(*opclasses, opclass_id);
+		*opstrats = lappend_int(*opstrats, op_strategy);
+	}
+
+	ReleaseSysCacheList(catlist);
 }
 
 
@@ -429,6 +522,55 @@ opclass_is_hash(Oid opclass)
 	cla_tup = (Form_pg_opclass) GETSTRUCT(tp);
 
 	result = (cla_tup->opcamid == HASH_AM_OID);
+	ReleaseSysCache(tp);
+	return result;
+}
+
+/*
+ * opclass_is_default
+ *
+ *		Returns TRUE iff the specified opclass is the default for its
+ *		index access method and input data type.
+ */
+bool
+opclass_is_default(Oid opclass)
+{
+	HeapTuple	tp;
+	Form_pg_opclass cla_tup;
+	bool		result;
+
+	tp = SearchSysCache(CLAOID,
+						ObjectIdGetDatum(opclass),
+						0, 0, 0);
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for opclass %u", opclass);
+	cla_tup = (Form_pg_opclass) GETSTRUCT(tp);
+
+	result = cla_tup->opcdefault;
+	ReleaseSysCache(tp);
+	return result;
+}
+
+/*
+ * get_opclass_input_type
+ *
+ *		Returns the OID of the datatype the opclass indexes.
+ */
+Oid
+get_opclass_input_type(Oid opclass)
+{
+	HeapTuple	tp;
+	Form_pg_opclass cla_tup;
+	Oid			result;
+
+	tp = SearchSysCache(CLAOID,
+						ObjectIdGetDatum(opclass),
+						0, 0, 0);
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for opclass %u", opclass);
+	cla_tup = (Form_pg_opclass) GETSTRUCT(tp);
+
+	result = cla_tup->opcintype;
 	ReleaseSysCache(tp);
 	return result;
 }
@@ -1211,7 +1353,7 @@ get_typlenbyvalalign(Oid typid, int16 *typlen, bool *typbyval,
  * This knowledge is intended to be centralized here --- direct references
  * to typelem elsewhere in the code are wrong, if they are associated with
  * I/O calls and not with actual subscripting operations!  (But see
- * bootstrap.c, which can't conveniently use this routine.)
+ * bootstrap.c's boot_get_type_io_data() if you need to change this.)
  *
  * As of PostgreSQL 8.1, output functions receive only the value itself
  * and not any auxiliary parameters, so the name of this routine is now
@@ -1252,6 +1394,38 @@ get_type_io_data(Oid typid,
 {
 	HeapTuple	typeTuple;
 	Form_pg_type typeStruct;
+
+	/*
+	 * In bootstrap mode, pass it off to bootstrap.c.  This hack allows us to
+	 * use array_in and array_out during bootstrap.
+	 */
+	if (IsBootstrapProcessingMode())
+	{
+		Oid			typinput;
+		Oid			typoutput;
+
+		boot_get_type_io_data(typid,
+							  typlen,
+							  typbyval,
+							  typalign,
+							  typdelim,
+							  typioparam,
+							  &typinput,
+							  &typoutput);
+		switch (which_func)
+		{
+			case IOFunc_input:
+				*func = typinput;
+				break;
+			case IOFunc_output:
+				*func = typoutput;
+				break;
+			default:
+				elog(ERROR, "binary I/O not supported during bootstrap");
+				break;
+		}
+		return;
+	}
 
 	typeTuple = SearchSysCache(TYPEOID,
 							   ObjectIdGetDatum(typid),
@@ -1328,33 +1502,6 @@ get_typstorage(Oid typid)
 }
 
 /*
- * get_typtypmod
- *
- *		Given the type OID, return the typtypmod field (domain's typmod
- *		for base type)
- */
-int32
-get_typtypmod(Oid typid)
-{
-	HeapTuple	tp;
-
-	tp = SearchSysCache(TYPEOID,
-						ObjectIdGetDatum(typid),
-						0, 0, 0);
-	if (HeapTupleIsValid(tp))
-	{
-		Form_pg_type typtup = (Form_pg_type) GETSTRUCT(tp);
-		int32		result;
-
-		result = typtup->typtypmod;
-		ReleaseSysCache(tp);
-		return result;
-	}
-	else
-		return -1;
-}
-
-/*
  * get_typdefault
  *	  Given a type OID, return the type's default value, if any.
  *
@@ -1412,10 +1559,8 @@ get_typdefault(Oid typid)
 			strDefaultVal = DatumGetCString(DirectFunctionCall1(textout,
 																datum));
 			/* Convert C string to a value of the given type */
-			datum = OidFunctionCall3(type->typinput,
-									 CStringGetDatum(strDefaultVal),
-								 ObjectIdGetDatum(getTypeIOParam(typeTuple)),
-									 Int32GetDatum(-1));
+			datum = OidInputFunctionCall(type->typinput, strDefaultVal,
+										 getTypeIOParam(typeTuple), -1);
 			/* Build a Const node containing the value */
 			expr = (Node *) makeConst(typid,
 									  type->typlen,
@@ -1444,6 +1589,23 @@ get_typdefault(Oid typid)
 Oid
 getBaseType(Oid typid)
 {
+	int32		typmod = -1;
+
+	return getBaseTypeAndTypmod(typid, &typmod);
+}
+
+/*
+ * getBaseTypeAndTypmod
+ *		If the given type is a domain, return its base type and typmod;
+ *		otherwise return the type's own OID, and leave *typmod unchanged.
+ *
+ * Note that the "applied typmod" should be -1 for every domain level
+ * above the bottommost; therefore, if the passed-in typid is indeed
+ * a domain, *typmod should be -1.
+ */
+Oid
+getBaseTypeAndTypmod(Oid typid, int32 *typmod)
+{
 	/*
 	 * We loop to find the bottom base type in a stack of domains.
 	 */
@@ -1465,7 +1627,10 @@ getBaseType(Oid typid)
 			break;
 		}
 
+		Assert(*typmod == -1);
 		typid = typTup->typbasetype;
+		*typmod = typTup->typtypmod;
+
 		ReleaseSysCache(tup);
 	}
 
@@ -1550,6 +1715,18 @@ get_typtype(Oid typid)
 	}
 	else
 		return '\0';
+}
+
+/*
+ * type_is_rowtype
+ *
+ *		Convenience function to determine whether a type OID represents
+ *		a "rowtype" type --- either RECORD or a named composite type.
+ */
+bool
+type_is_rowtype(Oid typid)
+{
+	return (typid == RECORDOID || get_typtype(typid) == 'c');
 }
 
 /*
@@ -1896,13 +2073,13 @@ get_attstatsslot(HeapTuple statstuple,
 			elog(ERROR, "cache lookup failed for type %u", atttype);
 		typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
 
-		/* Deconstruct array into Datum elements */
+		/* Deconstruct array into Datum elements; NULLs not expected */
 		deconstruct_array(statarray,
 						  atttype,
 						  typeForm->typlen,
 						  typeForm->typbyval,
 						  typeForm->typalign,
-						  values, nvalues);
+						  values, NULL, nvalues);
 
 		/*
 		 * If the element type is pass-by-reference, we now have a bunch of
@@ -1944,6 +2121,7 @@ get_attstatsslot(HeapTuple statstuple,
 		 */
 		narrayelem = ARR_DIMS(statarray)[0];
 		if (ARR_NDIM(statarray) != 1 || narrayelem <= 0 ||
+			ARR_HASNULL(statarray) ||
 			ARR_ELEMTYPE(statarray) != FLOAT4OID)
 			elog(ERROR, "stanumbers is not a 1-D float4 array");
 		*numbers = (float4 *) palloc(narrayelem * sizeof(float4));

@@ -4,12 +4,12 @@
  *	  handle clauses in parser
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_clause.c,v 1.143.2.1 2005/11/22 18:23:13 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_clause.c,v 1.158 2006/10/04 00:29:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -18,6 +18,8 @@
 
 #include "access/heapam.h"
 #include "catalog/heap.h"
+#include "catalog/pg_type.h"
+#include "commands/defrem.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/tlist.h"
@@ -30,9 +32,7 @@
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
-#include "parser/parse_type.h"
 #include "rewrite/rewriteManip.h"
-#include "utils/builtins.h"
 #include "utils/guc.h"
 
 
@@ -169,7 +169,7 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	 * Now build an RTE.
 	 */
 	rte = addRangeTableEntryForRelation(pstate, pstate->p_target_relation,
-										NULL, inh, false);
+										relation->alias, inh, false);
 	pstate->p_target_rangetblentry = rte;
 
 	/* assume new rte is at end */
@@ -182,8 +182,9 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	 * permissions.
 	 *
 	 * If we find an explicit reference to the rel later during parse
-	 * analysis, scanRTEForColumn will add the ACL_SELECT bit back again. That
-	 * can't happen for INSERT but it is possible for UPDATE and DELETE.
+	 * analysis, we will add the ACL_SELECT bit back again; see
+	 * scanRTEForColumn (for simple field references), ExpandColumnRefStar
+	 * (for foo.*) and ExpandAllTables (for *).
 	 */
 	rte->requiredPerms = requiredPerms;
 
@@ -221,29 +222,27 @@ interpretInhOption(InhOption inhOpt)
 }
 
 /*
- * Given an enum that indicates whether WITH / WITHOUT OIDS was
- * specified by the user, return true iff the specified table/result
- * set should be created with OIDs. This needs to be done after
- * parsing the query string because the return value can depend upon
- * the default_with_oids GUC var.
+ * Given a relation-options list (of DefElems), return true iff the specified
+ * table/result set should be created with OIDs. This needs to be done after
+ * parsing the query string because the return value can depend upon the
+ * default_with_oids GUC var.
  */
 bool
-interpretOidsOption(ContainsOids opt)
+interpretOidsOption(List *defList)
 {
-	switch (opt)
+	ListCell   *cell;
+
+	/* Scan list to see if OIDS was included */
+	foreach(cell, defList)
 	{
-		case MUST_HAVE_OIDS:
-			return true;
+		DefElem    *def = (DefElem *) lfirst(cell);
 
-		case MUST_NOT_HAVE_OIDS:
-			return false;
-
-		case DEFAULT_OIDS:
-			return default_with_oids;
+		if (pg_strcasecmp(def->defname, "oids") == 0)
+			return defGetBoolean(def);
 	}
 
-	elog(ERROR, "bogus ContainsOids value: %d", opt);
-	return false;				/* keep compiler quiet */
+	/* OIDS option was not specified, so use default. */
+	return default_with_oids;
 }
 
 /*
@@ -312,7 +311,9 @@ transformJoinUsingClause(ParseState *pstate, List *leftVars, List *rightVars)
 		Node	   *rvar = (Node *) lfirst(rvars);
 		A_Expr	   *e;
 
-		e = makeSimpleA_Expr(AEXPR_OP, "=", copyObject(lvar), copyObject(rvar));
+		e = makeSimpleA_Expr(AEXPR_OP, "=",
+							 copyObject(lvar), copyObject(rvar),
+							 -1);
 
 		if (result == NULL)
 			result = (Node *) e;
@@ -320,7 +321,7 @@ transformJoinUsingClause(ParseState *pstate, List *leftVars, List *rightVars)
 		{
 			A_Expr	   *a;
 
-			a = makeA_Expr(AEXPR_AND, NIL, result, (Node *) e);
+			a = makeA_Expr(AEXPR_AND, NIL, result, (Node *) e, -1);
 			result = (Node *) a;
 		}
 	}
@@ -456,7 +457,7 @@ transformRangeSubselect(ParseState *pstate, RangeSubselect *r)
 
 	if (query->commandType != CMD_SELECT)
 		elog(ERROR, "expected SELECT query from subquery in FROM");
-	if (query->resultRelation != 0 || query->into != NULL)
+	if (query->into != NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("subquery in FROM may not have SELECT INTO")));
@@ -544,22 +545,26 @@ transformRangeFunction(ParseState *pstate, RangeFunction *r)
 	}
 
 	/*
-	 * If a coldeflist is supplied, ensure it defines a legal set of names (no
-	 * duplicates) and datatypes (no pseudo-types, for instance).
+	 * OK, build an RTE for the function.
+	 */
+	rte = addRangeTableEntryForFunction(pstate, funcname, funcexpr,
+										r, true);
+
+	/*
+	 * If a coldeflist was supplied, ensure it defines a legal set of names
+	 * (no duplicates) and datatypes (no pseudo-types, for instance).
+	 * addRangeTableEntryForFunction looked up the type names but didn't check
+	 * them further than that.
 	 */
 	if (r->coldeflist)
 	{
 		TupleDesc	tupdesc;
 
-		tupdesc = BuildDescForRelation(r->coldeflist);
+		tupdesc = BuildDescFromLists(rte->eref->colnames,
+									 rte->funccoltypes,
+									 rte->funccoltypmods);
 		CheckAttributeNamesTypes(tupdesc, RELKIND_COMPOSITE_TYPE);
 	}
-
-	/*
-	 * OK, build an RTE for the function.
-	 */
-	rte = addRangeTableEntryForFunction(pstate, funcname, funcexpr,
-										r, true);
 
 	return rte;
 }
@@ -1079,8 +1084,11 @@ transformWhereClause(ParseState *pstate, Node *clause,
 
 /*
  * transformLimitClause -
- *	  Transform the expression and make sure it is of type integer.
+ *	  Transform the expression and make sure it is of type bigint.
  *	  Used for LIMIT and allied clauses.
+ *
+ * Note: as of Postgres 8.2, LIMIT expressions are expected to yield int8,
+ * rather than int4 as before.
  *
  * constructName does not affect the semantics, but is used in error messages
  */
@@ -1095,7 +1103,7 @@ transformLimitClause(ParseState *pstate, Node *clause,
 
 	qual = transformExpr(pstate, clause);
 
-	qual = coerce_to_integer(pstate, qual, constructName);
+	qual = coerce_to_bigint(pstate, qual, constructName);
 
 	/*
 	 * LIMIT can't refer to any vars or aggregates of the current query; we
@@ -1191,6 +1199,7 @@ findTargetlistEntry(ParseState *pstate, Node *node, List **tlist, int clause)
 		list_length(((ColumnRef *) node)->fields) == 1)
 	{
 		char	   *name = strVal(linitial(((ColumnRef *) node)->fields));
+		int			location = ((ColumnRef *) node)->location;
 
 		if (clause == GROUP_CLAUSE)
 		{
@@ -1210,7 +1219,7 @@ findTargetlistEntry(ParseState *pstate, Node *node, List **tlist, int clause)
 			 * breaks no cases that are legal per spec, and it seems a more
 			 * self-consistent behavior.
 			 */
-			if (colNameToVar(pstate, name, true) != NULL)
+			if (colNameToVar(pstate, name, true, location) != NULL)
 				name = NULL;
 		}
 
@@ -1234,7 +1243,8 @@ findTargetlistEntry(ParseState *pstate, Node *node, List **tlist, int clause)
 							 * construct, eg ORDER BY
 							 */
 									 errmsg("%s \"%s\" is ambiguous",
-											clauseText[clause], name)));
+											clauseText[clause], name),
+									 parser_errposition(pstate, location)));
 					}
 					else
 						target_result = tle;
@@ -1305,6 +1315,16 @@ findTargetlistEntry(ParseState *pstate, Node *node, List **tlist, int clause)
 	return target_result;
 }
 
+static GroupClause *
+make_group_clause(TargetEntry *tle, List *targetlist, Oid sortop)
+{
+	GroupClause *result;
+
+	result = makeNode(GroupClause);
+	result->tleSortGroupRef = assignSortGroupRef(tle, targetlist);
+	result->sortop = sortop;
+	return result;
+}
 
 /*
  * transformGroupClause -
@@ -1312,71 +1332,104 @@ findTargetlistEntry(ParseState *pstate, Node *node, List **tlist, int clause)
  *
  * GROUP BY items will be added to the targetlist (as resjunk columns)
  * if not already present, so the targetlist must be passed by reference.
+ *
+ * The order of the elements of the grouping clause does not affect
+ * the semantics of the query. However, the optimizer is not currently
+ * smart enough to reorder the grouping clause, so we try to do some
+ * primitive reordering here.
  */
 List *
 transformGroupClause(ParseState *pstate, List *grouplist,
 					 List **targetlist, List *sortClause)
 {
-	List	   *glist = NIL;
-	ListCell   *gl;
-	ListCell   *sortItem;
+	List	   *result = NIL;
+	List	   *tle_list = NIL;
+	ListCell   *l;
 
-	sortItem = list_head(sortClause);
-
-	foreach(gl, grouplist)
+	/* Preprocess the grouping clause, lookup TLEs */
+	foreach(l, grouplist)
 	{
 		TargetEntry *tle;
 		Oid			restype;
-		Oid			ordering_op;
-		GroupClause *grpcl;
 
-		tle = findTargetlistEntry(pstate, lfirst(gl),
+		tle = findTargetlistEntry(pstate, lfirst(l),
 								  targetlist, GROUP_CLAUSE);
-
-		/* avoid making duplicate grouplist entries */
-		if (targetIsInSortList(tle, glist))
-			continue;
 
 		/* if tlist item is an UNKNOWN literal, change it to TEXT */
 		restype = exprType((Node *) tle->expr);
 
 		if (restype == UNKNOWNOID)
-		{
 			tle->expr = (Expr *) coerce_type(pstate, (Node *) tle->expr,
 											 restype, TEXTOID, -1,
 											 COERCION_IMPLICIT,
 											 COERCE_IMPLICIT_CAST);
-			restype = TEXTOID;
-		}
 
-		/*
-		 * If the GROUP BY clause matches the ORDER BY clause, we want to
-		 * adopt the ordering operators from the latter rather than using the
-		 * default ops.  This allows "GROUP BY foo ORDER BY foo DESC" to be
-		 * done with only one sort step.  Note we are assuming that any
-		 * user-supplied ordering operator will bring equal values together,
-		 * which is all that GROUP BY needs.
-		 */
-		if (sortItem &&
-			((SortClause *) lfirst(sortItem))->tleSortGroupRef ==
-			tle->ressortgroupref)
-		{
-			ordering_op = ((SortClause *) lfirst(sortItem))->sortop;
-			sortItem = lnext(sortItem);
-		}
-		else
-		{
-			ordering_op = ordering_oper_opid(restype);
-			sortItem = NULL;	/* disregard ORDER BY once match fails */
-		}
-
-		grpcl = makeNode(GroupClause);
-		grpcl->tleSortGroupRef = assignSortGroupRef(tle, *targetlist);
-		grpcl->sortop = ordering_op;
-		glist = lappend(glist, grpcl);
+		tle_list = lappend(tle_list, tle);
 	}
 
-	return glist;
+	/*
+	 * Now iterate through the ORDER BY clause. If we find a grouping element
+	 * that matches the ORDER BY element, append the grouping element to the
+	 * result set immediately. Otherwise, stop iterating. The effect of this
+	 * is to look for a prefix of the ORDER BY list in the grouping clauses,
+	 * and to move that prefix to the front of the GROUP BY.
+	 */
+	foreach(l, sortClause)
+	{
+		SortClause *sc = (SortClause *) lfirst(l);
+		ListCell   *prev = NULL;
+		ListCell   *tl;
+		bool		found = false;
+
+		foreach(tl, tle_list)
+		{
+			TargetEntry *tle = (TargetEntry *) lfirst(tl);
+
+			if (sc->tleSortGroupRef == tle->ressortgroupref)
+			{
+				GroupClause *gc;
+
+				tle_list = list_delete_cell(tle_list, tl, prev);
+
+				/* Use the sort clause's sorting operator */
+				gc = make_group_clause(tle, *targetlist, sc->sortop);
+				result = lappend(result, gc);
+				found = true;
+				break;
+			}
+
+			prev = tl;
+		}
+
+		/* As soon as we've failed to match an ORDER BY element, stop */
+		if (!found)
+			break;
+	}
+
+	/*
+	 * Now add any remaining elements of the GROUP BY list in the order we
+	 * received them.
+	 *
+	 * XXX: are there any additional criteria to consider when ordering
+	 * grouping clauses?
+	 */
+	foreach(l, tle_list)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(l);
+		GroupClause *gc;
+		Oid			sort_op;
+
+		/* avoid making duplicate grouplist entries */
+		if (targetIsInSortList(tle, result))
+			continue;
+
+		sort_op = ordering_oper_opid(exprType((Node *) tle->expr));
+		gc = make_group_clause(tle, *targetlist, sort_op);
+		result = lappend(result, gc);
+	}
+
+	list_free(tle_list);
+	return result;
 }
 
 /*

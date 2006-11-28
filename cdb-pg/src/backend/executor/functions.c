@@ -3,27 +3,25 @@
  * functions.c
  *	  Execution of SQL-language functions
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/functions.c,v 1.98.2.2 2006/10/12 17:02:28 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/functions.c,v 1.108 2006/10/12 17:02:24 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
+#include "access/xact.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/trigger.h"
-#include "executor/executor.h"
 #include "executor/functions.h"
 #include "funcapi.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
-#include "parser/parse_type.h"
 #include "tcop/tcopprot.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
@@ -455,7 +453,9 @@ postquel_getnext(execution_state *es)
 			 * run it to completion.  (If we run to completion then
 			 * ExecutorRun is guaranteed to return NULL.)
 			 */
-			if (LAST_POSTQUEL_COMMAND(es) && es->qd->operation == CMD_SELECT)
+			if (LAST_POSTQUEL_COMMAND(es) &&
+				es->qd->operation == CMD_SELECT &&
+				es->qd->parsetree->into == NULL)
 				count = 1L;
 			else
 				count = 0L;
@@ -524,17 +524,20 @@ postquel_sub_params(SQLFunctionCachePtr fcache,
 	{
 		int			i;
 
-		paramLI = (ParamListInfo) palloc0((nargs + 1) * sizeof(ParamListInfoData));
+		/* sizeof(ParamListInfoData) includes the first array element */
+		paramLI = (ParamListInfo) palloc(sizeof(ParamListInfoData) +
+									   (nargs - 1) *sizeof(ParamExternData));
+		paramLI->numParams = nargs;
 
 		for (i = 0; i < nargs; i++)
 		{
-			paramLI[i].kind = PARAM_NUM;
-			paramLI[i].id = i + 1;
-			paramLI[i].ptype = fcache->argtypes[i];
-			paramLI[i].value = fcinfo->arg[i];
-			paramLI[i].isnull = fcinfo->argnull[i];
+			ParamExternData *prm = &paramLI->params[i];
+
+			prm->value = fcinfo->arg[i];
+			prm->isnull = fcinfo->argnull[i];
+			prm->pflags = 0;
+			prm->ptype = fcache->argtypes[i];
 		}
-		paramLI[nargs].kind = PARAM_INVALID;
 	}
 	else
 		paramLI = NULL;
@@ -961,7 +964,7 @@ check_sql_fn_retval(Oid func_id, Oid rettype, List *queryTreeList,
 					JunkFilter **junkFilter)
 {
 	Query	   *parse;
-	int			cmd;
+	bool		isSelect;
 	List	   *tlist;
 	ListCell   *tlistitem;
 	int			tlistlen;
@@ -986,15 +989,18 @@ check_sql_fn_retval(Oid func_id, Oid rettype, List *queryTreeList,
 	/* find the final query */
 	parse = (Query *) lfirst(list_tail(queryTreeList));
 
-	cmd = parse->commandType;
-	tlist = parse->targetList;
+	/*
+	 * Note: eventually replace this with QueryReturnsTuples?  We'd need a
+	 * more general method of determining the output type, though.
+	 */
+	isSelect = (parse->commandType == CMD_SELECT && parse->into == NULL);
 
 	/*
 	 * The last query must be a SELECT if and only if return type isn't VOID.
 	 */
 	if (rettype == VOIDOID)
 	{
-		if (cmd == CMD_SELECT)
+		if (isSelect)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 			 errmsg("return type mismatch in function declared to return %s",
@@ -1004,7 +1010,7 @@ check_sql_fn_retval(Oid func_id, Oid rettype, List *queryTreeList,
 	}
 
 	/* by here, the function is declared to return some type */
-	if (cmd != CMD_SELECT)
+	if (!isSelect)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 			 errmsg("return type mismatch in function declared to return %s",
@@ -1014,6 +1020,7 @@ check_sql_fn_retval(Oid func_id, Oid rettype, List *queryTreeList,
 	/*
 	 * Count the non-junk entries in the result targetlist.
 	 */
+	tlist = parse->targetList;
 	tlistlen = ExecCleanTargetListLength(tlist);
 
 	fn_typtype = get_typtype(rettype);

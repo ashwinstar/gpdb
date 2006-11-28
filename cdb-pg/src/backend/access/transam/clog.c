@@ -21,10 +21,10 @@
  * we don't need to mark CLOG pages with LSN information; we have enough
  * synchronization already.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/backend/access/transam/clog.c,v 1.33 2005/10/15 02:49:09 momjian Exp $
+ * $PostgreSQL: pgsql/src/backend/access/transam/clog.c,v 1.41 2006/11/05 22:42:07 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -32,8 +32,8 @@
 
 #include "access/clog.h"
 #include "access/slru.h"
+#include "access/transam.h"
 #include "postmaster/bgwriter.h"
-
 
 /*
  * Defines for CLOG page sizes.  A page is the same BLCKSZ as is used
@@ -69,6 +69,7 @@ static SlruCtlData ClogCtlData;
 static int	ZeroCLOGPage(int pageno, bool writeXlog);
 static bool CLOGPagePrecedes(int page1, int page2);
 static void WriteZeroPageXlogRec(int pageno);
+static void WriteTruncateXlogRec(int pageno);
 
 
 /*
@@ -107,7 +108,7 @@ TransactionIdSetStatus(TransactionId xid, XidStatus status)
 	byteval |= (status << bshift);
 	*byteptr = byteval;
 
-	ClogCtl->shared->page_status[slotno] = SLRU_PAGE_DIRTY;
+	ClogCtl->shared->page_dirty[slotno] = true;
 
 	LWLockRelease(CLogControlLock);
 }
@@ -128,9 +129,9 @@ TransactionIdGetStatus(TransactionId xid)
 	char	   *byteptr;
 	XidStatus	status;
 
-	LWLockAcquire(CLogControlLock, LW_EXCLUSIVE);
+	/* lock is acquired by SimpleLruReadPage_ReadOnly */
 
-	slotno = SimpleLruReadPage(ClogCtl, pageno, xid);
+	slotno = SimpleLruReadPage_ReadOnly(ClogCtl, pageno, xid);
 	byteptr = ClogCtl->shared->page_buffer[slotno] + byteno;
 
 	status = (*byteptr >> bshift) & CLOG_XACT_BITMASK;
@@ -147,14 +148,15 @@ TransactionIdGetStatus(TransactionId xid)
 Size
 CLOGShmemSize(void)
 {
-	return SimpleLruShmemSize();
+	return SimpleLruShmemSize(NUM_CLOG_BUFFERS);
 }
 
 void
 CLOGShmemInit(void)
 {
 	ClogCtl->PagePrecedes = CLOGPagePrecedes;
-	SimpleLruInit(ClogCtl, "CLOG Ctl", CLogControlLock, "pg_clog");
+	SimpleLruInit(ClogCtl, "CLOG Ctl", NUM_CLOG_BUFFERS,
+				  CLogControlLock, "pg_clog");
 }
 
 /*
@@ -175,7 +177,7 @@ BootStrapCLOG(void)
 
 	/* Make sure it's written out */
 	SimpleLruWritePage(ClogCtl, slotno, NULL);
-	Assert(ClogCtl->shared->page_status[slotno] == SLRU_PAGE_CLEAN);
+	Assert(!ClogCtl->shared->page_dirty[slotno]);
 
 	LWLockRelease(CLogControlLock);
 }
@@ -246,7 +248,7 @@ StartupCLOG(void)
 		/* Zero the rest of the page */
 		MemSet(byteptr + 1, 0, BLCKSZ - byteno - 1);
 
-		ClogCtl->shared->page_status[slotno] = SLRU_PAGE_DIRTY;
+		ClogCtl->shared->page_dirty[slotno] = true;
 	}
 
 	LWLockRelease(CLogControlLock);
@@ -308,16 +310,17 @@ ExtendCLOG(TransactionId newestXact)
 /*
  * Remove all CLOG segments before the one holding the passed transaction ID
  *
- * When this is called, we know that the database logically contains no
- * reference to transaction IDs older than oldestXact.	However, we must
- * not truncate the CLOG until we have performed a checkpoint, to ensure
- * that no such references remain on disk either; else a crash just after
- * the truncation might leave us with a problem.  Since CLOG segments hold
- * a large number of transactions, the opportunity to actually remove a
- * segment is fairly rare, and so it seems best not to do the checkpoint
- * unless we have confirmed that there is a removable segment.	Therefore
- * we issue the checkpoint command here, not in higher-level code as might
- * seem cleaner.
+ * Before removing any CLOG data, we must flush XLOG to disk, to ensure
+ * that any recently-emitted HEAP_FREEZE records have reached disk; otherwise
+ * a crash and restart might leave us with some unfrozen tuples referencing
+ * removed CLOG data.  We choose to emit a special TRUNCATE XLOG record too.
+ * Replaying the deletion from XLOG is not critical, since the files could
+ * just as well be removed later, but doing so prevents a long-running hot
+ * standby server from acquiring an unreasonably bloated CLOG directory.
+ *
+ * Since CLOG segments hold a large number of transactions, the opportunity to
+ * actually remove a segment is fairly rare, and so it seems best not to do
+ * the XLOG flush unless we have confirmed that there is a removable segment.
  */
 void
 TruncateCLOG(TransactionId oldestXact)
@@ -334,8 +337,8 @@ TruncateCLOG(TransactionId oldestXact)
 	if (!SlruScanDirectory(ClogCtl, cutoffPage, false))
 		return;					/* nothing to remove */
 
-	/* Perform a CHECKPOINT */
-	RequestCheckpoint(true, false);
+	/* Write XLOG record and flush XLOG to disk */
+	WriteTruncateXlogRec(cutoffPage);
 
 	/* Now we can remove the old CLOG segment(s) */
 	SimpleLruTruncate(ClogCtl, cutoffPage);
@@ -386,6 +389,29 @@ WriteZeroPageXlogRec(int pageno)
 }
 
 /*
+ * Write a TRUNCATE xlog record
+ *
+ * We must flush the xlog record to disk before returning --- see notes
+ * in TruncateCLOG().
+ *
+ * Note: xlog record is marked as outside transaction control, since we
+ * want it to be redone whether the invoking transaction commits or not.
+ */
+static void
+WriteTruncateXlogRec(int pageno)
+{
+	XLogRecData rdata;
+	XLogRecPtr	recptr;
+
+	rdata.data = (char *) (&pageno);
+	rdata.len = sizeof(int);
+	rdata.buffer = InvalidBuffer;
+	rdata.next = NULL;
+	recptr = XLogInsert(RM_CLOG_ID, CLOG_TRUNCATE | XLOG_NO_TRAN, &rdata);
+	XLogFlush(recptr);
+}
+
+/*
  * CLOG resource manager's routines
  */
 void
@@ -404,14 +430,30 @@ clog_redo(XLogRecPtr lsn, XLogRecord *record)
 
 		slotno = ZeroCLOGPage(pageno, false);
 		SimpleLruWritePage(ClogCtl, slotno, NULL);
-		Assert(ClogCtl->shared->page_status[slotno] == SLRU_PAGE_CLEAN);
+		Assert(!ClogCtl->shared->page_dirty[slotno]);
 
 		LWLockRelease(CLogControlLock);
 	}
+	else if (info == CLOG_TRUNCATE)
+	{
+		int			pageno;
+
+		memcpy(&pageno, XLogRecGetData(record), sizeof(int));
+
+		/*
+		 * During XLOG replay, latest_page_number isn't set up yet; insert
+		 * a suitable value to bypass the sanity test in SimpleLruTruncate.
+		 */
+		ClogCtl->shared->latest_page_number = pageno;
+
+		SimpleLruTruncate(ClogCtl, pageno);
+	}
+	else
+		elog(PANIC, "clog_redo: unknown op code %u", info);
 }
 
 void
-clog_desc(char *buf, uint8 xl_info, char *rec)
+clog_desc(StringInfo buf, uint8 xl_info, char *rec)
 {
 	uint8		info = xl_info & ~XLR_INFO_MASK;
 
@@ -420,8 +462,15 @@ clog_desc(char *buf, uint8 xl_info, char *rec)
 		int			pageno;
 
 		memcpy(&pageno, rec, sizeof(int));
-		sprintf(buf + strlen(buf), "zeropage: %d", pageno);
+		appendStringInfo(buf, "zeropage: %d", pageno);
+	}
+	else if (info == CLOG_TRUNCATE)
+	{
+		int			pageno;
+
+		memcpy(&pageno, rec, sizeof(int));
+		appendStringInfo(buf, "truncate before: %d", pageno);
 	}
 	else
-		strcat(buf, "UNKNOWN");
+		appendStringInfo(buf, "UNKNOWN");
 }

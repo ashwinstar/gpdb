@@ -32,24 +32,22 @@
  * entry, since that may need to change as a consequence of ALTER TABLE.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/cache/typcache.c,v 1.15.2.3 2006/02/10 19:01:22 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/cache/typcache.c,v 1.22 2006/10/04 00:30:01 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "access/hash.h"
+#include "access/heapam.h"
 #include "access/nbtree.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "utils/builtins.h"
-#include "utils/catcache.h"
-#include "utils/hsearch.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
@@ -270,11 +268,15 @@ lookup_type_cache(Oid type_id, int flags)
 		Assert(rel->rd_rel->reltype == typentry->type_id);
 
 		/*
-		 * Notice that we simply store a link to the relcache's tupdesc. Since
-		 * we are relying on relcache to detect cache flush events, there's
-		 * not a lot of point to maintaining an independent copy.
+		 * Link to the tupdesc and increment its refcount (we assert it's a
+		 * refcounted descriptor).	We don't use IncrTupleDescRefCount() for
+		 * this, because the reference mustn't be entered in the current
+		 * resource owner; it can outlive the current query.
 		 */
 		typentry->tupDesc = RelationGetDescr(rel);
+
+		Assert(typentry->tupDesc->tdrefcount > 0);
+		typentry->tupDesc->tdrefcount++;
 
 		relation_close(rel, AccessShareLock);
 	}
@@ -283,31 +285,13 @@ lookup_type_cache(Oid type_id, int flags)
 }
 
 /*
- * lookup_rowtype_tupdesc
+ * lookup_rowtype_tupdesc_internal --- internal routine to lookup a rowtype
  *
- * Given a typeid/typmod that should describe a known composite type,
- * return the tuple descriptor for the type.  Will ereport on failure.
- *
- * Note: returned TupleDesc points to cached copy; caller must copy it
- * if intending to scribble on it or keep a reference for a long time.
- * ("A long time" basically means "across any possible cache flush",
- * which typically could occur at any relation open or catalog lookup.)
+ * Same API as lookup_rowtype_tupdesc_noerror, but the returned tupdesc
+ * hasn't had its refcount bumped.
  */
-TupleDesc
-lookup_rowtype_tupdesc(Oid type_id, int32 typmod)
-{
-	return lookup_rowtype_tupdesc_noerror(type_id, typmod, false);
-}
-
-/*
- * lookup_rowtype_tupdesc_noerror
- *
- * As above, but if the type is not a known composite type and noError
- * is true, returns NULL instead of ereport'ing.  (Note that if a bogus
- * type_id is passed, you'll get an ereport anyway.)
- */
-TupleDesc
-lookup_rowtype_tupdesc_noerror(Oid type_id, int32 typmod, bool noError)
+static TupleDesc
+lookup_rowtype_tupdesc_internal(Oid type_id, int32 typmod, bool noError)
 {
 	if (type_id != RECORDOID)
 	{
@@ -339,6 +323,59 @@ lookup_rowtype_tupdesc_noerror(Oid type_id, int32 typmod, bool noError)
 		}
 		return RecordCacheArray[typmod];
 	}
+}
+
+/*
+ * lookup_rowtype_tupdesc
+ *
+ * Given a typeid/typmod that should describe a known composite type,
+ * return the tuple descriptor for the type.  Will ereport on failure.
+ *
+ * Note: on success, we increment the refcount of the returned TupleDesc,
+ * and log the reference in CurrentResourceOwner.  Caller should call
+ * ReleaseTupleDesc or DecrTupleDescRefCount when done using the tupdesc.
+ */
+TupleDesc
+lookup_rowtype_tupdesc(Oid type_id, int32 typmod)
+{
+	TupleDesc	tupDesc;
+
+	tupDesc = lookup_rowtype_tupdesc_internal(type_id, typmod, false);
+	IncrTupleDescRefCount(tupDesc);
+	return tupDesc;
+}
+
+/*
+ * lookup_rowtype_tupdesc_noerror
+ *
+ * As above, but if the type is not a known composite type and noError
+ * is true, returns NULL instead of ereport'ing.  (Note that if a bogus
+ * type_id is passed, you'll get an ereport anyway.)
+ */
+TupleDesc
+lookup_rowtype_tupdesc_noerror(Oid type_id, int32 typmod, bool noError)
+{
+	TupleDesc	tupDesc;
+
+	tupDesc = lookup_rowtype_tupdesc_internal(type_id, typmod, noError);
+	if (tupDesc != NULL)
+		IncrTupleDescRefCount(tupDesc);
+	return tupDesc;
+}
+
+/*
+ * lookup_rowtype_tupdesc_copy
+ *
+ * Like lookup_rowtype_tupdesc(), but the returned TupleDesc has been
+ * copied into the CurrentMemoryContext and is not reference-counted.
+ */
+TupleDesc
+lookup_rowtype_tupdesc_copy(Oid type_id, int32 typmod)
+{
+	TupleDesc	tmp;
+
+	tmp = lookup_rowtype_tupdesc_internal(type_id, typmod, false);
+	return CreateTupleDescCopyConstr(tmp);
 }
 
 
@@ -427,6 +464,8 @@ assign_record_type_typmod(TupleDesc tupDesc)
 	/* if fail in subrs, no damage except possibly some wasted memory... */
 	entDesc = CreateTupleDescCopy(tupDesc);
 	recentry->tupdescs = lcons(entDesc, recentry->tupdescs);
+	/* mark it as a reference-counted tupdesc */
+	entDesc->tdrefcount = 1;
 	/* now it's safe to advance NextRecordTypmod */
 	newtypmod = NextRecordTypmod++;
 	entDesc->tdtypmod = newtypmod;
@@ -458,6 +497,17 @@ flush_rowtype_cache(Oid type_id)
 											  HASH_FIND, NULL);
 	if (typentry == NULL)
 		return;					/* no matching entry */
+	if (typentry->tupDesc == NULL)
+		return;					/* tupdesc hasn't been requested */
+
+	/*
+	 * Release our refcount and free the tupdesc if none remain. (Can't use
+	 * DecrTupleDescRefCount because this reference is not logged in current
+	 * resource owner.)
+	 */
+	Assert(typentry->tupDesc->tdrefcount > 0);
+	if (--typentry->tupDesc->tdrefcount == 0)
+		FreeTupleDesc(typentry->tupDesc);
 
 	typentry->tupDesc = NULL;
 }

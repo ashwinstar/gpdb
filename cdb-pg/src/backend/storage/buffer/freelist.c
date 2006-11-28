@@ -4,12 +4,12 @@
  *	  routines for managing the buffer pool's replacement strategy.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/buffer/freelist.c,v 1.54.2.1 2006/07/23 18:34:50 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/buffer/freelist.c,v 1.57 2006/10/04 00:29:57 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -214,7 +214,7 @@ StrategyShmemSize(void)
 	Size		size = 0;
 
 	/* size of lookup hash table ... see comment in StrategyInitialize */
-	size = add_size(size, BufTableShmemSize(NBuffers + 1));
+	size = add_size(size, BufTableShmemSize(NBuffers + NUM_BUFFER_PARTITIONS));
 
 	/* size of the shared replacement strategy control block */
 	size = add_size(size, MAXALIGN(sizeof(BufferStrategyControl)));
@@ -237,12 +237,14 @@ StrategyInitialize(bool init)
 	/*
 	 * Initialize the shared buffer lookup hashtable.
 	 *
-	 * Since we can't tolerate running out of lookup table entries, we
-	 * must be sure to specify an adequate table size here.  The maximum
-	 * steady-state usage is of course NBuffers entries, but BufferAlloc()
-	 * tries to insert a new entry before deleting the old.
+	 * Since we can't tolerate running out of lookup table entries, we must be
+	 * sure to specify an adequate table size here.  The maximum steady-state
+	 * usage is of course NBuffers entries, but BufferAlloc() tries to insert
+	 * a new entry before deleting the old.  In principle this could be
+	 * happening in each partition concurrently, so we could need as many as
+	 * NBuffers + NUM_BUFFER_PARTITIONS entries.
 	 */
-	InitBufTable(NBuffers + 1);
+	InitBufTable(NBuffers + NUM_BUFFER_PARTITIONS);
 
 	/*
 	 * Get or create the shared strategy control block

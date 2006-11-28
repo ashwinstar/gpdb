@@ -3,12 +3,12 @@
  * parse_coerce.c
  *		handle type coercions/conversions for parser
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_coerce.c,v 2.132.2.4 2006/10/11 20:21:11 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_coerce.c,v 2.145 2006/10/11 20:21:03 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,10 +16,9 @@
 
 #include "catalog/pg_cast.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
-#include "nodes/params.h"
 #include "optimizer/clauses.h"
-#include "parser/parsetree.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
@@ -131,9 +130,7 @@ coerce_type(ParseState *pstate, Node *node,
 	}
 	if (targetTypeId == ANYOID ||
 		targetTypeId == ANYELEMENTOID ||
-		(targetTypeId == ANYARRAYOID &&
-		 (inputTypeId != UNKNOWNOID ||
-		  (IsA(node, Const) && ((Const *) node)->constisnull)))) /* HACK */
+		(targetTypeId == ANYARRAYOID && inputTypeId != UNKNOWNOID))
 	{
 		/*
 		 * Assume can_coerce_type verified that implicit coercion is okay.
@@ -145,10 +142,6 @@ coerce_type(ParseState *pstate, Node *node,
 		 * an UNKNOWN value is definitely *not* an array, and so we mustn't
 		 * accept it for ANYARRAY.  (Instead, we will call anyarray_in below,
 		 * which will produce an error.)
-		 *
-		 * HACK: if it's a NULL UNKNOWN constant, return it as-is, same as
-		 * before.  This is just to avoid changing the pg_stats view and thus
-		 * the expected regression test results in back branches.
 		 *
 		 * NB: we do NOT want a RelabelType here.
 		 */
@@ -175,40 +168,51 @@ coerce_type(ParseState *pstate, Node *node,
 		 */
 		Const	   *con = (Const *) node;
 		Const	   *newcon = makeNode(Const);
-		Type		targetType = typeidType(targetTypeId);
-		char		targetTyptype = typeTypType(targetType);
+		Oid			baseTypeId;
+		int32		baseTypeMod;
+		Type		targetType;
 
-		newcon->consttype = targetTypeId;
+		/*
+		 * If the target type is a domain, we want to call its base type's
+		 * input routine, not domain_in().	This is to avoid premature failure
+		 * when the domain applies a typmod: existing input routines follow
+		 * implicit-coercion semantics for length checks, which is not always
+		 * what we want here.  The needed check will be applied properly
+		 * inside coerce_to_domain().
+		 */
+		baseTypeMod = -1;
+		baseTypeId = getBaseTypeAndTypmod(targetTypeId, &baseTypeMod);
+
+		targetType = typeidType(baseTypeId);
+
+		newcon->consttype = baseTypeId;
 		newcon->constlen = typeLen(targetType);
 		newcon->constbyval = typeByVal(targetType);
 		newcon->constisnull = con->constisnull;
 
+		/*
+		 * We pass typmod -1 to the input routine, primarily because existing
+		 * input routines follow implicit-coercion semantics for length
+		 * checks, which is not always what we want here. Any length
+		 * constraint will be applied later by our caller.
+		 *
+		 * We assume here that UNKNOWN's internal representation is the same
+		 * as CSTRING.
+		 */
 		if (!con->constisnull)
-		{
-			/*
-			 * We assume here that UNKNOWN's internal representation is the
-			 * same as CSTRING
-			 */
-			char	   *val = DatumGetCString(con->constvalue);
-
-			/*
-			 * We pass typmod -1 to the input routine, primarily because
-			 * existing input routines follow implicit-coercion semantics for
-			 * length checks, which is not always what we want here. Any
-			 * length constraint will be applied later by our caller.
-			 *
-			 * Note that we call stringTypeDatum using the domain's pg_type
-			 * row, if it's a domain.  This works because the domain row has
-			 * the same typinput and typelem as the base type --- ugly...
-			 */
-			newcon->constvalue = stringTypeDatum(targetType, val, -1);
-		}
+			newcon->constvalue = stringTypeDatum(targetType,
+											DatumGetCString(con->constvalue),
+												 -1);
+		else
+			newcon->constvalue = stringTypeDatum(targetType, NULL, -1);
 
 		result = (Node *) newcon;
 
 		/* If target is a domain, apply constraints. */
-		if (targetTyptype == 'd')
-			result = coerce_to_domain(result, InvalidOid, targetTypeId,
+		if (baseTypeId != targetTypeId)
+			result = coerce_to_domain(result,
+									  baseTypeId, baseTypeMod,
+									  targetTypeId,
 									  cformat, false, false);
 
 		ReleaseSysCache(targetType);
@@ -216,7 +220,7 @@ coerce_type(ParseState *pstate, Node *node,
 		return result;
 	}
 	if (inputTypeId == UNKNOWNOID && IsA(node, Param) &&
-		((Param *) node)->paramkind == PARAM_NUM &&
+		((Param *) node)->paramkind == PARAM_EXTERN &&
 		pstate != NULL && pstate->p_variableparams)
 	{
 		/*
@@ -261,9 +265,7 @@ coerce_type(ParseState *pstate, Node *node,
 
 		param->paramtype = targetTypeId;
 
-		/* Apply domain constraints, if necessary */
-		return coerce_to_domain((Node *) param, InvalidOid, targetTypeId,
-								cformat, false, false);
+		return (Node *) param;
 	}
 	if (find_coercion_pathway(targetTypeId, inputTypeId, ccontext,
 							  &funcId))
@@ -277,13 +279,11 @@ coerce_type(ParseState *pstate, Node *node,
 			 * and we need to extract the correct typmod to use from the
 			 * domain's typtypmod.
 			 */
-			Oid			baseTypeId = getBaseType(targetTypeId);
+			Oid			baseTypeId;
 			int32		baseTypeMod;
 
-			if (targetTypeId != baseTypeId)
-				baseTypeMod = get_typtypmod(targetTypeId);
-			else
-				baseTypeMod = targetTypeMod;
+			baseTypeMod = targetTypeMod;
+			baseTypeId = getBaseTypeAndTypmod(targetTypeId, &baseTypeMod);
 
 			result = build_coercion_expression(node, funcId,
 											   baseTypeId, baseTypeMod,
@@ -296,7 +296,8 @@ coerce_type(ParseState *pstate, Node *node,
 			 * selected coercion function was a type-and-length coercion.
 			 */
 			if (targetTypeId != baseTypeId)
-				result = coerce_to_domain(result, baseTypeId, targetTypeId,
+				result = coerce_to_domain(result, baseTypeId, baseTypeMod,
+										  targetTypeId,
 										  cformat, true,
 										  exprIsLengthCoercion(result,
 															   NULL));
@@ -312,7 +313,7 @@ coerce_type(ParseState *pstate, Node *node,
 			 * that must be accounted for.	If the destination is a domain
 			 * then we won't need a RelabelType node.
 			 */
-			result = coerce_to_domain(node, InvalidOid, targetTypeId,
+			result = coerce_to_domain(node, InvalidOid, -1, targetTypeId,
 									  cformat, false, false);
 			if (result == node)
 			{
@@ -461,15 +462,18 @@ can_coerce_type(int nargs, Oid *input_typeids, Oid *target_typeids,
  * 'arg': input expression
  * 'baseTypeId': base type of domain, if known (pass InvalidOid if caller
  *		has not bothered to look this up)
+ * 'baseTypeMod': base type typmod of domain, if known (pass -1 if caller
+ *		has not bothered to look this up)
  * 'typeId': target type to coerce to
  * 'cformat': coercion format
  * 'hideInputCoercion': if true, hide the input coercion under this one.
- * 'lengthCoercionDone': if true, caller already accounted for length.
+ * 'lengthCoercionDone': if true, caller already accounted for length,
+ *		ie the input is already of baseTypMod as well as baseTypeId.
  *
  * If the target type isn't a domain, the given 'arg' is returned as-is.
  */
 Node *
-coerce_to_domain(Node *arg, Oid baseTypeId, Oid typeId,
+coerce_to_domain(Node *arg, Oid baseTypeId, int32 baseTypeMod, Oid typeId,
 				 CoercionForm cformat, bool hideInputCoercion,
 				 bool lengthCoercionDone)
 {
@@ -477,7 +481,7 @@ coerce_to_domain(Node *arg, Oid baseTypeId, Oid typeId,
 
 	/* Get the base type if it hasn't been supplied */
 	if (baseTypeId == InvalidOid)
-		baseTypeId = getBaseType(typeId);
+		baseTypeId = getBaseTypeAndTypmod(typeId, &baseTypeMod);
 
 	/* If it isn't a domain, return the node as it was passed in */
 	if (baseTypeId == typeId)
@@ -502,10 +506,8 @@ coerce_to_domain(Node *arg, Oid baseTypeId, Oid typeId,
 	 */
 	if (!lengthCoercionDone)
 	{
-		int32		typmod = get_typtypmod(typeId);
-
-		if (typmod >= 0)
-			arg = coerce_type_typmod(arg, baseTypeId, typmod,
+		if (baseTypeMod >= 0)
+			arg = coerce_type_typmod(arg, baseTypeId, baseTypeMod,
 									 COERCE_IMPLICIT_CAST,
 									 (cformat != COERCE_IMPLICIT_CAST),
 									 false);
@@ -722,7 +724,7 @@ coerce_record_to_complex(ParseState *pstate, Node *node,
 						format_type_be(RECORDOID),
 						format_type_be(targetTypeId))));
 
-	tupdesc = CreateTupleDescCopy(lookup_rowtype_tupdesc(targetTypeId, -1));
+	tupdesc = lookup_rowtype_tupdesc(targetTypeId, -1);
 	newargs = NIL;
 	ucolno = 1;
 	arg = list_head(args);
@@ -780,7 +782,7 @@ coerce_record_to_complex(ParseState *pstate, Node *node,
 						format_type_be(targetTypeId)),
 				 errdetail("Input has too many columns.")));
 
-	FreeTupleDesc(tupdesc);
+	ReleaseTupleDesc(tupdesc);
 
 	rowexpr = makeNode(RowExpr);
 	rowexpr->args = newargs;
@@ -789,7 +791,8 @@ coerce_record_to_complex(ParseState *pstate, Node *node,
 	return (Node *) rowexpr;
 }
 
-/* coerce_to_boolean()
+/*
+ * coerce_to_boolean()
  *		Coerce an argument of a construct that requires boolean input
  *		(AND, OR, NOT, etc).  Also check that input is not a set.
  *
@@ -828,9 +831,10 @@ coerce_to_boolean(ParseState *pstate, Node *node,
 	return node;
 }
 
-/* coerce_to_integer()
- *		Coerce an argument of a construct that requires integer input
- *		(LIMIT, OFFSET, etc).  Also check that input is not a set.
+/*
+ * coerce_to_integer()
+ *		Coerce an argument of a construct that requires integer input.
+ *		Also check that input is not a set.
  *
  * Returns the possibly-transformed node tree.
  *
@@ -855,6 +859,46 @@ coerce_to_integer(ParseState *pstate, Node *node,
 			/* translator: first %s is name of a SQL construct, eg LIMIT */
 				   errmsg("argument of %s must be type integer, not type %s",
 						  constructName, format_type_be(inputTypeId))));
+	}
+
+	if (expression_returns_set(node))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+		/* translator: %s is name of a SQL construct, eg LIMIT */
+				 errmsg("argument of %s must not return a set",
+						constructName)));
+
+	return node;
+}
+
+/*
+ * coerce_to_bigint()
+ *		Coerce an argument of a construct that requires int8 input.
+ *		Also check that input is not a set.
+ *
+ * Returns the possibly-transformed node tree.
+ *
+ * As with coerce_type, pstate may be NULL if no special unknown-Param
+ * processing is wanted.
+ */
+Node *
+coerce_to_bigint(ParseState *pstate, Node *node,
+				 const char *constructName)
+{
+	Oid			inputTypeId = exprType(node);
+
+	if (inputTypeId != INT8OID)
+	{
+		node = coerce_to_target_type(pstate, node, inputTypeId,
+									 INT8OID, -1,
+									 COERCION_ASSIGNMENT,
+									 COERCE_IMPLICIT_CAST);
+		if (node == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+			/* translator: first %s is name of a SQL construct, eg LIMIT */
+					 errmsg("argument of %s must be type bigint, not type %s",
+							constructName, format_type_be(inputTypeId))));
 	}
 
 	if (expression_returns_set(node))

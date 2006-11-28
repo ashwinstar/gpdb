@@ -3,18 +3,19 @@
  * pg_proc.c
  *	  routines to support manipulation of the pg_proc relation
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/pg_proc.c,v 1.135.2.1 2005/11/22 18:23:06 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/pg_proc.c,v 1.141 2006/10/19 18:32:46 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/xact.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_language.h"
@@ -23,8 +24,8 @@
 #include "catalog/pg_type.h"
 #include "executor/functions.h"
 #include "funcapi.h"
-#include "miscadmin.h"
 #include "mb/pg_wchar.h"
+#include "miscadmin.h"
 #include "parser/parse_type.h"
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
@@ -33,10 +34,6 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
-
-
-/* GUC parameter */
-bool		check_function_bodies = true;
 
 
 Datum		fmgr_internal_validator(PG_FUNCTION_ARGS);
@@ -121,12 +118,15 @@ ProcedureCreate(const char *procedureName,
 		 * need to use deconstruct_array() since the array data is just going
 		 * to look like a C array of OID values.
 		 */
-		allParamCount = ARR_DIMS(DatumGetPointer(allParameterTypes))[0];
-		if (ARR_NDIM(DatumGetPointer(allParameterTypes)) != 1 ||
+		ArrayType  *allParamArray = (ArrayType *) DatumGetPointer(allParameterTypes);
+
+		allParamCount = ARR_DIMS(allParamArray)[0];
+		if (ARR_NDIM(allParamArray) != 1 ||
 			allParamCount <= 0 ||
-			ARR_ELEMTYPE(DatumGetPointer(allParameterTypes)) != OIDOID)
+			ARR_HASNULL(allParamArray) ||
+			ARR_ELEMTYPE(allParamArray) != OIDOID)
 			elog(ERROR, "allParameterTypes is not a 1-D Oid array");
-		allParams = (Oid *) ARR_DATA_PTR(DatumGetPointer(allParameterTypes));
+		allParams = (Oid *) ARR_DATA_PTR(allParamArray);
 		Assert(allParamCount >= parameterCount);
 		/* we assume caller got the contents right */
 	}

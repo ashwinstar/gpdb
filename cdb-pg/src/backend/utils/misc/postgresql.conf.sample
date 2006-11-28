@@ -6,23 +6,23 @@
 #
 #   name = value
 #
-# (The '=' is optional.) White space may be used. Comments are introduced
-# with '#' anywhere on a line. The complete list of option names and
-# allowed values can be found in the PostgreSQL documentation. The
+# (The '=' is optional.)  White space may be used.  Comments are introduced
+# with '#' anywhere on a line.  The complete list of option names and
+# allowed values can be found in the PostgreSQL documentation.  The
 # commented-out settings shown in this file represent the default values.
 #
 # Please note that re-commenting a setting is NOT sufficient to revert it
-# to the default value, unless you restart the postmaster.
+# to the default value, unless you restart the server.
 #
-# Any option can also be given as a command line switch to the
-# postmaster, e.g. 'postmaster -c log_connections=on'. Some options
-# can be changed at run-time with the 'SET' SQL command.
+# Any option can also be given as a command line switch to the server,
+# e.g., 'postgres -c log_connections=on'.  Some options can be changed at
+# run-time with the 'SET' SQL command.
 #
-# This file is read on postmaster startup and when the postmaster
-# receives a SIGHUP. If you edit the file on a running system, you have
-# to SIGHUP the postmaster for the changes to take effect, or use
-# "pg_ctl reload". Some settings, such as listen_address es, require
-# a postmaster shutdown and restart to take effect.
+# This file is read on server startup and when the server receives a
+# SIGHUP.  If you edit the file on a running system, you have to SIGHUP the
+# server for the changes to take effect, or use "pg_ctl reload". Some
+# settings, which are marked below, require a server shutdown and restart
+# to take effect.
 
 
 #---------------------------------------------------------------------------
@@ -33,11 +33,15 @@
 # switch or PGDATA environment variable, represented here as ConfigDir.
 
 #data_directory = 'ConfigDir'		# use data in another directory
+					# (change requires restart)
 #hba_file = 'ConfigDir/pg_hba.conf'	# host-based authentication file
-#ident_file = 'ConfigDir/pg_ident.conf'	# IDENT configuration file
+					# (change requires restart)
+#ident_file = 'ConfigDir/pg_ident.conf'	# ident configuration file
+					# (change requires restart)
 
-# If external_pid_file is not explicitly set, no extra pid file is written.
-#external_pid_file = '(none)'		# write an extra pid file
+# If external_pid_file is not explicitly set, no extra PID file is written.
+#external_pid_file = '(none)'		# write an extra PID file
+					# (change requires restart)
 
 
 #---------------------------------------------------------------------------
@@ -49,29 +53,33 @@
 #listen_addresses = 'localhost'		# what IP address(es) to listen on;
 					# comma-separated list of addresses;
 					# defaults to 'localhost', '*' = all
+					# (change requires restart)
 #port = 5432
 #max_connections = 200
 # note: increasing max_connections costs ~400 bytes of shared memory per
 # connection slot, plus lock space (see max_locks_per_transaction).  You
 # might also need to raise shared_buffers to support more connections.
-#superuser_reserved_connections = 2
-#unix_socket_directory = ''
-#unix_socket_group = ''
+#superuser_reserved_connections = 3	# (change requires restart)
+#unix_socket_directory = ''		# (change requires restart)
+#unix_socket_group = ''			# (change requires restart)
 #unix_socket_permissions = 0777		# octal
+					# (change requires restart)
 #bonjour_name = ''			# defaults to the computer name
+					# (change requires restart)
 
 # - Security & Authentication -
 
-#authentication_timeout = 60		# 1-600, in seconds
-#ssl = off
+#authentication_timeout = 1min		# 1s-600s
+#ssl = off				# (change requires restart)
 #password_encryption = on
 #db_user_namespace = off
 
 # Kerberos
-#krb_server_keyfile = ''
-#krb_srvname = 'postgres'
+#krb_server_keyfile = ''		# (change requires restart)
+#krb_srvname = 'postgres'		# (change requires restart)
 #krb_server_hostname = ''		# empty string matches any keytab entry
-#krb_caseins_users = off
+					# (change requires restart)
+#krb_caseins_users = off		# (change requires restart)
 
 # - TCP Keepalives -
 # see 'man 7 tcp' for details
@@ -93,7 +101,8 @@
 #shared_buffers = 16000		# min 16, at least max_connections*2, 8KB each
 #temp_buffers = 1000			# min 100, 8KB each
 #max_prepared_transactions = 5		# can be 0 or more
-# note: increasing max_prepared_transactions costs ~600 bytes of shared memory
+					# (change requires restart)
+# Note: increasing max_prepared_transactions costs ~600 bytes of shared memory
 # per transaction slot, plus lock space (see max_locks_per_transaction).
 #work_mem = 32768			# min 64, size in KB
 #maintenance_work_mem = 65536		# min 1024, size in KB
@@ -101,13 +110,16 @@
 
 # - Free Space Map -
 
-#max_fsm_pages = 20000			# min max_fsm_relations*16, 6 bytes each
+#max_fsm_pages = 1638400		# min max_fsm_relations*16, 6 bytes each
+					# (change requires restart)
 #max_fsm_relations = 1000		# min 100, ~70 bytes each
+					# (change requires restart)
 
 # - Kernel Resource Usage -
 
 #max_files_per_process = 1000		# min 25
-#preload_libraries = ''
+					# (change requires restart)
+#shared_preload_libraries = ''		# (change requires restart)
 
 # - Cost-Based Vacuum Delay -
 
@@ -119,7 +131,7 @@
 
 # - Background writer -
 
-#bgwriter_delay = 200			# 10-10000 milliseconds between rounds
+#bgwriter_delay = 200ms			# 10-10000ms between rounds
 #bgwriter_lru_percent = 1.0		# 0-100% of LRU buffers scanned/round
 #bgwriter_lru_maxpages = 5		# 0-1000 buffers max written/round
 #bgwriter_all_percent = 0.333		# 0-100% of all buffers scanned/round
@@ -142,7 +154,8 @@
 					#   fsync_writethrough
 					#   open_sync
 #full_page_writes = on			# recover from partial page writes
-#wal_buffers = 8			# min 4, 8KB each
+#wal_buffers = 64kB			# min 32kB
+					# (change requires restart)
 #commit_delay = 0			# range 0-100000, in microseconds
 #commit_siblings = 5			# range 1-1000
 
@@ -218,6 +231,7 @@
 # This is used when logging to stderr:
 #redirect_stderr = off			# Enable capturing of stderr into log
 					# files
+					# (change requires restart)
 
 # These are only used if redirect_stderr is on:
 #log_directory = 'pg_log'		# Directory where log files are written
@@ -286,10 +300,11 @@
 					#   panic(off)
 				
 #log_min_duration_statement = -1	# -1 is disabled, 0 logs all statements
-					# and their durations, in milliseconds.
+					# and their durations.
 
 #silent_mode = off			# DO NOT USE without syslog or
 					# redirect_stderr
+					# (change requires restart)
 
 # - What to Log -
 
@@ -379,8 +394,10 @@
 #---------------------------------------------------------------------------
 
 #autovacuum = off			# enable autovacuum subprocess?
-#autovacuum_naptime = 60		# time between autovacuum runs, in secs
-#autovacuum_vacuum_threshold = 1000	# min # of tuple updates before
+					# 'on' requires stats_start_collector
+					# and stats_row_level to also be on
+#autovacuum_naptime = 1min		# time between autovacuum runs
+#autovacuum_vacuum_threshold = 500	# min # of tuple updates before
 					# vacuum
 #autovacuum_analyze_threshold = 500	# min # of tuple updates before
 					# analyze
@@ -402,20 +419,27 @@
 
 # - Statement Behavior -
 
-#search_path = '$user,public'		# schema names
+#search_path = '"$user",public'		# schema names
 #default_tablespace = ''		# a tablespace name, '' uses
 					# the default
 #check_function_bodies = on
 #default_transaction_isolation = 'read committed'
 #default_transaction_read_only = off
-#statement_timeout = 0			# 0 is disabled, in milliseconds
+#statement_timeout = 0			# 0 is disabled
+#vacuum_freeze_min_age = 100000000
 
 # - Locale and Formatting -
 
 #datestyle = 'iso, mdy'
 #timezone = unknown			# actually, defaults to TZ
 					# environment setting
-#australian_timezones = off
+#timezone_abbreviations = 'Default'     # select the set of available timezone
+					# abbreviations. Currently, there are
+					#   Default
+					#   Australia
+					#   India
+					# However you can also create your own
+					# file in share/timezonesets/.
 #extra_float_digits = 0			# min -15, max 2
 #client_encoding = sql_ascii		# actually, defaults to database
 					# encoding
@@ -431,15 +455,17 @@
 
 #explain_pretty_print = on
 #dynamic_library_path = '$libdir'
+#local_preload_libraries = ''
 
 
 #---------------------------------------------------------------------------
 # LOCK MANAGEMENT
 #---------------------------------------------------------------------------
 
-#deadlock_timeout = 1000		# in milliseconds
+#deadlock_timeout = 1s
 #max_locks_per_transaction = 64		# min 10
-# note: each lock table slot uses ~220 bytes of shared memory, and there are
+					# (change requires restart)
+# Note: each lock table slot uses ~270 bytes of shared memory, and there are
 # max_locks_per_transaction * (max_connections + max_prepared_transactions)
 # lock table slots.
 
@@ -460,9 +486,11 @@
 # - Previous Postgres Versions -
 
 #add_missing_from = off
+#array_nulls = on
 #backslash_quote = safe_encoding	# on, off, or safe_encoding
 #default_with_oids = off
-#escape_string_warning = off
+#escape_string_warning = on
+#standard_conforming_strings = off
 #regex_flavor = advanced		# advanced, extended, or basic
 #sql_inheritance = on
 

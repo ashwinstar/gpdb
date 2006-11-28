@@ -1,4 +1,4 @@
-$PostgreSQL: pgsql/src/backend/storage/buffer/README,v 1.8 2005/03/04 20:21:06 tgl Exp $
+$PostgreSQL: pgsql/src/backend/storage/buffer/README,v 1.11 2006/07/23 03:07:58 tgl Exp $
 
 Notes about shared buffer access rules
 --------------------------------------
@@ -12,19 +12,18 @@ the relation.  Relation-level locks are not discussed here.)
 Pins: one must "hold a pin on" a buffer (increment its reference count)
 before being allowed to do anything at all with it.  An unpinned buffer is
 subject to being reclaimed and reused for a different page at any instant,
-so touching it is unsafe.  Typically a pin is acquired via ReadBuffer and
-released via WriteBuffer (if one modified the page) or ReleaseBuffer (if not).
-It is OK and indeed common for a single backend to pin a page more than
-once concurrently; the buffer manager handles this efficiently.  It is
-considered OK to hold a pin for long intervals --- for example, sequential
-scans hold a pin on the current page until done processing all the tuples
-on the page, which could be quite a while if the scan is the outer scan of
-a join.  Similarly, btree index scans hold a pin on the current index page.
-This is OK because normal operations never wait for a page's pin count to
-drop to zero.  (Anything that might need to do such a wait is instead
-handled by waiting to obtain the relation-level lock, which is why you'd
-better hold one first.)  Pins may not be held across transaction
-boundaries, however.
+so touching it is unsafe.  Normally a pin is acquired via ReadBuffer and
+released via ReleaseBuffer.  It is OK and indeed common for a single
+backend to pin a page more than once concurrently; the buffer manager
+handles this efficiently.  It is considered OK to hold a pin for long
+intervals --- for example, sequential scans hold a pin on the current page
+until done processing all the tuples on the page, which could be quite a
+while if the scan is the outer scan of a join.  Similarly, btree index
+scans hold a pin on the current index page.  This is OK because normal
+operations never wait for a page's pin count to drop to zero.  (Anything
+that might need to do such a wait is instead handled by waiting to obtain
+the relation-level lock, which is why you'd better hold one first.)  Pins
+may not be held across transaction boundaries, however.
 
 Buffer content locks: there are two kinds of buffer lock, shared and exclusive,
 which act just as you'd expect: multiple backends can hold shared locks on
@@ -79,11 +78,7 @@ it won't be able to actually examine the page until it acquires shared
 or exclusive content lock.
 
 
-VACUUM FULL ignores rule #5, because it instead acquires exclusive lock at
-the relation level, which ensures indirectly that no one else is accessing
-pages of the relation at all.
-
-Plain (concurrent) VACUUM must respect rule #5 fully.  Obtaining the
+Rule #5 only affects VACUUM operations.  Obtaining the
 necessary lock is done by the bufmgr routine LockBufferForCleanup().
 It first gets an exclusive lock and then checks to see if the shared pin
 count is currently 1.  If not, it releases the exclusive lock (but not the
@@ -118,6 +113,14 @@ header fields and changing the buf_table hash table.  The only common
 operation that needs exclusive lock is reading in a page that was not
 in shared buffers already, which will require at least a kernel call
 and usually a wait for I/O, so it will be slow anyway.
+
+* As of PG 8.2, the BufMappingLock has been split into NUM_BUFFER_PARTITIONS
+separate locks, each guarding a portion of the buffer tag space.  This allows
+further reduction of contention in the normal code paths.  The partition
+that a particular buffer tag belongs to is determined from the low-order
+bits of the tag's hash value.  The rules stated above apply to each partition
+independently.  If it is necessary to lock more than one partition at a time,
+they must be locked in partition-number order to avoid risk of deadlock.
 
 * A separate system-wide LWLock, the BufFreelistLock, provides mutual
 exclusion for operations that access the buffer free list or select
@@ -236,3 +239,9 @@ During a checkpoint, the writer's strategy must be to write every dirty
 buffer (pinned or not!).  We may as well make it start this scan from 
 NextVictimBuffer, however, so that the first-to-be-written pages are the
 ones that backends might otherwise have to write for themselves soon.
+
+The background writer takes shared content lock on a buffer while writing it
+out (and anyone else who flushes buffer contents to disk must do so too).
+This ensures that the page image transferred to disk is reasonably consistent.
+We might miss a hint-bit update or two but that isn't a problem, for the same
+reasons mentioned under buffer access rules.

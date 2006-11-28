@@ -3,11 +3,11 @@
  * fd.c
  *	  Virtual file descriptor code.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/file/fd.c,v 1.121.2.3 2006/01/17 23:52:50 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/file/fd.c,v 1.131 2006/11/06 17:10:22 tgl Exp $
  *
  * NOTES:
  *
@@ -649,7 +649,7 @@ AllocateVfd(void)
 	Index		i;
 	File		file;
 
-	DO_DB(elog(LOG, "AllocateVfd. Size %d", SizeVfdCache));
+	DO_DB(elog(LOG, "AllocateVfd. Size %lu", SizeVfdCache));
 
 	Assert(SizeVfdCache > 0);	/* InitFileAccess not called? */
 
@@ -1026,7 +1026,7 @@ retry:
 		 * in which case immediate retry is indicated.
 		 */
 #ifdef WIN32
-		DWORD error = GetLastError();
+		DWORD		error = GetLastError();
 
 		switch (error)
 		{
@@ -1081,7 +1081,7 @@ retry:
 		 * See comments in FileRead()
 		 */
 #ifdef WIN32
-		DWORD error = GetLastError();
+		DWORD		error = GetLastError();
 
 		switch (error)
 		{
@@ -1236,7 +1236,7 @@ FileTruncate(File file, long offset)
  * Ideally this should be the *only* direct call of fopen() in the backend.
  */
 FILE *
-AllocateFile(char *name, char *mode)
+AllocateFile(const char *name, const char *mode)
 {
 	FILE	   *file;
 
@@ -1407,7 +1407,7 @@ TryAgain:
  *		dir = AllocateDir(path);
  *		while ((dirent = ReadDir(dir, path)) != NULL)
  *			process dirent;
- *		FreeDir(path);
+ *		FreeDir(dir);
  *
  * since a NULL dir parameter is taken as indicating AllocateDir failed.
  * (Make sure errno hasn't been changed since AllocateDir if you use this

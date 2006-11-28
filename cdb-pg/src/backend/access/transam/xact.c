@@ -5,12 +5,12 @@
  *
  * See src/backend/access/transam/README for more information.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/transam/xact.c,v 1.215.2.1 2005/11/22 18:23:05 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/transam/xact.c,v 1.228 2006/11/05 22:42:07 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,10 +22,10 @@
 
 #include "access/multixact.h"
 #include "access/subtrans.h"
+#include "access/transam.h"
 #include "access/twophase.h"
 #include "access/xact.h"
-#include "catalog/heap.h"
-#include "catalog/index.h"
+#include "access/xlogutils.h"
 #include "catalog/namespace.h"
 #include "commands/async.h"
 #include "commands/tablecmds.h"
@@ -33,19 +33,17 @@
 #include "executor/spi.h"
 #include "libpq/be-fsstubs.h"
 #include "miscadmin.h"
+#include "pgstat.h"
 #include "storage/fd.h"
-#include "storage/proc.h"
+#include "storage/lmgr.h"
 #include "storage/procarray.h"
 #include "storage/smgr.h"
 #include "utils/flatfiles.h"
-#include "utils/guc.h"
 #include "utils/inval.h"
 #include "utils/memutils.h"
-#include "utils/portal.h"
 #include "utils/relcache.h"
-#include "utils/resowner.h"
+#include "utils/guc.h"
 #include "utils/resscheduler.h"
-#include "pgstat.h"
 
 #include "cdb/cdbgang.h"
 #include "cdb/cdbtm.h"
@@ -144,14 +142,6 @@ typedef struct TransactionStateData
 typedef TransactionStateData *TransactionState;
 
 /*
- * childXids is currently implemented as an Oid List, relying on the
- * assumption that TransactionIds are no wider than Oid.  We use these
- * macros to provide some isolation in case that changes in the future.
- */
-#define lfirst_xid(lc)				((TransactionId) lfirst_oid(lc))
-#define lappend_xid(list, datum)	lappend_oid(list, (Oid) (datum))
-
-/*
  * CurrentTransactionState always points to the current transaction state
  * block.  It will point to TopTransactionStateData when not in a
  * transaction at all, or when in a top-level transaction.
@@ -191,7 +181,6 @@ static CommandId currentCommandId;
 static TimestampTz xactStartTimestamp;
 static TimestampTz stmtStartTimestamp;
 
- 
 /*
  * Total number of SAVEPOINT commands executed by this transaction.
  *
@@ -225,7 +214,7 @@ typedef struct SubXactCallbackItem
 	struct SubXactCallbackItem *next;
 	SubXactCallback callback;
 	void	   *arg;
-}	SubXactCallbackItem;
+} SubXactCallbackItem;
 
 static SubXactCallbackItem *SubXact_callbacks = NULL;
 
@@ -462,23 +451,22 @@ GetCurrentTransactionStartTimestamp(void)
 }
 
 /*
- *  GetCurrentStatementStartTimestamp
+ *	GetCurrentStatementStartTimestamp
  */
 TimestampTz
 GetCurrentStatementStartTimestamp(void)
 {
-    return stmtStartTimestamp;
+	return stmtStartTimestamp;
 }
 
 /*
- *  SetCurrentStatementStartTimestamp
+ *	SetCurrentStatementStartTimestamp
  */
 void
 SetCurrentStatementStartTimestamp(void)
 {
-    stmtStartTimestamp = GetCurrentTimestamp();
+	stmtStartTimestamp = GetCurrentTimestamp();
 }
-
 
 /*
  *	GetCurrentTransactionNestLevel
@@ -512,8 +500,12 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 	 * is what we need during bootstrap.  (Bootstrap mode only inserts tuples,
 	 * it never updates or deletes them, so all tuples can be presumed good
 	 * immediately.)
+	 *
+	 * Likewise, InvalidTransactionId and FrozenTransactionId are certainly
+	 * not my transaction ID, so we can just return "false" immediately for
+	 * any non-normal XID.
 	 */
-	if (xid == BootstrapTransactionId)
+	if (!TransactionIdIsNormal(xid))
 		return false;
 
 
@@ -1562,7 +1554,6 @@ StartTransaction(void)
 	s->state = TRANS_START;
 	s->transactionId = InvalidTransactionId;	/* until assigned */
 
-
 	/*
 	 * Make sure we've freed any old snapshot, and reset xact state variables
 	 */
@@ -1587,8 +1578,6 @@ StartTransaction(void)
 	 */
 	AtStart_Memory();
 	AtStart_ResourceOwner();
-
-
 
 	/*
 	 * MPP currently doesn't support SERIALIZABLE transactions.  it would be
@@ -1908,6 +1897,7 @@ CommitTransaction(void)
 		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 		MyProc->xid = InvalidTransactionId;
 		MyProc->xmin = InvalidTransactionId;
+		MyProc->inVacuum = false;		/* must be cleared with xid/xmin */
 
 		/* Clear the subtransaction-XID cache too while holding the lock */
 		MyProc->subxids.nxids = 0;
@@ -1915,6 +1905,8 @@ CommitTransaction(void)
 
 		LWLockRelease(ProcArrayLock);
 	}
+
+	PG_TRACE1(transaction__commit, s->transactionId);
 
 	/*
 	 * This is all post-commit cleanup.  Note that if an error is raised here,
@@ -2154,6 +2146,7 @@ PrepareTransaction(void)
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 	MyProc->xid = InvalidTransactionId;
 	MyProc->xmin = InvalidTransactionId;
+	MyProc->inVacuum = false;	/* must be cleared with xid/xmin */
 
 	/* Clear the subtransaction-XID cache too while holding the lock */
 	MyProc->subxids.nxids = 0;
@@ -2322,6 +2315,7 @@ AbortTransaction(void)
 		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 		MyProc->xid = InvalidTransactionId;
 		MyProc->xmin = InvalidTransactionId;
+		MyProc->inVacuum = false;		/* must be cleared with xid/xmin */
 
 		/* Clear the subtransaction-XID cache too while holding the lock */
 		MyProc->subxids.nxids = 0;
@@ -2329,6 +2323,8 @@ AbortTransaction(void)
 
 		LWLockRelease(ProcArrayLock);
 	}
+
+	PG_TRACE1(transaction__abort, s->transactionId);
 
 	/*
 	 * Post-abort cleanup.	See notes in CommitTransaction() concerning
@@ -4679,7 +4675,7 @@ xact_redo_commit(xl_xact_commit *xlrec, TransactionId xid)
 	/* Make sure files supposed to be dropped are dropped */
 	for (i = 0; i < xlrec->nrels; i++)
 	{
-		XLogCloseRelation(xlrec->xnodes[i]);
+		XLogDropRelation(xlrec->xnodes[i]);
 		smgrdounlink(smgropen(xlrec->xnodes[i]), false, true);
 	}
 }
@@ -4714,7 +4710,7 @@ xact_redo_abort(xl_xact_abort *xlrec, TransactionId xid)
 	/* Make sure files supposed to be dropped are dropped */
 	for (i = 0; i < xlrec->nrels; i++)
 	{
-		XLogCloseRelation(xlrec->xnodes[i]);
+		XLogDropRelation(xlrec->xnodes[i]);
 		smgrdounlink(smgropen(xlrec->xnodes[i]), false, true);
 	}
 }
@@ -4761,23 +4757,23 @@ xact_redo(XLogRecPtr lsn, XLogRecord *record)
 }
 
 static void
-xact_desc_commit(char *buf, xl_xact_commit *xlrec)
+xact_desc_commit(StringInfo buf, xl_xact_commit *xlrec)
 {
 	struct tm  *tm = localtime(&xlrec->xtime);
 	int			i;
 
-	sprintf(buf + strlen(buf), "%04u-%02u-%02u %02u:%02u:%02u",
-			tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
-			tm->tm_hour, tm->tm_min, tm->tm_sec);
+	appendStringInfo(buf, "%04u-%02u-%02u %02u:%02u:%02u",
+					 tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+					 tm->tm_hour, tm->tm_min, tm->tm_sec);
 	if (xlrec->nrels > 0)
 	{
-		sprintf(buf + strlen(buf), "; rels:");
+		appendStringInfo(buf, "; rels:");
 		for (i = 0; i < xlrec->nrels; i++)
 		{
 			RelFileNode rnode = xlrec->xnodes[i];
 
-			sprintf(buf + strlen(buf), " %u/%u/%u",
-					rnode.spcNode, rnode.dbNode, rnode.relNode);
+			appendStringInfo(buf, " %u/%u/%u",
+							 rnode.spcNode, rnode.dbNode, rnode.relNode);
 		}
 	}
 	if (xlrec->nsubxacts > 0)
@@ -4785,30 +4781,30 @@ xact_desc_commit(char *buf, xl_xact_commit *xlrec)
 		TransactionId *xacts = (TransactionId *)
 		&xlrec->xnodes[xlrec->nrels];
 
-		sprintf(buf + strlen(buf), "; subxacts:");
+		appendStringInfo(buf, "; subxacts:");
 		for (i = 0; i < xlrec->nsubxacts; i++)
-			sprintf(buf + strlen(buf), " %u", xacts[i]);
+			appendStringInfo(buf, " %u", xacts[i]);
 	}
 }
 
 static void
-xact_desc_abort(char *buf, xl_xact_abort *xlrec)
+xact_desc_abort(StringInfo buf, xl_xact_abort *xlrec)
 {
 	struct tm  *tm = localtime(&xlrec->xtime);
 	int			i;
 
-	sprintf(buf + strlen(buf), "%04u-%02u-%02u %02u:%02u:%02u",
-			tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
-			tm->tm_hour, tm->tm_min, tm->tm_sec);
+	appendStringInfo(buf, "%04u-%02u-%02u %02u:%02u:%02u",
+					 tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+					 tm->tm_hour, tm->tm_min, tm->tm_sec);
 	if (xlrec->nrels > 0)
 	{
-		sprintf(buf + strlen(buf), "; rels:");
+		appendStringInfo(buf, "; rels:");
 		for (i = 0; i < xlrec->nrels; i++)
 		{
 			RelFileNode rnode = xlrec->xnodes[i];
 
-			sprintf(buf + strlen(buf), " %u/%u/%u",
-					rnode.spcNode, rnode.dbNode, rnode.relNode);
+			appendStringInfo(buf, " %u/%u/%u",
+							 rnode.spcNode, rnode.dbNode, rnode.relNode);
 		}
 	}
 	if (xlrec->nsubxacts > 0)
@@ -4816,14 +4812,14 @@ xact_desc_abort(char *buf, xl_xact_abort *xlrec)
 		TransactionId *xacts = (TransactionId *)
 		&xlrec->xnodes[xlrec->nrels];
 
-		sprintf(buf + strlen(buf), "; subxacts:");
+		appendStringInfo(buf, "; subxacts:");
 		for (i = 0; i < xlrec->nsubxacts; i++)
-			sprintf(buf + strlen(buf), " %u", xacts[i]);
+			appendStringInfo(buf, " %u", xacts[i]);
 	}
 }
 
 void
-xact_desc(char *buf, uint8 xl_info, char *rec)
+xact_desc(StringInfo buf, uint8 xl_info, char *rec)
 {
 	uint8		info = xl_info & ~XLR_INFO_MASK;
 
@@ -4831,34 +4827,34 @@ xact_desc(char *buf, uint8 xl_info, char *rec)
 	{
 		xl_xact_commit *xlrec = (xl_xact_commit *) rec;
 
-		strcat(buf, "commit: ");
+		appendStringInfo(buf, "commit: ");
 		xact_desc_commit(buf, xlrec);
 	}
 	else if (info == XLOG_XACT_ABORT)
 	{
 		xl_xact_abort *xlrec = (xl_xact_abort *) rec;
 
-		strcat(buf, "abort: ");
+		appendStringInfo(buf, "abort: ");
 		xact_desc_abort(buf, xlrec);
 	}
 	else if (info == XLOG_XACT_PREPARE)
 	{
-		strcat(buf, "prepare");
+		appendStringInfo(buf, "prepare");
 	}
 	else if (info == XLOG_XACT_COMMIT_PREPARED)
 	{
 		xl_xact_commit_prepared *xlrec = (xl_xact_commit_prepared *) rec;
 
-		sprintf(buf + strlen(buf), "commit %u: ", xlrec->xid);
+		appendStringInfo(buf, "commit %u: ", xlrec->xid);
 		xact_desc_commit(buf, &xlrec->crec);
 	}
 	else if (info == XLOG_XACT_ABORT_PREPARED)
 	{
 		xl_xact_abort_prepared *xlrec = (xl_xact_abort_prepared *) rec;
 
-		sprintf(buf + strlen(buf), "abort %u: ", xlrec->xid);
+		appendStringInfo(buf, "abort %u: ", xlrec->xid);
 		xact_desc_abort(buf, &xlrec->arec);
 	}
 	else
-		strcat(buf, "UNKNOWN");
+		appendStringInfo(buf, "UNKNOWN");
 }

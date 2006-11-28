@@ -76,11 +76,11 @@
  *	simplicity we keep the controlling list-of-lists in TopTransactionContext.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/cache/inval.c,v 1.73.2.2 2006/01/19 21:49:30 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/cache/inval.c,v 1.78 2006/10/04 00:30:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -92,7 +92,6 @@
 #include "miscadmin.h"
 #include "storage/sinval.h"
 #include "storage/smgr.h"
-#include "utils/catcache.h"
 #include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
@@ -634,11 +633,11 @@ AcceptInvalidationMessages(void)
 	 * However, it also makes the system unbelievably slow --- the regression
 	 * tests take about 100 times longer than normal.
 	 *
-	 * If you're a glutton for punishment, try CLOBBER_CACHE_RECURSIVELY.
-	 * This slows things by at least a factor of 10000, so I wouldn't suggest
-	 * trying to run the entire regression tests that way.  It's useful to
-	 * try a few simple tests, to make sure that cache reload isn't subject
-	 * to internal cache-flush hazards, but after you've done a few thousand
+	 * If you're a glutton for punishment, try CLOBBER_CACHE_RECURSIVELY. This
+	 * slows things by at least a factor of 10000, so I wouldn't suggest
+	 * trying to run the entire regression tests that way.	It's useful to try
+	 * a few simple tests, to make sure that cache reload isn't subject to
+	 * internal cache-flush hazards, but after you've done a few thousand
 	 * recursive reloads it's unlikely you'll learn more.
 	 */
 #if defined(CLOBBER_CACHE_ALWAYS)

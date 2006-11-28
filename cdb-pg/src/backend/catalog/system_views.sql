@@ -1,9 +1,9 @@
 /*
  * PostgreSQL System Views
  *
- * Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/backend/catalog/system_views.sql,v 1.22 2005/10/06 02:29:15 tgl Exp $
+ * $PostgreSQL: pgsql/src/backend/catalog/system_views.sql,v 1.31 2006/09/16 20:14:33 tgl Exp $
  */
 
 CREATE VIEW pg_roles AS 
@@ -149,6 +149,13 @@ CREATE VIEW pg_locks AS
      transactionid xid, classid oid, objid oid, objsubid int2,
      transaction xid, pid int4, mode text, granted boolean, mppSessionId int4, mppIsWriter boolean);
 
+CREATE VIEW pg_cursors AS
+    SELECT C.name, C.statement, C.is_holdable, C.is_binary,
+           C.is_scrollable, C.creation_time
+    FROM pg_cursor() AS C
+         (name text, statement text, is_holdable boolean, is_binary boolean,
+          is_scrollable boolean, creation_time timestamptz);
+
 CREATE VIEW pg_prepared_xacts AS
     SELECT P.transaction, P.gid, P.prepared,
            U.rolname AS owner, D.datname AS database
@@ -157,10 +164,16 @@ CREATE VIEW pg_prepared_xacts AS
          LEFT JOIN pg_authid U ON P.ownerid = U.oid
          LEFT JOIN pg_database D ON P.dbid = D.oid;
 
+CREATE VIEW pg_prepared_statements AS
+    SELECT P.name, P.statement, P.prepare_time, P.parameter_types, P.from_sql
+    FROM pg_prepared_statement() AS P
+    (name text, statement text, prepare_time timestamptz,
+     parameter_types regtype[], from_sql boolean);
+
 CREATE VIEW pg_settings AS 
     SELECT * 
     FROM pg_show_all_settings() AS A 
-    (name text, setting text, category text, short_desc text, extra_desc text,
+    (name text, setting text, unit text, category text, short_desc text, extra_desc text,
      context text, vartype text, source text, min_val text, max_val text);
 
 CREATE RULE pg_settings_u AS 
@@ -174,6 +187,12 @@ CREATE RULE pg_settings_n AS
 
 GRANT SELECT, UPDATE ON pg_settings TO PUBLIC;
 
+CREATE VIEW pg_timezone_abbrevs AS
+    SELECT * FROM pg_timezone_abbrevs();
+
+CREATE VIEW pg_timezone_names AS
+    SELECT * FROM pg_timezone_names();
+
 -- Statistics views
 
 CREATE VIEW pg_stat_all_tables AS 
@@ -181,6 +200,10 @@ CREATE VIEW pg_stat_all_tables AS
             C.oid AS relid, 
             N.nspname AS schemaname, 
             C.relname AS relname, 
+            pg_stat_get_last_vacuum_time(C.oid) as last_vacuum,
+            pg_stat_get_last_autovacuum_time(C.oid) as last_autovacuum,
+            pg_stat_get_last_analyze_time(C.oid) as last_analyze,
+            pg_stat_get_last_autoanalyze_time(C.oid) as last_autoanalyze,
             pg_stat_get_numscans(C.oid) AS seq_scan, 
             pg_stat_get_tuples_returned(C.oid) AS seq_tup_read, 
             sum(pg_stat_get_numscans(I.indexrelid))::bigint AS idx_scan, 
@@ -311,7 +334,8 @@ CREATE VIEW pg_stat_activity AS
             pg_stat_get_backend_pid(S.backendid) AS procpid, 
             pg_stat_get_backend_userid(S.backendid) AS usesysid, 
             U.rolname AS usename, 
-            pg_stat_get_backend_activity(S.backendid) AS current_query, 
+            pg_stat_get_backend_activity(S.backendid) AS current_query,
+            pg_stat_get_backend_waiting(S.backendid) AS waiting,
             pg_stat_get_backend_activity_start(S.backendid) AS query_start,
             pg_stat_get_backend_start(S.backendid) AS backend_start,
             pg_stat_get_backend_client_addr(S.backendid) AS client_addr,

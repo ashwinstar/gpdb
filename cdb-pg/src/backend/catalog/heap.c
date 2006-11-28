@@ -4,12 +4,12 @@
  *	  code to create and destroy POSTGRES heap relations
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/heap.c,v 1.292.2.2 2006/04/24 01:40:39 alvherre Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/heap.c,v 1.314 2006/11/05 22:42:08 tgl Exp $
  *
  *
  * INTERFACE ROUTINES
@@ -30,8 +30,10 @@
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "access/genam.h"
+#include "access/heapam.h"
+#include "access/transam.h"
+#include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
@@ -44,16 +46,12 @@
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
 #include "commands/tablecmds.h"
-#include "commands/trigger.h"
 #include "miscadmin.h"
-#include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
-#include "optimizer/planmain.h"
 #include "optimizer/var.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_relation.h"
-#include "rewrite/rewriteRemove.h"
 #include "storage/smgr.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
@@ -70,7 +68,8 @@ static void AddNewRelationTuple(Relation pg_class_desc,
 					Relation new_rel_desc,
 					Oid new_rel_oid, Oid new_type_oid,
 					Oid relowner,
-					char relkind);
+					char relkind,
+					Datum reloptions);
 static Oid AddNewRelationType(const char *typeName,
 				   Oid typeNamespace,
 				   Oid new_rel_oid,
@@ -79,6 +78,7 @@ static void RelationRemoveInheritance(Oid relid);
 static void StoreRelCheck(Relation rel, char *ccname, char *ccbin);
 static void StoreConstraints(Relation rel, TupleDesc tupdesc);
 static void SetRelationNumChecks(Relation rel, int numchecks);
+static List *insert_ordered_unique_oid(List *list, Oid datum);
 
 
 /* ----------------------------------------------------------------
@@ -558,6 +558,81 @@ AddNewAttributeTuples(Oid new_rel_oid,
 }
 
 /* --------------------------------
+ *		InsertPgClassTuple
+ *
+ *		Construct and insert a new tuple in pg_class.
+ *
+ * Caller has already opened and locked pg_class.
+ * Tuple data is taken from new_rel_desc->rd_rel, except for the
+ * variable-width fields which are not present in a cached reldesc.
+ * We always initialize relacl to NULL (i.e., default permissions),
+ * and reloptions is set to the passed-in text array (if any).
+ * --------------------------------
+ */
+void
+InsertPgClassTuple(Relation pg_class_desc,
+				   Relation new_rel_desc,
+				   Oid new_rel_oid,
+				   Datum reloptions)
+{
+	Form_pg_class rd_rel = new_rel_desc->rd_rel;
+	Datum		values[Natts_pg_class];
+	char		nulls[Natts_pg_class];
+	HeapTuple	tup;
+
+	/* This is a tad tedious, but way cleaner than what we used to do... */
+	memset(values, 0, sizeof(values));
+	memset(nulls, ' ', sizeof(nulls));
+
+	values[Anum_pg_class_relname - 1] = NameGetDatum(&rd_rel->relname);
+	values[Anum_pg_class_relnamespace - 1] = ObjectIdGetDatum(rd_rel->relnamespace);
+	values[Anum_pg_class_reltype - 1] = ObjectIdGetDatum(rd_rel->reltype);
+	values[Anum_pg_class_relowner - 1] = ObjectIdGetDatum(rd_rel->relowner);
+	values[Anum_pg_class_relam - 1] = ObjectIdGetDatum(rd_rel->relam);
+	values[Anum_pg_class_relfilenode - 1] = ObjectIdGetDatum(rd_rel->relfilenode);
+	values[Anum_pg_class_reltablespace - 1] = ObjectIdGetDatum(rd_rel->reltablespace);
+	values[Anum_pg_class_relpages - 1] = Int32GetDatum(rd_rel->relpages);
+	values[Anum_pg_class_reltuples - 1] = Float4GetDatum(rd_rel->reltuples);
+	values[Anum_pg_class_reltoastrelid - 1] = ObjectIdGetDatum(rd_rel->reltoastrelid);
+	values[Anum_pg_class_reltoastidxid - 1] = ObjectIdGetDatum(rd_rel->reltoastidxid);
+	values[Anum_pg_class_relhasindex - 1] = BoolGetDatum(rd_rel->relhasindex);
+	values[Anum_pg_class_relisshared - 1] = BoolGetDatum(rd_rel->relisshared);
+	values[Anum_pg_class_relkind - 1] = CharGetDatum(rd_rel->relkind);
+	values[Anum_pg_class_relnatts - 1] = Int16GetDatum(rd_rel->relnatts);
+	values[Anum_pg_class_relchecks - 1] = Int16GetDatum(rd_rel->relchecks);
+	values[Anum_pg_class_reltriggers - 1] = Int16GetDatum(rd_rel->reltriggers);
+	values[Anum_pg_class_relukeys - 1] = Int16GetDatum(rd_rel->relukeys);
+	values[Anum_pg_class_relfkeys - 1] = Int16GetDatum(rd_rel->relfkeys);
+	values[Anum_pg_class_relrefs - 1] = Int16GetDatum(rd_rel->relrefs);
+	values[Anum_pg_class_relhasoids - 1] = BoolGetDatum(rd_rel->relhasoids);
+	values[Anum_pg_class_relhaspkey - 1] = BoolGetDatum(rd_rel->relhaspkey);
+	values[Anum_pg_class_relhasrules - 1] = BoolGetDatum(rd_rel->relhasrules);
+	values[Anum_pg_class_relhassubclass - 1] = BoolGetDatum(rd_rel->relhassubclass);
+	values[Anum_pg_class_relfrozenxid - 1] = TransactionIdGetDatum(rd_rel->relfrozenxid);
+	/* start out with empty permissions */
+	nulls[Anum_pg_class_relacl - 1] = 'n';
+	if (reloptions != (Datum) 0)
+		values[Anum_pg_class_reloptions - 1] = reloptions;
+	else
+		nulls[Anum_pg_class_reloptions - 1] = 'n';
+
+	tup = heap_formtuple(RelationGetDescr(pg_class_desc), values, nulls);
+
+	/*
+	 * The new tuple must have the oid already chosen for the rel.	Sure would
+	 * be embarrassing to do this sort of thing in polite company.
+	 */
+	HeapTupleSetOid(tup, new_rel_oid);
+
+	/* finally insert the new tuple, update the indexes, and clean up */
+	simple_heap_insert(pg_class_desc, tup);
+
+	CatalogUpdateIndexes(pg_class_desc, tup);
+
+	heap_freetuple(tup);
+}
+
+/* --------------------------------
  *		AddNewRelationTuple
  *
  *		this registers the new relation in the catalogs by
@@ -570,10 +645,10 @@ AddNewRelationTuple(Relation pg_class_desc,
 					Oid new_rel_oid,
 					Oid new_type_oid,
 					Oid relowner,
-					char relkind)
+					char relkind,
+					Datum reloptions)
 {
 	Form_pg_class new_rel_reltup;
-	HeapTuple	tup;
 
 	/*
 	 * first we update some of the information in our uncataloged relation's
@@ -602,33 +677,39 @@ AddNewRelationTuple(Relation pg_class_desc,
 			break;
 	}
 
+	/* Initialize relfrozenxid */
+	if (relkind == RELKIND_RELATION ||
+		relkind == RELKIND_TOASTVALUE)
+	{
+		/*
+		 * Initialize to the minimum XID that could put tuples in the table.
+		 * We know that no xacts older than RecentXmin are still running,
+		 * so that will do.
+		 */
+		if (!IsBootstrapProcessingMode())
+			new_rel_reltup->relfrozenxid = RecentXmin;
+		else
+			new_rel_reltup->relfrozenxid = FirstNormalTransactionId;
+	}
+	else
+	{
+		/*
+		 * Other relation types will not contain XIDs, so set relfrozenxid
+		 * to InvalidTransactionId.  (Note: a sequence does contain a tuple,
+		 * but we force its xmin to be FrozenTransactionId always; see
+		 * commands/sequence.c.)
+		 */
+		new_rel_reltup->relfrozenxid = InvalidTransactionId;
+	}
+
 	new_rel_reltup->relowner = relowner;
 	new_rel_reltup->reltype = new_type_oid;
 	new_rel_reltup->relkind = relkind;
 
 	new_rel_desc->rd_att->tdtypeid = new_type_oid;
 
-	/* ----------------
-	 *	now form a tuple to add to pg_class
-	 *	XXX Natts_pg_class_fixed is a hack - see pg_class.h
-	 * ----------------
-	 */
-	tup = heap_addheader(Natts_pg_class_fixed,
-						 true,
-						 CLASS_TUPLE_SIZE,
-						 (void *) new_rel_reltup);
-
-	/* force tuple to have the desired OID */
-	HeapTupleSetOid(tup, new_rel_oid);
-
-	/*
-	 * finally insert the new tuple, update the indexes, and clean up.
-	 */
-	simple_heap_insert(pg_class_desc, tup);
-
-	CatalogUpdateIndexes(pg_class_desc, tup);
-
-	heap_freetuple(tup);
+	/* Now build and insert the tuple */
+	InsertPgClassTuple(pg_class_desc, new_rel_desc, new_rel_oid, reloptions);
 }
 
 
@@ -688,6 +769,7 @@ heap_create_with_catalog(const char *relname,
 						 int oidinhcount,
 						 OnCommitAction oncommit,
                          const struct MppPolicy *policy,
+                         Datum reloptions,
 						 bool allow_system_table_mods,
 						 Oid *comptypeOid)
 {
@@ -795,7 +877,8 @@ heap_create_with_catalog(const char *relname,
 						relid,
 						new_type_oid,
 						ownerid,
-						relkind);
+						relkind,
+						reloptions);
 
 	/*
 	 * now add tuples to pg_attribute for the attributes in our new relation.
@@ -1817,7 +1900,7 @@ cookDefault(ParseState *pstate,
 	/*
 	 * Coerce the expression to the correct type and typmod, if given. This
 	 * should match the parser's processing of non-defaulted expressions ---
-	 * see updateTargetListEntry().
+	 * see transformAssignedExpr().
 	 */
 	if (OidIsValid(atttypid))
 	{
@@ -1947,23 +2030,16 @@ RemoveStatistics(Oid relid, AttrNumber attnum)
 
 
 /*
- * RelationTruncateIndexes - truncate all
- * indexes associated with the heap relation to zero tuples.
+ * RelationTruncateIndexes - truncate all indexes associated
+ * with the heap relation to zero tuples.
  *
  * The routine will truncate and then reconstruct the indexes on
- * the relation specified by the heapId parameter.
+ * the specified relation.	Caller must hold exclusive lock on rel.
  */
 static void
-RelationTruncateIndexes(Oid heapId)
+RelationTruncateIndexes(Relation heapRelation)
 {
-	Relation	heapRelation;
 	ListCell   *indlist;
-
-	/*
-	 * Open the heap rel.  We need grab no lock because we assume
-	 * heap_truncate is holding an exclusive lock on the heap rel.
-	 */
-	heapRelation = heap_open(heapId, NoLock);
 
 	/* Ask the relcache to produce a list of the indexes of the rel */
 	foreach(indlist, RelationGetIndexList(heapRelation))
@@ -1972,11 +2048,8 @@ RelationTruncateIndexes(Oid heapId)
 		Relation	currentIndex;
 		IndexInfo  *indexInfo;
 
-		/* Open the index relation */
-		currentIndex = index_open(indexId);
-
-		/* Obtain exclusive lock on it, just to be sure */
-		LockRelation(currentIndex, AccessExclusiveLock);
+		/* Open the index relation; use exclusive lock, just to be sure */
+		currentIndex = index_open(indexId, AccessExclusiveLock);
 
 		/* Fetch info needed for index_build */
 		indexInfo = BuildIndexInfo(currentIndex);
@@ -1985,18 +2058,12 @@ RelationTruncateIndexes(Oid heapId)
 		RelationTruncate(currentIndex, 0);
 
 		/* Initialize the index and rebuild */
-		index_build(heapRelation, currentIndex, indexInfo);
+		/* Note: we do not need to re-establish pkey setting */
+		index_build(heapRelation, currentIndex, indexInfo, false);
 
-		/*
-		 * index_build will close both the heap and index relations (but not
-		 * give up the locks we hold on them).	We're done with this index,
-		 * but we must re-open the heap rel.
-		 */
-		heapRelation = heap_open(heapId, NoLock);
+		/* We're done with this index */
+		index_close(currentIndex, NoLock);
 	}
-
-	/* Finish by closing the heap rel again */
-	heap_close(heapRelation, NoLock);
 }
 
 /*
@@ -2045,7 +2112,7 @@ heap_truncate(List *relids)
 		RelationTruncate(rel, 0);
 
 		/* If this relation has indexes, truncate the indexes too */
-		RelationTruncateIndexes(RelationGetRelid(rel));
+		RelationTruncateIndexes(rel);
 
 		/*
 		 * Close the relation, but keep exclusive lock on it until commit.
@@ -2057,7 +2124,7 @@ heap_truncate(List *relids)
 /*
  * heap_truncate_check_FKs
  *		Check for foreign keys referencing a list of relations that
- *		are to be truncated
+ *		are to be truncated, and raise error if there are any
  *
  * We disallow such FKs (except self-referential ones) since the whole point
  * of TRUNCATE is to not scan the individual rows to be thrown away.
@@ -2071,10 +2138,8 @@ void
 heap_truncate_check_FKs(List *relations, bool tempTables)
 {
 	List	   *oids = NIL;
+	List	   *dependents;
 	ListCell   *cell;
-	Relation	fkeyRel;
-	SysScanDesc fkeyScan;
-	HeapTuple	tuple;
 
 	/*
 	 * Build a list of OIDs of the interesting relations.
@@ -2097,8 +2162,81 @@ heap_truncate_check_FKs(List *relations, bool tempTables)
 		return;
 
 	/*
-	 * Otherwise, must scan pg_constraint.	Right now, it is a seqscan because
-	 * there is no available index on confrelid.
+	 * Otherwise, must scan pg_constraint.	We make one pass with all the
+	 * relations considered; if this finds nothing, then all is well.
+	 */
+	dependents = heap_truncate_find_FKs(oids);
+	if (dependents == NIL)
+		return;
+
+	/*
+	 * Otherwise we repeat the scan once per relation to identify a particular
+	 * pair of relations to complain about.  This is pretty slow, but
+	 * performance shouldn't matter much in a failure path.  The reason for
+	 * doing things this way is to ensure that the message produced is not
+	 * dependent on chance row locations within pg_constraint.
+	 */
+	foreach(cell, oids)
+	{
+		Oid			relid = lfirst_oid(cell);
+		ListCell   *cell2;
+
+		dependents = heap_truncate_find_FKs(list_make1_oid(relid));
+
+		foreach(cell2, dependents)
+		{
+			Oid			relid2 = lfirst_oid(cell2);
+
+			if (!list_member_oid(oids, relid2))
+			{
+				char	   *relname = get_rel_name(relid);
+				char	   *relname2 = get_rel_name(relid2);
+
+				if (tempTables)
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("unsupported ON COMMIT and foreign key combination"),
+							 errdetail("Table \"%s\" references \"%s\", but they do not have the same ON COMMIT setting.",
+									   relname2, relname)));
+				else
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot truncate a table referenced in a foreign key constraint"),
+							 errdetail("Table \"%s\" references \"%s\".",
+									   relname2, relname),
+						   errhint("Truncate table \"%s\" at the same time, "
+								   "or use TRUNCATE ... CASCADE.",
+								   relname2)));
+			}
+		}
+	}
+}
+
+/*
+ * heap_truncate_find_FKs
+ *		Find relations having foreign keys referencing any of the given rels
+ *
+ * Input and result are both lists of relation OIDs.  The result contains
+ * no duplicates, does *not* include any rels that were already in the input
+ * list, and is sorted in OID order.  (The last property is enforced mainly
+ * to guarantee consistent behavior in the regression tests; we don't want
+ * behavior to change depending on chance locations of rows in pg_constraint.)
+ *
+ * Note: caller should already have appropriate lock on all rels mentioned
+ * in relationIds.	Since adding or dropping an FK requires exclusive lock
+ * on both rels, this ensures that the answer will be stable.
+ */
+List *
+heap_truncate_find_FKs(List *relationIds)
+{
+	List	   *result = NIL;
+	Relation	fkeyRel;
+	SysScanDesc fkeyScan;
+	HeapTuple	tuple;
+
+	/*
+	 * Must scan pg_constraint.  Right now, it is a seqscan because there is
+	 * no available index on confrelid.
 	 */
 	fkeyRel = heap_open(ConstraintRelationId, AccessShareLock);
 
@@ -2113,34 +2251,57 @@ heap_truncate_check_FKs(List *relations, bool tempTables)
 		if (con->contype != CONSTRAINT_FOREIGN)
 			continue;
 
-		/* Not for one of our list of tables */
-		if (!list_member_oid(oids, con->confrelid))
+		/* Not referencing one of our list of tables */
+		if (!list_member_oid(relationIds, con->confrelid))
 			continue;
 
-		/* The referencer should be in our list too */
-		if (!list_member_oid(oids, con->conrelid))
-		{
-			if (tempTables)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("unsupported ON COMMIT and foreign key combination"),
-						 errdetail("Table \"%s\" references \"%s\" via foreign key constraint \"%s\", but they do not have the same ON COMMIT setting.",
-								   get_rel_name(con->conrelid),
-								   get_rel_name(con->confrelid),
-								   NameStr(con->conname))));
-			else
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot truncate a table referenced in a foreign key constraint"),
-						 errdetail("Table \"%s\" references \"%s\" via foreign key constraint \"%s\".",
-								   get_rel_name(con->conrelid),
-								   get_rel_name(con->confrelid),
-								   NameStr(con->conname)),
-						 errhint("Truncate table \"%s\" at the same time.",
-								 get_rel_name(con->conrelid))));
-		}
+		/* Add referencer unless already in input or result list */
+		if (!list_member_oid(relationIds, con->conrelid))
+			result = insert_ordered_unique_oid(result, con->conrelid);
 	}
 
 	systable_endscan(fkeyScan);
 	heap_close(fkeyRel, AccessShareLock);
+
+	return result;
+}
+
+/*
+ * insert_ordered_unique_oid
+ *		Insert a new Oid into a sorted list of Oids, preserving ordering,
+ *		and eliminating duplicates
+ *
+ * Building the ordered list this way is O(N^2), but with a pretty small
+ * constant, so for the number of entries we expect it will probably be
+ * faster than trying to apply qsort().  It seems unlikely someone would be
+ * trying to truncate a table with thousands of dependent tables ...
+ */
+static List *
+insert_ordered_unique_oid(List *list, Oid datum)
+{
+	ListCell   *prev;
+
+	/* Does the datum belong at the front? */
+	if (list == NIL || datum < linitial_oid(list))
+		return lcons_oid(datum, list);
+	/* Does it match the first entry? */
+	if (datum == linitial_oid(list))
+		return list;			/* duplicate, so don't insert */
+	/* No, so find the entry it belongs after */
+	prev = list_head(list);
+	for (;;)
+	{
+		ListCell   *curr = lnext(prev);
+
+		if (curr == NULL || datum < lfirst_oid(curr))
+			break;				/* it belongs after 'prev', before 'curr' */
+
+		if (datum == lfirst_oid(curr))
+			return list;		/* duplicate, so don't insert */
+
+		prev = curr;
+	}
+	/* Insert datum into list after 'prev' */
+	lappend_cell_oid(list, prev, datum);
+	return list;
 }

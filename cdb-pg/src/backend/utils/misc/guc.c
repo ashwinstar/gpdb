@@ -7,11 +7,11 @@
  *
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Copyright (c) 2000-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/misc/guc.c,v 1.299.2.3 2006/05/21 20:11:02 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/misc/guc.c,v 1.358 2006/11/05 22:42:09 tgl Exp $
  *
  *--------------------------------------------------------------------
  */
@@ -26,23 +26,20 @@
 #include <syslog.h>
 #endif
 
-#include "utils/guc.h"
-#include "utils/guc_tables.h"
 
+#include "access/gin.h"
 #include "access/twophase.h"
+#include "access/xact.h"
+#include "access/transam.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "cdb/tupchunk.h"
 #include "commands/async.h"
-#include "commands/variable.h"
 #include "commands/vacuum.h"
-#include "executor/executor.h"
-#include "fmgr.h"
+#include "commands/variable.h"
 #include "funcapi.h"
 #include "libpq/auth.h"
-#include "libpq/pqcomm.h"
 #include "libpq/pqformat.h"
-#include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "optimizer/cost.h"
 #include "optimizer/geqo.h"
@@ -52,25 +49,24 @@
 #include "parser/parse_expr.h"
 #include "parser/parse_relation.h"
 #include "parser/scansup.h"
+#include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/bgwriter.h"
-#include "postmaster/syslogger.h"
 #include "postmaster/postmaster.h"
-#include "storage/bufmgr.h"
+#include "postmaster/syslogger.h"
 #include "storage/fd.h"
 #include "storage/freespace.h"
-#include "storage/lock.h"
-#include "storage/proc.h"
 #include "tcop/tcopprot.h"
-#include "utils/array.h"
 #include "utils/builtins.h"
+#include "utils/guc_tables.h"
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
+#include "utils/ps_status.h"
+#include "utils/tzparser.h"
 #include "utils/resscheduler.h"
 #include "pgstat.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
-
 
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
@@ -95,9 +91,16 @@
 #define MAX_KILOBYTES	(INT_MAX / 1024)
 #endif
 
+#define KB_PER_MB (1024)
+#define KB_PER_GB (1024*1024)
+
+#define MS_PER_S 1000
+#define MS_PER_MIN (1000 * 60)
+#define MS_PER_H (1000 * 60 * 60)
+#define MS_PER_D (1000 * 60 * 60 * 24)
+
 /* XXX these should appear in other modules' header files */
 extern bool Log_disconnections;
-extern DLLIMPORT bool check_function_bodies;
 extern int	CommitDelay;
 extern int	CommitSiblings;
 extern char *default_tablespace;
@@ -137,11 +140,14 @@ static const char *show_num_temp_buffers(void);
 static bool assign_phony_autocommit(bool newval, bool doit, GucSource source);
 static const char *assign_custom_variable_classes(const char *newval, bool doit,
 							   GucSource source);
+static bool assign_debug_assertions(bool newval, bool doit, GucSource source);
+static bool assign_ssl(bool newval, bool doit, GucSource source);
 static bool assign_stage_log_stats(bool newval, bool doit, GucSource source);
 static bool assign_log_stats(bool newval, bool doit, GucSource source);
 static bool assign_transaction_read_only(bool newval, bool doit, GucSource source);
 static const char *assign_canonical_path(const char *newval, bool doit, GucSource source);
 static const char *assign_backslash_quote(const char *newval, bool doit, GucSource source);
+static const char *assign_timezone_abbreviations(const char *newval, bool doit, GucSource source);
 
 static bool assign_tcp_keepalives_idle(int newval, bool doit, GucSource source);
 static bool assign_tcp_keepalives_interval(int newval, bool doit, GucSource source);
@@ -155,6 +161,8 @@ static const char *show_tcp_keepalives_count(void);
  */
 #ifdef USE_ASSERT_CHECKING
 bool		assert_enabled = true;
+#else
+bool		assert_enabled = false;
 #endif
 bool		log_duration = false;
 bool		Debug_print_plan = false;
@@ -170,13 +178,11 @@ bool		log_statement_stats = false;		/* this is sort of all three
 												 * above together */
 bool		log_btree_build_stats = false;
 
+bool		check_function_bodies = true;
+bool		default_with_oids = false;
 bool		SQL_inheritance = true;
 
-bool		Australian_timezones = false;
-
 bool		Password_encryption = true;
-
-bool		default_with_oids = false;
 
 int			log_min_error_statement = PANIC;
 int			log_min_messages = NOTICE;
@@ -205,8 +211,11 @@ static char *log_error_verbosity_str;
 static char *log_statement_str;
 static char *log_min_error_statement_str;
 static char *log_destination_string;
+
+#ifdef HAVE_SYSLOG
 static char *syslog_facility_str;
 static char *syslog_ident_str;
+#endif
 static bool phony_autocommit;
 static bool session_auth_is_superuser;
 static double phony_random_seed;
@@ -219,7 +228,9 @@ static char *locale_ctype;
 static char *regex_flavor_string;
 static char *server_encoding_string;
 static char *server_version_string;
+static int	server_version_num;
 static char *timezone_string;
+static char *timezone_abbreviations_string;
 static char *XactIsoLevel_string;
 static char *data_directory;
 static char *custom_variable_classes;
@@ -228,11 +239,9 @@ static int	max_index_keys;
 static int	max_identifier_length;
 static int	block_size;
 static bool integer_datetimes;
-static bool standard_conforming_strings;
+//static bool standard_conforming_strings;
 static char *mpp_log_gang_str;
 static char *mpp_log_interconnect_str;
-
-
 
 /* should be static, but commands/variable.c needs to get at these */
 char	   *role_string;
@@ -330,7 +339,7 @@ const char *const config_group_names[] =
 	/* STATS_COLLECTOR */
 	gettext_noop("Statistics / Query and Index Statistics Collector"),
 	/* AUTOVACUUM */
-	gettext_noop("Auto Vacuum"),
+	gettext_noop("Autovacuum"),
 	/* CLIENT_CONN */
 	gettext_noop("Client Connection Defaults"),
 	/* CLIENT_CONN_STATEMENT */
@@ -521,7 +530,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&EnableSSL,
-		false, NULL, NULL
+		false, assign_ssl, NULL
 	},
 	{
 		{"fsync", PGC_SIGHUP, WAL_SETTINGS,
@@ -584,8 +593,6 @@ static struct config_bool ConfigureNamesBool[] =
 		&Log_disconnections,
 		false, NULL, NULL
 	},
-
-#ifdef USE_ASSERT_CHECKING
 	{
 		{"debug_assertions", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Turns on various assertion checks."),
@@ -593,10 +600,13 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&assert_enabled,
-		true, NULL, NULL
-	},
+#ifdef USE_ASSERT_CHECKING
+		true,
+#else
+		false,
 #endif
-
+		assign_debug_assertions, NULL
+	},
 	{
 		/* currently undocumented, so don't show in SHOW ALL */
 		{"exit_on_error", PGC_USERSET, UNGROUPED,
@@ -760,6 +770,15 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"update_process_title", PGC_SUSET, STATS_COLLECTOR,
+			gettext_noop("Updates the process title to show the active SQL command."),
+			gettext_noop("Enables updating of the process title every time a new SQL command is received by the server.")
+		},
+		&update_process_title,
+		true, NULL, NULL
+	},
+
+	{
 		{"autovacuum", PGC_SIGHUP, AUTOVACUUM,
 			gettext_noop("Starts the autovacuum subprocess."),
 			NULL
@@ -837,15 +856,6 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 	{
-		{"australian_timezones", PGC_USERSET, CLIENT_CONN_LOCALE,
-			gettext_noop("Interprets ACST, CST, EST, and SAT as Australian time zones."),
-			gettext_noop("Otherwise they are interpreted as North/South American "
-						 "time zones and Saturday.")
-		},
-		&Australian_timezones,
-		false, ClearDateCache, NULL
-	},
-	{
 		{"password_encryption", PGC_USERSET, CONN_AUTH_SECURITY,
 			gettext_noop("Encrypt passwords."),
 			gettext_noop("When a password is specified in CREATE USER or "
@@ -919,6 +929,16 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 	{
+		{"array_nulls", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
+			gettext_noop("Enable input of NULL elements in arrays."),
+			gettext_noop("When turned on, unquoted NULL in an array input "
+						 "value means a null value; "
+						 "otherwise it is taken literally.")
+		},
+		&Array_nulls,
+		true, NULL, NULL
+	},
+	{
 		{"default_with_oids", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
 			gettext_noop("Create new tables with OIDs by default."),
 			NULL
@@ -980,7 +1000,7 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 #endif
 	},
-	
+
 	{
 		{"krb_caseins_users", PGC_POSTMASTER, CONN_AUTH_SECURITY,
 			gettext_noop("Sets whether Kerberos user names should be treated as case-insensitive."),
@@ -996,19 +1016,18 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&escape_string_warning,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	{
-		{"standard_conforming_strings", PGC_INTERNAL, PRESET_OPTIONS,
+		{"standard_conforming_strings", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
 			gettext_noop("'...' strings treat backslashes literally."),
 			NULL,
-			GUC_REPORT | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+			GUC_REPORT
 		},
 		&standard_conforming_strings,
 		false, NULL, NULL
 	},
-
 
 	{
 		{"enable_agg_restructure", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
@@ -1139,6 +1158,27 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 
+	{
+		{"allow_system_table_mods", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("Allows modifications of the structure of system tables."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&allowSystemTableMods,
+		false, NULL, NULL
+	},
+
+	{
+		{"ignore_system_indexes", PGC_BACKEND, DEVELOPER_OPTIONS,
+			gettext_noop("Disables reading from system indexes."),
+			gettext_noop("It does not prevent updating the indexes, so it is safe "
+						 "to use.  The worst consequence is slowness."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&IgnoreSystemIndexes,
+		false, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -1148,6 +1188,25 @@ static struct config_bool ConfigureNamesBool[] =
 
 static struct config_int ConfigureNamesInt[] =
 {
+	{
+		{"archive_timeout", PGC_SIGHUP, WAL_SETTINGS,
+			gettext_noop("Forces a switch to the next xlog file if a "
+						 "new file has not been started within N seconds."),
+			NULL,
+			GUC_UNIT_S
+		},
+		&XLogArchiveTimeout,
+		0, 0, INT_MAX, NULL, NULL
+	},
+	{
+		{"post_auth_delay", PGC_BACKEND, DEVELOPER_OPTIONS,
+			gettext_noop("Waits N seconds on connection startup after authentication."),
+			gettext_noop("This allows attaching a debugger to the process."),
+			GUC_NOT_IN_SAMPLE | GUC_UNIT_S
+		},
+		&PostAuthDelay,
+		0, 0, INT_MAX, NULL, NULL
+	},
 	{
 		{"default_statistics_target", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Sets the default statistics target."),
@@ -1215,7 +1274,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"deadlock_timeout", PGC_SIGHUP, LOCK_MANAGEMENT,
 			gettext_noop("The time in milliseconds to wait on lock before checking for deadlock."),
-			NULL
+			NULL,
+			GUC_UNIT_MS
 		},
 		&DeadlockTimeout,
 		1000, 0, INT_MAX, NULL, NULL
@@ -1247,25 +1307,27 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&ReservedBackends,
-		2, 0, INT_MAX / 4, NULL, NULL
+		3, 0, INT_MAX / 4, NULL, NULL
 	},
 
 	{
 		{"shared_buffers", PGC_POSTMASTER, RESOURCES_MEM,
 			gettext_noop("Sets the number of shared memory buffers used by the server."),
-			NULL
+			NULL,
+			GUC_UNIT_BLOCKS
 		},
 		&NBuffers,
-		16000, 16, INT_MAX / BLCKSZ, NULL, NULL
+		16000, 16, INT_MAX / 2, NULL, NULL
 	},
 
 	{
 		{"temp_buffers", PGC_USERSET, RESOURCES_MEM,
 			gettext_noop("Sets the maximum number of temporary buffers used by each session."),
-			NULL
+			NULL,
+			GUC_UNIT_BLOCKS
 		},
 		&num_temp_buffers,
-		1000, 100, INT_MAX / 2, NULL, show_num_temp_buffers
+		1024, 100, INT_MAX / 2, NULL, show_num_temp_buffers
 	},
 
 	{
@@ -1295,7 +1357,8 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("Sets the maximum memory to be used for query workspaces."),
 			gettext_noop("This much memory may be used by each internal "
 						 "sort operation and hash table before switching to "
-						 "temporary disk files.")
+						 "temporary disk files."),
+			GUC_UNIT_KB
 		},
 		&work_mem,
 		32768, 8 * BLCKSZ / 1024, MAX_KILOBYTES, NULL, NULL
@@ -1304,7 +1367,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"maintenance_work_mem", PGC_USERSET, RESOURCES_MEM,
 			gettext_noop("Sets the maximum memory to be used for maintenance operations."),
-			gettext_noop("This includes operations such as VACUUM and CREATE INDEX.")
+			gettext_noop("This includes operations such as VACUUM and CREATE INDEX."),
+			GUC_UNIT_KB
 		},
 		&maintenance_work_mem,
 		65536, 1024, MAX_KILOBYTES, NULL, NULL
@@ -1313,10 +1377,11 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"max_stack_depth", PGC_SUSET, RESOURCES_MEM,
 			gettext_noop("Sets the maximum stack depth, in kilobytes."),
-			NULL
+			NULL,
+			GUC_UNIT_KB
 		},
 		&max_stack_depth,
-		2048, 100, MAX_KILOBYTES, assign_max_stack_depth, NULL
+		100, 100, MAX_KILOBYTES, assign_max_stack_depth, NULL
 	},
 
 	{
@@ -1358,16 +1423,18 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"vacuum_cost_delay", PGC_USERSET, RESOURCES,
 			gettext_noop("Vacuum cost delay in milliseconds."),
-			NULL
+			NULL,
+			GUC_UNIT_MS
 		},
 		&VacuumCostDelay,
 		0, 0, 1000, NULL, NULL
 	},
-	
+
 	{
 		{"autovacuum_vacuum_cost_delay", PGC_SIGHUP, AUTOVACUUM,
 			gettext_noop("Vacuum cost delay in milliseconds, for autovacuum."),
-			NULL
+			NULL,
+			GUC_UNIT_MS
 		},
 		&autovacuum_vac_cost_delay,
 		-1, -1, 1000, NULL, NULL
@@ -1381,7 +1448,6 @@ static struct config_int ConfigureNamesInt[] =
 		&autovacuum_vac_cost_limit,
 		-1, -1, 10000, NULL, NULL
 	},
-	
 
 	{
 		{"max_prepared_transactions", PGC_POSTMASTER, RESOURCES,
@@ -1426,10 +1492,20 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"statement_timeout", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the maximum allowed duration (in milliseconds) of any statement."),
-			gettext_noop("A value of 0 turns off the timeout.")
+			gettext_noop("A value of 0 turns off the timeout."),
+			GUC_UNIT_MS
 		},
 		&StatementTimeout,
 		0, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"vacuum_freeze_min_age", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Minimum age at which VACUUM should freeze a table row."),
+			NULL
+		},
+		&vacuum_freeze_min_age,
+		100000000, 0, 1000000000, NULL, NULL
 	},
 
 	{
@@ -1463,7 +1539,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"authentication_timeout", PGC_SIGHUP, CONN_AUTH_SECURITY,
 			gettext_noop("Sets the maximum time in seconds to complete client authentication."),
-			NULL
+			NULL,
+			GUC_UNIT_S
 		},
 		&AuthenticationTimeout,
 		60, 1, 600, NULL, NULL
@@ -1474,7 +1551,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"pre_auth_delay", PGC_SIGHUP, DEVELOPER_OPTIONS,
 			gettext_noop("no description available"),
 			NULL,
-			GUC_NOT_IN_SAMPLE
+			GUC_NOT_IN_SAMPLE | GUC_UNIT_S
 		},
 		&PreAuthDelay,
 		0, 0, 60, NULL, NULL
@@ -1492,7 +1569,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"checkpoint_timeout", PGC_SIGHUP, WAL_CHECKPOINTS,
 			gettext_noop("Sets the maximum time in seconds between automatic WAL checkpoints."),
-			NULL
+			NULL,
+			GUC_UNIT_S
 		},
 		&CheckPointTimeout,
 		300, 30, 3600, NULL, NULL
@@ -1504,7 +1582,8 @@ static struct config_int ConfigureNamesInt[] =
 						 "frequently than this (in seconds)."),
 			gettext_noop("Write a message to the server log if checkpoints "
 			"caused by the filling of checkpoint segment files happens more "
-						 "frequently than this number of seconds. Zero turns off the warning.")
+						 "frequently than this number of seconds. Zero turns off the warning."),
+			GUC_UNIT_S
 		},
 		&CheckPointWarning,
 		30, 0, INT_MAX, NULL, NULL
@@ -1513,7 +1592,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"wal_buffers", PGC_POSTMASTER, WAL_SETTINGS,
 			gettext_noop("Sets the number of disk-page buffers in shared memory for WAL."),
-			NULL
+			NULL,
+			GUC_UNIT_XBLOCKS
 		},
 		&XLOGbuffers,
 		8, 4, INT_MAX, NULL, NULL
@@ -1554,7 +1634,8 @@ static struct config_int ConfigureNamesInt[] =
 		{"log_min_duration_statement", PGC_SUSET, LOGGING_WHEN,
 			gettext_noop("Sets the minimum execution time in milliseconds above which statements will "
 						 "be logged."),
-			gettext_noop("Zero prints all queries. The default is -1 (turning this feature off).")
+			gettext_noop("Zero prints all queries. The default is -1 (turning this feature off)."),
+			GUC_UNIT_MS
 		},
 		&log_min_duration_statement,
 		-1, -1, INT_MAX / 1000, NULL, NULL
@@ -1563,7 +1644,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"bgwriter_delay", PGC_SIGHUP, RESOURCES,
 			gettext_noop("Background writer sleep time between rounds in milliseconds"),
-			NULL
+			NULL,
+			GUC_UNIT_MS
 		},
 		&BgWriterDelay,
 		200, 10, 10000, NULL, NULL
@@ -1590,7 +1672,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"log_rotation_age", PGC_SIGHUP, LOGGING_WHERE,
 			gettext_noop("Automatic log file rotation will occur after N minutes"),
-			NULL
+			NULL,
+			GUC_UNIT_MIN
 		},
 		&Log_RotationAge,
 		HOURS_PER_DAY * MINS_PER_HOUR, 0, INT_MAX / MINS_PER_HOUR, NULL, NULL
@@ -1599,7 +1682,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"log_rotation_size", PGC_SIGHUP, LOGGING_WHERE,
 			gettext_noop("Automatic log file rotation will occur after N kilobytes"),
-			NULL
+			NULL,
+			GUC_UNIT_KB
 		},
 		&Log_RotationSize,
 		10 * 1024, 0, INT_MAX / 1024, NULL, NULL
@@ -1648,7 +1732,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"autovacuum_naptime", PGC_SIGHUP, AUTOVACUUM,
 			gettext_noop("Time to sleep between autovacuum runs, in seconds."),
-			NULL
+			NULL,
+			GUC_UNIT_S
 		},
 		&autovacuum_naptime,
 		60, 1, INT_MAX, NULL, NULL
@@ -1659,7 +1744,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&autovacuum_vac_thresh,
-		1000, 0, INT_MAX, NULL, NULL
+		500, 0, INT_MAX, NULL, NULL
 	},
 	{
 		{"autovacuum_analyze_threshold", PGC_SIGHUP, AUTOVACUUM,
@@ -1667,13 +1752,23 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&autovacuum_anl_thresh,
-		500, 0, INT_MAX, NULL, NULL
+		250, 0, INT_MAX, NULL, NULL
+	},
+	{
+		/* see varsup.c for why this is PGC_POSTMASTER not PGC_SIGHUP */
+		{"autovacuum_freeze_max_age", PGC_POSTMASTER, AUTOVACUUM,
+			gettext_noop("Age at which to autovacuum a table to prevent transacion ID wraparound."),
+			NULL
+		},
+		&autovacuum_freeze_max_age,
+		200000000, 100000000, 2000000000, NULL, NULL
 	},
 
 	{
 		{"tcp_keepalives_idle", PGC_USERSET, CLIENT_CONN_OTHER,
 			gettext_noop("Seconds between issuing TCP keepalives."),
 			gettext_noop("A value of 0 uses the system default."),
+			GUC_UNIT_S
 		},
 		&tcp_keepalives_idle,
 		0, 0, INT_MAX, assign_tcp_keepalives_idle, show_tcp_keepalives_idle
@@ -1683,6 +1778,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"tcp_keepalives_interval", PGC_USERSET, CLIENT_CONN_OTHER,
 			gettext_noop("Seconds between TCP keepalive retransmits."),
 			gettext_noop("A value of 0 uses the system default."),
+			GUC_UNIT_S
 		},
 		&tcp_keepalives_interval,
 		0, 0, INT_MAX, assign_tcp_keepalives_interval, show_tcp_keepalives_interval
@@ -1810,6 +1906,39 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 
+	{
+		{"gin_fuzzy_search_limit", PGC_USERSET, CLIENT_CONN_OTHER,
+			gettext_noop("Sets the maximum allowed result for exact search by GIN."),
+			NULL,
+			0
+		},
+		&GinFuzzySearchLimit,
+		0, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"effective_cache_size", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Sets the planner's assumption about size of the disk cache."),
+			gettext_noop("That is, the portion of the kernel's disk cache that "
+						 "will be used for PostgreSQL data files. This is measured in disk "
+						 "pages, which are normally 8 kB each."),
+			GUC_UNIT_BLOCKS,
+		},
+		&effective_cache_size,
+		DEFAULT_EFFECTIVE_CACHE_SIZE, 1, INT_MAX, NULL, NULL
+	},
+
+	{
+		/* Can't be set in postgresql.conf */
+		{"server_version_num", PGC_INTERNAL, PRESET_OPTIONS,
+			gettext_noop("Shows the server version as an integer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&server_version_num,
+		PG_VERSION_NUM, PG_VERSION_NUM, PG_VERSION_NUM, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL
@@ -1820,51 +1949,46 @@ static struct config_int ConfigureNamesInt[] =
 static struct config_real ConfigureNamesReal[] =
 {
 	{
-		{"effective_cache_size", PGC_USERSET, QUERY_TUNING_COST,
-			gettext_noop("Sets the planner's assumption about size of the disk cache."),
-			gettext_noop("That is, the portion of the kernel's disk cache that "
-						 "will be used for PostgreSQL data files. This is measured in disk "
-						 "pages, which are normally 8 kB each.")
+		{"seq_page_cost", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Sets the planner's estimate of the cost of a "
+						 "sequentially fetched disk page."),
+			NULL
 		},
-		&effective_cache_size,
-		DEFAULT_EFFECTIVE_CACHE_SIZE, 1, DBL_MAX, NULL, NULL
+		&seq_page_cost,
+		DEFAULT_SEQ_PAGE_COST, 0, DBL_MAX, NULL, NULL
 	},
 	{
 		{"random_page_cost", PGC_USERSET, QUERY_TUNING_COST,
-			gettext_noop("Sets the planner's estimate of the cost of a nonsequentially "
-						 "fetched disk page."),
-			gettext_noop("This is measured as a multiple of the cost of a "
-			  "sequential page fetch. A higher value makes it more likely a "
-						 "sequential scan will be used, a lower value makes it more likely an "
-						 "index scan will be used.")
+			gettext_noop("Sets the planner's estimate of the cost of a "
+						 "nonsequentially fetched disk page."),
+			NULL
 		},
 		&random_page_cost,
 		DEFAULT_RANDOM_PAGE_COST, 0, DBL_MAX, NULL, NULL
 	},
 	{
 		{"cpu_tuple_cost", PGC_USERSET, QUERY_TUNING_COST,
-			gettext_noop("Sets the planner's estimate of the cost of processing each tuple (row)."),
-			gettext_noop("This is measured as a fraction of the cost of a "
-						 "sequential page fetch.")
+			gettext_noop("Sets the planner's estimate of the cost of "
+						 "processing each tuple (row)."),
+			NULL
 		},
 		&cpu_tuple_cost,
 		DEFAULT_CPU_TUPLE_COST, 0, DBL_MAX, NULL, NULL
 	},
 	{
 		{"cpu_index_tuple_cost", PGC_USERSET, QUERY_TUNING_COST,
-			gettext_noop("Sets the planner's estimate of processing cost for each "
-						 "index tuple (row) during index scan."),
-			gettext_noop("This is measured as a fraction of the cost of a "
-						 "sequential page fetch.")
+			gettext_noop("Sets the planner's estimate of the cost of "
+						 "processing each index entry during an index scan."),
+			NULL
 		},
 		&cpu_index_tuple_cost,
 		DEFAULT_CPU_INDEX_TUPLE_COST, 0, DBL_MAX, NULL, NULL
 	},
 	{
 		{"cpu_operator_cost", PGC_USERSET, QUERY_TUNING_COST,
-			gettext_noop("Sets the planner's estimate of processing cost of each operator in WHERE."),
-			gettext_noop("This is measured as a fraction of the cost of a sequential "
-						 "page fetch.")
+			gettext_noop("Sets the planner's estimate of the cost of "
+						 "processing each operator or function call."),
+			NULL
 		},
 		&cpu_operator_cost,
 		DEFAULT_CPU_OPERATOR_COST, 0, DBL_MAX, NULL, NULL
@@ -1914,7 +2038,7 @@ static struct config_real ConfigureNamesReal[] =
 			NULL
 		},
 		&autovacuum_vac_scale,
-		0.4, 0.0, 100.0, NULL, NULL
+		0.2, 0.0, 100.0, NULL, NULL
 	},
 	{
 		{"autovacuum_analyze_scale_factor", PGC_SIGHUP, AUTOVACUUM,
@@ -1922,7 +2046,7 @@ static struct config_real ConfigureNamesReal[] =
 			NULL
 		},
 		&autovacuum_anl_scale,
-		0.2, 0.0, 100.0, NULL, NULL
+		0.1, 0.0, 100.0, NULL, NULL
 	},
 
 	{
@@ -2064,7 +2188,7 @@ static struct config_string ConfigureNamesString[] =
 		{"default_tablespace", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the default tablespace to create tables and indexes in."),
 			gettext_noop("An empty string selects the database's default tablespace."),
-		 	GUC_IS_NAME
+			GUC_IS_NAME
 		},
 		&default_tablespace,
 		"", assign_default_tablespace, NULL
@@ -2189,12 +2313,22 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"preload_libraries", PGC_POSTMASTER, RESOURCES_KERNEL,
+		{"shared_preload_libraries", PGC_POSTMASTER, RESOURCES_KERNEL,
 			gettext_noop("Lists shared libraries to preload into server."),
 			NULL,
 			GUC_LIST_INPUT | GUC_LIST_QUOTE | GUC_SUPERUSER_ONLY
 		},
-		&preload_libraries_string,
+		&shared_preload_libraries_string,
+		"", NULL, NULL
+	},
+
+	{
+		{"local_preload_libraries", PGC_BACKEND, CLIENT_CONN_OTHER,
+			gettext_noop("Lists shared libraries to preload into each backend."),
+			NULL,
+			GUC_LIST_INPUT | GUC_LIST_QUOTE
+		},
+		&local_preload_libraries_string,
 		"", NULL, NULL
 	},
 
@@ -2214,7 +2348,7 @@ static struct config_string ConfigureNamesString[] =
 			GUC_LIST_INPUT | GUC_LIST_QUOTE
 		},
 		&namespace_search_path,
-		"$user,public", assign_search_path, NULL
+		"\"$user\",public", assign_search_path, NULL
 	},
 
 	{
@@ -2320,6 +2454,14 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&timezone_string,
 		"UNKNOWN", assign_timezone, show_timezone
+	},
+	{
+		{"timezone_abbreviations", PGC_USERSET, CLIENT_CONN_LOCALE,
+			gettext_noop("Selects a file of time zone abbreviations"),
+			NULL,
+		},
+		&timezone_abbreviations_string,
+		"UNKNOWN", assign_timezone_abbreviations, NULL
 	},
 
 	{
@@ -2538,7 +2680,8 @@ static void push_old_value(struct config_generic * gconf);
 static void ReportGUCOption(struct config_generic * record);
 static void ShowGUCConfigOption(const char *name, DestReceiver *dest);
 static void ShowAllGUCConfig(DestReceiver *dest);
-static char *_ShowOption(struct config_generic * record);
+static char *_ShowOption(struct config_generic * record, bool use_units);
+static bool is_newvalue_equal(struct config_generic * record, const char *newvalue);
 
 
 /*
@@ -2944,6 +3087,7 @@ InitializeGUCOptions(void)
 {
 	int			i;
 	char	   *env;
+	long		stack_rlimit;
 
 	/*
 	 * Build sorted array of all GUC variables.
@@ -3082,6 +3226,27 @@ InitializeGUCOptions(void)
 	env = getenv("PGCLIENTENCODING");
 	if (env != NULL)
 		SetConfigOption("client_encoding", env, PGC_POSTMASTER, PGC_S_ENV_VAR);
+
+	/*
+	 * rlimit isn't exactly an "environment variable", but it behaves about
+	 * the same.  If we can identify the platform stack depth rlimit, increase
+	 * default stack depth setting up to whatever is safe (but at most 2MB).
+	 */
+	stack_rlimit = get_stack_depth_rlimit();
+	if (stack_rlimit > 0)
+	{
+		int		new_limit = (stack_rlimit - STACK_DEPTH_SLOP) / 1024L;
+
+		if (new_limit > 100)
+		{
+			char	limbuf[16];
+
+			new_limit = Min(new_limit, 2048);
+			sprintf(limbuf, "%d", new_limit);
+			SetConfigOption("max_stack_depth", limbuf,
+							PGC_POSTMASTER, PGC_S_ENV_VAR);
+		}
+	}
 }
 
 
@@ -3694,10 +3859,8 @@ AtEOXact_GUC(bool isCommit, bool isSubXact)
 	 * that all outer transaction levels will have stacked values to deal
 	 * with.)
 	 */
-	if (!isSubXact) {
+	if (!isSubXact)
 		guc_dirty = false;
-	}
-
 }
 
 
@@ -3738,7 +3901,7 @@ ReportGUCOption(struct config_generic * record)
 {
 	if (reporting_enabled && (record->flags & GUC_REPORT))
 	{
-		char	   *val = _ShowOption(record);
+		char	   *val = _ShowOption(record, false);
 		StringInfoData msgbuf;
 
 		pq_beginmessage(&msgbuf, 'S');
@@ -3824,13 +3987,104 @@ parse_bool(const char *value, bool *result)
  * value there.
  */
 static bool
-parse_int(const char *value, int *result)
+parse_int(const char *value, int *result, int flags)
 {
 	long		val;
 	char	   *endptr;
 
 	errno = 0;
 	val = strtol(value, &endptr, 0);
+
+	if ((flags & GUC_UNIT_MEMORY) && endptr != value)
+	{
+		bool		used = false;
+
+		while (*endptr == ' ')
+			endptr++;
+
+		if (strcmp(endptr, "kB") == 0)
+		{
+			used = true;
+			endptr += 2;
+		}
+		else if (strcmp(endptr, "MB") == 0)
+		{
+			val *= KB_PER_MB;
+			used = true;
+			endptr += 2;
+		}
+		else if (strcmp(endptr, "GB") == 0)
+		{
+			val *= KB_PER_GB;
+			used = true;
+			endptr += 2;
+		}
+
+		if (used)
+		{
+			switch (flags & GUC_UNIT_MEMORY)
+			{
+				case GUC_UNIT_BLOCKS:
+					val /= (BLCKSZ / 1024);
+					break;
+				case GUC_UNIT_XBLOCKS:
+					val /= (XLOG_BLCKSZ / 1024);
+					break;
+			}
+		}
+	}
+
+	if ((flags & GUC_UNIT_TIME) && endptr != value)
+	{
+		bool		used = false;
+
+		while (*endptr == ' ')
+			endptr++;
+
+		if (strcmp(endptr, "ms") == 0)
+		{
+			used = true;
+			endptr += 2;
+		}
+		else if (strcmp(endptr, "s") == 0)
+		{
+			val *= MS_PER_S;
+			used = true;
+			endptr += 1;
+		}
+		else if (strcmp(endptr, "min") == 0)
+		{
+			val *= MS_PER_MIN;
+			used = true;
+			endptr += 3;
+		}
+		else if (strcmp(endptr, "h") == 0)
+		{
+			val *= MS_PER_H;
+			used = true;
+			endptr += 1;
+		}
+		else if (strcmp(endptr, "d") == 0)
+		{
+			val *= MS_PER_D;
+			used = true;
+			endptr += 1;
+		}
+
+		if (used)
+		{
+			switch (flags & GUC_UNIT_TIME)
+			{
+				case GUC_UNIT_S:
+					val /= MS_PER_S;
+					break;
+				case GUC_UNIT_MIN:
+					val /= MS_PER_MIN;
+					break;
+			}
+		}
+	}
+
 	if (endptr == value || *endptr != '\0' || errno == ERANGE
 #ifdef HAVE_LONG_INT_64
 	/* if long > 32 bits, check for overflow of int4 */
@@ -3976,7 +4230,15 @@ set_config_option(const char *name, const char *value,
 			break;
 		case PGC_POSTMASTER:
 			if (context == PGC_SIGHUP)
+			{
+				if (changeVal && !is_newvalue_equal(record, value))
+					ereport(elevel,
+							(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
+							 errmsg("parameter \"%s\" cannot be changed after server start; configuration file change ignored",
+									name)));
+
 				return true;
+			}
 			if (context != PGC_POSTMASTER)
 			{
 				ereport(elevel,
@@ -4153,7 +4415,7 @@ set_config_option(const char *name, const char *value,
 
 				if (value)
 				{
-					if (!parse_int(value, &newval))
+					if (!parse_int(value, &newval, conf->gen.flags))
 					{
 						ereport(elevel,
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -4324,9 +4586,10 @@ set_config_option(const char *name, const char *value,
 					newval = guc_strdup(elevel, value);
 					if (newval == NULL)
 						return false;
+
 					/*
-					 * The only sort of "parsing" check we need to do is
-					 * apply truncation if GUC_IS_NAME.
+					 * The only sort of "parsing" check we need to do is apply
+					 * truncation if GUC_IS_NAME.
 					 */
 					if (conf->gen.flags & GUC_IS_NAME)
 						truncate_identifier(newval, strlen(newval), true);
@@ -4675,8 +4938,6 @@ void
 SetPGVariable(const char *name, List *args, bool is_local)
 {
 	char	   *argstring = flatten_set_variable_args(name, args);
-	
-	
 
 	/* Note SET DEFAULT (argstring == NULL) is equivalent to RESET */
 	set_config_option(name,
@@ -5128,7 +5389,7 @@ ShowAllGUCConfig(DestReceiver *dest)
 
 		/* assign to the values array */
 		values[0] = (char *) conf->name;
-		values[1] = _ShowOption(conf);
+		values[1] = _ShowOption(conf, true);
 		values[2] = (char *) conf->short_desc;
 
 		/* send it to dest */
@@ -5164,7 +5425,7 @@ GetConfigOptionByName(const char *name, const char **varname)
 	if (varname)
 		*varname = record->name;
 
-	return _ShowOption(record);
+	return _ShowOption(record, true);
 }
 
 /*
@@ -5197,25 +5458,60 @@ GetConfigOptionByNum(int varnum, const char **values, bool *noshow)
 	values[0] = conf->name;
 
 	/* setting : use _ShowOption in order to avoid duplicating the logic */
-	values[1] = _ShowOption(conf);
+	values[1] = _ShowOption(conf, false);
+
+	/* unit */
+	if (conf->vartype == PGC_INT)
+	{
+		static char buf[8];
+
+		switch (conf->flags & (GUC_UNIT_MEMORY | GUC_UNIT_TIME))
+		{
+			case GUC_UNIT_KB:
+				values[2] = "kB";
+				break;
+			case GUC_UNIT_BLOCKS:
+				snprintf(buf, sizeof(buf), "%dkB", BLCKSZ / 1024);
+				values[2] = buf;
+				break;
+			case GUC_UNIT_XBLOCKS:
+				snprintf(buf, sizeof(buf), "%dkB", XLOG_BLCKSZ / 1024);
+				values[2] = buf;
+				break;
+			case GUC_UNIT_MS:
+				values[2] = "ms";
+				break;
+			case GUC_UNIT_S:
+				values[2] = "s";
+				break;
+			case GUC_UNIT_MIN:
+				values[2] = "min";
+				break;
+			default:
+				values[2] = "";
+				break;
+		}
+	}
+	else
+		values[2] = NULL;
 
 	/* group */
-	values[2] = config_group_names[conf->group];
+	values[3] = config_group_names[conf->group];
 
 	/* short_desc */
-	values[3] = conf->short_desc;
+	values[4] = conf->short_desc;
 
 	/* extra_desc */
-	values[4] = conf->long_desc;
+	values[5] = conf->long_desc;
 
 	/* context */
-	values[5] = GucContext_Names[conf->context];
+	values[6] = GucContext_Names[conf->context];
 
 	/* vartype */
-	values[6] = config_type_names[conf->vartype];
+	values[7] = config_type_names[conf->vartype];
 
 	/* source */
-	values[7] = GucSource_Names[conf->source];
+	values[8] = GucSource_Names[conf->source];
 
 	/* now get the type specifc attributes */
 	switch (conf->vartype)
@@ -5223,10 +5519,10 @@ GetConfigOptionByNum(int varnum, const char **values, bool *noshow)
 		case PGC_BOOL:
 			{
 				/* min_val */
-				values[8] = NULL;
+				values[9] = NULL;
 
 				/* max_val */
-				values[9] = NULL;
+				values[10] = NULL;
 			}
 			break;
 
@@ -5236,11 +5532,11 @@ GetConfigOptionByNum(int varnum, const char **values, bool *noshow)
 
 				/* min_val */
 				snprintf(buffer, sizeof(buffer), "%d", lconf->min);
-				values[8] = pstrdup(buffer);
+				values[9] = pstrdup(buffer);
 
 				/* max_val */
 				snprintf(buffer, sizeof(buffer), "%d", lconf->max);
-				values[9] = pstrdup(buffer);
+				values[10] = pstrdup(buffer);
 			}
 			break;
 
@@ -5250,21 +5546,21 @@ GetConfigOptionByNum(int varnum, const char **values, bool *noshow)
 
 				/* min_val */
 				snprintf(buffer, sizeof(buffer), "%g", lconf->min);
-				values[8] = pstrdup(buffer);
+				values[9] = pstrdup(buffer);
 
 				/* max_val */
 				snprintf(buffer, sizeof(buffer), "%g", lconf->max);
-				values[9] = pstrdup(buffer);
+				values[10] = pstrdup(buffer);
 			}
 			break;
 
 		case PGC_STRING:
 			{
 				/* min_val */
-				values[8] = NULL;
+				values[9] = NULL;
 
 				/* max_val */
-				values[9] = NULL;
+				values[10] = NULL;
 			}
 			break;
 
@@ -5275,10 +5571,10 @@ GetConfigOptionByNum(int varnum, const char **values, bool *noshow)
 				 */
 
 				/* min_val */
-				values[8] = NULL;
+				values[9] = NULL;
 
 				/* max_val */
-				values[9] = NULL;
+				values[10] = NULL;
 			}
 			break;
 	}
@@ -5321,7 +5617,7 @@ show_config_by_name(PG_FUNCTION_ARGS)
  * show_all_settings - equiv to SHOW ALL command but implemented as
  * a Table Function.
  */
-#define NUM_PG_SETTINGS_ATTS	10
+#define NUM_PG_SETTINGS_ATTS	11
 
 Datum
 show_all_settings(PG_FUNCTION_ARGS)
@@ -5353,21 +5649,23 @@ show_all_settings(PG_FUNCTION_ARGS)
 						   TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "setting",
 						   TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "category",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "unit",
 						   TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "short_desc",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "category",
 						   TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "extra_desc",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "short_desc",
 						   TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "context",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "extra_desc",
 						   TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 7, "vartype",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 7, "context",
 						   TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 8, "source",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 8, "vartype",
 						   TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 9, "min_val",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 9, "source",
 						   TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 10, "max_val",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 10, "min_val",
+						   TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 11, "max_val",
 						   TEXTOID, -1, 0);
 
 		/*
@@ -5430,7 +5728,7 @@ show_all_settings(PG_FUNCTION_ARGS)
 }
 
 static char *
-_ShowOption(struct config_generic * record)
+_ShowOption(struct config_generic * record, bool use_units)
 {
 	char		buffer[256];
 	const char *val;
@@ -5456,8 +5754,78 @@ _ShowOption(struct config_generic * record)
 					val = (*conf->show_hook) ();
 				else
 				{
-					snprintf(buffer, sizeof(buffer), "%d",
-							 *conf->variable);
+					char		unit[4];
+					int			result = *conf->variable;
+
+					if (use_units && result > 0 && (record->flags & GUC_UNIT_MEMORY))
+					{
+						switch (record->flags & GUC_UNIT_MEMORY)
+						{
+							case GUC_UNIT_BLOCKS:
+								result *= BLCKSZ / 1024;
+								break;
+							case GUC_UNIT_XBLOCKS:
+								result *= XLOG_BLCKSZ / 1024;
+								break;
+						}
+
+						if (result % KB_PER_GB == 0)
+						{
+							result /= KB_PER_GB;
+							strcpy(unit, "GB");
+						}
+						else if (result % KB_PER_MB == 0)
+						{
+							result /= KB_PER_MB;
+							strcpy(unit, "MB");
+						}
+						else
+						{
+							strcpy(unit, "kB");
+						}
+					}
+					else if (use_units && result > 0 && (record->flags & GUC_UNIT_TIME))
+					{
+						switch (record->flags & GUC_UNIT_TIME)
+						{
+							case GUC_UNIT_S:
+								result *= MS_PER_S;
+								break;
+							case GUC_UNIT_MIN:
+								result *= MS_PER_MIN;
+								break;
+						}
+
+						if (result % MS_PER_D == 0)
+						{
+							result /= MS_PER_D;
+							strcpy(unit, "d");
+						}
+						else if (result % MS_PER_H == 0)
+						{
+							result /= MS_PER_H;
+							strcpy(unit, "h");
+						}
+						else if (result % MS_PER_MIN == 0)
+						{
+							result /= MS_PER_MIN;
+							strcpy(unit, "min");
+						}
+						else if (result % MS_PER_S == 0)
+						{
+							result /= MS_PER_S;
+							strcpy(unit, "s");
+						}
+						else
+						{
+							strcpy(unit, "ms");
+						}
+					}
+					else
+						strcpy(unit, "");
+
+					snprintf(buffer, sizeof(buffer), "%d%s",
+							 (int) result, unit);
 					val = buffer;
 				}
 			}
@@ -5487,7 +5855,7 @@ _ShowOption(struct config_generic * record)
 				else if (*conf->variable && **conf->variable)
 					val = *conf->variable;
 				else
-					val = "unset";
+					val = "";
 			}
 			break;
 
@@ -5498,6 +5866,44 @@ _ShowOption(struct config_generic * record)
 	}
 
 	return pstrdup(val);
+}
+
+
+static bool
+is_newvalue_equal(struct config_generic * record, const char *newvalue)
+{
+	switch (record->vartype)
+	{
+		case PGC_BOOL:
+			{
+				struct config_bool *conf = (struct config_bool *) record;
+				bool		newval;
+
+				return parse_bool(newvalue, &newval) && *conf->variable == newval;
+			}
+		case PGC_INT:
+			{
+				struct config_int *conf = (struct config_int *) record;
+				int			newval;
+
+				return parse_int(newvalue, &newval, record->flags) && *conf->variable == newval;
+			}
+		case PGC_REAL:
+			{
+				struct config_real *conf = (struct config_real *) record;
+				double		newval;
+
+				return parse_real(newvalue, &newval) && *conf->variable == newval;
+			}
+		case PGC_STRING:
+			{
+				struct config_string *conf = (struct config_string *) record;
+
+				return strcmp(*conf->variable, newvalue) == 0;
+			}
+	}
+
+	return false;
 }
 
 
@@ -5851,14 +6257,13 @@ GUCArrayAdd(ArrayType *array, const char *name, const char *value)
 			}
 		}
 
-		isnull = false;
 		a = array_set(array, 1, &index,
 					  datum,
-					  -1 /* varlenarray */ ,
+					  false,
+					  -1 /* varlena array */ ,
 					  -1 /* TEXT's typlen */ ,
 					  false /* TEXT's typbyval */ ,
-					  'i' /* TEXT's typalign */ ,
-					  &isnull);
+					  'i' /* TEXT's typalign */ );
 	}
 	else
 		a = construct_array(&datum, 1,
@@ -5924,14 +6329,13 @@ GUCArrayDelete(ArrayType *array, const char *name)
 		/* else add it to the output array */
 		if (newarray)
 		{
-			isnull = false;
 			newarray = array_set(newarray, 1, &index,
 								 d,
+								 false,
 								 -1 /* varlenarray */ ,
 								 -1 /* TEXT's typlen */ ,
 								 false /* TEXT's typbyval */ ,
-								 'i' /* TEXT's typalign */ ,
-								 &isnull);
+								 'i' /* TEXT's typalign */ );
 		}
 		else
 			newarray = construct_array(&d, 1,
@@ -6276,7 +6680,7 @@ assign_custom_variable_classes(const char *newval, bool doit, GucSource source)
 	initStringInfo(&buf);
 	while ((c = *cp++) != 0)
 	{
-		if (isspace(c))
+		if (isspace((unsigned char) c))
 		{
 			if (symLen > 0)
 				hasSpaceAfterToken = true;
@@ -6294,7 +6698,7 @@ assign_custom_variable_classes(const char *newval, bool doit, GucSource source)
 			continue;
 		}
 
-		if (hasSpaceAfterToken || !isalnum(c))
+		if (hasSpaceAfterToken || !isalnum((unsigned char) c))
 		{
 			/*
 			 * Syntax error due to token following space after token or non
@@ -6321,6 +6725,30 @@ assign_custom_variable_classes(const char *newval, bool doit, GucSource source)
 
 	pfree(buf.data);
 	return newval;
+}
+
+static bool
+assign_debug_assertions(bool newval, bool doit, GucSource source)
+{
+#ifndef USE_ASSERT_CHECKING
+	if (newval)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			   errmsg("assertion checking is not supported by this build")));
+#endif
+	return true;
+}
+
+static bool
+assign_ssl(bool newval, bool doit, GucSource source)
+{
+#ifndef USE_SSL
+	if (newval)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("SSL is not supported by this build")));
+#endif
+	return true;
 }
 
 static bool
@@ -6393,12 +6821,11 @@ static const char *
 assign_backslash_quote(const char *newval, bool doit, GucSource source)
 {
 	BackslashQuoteType bq;
-	bool	bqbool;
+	bool		bqbool;
 
 	/*
-	 * Although only "on", "off", and "safe_encoding" are documented,
-	 * we use parse_bool so we can accept all the likely variants of
-	 * "on" and "off".
+	 * Although only "on", "off", and "safe_encoding" are documented, we use
+	 * parse_bool so we can accept all the likely variants of "on" and "off".
 	 */
 	if (pg_strcasecmp(newval, "safe_encoding") == 0)
 		bq = BACKSLASH_QUOTE_SAFE_ENCODING;
@@ -6413,6 +6840,64 @@ assign_backslash_quote(const char *newval, bool doit, GucSource source)
 		backslash_quote = bq;
 
 	return newval;
+}
+
+static const char *
+assign_timezone_abbreviations(const char *newval, bool doit, GucSource source)
+{
+	/*
+	 * The powerup value shown above for timezone_abbreviations is "UNKNOWN".
+	 * When we see this we just do nothing.  If this value isn't overridden
+	 * from the config file then pg_timezone_abbrev_initialize() will
+	 * eventually replace it with "Default".  This hack has two purposes: to
+	 * avoid wasting cycles loading values that might soon be overridden from
+	 * the config file, and to avoid trying to read the timezone abbrev files
+	 * during InitializeGUCOptions().  The latter doesn't work in an
+	 * EXEC_BACKEND subprocess because my_exec_path hasn't been set yet and so
+	 * we can't locate PGSHAREDIR.  (Essentially the same hack is used to
+	 * delay initializing TimeZone ... if we have any more, we should try to
+	 * clean up and centralize this mechanism ...)
+	 */
+	if (strcmp(newval, "UNKNOWN") == 0)
+	{
+		return newval;
+	}
+
+	/* Loading abbrev file is expensive, so only do it when value changes */
+	if (timezone_abbreviations_string == NULL ||
+		strcmp(timezone_abbreviations_string, newval) != 0)
+	{
+		int			elevel;
+
+		/*
+		 * If reading config file, only the postmaster should bleat loudly
+		 * about problems.	Otherwise, it's just this one process doing it,
+		 * and we use WARNING message level.
+		 */
+		if (source == PGC_S_FILE)
+			elevel = IsUnderPostmaster ? DEBUG2 : LOG;
+		else
+			elevel = WARNING;
+		if (!load_tzoffsets(newval, doit, elevel))
+			return NULL;
+	}
+	return newval;
+}
+
+/*
+ * pg_timezone_abbrev_initialize --- set default value if not done already
+ *
+ * This is called after initial loading of postgresql.conf.  If no
+ * timezone_abbreviations setting was found therein, select default.
+ */
+void
+pg_timezone_abbrev_initialize(void)
+{
+	if (strcmp(timezone_abbreviations_string, "UNKNOWN") == 0)
+	{
+		SetConfigOption("timezone_abbreviations", "Default",
+						PGC_POSTMASTER, PGC_S_ARGV);
+	}
 }
 
 static bool

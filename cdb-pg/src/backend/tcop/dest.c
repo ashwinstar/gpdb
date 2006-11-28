@@ -4,11 +4,11 @@
  *	  support for communication destinations
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/tcop/dest.c,v 1.67 2005/11/03 17:11:38 alvherre Exp $
+ *	  $PostgreSQL: pgsql/src/backend/tcop/dest.c,v 1.70 2006/08/30 23:34:21 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -30,6 +30,8 @@
 
 #include "access/printtup.h"
 #include "access/xact.h"
+#include "commands/copy.h"
+#include "executor/executor.h"
 #include "executor/tstoreReceiver.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
@@ -124,6 +126,12 @@ CreateDestReceiver(CommandDest dest, Portal portal)
 				elog(ERROR, "portal has no holdStore");
 			return CreateTuplestoreDestReceiver(portal->holdStore,
 												portal->holdContext);
+
+		case DestIntoRel:
+			return CreateIntoRelDestReceiver();
+
+		case DestCopyOut:
+			return CreateCopyDestReceiver();
 	}
 
 	/* should never get here */
@@ -148,6 +156,8 @@ EndCommand(const char *commandTag, CommandDest dest)
 		case DestDebug:
 		case DestSPI:
 		case DestTuplestore:
+		case DestIntoRel:
+		case DestCopyOut:
 			break;
 	}
 }
@@ -186,6 +196,8 @@ NullCommand(CommandDest dest)
 		case DestDebug:
 		case DestSPI:
 		case DestTuplestore:
+		case DestIntoRel:
+		case DestCopyOut:
 			break;
 	}
 }
@@ -226,6 +238,8 @@ ReadyForQuery(CommandDest dest)
 		case DestDebug:
 		case DestSPI:
 		case DestTuplestore:
+		case DestIntoRel:
+		case DestCopyOut:
 			break;
 	}
 }

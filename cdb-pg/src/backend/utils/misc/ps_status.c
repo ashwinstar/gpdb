@@ -5,10 +5,10 @@
  * to contain some useful information. Mechanism differs wildly across
  * platforms.
  *
- * $PostgreSQL: pgsql/src/backend/utils/misc/ps_status.c,v 1.26.2.1 2005/11/22 18:23:25 momjian Exp $
+ * $PostgreSQL: pgsql/src/backend/utils/misc/ps_status.c,v 1.33 2006/10/04 00:30:04 momjian Exp $
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Copyright (c) 2000-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  * various details abducted from various places
  *--------------------------------------------------------------------
  */
@@ -34,10 +34,10 @@
 #include "cdb/cdbvars.h"        /* Mpp_role, Mpp_segment, currentSliceId */
 
 extern char **environ;
-bool update_process_title = true;
+bool		update_process_title = true;
 
 
-/*------
+/*
  * Alternative ways of updating ps display:
  *
  * PS_USE_SETPROCTITLE
@@ -55,6 +55,8 @@ bool update_process_title = true;
  * PS_USE_CLOBBER_ARGV
  *	   write over the argv and environment area
  *	   (most SysV-like systems)
+ * PS_USE_WIN32
+ *	   push the string out as the name of a Windows event
  * PS_USE_NONE
  *	   don't update ps display
  *	   (This is the default, as it is safest.)
@@ -67,9 +69,9 @@ bool update_process_title = true;
 #define PS_USE_PS_STRINGS
 #elif (defined(BSD) || defined(__bsdi__) || defined(__hurd__)) && !defined(__darwin__)
 #define PS_USE_CHANGE_ARGV
-#elif defined(__linux__) || defined(_AIX) || defined(__sgi) || (defined(sun) && !defined(BSD)) || defined(ultrix) || defined(__ksr__) || defined(__osf__) || defined(__QNX__) || defined(__svr4__) || defined(__svr5__) || defined(__darwin__)
+#elif defined(__linux__) || defined(_AIX) || defined(__sgi) || (defined(sun) && !defined(BSD)) || defined(ultrix) || defined(__ksr__) || defined(__osf__) || defined(__svr4__) || defined(__svr5__) || defined(__darwin__)
 #define PS_USE_CLOBBER_ARGV
-#elif defined (WIN32)
+#elif defined(WIN32)
 #define PS_USE_WIN32
 #else
 #define PS_USE_NONE
@@ -77,7 +79,7 @@ bool update_process_title = true;
 
 
 /* Different systems want the buffer padded differently */
-#if defined(_AIX) || defined(__linux__) || defined(__QNX__) || defined(__svr4__)
+#if defined(_AIX) || defined(__linux__) || defined(__svr4__)
 #define PS_PADDING '\0'
 #else
 #define PS_PADDING ' '
@@ -104,30 +106,6 @@ static char     ps_username[64];        /*CDB*/
 static int	save_argc;
 static char **save_argv;
 
-#ifdef WIN32
-
- /*
-  * Win32 does not support showing any changed arguments. To make it at all
-  * possible to track which backend is doing what, we create a named object
-  * that can be viewed with for example Process Explorer
-  */
-static HANDLE ident_handle = INVALID_HANDLE_VALUE;
-static void
-pgwin32_update_ident(char *ident)
-{
-	char		name[PS_BUFFER_SIZE + 32];
-
-	if (ident_handle != INVALID_HANDLE_VALUE)
-		CloseHandle(ident_handle);
-
-	sprintf(name, "pgident: %s", ident);
-
-	ident_handle = CreateEvent(NULL,
-							   TRUE,
-							   FALSE,
-							   name);
-}
-#endif
 
 /*
  * Call this early in startup to save the original argc/argv values.
@@ -240,7 +218,7 @@ save_ps_display_args(int argc, char **argv)
  */
 void
 init_ps_display(const char *username, const char *dbname,
-                const char *host_info, const char *initial_str)
+				const char *host_info, const char *initial_str)
 {
     Assert(username);
     Assert(dbname);
@@ -405,24 +383,23 @@ set_ps_display(const char *activity, bool force)
 #endif   /* PS_USE_CLOBBER_ARGV */
 
 #ifdef PS_USE_WIN32
-    {
-        /*
-         * Win32 does not support showing any changed arguments. To make it
-         * at all possible to track which backend is doing what, we create a
-         * named object that can be viewed with for example Process Explorer.
-         */
-        static HANDLE ident_handle = INVALID_HANDLE_VALUE;
-        char        name[PS_BUFFER_SIZE + 32];
+	{
+		/*
+		 * Win32 does not support showing any changed arguments. To make it at
+		 * all possible to track which backend is doing what, we create a
+		 * named object that can be viewed with for example Process Explorer.
+		 */
+		static HANDLE ident_handle = INVALID_HANDLE_VALUE;
+		char		name[PS_BUFFER_SIZE + 32];
 
-        if (ident_handle != INVALID_HANDLE_VALUE)
-            CloseHandle(ident_handle);
+		if (ident_handle != INVALID_HANDLE_VALUE)
+			CloseHandle(ident_handle);
 
-        sprintf(name, "pgident: %s", ps_buffer);
+		sprintf(name, "pgident: %s", ps_buffer);
 
-        ident_handle = CreateEvent(NULL, TRUE, FALSE, name);
-    }
+		ident_handle = CreateEvent(NULL, TRUE, FALSE, name);
+	}
 #endif   /* PS_USE_WIN32 */
-
 #endif   /* not PS_USE_NONE */
 }
 

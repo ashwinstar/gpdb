@@ -31,7 +31,7 @@
 #include "utils/syscache.h"
 
 
-static bool create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid);
+static bool create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid, Oid * comptypeOid);
 static bool needs_toast_table(Relation rel);
 
 
@@ -57,10 +57,29 @@ AlterTableCreateToastTable(Oid relOid)
 	rel = heap_open(relOid, AccessExclusiveLock);
 
 	/* create_toast_table does all the work */
-	(void) create_toast_table(rel, InvalidOid, InvalidOid);
+	(void) create_toast_table(rel, InvalidOid, InvalidOid, NULL);
 
 	heap_close(rel, NoLock);
 }
+
+void
+AlterTableCreateToastTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid, Oid * comptypeOid)
+{
+	Relation	rel;
+
+	/*
+	 * Grab an exclusive lock on the target table, which we will NOT release
+	 * until end of transaction.  (This is probably redundant in all present
+	 * uses...)
+	 */
+	rel = heap_open(relOid, AccessExclusiveLock);
+	
+	/* create_toast_table does all the work */
+	(void) create_toast_table(rel, newOid, newIndexOid, comptypeOid);
+
+	heap_close(rel, NoLock);
+}
+
 
 /*
  * Create a toast table during bootstrap
@@ -83,7 +102,7 @@ BootstrapToastTable(char *relName, Oid toastOid, Oid toastIndexOid)
 						relName)));
 
 	/* create_toast_table does all the work */
-	if (!create_toast_table(rel, toastOid, toastIndexOid))
+	if (!create_toast_table(rel, toastOid, toastIndexOid, NULL))
 		elog(ERROR, "\"%s\" does not require a toast table",
 			 relName);
 
@@ -99,7 +118,7 @@ BootstrapToastTable(char *relName, Oid toastOid, Oid toastIndexOid)
  * bootstrap they can be nonzero to specify hand-assigned OIDs
  */
 static bool
-create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid)
+create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid, Oid * comptypeOid)
 {
 	Oid			relOid = RelationGetRelid(rel);
 	HeapTuple	reltup;
@@ -191,8 +210,10 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid)
 										   true,
 										   0,
 										   ONCOMMIT_NOOP,
+										   NULL, /* CDB POLICY */
 										   (Datum) 0,
-										   true);
+										   true,
+										   comptypeOid);
 
 	/* make the toast relation visible, else index creation will fail */
 	CommandCounterIncrement();

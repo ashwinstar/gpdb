@@ -3,12 +3,12 @@
  * keywords.c
  *	  lexical token lookup for reserved words in PostgreSQL
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/keywords.c,v 1.166 2005/10/15 02:49:22 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/keywords.c,v 1.177 2006/10/07 21:51:02 petere Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,6 +17,7 @@
 #include <ctype.h>
 
 #include "nodes/parsenodes.h"
+#include "parser/gramparse.h"	/* required before parser/parse.h! */
 #include "parser/keywords.h"
 #include "parser/parse.h"
 
@@ -35,7 +36,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"access", ACCESS},
 	{"action", ACTION},
 	{"active", ACTIVE},
-	{"add", ADD},
+	{"add", ADD_P},
 	{"admin", ADMIN},
 	{"after", AFTER},
 	{"aggregate", AGGREGATE},
@@ -67,6 +68,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"cache", CACHE},
 	{"called", CALLED},
 	{"cascade", CASCADE},
+	{"cascaded", CASCADED},
 	{"case", CASE},
 	{"cast", CAST},
 	{"chain", CHAIN},
@@ -84,6 +86,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"comment", COMMENT},
 	{"commit", COMMIT},
 	{"committed", COMMITTED},
+	{"concurrently", CONCURRENTLY},
 	{"connection", CONNECTION},
 	{"constraint", CONSTRAINT},
 	{"constraints", CONSTRAINTS},
@@ -160,10 +163,10 @@ static const ScanKeyword ScanKeywords[] = {
 	{"group", GROUP_P},
 	{"handler", HANDLER},
 	{"having", HAVING},
-	{"header", HEADER},
+	{"header", HEADER_P},
 	{"hold", HOLD},
 	{"hour", HOUR_P},
-	{"if",IF},
+	{"if", IF_P},
 	{"ilike", ILIKE},
 	{"immediate", IMMEDIATE},
 	{"immutable", IMMUTABLE},
@@ -172,6 +175,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"including", INCLUDING},
 	{"increment", INCREMENT},
 	{"index", INDEX},
+	{"indexes", INDEXES},
 	{"inherit", INHERIT},
 	{"inherits", INHERITS},
 	{"initially", INITIALLY},
@@ -259,6 +263,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"overcommit", OVERCOMMIT},
 	{"overlaps", OVERLAPS},
 	{"overlay", OVERLAY},
+	{"owned", OWNED},
 	{"owner", OWNER},
 	{"partial", PARTIAL},
 	{"password", PASSWORD},
@@ -278,6 +283,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"randomly", RANDOMLY},
 	{"read", READ},
 	{"real", REAL},
+	{"reassign", REASSIGN},
 	{"recheck", RECHECK},
 	{"references", REFERENCES},
 	{"reindex", REINDEX},
@@ -290,6 +296,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"resource", RESOURCE},
 	{"restart", RESTART},
 	{"restrict", RESTRICT},
+	{"returning", RETURNING},
 	{"returns", RETURNS},
 	{"revoke", REVOKE},
 	{"right", RIGHT},
@@ -339,7 +346,6 @@ static const ScanKeyword ScanKeywords[] = {
 	{"time", TIME},
 	{"timestamp", TIMESTAMP},
 	{"to", TO},
-	{"toast", TOAST},
 	{"trailing", TRAILING},
 	{"transaction", TRANSACTION},
 	{"treat", TREAT},

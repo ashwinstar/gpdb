@@ -3,21 +3,21 @@
  * parse_target.c
  *	  handle target lists
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_target.c,v 1.138.2.2 2006/01/17 17:33:20 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_target.c,v 1.149 2006/10/04 00:29:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
+#include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "funcapi.h"
 #include "miscadmin.h"
-#include "nodes/bitmapset.h"
 #include "nodes/makefuncs.h"
 #include "parser/parsetree.h"
 #include "parser/parse_coerce.h"
@@ -40,10 +40,13 @@ static Node *transformAssignmentIndirection(ParseState *pstate,
 							   Oid targetTypeId,
 							   int32 targetTypMod,
 							   ListCell *indirection,
-							   Node *rhs);
-static List *ExpandColumnRefStar(ParseState *pstate, ColumnRef *cref);
+							   Node *rhs,
+							   int location);
+static List *ExpandColumnRefStar(ParseState *pstate, ColumnRef *cref,
+					bool targetlist);
 static List *ExpandAllTables(ParseState *pstate);
-static List *ExpandIndirectionStar(ParseState *pstate, A_Indirection *ind);
+static List *ExpandIndirectionStar(ParseState *pstate, A_Indirection *ind,
+					  bool targetlist);
 static int	FigureColnameInternal(Node *node, char **name);
 
 
@@ -116,7 +119,8 @@ transformTargetList(ParseState *pstate, List *targetlist)
 			{
 				/* It is something.*, expand into multiple items */
 				p_target = list_concat(p_target,
-									   ExpandColumnRefStar(pstate, cref));
+									   ExpandColumnRefStar(pstate, cref,
+														   true));
 				continue;
 			}
 		}
@@ -130,7 +134,8 @@ transformTargetList(ParseState *pstate, List *targetlist)
 			{
 				/* It is something.*, expand into multiple items */
 				p_target = list_concat(p_target,
-									   ExpandIndirectionStar(pstate, ind));
+									   ExpandIndirectionStar(pstate, ind,
+															 true));
 				continue;
 			}
 		}
@@ -147,6 +152,69 @@ transformTargetList(ParseState *pstate, List *targetlist)
 	}
 
 	return p_target;
+}
+
+
+/*
+ * transformExpressionList()
+ *
+ * This is the identical transformation to transformTargetList, except that
+ * the input list elements are bare expressions without ResTarget decoration,
+ * and the output elements are likewise just expressions without TargetEntry
+ * decoration.	We use this for ROW() and VALUES() constructs.
+ */
+List *
+transformExpressionList(ParseState *pstate, List *exprlist)
+{
+	List	   *result = NIL;
+	ListCell   *lc;
+
+	foreach(lc, exprlist)
+	{
+		Node	   *e = (Node *) lfirst(lc);
+
+		/*
+		 * Check for "something.*".  Depending on the complexity of the
+		 * "something", the star could appear as the last name in ColumnRef,
+		 * or as the last indirection item in A_Indirection.
+		 */
+		if (IsA(e, ColumnRef))
+		{
+			ColumnRef  *cref = (ColumnRef *) e;
+
+			if (strcmp(strVal(llast(cref->fields)), "*") == 0)
+			{
+				/* It is something.*, expand into multiple items */
+				result = list_concat(result,
+									 ExpandColumnRefStar(pstate, cref,
+														 false));
+				continue;
+			}
+		}
+		else if (IsA(e, A_Indirection))
+		{
+			A_Indirection *ind = (A_Indirection *) e;
+			Node	   *lastitem = llast(ind->indirection);
+
+			if (IsA(lastitem, String) &&
+				strcmp(strVal(lastitem), "*") == 0)
+			{
+				/* It is something.*, expand into multiple items */
+				result = list_concat(result,
+									 ExpandIndirectionStar(pstate, ind,
+														   false));
+				continue;
+			}
+		}
+
+		/*
+		 * Not "something.*", so transform as a single expression
+		 */
+		result = lappend(result,
+						 transformExpr(pstate, e));
+	}
+
+	return result;
 }
 
 
@@ -228,6 +296,7 @@ markTargetListOrigin(ParseState *pstate, TargetEntry *tle,
 			break;
 		case RTE_SPECIAL:
 		case RTE_FUNCTION:
+		case RTE_VALUES:
         case RTE_VOID:
 			/* not a simple relation, leave it unmarked */
 			break;
@@ -236,25 +305,30 @@ markTargetListOrigin(ParseState *pstate, TargetEntry *tle,
 
 
 /*
- * updateTargetListEntry()
- *	This is used in INSERT and UPDATE statements only.	It prepares a
- *	TargetEntry for assignment to a column of the target table.
+ * transformAssignedExpr()
+ *	This is used in INSERT and UPDATE statements only.	It prepares an
+ *	expression for assignment to a column of the target table.
  *	This includes coercing the given value to the target column's type
  *	(if necessary), and dealing with any subfield names or subscripts
- *	attached to the target column itself.
+ *	attached to the target column itself.  The input expression has
+ *	already been through transformExpr().
  *
  * pstate		parse state
- * tle			target list entry to be modified
+ * expr			expression to be modified
  * colname		target column name (ie, name of attribute to be assigned to)
  * attrno		target attribute number
  * indirection	subscripts/field names for target column, if any
+ * location		error cursor position, or -1
+ *
+ * Returns the modified expression.
  */
-void
-updateTargetListEntry(ParseState *pstate,
-					  TargetEntry *tle,
+Expr *
+transformAssignedExpr(ParseState *pstate,
+					  Expr *expr,
 					  char *colname,
 					  int attrno,
-					  List *indirection)
+					  List *indirection,
+					  int location)
 {
 	Oid			type_id;		/* type of value provided */
 	Oid			attrtype;		/* type of target column */
@@ -266,7 +340,8 @@ updateTargetListEntry(ParseState *pstate,
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot assign to system column \"%s\"",
-						colname)));
+						colname),
+				 parser_errposition(pstate, location)));
 	attrtype = attnumTypeId(rd, attrno);
 	attrtypmod = rd->rd_att->attrs[attrno - 1]->atttypmod;
 
@@ -278,9 +353,9 @@ updateTargetListEntry(ParseState *pstate,
 	 * or array element with DEFAULT, since there can't be any default for
 	 * portions of a column.
 	 */
-	if (tle->expr && IsA(tle->expr, SetToDefault))
+	if (expr && IsA(expr, SetToDefault))
 	{
-		SetToDefault *def = (SetToDefault *) tle->expr;
+		SetToDefault *def = (SetToDefault *) expr;
 
 		def->typeId = attrtype;
 		def->typeMod = attrtypmod;
@@ -289,16 +364,18 @@ updateTargetListEntry(ParseState *pstate,
 			if (IsA(linitial(indirection), A_Indices))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot set an array element to DEFAULT")));
+						 errmsg("cannot set an array element to DEFAULT"),
+						 parser_errposition(pstate, location)));
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot set a subfield to DEFAULT")));
+						 errmsg("cannot set a subfield to DEFAULT"),
+						 parser_errposition(pstate, location)));
 		}
 	}
 
 	/* Now we can use exprType() safely. */
-	type_id = exprType((Node *) tle->expr);
+	type_id = exprType((Node *) expr);
 
 	/*
 	 * If there is indirection on the target column, prepare an array or
@@ -329,7 +406,7 @@ updateTargetListEntry(ParseState *pstate,
 									   attrno);
 		}
 
-		tle->expr = (Expr *)
+		expr = (Expr *)
 			transformAssignmentIndirection(pstate,
 										   colVar,
 										   colname,
@@ -337,7 +414,8 @@ updateTargetListEntry(ParseState *pstate,
 										   attrtype,
 										   attrtypmod,
 										   list_head(indirection),
-										   (Node *) tle->expr);
+										   (Node *) expr,
+										   location);
 	}
 	else
 	{
@@ -345,13 +423,13 @@ updateTargetListEntry(ParseState *pstate,
 		 * For normal non-qualified target column, do type checking and
 		 * coercion.
 		 */
-		tle->expr = (Expr *)
+		expr = (Expr *)
 			coerce_to_target_type(pstate,
-								  (Node *) tle->expr, type_id,
+								  (Node *) expr, type_id,
 								  attrtype, attrtypmod,
 								  COERCION_ASSIGNMENT,
 								  COERCE_IMPLICIT_CAST);
-		if (tle->expr == NULL)
+		if (expr == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("column \"%s\" is of type %s"
@@ -359,8 +437,44 @@ updateTargetListEntry(ParseState *pstate,
 							colname,
 							format_type_be(attrtype),
 							format_type_be(type_id)),
-			   errhint("You will need to rewrite or cast the expression.")));
+				 errhint("You will need to rewrite or cast the expression."),
+					 parser_errposition(pstate, location)));
 	}
+
+	return expr;
+}
+
+
+/*
+ * updateTargetListEntry()
+ *	This is used in UPDATE statements only. It prepares an UPDATE
+ *	TargetEntry for assignment to a column of the target table.
+ *	This includes coercing the given value to the target column's type
+ *	(if necessary), and dealing with any subfield names or subscripts
+ *	attached to the target column itself.
+ *
+ * pstate		parse state
+ * tle			target list entry to be modified
+ * colname		target column name (ie, name of attribute to be assigned to)
+ * attrno		target attribute number
+ * indirection	subscripts/field names for target column, if any
+ * location		error cursor position (should point at column name), or -1
+ */
+void
+updateTargetListEntry(ParseState *pstate,
+					  TargetEntry *tle,
+					  char *colname,
+					  int attrno,
+					  List *indirection,
+					  int location)
+{
+	/* Fix up expression as needed */
+	tle->expr = transformAssignedExpr(pstate,
+									  tle->expr,
+									  colname,
+									  attrno,
+									  indirection,
+									  location);
 
 	/*
 	 * Set the resno to identify the target column --- the rewriter and
@@ -371,6 +485,7 @@ updateTargetListEntry(ParseState *pstate,
 	tle->resno = (AttrNumber) attrno;
 	tle->resname = colname;
 }
+
 
 /*
  * Process indirection (field selection or subscripting) of the target
@@ -396,6 +511,11 @@ updateTargetListEntry(ParseState *pstate,
  *
  * rhs is the already-transformed value to be assigned; note it has not been
  * coerced to any particular type.
+ *
+ * location is the cursor error position for any errors.  (Note: this points
+ * to the head of the target clause, eg "foo" in "foo.bar[baz]".  Later we
+ * might want to decorate indirection cells with their own location info,
+ * in which case the location argument could probably be dropped.)
  */
 static Node *
 transformAssignmentIndirection(ParseState *pstate,
@@ -405,7 +525,8 @@ transformAssignmentIndirection(ParseState *pstate,
 							   Oid targetTypeId,
 							   int32 targetTypMod,
 							   ListCell *indirection,
-							   Node *rhs)
+							   Node *rhs,
+							   int location)
 {
 	Node	   *result;
 	List	   *subscripts = NIL;
@@ -461,7 +582,8 @@ transformAssignmentIndirection(ParseState *pstate,
 													 typeNeeded,
 													 targetTypMod,
 													 i,
-													 rhs);
+													 rhs,
+													 location);
 				/* process subscripts */
 				return (Node *) transformArraySubscripts(pstate,
 														 basenode,
@@ -480,7 +602,8 @@ transformAssignmentIndirection(ParseState *pstate,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
 						 errmsg("cannot assign to field \"%s\" of column \"%s\" because its type %s is not a composite type",
 								strVal(n), targetName,
-								format_type_be(targetTypeId))));
+								format_type_be(targetTypeId)),
+						 parser_errposition(pstate, location)));
 
 			attnum = get_attnum(typrelid, strVal(n));
 			if (attnum == InvalidAttrNumber)
@@ -488,12 +611,14 @@ transformAssignmentIndirection(ParseState *pstate,
 						(errcode(ERRCODE_UNDEFINED_COLUMN),
 						 errmsg("cannot assign to field \"%s\" of column \"%s\" because there is no such column in data type %s",
 								strVal(n), targetName,
-								format_type_be(targetTypeId))));
+								format_type_be(targetTypeId)),
+						 parser_errposition(pstate, location)));
 			if (attnum < 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_COLUMN),
 						 errmsg("cannot assign to system column \"%s\"",
-								strVal(n))));
+								strVal(n)),
+						 parser_errposition(pstate, location)));
 
 			get_atttypetypmod(typrelid, attnum,
 							  &fieldTypeId, &fieldTypMod);
@@ -506,7 +631,8 @@ transformAssignmentIndirection(ParseState *pstate,
 												 fieldTypeId,
 												 fieldTypMod,
 												 lnext(i),
-												 rhs);
+												 rhs,
+												 location);
 
 			/* and build a FieldStore node */
 			fstore = makeNode(FieldStore);
@@ -533,7 +659,8 @@ transformAssignmentIndirection(ParseState *pstate,
 											 typeNeeded,
 											 targetTypMod,
 											 NULL,
-											 rhs);
+											 rhs,
+											 location);
 		/* process subscripts */
 		return (Node *) transformArraySubscripts(pstate,
 												 basenode,
@@ -561,7 +688,8 @@ transformAssignmentIndirection(ParseState *pstate,
 							targetName,
 							format_type_be(targetTypeId),
 							format_type_be(exprType(rhs))),
-			   errhint("You will need to rewrite or cast the expression.")));
+				 errhint("You will need to rewrite or cast the expression."),
+					 parser_errposition(pstate, location)));
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -570,7 +698,8 @@ transformAssignmentIndirection(ParseState *pstate,
 							targetName,
 							format_type_be(targetTypeId),
 							format_type_be(exprType(rhs))),
-			   errhint("You will need to rewrite or cast the expression.")));
+				 errhint("You will need to rewrite or cast the expression."),
+					 parser_errposition(pstate, location)));
 	}
 
 	return result;
@@ -608,6 +737,7 @@ checkInsertTargets(ParseState *pstate, List *cols, List **attrnos)
 			col->name = pstrdup(NameStr(attr[i]->attname));
 			col->indirection = NIL;
 			col->val = NULL;
+			col->location = -1;
 			cols = lappend(cols, col);
 			*attrnos = lappend_int(*attrnos, i + 1);
 		}
@@ -629,6 +759,13 @@ checkInsertTargets(ParseState *pstate, List *cols, List **attrnos)
 
 			/* Lookup column name, ereport on failure */
 			attrno = attnameAttNum(pstate->p_target_relation, name, false);
+			if (attrno == InvalidAttrNumber)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+					errmsg("column \"%s\" of relation \"%s\" does not exist",
+						   name,
+						 RelationGetRelationName(pstate->p_target_relation)),
+						 parser_errposition(pstate, col->location)));
 
 			/*
 			 * Check for duplicates, but only of whole columns --- we allow
@@ -642,7 +779,8 @@ checkInsertTargets(ParseState *pstate, List *cols, List **attrnos)
 					ereport(ERROR,
 							(errcode(ERRCODE_DUPLICATE_COLUMN),
 							 errmsg("column \"%s\" specified more than once",
-									name)));
+									name),
+							 parser_errposition(pstate, col->location)));
 				wholecols = bms_add_member(wholecols, attrno);
 			}
 			else
@@ -652,7 +790,8 @@ checkInsertTargets(ParseState *pstate, List *cols, List **attrnos)
 					ereport(ERROR,
 							(errcode(ERRCODE_DUPLICATE_COLUMN),
 							 errmsg("column \"%s\" specified more than once",
-									name)));
+									name),
+							 parser_errposition(pstate, col->location)));
 				partialcols = bms_add_member(partialcols, attrno);
 			}
 
@@ -665,13 +804,17 @@ checkInsertTargets(ParseState *pstate, List *cols, List **attrnos)
 
 /*
  * ExpandColumnRefStar()
- *		Turns foo.* (in the target list) into a list of targetlist entries.
+ *		Transforms foo.* into a list of expressions or targetlist entries.
  *
  * This handles the case where '*' appears as the last or only name in a
- * ColumnRef.
+ * ColumnRef.  The code is shared between the case of foo.* at the top level
+ * in a SELECT target list (where we want TargetEntry nodes in the result)
+ * and foo.* in a ROW() or VALUES() construct (where we want just bare
+ * expressions).
  */
 static List *
-ExpandColumnRefStar(ParseState *pstate, ColumnRef *cref)
+ExpandColumnRefStar(ParseState *pstate, ColumnRef *cref,
+					bool targetlist)
 {
 	List	   *fields = cref->fields;
 	int			numnames = list_length(fields);
@@ -682,7 +825,12 @@ ExpandColumnRefStar(ParseState *pstate, ColumnRef *cref)
 		 * Target item is a bare '*', expand all tables
 		 *
 		 * (e.g., SELECT * FROM emp, dept)
+		 *
+		 * Since the grammar only accepts bare '*' at top level of SELECT, we
+		 * need not handle the targetlist==false case here.
 		 */
+		Assert(targetlist);
+
 		return ExpandAllTables(pstate);
 	}
 	else
@@ -719,7 +867,8 @@ ExpandColumnRefStar(ParseState *pstate, ColumnRef *cref)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("cross-database references are not implemented: %s",
-										NameListToString(fields))));
+										NameListToString(fields)),
+								 parser_errposition(pstate, cref->location)));
 					schemaname = strVal(lsecond(fields));
 					relname = strVal(lthird(fields));
 					break;
@@ -728,7 +877,8 @@ ExpandColumnRefStar(ParseState *pstate, ColumnRef *cref)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 				errmsg("improper qualified name (too many dotted names): %s",
-					   NameListToString(fields))));
+					   NameListToString(fields)),
+						 parser_errposition(pstate, cref->location)));
 				schemaname = NULL;		/* keep compiler quiet */
 				relname = NULL;
 				break;
@@ -737,18 +887,30 @@ ExpandColumnRefStar(ParseState *pstate, ColumnRef *cref)
 		rte = refnameRangeTblEntry(pstate, schemaname, relname,
 								   &sublevels_up);
 		if (rte == NULL)
-			rte = addImplicitRTE(pstate, makeRangeVar(schemaname,
-													  relname));
+			rte = addImplicitRTE(pstate, makeRangeVar(schemaname, relname),
+								 cref->location);
+
+		/* Require read access --- see comments in setTargetTable() */
+		rte->requiredPerms |= ACL_SELECT;
 
 		rtindex = RTERangeTablePosn(pstate, rte, &sublevels_up);
 
-		return expandRelAttrs(pstate, rte, rtindex, sublevels_up);
+		if (targetlist)
+			return expandRelAttrs(pstate, rte, rtindex, sublevels_up);
+		else
+		{
+			List	   *vars;
+
+			expandRTE(rte, rtindex, sublevels_up, false,
+					  NULL, &vars);
+			return vars;
+		}
 	}
 }
 
 /*
  * ExpandAllTables()
- *		Turns '*' (in the target list) into a list of targetlist entries.
+ *		Transforms '*' (in the target list) into a list of targetlist entries.
  *
  * tlist entries are generated for each relation appearing in the query's
  * varnamespace.  We do not consider relnamespace because that would include
@@ -772,6 +934,9 @@ ExpandAllTables(ParseState *pstate)
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(l);
 		int			rtindex = RTERangeTablePosn(pstate, rte, NULL);
 
+		/* Require read access --- see comments in setTargetTable() */
+		rte->requiredPerms |= ACL_SELECT;
+
 		target = list_concat(target,
 							 expandRelAttrs(pstate, rte, rtindex, 0));
 	}
@@ -781,18 +946,22 @@ ExpandAllTables(ParseState *pstate)
 
 /*
  * ExpandIndirectionStar()
- *		Turns foo.* (in the target list) into a list of targetlist entries.
+ *		Transforms foo.* into a list of expressions or targetlist entries.
  *
  * This handles the case where '*' appears as the last item in A_Indirection.
+ * The code is shared between the case of foo.* at the top level in a SELECT
+ * target list (where we want TargetEntry nodes in the result) and foo.* in
+ * a ROW() or VALUES() construct (where we want just bare expressions).
  */
 static List *
-ExpandIndirectionStar(ParseState *pstate, A_Indirection *ind)
+ExpandIndirectionStar(ParseState *pstate, A_Indirection *ind,
+					  bool targetlist)
 {
+	List	   *result = NIL;
 	Node	   *expr;
 	TupleDesc	tupleDesc;
 	int			numAttrs;
 	int			i;
-	List	   *te_list = NIL;
 
 	/* Strip off the '*' to create a reference to the rowtype object */
 	ind = copyObject(ind);
@@ -817,8 +986,8 @@ ExpandIndirectionStar(ParseState *pstate, A_Indirection *ind)
 		((Var *) expr)->vartype == RECORDOID)
 		tupleDesc = expandRecordVariable(pstate, (Var *) expr, 0);
 	else if (get_expr_result_type(expr, NULL, &tupleDesc) != TYPEFUNC_COMPOSITE)
-		tupleDesc = CreateTupleDescCopy(lookup_rowtype_tupdesc(exprType(expr),
-															   exprTypmod(expr)));
+		tupleDesc = lookup_rowtype_tupdesc_copy(exprType(expr),
+												exprTypmod(expr));
 	Assert(tupleDesc);
 
 	/* Generate a list of references to the individual fields */
@@ -827,7 +996,6 @@ ExpandIndirectionStar(ParseState *pstate, A_Indirection *ind)
 	{
 		Form_pg_attribute att = tupleDesc->attrs[i];
 		Node	   *fieldnode;
-		TargetEntry *te;
 
 		if (att->attisdropped)
 			continue;
@@ -860,14 +1028,22 @@ ExpandIndirectionStar(ParseState *pstate, A_Indirection *ind)
 			fieldnode = (Node *) fselect;
 		}
 
-		te = makeTargetEntry((Expr *) fieldnode,
-							 (AttrNumber) pstate->p_next_resno++,
-							 pstrdup(NameStr(att->attname)),
-							 false);
-		te_list = lappend(te_list, te);
+		if (targetlist)
+		{
+			/* add TargetEntry decoration */
+			TargetEntry *te;
+
+			te = makeTargetEntry((Expr *) fieldnode,
+								 (AttrNumber) pstate->p_next_resno++,
+								 pstrdup(NameStr(att->attname)),
+								 false);
+			result = lappend(result, te);
+		}
+		else
+			result = lappend(result, fieldnode);
 	}
 
-	return te_list;
+	return result;
 }
 
 /*
@@ -935,11 +1111,12 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 	{
 		case RTE_RELATION:
 		case RTE_SPECIAL:
+		case RTE_VALUES:
 
 			/*
-			 * This case should not occur: a column of a table shouldn't have
-			 * type RECORD.  Fall through and fail (most likely) at the
-			 * bottom.
+			 * This case should not occur: a column of a table or values list
+			 * shouldn't have type RECORD.  Fall through and fail (most
+			 * likely) at the bottom.
 			 */
 			break;
 		case RTE_SUBQUERY:
@@ -998,8 +1175,8 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 	 * appropriate error message while failing.
 	 */
 	if (get_expr_result_type(expr, NULL, &tupleDesc) != TYPEFUNC_COMPOSITE)
-		tupleDesc = CreateTupleDescCopy(lookup_rowtype_tupdesc(exprType(expr),
-															   exprTypmod(expr)));
+		tupleDesc = lookup_rowtype_tupdesc_copy(exprType(expr),
+												exprTypmod(expr));
 
 	return tupleDesc;
 }
