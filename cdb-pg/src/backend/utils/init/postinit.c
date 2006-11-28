@@ -3,12 +3,12 @@
  * postinit.c
  *	  postgres initialization utilities
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/init/postinit.c,v 1.158.2.1 2005/11/22 18:23:24 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/init/postinit.c,v 1.172 2006/11/05 22:42:09 tgl Exp $
  *
  *
  *-------------------------------------------------------------------------
@@ -16,14 +16,11 @@
 #include "postgres.h"
 
 #include <fcntl.h>
-#include <sys/file.h>
-#include <math.h>
 #include <unistd.h>
 
-#include "access/genam.h"
 #include "access/heapam.h"
+#include "access/xact.h"
 #include "catalog/catalog.h"
-#include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
@@ -44,7 +41,6 @@
 #include "storage/smgr.h"
 #include "utils/acl.h"
 #include "utils/flatfiles.h"
-#include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/portal.h"
 #include "utils/relcache.h"
@@ -55,7 +51,7 @@
 
 
 static bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
-static void ReverifyMyDatabase(const char *name);
+static void CheckMyDatabase(const char *name, bool am_superuser);
 static void InitCommunication(void);
 static void ShutdownPostgres(int code, Datum arg);
 static bool ThereIsAtLeastOneRole(void);
@@ -76,7 +72,7 @@ static bool ThereIsAtLeastOneRole(void);
  * file" copy of pg_database that is helpfully maintained by flatfiles.c.
  * This is subject to various race conditions, so after we have the
  * transaction infrastructure started, we have to recheck the information;
- * see ReverifyMyDatabase.
+ * see InitPostgres.
  */
 static bool
 FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace)
@@ -85,7 +81,7 @@ FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace)
 	char	   *filename;
 	FILE	   *db_file;
 	char		thisname[NAMEDATALEN];
-	TransactionId dummyxid;
+	TransactionId db_frozenxid;
 
 	filename = database_getflatfilename();
 	db_file = AllocateFile(filename, "r");
@@ -95,8 +91,7 @@ FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace)
 				 errmsg("could not open file \"%s\": %m", filename)));
 
 	while (read_pg_database_line(db_file, thisname, db_id,
-								 db_tablespace, &dummyxid,
-								 &dummyxid))
+								 db_tablespace, &db_frozenxid))
 	{
 		if (strcmp(thisname, name) == 0)
 		{
@@ -112,78 +107,37 @@ FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace)
 }
 
 /*
- * ReverifyMyDatabase -- recheck info obtained by FindMyDatabase
- *
- * Since FindMyDatabase cannot lock pg_database, the information it read
- * could be stale; for example we might have attached to a database that's in
- * process of being destroyed by dropdb().	This routine is called after
- * we have all the locking and other infrastructure running --- now we can
- * check that we are really attached to a valid database.
- *
- * In reality, if dropdb() is running in parallel with our startup,
- * it's pretty likely that we will have failed before now, due to being
- * unable to read some of the system tables within the doomed database.
- * This routine just exists to make *sure* we have not started up in an
- * invalid database.  If we quit now, we should have managed to avoid
- * creating any serious problems.
- *
- * This is also a handy place to fetch the database encoding info out
- * of pg_database.
- *
- * To avoid having to read pg_database more times than necessary
- * during session startup, this place is also fitting to set up any
- * database-specific configuration variables.
+ * CheckMyDatabase -- fetch information from the pg_database entry for our DB
  */
 static void
-ReverifyMyDatabase(const char *name)
+CheckMyDatabase(const char *name, bool am_superuser)
 {
-	Relation	pgdbrel;
-	SysScanDesc pgdbscan;
-	ScanKeyData key;
 	HeapTuple	tup;
 	Form_pg_database dbform;
 
-	/*
-	 * Because we grab RowShareLock here, we can be sure that dropdb() is not
-	 * running in parallel with us (any more).
-	 */
-	pgdbrel = heap_open(DatabaseRelationId, RowShareLock);
-
-	ScanKeyInit(&key,
-				Anum_pg_database_datname,
-				BTEqualStrategyNumber, F_NAMEEQ,
-				NameGetDatum(name));
-
-	pgdbscan = systable_beginscan(pgdbrel, DatabaseNameIndexId, true,
-								  SnapshotNow, 1, &key);
-
-	tup = systable_getnext(pgdbscan);
-	if (!HeapTupleIsValid(tup) ||
-		HeapTupleGetOid(tup) != MyDatabaseId)
-	{
-		/* OOPS */
-		heap_close(pgdbrel, RowShareLock);
-
-		/*
-		 * The only real problem I could have created is to load dirty buffers
-		 * for the dead database into shared buffer cache; if I did, some
-		 * other backend will eventually try to write them and die in
-		 * mdblindwrt.	Flush any such pages to forestall trouble.
-		 */
-		DropBuffers(MyDatabaseId);
-		/* Now I can commit hara-kiri with a clear conscience... */
-		ereport(FATAL,
-				(errcode(ERRCODE_UNDEFINED_DATABASE),
-		  errmsg("database \"%s\", OID %u, has disappeared from pg_database",
-				 name, MyDatabaseId)));
-	}
-
+	/* Fetch our real pg_database row */
+	tup = SearchSysCache(DATABASEOID,
+						 ObjectIdGetDatum(MyDatabaseId),
+						 0, 0, 0);
+	if (!HeapTupleIsValid(tup))
+		elog(ERROR, "cache lookup failed for database %u", MyDatabaseId);
 	dbform = (Form_pg_database) GETSTRUCT(tup);
 
+	/* This recheck is strictly paranoia */
+	if (strcmp(name, NameStr(dbform->datname)) != 0)
+		ereport(FATAL,
+				(errcode(ERRCODE_UNDEFINED_DATABASE),
+				 errmsg("database \"%s\" has disappeared from pg_database",
+						name),
+				 errdetail("Database OID %u now seems to belong to \"%s\".",
+						   MyDatabaseId, NameStr(dbform->datname))));
+
 	/*
-	 * These next checks are not enforced when in standalone mode, so that
-	 * there is a way to recover from disabling all access to all databases,
-	 * for example "UPDATE pg_database SET datallowconn = false;".
+	 * Check permissions to connect to the database.
+	 *
+	 * These checks are not enforced when in standalone mode, so that there is
+	 * a way to recover from disabling all access to all databases, for
+	 * example "UPDATE pg_database SET datallowconn = false;".
 	 *
 	 * We do not enforce them for the autovacuum process either.
 	 */
@@ -199,6 +153,19 @@ ReverifyMyDatabase(const char *name)
 					name)));
 
 		/*
+		 * Check privilege to connect to the database.	(The am_superuser test
+		 * is redundant, but since we have the flag, might as well check it
+		 * and save a few cycles.)
+		 */
+		if (!am_superuser &&
+			pg_database_aclcheck(MyDatabaseId, GetUserId(),
+								 ACL_CONNECT) != ACLCHECK_OK)
+			ereport(FATAL,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("permission denied for database \"%s\"", name),
+					 errdetail("User does not have CONNECT privilege.")));
+
+		/*
 		 * Check connection limit for this database.
 		 *
 		 * There is a race condition here --- we create our PGPROC before
@@ -209,7 +176,7 @@ ReverifyMyDatabase(const char *name)
 		 * just document that the connection limit is approximate.
 		 */
 		if (dbform->datconnlimit >= 0 &&
-			!superuser() &&
+			!am_superuser &&
 			CountDBBackends(MyDatabaseId) > dbform->datconnlimit)
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
@@ -237,8 +204,8 @@ ReverifyMyDatabase(const char *name)
 		Datum		datum;
 		bool		isnull;
 
-		datum = heap_getattr(tup, Anum_pg_database_datconfig,
-							 RelationGetDescr(pgdbrel), &isnull);
+		datum = SysCacheGetAttr(DATABASEOID, tup, Anum_pg_database_datconfig,
+								&isnull);
 		if (!isnull)
 		{
 			ArrayType  *a = DatumGetArrayTypeP(datum);
@@ -247,8 +214,7 @@ ReverifyMyDatabase(const char *name)
 		}
 	}
 
-	systable_endscan(pgdbscan);
-	heap_close(pgdbrel, RowShareLock);
+	ReleaseSysCache(tup);
 }
 
 
@@ -315,6 +281,9 @@ BaseInit(void)
  * can only be tested inside a transaction, so we want to do it during
  * the startup transaction rather than doing a separate one in postgres.c.)
  *
+ * As of PostgreSQL 8.2, we expect InitProcess() was already called, so we
+ * already have a PGPROC struct ... but it's not filled in yet.
+ *
  * Note:
  *		Be very careful with the order of calls in the InitPostgres function.
  * --------------------------------
@@ -325,9 +294,11 @@ InitPostgres(const char *dbname, const char *username)
 	bool		bootstrap = IsBootstrapProcessingMode();
 	bool		autovacuum = IsAutoVacuumProcess();
 	bool		am_superuser;
+	char	   *fullpath;
 
 	/*
-	 * Set up the global variables holding database id and path.
+	 * Set up the global variables holding database id and path.  But note we
+	 * won't actually try to touch the database just yet.
 	 *
 	 * We take a shortcut in the bootstrap case, otherwise we have to look up
 	 * the db name in pg_database.
@@ -336,68 +307,37 @@ InitPostgres(const char *dbname, const char *username)
 	{
 		MyDatabaseId = TemplateDbOid;
 		MyDatabaseTableSpace = DEFAULTTABLESPACE_OID;
-		SetDatabasePath(GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace));
 	}
 	else
 	{
-		char	   *fullpath;
-
-		/*
-		 * Formerly we validated DataDir here, but now that's done earlier.
-		 */
-
 		/*
 		 * Find oid and tablespace of the database we're about to open. Since
 		 * we're not yet up and running we have to use the hackish
-		 * FindMyDatabase.
+		 * FindMyDatabase, which looks in the flat-file copy of pg_database.
 		 */
 		if (!FindMyDatabase(dbname, &MyDatabaseId, &MyDatabaseTableSpace))
 			ereport(FATAL,
 					(errcode(ERRCODE_UNDEFINED_DATABASE),
 					 errmsg("database \"%s\" does not exist",
 							dbname)));
-
-		fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
-
-		/* Verify the database path */
-
-		if (access(fullpath, F_OK) == -1)
-		{
-			if (errno == ENOENT)
-				ereport(FATAL,
-						(errcode(ERRCODE_UNDEFINED_DATABASE),
-						 errmsg("database \"%s\" does not exist",
-								dbname),
-					errdetail("The database subdirectory \"%s\" is missing.",
-							  fullpath)));
-			else
-				ereport(FATAL,
-						(errcode_for_file_access(),
-						 errmsg("could not access directory \"%s\": %m",
-								fullpath)));
-		}
-
-		ValidatePgVersion(fullpath);
-
-		SetDatabasePath(fullpath);
 	}
 
-	/*
-	 * Code after this point assumes we are in the proper directory!
-	 */
+	fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
+
+	SetDatabasePath(fullpath);
 
 	/*
-	 * Set up my per-backend PGPROC struct in shared memory.	(We need to
-	 * know MyDatabaseId before we can do this, since it's entered into the
-	 * PGPROC struct.)
+	 * Finish filling in the PGPROC struct, and add it to the ProcArray. (We
+	 * need to know MyDatabaseId before we can do this, since it's entered
+	 * into the PGPROC struct.)
+	 *
+	 * Once I have done this, I am visible to other backends!
 	 */
-	InitProcess();
+	InitProcessPhase2();
 
 	/*
 	 * Initialize my entry in the shared-invalidation manager's array of
-	 * per-backend data.  (Formerly this came before InitProcess, but now it
-	 * must happen after, because it uses MyProc.)	Once I have done this, I
-	 * am visible to other backends!
+	 * per-backend data.
 	 *
 	 * Sets up MyBackendId, a unique backend identifier.
 	 */
@@ -421,16 +361,12 @@ InitPostgres(const char *dbname, const char *username)
 		InitXLOGAccess();
 
 	/*
-	 * Initialize the relation descriptor cache.  This must create at least
-	 * the minimum set of "nailed-in" cache entries.  No catalog access
-	 * happens here.
+	 * Initialize the relation cache and the system catalog caches.  Note that
+	 * no catalog access happens here; we only set up the hashtable structure.
+	 * We must do this before starting a transaction because transaction abort
+	 * would try to touch these hashtables.
 	 */
 	RelationCacheInitialize();
-
-	/*
-	 * Initialize all the system catalog caches.  Note that no catalog access
-	 * happens here; we only set up the cache structure.
-	 */
 	InitCatalogCache();
 
 	/* Initialize portal manager */
@@ -447,27 +383,100 @@ InitPostgres(const char *dbname, const char *username)
 	 */
 	on_shmem_exit(ShutdownPostgres, 0);
 
-	/* start a new transaction here before access to db */
+	/*
+	 * Start a new transaction here before first access to db
+	 */
 	if (!bootstrap)
 		StartTransactionCommand();
 
 	/*
+	 * Now that we have a transaction, we can take locks.  Take a writer's
+	 * lock on the database we are trying to connect to.  If there is a
+	 * concurrently running DROP DATABASE on that database, this will block us
+	 * until it finishes (and has updated the flat file copy of pg_database).
+	 *
+	 * Note that the lock is not held long, only until the end of this startup
+	 * transaction.  This is OK since we are already advertising our use of
+	 * the database in the PGPROC array; anyone trying a DROP DATABASE after
+	 * this point will see us there.
+	 *
+	 * Note: use of RowExclusiveLock here is reasonable because we envision
+	 * our session as being a concurrent writer of the database.  If we had a
+	 * way of declaring a session as being guaranteed-read-only, we could use
+	 * AccessShareLock for such sessions and thereby not conflict against
+	 * CREATE DATABASE.
+	 */
+	if (!bootstrap)
+		LockSharedObject(DatabaseRelationId, MyDatabaseId, 0,
+						 RowExclusiveLock);
+
+	/*
+	 * Recheck the flat file copy of pg_database to make sure the target
+	 * database hasn't gone away.  If there was a concurrent DROP DATABASE,
+	 * this ensures we will die cleanly without creating a mess.
+	 */
+	if (!bootstrap)
+	{
+		Oid			dbid2;
+		Oid			tsid2;
+
+		if (!FindMyDatabase(dbname, &dbid2, &tsid2) ||
+			dbid2 != MyDatabaseId || tsid2 != MyDatabaseTableSpace)
+			ereport(FATAL,
+					(errcode(ERRCODE_UNDEFINED_DATABASE),
+					 errmsg("database \"%s\" does not exist",
+							dbname),
+			   errdetail("It seems to have just been dropped or renamed.")));
+	}
+
+	/*
+	 * Now we should be able to access the database directory safely. Verify
+	 * it's there and looks reasonable.
+	 */
+	if (!bootstrap)
+	{
+		if (access(fullpath, F_OK) == -1)
+		{
+			if (errno == ENOENT)
+				ereport(FATAL,
+						(errcode(ERRCODE_UNDEFINED_DATABASE),
+						 errmsg("database \"%s\" does not exist",
+								dbname),
+					errdetail("The database subdirectory \"%s\" is missing.",
+							  fullpath)));
+			else
+				ereport(FATAL,
+						(errcode_for_file_access(),
+						 errmsg("could not access directory \"%s\": %m",
+								fullpath)));
+		}
+
+		ValidatePgVersion(fullpath);
+	}
+
+	/*
 	 * It's now possible to do real access to the system catalogs.
 	 *
-	 * Replace faked-up relcache entries with correct info.
+	 * Load relcache entries for the system catalogs.  This must create at
+	 * least the minimum set of "nailed-in" cache entries.
 	 */
 	RelationCacheInitializePhase2();
 
 	/*
-	 * Figure out our postgres user id.  In standalone mode and in the
-	 * autovacuum process, we use a fixed id, otherwise we figure it out from
-	 * the authenticated user name.
+	 * Figure out our postgres user id, and see if we are a superuser.
+	 *
+	 * In standalone mode and in the autovacuum process, we use a fixed id,
+	 * otherwise we figure it out from the authenticated user name.
 	 */
 	if (bootstrap || autovacuum)
+	{
 		InitializeSessionUserIdStandalone();
+		am_superuser = true;
+	}
 	else if (!IsUnderPostmaster)
 	{
 		InitializeSessionUserIdStandalone();
+		am_superuser = true;
 		if (!ThereIsAtLeastOneRole())
 			ereport(WARNING,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -479,31 +488,20 @@ InitPostgres(const char *dbname, const char *username)
 	{
 		/* normal multiuser case */
 		InitializeSessionUserId(username);
+		am_superuser = superuser();
 	}
 
+	/* set up ACL framework (so CheckMyDatabase can check permissions) */
+	initialize_acl();
+
 	/*
-	 * Unless we are bootstrapping, double-check that InitMyDatabaseInfo() got
-	 * a correct result.  We can't do this until all the database-access
-	 * infrastructure is up.  (Also, it wants to know if the user is a
-	 * superuser, so the above stuff has to happen first.)
+	 * Read the real pg_database row for our database, check permissions and
+	 * set up database-specific GUC settings.  We can't do this until all the
+	 * database-access infrastructure is up.  (Also, it wants to know if the
+	 * user is a superuser, so the above stuff has to happen first.)
 	 */
 	if (!bootstrap)
-		ReverifyMyDatabase(dbname);
-
-	/*
-	 * Final phase of relation cache startup: write a new cache file if
-	 * necessary.  This is done after ReverifyMyDatabase to avoid writing a
-	 * cache file into a dead database.
-	 */
-	RelationCacheInitializePhase3();
-
-	/*
-	 * Check if user is a superuser.
-	 */
-	if (bootstrap || autovacuum)
-		am_superuser = true;
-	else
-		am_superuser = superuser();
+		CheckMyDatabase(dbname, am_superuser);
 
 	/*
 	 * Check a normal user hasn't connected to a superuser reserved slot.
@@ -517,14 +515,11 @@ InitPostgres(const char *dbname, const char *username)
 
 	/*
 	 * Initialize various default states that can't be set up until we've
-	 * selected the active user and done ReverifyMyDatabase.
+	 * selected the active user and gotten the right GUC settings.
 	 */
 
 	/* set default namespace search path */
 	InitializeSearchPath();
-
-	/* set up ACL framework (currently just sets RolMemCache callback) */
-	initialize_acl();
 
 	/* initialize client encoding */
 	InitializeClientEncoding();
@@ -643,9 +638,8 @@ ShutdownPostgres(int code, Datum arg)
 	 * User locks are not released by transaction end, so be sure to release
 	 * them explicitly.
 	 */
-#ifdef USER_LOCKS
 	LockReleaseAll(USER_LOCKMETHOD, true);
-#endif    
+ 
     /*
      * shutdown TM
      */
@@ -664,13 +658,13 @@ ThereIsAtLeastOneRole(void)
 	HeapScanDesc scan;
 	bool		result;
 
-	pg_authid_rel = heap_open(AuthIdRelationId, AccessExclusiveLock);
+	pg_authid_rel = heap_open(AuthIdRelationId, AccessShareLock);
 
 	scan = heap_beginscan(pg_authid_rel, SnapshotNow, 0, NULL);
 	result = (heap_getnext(scan, ForwardScanDirection) != NULL);
 
 	heap_endscan(scan);
-	heap_close(pg_authid_rel, AccessExclusiveLock);
+	heap_close(pg_authid_rel, AccessShareLock);
 
 	return result;
 }

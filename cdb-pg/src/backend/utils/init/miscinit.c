@@ -3,12 +3,12 @@
  * miscinit.c
  *	  miscellaneous initialization support stuff
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/init/miscinit.c,v 1.150.2.1 2005/11/22 18:23:24 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/init/miscinit.c,v 1.159 2006/10/04 00:30:02 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -31,7 +31,6 @@
 
 #include "catalog/pg_authid.h"
 #include "cdb/cdbvars.h"
-#include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "postmaster/autovacuum.h"
 #include "storage/fd.h"
@@ -41,7 +40,6 @@
 #include "storage/procarray.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
-#include "utils/lsyscache.h"
 #include "utils/resscheduler.h"
 #include "utils/syscache.h"
 
@@ -64,27 +62,7 @@ static char socketLockFile[MAXPGPATH];
  * ----------------------------------------------------------------
  */
 
-static bool isIgnoringSystemIndexes = false;
-
-/*
- * IsIgnoringSystemIndexes
- *		True if ignoring system indexes.
- */
-bool
-IsIgnoringSystemIndexes(void)
-{
-	return isIgnoringSystemIndexes;
-}
-
-/*
- * IgnoreSystemIndexes
- *		Set true or false whether PostgreSQL ignores system indexes.
- */
-void
-IgnoreSystemIndexes(bool mode)
-{
-	isIgnoringSystemIndexes = mode;
-}
+bool		IgnoreSystemIndexes = false;
 
 /* ----------------------------------------------------------------
  *		system index reindexing support
@@ -384,7 +362,6 @@ GetAuthenticatedUserId(void)
 	AssertState(OidIsValid(AuthenticatedUserId));
 	return AuthenticatedUserId;
 }
-
 
 /*
  * Initialize user identity during normal backend startup
@@ -801,7 +778,7 @@ CreateLockFile(const char *filename, bool amPostmaster,
 		 * using real kill() either...
 		 *
 		 * Normally kill() will fail with ESRCH if the given PID doesn't
-		 * exist. BeOS returns EINVAL for some silly reason, however.
+		 * exist.
 		 */
 		if (other_pid != my_pid
 #ifndef WIN32
@@ -810,11 +787,7 @@ CreateLockFile(const char *filename, bool amPostmaster,
 			)
 		{
 			if (kill(other_pid, 0) == 0 ||
-				(errno != ESRCH &&
-#ifdef __BEOS__
-				 errno != EINVAL &&
-#endif
-				 errno != EPERM))
+				(errno != ESRCH && errno != EPERM))
 			{
 				/* lockfile belongs to a live process */
 				ereport(FATAL,
@@ -1147,24 +1120,31 @@ ValidatePgVersion(const char *path)
  *-------------------------------------------------------------------------
  */
 
-typedef void (*func_ptr) ();
+/*
+ * GUC variables: lists of library names to be preloaded at postmaster
+ * start and at backend start
+ */
+char	   *shared_preload_libraries_string = NULL;
+char	   *local_preload_libraries_string = NULL;
 
 /*
- * process any libraries that should be preloaded and
- * optionally pre-initialized
+ * load the shared libraries listed in 'libraries'
+ *
+ * 'gucname': name of GUC variable, for error reports
+ * 'restricted': if true, force libraries to be in $libdir/plugins/
  */
-void
-process_preload_libraries(char *preload_libraries_string)
+static void
+load_libraries(const char *libraries, const char *gucname, bool restricted)
 {
 	char	   *rawstring;
 	List	   *elemlist;
 	ListCell   *l;
 
-	if (preload_libraries_string == NULL)
-		return;
+	if (libraries == NULL || libraries[0] == '\0')
+		return;					/* nothing to do */
 
 	/* Need a modifiable copy of string */
-	rawstring = pstrdup(preload_libraries_string);
+	rawstring = pstrdup(libraries);
 
 	/* Parse string into list of identifiers */
 	if (!SplitIdentifierString(rawstring, ',', &elemlist))
@@ -1174,63 +1154,57 @@ process_preload_libraries(char *preload_libraries_string)
 		list_free(elemlist);
 		ereport(LOG,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-		 errmsg("invalid list syntax for parameter \"preload_libraries\"")));
+				 errmsg("invalid list syntax in parameter \"%s\"",
+						gucname)));
 		return;
 	}
 
 	foreach(l, elemlist)
 	{
 		char	   *tok = (char *) lfirst(l);
-		char	   *sep = strstr(tok, ":");
-		char	   *filename = NULL;
-		char	   *funcname = NULL;
-		func_ptr	initfunc;
+		char	   *filename;
 
-		if (sep)
-		{
-			/*
-			 * a colon separator implies there is an initialization function
-			 * that we need to run in addition to loading the library
-			 */
-			size_t		filename_len = sep - tok;
-			size_t		funcname_len = strlen(tok) - filename_len - 1;
-
-			filename = (char *) palloc(filename_len + 1);
-			memcpy(filename, tok, filename_len);
-			filename[filename_len] = '\0';
-
-			funcname = (char *) palloc(funcname_len + 1);
-			strcpy(funcname, sep + 1);
-		}
-		else
-		{
-			/*
-			 * no separator -- just load the library
-			 */
-			filename = pstrdup(tok);
-			funcname = NULL;
-		}
-
+		filename = pstrdup(tok);
 		canonicalize_path(filename);
-		initfunc = (func_ptr) load_external_function(filename, funcname,
-													 true, NULL);
-		if (initfunc)
-			(*initfunc) ();
+		/* If restricting, insert $libdir/plugins if not mentioned already */
+		if (restricted && first_dir_separator(filename) == NULL)
+		{
+			char	   *expanded;
 
-		if (funcname)
-			ereport(LOG,
-					(errmsg("preloaded library \"%s\" with initialization function \"%s\"",
-							filename, funcname)));
-		else
-			ereport(LOG,
-					(errmsg("preloaded library \"%s\"",
-							filename)));
-
+			expanded = palloc(strlen("$libdir/plugins/") + strlen(filename) + 1);
+			strcpy(expanded, "$libdir/plugins/");
+			strcat(expanded, filename);
+			pfree(filename);
+			filename = expanded;
+		}
+		load_file(filename, restricted);
+		ereport(LOG,
+				(errmsg("loaded library \"%s\"", filename)));
 		pfree(filename);
-		if (funcname)
-			pfree(funcname);
 	}
 
 	pfree(rawstring);
 	list_free(elemlist);
+}
+
+/*
+ * process any libraries that should be preloaded at postmaster start
+ */
+void
+process_shared_preload_libraries(void)
+{
+	load_libraries(shared_preload_libraries_string,
+				   "shared_preload_libraries",
+				   false);
+}
+
+/*
+ * process any libraries that should be preloaded at backend start
+ */
+void
+process_local_preload_libraries(void)
+{
+	load_libraries(local_preload_libraries_string,
+				   "local_preload_libraries",
+				   true);
 }

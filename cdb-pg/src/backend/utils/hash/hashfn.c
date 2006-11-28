@@ -4,12 +4,12 @@
  *		Hash functions for use in dynahash.c hashtables
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/hash/hashfn.c,v 1.25 2005/10/15 02:49:33 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/hash/hashfn.c,v 1.29 2006/10/04 00:30:02 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,7 +17,6 @@
 
 #include "access/hash.h"
 #include "nodes/bitmapset.h"
-#include "utils/hsearch.h"
 
 
 /*
@@ -28,8 +27,16 @@
 uint32
 string_hash(const void *key, Size keysize)
 {
+	/*
+	 * If the string exceeds keysize-1 bytes, we want to hash only that many,
+	 * because when it is copied into the hash table it will be truncated at
+	 * that length.
+	 */
+	Size		s_len = strlen((const char *) key);
+
+	s_len = Min(s_len, keysize - 1);
 	return DatumGetUInt32(hash_any((const unsigned char *) key,
-								   (int) strlen((const char *) key)));
+								   (int) s_len));
 }
 
 /*
