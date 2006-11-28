@@ -63,6 +63,10 @@ CUR_HOST=`$HOSTNAME`
 VACUUM_MODE=0 # 1=run before dump starts, 2=run after dump has completed.
 TRY_COMPRESSION=0
 IS_RUNNING_FLAG=/tmp/${PROG_NAME}_is_running_flag
+CONFIG_BACKUP_FILE=master_config_files_${DUMP_DATE}.tar
+DUMP_CONFIG=0
+DUMP_PG_DUMP=0
+CATALOG=pg_catalog
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -99,6 +103,8 @@ USAGE () {
 		$ECHO "          named $DUMP_DATE if it exists, NOTE:-deletes all dump sets within that directory"
 		$ECHO "      -z, do not use compression [default use compression]"
 		$ECHO "      -x, database name to dump [mandatory]"
+		$ECHO "          For multiple databases, use a comma separated list to -x option"
+		$ECHO "          Example -x template1,userdb1,userdb2"
 		$ECHO "      -r, rollback dump files if dump failure detected [default no rollback]"
 		$ECHO "      -f, % free disk value to reserve when calculating available free space for dump"
 		$ECHO "          files [default $FREE_SPACE_PERCENT %]"
@@ -107,6 +113,12 @@ USAGE () {
 		$ECHO "      -s, <schema name> dump the schema contained within the database name supplied via -x"
 		$ECHO "      -j, run vacuum before dump starts"
 		$ECHO "      -k, run vacuum after dump has completed successfully"
+		$ECHO "      -g, secure master configuration files postgresql.conf pg_ident.conf and pg_hba.conf"
+		$ECHO "          Data will be written in tar format to "
+		$ECHO "          ${DUMP_SUB_DIR}/$DUMP_DATE/$CONFIG_BACKUP_FILE directory on this host"  
+		$ECHO "      -t, use pg_dump to secure pg_catalog schema for database"
+		$ECHO "          Data will be dumped to ${DUMP_SUB_DIR}/$DUMP_DATE/<database name>_${CATALOG}_$DUMP_DATE"
+		$ECHO "      -C, clean (drop) schema prior to create [default do not clean]"
 		$ECHO
 		$ECHO "      Crontab entry (example):"
 		$ECHO "      SHELL=/bin/bash"
@@ -395,6 +407,11 @@ SET_VAC_TXT () {
 PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Master MPP Instance dump parameters:"
 		LOG_MSG "[INFO]:-------------------------------------"
+		if [ $MULTIDB -eq 1 ];then
+		LOG_MSG "[INFO]:-Dump type                  = Multiple database"
+		else
+		LOG_MSG "[INFO]:-Dump type                  = Single database"
+		fi
 		LOG_MSG "[INFO]:-Database to be dumped      = $DUMP_DATABASE"
 		if [ x"" != x"$SCHEMA_NAME" ];then
 		LOG_MSG "[INFO]:-Schema to dump             = $SCHEMA_NAME"
@@ -433,6 +450,9 @@ PROMPT_CONTINUE () {
 		else
 			LOG_MSG "[INFO]:-Clear old dump files       = Off"
 		fi	
+		if [ x"" != x"$ADD_DUMP_OPTIONS" ];then
+			LOG_MSG "[INFO]:-Additional options         = $ADD_DUMP_OPTIONS"
+		fi
 		SET_VAC_TXT
 		LOG_MSG "[INFO]:-Vacuum mode type           = $VAC_TXT"
 		LOG_MSG "[INFO]:-Disk free percent value    = $FREE_SPACE_PERCENT %"
@@ -449,12 +469,29 @@ PROMPT_CONTINUE () {
 		fi
 }	
 
+PROCESS_DUMP_CONFIG () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Securing masster configuration files"
+	$TAR cf ${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/${DUMP_DATE}/${CONFIG_BACKUP_FILE} ${MASTER_DATA_DIRECTORY}/*.conf
+	ERROR_CHK $? "dump config files" 1
+	DUMP_CONFIG=0
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+PROCESS_DUMP_PG_DUMP () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Commencing pg_catalog dump for database $DUMP_DATABASE"
+	$PG_DUMP -f ${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/${DUMP_DATE}/${DUMP_DATABASE}_${CATALOG}_$DUMP_DATE -n $CATALOG $DUMP_DATABASE
+	ERROR_CHK $? "dump $CATALOG" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 PROCESS_DUMP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Setting dump running flag"
 	$TOUCH $IS_RUNNING_FLAG
 	LOG_MSG "[INFO]:-Building dump command line"
-	DUMP_TEXT="$MPP_DUMP -p $MASTER_PORT -U $LOGNAME --mpp-d=${DUMP_SUB_DIR}/$DUMP_DATE --mpp-r=${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/$DUMP_DATE --mpp-s=i[1,`$ECHO ${DBID_LIST[@]}|$TR ' ' ','`]"		
+	DUMP_TEXT="$MPP_DUMP -p $MASTER_PORT -U $LOGNAME --mpp-d=${DUMP_SUB_DIR}/$DUMP_DATE --mpp-r=${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/$DUMP_DATE --mpp-s=i[1,`$ECHO ${DBID_LIST[@]}|$TR ' ' ','`] $ADD_DUMP_OPTIONS"		
 	if [ $COMPRESSION ];then
 		LOG_MSG "[INFO]:-Adding compression parameter"
 		DUMP_TEXT=$DUMP_TEXT" --mpp-c"
@@ -664,7 +701,7 @@ STATUS_REPORT () {
 #******************************************************************************
 trap '$RM -f ${IS_RUNNING_FLAG};ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":v'?'ajkbiorqd:x:f:s:pmbcz" opt;do
+		while getopts ":v'?'ajkbiorqd:x:f:s:pmbCzgtC" opt;do
 			case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
@@ -692,6 +729,9 @@ if [ $# -ne 0 ]; then
 				s ) SCHEMA_NAME=$OPTARG ;;
 				l ) LOG_DIR=$OPTARG ;;
 				x ) DUMP_DATABASE=$OPTARG ;;
+				g ) DUMP_CONFIG=1 ;;
+				t ) DUMP_PG_DUMP=1 ;;
+				C ) ADD_DUMP_OPTIONS="$ADD_DUMP_OPTIONS -c" ;;
 				* ) USAGE ;;
 				esac
 		done	
@@ -722,51 +762,79 @@ fi
 CHK_QD_DB_RUNNING
 CHK_ON_PASSIVE_STANDBY
 GET_MASTER_PORT $MASTER_DATA_DIRECTORY
-if [ x"" == x"$CHK_PARAM_BYPASS" ];then
-	CHK_PARAM
-else
-	DUMP_MIR_CHK
-	LOG_MSG "[WARN]:-Parameter check phase bypassed, -i option supplied"
-fi
-if [ x"" == x"$DISK_BYPASS" ];then
-	CHK_DUMP_SPACE
-else
-	LOG_MSG "[WARN]:-Disk space check bypassed, -b option supplied"
-	GET_DUMP_LIST
-fi
-if [ $INTERACTIVE ]; then
-	PROMPT_CONTINUE
-else
-	SET_DUMP_TYPE_TEXT
-fi
-if [ $VACUUM_MODE -eq 1 ];then
-	LOG_MSG "[INFO]:-Vacuum before database dump option selected"
-	VACUUM_PROCESS
-fi
-PROCESS_DUMP
-CHK_POST_DUMP
-if [ $ROLLBACK_DUMPS ];then
-	if [ $ROLLBACK -eq 1 ];then
-		LOG_MSG "[WARN]:-Dump request was incomplete, rolling back dump"
-		DELETE_CURRENT_DUMP
-		REPORT_FAILED_DUMPS
-		EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
-		ERROR_EXIT "[FATAL]:-Dump incomplete, completed rollback" 2
-	else
-		LOG_MSG "[WARN]:-Dump request was incomplete, not rolling back dump as -r option not supplied"
-		REPORT_FAILED_DUMPS
-		EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files not rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
-		ERROR_EXIT "[FATAL]:-Dump incomplete, rollback not processed" 2
+#Check to see if we have multiple databases to dump
+if [ `$ECHO $DUMP_DATABASE|$GREP -c ","` -ne 0 ];then
+	#Have more than one database to dump
+	MULTIDB=1
+	if [ x"" != x"$SCHEMA_NAME" ];then
+		ERROR_EXIT "[FATAL]:-Cannot supply schema name if multiple database dump requested" 2
 	fi
+	DUMP_DATABASE_LIST=(`$ECHO $DUMP_DATABASE|$TR ',' ' '`)
+else
+	MULTIDB=0
+	LOG_MSG "[INFO]:-Configuring for multiple database dump"
+	DUMP_DATABASE_LIST=($DUMP_DATABASE)
 fi
-if [ $CLEAR_DUMPS -eq 1 ];then
-	DELETE_OLD_DUMPS
-fi
-if [ $VACUUM_MODE -eq 2 ];then
-	LOG_MSG "[INFO]:-Vacuum after database dump option selected"
-	VACUUM_PROCESS
-fi
-STATUS_REPORT
-EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST[COMPLETED]" "Completed for database $DUMP_DATABASE with return code $EXIT_STATUS [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
+for DUMP_DATABASE in ${DUMP_DATABASE_LIST[@]}
+do
+	if [ $EXIT_STATUS -ne 0 ];then
+		FINAL_EXIT_STATUS=$EXIT_STATUS
+		EXIT_STATUS=0
+	else
+		FINAL_EXIT_STATUS=0
+	fi
+	if [ x"" == x"$CHK_PARAM_BYPASS" ];then
+		CHK_PARAM
+	else
+		DUMP_MIR_CHK
+		LOG_MSG "[WARN]:-Parameter check phase bypassed, -i option supplied"
+	fi
+	if [ x"" == x"$DISK_BYPASS" ];then
+		CHK_DUMP_SPACE
+	else
+		LOG_MSG "[WARN]:-Disk space check bypassed, -b option supplied"
+		GET_DUMP_LIST
+	fi
+	if [ $INTERACTIVE ]; then
+		PROMPT_CONTINUE
+	else
+		SET_DUMP_TYPE_TEXT
+	fi
+	if [ $VACUUM_MODE -eq 1 ];then
+		LOG_MSG "[INFO]:-Vacuum before database dump option selected"
+		VACUUM_PROCESS
+	fi
+	if [ $DUMP_CONFIG -eq 1 ];then
+		PROCESS_DUMP_CONFIG
+	fi
+	if [ $DUMP_PG_DUMP -eq 1 ];then
+		PROCESS_DUMP_PG_DUMP
+	fi
+	PROCESS_DUMP
+	CHK_POST_DUMP
+	if [ $ROLLBACK_DUMPS ];then
+		if [ $ROLLBACK -eq 1 ];then
+			LOG_MSG "[WARN]:-Dump request was incomplete, rolling back dump"
+			DELETE_CURRENT_DUMP
+			REPORT_FAILED_DUMPS
+			EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
+			ERROR_EXIT "[FATAL]:-Dump incomplete, completed rollback" 2
+		else
+			LOG_MSG "[WARN]:-Dump request was incomplete, not rolling back dump as -r option not supplied"
+			REPORT_FAILED_DUMPS
+			EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files not rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
+			ERROR_EXIT "[FATAL]:-Dump incomplete, rollback not processed" 2
+		fi
+	fi
+	if [ $CLEAR_DUMPS -eq 1 ];then
+		DELETE_OLD_DUMPS
+	fi
+	if [ $VACUUM_MODE -eq 2 ];then
+		LOG_MSG "[INFO]:-Vacuum after database dump option selected"
+		VACUUM_PROCESS
+	fi
+	STATUS_REPORT
+	EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST[COMPLETED]" "Completed for database $DUMP_DATABASE with return code $EXIT_STATUS [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
+done
 LOG_MSG "[INFO]:-End Main"
-exit $EXIT_STATUS
+exit $FINAL_EXIT_STATUS
