@@ -14,7 +14,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/inet_net_ntop.c,v 1.21 2005/10/15 02:49:28 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/inet_net_ntop.c,v 1.24 2006/07/14 16:59:19 tgl Exp $
  */
 
 #if defined(LIBC_SCCS) && !defined(lint)
@@ -28,8 +28,8 @@ static const char rcsid[] = "Id: inet_net_ntop.c,v 1.1.2.2 2004/03/09 09:17:27 m
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include "utils/inet.h"
 #include "utils/builtins.h"
+#include "utils/inet.h"
 
 
 #define NS_IN6ADDRSZ 16
@@ -289,7 +289,7 @@ inet_cidr_ntop_ipv6(const u_char *src, int bits, char *dst, size_t size)
 		}
 	}
 	/* Format CIDR /width. */
-	SPRINTF((cp, "/%u", bits));
+	(void) SPRINTF((cp, "/%u", bits));
 	if (strlen(outbuf) + 1 > size)
 		goto emsgsize;
 	strcpy(dst, outbuf);

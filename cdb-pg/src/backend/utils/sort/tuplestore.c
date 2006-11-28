@@ -32,11 +32,11 @@
  * the Tuplestore's state.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/sort/tuplestore.c,v 1.23.2.1 2005/11/22 18:23:25 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/sort/tuplestore.c,v 1.29 2006/10/04 00:30:04 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -195,6 +195,7 @@ struct Tuplestorestate
 static Tuplestorestate *tuplestore_begin_common(bool randomAccess,
 						bool interXact,
 						int maxKBytes);
+static void tuplestore_puttuple_common(Tuplestorestate *state, void *tuple);
 static void dumptuples(Tuplestorestate *state);
 static unsigned int getlen(Tuplestorestate *state, bool eofOK);
 static void *copytup_heap(Tuplestorestate *state, void *tup);
@@ -304,27 +305,71 @@ tuplestore_ateof(Tuplestorestate *state)
  * If the read status is currently "AT EOF" then it remains so (the read
  * pointer advances along with the write pointer); otherwise the read
  * pointer is unchanged.  This is for the convenience of nodeMaterial.c.
+ *
+ * tuplestore_puttupleslot() is a convenience routine to collect data from
+ * a TupleTableSlot without an extra copy operation.
  */
 void
-tuplestore_puttuple(Tuplestorestate *state, void *tuple)
+tuplestore_puttupleslot(Tuplestorestate *state,
+						TupleTableSlot *slot)
+{
+	MinimalTuple tuple;
+
+	/*
+	 * Form a MinimalTuple in working memory
+	 */
+	tuple = ExecCopySlotMinimalTuple(slot);
+	USEMEM(state, GetMemoryChunkSpace(tuple));
+
+	tuplestore_puttuple_common(state, (void *) tuple);
+}
+
+/*
+ * "Standard" case to copy from a HeapTuple.  This is actually now somewhat
+ * deprecated, but not worth getting rid of in view of the number of callers.
+ * (Consider adding something that takes a tupdesc+values/nulls arrays so
+ * that we can use heap_form_minimal_tuple() and avoid a copy step.)
+ */
+void
+tuplestore_puttuple(Tuplestorestate *state, HeapTuple tuple)
 {
 	/*
 	 * Copy the tuple.	(Must do this even in WRITEFILE case.)
 	 */
 	tuple = COPYTUP(state, tuple);
 
+	tuplestore_puttuple_common(state, (void *) tuple);
+}
+
+static void
+tuplestore_puttuple_common(Tuplestorestate *state, void *tuple)
+{
 	switch (state->status)
 	{
 		case TSS_INMEM:
-			/* Grow the array as needed */
-			if (state->memtupcount >= state->memtupsize)
+
+			/*
+			 * Grow the array as needed.  Note that we try to grow the array
+			 * when there is still one free slot remaining --- if we fail,
+			 * there'll still be room to store the incoming tuple, and then
+			 * we'll switch to tape-based operation.
+			 */
+			if (state->memtupcount >= state->memtupsize - 1)
 			{
-				FREEMEM(state, GetMemoryChunkSpace(state->memtuples));
-				state->memtupsize *= 2;
-				state->memtuples = (void **)
-					repalloc(state->memtuples,
-							 state->memtupsize * sizeof(void *));
-				USEMEM(state, GetMemoryChunkSpace(state->memtuples));
+				/*
+				 * See grow_memtuples() in tuplesort.c for the rationale
+				 * behind these two tests.
+				 */
+				if (state->availMem > (long) (state->memtupsize * sizeof(void *)) &&
+					(Size) (state->memtupsize * 2) < MaxAllocSize / sizeof(void *))
+				{
+					FREEMEM(state, GetMemoryChunkSpace(state->memtuples));
+					state->memtupsize *= 2;
+					state->memtuples = (void **)
+						repalloc(state->memtuples,
+								 state->memtupsize * sizeof(void *));
+					USEMEM(state, GetMemoryChunkSpace(state->memtuples));
+				}
 			}
 
 			/* Stash the tuple in the in-memory array */
@@ -335,9 +380,9 @@ tuplestore_puttuple(Tuplestorestate *state, void *tuple)
 				state->current = state->memtupcount;
 
 			/*
-			 * Done if we still fit in available memory.
+			 * Done if we still fit in available memory and have array slots.
 			 */
-			if (!LACKMEM(state))
+			if (state->memtupcount < state->memtupsize && !LACKMEM(state))
 				return;
 
 			/*
@@ -376,7 +421,7 @@ tuplestore_puttuple(Tuplestorestate *state, void *tuple)
  * Returns NULL if no more tuples.	If should_free is set, the
  * caller must pfree the returned tuple when done with it.
  */
-void *
+static void *
 tuplestore_gettuple(Tuplestorestate *state, bool forward,
 					bool *should_free)
 {
@@ -509,6 +554,59 @@ tuplestore_gettuple(Tuplestorestate *state, bool forward,
 		default:
 			elog(ERROR, "invalid tuplestore state");
 			return NULL;		/* keep compiler quiet */
+	}
+}
+
+/*
+ * tuplestore_gettupleslot - exported function to fetch a MinimalTuple
+ *
+ * If successful, put tuple in slot and return TRUE; else, clear the slot
+ * and return FALSE.
+ */
+bool
+tuplestore_gettupleslot(Tuplestorestate *state, bool forward,
+						TupleTableSlot *slot)
+{
+	MinimalTuple tuple;
+	bool		should_free;
+
+	tuple = (MinimalTuple) tuplestore_gettuple(state, forward, &should_free);
+
+	if (tuple)
+	{
+		ExecStoreMinimalTuple(tuple, slot, should_free);
+		return true;
+	}
+	else
+	{
+		ExecClearTuple(slot);
+		return false;
+	}
+}
+
+/*
+ * tuplestore_advance - exported function to adjust position without fetching
+ *
+ * We could optimize this case to avoid palloc/pfree overhead, but for the
+ * moment it doesn't seem worthwhile.
+ */
+bool
+tuplestore_advance(Tuplestorestate *state, bool forward)
+{
+	void	   *tuple;
+	bool		should_free;
+
+	tuple = tuplestore_gettuple(state, forward, &should_free);
+
+	if (tuple)
+	{
+		if (should_free)
+			pfree(tuple);
+		return true;
+	}
+	else
+	{
+		return false;
 	}
 }
 
@@ -659,34 +757,31 @@ getlen(Tuplestorestate *state, bool eofOK)
 
 /*
  * Routines specialized for HeapTuple case
+ *
+ * The stored form is actually a MinimalTuple, but for largely historical
+ * reasons we allow COPYTUP to work from a HeapTuple.
+ *
+ * Since MinimalTuple already has length in its first word, we don't need
+ * to write that separately.
  */
 
 static void *
 copytup_heap(Tuplestorestate *state, void *tup)
 {
-	HeapTuple	tuple = (HeapTuple) tup;
+	MinimalTuple tuple;
 
-	tuple = heap_copytuple(tuple);
+	tuple = minimal_tuple_from_heap_tuple((HeapTuple) tup);
 	USEMEM(state, GetMemoryChunkSpace(tuple));
 	return (void *) tuple;
 }
 
-/*
- * We don't bother to write the HeapTupleData part of the tuple.
- */
-
 static void
 writetup_heap(Tuplestorestate *state, void *tup)
 {
-	HeapTuple	tuple = (HeapTuple) tup;
-	unsigned int tuplen;
+	MinimalTuple tuple = (MinimalTuple) tup;
+	unsigned int tuplen = tuple->t_len;
 
-	tuplen = tuple->t_len + sizeof(tuplen);
-	if (BufFileWrite(state->myfile, (void *) &tuplen,
-					 sizeof(tuplen)) != sizeof(tuplen))
-		elog(ERROR, "write failed");
-	if (BufFileWrite(state->myfile, (void *) tuple->t_data,
-					 tuple->t_len) != (size_t) tuple->t_len)
+	if (BufFileWrite(state->myfile, (void *) tuple, tuplen) != (size_t) tuplen)
 		elog(ERROR, "write failed");
 	if (state->randomAccess)	/* need trailing length word? */
 		if (BufFileWrite(state->myfile, (void *) &tuplen,
@@ -694,24 +789,20 @@ writetup_heap(Tuplestorestate *state, void *tup)
 			elog(ERROR, "write failed");
 
 	FREEMEM(state, GetMemoryChunkSpace(tuple));
-	heap_freetuple(tuple);
+	heap_free_minimal_tuple(tuple);
 }
 
 static void *
 readtup_heap(Tuplestorestate *state, unsigned int len)
 {
-	unsigned int tuplen = len - sizeof(unsigned int) + HEAPTUPLESIZE;
-	HeapTuple	tuple = (HeapTuple) palloc(tuplen);
+	MinimalTuple tuple = (MinimalTuple) palloc(len);
+	unsigned int tuplen;
 
 	USEMEM(state, GetMemoryChunkSpace(tuple));
-	/* reconstruct the HeapTupleData portion */
-	tuple->t_len = len - sizeof(unsigned int);
-	ItemPointerSetInvalid(&(tuple->t_self));
-	tuple->t_datamcxt = CurrentMemoryContext;
-	tuple->t_data = (HeapTupleHeader) (((char *) tuple) + HEAPTUPLESIZE);
 	/* read in the tuple proper */
-	if (BufFileRead(state->myfile, (void *) tuple->t_data,
-					tuple->t_len) != (size_t) tuple->t_len)
+	tuple->t_len = len;
+	if (BufFileRead(state->myfile, (void *) ((char *) tuple + sizeof(int)),
+					len - sizeof(int)) != (size_t) (len - sizeof(int)))
 		elog(ERROR, "unexpected end of data");
 	if (state->randomAccess)	/* need trailing length word? */
 		if (BufFileRead(state->myfile, (void *) &tuplen,

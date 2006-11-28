@@ -7,12 +7,12 @@
  *
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/cluster.c,v 1.141.2.1 2005/11/22 18:23:06 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/cluster.c,v 1.154 2006/10/04 00:29:50 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -20,6 +20,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
@@ -27,8 +28,8 @@
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/toasting.h"
 #include "commands/cluster.h"
-#include "commands/tablecmds.h"
 #include "miscadmin.h"
 #include "utils/acl.h"
 #include "utils/fmgroids.h"
@@ -39,7 +40,6 @@
 #include "utils/relcache.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
-
 
 
 /*
@@ -262,6 +262,18 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt)
 	CHECK_FOR_INTERRUPTS();
 
 	/*
+	 * We grab exclusive access to the target rel and index for the duration
+	 * of the transaction.	(This is redundant for the single-transaction
+	 * case, since cluster() already did it.)  The index lock is taken inside
+	 * check_index_is_clusterable.
+	 */
+	OldHeap = try_relation_open(rvtc->tableOid, AccessExclusiveLock);
+
+	/* If the table has gone away, we can skip processing it */
+	if (!OldHeap)
+		return;
+
+	/*
 	 * Since we may open a new transaction for each relation, we have to check
 	 * that the relation still is what we think it is.
 	 *
@@ -274,20 +286,23 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt)
 		HeapTuple	tuple;
 		Form_pg_index indexForm;
 
-		/*
-		 * Check if the relation and index still exist before opening them
-		 */
-		if (!SearchSysCacheExists(RELOID,
-								  ObjectIdGetDatum(rvtc->tableOid),
-								  0, 0, 0) ||
-			!SearchSysCacheExists(RELOID,
-								  ObjectIdGetDatum(rvtc->indexOid),
-								  0, 0, 0))
-			return;
-
 		/* Check that the user still owns the relation */
 		if (!pg_class_ownercheck(rvtc->tableOid, GetUserId()))
+		{
+			relation_close(OldHeap, AccessExclusiveLock);
 			return;
+		}
+
+		/*
+		 * Check that the index still exists
+		 */
+		if (!SearchSysCacheExists(RELOID,
+								  ObjectIdGetDatum(rvtc->indexOid),
+								  0, 0, 0))
+		{
+			relation_close(OldHeap, AccessExclusiveLock);
+			return;
+		}
 
 		/*
 		 * Check that the index is still the one with indisclustered set.
@@ -295,24 +310,20 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt)
 		tuple = SearchSysCache(INDEXRELID,
 							   ObjectIdGetDatum(rvtc->indexOid),
 							   0, 0, 0);
-		if (!HeapTupleIsValid(tuple))
-			return;				/* could have gone away... */
+		if (!HeapTupleIsValid(tuple))	/* probably can't happen */
+		{
+			relation_close(OldHeap, AccessExclusiveLock);
+			return;
+		}
 		indexForm = (Form_pg_index) GETSTRUCT(tuple);
 		if (!indexForm->indisclustered)
 		{
 			ReleaseSysCache(tuple);
+			relation_close(OldHeap, AccessExclusiveLock);
 			return;
 		}
 		ReleaseSysCache(tuple);
 	}
-
-	/*
-	 * We grab exclusive access to the target rel and index for the duration
-	 * of the transaction.	(This is redundant for the single- transaction
-	 * case, since cluster() already did it.)  The index lock is taken inside
-	 * check_index_is_clusterable.
-	 */
-	OldHeap = heap_open(rvtc->tableOid, AccessExclusiveLock);
 
 	/* Check index is valid to cluster on */
 	check_index_is_clusterable(OldHeap, rvtc->indexOid, recheck);
@@ -336,8 +347,7 @@ check_index_is_clusterable(Relation OldHeap, Oid indexOid, bool recheck)
 {
 	Relation	OldIndex;
 
-	OldIndex = index_open(indexOid);
-	LockRelation(OldIndex, AccessExclusiveLock);
+	OldIndex = index_open(indexOid, AccessExclusiveLock);
 
 	/*
 	 * Check that index is in fact an index on the given relation
@@ -360,6 +370,12 @@ check_index_is_clusterable(Relation OldHeap, Oid indexOid, bool recheck)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot cluster on partial index \"%s\"",
+						RelationGetRelationName(OldIndex))));
+
+	if (!OldIndex->rd_am->amclusterable)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot cluster on index \"%s\" because access method does not support clustering",
 						RelationGetRelationName(OldIndex))));
 
 	if (!OldIndex->rd_am->amindexnulls)
@@ -422,7 +438,7 @@ check_index_is_clusterable(Relation OldHeap, Oid indexOid, bool recheck)
 			   errmsg("cannot cluster temporary tables of other sessions")));
 
 	/* Drop relcache refcnt on OldIndex, but keep lock */
-	index_close(OldIndex);
+	index_close(OldIndex, NoLock);
 }
 
 /*
@@ -589,6 +605,9 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	Oid			tiOid = InvalidOid;
 	Oid			*comptypeOid = NULL;
 	Oid			*toastComptypeOid = NULL;
+	HeapTuple	tuple;
+	Datum		reloptions;
+	bool		isNull;
 
 	OldHeap = heap_open(OIDOldHeap, AccessExclusiveLock);
 	OldHeapDesc = RelationGetDescr(OldHeap);
@@ -645,6 +664,19 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	 */
 	tupdesc = CreateTupleDescCopyConstr(OldHeapDesc);
 
+	/*
+	 * Use options of the old heap for new heap.
+	 */
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(OIDOldHeap),
+						   0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for relation %u", OIDOldHeap);
+	reloptions = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_reloptions,
+								 &isNull);
+	if (isNull)
+		reloptions = (Datum) 0;
+
 	OIDNewHeap = heap_create_with_catalog(NewName,
 										  RelationGetNamespace(OldHeap),
 										  NewTableSpace,
@@ -656,12 +688,15 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 										  true,
 										  0,
 										  ONCOMMIT_NOOP,
+										  reloptions,
                                           NULL,                         /*CDB*/
 										  allowSystemTableMods,
 										  comptypeOid);
 
 	oidInfo->relOid = OIDNewHeap;
 	
+	ReleaseSysCache(tuple);
+
 	/*
 	 * Advance command counter so that the newly-created relation's catalog
 	 * tuples will be visible to heap_open.
@@ -673,7 +708,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	 * AlterTableCreateToastTable ends with CommandCounterIncrement(), so that
 	 * the TOAST table will be visible for insertion.
 	 */
-	AlterTableCreateToastTableWithOid(OIDNewHeap, true, tOid, tiOid, toastComptypeOid);
+	AlterTableCreateToastTableWithOid(OIDNewHeap, tOid, tiOid, toastComptypeOid);
 
 	heap_close(OldHeap, NoLock);
 
@@ -702,7 +737,7 @@ copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex)
 	 */
 	NewHeap = heap_open(OIDNewHeap, AccessExclusiveLock);
 	OldHeap = heap_open(OIDOldHeap, AccessExclusiveLock);
-	OldIndex = index_open(OIDOldIndex);
+	OldIndex = index_open(OIDOldIndex, AccessExclusiveLock);
 
 	/*
 	 * Their tuple descriptors should be exactly alike, but here we only need
@@ -722,7 +757,8 @@ copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex)
 	 * Scan through the OldHeap on the OldIndex and copy each tuple into the
 	 * NewHeap.
 	 */
-	scan = index_beginscan(OldHeap, OldIndex, SnapshotNow, 0, (ScanKey) NULL);
+	scan = index_beginscan(OldHeap, OldIndex,
+						   SnapshotNow, 0, (ScanKey) NULL);
 
 	while ((tuple = index_getnext(scan, ForwardScanDirection)) != NULL)
 	{
@@ -776,7 +812,7 @@ copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex)
 	pfree(values);
 	pfree(nulls);
 
-	index_close(OldIndex);
+	index_close(OldIndex, NoLock);
 	heap_close(OldHeap, NoLock);
 	heap_close(NewHeap, NoLock);
 }

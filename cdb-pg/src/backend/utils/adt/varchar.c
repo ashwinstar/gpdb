@@ -3,26 +3,21 @@
  * varchar.c
  *	  Functions for the built-in types char(n) and varchar(n).
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/varchar.c,v 1.113.2.2 2006/05/21 20:05:48 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/varchar.c,v 1.119 2006/10/04 00:30:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "access/hash.h"
-#include "catalog/pg_type.h"
-#include "lib/stringinfo.h"
-#include "libpq/pqformat.h"
-#include "miscadmin.h"
-#include "utils/array.h"
-#include "utils/builtins.h"
-#include "utils/fmgroids.h"
 
+#include "access/hash.h"
+#include "libpq/pqformat.h"
+#include "utils/builtins.h"
 #include "mb/pg_wchar.h"
 
 
@@ -609,8 +604,8 @@ bpchareq(PG_FUNCTION_ARGS)
 	len2 = bcTruelen(arg2);
 
 	/*
-	 * Since we only care about equality or not-equality, we can avoid all
-	 * the expense of strcoll() here, and just do bitwise comparison.
+	 * Since we only care about equality or not-equality, we can avoid all the
+	 * expense of strcoll() here, and just do bitwise comparison.
 	 */
 	if (len1 != len2)
 		result = false;
@@ -636,8 +631,8 @@ bpcharne(PG_FUNCTION_ARGS)
 	len2 = bcTruelen(arg2);
 
 	/*
-	 * Since we only care about equality or not-equality, we can avoid all
-	 * the expense of strcoll() here, and just do bitwise comparison.
+	 * Since we only care about equality or not-equality, we can avoid all the
+	 * expense of strcoll() here, and just do bitwise comparison.
 	 */
 	if (len1 != len2)
 		result = true;

@@ -15,9 +15,9 @@
  *	needed anymore.  Improve it someday.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/backend/utils/adt/ri_triggers.c,v 1.82.2.1 2005/11/22 18:23:21 momjian Exp $
+ * $PostgreSQL: pgsql/src/backend/utils/adt/ri_triggers.c,v 1.89 2006/10/04 00:29:59 momjian Exp $
  *
  * ----------
  */
@@ -32,15 +32,10 @@
 
 #include "postgres.h"
 
-#include "catalog/pg_operator.h"
 #include "commands/trigger.h"
 #include "executor/spi_priv.h"
-#include "optimizer/planmain.h"
-#include "parser/parse_oper.h"
-#include "rewrite/rewriteHandler.h"
 #include "utils/acl.h"
 #include "utils/fmgroids.h"
-#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 #include "miscadmin.h"
@@ -198,17 +193,11 @@ RI_FKey_check(PG_FUNCTION_ARGS)
 	 */
 	ri_CheckTrigger(fcinfo, "RI_FKey_check", RI_TRIGTYPE_INUP);
 
+	/*
+	 * Get arguments.
+	 */
 	tgnargs = trigdata->tg_trigger->tgnargs;
 	tgargs = trigdata->tg_trigger->tgargs;
-
-	/*
-	 * Get the relation descriptors of the FK and PK tables and the new tuple.
-	 *
-	 * pk_rel is opened in RowShareLock mode since that's what our eventual
-	 * SELECT FOR SHARE will get on it.
-	 */
-	pk_rel = heap_open(trigdata->tg_trigger->tgconstrrelid, RowShareLock);
-	fk_rel = trigdata->tg_relation;
 	if (TRIGGER_FIRED_BY_UPDATE(trigdata->tg_event))
 	{
 		old_row = trigdata->tg_trigtuple;
@@ -223,16 +212,32 @@ RI_FKey_check(PG_FUNCTION_ARGS)
 	}
 
 	/*
-	 * We should not even consider checking the row if it is no longer valid
-	 * since it was either deleted (doesn't matter) or updated (in which case
-	 * it'll be checked with its final values).
+	 * We should not even consider checking the row if it is no longer valid,
+	 * since it was either deleted (so the deferred check should be skipped)
+	 * or updated (in which case only the latest version of the row should be
+	 * checked).  Test its liveness with HeapTupleSatisfiesItself.
+	 *
+	 * NOTE: The normal coding rule is that one must acquire the buffer
+	 * content lock to call HeapTupleSatisfiesFOO.	We can skip that here
+	 * because we know that AfterTriggerExecute just fetched the tuple
+	 * successfully, so there cannot be a VACUUM compaction in progress on the
+	 * page (either heap_fetch would have waited for the VACUUM, or the
+	 * VACUUM's LockBufferForCleanup would be waiting for us to drop pin).
+	 * And since this is a row inserted by our open transaction, no one else
+	 * can be entitled to change its xmin/xmax.
 	 */
 	Assert(new_row_buf != InvalidBuffer);
 	if (!HeapTupleSatisfiesItself(new_row->t_data, new_row_buf))
-	{
-		heap_close(pk_rel, RowShareLock);
 		return PointerGetDatum(NULL);
-	}
+
+	/*
+	 * Get the relation descriptors of the FK and PK tables.
+	 *
+	 * pk_rel is opened in RowShareLock mode since that's what our eventual
+	 * SELECT FOR SHARE will get on it.
+	 */
+	fk_rel = trigdata->tg_relation;
+	pk_rel = heap_open(trigdata->tg_trigger->tgconstrrelid, RowShareLock);
 
 	/* ----------
 	 * SQL3 11.9 <referential constraint definition>
@@ -3294,7 +3299,7 @@ ri_ReportViolation(RI_QueryKey *qkey, const char *constrname,
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_FOREIGN_KEY_VIOLATION),
-				 errmsg("update or delete on \"%s\" violates foreign key constraint \"%s\" on \"%s\"",
+				 errmsg("update or delete on table \"%s\" violates foreign key constraint \"%s\" on table \"%s\"",
 						RelationGetRelationName(pk_rel),
 						constrname, RelationGetRelationName(fk_rel)),
 			errdetail("Key (%s)=(%s) is still referenced from table \"%s\".",

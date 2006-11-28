@@ -3,12 +3,12 @@
  * xid.c
  *	  POSTGRES transaction identifier and command identifier datatypes.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/xid.c,v 1.7 2004/12/31 22:01:22 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/xid.c,v 1.9 2006/07/13 16:49:17 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,10 +16,10 @@
 
 #include <limits.h>
 
+#include "access/transam.h"
 #include "access/xact.h"
 #include "libpq/pqformat.h"
 #include "utils/builtins.h"
-
 
 #define PG_GETARG_TRANSACTIONID(n)	DatumGetTransactionId(PG_GETARG_DATUM(n))
 #define PG_RETURN_TRANSACTIONID(x)	return TransactionIdGetDatum(x)

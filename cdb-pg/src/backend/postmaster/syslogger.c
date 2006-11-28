@@ -14,11 +14,11 @@
  *
  * Author: Andreas Pflug <pgadmin@pse-consulting.de>
  *
- * Copyright (c) 2004-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2004-2006, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/syslogger.c,v 1.20.2.1 2005/11/22 18:23:16 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/syslogger.c,v 1.28 2006/07/16 20:17:04 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -33,10 +33,10 @@
 
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
+#include "pgtime.h"
 #include "postmaster/fork_process.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
-#include "pgtime.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
 #include "utils/guc.h"
@@ -135,9 +135,6 @@ SysLoggerMain(int argc, char *argv[])
 
 	MyProcPid = getpid();		/* reset MyProcPid */
 
-	/* Lose the postmaster's on-exit routines */
-	on_exit_reset();
-
 #ifdef EXEC_BACKEND
 	syslogger_parseArgs(argc, argv);
 #endif   /* EXEC_BACKEND */
@@ -155,7 +152,7 @@ SysLoggerMain(int argc, char *argv[])
 	 */
 	if (redirection_done)
 	{
-		int			fd = open(NULL_DEV, O_WRONLY);
+		int			fd = open(NULL_DEV, O_WRONLY, 0);
 
 		/*
 		 * The closes might look redundant, but they are not: we want to be
@@ -351,7 +348,7 @@ SysLoggerMain(int argc, char *argv[])
 		 * detect pipe EOF.  The main thread just wakes up once a second to
 		 * check for SIGHUP and rotation conditions.
 		 */
-		pgwin32_backend_usleep(1000000);
+		pg_usleep(1000000L);
 #endif   /* WIN32 */
 
 		if (pipe_eof_seen)
@@ -459,6 +456,9 @@ SysLogger_Start(void)
 			/* Close the postmaster's sockets */
 			ClosePostmasterPorts(true);
 
+			/* Lose the postmaster's on-exit routines */
+			on_exit_reset();
+
 			/* Drop our connection to postmaster's shared memory, as well */
 			PGSharedMemoryDetach();
 
@@ -533,7 +533,7 @@ syslogger_forkexec(void)
 	char		numbuf[2][32];
 
 	av[ac++] = "postgres";
-	av[ac++] = "-forklog";
+	av[ac++] = "--forklog";
 	av[ac++] = NULL;			/* filled in by postmaster_forkexec */
 
 	/* static variables (those not passed by write_backend_variables) */

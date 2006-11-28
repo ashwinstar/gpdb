@@ -11,12 +11,12 @@
  * we do better?)
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/pseudotypes.c,v 1.15 2004/12/31 22:01:22 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/pseudotypes.c,v 1.17 2006/03/05 15:58:43 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -318,6 +318,32 @@ anyelement_out(PG_FUNCTION_ARGS)
 	ereport(ERROR,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("cannot display a value of type anyelement")));
+
+	PG_RETURN_VOID();			/* keep compiler quiet */
+}
+
+/*
+ * shell_in		- input routine for "shell" types (those not yet filled in).
+ */
+Datum
+shell_in(PG_FUNCTION_ARGS)
+{
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("cannot accept a value of a shell type")));
+
+	PG_RETURN_VOID();			/* keep compiler quiet */
+}
+
+/*
+ * shell_out		- output routine for "shell" types.
+ */
+Datum
+shell_out(PG_FUNCTION_ARGS)
+{
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("cannot display a value of a shell type")));
 
 	PG_RETURN_VOID();			/* keep compiler quiet */
 }

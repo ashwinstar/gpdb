@@ -3,12 +3,12 @@
  * acl.c
  *	  Basic access control list data structures manipulation routines.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/acl.c,v 1.127 2005/11/04 17:25:15 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/acl.c,v 1.136 2006/10/06 17:13:59 petere Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -25,7 +25,6 @@
 #include "miscadmin.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/catcache.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -67,6 +66,7 @@ static List *cached_membership_roles = NIL;
 static const char *getid(const char *s, char *n);
 static void putid(char *p, const char *s);
 static Acl *allocacl(int n);
+static void check_acl(const Acl *acl);
 static const char *aclparse(const char *s, AclItem *aip);
 static bool aclitem_match(const AclItem *a1, const AclItem *a2);
 static void check_circularity(const Acl *old_acl, const AclItem *mod_aip,
@@ -265,9 +265,6 @@ aclparse(const char *s, AclItem *aip)
 			case ACL_DELETE_CHR:
 				read = ACL_DELETE;
 				break;
-			case ACL_RULE_CHR:
-				read = ACL_RULE;
-				break;
 			case ACL_REFERENCES_CHR:
 				read = ACL_REFERENCES;
 				break;
@@ -285,6 +282,12 @@ aclparse(const char *s, AclItem *aip)
 				break;
 			case ACL_CREATE_TEMP_CHR:
 				read = ACL_CREATE_TEMP;
+				break;
+			case ACL_CONNECT_CHR:
+				read = ACL_CONNECT;
+				break;
+			case 'R':			/* ignore old RULE privileges */
+				read = 0;
 				break;
 			default:
 				ereport(ERROR,
@@ -352,11 +355,31 @@ allocacl(int n)
 	new_acl = (Acl *) palloc0(size);
 	new_acl->size = size;
 	new_acl->ndim = 1;
-	new_acl->flags = 0;
+	new_acl->dataoffset = 0;	/* we never put in any nulls */
 	new_acl->elemtype = ACLITEMOID;
 	ARR_LBOUND(new_acl)[0] = 1;
 	ARR_DIMS(new_acl)[0] = n;
 	return new_acl;
+}
+
+/*
+ * Verify that an ACL array is acceptable (one-dimensional and has no nulls)
+ */
+static void
+check_acl(const Acl *acl)
+{
+	if (ARR_ELEMTYPE(acl) != ACLITEMOID)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("ACL array contains wrong data type")));
+	if (ARR_NDIM(acl) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("ACL arrays must be one-dimensional")));
+	if (ARR_HASNULL(acl))
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("ACL arrays must not contain null values")));
 }
 
 /*
@@ -524,8 +547,13 @@ acldefault(GrantObjectType objtype, Oid ownerId)
 			world_default = ACL_NO_RIGHTS;
 			owner_default = ACL_ALL_RIGHTS_RELATION;
 			break;
+		case ACL_OBJECT_SEQUENCE:
+			world_default = ACL_NO_RIGHTS;
+			owner_default = ACL_ALL_RIGHTS_SEQUENCE;
+			break;
 		case ACL_OBJECT_DATABASE:
-			world_default = ACL_CREATE_TEMP;	/* not NO_RIGHTS! */
+			/* for backwards compatibility, grant some rights by default */
+			world_default = ACL_CREATE_TEMP | ACL_CONNECT;
 			owner_default = ACL_ALL_RIGHTS_DATABASE;
 			break;
 		case ACL_OBJECT_FUNCTION:
@@ -612,15 +640,8 @@ aclupdate(const Acl *old_acl, const AclItem *mod_aip,
 	int			dst,
 				num;
 
-	/* These checks for null input are probably dead code, but... */
-	if (!old_acl || ACL_NUM(old_acl) < 0)
-		old_acl = allocacl(0);
-	if (!mod_aip)
-	{
-		new_acl = allocacl(ACL_NUM(old_acl));
-		memcpy(new_acl, old_acl, ACL_SIZE(old_acl));
-		return new_acl;
-	}
+	/* Caller probably already checked old_acl, but be safe */
+	check_acl(old_acl);
 
 	/* If granting grant options, check for circularity */
 	if (modechg != ACL_MODECHG_DEL &&
@@ -740,6 +761,8 @@ aclnewowner(const Acl *old_acl, Oid oldOwnerId, Oid newOwnerId)
 				targ,
 				num;
 
+	check_acl(old_acl);
+
 	/*
 	 * Make a copy of the given ACL, substituting new owner ID for old
 	 * wherever it appears as either grantor or grantee.  Also note if the new
@@ -836,6 +859,8 @@ check_circularity(const Acl *old_acl, const AclItem *mod_aip,
 				num;
 	AclMode		own_privs;
 
+	check_acl(old_acl);
+
 	/*
 	 * For now, grant options can only be granted to roles, not PUBLIC.
 	 * Otherwise we'd have to work a bit harder here.
@@ -915,6 +940,8 @@ recursive_revoke(Acl *acl,
 	AclItem    *aip;
 	int			i,
 				num;
+
+	check_acl(acl);
 
 	/* The owner can never truly lose grant options, so short-circuit */
 	if (grantee == ownerId)
@@ -1005,6 +1032,8 @@ aclmask(const Acl *acl, Oid roleid, Oid ownerId,
 	if (acl == NULL)
 		elog(ERROR, "null ACL");
 
+	check_acl(acl);
+
 	/* Quick exit for mask == 0 */
 	if (mask == 0)
 		return 0;
@@ -1091,6 +1120,8 @@ aclmask_direct(const Acl *acl, Oid roleid, Oid ownerId,
 	if (acl == NULL)
 		elog(ERROR, "null ACL");
 
+	check_acl(acl);
+
 	/* Quick exit for mask == 0 */
 	if (mask == 0)
 		return 0;
@@ -1150,6 +1181,8 @@ aclmembers(const Acl *acl, Oid **roleids)
 		*roleids = NULL;
 		return 0;
 	}
+
+	check_acl(acl);
 
 	/* Allocate the worst-case space requirement */
 	list = palloc(ACL_NUM(acl) * 2 * sizeof(Oid));
@@ -1240,6 +1273,7 @@ aclcontains(PG_FUNCTION_ARGS)
 	int			i,
 				num;
 
+	check_acl(acl);
 	num = ACL_NUM(acl);
 	aidat = ACL_DAT(acl);
 	for (i = 0; i < num; ++i)
@@ -1291,8 +1325,6 @@ convert_priv_string(text *priv_type_text)
 		return ACL_UPDATE;
 	if (pg_strcasecmp(priv_type, "DELETE") == 0)
 		return ACL_DELETE;
-	if (pg_strcasecmp(priv_type, "RULE") == 0)
-		return ACL_RULE;
 	if (pg_strcasecmp(priv_type, "REFERENCES") == 0)
 		return ACL_REFERENCES;
 	if (pg_strcasecmp(priv_type, "TRIGGER") == 0)
@@ -1307,6 +1339,10 @@ convert_priv_string(text *priv_type_text)
 		return ACL_CREATE_TEMP;
 	if (pg_strcasecmp(priv_type, "TEMPORARY") == 0)
 		return ACL_CREATE_TEMP;
+	if (pg_strcasecmp(priv_type, "CONNECT") == 0)
+		return ACL_CONNECT;
+	if (pg_strcasecmp(priv_type, "RULE") == 0)
+		return 0;				/* ignore old RULE privileges */
 
 	ereport(ERROR,
 			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -1517,11 +1553,6 @@ convert_table_priv_string(text *priv_type_text)
 	if (pg_strcasecmp(priv_type, "DELETE WITH GRANT OPTION") == 0)
 		return ACL_GRANT_OPTION_FOR(ACL_DELETE);
 
-	if (pg_strcasecmp(priv_type, "RULE") == 0)
-		return ACL_RULE;
-	if (pg_strcasecmp(priv_type, "RULE WITH GRANT OPTION") == 0)
-		return ACL_GRANT_OPTION_FOR(ACL_RULE);
-
 	if (pg_strcasecmp(priv_type, "REFERENCES") == 0)
 		return ACL_REFERENCES;
 	if (pg_strcasecmp(priv_type, "REFERENCES WITH GRANT OPTION") == 0)
@@ -1531,6 +1562,11 @@ convert_table_priv_string(text *priv_type_text)
 		return ACL_TRIGGER;
 	if (pg_strcasecmp(priv_type, "TRIGGER WITH GRANT OPTION") == 0)
 		return ACL_GRANT_OPTION_FOR(ACL_TRIGGER);
+
+	if (pg_strcasecmp(priv_type, "RULE") == 0)
+		return 0;				/* ignore old RULE privileges */
+	if (pg_strcasecmp(priv_type, "RULE WITH GRANT OPTION") == 0)
+		return 0;
 
 	ereport(ERROR,
 			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -1743,6 +1779,11 @@ convert_database_priv_string(text *priv_type_text)
 		return ACL_CREATE_TEMP;
 	if (pg_strcasecmp(priv_type, "TEMP WITH GRANT OPTION") == 0)
 		return ACL_GRANT_OPTION_FOR(ACL_CREATE_TEMP);
+
+	if (pg_strcasecmp(priv_type, "CONNECT") == 0)
+		return ACL_CONNECT;
+	if (pg_strcasecmp(priv_type, "CONNECT WITH GRANT OPTION") == 0)
+		return ACL_GRANT_OPTION_FOR(ACL_CONNECT);
 
 	ereport(ERROR,
 			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),

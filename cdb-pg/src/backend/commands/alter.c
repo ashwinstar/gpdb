@@ -3,21 +3,18 @@
  * alter.c
  *	  Drivers for generic alter commands
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/alter.c,v 1.15 2005/10/15 02:49:14 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/alter.c,v 1.20 2006/07/14 14:52:18 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "access/htup.h"
-#include "catalog/catalog.h"
 #include "catalog/namespace.h"
-#include "catalog/pg_class.h"
 #include "commands/alter.h"
 #include "commands/conversioncmds.h"
 #include "commands/dbcommands.h"
@@ -34,7 +31,6 @@
 #include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/lsyscache.h"
-#include "utils/syscache.h"
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
@@ -50,9 +46,7 @@ ExecRenameStmt(RenameStmt *stmt)
 	switch (stmt->renameType)
 	{
 		case OBJECT_AGGREGATE:
-			RenameAggregate(stmt->object,
-							(TypeName *) linitial(stmt->objarg),
-							stmt->newname);
+			RenameAggregate(stmt->object, stmt->objarg, stmt->newname);
 			break;
 
 		case OBJECT_CONVERSION:
@@ -161,8 +155,12 @@ ExecAlterObjectSchemaStmt(AlterObjectSchemaStmt *stmt)
 	switch (stmt->objectType)
 	{
 		case OBJECT_AGGREGATE:
+			AlterFunctionNamespace(stmt->object, stmt->objarg, true,
+								   stmt->newschema);
+			break;
+
 		case OBJECT_FUNCTION:
-			AlterFunctionNamespace(stmt->object, stmt->objarg,
+			AlterFunctionNamespace(stmt->object, stmt->objarg, false,
 								   stmt->newschema);
 			break;
 
@@ -199,9 +197,7 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 	switch (stmt->objectType)
 	{
 		case OBJECT_AGGREGATE:
-			AlterAggregateOwner(stmt->object,
-								(TypeName *) linitial(stmt->objarg),
-								newowner);
+			AlterAggregateOwner(stmt->object, stmt->objarg, newowner);
 			break;
 
 		case OBJECT_CONVERSION:
@@ -217,6 +213,7 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 			break;
 
 		case OBJECT_OPERATOR:
+			Assert(list_length(stmt->objarg) == 2);
 			AlterOperatorOwner(stmt->object,
 							   (TypeName *) linitial(stmt->objarg),
 							   (TypeName *) lsecond(stmt->objarg),

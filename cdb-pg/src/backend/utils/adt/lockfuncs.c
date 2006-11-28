@@ -1,21 +1,21 @@
 /*-------------------------------------------------------------------------
  *
  * lockfuncs.c
- *		Set-returning functions to view the state of locks within the DB.
+ *		Functions for SQL access to various lock-manager capabilities.
  *
- * Copyright (c) 2002-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2006, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *		$PostgreSQL: pgsql/src/backend/utils/adt/lockfuncs.c,v 1.20 2005/10/15 02:49:28 momjian Exp $
+ *		$PostgreSQL: pgsql/src/backend/utils/adt/lockfuncs.c,v 1.27 2006/10/04 00:29:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "funcapi.h"
 #include "access/heapam.h"
 #include "catalog/pg_type.h"
-#include "storage/lock.h"
+#include "funcapi.h"
+#include "miscadmin.h"
 #include "storage/proc.h"
 #include "utils/builtins.h"
 
@@ -29,7 +29,8 @@ static const char *const LockTagTypeNames[] = {
 	"transactionid",
 	"object",
 	"resource queue",
-	"userlock"
+	"userlock",
+	"advisory"
 };
 
 /* Working status for pg_lock_status */
@@ -158,7 +159,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		 */
 		if (!granted)
 		{
-			if (proc->waitLock == (LOCK *) MAKE_PTR(proclock->tag.lock))
+			if (proc->waitLock == proclock->tag.myLock)
 			{
 				/* Yes, so report it with proper mode */
 				mode = proc->waitLockMode;
@@ -186,7 +187,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		MemSet(values, 0, sizeof(values));
 		MemSet(nulls, ' ', sizeof(nulls));
 
-		if (lock->tag.locktag_type <= LOCKTAG_USERLOCK)
+		if (lock->tag.locktag_type <= LOCKTAG_ADVISORY)
 			locktypename = LockTagTypeNames[lock->tag.locktag_type];
 		else
 		{
@@ -253,6 +254,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 				break;
 			case LOCKTAG_OBJECT:
 			case LOCKTAG_USERLOCK:
+			case LOCKTAG_ADVISORY:
 			default:			/* treat unknown locktags like OBJECT */
 				values[1] = ObjectIdGetDatum(lock->tag.locktag_field1);
 				values[6] = ObjectIdGetDatum(lock->tag.locktag_field2);
@@ -271,7 +273,8 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		else
 			nulls[10] = 'n';
 		values[11] = DirectFunctionCall1(textin,
-									 CStringGetDatum(GetLockmodeName(mode)));
+					  CStringGetDatum(GetLockmodeName(LOCK_LOCKMETHOD(*lock),
+													  mode)));
 		values[12] = BoolGetDatum(granted);
 		
 		values[13] = Int32GetDatum(proc->mppSessionId);
@@ -284,4 +287,257 @@ pg_lock_status(PG_FUNCTION_ARGS)
 	}
 
 	SRF_RETURN_DONE(funcctx);
+}
+
+
+/*
+ * Functions for manipulating advisory locks
+ *
+ * We make use of the locktag fields as follows:
+ *
+ *	field1: MyDatabaseId ... ensures locks are local to each database
+ *	field2: first of 2 int4 keys, or high-order half of an int8 key
+ *	field3: second of 2 int4 keys, or low-order half of an int8 key
+ *	field4: 1 if using an int8 key, 2 if using 2 int4 keys
+ */
+#define SET_LOCKTAG_INT64(tag, key64) \
+	SET_LOCKTAG_ADVISORY(tag, \
+						 MyDatabaseId, \
+						 (uint32) ((key64) >> 32), \
+						 (uint32) (key64), \
+						 1)
+#define SET_LOCKTAG_INT32(tag, key1, key2) \
+	SET_LOCKTAG_ADVISORY(tag, MyDatabaseId, key1, key2, 2)
+
+/*
+ * pg_advisory_lock(int8) - acquire exclusive lock on an int8 key
+ */
+Datum
+pg_advisory_lock_int8(PG_FUNCTION_ARGS)
+{
+	int64		key = PG_GETARG_INT64(0);
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_INT64(tag, key);
+
+	(void) LockAcquire(&tag, ExclusiveLock, true, false);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * pg_advisory_lock_shared(int8) - acquire share lock on an int8 key
+ */
+Datum
+pg_advisory_lock_shared_int8(PG_FUNCTION_ARGS)
+{
+	int64		key = PG_GETARG_INT64(0);
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_INT64(tag, key);
+
+	(void) LockAcquire(&tag, ShareLock, true, false);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * pg_try_advisory_lock(int8) - acquire exclusive lock on an int8 key, no wait
+ *
+ * Returns true if successful, false if lock not available
+ */
+Datum
+pg_try_advisory_lock_int8(PG_FUNCTION_ARGS)
+{
+	int64		key = PG_GETARG_INT64(0);
+	LOCKTAG		tag;
+	LockAcquireResult res;
+
+	SET_LOCKTAG_INT64(tag, key);
+
+	res = LockAcquire(&tag, ExclusiveLock, true, true);
+
+	PG_RETURN_BOOL(res != LOCKACQUIRE_NOT_AVAIL);
+}
+
+/*
+ * pg_try_advisory_lock_shared(int8) - acquire share lock on an int8 key, no wait
+ *
+ * Returns true if successful, false if lock not available
+ */
+Datum
+pg_try_advisory_lock_shared_int8(PG_FUNCTION_ARGS)
+{
+	int64		key = PG_GETARG_INT64(0);
+	LOCKTAG		tag;
+	LockAcquireResult res;
+
+	SET_LOCKTAG_INT64(tag, key);
+
+	res = LockAcquire(&tag, ShareLock, true, true);
+
+	PG_RETURN_BOOL(res != LOCKACQUIRE_NOT_AVAIL);
+}
+
+/*
+ * pg_advisory_unlock(int8) - release exclusive lock on an int8 key
+ *
+ * Returns true if successful, false if lock was not held
+*/
+Datum
+pg_advisory_unlock_int8(PG_FUNCTION_ARGS)
+{
+	int64		key = PG_GETARG_INT64(0);
+	LOCKTAG		tag;
+	bool		res;
+
+	SET_LOCKTAG_INT64(tag, key);
+
+	res = LockRelease(&tag, ExclusiveLock, true);
+
+	PG_RETURN_BOOL(res);
+}
+
+/*
+ * pg_advisory_unlock_shared(int8) - release share lock on an int8 key
+ *
+ * Returns true if successful, false if lock was not held
+ */
+Datum
+pg_advisory_unlock_shared_int8(PG_FUNCTION_ARGS)
+{
+	int64		key = PG_GETARG_INT64(0);
+	LOCKTAG		tag;
+	bool		res;
+
+	SET_LOCKTAG_INT64(tag, key);
+
+	res = LockRelease(&tag, ShareLock, true);
+
+	PG_RETURN_BOOL(res);
+}
+
+/*
+ * pg_advisory_lock(int4, int4) - acquire exclusive lock on 2 int4 keys
+ */
+Datum
+pg_advisory_lock_int4(PG_FUNCTION_ARGS)
+{
+	int32		key1 = PG_GETARG_INT32(0);
+	int32		key2 = PG_GETARG_INT32(1);
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_INT32(tag, key1, key2);
+
+	(void) LockAcquire(&tag, ExclusiveLock, true, false);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * pg_advisory_lock_shared(int4, int4) - acquire share lock on 2 int4 keys
+ */
+Datum
+pg_advisory_lock_shared_int4(PG_FUNCTION_ARGS)
+{
+	int32		key1 = PG_GETARG_INT32(0);
+	int32		key2 = PG_GETARG_INT32(1);
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_INT32(tag, key1, key2);
+
+	(void) LockAcquire(&tag, ShareLock, true, false);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * pg_try_advisory_lock(int4, int4) - acquire exclusive lock on 2 int4 keys, no wait
+ *
+ * Returns true if successful, false if lock not available
+ */
+Datum
+pg_try_advisory_lock_int4(PG_FUNCTION_ARGS)
+{
+	int32		key1 = PG_GETARG_INT32(0);
+	int32		key2 = PG_GETARG_INT32(1);
+	LOCKTAG		tag;
+	LockAcquireResult res;
+
+	SET_LOCKTAG_INT32(tag, key1, key2);
+
+	res = LockAcquire(&tag, ExclusiveLock, true, true);
+
+	PG_RETURN_BOOL(res != LOCKACQUIRE_NOT_AVAIL);
+}
+
+/*
+ * pg_try_advisory_lock_shared(int4, int4) - acquire share lock on 2 int4 keys, no wait
+ *
+ * Returns true if successful, false if lock not available
+ */
+Datum
+pg_try_advisory_lock_shared_int4(PG_FUNCTION_ARGS)
+{
+	int32		key1 = PG_GETARG_INT32(0);
+	int32		key2 = PG_GETARG_INT32(1);
+	LOCKTAG		tag;
+	LockAcquireResult res;
+
+	SET_LOCKTAG_INT32(tag, key1, key2);
+
+	res = LockAcquire(&tag, ShareLock, true, true);
+
+	PG_RETURN_BOOL(res != LOCKACQUIRE_NOT_AVAIL);
+}
+
+/*
+ * pg_advisory_unlock(int4, int4) - release exclusive lock on 2 int4 keys
+ *
+ * Returns true if successful, false if lock was not held
+*/
+Datum
+pg_advisory_unlock_int4(PG_FUNCTION_ARGS)
+{
+	int32		key1 = PG_GETARG_INT32(0);
+	int32		key2 = PG_GETARG_INT32(1);
+	LOCKTAG		tag;
+	bool		res;
+
+	SET_LOCKTAG_INT32(tag, key1, key2);
+
+	res = LockRelease(&tag, ExclusiveLock, true);
+
+	PG_RETURN_BOOL(res);
+}
+
+/*
+ * pg_advisory_unlock_shared(int4, int4) - release share lock on 2 int4 keys
+ *
+ * Returns true if successful, false if lock was not held
+ */
+Datum
+pg_advisory_unlock_shared_int4(PG_FUNCTION_ARGS)
+{
+	int32		key1 = PG_GETARG_INT32(0);
+	int32		key2 = PG_GETARG_INT32(1);
+	LOCKTAG		tag;
+	bool		res;
+
+	SET_LOCKTAG_INT32(tag, key1, key2);
+
+	res = LockRelease(&tag, ShareLock, true);
+
+	PG_RETURN_BOOL(res);
+}
+
+/*
+ * pg_advisory_unlock_all() - release all advisory locks
+ */
+Datum
+pg_advisory_unlock_all(PG_FUNCTION_ARGS)
+{
+	LockReleaseAll(USER_LOCKMETHOD, true);
+
+	PG_RETURN_VOID();
 }

@@ -1005,6 +1005,8 @@ typedef struct PlanState
 	TupleTableSlot *ps_ResultTupleSlot; /* slot for my result tuples */
 	ExprContext *ps_ExprContext;	/* node's expression-evaluation context */
 	ProjectionInfo *ps_ProjInfo;	/* info for doing tuple projection */
+	bool		ps_TupFromTlist;/* state flag for processing set-valued
+								 * functions in targetlist */
 } PlanState;
 
 /* ----------------

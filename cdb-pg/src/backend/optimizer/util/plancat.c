@@ -5,12 +5,12 @@
  *
  *
  * Portions Copyright (c) 2005-2006, Greenplum Inc.
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/plancat.c,v 1.114.2.1 2005/11/22 18:23:12 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/plancat.c,v 1.127 2006/10/04 00:29:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -20,19 +20,16 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "catalog/pg_amop.h"
 #include "catalog/pg_inherits.h"
-#include "catalog/pg_index.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/plancat.h"
+#include "optimizer/predtest.h"
 #include "optimizer/prep.h"
-#include "optimizer/tlist.h"
-#include "parser/parsetree.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_relation.h"
+#include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
-#include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
@@ -44,9 +41,13 @@
 #include "cdb/cdbrelsize.h"
 
 
+/* GUC parameter */
+bool		constraint_exclusion = false;
+
 
 static void estimate_rel_size(Relation rel, int32 *attr_widths,
 				  BlockNumber *pages, double *tuples);
+static List *get_relation_constraints(Oid relationObjectId, RelOptInfo *rel);
 
 static void
 estimate_tuple_width(Relation   rel,
@@ -83,9 +84,15 @@ cdb_default_stats_warning_for_index(Oid reloid, Oid indexoid);
  * Also, initialize the attr_needed[] and attr_widths[] arrays.  In most
  * cases these are left as zeroes, but sometimes we need to compute attr
  * widths here, and we may as well cache the results for costsize.c.
+ *
+ * If inhparent is true, all we need to do is set up the attr arrays:
+ * the RelOptInfo actually represents the appendrel formed by an inheritance
+ * tree, and so the parent rel's physical size and index information isn't
+ * important for it.
  */
 void
-get_relation_info(Oid relationObjectId, RelOptInfo *rel)
+get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
+				  RelOptInfo *rel)
 {
 	Index		varno = rel->relid;
 	Relation	relation;
@@ -93,24 +100,11 @@ get_relation_info(Oid relationObjectId, RelOptInfo *rel)
 	List	   *indexinfos = NIL;
 
 	/*
-	 * Normally, we can assume the rewriter already acquired at least
-	 * AccessShareLock on each relation used in the query.	However this will
-	 * not be the case for relations added to the query because they are
-	 * inheritance children of some relation mentioned explicitly. For them,
-	 * this is the first access during the parse/rewrite/plan pipeline, and so
-	 * we need to obtain and keep a suitable lock.
-	 *
-	 * XXX really, a suitable lock is RowShareLock if the relation is an
-	 * UPDATE/DELETE target, and AccessShareLock otherwise.  However we cannot
-	 * easily tell here which to get, so for the moment just get
-	 * AccessShareLock always.	The executor will get the right lock when it
-	 * runs, which means there is a very small chance of deadlock trying to
-	 * upgrade our lock.
+	 * We need not lock the relation since it was already locked, either by
+	 * the rewriter or when expand_inherited_rtentry() added it to the query's
+	 * rangetable.
 	 */
-	if (rel->reloptkind == RELOPT_BASEREL)
-		relation = heap_open(relationObjectId, NoLock);
-	else
-		relation = heap_open(relationObjectId, AccessShareLock);
+	relation = heap_open(relationObjectId, NoLock);
 
 	rel->min_attr = FirstLowInvalidHeapAttributeNumber + 1;
 	rel->max_attr = RelationGetNumberOfAttributes(relation);
@@ -127,8 +121,12 @@ get_relation_info(Oid relationObjectId, RelOptInfo *rel)
     rel->cdbpolicy = RelationGetPartitioningKey(relation);
 
 	/*
-	 * Estimate relation size.
+	 * Estimate relation size --- unless it's an inheritance parent, in which
+	 * case the size will be computed later in set_append_rel_pathlist, and we
+	 * must leave it zero for now to avoid bollixing the total_table_pages
+	 * calculation.
 	 */
+	if (!inhparent)
 	cdb_estimate_rel_size(rel,
                           relation,
                           relation,
@@ -139,8 +137,10 @@ get_relation_info(Oid relationObjectId, RelOptInfo *rel)
 
 	/*
 	 * Make list of indexes.  Ignore indexes on system catalogs if told to.
+	 * Don't bother with indexes for an inheritance parent, either.
 	 */
-	if (IsIgnoringSystemIndexes() && IsSystemClass(relation->rd_rel))
+	if (inhparent ||
+		(IgnoreSystemIndexes && IsSystemClass(relation->rd_rel)))
 		hasindex = false;
 	else
 		hasindex = relation->rd_rel->relhasindex;
@@ -149,12 +149,26 @@ get_relation_info(Oid relationObjectId, RelOptInfo *rel)
 	{
 		List	   *indexoidlist;
 		ListCell   *l;
+		LOCKMODE	lmode;
 
         /* Warn if indexed table needs ANALYZE. */
         if (rel->cdb_default_stats_used)
             cdb_default_stats_warning_for_table(relation->rd_id);
 
 		indexoidlist = RelationGetIndexList(relation);
+
+		/*
+		 * For each index, we get the same type of lock that the executor will
+		 * need, and do not release it.  This saves a couple of trips to the
+		 * shared lock manager while not creating any real loss of
+		 * concurrency, because no schema changes could be happening on the
+		 * index while we hold lock on the parent rel, and neither lock type
+		 * blocks any other kind of index operation.
+		 */
+		if (rel->relid == root->parse->resultRelation)
+			lmode = RowExclusiveLock;
+		else
+			lmode = AccessShareLock;
 
 		foreach(l, indexoidlist)
 		{
@@ -168,14 +182,21 @@ get_relation_info(Oid relationObjectId, RelOptInfo *rel)
 
 			/*
 			 * Extract info from the relation descriptor for the index.
-			 *
-			 * Note that we take no lock on the index; we assume our lock on
-			 * the parent table will protect the index's schema information.
-			 * When and if the executor actually uses the index, it will take
-			 * a lock as needed to protect the access to the index contents.
 			 */
-			indexRelation = index_open(indexoid);
+			indexRelation = index_open(indexoid, lmode);
 			index = indexRelation->rd_index;
+
+			/*
+			 * Ignore invalid indexes, since they can't safely be used for
+			 * queries.  Note that this is OK because the data structure we
+			 * are constructing is only used by the planner --- the executor
+			 * still needs to insert into "invalid" indexes!
+			 */
+			if (!index->indisvalid)
+			{
+				index_close(indexRelation, NoLock);
+				continue;
+			}
 
 			info = makeNode(IndexOptInfo);
 
@@ -254,7 +275,7 @@ get_relation_info(Oid relationObjectId, RelOptInfo *rel)
                 !rel->cdb_default_stats_used)
                 cdb_default_stats_warning_for_index(relation->rd_id, indexoid);
 
-			index_close(indexRelation);
+			index_close(indexRelation, NoLock);
 
 			indexinfos = lcons(info, indexinfos);
 		}
@@ -264,11 +285,8 @@ get_relation_info(Oid relationObjectId, RelOptInfo *rel)
 
 	rel->indexlist = indexinfos;
 
-	/* close rel, but keep lock if any */
 	heap_close(relation, NoLock);
 }
-
-
 
 /*
  * cdb_estimate_rel_size - estimate # pages and # tuples in a table or index
@@ -555,7 +573,7 @@ estimate_tuple_width(Relation   rel,
  * run, and in many cases it won't be invoked at all, so there seems no
  * point in caching the data in RelOptInfo.
  */
-List *
+static List *
 get_relation_constraints(Oid relationObjectId, RelOptInfo *rel)
 {
 	List	   *result = NIL;
@@ -620,6 +638,85 @@ get_relation_constraints(Oid relationObjectId, RelOptInfo *rel)
 
 
 /*
+ * relation_excluded_by_constraints
+ *
+ * Detect whether the relation need not be scanned because it has either
+ * self-inconsistent restrictions, or restrictions inconsistent with the
+ * relation's CHECK constraints.
+ */
+bool
+relation_excluded_by_constraints(RelOptInfo *rel, RangeTblEntry *rte)
+{
+	List	   *safe_restrictions;
+	List	   *constraint_pred;
+	List	   *safe_constraints;
+	ListCell   *lc;
+
+	/* Skip the test if constraint exclusion is disabled */
+	if (!constraint_exclusion)
+		return false;
+
+	/*
+	 * Check for self-contradictory restriction clauses.  We dare not make
+	 * deductions with non-immutable functions, but any immutable clauses that
+	 * are self-contradictory allow us to conclude the scan is unnecessary.
+	 *
+	 * Note: strip off RestrictInfo because predicate_refuted_by() isn't
+	 * expecting to see any in its predicate argument.
+	 */
+	safe_restrictions = NIL;
+	foreach(lc, rel->baserestrictinfo)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+		if (!contain_mutable_functions((Node *) rinfo->clause))
+			safe_restrictions = lappend(safe_restrictions, rinfo->clause);
+	}
+
+	if (predicate_refuted_by(safe_restrictions, safe_restrictions))
+		return true;
+
+	/* Only plain relations have constraints */
+	if (rte->rtekind != RTE_RELATION || rte->inh)
+		return false;
+
+	/* OK to fetch the constraint expressions */
+	constraint_pred = get_relation_constraints(rte->relid, rel);
+
+	/*
+	 * We do not currently enforce that CHECK constraints contain only
+	 * immutable functions, so it's necessary to check here. We daren't draw
+	 * conclusions from plan-time evaluation of non-immutable functions. Since
+	 * they're ANDed, we can just ignore any mutable constraints in the list,
+	 * and reason about the rest.
+	 */
+	safe_constraints = NIL;
+	foreach(lc, constraint_pred)
+	{
+		Node	   *pred = (Node *) lfirst(lc);
+
+		if (!contain_mutable_functions(pred))
+			safe_constraints = lappend(safe_constraints, pred);
+	}
+
+	/*
+	 * The constraints are effectively ANDed together, so we can just try to
+	 * refute the entire collection at once.  This may allow us to make proofs
+	 * that would fail if we took them individually.
+	 *
+	 * Note: we use rel->baserestrictinfo, not safe_restrictions as might seem
+	 * an obvious optimization.  Some of the clauses might be OR clauses that
+	 * have volatile and nonvolatile subclauses, and it's OK to make
+	 * deductions with the nonvolatile parts.
+	 */
+	if (predicate_refuted_by(safe_constraints, rel->baserestrictinfo))
+		return true;
+
+	return false;
+}
+
+
+/*
  * build_physical_tlist
  *
  * Build a targetlist consisting of exactly the relation's user attributes,
@@ -635,9 +732,9 @@ get_relation_constraints(Oid relationObjectId, RelOptInfo *rel)
  * For now, we don't apply the physical-tlist optimization when there are
  * dropped cols.
  *
- * We also support building a "physical" tlist for subqueries and functions,
- * since the same optimization can occur in SubqueryScan and FunctionScan
- * nodes.
+ * We also support building a "physical" tlist for subqueries, functions,
+ * and values lists, since the same optimization can occur in SubqueryScan,
+ * FunctionScan, and ValuesScan nodes.
  */
 List *
 build_physical_tlist(PlannerInfo *root, RelOptInfo *rel)
@@ -733,6 +830,21 @@ build_physical_tlist(PlannerInfo *root, RelOptInfo *rel)
 					tlist = NIL;
 					break;
 				}
+
+				tlist = lappend(tlist,
+								makeTargetEntry((Expr *) var,
+												var->varattno,
+												NULL,
+												false));
+			}
+			break;
+
+		case RTE_VALUES:
+			expandRTE(rte, varno, 0, false /* dropped not applicable */ ,
+					  NULL, &colvars);
+			foreach(l, colvars)
+			{
+				var = (Var *) lfirst(l);
 
 				tlist = lappend(tlist,
 								makeTargetEntry((Expr *) var,

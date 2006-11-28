@@ -3,12 +3,12 @@
  * varlena.c
  *	  Functions for the variable-length built-in types.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/varlena.c,v 1.139.2.4 2006/10/07 00:11:59 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/varlena.c,v 1.153 2006/11/08 19:22:25 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,16 +16,14 @@
 
 #include <ctype.h>
 
+#include "access/tupmacs.h"
 #include "access/tuptoaster.h"
 #include "catalog/pg_type.h"
-#include "lib/stringinfo.h"
-#include "libpq/crypt.h"
+#include "libpq/md5.h"
 #include "libpq/pqformat.h"
-#include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "parser/scansup.h"
 #include "regex/regex.h"
-#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
@@ -89,7 +87,7 @@ static void appendStringInfoText(StringInfo str, const text *t);
  *		ereport(ERROR, ...) if bad form.
  *
  *		BUGS:
- *				The input is scaned twice.
+ *				The input is scanned twice.
  *				The error checking of input is minimal.
  */
 Datum
@@ -481,6 +479,32 @@ textcat(PG_FUNCTION_ARGS)
 }
 
 /*
+ * charlen_to_bytelen()
+ *	Compute the number of bytes occupied by n characters starting at *p
+ *
+ * It is caller's responsibility that there actually are n characters;
+ * the string need not be null-terminated.
+ */
+static int
+charlen_to_bytelen(const char *p, int n)
+{
+	if (pg_database_encoding_max_length() == 1)
+	{
+		/* Optimization for single-byte encodings */
+		return n;
+	}
+	else
+	{
+		const char *s;
+
+		for (s = p; n > 0; n--)
+			s += pg_mblen(s);
+
+		return s - p;
+	}
+}
+
+/*
  * text_substr()
  * Return a substring starting at the specified position.
  * - thomas 1997-12-31
@@ -537,6 +561,8 @@ text_substr_no_len(PG_FUNCTION_ARGS)
  *	functions.	Note that the argument is passed as a Datum, to indicate that
  *	it may still be in compressed/toasted form.  We can avoid detoasting all
  *	of it in some cases.
+ *
+ *	The result is always a freshly palloc'd datum.
  */
 static text *
 text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
@@ -652,11 +678,23 @@ text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
 			 */
 			slice_size = (S1 + L1) * eml;
 		}
-		slice = DatumGetTextPSlice(str, slice_start, slice_size);
+
+		/*
+		 * If we're working with an untoasted source, no need to do an
+		 * extra copying step.
+		 */
+		if (VARATT_IS_EXTENDED(str))
+			slice = DatumGetTextPSlice(str, slice_start, slice_size);
+		else
+			slice = (text *) DatumGetPointer(str);
 
 		/* see if we got back an empty string */
 		if ((VARSIZE(slice) - VARHDRSZ) == 0)
+		{
+			if (slice != (text *) DatumGetPointer(str))
+				pfree(slice);
 			return PG_STR_GET_TEXT("");
+		}
 
 		/* Now we can get the actual length of the slice in MB characters */
 		slice_strlen = pg_mbstrlen_with_len(VARDATA(slice), VARSIZE(slice) - VARHDRSZ);
@@ -666,7 +704,11 @@ text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
 		 * says to return a zero-length string.
 		 */
 		if (S1 > slice_strlen)
+		{
+			if (slice != (text *) DatumGetPointer(str))
+				pfree(slice);
 			return PG_STR_GET_TEXT("");
+		}
 
 		/*
 		 * Adjust L1 and E1 now that we know the slice string length. Again
@@ -697,6 +739,9 @@ text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
 		ret = (text *) palloc(VARHDRSZ + (p - s));
 		VARATT_SIZEP(ret) = VARHDRSZ + (p - s);
 		memcpy(VARDATA(ret), s, (p - s));
+
+		if (slice != (text *) DatumGetPointer(str))
+			pfree(slice);
 
 		return ret;
 	}
@@ -1038,8 +1083,8 @@ texteq(PG_FUNCTION_ARGS)
 	bool		result;
 
 	/*
-	 * Since we only care about equality or not-equality, we can avoid all
-	 * the expense of strcoll() here, and just do bitwise comparison.
+	 * Since we only care about equality or not-equality, we can avoid all the
+	 * expense of strcoll() here, and just do bitwise comparison.
 	 */
 	if (VARSIZE(arg1) != VARSIZE(arg2))
 		result = false;
@@ -1061,8 +1106,8 @@ textne(PG_FUNCTION_ARGS)
 	bool		result;
 
 	/*
-	 * Since we only care about equality or not-equality, we can avoid all
-	 * the expense of strcoll() here, and just do bitwise comparison.
+	 * Since we only care about equality or not-equality, we can avoid all the
+	 * expense of strcoll() here, and just do bitwise comparison.
 	 */
 	if (VARSIZE(arg1) != VARSIZE(arg2))
 		result = true;
@@ -2079,10 +2124,11 @@ replace_text(PG_FUNCTION_ARGS)
 	int			src_text_len = TEXTLEN(src_text);
 	int			from_sub_text_len = TEXTLEN(from_sub_text);
 	TextPositionState state;
-	text	   *chunk_text;
 	text	   *ret_text;
 	int			start_posn;
 	int			curr_posn;
+	int			chunk_len;
+	char	   *start_ptr;
 	StringInfoData str;
 
 	if (src_text_len == 0 || from_sub_text_len == 0)
@@ -2100,31 +2146,31 @@ replace_text(PG_FUNCTION_ARGS)
 		PG_RETURN_TEXT_P(src_text);
 	}
 
+	/* start_ptr points to the start_posn'th character of src_text */
+	start_ptr = (char *) VARDATA(src_text);
+
 	initStringInfo(&str);
 
 	do
 	{
-		chunk_text = text_substring(PointerGetDatum(src_text),
-									start_posn,
-									curr_posn - start_posn,
-									false);
-		appendStringInfoText(&str, chunk_text);
-		pfree(chunk_text);
+		/* copy the data skipped over by last text_position_next() */
+		chunk_len = charlen_to_bytelen(start_ptr, curr_posn - start_posn);
+		appendBinaryStringInfo(&str, start_ptr, chunk_len);
 
 		appendStringInfoText(&str, to_sub_text);
 
-		start_posn = curr_posn + from_sub_text_len;
+		start_posn = curr_posn;
+		start_ptr += chunk_len;
+		start_posn += from_sub_text_len;
+		start_ptr += charlen_to_bytelen(start_ptr, from_sub_text_len);
+
 		curr_posn = text_position_next(start_posn, &state);
 	}
 	while (curr_posn > 0);
 
-	/* copy trailing chunk */
-	chunk_text = text_substring(PointerGetDatum(src_text),
-								start_posn,
-								-1,
-								true);
-	appendStringInfoText(&str, chunk_text);
-	pfree(chunk_text);
+	/* copy trailing data */
+	chunk_len = ((char *) src_text + VARSIZE(src_text)) - start_ptr;
+	appendBinaryStringInfo(&str, start_ptr, chunk_len);
 
 	text_position_cleanup(&state);
 
@@ -2169,11 +2215,13 @@ check_replace_text_has_escape_char(const text *replace_text)
  * appendStringInfoRegexpSubstr
  *
  * Append replace_text to str, substituting regexp back references for
- * \n escapes.
+ * \n escapes.  start_ptr is the start of the match in the source string,
+ * at logical character position data_pos.
  */
 static void
 appendStringInfoRegexpSubstr(StringInfo str, text *replace_text,
-							 regmatch_t *pmatch, text *src_text)
+							 regmatch_t *pmatch,
+							 char *start_ptr, int data_pos)
 {
 	const char *p = VARDATA(replace_text);
 	const char *p_end = p + (VARSIZE(replace_text) - VARHDRSZ);
@@ -2250,16 +2298,17 @@ appendStringInfoRegexpSubstr(StringInfo str, text *replace_text,
 		if (so != -1 && eo != -1)
 		{
 			/*
-			 * Copy the text that is back reference of regexp.	Because so and
-			 * eo are counted in characters not bytes, it's easiest to use
-			 * text_substring to pull out the correct chunk of text.
+			 * Copy the text that is back reference of regexp.	Note so and
+			 * eo are counted in characters not bytes.
 			 */
-			text	   *append_text;
+			char	   *chunk_start;
+			int			chunk_len;
 
-			append_text = text_substring(PointerGetDatum(src_text),
-										 so + 1, (eo - so), false);
-			appendStringInfoText(str, append_text);
-			pfree(append_text);
+			Assert(so >= data_pos);
+			chunk_start = start_ptr;
+			chunk_start += charlen_to_bytelen(chunk_start, so - data_pos);
+			chunk_len = charlen_to_bytelen(chunk_start, eo - so);
+			appendBinaryStringInfo(str, chunk_start, chunk_len);
 		}
 	}
 }
@@ -2281,14 +2330,16 @@ replace_text_regexp(text *src_text, void *regexp,
 	text	   *ret_text;
 	regex_t    *re = (regex_t *) regexp;
 	int			src_text_len = VARSIZE(src_text) - VARHDRSZ;
-	StringInfo	str = makeStringInfo();
-	int			regexec_result;
+	StringInfoData buf;
 	regmatch_t	pmatch[REGEXP_REPLACE_BACKREF_CNT];
 	pg_wchar   *data;
 	size_t		data_len;
 	int			search_start;
 	int			data_pos;
+	char	   *start_ptr;
 	bool		have_escape;
+
+	initStringInfo(&buf);
 
 	/* Convert data string to wide characters. */
 	data = (pg_wchar *) palloc((src_text_len + 1) * sizeof(pg_wchar));
@@ -2297,8 +2348,17 @@ replace_text_regexp(text *src_text, void *regexp,
 	/* Check whether replace_text has escape char. */
 	have_escape = check_replace_text_has_escape_char(replace_text);
 
-	for (search_start = data_pos = 0; search_start <= data_len;)
+	/* start_ptr points to the data_pos'th character of src_text */
+	start_ptr = (char *) VARDATA(src_text);
+	data_pos = 0;
+
+	search_start = 0;
+	while (search_start <= data_len)
 	{
+		int			regexec_result;
+
+		CHECK_FOR_INTERRUPTS();
+
 		regexec_result = pg_regexec(re,
 									data,
 									data_len,
@@ -2308,35 +2368,36 @@ replace_text_regexp(text *src_text, void *regexp,
 									pmatch,
 									0);
 
-		if (regexec_result != REG_OKAY && regexec_result != REG_NOMATCH)
+		if (regexec_result == REG_NOMATCH)
+			break;
+
+		if (regexec_result != REG_OKAY)
 		{
 			char		errMsg[100];
 
-			/* re failed??? */
 			pg_regerror(regexec_result, re, errMsg, sizeof(errMsg));
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_REGULAR_EXPRESSION),
 					 errmsg("regular expression failed: %s", errMsg)));
 		}
 
-		if (regexec_result == REG_NOMATCH)
-			break;
-
 		/*
-		 * Copy the text to the left of the match position.  Because we are
-		 * working with character not byte indexes, it's easiest to use
-		 * text_substring to pull out the needed data.
+		 * Copy the text to the left of the match position.  Note we are
+		 * given character not byte indexes.
 		 */
 		if (pmatch[0].rm_so - data_pos > 0)
 		{
-			text	   *left_text;
+			int			chunk_len;
 
-			left_text = text_substring(PointerGetDatum(src_text),
-									   data_pos + 1,
-									   pmatch[0].rm_so - data_pos,
-									   false);
-			appendStringInfoText(str, left_text);
-			pfree(left_text);
+			chunk_len = charlen_to_bytelen(start_ptr,
+										   pmatch[0].rm_so - data_pos);
+			appendBinaryStringInfo(&buf, start_ptr, chunk_len);
+			/*
+			 * Advance start_ptr over that text, to avoid multiple rescans
+			 * of it if the replace_text contains multiple back-references.
+			 */
+			start_ptr += chunk_len;
+			data_pos = pmatch[0].rm_so;
 		}
 
 		/*
@@ -2344,11 +2405,15 @@ replace_text_regexp(text *src_text, void *regexp,
 		 * replace_text has escape characters.
 		 */
 		if (have_escape)
-			appendStringInfoRegexpSubstr(str, replace_text, pmatch, src_text);
+			appendStringInfoRegexpSubstr(&buf, replace_text, pmatch,
+										 start_ptr, data_pos);
 		else
-			appendStringInfoText(str, replace_text);
+			appendStringInfoText(&buf, replace_text);
 
-		search_start = data_pos = pmatch[0].rm_eo;
+		/* Advance start_ptr and data_pos over the matched text. */
+		start_ptr += charlen_to_bytelen(start_ptr,
+										pmatch[0].rm_eo - data_pos);
+		data_pos = pmatch[0].rm_eo;
 
 		/*
 		 * When global option is off, replace the first instance only.
@@ -2359,6 +2424,7 @@ replace_text_regexp(text *src_text, void *regexp,
 		/*
 		 * Search from next character when the matching text is zero width.
 		 */
+		search_start = data_pos;
 		if (pmatch[0].rm_so == pmatch[0].rm_eo)
 			search_start++;
 	}
@@ -2368,17 +2434,14 @@ replace_text_regexp(text *src_text, void *regexp,
 	 */
 	if (data_pos < data_len)
 	{
-		text	   *right_text;
+		int			chunk_len;
 
-		right_text = text_substring(PointerGetDatum(src_text),
-									data_pos + 1, -1, true);
-		appendStringInfoText(str, right_text);
-		pfree(right_text);
+		chunk_len = ((char *) src_text + VARSIZE(src_text)) - start_ptr;
+		appendBinaryStringInfo(&buf, start_ptr, chunk_len);
 	}
 
-	ret_text = PG_STR_GET_TEXT(str->data);
-	pfree(str->data);
-	pfree(str);
+	ret_text = PG_STR_GET_TEXT(buf.data);
+	pfree(buf.data);
 	pfree(data);
 
 	return ret_text;
@@ -2490,6 +2553,8 @@ text_to_array(PG_FUNCTION_ARGS)
 	int			fldnum;
 	int			start_posn;
 	int			end_posn;
+	int			chunk_len;
+	char	   *start_ptr;
 	text	   *result_text;
 	ArrayBuildState *astate = NULL;
 
@@ -2508,6 +2573,9 @@ text_to_array(PG_FUNCTION_ARGS)
 	text_position_setup(inputstring, fldsep, &state);
 
 	start_posn = 1;
+	/* start_ptr points to the start_posn'th character of inputstring */
+	start_ptr = (char *) VARDATA(inputstring);
+
 	for (fldnum = 1;; fldnum++) /* field number is 1 based */
 	{
 		end_posn = text_position_next(start_posn, &state);
@@ -2515,19 +2583,18 @@ text_to_array(PG_FUNCTION_ARGS)
 		if (end_posn == 0)
 		{
 			/* fetch last field */
-			result_text = text_substring(PointerGetDatum(inputstring),
-										 start_posn,
-										 -1,
-										 true);
+			chunk_len = ((char *) inputstring + VARSIZE(inputstring)) - start_ptr;
 		}
 		else
 		{
 			/* fetch non-last field */
-			result_text = text_substring(PointerGetDatum(inputstring),
-										 start_posn,
-										 end_posn - start_posn,
-										 false);
+			chunk_len = charlen_to_bytelen(start_ptr, end_posn - start_posn);
 		}
+
+		/* must build a temp text datum to pass to accumArrayResult */
+		result_text = (text *) palloc(VARHDRSZ + chunk_len);
+		VARATT_SIZEP(result_text) = VARHDRSZ + chunk_len;
+		memcpy(VARDATA(result_text), start_ptr, chunk_len);
 
 		/* stash away this field */
 		astate = accumArrayResult(astate,
@@ -2536,9 +2603,15 @@ text_to_array(PG_FUNCTION_ARGS)
 								  TEXTOID,
 								  CurrentMemoryContext);
 
+		pfree(result_text);
+
 		if (end_posn == 0)
 			break;
-		start_posn = end_posn + fldsep_len;
+
+		start_posn = end_posn;
+		start_ptr += chunk_len;
+		start_posn += fldsep_len;
+		start_ptr += charlen_to_bytelen(start_ptr, fldsep_len);
 	}
 
 	text_position_cleanup(&state);
@@ -2560,16 +2633,18 @@ array_to_text(PG_FUNCTION_ARGS)
 	int			nitems,
 			   *dims,
 				ndims;
-	char	   *p;
 	Oid			element_type;
 	int			typlen;
 	bool		typbyval;
 	char		typalign;
-	StringInfo	result_str = makeStringInfo();
+	StringInfoData buf;
+	bool		printed = false;
+	char	   *p;
+	bits8	   *bitmap;
+	int			bitmask;
 	int			i;
 	ArrayMetaState *my_extra;
 
-	p = ARR_DATA_PTR(v);
 	ndims = ARR_NDIM(v);
 	dims = ARR_DIMS(v);
 	nitems = ArrayGetNItems(ndims, dims);
@@ -2579,6 +2654,7 @@ array_to_text(PG_FUNCTION_ARGS)
 		PG_RETURN_TEXT_P(PG_STR_GET_TEXT(""));
 
 	element_type = ARR_ELEMTYPE(v);
+	initStringInfo(&buf);
 
 	/*
 	 * We arrange to look up info about element type, including its output
@@ -2591,7 +2667,7 @@ array_to_text(PG_FUNCTION_ARGS)
 		fcinfo->flinfo->fn_extra = MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
 													  sizeof(ArrayMetaState));
 		my_extra = (ArrayMetaState *) fcinfo->flinfo->fn_extra;
-		my_extra->element_type = InvalidOid;
+		my_extra->element_type = ~element_type;
 	}
 
 	if (my_extra->element_type != element_type)
@@ -2611,26 +2687,49 @@ array_to_text(PG_FUNCTION_ARGS)
 	typbyval = my_extra->typbyval;
 	typalign = my_extra->typalign;
 
+	p = ARR_DATA_PTR(v);
+	bitmap = ARR_NULLBITMAP(v);
+	bitmask = 1;
+
 	for (i = 0; i < nitems; i++)
 	{
 		Datum		itemvalue;
 		char	   *value;
 
-		itemvalue = fetch_att(p, typbyval, typlen);
-
-		value = DatumGetCString(FunctionCall1(&my_extra->proc,
-											  itemvalue));
-
-		if (i > 0)
-			appendStringInfo(result_str, "%s%s", fldsep, value);
+		/* Get source element, checking for NULL */
+		if (bitmap && (*bitmap & bitmask) == 0)
+		{
+			/* we ignore nulls */
+		}
 		else
-			appendStringInfoString(result_str, value);
+		{
+			itemvalue = fetch_att(p, typbyval, typlen);
 
-		p = att_addlength(p, typlen, PointerGetDatum(p));
-		p = (char *) att_align(p, typalign);
+			value = OutputFunctionCall(&my_extra->proc, itemvalue);
+
+			if (printed)
+				appendStringInfo(&buf, "%s%s", fldsep, value);
+			else
+				appendStringInfoString(&buf, value);
+			printed = true;
+
+			p = att_addlength(p, typlen, PointerGetDatum(p));
+			p = (char *) att_align(p, typalign);
+		}
+
+		/* advance bitmap pointer if any */
+		if (bitmap)
+		{
+			bitmask <<= 1;
+			if (bitmask == 0x100)
+			{
+				bitmap++;
+				bitmask = 1;
+			}
+		}
 	}
 
-	PG_RETURN_TEXT_P(PG_STR_GET_TEXT(result_str->data));
+	PG_RETURN_TEXT_P(PG_STR_GET_TEXT(buf.data));
 }
 
 #define HEXBASE 16

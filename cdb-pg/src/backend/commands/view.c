@@ -4,20 +4,22 @@
  *	  use rewrite rules to construct views
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/view.c,v 1.91.2.1 2005/11/22 18:23:08 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/view.c,v 1.98 2006/10/04 00:29:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/xact.h"
 #include "catalog/dependency.h"
 #include "catalog/namespace.h"
+#include "commands/defrem.h"
 #include "commands/tablecmds.h"
 #include "commands/view.h"
 #include "miscadmin.h"
@@ -127,21 +129,16 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 		if (!tle->resjunk)
 		{
 			ColumnDef  *def = makeNode(ColumnDef);
-			TypeName   *typname = makeNode(TypeName);
 
 			def->colname = pstrdup(tle->resname);
-
-			typname->typid = exprType((Node *) tle->expr);
-			typname->typmod = exprTypmod((Node *) tle->expr);
-			def->typname = typname;
-
+			def->typname = makeTypeNameFromOid(exprType((Node *) tle->expr),
+											 exprTypmod((Node *) tle->expr));
 			def->inhcount = 0;
 			def->is_local = true;
 			def->is_not_null = false;
 			def->raw_default = NULL;
 			def->cooked_default = NULL;
 			def->constraints = NIL;
-			def->support = NULL;
 
 			attrList = lappend(attrList, def);
 		}
@@ -213,7 +210,7 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 		createStmt->tableElts = attrList;
 		createStmt->inhRelations = NIL;
 		createStmt->constraints = NIL;
-		createStmt->hasoids = MUST_NOT_HAVE_OIDS;
+		createStmt->options = list_make1(defWithOids(false));
 		createStmt->oncommit = ONCOMMIT_NOOP;
 		createStmt->tablespacename = NULL;
 		createStmt->relKind = RELKIND_VIEW;

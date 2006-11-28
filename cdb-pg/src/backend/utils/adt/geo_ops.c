@@ -3,12 +3,12 @@
  * geo_ops.c
  *	  2D geometric operations
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/geo_ops.c,v 1.91 2005/10/15 02:49:28 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/geo_ops.c,v 1.93 2006/06/26 12:32:42 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -3844,16 +3844,6 @@ poly_contained(PG_FUNCTION_ARGS)
 }
 
 
-/* poly_contain_pt()
- * Test to see if the point is inside the polygon.
- * Code adapted from integer-based routines in
- *	Wn: A Server for the HTTP
- *	File: wn/image.c
- *	Version 1.15.1
- *	Copyright (C) 1995	<by John Franks>
- * (code offered for use by J. Franks in Linux Journal letter.)
- */
-
 Datum
 poly_contain_pt(PG_FUNCTION_ARGS)
 {
@@ -5071,6 +5061,15 @@ poly_circle(PG_FUNCTION_ARGS)
  **		Private routines for multiple types.
  **
  ***********************************************************************/
+
+/*
+ *	Test to see if the point is inside the polygon.
+ *	Code adapted from integer-based routines in WN: A Server for the HTTP
+ *	version 1.15.1, file wn/image.c
+ *	GPL Copyright (C) 1995 by John Franks
+ *	http://hopf.math.northwestern.edu/index.html
+ *	Description of algorithm:  http://www.linuxjournal.com/article/2197
+ */
 
 #define HIT_IT INT_MAX
 

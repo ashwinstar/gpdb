@@ -3,11 +3,11 @@
  * async.c
  *	  Asynchronous notification: NOTIFY, LISTEN, UNLISTEN
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/async.c,v 1.127.2.1 2005/11/22 18:23:06 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/async.c,v 1.134 2006/07/14 14:52:18 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -79,6 +79,7 @@
 
 #include "access/heapam.h"
 #include "access/twophase_rmgr.h"
+#include "access/xact.h"
 #include "catalog/pg_listener.h"
 #include "commands/async.h"
 #include "libpq/libpq.h"
@@ -90,7 +91,6 @@
 #include "utils/fmgroids.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
-#include "utils/syscache.h"
 
 
 /*

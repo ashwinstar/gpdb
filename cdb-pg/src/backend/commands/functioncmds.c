@@ -5,12 +5,12 @@
  *	  Routines for CREATE and DROP FUNCTION commands and CREATE and DROP
  *	  CAST commands.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/functioncmds.c,v 1.69 2005/10/15 02:49:15 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/functioncmds.c,v 1.80 2006/10/06 17:13:58 petere Exp $
  *
  * DESCRIPTION
  *	  These routines take the parse tree and pick out the
@@ -36,7 +36,6 @@
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
-#include "catalog/namespace.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_cast.h"
 #include "catalog/pg_language.h"
@@ -46,7 +45,6 @@
 #include "commands/defrem.h"
 #include "commands/proclang.h"
 #include "miscadmin.h"
-#include "optimizer/cost.h"
 #include "parser/parse_func.h"
 #include "parser/parse_type.h"
 #include "utils/acl.h"
@@ -57,6 +55,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
 
+static void AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId);
 
 /*
  *	 Examine the RETURNS clause of the CREATE FUNCTION statement
@@ -76,7 +75,7 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 {
 	Oid			rettype;
 
-	rettype = LookupTypeName(returnType);
+	rettype = LookupTypeName(NULL, returnType);
 
 	if (OidIsValid(rettype))
 	{
@@ -183,7 +182,7 @@ examine_parameter_list(List *parameters, Oid languageOid,
 		TypeName   *t = fp->argType;
 		Oid			toid;
 
-		toid = LookupTypeName(t);
+		toid = LookupTypeName(NULL, t);
 		if (OidIsValid(toid))
 		{
 			if (!get_typisdefined(toid))
@@ -642,7 +641,7 @@ CreateFunction(CreateFunctionStmt *stmt)
 		 * In PostgreSQL versions before 6.5, the SQL name of the created
 		 * function could not be different from the internal name, and
 		 * "prosrc" wasn't used.  So there is code out there that does CREATE
-		 * FUNCTION xyz AS '' LANGUAGE 'internal'. To preserve some modicum of
+		 * FUNCTION xyz AS '' LANGUAGE internal. To preserve some modicum of
 		 * backwards compatibility, accept an empty "prosrc" value as meaning
 		 * the supplied SQL function name.
 		 */
@@ -694,7 +693,7 @@ CreateFunction(CreateFunctionStmt *stmt)
 void
 RemoveFunction(RemoveFuncStmt *stmt)
 {
-	List	   *functionName = stmt->funcname;
+	List	   *functionName = stmt->name;
 	List	   *argTypes = stmt->args;	/* list of TypeName nodes */
 	Oid			funcOid;
 	HeapTuple	tup;
@@ -703,7 +702,16 @@ RemoveFunction(RemoveFuncStmt *stmt)
 	/*
 	 * Find the function, do permissions and validity checks
 	 */
-	funcOid = LookupFuncNameTypeNames(functionName, argTypes, false);
+	funcOid = LookupFuncNameTypeNames(functionName, argTypes, stmt->missing_ok);
+	if (!OidIsValid(funcOid))
+	{
+		/* can only get here if stmt->missing_ok */
+		ereport(NOTICE,
+				(errmsg("function %s(%s) does not exist, skipping",
+						NameListToString(functionName),
+						TypeNameListToString(argTypes))));
+		return;
+	}
 
 	tup = SearchSysCache(PROCOID,
 						 ObjectIdGetDatum(funcOid),
@@ -876,16 +884,14 @@ RenameFunction(List *name, List *argtypes, const char *newname)
 }
 
 /*
- * Change function owner
+ * Change function owner by name and args
  */
 void
 AlterFunctionOwner(List *name, List *argtypes, Oid newOwnerId)
 {
+	Relation	rel;
 	Oid			procOid;
 	HeapTuple	tup;
-	Form_pg_proc procForm;
-	Relation	rel;
-	AclResult	aclresult;
 
 	rel = heap_open(ProcedureRelationId, RowExclusiveLock);
 
@@ -896,14 +902,52 @@ AlterFunctionOwner(List *name, List *argtypes, Oid newOwnerId)
 						 0, 0, 0);
 	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for function %u", procOid);
-	procForm = (Form_pg_proc) GETSTRUCT(tup);
 
-	if (procForm->proisagg)
+	if (((Form_pg_proc) GETSTRUCT(tup))->proisagg)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is an aggregate function",
 						NameListToString(name)),
 				 errhint("Use ALTER AGGREGATE to change owner of aggregate functions.")));
+
+	AlterFunctionOwner_internal(rel, tup, newOwnerId);
+
+	heap_close(rel, NoLock);
+}
+
+/*
+ * Change function owner by Oid
+ */
+void
+AlterFunctionOwner_oid(Oid procOid, Oid newOwnerId)
+{
+	Relation	rel;
+	HeapTuple	tup;
+
+	rel = heap_open(ProcedureRelationId, RowExclusiveLock);
+
+	tup = SearchSysCache(PROCOID,
+						 ObjectIdGetDatum(procOid),
+						 0, 0, 0);
+	if (!HeapTupleIsValid(tup)) /* should not happen */
+		elog(ERROR, "cache lookup failed for function %u", procOid);
+	AlterFunctionOwner_internal(rel, tup, newOwnerId);
+
+	heap_close(rel, NoLock);
+}
+
+static void
+AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
+{
+	Form_pg_proc procForm;
+	AclResult	aclresult;
+	Oid			procOid;
+
+	Assert(RelationGetRelid(rel) == ProcedureRelationId);
+	Assert(tup->t_tableOid == ProcedureRelationId);
+
+	procForm = (Form_pg_proc) GETSTRUCT(tup);
+	procOid = HeapTupleGetOid(tup);
 
 	/*
 	 * If the new owner is the same as the existing owner, consider the
@@ -925,7 +969,7 @@ AlterFunctionOwner(List *name, List *argtypes, Oid newOwnerId)
 			/* Otherwise, must be owner of the existing object */
 			if (!pg_proc_ownercheck(procOid, GetUserId()))
 				aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_PROC,
-							   NameListToString(name));
+							   NameStr(procForm->proname));
 
 			/* Must be able to become new owner */
 			check_is_member_of_role(GetUserId(), newOwnerId);
@@ -960,7 +1004,8 @@ AlterFunctionOwner(List *name, List *argtypes, Oid newOwnerId)
 			repl_val[Anum_pg_proc_proacl - 1] = PointerGetDatum(newAcl);
 		}
 
-		newtuple = heap_modifytuple(tup, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
+		newtuple = heap_modifytuple(tup, RelationGetDescr(rel), repl_val,
+									repl_null, repl_repl);
 
 		simple_heap_update(rel, &newtuple->t_self, newtuple);
 		CatalogUpdateIndexes(rel, newtuple);
@@ -972,7 +1017,6 @@ AlterFunctionOwner(List *name, List *argtypes, Oid newOwnerId)
 	}
 
 	ReleaseSysCache(tup);
-	heap_close(rel, NoLock);
 }
 
 /*
@@ -1143,33 +1187,10 @@ CreateCast(CreateCastStmt *stmt)
 	ObjectAddress myself,
 				referenced;
 
-	sourcetypeid = LookupTypeName(stmt->sourcetype);
-	if (!OidIsValid(sourcetypeid))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("source data type %s does not exist",
-						TypeNameToString(stmt->sourcetype))));
+	sourcetypeid = typenameTypeId(NULL, stmt->sourcetype);
+	targettypeid = typenameTypeId(NULL, stmt->targettype);
 
-	targettypeid = LookupTypeName(stmt->targettype);
-	if (!OidIsValid(targettypeid))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("target data type %s does not exist",
-						TypeNameToString(stmt->targettype))));
-
-	/* No shells, no pseudo-types allowed */
-	if (!get_typisdefined(sourcetypeid))
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("source data type %s is only a shell",
-						TypeNameToString(stmt->sourcetype))));
-
-	if (!get_typisdefined(targettypeid))
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("target data type %s is only a shell",
-						TypeNameToString(stmt->targettype))));
-
+	/* No pseudo-types allowed */
 	if (get_typtype(sourcetypeid) == 'p')
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -1400,30 +1421,30 @@ DropCast(DropCastStmt *stmt)
 	HeapTuple	tuple;
 	ObjectAddress object;
 
-	sourcetypeid = LookupTypeName(stmt->sourcetype);
-	if (!OidIsValid(sourcetypeid))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("source data type %s does not exist",
-						TypeNameToString(stmt->sourcetype))));
-
-	targettypeid = LookupTypeName(stmt->targettype);
-	if (!OidIsValid(targettypeid))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("target data type %s does not exist",
-						TypeNameToString(stmt->targettype))));
+	/* when dropping a cast, the types must exist even if you use IF EXISTS */
+	sourcetypeid = typenameTypeId(NULL, stmt->sourcetype);
+	targettypeid = typenameTypeId(NULL, stmt->targettype);
 
 	tuple = SearchSysCache(CASTSOURCETARGET,
 						   ObjectIdGetDatum(sourcetypeid),
 						   ObjectIdGetDatum(targettypeid),
 						   0, 0);
 	if (!HeapTupleIsValid(tuple))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("cast from type %s to type %s does not exist",
-						TypeNameToString(stmt->sourcetype),
-						TypeNameToString(stmt->targettype))));
+	{
+		if (!stmt->missing_ok)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("cast from type %s to type %s does not exist",
+							TypeNameToString(stmt->sourcetype),
+							TypeNameToString(stmt->targettype))));
+		else
+			ereport(NOTICE,
+					(errmsg("cast from type %s to type %s does not exist, skipping",
+							TypeNameToString(stmt->sourcetype),
+							TypeNameToString(stmt->targettype))));
+
+		return;
+	}
 
 	/* Permission check */
 	if (!pg_type_ownercheck(sourcetypeid, GetUserId())
@@ -1479,10 +1500,13 @@ DropCastById(Oid castOid)
 }
 
 /*
- * Execute ALTER FUNCTION SET SCHEMA
+ * Execute ALTER FUNCTION/AGGREGATE SET SCHEMA
+ *
+ * These commands are identical except for the lookup procedure, so share code.
  */
 void
-AlterFunctionNamespace(List *name, List *argtypes, const char *newschema)
+AlterFunctionNamespace(List *name, List *argtypes, bool isagg,
+					   const char *newschema)
 {
 	Oid			procOid;
 	Oid			oldNspOid;
@@ -1494,7 +1518,10 @@ AlterFunctionNamespace(List *name, List *argtypes, const char *newschema)
 	procRel = heap_open(ProcedureRelationId, RowExclusiveLock);
 
 	/* get function OID */
-	procOid = LookupFuncNameTypeNames(name, argtypes, false);
+	if (isagg)
+		procOid = LookupAggNameTypeNames(name, argtypes, false);
+	else
+		procOid = LookupFuncNameTypeNames(name, argtypes, false);
 
 	/* check permissions on function */
 	if (!pg_proc_ownercheck(procOid, GetUserId()))

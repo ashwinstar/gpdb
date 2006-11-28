@@ -3,12 +3,12 @@
  * float.c
  *	  Functions for the built-in floating-point types.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/float.c,v 1.115.2.1 2006/04/24 20:36:41 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/float.c,v 1.130 2006/10/05 01:40:45 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -53,7 +53,6 @@
 #include "postgres.h"
 
 #include <ctype.h>
-#include <errno.h>
 #include <float.h>
 #include <math.h>
 #include <limits.h>
@@ -63,7 +62,6 @@
 #endif
 
 #include "catalog/pg_type.h"
-#include "fmgr.h"
 #include "libpq/pqformat.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -74,17 +72,19 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#ifndef SHRT_MAX
-#define SHRT_MAX 32767
-#endif
-#ifndef SHRT_MIN
-#define SHRT_MIN (-32768)
-#endif
-
 /* Recent HPUXen have isfinite() macro in place of more standard finite() */
 #if !defined(HAVE_FINITE) && defined(isfinite)
 #define finite(x) isfinite(x)
 #define HAVE_FINITE 1
+#endif
+
+/* Visual C++ etc lacks NAN, and won't accept 0.0/0.0.  NAN definition from
+ * http://msdn.microsoft.com/library/default.asp?url=/library/en-us/vclang/html/vclrfNotNumberNANItems.asp
+ */
+#if defined(WIN32) && !defined(NAN)
+static const uint32 nan[2] = {0xffffffff, 0x7fffffff};
+
+#define NAN (*(const double *) nan)
 #endif
 
 /* not sure what the following should be, but better to make it over-sufficient */
@@ -328,6 +328,32 @@ float4in(PG_FUNCTION_ARGS)
 	}
 #endif   /* HAVE_BUGGY_SOLARIS_STRTOD */
 
+#ifdef HAVE_BUGGY_IRIX_STRTOD
+	/*
+	 * In some IRIX versions, strtod() recognizes only "inf", so if the
+	 * input is "infinity" we have to skip over "inity".  Also, it may
+	 * return positive infinity for "-inf".
+	 */
+	if (isinf(val))
+	{
+		if (pg_strncasecmp(num, "Infinity", 8) == 0)
+		{
+			val = get_float4_infinity();
+			endptr = num + 8;
+		}
+		else if (pg_strncasecmp(num, "-Infinity", 9) == 0)
+		{
+			val = -get_float4_infinity();
+			endptr = num + 9;
+		}
+		else if (pg_strncasecmp(num, "-inf", 4) == 0)
+		{
+			val = -get_float4_infinity();
+			endptr = num + 4;
+		}
+	}
+#endif /* HAVE_BUGGY_IRIX_STRTOD */
+
 	/* skip trailing whitespace */
 	while (*endptr != '\0' && isspace((unsigned char) *endptr))
 		endptr++;
@@ -494,6 +520,32 @@ float8in(PG_FUNCTION_ARGS)
 			endptr--;
 	}
 #endif   /* HAVE_BUGGY_SOLARIS_STRTOD */
+
+#ifdef HAVE_BUGGY_IRIX_STRTOD
+	/*
+	 * In some IRIX versions, strtod() recognizes only "inf", so if the
+	 * input is "infinity" we have to skip over "inity".  Also, it may
+	 * return positive infinity for "-inf".
+	 */
+	if (isinf(val))
+	{
+		if (pg_strncasecmp(num, "Infinity", 8) == 0)
+		{
+			val = get_float8_infinity();
+			endptr = num + 8;
+		}
+		else if (pg_strncasecmp(num, "-Infinity", 9) == 0)
+		{
+			val = -get_float8_infinity();
+			endptr = num + 9;
+		}
+		else if (pg_strncasecmp(num, "-inf", 4) == 0)
+		{
+			val = -get_float8_infinity();
+			endptr = num + 4;
+		}
+	}
+#endif /* HAVE_BUGGY_IRIX_STRTOD */
 
 	/* skip trailing whitespace */
 	while (*endptr != '\0' && isspace((unsigned char) *endptr))
@@ -1833,8 +1885,8 @@ drandom(PG_FUNCTION_ARGS)
 {
 	float8		result;
 
-	/* result 0.0-1.0 */
-	result = ((double) random()) / ((double) MAX_RANDOM_VALUE);
+	/* result [0.0 - 1.0) */
+	result = (double) random() / ((double) MAX_RANDOM_VALUE + 1);
 
 	PG_RETURN_FLOAT8(result);
 }
@@ -1861,11 +1913,13 @@ setseed(PG_FUNCTION_ARGS)
  *		FLOAT AGGREGATE OPERATORS
  *		=========================
  *
- *		float8_accum	- accumulate for AVG(), STDDEV(), etc
- *		float4_accum	- same, but input data is float4
- *		float8_avg		- produce final result for float AVG()
- *		float8_variance - produce final result for float VARIANCE()
- *		float8_stddev	- produce final result for float STDDEV()
+ *		float8_accum		- accumulate for AVG(), variance aggregates, etc.
+ *		float4_accum		- same, but input data is float4
+ *		float8_avg			- produce final result for float AVG()
+ *		float8_var_samp		- produce final result for float VAR_SAMP()
+ *		float8_var_pop		- produce final result for float VAR_POP()
+ *		float8_stddev_samp	- produce final result for float STDDEV_SAMP()
+ *		float8_stddev_pop	- produce final result for float STDDEV_POP()
  *
  * The transition datatype for all these aggregates is a 3-element array
  * of float8, holding the values N, sum(X), sum(X*X) in that order.
@@ -1877,17 +1931,18 @@ setseed(PG_FUNCTION_ARGS)
  */
 
 static float8 *
-check_float8_array(ArrayType *transarray, const char *caller)
+check_float8_array(ArrayType *transarray, const char *caller, int n)
 {
 	/*
-	 * We expect the input to be a 3-element float array; verify that. We
+	 * We expect the input to be an N-element float array; verify that. We
 	 * don't need to use deconstruct_array() since the array data is just
-	 * going to look like a C array of 3 float8 values.
+	 * going to look like a C array of N float8 values.
 	 */
 	if (ARR_NDIM(transarray) != 1 ||
-		ARR_DIMS(transarray)[0] != 3 ||
+		ARR_DIMS(transarray)[0] != n ||
+		ARR_HASNULL(transarray) ||
 		ARR_ELEMTYPE(transarray) != FLOAT8OID)
-		elog(ERROR, "%s: expected 3-element float8 array", caller);
+		elog(ERROR, "%s: expected %d-element float8 array", caller, n);
 	return (float8 *) ARR_DATA_PTR(transarray);
 }
 
@@ -1901,7 +1956,7 @@ float8_accum(PG_FUNCTION_ARGS)
 				sumX,
 				sumX2;
 
-	transvalues = check_float8_array(transarray, "float8_accum");
+	transvalues = check_float8_array(transarray, "float8_accum", 3);
 	N = transvalues[0];
 	sumX = transvalues[1];
 	sumX2 = transvalues[2];
@@ -1951,7 +2006,7 @@ float4_accum(PG_FUNCTION_ARGS)
 				sumX2,
 				newval;
 
-	transvalues = check_float8_array(transarray, "float4_accum");
+	transvalues = check_float8_array(transarray, "float4_accum", 3);
 	N = transvalues[0];
 	sumX = transvalues[1];
 	sumX2 = transvalues[2];
@@ -2001,7 +2056,7 @@ float8_avg(PG_FUNCTION_ARGS)
 	float8		N,
 				sumX;
 
-	transvalues = check_float8_array(transarray, "float8_avg");
+	transvalues = check_float8_array(transarray, "float8_avg", 3);
 	N = transvalues[0];
 	sumX = transvalues[1];
 	/* ignore sumX2 */
@@ -2014,7 +2069,7 @@ float8_avg(PG_FUNCTION_ARGS)
 }
 
 Datum
-float8_variance(PG_FUNCTION_ARGS)
+float8_var_pop(PG_FUNCTION_ARGS)
 {
 	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
 	float8	   *transvalues;
@@ -2023,7 +2078,35 @@ float8_variance(PG_FUNCTION_ARGS)
 				sumX2,
 				numerator;
 
-	transvalues = check_float8_array(transarray, "float8_variance");
+	transvalues = check_float8_array(transarray, "float8_var_pop", 3);
+	N = transvalues[0];
+	sumX = transvalues[1];
+	sumX2 = transvalues[2];
+
+	/* Population variance is undefined when N is 0, so return NULL */
+	if (N == 0.0)
+		PG_RETURN_NULL();
+
+	numerator = N * sumX2 - sumX * sumX;
+
+	/* Watch out for roundoff error producing a negative numerator */
+	if (numerator <= 0.0)
+		PG_RETURN_FLOAT8(0.0);
+
+	PG_RETURN_FLOAT8(numerator / (N * N));
+}
+
+Datum
+float8_var_samp(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float8	   *transvalues;
+	float8		N,
+				sumX,
+				sumX2,
+				numerator;
+
+	transvalues = check_float8_array(transarray, "float8_var_samp", 3);
 	N = transvalues[0];
 	sumX = transvalues[1];
 	sumX2 = transvalues[2];
@@ -2042,7 +2125,7 @@ float8_variance(PG_FUNCTION_ARGS)
 }
 
 Datum
-float8_stddev(PG_FUNCTION_ARGS)
+float8_stddev_pop(PG_FUNCTION_ARGS)
 {
 	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
 	float8	   *transvalues;
@@ -2051,7 +2134,35 @@ float8_stddev(PG_FUNCTION_ARGS)
 				sumX2,
 				numerator;
 
-	transvalues = check_float8_array(transarray, "float8_stddev");
+	transvalues = check_float8_array(transarray, "float8_stddev_pop", 3);
+	N = transvalues[0];
+	sumX = transvalues[1];
+	sumX2 = transvalues[2];
+
+	/* Population stddev is undefined when N is 0, so return NULL */
+	if (N == 0.0)
+		PG_RETURN_NULL();
+
+	numerator = N * sumX2 - sumX * sumX;
+
+	/* Watch out for roundoff error producing a negative numerator */
+	if (numerator <= 0.0)
+		PG_RETURN_FLOAT8(0.0);
+
+	PG_RETURN_FLOAT8(sqrt(numerator / (N * N)));
+}
+
+Datum
+float8_stddev_samp(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float8	   *transvalues;
+	float8		N,
+				sumX,
+				sumX2,
+				numerator;
+
+	transvalues = check_float8_array(transarray, "float8_stddev_samp", 3);
 	N = transvalues[0];
 	sumX = transvalues[1];
 	sumX2 = transvalues[2];
@@ -2067,6 +2178,403 @@ float8_stddev(PG_FUNCTION_ARGS)
 		PG_RETURN_FLOAT8(0.0);
 
 	PG_RETURN_FLOAT8(sqrt(numerator / (N * (N - 1.0))));
+}
+
+/*
+ *		=========================
+ *		SQL2003 BINARY AGGREGATES
+ *		=========================
+ *
+ * The transition datatype for all these aggregates is a 6-element array of
+ * float8, holding the values N, sum(X), sum(X*X), sum(Y), sum(Y*Y), sum(X*Y)
+ * in that order.  Note that Y is the first argument to the aggregates!
+ *
+ * It might seem attractive to optimize this by having multiple accumulator
+ * functions that only calculate the sums actually needed.	But on most
+ * modern machines, a couple of extra floating-point multiplies will be
+ * insignificant compared to the other per-tuple overhead, so I've chosen
+ * to minimize code space instead.
+ */
+
+Datum
+float8_regr_accum(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float8		newvalY = PG_GETARG_FLOAT8(1);
+	float8		newvalX = PG_GETARG_FLOAT8(2);
+	float8	   *transvalues;
+	float8		N,
+				sumX,
+				sumX2,
+				sumY,
+				sumY2,
+				sumXY;
+
+	transvalues = check_float8_array(transarray, "float8_regr_accum", 6);
+	N = transvalues[0];
+	sumX = transvalues[1];
+	sumX2 = transvalues[2];
+	sumY = transvalues[3];
+	sumY2 = transvalues[4];
+	sumXY = transvalues[5];
+
+	N += 1.0;
+	sumX += newvalX;
+	sumX2 += newvalX * newvalX;
+	sumY += newvalY;
+	sumY2 += newvalY * newvalY;
+	sumXY += newvalX * newvalY;
+
+	/*
+	 * If we're invoked by nodeAgg, we can cheat and modify our first
+	 * parameter in-place to reduce palloc overhead. Otherwise we construct a
+	 * new array with the updated transition data and return it.
+	 */
+	if (fcinfo->context && IsA(fcinfo->context, AggState))
+	{
+		transvalues[0] = N;
+		transvalues[1] = sumX;
+		transvalues[2] = sumX2;
+		transvalues[3] = sumY;
+		transvalues[4] = sumY2;
+		transvalues[5] = sumXY;
+
+		PG_RETURN_ARRAYTYPE_P(transarray);
+	}
+	else
+	{
+		Datum		transdatums[6];
+		ArrayType  *result;
+
+		transdatums[0] = Float8GetDatumFast(N);
+		transdatums[1] = Float8GetDatumFast(sumX);
+		transdatums[2] = Float8GetDatumFast(sumX2);
+		transdatums[3] = Float8GetDatumFast(sumY);
+		transdatums[4] = Float8GetDatumFast(sumY2);
+		transdatums[5] = Float8GetDatumFast(sumXY);
+
+		result = construct_array(transdatums, 6,
+								 FLOAT8OID,
+								 sizeof(float8),
+								 false /* float8 byval */ , 'd');
+
+		PG_RETURN_ARRAYTYPE_P(result);
+	}
+}
+
+Datum
+float8_regr_sxx(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float8	   *transvalues;
+	float8		N,
+				sumX,
+				sumX2,
+				numerator;
+
+	transvalues = check_float8_array(transarray, "float8_regr_sxx", 6);
+	N = transvalues[0];
+	sumX = transvalues[1];
+	sumX2 = transvalues[2];
+
+	/* if N is 0 we should return NULL */
+	if (N < 1.0)
+		PG_RETURN_NULL();
+
+	numerator = N * sumX2 - sumX * sumX;
+
+	/* Watch out for roundoff error producing a negative numerator */
+	if (numerator <= 0.0)
+		PG_RETURN_FLOAT8(0.0);
+
+	PG_RETURN_FLOAT8(numerator / N);
+}
+
+Datum
+float8_regr_syy(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float8	   *transvalues;
+	float8		N,
+				sumY,
+				sumY2,
+				numerator;
+
+	transvalues = check_float8_array(transarray, "float8_regr_syy", 6);
+	N = transvalues[0];
+	sumY = transvalues[3];
+	sumY2 = transvalues[4];
+
+	/* if N is 0 we should return NULL */
+	if (N < 1.0)
+		PG_RETURN_NULL();
+
+	numerator = N * sumY2 - sumY * sumY;
+
+	/* Watch out for roundoff error producing a negative numerator */
+	if (numerator <= 0.0)
+		PG_RETURN_FLOAT8(0.0);
+
+	PG_RETURN_FLOAT8(numerator / N);
+}
+
+Datum
+float8_regr_sxy(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float8	   *transvalues;
+	float8		N,
+				sumX,
+				sumY,
+				sumXY,
+				numerator;
+
+	transvalues = check_float8_array(transarray, "float8_regr_sxy", 6);
+	N = transvalues[0];
+	sumX = transvalues[1];
+	sumY = transvalues[3];
+	sumXY = transvalues[5];
+
+	/* if N is 0 we should return NULL */
+	if (N < 1.0)
+		PG_RETURN_NULL();
+
+	numerator = N * sumXY - sumX * sumY;
+
+	/* A negative result is valid here */
+
+	PG_RETURN_FLOAT8(numerator / N);
+}
+
+Datum
+float8_regr_avgx(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float8	   *transvalues;
+	float8		N,
+				sumX;
+
+	transvalues = check_float8_array(transarray, "float8_regr_avgx", 6);
+	N = transvalues[0];
+	sumX = transvalues[1];
+
+	/* if N is 0 we should return NULL */
+	if (N < 1.0)
+		PG_RETURN_NULL();
+
+	PG_RETURN_FLOAT8(sumX / N);
+}
+
+Datum
+float8_regr_avgy(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float8	   *transvalues;
+	float8		N,
+				sumY;
+
+	transvalues = check_float8_array(transarray, "float8_regr_avgy", 6);
+	N = transvalues[0];
+	sumY = transvalues[3];
+
+	/* if N is 0 we should return NULL */
+	if (N < 1.0)
+		PG_RETURN_NULL();
+
+	PG_RETURN_FLOAT8(sumY / N);
+}
+
+Datum
+float8_covar_pop(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float8	   *transvalues;
+	float8		N,
+				sumX,
+				sumY,
+				sumXY,
+				numerator;
+
+	transvalues = check_float8_array(transarray, "float8_covar_pop", 6);
+	N = transvalues[0];
+	sumX = transvalues[1];
+	sumY = transvalues[3];
+	sumXY = transvalues[5];
+
+	/* if N is 0 we should return NULL */
+	if (N < 1.0)
+		PG_RETURN_NULL();
+
+	numerator = N * sumXY - sumX * sumY;
+
+	PG_RETURN_FLOAT8(numerator / (N * N));
+}
+
+Datum
+float8_covar_samp(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float8	   *transvalues;
+	float8		N,
+				sumX,
+				sumY,
+				sumXY,
+				numerator;
+
+	transvalues = check_float8_array(transarray, "float8_covar_samp", 6);
+	N = transvalues[0];
+	sumX = transvalues[1];
+	sumY = transvalues[3];
+	sumXY = transvalues[5];
+
+	/* if N is <= 1 we should return NULL */
+	if (N < 2.0)
+		PG_RETURN_NULL();
+
+	numerator = N * sumXY - sumX * sumY;
+
+	PG_RETURN_FLOAT8(numerator / (N * (N - 1.0)));
+}
+
+Datum
+float8_corr(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float8	   *transvalues;
+	float8		N,
+				sumX,
+				sumX2,
+				sumY,
+				sumY2,
+				sumXY,
+				numeratorX,
+				numeratorY,
+				numeratorXY;
+
+	transvalues = check_float8_array(transarray, "float8_corr", 6);
+	N = transvalues[0];
+	sumX = transvalues[1];
+	sumX2 = transvalues[2];
+	sumY = transvalues[3];
+	sumY2 = transvalues[4];
+	sumXY = transvalues[5];
+
+	/* if N is 0 we should return NULL */
+	if (N < 1.0)
+		PG_RETURN_NULL();
+
+	numeratorX = N * sumX2 - sumX * sumX;
+	numeratorY = N * sumY2 - sumY * sumY;
+	numeratorXY = N * sumXY - sumX * sumY;
+	if (numeratorX <= 0 || numeratorY <= 0)
+		PG_RETURN_NULL();
+
+	PG_RETURN_FLOAT8(sqrt((numeratorXY * numeratorXY) /
+						  (numeratorX * numeratorY)));
+}
+
+Datum
+float8_regr_r2(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float8	   *transvalues;
+	float8		N,
+				sumX,
+				sumX2,
+				sumY,
+				sumY2,
+				sumXY,
+				numeratorX,
+				numeratorY,
+				numeratorXY;
+
+	transvalues = check_float8_array(transarray, "float8_regr_r2", 6);
+	N = transvalues[0];
+	sumX = transvalues[1];
+	sumX2 = transvalues[2];
+	sumY = transvalues[3];
+	sumY2 = transvalues[4];
+	sumXY = transvalues[5];
+
+	/* if N is 0 we should return NULL */
+	if (N < 1.0)
+		PG_RETURN_NULL();
+
+	numeratorX = N * sumX2 - sumX * sumX;
+	numeratorY = N * sumY2 - sumY * sumY;
+	numeratorXY = N * sumXY - sumX * sumY;
+	if (numeratorX <= 0)
+		PG_RETURN_NULL();
+	/* per spec, horizontal line produces 1.0 */
+	if (numeratorY <= 0)
+		PG_RETURN_FLOAT8(1.0);
+
+	PG_RETURN_FLOAT8((numeratorXY * numeratorXY) /
+					 (numeratorX * numeratorY));
+}
+
+Datum
+float8_regr_slope(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float8	   *transvalues;
+	float8		N,
+				sumX,
+				sumX2,
+				sumY,
+				sumXY,
+				numeratorX,
+				numeratorXY;
+
+	transvalues = check_float8_array(transarray, "float8_regr_slope", 6);
+	N = transvalues[0];
+	sumX = transvalues[1];
+	sumX2 = transvalues[2];
+	sumY = transvalues[3];
+	sumXY = transvalues[5];
+
+	/* if N is 0 we should return NULL */
+	if (N < 1.0)
+		PG_RETURN_NULL();
+
+	numeratorX = N * sumX2 - sumX * sumX;
+	numeratorXY = N * sumXY - sumX * sumY;
+	if (numeratorX <= 0)
+		PG_RETURN_NULL();
+
+	PG_RETURN_FLOAT8(numeratorXY / numeratorX);
+}
+
+Datum
+float8_regr_intercept(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float8	   *transvalues;
+	float8		N,
+				sumX,
+				sumX2,
+				sumY,
+				sumXY,
+				numeratorX,
+				numeratorXXY;
+
+	transvalues = check_float8_array(transarray, "float8_regr_intercept", 6);
+	N = transvalues[0];
+	sumX = transvalues[1];
+	sumX2 = transvalues[2];
+	sumY = transvalues[3];
+	sumXY = transvalues[5];
+
+	/* if N is 0 we should return NULL */
+	if (N < 1.0)
+		PG_RETURN_NULL();
+
+	numeratorX = N * sumX2 - sumX * sumX;
+	numeratorXXY = sumY * sumX2 - sumX * sumXY;
+	if (numeratorX <= 0)
+		PG_RETURN_NULL();
+
+	PG_RETURN_FLOAT8(numeratorXXY / numeratorX);
 }
 
 
@@ -2330,13 +2838,13 @@ cbrt(double x)
 	double		tmpres = pow(absx, (double) 1.0 / (double) 3.0);
 
 	/*
-	 * The result is somewhat inaccurate --- not really pow()'s fault,
-	 * as the exponent it's handed contains roundoff error.  We can improve
-	 * the accuracy by doing one iteration of Newton's formula.  Beware of
-	 * zero input however.
+	 * The result is somewhat inaccurate --- not really pow()'s fault, as the
+	 * exponent it's handed contains roundoff error.  We can improve the
+	 * accuracy by doing one iteration of Newton's formula.  Beware of zero
+	 * input however.
 	 */
 	if (tmpres > 0.0)
-		tmpres -= (tmpres - absx/(tmpres*tmpres)) / (double) 3.0;
+		tmpres -= (tmpres - absx / (tmpres * tmpres)) / (double) 3.0;
 
 	return isneg ? -tmpres : tmpres;
 }
@@ -2364,12 +2872,12 @@ float8_amalg(PG_FUNCTION_ARGS)
 				aSumX, bSumX,
 				aSumX2, bSumX2;
 
-	transvalues = check_float8_array(bTransArray, "float8_amalg");
+	transvalues = check_float8_array(bTransArray, "float8_amalg", 3);
 	bN = transvalues[0];
 	bSumX = transvalues[1];
 	bSumX2 = transvalues[2];
 
-	transvalues = check_float8_array(aTransArray, "float8_amalg");
+	transvalues = check_float8_array(aTransArray, "float8_amalg", 3);
 	aN = transvalues[0];
 	aSumX = transvalues[1];
 	aSumX2 = transvalues[2];

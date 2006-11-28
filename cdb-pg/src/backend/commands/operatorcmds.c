@@ -4,12 +4,12 @@
  *
  *	  Routines for operator manipulation commands
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/operatorcmds.c,v 1.26 2005/10/15 02:49:15 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/operatorcmds.c,v 1.33 2006/10/04 00:29:51 momjian Exp $
  *
  * DESCRIPTION
  *	  The "DefineFoo" routines take the parse tree and pick out the
@@ -49,6 +49,8 @@
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
+
+static void AlterOperatorOwner_internal(Relation rel, Oid operOid, Oid newOwnerId);
 
 /*
  * DefineOperator
@@ -153,9 +155,9 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 
 	/* Transform type names to type OIDs */
 	if (typeName1)
-		typeId1 = typenameTypeId(typeName1);
+		typeId1 = typenameTypeId(NULL, typeName1);
 	if (typeName2)
-		typeId2 = typenameTypeId(typeName2);
+		typeId2 = typenameTypeId(NULL, typeName2);
 
 	/*
 	 * If any of the mergejoin support operators were given, then canMerge is
@@ -213,17 +215,27 @@ DefineOperator(List *names, List *parameters, Oid newOid)
  *		Deletes an operator.
  */
 void
-RemoveOperator(RemoveOperStmt *stmt)
+RemoveOperator(RemoveFuncStmt *stmt)
 {
-	List	   *operatorName = stmt->opname;
+	List	   *operatorName = stmt->name;
 	TypeName   *typeName1 = (TypeName *) linitial(stmt->args);
 	TypeName   *typeName2 = (TypeName *) lsecond(stmt->args);
 	Oid			operOid;
 	HeapTuple	tup;
 	ObjectAddress object;
 
-	operOid = LookupOperNameTypeNames(operatorName, typeName1, typeName2,
-									  false);
+	Assert(list_length(stmt->args) == 2);
+	operOid = LookupOperNameTypeNames(NULL, operatorName,
+									  typeName1, typeName2,
+									  stmt->missing_ok, -1);
+
+	if (stmt->missing_ok && !OidIsValid(operOid))
+	{
+		ereport(NOTICE,
+				(errmsg("operator %s does not exist, skipping",
+						NameListToString(operatorName))));
+		return;
+	}
 
 	tup = SearchSysCache(OPEROID,
 						 ObjectIdGetDatum(operOid),
@@ -279,6 +291,18 @@ RemoveOperatorById(Oid operOid)
 	heap_close(relation, RowExclusiveLock);
 }
 
+void
+AlterOperatorOwner_oid(Oid operOid, Oid newOwnerId)
+{
+	Relation	rel;
+
+	rel = heap_open(OperatorRelationId, RowExclusiveLock);
+
+	AlterOperatorOwner_internal(rel, operOid, newOwnerId);
+
+	heap_close(rel, NoLock);
+}
+
 /*
  * change operator owner
  */
@@ -287,15 +311,27 @@ AlterOperatorOwner(List *name, TypeName *typeName1, TypeName *typeName2,
 				   Oid newOwnerId)
 {
 	Oid			operOid;
-	HeapTuple	tup;
 	Relation	rel;
-	AclResult	aclresult;
-	Form_pg_operator oprForm;
 
 	rel = heap_open(OperatorRelationId, RowExclusiveLock);
 
-	operOid = LookupOperNameTypeNames(name, typeName1, typeName2,
-									  false);
+	operOid = LookupOperNameTypeNames(NULL, name,
+									  typeName1, typeName2,
+									  false, -1);
+
+	AlterOperatorOwner_internal(rel, operOid, newOwnerId);
+
+	heap_close(rel, NoLock);
+}
+
+static void
+AlterOperatorOwner_internal(Relation rel, Oid operOid, Oid newOwnerId)
+{
+	HeapTuple	tup;
+	AclResult	aclresult;
+	Form_pg_operator oprForm;
+
+	Assert(RelationGetRelid(rel) == OperatorRelationId);
 
 	tup = SearchSysCacheCopy(OPEROID,
 							 ObjectIdGetDatum(operOid),
@@ -317,7 +353,7 @@ AlterOperatorOwner(List *name, TypeName *typeName1, TypeName *typeName2,
 			/* Otherwise, must be owner of the existing object */
 			if (!pg_oper_ownercheck(operOid, GetUserId()))
 				aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_OPER,
-							   NameListToString(name));
+							   NameStr(oprForm->oprname));
 
 			/* Must be able to become new owner */
 			check_is_member_of_role(GetUserId(), newOwnerId);
@@ -344,7 +380,5 @@ AlterOperatorOwner(List *name, TypeName *typeName1, TypeName *typeName2,
 		changeDependencyOnOwner(OperatorRelationId, operOid, newOwnerId);
 	}
 
-	heap_close(rel, NoLock);
 	heap_freetuple(tup);
-
 }

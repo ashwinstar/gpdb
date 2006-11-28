@@ -4,33 +4,29 @@
  *	  Explain query execution plans
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/explain.c,v 1.139.2.1 2005/11/22 18:23:07 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/explain.c,v 1.152 2006/10/04 00:29:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "access/genam.h"
-#include "access/heapam.h"
+#include "access/xact.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_type.h"
 #include "commands/explain.h"
 #include "commands/prepare.h"
 #include "commands/trigger.h"
-#include "executor/executor.h"
 #include "executor/instrument.h"
-#include "lib/stringinfo.h"
 #include "nodes/print.h"
 #include "optimizer/clauses.h"
 #include "optimizer/planner.h"
 #include "optimizer/var.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteHandler.h"
-#include "tcop/pquery.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
@@ -42,7 +38,7 @@
 
 typedef struct ExplainState
 {
-    /* options */
+	/* options */
 	bool		printNodes;		/* do nodeToString() too */
 	bool		printAnalyze;	/* print actual times */
 	/* other states */
@@ -53,7 +49,7 @@ typedef struct ExplainState
 } ExplainState;
 
 static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
-							ParamListInfo params, TupOutputState *tstate);
+				ParamListInfo params, TupOutputState *tstate);
 static double elapsed_time(instr_time *starttime);
 static void explain_outNode(StringInfo str,
 				Plan *plan, PlanState *planstate,
@@ -213,7 +209,7 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, ParamListInfo params,
 	}
 
 	/* plan the query */
-	plan = planner(query, isCursor, cursorOptions, NULL);
+	plan = planner(query, isCursor, cursorOptions, params);
 
 	/*
 	 * Update snapshot command ID to ensure this query sees results of any
@@ -249,11 +245,10 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 {
 	instr_time	starttime;
 	double		totaltime = 0;
-	ExplainState    explainState;
-    ExplainState   *es = &explainState;
-	StringInfo	str;
-	Node	   *saved_es_sliceTable;
+	ExplainState *es;
+	StringInfoData buf;
 	int			eflags;
+	Node	   *saved_es_sliceTable;
 
 	memset(es, 0, sizeof(*es));
     es->queryDesc = queryDesc;
@@ -333,9 +328,8 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 		}
 	}
 
-	str = makeStringInfo();
-
-	explain_outNode(str, queryDesc->plantree, queryDesc->planstate,
+	initStringInfo(&buf);
+	explain_outNode(&buf, queryDesc->plantree, queryDesc->planstate,
 					NULL, 0, es);
 
 	/*
@@ -383,18 +377,18 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 				if (trig->tgisconstraint &&
 				(conname = GetConstraintNameForTrigger(trig->tgoid)) != NULL)
 				{
-					appendStringInfo(str, "Trigger for constraint %s",
+					appendStringInfo(&buf, "Trigger for constraint %s",
 									 conname);
 					pfree(conname);
 				}
 				else
-					appendStringInfo(str, "Trigger %s", trig->tgname);
+					appendStringInfo(&buf, "Trigger %s", trig->tgname);
 
 				if (numrels > 1)
-					appendStringInfo(str, " on %s",
+					appendStringInfo(&buf, " on %s",
 							RelationGetRelationName(rInfo->ri_RelationDesc));
 
-				appendStringInfo(str, ": time=%.3f calls=%.0f\n",
+				appendStringInfo(&buf, ": time=%.3f calls=%.0f\n",
 								 1000.0 * instr->total,
 								 instr->ntuples);
 			}
@@ -418,12 +412,12 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	totaltime += elapsed_time(&starttime);
 
 	if (stmt->analyze)
-		appendStringInfo(str, "%.3f ms elapsed\n", 1000.0 * totaltime);
+		appendStringInfo(&buf, "Total runtime: %.3f ms\n",
+						 1000.0 * totaltime);
+	do_text_output_multiline(tstate, buf.data);
 
-	do_text_output_multiline(tstate, str->data);
-
-	pfree(str->data);
-	pfree(str);
+	pfree(buf.data);
+	pfree(es);
 }
 
 /* Compute elapsed time in seconds since given timestamp */
@@ -585,6 +579,9 @@ explain_outNode(StringInfo str,
 			break;
 		case T_FunctionScan:
 			pname = "Function Scan";
+			break;
+		case T_ValuesScan:
+			pname = "Values Scan";
 			break;
 		case T_Material:
 			pname = "Materialize";
@@ -769,6 +766,22 @@ explain_outNode(StringInfo str,
 			if (((Material *) plan)->cdb_strict)
 				appendStringInfo(str, " for deadlock safety");
 			break;
+		case T_ValuesScan:
+			if (((Scan *) plan)->scanrelid > 0)
+			{
+				RangeTblEntry *rte = rt_fetch(((Scan *) plan)->scanrelid,
+											  es->rtable);
+				char	   *valsname;
+
+				/* Assert it's on a values rte */
+				Assert(rte->rtekind == RTE_VALUES);
+
+				valsname = rte->eref->aliasname;
+
+				appendStringInfo(str, " on %s",
+								 quote_identifier(valsname));
+			}
+			break;
 		default:
 			break;
 	}
@@ -821,14 +834,36 @@ explain_outNode(StringInfo str,
 						   str, indent, es);
 			/* FALL THRU */
 		case T_SeqScan:
-		case T_TidScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:
+		case T_ValuesScan:
 			show_scan_qual(plan->qual,
 						   "Filter",
 						   ((Scan *) plan)->scanrelid,
 						   outer_plan,
 						   str, indent, es);
+			break;
+		case T_TidScan:
+			{
+				/*
+				 * The tidquals list has OR semantics, so be sure to show it
+				 * as an OR condition.
+				 */
+				List	   *tidquals = ((TidScan *) plan)->tidquals;
+
+				if (list_length(tidquals) > 1)
+					tidquals = list_make1(make_orclause(tidquals));
+				show_scan_qual(tidquals,
+							   "TID Cond",
+							   ((Scan *) plan)->scanrelid,
+							   outer_plan,
+							   str, indent, es);
+				show_scan_qual(plan->qual,
+							   "Filter",
+							   ((Scan *) plan)->scanrelid,
+							   outer_plan,
+							   str, indent, es);
+			}
 			break;
 		case T_NestLoop:
 			show_upper_qual(((NestLoop *) plan)->join.joinqual,
@@ -1031,9 +1066,15 @@ explain_outNode(StringInfo str,
 				appendStringInfo(str, "  ");
 			appendStringInfo(str, "  ->  ");
 
+			/*
+			 * Ordinarily we don't pass down our own outer_plan value to our
+			 * child nodes, but in an Append we must, since we might be
+			 * looking at an appendrel indexscan with outer references from
+			 * the member scans.
+			 */
 			explain_outNode(str, subnode,
 							appendstate->appendplans[j],
-							NULL,
+							outer_plan,
 							indent + 3, es);
 			j++;
 		}
@@ -1348,8 +1389,9 @@ show_sort_keys(Plan *sortplan, int nkeys, AttrNumber *keycols,
 	{
 		Node	   *outercontext;
 
-		outercontext = deparse_context_for_subplan(NULL, (Node *)sortplan);
-		context = deparse_context_for_plan(OUTER, outercontext,
+		outercontext = deparse_context_for_subplan("sort",
+												   (Node *) sortplan);
+		context = deparse_context_for_plan(0, outercontext,
 										   0, NULL,
 										   es->rtable);
 	}

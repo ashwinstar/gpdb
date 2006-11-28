@@ -4,12 +4,12 @@
  *	  Support routines for various kinds of object creation.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/define.c,v 1.93 2005/10/15 02:49:15 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/define.c,v 1.99 2006/10/06 17:13:58 petere Exp $
  *
  * DESCRIPTION
  *	  The "DefineFoo" routines take the parse tree and pick out the
@@ -37,6 +37,7 @@
 
 #include "catalog/namespace.h"
 #include "commands/defrem.h"
+#include "nodes/makefuncs.h"
 #include "parser/parse_type.h"
 #include "parser/scansup.h"
 #include "utils/int8.h"
@@ -126,14 +127,43 @@ bool
 defGetBoolean(DefElem *def)
 {
 	/*
-	 * Presently, boolean flags must simply be present or absent. Later we
-	 * could allow 'flag = t', 'flag = f', etc.
+	 * If no parameter given, assume "true" is meant.
 	 */
 	if (def->arg == NULL)
 		return true;
+
+	/*
+	 * Allow 0, 1, "true", "false"
+	 */
+	switch (nodeTag(def->arg))
+	{
+		case T_Integer:
+			switch (intVal(def->arg))
+			{
+				case 0:
+					return false;
+				case 1:
+					return true;
+				default:
+					/* otherwise, error out below */
+					break;
+			}
+			break;
+		default:
+			{
+				char	   *sval = defGetString(def);
+
+				if (pg_strcasecmp(sval, "true") == 0)
+					return true;
+				if (pg_strcasecmp(sval, "false") == 0)
+					return false;
+
+			}
+			break;
+	}
 	ereport(ERROR,
 			(errcode(ERRCODE_SYNTAX_ERROR),
-			 errmsg("%s does not take a parameter",
+			 errmsg("%s requires a Boolean value",
 					def->defname)));
 	return false;				/* keep compiler quiet */
 }
@@ -219,14 +249,8 @@ defGetTypeName(DefElem *def)
 		case T_TypeName:
 			return (TypeName *) def->arg;
 		case T_String:
-			{
-				/* Allow quoted typename for backwards compatibility */
-				TypeName   *n = makeNode(TypeName);
-
-				n->names = list_make1(def->arg);
-				n->typmod = -1;
-				return n;
-			}
+			/* Allow quoted typename for backwards compatibility */
+			return makeTypeNameFromNameList(list_make1(def->arg));
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -279,4 +303,17 @@ defGetTypeLength(DefElem *def)
 			 errmsg("invalid argument for %s: \"%s\"",
 					def->defname, defGetString(def))));
 	return 0;					/* keep compiler quiet */
+}
+
+/*
+ * Create a DefElem setting "oids" to the specified value.
+ */
+DefElem *
+defWithOids(bool value)
+{
+	DefElem    *f = makeNode(DefElem);
+
+	f->defname = "oids";
+	f->arg = (Node *) makeInteger(value);
+	return f;
 }

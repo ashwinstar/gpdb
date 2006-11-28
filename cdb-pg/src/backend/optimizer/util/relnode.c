@@ -4,23 +4,21 @@
  *	  Relation-node lookup/construction routines
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/relnode.c,v 1.72.2.1 2005/11/22 18:23:12 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/relnode.c,v 1.83 2006/10/04 00:29:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "optimizer/cost.h"
-#include "optimizer/joininfo.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/plancat.h"
 #include "optimizer/restrictinfo.h"
-#include "optimizer/tlist.h"
 #include "parser/parsetree.h"
 #include "utils/hsearch.h"
 
@@ -31,8 +29,6 @@ typedef struct JoinHashEntry
 	RelOptInfo *join_rel;
 } JoinHashEntry;
 
-static RelOptInfo *make_reloptinfo(PlannerInfo *root, int relid,
-				RelOptKind reloptkind);
 static void build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
 					RelOptInfo *input_rel);
 static List *build_joinrel_restrictlist(PlannerInfo *root,
@@ -49,71 +45,25 @@ static void subbuild_joinrel_joinlist(RelOptInfo *joinrel,
 						  List *joininfo_list);
 
 /*
- * build_base_rel
- *	  Construct a new base relation RelOptInfo, and put it in the query's
- *	  base_rel_array.
- */
-void
-build_base_rel(PlannerInfo *root, int relid)
-{
-	Assert(relid > 0);
-
-	/* Rel should not exist already */
-	if (relid < root->base_rel_array_size &&
-		root->base_rel_array[relid] != NULL)
-		elog(ERROR, "rel already exists");
-
-	/* No existing RelOptInfo for this base rel, so make a new one */
-	(void) make_reloptinfo(root, relid, RELOPT_BASEREL);
-}
-
-/*
- * build_other_rel
- *	  Returns relation entry corresponding to 'relid', creating a new one
- *	  if necessary.  This is for 'other' relations, which are much like
- *	  base relations except that they have a different RelOptKind.
+ * build_simple_rel
+ *	  Construct a new RelOptInfo for a base relation or 'other' relation.
  */
 RelOptInfo *
-build_other_rel(PlannerInfo *root, int relid)
+build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 {
 	RelOptInfo *rel;
+	RangeTblEntry *rte;
 
-	Assert(relid > 0);
+	/* Fetch RTE for relation */
+	Assert(relid > 0 && relid <= list_length(root->parse->rtable));
+	rte = rt_fetch(relid, root->parse->rtable);
 
-	/* Already made? */
-	if (relid < root->base_rel_array_size)
-	{
-		rel = root->base_rel_array[relid];
-		if (rel)
-		{
-			/* it should not exist as a base rel */
-			if (rel->reloptkind == RELOPT_BASEREL)
-				elog(ERROR, "rel already exists as base rel");
-			/* otherwise, A-OK */
-			return rel;
-		}
-	}
+	/* Rel should not exist already */
+	Assert(relid < root->simple_rel_array_size);
+	if (root->simple_rel_array[relid] != NULL)
+		elog(ERROR, "rel %d already exists", relid);
 
-	/* No existing RelOptInfo for this other rel, so make a new one */
-	/* presently, must be an inheritance child rel */
-	rel = make_reloptinfo(root, relid, RELOPT_OTHER_CHILD_REL);
-
-	return rel;
-}
-
-/*
- * make_reloptinfo
- *	  Construct a RelOptInfo for the specified rangetable index,
- *	  and enter it into base_rel_array.
- *
- * Common code for build_base_rel and build_other_rel.
- */
-static RelOptInfo *
-make_reloptinfo(PlannerInfo *root, int relid, RelOptKind reloptkind)
-{
-	RelOptInfo *rel = makeNode(RelOptInfo);
-	RangeTblEntry *rte = rt_fetch(relid, root->parse->rtable);
-
+	rel = makeNode(RelOptInfo);
 	rel->reloptkind = reloptkind;
 	rel->relids = bms_make_singleton(relid);
 	rel->rows = 0;
@@ -143,12 +93,18 @@ make_reloptinfo(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	{
 		case RTE_RELATION:
 			/* Table --- retrieve statistics from the system catalogs */
-			get_relation_info(rte->relid, rel);
+			get_relation_info(root, rte->relid, rte->inh, rel);
 			break;
 		case RTE_SUBQUERY:
 		case RTE_FUNCTION:
-			/* Subquery or function --- set up attr range and arrays */
-			/* Note: 0 is included in range to support whole-row Vars */
+		case RTE_VALUES:
+
+			/*
+			 * Subquery, function, or values list --- set up attr range and
+			 * arrays
+			 *
+			 * Note: 0 is included in range to support whole-row Vars
+			 */
             /* CDB: Allow internal use of sysattrs (<0) for subquery dedup. */
         	rel->min_attr = FirstLowInvalidHeapAttributeNumber + 1;     /*CDB*/
 			rel->max_attr = list_length(rte->eref->colnames);
@@ -163,21 +119,31 @@ make_reloptinfo(PlannerInfo *root, int relid, RelOptKind reloptkind)
 			break;
 	}
 
-	/* Add the finished struct to the base_rel_array */
-	if (relid >= root->base_rel_array_size)
+	/* Save the finished struct in the query's simple_rel_array */
+	root->simple_rel_array[relid] = rel;
+
+	/*
+	 * If this rel is an appendrel parent, recurse to build "other rel"
+	 * RelOptInfos for its children.  They are "other rels" because they are
+	 * not in the main join tree, but we will need RelOptInfos to plan access
+	 * to them.
+	 */
+	if (rte->inh)
 	{
-		int			oldsize = root->base_rel_array_size;
-		int			newsize;
+		ListCell   *l;
 
-		newsize = Max(oldsize * 2, relid + 1);
-		root->base_rel_array = (RelOptInfo **)
-			repalloc(root->base_rel_array, newsize * sizeof(RelOptInfo *));
-		MemSet(root->base_rel_array + oldsize, 0,
-			   (newsize - oldsize) * sizeof(RelOptInfo *));
-		root->base_rel_array_size = newsize;
+		foreach(l, root->append_rel_list)
+		{
+			AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
+
+			/* append_rel_list contains all append rels; ignore others */
+			if (appinfo->parent_relid != relid)
+				continue;
+
+			(void) build_simple_rel(root, appinfo->child_relid,
+									RELOPT_OTHER_MEMBER_REL);
+		}
 	}
-
-	root->base_rel_array[relid] = rel;
 
 	return rel;
 }
@@ -193,9 +159,9 @@ find_base_rel(PlannerInfo *root, int relid)
 
 	Assert(relid > 0);
 
-	if (relid < root->base_rel_array_size)
+	if (relid < root->simple_rel_array_size)
 	{
-		rel = root->base_rel_array[relid];
+		rel = root->simple_rel_array[relid];
 		if (rel)
 			return rel;
 	}
@@ -463,12 +429,24 @@ build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
 
 	foreach(vars, input_rel->reltargetlist)
 	{
-		Var		   *var = (Var *) lfirst(vars);
+		Var		   *origvar = (Var *) lfirst(vars);
+		Var		   *var;
 		RelOptInfo *baserel;
 		int			ndx;
 
-		/* We can't run into any child RowExprs here */
-		Assert(IsA(var, Var));
+		/*
+		 * We can't run into any child RowExprs here, but we could find a
+		 * whole-row Var with a ConvertRowtypeExpr atop it.
+		 */
+		var = origvar;
+		while (!IsA(var, Var))
+		{
+			if (IsA(var, ConvertRowtypeExpr))
+				var = (Var *) ((ConvertRowtypeExpr *) var)->arg;
+			else
+				elog(ERROR, "unexpected node type in reltargetlist: %d",
+					 (int) nodeTag(var));
+		}
 
 		/* Get the Var's original base rel */
 		baserel = find_base_rel(root, var->varno);
@@ -478,8 +456,7 @@ build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
 		if (bms_nonempty_difference(baserel->attr_needed[ndx], relids))
 		{
 			/* Yup, add it to the output */
-			joinrel->reltargetlist = lappend(joinrel->reltargetlist, var);
-			Assert(baserel->attr_widths[ndx] > 0);
+			joinrel->reltargetlist = lappend(joinrel->reltargetlist, origvar);
 			joinrel->width += baserel->attr_widths[ndx];
 		}
 	}

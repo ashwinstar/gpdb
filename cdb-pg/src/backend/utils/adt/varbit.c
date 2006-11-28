@@ -5,22 +5,18 @@
  *
  * Code originally contributed by Adriaan Joubert.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/varbit.c,v 1.47 2005/10/15 02:49:30 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/varbit.c,v 1.50 2006/07/14 14:52:24 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
 
-#include "catalog/pg_type.h"
 #include "libpq/pqformat.h"
-#include "utils/array.h"
-#include "utils/fmgroids.h"
-#include "utils/memutils.h"
 #include "utils/varbit.h"
 
 #define HEXDIG(z)	 ((z)<10 ? ((z)+'0') : ((z)-10+'A'))
@@ -120,7 +116,7 @@ bit_in(PG_FUNCTION_ARGS)
 	{
 		/* Parse the bit representation of the string */
 		/* We know it fits, as bitlen was compared to atttypmod */
-		x = BITHIGH;
+		x = HIGHBIT;
 		for (; *sp; sp++)
 		{
 			if (*sp == '1')
@@ -134,7 +130,7 @@ bit_in(PG_FUNCTION_ARGS)
 			x >>= 1;
 			if (x == 0)
 			{
-				x = BITHIGH;
+				x = HIGHBIT;
 				r++;
 			}
 		}
@@ -401,7 +397,7 @@ varbit_in(PG_FUNCTION_ARGS)
 	{
 		/* Parse the bit representation of the string */
 		/* We know it fits, as bitlen was compared to atttypmod */
-		x = BITHIGH;
+		x = HIGHBIT;
 		for (; *sp; sp++)
 		{
 			if (*sp == '1')
@@ -415,7 +411,7 @@ varbit_in(PG_FUNCTION_ARGS)
 			x >>= 1;
 			if (x == 0)
 			{
-				x = BITHIGH;
+				x = HIGHBIT;
 				r++;
 			}
 		}
@@ -477,14 +473,14 @@ varbit_out(PG_FUNCTION_ARGS)
 		x = *sp;
 		for (k = 0; k < BITS_PER_BYTE; k++)
 		{
-			*r++ = (x & BITHIGH) ? '1' : '0';
+			*r++ = IS_HIGHBIT_SET(x) ? '1' : '0';
 			x <<= 1;
 		}
 	}
 	x = *sp;
 	for (k = i; k < len; k++)
 	{
-		*r++ = (x & BITHIGH) ? '1' : '0';
+		*r++ = IS_HIGHBIT_SET(x) ? '1' : '0';
 		x <<= 1;
 	}
 	*r = '\0';

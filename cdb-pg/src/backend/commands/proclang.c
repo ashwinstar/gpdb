@@ -3,11 +3,11 @@
  * proclang.c
  *	  PostgreSQL PROCEDURAL LANGUAGE support code.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/proclang.c,v 1.63 2005/10/15 02:49:15 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/proclang.c,v 1.69 2006/10/04 00:29:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,15 +17,13 @@
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
-#include "catalog/namespace.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_pltemplate.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
-#include "commands/proclang.h"
 #include "commands/defrem.h"
-#include "fmgr.h"
+#include "commands/proclang.h"
 #include "miscadmin.h"
 #include "parser/gramparse.h"
 #include "parser/parse_func.h"
@@ -409,9 +407,18 @@ DropProceduralLanguage(DropPLangStmt *stmt)
 							 CStringGetDatum(languageName),
 							 0, 0, 0);
 	if (!HeapTupleIsValid(langTup))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("language \"%s\" does not exist", languageName)));
+	{
+		if (!stmt->missing_ok)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("language \"%s\" does not exist", languageName)));
+		else
+			ereport(NOTICE,
+					(errmsg("language \"%s\" does not exist, skipping",
+							languageName)));
+
+		return;
+	}
 
 	object.classId = LanguageRelationId;
 	object.objectId = HeapTupleGetOid(langTup);

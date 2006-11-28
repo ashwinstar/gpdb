@@ -9,12 +9,12 @@
  * always use NAMEDATALEN as the symbolic constant!   - jolly 8/21/95
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/name.c,v 1.56.2.1 2006/05/21 20:05:48 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/name.c,v 1.59 2006/05/30 05:22:59 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -122,8 +122,8 @@ namesend(PG_FUNCTION_ARGS)
  *
  *		namelt	- returns 1 iff a < b
  *		namele	- returns 1 iff a <= b
- *		namegt	- returns 1 iff a < b
- *		namege	- returns 1 iff a <= b
+ *		namegt	- returns 1 iff a > b
+ *		namege	- returns 1 iff a >= b
  *
  */
 Datum

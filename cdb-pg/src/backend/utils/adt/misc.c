@@ -3,12 +3,12 @@
  * misc.c
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/misc.c,v 1.49 2005/10/15 02:49:29 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/misc.c,v 1.54 2006/10/04 00:29:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,9 +17,10 @@
 #include <sys/file.h>
 #include <signal.h>
 #include <dirent.h>
+#include <math.h>
 
+#include "access/xact.h"
 #include "catalog/pg_tablespace.h"
-#include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -258,4 +259,52 @@ pg_tablespace_databases(PG_FUNCTION_ARGS)
 
 	FreeDir(fctx->dirdesc);
 	SRF_RETURN_DONE(funcctx);
+}
+
+
+/*
+ * pg_sleep - delay for N seconds
+ */
+Datum
+pg_sleep(PG_FUNCTION_ARGS)
+{
+	float8		secs = PG_GETARG_FLOAT8(0);
+	float8		endtime;
+
+	/*
+	 * We break the requested sleep into segments of no more than 1 second, to
+	 * put an upper bound on how long it will take us to respond to a cancel
+	 * or die interrupt.  (Note that pg_usleep is interruptible by signals on
+	 * some platforms but not others.)	Also, this method avoids exposing
+	 * pg_usleep's upper bound on allowed delays.
+	 *
+	 * By computing the intended stop time initially, we avoid accumulation of
+	 * extra delay across multiple sleeps.	This also ensures we won't delay
+	 * less than the specified time if pg_usleep is interrupted by other
+	 * signals such as SIGHUP.
+	 */
+
+#ifdef HAVE_INT64_TIMESTAMP
+#define GetNowFloat()	((float8) GetCurrentTimestamp() / 1000000.0)
+#else
+#define GetNowFloat()	GetCurrentTimestamp()
+#endif
+
+	endtime = GetNowFloat() + secs;
+
+	for (;;)
+	{
+		float8		delay;
+
+		CHECK_FOR_INTERRUPTS();
+		delay = endtime - GetNowFloat();
+		if (delay >= 1.0)
+			pg_usleep(1000000L);
+		else if (delay > 0.0)
+			pg_usleep((long) ceil(delay * 1000000.0));
+		else
+			break;
+	}
+
+	PG_RETURN_VOID();
 }

@@ -32,12 +32,12 @@
  * and munge the system catalogs of the new database.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/tablespace.c,v 1.28.2.2 2006/03/29 15:15:50 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/tablespace.c,v 1.39 2006/10/04 00:29:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -49,21 +49,20 @@
 #include <sys/stat.h>
 
 #include "access/heapam.h"
+#include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
-#include "catalog/pg_namespace.h"
 #include "catalog/pg_tablespace.h"
+#include "commands/comment.h"
 #include "commands/tablespace.h"
 #include "miscadmin.h"
 #include "storage/fd.h"
-#include "storage/smgr.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
-#include "utils/syscache.h"
 
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbsrlz.h"
@@ -585,10 +584,25 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
 	if (!HeapTupleIsValid(tuple))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("tablespace \"%s\" does not exist",
-						tablespacename)));
+	{
+		if (!stmt->missing_ok)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("tablespace \"%s\" does not exist",
+							tablespacename)));
+		}
+		else
+		{
+			ereport(NOTICE,
+					(errmsg("tablespace \"%s\" does not exist, skipping",
+							tablespacename)));
+			/* XXX I assume I need one or both of these next two calls */
+			heap_endscan(scandesc);
+			heap_close(rel, NoLock);
+		}
+		return;
+	}
 
 	tablespaceoid = HeapTupleGetOid(tuple);
 
@@ -622,6 +636,11 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	simple_heap_delete(rel, &tuple->t_self);
 
 	heap_endscan(scandesc);
+
+	/*
+	 * Remove any comments on this tablespace.
+	 */
+	DeleteSharedComments(tablespaceoid, TableSpaceRelationId);
 
 	/*
 	 * Remove dependency on owner.
@@ -661,6 +680,12 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 
 		(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_DROP, rdata);
 	}
+
+	/*
+	 * Note: because we checked that the tablespace was empty, there should be
+	 * no need to worry about flushing shared buffers or free space map
+	 * entries for relations in the tablespace.
+	 */
 
 	/*
 	 * Allow TablespaceCreateDbspace again.
@@ -1269,7 +1294,7 @@ tblspc_redo(XLogRecPtr lsn, XLogRecord *record)
 }
 
 void
-tblspc_desc(char *buf, uint8 xl_info, char *rec)
+tblspc_desc(StringInfo buf, uint8 xl_info, char *rec)
 {
 	uint8		info = xl_info & ~XLR_INFO_MASK;
 
@@ -1277,16 +1302,15 @@ tblspc_desc(char *buf, uint8 xl_info, char *rec)
 	{
 		xl_tblspc_create_rec *xlrec = (xl_tblspc_create_rec *) rec;
 
-		sprintf(buf + strlen(buf), "create ts: %u \"%s\"",
-				xlrec->ts_id, xlrec->ts_path);
+		appendStringInfo(buf, "create ts: %u \"%s\"",
+						 xlrec->ts_id, xlrec->ts_path);
 	}
 	else if (info == XLOG_TBLSPC_DROP)
 	{
 		xl_tblspc_drop_rec *xlrec = (xl_tblspc_drop_rec *) rec;
 
-		sprintf(buf + strlen(buf), "drop ts: %u",
-				xlrec->ts_id);
+		appendStringInfo(buf, "drop ts: %u", xlrec->ts_id);
 	}
 	else
-		strcat(buf, "UNKNOWN");
+		appendStringInfo(buf, "UNKNOWN");
 }

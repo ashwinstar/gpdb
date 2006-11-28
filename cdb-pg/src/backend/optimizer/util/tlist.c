@@ -3,12 +3,12 @@
  * tlist.c
  *	  Target list manipulation routines
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/tlist.c,v 1.70 2005/10/15 02:49:21 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/tlist.c,v 1.73 2006/08/10 02:36:29 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -166,4 +166,42 @@ get_sortgrouplist_exprs(List *sortClauses, List *targetList)
 		result = lappend(result, sortexpr);
 	}
 	return result;
+}
+
+
+/*
+ * Does tlist have same output datatypes as listed in colTypes?
+ *
+ * Resjunk columns are ignored if junkOK is true; otherwise presence of
+ * a resjunk column will always cause a 'false' result.
+ *
+ * Note: currently no callers care about comparing typmods.
+ */
+bool
+tlist_same_datatypes(List *tlist, List *colTypes, bool junkOK)
+{
+	ListCell   *l;
+	ListCell   *curColType = list_head(colTypes);
+
+	foreach(l, tlist)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(l);
+
+		if (tle->resjunk)
+		{
+			if (!junkOK)
+				return false;
+		}
+		else
+		{
+			if (curColType == NULL)
+				return false;	/* tlist longer than colTypes */
+			if (exprType((Node *) tle->expr) != lfirst_oid(curColType))
+				return false;
+			curColType = lnext(curColType);
+		}
+	}
+	if (curColType != NULL)
+		return false;			/* tlist shorter than colTypes */
+	return true;
 }

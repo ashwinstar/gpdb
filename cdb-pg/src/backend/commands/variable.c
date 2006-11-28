@@ -4,12 +4,12 @@
  *		Routines for handling specialized SET variables.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/variable.c,v 1.114.2.2 2006/02/12 22:32:56 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/variable.c,v 1.119 2006/10/04 00:29:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,11 +22,8 @@
 #include "catalog/pg_authid.h"
 #include "commands/variable.h"
 #include "miscadmin.h"
-#include "parser/scansup.h"
-#include "pgtime.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/guc.h"
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 #include "mb/pg_wchar.h"
@@ -598,7 +595,7 @@ assign_client_encoding(const char *value, bool doit, GucSource source)
  * limit on names, so we can tell whether we're being passed an initial
  * role name or a saved/restored value.  (NOTE: we rely on guc.c to have
  * properly truncated any incoming value, but not to truncate already-stored
- * values.  See GUC_IS_NAME processing.)
+ * values.	See GUC_IS_NAME processing.)
  */
 extern char *session_authorization_string;		/* in guc.c */
 

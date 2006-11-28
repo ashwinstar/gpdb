@@ -3,12 +3,12 @@
  * date.c
  *	  implements DATE and TIME data types specified in SQL-92 standard
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/date.c,v 1.122.2.1 2006/02/09 03:40:30 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/date.c,v 1.125 2006/07/14 14:52:23 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -27,7 +27,6 @@
 #include "utils/builtins.h"
 #include "utils/date.h"
 #include "utils/nabstime.h"
-#include "utils/timestamp.h"
 
 /*
  * gcc's -ffast-math switch breaks routines that expect exact results from

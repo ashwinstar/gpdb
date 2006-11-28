@@ -33,12 +33,12 @@
  *
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.475.2.6 2006/07/16 18:17:23 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.502 2006/11/21 00:49:55 tgl Exp $
  *
  * NOTES
  *
@@ -93,7 +93,7 @@
 #include <DNSServiceDiscovery/DNSServiceDiscovery.h>
 #endif
 
-#include "access/xlog.h"
+#include "access/transam.h"
 #include "bootstrap/bootstrap.h"
 #include "catalog/pg_control.h"
 #include "catalog/pg_database.h"
@@ -101,11 +101,10 @@
 #include "commands/async.h"
 #include "lib/dllist.h"
 #include "libpq/auth.h"
+#include "libpq/ip.h"
 #include "libpq/libpq.h"
-#include "libpq/pqcomm.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
-#include "nodes/nodes.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/fork_process.h"
@@ -113,7 +112,6 @@
 #include "postmaster/postmaster.h"
 #include "postmaster/seqserver.h"
 #include "postmaster/syslogger.h"
-#include "storage/bufmgr.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
@@ -122,7 +120,6 @@
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
-#include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/resscheduler.h"
@@ -209,9 +206,6 @@ bool		Db_user_namespace = false;
 
 char	   *bonjour_name;
 
-/* list of library:init-function to be preloaded */
-char	   *preload_libraries_string = NULL;
-
 /* PIDs of special child processes; 0 when not running */
 static pid_t StartupPID = 0,
 			BgWriterPID = 0,
@@ -232,6 +226,8 @@ static bool FatalError = false; /* T if recovering from backend crash */
 
 bool		ClientAuthInProgress = false;		/* T during new-client
 												 * authentication */
+
+static bool force_autovac = false; /* received START_AUTOVAC signal */
 
 /*
  * State for assigning random salts and cancel keys.
@@ -270,9 +266,9 @@ static void CleanupBackend(int pid, int exitstatus);
 static void HandleChildCrash(int pid, int exitstatus, const char *procname);
 static void LogChildExit(int lev, const char *procname,
 			 int pid, int exitstatus);
+static void BackendInitialize(Port *port);
 static int	BackendRun(Port *port);
 static void ExitPostmaster(int status);
-static void usage(const char *);
 static int	ServerLoop(void);
 static int	BackendStartup(Port *port);
 static int	ProcessStartupPacket(Port *port, bool SSLdone);
@@ -332,15 +328,13 @@ typedef struct
 	unsigned long UsedShmemSegID;
 	void	   *UsedShmemSegAddr;
 	slock_t    *ShmemLock;
-	slock_t    *ShmemIndexLock;
 	VariableCache ShmemVariableCache;
-	void	   *ShmemIndexAlloc;
 	Backend    *ShmemBackendArray;
 	LWLock	   *LWLockArray;
 	slock_t    *ProcStructLock;
+	PROC_HDR   *ProcGlobal;
+	PGPROC	   *DummyProcs;
 	InheritableSocket pgStatSock;
-	InheritableSocket pgStatPipe0;
-	InheritableSocket pgStatPipe1;
 	pid_t		PostmasterPid;
 	TimestampTz PgStartTime;
 #ifdef WIN32
@@ -376,6 +370,10 @@ static void ShmemBackendArrayRemove(pid_t pid);
 
 static bool SyncMaster = false;
 
+/* Macros to check exit status of a child process */
+#define EXIT_STATUS_0(st)  ((st) == 0)
+#define EXIT_STATUS_1(st)  (WIFEXITED(st) && WEXITSTATUS(st) == 1)
+
 /* if we are a QD postmaster or not */
 static bool Mpp_entry_postmaster = false;
 /*
@@ -405,29 +403,6 @@ PostmasterMain(int argc, char *argv[])
 	IsPostmasterEnvironment = true;
 
 	/*
-	 * Catch standard options before doing much else.  This even works on
-	 * systems without getopt_long.
-	 */
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage(progname);
-			ExitPostmaster(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("postmaster (Greenplum Database) " PG_VERSION);
-			ExitPostmaster(0);
-		}
-	}
-
-#ifdef WIN32
-	/* Start our win32 signal implementation */
-	pgwin32_signal_initialize();
-#endif
-
-	/*
 	 * for security, no dir or file created can be group or other accessible
 	 */
 	umask((mode_t) 0077);
@@ -450,8 +425,6 @@ PostmasterMain(int argc, char *argv[])
 											  ALLOCSET_DEFAULT_MAXSIZE);
 	MemoryContextSwitchTo(PostmasterContext);
 
-	IgnoreSystemIndexes(false);
-
 	if (find_my_exec(argv[0], my_exec_path) < 0)
 		elog(FATAL, "%s: could not locate my own executable path",
 			 argv[0]);
@@ -470,24 +443,17 @@ PostmasterMain(int argc, char *argv[])
 		switch (opt)
 		{
 			case 'A':
-#ifdef USE_ASSERT_CHECKING
 				SetConfigOption("debug_assertions", optarg, PGC_POSTMASTER, PGC_S_ARGV);
-#else
-				write_stderr("%s: assert checking is not compiled in\n", progname);
-#endif
 				break;
-			case 'a':
-				/* Can no longer set authentication method. */
-				break;
+
 			case 'B':
 				SetConfigOption("shared_buffers", optarg, PGC_POSTMASTER, PGC_S_ARGV);
 				break;
-			case 'b':
-				/* Can no longer set the backend executable file to use. */
-				break;
+
 			case 'D':
 				userDoption = optarg;
 				break;
+
 			case 'd':
 				set_debug_options(atoi(optarg), PGC_POSTMASTER, PGC_S_ARGV);
 				break;
@@ -497,60 +463,77 @@ PostmasterMain(int argc, char *argv[])
 			case 'F':
 				SetConfigOption("fsync", "false", PGC_POSTMASTER, PGC_S_ARGV);
 				break;
+
+			case 'f':
+				if (!set_plan_disabling_options(optarg, PGC_POSTMASTER, PGC_S_ARGV))
+				{
+					write_stderr("%s: invalid argument for option -f: \"%s\"\n",
+								 progname, optarg);
+					ExitPostmaster(1);
+				}
+				break;
+
 			case 'h':
 				SetConfigOption("listen_addresses", optarg, PGC_POSTMASTER, PGC_S_ARGV);
 				break;
+
 			case 'i':
 				SetConfigOption("listen_addresses", "*", PGC_POSTMASTER, PGC_S_ARGV);
 				break;
+
+			case 'j':
+				/* only used by interactive backend */
+				break;
+
 			case 'k':
 				SetConfigOption("unix_socket_directory", optarg, PGC_POSTMASTER, PGC_S_ARGV);
 				break;
-#ifdef USE_SSL
+
 			case 'l':
 				SetConfigOption("ssl", "true", PGC_POSTMASTER, PGC_S_ARGV);
 				break;
-#endif
-			case 'm':
-				/* Multiplexed backends no longer supported. */
-				break;
-			case 'M':
 
-				/*
-				 * ignore this flag.  This may be passed in because the
-				 * program was run as 'postgres -M' instead of 'postmaster'
-				 */
-				break;
 			case 'N':
-				/* The max number of backends to start. */
 				SetConfigOption("max_connections", optarg, PGC_POSTMASTER, PGC_S_ARGV);
 				break;
+
 			case 'n':
 				/* Don't reinit shared mem after abnormal exit */
 				Reinit = false;
 				break;
-			case 'o':
 
-				/*
-				 * Other options to pass to the backend on the command line
-				 */
+			case 'O':
+				SetConfigOption("allow_system_table_mods", "true", PGC_POSTMASTER, PGC_S_ARGV);
+				break;
+
+			case 'o':
+				/* Other options to pass to the backend on the command line */
 				snprintf(ExtraOptions + strlen(ExtraOptions),
 						 sizeof(ExtraOptions) - strlen(ExtraOptions),
 						 " %s", optarg);
 				break;
+
+			case 'P':
+				SetConfigOption("ignore_system_indexes", "true", PGC_POSTMASTER, PGC_S_ARGV);
+				break;
+
 			case 'p':
 				SetConfigOption("port", optarg, PGC_POSTMASTER, PGC_S_ARGV);
 				break;
-			case 'S':
 
-				/*
-				 * Start in 'S'ilent mode (disassociate from controlling tty).
-				 * You may also think of this as 'S'ysV mode since it's most
-				 * badly needed on SysV-derived systems like SVR4 and HP-UX.
-				 */
-				SetConfigOption("silent_mode", "true", PGC_POSTMASTER, PGC_S_ARGV);
+			case 'r':
+				/* only used by single-user backend */
 				break;
+
+			case 'S':
+				SetConfigOption("work_mem", optarg, PGC_POSTMASTER, PGC_S_ARGV);
+				break;
+
 			case 's':
+				SetConfigOption("log_statement_stats", optarg, PGC_POSTMASTER, PGC_S_ARGV);
+				break;
+
+			case 'T':
 
 				/*
 				 * In the event that some backend dumps core, send SIGSTOP,
@@ -559,6 +542,28 @@ PostmasterMain(int argc, char *argv[])
 				 */
 				SendStop = true;
 				break;
+
+			case 't':
+				{
+					const char *tmp = get_stats_option_name(optarg);
+
+					if (tmp)
+					{
+						SetConfigOption(tmp, "true", PGC_POSTMASTER, PGC_S_ARGV);
+					}
+					else
+					{
+						write_stderr("%s: invalid argument for option -t: \"%s\"\n",
+									 progname, optarg);
+						ExitPostmaster(1);
+					}
+					break;
+				}
+
+			case 'W':
+				SetConfigOption("post_auth_delay", optarg, PGC_POSTMASTER, PGC_S_ARGV);
+				break;
+
 			case 'c':
 			case '-':
 				{
@@ -703,14 +708,20 @@ PostmasterMain(int argc, char *argv[])
 	 */
 	CreateDataDirLockFile(true);
 
-    /*
-	 * If timezone is not set, determine what the OS uses.  (In theory this
+	/*
+	 * If timezone is not set, determine what the OS uses.	(In theory this
 	 * should be done during GUC initialization, but because it can take as
 	 * much as several seconds, we delay it until after we've created the
 	 * postmaster.pid file.  This prevents problems with boot scripts that
-	 * expect the pidfile to appear quickly.)
+	 * expect the pidfile to appear quickly.  Also, we avoid problems with
+	 * trying to locate the timezone files too early in initialization.)
 	 */
 	pg_timezone_initialize();
+	
+	/*
+	 * Likewise, init timezone_abbreviations if not already set.
+	 */
+	pg_timezone_abbrev_initialize();
 
 	/*
 	 * Remember postmaster startup time
@@ -727,11 +738,9 @@ PostmasterMain(int argc, char *argv[])
 #endif
 
 	/*
-	 * process any libraries that should be preloaded and optionally
-	 * pre-initialized
+	 * process any libraries that should be preloaded at postmaster start
 	 */
-	if (preload_libraries_string)
-		process_preload_libraries(preload_libraries_string);
+	process_shared_preload_libraries();
 
 	/*
 	 * Remove old temporary files.	At this point there can be no other
@@ -835,6 +844,12 @@ PostmasterMain(int argc, char *argv[])
 	 * semaphores, because on some platforms semaphores count as open files.
 	 */
 	set_max_safe_fds();
+
+	/*
+	 * Load configuration files for client authentication.
+	 */
+	load_hba();
+	load_ident();
 
 	/*
 	 * Initialize the list of active backends.
@@ -944,15 +959,15 @@ PostmasterMain(int argc, char *argv[])
 	whereToSendOutput = DestNone;
 
 	/*
-	 * Initialize the statistics collector stuff
+	 * Initialize stats collection subsystem (this does NOT start the
+	 * collector process!)
 	 */
 	pgstat_init();
 
 	/*
-	 * Load configuration files for client authentication.
+	 * Initialize the autovacuum subsystem (again, no process start yet)
 	 */
-	load_hba();
-	load_ident();
+	autovac_init();
 
 	/*
 	 * We're ready to rock and roll...
@@ -968,9 +983,9 @@ PostmasterMain(int argc, char *argv[])
 #endif
 
 	/*
-	 * Initialize the autovacuum daemon
+	 * We're ready to rock and roll...
 	 */
-	autovac_init();
+	StartupPID = StartupDataBase();
 
 	status = ServerLoop();
 
@@ -1116,7 +1131,7 @@ pmdaemonize(void)
 		ExitPostmaster(1);
 	}
 #endif
-	i = open(NULL_DEV, O_RDWR);
+	i = open(NULL_DEV, O_RDWR, 0);
 	dup2(i, 0);
 	dup2(i, 1);
 	dup2(i, 2);
@@ -1125,47 +1140,6 @@ pmdaemonize(void)
 	/* not supported */
 	elog(FATAL, "SilentMode not supported under WIN32");
 #endif   /* WIN32 */
-}
-
-
-/*
- * Print out help message
- */
-static void
-usage(const char *progname)
-{
-	printf(_("%s is the PostgreSQL server.\n\n"), progname);
-	printf(_("Usage:\n  %s [OPTION]...\n\n"), progname);
-	printf(_("Options:\n"));
-#ifdef USE_ASSERT_CHECKING
-	printf(_("  -A 1|0          enable/disable run-time assert checking\n"));
-#endif
-	printf(_("  -B NBUFFERS     number of shared buffers\n"));
-	printf(_("  -c NAME=VALUE   set run-time parameter\n"));
-	printf(_("  -d 1-5          debugging level\n"));
-	printf(_("  -D DATADIR      database directory\n"));
-	printf(_("  -F              turn fsync off\n"));
-	printf(_("  -h HOSTNAME     host name or IP address to listen on\n"));
-	printf(_("  -i              enable TCP/IP connections\n"));
-	printf(_("  -k DIRECTORY    Unix-domain socket location\n"));
-#ifdef USE_SSL
-	printf(_("  -l              enable SSL connections\n"));
-#endif
-	printf(_("  -N MAX-CONNECT  maximum number of allowed connections\n"));
-	printf(_("  -o OPTIONS      pass \"OPTIONS\" to each server process\n"));
-	printf(_("  -p PORT         port number to listen on\n"));
-	printf(_("  -S              silent mode (start in background without logging output)\n"));
-	printf(_("  --help          show this help, then exit\n"));
-	printf(_("  --version       output version information, then exit\n"));
-
-	printf(_("\nDeveloper options:\n"));
-	printf(_("  -n              do not reinitialize shared memory after abnormal exit\n"));
-	printf(_("  -s              send SIGSTOP to all backend servers if one dies\n"));
-
-	printf(_("\nPlease read the documentation for the complete list of run-time\n"
-	 "configuration settings and how to set them on the command line or in\n"
-			 "the configuration file.\n\n"
-			 "Report bugs to <pgsql-bugs@postgresql.org>.\n"));
 }
 
 
@@ -1300,9 +1274,13 @@ ServerLoop(void)
 		 * (It'll die relatively quickly.)  We check that it's not started too
 		 * frequently in autovac_start.
 		 */
-		if (AutoVacuumingActive() && AutoVacPID == 0 &&
+		if ((AutoVacuumingActive() || force_autovac) && AutoVacPID == 0 &&
 			StartupPID == 0 && !FatalError && Shutdown == NoShutdown)
+		{
 			AutoVacPID = autovac_start();
+			if (AutoVacPID != 0)
+				force_autovac = false;	/* signal successfully processed */
+		}
 
 		/* If we have lost the archiver, try to start a new one */
 		if (XLogArchivingActive() && PgArchPID == 0 &&
@@ -2126,7 +2104,8 @@ reaper(SIGNAL_ARGS)
 		if (StartupPID != 0 && pid == StartupPID)
 		{
 			StartupPID = 0;
-			if (exitstatus != 0)
+			/* Note: FATAL exit of startup is treated as catastrophic */
+			if (!EXIT_STATUS_0(exitstatus))
 			{
 				LogChildExit(LOG, _("startup process"),
 							 pid, exitstatus);
@@ -2181,7 +2160,8 @@ reaper(SIGNAL_ARGS)
 		if (BgWriterPID != 0 && pid == BgWriterPID)
 		{
 			BgWriterPID = 0;
-			if (exitstatus == 0 && Shutdown > NoShutdown && !FatalError &&
+			if (EXIT_STATUS_0(exitstatus) &&
+				Shutdown > NoShutdown && !FatalError &&
 				!DLGetHead(BackendList) && AutoVacPID == 0)
 			{
 				/*
@@ -2199,7 +2179,8 @@ reaper(SIGNAL_ARGS)
 			}
 
 			/*
-			 * Any unexpected exit of the bgwriter is treated as a crash.
+			 * Any unexpected exit of the bgwriter (including FATAL exit)
+			 * is treated as a crash.
 			 */
 			HandleChildCrash(pid, exitstatus,
 							 _("background writer process"));
@@ -2207,17 +2188,16 @@ reaper(SIGNAL_ARGS)
 		}
 
 		/*
-		 * Was it the autovacuum process?  Normal exit can be ignored; we'll
-		 * start a new one at the next iteration of the postmaster's main
-		 * loop, if necessary.
-		 *
-		 * An unexpected exit must crash the system.
+		 * Was it the autovacuum process?  Normal or FATAL exit can be
+		 * ignored; we'll start a new one at the next iteration of the
+		 * postmaster's main loop, if necessary.  Any other exit condition
+		 * is treated as a crash.
 		 */
 		if (AutoVacPID != 0 && pid == AutoVacPID)
 		{
 			AutoVacPID = 0;
 			autovac_stopped();
-			if (exitstatus != 0)
+			if (!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
 				HandleChildCrash(pid, exitstatus,
 								 _("autovacuum process"));
 			continue;
@@ -2231,7 +2211,7 @@ reaper(SIGNAL_ARGS)
 		if (PgArchPID != 0 && pid == PgArchPID)
 		{
 			PgArchPID = 0;
-			if (exitstatus != 0)
+			if (!EXIT_STATUS_0(exitstatus))
 				LogChildExit(LOG, _("archiver process"),
 							 pid, exitstatus);
 			if (XLogArchivingActive() &&
@@ -2264,7 +2244,7 @@ reaper(SIGNAL_ARGS)
 		if (PgStatPID != 0 && pid == PgStatPID)
 		{
 			PgStatPID = 0;
-			if (exitstatus != 0)
+			if (!EXIT_STATUS_0(exitstatus))
 				LogChildExit(LOG, _("statistics collector process"),
 							 pid, exitstatus);
 			if (StartupPID == 0 && !FatalError && Shutdown == NoShutdown)
@@ -2278,7 +2258,7 @@ reaper(SIGNAL_ARGS)
 			SysLoggerPID = 0;
 			/* for safety's sake, launch new logger *first* */
 			SysLoggerPID = SysLogger_Start();
-			if (exitstatus != 0)
+			if (!EXIT_STATUS_0(exitstatus))
 				LogChildExit(LOG, _("system logger process"),
 							 pid, exitstatus);
 			continue;
@@ -2354,12 +2334,12 @@ CleanupBackend(int pid,
 	LogChildExit(DEBUG2, _("server process"), pid, exitstatus);
 
 	/*
-	 * If a backend dies in an ugly way (i.e. exit status not 0) then we must
-	 * signal all other backends to quickdie.  If exit status is zero we
-	 * assume everything is hunky dory and simply remove the backend from the
+	 * If a backend dies in an ugly way then we must signal all other backends
+	 * to quickdie.  If exit status is zero (normal) or one (FATAL exit), we
+	 * assume everything is all right and simply remove the backend from the
 	 * active backend list.
 	 */
-	if (exitstatus != 0)
+	if (!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
 	{
 		HandleChildCrash(pid, exitstatus, _("server process"));
 		return;
@@ -2492,7 +2472,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		kill(SeqServerPID, SIGQUIT);
 	}
 
-	/* Force a power-cycle of the pgstat processes too */
+	/* Force a power-cycle of the pgstat process too */
 	/* (Shouldn't be necessary, but just for luck) */
 	if (PgStatPID != 0 && !FatalError)
 	{
@@ -2603,6 +2583,26 @@ BackendStartup(Port *port)
 	if (pid == 0)				/* child */
 	{
 		free(bn);
+
+		/*
+		 * Let's clean up ourselves as the postmaster child, and close the
+		 * postmaster's listen sockets.  (In EXEC_BACKEND case this is all
+		 * done in SubPostmasterMain.)
+		 */
+		IsUnderPostmaster = true;		/* we are a postmaster subprocess now */
+
+		MyProcPid = getpid();	/* reset MyProcPid */
+
+		/* We don't want the postmaster's proc_exit() handlers */
+		on_exit_reset();
+
+		/* Close the postmaster's sockets */
+		ClosePostmasterPorts(false);
+
+		/* Perform additional initialization and client authentication */
+		BackendInitialize(port);
+
+		/* And run the backend */
 		proc_exit(BackendRun(port));
 	}
 #endif   /* EXEC_BACKEND */
@@ -2701,48 +2701,29 @@ split_opts(char **argv, int *argcp, char *s)
 
 
 /*
- * BackendRun -- perform authentication, and if successful,
- *				set up the backend's argument list and invoke PostgresMain()
+ * BackendInitialize -- initialize an interactive (postmaster-child)
+ *				backend process, and perform client authentication.
  *
- * returns:
- *		Shouldn't return at all.
- *		If PostgresMain() fails, return status.
+ * returns: nothing.  Will not return at all if there's any failure.
+ *
+ * Note: this code does not depend on having any access to shared memory.
+ * In the EXEC_BACKEND case, we are physically attached to shared memory
+ * but have not yet set up most of our local pointers to shmem structures.
  */
-static int
-BackendRun(Port *port)
+static void
+BackendInitialize(Port *port)
 {
 	int			status;
 	char		remote_host[NI_MAXHOST];
 	char		remote_port[NI_MAXSERV];
 	char		remote_ps_data[NI_MAXHOST];
-	char	  **av;
-	int			maxac;
-	int			ac;
+
     long        secs;
     int         usecs;
-	char		protobuf[32];
-	int			i;
 
-	IsUnderPostmaster = true;	/* we are a postmaster subprocess now */
-
-	/*
-	 * Let's clean up ourselves as the postmaster child, and close the
-	 * postmaster's listen sockets
-	 */
-	ClosePostmasterPorts(false);
-
-	/* We don't want the postmaster's proc_exit() handlers */
-	on_exit_reset();
-
-	/*
-	 * Signal handlers setting is moved to tcop/postgres...
-	 */
 
 	/* Save port etc. for ps status */
 	MyProcPort = port;
-
-	/* Reset MyProcPid to new backend's pid */
-	MyProcPid = getpid();
 
 	/*
 	 * PreAuthDelay is a debugging aid for investigating problems in the
@@ -2757,8 +2738,8 @@ BackendRun(Port *port)
 	ClientAuthInProgress = true;	/* limit visibility of log messages */
 
 	/* save process start time */
-    port->SessionStartTime = GetCurrentTimestamp();
-    port->session_start = timestamptz_to_time_t(port->SessionStartTime);
+	port->SessionStartTime = GetCurrentTimestamp();
+	port->session_start = timestamptz_to_time_t(port->SessionStartTime);
 
 	/* set these to empty in case they are needed before we set them up */
 	port->remote_host = "";
@@ -2769,7 +2750,7 @@ BackendRun(Port *port)
 	 * Must do this now because authentication uses libpq to send messages.
 	 */
 	pq_init();					/* initialize libpq to talk to client */
-	whereToSendOutput = DestRemote; /* now safe to ereport to client */
+	whereToSendOutput = DestRemote;		/* now safe to ereport to client */
 
 	/*
 	 * We arrange for a simple exit(0) if we receive SIGTERM or SIGQUIT during
@@ -2790,7 +2771,7 @@ BackendRun(Port *port)
 	if (pg_getnameinfo_all(&port->raddr.addr, port->raddr.salen,
 						   remote_host, sizeof(remote_host),
 						   remote_port, sizeof(remote_port),
-						   (log_hostname ? 0 : NI_NUMERICHOST) | NI_NUMERICSERV))
+					   (log_hostname ? 0 : NI_NUMERICHOST) | NI_NUMERICSERV))
 	{
 		int			ret = pg_getnameinfo_all(&port->raddr.addr, port->raddr.salen,
 											 remote_host, sizeof(remote_host),
@@ -2813,7 +2794,7 @@ BackendRun(Port *port)
 						remote_port)));
 
 	/*
-	 * save remote_host and remote_port in port stucture
+	 * save remote_host and remote_port in port structure
 	 */
 	port->remote_host = strdup(remote_host);
 	port->remote_port = strdup(remote_port);
@@ -2865,7 +2846,8 @@ BackendRun(Port *port)
         init_ps_display("mppsyncagent process", "", "", "");
     else
 	    init_ps_display(port->user_name, port->database_name, remote_ps_data,
-        	update_process_title ? "authentication" : "");
+					update_process_title ? "authentication" : "");
+
 
 	/*
 	 * Now perform authentication exchange.
@@ -2884,23 +2866,43 @@ BackendRun(Port *port)
 		ereport(LOG,
 				(errmsg("connection authorized: user=%s database=%s",
 						port->user_name, port->database_name)));
+}
+
+
+/*
+ * BackendRun -- set up the backend's argument list and invoke PostgresMain()
+ *
+ * returns:
+ *		Shouldn't return at all.
+ *		If PostgresMain() fails, return status.
+ */
+static int
+BackendRun(Port *port)
+{
+	char	  **av;
+	int			maxac;
+	int			ac;
+	long		secs;
+	int			usecs;
+	char		protobuf[32];
+	int			i;
 
 	/*
 	 * Don't want backend to be able to see the postmaster random number
 	 * generator state.  We have to clobber the static random_seed *and* start
 	 * a new random sequence in the random() library function.
 	 */
-    random_seed = 0;
-    /* slightly hacky way to get integer microseconds part of timestamptz */
-    TimestampDifference(0, port->SessionStartTime, &secs, &usecs);
-    srandom((unsigned int) (MyProcPid ^ usecs));
+	random_seed = 0;
+	/* slightly hacky way to get integer microseconds part of timestamptz */
+	TimestampDifference(0, port->SessionStartTime, &secs, &usecs);
+	srandom((unsigned int) (MyProcPid ^ usecs));
 
 	/* ----------------
 	 * Now, build the argv vector that will be given to PostgresMain.
 	 *
 	 * The layout of the command line is
-	 *		postgres [secure switches] -p databasename [insecure switches]
-	 * where the switches after -p come from the client request.
+	 *		postgres [secure switches] -y databasename [insecure switches]
+	 * where the switches after -y come from the client request.
 	 *
 	 * The maximum possible number of commandline arguments that could come
 	 * from ExtraOptions or port->cmdline_options is (strlen + 1) / 2; see
@@ -2931,9 +2933,9 @@ BackendRun(Port *port)
 
 	/*
 	 * Tell the backend it is being called from the postmaster, and which
-	 * database to use.  -p marks the end of secure switches.
+	 * database to use.  -y marks the end of secure switches.
 	 */
-	av[ac++] = "-p";
+	av[ac++] = "-y";
 	av[ac++] = port->database_name;
 
 	/*
@@ -3015,7 +3017,7 @@ backend_forkexec(Port *port)
 	int			ac = 0;
 
 	av[ac++] = "postgres";
-	av[ac++] = "-forkbackend";
+	av[ac++] = "--forkbackend";
 	av[ac++] = NULL;			/* filled in by internal_forkexec */
 
 	av[ac] = NULL;
@@ -3088,10 +3090,10 @@ internal_forkexec(int argc, char *argv[], Port *port)
 	/* Make sure caller set up argv properly */
 	Assert(argc >= 3);
 	Assert(argv[argc] == NULL);
-	Assert(strncmp(argv[1], "-fork", 5) == 0);
+	Assert(strncmp(argv[1], "--fork", 6) == 0);
 	Assert(argv[2] == NULL);
 
-	/* Insert temp file name after -fork argument */
+	/* Insert temp file name after --fork argument */
 	argv[2] = tmpfilename;
 
 	/* Fire off execv in child */
@@ -3139,7 +3141,7 @@ internal_forkexec(int argc, char *argv[], Port *port)
 	/* Make sure caller set up argv properly */
 	Assert(argc >= 3);
 	Assert(argv[argc] == NULL);
-	Assert(strncmp(argv[1], "-fork", 5) == 0);
+	Assert(strncmp(argv[1], "--fork", 6) == 0);
 	Assert(argv[2] == NULL);
 
 	/* Verify that there is room in the child list */
@@ -3177,7 +3179,7 @@ internal_forkexec(int argc, char *argv[], Port *port)
 		return -1;
 	}
 
-	/* Insert temp file name after -fork argument */
+	/* Insert temp file name after --fork argument */
 	sprintf(paramHandleStr, "%lu", (DWORD) paramHandle);
 	argv[2] = paramHandleStr;
 
@@ -3300,7 +3302,7 @@ internal_forkexec(int argc, char *argv[], Port *port)
  *			to what it would be if we'd simply forked on Unix, and then
  *			dispatch to the appropriate place.
  *
- * The first two command line arguments are expected to be "-forkFOO"
+ * The first two command line arguments are expected to be "--forkFOO"
  * (where FOO indicates which postmaster child we are to become), and
  * the name of a variables file that we can read to load data that would
  * have been inherited by fork() on Unix.  Remaining arguments go to the
@@ -3315,6 +3317,9 @@ SubPostmasterMain(int argc, char *argv[])
 	IsUnderPostmaster = true;	/* we are a postmaster subprocess now */
 
 	MyProcPid = getpid();		/* reset MyProcPid */
+
+	/* Lose the postmaster's on-exit routines (really a no-op) */
+	on_exit_reset();
 
 	/* In EXEC_BACKEND case we will not have inherited these settings */
 	IsPostmasterEnvironment = true;
@@ -3360,31 +3365,66 @@ SubPostmasterMain(int argc, char *argv[])
 	read_nondefault_variables();
 
 	/* Run backend or appropriate child */
-	if (strcmp(argv[1], "-forkbackend") == 0)
+	if (strcmp(argv[1], "--forkbackend") == 0)
 	{
-		/* BackendRun will close sockets */
+		Assert(argc == 3);		/* shouldn't be any more args */
 
-		/* Attach process to shared data structures */
-		CreateSharedMemoryAndSemaphores(false, 0);
-
-#ifdef USE_SSL
+		/* Close the postmaster's sockets */
+		ClosePostmasterPorts(false);
 
 		/*
 		 * Need to reinitialize the SSL library in the backend, since the
 		 * context structures contain function pointers and cannot be passed
 		 * through the parameter file.
 		 */
+#ifdef USE_SSL
 		if (EnableSSL)
 			secure_initialize();
 #endif
 
-		Assert(argc == 3);		/* shouldn't be any more args */
+		/*
+		 * Perform additional initialization and client authentication.
+		 *
+		 * We want to do this before InitProcess() for a couple of reasons: 1.
+		 * so that we aren't eating up a PGPROC slot while waiting on the
+		 * client. 2. so that if InitProcess() fails due to being out of
+		 * PGPROC slots, we have already initialized libpq and are able to
+		 * report the error to the client.
+		 */
+		BackendInitialize(&port);
+
+		/* Restore basic shared memory pointers */
+		InitShmemAccess(UsedShmemSegAddr);
+
+		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
+		InitProcess();
+
+		/*
+		 * Attach process to shared data structures.  If testing EXEC_BACKEND
+		 * on Linux, you must run this as root before starting the postmaster:
+		 *
+		 * echo 0 >/proc/sys/kernel/randomize_va_space
+		 *
+		 * This prevents a randomized stack base address that causes child
+		 * shared memory to be at a different address than the parent, making
+		 * it impossible to attached to shared memory.	Return the value to
+		 * '1' when finished.
+		 */
+		CreateSharedMemoryAndSemaphores(false, 0);
+
+		/* And run the backend */
 		proc_exit(BackendRun(&port));
 	}
-	if (strcmp(argv[1], "-forkboot") == 0)
+	if (strcmp(argv[1], "--forkboot") == 0)
 	{
 		/* Close the postmaster's sockets */
 		ClosePostmasterPorts(false);
+
+		/* Restore basic shared memory pointers */
+		InitShmemAccess(UsedShmemSegAddr);
+
+		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
+		InitDummyProcess();
 
 		/* Attach process to shared data structures */
 		CreateSharedMemoryAndSemaphores(false, 0);
@@ -3392,10 +3432,16 @@ SubPostmasterMain(int argc, char *argv[])
 		BootstrapMain(argc - 2, argv + 2);
 		proc_exit(0);
 	}
-	if (strcmp(argv[1], "-forkautovac") == 0)
+	if (strcmp(argv[1], "--forkautovac") == 0)
 	{
 		/* Close the postmaster's sockets */
 		ClosePostmasterPorts(false);
+
+		/* Restore basic shared memory pointers */
+		InitShmemAccess(UsedShmemSegAddr);
+
+		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
+		InitProcess();
 
 		/* Attach process to shared data structures */
 		CreateSharedMemoryAndSemaphores(false, 0);
@@ -3403,7 +3449,7 @@ SubPostmasterMain(int argc, char *argv[])
 		AutoVacMain(argc - 2, argv + 2);
 		proc_exit(0);
 	}
-	if (strcmp(argv[1], "-forkarch") == 0)
+	if (strcmp(argv[1], "--forkarch") == 0)
 	{
 		/* Close the postmaster's sockets */
 		ClosePostmasterPorts(false);
@@ -3413,29 +3459,17 @@ SubPostmasterMain(int argc, char *argv[])
 		PgArchiverMain(argc, argv);
 		proc_exit(0);
 	}
-	if (strcmp(argv[1], "-forkbuf") == 0)
+	if (strcmp(argv[1], "--forkcol") == 0)
 	{
 		/* Close the postmaster's sockets */
 		ClosePostmasterPorts(false);
 
 		/* Do not want to attach to shared memory */
 
-		PgstatBufferMain(argc, argv);
-		proc_exit(0);
-	}
-	if (strcmp(argv[1], "-forkcol") == 0)
-	{
-		/*
-		 * Do NOT close postmaster sockets here, because we are forking from
-		 * pgstat buffer process, which already did it.
-		 */
-
-		/* Do not want to attach to shared memory */
-
 		PgstatCollectorMain(argc, argv);
 		proc_exit(0);
 	}
-	if (strcmp(argv[1], "-forklog") == 0)
+	if (strcmp(argv[1], "--forklog") == 0)
 	{
 		/* Close the postmaster's sockets */
 		ClosePostmasterPorts(true);
@@ -3518,6 +3552,20 @@ sigusr1_handler(SIGNAL_ARGS)
 	{
 		/* Tell syslogger to rotate logfile */
 		kill(SysLoggerPID, SIGUSR1);
+	}
+
+	if (CheckPostmasterSignal(PMSIGNAL_START_AUTOVAC))
+	{
+		/*
+		 * Start one iteration of the autovacuum daemon, even if autovacuuming
+		 * is nominally not enabled.  This is so we can have an active defense
+		 * against transaction ID wraparound.  We set a flag for the main loop
+		 * to do it rather than trying to do it here --- this is because the
+		 * autovac process itself may send the signal, and we want to handle
+		 * that by launching another iteration as soon as the current one
+		 * completes.
+		 */
+		force_autovac = true;
 	}
 
 	PG_SETMASK(&UnBlockSig);
@@ -3648,14 +3696,14 @@ StartChildProcess(int xlop)
 	av[ac++] = "postgres";
 
 #ifdef EXEC_BACKEND
-	av[ac++] = "-forkboot";
+	av[ac++] = "--forkboot";
 	av[ac++] = NULL;			/* filled in by postmaster_forkexec */
 #endif
 
 	snprintf(xlbuf, sizeof(xlbuf), "-x%d", xlop);
 	av[ac++] = xlbuf;
 
-	av[ac++] = "-p";
+	av[ac++] = "-y";
 	av[ac++] = "template1";
 
 	av[ac] = NULL;
@@ -3763,12 +3811,11 @@ CreateOptsFile(int argc, char *argv[], char *fullprogname)
  * functions
  */
 extern slock_t *ShmemLock;
-extern slock_t *ShmemIndexLock;
-extern void *ShmemIndexAlloc;
 extern LWLock *LWLockArray;
 extern slock_t *ProcStructLock;
+extern PROC_HDR *ProcGlobal;
+extern PGPROC *DummyProcs;
 extern int	pgStatSock;
-extern int	pgStatPipe[2];
 
 #ifndef WIN32
 #define write_inheritable_socket(dest, src, childpid) (*(dest) = (src))
@@ -3804,16 +3851,14 @@ save_backend_variables(BackendParameters * param, Port *port,
 	param->UsedShmemSegAddr = UsedShmemSegAddr;
 
 	param->ShmemLock = ShmemLock;
-	param->ShmemIndexLock = ShmemIndexLock;
 	param->ShmemVariableCache = ShmemVariableCache;
-	param->ShmemIndexAlloc = ShmemIndexAlloc;
 	param->ShmemBackendArray = ShmemBackendArray;
 
 	param->LWLockArray = LWLockArray;
 	param->ProcStructLock = ProcStructLock;
+	param->ProcGlobal = ProcGlobal;
+	param->DummyProcs = DummyProcs;
 	write_inheritable_socket(&param->pgStatSock, pgStatSock, childPid);
-	write_inheritable_socket(&param->pgStatPipe0, pgStatPipe[0], childPid);
-	write_inheritable_socket(&param->pgStatPipe1, pgStatPipe[1], childPid);
 
 	param->PostmasterPid = PostmasterPid;
 	param->PgStartTime = PgStartTime;
@@ -4009,16 +4054,14 @@ restore_backend_variables(BackendParameters * param, Port *port)
 	UsedShmemSegAddr = param->UsedShmemSegAddr;
 
 	ShmemLock = param->ShmemLock;
-	ShmemIndexLock = param->ShmemIndexLock;
 	ShmemVariableCache = param->ShmemVariableCache;
-	ShmemIndexAlloc = param->ShmemIndexAlloc;
 	ShmemBackendArray = param->ShmemBackendArray;
 
 	LWLockArray = param->LWLockArray;
 	ProcStructLock = param->ProcStructLock;
+	ProcGlobal = param->ProcGlobal;
+	DummyProcs = param->DummyProcs;
 	read_inheritable_socket(&pgStatSock, &param->pgStatSock);
-	read_inheritable_socket(&pgStatPipe[0], &param->pgStatPipe0);
-	read_inheritable_socket(&pgStatPipe[1], &param->pgStatPipe1);
 
 	PostmasterPid = param->PostmasterPid;
 	PgStartTime = param->PgStartTime;

@@ -4,12 +4,12 @@
  *
  *	  Routines for aggregate-manipulation commands
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/aggregatecmds.c,v 1.30.2.1 2005/11/22 18:23:06 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/aggregatecmds.c,v 1.41 2006/10/04 00:29:50 momjian Exp $
  *
  * DESCRIPTION
  *	  The "DefineFoo" routines take the parse tree and pick out the
@@ -25,7 +25,6 @@
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
-#include "catalog/namespace.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -43,9 +42,13 @@
 
 /*
  *	DefineAggregate
+ *
+ * "oldstyle" signals the old (pre-8.2) style where the aggregate input type
+ * is specified by a BASETYPE element in the parameters.  Otherwise,
+ * "args" defines the input type(s).
  */
 void
-DefineAggregate(List *names, List *parameters, Oid newOid)
+DefineAggregate(List *name, List *args, bool oldstyle, List *parameters, Oid newOid)
 {
 	char	   *aggName;
 	Oid			aggNamespace;
@@ -57,13 +60,14 @@ DefineAggregate(List *names, List *parameters, Oid newOid)
 	TypeName   *baseType = NULL;
 	TypeName   *transType = NULL;
 	char	   *initval = NULL;
-	Oid			baseTypeId;
+	Oid		   *aggArgTypes;
+	int			numArgs;
 	Oid			transTypeId;
 	ListCell   *pl;
 	Oid			aggOid;
 
 	/* Convert list of names to a name and namespace */
-	aggNamespace = QualifiedNameGetCreationNamespace(names, &aggName);
+	aggNamespace = QualifiedNameGetCreationNamespace(name, &aggName);
 
 	/* Check we have creation rights in target namespace */
 	aclresult = pg_namespace_aclcheck(aggNamespace, GetUserId(), ACL_CREATE);
@@ -109,10 +113,6 @@ DefineAggregate(List *names, List *parameters, Oid newOid)
 	/*
 	 * make sure we have our required definitions
 	 */
-	if (baseType == NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-				 errmsg("aggregate basetype must be specified")));
 	if (transType == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
@@ -123,21 +123,65 @@ DefineAggregate(List *names, List *parameters, Oid newOid)
 				 errmsg("aggregate sfunc must be specified")));
 
 	/*
-	 * look up the aggregate's base type (input datatype) and transtype.
-	 *
-	 * We have historically allowed the command to look like basetype = 'ANY'
-	 * so we must do a case-insensitive comparison for the name ANY.  Ugh.
-	 *
-	 * basetype can be a pseudo-type, but transtype can't, since we need to be
-	 * able to store values of the transtype.  However, we can allow
-	 * polymorphic transtype in some cases (AggregateCreate will check).
+	 * look up the aggregate's input datatype(s).
 	 */
-	if (pg_strcasecmp(TypeNameToString(baseType), "ANY") == 0)
-		baseTypeId = ANYOID;
-	else
-		baseTypeId = typenameTypeId(baseType);
+	if (oldstyle)
+	{
+		/*
+		 * Old style: use basetype parameter.  This supports aggregates of
+		 * zero or one input, with input type ANY meaning zero inputs.
+		 *
+		 * Historically we allowed the command to look like basetype = 'ANY'
+		 * so we must do a case-insensitive comparison for the name ANY. Ugh.
+		 */
+		if (baseType == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+					 errmsg("aggregate input type must be specified")));
 
-	transTypeId = typenameTypeId(transType);
+		if (pg_strcasecmp(TypeNameToString(baseType), "ANY") == 0)
+		{
+			numArgs = 0;
+			aggArgTypes = NULL;
+		}
+		else
+		{
+			numArgs = 1;
+			aggArgTypes = (Oid *) palloc(sizeof(Oid));
+			aggArgTypes[0] = typenameTypeId(NULL, baseType);
+		}
+	}
+	else
+	{
+		/*
+		 * New style: args is a list of TypeNames (possibly zero of 'em).
+		 */
+		ListCell   *lc;
+		int			i = 0;
+
+		if (baseType != NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+					 errmsg("basetype is redundant with aggregate input type specification")));
+
+		numArgs = list_length(args);
+		aggArgTypes = (Oid *) palloc(sizeof(Oid) * numArgs);
+		foreach(lc, args)
+		{
+			TypeName   *curTypeName = (TypeName *) lfirst(lc);
+
+			aggArgTypes[i++] = typenameTypeId(NULL, curTypeName);
+		}
+	}
+
+	/*
+	 * look up the aggregate's transtype.
+	 *
+	 * transtype can't be a pseudo-type, since we need to be able to store
+	 * values of the transtype.  However, we can allow polymorphic transtype
+	 * in some cases (AggregateCreate will check).
+	 */
+	transTypeId = typenameTypeId(NULL, transType);
 	if (get_typtype(transTypeId) == 'p' &&
 		transTypeId != ANYARRAYOID &&
 		transTypeId != ANYELEMENTOID)
@@ -151,7 +195,8 @@ DefineAggregate(List *names, List *parameters, Oid newOid)
 	 */
 	aggOid = AggregateCreateWithOid(aggName,	/* aggregate name */
 					aggNamespace,		/* namespace */
-					baseTypeId, /* type of data being aggregated */
+					aggArgTypes,	/* input data type(s) */
+					numArgs,
 					transfuncName,		/* step function name */
 					prelimfuncName,		/* prelim function name */
 					finalfuncName,		/* final function name */
@@ -164,7 +209,7 @@ DefineAggregate(List *names, List *parameters, Oid newOid)
 	{
 		DefineStmt * stmt = makeNode(DefineStmt);
 		stmt->kind = OBJECT_AGGREGATE;
-		stmt->defnames = names;
+		stmt->defnames = name;
 		stmt->definition = parameters;
 		stmt->newOid = aggOid;
 		CdbDispatchUtilityStatement((Node *) stmt);
@@ -177,28 +222,26 @@ DefineAggregate(List *names, List *parameters, Oid newOid)
  *		Deletes an aggregate.
  */
 void
-RemoveAggregate(RemoveAggrStmt *stmt)
+RemoveAggregate(RemoveFuncStmt *stmt)
 {
-	List	   *aggName = stmt->aggname;
-	TypeName   *aggType = stmt->aggtype;
-	Oid			basetypeID;
+	List	   *aggName = stmt->name;
+	List	   *aggArgs = stmt->args;
 	Oid			procOid;
 	HeapTuple	tup;
 	ObjectAddress object;
 
-	/*
-	 * if a basetype is passed in, then attempt to find an aggregate for that
-	 * specific type.
-	 *
-	 * else attempt to find an aggregate with a basetype of ANYOID. This means
-	 * that the aggregate is to apply to all basetypes (eg, COUNT).
-	 */
-	if (aggType)
-		basetypeID = typenameTypeId(aggType);
-	else
-		basetypeID = ANYOID;
+	/* Look up function and make sure it's an aggregate */
+	procOid = LookupAggNameTypeNames(aggName, aggArgs, stmt->missing_ok);
 
-	procOid = find_aggregate_func(aggName, basetypeID, false);
+	if (!OidIsValid(procOid))
+	{
+		/* we only get here if stmt->missing_ok is true */
+		ereport(NOTICE,
+				(errmsg("aggregate %s(%s) does not exist, skipping",
+						NameListToString(aggName),
+						TypeNameListToString(aggArgs))));
+		return;
+	}
 
 	/*
 	 * Find the function tuple, do permissions and validity checks
@@ -215,8 +258,6 @@ RemoveAggregate(RemoveAggrStmt *stmt)
 							   GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_PROC,
 					   NameListToString(aggName));
-
-	/* find_aggregate_func already checked it is an aggregate */
 
 	ReleaseSysCache(tup);
 
@@ -237,9 +278,8 @@ RemoveAggregate(RemoveAggrStmt *stmt)
 
 
 void
-RenameAggregate(List *name, TypeName *basetype, const char *newname)
+RenameAggregate(List *name, List *args, const char *newname)
 {
-	Oid			basetypeOid;
 	Oid			procOid;
 	Oid			namespaceOid;
 	HeapTuple	tup;
@@ -247,20 +287,10 @@ RenameAggregate(List *name, TypeName *basetype, const char *newname)
 	Relation	rel;
 	AclResult	aclresult;
 
-	/*
-	 * if a basetype is passed in, then attempt to find an aggregate for that
-	 * specific type; else attempt to find an aggregate with a basetype of
-	 * ANYOID. This means that the aggregate applies to all basetypes (eg,
-	 * COUNT).
-	 */
-	if (basetype)
-		basetypeOid = typenameTypeId(basetype);
-	else
-		basetypeOid = ANYOID;
-
 	rel = heap_open(ProcedureRelationId, RowExclusiveLock);
 
-	procOid = find_aggregate_func(name, basetypeOid, false);
+	/* Look up function and make sure it's an aggregate */
+	procOid = LookupAggNameTypeNames(name, args, false);
 
 	tup = SearchSysCacheCopy(PROCOID,
 							 ObjectIdGetDatum(procOid),
@@ -277,22 +307,13 @@ RenameAggregate(List *name, TypeName *basetype, const char *newname)
 							 PointerGetDatum(&procForm->proargtypes),
 							 ObjectIdGetDatum(namespaceOid),
 							 0))
-	{
-		if (basetypeOid == ANYOID)
-			ereport(ERROR,
-					(errcode(ERRCODE_DUPLICATE_FUNCTION),
-					 errmsg("function %s(*) already exists in schema \"%s\"",
-							newname,
-							get_namespace_name(namespaceOid))));
-		else
-			ereport(ERROR,
-					(errcode(ERRCODE_DUPLICATE_FUNCTION),
-					 errmsg("function %s already exists in schema \"%s\"",
-							funcname_signature_string(newname,
-													  procForm->pronargs,
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_FUNCTION),
+				 errmsg("function %s already exists in schema \"%s\"",
+						funcname_signature_string(newname,
+												  procForm->pronargs,
 											   procForm->proargtypes.values),
-							get_namespace_name(namespaceOid))));
-	}
+						get_namespace_name(namespaceOid))));
 
 	/* must be owner */
 	if (!pg_proc_ownercheck(procOid, GetUserId()))
@@ -318,29 +339,18 @@ RenameAggregate(List *name, TypeName *basetype, const char *newname)
  * Change aggregate owner
  */
 void
-AlterAggregateOwner(List *name, TypeName *basetype, Oid newOwnerId)
+AlterAggregateOwner(List *name, List *args, Oid newOwnerId)
 {
-	Oid			basetypeOid;
 	Oid			procOid;
 	HeapTuple	tup;
 	Form_pg_proc procForm;
 	Relation	rel;
 	AclResult	aclresult;
 
-	/*
-	 * if a basetype is passed in, then attempt to find an aggregate for that
-	 * specific type; else attempt to find an aggregate with a basetype of
-	 * ANYOID. This means that the aggregate applies to all basetypes (eg,
-	 * COUNT).
-	 */
-	if (basetype)
-		basetypeOid = typenameTypeId(basetype);
-	else
-		basetypeOid = ANYOID;
-
 	rel = heap_open(ProcedureRelationId, RowExclusiveLock);
 
-	procOid = find_aggregate_func(name, basetypeOid, false);
+	/* Look up function and make sure it's an aggregate */
+	procOid = LookupAggNameTypeNames(name, args, false);
 
 	tup = SearchSysCacheCopy(PROCOID,
 							 ObjectIdGetDatum(procOid),

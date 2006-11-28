@@ -4,12 +4,12 @@
  *
  *	  Routines for opclass manipulation commands
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/opclasscmds.c,v 1.38 2005/10/15 02:49:15 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/opclasscmds.c,v 1.49 2006/10/04 00:29:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,8 +19,6 @@
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
-#include "catalog/namespace.h"
-#include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_namespace.h"
@@ -61,6 +59,8 @@ static Oid	assignProcSubtype(Oid amoid, Oid typeoid, Oid procOid);
 static void addClassMember(List **list, OpClassMember *member, bool isProc);
 static void storeOperators(Oid opclassoid, List *operators);
 static void storeProcedures(Oid opclassoid, List *procedures);
+static void AlterOpClassOwner_internal(Relation rel, HeapTuple tuple,
+						   Oid newOwnerId);
 
 
 /*
@@ -78,11 +78,13 @@ DefineOpClass(CreateOpClassStmt *stmt)
 				opclassoid;		/* oid of opclass we create */
 	int			numOperators,	/* amstrategies value */
 				numProcs;		/* amsupport value */
+	bool		amstorage;		/* amstorage flag */
 	List	   *operators;		/* OpClassMember list for operators */
 	List	   *procedures;		/* OpClassMember list for support procs */
 	ListCell   *l;
 	Relation	rel;
 	HeapTuple	tup;
+	Form_pg_am	pg_am;
 	Datum		values[Natts_pg_opclass];
 	char		nulls[Natts_pg_opclass];
 	AclResult	aclresult;
@@ -112,19 +114,34 @@ DefineOpClass(CreateOpClassStmt *stmt)
 						stmt->amname)));
 
 	amoid = HeapTupleGetOid(tup);
-	numOperators = ((Form_pg_am) GETSTRUCT(tup))->amstrategies;
-	numProcs = ((Form_pg_am) GETSTRUCT(tup))->amsupport;
+	pg_am = (Form_pg_am) GETSTRUCT(tup);
+	numOperators = pg_am->amstrategies;
+	numProcs = pg_am->amsupport;
+	amstorage = pg_am->amstorage;
 
 	/* XXX Should we make any privilege check against the AM? */
 
 	ReleaseSysCache(tup);
 
 	/*
+	 * The question of appropriate permissions for CREATE OPERATOR CLASS is
+	 * interesting.  Creating an opclass is tantamount to granting public
+	 * execute access on the functions involved, since the index machinery
+	 * generally does not check access permission before using the functions.
+	 * A minimum expectation therefore is that the caller have execute
+	 * privilege with grant option.  Since we don't have a way to make the
+	 * opclass go away if the grant option is revoked, we choose instead to
+	 * require ownership of the functions.	It's also not entirely clear what
+	 * permissions should be required on the datatype, but ownership seems
+	 * like a safe choice.
+	 *
 	 * Currently, we require superuser privileges to create an opclass. This
 	 * seems necessary because we have no way to validate that the offered set
 	 * of operators and functions are consistent with the AM's expectations.
 	 * It would be nice to provide such a check someday, if it can be done
 	 * without solving the halting problem :-(
+	 *
+	 * XXX re-enable NOT_USED code sections below if you remove this test.
 	 */
 	if (!superuser())
 		ereport(ERROR,
@@ -132,7 +149,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 				 errmsg("must be superuser to create an operator class")));
 
 	/* Look up the datatype */
-	typeoid = typenameTypeId(stmt->datatype);
+	typeoid = typenameTypeId(NULL, stmt->datatype);
 
 #ifdef NOT_USED
 	/* XXX this is unnecessary given the superuser check above */
@@ -157,7 +174,6 @@ DefineOpClass(CreateOpClassStmt *stmt)
 		Oid			operOid;
 		Oid			funcOid;
 		OpClassMember *member;
-		AclResult	aclresult;
 
 		Assert(IsA(item, CreateOpClassItem));
 		switch (item->itemtype)
@@ -174,24 +190,30 @@ DefineOpClass(CreateOpClassStmt *stmt)
 					TypeName   *typeName1 = (TypeName *) linitial(item->args);
 					TypeName   *typeName2 = (TypeName *) lsecond(item->args);
 
-					operOid = LookupOperNameTypeNames(item->name,
-													  typeName1,
-													  typeName2,
-													  false);
+					operOid = LookupOperNameTypeNames(NULL, item->name,
+													  typeName1, typeName2,
+													  false, -1);
 				}
 				else
 				{
 					/* Default to binary op on input datatype */
-					operOid = LookupOperName(item->name, typeoid, typeoid,
-											 false);
+					operOid = LookupOperName(NULL, item->name,
+											 typeoid, typeoid,
+											 false, -1);
 				}
-				/* Caller must have execute permission on operators */
+
+#ifdef NOT_USED
+				/* XXX this is unnecessary given the superuser check above */
+				/* Caller must own operator and its underlying function */
+				if (!pg_oper_ownercheck(operOid, GetUserId()))
+					aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_OPER,
+								   get_opname(operOid));
 				funcOid = get_opcode(operOid);
-				aclresult = pg_proc_aclcheck(funcOid, GetUserId(),
-											 ACL_EXECUTE);
-				if (aclresult != ACLCHECK_OK)
-					aclcheck_error(aclresult, ACL_KIND_PROC,
+				if (!pg_proc_ownercheck(funcOid, GetUserId()))
+					aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_PROC,
 								   get_func_name(funcOid));
+#endif
+
 				/* Save the info */
 				member = (OpClassMember *) palloc0(sizeof(OpClassMember));
 				member->object = operOid;
@@ -209,12 +231,14 @@ DefineOpClass(CreateOpClassStmt *stmt)
 									item->number, numProcs)));
 				funcOid = LookupFuncNameTypeNames(item->name, item->args,
 												  false);
-				/* Caller must have execute permission on functions */
-				aclresult = pg_proc_aclcheck(funcOid, GetUserId(),
-											 ACL_EXECUTE);
-				if (aclresult != ACLCHECK_OK)
-					aclcheck_error(aclresult, ACL_KIND_PROC,
+#ifdef NOT_USED
+				/* XXX this is unnecessary given the superuser check above */
+				/* Caller must own function */
+				if (!pg_proc_ownercheck(funcOid, GetUserId()))
+					aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_PROC,
 								   get_func_name(funcOid));
+#endif
+
 				/* Save the info */
 				member = (OpClassMember *) palloc0(sizeof(OpClassMember));
 				member->object = funcOid;
@@ -227,7 +251,15 @@ DefineOpClass(CreateOpClassStmt *stmt)
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						   errmsg("storage type specified more than once")));
-				storageoid = typenameTypeId(item->storedtype);
+				storageoid = typenameTypeId(NULL, item->storedtype);
+
+#ifdef NOT_USED
+				/* XXX this is unnecessary given the superuser check above */
+				/* Check we have ownership of the datatype */
+				if (!pg_type_ownercheck(storageoid, GetUserId()))
+					aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TYPE,
+								   format_type_be(storageoid));
+#endif
 				break;
 			default:
 				elog(ERROR, "unrecognized item type: %d", item->itemtype);
@@ -243,19 +275,11 @@ DefineOpClass(CreateOpClassStmt *stmt)
 		/* Just drop the spec if same as column datatype */
 		if (storageoid == typeoid)
 			storageoid = InvalidOid;
-		else
-		{
-			/*
-			 * Currently, only GiST allows storagetype different from
-			 * datatype.  This hardcoded test should be eliminated in favor of
-			 * adding another boolean column to pg_am ...
-			 */
-			if (amoid != GIST_AM_OID)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("storage type may not be different from data type for access method \"%s\"",
-								stmt->amname)));
-		}
+		else if (!amstorage)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("storage type may not be different from data type for access method \"%s\"",
+							stmt->amname)));
 	}
 
 	rel = heap_open(OperatorClassRelationId, RowExclusiveLock);
@@ -687,20 +711,39 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 		/* Unqualified opclass name, so search the search path */
 		opcID = OpclassnameGetOpcid(amID, opcname);
 		if (!OidIsValid(opcID))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
-							opcname, stmt->amname)));
+		{
+			if (!stmt->missing_ok)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
+								opcname, stmt->amname)));
+			else
+				ereport(NOTICE,
+						(errmsg("operator class \"%s\" does not exist for access method \"%s\"",
+								opcname, stmt->amname)));
+
+			return;
+		}
+
 		tuple = SearchSysCache(CLAOID,
 							   ObjectIdGetDatum(opcID),
 							   0, 0, 0);
 	}
 
 	if (!HeapTupleIsValid(tuple))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
+	{
+
+		if (!stmt->missing_ok)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
 						NameListToString(stmt->opclassname), stmt->amname)));
+		else
+			ereport(NOTICE,
+					(errmsg("operator class \"%s\" does not exist for access method \"%s\"",
+						NameListToString(stmt->opclassname), stmt->amname)));
+		return;
+	}
 
 	opcID = HeapTupleGetOid(tuple);
 
@@ -897,20 +940,41 @@ RenameOpClass(List *name, const char *access_method, const char *newname)
 }
 
 /*
- * Change opclass owner
+ * Change opclass owner by oid
+ */
+#ifdef NOT_USED
+void
+AlterOpClassOwner_oid(Oid opcOid, Oid newOwnerId)
+{
+	Relation	rel;
+	HeapTuple	tup;
+
+	rel = heap_open(OperatorClassRelationId, RowExclusiveLock);
+
+	tup = SearchSysCacheCopy(CLAOID,
+							 ObjectIdGetDatum(opcOid),
+							 0, 0, 0);
+	if (!HeapTupleIsValid(tup)) /* shouldn't happen */
+		elog(ERROR, "cache lookup failed for opclass %u", opcOid);
+
+	AlterOpClassOwner_internal(rel, tup, newOwnerId);
+
+	heap_freetuple(tup);
+	heap_close(rel, NoLock);
+}
+#endif
+
+/*
+ * Change opclass owner by name
  */
 void
 AlterOpClassOwner(List *name, const char *access_method, Oid newOwnerId)
 {
-	Oid			opcOid;
 	Oid			amOid;
-	Oid			namespaceOid;
-	char	   *schemaname;
-	char	   *opcname;
-	HeapTuple	tup;
 	Relation	rel;
-	AclResult	aclresult;
-	Form_pg_opclass opcForm;
+	HeapTuple	tup;
+	char	   *opcname;
+	char	   *schemaname;
 
 	amOid = GetSysCacheOid(AMNAME,
 						   CStringGetDatum(access_method),
@@ -930,6 +994,8 @@ AlterOpClassOwner(List *name, const char *access_method, Oid newOwnerId)
 
 	if (schemaname)
 	{
+		Oid			namespaceOid;
+
 		namespaceOid = LookupExplicitNamespace(schemaname);
 
 		tup = SearchSysCacheCopy(CLAAMNAMENSP,
@@ -942,11 +1008,11 @@ AlterOpClassOwner(List *name, const char *access_method, Oid newOwnerId)
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
 							opcname, access_method)));
-
-		opcOid = HeapTupleGetOid(tup);
 	}
 	else
 	{
+		Oid			opcOid;
+
 		opcOid = OpclassnameGetOpcid(amOid, opcname);
 		if (!OidIsValid(opcOid))
 			ereport(ERROR,
@@ -959,9 +1025,31 @@ AlterOpClassOwner(List *name, const char *access_method, Oid newOwnerId)
 								 0, 0, 0);
 		if (!HeapTupleIsValid(tup))		/* should not happen */
 			elog(ERROR, "cache lookup failed for opclass %u", opcOid);
-		namespaceOid = ((Form_pg_opclass) GETSTRUCT(tup))->opcnamespace;
 	}
+
+	AlterOpClassOwner_internal(rel, tup, newOwnerId);
+
+	heap_freetuple(tup);
+	heap_close(rel, NoLock);
+}
+
+/*
+ * The first parameter is pg_opclass, opened and suitably locked.  The second
+ * parameter is the tuple from pg_opclass we want to modify.
+ */
+static void
+AlterOpClassOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
+{
+	Oid			namespaceOid;
+	AclResult	aclresult;
+	Form_pg_opclass opcForm;
+
+	Assert(tup->t_tableOid == OperatorClassRelationId);
+	Assert(RelationGetRelid(rel) == OperatorClassRelationId);
+
 	opcForm = (Form_pg_opclass) GETSTRUCT(tup);
+
+	namespaceOid = opcForm->opcnamespace;
 
 	/*
 	 * If the new owner is the same as the existing owner, consider the
@@ -975,7 +1063,7 @@ AlterOpClassOwner(List *name, const char *access_method, Oid newOwnerId)
 			/* Otherwise, must be owner of the existing object */
 			if (!pg_opclass_ownercheck(HeapTupleGetOid(tup), GetUserId()))
 				aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_OPCLASS,
-							   NameListToString(name));
+							   NameStr(opcForm->opcname));
 
 			/* Must be able to become new owner */
 			check_is_member_of_role(GetUserId(), newOwnerId);
@@ -998,9 +1086,7 @@ AlterOpClassOwner(List *name, const char *access_method, Oid newOwnerId)
 		CatalogUpdateIndexes(rel, tup);
 
 		/* Update owner dependency reference */
-		changeDependencyOnOwner(OperatorClassRelationId, opcOid, newOwnerId);
+		changeDependencyOnOwner(OperatorClassRelationId, HeapTupleGetOid(tup),
+								newOwnerId);
 	}
-
-	heap_close(rel, NoLock);
-	heap_freetuple(tup);
 }

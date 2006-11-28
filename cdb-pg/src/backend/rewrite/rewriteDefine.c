@@ -4,12 +4,12 @@
  *	  routines for defining a rewrite rule
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/rewrite/rewriteDefine.c,v 1.107.2.1 2005/11/22 18:23:16 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/rewrite/rewriteDefine.c,v 1.115 2006/10/04 00:29:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,11 +19,9 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_rewrite.h"
-#include "commands/view.h"
 #include "miscadmin.h"
 #include "optimizer/clauses.h"
 #include "parser/parse_expr.h"
-#include "parser/parse_relation.h"
 #include "rewrite/rewriteDefine.h"
 #include "rewrite/rewriteManip.h"
 #include "rewrite/rewriteSupport.h"
@@ -36,9 +34,10 @@
 #include "cdb/cdbdisp.h"
 
 
-static void setRuleCheckAsUser_Query(Query *qry, Oid userid);
-static void setRuleCheckAsUser_Expr(Node *node, Oid userid);
+static void checkRuleResultList(List *targetList, TupleDesc resultDesc,
+					bool isSelect);
 static bool setRuleCheckAsUser_walker(Node *node, Oid *context);
+static void setRuleCheckAsUser_Query(Query *qry, Oid userid);
 
 
 /*
@@ -196,7 +195,6 @@ DefineQueryRewrite(RuleStmt *stmt)
 	int			event_attno;
 	ListCell   *l;
 	Query	   *query;
-	AclResult	aclresult;
 	bool		RelisBecomingView = false;
 
 	/*
@@ -212,9 +210,8 @@ DefineQueryRewrite(RuleStmt *stmt)
 	/*
 	 * Check user has permission to apply rules to this relation.
 	 */
-	aclresult = pg_class_aclcheck(ev_relid, GetUserId(), ACL_RULE);
-	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_CLASS,
+	if (!pg_class_ownercheck(ev_relid, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
 					   RelationGetRelationName(event_relation));
 
 	/*
@@ -240,15 +237,11 @@ DefineQueryRewrite(RuleStmt *stmt)
 					 errhint("Use triggers instead.")));
 	}
 
-	/*
-	 * Rules ON SELECT are restricted to view definitions
-	 */
 	if (event_type == CMD_SELECT)
 	{
-		ListCell   *tllist;
-		int			i;
-
 		/*
+		 * Rules ON SELECT are restricted to view definitions
+		 *
 		 * So there cannot be INSTEAD NOTHING, ...
 		 */
 		if (list_length(action) == 0)
@@ -269,7 +262,8 @@ DefineQueryRewrite(RuleStmt *stmt)
 		 * ... the one action must be a SELECT, ...
 		 */
 		query = (Query *) linitial(action);
-		if (!is_instead || query->commandType != CMD_SELECT)
+		if (!is_instead ||
+			query->commandType != CMD_SELECT || query->into != NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("rules on SELECT must have action INSTEAD SELECT")));
@@ -286,71 +280,17 @@ DefineQueryRewrite(RuleStmt *stmt)
 		 * ... the targetlist of the SELECT action must exactly match the
 		 * event relation, ...
 		 */
-		i = 0;
-		foreach(tllist, query->targetList)
-		{
-			TargetEntry *tle = (TargetEntry *) lfirst(tllist);
-			int32		tletypmod;
-			Form_pg_attribute attr;
-			char	   *attname;
-
-			if (tle->resjunk)
-				continue;
-			i++;
-			if (i > event_relation->rd_att->natts)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				  errmsg("SELECT rule's target list has too many entries")));
-
-			attr = event_relation->rd_att->attrs[i - 1];
-			attname = NameStr(attr->attname);
-
-			/*
-			 * Disallow dropped columns in the relation.  This won't happen in
-			 * the cases we actually care about (namely creating a view via
-			 * CREATE TABLE then CREATE RULE).	Trying to cope with it is much
-			 * more trouble than it's worth, because we'd have to modify the
-			 * rule to insert dummy NULLs at the right positions.
-			 */
-			if (attr->attisdropped)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot convert relation containing dropped columns to view")));
-
-			if (strcmp(tle->resname, attname) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("SELECT rule's target entry %d has different column name from \"%s\"", i, attname)));
-
-			if (attr->atttypid != exprType((Node *) tle->expr))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("SELECT rule's target entry %d has different type from column \"%s\"", i, attname)));
-
-			/*
-			 * Allow typmods to be different only if one of them is -1, ie,
-			 * "unspecified".  This is necessary for cases like "numeric",
-			 * where the table will have a filled-in default length but the
-			 * select rule's expression will probably have typmod = -1.
-			 */
-			tletypmod = exprTypmod((Node *) tle->expr);
-			if (attr->atttypmod != tletypmod &&
-				attr->atttypmod != -1 && tletypmod != -1)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("SELECT rule's target entry %d has different size from column \"%s\"", i, attname)));
-		}
-
-		if (i != event_relation->rd_att->natts)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				   errmsg("SELECT rule's target list has too few entries")));
+		checkRuleResultList(query->targetList,
+							RelationGetDescr(event_relation),
+							true);
 
 		/*
 		 * ... there must not be another ON SELECT rule already ...
 		 */
 		if (!replace && event_relation->rd_rules != NULL)
 		{
+			int			i;
+
 			for (i = 0; i < event_relation->rd_rules->numLocks; i++)
 			{
 				RewriteRule *rule;
@@ -429,24 +369,47 @@ DefineQueryRewrite(RuleStmt *stmt)
 			RelisBecomingView = true;
 		}
 	}
+	else
+	{
+		/*
+		 * For non-SELECT rules, a RETURNING list can appear in at most one of
+		 * the actions ... and there can't be any RETURNING list at all in a
+		 * conditional or non-INSTEAD rule.  (Actually, there can be at most
+		 * one RETURNING list across all rules on the same event, but it seems
+		 * best to enforce that at rule expansion time.)  If there is a
+		 * RETURNING list, it must match the event relation.
+		 */
+		bool		haveReturning = false;
+
+		foreach(l, action)
+		{
+			query = (Query *) lfirst(l);
+
+			if (!query->returningList)
+				continue;
+			if (haveReturning)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				  errmsg("cannot have multiple RETURNING lists in a rule")));
+			haveReturning = true;
+			if (event_qual != NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("RETURNING lists are not supported in conditional rules")));
+			if (!is_instead)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("RETURNING lists are not supported in non-INSTEAD rules")));
+			checkRuleResultList(query->returningList,
+								RelationGetDescr(event_relation),
+								false);
+		}
+	}
 
 	/*
 	 * This rule is allowed - prepare to install it.
 	 */
 	event_attno = -1;
-
-	/*
-	 * We want the rule's table references to be checked as though by the rule
-	 * owner, not the user referencing the rule.  Therefore, scan through the
-	 * rule's rtables and set the checkAsUser field on all rtable entries.  We
-	 * have to look at event_qual as well, in case it contains sublinks.
-	 */
-	foreach(l, action)
-	{
-		query = (Query *) lfirst(l);
-		setRuleCheckAsUser_Query(query, GetUserId());
-	}
-	setRuleCheckAsUser_Expr(event_qual, GetUserId());
 
 	/* discard rule if it's null action and not INSTEAD; it's a no-op */
 	if (action != NIL || is_instead)
@@ -490,9 +453,98 @@ DefineQueryRewrite(RuleStmt *stmt)
 }
 
 /*
- * setRuleCheckAsUser_Query
- *		Recursively scan a query and set the checkAsUser field to the
- *		given userid in all rtable entries.
+ * checkRuleResultList
+ *		Verify that targetList produces output compatible with a tupledesc
+ *
+ * The targetList might be either a SELECT targetlist, or a RETURNING list;
+ * isSelect tells which.  (This is mostly used for choosing error messages,
+ * but also we don't enforce column name matching for RETURNING.)
+ */
+static void
+checkRuleResultList(List *targetList, TupleDesc resultDesc, bool isSelect)
+{
+	ListCell   *tllist;
+	int			i;
+
+	i = 0;
+	foreach(tllist, targetList)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(tllist);
+		int32		tletypmod;
+		Form_pg_attribute attr;
+		char	   *attname;
+
+		/* resjunk entries may be ignored */
+		if (tle->resjunk)
+			continue;
+		i++;
+		if (i > resultDesc->natts)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 isSelect ?
+				   errmsg("SELECT rule's target list has too many entries") :
+					 errmsg("RETURNING list has too many entries")));
+
+		attr = resultDesc->attrs[i - 1];
+		attname = NameStr(attr->attname);
+
+		/*
+		 * Disallow dropped columns in the relation.  This won't happen in the
+		 * cases we actually care about (namely creating a view via CREATE
+		 * TABLE then CREATE RULE, or adding a RETURNING rule to a view).
+		 * Trying to cope with it is much more trouble than it's worth,
+		 * because we'd have to modify the rule to insert dummy NULLs at the
+		 * right positions.
+		 */
+		if (attr->attisdropped)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot convert relation containing dropped columns to view")));
+
+		if (isSelect && strcmp(tle->resname, attname) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("SELECT rule's target entry %d has different column name from \"%s\"", i, attname)));
+
+		if (attr->atttypid != exprType((Node *) tle->expr))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 isSelect ?
+					 errmsg("SELECT rule's target entry %d has different type from column \"%s\"",
+							i, attname) :
+					 errmsg("RETURNING list's entry %d has different type from column \"%s\"",
+							i, attname)));
+
+		/*
+		 * Allow typmods to be different only if one of them is -1, ie,
+		 * "unspecified".  This is necessary for cases like "numeric", where
+		 * the table will have a filled-in default length but the select
+		 * rule's expression will probably have typmod = -1.
+		 */
+		tletypmod = exprTypmod((Node *) tle->expr);
+		if (attr->atttypmod != tletypmod &&
+			attr->atttypmod != -1 && tletypmod != -1)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 isSelect ?
+					 errmsg("SELECT rule's target entry %d has different size from column \"%s\"",
+							i, attname) :
+					 errmsg("RETURNING list's entry %d has different size from column \"%s\"",
+							i, attname)));
+	}
+
+	if (i != resultDesc->natts)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 isSelect ?
+				 errmsg("SELECT rule's target list has too few entries") :
+				 errmsg("RETURNING list has too few entries")));
+}
+
+/*
+ * setRuleCheckAsUser
+ *		Recursively scan a query or expression tree and set the checkAsUser
+ *		field to the given userid in all rtable entries.
  *
  * Note: for a view (ON SELECT rule), the checkAsUser field of the *OLD*
  * RTE entry will be overridden when the view rule is expanded, and the
@@ -501,6 +553,26 @@ DefineQueryRewrite(RuleStmt *stmt)
  * it's important to set these fields to match the rule owner.  So we just set
  * them always.
  */
+void
+setRuleCheckAsUser(Node *node, Oid userid)
+{
+	(void) setRuleCheckAsUser_walker(node, &userid);
+}
+
+static bool
+setRuleCheckAsUser_walker(Node *node, Oid *context)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, Query))
+	{
+		setRuleCheckAsUser_Query((Query *) node, *context);
+		return false;
+	}
+	return expression_tree_walker(node, setRuleCheckAsUser_walker,
+								  (void *) context);
+}
+
 static void
 setRuleCheckAsUser_Query(Query *qry, Oid userid)
 {
@@ -527,37 +599,13 @@ setRuleCheckAsUser_Query(Query *qry, Oid userid)
 						  QTW_IGNORE_RT_SUBQUERIES);
 }
 
-/*
- * Expression-tree walker to find sublink queries
- */
-static void
-setRuleCheckAsUser_Expr(Node *node, Oid userid)
-{
-	(void) setRuleCheckAsUser_walker(node, &userid);
-}
-
-static bool
-setRuleCheckAsUser_walker(Node *node, Oid *context)
-{
-	if (node == NULL)
-		return false;
-	if (IsA(node, Query))
-	{
-		Query	   *qry = (Query *) node;
-
-		setRuleCheckAsUser_Query(qry, *context);
-		return false;
-	}
-	return expression_tree_walker(node, setRuleCheckAsUser_walker,
-								  (void *) context);
-}
-
 
 /*
  * Rename an existing rewrite rule.
  *
  * This is unused code at the moment.
  */
+#ifdef NOT_USED
 void
 RenameRewriteRule(Oid owningRel, const char *oldName,
 				  const char *newName)
@@ -594,3 +642,5 @@ RenameRewriteRule(Oid owningRel, const char *oldName,
 	heap_freetuple(ruletup);
 	heap_close(pg_rewrite_desc, RowExclusiveLock);
 }
+
+#endif

@@ -10,22 +10,23 @@
  * Copyright (c) 2002-2006, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/prepare.c,v 1.42.2.1 2005/12/14 17:06:37 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/prepare.c,v 1.66 2006/10/04 00:29:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
+#include "access/heapam.h"
+#include "access/xact.h"
+#include "catalog/pg_type.h"
 #include "commands/explain.h"
 #include "commands/prepare.h"
-#include "executor/executor.h"
-#include "utils/guc.h"
-#include "optimizer/planner.h"
+#include "funcapi.h"
 #include "rewrite/rewriteHandler.h"
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
 #include "tcop/utility.h"
-#include "utils/hsearch.h"
+#include "utils/builtins.h"
 #include "utils/memutils.h"
 
 #include "commands/tablespace.h"
@@ -44,6 +45,7 @@ static HTAB *prepared_queries = NULL;
 static void InitQueryHashTable(void);
 static ParamListInfo EvaluateParams(EState *estate,
 			   List *params, List *argtypes);
+static Datum build_regtype_array(List *oid_list);
 
 /*
  * Implements the 'PREPARE' utility statement.
@@ -125,7 +127,8 @@ PrepareQuery(PrepareStmt *stmt)
 						   commandTag,
 						   query_list,
 						   plan_list,
-						   stmt->argtype_oids);
+						   stmt->argtype_oids,
+						   true);
 }
 
 /*
@@ -166,10 +169,10 @@ ExecuteQuery(ExecuteStmt *stmt, ParamListInfo params,
 		paramLI = EvaluateParams(estate, stmt->params, entry->argtype_list);
 	}
 
-	/*
-	 * Create a new portal to run the query in
-	 */
+	/* Create a new portal to run the query in */
 	portal = CreateNewPortal();
+	/* Don't display the portal in pg_cursors, it is for internal use only */
+	portal->visible = false;
 
 	/*
 	 * For CREATE TABLE / AS EXECUTE, make a copy of the stored query so that
@@ -200,6 +203,11 @@ ExecuteQuery(ExecuteStmt *stmt, ParamListInfo params,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("prepared statement is not a SELECT")));
 		query->into = copyObject(stmt->into);
+		query->intoOptions = copyObject(stmt->intoOptions);
+		query->intoOnCommit = stmt->into_on_commit;
+		if (stmt->into_tbl_space)
+			query->intoTableSpaceName = pstrdup(stmt->into_tbl_space);
+
 		
 		query->intoPolicy = palloc0(sizeof(MppPolicy)- sizeof(query->intoPolicy->attrs) + 255 * sizeof(query->intoPolicy->attrs[0]));
 		query->intoPolicy->nattrs = 1;			
@@ -232,6 +240,7 @@ ExecuteQuery(ExecuteStmt *stmt, ParamListInfo params,
 	}
 
 	PortalDefineQuery(portal,
+					  NULL,
 					  query_string,
 					  entry->sourceTag,
 					  entry->commandTag,
@@ -275,29 +284,30 @@ EvaluateParams(EState *estate, List *params, List *argtypes)
 	if (list_length(params) != nargs)
 		elog(ERROR, "wrong number of arguments");
 
+	if (nargs == 0)
+		return NULL;
+
 	exprstates = (List *) ExecPrepareExpr((Expr *) params, estate);
 
-	paramLI = (ParamListInfo)
-		palloc0((nargs + 1) * sizeof(ParamListInfoData));
+	/* sizeof(ParamListInfoData) includes the first array element */
+	paramLI = (ParamListInfo) palloc(sizeof(ParamListInfoData) +
+									 (nargs - 1) *sizeof(ParamExternData));
+	paramLI->numParams = nargs;
 
 	forboth(le, exprstates, la, argtypes)
 	{
 		ExprState  *n = lfirst(le);
-		bool		isNull;
+		ParamExternData *prm = &paramLI->params[i];
 
-		paramLI[i].value = ExecEvalExprSwitchContext(n,
-											  GetPerTupleExprContext(estate),
-													 &isNull,
-													 NULL);
-		paramLI[i].kind = PARAM_NUM;
-		paramLI[i].id = i + 1;
-		paramLI[i].ptype = lfirst_oid(la);
-		paramLI[i].isnull = isNull;
+		prm->ptype = lfirst_oid(la);
+		prm->pflags = 0;
+		prm->value = ExecEvalExprSwitchContext(n,
+											   GetPerTupleExprContext(estate),
+											   &prm->isnull,
+											   NULL);
 
 		i++;
 	}
-
-	paramLI[i].kind = PARAM_INVALID;
 
 	return paramLI;
 }
@@ -340,13 +350,13 @@ StorePreparedStatement(const char *stmt_name,
 					   const char *commandTag,
 					   List *query_list,
 					   List *plan_list,
-					   List *argtype_list)
+					   List *argtype_list,
+					   bool from_sql)
 {
 	PreparedStatement *entry;
 	MemoryContext oldcxt,
 				entrycxt;
 	char	   *qstring;
-	char		key[NAMEDATALEN];
 	bool		found;
 
 	/* Initialize the hash table, if necessary */
@@ -354,10 +364,7 @@ StorePreparedStatement(const char *stmt_name,
 		InitQueryHashTable();
 
 	/* Check for pre-existing entry of same name */
-	/* See notes in FetchPreparedStatement */
-	StrNCpy(key, stmt_name, sizeof(key));
-
-	hash_search(prepared_queries, key, HASH_FIND, &found);
+	hash_search(prepared_queries, stmt_name, HASH_FIND, &found);
 
 	if (found)
 		ereport(ERROR,
@@ -387,7 +394,7 @@ StorePreparedStatement(const char *stmt_name,
 
 	/* Now we can add entry to hash table */
 	entry = (PreparedStatement *) hash_search(prepared_queries,
-											  key,
+											  stmt_name,
 											  HASH_ENTER,
 											  &found);
 
@@ -404,6 +411,8 @@ StorePreparedStatement(const char *stmt_name,
 	entry->plan_list = plan_list;
 	entry->argtype_list = argtype_list;
 	entry->context = entrycxt;
+	entry->prepare_time = GetCurrentStatementStartTimestamp();
+	entry->from_sql = from_sql;
 
 	MemoryContextSwitchTo(oldcxt);
 }
@@ -415,7 +424,6 @@ StorePreparedStatement(const char *stmt_name,
 PreparedStatement *
 FetchPreparedStatement(const char *stmt_name, bool throwError)
 {
-	char		key[NAMEDATALEN];
 	PreparedStatement *entry;
 
 	/*
@@ -423,19 +431,10 @@ FetchPreparedStatement(const char *stmt_name, bool throwError)
 	 * anything, therefore it couldn't possibly store our plan.
 	 */
 	if (prepared_queries)
-	{
-		/*
-		 * We can't just use the statement name as supplied by the user: the
-		 * hash package is picky enough that it needs to be NULL-padded out to
-		 * the appropriate length to work correctly.
-		 */
-		StrNCpy(key, stmt_name, sizeof(key));
-
 		entry = (PreparedStatement *) hash_search(prepared_queries,
-												  key,
+												  stmt_name,
 												  HASH_FIND,
 												  NULL);
-	}
 	else
 		entry = NULL;
 
@@ -479,6 +478,10 @@ FetchPreparedStatementResultDesc(PreparedStatement *stmt)
 			query = (Query *) linitial(stmt->query_list);
 			return ExecCleanTypeFromTL(query->targetList, false);
 
+		case PORTAL_ONE_RETURNING:
+			query = PortalListGetPrimaryQuery(stmt->query_list);
+			return ExecCleanTypeFromTL(query->returningList, false);
+
 		case PORTAL_UTIL_SELECT:
 			query = (Query *) linitial(stmt->query_list);
 			return UtilityTupleDescriptor(query->utilityStmt);
@@ -504,6 +507,7 @@ PreparedStatementReturnsTuples(PreparedStatement *stmt)
 	switch (ChoosePortalStrategy(stmt->query_list))
 	{
 		case PORTAL_ONE_SELECT:
+		case PORTAL_ONE_RETURNING:
 		case PORTAL_UTIL_SELECT:
 			return true;
 
@@ -531,6 +535,8 @@ FetchPreparedStatementTargetList(PreparedStatement *stmt)
 
 	if (strategy == PORTAL_ONE_SELECT)
 		return ((Query *) linitial(stmt->query_list))->targetList;
+	if (strategy == PORTAL_ONE_RETURNING)
+		return (PortalListGetPrimaryQuery(stmt->query_list))->returningList;
 	if (strategy == PORTAL_UTIL_SELECT)
 	{
 		Node	   *utilityStmt;
@@ -703,4 +709,131 @@ ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
 
 	if (estate)
 		FreeExecutorState(estate);
+}
+
+/*
+ * This set returning function reads all the prepared statements and
+ * returns a set of (name, statement, prepare_time, param_types, from_sql).
+ */
+Datum
+pg_prepared_statement(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+	HASH_SEQ_STATUS *hash_seq;
+	PreparedStatement *prep_stmt;
+
+	/* stuff done only on the first call of the function */
+	if (SRF_IS_FIRSTCALL())
+	{
+		TupleDesc	tupdesc;
+		MemoryContext oldcontext;
+
+		/* create a function context for cross-call persistence */
+		funcctx = SRF_FIRSTCALL_INIT();
+
+		/*
+		 * switch to memory context appropriate for multiple function calls
+		 */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		/* allocate memory for user context */
+		if (prepared_queries)
+		{
+			hash_seq = (HASH_SEQ_STATUS *) palloc(sizeof(HASH_SEQ_STATUS));
+			hash_seq_init(hash_seq, prepared_queries);
+			funcctx->user_fctx = (void *) hash_seq;
+		}
+		else
+			funcctx->user_fctx = NULL;
+
+		/*
+		 * build tupdesc for result tuples. This must match the definition of
+		 * the pg_prepared_statements view in system_views.sql
+		 */
+		tupdesc = CreateTemplateTupleDesc(5, false);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "name",
+						   TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "statement",
+						   TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "prepare_time",
+						   TIMESTAMPTZOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "parameter_types",
+						   REGTYPEARRAYOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "from_sql",
+						   BOOLOID, -1, 0);
+
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	/* stuff done on every call of the function */
+	funcctx = SRF_PERCALL_SETUP();
+	hash_seq = (HASH_SEQ_STATUS *) funcctx->user_fctx;
+
+	/* if the hash table is uninitialized, we're done */
+	if (hash_seq == NULL)
+		SRF_RETURN_DONE(funcctx);
+
+	prep_stmt = hash_seq_search(hash_seq);
+	if (prep_stmt)
+	{
+		Datum		result;
+		HeapTuple	tuple;
+		Datum		values[5];
+		bool		nulls[5];
+
+		MemSet(nulls, 0, sizeof(nulls));
+
+		values[0] = DirectFunctionCall1(textin,
+									  CStringGetDatum(prep_stmt->stmt_name));
+
+		if (prep_stmt->query_string == NULL)
+			nulls[1] = true;
+		else
+			values[1] = DirectFunctionCall1(textin,
+								   CStringGetDatum(prep_stmt->query_string));
+
+		values[2] = TimestampTzGetDatum(prep_stmt->prepare_time);
+		values[3] = build_regtype_array(prep_stmt->argtype_list);
+		values[4] = BoolGetDatum(prep_stmt->from_sql);
+
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		result = HeapTupleGetDatum(tuple);
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+
+	SRF_RETURN_DONE(funcctx);
+}
+
+/*
+ * This utility function takes a List of Oids, and returns a Datum
+ * pointing to a one-dimensional Postgres array of regtypes. The empty
+ * list is returned as a zero-element array, not NULL.
+ */
+static Datum
+build_regtype_array(List *oid_list)
+{
+	ListCell   *lc;
+	int			len;
+	int			i;
+	Datum	   *tmp_ary;
+	ArrayType  *result;
+
+	len = list_length(oid_list);
+	tmp_ary = (Datum *) palloc(len * sizeof(Datum));
+
+	i = 0;
+	foreach(lc, oid_list)
+	{
+		Oid			oid;
+		Datum		oid_str;
+
+		oid = lfirst_oid(lc);
+		oid_str = DirectFunctionCall1(oidout, ObjectIdGetDatum(oid));
+		tmp_ary[i++] = DirectFunctionCall1(regtypein, oid_str);
+	}
+
+	/* XXX: this hardcodes assumptions about the regtype type */
+	result = construct_array(tmp_ary, len, REGTYPEOID, 4, true, 'i');
+	return PointerGetDatum(result);
 }

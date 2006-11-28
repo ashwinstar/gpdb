@@ -5,12 +5,12 @@
  *	  Functions for the built-in type "RelativeTime".
  *	  Functions for the built-in type "TimeInterval".
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/nabstime.c,v 1.146 2005/10/22 14:27:29 adunstan Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/nabstime.c,v 1.148 2006/07/14 14:52:24 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,10 +22,8 @@
 #include <time.h>
 #include <sys/time.h>
 
-#include "access/xact.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
-#include "pgtime.h"
 #include "utils/builtins.h"
 #include "utils/nabstime.h"
 

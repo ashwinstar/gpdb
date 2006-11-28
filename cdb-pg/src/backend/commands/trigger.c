@@ -3,11 +3,11 @@
  * trigger.c
  *	  PostgreSQL TRIGGERs support code.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/trigger.c,v 1.195.2.2 2006/01/12 21:49:06 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/trigger.c,v 1.209 2006/10/04 00:29:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,11 +19,10 @@
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
-#include "catalog/namespace.h"
-#include "catalog/pg_language.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
+#include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
@@ -469,7 +468,8 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
  * DropTrigger - drop an individual trigger by name
  */
 void
-DropTrigger(Oid relid, const char *trigname, DropBehavior behavior)
+DropTrigger(Oid relid, const char *trigname, DropBehavior behavior,
+			bool missing_ok)
 {
 	Relation	tgrel;
 	ScanKeyData skey[2];
@@ -498,10 +498,21 @@ DropTrigger(Oid relid, const char *trigname, DropBehavior behavior)
 	tup = systable_getnext(tgscan);
 
 	if (!HeapTupleIsValid(tup))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("trigger \"%s\" for table \"%s\" does not exist",
-						trigname, get_rel_name(relid))));
+	{
+		if (!missing_ok)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("trigger \"%s\" for table \"%s\" does not exist",
+							trigname, get_rel_name(relid))));
+		else
+			ereport(NOTICE,
+					(errmsg("trigger \"%s\" for table \"%s\" does not exist, skipping",
+							trigname, get_rel_name(relid))));
+		/* cleanup */
+		systable_endscan(tgscan);
+		heap_close(tgrel, AccessShareLock);
+		return;
+	}
 
 	if (!pg_class_ownercheck(relid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
@@ -864,8 +875,8 @@ RelationBuildTriggers(Relation relation)
 	/*
 	 * Note: since we scan the triggers using TriggerRelidNameIndexId, we will
 	 * be reading the triggers in name order, except possibly during
-	 * emergency-recovery operations (ie, IsIgnoringSystemIndexes). This in
-	 * turn ensures that triggers will be fired in name order.
+	 * emergency-recovery operations (ie, IgnoreSystemIndexes). This in turn
+	 * ensures that triggers will be fired in name order.
 	 */
 	ScanKeyInit(&skey,
 				Anum_pg_trigger_tgrelid,
@@ -1323,7 +1334,7 @@ ExecCallTriggerFunc(TriggerData *trigdata,
 	 * one "tuple returned" (really the number of firings).
 	 */
 	if (instr)
-		InstrStopNode(instr + tgindx, true);
+		InstrStopNode(instr + tgindx, 1);
 
 	return (HeapTuple) DatumGetPointer(result);
 }
@@ -1789,7 +1800,6 @@ ltrmark:;
 
 		Assert(ItemIdIsUsed(lp));
 
-		tuple.t_datamcxt = NULL;
 		tuple.t_data = (HeapTupleHeader) PageGetItem((Page) dp, lp);
 		tuple.t_len = ItemIdGetLength(lp);
 		tuple.t_self = *tid;
@@ -2099,11 +2109,18 @@ AfterTriggerExecute(AfterTriggerEvent event,
 	/*
 	 * Fetch the required OLD and NEW tuples.
 	 */
+	LocTriggerData.tg_trigtuple = NULL;
+	LocTriggerData.tg_newtuple = NULL;
+	LocTriggerData.tg_trigtuplebuf = InvalidBuffer;
+	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
+
 	if (ItemPointerIsValid(&(event->ate_oldctid)))
 	{
 		ItemPointerCopy(&(event->ate_oldctid), &(oldtuple.t_self));
 		if (!heap_fetch(rel, SnapshotAny, &oldtuple, &oldbuffer, false, NULL))
 			elog(ERROR, "failed to fetch old tuple for AFTER trigger");
+		LocTriggerData.tg_trigtuple = &oldtuple;
+		LocTriggerData.tg_trigtuplebuf = oldbuffer;
 	}
 
 	if (ItemPointerIsValid(&(event->ate_newctid)))
@@ -2111,39 +2128,25 @@ AfterTriggerExecute(AfterTriggerEvent event,
 		ItemPointerCopy(&(event->ate_newctid), &(newtuple.t_self));
 		if (!heap_fetch(rel, SnapshotAny, &newtuple, &newbuffer, false, NULL))
 			elog(ERROR, "failed to fetch new tuple for AFTER trigger");
+		if (LocTriggerData.tg_trigtuple != NULL)
+		{
+			LocTriggerData.tg_newtuple = &newtuple;
+			LocTriggerData.tg_newtuplebuf = newbuffer;
+		}
+		else
+		{
+			LocTriggerData.tg_trigtuple = &newtuple;
+			LocTriggerData.tg_trigtuplebuf = newbuffer;
+		}
 	}
 
 	/*
-	 * Setup the trigger information
+	 * Setup the remaining trigger information
 	 */
 	LocTriggerData.type = T_TriggerData;
 	LocTriggerData.tg_event =
 		event->ate_event & (TRIGGER_EVENT_OPMASK | TRIGGER_EVENT_ROW);
 	LocTriggerData.tg_relation = rel;
-
-	switch (event->ate_event & TRIGGER_EVENT_OPMASK)
-	{
-		case TRIGGER_EVENT_INSERT:
-			LocTriggerData.tg_trigtuple = &newtuple;
-			LocTriggerData.tg_newtuple = NULL;
-			LocTriggerData.tg_trigtuplebuf = newbuffer;
-			LocTriggerData.tg_newtuplebuf = InvalidBuffer;
-			break;
-
-		case TRIGGER_EVENT_UPDATE:
-			LocTriggerData.tg_trigtuple = &oldtuple;
-			LocTriggerData.tg_newtuple = &newtuple;
-			LocTriggerData.tg_trigtuplebuf = oldbuffer;
-			LocTriggerData.tg_newtuplebuf = newbuffer;
-			break;
-
-		case TRIGGER_EVENT_DELETE:
-			LocTriggerData.tg_trigtuple = &oldtuple;
-			LocTriggerData.tg_newtuple = NULL;
-			LocTriggerData.tg_trigtuplebuf = oldbuffer;
-			LocTriggerData.tg_newtuplebuf = InvalidBuffer;
-			break;
-	}
 
 	MemoryContextReset(per_tuple_context);
 
@@ -2172,7 +2175,7 @@ AfterTriggerExecute(AfterTriggerEvent event,
 	 * one "tuple returned" (really the number of firings).
 	 */
 	if (instr)
-		InstrStopNode(instr + tgindx, true);
+		InstrStopNode(instr + tgindx, 1);
 }
 
 
@@ -2942,65 +2945,132 @@ AfterTriggerSetState(ConstraintsSetStmt *stmt)
 
 		foreach(l, stmt->constraints)
 		{
-			char	   *cname = strVal(lfirst(l));
+			RangeVar   *constraint = lfirst(l);
 			ScanKeyData skey;
 			SysScanDesc tgscan;
 			HeapTuple	htup;
 			bool		found;
+			List	   *namespaceSearchList;
+			ListCell   *namespaceSearchCell;
 
-			/*
-			 * Check that only named constraints are set explicitly
-			 */
-			if (strlen(cname) == 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_NAME),
-					errmsg("unnamed constraints cannot be set explicitly")));
-
-			/*
-			 * Setup to scan pg_trigger by tgconstrname ...
-			 */
-			ScanKeyInit(&skey,
-						Anum_pg_trigger_tgconstrname,
-						BTEqualStrategyNumber, F_NAMEEQ,
-						PointerGetDatum(cname));
-
-			tgscan = systable_beginscan(tgrel, TriggerConstrNameIndexId, true,
-										SnapshotNow, 1, &skey);
-
-			/*
-			 * ... and search for the constraint trigger row
-			 */
-			found = false;
-
-			while (HeapTupleIsValid(htup = systable_getnext(tgscan)))
+			if (constraint->catalogname)
 			{
-				Form_pg_trigger pg_trigger = (Form_pg_trigger) GETSTRUCT(htup);
-
-				/*
-				 * If we found some, check that they fit the deferrability but
-				 * skip referential action ones, since they are silently never
-				 * deferrable.
-				 */
-				if (pg_trigger->tgfoid != F_RI_FKEY_RESTRICT_UPD &&
-					pg_trigger->tgfoid != F_RI_FKEY_RESTRICT_DEL &&
-					pg_trigger->tgfoid != F_RI_FKEY_CASCADE_UPD &&
-					pg_trigger->tgfoid != F_RI_FKEY_CASCADE_DEL &&
-					pg_trigger->tgfoid != F_RI_FKEY_SETNULL_UPD &&
-					pg_trigger->tgfoid != F_RI_FKEY_SETNULL_DEL &&
-					pg_trigger->tgfoid != F_RI_FKEY_SETDEFAULT_UPD &&
-					pg_trigger->tgfoid != F_RI_FKEY_SETDEFAULT_DEL)
-				{
-					if (stmt->deferred && !pg_trigger->tgdeferrable)
-						ereport(ERROR,
-								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-								 errmsg("constraint \"%s\" is not deferrable",
-										cname)));
-					oidlist = lappend_oid(oidlist, HeapTupleGetOid(htup));
-				}
-				found = true;
+				if (strcmp(constraint->catalogname, get_database_name(MyDatabaseId)) != 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cross-database references are not implemented: \"%s.%s.%s\"",
+							 constraint->catalogname, constraint->schemaname,
+									constraint->relname)));
 			}
 
-			systable_endscan(tgscan);
+			/*
+			 * If we're given the schema name with the constraint, look only
+			 * in that schema.	If given a bare constraint name, use the
+			 * search path to find the first matching constraint.
+			 */
+			if (constraint->schemaname)
+			{
+				Oid			namespaceId = LookupExplicitNamespace(constraint->schemaname);
+
+				namespaceSearchList = list_make1_oid(namespaceId);
+			}
+			else
+			{
+				namespaceSearchList = fetch_search_path(true);
+			}
+
+			found = false;
+			foreach(namespaceSearchCell, namespaceSearchList)
+			{
+				Oid			searchNamespaceId = lfirst_oid(namespaceSearchCell);
+
+				/*
+				 * Setup to scan pg_trigger by tgconstrname ...
+				 */
+				ScanKeyInit(&skey,
+							Anum_pg_trigger_tgconstrname,
+							BTEqualStrategyNumber, F_NAMEEQ,
+							PointerGetDatum(constraint->relname));
+
+				tgscan = systable_beginscan(tgrel, TriggerConstrNameIndexId, true,
+											SnapshotNow, 1, &skey);
+
+				/*
+				 * ... and search for the constraint trigger row
+				 */
+				while (HeapTupleIsValid(htup = systable_getnext(tgscan)))
+				{
+					Form_pg_trigger pg_trigger = (Form_pg_trigger) GETSTRUCT(htup);
+					Oid			constraintNamespaceId;
+
+					/*
+					 * Foreign key constraints have triggers on both the
+					 * parent and child tables.  Since these tables may be in
+					 * different schemas we must pick the child table because
+					 * that table "owns" the constraint.
+					 *
+					 * Referential triggers on the parent table other than
+					 * NOACTION_DEL and NOACTION_UPD are ignored below, so it
+					 * is possible to not check them here, but it seems safer
+					 * to always check.
+					 */
+					if (pg_trigger->tgfoid == F_RI_FKEY_NOACTION_DEL ||
+						pg_trigger->tgfoid == F_RI_FKEY_NOACTION_UPD ||
+						pg_trigger->tgfoid == F_RI_FKEY_RESTRICT_UPD ||
+						pg_trigger->tgfoid == F_RI_FKEY_RESTRICT_DEL ||
+						pg_trigger->tgfoid == F_RI_FKEY_CASCADE_UPD ||
+						pg_trigger->tgfoid == F_RI_FKEY_CASCADE_DEL ||
+						pg_trigger->tgfoid == F_RI_FKEY_SETNULL_UPD ||
+						pg_trigger->tgfoid == F_RI_FKEY_SETNULL_DEL ||
+						pg_trigger->tgfoid == F_RI_FKEY_SETDEFAULT_UPD ||
+						pg_trigger->tgfoid == F_RI_FKEY_SETDEFAULT_DEL)
+						constraintNamespaceId = get_rel_namespace(pg_trigger->tgconstrrelid);
+					else
+						constraintNamespaceId = get_rel_namespace(pg_trigger->tgrelid);
+
+					/*
+					 * If this constraint is not in the schema we're currently
+					 * searching for, keep looking.
+					 */
+					if (constraintNamespaceId != searchNamespaceId)
+						continue;
+
+					/*
+					 * If we found some, check that they fit the deferrability
+					 * but skip referential action ones, since they are
+					 * silently never deferrable.
+					 */
+					if (pg_trigger->tgfoid != F_RI_FKEY_RESTRICT_UPD &&
+						pg_trigger->tgfoid != F_RI_FKEY_RESTRICT_DEL &&
+						pg_trigger->tgfoid != F_RI_FKEY_CASCADE_UPD &&
+						pg_trigger->tgfoid != F_RI_FKEY_CASCADE_DEL &&
+						pg_trigger->tgfoid != F_RI_FKEY_SETNULL_UPD &&
+						pg_trigger->tgfoid != F_RI_FKEY_SETNULL_DEL &&
+						pg_trigger->tgfoid != F_RI_FKEY_SETDEFAULT_UPD &&
+						pg_trigger->tgfoid != F_RI_FKEY_SETDEFAULT_DEL)
+					{
+						if (stmt->deferred && !pg_trigger->tgdeferrable)
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+								errmsg("constraint \"%s\" is not deferrable",
+									   constraint->relname)));
+						oidlist = lappend_oid(oidlist, HeapTupleGetOid(htup));
+					}
+					found = true;
+				}
+
+				systable_endscan(tgscan);
+
+				/*
+				 * Once we've found a matching constraint we do not search
+				 * later parts of the search path.
+				 */
+				if (found)
+					break;
+
+			}
+
+			list_free(namespaceSearchList);
 
 			/*
 			 * Not found ?
@@ -3009,7 +3079,7 @@ AfterTriggerSetState(ConstraintsSetStmt *stmt)
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_OBJECT),
 						 errmsg("constraint \"%s\" does not exist",
-								cname)));
+								constraint->relname)));
 		}
 		heap_close(tgrel, AccessShareLock);
 
@@ -3072,6 +3142,73 @@ AfterTriggerSetState(ConstraintsSetStmt *stmt)
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
+	}
+}
+
+/* ----------
+ * AfterTriggerCheckTruncate()
+ *		Test deferred-trigger status to see if a TRUNCATE is OK.
+ *
+ * The argument is a list of OIDs of relations due to be truncated.
+ * We raise error if there are any pending after-trigger events for them.
+ *
+ * In some scenarios it'd be reasonable to remove pending events (more
+ * specifically, mark them DONE by the current subxact) but without a lot
+ * of knowledge of the trigger semantics we can't do this in general.
+ * ----------
+ */
+void
+AfterTriggerCheckTruncate(List *relids)
+{
+	AfterTriggerEvent event;
+	int			depth;
+
+	/*
+	 * Ignore call if we aren't in a transaction.  (Shouldn't happen?)
+	 */
+	if (afterTriggers == NULL)
+		return;
+
+	/* Scan queued events */
+	for (event = afterTriggers->events.head;
+		 event != NULL;
+		 event = event->ate_next)
+	{
+		/*
+		 * We can ignore completed events.	(Even if a DONE flag is rolled
+		 * back by subxact abort, it's OK because the effects of the TRUNCATE
+		 * must get rolled back too.)
+		 */
+		if (event->ate_event & AFTER_TRIGGER_DONE)
+			continue;
+
+		if (list_member_oid(relids, event->ate_relid))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot truncate table \"%s\" because it has pending trigger events",
+							get_rel_name(event->ate_relid))));
+	}
+
+	/*
+	 * Also scan events queued by incomplete queries.  This could only matter
+	 * if a TRUNCATE is executed by a function or trigger within an updating
+	 * query on the same relation, which is pretty perverse, but let's check.
+	 */
+	for (depth = 0; depth <= afterTriggers->query_depth; depth++)
+	{
+		for (event = afterTriggers->query_stack[depth].head;
+			 event != NULL;
+			 event = event->ate_next)
+		{
+			if (event->ate_event & AFTER_TRIGGER_DONE)
+				continue;
+
+			if (list_member_oid(relids, event->ate_relid))
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot truncate table \"%s\" because it has pending trigger events",
+								get_rel_name(event->ate_relid))));
+		}
 	}
 }
 

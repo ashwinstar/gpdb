@@ -3,12 +3,12 @@
  * analyze.c
  *	  the Postgres statistics generator
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/analyze.c,v 1.89.2.1 2005/11/22 18:23:06 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/analyze.c,v 1.101 2006/11/05 22:42:08 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,12 +17,11 @@
 #include <math.h>
 
 #include "access/heapam.h"
+#include "access/transam.h"
 #include "access/tuptoaster.h"
-#include "catalog/catalog.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
-#include "catalog/pg_operator.h"
 #include "commands/vacuum.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
@@ -31,9 +30,7 @@
 #include "parser/parse_relation.h"
 #include "pgstat.h"
 #include "utils/acl.h"
-#include "utils/builtins.h"
 #include "utils/datum.h"
-#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
@@ -41,7 +38,6 @@
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbanalyze.h"
-
 
 /* Data structure for Algorithm S from Knuth 3.4.2 */
 typedef struct
@@ -144,20 +140,19 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	CHECK_FOR_INTERRUPTS();
 
 	/*
-	 * Race condition -- if the pg_class tuple has gone away since the last
-	 * time we saw it, we don't need to process it.
+	 * Open the relation, getting ShareUpdateExclusiveLock to ensure that two
+	 * ANALYZEs don't run on it concurrently.  (This also locks out a
+	 * concurrent VACUUM, which doesn't matter much at the moment but might
+	 * matter if we ever try to accumulate stats on dead tuples.) If the rel
+	 * has been dropped since we last saw it, we don't need to process it.
 	 */
-	if (!SearchSysCacheExists(RELOID,
-							  ObjectIdGetDatum(relid),
-							  0, 0, 0))
+	onerel = try_relation_open(relid, ShareUpdateExclusiveLock);
+	if (!onerel)
 		return;
 
 	/*
-	 * Open the class, getting only a read lock on it, and check permissions.
-	 * Permissions check should match vacuum's check!
+	 * Check permissions --- this should match vacuum's check!
 	 */
-	onerel = relation_open(relid, AccessShareLock);
-
 	if (!(pg_class_ownercheck(RelationGetRelid(onerel), GetUserId()) ||
 		  (pg_database_ownercheck(MyDatabaseId, GetUserId()) && !onerel->rd_rel->relisshared)))
 	{
@@ -167,7 +162,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 			ereport(WARNING,
 					(errmsg("skipping \"%s\" --- only table or database owner can analyze it",
 							RelationGetRelationName(onerel))));
-		relation_close(onerel, AccessShareLock);
+		relation_close(onerel, ShareUpdateExclusiveLock);
 		return;
 	}
 
@@ -183,7 +178,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 			ereport(WARNING,
 					(errmsg("skipping \"%s\" --- cannot analyze indexes, views, or special system tables",
 							RelationGetRelationName(onerel))));
-		relation_close(onerel, AccessShareLock);
+		relation_close(onerel, ShareUpdateExclusiveLock);
 		return;
 	}
 
@@ -195,7 +190,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	 */
 	if (isOtherTempNamespace(RelationGetNamespace(onerel)))
 	{
-		relation_close(onerel, AccessShareLock);
+		relation_close(onerel, ShareUpdateExclusiveLock);
 		return;
 	}
 
@@ -204,7 +199,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	 */
 	if (RelationGetRelid(onerel) == StatisticRelationId)
 	{
-		relation_close(onerel, AccessShareLock);
+		relation_close(onerel, ShareUpdateExclusiveLock);
 		return;
 	}
 
@@ -230,6 +225,11 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 			char	   *col = strVal(lfirst(le));
 
 			i = attnameAttNum(onerel, col, false);
+			if (i == InvalidAttrNumber)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+					errmsg("column \"%s\" of relation \"%s\" does not exist",
+						   col, RelationGetRelationName(onerel))));
 			vacattrstats[tcnt] = examine_attribute(onerel, i);
 			if (vacattrstats[tcnt] != NULL)
 				tcnt++;
@@ -333,7 +333,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 								  0, 0);
 
 		vac_close_indexes(nindexes, Irel, AccessShareLock);
-		relation_close(onerel, AccessShareLock);
+		relation_close(onerel, ShareUpdateExclusiveLock);
 		return;
 	}
 
@@ -436,8 +436,9 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	{
 		vac_update_relstats(onerel,
 							RelationGetNumberOfBlocks(onerel),
-							totalrows,
-							hasindex, false);
+							totalrows, hasindex, false,
+							InvalidTransactionId);
+
 		for (ind = 0; ind < nindexes; ind++)
 		{
 			AnlIndexData *thisdata = &indexdata[ind];
@@ -446,8 +447,8 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 			totalindexrows = ceil(thisdata->tupleFract * totalrows);
 			vac_update_relstats(Irel[ind],
 								RelationGetNumberOfBlocks(Irel[ind]),
-								totalindexrows,
-								false, false);
+								totalindexrows, false, false,
+								InvalidTransactionId);
 		}
 
 		/* report results to the stats collector, too */
@@ -462,7 +463,8 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	/*
 	 * Close source relation now, but keep lock so that no one deletes it
 	 * before we commit.  (If someone did, they'd fail to clean up the entries
-	 * we made in pg_statistic.)
+	 * we made in pg_statistic.  Also, releasing the lock before commit would
+	 * expose us to concurrent-update failures in update_attstats.)
 	 */
 	relation_close(onerel, NoLock);
 }
@@ -944,18 +946,11 @@ acquire_sample_rows(Relation onerel, HeapTuple *rows, int targrows,
 	return numrows;
 }
 
-/* Select a random value R uniformly distributed in 0 < R < 1 */
+/* Select a random value R uniformly distributed in (0 - 1) */
 static double
 random_fract(void)
 {
-	long		z;
-
-	/* random() can produce endpoint values, try again if so */
-	do
-	{
-		z = random();
-	} while (z <= 0 || z >= MAX_RANDOM_VALUE);
-	return (double) z / (double) MAX_RANDOM_VALUE;
+	return ((double) random() + 1) / ((double) MAX_RANDOM_VALUE + 2);
 }
 
 /*
@@ -1104,14 +1099,9 @@ compare_rows(const void *a, const void *b)
  *		Note analyze_rel() has seen to it that we won't come here when
  *		vacuuming pg_statistic itself.
  *
- *		Note: if two backends concurrently try to analyze the same relation,
- *		the second one is likely to fail here with a "tuple concurrently
- *		updated" error.  This is slightly annoying, but no real harm is done.
- *		We could prevent the problem by using a stronger lock on the
- *		relation for ANALYZE (ie, ShareUpdateExclusiveLock instead
- *		of AccessShareLock); but that cure seems worse than the disease,
- *		especially now that ANALYZE doesn't start a new transaction
- *		for each relation.	The lock could be held for a long time...
+ *		Note: there would be a race condition here if two backends could
+ *		ANALYZE the same table concurrently.  Presently, we lock that out
+ *		by taking a self-exclusive lock on the relation in analyze_rel().
  */
 static void
 update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats)
@@ -1145,7 +1135,7 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats)
 
 		/* Ignore attr if we weren't able to collect stats */
 		if (!stats->stats_valid)
-			continue;	
+			continue;
 
 		/*
 		 * Construct a new pg_statistic tuple
@@ -1234,7 +1224,7 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats)
 		else
 		{
 			/* No, insert new tuple */
-			stup = heap_formtuple(sd->rd_att, values, nulls);
+			stup = heap_formtuple(RelationGetDescr(sd), values, nulls);
 			simple_heap_insert(sd, stup);
 		}
 
@@ -1327,11 +1317,12 @@ typedef struct
 	int			first;			/* values[] index of first occurrence */
 } ScalarMCVItem;
 
-
-/* context information for compare_scalars() */
-static FmgrInfo *datumCmpFn;
-static SortFunctionKind datumCmpFnKind;
-static int *datumCmpTupnoLink;
+typedef struct
+{
+	FmgrInfo   *cmpFn;
+	SortFunctionKind cmpFnKind;
+	int		   *tupnoLink;
+} CompareScalarsContext;
 
 
 static void compute_minimal_stats(VacAttrStatsP stats,
@@ -1342,7 +1333,7 @@ static void compute_scalar_stats(VacAttrStatsP stats,
 					 AnalyzeAttrFetchFunc fetchfunc,
 					 int samplerows,
 					 double totalrows);
-static int	compare_scalars(const void *a, const void *b);
+static int	compare_scalars(const void *a, const void *b, void *arg);
 static int	compare_mcvs(const void *a, const void *b);
 
 
@@ -1865,13 +1856,14 @@ compute_scalar_stats(VacAttrStatsP stats,
 					num_hist,
 					dups_cnt;
 		int			slot_idx = 0;
+		CompareScalarsContext cxt;
 
 		/* Sort the collected values */
-		datumCmpFn = &f_cmpfn;
-		datumCmpFnKind = cmpFnKind;
-		datumCmpTupnoLink = tupnoLink;
-		qsort((void *) values, values_cnt,
-			  sizeof(ScalarItem), compare_scalars);
+		cxt.cmpFn = &f_cmpfn;
+		cxt.cmpFnKind = cmpFnKind;
+		cxt.tupnoLink = tupnoLink;
+		qsort_arg((void *) values, values_cnt, sizeof(ScalarItem),
+				  compare_scalars, (void *) &cxt);
 
 		/*
 		 * Now scan the values in order, find the most common ones, and also
@@ -2220,35 +2212,36 @@ compute_scalar_stats(VacAttrStatsP stats,
 }
 
 /*
- * qsort comparator for sorting ScalarItems
+ * qsort_arg comparator for sorting ScalarItems
  *
- * Aside from sorting the items, we update the datumCmpTupnoLink[] array
+ * Aside from sorting the items, we update the tupnoLink[] array
  * whenever two ScalarItems are found to contain equal datums.	The array
  * is indexed by tupno; for each ScalarItem, it contains the highest
  * tupno that that item's datum has been found to be equal to.  This allows
  * us to avoid additional comparisons in compute_scalar_stats().
  */
 static int
-compare_scalars(const void *a, const void *b)
+compare_scalars(const void *a, const void *b, void *arg)
 {
 	Datum		da = ((ScalarItem *) a)->value;
 	int			ta = ((ScalarItem *) a)->tupno;
 	Datum		db = ((ScalarItem *) b)->value;
 	int			tb = ((ScalarItem *) b)->tupno;
+	CompareScalarsContext *cxt = (CompareScalarsContext *) arg;
 	int32		compare;
 
-	compare = ApplySortFunction(datumCmpFn, datumCmpFnKind,
+	compare = ApplySortFunction(cxt->cmpFn, cxt->cmpFnKind,
 								da, false, db, false);
 	if (compare != 0)
 		return compare;
 
 	/*
-	 * The two datums are equal, so update datumCmpTupnoLink[].
+	 * The two datums are equal, so update cxt->tupnoLink[].
 	 */
-	if (datumCmpTupnoLink[ta] < tb)
-		datumCmpTupnoLink[ta] = tb;
-	if (datumCmpTupnoLink[tb] < ta)
-		datumCmpTupnoLink[tb] = ta;
+	if (cxt->tupnoLink[ta] < tb)
+		cxt->tupnoLink[ta] = tb;
+	if (cxt->tupnoLink[tb] < ta)
+		cxt->tupnoLink[tb] = ta;
 
 	/*
 	 * For equal datums, sort by tupno

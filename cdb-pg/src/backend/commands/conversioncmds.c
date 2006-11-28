@@ -3,26 +3,24 @@
  * conversioncmds.c
  *	  conversion creation command support code
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/conversioncmds.c,v 1.23 2005/10/15 02:49:15 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/conversioncmds.c,v 1.29 2006/07/14 14:52:18 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "catalog/pg_conversion.h"
 #include "access/heapam.h"
-#include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
-#include "catalog/namespace.h"
+#include "catalog/pg_conversion.h"
 #include "catalog/pg_type.h"
-#include "mb/pg_wchar.h"
 #include "commands/conversioncmds.h"
+#include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "parser/parse_func.h"
 #include "utils/acl.h"
@@ -32,6 +30,9 @@
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
+
+static void AlterConversionOwner_internal(Relation rel, Oid conversionOid,
+							  Oid newOwnerId);
 
 /*
  * CREATE CONVERSION
@@ -112,7 +113,7 @@ DropConversionCommand(List *name, DropBehavior behavior, bool missing_ok)
 	conversionOid = FindConversionByName(name);
 	if (!OidIsValid(conversionOid))
 	{
-		if (! missing_ok)
+		if (!missing_ok)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -128,7 +129,6 @@ DropConversionCommand(List *name, DropBehavior behavior, bool missing_ok)
 							NameListToString(name))));
 		}
 
-		Assert(missing_ok);
 		return;
 	}
 
@@ -205,16 +205,13 @@ RenameConversion(List *name, const char *newname)
 }
 
 /*
- * Change conversion owner
+ * Change conversion owner, by name
  */
 void
 AlterConversionOwner(List *name, Oid newOwnerId)
 {
 	Oid			conversionOid;
-	HeapTuple	tup;
 	Relation	rel;
-	Form_pg_conversion convForm;
-	AclResult	aclresult;
 
 	rel = heap_open(ConversionRelationId, RowExclusiveLock);
 
@@ -224,6 +221,40 @@ AlterConversionOwner(List *name, Oid newOwnerId)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("conversion \"%s\" does not exist",
 						NameListToString(name))));
+
+	AlterConversionOwner_internal(rel, conversionOid, newOwnerId);
+
+	heap_close(rel, NoLock);
+}
+
+/*
+ * Change conversion owner, by oid
+ */
+void
+AlterConversionOwner_oid(Oid conversionOid, Oid newOwnerId)
+{
+	Relation	rel;
+
+	rel = heap_open(ConversionRelationId, RowExclusiveLock);
+
+	AlterConversionOwner_internal(rel, conversionOid, newOwnerId);
+
+	heap_close(rel, NoLock);
+}
+
+/*
+ * AlterConversionOwner_internal
+ *
+ * Internal routine for changing the owner.  rel must be pg_conversion, already
+ * open and suitably locked; it will not be closed.
+ */
+static void
+AlterConversionOwner_internal(Relation rel, Oid conversionOid, Oid newOwnerId)
+{
+	Form_pg_conversion convForm;
+	HeapTuple	tup;
+
+	Assert(RelationGetRelid(rel) == ConversionRelationId);
 
 	tup = SearchSysCacheCopy(CONOID,
 							 ObjectIdGetDatum(conversionOid),
@@ -239,13 +270,15 @@ AlterConversionOwner(List *name, Oid newOwnerId)
 	 */
 	if (convForm->conowner != newOwnerId)
 	{
+		AclResult	aclresult;
+
 		/* Superusers can always do it */
 		if (!superuser())
 		{
 			/* Otherwise, must be owner of the existing object */
 			if (!pg_conversion_ownercheck(HeapTupleGetOid(tup), GetUserId()))
 				aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CONVERSION,
-							   NameListToString(name));
+							   NameStr(convForm->conname));
 
 			/* Must be able to become new owner */
 			check_is_member_of_role(GetUserId(), newOwnerId);
@@ -273,6 +306,5 @@ AlterConversionOwner(List *name, Oid newOwnerId)
 								newOwnerId);
 	}
 
-	heap_close(rel, NoLock);
 	heap_freetuple(tup);
 }

@@ -3,12 +3,12 @@
  * oid.c
  *	  Functions for the built-in type Oid ... also oidvector.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/oid.c,v 1.64.2.2 2006/03/02 21:13:11 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/oid.c,v 1.69 2006/10/04 00:29:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -176,7 +176,7 @@ buildoidvector(const Oid *oids, int n)
 	 */
 	result->size = OidVectorSize(n);
 	result->ndim = 1;
-	result->flags = 0;
+	result->dataoffset = 0;		/* never any nulls */
 	result->elemtype = OIDOID;
 	result->dim1 = n;
 	result->lbound1 = 0;
@@ -213,7 +213,7 @@ oidvectorin(PG_FUNCTION_ARGS)
 
 	result->size = OidVectorSize(n);
 	result->ndim = 1;
-	result->flags = 0;
+	result->dataoffset = 0;		/* never any nulls */
 	result->elemtype = OIDOID;
 	result->dim1 = n;
 	result->lbound1 = 0;
@@ -258,10 +258,10 @@ oidvectorrecv(PG_FUNCTION_ARGS)
 	oidvector  *result;
 
 	/*
-	 * Normally one would call array_recv() using DirectFunctionCall3,
-	 * but that does not work since array_recv wants to cache some data
-	 * using fcinfo->flinfo->fn_extra.  So we need to pass it our own
-	 * flinfo parameter.
+	 * Normally one would call array_recv() using DirectFunctionCall3, but
+	 * that does not work since array_recv wants to cache some data using
+	 * fcinfo->flinfo->fn_extra.  So we need to pass it our own flinfo
+	 * parameter.
 	 */
 	InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 3, NULL, NULL);
 
@@ -277,9 +277,9 @@ oidvectorrecv(PG_FUNCTION_ARGS)
 	Assert(!locfcinfo.isnull);
 
 	/* sanity checks: oidvector must be 1-D, no nulls */
-	if (result->ndim != 1 ||
-		result->flags != 0 ||
-		result->elemtype != OIDOID)
+	if (ARR_NDIM(result) != 1 ||
+		ARR_HASNULL(result) ||
+		ARR_ELEMTYPE(result) != OIDOID)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
 				 errmsg("invalid oidvector data")));

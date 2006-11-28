@@ -3,12 +3,12 @@
  * rewriteRemove.c
  *	  routines for removing rewrite rules
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/rewrite/rewriteRemove.c,v 1.63 2005/10/15 02:49:24 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/rewrite/rewriteRemove.c,v 1.68 2006/10/04 00:29:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -34,11 +34,11 @@
  * Delete a rule given its name.
  */
 void
-RemoveRewriteRule(Oid owningRel, const char *ruleName, DropBehavior behavior)
+RemoveRewriteRule(Oid owningRel, const char *ruleName, DropBehavior behavior,
+				  bool missing_ok)
 {
 	HeapTuple	tuple;
 	Oid			eventRelationOid;
-	AclResult	aclresult;
 	ObjectAddress object;
 
 	/*
@@ -53,19 +53,26 @@ RemoveRewriteRule(Oid owningRel, const char *ruleName, DropBehavior behavior)
 	 * complain if no rule with such name exists
 	 */
 	if (!HeapTupleIsValid(tuple))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("rule \"%s\" for relation \"%s\" does not exist",
-						ruleName, get_rel_name(owningRel))));
+	{
+		if (!missing_ok)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("rule \"%s\" for relation \"%s\" does not exist",
+							ruleName, get_rel_name(owningRel))));
+		else
+			ereport(NOTICE,
+					(errmsg("rule \"%s\" for relation \"%s\" does not exist, skipping",
+							ruleName, get_rel_name(owningRel))));
+		return;
+	}
 
 	/*
 	 * Verify user has appropriate permissions.
 	 */
 	eventRelationOid = ((Form_pg_rewrite) GETSTRUCT(tuple))->ev_class;
 	Assert(eventRelationOid == owningRel);
-	aclresult = pg_class_aclcheck(eventRelationOid, GetUserId(), ACL_RULE);
-	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_CLASS,
+	if (!pg_class_ownercheck(eventRelationOid, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
 					   get_rel_name(eventRelationOid));
 
 	/*

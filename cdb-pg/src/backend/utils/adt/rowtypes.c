@@ -3,12 +3,12 @@
  * rowtypes.c
  *	  I/O functions for generic composite types.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/rowtypes.c,v 1.13.2.1 2006/01/17 17:33:21 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/rowtypes.c,v 1.17 2006/07/14 14:52:24 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,9 +17,7 @@
 #include <ctype.h>
 
 #include "access/heapam.h"
-#include "access/htup.h"
 #include "catalog/pg_type.h"
-#include "lib/stringinfo.h"
 #include "libpq/pqformat.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -83,7 +81,6 @@ record_in(PG_FUNCTION_ARGS)
 		   errmsg("input of anonymous composite types is not implemented")));
 	tupTypmod = -1;				/* for all non-anonymous types */
 	tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
-	tupdesc = CreateTupleDescCopy(tupdesc);
 	ncolumns = tupdesc->natts;
 
 	/*
@@ -137,6 +134,7 @@ record_in(PG_FUNCTION_ARGS)
 	{
 		ColumnIOData *column_info = &my_extra->columns[i];
 		Oid			column_type = tupdesc->attrs[i]->atttypid;
+		char	   *column_data;
 
 		/* Ignore dropped columns in datatype, but fill with nulls */
 		if (tupdesc->attrs[i]->attisdropped)
@@ -162,7 +160,7 @@ record_in(PG_FUNCTION_ARGS)
 		/* Check for null: completely empty input means null */
 		if (*ptr == ',' || *ptr == ')')
 		{
-			values[i] = (Datum) 0;
+			column_data = NULL;
 			nulls[i] = 'n';
 		}
 		else
@@ -208,25 +206,27 @@ record_in(PG_FUNCTION_ARGS)
 					appendStringInfoChar(&buf, ch);
 			}
 
-			/*
-			 * Convert the column value
-			 */
-			if (column_info->column_type != column_type)
-			{
-				getTypeInputInfo(column_type,
-								 &column_info->typiofunc,
-								 &column_info->typioparam);
-				fmgr_info_cxt(column_info->typiofunc, &column_info->proc,
-							  fcinfo->flinfo->fn_mcxt);
-				column_info->column_type = column_type;
-			}
-
-			values[i] = FunctionCall3(&column_info->proc,
-									  CStringGetDatum(buf.data),
-								   ObjectIdGetDatum(column_info->typioparam),
-								Int32GetDatum(tupdesc->attrs[i]->atttypmod));
+			column_data = buf.data;
 			nulls[i] = ' ';
 		}
+
+		/*
+		 * Convert the column value
+		 */
+		if (column_info->column_type != column_type)
+		{
+			getTypeInputInfo(column_type,
+							 &column_info->typiofunc,
+							 &column_info->typioparam);
+			fmgr_info_cxt(column_info->typiofunc, &column_info->proc,
+						  fcinfo->flinfo->fn_mcxt);
+			column_info->column_type = column_type;
+		}
+
+		values[i] = InputFunctionCall(&column_info->proc,
+									  column_data,
+									  column_info->typioparam,
+									  tupdesc->attrs[i]->atttypmod);
 
 		/*
 		 * Prep for next column
@@ -262,7 +262,7 @@ record_in(PG_FUNCTION_ARGS)
 	pfree(buf.data);
 	pfree(values);
 	pfree(nulls);
-	FreeTupleDesc(tupdesc);
+	ReleaseTupleDesc(tupdesc);
 
 	PG_RETURN_HEAPTUPLEHEADER(result);
 }
@@ -290,7 +290,6 @@ record_out(PG_FUNCTION_ARGS)
 	tupType = HeapTupleHeaderGetTypeId(rec);
 	tupTypmod = HeapTupleHeaderGetTypMod(rec);
 	tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
-	tupdesc = CreateTupleDescCopy(tupdesc);
 	ncolumns = tupdesc->natts;
 
 	/* Build a temporary HeapTuple control structure */
@@ -375,8 +374,7 @@ record_out(PG_FUNCTION_ARGS)
 			column_info->column_type = column_type;
 		}
 
-		value = DatumGetCString(FunctionCall1(&column_info->proc,
-											  values[i]));
+		value = OutputFunctionCall(&column_info->proc, values[i]);
 
 		/* Detect whether we need double quotes for this value */
 		nq = (value[0] == '\0');	/* force quotes for empty string */
@@ -412,7 +410,7 @@ record_out(PG_FUNCTION_ARGS)
 
 	pfree(values);
 	pfree(nulls);
-	FreeTupleDesc(tupdesc);
+	ReleaseTupleDesc(tupdesc);
 
 	PG_RETURN_CSTRING(buf.data);
 }
@@ -453,7 +451,6 @@ record_recv(PG_FUNCTION_ARGS)
 		   errmsg("input of anonymous composite types is not implemented")));
 	tupTypmod = -1;				/* for all non-anonymous types */
 	tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
-	tupdesc = CreateTupleDescCopy(tupdesc);
 	ncolumns = tupdesc->natts;
 
 	/*
@@ -510,6 +507,9 @@ record_recv(PG_FUNCTION_ARGS)
 		Oid			column_type = tupdesc->attrs[i]->atttypid;
 		Oid			coltypoid;
 		int			itemlen;
+		StringInfoData item_buf;
+		StringInfo	bufptr;
+		char		csave;
 
 		/* Ignore dropped columns in datatype, but fill with nulls */
 		if (tupdesc->attrs[i]->attisdropped)
@@ -537,8 +537,9 @@ record_recv(PG_FUNCTION_ARGS)
 		if (itemlen == -1)
 		{
 			/* -1 length means NULL */
-			values[i] = (Datum) 0;
+			bufptr = NULL;
 			nulls[i] = 'n';
+			csave = 0;			/* keep compiler quiet */
 		}
 		else
 		{
@@ -548,9 +549,6 @@ record_recv(PG_FUNCTION_ARGS)
 			 * We assume we can scribble on the input buffer so as to maintain
 			 * the convention that StringInfos have a trailing null.
 			 */
-			StringInfoData item_buf;
-			char		csave;
-
 			item_buf.data = &buf->data[buf->cursor];
 			item_buf.maxlen = itemlen + 1;
 			item_buf.len = itemlen;
@@ -561,23 +559,28 @@ record_recv(PG_FUNCTION_ARGS)
 			csave = buf->data[buf->cursor];
 			buf->data[buf->cursor] = '\0';
 
-			/* Now call the column's receiveproc */
-			if (column_info->column_type != column_type)
-			{
-				getTypeBinaryInputInfo(column_type,
-									   &column_info->typiofunc,
-									   &column_info->typioparam);
-				fmgr_info_cxt(column_info->typiofunc, &column_info->proc,
-							  fcinfo->flinfo->fn_mcxt);
-				column_info->column_type = column_type;
-			}
-
-			values[i] = FunctionCall3(&column_info->proc,
-									  PointerGetDatum(&item_buf),
-								   ObjectIdGetDatum(column_info->typioparam),
-								Int32GetDatum(tupdesc->attrs[i]->atttypmod));
+			bufptr = &item_buf;
 			nulls[i] = ' ';
+		}
 
+		/* Now call the column's receiveproc */
+		if (column_info->column_type != column_type)
+		{
+			getTypeBinaryInputInfo(column_type,
+								   &column_info->typiofunc,
+								   &column_info->typioparam);
+			fmgr_info_cxt(column_info->typiofunc, &column_info->proc,
+						  fcinfo->flinfo->fn_mcxt);
+			column_info->column_type = column_type;
+		}
+
+		values[i] = ReceiveFunctionCall(&column_info->proc,
+										bufptr,
+										column_info->typioparam,
+										tupdesc->attrs[i]->atttypmod);
+
+		if (bufptr)
+		{
 			/* Trouble if it didn't eat the whole buffer */
 			if (item_buf.cursor != itemlen)
 				ereport(ERROR,
@@ -602,7 +605,7 @@ record_recv(PG_FUNCTION_ARGS)
 	heap_freetuple(tuple);
 	pfree(values);
 	pfree(nulls);
-	FreeTupleDesc(tupdesc);
+	ReleaseTupleDesc(tupdesc);
 
 	PG_RETURN_HEAPTUPLEHEADER(result);
 }
@@ -630,7 +633,6 @@ record_send(PG_FUNCTION_ARGS)
 	tupType = HeapTupleHeaderGetTypeId(rec);
 	tupTypmod = HeapTupleHeaderGetTypMod(rec);
 	tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
-	tupdesc = CreateTupleDescCopy(tupdesc);
 	ncolumns = tupdesc->natts;
 
 	/* Build a temporary HeapTuple control structure */
@@ -719,8 +721,7 @@ record_send(PG_FUNCTION_ARGS)
 			column_info->column_type = column_type;
 		}
 
-		outputbytes = DatumGetByteaP(FunctionCall1(&column_info->proc,
-												   values[i]));
+		outputbytes = SendFunctionCall(&column_info->proc, values[i]);
 
 		/* We assume the result will not have been toasted */
 		pq_sendint(&buf, VARSIZE(outputbytes) - VARHDRSZ, 4);
@@ -731,7 +732,7 @@ record_send(PG_FUNCTION_ARGS)
 
 	pfree(values);
 	pfree(nulls);
-	FreeTupleDesc(tupdesc);
+	ReleaseTupleDesc(tupdesc);
 
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }

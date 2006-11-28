@@ -3,12 +3,12 @@
  * int.c
  *	  Functions for the built-in integer types (except int8).
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/int.c,v 1.68.2.3 2006/06/12 16:29:08 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/int.c,v 1.75 2006/10/04 00:29:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -39,13 +39,6 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 
-
-#ifndef SHRT_MAX
-#define SHRT_MAX (0x7FFF)
-#endif
-#ifndef SHRT_MIN
-#define SHRT_MIN (-0x8000)
-#endif
 
 #define SAMESIGN(a,b)	(((a) < 0) == ((b) < 0))
 
@@ -133,7 +126,7 @@ buildint2vector(const int2 *int2s, int n)
 	 */
 	result->size = Int2VectorSize(n);
 	result->ndim = 1;
-	result->flags = 0;
+	result->dataoffset = 0;		/* never any nulls */
 	result->elemtype = INT2OID;
 	result->dim1 = n;
 	result->lbound1 = 0;
@@ -171,7 +164,7 @@ int2vectorin(PG_FUNCTION_ARGS)
 
 	result->size = Int2VectorSize(n);
 	result->ndim = 1;
-	result->flags = 0;
+	result->dataoffset = 0;		/* never any nulls */
 	result->elemtype = INT2OID;
 	result->dim1 = n;
 	result->lbound1 = 0;
@@ -216,10 +209,10 @@ int2vectorrecv(PG_FUNCTION_ARGS)
 	int2vector *result;
 
 	/*
-	 * Normally one would call array_recv() using DirectFunctionCall3,
-	 * but that does not work since array_recv wants to cache some data
-	 * using fcinfo->flinfo->fn_extra.  So we need to pass it our own
-	 * flinfo parameter.
+	 * Normally one would call array_recv() using DirectFunctionCall3, but
+	 * that does not work since array_recv wants to cache some data using
+	 * fcinfo->flinfo->fn_extra.  So we need to pass it our own flinfo
+	 * parameter.
 	 */
 	InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 3, NULL, NULL);
 
@@ -235,9 +228,9 @@ int2vectorrecv(PG_FUNCTION_ARGS)
 	Assert(!locfcinfo.isnull);
 
 	/* sanity checks: int2vector must be 1-D, no nulls */
-	if (result->ndim != 1 ||
-		result->flags != 0 ||
-		result->elemtype != INT2OID)
+	if (ARR_NDIM(result) != 1 ||
+		ARR_HASNULL(result) ||
+		ARR_ELEMTYPE(result) != INT2OID)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
 				 errmsg("invalid int2vector data")));
@@ -743,9 +736,10 @@ int4mul(PG_FUNCTION_ARGS)
 	int32		result;
 
 #ifdef WIN32
+
 	/*
-	 *	Win32 doesn't throw a catchable exception for
-	 *	SELECT -2147483648 * (-1); -- INT_MIN
+	 * Win32 doesn't throw a catchable exception for SELECT -2147483648 *
+	 * (-1);  -- INT_MIN
 	 */
 	if (arg2 == -1 && arg1 == INT_MIN)
 		ereport(ERROR,
@@ -789,9 +783,10 @@ int4div(PG_FUNCTION_ARGS)
 				 errmsg("division by zero")));
 
 #ifdef WIN32
+
 	/*
-	 *	Win32 doesn't throw a catchable exception for
-	 *	SELECT -2147483648 / (-1); -- INT_MIN
+	 * Win32 doesn't throw a catchable exception for SELECT -2147483648 /
+	 * (-1); -- INT_MIN
 	 */
 	if (arg2 == -1 && arg1 == INT_MIN)
 		ereport(ERROR,

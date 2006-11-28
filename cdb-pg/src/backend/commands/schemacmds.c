@@ -4,18 +4,19 @@
  *	  schema creation/manipulation commands
  *
  * Portions Copyright (c) 2005, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/schemacmds.c,v 1.35 2005/10/15 02:49:15 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/schemacmds.c,v 1.41 2006/07/13 16:49:14 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -36,6 +37,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
 
+static void AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId);
 
 /*
  * CREATE SCHEMA
@@ -150,7 +152,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 		List	   *querytree_list;
 		ListCell   *querytree_item;
 
-		querytree_list = parse_analyze(parsetree, NULL, 0);
+		querytree_list = parse_analyze(parsetree, NULL, NULL, 0);
 
 		foreach(querytree_item, querytree_list)
 		{
@@ -210,7 +212,6 @@ RemoveSchema(List *names, DropBehavior behavior, bool missing_ok)
 							namespaceName)));
 		}
 
-		Assert(missing_ok);
 		return;
 	}
 
@@ -313,6 +314,28 @@ RenameSchema(const char *oldname, const char *newname)
 
 }
 
+void
+AlterSchemaOwner_oid(Oid oid, Oid newOwnerId)
+{
+	HeapTuple	tup;
+	Relation	rel;
+
+	rel = heap_open(NamespaceRelationId, RowExclusiveLock);
+
+	tup = SearchSysCache(NAMESPACEOID,
+						 ObjectIdGetDatum(oid),
+						 0, 0, 0);
+	if (!HeapTupleIsValid(tup))
+		elog(ERROR, "cache lookup failed for schema %u", oid);
+
+	AlterSchemaOwner_internal(tup, rel, newOwnerId);
+
+	ReleaseSysCache(tup);
+
+	heap_close(rel, RowExclusiveLock);
+}
+
+
 /*
  * Change schema owner
  */
@@ -321,7 +344,6 @@ AlterSchemaOwner(const char *name, Oid newOwnerId)
 {
 	HeapTuple	tup;
 	Relation	rel;
-	Form_pg_namespace nspForm;
 
 	rel = heap_open(NamespaceRelationId, RowExclusiveLock);
 
@@ -332,6 +354,22 @@ AlterSchemaOwner(const char *name, Oid newOwnerId)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_SCHEMA),
 				 errmsg("schema \"%s\" does not exist", name)));
+
+	AlterSchemaOwner_internal(tup, rel, newOwnerId);
+
+	ReleaseSysCache(tup);
+
+	heap_close(rel, RowExclusiveLock);
+}
+
+static void
+AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId)
+{
+	Form_pg_namespace nspForm;
+
+	Assert(tup->t_tableOid == NamespaceRelationId);
+	Assert(RelationGetRelid(rel) == NamespaceRelationId);
+
 	nspForm = (Form_pg_namespace) GETSTRUCT(tup);
 
 	/*
@@ -352,7 +390,7 @@ AlterSchemaOwner(const char *name, Oid newOwnerId)
 		/* Otherwise, must be owner of the existing object */
 		if (!pg_namespace_ownercheck(HeapTupleGetOid(tup), GetUserId()))
 			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_NAMESPACE,
-						   name);
+						   NameStr(nspForm->nspname));
 
 		/* Must be able to become new owner */
 		check_is_member_of_role(GetUserId(), newOwnerId);
@@ -406,6 +444,4 @@ AlterSchemaOwner(const char *name, Oid newOwnerId)
 		
 	}
 
-	ReleaseSysCache(tup);
-	heap_close(rel, NoLock);
 }

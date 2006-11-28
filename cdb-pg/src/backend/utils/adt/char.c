@@ -4,12 +4,12 @@
  *	  Functions for the built-in type "char" (not to be confused with
  *	  bpchar, which is the SQL CHAR(n) type).
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/char.c,v 1.43 2005/10/15 02:49:28 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/char.c,v 1.45 2006/03/11 01:19:22 neilc Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,14 +19,6 @@
 
 #include "libpq/pqformat.h"
 #include "utils/builtins.h"
-
-#ifndef SCHAR_MAX
-#define SCHAR_MAX (0x7F)
-#endif
-#ifndef SCHAR_MIN
-#define SCHAR_MIN (-SCHAR_MAX-1)
-#endif
-
 
 /*****************************************************************************
  *	 USER I/O ROUTINES														 *

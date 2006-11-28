@@ -56,7 +56,7 @@ bool		mpp_enable_functions; 	/* allow functions that call back from QE to QD */
 
 bool 		mpp_is_callback;		/* are we executing a callback query? */
 
-SHMEM_OFFSET mpp_qd_proc_offset;	/* the proc entry for the original backend on the QD */
+unsigned long mpp_qd_proc_offset;	/* the proc entry for the original backend on the QD */
 
 int         mpp_command_count;          /* num of commands from client */
 

@@ -8,12 +8,12 @@
  * special I/O conversion routines.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/regproc.c,v 1.96 2005/10/15 02:49:29 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/regproc.c,v 1.99 2006/07/14 14:52:24 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -28,7 +28,6 @@
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
-#include "lib/stringinfo.h"
 #include "miscadmin.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
@@ -598,12 +597,10 @@ Datum
 regoperatorin(PG_FUNCTION_ARGS)
 {
 	char	   *opr_name_or_oid = PG_GETARG_CSTRING(0);
-	Oid			result = InvalidOid;
+	Oid			result;
 	List	   *names;
 	int			nargs;
 	Oid			argtypes[FUNC_MAX_ARGS];
-	char		oprkind;
-	FuncCandidateList clist;
 
 	/* '0' ? */
 	if (strcmp(opr_name_or_oid, "0") == 0)
@@ -642,27 +639,12 @@ regoperatorin(PG_FUNCTION_ARGS)
 				 errmsg("too many arguments"),
 				 errhint("Provide two argument types for operator.")));
 
-	if (argtypes[0] == InvalidOid)
-		oprkind = 'l';
-	else if (argtypes[1] == InvalidOid)
-		oprkind = 'r';
-	else
-		oprkind = 'b';
+	result = OpernameGetOprid(names, argtypes[0], argtypes[1]);
 
-	clist = OpernameGetCandidates(names, oprkind);
-
-	for (; clist; clist = clist->next)
-	{
-		if (memcmp(clist->args, argtypes, 2 * sizeof(Oid)) == 0)
-			break;
-	}
-
-	if (clist == NULL)
+	if (!OidIsValid(result))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("operator does not exist: %s", opr_name_or_oid)));
-
-	result = clist->oid;
 
 	PG_RETURN_OID(result);
 }

@@ -5,12 +5,12 @@
  *
  *		integer:				pg_atoi, pg_itoa, pg_ltoa
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/numutils.c,v 1.69.2.1 2005/11/30 23:10:16 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/numutils.c,v 1.74 2006/03/11 01:19:22 neilc Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -21,26 +21,6 @@
 #include <ctype.h>
 
 #include "utils/builtins.h"
-
-#ifndef INT_MAX
-#define INT_MAX (0x7FFFFFFFL)
-#endif
-#ifndef INT_MIN
-#define INT_MIN (-INT_MAX-1)
-#endif
-#ifndef SHRT_MAX
-#define SHRT_MAX (0x7FFF)
-#endif
-#ifndef SHRT_MIN
-#define SHRT_MIN (-SHRT_MAX-1)
-#endif
-#ifndef SCHAR_MAX
-#define SCHAR_MAX (0x7F)
-#endif
-#ifndef SCHAR_MIN
-#define SCHAR_MIN (-SCHAR_MAX-1)
-#endif
-
 
 /*
  * pg_atoi: convert string to integer

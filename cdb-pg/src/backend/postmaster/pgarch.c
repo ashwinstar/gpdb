@@ -14,12 +14,12 @@
  *
  *	Initial author: Simon Riggs		simon@2ndquadrant.com
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/pgarch.c,v 1.18.2.2 2006/05/30 17:08:20 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/pgarch.c,v 1.26 2006/11/10 22:32:20 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -158,6 +158,9 @@ pgarch_start(void)
 			/* Close the postmaster's sockets */
 			ClosePostmasterPorts(false);
 
+			/* Lose the postmaster's on-exit routines */
+			on_exit_reset();
+
 			/* Drop our connection to postmaster's shared memory, as well */
 			PGSharedMemoryDetach();
 
@@ -194,7 +197,7 @@ pgarch_forkexec(void)
 
 	av[ac++] = "postgres";
 
-	av[ac++] = "-forkarch";
+	av[ac++] = "--forkarch";
 
 	av[ac++] = NULL;			/* filled in by postmaster_forkexec */
 
@@ -218,9 +221,6 @@ PgArchiverMain(int argc, char *argv[])
 	IsUnderPostmaster = true;	/* we are a postmaster subprocess now */
 
 	MyProcPid = getpid();		/* reset MyProcPid */
-
-	/* Lose the postmaster's on-exit routines */
-	on_exit_reset();
 
 	/*
 	 * Ignore all signals usually bound to some action in the postmaster,
@@ -286,7 +286,6 @@ static void
 pgarch_MainLoop(void)
 {
 	time_t		last_copy_time = 0;
-	time_t		curtime;
 
 	/*
 	 * We run the copy loop immediately upon entry, in case there are
@@ -298,7 +297,6 @@ pgarch_MainLoop(void)
 
 	do
 	{
-
 		/* Check for config update */
 		if (got_SIGHUP)
 		{
@@ -318,15 +316,19 @@ pgarch_MainLoop(void)
 
 		/*
 		 * There shouldn't be anything for the archiver to do except to wait
-		 * for a signal, ... however, the archiver exists to protect our data,
-		 * so she wakes up occasionally to allow herself to be proactive. In
-		 * particular this avoids getting stuck if a signal arrives just
-		 * before we sleep.
+		 * for a signal ... however, the archiver exists to protect our data,
+		 * so she wakes up occasionally to allow herself to be proactive.
+		 *
+		 * On some platforms, signals won't interrupt the sleep.  To ensure we
+		 * respond reasonably promptly when someone signals us, break down the
+		 * sleep into 1-second increments, and check for interrupts after each
+		 * nap.
 		 */
-		if (!wakened)
+		while (!(wakened || got_SIGHUP))
 		{
-			pg_usleep(PGARCH_AUTOWAKE_INTERVAL * 1000000L);
+			time_t		curtime;
 
+			pg_usleep(1000000L);
 			curtime = time(NULL);
 			if ((unsigned int) (curtime - last_copy_time) >=
 				(unsigned int) PGARCH_AUTOWAKE_INTERVAL)
@@ -415,7 +417,7 @@ pgarch_archiveXlog(char *xlog)
 			switch (sp[1])
 			{
 				case 'p':
-					/* %p: full path of source file */
+					/* %p: relative path of source file */
 					sp++;
 					StrNCpy(dp, pathname, endp - dp);
 					make_native_path(dp);

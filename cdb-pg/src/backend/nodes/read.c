@@ -5,12 +5,12 @@
  *	  to nodes
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/read.c,v 1.47 2005/10/15 02:49:19 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/read.c,v 1.49 2006/09/27 18:40:09 tgl Exp $
  *
  * HISTORY
  *	  AUTHOR			DATE			MAJOR EVENT
@@ -465,7 +465,7 @@ nodeRead(char *token, int tok_len)
 				char	   *val = palloc(tok_len);
 
 				/* skip leading 'b' */
-				strncpy(val, token + 1, tok_len - 1);
+				memcpy(val, token + 1, tok_len - 1);
 				val[tok_len - 1] = '\0';
 				result = (Node *) makeBitString(val);
 				break;
