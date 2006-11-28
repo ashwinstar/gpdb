@@ -9,12 +9,12 @@
  * storage management for portals (but doesn't run any queries in them).
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/portalcmds.c,v 1.44 2005/11/03 17:11:35 alvherre Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/portalcmds.c,v 1.57 2006/10/19 19:53:03 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -23,11 +23,13 @@
 
 #include <limits.h>
 
+#include "access/xact.h"
 #include "commands/portalcmds.h"
 #include "executor/executor.h"
 #include "optimizer/planner.h"
 #include "rewrite/rewriteHandler.h"
 #include "tcop/pquery.h"
+#include "tcop/tcopprot.h"
 #include "utils/memutils.h"
 #include "utils/resscheduler.h"
 #include "cdb/cdbgang.h"
@@ -94,7 +96,7 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 
 	if (query->into)
 		ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
+				(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
 				 errmsg("DECLARE CURSOR may not specify INTO")));
 	if (query->rowMarks != NIL)
 		ereport(ERROR,
@@ -102,7 +104,7 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 			  errmsg("DECLARE CURSOR ... FOR UPDATE/SHARE is not supported"),
 				 errdetail("Cursors must be READ ONLY.")));
 
-	plan = planner(query, true, stmt->options, NULL);
+	plan = planner(query, true, stmt->options, params);
 
 	/*
 	 * Create a portal and copy the query and plan into its memory context.
@@ -114,8 +116,13 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 	query = copyObject(query);
 	plan = copyObject(plan);
 
+	/*
+	 * XXX: debug_query_string is wrong here: the user might have submitted
+	 * multiple semicolon delimited queries.
+	 */
 	PortalDefineQuery(portal,
 					  NULL,		/* unfortunately don't have sourceText */
+					  debug_query_string ? pstrdup(debug_query_string) : NULL,
 					  T_DeclareCursorStmt,
 					  "SELECT", /* cursor's query is always a SELECT */
 					  list_make1(query),
@@ -301,17 +308,15 @@ PortalCleanup(Portal portal)
 	 * Shut down executor, if still running.  We skip this during error abort,
 	 * since other mechanisms will take care of releasing executor resources,
 	 * and we can't be sure that ExecutorEnd itself wouldn't fail.
-	 *
 	 */
 	queryDesc = PortalGetQueryDesc(portal);
 	if (queryDesc)
 	{
 		portal->queryDesc = NULL;
-		
 		if (portal->status != PORTAL_FAILED)
 		{
 			ResourceOwner saveResourceOwner;
-			
+
 			/* We must make the portal's resource owner current */
 			saveResourceOwner = CurrentResourceOwner;
 			PG_TRY();
@@ -458,17 +463,8 @@ PersistHoldablePortal(Portal portal)
 
 				for (store_pos = 0; store_pos < portal->portalPos; store_pos++)
 				{
-					HeapTuple	tup;
-					bool		should_free;
-
-					tup = tuplestore_gettuple(portal->holdStore, true,
-											  &should_free);
-
-					if (tup == NULL)
+					if (!tuplestore_advance(portal->holdStore, true))
 						elog(ERROR, "unexpected end of tuple stream");
-
-					if (should_free)
-						pfree(tup);
 				}
 			}
 		}

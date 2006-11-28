@@ -965,7 +965,6 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 
 		/* Allocate the space in one chunk, like heap_form_tuple */
 		htup = (HeapTuple)palloc(HEAPTUPLESIZE + hoff + datalen);
-		htup->t_datamcxt = CurrentMemoryContext;
 
 		t_data = (HeapTupleHeader) ((char *)htup + HEAPTUPLESIZE);
 
