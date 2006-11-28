@@ -122,7 +122,7 @@ UNKNOWN_OPTION () {
 CREATE_TEMP_DB () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Creating temporary parsing database"
-	MASTER_IP_ADDRESS=(`$IFCONFIG |$GREP "inet addr"|$GREP -v addr:127|$AWK '{print $2}'|$CUT -d: -f2`)	
+	MASTER_IP_ADDRESS=(`$IFCONFIG -a |$GREP "inet "|$GREP -v "127."|$AWK '{print $2}'|$CUT -d: -f2`)	
 	RUN_COMMAND "$INITDB -E $ENCODING --locale=$LOCALE_SETTING -D ${TEMP_DATA_DIRECTORY}/parsetemp"
 	LOG_MSG "[INFO]:-Successfully initialized temporary parsing database"
 	LOG_MSG "[INFO]:-Setting temporary port number to $TEMP_PORT"
@@ -156,7 +156,7 @@ PARSE_SQL_FILE () {
 	LOG_MSG "[INFO]:-Obtained Master instance array name $MASTER_MPP_NAME"
 	REBUILD_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select hostname, port, datadir, dbid, content, definedprimary from $CONFIG_TABLE where content<>-1;"`)
 	if [ $? -ne 0 ] || [ ! $REBUILD_ARRAY ];then STOP_BUILD=1;fi
-	MASTER_IP_ADDRESS_ALL=(`$IFCONFIG |$GREP "inet addr"|$GREP -v addr:127|$AWK '{print $2}'|$CUT -d: -f2`)	
+	MASTER_IP_ADDRESS_ALL=(`$IFCONFIG -a |$GREP "inet "|$GREP -v "127."|$AWK '{print $2}'|$CUT -d: -f2`)	
 	ERROR_CHK $? "get master host IP details" 2
 	MASTER_IP_ADDRESS=(`$ECHO ${MASTER_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
 	MASTER_TOTAL_SEG=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select numsegments from $MPP_MPP_TABLE;"`
@@ -379,12 +379,6 @@ BUILD_SEGMENT_INSTANCES () {
 	do
 		SET_VAR $SEG_INFO
 		LOG_MSG "[INFO]:-Processing segment host $SEG_HOSTNAME port $SEG_PORT data directory $SEG_DATADIR"
-		if [ `$TRUSTED_SHELL ${SEG_HOSTNAME} "$GREP -c \"${MPP_LIBRARY_PATH}/plpgsql.so\" ${SHARE_PATH}/$SCHEMA_FILE"` -eq 0 ];then
-			LOG_MSG "[INFO]:-Setting path for plpgsql.so"
-			ED_FILE ${SHARE_PATH}/$SCHEMA_FILE plpgsql.so "AS '${MPP_LIBRARY_PATH}/plpgsql.so'" 1 $SEG_HOSTNAME
-		else
-			LOG_MSG "[INFO]:-Path correct for plpgsql.so, skipping edit"
-		fi
 		RUN_COMMAND_REMOTE ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};$INITDB -E $ENCODING --locale=$LOCALE_SETTING -D $SEG_DATADIR"
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${SEG_HOSTNAME} \"$RM -rf $SEG_DATADIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $SEG_DATADIR on $SEG_HOSTNAME\""
