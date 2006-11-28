@@ -78,6 +78,7 @@ QE_MIRROR_ARRAY=""
 MPP_PASSWD=mpparray
 TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
 TMP_FILE=/tmp/cluster_tmp_file.$$
+TMP_HOSTNAME_FILE=hostname_test_file.$$
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -219,9 +220,19 @@ CHK_PARAMS () {
 
 		#Make sure that this script is running on the QD host
 		if [ $MASTER_HOSTNAME != `$HOSTNAME` ]; then
-				LOG_MSG "[FATAL]:-Instance master hostname in configuration file is ${MASTER_HOSTNAME}"
-				LOG_MSG "[FATAL]:-Operating system command returns `$HOSTNAME`"
-				ERROR_EXIT "[FATAL]:-This script must be executed on the Master host $MASTER_HOSTNAME" 2
+				LOG_MSG "[WARN]:-Master hostname $MASTER_HOSTNAME does not match hostname output"
+				LOG_MSG "[INFO]:-Checking to see if $MASTER_HOSTNAME can be resolved on this host"
+				$TRUSTED_SHELL $MASTER_HOSTNAME "$TOUCH $TMP_HOSTNAME_FILE"
+				if [ -f $TMP_HOSTNAME_FILE ];then
+					LOG_MSG "[INFO]:-Can resolve name $MASTER_HOSTNAME to this host"
+					$RM -f $TMP_HOSTNAME_FILE
+				else
+					$TRUSTED_SHELL $MASTER_HOSTNAME "$RM -f $TMP_HOSTNAME_FILE"
+					LOG_MSG "[FATAL]:-Instance master hostname in configuration file is ${MASTER_HOSTNAME}"
+					LOG_MSG "[FATAL]:-Operating system command returns `$HOSTNAME`"
+					LOG_MSG "[FATAL]:-Unable to resolve $MASTER_HOSTNAME to this host"
+					ERROR_EXIT "[FATAL]:-This script must be executed on the Master host $MASTER_HOSTNAME" 2
+				fi
 		fi
 
 
@@ -1065,22 +1076,15 @@ else
 fi
 LOG_MSG "[INFO]:-Removing back out file"
 $RM -f $BACKOUT_FILE
-#Check the library info in initdb
 LOG_MSG "[INFO]:-MPP instance successfully created"
 LOG_MSG "[INFO]:-------------------------------------------------------"
-if [ `strings $INITDB|$GREP -c "$MPP_LIBRARY_PATH"` -eq 0 ];then
-LOG_MSG "[INFO]:-To access instance via psql you will need to add the below"
-LOG_MSG "[INFO]:-library path $MPP_LIBRARY_PATH"
-LOG_MSG "[INFO]:-to the ${LIB_TYPE} environment variable"
-LOG_MSG "[INFO]:-For example the below command can be used"
-LOG_MSG "[INFO]:-export ${LIB_TYPE}=$MPP_LIBRARY_PATH:\$${LIB_TYPE}"
-LOG_MSG "[INFO]:-This should be set in users startup environment file .bashrc"
-fi
-LOG_MSG "[INFO]:-To access the MPP scripts for this instance:"
-LOG_MSG "[INFO]:-In user $USER_NAME startup environment file add following line"
-LOG_MSG "[INFO]:-export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1"
-LOG_MSG "[INFO]:-or, use -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 option for the MPP scripts"
-LOG_MSG "[INFO]:-Example ./mppstate.sh -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1"
+LOG_MSG "[INFO]:-To complete the environment configuration, please "
+LOG_MSG "[INFO]:-update $USER_NAME .bashrc file with the following"
+LOG_MSG "[INFO]:-1. Ensure that the greenplum_path.sh file is sourced"
+LOG_MSG "[INFO]:-2. Add \"export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1\""
+LOG_MSG "[INFO]:-   to access the MPP scripts for this instance:"
+LOG_MSG "[INFO]:-   or, use -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 option for the MPP scripts"
+LOG_MSG "[INFO]:-   Example ./mppstate.sh -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1"
 LOG_MSG "[INFO]:-Script log file = $LOG_FILE"
 LOG_MSG "[INFO]:-To remove instance, run mppdeletecluster.sh script"
 if [ x"" != x"$STANDBY_HOSTNAME" ];then
