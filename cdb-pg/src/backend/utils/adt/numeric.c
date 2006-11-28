@@ -11,10 +11,10 @@
  * Transactions on Mathematical Software, Vol. 24, No. 4, December 1998,
  * pages 359-367.
  *
- * Copyright (c) 1998-2005, PostgreSQL Global Development Group
+ * Copyright (c) 1998-2006, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/numeric.c,v 1.86.2.1 2005/11/22 18:23:21 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/numeric.c,v 1.96 2006/10/04 00:29:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -25,7 +25,6 @@
 #include <float.h>
 #include <limits.h>
 #include <math.h>
-#include <errno.h>
 
 #include "catalog/pg_type.h"
 #include "libpq/pqformat.h"
@@ -229,6 +228,10 @@ static void dump_var(const char *str, NumericVar *var);
 
 #define init_var(v)		MemSetAligned(v, 0, sizeof(NumericVar))
 
+#define NUMERIC_DIGITS(num) ((NumericDigit *)(num)->n_data)
+#define NUMERIC_NDIGITS(num) \
+	(((num)->varlen - NUMERIC_HDRSZ) / sizeof(NumericDigit))
+
 static void alloc_var(NumericVar *var, int ndigits);
 static void free_var(NumericVar *var);
 static void zero_var(NumericVar *var);
@@ -250,6 +253,10 @@ static double numericvar_to_double_no_overflow(NumericVar *var);
 
 static int	cmp_numerics(Numeric num1, Numeric num2);
 static int	cmp_var(NumericVar *var1, NumericVar *var2);
+static int cmp_var_common(const NumericDigit *var1digits, int var1ndigits,
+			   int var1weight, int var1sign,
+			   const NumericDigit *var2digits, int var2ndigits,
+			   int var2weight, int var2sign);
 static void add_var(NumericVar *var1, NumericVar *var2, NumericVar *result);
 static void sub_var(NumericVar *var1, NumericVar *var2, NumericVar *result);
 static void mul_var(NumericVar *var1, NumericVar *var2, NumericVar *result,
@@ -271,6 +278,10 @@ static void power_var_int(NumericVar *base, int exp, NumericVar *result,
 			  int rscale);
 
 static int	cmp_abs(NumericVar *var1, NumericVar *var2);
+static int cmp_abs_common(const NumericDigit *var1digits, int var1ndigits,
+			   int var1weight,
+			   const NumericDigit *var2digits, int var2ndigits,
+			   int var2weight);
 static void add_abs(NumericVar *var1, NumericVar *var2, NumericVar *result);
 static void sub_abs(NumericVar *var1, NumericVar *var2, NumericVar *result);
 static void round_var(NumericVar *var, int rscale);
@@ -1064,19 +1075,10 @@ cmp_numerics(Numeric num1, Numeric num2)
 	}
 	else
 	{
-		NumericVar	arg1;
-		NumericVar	arg2;
-
-		init_var(&arg1);
-		init_var(&arg2);
-
-		set_var_from_num(num1, &arg1);
-		set_var_from_num(num2, &arg2);
-
-		result = cmp_var(&arg1, &arg2);
-
-		free_var(&arg1);
-		free_var(&arg2);
+		result = cmp_var_common(NUMERIC_DIGITS(num1), NUMERIC_NDIGITS(num1),
+								num1->n_weight, NUMERIC_SIGN(num1),
+								NUMERIC_DIGITS(num2), NUMERIC_NDIGITS(num2),
+								num2->n_weight, NUMERIC_SIGN(num2));
 	}
 
 	return result;
@@ -2073,7 +2075,7 @@ do_numeric_accum(ArrayType *transarray, Numeric newval)
 	/* We assume the input is array of numeric */
 	deconstruct_array(transarray,
 					  NUMERICOID, -1, false, 'i',
-					  &transdatums, &ndatums);
+					  &transdatums, NULL, &ndatums);
 	if (ndatums != 3)
 		elog(ERROR, "expected 3-element numeric array");
 	N = transdatums[0];
@@ -2164,7 +2166,7 @@ numeric_avg(PG_FUNCTION_ARGS)
 	/* We assume the input is array of numeric */
 	deconstruct_array(transarray,
 					  NUMERICOID, -1, false, 'i',
-					  &transdatums, &ndatums);
+					  &transdatums, NULL, &ndatums);
 	if (ndatums != 3)
 		elog(ERROR, "expected 3-element numeric array");
 	N = DatumGetNumeric(transdatums[0]);
@@ -2181,10 +2183,22 @@ numeric_avg(PG_FUNCTION_ARGS)
 										NumericGetDatum(N)));
 }
 
-Datum
-numeric_variance(PG_FUNCTION_ARGS)
+/*
+ * Workhorse routine for the standard deviance and variance
+ * aggregates. 'transarray' is the aggregate's transition
+ * array. 'variance' specifies whether we should calculate the
+ * variance or the standard deviation. 'sample' indicates whether the
+ * caller is interested in the sample or the population
+ * variance/stddev.
+ *
+ * If appropriate variance statistic is undefined for the input,
+ * *is_null is set to true and NULL is returned.
+ */
+static Numeric
+numeric_stddev_internal(ArrayType *transarray,
+						bool variance, bool sample,
+						bool *is_null)
 {
-	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
 	Datum	   *transdatums;
 	int			ndatums;
 	Numeric		N,
@@ -2195,12 +2209,15 @@ numeric_variance(PG_FUNCTION_ARGS)
 				vsumX,
 				vsumX2,
 				vNminus1;
+	NumericVar *comp;
 	int			rscale;
+
+	*is_null = false;
 
 	/* We assume the input is array of numeric */
 	deconstruct_array(transarray,
 					  NUMERICOID, -1, false, 'i',
-					  &transdatums, &ndatums);
+					  &transdatums, NULL, &ndatums);
 	if (ndatums != 3)
 		elog(ERROR, "expected 3-element numeric array");
 	N = DatumGetNumeric(transdatums[0]);
@@ -2208,16 +2225,25 @@ numeric_variance(PG_FUNCTION_ARGS)
 	sumX2 = DatumGetNumeric(transdatums[2]);
 
 	if (NUMERIC_IS_NAN(N) || NUMERIC_IS_NAN(sumX) || NUMERIC_IS_NAN(sumX2))
-		PG_RETURN_NUMERIC(make_result(&const_nan));
+		return make_result(&const_nan);
 
-	/* Sample variance is undefined when N is 0 or 1, so return NULL */
 	init_var(&vN);
 	set_var_from_num(N, &vN);
 
-	if (cmp_var(&vN, &const_one) <= 0)
+	/*
+	 * Sample stddev and variance are undefined when N <= 1; population stddev
+	 * is undefined when N == 0. Return NULL in either case.
+	 */
+	if (sample)
+		comp = &const_one;
+	else
+		comp = &const_zero;
+
+	if (cmp_var(&vN, comp) <= 0)
 	{
 		free_var(&vN);
-		PG_RETURN_NULL();
+		*is_null = true;
+		return NULL;
 	}
 
 	init_var(&vNminus1);
@@ -2245,6 +2271,8 @@ numeric_variance(PG_FUNCTION_ARGS)
 		mul_var(&vN, &vNminus1, &vNminus1, 0);	/* N * (N - 1) */
 		rscale = select_div_scale(&vsumX2, &vNminus1);
 		div_var(&vsumX2, &vNminus1, &vsumX, rscale, true);		/* variance */
+		if (!variance)
+			sqrt_var(&vsumX, &vsumX, rscale);	/* stddev */
 
 		res = make_result(&vsumX);
 	}
@@ -2254,86 +2282,68 @@ numeric_variance(PG_FUNCTION_ARGS)
 	free_var(&vsumX);
 	free_var(&vsumX2);
 
-	PG_RETURN_NUMERIC(res);
+	return res;
 }
 
 Datum
-numeric_stddev(PG_FUNCTION_ARGS)
+numeric_var_samp(PG_FUNCTION_ARGS)
 {
-	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
-	Datum	   *transdatums;
-	int			ndatums;
-	Numeric		N,
-				sumX,
-				sumX2,
-				res;
-	NumericVar	vN,
-				vsumX,
-				vsumX2,
-				vNminus1;
-	int			rscale;
+	Numeric		res;
+	bool		is_null;
 
-	/* We assume the input is array of numeric */
-	deconstruct_array(transarray,
-					  NUMERICOID, -1, false, 'i',
-					  &transdatums, &ndatums);
-	if (ndatums != 3)
-		elog(ERROR, "expected 3-element numeric array");
-	N = DatumGetNumeric(transdatums[0]);
-	sumX = DatumGetNumeric(transdatums[1]);
-	sumX2 = DatumGetNumeric(transdatums[2]);
+	res = numeric_stddev_internal(PG_GETARG_ARRAYTYPE_P(0),
+								  true, true, &is_null);
 
-	if (NUMERIC_IS_NAN(N) || NUMERIC_IS_NAN(sumX) || NUMERIC_IS_NAN(sumX2))
-		PG_RETURN_NUMERIC(make_result(&const_nan));
-
-	/* Sample stddev is undefined when N is 0 or 1, so return NULL */
-	init_var(&vN);
-	set_var_from_num(N, &vN);
-
-	if (cmp_var(&vN, &const_one) <= 0)
-	{
-		free_var(&vN);
+	if (is_null)
 		PG_RETURN_NULL();
-	}
-
-	init_var(&vNminus1);
-	sub_var(&vN, &const_one, &vNminus1);
-
-	init_var(&vsumX);
-	set_var_from_num(sumX, &vsumX);
-	init_var(&vsumX2);
-	set_var_from_num(sumX2, &vsumX2);
-
-	/* compute rscale for mul_var calls */
-	rscale = vsumX.dscale * 2;
-
-	mul_var(&vsumX, &vsumX, &vsumX, rscale);	/* vsumX = sumX * sumX */
-	mul_var(&vN, &vsumX2, &vsumX2, rscale);		/* vsumX2 = N * sumX2 */
-	sub_var(&vsumX2, &vsumX, &vsumX2);	/* N * sumX2 - sumX * sumX */
-
-	if (cmp_var(&vsumX2, &const_zero) <= 0)
-	{
-		/* Watch out for roundoff error producing a negative numerator */
-		res = make_result(&const_zero);
-	}
 	else
-	{
-		mul_var(&vN, &vNminus1, &vNminus1, 0);	/* N * (N - 1) */
-		rscale = select_div_scale(&vsumX2, &vNminus1);
-		div_var(&vsumX2, &vNminus1, &vsumX, rscale, true);		/* variance */
-		sqrt_var(&vsumX, &vsumX, rscale);		/* stddev */
-
-		res = make_result(&vsumX);
-	}
-
-	free_var(&vN);
-	free_var(&vNminus1);
-	free_var(&vsumX);
-	free_var(&vsumX2);
-
-	PG_RETURN_NUMERIC(res);
+		PG_RETURN_NUMERIC(res);
 }
 
+Datum
+numeric_stddev_samp(PG_FUNCTION_ARGS)
+{
+	Numeric		res;
+	bool		is_null;
+
+	res = numeric_stddev_internal(PG_GETARG_ARRAYTYPE_P(0),
+								  false, true, &is_null);
+
+	if (is_null)
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_NUMERIC(res);
+}
+
+Datum
+numeric_var_pop(PG_FUNCTION_ARGS)
+{
+	Numeric		res;
+	bool		is_null;
+
+	res = numeric_stddev_internal(PG_GETARG_ARRAYTYPE_P(0),
+								  true, false, &is_null);
+
+	if (is_null)
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_NUMERIC(res);
+}
+
+Datum
+numeric_stddev_pop(PG_FUNCTION_ARGS)
+{
+	Numeric		res;
+	bool		is_null;
+
+	res = numeric_stddev_internal(PG_GETARG_ARRAYTYPE_P(0),
+								  false, false, &is_null);
+
+	if (is_null)
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_NUMERIC(res);
+}
 
 /*
  * SUM transition functions for integer datatypes.
@@ -2514,7 +2524,8 @@ int2_avg_accum(PG_FUNCTION_ARGS)
 	else
 		transarray = PG_GETARG_ARRAYTYPE_P_COPY(0);
 
-	if (ARR_SIZE(transarray) != ARR_OVERHEAD(1) + sizeof(Int8TransTypeData))
+	if (ARR_HASNULL(transarray) ||
+		ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
 		elog(ERROR, "expected 2-element int8 array");
 
 	transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
@@ -2541,7 +2552,8 @@ int4_avg_accum(PG_FUNCTION_ARGS)
 	else
 		transarray = PG_GETARG_ARRAYTYPE_P_COPY(0);
 
-	if (ARR_SIZE(transarray) != ARR_OVERHEAD(1) + sizeof(Int8TransTypeData))
+	if (ARR_HASNULL(transarray) ||
+		ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
 		elog(ERROR, "expected 2-element int8 array");
 
 	transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
@@ -2559,7 +2571,8 @@ int8_avg(PG_FUNCTION_ARGS)
 	Datum		countd,
 				sumd;
 
-	if (ARR_SIZE(transarray) != ARR_OVERHEAD(1) + sizeof(Int8TransTypeData))
+	if (ARR_HASNULL(transarray) ||
+		ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
 		elog(ERROR, "expected 2-element int8 array");
 	transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
 
@@ -2591,11 +2604,11 @@ int8_avg(PG_FUNCTION_ARGS)
 static void
 dump_numeric(const char *str, Numeric num)
 {
-	NumericDigit *digits = (NumericDigit *) num->n_data;
+	NumericDigit *digits = NUMERIC_DIGITS(num);
 	int			ndigits;
 	int			i;
 
-	ndigits = (num->varlen - NUMERIC_HDRSZ) / sizeof(NumericDigit);
+	ndigits = NUMERIC_NDIGITS(num);
 
 	printf("%s: NUMERIC w=%d d=%d ", str, num->n_weight, NUMERIC_DSCALE(num));
 	switch (NUMERIC_SIGN(num))
@@ -2895,7 +2908,7 @@ set_var_from_num(Numeric num, NumericVar *dest)
 {
 	int			ndigits;
 
-	ndigits = (num->varlen - NUMERIC_HDRSZ) / sizeof(NumericDigit);
+	ndigits = NUMERIC_NDIGITS(num);
 
 	alloc_var(dest, ndigits);
 
@@ -3206,8 +3219,12 @@ apply_typmod(NumericVar *var, int32 typmod)
 					ereport(ERROR,
 							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 							 errmsg("numeric field overflow"),
-							 errdetail("The absolute value is greater than or equal to 10^%d for field with precision %d, scale %d.",
-									   ddigits - 1, precision, scale)));
+							 errdetail("A field with precision %d, scale %d must round to an absolute value less than %s%d.",
+									   precision, scale,
+					/* Display 10^0 as 1 */
+									   maxdigits ? "10^" : "",
+									   maxdigits ? maxdigits : 1
+									   )));
 				break;
 			}
 			ddigits -= DEC_DIGITS;
@@ -3391,32 +3408,52 @@ numericvar_to_double_no_overflow(NumericVar *var)
 static int
 cmp_var(NumericVar *var1, NumericVar *var2)
 {
-	if (var1->ndigits == 0)
+	return cmp_var_common(var1->digits, var1->ndigits,
+						  var1->weight, var1->sign,
+						  var2->digits, var2->ndigits,
+						  var2->weight, var2->sign);
+}
+
+/*
+ * cmp_var_common() -
+ *
+ *	Main routine of cmp_var(). This function can be used by both
+ *	NumericVar and Numeric.
+ */
+static int
+cmp_var_common(const NumericDigit *var1digits, int var1ndigits,
+			   int var1weight, int var1sign,
+			   const NumericDigit *var2digits, int var2ndigits,
+			   int var2weight, int var2sign)
+{
+	if (var1ndigits == 0)
 	{
-		if (var2->ndigits == 0)
+		if (var2ndigits == 0)
 			return 0;
-		if (var2->sign == NUMERIC_NEG)
+		if (var2sign == NUMERIC_NEG)
 			return 1;
 		return -1;
 	}
-	if (var2->ndigits == 0)
+	if (var2ndigits == 0)
 	{
-		if (var1->sign == NUMERIC_POS)
+		if (var1sign == NUMERIC_POS)
 			return 1;
 		return -1;
 	}
 
-	if (var1->sign == NUMERIC_POS)
+	if (var1sign == NUMERIC_POS)
 	{
-		if (var2->sign == NUMERIC_NEG)
+		if (var2sign == NUMERIC_NEG)
 			return 1;
-		return cmp_abs(var1, var2);
+		return cmp_abs_common(var1digits, var1ndigits, var1weight,
+							  var2digits, var2ndigits, var2weight);
 	}
 
-	if (var2->sign == NUMERIC_POS)
+	if (var2sign == NUMERIC_POS)
 		return -1;
 
-	return cmp_abs(var2, var1);
+	return cmp_abs_common(var2digits, var2ndigits, var2weight,
+						  var1digits, var1ndigits, var1weight);
 }
 
 
@@ -4811,33 +4848,44 @@ power_var_int(NumericVar *base, int exp, NumericVar *result, int rscale)
 static int
 cmp_abs(NumericVar *var1, NumericVar *var2)
 {
-	NumericDigit *var1digits = var1->digits;
-	NumericDigit *var2digits = var2->digits;
+	return cmp_abs_common(var1->digits, var1->ndigits, var1->weight,
+						  var2->digits, var2->ndigits, var2->weight);
+}
+
+/* ----------
+ * cmp_abs_common() -
+ *
+ *	Main routine of cmp_abs(). This function can be used by both
+ *	NumericVar and Numeric.
+ * ----------
+ */
+static int
+cmp_abs_common(const NumericDigit *var1digits, int var1ndigits, int var1weight,
+			 const NumericDigit *var2digits, int var2ndigits, int var2weight)
+{
 	int			i1 = 0;
 	int			i2 = 0;
-	int			w1 = var1->weight;
-	int			w2 = var2->weight;
 
 	/* Check any digits before the first common digit */
 
-	while (w1 > w2 && i1 < var1->ndigits)
+	while (var1weight > var2weight && i1 < var1ndigits)
 	{
 		if (var1digits[i1++] != 0)
 			return 1;
-		w1--;
+		var1weight--;
 	}
-	while (w2 > w1 && i2 < var2->ndigits)
+	while (var2weight > var1weight && i2 < var2ndigits)
 	{
 		if (var2digits[i2++] != 0)
 			return -1;
-		w2--;
+		var2weight--;
 	}
 
 	/* At this point, either w1 == w2 or we've run out of digits */
 
-	if (w1 == w2)
+	if (var1weight == var2weight)
 	{
-		while (i1 < var1->ndigits && i2 < var2->ndigits)
+		while (i1 < var1ndigits && i2 < var2ndigits)
 		{
 			int			stat = var1digits[i1++] - var2digits[i2++];
 
@@ -4854,12 +4902,12 @@ cmp_abs(NumericVar *var1, NumericVar *var2)
 	 * At this point, we've run out of digits on one side or the other; so any
 	 * remaining nonzero digits imply that side is larger
 	 */
-	while (i1 < var1->ndigits)
+	while (i1 < var1ndigits)
 	{
 		if (var1digits[i1++] != 0)
 			return 1;
 	}
-	while (i2 < var2->ndigits)
+	while (i2 < var2ndigits)
 	{
 		if (var2digits[i2++] != 0)
 			return -1;
@@ -5259,11 +5307,11 @@ do_numeric_amalg(ArrayType *aTransArray, ArrayType *bTransArray)
 				aSumX, bSumX,
 				aSumX2, bSumX2;
 	ArrayType  *result;
-
+	
 	/* We assume the input is array of numeric */
 	deconstruct_array(aTransArray,
 					  NUMERICOID, -1, false, 'i',
-					  &transdatums, &ndatums);
+					  &transdatums, NULL, &ndatums);
 	if (ndatums != 3)
 		elog(ERROR, "expected 3-element numeric array");
 	aN = transdatums[0];
@@ -5272,7 +5320,7 @@ do_numeric_amalg(ArrayType *aTransArray, ArrayType *bTransArray)
 
 	deconstruct_array(bTransArray,
 					  NUMERICOID, -1, false, 'i',
-					  &transdatums, &ndatums);
+					  &transdatums, NULL, &ndatums);
 	if (ndatums != 3)
 		elog(ERROR, "expected 3-element numeric array");
 	bN = transdatums[0];
@@ -5321,10 +5369,12 @@ int8_avg_amalg(PG_FUNCTION_ARGS)
 	else
 		aTransArray = PG_GETARG_ARRAYTYPE_P_COPY(0);
 
-	if (ARR_SIZE(aTransArray) != ARR_OVERHEAD(1) + sizeof(Int8TransTypeData))
+	if (ARR_HASNULL(transarray) ||
+	 	ARR_SIZE(aTransArray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
 		elog(ERROR, "expected 2-element int8 array");
 
-	if (ARR_SIZE(bTransArray) != ARR_OVERHEAD(1) + sizeof(Int8TransTypeData))
+	if (ARR_HASNULL(transarray) ||
+		ARR_SIZE(bTransArray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
 		elog(ERROR, "expected 2-element int8 array");
 
 	atransdata = (Int8TransTypeData *) ARR_DATA_PTR(aTransArray);
