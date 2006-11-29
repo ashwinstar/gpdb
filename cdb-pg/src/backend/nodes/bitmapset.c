@@ -11,10 +11,10 @@
  * bms_is_empty() in preference to testing for NULL.)
  *
  *
- * Copyright (c) 2003-2005, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2006, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/bitmapset.c,v 1.10 2005/10/15 02:49:18 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/bitmapset.c,v 1.11 2006/03/05 15:58:27 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -23,8 +23,8 @@
 #include "nodes/bitmapset.h"
 
 
-#define WORDNUM(x)	((int)((unsigned)(x) >> BITS_PER_BITMAPWORD_LOG2))
-#define BITNUM(x)	((int)((unsigned)(x) & (BITS_PER_BITMAPWORD - 1)))
+#define WORDNUM(x)	((x) / BITS_PER_BITMAPWORD)
+#define BITNUM(x)	((x) % BITS_PER_BITMAPWORD)
 
 #define BITMAPSET_SIZE(nwords)	\
 	(offsetof(Bitmapset, words) + (nwords) * sizeof(bitmapword))
@@ -54,12 +54,34 @@
 /*
  * Lookup tables to avoid need for bit-by-bit groveling
  *
+ * rightmost_one_pos[x] gives the bit number (0-7) of the rightmost one bit
+ * in a nonzero byte value x.  The entry for x=0 is never used.
+ *
  * number_of_ones[x] gives the number of one-bits (0-8) in a byte value x.
  *
  * We could make these tables larger and reduce the number of iterations
  * in the functions that use them, but bytewise shifts and masks are
  * especially fast on many machines, so working a byte at a time seems best.
  */
+
+static const uint8 rightmost_one_pos[256] = {
+	0, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+	5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+	6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+	5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+	7, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+	5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+	6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+	5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+	4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0
+};
 
 static const uint8 number_of_ones[256] = {
 	0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
@@ -79,31 +101,6 @@ static const uint8 number_of_ones[256] = {
 	3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
 	4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8
 };
-
-
-/*
- * num_low_order_zero_bits
- */
-static inline int
-num_low_order_zero_bits(bitmapword w)
-{
-    int         x = 0;
-    int         i;
-    bitmapword  m;
-
-    for (i = BITS_PER_BITMAPWORD / 2; i; i >>= 1)
-    {                           /* i = 16, 8, 4, 2, 1 */
-        m = (1 << i) - 1;       /* m = 0xffff, 0xff, 0xf, 3, 1 */
-        if ((w & m) == 0)
-        {
-            w >>= i;
-            x += i;
-        }
-    }
-    if (w == 0)                 /* all 0 => return BITS_PER_BITMAPWORD */
-        x++;
-    return x;
-}
 
 
 /*
@@ -436,7 +433,13 @@ bms_singleton_member(const Bitmapset *a)
 		{
 			if (result >= 0 || HAS_MULTIPLE_ONES(w))
 				elog(ERROR, "bitmapset has multiple members");
-            result = num_low_order_zero_bits(w) + wordnum * BITS_PER_BITMAPWORD;
+			result = wordnum * BITS_PER_BITMAPWORD;
+			while ((w & 255) == 0)
+			{
+				w >>= 8;
+				result += 8;
+			}
+			result += rightmost_one_pos[w & 255];
 		}
 	}
 	if (result < 0)
@@ -812,10 +815,19 @@ bms_first_member(Bitmapset *a)
 
 		if (w != 0)
 		{
+			int			result;
+
 			w = RIGHTMOST_ONE(w);
 			a->words[wordnum] &= ~w;
 
-			return num_low_order_zero_bits(w) + wordnum * BITS_PER_BITMAPWORD;
+			result = wordnum * BITS_PER_BITMAPWORD;
+			while ((w & 255) == 0)
+			{
+				w >>= 8;
+				result += 8;
+			}
+			result += rightmost_one_pos[w & 255];
+			return result;
 		}
 	}
 	return -1;

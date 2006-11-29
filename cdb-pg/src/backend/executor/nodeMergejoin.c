@@ -4,12 +4,12 @@
  *	  routines supporting merge joins
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeMergejoin.c,v 1.75.2.2 2006/03/17 19:38:20 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeMergejoin.c,v 1.82 2006/10/04 00:29:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -92,17 +92,13 @@
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "access/nbtree.h"
-#include "access/printtup.h"
 #include "catalog/pg_amop.h"
-#include "catalog/pg_operator.h"
 #include "executor/execdebug.h"
 #include "executor/execdefs.h"
 #include "executor/nodeMergejoin.h"
 #include "miscadmin.h"
 #include "utils/acl.h"
-#include "utils/catcache.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
@@ -932,10 +928,10 @@ ExecMergeJoin(MergeJoinState *node)
 				}
 
 				/*
-				 * Load up the new inner tuple's comparison values.  If we
-				 * see that it contains a NULL and hence can't match any
-				 * outer tuple, we can skip the comparison and assume the
-				 * new tuple is greater than current outer.
+				 * Load up the new inner tuple's comparison values.  If we see
+				 * that it contains a NULL and hence can't match any outer
+				 * tuple, we can skip the comparison and assume the new tuple
+				 * is greater than current outer.
 				 */
 				if (!MJEvalInnerValues(node, innerTupleSlot))
 				{
@@ -1391,8 +1387,8 @@ ExecMergeJoin(MergeJoinState *node)
 				else
 				{
 					/*
-					 * current inner can't possibly match any outer;
-					 * better to advance the inner scan than the outer.
+					 * current inner can't possibly match any outer; better to
+					 * advance the inner scan than the outer.
 					 */
 					node->mj_JoinState = EXEC_MJ_SKIPINNER_ADVANCE;
 				}
@@ -1562,8 +1558,7 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 
 	mergestate->mj_MarkedTupleSlot = ExecInitExtraTupleSlot(estate);
 	ExecSetSlotDescriptor(mergestate->mj_MarkedTupleSlot,
-						  ExecGetResultType(innerPlanState(mergestate)),
-						  false);
+						  ExecGetResultType(innerPlanState(mergestate)));
 
 	switch (node->join.jointype)
 	{

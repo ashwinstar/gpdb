@@ -3,12 +3,12 @@
  * nodeBitmapIndexscan.c
  *	  Routines to support bitmapped index scans of relations
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeBitmapIndexscan.c,v 1.10.2.1 2005/11/22 18:23:09 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeBitmapIndexscan.c,v 1.21 2006/10/04 00:29:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -43,6 +43,7 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	ItemPointerData tids[MAX_TIDS];
 	int32		ntids;
 	double		nTuples = 0;
+	bool		doscan;
 
 	/* must provide our own instrumentation support */
 	if (node->ss.ps.instrument)
@@ -55,9 +56,18 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 
 	/*
 	 * If we have runtime keys and they've not already been set up, do it now.
+	 * Array keys are also treated as runtime keys; note that if ExecReScan
+	 * returns with biss_RuntimeKeysReady still false, then there is an empty
+	 * array key so we should do nothing.
 	 */
-	if (node->biss_RuntimeKeyInfo && !node->biss_RuntimeKeysReady)
+	if (!node->biss_RuntimeKeysReady &&
+		(node->biss_NumRuntimeKeys != 0 || node->biss_NumArrayKeys != 0))
+	{
 		ExecReScan((PlanState *) node, NULL);
+		doscan = node->biss_RuntimeKeysReady;
+	}
+	else
+		doscan = true;
 
 	/*
 	 * Prepare the result bitmap.  Normally we just create a new one to pass
@@ -79,7 +89,7 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	/*
 	 * Get TIDs from index and insert into bitmap
 	 */
-	for (;;)
+	while (doscan)
 	{
 		bool		more = index_getmulti(scandesc, tids, MAX_TIDS, &ntids);
 
@@ -89,15 +99,20 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 			nTuples += ntids;
 		}
 
-		if (!more)
-			break;
-
 		CHECK_FOR_INTERRUPTS();
+
+		if (!more)
+		{
+			doscan = ExecIndexAdvanceArrayKeys(node->biss_ArrayKeys,
+											   node->biss_NumArrayKeys);
+			if (doscan)			/* reset index scan */
+				index_rescan(node->biss_ScanDesc, node->biss_ScanKeys);
+		}
 	}
 
 	/* must provide our own instrumentation support */
 	if (node->ss.ps.instrument)
-		InstrStopNodeMulti(node->ss.ps.instrument, nTuples);
+		InstrStopNode(node->ss.ps.instrument, nTuples);
 
 	return (Node *) tbm;
 }
@@ -113,10 +128,8 @@ void
 ExecBitmapIndexReScan(BitmapIndexScanState *node, ExprContext *exprCtxt)
 {
 	ExprContext *econtext;
-	ExprState **runtimeKeyInfo;
 
 	econtext = node->biss_RuntimeContext;		/* context for runtime keys */
-	runtimeKeyInfo = node->biss_RuntimeKeyInfo;
 
 	if (econtext)
 	{
@@ -137,19 +150,27 @@ ExecBitmapIndexReScan(BitmapIndexScanState *node, ExprContext *exprCtxt)
 
 	/*
 	 * If we are doing runtime key calculations (ie, the index keys depend on
-	 * data from an outer scan), compute the new key values
+	 * data from an outer scan), compute the new key values.
+	 *
+	 * Array keys are also treated as runtime keys; note that if we return
+	 * with biss_RuntimeKeysReady still false, then there is an empty array
+	 * key so no index scan is needed.
 	 */
-	if (runtimeKeyInfo)
-	{
+	if (node->biss_NumRuntimeKeys != 0)
 		ExecIndexEvalRuntimeKeys(econtext,
-								 runtimeKeyInfo,
-								 node->biss_ScanKeys,
-								 node->biss_NumScanKeys);
+								 node->biss_RuntimeKeys,
+								 node->biss_NumRuntimeKeys);
+	if (node->biss_NumArrayKeys != 0)
+		node->biss_RuntimeKeysReady =
+			ExecIndexEvalArrayKeys(econtext,
+								   node->biss_ArrayKeys,
+								   node->biss_NumArrayKeys);
+	else
 		node->biss_RuntimeKeysReady = true;
-	}
 
 	/* reset index scan */
-	index_rescan(node->biss_ScanDesc, node->biss_ScanKeys);
+	if (node->biss_RuntimeKeysReady)
+		index_rescan(node->biss_ScanDesc, node->biss_ScanKeys);
 }
 
 /* ----------------------------------------------------------------
@@ -180,7 +201,7 @@ ExecEndBitmapIndexScan(BitmapIndexScanState *node)
 	 * close the index relation
 	 */
 	index_endscan(indexScanDesc);
-	index_close(indexRelationDesc);
+	index_close(indexRelationDesc, NoLock);
 }
 
 /* ----------------------------------------------------------------
@@ -193,10 +214,7 @@ BitmapIndexScanState *
 ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 {
 	BitmapIndexScanState *indexstate;
-	ScanKey		scanKeys;
-	int			numScanKeys;
-	ExprState **runtimeKeyInfo;
-	bool		have_runtime_keys;
+	bool		relistarget;
 
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
@@ -230,35 +248,53 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 #define BITMAPINDEXSCAN_NSLOTS 0
 
 	/*
+	 * We do not open or lock the base relation here.  We assume that an
+	 * ancestor BitmapHeapScan node is holding AccessShareLock (or better) on
+	 * the heap relation throughout the execution of the plan tree.
+	 */
+
+	indexstate->ss.ss_currentRelation = NULL;
+	indexstate->ss.ss_currentScanDesc = NULL;
+
+	/*
+	 * Open the index relation.
+	 *
+	 * If the parent table is one of the target relations of the query, then
+	 * InitPlan already opened and write-locked the index, so we can avoid
+	 * taking another lock here.  Otherwise we need a normal reader's lock.
+	 */
+	relistarget = ExecRelationIsTargetRelation(estate, node->scan.scanrelid);
+	indexstate->biss_RelationDesc = index_open(node->indexid,
+									 relistarget ? NoLock : AccessShareLock);
+
+	/*
 	 * Initialize index-specific scan state
 	 */
 	indexstate->biss_RuntimeKeysReady = false;
 
-	CXT1_printf("ExecInitBitmapIndexScan: context is %d\n", CurrentMemoryContext);
-
 	/*
 	 * build the index scan keys from the index qualification
 	 */
-	have_runtime_keys =
-		ExecIndexBuildScanKeys((PlanState *) indexstate,
-							   node->indexqual,
-							   node->indexstrategy,
-							   node->indexsubtype,
-							   &runtimeKeyInfo,
-							   &scanKeys,
-							   &numScanKeys);
-
-	indexstate->biss_RuntimeKeyInfo = runtimeKeyInfo;
-	indexstate->biss_ScanKeys = scanKeys;
-	indexstate->biss_NumScanKeys = numScanKeys;
+	ExecIndexBuildScanKeys((PlanState *) indexstate,
+						   indexstate->biss_RelationDesc,
+						   node->indexqual,
+						   node->indexstrategy,
+						   node->indexsubtype,
+						   &indexstate->biss_ScanKeys,
+						   &indexstate->biss_NumScanKeys,
+						   &indexstate->biss_RuntimeKeys,
+						   &indexstate->biss_NumRuntimeKeys,
+						   &indexstate->biss_ArrayKeys,
+						   &indexstate->biss_NumArrayKeys);
 
 	/*
-	 * If we have runtime keys, we need an ExprContext to evaluate them. We
-	 * could just create a "standard" plan node exprcontext, but to keep the
-	 * code looking similar to nodeIndexscan.c, it seems better to stick with
-	 * the approach of using a separate ExprContext.
+	 * If we have runtime keys or array keys, we need an ExprContext to
+	 * evaluate them. We could just create a "standard" plan node exprcontext,
+	 * but to keep the code looking similar to nodeIndexscan.c, it seems
+	 * better to stick with the approach of using a separate ExprContext.
 	 */
-	if (have_runtime_keys)
+	if (indexstate->biss_NumRuntimeKeys != 0 ||
+		indexstate->biss_NumArrayKeys != 0)
 	{
 		ExprContext *stdecontext = indexstate->ss.ps.ps_ExprContext;
 
@@ -272,25 +308,13 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 	}
 
 	/*
-	 * We do not open or lock the base relation here.  We assume that an
-	 * ancestor BitmapHeapScan node is holding AccessShareLock on the heap
-	 * relation throughout the execution of the plan tree.
+	 * Initialize scan descriptor.
 	 */
-
-	indexstate->ss.ss_currentRelation = NULL;
-	indexstate->ss.ss_currentScanDesc = NULL;
-
-	/*
-	 * open the index relation and initialize relation and scan descriptors.
-	 * Note we acquire no locks here; the index machinery does its own locks
-	 * and unlocks.
-	 */
-	indexstate->biss_RelationDesc = index_open(node->indexid);
 	indexstate->biss_ScanDesc =
 		index_beginscan_multi(indexstate->biss_RelationDesc,
 							  estate->es_snapshot,
-							  numScanKeys,
-							  scanKeys);
+							  indexstate->biss_NumScanKeys,
+							  indexstate->biss_ScanKeys);
 
 	/*
 	 * all done.

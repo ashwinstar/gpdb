@@ -3,12 +3,12 @@
  * nodeUnique.c
  *	  Routines to handle unique'ing of queries where appropriate
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeUnique.c,v 1.48.2.2 2005/11/23 20:28:04 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeUnique.c,v 1.53 2006/07/14 14:52:19 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -25,7 +25,6 @@
 
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "executor/executor.h"
 #include "executor/nodeUnique.h"
 #include "utils/memutils.h"

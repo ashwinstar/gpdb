@@ -3,23 +3,21 @@
  * execGrouping.c
  *	  executor utility routines for grouping, hashing, and aggregation
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/execGrouping.c,v 1.16.2.1 2005/11/22 18:23:08 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/execGrouping.c,v 1.21 2006/07/14 14:52:18 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "access/hash.h"
-#include "access/heapam.h"
 #include "executor/executor.h"
 #include "parser/parse_oper.h"
-#include "utils/memutils.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/syscache.h"
 
 
@@ -389,7 +387,7 @@ LookupTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
 
 			/* Copy the first tuple into the table context */
 			MemoryContextSwitchTo(hashtable->tablecxt);
-			entry->firstTuple = ExecCopySlotTuple(slot);
+			entry->firstTuple = ExecCopySlotMinimalTuple(slot);
 
 			*isnew = true;
 		}
@@ -405,23 +403,23 @@ LookupTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
 /*
  * Compute the hash value for a tuple
  *
- * The passed-in key is a pointer to TupleHashEntryData.  In an actual
- * hash table entry, the firstTuple field therein points to a physical
- * tuple.  LookupTupleHashEntry sets up a dummy TupleHashEntryData with
- * a NULL firstTuple field --- that cues us to look at the inputslot instead.
- * This convention avoids the need to materialize virtual input tuples
- * unless they actually need to get copied into the table.
+ * The passed-in key is a pointer to TupleHashEntryData.  In an actual hash
+ * table entry, the firstTuple field points to a tuple (in MinimalTuple
+ * format).  LookupTupleHashEntry sets up a dummy TupleHashEntryData with a
+ * NULL firstTuple field --- that cues us to look at the inputslot instead.
+ * This convention avoids the need to materialize virtual input tuples unless
+ * they actually need to get copied into the table.
  *
  * CurTupleHashTable must be set before calling this, since dynahash.c
  * doesn't provide any API that would let us get at the hashtable otherwise.
  *
  * Also, the caller must select an appropriate memory context for running
- * the hash functions.	(dynahash.c doesn't change CurrentMemoryContext.)
+ * the hash functions. (dynahash.c doesn't change CurrentMemoryContext.)
  */
 static uint32
 TupleHashTableHash(const void *key, Size keysize)
 {
-	HeapTuple	tuple = ((const TupleHashEntryData *) key)->firstTuple;
+	MinimalTuple tuple = ((const TupleHashEntryData *) key)->firstTuple;
 	TupleTableSlot *slot;
 	TupleHashTable hashtable = CurTupleHashTable;
 	int			numCols = hashtable->numCols;
@@ -439,7 +437,7 @@ TupleHashTableHash(const void *key, Size keysize)
 		/* Process a tuple already stored in the table */
 		/* (this case never actually occurs in current dynahash.c code) */
 		slot = hashtable->tableslot;
-		ExecStoreTuple(tuple, slot, InvalidBuffer, false);
+		ExecStoreMinimalTuple(tuple, slot, false);
 	}
 
 	for (i = 0; i < numCols; i++)
@@ -480,10 +478,10 @@ TupleHashTableHash(const void *key, Size keysize)
 static int
 TupleHashTableMatch(const void *key1, const void *key2, Size keysize)
 {
-	HeapTuple	tuple1 = ((const TupleHashEntryData *) key1)->firstTuple;
+	MinimalTuple tuple1 = ((const TupleHashEntryData *) key1)->firstTuple;
 
 #ifdef USE_ASSERT_CHECKING
-	HeapTuple	tuple2 = ((const TupleHashEntryData *) key2)->firstTuple;
+	MinimalTuple tuple2 = ((const TupleHashEntryData *) key2)->firstTuple;
 #endif
 	TupleTableSlot *slot1;
 	TupleTableSlot *slot2;
@@ -497,7 +495,7 @@ TupleHashTableMatch(const void *key1, const void *key2, Size keysize)
 	 */
 	Assert(tuple1 != NULL);
 	slot1 = hashtable->tableslot;
-	ExecStoreTuple(tuple1, slot1, InvalidBuffer, false);
+	ExecStoreMinimalTuple(tuple1, slot1, false);
 	Assert(tuple2 == NULL);
 	slot2 = hashtable->inputslot;
 

@@ -4,12 +4,12 @@
  *	  Support routines for scanning RangeFunctions (functions in rangetable).
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeFunctionscan.c,v 1.35 2005/10/15 02:49:17 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeFunctionscan.c,v 1.40 2006/06/27 02:51:39 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -50,7 +50,6 @@ FunctionNext(FunctionScanState *node)
 	EState	   *estate;
 	ScanDirection direction;
 	Tuplestorestate *tuplestorestate;
-	bool		should_free;
 	HeapTuple	heapTuple;
 
 	/*
@@ -88,14 +87,12 @@ FunctionNext(FunctionScanState *node)
 	/*
 	 * Get the next tuple from tuplestore. Return NULL if no more tuples.
 	 */
-	heapTuple = tuplestore_getheaptuple(tuplestorestate,
-										ScanDirectionIsForward(direction),
-										&should_free);
 	slot = node->ss.ss_ScanTupleSlot;
+	heapTuple = tuplestore_gettupleslot(tuplestorestate,
+								   ScanDirectionIsForward(direction),
+								   slot);
 	if (heapTuple)
     {
-		ExecStoreTuple(heapTuple, slot, InvalidBuffer, should_free);
-
         /* CDB: Label each row with a synthetic ctid for subquery dedup. */
         if (node->cdb_want_ctid)
         {
@@ -110,11 +107,8 @@ FunctionNext(FunctionScanState *node)
             tuple->t_self = node->cdb_fake_ctid;
             tuple->t_tableOid = node->cdb_fake_tableoid;
         }
-
-        return slot;
     }
-	else
-		return ExecClearTuple(slot);
+	return slot;
 }
 
 /* ----------------------------------------------------------------
@@ -234,7 +228,9 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 	}
 	else if (functypclass == TYPEFUNC_RECORD)
 	{
-		tupdesc = BuildDescForRelation(rte->coldeflist);
+		tupdesc = BuildDescFromLists(rte->eref->colnames,
+									 rte->funccoltypes,
+									 rte->funccoltypmods);
 	}
 	else
 	{
@@ -250,7 +246,7 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 	BlessTupleDesc(tupdesc);
 
 	scanstate->tupdesc = tupdesc;
-	ExecAssignScanType(&scanstate->ss, tupdesc, false);
+	ExecAssignScanType(&scanstate->ss, tupdesc);
 
 	/*
 	 * Other node-specific setup

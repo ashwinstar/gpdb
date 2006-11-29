@@ -8,12 +8,12 @@
  *	 processing.
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/execProcnode.c,v 1.51 2005/10/15 02:49:16 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/execProcnode.c,v 1.59 2006/10/04 00:29:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -32,10 +32,10 @@
  *		and ExecEndNode in sync when new nodes are added.
  *
  *	 EXAMPLE
- *		suppose we want the age of the manager of the shoe department and
- *		the number of employees in that department.  so we have the query:
+ *		Suppose we want the age of the manager of the shoe department and
+ *		the number of employees in that department.  So we have the query:
  *
- *				retrieve (DEPT.no_emps, EMP.age)
+ *				select DEPT.no_emps, EMP.age
  *				where EMP.name = DEPT.mgr and
  *					  DEPT.name = "shoe"
  *
@@ -48,7 +48,7 @@
  *					DEPT		  EMP
  *				(name = "shoe")
  *
- *		ExecStart() is called first.
+ *		ExecutorStart() is called first.
  *		It calls InitPlan() which calls ExecInitNode() on
  *		the root of the plan -- the nest loop node.
  *
@@ -107,6 +107,7 @@
 #include "executor/nodeSubqueryscan.h"
 #include "executor/nodeTidscan.h"
 #include "executor/nodeUnique.h"
+#include "executor/nodeValuesscan.h"
 #include "miscadmin.h"
 #include "tcop/tcopprot.h"
 #include "cdb/cdbvars.h"
@@ -121,7 +122,7 @@ static void ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result
 /* ------------------------------------------------------------------------
  *		ExecInitNode
  *
- *		Recursively initializes all the nodes in the plan rooted
+ *		Recursively initializes all the nodes in the plan tree rooted
  *		at 'node'.
  *
  *		Inputs:
@@ -206,6 +207,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		case T_FunctionScan:
 			result = (PlanState *) ExecInitFunctionScan((FunctionScan *) node,
 														estate, eflags);
+			break;
+
+		case T_ValuesScan:
+			result = (PlanState *) ExecInitValuesScan((ValuesScan *) node,
+													  estate, eflags);
 			break;
 
 			/*
@@ -296,9 +302,7 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 
 		Assert(IsA(subplan, SubPlan));
 		sstate = ExecInitExprInitPlan(subplan, result);
-
 		ExecInitSubPlan(sstate, estate, eflags);
-
 		subps = lappend(subps, sstate);
 	}
 	result->initPlan = subps;
@@ -394,6 +398,10 @@ ExecProcNode(PlanState *node)
 			result = ExecFunctionScan((FunctionScanState *) node);
 			break;
 
+		case T_ValuesScanState:
+			result = ExecValuesScan((ValuesScanState *) node);
+			break;
+
 			/*
 			 * join nodes
 			 */
@@ -456,9 +464,9 @@ ExecProcNode(PlanState *node)
 			result = NULL;
 			break;
 	}
-	
+
 	if (node->instrument)
-		InstrStopNode(node->instrument, !TupIsNull(result));
+		InstrStopNode(node->instrument, TupIsNull(result) ? 0.0 : 1.0);
 
 #ifdef CDB_TRACE_EXECUTOR
 	ExecCdbTraceNode(node, false, result);
@@ -576,6 +584,9 @@ ExecCountSlotsNode(Plan *node)
 		case T_FunctionScan:
 			return ExecCountSlotsFunctionScan((FunctionScan *) node);
 
+		case T_ValuesScan:
+			return ExecCountSlotsValuesScan((ValuesScan *) node);
+
 			/*
 			 * join nodes
 			 */
@@ -627,7 +638,6 @@ ExecCountSlotsNode(Plan *node)
 
 	return 0;
 }
-
 
 /* ----------------------------------------------------------------
  *		ExecSquelchNode
@@ -762,6 +772,10 @@ ExecEndNode(PlanState *node)
 
 		case T_FunctionScanState:
 			ExecEndFunctionScan((FunctionScanState *) node);
+			break;
+
+		case T_ValuesScanState:
+			ExecEndValuesScan((ValuesScanState *) node);
 			break;
 
 			/*

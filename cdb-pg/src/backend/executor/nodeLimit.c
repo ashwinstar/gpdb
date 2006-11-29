@@ -4,12 +4,12 @@
  *	  Routines to handle limiting of query results where appropriate
  *
  * Portions Copyright (c) 2005, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeLimit.c,v 1.22.2.1 2005/11/23 20:28:04 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeLimit.c,v 1.27 2006/07/26 19:31:50 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -242,7 +242,7 @@ recompute_limits(LimitState *node)
 	if (node->limitOffset)
 	{
 		node->offset =
-			DatumGetInt32(ExecEvalExprSwitchContext(node->limitOffset,
+			DatumGetInt64(ExecEvalExprSwitchContext(node->limitOffset,
 													econtext,
 													&isNull,
 													NULL));
@@ -262,7 +262,7 @@ recompute_limits(LimitState *node)
 	{
 		node->noCount = false;
 		node->count =
-			DatumGetInt32(ExecEvalExprSwitchContext(node->limitCount,
+			DatumGetInt64(ExecEvalExprSwitchContext(node->limitCount,
 													econtext,
 													&isNull,
 													NULL));

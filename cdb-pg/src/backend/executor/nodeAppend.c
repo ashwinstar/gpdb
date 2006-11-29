@@ -3,12 +3,12 @@
  * nodeAppend.c
  *	  routines to handle append nodes.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeAppend.c,v 1.66 2006/02/05 02:59:16 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeAppend.c,v 1.71 2006/10/04 00:29:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -57,11 +57,8 @@
 
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "executor/execdebug.h"
 #include "executor/nodeAppend.h"
-#include "parser/parsetree.h"
-#include "cdb/cdbvars.h"
 
 static bool exec_append_initialize_next(AppendState *appendstate);
 
@@ -152,8 +149,6 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & EXEC_FLAG_MARK));
 
-	CXT1_printf("ExecInitAppend: context is %d\n", CurrentMemoryContext);
-
 	/*
 	 * Set up empty vector of subplan states
 	 */
@@ -189,7 +184,6 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 		appendstate->as_firstplan = 0;
 		appendstate->as_lastplan = nplans - 1;
 	}
-	
 
 	/*
 	 * Miscellaneous initialization
@@ -350,10 +344,12 @@ ExecReScanAppend(AppendState *node, ExprContext *exprCtxt)
 			UpdateChangedParamSet(subnode, node->ps.chgParam);
 
 		/*
-		 * if chgParam of subnode is not null then plan will be re-scanned by
-		 * first ExecProcNode.
+		 * If chgParam of subnode is not null then plan will be re-scanned by
+		 * first ExecProcNode.	However, if caller is passing us an exprCtxt
+		 * then forcibly rescan all the subnodes now, so that we can pass the
+		 * exprCtxt down to the subnodes (needed for appendrel indexscan).
 		 */
-		if (subnode->chgParam == NULL)
+		if (subnode->chgParam == NULL || exprCtxt != NULL)
 		{
 			/* make sure estate is correct for this subnode (needed??) */
 			node->as_whichplan = i;

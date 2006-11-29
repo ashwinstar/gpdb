@@ -3,12 +3,12 @@
  * nodeSort.c
  *	  Routines to handle sorting of relations.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeSort.c,v 1.51.2.1 2005/11/23 20:28:04 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeSort.c,v 1.58 2006/10/04 00:29:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -41,9 +41,7 @@ ExecSort(SortState *node)
 	EState	   *estate;
 	ScanDirection dir;
 	Tuplesortstate *tuplesortstate;
-	HeapTuple	heapTuple;
 	TupleTableSlot *slot;
-	bool		should_free;
 
 	/*
 	 * get state info from node
@@ -103,8 +101,7 @@ ExecSort(SortState *node)
 			if (TupIsNull(slot))
 				break;
 
-			tuplesort_puttuple(tuplesortstate,
-							   (void *) ExecFetchSlotTuple(slot));
+			tuplesort_puttupleslot(tuplesortstate, slot);
 		}
 
 		/*
@@ -131,15 +128,11 @@ ExecSort(SortState *node)
 	 * Get the first or next tuple from tuplesort. Returns NULL if no more
 	 * tuples.
 	 */
-	heapTuple = tuplesort_getheaptuple(tuplesortstate,
-									   ScanDirectionIsForward(dir),
-									   &should_free);
-
 	slot = node->ss.ps.ps_ResultTupleSlot;
-	if (heapTuple)
-		return ExecStoreTuple(heapTuple, slot, InvalidBuffer, should_free);
-	else
-		return ExecClearTuple(slot);
+	(void) tuplesort_gettupleslot(tuplesortstate,
+								  ScanDirectionIsForward(dir),
+								  slot);
+	return slot;
 }
 
 /* ----------------------------------------------------------------
@@ -165,9 +158,9 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	sortstate->ss.ps.state = estate;
 
 	/*
-	 * We must have random access to the sort output to do backward scan
-	 * or mark/restore.  We also prefer to materialize the sort output
-	 * if we might be called on to rewind and replay it many times.
+	 * We must have random access to the sort output to do backward scan or
+	 * mark/restore.  We also prefer to materialize the sort output if we
+	 * might be called on to rewind and replay it many times.
 	 */
 	sortstate->randomAccess = (eflags & (EXEC_FLAG_REWIND |
 										 EXEC_FLAG_BACKWARD |
@@ -196,8 +189,8 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	/*
 	 * initialize child nodes
 	 *
-	 * We shield the child node from the need to support REWIND, BACKWARD,
-	 * or MARK/RESTORE.
+	 * We shield the child node from the need to support REWIND, BACKWARD, or
+	 * MARK/RESTORE.
 	 */
 	eflags &= ~(EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK);
 
@@ -323,6 +316,7 @@ ExecReScanSort(SortState *node, ExprContext *exprCtxt)
 		node->sort_Done = false;
 		tuplesort_end((Tuplesortstate *) node->tuplesortstate);
 		node->tuplesortstate = NULL;
+
 		/*
 		 * if chgParam of subnode is not null then plan will be re-scanned by
 		 * first ExecProcNode.

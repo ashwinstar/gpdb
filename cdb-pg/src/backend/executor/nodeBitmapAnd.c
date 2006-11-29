@@ -3,12 +3,12 @@
  * nodeBitmapAnd.c
  *	  routines to handle BitmapAnd nodes.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeBitmapAnd.c,v 1.4 2005/10/15 02:49:17 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeBitmapAnd.c,v 1.8 2006/05/30 14:01:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -51,8 +51,6 @@ ExecInitBitmapAnd(BitmapAnd *node, EState *estate, int eflags)
 
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
-
-	CXT1_printf("ExecInitBitmapAnd: context is %d\n", CurrentMemoryContext);
 
 	/*
 	 * Set up empty vector of subplan states
@@ -163,7 +161,7 @@ MultiExecBitmapAnd(BitmapAndState *node)
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
-		InstrStopNodeMulti(node->ps.instrument, 0 /* XXX */ );
+		InstrStopNode(node->ps.instrument, 0 /* XXX */ );
 
 	return (Node *) result;
 }

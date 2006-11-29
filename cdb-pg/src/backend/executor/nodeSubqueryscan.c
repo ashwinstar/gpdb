@@ -8,12 +8,12 @@
  *
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeSubqueryscan.c,v 1.27 2005/10/15 02:49:17 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeSubqueryscan.c,v 1.32 2006/10/04 00:29:53 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -28,14 +28,10 @@
  */
 #include "postgres.h"
 
-#include "catalog/pg_type.h"
 #include "executor/execdebug.h"
-#include "executor/execdefs.h"
-#include "executor/execdesc.h"
 #include "executor/nodeSubqueryscan.h"
 #include "optimizer/var.h"              /* CDB: contain_var_reference() */
 #include "parser/parsetree.h"
-#include "tcop/pquery.h"
 
 static TupleTableSlot *SubqueryNext(SubqueryScanState *node);
 
@@ -244,11 +240,13 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	MemoryContextSwitchTo(oldcontext);
 
 	/*
-	 * Initialize scan tuple type (needed by ExecAssignScanProjectionInfo)
+	 * Initialize scan tuple type (needed by ExecAssignScanProjectionInfo).
+	 * Because the subplan is in its own memory context, we need to copy its
+	 * result tuple type not just link to it; else the tupdesc will disappear
+	 * too soon during shutdown.
 	 */
 	ExecAssignScanType(&subquerystate->ss,
-					   ExecGetResultType(subquerystate->subplan),
-					   false);
+			 CreateTupleDescCopy(ExecGetResultType(subquerystate->subplan)));
 
 	/*
 	 * Initialize result tuple type and projection info.

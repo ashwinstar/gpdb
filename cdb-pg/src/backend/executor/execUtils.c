@@ -3,12 +3,12 @@
  * execUtils.c
  *	  miscellaneous executor utility routines
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/execUtils.c,v 1.126.2.3 2005/11/23 20:28:04 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/execUtils.c,v 1.140 2006/10/04 00:29:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,12 +17,16 @@
  *		CreateExecutorState		Create/delete executor working state
  *		FreeExecutorState
  *		CreateExprContext
+ *		CreateStandaloneExprContext
  *		FreeExprContext
  *		ReScanExprContext
  *
  *		ExecAssignExprContext	Common code for plan node init routines.
  *		ExecAssignResultType
  *		etc
+ *
+ *		ExecOpenScanRelation	Common code for scan node init routines.
+ *		ExecCloseScanRelation
  *
  *		ExecOpenIndices			\
  *		ExecCloseIndices		 | referenced by InitPlan, EndPlan,
@@ -41,15 +45,10 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "catalog/index.h"
-#include "catalog/catalog.h"
-#include "catalog/pg_index.h"
 #include "executor/execdebug.h"
-#include "miscadmin.h"
-#include "utils/builtins.h"
-#include "utils/fmgroids.h"
+#include "parser/parsetree.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
-#include "utils/syscache.h"
 
 #include "cdb/cdbvars.h"
 #include "nodes/primnodes.h"
@@ -76,9 +75,7 @@ int			NTupleReplaced;
 int			NTupleAppended;
 int			NTupleDeleted;
 int			NIndexTupleInserted;
-extern int	NIndexTupleProcessed;		/* have to be defined in the access
-										 * method level so that the
-										 * cinterface.a will link ok. */
+int			NIndexTupleProcessed;
 
 
 static void ShutdownExprContext(ExprContext *econtext);
@@ -215,8 +212,6 @@ CreateExecutorState(void)
 	estate->es_processed = 0;
 	estate->es_lastoid = InvalidOid;
 	estate->es_rowMarks = NIL;
-	estate->es_forUpdate = false;
-	estate->es_rowNoWait = false;
 
 	estate->es_instrument = false;
 	estate->es_select_into = false;
@@ -366,6 +361,68 @@ CreateExprContext(EState *estate)
 }
 
 /* ----------------
+ *		CreateStandaloneExprContext
+ *
+ *		Create a context for standalone expression evaluation.
+ *
+ * An ExprContext made this way can be used for evaluation of expressions
+ * that contain no Params, subplans, or Var references (it might work to
+ * put tuple references into the scantuple field, but it seems unwise).
+ *
+ * The ExprContext struct is allocated in the caller's current memory
+ * context, which also becomes its "per query" context.
+ *
+ * It is caller's responsibility to free the ExprContext when done,
+ * or at least ensure that any shutdown callbacks have been called
+ * (ReScanExprContext() is suitable).  Otherwise, non-memory resources
+ * might be leaked.
+ * ----------------
+ */
+ExprContext *
+CreateStandaloneExprContext(void)
+{
+	ExprContext *econtext;
+
+	/* Create the ExprContext node within the caller's memory context */
+	econtext = makeNode(ExprContext);
+
+	/* Initialize fields of ExprContext */
+	econtext->ecxt_scantuple = NULL;
+	econtext->ecxt_innertuple = NULL;
+	econtext->ecxt_outertuple = NULL;
+
+	econtext->ecxt_per_query_memory = CurrentMemoryContext;
+
+	/*
+	 * Create working memory for expression evaluation in this context.
+	 */
+	econtext->ecxt_per_tuple_memory =
+		AllocSetContextCreate(CurrentMemoryContext,
+							  "ExprContext",
+							  ALLOCSET_DEFAULT_MINSIZE,
+							  ALLOCSET_DEFAULT_INITSIZE,
+							  ALLOCSET_DEFAULT_MAXSIZE);
+
+	econtext->ecxt_param_exec_vals = NULL;
+	econtext->ecxt_param_list_info = NULL;
+
+	econtext->ecxt_aggvalues = NULL;
+	econtext->ecxt_aggnulls = NULL;
+
+	econtext->caseValue_datum = (Datum) 0;
+	econtext->caseValue_isNull = true;
+
+	econtext->domainValue_datum = (Datum) 0;
+	econtext->domainValue_isNull = true;
+
+	econtext->ecxt_estate = NULL;
+
+	econtext->ecxt_callbacks = NULL;
+
+	return econtext;
+}
+
+/* ----------------
  *		FreeExprContext
  *
  *		Free an expression context, including calling any remaining
@@ -386,9 +443,11 @@ FreeExprContext(ExprContext *econtext)
 	ShutdownExprContext(econtext);
 	/* And clean up the memory used */
 	MemoryContextDelete(econtext->ecxt_per_tuple_memory);
-	/* Unlink self from owning EState */
+	/* Unlink self from owning EState, if any */
 	estate = econtext->ecxt_estate;
-	estate->es_exprcontexts = list_delete_ptr(estate->es_exprcontexts, econtext);
+	if (estate)
+		estate->es_exprcontexts = list_delete_ptr(estate->es_exprcontexts,
+												  econtext);
 	/* And delete the ExprContext node */
 	pfree(econtext);
 }
@@ -455,12 +514,11 @@ ExecAssignExprContext(EState *estate, PlanState *planstate)
  * ----------------
  */
 void
-ExecAssignResultType(PlanState *planstate,
-					 TupleDesc tupDesc, bool shouldFree)
+ExecAssignResultType(PlanState *planstate, TupleDesc tupDesc)
 {
 	TupleTableSlot *slot = planstate->ps_ResultTupleSlot;
 
-	ExecSetSlotDescriptor(slot, tupDesc, shouldFree);
+	ExecSetSlotDescriptor(slot, tupDesc);
 }
 
 /* ----------------
@@ -489,7 +547,7 @@ ExecAssignResultTypeFromTL(PlanState *planstate)
 	 * to set up planstate->targetlist ...
 	 */
 	tupDesc = ExecTypeFromTL(planstate->plan->targetlist, hasoid);
-	ExecAssignResultType(planstate, tupDesc, true);
+	ExecAssignResultType(planstate, tupDesc);
 }
 
 /* ----------------
@@ -687,12 +745,11 @@ ExecGetScanType(ScanState *scanstate)
  * ----------------
  */
 void
-ExecAssignScanType(ScanState *scanstate,
-				   TupleDesc tupDesc, bool shouldFree)
+ExecAssignScanType(ScanState *scanstate, TupleDesc tupDesc)
 {
 	TupleTableSlot *slot = scanstate->ss_ScanTupleSlot;
 
-	ExecSetSlotDescriptor(slot, tupDesc, shouldFree);
+	ExecSetSlotDescriptor(slot, tupDesc);
 }
 
 /* ----------------
@@ -708,7 +765,113 @@ ExecAssignScanTypeFromOuterPlan(ScanState *scanstate)
 	outerPlan = outerPlanState(scanstate);
 	tupDesc = ExecGetResultType(outerPlan);
 
-	ExecAssignScanType(scanstate, tupDesc, false);
+	ExecAssignScanType(scanstate, tupDesc);
+}
+
+
+/* ----------------------------------------------------------------
+ *				  Scan node support
+ * ----------------------------------------------------------------
+ */
+
+/* ----------------------------------------------------------------
+ *		ExecRelationIsTargetRelation
+ *
+ *		Detect whether a relation (identified by rangetable index)
+ *		is one of the target relations of the query.
+ * ----------------------------------------------------------------
+ */
+bool
+ExecRelationIsTargetRelation(EState *estate, Index scanrelid)
+{
+	ResultRelInfo *resultRelInfos;
+	int			i;
+
+	resultRelInfos = estate->es_result_relations;
+	for (i = 0; i < estate->es_num_result_relations; i++)
+	{
+		if (resultRelInfos[i].ri_RangeTableIndex == scanrelid)
+			return true;
+	}
+	return false;
+}
+
+/* ----------------------------------------------------------------
+ *		ExecOpenScanRelation
+ *
+ *		Open the heap relation to be scanned by a base-level scan plan node.
+ *		This should be called during the node's ExecInit routine.
+ *
+ * By default, this acquires AccessShareLock on the relation.  However,
+ * if the relation was already locked by InitPlan, we don't need to acquire
+ * any additional lock.  This saves trips to the shared lock manager.
+ * ----------------------------------------------------------------
+ */
+Relation
+ExecOpenScanRelation(EState *estate, Index scanrelid)
+{
+	RangeTblEntry *rtentry;
+	Oid			reloid;
+	LOCKMODE	lockmode;
+	ResultRelInfo *resultRelInfos;
+	int			i;
+
+	/*
+	 * First determine the lock type we need.  Scan to see if target relation
+	 * is either a result relation or a FOR UPDATE/FOR SHARE relation.
+	 */
+	lockmode = AccessShareLock;
+	resultRelInfos = estate->es_result_relations;
+	for (i = 0; i < estate->es_num_result_relations; i++)
+	{
+		if (resultRelInfos[i].ri_RangeTableIndex == scanrelid)
+		{
+			lockmode = NoLock;
+			break;
+		}
+	}
+
+	if (lockmode == AccessShareLock)
+	{
+		ListCell   *l;
+
+		foreach(l, estate->es_rowMarks)
+		{
+			ExecRowMark *erm = lfirst(l);
+
+			if (erm->rti == scanrelid)
+			{
+				lockmode = NoLock;
+				break;
+			}
+		}
+	}
+
+	/* OK, open the relation and acquire lock as needed */
+	rtentry = rt_fetch(scanrelid, estate->es_range_table);
+	reloid = rtentry->relid;
+
+	return heap_open(reloid, lockmode);
+}
+
+/* ----------------------------------------------------------------
+ *		ExecCloseScanRelation
+ *
+ *		Close the heap relation scanned by a base-level scan plan node.
+ *		This should be called during the node's ExecEnd routine.
+ *
+ * Currently, we do not release the lock acquired by ExecOpenScanRelation.
+ * This lock should be held till end of transaction.  (There is a faction
+ * that considers this too much locking, however.)
+ *
+ * If we did want to release the lock, we'd have to repeat the logic in
+ * ExecOpenScanRelation in order to figure out what to release.
+ * ----------------------------------------------------------------
+ */
+void
+ExecCloseScanRelation(Relation scanrel)
+{
+	heap_close(scanrel, NoLock);
 }
 
 
@@ -725,12 +888,6 @@ ExecAssignScanTypeFromOuterPlan(ScanState *scanstate)
  *
  *		At entry, caller has already opened and locked
  *		resultRelInfo->ri_RelationDesc.
- *
- *		This used to be horribly ugly code, and slow too because it
- *		did a sequential scan of pg_index.	Now we rely on the relcache
- *		to cache a list of the OIDs of the indices associated with any
- *		specific relation, and we use the pg_index syscache to get the
- *		entries we need from pg_index.
  * ----------------------------------------------------------------
  */
 void
@@ -769,7 +926,8 @@ ExecOpenIndices(ResultRelInfo *resultRelInfo)
 	resultRelInfo->ri_IndexRelationInfo = indexInfoArray;
 
 	/*
-	 * For each index, open the index relation and save pg_index info.
+	 * For each index, open the index relation and save pg_index info. We
+	 * acquire RowExclusiveLock, signifying we will update the index.
 	 */
 	i = 0;
 	foreach(l, indexoidlist)
@@ -778,31 +936,7 @@ ExecOpenIndices(ResultRelInfo *resultRelInfo)
 		Relation	indexDesc;
 		IndexInfo  *ii;
 
-		/*
-		 * Open and lock the index relation
-		 *
-		 * If the index AM supports concurrent updates, obtain
-		 * RowExclusiveLock to signify that we are updating the index.	This
-		 * locks out only operations that need exclusive access, such as
-		 * relocating the index to a new tablespace.
-		 *
-		 * If the index AM is not safe for concurrent updates, obtain an
-		 * exclusive lock on the index to lock out other updaters as well as
-		 * readers (index_beginscan places AccessShareLock).
-		 *
-		 * If there are multiple not-concurrent-safe indexes, all backends
-		 * must lock the indexes in the same order or we will get deadlocks
-		 * here. This is guaranteed by RelationGetIndexList(), which promises
-		 * to return the index list in OID order.
-		 *
-		 * The locks will be released in ExecCloseIndices.
-		 */
-		indexDesc = index_open(indexOid);
-
-		if (indexDesc->rd_am->amconcurrent)
-			LockRelation(indexDesc, RowExclusiveLock);
-		else
-			LockRelation(indexDesc, AccessExclusiveLock);
+		indexDesc = index_open(indexOid, RowExclusiveLock);
 
 		/* extract index key information from the index's pg_index info */
 		ii = BuildIndexInfo(indexDesc);
@@ -837,12 +971,7 @@ ExecCloseIndices(ResultRelInfo *resultRelInfo)
 			continue;			/* shouldn't happen? */
 
 		/* Drop lock acquired by ExecOpenIndices */
-		if (indexDescs[i]->rd_am->amconcurrent)
-			UnlockRelation(indexDescs[i], RowExclusiveLock);
-		else
-			UnlockRelation(indexDescs[i], AccessExclusiveLock);
-
-		index_close(indexDescs[i]);
+		index_close(indexDescs[i], RowExclusiveLock);
 	}
 
 	/*

@@ -3,12 +3,12 @@
  * spi.c
  *				Server Programming Interface
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/spi.c,v 1.144.2.1 2005/11/22 18:23:09 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/spi.c,v 1.164 2006/10/04 00:29:53 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -18,7 +18,6 @@
 #include "catalog/heap.h"
 #include "commands/trigger.h"
 #include "executor/spi_priv.h"
-#include "tcop/tcopprot.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/typcache.h"
@@ -195,7 +194,6 @@ SPI_connect(void)
 {
 	int			newdepth;
 
-	
 	/*
 	 * When procedure called by Executor _SPI_curid expected to be equal to
 	 * _SPI_connected
@@ -282,7 +280,7 @@ SPI_finish(void)
 	res = _SPI_begin_call(false);		/* live in procedure memory */
 	if (res < 0)
 		return res;
-	
+
 	/* Restore memory context as it was before procedure call */
 	MemoryContextSwitchTo(_SPI_current->savedcxt);
 
@@ -717,7 +715,7 @@ SPI_execute(const char *src, bool read_only, long tcount)
 {
 	_SPI_plan	plan;
 	int			res;
-	
+
 	if (src == NULL || tcount < 0)
 		return SPI_ERROR_ARGUMENT;
 
@@ -873,7 +871,7 @@ SPI_saveplan(void *plan)
 int
 SPI_freeplan(void *plan)
 {
-	_SPI_plan  *spiplan = (_SPI_plan *) plan;;
+	_SPI_plan  *spiplan = (_SPI_plan *) plan;
 
 	if (plan == NULL)
 		return SPI_ERROR_ARGUMENT;
@@ -914,7 +912,7 @@ SPI_returntuple(HeapTuple tuple, TupleDesc tupdesc)
 {
 	MemoryContext oldcxt = NULL;
 	HeapTupleHeader dtup;
-	
+
 	if (tuple == NULL || tupdesc == NULL)
 	{
 		SPI_result = SPI_ERROR_ARGUMENT;
@@ -1060,9 +1058,9 @@ SPI_fname(TupleDesc tupdesc, int fnumber)
 char *
 SPI_getvalue(HeapTuple tuple, TupleDesc tupdesc, int fnumber)
 {
+	char	   *result;
 	Datum		origval,
-				val,
-				result;
+				val;
 	bool		isnull;
 	Oid			typoid,
 				foutoid;
@@ -1097,14 +1095,13 @@ SPI_getvalue(HeapTuple tuple, TupleDesc tupdesc, int fnumber)
 	else
 		val = origval;
 
-	result = OidFunctionCall1(foutoid,
-							  val);
+	result = OidOutputFunctionCall(foutoid, val);
 
 	/* Clean up detoasted copy, if any */
 	if (val != origval)
 		pfree(DatumGetPointer(val));
 
-	return DatumGetCString(result);
+	return result;
 }
 
 Datum
@@ -1234,7 +1231,6 @@ SPI_freetuple(HeapTuple tuple)
 void
 SPI_freetuptable(SPITupleTable *tuptable)
 {
-	elog(DEBUG1,"SPI_freetuptable");
 	if (tuptable != NULL)
 		MemoryContextDelete(tuptable->tuptabcxt);
 }
@@ -1252,10 +1248,8 @@ SPI_cursor_open(const char *name, void *plan,
 				bool read_only)
 {
 	_SPI_plan  *spiplan = (_SPI_plan *) plan;
-	List	   *qtlist = spiplan->qtlist;
-	List	   *ptlist = spiplan->ptlist;
-	Query	   *queryTree;
-	Plan	   *planTree;
+	List	   *qtlist;
+	List	   *ptlist;
 	ParamListInfo paramLI;
 	Snapshot	snapshot;
 	MemoryContext oldcontext;
@@ -1478,35 +1472,36 @@ SPI_cursor_open(const char *name, void *plan,
 	elog(DEBUG1,"SPI_cursor_open local: %s",spiplan->query);
 	
 
-	/* Ensure that the plan contains only one query */
-	if (list_length(ptlist) != 1 || list_length(qtlist) != 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
-				 errmsg("cannot open multi-query plan as cursor")));
-	queryTree = (Query *) linitial((List *) linitial(qtlist));
-	planTree = (Plan *) linitial(ptlist);
-
-	/* Must be a query that returns tuples */
-	switch (queryTree->commandType)
+	/*
+	 * Check that the plan is something the Portal code will special-case as
+	 * returning one tupleset.
+	 */
+	if (!SPI_is_cursor_plan(spiplan))
 	{
-		case CMD_SELECT:
-			if (queryTree->into != NULL)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
-						 errmsg("cannot open SELECT INTO query as cursor")));
-			break;
-		case CMD_UTILITY:
-			if (!UtilityReturnsTuples(queryTree->utilityStmt))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
-						 errmsg("cannot open non-SELECT query as cursor")));
-			break;
-		default:
+		/* try to give a good error message */
+		Query	   *queryTree;
+		
+		if (list_length(spiplan->qtlist) != 1)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
-					 errmsg("cannot open non-SELECT query as cursor")));
-			break;
+					 errmsg("cannot open multi-query plan as cursor")));
+		queryTree = PortalListGetPrimaryQuery((List *) linitial(spiplan->qtlist));
+		if (queryTree == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
+					 errmsg("cannot open empty query as cursor")));
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
+		/* translator: %s is name of a SQL command, eg INSERT */
+				 errmsg("cannot open %s query as cursor",
+						CreateQueryTag(queryTree))));
 	}
+
+	Assert(list_length(spiplan->qtlist) == 1);
+	qtlist = (List *) linitial(spiplan->qtlist);
+	ptlist = spiplan->ptlist;
+	if (list_length(qtlist) != list_length(ptlist))
+		elog(ERROR, "corrupted SPI plan lists");
 
 	/* Reset SPI result (note we deliberately don't touch lastoid) */
 	SPI_processed = 0;
@@ -1526,27 +1521,30 @@ SPI_cursor_open(const char *name, void *plan,
 		portal = CreatePortal(name, false, false);
 	}
 
-	/* Switch to portals memory and copy the parsetree and plan to there */
+	/* Switch to portal's memory and copy the parsetrees and plans to there */
 	oldcontext = MemoryContextSwitchTo(PortalGetHeapMemory(portal));
-	queryTree = copyObject(queryTree);
-	planTree = copyObject(planTree);
+	qtlist = copyObject(qtlist);
+	ptlist = copyObject(ptlist);
 
 	/* If the plan has parameters, set them up */
 	if (spiplan->nargs > 0)
 	{
-		paramLI = (ParamListInfo) palloc0((spiplan->nargs + 1) *
-										  sizeof(ParamListInfoData));
+		/* sizeof(ParamListInfoData) includes the first array element */
+		paramLI = (ParamListInfo) palloc(sizeof(ParamListInfoData) +
+							  (spiplan->nargs - 1) *sizeof(ParamExternData));
+		paramLI->numParams = spiplan->nargs;
 
 		for (k = 0; k < spiplan->nargs; k++)
 		{
-			paramLI[k].kind = PARAM_NUM;
-			paramLI[k].id = k + 1;
-			paramLI[k].ptype = spiplan->argtypes[k];
-			paramLI[k].isnull = (Nulls && Nulls[k] == 'n');
-			if (paramLI[k].isnull)
+			ParamExternData *prm = &paramLI->params[k];
+
+			prm->ptype = spiplan->argtypes[k];
+			prm->pflags = 0;
+			prm->isnull = (Nulls && Nulls[k] == 'n');
+			if (prm->isnull)
 			{
 				/* nulls just copy */
-				paramLI[k].value = Values[k];
+				prm->value = Values[k];
 			}
 			else
 			{
@@ -1554,13 +1552,11 @@ SPI_cursor_open(const char *name, void *plan,
 				int16		paramTypLen;
 				bool		paramTypByVal;
 
-				get_typlenbyval(spiplan->argtypes[k],
-								&paramTypLen, &paramTypByVal);
-				paramLI[k].value = datumCopy(Values[k],
-											 paramTypByVal, paramTypLen);
+				get_typlenbyval(prm->ptype, &paramTypLen, &paramTypByVal);
+				prm->value = datumCopy(Values[k],
+									   paramTypByVal, paramTypLen);
 			}
 		}
-		paramLI[k].kind = PARAM_INVALID;
 	}
 	else
 		paramLI = NULL;
@@ -1569,11 +1565,12 @@ SPI_cursor_open(const char *name, void *plan,
 	 * Set up the portal.
 	 */
 	PortalDefineQuery(portal,
-					  NULL,		/* unfortunately don't have sourceText */
+					  NULL,		/* no statement name */
+					  spiplan->query,
 					  T_SelectStmt,
-					  "SELECT", /* nor the raw parse tree... */
-					  list_make1(queryTree),
-					  list_make1(planTree),
+					  CreateQueryTag(PortalListGetPrimaryQuery(qtlist)),
+					  qtlist,
+					  ptlist,
 					  PortalGetHeapMemory(portal));
 
 	MemoryContextSwitchTo(oldcontext);
@@ -1582,7 +1579,8 @@ SPI_cursor_open(const char *name, void *plan,
 	 * Set up options for portal.
 	 */
 	portal->cursorOptions &= ~(CURSOR_OPT_SCROLL | CURSOR_OPT_NO_SCROLL);
-	if (planTree == NULL || ExecSupportsBackwardScan(planTree))
+	if (list_length(ptlist) == 1 &&
+		ExecSupportsBackwardScan((Plan *) linitial(ptlist)))
 		portal->cursorOptions |= CURSOR_OPT_SCROLL;
 	else
 		portal->cursorOptions |= CURSOR_OPT_NO_SCROLL;
@@ -1604,8 +1602,7 @@ SPI_cursor_open(const char *name, void *plan,
 	 */
 	PortalStart(portal, paramLI, snapshot);
 
-	Assert(portal->strategy == PORTAL_ONE_SELECT ||
-		   portal->strategy == PORTAL_UTIL_SELECT);
+	Assert(portal->strategy != PORTAL_MULTI_QUERY);
 
 	/* Return the created portal */
 	return portal;
@@ -1699,18 +1696,17 @@ SPI_getargcount(void *plan)
 
 /*
  * Returns true if the plan contains exactly one command
- * and that command originates from normal SELECT (i.e.
- * *not* a SELECT ... INTO). In essence, the result indicates
- * if the command can be used with SPI_cursor_open
+ * and that command returns tuples to the caller (eg, SELECT or
+ * INSERT ... RETURNING, but not SELECT ... INTO). In essence,
+ * the result indicates if the command can be used with SPI_cursor_open
  *
  * Parameters
- *	  plan A plan previously prepared using SPI_prepare
+ *	  plan: A plan previously prepared using SPI_prepare
  */
 bool
 SPI_is_cursor_plan(void *plan)
 {
 	_SPI_plan  *spiplan = (_SPI_plan *) plan;
-	List	   *qtlist;
 
 	if (spiplan == NULL)
 	{
@@ -1718,13 +1714,20 @@ SPI_is_cursor_plan(void *plan)
 		return false;
 	}
 
-	qtlist = spiplan->qtlist;
-	if (list_length(spiplan->ptlist) == 1 && list_length(qtlist) == 1)
-	{
-		Query	   *queryTree = (Query *) linitial((List *) linitial(qtlist));
+	if (list_length(spiplan->qtlist) != 1)
+		return false;			/* not exactly 1 pre-rewrite command */
 
-		if (queryTree->commandType == CMD_SELECT && queryTree->into == NULL)
+	switch (ChoosePortalStrategy((List *) linitial(spiplan->qtlist)))
+	{
+		case PORTAL_ONE_SELECT:
+		case PORTAL_ONE_RETURNING:
+		case PORTAL_UTIL_SELECT:
+			/* OK */
 			return true;
+
+		case PORTAL_MULTI_QUERY:
+			/* will not return tuples */
+			break;
 	}
 	return false;
 }
@@ -1785,6 +1788,12 @@ SPI_result_code_string(int code)
 			return "SPI_OK_UPDATE";
 		case SPI_OK_CURSOR:
 			return "SPI_OK_CURSOR";
+		case SPI_OK_INSERT_RETURNING:
+			return "SPI_OK_INSERT_RETURNING";
+		case SPI_OK_DELETE_RETURNING:
+			return "SPI_OK_DELETE_RETURNING";
+		case SPI_OK_UPDATE_RETURNING:
+			return "SPI_OK_UPDATE_RETURNING";
 	}
 	/* Unrecognized code ... return something useful ... */
 	sprintf(buf, "Unrecognized SPI code %d", code);
@@ -1995,7 +2004,7 @@ _SPI_prepare_plan(const char *src, _SPI_plan *plan)
 		Node	   *parsetree = (Node *) lfirst(list_item);
 		List	   *query_list;
 
-		query_list = pg_analyze_and_rewrite(parsetree, argtypes, nargs);
+		query_list = pg_analyze_and_rewrite(parsetree, src, argtypes, nargs);
 
 		query_list_list = lappend(query_list_list, query_list);
 
@@ -2005,7 +2014,7 @@ _SPI_prepare_plan(const char *src, _SPI_plan *plan)
 
 	plan->qtlist = query_list_list;
 	plan->ptlist = plan_list;
-	
+
 	/*
 	 * Pop the error context stack
 	 */
@@ -2026,7 +2035,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				  Snapshot snapshot, Snapshot crosscheck_snapshot,
 				  bool read_only, long tcount)
 {
-	volatile int res = 0;
+	volatile int my_res = 0;
 	volatile uint32 my_processed = 0;
 	volatile Oid my_lastoid = InvalidOid;
 	SPITupleTable *volatile my_tuptable = NULL;
@@ -2528,7 +2537,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
         	 */
         	_SPI_current->lastoid = PQoidValue(pgres);
         	
-        	res = SPI_OK_SELECT;
+        	my_res = SPI_OK_SELECT;
 	 
         } 
         else
@@ -2543,17 +2552,17 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
         	 */
         	char * cmdstatus;
         	 
-        	res = SPI_OK_UTILITY;
+        	my_res = SPI_OK_UTILITY;
         	
         	cmdstatus = PQcmdStatus(pgres);
         	if (strncmp(cmdstatus, "INSERT", 6) == 0)
-        		res = SPI_OK_INSERT;
+        		my_res = SPI_OK_INSERT;
 			else if (strncmp(cmdstatus, "DELETE", 6) == 0)
-				res = SPI_OK_DELETE;
+				my_res = SPI_OK_DELETE;
 			else if (strncmp(cmdstatus, "UPDATE", 6) == 0)
-				res = SPI_OK_UPDATE;
+				my_res = SPI_OK_UPDATE;
 			else if (strncmp(cmdstatus, "FETCH", 5) == 0)
-				res = SPI_OK_FETCH;
+				my_res = SPI_OK_FETCH;
  
         	_SPI_current->processed = atol(PQcmdTuples(pgres));
         	_SPI_current->lastoid = PQoidValue(pgres);
@@ -2578,8 +2587,8 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
         SPI_processed = _SPI_current->processed;
 		SPI_lastoid = _SPI_current->lastoid;
 		SPI_tuptable = _SPI_current->tuptable;
-        elog(DEBUG1,"_SPI_execute_plan done %d", res);
-        return res;
+        elog(DEBUG1,"_SPI_execute_plan done %d", my_res);
+        return my_res;
         
 	}
 	
@@ -2604,18 +2613,20 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 		{
 			int			k;
 
-			paramLI = (ParamListInfo)
-				palloc0((nargs + 1) * sizeof(ParamListInfoData));
+			/* sizeof(ParamListInfoData) includes the first array element */
+			paramLI = (ParamListInfo) palloc(sizeof(ParamListInfoData) +
+									   (nargs - 1) *sizeof(ParamExternData));
+			paramLI->numParams = nargs;
 
 			for (k = 0; k < nargs; k++)
 			{
-				paramLI[k].kind = PARAM_NUM;
-				paramLI[k].id = k + 1;
-				paramLI[k].ptype = plan->argtypes[k];
-				paramLI[k].isnull = (Nulls && Nulls[k] == 'n');
-				paramLI[k].value = Values[k];
+				ParamExternData *prm = &paramLI->params[k];
+
+				prm->value = Values[k];
+				prm->isnull = (Nulls && Nulls[k] == 'n');
+				prm->pflags = 0;
+				prm->ptype = plan->argtypes[k];
 			}
-			paramLI[k].kind = PARAM_INVALID;
 		}
 		else
 			paramLI = NULL;
@@ -2639,6 +2650,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				Plan	   *planTree;
 				QueryDesc  *qdesc;
 				DestReceiver *dest;
+				int			res;
 
 				planTree = lfirst(plan_list_item);
 				plan_list_item = lnext(plan_list_item);
@@ -2655,7 +2667,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 
 						if (stmt->filename == NULL)
 						{
-							res = SPI_ERROR_COPY;
+							my_res = SPI_ERROR_COPY;
 							goto fail;
 						}
 					}
@@ -2663,12 +2675,12 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 							 IsA(queryTree->utilityStmt, ClosePortalStmt) ||
 							 IsA(queryTree->utilityStmt, FetchStmt))
 					{
-						res = SPI_ERROR_CURSOR;
+						my_res = SPI_ERROR_CURSOR;
 						goto fail;
 					}
 					else if (IsA(queryTree->utilityStmt, TransactionStmt))
 					{
-						res = SPI_ERROR_TRANSACTION;
+						my_res = SPI_ERROR_TRANSACTION;
 						goto fail;
 					}
 				}
@@ -2717,6 +2729,9 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				{
 					ProcessUtility(queryTree->utilityStmt, paramLI,
 								   dest, NULL);
+					/* Update "processed" if stmt returned tuples */
+					if (_SPI_current->tuptable)
+						_SPI_current->processed = _SPI_current->tuptable->alloced - _SPI_current->tuptable->free;
 					res = SPI_OK_UTILITY;
 				}
 				else
@@ -2734,9 +2749,9 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				ActiveSnapshot = NULL;
 
 				/*
-				 * The last canSetTag query sets the auxiliary values returned
-				 * to the caller.  Be careful to free any tuptables not
-				 * returned, to avoid intratransaction memory leak.
+				 * The last canSetTag query sets the status values returned to
+				 * the caller.	Be careful to free any tuptables not returned,
+				 * to avoid intratransaction memory leak.
 				 */
 				if (queryTree->canSetTag)
 				{
@@ -2744,6 +2759,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 					my_lastoid = _SPI_current->lastoid;
 					SPI_freetuptable(my_tuptable);
 					my_tuptable = _SPI_current->tuptable;
+					my_res = res;
 				}
 				else
 				{
@@ -2752,7 +2768,10 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				}
 				/* we know that the receiver doesn't need a destroy call */
 				if (res < 0)
+				{
+					my_res = res;
 					goto fail;
+				}
 			}
 		}
 
@@ -2778,7 +2797,7 @@ fail:
 	SPI_lastoid = my_lastoid;
 	SPI_tuptable = my_tuptable;
 
-	return res;
+	return my_res;
 }
 
 static int
@@ -2790,26 +2809,33 @@ _SPI_pquery(QueryDesc *queryDesc, long tcount)
 	switch (operation)
 	{
 		case CMD_SELECT:
-			res = SPI_OK_SELECT;
 			if (queryDesc->parsetree->into)		/* select into table? */
-			{
 				res = SPI_OK_SELINTO;
-				queryDesc->dest = None_Receiver;		/* don't output results */
-			}
 			else if (queryDesc->dest->mydest != DestSPI)
 			{
 				/* Don't return SPI_OK_SELECT if we're discarding result */
 				res = SPI_OK_UTILITY;
 			}
+			else
+				res = SPI_OK_SELECT;
 			break;
 		case CMD_INSERT:
-			res = SPI_OK_INSERT;
+			if (queryDesc->parsetree->returningList)
+				res = SPI_OK_INSERT_RETURNING;
+			else
+				res = SPI_OK_INSERT;
 			break;
 		case CMD_DELETE:
-			res = SPI_OK_DELETE;
+			if (queryDesc->parsetree->returningList)
+				res = SPI_OK_DELETE_RETURNING;
+			else
+				res = SPI_OK_DELETE;
 			break;
 		case CMD_UPDATE:
-			res = SPI_OK_UPDATE;
+			if (queryDesc->parsetree->returningList)
+				res = SPI_OK_UPDATE_RETURNING;
+			else
+				res = SPI_OK_UPDATE;
 			break;
 		default:
 			return SPI_ERROR_OPUNKNOWN;
@@ -2824,13 +2850,14 @@ _SPI_pquery(QueryDesc *queryDesc, long tcount)
 	AfterTriggerBeginQuery();
 
 	ExecutorStart(queryDesc, 0);
-	
+
 	ExecutorRun(queryDesc, ForwardScanDirection, tcount);
 
 	_SPI_current->processed = queryDesc->estate->es_processed;
 	_SPI_current->lastoid = queryDesc->estate->es_lastoid;
 
-	if (operation == CMD_SELECT && queryDesc->dest->mydest == DestSPI)
+	if ((res == SPI_OK_SELECT || queryDesc->parsetree->returningList) &&
+		queryDesc->dest->mydest == DestSPI)
 	{
 		if (_SPI_checktuples())
 			elog(ERROR, "consistency check on SPI tuple count failed");

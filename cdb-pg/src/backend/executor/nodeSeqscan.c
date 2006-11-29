@@ -4,12 +4,12 @@
  *	  Support routines for sequential scans of relations.
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeSeqscan.c,v 1.54 2005/10/15 02:49:17 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeSeqscan.c,v 1.61 2006/10/04 00:29:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -28,7 +28,6 @@
 #include "access/heapam.h"
 #include "executor/execdebug.h"
 #include "executor/nodeSeqscan.h"
-#include "parser/parsetree.h"
 
 static void InitScanRelation(SeqScanState *node, EState *estate);
 static TupleTableSlot *SeqNext(SeqScanState *node);
@@ -63,15 +62,6 @@ SeqNext(SeqScanState *node)
 	slot = node->ss_ScanTupleSlot;
 
 	/*
-	 * Clear any reference to the previously returned tuple.  The idea here is
-	 * to not have the tuple slot be the last holder of a pin on that tuple's
-	 * buffer; if it is, we'll need a separate visit to the bufmgr to release
-	 * the buffer.	By clearing here, we get to have the release done by
-	 * ReleaseAndReadBuffer inside heap_getnext.
-	 */
-	ExecClearTuple(slot);
-
-	/*
 	 * Check if we are evaluating PlanQual for tuple of this relation.
 	 * Additional checking is not good, but no other way for now. We could
 	 * introduce new nodes for this case and handle SeqScan --> NewNode
@@ -81,7 +71,7 @@ SeqNext(SeqScanState *node)
 		estate->es_evTuple[scanrelid - 1] != NULL)
 	{
 		if (estate->es_evTupleNull[scanrelid - 1])
-			return slot;		/* return empty slot */
+			return ExecClearTuple(slot);
 
 		ExecStoreTuple(estate->es_evTuple[scanrelid - 1],
 					   slot, InvalidBuffer, false);
@@ -94,7 +84,7 @@ SeqNext(SeqScanState *node)
 
 		/* Flag for the next call that no more tuples */
 		estate->es_evTupleNull[scanrelid - 1] = true;
-		return (slot);
+		return slot;
 	}
 
 	/*
@@ -116,6 +106,8 @@ SeqNext(SeqScanState *node)
 					   scandesc->rs_cbuf,		/* buffer associated with this
 												 * tuple */
 					   false);	/* don't pfree this pointer */
+	else
+		ExecClearTuple(slot);
 
 	return slot;
 }
@@ -149,25 +141,15 @@ ExecSeqScan(SeqScanState *node)
 static void
 InitScanRelation(SeqScanState *node, EState *estate)
 {
-	Index		relid;
-	List	   *rangeTable;
-	RangeTblEntry *rtentry;
-	Oid			reloid;
 	Relation	currentRelation;
 	HeapScanDesc currentScanDesc;
 
 	/*
 	 * get the relation object id from the relid'th entry in the range table,
-	 * open that relation and initialize the scan state.
-	 *
-	 * We acquire AccessShareLock for the duration of the scan.
+	 * open that relation and acquire appropriate lock on it.
 	 */
-	relid = ((SeqScan *) node->ps.plan)->scanrelid;
-	rangeTable = estate->es_range_table;
-	rtentry = rt_fetch(relid, rangeTable);
-	reloid = rtentry->relid;
-
-	currentRelation = heap_open(reloid, AccessShareLock);
+	currentRelation = ExecOpenScanRelation(estate,
+									 ((SeqScan *) node->ps.plan)->scanrelid);
 
 	currentScanDesc = heap_beginscan(currentRelation,
 									 estate->es_snapshot,
@@ -177,7 +159,7 @@ InitScanRelation(SeqScanState *node, EState *estate)
 	node->ss_currentRelation = currentRelation;
 	node->ss_currentScanDesc = currentScanDesc;
 
-	ExecAssignScanType(node, RelationGetDescr(currentRelation), false);
+	ExecAssignScanType(node, RelationGetDescr(currentRelation));
 }
 
 
@@ -287,12 +269,8 @@ ExecEndSeqScan(SeqScanState *node)
 
 	/*
 	 * close the heap relation.
-	 *
-	 * Currently, we do not release the AccessShareLock acquired by
-	 * InitScanRelation.  This lock should be held till end of transaction.
-	 * (There is a faction that considers this too much locking, however.)
 	 */
-	heap_close(relation, NoLock);
+	ExecCloseScanRelation(relation);
 }
 
 /* ----------------------------------------------------------------

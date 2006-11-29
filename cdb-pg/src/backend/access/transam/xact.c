@@ -1624,6 +1624,8 @@ StartTransaction(void)
 			 *		  XID here too when we get around to having a global snapshot used.
 			 */
 			XactLockTableInsert(s->transactionId);
+			
+			PG_TRACE1(transaction__start, s->transactionId);
 
 		  	/*
 		 	 * now() and statement_timestamp() should be the same time
@@ -1736,6 +1738,8 @@ StartTransaction(void)
 		s->transactionId = GetNewTransactionId(false);
 
 		XactLockTableInsert(s->transactionId);
+		
+		PG_TRACE1(transaction__start, s->transactionId);
 
 		/*
 	 	 * set transaction_timestamp() (a/k/a now()).  We want this to be the

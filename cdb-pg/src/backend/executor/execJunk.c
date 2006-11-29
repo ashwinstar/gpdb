@@ -3,20 +3,18 @@
  * execJunk.c
  *	  Junk attribute support stuff....
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/execJunk.c,v 1.50.2.1 2005/11/22 18:23:08 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/execJunk.c,v 1.54 2006/07/14 14:52:18 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "executor/executor.h"
-#include "nodes/makefuncs.h"
 
 /*-------------------------------------------------------------------------
  *		XXX this stuff should be rewritten to take advantage
@@ -79,7 +77,7 @@ ExecInitJunkFilter(List *targetList, bool hasoid, TupleTableSlot *slot)
 	 * Use the given slot, or make a new slot if we weren't given one.
 	 */
 	if (slot)
-		ExecSetSlotDescriptor(slot, cleanTupType, false);
+		ExecSetSlotDescriptor(slot, cleanTupType);
 	else
 		slot = MakeSingleTupleTableSlot(cleanTupType);
 
@@ -150,7 +148,7 @@ ExecInitJunkFilterConversion(List *targetList,
 	 * Use the given slot, or make a new slot if we weren't given one.
 	 */
 	if (slot)
-		ExecSetSlotDescriptor(slot, cleanTupType, false);
+		ExecSetSlotDescriptor(slot, cleanTupType);
 	else
 		slot = MakeSingleTupleTableSlot(cleanTupType);
 

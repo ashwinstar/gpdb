@@ -5369,10 +5369,12 @@ int8_avg_amalg(PG_FUNCTION_ARGS)
 	else
 		aTransArray = PG_GETARG_ARRAYTYPE_P_COPY(0);
 
-	if (ARR_SIZE(aTransArray) != ARR_OVERHEAD(1) + sizeof(Int8TransTypeData))
+	if (ARR_HASNULL(aTransArray) ||
+	 	ARR_SIZE(aTransArray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
 		elog(ERROR, "expected 2-element int8 array");
 
-	if (ARR_SIZE(bTransArray) != ARR_OVERHEAD(1) + sizeof(Int8TransTypeData))
+	if (ARR_HASNULL(aTransArray) ||
+		ARR_SIZE(bTransArray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
 		elog(ERROR, "expected 2-element int8 array");
 
 	atransdata = (Int8TransTypeData *) ARR_DATA_PTR(aTransArray);

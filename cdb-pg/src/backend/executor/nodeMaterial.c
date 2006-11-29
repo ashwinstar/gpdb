@@ -4,12 +4,12 @@
  *	  Routines to handle materialization nodes.
  *
  * Portions Copyright (c) 2005, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeMaterial.c,v 1.50.2.1 2005/11/23 20:28:04 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeMaterial.c,v 1.57 2006/10/04 00:29:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,11 +22,9 @@
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "executor/executor.h"
 #include "executor/nodeMaterial.h"
 #include "miscadmin.h"
-#include "utils/tuplestore.h"
 
 /* ----------------------------------------------------------------
  *		ExecMaterial
@@ -45,8 +43,6 @@ ExecMaterial(MaterialState *node)
 	ScanDirection dir;
 	bool		forward;
 	Tuplestorestate *tuplestorestate;
-	HeapTuple	heapTuple = NULL;
-	bool		should_free = false;
 	bool		eof_tuplestore;
 	TupleTableSlot *slot;
 
@@ -101,27 +97,25 @@ ExecMaterial(MaterialState *node)
 		{
 			/*
 			 * When reversing direction at tuplestore EOF, the first
-			 * getheaptuple call will fetch the last-added tuple; but we want
+			 * gettupleslot call will fetch the last-added tuple; but we want
 			 * to return the one before that, if possible. So do an extra
 			 * fetch.
 			 */
-			heapTuple = tuplestore_getheaptuple(tuplestorestate,
-												forward,
-												&should_free);
-			if (heapTuple == NULL)
+			if (!tuplestore_advance(tuplestorestate, forward))
 				return NULL;	/* the tuplestore must be empty */
-			if (should_free)
-				heap_freetuple(heapTuple);
 		}
 		eof_tuplestore = false;
 	}
 
+	/*
+	 * If we can fetch another tuple from the tuplestore, return it.
+	 */
+	slot = node->ss.ps.ps_ResultTupleSlot;
 	if (!eof_tuplestore)
 	{
-		heapTuple = tuplestore_getheaptuple(tuplestorestate,
-											forward,
-											&should_free);
-		if (heapTuple == NULL && forward)
+		if (tuplestore_gettupleslot(tuplestorestate, forward, slot))
+			return slot;
+		if (forward)
 			eof_tuplestore = true;
 	}
 
@@ -149,26 +143,26 @@ ExecMaterial(MaterialState *node)
 			node->eof_underlying = true;
 			return NULL;
 		}
-		heapTuple = ExecFetchSlotTuple(outerslot);
-		should_free = false;
 
 		/*
-		 * Append returned tuple to tuplestore, too.  NOTE: because the
-		 * tuplestore is certainly in EOF state, its read position will move
-		 * forward over the added tuple.  This is what we want.
+		 * Append returned tuple to tuplestore.  NOTE: because the tuplestore
+		 * is certainly in EOF state, its read position will move forward over
+		 * the added tuple.  This is what we want.
 		 */
 		if (tuplestorestate)
-			tuplestore_puttuple(tuplestorestate, (void *) heapTuple);
+			tuplestore_puttuple(tuplestorestate, outerslot);
+
+		/*
+		 * And return a copy of the tuple.	(XXX couldn't we just return the
+		 * outerslot?)
+		 */
+		return ExecCopySlot(slot, outerslot);
 	}
 
 	/*
-	 * Return the obtained tuple, if any.
+	 * Nothing left ...
 	 */
-	slot = (TupleTableSlot *) node->ss.ps.ps_ResultTupleSlot;
-	if (heapTuple)
-		return ExecStoreTuple(heapTuple, slot, InvalidBuffer, should_free);
-	else
-		return ExecClearTuple(slot);
+	return ExecClearTuple(slot);
 }
 
 /* ----------------------------------------------------------------
@@ -189,10 +183,10 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	matstate->ss.ps.state = estate;
 
 	/*
-	 * We must have random access to the subplan output to do backward scan
-	 * or mark/restore.  We also prefer to materialize the subplan output
-	 * if we might be called on to rewind and replay it many times.
-	 * However, if none of these cases apply, we can skip storing the data.
+	 * We must have random access to the subplan output to do backward scan or
+	 * mark/restore.  We also prefer to materialize the subplan output if we
+	 * might be called on to rewind and replay it many times. However, if none
+	 * of these cases apply, we can skip storing the data.
 	 */
 	matstate->randomAccess = (eflags & (EXEC_FLAG_REWIND |
 										EXEC_FLAG_BACKWARD |
@@ -221,8 +215,8 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	/*
 	 * initialize child nodes
 	 *
-	 * We shield the child node from the need to support REWIND, BACKWARD,
-	 * or MARK/RESTORE.
+	 * We shield the child node from the need to support REWIND, BACKWARD, or
+	 * MARK/RESTORE.
 	 */
 	eflags &= ~(EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK);
 

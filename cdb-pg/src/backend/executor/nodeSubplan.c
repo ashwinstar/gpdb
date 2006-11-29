@@ -4,11 +4,11 @@
  *	  routines to support subselects
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeSubplan.c,v 1.70.2.1 2005/11/22 18:23:09 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeSubplan.c,v 1.80 2006/10/04 00:29:53 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -20,20 +20,21 @@
  */
 #include "postgres.h"
 
+#include <math.h>
+
 #include "access/heapam.h"
+#include "executor/executor.h"
+#include "executor/nodeSubplan.h"
 #include "cdb/cdbexplain.h"             /* cdbexplain_recvSubplanStats */
 #include "cdb/cdbvars.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbtm.h"
 #include "cdb/ml_ipc.h"
-#include "executor/executor.h"
-#include "executor/nodeSubplan.h"
 #include "lib/stringinfo.h"
 #include "nodes/makefuncs.h"
-#include "parser/parse_expr.h"
+#include "optimizer/clauses.h"
 #include "utils/array.h"
-#include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 
@@ -215,7 +216,6 @@ ExecScanSubPlan(SubPlanState *node,
 	SubPlan    *subplan = (SubPlan *) node->xprstate.expr;
 	PlanState  *planstate = node->planstate;
 	SubLinkType subLinkType = subplan->subLinkType;
-	bool		useOr = subplan->useOr;
 	MemoryContext oldcontext;
 	TupleTableSlot *slot;
 	Datum		result;
@@ -255,15 +255,13 @@ ExecScanSubPlan(SubPlanState *node,
 	/*
 	 * For all sublink types except EXPR_SUBLINK and ARRAY_SUBLINK, the result
 	 * is boolean as are the results of the combining operators. We combine
-	 * results within a tuple (if there are multiple columns) using OR
-	 * semantics if "useOr" is true, AND semantics if not. We then combine
 	 * results across tuples (if the subplan produces more than one) using OR
 	 * semantics for ANY_SUBLINK or AND semantics for ALL_SUBLINK.
-	 * (MULTIEXPR_SUBLINK doesn't allow multiple tuples from the subplan.)
+	 * (ROWCOMPARE_SUBLINK doesn't allow multiple tuples from the subplan.)
 	 * NULL results from the combining operators are handled according to the
 	 * usual SQL semantics for OR and AND.	The result for no input tuples is
 	 * FALSE for ANY_SUBLINK, TRUE for ALL_SUBLINK, NULL for
-	 * MULTIEXPR_SUBLINK.
+	 * ROWCOMPARE_SUBLINK.
 	 *
 	 * For EXPR_SUBLINK we require the subplan to produce no more than one
 	 * tuple, else an error is raised. For ARRAY_SUBLINK we allow the subplan
@@ -279,9 +277,9 @@ ExecScanSubPlan(SubPlanState *node,
 		 slot = ExecProcNode(planstate))
 	{
 		TupleDesc	tdesc = slot->tts_tupleDescriptor;
-		Datum		rowresult = BoolGetDatum(!useOr);
-		bool		rownull = false;
-		int			col = 1;
+		Datum		rowresult;
+		bool		rownull;
+		int			col;
 		ListCell   *plst;
 
 		if (subLinkType == EXISTS_SUBLINK)
@@ -314,7 +312,7 @@ ExecScanSubPlan(SubPlanState *node,
 			node->curTuple = ExecCopySlotTuple(slot);
 			MemoryContextSwitchTo(node->sub_estate->es_query_cxt);
 
-			result = heap_getattr(node->curTuple, col, tdesc, isNull);
+			result = heap_getattr(node->curTuple, 1, tdesc, isNull);
 			/* keep scanning subplan to make sure there's only one tuple */
 			continue;
 		}
@@ -334,8 +332,8 @@ ExecScanSubPlan(SubPlanState *node,
 			continue;
 		}
 
-		/* cannot allow multiple input tuples for MULTIEXPR sublink either */
-		if (subLinkType == MULTIEXPR_SUBLINK && found)
+		/* cannot allow multiple input tuples for ROWCOMPARE sublink either */
+		if (subLinkType == ROWCOMPARE_SUBLINK && found)
 			ereport(ERROR,
 					(errcode(ERRCODE_CARDINALITY_VIOLATION),
 					 errmsg("more than one row returned by a subquery used as an expression")));
@@ -343,68 +341,24 @@ ExecScanSubPlan(SubPlanState *node,
 		found = true;
 
 		/*
-		 * For ALL, ANY, and MULTIEXPR sublinks, iterate over combining
-		 * operators for columns of tuple.
+		 * For ALL, ANY, and ROWCOMPARE sublinks, load up the Params
+		 * representing the columns of the sub-select, and then evaluate the
+		 * combining expression.
 		 */
-		Assert(list_length(node->exprs) == list_length(subplan->paramIds));
-
-		forboth(l, node->exprs, plst, subplan->paramIds)
+		col = 1;
+		foreach(plst, subplan->paramIds)
 		{
-			ExprState  *exprstate = (ExprState *) lfirst(l);
 			int			paramid = lfirst_int(plst);
 			ParamExecData *prmdata;
-			Datum		expresult;
-			bool		expnull;
 
-			/*
-			 * Load up the Param representing this column of the sub-select.
-			 */
 			prmdata = &(econtext->ecxt_param_exec_vals[paramid]);
 			Assert(prmdata->execPlan == NULL);
-			prmdata->value = slot_getattr(slot, col,
-										  &(prmdata->isnull));
-
-			/*
-			 * Now we can eval the combining operator for this column.
-			 */
-			expresult = ExecEvalExprSwitchContext(exprstate, econtext,
-												  &expnull, NULL);
-
-			/*
-			 * Combine the result into the row result as appropriate.
-			 */
-			if (col == 1)
-			{
-				rowresult = expresult;
-				rownull = expnull;
-			}
-			else if (useOr)
-			{
-				/* combine within row per OR semantics */
-				if (expnull)
-					rownull = true;
-				else if (DatumGetBool(expresult))
-				{
-					rowresult = BoolGetDatum(true);
-					rownull = false;
-					break;		/* needn't look at any more columns */
-				}
-			}
-			else
-			{
-				/* combine within row per AND semantics */
-				if (expnull)
-					rownull = true;
-				else if (!DatumGetBool(expresult))
-				{
-					rowresult = BoolGetDatum(false);
-					rownull = false;
-					break;		/* needn't look at any more columns */
-				}
-			}
-
+			prmdata->value = slot_getattr(slot, col, &(prmdata->isnull));
 			col++;
 		}
+
+		rowresult = ExecEvalExprSwitchContext(node->testexpr, econtext,
+											  &rownull, NULL);
 
 		if (subLinkType == ANY_SUBLINK)
 		{
@@ -432,7 +386,7 @@ ExecScanSubPlan(SubPlanState *node,
 		}
 		else
 		{
-			/* must be MULTIEXPR_SUBLINK */
+			/* must be ROWCOMPARE_SUBLINK */
 			result = rowresult;
 			*isNull = rownull;
 		}
@@ -443,11 +397,11 @@ ExecScanSubPlan(SubPlanState *node,
 		/*
 		 * deal with empty subplan result.	result/isNull were previously
 		 * initialized correctly for all sublink types except EXPR, ARRAY, and
-		 * MULTIEXPR; for those, return NULL.
+		 * ROWCOMPARE; for those, return NULL.
 		 */
 		if (subLinkType == EXPR_SUBLINK ||
 			subLinkType == ARRAY_SUBLINK ||
-			subLinkType == MULTIEXPR_SUBLINK)
+			subLinkType == ROWCOMPARE_SUBLINK)
 		{
 			result = (Datum) 0;
 			*isNull = true;
@@ -473,7 +427,7 @@ buildSubPlanHash(SubPlanState *node)
 {
 	SubPlan    *subplan = (SubPlan *) node->xprstate.expr;
 	PlanState  *planstate = node->planstate;
-	int			ncols = list_length(node->exprs);
+	int			ncols = list_length(subplan->paramIds);
 	ExprContext *innerecontext = node->innerecontext;
 	MemoryContext tempcxt = innerecontext->ecxt_per_tuple_memory;
 	MemoryContext oldcontext;
@@ -481,7 +435,6 @@ buildSubPlanHash(SubPlanState *node)
 	TupleTableSlot *slot;
 
 	Assert(subplan->subLinkType == ANY_SUBLINK);
-	Assert(!subplan->useOr);
 
 	/*
 	 * If we already had any hash tables, destroy 'em; then create empty hash
@@ -491,8 +444,8 @@ buildSubPlanHash(SubPlanState *node)
 	 * NULL) results of the IN operation, then we have to store subplan output
 	 * rows that are partly or wholly NULL.  We store such rows in a separate
 	 * hash table that we expect will be much smaller than the main table. (We
-	 * can use hashing to eliminate partly-null rows that are not distinct.
-	 * We keep them separate to minimize the cost of the inevitable full-table
+	 * can use hashing to eliminate partly-null rows that are not distinct. We
+	 * keep them separate to minimize the cost of the inevitable full-table
 	 * searches; see findPartialMatch.)
 	 *
 	 * If it's not necessary to distinguish FALSE and UNKNOWN, then we don't
@@ -629,8 +582,7 @@ findPartialMatch(TupleHashTable hashtable, TupleTableSlot *slot)
 	ResetTupleHashIterator(hashtable, &hashiter);
 	while ((entry = ScanTupleHashTable(&hashiter)) != NULL)
 	{
-		ExecStoreTuple(entry->firstTuple, hashtable->tableslot,
-					   InvalidBuffer, false);
+		ExecStoreMinimalTuple(entry->firstTuple, hashtable->tableslot, false);
 		if (!execTuplesUnequal(hashtable->tableslot, slot,
 							   numCols, keyColIdx,
 							   hashtable->eqfunctions,
@@ -682,6 +634,10 @@ slotNoNulls(TupleTableSlot *slot)
 
 /* ----------------------------------------------------------------
  *		ExecInitSubPlan
+ *
+ * Note: the eflags are those passed to the parent plan node of this
+ * subplan; they don't directly describe the execution conditions the
+ * subplan will face.
  * ----------------------------------------------------------------
  */
 void
@@ -761,20 +717,15 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 	/*
 	 * Start up the subplan (this is a very cut-down form of InitPlan())
 	 *
-	 * The subplan will never need to do BACKWARD scan or MARK/RESTORE.
-	 * If it is a parameterless subplan (not initplan), we suggest that it
-	 * be prepared to handle REWIND efficiently; otherwise there is no need.
+	 * The subplan will never need to do BACKWARD scan or MARK/RESTORE. If it
+	 * is a parameterless subplan (not initplan), we suggest that it be
+	 * prepared to handle REWIND efficiently; otherwise there is no need.
 	 */
 	eflags &= EXEC_FLAG_EXPLAIN_ONLY;
 	if (subplan->parParam == NIL && subplan->setParam == NIL)
 		eflags |= EXEC_FLAG_REWIND;
 
 	node->planstate = ExecInitNode(subplan->plan, sp_estate, eflags);
-
-	/*
-	 * Should we "Reclaim" the global slice table to keep control of it?
-	 * Shouldn't be necessary since deallocation is context based.
-	 */
 
 	node->needShutdown = true;	/* now we need to shutdown the subplan */
 
@@ -812,11 +763,12 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 		TupleDesc	tupDesc;
 		TupleTable	tupTable;
 		TupleTableSlot *slot;
-		List	   *lefttlist,
+		List	   *oplist,
+				   *lefttlist,
 				   *righttlist,
 				   *leftptlist,
 				   *rightptlist;
-		ListCell   *lexpr;
+		ListCell   *l;
 
 		/* We need a memory context to hold the hash table(s) */
 		node->tablecxt =
@@ -828,7 +780,7 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 		/* and a short-lived exprcontext for function evaluation */
 		node->innerecontext = CreateExprContext(estate);
 		/* Silly little array of column numbers 1..n */
-		ncols = list_length(node->exprs);
+		ncols = list_length(subplan->paramIds);
 		node->keyColIdx = (AttrNumber *) palloc(ncols * sizeof(AttrNumber));
 		for (i = 0; i < ncols; i++)
 			node->keyColIdx[i] = i + 1;
@@ -847,14 +799,34 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 		 * We also extract the combining operators themselves to initialize
 		 * the equality and hashing functions for the hash tables.
 		 */
+		if (IsA(node->testexpr->expr, OpExpr))
+		{
+			/* single combining operator */
+			oplist = list_make1(node->testexpr);
+		}
+		else if (and_clause((Node *) node->testexpr->expr))
+		{
+			/* multiple combining operators */
+			Assert(IsA(node->testexpr, BoolExprState));
+			oplist = ((BoolExprState *) node->testexpr)->args;
+		}
+		else
+		{
+			/* shouldn't see anything else in a hashable subplan */
+			elog(ERROR, "unrecognized testexpr type: %d",
+				 (int) nodeTag(node->testexpr->expr));
+			oplist = NIL;		/* keep compiler quiet */
+		}
+		Assert(list_length(oplist) == ncols);
+
 		lefttlist = righttlist = NIL;
 		leftptlist = rightptlist = NIL;
 		node->eqfunctions = (FmgrInfo *) palloc(ncols * sizeof(FmgrInfo));
 		node->hashfunctions = (FmgrInfo *) palloc(ncols * sizeof(FmgrInfo));
 		i = 1;
-		foreach(lexpr, node->exprs)
+		foreach(l, oplist)
 		{
-			FuncExprState *fstate = (FuncExprState *) lfirst(lexpr);
+			FuncExprState *fstate = (FuncExprState *) lfirst(l);
 			OpExpr	   *opexpr = (OpExpr *) fstate->xprstate.expr;
 			ExprState  *exstate;
 			Expr	   *expr;
@@ -927,14 +899,14 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 		 */
 		tupDesc = ExecTypeFromTL(leftptlist, false);
 		slot = ExecAllocTableSlot(tupTable);
-		ExecSetSlotDescriptor(slot, tupDesc, true);
+		ExecSetSlotDescriptor(slot, tupDesc);
 		node->projLeft = ExecBuildProjectionInfo(lefttlist,
 												 NULL,
 												 slot);
 
 		tupDesc = ExecTypeFromTL(rightptlist, false);
 		slot = ExecAllocTableSlot(tupTable);
-		ExecSetSlotDescriptor(slot, tupDesc, true);
+		ExecSetSlotDescriptor(slot, tupDesc);
 		node->projRight = ExecBuildProjectionInfo(righttlist,
 												  node->innerecontext,
 												  slot);
@@ -1123,7 +1095,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 
 			if (found &&
 				(subLinkType == EXPR_SUBLINK ||
-				 subLinkType == MULTIEXPR_SUBLINK))
+				 subLinkType == ROWCOMPARE_SUBLINK))
 				ereport(ERROR,
 						(errcode(ERRCODE_CARDINALITY_VIOLATION),
 						 errmsg("more than one row returned by a subquery used as an expression")));

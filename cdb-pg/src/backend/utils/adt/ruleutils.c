@@ -2145,7 +2145,7 @@ get_target_list(List *targetList, deparse_context *context,
 		}
 		else
 		{
-		get_rule_expr((Node *) tle->expr, context, true);
+			get_rule_expr((Node *) tle->expr, context, true);
 			/* We'll show the AS name unless it's this: */
 			attname = "?column?";
 		}
