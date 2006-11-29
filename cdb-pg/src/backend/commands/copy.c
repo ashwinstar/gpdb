@@ -4,7 +4,7 @@
  *		Implements the COPY utility command.
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -85,16 +85,16 @@ typedef enum EolType
  * operation.  For simplicity, we use the same struct for all variants
  * of COPY, even though some fields are used in only some cases.
  *
- * A word about encoding considerations: encodings that are only supported on
- * the client side are those where multibyte characters may have second or
- * later bytes with the high bit not set.  When scanning data in such an
- * encoding to look for a match to a single-byte (ie ASCII) character,
- * we must use the full pg_encoding_mblen() machinery to skip over
- * multibyte characters, else we might find a false match to a trailing
- * byte.  In supported server encodings, there is no possibility of
- * a false match, and it's faster to make useless comparisons to trailing
- * bytes than it is to invoke pg_encoding_mblen() to skip over them.
- * client_only_encoding is TRUE when we have to do it the hard way.
+ * Multi-byte encodings: all supported client-side encodings encode multi-byte
+ * characters by having the first byte's high bit set. Subsequent bytes of the
+ * character can have the high bit not set. When scanning data in such an
+ * encoding to look for a match to a single-byte (ie ASCII) character, we must
+ * use the full pg_encoding_mblen() machinery to skip over multibyte
+ * characters, else we might find a false match to a trailing byte. In
+ * supported server encodings, there is no possibility of a false match, and
+ * it's faster to make useless comparisons to trailing bytes than it is to
+ * invoke pg_encoding_mblen() to skip over them. encoding_embeds_ascii is TRUE
+ * when we have to do it the hard way. 
  */
 typedef struct CopyStateData
 {
@@ -107,7 +107,7 @@ typedef struct CopyStateData
 	EolType		eol_type;		/* EOL type of input */
 	int			client_encoding;	/* remote side's character encoding */
 	bool		need_transcoding;		/* client encoding diff from server? */
-	bool		client_only_encoding;	/* encoding not valid on server? */
+	bool		encoding_embeds_ascii;  /* ASCII can be non-first byte? */
 	uint64      processed;      /* # of tuples processed */
 	
 	/* parameters from the COPY command */
@@ -831,7 +831,26 @@ DoCopy(const CopyStmt *stmt)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("COPY delimiter must be a single character")));
-
+	
+	/* Disallow end-of-line characters */
+	if (strchr(cstate->delim, '\r') != NULL ||
+	    strchr(cstate->delim, '\n') != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("COPY delimiter cannot be newline or carriage return")));
+	
+	if (strchr(cstate->null_print, '\r') != NULL ||
+		strchr(cstate->null_print, '\n') != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("COPY null cannot use newline or carriage return")));
+	
+	/* Disallow backslash in non-CSV mode */
+	if (!cstate->csv_mode && strchr(cstate->delim, '\\') != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("COPY delimiter cannot be backslash")));
+	
 	/* Check header */
 	if (!cstate->csv_mode && cstate->header_line)
 		ereport(ERROR,
@@ -1019,7 +1038,7 @@ DoCopy(const CopyStmt *stmt)
 		((cstate->client_encoding != GetDatabaseEncoding() ||
 		  pg_database_encoding_max_length() > 1) &&
 		 (!is_from || (Mpp_role != MPP_ROLE_EXECUTE)) );
-	cstate->client_only_encoding = PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding);
+	cstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding);
 	cstate->line_buf_converted = (Mpp_role == MPP_ROLE_EXECUTE ? true : false);
 
 	cstate->copy_dest = COPY_FILE;		/* default */
@@ -1232,8 +1251,6 @@ CopyToExec(CopyState cstate)
 	Form_pg_attribute *attr;
 	FmgrInfo   *out_functions;
 	bool	   *force_quote;
-	Oid		   *typioparams;
-	bool	   *isvarlena;
 	char	   *string;
 	ListCell   *cur;
 	MemoryContext oldcontext;
@@ -1248,22 +1265,21 @@ CopyToExec(CopyState cstate)
 	 * Get info about the columns we need to process.
 	 */
 	out_functions = (FmgrInfo *) palloc(num_phys_attrs * sizeof(FmgrInfo));
-	typioparams = (Oid *) palloc(num_phys_attrs * sizeof(Oid));
-	isvarlena = (bool *) palloc(num_phys_attrs * sizeof(bool));
 	force_quote = (bool *) palloc(num_phys_attrs * sizeof(bool));
 	foreach(cur, cstate->attnumlist)
 	{
 		int			attnum = lfirst_int(cur);
 		Oid			out_func_oid;
+		bool		isvarlena;
 
 		if (cstate->binary)
 			getTypeBinaryOutputInfo(attr[attnum - 1]->atttypid,
 									&out_func_oid,
-									&isvarlena[attnum - 1]);
+									&isvarlena);
 		else
 			getTypeOutputInfo(attr[attnum - 1]->atttypid,
 							  &out_func_oid,
-							  &isvarlena[attnum - 1]);
+							  &isvarlena);
 		fmgr_info(out_func_oid, &out_functions[attnum - 1]);
 
 		if (list_member_int(cstate->force_quote_atts, attnum))
@@ -1418,10 +1434,8 @@ CopyToExec(CopyState cstate)
 			{
 				if (!cstate->binary)
 				{
-					string = DatumGetCString(FunctionCall3(&out_functions[attnum - 1],
-														   value,
-								   ObjectIdGetDatum(typioparams[attnum - 1]),
-								Int32GetDatum(attr[attnum - 1]->atttypmod)));
+					string = DatumGetCString(FunctionCall1(&out_functions[attnum - 1], value));
+											 
 					if (cstate->csv_mode)
 					{
 						CopyAttributeOutCSV(cstate, string,
@@ -1435,9 +1449,8 @@ CopyToExec(CopyState cstate)
 				{
 					bytea	   *outputbytes;
 
-					outputbytes = DatumGetByteaP(FunctionCall2(&out_functions[attnum - 1],
-															   value,
-								 ObjectIdGetDatum(typioparams[attnum - 1])));
+					outputbytes = DatumGetByteaP(FunctionCall1(&out_functions[attnum - 1], value));
+												 
 					/* We assume the result will not have been toasted */
 					CopySendInt32(cstate, VARSIZE(outputbytes) - VARHDRSZ);
 					CopySendData(cstate, VARDATA(outputbytes),
@@ -1468,8 +1481,6 @@ CopyToExec(CopyState cstate)
 	MemoryContextDelete(mycontext);
 
 	pfree(out_functions);
-	pfree(typioparams);
-	pfree(isvarlena);
 	pfree(force_quote);
 }
 
@@ -4965,7 +4976,7 @@ CopyAttributeOutText(CopyState cstate, char *server_string)
 				 * safe, because in valid backend encodings, extra bytes of a
 				 * multibyte character never look like ASCII.
 				 */
-				if (cstate->client_only_encoding)
+				if (cstate->encoding_embeds_ascii)
 					mblen = pg_encoding_mblen(cstate->client_encoding, string);
 				CopySendData(cstate, string, mblen);
 				break;
@@ -5020,7 +5031,7 @@ CopyAttributeOutCSV(CopyState cstate, char *server_string,
 					use_quote = true;
 					break;
 				}
-				if (cstate->client_only_encoding)
+				if (cstate->encoding_embeds_ascii)
 					mblen = pg_encoding_mblen(cstate->client_encoding, tstring);
 				else
 					mblen = 1;
@@ -5035,7 +5046,7 @@ CopyAttributeOutCSV(CopyState cstate, char *server_string,
 	{
 		if (use_quote && (c == quotec || c == escapec))
 			CopySendChar(cstate, escapec);
-		if (cstate->client_only_encoding)
+		if (cstate->encoding_embeds_ascii)
 			mblen = pg_encoding_mblen(cstate->client_encoding, string);
 		else
 			mblen = 1;
@@ -5086,6 +5097,11 @@ CopyGetAttnums(Relation rel, List *attnamelist)
 			/* Lookup column name, ereport on failure */
 			/* Note we disallow system columns here */
 			attnum = attnameAttNum(rel, name, false);
+			if (attnum == InvalidAttrNumber)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+						 errmsg("column \"%s\" of relation \"%s\" does not exist",
+								name, RelationGetRelationName(rel))));
 			/* Check for duplicates */
 			if (list_member_int(attnums, attnum))
 				ereport(ERROR,
@@ -5124,7 +5140,7 @@ scanTextLine(CopyState cstate, const char *s, char eol, size_t len)
 {
 	const char *start;
 
-	if (cstate->client_only_encoding && !cstate->line_buf_converted)
+	if (cstate->encoding_embeds_ascii && !cstate->line_buf_converted)
 	{
 		int			mblen = pg_encoding_mblen(cstate->client_encoding, s);
 
@@ -5143,7 +5159,7 @@ scanCSVLine(CopyState cstate, const char *s, char eol, char escapec, char quotec
 {
 	const char *start;
 
-	if (cstate->client_only_encoding && !cstate->line_buf_converted)
+	if (cstate->encoding_embeds_ascii && !cstate->line_buf_converted)
 	{
 		int			mblen = pg_encoding_mblen(cstate->client_encoding, s);
 
