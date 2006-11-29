@@ -666,7 +666,7 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *has
 	 * This is essential for proper functioning of get_hash_value, etc. */
 	if (hashslot->tts_tupleDescriptor == NULL)
 	{
-		ExecSetSlotDescriptor(hashslot, inputslot->tts_tupleDescriptor, false);
+		ExecSetSlotDescriptor(hashslot, inputslot->tts_tupleDescriptor);
 		/* Make sure all unused columns are NULLs */
 		ExecStoreAllNullTuple(hashslot);
 	}
@@ -1112,7 +1112,6 @@ batch_get_tuple(HashAggTable *hashtable,
 
 	/* Allocate the space in one chunk, like heap_form_tuple */
 	heapTuple = (HeapTuple) palloc(HEAPTUPLESIZE + hoff + datalen);
-	heapTuple->t_datamcxt = CurrentMemoryContext;
 
 	t_data = (HeapTupleHeader) ((char *)heapTuple + HEAPTUPLESIZE);
 
