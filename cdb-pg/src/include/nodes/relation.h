@@ -660,6 +660,7 @@ typedef struct AppendPath
 typedef struct ResultPath
 {
 	Path		path;
+	Path	   *subpath;
 	List	   *quals;
 } ResultPath;
 
