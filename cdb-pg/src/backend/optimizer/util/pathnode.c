@@ -4,12 +4,12 @@
  *	  Routines to manipulate pathlists and create path nodes
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/pathnode.c,v 1.125 2005/10/15 02:49:21 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/pathnode.c,v 1.133 2006/10/04 00:29:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -20,12 +20,9 @@
 #include "catalog/pg_operator.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
-#include "nodes/plannodes.h"
-#include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
-#include "optimizer/restrictinfo.h"
 #include "optimizer/tlist.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
@@ -1013,6 +1010,12 @@ void add_path(PlannerInfo *root, RelOptInfo *parent_rel, Path *new_path)
     List      **which_pathlist;
     List       *pathlist;
 
+	/*
+	 * This is a convenient place to check for query cancel --- no part of the
+	 * planner goes very long without calling add_path().
+	 */
+	CHECK_FOR_INTERRUPTS();
+	
     if (!new_path)
         return;
 
@@ -1224,8 +1227,8 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel)
  * 'indexscandir' is ForwardScanDirection or BackwardScanDirection
  *			for an ordered index, or NoMovementScanDirection for
  *			an unordered index.
- * 'isjoininner' is TRUE if this is a join inner indexscan path.
- *			(pathkeys and indexscandir are ignored if so.)
+ * 'outer_rel' is the outer relation if this is a join inner indexscan path.
+ *			(pathkeys and indexscandir are ignored if so.)	NULL if not.
  *
  * Returns the new path node.
  */
@@ -1235,7 +1238,7 @@ create_index_path(PlannerInfo *root,
 				  List *clause_groups,
 				  List *pathkeys,
 				  ScanDirection indexscandir,
-				  bool isjoininner)
+				  RelOptInfo *outer_rel)
 {
 	IndexPath  *pathnode = makeNode(IndexPath);
 	RelOptInfo *rel = index->rel;
@@ -1249,7 +1252,7 @@ create_index_path(PlannerInfo *root,
 	 * don't really care what order it's scanned in.  (We could expect the
 	 * caller to supply the correct values, but it's easier to force it here.)
 	 */
-	if (isjoininner)
+	if (outer_rel != NULL)
 	{
 		pathkeys = NIL;
 		indexscandir = NoMovementScanDirection;
@@ -1270,10 +1273,10 @@ create_index_path(PlannerInfo *root,
 	pathnode->indexclauses = allclauses;
 	pathnode->indexquals = indexquals;
 
-	pathnode->isjoininner = isjoininner;
+	pathnode->isjoininner = (outer_rel != NULL);
 	pathnode->indexscandir = indexscandir;
 
-	if (isjoininner)
+	if (outer_rel != NULL)
 	{
 		/*
 		 * We must compute the estimated number of output rows for the
@@ -1314,7 +1317,7 @@ create_index_path(PlannerInfo *root,
 	pathnode->path.motionHazard = false;
 	pathnode->path.rescannable = true;
 
-	cost_index(pathnode, root, index, indexquals, isjoininner);
+	cost_index(pathnode, root, index, indexquals, outer_rel);
 
 	return pathnode;
 }
@@ -1324,12 +1327,15 @@ create_index_path(PlannerInfo *root,
  *	  Creates a path node for a bitmap scan.
  *
  * 'bitmapqual' is a tree of IndexPath, BitmapAndPath, and BitmapOrPath nodes.
+ *
+ * If this is a join inner indexscan path, 'outer_rel' is the outer relation,
+ * and all the component IndexPaths should have been costed accordingly.
  */
 BitmapHeapPath *
 create_bitmap_heap_path(PlannerInfo *root,
 						RelOptInfo *rel,
 						Path *bitmapqual,
-						bool isjoininner)
+						RelOptInfo *outer_rel)
 {
 	BitmapHeapPath *pathnode = makeNode(BitmapHeapPath);
 
@@ -1343,9 +1349,9 @@ create_bitmap_heap_path(PlannerInfo *root,
     pathnode->path.rescannable = true;
 
 	pathnode->bitmapqual = bitmapqual;
-	pathnode->isjoininner = isjoininner;
+	pathnode->isjoininner = (outer_rel != NULL);
 
-	if (isjoininner)
+	if (pathnode->isjoininner)
 	{
 		/*
 		 * We must compute the estimated number of output rows for the
@@ -1374,7 +1380,7 @@ create_bitmap_heap_path(PlannerInfo *root,
 		pathnode->rows = rel->rows;
 	}
 
-	cost_bitmap_heap_scan(&pathnode->path, root, rel, bitmapqual, false);
+	cost_bitmap_heap_scan(&pathnode->path, root, rel, bitmapqual, outer_rel);
 
 	return pathnode;
 }
@@ -1427,11 +1433,10 @@ create_bitmap_or_path(PlannerInfo *root,
 
 /*
  * create_tidscan_path
- *	  Creates a path corresponding to a tid_direct scan, returning the
- *	  pathnode.
+ *	  Creates a path corresponding to a scan by TID, returning the pathnode.
  */
 TidPath *
-create_tidscan_path(PlannerInfo *root, RelOptInfo *rel, List *tideval)
+create_tidscan_path(PlannerInfo *root, RelOptInfo *rel, List *tidquals)
 {
 	TidPath    *pathnode = makeNode(TidPath);
 
@@ -1439,19 +1444,14 @@ create_tidscan_path(PlannerInfo *root, RelOptInfo *rel, List *tideval)
 	pathnode->path.parent = rel;
 	pathnode->path.pathkeys = NIL;
 
-	pathnode->tideval = tideval;
+	pathnode->tidquals = tidquals;
 
     /* Distribution is same as the base table. */
     pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
     pathnode->path.motionHazard = false;
     pathnode->path.rescannable = true;
 
-	cost_tidscan(&pathnode->path, root, rel, tideval);
-
-	/*
-	 * divide selectivity for each clause to get an equal selectivity as
-	 * IndexScan does OK ?
-	 */
+	cost_tidscan(&pathnode->path, root, rel, tidquals);
 
 	return pathnode;
 }
@@ -1523,8 +1523,8 @@ create_append_path(RelOptInfo *rel, List *subpaths)
 
 /*
  * create_result_path
- *	  Creates a path corresponding to a Result plan, returning the
- *	  pathnode.
+ *	  Creates a path representing a Result-and-nothing-else plan.
+ *	  This is only used for the case of a query with an empty jointree.
  */
 ResultPath *
 create_result_path(RelOptInfo *rel, Path *subpath, List *quals)
@@ -1532,12 +1532,13 @@ create_result_path(RelOptInfo *rel, Path *subpath, List *quals)
 	ResultPath *pathnode = makeNode(ResultPath);
 
 	pathnode->path.pathtype = T_Result;
-	pathnode->path.parent = rel;	/* may be NULL */
+	pathnode->path.parent = NULL;
+	pathnode->path.pathkeys = NIL;
+	pathnode->quals = quals;
 
-	if (subpath)
-		pathnode->path.pathkeys = subpath->pathkeys;
-	else
-		pathnode->path.pathkeys = NIL;
+	/* Ideally should define cost_result(), but I'm too lazy */
+	pathnode->path.startup_cost = 0;
+	pathnode->path.total_cost = cpu_tuple_cost;
 
 	pathnode->subpath = subpath;
 	pathnode->quals = quals;
@@ -1563,11 +1564,10 @@ create_result_path(RelOptInfo *rel, Path *subpath, List *quals)
 	}
 
 	/*
-	 * In theory we should include the qual eval cost as well, but
-	 * at present that doesn't accomplish much except duplicate work that
-	 * will be done again in make_result; since this is only used for
-	 * degenerate cases, nothing interesting will be done with the path
-	 * cost values...
+	 * In theory we should include the qual eval cost as well, but at present
+	 * that doesn't accomplish much except duplicate work that will be done
+	 * again in make_result; since this is only used for degenerate cases,
+	 * nothing interesting will be done with the path cost values...
 	 */
 
 	return pathnode;
