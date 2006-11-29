@@ -4,12 +4,12 @@
  *	  The query optimizer external interface.
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/planner.c,v 1.194.2.1 2005/11/22 18:23:11 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/planner.c,v 1.209 2006/10/04 00:29:54 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,7 +19,6 @@
 #include <limits.h>
 
 #include "catalog/pg_operator.h"
-#include "catalog/pg_type.h"
 #include "executor/executor.h"
 #include "executor/execHashagg.h"
 #include "executor/nodeAgg.h"
@@ -35,10 +34,12 @@
 #include "optimizer/subselect.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
-#include "parser/parsetree.h"
+#ifdef OPTIMIZER_DEBUG
+#include "nodes/print.h"
+#endif
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
-#include "utils/selfuncs.h"
+#include "parser/parsetree.h"
 #include "utils/syscache.h"
 
 #include "cdb/cdbllize.h"
@@ -51,20 +52,23 @@ ParamListInfo PlannerBoundParamList = NULL;		/* current boundParams */
 
 
 /* Expression kind codes for preprocess_expression */
-#define EXPRKIND_QUAL	0
-#define EXPRKIND_TARGET 1
-#define EXPRKIND_RTFUNC 2
-#define EXPRKIND_LIMIT	3
-#define EXPRKIND_ININFO 4
+#define EXPRKIND_QUAL		0
+#define EXPRKIND_TARGET		1
+#define EXPRKIND_RTFUNC		2
+#define EXPRKIND_VALUES		3
+#define EXPRKIND_LIMIT		4
+#define EXPRKIND_ININFO		5
+#define EXPRKIND_APPINFO	6
 
 
 static Node *preprocess_expression(PlannerInfo *root, Node *expr, int kind);
 static void preprocess_qual_conditions(PlannerInfo *root, Node *jtnode);
-static Plan *inheritance_planner(PlannerInfo *root, List *inheritlist);
+static Plan *inheritance_planner(PlannerInfo *root);
 static Plan *grouping_planner(PlannerInfo *root, double tuple_fraction);
+static bool is_dummy_plan(Plan *plan);
 static double preprocess_limit(PlannerInfo *root,
 				 double tuple_fraction,
-				 int *offset_est, int *count_est);
+				 int64 *offset_est, int64 *count_est);
 static bool choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 					   Path *cheapest_path, Path *sorted_path,
 					   double dNumGroups, AggClauseCounts *agg_counts);
@@ -207,7 +211,6 @@ subquery_planner(Query *parse, double tuple_fraction,
 	PlannerInfo *root;
 	Plan	   *plan;
 	List	   *newHaving;
-	List	   *lst;
 	ListCell   *l;
 
 	/* Set up for a new level of subquery */
@@ -217,6 +220,8 @@ subquery_planner(Query *parse, double tuple_fraction,
 	/* Create a PlannerInfo data structure for this subquery */
 	root = makeNode(PlannerInfo);
 	root->parse = parse;
+	root->in_info_list = NIL;
+	root->append_rel_list = NIL;
 
     /* CDB: Initialize globals */
     if (Mpp_role != MPP_ROLE_DISPATCH)
@@ -244,7 +249,6 @@ subquery_planner(Query *parse, double tuple_fraction,
 	 * level of WHERE; if we pull up any subqueries in the next step, their
 	 * INs are processed just before pulling them up.
 	 */
-	root->in_info_list = NIL;
 	if (parse->hasSubLinks)
 		parse->jointree->quals = pull_up_IN_clauses(root,
                                                     (Node**)&parse->jointree,
@@ -255,7 +259,7 @@ subquery_planner(Query *parse, double tuple_fraction,
 	 * this query.
 	 */
 	parse->jointree = (FromExpr *)
-		pull_up_subqueries(root, (Node *) parse->jointree, false);
+		pull_up_subqueries(root, (Node *) parse->jointree, false, false);
 
 	/*
 	 * Detect whether any rangetable entries are RTE_JOIN kind; if not, we can
@@ -287,6 +291,16 @@ subquery_planner(Query *parse, double tuple_fraction,
 	}
 
 	/*
+	 * Expand any rangetable entries that are inheritance sets into "append
+	 * relations".  This can add entries to the rangetable, but they must be
+	 * plain base relations not joins, so it's OK (and marginally more
+	 * efficient) to do it after checking for join RTEs.  We must do it after
+	 * pulling up subqueries, else we'd fail to handle inherited tables in
+	 * subqueries.
+	 */
+	expand_inherited_tables(root);
+
+	/*
 	 * Set hasHavingQual to remember if HAVING clause is present.  Needed
 	 * because preprocess_expression will reduce a constant-true condition to
 	 * an empty qual list ... but "HAVING TRUE" is not a semantic no-op.
@@ -303,6 +317,10 @@ subquery_planner(Query *parse, double tuple_fraction,
 		preprocess_expression(root, (Node *) parse->targetList,
 							  EXPRKIND_TARGET);
 
+	parse->returningList = (List *)
+		preprocess_expression(root, (Node *) parse->returningList,
+							  EXPRKIND_TARGET);
+
 	preprocess_qual_conditions(root, (Node *) parse->jointree);
 
 	parse->havingQual = preprocess_expression(root, parse->havingQual,
@@ -316,8 +334,11 @@ subquery_planner(Query *parse, double tuple_fraction,
 	root->in_info_list = (List *)
 		preprocess_expression(root, (Node *) root->in_info_list,
 							  EXPRKIND_ININFO);
+	root->append_rel_list = (List *)
+		preprocess_expression(root, (Node *) root->append_rel_list,
+							  EXPRKIND_APPINFO);
 
-	/* Also need to preprocess expressions for function RTEs */
+	/* Also need to preprocess expressions for function and values RTEs */
 	foreach(l, parse->rtable)
 	{
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(l);
@@ -325,6 +346,10 @@ subquery_planner(Query *parse, double tuple_fraction,
 		if (rte->rtekind == RTE_FUNCTION)
 			rte->funcexpr = preprocess_expression(root, rte->funcexpr,
 												  EXPRKIND_RTFUNC);
+		else if (rte->rtekind == RTE_VALUES)
+			rte->values_lists = (List *)
+				preprocess_expression(root, (Node *) rte->values_lists,
+									  EXPRKIND_VALUES);
 	}
 
 	/*
@@ -389,13 +414,13 @@ subquery_planner(Query *parse, double tuple_fraction,
 	if (root->hasOuterJoins)
 		reduce_outer_joins(root);
 
-    /*
+	/*
 	 * Do the main planning.  If we have an inherited target relation, that
 	 * needs special processing, else go straight to grouping_planner.
 	 */
 	if (parse->resultRelation &&
-		(lst = expand_inherited_rtentry(root, parse->resultRelation)) != NIL)
-		plan = inheritance_planner(root, lst);
+		rt_fetch(parse->resultRelation, parse->rtable)->inh)
+		plan = inheritance_planner(root);
 	else
 		plan = grouping_planner(root, tuple_fraction);
 
@@ -439,9 +464,11 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 	/*
 	 * If the query has any join RTEs, replace join alias variables with
 	 * base-relation variables. We must do this before sublink processing,
-	 * else sublinks expanded out from join aliases wouldn't get processed.
+	 * else sublinks expanded out from join aliases wouldn't get processed. We
+	 * can skip it in VALUES lists, however, since they can't contain any Vars
+	 * at all.
 	 */
-	if (root->hasJoinRTEs)
+	if (root->hasJoinRTEs && kind != EXPRKIND_VALUES)
 		expr = flatten_join_alias_vars(root, expr);
 
 	/*
@@ -459,10 +486,14 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 	 * and we will waste cycles copying the tree.  Notice however that we
 	 * still must do it for quals (to get AND/OR flatness); and if we are in a
 	 * subquery we should not assume it will be done only once.
+	 *
+	 * For VALUES lists we never do this at all, again on the grounds that we
+	 * should optimize for one-time evaluation.
 	 */
-	if (root->parse->jointree->fromlist != NIL ||
-		kind == EXPRKIND_QUAL ||
-		PlannerQueryLevel > 1)
+	if (kind != EXPRKIND_VALUES &&
+		(root->parse->jointree->fromlist != NIL ||
+		 kind == EXPRKIND_QUAL ||
+		 PlannerQueryLevel > 1))
 		expr = eval_const_expressions(expr);
 
 	/*
@@ -487,7 +518,7 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 	 * SS_replace_correlation_vars ...
 	 */
 
-	/* Replace uplevel vars with Param nodes */
+	/* Replace uplevel vars with Param nodes (this IS possible in VALUES) */
 	if (PlannerQueryLevel > 1)
 		expr = SS_replace_correlation_vars(expr);
 
@@ -541,35 +572,34 @@ preprocess_qual_conditions(PlannerInfo *root, Node *jtnode)
 			 (int) nodeTag(jtnode));
 }
 
-/*--------------------
+/*
  * inheritance_planner
  *	  Generate a plan in the case where the result relation is an
  *	  inheritance set.
  *
- * We have to handle this case differently from cases where a source
- * relation is an inheritance set.	Source inheritance is expanded at
- * the bottom of the plan tree (see allpaths.c), but target inheritance
- * has to be expanded at the top.  The reason is that for UPDATE, each
- * target relation needs a different targetlist matching its own column
- * set.  (This is not so critical for DELETE, but for simplicity we treat
- * inherited DELETE the same way.)	Fortunately, the UPDATE/DELETE target
- * can never be the nullable side of an outer join, so it's OK to generate
- * the plan this way.
- *
- * inheritlist is an integer list of RT indexes for the result relation set.
+ * We have to handle this case differently from cases where a source relation
+ * is an inheritance set. Source inheritance is expanded at the bottom of the
+ * plan tree (see allpaths.c), but target inheritance has to be expanded at
+ * the top.  The reason is that for UPDATE, each target relation needs a
+ * different targetlist matching its own column set.  Also, for both UPDATE
+ * and DELETE, the executor needs the Append plan node at the top, else it
+ * can't keep track of which table is the current target table.  Fortunately,
+ * the UPDATE/DELETE target can never be the nullable side of an outer join,
+ * so it's OK to generate the plan this way.
  *
  * Returns a query plan.
- *--------------------
  */
 static Plan *
-inheritance_planner(PlannerInfo *root, List *inheritlist)
+inheritance_planner(PlannerInfo *root)
 {
 	Query	   *parse = root->parse;
 	int			parentRTindex = parse->resultRelation;
-	Oid			parentOID = getrelid(parentRTindex, parse->rtable);
-	int			mainrtlength = list_length(parse->rtable);
 	List	   *subplans = NIL;
+	List	   *resultRelations = NIL;
+	List	   *returningLists = NIL;
+	List	   *rtable = NIL;
 	List	   *tlist = NIL;
+	PlannerInfo subroot;
 	ListCell   *l;
 
 	/* MPP */
@@ -577,12 +607,14 @@ inheritance_planner(PlannerInfo *root, List *inheritlist)
 	CdbLocusType append_locustype = CdbLocusType_Null;
 	bool locus_ok = TRUE;
 
-	foreach(l, inheritlist)
+	foreach(l, root->append_rel_list)
 	{
-		int			childRTindex = lfirst_int(l);
-		Oid			childOID = getrelid(childRTindex, parse->rtable);
-		PlannerInfo subroot;
+		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
 		Plan	   *subplan;
+
+		/* append_rel_list contains all append rels; ignore others */
+		if (appinfo->parent_relid != parentRTindex)
+			continue;
 
 		/*
 		 * Generate modified query with this rel as target.  We have to be
@@ -591,20 +623,17 @@ inheritance_planner(PlannerInfo *root, List *inheritlist)
 		 */
 		memcpy(&subroot, root, sizeof(PlannerInfo));
 		subroot.parse = (Query *)
-			adjust_inherited_attrs((Node *) parse,
-								   parentRTindex, parentOID,
-								   childRTindex, childOID);
+			adjust_appendrel_attrs((Node *) parse,
+								   appinfo);
 		subroot.in_info_list = (List *)
-			adjust_inherited_attrs((Node *) root->in_info_list,
-								   parentRTindex, parentOID,
-								   childRTindex, childOID);
+			adjust_appendrel_attrs((Node *) root->in_info_list,
+								   appinfo);
 		/* There shouldn't be any OJ info to translate, as yet */
 		Assert(subroot.oj_info_list == NIL);
 
 		/* Generate plan */
 		subplan = grouping_planner(&subroot, 0.0 /* retrieve all tuples */ );
 
-		subplans = lappend(subplans, subplan);
 		
 		/* MPP needs target loci to match. */
 		if ( Mpp_role == MPP_ROLE_DISPATCH )
@@ -653,47 +682,35 @@ inheritance_planner(PlannerInfo *root, List *inheritlist)
 
 
 		/*
-		 * XXX my goodness this next bit is ugly.  Really need to think about
-		 * ways to rein in planner's habit of scribbling on its input.
-		 *
-		 * Planning of the subquery might have modified the rangetable, either
-		 * by addition of RTEs due to expansion of inherited source tables, or
-		 * by changes of the Query structures inside subquery RTEs.  We have
-		 * to ensure that this gets propagated back to the master copy.
-		 * However, if we aren't done planning yet, we also need to ensure
-		 * that subsequent calls to grouping_planner have virgin sub-Queries
-		 * to work from.  So, if we are at the last list entry, just copy the
-		 * subquery rangetable back to the master copy; if we are not, then
-		 * extend the master copy by adding whatever the subquery added.  (We
-		 * assume these added entries will go untouched by the future
-		 * grouping_planner calls.	We are also effectively assuming that
-		 * sub-Queries will get planned identically each time, or at least
-		 * that the impacts on their rangetables will be the same each time.
-		 * Did I say this is ugly?)
+		 * If this child rel was excluded by constraint exclusion, exclude it
+		 * from the plan.
 		 */
-		if (lnext(l) == NULL)
-			parse->rtable = subroot.parse->rtable;
-		else
+		if (is_dummy_plan(subplan))
+			continue;
+
+		/* Save rtable and tlist from first rel for use below */
+		if (subplans == NIL)
 		{
-			int			subrtlength = list_length(subroot.parse->rtable);
-
-			if (subrtlength > mainrtlength)
-			{
-				List	   *subrt;
-
-				subrt = list_copy_tail(subroot.parse->rtable, mainrtlength);
-				parse->rtable = list_concat(parse->rtable, subrt);
-				mainrtlength = subrtlength;
-			}
+			rtable = subroot.parse->rtable;
+			tlist = subplan->targetlist;
 		}
 
-		/* Save preprocessed tlist from first rel for use in Append */
-		if (tlist == NIL)
-			tlist = subplan->targetlist;
+		subplans = lappend(subplans, subplan);
+
+		/* Build target-relations list for the executor */
+		resultRelations = lappend_int(resultRelations, appinfo->child_relid);
+
+		/* Build list of per-relation RETURNING targetlists */
+		if (parse->returningList)
+		{
+			Assert(list_length(subroot.parse->returningLists) == 1);
+			returningLists = list_concat(returningLists,
+										 subroot.parse->returningLists);
+		}
 	}
 
-	/* Save the target-relations list for the executor, too */
-	parse->resultRelations = inheritlist;
+	parse->resultRelations = resultRelations;
+	parse->returningLists = returningLists;
 
 	/* Mark result as unordered (probably unnecessary) */
 	root->query_pathkeys = NIL;
@@ -723,6 +740,29 @@ inheritance_planner(PlannerInfo *root, List *inheritlist)
 		}
 	}
 	
+		/*
+	 * If we managed to exclude every child rel, return a dummy plan
+	 */
+	if (subplans == NIL)
+		return (Plan *) make_result(tlist,
+									(Node *) list_make1(makeBoolConst(false,
+																	  false)),
+									NULL);
+
+	/*
+	 * Planning might have modified the rangetable, due to changes of the
+	 * Query structures inside subquery RTEs.  We have to ensure that this
+	 * gets propagated back to the master copy.  But can't do this until we
+	 * are done planning, because all the calls to grouping_planner need
+	 * virgin sub-Queries to work from.  (We are effectively assuming that
+	 * sub-Queries will get planned identically each time, or at least that
+	 * the impacts on their rangetables will be the same each time.)
+	 *
+	 * XXX should clean this up someday
+	 */
+	parse->rtable = rtable;
+	
+	
 	return plan;
 }
 
@@ -750,8 +790,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 {
 	Query	   *parse = root->parse;
 	List	   *tlist = parse->targetList;
-	int			offset_est = 0;
-	int			count_est = 0;
+	int64		offset_est = 0;
+	int64		count_est = 0;
 	Plan	   *result_plan;
 	List	   *current_pathkeys = NIL;
 	List	   *sort_pathkeys;
@@ -1342,12 +1382,56 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
     Insist(result_plan->flow);
 
 	/*
+	 * Deal with the RETURNING clause if any.  It's convenient to pass the
+	 * returningList through setrefs.c now rather than at top level (if we
+	 * waited, handling inherited UPDATE/DELETE would be much harder).
+	 */
+	if (parse->returningList)
+	{
+		List	   *rlist;
+
+		rlist = set_returning_clause_references(parse->returningList,
+												result_plan,
+												parse->resultRelation);
+		parse->returningLists = list_make1(rlist);
+	}
+
+	/*
 	 * Return the actual output ordering in query_pathkeys for possible use by
 	 * an outer query level.
 	 */
 	root->query_pathkeys = current_pathkeys;
 
 	return result_plan;
+}
+
+/*
+ * Detect whether a plan node is a "dummy" plan created when a relation
+ * is deemed not to need scanning due to constraint exclusion.
+ *
+ * Currently, such dummy plans are Result nodes with constant FALSE
+ * filter quals.
+ */
+static bool
+is_dummy_plan(Plan *plan)
+{
+	if (IsA(plan, Result))
+	{
+		List	   *rcqual = (List *) ((Result *) plan)->resconstantqual;
+
+		if (list_length(rcqual) == 1)
+		{
+			Const	   *constqual = (Const *) linitial(rcqual);
+
+			if (constqual && IsA(constqual, Const))
+			{
+				if (!constqual->constisnull &&
+					!DatumGetBool(constqual->constvalue))
+					return true;
+			}
+		}
+	}
+	return false;
 }
 
 /*
@@ -1369,7 +1453,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
  */
 static double
 preprocess_limit(PlannerInfo *root, double tuple_fraction,
-				 int *offset_est, int *count_est)
+				 int64 *offset_est, int64 *count_est)
 {
 	Query	   *parse = root->parse;
 	Node	   *est;
@@ -1394,7 +1478,7 @@ preprocess_limit(PlannerInfo *root, double tuple_fraction,
 			}
 			else
 			{
-				*count_est = DatumGetInt32(((Const *) est)->constvalue);
+				*count_est = DatumGetInt64(((Const *) est)->constvalue);
 				if (*count_est <= 0)
 					*count_est = 1;		/* force to at least 1 */
 			}
@@ -1417,7 +1501,7 @@ preprocess_limit(PlannerInfo *root, double tuple_fraction,
 			}
 			else
 			{
-				*offset_est = DatumGetInt32(((Const *) est)->constvalue);
+				*offset_est = DatumGetInt64(((Const *) est)->constvalue);
 				if (*offset_est < 0)
 					*offset_est = 0;	/* less than 0 is same as 0 */
 			}
@@ -1592,7 +1676,7 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 	 *  attributes are saved in a hash table entry's
 	 *  grouping key tuple.)
 	 */
-	hashentrysize = cheapest_path_width;
+	hashentrysize = MAXALIGN(cheapest_path_width) + MAXALIGN(sizeof(MinimalTupleData));
 	/* plus space for pass-by-ref transition values... */
 	hashentrysize += agg_counts->transitionSpace;
 	/* plus the per-hash-entry overhead */

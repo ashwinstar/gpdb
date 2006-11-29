@@ -4,12 +4,12 @@
  *	  Routines to determine which relations should be joined
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/path/joinrels.c,v 1.76.2.1 2005/11/22 18:23:10 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/path/joinrels.c,v 1.81 2006/10/24 17:50:22 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -91,11 +91,11 @@ make_rels_by_joins(PlannerInfo *root, int level, List **joinrels)
 
 			/*
 			 * An exception occurs when there is a clauseless join inside a
-			 * construct that restricts join order, i.e., an outer join RHS
-			 * or an IN (sub-SELECT) construct.  Here, the rel may well have
-			 * join clauses against stuff outside the OJ RHS or IN sub-SELECT,
-			 * but the clauseless join *must* be done before we can make use
-			 * of those join clauses.	So do the clauseless join bit.
+			 * construct that restricts join order, i.e., an outer join or
+			 * an IN (sub-SELECT) construct.  Here, the rel may well have join
+			 * clauses against stuff outside its OJ side or IN sub-SELECT, but
+			 * the clauseless join *must* be done before we can make use of
+			 * those join clauses.	 So do the clauseless join bit.
 			 *
 			 * See also the last-ditch case below.
 			 */
@@ -335,7 +335,7 @@ make_rels_by_clauseless_joins(PlannerInfo *root,
 /*
  * has_join_restriction
  *		Detect whether the specified relation has join-order restrictions
- *		due to being inside an OJ RHS or an IN (sub-SELECT).
+ *		due to being inside an outer join or an IN (sub-SELECT).
  */
 static bool
 has_join_restriction(PlannerInfo *root, RelOptInfo *rel)
@@ -346,7 +346,15 @@ has_join_restriction(PlannerInfo *root, RelOptInfo *rel)
 	{
 		OuterJoinInfo *ojinfo = (OuterJoinInfo *) lfirst(l);
 
+		/* ignore full joins --- other mechanisms preserve their ordering */
+		if (ojinfo->is_full_join)
+			continue;
+		/* anything inside the RHS is definitely restricted */
 		if (bms_is_subset(rel->relids, ojinfo->min_righthand))
+			return true;
+		/* if it's a proper subset of the LHS, it's also restricted */
+		if (bms_is_subset(rel->relids, ojinfo->min_lefthand) &&
+			!bms_equal(rel->relids, ojinfo->min_lefthand))
 			return true;
 	}
 
@@ -499,9 +507,9 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	joinrelids = bms_union(rel1->relids, rel2->relids);
 
 	/*
-	 * If we have any outer joins, the proposed join might be illegal; and
-	 * in any case we have to determine its join type.  Scan the OJ list
-	 * for conflicts.
+	 * If we have any outer joins, the proposed join might be illegal; and in
+	 * any case we have to determine its join type.  Scan the OJ list for
+	 * conflicts.
 	 */
 	jointype = JOIN_INNER;		/* default if no match to an OJ */
 	is_valid_inner = true;
@@ -587,6 +595,89 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 		/* invalid join path */
 		bms_free(joinrelids);
 		return NULL;
+	}
+
+	/*
+	 * Similarly, if we are implementing IN clauses as joins, check for
+	 * illegal join path and detect whether we need a non-default join type.
+	 */
+	foreach(l, root->in_info_list)
+	{
+		InClauseInfo *ininfo = (InClauseInfo *) lfirst(l);
+
+		/*
+		 * This IN clause is not relevant unless its RHS overlaps the proposed
+		 * join.  (Check this first as a fast path for dismissing most
+		 * irrelevant INs quickly.)
+		 */
+		if (!bms_overlap(ininfo->righthand, joinrelids))
+			continue;
+
+		/*
+		 * If we are still building the IN clause's RHS, then this IN clause
+		 * isn't relevant yet.
+		 */
+		if (bms_is_subset(joinrelids, ininfo->righthand))
+			continue;
+
+		/*
+		 * Cannot join if proposed join contains rels not in the RHS *and*
+		 * contains only part of the RHS.  We must build the complete RHS
+		 * (subselect's join) before it can be joined to rels outside the
+		 * subselect.
+		 */
+		if (!bms_is_subset(ininfo->righthand, joinrelids))
+		{
+			bms_free(joinrelids);
+			return NULL;
+		}
+
+		/*
+		 * At this point we are considering a join of the IN's RHS to some
+		 * other rel(s).
+		 *
+		 * If we already joined IN's RHS to any other rels in either input
+		 * path, then this join is not constrained (the necessary work was
+		 * done at the lower level where that join occurred).
+		 */
+		if (bms_is_subset(ininfo->righthand, rel1->relids) &&
+			!bms_equal(ininfo->righthand, rel1->relids))
+			continue;
+		if (bms_is_subset(ininfo->righthand, rel2->relids) &&
+			!bms_equal(ininfo->righthand, rel2->relids))
+			continue;
+
+		/*
+		 * JOIN_IN technique will work if outerrel includes LHS and innerrel
+		 * is exactly RHS; conversely JOIN_REVERSE_IN handles RHS/LHS.
+		 *
+		 * JOIN_UNIQUE_OUTER will work if outerrel is exactly RHS; conversely
+		 * JOIN_UNIQUE_INNER will work if innerrel is exactly RHS.
+		 *
+		 * But none of these will work if we already found an OJ or another IN
+		 * that needs to trigger here.
+		 */
+		if (jointype != JOIN_INNER)
+		{
+			bms_free(joinrelids);
+			return NULL;
+		}
+		if (bms_is_subset(ininfo->lefthand, rel1->relids) &&
+			bms_equal(ininfo->righthand, rel2->relids))
+			jointype = JOIN_IN;
+		else if (bms_is_subset(ininfo->lefthand, rel2->relids) &&
+				 bms_equal(ininfo->righthand, rel1->relids))
+			jointype = JOIN_REVERSE_IN;
+		else if (bms_equal(ininfo->righthand, rel1->relids))
+			jointype = JOIN_UNIQUE_OUTER;
+		else if (bms_equal(ininfo->righthand, rel2->relids))
+			jointype = JOIN_UNIQUE_INNER;
+		else
+		{
+			/* invalid join path */
+			bms_free(joinrelids);
+			return NULL;
+		}
 	}
 
 	/*

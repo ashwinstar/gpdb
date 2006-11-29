@@ -6,12 +6,12 @@
  *	  Path into a Plan.
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/createplan.c,v 1.202.2.4 2006/05/18 18:57:37 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/createplan.c,v 1.217 2006/10/04 00:29:54 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,7 +22,6 @@
 
 #include "catalog/pg_type.h"    /* INT4OID */
 #include "nodes/makefuncs.h"
-#include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/planner.h"
@@ -32,11 +31,10 @@
 #include "optimizer/restrictinfo.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
-#include "parser/parsetree.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_expr.h"
+#include "parser/parsetree.h"
 #include "utils/lsyscache.h"
-#include "utils/syscache.h"
 
 #include "cdb/cdbgroup.h"       /* adapt_flow_to_targetlist() */
 #include "cdb/cdbllize.h"       /* pull_up_Flow() */
@@ -112,9 +110,11 @@ static BitmapHeapScan *make_bitmap_heapscan(List *qptlist,
 					 List *bitmapqualorig,
 					 Index scanrelid);
 static TidScan *make_tidscan(List *qptlist, List *qpqual, Index scanrelid,
-			 List *tideval);
+			 List *tidquals);
 static FunctionScan *make_functionscan(List *qptlist, List *qpqual,
 				  Index scanrelid);
+static ValuesScan *make_valuesscan(List *qptlist, List *qpqual,
+				Index scanrelid);
 static BitmapAnd *make_bitmap_and(List *bitmapplans);
 static BitmapOr *make_bitmap_or(List *bitmapplans);
 static NestLoop *make_nestloop(List *tlist,
@@ -323,6 +323,13 @@ create_scan_plan(CreatePlanContext *ctx, Path *best_path)
 													 scan_clauses);
 			break;
 
+		case T_ValuesScan:
+			plan = (Plan *) create_valuesscan_plan(root,
+												   best_path,
+												   tlist,
+												   scan_clauses);
+			break;
+
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) best_path->pathtype);
@@ -376,12 +383,13 @@ use_physical_tlist(RelOptInfo *rel)
 	int			i;
 
 	/*
-	 * We can do this for real relation scans, subquery scans, and function
-	 * scans (but not for, eg, joins).
+	 * We can do this for real relation scans, subquery scans, function scans,
+	 * and values scans (but not for, eg, joins).
 	 */
 	if (rel->rtekind != RTE_RELATION &&
 		rel->rtekind != RTE_SUBQUERY &&
-		rel->rtekind != RTE_FUNCTION)
+		rel->rtekind != RTE_FUNCTION &&
+		rel->rtekind != RTE_VALUES)
 		return false;
 
 	/*
@@ -426,6 +434,7 @@ disuse_physical_tlist(Plan *plan, Path *path)
 		case T_TidScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:
+		case T_ValuesScan:
 			plan->targetlist = build_relation_tlist(path->parent);
 			break;
 		default:
@@ -591,23 +600,21 @@ create_append_plan(CreatePlanContext *ctx, AppendPath *best_path)
 
 /*
  * create_result_plan
- *	  Create a Result plan for 'best_path' and (recursively) plans
- *	  for its subpaths.
+ *	  Create a Result plan for 'best_path'.
+ *	  This is only used for the case of a query with an empty jointree.
  *
  *	  Returns a Plan node.
  */
 static Result *
 create_result_plan(CreatePlanContext *ctx, ResultPath *best_path)
 {
-	Result	   *plan;
 	List	   *tlist;
 	List	   *quals;
 	Plan	   *subplan;
 
-	if (best_path->path.parent)
-		tlist = build_relation_tlist(best_path->path.parent);
-	else
-		tlist = NIL;			/* will be filled in later */
+	/* The tlist will be installed later, since we have no RelOptInfo */
+	Assert(best_path->path.parent == NULL);
+	tlist = NIL;
 
 	if (best_path->subpath)
 		subplan = create_subplan(ctx, best_path->subpath);
@@ -1144,9 +1151,9 @@ create_bitmap_scan_plan(CreatePlanContext *ctx,
 	 *
 	 * Unlike create_indexscan_plan(), we need take no special thought here
 	 * for partial index predicates; this is because the predicate conditions
-	 * are already listed in bitmapqualorig and indexquals.  Bitmap scans
-	 * have to do it that way because predicate conditions need to be rechecked
-	 * if the scan becomes lossy.
+	 * are already listed in bitmapqualorig and indexquals.  Bitmap scans have
+	 * to do it that way because predicate conditions need to be rechecked if
+	 * the scan becomes lossy.
 	 */
 	qpqual = NIL;
 	foreach(l, scan_clauses)
@@ -1288,17 +1295,29 @@ create_bitmap_subplan(CreatePlanContext *ctx, Path *bitmapqual,
 				subindexquals = lappend(subindexquals,
 										make_ands_explicit(subindexqual));
 		}
-		plan = (Plan *) make_bitmap_or(subplans);
-		plan->startup_cost = opath->path.startup_cost;
-		plan->total_cost = opath->path.total_cost;
-		plan->plan_rows =
-			clamp_row_est(opath->bitmapselectivity * opath->path.parent->tuples);
-		plan->plan_width = 0;	/* meaningless */
+
+		/*
+		 * In the presence of ScalarArrayOpExpr quals, we might have built
+		 * BitmapOrPaths with just one subpath; don't add an OR step.
+		 */
+		if (list_length(subplans) == 1)
+		{
+			plan = (Plan *) linitial(subplans);
+		}
+		else
+		{
+			plan = (Plan *) make_bitmap_or(subplans);
+			plan->startup_cost = opath->path.startup_cost;
+			plan->total_cost = opath->path.total_cost;
+			plan->plan_rows =
+				clamp_row_est(opath->bitmapselectivity * opath->path.parent->tuples);
+			plan->plan_width = 0;		/* meaningless */
+		}
 
 		/*
 		 * If there were constant-TRUE subquals, the OR reduces to constant
 		 * TRUE.  Also, avoid generating one-element ORs, which could happen
-		 * due to redundancy elimination.
+		 * due to redundancy elimination or ScalarArrayOpExpr quals.
 		 */
 		if (const_true_subqual)
 			*qual = NIL;
@@ -1342,10 +1361,10 @@ create_bitmap_subplan(CreatePlanContext *ctx, Path *bitmapqual,
 			Expr	   *pred = (Expr *) lfirst(l);
 
 			/*
-			 * We know that the index predicate must have been implied by
-			 * the query condition as a whole, but it may or may not be
-			 * implied by the conditions that got pushed into the
-			 * bitmapqual.	Avoid generating redundant conditions.
+			 * We know that the index predicate must have been implied by the
+			 * query condition as a whole, but it may or may not be implied by
+			 * the conditions that got pushed into the bitmapqual.	Avoid
+			 * generating redundant conditions.
 			 */
 			if (!predicate_implied_by(list_make1(pred), ipath->indexclauses))
 			{
@@ -1374,6 +1393,7 @@ create_tidscan_plan(CreatePlanContext *ctx, TidPath *best_path,
 {
 	TidScan    *scan_plan;
 	Index		scan_relid = best_path->path.parent->relid;
+	List	   *ortidquals;
 
 	/* it should be a base rel... */
 	Assert(scan_relid > 0);
@@ -1382,13 +1402,22 @@ create_tidscan_plan(CreatePlanContext *ctx, TidPath *best_path,
 	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
 	scan_clauses = extract_actual_clauses(scan_clauses, false);
 
+	/*
+	 * Remove any clauses that are TID quals.  This is a bit tricky since the
+	 * tidquals list has implicit OR semantics.
+	 */
+	ortidquals = best_path->tidquals;
+	if (list_length(ortidquals) > 1)
+		ortidquals = list_make1(make_orclause(ortidquals));
+	scan_clauses = list_difference(scan_clauses, ortidquals);
+
 	/* Sort clauses into best execution order */
 	scan_clauses = order_qual_clauses(ctx->root, scan_clauses);
 
 	scan_plan = make_tidscan(tlist,
 							 scan_clauses,
 							 scan_relid,
-							 best_path->tideval);
+							 best_path->tidquals);
 
 	copy_path_costsize(&scan_plan->scan.plan, &best_path->path);
 
@@ -1456,6 +1485,35 @@ create_functionscan_plan(CreatePlanContext *ctx, Path *best_path,
 	return scan_plan;
 }
 
+/*
+ * create_valuesscan_plan
+ *	 Returns a valuesscan plan for the base relation scanned by 'best_path'
+ *	 with restriction clauses 'scan_clauses' and targetlist 'tlist'.
+ */
+static ValuesScan *
+create_valuesscan_plan(PlannerInfo *root, Path *best_path,
+					   List *tlist, List *scan_clauses)
+{
+	ValuesScan *scan_plan;
+	Index		scan_relid = best_path->parent->relid;
+
+	/* it should be a values base rel... */
+	Assert(scan_relid > 0);
+	Assert(best_path->parent->rtekind == RTE_VALUES);
+
+	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
+	scan_clauses = extract_actual_clauses(scan_clauses, false);
+
+	/* Sort clauses into best execution order */
+	scan_clauses = order_qual_clauses(root, scan_clauses);
+
+	scan_plan = make_valuesscan(tlist, scan_clauses, scan_relid);
+
+	copy_path_costsize(&scan_plan->scan.plan, best_path);
+
+	return scan_plan;
+}
+
 /*****************************************************************************
  *
  *	JOIN METHODS
@@ -1513,9 +1571,9 @@ create_nestloop_plan(CreatePlanContext *ctx,
 		 * join quals; failing to prove that doesn't result in an incorrect
 		 * plan.  It is the right way to proceed because adding more quals to
 		 * the stuff we got from the original query would just make it harder
-		 * to detect duplication.  (Also, to change this we'd have to be
-		 * wary of UPDATE/DELETE/SELECT FOR UPDATE target relations; see
-		 * notes above about EvalPlanQual.)
+		 * to detect duplication.  (Also, to change this we'd have to be wary
+		 * of UPDATE/DELETE/SELECT FOR UPDATE target relations; see notes
+		 * above about EvalPlanQual.)
 		 */
 		BitmapHeapPath *innerpath = (BitmapHeapPath *) best_path->jpath.innerjoinpath;
 
@@ -1817,18 +1875,14 @@ fix_indexqual_references(List *indexquals, IndexPath *index_path,
 	foreach(l, indexquals)
 	{
 		RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
-		OpExpr	   *clause;
-		OpExpr	   *newclause;
+		Expr	   *clause;
+		Oid			clause_op;
 		Oid			opclass;
 		int			stratno;
 		Oid			stratsubtype;
 		bool		recheck;
 
 		Assert(IsA(rinfo, RestrictInfo));
-		clause = (OpExpr *) rinfo->clause;
-		if (!IsA(clause, OpExpr) ||
-			list_length(clause->args) != 2)
-			elog(ERROR, "indexqual clause is not binary opclause");
 
 		/*
 		 * Make a copy that will become the fixed clause.
@@ -1837,33 +1891,97 @@ fix_indexqual_references(List *indexquals, IndexPath *index_path,
 		 * is a subplan in the arguments of the opclause.  So just do a full
 		 * copy.
 		 */
-		newclause = (OpExpr *) copyObject((Node *) clause);
+		clause = (Expr *) copyObject((Node *) rinfo->clause);
 
-		/*
-		 * Check to see if the indexkey is on the right; if so, commute the
-		 * clause.	The indexkey should be the side that refers to (only) the
-		 * base relation.
-		 */
-		if (!bms_equal(rinfo->left_relids, index->rel->relids))
-			CommuteClause(newclause);
+		if (IsA(clause, OpExpr))
+		{
+			OpExpr	   *op = (OpExpr *) clause;
 
-		/*
-		 * Now, determine which index attribute this is, change the indexkey
-		 * operand as needed, and get the index opclass.
-		 */
-		linitial(newclause->args) =
-			fix_indexqual_operand(linitial(newclause->args),
-								  index,
-								  &opclass);
+			if (list_length(op->args) != 2)
+				elog(ERROR, "indexqual clause is not binary opclause");
 
-		*fixed_indexquals = lappend(*fixed_indexquals, newclause);
+			/*
+			 * Check to see if the indexkey is on the right; if so, commute
+			 * the clause. The indexkey should be the side that refers to
+			 * (only) the base relation.
+			 */
+			if (!bms_equal(rinfo->left_relids, index->rel->relids))
+				CommuteOpExpr(op);
+
+			/*
+			 * Now, determine which index attribute this is, change the
+			 * indexkey operand as needed, and get the index opclass.
+			 */
+			linitial(op->args) = fix_indexqual_operand(linitial(op->args),
+													   index,
+													   &opclass);
+			clause_op = op->opno;
+		}
+		else if (IsA(clause, RowCompareExpr))
+		{
+			RowCompareExpr *rc = (RowCompareExpr *) clause;
+			ListCell   *lc;
+
+			/*
+			 * Check to see if the indexkey is on the right; if so, commute
+			 * the clause. The indexkey should be the side that refers to
+			 * (only) the base relation.
+			 */
+			if (!bms_overlap(pull_varnos(linitial(rc->largs)),
+							 index->rel->relids))
+				CommuteRowCompareExpr(rc);
+
+			/*
+			 * For each column in the row comparison, determine which index
+			 * attribute this is and change the indexkey operand as needed.
+			 *
+			 * Save the index opclass for only the first column.  We will
+			 * return the operator and opclass info for just the first column
+			 * of the row comparison; the executor will have to look up the
+			 * rest if it needs them.
+			 */
+			foreach(lc, rc->largs)
+			{
+				Oid			tmp_opclass;
+
+				lfirst(lc) = fix_indexqual_operand(lfirst(lc),
+												   index,
+												   &tmp_opclass);
+				if (lc == list_head(rc->largs))
+					opclass = tmp_opclass;
+			}
+			clause_op = linitial_oid(rc->opnos);
+		}
+		else if (IsA(clause, ScalarArrayOpExpr))
+		{
+			ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
+
+			/* Never need to commute... */
+
+			/*
+			 * Now, determine which index attribute this is, change the
+			 * indexkey operand as needed, and get the index opclass.
+			 */
+			linitial(saop->args) = fix_indexqual_operand(linitial(saop->args),
+														 index,
+														 &opclass);
+			clause_op = saop->opno;
+		}
+		else
+		{
+			elog(ERROR, "unsupported indexqual type: %d",
+				 (int) nodeTag(clause));
+			continue;			/* keep compiler quiet */
+		}
+
+		*fixed_indexquals = lappend(*fixed_indexquals, clause);
 
 		/*
 		 * Look up the (possibly commuted) operator in the operator class to
 		 * get its strategy numbers and the recheck indicator.	This also
 		 * double-checks that we found an operator matching the index.
 		 */
-		get_op_opclass_properties(newclause->opno, opclass,
+		get_op_opclass_properties(clause_op, opclass,
 								  &stratno, &stratsubtype, &recheck);
 
 		*indexstrategy = lappend_int(*indexstrategy, stratno);
@@ -1989,7 +2107,7 @@ get_switched_clauses(Relids innerrelids, List *clauses)
 			temp->opretset = clause->opretset;
 			temp->args = list_copy(clause->args);
 			/* Commute it --- note this modifies the temp node in-place. */
-			CommuteClause(temp);
+			CommuteOpExpr(temp);
 			t_list = lappend(t_list, temp);
 		}
 		else
@@ -2193,7 +2311,7 @@ static TidScan *
 make_tidscan(List *qptlist,
 			 List *qpqual,
 			 Index scanrelid,
-			 List *tideval)
+			 List *tidquals)
 {
 	TidScan    *node = makeNode(TidScan);
 	Plan	   *plan = &node->scan.plan;
@@ -2204,7 +2322,7 @@ make_tidscan(List *qptlist,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
-	node->tideval = tideval;
+	node->tidquals = tidquals;
 
 	return node;
 }
@@ -2242,6 +2360,24 @@ make_functionscan(List *qptlist,
 				  Index scanrelid)
 {
 	FunctionScan *node = makeNode(FunctionScan);
+	Plan	   *plan = &node->scan.plan;
+
+	/* cost should be inserted by caller */
+	plan->targetlist = qptlist;
+	plan->qual = qpqual;
+	plan->lefttree = NULL;
+	plan->righttree = NULL;
+	node->scan.scanrelid = scanrelid;
+
+	return node;
+}
+
+static ValuesScan *
+make_valuesscan(List *qptlist,
+				List *qpqual,
+				Index scanrelid)
+{
+	ValuesScan *node = makeNode(ValuesScan);
 	Plan	   *plan = &node->scan.plan;
 
 	/* cost should be inserted by caller */
@@ -3022,7 +3158,7 @@ make_setop(SetOpCmd cmd, Plan *lefttree,
  */
 Limit *
 make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount,
-		   int offset_est, int count_est)
+		   int64 offset_est, int64 count_est)
 {
 	Limit	   *node = makeNode(Limit);
 	Plan	   *plan = &node->plan;

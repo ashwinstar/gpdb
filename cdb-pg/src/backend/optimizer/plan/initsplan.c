@@ -4,12 +4,12 @@
  *	  Target list, qualification, joininfo initialization routines
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/initsplan.c,v 1.110.2.2 2005/11/22 18:23:11 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/initsplan.c,v 1.123 2006/10/04 00:29:54 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,7 +17,6 @@
 
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
-#include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/joininfo.h"
@@ -26,9 +25,7 @@
 #include "optimizer/planmain.h"
 #include "optimizer/prep.h"
 #include "optimizer/restrictinfo.h"
-#include "optimizer/tlist.h"
 #include "optimizer/var.h"
-#include "parser/parsetree.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
 #include "utils/builtins.h"
@@ -41,11 +38,13 @@ int			from_collapse_limit;
 int			join_collapse_limit;
 
 
+static void add_vars_to_targetlist(PlannerInfo *root, List *vars,
+					   Relids where_needed);
 static List *deconstruct_recurse(PlannerInfo *root, Node *jtnode,
-								 bool below_outer_join, Relids *qualscope);
+					bool below_outer_join, Relids *qualscope);
 static OuterJoinInfo *make_outerjoininfo(PlannerInfo *root,
-										 Relids left_rels, Relids right_rels,
-										 bool is_full_join, Node *clause);
+				   Relids left_rels, Relids right_rels,
+				   bool is_full_join, Node *clause);
 static void distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 						bool is_pushed_down,
 						bool is_deduced,
@@ -73,12 +72,13 @@ static void check_hashjoinable(RestrictInfo *restrictinfo);
  *	  appearing in the jointree.
  *
  * The initial invocation must pass root->parse->jointree as the value of
- * jtnode.  Internally, the function recurses through the jointree.
+ * jtnode.	Internally, the function recurses through the jointree.
  *
  * At the end of this process, there should be one baserel RelOptInfo for
  * every non-join RTE that is used in the query.  Therefore, this routine
- * is the only place that should call build_base_rel.  But build_other_rel
- * will be used later to build rels for inheritance children.
+ * is the only place that should call build_simple_rel with reloptkind
+ * RELOPT_BASEREL.	(Note: build_simple_rel recurses internally to build
+ * "other rel" RelOptInfos for the members of any appendrels we find here.)
  */
 void
 add_base_rels_to_query(PlannerInfo *root, Node *jtnode)
@@ -89,7 +89,7 @@ add_base_rels_to_query(PlannerInfo *root, Node *jtnode)
 	{
 		int			varno = ((RangeTblRef *) jtnode)->rtindex;
 
-		build_base_rel(root, varno);
+		(void) build_simple_rel(root, varno, RELOPT_BASEREL);
 	}
 	else if (IsA(jtnode, FromExpr))
 	{
@@ -182,7 +182,7 @@ add_vars_to_targetlist(PlannerInfo *root, List *vars, Relids where_needed)
  * deconstruct_jointree
  *	  Recursively scan the query's join tree for WHERE and JOIN/ON qual
  *	  clauses, and add these to the appropriate restrictinfo and joininfo
- *	  lists belonging to base RelOptInfos.  Also, add OuterJoinInfo nodes
+ *	  lists belonging to base RelOptInfos.	Also, add OuterJoinInfo nodes
  *	  to root->oj_info_list for any outer joins appearing in the query tree.
  *	  Return a "joinlist" data structure showing the join order decisions
  *	  that need to be made by make_one_rel().
@@ -199,9 +199,9 @@ add_vars_to_targetlist(PlannerInfo *root, List *vars, Relids where_needed)
  * be evaluated at the lowest level where all the variables it mentions are
  * available.  However, we cannot push a qual down into the nullable side(s)
  * of an outer join since the qual might eliminate matching rows and cause a
- * NULL row to be incorrectly emitted by the join.  Therefore, we artificially
+ * NULL row to be incorrectly emitted by the join.	Therefore, we artificially
  * OR the minimum-relids of such an outer join into the required_relids of
- * clauses appearing above it.  This forces those clauses to be delayed until
+ * clauses appearing above it.	This forces those clauses to be delayed until
  * application of the outer join (or maybe even higher in the join tree).
  */
 List *
@@ -259,20 +259,19 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 		ListCell   *l;
 
 		/*
-		 * First, recurse to handle child joins.  We collapse subproblems
-		 * into a single joinlist whenever the resulting joinlist wouldn't
-		 * exceed from_collapse_limit members.  Also, always collapse
-		 * one-element subproblems, since that won't lengthen the joinlist
-		 * anyway.
+		 * First, recurse to handle child joins.  We collapse subproblems into
+		 * a single joinlist whenever the resulting joinlist wouldn't exceed
+		 * from_collapse_limit members.  Also, always collapse one-element
+		 * subproblems, since that won't lengthen the joinlist anyway.
 		 */
 		*qualscope = NULL;
 		joinlist = NIL;
 		remaining = list_length(f->fromlist);
 		foreach(l, f->fromlist)
 		{
-			Relids	sub_qualscope;
-			List   *sub_joinlist;
-			int		sub_members;
+			Relids		sub_qualscope;
+			List	   *sub_joinlist;
+			int			sub_members;
 
 			sub_joinlist = deconstruct_recurse(root, lfirst(l),
 											   below_outer_join,
@@ -365,18 +364,6 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 				*qualscope = bms_union(leftids, rightids);
 				nonnullable_rels = leftids;
 				break;
-			case JOIN_UNION:
-
-				/*
-				 * This is where we fail if upper levels of planner haven't
-				 * rewritten UNION JOIN as an Append ...
-				 */
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("UNION JOIN is not implemented")));
-				nonnullable_rels = NULL;		/* keep compiler quiet */
-				leftjoinlist = rightjoinlist = NIL;
-				break;
 			default:
 				elog(ERROR, "unrecognized join type: %d",
 					 (int) j->jointype);
@@ -420,7 +407,8 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 			(list_length(leftjoinlist) + list_length(rightjoinlist) <=
 			 join_collapse_limit))
 			joinlist = list_concat(leftjoinlist, rightjoinlist);
-		else					/* force the join order at this node */
+		else
+			/* force the join order at this node */
 			joinlist = list_make1(list_make2(leftjoinlist, rightjoinlist));
 	}
 	else
@@ -458,6 +446,29 @@ make_outerjoininfo(PlannerInfo *root,
 	Relids		clause_relids;
 	Relids		strict_relids;
 	ListCell   *l;
+
+	/*
+	 * Presently the executor cannot support FOR UPDATE/SHARE marking of rels
+	 * appearing on the nullable side of an outer join. (It's somewhat unclear
+	 * what that would mean, anyway: what should we mark when a result row is
+	 * generated from no element of the nullable relation?)  So, complain if
+	 * any nullable rel is FOR UPDATE/SHARE.
+	 *
+	 * You might be wondering why this test isn't made far upstream in the
+	 * parser.	It's because the parser hasn't got enough info --- consider
+	 * FOR UPDATE applied to a view.  Only after rewriting and flattening do
+	 * we know whether the view contains an outer join.
+	 */
+	foreach(l, root->parse->rowMarks)
+	{
+		RowMarkClause *rc = (RowMarkClause *) lfirst(l);
+
+		if (bms_is_member(rc->rti, right_rels) ||
+			(is_full_join && bms_is_member(rc->rti, left_rels)))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("SELECT FOR UPDATE/SHARE cannot be applied to the nullable side of an outer join")));
+	}
 
 	/* If it's a full join, no need to be very smart */
 	ojinfo->is_full_join = is_full_join;
@@ -1045,8 +1056,9 @@ process_implied_equality(PlannerInfo *root,
 	 */
 	ltype = exprType(item1);
 	rtype = exprType(item2);
-	eq_operator = compatible_oper(list_make1(makeString("=")),
-								  ltype, rtype, true);
+	eq_operator = compatible_oper(NULL, list_make1(makeString("=")),
+								  ltype, rtype,
+								  true, -1);
 	if (!HeapTupleIsValid(eq_operator))
 	{
 		/*

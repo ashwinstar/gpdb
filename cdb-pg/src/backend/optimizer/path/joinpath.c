@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/path/joinpath.c,v 1.97.2.1 2005/11/22 18:23:10 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/path/joinpath.c,v 1.107 2006/10/04 00:29:54 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,12 +17,9 @@
 
 #include <math.h>
 
-#include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
-#include "parser/parsetree.h"
-#include "utils/lsyscache.h"
 
 static void sort_inner_and_outer(PlannerInfo *root, RelOptInfo *joinrel,
 					 RelOptInfo *outerrel, RelOptInfo *innerrel,
@@ -40,6 +37,13 @@ hash_inner_and_outer(PlannerInfo *root,
                      List *restrictlist,
                      List *mergeclause_list,    /*CDB*/
                      JoinType jointype);
+static Path *best_appendrel_indexscan(PlannerInfo *root, RelOptInfo *rel,
+						 RelOptInfo *outer_rel, JoinType jointype);
+static List *select_mergejoin_clauses(RelOptInfo *joinrel,
+						 RelOptInfo *outerrel,
+						 RelOptInfo *innerrel,
+						 List *restrictlist,
+						 JoinType jointype);
 
 
 /*
@@ -384,8 +388,15 @@ match_unsorted_outer(PlannerInfo *root,
 		 * Get the best innerjoin indexpath (if any) for this outer rel. It's
 		 * the same for all outer paths.
 		 */
-		bestinnerjoin = best_inner_indexscan(root, innerrel,
-											 outerrel->relids, jointype);
+		if (innerrel->reloptkind != RELOPT_JOINREL)
+		{
+			if (IsA(inner_cheapest_total, AppendPath))
+				bestinnerjoin = best_appendrel_indexscan(root, innerrel,
+														 outerrel, jointype);
+			else if (innerrel->rtekind == RTE_RELATION)
+				bestinnerjoin = best_inner_indexscan(root, innerrel,
+													 outerrel, jointype);
+		}
 	}
 
 	foreach(l, outerrel->pathlist)
@@ -521,8 +532,11 @@ match_unsorted_outer(PlannerInfo *root,
 		 * Look for presorted inner paths that satisfy the innersortkey list
 		 * --- or any truncation thereof, if we are allowed to build a
 		 * mergejoin using a subset of the merge clauses.  Here, we consider
-		 * both cheap startup cost and cheap total cost.  Ignore
-		 * inner_cheapest_total, since we already made a path with it.
+		 * both cheap startup cost and cheap total cost.  We can ignore
+		 * inner_cheapest_total on the first iteration, since we already made
+		 * a path with it --- but not on later iterations with shorter sort
+		 * keys, because then we are considering a different situation, viz
+		 * using a simpler mergejoin to avoid a sort of the inner rel.
 		 */
 		num_sortkeys = list_length(innersortkeys);
 		if (num_sortkeys > 1 && !useallclauses)
@@ -547,7 +561,8 @@ match_unsorted_outer(PlannerInfo *root,
 													   trialsortkeys,
 													   TOTAL_COST);
 			if (innerpath != NULL &&
-				innerpath != inner_cheapest_total &&
+				(innerpath != inner_cheapest_total ||
+				 sortkeycnt < num_sortkeys) &&
 				(cheapest_total_inner == NULL ||
 				 compare_path_costs(innerpath, cheapest_total_inner,
 									TOTAL_COST) < 0))
@@ -583,7 +598,8 @@ match_unsorted_outer(PlannerInfo *root,
 													   trialsortkeys,
 													   STARTUP_COST);
 			if (innerpath != NULL &&
-				innerpath != inner_cheapest_total &&
+				(innerpath != inner_cheapest_total ||
+				 sortkeycnt < num_sortkeys) &&
 				(cheapest_startup_inner == NULL ||
 				 compare_path_costs(innerpath, cheapest_startup_inner,
 									STARTUP_COST) < 0))
@@ -768,6 +784,73 @@ hash_inner_and_outer(PlannerInfo *root,
 										  hashclauses,
                                           false));
 	}
+}
+
+/*
+ * best_appendrel_indexscan
+ *	  Finds the best available set of inner indexscans for a nestloop join
+ *	  with the given append relation on the inside and the given outer_rel
+ *	  outside.	Returns an AppendPath comprising the best inner scans, or
+ *	  NULL if there are no possible inner indexscans.
+ */
+static Path *
+best_appendrel_indexscan(PlannerInfo *root, RelOptInfo *rel,
+						 RelOptInfo *outer_rel, JoinType jointype)
+{
+	int			parentRTindex = rel->relid;
+	List	   *append_paths = NIL;
+	bool		found_indexscan = false;
+	ListCell   *l;
+
+	foreach(l, root->append_rel_list)
+	{
+		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
+		int			childRTindex;
+		RelOptInfo *childrel;
+		Path	   *bestinnerjoin;
+
+		/* append_rel_list contains all append rels; ignore others */
+		if (appinfo->parent_relid != parentRTindex)
+			continue;
+
+		childRTindex = appinfo->child_relid;
+		childrel = find_base_rel(root, childRTindex);
+		Assert(childrel->reloptkind == RELOPT_OTHER_MEMBER_REL);
+
+		/*
+		 * Check to see if child was rejected by constraint exclusion. If so,
+		 * it will have a cheapest_total_path that's an Append path with no
+		 * members (see set_plain_rel_pathlist).
+		 */
+		if (IsA(childrel->cheapest_total_path, AppendPath) &&
+			((AppendPath *) childrel->cheapest_total_path)->subpaths == NIL)
+			continue;			/* OK, we can ignore it */
+
+		/*
+		 * Get the best innerjoin indexpath (if any) for this child rel.
+		 */
+		bestinnerjoin = best_inner_indexscan(root, childrel,
+											 outer_rel, jointype);
+
+		/*
+		 * If no luck on an indexpath for this rel, we'll still consider an
+		 * Append substituting the cheapest-total inner path.  However we must
+		 * find at least one indexpath, else there's not going to be any
+		 * improvement over the base path for the appendrel.
+		 */
+		if (bestinnerjoin)
+			found_indexscan = true;
+		else
+			bestinnerjoin = childrel->cheapest_total_path;
+
+		append_paths = lappend(append_paths, bestinnerjoin);
+	}
+
+	if (!found_indexscan)
+		return NULL;
+
+	/* Form and return the completed Append path. */
+	return (Path *) create_append_path(rel, append_paths);
 }
 
 /*

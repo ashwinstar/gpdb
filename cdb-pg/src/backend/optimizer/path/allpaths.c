@@ -4,12 +4,12 @@
  *	  Routines to find possible search paths for processing a query
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/path/allpaths.c,v 1.137.2.3 2006/05/02 04:34:24 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/path/allpaths.c,v 1.154 2006/10/04 00:29:53 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -28,25 +28,26 @@
 #include "optimizer/paths.h"
 #include "optimizer/plancat.h"
 #include "optimizer/planner.h"
-#include "optimizer/predtest.h"
 #include "optimizer/prep.h"
 #include "optimizer/var.h"
-#include "parser/parsetree.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_expr.h"
+#include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
 
 #include "cdb/cdbpath.h"                    /* cdbpath_rows() */
 
-
 /* These parameters are set by GUC */
-bool		constraint_exclusion = false;
 bool		enable_geqo = false;	/* just in case GUC doesn't set it */
 int			geqo_threshold;
 
 
 static void set_base_rel_pathlists(PlannerInfo *root);
-static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel);
+static void set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti);
+static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
+					   RangeTblEntry *rte);
+static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
+						Index rti, RangeTblEntry *rte);
 static void set_inherited_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 						   Index rti, RangeTblEntry *rte,
 						   List *inheritlist);
@@ -55,6 +56,8 @@ static void set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					  Index rti, RangeTblEntry *rte);
 static void set_function_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					  RangeTblEntry *rte);
+static void set_values_pathlist(PlannerInfo *root, RelOptInfo *rel,
+					RangeTblEntry *rte);
 static RelOptInfo *make_rel_from_joinlist(PlannerInfo *root, List *joinlist);
 static RelOptInfo *make_one_rel_by_joins(PlannerInfo *root, int levels_needed,
 					  List *initial_rels);
@@ -113,7 +116,7 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 	 */
 	rel = make_rel_from_joinlist(root, joinlist);
 
-    /*
+	/*
 	 * The result should join all and only the query's base rels.
 	 */
 #ifdef USE_ASSERT_CHECKING
@@ -121,9 +124,9 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 		int			num_base_rels = 0;
 		Index		rti;
 
-		for (rti = 1; rti < root->base_rel_array_size; rti++)
+		for (rti = 1; rti < root->simple_rel_array_size; rti++)
 		{
-			RelOptInfo *brel = root->base_rel_array[rti];
+			RelOptInfo *brel = root->simple_rel_array[rti];
 
 			if (brel == NULL)
 				continue;
@@ -156,16 +159,9 @@ set_base_rel_pathlists(PlannerInfo *root)
 {
 	Index		rti;
 
-	/*
-	 * Note: because we call expand_inherited_rtentry inside the loop, it's
-	 * quite possible for the base_rel_array to be enlarged while the loop
-	 * runs.  Hence don't try to optimize the loop.
-	 */
-	for (rti = 1; rti < root->base_rel_array_size; rti++)
+	for (rti = 1; rti < root->simple_rel_array_size; rti++)
 	{
-		RelOptInfo *rel = root->base_rel_array[rti];
-		RangeTblEntry *rte;
-		List	   *inheritlist;
+		RelOptInfo *rel = root->simple_rel_array[rti];
 
 		/* there may be empty slots corresponding to non-baserel RTEs */
 		if (rel == NULL)
@@ -177,7 +173,9 @@ set_base_rel_pathlists(PlannerInfo *root)
 		if (rel->reloptkind != RELOPT_BASEREL)
 			continue;
 
-		rte = rt_fetch(rti, root->parse->rtable);
+		set_rel_pathlist(root, rel, rti);
+	}
+}
 
 		if (rel->rtekind == RTE_SUBQUERY)
 		{
@@ -200,10 +198,36 @@ set_base_rel_pathlists(PlannerInfo *root)
 			set_plain_rel_pathlist(root, rel);
 		}
 
-#ifdef OPTIMIZER_DEBUG
-		debug_print_rel(root, rel);
-#endif
+	if (rte->inh)
+	{
+		/* It's an "append relation", process accordingly */
+		set_append_rel_pathlist(root, rel, rti, rte);
 	}
+	else if (rel->rtekind == RTE_SUBQUERY)
+	{
+		/* Subquery --- generate a separate plan for it */
+		set_subquery_pathlist(root, rel, rti, rte);
+	}
+	else if (rel->rtekind == RTE_FUNCTION)
+	{
+		/* RangeFunction --- generate a separate plan for it */
+		set_function_pathlist(root, rel, rte);
+	}
+	else if (rel->rtekind == RTE_VALUES)
+	{
+		/* Values list --- generate a separate plan for it */
+		set_values_pathlist(root, rel, rte);
+	}
+	else
+	{
+		/* Plain relation */
+		Assert(rel->rtekind == RTE_RELATION);
+		set_plain_rel_pathlist(root, rel, rte);
+	}
+
+#ifdef OPTIMIZER_DEBUG
+	debug_print_rel(root, rel);
+#endif
 }
 
 /*
@@ -232,6 +256,24 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel)
         rel->dedup_info = cdb_make_rel_dedup_info(root, rel);
 
 	/*
+	 * If we can prove we don't need to scan the rel via constraint exclusion,
+	 * set up a single dummy path for it.  (Rather than inventing a special
+	 * "dummy" path type, we represent this as an AppendPath with no members.)
+	 */
+	if (relation_excluded_by_constraints(rel, rte))
+	{
+		/* Reset output-rows estimate to 0 */
+		rel->rows = 0;
+
+		add_path(rel, (Path *) create_append_path(rel, NIL));
+
+		/* Select cheapest path (pretty easy in this case...) */
+		set_cheapest(rel);
+
+		return;
+	}
+
+	/*
 	 * Generate paths and add them to the rel's pathlist.
 	 *
 	 * Note: add_path() will discard any paths that are dominated by another
@@ -253,137 +295,112 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel)
 }
 
 /*
- * set_inherited_rel_pathlist
- *	  Build access paths for a inheritance tree rooted at rel
+ * set_append_rel_pathlist
+ *	  Build access paths for an "append relation"
  *
- * inheritlist is a list of RT indexes of all tables in the inheritance tree,
- * including a duplicate of the parent itself.	Note we will not come here
- * unless there's at least one child in addition to the parent.
- *
- * NOTE: the passed-in rel and RTE will henceforth represent the appended
- * result of the whole inheritance tree.  The members of inheritlist represent
- * the individual tables --- in particular, the inheritlist member that is a
- * duplicate of the parent RTE represents the parent table alone.
- * We will generate plans to scan the individual tables that refer to
- * the inheritlist RTEs, whereas Vars elsewhere in the plan tree that
- * refer to the original RTE are taken to refer to the append output.
- * In particular, this means we have separate RelOptInfos for the parent
- * table and for the append output, which is a good thing because they're
- * not the same size.
+ * The passed-in rel and RTE represent the entire append relation.	The
+ * relation's contents are computed by appending together the output of
+ * the individual member relations.  Note that in the inheritance case,
+ * the first member relation is actually the same table as is mentioned in
+ * the parent RTE ... but it has a different RTE and RelOptInfo.  This is
+ * a good thing because their outputs are not the same size.
  */
 static void
-set_inherited_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
-						   Index rti, RangeTblEntry *rte,
-						   List *inheritlist)
+set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
+						Index rti, RangeTblEntry *rte)
 {
 	int			parentRTindex = rti;
-	Oid			parentOID = rte->relid;
 	List	   *subpaths = NIL;
-	ListCell   *il;
+	ListCell   *l;
 
 	/*
 	 * XXX for now, can't handle inherited expansion of FOR UPDATE/SHARE; can
-	 * we do better?
+	 * we do better?  (This will take some redesign because the executor
+	 * currently supposes that every rowMark relation is involved in every row
+	 * returned by the query.)
 	 */
-	if (list_member_int(root->parse->rowMarks, parentRTindex))
+	if (get_rowmark(root->parse, parentRTindex))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("SELECT FOR UPDATE/SHARE is not supported for inheritance queries")));
 
 	/*
-	 * We might have looked up indexes for the parent rel, but they're
-	 * really not relevant to the appendrel.  Reset the pointer to avoid
-	 * any confusion.
-	 */
-	rel->indexlist = NIL;
-
-	/*
-	 * Initialize to compute size estimates for whole inheritance tree
+	 * Initialize to compute size estimates for whole append relation
 	 */
 	rel->rows = 0;
 	rel->tuples = 0;
 	rel->width = 0;
 
 	/*
-	 * Generate access paths for each table in the tree (parent AND children),
-	 * and pick the cheapest path for each table.
+	 * Generate access paths for each member relation, and pick the cheapest
+	 * path for each one.
 	 */
-	foreach(il, inheritlist)
+	foreach(l, root->append_rel_list)
 	{
-		int			childRTindex = lfirst_int(il);
-		RangeTblEntry *childrte;
-		Oid			childOID;
+		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
+		int			childRTindex;
 		RelOptInfo *childrel;
+		Path	   *childpath;
 		ListCell   *parentvars;
 		ListCell   *childvars;
 
-		childrte = rt_fetch(childRTindex, root->parse->rtable);
-		childOID = childrte->relid;
+		/* append_rel_list contains all append rels; ignore others */
+		if (appinfo->parent_relid != parentRTindex)
+			continue;
+
+		childRTindex = appinfo->child_relid;
 
 		/*
-		 * Make a RelOptInfo for the child so we can do planning. Mark it as
-		 * an "other rel" since it will not be part of the main join tree.
+		 * The child rel's RelOptInfo was already created during
+		 * add_base_rels_to_query.
 		 */
-		childrel = build_other_rel(root, childRTindex);
+		childrel = find_base_rel(root, childRTindex);
+		Assert(childrel->reloptkind == RELOPT_OTHER_MEMBER_REL);
 
 		/*
-		 * Copy the parent's targetlist and restriction quals to the child,
-		 * with attribute-number adjustment as needed.	We don't bother to
-		 * copy the join quals, since we can't do any joining of the
-		 * individual tables.  Also, we just zap attr_needed rather than
-		 * trying to adjust it; it won't be looked at in the child.
+		 * Copy the parent's targetlist and quals to the child, with
+		 * appropriate substitution of variables.
 		 */
 		childrel->reltargetlist = (List *)
-			adjust_inherited_attrs((Node *) rel->reltargetlist,
-								   parentRTindex,
-								   parentOID,
-								   childRTindex,
-								   childOID);
-		childrel->attr_needed = NULL;
+			adjust_appendrel_attrs((Node *) rel->reltargetlist,
+								   appinfo);
 		childrel->baserestrictinfo = (List *)
-			adjust_inherited_attrs((Node *) rel->baserestrictinfo,
-								   parentRTindex,
-								   parentOID,
-								   childRTindex,
-								   childOID);
+			adjust_appendrel_attrs((Node *) rel->baserestrictinfo,
+								   appinfo);
+		childrel->joininfo = (List *)
+			adjust_appendrel_attrs((Node *) rel->joininfo,
+								   appinfo);
 
 		/*
-		 * If we can prove we don't need to scan this child via constraint
-		 * exclusion, just ignore it.  (We have to have converted the
-		 * baserestrictinfo Vars before we can make the test.)
+		 * Copy the parent's attr_needed data as well, with appropriate
+		 * adjustment of relids and attribute numbers.
 		 */
-		if (constraint_exclusion)
-		{
-			List	   *constraint_pred;
-
-			constraint_pred = get_relation_constraints(childOID, childrel);
-
-			/*
-			 * We do not currently enforce that CHECK constraints contain only
-			 * immutable functions, so it's necessary to check here. We
-			 * daren't draw conclusions from plan-time evaluation of
-			 * non-immutable functions.
-			 */
-			if (!contain_mutable_functions((Node *) constraint_pred))
-			{
-				/*
-				 * The constraints are effectively ANDed together, so we can
-				 * just try to refute the entire collection at once.  This may
-				 * allow us to make proofs that would fail if we took them
-				 * individually.
-				 */
-				if (predicate_refuted_by(constraint_pred,
-										 childrel->baserestrictinfo))
-					continue;
-			}
-		}
+		pfree(childrel->attr_needed);
+		childrel->attr_needed =
+			adjust_appendrel_attr_needed(rel, appinfo,
+										 childrel->min_attr,
+										 childrel->max_attr);
 
 		/*
-		 * Compute the child's access paths, and save the cheapest.
+		 * Compute the child's access paths, and add the cheapest one to the
+		 * Append path we are constructing for the parent.
+		 *
+		 * It's possible that the child is itself an appendrel, in which case
+		 * we can "cut out the middleman" and just add its child paths to our
+		 * own list.  (We don't try to do this earlier because we need to
+		 * apply both levels of transformation to the quals.) This test also
+		 * handles the case where the child rel need not be scanned because of
+		 * constraint exclusion: it'll have an Append path with no subpaths,
+		 * and will vanish from our list.
 		 */
 		set_plain_rel_pathlist(root, childrel);
 
-		subpaths = lappend(subpaths, childrel->cheapest_total_path);
+		childpath = childrel->cheapest_total_path;
+		if (IsA(childpath, AppendPath))
+			subpaths = list_concat(subpaths,
+								   ((AppendPath *) childpath)->subpaths);
+		else
+			subpaths = lappend(subpaths, childpath);
 
 		/*
 		 * Propagate size information from the child back to the parent. For
@@ -401,7 +418,8 @@ set_inherited_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 			Var		   *parentvar = (Var *) lfirst(parentvars);
 			Var		   *childvar = (Var *) lfirst(childvars);
 
-			if (IsA(parentvar, Var) &&IsA(childvar, Var))
+			if (IsA(parentvar, Var) &&
+				IsA(childvar, Var))
 			{
 				int			pndx = parentvar->varattno - rel->min_attr;
 				int			cndx = childvar->varattno - childrel->min_attr;
@@ -430,9 +448,9 @@ has_multiple_baserels(PlannerInfo *root)
 	int			num_base_rels = 0;
 	Index		rti;
 
-	for (rti = 1; rti < root->base_rel_array_size; rti++)
+	for (rti = 1; rti < root->simple_rel_array_size; rti++)
 	{
-		RelOptInfo *brel = root->base_rel_array[rti];
+		RelOptInfo *brel = root->simple_rel_array[rti];
 
 		if (brel == NULL)
 			continue;
@@ -611,6 +629,46 @@ set_function_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 
 	/* Select cheapest path (pretty easy in this case...) */
 	set_cheapest(root, rel);
+}
+
+/*
+ * make_rel_from_joinlist
+ *	  Build access paths using a "joinlist" to guide the join path search.
+ *
+ * See comments for deconstruct_jointree() for definition of the joinlist
+ * data structure.
+ */
+static RelOptInfo *
+make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
+{
+	/* Mark rel with estimated output rows, width, etc */
+	set_values_size_estimates(root, rel);
+
+	/* Generate appropriate path */
+	add_path(rel, create_valuesscan_path(root, rel));
+
+	/* Select cheapest path (pretty easy in this case...) */
+	set_cheapest(rel);
+}
+
+/*
+ * make_rel_from_joinlist
+ *	  Build access paths using a "joinlist" to guide the join path search.
+ *
+ * See comments for deconstruct_jointree() for definition of the joinlist
+ * data structure.
+ */
+static RelOptInfo *
+make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
+{
+	/* Mark rel with estimated output rows, width, etc */
+	set_values_size_estimates(root, rel);
+
+	/* Generate appropriate path */
+	add_path(rel, create_valuesscan_path(root, rel));
+
+	/* Select cheapest path (pretty easy in this case...) */
+	set_cheapest(rel);
 }
 
 /*
@@ -867,6 +925,10 @@ recurse_pushdown_safe(Node *setOp, Query *topquery,
  * Compare tlist's datatypes against the list of set-operation result types.
  * For any items that are different, mark the appropriate element of
  * differentTypes[] to show that this column will have type conversions.
+ *
+ * We don't have to care about typmods here: the only allowed difference
+ * between set-op input and output typmods is input is a specific typmod
+ * and output is -1, and that does not require a coercion.
  */
 static void
 compare_tlist_datatypes(List *tlist, List *colTypes,
@@ -921,6 +983,10 @@ compare_tlist_datatypes(List *tlist, List *colTypes,
  * 5. We must not push down any quals that refer to subselect outputs that
  * return sets, else we'd introduce functions-returning-sets into the
  * subquery's WHERE/HAVING quals.
+ *
+ * 6. We must not push down any quals that refer to subselect outputs that
+ * contain volatile functions, for fear of introducing strange results due
+ * to multiple evaluation of a volatile function.
  */
 static bool
 qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
@@ -986,6 +1052,13 @@ qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
 
 		/* Refuse functions returning sets (point 5) */
 		if (expression_returns_set((Node *) tle->expr))
+		{
+			safe = false;
+			break;
+		}
+
+		/* Refuse volatile functions (point 6) */
+		if (contain_volatile_functions((Node *) tle->expr))
 		{
 			safe = false;
 			break;
@@ -1146,7 +1219,6 @@ print_path(PlannerInfo *root, Path *path, int indent)
 			break;
 		case T_ResultPath:
 			ptype = "Result";
-			subpath = ((ResultPath *) path)->subpath;
 			break;
 		case T_MaterialPath:
 			ptype = "Material";
