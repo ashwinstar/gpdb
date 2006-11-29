@@ -3,12 +3,12 @@
  * rewriteManip.c
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/rewrite/rewriteManip.c,v 1.92.2.3 2006/01/06 20:11:18 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/rewrite/rewriteManip.c,v 1.102 2006/10/04 00:29:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,12 +17,10 @@
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
-#include "optimizer/tlist.h"
-#include "parser/parsetree.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_relation.h"
+#include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
-#include "utils/lsyscache.h"
 
 
 typedef struct
@@ -180,6 +178,28 @@ OffsetVarNodes_walker(Node *node, OffsetVarNodes_context *context)
 												 context->offset);
 		/* fall through to examine children */
 	}
+	if (IsA(node, AppendRelInfo))
+	{
+		AppendRelInfo *appinfo = (AppendRelInfo *) node;
+
+		if (context->sublevels_up == 0)
+		{
+			appinfo->parent_relid += context->offset;
+			appinfo->child_relid += context->offset;
+		}
+		/* fall through to examine children */
+	}
+	if (IsA(node, AppendRelInfo))
+	{
+		AppendRelInfo *appinfo = (AppendRelInfo *) node;
+
+		if (context->sublevels_up == 0)
+		{
+			appinfo->parent_relid += context->offset;
+			appinfo->child_relid += context->offset;
+		}
+		/* fall through to examine children */
+	}
 	if (IsA(node, Query))
 	{
 		/* Recurse into subselects */
@@ -226,7 +246,11 @@ OffsetVarNodes(Node *node, int offset, int sublevels_up)
 			if (qry->resultRelation)
 				qry->resultRelation += offset;
 			foreach(l, qry->rowMarks)
-				lfirst_int(l) += offset;
+			{
+				RowMarkClause *rc = (RowMarkClause *) lfirst(l);
+
+				rc->rti += offset;
+			}
 		}
 		query_tree_walker(qry, OffsetVarNodes_walker,
 						  (void *) &context, 0);
@@ -315,6 +339,32 @@ ChangeVarNodes_walker(Node *node, ChangeVarNodes_context *context)
 												 context->new_index);
 		/* fall through to examine children */
 	}
+	if (IsA(node, AppendRelInfo))
+	{
+		AppendRelInfo *appinfo = (AppendRelInfo *) node;
+
+		if (context->sublevels_up == 0)
+		{
+			if (appinfo->parent_relid == context->rt_index)
+				appinfo->parent_relid = context->new_index;
+			if (appinfo->child_relid == context->rt_index)
+				appinfo->child_relid = context->new_index;
+		}
+		/* fall through to examine children */
+	}
+	if (IsA(node, AppendRelInfo))
+	{
+		AppendRelInfo *appinfo = (AppendRelInfo *) node;
+
+		if (context->sublevels_up == 0)
+		{
+			if (appinfo->parent_relid == context->rt_index)
+				appinfo->parent_relid = context->new_index;
+			if (appinfo->child_relid == context->rt_index)
+				appinfo->child_relid = context->new_index;
+		}
+		/* fall through to examine children */
+	}
 	if (IsA(node, Query))
 	{
 		/* Recurse into subselects */
@@ -363,8 +413,10 @@ ChangeVarNodes(Node *node, int rt_index, int new_index, int sublevels_up)
 				qry->resultRelation = new_index;
 			foreach(l, qry->rowMarks)
 			{
-				if (lfirst_int(l) == rt_index)
-					lfirst_int(l) = new_index;
+				RowMarkClause *rc = (RowMarkClause *) lfirst(l);
+
+				if (rc->rti == rt_index)
+					rc->rti = new_index;
 			}
 		}
 		query_tree_walker(qry, ChangeVarNodes_walker,
@@ -519,15 +571,11 @@ rangeTableEntry_used_walker(Node *node,
 			return true;
 		/* fall through to examine children */
 	}
-	if (IsA(node, InClauseInfo))
-	{
-		InClauseInfo *ininfo = (InClauseInfo *) node;
+	/* Shouldn't need to handle planner auxiliary nodes here */
+	Assert(!IsA(node, OuterJoinInfo));
+	Assert(!IsA(node, InClauseInfo));
+	Assert(!IsA(node, AppendRelInfo));
 
-		if (context->sublevels_up == 0 &&
-			bms_is_member(context->rt_index, ininfo->righthand))
-			return true;
-		/* fall through to examine children */
-	}
 	if (IsA(node, Query))
 	{
 		/* Recurse into subselects */
@@ -832,7 +880,7 @@ resolve_one_var(Var *var, ResolveNew_context *context)
 			/* Otherwise replace unmatched var with a null */
 			/* need coerce_to_domain in case of NOT NULL domain constraint */
 			return coerce_to_domain((Node *) makeNullConst(var->vartype),
-									InvalidOid,
+									InvalidOid, -1,
 									var->vartype,
 									COERCE_IMPLICIT_CAST,
 									false,
@@ -952,10 +1000,11 @@ ResolveNew(Node *node, int target_varno, int sublevels_up,
 	{
 		if (IsA(result, Query))
 			((Query *) result)->hasSubLinks = true;
+
 		/*
 		 * Note: if we're called on a non-Query node then it's the caller's
-		 * responsibility to update hasSubLinks in the ancestor Query.
-		 * This is pretty fragile and perhaps should be rethought ...
+		 * responsibility to update hasSubLinks in the ancestor Query. This is
+		 * pretty fragile and perhaps should be rethought ...
 		 */
 	}
 

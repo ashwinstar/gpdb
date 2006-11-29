@@ -4,29 +4,23 @@
  *		Primary module of query rewriter.
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/rewrite/rewriteHandler.c,v 1.158.2.2 2005/11/23 17:21:22 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/rewrite/rewriteHandler.c,v 1.168 2006/10/06 17:13:59 petere Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/heapam.h"
-#include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
-#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
-#include "optimizer/prep.h"
-#include "optimizer/var.h"
 #include "parser/analyze.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
-#include "parser/parse_oper.h"
-#include "parser/parse_type.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteManip.h"
@@ -46,13 +40,17 @@ static Query *rewriteRuleAction(Query *parsetree,
 				  Query *rule_action,
 				  Node *rule_qual,
 				  int rt_index,
-				  CmdType event);
+				  CmdType event,
+				  bool *returning_flag);
 static List *adjustJoinTreeList(Query *parsetree, bool removert, int rt_index);
-static void rewriteTargetList(Query *parsetree, Relation target_relation);
+static void rewriteTargetList(Query *parsetree, Relation target_relation,
+				  List **attrno_list);
 static TargetEntry *process_matched_tle(TargetEntry *src_tle,
 					TargetEntry *prior_tle,
 					const char *attrName);
 static Node *get_assignment_input(Node *node);
+static void rewriteValuesRTE(RangeTblEntry *rte, Relation target_relation,
+				 List *attrnos);
 static void markQueryForLocking(Query *qry, bool forUpdate, bool noWait,
 					bool skipOldNew);
 static List *matchLocks(CmdType event, RuleLock *rulelocks,
@@ -106,6 +104,7 @@ AcquireRewriteLocks(Query *parsetree)
 	{
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(l);
 		Relation	rel;
+		LOCKMODE	lockmode;
 		List	   *newaliasvars;
 		Index		curinputvarno;
 		RangeTblEntry *curinputrte;
@@ -133,6 +132,14 @@ AcquireRewriteLocks(Query *parsetree)
                  * Therefore we don't ask heap_open() to acquire the lock.
                  * Instead call CdbLockRelation() on return from heap_open().
 				 */
+				 
+				if (rt_index == parsetree->resultRelation)
+					lockmode = RowExclusiveLock;
+				else if (get_rowmark(parsetree, rt_index))
+					lockmode = RowShareLock;
+				else
+					lockmode = AccessShareLock;
+					
 				rel = heap_open(rte->relid, NoLock);
 				
                 /* Target of INSERT/UPDATE/DELETE? */
@@ -149,14 +156,11 @@ AcquireRewriteLocks(Query *parsetree)
 
                 /* FOR UPDATE/SHARE? */
 				else if (list_member_int(parsetree->rowMarks, rt_index))
-                    CdbLockRelation(rel,
-                                    parsetree->forUpdate ? RowExclusiveLock
-                                                         : RowShareLock,
-                                    parsetree->rowNoWait);
+                    CdbLockRelation(rel, lockmode, false);
 
                 /* Ordinary source relation */
 				else
-                    LockRelation(rel, AccessShareLock);
+                    LockRelation(rel, lockmode);
 
                 /* Close the relcache entry without releasing the lock. */
                 heap_close(rel, NoLock);
@@ -277,13 +281,26 @@ acquireLocksOnSubLinks(Node *node, void *context)
  * rewriteRuleAction -
  *	  Rewrite the rule action with appropriate qualifiers (taken from
  *	  the triggering query).
+ *
+ * Input arguments:
+ *	parsetree - original query
+ *	rule_action - one action (query) of a rule
+ *	rule_qual - WHERE condition of rule, or NULL if unconditional
+ *	rt_index - RT index of result relation in original query
+ *	event - type of rule event
+ * Output arguments:
+ *	*returning_flag - set TRUE if we rewrite RETURNING clause in rule_action
+ *					(must be initialized to FALSE)
+ * Return value:
+ *	rewritten form of rule_action
  */
 static Query *
 rewriteRuleAction(Query *parsetree,
 				  Query *rule_action,
 				  Node *rule_qual,
 				  int rt_index,
-				  CmdType event)
+				  CmdType event,
+				  bool *returning_flag)
 {
 	int			current_varno,
 				new_varno;
@@ -442,6 +459,32 @@ rewriteRuleAction(Query *parsetree,
 			rule_action = sub_action;
 	}
 
+	/*
+	 * If rule_action has a RETURNING clause, then either throw it away if the
+	 * triggering query has no RETURNING clause, or rewrite it to emit what
+	 * the triggering query's RETURNING clause asks for.  Throw an error if
+	 * more than one rule has a RETURNING clause.
+	 */
+	if (!parsetree->returningList)
+		rule_action->returningList = NIL;
+	else if (rule_action->returningList)
+	{
+		if (*returning_flag)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				   errmsg("cannot have RETURNING lists in multiple rules")));
+		*returning_flag = true;
+		rule_action->returningList = (List *)
+			ResolveNew((Node *) parsetree->returningList,
+					   parsetree->resultRelation,
+					   0,
+					   rt_fetch(parsetree->resultRelation,
+								parsetree->rtable),
+					   rule_action->returningList,
+					   CMD_SELECT,
+					   0);
+	}
+
 	return rule_action;
 }
 
@@ -509,9 +552,15 @@ adjustJoinTreeList(Query *parsetree, bool removert, int rt_index)
  * references to NEW.foo will produce wrong or incomplete results.	Item 3
  * is not needed for rewriting, but will be needed by the planner, and we
  * can do it essentially for free while handling items 1 and 2.
+ *
+ * If attrno_list isn't NULL, we return an additional output besides the
+ * rewritten targetlist: an integer list of the assigned-to attnums, in
+ * order of the original tlist's non-junk entries.  This is needed for
+ * processing VALUES RTEs.
  */
 static void
-rewriteTargetList(Query *parsetree, Relation target_relation)
+rewriteTargetList(Query *parsetree, Relation target_relation,
+				  List **attrno_list)
 {
 	CmdType		commandType = parsetree->commandType;
 	TargetEntry **new_tles;
@@ -522,6 +571,9 @@ rewriteTargetList(Query *parsetree, Relation target_relation)
 				next_junk_attrno,
 				numattrs;
 	ListCell   *temp;
+
+	if (attrno_list)			/* initialize optional result list */
+		*attrno_list = NIL;
 
 	/*
 	 * We process the normal (non-junk) attributes by scanning the input tlist
@@ -547,6 +599,10 @@ rewriteTargetList(Query *parsetree, Relation target_relation)
 			if (attrno < 1 || attrno > numattrs)
 				elog(ERROR, "bogus resno %d in targetlist", attrno);
 			att_tup = target_relation->rd_att->attrs[attrno - 1];
+
+			/* put attrno into attrno_list even if it's dropped */
+			if (attrno_list)
+				*attrno_list = lappend_int(*attrno_list, attrno);
 
 			/* We can (and must) ignore deleted attributes */
 			if (att_tup->attisdropped)
@@ -622,7 +678,7 @@ rewriteTargetList(Query *parsetree, Relation target_relation)
 												  att_tup->attbyval);
 					/* this is to catch a NOT NULL domain constraint */
 					new_expr = coerce_to_domain(new_expr,
-												InvalidOid,
+												InvalidOid, -1,
 												att_tup->atttypid,
 												COERCE_IMPLICIT_CAST,
 												false,
@@ -849,7 +905,7 @@ build_column_default(Relation rel, int attrno)
 	 * generally be true already, but there seem to be some corner cases
 	 * involving domain defaults where it might not be true. This should match
 	 * the parser's processing of non-defaulted expressions --- see
-	 * updateTargetListEntry().
+	 * transformAssignedExpr().
 	 */
 	exprtype = exprType(expr);
 
@@ -869,6 +925,111 @@ build_column_default(Relation rel, int attrno)
 			   errhint("You will need to rewrite or cast the expression.")));
 
 	return expr;
+}
+
+
+/* Does VALUES RTE contain any SetToDefault items? */
+static bool
+searchForDefault(RangeTblEntry *rte)
+{
+	ListCell   *lc;
+
+	foreach(lc, rte->values_lists)
+	{
+		List	   *sublist = (List *) lfirst(lc);
+		ListCell   *lc2;
+
+		foreach(lc2, sublist)
+		{
+			Node	   *col = (Node *) lfirst(lc2);
+
+			if (IsA(col, SetToDefault))
+				return true;
+		}
+	}
+	return false;
+}
+
+/*
+ * When processing INSERT ... VALUES with a VALUES RTE (ie, multiple VALUES
+ * lists), we have to replace any DEFAULT items in the VALUES lists with
+ * the appropriate default expressions.  The other aspects of rewriteTargetList
+ * need be applied only to the query's targetlist proper.
+ *
+ * Note that we currently can't support subscripted or field assignment
+ * in the multi-VALUES case.  The targetlist will contain simple Vars
+ * referencing the VALUES RTE, and therefore process_matched_tle() will
+ * reject any such attempt with "multiple assignments to same column".
+ */
+static void
+rewriteValuesRTE(RangeTblEntry *rte, Relation target_relation, List *attrnos)
+{
+	List	   *newValues;
+	ListCell   *lc;
+
+	/*
+	 * Rebuilding all the lists is a pretty expensive proposition in a big
+	 * VALUES list, and it's a waste of time if there aren't any DEFAULT
+	 * placeholders.  So first scan to see if there are any.
+	 */
+	if (!searchForDefault(rte))
+		return;					/* nothing to do */
+
+	/* Check list lengths (we can assume all the VALUES sublists are alike) */
+	Assert(list_length(attrnos) == list_length(linitial(rte->values_lists)));
+
+	newValues = NIL;
+	foreach(lc, rte->values_lists)
+	{
+		List	   *sublist = (List *) lfirst(lc);
+		List	   *newList = NIL;
+		ListCell   *lc2;
+		ListCell   *lc3;
+
+		forboth(lc2, sublist, lc3, attrnos)
+		{
+			Node	   *col = (Node *) lfirst(lc2);
+			int			attrno = lfirst_int(lc3);
+
+			if (IsA(col, SetToDefault))
+			{
+				Form_pg_attribute att_tup;
+				Node	   *new_expr;
+
+				att_tup = target_relation->rd_att->attrs[attrno - 1];
+
+				if (!att_tup->attisdropped)
+					new_expr = build_column_default(target_relation, attrno);
+				else
+					new_expr = NULL;	/* force a NULL if dropped */
+
+				/*
+				 * If there is no default (ie, default is effectively NULL),
+				 * we've got to explicitly set the column to NULL.
+				 */
+				if (!new_expr)
+				{
+					new_expr = (Node *) makeConst(att_tup->atttypid,
+												  att_tup->attlen,
+												  (Datum) 0,
+												  true, /* isnull */
+												  att_tup->attbyval);
+					/* this is to catch a NOT NULL domain constraint */
+					new_expr = coerce_to_domain(new_expr,
+												InvalidOid, -1,
+												att_tup->atttypid,
+												COERCE_IMPLICIT_CAST,
+												false,
+												false);
+				}
+				newList = lappend(newList, new_expr);
+			}
+			else
+				newList = lappend(newList, col);
+		}
+		newValues = lappend(newValues, newList);
+	}
+	rte->values_lists = newValues;
 }
 
 
@@ -930,6 +1091,7 @@ ApplyRetrieveRule(Query *parsetree,
 	Query	   *rule_action;
 	RangeTblEntry *rte,
 			   *subrte;
+	RowMarkClause *rc;
 
 	if (list_length(rule->actions) != 1)
 		elog(ERROR, "expected just one rule action");
@@ -977,20 +1139,20 @@ ApplyRetrieveRule(Query *parsetree,
 	/*
 	 * FOR UPDATE/SHARE of view?
 	 */
-	if (list_member_int(parsetree->rowMarks, rt_index))
+	if ((rc = get_rowmark(parsetree, rt_index)) != NULL)
 	{
 		/*
 		 * Remove the view from the list of rels that will actually be marked
-		 * FOR UPDATE/SHARE by the executor.  It will still be access- checked
+		 * FOR UPDATE/SHARE by the executor.  It will still be access-checked
 		 * for write access, though.
 		 */
-		parsetree->rowMarks = list_delete_int(parsetree->rowMarks, rt_index);
+		parsetree->rowMarks = list_delete_ptr(parsetree->rowMarks, rc);
 
 		/*
 		 * Set up the view's referenced tables as if FOR UPDATE/SHARE.
 		 */
-		markQueryForLocking(rule_action, parsetree->forUpdate,
-							parsetree->rowNoWait, true);
+		markQueryForLocking(rule_action, rc->forUpdate,
+							rc->noWait, true);
 	}
 
 	return parsetree;
@@ -1010,20 +1172,6 @@ markQueryForLocking(Query *qry, bool forUpdate, bool noWait, bool skipOldNew)
 	Index		rti = 0;
 	ListCell   *l;
 
-	if (qry->rowMarks)
-	{
-		if (forUpdate != qry->forUpdate)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			errmsg("cannot use both FOR UPDATE and FOR SHARE in one query")));
-		if (noWait != qry->rowNoWait)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot use both wait and NOWAIT in one query")));
-	}
-	qry->forUpdate = forUpdate;
-	qry->rowNoWait = noWait;
-
 	foreach(l, qry->rtable)
 	{
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(l);
@@ -1037,7 +1185,7 @@ markQueryForLocking(Query *qry, bool forUpdate, bool noWait, bool skipOldNew)
 
 		if (rte->rtekind == RTE_RELATION)
 		{
-			qry->rowMarks = list_append_unique_int(qry->rowMarks, rti);
+			applyLockingClause(qry, rti, forUpdate, noWait);
 			rte->requiredPerms |= ACL_SELECT_FOR_UPDATE;
 		}
 		else if (rte->rtekind == RTE_SUBQUERY)
@@ -1278,6 +1426,8 @@ CopyAndAddInvertedQual(Query *parsetree,
  * Output arguments:
  *	*instead_flag - set TRUE if any unqualified INSTEAD rule is found
  *					(must be initialized to FALSE)
+ *	*returning_flag - set TRUE if we rewrite RETURNING clause in any rule
+ *					(must be initialized to FALSE)
  *	*qual_product - filled with modified original query if any qualified
  *					INSTEAD rule is found (must be initialized to NULL)
  * Return value:
@@ -1298,6 +1448,7 @@ fireRules(Query *parsetree,
 		  CmdType event,
 		  List *locks,
 		  bool *instead_flag,
+		  bool *returning_flag,
 		  Query **qual_product)
 {
 	List	   *results = NIL;
@@ -1359,7 +1510,8 @@ fireRules(Query *parsetree,
 				continue;
 
 			rule_action = rewriteRuleAction(parsetree, rule_action,
-											event_qual, rt_index, event);
+											event_qual, rt_index, event,
+											returning_flag);
 
 			rule_action->querySource = qsrc;
 			rule_action->canSetTag = false;		/* might change later */
@@ -1384,6 +1536,7 @@ RewriteQuery(Query *parsetree, List *rewrite_events)
 {
 	CmdType		event = parsetree->commandType;
 	bool		instead = false;
+	bool		returning = false;
 	Query	   *qual_product = NULL;
 	List	   *rewritten = NIL;
 
@@ -1417,8 +1570,45 @@ RewriteQuery(Query *parsetree, List *rewrite_events)
 		 * form.  This will be needed by the planner anyway, and doing it now
 		 * ensures that any references to NEW.field will behave sanely.
 		 */
-		if (event == CMD_INSERT || event == CMD_UPDATE)
-			rewriteTargetList(parsetree, rt_entry_relation);
+		if (event == CMD_UPDATE)
+			rewriteTargetList(parsetree, rt_entry_relation, NULL);
+		else if (event == CMD_INSERT)
+		{
+			RangeTblEntry *values_rte = NULL;
+
+			/*
+			 * If it's an INSERT ... VALUES (...), (...), ... there will be a
+			 * single RTE for the VALUES targetlists.
+			 */
+			if (list_length(parsetree->jointree->fromlist) == 1)
+			{
+				RangeTblRef *rtr = (RangeTblRef *) linitial(parsetree->jointree->fromlist);
+
+				if (IsA(rtr, RangeTblRef))
+				{
+					RangeTblEntry *rte = rt_fetch(rtr->rtindex,
+												  parsetree->rtable);
+
+					if (rte->rtekind == RTE_VALUES)
+						values_rte = rte;
+				}
+			}
+
+			if (values_rte)
+			{
+				List	   *attrnos;
+
+				/* Process the main targetlist ... */
+				rewriteTargetList(parsetree, rt_entry_relation, &attrnos);
+				/* ... and the VALUES expression lists */
+				rewriteValuesRTE(values_rte, rt_entry_relation, attrnos);
+			}
+			else
+			{
+				/* Process just the main targetlist */
+				rewriteTargetList(parsetree, rt_entry_relation, NULL);
+			}
+		}
 
 		/*
 		 * Collect and apply the appropriate rules.
@@ -1435,6 +1625,7 @@ RewriteQuery(Query *parsetree, List *rewrite_events)
 										event,
 										locks,
 										&instead,
+										&returning,
 										&qual_product);
 
 			/*
@@ -1472,6 +1663,47 @@ RewriteQuery(Query *parsetree, List *rewrite_events)
 				}
 
 				rewrite_events = list_delete_first(rewrite_events);
+			}
+		}
+
+		/*
+		 * If there is an INSTEAD, and the original query has a RETURNING, we
+		 * have to have found a RETURNING in the rule(s), else fail. (Because
+		 * DefineQueryRewrite only allows RETURNING in unconditional INSTEAD
+		 * rules, there's no need to worry whether the substituted RETURNING
+		 * will actually be executed --- it must be.)
+		 */
+		if ((instead || qual_product != NULL) &&
+			parsetree->returningList &&
+			!returning)
+		{
+			switch (event)
+			{
+				case CMD_INSERT:
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot perform INSERT RETURNING on relation \"%s\"",
+								RelationGetRelationName(rt_entry_relation)),
+							 errhint("You need an unconditional ON INSERT DO INSTEAD rule with a RETURNING clause.")));
+					break;
+				case CMD_UPDATE:
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot perform UPDATE RETURNING on relation \"%s\"",
+								RelationGetRelationName(rt_entry_relation)),
+							 errhint("You need an unconditional ON UPDATE DO INSTEAD rule with a RETURNING clause.")));
+					break;
+				case CMD_DELETE:
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot perform DELETE RETURNING on relation \"%s\"",
+								RelationGetRelationName(rt_entry_relation)),
+							 errhint("You need an unconditional ON DELETE DO INSTEAD rule with a RETURNING clause.")));
+					break;
+				default:
+					elog(ERROR, "unrecognized commandType: %d",
+						 (int) event);
+					break;
 			}
 		}
 
