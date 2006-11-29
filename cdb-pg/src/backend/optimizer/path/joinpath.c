@@ -21,6 +21,7 @@
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 
+
 static void sort_inner_and_outer(PlannerInfo *root, RelOptInfo *joinrel,
 					 RelOptInfo *outerrel, RelOptInfo *innerrel,
 					 List *restrictlist, List *mergeclause_list,
@@ -39,11 +40,6 @@ hash_inner_and_outer(PlannerInfo *root,
                      JoinType jointype);
 static Path *best_appendrel_indexscan(PlannerInfo *root, RelOptInfo *rel,
 						 RelOptInfo *outer_rel, JoinType jointype);
-static List *select_mergejoin_clauses(RelOptInfo *joinrel,
-						 RelOptInfo *outerrel,
-						 RelOptInfo *innerrel,
-						 List *restrictlist,
-						 JoinType jointype);
 
 
 /*
@@ -422,54 +418,54 @@ match_unsorted_outer(PlannerInfo *root,
         /*
          * Consider nested joins.
          */
-        if (nestjoinOK)
+		if (nestjoinOK)
 		{
-	        /*
-	         * Always consider a nestloop join with this outer and
-	         * cheapest-total-cost inner.  When appropriate, also consider
-	         * using the materialized form of the cheapest inner, the
-	         * cheapest-startup-cost inner path, and the best innerjoin
-	         * indexpath.
-	         */
+			/*
+			 * Always consider a nestloop join with this outer and
+			 * cheapest-total-cost inner.  When appropriate, also consider
+			 * using the materialized form of the cheapest inner, the
+			 * cheapest-startup-cost inner path, and the best innerjoin
+			 * indexpath.
+			 */
 	        add_path(root, joinrel, (Path *)
-			         create_nestloop_path(root,
-								          joinrel,
-								          jointype,
-								          outerpath,
-								          inner_cheapest_total,
-								          restrictlist,
+					 create_nestloop_path(root,
+										  joinrel,
+										  jointype,
+										  outerpath,
+										  inner_cheapest_total,
+										  restrictlist,
                                           mergeclause_list,         /*CDB*/
-								          merge_pathkeys));
-	        if (matpath != NULL)
+										  merge_pathkeys));
+			if (matpath != NULL)
 		        add_path(root, joinrel, (Path *)
-				         create_nestloop_path(root,
-									          joinrel,
-									          jointype,
-									          outerpath,
-									          matpath,
-									          restrictlist,
+						 create_nestloop_path(root,
+											  joinrel,
+											  jointype,
+											  outerpath,
+											  matpath,
+											  restrictlist,
                                               mergeclause_list,     /*CDB*/
-									          merge_pathkeys));
-	        if (inner_cheapest_startup != inner_cheapest_total)
+											  merge_pathkeys));
+			if (inner_cheapest_startup != inner_cheapest_total)
 		        add_path(root, joinrel, (Path *)
-				         create_nestloop_path(root,
-									          joinrel,
-									          jointype,
-									          outerpath,
-									          inner_cheapest_startup,
-									          restrictlist,
+						 create_nestloop_path(root,
+											  joinrel,
+											  jointype,
+											  outerpath,
+											  inner_cheapest_startup,
+											  restrictlist,
                                               mergeclause_list,     /*CDB*/
-									          merge_pathkeys));
-	        if (bestinnerjoin)
+											  merge_pathkeys));
+			if (bestinnerjoin != NULL)
 		        add_path(root, joinrel, (Path *)
-				         create_nestloop_path(root,
-									          joinrel,
-									          jointype,
-									          outerpath,
-									          bestinnerjoin,
-									          restrictlist,
+						 create_nestloop_path(root,
+											  joinrel,
+											  jointype,
+											  outerpath,
+											  bestinnerjoin,
+											  restrictlist,
                                               mergeclause_list,
-									          merge_pathkeys));
+											  merge_pathkeys));
 		}
 
 		/* Can't do anything else if outer path needs to be unique'd */
@@ -797,7 +793,7 @@ static Path *
 best_appendrel_indexscan(PlannerInfo *root, RelOptInfo *rel,
 						 RelOptInfo *outer_rel, JoinType jointype)
 {
-	int			parentRTindex = rel->relid;
+	Index       parentRTindex = rel->relid;
 	List	   *append_paths = NIL;
 	bool		found_indexscan = false;
 	ListCell   *l;
@@ -805,7 +801,7 @@ best_appendrel_indexscan(PlannerInfo *root, RelOptInfo *rel,
 	foreach(l, root->append_rel_list)
 	{
 		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
-		int			childRTindex;
+		Index       childRTindex;
 		RelOptInfo *childrel;
 		Path	   *bestinnerjoin;
 

@@ -25,6 +25,7 @@
 #include "optimizer/subselect.h"
 #include "optimizer/var.h"
 #include "parser/parse_expr.h"
+#include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
@@ -86,17 +87,14 @@ typedef struct finalize_primnode_context
 } finalize_primnode_context;
 
 
-static List *convert_sublink_opers(List *lefthand, List *operOids,
-					  List *targetlist, int rtindex,
-					  List **righthandIds);
-static Node *cdb_convert_EXISTS_to_join(PlannerInfo *root, Node **jointree_inout,
-                                        SubLink *sublink);
-static Node *convert_IN_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink);
 static Node *convert_testexpr(Node *testexpr,
 				 int rtindex,
 				 List **righthandIds);
 static Node *convert_testexpr_mutator(Node *node,
 						 convert_testexpr_context *context);
+static Node *cdb_convert_EXISTS_to_join(PlannerInfo *root, Node **jointree_inout,
+                                        SubLink *sublink);
+static Node *convert_IN_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink);
 static bool subplan_is_hashable(SubLink *slink, SubPlan *node);
 static bool hash_ok_operator(OpExpr *expr);
 static Node *replace_correlation_vars_mutator(Node *node, void *context);
@@ -105,67 +103,6 @@ static Bitmapset *finalize_plan(Plan *plan, List *rtable,
 			  Bitmapset *outer_params,
 			  Bitmapset *valid_params);
 static bool finalize_primnode(Node *node, finalize_primnode_context *context);
-
-
-/*
- * cdb_op_is_equality: return true if all ops in list are mergejoinable or
- * hashjoinable.
- *
- * We would like to return true iff every op in the list has the properties:
- *      - There is no non-NULL a,b,c such that
- *          (a op b) and (a op c) and (b IS DISTINCT FROM c)
- *      - (a op b) is unknown if and only if (a IS NULL) or (b IS NULL)
- * Unfortunately these properties aren't specified as part of the operator
- * definition.  We'll use the info that is available and hope for the best.
- */
-static bool
-cdb_op_is_equality(List *operOids)
-{
-	ListCell   *cell;
-    bool        result = true;
-
-	foreach(cell, operOids)
-	{
-		Oid			        opid = lfirst_oid(cell);
-        regproc             procid = 0;
-		Form_pg_operator    optup;
-        Form_pg_proc        proctup;
-		HeapTuple	        tup;
-
-        /* op must be hashjoinable or mergejoinable */
-        tup = SearchSysCache(OPEROID, ObjectIdGetDatum(opid), 0, 0, 0);
-		if (!HeapTupleIsValid(tup))
-			elog(ERROR, "cache lookup failed for operator %u", opid);
-		optup = (Form_pg_operator)GETSTRUCT(tup);
-
-        if (optup->oprcanhash)
-            procid = optup->oprcode;
-        else if (optup->oprlsortop && optup->oprrsortop)
-            procid = optup->oprcode;
-
-		ReleaseSysCache(tup);
-        optup = NULL;
-
-        if (!procid)
-            return false;
-
-        /* Function must be strict and not volatile */
-		tup = SearchSysCache(PROCOID, ObjectIdGetDatum(procid), 0, 0, 0);
-		if (!HeapTupleIsValid(tup))
-			elog(ERROR, "cache lookup failed for function %u", procid);
-		proctup = (Form_pg_proc)GETSTRUCT(tup);
-
-        if (!proctup->proisstrict ||
-            proctup->provolatile == PROVOLATILE_VOLATILE)
-            result = false;
-
-		ReleaseSysCache(tup);
-
-        if (!result)
-            return false;
-	}
-	return true;
-}                               /* cdb_op_is_equality */
 
 
 /*
@@ -837,7 +774,7 @@ convert_sublink_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *subli
             result = convert_IN_to_join(root, jointree_inout, sublink);
             break;
 
-        case MULTIEXPR_SUBLINK:
+        case ROWCOMPARE_SUBLINK:
         case EXPR_SUBLINK:
             cdb_subselect_drop_orderby(subselect);
             break;
@@ -878,10 +815,10 @@ cdb_convert_EXISTS_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *su
     {
         rnode = copyObject(subselect->limitCount);
         IncrementVarSublevelsUp(rnode, -1, 1);
-        lnode = (Node *)makeConst(INT4OID, sizeof(int4), Int32GetDatum(0),
-                                  false, true);
+        lnode = (Node *)makeConst(INT8OID, sizeof(int8), Int64GetDatum(0),
+                                  false, false);
         limitqual = (Node *)make_op(NULL, list_make1(makeString("<")),
-                                    lnode, rnode);
+                                    lnode, rnode, -1);
         subselect->limitCount = NULL;
     }
 
@@ -910,9 +847,10 @@ cdb_convert_EXISTS_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *su
         {
             lnode = copyObject(subselect->limitOffset);
             IncrementVarSublevelsUp(lnode, -1, 1);
-            rnode = (Node *)makeConst(INT4OID, sizeof(int4), Int32GetDatum(1),
-                                      false, true);
-            node = (Node *)make_op(NULL, list_make1(makeString("<")), lnode, rnode);
+            rnode = (Node *)makeConst(INT8OID, sizeof(int8), Int64GetDatum(1),
+                                      false, false);
+            node = (Node *)make_op(NULL, list_make1(makeString("<")), 
+                                   lnode, rnode, -1);
             limitqual = make_and_qual(limitqual, node);
         }
 
@@ -1023,17 +961,14 @@ convert_IN_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink)
 	int			rtindex;
 	RangeTblEntry *rte;
 	InClauseInfo *ininfo;
-	List	   *exprs;
     bool        correlated;
 
     Assert(IsA(subselect, Query));
 
 	/*
-	 * The left-hand expressions mustn't be volatile.  (Perhaps we should test
-	 * the combining operators, too?  We'd only need to point the function
-	 * directly at the sublink ...)
+	 * The combining operators and left-hand expressions mustn't be volatile.
 	 */
-	if (contain_volatile_functions((Node *) sublink->lefthand))
+	if (contain_volatile_functions(sublink->testexpr))
 		return (Node *)sublink;
 
     /*
@@ -1068,9 +1003,31 @@ convert_IN_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink)
 	rtindex = list_length(parse->rtable) + 1;
 	ininfo->righthand = bms_make_singleton(rtindex);
 
-    /* Uncorrelated "=ANY" subqueries can use JOIN_UNIQUE dedup technique. */
-    ininfo->try_join_unique = (!correlated &&
-                               cdb_op_is_equality(sublink->operOids));
+    /* 
+     * Uncorrelated "=ANY" subqueries can use JOIN_UNIQUE dedup technique.  We
+	 * expect that the test expression will be either a single OpExpr, or an
+	 * AND-clause containing OpExprs.  (If it's anything else then the parser
+	 * must have determined that the operators have non-equality-like
+	 * semantics.  In the OpExpr case we can't be sure what the operator's
+	 * semantics are like, and must check for ourselves.)
+     */
+    ininfo->try_join_unique = false;
+    if (!correlated &&
+        sublink->testexpr)
+    {
+        if (IsA(sublink->testexpr, OpExpr))
+	    {
+		    List	   *opclasses;
+		    List	   *opstrats;
+
+		    get_op_btree_interpretation(((OpExpr *) sublink->testexpr)->opno,
+									    &opclasses, &opstrats);
+		    if (list_member_int(opstrats, ROWCOMPARE_EQ))
+			    ininfo->try_join_unique = true;
+	    }
+	    else if (and_clause(sublink->testexpr))
+		    ininfo->try_join_unique = true;
+    }
 
     /* Tell join planner to quell duplication of outer query result rows. */
 	root->in_info_list = lappend(root->in_info_list, ininfo);
@@ -1092,17 +1049,14 @@ convert_IN_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink)
     /* Add the new subquery RTE to the jointree. */
     cdb_subselect_add_to_jointree(root, jointree_inout, rtindex);
 
-    /*
-	 * Build the result qual expressions.  As a side effect,
+	/*
+	 * Build the result qual expression.  As a side effect,
 	 * ininfo->sub_targetlist is filled with a list of Vars representing the
 	 * subselect outputs.
 	 */
-	exprs = convert_sublink_opers(sublink->lefthand,
-								  sublink->operOids,
-								  subselect->targetList,
-								  rtindex,
-								  &ininfo->sub_targetlist);
-	return (Node *) make_ands_explicit(exprs);
+	return convert_testexpr(sublink->testexpr,
+							rtindex,
+							&ininfo->sub_targetlist);
 }                               /* convert_IN_to_join */
 
 

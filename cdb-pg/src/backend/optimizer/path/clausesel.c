@@ -469,9 +469,9 @@ clause_selectivity(PlannerInfo *root,
 						return rinfo->this_selec;
 					cacheable = true;
 					break;
-					
+
                 default:
-                    /* unsafe to cache */
+					/* unsafe to cache */
 					break;
 			}
 		}

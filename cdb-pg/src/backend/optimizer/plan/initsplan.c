@@ -38,8 +38,6 @@ int			from_collapse_limit;
 int			join_collapse_limit;
 
 
-static void add_vars_to_targetlist(PlannerInfo *root, List *vars,
-					   Relids where_needed);
 static List *deconstruct_recurse(PlannerInfo *root, Node *jtnode,
 					bool below_outer_join, Relids *qualscope);
 static OuterJoinInfo *make_outerjoininfo(PlannerInfo *root,
@@ -476,7 +474,7 @@ make_outerjoininfo(PlannerInfo *root,
 	{
 		ojinfo->min_lefthand = left_rels;
 		ojinfo->min_righthand = right_rels;
-		ojinfo->lhs_strict = false;			/* don't care about this */
+		ojinfo->lhs_strict = false;		/* don't care about this */
 		return ojinfo;
 	}
 
@@ -495,19 +493,19 @@ make_outerjoininfo(PlannerInfo *root,
 	ojinfo->lhs_strict = bms_overlap(strict_relids, left_rels);
 
 	/*
-	 * Required LHS is basically the LHS rels mentioned in the clause...
-	 * but if there aren't any, punt and make it the full LHS, to avoid
-	 * having an empty min_lefthand which will confuse later processing.
-	 * (We don't try to be smart about such cases, just correct.)
-	 * We may have to add more rels based on lower outer joins; see below.
+	 * Required LHS is basically the LHS rels mentioned in the clause... but
+	 * if there aren't any, punt and make it the full LHS, to avoid having an
+	 * empty min_lefthand which will confuse later processing. (We don't try
+	 * to be smart about such cases, just correct.) We may have to add more
+	 * rels based on lower outer joins; see below.
 	 */
 	ojinfo->min_lefthand = bms_intersect(clause_relids, left_rels);
 	if (bms_is_empty(ojinfo->min_lefthand))
 		ojinfo->min_lefthand = bms_copy(left_rels);
 
 	/*
-	 * Required RHS is normally the full set of RHS rels.  Sometimes we
-	 * can exclude some, see below.
+	 * Required RHS is normally the full set of RHS rels.  Sometimes we can
+	 * exclude some, see below.
 	 */
 	ojinfo->min_righthand = bms_copy(right_rels);
 
@@ -533,6 +531,7 @@ make_outerjoininfo(PlannerInfo *root,
 			ojinfo->min_lefthand = bms_add_members(ojinfo->min_lefthand,
 												   otherinfo->min_righthand);
 		}
+
 		/*
 		 * For a lower OJ in our RHS, if our join condition does not use the
 		 * lower join's RHS and the lower OJ's join condition is strict, we
@@ -631,23 +630,23 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 	 * If the clause is an outer-join clause, we must force it to the OJ's
 	 * semantic level to preserve semantics.
 	 *
-	 * Otherwise, when the clause contains volatile functions, we force it
-	 * to be evaluated at its original syntactic level.  This preserves the
+	 * Otherwise, when the clause contains volatile functions, we force it to
+	 * be evaluated at its original syntactic level.  This preserves the
 	 * expected semantics.
 	 *
-	 * When the clause contains no volatile functions either, it is actually
-	 * a pseudoconstant clause that will not change value during any one
-	 * execution of the plan, and hence can be used as a one-time qual in
-	 * a gating Result plan node.  We put such a clause into the regular
+	 * When the clause contains no volatile functions either, it is actually a
+	 * pseudoconstant clause that will not change value during any one
+	 * execution of the plan, and hence can be used as a one-time qual in a
+	 * gating Result plan node.  We put such a clause into the regular
 	 * RestrictInfo lists for the moment, but eventually createplan.c will
 	 * pull it out and make a gating Result node immediately above whatever
-	 * plan node the pseudoconstant clause is assigned to.  It's usually
-	 * best to put a gating node as high in the plan tree as possible.
-	 * If we are not below an outer join, we can actually push the
-	 * pseudoconstant qual all the way to the top of the tree.  If we are
-	 * below an outer join, we leave the qual at its original syntactic level
-	 * (we could push it up to just below the outer join, but that seems more
-	 * complex than it's worth).
+	 * plan node the pseudoconstant clause is assigned to.	It's usually best
+	 * to put a gating node as high in the plan tree as possible. If we are
+	 * not below an outer join, we can actually push the pseudoconstant qual
+	 * all the way to the top of the tree.	If we are below an outer join, we
+	 * leave the qual at its original syntactic level (we could push it up to
+	 * just below the outer join, but that seems more complex than it's
+	 * worth).
 	 */
 	if (bms_is_empty(relids))
 	{
@@ -794,8 +793,8 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 	 * Mark the qual as "pushed down" if it can be applied at a level below
 	 * its original syntactic level.  This allows us to distinguish original
 	 * JOIN/ON quals from higher-level quals pushed down to the same joinrel.
-	 * A qual originating from WHERE is always considered "pushed down".
-	 * Note that for an outer-join qual, we have to compare to ojscope not
+	 * A qual originating from WHERE is always considered "pushed down". Note
+	 * that for an outer-join qual, we have to compare to ojscope not
 	 * qualscope.
 	 */
 	if (!is_pushed_down)

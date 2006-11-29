@@ -314,13 +314,13 @@ cost_index(IndexPath *path, PlannerInfo *root,
 		min_IO_cost = random_page_cost;
 		if (pages_fetched > 1)
 			min_IO_cost += (pages_fetched - 1) * seq_page_cost;
-	
-	/*
+
+		/*
 		 * Now interpolate based on estimated index order correlation to get
 		 * total disk I/O cost for main table accesses.
 		 */
 		csquared = indexCorrelation * indexCorrelation;
-	
+
 		run_cost += max_IO_cost + csquared * (min_IO_cost - max_IO_cost);
 	}
 

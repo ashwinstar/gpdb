@@ -16,15 +16,13 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
-#include "miscadmin.h"
 
 #include <limits.h>
 
-#include "catalog/pg_type.h"    /* INT4OID */
+#include "catalog/pg_type.h"    /* INT8OID */
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
-#include "optimizer/planner.h"
 #include "optimizer/plancat.h"
 #include "optimizer/planmain.h"
 #include "optimizer/predtest.h"
@@ -77,6 +75,8 @@ static SubqueryScan *create_subqueryscan_plan(CreatePlanContext *ctx, Path *best
 						 List *tlist, List *scan_clauses);
 static FunctionScan *create_functionscan_plan(CreatePlanContext *ctx, Path *best_path,
 						 List *tlist, List *scan_clauses);
+static ValuesScan *create_valuesscan_plan(CreatePlanContext *ctx, Path *best_path,
+					   List *tlist, List *scan_clauses);
 static Plan *create_nestloop_plan(CreatePlanContext *ctx, NestPath *best_path,
 					 Plan *outer_plan, Plan *inner_plan);
 static MergeJoin *create_mergejoin_plan(CreatePlanContext *ctx, MergePath *best_path,
@@ -272,9 +272,9 @@ create_scan_plan(CreatePlanContext *ctx, Path *best_path)
 		tlist = build_relation_tlist(rel);
 
 	/*
-	 * Extract the relevant restriction clauses from the parent relation.
-	 * The executor must apply all these restrictions during the scan,
-	 * except for pseudoconstants which we'll take care of below.
+	 * Extract the relevant restriction clauses from the parent relation. The
+	 * executor must apply all these restrictions during the scan, except for
+	 * pseudoconstants which we'll take care of below.
 	 */
 	scan_clauses = rel->baserestrictinfo;
 
@@ -324,7 +324,7 @@ create_scan_plan(CreatePlanContext *ctx, Path *best_path)
 			break;
 
 		case T_ValuesScan:
-			plan = (Plan *) create_valuesscan_plan(root,
+			plan = (Plan *) create_valuesscan_plan(ctx,
 												   best_path,
 												   tlist,
 												   scan_clauses);
@@ -338,9 +338,9 @@ create_scan_plan(CreatePlanContext *ctx, Path *best_path)
 	}
 
 	/*
-	 * If there are any pseudoconstant clauses attached to this node,
-	 * insert a gating Result node that evaluates the pseudoconstants
-	 * as one-time quals.
+	 * If there are any pseudoconstant clauses attached to this node, insert a
+	 * gating Result node that evaluates the pseudoconstants as one-time
+	 * quals.
 	 */
 	if (ctx->root->hasPseudoConstantQuals)
 		plan = create_gating_plan(ctx, plan, scan_clauses);
@@ -401,7 +401,7 @@ use_physical_tlist(RelOptInfo *rel)
 
 	/*
 	 * Can't do it if any system columns or whole-row Vars are requested,
-	 * either.  (This could possibly be fixed but would take some fragile
+	 * either.	(This could possibly be fixed but would take some fragile
 	 * assumptions in setrefs.c, I think.)
 	 */
 	for (i = rel->min_attr; i <= 0; i++)
@@ -529,9 +529,9 @@ create_join_plan(CreatePlanContext *ctx, JoinPath *best_path)
 	}
 
 	/*
-	 * If there are any pseudoconstant clauses attached to this node,
-	 * insert a gating Result node that evaluates the pseudoconstants
-	 * as one-time quals.
+	 * If there are any pseudoconstant clauses attached to this node, insert a
+	 * gating Result node that evaluates the pseudoconstants as one-time
+	 * quals.
 	 */
 	if (ctx->root->hasPseudoConstantQuals)
 		plan = create_gating_plan(ctx, plan, best_path->joinrestrictinfo);
@@ -600,21 +600,23 @@ create_append_plan(CreatePlanContext *ctx, AppendPath *best_path)
 
 /*
  * create_result_plan
- *	  Create a Result plan for 'best_path'.
- *	  This is only used for the case of a query with an empty jointree.
+ *	  Create a Result plan for 'best_path' and (recursively) plans
+ *	  for its subpaths.
  *
  *	  Returns a Plan node.
  */
 static Result *
 create_result_plan(CreatePlanContext *ctx, ResultPath *best_path)
 {
+	Result	   *plan;
 	List	   *tlist;
 	List	   *quals;
 	Plan	   *subplan;
 
-	/* The tlist will be installed later, since we have no RelOptInfo */
-	Assert(best_path->path.parent == NULL);
-	tlist = NIL;
+	if (best_path->path.parent)
+		tlist = build_relation_tlist(best_path->path.parent);
+	else
+		tlist = NIL;			/* will be filled in later */
 
 	if (best_path->subpath)
 		subplan = create_subplan(ctx, best_path->subpath);
@@ -693,9 +695,9 @@ create_limit1_plan(CreatePlanContext *ctx, UniquePath *uniquepath)
         limitplan->plan.lefttree = subplan->lefttree;
         limitplan->plan.righttree = NULL;
         limitplan->limitOffset = NULL;
-        limitplan->limitCount = (Node *)makeConst(INT4OID, sizeof(int4),
-                                                  Int32GetDatum(1),
-                                                  false, true);
+        limitplan->limitCount = (Node *)makeConst(INT8OID, sizeof(int8),
+                                                  Int64GetDatum(1),
+                                                  false, false);
         subplan->lefttree = (Plan *)limitplan;
 
         /* Motion node's subplan is required to have a Flow node. */
@@ -714,9 +716,9 @@ create_limit1_plan(CreatePlanContext *ctx, UniquePath *uniquepath)
     limitplan->plan.lefttree = subplan;
     limitplan->plan.righttree = NULL;
     limitplan->limitOffset = NULL;
-    limitplan->limitCount = (Node *)makeConst(INT4OID, sizeof(int4),
-                                              Int32GetDatum(1),
-                                              false, true);
+    limitplan->limitCount = (Node *)makeConst(INT8OID, sizeof(int8),
+                                              Int64GetDatum(1),
+                                              false, false);
     return (Plan *)limitplan;
 }                               /* create_limit1_plan */
 
@@ -1491,7 +1493,7 @@ create_functionscan_plan(CreatePlanContext *ctx, Path *best_path,
  *	 with restriction clauses 'scan_clauses' and targetlist 'tlist'.
  */
 static ValuesScan *
-create_valuesscan_plan(PlannerInfo *root, Path *best_path,
+create_valuesscan_plan(CreatePlanContext *ctx, Path *best_path,
 					   List *tlist, List *scan_clauses)
 {
 	ValuesScan *scan_plan;
@@ -1505,7 +1507,7 @@ create_valuesscan_plan(PlannerInfo *root, Path *best_path,
 	scan_clauses = extract_actual_clauses(scan_clauses, false);
 
 	/* Sort clauses into best execution order */
-	scan_clauses = order_qual_clauses(root, scan_clauses);
+	scan_clauses = order_qual_clauses(ctx->root, scan_clauses);
 
 	scan_plan = make_valuesscan(tlist, scan_clauses, scan_relid);
 
@@ -1877,7 +1879,7 @@ fix_indexqual_references(List *indexquals, IndexPath *index_path,
 		RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
 		Expr	   *clause;
 		Oid			clause_op;
-		Oid			opclass;
+		Oid			opclass = 0;
 		int			stratno;
 		Oid			stratsubtype;
 		bool		recheck;

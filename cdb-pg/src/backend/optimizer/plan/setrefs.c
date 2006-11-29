@@ -90,6 +90,7 @@ static void set_sa_opfuncid(ScalarArrayOpExpr *opexpr);
 static List *cdb_build_identity_tlist(List *newtlist, Plan *subplan, Index subvarno);
 static Plan *cdb_insert_result_node(Plan *plan, List *rtable);
 
+
 /*****************************************************************************
  *
  *		SUBPLAN REFERENCES
@@ -220,6 +221,8 @@ set_plan_references(Plan *plan, List *rtable)
 			{
 				RangeTblEntry *rte;
 
+                if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
+                    return cdb_insert_result_node(plan, rtable);
 				fix_expr_references(plan, (Node *) plan->targetlist);
 				fix_expr_references(plan, (Node *) plan->qual);
 				rte = rt_fetch(((ValuesScan *) plan)->scan.scanrelid,
@@ -352,7 +355,7 @@ set_plan_references(Plan *plan, List *rtable)
 			 * recurse into child plans.
 			 */
 			Assert(plan->qual == NIL);
-            foreach(l, ((Append *) plan)->appendplans)
+			foreach(l, ((Append *) plan)->appendplans)
 				lfirst(l) = set_plan_references((Plan *) lfirst(l), rtable);
 			break;
 		case T_BitmapAnd:
@@ -595,7 +598,6 @@ set_subqueryscan_references(SubqueryScan *plan, List *rtable)
 			ctle->resorigtbl = ptle->resorigtbl;
 			ctle->resorigcol = ptle->resorigcol;
 		}
-
 	}
 	else
 	{
@@ -680,7 +682,7 @@ trivial_subqueryscan(SubqueryScan *plan)
 static void
 adjust_plan_varnos(Plan *plan, int rtoffset)
 {
-	ListCell	*l;
+	ListCell   *l;
 
 	if (plan == NULL)
 		return;
@@ -689,7 +691,7 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
     if (plan->flow)
         adjust_expr_varnos((Node *) plan->flow->hashExpr, rtoffset);
 
-    /*
+	/*
 	 * Plan-type-specific fixes
 	 */
 	switch (nodeTag(plan))
@@ -775,7 +777,6 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 		case T_Sort:
 		case T_Unique:
 		case T_SetOp:
-
 			/*
 			 * Even though the targetlist won't be used by the executor, we
 			 * fix it up for possible use by EXPLAIN (not to mention ease of
@@ -1653,4 +1654,3 @@ set_sa_opfuncid(ScalarArrayOpExpr *opexpr)
 	if (opexpr->opfuncid == InvalidOid)
 		opexpr->opfuncid = get_opcode(opexpr->opno);
 }
-

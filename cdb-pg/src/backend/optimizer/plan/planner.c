@@ -173,7 +173,7 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	PlannerQueryLevel = save_PlannerQueryLevel;
 	PlannerParamList = save_PlannerParamList;
 	PlannerBoundParamList = save_PlannerBoundParamList;
-	
+
 	return result_plan;
 }
 
@@ -593,7 +593,7 @@ static Plan *
 inheritance_planner(PlannerInfo *root)
 {
 	Query	   *parse = root->parse;
-	int			parentRTindex = parse->resultRelation;
+	Index       parentRTindex = parse->resultRelation;
 	List	   *subplans = NIL;
 	List	   *resultRelations = NIL;
 	List	   *returningLists = NIL;
@@ -680,7 +680,6 @@ inheritance_planner(PlannerInfo *root)
 			}
 		}
 
-
 		/*
 		 * If this child rel was excluded by constraint exclusion, exclude it
 		 * from the plan.
@@ -715,6 +714,15 @@ inheritance_planner(PlannerInfo *root)
 	/* Mark result as unordered (probably unnecessary) */
 	root->query_pathkeys = NIL;
 
+	/*
+	 * If we managed to exclude every child rel, return a dummy plan
+	 */
+	if (subplans == NIL)
+		return (Plan *) make_result(tlist,
+									(Node *) list_make1(makeBoolConst(false,
+																	  false)),
+									NULL);
+
 	plan = (Plan *) make_append(subplans, true, tlist);
 	
 	/* MPP dispatch needs to know the kind of locus. */
@@ -740,15 +748,6 @@ inheritance_planner(PlannerInfo *root)
 		}
 	}
 	
-		/*
-	 * If we managed to exclude every child rel, return a dummy plan
-	 */
-	if (subplans == NIL)
-		return (Plan *) make_result(tlist,
-									(Node *) list_make1(makeBoolConst(false,
-																	  false)),
-									NULL);
-
 	/*
 	 * Planning might have modified the rangetable, due to changes of the
 	 * Query structures inside subquery RTEs.  We have to ensure that this
@@ -761,8 +760,7 @@ inheritance_planner(PlannerInfo *root)
 	 * XXX should clean this up someday
 	 */
 	parse->rtable = rtable;
-	
-	
+
 	return plan;
 }
 
@@ -1309,7 +1307,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
         result_plan->flow = pull_up_Flow(result_plan,
                                          result_plan->lefttree,
                                          true);
-		
+
 		/*
 		 * If there was grouping or aggregation, leave plan_rows as-is (ie,
 		 * assume the result was already mostly unique).  If not, use the
@@ -1337,7 +1335,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				precount = (Node*)make_op(NULL,
 										  list_make1(makeString(pstrdup("+"))),
 										  copyObject(parse->limitOffset),
-										  precount);
+										  precount,
+                                          -1);
 				precount_est += offset_est;
 			}
 			

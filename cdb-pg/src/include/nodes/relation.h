@@ -79,7 +79,7 @@ typedef struct PlannerInfo
 	struct RelOptInfo **simple_rel_array;		/* All 1-relation RelOptInfos */
 	int			simple_rel_array_size;	/* allocated size of array */
 
-    /*
+	/*
 	 * join_rel_list is a list of all join-relation RelOptInfos we have
 	 * considered in this planning run.  For small problems we just scan the
 	 * list to do lookups, but when there are many join relations we build a
@@ -496,7 +496,7 @@ typedef struct Path
                                  *  but still needing duplicate suppression.
                                  *  Set by add_path().
                                  */
-    List	   *pathkeys;		/* sort ordering of path's output */
+	List	   *pathkeys;		/* sort ordering of path's output */
 	/* pathkeys is a List of Lists of PathKeyItem nodes; see above */
 } Path;
 

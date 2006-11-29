@@ -101,8 +101,8 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	 */
 	if (parse->jointree->fromlist == NIL)
 	{
-		*cheapest_path = (Path *)
-			create_result_path((List *) parse->jointree->quals);
+		*cheapest_path = (Path *) create_result_path(NULL, NULL,
+											(List *) parse->jointree->quals);
 		*sorted_path = NULL;
 		return;
 	}
@@ -168,7 +168,8 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	 * targetlists for all referenced Vars.  Restrict and join clauses are
 	 * added to appropriate lists belonging to the mentioned relations.  We
 	 * also build lists of equijoined keys for pathkey construction, and form
-	 * a target joinlist for make_one_rel() to work from.	 *
+	 * a target joinlist for make_one_rel() to work from.
+	 *
 	 * Note: all subplan nodes will have "flat" (var-only) tlists. This
 	 * implies that all expression evaluations are done at the root of the
 	 * plan tree. Once upon a time there was code to try to push expensive
@@ -214,7 +215,7 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
     Insist(final_rel->cheapest_startup_path->subq_complete &&
            final_rel->cheapest_total_path->subq_complete);
 
-    /*
+	/*
 	 * If there's grouping going on, estimate the number of result groups. We
 	 * couldn't do this any earlier because it depends on relation size
 	 * estimates that were set up above.

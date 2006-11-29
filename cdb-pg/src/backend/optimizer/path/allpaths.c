@@ -180,7 +180,7 @@ set_base_rel_pathlists(PlannerInfo *root)
  */
 static void
 set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti)
-		{
+{
 	RangeTblEntry *rte = rt_fetch(rti, root->parse->rtable);
 
 	if (rte->inh)
@@ -541,11 +541,8 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
     {
         Const  *cnst = (Const *)parse->limitCount;
 
-        if (cnst->consttype == INT4OID &&
-            DatumGetInt32(cnst->constvalue) <= 1)
-            rel->onerow = true;
-        else if (cnst->consttype == INT8OID &&
-                 DatumGetInt64(cnst->constvalue) <= 1)
+        if (cnst->consttype == INT8OID &&
+            DatumGetInt64(cnst->constvalue) <= 1)
             rel->onerow = true;
     }
 
