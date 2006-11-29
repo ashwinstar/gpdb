@@ -4,12 +4,12 @@
  *	  Reader functions for Postgres tree nodes.
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/readfuncs.c,v 1.182 2005/10/15 02:49:19 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/readfuncs.c,v 1.195 2006/08/12 02:52:04 tgl Exp $
  *
  * NOTES
  *	  Path and Plan nodes do not have any readfuncs support, because we
@@ -221,31 +221,34 @@ _readQuery(void)
 	READ_NODE_FIELD(utilityStmt);
 	READ_INT_FIELD(resultRelation);
 	READ_NODE_FIELD(into);
+	READ_NODE_FIELD(intoOptions);
+	READ_ENUM_FIELD(intoOnCommit, OnCommitAction);
+	READ_STRING_FIELD(intoTableSpaceName);
 	READ_BOOL_FIELD(hasAggs);
 	READ_BOOL_FIELD(hasSubLinks);
 	READ_NODE_FIELD(rtable);
 	READ_NODE_FIELD(jointree);
-	READ_NODE_FIELD(rowMarks);
-	READ_BOOL_FIELD(forUpdate);
-	READ_BOOL_FIELD(rowNoWait);
 	READ_NODE_FIELD(targetList);
+	READ_NODE_FIELD(returningList);
 	READ_NODE_FIELD(groupClause);
 	READ_NODE_FIELD(havingQual);
 	READ_NODE_FIELD(distinctClause);
 	READ_NODE_FIELD(sortClause);
 	READ_NODE_FIELD(limitOffset);
 	READ_NODE_FIELD(limitCount);
+	READ_NODE_FIELD(rowMarks);
 	READ_NODE_FIELD(setOperations);
 	READ_NODE_FIELD(resultRelations);
+	READ_NODE_FIELD(returningLists);
 	
 	/*
 	 * * CDB: This field was added after the MPP 2.1p2 release.
 	 * This somehow got left off by mistake, but it's needed by CTAS
 	 */
-	if (pg_strtok_peek_fldname("intoHasOids"))
-    {
-        READ_BOOL_FIELD(intoHasOids);
-    }
+	//if (pg_strtok_peek_fldname("intoHasOids"))
+    //{
+    //    READ_BOOL_FIELD(intoHasOids);
+    //}
 	/*
      * CDB: This field was added after the MPP 2.1p2 release.  It's filled in
      * by the planner and not present in nodes stored persistently.  So if
@@ -327,6 +330,21 @@ _readGroupClause(void)
 }
 
 /*
+ * _readRowMarkClause
+ */
+static RowMarkClause *
+_readRowMarkClause(void)
+{
+	READ_LOCALS(RowMarkClause);
+
+	READ_UINT_FIELD(rti);
+	READ_BOOL_FIELD(forUpdate);
+	READ_BOOL_FIELD(noWait);
+
+	READ_DONE();
+}
+
+/*
  * _readSetOperationStmt
  */
 static SetOperationStmt *
@@ -339,6 +357,7 @@ _readSetOperationStmt(void)
 	READ_NODE_FIELD(larg);
 	READ_NODE_FIELD(rarg);
 	READ_NODE_FIELD(colTypes);
+	READ_NODE_FIELD(colTypmods);
 
 	READ_DONE();
 }
@@ -876,9 +895,8 @@ _readParam(void)
 {
 	READ_LOCALS(Param);
 
-	READ_INT_FIELD(paramkind);
+	READ_ENUM_FIELD(paramkind, ParamKind);
 	READ_INT_FIELD(paramid);
-	READ_STRING_FIELD(paramname);
 	READ_OID_FIELD(paramtype);
 
 	READ_DONE();
@@ -894,7 +912,7 @@ _readAggref(void)
 
 	READ_OID_FIELD(aggfnoid);
 	READ_OID_FIELD(aggtype);
-	READ_NODE_FIELD(target);
+	READ_NODE_FIELD(args);
 	READ_UINT_FIELD(agglevelsup);
 	READ_BOOL_FIELD(aggstar);
 	READ_BOOL_FIELD(aggdistinct);
@@ -1065,10 +1083,8 @@ _readSubLink(void)
 	READ_LOCALS(SubLink);
 
 	READ_ENUM_FIELD(subLinkType, SubLinkType);
-	READ_BOOL_FIELD(useOr);
-	READ_NODE_FIELD(lefthand);
+	READ_NODE_FIELD(testexpr);
 	READ_NODE_FIELD(operName);
-	READ_NODE_FIELD(operOids);
 	READ_NODE_FIELD(subselect);
 
 	READ_DONE();
@@ -1084,8 +1100,7 @@ _readSubPlan(void)
 
     READ_INT_FIELD(qDispSliceId);   /*CDB*/
 	READ_ENUM_FIELD(subLinkType, SubLinkType);
-	READ_BOOL_FIELD(useOr);
-	READ_NODE_FIELD(exprs);
+	READ_NODE_FIELD(testexpr);
 	READ_NODE_FIELD(paramIds);
 	READ_NODE_FIELD(plan);
 	READ_INT_FIELD(plan_id);
@@ -1235,6 +1250,23 @@ _readRowExpr(void)
 	READ_NODE_FIELD(args);
 	READ_OID_FIELD(row_typeid);
 	READ_ENUM_FIELD(row_format, CoercionForm);
+
+	READ_DONE();
+}
+
+/*
+ * _readRowCompareExpr
+ */
+static RowCompareExpr *
+_readRowCompareExpr(void)
+{
+	READ_LOCALS(RowCompareExpr);
+
+	READ_ENUM_FIELD(rctype, RowCompareType);
+	READ_NODE_FIELD(opnos);
+	READ_NODE_FIELD(opclasses);
+	READ_NODE_FIELD(largs);
+	READ_NODE_FIELD(rargs);
 
 	READ_DONE();
 }
@@ -1452,7 +1484,6 @@ _readColumnDef(void)
 	READ_NODE_FIELD(raw_default);
 	READ_STRING_FIELD(cooked_default);
 	READ_NODE_FIELD(constraints);
-	READ_NODE_FIELD(support);
 
 	READ_DONE();
 }
@@ -1519,7 +1550,11 @@ _readRangeTblEntry(void)
 			break;
 		case RTE_FUNCTION:
 			READ_NODE_FIELD(funcexpr);
-			READ_NODE_FIELD(coldeflist);
+			READ_NODE_FIELD(funccoltypes);
+			READ_NODE_FIELD(funccoltypmods);
+			break;
+		case RTE_VALUES:
+			READ_NODE_FIELD(values_lists);
 			break;
 		case RTE_JOIN:
 			READ_ENUM_FIELD(jointype, JoinType);
@@ -1562,7 +1597,7 @@ _readCreateStmt(void)
 	READ_NODE_FIELD(inhRelations);
 	READ_NODE_FIELD(constraints);
 
-	READ_ENUM_FIELD(hasoids,ContainsOids);
+	READ_NODE_FIELD(options);
 	READ_ENUM_FIELD(oncommit,OnCommitAction);
 	READ_STRING_FIELD(tablespacename);
 	READ_NODE_FIELD(distributedBy);
@@ -1756,7 +1791,7 @@ static RemoveFuncStmt *
 _readRemoveFuncStmt(void)
 {
 	READ_LOCALS(RemoveFuncStmt);
-	READ_NODE_FIELD(funcname);
+	READ_NODE_FIELD(name);
 	READ_NODE_FIELD(args);
 	READ_ENUM_FIELD(behavior, DropBehavior);
 			
@@ -1772,30 +1807,6 @@ _readAlterFunctionStmt(void)
 	
 	READ_DONE();
 }
-
-static RemoveAggrStmt *
-_readRemoveAggrStmt(void)
-{
-	READ_LOCALS(RemoveAggrStmt);
-	READ_NODE_FIELD(aggname);
-	READ_NODE_FIELD(aggtype);
-	READ_ENUM_FIELD(behavior, DropBehavior);
-			
-	READ_DONE();
-}
-
-static RemoveOperStmt *
-_readRemoveOperStmt(void)
-{
-	READ_LOCALS(RemoveOperStmt);
-	READ_NODE_FIELD(opname);
-	READ_NODE_FIELD(args);
-	READ_ENUM_FIELD(behavior, DropBehavior);
-			
-	READ_DONE();
-}
-
-
 
 
 static DefineStmt *
@@ -2132,7 +2143,7 @@ _readTidScan(void)
 
 	readScanInfo((Scan *)local_node);
 
-	READ_NODE_FIELD(tideval);
+	READ_NODE_FIELD(tidquals);
 
 	READ_DONE();
 }
@@ -2422,8 +2433,8 @@ _readVacuumStmt(void)
 	READ_BOOL_FIELD(vacuum);
 	READ_BOOL_FIELD(full);
 	READ_BOOL_FIELD(analyze);
-	READ_BOOL_FIELD(freeze);
 	READ_BOOL_FIELD(verbose);
+	READ_INT_FIELD(freeze_min_age);
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(va_cols);
 
@@ -2438,23 +2449,25 @@ _readRemoteParamData(void)
 {
 	int16 typlen;
 	bool typbyval;
+	int i;
 
 	READ_LOCALS(RemoteParamData);
-
-	READ_INT_FIELD(paramData.kind);
-	READ_STRING_FIELD(paramData.name);
-	READ_INT_FIELD(paramData.id);
-	READ_OID_FIELD(paramData.ptype);
-	READ_BOOL_FIELD(paramData.isnull);
-
-	get_typlenbyval(local_node->paramData.ptype, &typlen, &typbyval);
-
-	token = pg_strtok(&length); /* skip :value */
-
-	if ( local_node->paramData.isnull )
-		token = pg_strtok(&length);		/* skip "<>" */
-	else
-		local_node->paramData.value = readDatum(typbyval);
+	READ_INT_FIELD(paramData.numParams);
+	for (i=0;i<local_node->paramData.numParams;i++)
+	{
+		READ_INT_FIELD(paramData.params[i].pflags);
+		READ_OID_FIELD(paramData.params[i].ptype);
+		READ_BOOL_FIELD(paramData.params[i].isnull);
+	
+		get_typlenbyval(local_node->paramData.params[i].ptype, &typlen, &typbyval);
+	
+		token = pg_strtok(&length); /* skip :value */
+	
+		if ( local_node->paramData.params[i].isnull )
+			token = pg_strtok(&length);		/* skip "<>" */
+		else
+			local_node->paramData.params[i].value = readDatum(typbyval);
+	}
 
 	READ_DONE();
 }
@@ -2773,10 +2786,8 @@ static ParseNodeInfo infoAr[] =
 	{"REINDEXSTMT", (ReadFn)_readReindexStmt},
 	{"RELABELTYPE", (ReadFn)_readRelabelType},
 	{"REMOTEPARAMDATA", (ReadFn)_readRemoteParamData},
-	{"REMOVEAGGRSTMT", (ReadFn)_readRemoveAggrStmt},
 	{"REMOVEFUNCSTMT", (ReadFn)_readRemoveFuncStmt},
 	{"REMOVEOPCLASS", (ReadFn)_readRemoveOpClassStmt},
-	{"REMOVEOPERSTMT", (ReadFn)_readRemoveOperStmt},
 	{"RENAMESTMT", (ReadFn)_readRenameStmt},
 	{"RESULT", (ReadFn)_readResult},
 	{"ROW", (ReadFn)_readRowExpr},
