@@ -4,12 +4,12 @@
  *	  Routines to handle hash join nodes
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeHashjoin.c,v 1.75.2.3 2005/11/28 23:46:24 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeHashjoin.c,v 1.85 2006/10/04 00:29:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -20,7 +20,6 @@
 #include "executor/hashjoin.h"
 #include "executor/nodeHash.h"
 #include "executor/nodeHashjoin.h"
-#include "optimizer/clauses.h"
 #include "utils/memutils.h"
 
 #include "miscadmin.h" /* work_mem */
@@ -55,7 +54,7 @@ ExecHashJoin(HashJoinState *node)
 	TupleTableSlot *inntuple;
 	ExprContext *econtext;
 	HashJoinTable hashtable;
-	HeapTuple	curtuple;
+	HashJoinTuple curtuple;
 	TupleTableSlot *outerTupleSlot;
 	uint32		hashvalue;
 	int			batchno;
@@ -110,11 +109,11 @@ ExecHashJoin(HashJoinState *node)
 		 * since we aren't going to be able to skip the join on the strength
 		 * of an empty inner relation anyway.)
 		 *
-		 * If we are rescanning the join, we make use of information gained
-		 * on the previous scan: don't bother to try the prefetch if the
-		 * previous scan found the outer relation nonempty.  This is not
-		 * 100% reliable since with new parameters the outer relation might
-		 * yield different results, but it's a good heuristic.
+		 * If we are rescanning the join, we make use of information gained on
+		 * the previous scan: don't bother to try the prefetch if the previous
+		 * scan found the outer relation nonempty.	This is not 100% reliable
+		 * since with new parameters the outer relation might yield different
+		 * results, but it's a good heuristic.
 		 *
 		 * The only way to make the check is to try to fetch a tuple from the
 		 * outer plan node.  If we succeed, we have to stash it away for later
@@ -188,8 +187,8 @@ ExecHashJoin(HashJoinState *node)
 
 		/*
 		 * Reset OuterNotEmpty for scan.  (It's OK if we fetched a tuple
-		 * above, because ExecHashJoinOuterGetTuple will immediately
-		 * set it again.)
+		 * above, because ExecHashJoinOuterGetTuple will immediately set it
+		 * again.)
 		 */
 		node->hj_OuterNotEmpty = false;
 
@@ -240,7 +239,7 @@ ExecHashJoin(HashJoinState *node)
 				 * in the corresponding outer-batch file.
 				 */
 				Assert(batchno > hashtable->curbatch);
-				ExecHashJoinSaveTuple(ExecFetchSlotTuple(outerTupleSlot),
+				ExecHashJoinSaveTuple(ExecFetchSlotMinimalTuple(outerTupleSlot),
 									  hashvalue,
 									  &hashtable->outerBatchFile[batchno]);
 				node->hj_NeedNewOuter = true;
@@ -260,10 +259,9 @@ ExecHashJoin(HashJoinState *node)
 			/*
 			 * we've got a match, but still need to test non-hashed quals
 			 */
-			inntuple = ExecStoreTuple(curtuple,
-									  node->hj_HashTupleSlot,
-									  InvalidBuffer,
-									  false);	/* don't pfree this tuple */
+			inntuple = ExecStoreMinimalTuple(HJTUPLE_MINTUPLE(curtuple),
+											 node->hj_HashTupleSlot,
+											 false);	/* don't pfree */
 			econtext->ecxt_innertuple = inntuple;
 
 			/* reset temp memory each time to avoid leaks from qual expr */
@@ -428,8 +426,7 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	ExecAssignProjectionInfo(&hjstate->js.ps);
 
 	ExecSetSlotDescriptor(hjstate->hj_OuterTupleSlot,
-						  ExecGetResultType(outerPlanState(hjstate)),
-						  false);
+						  ExecGetResultType(outerPlanState(hjstate)));
 
 	/*
 	 * initialize hash-specific info
@@ -479,13 +476,9 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 int
 ExecCountSlotsHashJoin(HashJoin *node)
 {
-	int count=0;
-
-	count = ExecCountSlotsNode(outerPlan(node));
-	count += ExecCountSlotsNode(innerPlan(node));
-	count += HASHJOIN_NSLOTS;
-
-	return count;
+	return ExecCountSlotsNode(outerPlan(node)) +
+		ExecCountSlotsNode(innerPlan(node)) +
+		HASHJOIN_NSLOTS;
 }
 
 /* ----------------------------------------------------------------
@@ -717,9 +710,7 @@ start_over:
 			 * NOTE: some tuples may be sent to future batches.  Also, it is
 			 * possible for hashtable->nbatch to be increased here!
 			 */
-			ExecHashTableInsert(hashtable,
-								ExecFetchSlotTuple(slot),
-								hashvalue);
+			ExecHashTableInsert(hashtable, slot, hashvalue);
 		}
 
 		/*
@@ -747,40 +738,23 @@ start_over:
 	return curbatch;
 }
 
-typedef struct HashTupleHeader
-{
-	uint32		hashval;
-	uint32		tuplen;	
-	uint16		natts;			/* number of attributes */
-	uint16		infomask;		/* various flag bits */
-	/* nulls bitmap follows if HEAP_HASNULL, then actual tuple data */
-} HashTupleHeader;
-
 /*
  * ExecHashJoinSaveTuple
  *		save a tuple to a batch file.
  *
  * The data recorded in the file for each tuple is its hash value,
- * then an image of its HeapTupleData (with meaningless t_data pointer)
- * followed by the HeapTupleHeader and tuple data.
+ * then the tuple in MinimalTuple format.
  *
  * Note: it is important always to call this in the regular executor
  * context, not in a shorter-lived context; else the temp file buffers
  * will get messed up.
  */
 void
-ExecHashJoinSaveTuple(HeapTuple heapTuple, uint32 hashvalue,
+ExecHashJoinSaveTuple(MinimalTuple tuple, uint32 hashvalue,
 					  BufFile **fileptr)
 {
 	BufFile    *file = *fileptr;
 	size_t		written;
-
-	HashTupleHeader hth;
-
-	unsigned int	datalen;
-	unsigned int	nullslen;
-
-	HeapTupleHeader t_data = heapTuple->t_data;
 
 	if (file == NULL)
 	{
@@ -789,35 +763,14 @@ ExecHashJoinSaveTuple(HeapTuple heapTuple, uint32 hashvalue,
 		*fileptr = file;
 	}
 
-	datalen = heapTuple->t_len - t_data->t_hoff;
-	if (HeapTupleHasNulls(heapTuple))
-		nullslen = BITMAPLEN(t_data->t_natts);
-	else
-		nullslen = 0;
-
-	hth.hashval = hashvalue;
-	hth.tuplen = sizeof(HashTupleHeader) + nullslen + datalen;
-	hth.natts = t_data->t_natts;
-	hth.infomask = t_data->t_infomask;
-
-	written = BufFileWrite(file, (void *)&hth, sizeof(hth));
-	if (written != sizeof(hth))
+	written = BufFileWrite(file, (void *) &hashvalue, sizeof(uint32));
+	if (written != sizeof(uint32))
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not write to hash-join temporary file: %m")));
 
-	/* Now the body of the tuple */
-	if (nullslen)
-	{
-		written = BufFileWrite(file, (void *)t_data->t_bits, nullslen);
-		if (written != nullslen)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not write to hash-join temporary file: %m")));
-	}
-
-	written = BufFileWrite(file, (char *)t_data + t_data->t_hoff, datalen);
-	if (written != datalen)
+	written = BufFileWrite(file, (void *) tuple, tuple->t_len);
+	if (written != tuple->t_len)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not write to hash-join temporary file: %m")));
@@ -836,77 +789,36 @@ ExecHashJoinGetSavedTuple(HashJoinState *hjstate,
 						  uint32 *hashvalue,
 						  TupleTableSlot *tupleSlot)
 {
+	uint32		header[2];
 	size_t		nread;
-	HeapTuple	heapTuple;
+	MinimalTuple tuple;
 
-	HashTupleHeader hth;
-
-	unsigned int	datalen;
-	unsigned int	nullslen;
-	unsigned int	hoff;
-	HeapTupleHeader t_data;
-
-	nread = BufFileRead(file, (void *)&hth, sizeof(hth));
-	if (nread == 0)
-		return NULL; /* end of file */
-	if (nread != sizeof(hth))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not read from hash-join temporary file: %m")));
-
-	*hashvalue = hth.hashval;
-
-	/* reconstruct lengths of null bitmap and data part */
-	if (hth.infomask & HEAP_HASNULL)
-		nullslen = BITMAPLEN(hth.natts);
-	else
-		nullslen = 0;
-	datalen = hth.tuplen - sizeof(HashTupleHeader) - nullslen;
-
-	/* determine overhead size of tuple (should match heap_form_tuple) */
-	hoff = offsetof(HeapTupleHeaderData, t_bits) + nullslen;
-	if (hth.infomask & HEAP_HASOID)
-		hoff += sizeof(Oid);
-	hoff = MAXALIGN(hoff);
-
-	/* Allocate the space in one chunk, like heap_form_tuple */
-	heapTuple = (HeapTuple) palloc(HEAPTUPLESIZE + hoff + datalen);
-	heapTuple->t_datamcxt = CurrentMemoryContext;
-
-	t_data = (HeapTupleHeader) ((char *)heapTuple + HEAPTUPLESIZE);
-
-	/* make sure unused header fields are zeroed */
-	MemSetAligned(t_data, 0, hoff);
-	/* reconstruct the HeapTupleData fields */
-	heapTuple->t_len = hoff + datalen;
-	ItemPointerSetInvalid(&(heapTuple->t_self));
-	heapTuple->t_tableOid = InvalidOid;
-	heapTuple->t_data = t_data;
-
-	/* reconstruct the HeapTupleHeaderData fields */
-	ItemPointerSetInvalid(&(t_data->t_ctid));
-	t_data->t_natts = hth.natts;
-	t_data->t_infomask = (hth.infomask & ~HEAP_XACT_MASK)
-		| (HEAP_XMIN_INVALID | HEAP_XMAX_INVALID);
-	t_data->t_hoff = hoff;
-
-	if (nullslen)
+	/*
+	 * Since both the hash value and the MinimalTuple length word are uint32,
+	 * we can read them both in one BufFileRead() call without any type
+	 * cheating.
+	 */
+	nread = BufFileRead(file, (void *) header, sizeof(header));
+	if (nread == 0)				/* end of file */
 	{
-		nread = BufFileRead(file, (void *) t_data->t_bits, nullslen);
-		if (nread != nullslen)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not read from hash-join temporary file: %m")));
+		ExecClearTuple(tupleSlot);
+		return NULL;
 	}
-
-	/* and now the data proper */
-	nread = BufFileRead(file, (char *) t_data + hoff, datalen);
-	if (nread != datalen)
+	if (nread != sizeof(header))
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not read from hash-join temporary file: %m")));
-
-	return ExecStoreTuple(heapTuple, tupleSlot, InvalidBuffer, true);
+	*hashvalue = header[0];
+	tuple = (MinimalTuple) palloc(header[1]);
+	tuple->t_len = header[1];
+	nread = BufFileRead(file,
+						(void *) ((char *) tuple + sizeof(uint32)),
+						header[1] - sizeof(uint32));
+	if (nread != header[1] - sizeof(uint32))
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not read from hash-join temporary file: %m")));
+	return ExecStoreMinimalTuple(tuple, tupleSlot, true);
 }
 
 
@@ -928,8 +840,8 @@ ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 			/*
 			 * okay to reuse the hash table; needn't rescan inner, either.
 			 *
-			 * What we do need to do is reset our state about the emptiness
-			 * of the outer relation, so that the new scan of the outer will
+			 * What we do need to do is reset our state about the emptiness of
+			 * the outer relation, so that the new scan of the outer will
 			 * update it correctly if it turns out to be empty this time.
 			 * (There's no harm in clearing it now because ExecHashJoin won't
 			 * need the info.  In the other cases, where the hash table
