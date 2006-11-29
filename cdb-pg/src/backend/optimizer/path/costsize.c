@@ -114,29 +114,8 @@ static Selectivity join_in_selectivity(JoinPath *path, PlannerInfo *root);
 static double relation_byte_size(double tuples, int width);
 static double page_size(double tuples, int width);
 
-#if 0
-/* MPP: Moved this function to cost.h as an inline function
- */
-/*
- * clamp_row_est
- *		Force a row-count estimate to a sane value.
- */
-double
-clamp_row_est(double nrows)
-{
-	/*
-	 * Force estimate to be at least one row, to make explain output look
-	 * better and to avoid possible divide-by-zero when interpolating costs.
-	 * Make it an integer, too.
-	 */
-	if (nrows <= 1.0)
-		nrows = 1.0;
-	else
-		nrows = rint(nrows);
 
-	return nrows;
-}
-#endif
+/* CDB: The clamp_row_est() function definition has been moved to cost.h */
 
 /*
  * cost_seqscan
@@ -337,19 +316,11 @@ cost_index(IndexPath *path, PlannerInfo *root,
 			min_IO_cost += (pages_fetched - 1) * seq_page_cost;
 	
 	/*
-	 * make min_IO_cost include 1 * random_page_cost, otherwise the
-	 * disable_cost doesn't always work
-	 * Chuck
-	 */
-	min_IO_cost += random_page_cost;
-	
-		/*
 		 * Now interpolate based on estimated index order correlation to get
 		 * total disk I/O cost for main table accesses.
 		 */
 		csquared = indexCorrelation * indexCorrelation;
 	
-
 		run_cost += max_IO_cost + csquared * (min_IO_cost - max_IO_cost);
 	}
 
@@ -1149,11 +1120,7 @@ nestloop_inner_path_rows(Path *path)
 {
 	double		result;
 
-	if (IsA(path, IndexPath))
-		result = ((IndexPath *) path)->rows;
-	else if (IsA(path, BitmapHeapPath))
-		result = ((BitmapHeapPath *) path)->rows;
-	else if (IsA(path, AppendPath))
+    if (IsA(path, AppendPath))
 	{
 		ListCell   *l;
 
@@ -2051,10 +2018,6 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 	 * be at least as large as the non-nullable input.  However, any
 	 * pushed-down quals are applied after the outer join, so their
 	 * selectivity applies fully.
-	 *
-	 * For JOIN_IN and variants, the Cartesian product is figured with respect
-	 * to a unique-ified input, and then we can clamp to the size of the other
-	 * input.
 	 */
 	switch (jointype)
 	{
@@ -2080,22 +2043,6 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 			if (nrows < inner_rel->rows)
 				nrows = inner_rel->rows;
 			nrows *= pselec;
-			break;
-		case JOIN_IN:
-		case JOIN_UNIQUE_INNER:
-			upath = create_unique_path(root, inner_rel,
-									   inner_rel->cheapest_total_path);
-			nrows = outer_rel->rows * upath->rows * jselec;
-			if (nrows > outer_rel->rows)
-				nrows = outer_rel->rows;
-			break;
-		case JOIN_REVERSE_IN:
-		case JOIN_UNIQUE_OUTER:
-			upath = create_unique_path(root, outer_rel,
-									   outer_rel->cheapest_total_path);
-			nrows = upath->rows * inner_rel->rows * jselec;
-			if (nrows > inner_rel->rows)
-				nrows = inner_rel->rows;
 			break;
 		default:
 			elog(ERROR, "unrecognized join type: %d", (int) jointype);
@@ -2193,37 +2140,6 @@ set_function_size_estimates(PlannerInfo *root, RelOptInfo *rel)
         rel->tuples = 1;
     else
 	    rel->tuples = 1000;
-
-	/* Now estimate number of output rows, etc */
-	set_baserel_size_estimates(root, rel);
-}
-
-/*
- * set_values_size_estimates
- *		Set the size estimates for a base relation that is a values list.
- *
- * The rel's targetlist and restrictinfo list must have been constructed
- * already.
- *
- * We set the same fields as set_baserel_size_estimates.
- */
-void
-set_values_size_estimates(PlannerInfo *root, RelOptInfo *rel)
-{
-	RangeTblEntry *rte;
-
-	/* Should only be applied to base relations that are values lists */
-	Assert(rel->relid > 0);
-	rte = rt_fetch(rel->relid, root->parse->rtable);
-	Assert(rte->rtekind == RTE_VALUES);
-
-	/*
-	 * Estimate number of rows the values list will return. We know this
-	 * precisely based on the list length (well, barring set-returning
-	 * functions in list items, but that's a refinement not catered for
-	 * anywhere else either).
-	 */
-	rel->tuples = list_length(rte->values_lists);
 
 	/* Now estimate number of output rows, etc */
 	set_baserel_size_estimates(root, rel);

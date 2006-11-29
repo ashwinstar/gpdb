@@ -470,10 +470,6 @@ clause_selectivity(PlannerInfo *root,
 					cacheable = true;
 					break;
 					
-				case JOIN_IN:
-				case JOIN_REVERSE_IN:
-				case JOIN_UNIQUE_OUTER:
-				case JOIN_UNIQUE_INNER:
                 default:
                     /* unsafe to cache */
 					break;

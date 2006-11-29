@@ -47,10 +47,7 @@ static void set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti);
 static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					   RangeTblEntry *rte);
 static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
-						Index rti, RangeTblEntry *rte);
-static void set_inherited_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
-						   Index rti, RangeTblEntry *rte,
-						   List *inheritlist);
+						Index rti);
 static bool has_multiple_baserels(PlannerInfo *root);
 static void set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					  Index rti, RangeTblEntry *rte);
@@ -99,9 +96,9 @@ make_one_rel(PlannerInfo *root, List *joinlist)
         RelOptInfo     *brel;
         RangeTblEntry  *brte;
 
-		for (rti = 1; rti < root->base_rel_array_size; rti++)
+		for (rti = 1; rti < root->simple_rel_array_size; rti++)
 		{
-			brel = root->base_rel_array[rti];
+			brel = root->simple_rel_array[rti];
             if (brel &&
                 brel->cdb_default_stats_used)
             {
@@ -177,31 +174,19 @@ set_base_rel_pathlists(PlannerInfo *root)
 	}
 }
 
-		if (rel->rtekind == RTE_SUBQUERY)
+/*
+ * set_rel_pathlist
+ *	  Build access paths for a base relation
+ */
+static void
+set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti)
 		{
-			/* Subquery --- generate a separate plan for it */
-			set_subquery_pathlist(root, rel, rti, rte);
-		}
-		else if (rel->rtekind == RTE_FUNCTION)
-		{
-			/* RangeFunction --- generate a separate plan for it */
-			set_function_pathlist(root, rel, rte);
-		}
-		else if ((inheritlist = expand_inherited_rtentry(root, rti)) != NIL)
-		{
-			/* Relation is root of an inheritance tree, process specially */
-			set_inherited_rel_pathlist(root, rel, rti, rte, inheritlist);
-		}
-		else
-		{
-			/* Plain relation */
-			set_plain_rel_pathlist(root, rel);
-		}
+	RangeTblEntry *rte = rt_fetch(rti, root->parse->rtable);
 
 	if (rte->inh)
 	{
 		/* It's an "append relation", process accordingly */
-		set_append_rel_pathlist(root, rel, rti, rte);
+		set_append_rel_pathlist(root, rel, rti);
 	}
 	else if (rel->rtekind == RTE_SUBQUERY)
 	{
@@ -235,7 +220,7 @@ set_base_rel_pathlists(PlannerInfo *root)
  *	  Build access paths for a plain relation (no subquery, no inheritance)
  */
 static void
-set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel)
+set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
 	/* Mark rel with estimated output rows, width, etc */
 	set_baserel_size_estimates(root, rel);
@@ -251,10 +236,6 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel)
 	if (create_or_index_quals(root, rel))
 		set_baserel_size_estimates(root, rel);
 
-    /* CDB: Attach subquery duplicate suppression info. */
-    if (root->in_info_list)
-        rel->dedup_info = cdb_make_rel_dedup_info(root, rel);
-
 	/*
 	 * If we can prove we don't need to scan the rel via constraint exclusion,
 	 * set up a single dummy path for it.  (Rather than inventing a special
@@ -265,13 +246,17 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel)
 		/* Reset output-rows estimate to 0 */
 		rel->rows = 0;
 
-		add_path(rel, (Path *) create_append_path(rel, NIL));
+		add_path(root, rel, (Path *) create_append_path(rel, NIL));
 
 		/* Select cheapest path (pretty easy in this case...) */
-		set_cheapest(rel);
+		set_cheapest(root, rel);
 
 		return;
 	}
+
+    /* CDB: Attach subquery duplicate suppression info. */
+    if (root->in_info_list)
+        rel->dedup_info = cdb_make_rel_dedup_info(root, rel);
 
 	/*
 	 * Generate paths and add them to the rel's pathlist.
@@ -307,9 +292,9 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel)
  */
 static void
 set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
-						Index rti, RangeTblEntry *rte)
+						Index rti)
 {
-	int			parentRTindex = rti;
+	Index       parentRTindex = rti;
 	List	   *subpaths = NIL;
 	ListCell   *l;
 
@@ -338,7 +323,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	foreach(l, root->append_rel_list)
 	{
 		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
-		int			childRTindex;
+		Index       childRTindex;
 		RelOptInfo *childrel;
 		Path	   *childpath;
 		ListCell   *parentvars;
@@ -393,7 +378,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		 * constraint exclusion: it'll have an Append path with no subpaths,
 		 * and will vanish from our list.
 		 */
-		set_plain_rel_pathlist(root, childrel);
+		set_rel_pathlist(root, childrel, childRTindex);
 
 		childpath = childrel->cheapest_total_path;
 		if (IsA(childpath, AppendPath))
@@ -632,43 +617,28 @@ set_function_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 }
 
 /*
- * make_rel_from_joinlist
- *	  Build access paths using a "joinlist" to guide the join path search.
- *
- * See comments for deconstruct_jointree() for definition of the joinlist
- * data structure.
+ * set_values_pathlist
+ *		Build the (single) access path for a VALUES RTE
  */
-static RelOptInfo *
-make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
+static void
+set_values_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
 	/* Mark rel with estimated output rows, width, etc */
 	set_values_size_estimates(root, rel);
 
-	/* Generate appropriate path */
-	add_path(rel, create_valuesscan_path(root, rel));
+    /* CDB: Just one row? */
+    rel->onerow = (rel->tuples <= 1 &&
+                   !expression_returns_set((Node *)rte->values_lists));
 
-	/* Select cheapest path (pretty easy in this case...) */
-	set_cheapest(rel);
-}
-
-/*
- * make_rel_from_joinlist
- *	  Build access paths using a "joinlist" to guide the join path search.
- *
- * See comments for deconstruct_jointree() for definition of the joinlist
- * data structure.
- */
-static RelOptInfo *
-make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
-{
-	/* Mark rel with estimated output rows, width, etc */
-	set_values_size_estimates(root, rel);
+    /* CDB: Attach subquery duplicate suppression info. */
+    if (root->in_info_list)
+        rel->dedup_info = cdb_make_rel_dedup_info(root, rel);
 
 	/* Generate appropriate path */
-	add_path(rel, create_valuesscan_path(root, rel));
+	add_path(root, rel, create_valuesscan_path(root, rel));
 
 	/* Select cheapest path (pretty easy in this case...) */
-	set_cheapest(rel);
+	set_cheapest(root, rel);
 }
 
 /*
@@ -1219,6 +1189,7 @@ print_path(PlannerInfo *root, Path *path, int indent)
 			break;
 		case T_ResultPath:
 			ptype = "Result";
+			subpath = ((ResultPath *) path)->subpath;
 			break;
 		case T_MaterialPath:
 			ptype = "Material";

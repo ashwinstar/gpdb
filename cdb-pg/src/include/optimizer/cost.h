@@ -41,9 +41,9 @@ clamp_row_est(double nrows)
 	/*
 	 * Force estimate to be at least one row, to make explain output look
 	 * better and to avoid possible divide-by-zero when interpolating costs.
-	 * Make it an integer, too.
+     * CDB: Don't round to integer.
 	 */
-    return (nrows < 1.0) ? 1.0 : rint(nrows);
+    return (nrows < 1.0) ? 1.0 : nrows;
 }
 
 
