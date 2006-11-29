@@ -8,11 +8,11 @@
  *
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/path/pathkeys.c,v 1.73.2.2 2006/01/29 17:27:50 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/path/pathkeys.c,v 1.79 2006/10/04 00:29:54 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -950,7 +950,7 @@ get_cheapest_fractional_path_for_pathkeys(List *paths,
  * representing a backwards scan of the index.	Return NIL if can't do it.
  *
  * If 'canonical' is TRUE, we remove duplicate pathkeys (which can occur
- * if two index columns are equijoined, eg WHERE x = 1 AND y = 1).  This
+ * if two index columns are equijoined, eg WHERE x = 1 AND y = 1).	This
  * is required if the result is to be compared directly to a canonical query
  * pathkeys list.  However, some callers want a list with exactly one entry
  * per index column, and they must pass FALSE.
@@ -1100,39 +1100,73 @@ convert_subquery_pathkeys(PlannerInfo *root, RelOptInfo *rel,
 		{
 			PathKeyItem *sub_item = (PathKeyItem *) lfirst(j);
 			Node	   *sub_key = sub_item->key;
+			Expr	   *rtarg;
 			ListCell   *k;
+
+			/*
+			 * We handle two cases: the sub_pathkey key can be either an exact
+			 * match for a targetlist entry, or a RelabelType of a targetlist
+			 * entry.  (The latter case is worth extra code because it arises
+			 * frequently in connection with varchar fields.)
+			 */
+			if (IsA(sub_key, RelabelType))
+				rtarg = ((RelabelType *) sub_key)->arg;
+			else
+				rtarg = NULL;
 
 			foreach(k, sub_tlist)
 			{
 				TargetEntry *tle = (TargetEntry *) lfirst(k);
+				Node	   *outer_expr;
+				PathKeyItem *outer_item;
+				int			score;
 
-				if (!tle->resjunk &&
-					equal(tle->expr, sub_key))
+				/* resjunk items aren't visible to outer query */
+				if (tle->resjunk)
+					continue;
+
+				if (equal(tle->expr, sub_key))
 				{
-					/* Found a representation for this sub_key */
-					Var		   *outer_var;
-					PathKeyItem *outer_item;
-					int			score;
+					/* Exact match */
+					outer_expr = (Node *)
+						makeVar(rel->relid,
+								tle->resno,
+								exprType((Node *) tle->expr),
+								exprTypmod((Node *) tle->expr),
+								0);
+				}
+				else if (rtarg && equal(tle->expr, rtarg))
+				{
+					/* Match after discarding RelabelType */
+					outer_expr = (Node *)
+						makeVar(rel->relid,
+								tle->resno,
+								exprType((Node *) tle->expr),
+								exprTypmod((Node *) tle->expr),
+								0);
+					outer_expr = (Node *)
+						makeRelabelType((Expr *) outer_expr,
+										((RelabelType *) sub_key)->resulttype,
+									 ((RelabelType *) sub_key)->resulttypmod,
+								   ((RelabelType *) sub_key)->relabelformat);
+				}
+				else
+					continue;
 
-					outer_var = makeVar(rel->relid,
-										tle->resno,
-										exprType((Node *) tle->expr),
-										exprTypmod((Node *) tle->expr),
-										0);
-					outer_item = makePathKeyItem((Node *) outer_var,
-												 sub_item->sortop,
-												 true);
-					/* score = # of mergejoin peers */
-					score = count_canonical_peers(root, outer_item);
-					/* +1 if it matches the proper query_pathkeys item */
-					if (retvallen < outer_query_keys &&
-						list_member(list_nth(root->query_pathkeys, retvallen), outer_item))
-						score++;
-					if (score > best_score)
-					{
-						best_item = outer_item;
-						best_score = score;
-					}
+				/* Found a representation for this sub_key */
+				outer_item = makePathKeyItem(outer_expr,
+											 sub_item->sortop,
+											 true);
+				/* score = # of mergejoin peers */
+				score = count_canonical_peers(root, outer_item);
+				/* +1 if it matches the proper query_pathkeys item */
+				if (retvallen < outer_query_keys &&
+					list_member(list_nth(root->query_pathkeys, retvallen), outer_item))
+					score++;
+				if (score > best_score)
+				{
+					best_item = outer_item;
+					best_score = score;
 				}
 			}
 		}

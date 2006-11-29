@@ -4,24 +4,22 @@
  *	  Routines to compute clause selectivities
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/path/clausesel.c,v 1.75 2005/10/15 02:49:19 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/path/clausesel.c,v 1.82 2006/10/04 00:29:53 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "catalog/pg_operator.h"
-#include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/plancat.h"
-#include "optimizer/restrictinfo.h"
 #include "parser/parsetree.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
@@ -432,16 +430,16 @@ clause_selectivity(PlannerInfo *root,
 		rinfo = (RestrictInfo *) clause;
 
 		/*
-		 * If the clause is marked pseudoconstant, then it will be used as
-		 * a gating qual and should not affect selectivity estimates; hence
-		 * return 1.0.  The only exception is that a constant FALSE may
-		 * be taken as having selectivity 0.0, since it will surely mean
-		 * no rows out of the plan.  This case is simple enough that we
-		 * need not bother caching the result.
+		 * If the clause is marked pseudoconstant, then it will be used as a
+		 * gating qual and should not affect selectivity estimates; hence
+		 * return 1.0.	The only exception is that a constant FALSE may be
+		 * taken as having selectivity 0.0, since it will surely mean no rows
+		 * out of the plan.  This case is simple enough that we need not
+		 * bother caching the result.
 		 */
 		if (rinfo->pseudoconstant)
 		{
-			if (! IsA(rinfo->clause, Const))
+			if (!IsA(rinfo->clause, Const))
 				return s1;
 		}
 
@@ -471,7 +469,11 @@ clause_selectivity(PlannerInfo *root,
 						return rinfo->this_selec;
 					cacheable = true;
 					break;
-
+					
+				case JOIN_IN:
+				case JOIN_REVERSE_IN:
+				case JOIN_UNIQUE_OUTER:
+				case JOIN_UNIQUE_INNER:
                 default:
                     /* unsafe to cache */
 					break;
@@ -529,7 +531,7 @@ clause_selectivity(PlannerInfo *root,
 	else if (IsA(clause, Const))
 	{
 		/* bool constant is pretty easy... */
-		Const  *con = (Const *) clause;
+		Const	   *con = (Const *) clause;
 
 		s1 = con->constisnull ? 0.0 :
 			DatumGetBool(con->constvalue) ? 1.0 : 0.0;
@@ -542,7 +544,7 @@ clause_selectivity(PlannerInfo *root,
 		if (IsA(subst, Const))
 		{
 			/* bool constant is pretty easy... */
-			Const  *con = (Const *) subst;
+			Const	   *con = (Const *) subst;
 
 			s1 = con->constisnull ? 0.0 :
 				DatumGetBool(con->constvalue) ? 1.0 : 0.0;
@@ -648,11 +650,52 @@ clause_selectivity(PlannerInfo *root,
 		 */
 		s1 = (Selectivity) 0.5;
 	}
-	else if (IsA(clause, DistinctExpr) ||
-			 IsA(clause, ScalarArrayOpExpr))
+	else if (IsA(clause, DistinctExpr))
 	{
 		/* can we do better? */
 		s1 = (Selectivity) 0.5;
+	}
+	else if (IsA(clause, ScalarArrayOpExpr))
+	{
+		/* First, decide if it's a join clause, same as for OpExpr */
+		bool		is_join_clause;
+
+		if (varRelid != 0)
+		{
+			/*
+			 * If we are considering a nestloop join then all clauses are
+			 * restriction clauses, since we are only interested in the one
+			 * relation.
+			 */
+			is_join_clause = false;
+		}
+		else
+		{
+			/*
+			 * Otherwise, it's a join if there's more than one relation used.
+			 * We can optimize this calculation if an rinfo was passed.
+			 */
+			if (rinfo)
+				is_join_clause = (bms_membership(rinfo->clause_relids) ==
+								  BMS_MULTIPLE);
+			else
+				is_join_clause = (NumRelids(clause) > 1);
+		}
+
+		/* Use node specific selectivity calculation function */
+		s1 = scalararraysel(root,
+							(ScalarArrayOpExpr *) clause,
+							is_join_clause,
+							varRelid,
+							jointype);
+	}
+	else if (IsA(clause, RowCompareExpr))
+	{
+		/* Use node specific selectivity calculation function */
+		s1 = rowcomparesel(root,
+						   (RowCompareExpr *) clause,
+						   varRelid,
+						   jointype);
 	}
 	else if (IsA(clause, NullTest))
 	{

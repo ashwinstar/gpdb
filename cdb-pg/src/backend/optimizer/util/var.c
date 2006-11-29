@@ -4,18 +4,17 @@
  *	  Var node manipulation routines
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/var.c,v 1.66 2005/10/15 02:49:21 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/var.c,v 1.68 2006/07/14 14:52:21 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "nodes/plannodes.h"
 #include "optimizer/clauses.h"
 #include "optimizer/prep.h"
 #include "optimizer/var.h"
@@ -254,7 +253,7 @@ contain_vars_of_level_cbAggref(Aggref *aggref, void *unused, int sublevelsup)
         return true;
 
     /* visit aggregate's args */
-	return cdb_walk_vars((Node *)aggref->target,
+	return cdb_walk_vars((Node *)aggref->args,
                          contain_vars_of_level_cbVar,
                          contain_vars_of_level_cbAggref,
                          NULL,
@@ -296,7 +295,7 @@ contain_vars_of_level_or_above_cbAggref(Aggref *aggref, void *unused, int sublev
         return true;
 
     /* visit aggregate's args */
-	return cdb_walk_vars((Node *)aggref->target,
+	return cdb_walk_vars((Node *)aggref->args,
                          contain_vars_of_level_or_above_cbVar,
                          contain_vars_of_level_or_above_cbAggref,
                          NULL,
@@ -389,7 +388,7 @@ find_minimum_var_level_cbAggref(Aggref *aggref,
 	}
 
     /* visit aggregate's args */
-	return cdb_walk_vars((Node *)aggref->target,
+	return cdb_walk_vars((Node *)aggref->args,
                          find_minimum_var_level_cbVar,
                          find_minimum_var_level_cbAggref,
                          ctx,

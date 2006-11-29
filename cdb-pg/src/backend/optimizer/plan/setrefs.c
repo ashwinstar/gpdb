@@ -5,12 +5,12 @@
  *	  vars, and compute regproc values for operators
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/setrefs.c,v 1.117.2.1 2005/11/22 18:23:11 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/setrefs.c,v 1.126 2006/10/04 00:29:54 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -20,7 +20,6 @@
 #include "optimizer/clauses.h"
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
-#include "optimizer/var.h"
 #include "parser/parse_expr.h"
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
@@ -45,7 +44,6 @@ typedef struct
 
 typedef struct
 {
-	List	   *rtable;
 	indexed_tlist *outer_itlist;
 	indexed_tlist *inner_itlist;
 	Index		acceptable_rel;
@@ -64,9 +62,8 @@ static void adjust_expr_varnos(Node *node, int rtoffset);
 static bool adjust_expr_varnos_walker(Node *node, int *context);
 static void fix_expr_references(Plan *plan, Node *node);
 static bool fix_expr_references_walker(Node *node, void *context);
-static void set_join_references(Join *join, List *rtable);
+static void set_join_references(Join *join);
 static void set_inner_join_references(Plan *inner_plan,
-						  List *rtable,
 						  indexed_tlist *outer_itlist);
 static void set_uppernode_references(Plan *plan, Index subvarno);
 static indexed_tlist *build_tlist_index(List *tlist);
@@ -77,7 +74,6 @@ static Var *search_indexed_tlist_for_non_var(Node *node,
 								 indexed_tlist *itlist,
 								 Index newvarno);
 static List *join_references(List *clauses,
-				List *rtable,
 				indexed_tlist *outer_itlist,
 				indexed_tlist *inner_itlist,
 				Index acceptable_rel);
@@ -93,7 +89,6 @@ static void set_sa_opfuncid(ScalarArrayOpExpr *opexpr);
 
 static List *cdb_build_identity_tlist(List *newtlist, Plan *subplan, Index subvarno);
 static Plan *cdb_insert_result_node(Plan *plan, List *rtable);
-
 
 /*****************************************************************************
  *
@@ -135,7 +130,7 @@ static Plan *cdb_insert_result_node(Plan *plan, List *rtable);
 Plan *
 set_plan_references(Plan *plan, List *rtable)
 {
-	ListCell	*l;
+	ListCell   *l;
 
 	if (plan == NULL)
 		return NULL;
@@ -200,8 +195,7 @@ set_plan_references(Plan *plan, List *rtable)
                 return cdb_insert_result_node(plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
-			fix_expr_references(plan,
-								(Node *) ((TidScan *) plan)->tideval);
+			fix_expr_references(plan, (Node *) ((TidScan *) plan)->tidquals);
 			break;
 		case T_SubqueryScan:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
@@ -222,10 +216,22 @@ set_plan_references(Plan *plan, List *rtable)
 				fix_expr_references(plan, rte->funcexpr);
 			}
 			break;
+		case T_ValuesScan:
+			{
+				RangeTblEntry *rte;
+
+				fix_expr_references(plan, (Node *) plan->targetlist);
+				fix_expr_references(plan, (Node *) plan->qual);
+				rte = rt_fetch(((ValuesScan *) plan)->scan.scanrelid,
+							   rtable);
+				Assert(rte->rtekind == RTE_VALUES);
+				fix_expr_references(plan, (Node *) rte->values_lists);
+			}
+			break;
 		case T_NestLoop:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                 return cdb_insert_result_node(plan, rtable);
-			set_join_references((Join *) plan, rtable);
+			set_join_references((Join *) plan);
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
 			fix_expr_references(plan, (Node *) ((Join *) plan)->joinqual);
@@ -266,7 +272,7 @@ set_plan_references(Plan *plan, List *rtable)
 		case T_MergeJoin:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                 return cdb_insert_result_node(plan, rtable);
-			set_join_references((Join *) plan, rtable);
+			set_join_references((Join *) plan);
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
 			fix_expr_references(plan, (Node *) ((Join *) plan)->joinqual);
@@ -276,7 +282,7 @@ set_plan_references(Plan *plan, List *rtable)
 		case T_HashJoin:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                 return cdb_insert_result_node(plan, rtable);
-			set_join_references((Join *) plan, rtable);
+			set_join_references((Join *) plan);
 			fix_expr_references(plan, (Node *) plan->targetlist);
 			fix_expr_references(plan, (Node *) plan->qual);
 			fix_expr_references(plan, (Node *) ((Join *) plan)->joinqual);
@@ -635,16 +641,32 @@ trivial_subqueryscan(SubqueryScan *plan)
 	{
 		TargetEntry *ptle = (TargetEntry *) lfirst(lp);
 		TargetEntry *ctle = (TargetEntry *) lfirst(lc);
-		Var		   *var = (Var *) ptle->expr;
 
 		if (ptle->resjunk != ctle->resjunk)
 			return false;		/* tlist doesn't match junk status */
-		if (!var || !IsA(var, Var))
-			return false;		/* tlist item not a Var */
-		Assert(var->varno == plan->scan.scanrelid);
-		Assert(var->varlevelsup == 0);
-		if (var->varattno != attrno)
-			return false;		/* out of order */
+
+		/*
+		 * We accept either a Var referencing the corresponding element of the
+		 * subplan tlist, or a Const equaling the subplan element. See
+		 * generate_setop_tlist() for motivation.
+		 */
+		if (ptle->expr && IsA(ptle->expr, Var))
+		{
+			Var		   *var = (Var *) ptle->expr;
+
+			Assert(var->varno == plan->scan.scanrelid);
+			Assert(var->varlevelsup == 0);
+			if (var->varattno != attrno)
+				return false;	/* out of order */
+		}
+		else if (ptle->expr && IsA(ptle->expr, Const))
+		{
+			if (!equal(ptle->expr, ctle->expr))
+				return false;
+		}
+		else
+			return false;
+
 		attrno++;
 	}
 
@@ -707,7 +729,7 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 			((TidScan *) plan)->scan.scanrelid += rtoffset;
 			adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
 			adjust_expr_varnos((Node *) plan->qual, rtoffset);
-			adjust_expr_varnos((Node *) ((TidScan *) plan)->tideval,
+			adjust_expr_varnos((Node *) ((TidScan *) plan)->tidquals,
 							   rtoffset);
 			break;
 		case T_SubqueryScan:
@@ -718,6 +740,12 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 			break;
 		case T_FunctionScan:
 			((FunctionScan *) plan)->scan.scanrelid += rtoffset;
+			adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
+			adjust_expr_varnos((Node *) plan->qual, rtoffset);
+			/* rte was already fixed by set_subqueryscan_references */
+			break;
+		case T_ValuesScan:
+			((ValuesScan *) plan)->scan.scanrelid += rtoffset;
 			adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
 			adjust_expr_varnos((Node *) plan->qual, rtoffset);
 			/* rte was already fixed by set_subqueryscan_references */
@@ -747,6 +775,7 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 		case T_Sort:
 		case T_Unique:
 		case T_SetOp:
+
 			/*
 			 * Even though the targetlist won't be used by the executor, we
 			 * fix it up for possible use by EXPLAIN (not to mention ease of
@@ -905,10 +934,9 @@ fix_expr_references_walker(Node *node, void *context)
  * quals of the child indexscan.  set_inner_join_references does that.
  *
  *	'join' is a join plan node
- *	'rtable' is the associated range table
  */
 static void
-set_join_references(Join *join, List *rtable)
+set_join_references(Join *join)
 {
 	Plan	   *outer_plan = join->plan.lefttree;
 	Plan	   *inner_plan = join->plan.righttree;
@@ -920,17 +948,14 @@ set_join_references(Join *join, List *rtable)
 
 	/* All join plans have tlist, qual, and joinqual */
 	join->plan.targetlist = join_references(join->plan.targetlist,
-											rtable,
 											outer_itlist,
 											inner_itlist,
 											(Index) 0);
 	join->plan.qual = join_references(join->plan.qual,
-									  rtable,
 									  outer_itlist,
 									  inner_itlist,
 									  (Index) 0);
 	join->joinqual = join_references(join->joinqual,
-									 rtable,
 									 outer_itlist,
 									 inner_itlist,
 									 (Index) 0);
@@ -943,7 +968,6 @@ set_join_references(Join *join, List *rtable)
 
 		/* This processing is split out to handle possible recursion */
 		set_inner_join_references(inner_plan,
-								  rtable,
 								  outer_itlist);
 
         /* Set flag if inner plan has no Var nodes that refer to outer rel. */
@@ -956,7 +980,6 @@ set_join_references(Join *join, List *rtable)
 		MergeJoin  *mj = (MergeJoin *) join;
 
 		mj->mergeclauses = join_references(mj->mergeclauses,
-										   rtable,
 										   outer_itlist,
 										   inner_itlist,
 										   (Index) 0);
@@ -966,7 +989,6 @@ set_join_references(Join *join, List *rtable)
 		HashJoin   *hj = (HashJoin *) join;
 
 		hj->hashclauses = join_references(hj->hashclauses,
-										  rtable,
 										  outer_itlist,
 										  inner_itlist,
 										  (Index) 0);
@@ -981,13 +1003,12 @@ set_join_references(Join *join, List *rtable)
  *		Handle join references appearing in an inner indexscan's quals
  *
  * To handle bitmap-scan plan trees, we have to be able to recurse down
- * to the bottom BitmapIndexScan nodes, so this is split out as a separate
- * function.
+ * to the bottom BitmapIndexScan nodes; likewise, appendrel indexscans
+ * require recursing through Append nodes.	This is split out as a separate
+ * function so that it can recurse.
  */
 static void
-set_inner_join_references(Plan *inner_plan,
-						  List *rtable,
-						  indexed_tlist *outer_itlist)
+set_inner_join_references(Plan *inner_plan, indexed_tlist *outer_itlist)
 {
 	if (IsA(inner_plan, IndexScan))
 	{
@@ -1007,12 +1028,10 @@ set_inner_join_references(Plan *inner_plan,
 
 			/* only refs to outer vars get changed in the inner qual */
 			innerscan->indexqualorig = join_references(indexqualorig,
-													   rtable,
 													   outer_itlist,
 													   NULL,
 													   innerrel);
 			innerscan->indexqual = join_references(innerscan->indexqual,
-												   rtable,
 												   outer_itlist,
 												   NULL,
 												   innerrel);
@@ -1024,7 +1043,6 @@ set_inner_join_references(Plan *inner_plan,
 			 */
 			if (NumRelids((Node *) inner_plan->qual) > 1)
 				inner_plan->qual = join_references(inner_plan->qual,
-												   rtable,
 												   outer_itlist,
 												   NULL,
 												   innerrel);
@@ -1045,12 +1063,10 @@ set_inner_join_references(Plan *inner_plan,
 
 			/* only refs to outer vars get changed in the inner qual */
 			innerscan->indexqualorig = join_references(indexqualorig,
-													   rtable,
 													   outer_itlist,
 													   NULL,
 													   innerrel);
 			innerscan->indexqual = join_references(innerscan->indexqual,
-												   rtable,
 												   outer_itlist,
 												   NULL,
 												   innerrel);
@@ -1074,7 +1090,6 @@ set_inner_join_references(Plan *inner_plan,
 		/* only refs to outer vars get changed in the inner qual */
 		if (NumRelids((Node *) bitmapqualorig) > 1)
 			innerscan->bitmapqualorig = join_references(bitmapqualorig,
-														rtable,
 														outer_itlist,
 														NULL,
 														innerrel);
@@ -1086,14 +1101,12 @@ set_inner_join_references(Plan *inner_plan,
 		 */
 		if (NumRelids((Node *) inner_plan->qual) > 1)
 			inner_plan->qual = join_references(inner_plan->qual,
-											   rtable,
 											   outer_itlist,
 											   NULL,
 											   innerrel);
 
 		/* Now recurse */
 		set_inner_join_references(inner_plan->lefttree,
-								  rtable,
 								  outer_itlist);
 	}
 	else if (IsA(inner_plan, BitmapAnd))
@@ -1105,7 +1118,6 @@ set_inner_join_references(Plan *inner_plan,
 		foreach(l, innerscan->bitmapplans)
 		{
 			set_inner_join_references((Plan *) lfirst(l),
-									  rtable,
 									  outer_itlist);
 		}
 	}
@@ -1118,7 +1130,21 @@ set_inner_join_references(Plan *inner_plan,
 		foreach(l, innerscan->bitmapplans)
 		{
 			set_inner_join_references((Plan *) lfirst(l),
-									  rtable,
+									  outer_itlist);
+		}
+	}
+	else if (IsA(inner_plan, Append))
+	{
+		/*
+		 * The inner side is an append plan.  Recurse to see if it contains
+		 * indexscans that need to be fixed.
+		 */
+		Append	   *appendplan = (Append *) inner_plan;
+		ListCell   *l;
+
+		foreach(l, appendplan->appendplans)
+		{
+			set_inner_join_references((Plan *) lfirst(l),
 									  outer_itlist);
 		}
 	}
@@ -1127,11 +1153,10 @@ set_inner_join_references(Plan *inner_plan,
 		TidScan    *innerscan = (TidScan *) inner_plan;
 		Index		innerrel = innerscan->scan.scanrelid;
 
-		innerscan->tideval = join_references(innerscan->tideval,
-											 rtable,
-											 outer_itlist,
-											 NULL,
-											 innerrel);
+		innerscan->tidquals = join_references(innerscan->tidquals,
+											  outer_itlist,
+											  NULL,
+											  innerrel);
 	}
 }
 
@@ -1241,6 +1266,52 @@ build_tlist_index(List *tlist)
 }
 
 /*
+ * build_tlist_index_other_vars --- build a restricted tlist index
+ *
+ * This is like build_tlist_index, but we only index tlist entries that
+ * are Vars and belong to some rel other than the one specified.
+ */
+static indexed_tlist *
+build_tlist_index_other_vars(List *tlist, Index ignore_rel)
+{
+	indexed_tlist *itlist;
+	tlist_vinfo *vinfo;
+	ListCell   *l;
+
+	/* Create data structure with enough slots for all tlist entries */
+	itlist = (indexed_tlist *)
+		palloc(offsetof(indexed_tlist, vars) +
+			   list_length(tlist) * sizeof(tlist_vinfo));
+
+	itlist->tlist = tlist;
+	itlist->has_non_vars = false;
+
+	/* Find the desired Vars and fill in the index array */
+	vinfo = itlist->vars;
+	foreach(l, tlist)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(l);
+
+		if (tle->expr && IsA(tle->expr, Var))
+		{
+			Var		   *var = (Var *) tle->expr;
+
+			if (var->varno != ignore_rel)
+			{
+				vinfo->varno = var->varno;
+				vinfo->varattno = var->varattno;
+				vinfo->resno = tle->resno;
+				vinfo++;
+			}
+		}
+	}
+
+	itlist->num_vars = (vinfo - itlist->vars);
+
+	return itlist;
+}
+
+/*
  * search_indexed_tlist_for_var --- find a Var in an indexed tlist
  *
  * If a match is found, return a copy of the given Var with suitably
@@ -1318,14 +1389,14 @@ search_indexed_tlist_for_non_var(Node *node,
  * all the Vars in the clause *must* be replaced by OUTER or INNER references;
  * and an indexscan being used on the inner side of a nestloop join.
  * In the latter case we want to replace the outer-relation Vars by OUTER
- * references, but not touch the Vars of the inner relation.
+ * references, but not touch the Vars of the inner relation.  (We also
+ * implement RETURNING clause fixup using this second scenario.)
  *
  * For a normal join, acceptable_rel should be zero so that any failure to
  * match a Var will be reported as an error.  For the indexscan case,
  * pass inner_itlist = NULL and acceptable_rel = the ID of the inner relation.
  *
  * 'clauses' is the targetlist or list of join clauses
- * 'rtable' is the current range table
  * 'outer_itlist' is the indexed target list of the outer join relation
  * 'inner_itlist' is the indexed target list of the inner join relation,
  *		or NULL
@@ -1337,14 +1408,12 @@ search_indexed_tlist_for_non_var(Node *node,
  */
 static List *
 join_references(List *clauses,
-				List *rtable,
 				indexed_tlist *outer_itlist,
 				indexed_tlist *inner_itlist,
 				Index acceptable_rel)
 {
 	join_references_context context;
 
-	context.rtable = rtable;
 	context.outer_itlist = outer_itlist;
 	context.inner_itlist = inner_itlist;
 	context.acceptable_rel = acceptable_rel;
@@ -1474,6 +1543,53 @@ replace_vars_with_subplan_refs_mutator(Node *node,
 	return expression_tree_mutator(node,
 								   replace_vars_with_subplan_refs_mutator,
 								   (void *) context);
+}
+
+/*
+ * set_returning_clause_references
+ *		Perform setrefs.c's work on a RETURNING targetlist
+ *
+ * If the query involves more than just the result table, we have to
+ * adjust any Vars that refer to other tables to reference junk tlist
+ * entries in the top plan's targetlist.  Vars referencing the result
+ * table should be left alone, however (the executor will evaluate them
+ * using the actual heap tuple, after firing triggers if any).	In the
+ * adjusted RETURNING list, result-table Vars will still have their
+ * original varno, but Vars for other rels will have varno OUTER.
+ *
+ * We also must apply fix_expr_references to the list.
+ *
+ * 'rlist': the RETURNING targetlist to be fixed
+ * 'topplan': the top Plan node for the query (not yet passed through
+ *		set_plan_references)
+ * 'resultRelation': RT index of the query's result relation
+ */
+List *
+set_returning_clause_references(List *rlist,
+								Plan *topplan,
+								Index resultRelation)
+{
+	indexed_tlist *itlist;
+
+	/*
+	 * We can perform the desired Var fixup by abusing the join_references
+	 * machinery that normally handles inner indexscan fixup.  We search the
+	 * top plan's targetlist for Vars of non-result relations, and use
+	 * join_references to convert RETURNING Vars into references to those
+	 * tlist entries, while leaving result-rel Vars as-is.
+	 */
+	itlist = build_tlist_index_other_vars(topplan->targetlist, resultRelation);
+
+	rlist = join_references(rlist,
+							itlist,
+							NULL,
+							resultRelation);
+
+	fix_expr_references(topplan, (Node *) rlist);
+
+	pfree(itlist);
+
+	return rlist;
 }
 
 /*****************************************************************************

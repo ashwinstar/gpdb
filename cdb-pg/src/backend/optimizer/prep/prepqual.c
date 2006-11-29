@@ -20,19 +20,18 @@
  * tree after local transformations that might introduce nested AND/ORs.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/prep/prepqual.c,v 1.51.2.1 2005/11/22 18:23:11 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/prep/prepqual.c,v 1.56 2006/10/04 00:29:54 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
 
-#include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/prep.h"
 #include "utils/lsyscache.h"
@@ -212,11 +211,40 @@ push_nots(Expr *qual)
 		Oid			negator = get_negator(opexpr->opno);
 
 		if (negator)
-			return make_opclause(negator,
-								 opexpr->opresulttype,
-								 opexpr->opretset,
-								 (Expr *) get_leftop(qual),
-								 (Expr *) get_rightop(qual));
+		{
+			OpExpr	   *newopexpr = makeNode(OpExpr);
+
+			newopexpr->opno = negator;
+			newopexpr->opfuncid = InvalidOid;
+			newopexpr->opresulttype = opexpr->opresulttype;
+			newopexpr->opretset = opexpr->opretset;
+			newopexpr->args = opexpr->args;
+			return (Expr *) newopexpr;
+		}
+		else
+			return make_notclause(qual);
+	}
+	else if (qual && IsA(qual, ScalarArrayOpExpr))
+	{
+		/*
+		 * Negate a ScalarArrayOpExpr if there is a negator for its operator;
+		 * for example x = ANY (list) becomes x <> ALL (list). Otherwise,
+		 * retain the clause as it is (the NOT can't be pushed down any
+		 * farther).
+		 */
+		ScalarArrayOpExpr *saopexpr = (ScalarArrayOpExpr *) qual;
+		Oid			negator = get_negator(saopexpr->opno);
+
+		if (negator)
+		{
+			ScalarArrayOpExpr *newopexpr = makeNode(ScalarArrayOpExpr);
+
+			newopexpr->opno = negator;
+			newopexpr->opfuncid = InvalidOid;
+			newopexpr->useOr = !saopexpr->useOr;
+			newopexpr->args = saopexpr->args;
+			return (Expr *) newopexpr;
+		}
 		else
 			return make_notclause(qual);
 	}

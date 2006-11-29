@@ -10,18 +10,17 @@
  * and so on.  (Those are the things planner.c deals with.)
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/planmain.c,v 1.89.2.1 2005/11/22 18:23:11 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/planmain.c,v 1.97 2006/10/04 00:29:54 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
@@ -88,6 +87,8 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	RelOptInfo *final_rel;
 	Path	   *cheapestpath;
 	Path	   *sortedpath;
+	Index		rti;
+	double		total_pages;
 
 	/* Make tuple_fraction accessible to lower-level routines */
 	root->tuple_fraction = tuple_fraction;
@@ -100,22 +101,22 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	 */
 	if (parse->jointree->fromlist == NIL)
 	{
-		*cheapest_path = (Path *) create_result_path(NULL, NULL,
-											(List *) parse->jointree->quals);
+		*cheapest_path = (Path *)
+			create_result_path((List *) parse->jointree->quals);
 		*sorted_path = NULL;
 		return;
 	}
 
 	/*
-	 * Init planner lists to empty.  We create the base_rel_array with a size
-	 * that will be sufficient if no pullups or inheritance additions happen
-	 * ... otherwise it will be enlarged as needed.
+	 * Init planner lists to empty, and set up the array to hold RelOptInfos
+	 * for "simple" rels.
 	 *
-	 * NOTE: in_info_list was set up by subquery_planner, do not touch here
+	 * NOTE: in_info_list and append_rel_list were set up by subquery_planner,
+	 * do not touch here
 	 */
-	root->base_rel_array_size = list_length(parse->rtable) + 1;
-	root->base_rel_array = (RelOptInfo **)
-		palloc0(root->base_rel_array_size * sizeof(RelOptInfo *));
+	root->simple_rel_array_size = list_length(parse->rtable) + 1;
+	root->simple_rel_array = (RelOptInfo **)
+		palloc0(root->simple_rel_array_size * sizeof(RelOptInfo *));
 	root->join_rel_list = NIL;
 	root->join_rel_hash = NULL;
 	root->equi_key_list = NIL;
@@ -125,17 +126,49 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	root->oj_info_list = NIL;
 
 	/*
-	 * Construct RelOptInfo nodes for all base relations in query.
+	 * Construct RelOptInfo nodes for all base relations in query, and
+	 * indirectly for all appendrel member relations ("other rels").  This
+	 * will give us a RelOptInfo for every "simple" (non-join) rel involved in
+	 * the query.
+	 *
+	 * Note: the reason we find the rels by searching the jointree and
+	 * appendrel list, rather than just scanning the rangetable, is that the
+	 * rangetable may contain RTEs for rels not actively part of the query,
+	 * for example views.  We don't want to make RelOptInfos for them.
 	 */
 	add_base_rels_to_query(root, (Node *) parse->jointree);
+
+	/*
+	 * We should now have size estimates for every actual table involved in
+	 * the query, so we can compute total_table_pages.	Note that appendrels
+	 * are not double-counted here, even though we don't bother to distinguish
+	 * RelOptInfos for appendrel parents, because the parents will still have
+	 * size zero.
+	 *
+	 * XXX if a table is self-joined, we will count it once per appearance,
+	 * which perhaps is the wrong thing ... but that's not completely clear,
+	 * and detecting self-joins here is difficult, so ignore it for now.
+	 */
+	total_pages = 0;
+	for (rti = 1; rti < root->simple_rel_array_size; rti++)
+	{
+		RelOptInfo *brel = root->simple_rel_array[rti];
+
+		if (brel == NULL)
+			continue;
+
+		Assert(brel->relid == rti);		/* sanity check on array */
+
+		total_pages += (double) brel->pages;
+	}
+	root->total_table_pages = total_pages;
 
 	/*
 	 * Examine the targetlist and qualifications, adding entries to baserel
 	 * targetlists for all referenced Vars.  Restrict and join clauses are
 	 * added to appropriate lists belonging to the mentioned relations.  We
-	 * also build lists of equijoined keys for pathkey construction, and
-	 * form a target joinlist for make_one_rel() to work from.
-	 *
+	 * also build lists of equijoined keys for pathkey construction, and form
+	 * a target joinlist for make_one_rel() to work from.	 *
 	 * Note: all subplan nodes will have "flat" (var-only) tlists. This
 	 * implies that all expression evaluations are done at the root of the
 	 * plan tree. Once upon a time there was code to try to push expensive

@@ -9,14 +9,15 @@
  * relation in the correct order.  For both UPDATE and DELETE queries,
  * we need a junk targetlist entry holding the CTID attribute --- the
  * executor relies on this to find the tuple to be replaced/deleted.
+ * We may also need junk tlist entries for Vars used in the RETURNING list.
  *
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/prep/preptlist.c,v 1.78.2.1 2005/11/22 18:23:11 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/prep/preptlist.c,v 1.84 2006/10/04 00:29:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -29,6 +30,8 @@
 #include "nodes/makefuncs.h"
 #include "optimizer/prep.h"
 #include "optimizer/subselect.h"
+#include "optimizer/tlist.h"
+#include "optimizer/var.h"
 #include "parser/analyze.h"
 #include "parser/parsetree.h"
 #include "parser/parse_coerce.h"
@@ -118,7 +121,7 @@ preprocess_targetlist(PlannerInfo *root, List *tlist)
 		 * invalid.  This is also checked at parse time, but that's
 		 * insufficient because of rule substitution, query pullup, etc.
 		 */
-		CheckSelectLocking(parse, parse->forUpdate);
+		CheckSelectLocking(parse);
 
 		/*
 		 * Currently the executor only supports FOR UPDATE/SHARE at top level
@@ -130,7 +133,7 @@ preprocess_targetlist(PlannerInfo *root, List *tlist)
 
 		foreach(l, parse->rowMarks)
 		{
-			Index		rti = lfirst_int(l);
+			RowMarkClause *rc = (RowMarkClause *) lfirst(l);
 			Var		   *var;
 			char	   *resname;
 			TargetEntry *tle;
@@ -139,7 +142,7 @@ preprocess_targetlist(PlannerInfo *root, List *tlist)
             bool        isdistributed = false;
 
             /* CDB: Don't try to fetch CTIDs for distributed relation. */
-            rte = rt_fetch(rti, parse->rtable);
+            rte = rt_fetch(rc->rti, parse->rtable);
             relation = heap_open(rte->relid, NoLock);
             if (relation->rd_cdbpolicy &&
                 relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
@@ -148,14 +151,14 @@ preprocess_targetlist(PlannerInfo *root, List *tlist)
             if (isdistributed)
                 continue;
 
-            var = makeVar(rti,
+			var = makeVar(rc->rti,
 						  SelfItemPointerAttributeNumber,
 						  TIDOID,
 						  -1,
 						  0);
 
 			resname = (char *) palloc(32);
-			snprintf(resname, 32, "ctid%u", rti);
+			snprintf(resname, 32, "ctid%u", rc->rti);
 
 			tle = makeTargetEntry((Expr *) var,
 								  list_length(tlist) + 1,
@@ -164,6 +167,40 @@ preprocess_targetlist(PlannerInfo *root, List *tlist)
 
 			tlist = lappend(tlist, tle);
 		}
+	}
+
+	/*
+	 * If the query has a RETURNING list, add resjunk entries for any Vars
+	 * used in RETURNING that belong to other relations.  We need to do this
+	 * to make these Vars available for the RETURNING calculation.	Vars that
+	 * belong to the result rel don't need to be added, because they will be
+	 * made to refer to the actual heap tuple.
+	 */
+	if (parse->returningList && list_length(parse->rtable) > 1)
+	{
+		List	   *vars;
+		ListCell   *l;
+
+		vars = pull_var_clause((Node *) parse->returningList, false);
+		foreach(l, vars)
+		{
+			Var		   *var = (Var *) lfirst(l);
+			TargetEntry *tle;
+
+			if (var->varno == result_relation)
+				continue;		/* don't need it */
+
+			if (tlist_member((Node *) var, tlist))
+				continue;		/* already got it */
+
+			tle = makeTargetEntry((Expr *) var,
+								  list_length(tlist) + 1,
+								  NULL,
+								  true);
+
+			tlist = lappend(tlist, tle);
+		}
+		list_free(vars);
 	}
 
 	return tlist;
@@ -264,7 +301,7 @@ expand_targetlist(List *tlist, int command_type,
 													  true,		/* isnull */
 													  att_tup->attbyval);
 						new_expr = coerce_to_domain(new_expr,
-													InvalidOid,
+													InvalidOid, -1,
 													atttype,
 													COERCE_IMPLICIT_CAST,
 													false,

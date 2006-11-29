@@ -4,18 +4,17 @@
  *	  Special planning for aggregate queries.
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/planagg.c,v 1.10.2.2 2006/04/28 20:57:59 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/planagg.c,v 1.22 2006/10/04 00:29:54 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "access/skey.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
@@ -25,9 +24,9 @@
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
 #include "optimizer/subselect.h"
-#include "parser/parsetree.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_expr.h"
+#include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
@@ -221,12 +220,13 @@ find_minmax_aggs_walker(Node *node, List **context)
 	{
 		Aggref	   *aggref = (Aggref *) node;
 		Oid			aggsortop;
+		Expr	   *curTarget;
 		MinMaxAggInfo *info;
 		ListCell   *l;
 
 		Assert(aggref->agglevelsup == 0);
-		if (aggref->aggstar)
-			return true;		/* foo(*) is surely not optimizable */
+		if (list_length(aggref->args) != 1)
+			return true;		/* it couldn't be MIN/MAX */
 		/* note: we do not care if DISTINCT is mentioned ... */
 
 		aggsortop = fetch_agg_sort_op(aggref->aggfnoid);
@@ -236,18 +236,19 @@ find_minmax_aggs_walker(Node *node, List **context)
 		/*
 		 * Check whether it's already in the list, and add it if not.
 		 */
+		curTarget = linitial(aggref->args);
 		foreach(l, *context)
 		{
 			info = (MinMaxAggInfo *) lfirst(l);
 			if (info->aggfnoid == aggref->aggfnoid &&
-				equal(info->target, aggref->target))
+				equal(info->target, curTarget))
 				return false;
 		}
 
 		info = (MinMaxAggInfo *) palloc0(sizeof(MinMaxAggInfo));
 		info->aggfnoid = aggref->aggfnoid;
 		info->aggsortop = aggsortop;
-		info->target = aggref->target;
+		info->target = curTarget;
 
 		*context = lappend(*context, info);
 
@@ -325,6 +326,7 @@ build_minmax_path(PlannerInfo *root, RelOptInfo *rel, MinMaxAggInfo *info)
 												index->rel->baserestrictinfo,
 													NIL,
 													NULL,
+													SAOP_FORBID,
 													&found_clause);
 
 		if (list_length(restrictclauses) < indexcol)
@@ -359,7 +361,7 @@ build_minmax_path(PlannerInfo *root, RelOptInfo *rel, MinMaxAggInfo *info)
 									 restrictclauses,
 									 NIL,
 									 indexscandir,
-									 false);
+									 NULL);
 
 		/*
 		 * Estimate actual cost of fetching just one row.
@@ -440,6 +442,7 @@ make_agg_subplan(PlannerInfo *root, MinMaxAggInfo *info)
 	subparse->commandType = CMD_SELECT;
 	subparse->resultRelation = 0;
 	subparse->resultRelations = NIL;
+	subparse->returningLists = NIL;
 	subparse->into = NULL;
 	subparse->hasAggs = false;
 	subparse->groupClause = NIL;
@@ -462,9 +465,9 @@ make_agg_subplan(PlannerInfo *root, MinMaxAggInfo *info)
 
 	/* set up LIMIT 1 */
 	subparse->limitOffset = NULL;
-	subparse->limitCount = (Node *) makeConst(INT4OID, sizeof(int4),
-											  Int32GetDatum(1),
-											  false, true);
+	subparse->limitCount = (Node *) makeConst(INT8OID, sizeof(int64),
+											  Int64GetDatum(1),
+											  false, false /* not by val */ );
 
 	/*
 	 * Generate the plan for the subquery.	We already have a Path for the
@@ -478,9 +481,9 @@ make_agg_subplan(PlannerInfo *root, MinMaxAggInfo *info)
 	 * in our cost estimates.  But that looks painful, and in most cases the
 	 * fraction of NULLs isn't high enough to change the decision.
 	 *
-	 * The NOT NULL qual has to go on the actual indexscan; create_plan
-	 * might have stuck a gating Result atop that, if there were any
-	 * pseudoconstant quals.
+	 * The NOT NULL qual has to go on the actual indexscan; create_plan might
+	 * have stuck a gating Result atop that, if there were any pseudoconstant
+	 * quals.
 	 */
 	plan = create_plan(&subroot, (Path *) info->path);
 
@@ -527,13 +530,14 @@ replace_aggs_with_params_mutator(Node *node, List **context)
 	{
 		Aggref	   *aggref = (Aggref *) node;
 		ListCell   *l;
+		Expr	   *curTarget = linitial(aggref->args);
 
 		foreach(l, *context)
 		{
 			MinMaxAggInfo *info = (MinMaxAggInfo *) lfirst(l);
 
 			if (info->aggfnoid == aggref->aggfnoid &&
-				equal(info->target, aggref->target))
+				equal(info->target, curTarget))
 				return (Node *) info->param;
 		}
 		elog(ERROR, "failed to re-find aggregate info record");
