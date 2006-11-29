@@ -1953,7 +1953,7 @@ CopyFromDispatch(CopyState cstate)
 	/* Set up a dummy tuple table too */
 	tupleTable = ExecCreateTupleTable(1);
 	slot = ExecAllocTableSlot(tupleTable);
-	ExecSetSlotDescriptor(slot, tupDesc, false);
+	ExecSetSlotDescriptor(slot, tupDesc);
 
 	econtext = GetPerTupleExprContext(estate);
 
@@ -3050,7 +3050,7 @@ CopyFromExec(CopyState cstate)
 	/* Set up a dummy tuple table too */
 	tupleTable = ExecCreateTupleTable(1);
 	slot = ExecAllocTableSlot(tupleTable);
-	ExecSetSlotDescriptor(slot, tupDesc, false);
+	ExecSetSlotDescriptor(slot, tupDesc);
 
 	econtext = GetPerTupleExprContext(estate);
 
