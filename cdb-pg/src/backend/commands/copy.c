@@ -210,8 +210,9 @@ static void CopyReadAttributesCSV(CopyState cstate, char *nulls,
 static Datum CopyReadBinaryAttribute(CopyState cstate, int column_no, FmgrInfo *flinfo,
 						Oid typioparam, int32 typmod, bool *isnull);
 static char *CopyReadOidAttr(CopyState cstate, bool *isnull);
-static void CopyAttributeOutText(CopyState cstate, char *server_string);
-static void CopyAttributeOutCSV(CopyState cstate, char *server_string, bool use_quote, bool single_attr);
+static void CopyAttributeOutText(CopyState cstate, char *string);
+static void CopyAttributeOutCSV(CopyState cstate, char *string,
+								bool use_quote, bool single_attr);
 static List *CopyGetAttnums(Relation rel, List *attnamelist);
 static void limit_printout_length(StringInfo buf);
 static bool DetectLineEnd(CopyState cstate, size_t bytesread);
@@ -1434,7 +1435,7 @@ CopyToExec(CopyState cstate)
 			{
 				if (!cstate->binary)
 				{
-					string = DatumGetCString(FunctionCall1(&out_functions[attnum - 1], value));
+					string = OutputFunctionCall(&out_functions[attnum - 1], value);
 											 
 					if (cstate->csv_mode)
 					{
@@ -1449,9 +1450,8 @@ CopyToExec(CopyState cstate)
 				{
 					bytea	   *outputbytes;
 
-					outputbytes = DatumGetByteaP(FunctionCall1(&out_functions[attnum - 1], value));
+					outputbytes = SendFunctionCall(&out_functions[attnum - 1], value);
 												 
-					/* We assume the result will not have been toasted */
 					CopySendInt32(cstate, VARSIZE(outputbytes) - VARHDRSZ);
 					CopySendData(cstate, VARDATA(outputbytes),
 								 VARSIZE(outputbytes) - VARHDRSZ);
@@ -1860,9 +1860,7 @@ CopyFromDispatch(CopyState cstate)
 	FmgrInfo	oid_in_function;
 	Oid		   *typioparams;
 	Oid			oid_typioparam;
-	ExprState **constraintexprs;
 	bool	   *force_notnull;
-	bool		hasConstraints = false;
 	int			attnum;
 	int			i;
 	int			p_index;
@@ -1970,7 +1968,6 @@ CopyFromDispatch(CopyState cstate)
 	typioparams = (Oid *) palloc(num_phys_attrs * sizeof(Oid));
 	defmap = (int *) palloc(num_phys_attrs * sizeof(int));
 	defexprs = (ExprState **) palloc(num_phys_attrs * sizeof(ExprState *));
-	constraintexprs = (ExprState **) palloc0(num_phys_attrs * sizeof(ExprState *));
 	force_notnull = (bool *) palloc(num_phys_attrs * sizeof(bool));
 	isvarlena = (bool *) palloc(num_phys_attrs * sizeof(bool));
 
@@ -2028,34 +2025,6 @@ CopyFromDispatch(CopyState cstate)
 			}
 		}
 
-		/* If it's a domain type, set up to check domain constraints */
-		if (get_typtype(attr[attnum - 1]->atttypid) == 'd')
-		{
-			Param	   *prm;
-			Node	   *node;
-
-			/*
-			 * Easiest way to do this is to use parse_coerce.c to set up
-			 * an expression that checks the constraints.  (At present,
-			 * the expression might contain a length-coercion-function
-			 * call and/or CoerceToDomain nodes.)  The bottom of the
-			 * expression is a Param node so that we can fill in the
-			 * actual datum during the data input loop.
-			 */
-			prm = makeNode(Param);
-			prm->paramkind = PARAM_EXEC;
-			prm->paramid = 0;
-			prm->paramtype = getBaseType(attr[attnum - 1]->atttypid);
-
-			node = coerce_to_domain((Node *) prm,
-									prm->paramtype,
-									attr[attnum - 1]->atttypid,
-									COERCE_IMPLICIT_CAST, false, false);
-
-			constraintexprs[attnum - 1] = ExecPrepareExpr((Expr *) node,
-														  estate);
-			hasConstraints = true;
-		}
 	}
 
 	/*
@@ -2402,11 +2371,6 @@ CopyFromDispatch(CopyState cstate)
 	nulls = (char *) palloc(num_phys_attrs * sizeof(char));
 	attr_offsets = (int *) palloc(num_phys_attrs * sizeof(int));
 
-	/* Make room for a PARAM_EXEC value for domain constraint checks */
-	if (hasConstraints)
-		econtext->ecxt_param_exec_vals = (ParamExecData *)
-			palloc0(sizeof(ParamExecData));
-
 	/* Initialize static variables */
 	cstate->fe_eof = false;
 	cstate->eol_type = EOL_UNKNOWN;
@@ -2658,10 +2622,10 @@ CopyFromDispatch(CopyState cstate)
 
 									PG_TRY();
 									{
-										values[m] = FunctionCall3(&in_functions[m],
-													 CStringGetDatum(string),
-											ObjectIdGetDatum(typioparams[m]),
-										  Int32GetDatum(attr[m]->atttypmod));
+										values[m] = InputFunctionCall(&in_functions[m],
+														  string,
+														  typioparams[m],
+														  attr[m]->atttypmod);
 									}
 									PG_CATCH();
 									{
@@ -2858,41 +2822,6 @@ CopyFromDispatch(CopyState cstate)
 					break;
 				}
 
-				/*
-				 * Next apply any domain constraints
-				 */
-				if (hasConstraints)
-				{
-					ParamExecData *prmdata = &econtext->ecxt_param_exec_vals[0];
-					ExprState  *exprstate;
-					
-					/* we must only care about constraints for distribution keys
-					   right now, the rest of the attributes with constraints
-					   will be dealt with in CopyFromExec */
-					for (i = 0; i < p_nattrs; i++)
-					{
-						h_attnum = policy->attrs[i];		/* current att num from
-						* cdb policy */
-
-						exprstate = constraintexprs[h_attnum - 1];
-							
-						if (exprstate == NULL)
-							continue;	/* no constraint for this attr */
-
-						/* Insert current hash key value into the Param value */
-						prmdata->value = values[h_attnum - 1];
-						prmdata->isnull = (nulls[h_attnum - 1] == 'n');
-
-						/*
-						 * Execute the constraint expression.  Allow the
-						 * expression to replace the value (consider e.g. a
-						 * timestamp precision restriction).
-						 */
-						values[h_attnum - 1] = ExecEvalExpr(exprstate, econtext,
-												 &isnull, NULL);
-						nulls[h_attnum - 1] = isnull ? 'n' : ' ';
-					}
-				}
 
 				/*
 				 * At this point in the code, values[x] is final for this
@@ -3042,7 +2971,6 @@ CopyFromDispatch(CopyState cstate)
 	pfree(typioparams);
 	pfree(defmap);
 	pfree(defexprs);
-	pfree(constraintexprs);
 	pfree(force_notnull);
 	pfree(cdbcopy_cmd.data);
 	pfree(cdbcopy_err.data);
@@ -3071,9 +2999,7 @@ CopyFromExec(CopyState cstate)
 	FmgrInfo	oid_in_function;
 	Oid		   *typioparams;
 	Oid			oid_typioparam;
-	ExprState **constraintexprs;
 	bool	   *force_notnull;
-	bool		hasConstraints = false;
 	int			attnum;
 	int			i;
 	Oid			in_func_oid;
@@ -3138,7 +3064,6 @@ CopyFromExec(CopyState cstate)
 	typioparams = (Oid *) palloc(num_phys_attrs * sizeof(Oid));
 	defmap = (int *) palloc(num_phys_attrs * sizeof(int));
 	defexprs = (ExprState **) palloc(num_phys_attrs * sizeof(ExprState *));
-	constraintexprs = (ExprState **) palloc0(num_phys_attrs * sizeof(ExprState *));
 	force_notnull = (bool *) palloc(num_phys_attrs * sizeof(bool));
 
 	for (attnum = 1; attnum <= num_phys_attrs; attnum++)
@@ -3177,34 +3102,6 @@ CopyFromExec(CopyState cstate)
 			}
 		}
 
-		/* If it's a domain type, set up to check domain constraints */
-		if (get_typtype(attr[attnum - 1]->atttypid) == 'd')
-		{
-			Param	   *prm;
-			Node	   *node;
-
-			/*
-			 * Easiest way to do this is to use parse_coerce.c to set up
-			 * an expression that checks the constraints.  (At present,
-															* the expression might contain a length-coercion-function
-															* call and/or CoerceToDomain nodes.)  The bottom of the
-			 * expression is a Param node so that we can fill in the
-			 * actual datum during the data input loop.
-			 */
-			prm = makeNode(Param);
-			prm->paramkind = PARAM_EXEC;
-			prm->paramid = 0;
-			prm->paramtype = getBaseType(attr[attnum - 1]->atttypid);
-
-			node = coerce_to_domain((Node *) prm,
-									prm->paramtype,
-									attr[attnum - 1]->atttypid,
-									COERCE_IMPLICIT_CAST, false, false);
-
-			constraintexprs[attnum - 1] = ExecPrepareExpr((Expr *) node,
-														  estate);
-			hasConstraints = true;
-		}
 	}
 
 	/*
@@ -3272,11 +3169,6 @@ CopyFromExec(CopyState cstate)
 	values = (Datum *) palloc(num_phys_attrs * sizeof(Datum));
 	nulls = (char *) palloc(num_phys_attrs * sizeof(char));
 	attr_offsets = (int *) palloc(num_phys_attrs * sizeof(int));
-
-	/* Make room for a PARAM_EXEC value for domain constraint checks */
-	if (hasConstraints)
-		econtext->ecxt_param_exec_vals = (ParamExecData *)
-			palloc0(sizeof(ParamExecData));
 
 	/* Initialize static variables */
 	cstate->fe_eof = false;
@@ -3504,34 +3396,6 @@ CopyFromExec(CopyState cstate)
 						nulls[defmap[i]] = ' ';
 				}
 
-				/*
-				 * Next apply any domain constraints
-				 */
-				if (hasConstraints)
-				{
-					ParamExecData *prmdata = &econtext->ecxt_param_exec_vals[0];
-
-					for (i = 0; i < num_phys_attrs; i++)
-					{
-						ExprState  *exprstate = constraintexprs[i];
-
-						if (exprstate == NULL)
-							continue;	/* no constraint for this attr */
-
-						/* Insert current row's value into the Param value */
-						prmdata->value = values[i];
-						prmdata->isnull = (nulls[i] == 'n');
-
-						/*
-						 * Execute the constraint expression.  Allow the
-						 * expression to replace the value (consider e.g. a
-															* timestamp precision restriction).
-						 */
-						values[i] = ExecEvalExpr(exprstate, econtext,
-												 &isnull, NULL);
-						nulls[i] = isnull ? 'n' : ' ';
-					}
-				}
 
 				/*
 				 * And now we can form the input tuple.
@@ -3637,7 +3501,6 @@ CopyFromExec(CopyState cstate)
 	pfree(typioparams);
 	pfree(defmap);
 	pfree(defexprs);
-	pfree(constraintexprs);
 	pfree(force_notnull);
 
 	ExecDropTupleTable(tupleTable, true);
@@ -4638,7 +4501,7 @@ CopyReadBinaryAttribute(CopyState cstate, int column_no, FmgrInfo *flinfo, Oid t
 	if (fld_size == -1)
 	{
 		*isnull = true;
-		return (Datum) 0;
+		return ReceiveFunctionCall(flinfo, NULL, typioparam, typmod);
 	}
 	if (fld_size < 0)
 		ereport(ERROR,
@@ -4667,10 +4530,8 @@ CopyReadBinaryAttribute(CopyState cstate, int column_no, FmgrInfo *flinfo, Oid t
 	cstate->attribute_buf.data[fld_size] = '\0';
 
 	/* Call the column type's binary input converter */
-	result = FunctionCall3(flinfo,
-						   PointerGetDatum(&cstate->attribute_buf),
-						   ObjectIdGetDatum(typioparam),
-						   Int32GetDatum(typmod));
+	result = ReceiveFunctionCall(flinfo, &cstate->attribute_buf,
+								 typioparam, typmod);
 
 	/* Trouble if it didn't eat the whole buffer */
 	if (cstate->attribute_buf.cursor != cstate->attribute_buf.len)
@@ -4923,95 +4784,129 @@ CopyReadOidAttr(CopyState cstate, bool *isnull)
 	return cstate->attribute_buf.data;
 }
 
+/*
+ * Send text representation of one attribute, with conversion and escaping
+ */
+#define DUMPSOFAR() \
+do { \
+	if (ptr > start) \
+		CopySendData(cstate, start, ptr - start); \
+} while (0)
 
 /*
  * Send text representation of one attribute, with conversion and escaping
  */
 static void
-CopyAttributeOutText(CopyState cstate, char *server_string)
+CopyAttributeOutText(CopyState cstate, char *string)
 {
-	char	   *string;
+	char	   *ptr;
+	char	   *start;
 	char		c;
 	char		delimc = cstate->delim[0];
-	int			mblen;
-
+	
 	if (cstate->need_transcoding)
-		string = pg_server_to_client(server_string, strlen(server_string));
+		ptr = pg_server_to_client(string, strlen(string));
 	else
-		string = server_string;
-
-	for (; (c = *string) != '\0'; string += mblen)
+		ptr = string;
+	
+	/*
+	 * We have to grovel through the string searching for control characters
+	 * and instances of the delimiter character.  In most cases, though, these
+	 * are infrequent.  To avoid overhead from calling CopySendData once per
+	 * character, we dump out all characters between replaceable characters
+	 * in a single call.  The loop invariant is that the data from "start"
+	 * to "ptr" can be sent literally, but hasn't yet been.
+	 */
+	start = ptr;
+	while ((c = *ptr) != '\0')
 	{
-		mblen = 1;
-
 		switch (c)
 		{
 			case '\b':
+				DUMPSOFAR();
 				CopySendString(cstate, "\\b");
+				start = ++ptr;
 				break;
 			case '\f':
+				DUMPSOFAR();
 				CopySendString(cstate, "\\f");
+				start = ++ptr;
 				break;
 			case '\n':
+				DUMPSOFAR();
 				CopySendString(cstate, "\\n");
+				start = ++ptr;
 				break;
 			case '\r':
+				DUMPSOFAR();
 				CopySendString(cstate, "\\r");
+				start = ++ptr;
 				break;
 			case '\t':
+				DUMPSOFAR();
 				CopySendString(cstate, "\\t");
+				start = ++ptr;
 				break;
 			case '\v':
+				DUMPSOFAR();
 				CopySendString(cstate, "\\v");
+				start = ++ptr;
 				break;
 			case '\\':
+				DUMPSOFAR();
 				CopySendString(cstate, "\\\\");
+				start = ++ptr;
 				break;
 			default:
 				if (c == delimc)
+				{
+					DUMPSOFAR();
 					CopySendChar(cstate, '\\');
-
+					start = ptr; /* we include char in next run */
+				}
+				
 				/*
 				 * We can skip pg_encoding_mblen() overhead when encoding is
 				 * safe, because in valid backend encodings, extra bytes of a
 				 * multibyte character never look like ASCII.
 				 */
-				if (cstate->encoding_embeds_ascii)
-					mblen = pg_encoding_mblen(cstate->client_encoding, string);
-				CopySendData(cstate, string, mblen);
+				if (IS_HIGHBIT_SET(c) && cstate->encoding_embeds_ascii)
+					ptr += pg_encoding_mblen(cstate->client_encoding, ptr);
+				else
+					ptr++;
 				break;
 		}
 	}
+	
+	DUMPSOFAR();
 }
 
 /*
- * Send CSV representation of one attribute, with conversion and
- * CSV type escaping
+ * Send text representation of one attribute, with conversion and
+ * CSV-style escaping
  */
 static void
-CopyAttributeOutCSV(CopyState cstate, char *server_string,
+CopyAttributeOutCSV(CopyState cstate, char *string,
 					bool use_quote, bool single_attr)
 {
-	char	   *string;
+	char	   *ptr;
+	char	   *start;
 	char		c;
 	char		delimc = cstate->delim[0];
 	char		quotec = cstate->quote[0];
 	char		escapec = cstate->escape[0];
-	char	   *tstring;
-	int			mblen;
-
-	/* force quoting if it matches null_print */
-	if (!use_quote && strcmp(server_string, cstate->null_print) == 0)
+	
+	/* force quoting if it matches null_print (before conversion!) */
+	if (!use_quote && strcmp(string, cstate->null_print) == 0)
 		use_quote = true;
-
+	
 	if (cstate->need_transcoding)
-		string = pg_server_to_client(server_string, strlen(server_string));
+		ptr = pg_server_to_client(string, strlen(string));
 	else
-		string = server_string;
-
+		ptr = string;
+	
 	/*
-	 * have to run through the string twice, first time to see if it needs
-	 * quoting, second to actually send it
+	 * Make a preliminary pass to discover if it needs quoting
 	 */
 	if (!use_quote)
 	{
@@ -5020,41 +4915,57 @@ CopyAttributeOutCSV(CopyState cstate, char *server_string,
 		 *	alone on a line so it is not interpreted as the end-of-data
 		 *	marker.
 		 */
-		if (single_attr && strcmp(string, "\\.") == 0)
+		if (single_attr && strcmp(ptr, "\\.") == 0)
  			use_quote = true;
  		else
  		{
-			for (tstring = string; (c = *tstring) != '\0'; tstring += mblen)
+			char	   *tptr = ptr;
+			
+			while ((c = *tptr) != '\0')
 			{
 				if (c == delimc || c == quotec || c == '\n' || c == '\r')
 				{
 					use_quote = true;
 					break;
 				}
-				if (cstate->encoding_embeds_ascii)
-					mblen = pg_encoding_mblen(cstate->client_encoding, tstring);
+				if (IS_HIGHBIT_SET(c) && cstate->encoding_embeds_ascii)
+					tptr += pg_encoding_mblen(cstate->client_encoding, tptr);
 				else
-					mblen = 1;
+					tptr++;
 			}
 		}
 	}
-
+	
 	if (use_quote)
-		CopySendChar(cstate, quotec);
-
-	for (; (c = *string) != '\0'; string += mblen)
 	{
-		if (use_quote && (c == quotec || c == escapec))
-			CopySendChar(cstate, escapec);
-		if (cstate->encoding_embeds_ascii)
-			mblen = pg_encoding_mblen(cstate->client_encoding, string);
-		else
-			mblen = 1;
-		CopySendData(cstate, string, mblen);
-	}
-
-	if (use_quote)
 		CopySendChar(cstate, quotec);
+		
+		/*
+		 * We adopt the same optimization strategy as in CopyAttributeOutText
+		 */
+		start = ptr;
+		while ((c = *ptr) != '\0')
+		{
+			if (c == quotec || c == escapec)
+			{
+				DUMPSOFAR();
+				CopySendChar(cstate, escapec);
+				start = ptr;	/* we include char in next run */
+			}
+			if (IS_HIGHBIT_SET(c) && cstate->encoding_embeds_ascii)
+				ptr += pg_encoding_mblen(cstate->client_encoding, ptr);
+			else
+				ptr++;
+		}
+		DUMPSOFAR();
+		
+		CopySendChar(cstate, quotec);
+	}
+	else
+	{
+		/* If it doesn't need quoting, we can just dump it as-is */
+		CopySendString(cstate, ptr);
+	}
 }
 
 /*
