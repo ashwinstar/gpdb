@@ -357,7 +357,7 @@ prescan_walker(Node *node, PlanProfile * context)
 				}
 
 				/* Recur into the exprs list (as usual). */
-				if (expression_tree_walker((Node *) subplan->exprs, prescan_walker, context))
+				if (expression_tree_walker((Node *) subplan->testexpr, prescan_walker, context))
 					return true;
 
 				/*
