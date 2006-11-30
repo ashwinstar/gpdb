@@ -11,12 +11,12 @@
  *	  in the "amcostestimate" attribute.
  *
  * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/selfuncs.c,v 1.191.2.2 2006/05/02 04:34:24 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/selfuncs.c,v 1.214 2006/10/04 00:29:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -77,13 +77,7 @@
 #include <ctype.h>
 #include <math.h>
 
-#include "access/heapam.h"
-#include "access/nbtree.h"
-#include "access/tuptoaster.h"
-#include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
-#include "catalog/pg_operator.h"
-#include "catalog/pg_proc.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
 #include "mb/pg_wchar.h"
@@ -93,18 +87,13 @@
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/plancat.h"
-#include "optimizer/prep.h"
 #include "optimizer/restrictinfo.h"
-#include "optimizer/tlist.h"
 #include "optimizer/var.h"
 #include "parser/parse_expr.h"
-#include "parser/parse_func.h"
-#include "parser/parse_oper.h"
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
 #include "utils/datum.h"
-#include "utils/int8.h"
 #include "utils/lsyscache.h"
 #include "utils/nabstime.h"
 #include "utils/pg_locale.h"
@@ -113,27 +102,9 @@
 
 #include "cdb/cdbvars.h"                /* getMPPSegmentCount */
 
-
-/* Return data from examine_variable and friends */
-typedef struct
-{
-	Node	   *var;			/* the Var or expression tree */
-	RelOptInfo *rel;			/* Relation, or NULL if not identifiable */
-	HeapTuple	statsTuple;		/* pg_statistic tuple, or NULL if none */
-	/* NB: if statsTuple!=NULL, it must be freed when caller is done */
-	Oid			vartype;		/* exposed type of expression */
-	Oid			atttype;		/* type to pass to get_attstatsslot */
-	int32		atttypmod;		/* typmod to pass to get_attstatsslot */
-	bool		isunique;		/* true if matched to a unique index */
-} VariableStatData;
-
-#define ReleaseVariableStats(vardata)  \
-	do { \
-		if (HeapTupleIsValid((vardata).statsTuple)) \
-			ReleaseSysCache((vardata).statsTuple); \
-	} while(0)
-
-
+static double ineq_histogram_selectivity(VariableStatData *vardata,
+						   FmgrInfo *opproc, bool isgt,
+						   Datum constval, Oid consttype);
 static bool convert_to_scalar(Datum value, Oid valuetypid, double *scaledvalue,
 				  Datum lobound, Datum hibound, Oid boundstypid,
 				  double *scaledlobound, double *scaledhibound);
@@ -156,19 +127,10 @@ static double convert_one_bytea_to_scalar(unsigned char *value, int valuelen,
 							int rangelo, int rangehi);
 static char *convert_string_datum(Datum value, Oid typid);
 static double convert_timevalue_to_scalar(Datum value, Oid typid);
-static bool get_restriction_variable(PlannerInfo *root, List *args, int varRelid,
-						 VariableStatData *vardata, Node **other,
-						 bool *varonleft);
-static void get_join_variables(PlannerInfo *root, List *args,
-				   VariableStatData *vardata1,
-				   VariableStatData *vardata2);
-static void examine_variable(PlannerInfo *root, Node *node, int varRelid,
-				 VariableStatData *vardata);
-static double get_variable_numdistinct(VariableStatData *vardata);
 static bool get_variable_maximum(PlannerInfo *root, VariableStatData *vardata,
 					 Oid sortop, Datum *max);
-static Selectivity prefix_selectivity(PlannerInfo *root, Node *variable,
-				   Oid opclass, Const *prefix);
+static Selectivity prefix_selectivity(VariableStatData *vardata,
+				   Oid opclass, Const *prefixcon);
 static Selectivity pattern_selectivity(Const *patt, Pattern_Type ptype);
 static Datum string_to_datum(const char *str, Oid datatype);
 static Const *string_to_const(const char *str, Oid datatype);
@@ -275,7 +237,7 @@ eqsel(PG_FUNCTION_ARGS)
 			{
 				/*
 				 * Constant is "=" to this common value.  We know selectivity
-				 * exactly (or as exactly as VACUUM could calculate it,
+				 * exactly (or as exactly as ANALYZE could calculate it,
 				 * anyway).
 				 */
 				selec = numbers[i];
@@ -355,10 +317,9 @@ eqsel(PG_FUNCTION_ARGS)
 	else
 	{
 		/*
-		 * No VACUUM ANALYZE stats available, so make a guess using estimated
-		 * number of distinct values and assuming they are equally common.
-		 * (The guess is unlikely to be very good, but we do know a few
-		 * special cases.)
+		 * No ANALYZE stats available, so make a guess using estimated number
+		 * of distinct values and assuming they are equally common. (The guess
+		 * is unlikely to be very good, but we do know a few special cases.)
 		 */
 		selec = 1.0 / get_variable_numdistinct(&vardata);
 	}
@@ -429,15 +390,10 @@ scalarineqsel(PlannerInfo *root, Oid operator, bool isgt,
 {
 	Form_pg_statistic stats;
 	FmgrInfo	opproc;
-	Datum	   *values;
-	int			nvalues;
-	float4	   *numbers;
-	int			nnumbers;
 	double		mcv_selec,
 				hist_selec,
 				sumcommon;
 	double		selec;
-	int			i;
 
 	if (!HeapTupleIsValid(vardata->statsTuple))
 	{
@@ -454,172 +410,15 @@ scalarineqsel(PlannerInfo *root, Oid operator, bool isgt,
 	 * to the result selectivity.  Also add up the total fraction represented
 	 * by MCV entries.
 	 */
-	mcv_selec = 0.0;
-	sumcommon = 0.0;
-
-	if (get_attstatsslot(vardata->statsTuple,
-						 vardata->atttype, vardata->atttypmod,
-						 STATISTIC_KIND_MCV, InvalidOid,
-						 &values, &nvalues,
-						 &numbers, &nnumbers))
-	{
-		for (i = 0; i < nvalues; i++)
-		{
-			if (DatumGetBool(FunctionCall2(&opproc,
-										   values[i],
-										   constval)))
-				mcv_selec += numbers[i];
-			sumcommon += numbers[i];
-		}
-		free_attstatsslot(vardata->atttype, values, nvalues,
-						  numbers, nnumbers);
-	}
+	mcv_selec = mcv_selectivity(vardata, &opproc, constval, true,
+								&sumcommon);
 
 	/*
 	 * If there is a histogram, determine which bin the constant falls in, and
 	 * compute the resulting contribution to selectivity.
-	 *
-	 * Someday, VACUUM might store more than one histogram per rel/att,
-	 * corresponding to more than one possible sort ordering defined for the
-	 * column type.  However, to make that work we will need to figure out
-	 * which staop to search for --- it's not necessarily the one we have at
-	 * hand!  (For example, we might have a '<=' operator rather than the '<'
-	 * operator that will appear in staop.)  For now, assume that whatever
-	 * appears in pg_statistic is sorted the same way our operator sorts, or
-	 * the reverse way if isgt is TRUE.
 	 */
-	hist_selec = 0.0;
-
-	if (get_attstatsslot(vardata->statsTuple,
-						 vardata->atttype, vardata->atttypmod,
-						 STATISTIC_KIND_HISTOGRAM, InvalidOid,
-						 &values, &nvalues,
-						 NULL, NULL))
-	{
-		if (nvalues > 1)
-		{
-			double		histfrac;
-			bool		ltcmp;
-
-			ltcmp = DatumGetBool(FunctionCall2(&opproc,
-											   values[0],
-											   constval));
-			if (isgt)
-				ltcmp = !ltcmp;
-			if (!ltcmp)
-			{
-				/* Constant is below lower histogram boundary. */
-				histfrac = 0.0;
-			}
-			else
-			{
-				/*
-				 * Scan to find proper location.  This could be made faster by
-				 * using a binary-search method, but it's probably not worth
-				 * the trouble for typical histogram sizes.
-				 */
-				for (i = 1; i < nvalues; i++)
-				{
-					ltcmp = DatumGetBool(FunctionCall2(&opproc,
-													   values[i],
-													   constval));
-					if (isgt)
-						ltcmp = !ltcmp;
-					if (!ltcmp)
-						break;
-				}
-				if (i >= nvalues)
-				{
-					/* Constant is above upper histogram boundary. */
-					histfrac = 1.0;
-				}
-				else
-				{
-					double		val,
-								high,
-								low;
-					double		binfrac;
-
-					/*
-					 * We have values[i-1] < constant < values[i].
-					 *
-					 * Convert the constant and the two nearest bin boundary
-					 * values to a uniform comparison scale, and do a linear
-					 * interpolation within this bin.
-					 */
-					if (convert_to_scalar(constval, consttype, &val,
-										  values[i - 1], values[i],
-										  vardata->vartype,
-										  &low, &high))
-					{
-						if (high <= low)
-						{
-							/* cope if bin boundaries appear identical */
-							binfrac = 0.5;
-						}
-						else if (val <= low)
-							binfrac = 0.0;
-						else if (val >= high)
-							binfrac = 1.0;
-						else
-						{
-							binfrac = (val - low) / (high - low);
-
-							/*
-							 * Watch out for the possibility that we got a NaN
-							 * or Infinity from the division.  This can happen
-							 * despite the previous checks, if for example
-							 * "low" is -Infinity.
-							 */
-							if (isnan(binfrac) ||
-								binfrac < 0.0 || binfrac > 1.0)
-								binfrac = 0.5;
-						}
-					}
-					else
-					{
-						/*
-						 * Ideally we'd produce an error here, on the grounds
-						 * that the given operator shouldn't have scalarXXsel
-						 * registered as its selectivity func unless we can
-						 * deal with its operand types.  But currently, all
-						 * manner of stuff is invoking scalarXXsel, so give a
-						 * default estimate until that can be fixed.
-						 */
-						binfrac = 0.5;
-					}
-
-					/*
-					 * Now, compute the overall selectivity across the values
-					 * represented by the histogram.  We have i-1 full bins
-					 * and binfrac partial bin below the constant.
-					 */
-					histfrac = (double) (i - 1) + binfrac;
-					histfrac /= (double) (nvalues - 1);
-				}
-			}
-
-			/*
-			 * Now histfrac = fraction of histogram entries below the
-			 * constant.
-			 *
-			 * Account for "<" vs ">"
-			 */
-			hist_selec = isgt ? (1.0 - histfrac) : histfrac;
-
-			/*
-			 * The histogram boundaries are only approximate to begin with,
-			 * and may well be out of date anyway.	Therefore, don't believe
-			 * extremely small or large selectivity estimates.
-			 */
-			if (hist_selec < 0.0001)
-				hist_selec = 0.0001;
-			else if (hist_selec > 0.9999)
-				hist_selec = 0.9999;
-		}
-
-		free_attstatsslot(vardata->atttype, values, nvalues, NULL, 0);
-	}
+	hist_selec = ineq_histogram_selectivity(vardata, &opproc, isgt,
+											constval, consttype);
 
 	/*
 	 * Now merge the results from the MCV and histogram calculations,
@@ -645,6 +444,306 @@ scalarineqsel(PlannerInfo *root, Oid operator, bool isgt,
 	CLAMP_PROBABILITY(selec);
 
 	return selec;
+}
+
+/*
+ *	mcv_selectivity			- Examine the MCV list for selectivity estimates
+ *
+ * Determine the fraction of the variable's MCV population that satisfies
+ * the predicate (VAR OP CONST), or (CONST OP VAR) if !varonleft.  Also
+ * compute the fraction of the total column population represented by the MCV
+ * list.  This code will work for any boolean-returning predicate operator.
+ *
+ * The function result is the MCV selectivity, and the fraction of the
+ * total population is returned into *sumcommonp.  Zeroes are returned
+ * if there is no MCV list.
+ */
+double
+mcv_selectivity(VariableStatData *vardata, FmgrInfo *opproc,
+				Datum constval, bool varonleft,
+				double *sumcommonp)
+{
+	double		mcv_selec,
+				sumcommon;
+	Datum	   *values;
+	int			nvalues;
+	float4	   *numbers;
+	int			nnumbers;
+	int			i;
+
+	mcv_selec = 0.0;
+	sumcommon = 0.0;
+
+	if (HeapTupleIsValid(vardata->statsTuple) &&
+		get_attstatsslot(vardata->statsTuple,
+						 vardata->atttype, vardata->atttypmod,
+						 STATISTIC_KIND_MCV, InvalidOid,
+						 &values, &nvalues,
+						 &numbers, &nnumbers))
+	{
+		for (i = 0; i < nvalues; i++)
+		{
+			if (varonleft ?
+				DatumGetBool(FunctionCall2(opproc,
+										   values[i],
+										   constval)) :
+				DatumGetBool(FunctionCall2(opproc,
+										   constval,
+										   values[i])))
+				mcv_selec += numbers[i];
+			sumcommon += numbers[i];
+		}
+		free_attstatsslot(vardata->atttype, values, nvalues,
+						  numbers, nnumbers);
+	}
+
+	*sumcommonp = sumcommon;
+	return mcv_selec;
+}
+
+/*
+ *	histogram_selectivity	- Examine the histogram for selectivity estimates
+ *
+ * Determine the fraction of the variable's histogram entries that satisfy
+ * the predicate (VAR OP CONST), or (CONST OP VAR) if !varonleft.
+ *
+ * This code will work for any boolean-returning predicate operator, whether
+ * or not it has anything to do with the histogram sort operator.  We are
+ * essentially using the histogram just as a representative sample.  However,
+ * small histograms are unlikely to be all that representative, so the caller
+ * should specify a minimum histogram size to use, and fall back on some
+ * other approach if this routine fails.
+ *
+ * The caller also specifies n_skip, which causes us to ignore the first and
+ * last n_skip histogram elements, on the grounds that they are outliers and
+ * hence not very representative.  If in doubt, min_hist_size = 100 and
+ * n_skip = 1 are reasonable values.
+ *
+ * The function result is the selectivity, or -1 if there is no histogram
+ * or it's smaller than min_hist_size.
+ *
+ * Note that the result disregards both the most-common-values (if any) and
+ * null entries.  The caller is expected to combine this result with
+ * statistics for those portions of the column population.	It may also be
+ * prudent to clamp the result range, ie, disbelieve exact 0 or 1 outputs.
+ */
+double
+histogram_selectivity(VariableStatData *vardata, FmgrInfo *opproc,
+					  Datum constval, bool varonleft,
+					  int min_hist_size, int n_skip)
+{
+	double		result;
+	Datum	   *values;
+	int			nvalues;
+
+	/* check sanity of parameters */
+	Assert(n_skip >= 0);
+	Assert(min_hist_size > 2 * n_skip);
+
+	if (HeapTupleIsValid(vardata->statsTuple) &&
+		get_attstatsslot(vardata->statsTuple,
+						 vardata->atttype, vardata->atttypmod,
+						 STATISTIC_KIND_HISTOGRAM, InvalidOid,
+						 &values, &nvalues,
+						 NULL, NULL))
+	{
+		if (nvalues >= min_hist_size)
+		{
+			int			nmatch = 0;
+			int			i;
+
+			for (i = n_skip; i < nvalues - n_skip; i++)
+			{
+				if (varonleft ?
+					DatumGetBool(FunctionCall2(opproc,
+											   values[i],
+											   constval)) :
+					DatumGetBool(FunctionCall2(opproc,
+											   constval,
+											   values[i])))
+					nmatch++;
+			}
+			result = ((double) nmatch) / ((double) (nvalues - 2 * n_skip));
+		}
+		else
+			result = -1;
+		free_attstatsslot(vardata->atttype, values, nvalues, NULL, 0);
+	}
+	else
+		result = -1;
+
+	return result;
+}
+
+/*
+ *	ineq_histogram_selectivity	- Examine the histogram for scalarineqsel
+ *
+ * Determine the fraction of the variable's histogram population that
+ * satisfies the inequality condition, ie, VAR < CONST or VAR > CONST.
+ *
+ * Returns zero if there is no histogram (valid results will always be
+ * greater than zero).
+ *
+ * Note that the result disregards both the most-common-values (if any) and
+ * null entries.  The caller is expected to combine this result with
+ * statistics for those portions of the column population.
+ */
+static double
+ineq_histogram_selectivity(VariableStatData *vardata,
+						   FmgrInfo *opproc, bool isgt,
+						   Datum constval, Oid consttype)
+{
+	double		hist_selec;
+	Datum	   *values;
+	int			nvalues;
+
+	hist_selec = 0.0;
+
+	/*
+	 * Someday, ANALYZE might store more than one histogram per rel/att,
+	 * corresponding to more than one possible sort ordering defined for the
+	 * column type.  However, to make that work we will need to figure out
+	 * which staop to search for --- it's not necessarily the one we have at
+	 * hand!  (For example, we might have a '<=' operator rather than the '<'
+	 * operator that will appear in staop.)  For now, assume that whatever
+	 * appears in pg_statistic is sorted the same way our operator sorts, or
+	 * the reverse way if isgt is TRUE.
+	 */
+	if (HeapTupleIsValid(vardata->statsTuple) &&
+		get_attstatsslot(vardata->statsTuple,
+						 vardata->atttype, vardata->atttypmod,
+						 STATISTIC_KIND_HISTOGRAM, InvalidOid,
+						 &values, &nvalues,
+						 NULL, NULL))
+	{
+		if (nvalues > 1)
+		{
+			/*
+			 * Use binary search to find proper location, ie, the first slot
+			 * at which the comparison fails.  (If the given operator isn't
+			 * actually sort-compatible with the histogram, you'll get garbage
+			 * results ... but probably not any more garbage-y than you would
+			 * from the old linear search.)
+			 */
+			double		histfrac;
+			int			lobound = 0;	/* first possible slot to search */
+			int			hibound = nvalues;		/* last+1 slot to search */
+
+			while (lobound < hibound)
+			{
+				int			probe = (lobound + hibound) / 2;
+				bool		ltcmp;
+
+				ltcmp = DatumGetBool(FunctionCall2(opproc,
+												   values[probe],
+												   constval));
+				if (isgt)
+					ltcmp = !ltcmp;
+				if (ltcmp)
+					lobound = probe + 1;
+				else
+					hibound = probe;
+			}
+
+			if (lobound <= 0)
+			{
+				/* Constant is below lower histogram boundary. */
+				histfrac = 0.0;
+			}
+			else if (lobound >= nvalues)
+			{
+				/* Constant is above upper histogram boundary. */
+				histfrac = 1.0;
+			}
+			else
+			{
+				int			i = lobound;
+				double		val,
+							high,
+							low;
+				double		binfrac;
+
+				/*
+				 * We have values[i-1] < constant < values[i].
+				 *
+				 * Convert the constant and the two nearest bin boundary
+				 * values to a uniform comparison scale, and do a linear
+				 * interpolation within this bin.
+				 */
+				if (convert_to_scalar(constval, consttype, &val,
+									  values[i - 1], values[i],
+									  vardata->vartype,
+									  &low, &high))
+				{
+					if (high <= low)
+					{
+						/* cope if bin boundaries appear identical */
+						binfrac = 0.5;
+					}
+					else if (val <= low)
+						binfrac = 0.0;
+					else if (val >= high)
+						binfrac = 1.0;
+					else
+					{
+						binfrac = (val - low) / (high - low);
+
+						/*
+						 * Watch out for the possibility that we got a NaN or
+						 * Infinity from the division.	This can happen
+						 * despite the previous checks, if for example "low"
+						 * is -Infinity.
+						 */
+						if (isnan(binfrac) ||
+							binfrac < 0.0 || binfrac > 1.0)
+							binfrac = 0.5;
+					}
+				}
+				else
+				{
+					/*
+					 * Ideally we'd produce an error here, on the grounds that
+					 * the given operator shouldn't have scalarXXsel
+					 * registered as its selectivity func unless we can deal
+					 * with its operand types.	But currently, all manner of
+					 * stuff is invoking scalarXXsel, so give a default
+					 * estimate until that can be fixed.
+					 */
+					binfrac = 0.5;
+				}
+
+				/*
+				 * Now, compute the overall selectivity across the values
+				 * represented by the histogram.  We have i-1 full bins and
+				 * binfrac partial bin below the constant.
+				 */
+				histfrac = (double) (i - 1) + binfrac;
+				histfrac /= (double) (nvalues - 1);
+			}
+
+			/*
+			 * Now histfrac = fraction of histogram entries below the
+			 * constant.
+			 *
+			 * Account for "<" vs ">"
+			 */
+			hist_selec = isgt ? (1.0 - histfrac) : histfrac;
+
+			/*
+			 * The histogram boundaries are only approximate to begin with,
+			 * and may well be out of date anyway.	Therefore, don't believe
+			 * extremely small or large selectivity estimates.
+			 */
+			if (hist_selec < 0.0001)
+				hist_selec = 0.0001;
+			else if (hist_selec > 0.9999)
+				hist_selec = 0.9999;
+		}
+
+		free_attstatsslot(vardata->atttype, values, nvalues, NULL, 0);
+	}
+
+	return hist_selec;
 }
 
 /*
@@ -804,10 +903,7 @@ static double
 patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 {
 	PlannerInfo *root = (PlannerInfo *) PG_GETARG_POINTER(0);
-
-#ifdef NOT_USED
 	Oid			operator = PG_GETARG_OID(1);
-#endif
 	List	   *args = (List *) PG_GETARG_POINTER(2);
 	int			varRelid = PG_GETARG_INT32(3);
 	VariableStatData vardata;
@@ -959,8 +1055,17 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 	else
 	{
 		/*
-		 * Not exact-match pattern.  We estimate selectivity of the fixed
-		 * prefix and remainder of pattern separately, then combine the two.
+		 * Not exact-match pattern.  If we have a sufficiently large
+		 * histogram, estimate selectivity for the histogram part of the
+		 * population by counting matches in the histogram.  If not, estimate
+		 * selectivity of the fixed prefix and remainder of pattern
+		 * separately, then combine the two to get an estimate of the
+		 * selectivity for the part of the column population represented by
+		 * the histogram.  We then add up data for any most-common-values
+		 * values; these are not in the histogram population, and we can get
+		 * exact answers for them by applying the pattern operator, so there's
+		 * no reason to approximate.  (If the MCVs cover a significant part of
+		 * the total population, this gives us a big leg up in accuracy.)
          *
          * CDB TODO: Try matching the pattern against the frequently
          * occurring values, similar to eqsel().
@@ -971,40 +1076,87 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 	    Selectivity prefixsel;
 		Selectivity restsel = pattern_selectivity(rest, ptype);
 		Selectivity selec;
+		FmgrInfo	opproc;
+		double		nullfrac,
+					mcv_selec,
+					sumcommon;
 
         /* CDB: LIKE cannot select fewer rows than "=". */
         ndistinct = get_variable_numdistinct(&vardata);
         if (ndistinct > 1.0)
             eqsel /= ndistinct;
+            
+        /* Try to use the histogram entries to get selectivity */
+		fmgr_info(get_opcode(operator), &opproc);
+		
+		selec = histogram_selectivity(&vardata, &opproc, constval, true,
+									  100, 1);
+		if (selec < 0)
+		{
+			/* Nope, so fake it with the heuristic method */
+			Selectivity prefixsel;
+			Selectivity restsel;
 
-		if (pstatus == Pattern_Prefix_Partial)
-        {
-            prefixsel = prefix_selectivity(root, variable, opclass, prefix);
 
-            /* CDB: Assume prefix will match at least a few distinct values. */
-            fewsel = (DEFAULT_RANGE_INEQ_SEL / DEFAULT_EQ_SEL) * eqsel;
-            if (fewsel > notnullfrac)
-                fewsel = notnullfrac;
-            if (prefixsel < fewsel)
-                prefixsel = fewsel;
-
-            /* CDB: Assume whole pattern will match at least 1 or 2 values. */
-            fewsel = 2.0 * eqsel;
-        }
+			if (pstatus == Pattern_Prefix_Partial)
+	        {
+				prefixsel = prefix_selectivity(&vardata, opclass, prefix);
+	
+	            /* CDB: Assume prefix will match at least a few distinct values. */
+	            fewsel = (DEFAULT_RANGE_INEQ_SEL / DEFAULT_EQ_SEL) * eqsel;
+	            if (fewsel > notnullfrac)
+	                fewsel = notnullfrac;
+	            if (prefixsel < fewsel)
+	                prefixsel = fewsel;
+	
+	            /* CDB: Assume whole pattern will match at least 1 or 2 values. */
+	            fewsel = 2.0 * eqsel;
+	        }
+			else
+	        {
+			    prefixsel = notnullfrac;
+	
+	            /* CDB: Assume pattern will match at least a few distinct values. */
+	            fewsel = (DEFAULT_MATCH_SEL / DEFAULT_EQ_SEL) * eqsel;
+	        }
+		} 
 		else
-        {
-		    prefixsel = notnullfrac;
+		{
+			/* Yes, but don't believe extremely small or large estimates. */
+			if (selec < 0.0001)
+				selec = 0.0001;
+			else if (selec > 0.9999)
+				selec = 0.9999;
+		}
+		
+        /*
+		 * If we have most-common-values info, add up the fractions of the MCV
+		 * entries that satisfy MCV OP PATTERN.  These fractions contribute
+		 * directly to the result selectivity.	Also add up the total fraction
+		 * represented by MCV entries.
+		 */
+		mcv_selec = mcv_selectivity(&vardata, &opproc, constval, true,
+									&sumcommon);
 
-            /* CDB: Assume pattern will match at least a few distinct values. */
-            fewsel = (DEFAULT_MATCH_SEL / DEFAULT_EQ_SEL) * eqsel;
-        }
-
+		if (HeapTupleIsValid(vardata.statsTuple))
+			nullfrac = ((Form_pg_statistic) GETSTRUCT(vardata.statsTuple))->stanullfrac;
+		else
+			nullfrac = 0.0;
+        
         selec = prefixsel * restsel;
         if (fewsel > notnullfrac)
             fewsel = notnullfrac;
         if (selec < fewsel)
             selec = fewsel;
-
+            
+		/*
+		 * Now merge the results from the MCV and histogram calculations,
+		 * realizing that the histogram covers only the non-null values that
+		 * are not listed in MCV.
+		 */
+		selec *= 1.0 - nullfrac - sumcommon;
+		selec += mcv_selec;
+		
 		/* result should be in range, but make sure... */
 		CLAMP_PROBABILITY(selec);
 		result = selec;
@@ -1319,7 +1471,7 @@ nulltestsel(PlannerInfo *root, NullTestType nulltesttype,
 	else
 	{
 		/*
-		 * No VACUUM ANALYZE stats available, so make a guess
+		 * No ANALYZE stats available, so make a guess
 		 */
 		switch (nulltesttype)
 		{
@@ -1342,6 +1494,263 @@ nulltestsel(PlannerInfo *root, NullTestType nulltesttype,
 	CLAMP_PROBABILITY(selec);
 
 	return (Selectivity) selec;
+}
+
+/*
+ *		scalararraysel		- Selectivity of ScalarArrayOpExpr Node.
+ */
+Selectivity
+scalararraysel(PlannerInfo *root,
+			   ScalarArrayOpExpr *clause,
+			   bool is_join_clause,
+			   int varRelid, JoinType jointype)
+{
+	Oid			operator = clause->opno;
+	bool		useOr = clause->useOr;
+	Node	   *leftop;
+	Node	   *rightop;
+	RegProcedure oprsel;
+	FmgrInfo	oprselproc;
+	Datum		selarg4;
+	Selectivity s1;
+
+	/*
+	 * First, look up the underlying operator's selectivity estimator. Punt if
+	 * it hasn't got one.
+	 */
+	if (is_join_clause)
+	{
+		oprsel = get_oprjoin(operator);
+		selarg4 = Int16GetDatum(jointype);
+	}
+	else
+	{
+		oprsel = get_oprrest(operator);
+		selarg4 = Int32GetDatum(varRelid);
+	}
+	if (!oprsel)
+		return (Selectivity) 0.5;
+	fmgr_info(oprsel, &oprselproc);
+
+	/*
+	 * We consider three cases:
+	 *
+	 * 1. rightop is an Array constant: deconstruct the array, apply the
+	 * operator's selectivity function for each array element, and merge the
+	 * results in the same way that clausesel.c does for AND/OR combinations.
+	 *
+	 * 2. rightop is an ARRAY[] construct: apply the operator's selectivity
+	 * function for each element of the ARRAY[] construct, and merge.
+	 *
+	 * 3. otherwise, make a guess ...
+	 */
+	Assert(list_length(clause->args) == 2);
+	leftop = (Node *) linitial(clause->args);
+	rightop = (Node *) lsecond(clause->args);
+
+	if (rightop && IsA(rightop, Const))
+	{
+		Datum		arraydatum = ((Const *) rightop)->constvalue;
+		bool		arrayisnull = ((Const *) rightop)->constisnull;
+		ArrayType  *arrayval;
+		int16		elmlen;
+		bool		elmbyval;
+		char		elmalign;
+		int			num_elems;
+		Datum	   *elem_values;
+		bool	   *elem_nulls;
+		int			i;
+
+		if (arrayisnull)		/* qual can't succeed if null array */
+			return (Selectivity) 0.0;
+		arrayval = DatumGetArrayTypeP(arraydatum);
+		get_typlenbyvalalign(ARR_ELEMTYPE(arrayval),
+							 &elmlen, &elmbyval, &elmalign);
+		deconstruct_array(arrayval,
+						  ARR_ELEMTYPE(arrayval),
+						  elmlen, elmbyval, elmalign,
+						  &elem_values, &elem_nulls, &num_elems);
+		s1 = useOr ? 0.0 : 1.0;
+		for (i = 0; i < num_elems; i++)
+		{
+			List	   *args;
+			Selectivity s2;
+
+			args = list_make2(leftop,
+							  makeConst(ARR_ELEMTYPE(arrayval),
+										elmlen,
+										elem_values[i],
+										elem_nulls[i],
+										elmbyval));
+			s2 = DatumGetFloat8(FunctionCall4(&oprselproc,
+											  PointerGetDatum(root),
+											  ObjectIdGetDatum(operator),
+											  PointerGetDatum(args),
+											  selarg4));
+			if (useOr)
+				s1 = s1 + s2 - s1 * s2;
+			else
+				s1 = s1 * s2;
+		}
+	}
+	else if (rightop && IsA(rightop, ArrayExpr) &&
+			 !((ArrayExpr *) rightop)->multidims)
+	{
+		ArrayExpr  *arrayexpr = (ArrayExpr *) rightop;
+		int16		elmlen;
+		bool		elmbyval;
+		ListCell   *l;
+
+		get_typlenbyval(arrayexpr->element_typeid,
+						&elmlen, &elmbyval);
+		s1 = useOr ? 0.0 : 1.0;
+		foreach(l, arrayexpr->elements)
+		{
+			List	   *args;
+			Selectivity s2;
+
+			args = list_make2(leftop, lfirst(l));
+			s2 = DatumGetFloat8(FunctionCall4(&oprselproc,
+											  PointerGetDatum(root),
+											  ObjectIdGetDatum(operator),
+											  PointerGetDatum(args),
+											  selarg4));
+			if (useOr)
+				s1 = s1 + s2 - s1 * s2;
+			else
+				s1 = s1 * s2;
+		}
+	}
+	else
+	{
+		CaseTestExpr *dummyexpr;
+		List	   *args;
+		Selectivity s2;
+		int			i;
+
+		/*
+		 * We need a dummy rightop to pass to the operator selectivity
+		 * routine.  It can be pretty much anything that doesn't look like a
+		 * constant; CaseTestExpr is a convenient choice.
+		 */
+		dummyexpr = makeNode(CaseTestExpr);
+		dummyexpr->typeId = get_element_type(exprType(rightop));
+		dummyexpr->typeMod = -1;
+		args = list_make2(leftop, dummyexpr);
+		s2 = DatumGetFloat8(FunctionCall4(&oprselproc,
+										  PointerGetDatum(root),
+										  ObjectIdGetDatum(operator),
+										  PointerGetDatum(args),
+										  selarg4));
+		s1 = useOr ? 0.0 : 1.0;
+
+		/*
+		 * Arbitrarily assume 10 elements in the eventual array value (see
+		 * also estimate_array_length)
+		 */
+		for (i = 0; i < 10; i++)
+		{
+			if (useOr)
+				s1 = s1 + s2 - s1 * s2;
+			else
+				s1 = s1 * s2;
+		}
+	}
+
+	/* result should be in range, but make sure... */
+	CLAMP_PROBABILITY(s1);
+
+	return s1;
+}
+
+/*
+ * Estimate number of elements in the array yielded by an expression.
+ *
+ * It's important that this agree with scalararraysel.
+ */
+int
+estimate_array_length(Node *arrayexpr)
+{
+	if (arrayexpr && IsA(arrayexpr, Const))
+	{
+		Datum		arraydatum = ((Const *) arrayexpr)->constvalue;
+		bool		arrayisnull = ((Const *) arrayexpr)->constisnull;
+		ArrayType  *arrayval;
+
+		if (arrayisnull)
+			return 0;
+		arrayval = DatumGetArrayTypeP(arraydatum);
+		return ArrayGetNItems(ARR_NDIM(arrayval), ARR_DIMS(arrayval));
+	}
+	else if (arrayexpr && IsA(arrayexpr, ArrayExpr) &&
+			 !((ArrayExpr *) arrayexpr)->multidims)
+	{
+		return list_length(((ArrayExpr *) arrayexpr)->elements);
+	}
+	else
+	{
+		/* default guess --- see also scalararraysel */
+		return 10;
+	}
+}
+
+/*
+ *		rowcomparesel		- Selectivity of RowCompareExpr Node.
+ *
+ * We estimate RowCompare selectivity by considering just the first (high
+ * order) columns, which makes it equivalent to an ordinary OpExpr.  While
+ * this estimate could be refined by considering additional columns, it
+ * seems unlikely that we could do a lot better without multi-column
+ * statistics.
+ */
+Selectivity
+rowcomparesel(PlannerInfo *root,
+			  RowCompareExpr *clause,
+			  int varRelid, JoinType jointype)
+{
+	Selectivity s1;
+	Oid			opno = linitial_oid(clause->opnos);
+	List	   *opargs;
+	bool		is_join_clause;
+
+	/* Build equivalent arg list for single operator */
+	opargs = list_make2(linitial(clause->largs), linitial(clause->rargs));
+
+	/* Decide if it's a join clause, same as for OpExpr */
+	if (varRelid != 0)
+	{
+		/*
+		 * If we are considering a nestloop join then all clauses are
+		 * restriction clauses, since we are only interested in the one
+		 * relation.
+		 */
+		is_join_clause = false;
+	}
+	else
+	{
+		/*
+		 * Otherwise, it's a join if there's more than one relation used.
+		 * Notice we ignore the low-order columns here.
+		 */
+		is_join_clause = (NumRelids((Node *) opargs) > 1);
+	}
+
+	if (is_join_clause)
+	{
+		/* Estimate selectivity for a join clause. */
+		s1 = join_selectivity(root, opno,
+							  opargs,
+							  jointype);
+	}
+	else
+	{
+		/* Estimate selectivity for a restriction clause. */
+		s1 = restriction_selectivity(root, opno,
+									 opargs,
+									 varRelid);
+	}
+
+	return s1;
 }
 
 /*
@@ -2305,7 +2714,7 @@ estimate_hash_bucketsize(PlannerInfo *root, Node *hashkey, double nbuckets)
 /*
  * convert_to_scalar
  *	  Convert non-NULL values of the indicated types to the comparison
- *	  scale needed by scalarltsel()/scalargtsel().
+ *	  scale needed by scalarineqsel().
  *	  Returns "true" if successful.
  *
  * XXX this routine is a hack: ideally we should look up the conversion
@@ -2686,7 +3095,20 @@ convert_string_datum(Datum value, Oid typid)
 		 * == as you'd expect.  Can't any of these people program their way
 		 * out of a paper bag?
 		 */
+#if _MSC_VER == 1400			/* VS.Net 2005 */
+
+		/*
+		 * http://connect.microsoft.com/VisualStudio/feedback/ViewFeedback.aspx
+		 * ?FeedbackID=99694
+		 */
+		{
+			char		x[1];
+
+			xfrmlen = strxfrm(x, val, 0);
+		}
+#else
 		xfrmlen = strxfrm(NULL, val, 0);
+#endif
 		xfrmstr = (char *) palloc(xfrmlen + 1);
 		xfrmlen2 = strxfrm(xfrmstr, val, xfrmlen + 1);
 		Assert(xfrmlen2 <= xfrmlen);
@@ -2891,7 +3313,7 @@ convert_timevalue_to_scalar(Datum value, Oid typid)
  * Note: if there are Vars on both sides of the clause, we must fail, because
  * callers are expecting that the other side will act like a pseudoconstant.
  */
-static bool
+bool
 get_restriction_variable(PlannerInfo *root, List *args, int varRelid,
 						 VariableStatData *vardata, Node **other,
 						 bool *varonleft)
@@ -2945,7 +3367,7 @@ get_restriction_variable(PlannerInfo *root, List *args, int varRelid,
  * get_join_variables
  *		Apply examine_variable() to each side of a join clause.
  */
-static void
+void
 get_join_variables(PlannerInfo *root, List *args,
 				   VariableStatData *vardata1, VariableStatData *vardata2)
 {
@@ -2988,7 +3410,7 @@ get_join_variables(PlannerInfo *root, List *args,
  *
  * Caller is responsible for doing ReleaseVariableStats() before exiting.
  */
-static void
+void
 examine_variable(PlannerInfo *root, Node *node, int varRelid,
 				 VariableStatData *vardata)
 {
@@ -3027,9 +3449,9 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 		if (rte->inh)
 		{
 			/*
-			 * XXX This means the Var represents a column of an append relation.
-			 * Later add code to look at the member relations and try to derive
-			 * some kind of combined statistics?
+			 * XXX This means the Var represents a column of an append
+			 * relation. Later add code to look at the member relations and
+			 * try to derive some kind of combined statistics?
 			 */
 		}
 		else if (rte->rtekind == RTE_RELATION)
@@ -3179,7 +3601,7 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
  * NB: be careful to produce an integral result, since callers may compare
  * the result to exact integer counts.
  */
-static double
+double
 get_variable_numdistinct(VariableStatData *vardata)
 {
 	double		stadistinct;
@@ -3466,14 +3888,8 @@ like_fixed_prefix(Const *patt_const, bool case_insensitive,
 		bytea	   *bstr = DatumGetByteaP(patt_const->constvalue);
 
 		pattlen = VARSIZE(bstr) - VARHDRSZ;
-		if (pattlen > 0)
-		{
-			patt = (char *) palloc(pattlen);
-			memcpy(patt, VARDATA(bstr), pattlen);
-		}
-		else
-			patt = NULL;
-
+		patt = (char *) palloc(pattlen);
+		memcpy(patt, VARDATA(bstr), pattlen);
 		if ((Pointer) bstr != DatumGetPointer(patt_const->constvalue))
 			pfree(bstr);
 	}
@@ -3491,7 +3907,7 @@ like_fixed_prefix(Const *patt_const, bool case_insensitive,
 		if (patt[pos] == '\\')
 		{
 			pos++;
-			if (patt[pos] == '\0' && typeid != BYTEAOID)
+			if (pos >= pattlen)
 				break;
 		}
 
@@ -3524,8 +3940,7 @@ like_fixed_prefix(Const *patt_const, bool case_insensitive,
 		*rest_const = string_to_bytea_const(rest, pattlen - pos);
 	}
 
-	if (patt != NULL)
-		pfree(patt);
+	pfree(patt);
 	pfree(match);
 
 	/* in LIKE, an empty pattern is an exact match! */
@@ -3730,6 +4145,10 @@ pattern_fixed_prefix(Const *patt, Pattern_Type ptype,
  * A fixed prefix "foo" is estimated as the selectivity of the expression
  * "variable >= 'foo' AND variable < 'fop'" (see also indxpath.c).
  *
+ * The selectivity estimate is with respect to the portion of the column
+ * population represented by the histogram --- the caller must fold this
+ * together with info about MCVs and NULLs.
+ *
  * We use the >= and < operators from the specified btree opclass to do the
  * estimation.	The given variable and Const must be of the associated
  * datatype.
@@ -3740,25 +4159,28 @@ pattern_fixed_prefix(Const *patt, Pattern_Type ptype,
  * more useful to use the upper-bound code than not.
  */
 static Selectivity
-prefix_selectivity(PlannerInfo *root, Node *variable,
-				   Oid opclass, Const *prefixcon)
+prefix_selectivity(VariableStatData *vardata, Oid opclass, Const *prefixcon)
 {
 	Selectivity prefixsel;
 	Oid			cmpopr;
-	List	   *cmpargs;
+	FmgrInfo	opproc;
 	Const	   *greaterstrcon;
 
 	cmpopr = get_opclass_member(opclass, InvalidOid,
 								BTGreaterEqualStrategyNumber);
 	if (cmpopr == InvalidOid)
 		elog(ERROR, "no >= operator for opclass %u", opclass);
-	cmpargs = list_make2(variable, prefixcon);
-	/* Assume scalargtsel is appropriate for all supported types */
-	prefixsel = DatumGetFloat8(DirectFunctionCall4(scalargtsel,
-												   PointerGetDatum(root),
-												   ObjectIdGetDatum(cmpopr),
-												   PointerGetDatum(cmpargs),
-												   Int32GetDatum(0)));
+	fmgr_info(get_opcode(cmpopr), &opproc);
+
+	prefixsel = ineq_histogram_selectivity(vardata, &opproc, true,
+										   prefixcon->constvalue,
+										   prefixcon->consttype);
+
+	if (prefixsel <= 0.0)
+	{
+		/* No histogram is present ... return a suitable default estimate */
+		return 0.005;
+	}
 
 	/*-------
 	 * If we can create a string larger than the prefix, say
@@ -3774,49 +4196,30 @@ prefix_selectivity(PlannerInfo *root, Node *variable,
 									BTLessStrategyNumber);
 		if (cmpopr == InvalidOid)
 			elog(ERROR, "no < operator for opclass %u", opclass);
-		cmpargs = list_make2(variable, greaterstrcon);
-		/* Assume scalarltsel is appropriate for all supported types */
-		topsel = DatumGetFloat8(DirectFunctionCall4(scalarltsel,
-													PointerGetDatum(root),
-													ObjectIdGetDatum(cmpopr),
-													PointerGetDatum(cmpargs),
-													Int32GetDatum(0)));
+		fmgr_info(get_opcode(cmpopr), &opproc);
+
+		topsel = ineq_histogram_selectivity(vardata, &opproc, false,
+											greaterstrcon->constvalue,
+											greaterstrcon->consttype);
+
+		/* ineq_histogram_selectivity worked before, it shouldn't fail now */
+		Assert(topsel > 0.0);
 
 		/*
 		 * Merge the two selectivities in the same way as for a range query
-		 * (see clauselist_selectivity()).
+		 * (see clauselist_selectivity()).	Note that we don't need to worry
+		 * about double-exclusion of nulls, since ineq_histogram_selectivity
+		 * doesn't count those anyway.
 		 */
 		prefixsel = topsel + prefixsel - 1.0;
 
-		/* Adjust for double-exclusion of NULLs */
-		prefixsel += nulltestsel(root, IS_NULL, variable, 0);
-
 		/*
-		 * A zero or slightly negative prefixsel should be converted into a
-		 * small positive value; we probably are dealing with a very tight
-		 * range and got a bogus result due to roundoff errors. However, if
-		 * prefixsel is very negative, then we probably have default
-		 * selectivity estimates on one or both sides of the range.  In that
-		 * case, insert a not-so-wildly-optimistic default estimate.
+		 * A zero or negative prefixsel should be converted into a small
+		 * positive value; we probably are dealing with a very tight range and
+		 * got a bogus result due to roundoff errors.
 		 */
 		if (prefixsel <= 0.0)
-		{
-			if (prefixsel < -0.01)
-			{
-				/*
-				 * No data available --- use a default estimate that is small,
-				 * but not real small.
-				 */
-				prefixsel = 0.005;
-			}
-			else
-			{
-				/*
-				 * It's just roundoff error; use a small positive value
-				 */
-				prefixsel = 1.0e-10;
-			}
-		}
+			prefixsel = 1.0e-10;
 	}
 
 	return prefixsel;
@@ -3828,7 +4231,8 @@ prefix_selectivity(PlannerInfo *root, Node *variable,
  * Note that any fixed prefix of the pattern will have been removed already.
  *
  * For now, we use a very simplistic approach: fixed characters reduce the
- * selectivity a good deal, character ranges reduce it a little.
+ * selectivity a good deal, character ranges reduce it a little,
+ * wildcards (such as % for LIKE or .* for regex) increase it.
  *
  * CDB: There is a gradual lessening of the change in selectivity as more
  * fixed characters or character ranges are added.
@@ -3868,22 +4272,20 @@ like_selectivity(Const *patt_const, bool case_insensitive)
 		bytea	   *bstr = DatumGetByteaP(patt_const->constvalue);
 
 		pattlen = VARSIZE(bstr) - VARHDRSZ;
-		if (pattlen > 0)
-		{
-			patt = (char *) palloc(pattlen);
-			memcpy(patt, VARDATA(bstr), pattlen);
-		}
-		else
-			patt = NULL;
-
+		patt = (char *) palloc(pattlen);
+		memcpy(patt, VARDATA(bstr), pattlen);
 		if ((Pointer) bstr != DatumGetPointer(patt_const->constvalue))
 			pfree(bstr);
 	}
-	/* patt should never be NULL in practice */
-	Assert(patt != NULL);
 
 	/* Skip any leading %; it's already factored into initial sel */
 	for (pos = 0; pos < pattlen; pos++)
+	{
+		if (patt[pos] != '%' && patt[pos] != '_')
+			break;
+	}
+
+	for (; pos < pattlen; pos++)
 	{
 		/* % and _ are wildcard characters in LIKE */
 		if (patt[pos] == '%')
@@ -4116,14 +4518,8 @@ make_greater_string(const Const *str_const)
 		bytea	   *bstr = DatumGetByteaP(str_const->constvalue);
 
 		len = VARSIZE(bstr) - VARHDRSZ;
-		if (len > 0)
-		{
-			workstr = (char *) palloc(len);
-			memcpy(workstr, VARDATA(bstr), len);
-		}
-		else
-			workstr = NULL;
-
+		workstr = (char *) palloc(len);
+		memcpy(workstr, VARDATA(bstr), len);
 		if ((Pointer) bstr != DatumGetPointer(str_const->constvalue))
 			pfree(bstr);
 	}
@@ -4179,8 +4575,7 @@ make_greater_string(const Const *str_const)
 	}
 
 	/* Failed... */
-	if (workstr != NULL)
-		pfree(workstr);
+	pfree(workstr);
 
 	return NULL;
 }
@@ -4254,6 +4649,7 @@ string_to_bytea_const(const char *str, size_t str_len)
 static void
 genericcostestimate(PlannerInfo *root,
 					IndexOptInfo *index, List *indexQuals,
+					RelOptInfo *outer_rel,
 					double numIndexTuples,
 					Cost *indexStartupCost,
 					Cost *indexTotalCost,
@@ -4261,10 +4657,14 @@ genericcostestimate(PlannerInfo *root,
 					double *indexCorrelation)
 {
 	double		numIndexPages;
+	double		num_sa_scans;
+	double		num_outer_scans;
+	double		num_scans;
 	QualCost	index_qual_cost;
 	double		qual_op_cost;
 	double		qual_arg_cost;
 	List	   *selectivityQuals;
+	ListCell   *l;
 
 	/*
 	 * If the index is partial, AND the index predicate with the explicitly
@@ -4301,6 +4701,25 @@ genericcostestimate(PlannerInfo *root,
 	else
 		selectivityQuals = indexQuals;
 
+	/*
+	 * Check for ScalarArrayOpExpr index quals, and estimate the number of
+	 * index scans that will be performed.
+	 */
+	num_sa_scans = 1;
+	foreach(l, indexQuals)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
+
+		if (IsA(rinfo->clause, ScalarArrayOpExpr))
+		{
+			ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) rinfo->clause;
+			int			alength = estimate_array_length(lsecond(saop->args));
+
+			if (alength > 1)
+				num_sa_scans *= alength;
+		}
+	}
+
 	/* Estimate the fraction of main-table tuples that will be visited */
 	*indexSelectivity = clauselist_selectivity(root, selectivityQuals,
 											   index->rel->relid,
@@ -4315,6 +4734,13 @@ genericcostestimate(PlannerInfo *root,
 		numIndexTuples = *indexSelectivity * index->rel->tuples;
 
 	/*
+	 * The estimate obtained so far counts all the tuples returned by all
+	 * scans of ScalarArrayOpExpr calls.  We want to consider the per-scan
+	 * number, so adjust.  This is a handy place to round to integer, too.
+	 */
+	numIndexTuples = rint(numIndexTuples / num_sa_scans);
+
+	/*
 	 * We can bound the number of tuples by the index size in any case. Also,
 	 * always estimate at least one tuple is touched, even when
 	 * indexSelectivity estimate is tiny.
@@ -4327,26 +4753,91 @@ genericcostestimate(PlannerInfo *root,
 	/*
 	 * Estimate the number of index pages that will be retrieved.
 	 *
-	 * For all currently-supported index types, the first page of the index is
-	 * a metadata page, and we should figure on fetching that plus a pro-rated
-	 * fraction of the remaining pages.
+	 * We use the simplistic method of taking a pro-rata fraction of the total
+	 * number of index pages.  In effect, this counts only leaf pages and not
+	 * any overhead such as index metapage or upper tree levels. In practice
+	 * this seems a better approximation than charging for access to the upper
+	 * levels, perhaps because those tend to stay in cache under load.
 	 */
-	if (index->pages > 1 && index->tuples > 0)
-	{
-		numIndexPages = (numIndexTuples / index->tuples) * (index->pages - 1);
-		numIndexPages += 1;		/* count the metapage too */
-		numIndexPages = ceil(numIndexPages);
-	}
+	if (index->pages > 1 && index->tuples > 1)
+		numIndexPages = ceil(numIndexTuples * index->pages / index->tuples);
 	else
 		numIndexPages = 1.0;
 
 	/*
-	 * Compute the index access cost.
+	 * Now compute the disk access costs.
 	 *
-	 * Disk cost: our generic assumption is that the index pages will be read
-	 * sequentially, so they have cost 1.0 each, not random_page_cost.
+	 * The above calculations are all per-index-scan.  However, if we are in a
+	 * nestloop inner scan, we can expect the scan to be repeated (with
+	 * different search keys) for each row of the outer relation.  Likewise,
+	 * ScalarArrayOpExpr quals result in multiple index scans.	This creates
+	 * the potential for cache effects to reduce the number of disk page
+	 * fetches needed.	We want to estimate the average per-scan I/O cost in
+	 * the presence of caching.
+	 *
+	 * We use the Mackert-Lohman formula (see costsize.c for details) to
+	 * estimate the total number of page fetches that occur.  While this
+	 * wasn't what it was designed for, it seems a reasonable model anyway.
+	 * Note that we are counting pages not tuples anymore, so we take N = T =
+	 * index size, as if there were one "tuple" per page.
 	 */
-	*indexTotalCost = numIndexPages;
+	if (outer_rel != NULL && outer_rel->rows > 1)
+	{
+		num_outer_scans = outer_rel->rows;
+		num_scans = num_sa_scans * num_outer_scans;
+	}
+	else
+	{
+		num_outer_scans = 1;
+		num_scans = num_sa_scans;
+	}
+
+	if (num_scans > 1)
+	{
+		double		pages_fetched;
+
+		/* total page fetches ignoring cache effects */
+		pages_fetched = numIndexPages * num_scans;
+
+		/* use Mackert and Lohman formula to adjust for cache effects */
+		pages_fetched = index_pages_fetched(pages_fetched,
+											index->pages,
+											(double) index->pages,
+											root);
+
+		/*
+		 * Now compute the total disk access cost, and then report a pro-rated
+		 * share for each outer scan.  (Don't pro-rate for ScalarArrayOpExpr,
+		 * since that's internal to the indexscan.)
+		 */
+		*indexTotalCost = (pages_fetched * random_page_cost) / num_outer_scans;
+	}
+	else
+	{
+		/*
+		 * For a single index scan, we just charge random_page_cost per page
+		 * touched.
+		 */
+		*indexTotalCost = numIndexPages * random_page_cost;
+	}
+
+	/*
+	 * A difficulty with the leaf-pages-only cost approach is that for small
+	 * selectivities (eg, single index tuple fetched) all indexes will look
+	 * equally attractive because we will estimate exactly 1 leaf page to be
+	 * fetched.  All else being equal, we should prefer physically smaller
+	 * indexes over larger ones.  (An index might be smaller because it is
+	 * partial or because it contains fewer columns; presumably the other
+	 * columns in the larger index aren't useful to the query, or the larger
+	 * index would have better selectivity.)
+	 *
+	 * We can deal with this by adding a very small "fudge factor" that
+	 * depends on the index size.  The fudge factor used here is one
+	 * random_page_cost per 100000 index pages, which should be small enough
+	 * to not alter index-vs-seqscan decisions, but will prevent indexes of
+	 * different sizes from looking exactly equally attractive.
+	 */
+	*indexTotalCost += index->pages * random_page_cost / 100000.0;
 
 	/*
 	 * CPU cost: any complex expressions in the indexquals will need to be
@@ -4383,10 +4874,11 @@ btcostestimate(PG_FUNCTION_ARGS)
 	PlannerInfo *root = (PlannerInfo *) PG_GETARG_POINTER(0);
 	IndexOptInfo *index = (IndexOptInfo *) PG_GETARG_POINTER(1);
 	List	   *indexQuals = (List *) PG_GETARG_POINTER(2);
-	Cost	   *indexStartupCost = (Cost *) PG_GETARG_POINTER(3);
-	Cost	   *indexTotalCost = (Cost *) PG_GETARG_POINTER(4);
-	Selectivity *indexSelectivity = (Selectivity *) PG_GETARG_POINTER(5);
-	double	   *indexCorrelation = (double *) PG_GETARG_POINTER(6);
+	RelOptInfo *outer_rel = (RelOptInfo *) PG_GETARG_POINTER(3);
+	Cost	   *indexStartupCost = (Cost *) PG_GETARG_POINTER(4);
+	Cost	   *indexTotalCost = (Cost *) PG_GETARG_POINTER(5);
+	Selectivity *indexSelectivity = (Selectivity *) PG_GETARG_POINTER(6);
+	double	   *indexCorrelation = (double *) PG_GETARG_POINTER(7);
 	Oid			relid;
 	AttrNumber	colnum;
 	HeapTuple	tuple;
@@ -4394,6 +4886,7 @@ btcostestimate(PG_FUNCTION_ARGS)
 	List	   *indexBoundQuals;
 	int			indexcol;
 	bool		eqQualHere;
+	bool		found_saop;
 	ListCell   *l;
 
 	/*
@@ -4405,26 +4898,63 @@ btcostestimate(PG_FUNCTION_ARGS)
 	 * for estimating numIndexTuples.  So we must examine the given indexQuals
 	 * to find out which ones count as boundary quals.	We rely on the
 	 * knowledge that they are given in index column order.
+	 *
+	 * For a RowCompareExpr, we consider only the first column, just as
+	 * rowcomparesel() does.
+	 *
+	 * If there's a ScalarArrayOpExpr in the quals, we'll actually perform N
+	 * index scans not one, but the ScalarArrayOpExpr's operator can be
+	 * considered to act the same as it normally does.
 	 */
 	indexBoundQuals = NIL;
 	indexcol = 0;
 	eqQualHere = false;
+	found_saop = false;
 	foreach(l, indexQuals)
 	{
 		RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
 		Expr	   *clause;
+		Node	   *leftop,
+				   *rightop;
 		Oid			clause_op;
 		int			op_strategy;
 
 		Assert(IsA(rinfo, RestrictInfo));
 		clause = rinfo->clause;
-		Assert(IsA(clause, OpExpr));
-		clause_op = ((OpExpr *) clause)->opno;
-		if (match_index_to_operand(get_leftop(clause), indexcol, index))
+		if (IsA(clause, OpExpr))
+		{
+			leftop = get_leftop(clause);
+			rightop = get_rightop(clause);
+			clause_op = ((OpExpr *) clause)->opno;
+		}
+		else if (IsA(clause, RowCompareExpr))
+		{
+			RowCompareExpr *rc = (RowCompareExpr *) clause;
+
+			leftop = (Node *) linitial(rc->largs);
+			rightop = (Node *) linitial(rc->rargs);
+			clause_op = linitial_oid(rc->opnos);
+		}
+		else if (IsA(clause, ScalarArrayOpExpr))
+		{
+			ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
+
+			leftop = (Node *) linitial(saop->args);
+			rightop = (Node *) lsecond(saop->args);
+			clause_op = saop->opno;
+			found_saop = true;
+		}
+		else
+		{
+			elog(ERROR, "unsupported indexqual type: %d",
+				 (int) nodeTag(clause));
+			continue;			/* keep compiler quiet */
+		}
+		if (match_index_to_operand(leftop, indexcol, index))
 		{
 			/* clause_op is correct */
 		}
-		else if (match_index_to_operand(get_rightop(clause), indexcol, index))
+		else if (match_index_to_operand(rightop, indexcol, index))
 		{
 			/* Must flip operator to get the opclass member */
 			clause_op = get_commutator(clause_op);
@@ -4436,12 +4966,11 @@ btcostestimate(PG_FUNCTION_ARGS)
 				break;			/* done if no '=' qual for indexcol */
 			indexcol++;
 			eqQualHere = false;
-			if (match_index_to_operand(get_leftop(clause), indexcol, index))
+			if (match_index_to_operand(leftop, indexcol, index))
 			{
 				/* clause_op is correct */
 			}
-			else if (match_index_to_operand(get_rightop(clause),
-											indexcol, index))
+			else if (match_index_to_operand(rightop, indexcol, index))
 			{
 				/* Must flip operator to get the opclass member */
 				clause_op = get_commutator(clause_op);
@@ -4487,7 +5016,7 @@ btcostestimate(PG_FUNCTION_ARGS)
 		numIndexTuples = btreeSelectivity * index->rel->tuples;
 	}
 
-	genericcostestimate(root, index, indexQuals, numIndexTuples,
+	genericcostestimate(root, index, indexQuals, outer_rel, numIndexTuples,
 						indexStartupCost, indexTotalCost,
 						indexSelectivity, indexCorrelation);
 
@@ -4498,7 +5027,14 @@ btcostestimate(PG_FUNCTION_ARGS)
 	 * is that multiple columns dilute the importance of the first column's
 	 * ordering, but don't negate it entirely.  Before 8.0 we divided the
 	 * correlation by the number of columns, but that seems too strong.)
+	 *
+	 * We can skip all this if we found a ScalarArrayOpExpr, because then the
+	 * call must be for a bitmap index scan, and the caller isn't going to
+	 * care what the index correlation is.
 	 */
+	if (found_saop)
+		PG_RETURN_VOID();
+
 	if (index->indexkeys[0] != 0)
 	{
 		/* Simple variable --- look to stats for the underlying table */
@@ -4547,35 +5083,18 @@ btcostestimate(PG_FUNCTION_ARGS)
 }
 
 Datum
-rtcostestimate(PG_FUNCTION_ARGS)
-{
-	PlannerInfo *root = (PlannerInfo *) PG_GETARG_POINTER(0);
-	IndexOptInfo *index = (IndexOptInfo *) PG_GETARG_POINTER(1);
-	List	   *indexQuals = (List *) PG_GETARG_POINTER(2);
-	Cost	   *indexStartupCost = (Cost *) PG_GETARG_POINTER(3);
-	Cost	   *indexTotalCost = (Cost *) PG_GETARG_POINTER(4);
-	Selectivity *indexSelectivity = (Selectivity *) PG_GETARG_POINTER(5);
-	double	   *indexCorrelation = (double *) PG_GETARG_POINTER(6);
-
-	genericcostestimate(root, index, indexQuals, 0.0,
-						indexStartupCost, indexTotalCost,
-						indexSelectivity, indexCorrelation);
-
-	PG_RETURN_VOID();
-}
-
-Datum
 hashcostestimate(PG_FUNCTION_ARGS)
 {
 	PlannerInfo *root = (PlannerInfo *) PG_GETARG_POINTER(0);
 	IndexOptInfo *index = (IndexOptInfo *) PG_GETARG_POINTER(1);
 	List	   *indexQuals = (List *) PG_GETARG_POINTER(2);
-	Cost	   *indexStartupCost = (Cost *) PG_GETARG_POINTER(3);
-	Cost	   *indexTotalCost = (Cost *) PG_GETARG_POINTER(4);
-	Selectivity *indexSelectivity = (Selectivity *) PG_GETARG_POINTER(5);
-	double	   *indexCorrelation = (double *) PG_GETARG_POINTER(6);
+	RelOptInfo *outer_rel = (RelOptInfo *) PG_GETARG_POINTER(3);
+	Cost	   *indexStartupCost = (Cost *) PG_GETARG_POINTER(4);
+	Cost	   *indexTotalCost = (Cost *) PG_GETARG_POINTER(5);
+	Selectivity *indexSelectivity = (Selectivity *) PG_GETARG_POINTER(6);
+	double	   *indexCorrelation = (double *) PG_GETARG_POINTER(7);
 
-	genericcostestimate(root, index, indexQuals, 0.0,
+	genericcostestimate(root, index, indexQuals, outer_rel, 0.0,
 						indexStartupCost, indexTotalCost,
 						indexSelectivity, indexCorrelation);
 
@@ -4588,12 +5107,32 @@ gistcostestimate(PG_FUNCTION_ARGS)
 	PlannerInfo *root = (PlannerInfo *) PG_GETARG_POINTER(0);
 	IndexOptInfo *index = (IndexOptInfo *) PG_GETARG_POINTER(1);
 	List	   *indexQuals = (List *) PG_GETARG_POINTER(2);
-	Cost	   *indexStartupCost = (Cost *) PG_GETARG_POINTER(3);
-	Cost	   *indexTotalCost = (Cost *) PG_GETARG_POINTER(4);
-	Selectivity *indexSelectivity = (Selectivity *) PG_GETARG_POINTER(5);
-	double	   *indexCorrelation = (double *) PG_GETARG_POINTER(6);
+	RelOptInfo *outer_rel = (RelOptInfo *) PG_GETARG_POINTER(3);
+	Cost	   *indexStartupCost = (Cost *) PG_GETARG_POINTER(4);
+	Cost	   *indexTotalCost = (Cost *) PG_GETARG_POINTER(5);
+	Selectivity *indexSelectivity = (Selectivity *) PG_GETARG_POINTER(6);
+	double	   *indexCorrelation = (double *) PG_GETARG_POINTER(7);
 
-	genericcostestimate(root, index, indexQuals, 0.0,
+	genericcostestimate(root, index, indexQuals, outer_rel, 0.0,
+						indexStartupCost, indexTotalCost,
+						indexSelectivity, indexCorrelation);
+
+	PG_RETURN_VOID();
+}
+
+Datum
+gincostestimate(PG_FUNCTION_ARGS)
+{
+	PlannerInfo *root = (PlannerInfo *) PG_GETARG_POINTER(0);
+	IndexOptInfo *index = (IndexOptInfo *) PG_GETARG_POINTER(1);
+	List	   *indexQuals = (List *) PG_GETARG_POINTER(2);
+	RelOptInfo *outer_rel = (RelOptInfo *) PG_GETARG_POINTER(3);
+	Cost	   *indexStartupCost = (Cost *) PG_GETARG_POINTER(4);
+	Cost	   *indexTotalCost = (Cost *) PG_GETARG_POINTER(5);
+	Selectivity *indexSelectivity = (Selectivity *) PG_GETARG_POINTER(6);
+	double	   *indexCorrelation = (double *) PG_GETARG_POINTER(7);
+
+	genericcostestimate(root, index, indexQuals, outer_rel, 0.0,
 						indexStartupCost, indexTotalCost,
 						indexSelectivity, indexCorrelation);
 
