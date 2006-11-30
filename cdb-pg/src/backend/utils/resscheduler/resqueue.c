@@ -62,8 +62,8 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	bool			found;
 	ResourceOwner	owner;
 	LWLockId		masterLock;
-	LockMethod		lockMethodTable;
 	int				status;
+#if 0
 
 	/* Setup the lock method bits. */
 	locktag->locktag_lockmethodid = RESOURCE_LOCKMETHOD;
@@ -271,6 +271,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 
 	/* Release the masterlock. */
 	LWLockRelease(masterLock);
+#endif
 
 	return LOCKACQUIRE_OK;
 }
@@ -297,10 +298,10 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	bool			found;
 	ResourceOwner	owner;
 	LWLockId		masterLock;
-	LockMethod		lockMethodTable;
 	/*int				status;*/
 	ResPortalIncrement	*incrementSet;
 	ResPortalTag		portalTag;
+#if 0
 
 	/* Setup the lock method bits. */
 	locktag->locktag_lockmethodid = RESOURCE_LOCKMETHOD;
@@ -441,6 +442,7 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	}
 
 	LWLockRelease(masterLock);
+#endif
 
 	return true;
 }
@@ -473,6 +475,7 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock,
 	int				status = STATUS_OK;
 	Cost			increment_amt;
 	int				i;
+#if 0
 
 	/* Get the queue for this lock.*/
 	ResQueue		queue = GetResQueueFromLock(lock);
@@ -565,6 +568,7 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock,
 		status = STATUS_ERROR;
 	else if (over_limit)
 		status = STATUS_FOUND;
+#endif
 
 	return status;
 
@@ -589,6 +593,7 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock,
 {
 	Cost			increment_amt;
 	int				i;
+#if 0 
 
 	/* Get the queue for this lock.*/
 	ResQueue		queue = GetResQueueFromLock(lock);
@@ -654,6 +659,7 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock,
 			break;
 		}
 	}
+#endif
 
 	return;
 }
@@ -764,6 +770,7 @@ ResCleanUpLock(LOCK *lock, PROCLOCK *proclock)
 	 * If this was my last hold on this lock, delete my entry in the proclock
 	 * table.
 	 */
+#if 0
 	if (proclock->holdMask == 0 && proclock->nLocks == 0)
 	{
 		SHMQueueDelete(&proclock->lockLink);
@@ -792,6 +799,7 @@ ResCleanUpLock(LOCK *lock, PROCLOCK *proclock)
 	 * Awaken any waiters (hmm maybe we should check if there are any TODO)
 	 */
 	ResProcLockWakeup(lock);
+#endif
 
 	return;
 }
@@ -809,7 +817,7 @@ void
 ResWaitOnLock(LOCK *lock, PROCLOCK *proclock, ResourceOwner owner)
 {
 	
-	LockMethod  lockMethodTable = LockMethods[RESOURCE_LOCKMETHOD];
+
 	const char	*old_status;
 	char		*new_status;
 	int			len;
@@ -820,7 +828,7 @@ ResWaitOnLock(LOCK *lock, PROCLOCK *proclock, ResourceOwner owner)
 	strcpy(new_status + len, " queuing");
 	set_ps_display(new_status, false);
 	new_status[len] = '\0';
-
+#if 0
 	/*
 	 * Now sleep.
 	 */
@@ -836,6 +844,7 @@ ResWaitOnLock(LOCK *lock, PROCLOCK *proclock, ResourceOwner owner)
 
 	set_ps_display(new_status, false);
 	pfree(new_status);
+#endif 
 
 	return;
 }
@@ -856,7 +865,7 @@ ResProcLockWakeup(LOCK *lock)
 	PGPROC		*proc;
 	/*LOCKMASK	aheadRequests = 0; */
 	int			status;
-
+#if 0 
 	Assert(queue_size >= 0);
 	if (queue_size == 0)
 		return;
@@ -910,7 +919,7 @@ ResProcLockWakeup(LOCK *lock)
 
 	Assert(waitQueue->size >= 0);
 	
-
+#endif 
 	return;
 }
 
@@ -924,7 +933,7 @@ PGPROC *
 ResProcWakeup(PGPROC *proc, int waitStatus)
 {
 	PGPROC		*retProc;
-
+#if 0
 	/* Proc should be sleeping ... */
 	if (proc->links.prev == INVALID_OFFSET ||
 		proc->links.next == INVALID_OFFSET)
@@ -944,7 +953,7 @@ ResProcWakeup(PGPROC *proc, int waitStatus)
 
 	/* And awaken it */
 	 PGSemaphoreUnlock(&proc->sem);
-
+#endif 
 	return retProc;
 }
 
@@ -961,7 +970,7 @@ ResRemoveFromWaitQueue(PGPROC *proc)
     LOCKMODE		lockmode = proc->waitLockMode;
     LOCKMETHODID	lockmethodid = LOCK_LOCKMETHOD(*waitLock);
 	ResPortalTag	portalTag;
-
+#if 0
     /* Make sure proc is waiting */
 	Assert(proc->links.next != INVALID_OFFSET);
 	Assert(waitLock);
@@ -1003,7 +1012,7 @@ ResRemoveFromWaitQueue(PGPROC *proc)
      * any other waiters for the lock can be woken up now.
    	 */
    	ResCleanUpLock(waitLock, (PROCLOCK *) proclock);
-
+#endif 
 }
 
 
@@ -1014,7 +1023,7 @@ ResRemoveFromWaitQueue(PGPROC *proc)
 void
 ResLockWaitCancel(void)
 {
-	
+#if 0
 	/* Unlink myself from the wait queue, if on it (might not be anymore!) */
 	LWLockAcquire(LockMgrLock, LW_EXCLUSIVE);
 
@@ -1046,7 +1055,7 @@ ResLockWaitCancel(void)
 	 * were able to remove ourselves from the wait-list.
 	 */
 	PGSemaphoreReset(&MyProc->sem);
-
+#endif 
 	return;
 }
 
@@ -1097,10 +1106,10 @@ ResLockReleaseAll(bool isAllOwners, bool isCommit, bool releaseHold)
 	LWLockId		masterLock;
 	LOCK			*lock;
 	PROCLOCK		*proclock;
-	SHM_QUEUE		*procLocks = &(MyProc->procLocks);
+	//SHM_QUEUE		*procLocks = &(MyProc->procLocks);
 	SHM_QUEUE		*portalLinks;
 	bool			foundHoldable;		/* Found lock for a holdable cursor? */
-
+#if 0 
 	/* Setup the lock method bits. */
 	lockMethodTable = LockMethods[RESOURCE_LOCKMETHOD];
 	if (!lockMethodTable)
@@ -1268,7 +1277,7 @@ ResLockReleaseAll(bool isAllOwners, bool isCommit, bool releaseHold)
 	}
 
 	LWLockRelease(masterLock);
-
+#endif 
 	return;
 }
 
@@ -1537,7 +1546,7 @@ ResIncrementUpdate(int pid, uint32 portalId, bool isHold, bool isCommitted)
 {
 	ResPortalTag			portalTag;
 	ResPortalIncrement		*incrementSet;
-
+#if 0
 	/* Take LW lock before messing with the portal hash. */
 	LWLockAcquire(LockMgrLock, LW_EXCLUSIVE);
 
@@ -1562,6 +1571,6 @@ ResIncrementUpdate(int pid, uint32 portalId, bool isHold, bool isCommitted)
 	}
 
 	LWLockRelease(LockMgrLock);
-
+#endif
 	return;
 }
