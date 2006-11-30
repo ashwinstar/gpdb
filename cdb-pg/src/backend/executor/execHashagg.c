@@ -44,7 +44,7 @@ static void batch_close(HashAggTable *hashtable, int batch);
 static TupleTableSlot *batch_get_tuple(HashAggTable *hashtable, int batch,  TupleTableSlot *tupleSlot);
 static void init_agg_hash_iter(HashAggTable* ht);
 static HashAggEntry *lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *hashkeyp, bool *isNew);
-static uint32 get_hash_value(AggState* aggstate, TupleTableSlot *inputslot);
+static uint32 calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot);
 static HashAggEntry *makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashkey);
 
 #define HHA_MSG_LVL DEBUG2
@@ -579,12 +579,15 @@ HashAggEntry *agg_hash_iter(HashAggTable* ht)
 
 
 /*
- * Function: get_hash_value
+ * Function: calc_hash_value
  *
- * Calculate the hash value for the given input tuple.  
+ * Calculate the hash value for the given input tuple.
+ *
+ * This based on but different from get_hash_value from the dynahash
+ * API.  Use a different name to underline that we don't use dynahash.  
  */
 uint32
-get_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
+calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
 {
 	Agg *agg;
 	ExprContext *econtext;
@@ -663,7 +666,7 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *has
 	entry_tuple_desc = aggstate->ss.ss_ScanTupleSlot->tts_tupleDescriptor;
 	
 	/* if first time through, initialize hashslot by cloning input slot.
-	 * This is essential for proper functioning of get_hash_value, etc. */
+	 * This is essential for proper functioning of calc_hash_value, etc. */
 	if (hashslot->tts_tupleDescriptor == NULL)
 	{
 		ExecSetSlotDescriptor(hashslot, inputslot->tts_tupleDescriptor);
@@ -675,7 +678,7 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *has
 	oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
 	/* Get hash key and its bucket index. */
-	hashkey = get_hash_value(aggstate, inputslot);
+	hashkey = calc_hash_value(aggstate, inputslot);
 	if ( hashkeyp ) 
 		*hashkeyp = hashkey;
 	bucket_idx = hashkey % ht->nbucket;

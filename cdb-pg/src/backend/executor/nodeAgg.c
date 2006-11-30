@@ -197,7 +197,7 @@ typedef struct AggHashEntryData
 static void advance_transition_function(AggState *aggstate,
 							AggStatePerAgg peraggstate,
 							AggStatePerGroup pergroupstate,
-							Datum newVal, bool isNull);
+							FunctionCallInfoData *fcinfo);
 static void process_sorted_aggregate(AggState *aggstate,
 						 AggStatePerAgg peraggstate,
 						 AggStatePerGroup pergroupstate);
@@ -692,6 +692,9 @@ hash_agg_entry_size(int numAggs)
 	return entrysize;
 }
 
+#if 0
+/* MPP doesn't use this function, but leave it visible to simplify merges. */
+
 /*
  * Find or create a hashtable entry for the tuple group containing the
  * given tuple.
@@ -737,6 +740,7 @@ lookup_hash_entry(AggState *aggstate, TupleTableSlot *inputslot)
 
 	return entry;
 }
+#endif
 
 /*
  * ExecAgg -
@@ -1035,9 +1039,16 @@ agg_retrieve_hash_table(AggState *aggstate)
 		 * Store the copied first input tuple in the tuple table slot reserved
 		 * for it, so that it can be used in ExecProject.
 		 */
+		
+		/* Retain "PostgreSQL way" as comment since we want to adopt the
+		 * MinimalTuple approach eventually
+		 
 		ExecStoreMinimalTuple(entry->shared.firstTuple,
 							  firstSlot,
 							  false);
+		 *
+		 */
+		ExecStoreTuple(entry->heaptuple, firstSlot, InvalidBuffer, false);
 
 		pergroup = entry->pergroup;
 
