@@ -310,7 +310,7 @@ plan_tree_walker(Node *node,
 		case T_TidScan:
 			if (walk_scan_node_fields((Scan *) node, walker, context))
 				return true;
-			if (walker((Node *) ((TidScan *) node)->tideval, context))
+			if (walker((Node *) ((TidScan *) node)->tidquals, context))
 				return true;
 			break;
 
@@ -424,7 +424,7 @@ plan_tree_walker(Node *node,
 				SubPlan    *subplan = (SubPlan *) node;
 
 				/* recurse into the exprs list */
-				if (expression_tree_walker((Node *) subplan->exprs,
+				if (expression_tree_walker((Node *) subplan->testexpr,
 										   walker, context))
 					return true;
 
@@ -762,7 +762,7 @@ plan_tree_mutator(Node *node,
 
 				FLATCOPY(newtidscan, tidscan, TidScan);
 				SCANMUTATE(newtidscan, tidscan);
-				MUTATE(newtidscan->tideval, tidscan->tideval, List *);
+				MUTATE(newtidscan->tidquals, tidscan->tidquals, List *);
 				/* isTarget is scalar. */
 				return (Node *) newtidscan;
 			}
@@ -1006,7 +1006,7 @@ plan_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, subplan, SubPlan);
 
-				MUTATE(newnode->exprs, subplan->exprs, List *);
+				MUTATE(newnode->testexpr, subplan->testexpr, List *);
 				MUTATE(newnode->plan, subplan->plan, Plan *);
 				MUTATE(newnode->rtable, subplan->rtable, List *);
 				MUTATE(newnode->args, subplan->args, List *);
