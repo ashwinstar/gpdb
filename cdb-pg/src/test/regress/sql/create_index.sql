@@ -68,42 +68,6 @@ CREATE INDEX onek2_stu1_prtl ON onek2 USING btree(stringu1 name_ops)
 	where onek2.stringu1 >= 'J' and onek2.stringu1 < 'K';
 
 --
--- RTREE
--- 
--- rtrees use a quadratic page-splitting algorithm that takes a
--- really, really long time.  we don't test all rtree opclasses
--- in the regression test (we check them using the sequoia 2000
--- benchmark).
---
-CREATE INDEX rect2ind ON fast_emp4000 USING rtree (home_base);
-
-SET enable_seqscan = ON;
-SET enable_indexscan = OFF;
-SET enable_bitmapscan = OFF;
-
-SELECT * FROM fast_emp4000
-    WHERE home_base @ '(200,200),(2000,1000)'::box
-    ORDER BY home_base USING <;
-
-SELECT count(*) FROM fast_emp4000 WHERE home_base && '(1000,1000,0,0)'::box;
-
-SET enable_seqscan = OFF;
-SET enable_indexscan = ON;
-SET enable_bitmapscan = ON;
-
--- there's no easy way to check that these commands actually use
--- the index, unfortunately.  (EXPLAIN would work, but its output
--- changes too often for me to want to put an EXPLAIN in the test...)
-SELECT * FROM fast_emp4000
-    WHERE home_base @ '(200,200),(2000,1000)'::box
-    ORDER BY home_base USING <;
-
-SELECT count(*) FROM fast_emp4000 WHERE home_base && '(1000,1000,0,0)'::box;
-
-DROP INDEX rect2ind;
-
-
---
 -- GiST (rtree-equivalent opclasses only)
 --
 CREATE INDEX grect2ind ON fast_emp4000 USING gist (home_base);
@@ -170,6 +134,41 @@ RESET enable_indexscan;
 RESET enable_bitmapscan;
 
 --
+-- GIN over int[]
+--
+
+SET enable_seqscan = OFF;
+SET enable_indexscan = ON;
+SET enable_bitmapscan = ON;
+
+CREATE INDEX intarrayidx ON array_index_op_test USING gin (i);
+
+SELECT * FROM array_index_op_test WHERE i @> '{32}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i && '{32}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i @> '{17}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i && '{17}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i @> '{32,17}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i && '{32,17}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i <@ '{38,34,32,89}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i = '{47,77}' ORDER BY seqno;
+
+CREATE INDEX textarrayidx ON array_index_op_test USING gin (t);
+
+SELECT * FROM array_index_op_test WHERE t @> '{AAAAAAAA72908}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE t && '{AAAAAAAA72908}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE t @> '{AAAAAAAAAA646}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE t && '{AAAAAAAAAA646}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE t @> '{AAAAAAAA72908,AAAAAAAAAA646}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE t && '{AAAAAAAA72908,AAAAAAAAAA646}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE t <@ '{AAAAAAAA72908,AAAAAAAAAAAAAAAAAAA17075,AA88409,AAAAAAAAAAAAAAAAAA36842,AAAAAAA48038,AAAAAAAAAAAAAA10611}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE t = '{AAAAAAAAAA646,A87088}' ORDER BY seqno;
+
+
+RESET enable_seqscan;
+RESET enable_indexscan;
+RESET enable_bitmapscan;
+
+--
 -- HASH
 --
 CREATE INDEX hash_i4_index ON hash_i4_heap USING hash (random int4_ops);
@@ -220,3 +219,43 @@ INSERT INTO func_index_heap VALUES('QWERTY');
 create index hash_f8_index_1 on hash_f8_heap(abs(random));
 create index hash_f8_index_2 on hash_f8_heap((seqno + 1), random);
 create index hash_f8_index_3 on hash_f8_heap(random) where seqno > 1000;
+
+--
+-- Try some concurrent index builds
+--
+-- Unfortunately this only tests about half the code paths because there are
+-- no concurrent updates happening to the table at the same time.
+
+CREATE TABLE concur_heap (f1 text, f2 text);
+-- empty table
+CREATE INDEX CONCURRENTLY concur_index1 ON concur_heap(f2,f1);
+INSERT INTO concur_heap VALUES  ('a','b');
+INSERT INTO concur_heap VALUES  ('b','b');
+-- unique index
+CREATE UNIQUE INDEX CONCURRENTLY concur_index2 ON concur_heap(f1);
+-- check if constraint is set up properly to be enforced
+INSERT INTO concur_heap VALUES ('b','x');
+-- check if constraint is enforced properly at build time
+CREATE UNIQUE INDEX CONCURRENTLY concur_index3 ON concur_heap(f2);
+-- test that expression indexes and partial indexes work concurrently
+CREATE INDEX CONCURRENTLY concur_index4 on concur_heap(f2) WHERE f1='a';
+CREATE INDEX CONCURRENTLY concur_index5 on concur_heap(f2) WHERE f1='x';
+CREATE INDEX CONCURRENTLY concur_index6 on concur_heap((f2||f1));
+
+-- You can't do a concurrent index build in a transaction
+BEGIN;
+CREATE INDEX CONCURRENTLY concur_index7 ON concur_heap(f1);
+COMMIT;
+
+-- But you can do a regular index build in a transaction
+BEGIN;
+CREATE INDEX std_index on concur_heap(f2);
+COMMIT;
+
+-- check to make sure that the failed indexes were cleaned up properly and the
+-- successful indexes are created properly. Notably that they do NOT have the
+-- "invalid" flag set.
+
+\d concur_heap
+
+DROP TABLE concur_heap;

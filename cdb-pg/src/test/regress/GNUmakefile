@@ -3,10 +3,10 @@
 # GNUmakefile--
 #    Makefile for src/test/regress (the regression tests)
 #
-# Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
-# $PostgreSQL: pgsql/src/test/regress/GNUmakefile,v 1.53 2005/11/01 15:09:11 adunstan Exp $
+# $PostgreSQL: pgsql/src/test/regress/GNUmakefile,v 1.62 2006/07/21 00:24:04 tgl Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -18,6 +18,9 @@ contribdir := $(top_builddir)/contrib
 
 # port number for temp-installation test postmaster
 TEMP_PORT = 5$(DEF_PGPORT)
+
+# where to find psql for testing an existing installation
+PSQLDIR = $(bindir)
 
 # default encoding
 MULTIBYTE = SQL_ASCII
@@ -34,29 +37,37 @@ ifdef NO_LOCALE
 NOLOCALE += --no-locale
 endif
 
+# stuff to pass into build of pg_regress
+EXTRADEFS = '-DHOST_TUPLE="$(host_tuple)"' \
+	'-DMAKEPROG="$(MAKE)"' \
+	'-DSHELLPROG="$(SHELL)"'
+
 ##
 ## Prepare for tests
 ##
 
 # Build regression test driver
 
-all: pg_regress
+all: submake-libpgport pg_regress$(X)
 
-pg_regress: pg_regress.sh GNUmakefile $(top_builddir)/src/Makefile.global
-	sed -e 's,@bindir@,$(bindir),g' \
-	    -e 's,@libdir@,$(libdir),g' \
-	    -e 's,@pkglibdir@,$(pkglibdir),g' \
-	    -e 's,@datadir@,$(datadir),g' \
-	    -e 's/@VERSION@/$(VERSION)/g' \
-	    -e 's/@host_tuple@/$(host_tuple)/g' \
-	    -e 's,@GMAKE@,$(MAKE),g' \
-	    -e 's/@enable_shared@/$(enable_shared)/g' \
-	    -e 's/@GCC@/$(GCC)/g' \
-	  $< >$@
-	chmod a+x $@
+pg_regress$(X): pg_regress.o
+	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LIBS) -o $@
+
+# dependencies ensure that path changes propagate
+pg_regress.o: pg_regress.c $(top_builddir)/src/port/pg_config_paths.h
+	$(CC) $(CFLAGS) $(CPPFLAGS) -I$(top_builddir)/src/port $(EXTRADEFS) -c -o $@ $<
+
+$(top_builddir)/src/port/pg_config_paths.h: $(top_builddir)/src/Makefile.global
+	$(MAKE) -C $(top_builddir)/src/port pg_config_paths.h
+
+install: pg_regress$(X)
+	$(INSTALL_PROGRAM) pg_regress$(X) '$(DESTDIR)$(pgxsdir)/$(subdir)/pg_regress$(X)'
+
+uninstall:
+	rm -f '$(DESTDIR)$(pgxsdir)/$(subdir)/pg_regress$(X)'
 
 
-# Build dynamically-loaded object file for CREATE FUNCTION ... LANGUAGE 'C'.
+# Build dynamically-loaded object file for CREATE FUNCTION ... LANGUAGE C.
 
 NAME = regress
 SO_MAJOR_VERSION= 0
@@ -138,17 +149,17 @@ all:
 check: all
 	-rm -rf ./testtablespace
 	mkdir ./testtablespace
-	$(SHELL) ./pg_regress --temp-install --top-builddir=$(top_builddir) --temp-port=$(TEMP_PORT) --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) $(MAXCONNOPT) $(NOLOCALE)
+	./pg_regress --temp-install=./tmp_check --top-builddir=$(top_builddir) --temp-port=$(TEMP_PORT) --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
 installcheck: all
 	-rm -rf ./testtablespace
 	mkdir ./testtablespace
-	$(SHELL) ./pg_regress --schedule=$(srcdir)/serial_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(NOLOCALE)
+	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/serial_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(NOLOCALE)
 
 installcheck-parallel: all
 	-rm -rf ./testtablespace
 	mkdir ./testtablespace
-	$(SHELL) ./pg_regress --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
+	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
 
 # old interfaces follow...
@@ -158,10 +169,10 @@ runtest: installcheck
 runtest-parallel: installcheck-parallel
 
 bigtest:
-	$(SHELL) ./pg_regress --schedule=$(srcdir)/serial_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(NOLOCALE) numeric_big 
+	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/serial_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(NOLOCALE) numeric_big 
 
 bigcheck:
-	$(SHELL) ./pg_regress --temp-install --top-builddir=$(top_builddir) --temp-port=$(TEMP_PORT) --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) $(MAXCONNOPT) $(NOLOCALE) numeric_big
+	./pg_regress --temp-install=./tmp_check --top-builddir=$(top_builddir) --temp-port=$(TEMP_PORT) --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE) numeric_big
 
 
 ##
@@ -172,7 +183,7 @@ clean distclean maintainer-clean: clean-lib
 # things built by `all' target
 	rm -f $(NAME)$(DLSUFFIX) $(OBJS)
 #	$(MAKE) -C $(contribdir)/spi clean
-	rm -f $(output_files) $(input_files) pg_regress# things created by various check targets
+	rm -f $(output_files) $(input_files) pg_regress.o pg_regress$(X)
 # things created by various check targets
 	rm -rf testtablespace
 	rm -rf results tmp_check log

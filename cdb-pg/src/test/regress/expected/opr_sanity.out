@@ -17,20 +17,26 @@
 -- Helper functions to deal with cases where binary-coercible matches are
 -- allowed.
 -- This should match IsBinaryCoercible() in parse_coerce.c.
-create function binary_coercible(oid, oid) returns bool as
-'SELECT ($1 = $2) OR
- EXISTS(select 1 from pg_cast where
+create function binary_coercible(oid, oid) returns bool as $$
+SELECT ($1 = $2) OR
+ EXISTS(select 1 from pg_catalog.pg_cast where
         castsource = $1 and casttarget = $2 and
-        castfunc = 0 and castcontext = ''i'')'
-language sql;
+        castfunc = 0 and castcontext = 'i') OR
+ ($2 = 'pg_catalog.anyarray'::pg_catalog.regtype AND
+  EXISTS(select 1 from pg_catalog.pg_type where
+         oid = $1 and typelem != 0 and typlen = -1))
+$$ language sql strict stable;
 -- This one ignores castcontext, so it considers only physical equivalence
 -- and not whether the coercion can be invoked implicitly.
-create function physically_coercible(oid, oid) returns bool as
-'SELECT ($1 = $2) OR
- EXISTS(select 1 from pg_cast where
+create function physically_coercible(oid, oid) returns bool as $$
+SELECT ($1 = $2) OR
+ EXISTS(select 1 from pg_catalog.pg_cast where
         castsource = $1 and casttarget = $2 and
-        castfunc = 0)'
-language sql;
+        castfunc = 0) OR
+ ($2 = 'pg_catalog.anyarray'::pg_catalog.regtype AND
+  EXISTS(select 1 from pg_catalog.pg_type where
+         oid = $1 and typelem != 0 and typlen = -1))
+$$ language sql strict stable;
 -- **************** pg_proc ****************
 -- Look for illegal values in pg_proc fields.
 SELECT p1.oid, p1.proname
@@ -46,7 +52,7 @@ WHERE p1.prolang = 0 OR p1.prorettype = 0 OR
 
 -- Look for conflicting proc definitions (same names and input datatypes).
 -- (This test should be dead code now that we have the unique index
--- pg_proc_proname_narg_type_index, but I'll leave it in anyway.)
+-- pg_proc_proname_args_nsp_index, but I'll leave it in anyway.)
 SELECT p1.oid, p1.proname, p2.oid, p2.proname
 FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
@@ -61,12 +67,15 @@ WHERE p1.oid != p2.oid AND
 -- of the same internal function (ie, matching prosrc fields).  It's OK to
 -- have several entries with different pronames for the same internal function,
 -- but conflicts in the number of arguments and other critical items should
--- be complained of.
+-- be complained of.  (We don't check data types here; see next query.)
+-- Note: ignore aggregate functions here, since they all point to the same
+-- dummy built-in function.
 SELECT p1.oid, p1.proname, p2.oid, p2.proname
 FROM pg_proc AS p1, pg_proc AS p2
-WHERE p1.oid != p2.oid AND
+WHERE p1.oid < p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
+    (p1.proisagg = false OR p2.proisagg = false) AND
     (p1.prolang != p2.prolang OR
      p1.proisagg != p2.proisagg OR
      p1.prosecdef != p2.prosecdef OR
@@ -274,6 +283,8 @@ WHERE c.castfunc = p.oid AND
 -- also binary compatible.  This is legal, but usually not intended.
 -- As of 7.4, this finds the casts from text and varchar to bpchar, because
 -- those are binary-compatible while the reverse way goes through rtrim().
+-- As of 8.2, this finds the cast from cidr to inet, because that is a
+-- trivial binary coercion while the other way goes through inet_to_cidr().
 SELECT *
 FROM pg_cast c
 WHERE c.castfunc = 0 AND
@@ -285,7 +296,8 @@ WHERE c.castfunc = 0 AND
 ------------+------------+----------+-------------
          25 |       1042 |        0 | i
        1043 |       1042 |        0 | i
-(2 rows)
+        650 |        869 |        0 | i
+(3 rows)
 
 -- **************** pg_operator ****************
 -- Look for illegal values in pg_operator fields.
@@ -609,7 +621,7 @@ WHERE aggfnoid = 0 OR aggtransfn = 0 OR aggtranstype = 0;
 SELECT a.aggfnoid::oid, p.proname
 FROM pg_aggregate as a, pg_proc as p
 WHERE a.aggfnoid = p.oid AND
-    (NOT p.proisagg OR p.pronargs != 1 OR p.proretset);
+    (NOT p.proisagg OR p.proretset);
  aggfnoid | proname 
 ----------+---------
 (0 rows)
@@ -640,13 +652,17 @@ FROM pg_aggregate AS a, pg_proc AS p, pg_proc AS ptr
 WHERE a.aggfnoid = p.oid AND
     a.aggtransfn = ptr.oid AND
     (ptr.proretset
+     OR NOT (ptr.pronargs = p.pronargs + 1)
      OR NOT physically_coercible(ptr.prorettype, a.aggtranstype)
      OR NOT physically_coercible(a.aggtranstype, ptr.proargtypes[0])
-     OR NOT ((ptr.pronargs = 2 AND
-              physically_coercible(p.proargtypes[0], ptr.proargtypes[1]))
-             OR
-             (ptr.pronargs = 1 AND
-              p.proargtypes[0] = '"any"'::regtype)));
+     OR (p.pronargs > 0 AND
+         NOT physically_coercible(p.proargtypes[0], ptr.proargtypes[1]))
+     OR (p.pronargs > 1 AND
+         NOT physically_coercible(p.proargtypes[1], ptr.proargtypes[2]))
+     OR (p.pronargs > 2 AND
+         NOT physically_coercible(p.proargtypes[2], ptr.proargtypes[3]))
+     -- we could carry the check further, but that's enough for now
+    );
  aggfnoid | proname | oid | proname 
 ----------+---------+-----+---------
 (0 rows)
@@ -765,12 +781,12 @@ WHERE p1.amopclaid = p3.oid AND p3.opcamid = p2.oid AND
 -- Detect missing pg_amop entries: should have as many strategy operators
 -- as AM expects for each opclass for the AM.  When nondefault subtypes are
 -- present, enforce condition separately for each subtype.
--- We have to exclude GiST, unfortunately, since it hasn't got any fixed
--- requirements about strategy operators.
+-- We have to exclude GiST and GIN, unfortunately, since they haven't got
+-- any fixed requirements about strategy operators.
 SELECT p1.oid, p1.amname, p2.oid, p2.opcname, p3.amopsubtype
 FROM pg_am AS p1, pg_opclass AS p2, pg_amop AS p3
 WHERE p2.opcamid = p1.oid AND p3.amopclaid = p2.oid AND
-    p1.amname != 'gist' AND
+    p1.amname != 'gist' AND p1.amname != 'gin' AND
     p1.amstrategies != (SELECT count(*) FROM pg_amop AS p4
                         WHERE p4.amopclaid = p2.oid AND
                               p4.amopsubtype = p3.amopsubtype);
@@ -798,18 +814,6 @@ FROM pg_amop p1 LEFT JOIN pg_opclass p2 ON amopclaid = p2.oid
 ORDER BY 1, 2, 3;
  opcamid | amopstrategy | oprname 
 ---------+--------------+---------
-     402 |            1 | <<
-     402 |            2 | &<
-     402 |            3 | &&
-     402 |            4 | &>
-     402 |            5 | >>
-     402 |            6 | ~=
-     402 |            7 | ~
-     402 |            8 | @
-     402 |            9 | &<|
-     402 |           10 | <<|
-     402 |           11 | |>>
-     402 |           12 | |&>
      403 |            1 | <
      403 |            1 | ~<~
      403 |            2 | <=
@@ -828,13 +832,19 @@ ORDER BY 1, 2, 3;
      783 |            4 | &>
      783 |            5 | >>
      783 |            6 | ~=
-     783 |            7 | ~
-     783 |            8 | @
+     783 |            7 | @>
+     783 |            8 | <@
      783 |            9 | &<|
      783 |           10 | <<|
      783 |           11 | |>>
      783 |           12 | |&>
-(36 rows)
+     783 |           13 | ~
+     783 |           14 | @
+    2742 |            1 | &&
+    2742 |            2 | @>
+    2742 |            3 | <@
+    2742 |            4 | =
+(30 rows)
 
 -- Check that all operators linked to by opclass entries have selectivity
 -- estimators.  This is not absolutely required, but it seems a reasonable

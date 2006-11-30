@@ -1,11 +1,12 @@
 /*
- * $PostgreSQL: pgsql/src/test/regress/regress.c,v 1.64 2005/10/15 02:49:51 momjian Exp $
+ * $PostgreSQL: pgsql/src/test/regress/regress.c,v 1.68 2006/07/13 16:49:20 momjian Exp $
  */
 
 #include "postgres.h"
 
 #include <float.h>				/* faked on sunos */
 
+#include "access/transam.h"
 #include "utils/geo_decls.h"	/* includes <math.h> */
 #include "executor/executor.h"	/* For GetAttributeByName */
 #include "commands/sequence.h"	/* for nextval() */
@@ -26,7 +27,10 @@ extern char *reverse_name(char *string);
 extern int	oldstyle_length(int n, text *t);
 extern Datum int44in(PG_FUNCTION_ARGS);
 extern Datum int44out(PG_FUNCTION_ARGS);
-extern Datum do_sleep(PG_FUNCTION_ARGS);
+
+#ifdef PG_MODULE_MAGIC
+PG_MODULE_MAGIC;
+#endif
 
 
 /*
@@ -736,20 +740,6 @@ int44out(PG_FUNCTION_ARGS)
 	PG_RETURN_CSTRING(result);
 }
 
-/*
- * do_sleep - delay for N seconds
- */
-PG_FUNCTION_INFO_V1(do_sleep);
-
-Datum
-do_sleep(PG_FUNCTION_ARGS)
-{
-	int32		secs = PG_GETARG_INT32(0);
-
-	pg_usleep(secs * 1000000L);
-
-	PG_RETURN_VOID();
-}
 
 extern Datum check_primary_key(PG_FUNCTION_ARGS);
 extern Datum check_foreign_key(PG_FUNCTION_ARGS);

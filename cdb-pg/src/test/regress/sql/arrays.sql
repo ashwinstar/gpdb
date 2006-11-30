@@ -83,6 +83,49 @@ SELECT a[1:3],
           d[1:1][2:2]
    FROM arrtest ORDER BY 1,2,3,4;
 
+INSERT INTO arrtest(a) VALUES('{1,null,3}');
+SELECT a FROM arrtest;
+UPDATE arrtest SET a[4] = NULL WHERE a[2] IS NULL;
+SELECT a FROM arrtest WHERE a[2] IS NULL;
+DELETE FROM arrtest WHERE a[2] IS NULL AND b IS NULL;
+SELECT a,b,c FROM arrtest;
+
+--
+-- test array extension
+--
+CREATE TEMP TABLE arrtest1 (i int[], t text[]);
+insert into arrtest1 values(array[1,2,null,4], array['one','two',null,'four']);
+select * from arrtest1;
+update arrtest1 set i[2] = 22, t[2] = 'twenty-two';
+select * from arrtest1;
+update arrtest1 set i[5] = 5, t[5] = 'five';
+select * from arrtest1;
+update arrtest1 set i[8] = 8, t[8] = 'eight';
+select * from arrtest1;
+update arrtest1 set i[0] = 0, t[0] = 'zero';
+select * from arrtest1;
+update arrtest1 set i[-3] = -3, t[-3] = 'minus-three';
+select * from arrtest1;
+update arrtest1 set i[0:2] = array[10,11,12], t[0:2] = array['ten','eleven','twelve'];
+select * from arrtest1;
+update arrtest1 set i[8:10] = array[18,null,20], t[8:10] = array['p18',null,'p20'];
+select * from arrtest1;
+update arrtest1 set i[11:12] = array[null,22], t[11:12] = array[null,'p22'];
+select * from arrtest1;
+update arrtest1 set i[15:16] = array[null,26], t[15:16] = array[null,'p26'];
+select * from arrtest1;
+update arrtest1 set i[-5:-3] = array[-15,-14,-13], t[-5:-3] = array['m15','m14','m13'];
+select * from arrtest1;
+update arrtest1 set i[-7:-6] = array[-17,null], t[-7:-6] = array['m17',null];
+select * from arrtest1;
+update arrtest1 set i[-12:-10] = array[-22,null,-20], t[-12:-10] = array['m22',null,'m20'];
+select * from arrtest1;
+delete from arrtest1;
+insert into arrtest1 values(array[1,2,null,4], array['one','two',null,'four']);
+select * from arrtest1;
+update arrtest1 set i[0:5] = array[0,1,2,null,4,5], t[0:5] = array['z','p1','p2',null,'p4','p5'];
+select * from arrtest1;
+
 --
 -- array expressions and operators
 --
@@ -128,6 +171,10 @@ SELECT ARRAY[[[[[['hello'],['world']]]]]];
 SELECT ARRAY[ARRAY['hello'],ARRAY['world']];
 SELECT ARRAY(select f2 from arrtest_f order by f2) AS "ARRAY" ORDER BY 1;
 
+-- with nulls
+SELECT '{1,null,3}'::int[];
+SELECT ARRAY[1,NULL,3];
+
 -- functions
 SELECT array_append(array[42], 6) AS "{42,6}";
 SELECT array_prepend(6, array[42]) AS "{6,42}";
@@ -145,6 +192,22 @@ SELECT ARRAY[[['hello','world']]] || ARRAY[[['happy','birthday']]] AS "ARRAY";
 SELECT ARRAY[[1,2],[3,4]] || ARRAY[5,6] AS "{{1,2},{3,4},{5,6}}";
 SELECT ARRAY[0,0] || ARRAY[1,1] || ARRAY[2,2] AS "{0,0,1,1,2,2}";
 SELECT 0 || ARRAY[1,2] || 3 AS "{0,1,2,3}";
+
+SELECT * FROM array_op_test WHERE i @> '{32}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i && '{32}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i @> '{17}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i && '{17}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i @> '{32,17}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i && '{32,17}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE i <@ '{38,34,32,89}' ORDER BY seqno;
+
+SELECT * FROM array_op_test WHERE t @> '{AAAAAAAA72908}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t && '{AAAAAAAA72908}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t @> '{AAAAAAAAAA646}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t && '{AAAAAAAAAA646}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t @> '{AAAAAAAA72908,AAAAAAAAAA646}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t && '{AAAAAAAA72908,AAAAAAAAAA646}' ORDER BY seqno;
+SELECT * FROM array_op_test WHERE t <@ '{AAAAAAAA72908,AAAAAAAAAAAAAAAAAAA17075,AA88409,AAAAAAAAAAAAAAAAAA36842,AAAAAAA48038,AAAAAAAAAAAAAA10611}' ORDER BY seqno;
 
 -- array casts
 SELECT ARRAY[1,2,3]::text[]::int[]::float8[] AS "{1,2,3}";
@@ -168,6 +231,15 @@ select 33.4 > all (array[1,2,3]);
 -- errors
 select 33 * any ('{1,2,3}');
 select 33 * any (44);
+-- nulls
+select 33 = any (null::int[]);
+select null::int = any ('{1,2,3}');
+select 33 = any ('{1,null,3}');
+select 33 = any ('{1,null,33}');
+select 33 = all (null::int[]);
+select null::int = all ('{1,2,3}');
+select 33 = all ('{1,null,3}');
+select 33 = all ('{33,null,33}');
 
 -- test indexes on arrays
 create temp table arr_tbl (f1 int[] unique);

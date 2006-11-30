@@ -134,7 +134,7 @@ begin
     end if;
     return new;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_room_au after update
     on Room for each row execute procedure tg_room_au();
@@ -149,7 +149,7 @@ begin
     delete from WSlot where roomno = old.roomno;
     return old;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_room_ad after delete
     on Room for each row execute procedure tg_room_ad();
@@ -183,7 +183,7 @@ begin
     end if;
     return new;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_pfield_au after update
     on PField for each row execute procedure tg_pfield_au();
@@ -198,7 +198,7 @@ begin
     delete from PSlot where pfname = old.name;
     return old;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_pfield_ad after delete
     on PField for each row execute procedure tg_pfield_ad();
@@ -236,7 +236,7 @@ begin
     end if;
     return new;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_system_au after update
     on System for each row execute procedure tg_system_au();
@@ -295,7 +295,7 @@ begin
 	return old;
     end if;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_hub_a after insert or update or delete
     on Hub for each row execute procedure tg_hub_a();
@@ -322,7 +322,7 @@ begin
     end loop;
     return 0;
 end
-' language 'plpgsql';
+' language plpgsql;
 
 -- Test comments
 COMMENT ON FUNCTION tg_hub_adjustslots_wrong(bpchar, integer, integer) IS 'function with args';
@@ -363,7 +363,7 @@ begin
     new.slotname := sname;
     return new;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_hslot_biu before insert or update
     on HSlot for each row execute procedure tg_hslot_biu();
@@ -386,7 +386,7 @@ begin
     end if;
     raise exception ''no manual manipulation of HSlot'';
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_hslot_bd before delete
     on HSlot for each row execute procedure tg_hslot_bd();
@@ -403,7 +403,7 @@ begin
     end if;
     return new;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_chkslotname before insert
     on PSlot for each row execute procedure tg_chkslotname('PS');
@@ -432,7 +432,7 @@ begin
     end if;
     return new;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_chkslotlink before insert or update
     on PSlot for each row execute procedure tg_chkslotlink();
@@ -461,7 +461,7 @@ begin
     end if;
     return new;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_chkbacklink before insert or update
     on PSlot for each row execute procedure tg_chkbacklink();
@@ -496,7 +496,7 @@ begin
     end if;
     return new;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_pslot_bu before update
     on PSlot for each row execute procedure tg_pslot_bu();
@@ -525,7 +525,7 @@ begin
     end if;
     return new;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_wslot_bu before update
     on WSlot for each row execute procedure tg_Wslot_bu();
@@ -554,7 +554,7 @@ begin
     end if;
     return new;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_pline_bu before update
     on PLine for each row execute procedure tg_pline_bu();
@@ -583,7 +583,7 @@ begin
     end if;
     return new;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_iface_bu before update
     on IFace for each row execute procedure tg_iface_bu();
@@ -612,7 +612,7 @@ begin
     end if;
     return new;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_hslot_bu before update
     on HSlot for each row execute procedure tg_hslot_bu();
@@ -639,7 +639,7 @@ begin
     end if;
     return new;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 create trigger tg_phone_bu before update
     on PHone for each row execute procedure tg_phone_bu();
@@ -681,7 +681,7 @@ begin
 	return old;
     end if;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 
 create trigger tg_backlink_a after insert or update or delete
@@ -747,7 +747,7 @@ begin
     end if;
     raise exception ''illegal backlink beginning with %'', mytype;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 
 -- ************************************************************
@@ -833,7 +833,7 @@ begin
 	return old;
     end if;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 
 create trigger tg_slotlink_a after insert or update or delete
@@ -935,7 +935,7 @@ begin
     end if;
     raise exception ''illegal slotlink beginning with %'', mytype;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 
 -- ************************************************************
@@ -1002,7 +1002,7 @@ begin
 	return 0;
     end if;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 
 -- ************************************************************
@@ -1047,7 +1047,7 @@ begin
     end if;
     return rec.backlink;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 
 -- ************************************************************
@@ -1083,7 +1083,7 @@ begin
     end if;
     return psrec.slotlink;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 
 -- ************************************************************
@@ -1133,7 +1133,7 @@ begin
     end if;
     return rec.slotlink;
 end;
-' language 'plpgsql';
+' language plpgsql;
 
 
 
@@ -1437,7 +1437,7 @@ BEGIN
         rslt = CAST($1 AS TEXT) || '','' || recursion_test($1 - 1, $2);
     END IF;
     RETURN rslt;
-END;' LANGUAGE 'plpgsql';
+END;' LANGUAGE plpgsql;
 
 SELECT recursion_test(4,3);
 
@@ -1480,7 +1480,7 @@ create function test_found()
     insert into found_test_tbl values (6);
   end if;
   return true;
-  end;' language 'plpgsql';
+  end;' language plpgsql;
 
 select test_found();
 select * from found_test_tbl;
@@ -1497,7 +1497,7 @@ BEGIN
 		RETURN NEXT rec;
 	END LOOP;
 	RETURN;
-END;' language 'plpgsql';
+END;' language plpgsql;
 
 select * from test_table_func_rec();
 
@@ -1509,7 +1509,7 @@ BEGIN
 		RETURN NEXT row;
 	END LOOP;
 	RETURN;
-END;' language 'plpgsql';
+END;' language plpgsql;
 
 select * from test_table_func_row();
 
@@ -1521,7 +1521,7 @@ BEGIN
 		RETURN NEXT i + 1;
 	END LOOP;
 	RETURN;
-END;' language 'plpgsql';
+END;' language plpgsql;
 
 select * from test_ret_set_scalar(1,10);
 
@@ -1539,7 +1539,7 @@ BEGIN
 		RETURN NEXT retval;
 	END IF;
 	RETURN;
-END;' language 'plpgsql';
+END;' language plpgsql;
 
 SELECT * FROM test_ret_set_rec_dyn(1500) AS (a int, b int, c int);
 SELECT * FROM test_ret_set_rec_dyn(5) AS (a int, b numeric, c text);
@@ -1555,7 +1555,7 @@ BEGIN
 		SELECT INTO retval 50, 5::numeric, ''xxx''::text;
 		RETURN retval;
 	END IF;
-END;' language 'plpgsql';
+END;' language plpgsql;
 
 SELECT * FROM test_ret_rec_dyn(1500) AS (a int, b int, c int);
 SELECT * FROM test_ret_rec_dyn(5) AS (a int, b numeric, c text);
@@ -1658,7 +1658,7 @@ BEGIN
 	ELSE
 		RETURN FALSE;
 	END IF;
-END;' language 'plpgsql';
+END;' language plpgsql;
 
 create function perform_test_func() returns void as '
 BEGIN
@@ -1679,7 +1679,7 @@ BEGIN
 	END IF;
 
 	RETURN;
-END;' language 'plpgsql';
+END;' language plpgsql;
 
 SELECT perform_test_func();
 SELECT * FROM perform_test;
@@ -1776,6 +1776,8 @@ select blockme();
 reset statement_timeout;
 
 select * from foo;
+
+drop table foo;
 
 -- Test for pass-by-ref values being stored in proper context
 create function test_variable_storage() returns text as $$
@@ -1904,14 +1906,14 @@ begin
     open rc for select a from rc_test;
     return rc;
 end
-$$ language 'plpgsql';
+$$ language plpgsql;
 
 create function refcursor_test1(refcursor) returns refcursor as $$
 begin
     perform return_refcursor($1);
     return $1;
 end
-$$ language 'plpgsql';
+$$ language plpgsql;
 
 begin;
 
@@ -1940,7 +1942,7 @@ begin
         return false;
     end if;
 end
-$$ language 'plpgsql';
+$$ language plpgsql;
 
 --select refcursor_test2(20000, 20000) as "Should be false",
 --       refcursor_test2(20, 20) as "Should be true";
@@ -2281,6 +2283,35 @@ begin
 end;
 $$ language plpgsql;
 
+-- using list of scalars in fori and fore stmts
+create function for_vect() returns void as $proc$
+<<lbl>>declare a integer; b varchar; c varchar; r record;
+begin
+  -- fori
+  for i in 1 .. 3 loop
+    raise notice '%', i;
+  end loop;
+  -- fore with record var
+  for r in select gs as aa, 'BB' as bb, 'CC' as cc from generate_series(1,4) gs loop
+    raise notice '% % %', r.aa, r.bb, r.cc;
+  end loop;
+  -- fore with single scalar
+  for a in select gs from generate_series(1,4) gs loop
+    raise notice '%', a;
+  end loop;
+  -- fore with multiple scalars
+  for a,b,c in select gs, 'BB','CC' from generate_series(1,4) gs loop
+    raise notice '% % %', a, b, c;
+  end loop;
+  -- using qualified names in fors, fore is enabled, disabled only for fori
+  for lbl.a, lbl.b, lbl.c in execute $$select gs, 'bb','cc' from generate_series(1,4) gs$$ loop
+    raise notice '% % %', a, b, c;
+  end loop;
+end;
+$proc$ language plpgsql;
+
+select for_vect();
+
 -- regression test: verify that multiple uses of same plpgsql datum within
 -- a SQL command all get mapped to the same $n parameter.  The return value
 -- of the SELECT is not important, we only care that it doesn't fail with
@@ -2295,3 +2326,117 @@ begin
 end$$ language plpgsql;
 
 select multi_datum_use(42);
+
+--
+-- Test STRICT limiter in both planned and EXECUTE invocations.
+-- Note that a data-modifying query is quasi strict (disallow multi rows)
+-- by default in the planned case, but not in EXECUTE.
+--
+
+create temp table foo (f1 int, f2 int);
+
+insert into foo values (1,2), (3,4);
+
+create or replace function footest() returns void as $$
+declare x record;
+begin
+  -- should work
+  insert into foo values(5,6) returning * into x;
+  raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
+end$$ language plpgsql;
+
+select footest();
+
+create or replace function footest() returns void as $$
+declare x record;
+begin
+  -- should fail due to implicit strict
+  insert into foo values(7,8),(9,10) returning * into x;
+  raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
+end$$ language plpgsql;
+
+select footest();
+
+create or replace function footest() returns void as $$
+declare x record;
+begin
+  -- should work
+  execute 'insert into foo values(5,6) returning *' into x;
+  raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
+end$$ language plpgsql;
+
+select footest();
+
+create or replace function footest() returns void as $$
+declare x record;
+begin
+  -- this should work since EXECUTE isn't as picky
+  execute 'insert into foo values(7,8),(9,10) returning *' into x;
+  raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
+end$$ language plpgsql;
+
+select footest();
+
+select * from foo;
+
+create or replace function footest() returns void as $$
+declare x record;
+begin
+  -- should work
+  select * from foo where f1 = 3 into strict x;
+  raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
+end$$ language plpgsql;
+
+select footest();
+
+create or replace function footest() returns void as $$
+declare x record;
+begin
+  -- should fail, no rows
+  select * from foo where f1 = 0 into strict x;
+  raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
+end$$ language plpgsql;
+
+select footest();
+
+create or replace function footest() returns void as $$
+declare x record;
+begin
+  -- should fail, too many rows
+  select * from foo where f1 > 3 into strict x;
+  raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
+end$$ language plpgsql;
+
+select footest();
+
+create or replace function footest() returns void as $$
+declare x record;
+begin
+  -- should work
+  execute 'select * from foo where f1 = 3' into strict x;
+  raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
+end$$ language plpgsql;
+
+select footest();
+
+create or replace function footest() returns void as $$
+declare x record;
+begin
+  -- should fail, no rows
+  execute 'select * from foo where f1 = 0' into strict x;
+  raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
+end$$ language plpgsql;
+
+select footest();
+
+create or replace function footest() returns void as $$
+declare x record;
+begin
+  -- should fail, too many rows
+  execute 'select * from foo where f1 > 3' into strict x;
+  raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
+end$$ language plpgsql;
+
+select footest();
+
+drop function footest();

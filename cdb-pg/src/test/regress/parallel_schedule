@@ -1,5 +1,6 @@
 # ----------
 # The first group of parallel test
+# $PostgreSQL: pgsql/src/test/regress/parallel_schedule,v 1.35 2006/08/30 23:34:22 tgl Exp $
 # ----------
 test: boolean char name varchar text int2 int4 int8 oid float4 float8 bit numeric
 
@@ -33,12 +34,12 @@ test: create_function_2
 # execute two copy tests parallel, to check that copy itself
 # is concurrent safe.
 # ----------
-test: copy
+test: copy copyselect
 
 # ----------
 # The third group of parallel test
 # ----------
-test: constraints triggers create_misc create_aggregate create_operator inherit vacuum
+test: constraints triggers create_misc create_aggregate create_operator inherit vacuum drop_if_exists
 
 # Depends on the above
 test: create_index create_view
@@ -60,7 +61,7 @@ ignore: random
 # ----------
 # The fourth group of parallel test
 # ----------
-test: select_into select_distinct select_distinct_on select_implicit select_having subselect union case join aggregates transactions random portals arrays btree_index hash_index update namespace prepared_xacts
+test: select_into select_distinct select_distinct_on select_implicit select_having subselect union case join aggregates transactions random portals arrays btree_index hash_index update namespace prepared_xacts delete
 
 test: privileges
 test: misc
@@ -68,13 +69,13 @@ test: misc
 # ----------
 # The fifth group of parallel test
 # ----------
-test: select_views portals_p2 rules foreign_key cluster dependency
+test: select_views portals_p2 rules foreign_key cluster dependency guc
 
 # ----------
 # The sixth group of parallel test
 # ----------
 # "plpgsql" cannot run concurrently with "rules"
-test: limit plpgsql copy2 temp domain rangefuncs prepare without_oid conversion truncate alter_table sequence polymorphism rowtypes
+test: limit plpgsql copy2 temp domain rangefuncs prepare without_oid conversion truncate alter_table sequence polymorphism rowtypes returning
 
 # run stats by itself because its delay may be insufficient under heavy load
 test: stats

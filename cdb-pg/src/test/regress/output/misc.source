@@ -571,6 +571,8 @@ SELECT user_relns() AS user_relns
  a_star
  abstime_tbl
  aggtest
+ array_index_op_test
+ array_op_test
  arrtest
  b
  b_star

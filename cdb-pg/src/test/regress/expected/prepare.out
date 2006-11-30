@@ -1,9 +1,22 @@
--- Regression tests for prepareable statements
-PREPARE q1 AS SELECT 1;
+-- Regression tests for prepareable statements. We query the content
+-- of the pg_prepared_statements view as prepared statements are
+-- created and removed.
+SELECT name, statement, parameter_types FROM pg_prepared_statements;
+ name | statement | parameter_types 
+------+-----------+-----------------
+(0 rows)
+
+PREPARE q1 AS SELECT 1 AS a;
 EXECUTE q1;
- ?column? 
-----------
-        1
+ a 
+---
+ 1
+(1 row)
+
+SELECT name, statement, parameter_types FROM pg_prepared_statements;
+ name |          statement           | parameter_types 
+------+------------------------------+-----------------
+ q1   | PREPARE q1 AS SELECT 1 AS a; | {}
 (1 row)
 
 -- should fail
@@ -18,8 +31,29 @@ EXECUTE q1;
         2
 (1 row)
 
+PREPARE q2 AS SELECT 2 AS b;
+SELECT name, statement, parameter_types FROM pg_prepared_statements;
+ name |          statement           | parameter_types 
+------+------------------------------+-----------------
+ q1   | PREPARE q1 AS SELECT 2;      | {}
+ q2   | PREPARE q2 AS SELECT 2 AS b; | {}
+(2 rows)
+
 -- sql92 syntax
 DEALLOCATE PREPARE q1;
+SELECT name, statement, parameter_types FROM pg_prepared_statements;
+ name |          statement           | parameter_types 
+------+------------------------------+-----------------
+ q2   | PREPARE q2 AS SELECT 2 AS b; | {}
+(1 row)
+
+DEALLOCATE PREPARE q2;
+-- the view should return the empty set again
+SELECT name, statement, parameter_types FROM pg_prepared_statements;
+ name | statement | parameter_types 
+------+-----------+-----------------
+(0 rows)
+
 -- parameterized queries
 PREPARE q2(text) AS
 	SELECT datname, datistemplate, datallowconn
@@ -82,6 +116,8 @@ HINT:  You will need to rewrite or cast the expression.
 -- invalid type
 PREPARE q4(nonexistenttype) AS SELECT $1;
 ERROR:  type "nonexistenttype" does not exist
+LINE 1: PREPARE q4(nonexistenttype) AS SELECT $1;
+                   ^
 -- create table as execute
 PREPARE q5(int, text) AS
 	SELECT * FROM tenk1 WHERE unique1 = $1 OR stringu1 = $2;
@@ -106,4 +142,27 @@ SELECT * FROM q5_prep_results ORDER BY 1,2,3,4;
     9285 |    8469 |   1 |    1 |   5 |      5 |      85 |      285 |        1285 |      4285 |     9285 | 170 |  171 | DTAAAA   | TNMAAA   | HHHHxx
     9961 |    2058 |   1 |    1 |   1 |      1 |      61 |      961 |        1961 |      4961 |     9961 | 122 |  123 | DTAAAA   | EBDAAA   | OOOOxx
 (16 rows)
+
+-- unknown or unspecified parameter types: should succeed
+PREPARE q6 AS
+    SELECT * FROM tenk1 WHERE unique1 = $1 AND stringu1 = $2;
+PREPARE q7(unknown) AS
+    SELECT * FROM road WHERE thepath = $1;
+SELECT name, statement, parameter_types FROM pg_prepared_statements
+    ORDER BY name;
+ name |                            statement                             |                    parameter_types                     
+------+------------------------------------------------------------------+--------------------------------------------------------
+ q2   | PREPARE q2(text) AS                                              | {text}
+      : \x09SELECT datname, datistemplate, datallowconn                    
+      : \x09FROM pg_database WHERE datname = $1;                           
+ q3   | PREPARE q3(text, int, float, boolean, oid, smallint) AS          | {text,integer,"double precision",boolean,oid,smallint}
+      : \x09SELECT * FROM tenk1 WHERE string4 = $1 AND (four = $2 OR       
+      : \x09ten = $3::bigint OR true = $4 OR oid = $5 OR odd = $6::int);   
+ q5   | PREPARE q5(int, text) AS                                         | {integer,text}
+      : \x09SELECT * FROM tenk1 WHERE unique1 = $1 OR stringu1 = $2;       
+ q6   | PREPARE q6 AS                                                    | {integer,name}
+      :     SELECT * FROM tenk1 WHERE unique1 = $1 AND stringu1 = $2;      
+ q7   | PREPARE q7(unknown) AS                                           | {path}
+      :     SELECT * FROM road WHERE thepath = $1;                         
+(5 rows)
 

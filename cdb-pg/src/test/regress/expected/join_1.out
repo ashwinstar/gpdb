@@ -337,6 +337,8 @@ SELECT '' AS "xxx", *
 SELECT '' AS "xxx", i, k, t
   FROM J1_TBL CROSS JOIN J2_TBL;
 ERROR:  column reference "i" is ambiguous
+LINE 1: SELECT '' AS "xxx", i, k, t
+                            ^
 -- resolve previous ambiguity by specifying the table name
 SELECT '' AS "xxx", t1.i, k, t
   FROM J1_TBL t1 CROSS JOIN J2_TBL t2;
@@ -1846,10 +1848,6 @@ SELECT '' AS "xxx", *
 --
 -- More complicated constructs
 --
--- UNION JOIN isn't implemented yet
-SELECT '' AS "xxx", *
-  FROM J1_TBL UNION JOIN J2_TBL;
-ERROR:  UNION JOIN is not implemented
 --
 -- Multiway full join
 --

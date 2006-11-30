@@ -75,6 +75,123 @@ SELECT max(student.gpa) AS max_3_7 FROM student;
      3.7
 (1 row)
 
+SELECT stddev_pop(b) FROM aggtest;
+   stddev_pop    
+-----------------
+ 131.10703231895
+(1 row)
+
+SELECT stddev_samp(b) FROM aggtest;
+   stddev_samp    
+------------------
+ 151.389360803998
+(1 row)
+
+SELECT var_pop(b) FROM aggtest;
+     var_pop      
+------------------
+ 17189.0539234823
+(1 row)
+
+SELECT var_samp(b) FROM aggtest;
+     var_samp     
+------------------
+ 22918.7385646431
+(1 row)
+
+SELECT stddev_pop(b::numeric) FROM aggtest;
+    stddev_pop    
+------------------
+ 151.389361431288
+(1 row)
+
+SELECT stddev_samp(b::numeric) FROM aggtest;
+   stddev_samp    
+------------------
+ 151.389361431288
+(1 row)
+
+SELECT var_pop(b::numeric) FROM aggtest;
+      var_pop       
+--------------------
+ 22918.738754573025
+(1 row)
+
+SELECT var_samp(b::numeric) FROM aggtest;
+      var_samp      
+--------------------
+ 22918.738754573025
+(1 row)
+
+-- population variance is defined for a single tuple, sample variance
+-- is not
+SELECT var_pop(1.0), var_samp(2.0);
+ var_pop | var_samp 
+---------+----------
+       0 |         
+(1 row)
+
+SELECT stddev_pop(3.0::numeric), stddev_samp(4.0::numeric);
+ stddev_pop | stddev_samp 
+------------+-------------
+          0 |            
+(1 row)
+
+-- SQL2003 binary aggregates
+SELECT regr_count(b, a) FROM aggtest;
+ regr_count 
+------------
+          4
+(1 row)
+
+SELECT regr_sxx(b, a) FROM aggtest;
+ regr_sxx 
+----------
+     5099
+(1 row)
+
+SELECT regr_syy(b, a) FROM aggtest;
+     regr_syy     
+------------------
+ 68756.2156939293
+(1 row)
+
+SELECT regr_sxy(b, a) FROM aggtest;
+     regr_sxy     
+------------------
+ 2614.51582155004
+(1 row)
+
+SELECT regr_avgx(b, a), regr_avgy(b, a) FROM aggtest;
+ regr_avgx |    regr_avgy     
+-----------+------------------
+      49.5 | 107.943152273074
+(1 row)
+
+SELECT regr_r2(b, a) FROM aggtest;
+      regr_r2       
+--------------------
+ 0.0194977982031803
+(1 row)
+
+SELECT regr_slope(b, a), regr_intercept(b, a) FROM aggtest;
+    regr_slope     |  regr_intercept  
+-------------------+------------------
+ 0.512750700441271 | 82.5619926012309
+(1 row)
+
+SELECT covar_pop(b, a), covar_samp(b, a) FROM aggtest;
+    covar_pop    |    covar_samp    
+-----------------+------------------
+ 653.62895538751 | 871.505273850014
+(1 row)
+
+SELECT corr(b, a) FROM aggtest;
+       corr        
+-------------------
+ 0.139634516517873
+(1 row)
+
 SELECT count(four) AS cnt_1000 FROM onek;
  cnt_1000 
 ----------
@@ -119,6 +236,7 @@ group by ten order by ten;
    9 |   100 |   4
 (10 rows)
 
+-- user-defined aggregates
 SELECT newavg(four) AS avg_1 FROM onek;
        avg_1        
 --------------------
@@ -135,6 +253,24 @@ SELECT newcnt(four) AS cnt_1000 FROM onek;
  cnt_1000 
 ----------
      1000
+(1 row)
+
+SELECT newcnt(*) AS cnt_1000 FROM onek;
+ cnt_1000 
+----------
+     1000
+(1 row)
+
+SELECT oldcnt(*) AS cnt_1000 FROM onek;
+ cnt_1000 
+----------
+     1000
+(1 row)
+
+SELECT sum2(q1,q2) FROM int8_tbl;
+       sum2        
+-------------------
+ 18271560493827981
 (1 row)
 
 -- test for outer-level aggregates

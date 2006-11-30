@@ -218,7 +218,7 @@ COPY main_table (a,b) FROM stdin;
 80	15
 \.
 
-CREATE FUNCTION trigger_func() RETURNS trigger LANGUAGE 'plpgsql' AS '
+CREATE FUNCTION trigger_func() RETURNS trigger LANGUAGE plpgsql AS '
 BEGIN
 	RAISE NOTICE ''trigger_func() called: action = %, when = %, level = %'', TG_OP, TG_WHEN, TG_LEVEL;
 	RETURN NULL;
@@ -294,3 +294,124 @@ insert into trigtest default values;
 select *  from trigtest;
 drop table trigtest2;
 drop table trigtest;
+
+
+-- dump trigger data
+CREATE TABLE trigger_test (
+        i int,
+        v varchar
+);
+
+CREATE OR REPLACE FUNCTION trigger_data()  RETURNS trigger 
+LANGUAGE plpgsql AS $$
+
+declare
+
+	argstr text;
+	relid text;
+
+begin
+
+	relid := TG_relid::regclass;
+
+	-- plpgsql can't discover its trigger data in a hash like perl and python
+	-- can, or by a sort of reflection like tcl can, 
+	-- so we have to hard code the names.
+	raise NOTICE 'TG_NAME: %', TG_name;
+	raise NOTICE 'TG_WHEN: %', TG_when;
+	raise NOTICE 'TG_LEVEL: %', TG_level;
+	raise NOTICE 'TG_OP: %', TG_op;
+	raise NOTICE 'TG_RELID::regclass: %', relid;
+	raise NOTICE 'TG_RELNAME: %', TG_relname;
+	raise NOTICE 'TG_TABLE_NAME: %', TG_table_name;
+	raise NOTICE 'TG_TABLE_SCHEMA: %', TG_table_schema;
+	raise NOTICE 'TG_NARGS: %', TG_nargs;
+
+	argstr := '[';
+	for i in 0 .. TG_nargs - 1 loop
+		if i > 0 then
+			argstr := argstr || ', ';
+		end if;
+		argstr := argstr || TG_argv[i];
+	end loop;
+	argstr := argstr || ']';
+	raise NOTICE 'TG_ARGV: %', argstr;
+
+	if TG_OP != 'INSERT' then
+		raise NOTICE 'OLD: %', OLD;
+	end if;
+
+	if TG_OP != 'DELETE' then
+		raise NOTICE 'NEW: %', NEW;
+	end if;
+
+	if TG_OP = 'DELETE' then
+		return OLD;
+	else
+		return NEW;
+	end if;
+
+end;
+$$;
+
+CREATE TRIGGER show_trigger_data_trig 
+BEFORE INSERT OR UPDATE OR DELETE ON trigger_test
+FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
+
+insert into trigger_test values(1,'insert');
+update trigger_test set v = 'update' where i = 1;
+delete from trigger_test;
+      
+DROP TRIGGER show_trigger_data_trig on trigger_test;
+      
+DROP FUNCTION trigger_data();
+
+DROP TABLE trigger_test;
+
+--
+-- Test use of row comparisons on OLD/NEW
+--
+
+CREATE TABLE trigger_test (f1 int, f2 text, f3 text);
+
+-- this is the obvious (and wrong...) way to compare rows
+CREATE FUNCTION mytrigger() RETURNS trigger LANGUAGE plpgsql as $$
+begin
+	if row(old.*) = row(new.*) then
+		raise notice 'row % not changed', new.f1;
+	else
+		raise notice 'row % changed', new.f1;
+	end if;
+	return new;
+end$$;
+
+CREATE TRIGGER t
+BEFORE UPDATE ON trigger_test
+FOR EACH ROW EXECUTE PROCEDURE mytrigger();
+
+INSERT INTO trigger_test VALUES(1, 'foo', 'bar');
+INSERT INTO trigger_test VALUES(2, 'baz', 'quux');
+
+UPDATE trigger_test SET f3 = 'bar';
+UPDATE trigger_test SET f3 = NULL;
+-- this demonstrates that the above isn't really working as desired:
+UPDATE trigger_test SET f3 = NULL;
+
+-- the right way when considering nulls is
+CREATE OR REPLACE FUNCTION mytrigger() RETURNS trigger LANGUAGE plpgsql as $$
+begin
+	if row(old.*) is distinct from row(new.*) then
+		raise notice 'row % changed', new.f1;
+	else
+		raise notice 'row % not changed', new.f1;
+	end if;
+	return new;
+end$$;
+
+UPDATE trigger_test SET f3 = 'bar';
+UPDATE trigger_test SET f3 = NULL;
+UPDATE trigger_test SET f3 = NULL;
+
+DROP TABLE trigger_test;
+
+DROP FUNCTION mytrigger();
