@@ -1006,7 +1006,7 @@ plan_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, subplan, SubPlan);
 
-				MUTATE(newnode->testexpr, subplan->testexpr, List *);
+				MUTATE(newnode->testexpr, subplan->testexpr, Node *);
 				MUTATE(newnode->plan, subplan->plan, Plan *);
 				MUTATE(newnode->rtable, subplan->rtable, List *);
 				MUTATE(newnode->args, subplan->args, List *);
@@ -1052,7 +1052,7 @@ plan_tree_mutator(Node *node,
 
 					case RTE_FUNCTION:	/* function in FROM */
 						MUTATE(newrte->funcexpr, rte->funcexpr, Node *);
-						newrte->coldeflist = (List *) copyObject(rte->coldeflist);
+						// TODO is this right? //newrte->coldeflist = (List *) copyObject(rte->coldeflist);
 						break;
 				}
 				return (Node *) newrte;
