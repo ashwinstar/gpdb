@@ -2,11 +2,11 @@
  *
  * pg_dumpall.c
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
- * $PostgreSQL: pgsql/src/bin/pg_dump/pg_dumpall.c,v 1.69.2.1 2006/04/07 21:26:42 tgl Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_dump/pg_dumpall.c,v 1.84 2006/10/07 20:59:05 petere Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -15,11 +15,9 @@
 
 #include <time.h>
 #include <unistd.h>
+
 #ifdef ENABLE_NLS
 #include <locale.h>
-#endif
-#ifndef HAVE_STRDUP
-#include "strdup.h"
 #endif
 
 #include "getopt_long.h"
@@ -29,13 +27,11 @@ int			optreset;
 #endif
 
 #include "dumputils.h"
-#include "libpq-fe.h"
-#include "pg_backup.h"
-#include "pqexpbuffer.h"
+#include "mb/pg_wchar.h"
 
 
-/* version string we expect back from postgres */
-#define PG_VERSIONSTR "pg_dump (PostgreSQL) " PG_VERSION "\n"
+/* version string we expect back from pg_dump */
+#define PGDUMP_VERSIONSTR "pg_dump (PostgreSQL) " PG_VERSION "\n"
 
 
 static const char *progname;
@@ -50,7 +46,8 @@ static void dumpTablespaces(PGconn *conn);
 static void dumpCreateDB(PGconn *conn);
 static void dumpDatabaseConfig(PGconn *conn, const char *dbname);
 static void dumpUserConfig(PGconn *conn, const char *username);
-static void makeAlterConfigCommand(const char *arrayitem, const char *type, const char *name);
+static void makeAlterConfigCommand(PGconn *conn, const char *arrayitem,
+					   const char *type, const char *name);
 static void dumpDatabases(PGconn *conn);
 static void dumpTimestamp(char *msg);
 
@@ -68,7 +65,6 @@ static bool verbose = false;
 static bool ignoreVersion = false;
 static bool	resource_queues = false;
 
-/* flags for -X long options */
 static int	disable_dollar_quoting = 0;
 static int	disable_triggers = 0;
 static int	use_setsessauth = 0;
@@ -86,6 +82,8 @@ main(int argc, char *argv[])
 	bool		globals_only = false;
 	bool		schema_only = false;
 	PGconn	   *conn;
+	int			encoding;
+	const char *std_strings;
 	int			c,
 				ret;
 
@@ -111,8 +109,7 @@ main(int argc, char *argv[])
 		{"resource-queues", no_argument, NULL, 'r'},
 
 		/*
-		 * the following options don't have an equivalent short option letter,
-		 * but are available as '-X long-name'
+		 * the following options don't have an equivalent short option letter
 		 */
 		{"disable-dollar-quoting", no_argument, &disable_dollar_quoting, 1},
 		{"disable-triggers", no_argument, &disable_triggers, 1},
@@ -141,7 +138,7 @@ main(int argc, char *argv[])
 		}
 	}
 
-	if ((ret = find_other_exec(argv[0], "pg_dump", PG_VERSIONSTR,
+	if ((ret = find_other_exec(argv[0], "pg_dump", PGDUMP_VERSIONSTR,
 							   pg_dump_bin)) < 0)
 	{
 		char		full_path[MAXPGPATH];
@@ -263,10 +260,11 @@ main(int argc, char *argv[])
 				break;
 
 			case 'X':
+				/* -X is a deprecated alternative to long options */
 				if (strcmp(optarg, "disable-dollar-quoting") == 0)
-					appendPQExpBuffer(pgdumpopts, " -X disable-dollar-quoting");
+					appendPQExpBuffer(pgdumpopts, " --disable-dollar-quoting");
 				else if (strcmp(optarg, "disable-triggers") == 0)
-					appendPQExpBuffer(pgdumpopts, " -X disable-triggers");
+					appendPQExpBuffer(pgdumpopts, " --disable-triggers");
 				else if (strcmp(optarg, "use-set-session-authorization") == 0)
 					 /* no-op, still allowed for compatibility */ ;
 				else
@@ -290,11 +288,11 @@ main(int argc, char *argv[])
 
 	/* Add long options to the pg_dump argument list */
 	if (disable_dollar_quoting)
-		appendPQExpBuffer(pgdumpopts, " -X disable-dollar-quoting");
+		appendPQExpBuffer(pgdumpopts, " --disable-dollar-quoting");
 	if (disable_triggers)
-		appendPQExpBuffer(pgdumpopts, " -X disable-triggers");
+		appendPQExpBuffer(pgdumpopts, " --disable-triggers");
 	if (use_setsessauth)
-		appendPQExpBuffer(pgdumpopts, " -X use-set-session-authorization");
+		appendPQExpBuffer(pgdumpopts, " --use-set-session-authorization");
 
 	if (optind < argc)
 	{
@@ -316,6 +314,15 @@ main(int argc, char *argv[])
 		conn = connectDatabase("template1", pghost, pgport, pguser,
 							   force_password, true);
 
+	/*
+	 * Get the active encoding and the standard_conforming_strings setting, so
+	 * we know how to escape strings.
+	 */
+	encoding = PQclientEncoding(conn);
+	std_strings = PQparameterStatus(conn, "standard_conforming_strings");
+	if (!std_strings)
+		std_strings = "off";
+
 	printf("--\n-- PostgreSQL database cluster dump\n--\n\n");
 	if (verbose)
 		dumpTimestamp("Started on");
@@ -324,6 +331,14 @@ main(int argc, char *argv[])
 
 	if (!data_only)
 	{
+		/* Replicate encoding and std_strings in output */
+		printf("SET client_encoding = '%s';\n",
+			   pg_encoding_to_char(encoding));
+		printf("SET standard_conforming_strings = %s;\n", std_strings);
+		if (strcmp(std_strings, "off") == 0)
+			printf("SET escape_string_warning = 'off';\n");
+		printf("\n");
+
 		/* Dump Resource Queues */
 		if (server_version >= 80100 && resource_queues)
 			dumpResQueues(conn);
@@ -384,11 +399,10 @@ help(void)
 	printf(_("  -s, --schema-only        dump only the schema, no data\n"));
 	printf(_("  -S, --superuser=NAME     specify the superuser user name to use in the dump\n"));
 	printf(_("  -x, --no-privileges      do not dump privileges (grant/revoke)\n"));
-	printf(_("  -X disable-dollar-quoting, --disable-dollar-quoting\n"
+	printf(_("  --disable-dollar-quoting\n"
 			 "                           disable dollar quoting, use SQL standard quoting\n"));
-	printf(_("  -X disable-triggers, --disable-triggers\n"
-			 "                           disable triggers during data-only restore\n"));
-	printf(_("  -X use-set-session-authorization, --use-set-session-authorization\n"
+	printf(_("  --disable-triggers       disable triggers during data-only restore\n"));
+	printf(_("  --use-set-session-authorization\n"
 			 "                           use SESSION AUTHORIZATION commands instead of\n"
 			 "                           OWNER TO commands\n"));
 
@@ -485,6 +499,7 @@ dumpRoles(PGconn *conn)
 				i_rolconnlimit,
 				i_rolpassword,
 				i_rolvaliduntil,
+				i_rolcomment,
 				i_rolqueuename;
 	int			i;
 
@@ -520,7 +535,8 @@ dumpRoles(PGconn *conn)
 						  "true as rolcanlogin, "
 						  "-1 as rolconnlimit, "
 						  "passwd as rolpassword, "
-						  "valuntil as rolvaliduntil "
+						  "valuntil as rolvaliduntil, "
+						  "null as rolcomment "
 						  "FROM pg_shadow "
 						  "UNION ALL "
 						  "SELECT groname as rolname, "
@@ -532,7 +548,8 @@ dumpRoles(PGconn *conn)
 						  "false as rolcanlogin, "
 						  "-1 as rolconnlimit, "
 						  "null::text as rolpassword, "
-						  "null::abstime as rolvaliduntil "
+						  "null::abstime as rolvaliduntil, "
+						  "null as rolcomment "
 						  "FROM pg_group "
 						  "WHERE NOT EXISTS (SELECT 1 FROM pg_shadow "
 						  " WHERE usename = groname) "
@@ -550,6 +567,7 @@ dumpRoles(PGconn *conn)
 	i_rolconnlimit = PQfnumber(res, "rolconnlimit");
 	i_rolpassword = PQfnumber(res, "rolpassword");
 	i_rolvaliduntil = PQfnumber(res, "rolvaliduntil");
+	i_rolcomment = PQfnumber(res, "rolcomment");
 	
 	if (server_version >= 80100 && resource_queues)
 		i_rolqueuename = PQfnumber(res, "rolqueuename");
@@ -611,7 +629,7 @@ dumpRoles(PGconn *conn)
 		if (!PQgetisnull(res, i, i_rolpassword))
 		{
 			appendPQExpBuffer(buf, " PASSWORD ");
-			appendStringLiteral(buf, PQgetvalue(res, i, i_rolpassword), true);
+			appendStringLiteralConn(buf, PQgetvalue(res, i, i_rolpassword), conn);
 		}
 
 		if (!PQgetisnull(res, i, i_rolvaliduntil))
@@ -626,6 +644,13 @@ dumpRoles(PGconn *conn)
 		}
 
 		appendPQExpBuffer(buf, ";\n");
+
+		if (!PQgetisnull(res, i, i_rolcomment))
+		{
+			appendPQExpBuffer(buf, "COMMENT ON ROLE %s IS ", fmtId(rolename));
+			appendStringLiteralConn(buf, PQgetvalue(res, i, i_rolcomment), conn);
+			appendPQExpBuffer(buf, ";\n");
+		}
 
 		printf("%s", buf->data);
 
@@ -767,12 +792,22 @@ dumpTablespaces(PGconn *conn)
 	 * Get all tablespaces except built-in ones (which we assume are named
 	 * pg_xxx)
 	 */
-	res = executeQuery(conn, "SELECT spcname, "
-					   "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
-					   "spclocation, spcacl "
-					   "FROM pg_catalog.pg_tablespace "
-					   "WHERE spcname !~ '^pg_' "
-					   "ORDER BY 1");
+	if (server_version >= 80200)
+		res = executeQuery(conn, "SELECT spcname, "
+						 "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
+						   "spclocation, spcacl, "
+						"pg_catalog.shobj_description(oid, 'pg_tablespace') "
+						   "FROM pg_catalog.pg_tablespace "
+						   "WHERE spcname !~ '^pg_' "
+						   "ORDER BY 1");
+	else
+		res = executeQuery(conn, "SELECT spcname, "
+						 "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
+						   "spclocation, spcacl, "
+						   "null "
+						   "FROM pg_catalog.pg_tablespace "
+						   "WHERE spcname !~ '^pg_' "
+						   "ORDER BY 1");
 
 	if (PQntuples(res) > 0)
 		printf("--\n-- Tablespaces\n--\n\n");
@@ -784,6 +819,7 @@ dumpTablespaces(PGconn *conn)
 		char	   *spcowner = PQgetvalue(res, i, 1);
 		char	   *spclocation = PQgetvalue(res, i, 2);
 		char	   *spcacl = PQgetvalue(res, i, 3);
+		char	   *spccomment = PQgetvalue(res, i, 4);
 		char	   *fspcname;
 
 		/* needed for buildACLCommands() */
@@ -796,7 +832,7 @@ dumpTablespaces(PGconn *conn)
 		appendPQExpBuffer(buf, " OWNER %s", fmtId(spcowner));
 
 		appendPQExpBuffer(buf, " LOCATION ");
-		appendStringLiteral(buf, spclocation, true);
+		appendStringLiteralConn(buf, spclocation, conn);
 		appendPQExpBuffer(buf, ";\n");
 
 		if (!skip_acls &&
@@ -807,6 +843,13 @@ dumpTablespaces(PGconn *conn)
 					progname, spcacl, fspcname);
 			PQfinish(conn);
 			exit(1);
+		}
+
+		if (spccomment && strlen(spccomment))
+		{
+			appendPQExpBuffer(buf, "COMMENT ON TABLESPACE %s IS ", fspcname);
+			appendStringLiteralConn(buf, spccomment, conn);
+			appendPQExpBuffer(buf, ";\n");
 		}
 
 		printf("%s", buf->data);
@@ -928,9 +971,16 @@ dumpCreateDB(PGconn *conn)
 				appendPQExpBuffer(buf, " OWNER = %s", fmtId(dbowner));
 
 			appendPQExpBuffer(buf, " ENCODING = ");
-			appendStringLiteral(buf, dbencoding, true);
+			appendStringLiteralConn(buf, dbencoding, conn);
 
-			/* Output tablespace if it isn't default */
+			/*
+			 * Output tablespace if it isn't the default.  For default, it
+			 * uses the default from the template database.  If tablespace is
+			 * specified and tablespace creation failed earlier, (e.g. no such
+			 * directory), the database creation will fail too.  One solution
+			 * would be to use 'SET default_tablespace' like we do in pg_dump
+			 * for setting non-default database locations.
+			 */
 			if (strcmp(dbtablespace, "pg_default") != 0)
 				appendPQExpBuffer(buf, " TABLESPACE = %s",
 								  fmtId(dbtablespace));
@@ -944,7 +994,7 @@ dumpCreateDB(PGconn *conn)
 			if (strcmp(dbistemplate, "t") == 0)
 			{
 				appendPQExpBuffer(buf, "UPDATE pg_database SET datistemplate = 't' WHERE datname = ");
-				appendStringLiteral(buf, dbname, true);
+				appendStringLiteralConn(buf, dbname, conn);
 				appendPQExpBuffer(buf, ";\n");
 			}
 		}
@@ -989,13 +1039,14 @@ dumpDatabaseConfig(PGconn *conn, const char *dbname)
 		PGresult   *res;
 
 		printfPQExpBuffer(buf, "SELECT datconfig[%d] FROM pg_database WHERE datname = ", count);
-		appendStringLiteral(buf, dbname, true);
+		appendStringLiteralConn(buf, dbname, conn);
 		appendPQExpBuffer(buf, ";");
 
 		res = executeQuery(conn, buf->data);
 		if (!PQgetisnull(res, 0, 0))
 		{
-			makeAlterConfigCommand(PQgetvalue(res, 0, 0), "DATABASE", dbname);
+			makeAlterConfigCommand(conn, PQgetvalue(res, 0, 0),
+								   "DATABASE", dbname);
 			PQclear(res);
 			count++;
 		}
@@ -1028,13 +1079,14 @@ dumpUserConfig(PGconn *conn, const char *username)
 			printfPQExpBuffer(buf, "SELECT rolconfig[%d] FROM pg_authid WHERE rolname = ", count);
 		else
 			printfPQExpBuffer(buf, "SELECT useconfig[%d] FROM pg_shadow WHERE usename = ", count);
-		appendStringLiteral(buf, username, true);
+		appendStringLiteralConn(buf, username, conn);
 
 		res = executeQuery(conn, buf->data);
 		if (PQntuples(res) == 1 &&
 			!PQgetisnull(res, 0, 0))
 		{
-			makeAlterConfigCommand(PQgetvalue(res, 0, 0), "ROLE", username);
+			makeAlterConfigCommand(conn, PQgetvalue(res, 0, 0),
+								   "ROLE", username);
 			PQclear(res);
 			count++;
 		}
@@ -1054,7 +1106,8 @@ dumpUserConfig(PGconn *conn, const char *username)
  * Helper function for dumpXXXConfig().
  */
 static void
-makeAlterConfigCommand(const char *arrayitem, const char *type, const char *name)
+makeAlterConfigCommand(PGconn *conn, const char *arrayitem,
+					   const char *type, const char *name)
 {
 	char	   *pos;
 	char	   *mine;
@@ -1076,7 +1129,7 @@ makeAlterConfigCommand(const char *arrayitem, const char *type, const char *name
 		|| pg_strcasecmp(mine, "search_path") == 0)
 		appendPQExpBuffer(buf, "%s", pos + 1);
 	else
-		appendStringLiteral(buf, pos + 1, false);
+		appendStringLiteralConn(buf, pos + 1, conn);
 	appendPQExpBuffer(buf, ";\n");
 
 	printf("%s", buf->data);

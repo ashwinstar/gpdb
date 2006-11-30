@@ -5,28 +5,22 @@
  *	Implements the basic DB functions used by the archiver.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_db.c,v 1.66.2.2 2006/02/09 18:28:35 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_db.c,v 1.75 2006/10/04 00:30:05 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 
-#include "pg_backup.h"
-#include "pg_backup_archiver.h"
 #include "pg_backup_db.h"
 #include "dumputils.h"
 
 #include <unistd.h>
+
 #include <ctype.h>
 
 #ifdef HAVE_TERMIOS_H
 #include <termios.h>
 #endif
 
-#include "libpq-fe.h"
-#include "libpq/libpq-fs.h"
-#ifndef HAVE_STRDUP
-#include "strdup.h"
-#endif
 
 static const char *modulename = gettext_noop("archiver (db)");
 
@@ -286,7 +280,7 @@ notice_processor(void *arg, const char *message)
 
 /* Public interface */
 /* Convenience function to send a query. Monitors result to handle COPY statements */
-int
+static int
 ExecuteSqlCommand(ArchiveHandle *AH, PQExpBuffer qry, char *desc)
 {
 	PGconn	   *conn = AH->connection;
@@ -384,25 +378,32 @@ _sendCopyLine(ArchiveHandle *AH, char *qry, char *eos)
 	isEnd = (strcmp(AH->pgCopyBuf->data, "\\.\n") == 0);
 
 	/*
-	 * Note that we drop the data on the floor if libpq has failed to
-	 * enter COPY mode; this allows us to behave reasonably when trying
-	 * to continue after an error in a COPY command.
+	 * Note that we drop the data on the floor if libpq has failed to enter
+	 * COPY mode; this allows us to behave reasonably when trying to continue
+	 * after an error in a COPY command.
 	 */
-	if (AH->pgCopyIn && PQputline(AH->connection, AH->pgCopyBuf->data) != 0)
-		die_horribly(AH, modulename, "error returned by PQputline: %s",
+	if (AH->pgCopyIn &&
+		PQputCopyData(AH->connection, AH->pgCopyBuf->data,
+					  AH->pgCopyBuf->len) <= 0)
+		die_horribly(AH, modulename, "error returned by PQputCopyData: %s",
 					 PQerrorMessage(AH->connection));
 
 	resetPQExpBuffer(AH->pgCopyBuf);
 
-	/*
-	 * fprintf(stderr, "Buffer is '%s'\n", AH->pgCopyBuf->data);
-	 */
-
-	if (isEnd)
+	if (isEnd && AH->pgCopyIn)
 	{
-		if (AH->pgCopyIn && PQendcopy(AH->connection) != 0)
-			die_horribly(AH, modulename, "error returned by PQendcopy: %s",
+		PGresult   *res;
+
+		if (PQputCopyEnd(AH->connection, NULL) <= 0)
+			die_horribly(AH, modulename, "error returned by PQputCopyEnd: %s",
 						 PQerrorMessage(AH->connection));
+
+		/* Check command status and return to normal libpq state */
+		res = PQgetResult(AH->connection);
+		if (PQresultStatus(res) != PGRES_COMMAND_OK)
+			warn_or_die_horribly(AH, modulename, "COPY failed: %s",
+								 PQerrorMessage(AH->connection));
+		PQclear(res);
 
 		AH->pgCopyIn = false;
 	}
@@ -618,7 +619,7 @@ ExecuteSqlCommandBuf(ArchiveHandle *AH, void *qryv, size_t bufLen)
 	{
 		/*
 		 * If libpq is in CopyIn mode *or* if the archive structure shows we
-		 * are sending COPY data, treat the data as COPY data.  The pgCopyIn
+		 * are sending COPY data, treat the data as COPY data.	The pgCopyIn
 		 * check is only needed for backwards compatibility with ancient
 		 * archive files that might just issue a COPY command without marking
 		 * it properly.  Note that in an archive entry that has a copyStmt,

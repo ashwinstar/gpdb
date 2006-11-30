@@ -2,17 +2,19 @@
  *
  * Utility routines for SQL dumping
  *	Basically this is stuff that is useful in both pg_dump and pg_dumpall.
+ *	Lately it's also being used by psql and bin/scripts/ ...
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/bin/pg_dump/dumputils.c,v 1.20.2.1 2005/11/22 18:23:26 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_dump/dumputils.c,v 1.33 2006/10/09 23:30:33 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
-
 #include "postgres_fe.h"
+
+#include <ctype.h>
 
 #include "dumputils.h"
 
@@ -22,8 +24,7 @@
 #define supports_grant_options(version) ((version) >= 70400)
 
 static bool parseAclItem(const char *item, const char *type, const char *name,
-			 int remoteVersion,
-			 PQExpBuffer grantee, PQExpBuffer grantor,
+			 int remoteVersion, PQExpBuffer grantee, PQExpBuffer grantor,
 			 PQExpBuffer privs, PQExpBuffer privswgo);
 static char *copyAclUserName(PQExpBuffer output, char *input);
 static void AddAcl(PQExpBuffer aclbuf, const char *keyword);
@@ -101,58 +102,117 @@ fmtId(const char *rawid)
 
 /*
  * Convert a string value to an SQL string literal and append it to
- * the given buffer.
+ * the given buffer.  We assume the specified client_encoding and
+ * standard_conforming_strings settings.
  *
- * Special characters are escaped. Quote mark ' goes to '' per SQL
- * standard, other stuff goes to \ sequences.  If escapeAll is false,
- * whitespace characters are not escaped (tabs, newlines, etc.).  This
- * is appropriate for dump file output.
+ * This is essentially equivalent to libpq's PQescapeStringInternal,
+ * except for the output buffer structure.	We need it in situations
+ * where we do not have a PGconn available.  Where we do,
+ * appendStringLiteralConn is a better choice.
  */
 void
-appendStringLiteral(PQExpBuffer buf, const char *str, bool escapeAll)
+appendStringLiteral(PQExpBuffer buf, const char *str,
+					int encoding, bool std_strings)
 {
-	char		ch;
-	const char *p;
+	size_t		length = strlen(str);
+	const char *source = str;
+	char	   *target;
 
-	for (p = str; *p; p++)
+	if (!enlargePQExpBuffer(buf, 2 * length + 2))
+		return;
+
+	target = buf->data + buf->len;
+	*target++ = '\'';
+
+	while (*source != '\0')
 	{
-		ch = *p;
-		if (ch == '\\' ||
-			((unsigned char) ch < (unsigned char) ' ' &&
-			 (escapeAll ||
-			  (ch != '\t' && ch != '\n' && ch != '\v' &&
-			   ch != '\f' && ch != '\r'))))
+		char		c = *source;
+		int			len;
+		int			i;
+
+		/* Fast path for plain ASCII */
+		if (!IS_HIGHBIT_SET(c))
 		{
-			appendPQExpBufferChar(buf, ESCAPE_STRING_SYNTAX);
+			/* Apply quoting if needed */
+			if (SQL_STR_DOUBLE(c, !std_strings))
+				*target++ = c;
+			/* Copy the character */
+			*target++ = c;
+			source++;
+			continue;
+		}
+
+		/* Slow path for possible multibyte characters */
+		len = PQmblen(source, encoding);
+
+		/* Copy the character */
+		for (i = 0; i < len; i++)
+		{
+			if (*source == '\0')
+				break;
+			*target++ = *source++;
+		}
+
+		/*
+		 * If we hit premature end of string (ie, incomplete multibyte
+		 * character), try to pad out to the correct length with spaces. We
+		 * may not be able to pad completely, but we will always be able to
+		 * insert at least one pad space (since we'd not have quoted a
+		 * multibyte character).  This should be enough to make a string that
+		 * the server will error out on.
+		 */
+		if (i < len)
+		{
+			char	   *stop = buf->data + buf->maxlen - 2;
+
+			for (; i < len; i++)
+			{
+				if (target >= stop)
+					break;
+				*target++ = ' ';
+			}
 			break;
 		}
 	}
 
-	appendPQExpBufferChar(buf, '\'');
-	for (p = str; *p; p++)
+	/* Write the terminating quote and NUL character. */
+	*target++ = '\'';
+	*target = '\0';
+
+	buf->len = target - buf->data;
+}
+
+
+/*
+ * Convert a string value to an SQL string literal and append it to
+ * the given buffer.  Encoding and string syntax rules are as indicated
+ * by current settings of the PGconn.
+ */
+void
+appendStringLiteralConn(PQExpBuffer buf, const char *str, PGconn *conn)
+{
+	size_t		length = strlen(str);
+
+	/*
+	 * XXX This is a kluge to silence escape_string_warning in our utility
+	 * programs.  It should go away someday.
+	 */
+	if (strchr(str, '\\') != NULL && PQserverVersion(conn) >= 80100)
 	{
-		ch = *p;
-		if (SQL_STR_DOUBLE(ch))
-		{
-			appendPQExpBufferChar(buf, ch);
-			appendPQExpBufferChar(buf, ch);
-		}
-		else if ((unsigned char) ch < (unsigned char) ' ' &&
-				 (escapeAll ||
-				  (ch != '\t' && ch != '\n' && ch != '\v' &&
-				   ch != '\f' && ch != '\r')))
-		{
-			/*
-			 * generate octal escape for control chars other than whitespace
-			 */
-			appendPQExpBufferChar(buf, '\\');
-			appendPQExpBufferChar(buf, ((ch >> 6) & 3) + '0');
-			appendPQExpBufferChar(buf, ((ch >> 3) & 7) + '0');
-			appendPQExpBufferChar(buf, (ch & 7) + '0');
-		}
-		else
-			appendPQExpBufferChar(buf, ch);
+		/* ensure we are not adjacent to an identifier */
+		if (buf->len > 0 && buf->data[buf->len - 1] != ' ')
+			appendPQExpBufferChar(buf, ' ');
+		appendPQExpBufferChar(buf, ESCAPE_STRING_SYNTAX);
+		appendStringLiteral(buf, str, PQclientEncoding(conn), false);
+		return;
 	}
+	/* XXX end kluge */
+
+	if (!enlargePQExpBuffer(buf, 2 * length + 2))
+		return;
+	appendPQExpBufferChar(buf, '\'');
+	buf->len += PQescapeStringConn(conn, buf->data + buf->len,
+								   str, length, NULL);
 	appendPQExpBufferChar(buf, '\'');
 }
 
@@ -163,7 +223,8 @@ appendStringLiteral(PQExpBuffer buf, const char *str, bool escapeAll)
  * dollar quote delimiter will begin with that (after the opening $).
  *
  * No escaping is done at all on str, in compliance with the rules
- * for parsing dollar quoted strings.
+ * for parsing dollar quoted strings.  Also, we need not worry about
+ * encoding issues.
  */
 void
 appendStringLiteralDQ(PQExpBuffer buf, const char *str, const char *dqprefix)
@@ -197,21 +258,6 @@ appendStringLiteralDQ(PQExpBuffer buf, const char *str, const char *dqprefix)
 	appendPQExpBufferStr(buf, delimBuf->data);
 
 	destroyPQExpBuffer(delimBuf);
-}
-
-
-/*
- * Use dollar quoting if the string to be quoted contains ' or \,
- * otherwise use standard quoting.
- */
-void
-appendStringLiteralDQOpt(PQExpBuffer buf, const char *str,
-						 bool escapeAll, const char *dqprefix)
-{
-	if (strchr(str, '\'') == NULL && strchr(str, '\\') == NULL)
-		appendStringLiteral(buf, str, escapeAll);
-	else
-		appendStringLiteralDQ(buf, str, dqprefix);
 }
 
 
@@ -326,9 +372,10 @@ parsePGArray(const char *atext, char ***itemarray, int *nitems)
  *
  *	name: the object name, in the form to use in the commands (already quoted)
  *	type: the object type (as seen in GRANT command: must be one of
- *		TABLE, FUNCTION, LANGUAGE, or SCHEMA, or DATABASE)
+ *		TABLE, SEQUENCE, FUNCTION, LANGUAGE, SCHEMA, DATABASE, or TABLESPACE)
  *	acls: the ACL string fetched from the database
- *	owner: username of object owner (will be passed through fmtId), or NULL
+ *	owner: username of object owner (will be passed through fmtId); can be
+ *		NULL or empty string to indicate "no owner known"
  *	remoteVersion: version of database
  *
  * Returns TRUE if okay, FALSE if could not parse the acl string.
@@ -356,6 +403,10 @@ buildACLCommands(const char *name, const char *type,
 
 	if (strlen(acls) == 0)
 		return true;			/* object has default permissions */
+
+	/* treat empty-string owner same as NULL */
+	if (owner && *owner == '\0')
+		owner = NULL;
 
 	if (!parsePGArray(acls, &aclitems, &naclitems))
 	{
@@ -475,10 +526,8 @@ buildACLCommands(const char *name, const char *type,
 	 * If we didn't find any owner privs, the owner must have revoked 'em all
 	 */
 	if (!found_owner_privs && owner)
-	{
 		appendPQExpBuffer(firstsql, "REVOKE ALL ON %s %s FROM %s;\n",
 						  type, name, fmtId(owner));
-	}
 
 	destroyPQExpBuffer(grantee);
 	destroyPQExpBuffer(grantor);
@@ -512,8 +561,7 @@ buildACLCommands(const char *name, const char *type,
  */
 static bool
 parseAclItem(const char *item, const char *type, const char *name,
-			 int remoteVersion,
-			 PQExpBuffer grantee, PQExpBuffer grantor,
+			 int remoteVersion, PQExpBuffer grantee, PQExpBuffer grantor,
 			 PQExpBuffer privs, PQExpBuffer privswgo)
 {
 	char	   *buf;
@@ -524,6 +572,8 @@ parseAclItem(const char *item, const char *type, const char *name,
 	char	   *pos;
 
 	buf = strdup(item);
+	if (!buf)
+		return false;
 
 	/* user or group name is string up to = */
 	eqpos = copyAclUserName(grantee, buf);
@@ -544,6 +594,7 @@ parseAclItem(const char *item, const char *type, const char *name,
 
 	/* privilege codes */
 #define CONVERT_PRIV(code, keywd) \
+do { \
 	if ((pos = strchr(eqpos + 1, code))) \
 	{ \
 		if (*(pos + 1) == '*') \
@@ -558,29 +609,37 @@ parseAclItem(const char *item, const char *type, const char *name,
 		} \
 	} \
 	else \
-		all_with_go = all_without_go = false
+		all_with_go = all_without_go = false; \
+} while (0)
 
 	resetPQExpBuffer(privs);
 	resetPQExpBuffer(privswgo);
 
-	if (strcmp(type, "TABLE") == 0)
+	if (strcmp(type, "TABLE") == 0 || strcmp(type, "SEQUENCE") == 0)
 	{
-		CONVERT_PRIV('a', "INSERT");
 		CONVERT_PRIV('r', "SELECT");
-		CONVERT_PRIV('R', "RULE");
 
-		if (remoteVersion >= 70200)
-		{
-			CONVERT_PRIV('w', "UPDATE");
-			CONVERT_PRIV('d', "DELETE");
-			CONVERT_PRIV('x', "REFERENCES");
-			CONVERT_PRIV('t', "TRIGGER");
-		}
+		if (strcmp(type, "SEQUENCE") == 0)
+			/* sequence only */
+			CONVERT_PRIV('U', "USAGE");
 		else
 		{
+			/* table only */
+			CONVERT_PRIV('a', "INSERT");
+			if (remoteVersion >= 70200)
+			{
+				CONVERT_PRIV('d', "DELETE");
+				CONVERT_PRIV('x', "REFERENCES");
+				CONVERT_PRIV('t', "TRIGGER");
+			}
+		}
+
+		/* UPDATE */
+		if (remoteVersion >= 70200 || strcmp(type, "SEQUENCE") == 0)
+			CONVERT_PRIV('w', "UPDATE");
+		else
 			/* 7.0 and 7.1 have a simpler worldview */
 			CONVERT_PRIV('w', "UPDATE,DELETE");
-		}
 	}
 	else if (strcmp(type, "FUNCTION") == 0)
 		CONVERT_PRIV('X', "EXECUTE");
@@ -594,6 +653,7 @@ parseAclItem(const char *item, const char *type, const char *name,
 	else if (strcmp(type, "DATABASE") == 0)
 	{
 		CONVERT_PRIV('C', "CREATE");
+		CONVERT_PRIV('c', "CONNECT");
 		CONVERT_PRIV('T', "TEMPORARY");
 	}
 	else if (strcmp(type, "TABLESPACE") == 0)
@@ -669,4 +729,201 @@ AddAcl(PQExpBuffer aclbuf, const char *keyword)
 	if (aclbuf->len > 0)
 		appendPQExpBufferChar(aclbuf, ',');
 	appendPQExpBuffer(aclbuf, "%s", keyword);
+}
+
+
+/*
+ * processSQLNamePattern
+ *
+ * Scan a wildcard-pattern string and generate appropriate WHERE clauses
+ * to limit the set of objects returned.  The WHERE clauses are appended
+ * to the already-partially-constructed query in buf.
+ *
+ * conn: connection query will be sent to (consulted for escaping rules).
+ * buf: output parameter.
+ * pattern: user-specified pattern option, or NULL if none ("*" is implied).
+ * have_where: true if caller already emitted "WHERE" (clauses will be ANDed
+ * onto the existing WHERE clause).
+ * force_escape: always quote regexp special characters, even outside
+ * double quotes (else they are quoted only between double quotes).
+ * schemavar: name of query variable to match against a schema-name pattern.
+ * Can be NULL if no schema.
+ * namevar: name of query variable to match against an object-name pattern.
+ * altnamevar: NULL, or name of an alternate variable to match against name.
+ * visibilityrule: clause to use if we want to restrict to visible objects
+ * (for example, "pg_catalog.pg_table_is_visible(p.oid)").	Can be NULL.
+ *
+ * Formatting note: the text already present in buf should end with a newline.
+ * The appended text, if any, will end with one too.
+ */
+void
+processSQLNamePattern(PGconn *conn, PQExpBuffer buf, const char *pattern,
+					  bool have_where, bool force_escape,
+					  const char *schemavar, const char *namevar,
+					  const char *altnamevar, const char *visibilityrule)
+{
+	PQExpBufferData schemabuf;
+	PQExpBufferData namebuf;
+	int			encoding = PQclientEncoding(conn);
+	bool		inquotes;
+	const char *cp;
+	int			i;
+
+#define WHEREAND() \
+	(appendPQExpBufferStr(buf, have_where ? "  AND " : "WHERE "), have_where = true)
+
+	if (pattern == NULL)
+	{
+		/* Default: select all visible objects */
+		if (visibilityrule)
+		{
+			WHEREAND();
+			appendPQExpBuffer(buf, "%s\n", visibilityrule);
+		}
+		return;
+	}
+
+	initPQExpBuffer(&schemabuf);
+	initPQExpBuffer(&namebuf);
+
+	/*
+	 * Parse the pattern, converting quotes and lower-casing unquoted letters.
+	 * Also, adjust shell-style wildcard characters into regexp notation.
+	 *
+	 * We surround the pattern with "^(...)$" to force it to match the whole
+	 * string, as per SQL practice.  We have to have parens in case the string
+	 * contains "|", else the "^" and "$" will be bound into the first and
+	 * last alternatives which is not what we want.
+	 *
+	 * Note: the result of this pass is the actual regexp pattern(s) we want to
+	 * execute.  Quoting/escaping into SQL literal format will be done below
+	 * using appendStringLiteralConn().
+	 */
+	appendPQExpBufferStr(&namebuf, "^(");
+
+	inquotes = false;
+	cp = pattern;
+
+	while (*cp)
+	{
+		char	ch = *cp;
+
+		if (ch == '"')
+		{
+			if (inquotes && cp[1] == '"')
+			{
+				/* emit one quote, stay in inquotes mode */
+				appendPQExpBufferChar(&namebuf, '"');
+				cp++;
+			}
+			else
+				inquotes = !inquotes;
+			cp++;
+		}
+		else if (!inquotes && isupper((unsigned char) ch))
+		{
+			appendPQExpBufferChar(&namebuf,
+								  pg_tolower((unsigned char) ch));
+			cp++;
+		}
+		else if (!inquotes && ch == '*')
+		{
+			appendPQExpBufferStr(&namebuf, ".*");
+			cp++;
+		}
+		else if (!inquotes && ch == '?')
+		{
+			appendPQExpBufferChar(&namebuf, '.');
+			cp++;
+		}
+		else if (!inquotes && ch == '.')
+		{
+			/* Found schema/name separator, move current pattern to schema */
+			resetPQExpBuffer(&schemabuf);
+			appendPQExpBufferStr(&schemabuf, namebuf.data);
+			resetPQExpBuffer(&namebuf);
+			appendPQExpBufferStr(&namebuf, "^(");
+			cp++;
+		}
+		else
+		{
+			/*
+			 * Ordinary data character, transfer to pattern
+			 *
+			 * Inside double quotes, or at all times if force_escape is true,
+			 * quote regexp special characters with a backslash to avoid
+			 * regexp errors.  Outside quotes, however, let them pass through
+			 * as-is; this lets knowledgeable users build regexp expressions
+			 * that are more powerful than shell-style patterns.
+			 */
+			if ((inquotes || force_escape) &&
+				strchr("|*+?()[]{}.^$\\", ch))
+				appendPQExpBufferChar(&namebuf, '\\');
+			i = PQmblen(cp, encoding);
+			while (i-- && *cp)
+			{
+				appendPQExpBufferChar(&namebuf, *cp);
+				cp++;
+			}
+		}
+	}
+
+	/*
+	 * Now decide what we need to emit.  Note there will be a leading "^("
+	 * in the patterns in any case.
+	 */
+	if (namebuf.len > 2)
+	{
+		/* We have a name pattern, so constrain the namevar(s) */
+
+		appendPQExpBufferStr(&namebuf, ")$");
+		/* Optimize away a "*" pattern */
+		if (strcmp(namebuf.data, "^(.*)$") != 0)
+		{
+			WHEREAND();
+			if (altnamevar)
+			{
+				appendPQExpBuffer(buf, "(%s ~ ", namevar);
+				appendStringLiteralConn(buf, namebuf.data, conn);
+				appendPQExpBuffer(buf, "\n        OR %s ~ ", altnamevar);
+				appendStringLiteralConn(buf, namebuf.data, conn);
+				appendPQExpBufferStr(buf, ")\n");
+			}
+			else
+			{
+				appendPQExpBuffer(buf, "%s ~ ", namevar);
+				appendStringLiteralConn(buf, namebuf.data, conn);
+				appendPQExpBufferChar(buf, '\n');
+			}
+		}
+	}
+
+	if (schemabuf.len > 2)
+	{
+		/* We have a schema pattern, so constrain the schemavar */
+
+		appendPQExpBufferStr(&schemabuf, ")$");
+		/* Optimize away a "*" pattern */
+		if (strcmp(schemabuf.data, "^(.*)$") != 0 && schemavar)
+		{
+			WHEREAND();
+			appendPQExpBuffer(buf, "%s ~ ", schemavar);
+			appendStringLiteralConn(buf, schemabuf.data, conn);
+			appendPQExpBufferChar(buf, '\n');
+		}
+	}
+	else
+	{
+		/* No schema pattern given, so select only visible objects */
+		if (visibilityrule)
+		{
+			WHEREAND();
+			appendPQExpBuffer(buf, "%s\n", visibilityrule);
+		}
+	}
+
+	termPQExpBuffer(&schemabuf);
+	termPQExpBuffer(&namebuf);
+
+#undef WHEREAND
 }

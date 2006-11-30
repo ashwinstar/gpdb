@@ -6,29 +6,23 @@
  * Since pg4_dump is long-dead code, there is no longer any useful distinction
  * between this file and pg_dump.c.
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/bin/pg_dump/common.c,v 1.87 2005/10/15 02:49:38 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/bin/pg_dump/common.c,v 1.94 2006/10/09 23:36:59 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 
 #include "postgres_fe.h"
-#include "pg_dump.h"
 #include "pg_backup_archiver.h"
 
 #include "postgres.h"
 #include "catalog/pg_class.h"
 
 #include <ctype.h>
-
-#include "libpq-fe.h"
-#ifndef HAVE_STRDUP
-#include "strdup.h"
-#endif
 
 
 /*
@@ -75,9 +69,7 @@ void		reset(void);
  *	  Collect information about all potentially dumpable objects
  */
 TableInfo *
-getSchemaData(int *numTablesPtr,
-			  const bool schemaOnly,
-			  const bool dataOnly)
+getSchemaData(int *numTablesPtr)
 {
 	NamespaceInfo *nsinfo;
 	AggInfo    *agginfo;
@@ -202,7 +194,7 @@ flagInhTables(TableInfo *tblinfo, int numTables,
 			continue;
 
 		/* Don't bother computing anything for non-target tables, either */
-		if (!tblinfo[i].dump)
+		if (!tblinfo[i].dobj.dump)
 			continue;
 
 		/* Find all the immediate parent tables */
@@ -243,7 +235,7 @@ flagInhAttrs(TableInfo *tblinfo, int numTables,
 			continue;
 
 		/* Don't bother computing anything for non-target tables, either */
-		if (!tbinfo->dump)
+		if (!tbinfo->dobj.dump)
 			continue;
 
 		numParents = tbinfo->numParents;
@@ -389,7 +381,7 @@ flagInhAttrs(TableInfo *tblinfo, int numTables,
  *		Given a newly-created dumpable object, assign a dump ID,
  *		and enter the object into the lookup table.
  *
- * The caller is expected to have filled in objType and catalogId,
+ * The caller is expected to have filled in objType and catId,
  * but not any of the other standard fields of a DumpableObject.
  */
 void
@@ -398,6 +390,7 @@ AssignDumpId(DumpableObject *dobj)
 	dobj->dumpId = ++lastDumpId;
 	dobj->name = NULL;			/* must be set later */
 	dobj->namespace = NULL;		/* may be set later */
+	dobj->dump = true;			/* default assumption */
 	dobj->dependencies = NULL;
 	dobj->nDeps = 0;
 	dobj->allocDeps = 0;
@@ -410,16 +403,14 @@ AssignDumpId(DumpableObject *dobj)
 		{
 			newAlloc = 256;
 			dumpIdMap = (DumpableObject **)
-				malloc(newAlloc * sizeof(DumpableObject *));
+				pg_malloc(newAlloc * sizeof(DumpableObject *));
 		}
 		else
 		{
 			newAlloc = allocedDumpIds * 2;
 			dumpIdMap = (DumpableObject **)
-				realloc(dumpIdMap, newAlloc * sizeof(DumpableObject *));
+				pg_realloc(dumpIdMap, newAlloc * sizeof(DumpableObject *));
 		}
-		if (dumpIdMap == NULL)
-			exit_horribly(NULL, NULL, "out of memory\n");
 		memset(dumpIdMap + allocedDumpIds, 0,
 			   (newAlloc - allocedDumpIds) * sizeof(DumpableObject *));
 		allocedDumpIds = newAlloc;
@@ -549,9 +540,7 @@ getDumpableObjects(DumpableObject ***objs, int *numObjs)
 				j;
 
 	*objs = (DumpableObject **)
-		malloc(allocedDumpIds * sizeof(DumpableObject *));
-	if (*objs == NULL)
-		exit_horribly(NULL, NULL, "out of memory\n");
+		pg_malloc(allocedDumpIds * sizeof(DumpableObject *));
 	j = 0;
 	for (i = 1; i < allocedDumpIds; i++)
 	{
@@ -575,17 +564,15 @@ addObjectDependency(DumpableObject *dobj, DumpId refId)
 		{
 			dobj->allocDeps = 16;
 			dobj->dependencies = (DumpId *)
-				malloc(dobj->allocDeps * sizeof(DumpId));
+				pg_malloc(dobj->allocDeps * sizeof(DumpId));
 		}
 		else
 		{
 			dobj->allocDeps *= 2;
 			dobj->dependencies = (DumpId *)
-				realloc(dobj->dependencies,
-						dobj->allocDeps * sizeof(DumpId));
+				pg_realloc(dobj->dependencies,
+						   dobj->allocDeps * sizeof(DumpId));
 		}
-		if (dobj->dependencies == NULL)
-			exit_horribly(NULL, NULL, "out of memory\n");
 	}
 	dobj->dependencies[dobj->nDeps++] = refId;
 }
@@ -715,7 +702,8 @@ findParentsByOid(TableInfo *self,
 
 	if (numParents > 0)
 	{
-		self->parents = (TableInfo **) malloc(sizeof(TableInfo *) * numParents);
+		self->parents = (TableInfo **)
+			pg_malloc(sizeof(TableInfo *) * numParents);
 		j = 0;
 		for (i = 0; i < numInherits; i++)
 		{
@@ -768,7 +756,7 @@ parseOidArray(const char *str, Oid *array, int arraysize)
 			{
 				if (argNum >= arraysize)
 				{
-					write_msg(NULL, "could not parse numeric array: too many numbers\n");
+					write_msg(NULL, "could not parse numeric array \"%s\": too many numbers\n", str);
 					exit_nicely();
 				}
 				temp[j] = '\0';
@@ -783,7 +771,7 @@ parseOidArray(const char *str, Oid *array, int arraysize)
 			if (!(isdigit((unsigned char) s) || s == '-') ||
 				j >= sizeof(temp) - 1)
 			{
-				write_msg(NULL, "could not parse numeric array: invalid character in number\n");
+				write_msg(NULL, "could not parse numeric array \"%s\": invalid character in number\n", str);
 				exit_nicely();
 			}
 			temp[j++] = s;
@@ -840,3 +828,124 @@ reset(void)
 }
 
 /* end cdb_addition */
+
+
+/*
+ * Support for simple list operations
+ */
+
+void
+simple_oid_list_append(SimpleOidList *list, Oid val)
+{
+	SimpleOidListCell *cell;
+
+	cell = (SimpleOidListCell *) pg_malloc(sizeof(SimpleOidListCell));
+	cell->next = NULL;
+	cell->val = val;
+
+	if (list->tail)
+		list->tail->next = cell;
+	else
+		list->head = cell;
+	list->tail = cell;
+}
+
+void
+simple_string_list_append(SimpleStringList *list, const char *val)
+{
+	SimpleStringListCell *cell;
+
+	/* this calculation correctly accounts for the null trailing byte */
+	cell = (SimpleStringListCell *)
+		pg_malloc(sizeof(SimpleStringListCell) + strlen(val));
+	cell->next = NULL;
+	strcpy(cell->val, val);
+
+	if (list->tail)
+		list->tail->next = cell;
+	else
+		list->head = cell;
+	list->tail = cell;
+}
+
+bool
+simple_oid_list_member(SimpleOidList *list, Oid val)
+{
+	SimpleOidListCell *cell;
+
+	for (cell = list->head; cell; cell = cell->next)
+	{
+		if (cell->val == val)
+			return true;
+	}
+	return false;
+}
+
+bool
+simple_string_list_member(SimpleStringList *list, const char *val)
+{
+	SimpleStringListCell *cell;
+
+	for (cell = list->head; cell; cell = cell->next)
+	{
+		if (strcmp(cell->val, val) == 0)
+			return true;
+	}
+	return false;
+}
+
+
+/*
+ * Safer versions of some standard C library functions. If an
+ * out-of-memory condition occurs, these functions will bail out
+ * safely; therefore, their return value is guaranteed to be non-NULL.
+ *
+ * XXX need to refactor things so that these can be in a file that can be
+ * shared by pg_dumpall and pg_restore as well as pg_dump.
+ */
+
+char *
+pg_strdup(const char *string)
+{
+	char	   *tmp;
+
+	if (!string)
+		exit_horribly(NULL, NULL, "cannot duplicate null pointer\n");
+	tmp = strdup(string);
+	if (!tmp)
+		exit_horribly(NULL, NULL, "out of memory\n");
+	return tmp;
+}
+
+void *
+pg_malloc(size_t size)
+{
+	void	   *tmp;
+
+	tmp = malloc(size);
+	if (!tmp)
+		exit_horribly(NULL, NULL, "out of memory\n");
+	return tmp;
+}
+
+void *
+pg_calloc(size_t nmemb, size_t size)
+{
+	void	   *tmp;
+
+	tmp = calloc(nmemb, size);
+	if (!tmp)
+		exit_horribly(NULL, NULL, "out of memory\n");
+	return tmp;
+}
+
+void *
+pg_realloc(void *ptr, size_t size)
+{
+	void	   *tmp;
+
+	tmp = realloc(ptr, size);
+	if (!tmp)
+		exit_horribly(NULL, NULL, "out of memory\n");
+	return tmp;
+}

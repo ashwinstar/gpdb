@@ -15,26 +15,24 @@
  *
  *
  * IDENTIFICATION
- *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_archiver.c,v 1.117.2.4 2006/05/24 21:20:24 tgl Exp $
+ *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_archiver.c,v 1.137 2006/10/14 23:07:22 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 
-#include "pg_backup.h"
-#include "pg_dump.h"
-#include "pg_backup_archiver.h"
 #include "pg_backup_db.h"
 #include "dumputils.h"
 
 #include <ctype.h>
+
 #include <unistd.h>
 
 #ifdef WIN32
 #include <io.h>
 #endif
 
-#include "pqexpbuffer.h"
 #include "libpq/libpq-fs.h"
+#include "mb/pg_wchar.h"
 
 
 const char *progname;
@@ -57,7 +55,8 @@ static void _becomeUser(ArchiveHandle *AH, const char *user);
 static void _becomeOwner(ArchiveHandle *AH, TocEntry *te);
 static void _selectOutputSchema(ArchiveHandle *AH, const char *schemaName);
 static void _selectTablespace(ArchiveHandle *AH, const char *tablespace);
-
+static void processEncodingEntry(ArchiveHandle *AH, TocEntry *te);
+static void processStdStringsEntry(ArchiveHandle *AH, TocEntry *te);
 static teReqs _tocEntryRequired(TocEntry *te, RestoreOptions *ropt, bool include_acls);
 static void _disableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt);
 static void _enableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt);
@@ -70,6 +69,8 @@ static void _write_msg(const char *modulename, const char *fmt, va_list ap);
 static void _die_horribly(ArchiveHandle *AH, const char *modulename, const char *fmt, va_list ap);
 
 static void dumpTimestamp(ArchiveHandle *AH, const char *msg, time_t tim);
+static OutputContext SetOutput(ArchiveHandle *AH, char *filename, int compression);
+static void ResetOutput(ArchiveHandle *AH, OutputContext savedContext);
 
 
 /*
@@ -119,7 +120,8 @@ CloseArchive(Archive *AHX)
 		res = fclose(AH->OF);
 
 	if (res != 0)
-		die_horribly(AH, modulename, "could not close output archive file\n");
+		die_horribly(AH, modulename, "could not close output file: %s\n",
+					 strerror(errno));
 }
 
 /* Public */
@@ -210,6 +212,14 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 	if (AH->public.verbose)
 		dumpTimestamp(AH, "Started on", AH->createDate);
 
+	if (ropt->single_txn)
+	{
+		if (AH->connection)
+			StartTransaction(AH);
+		else
+			ahprintf(AH, "BEGIN;\n\n");
+	}
+
 	/*
 	 * Establish important parameter values right away.
 	 */
@@ -268,6 +278,33 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 			_printTocEntry(AH, te, ropt, false, false);
 			defnDumped = true;
 
+			/*
+			 * If we could not create a table and --no-data-for-failed-tables
+			 * was given, ignore the corresponding TABLE DATA
+			 */
+			if (ropt->noDataForFailedTables &&
+				AH->lastErrorTE == te &&
+				strcmp(te->desc, "TABLE") == 0)
+			{
+				TocEntry   *tes;
+
+				ahlog(AH, 1, "table \"%s\" could not be created, will not restore its data\n",
+					  te->tag);
+
+				for (tes = te->next; tes != AH->toc; tes = tes->next)
+				{
+					if (strcmp(tes->desc, "TABLE DATA") == 0 &&
+						strcmp(tes->tag, te->tag) == 0 &&
+						strcmp(tes->namespace ? tes->namespace : "",
+							   te->namespace ? te->namespace : "") == 0)
+					{
+						/* mark it unwanted */
+						ropt->idWanted[tes->dumpId - 1] = false;
+						break;
+					}
+				}
+			}
+
 			/* If we created a DB, connect to it... */
 			if (strcmp(te->desc, "DATABASE") == 0)
 			{
@@ -295,7 +332,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 				{
 #ifndef HAVE_LIBZ
 					if (AH->compression != 0)
-						die_horribly(AH, modulename, "cannot restore from compressed archive (not configured for compression support)\n");
+						die_horribly(AH, modulename, "cannot restore from compressed archive (compression not supported in this installation)\n");
 #endif
 
 					_printTocEntry(AH, te, ropt, true, false);
@@ -369,6 +406,14 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 				  te->desc, te->tag);
 			_printTocEntry(AH, te, ropt, false, true);
 		}
+	}
+
+	if (ropt->single_txn)
+	{
+		if (AH->connection)
+			CommitTransaction(AH);
+		else
+			ahprintf(AH, "COMMIT;\n\n");
 	}
 
 	if (AH->public.verbose)
@@ -644,10 +689,13 @@ EndBlob(Archive *AHX, Oid oid)
 void
 StartRestoreBlobs(ArchiveHandle *AH)
 {
-	if (AH->connection)
-		StartTransaction(AH);
-	else
-		ahprintf(AH, "BEGIN;\n\n");
+	if (!AH->ropt->single_txn)
+	{
+		if (AH->connection)
+			StartTransaction(AH);
+		else
+			ahprintf(AH, "BEGIN;\n\n");
+	}
 
 	AH->blobCount = 0;
 }
@@ -658,10 +706,13 @@ StartRestoreBlobs(ArchiveHandle *AH)
 void
 EndRestoreBlobs(ArchiveHandle *AH)
 {
-	if (AH->connection)
-		CommitTransaction(AH);
-	else
-		ahprintf(AH, "COMMIT;\n\n");
+	if (!AH->ropt->single_txn)
+	{
+		if (AH->connection)
+			CommitTransaction(AH);
+		else
+			ahprintf(AH, "COMMIT;\n\n");
+	}
 
 	ahlog(AH, 1, "restored %d large objects\n", AH->blobCount);
 }
@@ -742,7 +793,6 @@ SortTocFromFile(Archive *AHX, RestoreOptions *ropt)
 	/* Allocate space for the 'wanted' array, and init it */
 	ropt->idWanted = (bool *) malloc(sizeof(bool) * AH->maxDumpId);
 	memset(ropt->idWanted, 0, sizeof(bool) * AH->maxDumpId);
-	ropt->limitToList = true;
 
 	/* Set prev entry as head of list */
 	tePrev = AH->toc;
@@ -750,7 +800,8 @@ SortTocFromFile(Archive *AHX, RestoreOptions *ropt)
 	/* Setup the file */
 	fh = fopen(ropt->tocFile, PG_BINARY_R);
 	if (!fh)
-		die_horribly(AH, modulename, "could not open TOC file\n");
+		die_horribly(AH, modulename, "could not open TOC file: %s\n",
+					 strerror(errno));
 
 	while (fgets(buf, sizeof(buf), fh) != NULL)
 	{
@@ -787,6 +838,19 @@ SortTocFromFile(Archive *AHX, RestoreOptions *ropt)
 	if (fclose(fh) != 0)
 		die_horribly(AH, modulename, "could not close TOC file: %s\n",
 					 strerror(errno));
+}
+
+/*
+ * Set up a dummy ID filter that selects all dump IDs
+ */
+void
+InitDummyWantedList(Archive *AHX, RestoreOptions *ropt)
+{
+	ArchiveHandle *AH = (ArchiveHandle *) AHX;
+
+	/* Allocate space for the 'wanted' array, and init it to 1's */
+	ropt->idWanted = (bool *) malloc(sizeof(bool) * AH->maxDumpId);
+	memset(ropt->idWanted, 1, sizeof(bool) * AH->maxDumpId);
 }
 
 /**********************
@@ -837,7 +901,7 @@ archprintf(Archive *AH, const char *fmt,...)
  * Stuff below here should be 'private' to the archiver routines
  *******************************/
 
-OutputContext
+static OutputContext
 SetOutput(ArchiveHandle *AH, char *filename, int compression)
 {
 	OutputContext sav;
@@ -889,7 +953,7 @@ SetOutput(ArchiveHandle *AH, char *filename, int compression)
 	return sav;
 }
 
-void
+static void
 ResetOutput(ArchiveHandle *AH, OutputContext sav)
 {
 	int			res;
@@ -962,7 +1026,7 @@ ahlog(ArchiveHandle *AH, int level, const char *fmt,...)
 /*
  * Single place for logic which says 'We are restoring to a direct DB connection'.
  */
-int
+static int
 RestoringToDB(ArchiveHandle *AH)
 {
 	return (AH->ropt && AH->ropt->useDB && AH->connection);
@@ -1042,7 +1106,7 @@ ahwrite(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH)
 	{
 		res = GZWRITE((void *) ptr, size, nmemb, AH->OF);
 		if (res != (nmemb * size))
-			die_horribly(AH, modulename, "could not write to compressed archive\n");
+			die_horribly(AH, modulename, "could not write to output file: %s\n", strerror(errno));
 		return res;
 	}
 	else if (AH->CustomOutPtr)
@@ -1065,8 +1129,8 @@ ahwrite(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH)
 		{
 			res = fwrite((void *) ptr, size, nmemb, AH->OF);
 			if (res != nmemb)
-				die_horribly(AH, modulename, "could not write to output file (%lu != %lu)\n",
-							 (unsigned long) res, (unsigned long) nmemb);
+				die_horribly(AH, modulename, "could not write to output file: %s\n",
+							 strerror(errno));
 			return res;
 		}
 	}
@@ -1297,7 +1361,7 @@ ReadOffset(ArchiveHandle *AH, off_t *o)
 			break;
 
 		default:
-			die_horribly(AH, modulename, "Unexpected data offset flag %d\n", offsetFlg);
+			die_horribly(AH, modulename, "unexpected data offset flag %d\n", offsetFlg);
 	}
 
 	/*
@@ -1532,7 +1596,7 @@ _discoverArchiveFormat(ArchiveHandle *AH)
 	/* Close the file */
 	if (wantClose)
 		if (fclose(fh) != 0)
-			die_horribly(AH, modulename, "could not close the input file after reading header: %s\n",
+			die_horribly(AH, modulename, "could not close input file: %s\n",
 						 strerror(errno));
 
 	return AH->format;
@@ -1561,6 +1625,14 @@ _allocAH(const char *FileSpec, const ArchiveFormat fmt,
 	AH->vmaj = K_VERS_MAJOR;
 	AH->vmin = K_VERS_MINOR;
 	AH->vrev = K_VERS_REV;
+
+	/* initialize for backwards compatible string processing */
+	AH->public.encoding = PG_SQL_ASCII;
+	AH->public.std_strings = false;
+
+	/* sql error handling */
+	AH->public.exit_on_error = true;
+	AH->public.n_errors = 0;
 
 	AH->createDate = time(NULL);
 
@@ -1648,10 +1720,6 @@ _allocAH(const char *FileSpec, const ArchiveFormat fmt,
 		default:
 			die_horribly(AH, modulename, "unrecognized file format \"%d\"\n", fmt);
 	}
-
-	/* sql error handling */
-	AH->public.exit_on_error = true;
-	AH->public.n_errors = 0;
 
 	return AH;
 }
@@ -1861,11 +1929,62 @@ ReadToc(ArchiveHandle *AH)
 		ahlog(AH, 3, "read TOC entry %d (ID %d) for %s %s\n",
 			  i, te->dumpId, te->desc, te->tag);
 
+		/* link completed entry into TOC circular list */
 		te->prev = AH->toc->prev;
 		AH->toc->prev->next = te;
 		AH->toc->prev = te;
 		te->next = AH->toc;
+
+		/* special processing immediately upon read for some items */
+		if (strcmp(te->desc, "ENCODING") == 0)
+			processEncodingEntry(AH, te);
+		else if (strcmp(te->desc, "STDSTRINGS") == 0)
+			processStdStringsEntry(AH, te);
 	}
+}
+
+static void
+processEncodingEntry(ArchiveHandle *AH, TocEntry *te)
+{
+	/* te->defn should have the form SET client_encoding = 'foo'; */
+	char	   *defn = strdup(te->defn);
+	char	   *ptr1;
+	char	   *ptr2 = NULL;
+	int			encoding;
+
+	ptr1 = strchr(defn, '\'');
+	if (ptr1)
+		ptr2 = strchr(++ptr1, '\'');
+	if (ptr2)
+	{
+		*ptr2 = '\0';
+		encoding = pg_char_to_encoding(ptr1);
+		if (encoding < 0)
+			die_horribly(AH, modulename, "unrecognized encoding \"%s\"\n",
+						 ptr1);
+		AH->public.encoding = encoding;
+	}
+	else
+		die_horribly(AH, modulename, "invalid ENCODING item: %s\n",
+					 te->defn);
+
+	free(defn);
+}
+
+static void
+processStdStringsEntry(ArchiveHandle *AH, TocEntry *te)
+{
+	/* te->defn should have the form SET standard_conforming_strings = 'x'; */
+	char	   *ptr1;
+
+	ptr1 = strchr(te->defn, '\'');
+	if (ptr1 && strncmp(ptr1, "'on'", 4) == 0)
+		AH->public.std_strings = true;
+	else if (ptr1 && strncmp(ptr1, "'off'", 5) == 0)
+		AH->public.std_strings = false;
+	else
+		die_horribly(AH, modulename, "invalid STDSTRINGS item: %s\n",
+					 te->defn);
 }
 
 static teReqs
@@ -1873,8 +1992,9 @@ _tocEntryRequired(TocEntry *te, RestoreOptions *ropt, bool include_acls)
 {
 	teReqs		res = REQ_ALL;
 
-	/* ENCODING objects are dumped specially, so always reject here */
-	if (strcmp(te->desc, "ENCODING") == 0)
+	/* ENCODING and STDSTRINGS items are dumped specially, so always reject */
+	if (strcmp(te->desc, "ENCODING") == 0 ||
+		strcmp(te->desc, "STDSTRINGS") == 0)
 		return 0;
 
 	/* If it's an ACL, maybe ignore it */
@@ -1962,8 +2082,8 @@ _tocEntryRequired(TocEntry *te, RestoreOptions *ropt, bool include_acls)
 	if (!te->defn || strlen(te->defn) == 0)
 		res = res & ~REQ_SCHEMA;
 
-	/* Finally, if we used a list, limit based on that as well */
-	if (ropt->limitToList && !ropt->idWanted[te->dumpId - 1])
+	/* Finally, if there's a per-ID filter, limit based on that as well */
+	if (ropt->idWanted && !ropt->idWanted[te->dumpId - 1])
 		return 0;
 
 	return res;
@@ -1976,25 +2096,21 @@ _tocEntryRequired(TocEntry *te, RestoreOptions *ropt, bool include_acls)
 static void
 _doSetFixedOutputState(ArchiveHandle *AH)
 {
-	TocEntry   *te;
+	/* Select the correct character set encoding */
+	ahprintf(AH, "SET client_encoding = '%s';\n",
+			 pg_encoding_to_char(AH->public.encoding));
 
-	/* If we have an encoding setting, emit that */
-	te = AH->toc->next;
-	while (te != AH->toc)
-	{
-		if (strcmp(te->desc, "ENCODING") == 0)
-		{
-			ahprintf(AH, "%s", te->defn);
-			break;
-		}
-		te = te->next;
-	}
+	/* Select the correct string literal syntax */
+	ahprintf(AH, "SET standard_conforming_strings = %s;\n",
+			 AH->public.std_strings ? "on" : "off");
 
 	/* Make sure function checking is disabled */
 	ahprintf(AH, "SET check_function_bodies = false;\n");
 
 	/* Avoid annoying notices etc */
 	ahprintf(AH, "SET client_min_messages = warning;\n");
+	if (!AH->public.std_strings)
+		ahprintf(AH, "SET escape_string_warning = off;\n");
 
 	ahprintf(AH, "\n");
 }
@@ -2015,7 +2131,7 @@ _doSetSessionAuth(ArchiveHandle *AH, const char *user)
 	 * SQL requires a string literal here.	Might as well be correct.
 	 */
 	if (user && *user)
-		appendStringLiteral(cmd, user, false);
+		appendStringLiteralAHX(cmd, user, AH);
 	else
 		appendPQExpBuffer(cmd, "DEFAULT");
 	appendPQExpBuffer(cmd, ";");
@@ -2179,7 +2295,7 @@ _selectOutputSchema(ArchiveHandle *AH, const char *schemaName)
 	PQExpBuffer qry;
 
 	if (!schemaName || *schemaName == '\0' ||
-		strcmp(AH->currSchema, schemaName) == 0)
+		(AH->currSchema && strcmp(AH->currSchema, schemaName) == 0))
 		return;					/* no need to do anything */
 
 	qry = createPQExpBuffer();
@@ -2284,8 +2400,7 @@ _getObjectDescription(PQExpBuffer buf, TocEntry *te, ArchiveHandle *AH)
 	const char *type = te->desc;
 
 	/* Use ALTER TABLE for views and sequences */
-	if (strcmp(type, "VIEW") == 0 ||
-		strcmp(type, "SEQUENCE") == 0)
+	if (strcmp(type, "VIEW") == 0 || strcmp(type, "SEQUENCE") == 0)
 		type = "TABLE";
 
 	/* objects named by a schema and name */
@@ -2413,7 +2528,7 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isDat
 		ahprintf(AH, "-- %sName: %s; Type: %s; Schema: %s; Owner: %s",
 				 pfx, te->tag, te->desc,
 				 te->namespace ? te->namespace : "-",
-				 te->owner);
+				 ropt->noOwner ? "-" : te->owner);
 		if (te->tablespace)
 			ahprintf(AH, "; Tablespace: %s", te->tablespace);
 		ahprintf(AH, "\n");

@@ -20,12 +20,11 @@
  *
  *
  * IDENTIFICATION
- *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_files.c,v 1.27 2005/10/15 02:49:38 momjian Exp $
+ *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_files.c,v 1.29 2006/07/14 14:52:26 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 
-#include "pg_backup.h"
 #include "pg_backup_archiver.h"
 
 static void _ArchiveEntry(ArchiveHandle *AH, TocEntry *te);
@@ -243,7 +242,7 @@ _StartData(ArchiveHandle *AH, TocEntry *te)
 #endif
 
 	if (tctx->FH == NULL)
-		die_horribly(AH, modulename, "could not open data file for output\n");
+		die_horribly(AH, modulename, "could not open output file: %s\n", strerror(errno));
 }
 
 static size_t
@@ -287,7 +286,7 @@ _PrintFileData(ArchiveHandle *AH, char *filename, RestoreOptions *ropt)
 #endif
 
 	if (AH->FH == NULL)
-		die_horribly(AH, modulename, "could not open data file for input\n");
+		die_horribly(AH, modulename, "could not open input file: %s\n", strerror(errno));
 
 	while ((cnt = GZREAD(buf, 1, 4095, AH->FH)) > 0)
 	{
@@ -411,7 +410,7 @@ _WriteBuf(ArchiveHandle *AH, const void *buf, size_t len)
 
 	res = fwrite(buf, 1, len, AH->FH);
 	if (res != len)
-		die_horribly(AH, modulename, "write error in _WriteBuf (%lu != %lu)\n", (unsigned long) res, (unsigned long) len);
+		die_horribly(AH, modulename, "could not write to output file: %s\n", strerror(errno));
 
 	ctx->filePos += res;
 	return res;
@@ -508,7 +507,7 @@ _StartBlob(ArchiveHandle *AH, TocEntry *te, Oid oid)
 #endif
 
 	if (tctx->FH == NULL)
-		die_horribly(AH, modulename, "could not open large object file\n");
+		die_horribly(AH, modulename, "could not open large object file for input: %s\n", strerror(errno));
 }
 
 /*

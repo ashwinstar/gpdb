@@ -16,7 +16,7 @@
  *
  *
  * IDENTIFICATION
- *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_tar.c,v 1.49.2.2 2006/06/27 02:56:46 momjian Exp $
+ *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_tar.c,v 1.56 2006/11/01 15:59:26 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -363,16 +363,17 @@ tarOpen(ArchiveHandle *AH, const char *filename, char mode)
 #ifndef WIN32
 		tm->tmpFH = tmpfile();
 #else
+
 		/*
-		 *	On WIN32, tmpfile() generates a filename in the root directory,
-		 *	which requires administrative permissions on certain systems.
-		 *	Loop until we find a unique file name we can create.
+		 * On WIN32, tmpfile() generates a filename in the root directory,
+		 * which requires administrative permissions on certain systems. Loop
+		 * until we find a unique file name we can create.
 		 */
 		while (1)
 		{
-			char *name;
-			int fd;
-			
+			char	   *name;
+			int			fd;
+
 			name = _tempnam(NULL, "pg_temp_");
 			if (name == NULL)
 				break;
@@ -380,7 +381,7 @@ tarOpen(ArchiveHandle *AH, const char *filename, char mode)
 					  O_TEMPORARY, S_IRUSR | S_IWUSR);
 			free(name);
 
-			if (fd != -1)	/* created a file */
+			if (fd != -1)		/* created a file */
 			{
 				tm->tmpFH = fdopen(fd, "w+b");
 				break;
@@ -572,8 +573,7 @@ tarWrite(const void *buf, size_t len, TAR_MEMBER *th)
 
 	if (res != len)
 		die_horribly(th->AH, modulename,
-				"could not write to tar member (wrote %lu, attempted %lu)\n",
-					 (unsigned long) res, (unsigned long) len);
+					 "could not write to output file: %s\n", strerror(errno));
 
 	th->pos += res;
 	return res;
@@ -701,6 +701,7 @@ _LoadBlobs(ArchiveHandle *AH, RestoreOptions *ropt)
 	lclContext *ctx = (lclContext *) AH->formatData;
 	TAR_MEMBER *th;
 	size_t		cnt;
+	bool		foundBlob = false;
 	char		buf[4096];
 
 	StartRestoreBlobs(AH);
@@ -725,10 +726,22 @@ _LoadBlobs(ArchiveHandle *AH, RestoreOptions *ropt)
 					ahwrite(buf, 1, cnt, AH);
 				}
 				EndRestoreBlob(AH, oid);
+				foundBlob = true;
 			}
+			tarClose(AH, th);
 		}
-
-		tarClose(AH, th);
+		else
+		{
+			tarClose(AH, th);
+			/*
+			 * Once we have found the first blob, stop at the first
+			 * non-blob entry (which will be 'blobs.toc').  This coding would
+			 * eat all the rest of the archive if there are no blobs ... but
+			 * this function shouldn't be called at all in that case.
+			 */
+			if (foundBlob)
+				break;
+		}
 
 		th = tarOpen(AH, NULL, 'r');
 	}
@@ -1061,13 +1074,12 @@ _tarAddFile(ArchiveHandle *AH, TAR_MEMBER *th)
 		res = fwrite(&buf[0], 1, cnt, th->tarFH);
 		if (res != cnt)
 			die_horribly(AH, modulename,
-						 "write error appending to tar archive (wrote %lu, attempted %lu)\n",
-						 (unsigned long) res, (unsigned long) cnt);
+					"could not write to output file: %s\n", strerror(errno));
 		len += res;
 	}
 
 	if (fclose(tmp) != 0)		/* This *should* delete it... */
-		die_horribly(AH, modulename, "could not close tar member: %s\n", strerror(errno));
+		die_horribly(AH, modulename, "could not close temporary file: %s\n", strerror(errno));
 
 	if (len != th->fileLen)
 	{
@@ -1353,6 +1365,6 @@ _tarWriteHeader(TAR_MEMBER *th)
 	}
 
 	if (fwrite(h, 1, 512, th->tarFH) != 512)
-		die_horribly(th->AH, modulename, "could not write tar header\n");
+		die_horribly(th->AH, modulename, "could not write to output file: %s\n", strerror(errno));
 
 }
