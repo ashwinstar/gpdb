@@ -605,7 +605,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 		newsub = makeNode(SubPlan);
 		memcpy(newsub, node, sizeof(SubPlan));
 		
-		newsub->exprs = (List*) apply_motion_mutator((Node*)subplan->exprs, context);
+		newsub->testexpr = (Node*) apply_motion_mutator((Node*)subplan->testexpr, context);
 		newsub->plan = (Plan*) apply_motion_mutator((Node*)subplan->plan, context);
 		newsub->rtable = (List*) apply_motion_mutator((Node*)subplan->rtable, context);
 		newsub->args = (List*) apply_motion_mutator((Node*)subplan->args, context);
