@@ -3,12 +3,12 @@
  * execQual.c
  *	  Routines to evaluate qualification and targetlist expressions
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/execQual.c,v 1.183.2.3 2006/03/10 01:51:34 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/execQual.c,v 1.199 2006/11/17 16:46:27 petere Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -37,11 +37,11 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/nbtree.h"
 #include "catalog/pg_type.h"
 #include "cdb/cdbvars.h"
 #include "commands/typecmds.h"
 #include "executor/execdebug.h"
-#include "executor/functions.h"
 #include "executor/nodeSubplan.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -49,7 +49,6 @@
 #include "optimizer/planmain.h"
 #include "parser/parse_expr.h"
 #include "utils/acl.h"
-#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -71,6 +70,10 @@ static Datum ExecEvalConst(ExprState *exprstate, ExprContext *econtext,
 			  bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 			  bool *isNull, ExprDoneCond *isDone);
+static void ShutdownFuncExpr(Datum arg);
+static TupleDesc get_cached_rowtype(Oid type_id, int32 typmod,
+				   TupleDesc *cache_field, ExprContext *econtext);
+static void ShutdownTupleDescRef(Datum arg);
 static ExprDoneCond ExecEvalFuncArgs(FunctionCallInfo fcinfo,
 				 List *argList, ExprContext *econtext);
 static Datum ExecMakeFunctionResultNoSets(FuncExprState *fcache,
@@ -105,6 +108,9 @@ static Datum ExecEvalArray(ArrayExprState *astate,
 static Datum ExecEvalRow(RowExprState *rstate,
 			ExprContext *econtext,
 			bool *isNull, ExprDoneCond *isDone);
+static Datum ExecEvalRowCompare(RowCompareExprState *rstate,
+				   ExprContext *econtext,
+				   bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalCoalesce(CoalesceExprState *coalesceExpr,
 				 ExprContext *econtext,
 				 bool *isNull, ExprDoneCond *isDone);
@@ -114,7 +120,7 @@ static Datum ExecEvalMinMax(MinMaxExprState *minmaxExpr,
 static Datum ExecEvalNullIf(FuncExprState *nullIfExpr,
 			   ExprContext *econtext,
 			   bool *isNull, ExprDoneCond *isDone);
-static Datum ExecEvalNullTest(GenericExprState *nstate,
+static Datum ExecEvalNullTest(NullTestState *nstate,
 				 ExprContext *econtext,
 				 bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalBooleanTest(GenericExprState *bstate,
@@ -203,16 +209,8 @@ static Datum ExecEvalRelabelType(GenericExprState *exprstate,
  *	   if it's a simple reference, or the modified array value if it's
  *	   an array assignment (i.e., array element or slice insertion).
  *
- * NOTE: if we get a NULL result from a subexpression, we return NULL when
- * it's an array reference, or the unmodified source array when it's an
- * array assignment.  This may seem peculiar, but if we return NULL (as was
- * done in versions up through 7.0) then an assignment like
- *			UPDATE table SET arrayfield[4] = NULL
- * will result in setting the whole array to NULL, which is certainly not
- * very desirable.	By returning the source array we make the assignment
- * into a no-op, instead.  (Eventually we need to redesign arrays so that
- * individual elements can be NULL, but for now, let's try to protect users
- * from shooting themselves in the foot.)
+ * NOTE: if we get a NULL result from a subscript expression, we return NULL
+ * when it's an array reference, or raise an error when it's an assignment.
  *
  * NOTE: we deliberately refrain from applying DatumGetArrayTypeP() here,
  * even though that might seem natural, because this code needs to support
@@ -271,15 +269,15 @@ ExecEvalArrayRef(ArrayRefExprState *astate,
 													 econtext,
 													 &eisnull,
 													 NULL));
-		/* If any index expr yields NULL, result is NULL or source array */
+		/* If any index expr yields NULL, result is NULL or error */
 		if (eisnull)
 		{
-			if (!isAssignment)
-			{
-				*isNull = true;
-				return (Datum) NULL;
-			}
-			return PointerGetDatum(array_source);
+			if (isAssignment)
+				ereport(ERROR,
+						(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				  errmsg("array subscript in assignment must not be null")));
+			*isNull = true;
+			return (Datum) NULL;
 		}
 	}
 
@@ -299,18 +297,15 @@ ExecEvalArrayRef(ArrayRefExprState *astate,
 														 econtext,
 														 &eisnull,
 														 NULL));
-
-			/*
-			 * If any index expr yields NULL, result is NULL or source array
-			 */
+			/* If any index expr yields NULL, result is NULL or error */
 			if (eisnull)
 			{
-				if (!isAssignment)
-				{
-					*isNull = true;
-					return (Datum) NULL;
-				}
-				return PointerGetDatum(array_source);
+				if (isAssignment)
+					ereport(ERROR,
+							(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+							 errmsg("array subscript in assignment must not be null")));
+				*isNull = true;
+				return (Datum) NULL;
 			}
 		}
 		/* this can't happen unless parser messed up */
@@ -341,29 +336,23 @@ ExecEvalArrayRef(ArrayRefExprState *astate,
 								  NULL);
 
 		/*
-		 * For now, can't cope with inserting NULL into an array, so make it a
-		 * no-op per discussion above...
+		 * For an assignment to a fixed-length array type, both the original
+		 * array and the value to be assigned into it must be non-NULL, else
+		 * we punt and return the original array.
 		 */
-		if (eisnull)
-			return PointerGetDatum(array_source);
+		if (astate->refattrlength > 0)	/* fixed-length array? */
+			if (eisnull || *isNull)
+				return PointerGetDatum(array_source);
 
 		/*
-		 * For an assignment, if all the subscripts and the input expression
-		 * are non-null but the original array is null, then substitute an
-		 * empty (zero-dimensional) array and proceed with the assignment.
-		 * This only works for varlena arrays, though; for fixed-length array
-		 * types we punt and return the null input array.
+		 * For assignment to varlena arrays, we handle a NULL original array
+		 * by substituting an empty (zero-dimensional) array; insertion of the
+		 * new element will result in a singleton array value.	It does not
+		 * matter whether the new element is NULL.
 		 */
 		if (*isNull)
 		{
-			if (astate->refattrlength > 0)		/* fixed-length array? */
-				return PointerGetDatum(array_source);
-
-			array_source = construct_md_array(NULL, 0, NULL, NULL,
-											  arrayRef->refelemtype,
-											  astate->refelemlength,
-											  astate->refelembyval,
-											  astate->refelemalign);
+			array_source = construct_empty_array(arrayRef->refelemtype);
 			*isNull = false;
 		}
 
@@ -371,20 +360,20 @@ ExecEvalArrayRef(ArrayRefExprState *astate,
 			resultArray = array_set(array_source, i,
 									upper.indx,
 									sourceData,
+									eisnull,
 									astate->refattrlength,
 									astate->refelemlength,
 									astate->refelembyval,
-									astate->refelemalign,
-									isNull);
+									astate->refelemalign);
 		else
 			resultArray = array_set_slice(array_source, i,
 										  upper.indx, lower.indx,
 								   (ArrayType *) DatumGetPointer(sourceData),
+										  eisnull,
 										  astate->refattrlength,
 										  astate->refelemlength,
 										  astate->refelembyval,
-										  astate->refelemalign,
-										  isNull);
+										  astate->refelemalign);
 		return PointerGetDatum(resultArray);
 	}
 
@@ -402,8 +391,7 @@ ExecEvalArrayRef(ArrayRefExprState *astate,
 									  astate->refattrlength,
 									  astate->refelemlength,
 									  astate->refelembyval,
-									  astate->refelemalign,
-									  isNull);
+									  astate->refelemalign);
 		return PointerGetDatum(resultArray);
 	}
 }
@@ -610,11 +598,6 @@ ExecEvalConst(ExprState *exprstate, ExprContext *econtext,
  *		something like ($.name) and the expression context contains
  *		the current parameter bindings (name = "sam") (age = 34)...
  *		so our job is to find and return the appropriate datum ("sam").
- *
- *		Q: if we have a parameter ($.foo) without a binding, i.e.
- *		   there is no (foo = xxx) in the parameter list info,
- *		   is this a fatal error or should this be a "not available"
- *		   (in which case we could return NULL)?	-cim 10/13/89
  * ----------------------------------------------------------------
  */
 
@@ -631,13 +614,12 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 			  bool *isNull, ExprDoneCond *isDone)
 {
 	Param	   *expression = (Param *) exprstate->expr;
-	int			thisParamKind = expression->paramkind;
-	AttrNumber	thisParamId = expression->paramid;
+	int			thisParamId = expression->paramid;
 
 	if (isDone)
 		*isDone = ExprSingleResult;
 
-	if (thisParamKind == PARAM_EXEC)
+	if (expression->paramkind == PARAM_EXEC)
 	{
 		/*
 		 * PARAM_EXEC params (internal executor parameters) are stored in the
@@ -650,17 +632,25 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 		{
 			if (Mpp_role == MPP_ROLE_EXECUTE)
 			{
-				ParamListInfo paramInfo;
+				ParamListInfo paramInfo = econtext->ecxt_param_list_info;
 				
-				paramInfo = lookupParam(econtext->ecxt_param_list_info,
-										PARAM_EXEC_REMOTE,
-										NULL,
-										thisParamId,
-										false);
-
-				prm->value = paramInfo->value;
-				prm->isnull = paramInfo->isnull;
+				if (paramInfo &&
+					thisParamId > 0 && thisParamId <= paramInfo->numParams)
+				{
+					ParamExternData *prm = &paramInfo->params[thisParamId - 1];
+		
+					if (OidIsValid(prm->ptype))
+					{
+						*isNull = prm->isnull;
+						return prm->value;
+					}
+				 
+				}
+				
+				prm->isnull = true;
 				prm->execPlan = NULL;
+				
+
 			}
 			else
 			{
@@ -676,18 +666,27 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 	else
 	{
 		/*
-		 * All other parameter types must be sought in ecxt_param_list_info.
+		 * PARAM_EXTERN parameters must be sought in ecxt_param_list_info.
 		 */
-		ParamListInfo paramInfo;
+		ParamListInfo paramInfo = econtext->ecxt_param_list_info;
 
-		paramInfo = lookupParam(econtext->ecxt_param_list_info,
-								thisParamKind,
-								expression->paramname,
-								thisParamId,
-								false);
-		Assert(paramInfo->ptype == expression->paramtype);
-		*isNull = paramInfo->isnull;
-		return paramInfo->value;
+		Assert(expression->paramkind == PARAM_EXTERN);
+		if (paramInfo &&
+			thisParamId > 0 && thisParamId <= paramInfo->numParams)
+		{
+			ParamExternData *prm = &paramInfo->params[thisParamId - 1];
+
+			if (OidIsValid(prm->ptype))
+			{
+				Assert(prm->ptype == expression->paramtype);
+				*isNull = prm->isnull;
+				return prm->value;
+			}
+		}
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("no value found for parameter %d", thisParamId)));
+		return (Datum) 0;		/* keep compiler quiet */
 	}
 }
 
@@ -750,6 +749,9 @@ GetAttributeByNum(HeapTupleHeader tuple,
 						  attrno,
 						  tupDesc,
 						  isNull);
+
+	ReleaseTupleDesc(tupDesc);
+
 	return result;
 }
 
@@ -808,6 +810,9 @@ GetAttributeByName(HeapTupleHeader tuple, const char *attname, bool *isNull)
 						  attrno,
 						  tupDesc,
 						  isNull);
+
+	ReleaseTupleDesc(tupDesc);
+
 	return result;
 }
 
@@ -859,6 +864,61 @@ ShutdownFuncExpr(Datum arg)
 
 	/* execUtils will deregister the callback... */
 	fcache->shutdown_reg = false;
+}
+
+/*
+ * get_cached_rowtype: utility function to lookup a rowtype tupdesc
+ *
+ * type_id, typmod: identity of the rowtype
+ * cache_field: where to cache the TupleDesc pointer in expression state node
+ *		(field must be initialized to NULL)
+ * econtext: expression context we are executing in
+ *
+ * NOTE: because the shutdown callback will be called during plan rescan,
+ * must be prepared to re-do this during any node execution; cannot call
+ * just once during expression initialization
+ */
+static TupleDesc
+get_cached_rowtype(Oid type_id, int32 typmod,
+				   TupleDesc *cache_field, ExprContext *econtext)
+{
+	TupleDesc	tupDesc = *cache_field;
+
+	/* Do lookup if no cached value or if requested type changed */
+	if (tupDesc == NULL ||
+		type_id != tupDesc->tdtypeid ||
+		typmod != tupDesc->tdtypmod)
+	{
+		tupDesc = lookup_rowtype_tupdesc(type_id, typmod);
+
+		if (*cache_field)
+		{
+			/* Release old tupdesc; but callback is already registered */
+			ReleaseTupleDesc(*cache_field);
+		}
+		else
+		{
+			/* Need to register shutdown callback to release tupdesc */
+			RegisterExprContextCallback(econtext,
+										ShutdownTupleDescRef,
+										PointerGetDatum(cache_field));
+		}
+		*cache_field = tupDesc;
+	}
+	return tupDesc;
+}
+
+/*
+ * Callback function to release a tupdesc refcount at expression tree shutdown
+ */
+static void
+ShutdownTupleDescRef(Datum arg)
+{
+	TupleDesc  *cache_field = (TupleDesc *) DatumGetPointer(arg);
+
+	if (*cache_field)
+		ReleaseTupleDesc(*cache_field);
+	*cache_field = NULL;
 }
 
 /*
@@ -1219,8 +1279,7 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 
 	funcrettype = exprType((Node *) funcexpr->expr);
 
-	returnsTuple = (funcrettype == RECORDOID ||
-					get_typtype(funcrettype) == 'c');
+	returnsTuple = type_is_rowtype(funcrettype);
 
 	/*
 	 * Prepare a resultinfo node for communication.  We always do this even if
@@ -1238,7 +1297,7 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 	/* isDone is filled below */
 	rsinfo.setResult = NULL;
 	rsinfo.setDesc = NULL;
-	 
+
 	/*
 	 * Normally the passed expression tree will be a FuncExprState, since the
 	 * grammar only allows a function call at the top level of a table
@@ -1386,9 +1445,8 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 					HeapTupleHeader td;
 
 					td = DatumGetHeapTupleHeader(result);
-					tupdesc = lookup_rowtype_tupdesc(HeapTupleHeaderGetTypeId(td),
+					tupdesc = lookup_rowtype_tupdesc_copy(HeapTupleHeaderGetTypeId(td),
 											   HeapTupleHeaderGetTypMod(td));
-					tupdesc = CreateTupleDescCopy(tupdesc);
 				}
 				else
 				{
@@ -1650,6 +1708,8 @@ ExecEvalScalarArrayOp(ScalarArrayOpExprState *sstate,
 	bool		typbyval;
 	char		typalign;
 	char	   *s;
+	bits8	   *bitmap;
+	int			bitmask;
 
 	/* Set default values for result flags: non-null, not a set result */
 	*isNull = false;
@@ -1698,9 +1758,8 @@ ExecEvalScalarArrayOp(ScalarArrayOpExprState *sstate,
 		return BoolGetDatum(!useOr);
 
 	/*
-	 * If the scalar is NULL, and the function is strict, return NULL. This is
-	 * just to avoid having to test for strictness inside the loop.  (XXX but
-	 * if arrays could have null elements, we'd need a test anyway.)
+	 * If the scalar is NULL, and the function is strict, return NULL; no
+	 * point in iterating the loop.
 	 */
 	if (fcinfo.argnull[0] && sstate->fxprstate.func.fn_strict)
 	{
@@ -1729,22 +1788,40 @@ ExecEvalScalarArrayOp(ScalarArrayOpExprState *sstate,
 
 	/* Loop over the array elements */
 	s = (char *) ARR_DATA_PTR(arr);
+	bitmap = ARR_NULLBITMAP(arr);
+	bitmask = 1;
+
 	for (i = 0; i < nitems; i++)
 	{
 		Datum		elt;
 		Datum		thisresult;
 
-		/* Get array element */
-		elt = fetch_att(s, typbyval, typlen);
-
-		s = att_addlength(s, typlen, PointerGetDatum(s));
-		s = (char *) att_align(s, typalign);
+		/* Get array element, checking for NULL */
+		if (bitmap && (*bitmap & bitmask) == 0)
+		{
+			fcinfo.arg[1] = (Datum) 0;
+			fcinfo.argnull[1] = true;
+		}
+		else
+		{
+			elt = fetch_att(s, typbyval, typlen);
+			s = att_addlength(s, typlen, PointerGetDatum(s));
+			s = (char *) att_align(s, typalign);
+			fcinfo.arg[1] = elt;
+			fcinfo.argnull[1] = false;
+		}
 
 		/* Call comparison function */
-		fcinfo.arg[1] = elt;
-		fcinfo.argnull[1] = false;
-		fcinfo.isnull = false;
-		thisresult = FunctionCallInvoke(&fcinfo);
+		if (fcinfo.argnull[1] && sstate->fxprstate.func.fn_strict)
+		{
+			fcinfo.isnull = true;
+			thisresult = (Datum) 0;
+		}
+		else
+		{
+			fcinfo.isnull = false;
+			thisresult = FunctionCallInvoke(&fcinfo);
+		}
 
 		/* Combine results per OR or AND semantics */
 		if (fcinfo.isnull)
@@ -1765,6 +1842,17 @@ ExecEvalScalarArrayOp(ScalarArrayOpExprState *sstate,
 				result = BoolGetDatum(false);
 				resultnull = false;
 				break;			/* needn't look at any more elements */
+			}
+		}
+
+		/* advance bitmap pointer if any */
+		if (bitmap)
+		{
+			bitmask <<= 1;
+			if (bitmask == 0x100)
+			{
+				bitmap++;
+				bitmask = 1;
 			}
 		}
 	}
@@ -1924,17 +2012,18 @@ ExecEvalConvertRowtype(ConvertRowtypeExprState *cstate,
 					   ExprContext *econtext,
 					   bool *isNull, ExprDoneCond *isDone)
 {
+	ConvertRowtypeExpr *convert = (ConvertRowtypeExpr *) cstate->xprstate.expr;
 	HeapTuple	result;
 	Datum		tupDatum;
 	HeapTupleHeader tuple;
 	HeapTupleData tmptup;
-	AttrNumber *attrMap = cstate->attrMap;
-	Datum	   *invalues = cstate->invalues;
-	bool	   *inisnull = cstate->inisnull;
-	Datum	   *outvalues = cstate->outvalues;
-	bool	   *outisnull = cstate->outisnull;
+	AttrNumber *attrMap;
+	Datum	   *invalues;
+	bool	   *inisnull;
+	Datum	   *outvalues;
+	bool	   *outisnull;
 	int			i;
-	int			outnatts = cstate->outdesc->natts;
+	int			outnatts;
 
 	tupDatum = ExecEvalExpr(cstate->arg, econtext, isNull, isDone);
 
@@ -1944,8 +2033,81 @@ ExecEvalConvertRowtype(ConvertRowtypeExprState *cstate,
 
 	tuple = DatumGetHeapTupleHeader(tupDatum);
 
+	/* Lookup tupdescs if first time through or after rescan */
+	if (cstate->indesc == NULL)
+		get_cached_rowtype(exprType((Node *) convert->arg), -1,
+						   &cstate->indesc, econtext);
+	if (cstate->outdesc == NULL)
+		get_cached_rowtype(convert->resulttype, -1,
+						   &cstate->outdesc, econtext);
+
 	Assert(HeapTupleHeaderGetTypeId(tuple) == cstate->indesc->tdtypeid);
 	Assert(HeapTupleHeaderGetTypMod(tuple) == cstate->indesc->tdtypmod);
+
+	/* if first time through, initialize */
+	if (cstate->attrMap == NULL)
+	{
+		MemoryContext old_cxt;
+		int			n;
+
+		/* allocate state in long-lived memory context */
+		old_cxt = MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+
+		/* prepare map from old to new attribute numbers */
+		n = cstate->outdesc->natts;
+		cstate->attrMap = (AttrNumber *) palloc0(n * sizeof(AttrNumber));
+		for (i = 0; i < n; i++)
+		{
+			Form_pg_attribute att = cstate->outdesc->attrs[i];
+			char	   *attname;
+			Oid			atttypid;
+			int32		atttypmod;
+			int			j;
+
+			if (att->attisdropped)
+				continue;		/* attrMap[i] is already 0 */
+			attname = NameStr(att->attname);
+			atttypid = att->atttypid;
+			atttypmod = att->atttypmod;
+			for (j = 0; j < cstate->indesc->natts; j++)
+			{
+				att = cstate->indesc->attrs[j];
+				if (att->attisdropped)
+					continue;
+				if (strcmp(attname, NameStr(att->attname)) == 0)
+				{
+					/* Found it, check type */
+					if (atttypid != att->atttypid || atttypmod != att->atttypmod)
+						elog(ERROR, "attribute \"%s\" of type %s does not match corresponding attribute of type %s",
+							 attname,
+							 format_type_be(cstate->indesc->tdtypeid),
+							 format_type_be(cstate->outdesc->tdtypeid));
+					cstate->attrMap[i] = (AttrNumber) (j + 1);
+					break;
+				}
+			}
+			if (cstate->attrMap[i] == 0)
+				elog(ERROR, "attribute \"%s\" of type %s does not exist",
+					 attname,
+					 format_type_be(cstate->indesc->tdtypeid));
+		}
+		/* preallocate workspace for Datum arrays */
+		n = cstate->indesc->natts + 1;	/* +1 for NULL */
+		cstate->invalues = (Datum *) palloc(n * sizeof(Datum));
+		cstate->inisnull = (bool *) palloc(n * sizeof(bool));
+		n = cstate->outdesc->natts;
+		cstate->outvalues = (Datum *) palloc(n * sizeof(Datum));
+		cstate->outisnull = (bool *) palloc(n * sizeof(bool));
+
+		MemoryContextSwitchTo(old_cxt);
+	}
+
+	attrMap = cstate->attrMap;
+	invalues = cstate->invalues;
+	inisnull = cstate->inisnull;
+	outvalues = cstate->outvalues;
+	outisnull = cstate->outisnull;
+	outnatts = cstate->outdesc->natts;
 
 	/*
 	 * heap_deform_tuple needs a HeapTuple not a bare HeapTupleHeader.
@@ -2083,10 +2245,6 @@ ExecEvalCaseTestExpr(ExprState *exprstate,
 
 /* ----------------------------------------------------------------
  *		ExecEvalArray - ARRAY[] expressions
- *
- * NOTE: currently, if any input value is NULL then we return a NULL array,
- * so the ARRAY[] construct can be considered strict.  Eventually this will
- * change; when it does, be sure to fix contain_nonstrict_functions().
  * ----------------------------------------------------------------
  */
 static Datum
@@ -2111,39 +2269,33 @@ ExecEvalArray(ArrayExprState *astate, ExprContext *econtext,
 		/* Elements are presumably of scalar type */
 		int			nelems;
 		Datum	   *dvalues;
+		bool	   *dnulls;
 		int			i = 0;
 
 		ndims = 1;
 		nelems = list_length(astate->elements);
 
-		/* Shouldn't happen here, but if length is 0, return NULL */
+		/* Shouldn't happen here, but if length is 0, return empty array */
 		if (nelems == 0)
-		{
-			*isNull = true;
-			return (Datum) 0;
-		}
+			return PointerGetDatum(construct_empty_array(element_type));
 
 		dvalues = (Datum *) palloc(nelems * sizeof(Datum));
+		dnulls = (bool *) palloc(nelems * sizeof(bool));
 
 		/* loop through and build array of datums */
 		foreach(element, astate->elements)
 		{
 			ExprState  *e = (ExprState *) lfirst(element);
-			bool		eisnull;
 
-			dvalues[i++] = ExecEvalExpr(e, econtext, &eisnull, NULL);
-			if (eisnull)
-			{
-				*isNull = true;
-				return (Datum) 0;
-			}
+			dvalues[i] = ExecEvalExpr(e, econtext, &dnulls[i], NULL);
+			i++;
 		}
 
 		/* setup for 1-D array of the given length */
 		dims[0] = nelems;
 		lbs[0] = 1;
 
-		result = construct_md_array(dvalues, ndims, dims, lbs,
+		result = construct_md_array(dvalues, dnulls, ndims, dims, lbs,
 									element_type,
 									astate->elemlength,
 									astate->elembyval,
@@ -2152,15 +2304,29 @@ ExecEvalArray(ArrayExprState *astate, ExprContext *econtext,
 	else
 	{
 		/* Must be nested array expressions */
-		char	   *dat = NULL;
-		Size		ndatabytes = 0;
-		int			nbytes;
-		int			outer_nelems = list_length(astate->elements);
+		int			nbytes = 0;
+		int			nitems = 0;
+		int			outer_nelems = 0;
 		int			elem_ndims = 0;
 		int		   *elem_dims = NULL;
 		int		   *elem_lbs = NULL;
 		bool		firstone = true;
+		bool		havenulls = false;
+		bool		haveempty = false;
+		char	  **subdata;
+		bits8	  **subbitmaps;
+		int		   *subbytes;
+		int		   *subnitems;
 		int			i;
+		int32		dataoffset;
+		char	   *dat;
+		int			iitem;
+
+		i = list_length(astate->elements);
+		subdata = (char **) palloc(i * sizeof(char *));
+		subbitmaps = (bits8 **) palloc(i * sizeof(bits8 *));
+		subbytes = (int *) palloc(i * sizeof(int));
+		subnitems = (int *) palloc(i * sizeof(int));
 
 		/* loop through and get data area from each element */
 		foreach(element, astate->elements)
@@ -2169,13 +2335,14 @@ ExecEvalArray(ArrayExprState *astate, ExprContext *econtext,
 			bool		eisnull;
 			Datum		arraydatum;
 			ArrayType  *array;
-			int			elem_ndatabytes;
+			int			this_ndims;
 
 			arraydatum = ExecEvalExpr(e, econtext, &eisnull, NULL);
+			/* temporarily ignore null subarrays */
 			if (eisnull)
 			{
-				*isNull = true;
-				return (Datum) 0;
+				haveempty = true;
+				continue;
 			}
 
 			array = DatumGetArrayTypeP(arraydatum);
@@ -2190,10 +2357,18 @@ ExecEvalArray(ArrayExprState *astate, ExprContext *econtext,
 								   format_type_be(ARR_ELEMTYPE(array)),
 								   format_type_be(element_type))));
 
+			this_ndims = ARR_NDIM(array);
+			/* temporarily ignore zero-dimensional subarrays */
+			if (this_ndims <= 0)
+			{
+				haveempty = true;
+				continue;
+			}
+
 			if (firstone)
 			{
 				/* Get sub-array details from first member */
-				elem_ndims = ARR_NDIM(array);
+				elem_ndims = this_ndims;
 				ndims = elem_ndims + 1;
 				if (ndims <= 0 || ndims > MAXDIM)
 					ereport(ERROR,
@@ -2211,7 +2386,7 @@ ExecEvalArray(ArrayExprState *astate, ExprContext *econtext,
 			else
 			{
 				/* Check other sub-arrays are compatible */
-				if (elem_ndims != ARR_NDIM(array) ||
+				if (elem_ndims != this_ndims ||
 					memcmp(elem_dims, ARR_DIMS(array),
 						   elem_ndims * sizeof(int)) != 0 ||
 					memcmp(elem_lbs, ARR_LBOUND(array),
@@ -2222,16 +2397,31 @@ ExecEvalArray(ArrayExprState *astate, ExprContext *econtext,
 									"expressions with matching dimensions")));
 			}
 
-			elem_ndatabytes = ARR_SIZE(array) - ARR_OVERHEAD(elem_ndims);
-			ndatabytes += elem_ndatabytes;
-			if (dat == NULL)
-				dat = (char *) palloc(ndatabytes);
-			else
-				dat = (char *) repalloc(dat, ndatabytes);
+			subdata[outer_nelems] = ARR_DATA_PTR(array);
+			subbitmaps[outer_nelems] = ARR_NULLBITMAP(array);
+			subbytes[outer_nelems] = ARR_SIZE(array) - ARR_DATA_OFFSET(array);
+			nbytes += subbytes[outer_nelems];
+			subnitems[outer_nelems] = ArrayGetNItems(this_ndims,
+													 ARR_DIMS(array));
+			nitems += subnitems[outer_nelems];
+			havenulls |= ARR_HASNULL(array);
+			outer_nelems++;
+		}
 
-			memcpy(dat + (ndatabytes - elem_ndatabytes),
-				   ARR_DATA_PTR(array),
-				   elem_ndatabytes);
+		/*
+		 * If all items were null or empty arrays, return an empty array;
+		 * otherwise, if some were and some weren't, raise error.  (Note:
+		 * we must special-case this somehow to avoid trying to generate
+		 * a 1-D array formed from empty arrays.  It's not ideal...)
+		 */
+		if (haveempty)
+		{
+			if (ndims == 0)		/* didn't find any nonempty array */
+				return PointerGetDatum(construct_empty_array(element_type));
+			ereport(ERROR,
+					(errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR),
+					 errmsg("multidimensional arrays must have array "
+							"expressions with matching dimensions")));
 		}
 
 		/* setup for multi-D array */
@@ -2243,20 +2433,37 @@ ExecEvalArray(ArrayExprState *astate, ExprContext *econtext,
 			lbs[i] = elem_lbs[i - 1];
 		}
 
-		nbytes = ndatabytes + ARR_OVERHEAD(ndims);
-		result = (ArrayType *) palloc(nbytes);
+		if (havenulls)
+		{
+			dataoffset = ARR_OVERHEAD_WITHNULLS(ndims, nitems);
+			nbytes += dataoffset;
+		}
+		else
+		{
+			dataoffset = 0;		/* marker for no null bitmap */
+			nbytes += ARR_OVERHEAD_NONULLS(ndims);
+		}
 
+		result = (ArrayType *) palloc(nbytes);
 		result->size = nbytes;
 		result->ndim = ndims;
-		result->flags = 0;
+		result->dataoffset = dataoffset;
 		result->elemtype = element_type;
 		memcpy(ARR_DIMS(result), dims, ndims * sizeof(int));
 		memcpy(ARR_LBOUND(result), lbs, ndims * sizeof(int));
-		if (ndatabytes > 0)
-			memcpy(ARR_DATA_PTR(result), dat, ndatabytes);
 
-		if (dat != NULL)
-			pfree(dat);
+		dat = ARR_DATA_PTR(result);
+		iitem = 0;
+		for (i = 0; i < outer_nelems; i++)
+		{
+			memcpy(dat, subdata[i], subbytes[i]);
+			dat += subbytes[i];
+			if (havenulls)
+				array_bitmap_copy(ARR_NULLBITMAP(result), iitem,
+								  subbitmaps[i], 0,
+								  subnitems[i]);
+			iitem += subnitems[i];
+		}
 	}
 
 	return PointerGetDatum(result);
@@ -2307,6 +2514,76 @@ ExecEvalRow(RowExprState *rstate,
 	pfree(isnull);
 
 	return HeapTupleGetDatum(tuple);
+}
+
+/* ----------------------------------------------------------------
+ *		ExecEvalRowCompare - ROW() comparison-op ROW()
+ * ----------------------------------------------------------------
+ */
+static Datum
+ExecEvalRowCompare(RowCompareExprState *rstate,
+				   ExprContext *econtext,
+				   bool *isNull, ExprDoneCond *isDone)
+{
+	bool		result;
+	RowCompareType rctype = ((RowCompareExpr *) rstate->xprstate.expr)->rctype;
+	int32		cmpresult = 0;
+	ListCell   *l;
+	ListCell   *r;
+	int			i;
+
+	if (isDone)
+		*isDone = ExprSingleResult;
+	*isNull = true;				/* until we get a result */
+
+	i = 0;
+	forboth(l, rstate->largs, r, rstate->rargs)
+	{
+		ExprState  *le = (ExprState *) lfirst(l);
+		ExprState  *re = (ExprState *) lfirst(r);
+		FunctionCallInfoData locfcinfo;
+
+		InitFunctionCallInfoData(locfcinfo, &(rstate->funcs[i]), 2,
+								 NULL, NULL);
+		locfcinfo.arg[0] = ExecEvalExpr(le, econtext,
+										&locfcinfo.argnull[0], NULL);
+		locfcinfo.arg[1] = ExecEvalExpr(re, econtext,
+										&locfcinfo.argnull[1], NULL);
+		if (rstate->funcs[i].fn_strict &&
+			(locfcinfo.argnull[0] || locfcinfo.argnull[1]))
+			return (Datum) 0;	/* force NULL result */
+		locfcinfo.isnull = false;
+		cmpresult = DatumGetInt32(FunctionCallInvoke(&locfcinfo));
+		if (locfcinfo.isnull)
+			return (Datum) 0;	/* force NULL result */
+		if (cmpresult != 0)
+			break;				/* no need to compare remaining columns */
+		i++;
+	}
+
+	switch (rctype)
+	{
+			/* EQ and NE cases aren't allowed here */
+		case ROWCOMPARE_LT:
+			result = (cmpresult < 0);
+			break;
+		case ROWCOMPARE_LE:
+			result = (cmpresult <= 0);
+			break;
+		case ROWCOMPARE_GE:
+			result = (cmpresult >= 0);
+			break;
+		case ROWCOMPARE_GT:
+			result = (cmpresult > 0);
+			break;
+		default:
+			elog(ERROR, "unrecognized RowCompareType: %d", (int) rctype);
+			result = 0;			/* keep compiler quiet */
+			break;
+	}
+
+	*isNull = false;
+	return BoolGetDatum(result);
 }
 
 /* ----------------------------------------------------------------
@@ -2466,7 +2743,7 @@ ExecEvalNullIf(FuncExprState *nullIfExpr,
  * ----------------------------------------------------------------
  */
 static Datum
-ExecEvalNullTest(GenericExprState *nstate,
+ExecEvalNullTest(NullTestState *nstate,
 				 ExprContext *econtext,
 				 bool *isNull,
 				 ExprDoneCond *isDone)
@@ -2479,28 +2756,77 @@ ExecEvalNullTest(GenericExprState *nstate,
 	if (isDone && *isDone == ExprEndResult)
 		return result;			/* nothing to check */
 
-	switch (ntest->nulltesttype)
+	if (nstate->argisrow && !(*isNull))
 	{
-		case IS_NULL:
-			if (*isNull)
+		HeapTupleHeader tuple;
+		Oid			tupType;
+		int32		tupTypmod;
+		TupleDesc	tupDesc;
+		HeapTupleData tmptup;
+		int			att;
+
+		tuple = DatumGetHeapTupleHeader(result);
+
+		tupType = HeapTupleHeaderGetTypeId(tuple);
+		tupTypmod = HeapTupleHeaderGetTypMod(tuple);
+
+		/* Lookup tupdesc if first time through or if type changes */
+		tupDesc = get_cached_rowtype(tupType, tupTypmod,
+									 &nstate->argdesc, econtext);
+
+		/*
+		 * heap_attisnull needs a HeapTuple not a bare HeapTupleHeader.
+		 */
+		tmptup.t_len = HeapTupleHeaderGetDatumLength(tuple);
+		tmptup.t_data = tuple;
+
+		for (att = 1; att <= tupDesc->natts; att++)
+		{
+			/* ignore dropped columns */
+			if (tupDesc->attrs[att - 1]->attisdropped)
+				continue;
+			if (heap_attisnull(&tmptup, att))
 			{
-				*isNull = false;
-				return BoolGetDatum(true);
+				/* null field disproves IS NOT NULL */
+				if (ntest->nulltesttype == IS_NOT_NULL)
+					return BoolGetDatum(false);
 			}
 			else
-				return BoolGetDatum(false);
-		case IS_NOT_NULL:
-			if (*isNull)
 			{
-				*isNull = false;
-				return BoolGetDatum(false);
+				/* non-null field disproves IS NULL */
+				if (ntest->nulltesttype == IS_NULL)
+					return BoolGetDatum(false);
 			}
-			else
-				return BoolGetDatum(true);
-		default:
-			elog(ERROR, "unrecognized nulltesttype: %d",
-				 (int) ntest->nulltesttype);
-			return (Datum) 0;	/* keep compiler quiet */
+		}
+
+		return BoolGetDatum(true);
+	}
+	else
+	{
+		/* Simple scalar-argument case, or a null rowtype datum */
+		switch (ntest->nulltesttype)
+		{
+			case IS_NULL:
+				if (*isNull)
+				{
+					*isNull = false;
+					return BoolGetDatum(true);
+				}
+				else
+					return BoolGetDatum(false);
+			case IS_NOT_NULL:
+				if (*isNull)
+				{
+					*isNull = false;
+					return BoolGetDatum(false);
+				}
+				else
+					return BoolGetDatum(true);
+			default:
+				elog(ERROR, "unrecognized nulltesttype: %d",
+					 (int) ntest->nulltesttype);
+				return (Datum) 0;		/* keep compiler quiet */
+		}
 	}
 }
 
@@ -2716,22 +3042,8 @@ ExecEvalFieldSelect(FieldSelectState *fstate,
 	tupTypmod = HeapTupleHeaderGetTypMod(tuple);
 
 	/* Lookup tupdesc if first time through or if type changes */
-	tupDesc = fstate->argdesc;
-	if (tupDesc == NULL ||
-		tupType != tupDesc->tdtypeid ||
-		tupTypmod != tupDesc->tdtypmod)
-	{
-		MemoryContext oldcontext;
-
-		tupDesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
-		/* Copy the tupdesc into query storage for safety */
-		oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
-		tupDesc = CreateTupleDescCopy(tupDesc);
-		if (fstate->argdesc)
-			FreeTupleDesc(fstate->argdesc);
-		fstate->argdesc = tupDesc;
-		MemoryContextSwitchTo(oldcontext);
-	}
+	tupDesc = get_cached_rowtype(tupType, tupTypmod,
+								 &fstate->argdesc, econtext);
 
 	/*
 	 * heap_getattr needs a HeapTuple not a bare HeapTupleHeader.  We set all
@@ -2778,22 +3090,9 @@ ExecEvalFieldStore(FieldStoreState *fstate,
 	if (isDone && *isDone == ExprEndResult)
 		return tupDatum;
 
-	/* Lookup tupdesc if first time through or if type changes */
-	tupDesc = fstate->argdesc;
-	if (tupDesc == NULL ||
-		fstore->resulttype != tupDesc->tdtypeid)
-	{
-		MemoryContext oldcontext;
-
-		tupDesc = lookup_rowtype_tupdesc(fstore->resulttype, -1);
-		/* Copy the tupdesc into query storage for safety */
-		oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
-		tupDesc = CreateTupleDescCopy(tupDesc);
-		if (fstate->argdesc)
-			FreeTupleDesc(fstate->argdesc);
-		fstate->argdesc = tupDesc;
-		MemoryContextSwitchTo(oldcontext);
-	}
+	/* Lookup tupdesc if first time through or after rescan */
+	tupDesc = get_cached_rowtype(fstore->resulttype, -1,
+								 &fstate->argdesc, econtext);
 
 	/* Allocate workspace */
 	values = (Datum *) palloc(tupDesc->natts * sizeof(Datum));
@@ -2984,10 +3283,11 @@ ExecInitExpr(Expr *node, PlanState *parent)
 					aggstate->aggs = lcons(astate, aggstate->aggs);
 					naggs = ++aggstate->numaggs;
 
-					astate->target = ExecInitExpr(aggref->target, parent);
+					astate->args = (List *) ExecInitExpr((Expr *) aggref->args,
+														 parent);
 
 					/*
-					 * Complain if the aggregate's argument contains any
+					 * Complain if the aggregate's arguments contain any
 					 * aggregates; nested agg functions are semantically
 					 * nonsensical.  (This should have been caught earlier,
 					 * but we defend against it here anyway.)
@@ -3121,8 +3421,8 @@ ExecInitExpr(Expr *node, PlanState *parent)
 				sstate->sub_estate = NULL;
 				sstate->planstate = NULL;
 
-				sstate->exprs = (List *)
-					ExecInitExpr((Expr *) subplan->exprs, parent);
+				sstate->testexpr =
+					ExecInitExpr((Expr *) subplan->testexpr, parent);
 				sstate->args = (List *)
 					ExecInitExpr((Expr *) subplan->args, parent);
 
@@ -3166,61 +3466,9 @@ ExecInitExpr(Expr *node, PlanState *parent)
 			{
 				ConvertRowtypeExpr *convert = (ConvertRowtypeExpr *) node;
 				ConvertRowtypeExprState *cstate = makeNode(ConvertRowtypeExprState);
-				int			i;
-				int			n;
 
 				cstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalConvertRowtype;
 				cstate->arg = ExecInitExpr(convert->arg, parent);
-				/* save copies of needed tuple descriptors */
-				cstate->indesc = lookup_rowtype_tupdesc(exprType((Node *) convert->arg), -1);
-				cstate->indesc = CreateTupleDescCopy(cstate->indesc);
-				cstate->outdesc = lookup_rowtype_tupdesc(convert->resulttype, -1);
-				cstate->outdesc = CreateTupleDescCopy(cstate->outdesc);
-				/* prepare map from old to new attribute numbers */
-				n = cstate->outdesc->natts;
-				cstate->attrMap = (AttrNumber *) palloc0(n * sizeof(AttrNumber));
-				for (i = 0; i < n; i++)
-				{
-					Form_pg_attribute att = cstate->outdesc->attrs[i];
-					char	   *attname;
-					Oid			atttypid;
-					int32		atttypmod;
-					int			j;
-
-					if (att->attisdropped)
-						continue;		/* attrMap[i] is already 0 */
-					attname = NameStr(att->attname);
-					atttypid = att->atttypid;
-					atttypmod = att->atttypmod;
-					for (j = 0; j < cstate->indesc->natts; j++)
-					{
-						att = cstate->indesc->attrs[j];
-						if (att->attisdropped)
-							continue;
-						if (strcmp(attname, NameStr(att->attname)) == 0)
-						{
-							/* Found it, check type */
-							if (atttypid != att->atttypid || atttypmod != att->atttypmod)
-								elog(ERROR, "attribute \"%s\" of type %s does not match corresponding attribute of type %s",
-									 attname,
-									 format_type_be(cstate->indesc->tdtypeid),
-								  format_type_be(cstate->outdesc->tdtypeid));
-							cstate->attrMap[i] = (AttrNumber) (j + 1);
-							break;
-						}
-					}
-					if (cstate->attrMap[i] == 0)
-						elog(ERROR, "attribute \"%s\" of type %s does not exist",
-							 attname,
-							 format_type_be(cstate->indesc->tdtypeid));
-				}
-				/* preallocate workspace for Datum arrays */
-				n = cstate->indesc->natts + 1;	/* +1 for NULL */
-				cstate->invalues = (Datum *) palloc(n * sizeof(Datum));
-				cstate->inisnull = (bool *) palloc(n * sizeof(bool));
-				n = cstate->outdesc->natts;
-				cstate->outvalues = (Datum *) palloc(n * sizeof(Datum));
-				cstate->outisnull = (bool *) palloc(n * sizeof(bool));
 				state = (ExprState *) cstate;
 			}
 			break;
@@ -3291,12 +3539,12 @@ ExecInitExpr(Expr *node, PlanState *parent)
 					/* generic record, use runtime type assignment */
 					rstate->tupdesc = ExecTypeFromExprList(rowexpr->args);
 					BlessTupleDesc(rstate->tupdesc);
+					/* we won't need to redo this at runtime */
 				}
 				else
 				{
 					/* it's been cast to a named type, use that */
-					rstate->tupdesc = lookup_rowtype_tupdesc(rowexpr->row_typeid, -1);
-					rstate->tupdesc = CreateTupleDescCopy(rstate->tupdesc);
+					rstate->tupdesc = lookup_rowtype_tupdesc_copy(rowexpr->row_typeid, -1);
 				}
 				/* Set up evaluation, skipping any deleted columns */
 				Assert(list_length(rowexpr->args) <= rstate->tupdesc->natts);
@@ -3336,6 +3584,67 @@ ExecInitExpr(Expr *node, PlanState *parent)
 					i++;
 				}
 				rstate->args = outlist;
+				state = (ExprState *) rstate;
+			}
+			break;
+		case T_RowCompareExpr:
+			{
+				RowCompareExpr *rcexpr = (RowCompareExpr *) node;
+				RowCompareExprState *rstate = makeNode(RowCompareExprState);
+				int			nopers = list_length(rcexpr->opnos);
+				List	   *outlist;
+				ListCell   *l;
+				ListCell   *l2;
+				int			i;
+
+				rstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalRowCompare;
+				Assert(list_length(rcexpr->largs) == nopers);
+				outlist = NIL;
+				foreach(l, rcexpr->largs)
+				{
+					Expr	   *e = (Expr *) lfirst(l);
+					ExprState  *estate;
+
+					estate = ExecInitExpr(e, parent);
+					outlist = lappend(outlist, estate);
+				}
+				rstate->largs = outlist;
+				Assert(list_length(rcexpr->rargs) == nopers);
+				outlist = NIL;
+				foreach(l, rcexpr->rargs)
+				{
+					Expr	   *e = (Expr *) lfirst(l);
+					ExprState  *estate;
+
+					estate = ExecInitExpr(e, parent);
+					outlist = lappend(outlist, estate);
+				}
+				rstate->rargs = outlist;
+				Assert(list_length(rcexpr->opclasses) == nopers);
+				rstate->funcs = (FmgrInfo *) palloc(nopers * sizeof(FmgrInfo));
+				i = 0;
+				forboth(l, rcexpr->opnos, l2, rcexpr->opclasses)
+				{
+					Oid			opno = lfirst_oid(l);
+					Oid			opclass = lfirst_oid(l2);
+					int			strategy;
+					Oid			subtype;
+					bool		recheck;
+					Oid			proc;
+
+					get_op_opclass_properties(opno, opclass,
+											  &strategy, &subtype, &recheck);
+					proc = get_opclass_proc(opclass, subtype, BTORDER_PROC);
+
+					/*
+					 * If we enforced permissions checks on index support
+					 * functions, we'd need to make a check here.  But the
+					 * index support machinery doesn't do that, and neither
+					 * does this code.
+					 */
+					fmgr_info(proc, &(rstate->funcs[i]));
+					i++;
+				}
 				state = (ExprState *) rstate;
 			}
 			break;
@@ -3385,6 +3694,13 @@ ExecInitExpr(Expr *node, PlanState *parent)
 							(errcode(ERRCODE_UNDEFINED_FUNCTION),
 							 errmsg("could not identify a comparison function for type %s",
 									format_type_be(minmaxexpr->minmaxtype))));
+
+				/*
+				 * If we enforced permissions checks on index support
+				 * functions, we'd need to make a check here.  But the index
+				 * support machinery doesn't do that, and neither does this
+				 * code.
+				 */
 				fmgr_info(typentry->cmp_proc, &(mstate->cfunc));
 				state = (ExprState *) mstate;
 			}
@@ -3404,11 +3720,13 @@ ExecInitExpr(Expr *node, PlanState *parent)
 		case T_NullTest:
 			{
 				NullTest   *ntest = (NullTest *) node;
-				GenericExprState *gstate = makeNode(GenericExprState);
+				NullTestState *nstate = makeNode(NullTestState);
 
-				gstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalNullTest;
-				gstate->arg = ExecInitExpr(ntest->arg, parent);
-				state = (ExprState *) gstate;
+				nstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalNullTest;
+				nstate->arg = ExecInitExpr(ntest->arg, parent);
+				nstate->argisrow = type_is_rowtype(exprType((Node *) ntest->arg));
+				nstate->argdesc = NULL;
+				state = (ExprState *) nstate;
 			}
 			break;
 		case T_BooleanTest:
@@ -3487,7 +3805,7 @@ ExecInitExprInitPlan(SubPlan *node, PlanState *parent)
 	sstate->sub_estate = NULL;
 	sstate->planstate = NULL;
 
-	sstate->exprs = (List *) ExecInitExpr((Expr *) node->exprs, parent);
+	sstate->testexpr = ExecInitExpr((Expr *) node->testexpr, parent);
 	sstate->args = (List *) ExecInitExpr((Expr *) node->args, parent);
 
 	sstate->xprstate.expr = (Expr *) node;
