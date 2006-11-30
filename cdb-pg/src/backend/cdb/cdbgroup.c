@@ -1011,8 +1011,6 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	parse->jointree->fromlist = list_make1(newrtref);
 	parse->jointree->quals = NULL;
 	parse->rowMarks = NIL;
-	parse->forUpdate = FALSE;
-	parse->rowNoWait = FALSE;
 	parse->targetList = generate_subquery_tlist(1, prelim_tlist); /* Query varno is 1 */
 	/* Do we need to fill in more?  I don't think so. */
 	
@@ -1499,7 +1497,7 @@ Aggref *split_aggref(Aggref *aggref, two_stage_agg_context *ctx)
 		if ( aggref->aggfnoid == ref->aggfnoid
 			&& aggref->aggstar == ref->aggstar
 			&& aggref->aggdistinct == ref->aggdistinct
-			&& equal(aggref->target, ref->target) )
+			&& equal(aggref->args, ref->args) )
 		{
 			prelim_tle = tle;
 			transtype = ref->aggtype;
@@ -1535,7 +1533,7 @@ Aggref *split_aggref(Aggref *aggref, two_stage_agg_context *ctx)
 	final_aggref = makeNode(Aggref);
 	final_aggref->aggfnoid = aggref->aggfnoid;
 	final_aggref->aggtype = aggref->aggtype;
-	final_aggref->target = (Expr*)makeVar(ctx->final_varno, attrno, transtype, -1, 0);
+	final_aggref->args = list_make1((Expr*)makeVar(ctx->final_varno, attrno, transtype, -1, 0));
 	final_aggref->agglevelsup = 0;
 	final_aggref->aggstar = false;
 	final_aggref->aggdistinct = false; /* handled in preliminary aggregation */
