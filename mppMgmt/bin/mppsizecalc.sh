@@ -179,7 +179,7 @@ SEND_TABLE_SIZE_REQUEST () {
 		QE_BASE_DIR=`$BASENAME $QE_DIR`
 		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_TABLE}"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
 		((LINECOUNT=$LINECOUNT+1))
-		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_TABLE}.* 2>/dev/null"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE  &
+		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_TABLE}.* 2>/dev/null"|$AWK '{total += \$1} END {print total}'` >> $TMPFILE  &
 		((LINECOUNT=$LINECOUNT+1))
 	done	
 	WAIT_COMPLETE
@@ -207,7 +207,7 @@ SEND_INDEX_SIZE_REQUEST () {
 			QE_BASE_DIR=`$BASENAME $QE_DIR`
 			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_INDEX}"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
 			((LINECOUNT=$LINECOUNT+1))
-			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_INDEX}.* 2>/dev/null"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
+			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_INDEX}.* 2>/dev/null"|$AWK '{total += \$1} END {print total}'` >> $TMPFILE &
 			((LINECOUNT=$LINECOUNT+1))
 		done
 	done
