@@ -412,7 +412,7 @@ count_agg_clauses_walker(Node *node, AggClauseCounts *counts)
 		{
 			counts->numDistinctAggs++;
 			if ( counts->numDistinctAggs == 1 ) /* CDB */
-				counts->distinctExpr = aggref->target; /*should this be list_first(aggref->args) or just aggref->args ?? */
+				counts->distinctExpr = linitial(aggref->args); /*should this be linitial(aggref->args) or just aggref->args ?? */
 			else
 				counts->distinctExpr = NULL;
 		}
