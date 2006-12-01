@@ -74,7 +74,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	rel->cheapest_total_path = NULL;
     rel->dedup_info = NULL;
     rel->onerow = false;
-    rel->relid = relid;
+	rel->relid = relid;
 	rel->rtekind = rte->rtekind;
 	/* min_attr, max_attr, attr_needed, attr_widths are set below */
 	rel->indexlist = NIL;

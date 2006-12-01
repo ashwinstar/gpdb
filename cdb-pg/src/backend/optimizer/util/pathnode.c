@@ -1010,12 +1010,6 @@ void add_path(PlannerInfo *root, RelOptInfo *parent_rel, Path *new_path)
     List      **which_pathlist;
     List       *pathlist;
 
-	/*
-	 * This is a convenient place to check for query cancel --- no part of the
-	 * planner goes very long without calling add_path().
-	 */
-	CHECK_FOR_INTERRUPTS();
-	
     if (!new_path)
         return;
 
@@ -2158,6 +2152,32 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel)
 	pathnode->rescannable = false;
 
 	cost_functionscan(pathnode, root, rel);
+
+	return pathnode;
+}
+
+/*
+ * create_valuesscan_path
+ *	  Creates a path corresponding to a scan of a VALUES list,
+ *	  returning the pathnode.
+ */
+Path *
+create_valuesscan_path(PlannerInfo *root, RelOptInfo *rel)
+{
+	Path	   *pathnode = makeNode(Path);
+
+	pathnode->pathtype = T_ValuesScan;
+	pathnode->parent = rel;
+	pathnode->pathkeys = NIL;	/* result is always unordered */
+
+    /* Evaluate VALUES list on entry db, for now. 
+     * CDB TODO: Assign SingleQE (or General?) locus if no volatile functions.
+     */
+    CdbPathLocus_MakeEntry(&pathnode->locus);
+    pathnode->motionHazard = false;
+	pathnode->rescannable = true;
+
+	cost_valuesscan(pathnode, root, rel);
 
 	return pathnode;
 }

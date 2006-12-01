@@ -3,6 +3,7 @@
  * clauses.c
  *	  routines to manipulate qualification clauses
  *
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -1021,6 +1022,57 @@ find_nonnullable_rels_walker(Node *node, bool top_level)
 	return result;
 }
 
+/*
+ * Can we treat a ScalarArrayOpExpr as strict?
+ *
+ * If "falseOK" is true, then a "false" result can be considered strict,
+ * else we need to guarantee an actual NULL result for NULL input.
+ *
+ * "foo op ALL array" is strict if the op is strict *and* we can prove
+ * that the array input isn't an empty array.  We can check that
+ * for the cases of an array constant and an ARRAY[] construct.
+ *
+ * "foo op ANY array" is strict in the falseOK sense if the op is strict.
+ * If not falseOK, the test is the same as for "foo op ALL array".
+ */
+static bool
+is_strict_saop(ScalarArrayOpExpr *expr, bool falseOK)
+{
+	Node	   *rightop;
+
+	/* The contained operator must be strict. */
+	if (!op_strict(expr->opno))
+		return false;
+	/* If ANY and falseOK, that's all we need to check. */
+	if (expr->useOr && falseOK)
+		return true;
+	/* Else, we have to see if the array is provably non-empty. */
+	Assert(list_length(expr->args) == 2);
+	rightop = (Node *) lsecond(expr->args);
+	if (rightop && IsA(rightop, Const))
+	{
+		Datum		arraydatum = ((Const *) rightop)->constvalue;
+		bool		arrayisnull = ((Const *) rightop)->constisnull;
+		ArrayType  *arrayval;
+		int			nitems;
+
+		if (arrayisnull)
+			return false;
+		arrayval = DatumGetArrayTypeP(arraydatum);
+		nitems = ArrayGetNItems(ARR_NDIM(arrayval), ARR_DIMS(arrayval));
+		if (nitems > 0)
+			return true;
+	}
+	else if (rightop && IsA(rightop, ArrayExpr))
+	{
+		ArrayExpr  *arrayexpr = (ArrayExpr *) rightop;
+
+		if (arrayexpr->elements != NIL && !arrayexpr->multidims)
+			return true;
+	}
+	return false;
+}
+
 
 /*****************************************************************************
  *		Check for "pseudo-constant" clauses
@@ -1557,8 +1609,8 @@ eval_const_expressions_mutator(Node *node,
 		set_opfuncid(expr);
 		
 		/*
-		 * don't optimize divide, because we might hit a divide by zero
-		 * in an expression that won't necessarily get executed later.
+		 * CDB: don't optimize divide, because we might hit a divide by zero in
+		 * an expression that won't necessarily get executed later.  2006-01-09
 		 */
 		if ((expr->opfuncid >=153 && expr->opfuncid <=157) ||
 			(expr->opfuncid >=172 && expr->opfuncid <=176))

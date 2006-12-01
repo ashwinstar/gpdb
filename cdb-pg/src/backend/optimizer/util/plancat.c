@@ -127,13 +127,13 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 	 * calculation.
 	 */
 	if (!inhparent)
-	cdb_estimate_rel_size(rel,
-                          relation,
-                          relation,
-                          rel->attr_widths - rel->min_attr,
-					      &rel->pages,
-                          &rel->tuples,
-                          &rel->cdb_default_stats_used);
+	    cdb_estimate_rel_size(rel,
+                              relation,
+                              relation,
+                              rel->attr_widths - rel->min_attr,
+					          &rel->pages,
+                              &rel->tuples,
+                              &rel->cdb_default_stats_used);
 
 	/*
 	 * Make list of indexes.  Ignore indexes on system catalogs if told to.
@@ -252,7 +252,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			info->predOK = false;		/* set later in indxpath.c */
 			info->unique = index->indisunique;
 
-            /*
+			/*
 			 * Estimate the index size.  If it's not a partial index, we lock
 			 * the number-of-tuples estimate to equal the parent table; if it
 			 * is partial then we have to use the same methods as we would for
