@@ -65,7 +65,6 @@ main(int argc, char **argv)
 {
 	PGconn* pConn = NULL;
     int failCount = -1;
-	char szErrortmp[PQERRORMSG_LENGTH];
     int i;
 	bool found_master;
     SegmentDatabase *sourceSegDB = NULL;
@@ -93,7 +92,7 @@ main(int argc, char **argv)
 	mpp_err_msg(logInfo, pszProgName,  "Connecting to master segment on host %s port %s database %s.\n",
 				StringNotNull( inputOpts.pszPGHost, "localhost"), 
 				StringNotNull( inputOpts.pszPGPort, "5432"),
-				StringNotNull( inputOpts.pszMasterDBName, pg_fe_getauthname(szErrortmp) ) );
+				StringNotNull( inputOpts.pszMasterDBName, "?") );
 						
 	pConn = GetMasterConnection(pszProgName, inputOpts.pszMasterDBName, inputOpts.pszPGHost, 
 								inputOpts.pszPGPort, inputOpts.pszUserName, 

@@ -96,7 +96,6 @@ int main( int argc, char** argv)
 {
     int failCount    = -1;
 	int rc = 0; /* return code */
-	char szErrortmp[PQERRORMSG_LENGTH];
 	
 	InputOptions			inputOpts; /* command line parameters */
 	SegmentDatabaseArray	segDBAr;   /* array of the segdbs from the master mpp tables */
@@ -117,7 +116,7 @@ int main( int argc, char** argv)
 	mpp_msg( logInfo, pszProgName, "Connecting to master database on host %s port %s database %s.\n",
 				   StringNotNull( inputOpts.pszPGHost, "localhost"), 
 				   StringNotNull( inputOpts.pszPGPort, "5432"),
-				   StringNotNull( inputOpts.pszDBName, pg_fe_getauthname(szErrortmp) ) );
+				   StringNotNull( inputOpts.pszDBName, "?" ) );
 						
 	master_db_conn = GetMasterConnection(pszProgName, inputOpts.pszDBName, inputOpts.pszPGHost, 
 										 inputOpts.pszPGPort, inputOpts.pszUserName, 

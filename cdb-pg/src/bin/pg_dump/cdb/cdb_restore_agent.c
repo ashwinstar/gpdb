@@ -48,10 +48,6 @@
 #include <sys/stat.h>
 
 
-#ifndef HAVE_STRDUP
-#include "strdup.h"
-#endif
-
 #ifdef HAVE_TERMIOS_H
 #include <termios.h>
 #endif
@@ -76,12 +72,12 @@ int			optreset;
 
 #define _(x) gettext((x))
 
-/* Forward decls */
+
 static void usage(const char *progname);
 
 typedef struct option optType;
 
-// cdb specific stuff
+// mpp specific stuff
 extern void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg );
 static void myChildHandler(int signo);
 static void myHandler(int signo);
