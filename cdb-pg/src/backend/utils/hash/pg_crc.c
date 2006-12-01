@@ -23,9 +23,9 @@
  *
  *-------------------------------------------------------------------------
  */
+#define PROVIDE_64BIT_CRC
+
 #include "postgres.h"
-
-
 
 /*
  * This table is based on the polynomial
