@@ -469,7 +469,6 @@ ResDestroyQueue(Oid queueid)
 void 
 InitResLocks(void)
 {
-
 	LOCKMETHODID	ResourceTableId;
 	LOCKMETHODID	LockTableId;
 
@@ -478,6 +477,7 @@ InitResLocks(void)
 	 */
 	LockTableId = DEFAULT_LOCKMETHOD;
 
+#if 0
 	/*
 	 * Use another table id for resource lock, but share the same hash table.
 	 */
@@ -485,7 +485,9 @@ InitResLocks(void)
 
 	if (!LockMethodIsValid(ResourceTableId))
 		elog(ERROR, "could not rename resource lock table");
+
 	Assert(ResourceTableId == RESOURCE_LOCKMETHOD);
+#endif
 
 	return;
 }
