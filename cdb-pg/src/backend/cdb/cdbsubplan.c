@@ -166,8 +166,7 @@ preprocess_initplans(QueryDesc *queryDesc)
 ParamListInfo
 addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo extPrm, ParamExecData *intPrm, int nIntPrm)
 {
-	ParamListInfo augPrm,
-				q;
+	ParamListInfo augPrm;
 	ParamWalkerContext context;
 	int			i,
 				j;
@@ -179,23 +178,16 @@ addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo extPrm, P
 	Assert(intPrm != NULL);		/* So there must be some internal parameters. */
 
 	/* Count existing external parameters. */
-	nParams = 0;
-	if (extPrm != NULL)
-	{
-		for (q = extPrm; q->kind != PARAM_INVALID; q++)
-		{
-			nParams++;
-		}
-	}
+	nParams = extPrm->numParams;
 
 	/* Allocate space for augmented array and set final sentinel. */
-	augPrm = palloc0((nIntPrm + nParams + 1) * sizeof(ParamListInfoData));
-	augPrm[nIntPrm + nParams].kind = PARAM_INVALID;
+	augPrm = palloc0(sizeof(ParamListInfoData) + nParams * sizeof(ParamExternData));
+	augPrm->numParams = nParams;
 
 	/* Copy in the existing external parameter entries. */
 	for (i = 0; i < nParams; i++)
 	{
-		memcpy(&augPrm[i], &extPrm[i], sizeof(ParamListInfoData));
+		memcpy(&augPrm->params[i], &extPrm->params[i], sizeof(ParamExternData));
 	}
 
 	/*
@@ -248,12 +240,12 @@ addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo extPrm, P
 	{
 		j = nParams + i;
 
-		augPrm[j].kind = PARAM_EXEC_REMOTE;
-		augPrm[j].name = NULL;
-		augPrm[j].id = i;
-		augPrm[j].ptype = findParamType(context.params, i);
-		augPrm[j].isnull = intPrm[i].isnull;
-		augPrm[j].value = intPrm[i].value;
+		//augPrm->params[j].kind = PARAM_EXEC_REMOTE;
+		//augPrm->params[j].name = NULL;
+		//augPrm->params[j].id = i;
+		augPrm->params[j].ptype = findParamType(context.params, i);
+		augPrm->params[j].isnull = intPrm[i].isnull;
+		augPrm->params[j].value = intPrm[i].value;
 	}
 
 	list_free(context.params);
