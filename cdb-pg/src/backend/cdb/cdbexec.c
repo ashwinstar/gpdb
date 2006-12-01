@@ -189,6 +189,7 @@ CdbExecQuery(struct CdbExecStmt * stmt, struct _DestReceiver *dest, char *comple
 	
 		PortalDefineQuery(portal,
 						  "",
+						  "",
 						  nodeTag((Node *) query),
 						  CreateQueryTag(query),
 						  list_make1(query),
