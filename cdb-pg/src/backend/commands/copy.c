@@ -21,12 +21,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include "access/genam.h"
 #include "access/heapam.h"
-#include "access/printtup.h"
-#include "catalog/index.h"
+#include "access/xact.h"
 #include "catalog/namespace.h"
-#include "catalog/pg_index.h"
 #include "catalog/pg_type.h"
 #include "commands/copy.h"
 #include "commands/trigger.h"
@@ -35,12 +32,9 @@
 #include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
-#include "nodes/makefuncs.h"
-#include "parser/parse_coerce.h"
 #include "parser/parse_relation.h"
 #include "rewrite/rewriteHandler.h"
 #include "storage/fd.h"
-#include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
@@ -101,7 +95,8 @@ typedef struct CopyStateData
 	/* low-level state data */
 	CopyDest	copy_dest;		/* type of copy source/destination */
 	FILE	   *copy_file;		/* used if copy_dest == COPY_FILE */
-	StringInfo	fe_msgbuf;		/* used if copy_dest == COPY_NEW_FE */
+	StringInfo	fe_msgbuf;		/* used for all dests during COPY TO, only
+                                 * for dest == COPY_NEW_FE in COPY FROM */
 	bool		fe_copy;		/* true for all FE copy dests */
 	bool		fe_eof;			/* true if detected end of copy data */
 	EolType		eol_type;		/* EOL type of input */
@@ -182,7 +177,6 @@ typedef struct CopyStateData
 	/* for CSV format */
 	bool		in_quote;
 	bool		last_was_esc;
-	bool		ready_to_send_rows; /* mainly used when we copy out with header */
 	
 	/* for TEXT format */
 	bool		esc_in_prevbuf;		/* escape was last character of the data input buffer */
@@ -192,6 +186,13 @@ typedef struct CopyStateData
 } CopyStateData;
 
 typedef CopyStateData *CopyState;
+
+/* DestReceiver for COPY (SELECT) TO */
+typedef struct
+{
+	DestReceiver pub;			/* publicly-known function pointers */
+	CopyState	cstate;			/* CopyStateData for the command */
+} DR_copy;
 
 static const char BinarySignature[] = "PGCOPY\n\377\r\n";   /* 11 bytes total */
 
@@ -261,7 +262,6 @@ SendCopyBegin(CopyState cstate)
 			pq_sendint(&buf, format, 2);		/* per-column formats */
 		pq_endmessage(&buf);
 		cstate->copy_dest = COPY_NEW_FE;
-		cstate->fe_msgbuf = makeStringInfo();
 	}
 	else if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 2)
 	{
@@ -338,23 +338,17 @@ SendCopyEnd(CopyState cstate)
 {
 	if (cstate->copy_dest == COPY_NEW_FE)
 	{
-		if (cstate->binary)
-		{
-			/* Need to flush out file trailer word */
-			CopySendEndOfRow(cstate);
-		}
-		else
-		{
-			/* Shouldn't have any unsent data */
-			Assert(cstate->fe_msgbuf->len == 0);
-		}
+		/* Shouldn't have any unsent data */
+		Assert(cstate->fe_msgbuf->len == 0);
+
 		/* Send Copy Done message */
 		pq_putemptymessage('c');
 	}
 	else
 	{
-		/* The FE/BE protocol uses \n as newline for all platforms */
-		CopySendData(cstate, "\\.\n", 3);
+		CopySendData(cstate, "\\.", 2);
+		/* Need to flush out the trailer (this also appends a newline) */
+ 	 	CopySendEndOfRow(cstate);
 		pq_endcopyout(false);
 	}
 }
@@ -365,6 +359,7 @@ SendCopyEnd(CopyState cstate)
  * CopySendString does the same for null-terminated strings
  * CopySendChar does the same for single characters
  * CopySendEndOfRow does the appropriate thing at end of each data row
+ *  (data is not actually flushed except by CopySendEndOfRow)
  *
  * NB: no data conversion is applied by these functions
  *----------
@@ -374,51 +369,9 @@ CopySendData(CopyState cstate, const void *databuf, int datasize)
 {
 	if(!cstate->is_copy_in) /* copy out */
 	{
-		switch (cstate->copy_dest)
-		{
-			case COPY_FILE:
-				fwrite(databuf, datasize, 1, cstate->copy_file);
-				if (ferror(cstate->copy_file))
-					ereport(ERROR,
-							(errcode_for_file_access(),
-							 errmsg("could not write to COPY file: %m")));
-				break;
-			case COPY_OLD_FE:
-				if (pq_putbytes((char *) databuf, datasize))
-				{
-					/* no hope of recovering connection sync, so FATAL */
-					ereport(FATAL,
-							(errcode(ERRCODE_CONNECTION_FAILURE),
-							 errmsg("connection lost during COPY to stdout")));
-				}
-				break;
-			case COPY_NEW_FE:
-				appendBinaryStringInfo(cstate->fe_msgbuf, (char *) databuf, datasize);
-				
-				/*
-				 * in the dispatcher we receive chunks of whole rows with row endings.
-				 * We don't want to use CopySendEndOfRow() b/c it adds row endings and
-				 * also b/c it's intended for a single row at a time. Therefore we need
-				 * to flush the data buf here instead.
-				 *
-				 * we must make sure that ready_to_send_rows is set since in the case
-				 * of 'copy to stdout with csv header' we need to send the header with	
-				 * CopySendEndOfRow() and therefore skip sending each part of the header
-				 * here.
-				 */
-				if (Mpp_role == MPP_ROLE_DISPATCH && cstate->ready_to_send_rows)
-				{
-					/* Dump the accumulated rows/data as one CopyData message */
-					(void) pq_putmessage('d', cstate->fe_msgbuf->data, cstate->fe_msgbuf->len);
-					/* Reset fe_msgbuf to empty */
-					cstate->fe_msgbuf->len = 0;
-					cstate->fe_msgbuf->data[0] = '\0';		
-				}
-				
-				break;
-		}
+		appendBinaryStringInfo(cstate->fe_msgbuf, (char *) databuf, datasize);
 	}
-	else /* copy in */
+	else /* hack for: copy in */
 	{
 		/* we call copySendData in copy-in to handle results
 		 * of default functions that we wish to send from the
@@ -432,18 +385,25 @@ CopySendData(CopyState cstate, const void *databuf, int datasize)
 static void
 CopySendString(CopyState cstate, const char *str)
 {
-	CopySendData(cstate, (void *) str, strlen(str));
+	appendBinaryStringInfo(cstate->fe_msgbuf, str, strlen(str));
 }
 
 static void
 CopySendChar(CopyState cstate, char c)
 {
-	CopySendData(cstate, &c, 1);
+	appendStringInfoCharMacro(cstate->fe_msgbuf, c);
 }
 
+/* AXG: Note that this will both add a newline AND flush the data.
+ * For the dispatcher COPY TO we don't want to use this method since
+ * our newlines already exist. We use another new method similar to 
+ * this one to flush the data
+ */
 static void
 CopySendEndOfRow(CopyState cstate)
 {
+	StringInfo	fe_msgbuf = cstate->fe_msgbuf;
+	
 	switch (cstate->copy_dest)
 	{
 		case COPY_FILE:
@@ -456,23 +416,84 @@ CopySendEndOfRow(CopyState cstate)
 				CopySendString(cstate, "\r\n");
 #endif
 			}
-			break;
+			
+			(void) fwrite(fe_msgbuf->data, fe_msgbuf->len,
+						  1, cstate->copy_file);
+			if (ferror(cstate->copy_file))
+				ereport(ERROR,
+						(errcode_for_file_access(),
+						 errmsg("could not write to COPY file: %m")));
+				break;
 		case COPY_OLD_FE:
 			/* The FE/BE protocol uses \n as newline for all platforms */
 			if (!cstate->binary)
 				CopySendChar(cstate, '\n');
-			break;
+			
+			if (pq_putbytes(fe_msgbuf->data, fe_msgbuf->len))
+			{
+				/* no hope of recovering connection sync, so FATAL */
+				ereport(FATAL,
+						(errcode(ERRCODE_CONNECTION_FAILURE),
+						 errmsg("connection lost during COPY to stdout")));
+			}
+				break;
 		case COPY_NEW_FE:
 			/* The FE/BE protocol uses \n as newline for all platforms */
 			if (!cstate->binary)
 				CopySendChar(cstate, '\n');
+			
 			/* Dump the accumulated row as one CopyData message */
-			(void) pq_putmessage('d', cstate->fe_msgbuf->data, cstate->fe_msgbuf->len);
-			/* Reset fe_msgbuf to empty */
-			cstate->fe_msgbuf->len = 0;
-			cstate->fe_msgbuf->data[0] = '\0';
+			(void) pq_putmessage('d', fe_msgbuf->data, fe_msgbuf->len);
 			break;
 	}
+	
+	/* Reset fe_msgbuf to empty */
+	fe_msgbuf->len = 0;
+	fe_msgbuf->data[0] = '\0';
+}
+
+/*
+ * AXG: This one is equivalent to CopySendEndOfRow() besides that
+ * it doesn't send end of row - it just flushed the data. We need
+ * this method for the dispatcher COPY TO since it already has data
+ * with newlines (from the executors).
+ */
+static void
+CopyToDispatchFlush(CopyState cstate)
+{
+	StringInfo	fe_msgbuf = cstate->fe_msgbuf;
+	
+	switch (cstate->copy_dest)
+	{
+		case COPY_FILE:
+
+			(void) fwrite(fe_msgbuf->data, fe_msgbuf->len,
+						  1, cstate->copy_file);
+			if (ferror(cstate->copy_file))
+				ereport(ERROR,
+						(errcode_for_file_access(),
+						 errmsg("could not write to COPY file: %m")));
+				break;
+		case COPY_OLD_FE:
+
+			if (pq_putbytes(fe_msgbuf->data, fe_msgbuf->len))
+			{
+				/* no hope of recovering connection sync, so FATAL */
+				ereport(FATAL,
+						(errcode(ERRCODE_CONNECTION_FAILURE),
+						 errmsg("connection lost during COPY to stdout")));
+			}
+				break;
+		case COPY_NEW_FE:
+			
+			/* Dump the accumulated row as one CopyData message */
+			(void) pq_putmessage('d', fe_msgbuf->data, fe_msgbuf->len);
+			break;
+	}
+	
+	/* Reset fe_msgbuf to empty */
+	fe_msgbuf->len = 0;
+	fe_msgbuf->data[0] = '\0';
 }
 
 /*
@@ -1209,7 +1230,6 @@ DoCopy(const CopyStmt *stmt)
 static void
 DoCopyTo(CopyState cstate)
 {
-	cstate->ready_to_send_rows = true;
 	
 	PG_TRY();
 	{
@@ -1261,6 +1281,9 @@ CopyToExec(CopyState cstate)
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
 	attr_count = list_length(cstate->attnumlist);
+
+	/* We use fe_msgbuf as a per-row buffer regardless of copy_dest */
+	cstate->fe_msgbuf = makeStringInfo();
 
 	/*
 	 * Get info about the columns we need to process.
@@ -1473,8 +1496,13 @@ CopyToExec(CopyState cstate)
 	if (cstate->binary)
 	{
 		if (Mpp_role == MPP_ROLE_UTILITY)
+		{
 			/* Generate trailer for a binary copy */
 			CopySendInt16(cstate, -1);
+
+			/* Need to flush out the trailer */
+			CopySendEndOfRow(cstate);
+		}
 	}
 	
 
@@ -1505,6 +1533,9 @@ CopyToDispatch(CopyState cstate)
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
 	attr_count = list_length(cstate->attnumlist);
+
+	/* We use fe_msgbuf as a per-row buffer regardless of copy_dest */
+	cstate->fe_msgbuf = makeStringInfo();
 
 	/*
 	 * prepare to get COPY data from segDBs:
@@ -1638,13 +1669,7 @@ CopyToDispatch(CopyState cstate)
 				cstate->null_print = (char *)
 					pg_server_to_client(cstate->null_print,
 										strlen(cstate->null_print));
-			
-			/* 
-			 * tell CopySendData that we are not ready with complete rows yet b/c
-			 * we send the header on an attribute (not row) granularity.
-			 */
-			cstate->ready_to_send_rows = false;
-			
+						
 			foreach(cur, cstate->attnumlist)
 			{
 				int			attnum = lfirst_int(cur);
@@ -1660,10 +1685,8 @@ CopyToDispatch(CopyState cstate)
 									list_length(cstate->attnumlist) == 1);
 			}
 			
+			/* add a newline and flush the data */
 			CopySendEndOfRow(cstate);
-
-			/* header is done. we are now ready to send data rows */
-			cstate->ready_to_send_rows = true; 
 		}
 	}
 	
@@ -1683,8 +1706,17 @@ CopyToDispatch(CopyState cstate)
 		
 		/* send the chunk of data rows to destination (file or stdout) */
 		if(cdbCopy->copy_out_buf.len > 0) /* conditional is important! */
+		{
+			/*
+			 * in the dispatcher we receive chunks of whole rows with row endings.
+			 * We don't want to use CopySendEndOfRow() b/c it adds row endings and
+			 * also b/c it's intended for a single row at a time. Therefore we need
+			 * to fill in the out buffer and just flush it instead.
+			 */
 			CopySendData(cstate, (void *) cdbCopy->copy_out_buf.data, cdbCopy->copy_out_buf.len);
-		
+			CopyToDispatchFlush(cstate);
+		}
+			
 		if(done)
 		{
 			if(cdbCopy->remote_data_err || cdbCopy->local_data_err || cdbCopy->io_errors)
@@ -1692,7 +1724,6 @@ CopyToDispatch(CopyState cstate)
 
 			break;
 		}
-		
 	}
 	
 	/* we can throw the error now if QueryCancelPending was set previously */
@@ -1873,7 +1904,6 @@ CopyFromDispatch(CopyState cstate)
 	bool	   *isvarlena;
 	ResultRelInfo *resultRelInfo;
 	EState	   *estate = CreateExecutorState(); /* for ExecConstraints() */
-	TupleTable	tupleTable;
 	TupleTableSlot *slot;
 	bool		file_has_oids = false;
 	int		   *defmap;
@@ -1950,10 +1980,8 @@ CopyFromDispatch(CopyState cstate)
 	estate->es_num_result_relations = 1;
 	estate->es_result_relation_info = resultRelInfo;
 
-	/* Set up a dummy tuple table too */
-	tupleTable = ExecCreateTupleTable(1);
-	slot = ExecAllocTableSlot(tupleTable);
-	ExecSetSlotDescriptor(slot, tupDesc);
+	/* Set up a tuple slot too */
+	slot = MakeSingleTupleTableSlot(tupDesc);
 
 	econtext = GetPerTupleExprContext(estate);
 
@@ -2976,8 +3004,8 @@ CopyFromDispatch(CopyState cstate)
 	pfree(cdbcopy_err.data);
 	pfree(cdbCopy);
 
-	ExecDropTupleTable(tupleTable, true);
-
+	ExecDropSingleTupleTableSlot(slot);
+	
 	ExecCloseIndices(resultRelInfo);
 
 	FreeExecutorState(estate);
@@ -3008,7 +3036,6 @@ CopyFromExec(CopyState cstate)
 	bool		isnull;
 	ResultRelInfo *resultRelInfo;
 	EState	   *estate = CreateExecutorState(); /* for ExecConstraints() */
-	TupleTable	tupleTable;
 	TupleTableSlot *slot;
 	bool		file_has_oids;
 	int		   *defmap;
@@ -3047,10 +3074,8 @@ CopyFromExec(CopyState cstate)
 	estate->es_num_result_relations = 1;
 	estate->es_result_relation_info = resultRelInfo;
 
-	/* Set up a dummy tuple table too */
-	tupleTable = ExecCreateTupleTable(1);
-	slot = ExecAllocTableSlot(tupleTable);
-	ExecSetSlotDescriptor(slot, tupDesc);
+	/* Set up a tuple slot too */
+	slot = MakeSingleTupleTableSlot(tupDesc);
 
 	econtext = GetPerTupleExprContext(estate);
 
@@ -3503,8 +3528,8 @@ CopyFromExec(CopyState cstate)
 	pfree(defexprs);
 	pfree(force_notnull);
 
-	ExecDropTupleTable(tupleTable, true);
-
+	ExecDropSingleTupleTableSlot(slot);
+	
 	ExecCloseIndices(resultRelInfo);
 
 	FreeExecutorState(estate);
@@ -5165,4 +5190,67 @@ escape_quotes(const char *src)
 	return result;
 }
 
+/*
+ * copy_dest_startup --- executor startup
+ */
+static void
+copy_dest_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
+{
+	/* no-op */
+}
+
+/*
+ * copy_dest_receive --- receive one tuple
+ */
+static void
+copy_dest_receive(TupleTableSlot *slot, DestReceiver *self)
+{
+	/* TODO: uncomment after cvs head compiles! */
+	//DR_copy    *myState = (DR_copy *) self;
+	//CopyState	cstate = myState->cstate;
+	
+	/* Make sure the tuple is fully deconstructed */
+	slot_getallattrs(slot);
+	
+	/* And send the data */
+	/* TODO: uncomment after cvs head compiles! */
+	//CopyOneRowTo(cstate, InvalidOid, slot->tts_values, slot->tts_isnull);
+}
+
+/*
+ * copy_dest_shutdown --- executor end
+ */
+static void
+copy_dest_shutdown(DestReceiver *self)
+{
+	/* no-op */
+}
+
+/*
+ * copy_dest_destroy --- release DestReceiver object
+ */
+static void
+copy_dest_destroy(DestReceiver *self)
+{
+	pfree(self);
+}
+
+/*
+ * CreateCopyDestReceiver -- create a suitable DestReceiver object
+ */
+DestReceiver *
+CreateCopyDestReceiver(void)
+{
+	DR_copy    *self = (DR_copy *) palloc(sizeof(DR_copy));
+	
+	self->pub.receiveSlot = copy_dest_receive;
+	self->pub.rStartup = copy_dest_startup;
+	self->pub.rShutdown = copy_dest_shutdown;
+	self->pub.rDestroy = copy_dest_destroy;
+	self->pub.mydest = DestCopyOut;
+	
+	self->cstate = NULL;		/* will be set later */
+	
+	return (DestReceiver *) self;
+}
 
