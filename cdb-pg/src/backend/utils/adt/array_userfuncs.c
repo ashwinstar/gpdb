@@ -573,8 +573,9 @@ array_int4_add(PG_FUNCTION_ARGS)
 	dims2 = ARR_DIMS(v2);
 	dat1 = ARR_DATA_PTR(v1);
 	dat2 = ARR_DATA_PTR(v2);
-	ndatabytes1 = ARR_SIZE(v1) - ARR_OVERHEAD(ndims1);
-	ndatabytes2 = ARR_SIZE(v2) - ARR_OVERHEAD(ndims2);
+
+	ndatabytes1 = ARR_SIZE(v1) - ARR_DATA_OFFSET(v1);
+	ndatabytes2 = ARR_SIZE(v2) - ARR_DATA_OFFSET(v2);
 
 	/*
 	 * resulting array is made up of the elements (possibly arrays
@@ -585,7 +586,6 @@ array_int4_add(PG_FUNCTION_ARGS)
 	lbs = (int *) palloc(ndims * sizeof(int));
 	bigenuf1 = bigenuf2 = TRUE;
 	nelem = 1; /* Neither is empty. */
-
 
 	for (i = 0; i < ndims; i++)
 	{
@@ -609,16 +609,16 @@ array_int4_add(PG_FUNCTION_ARGS)
 
 	/* build the result array */
 	ndatabytes = nelem * sizeof(int);
-	nbytes = ndatabytes + ARR_OVERHEAD(ndims);
+	nbytes = ndatabytes + ARR_OVERHEAD_NONULLS(ndims);
 	result = (ArrayType *) palloc(nbytes);
 
+	result->dataoffset = 0;
 	result->size = nbytes;
 	result->ndim = ndims;
 	result->elemtype = element_type;
 	memcpy(ARR_DIMS(result), dims, ndims * sizeof(int));
 	memcpy(ARR_LBOUND(result), lbs, ndims * sizeof(int));
 	idata = (int*) ARR_DATA_PTR(result);
-
 	
 	if ( bigenuf1 && bigenuf2 ) /* Conformable arrays. */
 	{
