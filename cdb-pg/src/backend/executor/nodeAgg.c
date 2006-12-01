@@ -178,7 +178,7 @@ typedef struct AggStatePerAggData
  */
 
 
-#if 0 /* Not used by MPP */
+
 /*
  * To implement hashed aggregation, we need a hashtable that stores a
  * representative tuple and an array of AggStatePerGroup structs for each
@@ -193,8 +193,6 @@ typedef struct AggHashEntryData
 	/* per-aggregate transition status array - must be last! */
 	AggStatePerGroupData pergroup[1];	/* VARIABLE LENGTH ARRAY */
 } AggHashEntryData;				/* VARIABLE LENGTH STRUCT */
-#endif /* Not used by MPP */
-
 
 static void advance_transition_function(AggState *aggstate,
 							AggStatePerAgg peraggstate,
@@ -674,7 +672,7 @@ get_agg_hash_collist(AggState *aggstate)
 	return collist;
 }
 
-#if 0 /* Not used by MPP */
+
 /*
  * Estimate per-hash-table-entry overhead for the planner.
  *
@@ -694,7 +692,7 @@ hash_agg_entry_size(int numAggs)
 	entrysize += 3 * sizeof(void *);
 	return entrysize;
 }
-
+#if 0 /* Not used by MPP */
 /*
  * Find or create a hashtable entry for the tuple group containing the
  * given tuple.
