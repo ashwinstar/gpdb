@@ -50,7 +50,6 @@ FunctionNext(FunctionScanState *node)
 	EState	   *estate;
 	ScanDirection direction;
 	Tuplestorestate *tuplestorestate;
-	HeapTuple	heapTuple;
 
 	/*
 	 * get information from the estate and scan state
@@ -88,11 +87,10 @@ FunctionNext(FunctionScanState *node)
 	 * Get the next tuple from tuplestore. Return NULL if no more tuples.
 	 */
 	slot = node->ss.ss_ScanTupleSlot;
-	heapTuple = tuplestore_gettupleslot(tuplestorestate,
-								   ScanDirectionIsForward(direction),
-								   slot);
-	if (heapTuple)
-    {
+	if (tuplestore_gettupleslot(tuplestorestate,
+								ScanDirectionIsForward(direction),
+								slot))
+	{
         /* CDB: Label each row with a synthetic ctid for subquery dedup. */
         if (node->cdb_want_ctid)
         {
