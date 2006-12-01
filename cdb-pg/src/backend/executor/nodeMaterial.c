@@ -150,7 +150,7 @@ ExecMaterial(MaterialState *node)
 		 * the added tuple.  This is what we want.
 		 */
 		if (tuplestorestate)
-			tuplestore_puttuple(tuplestorestate, outerslot);
+			tuplestore_puttuple(tuplestorestate, outerslot->tts_tuple);
 
 		/*
 		 * And return a copy of the tuple.	(XXX couldn't we just return the
