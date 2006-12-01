@@ -131,8 +131,8 @@ CdbExecQuery(struct CdbExecStmt * stmt, struct _DestReceiver *dest, char *comple
 		n = list_length(stmt->ser_params);
 		if (n > 0)
 		{
-			paramLI = palloc((n + 1) * sizeof(ParamListInfoData));
-			paramLI[n].kind = PARAM_INVALID;	/* Mark end of array */
+			paramLI = palloc(sizeof(ParamListInfoData) + n * sizeof(ParamExternData));
+			paramLI->numParams = n;
 			i = 0;
 			foreach(pc, stmt->ser_params)
 			{
@@ -148,8 +148,7 @@ CdbExecQuery(struct CdbExecStmt * stmt, struct _DestReceiver *dest, char *comple
 				rpd = (RemoteParamData *) deserializeNode(pszRemoteParmData);
 				pfree(pszRemoteParmData);
 
-
-				memcpy(&paramLI[i], &rpd->paramData, sizeof(ParamListInfoData));
+				memcpy(&paramLI->params[i], &rpd->paramData, sizeof(ParamExternData));
 				i++;
 			}
 		}

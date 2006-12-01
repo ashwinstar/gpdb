@@ -2193,18 +2193,19 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 */
 	if (queryDesc->params != NULL)
 	{
-		bool		bFirstTime = true;
-		ParamListInfo q = queryDesc->params;
+		bool			bFirstTime = true;
+		ParamListInfo	q = queryDesc->params;
+		int				cur;
 
 		appendStringInfoLiteral(&strinfo, " (");
-		while (q->kind != PARAM_INVALID)
+		for (cur = 0; cur < q->numParams; cur++)
 		{
 			char	   *sparms;
 			int			sparms_len;
 			RemoteParamData *rpd;
 
 			rpd = makeNode(RemoteParamData);
-			memcpy(&rpd->paramData, q, sizeof(ParamListInfoData));
+			memcpy(&rpd->paramData, &q->params[cur], sizeof(ParamExternData));
 			sparms = serializeNode((Node *) rpd, &sparms_len);
 			if (!bFirstTime)
 				appendStringInfoLiteral(&strinfo, ", ");
@@ -2217,8 +2218,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 			pfree(sparms);
 			pfree(rpd);
-			q++;
 		}
+
 		appendStringInfoLiteral(&strinfo, ")");
 	}
 
