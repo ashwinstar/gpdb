@@ -66,7 +66,7 @@ static void reduce_outer_joins_pass2(Node *jtnode,
 						 Relids nonnullable_rels);
 static void fix_in_clause_relids(List *in_info_list, int varno,
 					 Relids subrelids);
-static void fix_append_rel_relids(List *append_rel_list, int varno,
+static void fix_append_rel_relids(List *append_rel_list, Index varno,
 					  Relids subrelids);
 static Node *find_jointree_node_for_rel(Node *jtnode, int relid);
 
@@ -184,214 +184,33 @@ pull_up_subqueries(PlannerInfo *root, Node *jtnode,
 										   below_outer_join,
 										   append_rel_member);
 
-			/*
-			 * Need a modifiable copy of the subquery to hack on.  Even if we
-			 * didn't sometimes choose not to pull up below, we must do this
-			 * to avoid problems if the same subquery is referenced from
-			 * multiple jointree items (which can't happen normally, but might
-			 * after rule rewriting).
-			 */
-			subquery = copyObject(subquery);
-
-			/*
-			 * Create a PlannerInfo data structure for this subquery.
-			 *
-			 * NOTE: the next few steps should match the first processing in
-			 * subquery_planner().	Can we refactor to avoid code duplication,
-			 * or would that just make things uglier?
-			 */
-			subroot = makeNode(PlannerInfo);
-			subroot->parse = subquery;
-
-			/*
-			 * Pull up any IN clauses within the subquery's WHERE, so that we
-			 * don't leave unoptimized INs behind.
-			 */
-			subroot->in_info_list = NIL;
-			if (subquery->hasSubLinks)
-				subquery->jointree->quals = pull_up_IN_clauses(subroot,
-                                                  (Node**)&subquery->jointree,
-												  subquery->jointree->quals);
-
-			/*
-			 * Recursively pull up the subquery's subqueries, so that this
-			 * routine's processing is complete for its jointree and
-			 * rangetable.
-			 *
-			 * Note: 'false' is correct here even if we are within an outer
-			 * join in the upper query; the lower query starts with a clean
-			 * slate for outer-join semantics.
-			 */
-			subquery->jointree = (FromExpr *)
-				pull_up_subqueries(subroot, (Node *) subquery->jointree,
-								   false);
-
-			/*
-			 * Now we must recheck whether the subquery is still simple enough
-			 * to pull up.	If not, abandon processing it.
-			 *
-			 * We don't really need to recheck all the conditions involved,
-			 * but it's easier just to keep this "if" looking the same as the
-			 * one above.
-			 */
-			if (is_simple_subquery(subquery) &&
-				(!below_outer_join || has_nullable_targetlist(subquery)))
-			{
-				/* good to go */
-			}
-			else
-			{
-				/*
-				 * Give up, return unmodified RangeTblRef.
-				 *
-				 * Note: The work we just did will be redone when the subquery
-				 * gets planned on its own.  Perhaps we could avoid that by
-				 * storing the modified subquery back into the rangetable, but
-				 * I'm not gonna risk it now.
-				 */
-				return jtnode;
-			}
-
-			/*
-			 * Adjust level-0 varnos in subquery so that we can append its
-			 * rangetable to upper query's.  We have to fix the subquery's
-			 * in_info_list, as well.
-			 */
-			rtoffset = list_length(parse->rtable);
-			OffsetVarNodes((Node *) subquery, rtoffset, 0);
-			OffsetVarNodes((Node *) subroot->in_info_list, rtoffset, 0);
-
-			/*
-			 * Upper-level vars in subquery are now one level closer to their
-			 * parent than before.
-			 */
-			IncrementVarSublevelsUp((Node *) subquery, -1, 1);
-			IncrementVarSublevelsUp((Node *) subroot->in_info_list, -1, 1);
-
-			/*
-			 * Replace all of the top query's references to the subquery's
-			 * outputs with copies of the adjusted subtlist items, being
-			 * careful not to replace any of the jointree structure. (This'd
-			 * be a lot cleaner if we could use query_tree_mutator.)
-			 */
-			subtlist = subquery->targetList;
-			parse->targetList = (List *)
-				ResolveNew((Node *) parse->targetList,
-						   varno, 0, rte,
-						   subtlist, CMD_SELECT, 0);
-			resolvenew_in_jointree((Node *) parse->jointree, varno,
-								   rte, subtlist);
-			Assert(parse->setOperations == NULL);
-			parse->havingQual =
-				ResolveNew(parse->havingQual,
-						   varno, 0, rte,
-						   subtlist, CMD_SELECT, 0);
-			root->in_info_list = (List *)
-				ResolveNew((Node *) root->in_info_list,
-						   varno, 0, rte,
-						   subtlist, CMD_SELECT, 0);
-
-			foreach(rt, parse->rtable)
-			{
-				RangeTblEntry *otherrte = (RangeTblEntry *) lfirst(rt);
-
-				if (otherrte->rtekind == RTE_JOIN)
-					otherrte->joinaliasvars = (List *)
-						ResolveNew((Node *) otherrte->joinaliasvars,
-								   varno, 0, rte,
-								   subtlist, CMD_SELECT, 0);
-			}
-
-			/*
-			 * Now append the adjusted rtable entries to upper query. (We hold
-			 * off until after fixing the upper rtable entries; no point in
-			 * running that code on the subquery ones too.)
-			 */
-			parse->rtable = list_concat(parse->rtable, subquery->rtable);
-
-			/*
-			 * Pull up any FOR UPDATE/SHARE markers, too.  (OffsetVarNodes
-			 * already adjusted the marker values, so just list_concat the
-			 * list.)
-			 *
-			 * Executor can't handle multiple FOR UPDATE/SHARE/NOWAIT flags,
-			 * so complain if they are valid but different
-			 */
-			if (parse->rowMarks && subquery->rowMarks)
-			{
-				if (parse->forUpdate != subquery->forUpdate)
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("cannot use both FOR UPDATE and FOR SHARE in one query")));
-				if (parse->rowNoWait != subquery->rowNoWait)
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("cannot use both wait and NOWAIT in one query")));
-			}
-			parse->rowMarks = list_concat(parse->rowMarks, subquery->rowMarks);
-			if (subquery->rowMarks)
-			{
-				parse->forUpdate = subquery->forUpdate;
-				parse->rowNoWait = subquery->rowNoWait;
-			}
-
-			/*
-			 * We also have to fix the relid sets of any parent InClauseInfo
-			 * nodes.  (This could perhaps be done by ResolveNew, but it would
-			 * clutter that routine's API unreasonably.)
-			 */
-			if (root->in_info_list)
-			{
-				Relids		subrelids;
-
-				subrelids = get_relids_in_jointree((Node *) subquery->jointree);
-				fix_in_clause_relids(root->in_info_list, varno, subrelids);
-			}
-
-			/*
-			 * And now append any subquery InClauseInfos to our list.
-			 */
-			root->in_info_list = list_concat(root->in_info_list,
-											 subroot->in_info_list);
-
-			/*
-			 * We don't have to do the equivalent bookkeeping for outer-join
-			 * info, because that hasn't been set up yet.
-			 */
-			Assert(root->oj_info_list == NIL);
-			Assert(subroot->oj_info_list == NIL);
-
-			/*
-			 * Miscellaneous housekeeping.
-			 */
-			parse->hasSubLinks |= subquery->hasSubLinks;
-			/* subquery won't be pulled up if it hasAggs, so no work there */
-
-            /*
-             * CDB: Wipe old RTE so subquery parse tree won't be sent to QEs.
-             */
-            Assert(rte->rtekind == RTE_SUBQUERY);
-            rte->rtekind = RTE_VOID;
-            rte->subquery = NULL;
-            rte->alias = NULL;
-            rte->eref = NULL;
-
-            /*
-			 * Return the adjusted subquery jointree to replace the
-			 * RangeTblRef entry in my jointree.
-			 */
-			return (Node *) subquery->jointree;
-		}
+		/*
+		 * Alternatively, is it a simple UNION ALL subquery?  If so, flatten
+		 * into an "append relation".  We can do this regardless of
+		 * nullability considerations since this transformation does not
+		 * result in propagating non-Var expressions into upper levels of the
+		 * query.
+		 *
+		 * It's also safe to do this regardless of whether this query is
+		 * itself an appendrel member.	(If you're thinking we should try to
+		 * flatten the two levels of appendrel together, you're right; but we
+		 * handle that in set_append_rel_pathlist, not here.)
+		 */
+		if (rte->rtekind == RTE_SUBQUERY &&
+			is_simple_union_all(rte->subquery))
+			return pull_up_simple_union_all(root, jtnode, rte);
 	}
 	else if (IsA(jtnode, FromExpr))
 	{
 		FromExpr   *f = (FromExpr *) jtnode;
 		ListCell   *l;
 
+		Assert(!append_rel_member);
         foreach(l, f->fromlist)
         {
             Node   *oldkid = (Node *)lfirst(l);
-            Node   *newkid = pull_up_subqueries(root, oldkid, below_outer_join);
+            Node   *newkid = pull_up_subqueries(root, oldkid,
+												below_outer_join, false);
 
             /* CDB: Collapse subquery FROM clause into current FROM clause,
              * so correlated refs from subquery will be in the right scope.
@@ -510,7 +329,8 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	 */
 	if (subquery->hasSubLinks)
 		subquery->jointree->quals = pull_up_IN_clauses(subroot,
-												  subquery->jointree->quals);
+                                                       (Node**)&subquery->jointree,
+										               subquery->jointree->quals);
 
 	/*
 	 * Recursively pull up the subquery's subqueries, so that
@@ -664,6 +484,15 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	 */
 	parse->hasSubLinks |= subquery->hasSubLinks;
 	/* subquery won't be pulled up if it hasAggs, so no work there */
+
+    /*
+     * CDB: Wipe old RTE so subquery parse tree won't be sent to QEs.
+     */
+    Assert(rte->rtekind == RTE_SUBQUERY);
+    rte->rtekind = RTE_VOID;
+    rte->subquery = NULL;
+    rte->alias = NULL;
+    rte->eref = NULL;
 
 	/*
 	 * Return the adjusted subquery jointree to replace the RangeTblRef entry
@@ -1386,81 +1215,7 @@ fix_in_clause_relids(List *in_info_list, int varno, Relids subrelids)
  * We assume we may modify the AppendRelInfo nodes in-place.
  */
 static void
-fix_append_rel_relids(List *append_rel_list, int varno, Relids subrelids)
-{
-	ListCell   *l;
-	int			subvarno = -1;
-
-	/*
-	 * We only want to extract the member relid once, but we mustn't fail
-	 * immediately if there are multiple members; it could be that none of the
-	 * AppendRelInfo nodes refer to it.  So compute it on first use. Note that
-	 * bms_singleton_member will complain if set is not singleton.
-	 */
-	foreach(l, append_rel_list)
-	{
-		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
-
-		/* The parent_relid shouldn't ever be a pullup target */
-		Assert(appinfo->parent_relid != varno);
-
-		if (appinfo->child_relid == varno)
-		{
-			if (subvarno < 0)
-				subvarno = bms_singleton_member(subrelids);
-			appinfo->child_relid = subvarno;
-		}
-	}
-}
-
-/*
- * fix_append_rel_relids: update RT-index fields of AppendRelInfo nodes
- *
- * When we pull up a subquery, any AppendRelInfo references to the subquery's
- * RT index have to be replaced by the substituted relid (and there had better
- * be only one).
- *
- * We assume we may modify the AppendRelInfo nodes in-place.
- */
-static void
-fix_append_rel_relids(List *append_rel_list, int varno, Relids subrelids)
-{
-	ListCell   *l;
-	int			subvarno = -1;
-
-	/*
-	 * We only want to extract the member relid once, but we mustn't fail
-	 * immediately if there are multiple members; it could be that none of the
-	 * AppendRelInfo nodes refer to it.  So compute it on first use. Note that
-	 * bms_singleton_member will complain if set is not singleton.
-	 */
-	foreach(l, append_rel_list)
-	{
-		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
-
-		/* The parent_relid shouldn't ever be a pullup target */
-		Assert(appinfo->parent_relid != varno);
-
-		if (appinfo->child_relid == varno)
-		{
-			if (subvarno < 0)
-				subvarno = bms_singleton_member(subrelids);
-			appinfo->child_relid = subvarno;
-		}
-	}
-}
-
-/*
- * fix_append_rel_relids: update RT-index fields of AppendRelInfo nodes
- *
- * When we pull up a subquery, any AppendRelInfo references to the subquery's
- * RT index have to be replaced by the substituted relid (and there had better
- * be only one).
- *
- * We assume we may modify the AppendRelInfo nodes in-place.
- */
-static void
-fix_append_rel_relids(List *append_rel_list, int varno, Relids subrelids)
+fix_append_rel_relids(List *append_rel_list, Index varno, Relids subrelids)
 {
 	ListCell   *l;
 	int			subvarno = -1;
