@@ -136,6 +136,15 @@ static Datum string_to_datum(const char *str, Oid datatype);
 static Const *string_to_const(const char *str, Oid datatype);
 static Const *string_to_bytea_const(const char *str, size_t str_len);
 
+static Selectivity 
+mcv_selectivity_cdb(VariableStatData   *vardata, 
+                    FmgrInfo           *opproc,
+				    Datum               constval, 
+                    bool                varonleft,
+				    Selectivity        *sumcommonp,     /* OUT */ 
+                    double             *nvaluesp);      /* OUT */
+
+
 
 /*
  *		eqsel			- Selectivity of "=" for any data types.
@@ -457,16 +466,30 @@ scalarineqsel(PlannerInfo *root, Oid operator, bool isgt,
  * The function result is the MCV selectivity, and the fraction of the
  * total population is returned into *sumcommonp.  Zeroes are returned
  * if there is no MCV list.
+ *
+ * CDB: The number of MCVs is returned into *nvaluesp.  
  */
-double
+double 
 mcv_selectivity(VariableStatData *vardata, FmgrInfo *opproc,
 				Datum constval, bool varonleft,
 				double *sumcommonp)
 {
+    return mcv_selectivity_cdb(vardata, opproc, constval, varonleft, 
+                               sumcommonp, NULL);
+}
+
+static Selectivity 
+mcv_selectivity_cdb(VariableStatData   *vardata, 
+                    FmgrInfo           *opproc,
+				    Datum               constval, 
+                    bool                varonleft,
+				    Selectivity        *sumcommonp,     /* OUT */ 
+                    double             *nvaluesp)       /* OUT */
+{
 	double		mcv_selec,
 				sumcommon;
 	Datum	   *values;
-	int			nvalues;
+	int			nvalues = 0;
 	float4	   *numbers;
 	int			nnumbers;
 	int			i;
@@ -498,6 +521,8 @@ mcv_selectivity(VariableStatData *vardata, FmgrInfo *opproc,
 	}
 
 	*sumcommonp = sumcommon;
+    if (nvaluesp)
+        *nvaluesp = nvalues;
 	return mcv_selec;
 }
 
@@ -918,7 +943,6 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 	Const	   *patt = NULL;
 	Const	   *prefix = NULL;
 	Const	   *rest = NULL;
-    double      notnullfrac = 1.0;
 	double		result;
 
 	/*
@@ -994,14 +1018,6 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 			return DEFAULT_MATCH_SEL;
 	}
 
-    /* CDB: Get fraction of tuples with NULL in this column */
-    if (HeapTupleIsValid(vardata.statsTuple))
-    {
-	    Form_pg_statistic   stats = (Form_pg_statistic)GETSTRUCT(vardata.statsTuple);
-
-        notnullfrac = 1.0 - stats->stanullfrac;
-    }
-
 	/* divide pattern into fixed prefix and remainder */
 	patt = (Const *) other;
 	pstatus = pattern_fixed_prefix(patt, ptype, &prefix, &rest);
@@ -1066,89 +1082,66 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 		 * exact answers for them by applying the pattern operator, so there's
 		 * no reason to approximate.  (If the MCVs cover a significant part of
 		 * the total population, this gives us a big leg up in accuracy.)
-         *
-         * CDB TODO: Try matching the pattern against the frequently
-         * occurring values, similar to eqsel().
 		 */
-        double      ndistinct;
-        Selectivity eqsel = notnullfrac;
-        Selectivity fewsel;
-	    Selectivity prefixsel;
-		Selectivity restsel = pattern_selectivity(rest, ptype);
 		Selectivity selec;
+        Selectivity eqsel;
+        Selectivity fewsel;
+        double      fewvalues = 2.0;
+        double      ncommon;
+        double      ndistinct;
 		FmgrInfo	opproc;
 		double		nullfrac,
 					mcv_selec,
 					sumcommon;
 
-        /* CDB: LIKE cannot select fewer rows than "=". */
-        ndistinct = get_variable_numdistinct(&vardata);
-        if (ndistinct > 1.0)
-            eqsel /= ndistinct;
-            
-        /* Try to use the histogram entries to get selectivity */
-		fmgr_info(get_opcode(operator), &opproc);
-		
-		selec = histogram_selectivity(&vardata, &opproc, constval, true,
-									  100, 1);
-		if (selec < 0)
-		{
-			/* Nope, so fake it with the heuristic method */
-			Selectivity prefixsel;
-			Selectivity restsel;
-
-
-			if (pstatus == Pattern_Prefix_Partial)
-	        {
-				prefixsel = prefix_selectivity(&vardata, opclass, prefix);
-	
-	            /* CDB: Assume prefix will match at least a few distinct values. */
-	            fewsel = (DEFAULT_RANGE_INEQ_SEL / DEFAULT_EQ_SEL) * eqsel;
-	            if (fewsel > notnullfrac)
-	                fewsel = notnullfrac;
-	            if (prefixsel < fewsel)
-	                prefixsel = fewsel;
-	
-	            /* CDB: Assume whole pattern will match at least 1 or 2 values. */
-	            fewsel = 2.0 * eqsel;
-	        }
-			else
-	        {
-			    prefixsel = notnullfrac;
-	
-	            /* CDB: Assume pattern will match at least a few distinct values. */
-	            fewsel = (DEFAULT_MATCH_SEL / DEFAULT_EQ_SEL) * eqsel;
-	        }
-		} 
-		else
-		{
-			/* Yes, but don't believe extremely small or large estimates. */
-			if (selec < 0.0001)
-				selec = 0.0001;
-			else if (selec > 0.9999)
-				selec = 0.9999;
-		}
-		
-        /*
+		/*
 		 * If we have most-common-values info, add up the fractions of the MCV
 		 * entries that satisfy MCV OP PATTERN.  These fractions contribute
 		 * directly to the result selectivity.	Also add up the total fraction
 		 * represented by MCV entries.
 		 */
-		mcv_selec = mcv_selectivity(&vardata, &opproc, constval, true,
-									&sumcommon);
+		mcv_selec = mcv_selectivity_cdb(&vardata, &opproc, constval, true,
+									    &sumcommon, &ncommon);
+
+        /* CDB: LIKE cannot select fewer rows than "=". */
+        ndistinct = get_variable_numdistinct(&vardata) - ncommon;
+        eqsel = 1.0 / Max(1.0, ndistinct);
+
+		/* Try to use the histogram entries to get selectivity */
+		fmgr_info(get_opcode(operator), &opproc);
+
+		selec = histogram_selectivity(&vardata, &opproc, constval, true,
+									  100, 1);
+		if (selec < 0)
+		{
+			/* Nope, so fake it with the heuristic method */
+            selec = pattern_selectivity(rest, ptype);
+
+			if (pstatus == Pattern_Prefix_Partial)
+            {
+			    Selectivity prefixsel;
+
+				prefixsel = prefix_selectivity(&vardata, opclass, prefix);
+
+                /* CDB: Assume prefix matches at least a few distinct values. */
+                fewsel = (DEFAULT_RANGE_INEQ_SEL / DEFAULT_EQ_SEL) * eqsel;
+                prefixsel = Min(Max(prefixsel, fewsel), 1.0);
+
+                selec *= prefixsel;
+            }
+			else
+                fewvalues = DEFAULT_MATCH_SEL / DEFAULT_EQ_SEL;
+		}
+
+        /* CDB: Assume whole pattern matches at least a few distinct values. */
+        fewsel = fewvalues * eqsel;
+        selec = Min(Max(selec, fewsel), 1.0);
 
 		if (HeapTupleIsValid(vardata.statsTuple))
 			nullfrac = ((Form_pg_statistic) GETSTRUCT(vardata.statsTuple))->stanullfrac;
 		else
 			nullfrac = 0.0;
-        
-        selec = prefixsel * restsel;
-        if (fewsel > notnullfrac)
-            fewsel = notnullfrac;
-        if (selec < fewsel)
-            selec = fewsel;
-            
+
 		/*
 		 * Now merge the results from the MCV and histogram calculations,
 		 * realizing that the histogram covers only the non-null values that
@@ -1156,7 +1149,7 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 		 */
 		selec *= 1.0 - nullfrac - sumcommon;
 		selec += mcv_selec;
-		
+
 		/* result should be in range, but make sure... */
 		CLAMP_PROBABILITY(selec);
 		result = selec;
@@ -4298,7 +4291,7 @@ like_selectivity(Const *patt_const, bool case_insensitive)
 		    {
 			    /* Backslash quotes the next character */
 			    pos++;
-			    if (patt[pos] == '\0' && typeid != BYTEAOID)
+			    if (pos >= pattlen)
 				    break;
 		    }
 
@@ -4889,6 +4882,15 @@ btcostestimate(PG_FUNCTION_ARGS)
 	bool		found_saop;
 	ListCell   *l;
 
+    /*
+     * CDB: Tell caller how many leading indexcols are matched by '=' quals.
+     *
+     * CDB TODO: The num_leading_eq field doesn't really belong in IndexOptInfo.
+     * It's just a kludgy way to return an extra result parameter, because we
+     * don't have access here to the IndexPath node where this info should go.
+     */
+    index->num_leading_eq = 0;
+
 	/*
 	 * For a btree scan, only leading '=' quals plus inequality quals for the
 	 * immediately next attribute contribute to index selectivity (these are
@@ -4985,20 +4987,17 @@ btcostestimate(PG_FUNCTION_ARGS)
 											  index->classlist[indexcol]);
 		Assert(op_strategy != 0);		/* not a member of opclass?? */
 		if (op_strategy == BTEqualStrategyNumber)
+        {
 			eqQualHere = true;
+
+            /* CDB: Count leading indexcols having '=' quals. */
+            if (!IsA(clause, ScalarArrayOpExpr))
+                index->num_leading_eq = indexcol + 1;
+        }
 		indexBoundQuals = lappend(indexBoundQuals, rinfo);
 	}
 
-    /*
-     * CDB: Tell caller whether every column has a matching '=' clause.
-     *
-     * CDB TODO: The full_eq_match flag doesn't really belong in IndexOptInfo.
-     * That's just a kludgy way to return an extra result parameter, because
-     * we don't have access here to the IndexPath node where this flag belongs.
-     */
-    index->num_leading_eq = eqQualHere ? indexcol+1 : indexcol;
-
-    /*
+	/*
 	 * If index is unique and we found an '=' clause for each column, we can
 	 * just assume numIndexTuples = 1 and skip the expensive
 	 * clauselist_selectivity calculations.

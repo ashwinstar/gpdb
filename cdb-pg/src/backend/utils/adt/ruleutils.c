@@ -2726,11 +2726,11 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
 			/*
 			 * This case occurs during EXPLAIN when we are looking at a
 			 * deparse context node set up by deparse_context_for_subplan().
-			 * If the subplan tlist provides a name, use it, but usually
-			 * we'll end up with "?columnN?".
+			 * If the subplan tlist provides a name, use it, but usually we'll
+			 * end up with "?columnN?".
 			 */
-			List           *tlist = ((Plan *) rte->funcexpr)->targetlist;
-			TargetEntry    *tle = get_tle_by_resno(tlist, attnum);
+			List	   *tlist = ((Plan *) rte->funcexpr)->targetlist;
+			TargetEntry *tle = get_tle_by_resno(tlist, attnum);
 
 			if (tle && tle->resname)
 			{
@@ -2738,7 +2738,7 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
 			}
 			else
 			{
-				char	buf[32];
+				char		buf[32];
 
 				snprintf(buf, sizeof(buf), "?column%d?", attnum);
 				*attname = pstrdup(buf);
@@ -2959,7 +2959,7 @@ find_rte_by_refname(const char *refname, deparse_context *context)
 	RangeTblEntry *result = NULL;
 	ListCell   *nslist;
 
-    foreach(nslist, context->namespaces)
+	foreach(nslist, context->namespaces)
 	{
 		deparse_namespace *dpns = (deparse_namespace *) lfirst(nslist);
 		ListCell   *rtlist;
@@ -3658,15 +3658,15 @@ get_rule_expr(Node *node, deparse_context *context,
 						 */
 						if (IsA(w, OpExpr))
 						{
-						Node	   *rhs;
+							Node	   *rhs;
 
 							Assert(IsA(linitial(((OpExpr *) w)->args),
 									   CaseTestExpr) ||
 								   IsA(linitial(((OpExpr *) w)->args),
 									   Const));
 							rhs = (Node *) lsecond(((OpExpr *) w)->args);
-						get_rule_expr(rhs, context, false);
-					}
+							get_rule_expr(rhs, context, false);
+						}
 						else if (IsA(w, CaseTestExpr))
 							appendStringInfo(buf, "TRUE");
 						else if (not_clause(w))
@@ -3675,7 +3675,7 @@ get_rule_expr(Node *node, deparse_context *context,
 									   CaseTestExpr));
 							appendStringInfo(buf, "FALSE");
 						}
-					else
+						else
 							elog(ERROR, "unexpected CASE WHEN clause: %d",
 								 (int) nodeTag(w));
 					}
@@ -4230,7 +4230,7 @@ get_const_expr(Const *constval, deparse_context *context)
 	pfree(extval);
 
 	/*
-	 * Append ::typname unless the constant will be implicitly typed as the
+	 * Append ::typename unless the constant will be implicitly typed as the
 	 * right type when it is read in.  XXX this code has to be kept in sync
 	 * with the behavior of the parser, especially make_const.
 	 */
