@@ -1147,7 +1147,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&ResourceScheduler,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 	{
 		{"resource_select_only", PGC_POSTMASTER, RESOURCES_MGM,
