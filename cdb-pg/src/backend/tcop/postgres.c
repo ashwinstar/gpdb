@@ -841,9 +841,15 @@ exec_simple_query(const char *query_string)
 	/* Log immediately if dictated by log_statement */
 	if (check_log_statement_raw(parsetree_list))
 	{
-		ereport(LOG,
-				(errmsg("statement: %s", query_string),
-				 errdetail_execute(parsetree_list)));
+        /* Log only the first 200 chars of MPPEXEC statement. */
+        if (list_length(parsetree_list) == 1 &&
+            IsA(linitial(parsetree_list), CdbExecStmt) &&
+            strlen(query_string) > 200)
+		    ereport(LOG, (errmsg("statement: %.*s...", 200, query_string),
+				          errdetail_execute(parsetree_list) ));
+        else
+		    ereport(LOG, (errmsg("statement: %s", query_string),
+				          errdetail_execute(parsetree_list) ));
 		was_logged = true;
 	}
 
@@ -1045,10 +1051,17 @@ exec_simple_query(const char *query_string)
 					(errmsg("duration: %s ms", msec_str)));
 			break;
 		case 2:
-			ereport(LOG,
-					(errmsg("duration: %s ms  statement: %s",
-							msec_str, query_string),
-					 errdetail_execute(parsetree_list)));
+            /* Log only the first 200 chars of MPPEXEC statement. */
+            if (list_length(parsetree_list) == 1 &&
+                IsA(linitial(parsetree_list), CdbExecStmt) &&
+                strlen(query_string) > 200)
+		        ereport(LOG, (errmsg("duration: %s ms  statement: %.*s...",
+						             msec_str, 200, query_string),
+				              errdetail_execute(parsetree_list) ));
+            else
+			    ereport(LOG, (errmsg("duration: %s ms  statement: %s",
+						             msec_str, query_string),
+					          errdetail_execute(parsetree_list) ));
 			break;
 	}
 
@@ -1439,7 +1452,6 @@ exec_bind_message(StringInfo input_message)
 		portal = CreatePortal(portal_name, false, false);
 		portal->is_cursor = true;
 	}
-		
 
 	/*
 	 * Fetch parameters, if any, and store in the portal's memory context.
@@ -1567,7 +1579,6 @@ exec_bind_message(StringInfo input_message)
 
 			params->params[paramno].value = pval;
 			params->params[paramno].isnull = isNull;
-
 
 			/*
 			 * We mark the params as CONST.  This has no effect if we already
@@ -1827,9 +1838,9 @@ exec_execute_message(const char *portal_name, long max_rows)
 	 */
 	if (IsAbortedTransactionBlockState() &&
 		!IsTransactionExitStmtList(portal->parseTrees))
-			ereport(ERROR,
-					(errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION),
-					 errmsg("current transaction is aborted, "
+		ereport(ERROR,
+				(errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION),
+				 errmsg("current transaction is aborted, "
 						"commands ignored until end of transaction block")));
 
 	/* Check for cancel signal before we start execution */
@@ -1879,8 +1890,8 @@ exec_execute_message(const char *portal_name, long max_rows)
 	}
 
 	/*
- 	 * Emit duration logging if appropriate.
-  	 */
+	 * Emit duration logging if appropriate.
+	 */
 	switch (check_log_duration(msec_str, was_logged))
 	{
 		case 1:
@@ -2411,14 +2422,14 @@ die(SIGNAL_ARGS)
 	{
 		InterruptPending = true;
 		ProcDiePending = true;
-		
+
 		/* although we don't strictly need to set this to true since the
 		 * ProcDiePending will occur first.  We set this anyway since the
 		 * MPP dispatch code is triggered only off of QueryCancelPending
 		 * and not any of the others.
 		 */
 		QueryCancelPending = true;
-		
+
 		/*
 		 * If it's safe to interrupt, and we're waiting for input or a lock,
 		 * service the interrupt immediately
@@ -3709,11 +3720,11 @@ PostgresMain(int argc, char *argv[], const char *username)
 
                     if (Mpp_role != MPP_ROLE_EXECUTE)
                         mpp_command_count++;
-                        
-                    /* Set statement_timestamp() */
- 					SetCurrentStatementStartTimestamp();
 
-                    stmt_name = pq_getmsgstring(&input_message);
+					/* Set statement_timestamp() */
+					SetCurrentStatementStartTimestamp();
+
+					stmt_name = pq_getmsgstring(&input_message);
 					query_string = pq_getmsgstring(&input_message);
 					numParams = pq_getmsgint(&input_message, 2);
 					if (numParams > 0)

@@ -189,17 +189,6 @@ OffsetVarNodes_walker(Node *node, OffsetVarNodes_context *context)
 		}
 		/* fall through to examine children */
 	}
-	if (IsA(node, AppendRelInfo))
-	{
-		AppendRelInfo *appinfo = (AppendRelInfo *) node;
-
-		if (context->sublevels_up == 0)
-		{
-			appinfo->parent_relid += context->offset;
-			appinfo->child_relid += context->offset;
-		}
-		/* fall through to examine children */
-	}
 	if (IsA(node, Query))
 	{
 		/* Recurse into subselects */
@@ -337,19 +326,6 @@ ChangeVarNodes_walker(Node *node, ChangeVarNodes_context *context)
 			ininfo->righthand = adjust_relid_set(ininfo->righthand,
 												 context->rt_index,
 												 context->new_index);
-		/* fall through to examine children */
-	}
-	if (IsA(node, AppendRelInfo))
-	{
-		AppendRelInfo *appinfo = (AppendRelInfo *) node;
-
-		if (context->sublevels_up == 0)
-		{
-			if (appinfo->parent_relid == context->rt_index)
-				appinfo->parent_relid = context->new_index;
-			if (appinfo->child_relid == context->rt_index)
-				appinfo->child_relid = context->new_index;
-		}
 		/* fall through to examine children */
 	}
 	if (IsA(node, AppendRelInfo))
