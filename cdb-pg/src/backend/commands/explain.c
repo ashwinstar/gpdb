@@ -245,15 +245,16 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 {
 	instr_time	starttime;
 	double		totaltime = 0;
-	ExplainState *es;
+	ExplainState    explainState;
+    ExplainState   *es = &explainState;
 	StringInfoData buf;
-	int			eflags;
 	Node	   *saved_es_sliceTable;
+	int			eflags;
 
 	memset(es, 0, sizeof(*es));
     es->queryDesc = queryDesc;
 
-    INSTR_TIME_SET_CURRENT(starttime);
+	INSTR_TIME_SET_CURRENT(starttime);
 
 	/* If analyzing, we need to cope with queued triggers */
 	if (stmt->analyze)
@@ -293,7 +294,7 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 		    totaltime += elapsed_time(&starttime);
 	}
 
-    es->printNodes = stmt->verbose;
+	es->printNodes = stmt->verbose;
 	es->printAnalyze = stmt->analyze;
 	es->rtable = queryDesc->parsetree->rtable;
 
@@ -762,10 +763,6 @@ explain_outNode(StringInfo str,
 									 quote_identifier(rte->eref->aliasname));
 			}
 			break;
-		case T_Material:
-			if (((Material *) plan)->cdb_strict)
-				appendStringInfo(str, " for deadlock safety");
-			break;
 		case T_ValuesScan:
 			if (((Scan *) plan)->scanrelid > 0)
 			{
@@ -781,6 +778,10 @@ explain_outNode(StringInfo str,
 				appendStringInfo(str, " on %s",
 								 quote_identifier(valsname));
 			}
+			break;
+		case T_Material:
+			if (((Material *) plan)->cdb_strict)
+				appendStringInfo(str, " for deadlock safety");
 			break;
 		default:
 			break;
@@ -1001,7 +1002,7 @@ explain_outNode(StringInfo str,
 			    appendStringInfo(str, "  ");
 		    appendStringInfo(str, "  InitPlan  (slice%d)\n", sp->qDispSliceId);
 
-            es->rtable = sp->rtable;
+			es->rtable = sp->rtable;
 			for (i = 0; i < indent; i++)
 				appendStringInfo(str, "  ");
 			appendStringInfo(str, "    ->  ");
@@ -1389,9 +1390,8 @@ show_sort_keys(Plan *sortplan, int nkeys, AttrNumber *keycols,
 	{
 		Node	   *outercontext;
 
-		outercontext = deparse_context_for_subplan("sort",
-												   (Node *) sortplan);
-		context = deparse_context_for_plan(0, outercontext,
+		outercontext = deparse_context_for_subplan(NULL, (Node *)sortplan);
+		context = deparse_context_for_plan(OUTER, outercontext,
 										   0, NULL,
 										   es->rtable);
 	}
