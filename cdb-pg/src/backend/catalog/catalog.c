@@ -282,6 +282,7 @@ IsSharedRelation(Oid relationId)
 		relationId == TablespaceNameIndexId ||
 		relationId == MppConfigurationContentDefinedprimaryIndexId ||
 		relationId == MppConfigurationDbidIndexId ||
+		relationId == AuthIdRolResQueueIndexId ||
 		relationId == ResQueueOidIndexId ||
 		relationId == ResQueueRsqnameIndexId )
 		return true;
