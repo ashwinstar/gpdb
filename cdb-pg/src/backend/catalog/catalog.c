@@ -33,6 +33,7 @@
 #include "catalog/pg_shdescription.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_resqueue.h"
+#include "catalog/mpp_configuration.h"
 #include "catalog/toasting.h"
 #include "miscadmin.h"
 #include "storage/fd.h"
@@ -259,6 +260,7 @@ IsSharedRelation(Oid relationId)
 		relationId == SharedDescriptionRelationId ||
 		relationId == SharedDependRelationId ||
 		relationId == TableSpaceRelationId ||
+		relationId == MppConfigurationRelationId ||
 		relationId == ResQueueRelationId)
 		return true;
 	/* These are their indexes (see indexing.h) */
@@ -274,6 +276,8 @@ IsSharedRelation(Oid relationId)
 		relationId == SharedDependReferenceIndexId ||
 		relationId == TablespaceOidIndexId ||
 		relationId == TablespaceNameIndexId ||
+		relationId == MppConfigurationContentDefinedprimaryIndexId ||
+		relationId == MppConfigurationDbidIndexId ||
 		relationId == ResQueueOidIndexId ||
 		relationId == ResQueueRsqnameIndexId )
 		return true;
