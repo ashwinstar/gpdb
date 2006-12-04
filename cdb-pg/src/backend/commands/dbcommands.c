@@ -447,19 +447,18 @@ createdb_int(CreatedbStmt *stmt,
 	 * a filename conflict with anything already existing in the tablespace
 	 * directories.
 	 */
+	pg_database_rel = heap_open(DatabaseRelationId, RowExclusiveLock);
+
 	if (Mpp_role == MPP_ROLE_EXECUTE && stmt->dbOid != 0)
 		dboid = stmt->dbOid;
 	else
 	{
-		pg_database_rel = heap_open(DatabaseRelationId, RowExclusiveLock);
 		do
 		{
 			dboid = GetNewOid(pg_database_rel);
 		} while (check_db_file_conflict(dboid));
-
-		heap_close(pg_database_rel, AccessShareLock);
 	}
-	pg_database_rel = NULL;
+
 
 	/* Remember this for dispatching to segDBs */
 	stmt->dbOid = dboid;

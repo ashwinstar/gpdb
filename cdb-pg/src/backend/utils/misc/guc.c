@@ -4419,8 +4419,8 @@ set_config_option(const char *name, const char *value,
 					{
 						ereport(elevel,
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("parameter \"%s\" requires an integer value",
-								name)));
+						 errmsg("parameter \"%s\" requires an integer value, not %s",
+								name, value)));
 						return false;
 					}
 					if (newval < conf->min || newval > conf->max)

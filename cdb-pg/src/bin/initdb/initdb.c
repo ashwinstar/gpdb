@@ -1116,7 +1116,7 @@ test_config_settings(void)
 		200, 100, 50, 40, 30, 20, 10
 	};
 	static const int trial_bufs[] = {
-		16000, 4096, 3584, 3072, 2560, 2048, 1536,
+		16000, 8192, 4096, 3584, 3072, 2560, 2048, 1536,
 		1000, 900, 800, 700, 600, 500,
 		400, 300, 200, 100, 50
 	};
@@ -1930,7 +1930,7 @@ setup_cdb_schema(void)
 	 * information_schema.sql
 	 */
 	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" %s -N template1 >%s",
+			 "\"%s\" %s -j template1 >%s",
 			 backend_exec, backend_options,
 			 DEVNULL);
 
