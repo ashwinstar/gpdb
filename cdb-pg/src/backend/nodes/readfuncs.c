@@ -2791,6 +2791,8 @@ static ParseNodeInfo infoAr[] =
 	{"RENAMESTMT", (ReadFn)_readRenameStmt},
 	{"RESULT", (ReadFn)_readResult},
 	{"ROW", (ReadFn)_readRowExpr},
+	{"ROWCOMPAREEXPR", (ReadFn)_readRowCompareExpr},
+	{"ROWMARKCLAUSE", (ReadFn)_readRowMarkClause},
 	{"RTE", (ReadFn)_readRangeTblEntry},
 	{"RULESTMT", (ReadFn)_readRuleStmt},
 	{"SCALARARRAYOPEXPR", (ReadFn)_readScalarArrayOpExpr},
