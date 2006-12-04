@@ -119,6 +119,7 @@ DATA(insert ( 2129	text_larger		text_larger		-				666		25		_null_ ));
 DATA(insert ( 2130	numeric_larger	numeric_larger	-				1756	1700	_null_ ));
 DATA(insert ( 2050	array_larger	array_larger	-				1073	2277	_null_ ));
 DATA(insert ( 2244	bpchar_larger	bpchar_larger	-				1060	1042	_null_ ));
+DATA(insert ( 2797	tidlarger		tidlarger		-				2800	27		_null_ ));
 
 /* min */
 DATA(insert ( 2131	int8smaller		int8smaller		-				412		20		_null_ ));
@@ -139,12 +140,27 @@ DATA(insert ( 2145	text_smaller	text_smaller	-				664		25		_null_ ));
 DATA(insert ( 2146	numeric_smaller numeric_smaller -				1754	1700	_null_ ));
 DATA(insert ( 2051	array_smaller	array_smaller	-				1072	2277	_null_ ));
 DATA(insert ( 2245	bpchar_smaller	bpchar_smaller	-				1058	1042	_null_ ));
+DATA(insert ( 2798	tidsmaller		tidsmaller		-				2799	27		_null_ ));
 
-/*
- * Using int8inc for count() is cheating a little, since it really only
- * takes 1 parameter not 2, but nodeAgg.c won't complain ...
- */
-DATA(insert ( 2147	int8inc		int8pl		-					0	20		0 ));
+/* count */
+DATA(insert ( 2147	int8inc_any		int8pl	-				0		20		"0" ));
+DATA(insert ( 2803	int8inc			int8pl	-				0		20		"0" ));
+
+/* var_pop */
+DATA(insert ( 2718	int8_accum	numeric_amalg	numeric_var_pop 0	1231	"{0,0,0}" ));
+DATA(insert ( 2719	int4_accum	numeric_amalg	numeric_var_pop 0	1231	"{0,0,0}" ));
+DATA(insert ( 2720	int2_accum	numeric_amalg	numeric_var_pop 0	1231	"{0,0,0}" ));
+DATA(insert ( 2721	float4_accum	float8_amalg	float8_var_pop 0	1022	"{0,0,0}" ));
+DATA(insert ( 2722	float8_accum	float8_amalg	float8_var_pop 0	1022	"{0,0,0}" ));
+DATA(insert ( 2723	numeric_accum  numeric_amalg	numeric_var_pop 0	1231	"{0,0,0}" ));
+
+/* var_samp */
+DATA(insert ( 2641	int8_accum	numeric_amalg	numeric_var_samp	0	1231	"{0,0,0}" ));
+DATA(insert ( 2642	int4_accum	numeric_amalg	numeric_var_samp	0	1231	"{0,0,0}" ));
+DATA(insert ( 2643	int2_accum	numeric_amalg	numeric_var_samp	0	1231	"{0,0,0}" ));
+DATA(insert ( 2644	float4_accum	float8_amalg	float8_var_samp 0	1022	"{0,0,0}" ));
+DATA(insert ( 2645	float8_accum	float8_amalg	float8_var_samp 0	1022	"{0,0,0}" ));
+DATA(insert ( 2646	numeric_accum  numeric_amalg	numeric_var_samp 0	1231	"{0,0,0}" ));
 
 /* variance: historical Postgres syntax for var_samp */
 DATA(insert ( 2148	int8_accum		numeric_amalg	numeric_var_samp	0	1231	"{0,0,0}" ));
