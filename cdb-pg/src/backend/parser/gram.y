@@ -2385,7 +2385,7 @@ CreateAsStmt:
 					n->intoOptions = $6;
 					n->intoOnCommit = $7;
 					n->intoTableSpaceName = $8;
-					n->distributedBy = $9;
+					n->distributedBy = $11;
 					$$ = $10;
 				}
 		;
