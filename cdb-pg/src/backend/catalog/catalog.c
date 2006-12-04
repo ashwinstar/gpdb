@@ -32,6 +32,7 @@
 #include "catalog/pg_shdepend.h"
 #include "catalog/pg_shdescription.h"
 #include "catalog/pg_tablespace.h"
+#include "catalog/pg_resqueue.h"
 #include "catalog/toasting.h"
 #include "miscadmin.h"
 #include "storage/fd.h"
@@ -257,7 +258,8 @@ IsSharedRelation(Oid relationId)
 		relationId == PLTemplateRelationId ||
 		relationId == SharedDescriptionRelationId ||
 		relationId == SharedDependRelationId ||
-		relationId == TableSpaceRelationId)
+		relationId == TableSpaceRelationId ||
+		relationId == ResQueueRelationId)
 		return true;
 	/* These are their indexes (see indexing.h) */
 	if (relationId == AuthIdRolnameIndexId ||
@@ -271,7 +273,9 @@ IsSharedRelation(Oid relationId)
 		relationId == SharedDependDependerIndexId ||
 		relationId == SharedDependReferenceIndexId ||
 		relationId == TablespaceOidIndexId ||
-		relationId == TablespaceNameIndexId)
+		relationId == TablespaceNameIndexId ||
+		relationId == ResQueueOidIndexId ||
+		relationId == ResQueueRsqnameIndexId )
 		return true;
 	/* These are their toast tables and toast indexes (see toasting.h) */
 	if (relationId == PgAuthidToastTable ||
