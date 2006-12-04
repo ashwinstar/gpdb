@@ -6,6 +6,8 @@
  */
 #define MppVersionRelationName		"mpp_version_at_initdb"
 
+#define MppVersionRelationId 5003
+
 CATALOG(mpp_version_at_initdb,5003) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 {
 	int2		schemaversion;
