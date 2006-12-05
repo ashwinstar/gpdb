@@ -647,6 +647,7 @@ AC_DEFINE_UNQUOTED(PG_VERSION_NUM, $PG_VERSION_NUM, [PostgreSQL version as a num
 ##
 
 AC_CHECK_LIB(m, main)
+AC_CHECK_LIB(nsl, main)
 AC_SEARCH_LIBS(setproctitle, util)
 AC_SEARCH_LIBS(dlopen, dl)
 AC_SEARCH_LIBS(socket, [socket wsock32])
