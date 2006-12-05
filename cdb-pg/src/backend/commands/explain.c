@@ -418,7 +418,6 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	do_text_output_multiline(tstate, buf.data);
 
 	pfree(buf.data);
-	pfree(es);
 }
 
 /* Compute elapsed time in seconds since given timestamp */
