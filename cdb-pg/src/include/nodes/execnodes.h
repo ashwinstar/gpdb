@@ -1005,8 +1005,6 @@ typedef struct PlanState
 	TupleTableSlot *ps_ResultTupleSlot; /* slot for my result tuples */
 	ExprContext *ps_ExprContext;	/* node's expression-evaluation context */
 	ProjectionInfo *ps_ProjInfo;	/* info for doing tuple projection */
-	bool		ps_TupFromTlist;/* state flag for processing set-valued
-								 * functions in targetlist */
 } PlanState;
 
 /* ----------------
@@ -1293,6 +1291,8 @@ typedef struct ValuesScanState
 	int			array_len;
 	int			curr_idx;
 	int			marked_idx;
+    bool        cdb_want_ctid;  /* true => ctid is referenced in targetlist */
+    Oid         cdb_fake_tableoid;
 } ValuesScanState;
 
 /* ----------------------------------------------------------------

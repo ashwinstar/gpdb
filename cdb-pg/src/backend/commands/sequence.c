@@ -93,7 +93,7 @@ static SeqTableData *last_used_seq = NULL;
 static int64 nextval_internal(Oid relid);
 static Relation open_share_lock(SeqTable seq);
 static void init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel);
-static Form_pg_sequence read_info(SeqTable elm, Relation rel, Buffer *buf);
+static Form_pg_sequence read_info(Relation rel, Buffer *buf);
 static void init_params(List *options, bool isInit,
 			Form_pg_sequence new, List **owned_by);
 static void do_setval(Oid relid, int64 next, bool iscalled);
@@ -237,6 +237,17 @@ DefineSequence(CreateSeqStmt *seq)
 
 	seqoid = DefineRelation(stmt, RELKIND_SEQUENCE);
 
+    /*
+     * Open and lock the new sequence.  (This lock is redundant; an
+     * AccessExclusiveLock was acquired above by DefineRelation and
+     * won't be released until end of transaction.)
+     *
+     * CDB: Acquire lock on qDisp before dispatching to qExecs, so
+     * qDisp can detect and resolve any deadlocks.
+     */
+    rel = heap_open(seqoid, AccessExclusiveLock);
+	tupDesc = RelationGetDescr(rel);
+
 	stmt->oidInfo.relOid = seq->relOid = seqoid;
 
 	if (shouldDispatch)
@@ -244,14 +255,6 @@ DefineSequence(CreateSeqStmt *seq)
 		seq->comptypeOid = stmt->oidInfo.comptypeOid;
 		CdbDispatchUtilityStatement((Node *)seq);
 	}
-
-    /*
-     * Open and lock the new sequence.  (This lock is redundant; an
-     * AccessExclusiveLock was acquired above by DefineRelation and
-     * won't be released until end of transaction.)
-     */
-    rel = heap_open(seqoid, AccessExclusiveLock);
-	tupDesc = RelationGetDescr(rel);
 
 	/* Initialize first page of relation with special magic number */
 
@@ -383,7 +386,8 @@ AlterSequence(AlterSeqStmt *stmt)
 					   stmt->sequence->relname);
 
 	/* lock page' buffer and read tuple into new sequence structure */
-	seq = read_info(elm, seqrel, &buf);
+	seq = read_info(seqrel, &buf);
+	elm->increment = seq->increment_by;
 	page = BufferGetPage(buf);
 
 	/* Copy old values of options into workspace */
@@ -522,7 +526,6 @@ cdb_sequence_nextval(Relation   seqrel,
                      int64     *pcached,
                      int64     *pincrement)
 {
-	SeqTable	elm;
 	Buffer		buf;
 	Page		page;
 	Form_pg_sequence seq;
@@ -539,7 +542,7 @@ cdb_sequence_nextval(Relation   seqrel,
 	bool		logit = false;
 															
 	/* lock page' buffer and read tuple */
-	seq = read_info(elm, seqrel, &buf);
+	seq = read_info(seqrel, &buf);
 	page = BufferGetPage(buf);
 
 	last = next = result = seq->last_value;
@@ -650,12 +653,6 @@ cdb_sequence_nextval(Relation   seqrel,
 	log -= fetch;				/* adjust for any unfetched numbers */
 	Assert(log >= 0);
 
-	/* save info in local cache */
-	elm->last = result;			/* last returned number */
-	elm->cached = last;			/* last fetched number */
-
-	last_used_seq = elm;
-	
     /* set results for caller */
     *plast = result;            /* last returned number */
     *pcached = last;            /* last fetched number */
@@ -833,7 +830,8 @@ do_setval(Oid relid, int64 next, bool iscalled)
 						RelationGetRelationName(seqrel))));
 
 	/* lock page' buffer and read tuple */
-	seq = read_info(elm, seqrel, &buf);
+	seq = read_info(seqrel, &buf);
+	elm->increment = seq->increment_by;
 
 	if ((next < seq->min_value) || (next > seq->max_value))
 	{
@@ -1036,7 +1034,7 @@ init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel)
 
 /* Given an opened relation, lock the page buffer and find the tuple */
 static Form_pg_sequence
-read_info(SeqTable elm, Relation rel, Buffer *buf)
+read_info(Relation rel, Buffer *buf)
 {
 	PageHeader	page;
 	ItemId		lp;
@@ -1059,8 +1057,6 @@ read_info(SeqTable elm, Relation rel, Buffer *buf)
 	tuple.t_data = (HeapTupleHeader) PageGetItem((Page) page, lp);
 
 	seq = (Form_pg_sequence) GETSTRUCT(&tuple);
-
-	elm->increment = seq->increment_by;
 
 	return seq;
 }

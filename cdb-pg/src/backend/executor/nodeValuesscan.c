@@ -4,6 +4,7 @@
  *	  Support routines for scanning Values lists
  *	  ("VALUES (...), (...), ..." in rangetable).
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -25,6 +26,7 @@
 
 #include "executor/executor.h"
 #include "executor/nodeValuesscan.h"
+#include "optimizer/var.h"              /* CDB: contain_var_reference() */
 #include "parser/parsetree.h"
 #include "utils/memutils.h"
 
@@ -150,6 +152,16 @@ ValuesNext(ValuesScanState *node)
 		 * And return the virtual tuple.
 		 */
 		ExecStoreVirtualTuple(slot);
+
+        /* CDB: Label each row with a synthetic ctid for subquery dedup. */
+        if (node->cdb_want_ctid)
+        {
+            HeapTuple   tuple = ExecMaterializeSlot(slot);
+
+            ItemPointerSet(&tuple->t_self, node->curr_idx >> 16,
+                           (OffsetNumber)node->curr_idx);
+            tuple->t_tableOid = node->cdb_fake_tableoid;
+        }
 	}
 
 	return slot;
@@ -233,6 +245,13 @@ ExecInitValuesScan(ValuesScan *node, EState *estate, int eflags)
 		ExecInitExpr((Expr *) node->scan.plan.qual,
 					 (PlanState *) scanstate);
 
+    /* CDB: Does targetlist contain a Var node referencing the ctid column? */
+    scanstate->cdb_want_ctid = contain_var_reference((Node *)node->scan.plan.targetlist,
+                                                     node->scan.scanrelid,
+                                                     SelfItemPointerAttributeNumber,
+                                                     0);
+    scanstate->cdb_fake_tableoid = (Oid)node->scan.scanrelid;
+
 	/*
 	 * get info about values list
 	 */
@@ -257,8 +276,6 @@ ExecInitValuesScan(ValuesScan *node, EState *estate, int eflags)
 	{
 		scanstate->exprlists[i++] = (List *) lfirst(vtl);
 	}
-
-	scanstate->ss.ps.ps_TupFromTlist = false;
 
 	/*
 	 * Initialize result tuple type and projection info.

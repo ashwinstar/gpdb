@@ -915,6 +915,10 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 			nameTag = "FunctionScan";
 			break;
 
+		case T_ValuesScanState:
+			nameTag = "ValuesScan";
+			break;
+
 			/*
 			 * join nodes
 			 */
@@ -928,6 +932,10 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 
 		case T_HashJoinState:
 			nameTag = "HashJoin";
+			break;
+
+		case T_AdaptiveNestLoopState:
+			nameTag = "AdaptiveNestLoop"
 			break;
 
 			/*
