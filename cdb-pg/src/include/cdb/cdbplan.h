@@ -3,7 +3,7 @@
  * cdbplan.h
  *	  definitions for cdbplan.c utilities
  *
- * Copyright (c) 2004, Greenplum
+ * Copyright (c) 2004-2006, Greenplum
  *
  *
  * IDENTIFICATION
@@ -27,24 +27,5 @@ extern bool
 
 extern Node *
 			plan_tree_mutator(Node *node, Node *(*mutator) (), void *context);
-
-
-/* Example exerise of plan_tree_walker framework. */
-
-/* Caller needs to allocate this, so define it in header. */
-typedef struct PlanInventory
-{
-	int			scans;
-	int			vars;
-}	PlanInventory;
-
-/* This is the example. */
-extern bool plan_inventory(Plan *plan, PlanInventory * pinventory);
-
-
-/* Example exercise of plan_tree_mutator framework. */
-
-extern Plan *plan_copy(Plan *plan);
-
 
 #endif   /* CDBPLAN_H */

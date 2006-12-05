@@ -30,93 +30,6 @@ static void mutate_plan_fields(Plan *newplan, Plan *oldplan, Node *(*mutator) ()
 static void mutate_join_fields(Join *newplan, Join *oldplan, Node *(*mutator) (), void *context);
 
 
-static bool plan_inventory_walker(Node *node, PlanInventory * pinventory);
-static Node *plan_copy_mutator(Node *node, int *context);
-
-/* ----------------------------------------------------------------------- *
- * Functions plan_inventory() and plan_inventory_walker() demonstrate use
- * of the plan_tree_walker() framework and will eventually be replaced by
- * one or more useful tools.
- *
- * For now plan_inventory() just counts the Var and Scan nodes in a plan
- * tree and reports back via a PlanInventory structure allocated by the
- * caller.	Just a toy for now.
- * ----------------------------------------------------------------------- *
- */
-bool
-plan_inventory(Plan *plan, PlanInventory * pinventory)
-{
-	pinventory->vars = 0;
-	pinventory->scans = 0;
-
-	return !plan_inventory_walker((Node *) plan, pinventory);
-}
-
-bool
-plan_inventory_walker(Node *node, PlanInventory * pinventory)
-{
-	if (node == NULL)
-		return false;
-
-	switch (nodeTag(node))
-	{
-		case T_Var:
-
-			/* Process the Var node. */
-			(pinventory->vars)++;
-
-			/* Var is primitive, no need to recur. */
-			return false;
-
-		case T_SeqScan:
-		case T_FunctionScan:
-		case T_IndexScan:
-		case T_BitmapIndexScan:
-		case T_BitmapHeapScan:
-		case T_TidScan:
-		case T_SubqueryScan:
-
-			/* Process the Scan node */
-			(pinventory->scans)++;
-
-			/*
-			 * Scan nodes are complex so let plan_tree_walker() recur on their
-			 * sub-nodes.
-			 */
-			break;
-
-		default:
-			/* Let plan_tree_walker() deal with other node types. */
-			break;
-	}
-	return plan_tree_walker(node, plan_inventory_walker, pinventory);
-
-}
-
-
-/* ----------------------------------------------------------------------- *
- * A sample mutator -- just does a deep copy.
- * ----------------------------------------------------------------------- *
- */
-
-Plan *
-plan_copy(Plan *plan)
-{
-	int			n;
-
-	return (Plan *) plan_copy_mutator((Node *) plan, &n);
-}
-
-Node *
-plan_copy_mutator(Node *node, int *context)
-{
-	if (node == NULL)
-		return NULL;
-	/* Don't do anything! */
-	return plan_tree_mutator(node, plan_copy_mutator, context);
-}
-
-
 /* ----------------------------------------------------------------------- *
  * Plan Tree Walker Framework
  * ----------------------------------------------------------------------- *
@@ -1054,6 +967,10 @@ plan_tree_mutator(Node *node,
 						MUTATE(newrte->funcexpr, rte->funcexpr, Node *);
 						// TODO is this right? //newrte->coldeflist = (List *) copyObject(rte->coldeflist);
 						break;
+
+                    case RTE_VALUES:
+				        MUTATE(newrte->values_lists, rte->values_lists, List *);
+				        break;
 				}
 				return (Node *) newrte;
 			}

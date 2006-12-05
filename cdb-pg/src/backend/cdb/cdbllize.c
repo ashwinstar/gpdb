@@ -409,6 +409,7 @@ prescan_walker(Node *node, PlanProfile * context)
 		case T_BitmapIndexScan:
 		case T_BitmapHeapScan:
 		case T_TidScan:
+        case T_ValuesScan:
 			if ( ((Plan *)node)->dispatch == DISPATCH_PARALLEL )
 				context->dispatchParallel = TRUE;
 			return plan_tree_walker(node, prescan_walker, context);
@@ -429,6 +430,9 @@ prescan_walker(Node *node, PlanProfile * context)
                                            localRangeTable(context));
 
             Assert(rte->rtekind == RTE_FUNCTION);
+
+			if ( ((Plan *)node)->dispatch == DISPATCH_PARALLEL )
+				context->dispatchParallel = TRUE;
 
             if (rte->funcexpr &&
                 IsA(rte->funcexpr, FuncExpr) &&

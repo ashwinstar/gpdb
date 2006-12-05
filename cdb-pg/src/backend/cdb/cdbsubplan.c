@@ -216,6 +216,8 @@ addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo extPrm, P
 			Assert(fexpr && IsA(fexpr,FuncExpr));
 			param_walker((Node*)fexpr->args, &context);
 		}
+		else if ( rte->rtekind == RTE_VALUES )
+			param_walker((Node*)rte->values_lists, &context);
 	}
 
 	if (context.params == NIL)
@@ -291,6 +293,8 @@ param_walker(Node *node, ParamWalkerContext * context)
 				Assert(fexpr && IsA(fexpr,FuncExpr));
 				param_walker((Node*)fexpr->args, context);
 			}
+		    else if ( rte->rtekind == RTE_VALUES )
+			    param_walker((Node*)rte->values_lists, context);
 		}
 		/* Don't return, though.  Let the general walker finish the node. */
 	}
