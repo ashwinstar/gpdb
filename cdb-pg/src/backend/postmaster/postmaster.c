@@ -38,7 +38,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.502 2006/11/21 00:49:55 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.505 2006/11/30 18:29:12 tgl Exp $
  *
  * NOTES
  *
@@ -278,6 +278,7 @@ static void report_fork_failure_to_client(Port *port, int errnum);
 static enum CAC_state canAcceptConnections(void);
 static long PostmasterRandom(void);
 static void RandomSalt(char *cryptSalt, char *md5Salt);
+static void signal_child(pid_t pid, int signal);
 static void SignalChildren(int signal);
 static int	CountChildren(void);
 static bool CreateOptsFile(int argc, char *argv[], char *fullprogname);
@@ -1266,7 +1267,7 @@ ServerLoop(void)
 			BgWriterPID = StartBackgroundWriter();
 			/* If shutdown is pending, set it going */
 			if (Shutdown > NoShutdown && BgWriterPID != 0)
-				kill(BgWriterPID, SIGUSR2);
+				signal_child(BgWriterPID, SIGUSR2);
 		}
 
 		/*
@@ -1695,7 +1696,7 @@ processCancelRequest(Port *port, void *pkt)
 				ereport(DEBUG2,
 						(errmsg_internal("processing cancel request: sending SIGINT to process %d",
 										 backendPID)));
-				kill(bp->pid, SIGINT);
+				signal_child(bp->pid, SIGINT);
 			}
 			else
 				/* Right PID, wrong key: no way, Jose */
@@ -1869,15 +1870,15 @@ SIGHUP_handler(SIGNAL_ARGS)
 		ProcessConfigFile(PGC_SIGHUP);
 		SignalChildren(SIGHUP);
 		if (BgWriterPID != 0)
-			kill(BgWriterPID, SIGHUP);
+			signal_child(BgWriterPID, SIGHUP);
 		if (AutoVacPID != 0)
-			kill(AutoVacPID, SIGHUP);
+			signal_child(AutoVacPID, SIGHUP);
 		if (PgArchPID != 0)
-			kill(PgArchPID, SIGHUP);
+			signal_child(PgArchPID, SIGHUP);
 		if (SeqServerPID != 0)
-			kill(SeqServerPID, SIGHUP);		
+			signal_child(SeqServerPID, SIGHUP);		
 		if (SysLoggerPID != 0)
-			kill(SysLoggerPID, SIGHUP);
+			signal_child(SysLoggerPID, SIGHUP);
 		/* PgStatPID does not currently need SIGHUP */
 
 		/* Reload authentication config files too */
@@ -1931,7 +1932,7 @@ pmdie(SIGNAL_ARGS)
 			if (AutoVacPID != 0)
 			{
 				/* Use statement cancel to shut it down */
-				kill(AutoVacPID, SIGINT);
+				signal_child(AutoVacPID, SIGINT);
 				break;			/* let reaper() handle this */
 			}
 
@@ -1948,16 +1949,16 @@ pmdie(SIGNAL_ARGS)
 				BgWriterPID = StartBackgroundWriter();
 			/* And tell it to shut down */
 			if (BgWriterPID != 0)
-				kill(BgWriterPID, SIGUSR2);
+				signal_child(BgWriterPID, SIGUSR2);
 			/* Tell pgarch to shut down too; nothing left for it to do */
 			if (PgArchPID != 0)
-				kill(PgArchPID, SIGQUIT);
+				signal_child(PgArchPID, SIGQUIT);
 			/* Tell seqserver to shut down too; nothing left for it to do */
 			if (SeqServerPID != 0)
-				kill(SeqServerPID, SIGQUIT);
+				signal_child(SeqServerPID, SIGQUIT);
 			/* Tell pgstat to shut down too; nothing left for it to do */
 			if (PgStatPID != 0)
-				kill(PgStatPID, SIGQUIT);
+				signal_child(PgStatPID, SIGQUIT);
 			break;
 
 		case SIGINT:
@@ -1982,7 +1983,7 @@ pmdie(SIGNAL_ARGS)
 							(errmsg("aborting any active transactions")));
 					SignalChildren(SIGTERM);
 					if (AutoVacPID != 0)
-						kill(AutoVacPID, SIGTERM);
+						signal_child(AutoVacPID, SIGTERM);
 					/* reaper() does the rest */
 				}
 				break;
@@ -1994,23 +1995,28 @@ pmdie(SIGNAL_ARGS)
 			 * Note: if we previously got SIGTERM then we may send SIGUSR2 to
 			 * the bgwriter a second time here.  This should be harmless.
 			 */
-			if (StartupPID != 0 || FatalError)
-				break;			/* let reaper() handle this */
+			if (StartupPID != 0)
+			{
+				signal_child(StartupPID, SIGTERM);
+				break;			/* let reaper() do the rest */
+			}
+			if (FatalError)
+				break;			/* let reaper() handle this case */
 			/* Start the bgwriter if not running */
 			if (BgWriterPID == 0 && !SyncMaster)
 				BgWriterPID = StartBackgroundWriter();
 			/* And tell it to shut down */
 			if (BgWriterPID != 0)
-				kill(BgWriterPID, SIGUSR2);
+				signal_child(BgWriterPID, SIGUSR2);
 			/* Tell pgarch to shut down too; nothing left for it to do */
 			if (PgArchPID != 0)
-				kill(PgArchPID, SIGQUIT);
+				signal_child(PgArchPID, SIGQUIT);
 			/* Tell seqserver to shut down too; nothing left for it to do */
 			if (SeqServerPID != 0)
-				kill(SeqServerPID, SIGQUIT);
+				signal_child(SeqServerPID, SIGQUIT);
 			/* Tell pgstat to shut down too; nothing left for it to do */
 			if (PgStatPID != 0)
-				kill(PgStatPID, SIGQUIT);
+				signal_child(PgStatPID, SIGQUIT);
 			break;
 
 		case SIGQUIT:
@@ -2024,17 +2030,17 @@ pmdie(SIGNAL_ARGS)
 			ereport(LOG,
 					(errmsg("received immediate shutdown request")));
 			if (StartupPID != 0)
-				kill(StartupPID, SIGQUIT);
+				signal_child(StartupPID, SIGQUIT);
 			if (BgWriterPID != 0)
-				kill(BgWriterPID, SIGQUIT);
+				signal_child(BgWriterPID, SIGQUIT);
 			if (AutoVacPID != 0)
-				kill(AutoVacPID, SIGQUIT);
+				signal_child(AutoVacPID, SIGQUIT);
 			if (PgArchPID != 0)
-				kill(PgArchPID, SIGQUIT);
+				signal_child(PgArchPID, SIGQUIT);
 			if (SeqServerPID != 0)
-				kill(SeqServerPID, SIGQUIT);
+				signal_child(SeqServerPID, SIGQUIT);
 			if (PgStatPID != 0)
-				kill(PgStatPID, SIGQUIT);
+				signal_child(PgStatPID, SIGQUIT);
 			if (DLGetHead(BackendList))
 				SignalChildren(SIGQUIT);
 			ExitPostmaster(0);
@@ -2140,7 +2146,7 @@ reaper(SIGNAL_ARGS)
 			 * (We could, but don't, try to start autovacuum here.)
 			 */
 			if (Shutdown > NoShutdown && BgWriterPID != 0)
-				kill(BgWriterPID, SIGUSR2);
+				signal_child(BgWriterPID, SIGUSR2);
 			else if (Shutdown == NoShutdown)
 			{
 				if (XLogArchivingActive() && PgArchPID == 0)
@@ -2184,6 +2190,21 @@ reaper(SIGNAL_ARGS)
 			 */
 			HandleChildCrash(pid, exitstatus,
 							 _("background writer process"));
+
+			/*
+			 * If the bgwriter crashed while trying to write the shutdown
+			 * checkpoint, we may as well just stop here; any recovery
+			 * required will happen on next postmaster start.
+			 */
+			if (Shutdown > NoShutdown &&
+				!DLGetHead(BackendList) && AutoVacPID == 0)
+			{
+				ereport(LOG,
+						(errmsg("abnormal database system shutdown")));
+				ExitPostmaster(1);
+			}
+
+			/* Else, proceed as in normal crash recovery */
 			continue;
 		}
 
@@ -2301,16 +2322,16 @@ reaper(SIGNAL_ARGS)
 			BgWriterPID = StartBackgroundWriter();
 		/* And tell it to shut down */
 		if (BgWriterPID != 0)
-			kill(BgWriterPID, SIGUSR2);
+			signal_child(BgWriterPID, SIGUSR2);
 		/* Tell pgarch to shut down too; nothing left for it to do */
 		if (PgArchPID != 0)
-			kill(PgArchPID, SIGQUIT);
+			signal_child(PgArchPID, SIGQUIT);
 		/* Tell seqserver to shut down too; nothing left for it to do */
 		if (SeqServerPID != 0)
-			kill(SeqServerPID, SIGQUIT);
+			signal_child(SeqServerPID, SIGQUIT);
 		/* Tell pgstat to shut down too; nothing left for it to do */
 		if (PgStatPID != 0)
-			kill(PgStatPID, SIGQUIT);
+			signal_child(PgStatPID, SIGQUIT);
 	}
 
 reaper_done:
@@ -2421,7 +2442,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 						(errmsg_internal("sending %s to process %d",
 										 (SendStop ? "SIGSTOP" : "SIGQUIT"),
 										 (int) bp->pid)));
-				kill(bp->pid, (SendStop ? SIGSTOP : SIGQUIT));
+				signal_child(bp->pid, (SendStop ? SIGSTOP : SIGQUIT));
 			}
 		}
 	}
@@ -2435,7 +2456,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 				(errmsg_internal("sending %s to process %d",
 								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
 								 (int) BgWriterPID)));
-		kill(BgWriterPID, (SendStop ? SIGSTOP : SIGQUIT));
+		signal_child(BgWriterPID, (SendStop ? SIGSTOP : SIGQUIT));
 	}
 
 	/* Take care of the autovacuum daemon too */
@@ -2447,7 +2468,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 				(errmsg_internal("sending %s to process %d",
 								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
 								 (int) AutoVacPID)));
-		kill(AutoVacPID, (SendStop ? SIGSTOP : SIGQUIT));
+		signal_child(AutoVacPID, (SendStop ? SIGSTOP : SIGQUIT));
 	}
 
 	/* Force a power-cycle of the pgarch process too */
@@ -2458,7 +2479,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 				(errmsg_internal("sending %s to process %d",
 								 "SIGQUIT",
 								 (int) PgArchPID)));
-		kill(PgArchPID, SIGQUIT);
+		signal_child(PgArchPID, SIGQUIT);
 	}
 	
 	/* Force a power-cyle of the seqserver process too */
@@ -2480,7 +2501,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 				(errmsg_internal("sending %s to process %d",
 								 "SIGQUIT",
 								 (int) PgStatPID)));
-		kill(PgStatPID, SIGQUIT);
+		signal_child(PgStatPID, SIGQUIT);
 	}
 
 	/* We do NOT restart the syslogger */
@@ -2497,30 +2518,64 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 	if (WIFEXITED(exitstatus))
 		ereport(lev,
 
-		/*
-		 * translator: %s is a noun phrase describing a child process, such as
-		 * "server process"
-		 */
+		/*------
+		  translator: %s is a noun phrase describing a child process, such as
+		  "server process" */
 				(errmsg("%s (PID %d) exited with exit code %d",
 						procname, pid, WEXITSTATUS(exitstatus))));
 	else if (WIFSIGNALED(exitstatus))
 		ereport(lev,
 
-		/*
-		 * translator: %s is a noun phrase describing a child process, such as
-		 * "server process"
-		 */
+		/*------
+		  translator: %s is a noun phrase describing a child process, such as
+		  "server process" */
 				(errmsg("%s (PID %d) was terminated by signal %d",
 						procname, pid, WTERMSIG(exitstatus))));
 	else
 		ereport(lev,
 
-		/*
-		 * translator: %s is a noun phrase describing a child process, such as
-		 * "server process"
-		 */
+		/*------
+		  translator: %s is a noun phrase describing a child process, such as
+		  "server process" */
 				(errmsg("%s (PID %d) exited with unexpected status %d",
 						procname, pid, exitstatus)));
+}
+
+/*
+ * Send a signal to a postmaster child process
+ *
+ * On systems that have setsid(), each child process sets itself up as a
+ * process group leader.  For signals that are generally interpreted in the
+ * appropriate fashion, we signal the entire process group not just the
+ * direct child process.  This allows us to, for example, SIGQUIT a blocked
+ * archive_recovery script, or SIGINT a script being run by a backend via
+ * system().
+ *
+ * There is a race condition for recently-forked children: they might not
+ * have executed setsid() yet.  So we signal the child directly as well as
+ * the group.  We assume such a child will handle the signal before trying
+ * to spawn any grandchild processes.  We also assume that signaling the
+ * child twice will not cause any problems.
+ */
+static void
+signal_child(pid_t pid, int signal)
+{
+	if (kill(pid, signal) < 0)
+		elog(DEBUG3, "kill(%ld,%d) failed: %m", (long) pid, signal);
+#ifdef HAVE_SETSID
+	switch (signal)
+	{
+		case SIGINT:
+		case SIGTERM:
+		case SIGQUIT:
+		case SIGSTOP:
+			if (kill(-pid, signal) < 0)
+				elog(DEBUG3, "kill(%ld,%d) failed: %m", (long) (-pid), signal);
+			break;
+		default:
+			break;
+	}
+#endif
 }
 
 /*
@@ -2538,7 +2593,7 @@ SignalChildren(int signal)
 		ereport(DEBUG4,
 				(errmsg_internal("sending signal %d to process %d",
 								 signal, (int) bp->pid)));
-		kill(bp->pid, signal);
+		signal_child(bp->pid, signal);
 	}
 }
 
@@ -2718,10 +2773,6 @@ BackendInitialize(Port *port)
 	char		remote_port[NI_MAXSERV];
 	char		remote_ps_data[NI_MAXHOST];
 
-    long        secs;
-    int         usecs;
-
-
 	/* Save port etc. for ps status */
 	MyProcPort = port;
 
@@ -2753,7 +2804,17 @@ BackendInitialize(Port *port)
 	whereToSendOutput = DestRemote;		/* now safe to ereport to client */
 
 	/*
-	 * We arrange for a simple exit(0) if we receive SIGTERM or SIGQUIT during
+	 * If possible, make this process a group leader, so that the postmaster
+	 * can signal any child processes too.  (We do this now on the off chance
+	 * that something might spawn a child process during authentication.)
+	 */
+#ifdef HAVE_SETSID
+	if (setsid() < 0)
+		elog(FATAL, "setsid() failed: %m");
+#endif
+
+	/*
+	 * We arrange for a simple exit(1) if we receive SIGTERM or SIGQUIT during
 	 * any client authentication related communication. Otherwise the
 	 * postmaster cannot shutdown the database FAST or IMMED cleanly if a
 	 * buggy client blocks a backend during authentication.
@@ -3533,7 +3594,7 @@ sigusr1_handler(SIGNAL_ARGS)
 		{
 			SignalChildren(SIGUSR1);
 			if (AutoVacPID != 0)
-				kill(AutoVacPID, SIGUSR1);
+				signal_child(AutoVacPID, SIGUSR1);
 		}
 	}
 
@@ -3544,14 +3605,14 @@ sigusr1_handler(SIGNAL_ARGS)
 		 * Send SIGUSR1 to archiver process, to wake it up and begin archiving
 		 * next transaction log file.
 		 */
-		kill(PgArchPID, SIGUSR1);
+		signal_child(PgArchPID, SIGUSR1);
 	}
 
 	if (CheckPostmasterSignal(PMSIGNAL_ROTATE_LOGFILE) &&
 		SysLoggerPID != 0)
 	{
 		/* Tell syslogger to rotate logfile */
-		kill(SysLoggerPID, SIGUSR1);
+		signal_child(SysLoggerPID, SIGUSR1);
 	}
 
 	if (CheckPostmasterSignal(PMSIGNAL_START_AUTOVAC))

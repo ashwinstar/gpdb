@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_proc.h,v 1.427 2006/10/04 00:30:07 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_proc.h,v 1.429 2006/11/28 19:18:44 tgl Exp $
  *
  * NOTES
  *	  The script catalog/genbki.sh reads this file and generates .bki
@@ -2618,23 +2618,23 @@ DESCR("(internal)");
 /* formatting */
 DATA(insert OID = 1770 ( to_char			PGNSP PGUID 12 f f t f s 2	25 "1184 25" _null_ _null_ _null_  timestamptz_to_char - _null_ ));
 DESCR("format timestamp with time zone to text");
-DATA(insert OID = 1772 ( to_char			PGNSP PGUID 12 f f t f i 2	25 "1700 25" _null_ _null_ _null_  numeric_to_char - _null_ ));
+DATA(insert OID = 1772 ( to_char			PGNSP PGUID 12 f f t f s 2	25 "1700 25" _null_ _null_ _null_  numeric_to_char - _null_ ));
 DESCR("format numeric to text");
-DATA(insert OID = 1773 ( to_char			PGNSP PGUID 12 f f t f i 2	25 "23 25" _null_ _null_ _null_ int4_to_char - _null_ ));
+DATA(insert OID = 1773 ( to_char			PGNSP PGUID 12 f f t f s 2	25 "23 25" _null_ _null_ _null_ int4_to_char - _null_ ));
 DESCR("format int4 to text");
-DATA(insert OID = 1774 ( to_char			PGNSP PGUID 12 f f t f i 2	25 "20 25" _null_ _null_ _null_ int8_to_char - _null_ ));
+DATA(insert OID = 1774 ( to_char			PGNSP PGUID 12 f f t f s 2	25 "20 25" _null_ _null_ _null_ int8_to_char - _null_ ));
 DESCR("format int8 to text");
-DATA(insert OID = 1775 ( to_char			PGNSP PGUID 12 f f t f i 2	25 "700 25" _null_ _null_ _null_	float4_to_char - _null_ ));
+DATA(insert OID = 1775 ( to_char			PGNSP PGUID 12 f f t f s 2	25 "700 25" _null_ _null_ _null_	float4_to_char - _null_ ));
 DESCR("format float4 to text");
-DATA(insert OID = 1776 ( to_char			PGNSP PGUID 12 f f t f i 2	25 "701 25" _null_ _null_ _null_	float8_to_char - _null_ ));
+DATA(insert OID = 1776 ( to_char			PGNSP PGUID 12 f f t f s 2	25 "701 25" _null_ _null_ _null_	float8_to_char - _null_ ));
 DESCR("format float8 to text");
-DATA(insert OID = 1777 ( to_number			PGNSP PGUID 12 f f t f i 2	1700 "25 25" _null_ _null_ _null_  numeric_to_number - _null_ ));
+DATA(insert OID = 1777 ( to_number			PGNSP PGUID 12 f f t f s 2	1700 "25 25" _null_ _null_ _null_  numeric_to_number - _null_ ));
 DESCR("convert text to numeric");
 DATA(insert OID = 1778 ( to_timestamp		PGNSP PGUID 12 f f t f s 2	1184 "25 25" _null_ _null_ _null_  to_timestamp - _null_ ));
 DESCR("convert text to timestamp with time zone");
-DATA(insert OID = 1780 ( to_date			PGNSP PGUID 12 f f t f i 2	1082 "25 25" _null_ _null_ _null_  to_date - _null_ ));
+DATA(insert OID = 1780 ( to_date			PGNSP PGUID 12 f f t f s 2	1082 "25 25" _null_ _null_ _null_  to_date - _null_ ));
 DESCR("convert text to date");
-DATA(insert OID = 1768 ( to_char			PGNSP PGUID 12 f f t f i 2	25 "1186 25" _null_ _null_ _null_  interval_to_char - _null_ ));
+DATA(insert OID = 1768 ( to_char			PGNSP PGUID 12 f f t f s 2	25 "1186 25" _null_ _null_ _null_  interval_to_char - _null_ ));
 DESCR("format interval to text");
 
 DATA(insert OID =  1282 ( quote_ident	   PGNSP PGUID 12 f f t f i 1 25 "25" _null_ _null_ _null_ quote_ident - _null_ ));
@@ -3039,7 +3039,7 @@ DATA(insert OID = 2047 (  timetz			PGNSP PGUID 12 f f t f s 1 1266 "1083" _null_
 DESCR("convert time to timetz");
 DATA(insert OID = 2048 (  isfinite			PGNSP PGUID 12 f f t f i 1	 16 "1114" _null_ _null_ _null_ timestamp_finite - _null_ ));
 DESCR("finite timestamp?");
-DATA(insert OID = 2049 ( to_char			PGNSP PGUID 12 f f t f i 2	25 "1114 25" _null_ _null_ _null_  timestamp_to_char - _null_ ));
+DATA(insert OID = 2049 ( to_char			PGNSP PGUID 12 f f t f s 2	25 "1114 25" _null_ _null_ _null_  timestamp_to_char - _null_ ));
 DESCR("format timestamp to text");
 DATA(insert OID = 2052 (  timestamp_eq		PGNSP PGUID 12 f f t f i 2 16 "1114 1114" _null_ _null_ _null_	timestamp_eq - _null_ ));
 DESCR("equal");
@@ -3127,7 +3127,7 @@ DESCR("Reload configuration files");
 DATA(insert OID = 2622 ( pg_rotate_logfile		PGNSP PGUID 12 f f t f v 0 16 "" _null_ _null_ _null_ pg_rotate_logfile - _null_ ));
 DESCR("Rotate log file");
 
-DATA(insert OID = 2623 ( pg_stat_file		PGNSP PGUID 12 f f t f v 1 2249 "25" _null_ _null_ _null_ pg_stat_file - _null_ ));
+DATA(insert OID = 2623 ( pg_stat_file		PGNSP PGUID 12 f f t f v 1 2249 "25" "{25,20,1184,1184,1184,1184,16}" "{i,o,o,o,o,o,o}" "{filename,size,access,modification,change,creation,isdir}" pg_stat_file - _null_ ));
 DESCR("Return file information");
 DATA(insert OID = 2624 ( pg_read_file		PGNSP PGUID 12 f f t f v 3 25 "25 20 20" _null_ _null_ _null_ pg_read_file - _null_ ));
 DESCR("Read text from a file");

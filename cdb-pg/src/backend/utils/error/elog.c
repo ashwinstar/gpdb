@@ -43,7 +43,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/error/elog.c,v 1.176 2006/11/21 00:49:55 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/error/elog.c,v 1.178 2006/11/28 12:54:42 petere Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -1770,7 +1770,7 @@ log_line_prefix(StringInfo buf)
 					char		strfbuf[128];
 
 					strftime(strfbuf, sizeof(strfbuf),
-					/* Win32 timezone names are too long so don't print them. */
+					/* Win32 timezone names are too long so don't print them */
 #ifndef WIN32
 							 "%Y-%m-%d %H:%M:%S %Z",
 #else
@@ -1786,7 +1786,12 @@ log_line_prefix(StringInfo buf)
 					char		strfbuf[128];
 
 					strftime(strfbuf, sizeof(strfbuf),
+					/* Win32 timezone names are too long so don't print them */
+#ifndef WIN32
 							 "%Y-%m-%d %H:%M:%S %Z",
+#else
+							 "%Y-%m-%d %H:%M:%S",
+#endif
 							 localtime(&MyProcPort->session_start));
 					appendStringInfoString(buf, strfbuf);
 				}
@@ -2402,11 +2407,10 @@ useful_strerror(int errnum)
 	 */
 	if (str == NULL || *str == '\0')
 	{
-		/*
-		 * translator: This string will be truncated at 47 characters
-		 * expanded.
-		 */
 		snprintf(errorstr_buf, sizeof(errorstr_buf),
+				 /*------
+				   translator: This string will be truncated at 47
+				   characters expanded. */
 				 _("operating system error %d"), errnum);
 		str = errorstr_buf;
 	}
