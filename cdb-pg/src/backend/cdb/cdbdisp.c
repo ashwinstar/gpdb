@@ -2173,9 +2173,9 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 	initStringInfoOfSize(&strinfo, datasize);
 
-	appendStringInfo(&strinfo, "mppexec %d %d %d '",GetSessionUserId(),GetOuterUserId(),GetUserId());
+	appendStringInfo(&strinfo, "mppexec %d %d %d E'",GetSessionUserId(),GetOuterUserId(),GetUserId());
 	appendBinaryStringInfo(&strinfo, squery, squery_len);
-	appendStringInfoLiteral(&strinfo, "' '");
+	appendStringInfoLiteral(&strinfo, "' E'");
 	appendBinaryStringInfo(&strinfo, splan, splan_len);
 	appendStringInfoChar(&strinfo, '\'');
 
@@ -2212,7 +2212,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			else
 				bFirstTime = false;
 
-			appendStringInfoLiteral(&strinfo, " '");
+			appendStringInfoLiteral(&strinfo, " E'");
 			appendBinaryStringInfo(&strinfo, sparms, sparms_len);
 			appendStringInfoLiteral(&strinfo, "'");
 
@@ -2225,7 +2225,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 	ssliceinfo = serializeNode((Node *) sliceTbl, &ssliceinfo_len);
 
-	appendStringInfoLiteral(&strinfo, " '");
+	appendStringInfoLiteral(&strinfo, " E'");
 	appendBinaryStringInfo(&strinfo, ssliceinfo, ssliceinfo_len);
 	appendStringInfoLiteral(&strinfo, "'");
 
