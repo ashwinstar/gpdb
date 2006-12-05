@@ -69,8 +69,9 @@ static char *shellprog = SHELLPROG;
 #endif
 
 /* currently we can use the same diff switches on all platforms */
-static const char *basic_diff_opts = "-w";
-static const char *pretty_diff_opts = "-w -C3";
+/* MPP:  Add stuff to ignore all the extra NOTICE messages we give */
+static const char *basic_diff_opts = "-w -I NOTICE: -I HINT: -I CONTEXT: ";
+static const char *pretty_diff_opts = "-w -I NOTICE: -I HINT: -I CONTEXT: -C3";
 
 /* options settable from command line */
 static char *dbname = "regression";
@@ -871,6 +872,13 @@ results_differ(const char *testname)
 	snprintf(expectfile, sizeof(expectfile), "%s/expected/%s.out",
 			 inputdir, expectname);
 
+	/* Special for MPP:  Remove (seg...) stuff from error messages */
+	
+	snprintf(cmd, sizeof(cmd),
+			 SYSTEMQUOTE "sed -i -e 's/  (seg.*pid.*)//' %s " SYSTEMQUOTE,
+			 resultsfile);
+	system(cmd);		 
+			 
 	/* Name to use for temporary diff file */
 	snprintf(diff, sizeof(diff), "%s/results/%s.diff",
 			 outputdir, testname);
