@@ -47,7 +47,6 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbllize.h"
 
-
 /*
  * Static Helper functions
  */
@@ -55,7 +54,7 @@ static void *thread_DispatchCommand(void *arg);
 
 
 static bool
-			shouldStillDispatchCommand(CdbDispatchResult * dispatchResult);
+shouldStillDispatchCommand(CdbDispatchResult * dispatchResult);
 
 static
 void dispatchCommand(CdbDispatchResult *dispatchResult,
@@ -86,10 +85,6 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 							 int					sliceId,
 							 CdbDispatchResult     *dispatchResult);
 
-static int
-fillSliceVector(SliceTable * sliceTable, int sliceIndex, Slice **sliceVector,
-                int len, int next);
-
 static void
 cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
                         bool                        cancelOnError,
@@ -98,6 +93,17 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
                         struct CdbDispatchResults **pMirrorResults,
 						struct CdbDispatchCmdThreads  **pDispatchThreads);
 
+/*
+ * We need an array describing the relationship between a slice and
+ * the number of "child" slices which depend on it.
+ */
+typedef struct {
+	int sliceIndex;
+	int children;
+	Slice *slice;
+} sliceVec;
+
+static int fillSliceVector(SliceTable * sliceTable, int sliceIndex, sliceVec *sliceVector, int len);
 
 /* used to take the current Transaction Snapshot and serialize a version of it
  * into the static variable szSnapshotInfo */
@@ -422,11 +428,13 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 			initStringInfoOfSize(&si, strlen(szCommand) + 10);
 			appendStringInfo(&si, "%s %d", szCommand, sliceId);
 			pParms->szCommand = si.data;
+			pParms->szCommandlen = si.len + 1;
 		}
 		else
 		{
 			/* non "mppexec" just gets duplicated */
 			pParms->szCommand = pstrdup(szCommand);
+			pParms->szCommandlen = strlen(szCommand) + 1;
 		}
 		pParms->szSnapshot = pstrdup(szSnapshot);
 		pParms->txnOptions = txnOptions;
@@ -1068,7 +1076,7 @@ thread_DispatchCommand(void *arg)
 	int							i, db_count = pParms->db_count;
 	int							timeoutCounter = 0;
 
-	pParms->query_text = PQbuildMppQueryString(pParms->szCommand, pParms->szSnapshot, pParms->txnOptions, pParms->cmdID, &pParms->query_text_len);
+	pParms->query_text = PQbuildMppQueryString(pParms->szCommand, pParms->szCommandlen, pParms->szSnapshot, pParms->txnOptions, pParms->cmdID, &pParms->query_text_len);
 
 	if (pParms->query_text == NULL)
 	{
@@ -2006,8 +2014,6 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 	return newNode;
 }
 
-
-
 /*
  * Compose and dispatch the MPPEXEC commands corresponding to a plan tree
  * within a complete parallel plan.  (A plan tree will correspond either
@@ -2065,7 +2071,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	SliceTable *sliceTbl;
 	int			rootIdx;
 	int			oldLocalSlice;
-	Slice	  **sliceVector = NULL;
+	sliceVec	*sliceVector = NULL;
 	int			nSlices,
 				sliceLim;
 	int			iSlice;
@@ -2246,8 +2252,9 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * vector of slice indexes specifying the order of [potential] dispatch.
 	 */
 	sliceLim = list_length(sliceTbl->slices);
-	sliceVector = palloc(sliceLim * sizeof(sliceVector[0]));
-	nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, sliceLim, 0);
+	sliceVector = palloc0(sliceLim * sizeof(sliceVec));
+
+	nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, sliceLim);
 
 	/* Allocate result array with enough slots for QEs of primary gangs. */
 	*pPrimaryResults = cdbdisp_makeDispatchResults(nSlices * getMPPSegmentCount(),
@@ -2292,7 +2299,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 */
 	for (iSlice = 0; iSlice < nSlices; iSlice++)
 	{
-		Slice	   *slice = sliceVector[iSlice];
+		Slice	   *slice = sliceVector[iSlice].slice;
 		Gang	   *primaryGang = slice->primaryGang;
 		Gang	   *mirrorGang = slice->mirrorGang;
 
@@ -2303,7 +2310,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		{
 			/*
 			 * Most slices are dispatched, however, in many  cases the
-			 * * root runs only on the QD and is not dispatched to the QEs.
+			 * root runs only on the QD and is not dispatched to the QEs.
 			 */
 			continue;
 		}
@@ -2391,47 +2398,77 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 
 /*
- * Helper for CdbDispatchPlan
+ * Three Helper functions for CdbDispatchPlan:
  *
- * Add the indexes of the slices in the subtree of the slice table rooted
- * at the given index in the order in which they should be dispatched. Used
- * locally in CdbDispatchPlan to decide the order of calls to CdbDispatch.
+ * Used to figure out the dispatch order for the sliceTable by
+ * counting the number of dependent child slices for each slice; and
+ * then sorting based on the count (all indepenedent slices get
+ * dispatched first, then the slice above them and so on).
  *
- * Arguments:
+ * fillSliceVector: figure out the number of slices we're dispatching,
+ * and order them.
  *
- *	sliceTable	- slice table
- *	sliceIndex	- index of the subtree root in slice table
- *	sliceVector - slice vector under contruction
- *	len			- number of positions allocated in the slice vector
- *	next		- position at which to write the next Slice ptr
+ * count_dependent_children(): walk tree counting up children.
  *
- * Returns new value of count.
+ * compare_slice_order(): comparison function for qsort(): order the
+ * slices by the number of dependent children. Empty slices are 
+ * sorted last (to make this work with initPlans).
+ * 
  */
-int
-fillSliceVector(SliceTable * sliceTable, int sliceIndex, Slice ** sliceVector,
-				int len, int next)
+static int
+compare_slice_order(const void *aa, const void *bb)
 {
+	sliceVec *a = (sliceVec *)aa;
+	sliceVec *b = (sliceVec *)bb;
+
+	if (a->slice == NULL)
+		return 1;
+	if (b->slice == NULL)
+		return -1;
+
+	if (a->children == b->children)
+		return 0;
+	else if (a->children > b->children)
+		return 1;
+	else
+		return -1;
+}
+
+static int
+count_dependent_children(SliceTable * sliceTable, int sliceIndex, sliceVec *sliceVector, int len)
+{
+	int			res;
 	int			childIndex;
 	ListCell   *sublist;
 	Slice	   *slice = (Slice *) list_nth(sliceTable->slices, sliceIndex);
 
+	res = list_length(slice->children);
+
 	foreach(sublist, slice->children)
 	{
 		childIndex = lfirst_int(sublist);
-		next = fillSliceVector(sliceTable, childIndex, sliceVector, len, next);
+		res += count_dependent_children(sliceTable, childIndex, sliceVector, len);
 	}
 
-	if (next >= len)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_MPP_INTERNAL_ERROR),
-				 errmsg("bad slice vector allocation")));
-	}
+	sliceVector[sliceIndex].sliceIndex = sliceIndex;
+	sliceVector[sliceIndex].children = res;
+	sliceVector[sliceIndex].slice = slice;
 
-	sliceVector[next++] = slice;
-	return next;
+	return res;
 }
 
+static int
+fillSliceVector(SliceTable *sliceTbl, int rootIdx, sliceVec *sliceVector, int sliceLim)
+{
+	int top_count;
+
+	/* count doesn't include top slice add 1 */
+	top_count = 1 + count_dependent_children(sliceTbl, rootIdx, sliceVector, sliceLim);
+
+	qsort(sliceVector, sliceLim, sizeof(sliceVec), compare_slice_order);
+
+	return top_count;
+}
 
 /* Dispatch a command - already parsed and in the form of a Node
  * tree - to all primary and mirror segdbs.  Does not wait for

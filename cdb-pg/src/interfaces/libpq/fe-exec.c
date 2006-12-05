@@ -683,21 +683,21 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
  */
 char *
 PQbuildMppQueryString(const char  *query,
+					  int          query_length,
 					  const char  *snapshotInfo,
 					  int          flags,
 					  int          mpp_command_count,
 					  int         *final_len)
 {
 	int	tmp, len;
-	int	total_query_len, query_len, snapshot_len;
+	int	total_query_len, snapshot_len;
 	char *shared_query, *pos;
 
 	snapshot_len = strlen(snapshotInfo) + 1;
-	query_len = strlen(query) + 1;
 
 	total_query_len = 5 /* overhead */ + 
 		4 /* comamnd count */ + snapshot_len +
-		4 /* flags */ + query_len;
+		4 /* flags */ + query_length;
 
 	shared_query = malloc(total_query_len);
 	if (shared_query == NULL)
@@ -725,8 +725,8 @@ PQbuildMppQueryString(const char  *query,
 	memcpy(pos, &tmp, 4);
 	pos += 4;
 
-	memcpy(pos, query, query_len);
-	pos += query_len;
+	memcpy(pos, query, query_length);
+	pos += query_length;
 
 	len = pos - shared_query - 1;
 

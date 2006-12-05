@@ -335,6 +335,7 @@ extern int PQsendMppQuery(PGconn       *conn,
                           int           mpp_command_count);
 
 extern char *PQbuildMppQueryString(const char  *query,
+								   int          query_len,
 								   const char  *snapshotInfo,
 								   int          flags,
 								   int          mpp_command_count,

@@ -34,6 +34,8 @@ typedef struct DispatchCommandParms
 	 * The SQL command
 	 */
 	char		*szCommand;
+	int			szCommandlen;
+
 	char		*query_text;
 	int			query_text_len;
 	
