@@ -948,7 +948,6 @@ ProcessUtility(Node *parsetree,
 		case T_DropdbStmt:
 			{
 				DropdbStmt *stmt = (DropdbStmt *) parsetree;
-				Assert(Mpp_role == MPP_ROLE_EXECUTE || !stmt->missing_ok); /* Internal use only! */
 				dropdb(stmt->dbname, stmt->missing_ok);
 			}
 			break;
