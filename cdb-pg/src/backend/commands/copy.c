@@ -1732,19 +1732,19 @@ CopyToDispatch(CopyState cstate)
 	}
 	else
 	{
-		appendStringInfo(&cdbcopy_cmd, " DELIMITER AS '%s'", cstate->delim);
-		appendStringInfo(&cdbcopy_cmd, " NULL AS '%s'", escape_quotes(cstate->null_print));
+		appendStringInfo(&cdbcopy_cmd, " DELIMITER AS E'%s'", cstate->delim);
+		appendStringInfo(&cdbcopy_cmd, " NULL AS E'%s'", escape_quotes(cstate->null_print));
 		
 		/* if default escape in text format ("\") leave expression out */
 		if (!cstate->csv_mode && strcmp(cstate->escape, "\\") != 0) 
-			appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '%s'", cstate->escape);
+			appendStringInfo(&cdbcopy_cmd, " ESCAPE AS E'%s'", cstate->escape);
 	}
 	
 	if (cstate->csv_mode)
 	{
 		appendStringInfo(&cdbcopy_cmd, " CSV");
-		appendStringInfo(&cdbcopy_cmd, " QUOTE AS '%s'", escape_quotes(cstate->quote));
-		appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '%s'", escape_quotes(cstate->escape));
+		appendStringInfo(&cdbcopy_cmd, " QUOTE AS E'%s'", escape_quotes(cstate->quote));
+		appendStringInfo(&cdbcopy_cmd, " ESCAPE AS E'%s'", escape_quotes(cstate->escape));
 		
 		/* do NOT include HEADER. Header row is "swallowed" by dispatcher COPY */
 	}
@@ -2308,19 +2308,19 @@ CopyFromDispatch(CopyState cstate)
 	}
 	else
 	{
-		appendStringInfo(&cdbcopy_cmd, " DELIMITER AS '%s'", cstate->delim);
-		appendStringInfo(&cdbcopy_cmd, " NULL AS '%s'", escape_quotes(cstate->null_print));
+		appendStringInfo(&cdbcopy_cmd, " DELIMITER AS E'%s'", cstate->delim);
+		appendStringInfo(&cdbcopy_cmd, " NULL AS E'%s'", escape_quotes(cstate->null_print));
 
 		/* if default escape in text format ("\") leave expression out */
 		if (!cstate->csv_mode && strcmp(cstate->escape, "\\") != 0) 
-			appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '%s'", cstate->escape);
+			appendStringInfo(&cdbcopy_cmd, " ESCAPE AS E'%s'", cstate->escape);
 	}
 
 	if (cstate->csv_mode)
 	{
 		appendStringInfo(&cdbcopy_cmd, " CSV");
-		appendStringInfo(&cdbcopy_cmd, " QUOTE AS '%s'", escape_quotes(cstate->quote));
-		appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '%s'", escape_quotes(cstate->escape));
+		appendStringInfo(&cdbcopy_cmd, " QUOTE AS E'%s'", escape_quotes(cstate->quote));
+		appendStringInfo(&cdbcopy_cmd, " ESCAPE AS E'%s'", escape_quotes(cstate->escape));
 
 		/* do NOT include HEADER. Header row is "swallowed" by dispatcher COPY */
 	}
