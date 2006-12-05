@@ -1574,7 +1574,7 @@ _outIndexStmt(StringInfo str, IndexStmt *node)
 	WRITE_STRING_FIELD(accessMethod);
 	WRITE_STRING_FIELD(tableSpace);
 	WRITE_NODE_FIELD(indexParams);
-	WRITE_NODE_FIELD(options);
+
 	WRITE_NODE_FIELD(whereClause);
 	WRITE_NODE_FIELD(rangetable);
 	WRITE_BOOL_FIELD(unique);
