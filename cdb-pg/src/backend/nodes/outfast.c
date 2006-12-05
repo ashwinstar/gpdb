@@ -267,16 +267,19 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_FLOAT_FIELD(total_cost, "%.2f");
 	WRITE_FLOAT_FIELD(plan_rows, "%.0f");
 	WRITE_INT_FIELD(plan_width);
-	WRITE_INT_FIELD(nMotionNodes);
-	WRITE_INT_FIELD(nInitPlans);
-	WRITE_INT_FIELD(nParamExec);
+
+	WRITE_NODE_FIELD(targetlist);
+
+	WRITE_NODE_FIELD(qual);
+
+
 	WRITE_BITMAPSET_FIELD(extParam);
 	WRITE_BITMAPSET_FIELD(allParam);
-	WRITE_ENUM_FIELD(dispatch,DispatchMethod);
 
-	WRITE_NODE_FIELD(flow);
-	WRITE_NODE_FIELD(targetlist);
-	WRITE_NODE_FIELD(qual);
+	WRITE_INT_FIELD(nParamExec);
+	WRITE_INT_FIELD(nMotionNodes);
+	WRITE_INT_FIELD(nInitPlans);
+
 	WRITE_NODE_FIELD(sliceTable);
 
     WRITE_NODE_FIELD(lefttree);
@@ -1391,9 +1394,11 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 	WRITE_FLOAT_FIELD(rows, "%.0f");
 	WRITE_INT_FIELD(width);
 	WRITE_NODE_FIELD(reltargetlist);
-	WRITE_NODE_FIELD(pathlist);
-	WRITE_NODE_FIELD(cheapest_startup_path);
-	WRITE_NODE_FIELD(cheapest_total_path);
+
+	/* WRITE_NODE_FIELD(pathlist); */
+	/* WRITE_NODE_FIELD(cheapest_startup_path); */
+	/* WRITE_NODE_FIELD(cheapest_total_path); */
+
 	WRITE_NODE_FIELD(dedup_info);
 	WRITE_UINT_FIELD(relid);
 	WRITE_ENUM_FIELD(rtekind, RTEKind);
@@ -1406,7 +1411,8 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 	WRITE_NODE_FIELD(baserestrictinfo);
 	WRITE_NODE_FIELD(joininfo);
 	WRITE_BITMAPSET_FIELD(index_outer_relids);
-	WRITE_NODE_FIELD(index_inner_paths);
+
+	/* WRITE_NODE_FIELD(index_inner_paths); */
 }
 
 static void

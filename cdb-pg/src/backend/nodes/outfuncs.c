@@ -265,16 +265,17 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_FLOAT_FIELD(total_cost, "%.2f");
 	WRITE_FLOAT_FIELD(plan_rows, "%.0f");
 	WRITE_INT_FIELD(plan_width);
-	WRITE_INT_FIELD(nMotionNodes);
-	WRITE_INT_FIELD(nInitPlans);
-	WRITE_INT_FIELD(nParamExec);
-	WRITE_BITMAPSET_FIELD(extParam);
-	WRITE_BITMAPSET_FIELD(allParam);
-	WRITE_ENUM_FIELD(dispatch,DispatchMethod);
 
-	WRITE_NODE_FIELD(flow);
 	WRITE_NODE_FIELD(targetlist);
 	WRITE_NODE_FIELD(qual);
+
+	WRITE_BITMAPSET_FIELD(extParam);
+	WRITE_BITMAPSET_FIELD(allParam);
+
+	WRITE_INT_FIELD(nParamExec);
+	WRITE_INT_FIELD(nMotionNodes);
+	WRITE_INT_FIELD(nInitPlans);
+
 	WRITE_NODE_FIELD(sliceTable);
 
     WRITE_NODE_FIELD(lefttree);
