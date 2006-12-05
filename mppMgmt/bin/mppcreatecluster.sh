@@ -12,20 +12,8 @@
 #******************************************************************************
 # Update History
 #******************************************************************************
-# Ver	Date		Who		Update
-# 1.1	27/07/2005	G Coombe	Configured mirroring functionality
-# 1.2	09/08/2005	G Coombe	Corrected CVS conversion errors.
-#			Corrected error exit message display for Master init
-#			failure.
-# 1.3	09/08/2005	G Coombe	Corrected fault where template1 database table
-#					mpp.pgdatabase has incorrect db name.
-# 1.4	09/08/2005	G Coombe	Changed the create database code to use revised
-#					MPP ability to now create database within Master.
-# 1.5	11/09/2005	G Coombe	Updates to UPDATE_PGDATABASE in response to
-#					MPP code change where dbname column on longer used.
-#					Correct error message where blank lines appear in
-#					the hostlist file.
-# 1.6   12/06/2005  C McDevitt  Change for new mpp schema: mpp_configuration
+# 	Date		Who		Update
+#	12/05/2006	G Coombe	Added a parallel create segment option
 #******************************************************************************
 # Detailed Description
 #******************************************************************************
@@ -57,12 +45,12 @@ BACKOUT_FILE=$DEFLOGDIR/backout_mppcreatecluster_${USER_NAME}_${CUR_DATE}_$TIME
 VERBOSE=1
 INTERACTIVE=1
 MIRRORING=0
+INST_COUNT=0
 # MPP database specific parameters
 MPP_USER=$USER_NAME
 # System table names
 MPP_TBL=mpp_mpp
 MPP_CONFIGURATION_TBL=mpp_configuration
-MAX_QD_CONNECTIONS=25
 unset PG_CONF_ADD_FILE
 EXIT_STATUS=0
 # ED_FILE search text values
@@ -70,6 +58,7 @@ PORT_TXT="#port"
 LOG_STATEMENT_TXT="#log_statement ="
 MAX_CONNECT_TXT="max_connections ="
 LISTEN_ADR_TXT="listen_addresses"
+SHARED_BUFFER_TXT="shared_buffers ="
 CHKPOINT_SEG_TXT="checkpoint_segments"
 LOG_STATS_TXT="stats_command_string="
 INIT_STANDBY_PROG=$MPPINITSTANDBY
@@ -79,6 +68,8 @@ MPP_PASSWD=mpparray
 TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
 TMP_FILE=/tmp/cluster_tmp_file.$$
 TMP_HOSTNAME_FILE=hostname_test_file.$$
+PARALLEL_STATUS_FILE=/tmp/mppcreatecluster_parallel_status_file.$$
+MPPCREATESEG=mppcreateseg.sh
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -115,9 +106,12 @@ USAGE () {
 		$ECHO "      -s, standby_hostname [optional]"
 		$ECHO "      -i, do not initialize standby sync process [default:- start process]"
 		$ECHO "      -o, create Master only, do not configure Segment instance hosts"
-		$ECHO "      -m, maximum number of connections for master instance [default ${MAX_QD_CONNECTIONS}]"
+		$ECHO "      -m, maximum number of connections for master instance [default ${DEFAULT_QD_MAX_CONNECT}]"
+		$ECHO "      -b, shared_buffers value [default $DEFAULT_BUFFERS]"
 		$ECHO "      -e, <password>, password to set for MPP superuser in database [default $MPP_PASSWD]"
 		$ECHO "      -n, <locale>, setting for locale to be set when database initialized [default $DEFAULT_LOCALE_SETTING]"
+		$ECHO "      -r, run utility in parallel mode. This will spawn background processes to build"
+		$ECHO "          the segment instance databases."
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 - No problems encountered with requested operation"
@@ -190,6 +184,11 @@ CHK_PARAMS () {
 		LOG_MSG "[INFO]:-Dump current system locale to log file"
 		$LOCALE >> $LOG_FILE
 		LOG_MSG "[INFO]:-End of system locale dump"
+		if [ x"" != x"$PARALLEL_BUILD" ];then
+			if [ ! -f ${WORKDIR}/$MPPCREATESEG ];then
+				ERROR_EXIT "[FATAL]:-Parallel mode selected by no ${WORKDIR}/$MPPCREATESEG exists" 2
+			fi
+		fi
 		#Check the other files that are required to be able to continue
 		FILE_LIST=($MACHINE_LIST_FILE)
 		for FILE in "${FILE_LIST[@]}"
@@ -224,13 +223,13 @@ CHK_PARAMS () {
 				LOG_MSG "[INFO]:-Checking to see if $MASTER_HOSTNAME can be resolved on this host"
 				$TRUSTED_SHELL $MASTER_HOSTNAME "$TOUCH $TMP_HOSTNAME_FILE"
 				if [ -f $TMP_HOSTNAME_FILE ];then
-					LOG_MSG "[INFO]:-Can resolve name $MASTER_HOSTNAME to this host"
+					LOG_MSG "[INFO]:-Can resolve $MASTER_HOSTNAME to this host"
 					$RM -f $TMP_HOSTNAME_FILE
 				else
 					$TRUSTED_SHELL $MASTER_HOSTNAME "$RM -f $TMP_HOSTNAME_FILE"
 					LOG_MSG "[FATAL]:-Instance master hostname in configuration file is ${MASTER_HOSTNAME}"
 					LOG_MSG "[FATAL]:-Operating system command returns `$HOSTNAME`"
-					LOG_MSG "[FATAL]:-Unable to resolve $MASTER_HOSTNAME to this host"
+					LOG_MSG "[FATAL]:-Unable to resolve $MASTER_HOSTNAME on this host"
 					ERROR_EXIT "[FATAL]:-This script must be executed on the Master host $MASTER_HOSTNAME" 2
 				fi
 		fi
@@ -273,6 +272,10 @@ CHK_PARAMS () {
                         $RM -f ${W_DIR}/tmp_file_test
                         LOG_MSG "[INFO]:-Write test passed $W_DIR directory on Master Segment host"
 		fi	
+		#Check that the master segment directory does not exist
+		if [ -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 ];then
+			ERROR_EXIT "[FATAL]:-Master segment directory ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 exists" 2
+		fi
 		#DATABASE_PREFIX
 		if [ x"" = x"$DATABASE_NAME" ]; then
 				LOG_MSG "[INFO]:-No DATABASE_NAME set, will exit following $DEFAULTDB updates"
@@ -297,6 +300,32 @@ CHK_PARAMS () {
 				LOG_MSG "[WARN]:-ENCODING variable not set, will set to default SQL_ASCII"
 				EXIT_STATUS=1
 				ENCODING="SQL_ASCII"
+		fi
+		#MASTER_MAX_CONNECT
+		if [ ! $MASTER_MAX_CONNECT ];then
+			LOG_MSG "[WARN]:-MASTER_MAX_CONNECT not set, will set to default value $DEFAULT_QD_MAX_CONNECT"
+			EXIT_STATUS=1
+			MASTER_MAX_CONNECT=$DEFAULT_QD_MAX_CONNECT
+		else
+			if [ $MASTER_MAX_CONNECT -lt 1 ];then
+				ERROR_EXIT "[FATAL]:-MASTER_MAX_CONNECT less than 1" 2
+			fi
+		fi
+		((QE_MAX_CONNECT=$MASTER_MAX_CONNECT*$QE_CONNECT_FACTOR))
+		LOG_MSG "[INFO]:-Setting segment instance MAX_CONNECTIONS to $QD_MAX_CONNECT"
+		if [ x"" == x"$NEW_BUFFERS" ];then
+			MASTER_SHARED_BUFFERS=$DEFAULT_BUFFERS
+			QE_SHARED_BUFFERS=$DEFAULT_BUFFERS
+		else
+			if [ $NEW_BUFFERS -lt 1000 ];then
+				LOG_MSG "[WARN]:-Shared buffers value supplied is too low, using default value"
+				MASTER_SHARED_BUFFERS=$DEFAULT_BUFFERS
+				QE_SHARED_BUFFERS=$DEFAULT_BUFFERS
+			else
+				MASTER_SHARED_BUFFERS=$NEW_BUFFERS
+				QE_SHARED_BUFFERS=$NEW_BUFFERS
+				LOG_MSG "[INFO]:-Set shared buffers to $NEW_BUFFERS"
+			fi
 		fi
 		#Number of QE hosts in this configuration
 		((NUM_QES=${#MACHINE_LIST[*]}))
@@ -605,13 +634,21 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Master LOCALE        = $LOCALE_SETTING"
 		LOG_MSG "[INFO]:-MPP segment prefix   = $SEG_PREFIX"
 		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME"
-		LOG_MSG "[INFO]:-Master connections   = $MAX_QD_CONNECTIONS"
+		LOG_MSG "[INFO]:-Master connections   = $MASTER_MAX_CONNECT"
+		LOG_MSG "[INFO]:-Master buffers       = $MASTER_SHARED_BUFFERS"
 		LOG_MSG "[INFO]:-Master IP allow      = $IP_ALLOW"
+		LOG_MSG "[INFO]:-Segment connections  = $QE_MAX_CONNECT"
+		LOG_MSG "[INFO]:-Segment buffers      = $QE_SHARED_BUFFERS"
 		LOG_MSG "[INFO]:-Checkpoint segments  = $CHECK_POINT_SEGMENTS"
 		LOG_MSG "[INFO]:-Encoding             = $ENCODING"
 		LOG_MSG "[INFO]:-Pg Conf add file     = $PG_ADD"
 		LOG_MSG "[INFO]:-Initdb to be used    = $INITDB"
 		LOG_MSG "[INFO]:-MPP_LIBRARY_PATH is  = $MPP_LIBRARY_PATH"
+		if [ x"" != x"$PARALLEL_BUILD" ];then
+		LOG_MSG "[INFO]:-Segment build type   = Parallel"
+		else
+		LOG_MSG "[INFO]:-Segment build type   = Serial"
+		fi
 		IP_COUNT=1
 		for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
 		do
@@ -721,9 +758,11 @@ CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Setting Master logging option"
 		ED_FILE ${MPP_DIR}/$PG_CONF "$LOG_STATEMENT_TXT" log_statement=all 0
 		ERROR_CHK $? "set log_statement=all in ${MPP_DIR}/$PG_CONF" 1
-		LOG_MSG "[INFO]:-Setting Master instance maximum connections to ${MAX_QD_CONNECTIONS}"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${MAX_QD_CONNECTIONS}" 0
-		ERROR_CHK $? "set max_connections=${MAX_QD_CONNECTIONS} in ${MPP_DIR}/$PG_CONF" 1
+		LOG_MSG "[INFO]:-Setting Master instance maximum connections to ${MASTER_MAX_CONNECT}"
+		ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${MASTER_MAX_CONNECT}" 0
+		ERROR_CHK $? "set max_connections=${MASTER_MAX_CONNECT} in ${MPP_DIR}/$PG_CONF" 1
+		LOG_MSG "[INFO]:-Setting Master instance shared buffers to ${MASTER_SHARED_BUFFERS}"
+		ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${MASTER_SHARED_BUFFERS}" 0
 		LOG_MSG "[INFO]:-Setting Master instance check point segments"
 		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" "checkpoint_segments=$CHECK_POINT_SEGMENTS" 0
 		ERROR_CHK $? "set checkpoint_segments=$CHECK_POINT_SEGMENTS in ${MPP_DIR}/$PG_CONF" 1
@@ -848,11 +887,31 @@ CREATE_QES_PRIMARY () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		for I in "${QE_PRIMARY_ARRAY[@]}"
 		do
-			SET_VAR $I
-			PROCESS_QE
-			LOG_MSG "[INFO]:-Processing segment $MPP_HOSTNAME"
-			LOG_MSG "[INFO]:-Successfully started segment instance on $MPP_HOSTNAME"
-			UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+			if [ x"" != x"$PARALLEL_BUILD" ];then
+				export PG_CONF_ADD_FILE
+				export STANDBY_HOSTNAME
+				export ENCODING
+				export LOCALE_SETTING
+				export BACKOUT_FILE
+				export LOG_FILE
+				export PARALLEL_STATUS_FILE
+				export TOTAL_SEG
+				export ARRAY_NAME
+				export CHECK_POINT_SEGMENTS
+				export QE_MAX_CONNECT
+				export QE_SHARED_BUFFERS
+				LOG_MSG "[INFO]:-Spawning primary segment instance build process count = $INST_COUNT"
+				$MPPCREATESEG $$ $I $INST_COUNT  $LOG_FILE \
+`$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
+`$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
+				((INST_COUNT=$INST_COUNT+1))
+			else
+				SET_VAR $I
+				PROCESS_QE
+				LOG_MSG "[INFO]:-Processing segment $MPP_HOSTNAME"
+				LOG_MSG "[INFO]:-Successfully started segment instance on $MPP_HOSTNAME"
+				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+			fi
 		done
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -861,11 +920,31 @@ CREATE_QES_MIRROR () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		for I in  "${QE_MIRROR_ARRAY[@]}"
 		do
-			SET_VAR $I
-			PROCESS_QE
-			LOG_MSG "[INFO]:-Processing Mirror segment $MPP_HOSTNAME"
-			LOG_MSG "[INFO]:-Successfully started segment mirror instance on $MPP_HOSTNAME"
-			UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+			if [ x"" != x"$PARALLEL_BUILD" ];then
+				export PG_CONF_ADD_FILE
+				export STANDBY_HOSTNAME
+				export ENCODING
+				export LOCALE_SETTING
+				export BACKOUT_FILE
+				export LOG_FILE
+				export PARALLEL_STATUS_FILE
+				export TOTAL_SEG
+				export ARRAY_NAME
+				export QE_MAX_CONNECT
+				export QE_SHARED_BUFFERS
+				export CHECK_POINT_SEGMENTS
+				LOG_MSG "[INFO]:-Spawning mirror segment instance build process count = $INST_COUNT"
+				$MPPCREATESEG $$ $I $INST_COUNT  $LOG_FILE \
+`$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
+`$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
+				((INST_COUNT=$INST_COUNT+1))
+			else
+				SET_VAR $I
+				PROCESS_QE
+				LOG_MSG "[INFO]:-Processing Mirror segment $MPP_HOSTNAME"
+				LOG_MSG "[INFO]:-Successfully started segment mirror instance on $MPP_HOSTNAME"
+				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+			fi
 		done
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -881,6 +960,12 @@ PROCESS_QE () {
 		ED_FILE ${MPP_DIR}/$PG_CONF "$PORT_TXT" port=$MPP_PORT 0 $MPP_HOSTNAME
 		ED_FILE ${MPP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $MPP_HOSTNAME
 		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $MPP_HOSTNAME
+		LOG_MSG "[INFO]:-Setting Segment instance maximum connections to ${QE_MAX_CONNECT}"
+                ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${QE_MAX_CONNECT}" 0 $MPP_HOSTNAME
+                ERROR_CHK $? "set max_connections=${QE_MAX_CONNECT} in ${MPP_DIR}/$PG_CONF" 1
+                LOG_MSG "[INFO]:-Setting Segment shared buffers to ${QE_SHARED_BUFFERS}"
+                ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${QE_SHARED_BUFFERS}" 0 $MPP_HOSTNAME
+                ERROR_CHK $? "set shared_buffers=${QE_SHARED_BUFFERS} in ${MPP_DIR}/$PG_CONF" 1
 		if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
 			LOG_MSG "[INFO]:-Processing additional configuration parameters"
 			for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
@@ -997,7 +1082,7 @@ CREATE_DATABASE () {
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
-while getopts ":v'?'aiqe:c:l:p:m:h:on:s:" opt
+while getopts ":v'?'aiqe:c:l:p:m:h:on:s:rb:" opt
 		do
 		case $opt in
 				v ) VERSION_INFO ;;
@@ -1010,10 +1095,12 @@ while getopts ":v'?'aiqe:c:l:p:m:h:on:s:" opt
 				e ) MPP_PASSWD=$OPTARG ;;
 				p ) PG_CONF_ADD_FILE=$OPTARG ;;
 				h ) MACHINE_LIST_FILE_ALT=$OPTARG ;;
-				m ) MAX_QD_CONNECTIONS=$OPTARG ;;
+				m ) MASTER_MAX_CONNECT=$OPTARG ;;
+				b ) NEW_BUFFERS=$OPTARG ;;
 				o ) QD_ONLY=1 ;;
 				s ) STANDBY_HOSTNAME=$OPTARG ;;
 				n ) LOCALE_SETTING=$OPTARG ;;
+				r ) PARALLEL_BUILD=1 ;;
 				* ) USAGE ;;
 		esac
 done
@@ -1058,11 +1145,36 @@ if [ $QD_ONLY ]; then
 		LOG_MSG "[INFO]:-End Main"
 		exit 0
 fi
-
-CREATE_QES_PRIMARY
-
-if [ $MIRRORING -ne 0 ]; then
+if [ x"" != x"$PARALLEL_BUILD" ];then
+	LOG_MSG "[INFO]:-Processing mode = Parallel"
+	$TOUCH $PARALLEL_STATUS_FILE
+	CREATE_QES_PRIMARY
+	if [ $MIRRORING -ne 0 ]; then
 		CREATE_QES_MIRROR
+	fi
+	LOG_MSG "[INFO]:-Waiting for parallel processes to complete..."
+	while [ `$WC -l $PARALLEL_STATUS_FILE|$AWK '{print $1}'` -ne $INST_COUNT ]
+	do
+		LOG_MSG "[INFO]:-Waiting... `$WC -l $PARALLEL_STATUS_FILE|$AWK '{print $1}'` of $INST_COUNT have completed"
+		$SLEEP 2
+	done
+	#Now check for any errors 
+	if [ `$GREP -c FAILED $PARALLEL_STATUS_FILE` -ne 0 ];then
+		LOG_MSG "[FATAL]:-Errors generated from `$GREP -c FAILED $PARALLEL_STATUS_FILE|$AWK '{print $1}'` parallel processes"
+		LOG_MSG "[INFO]:-Dumping contents of status file to the log file"
+		cat $PARALLEL_STATUS_FILE >> $LOG_FILE
+		$RM -f $PARALLEL_STATUS_FILE
+		ERROR_EXIT "[FATAL]:-Failures detected, see log file for more detail" 2
+	else
+		LOG_MSG "[INFO]:-No errors generated from parallel processes"
+		$RM -f $PARALLEL_STATUS_FILE
+	fi
+else
+	LOG_MSG "[INFO]:-Processing mode = Serial"
+	CREATE_QES_PRIMARY
+	if [ $MIRRORING -ne 0 ]; then
+		CREATE_QES_MIRROR
+	fi
 fi
 SET_MPP_USER_PW
 if [ x"" != x"$DATABASE_NAME" ]; then
