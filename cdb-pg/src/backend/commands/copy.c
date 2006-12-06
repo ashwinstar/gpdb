@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * copy.c
- *		Implements the COPY utility command.
+ *		Implements the COPY utility command
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/copy.c,v 1.254 2005/11/03 17:11:34 alvherre Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/copy.c,v 1.273 2006/10/06 17:13:58 petere Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -77,8 +77,8 @@ typedef enum EolType
 
 /*
  * This struct contains all the state variables used throughout a COPY
- * operation.  For simplicity, we use the same struct for all variants
- * of COPY, even though some fields are used in only some cases.
+ * operation. For simplicity, we use the same struct for all variants of COPY,
+ * even though some fields are used in only some cases.
  *
  * Multi-byte encodings: all supported client-side encodings encode multi-byte
  * characters by having the first byte's high bit set. Subsequent bytes of the
@@ -89,15 +89,15 @@ typedef enum EolType
  * supported server encodings, there is no possibility of a false match, and
  * it's faster to make useless comparisons to trailing bytes than it is to
  * invoke pg_encoding_mblen() to skip over them. encoding_embeds_ascii is TRUE
- * when we have to do it the hard way. 
+ * when we have to do it the hard way.
  */
 typedef struct CopyStateData
 {
 	/* low-level state data */
 	CopyDest	copy_dest;		/* type of copy source/destination */
 	FILE	   *copy_file;		/* used if copy_dest == COPY_FILE */
-	StringInfo	fe_msgbuf;		/* used for all dests during COPY TO, only
-                                 * for dest == COPY_NEW_FE in COPY FROM */
+	StringInfo	fe_msgbuf;		/* used for all dests during COPY TO, only for
+								 * dest == COPY_NEW_FE in COPY FROM */
 	bool		fe_copy;		/* true for all FE copy dests */
 	bool		fe_eof;			/* true if detected end of copy data */
 	EolType		eol_type;		/* EOL type of input */
@@ -145,7 +145,7 @@ typedef struct CopyStateData
 	 * the buffer on each cycle.
 	 */
 	StringInfoData attribute_buf;
-	
+
 	/*
 	 * Similarly, line_buf holds the whole input line being processed. The
 	 * input cycle is first to read the whole line into line_buf, convert it
@@ -155,7 +155,7 @@ typedef struct CopyStateData
 	 */
 	StringInfoData line_buf;
 	bool		line_buf_converted;		/* converted to server encoding? */
-	
+
 	/*
 	 * Finally, raw_buf holds raw data read from the data source (file or
 	 * client connection).	CopyReadLine parses this data sufficiently to
@@ -267,7 +267,7 @@ SendCopyBegin(CopyState cstate)
 		int			natts = list_length(cstate->attnumlist);
 		int16		format = (cstate->binary ? 1 : 0);
 		int			i;
-		
+
 		pq_beginmessage(&buf, 'H');
 		pq_sendbyte(&buf, format);		/* overall format */
 		pq_sendint(&buf, natts, 2);
@@ -312,7 +312,7 @@ ReceiveCopyBegin(CopyState cstate)
 		int			natts = list_length(cstate->attnumlist);
 		int16		format = (cstate->binary ? 1 : 0);
 		int			i;
-		
+
 		pq_beginmessage(&buf, 'G');
 		pq_sendbyte(&buf, format);		/* overall format */
 		pq_sendint(&buf, natts, 2);
@@ -1323,8 +1323,8 @@ DoCopyTo(CopyState cstate)
 		struct stat st;
 		
 		/*
-		 * Prevent write to relative path ... too easy to shoot oneself in
-		 * the foot by overwriting a database file ...
+		 * Prevent write to relative path ... too easy to shoot oneself in the
+		 * foot by overwriting a database file ...
 		 */
 		if (!is_absolute_path(cstate->filename))
 			ereport(ERROR,
