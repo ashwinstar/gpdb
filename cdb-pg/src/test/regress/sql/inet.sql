@@ -66,12 +66,12 @@ SET enable_seqscan TO on;
 DROP INDEX inet_idx1;
 
 -- simple tests of inet boolean and arithmetic operators
-SELECT i, ~i AS "~i" FROM inet_tbl;
-SELECT i, c, i & c AS "and" FROM inet_tbl;
-SELECT i, c, i | c AS "or" FROM inet_tbl;
-SELECT i, i + 500 AS "i+500" FROM inet_tbl;
-SELECT i, i - 500 AS "i-500" FROM inet_tbl;
-SELECT i, c, i - c AS "minus" FROM inet_tbl;
+SELECT i, ~i AS "~i" FROM inet_tbl ORDER BY 1;
+SELECT i, c, i & c AS "and" FROM inet_tbl ORDER BY 1;
+SELECT i, c, i | c AS "or" FROM inet_tbl ORDER BY 1;
+SELECT i, i + 500 AS "i+500" FROM inet_tbl ORDER BY 1;
+SELECT i, i - 500 AS "i-500" FROM inet_tbl ORDER BY 1;
+SELECT i, c, i - c AS "minus" FROM inet_tbl ORDER BY 1;
 SELECT '127.0.0.1'::inet + 257;
 SELECT ('127.0.0.1'::inet + 257) - 257;
 SELECT '127::1'::inet + 257;

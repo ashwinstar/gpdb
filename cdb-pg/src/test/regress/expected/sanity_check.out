@@ -6,8 +6,9 @@ VACUUM;
 -- of other backends (to avoid timing-dependent behavior).
 --
 SELECT relname, relhasindex
-   FROM pg_class
-   WHERE relhasindex AND relkind != 't' AND relname NOT LIKE 'mpp_%'
+   FROM pg_class c LEFT JOIN pg_namespace n ON n.oid = relnamespace
+   WHERE relkind = 'r' AND (nspname ~ '^pg_temp_') IS NOT TRUE
+   AND relname NOT LIKE 'mpp_%'
    AND relname <> 'pg_resqueue'
    ORDER BY relname;
          relname         | relhasindex 
