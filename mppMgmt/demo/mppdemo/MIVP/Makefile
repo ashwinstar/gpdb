@@ -19,13 +19,13 @@ drop-IVP :
 	@echo ""
 	@echo "Executing step \"drop-IVP\""
 	@echo ""
-	@-psql -p 5432 -c "DROP DATABASE $(THIS_PGDATABASE)" template1
+	@-psql -p $(THIS_PGPORT) -c "DROP DATABASE $(THIS_PGDATABASE)" template1
 
 create-IVP :
 	@echo ""
 	@echo "Executing step \"create-IVP\""
 	@echo ""
-	@psql -p 5432 -c "CREATE DATABASE $(THIS_PGDATABASE)" template1
+	@psql -p $(THIS_PGPORT) -c "CREATE DATABASE $(THIS_PGDATABASE)" template1
 	@psql -p $(THIS_PGPORT) $(THIS_PGDATABASE) -c "create table bigtable1 ( a timestamp, b varchar, c varchar, d integer, e integer, f integer, g integer, h numeric, i varchar, j varchar, k varchar, l integer, m integer, n varchar, o varchar )"
 
 generate-data :
