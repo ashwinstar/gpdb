@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeNestloop.c,v 1.39.2.1 2005/11/22 18:23:09 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeNestloop.c,v 1.43 2006/10/04 00:29:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -29,6 +29,7 @@
 #include "executor/hashjoin.h"
 
 #include "utils/memutils.h"
+
 
 /* ----------------------------------------------------------------
  *		ExecNestLoop(node)
