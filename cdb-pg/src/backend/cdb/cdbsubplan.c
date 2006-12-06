@@ -178,11 +178,11 @@ addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo extPrm, P
 	Assert(intPrm != NULL);		/* So there must be some internal parameters. */
 
 	/* Count existing external parameters. */
-	nParams = extPrm->numParams;
+	nParams = (extPrm == NULL ? 0 : extPrm->numParams);
 
 	/* Allocate space for augmented array and set final sentinel. */
-	augPrm = palloc0(sizeof(ParamListInfoData) + nParams * sizeof(ParamExternData));
-	augPrm->numParams = nParams;
+	augPrm = palloc0(sizeof(ParamListInfoData) + (nParams + nIntPrm)* sizeof(ParamExternData));
+	augPrm->numParams = nParams + nIntPrm;
 
 	/* Copy in the existing external parameter entries. */
 	for (i = 0; i < nParams; i++)
