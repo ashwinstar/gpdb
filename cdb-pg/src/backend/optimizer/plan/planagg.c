@@ -481,9 +481,9 @@ make_agg_subplan(PlannerInfo *root, MinMaxAggInfo *info)
 	 * in our cost estimates.  But that looks painful, and in most cases the
 	 * fraction of NULLs isn't high enough to change the decision.
 	 *
-	 * The NOT NULL qual has to go on the actual indexscan; create_plan
-	 * might have stuck a gating Result atop that, if there were any
-	 * pseudoconstant quals.
+	 * The NOT NULL qual has to go on the actual indexscan; create_plan might
+	 * have stuck a gating Result atop that, if there were any pseudoconstant
+	 * quals.
 	 */
 	plan = create_plan(&subroot, (Path *) info->path);
 
