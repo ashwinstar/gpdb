@@ -253,7 +253,7 @@ DATABASE_STATUS () {
 		else
 		LOG_MSG "[INFO]:-Segment instance's reported failed via pg_ctl = $QD_FAILED_COUNT"
 		fi
-		LOG_MSG "[INFO]:-Segment instance's marked as vaild            = $QD_VALID_COUNT"
+		LOG_MSG "[INFO]:-Segment instance's marked as valid            = $QD_VALID_COUNT"
 		if [ $QD_NOTVALID_COUNT -ne 0 ];then
 		LOG_MSG "[WARN]:-Segment instance's marked as invalid          = $QD_NOTVALID_COUNT <<<<<<<<<<"
 		else
