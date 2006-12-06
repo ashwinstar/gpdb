@@ -43,13 +43,13 @@ SELECT '' AS one, p.* FROM POINT_TBL p WHERE p.f1 ~= '(5.1, 34.5)' ORDER BY f1[0
 
 -- point in box 
 SELECT '' AS three, p.* FROM POINT_TBL p
-   WHERE p.f1 @ box '(0,0,100,100)' ORDER BY f1[0],f1[1];
+   WHERE p.f1 <@ box '(0,0,100,100)' ORDER BY f1[0],f1[1];
 
 SELECT '' AS three, p.* FROM POINT_TBL p
-   WHERE not p.f1 @ box '(0,0,100,100)' ORDER BY f1[0],f1[1];
+   WHERE not p.f1 <@ box '(0,0,100,100)' ORDER BY f1[0],f1[1];
 
 SELECT '' AS two, p.* FROM POINT_TBL p
-   WHERE p.f1 @ path '[(0,0),(-10,0),(-10,10)]' ORDER BY f1[0],f1[1];
+   WHERE p.f1 <@ path '[(0,0),(-10,0),(-10,10)]' ORDER BY f1[0],f1[1];
 
 SELECT '' AS six, p.f1, p.f1 <-> point '(0,0)' AS dist
    FROM POINT_TBL p

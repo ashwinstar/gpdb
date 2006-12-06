@@ -123,7 +123,13 @@ CLOSE foo12;
 
 -- leave some cursors open, to test that auto-close works.
 
+-- record this in the system view as well (don't query the time field there
+-- however)
+SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
+
 END;
+
+SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
 
 --
 -- NO SCROLL disallows backward fetching
@@ -143,6 +149,9 @@ END;
 -- Cursors outside transaction blocks
 --
 
+
+SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
+
 BEGIN;
 
 DECLARE foo25 CURSOR WITH HOLD FOR SELECT * FROM tenk2 ORDER BY 1,2,3,4;
@@ -155,6 +164,11 @@ COMMIT;
 
 FETCH FROM foo25;
 
+--FETCH BACKWARD FROM foo25;
+
+--FETCH ABSOLUTE -1 FROM foo25;
+
+SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
 
 CLOSE foo25;
 
@@ -180,7 +194,7 @@ BEGIN;
 CREATE FUNCTION declares_cursor(text)
    RETURNS void
    AS 'DECLARE c CURSOR FOR SELECT stringu1 FROM tenk1 WHERE stringu1 LIKE $1;'
-   LANGUAGE 'sql';
+   LANGUAGE SQL;
 
 SELECT declares_cursor('AB%');
 
@@ -230,3 +244,17 @@ fetch all from c2;
 
 drop function count_tt1_v();
 drop function count_tt1_s();
+
+
+-- Create a cursor with the BINARY option and check the pg_cursors view
+BEGIN;
+SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
+DECLARE bc BINARY CURSOR FOR SELECT * FROM tenk1;
+SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
+ROLLBACK;
+
+-- We should not see the portal that is created internally to
+-- implement EXECUTE in pg_cursors
+PREPARE cprep AS
+  SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
+EXECUTE cprep;

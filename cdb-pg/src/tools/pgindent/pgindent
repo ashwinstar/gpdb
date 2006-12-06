@@ -643,8 +643,6 @@ do
 -TGISTSearchStack \
 -TGIST_SPLITVEC \
 -TGP \
--TGUC_yy_size_t \
--TGUC_yy_state_type \
 -TGV \
 -TGVOP \
 -TGene \
@@ -742,7 +740,6 @@ do
 -TIOFuncSelector \
 -TIV \
 -TIV64 \
--TIdList \
 -TInClauseInfo \
 -TIncrementVarSublevelsUp_context \
 -TIndex \
@@ -1003,7 +1000,6 @@ do
 -TPKCS7_SIGNER_INFO \
 -TPKCS7_SIGN_ENVELOPE \
 -TPKCS8_PRIV_KEY_INFO \
--TPLPGSQL_YYSTYPE \
 -TPLTemplate \
 -TPLpgSQL_arrayelem \
 -TPLpgSQL_condition \

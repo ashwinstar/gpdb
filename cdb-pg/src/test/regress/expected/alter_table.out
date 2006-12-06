@@ -306,6 +306,58 @@ insert into atacc3 (test2) values (3);
 drop table atacc3;
 drop table atacc2;
 drop table atacc1;
+-- same things with one created with INHERIT
+create table atacc1 (test int);
+create table atacc2 (test2 int);
+create table atacc3 (test3 int) inherits (atacc1, atacc2);
+alter table atacc3 no inherit atacc2;
+-- fail
+alter table atacc3 no inherit atacc2;
+ERROR:  relation "atacc2" is not a parent of relation "atacc3"
+-- make sure it really isn't a child
+insert into atacc3 (test2) values (3);
+select test2 from atacc2;
+ test2 
+-------
+(0 rows)
+
+-- fail due to missing constraint
+alter table atacc2 add constraint foo check (test2>0);
+alter table atacc3 inherit atacc2;
+ERROR:  child table is missing constraint "foo"
+-- fail due to missing column
+alter table atacc3 rename test2 to testx;
+alter table atacc3 inherit atacc2;
+ERROR:  child table is missing column "test2"
+-- fail due to mismatched data type
+alter table atacc3 add test2 bool;
+alter table atacc3 add inherit atacc2;
+alter table atacc3 drop test2;
+-- succeed
+alter table atacc3 add test2 int;
+update atacc3 set test2 = 4 where test2 is null;
+alter table atacc3 add constraint foo check (test2>0);
+alter table atacc3 inherit atacc2;
+-- fail due to duplicates and circular inheritance
+alter table atacc3 inherit atacc2;
+ERROR:  inherited relation "atacc2" duplicated
+alter table atacc2 inherit atacc3;
+ERROR:  circular inheritance not allowed
+DETAIL:  "atacc3" is already a child of "atacc2".
+alter table atacc2 inherit atacc2;
+ERROR:  circular inheritance not allowed
+DETAIL:  "atacc2" is already a child of "atacc2".
+-- test that we really are a child now (should see 4 not 3 and cascade should go through)
+select test2 from atacc2;
+ test2 
+-------
+     4
+(1 row)
+
+drop table atacc2 cascade;
+NOTICE:  drop cascades to table atacc3
+NOTICE:  drop cascades to constraint foo on table atacc3
+drop table atacc1;
 -- let's try only to add only to the parent
 create table atacc1 (test int);
 create table atacc2 (test2 int);
@@ -616,12 +668,20 @@ select * from atacc1;
 
 select * from atacc1 order by a;
 ERROR:  column "a" does not exist
+LINE 1: select * from atacc1 order by a;
+                                      ^
 select * from atacc1 order by "........pg.dropped.1........";
 ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: select * from atacc1 order by "........pg.dropped.1........"...
+                                      ^
 select * from atacc1 group by a;
 ERROR:  column "a" does not exist
+LINE 1: select * from atacc1 group by a;
+                                      ^
 select * from atacc1 group by "........pg.dropped.1........";
 ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: select * from atacc1 group by "........pg.dropped.1........"...
+                                      ^
 select atacc1.* from atacc1;
  b | c | d 
 ---+---+---
@@ -630,8 +690,12 @@ select atacc1.* from atacc1;
 
 select a from atacc1;
 ERROR:  column "a" does not exist
+LINE 1: select a from atacc1;
+               ^
 select atacc1.a from atacc1;
 ERROR:  column atacc1.a does not exist
+LINE 1: select atacc1.a from atacc1;
+               ^
 select b,c,d from atacc1;
  b | c | d 
 ---+---+---
@@ -640,25 +704,45 @@ select b,c,d from atacc1;
 
 select a,b,c,d from atacc1;
 ERROR:  column "a" does not exist
+LINE 1: select a,b,c,d from atacc1;
+               ^
 select * from atacc1 where a = 1;
 ERROR:  column "a" does not exist
+LINE 1: select * from atacc1 where a = 1;
+                                   ^
 select "........pg.dropped.1........" from atacc1;
 ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: select "........pg.dropped.1........" from atacc1;
+               ^
 select atacc1."........pg.dropped.1........" from atacc1;
 ERROR:  column atacc1.........pg.dropped.1........ does not exist
+LINE 1: select atacc1."........pg.dropped.1........" from atacc1;
+               ^
 select "........pg.dropped.1........",b,c,d from atacc1;
 ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: select "........pg.dropped.1........",b,c,d from atacc1;
+               ^
 select * from atacc1 where "........pg.dropped.1........" = 1;
 ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: select * from atacc1 where "........pg.dropped.1........" = ...
+                                   ^
 -- UPDATEs
 update atacc1 set a = 3;
 ERROR:  column "a" of relation "atacc1" does not exist
+LINE 1: update atacc1 set a = 3;
+                          ^
 update atacc1 set b = 2 where a = 3;
 ERROR:  column "a" does not exist
+LINE 1: update atacc1 set b = 2 where a = 3;
+                                      ^
 update atacc1 set "........pg.dropped.1........" = 3;
 ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+LINE 1: update atacc1 set "........pg.dropped.1........" = 3;
+                          ^
 update atacc1 set b = 2 where "........pg.dropped.1........" = 3;
 ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: update atacc1 set b = 2 where "........pg.dropped.1........"...
+                                      ^
 -- INSERTs
 insert into atacc1 values (10, 11, 12, 13);
 ERROR:  INSERT has more expressions than target columns
@@ -667,26 +751,46 @@ ERROR:  INSERT has more expressions than target columns
 insert into atacc1 values (11, 12, 13);
 insert into atacc1 (a) values (10);
 ERROR:  column "a" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 (a) values (10);
+                            ^
 insert into atacc1 (a) values (default);
 ERROR:  column "a" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 (a) values (default);
+                            ^
 insert into atacc1 (a,b,c,d) values (10,11,12,13);
 ERROR:  column "a" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 (a,b,c,d) values (10,11,12,13);
+                            ^
 insert into atacc1 (a,b,c,d) values (default,11,12,13);
 ERROR:  column "a" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 (a,b,c,d) values (default,11,12,13);
+                            ^
 insert into atacc1 (b,c,d) values (11,12,13);
 insert into atacc1 ("........pg.dropped.1........") values (10);
 ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 ("........pg.dropped.1........") values (...
+                            ^
 insert into atacc1 ("........pg.dropped.1........") values (default);
 ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 ("........pg.dropped.1........") values (...
+                            ^
 insert into atacc1 ("........pg.dropped.1........",b,c,d) values (10,11,12,13);
 ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 ("........pg.dropped.1........",b,c,d) va...
+                            ^
 insert into atacc1 ("........pg.dropped.1........",b,c,d) values (default,11,12,13);
 ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 ("........pg.dropped.1........",b,c,d) va...
+                            ^
 -- DELETEs
 delete from atacc1 where a = 3;
 ERROR:  column "a" does not exist
+LINE 1: delete from atacc1 where a = 3;
+                                 ^
 delete from atacc1 where "........pg.dropped.1........" = 3;
 ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: delete from atacc1 where "........pg.dropped.1........" = 3;
+                                 ^
 delete from atacc1;
 -- try dropping a non-existent column, should fail
 alter table atacc1 drop bar;
@@ -796,8 +900,10 @@ drop table test2;
 alter table atacc1 drop c;
 alter table atacc1 drop d;
 alter table atacc1 drop b;
-select * from atacc1 order by 1,2;
-ERROR:  ORDER BY position 1 is not in select list
+select * from atacc1;
+--
+(1 row)
+
 drop table atacc1;
 -- test inheritance
 create table parent (a int, b int, c int);
@@ -914,6 +1020,8 @@ select f1 from c1 order by 1;
 alter table c1 drop column f1;
 select f1 from c1;
 ERROR:  column "f1" does not exist
+LINE 1: select f1 from c1;
+               ^
 drop table p1 cascade;
 NOTICE:  drop cascades to table c1
 create table p1 (f1 int, f2 int);
@@ -925,6 +1033,8 @@ alter table p1 drop column f1;
 -- c1.f1 is dropped now, since there is no local definition for it
 select f1 from c1;
 ERROR:  column "f1" does not exist
+LINE 1: select f1 from c1;
+               ^
 drop table p1 cascade;
 NOTICE:  drop cascades to table c1
 create table p1 (f1 int, f2 int);
@@ -1023,6 +1133,8 @@ select oid > 0, * from altstartwith;
 alter table altstartwith set without oids;
 select oid > 0, * from altstartwith; -- fails
 ERROR:  column "oid" does not exist
+LINE 1: select oid > 0, * from altstartwith;
+               ^
 select * from altstartwith;
  col 
 -----
@@ -1050,8 +1162,12 @@ alter table altwithoid set without oids;
 alter table altinhoid set without oids;
 select oid > 0, * from altwithoid; -- fails
 ERROR:  column "oid" does not exist
+LINE 1: select oid > 0, * from altwithoid;
+               ^
 select oid > 0, * from altinhoid; -- fails
 ERROR:  column "oid" does not exist
+LINE 1: select oid > 0, * from altinhoid;
+               ^
 select * from altwithoid;
  col 
 -----
@@ -1317,6 +1433,6 @@ NOTICE:  drop cascades to function alter2.plus1(integer)
 NOTICE:  drop cascades to view alter2.v1
 NOTICE:  drop cascades to rule _RETURN on view alter2.v1
 NOTICE:  drop cascades to sequence alter2.t1_f1_seq
-NOTICE:  drop cascades to table alter2.t1 column f1
+NOTICE:  drop cascades to default for table alter2.t1 column f1
 NOTICE:  drop cascades to table alter2.t1
 NOTICE:  drop cascades to constraint t1_f2_check on table alter2.t1

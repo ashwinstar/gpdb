@@ -504,23 +504,24 @@ dumpRoles(PGconn *conn)
 	int			i;
 
 	/* note: rolconfig is dumped later */
-	if (server_version >= 80100)
+	if (server_version >= 80200)
 		if (resource_queues)
 			printfPQExpBuffer(buf,
 							  "SELECT rolname, rolsuper, rolinherit, "
 							  "rolcreaterole, rolcreatedb, rolcatupdate, "
 							  "rolcanlogin, rolconnlimit, rolpassword, "
 							  "rolvaliduntil, "
+							  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment "
 							  "(SELECT rsqname FROM pg_resqueue WHERE "
 							  "pg_resqueue.oid = rolresqueue) AS rolqueuename "
 							  "FROM pg_authid "
 							  "ORDER BY 1");
-		else
+	else if (server_version >= 80100)
 			printfPQExpBuffer(buf,
 							  "SELECT rolname, rolsuper, rolinherit, "
 							  "rolcreaterole, rolcreatedb, rolcatupdate, "
 							  "rolcanlogin, rolconnlimit, rolpassword, "
-							  "rolvaliduntil "
+							  "rolvaliduntil, null as rolcomment  "
 							  "FROM pg_authid "
 							  "ORDER BY 1");
 
