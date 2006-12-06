@@ -28,7 +28,7 @@
 typedef uint32 bitmapword;		/* must be an unsigned type */
 typedef int32 signedbitmapword; /* must be the matching signed type */
 #define BITS_PER_BITMAPWORD_LOG2    5
-#define BITS_PER_BITMAPWORD 32
+#define BITS_PER_BITMAPWORD         (1 << BITS_PER_BITMAPWORD_LOG2)
 
 typedef struct Bitmapset
 {

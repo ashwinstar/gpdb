@@ -200,6 +200,7 @@ plan_tree_walker(Node *node,
 		case T_SeqScan:
 		case T_BitmapHeapScan:
 		case T_FunctionScan:
+		case T_ValuesScan:
 			if (walk_scan_node_fields((Scan *) node, walker, context))
 				return true;
 			break;
@@ -702,6 +703,17 @@ plan_tree_mutator(Node *node,
 				SCANMUTATE(newfnscan, fnscan);
 				/* A FunctionScan is really just a Scan, so we're done. */
 				return (Node *) newfnscan;
+			}
+			break;
+
+		case T_ValuesScan:
+			{
+				ValuesScan *scan = (ValuesScan *)node;
+				ValuesScan *newscan;
+
+				FLATCOPY(newscan, scan, ValuesScan);
+				SCANMUTATE(newscan, scan);
+				return (Node *) newscan;
 			}
 			break;
 

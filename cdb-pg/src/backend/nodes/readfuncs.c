@@ -2177,6 +2177,19 @@ _readFunctionScan(void)
 }
 
 /*
+ * _readValuesScan
+ */
+static ValuesScan *
+_readValuesScan(void)
+{
+	READ_LOCALS_NO_FIELDS(ValuesScan);
+
+	readScanInfo((Scan *)local_node);
+
+	READ_DONE();
+}
+
+/*
  * _readJoin
  */
 static Join *
@@ -2816,6 +2829,7 @@ static ParseNodeInfo infoAr[] =
 	{"TYPENAME", (ReadFn)_readTypeName},
 	{"UNIQUE", (ReadFn)_readUnique},
 	{"VACUUMSTMT", (ReadFn)_readVacuumStmt},
+	{"VALUESSCAN", (ReadFn)_readValuesScan},    /*CDB*/
 	{"VAR", (ReadFn)_readVar},
 	{"VARIABLERESETSTMT", (ReadFn)_readVariableResetStmt},
 	{"VIEWSTMT", (ReadFn)_readViewStmt},

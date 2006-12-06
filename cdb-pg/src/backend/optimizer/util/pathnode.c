@@ -220,6 +220,7 @@ pathnode_walk_kids(Path            *path,
 	    case T_TidScan:
 	    case T_SubqueryScan:
 	    case T_FunctionScan:
+        case T_ValuesScan:
             return CdbVisit_Walk;
 	    case T_BitmapHeapScan:
 	        v = pathnode_walk_node(((BitmapHeapPath *)path)->bitmapqual, walker, context);

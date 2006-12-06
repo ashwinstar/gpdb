@@ -641,6 +641,7 @@ is_plan_node(Node *node)
 		case T_TidScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:
+        case T_ValuesScan:
 		case T_AdaptiveNestLoop:
 		case T_NestLoop:
 		case T_MergeJoin:

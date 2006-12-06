@@ -198,6 +198,7 @@ create_subplan(CreatePlanContext *ctx, Path *best_path)
 		case T_TidScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:
+        case T_ValuesScan:
 			plan = create_scan_plan(ctx, best_path);
 			break;
 		case T_HashJoin:
