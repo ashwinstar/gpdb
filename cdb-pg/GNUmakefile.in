@@ -35,7 +35,7 @@ distprep:
 # it's not built by default
 clean:
 #	$(MAKE) -C doc $@
-#	$(MAKE) -C contrib $@
+	$(MAKE) -C contrib $@
 	$(MAKE) -C src $@
 	$(MAKE) -C config $@
 # Garbage from autoconf:
@@ -45,7 +45,7 @@ clean:
 # will be gone too soon.
 distclean maintainer-clean:
 #	-$(MAKE) -C doc $@
-#	-$(MAKE) -C contrib $@
+	-$(MAKE) -C contrib $@
 	-$(MAKE) -C config $@
 	-$(MAKE) -C src $@
 	-rm -f config.cache config.log config.status GNUmakefile
