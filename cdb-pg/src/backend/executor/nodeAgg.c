@@ -333,7 +333,7 @@ advance_transition_function(AggState *aggstate,
 			 * We do not need to pfree the old transValue, since it's NULL.
 			 */
 			oldContext = MemoryContextSwitchTo(aggstate->transcontext);
-			pergroupstate->transValue = datumCopy(newVal,
+			pergroupstate->transValue = datumCopy(fcinfo->arg[1],
 												  peraggstate->transtypeByVal,
 												  peraggstate->transtypeLen);
 			pergroupstate->transValueIsNull = false;
