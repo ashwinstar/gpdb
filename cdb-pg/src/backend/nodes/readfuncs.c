@@ -875,6 +875,11 @@ _readAExpr(void)
 		local_node->kind = AEXPR_OF;
 		READ_NODE_FIELD(name);
 	}
+	else if (strncmp(token,"IN",length)==0)
+	{
+		local_node->kind = AEXPR_IN;
+		READ_NODE_FIELD(name);
+	}
 	else
 	{
 		elog(ERROR,"Unable to understand A_Expr node %.30s",token);
