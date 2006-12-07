@@ -2204,14 +2204,20 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		int				cur;
 
 		appendStringInfoLiteral(&strinfo, " (");
+
 		for (cur = 0; cur < q->numParams; cur++)
 		{
 			char	   *sparms;
 			int			sparms_len;
 			RemoteParamData *rpd;
 
+			/* build our node structure for serialization */
 			rpd = makeNode(RemoteParamData);
-			memcpy(&rpd->paramData, &q->params[cur], sizeof(ParamExternData));
+
+			/* we have space for exactly one parameter */
+			rpd->paramData.numParams = 1;
+			memcpy(&rpd->paramData.params[0], &q->params[cur], sizeof(ParamExternData));
+
 			sparms = serializeNode((Node *) rpd, &sparms_len);
 			if (!bFirstTime)
 				appendStringInfoLiteral(&strinfo, ", ");
@@ -2225,7 +2231,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			pfree(sparms);
 			pfree(rpd);
 		}
-
 		appendStringInfoLiteral(&strinfo, ")");
 	}
 
