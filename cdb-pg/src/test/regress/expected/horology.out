@@ -450,6 +450,7 @@ SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMP_TBL ORDER B
     | Tue Feb 10 17:32:01 1998
     | Tue Feb 10 17:32:01 1998
     | Tue Feb 10 17:32:01 1998
+    | Tue Feb 10 17:32:01 1998
     | Tue Feb 10 17:32:01.40 1998
     | Tue Feb 10 17:32:01.50 1998
     | Tue Feb 10 17:32:01.60 1998
@@ -479,7 +480,7 @@ SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMP_TBL ORDER B
     | Sun Sep 22 18:19:20 2002
     | Sun Feb 16 17:32:01 2098
     | infinity
-(64 rows)
+(65 rows)
 
 SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMP_TBL ORDER BY 2;
  64 |          one_year           
@@ -502,6 +503,7 @@ SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMP_TBL ORDER B
     | Tue Jan 02 00:00:00 1996
     | Tue Jan 02 03:04:05 1996
     | Sat Feb 10 17:32:00 1996
+    | Sat Feb 10 17:32:01 1996
     | Sat Feb 10 17:32:01 1996
     | Sat Feb 10 17:32:01 1996
     | Sat Feb 10 17:32:01 1996
@@ -548,7 +550,7 @@ SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMP_TBL ORDER B
     | Fri Sep 22 18:19:20 2000
     | Thu Feb 16 17:32:01 2096
     | infinity
-(64 rows)
+(65 rows)
 
 SELECT timestamp with time zone '1996-03-01' - interval '1 second' AS "Feb 29";
             Feb 29            
@@ -678,6 +680,7 @@ SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL ORDER
     | Tue Feb 10 09:32:01 1998 PST
     | Tue Feb 10 09:32:01 1998 PST
     | Tue Feb 10 09:32:01 1998 PST
+    | Tue Feb 10 14:32:01 1998 PST
     | Tue Feb 10 17:32:00 1998 PST
     | Tue Feb 10 17:32:01 1998 PST
     | Tue Feb 10 17:32:01 1998 PST
@@ -708,6 +711,7 @@ SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL ORDER
     | Sun Mar 01 17:32:01 1998 PST
     | Wed Jun 10 17:32:01 1998 PDT
     | Wed Jun 10 18:32:01 1998 PDT
+    | Fri Jul 10 14:32:01 1998 PDT
     | Wed Dec 30 17:32:01 1998 PST
     | Thu Dec 31 17:32:01 1998 PST
     | Sun Dec 31 17:32:01 2000 PST
@@ -722,7 +726,7 @@ SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL ORDER
     | Sun Sep 22 18:19:20 2002 PDT
     | Sun Feb 16 17:32:01 2098 PST
     | infinity
-(64 rows)
+(66 rows)
 
 SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL ORDER BY 2;
  64 |            one_year             
@@ -747,6 +751,7 @@ SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL ORDER
     | Sat Feb 10 09:32:01 1996 PST
     | Sat Feb 10 09:32:01 1996 PST
     | Sat Feb 10 09:32:01 1996 PST
+    | Sat Feb 10 14:32:01 1996 PST
     | Sat Feb 10 17:32:00 1996 PST
     | Sat Feb 10 17:32:01 1996 PST
     | Sat Feb 10 17:32:01 1996 PST
@@ -777,6 +782,7 @@ SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL ORDER
     | Fri Mar 01 17:32:01 1996 PST
     | Mon Jun 10 17:32:01 1996 PDT
     | Mon Jun 10 18:32:01 1996 PDT
+    | Wed Jul 10 14:32:01 1996 PDT
     | Mon Dec 30 17:32:01 1996 PST
     | Tue Dec 31 17:32:01 1996 PST
     | Thu Dec 31 17:32:01 1998 PST
@@ -791,7 +797,7 @@ SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL ORDER
     | Fri Sep 22 18:19:20 2000 PDT
     | Thu Feb 16 17:32:01 2096 PST
     | infinity
-(64 rows)
+(66 rows)
 
 --
 -- time, interval arithmetic
@@ -870,10 +876,6 @@ SELECT CAST(cast(date 'today' + time with time zone '03:30'
 SELECT t.d1 + i.f1 AS "102" FROM TIMESTAMP_TBL t, INTERVAL_TBL i
   WHERE t.d1 BETWEEN '1990-01-01' AND '2001-01-01'
     AND i.f1 BETWEEN '00:00' AND '23:00' ORDER BY 1;
-NOTICE:  Query planner will use default statistics for table "timestamp_tbl"
-HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
-NOTICE:  Query planner will use default statistics for table "interval_tbl"
-HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
              102             
 -----------------------------
  Wed Feb 28 17:33:01 1996
@@ -910,11 +912,13 @@ HINT:  To cache a sample of the table's actual statistics for optimization, use 
  Mon Feb 10 17:33:01 1997
  Mon Feb 10 17:33:01 1997
  Mon Feb 10 17:33:01 1997
+ Mon Feb 10 17:33:01 1997
  Mon Feb 10 17:33:01.40 1997
  Mon Feb 10 17:33:01.50 1997
  Mon Feb 10 17:33:01.60 1997
  Mon Feb 10 17:33:02 1997
  Mon Feb 10 22:32:00 1997
+ Mon Feb 10 22:32:01 1997
  Mon Feb 10 22:32:01 1997
  Mon Feb 10 22:32:01 1997
  Mon Feb 10 22:32:01 1997
@@ -1019,11 +1023,13 @@ SELECT t.d1 - i.f1 AS "102" FROM TIMESTAMP_TBL t, INTERVAL_TBL i
  Mon Feb 10 12:32:01 1997
  Mon Feb 10 12:32:01 1997
  Mon Feb 10 12:32:01 1997
+ Mon Feb 10 12:32:01 1997
  Mon Feb 10 12:32:01.40 1997
  Mon Feb 10 12:32:01.50 1997
  Mon Feb 10 12:32:01.60 1997
  Mon Feb 10 12:32:02 1997
  Mon Feb 10 17:31:00 1997
+ Mon Feb 10 17:31:01 1997
  Mon Feb 10 17:31:01 1997
  Mon Feb 10 17:31:01 1997
  Mon Feb 10 17:31:01 1997
@@ -1087,11 +1093,9 @@ SELECT t.d1 - i.f1 AS "102" FROM TIMESTAMP_TBL t, INTERVAL_TBL i
  Wed Mar 15 13:13:02 2000
  Sun Dec 31 12:32:01 2000
  Sun Dec 31 17:31:01 2000
-(102 rows)
+(104 rows)
 
 SELECT t.f1 + i.f1 AS "80" FROM TIME_TBL t, INTERVAL_TBL i ORDER BY 1;
-NOTICE:  Query planner will use default statistics for table "time_tbl"
-HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
      80      
 -------------
  00:00:00
@@ -1122,6 +1126,8 @@ HINT:  To cache a sample of the table's actual statistics for optimization, use 
  02:03:04
  02:04:00
  03:03:04
+ 03:36:39
+ 03:36:39
  04:06:04
  04:59:00
  04:59:59.99
@@ -1157,9 +1163,27 @@ HINT:  To cache a sample of the table's actual statistics for optimization, use 
  14:03:00
  14:03:04
  14:04:04
+ 15:36:25
+ 15:36:25
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:37:39
+ 15:37:39
  16:59:00
  17:00:00
  17:01:00
+ 17:39:43
+ 17:39:43
+ 20:36:39
+ 20:36:39
  23:58:46
  23:59:00
  23:59:00
@@ -1174,7 +1198,7 @@ HINT:  To cache a sample of the table's actual statistics for optimization, use 
  23:59:59.99
  23:59:59.99
  23:59:59.99
-(80 rows)
+(100 rows)
 
 SELECT t.f1 - i.f1 AS "80" FROM TIME_TBL t, INTERVAL_TBL i ORDER BY 1;
      80      
@@ -1202,12 +1226,16 @@ SELECT t.f1 - i.f1 AS "80" FROM TIME_TBL t, INTERVAL_TBL i ORDER BY 1;
  02:03:00
  02:03:00
  02:03:14
+ 03:36:39
+ 03:36:39
  06:59:00
  07:00:00
  07:01:00
  09:55:56
  09:56:56
  09:57:56
+ 10:36:39
+ 10:36:39
  11:58:00
  11:59:00
  11:59:00
@@ -1233,7 +1261,23 @@ SELECT t.f1 - i.f1 AS "80" FROM TIME_TBL t, INTERVAL_TBL i ORDER BY 1;
  12:01:00
  12:01:14
  13:00:00
+ 13:33:35
+ 13:33:35
  14:03:00
+ 15:35:39
+ 15:35:39
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:36:39
+ 15:36:53
+ 15:36:53
  18:59:00
  18:59:59.99
  19:00:00
@@ -1259,11 +1303,9 @@ SELECT t.f1 - i.f1 AS "80" FROM TIME_TBL t, INTERVAL_TBL i ORDER BY 1;
  23:59:59.99
  23:59:59.99
  23:59:59.99
-(80 rows)
+(100 rows)
 
 SELECT t.f1 + i.f1 AS "100" FROM TIMETZ_TBL t, INTERVAL_TBL i ORDER BY 1;
-NOTICE:  Query planner will use default statistics for table "timetz_tbl"
-HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
       100       
 ----------------
  00:00:00-07
@@ -1277,6 +1319,7 @@ HINT:  To cache a sample of the table's actual statistics for optimization, use 
  00:01:00-07
  00:01:00-07
  00:02:00-07
+ 03:36:39-04
  00:59:46-07
  01:00:00-07
  01:00:00-07
@@ -1284,6 +1327,7 @@ HINT:  To cache a sample of the table's actual statistics for optimization, use 
  01:00:00-07
  01:00:00-07
  01:01:00-07
+ 03:36:39-05
  02:02:04-07
  02:02:46-07
  02:03:00-07
@@ -1342,16 +1386,34 @@ HINT:  To cache a sample of the table's actual statistics for optimization, use 
  12:01:00-07
  12:01:00-07
  12:02:00-07
+ 15:36:25-04
+ 15:36:39-04
+ 15:36:39-04
+ 15:36:39-04
+ 15:36:39-04
+ 15:36:39-04
+ 15:37:39-04
  13:00:00-07
  12:07:00-08
+ 15:36:25-05
+ 15:36:39-05
+ 15:36:39-05
+ 15:36:39-05
+ 15:36:39-05
+ 15:36:39-05
+ 15:37:39-05
  14:02:04-07
  14:03:00-07
  14:03:04-07
  14:04:04-07
+ 17:39:43-04
+ 17:39:43-05
  16:59:00-07
  17:00:00-07
  17:01:00-07
  20:08:00-04
+ 20:36:39-04
+ 20:36:39-05
  19:07:00-08
  23:58:46-07
  23:59:00-07
@@ -1366,7 +1428,7 @@ HINT:  To cache a sample of the table's actual statistics for optimization, use 
  23:59:59.99-07
  23:59:59.99-07
  23:59:59.99-07
-(100 rows)
+(120 rows)
 
 SELECT t.f1 - i.f1 AS "100" FROM TIMETZ_TBL t, INTERVAL_TBL i ORDER BY 1;
       100       
@@ -1382,6 +1444,7 @@ SELECT t.f1 - i.f1 AS "100" FROM TIMETZ_TBL t, INTERVAL_TBL i ORDER BY 1;
  00:01:00-07
  00:01:14-07
  03:08:00-04
+ 03:36:39-04
  00:59:00-07
  01:00:00-07
  01:00:00-07
@@ -1389,6 +1452,7 @@ SELECT t.f1 - i.f1 AS "100" FROM TIMETZ_TBL t, INTERVAL_TBL i ORDER BY 1;
  01:00:00-07
  01:00:00-07
  01:00:14-07
+ 03:36:39-05
  02:02:00-07
  02:03:00-07
  02:03:00-07
@@ -1409,6 +1473,7 @@ SELECT t.f1 - i.f1 AS "100" FROM TIMETZ_TBL t, INTERVAL_TBL i ORDER BY 1;
  06:59:00-07
  07:00:00-07
  07:01:00-07
+ 10:36:39-04
  07:06:00-08
  07:07:00-08
  07:07:00-08
@@ -1416,9 +1481,12 @@ SELECT t.f1 - i.f1 AS "100" FROM TIMETZ_TBL t, INTERVAL_TBL i ORDER BY 1;
  07:07:00-08
  07:07:00-08
  07:07:14-08
+ 10:36:39-05
  09:55:56-07
  09:56:56-07
  09:57:56-07
+ 13:33:35-04
+ 13:33:35-05
  11:58:00-07
  11:59:00-07
  11:59:00-07
@@ -1443,7 +1511,21 @@ SELECT t.f1 - i.f1 AS "100" FROM TIMETZ_TBL t, INTERVAL_TBL i ORDER BY 1;
  12:01:00-07
  12:01:00-07
  12:01:14-07
+ 15:35:39-04
+ 15:36:39-04
+ 15:36:39-04
+ 15:36:39-04
+ 15:36:39-04
+ 15:36:39-04
+ 15:36:53-04
  13:00:00-07
+ 15:35:39-05
+ 15:36:39-05
+ 15:36:39-05
+ 15:36:39-05
+ 15:36:39-05
+ 15:36:39-05
+ 15:36:53-05
  14:03:00-07
  20:08:00-04
  18:59:00-07
@@ -1471,7 +1553,7 @@ SELECT t.f1 - i.f1 AS "100" FROM TIMETZ_TBL t, INTERVAL_TBL i ORDER BY 1;
  23:59:59.99-07
  23:59:59.99-07
  23:59:59.99-07
-(100 rows)
+(120 rows)
 
 -- SQL9x OVERLAPS operator
 -- test with time zone
@@ -1593,8 +1675,6 @@ SELECT (time '00:00', interval '1 hour')
 (1 row)
 
 CREATE TABLE TEMP_TIMESTAMP (f1 timestamp with time zone);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'f1' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 -- get some candidate input values
 INSERT INTO TEMP_TIMESTAMP (f1)
   SELECT d1 FROM TIMESTAMP_TBL
@@ -1626,8 +1706,6 @@ SELECT '' AS "16", f1 AS "timestamp"
 SELECT '' AS "160", d.f1 AS "timestamp", t.f1 AS "interval", d.f1 + t.f1 AS plus
   FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
   ORDER BY plus, "timestamp", "interval";
-NOTICE:  Query planner will use default statistics for table "temp_timestamp"
-HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
  160 |          timestamp           |           interval            |             plus             
 -----+------------------------------+-------------------------------+------------------------------
      | Thu Jan 01 00:00:00 1970 PST | @ 14 secs ago                 | Wed Dec 31 23:59:46 1969 PST
@@ -2255,10 +2333,6 @@ SELECT '' AS ten, ABSTIME_TBL.f1 AS abstime, RELTIME_TBL.f1 AS reltime
     FROM ABSTIME_TBL, RELTIME_TBL
    WHERE (ABSTIME_TBL.f1 + RELTIME_TBL.f1) < abstime 'Jan 14 14:00:00 1971'
    ORDER BY abstime, reltime;
-NOTICE:  Query planner will use default statistics for table "abstime_tbl"
-HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
-NOTICE:  Query planner will use default statistics for table "reltime_tbl"
-HINT:  To cache a sample of the table's actual statistics for optimization, use the ANALYZE or VACUUM ANALYZE command.
  ten |           abstime            |    reltime    
 -----+------------------------------+---------------
      | Sat May 10 23:59:12 1947 PST | @ 14 secs ago
@@ -2466,6 +2540,7 @@ SELECT '' AS "64", d1 AS us_postgres FROM TIMESTAMP_TBL ORDER BY 2;
     | Mon Feb 10 17:32:01 1997
     | Mon Feb 10 17:32:01 1997
     | Mon Feb 10 17:32:01 1997
+    | Mon Feb 10 17:32:01 1997
     | Mon Feb 10 17:32:01.40 1997
     | Mon Feb 10 17:32:01.50 1997
     | Mon Feb 10 17:32:01.60 1997
@@ -2495,7 +2570,7 @@ SELECT '' AS "64", d1 AS us_postgres FROM TIMESTAMP_TBL ORDER BY 2;
     | Sat Sep 22 18:19:20 2001
     | Sat Feb 16 17:32:01 2097
     | infinity
-(64 rows)
+(65 rows)
 
 SELECT '' AS seven, f1 AS us_postgres FROM ABSTIME_TBL ORDER BY 2;
  seven |         us_postgres          
@@ -2548,6 +2623,7 @@ SELECT '' AS "64", d1 AS us_iso FROM TIMESTAMP_TBL ORDER BY 2;
     | 1997-02-10 17:32:01
     | 1997-02-10 17:32:01
     | 1997-02-10 17:32:01
+    | 1997-02-10 17:32:01
     | 1997-02-10 17:32:01.40
     | 1997-02-10 17:32:01.50
     | 1997-02-10 17:32:01.60
@@ -2577,7 +2653,7 @@ SELECT '' AS "64", d1 AS us_iso FROM TIMESTAMP_TBL ORDER BY 2;
     | 2001-09-22 18:19:20
     | 2097-02-16 17:32:01
     | infinity
-(64 rows)
+(65 rows)
 
 SELECT '' AS seven, f1 AS us_iso FROM ABSTIME_TBL ORDER BY 2;
  seven |         us_iso         
@@ -2636,6 +2712,7 @@ SELECT '' AS "64", d1 AS us_sql FROM TIMESTAMP_TBL ORDER BY 2;
     | 02/10/1997 17:32:01
     | 02/10/1997 17:32:01
     | 02/10/1997 17:32:01
+    | 02/10/1997 17:32:01
     | 02/10/1997 17:32:01.40
     | 02/10/1997 17:32:01.50
     | 02/10/1997 17:32:01.60
@@ -2665,7 +2742,7 @@ SELECT '' AS "64", d1 AS us_sql FROM TIMESTAMP_TBL ORDER BY 2;
     | 09/22/2001 18:19:20
     | 02/16/2097 17:32:01
     | infinity
-(64 rows)
+(65 rows)
 
 SELECT '' AS seven, f1 AS us_sql FROM ABSTIME_TBL ORDER BY 2;
  seven |         us_sql          
@@ -2732,6 +2809,7 @@ SELECT '' AS "65", d1 AS european_postgres FROM TIMESTAMP_TBL ORDER BY 2;
     | Mon 10 Feb 17:32:01 1997
     | Mon 10 Feb 17:32:01 1997
     | Mon 10 Feb 17:32:01 1997
+    | Mon 10 Feb 17:32:01 1997
     | Mon 10 Feb 17:32:01.40 1997
     | Mon 10 Feb 17:32:01.50 1997
     | Mon 10 Feb 17:32:01.60 1997
@@ -2761,7 +2839,7 @@ SELECT '' AS "65", d1 AS european_postgres FROM TIMESTAMP_TBL ORDER BY 2;
     | Sat 22 Sep 18:19:20 2001
     | Sat 16 Feb 17:32:01 2097
     | infinity
-(65 rows)
+(66 rows)
 
 SELECT '' AS seven, f1 AS european_postgres FROM ABSTIME_TBL ORDER BY 2;
  seven |      european_postgres       
@@ -2821,6 +2899,7 @@ SELECT '' AS "65", d1 AS european_iso FROM TIMESTAMP_TBL ORDER BY 2;
     | 1997-02-10 17:32:01
     | 1997-02-10 17:32:01
     | 1997-02-10 17:32:01
+    | 1997-02-10 17:32:01
     | 1997-02-10 17:32:01.40
     | 1997-02-10 17:32:01.50
     | 1997-02-10 17:32:01.60
@@ -2850,7 +2929,7 @@ SELECT '' AS "65", d1 AS european_iso FROM TIMESTAMP_TBL ORDER BY 2;
     | 2001-09-22 18:19:20
     | 2097-02-16 17:32:01
     | infinity
-(65 rows)
+(66 rows)
 
 SELECT '' AS seven, f1 AS european_iso FROM ABSTIME_TBL ORDER BY 2;
  seven |      european_iso      
@@ -2910,6 +2989,7 @@ SELECT '' AS "65", d1 AS european_sql FROM TIMESTAMP_TBL ORDER BY 2;
     | 10/02/1997 17:32:01
     | 10/02/1997 17:32:01
     | 10/02/1997 17:32:01
+    | 10/02/1997 17:32:01
     | 10/02/1997 17:32:01.40
     | 10/02/1997 17:32:01.50
     | 10/02/1997 17:32:01.60
@@ -2939,7 +3019,7 @@ SELECT '' AS "65", d1 AS european_sql FROM TIMESTAMP_TBL ORDER BY 2;
     | 22/09/2001 18:19:20
     | 16/02/2097 17:32:01
     | infinity
-(65 rows)
+(66 rows)
 
 SELECT '' AS seven, f1 AS european_sql FROM ABSTIME_TBL ORDER BY 2;
  seven |      european_sql       

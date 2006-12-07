@@ -733,7 +733,7 @@ drop table test2;
 alter table atacc1 drop c;
 alter table atacc1 drop d;
 alter table atacc1 drop b;
-select * from atacc1 order by 1,2;
+select * from atacc1;
 
 drop table atacc1;
 

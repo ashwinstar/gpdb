@@ -346,8 +346,8 @@ SELECT p.name, p.age FROM person* p  ORDER BY 1;
  sandra  |  19
  sandy   |  38
  sarah   |  88
- sharon  |  78
  sharon  |  25
+ sharon  |  78
  sue     |  50
  sumi    |  38
  susan   |  78

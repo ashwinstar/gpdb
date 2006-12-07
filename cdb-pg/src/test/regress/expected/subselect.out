@@ -321,8 +321,8 @@ SELECT * FROM orders_view ORDER BY 1,2;
             1 |      1 | f              | ---      | ---       | ---
             1 |      1 | f              | ---      | ---       | ---
             1 |      1 | f              | ---      | ---       | ---
-           66 |      1 | t              | Approved | Cancelled | Cancelled
            66 |      1 | f              | Approved | Approved  | Approved
+           66 |      1 | t              | Approved | Cancelled | Cancelled
            66 |      1 | f              | Approved | Approved  | Approved
            66 |      5 | f              | Approved | PO        | PO
            66 |      6 | f              | Approved | PO        | PO

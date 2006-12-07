@@ -100,8 +100,8 @@ select testint4arr[1], testtextarr[2:2] from domarrtest ORDER BY 1,2;
            2 | {{c}}
            2 | {{c,d}}
            2 | {{c,d}}
+             | {}
              | {{d,e,f}}
-             | 
 (5 rows)
 
 drop table domarrtest;

@@ -18,16 +18,16 @@ PREPARE q1 AS SELECT 2;
 EXECUTE q1;
 
 PREPARE q2 AS SELECT 2 AS b;
-SELECT name, statement, parameter_types FROM pg_prepared_statements;
+SELECT name, statement, parameter_types FROM pg_prepared_statements ORDER BY 1,2,3;
 
 -- sql92 syntax
 DEALLOCATE PREPARE q1;
 
-SELECT name, statement, parameter_types FROM pg_prepared_statements;
+SELECT name, statement, parameter_types FROM pg_prepared_statements ORDER BY 1,2,3;
 
 DEALLOCATE PREPARE q2;
 -- the view should return the empty set again
-SELECT name, statement, parameter_types FROM pg_prepared_statements;
+SELECT name, statement, parameter_types FROM pg_prepared_statements ORDER BY 1,2,3;
 
 -- parameterized queries
 PREPARE q2(text) AS
