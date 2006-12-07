@@ -635,9 +635,9 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 				ParamListInfo paramInfo = econtext->ecxt_param_list_info;
 				
 				if (paramInfo &&
-					thisParamId > 0 && thisParamId <= paramInfo->numParams)
+					thisParamId <= paramInfo->numParams)
 				{
-					ParamExternData *prm = &paramInfo->params[thisParamId - 1];
+					ParamExternData *prm = &paramInfo->params[thisParamId];
 		
 					if (OidIsValid(prm->ptype))
 					{
@@ -649,7 +649,6 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 				
 				prm->isnull = true;
 				prm->execPlan = NULL;
-				
 
 			}
 			else
