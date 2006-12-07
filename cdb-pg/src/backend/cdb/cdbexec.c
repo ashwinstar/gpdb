@@ -148,7 +148,7 @@ CdbExecQuery(struct CdbExecStmt * stmt, struct _DestReceiver *dest, char *comple
 				rpd = (RemoteParamData *) deserializeNode(pszRemoteParmData);
 				pfree(pszRemoteParmData);
 
-				memcpy(&paramLI->params[i], &rpd->paramData, sizeof(ParamExternData));
+				memcpy(&paramLI->params[i], &rpd->paramData.params[0], sizeof(ParamExternData));
 				i++;
 			}
 		}
