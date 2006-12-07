@@ -864,11 +864,14 @@ ExecCheckXactReadOnly(Query *parsetree)
 		if (isTempNamespace(get_rel_namespace(rte->relid)))
 			continue;
 
-        /* CDB: Allow SELECT FOR SHARE/UPDATE */
+        /* CDB: Allow SELECT FOR SHARE/UPDATE * 
+         * 
+         * NOTE: This code is broken in the 8.2 merge, so I'm commenting it out for now
+         * 
         if ((rte->requiredPerms & ~(ACL_SELECT | ACL_SELECT_FOR_UPDATE)) == 0 &&
             list_member_int(parsetree->rowMarks, rti))
             continue;
-
+		*/
 		goto fail;
 	}
 	return;
