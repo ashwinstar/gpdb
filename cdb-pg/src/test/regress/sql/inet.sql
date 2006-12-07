@@ -35,15 +35,15 @@ SELECT '' AS ten, c AS cidr, i AS inet FROM INET_TBL ORDER BY 2,3;
 
 SELECT '' AS ten, i AS inet, host(i), text(i), family(i) FROM INET_TBL ORDER BY 2;
 SELECT '' AS ten, c AS cidr, broadcast(c),
-  i AS inet, broadcast(i) FROM INET_TBL ORDER BY 2;
+  i AS inet, broadcast(i) FROM INET_TBL ORDER BY 2,3,4,5;
 SELECT '' AS ten, c AS cidr, network(c) AS "network(cidr)",
-  i AS inet, network(i) AS "network(inet)" FROM INET_TBL ORDER BY 2;
+  i AS inet, network(i) AS "network(inet)" FROM INET_TBL ORDER BY 2,3,4,5;
 SELECT '' AS ten, c AS cidr, masklen(c) AS "masklen(cidr)",
-  i AS inet, masklen(i) AS "masklen(inet)" FROM INET_TBL ORDER BY 2;
+  i AS inet, masklen(i) AS "masklen(inet)" FROM INET_TBL ORDER BY 2,3,4,5;
 
 SELECT '' AS four, c AS cidr, masklen(c) AS "masklen(cidr)",
   i AS inet, masklen(i) AS "masklen(inet)" FROM INET_TBL
-  WHERE masklen(c) <= 8 ORDER BY 2;
+  WHERE masklen(c) <= 8 ORDER BY 2,3,4,5;
 
 SELECT '' AS six, c AS cidr, i AS inet FROM INET_TBL
   WHERE c = i ORDER BY 2,3;
@@ -66,12 +66,12 @@ SET enable_seqscan TO on;
 DROP INDEX inet_idx1;
 
 -- simple tests of inet boolean and arithmetic operators
-SELECT i, ~i AS "~i" FROM inet_tbl ORDER BY 1;
-SELECT i, c, i & c AS "and" FROM inet_tbl ORDER BY 1;
-SELECT i, c, i | c AS "or" FROM inet_tbl ORDER BY 1;
+SELECT i, ~i AS "~i" FROM inet_tbl ORDER BY 1,2;
+SELECT i, c, i & c AS "and" FROM inet_tbl ORDER BY 1,2;
+SELECT i, c, i | c AS "or" FROM inet_tbl ORDER BY 1,2;
 SELECT i, i + 500 AS "i+500" FROM inet_tbl ORDER BY 1;
 SELECT i, i - 500 AS "i-500" FROM inet_tbl ORDER BY 1;
-SELECT i, c, i - c AS "minus" FROM inet_tbl ORDER BY 1;
+SELECT i, c, i - c AS "minus" FROM inet_tbl ORDER BY 1,2;
 SELECT '127.0.0.1'::inet + 257;
 SELECT ('127.0.0.1'::inet + 257) - 257;
 SELECT '127::1'::inet + 257;

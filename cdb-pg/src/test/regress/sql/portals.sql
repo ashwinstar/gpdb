@@ -125,11 +125,11 @@ CLOSE foo12;
 
 -- record this in the system view as well (don't query the time field there
 -- however)
-SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
+SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors ORDER BY name;
 
 END;
 
-SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
+SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors ORDER BY name;
 
 --
 -- NO SCROLL disallows backward fetching
@@ -150,7 +150,7 @@ END;
 --
 
 
-SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
+SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors ORDER BY name;
 
 BEGIN;
 
@@ -168,7 +168,7 @@ FETCH FROM foo25;
 
 --FETCH ABSOLUTE -1 FROM foo25;
 
-SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
+SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors ORDER BY name;
 
 CLOSE foo25;
 
@@ -248,13 +248,13 @@ drop function count_tt1_s();
 
 -- Create a cursor with the BINARY option and check the pg_cursors view
 BEGIN;
-SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
+SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors ORDER BY name;
 DECLARE bc BINARY CURSOR FOR SELECT * FROM tenk1;
-SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
+SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors ORDER BY name;
 ROLLBACK;
 
 -- We should not see the portal that is created internally to
 -- implement EXECUTE in pg_cursors
 PREPARE cprep AS
-  SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
+  SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors ORDER BY name;
 EXECUTE cprep;

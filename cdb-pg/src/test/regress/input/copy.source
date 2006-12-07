@@ -77,7 +77,7 @@ create temp table copytest2 (like copytest);
 
 copy copytest2 from '@abs_builddir@/results/copytest.csv' csv;
 
-select * from copytest except select * from copytest2;
+select * from copytest except select * from copytest2 order by 1,2,3;
 
 truncate copytest2;
 
@@ -87,7 +87,7 @@ copy copytest to '@abs_builddir@/results/copytest.csv' csv quote '''' escape E'\
 
 copy copytest2 from '@abs_builddir@/results/copytest.csv' csv quote '''' escape E'\\';
 
-select * from copytest except select * from copytest2;
+select * from copytest except select * from copytest2 order by 1,2,3;
 
 
 -- test header line feature
