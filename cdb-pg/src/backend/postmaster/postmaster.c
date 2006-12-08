@@ -980,7 +980,8 @@ PostmasterMain(int argc, char *argv[])
 	/*
 	 * We're ready to rock and roll...
 	 */
-	StartupPID = StartupDataBase();
+	if (!SyncMaster)
+		StartupPID = StartupDataBase();
 
 	status = ServerLoop();
 
