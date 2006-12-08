@@ -1434,10 +1434,10 @@ bool		assert_enabled = true;
 #endif
 
 int
-ExceptionalCondition(char *conditionName,
-					 char *errorType,
-					 char *fileName,
-					 int lineNumber)
+ExceptionalCondition(const char *conditionName,
+					 const char *errorType,
+					 const char *fileName,
+					 int         lineNumber)
 {
 	fprintf(stderr, "TRAP: %s(\"%s\", File: \"%s\", Line: %d)\n",
 			errorType, conditionName,

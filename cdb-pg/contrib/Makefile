@@ -7,7 +7,8 @@ include $(top_builddir)/src/Makefile.global
 WANTED_DIRS = \
 		adminpack	\
 		dblink		\
-		tsearch2
+		tsearch2	\
+		xlogdump
 
 ifeq ($(with_openssl),yes)
 WANTED_DIRS += sslinfo
