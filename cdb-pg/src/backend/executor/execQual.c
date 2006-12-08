@@ -633,11 +633,12 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 			if (Mpp_role == MPP_ROLE_EXECUTE)
 			{
 				ParamListInfo paramInfo = econtext->ecxt_param_list_info;
+				int nx = paramInfo->numParams;
+				int ni = econtext->ecxt_estate->es_topPlan->nParamExec;
 				
-				if (paramInfo &&
-					thisParamId <= paramInfo->numParams)
+				if (paramInfo && thisParamId <= ni )
 				{
-					ParamExternData *prm = &paramInfo->params[thisParamId];
+					ParamExternData *prm = &paramInfo->params[thisParamId+nx-ni];
 		
 					if (OidIsValid(prm->ptype))
 					{
