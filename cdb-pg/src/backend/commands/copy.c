@@ -1363,7 +1363,7 @@ DoCopyTo(CopyState cstate)
 		 * doing COPY (SELECT) we just go straight to work, without
 		 * dispatching COPY commands to executors.
 		 */
-		if (Mpp_role == MPP_ROLE_DISPATCH && !cstate->rel)
+		if (Mpp_role == MPP_ROLE_DISPATCH && cstate->rel)
 			CopyToDispatch(cstate);		
 		else
 			CopyTo(cstate);		
