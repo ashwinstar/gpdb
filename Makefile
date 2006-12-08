@@ -20,7 +20,7 @@ CONFIGFLAGS=--enable-thread-safety --enable-multibyte=UNICODE --with-maxbackends
 
 all : devel
 
-.PHONY : RECONFIG BIZDEP HOMEDEP clean distclean tarball
+.PHONY : RECONFIG BIZDEP HOMEDEP clean distclean tarball distprep
 
 test2 :
 	echo "CWD ="$(CURDIR)
@@ -119,3 +119,6 @@ clean :
 distclean :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, no need to clean"; exit 1; fi
 	@cd $(MPPPGDIR); make distclean
+	
+distprep : $(ISCONFIG)
+	@cd $(MPPPGDIR); make distprep

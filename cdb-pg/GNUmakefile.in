@@ -26,7 +26,7 @@ installdirs uninstall:
 	$(MAKE) -C config $@
 
 distprep:
-	$(MAKE) -C doc $@
+#	$(MAKE) -C doc $@
 	$(MAKE) -C src $@
 	$(MAKE) -C config $@
 	$(MAKE) -C contrib $@
