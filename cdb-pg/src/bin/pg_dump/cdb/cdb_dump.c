@@ -62,8 +62,9 @@ extern char* optarg;
 extern int	optind, opterr;
 /*static int	disable_triggers = 0;*/
 static bool	g_verbose;
-static bool	dumpData;			/* dump data using proper insert strings */
+static bool	dumpInserts;			/* dump data using proper insert strings */
 static bool	attrNames;			/* put attr names into insert strings */
+static char *dumpencoding = NULL;
 static bool	schemaOnly;
 static bool	dataOnly;
 static bool	aclsSkip;
@@ -413,6 +414,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		{"inserts", no_argument, NULL, 'd'},
 		{"attribute-inserts", no_argument, NULL, 'D'},
 		{"column-inserts", no_argument, NULL, 'D'},
+		{"encoding", required_argument, NULL, 'E'},
 		{"host", required_argument, NULL, 'h'},
 		{"ignore-version", no_argument, NULL, 'i'},
 		{"no-reconnect", no_argument, NULL, 'R'},
@@ -420,9 +422,11 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		{"no-owner", no_argument, NULL, 'O'},
 		{"port", required_argument, NULL, 'p'},
 		{"schema", required_argument, NULL, 'n'},
+		{"exclude-schema", required_argument, NULL, 'N'},
 		{"schema-only", no_argument, NULL, 's'},
 		{"superuser", required_argument, NULL, 'S'},
 		{"table", required_argument, NULL, 't'},
+		{"exclude-table", required_argument, NULL, 'T'},
 		{"password", no_argument, NULL, 'W'},
 		{"username", required_argument, NULL, 'U'},
 		{"verbose", no_argument, NULL, 'v'},
@@ -437,7 +441,6 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		 * letter, but are available as '-X long-name'
 		 */
 		{"use-set-session-authorization", no_argument, &auth, 1},
-		//{"disable-triggers", no_argument, &disable_triggers, 1},
 		
 		/*
 		 * the following are mpp specific, and don't have an equivalent short option
@@ -462,7 +465,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	g_comment_end[0] = '\0';
 	strcpy(g_opaque_type, "opaque");
 
-	dataOnly = schemaOnly = dumpData = attrNames = false;
+	dataOnly = schemaOnly = dumpInserts = attrNames = false;
 
 	pszProgName = (char *)get_progname(argv[0]);
 	
@@ -523,7 +526,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	}
 	
 
-	while ((c = getopt_long(argc, argv, "acdDh:in:oOp:RsS:t:U:vWxX:",
+	while ((c = getopt_long(argc, argv, "acdDh:in:N:oOp:RsS:t:T:U:vWxX:",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -550,17 +553,22 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				break;
 */
 			case 'd':			/* dump data as proper insert strings */
-				dumpData = true;
+				dumpInserts = true;
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
 				break;
 
 			case 'D':			/* dump data as proper insert strings with
 								 * attr names */
-				dumpData = true;
+				dumpInserts = true;
 				attrNames = true;
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
 				break;
 
+			case 'E':			/* Dump encoding */
+				dumpencoding = Safe_strdup(optarg);
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
+				break;
+				
 /* Invalid for mpp_dump.
 			case 'f':
 				iopt->filename = optarg;
@@ -584,6 +592,11 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				selectSchemaName = Safe_strdup(optarg);
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
 				break;
+				
+			case 'N':			/* exclude schema(s) */
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms );
+				break;
+				
 
 			case 'o':			/* Dump oids */
 				bOids = true;
@@ -618,6 +631,9 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
 				break;
 
+			case 'T':			/* exclude table(s) */
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 				break;
+				
 			case 'u':
 				bForcePassword = true;
 				pInputOpts->pszUserName = simple_prompt("User name: ", 100, true);
@@ -821,7 +837,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		goto cleanup;
 	}
 
-	if ( dumpData && bOids )
+	if ( dumpInserts && bOids )
 	{
 		mpp_err_msg(logError, pszProgName, "INSERT (-d, -D) and OID (-o) options cannot be used together\n");
 		mpp_err_msg(logError, pszProgName, "(The INSERT command cannot set OIDs.)\n");
@@ -894,20 +910,22 @@ void help(const char *pszProgName)
 	//printf(("  -C, --create             include commands to create database in dump\n"));
 	printf(("  -d, --inserts            dump data as INSERT, rather than COPY, commands\n"));
 	printf(("  -D, --column-inserts     dump data as INSERT commands with column names\n"));
-	//printf(("  -e, --comprerssion-program  compression program for remote inline output compression\n"));
+	printf(_("  -E, --encoding=ENCODING     dump the data in encoding ENCODING\n"));
 	printf(("  -n, --schema=SCHEMA      dump the named schema only\n"));
+	printf(_("  -N, --exclude-schema=SCHEMA do NOT dump the named schema(s)\n"));
 	printf(("  -o, --oids               include OIDs in dump\n"));
 	printf(("  -O, --no-owner           do not output commands to set object ownership\n"
 			 "                           in plain text format\n"));
-	//printf(("  -r, --backup-directoru   remote backup directory\n"));
 	printf(("  -s, --schema-only        dump only the schema, no data\n"));
 	printf(("  -S, --superuser=NAME     specify the superuser user name to use in\n"
 			 "                           plain text format\n"));
 	printf(("  -t, --table=TABLE        dump the named table only\n"));
+	printf(_("  -T, --exclude-table=TABLE   do NOT dump the named table(s)\n"));
 	printf(("  -x, --no-privileges      do not dump privileges (grant/revoke)\n"));
-	//printf(("  -X disable-triggers, --disable-triggers\n"
-	//		 "                           disable triggers during data-only restore\n"));
-
+	printf(_("  --use-set-session-authorization\n"
+			 "                              use SESSION AUTHORIZATION commands instead of\n"
+			 "                              ALTER OWNER commands to set ownership\n"));
+	
 	printf(("\nConnection options:\n"));
 	printf(("  -h, --host=HOSTNAME      database server host or socket directory\n"));
 	printf(("  -p, --port=PORT          database server port number\n"));
