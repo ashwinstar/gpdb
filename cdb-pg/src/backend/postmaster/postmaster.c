@@ -970,12 +970,6 @@ PostmasterMain(int argc, char *argv[])
 	 */
 	autovac_init();
 
-	/*
-	 * We're ready to rock and roll...
-	 */
-    if ( !SyncMaster )
-	   StartupPID = StartupDataBase();
-
 #if 0                   /* CDB: This code has been moved to an earlier point. */
 	/*
 	 * Remember postmaster startup time
