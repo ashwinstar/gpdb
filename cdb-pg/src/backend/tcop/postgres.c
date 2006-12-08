@@ -4250,167 +4250,113 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 	 * ----------------
 	 */
 
+	/* Ignore the initial --single argument, if present */
+	if (argc > 1 && strcmp(argv[1], "--single") == 0)
+	{
+		argv++;
+		argc--;
+	}
+
 	/* all options are allowed until '-p' */
 	secure = true;
 	ctx = PGC_POSTMASTER;
 	gucsource = PGC_S_ARGV;		/* initial switches came from command line */
 
-	while ((flag = getopt(argc, argv, "A:B:c:D:d:Eef:FiNOPo:p:S:st:v:W:-:")) != -1)
+	while ((flag = getopt(argc, argv, "A:B:c:D:d:EeFf:h:ijk:lN:nOo:Pp:r:S:sTt:v:W:y:-:")) != -1)
 	{
 		switch (flag)
 		{
 			case 'A':
-#ifdef USE_ASSERT_CHECKING
 				SetConfigOption("debug_assertions", optarg, ctx, gucsource);
-#else
-				ereport(WARNING,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("assert checking is not compiled in")));
-#endif
 				break;
 
 			case 'B':
-
-				/*
-				 * specify the size of buffer pool
-				 */
 				SetConfigOption("shared_buffers", optarg, ctx, gucsource);
 				break;
 
-			case 'D':			/* PGDATA or config directory */
+			case 'D':
 				if (secure)
 					userDoption = optarg;
 				break;
 
-			case 'd':			/* debug level */
+			case 'd':
 				debug_flag = atoi(optarg);
 				break;
 
 			case 'E':
-
-				/*
-				 * E - echo the query the user entered
-				 */
 				EchoQuery = true;
 				break;
 
 			case 'e':
-
-				/*
-				 * Use European date input format (DMY)
-				 */
 				SetConfigOption("datestyle", "euro", ctx, gucsource);
 				break;
 
 			case 'F':
-
-				/*
-				 * turn off fsync
-				 */
 				SetConfigOption("fsync", "false", ctx, gucsource);
 				break;
 
 			case 'f':
-
-				/*
-				 * f - forbid generation of certain plans
-				 */
-				tmp = NULL;
-				switch (optarg[0])
-				{
-					case 's':	/* seqscan */
-						tmp = "enable_seqscan";
-						break;
-					case 'i':	/* indexscan */
-						tmp = "enable_indexscan";
-						break;
-					case 't':	/* tidscan */
-						tmp = "enable_tidscan";
-						break;
-					case 'n':	/* nestloop */
-						tmp = "enable_nestloop";
-						break;
-					case 'm':	/* mergejoin */
-						tmp = "enable_mergejoin";
-						break;
-					case 'h':	/* hashjoin */
-						tmp = "enable_hashjoin";
-						break;
-					default:
-						errs++;
-				}
-				if (tmp)
-					SetConfigOption(tmp, "false", ctx, gucsource);
+				if (!set_plan_disabling_options(optarg, ctx, gucsource))
+					errs++;
 				break;
 
-			case 'N':
+			case 'h':
+				SetConfigOption("listen_addresses", optarg, ctx, gucsource);
+				break;
 
-				/*
-				 * N - Don't use newline as a query delimiter
-				 */
+			case 'i':
+				SetConfigOption("listen_addresses", "*", ctx, gucsource);
+				break;
+
+			case 'j':
 				UseNewLine = 0;
 				break;
 
-			case 'O':
-
-				/*
-				 * allow system table structure modifications
-				 */
-				if (secure)		/* XXX safe to allow from client??? */
-					allowSystemTableMods = true;
+			case 'k':
+				SetConfigOption("unix_socket_directory", optarg, ctx, gucsource);
 				break;
 
-			case 'P':
+			case 'l':
+				SetConfigOption("ssl", "true", ctx, gucsource);
+				break;
 
-				/*
-				 * ignore system indexes
-				 *
-				 * As of PG 7.4 this is safe to allow from the client, since
-				 * it only disables reading the system indexes, not
-				 * writing them.  Worst case consequence is slowness.
-				 */
-				SetConfigOption("ignore_system_indexes", "true", ctx, gucsource);
+			case 'N':
+				SetConfigOption("max_connections", optarg, ctx, gucsource);
+				break;
+
+			case 'n':
+				/* ignored for consistency with postmaster */
+				break;
+
+			case 'O':
+				SetConfigOption("allow_system_table_mods", "true", ctx, gucsource);
 				break;
 
 			case 'o':
+				errs++;
+				break;
 
-				/*
-				 * o - send output (stdout and stderr) to the given file
-				 */
+			case 'P':
+				SetConfigOption("ignore_system_indexes", "true", ctx, gucsource);
+				break;
+
+			case 'p':
+				SetConfigOption("port", optarg, ctx, gucsource);
+				break;
+
+			case 'r':
+				/* send output (stdout and stderr) to the given file */
 				if (secure)
 					StrNCpy(OutputFileName, optarg, MAXPGPATH);
 				break;
 
-			case 'p':
-
-				/*
-				 * p - special flag passed if backend was forked by a
-				 * postmaster.
-				 */
-				if (secure)
-				{
-					dbname = strdup(optarg);
-
-					secure = false;		/* subsequent switches are NOT
-										 * secure */
-					ctx = PGC_BACKEND;
-					gucsource = PGC_S_CLIENT;
-				}
-				break;
-
 			case 'S':
-
-				/*
-				 * S - amount of sort memory to use in 1k bytes
-				 */
 				SetConfigOption("work_mem", optarg, ctx, gucsource);
 				break;
 
 			case 's':
 
 				/*
-				 * s - report usage statistics (timings) after each query
-				 *
 				 * Since log options are SUSET, we need to postpone unless
 				 * still in secure context
 				 */
@@ -4421,43 +4367,25 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 									ctx, gucsource);
 				break;
 
-			case 't':
-				/* ---------------
-				 *	tell postgres to report usage statistics (timings) for
-				 *	each query
-				 *
-				 *	-tpa[rser] = print stats for parser time of each query
-				 *	-tpl[anner] = print stats for planner time of each query
-				 *	-te[xecutor] = print stats for executor time of each query
-				 *	caution: -s can not be used together with -t.
-				 * ----------------
-				 */
-				tmp = NULL;
-				switch (optarg[0])
-				{
-					case 'p':
-						if (optarg[1] == 'a')
-							tmp = "log_parser_stats";
-						else if (optarg[1] == 'l')
-							tmp = "log_planner_stats";
-						else
-							errs++;
-						break;
-					case 'e':
-						tmp = "log_executor_stats";
-						break;
-					default:
-						errs++;
-						break;
-				}
-				if (tmp)
-				{
-					if (ctx == PGC_BACKEND)
-						PendingConfigOption(tmp, "true");
-					else
-						SetConfigOption(tmp, "true", ctx, gucsource);
-				}
+			case 'T':
+				/* ignored for consistency with postmaster */
 				break;
+
+			case 't':
+				{
+					const char *tmp = get_stats_option_name(optarg);
+
+					if (tmp)
+					{
+						if (ctx == PGC_BACKEND)
+							PendingConfigOption(tmp, "true");
+						else
+							SetConfigOption(tmp, "true", ctx, gucsource);
+					}
+					else
+						errs++;
+					break;
+				}
 
 			case 'v':
 				if (secure)
@@ -4465,11 +4393,24 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 				break;
 
 			case 'W':
+				SetConfigOption("post_auth_delay", optarg, ctx, gucsource);
+				break;
+
+
+			case 'y':
 
 				/*
-				 * wait N seconds to allow attach from a debugger
+				 * y - special flag passed if backend was forked by a
+				 * postmaster.
 				 */
-				pg_usleep(atoi(optarg) * 1000000L);
+				if (secure)
+				{
+					dbname = strdup(optarg);
+
+					secure = false;		/* subsequent switches are NOT secure */
+					ctx = PGC_BACKEND;
+					gucsource = PGC_S_CLIENT;
+				}
 				break;
 
 			case 'c':
@@ -4494,8 +4435,8 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 					}
 
 					/*
-					 * If a SUSET option, must postpone evaluation, unless
-					 * we are still reading secure switches.
+					 * If a SUSET option, must postpone evaluation, unless we
+					 * are still reading secure switches.
 					 */
 					if (ctx == PGC_BACKEND && IsSuperuserConfigOption(name))
 						PendingConfigOption(name, value);
