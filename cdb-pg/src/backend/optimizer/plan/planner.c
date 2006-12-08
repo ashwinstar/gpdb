@@ -19,6 +19,7 @@
 #include <limits.h>
 
 #include "catalog/pg_operator.h"
+#include "catalog/pg_type.h"
 #include "executor/executor.h"
 #include "executor/execHashagg.h"
 #include "executor/nodeAgg.h"
@@ -1477,7 +1478,10 @@ preprocess_limit(PlannerInfo *root, double tuple_fraction,
 			}
 			else
 			{
-				*count_est = DatumGetInt64(((Const *) est)->constvalue);
+				if (((Const *)est)->consttype == INT4OID)
+					*count_est = DatumGetInt32(((Const *) est)->constvalue);
+				else
+					*count_est = DatumGetInt64(((Const *) est)->constvalue);
 				if (*count_est <= 0)
 					*count_est = 1;		/* force to at least 1 */
 			}
@@ -1500,7 +1504,11 @@ preprocess_limit(PlannerInfo *root, double tuple_fraction,
 			}
 			else
 			{
+				if (((Const *)est)->consttype == INT4OID)
+					*offset_est = DatumGetInt32(((Const *) est)->constvalue);
+				else
 				*offset_est = DatumGetInt64(((Const *) est)->constvalue);
+
 				if (*offset_est < 0)
 					*offset_est = 0;	/* less than 0 is same as 0 */
 			}

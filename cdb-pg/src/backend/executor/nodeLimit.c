@@ -242,7 +242,7 @@ recompute_limits(LimitState *node)
 	if (node->limitOffset)
 	{
 		node->offset =
-			DatumGetInt64(ExecEvalExprSwitchContext(node->limitOffset,
+			DatumGetInt32(ExecEvalExprSwitchContext(node->limitOffset,
 													econtext,
 													&isNull,
 													NULL));
@@ -262,7 +262,7 @@ recompute_limits(LimitState *node)
 	{
 		node->noCount = false;
 		node->count =
-			DatumGetInt64(ExecEvalExprSwitchContext(node->limitCount,
+			DatumGetInt32(ExecEvalExprSwitchContext(node->limitCount,
 													econtext,
 													&isNull,
 													NULL));
