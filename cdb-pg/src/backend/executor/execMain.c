@@ -1292,7 +1292,9 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 *
 	 * If EXPLAIN, skip creating the "into" relation.
 	 */
-	if (estate->es_select_into && !(eflags & EXEC_FLAG_EXPLAIN_ONLY))
+	if (estate->es_select_into && !(eflags & EXEC_FLAG_EXPLAIN_ONLY) && 
+			/* Only create the table if root slice */
+	        (Mpp_role != MPP_ROLE_EXECUTE || Mpp_is_writer) )
 		OpenIntoRel(queryDesc);
 }
 
@@ -2860,6 +2862,10 @@ OpenIntoRel(QueryDesc *queryDesc)
 	Oid			intoRelationId;
 	TupleDesc	tupdesc;
 	DR_intorel *myState;
+    Oid         intoOid;
+    Oid         intoComptypeOid;
+    MppPolicy          *targetPolicy = parseTree->intoPolicy;
+
 
 	/*
 	 * Check consistency of arguments
@@ -2868,6 +2874,11 @@ OpenIntoRel(QueryDesc *queryDesc)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("ON COMMIT can only be used on temporary tables")));
+
+	/* MPP specific stuff */
+	intoName = parseTree->into->relname;
+    intoOid = parseTree->intoOidInfo.relOid;
+    intoComptypeOid = parseTree->intoOidInfo.comptypeOid;
 
 	/*
 	 * Find namespace to create in, check its permissions
@@ -2927,7 +2938,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 	intoRelationId = heap_create_with_catalog(intoName,
 											  namespaceId,
 											  tablespaceId,
-											  InvalidOid,
+											  intoOid,			/* MPP */
 											  GetUserId(),
 											  tupdesc,
 											  RELKIND_RELATION,
@@ -2935,10 +2946,10 @@ OpenIntoRel(QueryDesc *queryDesc)
 											  true,
 											  0,
 											  parseTree->intoOnCommit,
-											  NULL,  /* TODO */
+											  targetPolicy,  	/* MPP */
 											  reloptions,
 											  allowSystemTableMods,
-											  NULL /* TODO */);
+											  &intoComptypeOid 	/* MPP */);
 
 	FreeTupleDesc(tupdesc);
 
@@ -2953,7 +2964,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 	 * AlterTableCreateToastTable ends with CommandCounterIncrement(), so that
 	 * the TOAST table will be visible for insertion.
 	 */
-	AlterTableCreateToastTable(intoRelationId);
+	AlterTableCreateToastTableWithOid(intoRelationId, parseTree->intoOidInfo.toastOid, parseTree->intoOidInfo.toastIndexOid, &parseTree->intoOidInfo.toastComptypeOid);
 
 	/*
 	 * And open the constructed table for writing.
