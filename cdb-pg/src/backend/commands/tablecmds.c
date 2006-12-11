@@ -2596,58 +2596,6 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, int oidInfoCo
 		case AT_AlterColumnType:		/* ALTER COLUMN TYPE */
 			ATExecAlterColumnType(tab, rel, cmd->name, (TypeName *) cmd->def);
 			break;
-#if 0
-		case AT_ToastTable:		/* CREATE TOAST TABLE */
-		{
-			Oid tOid = InvalidOid;
-			Oid tiOid = InvalidOid;
-			Oid	*toastComptypeOid = NULL;
-			if (Mpp_role == MPP_ROLE_DISPATCH && oidInfo != NULL )
-			{
-				Relation	pg_class_desc;
-				Relation	rel;
-				Assert(oidInfo != NULL);
-				Assert(oidInfoCount > 0);
-			
-				pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
-				rel = heap_open(tab->relid, AccessExclusiveLock);
-			
-				if (rel->rd_rel->reltoastrelid == InvalidOid)
-				{
-					/*
-					 * Pre-Allocate an OID for the toast table and toast index, just in case needed.
-					 *
-					 * The OID will be the relfilenode as well, so make sure it doesn't collide
-					 * with either pg_class OIDs or existing physical files.
-					 */
-												
-					oidInfo[0].toastOid = GetNewRelFileNode(rel->rd_rel->reltablespace, false,  pg_class_desc);
-					
-					oidInfo[0].toastIndexOid = GetNewRelFileNode(rel->rd_rel->reltablespace, false,  pg_class_desc);
-					
-					tOid = oidInfo[0].toastOid;
-					tiOid = oidInfo[0].toastIndexOid;
-					toastComptypeOid = &oidInfo[0].toastComptypeOid;
-					*toastComptypeOid = InvalidOid;
-				}
-											
-				heap_close(rel, NoLock);
-				heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
-				
-			}
-			if (Mpp_role == MPP_ROLE_EXECUTE && oidInfo != NULL)
-			{
-				Assert(oidInfo != NULL);
-				Assert(oidInfoCount > 0);
-				tOid = oidInfo[0].toastOid;
-				tiOid = oidInfo[0].toastIndexOid;
-				toastComptypeOid = &oidInfo[0].toastComptypeOid;
-			}
-
-			AlterTableCreateToastTableWithOid(RelationGetRelid(rel), tOid, tiOid, toastComptypeOid);
-		}
-			break;
-#endif
 		case AT_ChangeOwner:	/* ALTER OWNER */
 			ATExecChangeOwner(RelationGetRelid(rel),
 							  get_roleid_checked(cmd->name),
