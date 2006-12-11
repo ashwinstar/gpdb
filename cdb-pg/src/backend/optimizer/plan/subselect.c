@@ -890,7 +890,7 @@ cdb_convert_EXISTS_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *su
      */
     if (!contain_vars_of_level_or_above(sublink->subselect, 1))
     {
-        subselect->limitCount = (Node *)makeConst(INT4OID, sizeof(int4), Int32GetDatum(1),
+        subselect->limitCount = (Node *)makeConst(INT8OID, sizeof(int8), Int64GetDatum(1),
                                                   false, true);
         return make_and_qual(limitqual, (Node *)sublink);
     }
