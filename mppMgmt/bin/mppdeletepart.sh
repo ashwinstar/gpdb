@@ -2,7 +2,7 @@
 #	Filename:-		mppdeletepart.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
-#	Status:-		Under creation
+#	Status:-		Released
 #	Author:-		G Coombe
 #	Contact:-		gcoombe@greenplum.com
 #	Release date:-		July 2006
@@ -481,7 +481,7 @@ PROCESS_DELETION () {
 	for C_NAME in ${CHILD_DELETE_ARRAY[@]}
 	do
 		LOG_MSG "[INFO]:-Starting delete cascade of $C_NAME"
-		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"drop table $C_NAME cascade;"	
+		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"drop table ${SCHEMA_NAME}.$C_NAME cascade;"	
 		ERROR_CHK $? "delete of child table $C_NAME" 1	
 	done
 	if [ $ARCHIVE -eq 1 ] && [ ${#CHILD_WITH_REC_ARRAY[@]} -ne 0 ];then
@@ -497,8 +497,8 @@ SECURE_RECORDS () {
 	for SAVE_NAME in ${CHILD_WITH_REC_ARRAY[@]}
 	do
 		LOG_MSG "[INFO]:-Securing records from $SAVE_NAME to $ARCHIVE_TABLE"
-		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"insert into $ARCHIVE_TABLE (select * from $SAVE_NAME);"
-	ERROR_CHK $? "secure $SAVE_NAME records to $ARCHIVE_TABLE" 2
+		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"insert into $ARCHIVE_TABLE (select * from ${SCHEMA_NAME}.$SAVE_NAME);"
+	ERROR_CHK $? "secure ${SCHEMA_NAME}.$SAVE_NAME records to $ARCHIVE_TABLE" 2
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

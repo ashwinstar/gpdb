@@ -2,7 +2,7 @@
 #	Filename:-		mppaddpart.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
-#	Status:-		Beta testing complete
+#	Status:-		Released
 #	Author:-		G Coombe
 #	Contact:-		gcoombe@greenplum.com
 #	Release date:-		July 2006
@@ -613,7 +613,7 @@ GENERATE_SQL () {
 			$ECHO "CREATE OR REPLACE RULE rule_${CHILD_NAME}" >> $TMP_FILE
                         $ECHO "AS ON INSERT TO ${PARENT_TABLE_NAME}" >> $TMP_FILE
                         $ECHO "WHERE ( `$ECHO ${RULE_ARRAY[$VECTOR]}|$TR '~' ' '` )" >> $TMP_FILE
-                        $ECHO "DO INSTEAD INSERT INTO ${CHILD_NAME}" >> $TMP_FILE
+                        $ECHO "DO INSTEAD INSERT INTO ${CHILD_TAB_FULL}" >> $TMP_FILE
                         $ECHO "VALUES (" >> $TMP_FILE
                         COL_VEC=0
                         while [ $COL_VEC -lt $COL_COUNT ]
