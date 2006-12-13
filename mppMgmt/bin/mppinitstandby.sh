@@ -222,7 +222,7 @@ STOP_MASTER_DB () {
 	else
 		LOG_MSG "[INFO]:-Commencing shutdown of Master instance"
 		if [ -f $MPPSTOP ];then
-			$MPPSTOP -afy
+			$MPPSTOP -d $MASTER_DATA_DIRECTORY -af
 			ERROR_CHK $? "stop Master instance" 1
 		else
 			ERROR_EXIT "[FATAL]:-Unable to locate $MPPSTOP" 2
@@ -309,7 +309,7 @@ START_ARRAY () {
 		ERROR_EXIT "[FATAL]:-Could not locate $MPPSTART to start MPP instance" 2
 	else
 		LOG_MSG "[INFO]:-Starting the MPP instance"
-		$MPPSTART -d $MASTER_DATA_DIRECTORY -a -y
+		$MPPSTART -d $MASTER_DATA_DIRECTORY -a
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
