@@ -665,39 +665,64 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
 	}
 }
 
+
+/* Special MPP-only method for executing SQL statements.  Specifies a global
+ * transaction context that the statement should be executed within.
+ *
+ * This should *ONLY* ever be used by the MPP Query Dispatcher and NEVER (EVER)
+ * by anyone else.
+ *
+ * snapshot - serialized form of SnapshotInfo node.
+ * xid      - Global Transaction Id to use.
+ * flags    - specifies additional processing instructions to the remote server.
+ *			  e.g.  Auto explicitly start a transaction before executing this
+ *		      statement.
+ * mpp_command_count - Client request serial# to be passed to the qExec.
+ */
 /*
  * Our goal is to build one copy of the MPP query stucture, and to
  * have each dispatcher connection hold pointers into the single copy.
- * 
+ * query
  * So the code below does the same work, roughly as:
  * 
  * 	if (pqPutMsgStart('M', false, conn) < 0 ||
  *		pqPutInt(mpp_command_count, 4, conn ) < 0 ||
  *		pqPuts(snapshotInfo, conn ) < 0 ||
  *		pqPutInt(flags, 4, conn ) < 0 ||
- *		pqPuts(query, conn) < 0 ||
+ *		pqPuts(command, conn) < 0 ||
  *		pqPutMsgEnd(conn) < 0)
  *
  * The remaining work (protocol xmit state, mostly) is done by
  * PQsendMppQuery_shared().
  */
 char *
-PQbuildMppQueryString(const char  *query,
-					  int          query_length,
+PQbuildMppQueryString(const char  *command,
+					  int          command_len,
+					  const char  *querytree,
+					  int          querytree_len,
+					  const char  *plantree,
+					  int          plantree_len,
+					  const char  *params,
+					  int          params_len,
+					  const char  *sliceinfo,
+					  int          sliceinfo_len,
 					  const char  *snapshotInfo,
+					  int		   snapshotInfo_len,
 					  int          flags,
 					  int          mpp_command_count,
+					  int		   localSlice,
+					  Oid			sessionUserId,
+					  Oid			outerUserId,
+					  Oid			currentUserId,
 					  int         *final_len)
 {
 	int	tmp, len;
-	int	total_query_len, snapshot_len;
+	int	total_query_len;
 	char *shared_query, *pos;
 
-	snapshot_len = strlen(snapshotInfo) + 1;
-
-	total_query_len = 5 /* overhead */ + 
-		4 /* comamnd count */ + snapshot_len +
-		4 /* flags */ + query_length;
+	total_query_len = 5 /* overhead */ + 12 /* userids */ + 24 /* lengths */ +
+		4 /* comamnd count */ + snapshotInfo_len +
+		4 /* flags */ + command_len + querytree_len + plantree_len + params_len + sliceinfo_len + 4;
 
 	shared_query = malloc(total_query_len);
 	if (shared_query == NULL)
@@ -717,16 +742,86 @@ PQbuildMppQueryString(const char  *query,
 	tmp = htonl(mpp_command_count);
 	memcpy(pos, &tmp, 4);
 	pos += 4;
+	
+	tmp = htonl(sessionUserId);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(outerUserId);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(currentUserId);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(localSlice);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(command_len);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(querytree_len);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(plantree_len);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(params_len);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(sliceinfo_len);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(snapshotInfo_len);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
 
-	memcpy(pos, snapshotInfo, snapshot_len);
-	pos += snapshot_len;
+	if (snapshotInfo_len > 0)
+	{
+		memcpy(pos, snapshotInfo, snapshotInfo_len);
+		pos += snapshotInfo_len;
+	}
 
 	tmp = htonl(flags);
 	memcpy(pos, &tmp, 4);
 	pos += 4;
 
-	memcpy(pos, query, query_length);
-	pos += query_length;
+	if (command_len > 0)
+	{
+		memcpy(pos, command, command_len);
+		pos += command_len;
+	}
+	
+	if (querytree_len > 0)
+	{
+		memcpy(pos, querytree, querytree_len);
+		pos += querytree_len;
+	}
+	
+	if (plantree_len > 0)
+	{
+		memcpy(pos, plantree, plantree_len);
+		pos += plantree_len;
+	}
+	
+	if (params_len > 0)
+	{
+		memcpy(pos, params, params_len);
+		pos += params_len;
+	}
+	
+	if (sliceinfo_len > 0)
+	{
+		memcpy(pos, sliceinfo, sliceinfo_len);
+		pos += sliceinfo_len;
+	}
 
 	len = pos - shared_query - 1;
 
@@ -769,84 +864,6 @@ PQsendMppQuery_shared(PGconn *conn, char *shared_query, int query_len)
 	conn->outMsgStart = 0;
 	conn->outMsgEnd = query_len;
 	conn->outCount = query_len;
-
-	/* remember we are using simple query protocol */
-	conn->queryclass = PGQUERY_SIMPLE;
-
-	/*
-	 * Give the data a push.  In nonblock mode, don't complain if we're unable
-	 * to send it all; PQgetResult() will do any additional flushing needed.
-	 */
-	if (pqFlush(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		return 0;
-	}
-
-	/* OK, it's launched! */
-	conn->asyncStatus = PGASYNC_BUSY;
-	return 1;
-}
-
-/* Special MPP-only method for executing SQL statements.  Specifies a global
- * transaction context that the statement should be executed within.
- *
- * This should *ONLY* ever be used by the MPP Query Dispatcher and NEVER (EVER)
- * by anyone else.
- *
- * snapshot - serialized form of SnapshotInfo node.
- * xid      - Global Transaction Id to use.
- * flags    - specifies additional processing instructions to the remote server.
- *			  e.g.  Auto explicitly start a transaction before executing this
- *		      statement.
- * mpp_command_count - Client request serial# to be passed to the qExec.
- */
-int
-PQsendMppQuery(PGconn      *conn,
-               const char  *query,
-               const char  *snapshotInfo,
-               int          flags,
-               int          mpp_command_count)
-{
-	int query_total_size;
-
-	if (!PQsendQueryStart(conn))
-		return 0;
-
-	if (!query)
-	{
-		printfPQExpBuffer(&conn->errorMessage,
-						  libpq_gettext("command string is a null pointer\n"));
-		return 0;
-	}
-
-	if (!snapshotInfo)
-	{
-		printfPQExpBuffer(&conn->errorMessage,
-						  "snapshotInfo string is a null pointer\n");
-		return 0;				
-	}
-
-	/* construct the outgoing MppQuery message we want to check that
-	 * we have sufficient space up-front, before we start messing
-	 * around with our transmit state */
-	query_total_size = 16 /* overhead */ + 
-		4 /* comamnd count */ + (strlen(snapshotInfo) + 1) /* snapshot */ +
-		4 /* flags */ + (strlen(query) + 1) /* query text */;
-
-	if (pqCheckOutBufferSpace(query_total_size, conn))
-		return 0;
-
-	if (pqPutMsgStart('M', false, conn) < 0 ||
-		pqPutInt(mpp_command_count, 4, conn ) < 0 ||
-		pqPuts(snapshotInfo, conn ) < 0 ||
-		pqPutInt(flags, 4, conn ) < 0 ||
-		pqPuts(query, conn) < 0 ||
-		pqPutMsgEnd(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		return 0;
-	}
 
 	/* remember we are using simple query protocol */
 	conn->queryclass = PGQUERY_SIMPLE;

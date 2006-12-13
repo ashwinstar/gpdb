@@ -33,8 +33,16 @@ typedef struct DispatchCommandParms
 	/*
 	 * The SQL command
 	 */
-	char		*szCommand;
-	int			szCommandlen;
+	char		*strCommand;
+	int			strCommandlen;
+	char		*serializedQuerytree;
+	int			serializedQuerytreelen;
+	char		*serializedPlantree;
+	int			serializedPlantreelen;
+	char		*serializedParams;
+	int			serializedParamslen;
+	char		*serializedSliceInfo;
+	int			serializedSliceInfolen;
 
 	char		*query_text;
 	int			query_text_len;
@@ -42,7 +50,10 @@ typedef struct DispatchCommandParms
 	/*
 	 * serialized snapshot string
 	 */
-	char	   *szSnapshot;
+	char	   *serializedSnapshot;
+	int			serializedSnapshotlen;
+	
+	int			localSlice;
 	
 	/*
 	 * options for controlling certain behavior
@@ -104,7 +115,7 @@ cdbdisp_startDtxTransaction(void);
 
 /*
  * cdbdisp_dispatchToGang:
- * Send the szCommand SQL statement to the subset of all segdbs in the cluster
+ * Send the strCommand SQL statement to the subset of all segdbs in the cluster
  * specified by the gang parameter.  cancelOnError indicates whether an error
  * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
@@ -126,7 +137,7 @@ cdbdisp_startDtxTransaction(void);
  * The CdbDispatchResults object owns some malloc'ed storage, so the caller
  * must make certain to free it by calling cdbdisp_destroyDispatchResults().
  *
- * When dispatchResults->cancelOnError is false, szCommand is to be
+ * When dispatchResults->cancelOnError is false, strCommand is to be
  * dispatched to every connected gang member if possible, despite any
  * cancellation requests, QE errors, connection failures, etc.
  *
@@ -136,8 +147,17 @@ cdbdisp_startDtxTransaction(void);
  */
 void
 cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads,
-					   const char                  *szCommand,
-					   const char				   *szSnapshotInfo,
+					   const char                  *strCommand,
+					   const char				   *serializedQuerytree,
+					   int							serializedQuerytreelen,
+					   const char 				   *serializedPlantree,
+					   int							serializedPlantreelen,
+					   const char				   *serializedParams,
+					   int							serializedParamslen,
+					   const char				   *serializedSliceInfo,	
+					   int							serializedSliceInfolen,		
+					   const char				   *serializedSnapshotInfo,
+					   int							serializedSnapshotInfolen,
 					   int							txnOptions,
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,
@@ -177,7 +197,7 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
  * by the caller.
  */
 struct pg_result **             /* returns ptr to array of PGresult ptrs */
-cdbdisp_dispatchRMCommand(const char   *szCommand,
+cdbdisp_dispatchRMCommand(const char   *strCommand,
 						  bool			withSnapshot,
 						  bool			dispatchToMirrors,
                           StringInfo    errmsgbuf,
@@ -187,7 +207,7 @@ cdbdisp_dispatchRMCommand(const char   *szCommand,
 
 /*
  * cdbdisp_dispatchCommand:
- * Send ths szCommand SQL statement to all segdbs in the cluster
+ * Send ths strCommand SQL statement to all segdbs in the cluster
  * cancelOnError indicates whether an error
  * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
@@ -213,7 +233,9 @@ cdbdisp_dispatchRMCommand(const char   *szCommand,
  * suggested that the caller use cdbdisp_finishCommand().
  */
 void
-cdbdisp_dispatchCommand(const char                 *szCommand,
+cdbdisp_dispatchCommand(const char                 *strCommand,
+						const char			   	   *serializedQuerytree,
+						int							serializedQuerytreelen,
                         bool                        cancelOnError,
                         bool						startTransaction,
                         bool						withSnapshot,
@@ -265,7 +287,7 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
  * transaction or not.
  */
 void
-CdbDoCommand(const char *szCommand, bool cancelOnError, bool startTransaction, bool dispatchToMirrors, bool dispatchToPrimaries);
+CdbDoCommand(const char *strCommand, bool cancelOnError, bool startTransaction, bool dispatchToMirrors, bool dispatchToPrimaries);
 
 
 /*
@@ -273,7 +295,7 @@ CdbDoCommand(const char *szCommand, bool cancelOnError, bool startTransaction, b
  * gangs, both reader and writer
  */
 void
-CdbDoCommandOnAllGangs(const char *szCommand, bool cancelOnError, bool startTransaction);
+CdbDoCommandOnAllGangs(const char *strCommand, bool cancelOnError, bool startTransaction);
 
 /*--------------------------------------------------------------------*/
 

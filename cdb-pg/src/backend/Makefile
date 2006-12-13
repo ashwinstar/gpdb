@@ -29,7 +29,7 @@ OBJS = $(SUBSYSOBJS) $(LOCALOBJS) $(top_builddir)/src/port/libpgport_srv.a
 LIBS := $(filter-out -lpgport, $(LIBS)) $(LDAP_LIBS_BE)
 
 # The backend doesn't need everything that's in LIBS, however
-LIBS := $(filter-out -lz -lreadline -ledit -ltermcap -lncurses -lcurses, $(LIBS))
+LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses, $(LIBS))
 
 ##########################################################################
 

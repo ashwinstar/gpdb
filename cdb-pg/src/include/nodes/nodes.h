@@ -311,7 +311,6 @@ typedef enum NodeTag
 	T_AlterOwnerStmt,
 	T_DropOwnedStmt,
 	T_ReassignOwnedStmt,
-	T_CdbExecStmt,
 
 	T_A_Expr = 800,
 	T_ColumnRef,

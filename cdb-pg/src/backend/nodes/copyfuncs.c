@@ -2832,18 +2832,6 @@ _copyReassignOwnedStmt(ReassignOwnedStmt *from)
 }
 
 
-static CdbExecStmt *
-_copyCdbExecStmt(CdbExecStmt *from)
-{
-	CdbExecStmt *newnode = makeNode(CdbExecStmt);
-	
-	COPY_NODE_FIELD(ser_query);
-	COPY_NODE_FIELD(ser_plan);
-	COPY_NODE_FIELD(ser_params);
-	COPY_NODE_FIELD(ser_sliceinfo);
-	
-	return newnode;
-}
 
 static CdbProcess *
 _copyCdbProcess(CdbProcess *from)
@@ -3598,9 +3586,6 @@ copyObject(void *from)
 		case T_FuncWithArgs:
 			retval = _copyFuncWithArgs(from);
 			break;
-		case T_CdbExecStmt:
-			retval = _copyCdbExecStmt(from);
-			break;	
 		case T_CdbProcess:
 			retval = _copyCdbProcess(from);
 			break;

@@ -2017,15 +2017,6 @@ _outCopyStmt(StringInfo str, CopyStmt *node)
 	WRITE_NODE_FIELD(options);
 }
 
-static void
-_outCdbExecStmt(StringInfo str, CdbExecStmt *node)
-{
-	WRITE_NODE_TYPE("MPPEXECSTMT");
-	WRITE_NODE_FIELD(ser_query);
-	WRITE_NODE_FIELD(ser_plan);
-	WRITE_NODE_FIELD(ser_params);
-	WRITE_NODE_FIELD(ser_sliceinfo);
-}
 
 static void
 _outGrantStmt(StringInfo str, GrantStmt *node)
@@ -2258,7 +2249,6 @@ _outQuery(StringInfo str, Query *node)
 			case T_AlterFunctionStmt:
 			
 			case T_TransactionStmt:
-			case T_CdbExecStmt:
 			case T_GrantStmt:
 			case T_GrantRoleStmt:
 			case T_LockStmt:
@@ -3239,9 +3229,6 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_CopyStmt:
 				_outCopyStmt(str, obj);
-				break;
-			case T_CdbExecStmt:
-				_outCdbExecStmt(str, obj);
 				break;
 			case T_SelectStmt:
 				_outSelectStmt(str, obj);

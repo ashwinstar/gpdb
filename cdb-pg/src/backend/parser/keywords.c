@@ -222,7 +222,6 @@ static const ScanKeyword ScanKeywords[] = {
 	{"mode", MODE},
 	{"month", MONTH_P},
 	{"move", MOVE},
-	{"mppexec", MPPEXEC},
 	{"names", NAMES},
 	{"national", NATIONAL},
 	{"natural", NATURAL},

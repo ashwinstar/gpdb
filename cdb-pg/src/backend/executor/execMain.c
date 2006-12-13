@@ -249,7 +249,7 @@ Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPol
             queryDesc->doInstrument = sliceTable->doInstrument;
 		}
     /* calling set_ps_display so that slice number shows during execution */
-    set_ps_display("MPPEXEC", false);
+    //set_ps_display("MPPEXEC", false); // Should already be in ps display now
 	}
 
 	/*

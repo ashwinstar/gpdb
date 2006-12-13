@@ -1768,7 +1768,7 @@ abortRMInDoubtTransactions(HTAB *htab)
 
 		elog(DEBUG3, "Aborting in-doubt transaction with GID: %s", entry->gid);
 
-		cdbdisp_dispatchCommand(cmd,
+		cdbdisp_dispatchCommand(cmd, NULL, 0,
 								/* cancelonError */		false,
 								/* startTrans */		false,
 								/* withSnapshot */		false,

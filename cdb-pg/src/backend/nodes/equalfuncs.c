@@ -1540,15 +1540,6 @@ _equalDropOwnedStmt(DropOwnedStmt *a, DropOwnedStmt *b)
 	return true;
 }
 
-static bool
-_equalCdbExecStmt(CdbExecStmt *a, CdbExecStmt *b)
-{
-	COMPARE_NODE_FIELD(ser_query);
-	COMPARE_NODE_FIELD(ser_plan);
-	COMPARE_NODE_FIELD(ser_params);
-
-	return true;
-}
 
 static bool
 _equalCreateQueueStmt(CreateQueueStmt *a, CreateQueueStmt *b)
@@ -2331,10 +2322,6 @@ equal(void *a, void *b)
 			retval = _equalReassignOwnedStmt(a, b);
 			break;
 
-
-		case T_CdbExecStmt:
-			retval = _equalCdbExecStmt(a, b);
-			break;
 		case T_CreateQueueStmt:
 			retval = _equalCreateQueueStmt(a, b);
 			break;

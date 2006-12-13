@@ -401,10 +401,13 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 	 */
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
+		struct CdbDispatchResults *primaryResults;
+		struct CdbDispatchResults *mirrorResults;
+		CdbDispatchCmdThreads *dispatchThreads;
 		char	   *pszVacuum;
+		int			pszVacuum_len;
 
 		Query	   *q;
-		StringInfoData buffer;
 
 		Assert(Mpp_role == MPP_ROLE_DISPATCH);
 
@@ -413,22 +416,15 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 		 */
 		q = makeNode(Query);
 
-		initStringInfo(&buffer);
 
 		q->commandType = CMD_UTILITY;
 		q->utilityStmt = (Node *) vacstmt;
 		q->querySource = QSRC_ORIGINAL;
 		q->canSetTag = true;	/* ? */
 
-		pszVacuum = serializeNode((Node *) q, NULL);
+		pszVacuum = serializeNode((Node *) q, &pszVacuum_len);
 
 		Assert(pszVacuum != NULL);
-
-		elog(DEBUG5, "Command %s", pszVacuum);
-
-		appendStringInfo(&buffer, "mppexec %d %d %d '%s' ''", GetSessionUserId(),GetOuterUserId(),GetUserId(),pszVacuum);
-
-		pfree(pszVacuum);
 
 
 		/*
@@ -450,23 +446,37 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 		 */
 		if((vacstmt->vacuum && !vacstmt->analyze) || (!vacstmt->vacuum && vacstmt->analyze))
 		{
+			
+			
 			/* statement is either VACUUM with no ANALYZE, or ANALYZE with no VACUUM */
 			
 			bool dispatchToMirrors = vacstmt->vacuum;
 			
 			/* Mpp-895 stagger vacuum dispatch to primaries first, then mirrors, to avoid i/o contention */
 			
-			CdbDoCommand(buffer.data, true, /*no txn */false, 
-						 /* mirrors */ false, /* primaries */ true);
-			
+						 
+			cdbdisp_dispatchCommand((vacstmt->vacuum ? "vacuum" : "analyze"), pszVacuum, pszVacuum_len, true, /*no txn */false, 
+							/* withSnapshot */true, /* mirrors */ false, /* primaries */ true,
+							&primaryResults, &mirrorResults, &dispatchThreads);
+							
 			elog(DEBUG2, "Sent %s command to primary QEs", (vacstmt->vacuum ? "vacuum" : "analyze"));
+			/*
+			 * Wait for all QEs to finish. If not all of our QEs were successful,
+			 * report the error and throw up.
+			 */
+			cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+			
+			
 			
 			if (dispatchToMirrors)
 			{
-				CdbDoCommand(buffer.data, true, /*no txn */false, 
-							 /* mirrors */ true, /* primaries */ false);
+
+				cdbdisp_dispatchCommand((vacstmt->vacuum ? "vacuum" : "analyze"), pszVacuum, pszVacuum_len, true, /*no txn */false, 
+							/* withSnapshot */true, /* mirrors */ true, /* primaries */ false,
+							&primaryResults, &mirrorResults, &dispatchThreads);
 				
 				elog(DEBUG2, "Sent %s command to mirror QEs", (vacstmt->vacuum ? "vacuum" : "analyze"));
+				cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
 			}
 		}
 		else
@@ -474,48 +484,54 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			/* the statement is VACUUM [OPTIONS] ANALYZE */
 			
 			char	   *pszVacuumNoAnalyze;
+			int			pszVacuumNoAnalyze_len;
 			
 			/* 
 			 * dispatch the full statment to primaries only 
 			 */
-			CdbDoCommand(buffer.data, true, /*no txn */false, /* mirrors */ false, /* primaries */ true);
+			cdbdisp_dispatchCommand("vacuum analyze", pszVacuum, pszVacuum_len, true, /*no txn */false, 
+							/* withSnapshot */true, /* mirrors */ false, /* primaries */ true,
+							&primaryResults, &mirrorResults, &dispatchThreads);
 			
 			elog(DEBUG2, "Sent vacuum analyze command to primary QEs");
 			
-			/* reset buffer for reuse */
-			buffer.len = 0;
-			buffer.data[0] = '\0';
-			buffer.cursor = 0;
+			/*
+			 * Wait for all QEs to finish. If not all of our QEs were successful,
+			 * report the error and throw up.
+			 */
+			cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
 			
 			Assert(((VacuumStmt *)q->utilityStmt)->analyze);
 							
 			/* strip off ANALYZE from statement */
 			((VacuumStmt *)q->utilityStmt)->analyze = false; 
 			
-			pszVacuumNoAnalyze = serializeNode((Node *) q, NULL);
+			pszVacuumNoAnalyze = serializeNode((Node *) q, &pszVacuumNoAnalyze_len);
 			
 			Assert(pszVacuumNoAnalyze != NULL);
-			
-			elog(DEBUG5, "Command %s", pszVacuumNoAnalyze);
-			
-			appendStringInfo(&buffer, "mppexec %d %d %d '%s' ''", GetSessionUserId(),GetOuterUserId(),GetUserId(),pszVacuumNoAnalyze);
-			
-			pfree(pszVacuumNoAnalyze);
-			
+						
 			/* 
 			 * dispatch analyze-stripped vacuum statement to mirrors only 
 			 */
-			CdbDoCommand(buffer.data, true, /*no txn */false, /* mirrors */ true, /* primaries */ false);
+			cdbdisp_dispatchCommand("vacuum", pszVacuumNoAnalyze, pszVacuumNoAnalyze_len, true, /*no txn */false, 
+							/* withSnapshot */true, /* mirrors */ true, /* primaries */ false,
+							&primaryResults, &mirrorResults, &dispatchThreads);
 			
 			elog(DEBUG2, "Sent vacuum command to mirror QEs");
 			
 			/* must reset to original value since it's a pointer to vacstmt. We'll need it later */
 			((VacuumStmt *)q->utilityStmt)->analyze = true; 
+			
+			cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+			
+			pfree(pszVacuumNoAnalyze);
 		}
 		
 		pfree(q);
-		pfree(buffer.data);		
+		pfree(pszVacuum);	
 	}
+	
+	
 
 
 	/*

@@ -33,6 +33,7 @@
 #include "executor/executor.h"
 #include "optimizer/clauses.h"
 #include "optimizer/planmain.h"
+#include "tcop/tcopprot.h"
 #include "cdb/cdbplan.h"
 
 #include "cdb/cdbselect.h"
@@ -79,14 +80,27 @@ processResults(CdbDispatchResult   *dispatchResult);
 static void
 addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
                              int                    segdbs_in_thread_pool,
-							 const char            *szCommand,
-							 const char			   *szSnapshot,
+							 const char            *strCommand,
+							 const char			   *serializedQuerytree,
+							 int					serializedQuerytreelen,
+							 const char 		   *serializedPlantree,
+							 int					serializedPlantreelen,
+							 const char			   *serializedParams,
+							 int					serializedParamslen,
+							 const char			   *serializedSliceInfo,	
+							 int					serializedSliceInfolen,		
+							 const char			   *serializedSnapshot,
+							 int					serializedSnapshotlen,
 							 int					txnOptions,
 							 int					sliceId,
 							 CdbDispatchResult     *dispatchResult);
 
 static void
-cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
+cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
+						const char			   		*serializedQuerytree,
+						int							 serializedQuerytreelen,
+						const char 		   			*serializedPlantree,
+						int							 serializedPlantreelen,
                         bool                        cancelOnError,
                         bool						startTransaction,
                         struct CdbDispatchResults **pPrimaryResults,
@@ -105,9 +119,9 @@ typedef struct {
 
 static int fillSliceVector(SliceTable * sliceTable, int sliceIndex, sliceVec *sliceVector, int len);
 
-/* used to take the current Transaction Snapshot and serialize a version of it
- * into the static variable szSnapshotInfo */
-static char *serializeSnapshot(void);
+/* used to take the current Transaction Snapshot and serialized a version of it
+ * into the static variable serializedSnapshotInfo */
+static char *serializeSnapshot(int * size);
 
 /* determines which dispatchOptions need to be set. */
 static int generateTxnOptions( bool shouldStart );
@@ -162,7 +176,7 @@ cdbdisp_startDtxTransaction(void)
 
 /*
  * cdbdisp_dispatchToGang:
- * Send the szCommand SQL statement to the subset of all segdbs in the cluster
+ * Send the strCommand SQL statement to the subset of all segdbs in the cluster
  * specified by the gang parameter.  cancelOnError indicates whether an error
  * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
@@ -181,7 +195,7 @@ cdbdisp_startDtxTransaction(void)
  * The CdbDispatchResults object owns some malloc'ed storage, so the caller
  * must make certain to free it by calling cdbdisp_destroyDispatchResults().
  *
- * When dispatchResults->cancelOnError is false, szCommand is to be
+ * When dispatchResults->cancelOnError is false, strCommand is to be
  * dispatched to every connected gang member if possible, despite any
  * cancellation requests, QE errors, connection failures, etc.
  *
@@ -201,8 +215,17 @@ cdbdisp_startDtxTransaction(void)
  */
 void
 cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
-					   const char                  *szCommand,
-					   const char				   *szSnapshotInfo,
+					   const char                  *strCommand,
+					   const char				   *serializedQuerytree,
+					   int							serializedQuerytreelen,
+					   const char 				   *serializedPlantree,
+					   int							serializedPlantreelen,
+					   const char				   *serializedParams,
+					   int							serializedParamslen,
+					   const char				   *serializedSliceInfo,
+					   int							serializedSliceInfolen,				
+					   const char				   *serializedSnapshotInfo,
+					   int							serializedSnapshotInfolen,
 					   int							txnOptions,
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,
@@ -228,10 +251,10 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	{
 		if (sliceIndex >= 0)
 			elog(DEBUG2, "dispatchToGang: sliceIndex=%d gangsize=%d  %.100s",
-				 sliceIndex, gp->size, szCommand);
+				 sliceIndex, gp->size, strCommand);
 		else
 			elog(DEBUG2, "dispatchToGang: gangsize=%d  %.100s",
-				 gp->size, szCommand);
+				 gp->size, strCommand);
 	}
 
 	/*
@@ -302,8 +325,12 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 
 		addSegDBToDispatchThreadPool((*dispatchThreads)->dispatchCommandParmsAr + (*dispatchThreads)->threadCount,
 									 x,
-                                     szCommand,
-                                     szSnapshotInfo,
+                                     strCommand,
+                                     serializedQuerytree, serializedQuerytreelen,
+									 serializedPlantree, serializedPlantreelen,
+									 serializedParams, serializedParamslen,
+									 serializedSliceInfo, serializedSliceInfolen,
+                                     serializedSnapshotInfo, serializedSnapshotInfolen,
                                      txnOptions,
 									 sliceIndex,
                                      qeResult);
@@ -394,8 +421,17 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 void
 addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
                              int                    segdbs_in_thread_pool,
-                             const char            *szCommand,
-                             const char			   *szSnapshot,
+                             const char            *strCommand,
+                             const char			   *serializedQuerytree,
+                             int					serializedQuerytreelen,
+							 const char 		   *serializedPlantree,
+							 int					serializedPlantreelen,
+							 const char			   *serializedParams,
+							 int					serializedParamslen,
+							 const char			   *serializedSliceInfo,	
+							 int					serializedSliceInfolen,		
+                             const char			   *serializedSnapshot,
+                             int					serializedSnapshotlen,
                              int					txnOptions,
                              int					sliceId,
                              CdbDispatchResult     *dispatchResult)
@@ -415,30 +451,86 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 
 	if (segdbs_in_thread_pool % mpp_connections_per_thread == 0)
 	{
-		/* create database emits an mppexec statement, but has sliceid
-		 * of -1; so we've actually got to examine the command text --
-		 * otherwise we'll get a parser error on the QE (it is
-		 * expecting the slice at the end of the command, no matter
-		 * what) */
-		if (strncmp("mppexec", szCommand, 7) == 0)
-		{
-			/* Complete the mppexec command for this slice. */
-			StringInfoData si;
 
-			initStringInfoOfSize(&si, strlen(szCommand) + 10);
-			appendStringInfo(&si, "%s %d", szCommand, sliceId);
-			pParms->szCommand = si.data;
-			pParms->szCommandlen = si.len + 1;
+		if (strCommand == NULL || strlen(strCommand) == 0)
+		{	
+			pParms->strCommand = NULL;
+			pParms->strCommandlen = 0;
 		}
 		else
 		{
-			/* non "mppexec" just gets duplicated */
-			pParms->szCommand = pstrdup(szCommand);
-			pParms->szCommandlen = strlen(szCommand) + 1;
+			pParms->strCommand = pstrdup(strCommand);
+			pParms->strCommandlen = strlen(strCommand) + 1;
 		}
-		pParms->szSnapshot = pstrdup(szSnapshot);
+		
+		if (serializedQuerytree == NULL || serializedQuerytreelen == 0)
+		{	
+			pParms->serializedQuerytree = NULL;
+			pParms->serializedQuerytreelen = 0;
+		}
+		else
+		{
+			pParms->serializedQuerytree = palloc(serializedQuerytreelen);
+			memcpy(pParms->serializedQuerytree,serializedQuerytree,serializedQuerytreelen);
+			
+			pParms->serializedQuerytreelen = serializedQuerytreelen;
+		}
+		
+		if (serializedPlantree == NULL || serializedPlantreelen == 0)
+		{	
+			pParms->serializedPlantree = NULL;
+			pParms->serializedPlantreelen = 0;
+		}
+		else
+		{
+			pParms->serializedPlantree = palloc(serializedPlantreelen);
+			memcpy(pParms->serializedPlantree,serializedPlantree,serializedPlantreelen);
+
+			pParms->serializedPlantreelen = serializedPlantreelen;
+		}
+		
+		if (serializedParams == NULL || serializedParamslen == 0)
+		{	
+			pParms->serializedParams = NULL;
+			pParms->serializedParamslen = 0;
+		}
+		else
+		{
+			pParms->serializedParams = palloc(serializedParamslen);
+			memcpy(pParms->serializedParams,serializedParams,serializedParamslen);
+		
+			pParms->serializedParamslen = serializedParamslen;
+		}
+		
+		if (serializedSliceInfo == NULL || serializedSliceInfolen == 0)
+		{	
+			pParms->serializedSliceInfo = NULL;
+			pParms->serializedSliceInfolen = 0;
+		}
+		else
+		{
+			pParms->serializedSliceInfo = palloc(serializedSliceInfolen);
+			memcpy(pParms->serializedSliceInfo,serializedSliceInfo,serializedSliceInfolen);
+
+			pParms->serializedSliceInfolen = serializedSliceInfolen;
+		}
+		
+		if (serializedSnapshot == NULL || serializedSnapshotlen == 0)
+		{
+			pParms->serializedSnapshot = NULL;
+			pParms->serializedSnapshotlen = 0;
+		}
+		else
+		{
+			pParms->serializedSnapshot = palloc(serializedSnapshotlen);
+			memcpy(pParms->serializedSnapshot,serializedSnapshot,serializedSnapshotlen);
+	
+			pParms->serializedSnapshotlen = serializedSnapshotlen;
+		}
+		
 		pParms->txnOptions = txnOptions;
 		pParms->cmdID = mpp_command_count;
+		pParms->localSlice = sliceId;
 		pParms->dispatchResultPtrArray =
 			(CdbDispatchResult **) palloc0(mpp_connections_per_thread *
 										   sizeof(CdbDispatchResult *));
@@ -598,7 +690,7 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
  * by the caller.
  */
 struct pg_result **				/* returns ptr to array of PGresult ptrs */
-cdbdisp_dispatchRMCommand(const char *szCommand,
+cdbdisp_dispatchRMCommand(const char *strCommand,
 						  bool withSnapshot,
 						  bool dispatchToMirrors,
 						  StringInfo errmsgbuf,
@@ -621,7 +713,7 @@ cdbdisp_dispatchRMCommand(const char *szCommand,
 	bool		startTransaction = false;
 
 	/* Launch the command.	Don't cancel on error. */
-	cdbdisp_dispatchCommand(szCommand,
+	cdbdisp_dispatchCommand(strCommand, NULL, 0,
 							/* cancelOnError */false,
 							startTransaction, withSnapshot, 
 							dispatchToMirrors, /* disp to primaries*/ true,
@@ -700,7 +792,7 @@ cdbdisp_dispatchRMCommand(const char *szCommand,
 
 /*
  * cdbdisp_dispatchCommand:
- * Send the szCommand SQL statement to all segdbs in the cluster
+ * Send the strCommand SQL statement to all segdbs in the cluster
  * cancelOnError indicates whether an error
  * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
@@ -723,7 +815,9 @@ cdbdisp_dispatchRMCommand(const char *szCommand,
  * suggested that the caller use cdbdisp_finishCommand().
  */
 void
-cdbdisp_dispatchCommand(const char                 *szCommand,
+cdbdisp_dispatchCommand(const char                 *strCommand,
+						const char			   	   *serializedQuerytree,
+						int							serializedQuerytreelen,
                         bool                        cancelOnError,
                         bool						startTransaction,
                         bool						withSnapshot,
@@ -736,15 +830,16 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
 	Gang	*primaryGang;
 	Gang	*mirrorGang;
 	int		txnOptions;
-	char	*szSnapshotInfo = NULL;
+	char	*serializedSnapshotInfo = NULL;
+	int		serializedSnapshotInfolen = 0;
 	int		nsegdb = getMPPSegmentCount();
 	
 	Assert(dispatchToPrimaries || dispatchToMirrors);
 	
 	if (DEBUG5 >= log_min_messages)
-    	elog(DEBUG3, "cdbdisp_dispatchCommand: %s", szCommand);
+    	elog(DEBUG3, "cdbdisp_dispatchCommand: %s", strCommand);
     else
-    	elog(DEBUG3, "cdbdisp_dispatchCommand: %.50s", szCommand);
+    	elog(DEBUG3, "cdbdisp_dispatchCommand: %.50s", strCommand);
 
     *pPrimaryResults = NULL;
     if (pMirrorResults)
@@ -766,23 +861,28 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
 	{
 		elog(LOG, "Some segments are down: MIRROR nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, mirrorGang->segdb_count, mirrorGang->size);
 		elog(LOG, "                       PRIMARY nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, primaryGang->segdb_count, primaryGang->size);
-		elog(LOG, "Some segments are down.  Dispatching command %.50s to remaining segments only", szCommand);
+		elog(LOG, "Some segments are down.  Dispatching command %.50s to remaining segments only", strCommand);
 
-		if (strncmp(szCommand, "BEGIN ", 6) != 0 &&
-			strncmp(szCommand, "PREPARE ", 8) != 0 &&
-			strncmp(szCommand, "COMMIT ", 6) != 0 &&
-			strncmp(szCommand, "ROLLBACK ", 9) != 0)
+		if (strncmp(strCommand, "BEGIN ", 6) != 0 &&
+			strncmp(strCommand, "PREPARE ", 8) != 0 &&
+			strncmp(strCommand, "COMMIT ", 6) != 0 &&
+			strncmp(strCommand, "ROLLBACK ", 9) != 0)
 		{
-			if (strncmp(szCommand, "MPPEXEC ", 8) == 0 || strncmp(szCommand, "mppexec ", 8) == 0)
+			if (strncmp(strCommand, "MPPEXEC ", 7) == 0 || strncmp(strCommand, "mppexec ", 7) == 0)
 				elog(NOTICE, "Some segments are down.  Dispatching command to remaining segments only");
 			else
-				elog(NOTICE, "Some segments are down.  Dispatching command %.50s to remaining segments only", szCommand);
+				elog(NOTICE, "Some segments are down.  Dispatching command %.50s to remaining segments only", strCommand);
 		}
 	}
 
-	/* Serialize a version of our snapshot */
+	/* serialized a version of our snapshot */
 	if (withSnapshot)
-		szSnapshotInfo = serializeSnapshot();
+		serializedSnapshotInfo = serializeSnapshot(&serializedSnapshotInfolen);
+	else
+	{
+		serializedSnapshotInfo = NULL;
+		serializedSnapshotInfolen = 0;
+	}
 
 	/* generate our transactions options. */
 	txnOptions = generateTxnOptions(startTransaction);
@@ -793,21 +893,25 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
 	if (dispatchToPrimaries)
 	{
 		*pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-		cdbdisp_dispatchToGang(pDispatchThreads, szCommand,
-							   (szSnapshotInfo != NULL ? szSnapshotInfo : "NONE"),
+		cdbdisp_dispatchToGang(pDispatchThreads, strCommand, 
+								serializedQuerytree, serializedQuerytreelen, 
+								NULL, 0, NULL, 0, NULL, 0,
+							   serializedSnapshotInfo, serializedSnapshotInfolen,
 							   txnOptions, primaryGang, *pPrimaryResults, -1, 1);
 	}
 	
 	if (dispatchToMirrors && mirrorGang)
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-        cdbdisp_dispatchToGang(pDispatchThreads, szCommand,
-							   (szSnapshotInfo != NULL ? szSnapshotInfo : "NONE"),
+        cdbdisp_dispatchToGang(pDispatchThreads, strCommand, 
+        						serializedQuerytree, serializedQuerytreelen, 
+        						NULL, 0, NULL, 0, NULL, 0,
+							   serializedSnapshotInfo, serializedSnapshotInfolen,
 							   txnOptions, mirrorGang, *pMirrorResults, -1, 1);
     }
 
-	if (szSnapshotInfo != NULL)
-		pfree(szSnapshotInfo);
+	if (serializedSnapshotInfo != NULL)
+		pfree(serializedSnapshotInfo);
 }	/* cdbdisp_dispatchCommand */
 
 
@@ -964,7 +1068,11 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
 }                               /* cdbdisp_handleError */
 
 void
-cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
+cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
+						const char			   		*serializedQuerytree,
+						int							serializedQuerytreelen,
+						const char 		   			*serializedPlantree,
+						int							serializedPlantreelen,
                         bool                        cancelOnError,
                         bool						startTransaction,
                         struct CdbDispatchResults **pPrimaryResults,    /* OUT */
@@ -977,11 +1085,12 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
     ListCell	*le;
 
     int			nsegdb = getMPPSegmentCount();
-	char		*szSnapshotInfo;
+	char		*serializedSnapshotInfo;
+	int			serializedSnapshotInfolen;
 	int			txnOptions,
 				gangCount;
 	
-    elog(DEBUG3, "cdbdisp_dispatchCommandToAllGangs: %.50s", szCommand);
+    elog(DEBUG3, "cdbdisp_dispatchCommandToAllGangs: %.50s", strCommand);
 
     *pPrimaryResults = NULL;
     if (pMirrorResults)
@@ -1005,22 +1114,22 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
 			 nsegdb, mirrorGang->segdb_count, mirrorGang->size);
 		elog(LOG, "                       PRIMARY nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d",
 			 nsegdb, primaryGang->segdb_count, primaryGang->size);
-		elog(LOG, "Some segments are down.  Dispatching command %.50s to remaining segments only", szCommand);
+		elog(LOG, "Some segments are down.  Dispatching command %.50s to remaining segments only", strCommand);
 
-		if (strncmp(szCommand, "BEGIN ", 6) != 0 &&
-			strncmp(szCommand, "PREPARE ", 8) != 0 &&
-			strncmp(szCommand, "COMMIT ", 6) != 0 &&
-			strncmp(szCommand, "ROLLBACK ", 9) != 0)
+		if (strncmp(strCommand, "BEGIN ", 6) != 0 &&
+			strncmp(strCommand, "PREPARE ", 8) != 0 &&
+			strncmp(strCommand, "COMMIT ", 6) != 0 &&
+			strncmp(strCommand, "ROLLBACK ", 9) != 0)
 		{
-			if (strncmp(szCommand, "MPPEXEC ", 8) == 0 || strncmp(szCommand, "mppexec ", 8) == 0)
+			if (strncmp(strCommand, "MPPEXEC ", 7) == 0 || strncmp(strCommand, "mppexec ", 7) == 0)
 				elog(NOTICE, "Some segments are down.  Dispatching command to remaining segments only");
 			else
-				elog(NOTICE, "Some segments are down.  Dispatching command %.50s to remaining segments only", szCommand);
+				elog(NOTICE, "Some segments are down.  Dispatching command %.50s to remaining segments only", strCommand);
 		}
 	}
 
-	/* Serialize a version of our snapshot */
-	szSnapshotInfo = serializeSnapshot();
+	/* serialized a version of our snapshot */
+	serializedSnapshotInfo = serializeSnapshot(&serializedSnapshotInfolen);
 	
 	/* generate our transactions options. */
 	txnOptions = generateTxnOptions(startTransaction);
@@ -1032,22 +1141,38 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
      */
 	gangCount = 1 + list_length(readerGangs);
     *pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb * gangCount, 0, cancelOnError);
-    cdbdisp_dispatchToGang(pDispatchThreads, szCommand, szSnapshotInfo, txnOptions, primaryGang, *pPrimaryResults, -1, gangCount);
+    cdbdisp_dispatchToGang(pDispatchThreads, strCommand, 
+	    serializedQuerytree, serializedQuerytreelen, 
+	    serializedPlantree, serializedPlantreelen,
+	    NULL, 0, NULL, 0,
+	    serializedSnapshotInfo, serializedSnapshotInfolen,
+	    txnOptions, primaryGang, *pPrimaryResults, -1, gangCount);
 
 	if (mirrorGang)
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-        cdbdisp_dispatchToGang(pDispatchThreads, szCommand, szSnapshotInfo,  txnOptions, mirrorGang, *pMirrorResults, -1, gangCount);
+        cdbdisp_dispatchToGang(pDispatchThreads, strCommand, 
+	        serializedQuerytree, serializedQuerytreelen, 
+		    serializedPlantree, serializedPlantreelen,
+		    NULL, 0, NULL, 0,
+		    serializedSnapshotInfo, serializedSnapshotInfolen,
+	        txnOptions, mirrorGang, *pMirrorResults, -1, gangCount);
     }
 
 
     foreach(le, readerGangs)
     {
     	Gang  *rg = lfirst(le);
-    	cdbdisp_dispatchToGang(pDispatchThreads, szCommand, szSnapshotInfo, txnOptions, rg, *pPrimaryResults, -1, gangCount);
+    	cdbdisp_dispatchToGang(pDispatchThreads, strCommand, 
+	    	serializedQuerytree, serializedQuerytreelen, 
+		    serializedPlantree, serializedPlantreelen,
+		    NULL, 0, NULL, 0,
+		    serializedSnapshotInfo, serializedSnapshotInfolen,
+	    	txnOptions, rg, *pPrimaryResults, -1, gangCount);
     }
 
-    pfree(szSnapshotInfo);
+	if (serializedSnapshotInfo != NULL)
+    	pfree(serializedSnapshotInfo);
 
 
 }	/* cdbdisp_dispatchCommandToAllGangs */
@@ -1075,8 +1200,17 @@ thread_DispatchCommand(void *arg)
 	CdbDispatchResult			*dispatchResult;
 	int							i, db_count = pParms->db_count;
 	int							timeoutCounter = 0;
-
-	pParms->query_text = PQbuildMppQueryString(pParms->szCommand, pParms->szCommandlen, pParms->szSnapshot, pParms->txnOptions, pParms->cmdID, &pParms->query_text_len);
+	
+	pParms->query_text = PQbuildMppQueryString(
+				pParms->strCommand, pParms->strCommandlen, 
+				pParms->serializedQuerytree, pParms->serializedQuerytreelen, 
+				pParms->serializedPlantree, pParms->serializedPlantreelen, 
+				pParms->serializedParams, pParms->serializedParamslen, 
+				pParms->serializedSliceInfo, pParms->serializedSliceInfolen, 
+				pParms->serializedSnapshot, pParms->serializedSnapshotlen, 
+				pParms->txnOptions, pParms->cmdID, pParms->localSlice, 
+				GetSessionUserId(), GetOuterUserId(), GetUserId(),
+				&pParms->query_text_len);
 
 	if (pParms->query_text == NULL)
 	{
@@ -1114,7 +1248,7 @@ thread_DispatchCommand(void *arg)
              * If unsuccessful, proceed anyway, and check for lost connection below.
              */
 
-            dispatchCommand(dispatchResult, pParms->query_text, pParms->query_text_len, pParms->szCommand);
+            dispatchCommand(dispatchResult, pParms->query_text, pParms->query_text_len, pParms->strCommand);
             dispatchResult->hasDispatched = true;
         }
 
@@ -1331,14 +1465,14 @@ static void
 dispatchCommand(CdbDispatchResult  *dispatchResult,
                 const char		   *query_text,
                 int				   query_text_len,
-                const char         *szCommand)
+                const char         *strCommand)
 {
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 	PGconn	   *conn = segdbDesc->conn;
 
 	/* Don't use elog, it's not thread-safe */
 	if (DEBUG3 >= log_min_messages)
-		write_stderr("%s <- %.120s\n", segdbDesc->whoami, szCommand);
+		write_stderr("%s <- %.120s\n", segdbDesc->whoami, strCommand);
 
 	/*
 	 * Submit the command asynchronously.
@@ -1682,7 +1816,7 @@ processResults(CdbDispatchResult * dispatchResult)
  *  before dispatch.
  */
 void
-CdbDoCommand(const char *szCommand,
+CdbDoCommand(const char *strCommand,
 				  bool cancelOnError,
 				  bool startTransaction,
 				  bool dispatchToMirrors,
@@ -1704,7 +1838,7 @@ CdbDoCommand(const char *szCommand,
 
 	}
 
-	cdbdisp_dispatchCommand(szCommand, cancelOnError, startTransaction, 
+	cdbdisp_dispatchCommand(strCommand, NULL, 0, cancelOnError, startTransaction, 
 							/* withSnapshot */true, dispatchToMirrors, dispatchToPrimaries,
 							&primaryResults, &mirrorResults, &dispatchThreads);
 
@@ -1718,7 +1852,7 @@ CdbDoCommand(const char *szCommand,
 
 
 void
-CdbDoCommandOnAllGangs(const char *szCommand,
+CdbDoCommandOnAllGangs(const char *strCommand,
 				  bool cancelOnError,
 				  bool startTransaction)
 {
@@ -1735,7 +1869,7 @@ CdbDoCommandOnAllGangs(const char *szCommand,
 		setCurrentDtxDirty();
 	}
 	
-	cdbdisp_dispatchCommandToAllGangs(szCommand, cancelOnError, startTransaction,
+	cdbdisp_dispatchCommandToAllGangs(strCommand, NULL, 0, NULL, 0, cancelOnError, startTransaction,
 							&primaryResults, &mirrorResults, &dispatchThreads);
 
 	/*
@@ -2058,16 +2192,17 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 					 struct CdbDispatchResults ** pMirrorResults,       /* OUT */
 					 struct CdbDispatchCmdThreads ** pDispatchThreads)		/* OUT */
 {
-	StringInfoData strinfo;
+	 
 	char	   *squery,
 			   *splan,
-			   *ssliceinfo;
-	char	   *szSnapshotInfo;		
-	char	   *mppexecPrefix;
+			   *ssliceinfo,
+			   *sparams;
+	char	   *serializedSnapshotInfo;		
+	int			serializedSnapshotInfolen;
 	int			squery_len,
 				splan_len,
-				mppexecPrefix_len,
-				ssliceinfo_len;
+				ssliceinfo_len,
+				sparams_len;
 	SliceTable *sliceTbl;
 	int			rootIdx;
 	int			oldLocalSlice;
@@ -2076,7 +2211,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 				sliceLim;
 	int			iSlice;
 	int			txnOptions;
-	int			datasize = 32*1024;
+ 
 	pre_dispatch_function_evaluation_context pcontext;
 
 	*pPrimaryResults = NULL;
@@ -2167,8 +2302,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 
 	/*
-	 * Serialize plan and query trees. Build the common prefix of the
-	 * MPPEXEC commands we'll issue.  Note that we're called for a single
+	 * serialized plan and query trees. Note that we're called for a single
 	 * slice tree (corresponding to an initPlan or the main plan), so the
 	 * parameters are fixed and we can include them in the prefix.
 	 */
@@ -2177,81 +2311,24 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 	Assert(squery != NULL && splan != NULL);
 
-	initStringInfoOfSize(&strinfo, datasize);
-
-	appendStringInfo(&strinfo, "mppexec %d %d %d E'",GetSessionUserId(),GetOuterUserId(),GetUserId());
-	appendBinaryStringInfo(&strinfo, squery, squery_len);
-	appendStringInfoLiteral(&strinfo, "' E'");
-	appendBinaryStringInfo(&strinfo, splan, splan_len);
-	appendStringInfoChar(&strinfo, '\'');
-
-	pfree(squery);
-	pfree(splan);
-
 	/*
-	 * Next, continue building the MPPEXEC command by adding all the parameters
-	 * serialized into RemoteParamData structs, which is just a node wrapper
-	 * around ParamListInfo.
-	 *
-	 * Add parameters to the mppexec command by enclosing the whole set with
-	 * ()  and separating individual ones with a comma, so it looks like:
-	 * ('Param1', 'Param2', ...) at the end of the mppexec command.
-	 */
-	if (queryDesc->params != NULL)
+	*/
+	if (queryDesc->params != NULL && queryDesc->params->numParams > 0)
+	{		
+		sparams = (char *)queryDesc->params;
+		
+		sparams_len = sizeof(ParamListInfoData) + (queryDesc->params->numParams-1) * sizeof(ParamExternData);
+
+	}
+	else
 	{
-		bool			bFirstTime = true;
-		ParamListInfo	q = queryDesc->params;
-		int				cur;
-
-		appendStringInfoLiteral(&strinfo, " (");
-
-		for (cur = 0; cur < q->numParams; cur++)
-		{
-			char	   *sparms;
-			int			sparms_len;
-			RemoteParamData *rpd;
-
-			/* build our node structure for serialization */
-			rpd = makeNode(RemoteParamData);
-
-			/* we have space for exactly one parameter */
-			rpd->paramData.numParams = 1;
-			memcpy(&rpd->paramData.params[0], &q->params[cur], sizeof(ParamExternData));
-
-			sparms = serializeNode((Node *) rpd, &sparms_len);
-			if (!bFirstTime)
-				appendStringInfoLiteral(&strinfo, ", ");
-			else
-				bFirstTime = false;
-
-			appendStringInfoLiteral(&strinfo, " E'");
-			appendBinaryStringInfo(&strinfo, sparms, sparms_len);
-			appendStringInfoLiteral(&strinfo, "'");
-
-			pfree(sparms);
-			pfree(rpd);
-		}
-		appendStringInfoLiteral(&strinfo, ")");
+		sparams = NULL;
+		sparams_len = 0;
 	}
 
 	ssliceinfo = serializeNode((Node *) sliceTbl, &ssliceinfo_len);
-
-	appendStringInfoLiteral(&strinfo, " E'");
-	appendBinaryStringInfo(&strinfo, ssliceinfo, ssliceinfo_len);
-	appendStringInfoLiteral(&strinfo, "'");
-
-	pfree(ssliceinfo);
-
-	/*
-	 * Hang on to the command so far.  It will serve as the prefix for each
-	 * of the MPPEXEC commands we dispatch.  Clear the buffer for use in
-	 * constructing the final MPPEXEC command(s).
-	 */
-	mppexecPrefix = strinfo.data;
-	mppexecPrefix_len = strinfo.len;
-
-	initStringInfoOfSize(&strinfo, datasize);
-
+	
+ 
 	/*
 	 * Traverse the slice tree in sliceTbl rooted at rootIdx and build a
 	 * vector of slice indexes specifying the order of [potential] dispatch.
@@ -2280,8 +2357,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	}
 
 
-	/* Serialize a version of our snapshot */
-	szSnapshotInfo = serializeSnapshot();
+	/* serialized a version of our snapshot */
+	serializedSnapshotInfo = serializeSnapshot(&serializedSnapshotInfolen);
 	
 	/* 
 	 * Generate our transction isolations.  We generally want Plan
@@ -2297,7 +2374,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * the slice.
 	 *
 	 * The QE information goes in two places: (1) in the argument to the
-	 * function CDBDispatchCommand, and (2) in the serialized MPPEXEC
+	 * function CDBDispatchCommand, and (2) in the serialized
 	 * command sent to the QEs.
 	 *
 	 * So, for each slice in the tree...
@@ -2338,8 +2415,12 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		 * Doesn't wait for it to finish.
 		 */
 		cdbdisp_dispatchToGang(pDispatchThreads,
-							   mppexecPrefix,
-						       szSnapshotInfo,
+							   debug_query_string,
+							   squery, squery_len,
+							   splan, splan_len,
+							   sparams, sparams_len,
+							   ssliceinfo, ssliceinfo_len, 
+						       serializedSnapshotInfo, serializedSnapshotInfolen,
 						       txnOptions,
                                primaryGang,
                                *pPrimaryResults,
@@ -2352,8 +2433,12 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		if (mirrorGang != NULL && (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL))
 		{
             cdbdisp_dispatchToGang(pDispatchThreads,
-								   mppexecPrefix,
-            					   szSnapshotInfo,
+								   debug_query_string,
+								   squery, squery_len,
+								   splan, splan_len,
+								   sparams, sparams_len,
+								   ssliceinfo, ssliceinfo_len, 
+							       serializedSnapshotInfo, serializedSnapshotInfolen,
             					   txnOptions,
                                    mirrorGang,
                                    *pMirrorResults,
@@ -2361,8 +2446,17 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		}
 	}
 
-    pfree(szSnapshotInfo);
-    pfree(mppexecPrefix);
+	if (squery!=NULL)
+		pfree(squery);
+	if (splan!=NULL)
+		pfree(splan);
+	if (ssliceinfo!=NULL)
+		pfree(ssliceinfo);
+
+	
+	if (serializedSnapshotInfo!=NULL)
+    	pfree(serializedSnapshotInfo);
+
     pfree(sliceVector);
 
 	sliceTbl->localSlice = oldLocalSlice;
@@ -2493,8 +2587,8 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 								 struct CdbDispatchResults ** pMirrorResults,
 								 struct CdbDispatchCmdThreads ** pDispatchThreads)
 {
-	char	   *szCommand;
-	int			szCommand_len;
+	char	   *serializedQuerytree;
+	int			serializedQuerytree_len;
 	Query	   *q = makeNode(Query);
 	StringInfoData buffer;
 	bool 		dispatchToMirrors = true;
@@ -2525,23 +2619,18 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	q->canSetTag = true;		/* ? */
 
 	/*
-	 * Serialize the stmt tree, and create the sql statement: mppexec ....
+	 * serialized the stmt tree, and create the sql statement: mppexec ....
 	 */
-	szCommand = serializeNode((Node *) q, &szCommand_len);
+	serializedQuerytree = serializeNode((Node *) q, &serializedQuerytree_len);
 
-	Assert(szCommand != NULL);
+	Assert(serializedQuerytree != NULL);
 
-	appendStringInfo(&buffer, "mppexec %d %d %d '",GetSessionUserId(),GetOuterUserId(),GetUserId());
-	appendBinaryStringInfo(&buffer, szCommand, szCommand_len);
-	appendStringInfoLiteral(&buffer, "' ''");
-
-	pfree(szCommand);
-
-	cdbdisp_dispatchCommand(buffer.data, cancelOnError, startTransaction,
+	cdbdisp_dispatchCommand(debug_query_string, serializedQuerytree, serializedQuerytree_len, cancelOnError, startTransaction,
 							/* withSnapshot */true, dispatchToMirrors, /* primaries */true, 
 							pPrimaryResults, pMirrorResults, pDispatchThreads);
 
-	pfree(buffer.data);
+	pfree(serializedQuerytree);
+
 }	/* cdbdisp_dispatchUtilityStatement */
 
 
@@ -2574,9 +2663,9 @@ CdbDispatchUtilityStatement(struct Node *stmt)
 
 
 static char*
-serializeSnapshot(void)
+serializeSnapshot(int * size)
 {
-	char *szSnapshotInfo;
+	char *serializedSnapshotInfo;
 	SnapshotInfo *snapInfo = NULL;
 	Snapshot snapshot = NULL;
 	
@@ -2639,8 +2728,11 @@ serializeSnapshot(void)
 		snapInfo->curcid = snapshot->curcid;
 	
 		
-		szSnapshotInfo = serializeNode((Node *) snapInfo, NULL);
+		serializedSnapshotInfo = serializeNode((Node *) snapInfo, size);
 		pfree(snapInfo);
+		
+		elog(DEBUG5, "serializedSnapshot string is \"%s\".", uncompress_string(serializedSnapshotInfo,*size));
+		
 	}
 	else
 	{
@@ -2648,12 +2740,12 @@ serializeSnapshot(void)
 		 * so can't and don't need to send a serialized snapshot.  so we'll
 		 * send "NONE".
 		 */
-		szSnapshotInfo = pstrdup("NONE");
+		serializedSnapshotInfo = pstrdup("NONE");
+		*size=strlen("NONE")+1;
+		elog(DEBUG5, "serializedSnapshot string is NONE.");
 	}
 
-	elog(DEBUG5, "serializeSnapshot string is \"%s\".", szSnapshotInfo);
-	
-	return szSnapshotInfo;
+	return serializedSnapshotInfo;
 }
 
 /* generateTxnOptions:
@@ -2741,16 +2833,16 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 			free(pParms->query_text);
 			pParms->query_text = NULL;
 		}
-		if (pParms->szCommand)
+		if (pParms->strCommand)
 		{
-			pfree(pParms->szCommand);
-			pParms->szCommand = NULL;
+			pfree(pParms->strCommand);
+			pParms->strCommand = NULL;
 		}
 		
-		if (pParms->szSnapshot)
+		if (pParms->serializedSnapshot)
 		{
-			pfree(pParms->szSnapshot);
-			pParms->szSnapshot = NULL;
+			pfree(pParms->serializedSnapshot);
+			pParms->serializedSnapshot = NULL;
 		}
 		
 		pParms->txnOptions = 0;

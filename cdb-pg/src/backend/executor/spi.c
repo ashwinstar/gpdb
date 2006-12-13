@@ -2188,10 +2188,13 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 		 */
 		if (mpp_use_snapshop_during_callback) 
 		{
-			char *szSnapshotInfo;
+			char *serializedSnapshot;
+			int serializedSnapshotlen;
 			SnapshotInfo *snapInfo = NULL;
 			const char * query = plan->query;
 			StringInfoData newquery;
+			char * query_text;
+			int query_text_len;
 			
 			
 			/* Loop backwards, so we handle $10 before $1, and don't get confused */
@@ -2280,19 +2283,25 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 			}
 	
 		
-			szSnapshotInfo = serializeNode((Node *) snapInfo, NULL);
+			serializedSnapshot = serializeNode((Node *) snapInfo, &serializedSnapshotlen);
 			pfree(snapInfo);
 			
-			
+			query_text = PQbuildMppQueryString(
+				query, strlen(query)+1, 
+				NULL, 0, NULL, 0, NULL, 0, NULL, 0,
+				serializedSnapshot, serializedSnapshotlen, 
+				txnOptions, mpp_command_count, -1, 
+				GetSessionUserId(), GetOuterUserId(), GetUserId(),
+				&query_text_len);
 			 
 			elog(DEBUG1,"Sending via special PQsendMppQuery");
-			if (0 == PQsendMppQuery(_QD_conn, query, szSnapshotInfo, txnOptions, mpp_command_count))
+			if (PQsendMppQuery_shared(_QD_conn, (char *)query_text, query_text_len) == 0)
 			{
 				/* Note the error. */
 				elog(ERROR,"Command could not be sent to QD %s", PQerrorMessage(_QD_conn));
 			}
 	
-			
+			pfree(query_text);
 			
 		}
 		/* End special code to use PQsendMppQuery */

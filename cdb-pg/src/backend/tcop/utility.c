@@ -58,7 +58,6 @@
 
 #include "cdb/cdbcat.h"
 #include "cdb/cdbdisp.h"
-#include "cdb/cdbexec.h"                /* CdbExecQuery() */
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
@@ -714,25 +713,6 @@ ProcessUtility(Node *parsetree,
 			DeallocateQuery((DeallocateStmt *) parsetree);
 			break;
 
-		case T_CdbExecStmt:
-
-			/*
-			 * This command should run only in the EXECUTE role, 
-			 * i.e., it is supplied by a dispatch process to a qexec process. 
-			 * The cryptic message avoids mention
-			 * of roles to discourage experimentation by users.
-			 */
-			if (Mpp_role != MPP_ROLE_EXECUTE)
-			{
-				ereport(ERROR, (
-								errcode(ERRCODE_MPP_COMMAND_ERROR),
-						 errmsg("MPPEXEC is not available for external use.")
-								));
-
-			}
-
-			CdbExecQuery((CdbExecStmt *) parsetree, dest, completionTag);
-			break;
 
 			/*
 			 * schema
@@ -1990,10 +1970,6 @@ CreateCommandTag(Node *parsetree)
 
 		case T_DeallocateStmt:
 			tag = "DEALLOCATE";
-			break;
-
-		case T_CdbExecStmt:
-			tag = "MPPEXEC";
 			break;
 
 		default:

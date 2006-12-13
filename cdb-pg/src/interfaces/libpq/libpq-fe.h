@@ -328,17 +328,25 @@ extern PGresult *PQexecPrepared(PGconn *conn,
  *
  * See cdbtm.h for valid flag values.
  */
-extern int PQsendMppQuery(PGconn       *conn,
-                          const char   *query,
-                          const char   *snapshotInfo,
-                          int           flags,
-                          int           mpp_command_count);
 
-extern char *PQbuildMppQueryString(const char  *query,
-								   int          query_len,
+extern char *PQbuildMppQueryString(const char  *command,
+								   int          command_len,
+								   const char  *querytree,
+								   int          querytree_len,
+								   const char  *plantree,
+								   int          plantree_len,
+								   const char  *params,
+								   int          params_len,
+								   const char  *sliceinfo,
+								   int          sliceinfo_len,
 								   const char  *snapshotInfo,
+								   int			snapshotInfo_len,
 								   int          flags,
 								   int          mpp_command_count,
+								   int			localSlice,
+								   Oid			sessionUserId,
+					  			   Oid			outerUserId,
+					 			   Oid			currentUserId,
 								   int         *final_len);
 
 extern int PQsendMppQuery_shared(PGconn       *conn,

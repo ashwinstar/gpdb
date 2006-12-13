@@ -351,15 +351,8 @@ SocketBackend(StringInfo inBuf)
 			if( PG_PROTOCOL_MAJOR(FrontendProtocol) < 3 )				
 					ereport(COMMERROR,
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("MPP dispatch unsupported for old FrontendProtocols.")));
-			
-			/*if (Mpp_role != MPP_ROLE_EXECUTE)
-			{
-				ereport(FATAL,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("invalid frontend message type: %d "
-						 	    "while not in \"execute\" mode", qtype)));
-			}*/
+							 errmsg("MPP dispatch unsupported for old FrontendProtocols.")));	
+
 		
 			break;
 		
@@ -771,6 +764,396 @@ pg_plan_queries(List *querytrees, ParamListInfo boundParams,
 	return plan_list;
 }
 
+/*
+ * exec_mpp_query
+ *
+ */
+static void
+exec_mpp_query(const char *query_string, 
+				const char * serializedQuerytree, int serializedQuerytreelen,
+				const char * serializedPlantree, int serializedPlantreelen,
+				const char * serializedParams, int serializedParamslen,
+				const char * serializedSliceInfo, int serializedSliceInfolen,
+				int localSlice)
+{
+	CommandDest dest = whereToSendOutput;
+	MemoryContext oldcontext;
+	bool		save_log_statement_stats = log_statement_stats;
+	bool		was_logged = false;
+	char		msec_str[32];
+	List	   *querytree_list;
+	List	   *plantree_list;
+	Query	   *query = NULL;
+	Plan	   *plan = NULL;
+	SliceTable *sliceTable = NULL;
+    Slice      *slice = NULL;
+	ParamListInfo paramLI = NULL;
+
+	Assert(Mpp_role == MPP_ROLE_EXECUTE);
+	
+	query = (Query *) deserializeNode(serializedQuerytree,serializedQuerytreelen);
+
+    if (!query ||
+        !IsA(query, Query))
+        elog(ERROR, "MPPEXEC: received invalid query");
+    if (query->commandType != CMD_UTILITY &&
+        query->commandType != CMD_SELECT &&
+        query->commandType != CMD_INSERT &&
+        query->commandType != CMD_UPDATE &&
+        query->commandType != CMD_DELETE)
+        elog(ERROR, "MPPEXEC: received invalid query");
+        
+    querytree_list = list_make1(query);
+    
+    
+    /*
+	 * Deserialize the slice table.
+	 */
+    if (serializedSliceInfo != NULL && strlen(serializedSliceInfo) > 0)
+	{
+        sliceTable = (SliceTable *) deserializeNode(serializedSliceInfo,serializedSliceInfolen);
+
+		sliceTable->localSlice = localSlice;
+
+        if (!sliceTable ||
+            !IsA(sliceTable, SliceTable) ||
+            sliceTable->localSlice < 0 ||
+            sliceTable->localSlice >= list_length(sliceTable->slices))
+            elog(ERROR, "MPPEXEC: received invalid slice table: %s, %d",uncompress_string(serializedSliceInfo,serializedSliceInfolen), localSlice);
+
+        slice = (Slice *)list_nth(sliceTable->slices, sliceTable->localSlice);
+        Insist(IsA(slice, Slice));
+
+
+        /* Set global sliceid variable for elog. */
+        currentSliceId = sliceTable->localSlice;
+
+        /* Non root slices don't need update privileges. */
+        if (sliceTable->localSlice != slice->rootIndex)
+        {
+            ListCell       *rtcell;
+            RangeTblEntry  *rte;
+            AclMode         removeperms = ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_SELECT_FOR_UPDATE;
+
+            /* Just reading, so don't check INS/DEL/UPD permissions. */
+            foreach(rtcell, query->rtable)
+            {
+                rte = (RangeTblEntry *)lfirst(rtcell);
+                if (rte->rtekind == RTE_RELATION &&
+                    0 != (rte->requiredPerms & removeperms))
+                    rte->requiredPerms &= ~removeperms;
+            }
+        }
+    }
+
+    /*
+     * Deserialize the query execution plan.
+     */
+    if (serializedPlantree != NULL && serializedPlantreelen > 0)
+    {
+    	plan = (Plan *) deserializeNode(serializedPlantree,serializedPlantreelen);
+    	/*
+		 * Since we're running as a QE, we need to put need to the slice
+		 * table and associated values determined by the QD that called
+		 * MPPEXEC into the EState before we run the executor.	We can't
+		 * do it now because our EState isn't ready.  Instead, stick it
+		 * into the top plan node (along with nParamExec and nMotionNodes)
+		 * and let the code that eventually sets up the QueryDesc sort it
+		 * out.
+		 */
+		Assert(plan->sliceTable == NULL);		/* Accept no imposters. */
+		plan->sliceTable = (Node *) sliceTable; /* Cache for CreateQueryDesc */
+    }
+    	
+    paramLI = NULL;
+    if (serializedParams != NULL && serializedParamslen > 0)
+    {
+    	paramLI = palloc(serializedParamslen);
+    	memcpy(paramLI,serializedParams,serializedParamslen);
+    }
+    
+	
+	plantree_list = list_make1(plan);
+	
+	/* 
+	 * If we didn't get passed a query string, dummy something up for ps display and pg_stat_activity
+	 */
+	if (query_string == NULL || strlen(query_string)==0)
+		query_string = "mppexec";
+		
+	/*
+	 * Report query to various monitoring facilities.
+	 */
+
+	debug_query_string = query_string;
+	
+	pgstat_report_activity(query_string);
+	
+	
+	/*
+	 * We use save_log_statement_stats so ShowUsage doesn't report incorrect
+	 * results because ResetUsage wasn't called.
+	 */
+	if (save_log_statement_stats)
+		ResetUsage();
+
+	/*
+	 * Start up a transaction command.	All queries generated by the
+	 * query_string will be in this same command block, *unless* we find a
+	 * BEGIN/COMMIT/ABORT statement; we have to force a new xact command after
+	 * one of those, else bad things will happen in xact.c. (Note that this
+	 * will normally change current memory context.)
+	 */
+	start_xact_command();
+
+	/*
+	 * Zap any pre-existing unnamed statement.	(While not strictly necessary,
+	 * it seems best to define simple-Query mode as if it used the unnamed
+	 * statement and portal; this ensures we recover any storage used by prior
+	 * unnamed operations.)
+	 */
+	unnamed_stmt_pstmt = NULL;
+	if (unnamed_stmt_context)
+	{
+		DropDependentPortals(unnamed_stmt_context);
+		MemoryContextDelete(unnamed_stmt_context);
+	}
+	unnamed_stmt_context = NULL;
+
+	/*
+	 * Switch to appropriate context for constructing parsetrees.
+	 */
+	oldcontext = MemoryContextSwitchTo(MessageContext);
+
+	QueryContext = CurrentMemoryContext;
+
+	/* Log immediately if dictated by log_statement */
+	if (check_log_statement_raw(querytree_list))
+	{
+		ereport(LOG, (errmsg("statement: %s", query_string),
+				          errdetail_execute(querytree_list) ));
+		was_logged = true;
+	}
+
+	/*
+	 * Switch back to transaction context to enter the loop.
+	 */
+	MemoryContextSwitchTo(oldcontext);
+
+	/*
+	 * Run through the raw parsetree(s) and process each one.
+	 */
+	{
+		const char *commandTag;
+		char		completionTag[COMPLETION_TAG_BUFSIZE];
+
+		Portal		portal;
+		DestReceiver *receiver;
+		int16		format;
+
+		/*
+		 * Get the command name for use in status display (it also becomes the
+		 * default completion tag, down inside PortalRun).	Set ps_status and
+		 * do any special start-of-SQL-command processing needed by the
+		 * destination.
+		 */
+		if (query->commandType == CMD_UTILITY)
+			commandTag = "MPPEXEC UTILITY";
+		else if (query->commandType == CMD_SELECT)
+			commandTag = "MPPEXEC SELECT";
+		else if (query->commandType == CMD_INSERT)
+			commandTag = "MPPEXEC INSERT";
+		else if (query->commandType == CMD_UPDATE)
+			commandTag = "MPPEXEC UPDATE";
+		else if (query->commandType == CMD_DELETE)
+			commandTag = "MPPEXEC DELETE";
+		else
+			commandTag = "MPPEXEC";
+			
+
+		set_ps_display(commandTag, false);
+
+		BeginCommand(commandTag, dest);
+
+		/*
+		 * If we are in an aborted transaction, reject all commands except
+		 * COMMIT/ABORT.  It is important that this test occur before we try
+		 * to do parse analysis, rewrite, or planning, since all those phases
+		 * try to do database accesses, which may fail in abort state. (It
+		 * might be safe to allow some additional utility commands in this
+		 * state, but not many...)
+		 */
+		if (IsAbortedTransactionBlockState() /*&&*/
+			/*!IsTransactionExitStmt(parsetree)*/)
+			ereport(ERROR,
+					(errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION),
+					 errmsg("current transaction is aborted, "
+						"commands ignored until end of transaction block")));
+
+		/* Make sure we are in a transaction command */
+		start_xact_command();
+
+		/* If we got a cancel signal in parsing or prior command, quit */
+		CHECK_FOR_INTERRUPTS();
+
+		/*
+		 * OK to analyze, rewrite, and plan this query.
+		 *
+		 * Switch to appropriate context for constructing querytrees (again,
+		 * these must outlive the execution context).
+		 */
+		oldcontext = MemoryContextSwitchTo(MessageContext);
+
+
+
+		/* If we got a cancel signal in analysis or planning, quit */
+		CHECK_FOR_INTERRUPTS();
+
+		/*
+		 * Create unnamed portal to run the query or queries in. If there
+		 * already is one, silently drop it.
+		 */
+		portal = CreatePortal("", true, true);
+		/* Don't display the portal in pg_cursors */
+		portal->visible = false;
+
+		PortalDefineQuery(portal,
+						  NULL,
+						  query_string,
+						  nodeTag((Node *)query),
+						  commandTag,
+						  querytree_list,
+						  plantree_list,
+						  MessageContext);
+
+		/*
+		 * Start the portal.  No parameters here.
+		 */
+		PortalStart(portal, paramLI, InvalidSnapshot);
+
+		/*
+		 * Select the appropriate output format: text unless we are doing a
+		 * FETCH from a binary cursor.	(Pretty grotty to have to do this here
+		 * --- but it avoids grottiness in other places.  Ah, the joys of
+		 * backward compatibility...)
+		 */
+		format = 0;				/* TEXT is default */
+#if 0
+		if (IsA(parsetree, FetchStmt))
+		{
+			FetchStmt  *stmt = (FetchStmt *) parsetree;
+
+			if (!stmt->ismove)
+			{
+				Portal		fportal = GetPortalByName(stmt->portalname);
+
+				if (PortalIsValid(fportal) &&
+					(fportal->cursorOptions & CURSOR_OPT_BINARY))
+					format = 1; /* BINARY */
+			}
+		}
+#endif
+		PortalSetResultFormat(portal, 1, &format);
+
+		/*
+		 * Now we can create the destination receiver object.
+		 */
+		receiver = CreateDestReceiver(dest, portal);
+
+		/*
+		 * Switch back to transaction context for execution.
+		 */
+		MemoryContextSwitchTo(oldcontext);
+
+		/*
+		 * Run the portal to completion, and then drop it (and the receiver).
+		 */
+		(void) PortalRun(portal,
+						 FETCH_ALL,
+						 receiver,
+						 receiver,
+						 completionTag);
+
+		(*receiver->rDestroy) (receiver);
+
+		PortalDrop(portal, false);
+
+		if (IsA(query, TransactionStmt))
+		{
+			/*
+			 * If this was a transaction control statement, commit it. We will
+			 * start a new xact command for the next command (if any).
+			 */
+			finish_xact_command();
+		}
+		else //if (lnext(querytree_item) == NULL)
+		{
+			/*
+			 * If this is the last parsetree of the query string, close down
+			 * transaction statement before reporting command-complete.  This
+			 * is so that any end-of-transaction errors are reported before
+			 * the command-complete message is issued, to avoid confusing
+			 * clients who will expect either a command-complete message or an
+			 * error, not one and then the other.  But for compatibility with
+			 * historical Postgres behavior, we do not force a transaction
+			 * boundary between queries appearing in a single query string.
+			 */
+			finish_xact_command();
+		}
+#if 0
+		else
+		{
+			/*
+			 * We need a CommandCounterIncrement after every query, except
+			 * those that start or end a transaction block.
+			 */
+			CommandCounterIncrement();
+		}
+#endif
+
+		/*
+		 * Tell client that we're done with this query.  Note we emit exactly
+		 * one EndCommand report for each raw parsetree, thus one for each SQL
+		 * command the client sent, regardless of rewriting. (But a command
+		 * aborted by error will not send an EndCommand report at all.)
+		 */
+		EndCommand(completionTag, dest);
+	}							/* end loop over parsetrees */
+
+	/*
+	 * Close down transaction statement, if one is open.
+	 */
+	finish_xact_command();
+
+	/*
+	 * If there were no parsetrees, return EmptyQueryResponse message.
+	 */
+	if (!querytree_list)
+		NullCommand(dest);
+
+	QueryContext = NULL;
+
+	/*
+	 * Emit duration logging if appropriate.
+	 */
+	switch (check_log_duration(msec_str, was_logged))
+	{
+		case 1:
+			ereport(LOG,
+					(errmsg("duration: %s ms", msec_str)));
+			break;
+		case 2:
+			ereport(LOG, (errmsg("duration: %s ms  statement: %s",
+						             msec_str, query_string),
+					          errdetail_execute(querytree_list) ));
+			break;
+	}
+
+	if (save_log_statement_stats)
+		ShowUsage("QUERY STATISTICS");
+
+	debug_query_string = NULL;
+}
 
 /*
  * exec_simple_query
@@ -841,14 +1224,7 @@ exec_simple_query(const char *query_string)
 	/* Log immediately if dictated by log_statement */
 	if (check_log_statement_raw(parsetree_list))
 	{
-        /* Log only the first 200 chars of MPPEXEC statement. */
-        if (list_length(parsetree_list) == 1 &&
-            IsA(linitial(parsetree_list), CdbExecStmt) &&
-            strlen(query_string) > 200)
-		    ereport(LOG, (errmsg("statement: %.*s...", 200, query_string),
-				          errdetail_execute(parsetree_list) ));
-        else
-		    ereport(LOG, (errmsg("statement: %s", query_string),
+		ereport(LOG, (errmsg("statement: %s", query_string),
 				          errdetail_execute(parsetree_list) ));
 		was_logged = true;
 	}
@@ -1051,17 +1427,9 @@ exec_simple_query(const char *query_string)
 					(errmsg("duration: %s ms", msec_str)));
 			break;
 		case 2:
-            /* Log only the first 200 chars of MPPEXEC statement. */
-            if (list_length(parsetree_list) == 1 &&
-                IsA(linitial(parsetree_list), CdbExecStmt) &&
-                strlen(query_string) > 200)
-		        ereport(LOG, (errmsg("duration: %s ms  statement: %.*s...",
-						             msec_str, 200, query_string),
-				              errdetail_execute(parsetree_list) ));
-            else
-			    ereport(LOG, (errmsg("duration: %s ms  statement: %s",
-						             msec_str, query_string),
-					          errdetail_execute(parsetree_list) ));
+			ereport(LOG, (errmsg("duration: %s ms  statement: %s",
+					             msec_str, query_string),
+				          errdetail_execute(parsetree_list) ));
 			break;
 	}
 
@@ -3624,27 +3992,60 @@ PostgresMain(int argc, char *argv[], const char *username)
 					/* This is exactly like 'Q' above except we peel off and
 					 * set the snapshot information right away.
 					 */
-					const char *snapshot_string;
 					const char *query_string;
+					
+					const char *serializedSnapshot;
+					const char *serializedQuerytree;
+					const char *serializedPlantree;
+					const char *serializedParams;
+					const char *serializedSliceInfo;
+					
+					int query_string_len;
+					int serializedSnapshotlen;
+					int serializedQuerytreelen;
+					int serializedPlantreelen;
+					int serializedParamslen;
+					int serializedSliceInfolen;
+					
 					SnapshotInfo *snapInfo;
 					int 	txnOptions;
+					int		localSlice;
+					Oid 	suid;
+					Oid 	ouid;
+					Oid 	cuid;
 
 					/* Set statement_timestamp() */
  					SetCurrentStatementStartTimestamp();
  					
 					/* get the client command serial# */
 					mpp_command_count = pq_getmsgint(&input_message, 4);
-										
+									
+					/* Get the userid info  (session, outer, current) */	
+					suid = pq_getmsgint(&input_message, 4);	
+					ouid = pq_getmsgint(&input_message, 4);		
+					cuid = pq_getmsgint(&input_message, 4);		
+					
+					/* get the slice number# */
+					localSlice = pq_getmsgint(&input_message, 4);
+					
+					/* read ser string lengths */
+					query_string_len = pq_getmsgint(&input_message, 4);
+					serializedQuerytreelen = pq_getmsgint(&input_message, 4);
+					serializedPlantreelen = pq_getmsgint(&input_message, 4);
+					serializedParamslen = pq_getmsgint(&input_message, 4);
+					serializedSliceInfolen = pq_getmsgint(&input_message, 4);
+					serializedSnapshotlen = pq_getmsgint(&input_message, 4);
+						
 					/* read in the snapshot info */
-					snapshot_string = pq_getmsgstring(&input_message);
+					serializedSnapshot = pq_getmsgbytes(&input_message,serializedSnapshotlen);
 
 					/* a NONE message is sent during an ABORT and so we dont
 					 * need to worry about setting the snapshot info.
 					 */
-					if (strcmp(snapshot_string, "NONE") != 0)
+					if (strcmp(serializedSnapshot, "NONE") != 0)
 					{						
-						/* parse the snapshot_string and store it. */
-						snapInfo = (SnapshotInfo *) deserializeNode((char*)snapshot_string);
+						/* parse the serializedSnapshot and store it. */
+						snapInfo = (SnapshotInfo *) deserializeNode(serializedSnapshot, serializedSnapshotlen);
 						
 						QDSentXID 			   = snapInfo->currentTransactionId;
 						
@@ -3659,9 +4060,10 @@ PostgresMain(int argc, char *argv[], const char *username)
 							elog(DEBUG1,"QD Got snapshot from QE, xid = %d",snapInfo->currentTransactionId);
 							ActiveSnapshot = CopySnapshot(QDSentSnapshot);
 						}
+						elog(DEBUG5, "Received QD snapshot: %s", uncompress_string(serializedSnapshot,serializedSnapshotlen));
+						
 					}
 										
-					elog(DEBUG5, "Received QD snapshot: %s", snapshot_string);
 					
 					/* get the transaction options */
 					txnOptions = pq_getmsgint(&input_message, 4);
@@ -3705,12 +4107,68 @@ PostgresMain(int argc, char *argv[], const char *username)
 					}
 					
 					/* get the query string and kick off processing. */
-					query_string = pq_getmsgstring(&input_message);
+					if (query_string_len == 0)
+						query_string = pstrdup("");
+					else
+						query_string = pq_getmsgbytes(&input_message,query_string_len);
+					
+					if (serializedQuerytreelen == 0)
+						serializedQuerytree = NULL;
+					else
+						serializedQuerytree = pq_getmsgbytes(&input_message,serializedQuerytreelen);
+						
+					if (serializedPlantreelen == 0)
+						serializedPlantree = NULL;
+					else
+						serializedPlantree = pq_getmsgbytes(&input_message,serializedPlantreelen);
+						
+					if (serializedParamslen == 0)
+						serializedParams = NULL;
+					else
+						serializedParams = pq_getmsgbytes(&input_message,serializedParamslen);
+						
+					if (serializedSliceInfolen == 0)
+						serializedSliceInfo = NULL;
+					else
+						serializedSliceInfo = pq_getmsgbytes(&input_message,serializedSliceInfolen);
+					
 					pq_getmsgend(&input_message);
 
-					elog(DEBUG5, "MPP dispatched stmt from QD: %s.",query_string);
+					if (serializedQuerytreelen==0 && serializedPlantreelen==0)
+						elog(DEBUG5, "MPP dispatched stmt from QD: %s.",query_string);
+					else
+						elog(DEBUG5, "MPP dispatched plan from QD: %s %s %s",query_string,uncompress_string(serializedQuerytree,serializedQuerytreelen),uncompress_string(serializedPlantree,serializedPlantreelen));
 					
-					exec_simple_query(query_string);
+					if (suid > 0)				
+						SetSessionAuthorization(suid, superuser_arg(suid));  /* Set the session UserId */
+	
+					if (ouid > 0 && ouid != GetSessionUserId()) 
+						SetCurrentRoleId(ouid, superuser_arg(ouid));	/* Set the outer UserId */
+						
+					PG_TRY();
+					{				
+						if (cuid > 0)
+							SetUserId(cuid);								/* Set current userid */
+							
+						if (serializedQuerytreelen==0 && serializedPlantreelen==0)
+							exec_simple_query(query_string);
+						else
+							exec_mpp_query(query_string, 
+											serializedQuerytree, serializedQuerytreelen,
+											serializedPlantree, serializedPlantreelen,
+											serializedParams, serializedParamslen,
+											serializedSliceInfo, serializedSliceInfolen,
+											localSlice);
+						
+					}
+					PG_CATCH();
+					{
+						SetUserId(GetOuterUserId());
+						PG_RE_THROW();
+					}
+					PG_END_TRY();
+						
+					SetUserId(GetOuterUserId());
 
 					send_ready_for_query = true;
 				}
@@ -4164,7 +4622,6 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 	List	   *guc_values = NIL;
 	GucContext	ctx;
 	GucSource	gucsource;
-	char	   *tmp;
 	int			firstchar;
 	char		stack_base;
 	StringInfoData input_message;

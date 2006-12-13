@@ -16,9 +16,12 @@
 #include "optimizer/clauses.h"
 #include "cdb/cdbplan.h"
 #include "cdb/cdbsrlz.h"
+#ifdef HAVE_LIBZ
+#include <zlib.h>
+#endif
 
-static char *unescape_quotes(const char *src);
-static char *escape_quotes(const char *src, int *size);
+
+static char *compress_string(const char *src, int *size);
 
 /*
  * serializeNode -
@@ -33,11 +36,12 @@ serializeNode(Node *node, int *size)
 	char	   *sNode;
 
 	Assert(node != NULL);
+	Assert(size != NULL);
 
 	pszNode = nodeToStringFast(node);
 	Assert(pszNode != NULL);
 
-	sNode = escape_quotes(pszNode, size);
+	sNode = compress_string(pszNode, size);
 	pfree(pszNode);
 
 	return sNode;
@@ -50,14 +54,14 @@ serializeNode(Node *node, int *size)
  * The returned node is palloc'ed in the current memory context.
  */
 Node *
-deserializeNode(char *strNode)
+deserializeNode(const char *strNode, int size)
 {
 	char		*sNode;
 	Node		*node;
 
 	Assert(strNode != NULL);
 
-	sNode = unescape_quotes(strNode);
+	sNode = uncompress_string(strNode, size);
 
 	Assert(sNode != NULL);
 
@@ -70,50 +74,63 @@ deserializeNode(char *strNode)
 
 
 /*
- * Escape any single quotes in given string
+ * Compress a string using zlib.
  * 
- * If size argument is non-NULL, store the size (not counting terminating NULL).
+ * returns the compressed data and the size of the compressed data.compressBound
  */
 static char *
-escape_quotes(const char *src, int *size)
+compress_string(const char *src, int *size)
 {
-	int			len = strlen(src),
-				i,
-				j;
-	char	   *result = palloc(len * 2 + 1);
+	int level = 3;
+	ulong compressed_size;
+	int uncompressed_size;
+	Bytef * result;
 
-	for (i = 0, j = 0; i < len; i++)
+	Assert(size!=NULL);
+	
+	if (src == NULL)
 	{
-		if (src[i] == '\'' || src[i] == '\\')
-			result[j++] = '\\';
-		result[j++] = src[i];
+		*size = 0;
+		return NULL;
 	}
+	
+	uncompressed_size = (int)strlen(src)+1;  /* include the trailing zero byte */
+	compressed_size = compressBound(uncompressed_size);  /* worst case? */
+	
+	result = palloc(compressed_size + sizeof(int));
+	memcpy(result,&uncompressed_size,sizeof(int)); 		/* save the original length */
+	
+	if (compress2(result+4, &compressed_size, (Bytef *)src, strlen(src)+1, level) != Z_OK)
+		elog(ERROR,"Compression failed");
+		
+	*size = compressed_size + sizeof(int);
+	elog(DEBUG1,"Compressed from %d to %d ",(int)strlen(src),(int)*size);
 
-	if (size != NULL)
-		*size = j;
-
-	result[j] = '\0';
-	return result;
+	return (char *)result;
 }
 
 /*
- * Unescape any escaped single quotes in given string
+ * Uncompress the string 
  */
-static char *
-unescape_quotes(const char *src)
+char *
+uncompress_string(const char *src, int size)
 {
-	int			len = strlen(src),
-				i,
-				j;
-	char	   *result = palloc(len + 1);
-
-	for (i = 0, j = 0; i < len; i++)
-	{
-		if (i < len - 1 && src[i] == '\\' && (src[i + 1] == '\'' || src[i + 1] == '\\'))
-			i++;
-
-		result[j++] = src[i];
-	}
-	result[j] = '\0';
-	return result;
+	Bytef * result;
+	ulong resultlen;
+	int uncompressed_len = 0;
+	
+	if (src==NULL)
+		return NULL;
+		
+	Assert(size >= sizeof(int));
+		
+	memcpy(&uncompressed_len,src,sizeof(int));
+	
+	resultlen = uncompressed_len;
+	result = palloc(resultlen);
+		
+	if (uncompress(result, &resultlen, (Bytef *)(src+sizeof(int)), size-sizeof(int)) != Z_OK)
+		elog(ERROR,"Uncompress failed");
+		
+	return (char *)result;
 }

@@ -22,7 +22,7 @@ OBJS = cdbanalyze.o \
 	   cdbbackup.o \
 	   cdbcat.o cdbconn.o cdbcopy.o \
 	   cdbdisp.o cdbdispatchresult.o \
-	   cdbexec.o cdbexplain.o \
+	   cdbexplain.o \
 	   cdbfts.o \
 	   cdbgang.o cdbgroup.o \
 	   cdbhash.o cdbheap.o \

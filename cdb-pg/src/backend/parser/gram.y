@@ -150,7 +150,7 @@ static void doNegateFloat(Value *v);
 		AlterDatabaseStmt AlterDatabaseSetStmt AlterDomainStmt AlterGroupStmt
 		AlterObjectSchemaStmt AlterOwnerStmt AlterQueueStmt AlterSeqStmt 
 		AlterTableStmt AlterUserStmt AlterUserSetStmt AlterRoleStmt 
-		AlterRoleSetStmt AnalyzeStmt CdbExecStmt ClosePortalStmt ClusterStmt 
+		AlterRoleSetStmt AnalyzeStmt ClosePortalStmt ClusterStmt 
 		CommentStmt ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
 		CreateDomainStmt CreateGroupStmt CreateOpClassStmt CreatePLangStmt
 		CreateQueueStmt CreateSchemaStmt CreateSeqStmt CreateStmt 
@@ -235,7 +235,7 @@ static void doNegateFloat(Value *v);
 				func_as createfunc_opt_list alterfunc_opt_list
 				aggr_args aggr_args_list old_aggr_definition old_aggr_list
 				oper_argtypes RuleActionList RuleActionMulti
-				opt_cdb_string_list cdb_string_list
+				cdb_string_list
 				opt_mirror_location
 				opt_column_list columnList opt_name_list
 				sort_clause opt_sort_clause sortby_list index_params
@@ -296,7 +296,7 @@ static void doNegateFloat(Value *v);
 
 %type <node>	TableElement ConstraintElem TableFuncElement
 %type <node>	columnDef
-%type <node>	cdb_string opt_cdb_string
+%type <node>	cdb_string
 %type <defelt>	def_elem old_aggr_elem
 %type <node>	def_arg columnElem where_clause
 				a_expr b_expr c_expr func_expr AexprConst indirection_el
@@ -535,7 +535,6 @@ stmt :
 			| AlterUserSetStmt
 			| AlterUserStmt
 			| AnalyzeStmt
-			| CdbExecStmt
 			| CheckPointStmt
 			| ClosePortalStmt
 			| ClusterStmt
@@ -5507,32 +5506,9 @@ DeallocateStmt: DEALLOCATE name
 
 /*****************************************************************************
  *
- *		QUERY :
- *
- *				MPPEXEC query plan [ ( parameter [, ...] ) ] [ sliceinfo localSlice]
- *
- *****************************************************************************/
-
-CdbExecStmt:	MPPEXEC Iconst Iconst Iconst cdb_string cdb_string opt_cdb_string_list opt_cdb_string SignedIconst
-				{
-					CdbExecStmt *n = makeNode(CdbExecStmt);
-					n->SessionUserId = $2;
-					n->OuterUserId = $3;
-					n->CurrentUserId = $4;
-					n->ser_query = ($5);
-					n->ser_plan = ($6);
-					n->ser_params = ($7);
-					n->ser_sliceinfo = ($8);
-					n->localSlice = $9;
-					$$ = (Node *)n;
-				}
-		;
+ */
 
 
-opt_cdb_string_list:
-			'(' cdb_string_list ')'				{ $$ = $2; }
-			| /* EMPTY */						{ $$ = NIL; }
-		;
 
 
 cdb_string_list:
@@ -5540,10 +5516,6 @@ cdb_string_list:
 			| cdb_string_list ',' cdb_string	{ $$ = lappend($1, $3); }
 		;
 
-opt_cdb_string:
-			cdb_string							{ $$ = $1; }
-			| /* EMPTY */						{ $$ = NULL; }
-		;
 
 cdb_string:
 			Sconst
