@@ -4037,12 +4037,15 @@ PostgresMain(int argc, char *argv[], const char *username)
 					serializedSnapshotlen = pq_getmsgint(&input_message, 4);
 						
 					/* read in the snapshot info */
-					serializedSnapshot = pq_getmsgbytes(&input_message,serializedSnapshotlen);
+					if (serializedSnapshotlen == 0)
+						serializedSnapshot = NULL;
+					else
+						serializedSnapshot = pq_getmsgbytes(&input_message,serializedSnapshotlen);
 
 					/* a NONE message is sent during an ABORT and so we dont
 					 * need to worry about setting the snapshot info.
 					 */
-					if (strcmp(serializedSnapshot, "NONE") != 0)
+					if (serializedSnapshotlen > 0)
 					{						
 						/* parse the serializedSnapshot and store it. */
 						snapInfo = (SnapshotInfo *) deserializeNode(serializedSnapshot, serializedSnapshotlen);

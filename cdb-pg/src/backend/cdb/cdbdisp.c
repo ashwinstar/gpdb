@@ -2738,10 +2738,10 @@ serializeSnapshot(int * size)
 	{
 		/* basically this should mean that we have an Abort in progress and
 		 * so can't and don't need to send a serialized snapshot.  so we'll
-		 * send "NONE".
+		 * send nothing.
 		 */
-		serializedSnapshotInfo = pstrdup("NONE");
-		*size=strlen("NONE")+1;
+		serializedSnapshotInfo = NULL;
+		*size=0;
 		elog(DEBUG5, "serializedSnapshot string is NONE.");
 	}
 
