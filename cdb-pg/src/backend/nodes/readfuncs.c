@@ -2459,37 +2459,6 @@ _readVacuumStmt(void)
 	READ_DONE();
 }
 
-/*
- * _readRemoteParamData
- */
-static RemoteParamData *
-_readRemoteParamData(void)
-{
-	int16 typlen;
-	bool typbyval;
-	int i;
-
-	READ_LOCALS(RemoteParamData);
-	READ_INT_FIELD(paramData.numParams);
-	for (i=0;i<local_node->paramData.numParams;i++)
-	{
-		READ_INT_FIELD(paramData.params[i].pflags);
-		READ_OID_FIELD(paramData.params[i].ptype);
-		READ_BOOL_FIELD(paramData.params[i].isnull);
-	
-		get_typlenbyval(local_node->paramData.params[i].ptype, &typlen, &typbyval);
-	
-		token = pg_strtok(&length); /* skip :value */
-	
-		if ( local_node->paramData.params[i].isnull )
-			token = pg_strtok(&length);		/* skip "<>" */
-		else
-			local_node->paramData.params[i].value = readDatum(typbyval);
-	}
-
-	READ_DONE();
-}
-
 
 static CdbProcess *
 _readCdbProcess(void)
@@ -2803,7 +2772,6 @@ static ParseNodeInfo infoAr[] =
 	{"RANGEVAR", (ReadFn)_readRangeVar},
 	{"REINDEXSTMT", (ReadFn)_readReindexStmt},
 	{"RELABELTYPE", (ReadFn)_readRelabelType},
-	{"REMOTEPARAMDATA", (ReadFn)_readRemoteParamData},
 	{"REMOVEFUNCSTMT", (ReadFn)_readRemoveFuncStmt},
 	{"REMOVEOPCLASS", (ReadFn)_readRemoveOpClassStmt},
 	{"RENAMESTMT", (ReadFn)_readRenameStmt},

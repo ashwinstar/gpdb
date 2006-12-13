@@ -1045,12 +1045,6 @@ typedef struct Flow
 	
 } Flow;
 
-typedef struct RemoteParamData
-{
-	NodeTag				type;	/* T_RemoteParamData */
-	ParamListInfoData	paramData;
-} RemoteParamData;
-
 
 
 /* GangType enumeration is used in several structures related to CDB

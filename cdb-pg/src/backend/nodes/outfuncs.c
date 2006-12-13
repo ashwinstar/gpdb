@@ -2666,40 +2666,6 @@ _outVacuumStmt(StringInfo str, VacuumStmt *node)
 	WRITE_NODE_FIELD(va_cols);
 }
 
-static void
-_outRemoteParamData(StringInfo str, RemoteParamData *node)
-{
-	int16 typlen;
-	bool typbyval;
-	int i;
-	
-
-	WRITE_NODE_TYPE("REMOTEPARAMDATA");
-	WRITE_INT_FIELD(paramData.numParams);
-	for (i=0;i<node->paramData.numParams;i++)
-	{
-		get_typlenbyval(node->paramData.params[i].ptype, &typlen, &typbyval);
-		WRITE_INT_FIELD(paramData.params[i].pflags);
-		WRITE_OID_FIELD(paramData.params[i].ptype);
-		if ( !typbyval && typlen < 0 && node->paramData.params[i].value == 0 )
-			node->paramData.params[i].isnull = true;
-		WRITE_BOOL_FIELD(paramData.params[i].isnull);
-	 
-		appendStringInfoLiteral(str, " :value ");
-	
-		/*
-		 * When the value is NULL for a datum that is not a typbyval,
-		 * and the typlen=-1 (say, for a NULL text datum),
-		 * the _outDatum call would call ereport when it tried to
-		 * call datumGetSize.  So we must test for null here, and
-		 * avoid calling _outDatum for a NULL value.
-		 */
-		if ( node->paramData.params[i].isnull )
-			appendStringInfoLiteral(str, "<>");
-		else
-			_outDatum(str, node->paramData.params[i].value, typlen, typbyval);
-	}
-}
 
 static void
 _outCdbProcess(StringInfo str, CdbProcess *node)
@@ -2998,9 +2964,6 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_Flow:
 				_outFlow(str, obj);
-				break;
-			case T_RemoteParamData:
-				_outRemoteParamData(str, obj);
 				break;
 
 			case T_Path:
