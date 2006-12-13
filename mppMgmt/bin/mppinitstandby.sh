@@ -125,7 +125,7 @@ CHECK_PARAM () {
 		LOG_MSG "[WARN]:-Located directory $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME"
 		#Now see if we have a pid file
 		GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
-		if [ $PID -ne 0 ] && [ $FAIL_PRI_SEG -eq 1 ];then
+		if [ $PID -ne 0 ] && [ x"" != x"$FAIL_PRI_SEG" ];then
 			LOG_MSG "[WARN]:-Active read only master detected on $MASTER_STANDBY_HOSTNAME"
 			LOG_MSG "[INFO]:-Calling close down routine"
 			$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$MPPSTOP -d $MASTER_DATA_DIRECTORY -m"
@@ -146,7 +146,6 @@ CHECK_PARAM () {
 			ERROR_EXIT "[FATAL]:-Unable to continue"
 		fi
 	fi
-	
 	#Now check to ensure that hostname supplied matches unix hostname output
 	SSH_HOSTNAME=`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME $HOSTNAME|$TR -d ' '`
 	ERROR_CHK $? "obtain remote hostname value" 2
@@ -201,6 +200,8 @@ UPDATE_PG_HBA () {
 			if [ $CHK_COUNT -eq 0 ];then
 			LOG_MSG "[INFO]:-Adding address of $MASTER_STANDBY_HOSTNAME to $MPP_HOSTNAME $PG_HBA file"
 			RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host  all     all     ${STANDBY_IP}/32        trust >> ${MPP_DIR}/$PG_HBA"
+			else
+			LOG_MSG "[INFO]:-Standby IP address already exists in $MPP_HOSTNAME ${MPP_DIR}/$PG_HBA"
 			fi
 		done
 	done	
