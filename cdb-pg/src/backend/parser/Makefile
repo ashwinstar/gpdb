@@ -63,6 +63,6 @@ gram.o keywords.o parser.o: $(srcdir)/parse.h
 # gram.c, parse.h, and scan.c are in the distribution tarball, so they
 # are not cleaned here.
 clean: 
-	rm -f SUBSYS.o $(OBJS)
+	rm -f SUBSYS.o $(OBJS) parse.h gram.c
 # And the garbage that might have been left behind by partial build:
 	@rm -f y.tab.h y.tab.c y.output lex.yy.c
