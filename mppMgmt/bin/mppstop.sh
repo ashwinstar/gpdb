@@ -366,9 +366,9 @@ if [ $RESTART ]; then
 	if [ -f $MPPSTART ]; then
 		if [ x"" == x"$VERBOSE" ];then
 			if [ x"" == x"$STOP_SYNC" ];then
-			$MPPSTART -aq
-			else
 			$MPPSTART -aqy
+			else
+			$MPPSTART -aq
 			fi
 		else
 			if [ x"" == x"$STOP_SYNC" ];then
