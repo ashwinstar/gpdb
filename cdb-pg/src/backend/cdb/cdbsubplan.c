@@ -246,10 +246,6 @@ addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo extPrm, P
 		//augPrm->params[j].name = NULL;
 		//augPrm->params[j].id = i;
 		
-		/* Parameter not evaluated yet, so go do it */
-		//if (prm->execPlan != NULL)
-		//	ExecSetParamPlan(prm->execPlan, econtext, NULL);
-		
 		if (intPrm[i].execPlan != NULL && 0 == (int)intPrm[i].value && !intPrm[i].isnull )
 		{
 			elog(WARNING,"Trying to use a parameter that hasn't been generated yet");
