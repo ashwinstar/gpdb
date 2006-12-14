@@ -115,6 +115,10 @@ main(int argc, char *argv[])
 		{"disable-triggers", no_argument, &disable_triggers, 1},
 		{"use-set-session-authorization", no_argument, &use_setsessauth, 1},
 
+		/* START MPP ADDITION */
+		{"mpp-syntax", no_argument, NULL, 1},
+		/* END MPP ADDITION */
+		
 		{NULL, 0, NULL, 0}
 	};
 
@@ -279,7 +283,14 @@ main(int argc, char *argv[])
 
 			case 0:
 				break;
-
+				
+			/* START MPP ADDITION */
+			case 1:
+				/* mpp-format */
+				appendPQExpBuffer(pgdumpopts, " --mpp-syntax");
+				break;
+			/* END MPP ADDITION */
+				
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);
@@ -323,7 +334,7 @@ main(int argc, char *argv[])
 	if (!std_strings)
 		std_strings = "off";
 
-	printf("--\n-- PostgreSQL database cluster dump\n--\n\n");
+	printf("--\n-- Greenplum Database cluster dump\n--\n\n");
 	if (verbose)
 		dumpTimestamp("Started on");
 
@@ -368,7 +379,7 @@ main(int argc, char *argv[])
 
 	if (verbose)
 		dumpTimestamp("Completed on");
-	printf("--\n-- PostgreSQL database cluster dump complete\n--\n\n");
+	printf("--\n-- Greenplum Database cluster dump complete\n--\n\n");
 
 	exit(0);
 }
@@ -405,7 +416,10 @@ help(void)
 	printf(_("  --use-set-session-authorization\n"
 			 "                           use SESSION AUTHORIZATION commands instead of\n"
 			 "                           OWNER TO commands\n"));
-
+	/* START MPP ADDITION */
+	printf(_("  --mpp-syntax             dump with Greenplum Database syntax\n"));
+	/* END MPP ADDITION */
+	
 	printf(_("\nConnection options:\n"));
 	printf(_("  -h, --host=HOSTNAME      database server host or socket directory\n"));
 	printf(_("  -p, --port=PORT          database server port number\n"));
