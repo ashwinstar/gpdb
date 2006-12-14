@@ -1094,6 +1094,9 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 					mcv_selec,
 					sumcommon;
 
+		/* Try to use the histogram entries to get selectivity */
+		fmgr_info(get_opcode(operator), &opproc);
+
 		/*
 		 * If we have most-common-values info, add up the fractions of the MCV
 		 * entries that satisfy MCV OP PATTERN.  These fractions contribute
@@ -1106,9 +1109,6 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
         /* CDB: LIKE cannot select fewer rows than "=". */
         ndistinct = get_variable_numdistinct(&vardata) - ncommon;
         eqsel = 1.0 / Max(1.0, ndistinct);
-
-		/* Try to use the histogram entries to get selectivity */
-		fmgr_info(get_opcode(operator), &opproc);
 
 		selec = histogram_selectivity(&vardata, &opproc, constval, true,
 									  100, 1);
