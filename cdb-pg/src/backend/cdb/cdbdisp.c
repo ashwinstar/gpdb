@@ -2313,87 +2313,80 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	{		
 		int i;
 		char * p;
+		Size length;
+
 		sparams_len = sizeof(ParamListInfoData) + (queryDesc->params->numParams-1) * sizeof(ParamExternData);
 		
 		elog(DEBUG1,"Serializing %d params",queryDesc->params->numParams);
+
+		/* We run through the parameters twice: first time adding up the space we'll need */
 		/* figure out how much buffer we need */
 		for (i = 0; i < queryDesc->params->numParams; i++)
 		{
 			ParamExternData * pxd = &queryDesc->params->params[i];
+			bool isnull = pxd->isnull;
+			int16 typlen;
+			bool typbyval;
+
+			get_typlenbyval(pxd->ptype, &typlen, &typbyval);
+			if (!typbyval && typlen < 0 && pxd->value == 0 )
+				isnull = true;
+
+			/* add room for extra type info */
+			sparams_len += sizeof(bool) + sizeof(int16);
 			
-			if (!pxd->isnull)
+			if (!isnull)
 			{
-				FmgrInfo	finfo;
-				Oid			typsend;		/* Oid for the type's binary output fn */
-				bool		typisvarlena;	/* is it varlena (ie possibly toastable)? */
-				bytea * outputbytes;
-				
-				elog(DEBUG1,"param %d is type %d.   Datum is %d",i,pxd->ptype,(int)pxd->value);
-				
-				getTypeBinaryOutputInfo(pxd->ptype,
-									&typsend,
-									&typisvarlena);
-				fmgr_info(typsend, &finfo);
-				
-				
-				
-				if (pxd->ptype==INT8OID && pxd->value == 0)
-					elog(ERROR,"Got an int8 parameter that is not null, but pointer is zero");
-				if (typisvarlena && pxd->value == 0)
-					elog(ERROR,"Got an varlena parameter that is not null, but pointer is zero");
-					
-				outputbytes =
-						DatumGetByteaP(FunctionCall1(&finfo,
-													 pxd->value));
-								 
-				elog(DEBUG1,"len of param %d is %d",i,VARSIZE(outputbytes)-4);
-				sparams_len += VARSIZE(outputbytes);
-				
-				pfree(outputbytes);
-;
+				length = datumGetSize(pxd->value, typbyval, typlen);
+				if (!typbyval)
+					sparams_len += sizeof(length);
+				sparams_len += length;
 			}
 		}
 		sparams = palloc(sparams_len);
 		p = sparams;
-		memcpy(p,&queryDesc->params->numParams,sizeof(int)); p+=sizeof(int);
-		
+		memcpy(p, &queryDesc->params->numParams, sizeof(int)); p+=sizeof(int);
 
 		for (i = 0; i < queryDesc->params->numParams; i++)
 		{
 			ParamExternData * pxd = &queryDesc->params->params[i];
+			bool isnull = pxd->isnull;
+			int16 typlen;
+			bool typbyval;
+
+			get_typlenbyval(pxd->ptype, &typlen, &typbyval);
+			if (!typbyval && typlen < 0 && pxd->value == 0)
+				isnull = true;
 			
-			memcpy(p,&pxd->ptype,sizeof(Oid)); p+=sizeof(Oid);
-			memcpy(p,&pxd->isnull,sizeof(bool)); p+=sizeof(bool);
-			memcpy(p,&pxd->pflags,sizeof(uint16)); p+=sizeof(uint16);
-			if (!pxd->isnull)
+			memcpy(p, &pxd->ptype, sizeof(Oid)); p += sizeof(Oid);
+			memcpy(p, &isnull, sizeof(bool)); p += sizeof(bool);
+			memcpy(p, &pxd->pflags, sizeof(uint16)); p += sizeof(uint16);
+			memcpy(p, &typlen, sizeof(int16)); p += sizeof(int16);
+			memcpy(p, &typbyval, sizeof(bool)); p += sizeof(bool);
+			if (!isnull)
 			{
-				FmgrInfo	finfo;
-				Oid			typsend;		/* Oid for the type's binary output fn */
-				bool		typisvarlena;
-				bytea * outputbytes;
-				
-				getTypeBinaryOutputInfo(pxd->ptype,
-									&typsend,
-									&typisvarlena);
-				fmgr_info(typsend, &finfo);
-				
-				outputbytes =
-						DatumGetByteaP(FunctionCall1(&finfo,
-													 pxd->value));
-				
-													 
-				memcpy(p,outputbytes,VARSIZE(outputbytes));
-				p+= VARSIZE(outputbytes);
-				
-				pfree(outputbytes);
+				/* this is much like _outDatum */
+				length = datumGetSize(pxd->value, typbyval, typlen);
+				if (typbyval)
+				{
+					memcpy(p, &pxd->value, length); p += length;
+				}
+				else /* passed by ref, possibly VARLEN */
+				{
+					char *s = (char *)DatumGetPointer(pxd->value);
+
+					if (PointerIsValid(s))
+					{
+						memcpy(p, &length, sizeof(length)); p += sizeof(length);
+						memcpy(p, s, length); p += length;
+					}
+					else
+					{
+						memset(p, 0, sizeof(length)); p += sizeof(length);
+					}
+				}
 			}
-
 		}
-		
-		
-
-		
-
 	}
 	else
 	{
