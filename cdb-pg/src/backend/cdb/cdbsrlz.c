@@ -82,7 +82,7 @@ static char *
 compress_string(const char *src, int *size)
 {
 	int level = 3;
-	ulong compressed_size;
+	unsigned long compressed_size;
 	int uncompressed_size;
 	Bytef * result;
 
@@ -116,7 +116,7 @@ char *
 uncompress_string(const char *src, int size)
 {
 	Bytef * result;
-	ulong resultlen;
+	unsigned long resultlen;
 	int uncompressed_len = 0;
 	
 	if (src==NULL)
