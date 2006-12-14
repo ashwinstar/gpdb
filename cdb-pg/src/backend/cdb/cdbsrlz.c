@@ -87,7 +87,7 @@ deserializeNode(const char *strNode, int size)
 /*
  * Compress a string using zlib.
  * 
- * returns the compressed data and the size of the compressed data.compressBound
+ * returns the compressed data and the size of the compressed data.
  */
 static char *
 compress_string(const char *src, int *size)
