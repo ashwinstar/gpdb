@@ -2332,9 +2332,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			if (!typbyval && typlen < 0 && pxd->value == 0 )
 				isnull = true;
 
-			/* add room for extra type info */
-			sparams_len += sizeof(bool) + sizeof(int16);
-			
 			if (!isnull)
 			{
 				length = datumGetSize(pxd->value, typbyval, typlen);
@@ -2361,8 +2358,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			memcpy(p, &pxd->ptype, sizeof(Oid)); p += sizeof(Oid);
 			memcpy(p, &isnull, sizeof(bool)); p += sizeof(bool);
 			memcpy(p, &pxd->pflags, sizeof(uint16)); p += sizeof(uint16);
-			memcpy(p, &typlen, sizeof(int16)); p += sizeof(int16);
-			memcpy(p, &typbyval, sizeof(bool)); p += sizeof(bool);
+
 			if (!isnull)
 			{
 				/* this is much like _outDatum */

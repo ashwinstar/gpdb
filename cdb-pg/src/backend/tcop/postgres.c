@@ -969,10 +969,10 @@ exec_mpp_query(const char *query_string,
 			memcpy(&pxd->ptype, p, sizeof(Oid)); p += sizeof(Oid);
 			memcpy(&pxd->isnull, p, sizeof(bool)); p += sizeof(bool);
 			memcpy(&pxd->pflags, p, sizeof(uint16)); p += sizeof(uint16);
-			memcpy(&typlen, p, sizeof(int16)); p += sizeof(int16);
-			memcpy(&typbyval, p, sizeof(bool)); p += sizeof(bool);
 			pxd->value = 0;
 			elog(DEBUG1,"param %d is type %d, null %d, flags %d", i, pxd->ptype, pxd->isnull, pxd->pflags);
+
+			get_typlenbyval(pxd->ptype, &typlen, &typbyval);
 
 			/* build the Datum */
 			if (!pxd->isnull)
