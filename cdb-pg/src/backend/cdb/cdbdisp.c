@@ -2311,9 +2311,88 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	*/
 	if (queryDesc->params != NULL && queryDesc->params->numParams > 0)
 	{		
-		sparams = (char *)queryDesc->params;
-		
+		int i;
+		char * p;
 		sparams_len = sizeof(ParamListInfoData) + (queryDesc->params->numParams-1) * sizeof(ParamExternData);
+		
+		elog(DEBUG1,"Serializing %d params",queryDesc->params->numParams);
+		/* figure out how much buffer we need */
+		for (i = 0; i < queryDesc->params->numParams; i++)
+		{
+			ParamExternData * pxd = &queryDesc->params->params[i];
+			
+			if (!pxd->isnull)
+			{
+				FmgrInfo	finfo;
+				Oid			typsend;		/* Oid for the type's binary output fn */
+				bool		typisvarlena;	/* is it varlena (ie possibly toastable)? */
+				bytea * outputbytes;
+				
+				elog(DEBUG1,"param %d is type %d.   Datum is %d",i,pxd->ptype,(int)pxd->value);
+				
+				getTypeBinaryOutputInfo(pxd->ptype,
+									&typsend,
+									&typisvarlena);
+				fmgr_info(typsend, &finfo);
+				
+				
+				
+				if (pxd->ptype==INT8OID && pxd->value == 0)
+					elog(ERROR,"Got an int8 parameter that is not null, but pointer is zero");
+				if (typisvarlena && pxd->value == 0)
+					elog(ERROR,"Got an varlena parameter that is not null, but pointer is zero");
+					
+				outputbytes =
+						DatumGetByteaP(FunctionCall1(&finfo,
+													 pxd->value));
+								 
+				elog(DEBUG1,"len of param %d is %d",i,VARSIZE(outputbytes)-4);
+				sparams_len += VARSIZE(outputbytes);
+				
+				pfree(outputbytes);
+;
+			}
+		}
+		sparams = palloc(sparams_len);
+		p = sparams;
+		memcpy(p,&queryDesc->params->numParams,sizeof(int)); p+=sizeof(int);
+		
+
+		for (i = 0; i < queryDesc->params->numParams; i++)
+		{
+			ParamExternData * pxd = &queryDesc->params->params[i];
+			
+			memcpy(p,&pxd->ptype,sizeof(Oid)); p+=sizeof(Oid);
+			memcpy(p,&pxd->isnull,sizeof(bool)); p+=sizeof(bool);
+			memcpy(p,&pxd->pflags,sizeof(uint16)); p+=sizeof(uint16);
+			if (!pxd->isnull)
+			{
+				FmgrInfo	finfo;
+				Oid			typsend;		/* Oid for the type's binary output fn */
+				bool		typisvarlena;
+				bytea * outputbytes;
+				
+				getTypeBinaryOutputInfo(pxd->ptype,
+									&typsend,
+									&typisvarlena);
+				fmgr_info(typsend, &finfo);
+				
+				outputbytes =
+						DatumGetByteaP(FunctionCall1(&finfo,
+													 pxd->value));
+				
+													 
+				memcpy(p,outputbytes,VARSIZE(outputbytes));
+				p+= VARSIZE(outputbytes);
+				
+				pfree(outputbytes);
+			}
+
+		}
+		
+		
+
+		
 
 	}
 	else
@@ -2662,7 +2741,7 @@ char*
 serializeSnapshot(int * size)
 {
 	char *serializedSnapshot;
-	Snapshot *snapInfo = NULL;
+
 	Snapshot snapshot = NULL;
 	
 	

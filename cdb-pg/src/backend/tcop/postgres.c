@@ -868,8 +868,66 @@ exec_mpp_query(const char *query_string,
     paramLI = NULL;
     if (serializedParams != NULL && serializedParamslen > 0)
     {
-    	paramLI = palloc(serializedParamslen);
-    	memcpy(paramLI,serializedParams,serializedParamslen);
+    	int numParams = 0;
+    	int i;
+    	const char * p = serializedParams;
+    	memcpy(&numParams,serializedParams,sizeof(int)); p += sizeof(int); 
+    	
+    	elog(DEBUG1,"Deserializing %d params",numParams);
+    	Assert(numParams > 0 && numParams < 100000);
+    	
+    	paramLI = palloc0(sizeof(ParamListInfoData) + (numParams-1) * sizeof(ParamExternData));
+    	paramLI->numParams = numParams;
+    	
+    	
+    	for (i = 0; i < numParams; i++)
+    	{
+    		ParamExternData * pxd = &paramLI->params[i];
+			
+			memcpy(&pxd->ptype,p,sizeof(Oid)); p+=sizeof(Oid);
+			memcpy(&pxd->isnull,p,sizeof(bool)); p+=sizeof(bool);
+			memcpy(&pxd->pflags,p,sizeof(uint16)); p+=sizeof(uint16);
+			pxd->value = 0;
+			elog(DEBUG1,"param %d is type %d, null %d, flags %d",i,pxd->ptype,pxd->isnull,pxd->pflags);
+			if (!pxd->isnull)
+			{
+				FmgrInfo	finfo;
+				Oid			typrecv;		/* Oid for the type's binary input fn */
+				Oid			typioparam;
+
+				if (pxd->ptype == INT4OID)
+				{
+					
+					memcpy(&pxd->value,p+VARHDRSZ,sizeof(int));
+					pxd->value = ntohl(pxd->value);
+					p += VARSIZE(p);
+				}
+				else
+				{ 
+				
+					getTypeBinaryInputInfo(pxd->ptype,
+										&typrecv,
+										&typioparam);
+					fmgr_info(typrecv, &finfo);
+					 
+					if (finfo.fn_nargs == 1)
+						pxd->value =
+							FunctionCall1(&finfo,
+												PointerGetDatum(p));
+					else
+						pxd->value =
+							FunctionCall2(&finfo,
+												PointerGetDatum(p), ObjectIdGetDatum(typioparam));
+					p += VARSIZE(p);
+				}
+									
+				elog(DEBUG1,"value is %d",(int)pxd->value);
+
+				
+				
+			}
+    	}
+    	 
     }
     
 	
@@ -4150,7 +4208,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					if (ouid > 0 && ouid != GetSessionUserId()) 
 						SetCurrentRoleId(ouid, superuser_arg(ouid));	/* Set the outer UserId */
 						
-					PG_TRY();
+					//PG_TRY();
 					{				
 						if (cuid > 0)
 							SetUserId(cuid);								/* Set current userid */
@@ -4166,12 +4224,12 @@ PostgresMain(int argc, char *argv[], const char *username)
 											localSlice);
 						
 					}
-					PG_CATCH();
-					{
-						SetUserId(GetOuterUserId());
-						PG_RE_THROW();
-					}
-					PG_END_TRY();
+					//PG_CATCH();
+					//{
+					//	SetUserId(GetOuterUserId());
+					//	PG_RE_THROW();
+					//}
+					//PG_END_TRY();
 						
 					SetUserId(GetOuterUserId());
 

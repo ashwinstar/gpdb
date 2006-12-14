@@ -245,12 +245,31 @@ addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo extPrm, P
 		//augPrm->params[j].kind = PARAM_EXEC_REMOTE;
 		//augPrm->params[j].name = NULL;
 		//augPrm->params[j].id = i;
-		augPrm->params[j].ptype = findParamType(context.params, i);
-		augPrm->params[j].isnull = intPrm[i].isnull;
-		augPrm->params[j].value = intPrm[i].value;
+		
+		/* Parameter not evaluated yet, so go do it */
+		//if (prm->execPlan != NULL)
+		//	ExecSetParamPlan(prm->execPlan, econtext, NULL);
+		
+		if (intPrm[i].execPlan != NULL && 0 == (int)intPrm[i].value && !intPrm[i].isnull )
+		{
+			elog(WARNING,"Trying to use a parameter that hasn't been generated yet");
+			augPrm->params[j].ptype = 23;
+			augPrm->params[j].isnull = true;
+			augPrm->params[j].value = 0;
+		}
+		else
+		{	
+			augPrm->params[j].ptype = findParamType(context.params, i);
+			augPrm->params[j].isnull = intPrm[i].isnull;
+			augPrm->params[j].value = intPrm[i].value;
+		}
+		
+		augPrm->params[j].pflags = 0;
+		elog(DEBUG1,"Adding parm %d (was %d) as type %d, isnull %d, value %d",j, i, augPrm->params[j].ptype,augPrm->params[j].isnull,(int)augPrm->params[j].value);
+		 
 	}
 
-	list_free(context.params);
+	list_free(context.params);augPrm->params[j].ptype = findParamType(context.params, i);
 
 	return augPrm;
 }
