@@ -16,12 +16,23 @@
 #include "optimizer/clauses.h"
 #include "cdb/cdbplan.h"
 #include "cdb/cdbsrlz.h"
+#include <math.h>
 #ifdef HAVE_LIBZ
 #include <zlib.h>
 #endif
 
 
 static char *compress_string(const char *src, int *size);
+
+/*
+ * compressBound doesn't exist in older zlibs, so let's use our own
+ */
+static
+unsigned long 
+mpp_compressBound(unsigned long sourceLen)
+{
+  return sourceLen + (sourceLen >> 12) + (sourceLen >> 14) + 11;
+}
 
 /*
  * serializeNode -
@@ -95,7 +106,7 @@ compress_string(const char *src, int *size)
 	}
 	
 	uncompressed_size = (int)strlen(src)+1;  /* include the trailing zero byte */
-	compressed_size = compressBound(uncompressed_size);  /* worst case? */
+	compressed_size = mpp_compressBound(uncompressed_size);  /* worst case */
 	
 	result = palloc(compressed_size + sizeof(int));
 	memcpy(result,&uncompressed_size,sizeof(int)); 		/* save the original length */
