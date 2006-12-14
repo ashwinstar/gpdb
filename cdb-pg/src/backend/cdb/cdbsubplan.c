@@ -245,6 +245,29 @@ addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo extPrm, P
 		//augPrm->params[j].kind = PARAM_EXEC_REMOTE;
 		//augPrm->params[j].name = NULL;
 		//augPrm->params[j].id = i;
+		/*
+		 * Merge issue:  If we have both regular remote params, and our special augmented ones,
+		 * how do we index into the array to find our special ones?  After all, there isn't
+		 * an "id" field any more, nor a "kind" field any more.
+		 * And nothing remembers the offset between regular remote parameters and our 
+		 * augmented ones.
+		 */
+		 
+		 
+		/* 
+		 * Merge issue:  8.2 seems to have the concept of lazy evaluation of paramters,
+		 * So ParamExecData has an "execPlan" that might need to be executed to evaluate the parameter.
+		 * But, I don't know how I can deal with that here, as we are being called by the 
+		 * preprocess_initplans() at this point.  And I'm not convinced these need to be evaluated at this point,
+		 * as they might be the same params that get filled in by the initplans.
+		 * But, when we convert them to ParamRemoteData, the "execPlan" info is lost, and
+		 * there is no way to tell if the parameter has been evaluated yet or not.
+		 * And, if we don't have value filled in, and we have isnull=false, the routines that
+		 * serialize the parameters will crash.
+		 * 
+		 * Let's try setting the unevaluated parameters to "null" when we copy them to the
+		 * remote parameters list.  Then they can get serialized OK.
+		 */
 		
 		if (intPrm[i].execPlan != NULL && 0 == (int)intPrm[i].value && !intPrm[i].isnull )
 		{
@@ -260,7 +283,7 @@ addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo extPrm, P
 			augPrm->params[j].value = intPrm[i].value;
 		}
 		
-		augPrm->params[j].pflags = 0;
+		augPrm->params[j].pflags = 0;		/* Should they be marked "const" ? */
 		elog(DEBUG1,"Adding parm %d (was %d) as type %d, isnull %d, value %d",j, i, augPrm->params[j].ptype,augPrm->params[j].isnull,(int)augPrm->params[j].value);
 		 
 	}
