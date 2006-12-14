@@ -1229,8 +1229,8 @@ bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr)
 int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMasterParm, const ThreadParmArray* pParmAr )
 {
 	InputOptions* pOptions;
+	PQExpBuffer	reportBuf = NULL;
 	FILE* fRptFile = NULL;
-	FILE* fRpt = NULL;
 	char* pszReportPathName = NULL;
 	char* pszFormat;
 	int i;
@@ -1250,48 +1250,58 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 	pOptions = ( pParmAr->count > 0) ?  pParmAr->pData[0].pOptionsData : pMasterParm->pOptionsData;
 	assert( pOptions != NULL );
 	
+	
+	/*
+	 * Set the report directory if not set by user (with --mpp-r)
+	 */
 	if ( pszReportDirectory == NULL || *pszReportDirectory == '\0' )
-		fRpt = stdout;
-	else
 	{
-		/* See whether we can create the file in the report directory */
-		if ( pszReportDirectory[ strlen(pszReportDirectory) - 1] != '/'  )
-			pszFormat = "%s/mpp_restore_%s.rpt";
-		else
-			pszFormat = "%smpp_restore_%s.rpt";
 		
-		pszReportPathName = MakeString( pszFormat, pszReportDirectory, pOptions->pszKey );
-		
-		fRptFile = fopen( pszReportPathName, "w" );
-		if ( fRptFile == NULL )
+		if (getenv("MASTER_DATA_DIRECTORY") != NULL)
 		{
-			mpp_err_msg(logWarn, pszProgName,  "Cannot open report file %s for writing.  Will use stdout instead.\n",
-						pszReportPathName );
-			fRpt = stdout;
+			/* report directory not set by user - default to $MASTER_DATA_DIRECTORY */
+            pszReportDirectory = Safe_strdup(getenv("MASTER_DATA_DIRECTORY"));			
 		}
 		else
 		{
-			fRpt = fRptFile;
+			/* $MASTER_DATA_DIRECTORY not set. Default to current directory */
+			pszReportDirectory = "./";			
 		}
 	}
 	
-	/* Write to FILE a report showing the timestamp key, what the command line options were,
-	 * .which segment databases were backed up, to where, and any errors that occurred.
-	 */
-	fprintf( fRpt, "MPP Restore Report\n" );
-	fprintf( fRpt, "Timestamp Key: %s\n", pOptions->pszKey );
+	/* See whether we can create the file in the report directory */
+	if ( pszReportDirectory[ strlen(pszReportDirectory) - 1] != '/'  )
+		pszFormat = "%s/mpp_dump_%s.rpt";
+	else
+		pszFormat = "%smpp_dump_%s.rpt";
+	
+	pszReportPathName = MakeString( pszFormat, pszReportDirectory, pParmAr->pData[0].pOptionsData->pszKey );
+	
+	fRptFile = fopen( pszReportPathName, "w" );
+	if ( fRptFile == NULL )
+		mpp_err_msg(logWarn, pszProgName, "Cannot open report file %s for writing.  Will use stdout instead.\n",
+					pszReportPathName );
 
-	fprintf( fRpt, "mpp_restore Command Line: %s\n",  
+	/* buffer to store the complete restore report */
+	reportBuf = createPQExpBuffer();
+
+	/* Write to buffer a report showing the timestamp key, what the command line options were,
+	 * which segment databases were backed up, to where, and any errors that occurred.
+	 */
+	appendPQExpBuffer(reportBuf, "MPP Restore Report\n" );
+	appendPQExpBuffer(reportBuf, "Timestamp Key: %s\n", pOptions->pszKey );
+
+	appendPQExpBuffer(reportBuf, "mpp_restore Command Line: %s\n",  
 			StringNotNull( pOptions->pszCmdLineParms, "None" ) );
 
-	fprintf( fRpt, "Pass through Command Line Options: %s\n",  
+	appendPQExpBuffer(reportBuf, "Pass through Command Line Options: %s\n",  
 			StringNotNull( pOptions->pszPassThroughParms, "None" ) );
 	
-	fprintf( fRpt, "Compression Program: %s\n", 
+	appendPQExpBuffer(reportBuf, "Compression Program: %s\n", 
 			StringNotNull( pOptions->pszCompressionProgram, "None" ) );
 	
-	fprintf( fRpt, "\n" );
-	fprintf( fRpt, "Individual Results\n" );
+	appendPQExpBuffer(reportBuf, "\n" );
+	appendPQExpBuffer(reportBuf, "Individual Results\n" );
 	
     failCount=0;
 	for ( i=0; i<pParmAr->count + 1; i++ )
@@ -1317,7 +1327,7 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 		if ( pszMsg == NULL )
 			pszMsg = "";
 		
-		fprintf( fRpt, "\tRestore of %s on dbid %d (%s:%d) from file on dbid %d (%s:%d) %s: %s %s%s\n",   
+		appendPQExpBuffer(reportBuf, "\tRestore of %s on dbid %d (%s:%d) from file on dbid %d (%s:%d) %s: %s %s%s\n",   
 				pParm->pTargetSegDBData->pszDBName, 
 				pParm->pTargetSegDBData->dbid,
 				StringNotNull( pParm->pTargetSegDBData->pszHost, "localhost"),
@@ -1333,23 +1343,26 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 	}
     
     if ( failCount == 0 )
-        fprintf( fRpt, "\n%s  utility finished successfully.\n", pszProgName  );
+        appendPQExpBuffer(reportBuf, "\n%s  utility finished successfully.\n", pszProgName  );
     else
-        fprintf( fRpt, "\n%s  utility finished unsuccessfully with  %d  failures.\n", pszProgName , failCount );
+        appendPQExpBuffer(reportBuf, "\n%s  utility finished unsuccessfully with  %d  failures.\n", pszProgName , failCount );
 	
+    /* write report to report file */
 	if ( fRptFile != NULL )
 	{
+		mpp_msg( logInfo, pszProgName, "Report results also written to %s.\n", pszReportPathName );
+		fprintf(fRptFile, reportBuf->data);
 		fclose( fRptFile );
-		mpp_err_msg(logInfo, pszProgName,  "Report results written to %s.\n", pszReportPathName );
-        if ( failCount == 0 )
-            mpp_err_msg(logInfo, pszProgName, "\n%s  utility finished successfully.\n", pszProgName  );
-        else
-            mpp_err_msg(logWarn, pszProgName, "\n%s  utility finished unsuccessfully with  %d  failures.\n", pszProgName , failCount );
 	}
-	
+
+	/* write report to stdout */
+	fprintf(stdout, reportBuf->data);
+
 	if ( pszReportPathName != NULL )
 		free( pszReportPathName );
-    
+
+	destroyPQExpBuffer(reportBuf);
+
     return failCount;
 }
 

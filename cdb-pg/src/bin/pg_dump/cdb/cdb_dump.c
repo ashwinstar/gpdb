@@ -1026,12 +1026,12 @@ bool parmValNeedsQuotes( const char* Value )
 }
 
 /*
- * reportBackupResults: This function outputs a summary of the backup results to a file or to stdout
+ * reportBackupResults: This function outputs a summary of the backup results to a file and stdout
  */
 int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* pParmAr )
 {
 	FILE* fRptFile = NULL;
-	FILE* fRpt = NULL;
+	PQExpBuffer	reportBuf = NULL;
 	char* pszReportPathName = NULL;
 	char* pszFormat;
 	ThreadParm* pParm0;
@@ -1046,50 +1046,60 @@ int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* 
 		return 0;
 	}
 	
+	/*
+	 * Set the report directory if not set by user (with --mpp-r)
+	 */
 	if ( pszReportDirectory == NULL || *pszReportDirectory == '\0' )
-		fRpt = stdout;
-	else
 	{
-		/* See whether we can create the file in the report directory */
-		if ( pszReportDirectory[ strlen(pszReportDirectory) - 1] != '/'  )
-			pszFormat = "%s/mpp_dump_%s.rpt";
-		else
-			pszFormat = "%smpp_dump_%s.rpt";
 		
-		pszReportPathName = MakeString( pszFormat, pszReportDirectory, pParmAr->pData[0].pOptionsData->pszKey );
-		
-		fRptFile = fopen( pszReportPathName, "w" );
-		if ( fRptFile == NULL )
+		if (getenv("MASTER_DATA_DIRECTORY") != NULL)
 		{
-			mpp_err_msg(logWarn, pszProgName, "Cannot open report file %s for writing.  Will use stdout instead.\n",
-						pszReportPathName );
-			fRpt = stdout;
+			/* report directory not set by user - default to $MASTER_DATA_DIRECTORY */
+            pszReportDirectory = Safe_strdup(getenv("MASTER_DATA_DIRECTORY"));			
 		}
 		else
 		{
-			fRpt = fRptFile;
+			/* $MASTER_DATA_DIRECTORY not set. Default to current directory */
+			pszReportDirectory = "./";			
 		}
 	}
 	
-	/* Write to FILE a report showing the timestamp key, what the command line options were,
-	 * .which segment databases were backed up, to where, and any errors that occurred.
+	
+	/* See whether we can create the file in the report directory */
+	if ( pszReportDirectory[ strlen(pszReportDirectory) - 1] != '/'  )
+		pszFormat = "%s/mpp_dump_%s.rpt";
+	else
+		pszFormat = "%smpp_dump_%s.rpt";
+	
+	pszReportPathName = MakeString( pszFormat, pszReportDirectory, pParmAr->pData[0].pOptionsData->pszKey );
+	
+	fRptFile = fopen( pszReportPathName, "w" );
+	if ( fRptFile == NULL )
+		mpp_err_msg(logWarn, pszProgName, "Cannot open report file %s for writing.  Will use stdout instead.\n",
+					pszReportPathName );
+
+	/* buffer to store the complete dump report */
+	reportBuf = createPQExpBuffer();
+	
+	/* Write to buffer a report showing the timestamp key, what the command line options were,
+	 * which segment databases were backed up, to where, and any errors that occurred.
 	 */
 	pParm0 = &pParmAr->pData[0];
 	
-	fprintf( fRpt, "\nGreenplum Database Backup Report\n" );
-	fprintf( fRpt, "Timestamp Key: %s\n", pParm0->pOptionsData->pszKey );
+	appendPQExpBuffer(reportBuf, "\nGreenplum Database Backup Report\n" );
+	appendPQExpBuffer(reportBuf, "Timestamp Key: %s\n", pParm0->pOptionsData->pszKey );
 
-	fprintf( fRpt, "mpp_dump Command Line: %s\n",  
+	appendPQExpBuffer(reportBuf, "mpp_dump Command Line: %s\n",  
 			StringNotNull( pParm0->pOptionsData->pszCmdLineParms, "None" ) );
 
-	fprintf( fRpt, "Pass through Command Line Options: %s\n",  
+	appendPQExpBuffer(reportBuf, "Pass through Command Line Options: %s\n",  
 			StringNotNull( pParm0->pOptionsData->pszPassThroughParms, "None" ) );
 	
-	fprintf( fRpt, "Compression Program: %s\n", 
+	appendPQExpBuffer(reportBuf, "Compression Program: %s\n", 
 			StringNotNull( pParm0->pOptionsData->pszCompressionProgram, "None" ) );
 	
-	fprintf( fRpt, "\n" );
-	fprintf( fRpt, "Individual Results\n" );
+	appendPQExpBuffer(reportBuf, "\n" );
+	appendPQExpBuffer(reportBuf, "Individual Results\n" );
 	
     failCount = 0;
 	for ( i = 0; i < pParmAr->count; i++ )
@@ -1104,12 +1114,12 @@ int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* 
 			pszMsg = "";
 		
 		if(pParm->pTargetSegDBData->role == ROLE_MASTER)
-			fprintf( fRpt, "\tMaster ");
+			appendPQExpBuffer(reportBuf, "\tMaster ");
 		else
-			fprintf( fRpt, "\t%s segment %d ", (pParm->pTargetSegDBData->isPrimary ? "Primary" : "Mirror"),
+			appendPQExpBuffer(reportBuf, "\t%s segment %d ", (pParm->pTargetSegDBData->isPrimary ? "Primary" : "Mirror"),
 					 pParm->pTargetSegDBData->content);  
 					 
-		fprintf( fRpt, "(dbid %d) Host %s Port %d Database %s BackupFile %s: %s %s%s\n",  
+		appendPQExpBuffer(reportBuf, "(dbid %d) Host %s Port %d Database %s BackupFile %s: %s %s%s\n",  
 				pParm->pTargetSegDBData->dbid, 
 				StringNotNull( pParm->pTargetSegDBData->pszHost, "localhost"),
 				pParm->pTargetSegDBData->port,
@@ -1122,22 +1132,25 @@ int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* 
 	}
     
     if ( failCount == 0 )
-        fprintf( fRpt, "\n%s utility finished successfully.\n", pszProgName );
+        appendPQExpBuffer(reportBuf, "\n%s utility finished successfully.\n", pszProgName );
     else
-        fprintf( fRpt, "\n%s utility finished unsuccessfully with  %d  failures.\n", pszProgName, failCount );
-        
+        appendPQExpBuffer(reportBuf, "\n%s utility finished unsuccessfully with  %d  failures.\n", pszProgName, failCount );
+    
+    /* write report to report file */
 	if ( fRptFile != NULL )
 	{
+		mpp_msg( logInfo, pszProgName, "Report results also written to %s.\n", pszReportPathName );
+		fprintf(fRptFile, reportBuf->data);
 		fclose( fRptFile );
-		mpp_msg( logInfo, pszProgName, "Report results written to %s.\n", pszReportPathName );
-        if ( failCount == 0 )
-            mpp_msg( logInfo, pszProgName,"%s utility finished successfully.\n", pszProgName );
-        else
-            mpp_err_msg(logError, pszProgName,"%s utility finished unsuccessfully with %d failures.\n", pszProgName, failCount );
 	}
 	
+	/* write report to stdout */
+	fprintf(stdout, reportBuf->data);
+
 	if ( pszReportPathName != NULL )
 		free( pszReportPathName );
+	
+	destroyPQExpBuffer(reportBuf);
 	
     return failCount;
 }
