@@ -901,10 +901,9 @@ exec_mpp_query(const char *query_string,
 			/* build the Datum */
 			if (!pxd->isnull)
 			{
-				length = datumGetSize(pxd->value, typbyval, typlen);
-
 				if (typbyval)
 				{
+					length = datumGetSize(pxd->value, typbyval, typlen);
 					memcpy(&pxd->value, p, length); p += length;
 				}
 				else
