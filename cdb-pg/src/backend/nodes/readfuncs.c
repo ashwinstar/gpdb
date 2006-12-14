@@ -2509,20 +2509,7 @@ _readSliceTable(void)
 	READ_DONE();
 }
 
-static SnapshotInfo *
-_readSnapshotInfo(void)
-{
-	READ_LOCALS(SnapshotInfo);
-	
-	READ_UINT_FIELD(currentTransactionId);
-	READ_UINT_FIELD(xmin);
-	READ_UINT_FIELD(xmax);
-	READ_INT_FIELD(xcnt);
-	READ_XID_ARRAY(xip,xcnt);
-	READ_UINT_FIELD(curcid);
-	
-	READ_DONE();
-}
+
 
 static VariableResetStmt *
 _readVariableResetStmt(void)
@@ -2789,7 +2776,6 @@ static ParseNodeInfo infoAr[] =
 	{"SETTODEFAULT", (ReadFn)_readSetToDefault},
 	{"SLICE", (ReadFn)_readSlice},
 	{"SLICETABLE", (ReadFn)_readSliceTable},
-	{"SNAPSHOTINFO", (ReadFn)_readSnapshotInfo},
 	{"SORT", (ReadFn)_readSort},
 	{"SORTCLAUSE", (ReadFn)_readSortClause},
 	{"SUBLINK", (ReadFn)_readSubLink},

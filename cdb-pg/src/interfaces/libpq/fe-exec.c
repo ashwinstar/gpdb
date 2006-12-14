@@ -672,7 +672,7 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
  * This should *ONLY* ever be used by the MPP Query Dispatcher and NEVER (EVER)
  * by anyone else.
  *
- * snapshot - serialized form of SnapshotInfo node.
+ * snapshot - serialized form of Snapshot data.
  * xid      - Global Transaction Id to use.
  * flags    - specifies additional processing instructions to the remote server.
  *			  e.g.  Auto explicitly start a transaction before executing this

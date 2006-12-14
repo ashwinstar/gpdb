@@ -2882,20 +2882,7 @@ _copySliceTable(SliceTable *from)
 	return newnode;
 }
 
-static SnapshotInfo *
-_copySnapshotInfo(SnapshotInfo *from)
-{
-	SnapshotInfo *newnode = makeNode(SnapshotInfo);
-	
-	COPY_SCALAR_FIELD(currentTransactionId);
-	COPY_SCALAR_FIELD(xmin);
-	COPY_SCALAR_FIELD(xmax);
-	COPY_SCALAR_FIELD(xcnt);
-	COPY_POINTER_FIELD(xip, from->xcnt*sizeof(TransactionId));
-	COPY_SCALAR_FIELD(curcid);
-	
-	return newnode;
-}
+
 
 static CreateQueueStmt *
 _copyCreateQueueStmt(CreateQueueStmt *from)
@@ -3594,9 +3581,6 @@ copyObject(void *from)
 			break;
 		case T_SliceTable:
 			retval = _copySliceTable(from);
-			break;
-		case T_SnapshotInfo:
-			retval = _copySnapshotInfo(from);
 			break;
 
 		default:

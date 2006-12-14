@@ -2707,24 +2707,7 @@ _outSliceTable(StringInfo str, SliceTable *node)
     WRITE_BOOL_FIELD(doInstrument);
 }
 
-static void
-_outSnapshotInfo(StringInfo str, SnapshotInfo *node)
-{
-	int i;
-	
-	WRITE_NODE_TYPE("SNAPSHOTINFO");
-	
-	WRITE_UINT_FIELD(currentTransactionId);
-	WRITE_UINT_FIELD(xmin);
-	WRITE_UINT_FIELD(xmax);
-	WRITE_INT_FIELD(xcnt);
-	
-	appendStringInfoLiteral(str, " :xip");
-	for( i = 0; i < node->xcnt; i++ )
-		appendStringInfo(str, " %u", node->xip[i]);
-	
-	WRITE_UINT_FIELD(curcid);
-}
+
 
 static void
 _outCreateTrigStmt(StringInfo str, CreateTrigStmt *node)
@@ -3279,10 +3262,7 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_SliceTable:
 				_outSliceTable(str, obj);
-				break;
-			case T_SnapshotInfo:
-				_outSnapshotInfo(str, obj);
-				break;
+				break;;
 			case T_VariableResetStmt:
 				_outVariableResetStmt(str, obj);
 				break;

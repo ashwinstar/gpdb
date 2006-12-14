@@ -18,7 +18,7 @@
 #include "storage/ipc.h"		/* For proc_exit_inprogress  */
 #include "miscadmin.h"
 #include "utils/memutils.h"
-#include "nodes/execnodes.h" 		/*SnapshotInfo*/
+
 #include "utils/tqual.h" 			/*for the snapshot */
 #include "storage/proc.h"  			/* MyProc */
 #include "access/xact.h"  			/*for GetCurrentTransactionId */
@@ -118,10 +118,6 @@ typedef struct {
 } sliceVec;
 
 static int fillSliceVector(SliceTable * sliceTable, int sliceIndex, sliceVec *sliceVector, int len);
-
-/* used to take the current Transaction Snapshot and serialized a version of it
- * into the static variable serializedSnapshotInfo */
-static char *serializeSnapshot(int * size);
 
 /* determines which dispatchOptions need to be set. */
 static int generateTxnOptions( bool shouldStart );
@@ -224,8 +220,8 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 					   int							serializedParamslen,
 					   const char				   *serializedSliceInfo,
 					   int							serializedSliceInfolen,				
-					   const char				   *serializedSnapshotInfo,
-					   int							serializedSnapshotInfolen,
+					   const char				   *serializedSnapshot,
+					   int							serializedSnapshotlen,
 					   int							txnOptions,
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,
@@ -330,7 +326,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 									 serializedPlantree, serializedPlantreelen,
 									 serializedParams, serializedParamslen,
 									 serializedSliceInfo, serializedSliceInfolen,
-                                     serializedSnapshotInfo, serializedSnapshotInfolen,
+                                     serializedSnapshot, serializedSnapshotlen,
                                      txnOptions,
 									 sliceIndex,
                                      qeResult);
@@ -830,8 +826,8 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	Gang	*primaryGang;
 	Gang	*mirrorGang;
 	int		txnOptions;
-	char	*serializedSnapshotInfo = NULL;
-	int		serializedSnapshotInfolen = 0;
+	char	*serializedSnapshot = NULL;
+	int		serializedSnapshotlen = 0;
 	int		nsegdb = getMPPSegmentCount();
 	
 	Assert(dispatchToPrimaries || dispatchToMirrors);
@@ -877,11 +873,11 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 
 	/* serialized a version of our snapshot */
 	if (withSnapshot)
-		serializedSnapshotInfo = serializeSnapshot(&serializedSnapshotInfolen);
+		serializedSnapshot = serializeSnapshot(&serializedSnapshotlen);
 	else
 	{
-		serializedSnapshotInfo = NULL;
-		serializedSnapshotInfolen = 0;
+		serializedSnapshot = NULL;
+		serializedSnapshotlen = 0;
 	}
 
 	/* generate our transactions options. */
@@ -896,7 +892,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 		cdbdisp_dispatchToGang(pDispatchThreads, strCommand, 
 								serializedQuerytree, serializedQuerytreelen, 
 								NULL, 0, NULL, 0, NULL, 0,
-							   serializedSnapshotInfo, serializedSnapshotInfolen,
+							   serializedSnapshot, serializedSnapshotlen,
 							   txnOptions, primaryGang, *pPrimaryResults, -1, 1);
 	}
 	
@@ -906,12 +902,12 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
         cdbdisp_dispatchToGang(pDispatchThreads, strCommand, 
         						serializedQuerytree, serializedQuerytreelen, 
         						NULL, 0, NULL, 0, NULL, 0,
-							   serializedSnapshotInfo, serializedSnapshotInfolen,
+							   serializedSnapshot, serializedSnapshotlen,
 							   txnOptions, mirrorGang, *pMirrorResults, -1, 1);
     }
 
-	if (serializedSnapshotInfo != NULL)
-		pfree(serializedSnapshotInfo);
+	if (serializedSnapshot != NULL)
+		pfree(serializedSnapshot);
 }	/* cdbdisp_dispatchCommand */
 
 
@@ -1085,8 +1081,8 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
     ListCell	*le;
 
     int			nsegdb = getMPPSegmentCount();
-	char		*serializedSnapshotInfo;
-	int			serializedSnapshotInfolen;
+	char		*serializedSnapshot;
+	int			serializedSnapshotlen;
 	int			txnOptions,
 				gangCount;
 	
@@ -1129,7 +1125,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	}
 
 	/* serialized a version of our snapshot */
-	serializedSnapshotInfo = serializeSnapshot(&serializedSnapshotInfolen);
+	serializedSnapshot = serializeSnapshot(&serializedSnapshotlen);
 	
 	/* generate our transactions options. */
 	txnOptions = generateTxnOptions(startTransaction);
@@ -1145,7 +1141,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	    serializedQuerytree, serializedQuerytreelen, 
 	    serializedPlantree, serializedPlantreelen,
 	    NULL, 0, NULL, 0,
-	    serializedSnapshotInfo, serializedSnapshotInfolen,
+	    serializedSnapshot, serializedSnapshotlen,
 	    txnOptions, primaryGang, *pPrimaryResults, -1, gangCount);
 
 	if (mirrorGang)
@@ -1155,7 +1151,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	        serializedQuerytree, serializedQuerytreelen, 
 		    serializedPlantree, serializedPlantreelen,
 		    NULL, 0, NULL, 0,
-		    serializedSnapshotInfo, serializedSnapshotInfolen,
+		    serializedSnapshot, serializedSnapshotlen,
 	        txnOptions, mirrorGang, *pMirrorResults, -1, gangCount);
     }
 
@@ -1167,12 +1163,12 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	    	serializedQuerytree, serializedQuerytreelen, 
 		    serializedPlantree, serializedPlantreelen,
 		    NULL, 0, NULL, 0,
-		    serializedSnapshotInfo, serializedSnapshotInfolen,
+		    serializedSnapshot, serializedSnapshotlen,
 	    	txnOptions, rg, *pPrimaryResults, -1, gangCount);
     }
 
-	if (serializedSnapshotInfo != NULL)
-    	pfree(serializedSnapshotInfo);
+	if (serializedSnapshot != NULL)
+    	pfree(serializedSnapshot);
 
 
 }	/* cdbdisp_dispatchCommandToAllGangs */
@@ -2197,8 +2193,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			   *splan,
 			   *ssliceinfo,
 			   *sparams;
-	char	   *serializedSnapshotInfo;		
-	int			serializedSnapshotInfolen;
+	char	   *serializedSnapshot;		
+	int			serializedSnapshotlen;
 	int			squery_len,
 				splan_len,
 				ssliceinfo_len,
@@ -2358,7 +2354,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 
 	/* serialized a version of our snapshot */
-	serializedSnapshotInfo = serializeSnapshot(&serializedSnapshotInfolen);
+	serializedSnapshot = serializeSnapshot(&serializedSnapshotlen);
 	
 	/* 
 	 * Generate our transction isolations.  We generally want Plan
@@ -2420,7 +2416,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 							   splan, splan_len,
 							   sparams, sparams_len,
 							   ssliceinfo, ssliceinfo_len, 
-						       serializedSnapshotInfo, serializedSnapshotInfolen,
+						       serializedSnapshot, serializedSnapshotlen,
 						       txnOptions,
                                primaryGang,
                                *pPrimaryResults,
@@ -2438,7 +2434,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 								   splan, splan_len,
 								   sparams, sparams_len,
 								   ssliceinfo, ssliceinfo_len, 
-							       serializedSnapshotInfo, serializedSnapshotInfolen,
+							       serializedSnapshot, serializedSnapshotlen,
             					   txnOptions,
                                    mirrorGang,
                                    *pMirrorResults,
@@ -2454,8 +2450,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		pfree(ssliceinfo);
 
 	
-	if (serializedSnapshotInfo!=NULL)
-    	pfree(serializedSnapshotInfo);
+	if (serializedSnapshot!=NULL)
+    	pfree(serializedSnapshot);
 
     pfree(sliceVector);
 
@@ -2662,11 +2658,11 @@ CdbDispatchUtilityStatement(struct Node *stmt)
 
 
 
-static char*
+char*
 serializeSnapshot(int * size)
 {
-	char *serializedSnapshotInfo;
-	SnapshotInfo *snapInfo = NULL;
+	char *serializedSnapshot;
+	Snapshot *snapInfo = NULL;
 	Snapshot snapshot = NULL;
 	
 	
@@ -2719,19 +2715,24 @@ serializeSnapshot(int * size)
 	
 	if (snapshot != NULL)
 	{
-		snapInfo = makeNode(SnapshotInfo);	
-		snapInfo->currentTransactionId = GetCurrentTransactionId();
-		snapInfo->xmin = snapshot->xmin;
-		snapInfo->xmax = snapshot->xmax;
-		snapInfo->xcnt = snapshot->xcnt;
-		snapInfo->xip = snapshot->xip;
-		snapInfo->curcid = snapshot->curcid;
-	
-		
-		serializedSnapshotInfo = serializeNode((Node *) snapInfo, size);
-		pfree(snapInfo);
-		
-		elog(DEBUG5, "serializedSnapshot string is \"%s\".", uncompress_string(serializedSnapshotInfo,*size));
+		int i;
+		char * p;
+		TransactionId currentTransactionId = GetCurrentTransactionId();
+
+		*size = sizeof(TransactionId)*3 + 
+										sizeof(uint32) + /*xcnt*/
+										snapshot->xcnt*sizeof(TransactionId) + sizeof(CommandId);
+		serializedSnapshot = palloc(*size);
+		p = serializedSnapshot;
+		memcpy(p,&currentTransactionId,sizeof(TransactionId)); p += sizeof(TransactionId);
+		memcpy(p,&snapshot->xmin,sizeof(TransactionId)); p += sizeof(TransactionId);
+		memcpy(p,&snapshot->xmax,sizeof(TransactionId)); p += sizeof(TransactionId);
+		memcpy(p,&snapshot->xcnt,sizeof(uint32)); p += sizeof(uint32);
+		for (i = 0; i < snapshot->xcnt; i++)
+		{
+			memcpy(p,&snapshot->xip[i],sizeof(TransactionId)); p += sizeof(TransactionId);
+		}
+		memcpy(p,&snapshot->curcid,sizeof(CommandId)); p += sizeof(CommandId);
 		
 	}
 	else
@@ -2740,12 +2741,11 @@ serializeSnapshot(int * size)
 		 * so can't and don't need to send a serialized snapshot.  so we'll
 		 * send nothing.
 		 */
-		serializedSnapshotInfo = NULL;
+		serializedSnapshot = NULL;
 		*size=0;
-		elog(DEBUG5, "serializedSnapshot string is NONE.");
 	}
 
-	return serializedSnapshotInfo;
+	return serializedSnapshot;
 }
 
 /* generateTxnOptions:

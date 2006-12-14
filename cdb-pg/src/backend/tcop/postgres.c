@@ -4007,7 +4007,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 					int serializedParamslen;
 					int serializedSliceInfolen;
 					
-					SnapshotInfo *snapInfo;
 					int 	txnOptions;
 					int		localSlice;
 					Oid 	suid;
@@ -4046,24 +4045,27 @@ PostgresMain(int argc, char *argv[], const char *username)
 					 * need to worry about setting the snapshot info.
 					 */
 					if (serializedSnapshotlen > 0)
-					{						
-						/* parse the serializedSnapshot and store it. */
-						snapInfo = (SnapshotInfo *) deserializeNode(serializedSnapshot, serializedSnapshotlen);
+					{			
+						int xipsize;
+						const char * p = serializedSnapshot;		
+							
+						memcpy(&QDSentXID,p,sizeof(TransactionId)); 	p+=sizeof(TransactionId);		
 						
-						QDSentXID 			   = snapInfo->currentTransactionId;
-						
-						QDSentSnapshot->xmin   = snapInfo->xmin;
-						QDSentSnapshot->xmax   = snapInfo->xmax;
-						QDSentSnapshot->xcnt   = snapInfo->xcnt;	
-						QDSentSnapshot->xip    = snapInfo->xip;					
-						QDSentSnapshot->curcid = snapInfo->curcid;
+						memcpy(&QDSentSnapshot->xmin,p,sizeof(TransactionId)); 	p+=sizeof(TransactionId);	
+						memcpy(&QDSentSnapshot->xmax,p,sizeof(TransactionId)); 	p+=sizeof(TransactionId);	
+						memcpy(&QDSentSnapshot->xcnt,p,sizeof(uint32)); 	p+=sizeof(uint32);	
+							
+						xipsize = sizeof(TransactionId)*QDSentSnapshot->xcnt;
+						QDSentSnapshot->xip    = palloc(xipsize);
+						memcpy(QDSentSnapshot->xip,p,xipsize); p += xipsize;
+										
+						memcpy(&QDSentSnapshot->curcid,p,sizeof(CommandId)); 	p+=sizeof(CommandId);	
 						
 						if (Mpp_role == MPP_ROLE_DISPATCH)
 						{
-							elog(DEBUG1,"QD Got snapshot from QE, xid = %d",snapInfo->currentTransactionId);
+							elog(DEBUG1,"QD Got snapshot from QE, xid = %d",QDSentXID);
 							ActiveSnapshot = CopySnapshot(QDSentSnapshot);
 						}
-						elog(DEBUG5, "Received QD snapshot: %s", uncompress_string(serializedSnapshot,serializedSnapshotlen));
 						
 					}
 										

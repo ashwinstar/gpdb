@@ -2190,7 +2190,6 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 		{
 			char *serializedSnapshot;
 			int serializedSnapshotlen;
-			SnapshotInfo *snapInfo = NULL;
 			const char * query = plan->query;
 			StringInfoData newquery;
 			char * query_text;
@@ -2263,29 +2262,33 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				 * Is GetCurrentCommandId() right?  Or should this be based on the one from the QD,
 				 * moved forward?
 				 */
-				snapInfo = makeNode(SnapshotInfo);	
-				snapInfo->currentTransactionId = QDSentXID;	// The global XID from the QD
-				snapInfo->xmin = QDSentSnapshot->xmin;		
-				snapInfo->xmax = QDSentSnapshot->xmax;
-				snapInfo->xcnt = QDSentSnapshot->xcnt;
-				snapInfo->xip = QDSentSnapshot->xip;
-				snapInfo->curcid = GetCurrentCommandId(); // QDSentSnapshot->curcid++;
+
+				char * p;
+				TransactionId currentTransactionId = QDSentXID; // The global XID from the QD
+				CommandId currentCommandId = GetCurrentCommandId();  // or QDSentSnapshot->curcid++;
+		
+				serializedSnapshotlen = sizeof(TransactionId)*3 + 
+												sizeof(uint32) + /*xcnt*/
+												snapshot->xcnt*sizeof(TransactionId) + sizeof(CommandId);
+				serializedSnapshot = palloc(serializedSnapshotlen);
+				p = serializedSnapshot;
+				memcpy(p,&currentTransactionId,sizeof(TransactionId)); p += sizeof(TransactionId);
+				memcpy(p,&snapshot->xmin,sizeof(TransactionId)); p += sizeof(TransactionId);
+				memcpy(p,&snapshot->xmax,sizeof(TransactionId)); p += sizeof(TransactionId);
+				memcpy(p,&snapshot->xcnt,sizeof(uint32)); p += sizeof(uint32);
+				for (i = 0; i < snapshot->xcnt; i++)
+				{
+					memcpy(p,&snapshot->xip[i],sizeof(TransactionId)); p += sizeof(TransactionId);
+				}
+				memcpy(p,&currentCommandId,sizeof(CommandId)); p += sizeof(CommandId);
 			}
 			else
 			{
-				snapInfo = makeNode(SnapshotInfo);	
-				snapInfo->currentTransactionId = GetCurrentTransactionId();
-				snapInfo->xmin = ActiveSnapshot->xmin;		
-				snapInfo->xmax = ActiveSnapshot->xmax;
-				snapInfo->xcnt = ActiveSnapshot->xcnt;
-				snapInfo->xip = ActiveSnapshot->xip;
-				snapInfo->curcid = GetCurrentCommandId();  
+				serializedSnapshot = serializeSnapshot(&serializedSnapshotlen);
+				
 			}
 	
-		
-			serializedSnapshot = serializeNode((Node *) snapInfo, &serializedSnapshotlen);
-			pfree(snapInfo);
-			
+
 			query_text = PQbuildMppQueryString(
 				query, strlen(query)+1, 
 				NULL, 0, NULL, 0, NULL, 0, NULL, 0,

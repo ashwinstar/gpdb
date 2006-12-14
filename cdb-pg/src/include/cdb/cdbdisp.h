@@ -123,7 +123,7 @@ cdbdisp_startDtxTransaction(void);
  * The number of segdbs handled by any one thread is determined by the
  * guc variable mpp_connections_per_thread.
  *
- * The caller must also provide a serialized SnapshotInfo string to be used to
+ * The caller must also provide a serialized Snapshot string to be used to
  * set the global snapshot for the dispatched statement.
  *
  * The caller must provide a CdbDispatchResults object having available
@@ -156,8 +156,8 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads,
 					   int							serializedParamslen,
 					   const char				   *serializedSliceInfo,	
 					   int							serializedSliceInfolen,		
-					   const char				   *serializedSnapshotInfo,
-					   int							serializedSnapshotInfolen,
+					   const char				   *serializedSnapshot,
+					   int							serializedSnapshotlen,
 					   int							txnOptions,
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,
@@ -367,6 +367,11 @@ cdbdisp_makeDispatchThreads(int paramCount);
  */
 void
 cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads);
+
+/* used to take the current Transaction Snapshot and serialized a version of it
+ * into the static variable serializedSnapshot */
+char *
+serializeSnapshot(int * size);
 
 /*--------------------------------------------------------------------*/
 

@@ -41,8 +41,7 @@ typedef enum NodeTag
 	T_CdbProcess,
 	T_Slice,
 	T_SliceTable,
-	T_SnapshotInfo,
-
+	
 	/*
 	 * TAGS FOR PLAN NODES (plannodes.h)
 	 */
