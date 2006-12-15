@@ -47,7 +47,7 @@ SELECT * FROM viewtest ORDER BY 1;
 CREATE OR REPLACE VIEW viewtest AS
 	SELECT a, b FROM viewtest_tbl WHERE a > 5 ORDER BY b DESC;
 
-SELECT * FROM viewtest;
+SELECT * FROM viewtest ORDER BY 1,2;
 
 -- should fail
 CREATE OR REPLACE VIEW viewtest AS

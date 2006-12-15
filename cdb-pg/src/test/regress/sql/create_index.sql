@@ -236,7 +236,7 @@ CREATE UNIQUE INDEX CONCURRENTLY concur_index2 ON concur_heap(f1);
 -- check if constraint is set up properly to be enforced
 INSERT INTO concur_heap VALUES ('b','x');
 -- check if constraint is enforced properly at build time
-CREATE UNIQUE INDEX CONCURRENTLY concur_index3 ON concur_heap(f2);
+--CREATE UNIQUE INDEX CONCURRENTLY concur_index3 ON concur_heap(f2);
 -- test that expression indexes and partial indexes work concurrently
 CREATE INDEX CONCURRENTLY concur_index4 on concur_heap(f2) WHERE f1='a';
 CREATE INDEX CONCURRENTLY concur_index5 on concur_heap(f2) WHERE f1='x';

@@ -49,7 +49,7 @@ COPY basictest (testvarchar) FROM stdin;
 short
 \.
 
-select * from basictest;
+select * from basictest order by 1,2,3;
 
 -- check that domains inherit operations from base types
 select testtext || testvarchar as concat, testnumeric + 42 as sum

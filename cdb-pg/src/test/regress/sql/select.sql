@@ -93,7 +93,7 @@ SELECT two, stringu1, ten, string4
 -- awk 'BEGIN{FS="      ";}{if(NF!=2){print $4,$5;}else{print;}}' - stud_emp.data
 --
 -- SELECT name, age FROM person*; ??? check if different
-SELECT p.name, p.age FROM person* p  ORDER BY 1;
+SELECT p.name, p.age FROM person* p  ORDER BY 1,2;
 
 --
 -- awk '{print $1,$2;}' person.data |

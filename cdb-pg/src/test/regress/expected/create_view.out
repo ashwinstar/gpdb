@@ -38,12 +38,12 @@ SELECT * FROM viewtest ORDER BY 1;
 
 CREATE OR REPLACE VIEW viewtest AS
 	SELECT a, b FROM viewtest_tbl WHERE a > 5 ORDER BY b DESC;
-SELECT * FROM viewtest;
+SELECT * FROM viewtest ORDER BY 1,2;
  a  | b  
 ----+----
- 20 | 25
- 15 | 20
  10 | 15
+ 15 | 20
+ 20 | 25
 (3 rows)
 
 -- should fail

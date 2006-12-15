@@ -49,7 +49,7 @@ COPY basictest (testvarchar) FROM stdin; -- fail
 ERROR:  value too long for type character varying(5)
 CONTEXT:  COPY basictest, line 1, column testvarchar: "notsoshorttext"
 COPY basictest (testvarchar) FROM stdin;
-select * from basictest;
+select * from basictest order by 1,2,3;
  testint4 | testtext | testvarchar | testnumeric 
 ----------+----------+-------------+-------------
        88 | haha     | short       |      123.12
