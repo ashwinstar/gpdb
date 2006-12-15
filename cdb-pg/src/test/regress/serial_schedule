@@ -43,7 +43,7 @@ test: create_type
 test: create_table
 test: create_function_2
 test: copy
-ignore: copyselect
+test: copyselect
 test: constraints
 ignore: triggers
 test: create_misc
