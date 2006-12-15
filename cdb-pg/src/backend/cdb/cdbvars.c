@@ -100,6 +100,8 @@ double		mpp_hashagg_rewrite_limit = 1;
 /* MPP Experimental Feature GUCs */
 bool		mpp_enable_agg_distinct = FALSE;
 bool		mpp_enable_preunique = FALSE;
+bool		mpp_enable_explain_allstat = FALSE;
+bool		mpp_enable_sort_limit = FALSE;
 
 /* ----------------
  * Non-GUC globals

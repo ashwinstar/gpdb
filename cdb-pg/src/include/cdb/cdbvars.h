@@ -404,6 +404,20 @@ extern bool mpp_enable_agg_distinct;
  */
 extern bool mpp_enable_preunique;
 
+/* May MPP dump statistics for all segments as a huge ugly string
+ * during EXPLAIN ANALYZE? 
+ *
+ */
+extern bool mpp_enable_explain_allstat;
+
+/* May MPP restrict ORDER BY sorts to the first N rows if the ORDER BY
+ * is wrapped by a LIMIT clause (where N=OFFSET+LIMIT)?
+ *
+ * The code does not currently use planner estimates for this.  If enabled,
+ * the tactic is used whenever possible.
+ */
+extern bool mpp_enable_sort_limit;
+
 /* The maximum number of times on average that the hybrid hashed aggregation
  * algorithm will plan to spill an input row to disk before including it in
  * an aggregation.  Increasing this parameter will cause the planner to choose 

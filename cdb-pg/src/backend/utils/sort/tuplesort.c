@@ -247,6 +247,8 @@ struct Tuplesortstate
 	SortTuple  *memtuples;		/* array of SortTuple structs */
 	int			memtupcount;	/* number of tuples currently present */
 	int			memtupsize;		/* allocated length of memtuples array */
+	long		memtupLIMIT;	/* LIMIT of memtuples array */ /*CDB*/
+	int			dumpcount;	    /* count of dumps */ /*CDB*/
 
 	/*
 	 * While building initial runs, this is the current output run number
@@ -491,6 +493,8 @@ tuplesort_begin_common(int workMem, bool randomAccess)
 
 	state->memtupcount = 0;
 	state->memtupsize = 1024;	/* initial guess */
+	state->memtupLIMIT = 0; /*CDB*/
+	state->dumpcount   = 0; /*CDB*/
 	state->memtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
 
 	USEMEM(state, GetMemoryChunkSpace(state->memtuples));
@@ -511,6 +515,24 @@ tuplesort_begin_common(int workMem, bool randomAccess)
 	MemoryContextSwitchTo(oldcontext);
 
 	return state;
+}
+
+
+/*
+ * Initialize some extra CDB attributes for the sort, including limit
+ * and uniqueness.  Should do this after begin_heap.
+ * 
+ */
+void
+cdb_tuplesort_init(Tuplesortstate *state, 
+				   long offset, long limit, int unique)
+{
+	/* set a limit to internal sorts. If the offset is non-zero but
+	 * the limit is not set, then no limit */
+	if (limit)
+	{
+		state->memtupLIMIT = offset + limit;
+	}
 }
 
 Tuplesortstate *
@@ -833,6 +855,8 @@ tuplesort_putdatum(Tuplesortstate *state, Datum val, bool isNull)
 static void
 puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 {
+	int do_quicksort = (state->memtupLIMIT == 0); /* no quicksort if LIMIT */
+
 	switch (state->status)
 	{
 		case TSS_INITIAL:
@@ -854,9 +878,12 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			/*
 			 * Done if we still fit in available memory and have array slots.
 			 */
-			if (state->memtupcount < state->memtupsize && !LACKMEM(state))
-				return;
 
+			if (do_quicksort)
+			{
+				if (state->memtupcount < state->memtupsize && !LACKMEM(state))
+						return;
+			}
 			/*
 			 * Nope; time to switch to tape-based operation.
 			 */
@@ -1303,6 +1330,7 @@ inittapes(Tuplesortstate *state)
 	 * this case would ever occur, but be safe.
 	 */
 	maxTapes = Min(maxTapes, state->memtupsize / 2);
+/* XXX XXX: with losers, only need 1x slots because we don't need a merge heap */
 
 	state->maxTapes = maxTapes;
 	state->tapeRange = maxTapes - 1;
@@ -1820,10 +1848,13 @@ mergeprereadone(Tuplesortstate *state, int srcTape)
 static void
 dumptuples(Tuplesortstate *state, bool alltuples)
 {
+	int bDumped = 0;
+
 	while (alltuples ||
 		   (LACKMEM(state) && state->memtupcount > 1) ||
 		   state->memtupcount >= state->memtupsize)
 	{
+		if (!bDumped) bDumped = 1;
 		/*
 		 * Dump the heap's frontmost entry, and sift up to remove it from the
 		 * heap.
@@ -1862,6 +1893,8 @@ dumptuples(Tuplesortstate *state, bool alltuples)
 			selectnewtape(state);
 		}
 	}
+
+	if (bDumped) state->dumpcount++;
 }
 
 /*
@@ -2018,7 +2051,21 @@ tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 		memtuples[j] = memtuples[i];
 		j = i;
 	}
+
 	memtuples[j] = *tuple;
+
+	/* CDB: always add new value if never dumped or no limit, else
+	 * drop the last value if it exceeds the limit 
+	 */
+	if ((!state->dumpcount && state->memtupLIMIT) 
+		&& (state->memtupcount > state->memtupLIMIT))
+	{
+		SortTuple  last_tuple = memtuples[--state->memtupcount];
+		HeapTuple	htup = (HeapTuple) last_tuple.tuple;
+		FREEMEM(state, GetMemoryChunkSpace(htup));
+		heap_freetuple(htup);
+	}
+
 }
 
 /*
@@ -2341,6 +2388,8 @@ comparetup_heap(const SortTuple *a, const SortTuple *b, Tuplesortstate *state)
 		if (compare != 0)
 			return compare;
 	}
+
+	/* CDB JC XXX XXX - need to merge aggregates or discard duplicates here */
 
 	return 0;
 }

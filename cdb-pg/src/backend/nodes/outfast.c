@@ -573,6 +573,12 @@ _outSort(StringInfo str, Sort *node)
 	appendStringInfoLiteral(str, " :sortOperators");
 	for (i = 0; i < node->numCols; i++)
 		appendStringInfo(str, " %u", node->sortOperators[i]);
+
+    /* CDB */
+	WRITE_NODE_FIELD(limitOffset);
+	WRITE_NODE_FIELD(limitCount);
+
+
 }
 
 static void

@@ -55,9 +55,13 @@ extern Tuplesortstate *tuplesort_begin_datum(Oid datumType,
 					  Oid sortOperator,
 					  int workMem, bool randomAccess);
 
+extern void cdb_tuplesort_init(Tuplesortstate *state, 
+							   long offset, long limit, int unique);
+
 extern void tuplesort_puttupleslot(Tuplesortstate *state,
 					   TupleTableSlot *slot);
 extern void tuplesort_putindextuple(Tuplesortstate *state, IndexTuple tuple);
+
 extern void tuplesort_putdatum(Tuplesortstate *state, Datum val,
 				   bool isNull);
 

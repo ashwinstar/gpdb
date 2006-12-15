@@ -1062,6 +1062,26 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"mpp_enable_explain_allstat", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+			gettext_noop("Experimental feature: dump stats for all segments in EXPLAIN ANALYZE."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&mpp_enable_explain_allstat,
+		false, NULL, NULL
+	},
+
+	{
+		{"mpp_enable_sort_limit", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+			gettext_noop("Experimental feature: ."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&mpp_enable_sort_limit,
+		false, NULL, NULL
+	},
+
+	{
 		{"mpp_is_primary", PGC_BACKEND, UNGROUPED,
 			gettext_noop("Reports session type as primary or mirror."),
 			NULL,

@@ -40,7 +40,6 @@
 #include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() etc. */
 #include "cdb/cdbpullup.h"      /* cdbpullup_targetlist() */
 
-
 typedef struct CreatePlanContext
 {
     PlannerInfo    *root;
@@ -2602,6 +2601,8 @@ make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 	node->numCols = numCols;
 	node->sortColIdx = sortColIdx;
 	node->sortOperators = sortOperators;
+	node->limitOffset = NULL; /* CDB */
+	node->limitCount  = NULL; /* CDB */
 
 	return node;
 }
@@ -3223,6 +3224,14 @@ make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount,
 
 	node->limitOffset = limitOffset;
 	node->limitCount = limitCount;
+
+	/* CDB */ /* pass limit struct to sort */
+	if (IsA(lefttree, Sort) && mpp_enable_sort_limit)
+	{
+		Sort* pSort = (Sort*)lefttree;
+		pSort->limitOffset = copyObject(limitOffset);
+		pSort->limitCount  = copyObject(limitCount);
+	}
 
 	return node;
 }

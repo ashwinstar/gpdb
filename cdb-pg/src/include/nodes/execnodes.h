@@ -1472,6 +1472,10 @@ typedef struct SortState
 	bool		randomAccess;	/* need random access to sort output? */
 	bool		sort_Done;		/* sort completed yet? */
 	void	   *tuplesortstate; /* private state of tuplesort.c */
+	/* CDB */ /* limit state */		
+	ExprState  *limitOffset;	/* OFFSET parameter, or NULL if none */
+	ExprState  *limitCount;		/* COUNT parameter, or NULL if none */
+
 } SortState;
 
 /* ---------------------

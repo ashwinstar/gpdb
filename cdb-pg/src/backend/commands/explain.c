@@ -46,6 +46,7 @@ typedef struct ExplainState
 
     /* CDB */
     QueryDesc  *queryDesc;
+	instr_time	firststart;    /* start time of query */
 } ExplainState;
 
 static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
@@ -254,7 +255,8 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	memset(es, 0, sizeof(*es));
     es->queryDesc = queryDesc;
 
-	INSTR_TIME_SET_CURRENT(starttime);
+    INSTR_TIME_SET_CURRENT(starttime);
+	es->firststart = starttime;
 
 	/* If analyzing, we need to cope with queued triggers */
 	if (stmt->analyze)
@@ -341,6 +343,7 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	if (stmt->analyze)
 	{
 		INSTR_TIME_SET_CURRENT(starttime);
+		es->firststart = starttime;
 		AfterTriggerEndQuery(queryDesc->estate);
 		totaltime += elapsed_time(&starttime);
 	}
@@ -797,10 +800,14 @@ explain_outNode(StringInfo str,
 	 */
 	if (planstate->instrument)
     {
+		Instrumentation iFirst;
+
         InstrEndLoop(planstate->instrument);
 
         /* CDB: Show actual row count, etc. */
-        cdbexplain_showExecStats(planstate, str, indent+1);
+		iFirst.firststart = es->firststart;
+
+        cdbexplain_showExecStats(planstate, str, indent+1, &iFirst);
     }
 
     /* quals, sort keys, etc */

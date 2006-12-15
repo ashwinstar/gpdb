@@ -51,6 +51,7 @@ void
 InstrStopNode(Instrumentation *instr, double nTuples)
 {
 	instr_time	endtime;
+	instr_time	starttime;
 
 	/* count the returned tuples */
 	instr->tuplecount += nTuples;
@@ -61,6 +62,7 @@ InstrStopNode(Instrumentation *instr, double nTuples)
 		return;
 	}
 
+	starttime = instr->starttime;
 	INSTR_TIME_SET_CURRENT(endtime);
 
 #ifndef WIN32
@@ -89,6 +91,8 @@ InstrStopNode(Instrumentation *instr, double nTuples)
 	{
 		instr->running = true;
 		instr->firsttuple = INSTR_TIME_GET_DOUBLE(instr->counter);
+		/* CDB: save this start time as the first start */
+		instr->firststart = starttime;
 	}
 }
 

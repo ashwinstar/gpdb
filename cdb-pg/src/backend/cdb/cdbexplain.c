@@ -28,6 +28,10 @@
 typedef struct CdbExplain_StatInst
 {
     NodeTag     pstype;         /* PlanState node type */
+	instr_time	starttime;		/* Start time of current iteration of node */
+	instr_time	firststart;		/* Start time of first iteration of node */
+	instr_time	counter;		/* Accumulated runtime for this node */
+	double		firsttuple;		/* Time for first tuple of this cycle */
     double      startup;        /* Total startup time (in seconds) */
     double      total;          /* Total total time (in seconds) */
     double      ntuples;        /* Total tuples produced */
@@ -70,6 +74,8 @@ cdbexplain_sendStatWalker(PlanState *planstate, void *context);
 static CdbVisitOpt
 cdbexplain_recvStatWalker(PlanState *planstate, void *context);
 
+static int
+cdbexplain_diff_time(char* outbuf, instr_time starttime, instr_time endtime);
 
 /*
  * cdbexplain_sendExecStats
@@ -243,6 +249,9 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context)
     CdbExplain_StatInst    *siMax;
     int                     imsgptr;
     double                  ntMax;
+#ifdef INSTR_GDB_ALLSTATS
+	CdbExplain_StatInst    *pAllStats;
+#endif
 
     /* If slice was dispatched to qExecs, and stats came back, grab 'em. */
     if (ctx->nmsgptr > 0)
@@ -260,6 +269,34 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context)
 
         Insist(siMax->pstype == planstate->type);
 
+#ifdef INSTR_GDB_ALLSTATS
+
+		instr->numStats = ctx->nmsgptr;
+
+		if (ctx->nmsgptr > 1)
+		{
+			pAllStats = (CdbExplain_StatInst*)
+					palloc0(ctx->nmsgptr * sizeof(CdbExplain_StatInst));
+			/* XXX XXX: need a better way to handle this!! */
+			instr->pAllStats = (void *)pAllStats;
+
+			{
+				CdbExplain_StatInst    *si = siMax;
+
+				pAllStats[0].starttime = si->starttime;
+				pAllStats[0].firststart = si->firststart;
+				pAllStats[0].counter = si->counter;
+				pAllStats[0].firsttuple = si->firsttuple;
+
+				pAllStats[0].startup = si->startup;
+				pAllStats[0].total = si->total;
+				pAllStats[0].ntuples = si->ntuples;
+				pAllStats[0].nloops = si->nloops;
+			}
+
+		}
+#endif
+
         /* Examine the statistics from the rest of the qExecs. */
         for (imsgptr = 1; imsgptr < ctx->nmsgptr; imsgptr++)
         {
@@ -268,6 +305,20 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context)
             double                  nt = si->ntuples;
 
             Insist(siMax->pstype == si->pstype);
+
+#ifdef INSTR_GDB_ALLSTATS
+			{
+				pAllStats[imsgptr].starttime = si->starttime;
+				pAllStats[imsgptr].firststart = si->firststart;
+				pAllStats[imsgptr].counter = si->counter;
+				pAllStats[imsgptr].firsttuple = si->firsttuple;
+
+				pAllStats[imsgptr].startup = si->startup;
+				pAllStats[imsgptr].total = si->total;
+				pAllStats[imsgptr].ntuples = si->ntuples;
+				pAllStats[imsgptr].nloops = si->nloops;
+			}
+#endif
 
             /* Update gang totals. */
             if (si->ntuples > 0)
@@ -288,7 +339,11 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context)
             ntMax = nt;
         }
 
-        /* Copy stats from winning qExec into the Instrumentation node. */
+		instr->starttime = siMax->starttime;
+		instr->firststart = siMax->firststart;
+		instr->counter = siMax->counter;
+		instr->firsttuple = siMax->firsttuple;
+
         instr->startup = siMax->startup;
         instr->total = siMax->total;
         instr->ntuples = siMax->ntuples;
@@ -332,6 +387,12 @@ cdbexplain_sendStatWalker(PlanState *planstate, void *context)
     /* Get this node's statistics. */
     memset(si, 0, sizeof(*si));
     si->pstype = planstate->type;
+
+	si->starttime = instr->starttime;
+	si->firststart = instr->firststart;
+	si->counter = instr->counter;
+	si->firsttuple = instr->firsttuple;
+
     si->startup = instr->startup;
     si->total = instr->total;
     si->ntuples = instr->ntuples;
@@ -351,6 +412,60 @@ cdbexplain_sendStatWalker(PlanState *planstate, void *context)
     return CdbVisit_Walk;
 }                               /* cdbexplain_sendStatWalker */
 
+/*
+ * cdbexplain_format_time
+ *    common format routine to convert time in msec to readable string
+ */
+void
+cdbexplain_format_time(char* outbuf, double totalmsecs)
+{
+    if (totalmsecs < 20 && totalmsecs != 0)
+        sprintf(outbuf, "%.3f ms", totalmsecs);
+    else
+        sprintf(outbuf, "%.0f ms", totalmsecs);
+}
+
+int
+cdbexplain_diff_time(char* outbuf, instr_time starttime, instr_time endtime)
+{
+	if (INSTR_TIME_IS_ZERO(endtime))
+	{
+        sprintf(outbuf, "0.0 ms");			
+		return 0;
+	}
+
+	{
+		double      myoffset;
+		instr_time	timediff = endtime;
+		instr_time  firststart = starttime;
+
+		/* compute time difference -- (instr->firststart - query firststart) */
+#ifndef WIN32
+		timediff.tv_sec  -= firststart.tv_sec;
+		timediff.tv_usec -= firststart.tv_usec;
+
+		/* Normalize after each add to avoid overflow/underflow of tv_usec */
+		while (timediff.tv_usec < 0)
+		{
+			timediff.tv_usec += 1000000;
+			timediff.tv_sec--;
+		}
+		while (timediff.tv_usec >= 1000000)
+		{
+			timediff.tv_usec -= 1000000;
+			timediff.tv_sec++;
+		}
+#else							/* WIN32 */
+		timediff.QuadPart -= firststart.QuadPart ;
+#endif
+		
+		/* get time in seconds, convert to msec */
+		myoffset = 1000.0 * INSTR_TIME_GET_DOUBLE(timediff); 
+
+		cdbexplain_format_time(outbuf, myoffset);
+	}
+	return 1;
+}
 
 /*
  * cdbexplain_showExecStats
@@ -359,7 +474,8 @@ cdbexplain_sendStatWalker(PlanState *planstate, void *context)
 void
 cdbexplain_showExecStats(struct PlanState      *planstate,
                          struct StringInfoData *str,
-                         int                    indent)
+                         int                    indent,
+						 Instrumentation       *pFirst)
 {
     Instrumentation    *instr = planstate->instrument;
     double      startup = instr->startup * 1000.0;  /* convert secs to ms */
@@ -367,6 +483,8 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
     char        firstbuf[32];
     char        totalbuf[32];
     int         i;
+	/* get the query's start time from pFirst */
+	instr_time	firststart = pFirst->firststart;
 
 	for (i = 0; i < indent; i++)
 		appendStringInfo(str, "  ");
@@ -392,26 +510,93 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
     appendStringInfoString(str, "with ");
 
     /* Elapsed time (ms) to fetch first row */
-    if (startup < 20 && startup != 0)
-        sprintf(firstbuf, "%.3f", startup);
-    else
-        sprintf(firstbuf, "%.0f", startup);
+	cdbexplain_format_time(firstbuf, startup);
 
     /* Elapsed time (ms) to fetch all rows */
-    if (total < 20 && total != 0)
-        sprintf(totalbuf, "%.3f", total);
-    else
-        sprintf(totalbuf, "%.0f", total);
+	cdbexplain_format_time(totalbuf, total);
 
     /* Show elapsed time just once if they are the same. */
-    appendStringInfo(str, "%s ms ", firstbuf);
+    appendStringInfo(str, "%s ", firstbuf);
     if (strcmp(firstbuf, totalbuf) != 0)
-        appendStringInfo(str, "to first row, %s ms ", totalbuf);
+        appendStringInfo(str, "to first row, %s ", totalbuf);
     appendStringInfoString(str, "to end");
 
     /* Number of rescans */
     if (instr->nloops > 1)
         appendStringInfo(str, " of %.0f scans", instr->nloops);
+	
+	/* if the current node has started (firststart != 0), determine
+	 * when it started in relation to the start of the query 
+	 */
+	if (!(INSTR_TIME_IS_ZERO(instr->firststart)))
+	{
+		double      myoffset;
+		char        diffbuf[32];
+		instr_time	timediff = instr->firststart;
+		/* compute time difference -- (instr->firststart - query firststart) */
+#ifndef WIN32
+		timediff.tv_sec  -= firststart.tv_sec;
+		timediff.tv_usec -= firststart.tv_usec;
+
+		/* Normalize after each add to avoid overflow/underflow of tv_usec */
+		while (timediff.tv_usec < 0)
+		{
+			timediff.tv_usec += 1000000;
+			timediff.tv_sec--;
+		}
+		while (timediff.tv_usec >= 1000000)
+		{
+			timediff.tv_usec -= 1000000;
+			timediff.tv_sec++;
+		}
+#else							/* WIN32 */
+		timediff.QuadPart -= firststart.QuadPart ;
+#endif
+		
+		/* get time in seconds, convert to msec */
+		myoffset = 1000.0 * INSTR_TIME_GET_DOUBLE(timediff); 
+
+		cdbexplain_format_time(diffbuf, myoffset);
+		appendStringInfo(str, ", start offset by %s", diffbuf); 
+
+#ifdef INSTR_GDB_ALLSTATS
+
+		/* XXX XXX: why is instr->numStats = 26? */
+		if (mpp_enable_explain_allstat && instr->numStats && instr->pAllStats)
+		{
+			int ii;
+			CdbExplain_StatInst *pAllStats = 
+					(CdbExplain_StatInst*) instr->pAllStats;
+
+			/* create a header for all stats: separate each individual
+			 * stat by an underscore, separate the grouped stats for each
+			 * node by a slash
+			 */
+			appendStringInfo(str, ", all stats: %s",
+/*	 "starttime_firststart_counter_firsttuple_startup_total_ntuples_nloops" */
+							 "firststart_ntuples"
+					);
+			for (ii = 0; ii < instr->numStats; ii++)
+			{
+				char tbuf[32];
+
+				cdbexplain_diff_time(tbuf, firststart, 
+									 pAllStats[ii].firststart);
+				appendStringInfo(str, "/%s_%f",
+								 tbuf, pAllStats[ii].ntuples
+						);
+				
+			}
+			appendStringInfo(str, " end all stats");
+		}
+
+
+#endif
+
+
+		
+	} /* end if started */
+
 
     appendStringInfoString(str, ".\n");
 }                               /* cdbexplain_showExecStats */

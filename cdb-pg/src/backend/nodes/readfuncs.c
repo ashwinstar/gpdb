@@ -2335,6 +2335,10 @@ _readSort(void)
 
 	READ_OID_ARRAY(sortOperators, numCols);
 
+    /* CDB */
+	READ_NODE_FIELD(limitOffset);
+	READ_NODE_FIELD(limitCount);
+
 	READ_DONE();
 }
 

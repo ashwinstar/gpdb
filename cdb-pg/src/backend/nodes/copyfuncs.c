@@ -534,6 +534,10 @@ _copySort(Sort *from)
 	COPY_POINTER_FIELD(sortColIdx, from->numCols * sizeof(AttrNumber));
 	COPY_POINTER_FIELD(sortOperators, from->numCols * sizeof(Oid));
 
+    /* CDB */
+	COPY_NODE_FIELD(limitOffset);
+	COPY_NODE_FIELD(limitCount);
+
 	return newnode;
 }
 

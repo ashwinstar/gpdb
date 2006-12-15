@@ -54,6 +54,8 @@ GetTimerFrequency(void)
 #endif   /* WIN32 */
 
 
+#define INSTR_GDB_ALLSTATS 1    /* true if collecting all worker stats */
+
 typedef struct Instrumentation
 {
 	/* Info about current plan cycle: */
@@ -72,6 +74,12 @@ typedef struct Instrumentation
     /* CDB: Gang totals */
     int         cdbWorkers;     /* # of processes reporting ntuples > 0 */
     double      cdbGangTuples;  /* sum of ntuples over all workers */
+	/* CDB: first start */
+	instr_time	firststart;		/* Start time of first iteration of node */
+#ifdef INSTR_GDB_ALLSTATS
+	int         numStats;	
+	void       *pAllStats;      /* list of all stats */
+#endif
 } Instrumentation;
 
 extern Instrumentation *InstrAlloc(int n);

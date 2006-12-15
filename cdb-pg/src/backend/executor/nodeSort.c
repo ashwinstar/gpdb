@@ -90,6 +90,49 @@ ExecSort(SortState *node)
 											  node->randomAccess);
 		node->tuplesortstate = (void *) tuplesortstate;
 
+		/* CDB */
+		{
+			ExprContext *econtext = node->ss.ps.ps_ExprContext;
+			bool 		isNull;
+			long 		limit = 0;
+			long 		offset = 0;
+			int 		unique = 0;
+
+			if (node->limitCount)
+			{
+				limit =
+						DatumGetInt32(
+								ExecEvalExprSwitchContext(node->limitCount,
+														  econtext,
+														  &isNull,
+														  NULL));
+				/* Interpret NULL limit as no limit */
+				if (isNull)
+					limit = 0;
+				else if (limit < 0)
+					limit = 0;
+
+			}
+			if (node->limitOffset)
+			{
+				offset =
+						DatumGetInt32(
+								ExecEvalExprSwitchContext(node->limitOffset,
+														  econtext,
+														  &isNull,
+														  NULL));
+				/* Interpret NULL offset as no offset */
+				if (isNull)
+					offset = 0;
+				else if (offset < 0)
+					offset = 0;
+
+			}
+			
+			cdb_tuplesort_init(tuplesortstate, offset, limit, unique);
+		}
+
+
 		/*
 		 * Scan the subplan and feed all the tuples to tuplesort.
 		 */
@@ -169,12 +212,29 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	sortstate->sort_Done = false;
 	sortstate->tuplesortstate = NULL;
 
+	/* CDB */ /* evaluate a limit as part of the sort */
+	{
+		sortstate->limitOffset = ExecInitExpr((Expr *) node->limitOffset,
+											  (PlanState *) sortstate);
+		sortstate->limitCount = ExecInitExpr((Expr *) node->limitCount,
+											 (PlanState *) sortstate);
+	}
+
 	/*
 	 * Miscellaneous initialization
 	 *
 	 * Sort nodes don't initialize their ExprContexts because they never call
 	 * ExecQual or ExecProject.
 	 */
+
+	/* CDB */
+
+	/* BUT:
+	 * The LIMIT optimizations requires exprcontext in which to
+	 * evaluate the limit/offset parameters.
+	 */
+	ExecAssignExprContext(estate, &sortstate->ss.ps);
+
 
 #define SORT_NSLOTS 2
 
