@@ -93,7 +93,7 @@ SELECT '' AS "Five", i AS "Value",
        WHEN (i = 2) THEN 'two'
        ELSE 'big'
   END AS "Category"
-  FROM CASE_TBL ORDER BY 2;
+  FROM CASE_TBL ORDER BY 2,3;
 
 SELECT '' AS "Five",
   CASE WHEN ((i < 0) or (i < 0)) THEN 'small'
@@ -123,15 +123,15 @@ SELECT COALESCE(a.f, b.i, b.j)
 
 SELECT a.i,a.f,b.i,b.j
   FROM CASE_TBL a, CASE2_TBL b
-  WHERE COALESCE(a.f, b.i, b.j) = 2 ORDER BY 1,2;
+  WHERE COALESCE(a.f, b.i, b.j) = 2 ORDER BY 1,2,3,4;
 
 SELECT '' AS Five, NULLIF(a.i,b.i) AS "NULLIF(a.i,b.i)",
   NULLIF(b.i, 4) AS "NULLIF(b.i,4)"
-  FROM CASE_TBL a, CASE2_TBL b ORDER BY 2,3;
+  FROM CASE_TBL a, CASE2_TBL b ORDER BY 2,3,4,5;
 
 SELECT '' AS "Two", a.i,a.f,b.i,b.j
   FROM CASE_TBL a, CASE2_TBL b
-  WHERE COALESCE(f,b.i) = 2 ORDER BY 2,3;
+  WHERE COALESCE(f,b.i) = 2 ORDER BY 2,3,4,5;
 
 --
 -- Examples of updates involving tables
