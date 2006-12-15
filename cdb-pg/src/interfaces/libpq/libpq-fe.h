@@ -345,9 +345,9 @@ extern char *PQbuildMppQueryString(const char  *command,
 								   int          mpp_command_count,
 								   int			localSlice,
 								   Oid			sessionUserId,
-								   bool			sessionUserIsSuper,
+								   pqbool		sessionUserIsSuper,
 					  			   Oid			outerUserId,
-					  			   bool			outerUserIsSuper,
+					  			   pqbool		outerUserIsSuper,
 					 			   Oid			currentUserId,
 								   int         *final_len);
 
