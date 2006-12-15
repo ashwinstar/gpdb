@@ -1205,7 +1205,8 @@ thread_DispatchCommand(void *arg)
 				pParms->serializedSliceInfo, pParms->serializedSliceInfolen, 
 				pParms->serializedSnapshot, pParms->serializedSnapshotlen, 
 				pParms->txnOptions, pParms->cmdID, pParms->localSlice, 
-				GetSessionUserId(), GetOuterUserId(), GetUserId(),
+				GetSessionUserId(), superuser_arg(GetSessionUserId()),
+				GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
 				&pParms->query_text_len);
 
 	if (pParms->query_text == NULL)

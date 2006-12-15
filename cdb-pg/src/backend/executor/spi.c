@@ -2294,7 +2294,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				NULL, 0, NULL, 0, NULL, 0, NULL, 0,
 				serializedSnapshot, serializedSnapshotlen, 
 				txnOptions, mpp_command_count, -1, 
-				GetSessionUserId(), GetOuterUserId(), GetUserId(),
+				GetSessionUserId(), superuser_arg(GetSessionUserId()), GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
 				&query_text_len);
 			 
 			elog(DEBUG1,"Sending via special PQsendMppQuery");

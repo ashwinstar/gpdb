@@ -712,15 +712,19 @@ PQbuildMppQueryString(const char  *command,
 					  int          mpp_command_count,
 					  int		   localSlice,
 					  Oid			sessionUserId,
+					  bool			sessionUserIsSuper,
 					  Oid			outerUserId,
+					  bool			outerUserIsSuper,
 					  Oid			currentUserId,
 					  int         *final_len)
 {
 	int	tmp, len;
 	int	total_query_len;
 	char *shared_query, *pos;
+	char one = 1;
+	char zero = 0;
 
-	total_query_len = 5 /* overhead */ + 12 /* userids */ + 24 /* lengths */ +
+	total_query_len = 5 /* overhead */ + 14 /* userids */ + 24 /* lengths */ +
 		4 /* comamnd count */ + snapshotInfo_len +
 		4 /* flags */ + command_len + querytree_len + plantree_len + params_len + sliceinfo_len + 4;
 
@@ -747,9 +751,20 @@ PQbuildMppQueryString(const char  *command,
 	memcpy(pos, &tmp, 4);
 	pos += 4;
 	
+	if (sessionUserIsSuper)
+		*pos++ = one;
+	else
+		*pos++ = zero;
+	
+	
 	tmp = htonl(outerUserId);
 	memcpy(pos, &tmp, 4);
 	pos += 4;
+	
+	if (outerUserIsSuper)
+		*pos++ = one;
+	else
+		*pos++ = zero;
 	
 	tmp = htonl(currentUserId);
 	memcpy(pos, &tmp, 4);

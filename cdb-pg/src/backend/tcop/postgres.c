@@ -4081,6 +4081,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 					Oid 	suid;
 					Oid 	ouid;
 					Oid 	cuid;
+					bool	suid_is_super = false;
+					bool	ouid_is_super = false;
+					
 
 					/* Set statement_timestamp() */
  					SetCurrentStatementStartTimestamp();
@@ -4090,7 +4093,12 @@ PostgresMain(int argc, char *argv[], const char *username)
 									
 					/* Get the userid info  (session, outer, current) */	
 					suid = pq_getmsgint(&input_message, 4);	
+					if(pq_getmsgbyte(&input_message) == 1)
+						suid_is_super = true;	
+					
 					ouid = pq_getmsgint(&input_message, 4);		
+					if(pq_getmsgbyte(&input_message) == 1)
+						ouid_is_super = true;	
 					cuid = pq_getmsgint(&input_message, 4);		
 					
 					/* get the slice number# */
@@ -4214,10 +4222,10 @@ PostgresMain(int argc, char *argv[], const char *username)
 						elog(DEBUG5, "MPP dispatched plan from QD: %s %s %s",query_string,uncompress_string(serializedQuerytree,serializedQuerytreelen),uncompress_string(serializedPlantree,serializedPlantreelen));
 					
 					if (suid > 0)				
-						SetSessionAuthorization(suid, superuser_arg(suid));  /* Set the session UserId */
+						SetSessionAuthorization(suid, suid_is_super);  /* Set the session UserId */
 	
 					if (ouid > 0 && ouid != GetSessionUserId()) 
-						SetCurrentRoleId(ouid, superuser_arg(ouid));	/* Set the outer UserId */
+						SetCurrentRoleId(ouid, ouid_is_super);		/* Set the outer UserId */
 						
 					//PG_TRY();
 					{				
