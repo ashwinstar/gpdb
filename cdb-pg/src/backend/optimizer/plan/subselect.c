@@ -815,7 +815,7 @@ cdb_convert_EXISTS_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *su
     {
         rnode = copyObject(subselect->limitCount);
         IncrementVarSublevelsUp(rnode, -1, 1);
-        lnode = (Node *)makeConst(INT8OID, sizeof(int8), Int64GetDatum(0),
+        lnode = (Node *)makeConst(INT8OID, sizeof(int64), Int64GetDatum(0),
                                   false, false);
         limitqual = (Node *)make_op(NULL, list_make1(makeString("<")),
                                     lnode, rnode, -1);
@@ -847,7 +847,7 @@ cdb_convert_EXISTS_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *su
         {
             lnode = copyObject(subselect->limitOffset);
             IncrementVarSublevelsUp(lnode, -1, 1);
-            rnode = (Node *)makeConst(INT8OID, sizeof(int8), Int64GetDatum(1),
+            rnode = (Node *)makeConst(INT8OID, sizeof(int64), Int64GetDatum(1),
                                       false, false);
             node = (Node *)make_op(NULL, list_make1(makeString("<")), 
                                    lnode, rnode, -1);
@@ -890,7 +890,7 @@ cdb_convert_EXISTS_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *su
      */
     if (!contain_vars_of_level_or_above(sublink->subselect, 1))
     {
-        subselect->limitCount = (Node *)makeConst(INT8OID, sizeof(int8), Int64GetDatum(1),
+        subselect->limitCount = (Node *)makeConst(INT8OID, sizeof(int64), Int64GetDatum(1),
                                                   false, false);
         return make_and_qual(limitqual, (Node *)sublink);
     }

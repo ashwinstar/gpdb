@@ -695,7 +695,7 @@ create_limit1_plan(CreatePlanContext *ctx, UniquePath *uniquepath)
         limitplan->plan.lefttree = subplan->lefttree;
         limitplan->plan.righttree = NULL;
         limitplan->limitOffset = NULL;
-        limitplan->limitCount = (Node *)makeConst(INT8OID, sizeof(int8),
+        limitplan->limitCount = (Node *)makeConst(INT8OID, sizeof(int64),
                                                   Int64GetDatum(1),
                                                   false, false);
         subplan->lefttree = (Plan *)limitplan;
@@ -716,7 +716,7 @@ create_limit1_plan(CreatePlanContext *ctx, UniquePath *uniquepath)
     limitplan->plan.lefttree = subplan;
     limitplan->plan.righttree = NULL;
     limitplan->limitOffset = NULL;
-    limitplan->limitCount = (Node *)makeConst(INT8OID, sizeof(int8),
+    limitplan->limitCount = (Node *)makeConst(INT8OID, sizeof(int64),
                                               Int64GetDatum(1),
                                               false, false);
     return (Plan *)limitplan;
