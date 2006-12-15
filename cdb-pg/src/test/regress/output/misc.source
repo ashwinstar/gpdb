@@ -81,64 +81,11 @@ SELECT * FROM stud_emp ORDER BY 1;
 --
 -- inheritance stress test
 --
-SELECT * FROM a_star* ORDER BY 1;
- class | a  
--------+----
- a     |  1
- a     |  2
- a     |   
- b     |  3
- b     |  4
- b     |   
- b     |   
- c     |  5
- c     |  6
- c     |   
- c     |   
- d     |  7
- d     |  8
- d     |  9
- d     | 10
- d     |   
- d     | 11
- d     | 12
- d     | 13
- d     |   
- d     |   
- d     |   
- d     | 14
- d     |   
- d     |   
- d     |   
- d     |   
- e     | 15
- e     | 16
- e     | 17
- e     |   
- e     | 18
- e     |   
- e     |   
- f     | 19
- f     | 20
- f     | 21
- f     | 22
- f     |   
- f     | 24
- f     | 25
- f     | 26
- f     |   
- f     |   
- f     |   
- f     | 27
- f     |   
- f     |   
- f     |   
- f     |   
-(50 rows)
-
+SELECT * FROM a_star* ORDER BY 1,2,3;
+ERROR:  ORDER BY position 3 is not in select list
 SELECT * 
    FROM b_star* x
-   WHERE x.b = text 'bumble' or x.a < 3 ORDER BY 1;
+   WHERE x.b = text 'bumble' or x.a < 3 ORDER BY 1,2,3;
  class | a |   b    
 -------+---+--------
  b     |   | bumble
@@ -175,15 +122,15 @@ SELECT class, a
 
 SELECT class, b, c
    FROM d_star* x
-   WHERE x.a < 100 ORDER BY 1,2;
+   WHERE x.a < 100 ORDER BY 1,2,3;
  class |    b    |     c      
 -------+---------+------------
  d     | fumble  | 
  d     | grumble | hi sunita
  d     | rumble  | 
  d     | stumble | hi koko
- d     |         | hi kristin
  d     |         | hi avi
+ d     |         | hi kristin
  d     |         | 
  d     |         | 
 (8 rows)
@@ -205,19 +152,9 @@ SELECT class, c FROM e_star* x WHERE x.c NOTNULL ORDER BY 1,2;
  f     | hi mike
 (12 rows)
 
-SELECT * FROM f_star* x WHERE x.c ISNULL ORDER BY 1;
- class | a  | c |  e  |                     f                     
--------+----+---+-----+-------------------------------------------
- f     | 22 |   |  -7 | ((111,555),(222,666),(333,777),(444,888))
- f     | 25 |   |  -9 | 
- f     | 26 |   |     | ((11111,33333),(22222,44444))
- f     |    |   | -11 | ((1111111,3333333),(2222222,4444444))
- f     | 27 |   |     | 
- f     |    |   | -12 | 
- f     |    |   |     | ((11111111,33333333),(22222222,44444444))
- f     |    |   |     | 
-(8 rows)
-
+SELECT * FROM f_star* x WHERE x.c ISNULL ORDER BY 1,2,3,4,5;
+ERROR:  could not identify an ordering operator for type polygon
+HINT:  Use an explicit ordering operator or modify the query.
 -- grouping and aggregation on inherited sets have been busted in the past...
 SELECT sum(a) FROM a_star*;
  sum 
@@ -311,65 +248,36 @@ SELECT class, foo
 ALTER TABLE a_star RENAME COLUMN foo TO aa;
 SELECT * 
    from a_star*
-   WHERE aa < 1000 ORDER BY 1;
- class | aa 
--------+----
- a     |  1
- a     |  2
- b     |  3
- b     |  4
- c     |  5
- c     |  6
- d     |  7
- d     |  8
- d     |  9
- d     | 10
- d     | 11
- d     | 12
- d     | 13
- d     | 14
- e     | 15
- e     | 16
- e     | 17
- e     | 18
- f     | 19
- f     | 20
- f     | 21
- f     | 22
- f     | 24
- f     | 25
- f     | 26
- f     | 27
-(26 rows)
-
+   WHERE aa < 1000 ORDER BY 1,2,3;
+ERROR:  ORDER BY position 3 is not in select list
 ALTER TABLE f_star ADD COLUMN f int4;
 UPDATE f_star SET f = 10;
 ALTER TABLE e_star* ADD COLUMN e int4;
 --UPDATE e_star* SET e = 42;
-SELECT * FROM e_star* ORDER BY 1;
+SELECT * FROM e_star* ORDER BY 1,2,3,4;
  class | aa |     cc      | ee  | e 
 -------+----+-------------+-----+---
  e     | 15 | hi carol    |  -1 |  
  e     | 16 | hi bob      |     |  
  e     | 17 |             |  -2 |  
- e     |    | hi michelle |  -3 |  
  e     | 18 |             |     |  
  e     |    | hi elisa    |     |  
+ e     |    | hi michelle |  -3 |  
  e     |    |             |  -4 |  
  f     | 19 | hi claire   |  -5 |  
  f     | 20 | hi mike     |  -6 |  
  f     | 21 | hi marcel   |     |  
  f     | 22 |             |  -7 |  
- f     |    | hi keith    |  -8 |  
  f     | 24 | hi marc     |     |  
  f     | 25 |             |  -9 |  
  f     | 26 |             |     |  
- f     |    | hi allison  | -10 |  
- f     |    | hi jeff     |     |  
- f     |    |             | -11 |  
  f     | 27 |             |     |  
+ f     |    | hi allison  | -10 |  
  f     |    | hi carl     |     |  
+ f     |    | hi jeff     |     |  
+ f     |    | hi keith    |  -8 |  
  f     |    |             | -12 |  
+ f     |    |             | -11 |  
  f     |    |             |     |  
  f     |    |             |     |  
 (23 rows)
@@ -495,7 +403,7 @@ SELECT hobbies_r.name, (hobbies_r.equipment).name FROM hobbies_r ORDER BY 1,2;
 -- joe and sally need hightops, and
 -- everyone else is fine.
 --
-SELECT p.name, name(p.hobbies), name(equipment(p.hobbies)) FROM ONLY person p ORDER BY 1,2;
+SELECT p.name, name(p.hobbies), name(equipment(p.hobbies)) FROM ONLY person p ORDER BY 1,2,3;
  name  |    name     |     name      
 -------+-------------+---------------
  joe   | basketball  | hightops
@@ -507,7 +415,7 @@ SELECT p.name, name(p.hobbies), name(equipment(p.hobbies)) FROM ONLY person p OR
 --
 -- as above, but jeff needs advil and peet's coffee as well.
 --
-SELECT p.name, name(p.hobbies), name(equipment(p.hobbies)) FROM person* p ORDER BY 1,2;
+SELECT p.name, name(p.hobbies), name(equipment(p.hobbies)) FROM person* p ORDER BY 1,2,3;
  name  |    name     |     name      
 -------+-------------+---------------
  jeff  | posthacking | advil
@@ -522,7 +430,7 @@ SELECT p.name, name(p.hobbies), name(equipment(p.hobbies)) FROM person* p ORDER 
 -- just like the last two, but make sure that the target list fixup and
 -- unflattening is being done correctly.
 --
-SELECT name(equipment(p.hobbies)), p.name, name(p.hobbies) FROM ONLY person p ORDER BY 1,2;
+SELECT name(equipment(p.hobbies)), p.name, name(p.hobbies) FROM ONLY person p ORDER BY 1,2,3;
      name      | name  |    name     
 ---------------+-------+-------------
  advil         | mike  | posthacking
@@ -531,7 +439,7 @@ SELECT name(equipment(p.hobbies)), p.name, name(p.hobbies) FROM ONLY person p OR
  peet's coffee | mike  | posthacking
 (4 rows)
 
-SELECT (p.hobbies).equipment.name, p.name, name(p.hobbies) FROM person* p ORDER BY 1,2;
+SELECT (p.hobbies).equipment.name, p.name, name(p.hobbies) FROM person* p ORDER BY 1,2,3;
      name      | name  |    name     
 ---------------+-------+-------------
  advil         | jeff  | posthacking
@@ -542,7 +450,7 @@ SELECT (p.hobbies).equipment.name, p.name, name(p.hobbies) FROM person* p ORDER 
  peet's coffee | mike  | posthacking
 (6 rows)
 
-SELECT (p.hobbies).equipment.name, name(p.hobbies), p.name FROM ONLY person p ORDER BY 1,2;
+SELECT (p.hobbies).equipment.name, name(p.hobbies), p.name FROM ONLY person p ORDER BY 1,2,3;
      name      |    name     | name  
 ---------------+-------------+-------
  advil         | posthacking | mike
@@ -551,15 +459,15 @@ SELECT (p.hobbies).equipment.name, name(p.hobbies), p.name FROM ONLY person p OR
  peet's coffee | posthacking | mike
 (4 rows)
 
-SELECT name(equipment(p.hobbies)), name(p.hobbies), p.name FROM person* p ORDER BY 1,2;
+SELECT name(equipment(p.hobbies)), name(p.hobbies), p.name FROM person* p ORDER BY 1,2,3;
      name      |    name     | name  
 ---------------+-------------+-------
- advil         | posthacking | mike
  advil         | posthacking | jeff
+ advil         | posthacking | mike
  hightops      | basketball  | joe
  hightops      | basketball  | sally
- peet's coffee | posthacking | mike
  peet's coffee | posthacking | jeff
+ peet's coffee | posthacking | mike
 (6 rows)
 
 SELECT user_relns() AS user_relns
@@ -624,9 +532,7 @@ SELECT user_relns() AS user_relns
  int8_tbl
  interval_tbl
  iportaltest
- log_table
  lseg_tbl
- main_table
  num_data
  num_exp_add
  num_exp_div
@@ -713,8 +619,8 @@ SELECT *, name(equipment(h.*)) FROM hobbies_r h ORDER BY 1,2;
 -------------+--------+---------------
  basketball  | joe    | hightops
  basketball  | sally  | hightops
- posthacking | jeff   | advil
  posthacking | jeff   | peet's coffee
+ posthacking | jeff   | advil
  posthacking | mike   | advil
  posthacking | mike   | peet's coffee
  skywalking  |        | guts
@@ -725,8 +631,8 @@ SELECT *, (equipment(CAST((h.*) AS hobbies_r))).name FROM hobbies_r h ORDER BY 1
 -------------+--------+---------------
  basketball  | joe    | hightops
  basketball  | sally  | hightops
- posthacking | jeff   | advil
  posthacking | jeff   | peet's coffee
+ posthacking | jeff   | advil
  posthacking | mike   | advil
  posthacking | mike   | peet's coffee
  skywalking  |        | guts

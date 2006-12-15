@@ -85,11 +85,11 @@ SELECT * FROM stud_emp ORDER BY 1;
 --
 -- inheritance stress test
 --
-SELECT * FROM a_star* ORDER BY 1;
+SELECT * FROM a_star* ORDER BY 1,2,3;
 
 SELECT * 
    FROM b_star* x
-   WHERE x.b = text 'bumble' or x.a < 3 ORDER BY 1;
+   WHERE x.b = text 'bumble' or x.a < 3 ORDER BY 1,2,3;
 
 SELECT class, a 
    FROM c_star* x 
@@ -97,11 +97,11 @@ SELECT class, a
 
 SELECT class, b, c
    FROM d_star* x
-   WHERE x.a < 100 ORDER BY 1,2;
+   WHERE x.a < 100 ORDER BY 1,2,3;
 
 SELECT class, c FROM e_star* x WHERE x.c NOTNULL ORDER BY 1,2;
 
-SELECT * FROM f_star* x WHERE x.c ISNULL ORDER BY 1;
+SELECT * FROM f_star* x WHERE x.c ISNULL ORDER BY 1,2,3,4,5;
 
 -- grouping and aggregation on inherited sets have been busted in the past...
 
@@ -139,7 +139,7 @@ ALTER TABLE a_star RENAME COLUMN foo TO aa;
 
 SELECT * 
    from a_star*
-   WHERE aa < 1000 ORDER BY 1;
+   WHERE aa < 1000 ORDER BY 1,2,3;
 
 ALTER TABLE f_star ADD COLUMN f int4;
 
@@ -149,7 +149,7 @@ ALTER TABLE e_star* ADD COLUMN e int4;
 
 --UPDATE e_star* SET e = 42;
 
-SELECT * FROM e_star* ORDER BY 1;
+SELECT * FROM e_star* ORDER BY 1,2,3,4;
 
 ALTER TABLE a_star* ADD COLUMN a text;
 
@@ -192,24 +192,24 @@ SELECT hobbies_r.name, (hobbies_r.equipment).name FROM hobbies_r ORDER BY 1,2;
 -- joe and sally need hightops, and
 -- everyone else is fine.
 --
-SELECT p.name, name(p.hobbies), name(equipment(p.hobbies)) FROM ONLY person p ORDER BY 1,2;
+SELECT p.name, name(p.hobbies), name(equipment(p.hobbies)) FROM ONLY person p ORDER BY 1,2,3;
 
 --
 -- as above, but jeff needs advil and peet's coffee as well.
 --
-SELECT p.name, name(p.hobbies), name(equipment(p.hobbies)) FROM person* p ORDER BY 1,2;
+SELECT p.name, name(p.hobbies), name(equipment(p.hobbies)) FROM person* p ORDER BY 1,2,3;
 
 --
 -- just like the last two, but make sure that the target list fixup and
 -- unflattening is being done correctly.
 --
-SELECT name(equipment(p.hobbies)), p.name, name(p.hobbies) FROM ONLY person p ORDER BY 1,2;
+SELECT name(equipment(p.hobbies)), p.name, name(p.hobbies) FROM ONLY person p ORDER BY 1,2,3;
 
-SELECT (p.hobbies).equipment.name, p.name, name(p.hobbies) FROM person* p ORDER BY 1,2;
+SELECT (p.hobbies).equipment.name, p.name, name(p.hobbies) FROM person* p ORDER BY 1,2,3;
 
-SELECT (p.hobbies).equipment.name, name(p.hobbies), p.name FROM ONLY person p ORDER BY 1,2;
+SELECT (p.hobbies).equipment.name, name(p.hobbies), p.name FROM ONLY person p ORDER BY 1,2,3;
 
-SELECT name(equipment(p.hobbies)), name(p.hobbies), p.name FROM person* p ORDER BY 1,2;
+SELECT name(equipment(p.hobbies)), name(p.hobbies), p.name FROM person* p ORDER BY 1,2,3;
 
 SELECT user_relns() AS user_relns
    ORDER BY user_relns;
