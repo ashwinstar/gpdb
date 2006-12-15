@@ -30,6 +30,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbtm.h"
+#include "cdb/cdbdisp.h"
 #include "miscadmin.h"
 #include "commands/dbcommands.h"	/* get_database_name() */
 #include "postmaster/postmaster.h"  /* PostPortNumber */
