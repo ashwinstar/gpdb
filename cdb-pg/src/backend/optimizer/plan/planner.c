@@ -1327,7 +1327,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		{
 			/* Note max result size.  May be unspecified. */
 			Node *precount = copyObject(parse->limitCount);
-			int precount_est = count_est;
+			int64 precount_est = count_est;
 			
 			/* If the input is ordered and count was specified, add offset
 			 * to each QEs requested contribution. */			
