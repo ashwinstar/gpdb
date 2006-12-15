@@ -634,7 +634,8 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 			{
 				ParamListInfo paramInfo = econtext->ecxt_param_list_info;
 				int nx = paramInfo->numParams;
-				int ni = econtext->ecxt_estate->es_topPlan->nParamExec;
+				int ni = 
+					econtext->ecxt_estate->es_topPlan == NULL ? 0 : econtext->ecxt_estate->es_topPlan->nParamExec;
 				
 				if (paramInfo && thisParamId <= ni )
 				{
