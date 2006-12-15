@@ -247,7 +247,7 @@ struct Tuplesortstate
 	SortTuple  *memtuples;		/* array of SortTuple structs */
 	int			memtupcount;	/* number of tuples currently present */
 	int			memtupsize;		/* allocated length of memtuples array */
-	long		memtupLIMIT;	/* LIMIT of memtuples array */ /*CDB*/
+	int64		memtupLIMIT;	/* LIMIT of memtuples array */ /*CDB*/
 	int			dumpcount;	    /* count of dumps */ /*CDB*/
 
 	/*
@@ -525,7 +525,7 @@ tuplesort_begin_common(int workMem, bool randomAccess)
  */
 void
 cdb_tuplesort_init(Tuplesortstate *state, 
-				   long offset, long limit, int unique)
+				   int64 offset, int64 limit, int unique)
 {
 	/* set a limit to internal sorts. If the offset is non-zero but
 	 * the limit is not set, then no limit */

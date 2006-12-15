@@ -94,14 +94,14 @@ ExecSort(SortState *node)
 		{
 			ExprContext *econtext = node->ss.ps.ps_ExprContext;
 			bool 		isNull;
-			long 		limit = 0;
-			long 		offset = 0;
+			int64 		limit = 0;
+			int64 		offset = 0;
 			int 		unique = 0;
 
 			if (node->limitCount)
 			{
 				limit =
-						DatumGetInt32(
+						DatumGetInt64(
 								ExecEvalExprSwitchContext(node->limitCount,
 														  econtext,
 														  &isNull,
@@ -116,7 +116,7 @@ ExecSort(SortState *node)
 			if (node->limitOffset)
 			{
 				offset =
-						DatumGetInt32(
+						DatumGetInt64(
 								ExecEvalExprSwitchContext(node->limitOffset,
 														  econtext,
 														  &isNull,
