@@ -1,0 +1,165 @@
+#!/usr/bin/env python
+
+'''
+gpscp -- scp to multiple hosts at once
+
+Usage: gpscp [-?v] [-p port] [-u user] 
+             [-h host] [-f hostfile] local_file remote_file
+
+             -?      : print this help screen
+	     -v	     : verbose mode
+	     -p port : ssh port to use 
+	     -u user : ssh user to run command
+	     -h host : ssh host to connect to (multiple -h is okay)
+	     -f file : a file listing all hosts to connect to
+
+Author: cktan@greenplum.com
+'''
+
+import os, sys, getopt
+
+if sys.version_info < (2, 3):
+    print "Error: groupSession is supported on Python versions 2.3 or greater."
+    print "Please upgrade python installed on this machine."
+    raise SystemExit, -1
+
+sys.path.append(sys.path[0] + '/lib')
+try:
+    import paramiko
+except ImportError, e:
+    print 'Error: unable to import module: ', str(e)
+    raise SystemExit, -1
+
+#
+# all the command line options
+#
+opt = {}
+opt['-v'] = False
+opt['-p'] = 22
+opt['-u'] = os.environ.get('LOGNAME') or os.environ.get('USER')
+opt['-h'] = []
+opt['-f'] = None
+localPath = None
+remotePath = None
+cmd = []
+session = []
+
+#############
+def parseCommandLine():
+    global opt, cmd, localPath, remotePath
+    try:
+	(options, args) = getopt.getopt(sys.argv[1:], '?vp:u:h:f:')
+    except Exception, e:
+	print __doc__
+	print 'Error:', e
+	raise SystemExit, 1
+
+    for (switch, val) in options:
+	if (switch == '-?'):
+	    print __doc__
+	    sys.exit(0)
+	elif (switch[1] in 'v'):
+	    opt[switch] = True
+	elif (switch[1] in 'uf'):
+	    opt[switch] = val
+	elif (switch[1] == 'h'):
+	    opt[switch].append(val)
+	elif (switch[1] == 'p'):
+	    try:
+		opt[switch] = int(val)
+	    except:
+		print 'Error: please specify port number for -p switch'
+		raise SystemExit, 1
+
+    if (len(args) != 2):
+	print __doc__
+	print 'Error: please specify local and remote file paths'
+	raise SystemExit, 1
+
+    if (len(opt['-h']) and opt['-f']):
+	print __doc__
+	print 'Error: please specify either -h or -f args, but not both'
+	raise SystemExit, 1
+
+    localPath = args[0]
+    remotePath = args[1]
+
+
+################
+def parseHostLine(line):
+    t = line.strip().split('@')
+    if not t[0]: return None
+    if (len(t) > 2): raise RuntimeError
+    if (len(t) == 1): t = [opt['-u'], t[0]]
+    t[1] = t[1].split(':')
+    if (len(t[1]) == 1): 
+	t[1] = [t[1][0], opt['-p']]
+    else:
+	t[1] = [t[1][0], int(t[1][1])]
+    return (t[0], t[1][0], t[1][1])
+
+
+#############
+def readHostFile():
+    global opt
+    hostlines = []
+    try:
+	fd = open(opt['-f'], 'r')
+	hostlines = fd.readlines()
+	fd.close()
+    except IOError, e:
+	print 'Error: cannot read host file', opt['-f']
+	raise SystemExit, 1
+
+    host = {}
+    line = 0
+    for h in hostlines:
+	try:
+	    line = line + 1
+	    h = parseHostLine(h)
+	    if not h: continue
+	    if host.has_key(h[1]): continue     # ignore duplicate hosts
+	    host[h[1]] = h
+	    opt['-h'].append(h)
+	except:
+	    print ('Error: while parsing line %d of host file %s' % (line, opt['-f']))
+	    raise
+
+#############
+def createSession():
+    global opt, session
+    user = {}
+    port = {}
+    for h in opt['-h']: user[h[0]] = port[h[2]] = h
+    sameUser = len(user) == 1
+    samePort = len(port) == 1
+    for h in opt['-h']:
+	try:
+	    s = paramiko.SSHClient()
+	    s.load_system_host_keys()
+	    s.connect(h[1], h[2], h[0])
+	    s.name = ''
+	    if not sameUser: s.name = h[0] + '@'
+	    s.name = s.name + h[1]
+	    if not samePort: s.name = s.name + ':' + h[2]
+	    if opt['-v']: print 'Info: connected to', s.name
+	    session.append(s)
+	except:
+	    print ('Error: while connecting to %s@%s:%d' % h)
+	    raise
+
+
+
+#############
+parseCommandLine()
+tab = []
+for h in opt['-h']:
+    tab.append(parseHostLine(h))
+opt['-h'] = tab
+readHostFile()
+createSession()
+for s in session:
+    if (opt['-v']): print ('Info: copy to %s' % s.name)
+    c = s.open_sftp()
+    c.put(localPath, remotePath)
+    c.close()
