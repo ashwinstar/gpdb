@@ -11,33 +11,35 @@ Usage: checkPerf <options> hostfile
                   e.g. -d /dbfast1 -d /dbfast2
     [-?]          print this help text
     [-v]          enable verbose
-    [-t <float>]  where float is the tolerance of results 
-                  [default=0.1, range 0.00 ... 0.50]
+    [-V]	  enable very verbose
     [-r <flags>]  where flags specifies the tests to run [default=ds]. 
-                  supported test flags are:
-                     d: runs only dd tests
+                  Supported test flags are:
+                     d: runs only disk tests
                      s: runs only stream benchmark
     [-B <size>]   where size specifies the block size for disk performance tests
                   [default=8KB] e.g. 1KB, 4MB
     [-S <size>]   where size specifies the file size for disk performance tests
-    	 	  [default=1GB] e.g. 500MB, 16GB
+    	 	  [default=2X Memory] e.g. 500MB, 16GB
     [-p <port>]   where port is the ssh port number [default=22]
 
 """
 import os, sys, getopt, math, StringIO, stat
 
 if sys.version_info < (2, 3):
-    print "Error: groupSession is supported on Python versions 2.3 or greater."
-    print "Please upgrade python installed on this machine."
-    raise SystemExit, -1
+    sys.exit("Error: groupSession is supported on Python versions 2.3 or greater\n"
+	     + "Please upgrade python installed on this machine.")
+
+def usage(exitarg):
+    print __doc__
+    sys.exit(exitarg)
 
 opt = {}
 opt['-d'] = []
 opt['-v'] = False
-opt['-t'] = 0.1
+opt['-V'] = False
 opt['-r'] = 'ds'
-opt['-B'] = 1024*8
-opt['-S'] = 1024*1024*1024
+opt['-B'] = 1024 * 8
+opt['-S'] = 0
 opt['-p'] = 22
 hostfile = ''
 GPSSH = ''
@@ -49,25 +51,16 @@ def parseMemorySize(line):
     factor = 1
     try:
 	line = line.strip().upper()
-	if line.endswith('GB'):
-	    factor = 1024 * 1024 * 1024
-	    line = line[:-2]
-	elif line.endswith('G'):
+	if line.endswith('B'): line = line[:-1]
+	if line.endswith('G'):
 	    factor = 1024 * 1024 * 1024
 	    line = line[:-1]
-	elif line.endswith('MB'):
-	    factor = 1024 * 1024
-	    line = line[:-2]
 	elif line.endswith('M'):
 	    factor = 1024 * 1024
 	    line = line[:-1]
-	elif line.endswith('KB'):
-	    factor = 1024
-	    line = line[:-2]
 	elif line.endswith('K'):
 	    factor = 1024
 	    line = line[:-1]
-
 	return int(line) * factor
     except:
 	return 0
@@ -77,62 +70,34 @@ def parseMemorySize(line):
 def parseCommandLine():
     global opt, hostfile, GPSSH, GPSCP
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?vl:d:t:r:B:S:p:')
+	(options, args) = getopt.getopt(sys.argv[1:], '?vVd:r:B:S:p:')
     except Exception, e:
-	print __doc__
-	print 'Error:', e
-	raise SystemExit, 1
+	usage('Error: ' + e)
 
     for (switch, val) in options:
-	if (switch == '-?'):
-	    print __doc__
-	    sys.exit(0)
-	elif (switch == '-v'):
-	    opt[switch] = True
-	elif (switch == '-d'):
-	    opt[switch].append(val)
-	elif (switch == '-r'):
-	    opt[switch] = val
+	if (switch == '-?'): usage(0)
+	elif (switch[1] in 'vV'): opt[switch] = True
+	elif (switch == '-d'): opt[switch].append(val)
+	elif (switch == '-r'): opt[switch] = val
 	elif (switch == '-p'):
-	    try:
-		opt[switch] = int(val)
-	    except:
-		print 'Error: please specify a number for %s switch' % switch
-		raise SystemExit, 1
-	elif (switch[1] in 'BS'):
-	    try:
-		opt[switch] = parseMemorySize(val)
-	    except:
-		print 'Error: please specify byte size for %s switch' % switch
-		raise SystemExit, 1
-	elif (switch == '-t'):
-	    try:
-		opt[switch] = float(val)
-	    except:
-		print 'Error: please specify a number for %s switch' % switch
-		raise SystemExit, 1
+	    try: opt[switch] = int(val)
+	    except: sys.exit('Error: please specify a number for %s switch' % switch)
+	elif (switch[1] in 'BS'): opt[switch] = parseMemorySize(val)
 
-    if not (0 < opt['-t'] and opt['-t'] < 1):
-	print 'Error: please specify number between 0 and 1 for -t switch'
-	raise SystemExit, 1
+    if (len(opt['-d']) == 0): 
+	usage('Error: please specify at least one segdir (-d switch)')
 
-    if (len(opt['-d']) == 0):
-	print 'Error: please specify at least one segdir (-d switch)'
-	raise SystemExit, 1
+    if not (0 <= opt['-B'] and 0 <= opt['-S']):
+	usage('Error: please enter valid memory sizes for -B or -S switches')
 
-    if not (0 < opt['-B'] and 0 < opt['-S']):
-	print 'Error: please enter valid memory sizes for -B or -S switches'
-	raise SystemExit, 1
-
-    if (len(args) < 1):
-	print __doc__
-	print 'Error: please specify hostfile' 
-	raise SystemExit, 1
+    if (len(args) < 1):	usage('Error: please specify hostfile')
 
     hostfile = args[0]
-    GPSSH = 'gpssh -p %d -f %s ' % (opt['-p'], hostfile)
+    if opt['-V']: opt['-v'] = True
+    GPSSH = 'gpssh -p %d -f %s %s ' % (opt['-p'], hostfile, opt['-V'] and '-v' or '')
     GPSCP = 'gpscp -p %d -f %s ' % (opt['-p'], hostfile)
 
+#############
 def run(cmd):
     f = out = None
     ok = False
@@ -141,6 +106,7 @@ def run(cmd):
 	f = os.popen(cmd)
 	out = f.read()
 	ok = not f.close()
+	f = None
     except:
 	if f: f.close()
 	ok = False
@@ -149,6 +115,7 @@ def run(cmd):
     if opt['-v'] and out and out != '': print out
     return (ok, out)
 
+#############
 def runTeardown():
     if opt['-v']:
 	print '--------------------'
@@ -161,6 +128,7 @@ def runTeardown():
 	except:
 	    pass
 
+#############
 def runSetup():
     if opt['-v']:
 	print '--------------------'
@@ -172,99 +140,112 @@ def runSetup():
 	    cmd = GPSSH + ('mkdir -p %s/checkPerf' % d);
 	    (ok, out) = run(cmd)
 	    if not ok: 
-		print '[Error] command failed:', cmd
-		raise SystemExit, 1
-	    else:
-		okCount = okCount + 1
+		sys.exit('[Error] command failed: ' + cmd)
+	    okCount = okCount + 1
     except:
 	if (okCount > 1): runTeardown()
 	raise
 
+################
+def copyExecOver(fname):
+    path = '%s/lib/%s' % (sys.path[0], fname)
+    try: pathStat = os.stat(path)
+    except: sys.exit('[Error] cannot stat file ' + path)
+    if not stat.S_ISREG(pathStat.st_mode): sys.exit('[Error] invalid file ' + path)
+    if not pathStat.st_mode & os.X_OK: sys.exit('[Exit] file not executable: ' + path)
 
-def parseTimeResult(out, bytes):
+    #copy to this dir
+    d = opt['-d'][0]
+    target = '%s/checkPerf/%s' % (d, fname)
+    cmd = GPSCP + ('%s %s' % (path, target))
+    (ok, out) = run(cmd)
+    if not ok: sys.exit('[Error] command failed: ' + cmd)
+    
+    #chmod +x file
+    cmd = GPSSH + ('chmod +x %s' % target)
+    (ok, out) = run(cmd)
+    if not ok: sys.exit('[Error] command failed: ' + cmd)
+    
+    return path
+
+
+#############
+def parseMultiDDResult(out):
     # parse output of "time -p"
+    print 'parsing'
+    print out
     out = StringIO.StringIO(out)
     result = {}
+    bytes = 0
     for line in out:
-	i = line.index(']')
+	i = line.find(']')
+	if i == -1: continue
 	o = line[i+2:]
+
+	if o.startswith('multidd total bytes '):
+	    h = line[1:i]
+	    o = o.split()
+	    bytes = int(o[-1])
+	    continue
+	    
 	if o.startswith('real'):
 	    h = line[1:i]
 	    o = o.split()
 	    time = float(o[1])
 	    if time < 0.1: time = 0.1 		# avoid division by zero
-	    mbs = bytes / time / 1024 / 1024
-	    result[h] = (mbs, time, bytes)
+	    mbps = bytes / time / 1024 / 1024
+	    result[h] = (mbps, time, bytes)
+	    continue
+
     return result
 
-# def parseDiskResult(out):
-#     # parse output of "time -p"
-#     out = StringIO.StringIO(out)
-#     result = {}
-#     for line in out:
-# 	i = line.index(']')
-# 	o = line[i+2:]
-# 	if o.find('bytes transferred in') > 0:
-# 	    h = line[1:i]
-# 	    o = o.split()
-# 	    bytes = int(o[0])
-# 	    time = float(o[4])
-# 	    mbs = o[6][1:]
-# 	    if time < 0.1: time = 0.1 		# avoid division by zero
-# 	    mbs = bytes / time / 1024 / 1024
-# 	    result[h] = (mbs, time, bytes)
-#     return result
 
-
-
+#############
 def runDiskWriteTest():
     if opt['-v']:
 	print '--------------------'
 	print '  DISK WRITE TEST'
 	print '--------------------'
-    B = opt['-B']
-    C = math.ceil(opt['-S'] / B)
-    cmd = ''
-    cnt = 0
+    
+    rmtPath = copyExecOver('multidd')
+    cmd = 'time -p ' + rmtPath
     for d in opt['-d']:
-	cmd = cmd + 'dd if=/dev/zero of=%s/checkPerf/ddfile%d count=%d bs=%d & ' % (d, cnt, C, B)
-	cnt = cnt + 1
-    cmd = cmd + 'wait'
-    cmd = GPSSH + 'time -p ' + cmd
+	cmd = cmd + (' -i /dev/zero -o %s/checkPerf/ddfile' % d)
+    if opt['-B']: cmd = cmd + (' -B %d' % opt['-B'])
+    if opt['-S']: cmd = cmd + (' -S %d' % opt['-S'])
+    cmd = GPSSH + cmd
     (ok, out) = run(cmd)
-    if not ok: 
-	print '[Error] command failed: ', cmd
-	raise SystemExit, 1
-    return parseTimeResult(out, C * B * cnt)
+    if not ok:
+	sys.exit('[Error] command failed: ' + cmd)
+    return parseMultiDDResult(out)
 
 
+#############
 def runDiskReadTest():
     if opt['-v']:
 	print '--------------------'
 	print '  DISK READ TEST'
 	print '--------------------'
-    B = opt['-B']
-    C = math.ceil(opt['-S'] / B)
-    cmd = ''
-    cnt = 0
+
+    rmtPath = copyExecOver('multidd')
+    cmd = 'time -p ' + rmtPath
     for d in opt['-d']:
-	cmd = cmd + 'dd of=/dev/null if=%s/checkPerf/ddfile%d count=%d bs=%d & ' % (d, cnt, C, B)
-	cnt = cnt + 1
-    cmd = cmd + 'wait'
-    cmd = GPSSH + 'time -p ' + cmd
+	cmd = cmd + (' -o /dev/null -i %s/checkPerf/ddfile' % d)
+    if opt['-B']: cmd = cmd + (' -B %d' % opt['-B'])
+    if opt['-S']: cmd = cmd + (' -S %d' % opt['-S'])
+    cmd = GPSSH + cmd
     (ok, out) = run(cmd)
-    if not ok: 
-	print '[Error] command failed: ', cmd
-	raise SystemExit, 1
-    return parseTimeResult(out, C * B * cnt)
+    if not ok:
+	sys.exit('[Error] command failed: ' + cmd)
+    return parseMultiDDResult(out)
 
 
-
+#############
 def parseStreamResult(out):
     out = StringIO.StringIO(out)
     result = {}
     for line in out:
-	i = line.index(']')
+	i = line.find(']')
 	o = line[i+2:]
 	if o.startswith('Copy:'): 
 	    h = line[1:i]
@@ -273,43 +254,17 @@ def parseStreamResult(out):
     return result
 
 
+#############
 def runStreamTest():
     if opt['-v']:
 	print '--------------------'
 	print '  STREAM TEST'
 	print '--------------------'
-    spath = sys.path[0] + '/lib/stream'
-    try:
-	spathStat = os.stat(spath)
-    except:
-	print '[Error] cannot stat stream binaries', spath
-	raise SystemExit, 1
-    if not stat.S_ISREG(spathStat.st_mode):
-	print '[Error] invalid stream binaries', spath
-	raise SystemExit, 1
-    if not spathStat.st_mode & os.X_OK:
-	print '[Error] not executable binaries', spath
-	raise SystemExit, 1
-    
-    d = opt['-d'][0]
 
-    cmd = GPSCP + ('%s %s/checkPerf/stream' % (spath, d))
+    rmtPath = copyExecOver('stream')
+    cmd = GPSSH + rmtPath
     (ok, out) = run(cmd)
-    if not ok:
-	print '[Error] command failed:', cmd
-	raise SystemExit, 1
-
-    cmd = GPSSH + ('chmod +x %s/checkPerf/stream' % d)
-    (ok, out) = run(cmd)
-    if not ok:
-	print '[Error] command failed:', cmd
-	raise SystemExit, 1
-
-    cmd = GPSSH + ('%s/checkPerf/stream' % d)
-    (ok, out) = run(cmd)
-    if not ok:
-	print '[Error] command failed:', cmd
-	raise SystemExit, 1
+    if not ok: sys.exit('[Error] command failed: ' + cmd)
 
     return parseStreamResult(out)
 
@@ -321,14 +276,14 @@ def printResult(title, result):
     max = 0
     minHost = maxHost = None
     for h in result:
-	(mbs, time, bytes) = result[h]
+	(mbps, time, bytes) = result[h]
 	totTime += time
 	totBytes += bytes
-	if min > mbs: 
-	    min = mbs
+	if min > mbps: 
+	    min = mbps
 	    minHost = h
-	if max < mbs: 
-	    max = mbs
+	if max < mbps: 
+	    max = mbps
 	    maxHost = h
 
     avgTime = totTime / len(result)
@@ -344,7 +299,7 @@ def printResult(title, result):
 ################
 parseCommandLine()
 runSetup()
-diskWriteResult = diskReadResult = StreamResult = None
+diskWriteResult = diskReadResult = streamResult = None
 tornDown = False
 try:
     if opt['-r'].find('d') >= 0:

@@ -3,7 +3,7 @@
 '''
 gpssh -- ssh access to multiple hosts at once
 
-Usage: gpssh [-?vb] [-d dir] [-p port] [-u user] [-h h] [-f hostfile] cmd
+Usage: gpssh [-?vbt] [-d dir] [-p port] [-u user] [-h h] [-f hostfile] cmd
 
              -?      : print this help screen
 	     -v	     : verbose mode
@@ -41,7 +41,7 @@ opt['-d'] = '~/'
 opt['-p'] = 22
 opt['-u'] = os.environ.get('LOGNAME') or os.environ.get('USER')
 opt['-h'] = []
-opt['-f'] = None
+opt['-f'] = False
 cmd = []
 session = []
 
@@ -49,7 +49,7 @@ session = []
 def parseCommandLine():
     global opt, cmd
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?bvd:p:u:h:f:')
+	(options, args) = getopt.getopt(sys.argv[1:], '?bvtd:p:u:h:f:')
     except Exception, e:
 	print __doc__
 	print 'Error:', e
@@ -77,9 +77,10 @@ def parseCommandLine():
 	print 'Error: please specify command'
 	raise SystemExit, 1
 
-    if (len(opt['-h']) and opt['-f']):
+    hf = (len(opt['-h']) and 1) + (opt['-f'] and 1)
+    if hf != 1:
 	print __doc__
-	print 'Error: please specify either -h or -f args, but not both'
+	print 'Error: please specify at least one of -h or -f args, but not both'
 	raise SystemExit, 1
 
     cmd = args
