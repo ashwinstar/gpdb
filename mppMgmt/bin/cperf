@@ -166,7 +166,7 @@ def copyExecOver(fname):
     (ok, out) = run(cmd)
     if not ok: sys.exit('[Error] command failed: ' + cmd)
     
-    return path
+    return target
 
 
 #############

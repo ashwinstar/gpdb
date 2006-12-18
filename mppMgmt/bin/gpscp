@@ -19,16 +19,14 @@ Author: cktan@greenplum.com
 import os, sys, getopt
 
 if sys.version_info < (2, 3):
-    print "Error: groupSession is supported on Python versions 2.3 or greater."
-    print "Please upgrade python installed on this machine."
-    raise SystemExit, -1
+    sys.exit("Error: gpscp is supported on Python versions 2.3 or greater\n"
+	     + "Please upgrade python installed on this machine.")
 
 sys.path.append(sys.path[0] + '/lib')
 try:
     import paramiko
 except ImportError, e:
-    print 'Error: unable to import module: ', str(e)
-    raise SystemExit, -1
+    sys.exit('Error: unable to import module: ' + str(e))
 
 #
 # all the command line options
@@ -44,20 +42,22 @@ remotePath = None
 cmd = []
 session = []
 
+################
+def usage(exitarg):
+    print __doc__
+    sys.exit(exitarg)
+
 #############
 def parseCommandLine():
     global opt, cmd, localPath, remotePath
     try:
 	(options, args) = getopt.getopt(sys.argv[1:], '?vp:u:h:f:')
     except Exception, e:
-	print __doc__
-	print 'Error:', e
-	raise SystemExit, 1
+	usage('Error: invalid option')
 
     for (switch, val) in options:
 	if (switch == '-?'):
-	    print __doc__
-	    sys.exit(0)
+	    usage(0)
 	elif (switch[1] in 'v'):
 	    opt[switch] = True
 	elif (switch[1] in 'uf'):
@@ -68,18 +68,13 @@ def parseCommandLine():
 	    try:
 		opt[switch] = int(val)
 	    except:
-		print 'Error: please specify port number for -p switch'
-		raise SystemExit, 1
+		usage('Error: please specify port number for -p switch')
 
     if (len(args) != 2):
-	print __doc__
-	print 'Error: please specify local and remote file paths'
-	raise SystemExit, 1
+	usage('Error: please specify local and remote file paths')
 
     if (len(opt['-h']) and opt['-f']):
-	print __doc__
-	print 'Error: please specify either -h or -f args, but not both'
-	raise SystemExit, 1
+	usage('Error: please specify either -h or -f args, but not both')
 
     localPath = args[0]
     remotePath = args[1]
@@ -108,8 +103,7 @@ def readHostFile():
 	hostlines = fd.readlines()
 	fd.close()
     except IOError, e:
-	print 'Error: cannot read host file', opt['-f']
-	raise SystemExit, 1
+	sys.exit('Error: cannot read host file' + opt['-f'])
 
     host = {}
     line = 0
@@ -121,6 +115,8 @@ def readHostFile():
 	    if host.has_key(h[1]): continue     # ignore duplicate hosts
 	    host[h[1]] = h
 	    opt['-h'].append(h)
+	except KeyboardException:
+	    raise
 	except:
 	    print ('Error: while parsing line %d of host file %s' % (line, opt['-f']))
 	    raise
@@ -144,6 +140,8 @@ def createSession():
 	    if not samePort: s.name = s.name + ':' + h[2]
 	    if opt['-v']: print 'Info: connected to', s.name
 	    session.append(s)
+	except KeyboardException:
+	    raise
 	except:
 	    print ('Error: while connecting to %s@%s:%d' % h)
 	    raise
@@ -157,6 +155,8 @@ for h in opt['-h']:
     tab.append(parseHostLine(h))
 opt['-h'] = tab
 readHostFile()
+
+
 createSession()
 for s in session:
     if (opt['-v']): print ('Info: copy to %s' % s.name)

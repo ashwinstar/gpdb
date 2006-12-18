@@ -64,7 +64,7 @@ def getMemory():
 	return val
 	
     if getPlatform() == 'sunos5':
-	ok, out = run("sh -c \"prtconf | awk '/^Memory/{print}'\"")
+	ok, out = run("sh -c \"/usr/sbin/prtconf | awk '/^Memory/{print}'\"")
 	if not ok: return '?'
 	list = out.strip().split(' ')
 	val = int(list[2])

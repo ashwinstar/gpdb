@@ -20,16 +20,14 @@ Author: cktan@greenplum.com
 import os, sys, getopt
 
 if sys.version_info < (2, 3):
-    print "Error: groupSession is supported on Python versions 2.3 or greater."
-    print "Please upgrade python installed on this machine."
-    raise SystemExit, -1
+    sys.exit("Error: gpssh is supported on Python versions 2.3 or greater\n"
+	     + "Please upgrade python installed on this machine.")
 
 sys.path.append(sys.path[0] + '/lib')
 try:
     import paramiko
 except ImportError, e:
-    print 'Error: unable to import module: ', str(e)
-    raise SystemExit, -1
+    sys.exit('Error: unable to import module: ' + str(e))
 
 #
 # all the command line options
@@ -61,8 +59,7 @@ def parseCommandLine():
 
     for (switch, val) in options:
 	if (switch == '-?'):
-	    print __doc__
-	    sys.exit(0)
+	    usage(0)
 	elif (switch[1] in 'bv'):
 	    opt[switch] = True
 	elif (switch[1] in 'duf'):
@@ -119,6 +116,8 @@ def readHostFile():
 	    if host.has_key(h[1]): continue     # ignore duplicate hosts
 	    host[h[1]] = h
 	    opt['-h'].append(h)
+	except KeyboardException:
+	    raise
 	except:
 	    print ('Error: while parsing line %d of host file %s' % (line, opt['-f']))
 	    raise
@@ -142,6 +141,8 @@ def createSession():
 	    if not samePort: s.name = s.name + ':' + h[2]
 	    if opt['-v']: print 'Info: connected to', s.name
 	    session.append(s)
+	except KeyboardException:
+	    raise
 	except:
 	    print ('Error: while connecting to %s@%s:%d' % h)
 	    raise
@@ -164,20 +165,20 @@ def buildCommand():
 try:
     parseCommandLine()
     tab = []
-    for h in opt['-h']:
-	tab.append(parseHostLine(h))
-	opt['-h'] = tab
-	readHostFile()
-	createSession()
-	shcmd = buildCommand()
-	for s in session:
-	    if (opt['-v']): print ('Info: exec %s on %s' % (shcmd, s.name))
-	    stdin, stdout, stderr = s.exec_command(shcmd)
-	    s.mystdout = stdout
+    for h in opt['-h']: tab.append(parseHostLine(h))
+    opt['-h'] = tab
 
-	for s in session:
-	    for line in s.mystdout: 
-		print '[%s] %s' % (s.name, line),
+    readHostFile()
+    createSession()
+    shcmd = buildCommand()
+    for s in session:
+	if (opt['-v']): print ('Info: exec %s on %s' % (shcmd, s.name))
+	stdin, stdout, stderr = s.exec_command(shcmd)
+	s.mystdout = stdout
+
+    for s in session:
+	for line in s.mystdout: 
+	    print '[%s] %s' % (s.name, line),
 
 except KeyboardInterrupt:
     sys.exit('Interrupted...')
