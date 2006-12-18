@@ -202,9 +202,12 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 	{
 		DefineStmt * stmt = makeNode(DefineStmt);
 		stmt->kind = OBJECT_OPERATOR;
+		stmt->oldstyle = false;
 		stmt->defnames = names;
+		stmt->args = NIL;
 		stmt->definition = parameters;
 		stmt->newOid = opOid;
+		stmt->shadowOid = 0;
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }

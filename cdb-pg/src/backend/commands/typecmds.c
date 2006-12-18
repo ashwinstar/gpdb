@@ -435,7 +435,9 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 	{
 		DefineStmt * stmt = makeNode(DefineStmt);
 		stmt->kind = OBJECT_TYPE;
+		stmt->oldstyle = false; /*?*/
 		stmt->defnames = names;
+		stmt->args = NIL;
 		stmt->definition = parameters;
 		stmt->newOid = typoid;
 		stmt->shadowOid = shadowOid;

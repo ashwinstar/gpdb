@@ -1899,7 +1899,9 @@ _outDefineStmt(StringInfo str, DefineStmt *node)
 {
 	WRITE_NODE_TYPE("DEFINESTMT");
 	WRITE_ENUM_FIELD(kind, ObjectType);
+	WRITE_BOOL_FIELD(oldstyle);
 	WRITE_NODE_FIELD(defnames);
+	WRITE_NODE_FIELD(args);
 	WRITE_NODE_FIELD(definition);
 	WRITE_OID_FIELD(newOid);
 	WRITE_OID_FIELD(shadowOid);

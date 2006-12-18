@@ -1819,7 +1819,9 @@ _readDefineStmt(void)
 {
 	READ_LOCALS(DefineStmt);
 	READ_ENUM_FIELD(kind, ObjectType);
+	READ_BOOL_FIELD(oldstyle);
 	READ_NODE_FIELD(defnames);
+	READ_NODE_FIELD(args);
 	READ_NODE_FIELD(definition);
 	READ_OID_FIELD(newOid);
 	READ_OID_FIELD(shadowOid);

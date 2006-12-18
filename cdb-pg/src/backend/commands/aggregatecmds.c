@@ -209,9 +209,12 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters, Oid new
 	{
 		DefineStmt * stmt = makeNode(DefineStmt);
 		stmt->kind = OBJECT_AGGREGATE;
+		stmt->oldstyle = oldstyle;  
 		stmt->defnames = name;
+		stmt->args = args;
 		stmt->definition = parameters;
 		stmt->newOid = aggOid;
+		stmt->shadowOid = 0;
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }
