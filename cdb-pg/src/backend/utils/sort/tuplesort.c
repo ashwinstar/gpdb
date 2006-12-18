@@ -248,7 +248,7 @@ struct Tuplesortstate
 	int			memtupcount;	/* number of tuples currently present */
 	int			memtupsize;		/* allocated length of memtuples array */
 	int64		memtupLIMIT;	/* LIMIT of memtuples array */ /*CDB*/
-	int			dumpcount;	    /* count of dumps */ /*CDB*/
+	int64  		dumpcount;	    /* count of dumps */ /*CDB*/
 
 	/*
 	 * While building initial runs, this is the current output run number
@@ -882,8 +882,9 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			if (do_quicksort)
 			{
 				if (state->memtupcount < state->memtupsize && !LACKMEM(state))
-						return;
+					return;
 			}
+
 			/*
 			 * Nope; time to switch to tape-based operation.
 			 */
@@ -893,6 +894,8 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			 * Dump tuples until we are back under the limit.
 			 */
 			dumptuples(state, false);
+
+
 			break;
 		case TSS_BUILDRUNS:
 
@@ -910,10 +913,15 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			 * this point; see dumptuples.
 			 */
 			Assert(state->memtupcount > 0);
-			if (COMPARETUP(state, tuple, &state->memtuples[0]) >= 0)
-				tuplesort_heap_insert(state, tuple, state->currentRun, true);
+			if (!state->memtupLIMIT)
+			{
+				if (COMPARETUP(state, tuple, &state->memtuples[0]) >= 0)
+					tuplesort_heap_insert(state, tuple, state->currentRun, true);
+				else
+					tuplesort_heap_insert(state, tuple, state->currentRun + 1, true);
+			}
 			else
-				tuplesort_heap_insert(state, tuple, state->currentRun + 1, true);
+				tuplesort_heap_insert(state, tuple, state->currentRun, false);
 
 			/*
 			 * If we are over the memory limit, dump tuples till we're under.
