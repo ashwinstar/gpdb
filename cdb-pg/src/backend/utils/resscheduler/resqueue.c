@@ -20,8 +20,11 @@
 #include "access/twophase_rmgr.h"
 #include "access/xact.h"
 #include "miscadmin.h"
+#include "pgstat.h"
+#include "storage/lock.h"
 #include "storage/proc.h"
 #include "storage/lmgr.h"
+#include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/resowner.h"
 #include "utils/resscheduler.h"
@@ -40,9 +43,9 @@ static HTAB *ResQueueHash;					/* Hash of resource queues. */
  *
  *	Returns LOCKACQUIRE_OK.
  *
- *	Analogous to LockAcquire, but the lockmethodid and lockmode are not
- *	required in the function prototype as we are *always* using lockmethod
- *	RESOURCE_LOCKMETHOD and lockmode ExclusiveLock. 
+ *	Analogous to LockAcquire, but the lockmode and session boolean are not
+ *	required in the function prototype as we are *always* lockmode ExclusiveLock
+ *	and have no session locks. 
  *
  *	The semantics of resource locks mean that lockmode has minimal meaning -
  *	the conflict rules are determined by the state of the counters of the
@@ -50,7 +53,6 @@ static HTAB *ResQueueHash;					/* Hash of resource queues. */
  *	elements (holdmask etc), in order to ease comparison with standard locks
  *	at deadlock check time (well, so we hope anyway.)
  *
- *	(hard coding lockmode to ExclusiveLock... TODO discuss)
  */
 LockAcquireResult
 ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
@@ -59,41 +61,76 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	LOCK			*lock;
 	PROCLOCK		*proclock;
 	PROCLOCKTAG		proclocktag;
+	LOCALLOCKTAG	localtag;
+	LOCALLOCK		*locallock;
+	uint32			hashcode;
+	uint32			proclock_hashcode;
+	int				partition;
+	LWLockId		partitionLock;
 	bool			found;
 	ResourceOwner	owner;
-	LWLockId		masterLock;
 	int				status;
-#if 0
 
 	/* Setup the lock method bits. */
-	locktag->locktag_lockmethodid = RESOURCE_LOCKMETHOD;
+	Assert(locktag->locktag_lockmethodid = RESOURCE_LOCKMETHOD);
 	
-
-	lockMethodTable = LockMethods[RESOURCE_LOCKMETHOD];
-	if (!lockMethodTable)
-		elog(ERROR, "unrecognized lock method: %d", RESOURCE_LOCKMETHOD);
-
 	/* Provide a resource owner. */
 	owner = CurrentResourceOwner;
 
-	/* We are going to examine the shared lock table. */
-	masterLock = lockMethodTable->masterLock;
-	LWLockAcquire(masterLock, LW_EXCLUSIVE);
+	/*
+	* Find or create a LOCALLOCK entry for this lock and lockmode
+	*/
+	MemSet(&localtag, 0, sizeof(localtag));     /* must clear padding */
+	localtag.lock = *locktag;
+	localtag.mode = lockmode;
+
+	locallock = (LOCALLOCK *) hash_search(LockMethodLocalHash,
+										  (void *) &localtag,
+										  HASH_ENTER, &found);
 
 	/*
-	 * Find or create a lock with this tag.
-	 */
-	lock = (LOCK *) hash_search(LockMethodLockHash[RESOURCE_LOCKMETHOD],
-								(void *) locktag,
-								HASH_ENTER_NULL, &found);
-    if (!lock)
+	* if it's a new locallock object, initialize it, if it already exists
+	* then that is enough for the resource locks.
+	*/
+	if (!found)
 	{
-		LWLockRelease(masterLock);
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of shared memory"),
-			 errhint("You may need to increase max_resource_qeueues.")));
+		locallock->lock = NULL;
+		locallock->proclock = NULL;
+		locallock->hashcode = LockTagHashCode(&(localtag.lock));
+		locallock->nLocks = 0;
+		locallock->numLockOwners = 0;
+		locallock->maxLockOwners = 8;
+		locallock->lockOwners = NULL;
+		locallock->lockOwners = (LOCALLOCKOWNER *)
+		MemoryContextAlloc(TopMemoryContext,
+		locallock->maxLockOwners * sizeof(LOCALLOCKOWNER));
 	}
+
+	/* We are going to examine the shared lock table. */
+	hashcode = locallock->hashcode;
+	partition = LockHashPartition(hashcode);
+	partitionLock = LockHashPartitionLock(hashcode);
+
+	LWLockAcquire(partitionLock, LW_EXCLUSIVE);
+
+	/*
+	 * 	Find or create a lock with this tag.
+	 */
+	lock = (LOCK *) hash_search_with_hash_value(LockMethodLockHash,
+												(void *) locktag,
+												hashcode,
+												HASH_ENTER_NULL,
+												&found);
+
+	 if (!lock)
+	 {
+	 	LWLockRelease(partitionLock);
+		ereport(ERROR,
+			  	(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of shared memory"),
+				 errhint("You may need to increase max_resource_qeueues.")));
+	}
+	locallock->lock = lock;
 
 	/*
 	 * if it's a new lock object, initialize it.
@@ -120,15 +157,19 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	 *  Create the hash key for the proclock table.
 	 */
 	MemSet(&proclocktag, 0, sizeof(PROCLOCKTAG));	/* Clear padding.*/
-	proclocktag.lock = MAKE_OFFSET(lock);
-	proclocktag.proc = MAKE_OFFSET(MyProc);
+	proclocktag.myLock = lock;
+	proclocktag.myProc = MyProc;
+
+	proclock_hashcode = ProcLockHashCode(&proclocktag, hashcode);
 
 	/*
 	 * Find or create a proclock entry with this tag. 
 	 */ 
-	proclock = (PROCLOCK *) hash_search(LockMethodProcLockHash[RESOURCE_LOCKMETHOD],
-										(void *) &proclocktag,
-										HASH_ENTER_NULL, &found);
+	proclock = (PROCLOCK *) hash_search_with_hash_value(LockMethodProcLockHash,
+														(void *) &proclocktag,
+														proclock_hashcode,
+														HASH_ENTER_NULL,
+														&found);
     if (!proclock)
 	{
 		/* Not enough shmem for the proclock. */
@@ -141,17 +182,20 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 			 * anyone to release the lock object later.
 			 */
 			Assert(SHMQueueEmpty(&(lock->procLocks)));
-			if (!hash_search(LockMethodLockHash[RESOURCE_LOCKMETHOD],
-							(void *) &(lock->tag),
-							HASH_REMOVE, NULL))
+			if (!hash_search_with_hash_value(LockMethodLockHash,
+											 (void *) &(lock->tag),
+											 hashcode,
+											 HASH_REMOVE,
+											 NULL))
 				elog(PANIC, "lock table corrupted");
 		}
-		LWLockRelease(masterLock);
+		LWLockRelease(partitionLock);
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of shared memory"),
 			errhint("You may need to increase max_resource_qeueues.")));
 	}
+	locallock->proclock = proclock;
 
 	/*
 	 * If new, initialize the new entry.
@@ -162,7 +206,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		proclock->releaseMask = 0;
 		/* Add proclock to appropriate lists */
 		SHMQueueInsertBefore(&lock->procLocks, &proclock->lockLink);
-		SHMQueueInsertBefore(&MyProc->procLocks, &proclock->procLink);
+		SHMQueueInsertBefore(&(MyProc->myProcLocks[partition]), &proclock->procLink);
 		proclock->nLocks = 0;
 		SHMQueueInit(&(proclock->portalLinks));
 	}
@@ -184,10 +228,13 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	/*
 	 * Add an increment to the increment hash for this process
 	 */
+	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+
 	incrementSet = ResIncrementAdd(incrementSet, proclock, owner);
 	if (!incrementSet)
 	{
-		LWLockRelease(masterLock);
+		LWLockRelease(ResQueueLock);
+		LWLockRelease(partitionLock);
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of shared memory adding portal increments"),
@@ -215,7 +262,8 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		/* Set the wait portalId so the increments get cleaned up.  */
 		MyProc->waitPortalId = incrementSet->portalId;
 
-		LWLockRelease(masterLock);
+		LWLockRelease(ResQueueLock);
+		LWLockRelease(partitionLock);
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
 				 errmsg("statement requires more resources than resource queue allows")));
@@ -224,10 +272,13 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	{
 		/* 
 		 * The requested lock will *not* exhaust the limit for this resource
-		 * queue, so just grant it and release the resource scheduler lwlock.
+		 * queue, so record this in the local lock hash, and grant it.
 		 */
+
 		ResGrantLock(lock, proclock);
 		ResLockUpdateLimit(lock, proclock, incrementSet, true);
+
+		LWLockRelease(ResQueueLock);
 
 	}
 	else
@@ -249,17 +300,19 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		 */
 		MyProc->waitPortalId = incrementSet->portalId;
 
+		LWLockRelease(ResQueueLock);
+
 		/*
 		 * Sleep till someone wakes me up.
 		 */
-		ResWaitOnLock(lock, proclock, owner);
+		ResWaitOnLock(locallock, owner);
 
 		/*
 		 * Have been awakened, check state is consistent.
 		 */
 		if (!(proclock->holdMask & LOCKBIT_ON(lockmode)))
 		{
-			LWLockRelease(masterLock);
+			LWLockRelease(partitionLock);
 			elog(ERROR, "ResLockAcquire failed");
 		}
 
@@ -269,9 +322,8 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	}
 
 
-	/* Release the masterlock. */
-	LWLockRelease(masterLock);
-#endif
+	/* Release the  partition lock. */
+	LWLockRelease(partitionLock);
 
 	return LOCKACQUIRE_OK;
 }
@@ -279,14 +331,6 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 
 /*
  * ResLockRelease -- release a resource lock.
- *
- * Notes: (TODO)
- *	Analogous to LockRelease, but the lockmethodid and lockmode are not
- *	required in the function prototype as we are *always* using lockmethod
- *	RESOURCE_LOCKMETHOD and lockmode ExclusiveLock. 
- *
- * (See ResLockAcquire for more notes).
- *
  */
 bool
 ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
@@ -294,102 +338,58 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	LOCKMODE		lockmode = ExclusiveLock;
 	LOCK			*lock;
 	PROCLOCK		*proclock;
-	PROCLOCKTAG		proclocktag;
-	bool			found;
+	LOCALLOCKTAG	localtag;
+	LOCALLOCK		*locallock;
+	uint32			hashcode;
+	LWLockId		partitionLock;
 	ResourceOwner	owner;
-	LWLockId		masterLock;
 	/*int				status;*/
 	ResPortalIncrement	*incrementSet;
 	ResPortalTag		portalTag;
-#if 0
 
-	/* Setup the lock method bits. */
-	locktag->locktag_lockmethodid = RESOURCE_LOCKMETHOD;
-	
-
-	lockMethodTable = LockMethods[RESOURCE_LOCKMETHOD];
-	if (!lockMethodTable)
-		elog(ERROR, "unrecognized lock method: %d", RESOURCE_LOCKMETHOD);
+	/* Check the lock method bits. */
+	Assert(locktag->locktag_lockmethodid == RESOURCE_LOCKMETHOD);
 
 	/* Provide a resource owner. */
 	owner = CurrentResourceOwner;
 
+	/*
+	 * Find the LOCALLOCK entry for this lock and lockmode
+	 */
+	MemSet(&localtag, 0, sizeof(localtag));		/* must clear padding */
+	localtag.lock = *locktag;
+	localtag.mode = lockmode;
+
+	locallock = (LOCALLOCK *) hash_search(LockMethodLocalHash,
+										  (void *) &localtag,
+										  HASH_FIND, NULL);
+
+	/*
+	 * let the caller print its own error message, too. Do not ereport(ERROR).
+	 */
+	if (!locallock)
+	{
+		elog(WARNING, "you don't own a lock on queue %d",
+		locallock->tag.lock.locktag_field1);
+		return FALSE;
+	}
+
+	hashcode = locallock->hashcode;
+
 	/* We are going to examine the shared lock table. */
-	masterLock = lockMethodTable->masterLock;
-	LWLockAcquire(masterLock, LW_EXCLUSIVE);
+	partitionLock = LockHashPartitionLock(hashcode);
+
+	LWLockAcquire(partitionLock, LW_EXCLUSIVE);
 
 	/*
-	 * Find a lock with this tag, do not create one if there is nothing to 
-	 * find - we cannot release a non-existent lock!
+	 * We don't need to re-find the lock or proclock, since we kept their
+	 * addresses in the locallock table, and they couldn't have been removed
+	 * while we were holding a lock on them.
 	 */
-	lock = (LOCK *) hash_search(LockMethodLockHash[RESOURCE_LOCKMETHOD],
-								(void *) locktag,
-								HASH_FIND, &found);
-    if (found && !lock)
-	{
-		LWLockRelease(masterLock);
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of shared memory"),
-			 errhint("You may need to increase max_resource_queues.")));
-	}
-
-	/* If we didn't find a lock to release, better say so! */
-	if (!found)
-	{
-		LWLockRelease(masterLock);
-		elog(ERROR, "you do not hold a lock on queue %d",
-			locktag->locktag_field1);
-			return FALSE;
-
-	}
-
-	/*
-	 *  Create the hash key for the proclock table.
-	 */
-	MemSet(&proclocktag, 0, sizeof(PROCLOCKTAG));	/* Clear padding.*/
-	proclocktag.lock = MAKE_OFFSET(lock);
-	proclocktag.proc = MAKE_OFFSET(MyProc);
-
-	/*
-	 * Find a proclock entry with this tag. 
-	 */ 
-	proclock = (PROCLOCK *) hash_search(LockMethodProcLockHash[RESOURCE_LOCKMETHOD],
-										(void *) &proclocktag,
-										HASH_FIND, &found);
-    if (found && !proclock)
-	{
-		/* Not enough shmem for the proclock. */
-		if (lock->nRequested == 0)
-		{
-			/*
-			 * There are no other requestors of this lock, so garbage-collect
-			 * the lock object.  We *must* do this to avoid a permanent leak
-			 * of shared memory, because there won't be anything to cause
-			 * anyone to release the lock object later.
-			 */
-			Assert(SHMQueueEmpty(&(lock->procLocks)));
-			if (!hash_search(LockMethodLockHash[RESOURCE_LOCKMETHOD],
-							(void *) &(lock->tag),
-							HASH_REMOVE, NULL))
-				elog(PANIC, "lock table corrupted");
-		}
-		LWLockRelease(masterLock);
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of shared memory"),
-			errhint("You may need to increase max_resource_queues.")));
-	}
-
-	/* No proclock entry for us.*/
-	if (!found)
-	{
-		LWLockRelease(masterLock);
-		elog(ERROR, "failed to find PROCLOCK for queue %d",
-			locktag->locktag_field1);
-			return FALSE;
-	}
-
+	lock = locallock->lock;
+	proclock = locallock->proclock;
+	
+	Assert((lock != NULL) && (proclock != NULL));
 
 	/*
 	 * Double-check that we are actually holding a lock of the type we want to
@@ -397,9 +397,10 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	 */
 	if (!(proclock->holdMask & LOCKBIT_ON(lockmode)))
 	{
-		LWLockRelease(masterLock);
+		LWLockRelease(partitionLock);
 		elog(ERROR, "you don't hold a lock of type %d on queue %d", 
 					lockmode, locktag->locktag_field1);
+		RemoveLocalLock(locallock);
 		return FALSE;
 			
 	}
@@ -411,10 +412,13 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	portalTag.pid = MyProc->pid;
 	portalTag.portalId = resPortalId;
 	
+	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+
 	incrementSet = ResIncrementFind(&portalTag);
 	if (!incrementSet)
 	{
-		LWLockRelease(masterLock);
+		LWLockRelease(ResQueueLock);
+		LWLockRelease(partitionLock);
 		elog(ERROR, "no increment data for portal id %u and pid %d",
 			 resPortalId, MyProc->pid);
 	}
@@ -426,23 +430,28 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	ResUnGrantLock(lock, proclock);
 	ResLockUpdateLimit(lock, proclock, incrementSet, false);
 
+	/* Remove the locallock if we are going to remove the shared one. */
+	if(lock->nRequested == 0)
+		RemoveLocalLock(locallock);
+
 	/*
 	 * Perform clean-up, waking up any waiters!
 	 */
-	ResCleanUpLock(lock, proclock);
+	ResCleanUpLock(lock, proclock, hashcode);
 
 	/* 
 	 * Clean up the increment set. 
 	 */
 	if (!ResIncrementRemove(&portalTag))
 	{
-		LWLockRelease(masterLock);
+		LWLockRelease(ResQueueLock);
+		LWLockRelease(partitionLock);
 		elog(ERROR, "no increment to remove for portal id %u and pid %d",
 			 resPortalId, MyProc->pid);
 	}
 
-	LWLockRelease(masterLock);
-#endif
+	LWLockRelease(ResQueueLock);
+	LWLockRelease(partitionLock);
 
 	return true;
 }
@@ -462,26 +471,27 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
  *	not checking a table of lock mode conflicts, but whether a shared counter
  *	for some resource is exhausted.
  *
- * Warnings:
- *	It is expected that the locktable masterlock is held before calling this 
- *  function, as the various shared queue counts are inspected.
+ *	The resource queue lightweight lock (ResQueueLock) must be held while
+ *	this function is called.
+ *
  */
 int
 ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock, 
 				  ResPortalIncrement *incrementSet, bool increment)
 {
+	ResQueue		queue;
+	ResLimit		limits;
 	bool			over_limit = false;
 	bool			will_overcommit = false;
 	int				status = STATUS_OK;
 	Cost			increment_amt;
 	int				i;
-#if 0
+
 
 	/* Get the queue for this lock.*/
-	ResQueue		queue = GetResQueueFromLock(lock);
-	ResLimit		limits = queue->limits;
+	queue = GetResQueueFromLock(lock);
+	limits = queue->limits;
 	
-
 	for (i = 0; i < NUM_RES_LIMIT_TYPES; i++)
 	{
 		/*
@@ -568,7 +578,6 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock,
 		status = STATUS_ERROR;
 	else if (over_limit)
 		status = STATUS_FOUND;
-#endif
 
 	return status;
 
@@ -584,21 +593,22 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock,
  *	is to be incremented, if false then decremented.
  *
  * Warnings:
- *	It is expected that the locktable masterlock is held before calling this 
- *  function, as the various shared queue counts are inspected.
+ *	The resource queue lightweight lock (ResQueueLock) must be held while
+ *	this function is called.
  */
 void
 ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, 
 				   ResPortalIncrement *incrementSet, bool increment)
 {
+	ResQueue 		queue;
+	ResLimit		limits;
 	Cost			increment_amt;
 	int				i;
-#if 0 
+
 
 	/* Get the queue for this lock.*/
-	ResQueue		queue = GetResQueueFromLock(lock);
-	ResLimit		limits = queue->limits;
-	
+	queue = GetResQueueFromLock(lock);
+	limits = queue->limits;
 
 	for (i = 0; i < NUM_RES_LIMIT_TYPES; i++)
 	{
@@ -659,7 +669,6 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock,
 			break;
 		}
 	}
-#endif
 
 	return;
 }
@@ -670,7 +679,7 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock,
  *
  * Notes:
  *	should be handed a locktag containing a valid queue id.
- * 
+ * 	should hold the resource queue lightweight lock during this operation
  */
 ResQueue
 GetResQueueFromLock(LOCK *lock)
@@ -690,7 +699,7 @@ GetResQueueFromLock(LOCK *lock)
  * ResGrantLock -- grant a resource lock. 
  *
  * Warnings:
- *	It is expected that the locktable masterlock is held before calling this 
+ *	It is expected that the partition lock is held before calling this 
  *  function, as the various shared queue counts are inspected.
  */
 void
@@ -722,16 +731,21 @@ ResGrantLock(LOCK *lock, PROCLOCK *proclock)
  * ResUnGrantLock --  opposite of ResGrantLock.
  *
  * Notes:
- * (maybe should return true only if there are waiters! TODO)
+ *	The equivalant standard lock funtion returns true only if there are waiters,
+ *	we don't do this.
  *
  * Warnings:
- *	It is expected that the locktable masterlock is held before calling this 
+ *	It is expected that the partition lock held before calling this 
  *  function, as the various shared queue counts are inspected.
  */
 bool
 ResUnGrantLock(LOCK *lock, PROCLOCK *proclock)
 {
 	LOCKMODE	lockmode = ExclusiveLock;
+
+	Assert((lock->nRequested > 0) && (lock->requested[lockmode] > 0));
+	Assert((lock->nGranted > 0) && (lock->granted[lockmode] > 0));
+	Assert(lock->nGranted <= lock->nRequested);
 
 	/* Update the standard lock stuff. */
 	lock->nRequested--;
@@ -762,7 +776,7 @@ ResUnGrantLock(LOCK *lock, PROCLOCK *proclock)
  *	waking up waiters.
  */
 void
-ResCleanUpLock(LOCK *lock, PROCLOCK *proclock)
+ResCleanUpLock(LOCK *lock, PROCLOCK *proclock, uint32 hashcode)
 {
 	/*LOCKMODE	lockmode = ExclusiveLock; */
 
@@ -770,14 +784,18 @@ ResCleanUpLock(LOCK *lock, PROCLOCK *proclock)
 	 * If this was my last hold on this lock, delete my entry in the proclock
 	 * table.
 	 */
-#if 0
 	if (proclock->holdMask == 0 && proclock->nLocks == 0)
 	{
+		uint32		proclock_hashcode;
+
 		SHMQueueDelete(&proclock->lockLink);
 		SHMQueueDelete(&proclock->procLink);
-		if (!hash_search(LockMethodProcLockHash[RESOURCE_LOCKMETHOD],
-						 (void *) &(proclock->tag),
-						 HASH_REMOVE, NULL))
+		proclock_hashcode = ProcLockHashCode(&proclock->tag, hashcode);
+		if (!hash_search_with_hash_value(LockMethodProcLockHash,
+						 				 (void *) &(proclock->tag),
+						 			 	 proclock_hashcode,
+										 HASH_REMOVE,
+										 NULL))
 			elog(PANIC, "proclock table corrupted");
 	}
    
@@ -788,7 +806,7 @@ ResCleanUpLock(LOCK *lock, PROCLOCK *proclock)
 		 * object.
 		 */
 		Assert(SHMQueueEmpty(&(lock->procLocks)));
-		if (!hash_search(LockMethodLockHash[RESOURCE_LOCKMETHOD],
+		if (!hash_search(LockMethodLockHash,
 						 (void *) &(lock->tag),
 						 HASH_REMOVE, NULL))
 			 elog(PANIC, "lock table corrupted");
@@ -796,10 +814,9 @@ ResCleanUpLock(LOCK *lock, PROCLOCK *proclock)
 	}
 
 	/*
-	 * Awaken any waiters (hmm maybe we should check if there are any TODO)
+	 * Awaken any waiters (we don't check if there are any)
 	 */
 	ResProcLockWakeup(lock);
-#endif
 
 	return;
 }
@@ -810,41 +827,55 @@ ResCleanUpLock(LOCK *lock, PROCLOCK *proclock)
  *
  * 
  * Warnings:
- *	It is expected that the locktable masterlock is held before calling this 
+ *	It is expected that the partition lock is held before calling this 
  *  function, as the various shared queue counts are inspected.
  */
 void
-ResWaitOnLock(LOCK *lock, PROCLOCK *proclock, ResourceOwner owner)
+ResWaitOnLock(LOCALLOCK *locallock, ResourceOwner owner)
 {
-	
 
+	uint32      hashcode = locallock->hashcode;
+	LWLockId    partitionLock = LockHashPartitionLock(hashcode);
 	const char	*old_status;
-	char		*new_status;
+	char		*new_status = NULL;
 	int			len;
 
-	old_status = get_ps_display(&len);
-	new_status = (char *) palloc(len + 8 + 1);
-	memcpy(new_status, old_status, len);
-	strcpy(new_status + len, " queuing");
-	set_ps_display(new_status, false);
-	new_status[len] = '\0';
-#if 0
+	/* Report change to waiting status */
+	if (update_process_title)
+	{
+		old_status = get_ps_display(&len);
+		new_status = (char *) palloc(len + 8 + 1);
+		memcpy(new_status, old_status, len);
+		strcpy(new_status + len, " queuing");
+		set_ps_display(new_status, false);	/* truncate off " queuing" */
+		new_status[len] = '\0';
+	}
+	pgstat_report_waiting(true);
+
+	awaitedLock = locallock;
+	awaitedOwner = owner;
+
 	/*
 	 * Now sleep.
 	 */
-	if (ResProcSleep(ExclusiveLock, lock, proclock) != STATUS_OK)
+	if (ResProcSleep(ExclusiveLock, locallock) != STATUS_OK)
 	{
 		/*
 		 * We failed as a result of a deadlock, see CheckDeadLock(). Quit now.
-		 * (We won't get here yet, as the deadlock changes are TODO)
 		 */
-		LWLockRelease(lockMethodTable->masterLock);
+		LWLockRelease(partitionLock);
 		DeadLockReport();
 	}
 
-	set_ps_display(new_status, false);
-	pfree(new_status);
-#endif 
+	awaitedLock = NULL;
+
+	/* Report change to non-waiting status */
+	if (update_process_title)
+	{
+		set_ps_display(new_status, false);
+		pfree(new_status);
+	}
+	pgstat_report_waiting(false);
 
 	return;
 }
@@ -863,9 +894,10 @@ ResProcLockWakeup(LOCK *lock)
 	PROC_QUEUE	*waitQueue = &(lock->waitProcs);
 	int			queue_size = waitQueue->size;
 	PGPROC		*proc;
+	uint32		hashcode;
+	LWLockId	partitionLock;
 	/*LOCKMASK	aheadRequests = 0; */
 	int			status;
-#if 0 
 	Assert(queue_size >= 0);
 	if (queue_size == 0)
 		return;
@@ -889,7 +921,10 @@ ResProcLockWakeup(LOCK *lock)
 		incrementSet = ResIncrementFind(&portalTag);
 		if (!incrementSet)
 		{
-			LWLockRelease(LockMgrLock);
+			hashcode = LockTagHashCode(&(lock->tag));
+			partitionLock = LockHashPartitionLock(hashcode);
+
+			LWLockRelease(partitionLock);
 			elog(ERROR, "no increment data for  portal id %u and pid %d",
 				 proc->waitPortalId, proc->pid);
 		}
@@ -919,7 +954,6 @@ ResProcLockWakeup(LOCK *lock)
 
 	Assert(waitQueue->size >= 0);
 	
-#endif 
 	return;
 }
 
@@ -933,7 +967,6 @@ PGPROC *
 ResProcWakeup(PGPROC *proc, int waitStatus)
 {
 	PGPROC		*retProc;
-#if 0
 	/* Proc should be sleeping ... */
 	if (proc->links.prev == INVALID_OFFSET ||
 		proc->links.next == INVALID_OFFSET)
@@ -953,7 +986,7 @@ ResProcWakeup(PGPROC *proc, int waitStatus)
 
 	/* And awaken it */
 	 PGSemaphoreUnlock(&proc->sem);
-#endif 
+
 	return retProc;
 }
 
@@ -963,19 +996,18 @@ ResProcWakeup(PGPROC *proc, int waitStatus)
  *	any locks.
  */
 void
-ResRemoveFromWaitQueue(PGPROC *proc)
+ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode)
 {
     LOCK			*waitLock = proc->waitLock;
     PROCLOCK		*proclock = proc->waitProcLock;
     LOCKMODE		lockmode = proc->waitLockMode;
     LOCKMETHODID	lockmethodid = LOCK_LOCKMETHOD(*waitLock);
 	ResPortalTag	portalTag;
-#if 0
     /* Make sure proc is waiting */
 	Assert(proc->links.next != INVALID_OFFSET);
 	Assert(waitLock);
 	Assert(waitLock->waitProcs.size > 0);
-	Assert(0 < lockmethodid && lockmethodid < NumLockMethods);
+	Assert(0 < lockmethodid && lockmethodid == RESOURCE_LOCKMETHOD);
 
 	/* Remove proc from lock's wait queue */
 	SHMQueueDelete(&(proc->links));
@@ -1011,52 +1043,7 @@ ResRemoveFromWaitQueue(PGPROC *proc)
 	 * LockRelease expects there to be no remaining proclocks.) Then see if
      * any other waiters for the lock can be woken up now.
    	 */
-   	ResCleanUpLock(waitLock, (PROCLOCK *) proclock);
-#endif 
-}
-
-
-/*
- * ResLockWaitCancel -- Cancel any pending wait for a resource lock, when 
- *	aborting a transaction.
- */
-void
-ResLockWaitCancel(void)
-{
-#if 0
-	/* Unlink myself from the wait queue, if on it (might not be anymore!) */
-	LWLockAcquire(LockMgrLock, LW_EXCLUSIVE);
-
-	if (MyProc->links.next != INVALID_OFFSET)
-	{
-		/* We could not have been granted the lock yet */
-		Assert(MyProc->waitStatus == STATUS_ERROR);
-		ResRemoveFromWaitQueue(MyProc);
-	}
-	else if (MyProc->waitPortalId != INVALID_PORTALID)
-	{
-		/*
-		 * We have been kicked off the wait - possibly by LockWaitCancel,
-		 * so clean the dangling portal increment.
-		 */
-		ResPortalTag	portalTag;
-
-		MemSet(&portalTag, 0, sizeof(ResPortalTag));
-		portalTag.pid = MyProc->pid;
-		portalTag.portalId = MyProc->waitPortalId;
-		ResIncrementRemove(&portalTag);
-	}
-
-	LWLockRelease(LockMgrLock);
-
-	/*
-	 * Reset the proc wait semaphore to zero. This is necessary in the
-	 * scenario where someone else granted us the lock we wanted before we
-	 * were able to remove ourselves from the wait-list.
-	 */
-	PGSemaphoreReset(&MyProc->sem);
-#endif 
-	return;
+   	ResCleanUpLock(waitLock, (PROCLOCK *) proclock, hashcode);
 }
 
 
@@ -1102,182 +1089,243 @@ void
 ResLockReleaseAll(bool isAllOwners, bool isCommit, bool releaseHold)
 {
 	LOCKMODE		lockmode = ExclusiveLock;
-	LockMethod		lockMethodTable;
-	LWLockId		masterLock;
-	LOCK			*lock;
-	PROCLOCK		*proclock;
-	//SHM_QUEUE		*procLocks = &(MyProc->procLocks);
-	SHM_QUEUE		*portalLinks;
-	bool			foundHoldable;		/* Found lock for a holdable cursor? */
-#if 0 
-	/* Setup the lock method bits. */
-	lockMethodTable = LockMethods[RESOURCE_LOCKMETHOD];
-	if (!lockMethodTable)
-		elog(ERROR, "unrecognized lock method: %d", RESOURCE_LOCKMETHOD);
+	int				partition;
+	LOCALLOCK		*locallock;
+	HASH_SEQ_STATUS	status;
 
 
-	/* We are going to examine the shared lock table. */
-	masterLock = lockMethodTable->masterLock;
-	LWLockAcquire(masterLock, LW_EXCLUSIVE);
-
-	proclock = (PROCLOCK *) SHMQueueNext(procLocks, procLocks,
-										 offsetof(PROCLOCK, procLink));
-
-	while (proclock)
+	/* 
+	 * Clean up resource locks, scan each partition seperately. 
+	 */
+	for (partition = 0; partition < NUM_LOCK_PARTITIONS; partition++)
 	{
 
-		PROCLOCK	*nextplock;
-		foundHoldable = false;
+		LWLockId	partitionLock = FirstLockMgrLock + partition;
+		LOCK		*lock;
+		PROCLOCK	*proclock;
+		LOCALLOCKTAG localtag;
+		SHM_QUEUE	*portalLinks;
+		SHM_QUEUE	*procLocks = &(MyProc->myProcLocks[partition]);
+		bool		foundHoldable;		/* Found lock for a holdable cursor? */
 
-		/* Get link first, since we may unlink/delete this one. */
-		nextplock = (PROCLOCK *) SHMQueueNext(procLocks, &proclock->procLink,
-											  offsetof(PROCLOCK, procLink));
 
-		Assert(proclock->tag.proc == MAKE_OFFSET(MyProc));
-		
-		lock = (LOCK *) MAKE_PTR(proclock->tag.lock);
+		proclock = (PROCLOCK *) SHMQueueNext(procLocks, procLocks,
+										 	offsetof(PROCLOCK, procLink));
 
-		/*
-		 * if the lock is a resource lock, then release it.
-		 */
-		if (lock->tag.locktag_lockmethodid == RESOURCE_LOCKMETHOD)
+		if (!proclock)
+			continue; 		/* needn't examine this partition */
+
+		LWLockAcquire(partitionLock, LW_EXCLUSIVE);
+		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+
+		while (proclock)
 		{
 
-			proclock->releaseMask = proclock->holdMask;
+			PROCLOCK	*nextplock;
+			foundHoldable = false;
 
-			Assert(lock->nRequested >= 0);
-			Assert(lock->nGranted >= 0);
-			Assert(lock->nGranted <= lock->nRequested);
-			Assert((proclock->holdMask & ~lock->grantMask) == 0);
+			/* Get link first, since we may unlink/delete this one. */
+			nextplock = (PROCLOCK *) SHMQueueNext(procLocks,
+												  &proclock->procLink,
+											  	  offsetof(PROCLOCK, procLink));
 
+			Assert(proclock->tag.myProc == MyProc);
+		
+			lock = proclock->tag.myLock;
 
 			/*
-			 * Release the lock.
-			 * (LockReleaseAll checks return of Ungrant... maybe you should too
-			 * TODO - discuss)
-			 *
-			 * We need to release the lock as many times as we have acquired it,
-			 * so need to iterate through the portal increment list.
+			 * if the lock is a resource lock, then release it.
 			 */
-			if (proclock->releaseMask & LOCKBIT_ON(lockmode))
+			if (lock->tag.locktag_lockmethodid == RESOURCE_LOCKMETHOD)
 			{
+				/* Find the locallock for this lock, procllock. */
+				MemSet(&localtag, 0, sizeof(localtag)); 
+				localtag.lock = lock->tag;
+				localtag.mode = lockmode;
+				locallock = (LOCALLOCK *) hash_search(LockMethodLocalHash,
+													  (void *) &localtag,
+													  HASH_FIND, NULL);
 
-				ResPortalIncrement		*incrementSet;
-				ResPortalIncrement		*nextiSet;
-				ResPortalTag			portalTag;
+				Assert((locallock != NULL));
 
-				/* List of portal increments for this proclock. */
-				portalLinks = &(proclock->portalLinks);
+				proclock->releaseMask = proclock->holdMask;
 
-				incrementSet = (ResPortalIncrement *) SHMQueueNext(portalLinks, 
-									portalLinks,
-									offsetof(ResPortalIncrement, portalLink));
+				Assert(lock->nRequested >= 0);
+				Assert(lock->nGranted >= 0);
+				Assert(lock->nGranted <= lock->nRequested);
+				Assert((proclock->holdMask & ~lock->grantMask) == 0);
 
-				while (incrementSet)
+
+				/*
+				 * Release the lock.
+				 *
+				 * We need to release the lock as many times as we have 
+				 * acquired it, so need to iterate through the portal 
+				 * increment list.
+				 */
+				if (proclock->releaseMask & LOCKBIT_ON(lockmode))
 				{
 
-					/* 
-					 * Get link first, since we will unlink/delete this one,
-					 * and compute a portalTag for removing the increment set
-					 * itself.
-					 */
-					nextiSet = (ResPortalIncrement *) SHMQueueNext(portalLinks, 
-									&incrementSet->portalLink,
-									offsetof(ResPortalIncrement, portalLink));
-					MemSet(&portalTag, 0, sizeof(ResPortalTag));
-					portalTag.pid = MyProc->pid;
-					portalTag.portalId = incrementSet->portalId;
+					ResPortalIncrement		*incrementSet;
+					ResPortalIncrement		*nextiSet;
+					ResPortalTag			portalTag;
 
-					/* 
-					 * If we are releasing all owners or otherwise
-					 * if the increment is owned by current resource owner
-					 * then release the corrosponding lock.
-					 */
-					if (isAllOwners ||
-						incrementSet->owner == CurrentResourceOwner)
+					/* List of portal increments for this proclock. */
+					portalLinks = &(proclock->portalLinks);
+
+					incrementSet = (ResPortalIncrement *) 
+									SHMQueueNext(portalLinks, 
+										 		 portalLinks,
+												 offsetof(ResPortalIncrement,
+														  portalLink));
+
+					while (incrementSet)
 					{
-						/*
-						 * If we are aborting the transaction that created a
-						 * holdabel portal, then it is going to be destroyed,
-						 * otherwise we record that the portal has passed a
-						 * commit.
-						 */
-						if (incrementSet->isHold && !releaseHold)
-						{ 
-							if (!isCommit && !incrementSet->isCommitted)
-								incrementSet->isHold = false;
-	
-							else if (isCommit && !incrementSet->isCommitted)
-							{
-								incrementSet->isCommitted = true;
-								foundHoldable = true;
-							}
-						}
 
-						/*
-						 * if we have specified that all resource locks are to 
-						 * be released, then do them all, otherwise only do the
-						 * non holdable portals.
+						/* 
+						 * Get link first, since we will unlink/delete this one,
+						 * and compute a portalTag for removing the increment 
+						 * set itself.
 						 */
-						if (releaseHold ||
-						    (!releaseHold && !incrementSet->isHold))
+						nextiSet = (ResPortalIncrement *) 
+									SHMQueueNext(portalLinks, 
+												 &incrementSet->portalLink,
+												 offsetof(ResPortalIncrement,
+												 portalLink));
+						MemSet(&portalTag, 0, sizeof(ResPortalTag));
+						portalTag.pid = MyProc->pid;
+						portalTag.portalId = incrementSet->portalId;
+
+						/* 
+						 * If we are releasing all owners or otherwise
+						 * if the increment is owned by current resource owner
+						 * then release the corrosponding lock.
+						 */
+						if (isAllOwners ||
+							incrementSet->owner == CurrentResourceOwner)
 						{
-							elog(DEBUG1, "releasing portal %u pid %d",
-										 portalTag.portalId, portalTag.pid);
-
-							/* 
-							 * If still holding the lock now, ungrant and 
-							 * decrement the limit counters. 
+							/*
+							 * If we are aborting the transaction that created a
+							 * holdabel portal, then it is will be destroyed,
+							 * otherwise we record that the portal has passed a
+							 * commit.
 							 */
-							if (incrementSet->portalId != MyProc->waitPortalId)
-							{
-								ResUnGrantLock(lock, proclock);
-								ResLockUpdateLimit(lock, proclock, 
-												  incrementSet, false);
+							if (incrementSet->isHold && !releaseHold)
+							{ 
+								if (!isCommit && !incrementSet->isCommitted)
+									incrementSet->isHold = false;
+	
+								else if (isCommit && !incrementSet->isCommitted)
+								{
+									incrementSet->isCommitted = true;
+									foundHoldable = true;
+								}
 							}
 
-							/* 
-							 * Unlink this portalId, and delete it from the 
-							 * portal hash.
+							/*
+							 * if we have specified that all resource locks are
+							 * to be released, then do them all, otherwise only
+							 * do the non holdable portals.
 							 */
-							if (!ResIncrementRemove(&portalTag))
+							if (releaseHold ||
+							    (!releaseHold && !incrementSet->isHold))
 							{
-								LWLockRelease(masterLock);
-								elog(ERROR, 
-								 "no increment to remove for portal %u pid %d",
-									 portalTag.portalId, portalTag.pid);
+								elog(DEBUG1, "releasing portal %u pid %d",
+											 portalTag.portalId, portalTag.pid);
+		
+								/* 
+								 * If still holding the lock now, ungrant and 
+								 * decrement the limit counters. 
+								 */
+								if (incrementSet->portalId != MyProc->waitPortalId)
+								{
+									ResUnGrantLock(lock, proclock);
+									Assert(lock != NULL);
+									Assert(proclock != NULL);
+									ResLockUpdateLimit(lock, proclock, 
+													  incrementSet, false);
+								}
+
+								/* 
+								 * Unlink this portalId, and delete it from the 
+								 * portal hash.
+								 */
+								if (!ResIncrementRemove(&portalTag))
+								{
+									LWLockRelease(partitionLock);
+									elog(ERROR, 
+									 "no increment to remove for portal %u pid %d",
+										 portalTag.portalId, portalTag.pid);
+								}
+
 							}
 
 						}
 
+						/* Get the next increment set to process. */
+						incrementSet = nextiSet;
 					}
 
-					/* Get the next increment set to process. */
-					incrementSet = nextiSet;
+				}
+
+				Assert((lock->nRequested >= 0) && (lock->nGranted >= 0));
+				Assert(lock->nGranted <= lock->nRequested);
+
+				if (!foundHoldable || releaseHold)
+				{
+					if (lock->nRequested == 0)
+						RemoveLocalLock(locallock);
+					proclock->releaseMask = 0;
+					ResCleanUpLock(lock, proclock, LockTagHashCode(&lock->tag));
 				}
 
 			}
 
-			Assert((lock->nRequested >= 0) && (lock->nGranted >= 0));
-			Assert(lock->nGranted <= lock->nRequested);
-
-			if (!foundHoldable || releaseHold)
-			{
-				proclock->releaseMask = 0;
-				ResCleanUpLock(lock, proclock);
-			}
+			/*
+			 * Set next proclock.
+			 */
+			proclock = nextplock;
 
 		}
 
-		/*
-		 * Set next proclock.
-		 */
-		proclock = nextplock;
+		LWLockRelease(ResQueueLock);
+		LWLockRelease(partitionLock);
 
 	}
 
-	LWLockRelease(masterLock);
-#endif 
+	/*
+	 * Clean up all resource queue locallocks if we are finishing a session.
+	 */
+	if (isAllOwners && isCommit && releaseHold)
+	{
+		elog(DEBUG1, "Removing leftover local locks");
+		hash_seq_init(&status, LockMethodLocalHash);
+
+		while ((locallock = (LOCALLOCK *) hash_seq_search(&status)) != NULL)
+		{
+
+			if (locallock->proclock == NULL || locallock->lock == NULL)
+			{
+				/*
+				 * We must've run out of shared memory while trying to set up 
+				 * this lock. Just forget the local entry.
+				 */
+				Assert(locallock->nLocks == 0);
+				RemoveLocalLock(locallock);
+				continue;
+			}
+
+			/* Ignore items that are not of the lockmethod to be removed */
+			if (LOCALLOCK_LOCKMETHOD(*locallock) != RESOURCE_LOCKMETHOD)
+				continue;
+
+			Assert(locallock->nLocks == 0);
+			elog(DEBUG1, "..Removing a local lock");
+			RemoveLocalLock(locallock);
+
+		}
+	}
+
 	return;
 }
 
@@ -1327,6 +1375,9 @@ ResPortalIncrementHashTableInit()
  * Notes:
  *	Return a pointer to where the new increment is stored, or NULL if we 
  *	are out of memory (or if we find a duplicate portalid).
+ *
+ *	The resource queue lightweight lock (ResQueueLock) *must* be held for
+ *	this operation.
  */
 ResPortalIncrement *
 ResIncrementAdd(ResPortalIncrement *incSet,
@@ -1377,6 +1428,7 @@ ResIncrementAdd(ResPortalIncrement *incSet,
 		incrementSet = NULL;
 	}
 
+
 	return incrementSet;
 }
 
@@ -1386,6 +1438,9 @@ ResIncrementAdd(ResPortalIncrement *incSet,
  *
  * Notes
  *	Return a pointer to where the new increment is stored (NULL if not found).
+ *
+ *	The resource queue lightweight lock (ResQueueLock) *must* be held for
+ *	this operation.
  */
 ResPortalIncrement *
 ResIncrementFind(ResPortalTag *portaltag)
@@ -1400,7 +1455,9 @@ ResIncrementFind(ResPortalTag *portaltag)
 													   HASH_FIND, &found);
 
 	if (!incrementSet)
+	{
 		return NULL;
+	}
 
 	return incrementSet;
 }
@@ -1410,6 +1467,8 @@ ResIncrementFind(ResPortalTag *portaltag)
  * ResIncrementRemove -- Remove a  increment for a portal and process.
  *
  * Notes
+ *	The resource queue lightweight lock (ResQueueLock) *must* be held for
+ *	this operation.
  */
 bool
 ResIncrementRemove(ResPortalTag *portaltag)
@@ -1423,7 +1482,9 @@ ResIncrementRemove(ResPortalTag *portaltag)
 													   (void *) portaltag,
 													   HASH_FIND, &found);
 	if (!incrementSet)
+	{
 		return false;
+	}
 
 	SHMQueueDelete(&incrementSet->portalLink);
 
@@ -1473,6 +1534,10 @@ ResQueueHashTableInit(void)
 
 /*
  * ResQueuehashNew -- return a new (empty) queue object to initialize.
+ *
+ * Notes
+ *	The resource queue lightweight lock (ResQueueLock) *must* be held for
+ *	this operation.
  */
 ResQueue
 ResQueueHashNew(Oid queueid)
@@ -1496,6 +1561,10 @@ ResQueueHashNew(Oid queueid)
 
 /*
  * ResQueueHashFind -- return the queue for a given oid.
+ *
+ * Notes
+ *	The resource queue lightweight lock (ResQueueLock) *must* be held for
+ *	this operation.
  */
 ResQueue 
 ResQueueHashFind(Oid queueid)
@@ -1515,6 +1584,10 @@ ResQueueHashFind(Oid queueid)
 
 /*
  * ResQueueHashRemove -- remove the queue for a given oid.
+ *
+ * Notes
+ *	The resource queue lightweight lock (ResQueueLock) *must* be held for
+ *	this operation.
  */
 bool 
 ResQueueHashRemove(Oid queueid)
@@ -1537,7 +1610,8 @@ ResQueueHashRemove(Oid queueid)
  *	increment.
  *
  * Notes
- *	Unlike most other such routines, the LW lock explicitly acquired.
+ *	Unlike most other such routines, the resource queue lightweight lock is 
+ *	explicitly acquired.
  *	This is because it is called from places external to the resource lock
  *	setup/teardown.
  */
@@ -1546,9 +1620,8 @@ ResIncrementUpdate(int pid, uint32 portalId, bool isHold, bool isCommitted)
 {
 	ResPortalTag			portalTag;
 	ResPortalIncrement		*incrementSet;
-#if 0
 	/* Take LW lock before messing with the portal hash. */
-	LWLockAcquire(LockMgrLock, LW_EXCLUSIVE);
+	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
 	if ( pid < 0)
 		pid = MyProc->pid;
@@ -1570,7 +1643,7 @@ ResIncrementUpdate(int pid, uint32 portalId, bool isHold, bool isCommitted)
 		incrementSet->isCommitted = isCommitted;
 	}
 
-	LWLockRelease(LockMgrLock);
-#endif
+	LWLockRelease(ResQueueLock);
+
 	return;
 }

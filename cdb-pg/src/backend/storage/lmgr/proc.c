@@ -496,6 +496,11 @@ LockWaitCancel(void)
 	if (lockAwaited == NULL)
 		return false;
 
+	/* Don't try to cancel resource locks.*/
+	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler &&
+		lockAwaited->tag.lock.locktag_lockmethodid == RESOURCE_LOCKMETHOD)
+		return false;
+
 	/* Turn off the deadlock timer, if it's still running (see ProcSleep) */
 	disable_sig_alarm(false);
 
@@ -1073,9 +1078,21 @@ CheckDeadLock(void)
 	 *
 	 * RemoveFromWaitQueue sets MyProc->waitStatus to STATUS_ERROR, so
 	 * ProcSleep will report an error after we return from the signal handler.
+	 *
+	 * If we are removing a resource lock, the calls its specific routine.
 	 */
 	Assert(MyProc->waitLock != NULL);
-	RemoveFromWaitQueue(MyProc, LockTagHashCode(&(MyProc->waitLock->tag)));
+	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler && (MyProc->waitLock)->tag.locktag_lockmethodid == 
+		RESOURCE_LOCKMETHOD)
+	{
+		ResRemoveFromWaitQueue(MyProc, 
+							   LockTagHashCode(&(MyProc->waitLock->tag)));
+	}
+	else
+	{
+		RemoveFromWaitQueue(MyProc, 
+							LockTagHashCode(&(MyProc->waitLock->tag)));
+	}
 
 	/*
 	 * Unlock my semaphore so that the interrupted ProcSleep() call can
@@ -1347,7 +1364,6 @@ handle_sig_alarm(SIGNAL_ARGS)
 	errno = save_errno;
 }
 
-#if 0
 /*
  * ResProcSleep -- put a process to sleep (that is waiting for a resource lock).
  *
@@ -1362,12 +1378,15 @@ handle_sig_alarm(SIGNAL_ARGS)
  *	introducing new bugs or performance regressions into the lock code.
  */
 int
-ResProcSleep(LOCKMODE lockmode, LOCK *lock, PROCLOCK *proclock)
+ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock)
 {
-
-	LockMethod	lockMethodTable = LockMethods[RESOURCE_LOCKMETHOD];
+	LOCK	   *lock = locallock->lock;
+	PROCLOCK   *proclock = locallock->proclock;
 	PROC_QUEUE	*waitQueue = &(lock->waitProcs);
 	PGPROC		*proc;
+	uint32		hashcode = locallock->hashcode;
+	LWLockId	partitionLock = LockHashPartitionLock(hashcode);
+
 	/* Variables for self lock check. */
 	SHM_QUEUE	*oprocLocks;
 	PROCLOCK	*oproclock;
@@ -1392,7 +1411,8 @@ ResProcSleep(LOCKMODE lockmode, LOCK *lock, PROCLOCK *proclock)
 
 	MyProc->waitStatus = STATUS_ERROR;	/* initialize result for error */
 
-	waitingForLock = true;
+	/* Mark that we are waiting for a lock */
+	lockAwaited = locallock;
 
 	/*
 	 * Check to see if I am going to deadlock against myself, scan the 
@@ -1413,7 +1433,7 @@ ResProcSleep(LOCKMODE lockmode, LOCK *lock, PROCLOCK *proclock)
 		if (oproclock->holdMask & LOCKBIT_ON(lockmode))
 		{
 			/* Get the proc entry for this proclock. */
-			oproc = (PGPROC *) MAKE_PTR(oproclock->tag.proc);
+			oproc = oproclock->tag.myProc;
 
 			/* If someone else holds the lock, we cannot be self deadlocking.*/
 			if ( oproc->pid != MyProc->pid)
@@ -1431,14 +1451,14 @@ ResProcSleep(LOCKMODE lockmode, LOCK *lock, PROCLOCK *proclock)
 	/* Now check the status of the self lock footgun. */
 	if (selflock)
 	{
-		LWLockRelease(lockMethodTable->masterLock);
+		LWLockRelease(partitionLock);
 		ereport(ERROR,
 				(errcode(ERRCODE_T_R_DEADLOCK_DETECTED),
 				 errmsg("deadlock detected, locking against self")));
 	}
 
 	/* Ok to wait.*/
-	LWLockRelease(lockMethodTable->masterLock);
+	LWLockRelease(partitionLock);
 
 	if (!enable_sig_alarm(DeadlockTimeout, false))
    		elog(FATAL, "could not set timer for (resource lock) process wakeup");
@@ -1454,10 +1474,68 @@ ResProcSleep(LOCKMODE lockmode, LOCK *lock, PROCLOCK *proclock)
 	/*
 	 * Have been awakened, so continue.
 	 */
-	LWLockAcquire(lockMethodTable->masterLock, LW_EXCLUSIVE);
+	LWLockAcquire(partitionLock, LW_EXCLUSIVE);
 
-	waitingForLock = false;
+	/*
+	 * We no longer want (Res)LockWaitCancel to do anything.
+	 */
+	lockAwaited = NULL;
 
 	return MyProc->waitStatus;
 }
-#endif
+
+
+/*
+ * ResLockWaitCancel -- Cancel any pending wait for a resource lock, when 
+ *	aborting a transaction.
+ */
+void
+ResLockWaitCancel(void)
+{
+	LWLockId	partitionLock;
+
+	if (MyProc->waitPortalId != INVALID_PORTALID)
+	{
+		/*
+		 * Dangling portal increment, possibly left by overcommit check
+		 * so clean it here.
+		 */
+		ResPortalTag	portalTag;
+
+		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+
+		MemSet(&portalTag, 0, sizeof(ResPortalTag));
+		portalTag.pid = MyProc->pid;
+		portalTag.portalId = MyProc->waitPortalId;
+		ResIncrementRemove(&portalTag);
+
+		LWLockRelease(ResQueueLock);
+	}
+
+	if (lockAwaited != NULL)
+	{
+		/* Unlink myself from the wait queue, if on it  */
+		partitionLock = LockHashPartition(lockAwaited->hashcode);
+		LWLockAcquire(partitionLock, LW_EXCLUSIVE);
+
+		if (MyProc->links.next != INVALID_OFFSET)
+		{
+			/* We could not have been granted the lock yet */
+			Assert(MyProc->waitStatus == STATUS_ERROR);
+			ResRemoveFromWaitQueue(MyProc, lockAwaited->hashcode);
+		}
+
+		lockAwaited = NULL;
+
+		LWLockRelease(partitionLock);
+	}
+
+	/*
+	 * Reset the proc wait semaphore to zero. This is necessary in the
+	 * scenario where someone else granted us the lock we wanted before we
+	 * were able to remove ourselves from the wait-list.
+	 */
+	PGSemaphoreReset(&MyProc->sem);
+
+	return;
+}

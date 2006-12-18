@@ -64,6 +64,7 @@ typedef enum LWLockId
 	SharedSnapshotLock,
 	FirstBufMappingLock,
 	FirstLockMgrLock = FirstBufMappingLock + NUM_BUFFER_PARTITIONS,
+	ResQueueLock = FirstLockMgrLock + NUM_LOCK_PARTITIONS,
 	
 	/* must be last except for MaxDynamicLWLock: */
 	NumFixedLWLocks = FirstLockMgrLock + NUM_LOCK_PARTITIONS,

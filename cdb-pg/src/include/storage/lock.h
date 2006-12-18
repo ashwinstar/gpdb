@@ -18,6 +18,7 @@
 #include "storage/itemptr.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
+#include "utils/resowner.h"
 
 
 /* struct PGPROC is declared in proc.h, but must forward-reference it */
@@ -119,6 +120,20 @@ typedef uint16 LOCKMETHODID;
 										 * UPDATE */
 #define AccessExclusiveLock		8		/* ALTER TABLE, DROP TABLE, VACUUM
 										 * FULL, and unqualified LOCK TABLE */
+
+/*
+ * Map from lock methods to lock table data structures.
+ */
+extern const	LockMethodData resource_lockmethod;
+extern const	LockMethod LockMethods[];
+
+
+/*
+ *  The lock hash tables. (needed by resource queuing).
+ */
+extern HTAB	*LockMethodLockHash;
+extern HTAB	*LockMethodProcLockHash;
+extern HTAB	*LockMethodLocalHash;
 
 
 /*
@@ -375,6 +390,9 @@ typedef struct LOCALLOCK
 
 #define LOCALLOCK_LOCKMETHOD(llock) ((llock).tag.lock.locktag_lockmethodid)
 
+/* Waiter global locallock. (needed by resource queuing). */
+extern LOCALLOCK *awaitedLock;
+extern ResourceOwner awaitedOwner;
 
 /*
  * This struct holds information passed from lmgr internals to the lock
@@ -420,6 +438,7 @@ typedef enum
 extern void InitLocks(void);
 extern LockMethod GetLocksMethodTable(const LOCK *lock);
 extern uint32 LockTagHashCode(const LOCKTAG *locktag);
+extern uint32 ProcLockHashCode(const PROCLOCKTAG *proclocktag, uint32 hashcode);
 extern LockAcquireResult LockAcquire(const LOCKTAG *locktag,
 			LOCKMODE lockmode,
 			bool sessionLock,
@@ -438,6 +457,7 @@ extern int LockCheckConflicts(LockMethod lockMethodTable,
 extern void GrantLock(LOCK *lock, PROCLOCK *proclock, LOCKMODE lockmode);
 extern void GrantAwaitedLock(void);
 extern void RemoveFromWaitQueue(PGPROC *proc, uint32 hashcode);
+extern void RemoveLocalLock(LOCALLOCK *locallock);
 extern Size LockShmemSize(void);
 extern LockData *GetLockStatusData(void);
 extern const char *GetLockmodeName(LOCKMETHODID lockmethodid, LOCKMODE mode);

@@ -114,15 +114,19 @@ Lock Design
 -----------
 
 The resource locks share the lock hash table(s) with the standard (and user) 
-locks. This means that they use the standard lock manager lightweight lock 
-(LockMgrLock) for "their" lightweight lock operations. 
+locks. This means that they use the standard lock manager partitioned 
+lightweight lock(s): 
 
-It would be highly desirable to give them their own lightweight lock, 
-however this complicates (possibly fatally) the deadlock detection with 
-standard locks - since *two* lightweight locks would need to be acquired and 
-held, raising the possibility of lightweight lock deadlocks (see comments in
-src/backend/storage/lmgr/deadlock.c for DeadLockCheck). More investigation is
-required here.
+  FirstLockMgrLock,..., FirstLockMgrLock + NUM_LOCK_PARTITIONS 
+
+for lightweight lock operations. 
+
+The queues themselves and their data are protected by a seperate loghtweight 
+lock:
+
+  ResQueueLock
+
+so at some points the partition lock and the queue lock could be held.
 
 
 -----------------------------------------------------------------------------

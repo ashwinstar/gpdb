@@ -459,41 +459,6 @@ ResDestroyQueue(Oid queueid)
 
 
 /*
- * InitResLocks -- initialize the resource lock table.
- *
- * Notes
- *	We use the rename function to share the lock hash with standard locks.
- *	We have to use the same lightweight lock anyway (see standard lock README)
- *	so may as well use the same hash.
- */
-void 
-InitResLocks(void)
-{
-	LOCKMETHODID	ResourceTableId;
-	LOCKMETHODID	LockTableId;
-
-	/*
-	 * Get the lock table id for standard locks.
-	 */
-	LockTableId = DEFAULT_LOCKMETHOD;
-
-#if 0
-	/*
-	 * Use another table id for resource lock, but share the same hash table.
-	 */
-	ResourceTableId = LockMethodTableRename(LockTableId);
-
-	if (!LockMethodIsValid(ResourceTableId))
-		elog(ERROR, "could not rename resource lock table");
-
-	Assert(ResourceTableId == RESOURCE_LOCKMETHOD);
-#endif
-
-	return;
-}
-
-
-/*
  * ResLockPortal -- get a resource lock for a PortalRun.
  *
  * Returns:

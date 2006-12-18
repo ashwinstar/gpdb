@@ -167,6 +167,7 @@ extern void ProcSendSignal(int pid);
 extern bool enable_sig_alarm(int delayms, bool is_statement_timeout);
 extern bool disable_sig_alarm(bool is_statement_timeout);
 extern void handle_sig_alarm(SIGNAL_ARGS);
-extern int	ResProcSleep(LOCKMODE lockmode, LOCK *lock, PROCLOCK *proclock);
+extern int	ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock);
+extern void ResLockWaitCancel(void);
 
 #endif   /* PROC_H */

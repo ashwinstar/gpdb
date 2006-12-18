@@ -40,7 +40,6 @@
 #include "storage/lmgr.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
-#include "utils/resowner.h"
 #include "utils/resscheduler.h"
 #include "storage/procarray.h"
 
@@ -123,7 +122,7 @@ static const char *const lock_mode_names[] =
 static bool Dummy_trace = false;
 #endif
 
-static const LockMethodData default_lockmethod = {
+const LockMethodData default_lockmethod = {
 	AccessExclusiveLock,		/* highest valid lock mode number */
 	true,
 	LockConflicts,
@@ -135,7 +134,7 @@ static const LockMethodData default_lockmethod = {
 #endif
 };
 
-static const LockMethodData user_lockmethod = {
+const LockMethodData user_lockmethod = {
 	AccessExclusiveLock,		/* highest valid lock mode number */
 	false,
 	LockConflicts,
@@ -147,13 +146,27 @@ static const LockMethodData user_lockmethod = {
 #endif
 };
 
+const LockMethodData resource_lockmethod = {
+	AccessExclusiveLock,        /* highest valid lock mode number */
+	true,
+	LockConflicts,
+	lock_mode_names,
+#ifdef LOCK_DEBUG
+	&Trace_locks
+#else
+	&Dummy_trace
+#endif
+};
+
+
 /*
  * map from lock method id to the lock table data structures
  */
-static const LockMethod LockMethods[] = {
+const LockMethod LockMethods[] = {
 	NULL,
 	&default_lockmethod,
-	&user_lockmethod
+	&user_lockmethod,
+	&resource_lockmethod
 };
 
 
@@ -171,14 +184,14 @@ typedef struct TwoPhaseLockRecord
  * The LockMethodLockHash and LockMethodProcLockHash hash tables are in
  * shared memory; LockMethodLocalHash is local to each backend.
  */
-static HTAB *LockMethodLockHash;
-static HTAB *LockMethodProcLockHash;
-static HTAB *LockMethodLocalHash;
+HTAB *LockMethodLockHash;
+HTAB *LockMethodProcLockHash;
+HTAB *LockMethodLocalHash;
 
 
 /* private state for GrantAwaitedLock */
-static LOCALLOCK *awaitedLock;
-static ResourceOwner awaitedOwner;
+LOCALLOCK *awaitedLock;
+ResourceOwner awaitedOwner;
 
 
 #ifdef LOCK_DEBUG
@@ -260,7 +273,7 @@ PROCLOCK_PRINT(const char *where, const PROCLOCK *proclockP)
 
 
 static uint32 proclock_hash(const void *key, Size keysize);
-static void RemoveLocalLock(LOCALLOCK *locallock);
+void RemoveLocalLock(LOCALLOCK *locallock);
 static void GrantLockLocal(LOCALLOCK *locallock, ResourceOwner owner);
 static void WaitOnLock(LOCALLOCK *locallock, ResourceOwner owner);
 static bool UnGrantLock(LOCK *lock, LOCKMODE lockmode,
@@ -439,7 +452,7 @@ proclock_hash(const void *key, Size keysize)
  *
  * We use this just to avoid redundant calls of LockTagHashCode().
  */
-static inline uint32
+inline uint32
 ProcLockHashCode(const PROCLOCKTAG *proclocktag, uint32 hashcode)
 {
 	uint32		lockhash = hashcode;
@@ -1053,7 +1066,7 @@ LockAcquire(const LOCKTAG *locktag,
 /*
  * Subroutine to free a locallock entry
  */
-static void
+void
 RemoveLocalLock(LOCALLOCK *locallock)
 {
 	pfree(locallock->lockOwners);
@@ -1419,6 +1432,8 @@ RemoveFromWaitQueue(PGPROC *proc, uint32 hashcode)
 	LOCKMODE	lockmode = proc->waitLockMode;
 	LOCKMETHODID lockmethodid = LOCK_LOCKMETHOD(*waitLock);
 
+	/* Make lockmethod is appropriate. */
+	Assert(lockmethodid != RESOURCE_LOCKMETHOD);
 	/* Make sure proc is waiting */
 	Assert(proc->waitStatus == STATUS_WAITING);
 	Assert(proc->links.next != INVALID_OFFSET);

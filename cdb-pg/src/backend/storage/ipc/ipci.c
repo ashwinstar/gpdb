@@ -205,7 +205,6 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
 	{
 		InitResScheduler();
-		InitResLocks();
 		InitResPortalIncrementHash();
 	}
 

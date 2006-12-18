@@ -210,15 +210,14 @@ CreateQueue(CreateQueueStmt *stmt)
 	 */
 	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
 	{
-		/* XXX: we should really have our own LW lock */
-		LWLockAcquire(FirstLockMgrLock, LW_EXCLUSIVE);
+		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
 		thresholds[RES_COUNT_LIMIT] = activelimit;
 		thresholds[RES_COST_LIMIT] = costlimit;
 
 		queueok = ResCreateQueue(queueid, thresholds, overcommit);
 
-		LWLockRelease(FirstLockMgrLock);
+		LWLockRelease(ResQueueLock);
 
 		if (!queueok)
 			ereport(ERROR,
@@ -448,11 +447,11 @@ AlterQueue(AlterQueueStmt *stmt)
 	 */
 	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
 	{
-		LWLockAcquire(FirstLockMgrLock, LW_EXCLUSIVE);
+		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
 		queueok = ResAlterQueue(queueid, thresholds, overcommit);
 
-		LWLockRelease(FirstLockMgrLock);
+		LWLockRelease(ResQueueLock);
 
 		if (!queueok)
 			ereport(ERROR,
@@ -561,11 +560,11 @@ DropQueue(DropQueueStmt *stmt)
 	 */
 	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
 	{
-		LWLockAcquire(FirstLockMgrLock, LW_EXCLUSIVE);
+		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
 		queueok = ResDestroyQueue(queueid);
 
-		LWLockRelease(FirstLockMgrLock);
+		LWLockRelease(ResQueueLock);
 
 		if (!queueok)
 			ereport(ERROR,

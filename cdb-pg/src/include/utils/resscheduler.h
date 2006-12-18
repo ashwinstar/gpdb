@@ -106,7 +106,8 @@ typedef struct ResPortalTag
 	 (locktag).locktag_field2 = 0, \
 	 (locktag).locktag_field3 = 0, \
 	 (locktag).locktag_field4 = 0, \
-	(locktag).locktag_type = LOCKTAG_RESOURCE_QUEUE)
+	(locktag).locktag_type = LOCKTAG_RESOURCE_QUEUE, \
+	 (locktag).locktag_lockmethodid = RESOURCE_LOCKMETHOD)
 
 #define GET_RESOURCE_QUEUEID_FOR_LOCK(lock) \
 	((lock->tag).locktag_field1)
@@ -127,14 +128,13 @@ extern void				ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock,
 extern ResQueue			GetResQueueFromLock(LOCK *lock);
 extern void				ResGrantLock(LOCK *lock, PROCLOCK *proclock);
 extern bool				ResUnGrantLock(LOCK *lock, PROCLOCK *proclock);
-extern void				ResCleanUpLock(LOCK *lock, PROCLOCK *proclock);
-extern void				ResWaitOnLock(  LOCK *lock, 
-										PROCLOCK *proclock, 
-										ResourceOwner owner);
+extern void				ResCleanUpLock(LOCK *lock, PROCLOCK *proclock,
+									   uint32 hashcode);
+extern void				ResWaitOnLock(LOCALLOCK *locallock, 
+									  ResourceOwner owner);
 extern void				ResProcLockWakeup(LOCK *lock);
 extern PGPROC 			*ResProcWakeup(PGPROC *proc, int waitStatus);
-extern void				ResRemoveFromWaitQueue(PGPROC *proc);
-extern void				ResLockWaitCancel(void);
+extern void				ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode);
 extern void				ResProcReleaseLocks(bool isCommit, bool releaseHold);
 extern void				ResProcReleaseCurrentOwner(bool isCommit, 
 												   bool releaseHold);
@@ -167,7 +167,6 @@ extern bool ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES],
 extern bool ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], 
 						  bool overcommit);
 extern bool ResDestroyQueue(Oid queueid);
-extern void InitResLocks(void);
 extern bool ResLockPortal(Portal portal);
 extern void ResUnLockPortal(Portal portal);
 extern void ResCheckPortalType(Portal portal);
