@@ -60,7 +60,7 @@ CONFIGOBJ_VERSION=4.3.2
 CONFIGOBJ_DIR=configobj-$(CONFIGOBJ_VERSION)
 configobj:
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@echo "Unzipping Paramiko"
+	@echo "Unzipping configobj"
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@cd $(PYLIB_SRC)/; unzip -o $(CONFIGOBJ_DIR).zip ; cd ../ ;
 	@echo " Building configobj "
@@ -72,7 +72,7 @@ configobjInstall:
 
 configobjClean:
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@echo "Cleaning Paramiko"
+	@echo "Cleaning configobj"
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@cd $(PYLIB_SRC)/$(CONFIGOBJ_DIR) ; NO_M64=TRUE python setup.py clean; cd ../../
 	@echo ""
@@ -83,13 +83,17 @@ configobjClean:
 #
 # PARAMIKO
 #
-PARAMIKO_VERSION=1.5.4
+PARAMIKO_VERSION=1.6.4.1
 PARAMIKO_DIR=paramiko-$(PARAMIKO_VERSION)
 paramiko:
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@echo "Unzipping Paramiko"
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@cd $(PYLIB_SRC)/; unzip -o $(PARAMIKO_DIR).zip ; cd ../ ;
+	@if [ `uname -s` = 'SunOS' ] ; then \
+		cd $(PYLIB_SRC)/; gtar -xvzf $(PARAMIKO_DIR).tgz ; cd ../ ;\
+	else  \
+		cd $(PYLIB_SRC)/; tar -xvzf $(PARAMIKO_DIR).tgz ; cd ../ ;\
+	fi
 	@echo " Building paramiko "
 	@cd $(PYLIB_SRC)/$(PARAMIKO_DIR) ; NO_M64=TRUE python setup.py build ; cd ../../
 	cp -r $(PYLIB_SRC)/$(PARAMIKO_DIR)/build/lib/paramiko  $(LIB_DIR)/

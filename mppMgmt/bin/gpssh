@@ -45,15 +45,19 @@ opt['-f'] = False
 cmd = []
 session = []
 
+################
+def usage(exitarg):
+    print __doc__
+    sys.exit(exitarg)
+
+
 #############
 def parseCommandLine():
     global opt, cmd
     try:
 	(options, args) = getopt.getopt(sys.argv[1:], '?bvtd:p:u:h:f:')
     except Exception, e:
-	print __doc__
-	print 'Error:', e
-	raise SystemExit, 1
+	usage('Error: invalid option')
 
     for (switch, val) in options:
 	if (switch == '-?'):
@@ -69,19 +73,13 @@ def parseCommandLine():
 	    try:
 		opt[switch] = int(val)
 	    except:
-		print 'Error: please specify port number for -p switch'
-		raise SystemExit, 1
+		usage('Error: please specify port number for -p switch')
 
-    if (len(args) < 1):
-	print __doc__
-	print 'Error: please specify command'
-	raise SystemExit, 1
+    if (len(args) < 1): usage('Error: please specify command')
 
     hf = (len(opt['-h']) and 1) + (opt['-f'] and 1)
     if hf != 1:
-	print __doc__
-	print 'Error: please specify at least one of -h or -f args, but not both'
-	raise SystemExit, 1
+	usage('Error: please specify at least one of -h or -f args, but not both')
 
     cmd = args
 
@@ -109,8 +107,7 @@ def readHostFile():
 	hostlines = fd.readlines()
 	fd.close()
     except IOError, e:
-	print 'Error: cannot read host file', opt['-f']
-	raise SystemExit, 1
+	sys.exit('Error: cannot read host file' + opt['-f'])
 
     host = {}
     line = 0
@@ -164,19 +161,23 @@ def buildCommand():
 
 
 #############
-parseCommandLine()
-tab = []
-for h in opt['-h']:
-    tab.append(parseHostLine(h))
-opt['-h'] = tab
-readHostFile()
-createSession()
-shcmd = buildCommand()
-for s in session:
-    if (opt['-v']): print ('Info: exec %s on %s' % (shcmd, s.name))
-    stdin, stdout, stderr = s.exec_command(shcmd)
-    s.mystdout = stdout
+try:
+    parseCommandLine()
+    tab = []
+    for h in opt['-h']:
+	tab.append(parseHostLine(h))
+	opt['-h'] = tab
+	readHostFile()
+	createSession()
+	shcmd = buildCommand()
+	for s in session:
+	    if (opt['-v']): print ('Info: exec %s on %s' % (shcmd, s.name))
+	    stdin, stdout, stderr = s.exec_command(shcmd)
+	    s.mystdout = stdout
 
-for s in session:
-    for line in s.mystdout: 
-	print '[%s] %s' % (s.name, line),
+	for s in session:
+	    for line in s.mystdout: 
+		print '[%s] %s' % (s.name, line),
+
+except KeyboardInterrupt:
+    sys.exit('Interrupted...')
