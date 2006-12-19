@@ -172,8 +172,6 @@ def copyExecOver(fname):
 #############
 def parseMultiDDResult(out):
     # parse output of "time -p"
-    print 'parsing'
-    print out
     out = StringIO.StringIO(out)
     result = {}
     bytes = 0
