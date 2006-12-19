@@ -127,8 +127,6 @@ createGang(GangType type, int size, int content, char *portal_name)
 	int			segdbs_in_thread_pool;
 	int			segdb_count;
 
-	struct hostent *lookup;
-
 	Assert(size == 1 || size == getMPPSegmentCount());
 
 	/*
