@@ -121,12 +121,13 @@ def runTeardown():
 	print '--------------------'
 	print '  TEARDOWN'
 	print '--------------------'
-    for d in opt['-d']:
-	try:
-	    cmd = GPSSH + ('rm -rf %s/checkPerf' % d)
-	    (ok, out) = run(cmd)
-	except:
-	    pass
+    dirs = ''
+    for d in opt['-d']: dirs = '%s %s/checkPerf' % (dirs, d)
+    try:
+	cmd = GPSSH + 'rm -rf ' + dirs
+	(ok, out) = run(cmd)
+    except:
+	pass
 
 #############
 def runSetup():
@@ -136,14 +137,13 @@ def runSetup():
 	print '--------------------'
     okCount = 0
     try:
-	for d in opt['-d']:
-	    cmd = GPSSH + ('mkdir -p %s/checkPerf' % d);
-	    (ok, out) = run(cmd)
-	    if not ok: 
-		sys.exit('[Error] command failed: ' + cmd)
-	    okCount = okCount + 1
+	dirs = ''
+	for d in opt['-d']: dirs = '%s %s/checkPerf' % (dirs, d)
+	cmd = GPSSH + ('"(rm -rf %s && mkdir -p %s)"' % (dirs, dirs))
+	(ok, out) = run(cmd)
+	if not ok: sys.exit('[Error] command failed: ' + cmd)
     except:
-	if (okCount > 1): runTeardown()
+	runTeardown()
 	raise
 
 ################
