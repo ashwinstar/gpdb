@@ -498,7 +498,7 @@ LockWaitCancel(void)
 
 	/* Don't try to cancel resource locks.*/
 	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler &&
-		lockAwaited->tag.lock.locktag_lockmethodid == RESOURCE_LOCKMETHOD)
+		LOCALLOCK_LOCKMETHOD(*lockAwaited) == RESOURCE_LOCKMETHOD)
 		return false;
 
 	/* Turn off the deadlock timer, if it's still running (see ProcSleep) */
@@ -1082,8 +1082,8 @@ CheckDeadLock(void)
 	 * If we are removing a resource lock, the calls its specific routine.
 	 */
 	Assert(MyProc->waitLock != NULL);
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler && (MyProc->waitLock)->tag.locktag_lockmethodid == 
-		RESOURCE_LOCKMETHOD)
+	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler && 
+		LOCK_LOCKMETHOD(*(MyProc->waitLock)) == RESOURCE_LOCKMETHOD)
 	{
 		ResRemoveFromWaitQueue(MyProc, 
 							   LockTagHashCode(&(MyProc->waitLock->tag)));
@@ -1522,6 +1522,10 @@ ResLockWaitCancel(void)
 		{
 			/* We could not have been granted the lock yet */
 			Assert(MyProc->waitStatus == STATUS_ERROR);
+
+			/* We should only be trying to cancel resource locks. */
+			Assert(LOCALLOCK_LOCKMETHOD(*lockAwaited) == RESOURCE_LOCKMETHOD);
+
 			ResRemoveFromWaitQueue(MyProc, lockAwaited->hashcode);
 		}
 

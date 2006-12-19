@@ -1003,11 +1003,14 @@ ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode)
     LOCKMODE		lockmode = proc->waitLockMode;
     LOCKMETHODID	lockmethodid = LOCK_LOCKMETHOD(*waitLock);
 	ResPortalTag	portalTag;
+
+	/* Make sure lockmethod is for a resource lock. */
+	Assert(lockmethodid == RESOURCE_LOCKMETHOD);
+
     /* Make sure proc is waiting */
 	Assert(proc->links.next != INVALID_OFFSET);
 	Assert(waitLock);
 	Assert(waitLock->waitProcs.size > 0);
-	Assert(0 < lockmethodid && lockmethodid == RESOURCE_LOCKMETHOD);
 
 	/* Remove proc from lock's wait queue */
 	SHMQueueDelete(&(proc->links));
@@ -1136,7 +1139,7 @@ ResLockReleaseAll(bool isAllOwners, bool isCommit, bool releaseHold)
 			/*
 			 * if the lock is a resource lock, then release it.
 			 */
-			if (lock->tag.locktag_lockmethodid == RESOURCE_LOCKMETHOD)
+			if (LOCK_LOCKMETHOD(*lock) == RESOURCE_LOCKMETHOD)
 			{
 				/* Find the locallock for this lock, procllock. */
 				MemSet(&localtag, 0, sizeof(localtag)); 
