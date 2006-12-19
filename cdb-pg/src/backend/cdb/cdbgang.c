@@ -287,7 +287,6 @@ createGang(GangType type, int size, int content, char *portal_name)
 	 */
 	for (i = 0; i < segdb_count; i++)
 	{
-
 		segdbDesc = &newGangDefinition->db_descriptors[i];
 		q = segdbDesc->segment_database_info;
 
@@ -327,14 +326,9 @@ createGang(GangType type, int size, int content, char *portal_name)
 				     PQoptions(segdbDesc->conn));
 
 			/*
-			 * cache the name
+			 * We should have retrieved the IP from our cache
 			 */
-			lookup = gethostbyname(q->hostname);
-			if (lookup == NULL)
-			{
-				elog(FATAL, "getCdbProcessList: gethostbyname() failed for host '%s'", q->hostname);
-			}
-			q->hostip = pstrdup(inet_ntoa(*(struct in_addr *) (lookup->h_addr_list[0])));
+			Assert(q->hostip != NULL);
 
 			/*
 			 * We have a live connection!
@@ -417,9 +411,6 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
 {
 	Gang	   *newGangDefinition = NULL;
 
-	/*
-	 * SegmentDescriptor			*segDesc;
-	 */
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbComponentDatabaseInfo *p;
 

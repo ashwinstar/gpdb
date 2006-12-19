@@ -50,7 +50,7 @@ static bool resync = false;
 static bool cdblink_connectQD(SegmentDatabaseDescriptor * segdbDesc);
 
 /*
- * Called by backend/utils/init/postinit.c to setup stuffe
+ * Called by backend/utils/init/postinit.c to setup stuff
  *
  * Note -- this function is called with TopTransactionContext *before*
  *		MessageContext and the other statement-oriented contexts are
@@ -66,8 +66,6 @@ cdblink_setup(void)
 	/*
 	 * If mpp_role is UTILITY, skip this call.
 	 */
-
-
 	if (Mpp_role == MPP_ROLE_UTILITY)
 		return;
 

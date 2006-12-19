@@ -12,8 +12,6 @@
  */
 #include "postgres.h"
 
-
-
 #include "libpq-fe.h"
 #include "libpq-int.h"
 #include "miscadmin.h"
@@ -165,25 +163,25 @@ static void MPPnoticeReceiver(void * arg, const PGresult * res)
 		}
 
 		/*
-		if (edata->cursorpos > 0)
-		{
-			snprintf(tbuf, sizeof(tbuf), "%d", edata->cursorpos);
-			appendPQExpBufferChar(&msgbuf, PG_DIAG_STATEMENT_POSITION);
-			appendBinaryPQExpBuffer(&msgbuf, tbuf);
-		}
+		  if (edata->cursorpos > 0)
+		  {
+		  snprintf(tbuf, sizeof(tbuf), "%d", edata->cursorpos);
+		  appendPQExpBufferChar(&msgbuf, PG_DIAG_STATEMENT_POSITION);
+		  appendBinaryPQExpBuffer(&msgbuf, tbuf);
+		  }
 
-		if (edata->internalpos > 0)
-		{
-			snprintf(tbuf, sizeof(tbuf), "%d", edata->internalpos);
-			appendPQExpBufferChar(&msgbuf, PG_DIAG_INTERNAL_POSITION);
-			appendBinaryPQExpBuffer(&msgbuf, tbuf);
-		}
+		  if (edata->internalpos > 0)
+		  {
+		  snprintf(tbuf, sizeof(tbuf), "%d", edata->internalpos);
+		  appendPQExpBufferChar(&msgbuf, PG_DIAG_INTERNAL_POSITION);
+		  appendBinaryPQExpBuffer(&msgbuf, tbuf);
+		  }
 
-		if (edata->internalquery)
-		{
-			appendPQExpBufferChar(&msgbuf, PG_DIAG_INTERNAL_QUERY);
-			appendBinaryPQExpBuffer(&msgbuf, edata->internalquery);
-		}
+		  if (edata->internalquery)
+		  {
+		  appendPQExpBufferChar(&msgbuf, PG_DIAG_INTERNAL_QUERY);
+		  appendBinaryPQExpBuffer(&msgbuf, edata->internalquery);
+		  }
 		*/
 		if (file)
 		{
@@ -203,20 +201,18 @@ static void MPPnoticeReceiver(void * arg, const PGresult * res)
 			appendBinaryPQExpBuffer(&msgbuf, func, strlen(func)+1);
 		}
 		
-		}
-		else
-		{
+	}
+	else
+	{
 			
-			appendPQExpBuffer(&msgbuf, "%s:  ", severity);
+		appendPQExpBuffer(&msgbuf, "%s:  ", severity);
 	
-			appendBinaryPQExpBuffer(&msgbuf, message, strlen(message));
+		appendBinaryPQExpBuffer(&msgbuf, message, strlen(message));
 	
-			appendPQExpBufferChar(&msgbuf, '\n');
-			appendPQExpBufferChar(&msgbuf, '\0');
+		appendPQExpBufferChar(&msgbuf, '\n');
+		appendPQExpBufferChar(&msgbuf, '\0');
 
-		}
-			
-	
+	}
 
 	appendPQExpBufferChar(&msgbuf, '\0');		/* terminator */
 
@@ -225,8 +221,6 @@ static void MPPnoticeReceiver(void * arg, const PGresult * res)
 	termPQExpBuffer(&msgbuf);
 	
 	pq_flush();	
-	
-	
 }
 
 
@@ -371,9 +365,9 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
         /* Don't use elog, it's not thread-safe */
         if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
             write_stderr("Connected to %s motionListener=%d with options %s\n",
-                    segdbDesc->whoami,
-                    segdbDesc->motionListener,
-                    buffer.data);
+						 segdbDesc->whoami,
+						 segdbDesc->motionListener,
+						 buffer.data);
     }
 
     free(buffer.data);

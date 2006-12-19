@@ -40,8 +40,7 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbfts.h"
 
-
-
+#include <arpa/inet.h>			/* inet_ntoa() */
 
 /*
  * Helper Functions
@@ -49,6 +48,9 @@
 static int	CdbComponentDatabaseInfoCompare(const void *p1, const void *p2);
 static void freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi);
 static CdbComponentDatabases *getCdbComponentInfo(void);
+
+static char **segment_ip_cache = NULL;
+static int segment_ip_cache_limit = 0;
 
 /*
  * getMppMpp() causes the mpp_mpp table's singleton row to be read into a global structure
@@ -85,9 +87,6 @@ getMppMpp(void)
 		MppIdentity.mppname = NULL;
 	}
 
-
-
-
 	/*
 	 * Open the mpp table relation
 	 */
@@ -111,45 +110,42 @@ getMppMpp(void)
 	}
 
 	/*
-	* Grab the fields that we need from mpp
-	*/
+	 * Grab the fields that we need from mpp
+	 */
 
 	/*
-	* mppname
-	*/
+	 * mppname
+	 */
 	attr = heap_getattr(mpp_mpp_tuple, Anum_mpp_mpp_mppname, mpp_mpp_rel->rd_att, &isNull);
 	Assert(!isNull);
 	mppname = DatumGetName(attr);
 
-
-
-
 	/*
-	* Switch to the TopMemoryContext for the cdbname, so it lasts for the life
-	* of the connection.  It is released in freeMppMpp, which is called from
-	* cdblink_disconnect().
-	*/
+	 * Switch to the TopMemoryContext for the cdbname, so it lasts for the life
+	 * of the connection.  It is released in freeMppMpp, which is called from
+	 * cdblink_disconnect().
+	 */
 	oldContext = MemoryContextSwitchTo(permanentContext);
 	MppIdentity.mppname = pstrdup(mppname->data);
 	MemoryContextSwitchTo(oldContext);
 
 	/*
-	* numsegments
-	*/
+	 * numsegments
+	 */
 	attr = heap_getattr(mpp_mpp_tuple, Anum_mpp_mpp_numsegments, mpp_mpp_rel->rd_att, &isNull);
 	Assert(!isNull);
 	MppIdentity.numsegments = DatumGetInt16(attr);
 
 	/*
-	* dbid
-	*/
+	 * dbid
+	 */
 	attr = heap_getattr(mpp_mpp_tuple, Anum_mpp_mpp_dbid, mpp_mpp_rel->rd_att, &isNull);
 	Assert(!isNull);
 	MppIdentity.dbid = DatumGetInt16(attr);
 
 	/*
-	* content
-	*/
+	 * content
+	 */
 	attr = heap_getattr(mpp_mpp_tuple, Anum_mpp_mpp_content, mpp_mpp_rel->rd_att, &isNull);
 	Assert(!isNull);
 	MppIdentity.segindex = DatumGetInt16(attr);
@@ -171,7 +167,7 @@ getMppMpp(void)
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
 				 errmsg("Cannot have a Mpp_role of dispatch when connected to a segment database."
-						)));
+					 )));
 	}
 
 	if (Mpp_role != MPP_ROLE_UTILITY && MppIdentity.segindex != Mpp_segment)
@@ -182,17 +178,17 @@ getMppMpp(void)
 			ereport(WARNING,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
 					 errmsg("Mpp_Mpp segindex not same as Mpp_segment."
-							)));
+						 )));
 		}
 		else
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
 					 errmsg("mpp_mpp segindex not same as Mpp_segment."
-							)));
+						 )));
 		}
-
 	}
+
 }
 
 /*
@@ -203,18 +199,33 @@ getMppMpp(void)
 void
 freeMppMpp(void)
 {
-
 	if (MppIdentity.mppname != NULL)
 	{
 		pfree(MppIdentity.mppname);
 		MppIdentity.mppname = NULL;
 	}
 
+	if (Mpp_role == MPP_ROLE_DISPATCH && segment_ip_cache != NULL)
+	{
+		int i;
+
+		for (i=0; i < segment_ip_cache_limit; i++)
+		{
+			if (segment_ip_cache[i])
+			{
+				pfree(segment_ip_cache[i]);
+				segment_ip_cache[i] = NULL;
+			}
+		}
+		pfree(segment_ip_cache);
+		segment_ip_cache = NULL;
+		segment_ip_cache_limit = 0;
+	}
+
 	MppIdentity.numsegments = 0;
 	MppIdentity.dbid = -1;
 	MppIdentity.segindex = -999;
 }
-
 
 /*
  * getCdbComponentDatabases
@@ -253,7 +264,6 @@ getCdbComponentInfo(void)
 	bool		valid;
 	bool		definedprimary;
 
-
 	int			i;
 	int			x = 0;
 
@@ -271,59 +281,57 @@ getCdbComponentInfo(void)
 	component_databases->entry_db_info =
 		(CdbComponentDatabaseInfo *) palloc0(sizeof(CdbComponentDatabaseInfo) * entry_array_size);
 
-
 	mpp_configuration_rel = heap_open(MppConfigurationRelationId, AccessShareLock);
-	
+
 	mpp_configuration_scan = heap_beginscan(mpp_configuration_rel, SnapshotNow, 0, NULL);
-	
+
 	while (HeapTupleIsValid(mpp_configuration_tuple = heap_getnext(mpp_configuration_scan, ForwardScanDirection)))
 	{
 		/*
-		* Grab the fields that we need from mpp_configuration.
-		* We do this first, because until we read them, we don't know whether
-		* this is an entry database row or a segment database row.
-		*/
+		 * Grab the fields that we need from mpp_configuration.
+		 * We do this first, because until we read them, we don't know whether
+		 * this is an entry database row or a segment database row.
+		 */
 		CdbComponentDatabaseInfo *pRow;
-		
+
 		/*
-		* content
-		*/
+		 * content
+		 */
 		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_content, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		content = DatumGetInt16(attr);
-		
+
 		/*
-		* dbid
-		*/
+		 * dbid
+		 */
 		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_dbid, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		dbid = DatumGetInt16(attr);
-		
-		
+
 		/*
-		* definedprimary
-		*/
+		 * definedprimary
+		 */
 		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_definedprimary, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		definedprimary = DatumGetBool(attr);
-		
+
 		/*
-		* isprimary
-		*/
+		 * isprimary
+		 */
 		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_isprimary, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		isprimary = DatumGetBool(attr);
-		
+
 		/*
-		* valid
-		*/
+		 * valid
+		 */
 		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_valid, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		valid = DatumGetBool(attr);
-		
+
 		/*
-		* Determine which array to place this rows data in: content or segment, based on the content field.
-		*/
+		 * Determine which array to place this rows data in: content or segment, based on the content field.
+		 */
 
 		if (content >= 0)
 		{
@@ -332,8 +340,8 @@ getCdbComponentInfo(void)
 				CdbComponentDatabaseInfo *pOld;
 
 				/*
-				* Expand CdbComponentDatabaseInfo array if we've used up currently allocated space
-				*/
+				 * Expand CdbComponentDatabaseInfo array if we've used up currently allocated space
+				 */
 				segment_array_size *= 2;
 				pOld = component_databases->segment_db_info;
 				component_databases->segment_db_info = (CdbComponentDatabaseInfo *)
@@ -350,8 +358,8 @@ getCdbComponentInfo(void)
 				CdbComponentDatabaseInfo *pOld;
 
 				/*
-				* Expand CdbComponentDatabaseInfo array if we've used up currently allocated space
-				*/
+				 * Expand CdbComponentDatabaseInfo array if we've used up currently allocated space
+				 */
 				entry_array_size *= 2;
 				pOld = component_databases->entry_db_info;
 				component_databases->entry_db_info = (CdbComponentDatabaseInfo *)
@@ -367,34 +375,59 @@ getCdbComponentInfo(void)
 		pRow->isprimary = isprimary;
 		pRow->valid = valid;
 		pRow->definedprimary = definedprimary;
-		
-	
+
 		/*
-		* hostname
-		*/
+		 * hostname
+		 */
 		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_hostname, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		pRow->hostname = DatumGetCString(attr);
-		
+
+		if (segment_ip_cache == NULL)
+		{
+			MemoryContext oldContext;
+
+			oldContext = MemoryContextSwitchTo(TopMemoryContext);
+			/* Max number of nodes is the size of the segment array (plus up to two QDs) */
+			segment_ip_cache_limit = segment_array_size + 2;
+			segment_ip_cache = palloc0(segment_ip_cache_limit * sizeof(char *));
+			MemoryContextSwitchTo(oldContext);
+		}
+
+		Assert(dbid < segment_ip_cache_limit);
+		if (segment_ip_cache[dbid] == NULL)
+		{
+			MemoryContext oldContext;
+			struct hostent *lookup;
+
+			lookup = gethostbyname(pRow->hostname);
+
+			if (lookup == NULL)
+			{
+				elog(FATAL, "getCdbComponentInfo: gethostbyname() failed for host '%s'", pRow->hostname);
+			}
+
+			/* save in the cache context */
+			oldContext = MemoryContextSwitchTo(TopMemoryContext);
+			segment_ip_cache[dbid] = pstrdup(inet_ntoa(*(struct in_addr *) (lookup->h_addr_list[0])));
+			MemoryContextSwitchTo(oldContext);
+		}
+		pRow->hostip = pstrdup(segment_ip_cache[dbid]);
 
 		/*
-		* port
-		*/
+		 * port
+		 */
 		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_port, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		pRow->port = DatumGetInt32(attr);
-		
-		
+
 		/*
-		* datadir
-		*/
+		 * datadir
+		 */
 		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_datadir, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		pRow->datadir = DatumGetCString(DirectFunctionCall1(textout, attr));
-		
 	}
-
-
 
 	/*
 	 * Validate that there exists at least one entry and one segment database in the configuration
@@ -404,31 +437,31 @@ getCdbComponentInfo(void)
 		ereport(ERROR,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
 				 errmsg("MPP number of segment databases cannot be 0"
-						)));
+					 )));
 	}
 	if (component_databases->total_entry_dbs == 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
 				 errmsg("MPP number of entry databases cannot be 0"
-						)));
+					 )));
 	}
 
 	/*
 	 * Now sort the data by segindex, isprimary desc
 	 */
 	qsort(component_databases->segment_db_info,
-	component_databases->total_segment_dbs, sizeof(CdbComponentDatabaseInfo),
+		  component_databases->total_segment_dbs, sizeof(CdbComponentDatabaseInfo),
 		  CdbComponentDatabaseInfoCompare);
 
 	qsort(component_databases->entry_db_info,
-	  component_databases->total_entry_dbs, sizeof(CdbComponentDatabaseInfo),
+		  component_databases->total_entry_dbs, sizeof(CdbComponentDatabaseInfo),
 		  CdbComponentDatabaseInfoCompare);
 
 	/*
-	* Now count the number of distinct segindexes.
-	* Since it's sorted, this is easy.
-	*/
+	 * Now count the number of distinct segindexes.
+	 * Since it's sorted, this is easy.
+	 */
 	for (i = 0; i < component_databases->total_segment_dbs; i++)
 	{
 		if (i == 0 ||
@@ -457,8 +490,8 @@ getCdbComponentInfo(void)
 	}
 
 	/*
-	* Now validate that our identity is present in the entry databases
-	*/
+	 * Now validate that our identity is present in the entry databases
+	 */
 	for (i = 0; i < component_databases->total_entry_dbs; i++)
 	{
 		CdbComponentDatabaseInfo *pInfo = &component_databases->entry_db_info[i];
@@ -543,7 +576,7 @@ getCdbComponentDatabases(void)
 void
 freeCdbComponentDatabases(CdbComponentDatabases *pDBs)
 {
-	int			i;
+	int	i;
 
 	if (pDBs == NULL)
 		return;
