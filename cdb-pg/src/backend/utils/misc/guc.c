@@ -1073,7 +1073,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"mpp_enable_sort_limit", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
-			gettext_noop("Experimental feature: ."),
+			gettext_noop("Experimental feature: Pass LIMIT restriction to ORDER BY."),
 			NULL,
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},

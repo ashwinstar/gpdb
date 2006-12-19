@@ -248,6 +248,7 @@ struct Tuplesortstate
 	int			memtupcount;	/* number of tuples currently present */
 	int			memtupsize;		/* allocated length of memtuples array */
 	int64		memtupLIMIT;	/* LIMIT of memtuples array */ /*CDB*/
+	bool		memtupblimited; /* true when hit the limit */
 	int64  		dumpcount;	    /* count of dumps */ /*CDB*/
 
 	/*
@@ -494,6 +495,7 @@ tuplesort_begin_common(int workMem, bool randomAccess)
 	state->memtupcount = 0;
 	state->memtupsize = 1024;	/* initial guess */
 	state->memtupLIMIT = 0; /*CDB*/
+	state->memtupblimited = false;
 	state->dumpcount   = 0; /*CDB*/
 	state->memtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
 
@@ -913,7 +915,7 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			 * this point; see dumptuples.
 			 */
 			Assert(state->memtupcount > 0);
-			if (!state->memtupLIMIT)
+			if (state->dumpcount || !state->memtupLIMIT)
 			{
 				if (COMPARETUP(state, tuple, &state->memtuples[0]) >= 0)
 					tuplesort_heap_insert(state, tuple, state->currentRun, true);
@@ -921,7 +923,10 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 					tuplesort_heap_insert(state, tuple, state->currentRun + 1, true);
 			}
 			else
+			{
+				/* sorting LIMIT : only one run */
 				tuplesort_heap_insert(state, tuple, state->currentRun, false);
+			}
 
 			/*
 			 * If we are over the memory limit, dump tuples till we're under.
@@ -2045,6 +2050,21 @@ tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 	memtuples = state->memtuples;
 	Assert(state->memtupcount < state->memtupsize);
 
+	if (!state->dumpcount && state->memtupblimited) 
+	{
+		if (HEAPCOMPARE(tuple, &memtuples[state->memtupcount - 1]) >= 0)
+		{
+			HeapTuple	htup = (HeapTuple) tuple->tuple;
+			FREEMEM(state, GetMemoryChunkSpace(htup));
+			heap_freetuple(htup);
+			return;
+		}
+		else
+		{
+			state->memtupblimited = false;				
+		}
+	}
+
 	/*
 	 * Sift-up the new entry, per Knuth 5.2.3 exercise 16. Note that Knuth is
 	 * using 1-based array indexes, not 0-based.
@@ -2068,10 +2088,20 @@ tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 	if ((!state->dumpcount && state->memtupLIMIT) 
 		&& (state->memtupcount > state->memtupLIMIT))
 	{
+		qsort_arg((void *) state->memtuples,
+				  state->memtupcount,
+				  sizeof(SortTuple),
+				  (qsort_arg_comparator) state->comparetup,
+				  (void *) state);
+
+		/* set blimited true if have limit and memtuples are sorted */
+		state->memtupblimited = true;			
+		{
 		SortTuple  last_tuple = memtuples[--state->memtupcount];
 		HeapTuple	htup = (HeapTuple) last_tuple.tuple;
 		FREEMEM(state, GetMemoryChunkSpace(htup));
 		heap_freetuple(htup);
+		}
 	}
 
 }
