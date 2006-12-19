@@ -22,12 +22,6 @@ if sys.version_info < (2, 3):
     sys.exit("Error: gpscp is supported on Python versions 2.3 or greater\n"
 	     + "Please upgrade python installed on this machine.")
 
-sys.path.append(sys.path[0] + '/lib')
-try:
-    import paramiko
-except ImportError, e:
-    sys.exit('Error: unable to import module: ' + str(e))
-
 #
 # all the command line options
 #
@@ -121,30 +115,24 @@ def readHostFile():
 	    print ('Error: while parsing line %d of host file %s' % (line, opt['-f']))
 	    raise
 
+
 #############
-def createSession():
-    global opt, session
-    user = {}
-    port = {}
-    for h in opt['-h']: user[h[0]] = port[h[2]] = h
-    sameUser = len(user) == 1
-    samePort = len(port) == 1
-    for h in opt['-h']:
-	try:
-	    s = paramiko.SSHClient()
-	    s.load_system_host_keys()
-	    s.connect(h[1], h[2], h[0])
-	    s.name = ''
-	    if not sameUser: s.name = h[0] + '@'
-	    s.name = s.name + h[1]
-	    if not samePort: s.name = s.name + ':' + h[2]
-	    if opt['-v']: print 'Info: connected to', s.name
-	    session.append(s)
-	except KeyboardException:
-	    raise
-	except:
-	    print ('Error: while connecting to %s@%s:%d' % h)
-	    raise
+def run(cmd):
+    f = out = None
+    ok = False
+    try:
+	if opt['-v']: print '[Info]', cmd
+	f = os.popen(cmd)
+	out = f.read()
+	ok = not f.close()
+	f = None
+    except:
+	if f: f.close()
+	ok = False
+	out = None
+
+    if opt['-v'] and out and out != '': print out
+    return (ok, out)
 
 
 
@@ -155,11 +143,9 @@ for h in opt['-h']:
     tab.append(parseHostLine(h))
 opt['-h'] = tab
 readHostFile()
+for (user, host, port) in opt['-h']:
+    cmd = 'scp -P %d %s %s@%s:%s' % (port, localPath, user, host, remotePath)
+    (ok, out) = run(cmd)
+    if not ok: 
+	sys.exit('Error: command failed: ' + cmd)
 
-
-createSession()
-for s in session:
-    if (opt['-v']): print ('Info: copy to %s' % s.name)
-    c = s.open_sftp()
-    c.put(localPath, remotePath)
-    c.close()

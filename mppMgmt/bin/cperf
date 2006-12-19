@@ -200,6 +200,7 @@ def parseMultiDDResult(out):
     return result
 
 
+
 #############
 def runDiskWriteTest():
     if opt['-v']:
