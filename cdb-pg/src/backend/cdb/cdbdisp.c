@@ -862,7 +862,8 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 		if (strncmp(strCommand, "BEGIN ", 6) != 0 &&
 			strncmp(strCommand, "PREPARE ", 8) != 0 &&
 			strncmp(strCommand, "COMMIT ", 6) != 0 &&
-			strncmp(strCommand, "ROLLBACK ", 9) != 0)
+			strncmp(strCommand, "ROLLBACK ", 9) != 0 &&
+			strncmp(strCommand, "select pg_relation_size(", 24) != 0)
 		{
 			if (strncmp(strCommand, "MPPEXEC ", 7) == 0 || strncmp(strCommand, "mppexec ", 7) == 0)
 				elog(NOTICE, "Some segments are down.  Dispatching command to remaining segments only");
@@ -1115,7 +1116,8 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 		if (strncmp(strCommand, "BEGIN ", 6) != 0 &&
 			strncmp(strCommand, "PREPARE ", 8) != 0 &&
 			strncmp(strCommand, "COMMIT ", 6) != 0 &&
-			strncmp(strCommand, "ROLLBACK ", 9) != 0)
+			strncmp(strCommand, "ROLLBACK ", 9) != 0 &&
+			strncmp(strCommand, "select pg_relation_size(", 24) != 0)
 		{
 			if (strncmp(strCommand, "MPPEXEC ", 7) == 0 || strncmp(strCommand, "mppexec ", 7) == 0)
 				elog(NOTICE, "Some segments are down.  Dispatching command to remaining segments only");
