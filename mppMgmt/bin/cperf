@@ -287,6 +287,7 @@ def runStreamTest():
 def printResult(title, result):
     totTime = 0
     totBytes = 0
+    totMBPS = 0
     min = 99999999
     max = 0
     minHost = maxHost = None
@@ -294,6 +295,7 @@ def printResult(title, result):
 	(mbps, time, bytes) = result[h]
 	totTime += time
 	totBytes += bytes
+	totMBPS += mbps
 	if min > mbps: 
 	    min = mbps
 	    minHost = h
@@ -303,12 +305,16 @@ def printResult(title, result):
 
     avgTime = totTime / len(result)
 
-    if (totTime > 0):
-	print '%s avg time      : %3.2f sec' % (title, avgTime)
-    if (totBytes > 0):
-	print '%s tot bytes     : %d' % (title, totBytes)
-    print '%s min bandwidth : %3.2f MB/s [%s]' % (title, min, minHost)
-    print '%s max bandwidth : %3.2f MB/s [%s]' % (title, max, maxHost)
+    if (totTime > 0): print '''\
+      %s avg time (sec): %3.2f''' % (title, avgTime)
+    if (totBytes > 0): print '''\
+           %s tot bytes: %d''' % (title, totBytes)
+    print '''\
+%s tot bandwidth (MB/s): %3.2f''' % (title, totMBPS)
+    print '''\
+%s min bandwidth (MB/s): %3.2f [%s]''' % (title, min, minHost)
+    print '''\
+%s max bandwidth (MB/s): %3.2f [%s]''' % (title, max, maxHost)
     print
 
 ################
