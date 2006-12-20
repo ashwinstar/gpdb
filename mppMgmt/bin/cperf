@@ -107,10 +107,11 @@ def run(cmd):
 	out = f.read()
 	ok = not f.close()
 	f = None
+    except KeyboardInterrupt:
+	raise
     except:
 	if f: f.close()
 	ok = False
-	out = None
 
     if opt['-v'] and out and out != '': print out
     return (ok, out)
@@ -137,26 +138,43 @@ def runSetup():
 	print '--------------------'
     okCount = 0
     try:
+	#mkdir checkPerf
+	if opt['-v']: print '[Info] making checkPerf directory on all hosts ... '
 	dirs = ''
 	for d in opt['-d']: dirs = '%s %s/checkPerf' % (dirs, d)
 	cmd = GPSSH + ('"(rm -rf %s && mkdir -p %s)"' % (dirs, dirs))
 	(ok, out) = run(cmd)
-	if not ok: sys.exit('[Error] command failed: ' + cmd)
+	if not ok: 
+	    sys.exit("[Error] unable to make checkPerf directory. \n"
+		   + "        command failed: " + cmd)
+
+	#check python reachable
+	if opt['-v']: print '[Info] verify python interpreter exists'
+	cmd = GPSSH + 'python -c print'
+	(ok, out) = run(cmd)
+	if not ok:
+	    if not opt['-v']: print out
+	    sys.exit("[Error] unable to find python interpreter on some hosts\n"
+		     +"        verify PATH variables on the hosts")
     except:
 	runTeardown()
 	raise
 
 ################
 def copyExecOver(fname):
+
+    #copy to this dir
+    d = opt['-d'][0]
+    target = '%s/checkPerf/%s' % (d, fname)
     path = '%s/lib/%s' % (sys.path[0], fname)
+
+    if opt['-v']: print '[Info] copy local %s to remote %s' % (path, target)
+
     try: pathStat = os.stat(path)
     except: sys.exit('[Error] cannot stat file ' + path)
     if not stat.S_ISREG(pathStat.st_mode): sys.exit('[Error] invalid file ' + path)
     if not pathStat.st_mode & os.X_OK: sys.exit('[Exit] file not executable: ' + path)
 
-    #copy to this dir
-    d = opt['-d'][0]
-    target = '%s/checkPerf/%s' % (d, fname)
     cmd = GPSCP + ('%s %s' % (path, target))
     (ok, out) = run(cmd)
     if not ok: sys.exit('[Error] command failed: ' + cmd)
@@ -200,14 +218,13 @@ def parseMultiDDResult(out):
 
 
 #############
-def runDiskWriteTest():
+def runDiskWriteTest(multidd):
     if opt['-v']:
 	print '--------------------'
 	print '  DISK WRITE TEST'
 	print '--------------------'
     
-    rmtPath = copyExecOver('multidd')
-    cmd = 'time -p ' + rmtPath
+    cmd = 'time -p ' + multidd
     for d in opt['-d']:
 	cmd = cmd + (' -i /dev/zero -o %s/checkPerf/ddfile' % d)
     if opt['-B']: cmd = cmd + (' -B %d' % opt['-B'])
@@ -220,14 +237,13 @@ def runDiskWriteTest():
 
 
 #############
-def runDiskReadTest():
+def runDiskReadTest(multidd):
     if opt['-v']:
 	print '--------------------'
 	print '  DISK READ TEST'
 	print '--------------------'
 
-    rmtPath = copyExecOver('multidd')
-    cmd = 'time -p ' + rmtPath
+    cmd = 'time -p ' + multidd
     for d in opt['-d']:
 	cmd = cmd + (' -o /dev/null -i %s/checkPerf/ddfile' % d)
     if opt['-B']: cmd = cmd + (' -B %d' % opt['-B'])
@@ -302,8 +318,9 @@ diskWriteResult = diskReadResult = streamResult = None
 tornDown = False
 try:
     if opt['-r'].find('d') >= 0:
-	diskWriteResult = runDiskWriteTest()
-	diskReadResult = runDiskReadTest()
+	multidd = copyExecOver('multidd')
+	diskWriteResult = runDiskWriteTest(multidd)
+	diskReadResult = runDiskReadTest(multidd)
 
     if opt['-r'].find('s') >= 0:
 	streamResult = runStreamTest()

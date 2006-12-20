@@ -17,7 +17,7 @@ Usage: gpssh [-?vbt] [-d dir] [-p port] [-u user] [-h h] [-f hostfile] cmd
 Author: cktan@greenplum.com
 '''
 
-import os, sys, getopt
+import os, sys, getopt, logging
 
 if sys.version_info < (2, 3):
     sys.exit("Error: gpssh is supported on Python versions 2.3 or greater\n"
@@ -164,6 +164,9 @@ def buildCommand():
 
 #############
 try:
+    nullFile = logging.FileHandler('/dev/null')
+    logging.getLogger('paramiko.transport').addHandler(nullFile)
+    
     parseCommandLine()
     tab = []
     for h in opt['-h']: tab.append(parseHostLine(h))
