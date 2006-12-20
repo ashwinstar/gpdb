@@ -1877,9 +1877,11 @@ static void
 _outRemoveFuncStmt(StringInfo str, RemoveFuncStmt *node)
 {
 	WRITE_NODE_TYPE("REMOVEFUNCSTMT");
+	WRITE_ENUM_FIELD(kind,ObjectType);
 	WRITE_NODE_FIELD(name);
 	WRITE_NODE_FIELD(args);
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
+	WRITE_BOOL_FIELD(missing_ok);
 }
 
 static void

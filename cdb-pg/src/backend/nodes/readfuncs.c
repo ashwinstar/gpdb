@@ -1796,9 +1796,11 @@ static RemoveFuncStmt *
 _readRemoveFuncStmt(void)
 {
 	READ_LOCALS(RemoveFuncStmt);
+	READ_ENUM_FIELD(kind,ObjectType);
 	READ_NODE_FIELD(name);
 	READ_NODE_FIELD(args);
 	READ_ENUM_FIELD(behavior, DropBehavior);
+	READ_BOOL_FIELD(missing_ok);
 			
 	READ_DONE();
 }
