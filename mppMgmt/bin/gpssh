@@ -117,7 +117,7 @@ def readHostFile():
 	    if host.has_key(h[1]): continue     # ignore duplicate hosts
 	    host[h[1]] = h
 	    opt['-h'].append(h)
-	except KeyboardException:
+	except KeyboardInterrupt:
 	    raise
 	except:
 	    print ('Error: while parsing line %d of host file %s' % (line, opt['-f']))
@@ -142,7 +142,7 @@ def createSession():
 	    if not samePort: s.name = s.name + ':' + h[2]
 	    if opt['-v']: print 'Info: connected to', s.name
 	    session.append(s)
-	except KeyboardException:
+	except KeyboardInterrupt:
 	    raise
 	except:
 	    print ('Error: while connecting to %s@%s:%d' % h)

@@ -318,31 +318,35 @@ def printResult(title, result):
     print
 
 ################
-parseCommandLine()
-runSetup()
-diskWriteResult = diskReadResult = streamResult = None
-tornDown = False
 try:
-    if opt['-r'].find('d') >= 0:
-	multidd = copyExecOver('multidd')
-	diskWriteResult = runDiskWriteTest(multidd)
-	diskReadResult = runDiskReadTest(multidd)
+    parseCommandLine()
+    runSetup()
+    diskWriteResult = diskReadResult = streamResult = None
+    tornDown = False
+    try:
+	if opt['-r'].find('d') >= 0:
+	    multidd = copyExecOver('multidd')
+	    diskWriteResult = runDiskWriteTest(multidd)
+	    diskReadResult = runDiskReadTest(multidd)
 
-    if opt['-r'].find('s') >= 0:
-	streamResult = runStreamTest()
+	if opt['-r'].find('s') >= 0:
+	    streamResult = runStreamTest()
 
-    tornDown = True
-    runTeardown()
+	tornDown = True
+	runTeardown()
 
-finally:
-    if diskWriteResult:
-	printResult('disk write', diskWriteResult)
+    finally:
+	if diskWriteResult:
+	    printResult('disk write', diskWriteResult)
 
-    if diskReadResult:
-	printResult('disk read', diskReadResult)
+	if diskReadResult:
+	    printResult('disk read', diskReadResult)
 
-    if streamResult:
-	printResult('stream', streamResult)
+	if streamResult:
+	    printResult('stream', streamResult)
 
-    if not tornDown: runTeardown()
+	if not tornDown: runTeardown()
+
+except KeyboardInterrupt:
+    print '[Abort] Keyboard Interrupt ...'
 
