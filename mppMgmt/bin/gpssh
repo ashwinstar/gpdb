@@ -99,12 +99,13 @@ def parseHostLine(line):
 def readHostFile():
     global opt
     hostlines = []
-    try:
-	fd = open(opt['-f'], 'r')
-	hostlines = fd.readlines()
-	fd.close()
-    except IOError, e:
-	sys.exit('Error: cannot read host file' + opt['-f'])
+    if opt['-f']:
+	try:
+	    fd = open(opt['-f'], 'r')
+	    hostlines = fd.readlines()
+	    fd.close()
+	except IOError, e:
+	    sys.exit('Error: cannot read host file' + opt['-f'])
 
     host = {}
     line = 0
