@@ -28,6 +28,7 @@
 
 #include "optimizer/tlist.h" /* tlist_member */
 #include "parser/parse_expr.h" /* exprType and exprTypmod */
+#include "parser/parsetree.h" /* get_tle_by_resno */
 
 static Flow *copyFlow(Flow *model_flow, bool withExprs, bool withSort);
 static List *makeHashExprsFromNonjunkTargets(List *targetList);
@@ -501,11 +502,32 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 		List *hash = NIL;
 		Index i = 0;
 		
+		/* Make sure all the expressions the flow thinks we're hashed on
+		 * actually occur in the subplan targetlist. 
+		 * 
+		 * We used to demand that the matched hash expression had a resno
+		 * corresponding to the position in the flow's hash list, but this
+		 * is wrong if the expression is duplicated in the tlist, since
+		 * tlist_member finds the earliest occurance.  (MPP-1065)
+		 */
 		foreach( c, subplan->flow->hashExpr )
 		{
-			tle = tlist_member((Node*)lfirst(c), subplan->targetlist);
-			if ( tle == NULL || tle->resno != ++i )
+			Node *x = (Node*)lfirst(c);
+			i++;
+			tle = tlist_member(x, subplan->targetlist);
+
+			if ( tle == NULL )
 			{
+				ereport(ERROR, (
+					errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					errmsg("subplan hash expression not found") ));
+			}
+
+			if ( tle->resno != i ) 
+			{
+				tle = get_tle_by_resno(subplan->targetlist, i);
+				
+				if ( tle == NULL || ! equal(x, tle->expr) )
 				ereport(ERROR, (
 					errcode(ERRCODE_CDB_INTERNAL_ERROR),
 					errmsg("unexpected subplan hash expression") ));
