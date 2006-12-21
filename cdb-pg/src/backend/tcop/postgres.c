@@ -885,9 +885,9 @@ exec_mpp_query(const char *query_string,
     /*
 	 * Deserialize the slice table.
 	 */
-    if (serializedSliceInfo != NULL && strlen(serializedSliceInfo) > 0)
+    if (serializedSliceInfo != NULL && serializedSliceInfolen > 0)
 	{
-        sliceTable = (SliceTable *) deserializeNode(serializedSliceInfo,serializedSliceInfolen);
+        sliceTable = (SliceTable *) deserializeNode(serializedSliceInfo, serializedSliceInfolen);
 
 		sliceTable->localSlice = localSlice;
 
