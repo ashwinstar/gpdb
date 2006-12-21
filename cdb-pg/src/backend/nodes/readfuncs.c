@@ -496,11 +496,13 @@ _readIndexStmt(void)
 	READ_STRING_FIELD(accessMethod);
 	READ_STRING_FIELD(tableSpace);
 	READ_NODE_FIELD(indexParams);
+		READ_NODE_FIELD(options);
 	READ_NODE_FIELD(whereClause);
 	READ_NODE_FIELD(rangetable);
 	READ_BOOL_FIELD(unique);
 	READ_BOOL_FIELD(primary);
 	READ_BOOL_FIELD(isconstraint);
+	READ_BOOL_FIELD(concurrent);
 	READ_OID_FIELD(idxOid);
 
 	READ_DONE();
@@ -573,6 +575,7 @@ _readDropStmt(void)
 	READ_NODE_FIELD(objects);
 	READ_ENUM_FIELD(removeType,ObjectType);
 	READ_ENUM_FIELD(behavior,DropBehavior);
+	READ_BOOL_FIELD(missing_ok);
 	local_node->missing_ok=true;
 
 	READ_DONE();
@@ -587,6 +590,7 @@ _readDropPropertyStmt(void)
 	READ_STRING_FIELD(property);
 	READ_ENUM_FIELD(removeType,ObjectType);
 	READ_ENUM_FIELD(behavior,DropBehavior);
+	READ_BOOL_FIELD(missing_ok);
 
 	READ_DONE();
 }
@@ -597,6 +601,7 @@ _readTruncateStmt(void)
 	READ_LOCALS(TruncateStmt);
 
 	READ_NODE_FIELD(relations);
+	READ_ENUM_FIELD(behavior,DropBehavior);
 
 	READ_DONE();
 }
@@ -662,6 +667,7 @@ _readDropRoleStmt(void)
 	READ_LOCALS(DropRoleStmt);
 
 	READ_NODE_FIELD(roles);
+	READ_BOOL_FIELD(missing_ok);
 
 	READ_DONE();
 	
@@ -1671,6 +1677,7 @@ _readDropPLangStmt(void)
 
 	READ_STRING_FIELD(plname);
 	READ_ENUM_FIELD(behavior,DropBehavior);
+	READ_BOOL_FIELD(missing_ok);
 	
 	READ_DONE();
 
@@ -1865,6 +1872,7 @@ _readDropCastStmt(void)
 	READ_NODE_FIELD(sourcetype);
 	READ_NODE_FIELD(targettype);
 	READ_ENUM_FIELD(behavior, DropBehavior);
+	READ_BOOL_FIELD(missing_ok);
 			
 	READ_DONE();
 }
@@ -1904,6 +1912,7 @@ _readRemoveOpClassStmt(void)
 	READ_NODE_FIELD(opclassname);
 	READ_STRING_FIELD(amname);
 	READ_ENUM_FIELD(behavior, DropBehavior);
+	READ_BOOL_FIELD(missing_ok);
 				
 	READ_DONE();
 }

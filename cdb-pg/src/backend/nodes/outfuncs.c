@@ -4,7 +4,7 @@
  *	  Output functions for Postgres tree nodes.
  *
  * Portions Copyright (c) 2005-2006, greenplum inc
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Globafl Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1579,12 +1579,14 @@ _outIndexStmt(StringInfo str, IndexStmt *node)
 	WRITE_STRING_FIELD(accessMethod);
 	WRITE_STRING_FIELD(tableSpace);
 	WRITE_NODE_FIELD(indexParams);
+	WRITE_NODE_FIELD(options);
 
 	WRITE_NODE_FIELD(whereClause);
 	WRITE_NODE_FIELD(rangetable);
 	WRITE_BOOL_FIELD(unique);
 	WRITE_BOOL_FIELD(primary);
 	WRITE_BOOL_FIELD(isconstraint);
+	WRITE_BOOL_FIELD(concurrent);
 	WRITE_OID_FIELD(idxOid);
 }
 
@@ -1637,6 +1639,7 @@ _outDropStmt(StringInfo str, DropStmt *node)
 	WRITE_NODE_FIELD(objects);
 	WRITE_ENUM_FIELD(removeType, ObjectType);
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
+	WRITE_BOOL_FIELD(missing_ok);
 
 	
 }
@@ -1650,6 +1653,7 @@ _outDropPropertyStmt(StringInfo str, DropPropertyStmt *node)
 	WRITE_STRING_FIELD(property);
 	WRITE_ENUM_FIELD(removeType, ObjectType);
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
+	WRITE_BOOL_FIELD(missing_ok);
 
 }
 
@@ -1659,6 +1663,7 @@ _outTruncateStmt(StringInfo str, TruncateStmt *node)
 	WRITE_NODE_TYPE("TRUNCATESTMT");
 
 	WRITE_NODE_FIELD(relations);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
 	
 }
 
@@ -1713,6 +1718,7 @@ _outDropRoleStmt(StringInfo str, DropRoleStmt *node)
 	WRITE_NODE_TYPE("DROPROLESTMT");
 
 	WRITE_NODE_FIELD(roles);
+	WRITE_BOOL_FIELD(missing_ok);
 }
 
 static  void
@@ -1940,6 +1946,7 @@ _outDropCastStmt(StringInfo str, DropCastStmt *node)
 	WRITE_NODE_FIELD(sourcetype);
 	WRITE_NODE_FIELD(targettype);
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
+	WRITE_BOOL_FIELD(missing_ok);
 }
 
 static void
@@ -1973,6 +1980,7 @@ _outRemoveOpClassStmt(StringInfo str, RemoveOpClassStmt *node)
 	WRITE_NODE_FIELD(opclassname);
 	WRITE_STRING_FIELD(amname);
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
+	WRITE_BOOL_FIELD(missing_ok);
 }
 
 static void
@@ -2658,6 +2666,7 @@ _outDropPLangStmt(StringInfo str, DropPLangStmt *node)
 
 	WRITE_STRING_FIELD(plname);
 	WRITE_ENUM_FIELD(behavior,DropBehavior);
+	WRITE_BOOL_FIELD(missing_ok);
 
 }
 
@@ -3271,7 +3280,7 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_SliceTable:
 				_outSliceTable(str, obj);
-				break;;
+				break;
 			case T_VariableResetStmt:
 				_outVariableResetStmt(str, obj);
 				break;

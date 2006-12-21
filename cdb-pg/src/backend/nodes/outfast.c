@@ -269,9 +269,7 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_INT_FIELD(plan_width);
 
 	WRITE_NODE_FIELD(targetlist);
-
 	WRITE_NODE_FIELD(qual);
-
 
 	WRITE_BITMAPSET_FIELD(extParam);
 	WRITE_BITMAPSET_FIELD(allParam);
@@ -1400,7 +1398,7 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 	WRITE_FLOAT_FIELD(rows, "%.0f");
 	WRITE_INT_FIELD(width);
 	WRITE_NODE_FIELD(reltargetlist);
-
+	/* Skip writing Path ptrs to avoid endless recursion */
 	/* WRITE_NODE_FIELD(pathlist); */
 	/* WRITE_NODE_FIELD(cheapest_startup_path); */
 	/* WRITE_NODE_FIELD(cheapest_total_path); */
@@ -1417,7 +1415,7 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 	WRITE_NODE_FIELD(baserestrictinfo);
 	WRITE_NODE_FIELD(joininfo);
 	WRITE_BITMAPSET_FIELD(index_outer_relids);
-
+	/* Skip writing Path ptrs to avoid endless recursion */
 	/* WRITE_NODE_FIELD(index_inner_paths); */
 }
 
@@ -1587,12 +1585,14 @@ _outIndexStmt(StringInfo str, IndexStmt *node)
 	WRITE_STRING_FIELD(accessMethod);
 	WRITE_STRING_FIELD(tableSpace);
 	WRITE_NODE_FIELD(indexParams);
+	WRITE_NODE_FIELD(options);
 
 	WRITE_NODE_FIELD(whereClause);
 	WRITE_NODE_FIELD(rangetable);
 	WRITE_BOOL_FIELD(unique);
 	WRITE_BOOL_FIELD(primary);
 	WRITE_BOOL_FIELD(isconstraint);
+	WRITE_BOOL_FIELD(concurrent);
 	WRITE_OID_FIELD(idxOid);
 }
 
@@ -1645,6 +1645,7 @@ _outDropStmt(StringInfo str, DropStmt *node)
 	WRITE_NODE_FIELD(objects);
 	WRITE_ENUM_FIELD(removeType, ObjectType);
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
+	WRITE_BOOL_FIELD(missing_ok);
 
 	
 }
@@ -1658,6 +1659,7 @@ _outDropPropertyStmt(StringInfo str, DropPropertyStmt *node)
 	WRITE_STRING_FIELD(property);
 	WRITE_ENUM_FIELD(removeType, ObjectType);
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
+	WRITE_BOOL_FIELD(missing_ok);
 
 }
 
@@ -1667,6 +1669,7 @@ _outTruncateStmt(StringInfo str, TruncateStmt *node)
 	WRITE_NODE_TYPE("TRUNCATESTMT");
 
 	WRITE_NODE_FIELD(relations);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
 	
 }
 
@@ -1721,6 +1724,7 @@ _outDropRoleStmt(StringInfo str, DropRoleStmt *node)
 	WRITE_NODE_TYPE("DROPROLESTMT");
 
 	WRITE_NODE_FIELD(roles);
+	WRITE_BOOL_FIELD(missing_ok);
 }
 
 static  void
@@ -1948,6 +1952,7 @@ _outDropCastStmt(StringInfo str, DropCastStmt *node)
 	WRITE_NODE_FIELD(sourcetype);
 	WRITE_NODE_FIELD(targettype);
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
+	WRITE_BOOL_FIELD(missing_ok);
 }
 
 static void
@@ -2667,6 +2672,7 @@ _outDropPLangStmt(StringInfo str, DropPLangStmt *node)
 
 	WRITE_STRING_FIELD(plname);
 	WRITE_ENUM_FIELD(behavior,DropBehavior);
+	WRITE_BOOL_FIELD(missing_ok);
 
 }
 
