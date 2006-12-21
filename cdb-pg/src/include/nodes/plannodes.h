@@ -441,9 +441,10 @@ typedef struct Sort
 	int			numCols;		/* number of sort-key columns */
 	AttrNumber *sortColIdx;		/* their indexes in the target list */
 	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
-    /* CDB */ /* add limit node */
+    /* CDB */ /* add limit node, distinct */
 	Node	   *limitOffset;	/* OFFSET parameter, or NULL if none */
 	Node	   *limitCount;		/* COUNT parameter, or NULL if none */
+	bool		noduplicates;   /* TRUE if sort should discard duplicates */
 } Sort;
 
 /* ---------------

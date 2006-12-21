@@ -2603,6 +2603,7 @@ make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 	node->sortOperators = sortOperators;
 	node->limitOffset = NULL; /* CDB */
 	node->limitCount  = NULL; /* CDB */
+	node->noduplicates = false; /* CDB */
 
 	return node;
 }
@@ -3089,6 +3090,13 @@ make_unique(Plan *lefttree, List *distinctList)
 
 	node->numCols = numCols;
 	node->uniqColIdx = uniqColIdx;
+
+	/* CDB */ /* pass DISTINCT to sort */
+	if (IsA(lefttree, Sort) && mpp_enable_sort_distinct)
+	{
+		Sort* pSort = (Sort*)lefttree;
+		pSort->noduplicates = true;
+	}
 
 	return node;
 }

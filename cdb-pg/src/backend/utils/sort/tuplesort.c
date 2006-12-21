@@ -250,6 +250,7 @@ struct Tuplesortstate
 	int64		memtupLIMIT;	/* LIMIT of memtuples array */ /*CDB*/
 	bool		memtupblimited; /* true when hit the limit */
 	int64  		dumpcount;	    /* count of dumps */ /*CDB*/
+	bool		noduplicates;   /* discard duplicate rows if true *//* CDB */
 
 	/*
 	 * While building initial runs, this is the current output run number
@@ -410,7 +411,8 @@ static void mergeprereadone(Tuplesortstate *state, int srcTape);
 static void dumptuples(Tuplesortstate *state, bool alltuples);
 static void tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 					  int tupleindex, bool checkIndex);
-static void tuplesort_heap_siftup(Tuplesortstate *state, bool checkIndex);
+static void tuplesort_heap_siftup(Tuplesortstate *state, bool checkIndex, 
+								  int i);
 static unsigned int getlen(Tuplesortstate *state, int tapenum, bool eofOK);
 static void markrunend(Tuplesortstate *state, int tapenum);
 static int comparetup_heap(const SortTuple *a, const SortTuple *b,
@@ -535,6 +537,8 @@ cdb_tuplesort_init(Tuplesortstate *state,
 	{
 		state->memtupLIMIT = offset + limit;
 	}
+	if (unique)
+		state->noduplicates = true;
 }
 
 Tuplesortstate *
@@ -857,7 +861,8 @@ tuplesort_putdatum(Tuplesortstate *state, Datum val, bool isNull)
 static void
 puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 {
-	int do_quicksort = (state->memtupLIMIT == 0); /* no quicksort if LIMIT */
+	int do_quicksort = ((state->memtupLIMIT == 0) 
+						&& (!state->noduplicates)); /* no quicksort if LIMIT */
 
 	switch (state->status)
 	{
@@ -915,7 +920,8 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			 * this point; see dumptuples.
 			 */
 			Assert(state->memtupcount > 0);
-			if (state->dumpcount || !state->memtupLIMIT)
+			if (state->dumpcount || 
+				!(state->memtupLIMIT || state->noduplicates))
 			{
 				if (COMPARETUP(state, tuple, &state->memtuples[0]) >= 0)
 					tuplesort_heap_insert(state, tuple, state->currentRun, true);
@@ -924,7 +930,7 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			}
 			else
 			{
-				/* sorting LIMIT : only one run */
+				/* sorting LIMIT or noduplicates: only one run */
 				tuplesort_heap_insert(state, tuple, state->currentRun, false);
 			}
 
@@ -1164,7 +1170,7 @@ tuplesort_gettuple_common(Tuplesortstate *state, bool forward,
 					state->availMem += tuplen;
 					state->mergeavailmem[srcTape] += tuplen;
 				}
-				tuplesort_heap_siftup(state, false);
+				tuplesort_heap_siftup(state, false, 0);
 				if ((tupIndex = state->mergenext[srcTape]) == 0)
 				{
 					/*
@@ -1628,7 +1634,7 @@ mergeonerun(Tuplesortstate *state)
 		spaceFreed = state->availMem - priorAvail;
 		state->mergeavailmem[srcTape] += spaceFreed;
 		/* compact the heap */
-		tuplesort_heap_siftup(state, false);
+		tuplesort_heap_siftup(state, false, 0);
 		if ((tupIndex = state->mergenext[srcTape]) == 0)
 		{
 			/* out of preloaded data on this tape, try to read more */
@@ -1875,7 +1881,7 @@ dumptuples(Tuplesortstate *state, bool alltuples)
 		Assert(state->memtupcount > 0);
 		WRITETUP(state, state->tp_tapenum[state->destTape],
 				 &state->memtuples[0]);
-		tuplesort_heap_siftup(state, true);
+		tuplesort_heap_siftup(state, true, 0);
 
 		/*
 		 * If the heap is empty *or* top run number has changed, we've
@@ -2037,6 +2043,7 @@ tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 					  int tupleindex, bool checkIndex)
 {
 	SortTuple  *memtuples;
+	SortTuple  *freetup;
 	int			j;
 
 	/*
@@ -2052,12 +2059,11 @@ tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 
 	if (!state->dumpcount && state->memtupblimited) 
 	{
+		/* discard the last tuple if it exceeds the LIMIT */
 		if (HEAPCOMPARE(tuple, &memtuples[state->memtupcount - 1]) >= 0)
 		{
-			HeapTuple	htup = (HeapTuple) tuple->tuple;
-			FREEMEM(state, GetMemoryChunkSpace(htup));
-			heap_freetuple(htup);
-			return;
+			freetup = tuple;
+			goto L_freetup;
 		}
 		else
 		{
@@ -2074,6 +2080,7 @@ tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 	{
 		int			i = (j - 1) >> 1;
 
+		/* duplicate check will catch equality later */
 		if (HEAPCOMPARE(tuple, &memtuples[i]) >= 0)
 			break;
 		memtuples[j] = memtuples[i];
@@ -2081,6 +2088,56 @@ tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 	}
 
 	memtuples[j] = *tuple;
+
+	if (!state->dumpcount && state->noduplicates && (j > 0))
+	{
+		/* check if parent or sibling is a duplicate */
+
+		/* don't need to check our children because... */
+
+		int			parent  = ((j + 1) >> 1) - 1;
+		int			sibling = (2 * parent) + 1;
+		int         checkidx = parent;
+
+		/* first child is at 2p+1, next at 2p+2 */
+		if (sibling == j) sibling++;
+
+		while (1)
+		{				
+			if (HEAPCOMPARE(tuple, &memtuples[checkidx]) == 0)
+			{
+				/* discard */
+				if (j == (state->memtupcount - 1))
+				{
+					/* can toss the last element easily */
+					--state->memtupcount;
+					freetup = tuple;
+					goto L_freetup;
+				}
+				else
+				{
+					/* need to discard an interior node and sift up */
+					freetup = tuple;
+					{
+						HeapTuple	htup = (HeapTuple) freetup->tuple;
+						FREEMEM(state, GetMemoryChunkSpace(htup));
+						heap_freetuple(htup);
+					}
+					tuplesort_heap_siftup(state, checkIndex, j);
+				}
+
+				break;
+			}
+			if (checkidx == sibling)
+				break;
+			else
+				checkidx = sibling;
+			if (checkidx >= (state->memtupcount))
+				break;
+		}
+
+	} /* end if discard duplicates */
+
 
 	/* CDB: always add new value if never dumped or no limit, else
 	 * drop the last value if it exceeds the limit 
@@ -2096,12 +2153,18 @@ tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 
 		/* set blimited true if have limit and memtuples are sorted */
 		state->memtupblimited = true;			
-		{
-		SortTuple  last_tuple = memtuples[--state->memtupcount];
-		HeapTuple	htup = (HeapTuple) last_tuple.tuple;
+
+		freetup = &memtuples[--state->memtupcount];
+		goto L_freetup;
+	}
+	return;
+
+	/* free up tuples if necessary */
+ L_freetup:
+	{
+		HeapTuple	htup = (HeapTuple) freetup->tuple;
 		FREEMEM(state, GetMemoryChunkSpace(htup));
 		heap_freetuple(htup);
-		}
 	}
 
 }
@@ -2111,18 +2174,17 @@ tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
  * Decrement memtupcount, and sift up to maintain the heap invariant.
  */
 static void
-tuplesort_heap_siftup(Tuplesortstate *state, bool checkIndex)
+tuplesort_heap_siftup(Tuplesortstate *state, bool checkIndex, int i)
 {
 	SortTuple  *memtuples = state->memtuples;
 	SortTuple  *tuple;
-	int			i,
-				n;
+	int			n;
 
 	if (--state->memtupcount <= 0)
 		return;
 	n = state->memtupcount;
 	tuple = &memtuples[n];		/* tuple that must be reinserted */
-	i = 0;						/* i is where the "hole" is */
+/*	i = 0;	*/					/* i is where the "hole" is */
 	for (;;)
 	{
 		int			j = 2 * i + 1;

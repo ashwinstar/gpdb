@@ -1475,7 +1475,7 @@ typedef struct SortState
 	/* CDB */ /* limit state */		
 	ExprState  *limitOffset;	/* OFFSET parameter, or NULL if none */
 	ExprState  *limitCount;		/* COUNT parameter, or NULL if none */
-
+	bool		noduplicates;   /* true if discard duplicate rows */
 } SortState;
 
 /* ---------------------

@@ -102,6 +102,7 @@ bool		mpp_enable_agg_distinct = FALSE;
 bool		mpp_enable_preunique = FALSE;
 bool		mpp_enable_explain_allstat = FALSE;
 bool		mpp_enable_sort_limit = FALSE;
+bool		mpp_enable_sort_distinct = FALSE;
 
 /* ----------------
  * Non-GUC globals

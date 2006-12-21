@@ -566,7 +566,7 @@ _outSort(StringInfo str, Sort *node)
     /* CDB */
 	WRITE_NODE_FIELD(limitOffset);
 	WRITE_NODE_FIELD(limitCount);
-
+    WRITE_BOOL_FIELD(noduplicates);
 }
 
 static void

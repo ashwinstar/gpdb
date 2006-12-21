@@ -128,6 +128,9 @@ ExecSort(SortState *node)
 					offset = 0;
 
 			}
+
+			if (node->noduplicates)
+				unique = 1;
 			
 			cdb_tuplesort_init(tuplesortstate, offset, limit, unique);
 		}
@@ -214,10 +217,12 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 
 	/* CDB */ /* evaluate a limit as part of the sort */
 	{
+		/* pass node state to sort state */
 		sortstate->limitOffset = ExecInitExpr((Expr *) node->limitOffset,
 											  (PlanState *) sortstate);
 		sortstate->limitCount = ExecInitExpr((Expr *) node->limitCount,
 											 (PlanState *) sortstate);
+		sortstate->noduplicates = node->noduplicates;
 	}
 
 	/*

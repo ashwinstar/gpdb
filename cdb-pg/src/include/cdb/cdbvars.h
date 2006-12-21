@@ -418,6 +418,14 @@ extern bool mpp_enable_explain_allstat;
  */
 extern bool mpp_enable_sort_limit;
 
+/* May MPP discard duplicate rows in sort if it is is wrapped by a
+ * DISTINCT clause (unique aggregation operator)?
+ *
+ * The code does not currently use planner estimates for this.  If enabled,
+ * the tactic is used whenever possible.
+ */
+extern bool mpp_enable_sort_distinct;
+
 /* The maximum number of times on average that the hybrid hashed aggregation
  * algorithm will plan to spill an input row to disk before including it in
  * an aggregation.  Increasing this parameter will cause the planner to choose 

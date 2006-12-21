@@ -537,6 +537,7 @@ _copySort(Sort *from)
     /* CDB */
 	COPY_NODE_FIELD(limitOffset);
 	COPY_NODE_FIELD(limitCount);
+	COPY_SCALAR_FIELD(noduplicates);
 
 	return newnode;
 }

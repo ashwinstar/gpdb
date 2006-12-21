@@ -2351,6 +2351,7 @@ _readSort(void)
     /* CDB */
 	READ_NODE_FIELD(limitOffset);
 	READ_NODE_FIELD(limitCount);
+	READ_BOOL_FIELD(noduplicates);
 
 	READ_DONE();
 }

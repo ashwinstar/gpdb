@@ -1082,6 +1082,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"mpp_enable_sort_distinct", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+			gettext_noop("Experimental feature: Pass DISTINCT restriction to sort."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&mpp_enable_sort_distinct,
+		false, NULL, NULL
+	},
+
+	{
 		{"mpp_is_primary", PGC_BACKEND, UNGROUPED,
 			gettext_noop("Reports session type as primary or mirror."),
 			NULL,
