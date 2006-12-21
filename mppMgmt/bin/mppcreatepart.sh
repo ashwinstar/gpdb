@@ -111,6 +111,7 @@ USAGE () {
 		$ECHO "          For example, if a numeric contains timestamp in format 1138576193.697, supplying"
 		$ECHO "          -m to_timestamp will convert the contents of the field to a timestamp format prior"
 		$ECHO "          to check and rules being evaluated"
+		$ECHO "      -F, force child table creation if parent already has child tables"
 		$ECHO
 		$ECHO "      Date range partitioning options:"
 		$ECHO "      Use this partitioning policy for date, timestamp and timestamp with time zone columns"
@@ -208,6 +209,11 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Conversion command         = $CONVERSION_CMD"
 		else
 		LOG_MSG "[INFO]:-Apply specific conversion  = Off";fi
+		if [ x"" == x"$FORCE_CREATE" ];then
+		LOG_MSG "[INFO]:-Force child create         = Off"
+		else
+		LOG_MSG "[INFO]:-Force child create         = On"
+		fi
 		$ECHO
 		$ECHO "Continue with child generation process yY|nN >"
 		read REPLY
@@ -317,7 +323,7 @@ VALIDATE_PARAM () {
 		LOG_MSG "[INFO]:-Checking for child tables"
 		CHILD_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_inherits where inhparent in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}'));"`
 		ERROR_CHK $? "obtain child table count" 2
-		if [ $CHILD_COUNT -ne 0 ];then
+		if [ $CHILD_COUNT -ne 0 ] && [ x"" == x"$FORCE_CREATE" ];then
 			LOG_MSG "[FATAL]:-Table $PARENT_TABLE_NAME has $CHILD_COUNT child tables defined."
 			ERROR_EXIT "[FATAL]:-Use mppaddpart.sh to increase number of child tables" 2
 		else
@@ -398,12 +404,14 @@ VALIDATE_PROCESS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Check to see if parent table has any records, if so enter into transfer record mode
 	LOG_MSG "[INFO]:-Checking record count on $PARENT_TABLE_NAME, please wait..."
-	PARENT_TABLE_REC_NUM=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from $PARENT_TABLE_NAME;"`
+	PARENT_TABLE_REC_NUM=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from only $PARENT_TABLE_NAME;"`
 	ERROR_CHK $? "get table record count for $PARENT_TABLE_NAME" 2
 	if [ $PARENT_TABLE_REC_NUM -ne 0 ];then
 		LOG_MSG "[INFO]:-Counted $PARENT_TABLE_REC_NUM records in $PARENT_TABLE_NAME"
 		LOG_MSG "[INFO]:-Changing processing to tuple transfer mode"
 		COPY_REC=1	
+	else
+		LOG_MSG "[INFO]:-Table $PARENT_TABLE_NAME has 0 (zero) records"
 	fi
 	#Now validate the columns to ensure that they are the correct data type for the partitioning requested
 	#First get column type
@@ -442,7 +450,8 @@ VALIDATE_PROCESS () {
 	#Now set up the number of itterations for range and list partitioning
 	case $PART_TYPE in 
 		r ) #Here the number of itterations is defined by start value, end value and increment value
-		    	COUNT=0
+		    	#COUNT=0
+			COUNT=$START_DATE_OR_VALUE
 			GENERATION_COUNT=0
 			while [ $COUNT -le $END_VALUE ]
 			do
@@ -685,9 +694,9 @@ SECURE_DATA () {
 	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "create table ${SECURE_TABLE_NAME} (like $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
 	ERROR_CHK $? "create temporary holding table" 2
 	LOG_MSG "[INFO]:-Commencing record transfer, please wait..."
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into ${SECURE_TABLE_NAME} (select * from $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into ${SECURE_TABLE_NAME} (select * from only $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
 	ERROR_CHK $? "secure records to temporary table" 2
-	SECURE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(*) from $PARENT_TABLE_NAME;"`
+	SECURE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(*) from only $PARENT_TABLE_NAME;"`
 	LOG_MSG "[INFO]:-Parent table has $SECURE_COUNT records"
 	SECURE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(*) from ${SECURE_TABLE_NAME};"`
 	LOG_MSG "[INFO]:-Secure table has $SECURE_COUNT records"
@@ -916,7 +925,7 @@ RM_TMP_FILE () {
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt:'?'aql:d:c:x:p:rn:s:f:bi:e:g:o:um:k" opt;do
+		while getopts ":vt:'?'aql:d:c:x:p:rn:s:f:bi:e:g:o:um:kF" opt;do
 			case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
@@ -940,6 +949,7 @@ if [ $# -ne 0 ]; then
 				g ) NUMERIC_INCREMENT=$OPTARG ;;
 				o ) PART_LIST=$OPTARG ;;
 				k ) KEEP_TMP=1 ;;
+				F ) FORCE_CREATE=1 ;;
 				* ) USAGE ;;
 				esac
 		done	
