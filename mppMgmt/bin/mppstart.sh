@@ -205,6 +205,16 @@ GET_DETAILS () {
 				GET_STANDBY_DETAILS
 			fi
 		fi
+		#Gather locale information MPP-972
+		LC_COLLATE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show lc_collate;"`
+		ERROR_CHK $? "obtain lc_collate info" 1
+		LOG_MSG "[INFO]:-Master lc_collate=$LC_COLLATE"
+		LC_MONETARY=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show lc_monetary;"`
+		ERROR_CHK $? "obtain lc_monetary info" 1
+		LOG_MSG "[INFO]:-Master lc_monetary=$LC_MONETARY"
+		LC_NUMERIC=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show lc_numeric;"`	
+		ERROR_CHK $? "obtain lc_numeric info" 1
+		LOG_MSG "[INFO]:-Master lc_numeric=$LC_NUMERIC"
 		#Shutdown the QD database
 		LOG_MSG "[INFO]:-Shutting down Master instance"
 		$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE	 >/dev/null 2>&1
@@ -324,51 +334,63 @@ PROCESS_STARTUP () {
 						ERROR_CHK $? "clear down ${QE_DIR}.log" 1
 					fi
 				fi
-					LOG_MSG "[INFO]:-Starting Segment instance $QE_NAME directory $QE_DIR"
-					$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" 
+				LOG_MSG "[INFO]:-Starting Segment instance $QE_NAME directory $QE_DIR"
+				$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" 
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
-						((FAILED_COUNT=$FAILED_COUNT+1))
-						LOG_MSG "[WARN]:-Startup request returned error code $RETVAL"
-						LOG_MSG "[INFO]:-Start diagnostic data dump"
-						LOG_MSG "[INFO]:-------------------------------------------------"
-						LOG_MSG "[INFO]:-Command string called"
-						LOG_MSG "[INFO]:-$TRUSTED_SHELL $QE_NAME ${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" 
-						LOG_MSG "[INFO]:-Tail'ing Segment instance log file"
-						$TRUSTED_SHELL $QE_NAME "$LS $QE_DIR" > /dev/null 2>&1
-						if [ $? -ne 0 ]; then
-								LOG_MSG "[WARN]:-Segment directory $QE_DIR on $QE_NAME does not exist"
-								EXIT_STATUS=1
-						else
-								$TRUSTED_SHELL $QE_NAME "$TAIL ${QE_DIR}.log"|$TEE -a $LOG_FILE
-								LOG_MSG "[WARN]:-Issue with $TRUSTED_SHELL to $QE_NAME for $QE_DIR database"
-								EXIT_STATUS=1
-						fi
-						LOG_MSG "[INFO]:-End of diagnostic data dump"
-						LOG_MSG "[INFO]:-------------------------------------------------"
+					((FAILED_COUNT=$FAILED_COUNT+1))
+					LOG_MSG "[WARN]:-Startup request returned error code $RETVAL"
+					LOG_MSG "[INFO]:-Start diagnostic data dump"
+					LOG_MSG "[INFO]:-------------------------------------------------"
+					LOG_MSG "[INFO]:-Command string called"
+					LOG_MSG "[INFO]:-$TRUSTED_SHELL $QE_NAME ${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" 
+					LOG_MSG "[INFO]:-Tail'ing Segment instance log file"
+					$TRUSTED_SHELL $QE_NAME "$LS $QE_DIR" > /dev/null 2>&1
+					if [ $? -ne 0 ]; then
+						LOG_MSG "[WARN]:-Segment directory $QE_DIR on $QE_NAME does not exist"
+						EXIT_STATUS=1
+					else
+						$TRUSTED_SHELL $QE_NAME "$TAIL ${QE_DIR}.log"|$TEE -a $LOG_FILE
+						LOG_MSG "[WARN]:-Issue with $TRUSTED_SHELL to $QE_NAME for $QE_DIR database"
+						EXIT_STATUS=1
+					fi
+					LOG_MSG "[INFO]:-End of diagnostic data dump"
+					LOG_MSG "[INFO]:-------------------------------------------------"
 				else
-						LOG_MSG "[INFO]:-Successfully started Segment instance $QE_NAME on port=$QE_PORT"
+					LOG_MSG "[INFO]:-Successfully started Segment instance $QE_NAME on port=$QE_PORT"
 				fi
-				#Now check status of postmaster on the tail
+				#Now check status of postmaster on the segment instance
 				LOG_MSG "[INFO]:-Checking status via pg_ctl"
 				RET_TEXT=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};$PG_CTL status -D $QE_DIR"`
 				RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
 				if [ $RUNNING -ne 0 ]; then
-						LOG_MSG "[WARN]:-Command pg_ctl reports $QE_NAME for directory $QE_DIR port $QE_PORT not running"
-						EXIT_STATUS=1
+					LOG_MSG "[WARN]:-Command pg_ctl reports $QE_NAME for directory $QE_DIR port $QE_PORT not running"
+					EXIT_STATUS=1
 				fi
 				if [ $RUNNING -eq 0 ] && [ $RETVAL -ne 0 ]; then
-						LOG_MSG "[WARN]:-Could not start instance, BUT pg_ctl reports instance active, check instance log file via mppstate.bsh -e"
-						EXIT_STATUS=1
+					LOG_MSG "[WARN]:-Could not start instance, BUT pg_ctl reports instance active, check instance log file via mppstate.sh -e"
+					EXIT_STATUS=1
 				fi
 				if [ $RUNNING -eq 0 ] && [ $RETVAL -eq 0 ]; then
-						LOG_MSG "[INFO]:-Command pg_ctl indicates started Segment instance $QE_NAME database"
+					LOG_MSG "[INFO]:-Command pg_ctl indicates started Segment instance $QE_NAME database"
+					QD_LC_COLLATE=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"show lc_collate;\""`
+					ERROR_CHK $? "obtain segment lc_collate info" 1
+					QD_LC_MONETARY=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"show lc_monetary;\""`
+					ERROR_CHK $? "obtain segment lc_monetary info" 1
+					QD_LC_NUMERIC=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"show lc_numeric;\""`	
+					ERROR_CHK $? "obtain segment lc_numeric info" 1
+					if [ $LC_COLLATE != $QD_LC_COLLATE ];then
+						COL_ARRAY_ERROR=(${COL_ARRAY_ERROR[@]} lc_collate:$QE_NAME:$QE_PORT:$LC_COLLATE:$QD_LC_COLLATE);fi
+					if [ $LC_MONETARY != $QD_LC_MONETARY ];then
+						COL_ARRAY_ERROR=(${COL_ARRAY_ERROR[@]} lc_monetary:$QE_NAME:$QE_PORT:$LC_MONETARY:$QD_LC_COLLATE);fi
+					if [ $LC_NUMERIC != $QD_LC_NUMERIC ];then
+						COL_ARRAY_ERROR=(${COL_ARRAY_ERROR[@]} lc_numeric:$QE_NAME:$QE_PORT:$LC_NUMERIC:$QD_LC_NUMERIC);fi
 				fi
 				((QE_START_COUNT=$QE_START_COUNT+1))
 				((INDEX=$INDEX+1))
 				else
-						LOG_MSG "[WARN]:-Segment instance $QE_NAME directory $QE_DIR invalid will not start"
-						EXIT_STATUS=1
+					LOG_MSG "[WARN]:-Segment instance $QE_NAME directory $QE_DIR invalid will not start"
+					EXIT_STATUS=1
 				fi
 		done
 fi
@@ -405,6 +427,20 @@ fi
 		fi
 }
 
+COLLATE_ERROR () {
+	COL_TYPE=`$ECHO $1|$CUT -d":" -f1`
+	COL_SEG=`$ECHO $1|$CUT -d":" -f2`
+	COL_PORT=`$ECHO $1|$CUT -d":" -f3`
+	COL_QD=`$ECHO $1|$CUT -d":" -f4`
+	COL_QE=`$ECHO $1|$CUT -d":" -f5`	
+	LOG_MSG "[WARN]:-*******************************************"
+	LOG_MSG "[WARN]:-Master instance $COL_TYPE variation"
+	LOG_MSG "[WARN]:-Segment instance $COL_SEG on port $COL_PORT"
+	LOG_MSG "[WARN]:-Master  $COL_TYPE = $COL_QD"
+	LOG_MSG "[WARN]:-Segment $COL_TYPE = $COL_QE"	
+	LOG_MSG "[WARN]:-*******************************************"
+	EXIT_STATUS=1
+}
 #******************************************************************************
 # Main Section
 #******************************************************************************
@@ -459,5 +495,11 @@ if [ $INTERACTIVE ]; then
 	PROMPT_CONTINUE
 fi
 PROCESS_STARTUP
+if [ ${#COL_ARRAY_ERROR[@]} -ne 0 ];then
+	for I in ${COL_ARRAY_ERROR[@]}
+	do
+		COLLATE_ERROR $I
+	done
+fi
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS
