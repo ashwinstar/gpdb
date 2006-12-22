@@ -49,6 +49,8 @@ WAIT="-w"
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
+PROG_NAME=`$BASENAME $0`
+HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 QD_NAME=`hostname`
 EXIT_STATUS=0
 RULE_GEN=0
@@ -66,6 +68,10 @@ CHILD_TABLE_ID="_child_depth_"
 #******************************************************************************
 #
 USAGE () {
+	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+		$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+		exit 0
+	else
 		$ECHO	
 		$ECHO "      `basename $0`"
 		$ECHO
@@ -107,6 +113,7 @@ USAGE () {
 		$ECHO "      2 Fatal error, unable to complete partitioning request"
 		$ECHO
 		exit $EXIT_STATUS
+	fi
 }
 
 UNKNOWN_OPTION () {
@@ -727,11 +734,13 @@ ANALYZE_CHILD_TABLES () {
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt:'?'aql:d:x:n:co:s:" opt;do
+		while getopts ":vt:'?'aql:d:x:n:co:s:!" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) PARENT_TABLE_NAME=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
 						'?' ) USAGE ;;
+						! ) SCRIPT_USAGE=1
+						    USAGE ;;
 						d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
 						a ) unset INTERACTIVE ;;
 						q ) unset VERBOSE ;;

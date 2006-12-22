@@ -39,6 +39,8 @@ else
 # Script Specific Variables
 #******************************************************************************
 PROG_NAME=`$BASENAME $0`
+PROG_NAME=`$BASENAME $0`
+HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 MASTER_HOSTNAME=`hostname`
@@ -49,6 +51,10 @@ FORCE=0
 # Functions
 #******************************************************************************
 USAGE () {
+	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ];then
+	$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+	exit 0
+	else
 	$ECHO
         $ECHO "      `basename $0`"
 	$ECHO
@@ -74,6 +80,7 @@ USAGE () {
         $ECHO "      2 Fatal error, unable to continue requested operation"
 	$ECHO
         exit $EXIT_STATUS
+	fi
 }
 
 UNKNOWN_OPTION () {

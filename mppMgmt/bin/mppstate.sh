@@ -45,6 +45,8 @@ fi
 VERBOSE=1
 unset TAIL_LOGS
 PROG_NAME=`$BASENAME $0`
+PROG_NAME=`$BASENAME $0`
+HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 QD_NAME=`hostname`
@@ -55,6 +57,10 @@ TLINES=10
 #******************************************************************************
 #
 USAGE () {
+	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+		$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+		exit 0
+	else
 		$ECHO
 		$ECHO "      `basename $0`"
 		$ECHO
@@ -97,6 +103,7 @@ USAGE () {
 		$ECHO "      2 Fatal error, unable to complete requested operation"
 		$ECHO
 		exit $EXIT_STATUS
+	fi
 }
 
 UNKNOWN_OPTION () {
@@ -601,11 +608,13 @@ DISPLAY_RO_MASTER () {
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 SELECT=1
 if [ $# -ne 0 ]; then
-		while getopts ":vtbl:d:nieqsmcpf'?'r:g:" opt;do
+		while getopts ":vtbl:d:nieqsmcpf'?'r:g:!" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
 						'?' ) USAGE ;;
+						! ) SCRIPT_USAGE=1
+						    USAGE ;;
 						d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
 						q ) unset VERBOSE ;;
 						s ) ;;

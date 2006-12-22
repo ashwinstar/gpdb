@@ -113,6 +113,7 @@ LS=`findCmdInPath ls`
 LOCALE=`findCmdInPath locale`
 MAIL=`findCmdInPath mail`
 MV=`findCmdInPath mv`
+MORE=`findCmdInPath more`
 MKDIR=`findCmdInPath mkdir`
 MKFIFO=`findCmdInPath mkfifo`
 NETSTAT=`findCmdInPath netstat`
@@ -179,6 +180,7 @@ MPPSTATE=$SCRIPTDIR/mppstate.sh
 MPPSTOP=$SCRIPTDIR/mppstop.sh
 MAILFILE=$SCRIPTDIR/mail_contacts
 HMAILFILE=$HOME/mail_contacts
+MPPDOCDIR=${MPPHOME}/mppMgmt/doc
 #******************************************************************************
 # MPP Command Variables
 #******************************************************************************

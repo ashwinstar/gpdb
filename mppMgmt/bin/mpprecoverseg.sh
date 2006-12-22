@@ -54,6 +54,8 @@ WORKDIR=`pwd`
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
+PROG_NAME=`$BASENAME $0`
+HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 PG_PID=postmaster.pid
 EXIT_STATUS=0
 FORCESTOP=0
@@ -61,6 +63,10 @@ FORCESTOP=0
 # Functions
 #******************************************************************************
 USAGE () {
+	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+		$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+		exit 0
+	else
         	$ECHO
 		$ECHO "      `basename $0`"
 		$ECHO
@@ -95,6 +101,7 @@ USAGE () {
 		$ECHO "      2 Fatal error, recovery failed"
 		$ECHO
         	exit 0
+	fi
 }
 
 GET_SETTING () {
@@ -504,10 +511,12 @@ FORCE_RECOVER () {
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
-while getopts ":v'?'qfal:d:z:" opt;do
+while getopts ":v'?'qfal:d:z:!" opt;do
     case $opt in
         v ) VERSION_INFO ;;
       '?' ) USAGE ;;
+	! ) SCRIPT_USAGE=1
+	    USAGE ;;
 	a ) unset INTERACTIVE ;;
         d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
         q ) unset VERBOSE ;;

@@ -40,6 +40,8 @@ fi
 CUR_DATE=`$DATE +%Y%m%d`
 TIME=`$DATE +%H%M%S`
 PROG_NAME=`$BASENAME $0`
+PROG_NAME=`$BASENAME $0`
+HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 BACKOUT_FILE=$DEFLOGDIR/backout_mppcreatecluster_${USER_NAME}_${CUR_DATE}_$TIME
 # Level of script feedback 0=small 1=verbose
 VERBOSE=1
@@ -74,6 +76,10 @@ MPPCREATESEG=mppcreateseg.sh
 # Functions
 #******************************************************************************
 USAGE () {
+	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+		$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+		exit 0
+	else
 		$ECHO
 		$ECHO "      `basename $0` -c mpp_config_file [OPTIONS]"
 		$ECHO
@@ -120,6 +126,7 @@ USAGE () {
 	    	$ECHO "            see log file for failure reason."
 		$ECHO
 		exit $EXIT_STATUS
+	fi
 }
 
 CHK_PARAMS () {
@@ -1075,11 +1082,13 @@ CREATE_DATABASE () {
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
-while getopts ":v'?'aiqe:c:l:p:m:h:on:s:rb:" opt
+while getopts ":v'?'aiqe:c:l:p:m:h:on:s:rb:!" opt
 		do
 		case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
+				! ) SCRIPT_USAGE=1
+				    USAGE ;;
 				a ) unset INTERACTIVE ;;
 				q ) unset VERBOSE ;;
 				i ) START_SYNC="" ;;

@@ -45,6 +45,8 @@ VERBOSE=1
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
+PROG_NAME=`$BASENAME $0`
+HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 QD_NAME=`hostname`
 EXIT_STATUS=0
 TMPFILE=/tmp/table_size.$$
@@ -54,6 +56,10 @@ SIZE_TYPE=0 #0=table 1=index
 SIZE_TARGET=0 #0=primary and mirror 1=primary only 2=mirror only
 #***********************************************************************************
 USAGE () {
+if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+	$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+	exit 0
+else
 	if [ x"" == x"$PGDATABASE" ];then
 		QD_DBNAME=Unknown
 	else
@@ -97,6 +103,7 @@ USAGE () {
 	$ECHO "      2 Fatal error, unable to complete requested operation"
 	$ECHO
 	exit 0
+fi
 }
 
 GET_DB_OID_DATA () {
@@ -302,11 +309,13 @@ DISPLAY_SIZE () {
 trap '$RM -f $TMPFILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 CHK_DB_QD_SET
 if [ $# -ne 0 ]; then
-	while getopts ":fvt:'?'ql:mpd:s:a:ix:" opt;do
+	while getopts ":fvt:'?'ql:mpd:s:a:ix:!" opt;do
 	case $opt in
 		v ) VERSION_INFO ;;
 		t ) TABLE_NAME=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
 		'?' ) USAGE ;;
+		! ) SCRIPT_USAGE=1
+		    USAGE ;;
 		d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
 		q ) unset VERBOSE ;;
 		l ) LOG_DIR=$OPTARG ;;

@@ -49,6 +49,8 @@ else
 TMPFILE=/tmp/mppskew.tmp.$$
 NODELIST=/tmp/nodelist.tmp.$$
 PROG_NAME=`$BASENAME $0`
+PROG_NAME=`$BASENAME $0`
+HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 MASTER_HOSTNAME=`hostname`
@@ -60,6 +62,10 @@ SEG_TYPE=0
 # Functions
 #******************************************************************************
 USAGE () {
+if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+	$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+	exit 0
+else
 	GET_QD_DB_NAME >/dev/null 2>&1
 	$ECHO
         $ECHO "      `basename $0`"
@@ -96,6 +102,7 @@ USAGE () {
         $ECHO "      2 Fatal error, unable to continue requested operation"
 	$ECHO
         exit $EXIT_STATUS
+fi
 }
 
 GET_DISTRIB_INFO () {
@@ -270,11 +277,13 @@ GET_NODE_COUNT () {
 trap '$RM -f $TMPFILE $NODELIST;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 CHK_DB_QD_SET
 if [ $# -ne 0 ];then
-        while getopts ":a:vmcqft:'?'d:l:" opt;do
+        while getopts ":a:vmcqft:'?'d:l:!" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
                 t ) TARGETTBL=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
                 '?' ) USAGE ;;
+		! ) SCRIPT_USAGE=1
+		    USAGE ;;
                 d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
 		m ) SEG_TYPE=1 ;;
 		l ) LOG_DIR=$OPTARG ;;

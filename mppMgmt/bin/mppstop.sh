@@ -47,6 +47,8 @@ MODE=smart
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
+PROG_NAME=`$BASENAME $0`
+HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 QD_NAME=`$HOSTNAME`
 EXIT_STATUS=0
 KILL_INVALID=false
@@ -59,6 +61,10 @@ STOP_SYNC=1
 #******************************************************************************
 #
 USAGE () {
+	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+		$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+		exit 0
+	else
 		$ECHO	
 		$ECHO "      `basename $0` "
 		$ECHO
@@ -98,6 +104,7 @@ USAGE () {
 		$ECHO "      2 Fatal error, instance not shutdown, or in an inconsistent state"
 		$ECHO
 		exit $EXIT_STATUS
+	fi
 }
 
 UNKNOWN_OPTION () {
@@ -307,7 +314,7 @@ trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 #Check to see if we have a parameter supplied to script
 if [ $# -ne 0 ]; then
 		##MPP	while getopts ":viskft'?'aqnml:d:" opt;do
-		while getopts ":vuyrmiskzft'?'aqbnl:d:" opt;do
+		while getopts ":vuyrmiskzft'?'aqbnl:d:!" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						i ) MODE=immediate ;;
@@ -326,6 +333,8 @@ if [ $# -ne 0 ]; then
 						r ) RESTART=1 ;;
 						b ) CHK_STANDBY=1 ;;
 						y ) unset STOP_SYNC ;;
+						! ) SCRIPT_USAGE=1
+      						    USAGE ;;
 						* ) UNKNOWN_OPTION ;;
 				esac
 		done	
