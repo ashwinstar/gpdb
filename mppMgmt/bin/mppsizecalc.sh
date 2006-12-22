@@ -184,9 +184,9 @@ SEND_TABLE_SIZE_REQUEST () {
 		LOG_MSG "[INFO]:-Processing $QE_HOST port $QE_PORT Table OID $QE_TABLE_OID"
 		QE_TABLE=${QE_DIR}/base/${DB_OID}/${QE_TABLE_OID}
 		QE_BASE_DIR=`$BASENAME $QE_DIR`
-		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_TABLE}"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
+		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "ls -al ${QE_TABLE}"|$TAIL -1|$AWK '{print \$5}'` >> $TMPFILE &
 		((LINECOUNT=$LINECOUNT+1))
-		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_TABLE}.* 2>/dev/null"|$AWK '{total += \$1} END {print total}'` >> $TMPFILE  &
+		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "ls -al ${QE_TABLE}.*|$GREP -v '^d'|$GREP -vi total" 2>/dev/null|$AWK '{total += \$5} END {print total}'` >> $TMPFILE  &
 		((LINECOUNT=$LINECOUNT+1))
 	done	
 	WAIT_COMPLETE
@@ -212,9 +212,9 @@ SEND_INDEX_SIZE_REQUEST () {
 			LOG_MSG "[INFO]:-Processing $QE_HOST port $QE_PORT Index OID $IDX"
 			QE_INDEX=${QE_DIR}/base/${DB_OID}/$IDX
 			QE_BASE_DIR=`$BASENAME $QE_DIR`
-			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_INDEX}"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
+			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "ls -al ${QE_INDEX}"|$TAIL -1|$AWK '{print \$5}'` >> $TMPFILE &
 			((LINECOUNT=$LINECOUNT+1))
-			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_INDEX}.* 2>/dev/null"|$AWK '{total += \$1} END {print total}'` >> $TMPFILE &
+			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "ls -al ${QE_INDEX}.*|$GREP -v '^d'|$GREP -vi total" 2>/dev/null|$AWK '{total += \$5} END {print total}'` >> $TMPFILE &
 			((LINECOUNT=$LINECOUNT+1))
 		done
 	done
@@ -245,7 +245,7 @@ SEND_DB_SIZE_REQUEST () {
 		QE_DB=${QE_DIR}/base/${DB_OID}
 		QE_PORT=`$ECHO $I|$CUT -d'|' -f3`
 		QE_BASE_DIR=`$BASENAME $QE_DIR`
-		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "$DU -k $DU_TXT ${QE_DB}"|$TAIL -1 |$AWK '{print \$1}'`>> $TMPFILE &
+		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "ls -al ${QE_DB}|$GREP -v '^d'|$GREP -vi total 2>/dev/null" |$AWK '{total += \$5} END {print total}'` >> $TMPFILE &
 		((LINECOUNT=$LINECOUNT+1)) 
 	done	
 	WAIT_COMPLETE
@@ -255,14 +255,14 @@ SEND_DB_SIZE_REQUEST () {
 CALC_TOTAL_SIZE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	TOTAL_SIZE=0
-	for I in `$CAT $TMPFILE| grep -v "|0"` 
+	for I in `$CAT $TMPFILE| grep -v "|$"` 
 	do
-		KSIZE=`$ECHO $I|$CUT -d'|' -f4`
+		BSIZE=`$ECHO $I|$CUT -d'|' -f4`
 		case $SCALE in
-			b) ((SIZE=$KSIZE*1024)) ;;
-			m) ((SIZE=$KSIZE/1024)) ;;
-			g) ((SIZE=$KSIZE/1024/1024)) ;;
-			k) ((SIZE=$KSIZE)) ;;
+			k) ((SIZE=$BSIZE/1024)) ;;
+			m) ((SIZE=$BSIZE/1024/1024)) ;;
+			g) ((SIZE=$BSIZE/1024/1024/1024)) ;;
+			b) ((SIZE=$BSIZE)) ;;
 		esac
 		HOST=`$ECHO $I|$CUT -d'|' -f1`
 		SEG=`$ECHO $I|$CUT -d'|' -f2`
