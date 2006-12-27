@@ -1498,7 +1498,13 @@ ReleaseGangs(QueryDesc *queryDesc)
 {
 	Assert(queryDesc != NULL);
 	
-	freeGangsForPortal(queryDesc->portal_name);
+	/* Check for non-initiating call. */
+	if ( Mpp_role == MPP_ROLE_DISPATCH 
+		&& queryDesc->plantree != NULL 
+		&& queryDesc->plantree->sliceTable != NULL)
+	{
+		freeGangsForPortal(queryDesc->portal_name);
+	}
 }
 
 
