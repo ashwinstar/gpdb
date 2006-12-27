@@ -681,7 +681,8 @@ ExecutorEnd(QueryDesc *queryDesc)
 	/*
 	 * Release any gangs we may have assigned.
 	 */
-	ReleaseGangs(queryDesc);
+	if (Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
+		ReleaseGangs(queryDesc);
 
 	/* 
 	 * Remove our own query's motion layer. 
