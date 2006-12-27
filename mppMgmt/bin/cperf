@@ -94,8 +94,9 @@ def parseCommandLine():
 
 #############
 def run(cmd):
-    f = out = None
+    f = None
     ok = False
+    out = ''
     try:
 	if opt['-v']: print '[Info]', cmd
 	f = os.popen(cmd)
@@ -109,6 +110,12 @@ def run(cmd):
 	ok = False
 
     if opt['-v'] and out and out != '': print out
+
+    if out and out.find('SSH Connect Failed') >= 0: 
+	if not opt['-v']: print out
+	print 'Please use groupSession to exchange keys ...'
+	sys.exit(1)
+
     return (ok, out)
 
 #############
@@ -133,6 +140,15 @@ def runSetup():
 	print '--------------------'
     okCount = 0
     try:
+	#check python reachable
+	if opt['-v']: print '[Info] verify python interpreter exists'
+	cmd = GPSSH + 'python -c print'
+	(ok, out) = run(cmd)
+	if not ok:
+	    if not opt['-v']: print out
+	    sys.exit("[Error] unable to find python interpreter on some hosts\n"
+		     +"        verify PATH variables on the hosts")
+
 	#mkdir checkPerf
 	if opt['-v']: print '[Info] making checkPerf directory on all hosts ... '
 	dirs = ''
@@ -143,14 +159,6 @@ def runSetup():
 	    sys.exit("[Error] unable to make checkPerf directory. \n"
 		   + "        command failed: " + cmd)
 
-	#check python reachable
-	if opt['-v']: print '[Info] verify python interpreter exists'
-	cmd = GPSSH + 'python -c print'
-	(ok, out) = run(cmd)
-	if not ok:
-	    if not opt['-v']: print out
-	    sys.exit("[Error] unable to find python interpreter on some hosts\n"
-		     +"        verify PATH variables on the hosts")
     except:
 	runTeardown()
 	raise

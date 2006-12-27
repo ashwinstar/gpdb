@@ -142,6 +142,10 @@ def createSession():
 	    if not samePort: s.name = s.name + ':' + h[2]
 	    if opt['-v']: print 'Info: connected to', s.name
 	    session.append(s)
+	except paramiko.SSHException, e:
+	    print 'SSH Connect Failed: %s@%s:%d' % h,
+	    print ' -', e
+	    sys.exit(100)
 	except KeyboardInterrupt:
 	    raise
 	except:
