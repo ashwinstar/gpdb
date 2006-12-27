@@ -52,15 +52,10 @@ def parseMemorySize(line):
     try:
 	line = line.strip().upper()
 	if line.endswith('B'): line = line[:-1]
-	if line.endswith('G'):
-	    factor = 1024 * 1024 * 1024
-	    line = line[:-1]
-	elif line.endswith('M'):
-	    factor = 1024 * 1024
-	    line = line[:-1]
-	elif line.endswith('K'):
-	    factor = 1024
-	    line = line[:-1]
+	if line.endswith('G'): factor = 1024 * 1024 * 1024
+	elif line.endswith('M'): factor = 1024 * 1024
+	elif line.endswith('K'): factor = 1024
+	if factor > 1: line = line[:-1]
 	return int(line) * factor
     except:
 	return 0
@@ -256,7 +251,16 @@ def runDiskReadTest(multidd):
 
 
 #############
-def parseStreamResult(out):
+def runStreamTest():
+    if opt['-v']:
+	print '--------------------'
+	print '  STREAM TEST'
+	print '--------------------'
+
+    rmtPath = copyExecOver('stream')
+    cmd = GPSSH + rmtPath
+    (ok, out) = run(cmd)
+    if not ok: sys.exit('[Error] command failed: ' + cmd)
     out = StringIO.StringIO(out)
     result = {}
     for line in out:
@@ -268,20 +272,6 @@ def parseStreamResult(out):
 	    result[h] = (float(o[1]), 0, 0)
     return result
 
-
-#############
-def runStreamTest():
-    if opt['-v']:
-	print '--------------------'
-	print '  STREAM TEST'
-	print '--------------------'
-
-    rmtPath = copyExecOver('stream')
-    cmd = GPSSH + rmtPath
-    (ok, out) = run(cmd)
-    if not ok: sys.exit('[Error] command failed: ' + cmd)
-
-    return parseStreamResult(out)
 
 ################
 def printResult(title, result):
