@@ -1319,6 +1319,11 @@ setup_config(void)
 			conflines = replace_token(conflines,
 									  "host    all         all         ::1",
 									  "#host    all         all         ::1");
+		if (err != 0 ||
+			getaddrinfo("fe80::1", NULL, &hints, &gai_result) != 0)
+			conflines = replace_token(conflines,
+									  "host    all         all         fe80::1",
+									  "#host    all         all         fe80::1");
 	}
 #else							/* !HAVE_IPV6 */
 	/* If we didn't compile IPV6 support at all, always comment it out */
