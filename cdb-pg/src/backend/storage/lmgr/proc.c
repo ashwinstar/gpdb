@@ -1494,7 +1494,7 @@ ResLockWaitCancel(void)
 {
 	LWLockId	partitionLock;
 
-	if (MyProc->waitPortalId != INVALID_PORTALID)
+	if (lockAwaited == NULL && MyProc->waitPortalId != INVALID_PORTALID)
 	{
 		/*
 		 * Dangling portal increment, possibly left by overcommit check
