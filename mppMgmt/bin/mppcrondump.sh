@@ -57,7 +57,7 @@ COMPRESSION=1
 FAILED_PRIMARY_COUNT=0
 FAILED_MIRROR_COUNT=0
 DUMP_SUB_DIR=db_dumps
-COMPRESSION_FACTOR=7
+COMPRESSION_FACTOR=12
 FREE_SPACE_PERCENT=10
 ROLLBACK=0
 RUN_CLEAR_DUMPS=0
@@ -785,6 +785,14 @@ else
 	LOG_MSG "[INFO]:-Configuring for multiple database dump"
 	DUMP_DATABASE_LIST=($DUMP_DATABASE)
 fi
+#Check that all databases exist
+for DUMP_DATABASE in ${DUMP_DATABASE_LIST[@]}
+do
+	DB_THERE=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select oid from pg_database where datname='${DUMP_DATABASE}';"`
+	if [ x"" == x"$DB_THERE" ];then
+		ERROR_EXIT "[FATAL]:-Database $DUMP_DATABASE does not exist"
+	fi
+done
 for DUMP_DATABASE in ${DUMP_DATABASE_LIST[@]}
 do
 	if [ $EXIT_STATUS -ne 0 ];then
