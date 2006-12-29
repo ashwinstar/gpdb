@@ -601,10 +601,15 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 
 		pthread_err = pthread_join(pParms->thread, NULL);
 		if (pthread_err != 0)
+#ifndef _WIN32
 			elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (0x%x) of %d (returned %d attempting to join to 0x%x)",
 				 i + 1, (unsigned int) pParms->thread, dispatchThreads->threadCount, pthread_err, (unsigned int) pthread_self());
+#else
+			elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (0x%x) of %d (returned %d attempting to join to 0x%x)",
+				 i + 1, (unsigned int) pParms->thread.p, dispatchThreads->threadCount, pthread_err, (unsigned int) pthread_self().p);
+#endif
 
-		pParms->thread = (pthread_t) 0;
+		memset(&pParms->thread, 0, sizeof(pParms->thread));
 
 		/*
 		 * Examine the CdbDispatchResult objects containing the results
@@ -1215,7 +1220,7 @@ thread_DispatchCommand(void *arg)
 	{
 		write_stderr("could not build query string, total length %d\n", pParms->query_text_len);
 		pParms->query_text_len = 0;
-		dispatchResult->stillRunning = false;
+		//dispatchResult->stillRunning = false;	// dispatchResult not initialized yet
 		return NULL;
 	}
 

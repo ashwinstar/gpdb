@@ -14,7 +14,11 @@
 #ifndef SEQSERVER_H
 #define SEQSERVER_H
 
+#ifndef _WIN32
 #include <stdint.h>             /* uint32_t (C99) */
+#else
+typedef unsigned int uint32_t;
+#endif 
 
 
 /* TODO: eventually we may want different requests to the sequence server

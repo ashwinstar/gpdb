@@ -29,6 +29,7 @@
 #include "utils/memutils.h"
 #include "access/htup.h"
 #include "cdb/cdbvars.h"
+#include <math.h>
 
 #include "executor/execHashagg.h"
 
@@ -177,7 +178,11 @@ create_agg_hash_table(AggState *aggstate)
 	 * the bits used in calculating the bucket to the front.  These
 	 * are the shift arguments.
 	 */
+#ifndef _WIN32
 	ht->lshift = ceil(log2(ht->nbucket));
+#else
+	ht->lshift = ceil(log(ht->nbucket)/log(2));	// No log2 func on windows?
+#endif 
 	ht->rshift = 32 - ht->lshift;
 	
 	ht->ngroup = ht->ntuple = 0;

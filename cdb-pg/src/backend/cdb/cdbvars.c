@@ -150,15 +150,15 @@ string_to_role(const char *string)
 {
 	MppRoleValue role = MPP_ROLE_UNDEFINED;
 
-	if (strcasecmp(string, "dispatch") == 0 || strcasecmp(string, "") == 0)
+	if (pg_strcasecmp(string, "dispatch") == 0 || pg_strcasecmp(string, "") == 0)
 	{
 		role = MPP_ROLE_DISPATCH;
 	}
-	else if (strcasecmp(string, "execute") == 0)
+	else if (pg_strcasecmp(string, "execute") == 0)
 	{
 		role = MPP_ROLE_EXECUTE;
 	}
-	else if (strcasecmp(string, "utility") == 0)
+	else if (pg_strcasecmp(string, "utility") == 0)
 	{
 		role = MPP_ROLE_UTILITY;
 	}
@@ -464,13 +464,13 @@ cdbvars_string_to_verbosity(const char *s)
 
 	if (!s ||
         !s[0] ||
-        !strcasecmp("terse", s))
+        !pg_strcasecmp("terse", s))
 		result = CDBVARS_VERBOSITY_TERSE;
-	else if (!strcasecmp("off", s))
+	else if (!pg_strcasecmp("off", s))
 		result = CDBVARS_VERBOSITY_OFF;
-	else if (!strcasecmp("verbose", s))
+	else if (!pg_strcasecmp("verbose", s))
 		result = CDBVARS_VERBOSITY_VERBOSE;
-	else if (!strcasecmp("debug", s))
+	else if (!pg_strcasecmp("debug", s))
 		result = CDBVARS_VERBOSITY_DEBUG;
     else
         result = CDBVARS_VERBOSITY_UNDEFINED;

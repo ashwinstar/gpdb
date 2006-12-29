@@ -11,7 +11,7 @@
  */
 
 #include "postgres.h"
-#include <regex.h>
+#include "regex/regex.h"
 #include "miscadmin.h"
 #include "optimizer/clauses.h"
 #include "cdb/cdbplan.h"

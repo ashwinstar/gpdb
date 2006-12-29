@@ -8,9 +8,9 @@
  *-------------------------------------------------------------------------
  */
 
+#include "postgres.h"
 #include <assert.h>
 
-#include "postgres.h"
 #include "miscadmin.h"
 #include "libpq-fe.h"
 #include "libpq-int.h"
@@ -861,13 +861,13 @@ assign_mpp_set_read_only(bool newval, bool doit, GucSource source)
 int
 convertFaultActionValue(char *action)
 {
-	if (strcasecmp(action, "readonly") == 0)
+	if (pg_strcasecmp(action, "readonly") == 0)
 		return FTS_READONLY;
-	else if (strcasecmp(action, "shutdown") == 0)
+	else if (pg_strcasecmp(action, "shutdown") == 0)
 		return FTS_SHUTDOWN;
-	else if (strcasecmp(action, "continue") == 0)
+	else if (pg_strcasecmp(action, "continue") == 0)
 		return FTS_CONTINUE;
-	else if (strcasecmp(action, "none") == 0)
+	else if (pg_strcasecmp(action, "none") == 0)
 		return FTS_NONE;
 	else
 	{

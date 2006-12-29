@@ -4047,7 +4047,7 @@ extern Oid ProcedureCreate(const char *procedureName,
 				Datum allParameterTypes,
 				Datum parameterModes,
 				Datum parameterNames,
-				Oid procOid);
+				const Oid procOid);
 
 extern bool function_parse_error_transpose(const char *prosrc);
 

@@ -16,6 +16,7 @@
 #include "lib/stringinfo.h"         /* StringInfo */
 
 #include "cdb/cdbselect.h"
+#include <pthread.h>
 
 struct CdbDispatchResult;           /* #include "cdb/cdbdispatchresult.h" */
 struct CdbDispatchResults;          /* #include "cdb/cdbdispatchresult.h" */

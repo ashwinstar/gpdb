@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 #include <assert.h>
 #include <dirent.h>
-#include <regex.h>
+#include "regex/regex.h"
 #include "libpq-fe.h"
 #include "libpq/libpq-be.h"
 #include "fmgr.h"
@@ -152,7 +152,11 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 		pszUserName = "";
 
 	/* Fork off mpp_dump_agent	*/
+#ifdef _WIN32
+	exit(1);
+#else
 	newpid = fork();
+#endif
 	if (newpid < 0)
 	{
 		ereport(ERROR,
@@ -393,7 +397,11 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 		pszUserName = "";
 
 	/* Fork off mpp_restore_agent  */
+#ifdef _WIN32
+	exit(1);
+#else
 	newpid = fork();
+#endif
 	if (newpid < 0)
 	{
 		ereport(ERROR,
@@ -853,6 +861,9 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 
 	if (bFirstTime)
 	{
+		int			wmasklen,
+						masklen;
+			pg_wchar   *mask;
 		pszRegex = (char *) palloc(19 + 10 + strlen(pszBackupKey) + 1);
 		if (pszRegex == NULL)
 		{
@@ -862,7 +873,12 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 		}
 
 		sprintf(pszRegex, "^mpp_dump_[0-9]+_%d_%s(.gz)?$", segid, pszBackupKey);
-		if (0 != regcomp(&rFindFileName, pszRegex, REG_EXTENDED))
+		
+		masklen = strlen(pszRegex);
+		mask = (pg_wchar *) palloc((masklen + 1) * sizeof(pg_wchar));
+		wmasklen = pg_mb2wchar_with_len(pszRegex, mask, masklen);
+
+		if (0 != pg_regcomp(&rFindFileName, mask, wmasklen, REG_EXTENDED))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
@@ -896,9 +912,17 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 
 	while (NULL != (dirp = readdir(dp)))
 	{
+		pg_wchar   *data;
+		size_t		data_len;
+		int			newfile_len;
 		pszFileName = dirp->d_name;
 
-		if (0 == regexec(&rFindFileName, pszFileName, 0, NULL, 0))
+		/* Convert data string to wide characters */
+		newfile_len = strlen(pszFileName);
+		data = (pg_wchar *) palloc((newfile_len + 1) * sizeof(pg_wchar));
+		data_len = pg_mb2wchar_with_len(pszFileName, data, newfile_len);
+
+		if (0 == pg_regexec(&rFindFileName, data, data_len, 0, NULL, 0, NULL, 0))
 		{
 			pszSep = "/";
 			if (strlen(pszBackupDirectory) >= 1 && pszBackupDirectory[strlen(pszBackupDirectory) - 1] == '/')
@@ -928,6 +952,9 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 char *
 formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_compress)
 {
+#ifndef PATH_MAX
+#define PATH_MAX 1024
+#endif
 	/* First form the prefix */
 	char		szFileNamePrefix[1 + PATH_MAX];
 	int			instid;			/* dispatch node */

@@ -16,6 +16,7 @@
 #include "utils/hsearch.h"
 #include "miscadmin.h"
 #include "libpq/libpq-be.h"
+#include "utils/builtins.h"
 
 #include "cdb/cdbselect.h"
 #include "cdb/tupchunklist.h"
@@ -1652,7 +1653,7 @@ setupSeqServerConnection(char *seqServerHost, int seqServerPort )
 	
 	addr.sin_family = AF_INET;
 
-	if ((n = inet_pton(AF_INET, seqServerHost, &addr.sin_addr)) < 1)
+	if ((n = inet_net_pton(AF_INET, seqServerHost, &addr.sin_addr, sizeof(addr.sin_addr))) < 1)
 	{
 		if (n == 0)
 		{
@@ -1864,7 +1865,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
     memset(&saddr, 0, sizeof(saddr));
     saddr.sin_family = AF_INET;
 
-    if ((n = inet_pton(AF_INET, cdbProc->listenerAddr, &saddr.sin_addr)) < 1)
+    if ((n = inet_net_pton(AF_INET, cdbProc->listenerAddr, &saddr.sin_addr, sizeof(saddr.sin_addr))) < 1)
     {
 	    if (n == 0)
 	    {
@@ -2439,7 +2440,9 @@ acceptIncomingConnection(void)
             case EBADF:
             case EFAULT:
             case EINVAL:
+#ifndef _WIN32
             case ENOTSOCK:
+#endif
             case EOPNOTSUPP:
                 /* Shouldn't get these errors unless there is a bug. */
                 ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),

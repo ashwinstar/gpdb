@@ -2,14 +2,14 @@
  *	cdbtmtest.c
  *-------------------------------------------------------------------------
  */
-
+#include "postgres.h"
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #define PROVIDE_64BIT_CRC
 
-#include "postgres.h"
+
 #include "utils/elog.h"
 #include "access/xlog_internal.h"
 #include "miscadmin.h"

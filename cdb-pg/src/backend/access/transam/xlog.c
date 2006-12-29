@@ -6786,7 +6786,7 @@ rm_redo_error_callback(void *arg)
 bool
 resync_xlog_to_mirror(void)
 {
-    int			blocksz = (64 * 1024);
+#define blocksz  (64 * 1024) 
     int			readlen, xlogfilefd, offset=0;
     char		path[MAXPGPATH], buf[blocksz], tmpfname[MAXFNAMELEN];
         
