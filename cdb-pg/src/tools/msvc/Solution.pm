@@ -49,12 +49,13 @@ sub GenerateFiles {
 # Parse configure.in to get version numbers
 	open(C,"configure.in") || confess("Could not open configure.in for reading\n");
 	while (<C>) {
-		if (/^AC_INIT\(\[PostgreSQL\], \[([^\]]+)\]/) {
+		if (/^AC_INIT\(\[Greenplum Database\], \[([^\]]+)\]/) {
 			$self->{strver} = $1;
 			if ($self->{strver} !~ /^(\d+)\.(\d+)(?:\.(\d+))?/) {
 				confess "Bad format of version: $self->{strver}\n"
 			}
 			$self->{numver} = sprintf("%d%02d%02d", $1, $2, $3?$3:0);
+			$self->{majorver} = sprintf("%d.%d", $1, $2);
 		}
 	}
 	close(C);
@@ -206,6 +207,19 @@ EOF
 EOF
 		close(O);
 	}
+
+	my $mf = Project::read_file('src\backend\catalog\Makefile');
+	$mf =~ s{\\s*[\r\n]+}{}mg;
+	$mf =~ /^POSTGRES_BKI_SRCS\s*:=[^,]+,(.*)\)$/gm || croak "Could not find POSTGRES_BKI_SRCS in Makefile\n";
+	my @allbki = split /\s+/, $1;
+    foreach my $bki (@allbki) {
+		next if $bki eq "";
+		if (IsNewer('src/backend/catalog/postgres.bki', "src/include/catalog/$bki")) {
+ 		   print "Generating postgres.bki...\n";
+ 		   system("perl src/tools/msvc/genbki.pl $self->{majorver} src/backend/catalog/postgres " . join(' src/include/catalog/',@allbki));
+ 		   last;
+        }
+  	}
 }
 
 sub AddProject {
