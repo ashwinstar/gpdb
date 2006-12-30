@@ -1,4 +1,4 @@
-@echo off
+@echo on
 SET BV=
 for /F "tokens=4 usebackq" %%f in (`bison -V`) do if "!BV!"=="" SET BV=%%f
 if "%BV%"=="" goto novarexp
@@ -17,13 +17,16 @@ exit 1
 
 :generate
 SET fn=%1
-bison -d %fn%
+bison -v -d %fn%
 if errorlevel 1 exit 1
-copy /y %fn:~0,-2%.tab.c %2
+rem copy /y %fn:~0,-2%.tab.c %2
+copy /y %~n1.tab.c %2
 if errorlevel 1 exit 1
-copy /y %fn:~0,-2%.tab.h %3
+rem copy /y %fn:~0,-2%.tab.h %3
+copy /y %~n1.tab.h %3
 if errorlevel 1 exit 1
 del %fn:~0,-2%.tab.*
+del %~n1.tab.*
 exit 0
 
 
