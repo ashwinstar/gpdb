@@ -30,6 +30,7 @@ $libpq->AddDefine('FRONTEND');
 $libpq->AddIncludeDir('src\port');
 $libpq->AddLibrary('wsock32.lib');
 $libpq->AddLibrary('wldap32.lib') if ($solution->{options}->{ldap});
+$libpq->AddLibrary($config->{'pthread'} . '\pthreadVC2.lib');
 $libpq->UseDef('src\interfaces\libpq\libpqdll.def');
 $libpq->ReplaceFile('src\interfaces\libpq\libpqrc.c','src\interfaces\libpq\libpq.rc');
 
@@ -46,6 +47,7 @@ $postgres->AddFiles('src\backend\parser','scan.l','gram.y');
 $postgres->AddFiles('src\backend\bootstrap','bootscanner.l','bootparse.y');
 $postgres->AddFiles('src\backend\utils\misc','guc-file.l');
 $postgres->AddIncludeDir('src\interfaces\libpq');
+$postgres->AddIncludeDir('src\port');
 $postgres->AddReference($libpq,$libpgport);
 $postgres->AddDefine('BUILDING_DLL');
 $postgres->AddLibrary('wsock32.lib ws2_32.lib');

@@ -16,3 +16,5 @@ if "%1" == "" msbuild pgsql.sln /p:Configuration=%CONFIG%
 if not "%1" == "" vcbuild %1.vcproj %CONFIG%
 
 cd %STARTDIR%
+copy src\include\catalog\mpp_version.in src\include\catalog\mpp_version.h
+copy src\backend\catalog\cdb_schema.in src\backend\catalog\cdb_schema.sql
