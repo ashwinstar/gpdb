@@ -20,6 +20,10 @@
 #include <sys/utime.h>			/* for non-unicode version */
 #undef near
 
+#pragma warning(disable:4142) // Benign redefinition of type
+
+#pragma warning(disable:4273) // Inconsistent dll linkage
+
 /* Must be here to avoid conflicting with prototype in windows.h */
 #define mkdir(a,b)	mkdir(a)
 

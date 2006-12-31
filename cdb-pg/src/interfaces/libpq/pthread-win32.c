@@ -14,6 +14,7 @@
 
 #include <windows.h>
 #include "pthread-win32.h"
+#if 0
 
 DWORD
 pthread_self()
@@ -49,3 +50,4 @@ pthread_mutex_unlock(pthread_mutex_t *mp)
 {
 	ReleaseMutex(*mp);
 }
+#endif 
