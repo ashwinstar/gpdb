@@ -3398,10 +3398,10 @@ SubPostmasterMain(int argc, char *argv[])
 	 * to do this before going any further to ensure that we can attach at the
 	 * same address the postmaster used.
 	 */
-	if (strcmp(argv[1], "-forkbackend") == 0   ||
-		strcmp(argv[1], "-forkautovac") == 0   ||
-		strcmp(argv[1], "-forkseqserver") == 0 ||
-		strcmp(argv[1], "-forkboot") == 0)
+	if (strcmp(argv[1], "--forkbackend") == 0   ||
+		strcmp(argv[1], "--forkautovac") == 0   ||
+		strcmp(argv[1], "--forkseqserver") == 0 ||
+		strcmp(argv[1], "--forkboot") == 0)
 		PGSharedMemoryReAttach();
 
 	/*
