@@ -1285,6 +1285,8 @@ SPI_cursor_open(const char *name, void *plan,
 		int i;
 		const char * cursorname;
 		char * query;
+
+		portal = NULL;
 		
 		connect_back_to_qd();
 		
