@@ -2431,19 +2431,9 @@ create_mergejoin_path(PlannerInfo *root,
 	pathnode->jpath.path.pathkeys = pathkeys;
     pathnode->jpath.path.locus = join_locus;
 
-	/* if we're going to push a sort below *both* sides, we definitely
-	 * don't have a motion hazard; and we're definitely rescannable
-	 * (as both sorts will be rescannable) */
-	if (innersortkeys != NIL && outersortkeys != NIL)
-	{
-		pathnode->jpath.path.motionHazard = false;
-		pathnode->jpath.path.rescannable = true;
-	}
-	else
-	{
-		pathnode->jpath.path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
-		pathnode->jpath.path.rescannable = outer_path->rescannable && inner_path->rescannable;
-	}
+	pathnode->jpath.path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
+	pathnode->jpath.path.rescannable = outer_path->rescannable && inner_path->rescannable;
+
 	pathnode->path_mergeclauses = mergeclauses;
 	pathnode->outersortkeys = outersortkeys;
 	pathnode->innersortkeys = innersortkeys;
