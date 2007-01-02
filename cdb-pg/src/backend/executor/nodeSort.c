@@ -217,6 +217,14 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	sortstate->sort_Done = false;
 	sortstate->tuplesortstate = NULL;
 
+	/* CDB */
+
+	/* BUT:
+	 * The LIMIT optimizations requires exprcontext in which to
+	 * evaluate the limit/offset parameters.
+	 */
+	ExecAssignExprContext(estate, &sortstate->ss.ps);
+
 	/* CDB */ /* evaluate a limit as part of the sort */
 	{
 		/* pass node state to sort state */
@@ -233,14 +241,6 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	 * Sort nodes don't initialize their ExprContexts because they never call
 	 * ExecQual or ExecProject.
 	 */
-
-	/* CDB */
-
-	/* BUT:
-	 * The LIMIT optimizations requires exprcontext in which to
-	 * evaluate the limit/offset parameters.
-	 */
-	ExecAssignExprContext(estate, &sortstate->ss.ps);
 
 
 #define SORT_NSLOTS 2
