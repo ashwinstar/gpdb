@@ -97,6 +97,8 @@ int         mpp_segments_for_planner = 0;
 bool		enable_agg_restruct = TRUE;
 double		mpp_hashagg_rewrite_limit = 1;
 
+bool		mpp_enable_motion_deadlock_sanity = FALSE; /* planning time sanity check */
+
 /* MPP Experimental Feature GUCs */
 bool		mpp_enable_agg_distinct = FALSE;
 bool		mpp_enable_preunique = FALSE;

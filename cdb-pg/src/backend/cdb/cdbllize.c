@@ -100,6 +100,8 @@ adjustPlanFlow(Plan        *plan,
                Movement     req_move,
                List        *hashExpr);
 
+static void motion_sanity_check(Plan *plan);
+
 /* ------------------------------------------------------------------------- *
  * Function cdbparallelize() is the main entry point.
  *
@@ -282,6 +284,9 @@ cdbparallelize(Plan *plan,
 	/* Restore the global count of PARAM_EXEC from the top plan node. */
 	plan->nParamExec = nParamExec;
 
+	if (mpp_enable_motion_deadlock_sanity)
+		motion_sanity_check(plan);
+
 	return plan;
 }
 
@@ -394,7 +399,7 @@ prescan_walker(Node *node, PlanProfile * context)
 			 */
 			return false;
 
-		case T_Motion:			
+		case T_Motion:
 			context->dispatchParallel = TRUE;
 			context->sliceDepth++;
 			
@@ -1008,3 +1013,153 @@ adjustPlanFlow(Plan        *plan,
     return true;                /* success */
 }                               /* adjustPlanFlow */
 
+#define SANITY_MOTION 0x1
+#define SANITY_DEADLOCK 0x2
+
+static bool
+motion_sanity_walker(Node *node, int *result)
+{
+	int left_result=0;
+	int right_result=0;
+	bool deadlock_safe = false;
+	char *branch_label;
+
+	if (node == NULL)
+		return false;
+
+	if (!is_plan_node(node))
+		return false;
+
+	/* special handling for branch points */
+	switch (nodeTag(node))
+	{
+		case T_HashJoin: /* Hash join can't deadlock -- it fully
+						  * materializes its inner before switching to
+						  * its outer. */
+			branch_label = "HJ";
+			deadlock_safe = true;
+			break;
+		case T_AdaptiveNestLoop:
+			branch_label = "ANL";
+			break;
+		case T_NestLoop: /* Nested loop joins are safe only if the
+						  * prefetch flag is set */
+			branch_label = "NL";
+			if (((NestLoop *)node)->join.prefetch_inner)
+				deadlock_safe = true;
+			break;
+		case T_MergeJoin:
+			branch_label = "MJ";
+			break;
+		default:
+			branch_label = NULL;
+			break;
+	}
+
+	/* now scan the subplans */
+	switch (nodeTag(node))
+	{
+		case T_Result:
+		case T_Append:
+		case T_SeqScan:
+		case T_IndexScan:
+		case T_BitmapIndexScan:
+		case T_BitmapHeapScan:
+		case T_TidScan:
+		case T_SubqueryScan:
+		case T_FunctionScan:
+		case T_ValuesScan:
+		case T_Group:
+		case T_Agg:
+		case T_Unique:
+		case T_Hash:
+		case T_SetOp:
+		case T_Limit:
+			if (plan_tree_walker(node, motion_sanity_walker, result))
+				return true;
+			break;
+
+		case T_Motion:
+			if (plan_tree_walker(node, motion_sanity_walker, result))
+				return true;
+			*result |= SANITY_MOTION;
+			elog(DEBUG5, "   found motion");
+			break;
+
+		case T_Sort:
+			if (plan_tree_walker(node, motion_sanity_walker, result))
+				return true;
+
+			/* sort internally materializes */
+			*result &= ~SANITY_MOTION;
+			break;
+
+		case T_Material:
+			/* discover any deadlocks below */
+			if (plan_tree_walker(node, motion_sanity_walker, result))
+				return true;
+			break;
+
+		case T_HashJoin:
+		case T_AdaptiveNestLoop:
+		case T_NestLoop:
+		case T_MergeJoin:
+		{
+			Plan *plan = (Plan *)node;
+
+			elog(DEBUG5, "    %s going left", branch_label);
+			if (motion_sanity_walker((Node *)plan->lefttree, &left_result))
+				return true;
+			elog(DEBUG5, "    %s going right", branch_label);
+			if (motion_sanity_walker((Node *)plan->righttree, &right_result))
+				return true;
+
+			elog(DEBUG5, "    %s branch point left 0x%x right 0x%x",
+				 branch_label, left_result, right_result);
+
+			/* deadlocks get sent up immediately */
+			if ((left_result & SANITY_DEADLOCK) ||
+				(right_result & SANITY_DEADLOCK))
+			{
+				*result |= SANITY_DEADLOCK;
+				break;
+			}
+			/* if this node is "deadlock safe" then even if we have
+			 * motion on both sides we will not deadlock (because the
+			 * access pattern is deadlock safe: all rows are retrieved
+			 * from one side before the first row from the other). */
+			if (!deadlock_safe && ((left_result & SANITY_MOTION) &&
+								   (right_result & SANITY_MOTION)))
+			{
+				elog(LOG, "FOUND MOTION DEADLOCK in %s", branch_label);
+				*result |= SANITY_DEADLOCK;
+				break;
+			}
+
+			*result |= left_result | right_result;
+
+			elog(DEBUG5, "    %s branch point left 0x%x right 0x%x res 0x%x",
+				 branch_label, left_result, right_result, *result);
+		}
+		break;
+		default:
+			break;
+	}
+	return false;
+}
+
+static void
+motion_sanity_check(Plan *plan)
+{
+	int sanity_result=0;
+
+	elog(DEBUG5, "Motion Deadlock Sanity Check");
+
+	if (motion_sanity_walker((Node *)plan, &sanity_result))
+	{
+		Insist(0);
+	}
+
+	if (sanity_result & SANITY_DEADLOCK)
+		elog(ERROR, "Post-planning sanity check detected motion deadlock.");
+}

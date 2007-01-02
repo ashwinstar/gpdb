@@ -385,6 +385,12 @@ extern int      mpp_segments_for_planner;
  */
 extern bool enable_agg_restruct;
 
+/* 
+ * Perform a post-planning scan of the final plan looking for motion deadlocks:
+ * emit verbose messages about any found.
+ */
+extern bool mpp_enable_motion_deadlock_sanity;
+
 /* ----- Experimental Features ----- */
 
 /* May MPP redistribute on the argument of a lone aggregate distinct in

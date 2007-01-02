@@ -1092,6 +1092,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"mpp_enable_motion_deadlock_sanity", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+			gettext_noop("Enable verbose check at planning time."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&mpp_enable_motion_deadlock_sanity,
+		false, NULL, NULL
+	},
+
+	{
 		{"mpp_is_primary", PGC_BACKEND, UNGROUPED,
 			gettext_noop("Reports session type as primary or mirror."),
 			NULL,
