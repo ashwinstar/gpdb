@@ -136,3 +136,14 @@ PQdescribePrepared        133
 PQdescribePortal          134
 PQsendDescribePrepared    135
 PQsendDescribePortal      136
+PQmotionListener	  200
+PQbuildMppQueryString     201
+PQsendMppQuery_shared     202
+truncatePQExpBuffer       203 
+appendPQExpBufferVA       204
+pqSaveMessageField        205
+pqFlush			  206
+pqPutMsgStart		  207	
+pqPutMsgEnd		  208
+pqCatenateResultError     209
+pqPutnchar 		  210
