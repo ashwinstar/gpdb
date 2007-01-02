@@ -2091,9 +2091,9 @@ tuplesort_sorted_insert(Tuplesortstate *state, SortTuple *tuple,
 
 	if (state->dumpcount || (state->mppsortflags != 1))
 	{
-		return
-				tuplesort_heap_insert(state, tuple,
-									  tupleindex, checkIndex);
+		tuplesort_heap_insert(state, tuple,
+							  tupleindex, checkIndex);
+		return;
 	}
 
 	/*
