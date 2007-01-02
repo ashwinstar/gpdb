@@ -19,7 +19,7 @@
 #include "executor/nodeSort.h"
 #include "miscadmin.h"
 #include "utils/tuplesort.h"
-
+#include "cdb/cdbvars.h" /* CDB *//* mpp_sort_flags */
 
 /* ----------------------------------------------------------------
  *		ExecSort
@@ -97,6 +97,7 @@ ExecSort(SortState *node)
 			int64 		limit = 0;
 			int64 		offset = 0;
 			int 		unique = 0;
+			int 		sort_flags = mpp_sort_flags;
 
 			if (node->limitCount)
 			{
@@ -132,7 +133,8 @@ ExecSort(SortState *node)
 			if (node->noduplicates)
 				unique = 1;
 			
-			cdb_tuplesort_init(tuplesortstate, offset, limit, unique);
+			cdb_tuplesort_init(tuplesortstate, offset, limit, unique, 
+							   sort_flags);
 		}
 
 

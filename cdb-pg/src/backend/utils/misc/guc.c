@@ -1886,7 +1886,16 @@ static struct config_int ConfigureNamesInt[] =
 		&Mpp_segment,
 		-999, INT_MIN, INT_MAX, NULL, NULL
 	},
-	
+
+	{
+		{"mpp_sort_flags", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+			gettext_noop("Experimental feature: Generic sort flags."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&mpp_sort_flags,
+		0, 0, INT_MAX, NULL, NULL
+	},
 	
 	{
 		{"mpp_interconnect_setup_timeout", PGC_USERSET, UNGROUPED,

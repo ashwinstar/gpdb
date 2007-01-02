@@ -251,6 +251,7 @@ struct Tuplesortstate
 	bool		memtupblimited; /* true when hit the limit */
 	int64  		dumpcount;	    /* count of dumps */ /*CDB*/
 	bool		noduplicates;   /* discard duplicate rows if true *//* CDB */
+	int			mppsortflags;   /* special sort flags*//* CDB */
 
 	/*
 	 * While building initial runs, this is the current output run number
@@ -409,6 +410,8 @@ static void beginmerge(Tuplesortstate *state);
 static void mergepreread(Tuplesortstate *state);
 static void mergeprereadone(Tuplesortstate *state, int srcTape);
 static void dumptuples(Tuplesortstate *state, bool alltuples);
+static void tuplesort_sorted_insert(Tuplesortstate *state, SortTuple *tuple,
+					  int tupleindex, bool checkIndex);
 static void tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 					  int tupleindex, bool checkIndex);
 static void tuplesort_heap_siftup(Tuplesortstate *state, bool checkIndex, 
@@ -498,7 +501,8 @@ tuplesort_begin_common(int workMem, bool randomAccess)
 	state->memtupsize = 1024;	/* initial guess */
 	state->memtupLIMIT = 0; /*CDB*/
 	state->memtupblimited = false;
-	state->dumpcount   = 0; /*CDB*/
+	state->dumpcount    = 0; /*CDB*/
+	state->mppsortflags = 0;   /* special sort flags*//* CDB */
 	state->memtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
 
 	USEMEM(state, GetMemoryChunkSpace(state->memtuples));
@@ -529,7 +533,7 @@ tuplesort_begin_common(int workMem, bool randomAccess)
  */
 void
 cdb_tuplesort_init(Tuplesortstate *state, 
-				   int64 offset, int64 limit, int unique)
+				   int64 offset, int64 limit, int unique, int sort_flags)
 {
 	/* set a limit to internal sorts. If the offset is non-zero but
 	 * the limit is not set, then no limit */
@@ -539,6 +543,8 @@ cdb_tuplesort_init(Tuplesortstate *state,
 	}
 	if (unique)
 		state->noduplicates = true;
+
+	state->mppsortflags = sort_flags;
 }
 
 Tuplesortstate *
@@ -931,7 +937,7 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			else
 			{
 				/* sorting LIMIT or noduplicates: only one run */
-				tuplesort_heap_insert(state, tuple, state->currentRun, false);
+				tuplesort_sorted_insert(state, tuple, state->currentRun, false);
 			}
 
 			/*
@@ -2043,7 +2049,6 @@ tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 					  int tupleindex, bool checkIndex)
 {
 	SortTuple  *memtuples;
-	SortTuple  *freetup;
 	int			j;
 
 	/*
@@ -2057,10 +2062,59 @@ tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 	memtuples = state->memtuples;
 	Assert(state->memtupcount < state->memtupsize);
 
-	if (!state->dumpcount && state->memtupblimited) 
+	/*
+	 * Sift-up the new entry, per Knuth 5.2.3 exercise 16. Note that Knuth is
+	 * using 1-based array indexes, not 0-based.
+	 */
+	j = state->memtupcount++;
+	while (j > 0)
+	{
+		int			i = (j - 1) >> 1;
+
+		if (HEAPCOMPARE(tuple, &memtuples[i]) >= 0)
+			break;
+		memtuples[j] = memtuples[i];
+		j = i;
+	}
+	memtuples[j] = *tuple;
+}
+
+static void
+tuplesort_sorted_insert(Tuplesortstate *state, SortTuple *tuple,
+						int tupleindex, bool checkIndex)
+{
+	SortTuple  *memtuples;
+	SortTuple  *freetup;
+	int			comparestat;
+	int			j;
+	int         searchpoint = 0;
+
+	if (state->dumpcount || (state->mppsortflags != 1))
+	{
+		return
+				tuplesort_heap_insert(state, tuple,
+									  tupleindex, checkIndex);
+	}
+
+	/*
+	 * Save the tupleindex --- see notes above about writing on *tuple. It's a
+	 * historical artifact that tupleindex is passed as a separate argument
+	 * and not in *tuple, but it's notationally convenient so let's leave it
+	 * that way.
+	 */
+	tuple->tupindex = tupleindex;
+
+	memtuples = state->memtuples;
+	Assert(state->memtupcount < state->memtupsize);
+
+	/* compare to the last value first */
+	comparestat = 
+			HEAPCOMPARE(tuple, &memtuples[state->memtupcount - 1]);
+
+	if (state->memtupblimited) 
 	{
 		/* discard the last tuple if it exceeds the LIMIT */
-		if (HEAPCOMPARE(tuple, &memtuples[state->memtupcount - 1]) >= 0)
+		if (comparestat >= 0)
 		{
 			freetup = tuple;
 			goto L_freetup;
@@ -2071,86 +2125,120 @@ tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 		}
 	}
 
-	/*
-	 * Sift-up the new entry, per Knuth 5.2.3 exercise 16. Note that Knuth is
-	 * using 1-based array indexes, not 0-based.
-	 */
-	j = state->memtupcount++;
-	while (j > 0)
+	if (state->noduplicates && (0 == comparestat))
 	{
-		int			i = (j - 1) >> 1;
-
-		/* duplicate check will catch equality later */
-		if (HEAPCOMPARE(tuple, &memtuples[i]) >= 0)
-			break;
-		memtuples[j] = memtuples[i];
-		j = i;
+		freetup = tuple;
+		goto L_freetup;
 	}
 
-	memtuples[j] = *tuple;
+	/* j is the last array index to memtuples, and memtupcount is the
+	 * number of values 
+	 */
+	j = state->memtupcount++;
 
-	if (!state->dumpcount && state->noduplicates && (j > 0))
+	if (comparestat >= 0)
 	{
-		/* check if parent or sibling is a duplicate */
+		memtuples[j] = *tuple;
+		return;
+	}
 
-		/* don't need to check our children because... */
+	if (j > 1)
+	{
+		int lefty  = 0;
+		int righty = j-1;
 
-		int			parent  = ((j + 1) >> 1) - 1;
-		int			sibling = (2 * parent) + 1;
-		int         checkidx = parent;
+		righty--;
 
-		/* first child is at 2p+1, next at 2p+2 */
-		if (sibling == j) sibling++;
+        while (1)
+        {
+			int middle;
 
-		while (1)
-		{				
-			if (HEAPCOMPARE(tuple, &memtuples[checkidx]) == 0)
-			{
-				/* discard */
-				if (j == (state->memtupcount - 1))
+			if (lefty > righty)
+					break;
+
+			middle = (lefty + righty) / 2;
+
+			comparestat = 
+					HEAPCOMPARE(tuple, &memtuples[middle]);
+
+            if (comparestat < 0)
+            {
+				/* if key < current entry then keep moving left
+				 * (eliminate the right interval) 
+				 */
+                righty = middle - 1;
+            }
+            else
+            {
+				/* check if can free a duplicate */
+				if (state->noduplicates && (0 == comparestat))
 				{
-					/* can toss the last element easily */
-					--state->memtupcount;
+					state->memtupcount--;
 					freetup = tuple;
 					goto L_freetup;
 				}
-				else
-				{
-					/* need to discard an interior node and sift up */
-					freetup = tuple;
-					{
-						HeapTuple	htup = (HeapTuple) freetup->tuple;
-						FREEMEM(state, GetMemoryChunkSpace(htup));
-						heap_freetuple(htup);
-					}
-					tuplesort_heap_siftup(state, checkIndex, j);
-				}
 
-				break;
-			}
-			if (checkidx == sibling)
-				break;
-			else
-				checkidx = sibling;
-			if (checkidx >= (state->memtupcount))
-				break;
+				/* if key >= current entry then keep moving right
+                 (eliminate the left interval).  Note that the return
+                 value for the estimate gets bumped up to the current
+                 position, because we can start a linear scan from
+                 this location */
+
+                searchpoint = middle;
+                lefty  = middle + 1;
+            }
+        } /* end while */
+    
+	}
+
+	/* Note: only go to position j-1, because we haven't filled in
+	 * memtuples[j] yet 
+	 */
+	for (; searchpoint < j; searchpoint++)
+	{
+		comparestat = 
+				HEAPCOMPARE(tuple, &memtuples[searchpoint]);
+		if (comparestat < 0)
+		{
+			break;
 		}
+		if (searchpoint >= (j-1))
+			break;
+	}
 
-	} /* end if discard duplicates */
+	/* 
+	   if only a single tuple, and new tuple < memtuple[0], then
+	   searchpoint = 0, so memtuple[0] is moved to memtuple[1].  
 
+	   If new tuple is less than the last tuple, then searchpoint is
+	   set to j-1, so memtuple[j-1] is moved to memtuple[j], which is
+	   correct 
+	*/
+
+	/* check if can free a duplicate */
+	if (state->noduplicates && (0 == comparestat))
+	{
+		state->memtupcount--;
+		freetup = tuple;
+		goto L_freetup;
+	}
+
+	/* move the other elements over by one */
+	{
+		void	*src = &memtuples[searchpoint];
+		void	*dst = &memtuples[searchpoint+1];
+		size_t	len = (j-searchpoint) * sizeof(SortTuple);
+		memmove(dst, src, len);
+
+		memtuples[searchpoint] = *tuple;		
+	}
 
 	/* CDB: always add new value if never dumped or no limit, else
 	 * drop the last value if it exceeds the limit 
 	 */
-	if ((!state->dumpcount && state->memtupLIMIT) 
+	if ((state->memtupLIMIT) 
 		&& (state->memtupcount > state->memtupLIMIT))
 	{
-		qsort_arg((void *) state->memtuples,
-				  state->memtupcount,
-				  sizeof(SortTuple),
-				  (qsort_arg_comparator) state->comparetup,
-				  (void *) state);
-
 		/* set blimited true if have limit and memtuples are sorted */
 		state->memtupblimited = true;			
 

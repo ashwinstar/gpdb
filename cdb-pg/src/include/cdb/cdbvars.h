@@ -426,6 +426,12 @@ extern bool mpp_enable_sort_limit;
  */
 extern bool mpp_enable_sort_distinct;
 
+/* Generic MPP sort flag for testing.
+ *
+ *
+ */
+extern int mpp_sort_flags;
+
 /* The maximum number of times on average that the hybrid hashed aggregation
  * algorithm will plan to spill an input row to disk before including it in
  * an aggregation.  Increasing this parameter will cause the planner to choose 

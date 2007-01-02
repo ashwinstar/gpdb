@@ -103,6 +103,7 @@ bool		mpp_enable_preunique = FALSE;
 bool		mpp_enable_explain_allstat = FALSE;
 bool		mpp_enable_sort_limit = FALSE;
 bool		mpp_enable_sort_distinct = FALSE;
+int			mpp_sort_flags = 0;
 
 /* ----------------
  * Non-GUC globals

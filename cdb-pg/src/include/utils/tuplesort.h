@@ -56,7 +56,8 @@ extern Tuplesortstate *tuplesort_begin_datum(Oid datumType,
 					  int workMem, bool randomAccess);
 
 extern void cdb_tuplesort_init(Tuplesortstate *state, 
-							   int64 offset, int64 limit, int unique);
+							   int64 offset, int64 limit, int unique,
+							   int sort_flags);
 
 extern void tuplesort_puttupleslot(Tuplesortstate *state,
 					   TupleTableSlot *slot);
