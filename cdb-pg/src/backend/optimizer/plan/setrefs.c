@@ -294,7 +294,6 @@ set_plan_references(Plan *plan, List *rtable)
 			break;
 		case T_Hash:
 		case T_Material:
-		case T_Sort:
 		case T_Unique:
 		case T_SetOp:
 
@@ -313,6 +312,13 @@ set_plan_references(Plan *plan, List *rtable)
 			 */
 			Assert(plan->qual == NIL);
             plan->targetlist = cdb_build_identity_tlist(NIL, plan->lefttree, OUTER);
+			break;
+			/* CDB: Sort now has live expressions which it has to fix up. */
+		case T_Sort:
+			Assert(plan->qual == NIL);
+            plan->targetlist = cdb_build_identity_tlist(NIL, plan->lefttree, OUTER);
+			fix_expr_references(plan, ((Sort *) plan)->limitOffset);
+			fix_expr_references(plan, ((Sort *) plan)->limitCount);
 			break;
 		case T_Limit:
 
