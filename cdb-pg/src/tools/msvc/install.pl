@@ -55,7 +55,7 @@ sub CopyFiles {
 		print ".";
 		$f = $basedir . $f;
 		die "No file $f\n" if (! -f $f);
-		copy($f, $target . basename($f)) || croak "Could not copy $f to $target" . basename($f) . " to $target" . basename($f) . "\n";
+		copy($f, $target . basename($f)) # || croak "Could not copy $f to $target" . basename($f) . " to $target" . basename($f) . "\n";
 	}
 	print "\n";
 }
@@ -67,12 +67,13 @@ sub CopySetOfFiles {
 	my $D;
 
 	print "Copying $what";
-	open($D, "dir /b /s $spec |") || croak "Could not list $spec\n";
+	open($D, "cmd /c dir /b /s $spec |") || croak "Could not list $spec\n";
 	while (<$D>) {
 		chomp;
 		my $tgt = $target . basename($_);
 		print ".";
-		copy($_, $tgt) || croak "Could not copy $_\n";
+		copy($_, $tgt) 
+#|| croak "Could not copy $_\n";
 	}
 	close($D);
 	print "\n";
