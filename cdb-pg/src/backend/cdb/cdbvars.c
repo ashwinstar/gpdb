@@ -277,6 +277,7 @@ assign_mpp_role(const char *newval, bool doit, GucSource source)
 
 		Mpp_role = newrole;
 
+		if (source != PGC_S_DEFAULT)
 		if (do_connect)
 		{
 			/*
