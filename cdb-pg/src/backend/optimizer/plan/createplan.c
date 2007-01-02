@@ -1533,7 +1533,6 @@ create_nestloop_plan(CreatePlanContext *ctx,
 	List		*joinclauses;
 	List		*otherclauses;
 	NestLoop	*join_plan;
-	bool		prefetch=false;
 
 	if (IsA(best_path->jpath.innerjoinpath, IndexPath))
 	{
@@ -1613,14 +1612,6 @@ create_nestloop_plan(CreatePlanContext *ctx,
 	joinclauses = order_qual_clauses(ctx->root, joinclauses);
 	otherclauses = order_qual_clauses(ctx->root, otherclauses);
 
-	if (IsA(best_path->jpath.innerjoinpath, MaterialPath))
-	{
-		MaterialPath *mp = (MaterialPath *)best_path->jpath.innerjoinpath;
-
-		if (!mp->subpath->rescannable)
-			prefetch = true;
-	}
-
 	join_plan = make_nestloop(tlist,
 							  joinclauses,
 							  otherclauses,
@@ -1630,10 +1621,12 @@ create_nestloop_plan(CreatePlanContext *ctx,
 
 	copy_path_costsize(&join_plan->join.plan, &best_path->jpath.path);
 
-	if (prefetch)
+	if (IsA(best_path->jpath.innerjoinpath, MaterialPath))
 	{
-		join_plan->join.prefetch_inner = true;
-		((Material *)join_plan->join.plan.righttree)->cdb_strict = true;
+		MaterialPath *mp = (MaterialPath *)best_path->jpath.innerjoinpath;
+
+		if (mp->cdb_strict)
+			join_plan->join.prefetch_inner = true;
 	}
 
     /*

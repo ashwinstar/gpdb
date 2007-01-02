@@ -2279,16 +2279,19 @@ create_nestloop_path(PlannerInfo *root,
     {
         if (!inner_path->rescannable)
 		{
-			/* In order for materialize to fully fetch the underlying (required to avoid our
-			 * deadlock hazard) we must set cdb_strict! */
+			/* NLs potentially rescan the inner; if our inner path
+			 * isn't rescannable we have to add a materialize node */
 			inner_path = (Path *)create_material_path(inner_path->parent, inner_path);
-			((MaterialPath *)inner_path)->cdb_strict = true;
-		}
-        else if (inner_path != unmoved_inner_path &&
-                 inner_path->motionHazard)
-		{
-            inner_path = (Path *)create_material_path(inner_path->parent, inner_path);
-            ((MaterialPath *)inner_path)->cdb_strict = true;
+
+			/* If we have motion on the outer, to avoid a deadlock; we
+			 * need to set cdb_strict. In order for materialize to
+			 * fully fetch the underlying (required to avoid our
+			 * deadlock hazard) we must set cdb_strict! */
+			if (inner_path->motionHazard && outer_path->motionHazard)
+			{
+				((MaterialPath *)inner_path)->cdb_strict = true;
+				inner_path->motionHazard = false;
+			}
 		}
     }
 
@@ -2427,8 +2430,20 @@ create_mergejoin_path(PlannerInfo *root,
 	pathnode->jpath.joinrestrictinfo = restrict_clauses;
 	pathnode->jpath.path.pathkeys = pathkeys;
     pathnode->jpath.path.locus = join_locus;
-    pathnode->jpath.path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
-    pathnode->jpath.path.rescannable = outer_path->rescannable && inner_path->rescannable;
+
+	/* if we're going to push a sort below *both* sides, we definitely
+	 * don't have a motion hazard; and we're definitely rescannable
+	 * (as both sorts will be rescannable) */
+	if (innersortkeys != NIL && outersortkeys != NIL)
+	{
+		pathnode->jpath.path.motionHazard = false;
+		pathnode->jpath.path.rescannable = true;
+	}
+	else
+	{
+		pathnode->jpath.path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
+		pathnode->jpath.path.rescannable = outer_path->rescannable && inner_path->rescannable;
+	}
 	pathnode->path_mergeclauses = mergeclauses;
 	pathnode->outersortkeys = outersortkeys;
 	pathnode->innersortkeys = innersortkeys;
@@ -2494,7 +2509,10 @@ create_hashjoin_path(PlannerInfo *root,
 	/* A hashjoin never has pathkeys, since its ordering is unpredictable */
 	pathnode->jpath.path.pathkeys = NIL;
     pathnode->jpath.path.locus = join_locus;
-    pathnode->jpath.path.motionHazard = false;  /* outer + inner are materialized */
+
+	/* inner is materialized in the hash, but we may have an outer hazard. */
+	pathnode->jpath.path.motionHazard = outer_path->motionHazard;
+
 	pathnode->path_hashclauses = hashclauses;
 
     /*
