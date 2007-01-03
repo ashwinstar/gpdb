@@ -3468,10 +3468,11 @@ CopyFrom(CopyState cstate)
 						if (!isnull)
 						{
 							cstate->cur_attname = NameStr(attr[m]->attname);
-							values[m] = FunctionCall3(&in_functions[m],
-													  CStringGetDatum(string),
-											ObjectIdGetDatum(typioparams[m]),
-										  Int32GetDatum(attr[m]->atttypmod));
+							values[m] = InputFunctionCall(&in_functions[m],
+														  string,
+														  typioparams[m],
+														  attr[m]->atttypmod);
+							
 							nulls[m] = ' ';
 							cstate->cur_attname = NULL;
 						}
