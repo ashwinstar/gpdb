@@ -1317,11 +1317,12 @@ setup_config(void)
 
 	conflines = add_assignment(conflines, "max_fsm_pages", "%d", n_fsm_pages);
 
-#if DEF_PGPORT != 5432
     /* Upd comment to document the default port configured by --with-pgport */
-	snprintf(repltok, sizeof(repltok), "#port = %d", DEF_PGPORT);
-	conflines = replace_token(conflines, "#port = 5432", repltok);
-#endif
+    if (DEF_PGPORT != 5432)
+    {
+        snprintf(repltok, sizeof(repltok), "#port = %d", DEF_PGPORT);
+        conflines = replace_token(conflines, "#port = 5432", repltok);
+    }
 
 	conflines = add_assignment(conflines, "lc_messages", "'%s'",
                                escape_quotes(lc_messages));
