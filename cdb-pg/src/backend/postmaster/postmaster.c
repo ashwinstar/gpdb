@@ -636,14 +636,22 @@ PostmasterMain(int argc, char *argv[])
 
 	/*
 	 * Check for invalid combinations of GUC settings.
+     *
+     * CDB: Decouple NBuffers from MaxBackends.  The entry db doesn't benefit
+     * from buffers in excess of the global catalog size; this is typically 
+     * small and unrelated to the number of clients.  Segment dbs need enough
+     * buffers to accommodate the QEs concurrently accessing the database; but 
+     * non-leaf QEs don't necessarily access the database (some are used only
+     * for sorting, hashing, etc); so again the number of buffers need not be
+     * in proportion to the number of connections.
 	 */
-	if (NBuffers < 2 * MaxBackends || NBuffers < 16)
+	if (NBuffers < 16)
 	{
 		/*
 		 * Do not accept -B so small that backends are likely to starve for
 		 * lack of buffers.  The specific choices here are somewhat arbitrary.
 		 */
-		write_stderr("%s: the number of buffers (-B) must be at least twice the number of allowed connections (-N) and at least 16\n", progname);
+		write_stderr("%s: the number of buffers (-B) must be at least 16\n", progname);
 		ExitPostmaster(1);
 	}
 
