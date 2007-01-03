@@ -1110,7 +1110,11 @@ build_mppqeid_params(PQExpBuffer buf)
 #ifdef HAVE_INT64_TIMESTAMP
 	appendPQExpBuffer(buf, INT64_FORMAT ";", PgStartTime);
 #else
+#ifndef _WIN32
 	appendPQExpBuffer(buf, "%.14a;", PgStartTime);
+#else
+	appendPQExpBuffer(buf, "%g;", PgStartTime);
+#endif 
 #endif
 
 	/* change last semicolon to space */
