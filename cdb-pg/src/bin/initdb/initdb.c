@@ -150,6 +150,9 @@ static char backend_exec[MAXPGPATH];
 
 static void *pg_malloc(size_t size);
 static char *xstrdup(const char *s);
+static char **add_assignment(char **lines, const char *varname, const char *fmt, ...)
+                /* This extension allows gcc to check the format string */
+                __attribute__((format(printf, 3, 4)));
 static char **replace_token(char **lines,
 			  const char *token, const char *replacement);
 
@@ -276,6 +279,92 @@ xstrdup(const char *s)
 	}
 	return result;
 }
+
+/*
+ * add_assignment 
+ *
+ * Returns a copy of the array of lines, with an additional line inserted:
+ * an assignment (maybe commented out) to the specified configuration variable.
+ *
+ * If there is already an assignment to the variable, that setting remains in 
+ * effect, taking precedence over the caller's requested setting, which is 
+ * inserted as a comment.  Else the caller's requested assignment is inserted.
+ */
+static char **
+add_assignment(char **lines, const char *varname, const char *fmt, ...)
+{
+	va_list		args;
+	int			isrc;
+    int         iinsert = -1;
+    int         j;
+    int         varnamelen = strlen(varname);
+	char	  **result;
+    char        buf[200];
+    char       *bufp = buf;
+    char       *bufe = buf + sizeof(buf) - 3;
+    bool        superseded = false;
+
+    /* Look for an assignment to the given variable, maybe commented out. */
+    for (isrc = 0; lines[isrc] != NULL; isrc++)
+    {
+        char   *cp = lines[isrc];
+        bool    comment = false;
+
+        while (isspace(*cp))
+            cp++;
+
+        if (*cp == '#')
+        {
+            cp++;
+            comment = true;
+            while (isspace(*cp))
+                cp++;
+        }
+
+        if (0 != strncmp(cp, varname, varnamelen))
+            continue;
+        cp += varnamelen;
+        while (isspace(*cp))
+            cp++;
+        if (*cp != '=')
+            continue;
+
+        /* Found assignment (or commented-out assignment) to given varname. */
+        if (!comment)
+            superseded = true;
+        if (iinsert < 0)
+            iinsert = isrc;
+    }
+
+    /* Build assignment. */
+    va_start(args, fmt);
+    if (superseded)
+        bufp += snprintf(bufp, bufe-bufp, "#");
+    bufp += snprintf(bufp, bufe-bufp, "%s = ", varname);
+    bufp += vsnprintf(bufp, bufe-bufp, fmt, args);
+	va_end(args);
+
+    /* Tab to align comments */
+    j = (int)(bufp - buf);
+    do 
+    {
+        *bufp++ = '\t';
+        j += 8;
+    } while (j < 40);
+    
+    /* Append comment. */   
+    bufp += snprintf(bufp, bufe-bufp, "# inserted by initdb\n");
+
+    /* Make a copy of the ptr array, opening up a hole after the chosen line. */
+    result = (char **)pg_malloc((isrc + 2) * sizeof(char *));
+    memcpy(result, lines, iinsert * sizeof(lines[0]));
+    memcpy(result+iinsert+1, lines+iinsert, (isrc - iinsert + 1) * sizeof(lines[0]));
+
+    /* Insert assignment. */
+    result[iinsert] = xstrdup(buf); 
+
+    return result;
+}                               /* add_assignment */
 
 /*
  * make a copy of the array of lines, with token replaced by replacement
@@ -1187,9 +1276,11 @@ test_config_settings(void)
 				 DEVNULL, DEVNULL, SYSTEMQUOTE);
 		status = system(cmd);
 		if (status == 0)
-			break;
+        {
+	        n_buffers = test_buffs;
+            break;
+        }
 	}
-	n_buffers = test_buffs;
 	n_fsm_pages = FSM_FOR_BUFS(n_buffers);
 
 	if ((n_buffers * (BLCKSZ/1024)) % 1024 == 0)
@@ -1215,55 +1306,48 @@ setup_config(void)
 
 	conflines = readfile(conf_file);
 
-	snprintf(repltok, sizeof(repltok), "max_connections = %d", n_connections);
-	conflines = replace_token(conflines, "#max_connections = 100", repltok);
+    conflines = add_assignment(conflines, "max_connections", "%d", n_connections);
 
 	if ((n_buffers * (BLCKSZ/1024)) % 1024 == 0)
-		snprintf(repltok, sizeof(repltok), "shared_buffers = %dMB",
-				 (n_buffers * (BLCKSZ/1024)) / 1024);
+        conflines = add_assignment(conflines, "shared_buffers", "%dMB",
+                                   (n_buffers * (BLCKSZ/1024)) / 1024);
 	else
-		snprintf(repltok, sizeof(repltok), "shared_buffers = %dkB",
-				 n_buffers * (BLCKSZ/1024));
-	conflines = replace_token(conflines, "#shared_buffers = 32MB", repltok);
+        conflines = add_assignment(conflines, "shared_buffers", "%dkB",
+                                   n_buffers * (BLCKSZ/1024));
 
-	snprintf(repltok, sizeof(repltok), "max_fsm_pages = %d", n_fsm_pages);
-	conflines = replace_token(conflines, "#max_fsm_pages = 1638400", repltok);
+	conflines = add_assignment(conflines, "max_fsm_pages", "%d", n_fsm_pages);
 
 #if DEF_PGPORT != 5432
+    /* Upd comment to document the default port configured by --with-pgport */
 	snprintf(repltok, sizeof(repltok), "#port = %d", DEF_PGPORT);
 	conflines = replace_token(conflines, "#port = 5432", repltok);
 #endif
 
-	snprintf(repltok, sizeof(repltok), "lc_messages = '%s'",
-			 escape_quotes(lc_messages));
-	conflines = replace_token(conflines, "#lc_messages = 'C'", repltok);
+	conflines = add_assignment(conflines, "lc_messages", "'%s'",
+                               escape_quotes(lc_messages));
 
-	snprintf(repltok, sizeof(repltok), "lc_monetary = '%s'",
-			 escape_quotes(lc_monetary));
-	conflines = replace_token(conflines, "#lc_monetary = 'C'", repltok);
+	conflines = add_assignment(conflines, "lc_monetary", "'%s'",
+                               escape_quotes(lc_monetary));
 
-	snprintf(repltok, sizeof(repltok), "lc_numeric = '%s'",
-			 escape_quotes(lc_numeric));
-	conflines = replace_token(conflines, "#lc_numeric = 'C'", repltok);
+	conflines = add_assignment(conflines, "lc_numeric", "'%s'",
+                               escape_quotes(lc_numeric));
 
-	snprintf(repltok, sizeof(repltok), "lc_time = '%s'",
-			 escape_quotes(lc_time));
-	conflines = replace_token(conflines, "#lc_time = 'C'", repltok);
+	conflines = add_assignment(conflines, "lc_time", "'%s'",
+                               escape_quotes(lc_time));
 
 	switch (locale_date_order(lc_time))
 	{
 		case DATEORDER_YMD:
-			strcpy(repltok, "datestyle = 'iso, ymd'");
+	        conflines = add_assignment(conflines, "datestyle", "'iso, ymd'");
 			break;
 		case DATEORDER_DMY:
-			strcpy(repltok, "datestyle = 'iso, dmy'");
+	        conflines = add_assignment(conflines, "datestyle", "'iso, dmy'");
 			break;
 		case DATEORDER_MDY:
 		default:
-			strcpy(repltok, "datestyle = 'iso, mdy'");
+	        conflines = add_assignment(conflines, "datestyle", "'iso, mdy'");
 			break;
 	}
-	conflines = replace_token(conflines, "#datestyle = 'iso, mdy'", repltok);
 
 	snprintf(path, sizeof(path), "%s/postgresql.conf", pg_data);
 
