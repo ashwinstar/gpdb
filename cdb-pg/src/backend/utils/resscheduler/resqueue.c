@@ -22,7 +22,6 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/lock.h"
-#include "storage/proc.h"
 #include "storage/lmgr.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
