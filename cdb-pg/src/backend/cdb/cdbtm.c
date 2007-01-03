@@ -549,6 +549,16 @@ tmShmemInit(void)
 	if (!shared)
 		elog(FATAL, "could not initialize transaction manager share memory");
 
+	shmControlLock = shared->ControlLock;
+	shmTmRecoverred = &shared->recoverred;
+	shmGIDSeq = &shared->seqno;
+	shmLatestLogFileNo = &shared->latestLogFileNo;
+	shmEarliestLogFileNo = &shared->earliestLogFileNo;
+	shmLastFlushedFileNo = &shared->lastFlushedFileNo;
+	shmLastFlushedFileOffset = &shared->lastFlushedFileOffset;
+	shmNumGxacts = &shared->num_active_xacts;
+	shmGxactArray = shared->gxact_array;
+
 	if (!IsUnderPostmaster)
 		/* Initialize locks and shared memory area */
 	{
@@ -556,16 +566,7 @@ tmShmemInit(void)
 		TMGXACT    *gxact = NULL;
 
 		shared->ControlLock = LWLockAssign();
-
 		shmControlLock = shared->ControlLock;
-		shmTmRecoverred = &shared->recoverred;
-		shmGIDSeq = &shared->seqno;
-		shmLatestLogFileNo = &shared->latestLogFileNo;
-		shmEarliestLogFileNo = &shared->earliestLogFileNo;
-		shmLastFlushedFileNo = &shared->lastFlushedFileNo;
-		shmLastFlushedFileOffset = &shared->lastFlushedFileOffset;
-		shmNumGxacts = &shared->num_active_xacts;
-		shmGxactArray = shared->gxact_array;
 
 		/* initialize gxact array */
 		gxact = (TMGXACT *) (shmGxactArray + max_tm_gxacts);
