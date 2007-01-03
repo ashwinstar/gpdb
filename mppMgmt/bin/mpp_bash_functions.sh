@@ -269,11 +269,11 @@ ERROR_EXIT () {
 
 READ_CHK () {
 	READ_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c" select count(*) from $CONFIG_TABLE where port<0;"`
-	LOG_MSG "[INFO]:-Obtained -ve port read count $READ_COUNT" 
+	LOG_MSG "[INFO]:-Obtained -ve port read count $READ_COUNT"
 }
 
 ERROR_CHK () {
-	if [ $# -ne 3 ];then 
+	if [ $# -ne 3 ];then
 		LOG_MSG "[WARN]:-Incorrect # parameters supplied to $FUNCNAME"
 		return;fi
 	RETVAL=$1;shift
@@ -549,7 +549,7 @@ GET_MASTER_PORT () {
 				ERROR_EXIT "[FATAL]:-No $MASTER_DATA_DIRECTORY directory" 2
 		fi
 		if [ -r $MASTER_DATA_DIRECTORY/$PG_CONF ];then
-			MASTER_PORT=`$GREP "^port" $MASTER_DATA_DIRECTORY/$PG_CONF |$GREP -v "^#"|$CUT -d= -f2|$AWK '{print $1}'`
+			MASTER_PORT=`$EGREP -o "^[[:space:]]*port[[:space:]]*=[[:space:]]*[[:digit:]]+" $MASTER_DATA_DIRECTORY/$PG_CONF | $TAIL -1 | $EGREP -o "[[:digit:]]+"`
 			if [ x"" == x"$MASTER_PORT" ];then
 			ERROR_EXIT "[FATAL]:-Failed to obtain master port number from $MASTER_DATA_DIRECTORY/$PG_CONF" 2
 			fi
@@ -569,7 +569,7 @@ CHK_ON_PASSIVE_STANDBY () {
 		MPPSYNC_COUNT=`$GREP -c mppsync $MASTER_DATA_DIRECTORY/postmaster.opts`
 	fi
 	if [ $PID -ne 0 ] && [ $MPPSYNC_COUNT -ne 0 ];then
-		LOG_MSG "[FATAL]:-Cannot run this script on a passive standby instance" 
+		LOG_MSG "[FATAL]:-Cannot run this script on a passive standby instance"
 		LOG_MSG "[FATAL]:-where there is a conflict with the current value of"
 		LOG_MSG "[FATAL]:-the MASTER_DATA_DIRECTORY environment variable setting."
 		ERROR_EXIT "[FATAL]:-Unable to process requested command" 2
@@ -620,8 +620,8 @@ BUILD_MASTER_PG_HBA_FILE () {
         	$ECHO "host     all         $USER_NAME         $ADDR/128       trust" >> ${MPP_DIR}/$PG_HBA
         done
         $ECHO "#other " >> ${MPP_DIR}/$PG_HBA
-        
-        
+
+
         $ECHO "host     all         $USER_NAME         $IP_ALLOW       md5" >> ${MPP_DIR}/$PG_HBA
         $ECHO "host     all         all                $IP_ALLOW       trust" >> ${MPP_DIR}/$PG_HBA
         LOG_MSG "[INFO]:-Complete Master $PG_HBA configuration"
@@ -830,9 +830,9 @@ RUN_COMMAND_REMOTE () {
 		LOG_MSG "[INFO]:-Commencing remote $TRUSTED_SHELL $HOST $COMMAND"
 		$TRUSTED_SHELL $HOST $COMMAND >> $LOG_FILE 2>&1
 		RETVAL=$?
-		if [ $RETVAL -ne 0 ]; then 
+		if [ $RETVAL -ne 0 ]; then
 			ERROR_EXIT "[FATAL]:- Command $COMMAND on $HOST failed with error status $RETVAL" 2
-		else 
+		else
 			LOG_MSG "[INFO]:-Completed $TRUSTED_SHELL $HOST $COMMAND"
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -862,12 +862,12 @@ PING_HOST () {
 	case $RETVAL in
 		0) LOG_MSG "[INFO]:-$TARGET_HOST contact established" ;;
 		1) if [ $PING_EXIT -eq 0 ];then
-			ERROR_EXIT "[FATAL]:-Unable to contact $TARGET_HOST" 2 
+			ERROR_EXIT "[FATAL]:-Unable to contact $TARGET_HOST" 2
 		   else
 		        LOG_MSG "[WARN]:-Unable to contact $TARGET_HOST"
 		   fi ;;
 		2) if [ $PING_EXIT -eq 0 ];then
-		 	ERROR_EXIT "[FATAL]:-Unknown host $TARGET_HOST" 2 
+		 	ERROR_EXIT "[FATAL]:-Unknown host $TARGET_HOST" 2
 		   else
 			LOG_MSG "[WARN]:-Unknown host $TARGET_HOST"
 		   fi ;;
@@ -948,13 +948,13 @@ fi
 OS_TYPE=`uname -s|tr '[A-Z]' '[a-z]'`
 case $OS_TYPE in
 	sunos ) IFCONFIG_TXT="-a inet"
-		PS_TXT="-ef" 
+		PS_TXT="-ef"
 		LIB_TYPE="LD_LIBRARY_PATH"
 		PG_METHOD=trust
 		HOST_ARCH_TYPE="uname -i"
 		DU_TXT="-s" ;;
-	linux ) IFCONFIG_TXT="" 
-		PS_TXT="ax" 
+	linux ) IFCONFIG_TXT=""
+		PS_TXT="ax"
 		LIB_TYPE="LD_LIBRARY_PATH"
 		PG_METHOD="ident sameuser"
 		HOST_ARCH_TYPE="uname -i"
