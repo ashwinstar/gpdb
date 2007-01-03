@@ -56,7 +56,7 @@ typedef enum
 extern bool *ftsEnabled;
 extern int *ftsAction;
 
-#define isFTSEnabled() (*ftsEnabled)
+#define isFTSEnabled() (ftsEnabled != NULL && *ftsEnabled)
 /* #define enableMirroring() (*ftsEnabled = (*ftsAction!=FTS_NONE)?true:false) */
 #define disableFTS() (*ftsEnabled = false)
 

@@ -67,25 +67,25 @@ FtsShmemInit(void)
 	if (!shared)
 		elog(FATAL, "FTS: could not initialize fault tolerance manager share memory");
 
+	/* Initialize locks and shared memory area */
+
+	ftsEnabled = &shared->ftsEnabled;
+	ftsControlLock = shared->ControlLock;
+	ftsSyncCount = &shared->ftsSyncCount;
+	ftsAction = &shared->ftsAction;
+	ftsReadOnlyFlag = &shared->ftsReadOnlyFlag;
+
+	ftsQDMirrorInfo = &shared->ftsQDMirror;
+	ftsSegDBTransientState = shared->ftsSegDBTransientState;
+	ftsSegDBTransientCount = &shared->ftsSegDBTransientCount;
+
 	if (!IsUnderPostmaster)
-		/* Initialize locks and shared memory area */
 	{
-		ftsEnabled = &shared->ftsEnabled;
 		shared->ControlLock = LWLockAssign();
-		ftsControlLock = shared->ControlLock;
-		ftsSyncCount = &shared->ftsSyncCount;
-		ftsAction = &shared->ftsAction;
-		ftsReadOnlyFlag = &shared->ftsReadOnlyFlag;
-
-		ftsQDMirrorInfo = &shared->ftsQDMirror;
-
 		ftsQDMirrorInfo->enabled = true; /* set default to true, will be set to
 										  * false if connection failed */
 		memset(ftsQDMirrorInfo->name, 0, sizeof(ftsQDMirrorInfo->name));
 		ftsQDMirrorInfo->port = 0;
-
-		ftsSegDBTransientState = shared->ftsSegDBTransientState;
-		ftsSegDBTransientCount = &shared->ftsSegDBTransientCount;
 
 		/* initialize */
 		shared->ftsSyncCount = 0;
