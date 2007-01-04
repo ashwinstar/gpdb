@@ -48,6 +48,13 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbllize.h"
 
+//#undef socket
+//#undef accept
+//#undef connect
+//#undef select
+//#undef recv
+//#undef send
+
 /*
  * Static Helper functions
  */
@@ -1273,7 +1280,7 @@ thread_DispatchCommand(void *arg)
 		 * Which QEs are still running and could send results to us?
 		 */
 		max_sock = -1;
-		MPP_FD_ZERO(pParms->mask);
+		MPP_FD_ZERO(&pParms->mask);
 
 		for (i = 0; i < db_count; i++)
 		{						/* loop to check connection status */
@@ -1289,7 +1296,7 @@ thread_DispatchCommand(void *arg)
 			if (sock >= 0 &&
 				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 			{
-				MPP_FD_SET(sock, pParms->mask);
+				MPP_FD_SET(sock, &pParms->mask);
 				max_sock = Max(max_sock, sock);
 			}
 
@@ -1326,7 +1333,7 @@ thread_DispatchCommand(void *arg)
 		tv.tv_usec = 0;
 
 		/* Block here until input is available. */
-		n = select(max_sock + 1, (fd_set *)pParms->mask, NULL, NULL, &tv);
+		n = select(max_sock + 1, (fd_set *)&pParms->mask, NULL, NULL, &tv);
 
 		if (n < 0)
 		{
@@ -1362,7 +1369,7 @@ thread_DispatchCommand(void *arg)
 			/* Skip this connection if it has no input available. */
 			sock = PQsocket(segdbDesc->conn);
 			if (sock >= 0 &&
-				!MPP_FD_ISSET(sock, pParms->mask))
+				!MPP_FD_ISSET(sock, &pParms->mask))
 				continue;
 
 			/* Receive and process results from this QE. */

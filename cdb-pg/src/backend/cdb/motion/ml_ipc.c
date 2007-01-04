@@ -368,7 +368,7 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
 		/* make sure we check for these. */
 		ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
-		memcpy(rset, pEntry->readSet, sizeof(mpp_fd_set));
+		memcpy(&rset, &pEntry->readSet, sizeof(mpp_fd_set));
 
 		/*
 		 * since we may have data in a local buffer, we may be able to
@@ -380,12 +380,12 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
 			conn = pEntry->conns + i;
 
 			if (conn->sockfd >= 0 &&
-                MPP_FD_ISSET(conn->sockfd, rset) &&
+                MPP_FD_ISSET(conn->sockfd, &rset) &&
                 conn->recvBytes != 0)
 			{
 				/* we have data on this socket, let's short-circuit our select */
-				MPP_FD_ZERO(rset);
-				MPP_FD_SET(conn->sockfd, rset);
+				MPP_FD_ZERO(&rset);
+				MPP_FD_SET(conn->sockfd, &rset);
 
 				skipSelect = true;
 			}
@@ -393,7 +393,7 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
 		if (skipSelect)
 			break;
 
-		n = select(pEntry->highReadSock + 1, (fd_set *)rset, NULL, NULL, &timeout);
+		n = select(pEntry->highReadSock + 1, (fd_set *)&rset, NULL, NULL, &timeout);
 		pMNEntry->sel_rd_wait += (tval.tv_sec - timeout.tv_sec) * 1000000 + (tval.tv_usec - timeout.tv_usec);
 		if (n < 0)
 		{
@@ -432,7 +432,7 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
 #endif
 
 		if (conn->sockfd >= 0 &&
-            MPP_FD_ISSET(conn->sockfd, rset))
+            MPP_FD_ISSET(conn->sockfd, &rset))
 		{
 #ifdef AMS_VERBOSE_LOGGING
 			elog(DEBUG5, "RecvTupleChunkFromAny() (fd %d) %d/%d", conn->sockfd, motNodeID, index);
@@ -590,7 +590,7 @@ DeregisterReadInterest(ChunkTransportState *transportStates,
      */
 	shutdown(conn->sockfd, SHUT_WR);
 
-	MPP_FD_CLR(conn->sockfd, pEntry->readSet);
+	MPP_FD_CLR(conn->sockfd, &pEntry->readSet);
 }
 
 static void
@@ -761,15 +761,15 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 
         iteration++;
 
-		MPP_FD_ZERO(rset);
-		MPP_FD_ZERO(wset);
-		MPP_FD_ZERO(eset);
+		MPP_FD_ZERO(&rset);
+		MPP_FD_ZERO(&wset);
+		MPP_FD_ZERO(&eset);
 
         /* Expecting any new inbound connections? */
         if (incoming_count < expectedTotalIncoming)
         {
             Insist(listenerFd >= 0);
-            MPP_FD_SET(listenerFd, rset);
+            MPP_FD_SET(listenerFd, &rset);
             highsock = listenerFd;
         }
 
@@ -778,7 +778,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
         {
 			conn = (MotionConn *)lfirst(cell);
             Insist(conn->state == mcsRecvRegMsg && conn->sockfd >= 0);
-            MPP_FD_SET(conn->sockfd, rset);
+            MPP_FD_SET(conn->sockfd, &rset);
             highsock = Max(highsock, conn->sockfd);
         }
 
@@ -838,13 +838,13 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
                     break;
                 case mcsConnecting:
                     Insist(conn->sockfd >= 0);
-                    MPP_FD_SET(conn->sockfd, wset);
-                    MPP_FD_SET(conn->sockfd, eset);
+                    MPP_FD_SET(conn->sockfd, &wset);
+                    MPP_FD_SET(conn->sockfd, &eset);
                     highsock = Max(highsock, conn->sockfd);
                     break;
                 case mcsSendRegMsg:
                     Insist(conn->sockfd >= 0);
-                    MPP_FD_SET(conn->sockfd, wset);
+                    MPP_FD_SET(conn->sockfd, &wset);
                     highsock = Max(highsock, conn->sockfd);
                     break;
                 case mcsStarted:
@@ -951,7 +951,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
         }
 
 		ML_CHECK_FOR_INTERRUPTS((*ppTransportStates)->teardownActive);
-        n = select(highsock + 1, (fd_set *)rset, (fd_set *)wset, (fd_set *)eset, &timeout);
+        n = select(highsock + 1, (fd_set *)&rset, (fd_set *)&wset, (fd_set *)&eset, &timeout);
 		ML_CHECK_FOR_INTERRUPTS((*ppTransportStates)->teardownActive);
 
         elapsed_ms = gettime_elapsed_ms(startTime);
@@ -1017,7 +1017,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 			 */
 			cell = lnext(cell);
 
-			if (MPP_FD_ISSET(conn->sockfd, rset))
+			if (MPP_FD_ISSET(conn->sockfd, &rset))
 			{
                 n--;
                 if (readRegisterMessage(*ppTransportStates, conn))
@@ -1036,7 +1036,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
         /*
          * Someone tickling our listener port?  Accept pending connections.
          */
-        if (MPP_FD_ISSET(listenerFd, rset))
+        if (MPP_FD_ISSET(listenerFd, &rset))
 		{
 			n--;
             while ((conn = acceptIncomingConnection()) != NULL)
@@ -1068,8 +1068,8 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
             {
                 case mcsConnecting:
                     /* Has connect() succeeded or failed? */
-                    if (MPP_FD_ISSET(conn->sockfd, wset) ||
-                        MPP_FD_ISSET(conn->sockfd, eset))
+                    if (MPP_FD_ISSET(conn->sockfd, &wset) ||
+                        MPP_FD_ISSET(conn->sockfd, &eset))
                     {
                         n--;
                         updateOutgoingConnection(*ppTransportStates, sendingChunkTransportState, conn, -1);
@@ -1095,7 +1095,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 
                 case mcsSendRegMsg:
                     /* Ready to continue sending? */
-                    if (MPP_FD_ISSET(conn->sockfd, wset))
+                    if (MPP_FD_ISSET(conn->sockfd, &wset))
                     {
                         n--;
                         sendRegisterMessage(*ppTransportStates, sendingChunkTransportState, conn);
@@ -1559,7 +1559,7 @@ createChunkTransportState(ChunkTransportState *transportStates,
         conn->cdbProc = NULL;
     }
 
-	MPP_FD_ZERO(pEntry->readSet);
+	MPP_FD_ZERO(&pEntry->readSet);
 
 	return pEntry;
 }
@@ -1826,7 +1826,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
     /* Allow bind() to succeed even if the port is in TIME_WAIT state. */
     sockopt = 1;
     if (setsockopt(conn->sockfd, SOL_SOCKET, SO_REUSEADDR,
-                   &sockopt, sizeof(sockopt)) < 0)
+                   (void *)&sockopt, sizeof(sockopt)) < 0)
 	    ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 			            errmsg("Interconnect error setting up outgoing "
                                "connection."),
@@ -1948,7 +1948,7 @@ updateOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportSta
     /* Get errno value indicating success or failure. */
     if (errnoSave == -1 &&
         getsockopt(conn->sockfd, SOL_SOCKET, SO_ERROR,
-                   &errnoSave, &sizeoferrno))
+                   (void *)&errnoSave, &sizeoferrno))
     {
         /* getsockopt failed */
         ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
@@ -2387,7 +2387,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
     newConn->msgSize = 0;
     newConn->stillActive = true;
 
-    MPP_FD_SET(newConn->sockfd, pEntry->readSet);
+    MPP_FD_SET(newConn->sockfd, &pEntry->readSet);
 
 	if (newConn->sockfd > pEntry->highReadSock)
 		pEntry->highReadSock = newConn->sockfd;
@@ -2615,16 +2615,16 @@ flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, Mo
 		/* check for stop message before sending anything  */
 		timeout.tv_sec = 0;
 		timeout.tv_usec = 0;
-		MPP_FD_ZERO(rset);
-		MPP_FD_SET(conn->sockfd, rset);
+		MPP_FD_ZERO(&rset);
+		MPP_FD_SET(conn->sockfd, &rset);
 
 		/*
 		 * since timeout = 0, select returns imediately and no time is wasted
 		 * waiting trying to send data on the network
 		 */
-		n = select(conn->sockfd + 1, (fd_set *)rset, NULL, NULL, &timeout);
+		n = select(conn->sockfd + 1, (fd_set *)&rset, NULL, NULL, &timeout);
 		/* handle errors at the write call, below */
-		if (n > 0 && MPP_FD_ISSET(conn->sockfd, rset))
+		if (n > 0 && MPP_FD_ISSET(conn->sockfd, &rset))
 		{
 #ifdef AMS_VERBOSE_LOGGING
 			print_connection(transportStates, conn->sockfd, "stop from");
@@ -2647,11 +2647,11 @@ flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, Mo
 
 					ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
-					MPP_FD_ZERO(rset);
-					MPP_FD_ZERO(wset);
-					MPP_FD_SET(conn->sockfd, wset);
-					MPP_FD_SET(conn->sockfd, rset);
-					n = select(conn->sockfd + 1, (fd_set *)rset, (fd_set *)wset, NULL, &timeout);
+					MPP_FD_ZERO(&rset);
+					MPP_FD_ZERO(&wset);
+					MPP_FD_SET(conn->sockfd, &wset);
+					MPP_FD_SET(conn->sockfd, &rset);
+					n = select(conn->sockfd + 1, (fd_set *)&rset, (fd_set *)&wset, NULL, &timeout);
 					pMNEntry->sel_wr_wait += (tval.tv_sec - timeout.tv_sec)*1000000 +(tval.tv_usec - timeout.tv_usec);
 					if (n < 0)
 					{
@@ -2684,7 +2684,7 @@ flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, Mo
 					 * it must mean its a StopSendingMessage.  we
 					 * don't even bother to read it.
 					 */
-					if (MPP_FD_ISSET(conn->sockfd, rset) || transportStates->teardownActive)
+					if (MPP_FD_ISSET(conn->sockfd, &rset) || transportStates->teardownActive)
 					{
 #ifdef AMS_VERBOSE_LOGGING
 						print_connection(transportStates, conn->sockfd, "stop from");
@@ -2810,9 +2810,9 @@ readPacket(ChunkTransportState *transportStates, MotionConn * conn)
 					/* see if user canceled and stuff like that */
 					ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
-					MPP_FD_ZERO(rset);
-					MPP_FD_SET(conn->sockfd, rset);
-					n = select(conn->sockfd + 1, (fd_set *)rset, NULL, NULL, &timeout);
+					MPP_FD_ZERO(&rset);
+					MPP_FD_SET(conn->sockfd, &rset);
+					n = select(conn->sockfd + 1, (fd_set *)&rset, NULL, NULL, &timeout);
 					if (n == 0 || (n < 0 && errno == EINTR))
 						continue;
 					else if (n < 0)
@@ -2966,7 +2966,7 @@ doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
 		conn = pEntry->conns + i;
 
 		if (conn->sockfd >= 0 &&
-            MPP_FD_ISSET(conn->sockfd, pEntry->readSet))
+            MPP_FD_ISSET(conn->sockfd, &pEntry->readSet))
 		{
 			/* someone is trying to send stuff to us, let's stop 'em */
 			while ((written = write(conn->sockfd, &m, sizeof(m))) < 0)
@@ -3030,7 +3030,7 @@ format_fd_set(StringInfo buf, int nfds, mpp_fd_set fds, char* pfx, char *sfx)
     appendStringInfoString(buf, pfx);
     for (i = 1; i < nfds; i++)
     {
-        if (MPP_FD_ISSET(i, fds))
+        if (MPP_FD_ISSET(i, &fds))
             appendStringInfo(buf, "%d,", i);
     }
     if (buf->len > 0 &&
@@ -3087,12 +3087,12 @@ flushInterconnectListenerBacklog(void)
 
 	do
 	{
-		MPP_FD_ZERO(rset);
-		MPP_FD_SET(listenerFd, rset);
+		MPP_FD_ZERO(&rset);
+		MPP_FD_SET(listenerFd, &rset);
 		timeout.tv_sec = 0;
 		timeout.tv_usec = 0;
 
-		pendingConn = select(listenerFd + 1, (fd_set *)rset, NULL, NULL, &timeout);
+		pendingConn = select(listenerFd + 1, (fd_set *)&rset, NULL, NULL, &timeout);
 		if (pendingConn > 0)
 		{
 			for (i = 0; i < pendingConn; i++)
@@ -3207,11 +3207,11 @@ waitOnSocketDone(int fd)
 			return;
 		}
 
-		MPP_FD_ZERO(rset);
-		MPP_FD_SET(fd, rset);
+		MPP_FD_ZERO(&rset);
+		MPP_FD_SET(fd, &rset);
 		timeout = tval;
 
-		n = select(fd + 1, (fd_set *)rset, NULL, NULL, &timeout);
+		n = select(fd + 1, (fd_set *)&rset, NULL, NULL, &timeout);
 		if (n == 0 || (n < 0 && errno == EINTR))
 		{
 			continue;
