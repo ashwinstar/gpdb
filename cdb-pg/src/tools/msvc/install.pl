@@ -22,6 +22,7 @@ print "Installing for $conf\n";
 EnsureDirectories ('bin','lib','share','share/timezonesets');
 
 CopySetOfFiles('programs', "$conf\\*.exe", $target . '/bin/');
+CopySetOfFiles('symbols', "$conf\\*.pdb", $target . '/bin/');
 CopySetOfFiles('libraries', "$conf\\*.dll", $target . '/lib/');
 copy($target . '/lib/libpq.dll', $target . '/bin/libpq.dll');
 CopySetOfFiles('config files', "*.sample", $target . '/share/');
