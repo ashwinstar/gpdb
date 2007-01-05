@@ -178,10 +178,10 @@ create_agg_hash_table(AggState *aggstate)
 	 * the bits used in calculating the bucket to the front.  These
 	 * are the shift arguments.
 	 */
-#ifndef _WIN32
-	ht->lshift = ceil(log2(ht->nbucket));
+#if defined(_WIN32) || defined(__FreeBSD__)
+	ht->lshift = ceil(log(ht->nbucket)/log(2));	/* No log2 function. */
 #else
-	ht->lshift = ceil(log(ht->nbucket)/log(2));	// No log2 func on windows?
+	ht->lshift = ceil(log2(ht->nbucket));
 #endif 
 	ht->rshift = 32 - ht->lshift;
 	

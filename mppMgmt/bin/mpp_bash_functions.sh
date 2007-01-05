@@ -965,6 +965,12 @@ case $OS_TYPE in
 		PG_METHOD="ident sameuser"
 		HOST_ARCH_TYPE="uname -m"
 		DU_TXT="-c" ;;	
+	freebsd ) IFCONFIG_TXT=""
+		PS_TXT="ax"
+		LIB_TYPE="DYLD_LIBRARY_PATH"
+		PG_METHOD="ident sameuser"
+		HOST_ARCH_TYPE="uname -m"
+		DU_TXT="-c" ;;	
 	* ) echo unknown ;;
 esac
 #Set up MPP_LIBRARY_PATH

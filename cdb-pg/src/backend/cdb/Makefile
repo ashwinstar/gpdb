@@ -59,6 +59,9 @@ else
 	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(ALLOBJS) $(EXTRA_OBJS) $(libpq_builddir)/libpq.a -unexported_symbols_list libpq_local.sym.mac
 endif
 
+ifeq ($(PORTNAME),freebsd)
+	$(OBJCOPY) --localize-symbols=$(top_srcdir)/$(subdir)/libpq_local.sym SUBSYS.o
+endif
 ifeq ($(PORTNAME),linux)
 	$(OBJCOPY) --localize-symbols=$(top_srcdir)/$(subdir)/libpq_local.sym SUBSYS.o
 endif

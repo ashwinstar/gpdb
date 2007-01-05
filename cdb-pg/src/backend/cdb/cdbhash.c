@@ -13,6 +13,8 @@
 #include "postgres.h"
 
 #include <ctype.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #include <assert.h>
 #include "utils/builtins.h"
 #include "catalog/pg_type.h"
