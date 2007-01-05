@@ -198,10 +198,10 @@ CleanUpMotionLayerIPC(void)
 
 	/* close down the Interconnect listener socket. */
     if (listenerFd >= 0)
-        close(listenerFd);
+        closesocket(listenerFd);
 
     if (portReservationFd >= 0)
-        close(portReservationFd);
+        closesocket(portReservationFd);
 
 	/* be safe and reset global state variables. */
 	Mpp_listener_port = 0;
@@ -655,7 +655,7 @@ TeardownSequenceServer(void)
 	    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
 		    elog(DEBUG3, "tearing down seqserver connection");
 		shutdown(seqserverFd, SHUT_RDWR);
-		close(seqserverFd);
+		closesocket(seqserverFd);
 		seqserverFd = -1;
 	}
 }
@@ -1139,7 +1139,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 			{
 				flushIncomingData(conn->sockfd);
 				shutdown(conn->sockfd, SHUT_WR);
-				close(conn->sockfd);
+				closesocket(conn->sockfd);
 				conn->sockfd = -1;
 			}
 
@@ -1265,7 +1265,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 		{
 			flushIncomingData(conn->sockfd);
 			shutdown(conn->sockfd, SHUT_WR);
-			close(conn->sockfd);
+			closesocket(conn->sockfd);
 			conn->sockfd = -1;
 		}
 
@@ -1340,7 +1340,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 			{
 				flushIncomingData(conn->sockfd);
 				shutdown(conn->sockfd, SHUT_WR);
-				close(conn->sockfd);
+				closesocket(conn->sockfd);
 				conn->sockfd = -1;
 			}
 		}
@@ -1364,7 +1364,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 			{
 				if (!forceEOS)
 					waitOnSocketDone(conn->sockfd);
-				close(conn->sockfd);
+				closesocket(conn->sockfd);
 				conn->sockfd = -1;
 			}
 		}
@@ -1464,7 +1464,7 @@ setupListeningSocket(int backlog, int *listenerSocketFd, int *listenerPort)
 error:
     errnoSave = errno;
     if (fd >= 0)
-        close(fd);
+        closesocket(fd);
     errno = errnoSave;
     ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 					errmsg("Interconnect Error: Could not set up listener socket."),
@@ -1798,7 +1798,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
     /* Might be retrying due to connection failure etc.  Close old socket. */
     if (conn->sockfd >= 0)
     {
-        close(conn->sockfd);
+        closesocket(conn->sockfd);
         conn->sockfd = -1;
     }
 
@@ -2007,7 +2007,7 @@ getOutgoingPort(ChunkTransportStateEntry *pEntry)
     /* Close dummy listening socket that reserved our old outgoing port#. */
     if (oldPortReservationFd >= 0)
     {
-        close(oldPortReservationFd);
+        closesocket(oldPortReservationFd);
         pEntry->outgoingPortRetryCount++;
     }
 
@@ -2125,7 +2125,7 @@ sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEnt
     for (;;)
     {
 	    bytesToSend = conn->pBuff + conn->msgSize - conn->msgPos;
-        bytesSent = write(conn->sockfd, conn->msgPos, bytesToSend);
+        bytesSent = send(conn->sockfd, conn->msgPos, bytesToSend, 0);
         if (bytesSent == bytesToSend)
             break;
         else if (bytesSent >= 0)
@@ -2197,7 +2197,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
     for (;;)
     {
 	    bytesToReceive = conn->pBuff + conn->msgSize - conn->msgPos;
-        bytesReceived = read(conn->sockfd, conn->msgPos, bytesToReceive);
+        bytesReceived = recv(conn->sockfd, conn->msgPos, bytesToReceive, 0);
         if (bytesReceived == bytesToReceive)
             break;
         else if (bytesReceived > 0)
@@ -2208,7 +2208,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
                             errmsg("Interconnect error reading register message "
                                    "from %s: connection closed",
                                    conn->remoteHostAndPort),
-                            errdetail("read() sockfd=%d local=%s",
+                            errdetail("recv() sockfd=%d local=%s",
                                       conn->sockfd, conn->localHostAndPort)
                             ));
 		}
@@ -2281,7 +2281,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
 			 * wind up receiving their registration messages. */
 			elog(LOG, "Received invalid, old registration message: will ignore");
 			shutdown(conn->sockfd, SHUT_RDWR);
-			close(conn->sockfd);
+			closesocket(conn->sockfd);
 			conn->sockfd = -1;
 
 			pfree(conn->pBuff);
@@ -2634,7 +2634,7 @@ flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, Mo
 			return false;
 		}
 
-		if ((n = write(conn->sockfd, sendptr + sent, conn->msgSize - sent)) < 0)
+		if ((n = send(conn->sockfd, sendptr + sent, conn->msgSize - sent, 0)) < 0)
 		{
 			ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 			if (errno == EINTR)
@@ -2710,7 +2710,7 @@ flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, Mo
 				}
 				ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 								errmsg("Interconnect error writing an outgoing packet"),
-								errdetail("error during write() call (error:%d).\n"
+								errdetail("error during send() call (error:%d).\n"
 										  "For Remote Connection: contentId=%d at %s",
 										  errno, conn->remoteContentId,
                                           conn->remoteHostAndPort)
@@ -2796,8 +2796,8 @@ readPacket(ChunkTransportState *transportStates, MotionConn * conn)
 		 * we read at the end of the buffer, we've eliminated any
 		 * slack above
 		 */
-		if ((n = read(conn->sockfd, conn->pBuff + bytesRead,
-					  Mpp_max_packet_size - bytesRead)) < 0)
+		if ((n = recv(conn->sockfd, conn->pBuff + bytesRead,
+					  Mpp_max_packet_size - bytesRead, 0)) < 0)
 		{
 			if (errno == EINTR)
 				continue;
@@ -2969,7 +2969,7 @@ doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
             MPP_FD_ISSET(conn->sockfd, &pEntry->readSet))
 		{
 			/* someone is trying to send stuff to us, let's stop 'em */
-			while ((written = write(conn->sockfd, &m, sizeof(m))) < 0)
+			while ((written = send(conn->sockfd, &m, sizeof(m), 0)) < 0)
 			{
 				if (errno == EINTR)
 				{
@@ -3142,7 +3142,7 @@ flushInterconnectListenerBacklog(void)
 				/* shutdown this socket */
 				flushIncomingData(newfd);
 				shutdown(newfd, SHUT_WR);
-				close(newfd);
+				closesocket(newfd);
 			}
 		}
 		else if (pendingConn < 0 && errno != EINTR)

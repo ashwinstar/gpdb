@@ -502,6 +502,7 @@ endTMXactScan(void)
 void
 initTM(void)
 {
+	Assert(shmTmRecoverred!=NULL);
 	if (!*shmTmRecoverred)
 	{
 		getTmLock();
