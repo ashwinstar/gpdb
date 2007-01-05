@@ -78,6 +78,7 @@ typedef struct convert_testexpr_context
 {
 	int			rtindex;		/* RT index for Vars, or 0 for Params */
 	List	   *righthandIds;	/* accumulated list of Vars or Param IDs */
+	List	   *sub_tlist;		/* subselect targetlist (if given) */
 } convert_testexpr_context;
 
 typedef struct finalize_primnode_context
@@ -89,7 +90,8 @@ typedef struct finalize_primnode_context
 
 static Node *convert_testexpr(Node *testexpr,
 				 int rtindex,
-				 List **righthandIds);
+				 List **righthandIds,
+				 List *sub_tlist);
 static Node *convert_testexpr_mutator(Node *node,
 						 convert_testexpr_context *context);
 static Node *cdb_convert_EXISTS_to_join(PlannerInfo *root, Node **jointree_inout,
@@ -391,7 +393,8 @@ make_subplan(SubLink *slink, Node *testexpr, bool isTopQual)
 		/* Adjust the Params */
 		result = convert_testexpr(testexpr,
 								  0,
-								  &node->paramIds);
+								  &node->paramIds,
+								  NIL);
 		node->setParam = list_copy(node->paramIds);
 		node->is_initplan = true; /* CDB: take note. */
 		PlannerInitPlan = lappend(PlannerInitPlan, node);
@@ -411,7 +414,8 @@ make_subplan(SubLink *slink, Node *testexpr, bool isTopQual)
 		/* Adjust the Params */
 		node->testexpr = convert_testexpr(testexpr,
 										  0,
-										  &node->paramIds);
+										  &node->paramIds,
+										  NIL);
 
 		/*
 		 * We can't convert subplans of ALL_SUBLINK or ANY_SUBLINK types to
@@ -485,6 +489,10 @@ make_subplan(SubLink *slink, Node *testexpr, bool isTopQual)
  * of the Var nodes are returned in *righthandIds (this is a bit of a type
  * cheat, but we can get away with it).
  *
+ * The subquery targetlist need be supplied only if rtindex is not 0.
+ * We consult it to extract the correct typmods for the created Vars.
+ * (XXX this is a kluge that could go away if Params carried typmod.)
+ *
  * The given testexpr has already been recursively processed by
  * process_sublinks_mutator.  Hence it can no longer contain any
  * PARAM_SUBLINK Params for lower SubLink nodes; we can safely assume that
@@ -493,13 +501,15 @@ make_subplan(SubLink *slink, Node *testexpr, bool isTopQual)
 static Node *
 convert_testexpr(Node *testexpr,
 				 int rtindex,
-				 List **righthandIds)
+				 List **righthandIds,
+				 List *sub_tlist)
 {
 	Node	   *result;
 	convert_testexpr_context context;
 
 	context.rtindex = rtindex;
 	context.righthandIds = NIL;
+	context.sub_tlist = sub_tlist;
 	result = convert_testexpr_mutator(testexpr, &context);
 	*righthandIds = context.righthandIds;
 	return result;
@@ -531,10 +541,23 @@ convert_testexpr_mutator(Node *node,
 				/* Make the Var node representing the subplan's result */
 				Var		   *newvar;
 
+				/*
+				 * XXX kluge: since Params don't carry typmod, we have to
+				 * look into the subquery targetlist to find out the right
+				 * typmod to assign to the Var.
+				 */
+				TargetEntry *ste = get_tle_by_resno(context->sub_tlist,
+													param->paramid);
+
+				if (ste == NULL || ste->resjunk)
+					elog(ERROR, "subquery output %d not found",
+						 param->paramid);
+				Assert(param->paramtype == exprType((Node *) ste->expr));
+
 				newvar = makeVar(context->rtindex,
 								 param->paramid,
 								 param->paramtype,
-								 -1,
+								 exprTypmod((Node *) ste->expr),
 								 0);
 
 				/*
@@ -1056,7 +1079,8 @@ convert_IN_to_join(PlannerInfo *root, Node **jointree_inout, SubLink *sublink)
 	 */
 	return convert_testexpr(sublink->testexpr,
 							rtindex,
-							&ininfo->sub_targetlist);
+							&ininfo->sub_targetlist,
+							subselect->targetList);
 }                               /* convert_IN_to_join */
 
 
