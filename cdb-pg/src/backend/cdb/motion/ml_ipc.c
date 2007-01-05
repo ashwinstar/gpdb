@@ -39,6 +39,13 @@
 #define SHUT_RDWR SD_BOTH
 #define SHUT_RD SD_RECEIVE
 #define SHUT_WR SD_SEND
+/*
+ * Postgres normally uses it's own custom select implementation 
+ * on Windows, but they haven't implemented execeptfds, which
+ * we use here.  So, undef this to use the normal Winsock version
+ * for now
+ */
+#undef select
 #endif
 
 /*
