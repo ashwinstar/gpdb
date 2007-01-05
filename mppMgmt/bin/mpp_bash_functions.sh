@@ -549,7 +549,7 @@ GET_MASTER_PORT () {
 				ERROR_EXIT "[FATAL]:-No $MASTER_DATA_DIRECTORY directory" 2
 		fi
 		if [ -r $MASTER_DATA_DIRECTORY/$PG_CONF ];then
-			MASTER_PORT=`$EGREP -o "^[[:space:]]*port[[:space:]]*=[[:space:]]*[[:digit:]]+" $MASTER_DATA_DIRECTORY/$PG_CONF | $TAIL -1 | $EGREP -o "[[:digit:]]+"`
+			MASTER_PORT=`$AWK 'split($0,a,"#")>0 && split(a[1],b,"=")>1 {print b[1] " " b[2]}' $MASTER_DATA_DIRECTORY/$PG_CONF | $AWK '$1=="port" {print $2}' | $TAIL -1`
 			if [ x"" == x"$MASTER_PORT" ];then
 			ERROR_EXIT "[FATAL]:-Failed to obtain master port number from $MASTER_DATA_DIRECTORY/$PG_CONF" 2
 			fi
