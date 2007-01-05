@@ -3654,6 +3654,7 @@ PostgresMain(int argc, char *argv[], const char *username)
      */
 	main_tid = pthread_self();
 
+#ifndef _WIN32
 #ifdef SIGILL
     pqsignal(SIGILL, CdbProgramErrorHandler);
 #endif
@@ -3662,6 +3663,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 #endif
 #ifdef SIGBUS
     pqsignal(SIGBUS, CdbProgramErrorHandler);
+#endif
 #endif
 
 	pqinitmask();
@@ -4227,6 +4229,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 					if (serializedQuerytreelen==0 && serializedPlantreelen==0)
 						elog(DEBUG5, "MPP dispatched stmt from QD: %s.",query_string);
+					else if (serializedPlantreelen==0)
+						elog(DEBUG5, "MPP dispatched stmt from QD: %s %s",query_string,uncompress_string(serializedQuerytree,serializedQuerytreelen));
 					else
 						elog(DEBUG5, "MPP dispatched plan from QD: %s %s %s",query_string,uncompress_string(serializedQuerytree,serializedQuerytreelen),uncompress_string(serializedPlantree,serializedPlantreelen));
 					
