@@ -74,7 +74,7 @@ sub GenerateFiles {
 		while (<I>) {
 			s{PG_VERSION "[^"]+"}{PG_VERSION "$self->{strver}"};
 			s{PG_VERSION_NUM \d+}{PG_VERSION_NUM $self->{numver}};
-			s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY(z)\n#define PG_VERSION_STR "PostgreSQL $self->{strver}, compiled by Visual C++ build " __STRINGIFY2(_MSC_VER)};
+			s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY(z)\n#define PG_VERSION_STR "PostgreSQL $self->{strver} (Greenplum Database) on Windows, compiled by Visual C++ build " __STRINGIFY2(_MSC_VER)};
 			print O;
 		}
 		print O "/* defines added by config steps */\n";
