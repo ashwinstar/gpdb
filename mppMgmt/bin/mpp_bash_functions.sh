@@ -967,7 +967,7 @@ case $OS_TYPE in
 		DU_TXT="-c" ;;	
 	freebsd ) IFCONFIG_TXT=""
 		PS_TXT="ax"
-		LIB_TYPE="DYLD_LIBRARY_PATH"
+		LIB_TYPE="LD_LIBRARY_PATH"
 		PG_METHOD="ident sameuser"
 		HOST_ARCH_TYPE="uname -m"
 		DU_TXT="-c" ;;	
