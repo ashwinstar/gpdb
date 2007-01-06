@@ -272,6 +272,7 @@ CALC_TOTAL_SIZE () {
 				LOG_MSG "[INFO]:-Host $HOST Port $PORT Segment $SEG Space Used = $SIZE ${TXT_SCALE}"
 			else
 				$ECHO $I
+				$ECHO $I >> $LOG_FILE
 			fi
 		fi
 		((TOTAL_SIZE=$TOTAL_SIZE+$SIZE))	
@@ -302,6 +303,7 @@ DISPLAY_SIZE () {
 		LOG_MSG "[INFO]:- $TOTAL_SIZE ${TXT_SCALE}"	
 	else
 		$ECHO $TOTAL_SIZE
+		$ECHO $TOTAL_SIZE >> $LOG_FILE
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
