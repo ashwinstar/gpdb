@@ -206,6 +206,8 @@ ExecInitResult(Result *node, EState *estate, int eflags)
 	 */
 	ExecAssignExprContext(estate, &resstate->ps);
 
+	resstate->rs_TupFromTlist = false;
+
 #define RESULT_NSLOTS 1
 
 	/*
