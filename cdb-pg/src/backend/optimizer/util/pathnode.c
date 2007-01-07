@@ -3,7 +3,7 @@
  * pathnode.c
  *	  Routines to manipulate pathlists and create path nodes
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -20,6 +20,7 @@
 #include "catalog/pg_operator.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
+#include "optimizer/clauses.h"              /* contain_mutable_functions() */
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
@@ -2136,7 +2137,7 @@ create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel, List *pathkeys)
  *	  returning the pathnode.
  */
 Path *
-create_functionscan_path(PlannerInfo *root, RelOptInfo *rel)
+create_functionscan_path(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
 	Path	   *pathnode = makeNode(Path);
 
@@ -2144,9 +2145,16 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel)
 	pathnode->parent = rel;
 	pathnode->pathkeys = NIL;	/* for now, assume unordered result */
 
-    /* MPP TODO: handle function scan */
-    /* Perform all function evaluations on the entry db, for now. */
-    CdbPathLocus_MakeEntry(&pathnode->locus);
+    /*
+     * CDB: If expression contains mutable functions, evaluate it on entry db.
+     * Otherwise let it be evaluated in the same slice as its parent operator.
+     */
+    Assert(rte->rtekind == RTE_FUNCTION);
+    if (contain_mutable_functions(rte->funcexpr))
+        CdbPathLocus_MakeEntry(&pathnode->locus);
+    else
+        CdbPathLocus_MakeGeneral(&pathnode->locus);
+
     pathnode->motionHazard = false;
 	
 	/* For now, be conservative. */
@@ -2163,7 +2171,7 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel)
  *	  returning the pathnode.
  */
 Path *
-create_valuesscan_path(PlannerInfo *root, RelOptInfo *rel)
+create_valuesscan_path(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
 	Path	   *pathnode = makeNode(Path);
 
@@ -2171,10 +2179,16 @@ create_valuesscan_path(PlannerInfo *root, RelOptInfo *rel)
 	pathnode->parent = rel;
 	pathnode->pathkeys = NIL;	/* result is always unordered */
 
-    /* Evaluate VALUES list on entry db, for now. 
-     * CDB TODO: Assign SingleQE (or General?) locus if no volatile functions.
+    /*
+     * CDB: If VALUES list contains mutable functions, evaluate it on entry db.
+     * Otherwise let it be evaluated in the same slice as its parent operator.
      */
-    CdbPathLocus_MakeEntry(&pathnode->locus);
+    Assert(rte->rtekind == RTE_VALUES);
+    if (contain_mutable_functions((Node *)rte->values_lists))
+        CdbPathLocus_MakeEntry(&pathnode->locus);
+    else
+        CdbPathLocus_MakeGeneral(&pathnode->locus);
+
     pathnode->motionHazard = false;
 	pathnode->rescannable = true;
 

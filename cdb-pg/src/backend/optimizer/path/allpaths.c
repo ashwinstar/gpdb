@@ -3,7 +3,7 @@
  * allpaths.c
  *	  Routines to find possible search paths for processing a query
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -607,7 +607,7 @@ set_function_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	set_function_size_estimates(root, rel);
 
 	/* Generate appropriate path */
-	add_path(root, rel, create_functionscan_path(root, rel));
+	add_path(root, rel, create_functionscan_path(root, rel, rte));
 
 	/* Select cheapest path (pretty easy in this case...) */
 	set_cheapest(root, rel);
@@ -632,7 +632,7 @@ set_values_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
         rel->dedup_info = cdb_make_rel_dedup_info(root, rel);
 
 	/* Generate appropriate path */
-	add_path(root, rel, create_valuesscan_path(root, rel));
+	add_path(root, rel, create_valuesscan_path(root, rel, rte));
 
 	/* Select cheapest path (pretty easy in this case...) */
 	set_cheapest(root, rel);

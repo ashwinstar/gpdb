@@ -4,7 +4,7 @@
  *	  prototypes for pathnode.c, relnode.c.
  *
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -75,8 +75,8 @@ UniquePath *create_unique_rowid_path(PlannerInfo *root,
                                      Path        *subpath,
                                      Relids       dedup_relids);
 extern Path *create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel, List *pathkeys);
-extern Path *create_functionscan_path(PlannerInfo *root, RelOptInfo *rel);
-extern Path *create_valuesscan_path(PlannerInfo *root, RelOptInfo *rel);
+extern Path *create_functionscan_path(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte);
+extern Path *create_valuesscan_path(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte);
 
 extern NestPath *create_nestloop_path(PlannerInfo *root,
 									  RelOptInfo *joinrel,
