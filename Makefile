@@ -18,6 +18,13 @@ DEVPATH=$(HOME)/$(MPPDIR)
 
 CONFIGFLAGS=--enable-thread-safety --enable-multibyte=UNICODE --with-maxbackends=1024 --enable-integer-datetimes --with-pgport=$(DEFPORT)
 
+ifeq (true, ${PG_LANG})
+CONFIGFLAGS+=--with-python --with-perl --with-tcl
+ifdef TCL_CFG
+CONFIGFLAGS+=--with-tcl-config=${TCL_CFG}
+endif
+endif
+
 all : devel
 
 .PHONY : RECONFIG BIZDEP HOMEDEP clean distclean tarball distprep
