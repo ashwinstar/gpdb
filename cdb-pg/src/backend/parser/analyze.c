@@ -1874,37 +1874,47 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 		}
 		
 		/*
-		 * if we still don't know what distribution to use, and this is an inherited table,
-		 * set the distribution based on the parent (or one of the parents)
+		 * If new table INHERITS from one or more parent tables, check parents.
 		 */
-		
-		if (distributedBy == NIL && cxt->inhRelations != NIL)
+		if (cxt->inhRelations != NIL)
 		{
 			ListCell   *entry;
 			
 			foreach(entry, cxt->inhRelations)
 			{
 				RangeVar   *parent = (RangeVar *) lfirst(entry);
-				
 				Oid			relId = RangeVarGetRelid(parent, false);
-		
 				MppPolicy  *oldTablePolicy = MppPolicyFetch(CurrentMemoryContext, relId);
-		
-				if (oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED && oldTablePolicy->nattrs > 0)
+
+                /* Partitioned child must have partitioned parents. */
+                if (oldTablePolicy == NULL ||
+                     oldTablePolicy->ptype != POLICYTYPE_PARTITIONED)
+                    ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+                                    errmsg("Cannot inherit from catalog table \"%s\" to create table \"%s\".",
+                                           parent->relname, cxt->relation->relname),
+                                    errdetail("An inheritance hierarchy cannot contain a "
+                                              "mixture of distributed and non-distributed tables.")
+                            ));
+
+		        /*
+		         * if we still don't know what distribution to use, and this is an inherited table,
+		         * set the distribution based on the parent (or one of the parents)
+		         */
+				if (distributedBy == NIL &&
+                    oldTablePolicy->nattrs > 0)
 				{
 					int ia;
 					
 					for (ia=0;ia<oldTablePolicy->nattrs;ia++)
 					{
 						char * attname = get_attname(relId, oldTablePolicy->attrs[ia]);
-						if (distributedBy)
-								distributedBy = lappend(distributedBy, (Node *) makeString(attname));
-							else
-								distributedBy = list_make1((Node *) makeString(attname));
+
+						distributedBy = lappend(distributedBy, (Node *) makeString(attname));
 					}
 					elog(NOTICE, "Table has parent, setting distribution columns to match parent table");
-					break;
 				}
+
+                pfree(oldTablePolicy);
 			}
 		}
 		
