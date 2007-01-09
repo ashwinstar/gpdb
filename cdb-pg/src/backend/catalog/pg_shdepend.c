@@ -3,12 +3,12 @@
  * pg_shdepend.c
  *	  routines to support manipulation of the pg_shdepend relation
  *
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/pg_shdepend.c,v 1.15 2006/10/04 00:29:50 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/pg_shdepend.c,v 1.3.2.1 2005/11/22 18:23:06 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,28 +16,15 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "access/xact.h"
-#include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_authid.h"
-#include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
-#include "catalog/pg_language.h"
-#include "catalog/pg_namespace.h"
-#include "catalog/pg_operator.h"
-#include "catalog/pg_proc.h"
 #include "catalog/pg_shdepend.h"
-#include "catalog/pg_tablespace.h"
-#include "catalog/pg_type.h"
-#include "commands/conversioncmds.h"
-#include "commands/defrem.h"
-#include "commands/schemacmds.h"
-#include "commands/tablecmds.h"
-#include "commands/typecmds.h"
+#include "lib/stringinfo.h"
 #include "miscadmin.h"
-#include "utils/acl.h"
 #include "utils/fmgroids.h"
+#include "utils/inval.h"
 #include "utils/syscache.h"
 
 
@@ -870,16 +857,29 @@ shdepDropDependency(Relation sdepRel, Oid classId, Oid objectId,
  * Get the database Id that should be used in pg_shdepend, given the OID
  * of the catalog containing the object.  For shared objects, it's 0
  * (InvalidOid); for all other objects, it's the current database Id.
+ *
+ * XXX it's awfully tempting to hard-wire this instead of doing a syscache
+ * lookup ... but resist the temptation, unless you can prove it's a
+ * bottleneck.
  */
 static Oid
 classIdGetDbId(Oid classId)
 {
 	Oid			dbId;
+	HeapTuple	tup;
 
-	if (IsSharedRelation(classId))
+	tup = SearchSysCache(RELOID,
+						 ObjectIdGetDatum(classId),
+						 0, 0, 0);
+	if (!HeapTupleIsValid(tup))
+		elog(ERROR, "cache lookup failed for relation %u", classId);
+
+	if (((Form_pg_class) GETSTRUCT(tup))->relisshared)
 		dbId = InvalidOid;
 	else
 		dbId = MyDatabaseId;
+
+	ReleaseSysCache(tup);
 
 	return dbId;
 }
@@ -897,6 +897,12 @@ shdepLockAndCheckObject(Oid classId, Oid objectId)
 {
 	/* AccessShareLock should be OK, since we are not modifying the object */
 	LockSharedObject(classId, objectId, 0, AccessShareLock);
+
+	/*
+	 * We have to recognize sinval updates here, else our local syscache may
+	 * still contain the object even if it was just dropped.
+	 */
+	AcceptInvalidationMessages();
 
 	switch (classId)
 	{
@@ -1035,261 +1041,4 @@ isSharedObjectPinned(Oid classId, Oid objectId, Relation sdepRel)
 	systable_endscan(scan);
 
 	return result;
-}
-
-/*
- * shdepDropOwned
- *
- * Drop the objects owned by any one of the given RoleIds.	If a role has
- * access to an object, the grant will be removed as well (but the object
- * will not, of course.)
- *
- * We can revoke grants immediately while doing the scan, but drops are
- * saved up and done all at once with performMultipleDeletions.  This
- * is necessary so that we don't get failures from trying to delete
- * interdependent objects in the wrong order.
- */
-void
-shdepDropOwned(List *roleids, DropBehavior behavior)
-{
-	Relation	sdepRel;
-	ListCell   *cell;
-	ObjectAddresses *deleteobjs;
-
-	deleteobjs = new_object_addresses();
-
-	sdepRel = heap_open(SharedDependRelationId, AccessExclusiveLock);
-
-	/*
-	 * For each role, find the dependent objects and drop them using the
-	 * regular (non-shared) dependency management.
-	 */
-	foreach(cell, roleids)
-	{
-		Oid			roleid = lfirst_oid(cell);
-		ScanKeyData key[2];
-		SysScanDesc scan;
-		HeapTuple	tuple;
-
-		/* Doesn't work for pinned objects */
-		if (isSharedObjectPinned(AuthIdRelationId, roleid, sdepRel))
-		{
-			ObjectAddress obj;
-
-			obj.classId = AuthIdRelationId;
-			obj.objectId = roleid;
-			obj.objectSubId = 0;
-
-			ereport(ERROR,
-					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
-				   errmsg("cannot drop objects owned by %s because they are "
-						  "required by the database system",
-						  getObjectDescription(&obj))));
-		}
-
-		ScanKeyInit(&key[0],
-					Anum_pg_shdepend_refclassid,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(AuthIdRelationId));
-		ScanKeyInit(&key[1],
-					Anum_pg_shdepend_refobjid,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(roleid));
-
-		scan = systable_beginscan(sdepRel, SharedDependReferenceIndexId, true,
-								  SnapshotNow, 2, key);
-
-		while ((tuple = systable_getnext(scan)) != NULL)
-		{
-			ObjectAddress obj;
-			GrantObjectType objtype;
-			InternalGrant istmt;
-			Form_pg_shdepend sdepForm = (Form_pg_shdepend) GETSTRUCT(tuple);
-
-			/* We only operate on objects in the current database */
-			if (sdepForm->dbid != MyDatabaseId)
-				continue;
-
-			switch (sdepForm->deptype)
-			{
-					/* Shouldn't happen */
-				case SHARED_DEPENDENCY_PIN:
-				case SHARED_DEPENDENCY_INVALID:
-					elog(ERROR, "unexpected dependency type");
-					break;
-				case SHARED_DEPENDENCY_ACL:
-					switch (sdepForm->classid)
-					{
-						case RelationRelationId:
-							/* it's OK to use RELATION for a sequence */
-							istmt.objtype = ACL_OBJECT_RELATION;
-							break;
-						case DatabaseRelationId:
-							istmt.objtype = ACL_OBJECT_DATABASE;
-							break;
-						case ProcedureRelationId:
-							istmt.objtype = ACL_OBJECT_FUNCTION;
-							break;
-						case LanguageRelationId:
-							istmt.objtype = ACL_OBJECT_LANGUAGE;
-							break;
-						case NamespaceRelationId:
-							istmt.objtype = ACL_OBJECT_NAMESPACE;
-							break;
-						case TableSpaceRelationId:
-							istmt.objtype = ACL_OBJECT_TABLESPACE;
-							break;
-						default:
-							elog(ERROR, "unexpected object type %d",
-								 sdepForm->classid);
-							/* keep compiler quiet */
-							objtype = (GrantObjectType) 0;
-							break;
-					}
-					istmt.is_grant = false;
-					istmt.objects = list_make1_oid(sdepForm->objid);
-					istmt.all_privs = true;
-					istmt.privileges = ACL_NO_RIGHTS;
-					istmt.grantees = list_make1_oid(roleid);
-					istmt.grant_option = false;
-					istmt.behavior = DROP_CASCADE;
-
-					ExecGrantStmt_oids(&istmt);
-					break;
-				case SHARED_DEPENDENCY_OWNER:
-					/* Save it for deletion below */
-					obj.classId = sdepForm->classid;
-					obj.objectId = sdepForm->objid;
-					obj.objectSubId = 0;
-					add_exact_object_address(&obj, deleteobjs);
-					break;
-			}
-		}
-
-		systable_endscan(scan);
-	}
-
-	/* the dependency mechanism does the actual work */
-	performMultipleDeletions(deleteobjs, behavior);
-
-	heap_close(sdepRel, AccessExclusiveLock);
-
-	free_object_addresses(deleteobjs);
-}
-
-/*
- * shdepReassignOwned
- *
- * Change the owner of objects owned by any of the roles in roleids to
- * newrole.  Grants are not touched.
- */
-void
-shdepReassignOwned(List *roleids, Oid newrole)
-{
-	Relation	sdepRel;
-	ListCell   *cell;
-
-	sdepRel = heap_open(SharedDependRelationId, AccessShareLock);
-
-	foreach(cell, roleids)
-	{
-		SysScanDesc scan;
-		ScanKeyData key[2];
-		HeapTuple	tuple;
-		Oid			roleid = lfirst_oid(cell);
-
-		/* Refuse to work on pinned roles */
-		if (isSharedObjectPinned(AuthIdRelationId, roleid, sdepRel))
-		{
-			ObjectAddress obj;
-
-			obj.classId = AuthIdRelationId;
-			obj.objectId = roleid;
-			obj.objectSubId = 0;
-
-			ereport(ERROR,
-					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
-				   errmsg("cannot drop objects owned by %s because they are "
-						  "required by the database system",
-						  getObjectDescription(&obj))));
-
-			/*
-			 * There's no need to tell the whole truth, which is that we
-			 * didn't track these dependencies at all ...
-			 */
-		}
-
-		ScanKeyInit(&key[0],
-					Anum_pg_shdepend_refclassid,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(AuthIdRelationId));
-		ScanKeyInit(&key[1],
-					Anum_pg_shdepend_refobjid,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(roleid));
-
-		scan = systable_beginscan(sdepRel, SharedDependReferenceIndexId, true,
-								  SnapshotNow, 2, key);
-
-		while ((tuple = systable_getnext(scan)) != NULL)
-		{
-			Form_pg_shdepend sdepForm = (Form_pg_shdepend) GETSTRUCT(tuple);
-
-			/* We only operate on objects in the current database */
-			if (sdepForm->dbid != MyDatabaseId)
-				continue;
-
-			/* Unexpected because we checked for pins above */
-			if (sdepForm->deptype == SHARED_DEPENDENCY_PIN)
-				elog(ERROR, "unexpected shared pin");
-
-			/* We leave non-owner dependencies alone */
-			if (sdepForm->deptype != SHARED_DEPENDENCY_OWNER)
-				continue;
-
-			/* Issue the appropriate ALTER OWNER call */
-			switch (sdepForm->classid)
-			{
-				case ConversionRelationId:
-					AlterConversionOwner_oid(sdepForm->objid, newrole);
-					break;
-
-				case TypeRelationId:
-					AlterTypeOwnerInternal(sdepForm->objid, newrole);
-					break;
-
-				case OperatorRelationId:
-					AlterOperatorOwner_oid(sdepForm->objid, newrole);
-					break;
-
-				case NamespaceRelationId:
-					AlterSchemaOwner_oid(sdepForm->objid, newrole);
-					break;
-
-				case RelationRelationId:
-
-					/*
-					 * Pass recursing = true so that we don't fail on indexes,
-					 * owned sequences, etc when we happen to visit them
-					 * before their parent table.
-					 */
-					ATExecChangeOwner(sdepForm->objid, newrole, true);
-					break;
-
-				case ProcedureRelationId:
-					AlterFunctionOwner_oid(sdepForm->objid, newrole);
-					break;
-
-				default:
-					elog(ERROR, "unexpected classid %d", sdepForm->classid);
-					break;
-			}
-			/* Make sure the next iteration will see my changes */
-			CommandCounterIncrement();
-		}
-
-		systable_endscan(scan);
-	}
-
-	heap_close(sdepRel, AccessShareLock);
 }
