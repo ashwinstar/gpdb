@@ -39,10 +39,10 @@
  * anything we saw during replay.
  *
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/backend/access/transam/multixact.c,v 1.11.2.3 2006/11/17 18:00:25 tgl Exp $
+ * $PostgreSQL: pgsql/src/backend/access/transam/multixact.c,v 1.22 2006/11/17 18:00:15 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -50,11 +50,12 @@
 
 #include "access/multixact.h"
 #include "access/slru.h"
+#include "access/transam.h"
 #include "access/xact.h"
 #include "miscadmin.h"
-#include "utils/memutils.h"
 #include "storage/backendid.h"
 #include "storage/lmgr.h"
+#include "utils/memutils.h"
 #include "storage/procarray.h"
 
 
@@ -754,7 +755,7 @@ RecordNewMultiXact(MultiXactId multi, MultiXactOffset offset,
 
 	*offptr = offset;
 
-	MultiXactOffsetCtl->shared->page_status[slotno] = SLRU_PAGE_DIRTY;
+	MultiXactOffsetCtl->shared->page_dirty[slotno] = true;
 
 	/* Exchange our lock */
 	LWLockRelease(MultiXactOffsetControlLock);
@@ -782,7 +783,7 @@ RecordNewMultiXact(MultiXactId multi, MultiXactOffset offset,
 
 		*memberptr = xids[i];
 
-		MultiXactMemberCtl->shared->page_status[slotno] = SLRU_PAGE_DIRTY;
+		MultiXactMemberCtl->shared->page_dirty[slotno] = true;
 	}
 
 	LWLockRelease(MultiXactMemberControlLock);
@@ -1288,8 +1289,8 @@ MultiXactShmemSize(void)
 			 mul_size(sizeof(MultiXactId) * 2, MaxBackends))
 
 	size = SHARED_MULTIXACT_STATE_SIZE;
-	size = add_size(size, SimpleLruShmemSize());
-	size = add_size(size, SimpleLruShmemSize());
+	size = add_size(size, SimpleLruShmemSize(NUM_MXACTOFFSET_BUFFERS));
+	size = add_size(size, SimpleLruShmemSize(NUM_MXACTMEMBER_BUFFERS));
 
 	return size;
 }
@@ -1304,9 +1305,11 @@ MultiXactShmemInit(void)
 	MultiXactOffsetCtl->PagePrecedes = MultiXactOffsetPagePrecedes;
 	MultiXactMemberCtl->PagePrecedes = MultiXactMemberPagePrecedes;
 
-	SimpleLruInit(MultiXactOffsetCtl, "MultiXactOffset Ctl",
+	SimpleLruInit(MultiXactOffsetCtl,
+				  "MultiXactOffset Ctl", NUM_MXACTOFFSET_BUFFERS,
 				  MultiXactOffsetControlLock, "pg_multixact/offsets");
-	SimpleLruInit(MultiXactMemberCtl, "MultiXactMember Ctl",
+	SimpleLruInit(MultiXactMemberCtl,
+				  "MultiXactMember Ctl", NUM_MXACTMEMBER_BUFFERS,
 				  MultiXactMemberControlLock, "pg_multixact/members");
 
 	/* Initialize our shared state struct */
@@ -1348,7 +1351,7 @@ BootStrapMultiXact(void)
 
 	/* Make sure it's written out */
 	SimpleLruWritePage(MultiXactOffsetCtl, slotno, NULL);
-	Assert(MultiXactOffsetCtl->shared->page_status[slotno] == SLRU_PAGE_CLEAN);
+	Assert(!MultiXactOffsetCtl->shared->page_dirty[slotno]);
 
 	LWLockRelease(MultiXactOffsetControlLock);
 
@@ -1359,7 +1362,7 @@ BootStrapMultiXact(void)
 
 	/* Make sure it's written out */
 	SimpleLruWritePage(MultiXactMemberCtl, slotno, NULL);
-	Assert(MultiXactMemberCtl->shared->page_status[slotno] == SLRU_PAGE_CLEAN);
+	Assert(!MultiXactMemberCtl->shared->page_dirty[slotno]);
 
 	LWLockRelease(MultiXactMemberControlLock);
 }
@@ -1445,7 +1448,7 @@ StartupMultiXact(void)
 
 		MemSet(offptr, 0, BLCKSZ - (entryno * sizeof(MultiXactOffset)));
 
-		MultiXactOffsetCtl->shared->page_status[slotno] = SLRU_PAGE_DIRTY;
+		MultiXactOffsetCtl->shared->page_dirty[slotno] = true;
 	}
 
 	LWLockRelease(MultiXactOffsetControlLock);
@@ -1475,7 +1478,7 @@ StartupMultiXact(void)
 
 		MemSet(xidptr, 0, BLCKSZ - (entryno * sizeof(TransactionId)));
 
-		MultiXactMemberCtl->shared->page_status[slotno] = SLRU_PAGE_DIRTY;
+		MultiXactMemberCtl->shared->page_dirty[slotno] = true;
 	}
 
 	LWLockRelease(MultiXactMemberControlLock);
@@ -1529,10 +1532,10 @@ CheckPointMultiXact(void)
 
 	/*
 	 * Truncate the SLRU files.  This could be done at any time, but
-	 * checkpoint seems a reasonable place for it.  There is one exception:
-	 * if we are called during xlog recovery, then shared->latest_page_number
-	 * isn't valid (because StartupMultiXact hasn't been called yet) and
-	 * so SimpleLruTruncate would get confused.  It seems best not to risk
+	 * checkpoint seems a reasonable place for it.	There is one exception: if
+	 * we are called during xlog recovery, then shared->latest_page_number
+	 * isn't valid (because StartupMultiXact hasn't been called yet) and so
+	 * SimpleLruTruncate would get confused.  It seems best not to risk
 	 * removing any data during recovery anyway, so don't truncate.
 	 */
 	if (!InRecovery)
@@ -1734,12 +1737,12 @@ TruncateMultiXact(void)
 		int			entryno;
 		MultiXactOffset *offptr;
 
-		LWLockAcquire(MultiXactOffsetControlLock, LW_EXCLUSIVE);
+		/* lock is acquired by SimpleLruReadPage_ReadOnly */
 
 		pageno = MultiXactIdToOffsetPage(oldestMXact);
 		entryno = MultiXactIdToOffsetEntry(oldestMXact);
 
-		slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, oldestMXact);
+		slotno = SimpleLruReadPage_ReadOnly(MultiXactOffsetCtl, pageno, oldestMXact);
 		offptr = (MultiXactOffset *) MultiXactOffsetCtl->shared->page_buffer[slotno];
 		offptr += entryno;
 		oldestOffset = *offptr;
@@ -1874,7 +1877,7 @@ multixact_redo(XLogRecPtr lsn, XLogRecord *record)
 
 		slotno = ZeroMultiXactOffsetPage(pageno, false);
 		SimpleLruWritePage(MultiXactOffsetCtl, slotno, NULL);
-		Assert(MultiXactOffsetCtl->shared->page_status[slotno] == SLRU_PAGE_CLEAN);
+		Assert(!MultiXactOffsetCtl->shared->page_dirty[slotno]);
 
 		LWLockRelease(MultiXactOffsetControlLock);
 	}
@@ -1889,7 +1892,7 @@ multixact_redo(XLogRecPtr lsn, XLogRecord *record)
 
 		slotno = ZeroMultiXactMemberPage(pageno, false);
 		SimpleLruWritePage(MultiXactMemberCtl, slotno, NULL);
-		Assert(MultiXactMemberCtl->shared->page_status[slotno] == SLRU_PAGE_CLEAN);
+		Assert(!MultiXactMemberCtl->shared->page_dirty[slotno]);
 
 		LWLockRelease(MultiXactMemberControlLock);
 	}
@@ -1929,7 +1932,7 @@ multixact_redo(XLogRecPtr lsn, XLogRecord *record)
 }
 
 void
-multixact_desc(char *buf, uint8 xl_info, char *rec)
+multixact_desc(StringInfo buf, uint8 xl_info, char *rec)
 {
 	uint8		info = xl_info & ~XLR_INFO_MASK;
 
@@ -1938,25 +1941,25 @@ multixact_desc(char *buf, uint8 xl_info, char *rec)
 		int			pageno;
 
 		memcpy(&pageno, rec, sizeof(int));
-		sprintf(buf + strlen(buf), "zero offsets page: %d", pageno);
+		appendStringInfo(buf, "zero offsets page: %d", pageno);
 	}
 	else if (info == XLOG_MULTIXACT_ZERO_MEM_PAGE)
 	{
 		int			pageno;
 
 		memcpy(&pageno, rec, sizeof(int));
-		sprintf(buf + strlen(buf), "zero members page: %d", pageno);
+		appendStringInfo(buf, "zero members page: %d", pageno);
 	}
 	else if (info == XLOG_MULTIXACT_CREATE_ID)
 	{
 		xl_multixact_create *xlrec = (xl_multixact_create *) rec;
 		int			i;
 
-		sprintf(buf + strlen(buf), "create multixact %u offset %u:",
-				xlrec->mid, xlrec->moff);
+		appendStringInfo(buf, "create multixact %u offset %u:",
+						 xlrec->mid, xlrec->moff);
 		for (i = 0; i < xlrec->nxids; i++)
-			sprintf(buf + strlen(buf), " %u", xlrec->xids[i]);
+			appendStringInfo(buf, " %u", xlrec->xids[i]);
 	}
 	else
-		strcat(buf, "UNKNOWN");
+		appendStringInfo(buf, "UNKNOWN");
 }

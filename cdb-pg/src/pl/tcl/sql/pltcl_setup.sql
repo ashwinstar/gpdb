@@ -44,7 +44,7 @@ create table T_dta2 (
 --
 -- Function to check key existance in T_pkey1
 --
-create function check_pkey1_exists(int4, bpchar) returns bool as '
+create function check_pkey1_exists(int4, bpchar) returns bool as E'
     if {![info exists GD]} {
         set GD(plan) [spi_prepare				\\
 	    "select 1 from T_pkey1				\\
@@ -58,13 +58,55 @@ create function check_pkey1_exists(int4, bpchar) returns bool as '
         return "t"
     }
     return "f"
-' language 'pltcl';
+' language pltcl;
+
+
+-- dump trigger data
+
+CREATE TABLE trigger_test
+    (i int, v text );
+
+CREATE FUNCTION trigger_data() returns trigger language pltcl as $_$
+
+	if { [info exists TG_relid] } {
+    	set TG_relid "bogus:12345"
+   	}
+
+	set dnames [info locals {[a-zA-Z]*} ]
+
+	foreach key [lsort $dnames] {
+    
+		if { [array exists $key] } { 
+			set str "{"
+			foreach akey [lsort [ array names $key ] ] {
+				if {[string length $str] > 1} { set str "$str, " }
+				set cmd "($akey)"
+				set cmd "set val \$$key$cmd"
+				eval $cmd
+				set str "$str$akey: $val"
+			}
+			set str "$str}"
+    		elog NOTICE "$key: $str"
+		} else {
+			set val [eval list "\$$key" ]
+    		elog NOTICE "$key: $val"
+		}
+	}
+
+
+	return OK  
+
+$_$;
+
+CREATE TRIGGER show_trigger_data_trig 
+BEFORE INSERT OR UPDATE OR DELETE ON trigger_test
+FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
 
 
 --
 -- Trigger function on every change to T_pkey1
 --
-create function trig_pkey1_before() returns trigger as '
+create function trig_pkey1_before() returns trigger as E'
     #
     # Create prepared plans on the first call
     #
@@ -146,7 +188,7 @@ create function trig_pkey1_before() returns trigger as '
     # Anything is fine - let operation pass through
     #
     return OK
-' language 'pltcl';
+' language pltcl;
 
 
 create trigger pkey1_before before insert or update or delete on T_pkey1
@@ -158,7 +200,7 @@ create trigger pkey1_before before insert or update or delete on T_pkey1
 -- Trigger function to check for duplicate keys in T_pkey2
 -- and to force key2 to be upper case only without leading whitespaces
 --
-create function trig_pkey2_before() returns trigger as '
+create function trig_pkey2_before() returns trigger as E'
     #
     # Prepare plan on first call
     #
@@ -187,7 +229,7 @@ create function trig_pkey2_before() returns trigger as '
     # Return modified tuple in NEW
     #
     return [array get NEW]
-' language 'pltcl';
+' language pltcl;
 
 
 create trigger pkey2_before before insert or update on T_pkey2
@@ -201,7 +243,7 @@ create trigger pkey2_before before insert or update on T_pkey2
 -- in T_pkey2 are done so the trigger for primkey check on T_dta2
 -- fired on our updates will see the new key values in T_pkey2.
 --
-create function trig_pkey2_after() returns trigger as '
+create function trig_pkey2_after() returns trigger as E'
     #
     # Prepare plans on first call
     #
@@ -277,7 +319,7 @@ create function trig_pkey2_after() returns trigger as '
     }
 
     return OK
-' language 'pltcl';
+' language pltcl;
 
 
 create trigger pkey2_after after update or delete on T_pkey2
@@ -288,7 +330,7 @@ create trigger pkey2_after after update or delete on T_pkey2
 --
 -- Generic trigger function to check references in T_dta1 and T_dta2
 --
-create function check_primkey() returns trigger as '
+create function check_primkey() returns trigger as E'
     #
     # For every trigger/relation pair we create
     # a saved plan and hold them in GD
@@ -375,7 +417,7 @@ create function check_primkey() returns trigger as '
     # Anything is fine
     #
     return OK
-' language 'pltcl';
+' language pltcl;
 
 
 create trigger dta1_before before insert or update on T_dta1
@@ -390,7 +432,7 @@ create trigger dta2_before before insert or update on T_dta2
 
 create function tcl_int4add(int4,int4) returns int4 as '
     return [expr $1 + $2]
-' language 'pltcl';
+' language pltcl;
 
 -- We use split(n) as a quick-and-dirty way of parsing the input array
 -- value, which comes in as a string like '{1,2}'.  There are better ways...
@@ -400,13 +442,13 @@ create function tcl_int4_accum(int4[], int4) returns int4[] as '
     set newsum [expr {[lindex $state 1] + $2}]
     set newcnt [expr {[lindex $state 2] + 1}]
     return "{$newsum,$newcnt}"
-' language 'pltcl';
+' language pltcl;
 
 create function tcl_int4_avg(int4[]) returns int4 as '
     set state [split $1 "{,}"]
     if {[lindex $state 2] == 0} { return_null }
     return [expr {[lindex $state 1] / [lindex $state 2]}]
-' language 'pltcl';
+' language pltcl;
 
 create aggregate tcl_avg (
 		sfunc = tcl_int4_accum,
@@ -428,7 +470,7 @@ create function tcl_int4lt(int4,int4) returns bool as '
         return t
     }
     return f
-' language 'pltcl';
+' language pltcl;
 
 create operator @< (
 		leftarg = int4,

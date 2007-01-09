@@ -26,6 +26,11 @@ ALL : "..\..\port\pg_config_paths.h" "$(OUTDIR)\pg_config.exe"
 
 CLEAN :
 	-@erase "$(INTDIR)\pg_config.obj"
+	-@erase "$(INTDIR)\pgstrcasecmp.obj"
+	-@erase "$(OUTDIR)\path.obj"
+	-@erase "$(OUTDIR)\strlcpy.obj"
+	-@erase "$(INTDIR)\exec.obj"
+	-@erase "$(INTDIR)\snprintf.obj"
 	-@erase "$(OUTDIR)\pg_config.exe"
 	-@erase "$(INTDIR)\..\..\port\pg_config_paths.h"
 
@@ -45,10 +50,11 @@ CLEAN :
 "$(OUTDIR)" :
     if not exist "$(OUTDIR)/$(NULL)" mkdir "$(OUTDIR)"
 
-CPP_PROJ=/nologo $(OPT) /W3 /GX /D "WIN32" $(DEBUGDEF) /D "_CONSOLE" /D\
- "_MBCS" /Fp"$(INTDIR)\pg_config.pch" /YX /Fo"$(INTDIR)\\" /Fd"$(INTDIR)\\" /FD /c \
+CPP_PROJ=/nologo $(OPT) /W3 /EHsc /D "WIN32" $(DEBUGDEF) /D "_CONSOLE" /D\
+ "_MBCS" /Fp"$(INTDIR)\pg_config.pch" /Fo"$(INTDIR)\\" /Fd"$(INTDIR)\\" /FD /c \
  /I ..\..\include /I ..\..\interfaces\libpq /I ..\..\include\port\win32 \
- /D "HAVE_STRDUP" /D "FRONTEND"
+ /I ..\..\include\port\win32_msvc /D "FRONTEND" \
+ /D "_CRT_SECURE_NO_DEPRECATE"
 
 CPP_OBJS=$(INTDIR)/
 CPP_SBRS=.
@@ -62,7 +68,9 @@ LINK32_OBJS= \
 	"$(INTDIR)\pg_config.obj" \
 	"$(INTDIR)\pgstrcasecmp.obj" \
 	"$(OUTDIR)\path.obj" \
+	"$(OUTDIR)\strlcpy.obj" \
 	"$(INTDIR)\exec.obj" \
+	"$(INTDIR)\snprintf.obj" \
 !IFDEF DEBUG
 	"..\..\interfaces\libpq\Debug\libpqddll.lib"
 !ELSE
@@ -79,6 +87,11 @@ LINK32_OBJS= \
     $(CPP_PROJ) ..\..\port\path.c
 <<
 
+"$(OUTDIR)\strlcpy.obj" : "$(OUTDIR)" ..\..\port\strlcpy.c
+    $(CPP) @<<
+    $(CPP_PROJ) ..\..\port\strlcpy.c
+<<
+
 "$(INTDIR)\pgstrcasecmp.obj" : ..\..\port\pgstrcasecmp.c
     $(CPP) @<<
     $(CPP_PROJ) ..\..\port\pgstrcasecmp.c
@@ -87,6 +100,11 @@ LINK32_OBJS= \
 "$(INTDIR)\exec.obj" : ..\..\port\exec.c
     $(CPP) @<<
     $(CPP_PROJ) ..\..\port\exec.c
+<<
+
+"$(INTDIR)\snprintf.obj" : ..\..\port\snprintf.c
+    $(CPP) @<<
+    $(CPP_PROJ) ..\..\port\snprintf.c
 <<
 
 .c{$(CPP_OBJS)}.obj::

@@ -3,10 +3,10 @@
  *
  * PostgreSQL multi-transaction-log manager
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/multixact.h,v 1.7.2.1 2006/11/17 18:00:25 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/access/multixact.h,v 1.11 2006/11/17 18:00:15 tgl Exp $
  */
 #ifndef MULTIXACT_H
 #define MULTIXACT_H
@@ -17,6 +17,10 @@
 #define FirstMultiXactId	((MultiXactId) 1)
 
 #define MultiXactIdIsValid(multi) ((multi) != InvalidMultiXactId)
+
+/* Number of SLRU buffers to use for multixact */
+#define NUM_MXACTOFFSET_BUFFERS		8
+#define NUM_MXACTMEMBER_BUFFERS		16
 
 /* ----------------
  *		multixact-related XLOG entries
@@ -64,6 +68,6 @@ extern void MultiXactAdvanceNextMXact(MultiXactId minMulti,
 						  MultiXactOffset minMultiOffset);
 
 extern void multixact_redo(XLogRecPtr lsn, XLogRecord *record);
-extern void multixact_desc(char *buf, uint8 xl_info, char *rec);
+extern void multixact_desc(StringInfo buf, uint8 xl_info, char *rec);
 
 #endif   /* MULTIXACT_H */
