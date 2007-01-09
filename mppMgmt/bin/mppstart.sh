@@ -377,7 +377,7 @@ PROCESS_STARTUP () {
 					LOG_MSG "[WARN]:-Could not start instance, BUT pg_ctl reports instance active, check instance log file via mppstate.sh -e"
 					EXIT_STATUS=1
 				fi
-				if [ $RUNNING -eq 0 ] && [ $RETVAL -eq 0 ]; then
+				if [ $RUNNING -eq 0 ] && [ $RETVAL -eq 0 ] && [ "$WAIT" == "-w" ]; then
 					LOG_MSG "[INFO]:-Command pg_ctl indicates started Segment instance $QE_NAME database"
 					QD_LC_COLLATE=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"show lc_collate;\""`
 					ERROR_CHK $? "obtain segment lc_collate info" 1
