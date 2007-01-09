@@ -249,11 +249,11 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 			break;
 		}
 		
-		for (i = 1;i< cdb_component_dbs->total_segment_dbs;i++)
+		for (i = 0;i< cdb_component_dbs->total_segment_dbs;i++)
 		{
 			if (cdb_component_dbs->segment_db_info[i].definedprimary && 
 				cdb_component_dbs->segment_db_info[i].segindex >=0 &&
-			    strcmp(firsthost, cdb_component_dbs->segment_db_info[0].hostname)==0)
+			    strcmp(firsthost, cdb_component_dbs->segment_db_info[i].hostname)==0)
 				numSegsPerHost++;
 			if (!cdb_component_dbs->segment_db_info[i].definedprimary && 
 				cdb_component_dbs->segment_db_info[i].segindex >=0 )
