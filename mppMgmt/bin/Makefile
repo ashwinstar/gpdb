@@ -36,7 +36,7 @@ stream:
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@echo "Building stream utility."
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@cd $(STREAM_DIR) ; NO_M64=TRUE gcc -Wall stream.c -o stream; cd ../../
+	@cd $(STREAM_DIR) ; gcc -Wall stream.c -o stream; cd ../../
 	@cp $(STREAM_DIR)/stream lib/stream 
 	@echo ""
 
@@ -64,7 +64,7 @@ configobj:
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@cd $(PYLIB_SRC)/; unzip -o $(CONFIGOBJ_DIR).zip ; cd ../ ;
 	@echo " Building configobj "
-	@cd $(PYLIB_SRC)/$(CONFIGOBJ_DIR) ; NO_M64=TRUE python setup.py build ; cd ../../
+	@cd $(PYLIB_SRC)/$(CONFIGOBJ_DIR) ; python setup.py build ; cd ../../
 	cp -r $(PYLIB_SRC)/$(CONFIGOBJ_DIR)/build/lib/* $(LIB_DIR)/
 
 configobjInstall:
@@ -74,7 +74,7 @@ configobjClean:
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@echo "Cleaning configobj"
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@cd $(PYLIB_SRC)/$(CONFIGOBJ_DIR) ; NO_M64=TRUE python setup.py clean; cd ../../
+	@cd $(PYLIB_SRC)/$(CONFIGOBJ_DIR) ; python setup.py clean; cd ../../
 	@echo ""
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@echo " Removing $(CONFIGOBJ_DIR) "
@@ -95,7 +95,7 @@ paramiko:
 		cd $(PYLIB_SRC)/; tar -xvzf $(PARAMIKO_DIR).tgz ; cd ../ ;\
 	fi
 	@echo " Building paramiko "
-	@cd $(PYLIB_SRC)/$(PARAMIKO_DIR) ; NO_M64=TRUE python setup.py build ; cd ../../
+	@cd $(PYLIB_SRC)/$(PARAMIKO_DIR) ; python setup.py build ; cd ../../
 	cp -r $(PYLIB_SRC)/$(PARAMIKO_DIR)/build/lib/paramiko  $(LIB_DIR)/
 
 paramikoInstall:
@@ -105,7 +105,7 @@ paramikoClean:
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@echo "Cleaning Paramiko"
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@cd $(PYLIB_SRC)/$(PARAMIKO_DIR) ; NO_M64=TRUE python setup.py clean; cd ../../
+	@cd $(PYLIB_SRC)/$(PARAMIKO_DIR) ; python setup.py clean; cd ../../
 	@echo ""
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@echo " Removing $(PARAMIKO_DIR) "
@@ -132,7 +132,7 @@ pycrypto:
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@echo " Building pycrypto "
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@cd $(PYLIB_SRC)/$(PYCRYPTO_DIR) ; NO_M64=TRUE python setup.py build ; cd ../../
+	@cd $(PYLIB_SRC)/$(PYCRYPTO_DIR) ; python setup.py build ; cd ../../
 	@cp -r $(PYLIB_SRC)/$(PYCRYPTO_DIR)/build/lib.*/Crypto $(LIB_DIR)
 
 pycryptoInstall:
@@ -142,7 +142,7 @@ pycryptoClean:
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@echo "Cleaning pycrypto"
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@cd $(PYLIB_SRC)/$(PYCRYPTO_DIR) ; NO_M64=TRUE python setup.py clean; cd ../../
+	@cd $(PYLIB_SRC)/$(PYCRYPTO_DIR) ; python setup.py clean; cd ../../
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@echo " Removing $(PYCRYPTO_DIR) "
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
