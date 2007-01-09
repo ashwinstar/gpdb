@@ -205,7 +205,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	Oid			ownerId;
 	ListCell   *cell;
 	char	*tempstr;
-	int numSegsPerHost = 1;
+	int numSegsPerHost = 0;
 	bool hasMirrors = false;
 	int i;
 	
@@ -251,6 +251,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		
 		for (i = 0;i< cdb_component_dbs->total_segment_dbs;i++)
 		{
+			elog(DEBUG5,"%d %s",cdb_component_dbs->segment_db_info[i].segindex,cdb_component_dbs->segment_db_info[i].hostname);
 			if (cdb_component_dbs->segment_db_info[i].definedprimary && 
 				cdb_component_dbs->segment_db_info[i].segindex >=0 &&
 			    strcmp(firsthost, cdb_component_dbs->segment_db_info[i].hostname)==0)
@@ -279,7 +280,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		if (i!=numSegsPerHost)
 			ereport(ERROR,
 				(errcode(ERRCODE_MPP_COMMAND_ERROR),
-				 errmsg("You must specify as many locations as you have segment databases on each host"),
+				 errmsg("You must specify as many locations as you have segment databases on each host. You specified %d locations but there are %d segments per host.",i,numSegsPerHost),
 				 errhint("Check mpp_configuration for number of primary segment databases on each host")));
 			
 		
