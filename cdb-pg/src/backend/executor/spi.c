@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/spi.c,v 1.165 2006/11/21 22:35:29 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/spi.c,v 1.165.2.2 2006/12/26 16:56:22 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -2055,6 +2055,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 	volatile uint32 my_processed = 0;
 	volatile Oid my_lastoid = InvalidOid;
 	SPITupleTable *volatile my_tuptable = NULL;
+	volatile int res = 0;
 	Snapshot	saveActiveSnapshot;
 
 	
@@ -2678,7 +2679,6 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				Plan	   *planTree;
 				QueryDesc  *qdesc;
 				DestReceiver *dest;
-				int			res;
 
 				planTree = lfirst(plan_list_item);
 				plan_list_item = lnext(plan_list_item);
@@ -2824,6 +2824,16 @@ fail:
 	SPI_processed = my_processed;
 	SPI_lastoid = my_lastoid;
 	SPI_tuptable = my_tuptable;
+
+	/* tuptable now is caller's responsibility, not SPI's */
+	_SPI_current->tuptable = NULL;
+
+	/*
+	 * If none of the queries had canSetTag, we return the last query's result
+	 * code, but not its auxiliary results (for backwards compatibility).
+	 */
+	if (my_res == 0)
+		my_res = res;
 
 	return my_res;
 }
@@ -2982,6 +2992,9 @@ _SPI_cursor_operation(Portal portal, bool forward, long count,
 	/* Put the result into place for access by caller */
 	SPI_processed = _SPI_current->processed;
 	SPI_tuptable = _SPI_current->tuptable;
+
+	/* tuptable now is caller's responsibility, not SPI's */
+	_SPI_current->tuptable = NULL;
 
 	/* Pop the SPI stack */
 	_SPI_end_call(true);

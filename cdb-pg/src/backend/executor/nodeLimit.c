@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeLimit.c,v 1.27 2006/07/26 19:31:50 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeLimit.c,v 1.27.2.1 2006/12/03 21:40:13 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */

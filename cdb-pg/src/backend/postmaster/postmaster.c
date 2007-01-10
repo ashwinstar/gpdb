@@ -38,7 +38,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.505 2006/11/30 18:29:12 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.505.2.1 2007/01/04 00:58:01 tgl Exp $
  *
  * NOTES
  *
@@ -439,7 +439,12 @@ PostmasterMain(int argc, char *argv[])
 
 	opterr = 1;
 
-	while ((opt = getopt(argc, argv, "A:a:B:b:c:D:d:EFh:ik:lm:MN:no:p:Ss-:")) != -1)
+	/*
+	 * Parse command-line options.  CAUTION: keep this in sync with
+	 * tcop/postgres.c (the option sets should not conflict)
+	 * and with the common help() function in main/main.c.
+	 */
+	while ((opt = getopt(argc, argv, "A:B:c:D:d:EeFf:h:ijk:lN:nOo:Pp:r:S:sTt:W:-:")) != -1)
 	{
 		switch (opt)
 		{
@@ -458,9 +463,23 @@ PostmasterMain(int argc, char *argv[])
 			case 'd':
 				set_debug_options(atoi(optarg), PGC_POSTMASTER, PGC_S_ARGV);
 				break;
+
+			/*
+			 * Normal PostgreSQL used 'E' flag to mean "log_statement='all'",
+			 * but we co-opted this letter for this... I'm afraid to change it,
+			 * because I don't know where this is used.
+			 */
 			case 'E':
 				Mpp_entry_postmaster = true;
+				/*
+				 * 	SetConfigOption("log_statement", "all", PGC_POSTMASTER, PGC_S_ARGV);
+				 */
 				break;
+
+			case 'e':
+				SetConfigOption("datestyle", "euro", PGC_POSTMASTER, PGC_S_ARGV);
+				break;
+
 			case 'F':
 				SetConfigOption("fsync", "false", PGC_POSTMASTER, PGC_S_ARGV);
 				break;
@@ -531,7 +550,7 @@ PostmasterMain(int argc, char *argv[])
 				break;
 
 			case 's':
-				SetConfigOption("log_statement_stats", optarg, PGC_POSTMASTER, PGC_S_ARGV);
+				SetConfigOption("log_statement_stats", "true", PGC_POSTMASTER, PGC_S_ARGV);
 				break;
 
 			case 'T':
@@ -726,7 +745,7 @@ PostmasterMain(int argc, char *argv[])
 	 * trying to locate the timezone files too early in initialization.)
 	 */
 	pg_timezone_initialize();
-	
+
 	/*
 	 * Likewise, init timezone_abbreviations if not already set.
 	 */
