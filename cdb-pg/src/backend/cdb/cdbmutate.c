@@ -460,28 +460,8 @@ apply_motion(Plan *plan, Query *query)
 					if (query->commandType == CMD_UPDATE &&
 						doesUpdateAffectPartitionCols(plan,query))
 					{
-						if (query->resultRelations == NIL)
-						{
-							RangeTblEntry  *rte;
-	        	
-	        				rte = rt_fetch(query->resultRelation, query->rtable);
-		
-							if (!DoesDistributionHaveDependencies(rte->relid,targetPolicy))
-							{
-								targetPolicy->nattrs = 0;
-								MppPolicyReplace(rte->relid, targetPolicy);
-								ereport(NOTICE,
-										(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-										 errmsg("Updating a column that is part of the distribution policy forces a NULL distribution policy")));
-						
-							}
-							else
-							ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-										errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns if any are part of a UNIQUE or PRIMARY KEY constraint")
-										));
-						}
-						else
-							ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+
+						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
 										errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns")
 										));
 					}
