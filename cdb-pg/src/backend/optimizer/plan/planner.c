@@ -3,7 +3,7 @@
  * planner.c
  *	  The query optimizer external interface.
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -300,6 +300,16 @@ subquery_planner(Query *parse, double tuple_fraction,
 	 * subqueries.
 	 */
 	expand_inherited_tables(root);
+
+    /* CDB: If parent RTE belongs to current query level, children do too. */
+    foreach (l, root->append_rel_list)
+    {
+        AppendRelInfo  *appinfo = (AppendRelInfo *)lfirst(l);
+
+        if (bms_is_member(appinfo->parent_relid, root->currlevel_relids))
+            root->currlevel_relids = bms_add_member(root->currlevel_relids, 
+                                                    appinfo->child_relid);
+    }
 
 	/*
 	 * Set hasHavingQual to remember if HAVING clause is present.  Needed

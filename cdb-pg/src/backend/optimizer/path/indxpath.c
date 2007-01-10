@@ -4,7 +4,7 @@
  *	  Routines to determine which indexes are usable for scanning a
  *	  given relation, and create Paths accordingly.
  *
- * Portions Copyright (c) 2006, greenplum inc
+ * Portions Copyright (c) 2006-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -137,9 +137,12 @@ static Const *string_to_const(const char *str, Oid datatype);
  * 'rel' is the relation for which we want to generate index paths
  *
  * Note: check_partial_indexes() must have been run previously for this rel.
+ *
+ * CDB: Instead of handing the paths to add_path(), we append them to a List
+ * (*ppathlist) belonging to the caller.
  */
 void
-create_index_paths(PlannerInfo *root, RelOptInfo *rel)
+create_index_paths(PlannerInfo *root, RelOptInfo *rel, List** ppathlist)
 {
 	List	   *indexpaths;
 	List	   *bitindexpaths;
@@ -185,7 +188,7 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
             ipath->indexinfo->unique)
             rel->onerow = true;
 
-		add_path(root, rel, (Path *) ipath);
+		*ppathlist = lappend(*ppathlist, ipath);
 
 		if (ipath->indexselectivity < 1.0 &&
 			!ScanDirectionIsBackward(ipath->indexscandir))
@@ -221,7 +224,7 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 
 		bitmapqual = choose_bitmap_and(root, rel, bitindexpaths, NULL);
 		bpath = create_bitmap_heap_path(root, rel, bitmapqual, NULL);
-		add_path(root, rel, (Path *) bpath);
+		*ppathlist = lappend(*ppathlist, bpath);
 	}
 }
 

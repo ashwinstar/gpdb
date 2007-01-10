@@ -2,7 +2,7 @@
  *
  * cdbpath.c
  *
- * Copyright (c) 2005-2006, greenplum inc
+ * Copyright (c) 2005-2007, greenplum inc
  *
  * $Id$
  *
@@ -48,8 +48,9 @@ int         cdbpath_segments = 1;
  *    Fills in the cost estimate fields in a MotionPath node.
  */
 void
-cdbpath_cost_motion(CdbMotionPath *motionpath, Path *subpath)
+cdbpath_cost_motion(CdbMotionPath *motionpath)
 {
+    Path   *subpath = motionpath->subpath;
     Cost    cost_per_row;
     Cost    motioncost;
     double  recvrows;
@@ -260,7 +261,7 @@ cdbpath_create_motion_path(PlannerInfo     *root,
     pathnode->subpath = subpath;
 
     /* Cost of motion */
-    cdbpath_cost_motion(pathnode, subpath);
+    cdbpath_cost_motion(pathnode);
 
     /* Tell operators above us that slack may be needed for deadlock safety. */
     pathnode->path.motionHazard = true;

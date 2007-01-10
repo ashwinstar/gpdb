@@ -19,6 +19,7 @@
  * for that.
  *
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -233,14 +234,19 @@ TidQualFromRestrictinfo(List *restrictinfo, int varno)
  *	  Create paths corresponding to direct TID scans of the given rel.
  *
  *	  Candidate paths are added to the rel's pathlist (using add_path).
+ *
+ * CDB: Instead of handing the paths to add_path(), we append them to a List
+ * (*ppathlist) belonging to the caller.
+ *
+ * CDB TODO: Set rel->onerow if at most one tid is to be fetched.
  */
 void
-create_tidscan_paths(PlannerInfo *root, RelOptInfo *rel)
+create_tidscan_paths(PlannerInfo *root, RelOptInfo *rel, List** ppathlist)
 {
 	List	   *tidquals;
 
 	tidquals = TidQualFromRestrictinfo(rel->baserestrictinfo, rel->relid);
 
 	if (tidquals)
-		add_path(root, rel, (Path *) create_tidscan_path(root, rel, tidquals));
+		*ppathlist = lappend(*ppathlist, create_tidscan_path(root, rel, tidquals));
 }

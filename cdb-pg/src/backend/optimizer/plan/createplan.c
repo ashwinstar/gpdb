@@ -5,7 +5,7 @@
  *	  Planning is complete, we just need to convert the selected
  *	  Path into a Plan.
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -659,71 +659,6 @@ create_material_plan(CreatePlanContext *ctx, MaterialPath *best_path)
 
 
 /*
- * create_limit1_plan
- *    CDB: Create a Plan whose output is limited to one row.
- */
-static Plan *
-create_limit1_plan(CreatePlanContext *ctx, UniquePath *uniquepath)
-{
-    Limit  *limitplan;
-	Plan   *subplan;
-
-    Assert(uniquepath->umethod == UNIQUE_PATH_LIMIT1);
-
-    /* Bring partitioned subpath result to a single QE. */
-    if (CdbPathLocus_IsPartitioned(uniquepath->subpath->locus))
-    {
-        /* Insert a MotionPath node atop our subpath. */
-        uniquepath->subpath = cdbpath_create_motion_path(ctx->root,
-                                                         uniquepath->subpath,
-                                                         NIL,
-                                                         false,
-                                                         uniquepath->path.locus);
-        Insist(uniquepath->subpath &&
-               CdbPathLocus_IsSingleQE(uniquepath->subpath->locus));
-
-        /* Build subplan. */
-        subplan = create_subplan(ctx, uniquepath->subpath);
-        Insist(IsA(subplan, Motion));
-
-        /* Insert a LIMIT 1 node beneath the Motion node. */
-        limitplan = makeNode(Limit);
-        copy_plan_costsize(&limitplan->plan, subplan->lefttree);
-        limitplan->plan.plan_rows = 1;
-        limitplan->plan.targetlist = subplan->lefttree->targetlist;
-        limitplan->plan.qual = NIL;
-        limitplan->plan.lefttree = subplan->lefttree;
-        limitplan->plan.righttree = NULL;
-        limitplan->limitOffset = NULL;
-        limitplan->limitCount = (Node *)makeConst(INT8OID, sizeof(int64),
-                                                  Int64GetDatum(1),
-                                                  false, false);
-        subplan->lefttree = (Plan *)limitplan;
-
-        /* Motion node's subplan is required to have a Flow node. */
-        limitplan->plan.flow = pull_up_Flow((Plan *)limitplan,
-                                            limitplan->plan.lefttree,
-                                            false);
-    }
-    else
-        subplan = create_subplan(ctx, uniquepath->subpath);
-
-    /* Top off the subplan with a LIMIT 1 node. */
-    limitplan = makeNode(Limit);
-    copy_path_costsize(&limitplan->plan, &uniquepath->path);
-    limitplan->plan.targetlist = subplan->targetlist;
-    limitplan->plan.qual = NIL;
-    limitplan->plan.lefttree = subplan;
-    limitplan->plan.righttree = NULL;
-    limitplan->limitOffset = NULL;
-    limitplan->limitCount = (Node *)makeConst(INT8OID, sizeof(int64),
-                                              Int64GetDatum(1),
-                                              false, false);
-    return (Plan *)limitplan;
-}                               /* create_limit1_plan */
-
-
-/*
  * create_unique_plan
  *	  Create a Unique plan for 'best_path' and (recursively) plans
  *	  for its subpaths.
@@ -744,16 +679,30 @@ create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path)
 	int			groupColPos;
 	ListCell   *l;
 
-	/* Return naked subplan if we don't need to do any actual unique-ifying */
-	if (best_path->umethod == UNIQUE_PATH_NOOP ||
-        best_path->path.parent->onerow)
-		return create_subplan(ctx, best_path->subpath);
-
-    /* Result will surely be unique if we produce only its first row. */
-    if (best_path->umethod == UNIQUE_PATH_LIMIT1)
-        return create_limit1_plan(ctx, best_path);
-
     subplan = create_subplan(ctx, best_path->subpath);
+
+	/* Return naked subplan if we don't need to do any actual unique-ifying */
+	if (best_path->umethod == UNIQUE_PATH_NOOP)
+		return subplan;
+
+    /* CDB: Result will surely be unique if we produce only its first row. */
+    if (best_path->umethod == UNIQUE_PATH_LIMIT1)
+    {
+        Limit  *limitplan;
+
+        /* Top off the subplan with a LIMIT 1 node. */
+        limitplan = makeNode(Limit);
+        copy_path_costsize(&limitplan->plan, &best_path->path);
+        limitplan->plan.targetlist = subplan->targetlist;
+        limitplan->plan.qual = NIL;
+        limitplan->plan.lefttree = subplan;
+        limitplan->plan.righttree = NULL;
+        limitplan->limitOffset = NULL;
+        limitplan->limitCount = (Node *)makeConst(INT8OID, sizeof(int64),
+                                                  Int64GetDatum(1),
+                                                  false, false);
+        return (Plan *)limitplan;
+    }
 
 	/*----------
 	 * As constructed, the subplan has a "flat" tlist containing just the

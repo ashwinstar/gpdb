@@ -3,7 +3,7 @@
  * cdbpath.h
  *
  *
- * Copyright (c) 2005-2006, greenplum inc
+ * Copyright (c) 2005-2007, greenplum inc
  *
  * $Id$
  *
@@ -19,7 +19,7 @@ extern Cost     cdbpath_motion_cost_per_row;
 extern int      cdbpath_segments;
 
 void
-cdbpath_cost_motion(CdbMotionPath *motionpath, Path *subpath);
+cdbpath_cost_motion(CdbMotionPath *motionpath);
 
 Path *
 cdbpath_create_motion_path(PlannerInfo     *root,
@@ -51,16 +51,18 @@ static inline double
 cdbpath_rows(Path *path)
 {
     double rows;
+    Path  *p;
 
-    rows = IsA(path, BitmapHeapPath)    ? ((BitmapHeapPath *)path)->rows
-         : IsA(path, IndexPath)         ? ((IndexPath *)path)->rows
-         : IsA(path, UniquePath)        ? ((UniquePath *)path)->rows
+    p = (IsA(path, CdbMotionPath))  ? ((CdbMotionPath *)path)->subpath
+      : path;
+
+    rows = IsA(p, BitmapHeapPath)   ? ((BitmapHeapPath *)p)->rows
+         : IsA(p, IndexPath)        ? ((IndexPath *)p)->rows
+         : IsA(p, UniquePath)       ? ((UniquePath *)p)->rows
+         : (CdbPathLocus_IsBottleneck(path->locus) ||
+            CdbPathLocus_IsReplicated(path->locus)) 
+                                        ? path->parent->rows * cdbpath_segments
          : path->parent->rows;
-
-    /* Just one partition, or whole rel? */
-    if (CdbPathLocus_IsBottleneck(path->locus) ||
-        CdbPathLocus_IsReplicated(path->locus))
-        rows *= cdbpath_segments;
 
     return rows;
 }                               /* cdbpath_rows */

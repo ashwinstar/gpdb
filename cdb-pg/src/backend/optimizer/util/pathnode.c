@@ -37,7 +37,9 @@
 static void     cdb_set_cheapest_dedup(PlannerInfo *root, RelOptInfo *rel);
 static bool     cdb_is_path_deduped(Path *path);
 static bool     cdb_subpath_tried_postjoin_dedup(Path *path, Relids subqrelids);
-static UniquePath  *create_limit1_path(Path *subpath);
+static UniquePath  *create_limit1_path(PlannerInfo *root, Path *subpath);
+static UniquePath  *make_limit1_path(Path *subpath);
+static UniquePath  *make_unique_path(Path *subpath);
 static List *translate_sub_tlist(List *tlist, int relid);
 static bool query_is_distinct_for(Query *query, List *colnos);
 static bool hash_safe_tlist(List *tlist);
@@ -597,7 +599,7 @@ cdb_set_cheapest_dedup(PlannerInfo *root, RelOptInfo *rel)
                                                 dedup->cheapest_total_path,
                                                 rel->reltargetlist);
         else
-            upath = create_limit1_path(dedup->cheapest_total_path);
+            upath = create_limit1_path(root, dedup->cheapest_total_path);
 
         /* Add to rel's main pathlist. */
         add_path(root, rel, (Path *)upath);
@@ -1031,7 +1033,7 @@ void add_path(PlannerInfo *root, RelOptInfo *parent_rel, Path *new_path)
     if (!parent_rel->reltargetlist &&
         !parent_rel->onerow &&
         !bms_overlap(parent_rel->relids, root->currlevel_relids))
-        ; /* new_path = (Path *)create_limit1_path(new_path); -- BCH Tentative fix for MPP-942 */
+        new_path = (Path *)create_limit1_path(root, new_path);
 
     /*
      * CDB: Note whether duplicate suppression has been completed for all
@@ -1601,43 +1603,6 @@ create_material_path(RelOptInfo *rel, Path *subpath)
 
 
 /*
- * make_unique_path
- *    Allocates and partially initializes a UniquePath node to be completed
- *    by the caller.
- */
-static UniquePath *
-make_unique_path(Path *subpath)
-{
-	UniquePath     *pathnode;
-    MemoryContext   oldcontext;
-
-	/* Allocate in same context as parent rel in case GEQO is ever used. */
-	oldcontext = MemoryContextSwitchTo(GetMemoryChunkContext(subpath->parent));
-
-    /* Allocate the UniquePath node. */
-	pathnode = makeNode(UniquePath);
-
-    /* Copy Path header from subpath. */
-    pathnode->path = *subpath;
-
-    /* Fix up the Path header. */
-    pathnode->path.type = T_UniquePath;
-    pathnode->path.pathtype = T_Unique;
-
-    /* Initialize added UniquePath fields. */
-    pathnode->subpath = subpath;
-    pathnode->distinct_on_exprs = NIL;
-    pathnode->distinct_on_rowid_relids = NULL;
-    pathnode->must_repartition = false;
-
-	/* Restore caller's allocation context. */
-	MemoryContextSwitchTo(oldcontext);
-
-    return pathnode;
-}                               /* make_unique_path */
-
-
-/*
  * create_unique_path
  *	  Creates a path representing elimination of distinct rows from the
  *	  input data.
@@ -1888,7 +1853,8 @@ create_unique_rowid_path(PlannerInfo *root,
         motionpath.path.type = T_CdbMotionPath;
         motionpath.path.parent = subpath->parent;
         motionpath.path.locus = uniquepath->path.locus;
-        cdbpath_cost_motion(&motionpath, subpath);
+        motionpath.subpath = subpath;
+        cdbpath_cost_motion(&motionpath);
 
         /* Add MotionPath cost to UniquePath cost. */
         repartition_cost = motionpath.path.total_cost - subpath->total_cost;
@@ -1902,54 +1868,97 @@ create_unique_rowid_path(PlannerInfo *root,
 /*
  * create_limit1_path
  *
- * CDB: Returns a UniquePath which ensures uniqueness by producing at most
- * one row of the given subpath's result.
+ * CDB: Add operators on top of the path to ensure uniqueness by
+ * discarding all but the first row of the given subpath's result.
  *
  * If a row's duplicates might occur in more than one partition, a Motion
- * operator will be needed to bring them together.  Since this path might
- * not be chosen, we won't take the time to create a MotionPath node here;
- * just estimate what the cost would be.  create_plan() will do the rest.
+ * operator will be inserted to bring them together.  
  */
 UniquePath *
-create_limit1_path(Path *subpath)
+create_limit1_path(PlannerInfo *root, Path *subpath)
 {
-	UniquePath     *uniquepath;
+    UniquePath     *uniquepath;
+    CdbPathLocus    singleQE;
 
-    /* Allocate and partially initialize a UniquePath node. */
-    uniquepath = make_unique_path(subpath);
+    /* Add LIMIT 1 operator. */
+    uniquepath = make_limit1_path(subpath);
+
+    /* Add Motion operator to gather to a single qExec, then LIMIT 1 again. */
+    if (CdbPathLocus_IsPartitioned(subpath->locus))
+    {
+        CdbPathLocus_MakeSingleQE(&singleQE);
+        subpath = cdbpath_create_motion_path(root, (Path *)uniquepath, NIL, 
+                                             false, singleQE);
+
+        /* Assume no motion deadlock hazard when limited to 1 row. */
+        subpath->motionHazard = false;
+
+        /* Add another LIMIT 1 on top. */
+        uniquepath = make_limit1_path(subpath);
+    }
+	return uniquepath;
+}                               /* create_limit1_path */
+
+
+/*
+ * make_limit1_path
+ *
+ * CDB: Returns a UniquePath which ensures uniqueness by producing at most
+ * one row of the given subpath's result.
+ */
+UniquePath *
+make_limit1_path(Path *subpath)
+{
+    UniquePath *uniquepath = make_unique_path(subpath);
 
     uniquepath->umethod = UNIQUE_PATH_LIMIT1;
     uniquepath->rows = 1;
 
-    /* LIMIT 1 breaks motion deadlock cycle. */
-    uniquepath->path.motionHazard = false;
-
     /* Cost to get a single row is same as startup cost (from subpath). */
     uniquepath->path.total_cost = uniquepath->path.startup_cost;
-	
-    /* Estimate cost of Motion.  Note sending side will have LIMIT 1 too. */
-    if (CdbPathLocus_IsPartitioned(subpath->locus))
-    {
-        CdbMotionPath   motionpath;     /* dummy for cost estimate */
 
-        memset(&motionpath, 0, sizeof(motionpath));
-        motionpath.path.type = T_CdbMotionPath;
-        motionpath.path.parent = uniquepath->path.parent;
+    /* Assume LIMIT 1 breaks motion deadlock cycle. */
+    uniquepath->path.motionHazard = false;
 
-        /* We'll bring at most one row per subpath partition to a single QE. */
-        CdbPathLocus_MakeSingleQE(&motionpath.path.locus);
+    return uniquepath;
+}                               /* make_limit1_path */
 
-        cdbpath_cost_motion(&motionpath, &uniquepath->path);
 
-        uniquepath->path.total_cost = motionpath.path.total_cost;
-        uniquepath->path.locus = motionpath.path.locus;
+/*
+ * make_unique_path
+ *    Allocates and partially initializes a UniquePath node to be completed
+ *    by the caller.
+ */
+UniquePath *
+make_unique_path(Path *subpath)
+{
+	UniquePath     *pathnode;
+    MemoryContext   oldcontext;
 
-        /* Can't rescan Motion result. */
-        uniquepath->path.rescannable = false;
-    }
+	/* Allocate in same context as parent rel in case GEQO is ever used. */
+	oldcontext = MemoryContextSwitchTo(GetMemoryChunkContext(subpath->parent));
 
-	return uniquepath;
-}                               /* create_limit1_path */
+    /* Allocate the UniquePath node. */
+	pathnode = makeNode(UniquePath);
+
+    /* Copy Path header from subpath. */
+    pathnode->path = *subpath;
+
+    /* Fix up the Path header. */
+    pathnode->path.type = T_UniquePath;
+    pathnode->path.pathtype = T_Unique;
+
+    /* Initialize added UniquePath fields. */
+    pathnode->subpath = subpath;
+    pathnode->distinct_on_exprs = NIL;
+    pathnode->distinct_on_rowid_relids = NULL;
+    pathnode->must_repartition = false;
+
+	/* Restore caller's allocation context. */
+	MemoryContextSwitchTo(oldcontext);
+
+    return pathnode;
+}                               /* make_unique_path */
 
 
 /*

@@ -222,6 +222,9 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti)
 static void
 set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
+    List       *pathlist = NIL;
+    ListCell   *cell;
+
 	/* Mark rel with estimated output rows, width, etc */
 	set_baserel_size_estimates(root, rel);
 
@@ -246,6 +249,9 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		/* Reset output-rows estimate to 0 */
 		rel->rows = 0;
 
+        /* Obviously won't produce more than one row. */
+        rel->onerow = true;
+
 		add_path(root, rel, (Path *) create_append_path(rel, NIL));
 
 		/* Select cheapest path (pretty easy in this case...) */
@@ -264,16 +270,24 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 * Note: add_path() will discard any paths that are dominated by another
 	 * available path, keeping only those paths that are superior along at
 	 * least one dimension of cost or sortedness.
+     *
+     * CDB: So that create_index_paths() and create_tidscan_paths() can set the
+     * rel->onerow flag before it is tested by add_path(), we gather the paths
+     * in a temporary list, then add them.
 	 */
 
 	/* Consider sequential scan */
-	add_path(root, rel, create_seqscan_path(root, rel));
+	pathlist = lappend(pathlist, create_seqscan_path(root, rel));
 
 	/* Consider index scans */
-	create_index_paths(root, rel);
+	create_index_paths(root, rel, &pathlist);
 
 	/* Consider TID scans */
-	create_tidscan_paths(root, rel);
+	create_tidscan_paths(root, rel, &pathlist);
+
+    /* Add them, now that we know whether the quals specify a unique key. */
+    foreach(cell, pathlist)
+        add_path(root, rel, (Path *)lfirst(cell));
 
 	/* Now find the cheapest of the paths for this rel */
 	set_cheapest(root, rel);
@@ -414,6 +428,12 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 			}
 		}
 	}
+
+    /* CDB: Just one child (or none)?  Set flag if result is at most 1 row. */
+    if (!subpaths)
+        rel->onerow = true;
+    else if (list_length(subpaths) == 1)
+        rel->onerow = ((Path *)linitial(subpaths))->parent->onerow;
 
 	/*
 	 * Finally, build Append path and install it as the only access path for
