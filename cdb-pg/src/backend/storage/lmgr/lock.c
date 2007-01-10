@@ -698,6 +698,7 @@ LockAcquire(const LOCKTAG *locktag,
 	
 	
 	if (found)
+	{
 		/*
 		 * If I'm not the writer gang, I can do some special stuff
 		 */
@@ -709,7 +710,7 @@ LockAcquire(const LOCKTAG *locktag,
 			while(proclock)
 			{
 				
-				if (MyProc != proclocktag.myProc && proclocktag.myProc != 0 && proclocktag.myLock == lock)
+				if (MyProc != proclock->tag.myProc && proclock->tag.myProc != 0 && proclock->tag.myLock == lock)
 				{
 					PGPROC		*otherProc = proclocktag.myProc;
 
@@ -793,9 +794,7 @@ LockAcquire(const LOCKTAG *locktag,
 											 offsetof(PROCLOCK, lockLink));
 			}
 		}
-	
-
-	
+	}	
 
 	/*
 	 * Find or create a proclock entry with this tag
