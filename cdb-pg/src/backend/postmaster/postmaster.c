@@ -468,6 +468,8 @@ PostmasterMain(int argc, char *argv[])
 			 * Normal PostgreSQL used 'E' flag to mean "log_statement='all'",
 			 * but we co-opted this letter for this... I'm afraid to change it,
 			 * because I don't know where this is used.
+             * ... it's used only here in postmaster.c; it causes the postmaster to
+             * fork a seqserver process.
 			 */
 			case 'E':
 				Mpp_entry_postmaster = true;
