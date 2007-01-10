@@ -250,8 +250,12 @@ struct Tuplesortstate
 	int64		memtupLIMIT;	/* LIMIT of memtuples array */ /*CDB*/
 	bool		memtupblimited; /* true when hit the limit */
 	int64  		dumpcount;	    /* count of dumps */ /*CDB*/
+	int64  		discardcount;   /* count of discards */ /*CDB*/
+	int64  		alltupcount;    /* count of all input tuples */ /*CDB*/
 	bool		noduplicates;   /* discard duplicate rows if true *//* CDB */
 	int			mppsortflags;   /* special sort flags*//* CDB */
+	bool		standardsort;   /* do regular sort if true *//* CDB */
+		
 
 	/*
 	 * While building initial runs, this is the current output run number
@@ -502,7 +506,10 @@ tuplesort_begin_common(int workMem, bool randomAccess)
 	state->memtupLIMIT = 0; /*CDB*/
 	state->memtupblimited = false;
 	state->dumpcount    = 0; /*CDB*/
+	state->discardcount = 0; /*CDB*/
+	state->alltupcount  = 0; /*CDB*/
 	state->mppsortflags = 0;   /* special sort flags*//* CDB */
+	state->standardsort = true; /* normal sort *//* CDB */
 	state->memtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
 
 	USEMEM(state, GetMemoryChunkSpace(state->memtuples));
@@ -545,6 +552,14 @@ cdb_tuplesort_init(Tuplesortstate *state,
 		state->noduplicates = true;
 
 	state->mppsortflags = sort_flags;
+
+	/* do a standard sort unless performing limit or duplicate
+	 * elimination */
+
+	state->standardsort = 
+			(state->mppsortflags != 1) ||
+			((state->memtupLIMIT == 0) 
+			 && (!state->noduplicates)); 
 }
 
 Tuplesortstate *
@@ -867,8 +882,9 @@ tuplesort_putdatum(Tuplesortstate *state, Datum val, bool isNull)
 static void
 puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 {
-	int do_quicksort = ((state->memtupLIMIT == 0) 
-						&& (!state->noduplicates)); /* no quicksort if LIMIT */
+	int do_standardsort = (state->memtupcount == 0) || state->standardsort;
+
+	state->alltupcount++;
 
 	switch (state->status)
 	{
@@ -886,17 +902,23 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 				(void) grow_memtuples(state);
 				Assert(state->memtupcount < state->memtupsize);
 			}
-			state->memtuples[state->memtupcount++] = *tuple;
+
+			if (do_standardsort)
+			{
+				state->memtuples[state->memtupcount++] = *tuple;
+			}
+			else
+			{
+				/* sorting LIMIT or noduplicates: only one run */
+				tuplesort_sorted_insert(state, tuple, 0, false);
+			}
 
 			/*
 			 * Done if we still fit in available memory and have array slots.
 			 */
 
-			if (do_quicksort)
-			{
-				if (state->memtupcount < state->memtupsize && !LACKMEM(state))
-					return;
-			}
+			if (state->memtupcount < state->memtupsize && !LACKMEM(state))
+				return;
 
 			/*
 			 * Nope; time to switch to tape-based operation.
@@ -907,7 +929,6 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			 * Dump tuples until we are back under the limit.
 			 */
 			dumptuples(state, false);
-
 
 			break;
 		case TSS_BUILDRUNS:
@@ -926,19 +947,10 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			 * this point; see dumptuples.
 			 */
 			Assert(state->memtupcount > 0);
-			if (state->dumpcount || 
-				!(state->memtupLIMIT || state->noduplicates))
-			{
-				if (COMPARETUP(state, tuple, &state->memtuples[0]) >= 0)
-					tuplesort_heap_insert(state, tuple, state->currentRun, true);
-				else
-					tuplesort_heap_insert(state, tuple, state->currentRun + 1, true);
-			}
+			if (COMPARETUP(state, tuple, &state->memtuples[0]) >= 0)
+				tuplesort_heap_insert(state, tuple, state->currentRun, true);
 			else
-			{
-				/* sorting LIMIT or noduplicates: only one run */
-				tuplesort_sorted_insert(state, tuple, state->currentRun, false);
-			}
+				tuplesort_heap_insert(state, tuple, state->currentRun + 1, true);
 
 			/*
 			 * If we are over the memory limit, dump tuples till we're under.
@@ -973,7 +985,8 @@ tuplesort_performsort(Tuplesortstate *state)
 			 * We were able to accumulate all the tuples within the allowed
 			 * amount of memory.  Just qsort 'em and we're done.
 			 */
-			if (state->memtupcount > 1)
+			if ((state->memtupcount > 1)
+				&& state->standardsort)
 				qsort_arg((void *) state->memtuples,
 						  state->memtupcount,
 						  sizeof(SortTuple),
@@ -1402,17 +1415,19 @@ inittapes(Tuplesortstate *state)
 	 * indexes in this step, even though we do intend the indexes to be part
 	 * of the sort key...
 	 */
-	ntuples = state->memtupcount;
-	state->memtupcount = 0;		/* make the heap empty */
-	for (j = 0; j < ntuples; j++)
+	if (state->standardsort)
 	{
-		/* Must copy source tuple to avoid possible overwrite */
-		SortTuple	stup = state->memtuples[j];
+		ntuples = state->memtupcount;
+		state->memtupcount = 0;		/* make the heap empty */
+		for (j = 0; j < ntuples; j++)
+		{
+			/* Must copy source tuple to avoid possible overwrite */
+			SortTuple	stup = state->memtuples[j];
 
-		tuplesort_heap_insert(state, &stup, 0, false);
+			tuplesort_heap_insert(state, &stup, 0, false);
+		}
+		Assert(state->memtupcount == ntuples);
 	}
-	Assert(state->memtupcount == ntuples);
-
 	state->currentRun = 0;
 
 	/*
@@ -1875,6 +1890,18 @@ dumptuples(Tuplesortstate *state, bool alltuples)
 {
 	int bDumped = 0;
 
+	/* CDB *//* check if have sufficient discards to justify fullsort */
+	if (!state->dumpcount && !state->standardsort &&
+		(state->alltupcount == 1000))
+	{
+		int64 discard_ratio = 
+				(state->discardcount/state->alltupcount) * 100;
+
+		/* don't bother for LIMIT case... */
+		if (!state->memtupLIMIT && (discard_ratio < 50))
+			state->standardsort = true;
+	}
+
 	while (alltuples ||
 		   (LACKMEM(state) && state->memtupcount > 1) ||
 		   state->memtupcount >= state->memtupsize)
@@ -2050,6 +2077,7 @@ tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 {
 	SortTuple  *memtuples;
 	int			j;
+	int			comparestat;
 
 	/*
 	 * Save the tupleindex --- see notes above about writing on *tuple. It's a
@@ -2071,12 +2099,27 @@ tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 	{
 		int			i = (j - 1) >> 1;
 
-		if (HEAPCOMPARE(tuple, &memtuples[i]) >= 0)
+		comparestat = HEAPCOMPARE(tuple, &memtuples[i]);
+		if (comparestat >= 0)
 			break;
 		memtuples[j] = memtuples[i];
 		j = i;
 	}
-	memtuples[j] = *tuple;
+
+	/* CDB: discard duplicates during run creation */
+/*
+	if (0 && state->noduplicates && (0 == comparestat) && 
+		(state->status == TSS_BUILDRUNS))
+	{
+		HeapTuple	htup = (HeapTuple) tuple->tuple;
+		FREEMEM(state, GetMemoryChunkSpace(htup));
+		heap_freetuple(htup);
+	} 
+	else
+*/
+	{
+		memtuples[j] = *tuple;
+	}
 }
 
 static void
@@ -2088,13 +2131,6 @@ tuplesort_sorted_insert(Tuplesortstate *state, SortTuple *tuple,
 	int			comparestat;
 	int			j;
 	int         searchpoint = 0;
-
-	if (state->dumpcount || (state->mppsortflags != 1))
-	{
-		tuplesort_heap_insert(state, tuple,
-							  tupleindex, checkIndex);
-		return;
-	}
 
 	/*
 	 * Save the tupleindex --- see notes above about writing on *tuple. It's a
@@ -2253,6 +2289,7 @@ tuplesort_sorted_insert(Tuplesortstate *state, SortTuple *tuple,
 		HeapTuple	htup = (HeapTuple) freetup->tuple;
 		FREEMEM(state, GetMemoryChunkSpace(htup));
 		heap_freetuple(htup);
+		state->discardcount++;
 	}
 
 }
