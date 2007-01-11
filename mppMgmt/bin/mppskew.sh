@@ -320,10 +320,10 @@ if [ $# -ne 0 ];then
 		c ) DISTRIB=1 ;;
 		f ) FULL_DISPLAY=1 ;;
 		q ) unset VERBOSE ;;
-		p ) DO_CHILD=1 ;;
+		h ) DO_CHILD=1 ;;
 		r ) RESPONSE_TIME=1 ;;
 		D ) DEBUG_LEVEL=1 ;;
-                * ) UNKNOWN_OPTION ;;
+                * ) USAGE ;;
         esac
         done
 	CHK_ON_PASSIVE_STANDBY
