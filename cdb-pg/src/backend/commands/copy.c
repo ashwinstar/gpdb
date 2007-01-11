@@ -921,7 +921,7 @@ DoCopy(const CopyStmt *stmt)
 
 	if (!cstate->csv_mode && !cstate->binary && strlen(cstate->escape) != 1)
 	{
-		if (!strcmp(cstate->escape, "OFF") || !strcmp(cstate->escape, "off"))
+		if (!pg_strcasecmp(cstate->escape, "off"))
 			cstate->escape_off = true;
 		else
 			ereport(ERROR,
