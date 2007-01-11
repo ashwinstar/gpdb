@@ -911,6 +911,20 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			{
 				/* sorting LIMIT or noduplicates: only one run */
 				tuplesort_sorted_insert(state, tuple, 0, false);
+
+				/* check if have sufficient discards to justify
+				 * fullsort 
+				 */
+
+				if (state->alltupcount == 1000)
+				{
+					int64 discard_ratio = 
+						(state->discardcount * 100)/state->alltupcount;
+
+					/* don't bother for LIMIT case... */
+					if (!state->memtupLIMIT && (discard_ratio < 50))
+						state->standardsort = true;
+				}
 			}
 
 			/*
@@ -1889,18 +1903,6 @@ static void
 dumptuples(Tuplesortstate *state, bool alltuples)
 {
 	int bDumped = 0;
-
-	/* CDB *//* check if have sufficient discards to justify fullsort */
-	if (!state->dumpcount && !state->standardsort &&
-		(state->alltupcount == 1000))
-	{
-		int64 discard_ratio = 
-				(state->discardcount/state->alltupcount) * 100;
-
-		/* don't bother for LIMIT case... */
-		if (!state->memtupLIMIT && (discard_ratio < 50))
-			state->standardsort = true;
-	}
 
 	while (alltuples ||
 		   (LACKMEM(state) && state->memtupcount > 1) ||
