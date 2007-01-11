@@ -58,6 +58,9 @@ EXIT_STATUS=0
 FULL_DISPLAY=0
 DISTRIB=0
 SEG_TYPE=0
+DO_CHILD=0
+RESPONSE_TIME=0
+DEBUG_LEVEL=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -88,6 +91,7 @@ else
 	$ECHO "      Logging options:"
 	$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
 	$ECHO "      -q, quiet mode, only useful where -f option also used"
+	$ECHO "      -D, set log output to debug level, shows all function calls"
 	$ECHO
 	$ECHO "      Skew options:"
 	$ECHO "      -t, <table name> [mandatory]"
@@ -95,6 +99,8 @@ else
 	$ECHO "      -f, display full results output [default summary]"
 	$ECHO "      -c, display information for table, do not compute skew"
 	$ECHO "      -m, use mirror segment hosts for skew analysis [default primary segments]"
+	$ECHO "      -h, display skew of child tables if -t <table name> is a partitioned table"
+	$ECHO "      -r, display segment instance response times"
         $ECHO
         $ECHO "      Return codes:"
         $ECHO "      0 No problems encountered with requested operation"
@@ -113,49 +119,58 @@ GET_DISTRIB_INFO () {
 	if [ $DISTRIB_COLS != "0" ];then
 		LOG_MSG "[INFO]:-Obtaining OID for $TABLENAME on Master instance"
 		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$TABLENAME' and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
-		ERROR_CHK $? "obtain table oid value" 2
+		if [ $? -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Failed obtain table oid value" 2;fi
 	TOTAL_COLS=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select max(attnum) from pg_attribute where attrelid=${TABLE_OID};"`
-	ERROR_CHK $? "obtain table column count" 2
-	LOG_MSG "[INFO]:-------------------------------------------"
-	LOG_MSG "[INFO]:-Distribution columns for $TARGETTBL"
-	LOG_MSG "[INFO]:-------------------------------------------"
+	if [ $? -ne 0 ];then
+	ERROR_EXIT "[FATAL]:-Failed to obtain table column count" 2;fi
+	LOG_MSG "[INFO]:-------------------------------------------" 1
+	LOG_MSG "[INFO]:-Table name              = $TARGETTBL" 1
 	COLNUM=0
 	for ATT_NUM in `echo $DISTRIB_COLS|$TR -d '{'|$TR -d '}'|$TR ',' ' '`
 	do
 		DIS_COL_NAME=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select attname from pg_attribute where attrelid=${TABLE_OID} and attnum=${ATT_NUM};"`
 		((COLNUM=$COLNUM+1))
-		LOG_MSG "[INFO]:-Distribution column $COLNUM at DDL position $ATT_NUM is named $DIS_COL_NAME"
+#	LOG_MSG "[INFO]:-Distrib col  = $COLNUM at DDL position $ATT_NUM is named $DIS_COL_NAME"
+	LOG_MSG "[INFO]:-Distrib column count    = $COLNUM" 1
+	LOG_MSG "[INFO]:-Distrib column name     = $DIS_COL_NAME" 1
+	LOG_MSG "[INFO]:-Distrib column position = $ATT_NUM" 1
 	done
-	LOG_MSG "[INFO]:-------------------------------------------"
-	LOG_MSG "[INFO]:-Total columns in table $TARGETTBL = $TOTAL_COLS"
-	LOG_MSG "[INFO]:-------------------------------------------"
-	LOG_MSG "[INFO]:-Child table check indicates $TARGETTBL is $TAB_TYPE_TXT"
+	LOG_MSG "[INFO]:-Total columns           = $TOTAL_COLS" 1
+	LOG_MSG "[INFO]:-Table is type           = $TAB_TYPE_TXT" 1
 	if [ $PARTITIONED == 't' ];then
 		PARENT_TABLE_COUNT=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from only $TARGETTBL;"`
-		LOG_MSG "[INFO]:-Parent table physically contains $PARENT_TABLE_COUNT records"	
-		LOG_MSG "[INFO]:-Table $TARGETTBL is type Partitioned"
-		PARENT_TABLE_RELFILENODE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select oid from pg_class where relname='$TABLENAME' and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
-		CHILD_NAME_ARRAY=(`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relname from pg_class where relkind='r' and oid in (select inhrelid from pg_inherits where inhparent=$PARENT_TABLE_RELFILENODE);"|$TR '\n' ' '`)
-		LOG_MSG "[INFO]:-------------------------------------------"
-		LOG_MSG "[INFO]:-Child table details"
-		LOG_MSG "[INFO]:-------------------------------------------"
+		LOG_MSG "[INFO]:-Physical record count   = $PARENT_TABLE_COUNT"	 1
+		LOG_MSG "[INFO]:-Table type              = Partitioned" 1
+		GET_CHILD_NAMES
+		LOG_MSG "[INFO]:-------------------------------------------" 1
+		LOG_MSG "[INFO]:-Child table details" 1
+		LOG_MSG "[INFO]:-------------------------------------------" 1
 		for C_NAME in ${CHILD_NAME_ARRAY[@]}
 		do
 			GET_DISTRIB_COLS ${SCHEMA_NAME}.$C_NAME $MASTER_PORT $QD_DBNAME
 			GET_TABLE_TYPE ${SCHEMA_NAME}.$C_NAME $MASTER_PORT $QD_DBNAME
-			LOG_MSG "[INFO]:-Table=$C_NAME distribution columns=$DISTRIB_COLS"
+			LOG_MSG "[INFO]:-$C_NAME distribution columns=$DISTRIB_COLS" 1
 		done	
-		LOG_MSG "[INFO]:-------------------------------------------"
+		LOG_MSG "[INFO]:-------------------------------------------" 1
 		if [ $PARENT_TAB_TYPE -eq 1 ];then
-			LOG_MSG "[INFO]:-Table $TABLENAME is also a child table"
-			LOG_MSG "[INFO]:-Parent table is $PARENT_TAB_PARENT_NAME"
+			LOG_MSG "[INFO]:-Table $TABLENAME is also a child table" 1
+			LOG_MSG "[INFO]:-Parent table name      =  $PARENT_TAB_PARENT_NAME" 1
 		fi
 	fi
 	else
-		LOG_MSG "[INFO]:-Distribution columns are of type special"
+		LOG_MSG "[INFO]:-Distribution columns are of type special" 1
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
+
+GET_CHILD_NAMES () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		PARENT_TABLE_RELFILENODE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select oid from pg_class where relname='$TABLENAME' and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+		CHILD_NAME_ARRAY=(`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relname from pg_class where relkind='r' and oid in (select inhrelid from pg_inherits where inhparent=$PARENT_TABLE_RELFILENODE);"|$TR '\n' ' '`)
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 GET_NODE_COUNT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ `$ECHO $TARGETTBL|$GREP -c "\."` -eq 1 ];then
@@ -176,7 +191,8 @@ GET_NODE_COUNT () {
 		  ERROR_CHK $? "obtain list of mirror segments" 2
 		fi
 
-	LOG_MSG  "[INFO]:-Sending request to nodes.."
+	LOG_MSG "[INFO]:-Sending request to segment instance databases.." 1
+	LOG_MSG "[INFO]:-Please wait.." 1
 	if [ `$ECHO $TARGETTBL|$GREP -c "\."` -eq 0 ];then
 		TARGETTBL="${SCHEMA_NAME}.$TARGETTBL"
 	fi
@@ -188,18 +204,24 @@ GET_NODE_COUNT () {
 	SEG_DIR=`$ECHO $NodeInfo|$CUT -d, -f3`
 	SEG_NAME=`$BASENAME $SEG_DIR`
 	ACCESS_TEST=`$TRUSTED_SHELL $SEG_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c\"select version();\""`
-	ERROR_CHK $? "test access to $SEG_PORT $QD_DBNAME on $SEG_HOST" 2
+	if [ $? -ne 0 ];then
+		ERROR_EXIT "Failed on test access to $SEG_PORT $QD_DBNAME on $SEG_HOST" 2
+	fi
 	$TRUSTED_SHELL -n $SEG_HOST "${EXPORT_LIB_PATH}; time env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c'select count(*),'\''$SEG_PORT'\'','\''$SEG_NAME'\'','\''$SEG_HOST'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[:alnum:]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}' >> $TMPFILE &
-	ERROR_CHK $? "send request to $SEG_HOST port $SEG_PORT" 2
+	if [ $? -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Failed to send request to $SEG_HOST port $SEG_PORT" 2
+	fi
 	let SEGCOUNT=$SEGCOUNT+1
 	done
-	LOG_MSG "[INFO]:-Requests sent.."
+	LOG_MSG "[INFO]:-Requests sent.." 1
 #Now wait until the temporary file contains $SegCount lines
-	LOG_MSG  "[INFO]:-Waiting for results..."
+	LOG_MSG  "[INFO]:-Waiting for results" 1
 	while [ $SEGCOUNT -ne `$WC -l $TMPFILE|$AWK '{print $1}'` ]
 	do
+		$NOLINE_ECHO ".\c"
 		$SLEEP 1
 	done
+	$ECHO
 	REC_COUNT=0
 	for RECS in `cat $TMPFILE|$CUT -d'|' -f1`
 	do
@@ -227,46 +249,53 @@ GET_NODE_COUNT () {
 		fi
 	done < $TMPFILE
 	let RecDiff=$MaxSkew-$MinSkew
-	LOG_MSG "-------------------------------------------------------------------"
-	LOG_MSG "[INFO]:-Response results for $TYPE_TEXT"
+	if [ $RESPONSE_TIME -eq 1 ];then
+	LOG_MSG "[INFO]-------------------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Response results for $TYPE_TEXT" 1
 	while read LINE
 	do
 		Host=`$ECHO $LINE|$CUT -d '|' -f4`
 		Time=`$ECHO $LINE|$CUT -d '|' -f5`
 		Seg=`$ECHO $LINE|$CUT -d '|' -f3`
 		Port=`$ECHO $LINE|$CUT -d '|' -f2`
-		LOG_MSG "[INFO]:-Host $Host segment $Seg port $Port responded in time $Time"
+		LOG_MSG "[INFO]:-Host $Host segment $Seg port $Port responded in time $Time" 1
 	done < $TMPFILE
+	fi
 	if [ $FULL_DISPLAY -eq 1 ] || [ x"" = x"$VERBOSE" ];then
+		$ECHO "Skew for table $TARGETTBL" | $TEE -a $LOG_FILE
 		$CAT $TMPFILE|$SORT | $TEE -a $LOG_FILE
 	else
 		$CAT $TMPFILE|$SORT >> $LOG_FILE
 	fi
-	LOG_MSG "-------------------------------------------------------------------"
-	LOG_MSG "[INFO]:-Table of results for Table $TARGETTBL in database $QD_DBNAME"
+	LOG_MSG "[INFO]-------------------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Results for Table $TARGETTBL in database $QD_DBNAME" 1
 	if [ $PARTITIONED == 't' ];then
-		LOG_MSG "[INFO]:-Table $TARGETTBL is type Partitioned and $TAB_TYPE_TXT"
+	LOG_MSG "[INFO]:-Table type                           = Partitioned and $TAB_TYPE_TXT"
 		PARENT_TABLE_COUNT=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from only $TARGETTBL;"`
-		LOG_MSG "[INFO]:-Parent table physically contains $PARENT_TABLE_COUNT records"	
+		LOG_MSG "[INFO]:-Parent table physically contains $PARENT_TABLE_COUNT records"	 1
 	else
-	LOG_MSG "[INFO]:-Table $TARGETTBL is type Un-Partitioned and $TAB_TYPE_TXT"
+	LOG_MSG "[INFO]:-Table type                           = Un-Partitioned and $TAB_TYPE_TXT" 1
 	fi
 	if [ $TAB_TYPE -eq 1 ];then
-		LOG_MSG "[INFO]:-Parent table list = ${TAB_PARENT_NAME[@]}"
+	LOG_MSG "[INFO]:-Parent table list                    = ${TAB_PARENT_NAME[@]}" 1
 	fi
-	LOG_MSG "-------------------------------------------------------------------"
-	LOG_MSG "[INFO]:-Attribute Number of Distribution Column(s) = $DISTRIB_COLS"
-	LOG_MSG "[INFO]:-Distribution Column Name(s)                = `$ECHO ${DIS_COL_ARRAY[@]}`"
-	LOG_MSG "-------------------------------------------------------------------"
-	LOG_MSG "[INFO]:-Total records                              = $REC_COUNT"
-	LOG_MSG "-------------------------------------------------------------------"
-	LOG_MSG "[INFO]:-Distribution for $TYPE_TEXT"
-	LOG_MSG "-------------------------------------------------------------------"
-	LOG_MSG "[INFO]:-Skew result"
-	LOG_MSG "[INFO]:-$MaxHost segment $MaxSeg port $MaxPort has maximum count of $MaxSkew records"
-	LOG_MSG "[INFO]:-$MinHost segment $MinSeg port $MinPort has minimum count of $MinSkew records"
-	LOG_MSG "[INFO]:-Record count variance is $RecDiff records"
-	LOG_MSG "-------------------------------------------------------------------"
+	LOG_MSG "[INFO]-------------------------------------------------------------" 1
+	LOG_MSG "[INFO]:-DDL number of Distribution Column(s) = $DISTRIB_COLS" 1
+	LOG_MSG "[INFO]:-Distribution Column Name(s)          = `$ECHO ${DIS_COL_ARRAY[@]}`" 1
+	LOG_MSG "[INFO]-------------------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Total records                        = $REC_COUNT" 1
+	LOG_MSG "[INFO]-------------------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Distribution for $TYPE_TEXT" 1
+	LOG_MSG "[INFO]-------------------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Skew result" 1
+	LOG_MSG "[INFO]:-Maximum Record Count                 = $MaxSkew" 1
+	LOG_MSG "[INFO]:-Segment instance hostname            = $MaxHost" 1
+	LOG_MSG "[INFO]:-Segment instance name                = $MaxSeg" 1
+	LOG_MSG "[INFO]:-Minimum Record Count                 = $MinSkew" 1
+	LOG_MSG "[INFO]:-Segment instance hostname            = $MinHost" 1
+	LOG_MSG "[INFO]:-Segment instance name                = $MinSeg" 1
+	LOG_MSG "[INFO]:-Record count variance                = $RecDiff" 1
+	LOG_MSG "[INFO]-------------------------------------------------------------" 1
 	rm -f $TMPFILE
 	rm -f $NODELIST
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -277,7 +306,7 @@ GET_NODE_COUNT () {
 trap '$RM -f $TMPFILE $NODELIST;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 CHK_DB_QD_SET
 if [ $# -ne 0 ];then
-        while getopts ":a:vmcqft:'?'d:l:!" opt;do
+        while getopts ":a:vmcqft:'?'d:l:!hrD" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
                 t ) TARGETTBL=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
@@ -291,6 +320,9 @@ if [ $# -ne 0 ];then
 		c ) DISTRIB=1 ;;
 		f ) FULL_DISPLAY=1 ;;
 		q ) unset VERBOSE ;;
+		p ) DO_CHILD=1 ;;
+		r ) RESPONSE_TIME=1 ;;
+		D ) DEBUG_LEVEL=1 ;;
                 * ) UNKNOWN_OPTION ;;
         esac
         done
@@ -342,6 +374,22 @@ if [ x"" != x"$TARGETTBL" ];then
 		else
 			GET_TABLE_TYPE $TARGETTBL $MASTER_PORT $QD_DBNAME
 			GET_NODE_COUNT
+		fi
+		if [ $DO_CHILD -eq 1 ] && [ $PARTITIONED == 't' ];then
+			GET_CHILD_NAMES			
+			LOG_MSG "[INFO]:-Processing child tables"
+			for CHILD_TABLE_NAME in ${CHILD_NAME_ARRAY[@]}
+			do
+				TARGETTBL=${SCHEMA_NAME}.$CHILD_TABLE_NAME
+				CHK_EXISTS_TABLE $TARGETTBL $MASTER_PORT $QD_DBNAME
+				GET_DISTRIB_COLS $TARGETTBL $MASTER_PORT $QD_DBNAME
+				if [ $DISTRIB -eq 1 ];then
+					GET_DISTRIB_INFO
+				else
+					GET_TABLE_TYPE $TARGETTBL $MASTER_PORT $QD_DBNAME
+					GET_NODE_COUNT
+				fi
+			done
 		fi
 	fi
 else

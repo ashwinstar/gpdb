@@ -54,6 +54,9 @@ SCALE=k
 DISPLAY_TYPE=0
 SIZE_TYPE=0 #0=table 1=index
 SIZE_TARGET=0 #0=primary and mirror 1=primary only 2=mirror only
+DO_CHILD=0
+DEBUG_LEVEL=0
+SKIP_INDEX=0
 #***********************************************************************************
 USAGE () {
 if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
@@ -85,14 +88,16 @@ else
 	$ECHO "      Size options:"
 	$ECHO "      -t, <table name> name of table to obtain size data [mandatory if -x not supplied]"
 	$ECHO "      -s, <scale> valid values b (Bytes) k (KBytes) m (MBytes) g (GBytes) [default:- ${SCALE}]"
-	$ECHO "          Size obtained via du -k, if b specified, value will be multiplied by 1024, if m"
-	$ECHO "          specified, value will be divided by 1024, and again further divided by 1024 for value g"
+	$ECHO "          Size obtained via ls ,if k specified, value will be divided by 1024, if m"
+	$ECHO "          specified, value will again be divided by 1024, and again further divided by 1024"
+	$ECHO "          for value g"
 	$ECHO "      -f, display full size information [default:-display total only]"
 	$ECHO "      -a, <database name> alternative database name [default ${QD_DBNAME}]"
 	$ECHO "      -i, obtain index size for <table name> [default:- table size]"
 	$ECHO "      -x, <database name> name of database to obtain size data [default ${QD_DBNAME}]"
 	$ECHO "      -p, obtain size details for primary segment instance only [default both]"
 	$ECHO "      -m, obtain size details for mirror segment instances only [default both]"
+	$ECHO "      -h, display size of child tables if -t <table name> is a partitioned table"
 	$ECHO
 	$ECHO "      Connection options:"
 	$ECHO "      -d, <Master instance directory> name of alternative Master instance to run against [optional]"
@@ -152,7 +157,15 @@ GET_OID_DATA () {
 		INDEX_OID=(`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select indexrelid from pg_index where indrelid=${TABLE_OID};"`)
 		INDEX_COUNT=${#INDEX_OID[@]}
 		if [ $INDEX_COUNT -eq 0 ];then
-			ERROR_EXIT "[FATAL]:-No indexes found for table $TABLE_NAME" 2
+			if [ $DO_CHILD -eq 0 ];then
+				ERROR_EXIT "[FATAL]:-No indexes found for table $TABLE_NAME" 2
+			else
+				LOG_MSG "[WARN]:-No indexes found for table $TABLE_NAME" 1
+				EXIT_STATUS=1
+				SKIP_INDEX=1
+			fi
+		else
+			SKIP_INDEX=0
 		fi
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -163,18 +176,19 @@ WAIT_COMPLETE () {
 	do
 		$SLEEP 1
 	done
+	if [ $VERBOSE ];then $ECHO "Waiting for results";fi
 	while [ $LINECOUNT -ne `$WC -l $TMPFILE|$AWK '{print $1}'` ]
 	do
-		if [ $VERBOSE ];then $ECHO "processing...";fi
+		if [ $VERBOSE ];then $NOLINE_ECHO ".\c";fi
 		$SLEEP 1
 	done
-	if [ $VERBOSE ];then $ECHO ;fi
+	$ECHO
 }
 	
 SEND_TABLE_SIZE_REQUEST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	QE_COUNT=${#QE_ARRAY[@]}
-	LOG_MSG "[INFO]:-Please wait, sending request to $QE_COUNT segment instances"
+	LOG_MSG "[INFO]:-Please wait, sending request to $QE_COUNT segment instances" 1
 	LINECOUNT=0
 	for I in "${QE_ARRAY[@]}"
 	do
@@ -202,7 +216,7 @@ SET_VAR () {
 SEND_INDEX_SIZE_REQUEST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	QE_COUNT=${#QE_ARRAY[@]}
-	LOG_MSG "[INFO]:-Please wait, sending request to $QE_COUNT segment instances"
+	LOG_MSG "[INFO]:-Please wait, sending request to $QE_COUNT segment instances" 1
 	LINECOUNT=0
 	for I in "${QE_ARRAY[@]}"
 	do
@@ -222,6 +236,13 @@ SEND_INDEX_SIZE_REQUEST () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+GET_CHILD_NAMES () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	PARENT_TABLE_RELFILENODE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select oid from pg_class where relname='$TABLE_NAME' and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+	CHILD_NAME_ARRAY=(`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relname from pg_class where relkind='r' and oid in (select inhrelid from pg_inherits where inhparent=$PARENT_TABLE_RELFILENODE);"|$TR '\n' ' '`)
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 CHK_SCHEMA_PREFIX () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ `$ECHO $TABLE_NAME|$GREP -c "\."` -eq 1 ];then
@@ -236,7 +257,7 @@ CHK_SCHEMA_PREFIX () {
 SEND_DB_SIZE_REQUEST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	QE_COUNT=${#QE_ARRAY[@]}
-	LOG_MSG "[INFO]:-Please wait, sending request to $QE_COUNT segment instances"
+	LOG_MSG "[INFO]:-Please wait, sending request to $QE_COUNT segment instances" 1
 	LINECOUNT=0
 	for I in "${QE_ARRAY[@]}"
 	do
@@ -282,36 +303,45 @@ CALC_TOTAL_SIZE () {
 
 DISPLAY_SIZE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]-------------------------------------------------" 1
 	case $SCALE in
 		b ) TXT_SCALE=Bytes ;;
 		k ) TXT_SCALE=KBytes ;;
 		m ) TXT_SCALE=MBytes ;;
 		g ) TXT_SCALE=GBytes ;;
 	esac
-	LOG_MSG "[INFO]:-Size calculation type = $TYPE_TEXT"
+			   LOG_MSG "[INFO]:-Size calculation type = $TYPE_TEXT" 1
 	if [ $VERBOSE ];then
+			   LOG_MSG "[INFO]:-Database name         = $QD_DBNAME" 1
+			   LOG_MSG "[INFO]:-Table name            = $TABLE_NAME" 1
 		case $SIZE_TYPE in 
 			0) if [ $PARTITIONED = 't' ];then
-			   LOG_MSG "[INFO]:-Table $TABLE_NAME is type Partitioned"
+			   LOG_MSG "[INFO]:-Table type            = Partitioned and $TAB_TYPE_TXT" 1
 			   else
-			   LOG_MSG "[INFO]:-Table $TABLE_NAME is type Un-Partitioned"
+		           LOG_MSG "[INFO]:-Table type            = Un-Partitioned and $TAB_TYPE_TXT" 1
 			   fi 
-			   LOG_MSG "[INFO]:-Total space used for table [$TABLE_NAME] in database [$QD_DBNAME] " ;;
-			1) LOG_MSG "[INFO]:-Total space used for indexes on [$TABLE_NAME table in database [$QD_DBNAME] " ;;
-			2) LOG_MSG "[INFO]:-Total space used for database [$QD_DBNAME] " ;;
+			   LOG_MSG "[INFO]:-Space type            = Table" 1 ;;
+			1) if [ $PARTITIONED = 't' ];then
+			   LOG_MSG "[INFO]:-Table type            = Partitioned and $TAB_TYPE_TXT" 1
+			   else
+			   LOG_MSG "[INFO]:-Table type            = Un-Partitioned and $TAB_TYPE_TXT" 1
+			   fi 
+			   LOG_MSG "[INFO]:-Space type            = Index" 1 ;;
+			2) LOG_MSG "[INFO]:-Space type            = Database" 1;;
 		esac
-		LOG_MSG "[INFO]:- $TOTAL_SIZE ${TXT_SCALE}"	
+		 	   LOG_MSG "[INFO]:-Space used in total   = $TOTAL_SIZE ${TXT_SCALE}" 1
 	else
 		$ECHO $TOTAL_SIZE
 		$ECHO $TOTAL_SIZE >> $LOG_FILE
 	fi
+	LOG_MSG "[INFO]-------------------------------------------------" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 #***********************************************************************************
 trap '$RM -f $TMPFILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 CHK_DB_QD_SET
 if [ $# -ne 0 ]; then
-	while getopts ":fvt:'?'ql:mpd:s:a:ix:!" opt;do
+	while getopts ":fvt:'?'ql:mpd:s:a:ix:!hD" opt;do
 	case $opt in
 		v ) VERSION_INFO ;;
 		t ) TABLE_NAME=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
@@ -328,6 +358,8 @@ if [ $# -ne 0 ]; then
 		m ) SIZE_TARGET=2 ;;
 		p ) SIZE_TARGET=1 ;;
 		x ) SIZE_DB=$OPTARG ;;
+		h ) DO_CHILD=1 ;;
+		D ) DEBUG_LEVEL=1 ;;
 		* ) USAGE ;;
 		esac
 	done
@@ -390,17 +422,60 @@ if [ $SIZE_TYPE -le 1 ];then
 		ERROR_EXIT "[FATAL]:-Table $TABLE_NAME does not exist in $QD_DBNAME database" 2
 	fi
 	GET_OID_DATA
+	GET_TABLE_TYPE ${SCHEMA_NAME}.$TABLE_NAME $MASTER_PORT $QD_DBNAME
 	if [ $SIZE_TYPE -eq 0 ];then
 		SEND_TABLE_SIZE_REQUEST
+		CALC_TOTAL_SIZE
+		DISPLAY_SIZE
+		$RM -f $TMPFILE
+		if [ $DO_CHILD -eq 1 ] && [ $PARTITIONED == 't' ];then
+			GET_CHILD_NAMES
+			LOG_MSG "[INFO]:-Processing child tables"
+			for CHILD_TABLE_NAME in ${CHILD_NAME_ARRAY[@]}
+			do
+				#TABLE_NAME=${SCHEMA_NAME}.$CHILD_TABLE_NAME
+				TABLE_NAME=$CHILD_TABLE_NAME
+				LOG_MSG "[INFO]:-Processing child table $TABLE_NAME" 1
+				CHK_EXISTS_TABLE $TABLE_NAME $MASTER_PORT $QD_DBNAME
+				GET_TABLE_TYPE ${SCHEMA_NAME}.$TABLE_NAME $MASTER_PORT $QD_DBNAME
+				GET_OID_DATA
+				SEND_TABLE_SIZE_REQUEST
+				CALC_TOTAL_SIZE
+				DISPLAY_SIZE
+				$RM -f $TMPFILE
+			done
+		fi			
 	else
-		SEND_INDEX_SIZE_REQUEST
+		if [ $SKIP_INDEX -eq 0 ];then
+			SEND_INDEX_SIZE_REQUEST
+			CALC_TOTAL_SIZE
+			DISPLAY_SIZE
+		fi
+		$RM -f $TMPFILE
+		if [ $DO_CHILD -eq 1 ] && [ $PARTITIONED == 't' ];then
+			GET_CHILD_NAMES
+			LOG_MSG "[INFO]:-Processing child tables"
+			for CHILD_TABLE_NAME in ${CHILD_NAME_ARRAY[@]}
+			do
+				TABLE_NAME=$CHILD_TABLE_NAME
+				LOG_MSG "[INFO]:-Processing child table $TABLE_NAME" 1
+				GET_OID_DATA
+				GET_TABLE_TYPE ${SCHEMA_NAME}.$TABLE_NAME $MASTER_PORT $QD_DBNAME
+				if [ $SKIP_INDEX -eq 0 ];then
+					SEND_INDEX_SIZE_REQUEST
+					CALC_TOTAL_SIZE
+					DISPLAY_SIZE
+				fi
+			$RM -f $TMPFILE
+			done
+		fi	
 	fi
 else
 	GET_DB_OID_DATA
 	SEND_DB_SIZE_REQUEST
+	CALC_TOTAL_SIZE
+	DISPLAY_SIZE
+	$RM -f $TMPFILE
 fi
-CALC_TOTAL_SIZE
-DISPLAY_SIZE
-$RM -f $TMPFILE
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS
