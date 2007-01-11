@@ -243,8 +243,17 @@ VERSION_INFO () {
 LOG_MSG () {
 		TIME=`$DATE +%H":"%M":"%S`
 		CUR_DATE=`$DATE +%Y%m%d`
+		DISPLAY_TXT=0
+		if [ x"" == x"$DEBUG_LEVEL" ];then
+			DEBUG_LEVEL=1
+		fi
+		if [ $# -eq 2 ];then 
+			DISPLAY_TXT=1
+		fi
 		if [ $VERBOSE ]; then
+				if [ $DEBUG_LEVEL -eq 1 ] || [ $DISPLAY_TXT -eq 1 ];then
 			        $ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1" | $TEE -a $LOG_FILE	
+				fi
 		else
 				$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1" >> $LOG_FILE
 		fi
@@ -256,6 +265,7 @@ ERROR_EXIT () {
 		CUR_DATE=`$DATE +%Y%m%d`
 		$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1 Script Exiting!" >> $LOG_FILE
 		$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1 Script Exiting!"
+		DEBUG_LEVEL=1
 		if [ $BACKOUT_FILE ]; then
 				if [ -s $BACKOUT_FILE ]; then
 						LOG_MSG "[WARN]:-Script has left MPP configuration in an incomplete state"
@@ -274,6 +284,7 @@ READ_CHK () {
 
 ERROR_CHK () {
 	if [ $# -ne 3 ];then
+		DEBUG_LEVEL=1
 		LOG_MSG "[WARN]:-Incorrect # parameters supplied to $FUNCNAME"
 		return;fi
 	RETVAL=$1;shift
@@ -283,6 +294,7 @@ ERROR_CHK () {
 		LOG_MSG "[INFO]:-Successfully completed $MSG_TXT"
 	else
 		if [ $ACTION -eq 1 ];then
+			DEBUG_LEVEL=1
 			LOG_MSG "[WARN]:-Issue with $MSG_TXT"
 			EXIT_STATUS=1
 		else
@@ -952,24 +964,28 @@ case $OS_TYPE in
 		LIB_TYPE="LD_LIBRARY_PATH"
 		PG_METHOD=trust
 		HOST_ARCH_TYPE="uname -i"
+		NOLINE_ECHO=$ECHO
 		DU_TXT="-s" ;;
 	linux ) IFCONFIG_TXT=""
 		PS_TXT="ax"
 		LIB_TYPE="LD_LIBRARY_PATH"
 		PG_METHOD="ident sameuser"
 		HOST_ARCH_TYPE="uname -i"
+		NOLINE_ECHO="$ECHO -e"
 		DU_TXT="-c" ;;
 	darwin ) IFCONFIG_TXT=""
 		PS_TXT="ax"
 		LIB_TYPE="DYLD_LIBRARY_PATH"
 		PG_METHOD="ident sameuser"
 		HOST_ARCH_TYPE="uname -m"
+		NOLINE_ECHO=$ECHO
 		DU_TXT="-c" ;;	
 	freebsd ) IFCONFIG_TXT=""
 		PS_TXT="ax"
 		LIB_TYPE="LD_LIBRARY_PATH"
 		PG_METHOD="ident sameuser"
 		HOST_ARCH_TYPE="uname -m"
+		NOLINE_ECHO="$ECHO -e"
 		DU_TXT="-c" ;;	
 	* ) echo unknown ;;
 esac
