@@ -48,6 +48,7 @@
 #include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() */
 #include "cdb/cdbgroup.h" /* grouping_planner extensions */
 #include "cdb/cdbsetop.h" /* motion utilities */
+#include "cdb/cdbsubselect.h"   /* cdbsubselect_flatten_sublinks() */
 
 ParamListInfo PlannerBoundParamList = NULL;		/* current boundParams */
 
@@ -251,9 +252,7 @@ subquery_planner(Query *parse, double tuple_fraction,
 	 * INs are processed just before pulling them up.
 	 */
 	if (parse->hasSubLinks)
-		parse->jointree->quals = pull_up_IN_clauses(root,
-                                                    (Node**)&parse->jointree,
-													parse->jointree->quals);
+        cdbsubselect_flatten_sublinks(root, (Node *)parse);
 
 	/*
 	 * Check to see if any subqueries in the rangetable can be merged into

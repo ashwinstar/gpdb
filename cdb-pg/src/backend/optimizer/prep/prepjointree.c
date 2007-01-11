@@ -10,7 +10,7 @@
  *		reduce_outer_joins
  *
  *
- * Portions Copyright (c) 2006, greenplum inc
+ * Portions Copyright (c) 2006-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -25,12 +25,13 @@
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/prep.h"
-#include "optimizer/subselect.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
 #include "parser/parse_expr.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
+
+#include "cdb/cdbsubselect.h"           /* cdbsubselect_flatten_sublinks() */
 
 
 typedef struct reduce_outer_joins_state
@@ -73,56 +74,9 @@ static Node *find_jointree_node_for_rel(Node *jtnode, int relid);
 
 /*
  * pull_up_IN_clauses
- *		Attempt to pull up top-level IN clauses to be treated like joins.
  *
- * A clause "foo IN (sub-SELECT)" appearing at the top level of WHERE can
- * be processed by pulling the sub-SELECT up to become a rangetable entry
- * and handling the implied equality comparisons as join operators (with
- * special join rules).
- * This optimization *only* works at the top level of WHERE, because
- * it cannot distinguish whether the IN ought to return FALSE or NULL in
- * cases involving NULL inputs.  This routine searches for such clauses
- * and does the necessary parsetree transformations if any are found.
- *
- * This routine has to run before preprocess_expression(), so the WHERE
- * clause is not yet reduced to implicit-AND format.  That means we need
- * to recursively search through explicit AND clauses, which are
- * probably only binary ANDs.  We stop as soon as we hit a non-AND item.
- *
- * Returns the possibly-modified version of the given qual-tree node.
+ * CDB: This function has been moved into cdbsubselect.c.
  */
-Node *
-pull_up_IN_clauses(PlannerInfo *root, Node **jointree_inout, Node *node)
-{
-	if (node == NULL)
-		return NULL;
-	if (IsA(node, SubLink))
-	{
-		SubLink    *sublink = (SubLink *) node;
-		Node	   *subst;
-
-		/* Is it a convertible IN clause?  If not, return it as-is */
-		subst = convert_sublink_to_join(root, jointree_inout, sublink);
-		return subst;
-	}
-	if (and_clause(node))
-	{
-		List	   *newclauses = NIL;
-		ListCell   *l;
-
-		foreach(l, ((BoolExpr *) node)->args)
-		{
-			Node	   *oldclause = (Node *) lfirst(l);
-            Node       *newclause = pull_up_IN_clauses(root, jointree_inout, oldclause);
-
-			if (newclause)
-                newclauses = lappend(newclauses, newclause);
-		}
-		return (Node *)make_ands_explicit(newclauses);
-	}
-	/* Stop if not an AND */
-	return node;
-}
 
 /*
  * pull_up_subqueries
@@ -328,9 +282,7 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	 * leave unoptimized INs behind.
 	 */
 	if (subquery->hasSubLinks)
-		subquery->jointree->quals = pull_up_IN_clauses(subroot,
-                                                       (Node**)&subquery->jointree,
-										               subquery->jointree->quals);
+        cdbsubselect_flatten_sublinks(subroot, (Node *)subquery);
 
 	/*
 	 * Recursively pull up the subquery's subqueries, so that
