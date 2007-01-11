@@ -1078,7 +1078,7 @@ static struct config_bool ConfigureNamesBool[] =
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&mpp_enable_sort_limit,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	{
@@ -1088,7 +1088,7 @@ static struct config_bool ConfigureNamesBool[] =
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&mpp_enable_sort_distinct,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	{

@@ -245,6 +245,16 @@ initialize_aggregates(AggState *aggstate,
 				tuplesort_begin_datum(peraggstate->inputType,
 									  peraggstate->sortOperator,
 									  work_mem, false);
+			{
+				int64 		limit = 0;
+				int64 		offset = 0;
+				int 		unique = mpp_enable_sort_distinct ? 1 : 0;
+				int 		sort_flags = mpp_sort_flags; /* get the guc */
+					
+				cdb_tuplesort_init(peraggstate->sortstate, 
+								   offset, limit, unique, 
+								   sort_flags);
+			}
 		}
 
 		/*

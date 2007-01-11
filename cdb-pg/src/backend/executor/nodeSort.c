@@ -97,7 +97,7 @@ ExecSort(SortState *node)
 			int64 		limit = 0;
 			int64 		offset = 0;
 			int 		unique = 0;
-			int 		sort_flags = mpp_sort_flags;
+			int 		sort_flags = mpp_sort_flags; /* get the guc */
 
 			if (node->limitCount)
 			{
