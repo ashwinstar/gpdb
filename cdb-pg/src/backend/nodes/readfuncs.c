@@ -457,12 +457,14 @@ _readConstraint(void)
 	{
 		local_node->contype = CONSTR_PRIMARY;
 		READ_NODE_FIELD(keys);
+		READ_NODE_FIELD(options);
 		READ_STRING_FIELD(indexspace);
 	}
 	else if (strncmp(token, "UNIQUE", length)==0)
 	{
 		local_node->contype = CONSTR_UNIQUE;
 		READ_NODE_FIELD(keys);
+		READ_NODE_FIELD(options);
 		READ_STRING_FIELD(indexspace);
 	}
 	else if (strncmp(token, "CHECK", length)==0)
