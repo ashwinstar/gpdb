@@ -1521,6 +1521,7 @@ _readTypeName(void)
 	READ_BOOL_FIELD(pct_type);
 	READ_INT_FIELD(typmod);
 	READ_NODE_FIELD(arrayBounds);
+	READ_INT_FIELD(location);
 
 	READ_DONE();
 }
