@@ -2139,6 +2139,12 @@ PostPrepare_Locks(TransactionId xid)
 	 * entries, then we scan the process's proclocks and transfer them to the
 	 * target proc.
 	 *
+	 * We do this in two passes: first we find which locks we're going
+	 * to remove and mark them. then we take another pass and remove
+	 * them. We do it this way because LockTagIsTemp() potentially
+	 * acquires new locks, and depending on the ordering in the table
+	 * we don't want to remove *those* locallock entries!
+	 *
 	 * We do this separately because we may have multiple locallock entries
 	 * pointing to the same proclock, and we daren't end up with any dangling
 	 * pointers.
@@ -2147,6 +2153,8 @@ PostPrepare_Locks(TransactionId xid)
 
 	while ((locallock = (LOCALLOCK *) hash_seq_search(&status)) != NULL)
 	{
+		locallock->preparable = false;
+
 		if (locallock->proclock == NULL || locallock->lock == NULL || locallock->isFake)
 		{
 			/*
@@ -2162,14 +2170,26 @@ PostPrepare_Locks(TransactionId xid)
 		if (!LockMethods[LOCALLOCK_LOCKMETHOD(*locallock)]->transactional)
 			continue;
 
-		/* MPP change for temp objects in 2PC.
-		 * we skip over temp objects. 
+		/* MPP change for temp objects in 2PC.  we skip over temp
+		 * objects. MPP-1094: NOTE THIS CALL MAY ADD LOCKS TO OUR
+		 * TABLE!
 		 */
 		if (LockTagIsTemp(&locallock->tag.lock))
 			continue;
-		 
-		/* We already checked there are no session locks */
 
+		/* since our temp-check may be modifying our lock table, we
+		 * just mark these as requiring more work */
+		locallock->preparable = true;
+	}
+
+	/* We've marked the entries we want to delete; now go do the real work */
+	hash_seq_init(&status, LockMethodLocalHash);
+
+	while ((locallock = (LOCALLOCK *) hash_seq_search(&status)) != NULL)
+	{
+		if (!locallock->preparable)
+			continue;
+		
 		/* Mark the proclock to show we need to release this lockmode */
 		if (locallock->nLocks > 0)
 			locallock->proclock->releaseMask |= LOCKBIT_ON(locallock->tag.mode);
