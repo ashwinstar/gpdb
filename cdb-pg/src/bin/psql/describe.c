@@ -1503,6 +1503,7 @@ describeRoles(const char *pattern, bool verbose)
 bool
 listTables(const char *tabtypes, const char *pattern, bool verbose)
 {
+	bool		showChildren = true;
 	bool		showTables = strchr(tabtypes, 't') != NULL;
 	bool		showIndexes = strchr(tabtypes, 'i') != NULL;
 	bool		showViews = strchr(tabtypes, 'v') != NULL;
@@ -1515,6 +1516,12 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 
 	if (!(showTables || showIndexes || showViews || showSeq))
 		showTables = showViews = showSeq = true;
+		
+	if (strchr(tabtypes, 'P') != NULL)
+	{
+		showTables = true;
+		showChildren = false;
+	}
 
 	initPQExpBuffer(&buf);
 
@@ -1574,6 +1581,9 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 	else
 		appendPQExpBuffer(&buf, "      AND n.nspname NOT IN ('pg_catalog', 'pg_toast')\n");
 
+	if (!showChildren)
+		appendPQExpBuffer(&buf, "      AND c.oid NOT IN (select inhrelid from pg_catalog.pg_inherits)\n");
+		
 	processSQLNamePattern(pset.db, &buf, pattern, true, false,
 						  "n.nspname", "c.relname", NULL,
 						  "pg_catalog.pg_table_is_visible(c.oid)");

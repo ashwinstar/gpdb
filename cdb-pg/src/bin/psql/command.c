@@ -381,6 +381,7 @@ exec_command(const char *cmd,
 			case 'i':
 			case 's':
 			case 'S':
+			case 'P':
 				success = listTables(&cmd[1], pattern, show_verbose);
 				break;
 			case 'u':
