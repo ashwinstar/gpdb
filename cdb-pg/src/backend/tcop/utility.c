@@ -676,6 +676,7 @@ ProcessUtility(Node *parsetree,
 				 */
 				if (Mpp_role == MPP_ROLE_DISPATCH)
 				{
+					stmt->missing_ok=true;
 					CdbDispatchUtilityStatement((Node *) stmt);
 				}
 			}
