@@ -2523,7 +2523,7 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 					tiOid = oidInfo[m].toastIndexOid;
 					toastComptypeOid = &oidInfo[m].toastComptypeOid;
 					*toastComptypeOid = InvalidOid;
-					elog(DEBUG1,"Pre-allocating toast Oid %ud, %ud",tOid,tiOid);
+					elog(DEBUG2,"Pre-allocating toast Oid %ud, %ud",tOid,tiOid);
 				}
 				
 											
@@ -2538,7 +2538,7 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 				tiOid = oidInfo[m].toastIndexOid;
 				toastComptypeOid = &oidInfo[m].toastComptypeOid;
 			}
-			elog(LOG,"Create Toast %d with Oid %u",m,tOid);
+			elog(DEBUG2,"Create Toast %d with Oid %u",m,tOid);
 			AlterTableCreateToastTableWithOid(tab->relid, tOid, tiOid, toastComptypeOid);
 			m++;
 			

@@ -758,6 +758,7 @@ _readFuncCall(void)
 	READ_NODE_FIELD(args);
 	READ_BOOL_FIELD(agg_star);
 	READ_BOOL_FIELD(agg_distinct);
+	READ_INT_FIELD(location);
 	READ_DONE();
 }
 
@@ -896,6 +897,7 @@ _readAExpr(void)
 
 	READ_NODE_FIELD(lexpr);
 	READ_NODE_FIELD(rexpr);
+	READ_INT_FIELD(location);
 	
 	READ_DONE();
 }

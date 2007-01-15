@@ -1,32 +1,29 @@
 /*-------------------------------------------------------------------------
  *
  * outfast.c
- *	  Fast output functions for Postgres tree nodes.
+ *	  Fast serialization functions for Postgres tree nodes.
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
- * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/outfuncs.c,v 1.285 2006/09/19 22:49:52 tgl Exp $
- *
  * NOTES
  *	  Every node type that can appear in an MPP serialized query or plan
- *    tree must have an output function defined here.  Further it must write
- *    a form suitable for the corresponding input function in readfuncs.c
- *    which must also exist.
+ *    tree must have an output function defined here.  
  *
- *     By design, the only user of these fast variants is the function
+ * 	  There *MUST* be a one-to-one correspondence between this routine
+ *    and readfast.c.  If not, you will likely crash the system.
+ *
+ *     By design, the only user of these routines is the function
  *     serializeNode in cdbsrlz.c.  Other callers beware.
  *
  *    This file is based on outfuncs.c, however, it is optimized for speed
- *    at the expense legibility.  Because of its origin, it contains output
- *    functions for node types not needed in serialization.  Eventually,
- *    these may be removed.  It would also be possible for the format
- *    written by these functions to diverge from the more legible output
- *    written by the functions in outfuncs.c, but this would require
- *    corresponding changes on the receiving end (e.g. readfast.c, etc.)
+ *    at the expense legibility.  
+ *
+ * 	  Rather than serialize to a (somewhat human-readable) string, these
+ *    routines to a binary serialization via a simple depth-first walk
+ *    of the tree.
  *
  *-------------------------------------------------------------------------
  */
@@ -40,7 +37,6 @@
 #include "nodes/execnodes.h"
 #include "nodes/relation.h"
 #include "utils/datum.h"
-#include "utils/lsyscache.h"  /* For get_typlenbyval */
 #include "cdb/cdbvars.h"
 
 
@@ -51,170 +47,166 @@
  * routine.
  */
 
-/* Write the label for the node type */
+/* 
+ * Write the label for the node type.  nodelabel is accepted for 
+ * compatibility with outfuncs.c, but is ignored 
+ */
 #define WRITE_NODE_TYPE(nodelabel) \
-	appendStringInfoLiteral(str, nodelabel)
+	{ int16 nt =nodeTag(node); appendBinaryStringInfo(str, (const char *)&nt, sizeof(int16)); }
 
-/* Write an integer field (anything written as ":fldname %d") */
+/* Write an integer field  */
 #define WRITE_INT_FIELD(fldname) \
-	appendStringInfo(str, " : %d", node->fldname)
+	{ appendBinaryStringInfo(str, (const char *)&node->fldname, sizeof(int)); }
 
-/* Write an unsigned integer field (anything written as ":fldname %u") */
+/* Write an unsigned integer field */
 #define WRITE_UINT_FIELD(fldname) \
-	appendStringInfo(str, " : %u", node->fldname)
+	appendBinaryStringInfo(str, (const char *)&node->fldname, sizeof(int))
 
 /* Write an OID field (don't hard-wire assumption that OID is same as uint) */
 #define WRITE_OID_FIELD(fldname) \
-	appendStringInfo(str, " : %u", node->fldname)
+	appendBinaryStringInfo(str, (const char *)&node->fldname, sizeof(Oid))
 
 /* Write a long-integer field */
 #define WRITE_LONG_FIELD(fldname) \
-	appendStringInfo(str, " : %ld", node->fldname)
+	appendBinaryStringInfo(str, (const char *)&node->fldname, sizeof(long))
 
 /* Write a char field (ie, one ascii character) */
 #define WRITE_CHAR_FIELD(fldname) \
-	appendStringInfo(str, " : %c", node->fldname)
+	appendBinaryStringInfo(str, &node->fldname, 1)
 
 /* Write an enumerated-type field as an integer code */
 #define WRITE_ENUM_FIELD(fldname, enumtype) \
-	appendStringInfo(str, " : %d", (int) node->fldname)
+	{ int16 en=node->fldname; appendBinaryStringInfo(str, (const char *)&en, sizeof(int16)); }
 
-/* Write a float field --- caller must give format to define precision */
+/* Write a float field --- the format is accepted but ignored (for compat with outfuncs.c)  */
 #define WRITE_FLOAT_FIELD(fldname,format) \
-	appendStringInfo(str, " : " format, node->fldname)
+	appendBinaryStringInfo(str, (const char *)&node->fldname, sizeof(double))
 
 /* Write a boolean field */
 #define WRITE_BOOL_FIELD(fldname) \
-	(node->fldname ? \
-	 appendStringInfoLiteral(str, " : true") : \
-	 appendStringInfoLiteral(str, " : false"))
+	{ \
+		char b = node->fldname ? 1 : 0; \
+		appendBinaryStringInfo(str, (const char *)&b, 1); }
 
 /* Write a character-string (possibly NULL) field */
 #define WRITE_STRING_FIELD(fldname) \
-	(appendStringInfo(str, " : "), _outToken(str, node->fldname))
+	{ int slen = node->fldname != NULL ? strlen(node->fldname) : 0; \
+		appendBinaryStringInfo(str, (const char *)&slen, sizeof(int)); \
+		if (slen>0) appendBinaryStringInfo(str, node->fldname, strlen(node->fldname));}
 
 /* Write a Node field */
 #define WRITE_NODE_FIELD(fldname) \
-	(appendStringInfoLiteral(str, " : "), _outNode(str, node->fldname))
+	(_outNode(str, node->fldname))
 
 /* Write a List field: this is a shortcut (you can call
  * WRITE_NODE_FIELD for list fields) to avoid an extra call to
  * _outNode() */
 #define WRITE_LIST_FIELD(fldname) \
-	((node->fldname == NULL) ? \
-	 (appendStringInfo(str, " : "), \
-	  appendStringInfoLiteral(str, "<>")) :				\
-	 (appendStringInfo(str, " : "), \
-	  _outList(str, node->fldname)))
-
+	(_outList(str, node->fldname))
+	
 /* Write a bitmapset field */
 #define WRITE_BITMAPSET_FIELD(fldname) \
-	(appendStringInfo(str, " : "), \
-	 _outBitmapset(str, node->fldname))
+	 _outBitmapset(str, node->fldname)
 
 /* Write a dummy field -- value not displayable or copyable */
 #define WRITE_DUMMY_FIELD(fldname) \
-	(appendStringInfo(str, " : "), _outToken(str, NULL))
+	{ /*int * dummy = 0; appendBinaryStringInfo(str,(const char *)&dummy, sizeof(int *)) ;*/ }
+	
+	/* Read an integer array */
+#define WRITE_INT_ARRAY(fldname, count, Type) \
+	if ( node->count > 0 ) \
+	{ \
+		int i; \
+		for(i=0; i<node->count; i++) \
+		{ \
+			appendBinaryStringInfo(str, (const char *)&node->fldname[i], sizeof(Type)); \
+		} \
+	}
+	
+/* Write an Trasnaction ID array  */
+#define WRITE_XID_ARRAY(fldname, count) \
+	if ( node->count > 0 ) \
+	{ \
+		int i; \
+		for(i=0; i<node->count; i++) \
+		{ \
+			appendBinaryStringInfo(str, (const char *)&node->fldname[i], sizeof(TransactionId)); \
+		} \
+	}
+
+
+
+/* Write an Oid array  */
+#define WRITE_OID_ARRAY(fldname, count) \
+	if ( node->count > 0 ) \
+	{ \
+		int i; \
+		for(i=0; i<node->count; i++) \
+		{ \
+			appendBinaryStringInfo(str, (const char *)&node->fldname[i], sizeof(Oid)); \
+		} \
+	}
 
 static void _outNode(StringInfo str, void *obj);
 
-/*
- * _outToken
- *	  Convert an ordinary string (eg, an identifier) into a form that
- *	  will be decoded back to a plain token by read.c's functions.
- *
- *	  If a null or empty string is given, it is encoded as "<>".
- */
-static void
-_outToken(StringInfo str, const char *s)
-{
-	if (s == NULL || *s == '\0')
-	{
-		appendStringInfoLiteral(str, "<>");
-		return;
-	}
 
-	/*
-	 * Look for characters or patterns that are treated specially by read.c
-	 * (either in pg_strtok() or in nodeRead()), and therefore need a
-	 * protective backslash.
-	 */
-	/* These characters only need to be quoted at the start of the string */
-	if (*s == '<' ||
-		*s == '\"' ||
-		isdigit((unsigned char) *s) ||
-		((*s == '+' || *s == '-') &&
-		 (isdigit((unsigned char) s[1]) || s[1] == '.')))
-		appendStringInfoChar(str, '\\');
-	while (*s)
-	{
-		/* These chars must be backslashed anywhere in the string */
-		if (*s == ' ' || *s == '\n' || *s == '\t' ||
-			*s == '(' || *s == ')' || *s == '{' || *s == '}' ||
-			*s == '\\')
-			appendStringInfoChar(str, '\\');
-		appendStringInfoChar(str, *s++);
-	}
-}
 
 static void
 _outList(StringInfo str, List *node)
 {
 	ListCell   *lc;
+	
+	if (node == NULL)
+	{
+		int16 tg = 0;
+		appendBinaryStringInfo(str, (const char *)&tg, sizeof(int16));
+		return;
+	}
 
-	appendStringInfoChar(str, '(');
-
-	if (IsA(node, IntList))
-		appendStringInfoChar(str, 'i');
-	else if (IsA(node, OidList))
-		appendStringInfoChar(str, 'o');
+	WRITE_NODE_TYPE("");
+    WRITE_INT_FIELD(length);
 
 	foreach(lc, node)
 	{
-		/*
-		 * For the sake of backward compatibility, we emit a slightly
-		 * different whitespace format for lists of nodes vs. other types of
-		 * lists. XXX: is this necessary?
-		 */
+
 		if (IsA(node, List))
 		{
-			_outNode(str, lfirst(lc));
-			if (lnext(lc))
-				appendStringInfoChar(str, ' ');
+			_outNode(str, lfirst(lc));	
 		}
 		else if (IsA(node, IntList))
-			appendStringInfo(str, " %d", lfirst_int(lc));
+		{
+			int n = lfirst_int(lc);
+			appendBinaryStringInfo(str, (const char *)&n, sizeof(int));
+		}
 		else if (IsA(node, OidList))
-			appendStringInfo(str, " %u", lfirst_oid(lc));
-		else
-			elog(ERROR, "unrecognized list node type: %d",
-				 (int) node->type);
+		{
+			Oid n = lfirst_int(lc);
+			appendBinaryStringInfo(str, (const char *)&n, sizeof(Oid));
+		}
+		 
 	}
 
-	appendStringInfoChar(str, ')');
 }
 
 /*
  * _outBitmapset -
  *	   converts a bitmap set of integers
  *
- * Note: the output format is "(b int int ...)", similar to an integer List.
  * Currently bitmapsets do not appear in any node type that is stored in
- * rules, so there is no support in readfuncs.c for reading this format.
+ * rules, so there is no support in readfast.c for reading this format.
  */
 static void
 _outBitmapset(StringInfo str, Bitmapset *bms)
 {
-	Bitmapset  *tmpset;
-	int			x;
-
-	appendStringInfoChar(str, '(');
-	appendStringInfoChar(str, 'b');
-	tmpset = bms_copy(bms);
-	while ((x = bms_first_member(tmpset)) >= 0)
-		appendStringInfo(str, " %d", x);
-	bms_free(tmpset);
-	appendStringInfoChar(str, ')');
+	int i;
+	int nwords = 0;
+	if (bms) nwords = bms->nwords;
+	appendBinaryStringInfo(str, (char *)&nwords, sizeof(int));
+	for (i = 0; i < nwords; i++)
+	{
+		appendBinaryStringInfo(str, (char *)&bms->words[i], sizeof(bitmapword));
+	}
+	
 }
 
 /*
@@ -223,8 +215,7 @@ _outBitmapset(StringInfo str, Bitmapset *bms)
 static void
 _outDatum(StringInfo str, Datum value, int typlen, bool typbyval)
 {
-	Size		length,
-				i;
+	Size		length;
 	char	   *s;
 
 	length = datumGetSize(value, typbyval, typlen);
@@ -232,22 +223,20 @@ _outDatum(StringInfo str, Datum value, int typlen, bool typbyval)
 	if (typbyval)
 	{
 		s = (char *) (&value);
-		appendStringInfo(str, "%u [ ", (unsigned int) length);
-		for (i = 0; i < (Size) sizeof(Datum); i++)
-			appendStringInfo(str, "%d ", (int) (s[i]));
-		appendStringInfoChar(str, ']');
+		appendBinaryStringInfo(str, s, sizeof(Datum));
 	}
 	else
 	{
 		s = (char *) DatumGetPointer(value);
 		if (!PointerIsValid(s))
-			appendStringInfoLiteral(str, "0 [ ]");
+		{
+			length = 0;
+			appendBinaryStringInfo(str, (char *)&length, sizeof(Size));
+		}
 		else
 		{
-			appendStringInfo(str, "%u [ ", (unsigned int) length);
-			for (i = 0; i < length; i++)
-				appendStringInfo(str, "%d ", (int) (s[i]));
-			appendStringInfoChar(str, ']');
+			appendBinaryStringInfo(str, (char *)&length, sizeof(Size));
+			appendBinaryStringInfo(str, s, length);
 		}
 	}
 }
@@ -510,7 +499,6 @@ _outHashJoin(StringInfo str, HashJoin *node)
 static void
 _outAgg(StringInfo str, Agg *node)
 {
-	int			i;
 
 	WRITE_NODE_TYPE("AGG");
 
@@ -519,9 +507,7 @@ _outAgg(StringInfo str, Agg *node)
 	WRITE_ENUM_FIELD(aggstrategy, AggStrategy);
 	WRITE_INT_FIELD(numCols);
 
-	appendStringInfoLiteral(str, " :grpColIdx");
-	for (i = 0; i < node->numCols; i++)
-		appendStringInfo(str, " %d", node->grpColIdx[i]);
+	WRITE_INT_ARRAY(grpColIdx, numCols, AttrNumber);
 
 	WRITE_LONG_FIELD(numGroups);
 	WRITE_INT_FIELD(transSpace);
@@ -530,7 +516,6 @@ _outAgg(StringInfo str, Agg *node)
 static void
 _outGroup(StringInfo str, Group *node)
 {
-	int			i;
 
 	WRITE_NODE_TYPE("GROUP");
 
@@ -538,9 +523,7 @@ _outGroup(StringInfo str, Group *node)
 
 	WRITE_INT_FIELD(numCols);
 
-	appendStringInfoLiteral(str, " :grpColIdx");
-	for (i = 0; i < node->numCols; i++)
-		appendStringInfo(str, " %d", node->grpColIdx[i]);
+	WRITE_INT_ARRAY(grpColIdx, numCols, AttrNumber);
 }
 
 static void
@@ -556,7 +539,6 @@ _outMaterial(StringInfo str, Material *node)
 static void
 _outSort(StringInfo str, Sort *node)
 {
-	int			i;
 
 	WRITE_NODE_TYPE("SORT");
 
@@ -564,14 +546,10 @@ _outSort(StringInfo str, Sort *node)
 
 	WRITE_INT_FIELD(numCols);
 
-	appendStringInfoLiteral(str, " :sortColIdx");
-	for (i = 0; i < node->numCols; i++)
-		appendStringInfo(str, " %d", node->sortColIdx[i]);
+	WRITE_INT_ARRAY(sortColIdx, numCols, AttrNumber);
 
-	appendStringInfoLiteral(str, " :sortOperators");
-	for (i = 0; i < node->numCols; i++)
-		appendStringInfo(str, " %u", node->sortOperators[i]);
-
+	WRITE_OID_ARRAY(sortOperators, numCols);
+	
     /* CDB */
 	WRITE_NODE_FIELD(limitOffset);
 	WRITE_NODE_FIELD(limitCount);
@@ -581,7 +559,6 @@ _outSort(StringInfo str, Sort *node)
 static void
 _outUnique(StringInfo str, Unique *node)
 {
-	int			i;
 
 	WRITE_NODE_TYPE("UNIQUE");
 
@@ -589,15 +566,13 @@ _outUnique(StringInfo str, Unique *node)
 
 	WRITE_INT_FIELD(numCols);
 
-	appendStringInfoLiteral(str, " :uniqColIdx");
-	for (i = 0; i < node->numCols; i++)
-		appendStringInfo(str, " %d", node->uniqColIdx[i]);
+	WRITE_INT_ARRAY(uniqColIdx, numCols, AttrNumber);
+
 }
 
 static void
 _outSetOp(StringInfo str, SetOp *node)
 {
-	int			i;
 
 	WRITE_NODE_TYPE("SETOP");
 
@@ -606,9 +581,7 @@ _outSetOp(StringInfo str, SetOp *node)
 	WRITE_ENUM_FIELD(cmd, SetOpCmd);
 	WRITE_INT_FIELD(numCols);
 
-	appendStringInfoLiteral(str, " :dupColIdx");
-	for (i = 0; i < node->numCols; i++)
-		appendStringInfo(str, " %d", node->dupColIdx[i]);
+	WRITE_INT_ARRAY(dupColIdx, numCols, AttrNumber);
 
 	WRITE_INT_FIELD(flagColIdx);
 }
@@ -635,7 +608,6 @@ _outHash(StringInfo str, Hash *node)
 static void
 _outMotion(StringInfo str, Motion *node)
 {
-	int i;
 
 	WRITE_NODE_TYPE("MOTION");
 
@@ -647,37 +619,31 @@ _outMotion(StringInfo str, Motion *node)
     WRITE_INT_FIELD(numInputSegs);
     if (node->numInputSegs > 0)
     {
-        appendStringInfoLiteral(str, " :inputSegIdx");
+    	char array_is_null = 0;
         if (node->inputSegIdx == NULL)
-            appendStringInfoString(str, " <>");
+        {
+ 			array_is_null = 1;
+            appendBinaryStringInfo(str, &array_is_null, 1);
+        } 
         else
         {
-            for (i = 0; i < node->numInputSegs; i++)
-                appendStringInfo(str, " %d", node->inputSegIdx[i]);
+        	appendBinaryStringInfo(str, &array_is_null, 1);
+            WRITE_INT_ARRAY(inputSegIdx, numInputSegs, int);
         }
     }
 
 	WRITE_INT_FIELD(numHashSegs);
-	appendStringInfoLiteral(str, " :hashSegIdx");
-	for (i = 0; i < node->numHashSegs; i++)
-		appendStringInfo(str, " %d", node->hashSegIdx[i]);
+	WRITE_INT_ARRAY(hashSegIdx, numHashSegs, int);
 
 	WRITE_LIST_FIELD(hashExpr);
 	WRITE_LIST_FIELD(hashDataTypes);
 
 	WRITE_INT_FIELD(numOutputSegs);
-	appendStringInfoLiteral(str, " :outputSegIdx");
-	for (i = 0; i < node->numOutputSegs; i++)
-		appendStringInfo(str, " %d", node->outputSegIdx[i]);
+	WRITE_INT_ARRAY(outputSegIdx, numOutputSegs, int);
 
 	WRITE_INT_FIELD(numSortCols);
-	appendStringInfoLiteral(str, " :sortColIdx");
-	for (i = 0; i < node->numSortCols; i++)
-		appendStringInfo(str, " %d", node->sortColIdx[i]);
-
-	appendStringInfoLiteral(str, " :sortOperators");
-	for (i = 0; i < node->numSortCols; i++)
-		appendStringInfo(str, " %u", node->sortOperators[i]);
+	WRITE_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
+	WRITE_OID_ARRAY(sortOperators, numSortCols);
 
 	_outPlanInfo(str, (Plan *) node);
 }
@@ -737,10 +703,7 @@ _outConst(StringInfo str, Const *node)
 	WRITE_BOOL_FIELD(constbyval);
 	WRITE_BOOL_FIELD(constisnull);
 
-	appendStringInfoLiteral(str, " :constvalue ");
-	if (node->constisnull)
-		appendStringInfoLiteral(str, "<>");
-	else
+	if (!node->constisnull)
 		_outDatum(str, node->constvalue, node->constlen, node->constbyval);
 }
 
@@ -766,9 +729,8 @@ _outAggref(StringInfo str, Aggref *node)
 	WRITE_BOOL_FIELD(aggstar);
 	WRITE_BOOL_FIELD(aggdistinct);
 
-    /* CDB: The reader checks for the name of this field. */
-    if (node->aggstage != 0)
-	    appendStringInfo(str, " :aggstage %d", (int)node->aggstage);
+	WRITE_ENUM_FIELD(aggstage, AggStage);
+
 }
 
 static void
@@ -835,25 +797,10 @@ _outScalarArrayOpExpr(StringInfo str, ScalarArrayOpExpr *node)
 static void
 _outBoolExpr(StringInfo str, BoolExpr *node)
 {
-	char	   *opstr = NULL;
-
+ 
+ 
 	WRITE_NODE_TYPE("BOOLEXPR");
-
-	/* do-it-yourself enum representation */
-	switch (node->boolop)
-	{
-		case AND_EXPR:
-			opstr = "and";
-			break;
-		case OR_EXPR:
-			opstr = "or";
-			break;
-		case NOT_EXPR:
-			opstr = "not";
-			break;
-	}
-	appendStringInfoLiteral(str, " :boolop ");
-	_outToken(str, opstr);
+	WRITE_ENUM_FIELD(boolop, BoolExprType);
 
 	WRITE_NODE_FIELD(args);
 }
@@ -1122,7 +1069,6 @@ _outFromExpr(StringInfo str, FromExpr *node)
 static void
 _outFlow(StringInfo str, Flow *node)
 {
-	int i;
 	
 	WRITE_NODE_TYPE("FLOW");
 
@@ -1134,14 +1080,10 @@ _outFlow(StringInfo str, Flow *node)
 	/* This array format as in Group and Sort nodes. */
 	WRITE_INT_FIELD(numSortCols);
 	
-	appendStringInfoLiteral(str, " :sortColIdx");
-	for ( i = 0; i < node->numSortCols; i++ )
-		appendStringInfo(str, " %d", node->sortColIdx[i]);
+	WRITE_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
+	WRITE_OID_ARRAY(sortOperators, numSortCols);
 	
-	appendStringInfoLiteral(str, " :sortOperators");
-	for ( i = 0; i < node->numSortCols; i++ )
-		appendStringInfo(str, " %u", node->sortOperators[i]);
-	
+
 	WRITE_NODE_FIELD(hashExpr);
 
 	WRITE_NODE_FIELD(flow_before_req_move);
@@ -1421,7 +1363,6 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 static void
 _outIndexOptInfo(StringInfo str, IndexOptInfo *node)
 {
-    int i;
 
 	WRITE_NODE_TYPE("INDEXOPTINFO");
 
@@ -1432,17 +1373,10 @@ _outIndexOptInfo(StringInfo str, IndexOptInfo *node)
 	WRITE_FLOAT_FIELD(tuples, "%.0f");
 	WRITE_INT_FIELD(ncolumns);
 
-	appendStringInfoLiteral(str, " :classlist");
-	for (i = 0; i < node->ncolumns; i++)
-		appendStringInfo(str, " %u", node->classlist[i]);
+	WRITE_INT_ARRAY(classlist, ncolumns, int);
+	WRITE_INT_ARRAY(indexkeys, ncolumns, int);
+	WRITE_INT_ARRAY(ordering, ncolumns, int);
 
-	appendStringInfoLiteral(str, " :indexkeys");
-	for (i = 0; i < node->ncolumns; i++)
-		appendStringInfo(str, " %d", node->indexkeys[i]);
-
-	appendStringInfoLiteral(str, " :ordering");
-	for (i = 0; i < node->ncolumns; i++)
-		appendStringInfo(str, " %u", node->ordering[i]);
 
     WRITE_OID_FIELD(relam);
 	WRITE_OID_FIELD(amcostestimate);
@@ -1681,7 +1615,8 @@ _outAlterTableStmt(StringInfo str, AlterTableStmt *node)
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(cmds);
 	WRITE_ENUM_FIELD(relkind, ObjectType);
-	appendStringInfo(str, " :oidInfoCount %d", node->oidInfoCount); /* the name helps me debug */
+	WRITE_INT_FIELD(oidInfoCount);
+
 	for (m = 0; m < node->oidInfoCount; m++)
 	{
 		WRITE_OID_FIELD(oidInfo[m].relOid);
@@ -2220,90 +2155,7 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_ENUM_FIELD(querySource, QuerySource);
 	WRITE_BOOL_FIELD(canSetTag);
 
-	/*
-	 * Hack to work around missing outfuncs routines for a lot of the
-	 * utility-statement node types.  (The only one we actually *need* for
-	 * rules support is NotifyStmt.)  Someday we ought to support 'em all, but
-	 * for the meantime do this to avoid getting lots of warnings when running
-	 * with debug_print_parse on.
-	 */
-	if (node->utilityStmt)
-	{
-		switch (nodeTag(node->utilityStmt))
-		{
-			case T_CreateStmt:
-			case T_DropStmt:
-			case T_DropPropertyStmt:
-			case T_TruncateStmt:
-			case T_AlterTableStmt:
-			case T_AlterTableCmd:
-			case T_ViewStmt:
-			case T_RuleStmt:
-			
-			case T_CreateRoleStmt:
-			case T_AlterRoleStmt:
-			case T_AlterRoleSetStmt:
-			case T_DropRoleStmt:
-			
-			case T_CreateSchemaStmt:
-			case T_CreatePLangStmt:
-			case T_DropPLangStmt:
-			case T_AlterOwnerStmt:
-			case T_AlterObjectSchemaStmt:
-			
-			case T_RenameStmt:
-			case T_IndexStmt:
-			case T_NotifyStmt:
-			case T_DeclareCursorStmt:
-			case T_VacuumStmt:
-			case T_CreateSeqStmt:
-			case T_AlterSeqStmt:
-			case T_CreatedbStmt:
-			case T_AlterDatabaseSetStmt:
-			case T_DropdbStmt:
-			case T_CreateDomainStmt:
-			case T_AlterDomainStmt:
-			case T_ClusterStmt:
-			
-			case T_CreateFunctionStmt:
-			case T_RemoveFuncStmt:
-			case T_AlterFunctionStmt:
-			
-			case T_TransactionStmt:
-			case T_GrantStmt:
-			case T_GrantRoleStmt:
-			case T_LockStmt:
-			case T_CopyStmt:
-			case T_ReindexStmt:
-			case T_ConstraintsSetStmt:
-			case T_VariableResetStmt:
-			case T_CreateTrigStmt:
-			case T_DefineStmt:
-			case T_CompositeTypeStmt:
-			case T_CreateCastStmt:
-			case T_DropCastStmt:
-			case T_CreateOpClassStmt:
-			case T_CreateOpClassItem:
-			case T_RemoveOpClassStmt:
-			case T_CreateConversionStmt:
-				WRITE_NODE_FIELD(utilityStmt);
-				break;
-			default:
-				appendStringInfoLiteral(str, " :utilityStmt ?");
-				appendStringInfo(str, "%u", nodeTag(node->utilityStmt));
-				if (Mpp_role == MPP_ROLE_DISPATCH)
-				{
-
-					elog(ERROR, "could not serialize unrecognized utilityStmt node type: %d",
-						 (int) nodeTag(node->utilityStmt));
-
-				}
-				break;
-		}
-	}
-	else
-		appendStringInfoLiteral(str, " :utilityStmt <>");
-
+	WRITE_NODE_FIELD(utilityStmt);
 	WRITE_INT_FIELD(resultRelation);
 	WRITE_NODE_FIELD(into);
 	WRITE_NODE_FIELD(intoOptions);
@@ -2324,27 +2176,14 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(rowMarks);
 	WRITE_NODE_FIELD(setOperations);
 	WRITE_NODE_FIELD(resultRelations);
-	WRITE_NODE_FIELD(returningLists); /* TODO Merge issue */
+	WRITE_NODE_FIELD(returningLists); 
+		
+	WRITE_OID_FIELD(intoOidInfo.relOid);
+	WRITE_OID_FIELD(intoOidInfo.comptypeOid);
+	WRITE_OID_FIELD(intoOidInfo.toastOid);
+	WRITE_OID_FIELD(intoOidInfo.toastIndexOid);
+	WRITE_OID_FIELD(intoOidInfo.toastComptypeOid);
 	
-	/* CDB: The reader checks for the name of this field. */
-    //if (node->intoHasOids)
-    //{
-    //	appendStringInfoLiteral(str, " :intoHasOids true");
-    //}
-	    
-	/* CDB: The reader checks for the name of this field. */
-    if (node->intoOidInfo.relOid != 0)
-    {
-	    appendStringInfo(str, " :intoOidInfo.relOid %d", (int)node->intoOidInfo.relOid);
-	
-	    appendStringInfo(str, " :intoOidInfo.comptypeOid %d", (int)node->intoOidInfo.comptypeOid);
-
-	    appendStringInfo(str, " :intoOidInfo.toastOid %d", (int)node->intoOidInfo.toastOid);
-	
-	    appendStringInfo(str, " :intoOidInfo.toastIndexOid %d", (int)node->intoOidInfo.toastIndexOid);
-
-	    appendStringInfo(str, " :intoOidInfo.toastComptypeOid %d", (int)node->intoOidInfo.toastComptypeOid);
-    }
 	
 }
 
@@ -2436,51 +2275,54 @@ _outRangeTblEntry(StringInfo str, RangeTblEntry *node)
 static void
 _outAExpr(StringInfo str, A_Expr *node)
 {
+	char k;
 	WRITE_NODE_TYPE("AEXPR");
-
+	k = node->kind;
+	appendBinaryStringInfo(str, (const char *)&k, 1);
+	
 	switch (node->kind)
 	{
 		case AEXPR_OP:
-			appendStringInfoLiteral(str, " OPER ");
+
 			WRITE_NODE_FIELD(name);
 			break;
 		case AEXPR_AND:
-			appendStringInfoLiteral(str, " AND ");
+
 			break;
 		case AEXPR_OR:
-			appendStringInfoLiteral(str, " OR ");
+
 			break;
 		case AEXPR_NOT:
-			appendStringInfoLiteral(str, " NOT ");
+			
 			break;
 		case AEXPR_OP_ANY:
-			appendStringInfoLiteral(str, " ANY ");
+		
 			WRITE_NODE_FIELD(name);
 		
 			break;
 		case AEXPR_OP_ALL:
-			appendStringInfoLiteral(str, " ALL ");
+	
 			WRITE_NODE_FIELD(name);
 		
 			break;
 		case AEXPR_DISTINCT:
-			appendStringInfoLiteral(str, " DISTINCT ");
+
 			WRITE_NODE_FIELD(name);
 			break;
 		case AEXPR_NULLIF:
-			appendStringInfoLiteral(str, " NULLIF ");
+	
 			WRITE_NODE_FIELD(name);
 			break;
 		case AEXPR_OF:
-			appendStringInfoLiteral(str, " OF ");
+		
 			WRITE_NODE_FIELD(name);
 			break;
 		case AEXPR_IN:
-			appendStringInfo(str, " IN ");
+		
 			WRITE_NODE_FIELD(name);
 			break;
 		default:
-			appendStringInfoLiteral(str, " ??");
+	
 			break;
 	}
 
@@ -2492,27 +2334,18 @@ _outAExpr(StringInfo str, A_Expr *node)
 static void
 _outValue(StringInfo str, Value *value)
 {
+
+	int16 vt = value->type;
+	appendBinaryStringInfo(str, (const char *)&vt, sizeof(int16));
 	switch (value->type)
 	{
 		case T_Integer:
-			appendStringInfo(str, "%ld", value->val.ival);
+			appendBinaryStringInfo(str, (const char *)&value->val.ival, sizeof(long));
 			break;
 		case T_Float:
-
-			/*
-			 * We assume the value is a valid numeric literal and so does not
-			 * need quoting.
-			 */
-			appendStringInfoString(str, value->val.str);
-			break;
 		case T_String:
-			appendStringInfoChar(str, '"');
-			_outToken(str, value->val.str);
-			appendStringInfoChar(str, '"');
-			break;
 		case T_BitString:
-			/* internal representation already has leading 'b' */
-			appendStringInfoString(str, value->val.str);
+			{ int slen = strlen(value->val.str); appendBinaryStringInfo(str, (const char *)&slen, sizeof(int)); appendBinaryStringInfo(str, value->val.str, slen);}
 			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) value->type);
@@ -2541,8 +2374,6 @@ static void
 _outAConst(StringInfo str, A_Const *node)
 {
 	WRITE_NODE_TYPE("A_CONST");
-
-	appendStringInfoChar(str, ' ');
 
 	_outValue(str, &(node->val));
 	WRITE_NODE_FIELD(typname);
@@ -2585,41 +2416,38 @@ _outConstraint(StringInfo str, Constraint *node)
 
 	WRITE_STRING_FIELD(name);
 
-	appendStringInfoLiteral(str, " :contype ");
+	WRITE_ENUM_FIELD(contype,ConstrType);
+ 
 	switch (node->contype)
 	{
 		case CONSTR_PRIMARY:
-			appendStringInfoLiteral(str, "PRIMARY_KEY");
 			WRITE_NODE_FIELD(keys);
 			WRITE_NODE_FIELD(options);
 			WRITE_STRING_FIELD(indexspace);
 			break;
 
 		case CONSTR_UNIQUE:
-			appendStringInfoLiteral(str, "UNIQUE");
 			WRITE_NODE_FIELD(keys);
 			WRITE_NODE_FIELD(options);
 			WRITE_STRING_FIELD(indexspace);
 			break;
 
 		case CONSTR_CHECK:
-			appendStringInfoLiteral(str, "CHECK");
 			WRITE_NODE_FIELD(raw_expr);
 			WRITE_STRING_FIELD(cooked_expr);
 			break;
 
 		case CONSTR_DEFAULT:
-			appendStringInfoLiteral(str, "DEFAULT");
 			WRITE_NODE_FIELD(raw_expr);
 			WRITE_STRING_FIELD(cooked_expr);
 			break;
 
 		case CONSTR_NOTNULL:
-			appendStringInfoLiteral(str, "NOT_NULL");
+		case CONSTR_NULL:
 			break;
 
 		default:
-			appendStringInfoLiteral(str, "<unrecognized_constraint>");
+			elog(WARNING,"don't know what to do with this constraint");
 			break;
 	}
 }
@@ -2753,13 +2581,17 @@ _outCreateTrigStmt(StringInfo str, CreateTrigStmt *node)
 
 /*
  * _outNode -
- *	  converts a Node into ascii string and append it to 'str'
+ *	  converts a Node into binary string and append it to 'str'
  */
 static void
 _outNode(StringInfo str, void *obj)
 {
 	if (obj == NULL)
-		appendStringInfoLiteral(str, "<>");
+	{
+		int16 tg = 0;
+		appendBinaryStringInfo(str, (const char *)&tg, sizeof(int16));
+		return;
+	}
 	else if (IsA(obj, List) ||IsA(obj, IntList) || IsA(obj, OidList))
 		_outList(str, obj);
 	else if (IsA(obj, Integer) ||
@@ -2767,12 +2599,11 @@ _outNode(StringInfo str, void *obj)
 			 IsA(obj, String) ||
 			 IsA(obj, BitString))
 	{
-		/* nodeRead does not want to see { } around these! */
 		_outValue(str, obj);
 	}
 	else
 	{
-		appendStringInfoChar(str, '{');
+
 		switch (nodeTag(obj))
 		{
 			case T_Plan:
@@ -3298,54 +3129,33 @@ _outNode(StringInfo str, void *obj)
 				break;
 
 			default:
-
-				/*
-				 * This should be an ERROR, but it's too useful to be able to
-				 * dump structures that _outNode only understands part of.
-				 */
-				if (Mpp_role == MPP_ROLE_DISPATCH)
-					elog(ERROR, "could not serialize unrecognized node type: %d",
-						 (int) nodeTag(obj));
-				else
-				
-					elog(WARNING, "could not dump unrecognized node type: %d",
+				elog(ERROR, "could not serialize unrecognized node type: %d",
 						 (int) nodeTag(obj));
 				break;
 		}
-		appendStringInfoChar(str, '}');
+
 	}
 }
 
 /*
- * nodeToString -
- *	   returns the ascii representation of the Node as a palloc'd string
+ * nodeToBinaryStringFast -
+ *	   returns a binary representation of the Node as a palloc'd string
  */
 char *
-nodeToStringFast(void *obj)
+nodeToBinaryStringFast(void *obj, int * length)
 {
 	StringInfoData str;
+	int16 tg = 0xDEAD;
 
 	/* see stringinfo.h for an explanation of this maneuver */
-	initStringInfo(&str);
+	initStringInfoOfSize(&str, 4096);
+	
 	_outNode(&str, obj);
+
+	/* Add something special at the end that we can check in readfast.c */
+	appendBinaryStringInfo(&str, (const char *)&tg, sizeof(int16));
+	
+	*length = str.len;
 	return str.data;
 }
 
-
-
-/*
- * nodeToStringBigFast -
- *	   returns the ascii representation of the Node as a palloc'd string
- *	   This version of nodeToString is only used by serializeNode (quick hack).
- */
-char *
-nodeToStringBigFast(void *obj)
-{
-	StringInfoData str;
-	int bufsize = 8*1024;
-
-	/* see stringinfo.h for an explanation of this maneuver */
-	initStringInfoOfSize(&str, bufsize);
-	_outNode(&str, obj);
-	return str.data;
-}

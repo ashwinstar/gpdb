@@ -899,7 +899,7 @@ exec_mpp_query(const char *query_string,
             !IsA(sliceTable, SliceTable) ||
             sliceTable->localSlice < 0 ||
             sliceTable->localSlice >= list_length(sliceTable->slices))
-            elog(ERROR, "MPPEXEC: received invalid slice table: %s, %d",uncompress_string(serializedSliceInfo,serializedSliceInfolen), localSlice);
+            elog(ERROR, "MPPEXEC: received invalid slice table:, %d", localSlice);
 
         slice = (Slice *)list_nth(sliceTable->slices, sliceTable->localSlice);
         Insist(IsA(slice, Slice));
@@ -4232,12 +4232,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 					
 					pq_getmsgend(&input_message);
 
-					if (serializedQuerytreelen==0 && serializedPlantreelen==0)
-						elog(DEBUG5, "MPP dispatched stmt from QD: %s.",query_string);
-					else if (serializedPlantreelen==0)
-						elog(DEBUG5, "MPP dispatched stmt from QD: %s %s",query_string,uncompress_string(serializedQuerytree,serializedQuerytreelen));
-					else
-						elog(DEBUG5, "MPP dispatched plan from QD: %s %s %s",query_string,uncompress_string(serializedQuerytree,serializedQuerytreelen),uncompress_string(serializedPlantree,serializedPlantreelen));
+					 
+					elog(DEBUG5, "MPP dispatched stmt from QD: %s.",query_string);
+					 
 					
 					if (suid > 0)				
 						SetSessionAuthorization(suid, suid_is_super);  /* Set the session UserId */

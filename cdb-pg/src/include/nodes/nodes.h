@@ -410,8 +410,9 @@ extern char *nodeToString(void *obj);
  * nodes/outfast.c. This special version of nodeToString is only used by serializeNode.
  * It's a quick hack that allocates 8K buffer for StringInfo struct through initStringIinfoSizeOf
  */
-extern char *nodeToStringFast(void *obj);
-extern char *nodeToStringBigFast(void *obj);
+extern char *nodeToBinaryStringFast(void *obj, int * size);
+
+extern Node *readNodeFromBinaryString(const char *str, int len);
 /*
  * nodes/{readfuncs.c,read.c}
  */

@@ -19,7 +19,6 @@
 extern char *serializeNode(Node *node, int *size);
 extern Node *deserializeNode(const char *strNode, int size);
 
-/* this is useful for debugging */
-extern char * uncompress_string(const char *src, int size);
+
 
 #endif   /* CDBSRLZ_H */

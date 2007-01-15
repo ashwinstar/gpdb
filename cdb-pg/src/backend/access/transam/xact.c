@@ -3341,7 +3341,7 @@ EndTransactionBlock(void)
 		case TBLOCK_STARTED:
 			if (Mpp_role == MPP_ROLE_EXECUTE)
 			{
-				ereport(DEBUG1,
+				ereport(DEBUG2,
 					(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
 					 errmsg("there is no transaction in progress")));
 			}
@@ -3440,7 +3440,7 @@ UserAbortTransactionBlock(void)
 		case TBLOCK_STARTED:
 			if (Mpp_role == MPP_ROLE_EXECUTE)
 			{
-				ereport(DEBUG1,
+				ereport(DEBUG2,
 					(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
 					 errmsg("there is no transaction in progress")));
 			}
