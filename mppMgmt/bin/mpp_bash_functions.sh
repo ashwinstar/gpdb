@@ -193,7 +193,10 @@ PSQL=$PSQLBIN/psql
 MPP_DUMP=$PSQLBIN/mpp_dump
 MPP_RESTORE=$PSQLBIN/mpp_restore
 MPPSYNCMASTER=$PSQLBIN/mppsyncmaster
-
+#******************************************************************************
+# MPP OS Settings 
+#******************************************************************************
+OS_OPENFILES=65535
 #******************************************************************************
 # General Variables
 #******************************************************************************
@@ -284,8 +287,10 @@ READ_CHK () {
 
 ERROR_CHK () {
 	if [ $# -ne 3 ];then
+		INITIAL_LEVEL=$DEBUG_LEVEL
 		DEBUG_LEVEL=1
 		LOG_MSG "[WARN]:-Incorrect # parameters supplied to $FUNCNAME"
+		DEBUG_LEVEL=$INITIAL_LEVEL
 		return;fi
 	RETVAL=$1;shift
 	MSG_TXT=$1;shift
@@ -294,9 +299,11 @@ ERROR_CHK () {
 		LOG_MSG "[INFO]:-Successfully completed $MSG_TXT"
 	else
 		if [ $ACTION -eq 1 ];then
+			INITIAL_LEVEL=$DEBUG_LEVEL
 			DEBUG_LEVEL=1
 			LOG_MSG "[WARN]:-Issue with $MSG_TXT"
 			EXIT_STATUS=1
+			DEBUG_LEVEL=$INITIAL_LEVEL
 		else
 			ERROR_EXIT "[FATAL]:-Failed to complete $MSG_TXT " 2
 		fi
@@ -791,7 +798,11 @@ GET_PG_PID_ACTIVE () {
 				LOG_MSG "[INFO]:-No socket connection found for port=${PORT}"
 			else
 				if [ -f ${PG_LOCK_FILE}.lock ];then
-					PID=1
+					if [ -r ${PG_LOCK_FILE}.lock ];then
+						PID=`$CAT ${PG_LOCK_FILE}.lock|$HEAD -1|$AWK '{print $1}'`
+					else
+						PID=1
+					fi
 					LOG_MSG "[INFO]:-PID found for $PORT on this host"
 				else
 					PID=0
@@ -810,7 +821,12 @@ GET_PG_PID_ACTIVE () {
 					LOG_MSG "[INFO]:-No socket connection found for port=${PORT} on $HOST"
 				else
 					if [ `$TRUSTED_SHELL $HOST "$LS ${PG_LOCK_FILE}.lock 2>/dev/null"|$WC -l` -ne 0 ];then
-						PID=1
+						CAN_READ=`$TRUSTED_SHELL $HOST "if [ -r ${PG_LOCK_FILE}.lock ];then echo 1;else echo 0;fi"`
+						if [ $CAN_READ -eq 1 ];then
+							PID=`$TRUSTED_SHELL $HOST "$CAT ${PG_LOCK_FILE}.lock|$HEAD -1 2>/dev/null"|$AWK '{print $1}'`
+						else
+							PID=1
+						fi
 						LOG_MSG "[INFO]:-PID found for $PORT on $HOST"
 					else
 						PID=0
