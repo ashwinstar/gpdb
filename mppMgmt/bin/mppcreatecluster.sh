@@ -72,6 +72,7 @@ TMP_FILE=/tmp/cluster_tmp_file.$$
 TMP_HOSTNAME_FILE=hostname_test_file.$$
 PARALLEL_STATUS_FILE=/tmp/mppcreatecluster_parallel_status_file.$$
 MPPCREATESEG=mppcreateseg.sh
+START_WARN=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -1056,7 +1057,13 @@ START_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [ -f $MPPSTART ]; then
 				$MPPSTART -a -d $QD_DIR
-				ERROR_CHK $? "start new MPP instance" 2
+				if [ $? -eq 2 ];then
+					ERROR_CHK $? "start new MPP instance" 2
+				else
+					if [ $? -eq 1 ];then
+						START_WARN=1;fi
+					ERROR_CHK $? "start new MPP instance" 1
+				fi
 		else
 				ERROR_EXIT "[FATAL]:-$MPPSTART not located" 2
 		fi
@@ -1191,6 +1198,9 @@ fi
 LOG_MSG "[INFO]:-Removing back out file"
 $RM -f $BACKOUT_FILE
 LOG_MSG "[INFO]:-MPP instance successfully created"
+if [ $START_WARN -eq 1 ];then
+LOG_MSG "[INFO]:-However, some warnings were generated, see log file"
+fi
 LOG_MSG "[INFO]:-------------------------------------------------------"
 LOG_MSG "[INFO]:-To complete the environment configuration, please "
 LOG_MSG "[INFO]:-update $USER_NAME .bashrc file with the following"
