@@ -1622,8 +1622,6 @@ getCdbProcessList(Gang *gang, int sliceIndex)
 	return list;
 }
 
-static char *qd_hostip = NULL;
-
 /*
  * getCdbProcessForQD:	Manufacture a CdbProcess representing the QD,
  * as if it were a worker from the executor factory.
@@ -1636,7 +1634,6 @@ getCdbProcessesForQD(int isPrimary)
 	List	   *list = NIL;
 
 	CdbComponentDatabaseInfo *qdinfo;
-	struct hostent *lookup;
 	CdbProcess *proc;
 
 	Assert(Mpp_role == MPP_ROLE_DISPATCH && Mpp_is_primary);
@@ -1655,21 +1652,10 @@ getCdbProcessesForQD(int isPrimary)
 	qdinfo = &(cdb_component_dbs->entry_db_info[0]);
 
 	Assert(qdinfo->segindex == -1 && qdinfo->isprimary);
-
-	if (qd_hostip == NULL)
-	{
-		lookup = gethostbyname(qdinfo->hostname);
-
-		if (lookup == NULL)
-		{
-			elog(FATAL, "gethostbyname() failed for host '%s'", qdinfo->hostname);
-		}
-		qd_hostip = strdup(inet_ntoa(*(struct in_addr *) (lookup->h_addr_list[0])));
-		/* XXX: we're going to leak this ? */
-	}
+	Assert(qdinfo->hostip != NULL);
 
 	proc = makeNode(CdbProcess);
-	proc->listenerAddr = pstrdup(qd_hostip);
+	proc->listenerAddr = pstrdup(qdinfo->hostip);
 	proc->listenerPort = Mpp_listener_port;
 	proc->pid = MyProcPid;
 	proc->contentid = -1;
@@ -2305,7 +2291,6 @@ void
 SetSeqServerInfo(QueryDesc *queryDesc)
 {
 	CdbComponentDatabaseInfo *qdinfo;
-	struct hostent *lookup;
 	EState	   *estate = queryDesc->estate;
 	SliceTable *sliceTable = estate->es_sliceTable;
 
@@ -2320,19 +2305,9 @@ SetSeqServerInfo(QueryDesc *queryDesc)
 
 	Assert(qdinfo->segindex == -1 && qdinfo->isprimary);
 
-	if (qd_hostip == NULL)
-	{
-		lookup = gethostbyname(qdinfo->hostname);
+	Assert(qdinfo->hostip != NULL);
 
-		if (lookup == NULL)
-		{
-			elog(FATAL, "gethostbyname() failed for host '%s'", qdinfo->hostname);
-		}
-		qd_hostip = strdup(inet_ntoa(*(struct in_addr *) (lookup->h_addr_list[0])));
-		/* XXX: we're going to leak this ? */
-	}
-
-	sliceTable->seqServerHost = pstrdup(qd_hostip);
+	sliceTable->seqServerHost = pstrdup(qdinfo->hostip);
 	sliceTable->seqServerPort = seqServerCtl->seqServerPort;
 }
 

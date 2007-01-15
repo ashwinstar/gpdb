@@ -381,7 +381,7 @@ getCdbComponentInfo(void)
 		 */
 		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_hostname, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
-		pRow->hostname = DatumGetCString(attr);
+		pRow->hostname = pstrdup(DatumGetCString(attr));
 
 		if (segment_ip_cache == NULL)
 		{
