@@ -1141,7 +1141,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 						mark_sort_locus(result_plan);
 
 						/* CDB */ /* pass DISTINCT to sort */
-						if (IsA(result_plan, Sort) && mpp_enable_sort_distinct)
+						if (0 && IsA(result_plan, Sort) && mpp_enable_sort_distinct)
 						{
 							Sort* pSort = (Sort*)result_plan;
 							pSort->noduplicates = true;
