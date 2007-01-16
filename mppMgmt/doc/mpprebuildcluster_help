@@ -1,8 +1,8 @@
 COMMAND NAME: mpprebuildcluster.sh
 
 Rebuilds a Greenplum Database master using a SQL script file containing the 
-Greenplum Database schema and MPP system catalog information, and then recreates 
-all of the segment instances using the information found in the MPP 
+Greenplum Database schema and Greenplum system catalog information, and then recreates 
+all of the segment instances using the information found in the Greenplum 
 system catalog tables.
 
 
@@ -45,11 +45,11 @@ a new master host.
 
 If you want to alter any other information in the system configuration 
 (such as segment hosts, data directory locations, or ports) use the -m option.
-This option will create the MPP master instance only. After the MPP master is 
-created, you can manually edit the MPP system catalog tables to change the 
+This option will create the master instance only. After the master is 
+created, you can manually edit the system catalog tables to change the 
 system configuration (see Greenplum Database Schema Reference on page 128). After 
 editing the system catalog tables, use the mpprebuildseg.sh script, which 
-rebuilds the segment instances using the information found in the MPP 
+rebuilds the segment instances using the information found in the 
 masters system catalog tables.
 
 The use of this script also assumes that you have the same number of segment 
@@ -66,8 +66,8 @@ OPTIONS
 
 Required. A SQL file containing the Greenplum Database schema and system catalog 
 information. This is the mpp_catalog_0_<dbid>_<timestamp> file created on 
-the MPP master host by the mpp_dump operation. You can also do a pg_dump 
-operation on a MPP master host to get a SQL file that can be used by 
+the master host by the mpp_dump operation. You can also do a pg_dump 
+operation on a master host to get a SQL file that can be used by 
 mpprebuildcluster.sh. For example:
 pg_dump -f mpp_catalog -Fp -n pg_catalog -p 5432 template1
 
@@ -77,7 +77,7 @@ pg_dump -f mpp_catalog -Fp -n pg_catalog -p 5432 template1
 Required. The rebuild script creates a temporary database in this location. 
 The temporary database is used to parse the contents of the SQL script file, 
 and is then deleted after the rebuild operation is complete. Choose a 
-different data storage location than the one used by your production MPP 
+different data storage location than the one used by your production 
 master instance.
 
 
@@ -87,22 +87,22 @@ Optional. If not specified, the default port of 55555 is used. The rebuild
 script starts the temporary database using this port. The temporary database 
 is used to parse the contents of the SQL script file, and is then deleted 
 after the rebuild operation is complete. Choose a different port than the 
-one used by your production MPP master instance.
+one used by your production master instance.
 
 
 -m
 
-Optional. This option creates the MPP master instance only (the Greenplum Database 
+Optional. This option creates the master instance only (the Greenplum Database 
 schema and system catalog), but does not create the segment instances as 
 specified in the system catalog. The default behavior is to rebuild all 
 segment instances as they existed when the backup file was created.
 
 Use this option if you want to change any information in your system 
 configuration (such as segment hosts, data storage locations, or ports) 
-before rebuilding the segments. After the MPP master is created, you can 
+before rebuilding the segments. After the master is created, you can 
 manually edit the system catalog tables to change the configuration. After 
 editing the system catalog tables, use the mpprebuildseg.sh script, which 
-rebuilds the segment instances using the information found in the MPP 
+rebuilds the segment instances using the information found in the 
 masters system catalog tables.
 
 
@@ -141,7 +141,7 @@ the SQL source file.
 -i <cidr_address>
 
 Alternative IP or network address for the pg_hba.conf file, which determines 
-the hosts allowed to connect to a MPP master instance. The default is 
+the hosts allowed to connect to a master instance. The default is 
 0.0.0.0/0.
 
 
@@ -184,7 +184,7 @@ master host instance configuration to the current host:
 mpprebuildcluster.sh -s mpp_catalog_0_1_2005103112453 -d /home/bgadmin/tmp -o
 
 
-Rebuild the MPP master host only (the Greenplum Database schema and system catalog):
+Rebuild the master host only (the Greenplum Database schema and system catalog):
 
 mpprebuildcluster.sh -s mpp_catalog_0_1_2005103112453 -d /home/bgadmin/tmp 
 -o -m

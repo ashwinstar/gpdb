@@ -72,7 +72,7 @@ OPTIONS
 
 -d <master_data_directory>
 
-Required. The data directory of the MPP master instance.
+Required. The data directory of the master instance.
 
 
 -p <port_base>
@@ -90,7 +90,7 @@ ports will be calculated based on the available ports in the range of
 Spreads the mirror segments amongst the available hosts. The default is to 
 group the a set of mirror segments together on an alternate host from their 
 primary segment set. Mirror spreading will place each mirror on a different 
-host within the MPP array. Spreading is only allowed if there is a sufficient 
+host within the Greenplum array. Spreading is only allowed if there is a sufficient 
 number of hosts in the array (number of hosts is greater than or equal to 
 the number of mirror segment instances).
 

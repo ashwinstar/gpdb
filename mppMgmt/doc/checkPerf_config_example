@@ -52,7 +52,7 @@ baseDir="/home/bgadmin"
 # as well. Note that the extra comma is required at the end of the 
 # list and each directory is in quotes.
 # EXAMPLE: Directory_List= "/dbfast1", "/dbfast2", 
-# EXAMPLE: Directory_List= "/mppdatadir", 
+# EXAMPLE: Directory_List= "/gpdatadir", 
 #
 DirectoryList="/dbfast1", "/dbfast2", 
 #

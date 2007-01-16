@@ -1,6 +1,6 @@
 COMMAND NAME: mpprebuildseg.sh
 
-Rebuilds segment instances from the MPP system catalog tables of 
+Rebuilds segment instances from the Greenplum system catalog tables of 
 a Greenplum Database master instance.
 
 *****************************************************
@@ -18,14 +18,14 @@ DESCRIPTION
 *****************************************************
 
 The mpprebuildseg.sh script builds segment instances using configuration 
-information contained in the MPP system catalog tables of a Greenplum Database 
+information contained in the Greenplum system catalog tables of a 
 master instance. The use of this script assumes that you have:
 
 * Built a master instance from a backup file using mpprebuildcluster.sh -m.
 
-* Have edited the MPP system catalog tables on the MPP master instance to 
+* Have edited the Greenplum system catalog tables on the master instance to 
   reflect your desired system configuration. See the Greenplum Database 
-  Administrator Guide for the MPP schema reference. 
+  Administrator Guide for the Greenplum schema reference. 
 
 
 *****************************************************
@@ -34,7 +34,7 @@ OPTIONS
 
 -d <master_data_directory>
 
-Required. The data directory of the MPP master instance.
+Required. The data directory of the master instance.
 
 -n <encoding>
 
@@ -69,7 +69,7 @@ Displays the version, status, last updated date, and check sum of this script.
 EXAMPLES
 *****************************************************
 
-Rebuild the segment instances using the data found in the given MPP master:
+Rebuild the segment instances using the data found in the given master:
 
 mpprebuildseg.sh -d /mpp_master_data
 

@@ -1,14 +1,14 @@
 COMMAND NAME: mppcreatecluster.sh
 
 Initializes a Greenplum Database system by using configuration parameters specified in
-the mpp_config file of System Initialization Parameters.
+the gp_init_config file of System Initialization Parameters.
 
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
-mppcreatecluster.sh -c <mpp_config_file> [-h <host_file>] [-p 
+mppcreatecluster.sh -c <gp_init_config_file> [-h <host_file>] [-p 
 <postgresql_conf_param_file>] [-s <standby_master_host>] [-i] [-o] 
 [-m <max_connections>] [-e <superuser_password>] [-n <encoding>] [-a] 
 [-q] [-l <logfile_directory>]
@@ -33,7 +33,7 @@ is a template used to create other databases.
 In a Greenplum Database DBMS, each database instance (the master and all segments) 
 must be initialized across all of the hosts in the system in such a way that 
 they can all work together as a unified DBMS. The mppcreatecluster.sh script 
-takes care of initializing the database on the MPP master and on each segment 
+takes care of initializing the database on the master and on each segment 
 instance, and configuring the system as a whole.
 
 Before running mppcreatecluster.sh, you must set the $MPPHOME or $BIZHOME 
@@ -42,7 +42,7 @@ on the master host.
 
 This script performs the following tasks:
 
-* Verifies that the parameters in the MPP configuration file are correct.
+* Verifies that the parameters in the configuration file are correct.
 
 * Ensures that a connection can be established to each host. If a host cannot 
   be reached, the script will exit.
@@ -67,9 +67,9 @@ This script performs the following tasks:
 OPTIONS
 *****************************************************
 
--c <mpp_config_file>
+-c <gp_init_config_file>
 
-Required. The full path and filename of the MPP configuration file, which 
+Required. The full path and filename of the configuration file, which 
 contains all of the defined parameters to configure the array.
 
 -h <host_file>
@@ -77,7 +77,7 @@ contains all of the defined parameters to configure the array.
 Optional. The full path and filename of a file that contains the host names 
 of all the segment hosts in the array. If not specified on the command line, 
 you can specify the host file using the MACHINE_LIST_FILE parameter in the 
-mpp_config file.
+gp_init_config file.
 
 -p <postgresql_conf_param_file>
 
@@ -93,9 +93,9 @@ configured on the backup master host.
 
 -i
 
-If a standby master host is configured, this will start the synchronization 
-process between the primary and backup MPP master hosts. The default is to 
-not start the synchronization process.
+If a standby master host is configured, this will stop the synchronization 
+process between the primary and backup master hosts. The default is to 
+start the synchronization process.
 
 -o
 
@@ -103,7 +103,7 @@ Creates a master instance only. Does not configure any segment hosts.
 
 -m <max_connections>
 
-Sets the maximum number of client connections allowed to the MPP master. The 
+Sets the maximum number of client connections allowed to the master. The 
 default is 25.
 
 -e <superuser_password>
@@ -148,12 +148,12 @@ EXAMPLES
 
 Initialize a Greenplum Database array:
 
-mppcreatecluster.sh -c mpp_config -e mypassword
+mppcreatecluster.sh -c gp_init_config -e mypassword
 
 
-Initialize a Greenplum Database array with an optional standby MPP master host:
+Initialize a Greenplum Database array with an optional standby master host:
 
-mppcreatecluster.sh -c mpp_config -s host09 -i -e mypassword
+mppcreatecluster.sh -c gp_init_config -s host09 -e mypassword
 
 
 Display the online help for the mppcreatecluster.sh script:
@@ -165,6 +165,6 @@ mppcreatecluster.sh -?
 SEE ALSO
 *****************************************************
 
-mpp_config_example, groupSession, mpprebuildcluster.sh, 
+gp_init_config_example, groupSession, mpprebuildcluster.sh, 
 mpprebuildseg.sh, mppdeletecluster.sh
 

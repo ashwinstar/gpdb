@@ -1,6 +1,6 @@
 COMMAND NAME: mpp_dump
 
-Writes out a Greenplum Database database to SQL script files, which can 
+Writes out a Greenplum database to SQL script files, which can 
 then be used to restore the database using mpp_restore.
 
 *****************************************************
@@ -19,7 +19,7 @@ mpp_dump --help | --version
 DESCRIPTION
 *****************************************************
 
-The mpp_dump utility dumps the contents of a Greenplum Database database 
+The mpp_dump utility dumps the contents of a Greenplum database 
 into SQL script files, which can then be used to restore the database 
 schema and user data at a later time using mpp_restore. During a dump 
 operation, users will still have read-only access to the database. 
@@ -31,7 +31,7 @@ databases, data, and global objects such as users, groups, and access
 permissions. 
 
 The functionality of mpp_dump is modified to accommodate the 
-distributed nature of a Greenplum Database database. Keep in mind that a database 
+distributed nature of a Greenplum database. Keep in mind that a database 
 in Greenplum Database is actually comprised of several PostgreSQL instances 
 (the master and all segments), each of which must be dumped individually. 
 The mpp_dump utility takes care of dumping all of the individual instances 
@@ -42,7 +42,7 @@ following dump files by default:
 
 ON THE MASTER HOST
 
-* Dumps the Greenplum Database schema and system catalog information into a SQL 
+* Dumps the Greenplum schema and system catalog information into a SQL 
   file in the master data directory. The default naming convention of 
   this file is mpp_catalog_1_<dbid>_<timestamp>. This file can be used 
   by the mpprebuildcluster.sh script to recover a Greenplum Database system in 
@@ -80,7 +80,7 @@ ON THE SEGMENT HOSTS
 Note that the 14 digit timestamp is the number that uniquely identifies the 
 backup job, and is part of the filename for each dump file created by a
 mpp_dump operation. This timestamp must be passed to the mpp_restore utility 
-when restoring a Greenplum Database database.
+when restoring a Bizgres MPP database.
 
 *****************************************************
 OPTIONS
@@ -139,7 +139,7 @@ dump can be successfully restored by themselves into a clean database.
 --oids
 
 Dump object identifiers (OIDs) as part of the data for every table. 
-Use of OIDs is not recommended in Greenplum Database, so this option should 
+Use of OIDs is not recommended in Greenplum, so this option should 
 not be used if restoring data to another Greenplum Database installation.
 
 
@@ -179,14 +179,14 @@ Prevents the dumping of access privileges (GRANT/REVOKE commands).
 -h <hostname>
 --host=<hostname>
 
-The host name of the MPP master host. If not provided, the value of 
+The host name of the master host. If not provided, the value of 
 $PGHOST or the local host is used.
 
 
 -p <port>
 --port=<port>
 
-The MPP master port. If not provided, the value of $PGPORT or the 
+The master port. If not provided, the value of $PGPORT or the 
 port number provided at compile time is used.
 
 
@@ -274,16 +274,16 @@ EXAMPLES
 
 Back up a database:
 
-mpp_dump mppdb
+mpp_dump gpdb
 
 
 Back up a database, and create dump files in a centralized 
 location on all hosts:
 
-mpp_dump --mpp-d=/home/bgadmin/backups mppdb
+mpp_dump --mpp-d=/home/gpadmin/backups gpdb
 
 
-Back up the Greenplum Database system catalog tables only:
+Back up the Greenplum system catalog tables only:
 
 mpp_dump -n mpp template1
 

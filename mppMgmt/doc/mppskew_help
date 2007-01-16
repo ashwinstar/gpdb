@@ -6,8 +6,8 @@ Shows data distribution information for a Greenplum Database table.
 SYNOPSIS
 *****************************************************
 
-mppskew.sh -t <table_name> [-n <schema_name>] [-a <database_name>] 
-[-c] [-d <data_directory>] [-f] [-m] [-l <logfile_directory>]
+mppskew.sh -t <schema.table_name> [-h] [-a <database_name>] 
+[-c] [-d <master_data_directory>] [-f] [-D] [-m] [-l <logfile_directory>]
 
 mppskew.sh [-? | -v]
 
@@ -19,7 +19,9 @@ The mppskew.sh script can be used to determine if table data is
 equally distributed across all of the active segments. 
 mppskew.sh reports the following information:
 
-* The total number of records in the specified table.
+* The total number of records in the specified table. Note that
+  for inherited tables, child table distribution information is 
+  not shown for a parent table.
 
 * The number of records on each segment.
 
@@ -34,15 +36,16 @@ mppskew.sh reports the following information:
 SYNOPSIS
 *****************************************************
 
--t <table_name>
+-t <schema.table_name>
 
-Required. The table for which you want to see the data distribution.
+Required. The schema qualified table for which you want to see the 
+data distribution.
 
+-h 
 
--n <schema_name>
-
-Optional. The name of the schema where the table resides.
-
+Optional. If the table supplied with the -t option has child tables 
+associated with it, this option will show information for the 
+inherited child tables as well.
 
 -a <database_name>
 
@@ -55,7 +58,7 @@ Optional. Show the names of the distribution key columns only
 (do not compute data skew).
 
 
--d <data_directory>
+-d <master_data_directory>
 
 Optional. The master host data directory. If not specified, 
 the value set for $MASTER_DATA_DIRECTORY will be used.
@@ -66,6 +69,9 @@ the value set for $MASTER_DATA_DIRECTORY will be used.
 Optional. Displays the full data skew results instead of the 
 summary results.
 
+-D 
+
+Optional. If supplied will output all script log messages to the screen.
 
 -m 
 

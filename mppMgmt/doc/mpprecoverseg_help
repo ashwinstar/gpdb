@@ -26,7 +26,7 @@ again, you must first correct the problem that made it fail in the
 first place, and then recover the segment instance in the 
 Greenplum Database system.
 
-The Greenplum Database can run in two modes with regards to mirroring and fault 
+Greenplum Database can run in two modes with regards to mirroring and fault 
 tolerance  continue (read-write) mode and read-only mode. This mode is 
 set with the mpp_fault_action parameter in postgresql.conf at startup.
 

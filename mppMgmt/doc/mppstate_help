@@ -1,13 +1,13 @@
 COMMAND NAME: mppstate.sh
 
-Shows the status of a running Greenplum Database database management server instance.
+Shows the status of a running Greenplum Database system.
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
 mppstate.sh [-d <data_directory>] [-s] [-m] [-c] [-p] [-n] [-b] 
-{[-e] [-r <number>] [-g �search_string�]} [-i] [-f] [-q] [-l <log_directory>]
+{[-e] [-r <number>] [-g "search_string"]} [-i] [-f] [-q] [-l <log_directory>]
 
 mppstate.sh [-t | -? | -v]
 
@@ -19,13 +19,13 @@ DESCRIPTION
 The mppstate.sh script is analogous to functionality offered by the PostgreSQL 
 pg_controldata command, which displays information about a running database 
 server instance. There is additional information you may want to know about a 
-Greenplum Database database instance, since it is comprised of multiple PostgreSQL 
-instances spanning multiple machines. The mppstate.sh script provides the 
+Greenplum Database system, since it is comprised of multiple PostgreSQL 
+database instances spanning multiple machines. The mppstate.sh script provides the 
 following status information for a Greenplum Database system:
 
-* The location of the MPP master data directory.
+* The location of the master data directory.
 
-* The port the MPP master instance is running on.
+* The port the master instance is running on.
 
 * The segment content ID, data directory, port, primary or mirror status, 
   and valid status for each segment instance in the system.
@@ -79,13 +79,13 @@ List the log file names for the master instance and each segment instance.
 Display the end of the log file for the master instance and each segment instance.
 
 
--r number
+-r <number>
 
 Used in combination with the -e option, retrieves the specified number of log lines. 
 The default is to retrieve the last 10 lines of the log files.
 
 
--g search_string
+-g "<search_string>"
 
 Used in combination with the -e option, retrieves the log lines that match the 
 specified search string.
@@ -97,7 +97,7 @@ Display a brief summary of the state of the Greenplum Database system.
 
 
 -i
-Display the Greenplum Database software version information.
+Display the Greenplum software version information.
 
 
 -f
@@ -110,7 +110,7 @@ Run in quiet mode. Command output is not displayed on the screen, but is still
 written to the log file.
 
 
--l logfile_directory
+-l <logfile_directory>
 
 The directory to write the log file. Defaults to ~/mppAdminLogs.
 

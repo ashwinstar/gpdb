@@ -1,6 +1,6 @@
 COMMAND NAME: mppstart.sh
 
-Starts a Greenplum Database database management server instance.
+Starts a Greenplum Database system.
 
 *****************************************************
 SYNOPSIS
@@ -17,13 +17,13 @@ DESCRIPTION
 
 The mppstart.sh script is analogous to functionality offered 
 by the PostgreSQL pg_ctl and postmaster commands, which are used 
-to start the database server. When you start a Greenplum Database database 
-management server instance, you are actually starting several postmaster 
-processes at once (the MPP master and all of the segment instances). 
+to start the database server. When you start a Greenplum Database
+system, you are actually starting several postmaster database server 
+processes at once (the Greenplum master and all of the segment instances). 
 The mppstart.sh script handles the startup of the individual instances. 
 Each instance is started sequentially by default.
 
-Before you can start a Greenplum Database database server, you must have 
+Before you can start a Greenplum Database system, you must have 
 initialized the system using mppcreatecluster.sh first.
 
 *****************************************************
@@ -50,12 +50,12 @@ prevented startup in the first place. This option will allow you to start the
 segment instance (after fixing a problem) if it was marked as invalid in a 
 previous startup attempt. The default behavior is to not start segment 
 instances with an invalid status. If the segment instance is up and running 
-then it will be marked valid again next time the MPP master tries to connect 
+then it will be marked valid again next time the master tries to connect 
 to it.
 
 -m
 
-Optional. Starts the MPP master instance only, which may be useful for 
+Optional. Starts the master instance only, which may be useful for 
 maintenance tasks.
 
 -y
@@ -66,8 +66,14 @@ the standby master host and synchronization process.
 
 -s
 
-Rollover the log file for the MPP master instance. Moves the current 
+Rollover the log file for the master instance. Moves the current 
 logfile to <log file>.YYYYMMDD and starts a new log file.
+
+-e 
+
+Rollover the log files for the segment instances. Moves the current segment 
+logfile to <log file>.YYYYMMDD and starts a new log file per segment. Not 
+applicable in a master only startup.
 
 -a
 
@@ -102,7 +108,7 @@ Displays the version, status, last updated date, and checksum of this script.
 EXAMPLES
 *****************************************************
 
-Start a Greenplum Database database management server instance:
+Start a Greenplum Database system:
 
 mppstart.sh
 
@@ -115,7 +121,7 @@ Start all segment instances in parallel (no return code status):
 
 mppstart.sh -n
 
-Start the MPP master instance only:
+Start the master instance only:
 
 mppstart.sh -m
 

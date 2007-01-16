@@ -37,8 +37,8 @@ The script will perform the following steps:
 
 * Restart the Greenplum Database system with the new master host
 
-A backup MPP master host serves as a warm standby in the event of the 
-primary MPP master host becoming unoperational. The backup master is kept up 
+A backup master host serves as a warm standby in the event of the 
+primary master host becoming unoperational. The backup master is kept up 
 to date by a transaction log replication process (mppsyncmaster), which runs 
 on the backup master host and keeps the data between the primary and backup 
 master hosts synchronized. 
@@ -46,7 +46,7 @@ master hosts synchronized.
 If the primary master fails, the log replication process is shutdown, and the 
 backup master can be activated in its place by using the mppactivatestandby.sh 
 script. Upon activation of the backup master, the replicated logs are used to 
-reconstruct the state of the MPP master host at the time of the last 
+reconstruct the state of the master host at the time of the last 
 successfully committed transaction. To specify a new standby master host after 
 making your current standby master active, use the -c option.
 
@@ -68,7 +68,7 @@ activating.
 -c <new_standby_master_hostname>
 
 Optional. After you activate your standby master you may want to specify 
-another host to be the new standby, otherwise your MPP system will no longer 
+another host to be the new standby, otherwise your Greenplum system will no longer 
 have a standby master configured. Use this option to specify the hostname of 
 the new standby master host.
 
