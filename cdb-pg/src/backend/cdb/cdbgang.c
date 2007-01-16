@@ -496,8 +496,11 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
     {
     	CdbComponentDatabaseInfo  *cdbinfo = &cdb_component_dbs->entry_db_info[0];
     	
-    	/* we want to make sure we use localhost */
-    	cdbinfo->hostip = "127.0.0.1";
+		if (cdbinfo->hostip == NULL)
+		{
+			/* we know we want to use localhost */
+			cdbinfo->hostip = "127.0.0.1";
+		}
 		
         Assert(size == 1 && content == -1);
 		
