@@ -5403,6 +5403,7 @@ ExplainableStmt:
 			| DeleteStmt
 			| DeclareCursorStmt
 			| ExecuteStmt					/* by default all are $$=$1 */
+			| CreateAsStmt
 		;
 
 opt_analyze:
