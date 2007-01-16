@@ -61,7 +61,17 @@ serializeNode(Node *node, int *size)
 	
 	if (DEBUG5 >= log_min_messages)
 	{
-		Node * newnode = deserializeNode(sNode, *size);
+		Node * newnode = NULL;
+		PG_TRY();
+		{
+		 	newnode= deserializeNode(sNode, *size);
+		}
+		PG_CATCH();
+		{
+			elog_node_display(NOTICE,"Before serialization",node,true);
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
 		if (strcmp( nodeToString(node), nodeToString(newnode)) != 0)
 		{
 			elog_node_display(NOTICE,"Before serialization",node,true);
