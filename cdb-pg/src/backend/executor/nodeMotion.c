@@ -1321,8 +1321,14 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 void
 ExecReScanMotion(MotionState *node, ExprContext *exprCtxt)
 {
-    Insist(node->isReceiver);
-    Insist(node->numTuplesToParent == 0);
+	if (!node->isReceiver ||
+		node->numTuplesToParent != 0)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Illegal rescan of motion node: invalid plan."),
+				 errhint("likely caused by bad NL-join, try setting enable_nestloop off")));
+	}
 }
 
 
