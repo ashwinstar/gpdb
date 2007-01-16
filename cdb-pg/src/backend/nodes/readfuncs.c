@@ -1509,6 +1509,7 @@ _readColumnRef(void)
 	READ_LOCALS(ColumnRef);
 
 	READ_NODE_FIELD(fields);
+	READ_INT_FIELD(location);
 
 	READ_DONE();
 }

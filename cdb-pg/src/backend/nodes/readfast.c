@@ -63,7 +63,7 @@
 
 /* Read a boolean field */
 #define READ_BOOL_FIELD(fldname) \
-	local_node->fldname = (*str)[0] != 0;  (*str)++
+	local_node->fldname = (*str)[0] != 0;  Assert((*str)[0]==1 || (*str)[0]==0); (*str)++
 
 /* Read a character-string field */
 #define READ_STRING_FIELD(fldname) \
@@ -147,8 +147,8 @@ _readQuery(const char ** str)
 {
 	READ_LOCALS(Query);
 
-	READ_ENUM_FIELD(commandType, CmdType);
-	READ_ENUM_FIELD(querySource, QuerySource);
+	READ_ENUM_FIELD(commandType, CmdType); Assert(local_node->commandType <= CMD_NOTHING);	
+	READ_ENUM_FIELD(querySource, QuerySource); 	Assert(local_node->querySource <= QSRC_PLANNER);
 	READ_BOOL_FIELD(canSetTag);
 	READ_NODE_FIELD(utilityStmt);
 	READ_INT_FIELD(resultRelation);
@@ -172,18 +172,12 @@ _readQuery(const char ** str)
 	READ_NODE_FIELD(setOperations);
 	READ_NODE_FIELD(resultRelations);
 	READ_NODE_FIELD(returningLists);
-	
-                         
+	                     
     READ_OID_FIELD(intoOidInfo.relOid);
- 
-    READ_OID_FIELD(intoOidInfo.comptypeOid);
-                         
-    READ_OID_FIELD(intoOidInfo.toastOid);
-                         
-    READ_OID_FIELD(intoOidInfo.toastIndexOid);
-                        
+    READ_OID_FIELD(intoOidInfo.comptypeOid);                     
+    READ_OID_FIELD(intoOidInfo.toastOid);                  
+    READ_OID_FIELD(intoOidInfo.toastIndexOid);                 
     READ_OID_FIELD(intoOidInfo.toastComptypeOid);
- 
     
 	local_node->intoPolicy = NULL;
 	
@@ -306,7 +300,7 @@ _readRangeVar(const char ** str)
 
 	READ_STRING_FIELD(schemaname);
 	READ_STRING_FIELD(relname);
-	READ_ENUM_FIELD(inhOpt, InhOption);
+	READ_ENUM_FIELD(inhOpt, InhOption); Assert(local_node->inhOpt <= INH_DEFAULT);
 	READ_BOOL_FIELD(istemp);
 	READ_NODE_FIELD(alias);
 
@@ -365,28 +359,24 @@ _readConstraint(const char ** str)
 	READ_STRING_FIELD(name);			/* name, or NULL if unnamed */
 	
 	READ_ENUM_FIELD(contype,ConstrType);
+	Assert(local_node->contype <= CONSTR_ATTR_IMMEDIATE);
 	 
 
 	switch (local_node->contype)
 	{
+		case CONSTR_UNIQUE:
 		case CONSTR_PRIMARY:
 			READ_NODE_FIELD(keys);
 			READ_NODE_FIELD(options);
 			READ_STRING_FIELD(indexspace);
 		break;
-		case CONSTR_UNIQUE:
-			READ_NODE_FIELD(keys);
-			READ_NODE_FIELD(options);
-			READ_STRING_FIELD(indexspace);
-		break;
+		
 		case CONSTR_CHECK:
-			READ_NODE_FIELD(raw_expr);
-			READ_STRING_FIELD(cooked_expr);
-		break;
 		case CONSTR_DEFAULT:
 			READ_NODE_FIELD(raw_expr);
 			READ_STRING_FIELD(cooked_expr);
 		break;
+		
 		case CONSTR_NULL:
 		case CONSTR_NOTNULL:
 		break;
@@ -409,7 +399,7 @@ _readIndexStmt(const char ** str)
 	READ_STRING_FIELD(accessMethod);
 	READ_STRING_FIELD(tableSpace);
 	READ_NODE_FIELD(indexParams);
-		READ_NODE_FIELD(options);
+	READ_NODE_FIELD(options);
 	READ_NODE_FIELD(whereClause);
 	READ_NODE_FIELD(rangetable);
 	READ_BOOL_FIELD(unique);
@@ -439,7 +429,7 @@ _readReindexStmt(const char ** str)
 {
 	READ_LOCALS(ReindexStmt);
 	
-	READ_ENUM_FIELD(kind,ObjectType);
+	READ_ENUM_FIELD(kind,ObjectType); Assert(local_node->kind <= OBJECT_VIEW);
 	READ_NODE_FIELD(relation);
 	READ_STRING_FIELD(name);
 	READ_BOOL_FIELD(do_system);
@@ -487,7 +477,7 @@ _readDropStmt(const char ** str)
 
 	READ_NODE_FIELD(objects);
 	READ_ENUM_FIELD(removeType,ObjectType);
-	READ_ENUM_FIELD(behavior,DropBehavior);
+	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 	READ_BOOL_FIELD(missing_ok);
 
 	READ_DONE();
@@ -501,7 +491,7 @@ _readDropPropertyStmt(const char ** str)
 	READ_NODE_FIELD(relation);
 	READ_STRING_FIELD(property);
 	READ_ENUM_FIELD(removeType,ObjectType);
-	READ_ENUM_FIELD(behavior,DropBehavior);
+	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 	READ_BOOL_FIELD(missing_ok);
 
 	READ_DONE();
@@ -513,7 +503,7 @@ _readTruncateStmt(const char ** str)
 	READ_LOCALS(TruncateStmt);
 
 	READ_NODE_FIELD(relations);
-	READ_ENUM_FIELD(behavior,DropBehavior);
+	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 
 	READ_DONE();
 }
@@ -526,7 +516,7 @@ _readAlterTableStmt(const char ** str)
 
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(cmds);
-	READ_ENUM_FIELD(relkind, ObjectType);
+	READ_ENUM_FIELD(relkind, ObjectType); Assert(local_node->relkind <= OBJECT_VIEW);
 	READ_INT_FIELD(oidInfoCount);
 	local_node->oidInfo = NULL;
 	if (local_node->oidInfoCount > 0)
@@ -554,7 +544,7 @@ _readAlterTableCmd(const char ** str)
 	READ_STRING_FIELD(name);
 	READ_NODE_FIELD(def);
 	READ_NODE_FIELD(transform);
-	READ_ENUM_FIELD(behavior, DropBehavior);
+	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 	
 	READ_DONE();
 }
@@ -620,7 +610,7 @@ _readAlterObjectSchemaStmt(const char ** str)
 	READ_NODE_FIELD(objarg);
 	READ_STRING_FIELD(addname);
 	READ_STRING_FIELD(newschema);
-	READ_ENUM_FIELD(objectType,ObjectType);
+	READ_ENUM_FIELD(objectType,ObjectType); Assert(local_node->objectType <= OBJECT_VIEW);
 	
 	READ_DONE();
 }
@@ -632,7 +622,7 @@ _readAlterOwnerStmt(const char ** str)
 {
 	READ_LOCALS(AlterOwnerStmt);
 
-	READ_ENUM_FIELD(objectType,ObjectType);
+	READ_ENUM_FIELD(objectType,ObjectType); Assert(local_node->objectType <= OBJECT_VIEW);
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(object);
 	READ_NODE_FIELD(objarg);
@@ -724,11 +714,11 @@ _readAConst(const char ** str)
 static A_Expr *
 _readAExpr(const char ** str)
 {
-	char k;
 	READ_LOCALS(A_Expr);
 	
-	memcpy(&k, *str, 1); (*str)++;
-	local_node->kind = k;
+	READ_ENUM_FIELD(kind, A_Expr_Kind);
+	
+	Assert(local_node->kind <= AEXPR_IN);
 	
 	switch (local_node->kind)
 	{
@@ -772,7 +762,7 @@ _readAExpr(const char ** str)
 			READ_NODE_FIELD(name);
 			break;
 		default:
-		elog(ERROR,"Unable to understand A_Expr node ");
+			elog(ERROR,"Unable to understand A_Expr node ");
 			break;
 	}
 
@@ -897,16 +887,6 @@ _readDistinctExpr(const char ** str)
 	READ_OID_FIELD(opno);
 	READ_OID_FIELD(opfuncid);
 
-	/*
-	 * The opfuncid is stored in the textual format primarily for debugging
-	 * and documentation reasons.  We want to always read it as zero to force
-	 * it to be re-looked-up in the pg_operator entry.	This ensures that
-	 * stored rules don't have hidden dependencies on operators' functions.
-	 * (We don't currently support an ALTER OPERATOR command, but might
-	 * someday.)
-	 */
-	/*local_node->opfuncid = InvalidOid;*/
-
 	READ_OID_FIELD(opresulttype);
 	READ_BOOL_FIELD(opretset);
 	READ_NODE_FIELD(args);
@@ -924,16 +904,6 @@ _readScalarArrayOpExpr(const char ** str)
 
 	READ_OID_FIELD(opno);
 	READ_OID_FIELD(opfuncid);
-
-	/*
-	 * The opfuncid is stored in the textual format primarily for debugging
-	 * and documentation reasons.  We want to always read it as zero to force
-	 * it to be re-looked-up in the pg_operator entry.	This ensures that
-	 * stored rules don't have hidden dependencies on operators' functions.
-	 * (We don't currently support an ALTER OPERATOR command, but might
-	 * someday.)
-	 */
-	/*local_node->opfuncid = InvalidOid;*/
 
 	READ_BOOL_FIELD(useOr);
 	READ_NODE_FIELD(args);
@@ -1193,16 +1163,6 @@ _readNullIfExpr(const char ** str)
 	READ_OID_FIELD(opno);
 	READ_OID_FIELD(opfuncid);
 
-	/*
-	 * The opfuncid is stored in the textual format primarily for debugging
-	 * and documentation reasons.  We want to always read it as zero to force
-	 * it to be re-looked-up in the pg_operator entry.	This ensures that
-	 * stored rules don't have hidden dependencies on operators' functions.
-	 * (We don't currently support an ALTER OPERATOR command, but might
-	 * someday.)
-	 */
-	/*local_node->opfuncid = InvalidOid;*/
-
 	READ_OID_FIELD(opresulttype);
 	READ_BOOL_FIELD(opretset);
 	READ_NODE_FIELD(args);
@@ -1376,6 +1336,7 @@ _readColumnRef(const char ** str)
 	READ_LOCALS(ColumnRef);
 
 	READ_NODE_FIELD(fields);
+	READ_INT_FIELD(location);
 
 	READ_DONE();
 }
@@ -1479,7 +1440,6 @@ _readCreateStmt(const char ** str)
 	READ_NODE_FIELD(tableElts);
 	READ_NODE_FIELD(inhRelations);
 	READ_NODE_FIELD(constraints);
-
 	READ_NODE_FIELD(options);
 	READ_ENUM_FIELD(oncommit,OnCommitAction);
 	READ_STRING_FIELD(tablespacename);
@@ -1491,6 +1451,20 @@ _readCreateStmt(const char ** str)
 	READ_OID_FIELD(oidInfo.toastComptypeOid);
 	READ_CHAR_FIELD(relKind);
 	local_node->policy = NULL;
+	
+	/*
+	 * Some extra checks to make sure we didn't get lost
+	 * during serialization/deserialization
+	 */
+	Assert(local_node->relKind == RELKIND_INDEX || 
+			local_node->relKind == RELKIND_INDEX || 
+			local_node->relKind == RELKIND_RELATION || 
+			local_node->relKind == RELKIND_SEQUENCE || 
+			local_node->relKind == RELKIND_UNCATALOGED || 
+			local_node->relKind == RELKIND_TOASTVALUE || 
+			local_node->relKind == RELKIND_VIEW || 
+			local_node->relKind == RELKIND_COMPOSITE_TYPE); 
+	Assert(local_node->oncommit <= ONCOMMIT_DROP);
 
 	READ_DONE();
 }
@@ -1548,7 +1522,7 @@ _readDropPLangStmt(const char ** str)
 	READ_LOCALS(DropPLangStmt);
 
 	READ_STRING_FIELD(plname);
-	READ_ENUM_FIELD(behavior,DropBehavior);
+	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 	READ_BOOL_FIELD(missing_ok);
 	
 	READ_DONE();
@@ -1639,7 +1613,7 @@ _readAlterDomainStmt(const char ** str)
 	READ_NODE_FIELD(typname);
 	READ_STRING_FIELD(name);
 	READ_NODE_FIELD(def);
-	READ_ENUM_FIELD(behavior, DropBehavior);
+	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 		
 	READ_DONE();
 }
@@ -1675,10 +1649,10 @@ static RemoveFuncStmt *
 _readRemoveFuncStmt(const char ** str)
 {
 	READ_LOCALS(RemoveFuncStmt);
-	READ_ENUM_FIELD(kind,ObjectType);
+	READ_ENUM_FIELD(kind,ObjectType); Assert(local_node->kind <= OBJECT_VIEW);
 	READ_NODE_FIELD(name);
 	READ_NODE_FIELD(args);
-	READ_ENUM_FIELD(behavior, DropBehavior);
+	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 	READ_BOOL_FIELD(missing_ok);
 			
 	READ_DONE();
@@ -1699,7 +1673,7 @@ static DefineStmt *
 _readDefineStmt(const char ** str)
 {
 	READ_LOCALS(DefineStmt);
-	READ_ENUM_FIELD(kind, ObjectType);
+	READ_ENUM_FIELD(kind, ObjectType); Assert(local_node->kind <= OBJECT_VIEW);
 	READ_BOOL_FIELD(oldstyle);
 	READ_NODE_FIELD(defnames);
 	READ_NODE_FIELD(args);
@@ -1743,7 +1717,7 @@ _readDropCastStmt(const char ** str)
 	READ_LOCALS(DropCastStmt);
 	READ_NODE_FIELD(sourcetype);
 	READ_NODE_FIELD(targettype);
-	READ_ENUM_FIELD(behavior, DropBehavior);
+	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 	READ_BOOL_FIELD(missing_ok);
 			
 	READ_DONE();
@@ -1783,7 +1757,7 @@ _readRemoveOpClassStmt(const char ** str)
 	READ_LOCALS(RemoveOpClassStmt);
 	READ_NODE_FIELD(opclassname);
 	READ_STRING_FIELD(amname);
-	READ_ENUM_FIELD(behavior, DropBehavior);
+	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 	READ_BOOL_FIELD(missing_ok);
 				
 	READ_DONE();
@@ -1814,7 +1788,7 @@ _readGrantStmt(const char ** str)
 	READ_NODE_FIELD(privileges);		
 	READ_NODE_FIELD(grantees);		
 	READ_BOOL_FIELD(grant_option);	
-	READ_ENUM_FIELD(behavior, DropBehavior);	
+	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);	
 	
 	READ_DONE();	
 }
@@ -1847,7 +1821,7 @@ _readGrantRoleStmt(const char ** str)
 	READ_BOOL_FIELD(is_grant);
 	READ_BOOL_FIELD(admin_opt);
 	READ_STRING_FIELD(grantor);
-	READ_ENUM_FIELD(behavior, DropBehavior);		
+	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);		
 	
 	READ_DONE();
 }
@@ -2304,7 +2278,7 @@ _readMotion(const char ** str)
 	READ_LOCALS(Motion);
 
 	READ_INT_FIELD(motionID);
-	READ_ENUM_FIELD(motionType, MotionType);
+	READ_ENUM_FIELD(motionType, MotionType);  Assert(local_node->motionType <= MOTIONTYPE_FIXED);
 	READ_BOOL_FIELD(sendToSecondary);
 	READ_BOOL_FIELD(sendSorted);
 	
@@ -2385,7 +2359,7 @@ _readSlice(const char ** str)
 	
 	READ_INT_FIELD(sliceIndex);
 	READ_INT_FIELD(rootIndex);
-	READ_ENUM_FIELD(gangType, GangType);
+	READ_ENUM_FIELD(gangType, GangType);  Assert(local_node->gangType <= GANGTYPE_MIRROR_WRITER);
 	READ_INT_FIELD(gangSize);
 	READ_DUMMY_FIELD(primaryGang, NULL);
 	READ_DUMMY_FIELD(mirrorGang, NULL);
@@ -2471,7 +2445,7 @@ void readJoinInfo(const char ** str, Join *local_node)
 
 	READ_BOOL_FIELD(prefetch_inner);
 
-	READ_ENUM_FIELD(jointype, JoinType);
+	READ_ENUM_FIELD(jointype, JoinType); Assert(local_node->jointype <= JOIN_UNIQUE_INNER);
 	READ_NODE_FIELD(joinqual);
 }
 
@@ -3191,7 +3165,7 @@ readNodeFromBinaryString(const char * str, int len)
 /*
  * readDatum
  *
- * Given a string representation of a constant, recreate the appropriate
+ * Given a binary string representation of a constant, recreate the appropriate
  * Datum.  The string representation embeds length info, but not byValue,
  * so we must be told that.
  */

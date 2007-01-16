@@ -22,7 +22,7 @@
  *    at the expense legibility.  
  *
  * 	  Rather than serialize to a (somewhat human-readable) string, these
- *    routines to a binary serialization via a simple depth-first walk
+ *    routines create a binary serialization via a simple depth-first walk
  *    of the tree.
  *
  *-------------------------------------------------------------------------
@@ -2275,10 +2275,8 @@ _outRangeTblEntry(StringInfo str, RangeTblEntry *node)
 static void
 _outAExpr(StringInfo str, A_Expr *node)
 {
-	char k;
 	WRITE_NODE_TYPE("AEXPR");
-	k = node->kind;
-	appendBinaryStringInfo(str, (const char *)&k, 1);
+	WRITE_ENUM_FIELD(kind, A_Expr_Kind);
 	
 	switch (node->kind)
 	{
@@ -2421,11 +2419,6 @@ _outConstraint(StringInfo str, Constraint *node)
 	switch (node->contype)
 	{
 		case CONSTR_PRIMARY:
-			WRITE_NODE_FIELD(keys);
-			WRITE_NODE_FIELD(options);
-			WRITE_STRING_FIELD(indexspace);
-			break;
-
 		case CONSTR_UNIQUE:
 			WRITE_NODE_FIELD(keys);
 			WRITE_NODE_FIELD(options);
@@ -2433,10 +2426,6 @@ _outConstraint(StringInfo str, Constraint *node)
 			break;
 
 		case CONSTR_CHECK:
-			WRITE_NODE_FIELD(raw_expr);
-			WRITE_STRING_FIELD(cooked_expr);
-			break;
-
 		case CONSTR_DEFAULT:
 			WRITE_NODE_FIELD(raw_expr);
 			WRITE_STRING_FIELD(cooked_expr);
@@ -2447,7 +2436,7 @@ _outConstraint(StringInfo str, Constraint *node)
 			break;
 
 		default:
-			elog(WARNING,"don't know what to do with this constraint");
+			elog(WARNING,"serialization doesn't know what to do with this constraint");
 			break;
 	}
 }
