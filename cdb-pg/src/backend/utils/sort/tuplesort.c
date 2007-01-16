@@ -2287,12 +2287,22 @@ tuplesort_sorted_insert(Tuplesortstate *state, SortTuple *tuple,
 
 	/* free up tuples if necessary */
  L_freetup:
+	if (freetup->tuple)
 	{
-		HeapTuple	htup = (HeapTuple) freetup->tuple;
-		FREEMEM(state, GetMemoryChunkSpace(htup));
-		heap_freetuple(htup);
-		state->discardcount++;
+		if (state->writetup == writetup_heap)
+		{ /* free a heap tuple */
+			MinimalTuple htup = (MinimalTuple) freetup->tuple;
+			FREEMEM(state, GetMemoryChunkSpace(htup));
+			heap_free_minimal_tuple(htup);
+		}
+		else /* free a datum (or index) */
+		{
+			FREEMEM(state, GetMemoryChunkSpace(freetup->tuple));
+			pfree(freetup->tuple);
+		}
 	}
+	state->discardcount++;
+
 
 }
 
