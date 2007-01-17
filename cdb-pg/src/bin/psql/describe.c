@@ -1054,7 +1054,8 @@ describeOneTableDetails(const char *schemaname,
 				   *result3 = NULL,
 				   *result4 = NULL,
 				   *result5 = NULL,
-				   *result6 = NULL;
+				   *result6 = NULL,
+				   *result7 = NULL;
 		int			check_count = 0,
 					index_count = 0,
 					foreignkey_count = 0,
@@ -1335,6 +1336,56 @@ describeOneTableDetails(const char *schemaname,
 							  (tableinfo.hasoids ? _("yes") : _("no")));
 			footers[count_footers++] = pg_strdup(buf.data);
 		}
+		
+		{
+			/* mpp addition start: dump distributed by clause */
+			printfPQExpBuffer(&buf,
+					 "SELECT attrnums\n"
+							  "FROM pg_catalog.mpp_distribution_policy t\n"
+							  "WHERE localoid = '%s' ",
+							  oid);
+			
+			result7 = PSQLexec(buf.data, false);
+			if (!result7)
+			{
+				/* Error:  Well, so what?  Best to continue */	 
+			}
+			else
+			{
+				int is_distributed = PQntuples(result7);
+				if (is_distributed)
+				{
+					char *col;
+					char *dist_columns = PQgetvalue(result7, 0, 0);
+					if(dist_columns && strlen(dist_columns) > 0)  
+					{
+						dist_columns[strlen(dist_columns)-1] = '\0'; /* remove '}' */
+						dist_columns++;  /* skip '{' */
+				 
+						printfPQExpBuffer(&buf, "Distributed by: (%s",
+										  cells[(atoi(dist_columns)-1) * cols]);
+						col = strchr(dist_columns,',');
+						
+						while(col!=NULL)
+						{
+							col++;
+							appendPQExpBuffer(&buf, ", %s",
+											  cells[(atoi(col)-1) * cols]);
+							col = strchr(col,',');
+						}
+						appendPQExpBuffer(&buf, ")");
+					}
+					else
+					{
+						printfPQExpBuffer(&buf, "Distributed randomly");
+					}
+					
+					footers[count_footers++] = pg_strdup(buf.data);
+				}
+				
+			}
+		}
+		
 
 		add_tablespace_footer(tableinfo.relkind, tableinfo.tablespace,
 							  footers, &count_footers, buf, true);
@@ -1347,6 +1398,7 @@ describeOneTableDetails(const char *schemaname,
 		PQclear(result4);
 		PQclear(result5);
 		PQclear(result6);
+		PQclear(result7);
 	}
 
 	printTable(title.data, headers,
