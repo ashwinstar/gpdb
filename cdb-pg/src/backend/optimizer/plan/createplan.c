@@ -3272,7 +3272,38 @@ plan_pushdown_tlist(Plan *plan, List *tlist)
 {
 	if (is_projection_capable_plan(plan))
     {
-		plan->targetlist = tlist;
+		/* if the plan an project and produces unordered sets, just do it. */
+		if (!plan->flow || plan->flow->numSortCols == 0)
+			plan->targetlist = tlist;
+
+		/* MPP-1107: if we're depending on the sort order, we have to
+		 * fix up the flow to point to the correct columns
+		 * post-projection -- this is probably only used for IndexScan
+		 * nodes (which can project and produce sorted output) which
+		 * have the sort order we want. The sort node doesn't project,
+		 * so that's handled further down. */
+		else
+		{
+			int i;
+			TargetEntry *old_tle, *new_tle;
+
+			for (i=0; i < plan->flow->numSortCols; i++)
+			{
+				old_tle = get_tle_by_resno(plan->targetlist, plan->flow->sortColIdx[i]);
+
+				if (!old_tle)
+					elog(ERROR, "Cannot find sort column in pre-projection targetlist during tlist pullup");
+
+				new_tle = tlist_member((Node *)old_tle->expr, tlist);
+				if (!new_tle)
+					elog(ERROR, "Cannot find sort column in post-projection targetlist during tlist pullup");
+
+				plan->flow->sortColIdx[i] = new_tle->resno;
+			}
+
+			/* now we can update the tlist */
+			plan->targetlist = tlist;
+		}
 
         /*
          * If the node's Flow is partitioned on an expr that is no longer in
