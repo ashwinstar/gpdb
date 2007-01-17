@@ -524,11 +524,11 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			
 			cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
 			
-			pfree(pszVacuumNoAnalyze);
+			 
 		}
 		
 		pfree(q);
-		pfree(pszVacuum);	
+		 
 	}
 	
 	

@@ -34,7 +34,7 @@ typedef struct DispatchCommandParms
 	/*
 	 * The SQL command
 	 */
-	char		*strCommand;
+	const char	*strCommand;
 	int			strCommandlen;
 	char		*serializedQuerytree;
 	int			serializedQuerytreelen;
@@ -51,7 +51,7 @@ typedef struct DispatchCommandParms
 	/*
 	 * serialized snapshot string
 	 */
-	char	   *serializedSnapshot;
+	char		*serializedSnapshot;
 	int			serializedSnapshotlen;
 	
 	int			localSlice;
@@ -149,15 +149,15 @@ cdbdisp_startDtxTransaction(void);
 void
 cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads,
 					   const char                  *strCommand,
-					   const char				   *serializedQuerytree,
+					   char				  		   *serializedQuerytree,
 					   int							serializedQuerytreelen,
-					   const char 				   *serializedPlantree,
+					   char 					   *serializedPlantree,
 					   int							serializedPlantreelen,
-					   const char				   *serializedParams,
+					   char				   		   *serializedParams,
 					   int							serializedParamslen,
-					   const char				   *serializedSliceInfo,	
+					   char						   *serializedSliceInfo,	
 					   int							serializedSliceInfolen,		
-					   const char				   *serializedSnapshot,
+					   char						   *serializedSnapshot,
 					   int							serializedSnapshotlen,
 					   int							txnOptions,
                        struct Gang                 *gp,
@@ -235,7 +235,7 @@ cdbdisp_dispatchRMCommand(const char   *strCommand,
  */
 void
 cdbdisp_dispatchCommand(const char                 *strCommand,
-						const char			   	   *serializedQuerytree,
+						char				   	   *serializedQuerytree,
 						int							serializedQuerytreelen,
                         bool                        cancelOnError,
                         bool						startTransaction,

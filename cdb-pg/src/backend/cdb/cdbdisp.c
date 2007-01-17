@@ -88,15 +88,15 @@ static void
 addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
                              int                    segdbs_in_thread_pool,
 							 const char            *strCommand,
-							 const char			   *serializedQuerytree,
+							 char			       *serializedQuerytree,
 							 int					serializedQuerytreelen,
-							 const char 		   *serializedPlantree,
+							 char 		           *serializedPlantree,
 							 int					serializedPlantreelen,
-							 const char			   *serializedParams,
+							 char			       *serializedParams,
 							 int					serializedParamslen,
-							 const char			   *serializedSliceInfo,	
+							 char			       *serializedSliceInfo,	
 							 int					serializedSliceInfolen,		
-							 const char			   *serializedSnapshot,
+							 char			       *serializedSnapshot,
 							 int					serializedSnapshotlen,
 							 int					txnOptions,
 							 int					sliceId,
@@ -104,9 +104,9 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 
 static void
 cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
-						const char			   		*serializedQuerytree,
+						char			   			*serializedQuerytree,
 						int							 serializedQuerytreelen,
-						const char 		   			*serializedPlantree,
+						char	 		   			*serializedPlantree,
 						int							 serializedPlantreelen,
                         bool                        cancelOnError,
                         bool						startTransaction,
@@ -219,15 +219,15 @@ cdbdisp_startDtxTransaction(void)
 void
 cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 					   const char                  *strCommand,
-					   const char				   *serializedQuerytree,
+					   char						   *serializedQuerytree,
 					   int							serializedQuerytreelen,
-					   const char 				   *serializedPlantree,
+					   char 					   *serializedPlantree,
 					   int							serializedPlantreelen,
-					   const char				   *serializedParams,
+					   char						   *serializedParams,
 					   int							serializedParamslen,
-					   const char				   *serializedSliceInfo,
+					   char						   *serializedSliceInfo,
 					   int							serializedSliceInfolen,				
-					   const char				   *serializedSnapshot,
+					   char						   *serializedSnapshot,
 					   int							serializedSnapshotlen,
 					   int							txnOptions,
                        struct Gang                 *gp,
@@ -424,16 +424,16 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 void
 addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
                              int                    segdbs_in_thread_pool,
-                             const char            *strCommand,
-                             const char			   *serializedQuerytree,
+                             const char        	   *strCommand,
+                             char			   	   *serializedQuerytree,
                              int					serializedQuerytreelen,
-							 const char 		   *serializedPlantree,
+							 char 		  		   *serializedPlantree,
 							 int					serializedPlantreelen,
-							 const char			   *serializedParams,
+							 char			   	   *serializedParams,
 							 int					serializedParamslen,
-							 const char			   *serializedSliceInfo,	
+							 char			   	   *serializedSliceInfo,	
 							 int					serializedSliceInfolen,		
-                             const char			   *serializedSnapshot,
+                             char			   	   *serializedSnapshot,
                              int					serializedSnapshotlen,
                              int					txnOptions,
                              int					sliceId,
@@ -462,7 +462,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 		}
 		else
 		{
-			pParms->strCommand = pstrdup(strCommand);
+			pParms->strCommand = strCommand;
 			pParms->strCommandlen = strlen(strCommand) + 1;
 		}
 		
@@ -473,9 +473,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 		}
 		else
 		{
-			pParms->serializedQuerytree = palloc(serializedQuerytreelen);
-			memcpy(pParms->serializedQuerytree,serializedQuerytree,serializedQuerytreelen);
-			
+			pParms->serializedQuerytree = serializedQuerytree;			
 			pParms->serializedQuerytreelen = serializedQuerytreelen;
 		}
 		
@@ -486,9 +484,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 		}
 		else
 		{
-			pParms->serializedPlantree = palloc(serializedPlantreelen);
-			memcpy(pParms->serializedPlantree,serializedPlantree,serializedPlantreelen);
-
+			pParms->serializedPlantree = serializedPlantree;
 			pParms->serializedPlantreelen = serializedPlantreelen;
 		}
 		
@@ -499,9 +495,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 		}
 		else
 		{
-			pParms->serializedParams = palloc(serializedParamslen);
-			memcpy(pParms->serializedParams,serializedParams,serializedParamslen);
-		
+			pParms->serializedParams = serializedParams;
 			pParms->serializedParamslen = serializedParamslen;
 		}
 		
@@ -512,9 +506,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 		}
 		else
 		{
-			pParms->serializedSliceInfo = palloc(serializedSliceInfolen);
-			memcpy(pParms->serializedSliceInfo,serializedSliceInfo,serializedSliceInfolen);
-
+			pParms->serializedSliceInfo = serializedSliceInfo;
 			pParms->serializedSliceInfolen = serializedSliceInfolen;
 		}
 		
@@ -525,9 +517,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 		}
 		else
 		{
-			pParms->serializedSnapshot = palloc(serializedSnapshotlen);
-			memcpy(pParms->serializedSnapshot,serializedSnapshot,serializedSnapshotlen);
-	
+			pParms->serializedSnapshot = serializedSnapshot;
 			pParms->serializedSnapshotlen = serializedSnapshotlen;
 		}
 		
@@ -824,7 +814,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
  */
 void
 cdbdisp_dispatchCommand(const char                 *strCommand,
-						const char			   	   *serializedQuerytree,
+						char			   		   *serializedQuerytree,
 						int							serializedQuerytreelen,
                         bool                        cancelOnError,
                         bool						startTransaction,
@@ -919,8 +909,11 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 							   txnOptions, mirrorGang, *pMirrorResults, -1, 1);
     }
 
-	if (serializedSnapshot != NULL)
-		pfree(serializedSnapshot);
+	/*
+	 * don't pfree serializedShapshot here, it will be pfree'd when
+	 * the first thread is destroyed.
+	 */
+
 }	/* cdbdisp_dispatchCommand */
 
 
@@ -1078,9 +1071,9 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
 
 void
 cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
-						const char			   		*serializedQuerytree,
+						char				   		*serializedQuerytree,
 						int							serializedQuerytreelen,
-						const char 		   			*serializedPlantree,
+						char 		   				*serializedPlantree,
 						int							serializedPlantreelen,
                         bool                        cancelOnError,
                         bool						startTransaction,
@@ -1181,8 +1174,6 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	    	txnOptions, rg, *pPrimaryResults, -1, gangCount);
     }
 
-	if (serializedSnapshot != NULL)
-    	pfree(serializedSnapshot);
 
 
 }	/* cdbdisp_dispatchCommandToAllGangs */
@@ -1227,7 +1218,6 @@ thread_DispatchCommand(void *arg)
 	{
 		write_stderr("could not build query string, total length %d\n", pParms->query_text_len);
 		pParms->query_text_len = 0;
-		//dispatchResult->stillRunning = false;	// dispatchResult not initialized yet
 		return NULL;
 	}
 
@@ -2165,7 +2155,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
  * to an initPlan or to the main plan.)
  *
  * If cancelOnError is true, then any dispatching error, a cancellation
- * request from the client, or an error from any QE in the plan, may cause
+ * request from the client, or an error from any QE in the , may cause
  * the unfinished portion of the plan to be abandoned or canceled; and
  * in the event this occurs before all gangs have been dispatched, this
  * function does not return, but waits for all QEs to stop and exits to
@@ -2525,16 +2515,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		}
 	}
 
-	if (squery!=NULL)
-		pfree(squery);
-	if (splan!=NULL)
-		pfree(splan);
-	if (ssliceinfo!=NULL)
-		pfree(ssliceinfo);
-
-	
-	if (serializedSnapshot!=NULL)
-    	pfree(serializedSnapshot);
 
     pfree(sliceVector);
 
@@ -2708,7 +2688,7 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 							/* withSnapshot */true, dispatchToMirrors, /* primaries */true, 
 							pPrimaryResults, pMirrorResults, pDispatchThreads);
 
-	pfree(serializedQuerytree);
+
 
 }	/* cdbdisp_dispatchUtilityStatement */
 
@@ -2918,14 +2898,43 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 		}
 		if (pParms->strCommand)
 		{
-			pfree(pParms->strCommand);
+			/* Caller frees if desired */
 			pParms->strCommand = NULL;
 		}
 		
 		if (pParms->serializedSnapshot)
 		{
-			pfree(pParms->serializedSnapshot);
+			if (i==0)
+				pfree(pParms->serializedSnapshot);
 			pParms->serializedSnapshot = NULL;
+		}
+		
+		if (pParms->serializedSliceInfo)
+		{
+			if (i==0)
+				pfree(pParms->serializedSliceInfo);
+			pParms->serializedSliceInfo = NULL;
+		}
+		
+		if (pParms->serializedQuerytree)
+		{
+			if (i==0)
+				pfree(pParms->serializedQuerytree);
+			pParms->serializedQuerytree = NULL;
+		}
+		
+		if (pParms->serializedPlantree)
+		{
+			if (i==0)
+				pfree(pParms->serializedPlantree);
+			pParms->serializedPlantree = NULL;
+		}
+		
+		if (pParms->serializedParams)
+		{
+			if (i==0)
+				pfree(pParms->serializedParams);
+			pParms->serializedParams = NULL;
 		}
 		
 		pParms->txnOptions = 0;
