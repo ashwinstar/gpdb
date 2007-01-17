@@ -3135,6 +3135,8 @@ DATA(insert OID = 2625 ( pg_ls_dir			PGNSP PGUID 12 f f t t v 1 25 "25" _null_ _
 DESCR("List all files in a directory");
 DATA(insert OID = 2626 ( pg_sleep			PGNSP PGUID 12 f f t f v 1 2278 "701" _null_ _null_ _null_ pg_sleep - _null_ ));
 DESCR("Sleep for the specified time in seconds");
+DATA(insert OID = 6030 (  pg_resqueue_status   PGNSP PGUID 12 f f t t v 0 2249 "" _null_ _null_ _null_ pg_resqueue_status - _null_ ));
+DESCR("Return resource queue information");
 
 
 /* Aggregates (moved here from pg_aggregate for 7.3) */

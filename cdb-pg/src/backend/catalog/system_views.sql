@@ -357,3 +357,24 @@ CREATE VIEW pg_stat_database AS
                     pg_stat_get_db_blocks_hit(D.oid) AS blks_read, 
             pg_stat_get_db_blocks_hit(D.oid) AS blks_hit 
     FROM pg_database D;
+
+-- Resource queue views
+
+CREATE VIEW pg_resqueue_status AS
+	SELECT 
+			q.rsqname, 
+			q.rsqcountlimit, 
+			s.queuecountvalue AS rsqcountvalue,
+			q.rsqcostlimit, 
+			s.queuecostvalue AS rsqcostvalue,
+			s.queuewaiters AS rsqwaiters,
+			s.queueholders AS rsqholders
+	FROM pg_resqueue AS q 
+			INNER JOIN pg_resqueue_status() AS s 
+			(	queueid oid, 
+	 			queuecountvalue float4, 
+				queuecostvalue float4,
+				queuewaiters int4,
+				queueholders int4)
+			ON (s.queueid = q.oid);
+

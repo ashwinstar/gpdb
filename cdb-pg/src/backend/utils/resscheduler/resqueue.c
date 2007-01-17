@@ -16,23 +16,59 @@
  */
 #include "postgres.h"
 
+#include "access/heapam.h"
 #include "access/twophase.h"
 #include "access/twophase_rmgr.h"
 #include "access/xact.h"
+#include "catalog/pg_type.h"
+#include "funcapi.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/lock.h"
 #include "storage/lmgr.h"
+#include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/resowner.h"
 #include "utils/resscheduler.h"
+
+
+/* Columns in pg_resqueue_status() */
+#define	NUM_QUEUE_STATUS_ELEM	(3 + NUM_RES_LIMIT_TYPES)
 
 /*
  * Global Variables
  */
 static HTAB *ResPortalIncrementHash;		/* Hash of resource increments. */
 static HTAB *ResQueueHash;					/* Hash of resource queues. */
+
+
+/*
+ * Record structure holding the to be exposed per queue data, used by
+ * pg_resqueue_status().
+ */
+typedef struct
+{
+	Oid		queueid;
+	float4	queuecountthreshold;
+	float4	queuecostthreshold;
+	float4	queuecountvalue;
+	float4	queuecostvalue;
+	int		queuewaiters;
+	int		queueholders;
+}	QueueStatusRec;
+
+
+/*
+ * Function context for data persisting over repeated calls, used by 
+ * pg_resqueue_status().
+ */
+typedef struct
+{
+	TupleDesc		tupdesc;
+	QueueStatusRec	*record;
+	
+}	QueueStatusContext;
 
 
 /*
@@ -1648,4 +1684,231 @@ ResIncrementUpdate(int pid, uint32 portalId, bool isHold, bool isCommitted)
 	LWLockRelease(ResQueueLock);
 
 	return;
+}
+
+
+/*
+ * pg_resqueue_status - produce a view with one row per resource queue
+ *	showing internal information (counter values, waiters, holders).
+ */
+Datum
+pg_resqueue_status(PG_FUNCTION_ARGS)
+{
+
+	FuncCallContext			*funcctx;
+	Datum					result;
+	MemoryContext			oldcontext;
+	QueueStatusContext		*fctx;			/* User function context. */
+	TupleDesc				tupledesc;
+	HeapTuple				tuple;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		int					i;
+		int					num_calls;
+		HASH_SEQ_STATUS		status;
+		ResQueueData		*queue;
+		int					partition;
+		LWLockId			partitionLock;
+		
+
+		funcctx = SRF_FIRSTCALL_INIT();
+
+
+		/* Switch context when allocating stuff to be used in later calls */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		fctx = (QueueStatusContext *) palloc(sizeof(QueueStatusContext));
+		funcctx->user_fctx = fctx;
+
+		/* Construct a tuple descriptor for the result rows. */
+		tupledesc = CreateTemplateTupleDesc(NUM_QUEUE_STATUS_ELEM, false);
+		TupleDescInitEntry(tupledesc, (AttrNumber) 1, "queueid",
+						   OIDOID, -1, 0);
+		TupleDescInitEntry(tupledesc, (AttrNumber) 2, "queuecountvalue",
+						   FLOAT4OID, -1, 0);
+		TupleDescInitEntry(tupledesc, (AttrNumber) 3, "queuecostvalue",
+						   FLOAT4OID, -1, 0);
+		TupleDescInitEntry(tupledesc, (AttrNumber) 4, "queuewaiters",
+						   INT4OID, -1, 0);
+		TupleDescInitEntry(tupledesc, (AttrNumber) 5, "queueholders",
+						   INT4OID, -1, 0);
+
+		fctx->tupdesc = BlessTupleDesc(tupledesc);
+
+		/*
+		 * Allocate space for the per-call area - this overestimates, but
+		 * means we can take the resource rescheduler lock after our
+		 * memory context switching.
+		 */
+		fctx->record = (QueueStatusRec *) palloc(sizeof(QueueStatusRec) * 
+					   MaxResourceQueues);
+
+		/* Return to original context when allocating transient memory */
+		MemoryContextSwitchTo(oldcontext);
+
+		/* 
+		 * Take all the partition locks. This is necessary as we want to
+		 * to use the same lock order as the rest of the code - i.e. partition
+		 * locks *first* *then* the queue lock (otherwise we could deadlock
+		 * ourselves). 
+		 */
+		for (partition = 0; partition < NUM_LOCK_PARTITIONS; partition++)
+		{
+			partitionLock = FirstLockMgrLock + partition;
+			LWLockAcquire(partitionLock, LW_EXCLUSIVE);
+		}
+
+		/*
+		 * Lock resource queue structures.
+		 */
+		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+
+		/* Initialize for a sequential scan of the resource queue hash. */
+		hash_seq_init(&status, ResQueueHash);
+		num_calls = hash_get_num_entries(ResQueueHash);
+		Assert(num_calls == ResScheduler->num_queues);
+
+		i = 0;
+		while ((queue = (ResQueueData *) hash_seq_search(&status)) != NULL)
+		{
+			int			j;
+			ResLimit	limits;
+			LOCKTAG		tag;
+			LOCK		*lock;
+			uint32		hashcode;
+			bool		found;
+
+			/* Get the thresholds and current values for each limit. */
+			limits = queue->limits;
+			
+			fctx->record[i].queueid = queue->queueid;
+
+			for (j = 0; j < NUM_RES_LIMIT_TYPES; j++)
+			{
+				switch (limits[j].type)
+				{
+					case RES_COUNT_LIMIT:
+					{
+						fctx->record[i].queuecountthreshold =
+						limits[j].threshold_value;
+
+						fctx->record[i].queuecountvalue =
+						limits[j].current_value;
+					}
+					break;
+
+					case RES_COST_LIMIT:
+					{
+						fctx->record[i].queuecostthreshold =
+						limits[j].threshold_value;
+
+						fctx->record[i].queuecostvalue =
+						limits[j].current_value;
+					}
+					break;
+
+					default:
+					break;
+
+				}
+			}
+
+
+			/* 
+			 * Get the holders and waiters count for the corrosponding resource
+			 * lock.
+			 * Think about this - getting ResQueueLock then partitionLock is the
+			 * opposite way from which the rest of your code does this... so
+			 * you could perhaps deadlock here...!
+			 * Might be better to grab *all* the partition locks first!
+			 */
+
+			SET_LOCKTAG_RESOURCE_QUEUE(tag, queue->queueid);
+			hashcode = LockTagHashCode(&tag);
+
+			
+			lock = (LOCK *) hash_search_with_hash_value(LockMethodLockHash,
+														(void *) &tag,
+														hashcode,
+														HASH_FIND,
+														&found);
+
+			if (!found || !lock)
+			{
+				fctx->record[i].queuewaiters = 0;
+				fctx->record[i].queueholders = 0;
+			}
+			else
+			{
+				fctx->record[i].queuewaiters = lock->nRequested - lock->nGranted;
+				fctx->record[i].queueholders = lock->nGranted;
+			}
+
+			i++;
+		}
+
+		/* Release the resource scheduler lock. */
+		LWLockRelease(ResQueueLock);
+
+		/* ...and the partition locks. */
+		for (partition = 0; partition < NUM_LOCK_PARTITIONS; partition++)
+		{
+			partitionLock = FirstLockMgrLock + partition;
+			LWLockRelease(partitionLock);
+		}
+
+		/* Set the real no. of calls as we know it now! */
+		Assert(i <= num_calls);
+		funcctx->max_calls = num_calls;
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+
+	/* Get the saved state. */
+	fctx = funcctx->user_fctx;
+
+	if (funcctx->call_cntr < funcctx->max_calls)
+	{
+		int			i = funcctx->call_cntr;
+		QueueStatusRec	*record = &fctx->record[i];
+		Datum		values[NUM_QUEUE_STATUS_ELEM];
+		bool		nulls[NUM_QUEUE_STATUS_ELEM];
+
+		values[0] = ObjectIdGetDatum(record->queueid);
+		nulls[0] = false;
+
+		/* Make the counters null if the limit is disbaled. */
+		if (record->queuecountthreshold != INVALID_RES_LIMIT_THRESHOLD)
+		{
+			values[1] = Float4GetDatum(record->queuecountvalue);
+			nulls[1] = false;
+		}
+		else
+			nulls[1] = true;
+
+		if (record->queuecostthreshold != INVALID_RES_LIMIT_THRESHOLD)
+		{
+			values[2] = Float4GetDatum(record->queuecostvalue);
+			nulls[2] = false;
+		}
+		else
+			nulls[2] = true;
+		
+
+		values[3] = record->queuewaiters;
+		nulls[3] = false;
+
+		values[4] = record->queueholders;
+		nulls[4] = false;
+		
+		/* Build and return the tuple. */
+		tuple = heap_form_tuple(fctx->tupdesc, values, nulls);
+		result = HeapTupleGetDatum(tuple);
+
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+	else
+		SRF_RETURN_DONE(funcctx);
+
 }

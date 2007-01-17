@@ -928,4 +928,7 @@ extern Datum pg_cursor(PG_FUNCTION_ARGS);
 /* tqual.c */
 extern Datum mpp_global_xid_map(PG_FUNCTION_ARGS);
 
+/* utils/resscheduler/resqueue.c */
+extern Datum pg_resqueue_status(PG_FUNCTION_ARGS);
+
 #endif   /* BUILTINS_H */
