@@ -2061,7 +2061,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			 * set the distribution policy.
 			 */
 			policy->nattrs = 0;
-			if (distributedBy->length == 1 && distributedBy->head->data.ptr_value == NULL)
+			if (distributedBy->length == 1 && (distributedBy->head == NULL || distributedBy->head->data.ptr_value == NULL))
 			{ 
 				if (cxt && cxt->pkey)
 					ereport(ERROR,
@@ -3046,6 +3046,11 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 		policy->nattrs = 0;
 		policy->attrs[0] = 1;
 		 
+		if (stmt->distributedBy->length == 1 && (stmt->distributedBy->head == NULL || stmt->distributedBy->head->data.ptr_value == NULL))
+		{
+			/* distributed randomly */
+			qry->intoPolicy = policy;
+		}
 		foreach(keys, stmt->distributedBy)
 		{
 			char	   *key = strVal(lfirst(keys));
