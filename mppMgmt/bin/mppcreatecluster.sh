@@ -72,7 +72,7 @@ TMP_FILE=/tmp/cluster_tmp_file.$$
 TMP_HOSTNAME_FILE=hostname_test_file.$$
 PARALLEL_STATUS_FILE=/tmp/mppcreatecluster_parallel_status_file.$$
 MPPCREATESEG=mppcreateseg.sh
-START_WARN=0
+ULIMIT_WARN=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -96,6 +96,7 @@ USAGE () {
 		$ECHO "      -a, don't ask to confirm instance creation [default:- ask]"
 		$ECHO "      -l, logfile_directory [optional]"
 		$ECHO "	         Alternative logfile directory"
+		$ECHO "      -D, set log output to debug level, shows all function calls"
 		$ECHO
 	        $ECHO "      Configuration options:"
 		$ECHO "      -c, mpp_config_file [mandatory]"
@@ -132,18 +133,18 @@ USAGE () {
 
 CHK_PARAMS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-
+		LOG_MSG "[INFO]:-Checking configuration parameters, please wait..." 1
 		if [ $USER_NAME == "root" ]; then
 				ERROR_EXIT "[FATAL]:-Unable to run this script as $USER" 2
 		fi
 		if [ x"" = x"$MPPHOME" ] && [ x"" = x"$BIZHOME" ]; then
-				LOG_MSG "[FATAL]:-Environment variables MPPHOME and BIZHOME not set"
-				LOG_MSG "[FATAL]:-At least one of these must be set for this script to continue"
+				LOG_MSG "[FATAL]:-Environment variables MPPHOME and BIZHOME not set" 1
+				LOG_MSG "[FATAL]:-At least one of these must be set for this script to continue" 1
 				ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		fi
 		#Check that we can see initdb
 		if [ x"$INITDB" = x"" ] || [ ! -x $INITDB ];then
-			ERROR_EXIT "[FATAL]:-Unable to locate initdb" 99
+			ERROR_EXIT "[FATAL]:-Unable to locate initdb" 2
 		fi
 		#Make sure that script has been supplied a config file
 		if [ x"" = x"$CLUSTER_CONFIG" ]; then
@@ -169,6 +170,7 @@ CHK_PARAMS () {
 		#Source the cluster configuration file
 		LOG_MSG "[INFO]:-Reading MPP configuration file $CLUSTER_CONFIG"
 		. $CLUSTER_CONFIG
+		if [ x"" != x"$REQ_LOCALE_SETTING" ];then LOCALE_SETTING=$REQ_LOCALE_SETTING;fi
 		if [ x"" != x"$MACHINE_LIST_FILE_ALT" ];then
                         MACHINE_LIST_FILE=$MACHINE_LIST_FILE_ALT
                 fi
@@ -183,11 +185,14 @@ CHK_PARAMS () {
 				ERROR_EXIT "[FATAL]:-DATA_DIRECTORY not specified in $CLUSTER_CONFIG file, is this the correct instance configuration file." 2
 		fi
 		if [ x"" == x"$LOCALE_SETTING" ];then
-			LOG_MSG "[INFO]:-Locale has not been set in $CLUSTER_CONFIG, will set to default value"
+			LOG_MSG "[INFO]:-Locale has not been set in $CLUSTER_CONFIG, will set to default value" 1
 			LOCALE_SETTING=$DEFAULT_LOCALE_SETTING
-			LOG_MSG "[INFO]:-Locale set to $DEFAULT_LOCALE_SETTING"
+			#Now check to see if the system has this locale available
+			CHK_LOCALE_KNOWN
+			LOG_MSG "[INFO]:-Locale set to $DEFAULT_LOCALE_SETTING" 1
 		else
-			LOG_MSG "[INFO]:-Locale set to $LOCALE_SETTING in $CLUSTER_CONFIG"
+			LOG_MSG "[INFO]:-Locale set to $LOCALE_SETTING"
+			CHK_LOCALE_KNOWN
 		fi
 		LOG_MSG "[INFO]:-Dump current system locale to log file"
 		$LOCALE >> $LOG_FILE
@@ -204,6 +209,7 @@ CHK_PARAMS () {
 				CHK_FILE $FILE
 				if [ $EXISTS -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Problem with $FILE file" 2
+				else
 						LOG_MSG "[INFO]:-Completed check of file $FILE"
 				fi
 		done
@@ -215,7 +221,7 @@ CHK_PARAMS () {
 
 		#Now process contents for the configuration file
 		if [ ! "$ARRAY_NAME" ]; then
-				LOG_MSG "[WARN]:-ARRAY_NAME variable not set, will provide default value"
+				LOG_MSG "[WARN]:-ARRAY_NAME variable not set, will provide default value" 1
 				EXIT_STATUS=1
 				ARRAY_NAME="MPP Instance"
 		fi
@@ -227,17 +233,17 @@ CHK_PARAMS () {
 
 		#Make sure that this script is running on the QD host
 		if [ $MASTER_HOSTNAME != `$HOSTNAME` ]; then
-				LOG_MSG "[WARN]:-Master hostname $MASTER_HOSTNAME does not match hostname output"
-				LOG_MSG "[INFO]:-Checking to see if $MASTER_HOSTNAME can be resolved on this host"
+				LOG_MSG "[WARN]:-Master hostname $MASTER_HOSTNAME does not match hostname output" 1
+				LOG_MSG "[INFO]:-Checking to see if $MASTER_HOSTNAME can be resolved on this host" 1
 				$TRUSTED_SHELL $MASTER_HOSTNAME "$TOUCH $TMP_HOSTNAME_FILE"
 				if [ -f $TMP_HOSTNAME_FILE ];then
-					LOG_MSG "[INFO]:-Can resolve $MASTER_HOSTNAME to this host"
+					LOG_MSG "[INFO]:-Can resolve $MASTER_HOSTNAME to this host" 1
 					$RM -f $TMP_HOSTNAME_FILE
 				else
 					$TRUSTED_SHELL $MASTER_HOSTNAME "$RM -f $TMP_HOSTNAME_FILE"
-					LOG_MSG "[FATAL]:-Instance master hostname in configuration file is ${MASTER_HOSTNAME}"
-					LOG_MSG "[FATAL]:-Operating system command returns `$HOSTNAME`"
-					LOG_MSG "[FATAL]:-Unable to resolve $MASTER_HOSTNAME on this host"
+					LOG_MSG "[FATAL]:-Instance master hostname in configuration file is ${MASTER_HOSTNAME}" 1
+					LOG_MSG "[FATAL]:-Operating system command returns `$HOSTNAME`" 1
+					LOG_MSG "[FATAL]:-Unable to resolve $MASTER_HOSTNAME on this host" 1
 					ERROR_EXIT "[FATAL]:-This script must be executed on the Master host $MASTER_HOSTNAME" 2
 				fi
 		fi
@@ -286,7 +292,7 @@ CHK_PARAMS () {
 		fi
 		#DATABASE_PREFIX
 		if [ x"" = x"$DATABASE_NAME" ]; then
-				LOG_MSG "[INFO]:-No DATABASE_NAME set, will exit following $DEFAULTDB updates"
+				LOG_MSG "[INFO]:-No DATABASE_NAME set, will exit following $DEFAULTDB updates" 1
 		else
 				LOG_MSG "[INFO]:-Will create database $DATABASE_NAME"
 		fi
@@ -300,18 +306,18 @@ CHK_PARAMS () {
 		fi
 		#CHECK_POINT_SEGMENTS
 		if [ ! $CHECK_POINT_SEGMENTS ]; then
-			LOG_MSG "[WARN]:-CHECK_POINT_SEGMENTS variable not set, will set to default value" 
+			LOG_MSG "[WARN]:-CHECK_POINT_SEGMENTS variable not set, will set to default value"  1
 			CHECK_POINT_SEGMENTS=$DEFAULT_CHK_PT_SEG
 		fi
 		#ENCODING
 		if [ ! $ENCODING ]; then
-				LOG_MSG "[WARN]:-ENCODING variable not set, will set to default SQL_ASCII"
+				LOG_MSG "[WARN]:-ENCODING variable not set, will set to default SQL_ASCII" 1
 				EXIT_STATUS=1
 				ENCODING="SQL_ASCII"
 		fi
 		#MASTER_MAX_CONNECT
 		if [ ! $MASTER_MAX_CONNECT ];then
-			LOG_MSG "[WARN]:-MASTER_MAX_CONNECT not set, will set to default value $DEFAULT_QD_MAX_CONNECT"
+			LOG_MSG "[WARN]:-MASTER_MAX_CONNECT not set, will set to default value $DEFAULT_QD_MAX_CONNECT" 1
 			EXIT_STATUS=1
 			MASTER_MAX_CONNECT=$DEFAULT_QD_MAX_CONNECT
 		else
@@ -326,7 +332,7 @@ CHK_PARAMS () {
 			QE_SHARED_BUFFERS=$DEFAULT_BUFFERS
 		else
 			if [ $NEW_BUFFERS -lt 1000 ];then
-				LOG_MSG "[WARN]:-Shared buffers value supplied is too low, using default value"
+				LOG_MSG "[WARN]:-Shared buffers value supplied is too low, using default value" 1
 				MASTER_SHARED_BUFFERS=$DEFAULT_BUFFERS
 				QE_SHARED_BUFFERS=$DEFAULT_BUFFERS
 			else
@@ -349,6 +355,13 @@ CHK_PARAMS () {
 				fi
 		fi
 
+		#Check open files value
+		MASTER_OPEN=`ulimit -n`
+		if [ $MASTER_OPEN -lt $OS_OPENFILES ];then
+			LOG_MSG "[WARN]:-Master open file is $MASTER_OPEN should be >= $OS_OPENFILES" 1
+			EXIT_STATUS=1
+			ULIMIT_WARN=1
+		fi
 		#Get IP address of the master host
 
 		MASTER_IP_ADDRESS_ALL=(`$IFCONFIG $IFCONFIG_TXT |$GREP "inet "|$GREP -v "127.0.0"|$AWK '{print $2}'|$CUT -d: -f2`)
@@ -361,7 +374,45 @@ CHK_PARAMS () {
 		ERROR_CHK $? "obtain IP address of standby Master host" 2
 		LOG_MSG "[INFO]:-Standby IP address array = ${STANDBY_IP_ADDRESS_ALL[@]}"
 		STANDBY_IP_ADDRESS=(`$ECHO ${STANDBY_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
+		#Check open files value
+		STANDBY_MASTER_OPEN=`$TRUSTED_SHELL $STANDBY_HOSTNAME "ulimit -n"`
+		if [ $STANDBY_MASTER_OPEN -lt $OS_OPENFILES ];then
+			LOG_MSG "[WARN]:-Standby Master open file is $STANDBY_MASTER_OPEN should be >= $OS_OPENFILES" 1
+			EXIT_STATUS=1
+			ULIMIT_WARN=1
 		fi
+		fi
+		LOG_MSG "[INFO]:-Checking configuration parameters, Completed" 1
+		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+CHK_LOCALE_KNOWN () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	if [ $# -eq 0 ];then
+		if [ `$LOCALE -a |$GREP -ic $LOCALE_SETTING` -eq 0 ];then
+			LOG_MSG "[INFO]:-Master host available locale values"
+			$LOCALE -a >> $LOG_FILE
+			LOG_MSG "[FATAL]:-Unable to locate locale value $LOCALE_SETTING on this host" 1
+			LOG_MSG "[INFO]:-Select another locale value via -n option to this utility" 1
+			LOG_MSG "[INFO]:-Avaliable locale values have been dumped to the log file" 1
+			ERROR_EXIT "[FATAL]:-Unable to continue" 2
+		else
+			LOG_MSG "[INFO]:-Locale check passed on this host" 
+		fi
+	else
+		#Hostname has been passed so check remote locale value
+		if [ `$TRUSTED_SHELL $1 "$LOCALE -a|$GREP -ic '$LOCALE_SETTING'"` -eq 0 ];then
+			LOG_MSG "[INFO]:-Host $1 available locale values"
+			`$TRUSTED_SHELL $1 "$LOCALE -a"` >> $LOG_FILE
+			LOG_MSG "[FATAL]:-Unable to locate locale value $LOCALE_SETTING on $1" 1
+			LOG_MSG "[INFO]:-Select another locale value via -n option to this utility" 1
+			LOG_MSG "[INFO]:-Avaliable locale values have been dumped to the log file" 1 
+			ERROR_EXIT "[FATAL]:-Unable to continue" 2
+		else
+			LOG_MSG "[INFO]:-Locale check passed on $1" 
+		fi
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CHK_DUPLICATES () {
@@ -374,16 +425,41 @@ CHK_DUPLICATES () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+CHK_OPEN_FILES () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	OPEN_VALUE=`$TRUSTED_SHELL $1 "ulimit -n"`
+	if [ $OPEN_VALUE -lt $OS_OPENFILES ];then
+		LOG_MSG "[WARN]:-Host $1 open files limit is $OPEN_VALUE should be >= $OS_OPENFILES" 1
+		EXIT_STATUS=1
+		ULIMIT_WARN=1
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 CHK_QES () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		LOG_MSG "[INFO]:-Checking Master host" 1
+		SET_VAR $QD_PRIMARY_ARRAY
+                CHK_DIR $MPP_DIR
+                if [ $EXISTS -eq 0 ]; then
+                                ERROR_EXIT "[FATAL]:-Master directory $MPP_DIR already exists" 2
+                fi
+		GET_PG_PID_ACTIVE $MPP_PORT
+		if [ $PID -ne 0 ];then
+			ERROR_EXIT "[FATAL]:-Found indication of postmaster process on port $MPP_PORT on Master host" 2
+		fi
+		LOG_MSG "[INFO]:-Checking new segment hosts, please wait..." 1
 		if [ x"" == x"$QD_ONLY" ];then
 			for QE_ID in `$CAT $MACHINE_LIST_FILE|$GREP -v "${HOSTNAME}\$"|$SORT`
 			do
 				PING_HOST $QE_ID 
 				GET_IP_ADDRESS 
+				CHK_LOCALE_KNOWN $QE_ID
+				CHK_OPEN_FILES $MPP_HOSTNAME
 				#Check to ensure have required QE directories
 				for DIR in "${DATA_DIRECTORY[@]}"
 				do
+					if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 					LOG_MSG "[INFO]:-Checking segment instance $QE_ID directory $DIR"
 					CHK_DIR $DIR $QE_ID
 					if [ $EXISTS -ne 0 ]; then
@@ -404,6 +480,7 @@ CHK_QES () {
 			LOG_MSG "[INFO]:-Primary segment instance directory check"
 			for I in "${QE_PRIMARY_ARRAY[@]}"
 			do
+				if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 				SET_VAR $I
 				LOG_MSG "[INFO]:-Checking $MPP_HOSTNAME for dir $MPP_DIR"
 				CHK_DIR $MPP_DIR $MPP_HOSTNAME
@@ -414,11 +491,11 @@ CHK_QES () {
 				LOG_MSG "[INFO]:-Checking $MPP_HOSTNAME $HOSTFILE for localhost set as $MPP_HOSTNAME"
 				LOCAL_COUNT=`$TRUSTED_SHELL $MPP_HOSTNAME "$GREP $MPP_HOSTNAME $HOSTFILE|$GREP -c localhost"`
 				if [ $LOCAL_COUNT -ne 0 ];then
-					LOG_MSG "[WARN]:-----------------------------------------------------------"
-					LOG_MSG "[WARN]:-Host $MPP_HOSTNAME is assigned as localhost in $HOSTFILE" 
-					LOG_MSG "[WARN]:-This will cause segment->master communication failures"
-					LOG_MSG "[WARN]:-Remove $MPP_HOSTNAME from local host line in /etc/hosts"
-					LOG_MSG "[WARN]:-----------------------------------------------------------"
+					LOG_MSG "[WARN]:-----------------------------------------------------------" 1
+					LOG_MSG "[WARN]:-Host $MPP_HOSTNAME is assigned as localhost in $HOSTFILE"  1
+					LOG_MSG "[WARN]:-This will cause segment->master communication failures" 1
+					LOG_MSG "[WARN]:-Remove $MPP_HOSTNAME from local host line in /etc/hosts" 1
+					LOG_MSG "[WARN]:-----------------------------------------------------------" 1
 					EXIT_STATUS=1
 				fi
                                 # Check that we can write to the QE directory
@@ -439,6 +516,7 @@ CHK_QES () {
 				LOG_MSG "[INFO]:-Mirror segment instance directory check"
 				for I in "${QE_MIRROR_ARRAY[@]}"
 				do
+					if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 					SET_VAR $I
 					LOG_MSG "[INFO]:-Checking $MPP_HOSTNAME for dir $MPP_DIR"
 					CHK_DIR $MPP_DIR $MPP_HOSTNAME
@@ -461,6 +539,9 @@ CHK_QES () {
 				LOG_MSG "[INFO]:-Mirror segment instance directory check skipped, mirroring=Off"
 			fi
 			if [ x"" != x"$STANDBY_HOSTNAME" ];then
+				PING_HOST $STANDBY_HOSTNAME 
+				CHK_LOCALE_KNOWN $STANDBY_HOSTNAME
+				CHK_OPEN_FILES $MPP_HOSTNAME
 				#Check standby host directory
 				CHK_DIR $MASTER_DIRECTORY $STANDBY_HOSTNAME
 				if [ $EXISTS -ne 0 ];then
@@ -471,6 +552,8 @@ CHK_QES () {
 			LOG_MSG "[INFO]:-Master segment instance build only selected via -o option"
 			LOG_MSG "[INFO]:-Skipping segment instance checks"
 		fi	
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+		LOG_MSG "[INFO]:-Checking new segment hosts, Completed" 1
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -517,7 +600,9 @@ GET_HOST_ID () {
 
 CREATE_QE_ARRAY () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		LOG_MSG "[INFO]:-Building segment instance array, please wait..." 1
 		. $CLUSTER_CONFIG
+		if [ x"" != x"$REQ_LOCALE_SETTING" ];then LOCALE_SETTING=$REQ_LOCALE_SETTING;fi
 		if [ x"" != x"$MACHINE_LIST_FILE_ALT" ];then
                         MACHINE_LIST_FILE=$MACHINE_LIST_FILE_ALT
                 fi
@@ -548,6 +633,7 @@ CREATE_QE_ARRAY () {
 		QE_NAME_INDEX=0
 		for QE_NAME in "${MACHINE_LIST[@]}"
 		do
+			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 			QE_DIR_INDEX=0
 			QE_MIR_VECTOR=0
 			for MPP_DIR in "${DATA_DIRECTORY[@]}"
@@ -598,12 +684,15 @@ CREATE_QE_ARRAY () {
 			((QE_DIR_INDEX=$QE_DIR_INDEX+1))
 			((QE_NAME_INDEX=$QE_NAME_INDEX+1))
 		done
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+		LOG_MSG "[INFO]:-Building segment instance array, Completed" 1
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		. $CLUSTER_CONFIG
+		if [ x"" != x"$REQ_LOCALE_SETTING" ];then LOCALE_SETTING=$REQ_LOCALE_SETTING;fi
 		if [ x"" != x"$MACHINE_LIST_FILE_ALT" ];then
                         MACHINE_LIST_FILE=$MACHINE_LIST_FILE_ALT
                 fi
@@ -624,100 +713,105 @@ DISPLAY_CONFIG () {
 				PG_ADD=On
 		fi
 		SET_VAR $QD_PRIMARY_ARRAY
-		LOG_MSG "[INFO]:-MPP Creation Parameters"
-		LOG_MSG "[INFO]:------------------------"
-		LOG_MSG "[INFO]:-Master Primary MPP Configuration"
-		LOG_MSG "[INFO]:---------------------------------"
-		LOG_MSG "[INFO]:-Master instance name = $ARRAY_NAME"
-		LOG_MSG "[INFO]:-Master hostname      = $MPP_HOSTNAME"
-		LOG_MSG "[INFO]:-Master port          = $MASTER_PORT"
-		LOG_MSG "[INFO]:-Master instance dir  = $MPP_DIR"
-		LOG_MSG "[INFO]:-Master LOCALE        = $LOCALE_SETTING"
-		LOG_MSG "[INFO]:-MPP segment prefix   = $SEG_PREFIX"
-		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME"
-		LOG_MSG "[INFO]:-Master connections   = $MASTER_MAX_CONNECT"
-		LOG_MSG "[INFO]:-Master buffers       = $MASTER_SHARED_BUFFERS"
-		LOG_MSG "[INFO]:-Master IP allow      = $IP_ALLOW"
-		LOG_MSG "[INFO]:-Segment connections  = $QE_MAX_CONNECT"
-		LOG_MSG "[INFO]:-Segment buffers      = $QE_SHARED_BUFFERS"
-		LOG_MSG "[INFO]:-Checkpoint segments  = $CHECK_POINT_SEGMENTS"
-		LOG_MSG "[INFO]:-Encoding             = $ENCODING"
-		LOG_MSG "[INFO]:-Pg Conf add file     = $PG_ADD"
-		LOG_MSG "[INFO]:-Initdb to be used    = $INITDB"
-		LOG_MSG "[INFO]:-MPP_LIBRARY_PATH is  = $MPP_LIBRARY_PATH"
-		if [ x"" != x"$PARALLEL_BUILD" ];then
-		LOG_MSG "[INFO]:-Segment build type   = Parallel"
+		LOG_MSG "[INFO]:-MPP Creation Parameters" 1
+		LOG_MSG "[INFO]:------------------------" 1
+		LOG_MSG "[INFO]:-Master Primary MPP Configuration" 1
+		LOG_MSG "[INFO]:---------------------------------" 1
+		LOG_MSG "[INFO]:-Master instance name = $ARRAY_NAME" 1
+		LOG_MSG "[INFO]:-Master hostname      = $MPP_HOSTNAME" 1
+		LOG_MSG "[INFO]:-Master port          = $MASTER_PORT" 1
+		LOG_MSG "[INFO]:-Master instance dir  = $MPP_DIR" 1
+		LOG_MSG "[INFO]:-Master LOCALE        = $LOCALE_SETTING" 1
+		LOG_MSG "[INFO]:-MPP segment prefix   = $SEG_PREFIX" 1
+		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME" 1
+		LOG_MSG "[INFO]:-Master connections   = $MASTER_MAX_CONNECT" 1
+		LOG_MSG "[INFO]:-Master buffers       = $MASTER_SHARED_BUFFERS" 1
+		LOG_MSG "[INFO]:-Master IP allow      = $IP_ALLOW" 1
+		LOG_MSG "[INFO]:-Segment connections  = $QE_MAX_CONNECT" 1
+		LOG_MSG "[INFO]:-Segment buffers      = $QE_SHARED_BUFFERS" 1
+		LOG_MSG "[INFO]:-Checkpoint segments  = $CHECK_POINT_SEGMENTS" 1
+		LOG_MSG "[INFO]:-Encoding             = $ENCODING" 1
+		LOG_MSG "[INFO]:-Pg Conf add file     = $PG_ADD" 1
+		LOG_MSG "[INFO]:-Initdb to be used    = $INITDB" 1
+		LOG_MSG "[INFO]:-MPP_LIBRARY_PATH is  = $MPP_LIBRARY_PATH" 1
+		if [ $ULIMIT_WARN -eq 1 ];then
+		LOG_MSG "[WARN]:-Ulimit check         = Warnings generated, see log file" 1
 		else
-		LOG_MSG "[INFO]:-Segment build type   = Serial"
+		LOG_MSG "[INFO]:-Ulimit check         = Passed" 1
+		fi
+		if [ x"" != x"$PARALLEL_BUILD" ];then
+		LOG_MSG "[INFO]:-Segment build type   = Parallel" 1
+		else
+		LOG_MSG "[INFO]:-Segment build type   = Serial" 1
 		fi
 		IP_COUNT=1
 		for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
 		do
-			LOG_MSG "[INFO]:-Master IP address [$IP_COUNT]= $MASTER_IP"
+			LOG_MSG "[INFO]:-Master IP address [$IP_COUNT]= $MASTER_IP" 1
 			((IP_COUNT=$IP_COUNT+1))
 		done
 
 		if [ $QD_ONLY ];then
-			LOG_MSG "[INFO]:-Master only build    = On"
+			LOG_MSG "[INFO]:-Master only build    = On" 1
 		else
-			LOG_MSG "[INFO]:-Master only build    = Off"
+			LOG_MSG "[INFO]:-Master only build    = Off" 1
 			if [ x"" != x"$STANDBY_HOSTNAME" ];then
-				LOG_MSG "[INFO]:-Standby Master       = $STANDBY_HOSTNAME"
+				LOG_MSG "[INFO]:-Standby Master       = $STANDBY_HOSTNAME" 1
 				if [ x"" != x"$START_SYNC" ];then
-				LOG_MSG "[INFO]:-Standby start sync   = On"
+				LOG_MSG "[INFO]:-Standby start sync   = On" 1
 				else
-				LOG_MSG "[INFO]:-Standby start sync   = Off"
+				LOG_MSG "[INFO]:-Standby start sync   = Off" 1
 				fi
 			else
-				LOG_MSG "[INFO]:-Standby Master       = Not Configured"
+				LOG_MSG "[INFO]:-Standby Master       = Not Configured" 1
 			fi
-			LOG_MSG "[INFO]:-Primary segment #    = $QE_PRIMARY_COUNT"
+			LOG_MSG "[INFO]:-Primary segment #    = $QE_PRIMARY_COUNT" 1
 			if [ x"" != x"$STANDBY_HOSTNAME" ];then
 				for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
 				do
-				LOG_MSG "[INFO]:-Standby IP address   = $STANDBY_IP"
+				LOG_MSG "[INFO]:-Standby IP address   = $STANDBY_IP" 1
 				done
 			fi
-			LOG_MSG "[INFO]:-Total MPP segments   = $TOTAL_SEG"
-			LOG_MSG "[INFO]:-Trusted shell        = $TRUSTED_SHELL"
+			LOG_MSG "[INFO]:-Total MPP segments   = $TOTAL_SEG" 1
+			LOG_MSG "[INFO]:-Trusted shell        = $TRUSTED_SHELL" 1
 			((NUM_QES=${#MACHINE_LIST[*]}))
-			LOG_MSG "[INFO]:-Number segment hosts = $NUM_QES"
+			LOG_MSG "[INFO]:-Number segment hosts = $NUM_QES" 1
 			if [ $MIRROR_PORT_BASE ]; then
-				LOG_MSG "[INFO]:-Mirror port base     = $MIRROR_PORT_BASE"
+				LOG_MSG "[INFO]:-Mirror port base     = $MIRROR_PORT_BASE" 1
 				((NUM_MIRROR_DIRECTORY=${#MIRROR_DATA_DIRECTORY[@]}))
-				LOG_MSG "[INFO]:-Mirror segment #     = $NUM_MIRROR_DIRECTORY"
-				LOG_MSG "[INFO]:-Mirroring config     = ON"
+				LOG_MSG "[INFO]:-Mirror segment #     = $NUM_MIRROR_DIRECTORY" 1
+				LOG_MSG "[INFO]:-Mirroring config     = ON" 1
 			else
-				LOG_MSG "[INFO]:-Mirroring config     = OFF"
+				LOG_MSG "[INFO]:-Mirroring config     = OFF" 1
 			fi
-			LOG_MSG "[INFO]:-MPP Primary Segment Configuration"
-			LOG_MSG "[INFO]:----------------------------------"
+			LOG_MSG "[INFO]:-MPP Primary Segment Configuration" 1
+			LOG_MSG "[INFO]:----------------------------------" 1
 			export QD_DIR=$MPP_DIR
 			for I in "${QE_PRIMARY_ARRAY[@]}"
 			do
 				SET_VAR $I
-				LOG_MSG  "[INFO]:-Primary segment on $MPP_HOSTNAME $MPP_PORT $MPP_DIR $MPP_HOSTID $MPP_LISTENID $MPP_DBID $MPP_CONTENT"
+				LOG_MSG  "[INFO]:-Primary segment on $MPP_HOSTNAME $MPP_PORT $MPP_DIR $MPP_HOSTID $MPP_LISTENID $MPP_DBID $MPP_CONTENT" 1
 			done
 			if [ $MIRRORING -ne 0 ]; then
-				LOG_MSG "[INFO]:-MPP Mirror Segment Configuration"
-				LOG_MSG "[INFO]:---------------------------------"
+				LOG_MSG "[INFO]:-MPP Mirror Segment Configuration" 1
+				LOG_MSG "[INFO]:---------------------------------" 1
 				for I in  "${QE_MIRROR_ARRAY[@]}"
 				do
 					SET_VAR $I
-					LOG_MSG  "[INFO]:-Mirror segment on $MPP_HOSTNAME $MPP_PORT $MPP_DIR $MPP_HOSTID $MPP_LISTENID $MPP_DBID $MPP_CONTENT"
+					LOG_MSG  "[INFO]:-Mirror segment on $MPP_HOSTNAME $MPP_PORT $MPP_DIR $MPP_HOSTID $MPP_LISTENID $MPP_DBID $MPP_CONTENT" 1
 				done
 			fi
 		fi
 		if [ $INTERACTIVE ]; then
-				$ECHO "Continue with MPP creation Yy/Nn>"
+				$ECHO "Continue with MPP creation Yy/Nn>" 
 				read REPLY
 				if [ -z $REPLY ]; then
-						LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+						LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 						EXIT_STATUS=1
 						exit $EXIT_STATUS
 				fi
 				if [ $REPLY != Y ] && [ $REPLY != y ]; then
-						LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+						LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 						EXIT_STATUS=1
 						exit $EXIT_STATUS
 				fi
@@ -739,11 +833,8 @@ SET_VAR () {
 
 CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		LOG_MSG "[INFO]:-Building the Master segment database, please wait..." 1
 		SET_VAR $QD_PRIMARY_ARRAY
-		CHK_DIR $MPP_DIR
-		if [ $EXISTS -eq 0 ]; then
-				ERROR_EXIT "[FATAL]:-Master directory $MPP_DIR already exists" 2
-		fi
 		LOG_MSG "[INFO]:-Initializing Master Postgres instance $MPP_DIR"
 		$EXPORT_LIB_PATH
 		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR --locale=$LOCALE_SETTING"
@@ -780,13 +871,9 @@ CREATE_QD_DB () {
 						ERROR_CHK $? "set $NEW_PARAM ${MPP_DIR}/$PG_CONF" 1
 				done
 		fi
-		BUILD_MASTER_PG_HBA_FILE $MPP_DIR $IP_ALLOW
 		LOG_MSG "[INFO]:-Adding mpp_dumpall access to $PG_HBA for master host"
-		PG_LOCK_COUNT=`$LS /tmp/.s.PGSQL.${MPP_PORT}.lock|$WC -l|$AWK '{print $1}'`
-		if [ $PG_LOCK_COUNT -ne 0 ]; then
-			ERROR_EXIT "[FATAL]-Located another postmaster process on Master host on port $MPP_PORT" 2
-		fi
-		LOG_MSG "[INFO]:-Starting the Master in admin mode"
+		BUILD_MASTER_PG_HBA_FILE $MPP_DIR $IP_ALLOW
+		LOG_MSG "[INFO]:-Starting the Master in admin mode" 1
 		export PGPORT=$MPP_PORT;$PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o "-i -p $MPP_PORT" start
 		RET_TEXT="`$PG_CTL status -D $MPP_DIR`"
 		RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
@@ -901,16 +988,16 @@ CREATE_QES_PRIMARY () {
 				export CHECK_POINT_SEGMENTS
 				export QE_MAX_CONNECT
 				export QE_SHARED_BUFFERS
-				LOG_MSG "[INFO]:-Spawning primary segment instance build process count = $INST_COUNT"
+				LOG_MSG "[INFO]:-Spawning primary segment instance build process count = $INST_COUNT" 
 				$MPPCREATESEG $$ $I $INST_COUNT  $LOG_FILE \
 `$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
 `$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
 				((INST_COUNT=$INST_COUNT+1))
 			else
 				SET_VAR $I
+				LOG_MSG "[INFO]:-Processing segment $MPP_HOSTNAME" 1
 				PROCESS_QE
-				LOG_MSG "[INFO]:-Processing segment $MPP_HOSTNAME"
-				LOG_MSG "[INFO]:-Successfully started segment instance on $MPP_HOSTNAME"
+				LOG_MSG "[INFO]:-Successfully started segment instance on $MPP_HOSTNAME" 1
 				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
 			fi
 		done
@@ -934,16 +1021,16 @@ CREATE_QES_MIRROR () {
 				export QE_MAX_CONNECT
 				export QE_SHARED_BUFFERS
 				export CHECK_POINT_SEGMENTS
-				LOG_MSG "[INFO]:-Spawning mirror segment instance build process count = $INST_COUNT"
+				LOG_MSG "[INFO]:-Spawning mirror segment instance build process count = $INST_COUNT" 
 				$MPPCREATESEG $$ $I $INST_COUNT  $LOG_FILE \
 `$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
 `$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
 				((INST_COUNT=$INST_COUNT+1))
 			else
 				SET_VAR $I
+				LOG_MSG "[INFO]:-Processing Mirror segment $MPP_HOSTNAME" 1
 				PROCESS_QE
-				LOG_MSG "[INFO]:-Processing Mirror segment $MPP_HOSTNAME"
-				LOG_MSG "[INFO]:-Successfully started segment mirror instance on $MPP_HOSTNAME"
+				LOG_MSG "[INFO]:-Successfully started segment mirror instance on $MPP_HOSTNAME" 1
 				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
 			fi
 		done
@@ -997,7 +1084,7 @@ PROCESS_QE () {
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host  all     all     ${QE_IP}/32 trust >> ${MPP_DIR}/$PG_HBA"
 			fi
 		done
-		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
+		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}" 1
 		$TRUSTED_SHELL ${MPP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start"
 		if [ $? -ne 0 ]; then
 			BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
@@ -1013,7 +1100,7 @@ PROCESS_QE () {
 
 STOP_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		LOG_MSG "[INFO]:-Restarting the MPP instance in production mode"
+		LOG_MSG "[INFO]:-Restarting the MPP instance in production mode" 1
 		if [ -f $MPPSTOP ]; then
 				$MPPSTOP -a -i -d $QD_DIR
 				RETVAL=$?
@@ -1037,12 +1124,12 @@ CREATE_STANDBY_QD () {
 		STOP_QD_PRODUCTION
 		START_QD_PRODUCTION
 	else
-		LOG_MSG "[INFO]:-Starting initialization of standby master $STANDBY_HOSTNAME"
+		LOG_MSG "[INFO]:-Starting initialization of standby master $STANDBY_HOSTNAME" 1
 		export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1;$INIT_STANDBY_PROG -s $STANDBY_HOSTNAME -a
 		RETCODE=$?
 		case $RETCODE in
-			0) LOG_MSG "[INFO]:-Successfully completed standby master initialization" ;;
-			1) LOG_MSG "[WARN]:-Non-fatal issue with standby master initialization, check mppstate.sh -f output" ;;
+			0) LOG_MSG "[INFO]:-Successfully completed standby master initialization" 1 ;;
+			1) LOG_MSG "[WARN]:-Non-fatal issue with standby master initialization, check mppstate.sh -f output" 1 ;;
 			2) ERROR_EXIT "[FATAL]:-Initialization of standby master failed"
 		esac
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${STANDBY_HOSTNAME} \"$RM -Rf ${QD_DIR}\""
@@ -1057,17 +1144,11 @@ START_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [ -f $MPPSTART ]; then
 				$MPPSTART -a -d $QD_DIR
-				if [ $? -eq 2 ];then
-					ERROR_CHK $? "start new MPP instance" 2
-				else
-					if [ $? -eq 1 ];then
-						START_WARN=1;fi
-					ERROR_CHK $? "start new MPP instance" 1
-				fi
+				ERROR_CHK $? "start new MPP instance" 2
 		else
 				ERROR_EXIT "[FATAL]:-$MPPSTART not located" 2
 		fi
-		LOG_MSG "[INFO]:-Completed restart of MPP instance in production mode"
+		LOG_MSG "[INFO]:-Completed restart of MPP instance in production mode" 1
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 SET_MPP_USER_PW () {
@@ -1085,11 +1166,34 @@ CREATE_DATABASE () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+SCAN_LOG () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Scanning utility log file for any warning messages" 1
+	SCAN_STRING="\[WARN\]|invalid|warning:|fatal|error"
+	if [ `$EGREP -i "$SCAN_STRING" $LOG_FILE|$GREP -v "\[INFO\]"|$WC -l` -ne 0 ];then
+		LOG_MSG "[WARN]:-*******************************************************" 1
+		LOG_MSG "[WARN]:-Scan of log file indicates that some warnings or errors" 1
+		LOG_MSG "[WARN]:-were generated during the array creation" 1
+		LOG_MSG "[INFO]:-Please review contents of log file" 1
+		LOG_MSG "[INFO]:-$LOG_FILE" 1
+		LOG_MSG "[INFO]:-To determine level of criticality" 1
+		LOG_MSG "[WARN]:-*******************************************************" 1
+		if [ `$GREP -ci "\[INFO]:-Start Main" $LOG_FILE` -gt 1 ];then
+		LOG_MSG "[INFO]:-These messages could be from a previous run of the utility" 1
+		LOG_MSG "[INFO]:-that was run today!" 1
+		fi
+		EXIT_STATUS=1
+	else
+		LOG_MSG "[INFO]:-Log file scan check passed" 1
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 #******************************************************************************
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
-while getopts ":v'?'aiqe:c:l:p:m:h:on:s:rb:!" opt
+while getopts ":v'?'aiqe:c:l:p:m:h:on:s:rb:!D" opt
 		do
 		case $opt in
 				v ) VERSION_INFO ;;
@@ -1108,8 +1212,9 @@ while getopts ":v'?'aiqe:c:l:p:m:h:on:s:rb:!" opt
 				b ) NEW_BUFFERS=$OPTARG ;;
 				o ) QD_ONLY=1 ;;
 				s ) STANDBY_HOSTNAME=$OPTARG ;;
-				n ) LOCALE_SETTING=$OPTARG ;;
+				n ) REQ_LOCALE_SETTING=$OPTARG ;;
 				r ) PARALLEL_BUILD=1 ;;
+				D ) DEBUG_LEVEL=1 ;;
 				* ) USAGE ;;
 		esac
 done
@@ -1126,7 +1231,7 @@ fi
 if [ x"" != x"$LOG_DIR" ];then
         CHK_DIR $LOG_DIR
         if [ $EXISTS -eq 1 ]; then
-                LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+                LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
                 EXIT_STATUS=1
                 BACKOUT_FILE=$DEFLOGDIR/backout_${PROG_NAME}_${USER_NAME}_${CUR_DATE}_$TIME
         else
@@ -1145,41 +1250,41 @@ DISPLAY_CONFIG
 CREATE_QD_DB		
 
 if [ $QD_ONLY ]; then
-		LOG_MSG "[INFO]:-----------------------------------------"
-		LOG_MSG "[INFO]:-Master build only completed successfully"
-		LOG_MSG "[INFO]:-Master segment instance operational in utility mode"
-		LOG_MSG "[INFO]:-To stop and start master use mppstart.sh/mppstop.sh with"
-		LOG_MSG "[INFO]- the -m option"
-		LOG_MSG "[INFO]:-Access to the master database must be done in utility mode"
-		LOG_MSG "[INFO]:-End Main"
+		LOG_MSG "[INFO]:-----------------------------------------" 1
+		LOG_MSG "[INFO]:-Master build only completed successfully" 1
+		LOG_MSG "[INFO]:-Master segment instance operational in utility mode" 1
+		LOG_MSG "[INFO]:-To stop and start master use mppstart.sh/mppstop.sh with" 1
+		LOG_MSG "[INFO]- the -m option" 1
+		LOG_MSG "[INFO]:-Access to the master database must be done in utility mode" 1
+		LOG_MSG "[INFO]:-End Main" 
 		exit 0
 fi
 if [ x"" != x"$PARALLEL_BUILD" ];then
-	LOG_MSG "[INFO]:-Processing mode = Parallel"
+	LOG_MSG "[INFO]:-Processing mode = Parallel" 1
 	$TOUCH $PARALLEL_STATUS_FILE
 	CREATE_QES_PRIMARY
 	if [ $MIRRORING -ne 0 ]; then
 		CREATE_QES_MIRROR
 	fi
-	LOG_MSG "[INFO]:-Waiting for parallel processes to complete..."
+	LOG_MSG "[INFO]:-Waiting for parallel processes to complete..." 1
 	while [ `$WC -l $PARALLEL_STATUS_FILE|$AWK '{print $1}'` -ne $INST_COUNT ]
 	do
-		LOG_MSG "[INFO]:-Waiting... `$WC -l $PARALLEL_STATUS_FILE|$AWK '{print $1}'` of $INST_COUNT have completed"
+		LOG_MSG "[INFO]:-Waiting... `$WC -l $PARALLEL_STATUS_FILE|$AWK '{print $1}'` of $INST_COUNT have completed" 1
 		$SLEEP 2
 	done
 	#Now check for any errors 
 	if [ `$GREP -c FAILED $PARALLEL_STATUS_FILE` -ne 0 ];then
-		LOG_MSG "[FATAL]:-Errors generated from `$GREP -c FAILED $PARALLEL_STATUS_FILE|$AWK '{print $1}'` parallel processes"
-		LOG_MSG "[INFO]:-Dumping contents of status file to the log file"
+		LOG_MSG "[FATAL]:-Errors generated from `$GREP -c FAILED $PARALLEL_STATUS_FILE|$AWK '{print $1}'` parallel processes" 1
+		LOG_MSG "[INFO]:-Dumping contents of status file to the log file" 1
 		cat $PARALLEL_STATUS_FILE >> $LOG_FILE
 		$RM -f $PARALLEL_STATUS_FILE
 		ERROR_EXIT "[FATAL]:-Failures detected, see log file for more detail" 2
 	else
-		LOG_MSG "[INFO]:-No errors generated from parallel processes"
+		LOG_MSG "[INFO]:-No errors generated from parallel processes" 1
 		$RM -f $PARALLEL_STATUS_FILE
 	fi
 else
-	LOG_MSG "[INFO]:-Processing mode = Serial"
+	LOG_MSG "[INFO]:-Processing mode = Serial" 1
 	CREATE_QES_PRIMARY
 	if [ $MIRRORING -ne 0 ]; then
 		CREATE_QES_MIRROR
@@ -1195,31 +1300,29 @@ else
 	STOP_QD_PRODUCTION
 	START_QD_PRODUCTION
 fi
-LOG_MSG "[INFO]:-Removing back out file"
+LOG_MSG "[INFO]:-Removing back out file" 1
 $RM -f $BACKOUT_FILE
-LOG_MSG "[INFO]:-MPP instance successfully created"
-if [ $START_WARN -eq 1 ];then
-LOG_MSG "[INFO]:-However, some warnings were generated, see log file"
-fi
-LOG_MSG "[INFO]:-------------------------------------------------------"
-LOG_MSG "[INFO]:-To complete the environment configuration, please "
-LOG_MSG "[INFO]:-update $USER_NAME .bashrc file with the following"
-LOG_MSG "[INFO]:-1. Ensure that the greenplum_path.sh file is sourced"
-LOG_MSG "[INFO]:-2. Add \"export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1\""
-LOG_MSG "[INFO]:-   to access the MPP scripts for this instance:"
-LOG_MSG "[INFO]:-   or, use -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 option for the MPP scripts"
-LOG_MSG "[INFO]:-   Example ./mppstate.sh -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1"
-LOG_MSG "[INFO]:-Script log file = $LOG_FILE"
-LOG_MSG "[INFO]:-To remove instance, run mppdeletecluster.sh script"
+SCAN_LOG
+LOG_MSG "[INFO]:-MPP instance successfully created" 1
+LOG_MSG "[INFO]:-------------------------------------------------------" 1
+LOG_MSG "[INFO]:-To complete the environment configuration, please " 1
+LOG_MSG "[INFO]:-update $USER_NAME .bashrc file with the following" 1
+LOG_MSG "[INFO]:-1. Ensure that the greenplum_path.sh file is sourced" 1
+LOG_MSG "[INFO]:-2. Add \"export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1\"" 1
+LOG_MSG "[INFO]:-   to access the MPP scripts for this instance:" 1
+LOG_MSG "[INFO]:-   or, use -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 option for the MPP scripts" 1
+LOG_MSG "[INFO]:-   Example ./mppstate.sh -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1" 1
+LOG_MSG "[INFO]:-Script log file = $LOG_FILE" 1
+LOG_MSG "[INFO]:-To remove instance, run mppdeletecluster.sh script" 1
 if [ x"" != x"$STANDBY_HOSTNAME" ];then
-LOG_MSG "[INFO]:-Standby Master $STANDBY_HOSTNAME has been configured"
-LOG_MSG "[INFO]:-To activate the Standby Master Segment in the event of Master"
-LOG_MSG "[INFO]:-failure review options for mppactivatestandby.sh"
+LOG_MSG "[INFO]:-Standby Master $STANDBY_HOSTNAME has been configured" 1
+LOG_MSG "[INFO]:-To activate the Standby Master Segment in the event of Master" 1
+LOG_MSG "[INFO]:-failure review options for mppactivatestandby.sh" 1
 else
-LOG_MSG "[INFO]:-To initialize a Standby Master Segment for this MPP instance"
-LOG_MSG "[INFO]:-Review options for mppinitstandby.sh"
+LOG_MSG "[INFO]:-To initialize a Standby Master Segment for this MPP instance" 1
+LOG_MSG "[INFO]:-Review options for mppinitstandby.sh" 1
 fi
-LOG_MSG "[INFO]:-------------------------------------------------------"
+LOG_MSG "[INFO]:-------------------------------------------------------" 1
 
 LOG_MSG "[INFO]:-End Main"
 
