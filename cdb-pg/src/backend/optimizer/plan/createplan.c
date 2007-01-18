@@ -1741,8 +1741,10 @@ create_hashjoin_plan(CreatePlanContext *ctx,
 	otherclauses = order_qual_clauses(ctx->root, otherclauses);
 	hashclauses = order_qual_clauses(ctx->root, hashclauses);
 
-	/* We don't want any excess columns in the hashed tuples */
 	disuse_physical_tlist(inner_plan, best_path->jpath.innerjoinpath);
+	/* We don't want any excess columns in the hashed tuples, or in the outer either! */
+	disuse_physical_tlist(inner_plan, best_path->jpath.innerjoinpath);
+	disuse_physical_tlist(outer_plan, best_path->jpath.outerjoinpath);
 
 	/*
 	 * Build the hash node and hash join node.
