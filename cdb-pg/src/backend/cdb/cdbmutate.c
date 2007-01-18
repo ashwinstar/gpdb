@@ -164,8 +164,8 @@ apply_motion(Plan *plan, Query *query)
 				{
 					targetPolicy = query->intoPolicy;
 					Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
-					Assert(query->intoPolicy->nattrs > 0);
-					Assert(query->intoPolicy->nattrs <= 200);
+					Assert(query->intoPolicy->nattrs >= 0);
+					Assert(query->intoPolicy->nattrs <= 1024);
 				}
 				else
 				{
