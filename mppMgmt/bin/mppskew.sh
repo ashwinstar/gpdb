@@ -202,6 +202,7 @@ GET_NODE_COUNT () {
 	SEG_PORT=`$ECHO $NodeInfo|$CUT -d, -f2`
 	SEG_DIR=`$ECHO $NodeInfo|$CUT -d, -f3`
 	SEG_NAME=`$BASENAME $SEG_DIR`
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 	ACCESS_TEST=`$TRUSTED_SHELL $SEG_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c\"select version();\""`
 	if [ $? -ne 0 ];then
 		ERROR_EXIT "Failed on test access to $SEG_PORT $QD_DBNAME on $SEG_HOST" 2
@@ -212,6 +213,7 @@ GET_NODE_COUNT () {
 	fi
 	let SEGCOUNT=$SEGCOUNT+1
 	done
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO ;fi
 	LOG_MSG "[INFO]:-Requests sent.." 1
 #Now wait until the temporary file contains $SegCount lines
 	LOG_MSG  "[INFO]:-Waiting for results" 1

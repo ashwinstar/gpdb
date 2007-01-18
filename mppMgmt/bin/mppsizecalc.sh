@@ -193,6 +193,7 @@ SEND_TABLE_SIZE_REQUEST () {
 	for I in "${QE_ARRAY[@]}"
 	do
 		SET_VAR
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		QE_TABLE_OID=`$TRUSTED_SHELL -n $QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"select relfilenode from pg_class where oid=$TABLE_OID ;\""`
 		ERROR_CHK $? "obtain segment instance table oid info" 2
 		LOG_MSG "[INFO]:-Processing $QE_HOST port $QE_PORT Table OID $QE_TABLE_OID"
@@ -203,6 +204,7 @@ SEND_TABLE_SIZE_REQUEST () {
 		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "ls -al ${QE_TABLE}.*|$GREP -v '^d'|$GREP -vi total" 2>/dev/null|$AWK '{total += \$5} END {print total}'` >> $TMPFILE  &
 		((LINECOUNT=$LINECOUNT+1))
 	done	
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO ;fi
 	WAIT_COMPLETE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -418,7 +420,7 @@ if [ x"" != x"$SIZE_DB" ];then
 	SIZE_TYPE=2
 fi
 if [ $SIZE_TYPE -le 1 ];then
-	CHK_EXISTS_TABLE $TABLE_NAME $MASTER_PORT $QD_DBNAME
+	CHK_EXISTS_TABLE ${SCHEMA_NAME}.$TABLE_NAME $MASTER_PORT $QD_DBNAME
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Table $TABLE_NAME does not exist in $QD_DBNAME database" 2
 	fi
@@ -437,7 +439,7 @@ if [ $SIZE_TYPE -le 1 ];then
 				#TABLE_NAME=${SCHEMA_NAME}.$CHILD_TABLE_NAME
 				TABLE_NAME=$CHILD_TABLE_NAME
 				LOG_MSG "[INFO]:-Processing child table $TABLE_NAME" 1
-				CHK_EXISTS_TABLE $TABLE_NAME $MASTER_PORT $QD_DBNAME
+				CHK_EXISTS_TABLE ${SCHEMA_NAME}.$TABLE_NAME $MASTER_PORT $QD_DBNAME
 				GET_TABLE_TYPE ${SCHEMA_NAME}.$TABLE_NAME $MASTER_PORT $QD_DBNAME
 				GET_OID_DATA
 				SEND_TABLE_SIZE_REQUEST
