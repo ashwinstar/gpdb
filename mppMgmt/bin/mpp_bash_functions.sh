@@ -154,7 +154,7 @@ CALL_HOST=`$HOSTNAME|$CUT -d. -f1`
 PSQLBIN=`findMppPath`
 
 if [ x"$PSQLBIN" = x"" ];then
-		echo "Problem in mppbash_functions, command '$MPP_UNIQUE_COMMAND' not found in MPP path. Try setting BIZHOME to the location of your MPP distribution"
+		echo "Problem in mpp_bash_functions, command '$MPP_UNIQUE_COMMAND' not found in MPP path. Try setting BIZHOME to the location of your MPP distribution"
 		exit 99
 fi
 
@@ -217,10 +217,11 @@ MPP_PG_VIEW=mpp_pgdatabase
 MPP_INITDB_VER_TABLE=mpp_version_at_initdb
 DEFAULT_CHK_PT_SEG=8
 DEFAULT_IP_ALLOW="0.0.0.0/0"
-DEFAULT_LOCALE_SETTING=en_US.UTF-8
+DEFAULT_LOCALE_SETTING=en_US.utf8
 DEFAULT_QD_MAX_CONNECT=25
 QE_CONNECT_FACTOR=5
 DEFAULT_BUFFERS=16000
+DEBUG_LEVEL=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -256,6 +257,8 @@ LOG_MSG () {
 		if [ $VERBOSE ]; then
 				if [ $DEBUG_LEVEL -eq 1 ] || [ $DISPLAY_TXT -eq 1 ];then
 			        $ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1" | $TEE -a $LOG_FILE	
+				else
+				$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1" >> $LOG_FILE
 				fi
 		else
 				$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1" >> $LOG_FILE
@@ -264,6 +267,7 @@ LOG_MSG () {
 
 
 ERROR_EXIT () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		TIME=`$DATE +%H":"%M":"%S`
 		CUR_DATE=`$DATE +%Y%m%d`
 		$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1 Script Exiting!" >> $LOG_FILE
@@ -278,14 +282,18 @@ ERROR_EXIT () {
 				fi
 		fi
 		exit $2
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 READ_CHK () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	READ_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c" select count(*) from $CONFIG_TABLE where port<0;"`
 	LOG_MSG "[INFO]:-Obtained -ve port read count $READ_COUNT"
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 ERROR_CHK () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ $# -ne 3 ];then
 		INITIAL_LEVEL=$DEBUG_LEVEL
 		DEBUG_LEVEL=1
@@ -305,9 +313,11 @@ ERROR_CHK () {
 			EXIT_STATUS=1
 			DEBUG_LEVEL=$INITIAL_LEVEL
 		else
+			LOG_MSG "[INFO]:-End Function $FUNCNAME"
 			ERROR_EXIT "[FATAL]:-Failed to complete $MSG_TXT " 2
 		fi
 	fi	
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"	
 }
 
 ED_FILE () {
@@ -321,16 +331,16 @@ ED_FILE () {
 	ED_HOST=$1
 	if [ x"" == x"$ED_HOST" ]; then
 			if [ `$GREP -c "${SEARCH_TXT}" $FILENAME` -gt 1 ]; then
-				LOG_MSG "[INFO]:-Found more than 1 instance of $SEARCH_TXT in $FILENAME, will append"
+				LOG_MSG "[INFO]:-Found more than 1 instance of $SEARCH_TXT in $FILENAME, will append" 1
 				APPEND=1
 			fi
 			if [ `$GREP -c "${SEARCH_TXT}" $FILENAME` -eq 0 ] || [ $APPEND -eq 1 ]; then
 				$ECHO $SUB_TXT >> $FILENAME
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
-					LOG_MSG "[WARN]:-Failed to append line $SUB_TXT to $FILENAME"
+					LOG_MSG "[WARN]:-Failed to append line $SUB_TXT to $FILENAME" 1
 				else
-					LOG_MSG "[INFO]:-Appended line $SUB_TXT to $FILENAME"
+					LOG_MSG "[INFO]:-Appended line $SUB_TXT to $FILENAME" 
 				fi
 			else
 if [ $KEEP_PREV -eq 0 ];then
@@ -371,7 +381,7 @@ fi
 		fi
 	else
 		if [ `$TRUSTED_SHELL $ED_HOST "$GREP -c \"${SEARCH_TXT}\" $FILENAME"` -gt 1 ]; then
-			LOG_MSG "[INFO]:-Found more than 1 instance of $SEARCH_TXT in $FILENAME on $ED_HOST, will append"
+			LOG_MSG "[INFO]:-Found more than 1 instance of $SEARCH_TXT in $FILENAME on $ED_HOST, will append" 1
 			APPEND=1
 		fi
 		if [ `$TRUSTED_SHELL $ED_HOST "$GREP -c \"${SEARCH_TXT}\" $FILENAME"` -eq 0 ] || [ $APPEND -eq 1 ]; then
@@ -381,7 +391,7 @@ fi
 				LOG_MSG "[WARN]:-Failed to append line $SUB_TXT to $FILENAME on $ED_HOST"
 				ERROR_EXIT=1
 			else
-				LOG_MSG "[INFO]:-Appended line $SUB_TXT to $FILENAME on $ED_HOST"
+				LOG_MSG "[INFO]:-Appended line $SUB_TXT to $FILENAME on $ED_HOST" 1
 			fi
 		else
 			$ECHO 1 > $ED_TMP_FILE
@@ -460,17 +470,17 @@ EVENT_MAIL () {
 	MAIL_SUBJECT=$1;shift
 	MAIL_MESSAGE=$1
 	if [ ! -f $MAILFILE ] && [ ! -f $HMAILFILE ] ;then
-		LOG_MSG "[WARN]:-No $MAILFILE"
-		LOG_MSG "[WARN]:-or $HMAILFILE"
-		LOG_MSG "[WARN]:-Unable to send email notification"
-		LOG_MSG "[INFO]:-To enable email notification, create $MAILFILE"
-		LOG_MSG "[INFO]:-or $HMAILFILE containing required email addresses"
+		LOG_MSG "[WARN]:-No $MAILFILE" 1
+		LOG_MSG "[WARN]:-or $HMAILFILE" 1
+		LOG_MSG "[WARN]:-Unable to send email notification" 1
+		LOG_MSG "[INFO]:-To enable email notification, create $MAILFILE" 1
+		LOG_MSG "[INFO]:-or $HMAILFILE containing required email addresses" 1
 		EXIT_STATUS=1
 	else
 		if [ -f $HMAILFILE ];then MAILFILE=$HMAILFILE;fi
 		for MAIL_ADDRESS in `$CAT $MAILFILE | $GREP -v "^#"`
 		do
-			LOG_MSG "[INFO]:-Sending mail to $MAIL_ADDRESS using file $MAILFILE"
+			LOG_MSG "[INFO]:-Sending mail to $MAIL_ADDRESS using file $MAILFILE" 1
 			$ECHO "$MAIL_MESSAGE"|$MAIL -s "$MAIL_SUBJECT" $MAIL_ADDRESS
 			ERROR_CHK $? "send email to $MAIL_ADDRESS" 1
 		done
@@ -479,6 +489,7 @@ EVENT_MAIL () {
 }
 
 GET_DISTRIB_COLS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ $# -ne 3 ];then
 		ERROR_EXIT "[FATAL]:-Incorrect # parameters supplied, got $# expected 3" 2;fi
 	T_NAME=$1
@@ -489,12 +500,14 @@ GET_DISTRIB_COLS () {
 		if [ x"" == x"$DISTRIB_COLS" ];then
 			DISTRIB_COLS='';fi
 	else
-		LOG_MSG "[WARN]:-Incorrect table name sent to function, should be schema.tablename"
+		LOG_MSG "[WARN]:-Incorrect table name sent to function, should be schema.tablename" 1
 		ERROR_EXIT "[FATAL]:-Error in $FUNCNAME parameters" 2
 	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_TABLE_TYPE () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ $# -ne 3 ];then
 		ERROR_EXIT "[FATAL]:-Incorrect # parameters supplied, got $# expected 3" 2;fi
 	T_NAME=$1
@@ -509,9 +522,10 @@ GET_TABLE_TYPE () {
 			TAB_TYPE_TXT="Not child table"
 		fi
 	else
-		LOG_MSG "[WARN]:-Incorrect table name sent to function, should be schema.tablename"
+		LOG_MSG "[WARN]:-Incorrect table name sent to function, should be schema.tablename" 1
 		ERROR_EXIT "[FATAL]:-Error in $FUNCNAME parameters" 2
 	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 	
 CHK_FILE () {
@@ -536,7 +550,7 @@ CHK_DIR () {
 			EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -d $DIR_NAME ];then $ECHO 0;else $ECHO 1;fi"`
 			RETVAL=$?
 			if [ $RETVAL -ne 0 ];then
-			LOG_MSG "[WARN]:-Failed to obtain details of $DIR_NAME on $DIR_HOST"
+			LOG_MSG "[WARN]:-Failed to obtain details of $DIR_NAME on $DIR_HOST" 1
 			EXIT_STATUS=1
 			EXISTS=1
 			fi
@@ -588,15 +602,15 @@ CHK_ON_PASSIVE_STANDBY () {
 		MPPSYNC_COUNT=`$GREP -c mppsync $MASTER_DATA_DIRECTORY/postmaster.opts`
 	fi
 	if [ $PID -ne 0 ] && [ $MPPSYNC_COUNT -ne 0 ];then
-		LOG_MSG "[FATAL]:-Cannot run this script on a passive standby instance"
-		LOG_MSG "[FATAL]:-where there is a conflict with the current value of"
-		LOG_MSG "[FATAL]:-the MASTER_DATA_DIRECTORY environment variable setting."
+		LOG_MSG "[FATAL]:-Cannot run this script on a passive standby instance" 1
+		LOG_MSG "[FATAL]:-where there is a conflict with the current value of" 1
+		LOG_MSG "[FATAL]:-the MASTER_DATA_DIRECTORY environment variable setting." 1
 		ERROR_EXIT "[FATAL]:-Unable to process requested command" 2
 	fi
 	if [ $MPPSYNC_COUNT -ne 0 ];then
-		LOG_MSG "[FATAL]:-Cannot run this script on the standby instance"
-		LOG_MSG "[FATAL]:-Status indicates that standby instance processs not running"
-		LOG_MSG "[FATAL]:-Check standby process status via mppstate.sh -f on Master instance"
+		LOG_MSG "[FATAL]:-Cannot run this script on the standby instance" 1
+		LOG_MSG "[FATAL]:-Status indicates that standby instance processs not running" 1
+		LOG_MSG "[FATAL]:-Check standby process status via mppstate.sh -f on Master instance" 1
 		ERROR_EXIT "[FATAL]:-Unable to process requested command" 2
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -658,10 +672,10 @@ CHK_DB_RUNNING () {
 		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 		export $EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" >> $LOG_FILE 2>&1
 		if [ $? -ne 0 ];then
-			LOG_MSG "[FATAL]:-Have a postmaster.pid file for master instance on port $MASTER_PORT"
-			LOG_MSG "[FATAL]:-However, error reported on test psql access to master instance"
-			LOG_MSG "[INFO]:-Check ps output for a postmaster process on the above port"
-			LOG_MSG "[INFO]:-Check the master postgres logfile for errors and also the utility log file"
+			LOG_MSG "[FATAL]:-Have a postmaster.pid file for master instance on port $MASTER_PORT" 1
+			LOG_MSG "[FATAL]:-However, error reported on test psql access to master instance" 1
+			LOG_MSG "[INFO]:-Check ps output for a postmaster process on the above port" 1
+			LOG_MSG "[INFO]:-Check the master postgres logfile for errors and also the utility log file" 1
 			ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -674,8 +688,11 @@ GET_QD_DB_NAME () {
 		#Check if we have PGDATABASE environment variable set, if so see if that database exists
 		if [ x"" != x"$PGDATABASE" ];then
 			LOG_MSG "[INFO]:-PGDATABASE set, checking for this database"
-			QD_DBNAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" 2>/dev/null|$GREP -v postgres|$GREP -v template|$GREP $PGDATABASE|$CUT -d"|" -f1|$HEAD -1`
+			QD_DBNAME_THERE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from pg_database where datname='${PGDATABASE}';"`
 			ERROR_CHK $? "check for $PGDATABASE" 2
+			if [ $QD_DBNAME_THERE -eq 1 ];then
+				QD_DBNAME=$PGDATABASE
+			fi
 		fi
 		if [ x"" == x"$QD_DBNAME" ];then
 			LOG_MSG "[INFO]:-Checking for a non-system database"
@@ -706,7 +723,7 @@ GET_STANDBY_DETAILS () {
 	STANDBY_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, datadir, port, valid, definedprimary from $CONFIG_TABLE where content=-1 and dbid<>1"`) > /dev/null 2>&1
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ]; then
-		LOG_MSG "[INFO]:-Unable to obtain standby master details, error code $RETVAL returned"
+		LOG_MSG "[INFO]:-Unable to obtain standby master details, error code $RETVAL returned" 1
 		EXIT_STATUS=1
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -725,7 +742,7 @@ GET_QE_DETAILS () {
 		QE_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.definedprimary from $CONFIG_TABLE a, $MPP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1;"`) > /dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				LOG_MSG "[WARN]:-Unable to obtain segment instance host details from Master db, error code $RETVAL returned"
+				LOG_MSG "[WARN]:-Unable to obtain segment instance host details from Master db, error code $RETVAL returned" 1
 				EXIT_STATUS=1
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -767,7 +784,7 @@ GET_QE_PRIMARY_DETAILS () {
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				LOG_MSG "[WARN]:-Unable to obtain segment instance primary host details from Master db, error code $RETVAL returned"
+				LOG_MSG "[WARN]:-Unable to obtain segment instance primary host details from Master db, error code $RETVAL returned" 1
 				EXIT_STATUS=1
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -780,7 +797,7 @@ GET_QE_MIRROR_DETAILS () {
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				LOG_MSG "[WARN]:-Unable to obtain segment instance mirror host details from Master db, error code $RETVAL returned"
+				LOG_MSG "[WARN]:-Unable to obtain segment instance mirror host details from Master db, error code $RETVAL returned" 1
 				EXIT_STATUS=1
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -788,25 +805,51 @@ GET_QE_MIRROR_DETAILS () {
 
 GET_PG_PID_ACTIVE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		# Expects hostname and port number
+		# Expects port number and hostname for remote checking
 		PORT=$1;shift
 		HOST=$1
+		PG_LOCK_FILE="/tmp/.s.PGSQL.${PORT}.lock"
 		if [ x"" == x"$HOST" ];then
-			PG_LOCK_FILE=`$NETSTAT -an|$GREP ".s.PGSQL.${PORT}"|$AWK '{print $NF}'|$HEAD -1`
-			if [ x"" == x"$PG_LOCK_FILE" ];then
-				PID=0
-				LOG_MSG "[INFO]:-No socket connection found for port=${PORT}"
+			#See if we have a netstat entry for this local host
+			PG_LOCK_NETSTAT=`$NETSTAT -an|$GREP ".s.PGSQL.${PORT}"|$AWK '{print $NF}'|$HEAD -1`
+			#See if we have a lock file in /tmp
+			if [ -f ${PG_LOCK_FILE} ];then
+				PG_LOCK_TMP=1
 			else
-				if [ -f ${PG_LOCK_FILE}.lock ];then
-					if [ -r ${PG_LOCK_FILE}.lock ];then
-						PID=`$CAT ${PG_LOCK_FILE}.lock|$HEAD -1|$AWK '{print $1}'`
+				PG_LOCK_TMP=0
+			fi
+			if [ x"" == x"$PG_LOCK_NETSTAT" ] && [ $PG_LOCK_TMP -eq 0 ];then
+				PID=0
+				LOG_MSG "[INFO]:-No socket connection or lock file in /tmp found for port=${PORT}"
+			else
+				#Now check the failure combinations
+				if [ $PG_LOCK_TMP -eq 0 ] && [ x"" != x"$PG_LOCK_NETSTAT" ];then
+				#Have a process but no lock file
+					LOG_MSG "[WARN]:-No lock file $PG_LOCK_FILE but process running on port $PORT" 1
+					PID=1
+					EXIT_STATUS=1
+				fi
+				if [ $PG_LOCK_TMP -eq 1 ] && [ x"" == x"$PG_LOCK_NETSTAT" ];then
+				#Have a lock file but no process
+					if [ -r ${PG_LOCK_FILE} ];then
+						PID=`$CAT ${PG_LOCK_FILE}|$HEAD -1|$AWK '{print $1}'`
 					else
+						LOG_MSG "[WARN]:-Unable to access ${PG_LOCK_FILE}" 1
 						PID=1
 					fi
-					LOG_MSG "[INFO]:-PID found for $PORT on this host"
-				else
-					PID=0
-					LOG_MSG "[WARN]:-Socket connection found, but no ${PG_LOCK_FILE}.lock"
+					LOG_MSG "[WARN]:-Have lock file $PG_LOCK_FILE but no process running on port $PORT" 1
+					EXIT_STATUS=1
+				fi
+				if [ $PG_LOCK_TMP -eq 1 ] && [ x"" != x"$PG_LOCK_NETSTAT" ];then
+				#Have both a lock file and a netstat process
+					if [ -r ${PG_LOCK_FILE} ];then
+						PID=`$CAT ${PG_LOCK_FILE}|$HEAD -1|$AWK '{print $1}'`
+					else
+						LOG_MSG "[WARN]:-Unable to access ${PG_LOCK_FILE}" 1
+						PID=1
+						EXIT_STATUS=1
+					fi
+					LOG_MSG "[INFO]:-Have lock file $PG_LOCK_FILE and a process running on port $PORT"
 				fi
 			fi
 		else
@@ -815,24 +858,43 @@ GET_PG_PID_ACTIVE () {
 				PID=0
 				EXIT_STATUS=1
 			else	
-				PG_LOCK_FILE=`$TRUSTED_SHELL $HOST "$NETSTAT -an|$GREP ".s.PGSQL.${PORT}" 2>/dev/null"|$AWK '{print $NF}'|$HEAD -1`
-				if [ x"" == x"$PG_LOCK_FILE" ];then
+				PG_LOCK_NETSTAT=`$TRUSTED_SHELL $HOST "$NETSTAT -an|$GREP ".s.PGSQL.${PORT}" 2>/dev/null"|$AWK '{print $NF}'|$HEAD -1`
+				PG_LOCK_TMP=`$TRUSTED_SHELL $HOST "$LS ${PG_LOCK_FILE} 2>/dev/null"|$WC -l`
+				if [ x"" == x"$PG_LOCK_NETSTAT" ] && [ $PG_LOCK_TMP -eq 0 ];then
 					PID=0
-					LOG_MSG "[INFO]:-No socket connection found for port=${PORT} on $HOST"
+					LOG_MSG "[INFO]:-No socket connection or lock file $PG_LOCK_FILE found for port=${PORT}"
 				else
-					if [ `$TRUSTED_SHELL $HOST "$LS ${PG_LOCK_FILE}.lock 2>/dev/null"|$WC -l` -ne 0 ];then
-						CAN_READ=`$TRUSTED_SHELL $HOST "if [ -r ${PG_LOCK_FILE}.lock ];then echo 1;else echo 0;fi"`
-						if [ $CAN_READ -eq 1 ];then
-							PID=`$TRUSTED_SHELL $HOST "$CAT ${PG_LOCK_FILE}.lock|$HEAD -1 2>/dev/null"|$AWK '{print $1}'`
-						else
-							PID=1
-						fi
-						LOG_MSG "[INFO]:-PID found for $PORT on $HOST"
-					else
-						PID=0
-						LOG_MSG "[WARN]:-Socket connection found, but no ${PG_LOCK_FILE}.lock on $HOST"
+				#Now check the failure combinations
+					if [ $PG_LOCK_TMP -eq 0 ] && [ x"" != x"$PG_LOCK_NETSTAT" ];then
+					#Have a process but no lock file
+						LOG_MSG "[WARN]:-No lock file $PG_LOCK_FILE but process running on port $PORT on $HOST" 1
+						PID=1
 						EXIT_STATUS=1
 					fi
+					if [ $PG_LOCK_TMP -eq 1 ] && [ x"" == x"$PG_LOCK_NETSTAT" ];then
+					#Have a lock file but no process
+						CAN_READ=`$TRUSTED_SHELL $HOST "if [ -r ${PG_LOCK_FILE} ];then echo 1;else echo 0;fi"`
+						if [ $CAN_READ -eq 1 ];then
+							PID=`$TRUSTED_SHELL $HOST "$CAT ${PG_LOCK_FILE}|$HEAD -1 2>/dev/null"|$AWK '{print $1}'`
+						else
+							LOG_MSG "[WARN]:-Unable to access ${PG_LOCK_FILE} on $HOST" 1
+							PID=1
+						fi
+						LOG_MSG "[WARN]:-Have lock file $PG_LOCK_FILE but no process running on port $PORT on $HOST" 1
+						EXIT_STATUS=1
+					fi
+					if [ $PG_LOCK_TMP -eq 1 ] && [ x"" != x"$PG_LOCK_NETSTAT" ];then
+					#Have both a lock file and a netstat process
+						CAN_READ=`$TRUSTED_SHELL $HOST "if [ -r ${PG_LOCK_FILE} ];then echo 1;else echo 0;fi"`
+						if [ $CAN_READ -eq 1 ];then
+							PID=`$TRUSTED_SHELL $HOST "$CAT ${PG_LOCK_FILE}|$HEAD -1 2>/dev/null"|$AWK '{print $1}'`
+						else
+							LOG_MSG "[WARN]:-Unable to access ${PG_LOCK_FILE} on $HOST" 1	
+							PID=1
+							EXIT_STATUS=1
+						fi
+						LOG_MSG "[INFO]:-Have lock file $PG_LOCK_FILE and a process running on port $PORT on $HOST"
+					fi				
 				fi
 			fi
 		fi
@@ -892,12 +954,12 @@ PING_HOST () {
 		1) if [ $PING_EXIT -eq 0 ];then
 			ERROR_EXIT "[FATAL]:-Unable to contact $TARGET_HOST" 2
 		   else
-		        LOG_MSG "[WARN]:-Unable to contact $TARGET_HOST"
+		        LOG_MSG "[WARN]:-Unable to contact $TARGET_HOST" 1
 		   fi ;;
 		2) if [ $PING_EXIT -eq 0 ];then
 		 	ERROR_EXIT "[FATAL]:-Unknown host $TARGET_HOST" 2
 		   else
-			LOG_MSG "[WARN]:-Unknown host $TARGET_HOST"
+			LOG_MSG "[WARN]:-Unknown host $TARGET_HOST" 1
 		   fi ;;
 	esac
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -936,7 +998,7 @@ START_SYNC_PROCESS () {
 	$SLEEP 3 #Wait to ensure process has time to start
 	GET_PG_PID_ACTIVE $MASTER_STANDBY_PORT ${MASTER_STANDBY_HOSTNAME}
 	if [ $PID -eq 0 ];then
-		LOG_MSG "[WARN]:-Failed to start sync process on ${MASTER_STANDBY_HOSTNAME}"
+		LOG_MSG "[WARN]:-Failed to start sync process on ${MASTER_STANDBY_HOSTNAME}" 1
 		EXIT_STATUS=1
 	else
 		LOG_MSG "[INFO]:-Successfully started sync process on ${MASTER_STANDBY_HOSTNAME} PID=$PID"
