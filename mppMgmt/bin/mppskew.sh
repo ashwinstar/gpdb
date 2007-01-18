@@ -207,7 +207,7 @@ GET_NODE_COUNT () {
 	if [ $? -ne 0 ];then
 		ERROR_EXIT "Failed on test access to $SEG_PORT $QD_DBNAME on $SEG_HOST" 2
 	fi
-	$TRUSTED_SHELL -n $SEG_HOST "${EXPORT_LIB_PATH}; time env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c'select count(*),'\''$SEG_PORT'\'','\''$SEG_NAME'\'','\''$SEG_HOST'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[:alnum:]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}' >> $TMPFILE &
+	$TRUSTED_SHELL -n $SEG_HOST "${EXPORT_LIB_PATH}; time env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c'select count(*),'\''$SEG_PORT'\'','\''$SEG_NAME'\'','\''$SEG_HOST'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[A-Z][a-z][0-9]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}' >> $TMPFILE &
 	if [ $? -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Failed to send request to $SEG_HOST port $SEG_PORT" 2
 	fi
