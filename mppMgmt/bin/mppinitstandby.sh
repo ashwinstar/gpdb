@@ -86,6 +86,7 @@ USAGE () {
 		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
 		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
 		$ECHO "      -a, don't ask to confirm re-build [default:- ask]"
+		$ECHO "      -D, set log output to debug level, shows all function calls"
 		$ECHO
 		$ECHO "      Standby initialization options:"
 		$ECHO "      -s, <standby hostname> [mandatory]" 
@@ -134,27 +135,27 @@ CHECK_PARAM () {
 	#Now check to see if have a MASTER_DATA_DIRECTORY on new host
 	CHK_DIR $MASTER_DATA_DIRECTORY $MASTER_STANDBY_HOSTNAME
 	if [ $EXISTS -eq 0 ];then
-		LOG_MSG "[WARN]:-Located directory $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME"
+		LOG_MSG "[WARN]:-Located directory $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME" 1
 		#Now see if we have a pid file
 		GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
 		if [ $PID -ne 0 ] && [ x"" != x"$FAIL_PRI_SEG" ];then
-			LOG_MSG "[WARN]:-Active read only master detected on $MASTER_STANDBY_HOSTNAME"
-			LOG_MSG "[INFO]:-Calling close down routine"
+			LOG_MSG "[WARN]:-Active read only master detected on $MASTER_STANDBY_HOSTNAME" 1
+			LOG_MSG "[INFO]:-Calling close down routine" 1
 			$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$MPPSTOP -d $MASTER_DATA_DIRECTORY -m"
 		fi
 	else
 		#Do not have a directory, but check to ensure we do not have a sync process
 		GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
 		if [ $PID -ne 0 ];then
-			LOG_MSG "[FATAL]:-Have a warm master standby process PID=$PID on $MASTER_STANDBY_HOSTNAME"
-			LOG_MSG "[FATAL]:-But no $MASTER_DATA_DIRECTORY directory on $MASTER_STANDBY_HOSTNAME"
-			LOG_MSG "[INFO]:-Manually remove this process on $MASTER_STANDBY_HOSTNAME and re-run this utility"
+			LOG_MSG "[FATAL]:-Have a warm master standby process PID=$PID on $MASTER_STANDBY_HOSTNAME" 1
+			LOG_MSG "[FATAL]:-But no $MASTER_DATA_DIRECTORY directory on $MASTER_STANDBY_HOSTNAME" 1
+			LOG_MSG "[INFO]:-Manually remove this process on $MASTER_STANDBY_HOSTNAME and re-run this utility" 1
 			ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		fi
 		if [ $EXIT_STATUS -ne 0 ];then
-			LOG_MSG "[FATAL]:-No $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME but, have a possible"
-			LOG_MSG "[FATAL]:-Warm master standby process on $MASTER_STANDBY_HOSTNAME"
-			LOG_MSG "[INFO]:-Manually remove this process on $MASTER_STANDBY_HOSTNAME and re-run this utility"
+			LOG_MSG "[FATAL]:-No $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME but, have a possible" 1
+			LOG_MSG "[FATAL]:-Warm master standby process on $MASTER_STANDBY_HOSTNAME" 1
+			LOG_MSG "[INFO]:-Manually remove this process on $MASTER_STANDBY_HOSTNAME and re-run this utility" 1
 			ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		fi
 	fi
@@ -162,13 +163,13 @@ CHECK_PARAM () {
 	SSH_HOSTNAME=`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME $HOSTNAME|$TR -d ' '`
 	ERROR_CHK $? "obtain remote hostname value" 2
 	if [ $SSH_HOSTNAME != $MASTER_STANDBY_HOSTNAME ];then
-		LOG_MSG "[WARN]:-Hostname supplied does not match hostname output on $MASTER_STANDBY_HOSTNAME"
-		LOG_MSG "[INFO]:-Setting standby hostname to $SSH_HOSTNAME"
+		LOG_MSG "[WARN]:-Hostname supplied does not match hostname output on $MASTER_STANDBY_HOSTNAME" 1
+		LOG_MSG "[INFO]:-Setting standby hostname to $SSH_HOSTNAME" 1
 		MASTER_STANDBY_HOSTNAME=$SSH_HOSTNAME
 	fi
-	LOG_MSG "[INFO]:-Obtaining a list of segment instances"
+	LOG_MSG "[INFO]:-Obtaining a list of segment instances" 1
 	GET_QE_DETAILS
-	LOG_MSG "[INFO]:-Testing remote access to $MASTER_STANDBY_HOSTNAME"
+	LOG_MSG "[INFO]:-Testing remote access to $MASTER_STANDBY_HOSTNAME" 1
 	MASTER_STANDBY_TOP_LEVEL_DIR=`$DIRNAME $MASTER_STANDBY_DATA_DIRECTORY`
 	RUN_COMMAND_REMOTE $MASTER_STANDBY_HOSTNAME "$ECHO test > ${MASTER_STANDBY_TOP_LEVEL_DIR}/remote_test1.$$"	
 	$ECHO test > /tmp/remote_test2.$$
@@ -178,7 +179,7 @@ CHECK_PARAM () {
 	RUN_COMMAND "$RM -f /tmp/remote_test2.$$"	
 	STANDBY_IP_ADDRESS_ALL=(`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$IFCONFIG $IFCONFIG_TXT |$GREP \"inet \"|$GREP -v \"127.0.0\"|$AWK '{print \\$2}'|$CUT -d: -f2" 2>>$LOG_FILE`)
 	ERROR_CHK $? "obtain IP address of standby Master host" 2
-	LOG_MSG "[INFO]:-Standby address array = ${STANDBY_IP_ADDRESS_ALL[@]}"
+	LOG_MSG "[INFO]:-Standby address array = ${STANDBY_IP_ADDRESS_ALL[@]}" 1
 	STANDBY_IP_ADDRESS=(`$ECHO ${STANDBY_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
 	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select mppname from $MPP_MPP_TABLE;"`
 	ERROR_CHK $? "obtain master array name" 2
@@ -186,8 +187,8 @@ CHECK_PARAM () {
 	IN_USE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' ;"`
 	ERROR_CHK $? "obtain standby host in use count" 2
 	if [ $IN_USE_COUNT -ne 0 ];then
-		LOG_MSG "[WARN]:-There are other segment instances active on $MASTER_STANDBY_HOSTNAME"
-		LOG_MSG "[WARN]:-This may have an impact on overall MPP instance performance"
+		LOG_MSG "[WARN]:-There are other segment instances active on $MASTER_STANDBY_HOSTNAME" 1
+		LOG_MSG "[WARN]:-This may have an impact on overall MPP instance performance" 1
 		if [ $UPDATE_CATALOG -eq 1 ];then
 		#Check to ensure that port requested not already in use on that host
 			PORT_IN_USE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' and port=${MASTER_STANDBY_PORT};"`
@@ -210,10 +211,10 @@ UPDATE_PG_HBA () {
 		do
 			CHK_COUNT=`$TRUSTED_SHELL $MPP_HOSTNAME "$GREP -c \"${STANDBY_IP}/32\" ${MPP_DIR}/$PG_HBA"`
 			if [ $CHK_COUNT -eq 0 ];then
-			LOG_MSG "[INFO]:-Adding address of $MASTER_STANDBY_HOSTNAME to $MPP_HOSTNAME $PG_HBA file"
+			LOG_MSG "[INFO]:-Adding address of $MASTER_STANDBY_HOSTNAME to $MPP_HOSTNAME $PG_HBA file" 1
 			RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host  all     all     ${STANDBY_IP}/32        trust >> ${MPP_DIR}/$PG_HBA"
 			else
-			LOG_MSG "[INFO]:-Standby IP address already exists in $MPP_HOSTNAME ${MPP_DIR}/$PG_HBA"
+			LOG_MSG "[INFO]:-Standby IP address already exists in $MPP_HOSTNAME ${MPP_DIR}/$PG_HBA" 1
 			fi
 		done
 	done	
@@ -232,7 +233,7 @@ STOP_MASTER_DB () {
 	if [ ! -f ${MASTER_DATA_DIRECTORY}/$PG_PID ];then
 		ERROR_EXIT "[FATAL]:-Appears Master instance shutdown during this process, check Master instance log file" 2
 	else
-		LOG_MSG "[INFO]:-Commencing shutdown of Master instance"
+		LOG_MSG "[INFO]:-Commencing shutdown of Master instance" 1
 		if [ -f $MPPSTOP ];then
 			$MPPSTOP -d $MASTER_DATA_DIRECTORY -af
 			ERROR_CHK $? "stop Master instance" 1
@@ -246,38 +247,38 @@ STOP_MASTER_DB () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-MPP standby master initialization parameters"
-	LOG_MSG "--------------------------------------------"
-	LOG_MSG "[INFO]:-MPP Master hostname               = $MASTER_HOSTNAME"
-	LOG_MSG "[INFO]:-MPP Master data directory         = $MASTER_DATA_DIRECTORY"
-	LOG_MSG "[INFO]:-MPP Master port                   = $MASTER_PORT"
-	LOG_MSG "[INFO]:-MPP Master standby hostname       = $MASTER_STANDBY_HOSTNAME"
-	LOG_MSG "[INFO]:-MPP Master standby port           = $MASTER_STANDBY_PORT"
-	LOG_MSG "[INFO]:-MPP Array name                    = $MASTER_MPP_NAME"
-	LOG_MSG "[INFO]:-MPP Master standby data directory = $MASTER_STANDBY_DATA_DIRECTORY"
+	LOG_MSG "[INFO]:-MPP standby master initialization parameters" 1
+	LOG_MSG "--------------------------------------------" 1
+	LOG_MSG "[INFO]:-MPP Master hostname               = $MASTER_HOSTNAME" 1
+	LOG_MSG "[INFO]:-MPP Master data directory         = $MASTER_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-MPP Master port                   = $MASTER_PORT" 1
+	LOG_MSG "[INFO]:-MPP Master standby hostname       = $MASTER_STANDBY_HOSTNAME" 1
+	LOG_MSG "[INFO]:-MPP Master standby port           = $MASTER_STANDBY_PORT" 1
+	LOG_MSG "[INFO]:-MPP Array name                    = $MASTER_MPP_NAME" 1
+	LOG_MSG "[INFO]:-MPP Master standby data directory = $MASTER_STANDBY_DATA_DIRECTORY" 1
 	if [ x"" == x"$START_MPPSYNC" ];then
-		LOG_MSG "[INFO]:-MPP Start mppsynmaster process    = Off"
+		LOG_MSG "[INFO]:-MPP Start mppsynmaster process    = Off" 1
 	else
-		LOG_MSG "[INFO]:-MPP Start mppsynmaster process    = On"
+		LOG_MSG "[INFO]:-MPP Start mppsynmaster process    = On" 1
 	fi
 	if [ $UPDATE_CATALOG -eq 1 ];then
-		LOG_MSG "[INFO]:-MPP update system catalog         = On"
+		LOG_MSG "[INFO]:-MPP update system catalog         = On" 1
 	else
-		LOG_MSG "[INFO]:-MPP update system catalog         = Off"
+		LOG_MSG "[INFO]:-MPP update system catalog         = Off" 1
 	fi
 	if [ x"" != x"$FAIL_PRI_SEG" ];then
-		LOG_MSG "[INFO]:-MPP standby build type            = Dual active Read Only"
+		LOG_MSG "[INFO]:-MPP standby build type            = Dual active Read Only" 1
 	fi
 	if [ $INTERACTIVE ]; then
 		$ECHO  "Continue with MPP Master standby initialization Yy/Nn>"
 		read REPLY
 		if [ -z $REPLY ]; then
-			LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+			LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 			EXIT_STATUS=1
 			exit $EXIT_STATUS
 		fi
 		if [ $REPLY != Y ] && [ $REPLY != y ]; then
-			LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+			LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 			EXIT_STATUS=1
 			exit $EXIT_STATUS
 		fi
@@ -290,25 +291,25 @@ STANDBY_ACTIVATE () {
 	#Check if we have a mppsyncmaster process running
 	GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
 	if [ $PID -ne 0 ];then
-		LOG_MSG "[INFO]:-Stopping sync process on $MASTER_STANDBY_HOSTNAME"
+		LOG_MSG "[INFO]:-Stopping sync process on $MASTER_STANDBY_HOSTNAME" 1
 		STOP_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY
 	fi
 	#Check that the proposed master standby directory does not already exist
 	CHK_DIR $MASTER_STANDBY_DATA_DIRECTORY $MASTER_STANDBY_HOSTNAME
 	if [ $EXISTS -eq 0 ];then
-		LOG_MSG "[WARN]:-Directory $MASTER_STANDBY_DATA_DIRECTORY exists on $MASTER_STANDBY_HOSTNAME" 
-		LOG_MSG "[INFO]:-Deleting the $MASTER_STANDBY_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME"
+		LOG_MSG "[WARN]:-Directory $MASTER_STANDBY_DATA_DIRECTORY exists on $MASTER_STANDBY_HOSTNAME"  1
+		LOG_MSG "[INFO]:-Deleting the $MASTER_STANDBY_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME" 1
 		RUN_COMMAND_REMOTE $MASTER_STANDBY_HOSTNAME "$RM -Rf $MASTER_STANDBY_DATA_DIRECTORY"
 		EXIT_STATUS=1
 	fi
-	LOG_MSG "[INFO]:-Starting remote copy of $MASTER_DATA_DIRECTORY to Master standby host"
+	LOG_MSG "[INFO]:-Starting remote copy of $MASTER_DATA_DIRECTORY to Master standby host" 1
 	C_DIR=`pwd`;cd ${MASTER_DATA_DIRECTORY};sync;cd $C_DIR
 	$TRUSTED_COPY -pr $MASTER_DATA_DIRECTORY ${MASTER_STANDBY_HOSTNAME}:${MASTER_STANDBY_DATA_DIRECTORY} 2>>$LOG_FILE
 	ERROR_CHK $? "remote copy of $MASTER_DATA_DIRECTORY to $MASTER_STANDBY_HOSTNAME" 2
 	if [ x"" != x"$START_MPPSYNC" ];then
 		START_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY $MASTER_STANDBY_PORT
 	else
-		LOG_MSG "[INFO]:-Process mppsyncmaster not started on $MASTER_STANDBY_HOSTNAME as -i not supplied"
+		LOG_MSG "[INFO]:-Process mppsyncmaster not started on $MASTER_STANDBY_HOSTNAME as -i supplied" 1
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -320,7 +321,7 @@ START_ARRAY () {
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Could not locate $MPPSTART to start MPP instance" 2
 	else
-		LOG_MSG "[INFO]:-Starting the MPP instance"
+		LOG_MSG "[INFO]:-Starting the MPP instance" 1
 		$MPPSTART -d $MASTER_DATA_DIRECTORY -a
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -337,7 +338,7 @@ FAIL_PRIMARY_SEGMENTS () {
                 ERROR_EXIT "[FATAL]:-File $MPPSTOP does not exist on $MASTER_STANDBY_HOSTNAME" 2
         fi
 	#Start the readonly master segment in utility mode
-	LOG_MSG "[INFO]:-Starting read only master segment instance in utility mode"
+	LOG_MSG "[INFO]:-Starting read only master segment instance in utility mode" 1
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$MPPSTART -d $MASTER_DATA_DIRECTORY -m"
 	ERROR_CHK $? "start read only master segment instance" 2
 	#Now set primary segment instances port numbers to a negative number
@@ -357,7 +358,7 @@ FAIL_PRIMARY_SEGMENTS () {
 	#Now force an update of mpp_pgdatabase
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$PSQL -p $MASTER_PORT $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$PSQL -p $MASTER_PORT $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
-	LOG_MSG "[INFO]:-Forced update of mpp_pgdatabase complete"	
+	LOG_MSG "[INFO]:-Forced update of mpp_pgdatabase complete" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 #******************************************************************************
@@ -365,7 +366,7 @@ FAIL_PRIMARY_SEGMENTS () {
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-	while getopts ":v'?'ainfqs:l:!" opt;do
+	while getopts ":v'?'ainfqs:l:!D" opt;do
 		case $opt in
 			v ) VERSION_INFO ;;
 			'?' ) USAGE ;;
@@ -378,6 +379,7 @@ if [ $# -ne 0 ]; then
 			i ) unset START_MPPSYNC ;;
 			n ) UPDATE_CATALOG=0 ;;
 			f ) FAIL_PRI_SEG=1 ;;
+			D ) DEBUG_LEVEL=1 ;;
 			* ) USAGE ;;
 		esac
 	done	
@@ -385,7 +387,7 @@ fi
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
 	if [ $EXISTS -eq 1 ]; then
-		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
 		EXIT_STATUS=1
 		BACKOUT_FILE=$DEFLOGDIR/backout_${PROG_NAME}_${USER_NAME}_${CUR_DATE}_$TIME
 	else
@@ -397,7 +399,7 @@ else
 fi
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 if [ $FAIL_PRI_SEG ] && [ $UPDATE_CATALOG -eq 1 ];then
-	LOG_MSG "[INFO]:-Option -f supplied setting update catalog to off"
+	LOG_MSG "[INFO]:-Option -f supplied setting update catalog to off" 1
 	UPDATE_CATALOG=0
 fi
 if [ $FAIL_PRI_SEG ] && [ $START_MPPSYNC ];then
@@ -425,7 +427,7 @@ fi
 if [ $UPDATE_CATALOG -eq 1 ];then
 	UPDATE_CATALOG
 else
-	LOG_MSG "[WARN]:-By passing catalog update as -n option passed to script"
+	LOG_MSG "[WARN]:-By passing catalog update as -n option passed to script" 1
 	EXIT_STATUS=1
 fi
 UPDATE_PG_HBA
@@ -434,8 +436,8 @@ STANDBY_ACTIVATE
 START_ARRAY
 if [ $FAIL_PRI_SEG ];then
 	FAIL_PRIMARY_SEGMENTS
-	LOG_MSG "[INFO]:------------------------------------------------"
-	LOG_MSG "[INFO]:-Successfully created a read only master standby"
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Successfully created a read only master standby" 1
 fi
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS
