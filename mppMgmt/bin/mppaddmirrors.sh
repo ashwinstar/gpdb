@@ -78,12 +78,15 @@ USAGE () {
 	$ECHO
 	$ECHO "      Logging options:"
 	$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
+	$ECHO "      -D, set log output to debug level, shows all function calls"
+	$ECHO
+	$ECHO "      Connection options:"
+	$ECHO "      -d, <Master instance directory> name of alternative Master instance to add mirrors [optional]"
 	$ECHO
 	$ECHO "      Mirror creation options:"
 	$ECHO "      -p, mirror offset, if not supplied, script will calculate a suitable"
 	$ECHO "          port offset for the mirror segment instances, range $MIN_MIR_PORT - $MAX_MIR_PORT"
 	$ECHO "          Current offset value is $MIRROR_OFFSET"
-	$ECHO "      -d, <master data directory> [mandatory]"
 	$ECHO "      -s, spread mirrors amongst available MPP hosts [default group mirrors]"
 	$ECHO "          Mirror grouping will mirror all primary segments from one host onto"
 	$ECHO "          another host within the MPP array."
@@ -144,19 +147,19 @@ CHECK_PARAM () {
 		if [ `$CAT $MIRROR_MACHINE_LIST_FILE|$GREP -c ":"` -ne $MIRROR_COUNT_FILE ];then
 			ERROR_EXIT "[FATAL]:-Seperator/line number mismatch, please check file" 2
 		else
-			LOG_MSG "[INFO]:-Phase I file check complete $MIRROR_MACHINE_LIST_FILE"
+			LOG_MSG "[INFO]:-Phase I file check complete $MIRROR_MACHINE_LIST_FILE" 1
 		fi
 		#Check to ensure have no blank hostnames
 		if [ `$CAT $MIRROR_MACHINE_LIST_FILE|$CUT -d":" -f1|$CUT -d":" -f1|$TR '\n' ' '|$WC -w` -ne $MIRROR_COUNT_FILE ];then
 			ERROR_EXIT "[FATAL]:-There are some hostname fields blank" 2
 		else
-			LOG_MSG "[INFO]:-Phase II file check complete $MIRROR_MACHINE_LIST_FILE"
+			LOG_MSG "[INFO]:-Phase II file check complete $MIRROR_MACHINE_LIST_FILE" 1
 		fi
 		#Check to ensure have no blank directory fields
 		if [ `$CAT $MIRROR_MACHINE_LIST_FILE|$CUT -d":" -f2|$CUT -d":" -f1|$TR '\n' ' '|$WC -w` -ne $MIRROR_COUNT_FILE ];then
 			ERROR_EXIT "[FATAL]:-There are some directory fields blank" 2
 		else
-			LOG_MSG "[INFO]:-Phase III file check complete $MIRROR_MACHINE_LIST_FILE"
+			LOG_MSG "[INFO]:-Phase III file check complete $MIRROR_MACHINE_LIST_FILE" 1
 		fi
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -184,13 +187,13 @@ OBTAIN_PARAM () {
 	PRI_SEGMENT_ARRAY_COUNT=${#PRI_SEGMENT_ARRAY[@]}
 	if [ $BALANCE -eq 1 ];then
 		if [ $PRI_HOST_COUNT -eq 1 ] || [ $PRI_SEG_PER_HOST -eq $PRI_HOST_COUNT ];then
-			LOG_MSG "[FATAL]:-Number of segment hosts must be > number of segments per hosts" 
+			LOG_MSG "[FATAL]:-Number of segment hosts must be > number of segments per hosts"  1
 			ERROR_EXIT "[FATAL]:-Insufficient MPP hosts for -s mirroring option" 2
 		fi
-		LOG_MSG "[INFO]:-Sufficient MPP segment hosts for -s option"
+		LOG_MSG "[INFO]:-Sufficient MPP segment hosts for -s option" 1
 		BAL_PORT_BASE=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(port)-$PRI_SEG_PER_HOST from $CONFIG_TABLE where content<>-1;"`
 		ERROR_CHK $? "obtain current port base" 2
-		LOG_MSG "[INFO]:-Obtained current port base = $BAL_PORT_BASE"
+		LOG_MSG "[INFO]:-Obtained current port base = $BAL_PORT_BASE" 1
 	fi 
 	if [ x"" == x"$MIRROR_MACHINE_LIST_FILE" ];then
 		DIR_COUNT=0
@@ -219,21 +222,21 @@ OBTAIN_PARAM () {
 		ALL_MIR_SEGMENT_NAMES=(`$CAT $MIRROR_MACHINE_LIST_FILE|$CUT -d":" -f1|$TR '\n' ' '`)
 		#Check to see if all hostnames match or none	
 		MIR_HOST_COUNT=${#MIR_SEGMENT_NAMES[@]}
-		LOG_MSG "[INFO]:-Obtained mirror host count as $MIR_HOST_COUNT"
+		LOG_MSG "[INFO]:-Obtained mirror host count as $MIR_HOST_COUNT" 1
 		MATCH_COUNT=0
-		LOG_MSG "[INFO]:-Checking for host name conflicts"
+		LOG_MSG "[INFO]:-Checking for host name conflicts" 1
 		for MIR_HOST in "${MIR_SEGMENT_NAMES[@]}"
 		do
-			LOG_MSG "[INFO]:-Checking mirror host $MIR_HOST"
+			LOG_MSG "[INFO]:-Checking mirror host $MIR_HOST" 1
 			if [ `$ECHO ${PRI_SEGMENT_NAMES[@]}|$GREP -c $MIR_HOST` -eq 1 ];then
 				((MATCH_COUNT=$MATCH_COUNT+1))
 			fi
 		done
 		if [ $MATCH_COUNT -eq 0 ];then
-			LOG_MSG "[INFO]:-Will configure mirror segments on new segment instance hosts"
+			LOG_MSG "[INFO]:-Will configure mirror segments on new segment instance hosts" 1
 		else
 			if [ $MATCH_COUNT -eq $MIR_HOST_COUNT ];then
-				LOG_MSG "[INFO]:-Will configure mirror segments on current segment instance hosts"
+				LOG_MSG "[INFO]:-Will configure mirror segments on current segment instance hosts" 1
 			else
 				ERROR_EXIT "[FATAL]:-Mix of current and new mirror segment hosts not allowed" 2
 			fi
@@ -263,11 +266,11 @@ CALC_MIRROR_PORT_BASE () {
 	fi
 	#Now to ensure that calculated MIRROR_PORT_BASE lies between MAX_MIRROR_PORT and MIN_MIRROR_PORT
 	if [ $MIRROR_PORT_BASE -ge $MAX_MIR_PORT ] || [ $MIRROR_PORT_BASE -le $MIN_MIR_PORT ];then
-		LOG_MSG "[FATAL]:-Value of MIRROR_OFFSET supplied via -p option out of range"
-		LOG_MSG "[FATAL]:-With value supplied, calculated a mirror port base of $MIRROR_PORT_BASE"
+		LOG_MSG "[FATAL]:-Value of MIRROR_OFFSET supplied via -p option out of range" 1
+		LOG_MSG "[FATAL]:-With value supplied, calculated a mirror port base of $MIRROR_PORT_BASE" 1
 		ERROR_EXIT "[FATAL]:-Mirror port base range must be between $MIN_MIR_PORT and $MAX_MIR_PORT" 2
 	fi
-	LOG_MSG "[INFO]:-Setting mirror port base = $MIRROR_PORT_BASE"
+	LOG_MSG "[INFO]:-Setting mirror port base = $MIRROR_PORT_BASE" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -370,17 +373,21 @@ CREATE_MIRROR_ARRAY () {
 }
 
 SET_VAR () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	MIRROR_DATADIR=`$ECHO $MIRROR_SEG|$CUT -d"|" -f1`
 	MIRROR_PORT=`$ECHO $MIRROR_SEG|$CUT -d"|" -f2`
 	MIRROR_DBID=`$ECHO $MIRROR_SEG|$CUT -d"|" -f3`
 	MIRROR_CONTENT=`$ECHO $MIRROR_SEG|$CUT -d"|" -f4`
 	MIRROR_HOSTNAME=`$ECHO $MIRROR_SEG|$CUT -d"|" -f5`
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CHK_MIRROR_DIR () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Commencing host and directory checks, please wait..." 1
 	for MIRROR_SEG in "${MIRROR_ARRAY[@]}"
 	do
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		SET_VAR $MIRROR_SEG
 		LOG_MSG "[INFO]:-Checking if can see $MIRROR_HOSTNAME on network"
 		PING_HOST $MIRROR_HOSTNAME
@@ -394,7 +401,7 @@ CHK_MIRROR_DIR () {
 		$TRUSTED_SHELL $MIRROR_HOSTNAME "$TOUCH $W_DIR/tmp_test_file"
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on Segment host $MIRROR_HOSTNAME"
+			ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on Segment host $MIRROR_HOSTNAME" 2
 		else
 			$TRUSTED_SHELL $MIRROR_HOSTNAME "$RM -f $W_DIR/tmp_test_file"
 			LOG_MSG "[INFO]:-Write test passed MIRROR_DATADIR on Segment host $MIRROR_HOSTNAME"
@@ -403,28 +410,29 @@ CHK_MIRROR_DIR () {
 		PRI_HOST=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content=${MIRROR_CONTENT};"`
 		ERROR_CHK $? "obtain primary hostname" 2
 		LOG_MSG "[INFO]:-Checking ssh access from $PRI_HOST to $MIRROR_HOSTNAME"
-		$SSH $PRI_HOST "$SSH $MIRROR_HOSTNAME \"hostname\""
+		$SSH $PRI_HOST "$SSH $MIRROR_HOSTNAME \"ls /tmp\"" > /dev/null 2>&1
 		ERROR_CHK $? "check inter host ssh access from $PRI_HOST to $MIRROR_HOSTNAME" 2	
 	done
-
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+	LOG_MSG "[INFO]:-Completed  host and directory checks" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CONFIG_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Commencing shutdown of Master Instance"
+	LOG_MSG "[INFO]:-Commencing shutdown of Master Instance" 1
 	if [ -f $MPPSTOP ];then
 		$MPPSTOP -qfa -d $MASTER_DATA_DIRECTORY	
 	else
 		ERROR_EXIT "[FATAL]:-Could not locate $MPPSTOP" 2
 	fi
-	LOG_MSG "[INFO]:-Starting Master instance in admin mode"
+	LOG_MSG "[INFO]:-Starting Master instance in admin mode" 1
 	if [ -f $MPPSTART ];then
 		$MPPSTART -qam -d $MASTER_DATA_DIRECTORY
 	else
 		ERROR_EXIT "[FATAL]:-Could not locate $MPPSTART" 2
 	fi
-	LOG_MSG "[INFO]:-Processing database $DEFAULTDB"
+	LOG_MSG "[INFO]:-Processing database $DEFAULTDB" 1
 	for MIRROR_SEG in "${MIRROR_ARRAY[@]}"
 	do
 		SET_VAR $MIRROR_SEG
@@ -436,26 +444,29 @@ CONFIG_CATALOG () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-MPP Instance Mirror Parameters"
-	LOG_MSG "[INFO]:------------------------------"
-	LOG_MSG "[INFO]:-MPP Master hostname               = $MASTER_HOSTNAME"
-	LOG_MSG "[INFO]:-MPP Master data directory         = $MASTER_DATA_DIRECTORY"
-	LOG_MSG "[INFO]:-MPP Master port                   = $MASTER_PORT"
-	if [ $BALANCE -eq 0 ];then
-	LOG_MSG "[INFO]:-MPP mirror type                   = Group"
+	LOG_MSG "[INFO]:-MPP Instance Mirror Parameters" 1
+	LOG_MSG "[INFO]:------------------------------" 1
+	LOG_MSG "[INFO]:-MPP Master hostname               = $MASTER_HOSTNAME" 1
+	LOG_MSG "[INFO]:-MPP Master data directory         = $MASTER_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-MPP Master port                   = $MASTER_PORT" 1
+	if [ x"" != x"$MIRROR_MACHINE_LIST_FILE" ];then
+	LOG_MSG "[INFO]:-MPP mirror type                   = Separate Hosts" 1
 	else
-	LOG_MSG "[INFO]:-MPP mirror type                   = Spread"
+	if [ $BALANCE -eq 0 ];then
+	LOG_MSG "[INFO]:-MPP mirror type                   = Group" 1
+	else
+	LOG_MSG "[INFO]:-MPP mirror type                   = Spread" 1
 	fi
-	LOG_MSG "[INFO]:-------------------------------"
-	LOG_MSG "[INFO]:-Mirror segment Instance List"
-	LOG_MSG "[INFO]:-------------------------------"
+	fi
+	LOG_MSG "[INFO]:-------------------------------" 1
+	LOG_MSG "[INFO]:-Mirror segment Instance List" 1
+	LOG_MSG "[INFO]:-------------------------------" 1
 	for MIRROR_SEG in "${MIRROR_ARRAY[@]}"
 	do
 		SET_VAR $MIRROR_SEG
 ##		MIRROR_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where dbid=${MIRROR_DBID};"`
-	LOG_MSG "[INFO]:-Host $MIRROR_HOSTNAME Segment directory $MIRROR_DATADIR Port $MIRROR_PORT"
+	LOG_MSG "[INFO]:-Host $MIRROR_HOSTNAME Segment directory $MIRROR_DATADIR Port $MIRROR_PORT" 1
 	done
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 	if [ $INTERACTIVE ];then
 		$ECHO  "Continue with MPP Instance mirror creation Yy/Nn>"
 		read REPLY
@@ -465,21 +476,23 @@ DISPLAY_PARAM () {
 }
 
 CHK_REPLY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ -z $REPLY ]; then
-		LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 		EXIT_STATUS=1
 		exit $EXIT_STATUS
 	fi
 	if [ $REPLY != Y ] && [ $REPLY != y ]; then
-		LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 		EXIT_STATUS=1
 		exit $EXIT_STATUS
 	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CREATE_MIRRORS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Commencing data directory synchronization, please wait.."
+	LOG_MSG "[INFO]:-Commencing data directory synchronization, please wait.." 1
 	for MIRROR_SEG in "${MIRROR_ARRAY[@]}"
 	do
 		SET_VAR $MIRROR_SEG
@@ -487,22 +500,23 @@ CREATE_MIRRORS () {
 		ERROR_CHK $? "obtain mirror hostname" 2
 		PRIMARY_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content=${MIRROR_CONTENT} and isprimary='t';"`
 		ERROR_CHK $? "obtain primary hostname" 2
-		LOG_MSG "[INFO]:-Commencing primary data directory copy $PRIMARY_HOSTNAME to $MIRROR_HOSTNAME"
 		PRIMARY_DATADIR=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content=$MIRROR_CONTENT and dbid<>${MIRROR_DBID};"`
 		ERROR_CHK $? "obtain primary data directory for $PRIMARY_HOSTNAME" 2
+		LOG_MSG "[INFO]:-Commencing primary data directory copy $PRIMARY_HOSTNAME to $MIRROR_HOSTNAME"
 		$TRUSTED_SHELL $PRIMARY_HOSTNAME "$TRUSTED_COPY -pr $PRIMARY_DATADIR ${MIRROR_HOSTNAME}:$MIRROR_DATADIR"
 		ERROR_CHK $? "copy data directory on $PRIMARY_HOSTNAME to $MIRROR_HOSTNAME" 2
 		ED_FILE ${MIRROR_DATADIR}/$PG_CONF "port=" "port=${MIRROR_PORT}" 0 $MIRROR_HOSTNAME
-		LOG_MSG "[INFO]:-Starting mirror segment in admin mode"
+		LOG_MSG "[INFO]:-Starting mirror segment in admin mode port $MIRROR_PORT $MIRROR_HOSTNAME" 1
 		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w -D $MIRROR_DATADIR -l ${MIRROR_DATADIR}.log -o \"-i -p $MIRROR_PORT \" start"
 		ERROR_CHK $? "start mirror segment port=$MIRROR_PORT host=$MIRROR_HOSTNAME" 2
-		LOG_MSG "[INFO]:-Updating $MPP_MPP_TABLE table for database $DB"
+		LOG_MSG "[INFO]:-Updating $MPP_MPP_TABLE table for database $DB" 1
 		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIRROR_PORT $DEFAULTDB -c \"update $MPP_MPP_TABLE set dbid=${MIRROR_DBID} where dbid<>${MIRROR_DBID};\""
 		ERROR_CHK $? "update $MPP_MPP_TABLE table on $MIRROR_HOSTNAME $MIRROR_DATADIR database $DB" 2
-		LOG_MSG "[INFO]:-Closing down mirror segment from admin mode"
+		LOG_MSG "[INFO]:-Closing down mirror segment from admin mode" 1
 		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w stop -D $MIRROR_DATADIR -m smart -l ${MIRROR_DATADIR}.log"
 		ERROR_CHK $? "close mirror segment $MIRROR_HOSTNAME $MIRROR_DATADIR" 2	
 	done
+	LOG_MSG "[INFO]:-Completed data directory synchronization" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -510,7 +524,7 @@ CREATE_MIRRORS () {
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
-        while getopts ":v'?'d:l:p:sam:!" opt;do
+        while getopts ":v'?'d:l:p:sam:!D" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
                 '?' ) USAGE ;;
@@ -522,13 +536,14 @@ trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 		s ) BALANCE=1 ;;
 		a ) unset INTERACTIVE ;;
 		m ) MIRROR_MACHINE_LIST_FILE=$OPTARG ;;
+		D ) DEBUG_LEVEL=1 ;;
                 * ) UNKNOWN_OPTION ;;
         esac
         done
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
 	if [ $EXISTS -eq 1 ]; then
-		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
 		EXIT_STATUS=1
 else
 	LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
@@ -536,21 +551,19 @@ else
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
-if [ x"" == x"$MIRROR_MASTER_DATA_DIRECTORY" ];then
-	ERROR_EXIT "[FATAL]:-Must supply -d <MASTER_DATA_DIRECTORY> option"
-else
+if [ x"" != x"$MIRROR_MASTER_DATA_DIRECTORY" ];then
 	MASTER_DATA_DIRECTORY=$MIRROR_MASTER_DATA_DIRECTORY
 fi
 if [  ! $INTERACTIVE ] && [ x"" == x"$MIRROR_MACHINE_LIST_FILE" ];then
 	ERROR_EXIT "[FATAL]:-Can only use -a option if -m <mirror host list file> used" 2
 else
 	if [ ! $INTERACTIVE ];then
-		LOG_MSG "[INFO]:-Non-interactive mirror build from file initiated"
+		LOG_MSG "[INFO]:-Non-interactive mirror build from file initiated" 1
 	else
-		LOG_MSG "[INFO]:-Interactive build from file initiated"
+		LOG_MSG "[INFO]:-Interactive build initiated" 1
 	fi
 	if [ $BALANCE -eq 1 ] && [ x"" != x"$MIRROR_MACHINE_LIST_FILE" ];then
-		LOG_MSG "[INFO]:-Overriding mirror spread request"
+		LOG_MSG "[INFO]:-Overriding mirror spread request" 1
 		BALANCE=0
 	fi
 fi
@@ -564,10 +577,10 @@ CONFIG_CATALOG
 CREATE_MIRRORS
 GET_STANDBY_COUNT
 if [ $STANDBY_COUNT -ne 0 ];then
-	LOG_MSG "[INFO]:-Standby host is configured on the MPP Instance, will sync standby host"
+	LOG_MSG "[INFO]:-Standby host is configured on the MPP Instance, will sync standby host" 1
 	GET_STANDBY_DETAILS
 	STANDBY_HOSTNAME=`$ECHO $STANDBY_ARRAY|$CUT -d'|' -f1`
-	LOG_MSG "[INFO]:-Obtained standby hostname as $STANDBY_HOSTNAME"
+	LOG_MSG "[INFO]:-Obtained standby hostname as $STANDBY_HOSTNAME" 1
 	if [ -f $MPPINITSTANDBY ];then
 		$MPPSTOP -qam -d $MASTER_DATA_DIRECTORY
 		$MPPSTART -qa -d $MASTER_DATA_DIRECTORY
@@ -576,13 +589,13 @@ if [ $STANDBY_COUNT -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Could not locate $MPPINITSTANDBY" 2
 	fi
 else
-	LOG_MSG "[INFO]:-Commencing shutdown of Master instance from admin mode"
+	LOG_MSG "[INFO]:-Commencing shutdown of Master instance from admin mode" 1
 	$MPPSTOP -qam -d $MASTER_DATA_DIRECTORY
-	LOG_MSG "[INFO]:-Commencing startup of mirrored Instance"
+	LOG_MSG "[INFO]:-Commencing startup of mirrored Instance" 1
 	$MPPSTART -qa -d $MASTER_DATA_DIRECTORY
 fi
-LOG_MSG "[INFO]:-------------------------------------------------"
-LOG_MSG "[INFO]:-Successfully configured mirror segment instances"
-LOG_MSG "[INFO]:-Run mppstate.sh -c to display primary/mirror configuration"
+LOG_MSG "[INFO]:-------------------------------------------------" 1
+LOG_MSG "[INFO]:-Successfully configured mirror segment instances" 1
+LOG_MSG "[INFO]:-Run mppstate.sh -c to display primary/mirror configuration" 1
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS

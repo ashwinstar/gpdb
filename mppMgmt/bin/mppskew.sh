@@ -60,7 +60,6 @@ DISTRIB=0
 SEG_TYPE=0
 DO_CHILD=0
 RESPONSE_TIME=0
-DEBUG_LEVEL=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -218,10 +217,10 @@ GET_NODE_COUNT () {
 	LOG_MSG  "[INFO]:-Waiting for results" 1
 	while [ $SEGCOUNT -ne `$WC -l $TMPFILE|$AWK '{print $1}'` ]
 	do
-		$NOLINE_ECHO ".\c"
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		$SLEEP 1
 	done
-	$ECHO
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 	REC_COUNT=0
 	for RECS in `cat $TMPFILE|$CUT -d'|' -f1`
 	do
@@ -272,9 +271,11 @@ GET_NODE_COUNT () {
 	if [ $PARTITIONED == 't' ];then
 	LOG_MSG "[INFO]:-Table type                           = Partitioned and $TAB_TYPE_TXT"
 		PARENT_TABLE_COUNT=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from only $TARGETTBL;"`
-		LOG_MSG "[INFO]:-Parent table physically contains $PARENT_TABLE_COUNT records"	 1
+		TOTAL_TXT="(inc child tables)"
+	LOG_MSG "[INFO]:-Parent table physical record count   = $PARENT_TABLE_COUNT"	 1
 	else
 	LOG_MSG "[INFO]:-Table type                           = Un-Partitioned and $TAB_TYPE_TXT" 1
+		TOTAL_TXT="                  "
 	fi
 	if [ $TAB_TYPE -eq 1 ];then
 	LOG_MSG "[INFO]:-Parent table list                    = ${TAB_PARENT_NAME[@]}" 1
@@ -283,9 +284,9 @@ GET_NODE_COUNT () {
 	LOG_MSG "[INFO]:-DDL number of Distribution Column(s) = $DISTRIB_COLS" 1
 	LOG_MSG "[INFO]:-Distribution Column Name(s)          = `$ECHO ${DIS_COL_ARRAY[@]}`" 1
 	LOG_MSG "[INFO]-------------------------------------------------------------" 1
-	LOG_MSG "[INFO]:-Total records                        = $REC_COUNT" 1
+	LOG_MSG "[INFO]:-Total records $TOTAL_TXT     = $REC_COUNT" 1
 	LOG_MSG "[INFO]-------------------------------------------------------------" 1
-	LOG_MSG "[INFO]:-Distribution for $TYPE_TEXT" 1
+	LOG_MSG "[INFO]:-Skew calculation target type         = $TYPE_TEXT" 1
 	LOG_MSG "[INFO]-------------------------------------------------------------" 1
 	LOG_MSG "[INFO]:-Skew result" 1
 	LOG_MSG "[INFO]:-Maximum Record Count                 = $MaxSkew" 1

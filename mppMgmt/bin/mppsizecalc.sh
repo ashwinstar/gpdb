@@ -55,7 +55,6 @@ DISPLAY_TYPE=0
 SIZE_TYPE=0 #0=table 1=index
 SIZE_TARGET=0 #0=primary and mirror 1=primary only 2=mirror only
 DO_CHILD=0
-DEBUG_LEVEL=0
 SKIP_INDEX=0
 #***********************************************************************************
 USAGE () {
@@ -84,7 +83,11 @@ else
 	$ECHO "      Logging options:"
 	$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
 	$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
+	$ECHO "      -D, set log output to debug level, shows all function calls"
 	$ECHO 
+	$ECHO "      Connection options:"
+	$ECHO "      -d, <Master instance directory> name of alternative Master instance to run against [optional]"
+	$ECHO
 	$ECHO "      Size options:"
 	$ECHO "      -t, <table name> name of table to obtain size data [mandatory if -x not supplied]"
 	$ECHO "      -s, <scale> valid values b (Bytes) k (KBytes) m (MBytes) g (GBytes) [default:- ${SCALE}]"
@@ -98,9 +101,6 @@ else
 	$ECHO "      -p, obtain size details for primary segment instance only [default both]"
 	$ECHO "      -m, obtain size details for mirror segment instances only [default both]"
 	$ECHO "      -h, display size of child tables if -t <table name> is a partitioned table"
-	$ECHO
-	$ECHO "      Connection options:"
-	$ECHO "      -d, <Master instance directory> name of alternative Master instance to run against [optional]"
 	$ECHO
 	$ECHO "      Return codes:"
 	$ECHO "      0 No problems encountered with requested operation"
@@ -179,10 +179,10 @@ WAIT_COMPLETE () {
 	if [ $VERBOSE ];then $ECHO "Waiting for results";fi
 	while [ $LINECOUNT -ne `$WC -l $TMPFILE|$AWK '{print $1}'` ]
 	do
-		if [ $VERBOSE ];then $NOLINE_ECHO ".\c";fi
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		$SLEEP 1
 	done
-	$ECHO
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 }
 	
 SEND_TABLE_SIZE_REQUEST () {
@@ -313,6 +313,7 @@ DISPLAY_SIZE () {
 			   LOG_MSG "[INFO]:-Size calculation type = $TYPE_TEXT" 1
 	if [ $VERBOSE ];then
 			   LOG_MSG "[INFO]:-Database name         = $QD_DBNAME" 1
+			   LOG_MSG "[INFO]:-Schema name           = $SCHEMA_NAME" 1
 			   LOG_MSG "[INFO]:-Table name            = $TABLE_NAME" 1
 		case $SIZE_TYPE in 
 			0) if [ $PARTITIONED = 't' ];then

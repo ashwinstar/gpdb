@@ -88,6 +88,7 @@ USAGE () {
 		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
 		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
 		$ECHO "      -a, don't ask to confirm startup [default:- ask]"
+		$ECHO "      -D, set log output to debug level, shows all function calls"
 		$ECHO
 		$ECHO "      Connection options:"
 		$ECHO "      -d, <Master instance directory> name of alternative Master instance to start up [optional]"
@@ -146,35 +147,40 @@ DISPLAY_PARAM () {
 
 
 CHK_QD_DB_RUNNING () {
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [  -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
-			LOG_MSG "[WARN]:-$PG_PID file exists on Master, checking if recovery startup required" 
+			LOG_MSG "[WARN]:-$PG_PID file exists on Master, checking if recovery startup required" 1
 			RECOVERY_STARTUP
 		fi
+		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 RECOVERY_STARTUP () {
-	LOG_MSG "[INFO]:-Commencing recovery startup checks"
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Commencing recovery startup checks" 1
 	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 	GET_PG_PID_ACTIVE $MASTER_PORT
 	if [ $PID -ne 0 ];then	
 		ERROR_EXIT "[FATAL]:-Master instance process running" 2
 	fi
-	LOG_MSG "[INFO]:-No Master instance process, entering recovery startup mode"
-	LOG_MSG "[INFO]:-Clearing Master instance lock files"
+	LOG_MSG "[INFO]:-No Master instance process, entering recovery startup mode" 1
+	LOG_MSG "[INFO]:-Clearing Master instance lock files" 1
 	$RM -f /tmp/.s.PGSQL.${MASTER_PORT}.lock /tmp/.s.PGSQL.${MASTER_PORT}
-	LOG_MSG "[INFO]:-Clearing Master instance $PG_PID file"
+	LOG_MSG "[INFO]:-Clearing Master instance $PG_PID file" 1
 	$RM -f ${MASTER_DATA_DIRECTORY}/$PG_PID
 	START_ADMIN
-	LOG_MSG "[INFO]:-Commencing forced instance shutdown"
+	LOG_MSG "[INFO]:-Commencing forced instance shutdown" 1
 	$STOP_PROG -faz
 	GET_DETAILS
 	PROCESS_STARTUP
 	EXIT_STATUS=1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 	exit $EXIT_STATUS	
 }
 
 SWITCH_MASTER_LOG () {
-	LOG_MSG "[INFO]:-Moving master segment log file to ${MASTER_DATA_DIRECTORY}.log_$CUR_DATE"
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Moving master segment log file to ${MASTER_DATA_DIRECTORY}.log_$CUR_DATE" 1
 	if [ -f ${MASTER_DATA_DIRECTORY}.log ];then
 		if [ -f ${MASTER_DATA_DIRECTORY}.log_$CUR_DATE ];then
 			LOG_MSG "[INFO]:-Master log file has been previously switched today"
@@ -188,14 +194,16 @@ SWITCH_MASTER_LOG () {
 			ERROR_CHK $? "complete move of master segment log file" 1
 		fi
 	else
-		LOG_MSG "[WARN]:-No current master segment log file, ignoring log file switch request"
+		LOG_MSG "[WARN]:-No current master segment log file, ignoring log file switch request" 1
 		EXIT_STATUS=1
 	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_DETAILS () {
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		export PGPORT=$MASTER_PORT
-		LOG_MSG "[INFO]:-Starting Master instance in admin mode"
+		LOG_MSG "[INFO]:-Starting Master instance in admin mode" 1
 		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT"  start >/dev/null 2>&1
 		ERROR_CHK $? "startup Master instance" 2
 		READ_CHK
@@ -222,16 +230,18 @@ GET_DETAILS () {
 		ERROR_CHK $? "obtain lc_numeric info" 1
 		LOG_MSG "[INFO]:-Master lc_numeric=$LC_NUMERIC"
 		#Shutdown the QD database
-		LOG_MSG "[INFO]:-Shutting down Master instance"
+		LOG_MSG "[INFO]:-Shutting down Master instance" 1
 		$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE	 >/dev/null 2>&1
 		ERROR_CHK $? "shutdown Master instance" 2
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 START_ADMIN () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [ x"" != x"$SWITCH_LOG" ];then
 			SWITCH_MASTER_LOG
 		fi
-		LOG_MSG "[INFO]:-Starting master instance in admin mode"
+		LOG_MSG "[INFO]:-Starting master instance in admin mode" 1
 		export PGPORT=$MASTER_PORT
 		env PGOPTIONS="-c mpp_session_role=utility" $PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT " start
 		RETVAL=$?
@@ -239,37 +249,38 @@ START_ADMIN () {
 				$TAIL ${MASTER_DATA_DIRECTORY}.log|$TEE -a $LOG_FILE
 				ERROR_EXIT "[FATAL]:-Could not start master instance in admin mode" 2
 		fi
-		LOG_MSG "[INFO]:-Successfully started master instance in admin mode"
+		LOG_MSG "[INFO]:-Successfully started master instance in admin mode" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 
 PROMPT_CONTINUE () {
-		LOG_MSG "[INFO]:-Master instance parameters:"
-		LOG_MSG "[INFO]:----------------------------"
-		LOG_MSG "[INFO]:-Database                   = $QD_DBNAME"
-		LOG_MSG "[INFO]:-Master Port                = $MASTER_PORT"
-		LOG_MSG "[INFO]:-Master directory           = $MASTER_DATA_DIRECTORY"
+		LOG_MSG "[INFO]:-Master instance parameters:" 1
+		LOG_MSG "[INFO]:----------------------------" 1
+		LOG_MSG "[INFO]:-Database                   = $QD_DBNAME" 1
+		LOG_MSG "[INFO]:-Master Port                = $MASTER_PORT" 1
+		LOG_MSG "[INFO]:-Master directory           = $MASTER_DATA_DIRECTORY" 1
 		if [ x"" == x"$SWITCH_LOG" ];then
-		LOG_MSG "[INFO]:-Master switch log file     = Off"
+		LOG_MSG "[INFO]:-Master switch log file     = Off" 1
 		else
-		LOG_MSG "[INFO]:-Master switch log file     = On"
+		LOG_MSG "[INFO]:-Master switch log file     = On" 1
 			if [ -f ${MASTER_DATA_DIRECTORY}.log_$CUR_DATE ];then
-			LOG_MSG "[INFO]:-Switch type                = Append"
+			LOG_MSG "[INFO]:-Switch type                = Append" 1
 			else
-			LOG_MSG "[INFO]:-Switch type                = Move"
+			LOG_MSG "[INFO]:-Switch type                = Move" 1
 			fi
 		fi
 		if [ x"" == x"$SWITCH_QE_LOG" ];then
-		LOG_MSG "[INFO]:-Segment switch log file    = Off"
+		LOG_MSG "[INFO]:-Segment switch log file    = Off" 1
 		else
-		LOG_MSG "[INFO]:-Segment switch log file    = On"
+		LOG_MSG "[INFO]:-Segment switch log file    = On" 1
 		fi
 		if [ x"" != x"$START_SYNC" ] && [ $STANDBY_COUNT -ne 0 ];then
-		LOG_MSG "[INFO]:-Master standby start       = On"
+		LOG_MSG "[INFO]:-Master standby start       = On" 1
 		else
-		LOG_MSG "[INFO]:-Master standby start       = Off"
+		LOG_MSG "[INFO]:-Master standby start       = Off" 1
 		fi
-		LOG_MSG "[INFO]:-Segment instances that will be started:"
+		LOG_MSG "[INFO]:-Segment instances that will be started:" 1
 		LOG_MSG "[INFO]:----------------------------------------"
 		COUNT=1
 		for QNODE in "${QE_ARRAY[@]}"
@@ -280,9 +291,9 @@ PROMPT_CONTINUE () {
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
 				if [ "$QE_VALID" == "t" ]; then
-					LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME segment = $QE_DIR port = $QE_PORT"
+					LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME segment = $QE_DIR port = $QE_PORT" 1
 				else
-					LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME segment = $QE_DIR port = $QE_PORT invalid will not start"
+					LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME segment = $QE_DIR port = $QE_PORT invalid will not start" 1
 				fi
 				((COUNT=$COUNT+1))
 		done
@@ -290,16 +301,18 @@ PROMPT_CONTINUE () {
 		$ECHO "Continue with MPP instance startup yY|nN >"
 		read REPLY
 		if [ -z $REPLY ]; then
-				LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 				exit 1
 		fi
 		if [ $REPLY != Y ] && [ $REPLY != y ]; then
-				LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 				exit 1
 		fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }	
 
 PROCESS_STARTUP () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ x"" != x"$SWITCH_LOG" ];then
 		SWITCH_MASTER_LOG
 	fi
@@ -340,41 +353,41 @@ PROCESS_STARTUP () {
 						ERROR_CHK $? "clear down ${QE_DIR}.log" 1
 					fi
 				fi
-				LOG_MSG "[INFO]:-Starting Segment instance $QE_NAME directory $QE_DIR"
+				LOG_MSG "[INFO]:-Starting Segment instance $QE_NAME directory $QE_DIR" 1
 				$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" 
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 					((FAILED_COUNT=$FAILED_COUNT+1))
-					LOG_MSG "[WARN]:-Startup request returned error code $RETVAL"
-					LOG_MSG "[INFO]:-Start diagnostic data dump"
-					LOG_MSG "[INFO]:-------------------------------------------------"
-					LOG_MSG "[INFO]:-Command string called"
-					LOG_MSG "[INFO]:-$TRUSTED_SHELL $QE_NAME ${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" 
-					LOG_MSG "[INFO]:-Tail'ing Segment instance log file"
+					LOG_MSG "[WARN]:-Startup request returned error code $RETVAL" 1
+					LOG_MSG "[INFO]:-Start diagnostic data dump" 1
+					LOG_MSG "[INFO]:-------------------------------------------------" 1
+					LOG_MSG "[INFO]:-Command string called" 1
+					LOG_MSG "[INFO]:-$TRUSTED_SHELL $QE_NAME ${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start"  1
+					LOG_MSG "[INFO]:-Tail'ing Segment instance log file" 1
 					$TRUSTED_SHELL $QE_NAME "$LS $QE_DIR" > /dev/null 2>&1
 					if [ $? -ne 0 ]; then
-						LOG_MSG "[WARN]:-Segment directory $QE_DIR on $QE_NAME does not exist"
+						LOG_MSG "[WARN]:-Segment directory $QE_DIR on $QE_NAME does not exist" 1
 						EXIT_STATUS=1
 					else
 						$TRUSTED_SHELL $QE_NAME "$TAIL ${QE_DIR}.log"|$TEE -a $LOG_FILE
-						LOG_MSG "[WARN]:-Issue with $TRUSTED_SHELL to $QE_NAME for $QE_DIR database"
+						LOG_MSG "[WARN]:-Issue with $TRUSTED_SHELL to $QE_NAME for $QE_DIR database" 1
 						EXIT_STATUS=1
 					fi
-					LOG_MSG "[INFO]:-End of diagnostic data dump"
-					LOG_MSG "[INFO]:-------------------------------------------------"
+					LOG_MSG "[INFO]:-End of diagnostic data dump" 1
+					LOG_MSG "[INFO]:-------------------------------------------------" 1
 				else
-					LOG_MSG "[INFO]:-Successfully started Segment instance $QE_NAME on port=$QE_PORT"
+					LOG_MSG "[INFO]:-Successfully started Segment instance $QE_NAME on port=$QE_PORT" 1
 				fi
 				#Now check status of postmaster on the segment instance
 				LOG_MSG "[INFO]:-Checking status via pg_ctl"
 				RET_TEXT=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};$PG_CTL status -D $QE_DIR"`
 				RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
 				if [ $RUNNING -ne 0 ]; then
-					LOG_MSG "[WARN]:-Command pg_ctl reports $QE_NAME for directory $QE_DIR port $QE_PORT not running"
+					LOG_MSG "[WARN]:-Command pg_ctl reports $QE_NAME for directory $QE_DIR port $QE_PORT not running" 1
 					EXIT_STATUS=1
 				fi
 				if [ $RUNNING -eq 0 ] && [ $RETVAL -ne 0 ]; then
-					LOG_MSG "[WARN]:-Could not start instance, BUT pg_ctl reports instance active, check instance log file via mppstate.sh -e"
+					LOG_MSG "[WARN]:-Could not start instance, BUT pg_ctl reports instance active, check instance log file via mppstate.sh -e" 1
 					EXIT_STATUS=1
 				fi
 				if [ $RUNNING -eq 0 ] && [ $RETVAL -eq 0 ] && [ "$WAIT" == "-w" ]; then
@@ -395,12 +408,12 @@ PROCESS_STARTUP () {
 				((QE_START_COUNT=$QE_START_COUNT+1))
 				((INDEX=$INDEX+1))
 				else
-					LOG_MSG "[WARN]:-Segment instance $QE_NAME directory $QE_DIR invalid will not start"
+					LOG_MSG "[WARN]:-Segment instance $QE_NAME directory $QE_DIR invalid will not start" 1
 					EXIT_STATUS=1
 				fi
 		done
 fi
-		LOG_MSG "[INFO]:-Starting Master instance $QD_NAME directory $MASTER_DATA_DIRECTORY"
+		LOG_MSG "[INFO]:-Starting Master instance $QD_NAME directory $MASTER_DATA_DIRECTORY" 1
 		if [ $WAIT == "-W" ]; then
 				$SLEEP 2
 		fi
@@ -411,48 +424,51 @@ fi
 		RET_TEXT=`$PG_CTL status -D $MASTER_DATA_DIRECTORY`
 		RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
 		if [ $RUNNING -ne 0 ]; then
-			LOG_MSG "[WARN]:-Command pg_ctl reports $QD_NAME for directory $MASTER_DATA_DIRECTORY port $MASTER_PORT not running"
+			LOG_MSG "[WARN]:-Command pg_ctl reports $QD_NAME for directory $MASTER_DATA_DIRECTORY port $MASTER_PORT not running" 1
 						EXIT_STATUS=1
 		else
 			LOG_MSG "[INFO]:-Command pg_ctl reports Master $QD_NAME instance active"
 		fi
 		$PSQL -p $MASTER_PORT $DEFAULTDB -c"\l" >/dev/null 2>&1
 		if [ $FAILED_COUNT -ne 0 ]; then
-			LOG_MSG "[WARN]:-Failed to start $FAILED_COUNT of a total of $QE_COUNT Segment instances"
+			LOG_MSG "[WARN]:-Failed to start $FAILED_COUNT of a total of $QE_COUNT Segment instances" 1
 		else
 			LOG_MSG "[INFO]:----------------------------------------------------------"
 			LOG_MSG "[INFO]:-Successfully started the Master instance"
 			if [ x"" != x"$START_SYNC" ] && [ $STANDBY_COUNT -ne 0 ];then
 				if [ $SYNC_STATUS -ne 0 ];then
-					LOG_MSG "[WARN]:-Failed to start Master standby instance"
+					LOG_MSG "[WARN]:-Failed to start Master standby instance" 1
 				else
-					LOG_MSG "[INFO]:-Successfully started the Master standby instance"
+					LOG_MSG "[INFO]:-Successfully started the Master standby instance" 1
 				fi
 			fi
-				LOG_MSG "[INFO]:-Successfully started $QE_START_COUNT Segment instances"
+				LOG_MSG "[INFO]:-Successfully started $QE_START_COUNT Segment instances" 1
 		fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 COLLATE_ERROR () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	COL_TYPE=`$ECHO $1|$CUT -d":" -f1`
 	COL_SEG=`$ECHO $1|$CUT -d":" -f2`
 	COL_PORT=`$ECHO $1|$CUT -d":" -f3`
 	COL_QD=`$ECHO $1|$CUT -d":" -f4`
 	COL_QE=`$ECHO $1|$CUT -d":" -f5`	
-	LOG_MSG "[WARN]:-*******************************************"
-	LOG_MSG "[WARN]:-Master instance $COL_TYPE variation"
-	LOG_MSG "[WARN]:-Segment instance $COL_SEG on port $COL_PORT"
-	LOG_MSG "[WARN]:-Master  $COL_TYPE = $COL_QD"
-	LOG_MSG "[WARN]:-Segment $COL_TYPE = $COL_QE"	
-	LOG_MSG "[WARN]:-*******************************************"
+	LOG_MSG "[WARN]:-*******************************************" 1
+	LOG_MSG "[WARN]:-Master instance $COL_TYPE variation" 1
+	LOG_MSG "[WARN]:-Segment instance $COL_SEG on port $COL_PORT" 1
+	LOG_MSG "[WARN]:-Master  $COL_TYPE = $COL_QD" 1
+	LOG_MSG "[WARN]:-Segment $COL_TYPE = $COL_QE"	 1
+	LOG_MSG "[WARN]:-*******************************************" 1
 	EXIT_STATUS=1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 #******************************************************************************
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt'?'abqyznsml:d:e!" opt;do
+		while getopts ":vt'?'abqyznsml:d:e!D" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -470,6 +486,7 @@ if [ $# -ne 0 ]; then
 						b ) CHK_STANDBY=1 ;;
 						! ) SCRIPT_USAGE=1 
 						    USAGE ;;
+						D ) DEBUG_LEVEL=1 ;;
 						* ) USAGE ;;
 				esac
 		done	
@@ -477,7 +494,7 @@ fi
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
 	if [ $EXISTS -eq 1 ]; then
-		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
 	else
 		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
 	fi

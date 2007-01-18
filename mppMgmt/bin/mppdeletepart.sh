@@ -97,6 +97,7 @@ USAGE () {
 		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
 		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
 		$ECHO "      -a, don't ask to confirm generation process [default:- ask]"
+		$ECHO "      -D, set log output to debug level, shows all function calls"
 		$ECHO
 		$ECHO "      Connection options:"
 		$ECHO "      -d, <Master instance directory> name of alternative Master instance to run against [optional]"
@@ -127,53 +128,54 @@ UNKNOWN_OPTION () {
 }
 
 PROMPT_CONTINUE () {
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		SUFFIX_COUNT=${#SUFFIX_ARRAY[@]}
-		LOG_MSG "[INFO]:-Partitioning deletion parameters:"
-		LOG_MSG "[INFO]:----------------------------------"
-		LOG_MSG "[INFO]:-Database                   = $QD_DBNAME"
-		LOG_MSG "[INFO]:-Parent table               = $PARENT_TABLE_NAME"
-		LOG_MSG "[INFO]:-Constraint type obtained   = $TYPE_NAME"
-	 	LOG_MSG "[INFO]:-Current max rule date      = $MAX_DATE"
-		LOG_MSG "[INFO]:-Current min rule date      = $MIN_DATE"
+		LOG_MSG "[INFO]:-Partitioning deletion parameters:" 1
+		LOG_MSG "[INFO]:----------------------------------" 1
+		LOG_MSG "[INFO]:-Database                   = $QD_DBNAME" 1
+		LOG_MSG "[INFO]:-Parent table               = $PARENT_TABLE_NAME" 1
+		LOG_MSG "[INFO]:-Constraint type obtained   = $TYPE_NAME" 1
+	 	LOG_MSG "[INFO]:-Current max rule date      = $MAX_DATE" 1
+		LOG_MSG "[INFO]:-Current min rule date      = $MIN_DATE" 1
 		case $TYPE_NAME in
 			hour|daily) WINDOW_TEXT="Day(s)" ;;
 			week) WINDOW_TEXT="Week(s)" ;;
 			month) WINDOW_TEXT="Month(s)" ;;
 		esac	
-		LOG_MSG "[INFO]:-Window to keep on line     = $DELETION_WINDOW $WINDOW_TEXT"
+		LOG_MSG "[INFO]:-Window to keep on line     = $DELETION_WINDOW $WINDOW_TEXT" 1
 		if [ ${#CHILD_IS_PARENT_ARRAY[@]} -ne 0 ];then
-		LOG_MSG "[WARN]:-Nested partitioning        = Detected"
-		LOG_MSG "[WARN]:-Child table delete mode    = Forced cascade"
-		LOG_MSG "[INFO]:-Child tables that are parents"
+		LOG_MSG "[WARN]:-Nested partitioning        = Detected" 1
+		LOG_MSG "[WARN]:-Child table delete mode    = Forced cascade" 1
+		LOG_MSG "[INFO]:-Child tables that are parents" 1
 		for P_NAME in ${CHILD_IS_PARENT_ARRAY[@]}
 		do
-		LOG_MSG "[INFO]:-$P_NAME is parent"
+		LOG_MSG "[INFO]:-$P_NAME is parent" 1
 		done
 		fi
 		if [ $ARCHIVE -eq 0 ];then
-		LOG_MSG "[INFO]:-Archive records            = Off"
+		LOG_MSG "[INFO]:-Archive records            = Off" 1
 		if [ ${#CHILD_WITH_REC_ARRAY[@]} -ne 0 ];then
-			LOG_MSG "[INFO]:-----------------WARNING-------------------"
-			LOG_MSG "[WARN]:-Child tables have records"
-			LOG_MSG "[WARN]:-Records in child tables will be DELETED"
-			LOG_MSG "[INFO]:-To save records abort this current session"
-			LOG_MSG "[INFO]:-Then use -s <archive tablename> option"
-			LOG_MSG "[INFO]:-------------------------------------------"
+			LOG_MSG "[INFO]:-----------------WARNING-------------------" 1
+			LOG_MSG "[WARN]:-Child tables have records" 1
+			LOG_MSG "[WARN]:-Records in child tables will be DELETED" 1
+			LOG_MSG "[INFO]:-To save records abort this current session" 1
+			LOG_MSG "[INFO]:-Then use -s <archive tablename> option" 1
+			LOG_MSG "[INFO]:-------------------------------------------" 1
 			EXIT_STATUS=1
 		fi
 		else
-		LOG_MSG "[INFO]:-Archive records            = On"
-		LOG_MSG "[INFO]:-Archive table              = $ARCHIVE_TABLE"
+		LOG_MSG "[INFO]:-Archive records            = On" 1
+		LOG_MSG "[INFO]:-Archive table              = $ARCHIVE_TABLE" 1
 		fi
-		LOG_MSG "[INFO]:-Existing child table count = $CHILD_NAME_ARRAY_COUNT"
-		LOG_MSG "[INFO]:-Existing child rule count  = $CHILD_RULE_ARRAY_COUNT"
-		LOG_MSG "[INFO]:-Existing child index count = $CHILD_INDEX_ARRAY_COUNT"
-		LOG_MSG "[INFO]:-Delete child table count   = ${#CHILD_DELETE_ARRAY[@]}"
-		LOG_MSG "[INFO]:-Delete child table name list"
-		LOG_MSG "[INFO]:-----------------------------"
+		LOG_MSG "[INFO]:-Existing child table count = $CHILD_NAME_ARRAY_COUNT" 1
+		LOG_MSG "[INFO]:-Existing child rule count  = $CHILD_RULE_ARRAY_COUNT" 1
+		LOG_MSG "[INFO]:-Existing child index count = $CHILD_INDEX_ARRAY_COUNT" 1
+		LOG_MSG "[INFO]:-Delete child table count   = ${#CHILD_DELETE_ARRAY[@]}" 1
+		LOG_MSG "[INFO]:-Delete child table name list" 1
+		LOG_MSG "[INFO]:-----------------------------" 1
 		for C_NAME in ${CHILD_DELETE_ARRAY[@]}
 		do
-		LOG_MSG "[INFO]:-$C_NAME"
+		LOG_MSG "[INFO]:-$C_NAME" 1
 		done
 		$ECHO
 		if [ ${#CHILD_WITH_REC_ARRAY[@]} -ne 0 ];then
@@ -183,13 +185,14 @@ PROMPT_CONTINUE () {
 		fi
 		read REPLY
 		if [ -z $REPLY ]; then
-				LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 				exit 1
 		fi
 		if [ $REPLY != Y ] && [ $REPLY != y ]; then
-				LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 				exit 1
 		fi
+		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }	
 
 CHK_PARAM () {
@@ -205,7 +208,7 @@ CHK_PARAM () {
 		fi
 	fi	
 	if [ x"" != x"$ARCHIVE_TABLE" ];then
-		LOG_MSG "[INFO]:-Archive table $ARCHIVE_TABLE supplied, will secure records prior to deletion"
+		LOG_MSG "[INFO]:-Archive table $ARCHIVE_TABLE supplied, will secure records prior to deletion" 1
 		ARCHIVE=1
 		if [ `$ECHO $ARCHIVE_TABLE|$GREP -c "\."` -eq 1 ];then
 			ARCHIVE_SCHEMA=`$ECHO $ARCHIVE_TABLE|$CUT -d"." -f1`
@@ -214,8 +217,8 @@ CHK_PARAM () {
 			ERROR_EXIT "[FATAL]:-Table name supplied via -s not prefixed with schema name" 2
 		fi
 		if [ $PARENT_TABLE_NAME == $ARCHIVE_TABLE ];then
-			LOG_MSG "[FATAL]:-Cannot secure records into the parent table"
-			LOG_MSG "[INFO]:-Create a new table like the parent table"
+			LOG_MSG "[FATAL]:-Cannot secure records into the parent table" 1
+			LOG_MSG "[INFO]:-Create a new table like the parent table" 1
 			ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		fi
 	fi	
@@ -259,10 +262,10 @@ VALIDATE_PROCESS () {
         TYPE_NAME=`$ECHO $CHILD_NAME|$AWK -F"_" '{print $NF}'`
 	case $TYPE_NAME in
 		hour|daily|week|month )
-			LOG_MSG "[INFO]:-Partition type is $TYPE_NAME"
+			LOG_MSG "[INFO]:-Partition type is $TYPE_NAME" 1
 			;;
 		range|list )
-			LOG_MSG "[INFO]:-Partition type is $TYPE_NAME"
+			LOG_MSG "[INFO]:-Partition type is $TYPE_NAME" 1
 			ERROR_EXIT "[FATAL]:-Unable to process this partitioning type at present" 2
 			;;
 		* )
@@ -278,14 +281,14 @@ GATHER_INFO () {
 	CHILD_NAME_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select relname from pg_class where oid in (select inhrelid from pg_inherits where inhparent in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'))) order by relname;"`)
 	ERROR_CHK $? "child table list" 2
 	CHILD_NAME_ARRAY_COUNT=${#CHILD_NAME_ARRAY[@]}
-	LOG_MSG "[INFO]:-Table $TABLE_NAME has $CHILD_NAME_ARRAY_COUNT child tables"
-	LOG_MSG "[INFO]:-Checking for rules on child tables"
+	LOG_MSG "[INFO]:-Table $TABLE_NAME has $CHILD_NAME_ARRAY_COUNT child tables" 1
+	LOG_MSG "[INFO]:-Checking for rules on child tables" 1
 	CHILD_RULE_ARRAY_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select count(*) from pg_rules where tablename='$TABLE_NAME' and schemaname='${SCHEMA_NAME}';"`
 	ERROR_CHK $? "obtain count of number of rules" 2
 	if [ $CHILD_RULE_ARRAY_COUNT -ne 0 ];then
-		LOG_MSG "[INFO]:-Table $TABLE_NAME has $CHILD_RULE_ARRAY_COUNT rules"
+		LOG_MSG "[INFO]:-Table $TABLE_NAME has $CHILD_RULE_ARRAY_COUNT rules" 1
 	else
-		LOG_MSG "[WARN]:-Table $TABLE_NAME has $CHILD_RULE_ARRAY_COUNT rules"
+		LOG_MSG "[WARN]:-Table $TABLE_NAME has $CHILD_RULE_ARRAY_COUNT rules" 1
 		EXIT_STATUS=1
 	fi
 	for C_NAME in ${CHILD_NAME_ARRAY[@]}
@@ -298,23 +301,23 @@ GATHER_INFO () {
 		CHILD_IS_PARENT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relhassubclass from pg_class where relname = '$CHILD_TAB_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 		ERROR_CHK $? "obtain has sub class for $C_NAME" 1
 		if [ $CHILD_IS_PARENT == 't' ];then
-			LOG_MSG "[WARN]:-Child table $C_NAME is also a parent"
+			LOG_MSG "[WARN]:-Child table $C_NAME is also a parent" 1
 			EXIT_STATUS=1
 			CHILD_IS_PARENT_ARRAY=(${CHILD_IS_PARENT_ARRAY[@]} $C_NAME)
 		fi
 	done
 	if [ ${#CHILD_IS_PARENT_ARRAY[@]} -ne 0 ] && [ $FORCE_DELETE -ne 1 ];then
-		ERROR_EXIT "[FATAL]:-Nested partitioning detected and -f option not supplied"
+		ERROR_EXIT "[FATAL]:-Nested partitioning detected and -f option not supplied" 2
 	fi
 	if [ ${#CHILD_IS_PARENT_ARRAY[@]} -ne 0 ] && [ $FORCE_DELETE -eq 1 ];then
-		LOG_MSG "[INFO]:-Nested partitioning detected will cascade delete"
+		LOG_MSG "[INFO]:-Nested partitioning detected will cascade delete" 1
 	fi
 	if [ ${#CHILD_WITH_REC_ARRAY[@]} -ne 0 ] && [ x"" == x"$ARCHIVE_TABLE" ];then
-		LOG_MSG "[WARN]:-${#CHILD_WITH_REC_ARRAY[@]} child tables contain records and no archive table name supplied"
-		LOG_MSG "[WARN]:-Date will be lost following child table deletion"
+		LOG_MSG "[WARN]:-${#CHILD_WITH_REC_ARRAY[@]} child tables contain records and no archive table name supplied" 1
+		LOG_MSG "[WARN]:-Data will be lost following child table deletion" 1
 		EXIT_STATUS=1
 	else
-		LOG_MSG "[INFO]:-Records detected in child tables, will secure to $ARCHIVE_TABLE"
+		LOG_MSG "[INFO]:-Records detected in child tables, will secure to $ARCHIVE_TABLE" 1
 	fi
 	CHILD_INDEX_ARRAY_COUNT=${#CHILD_INDEX_ARRAY[@]}
 	#Now get the min and max date ranges from the rules table if number of rules <> 0
@@ -331,13 +334,13 @@ GATHER_INFO () {
 			ERROR_CHK $? "obtain end partition date " 2
 			;;
 		esac
-		LOG_MSG "[INFO]:-Partition minimum date   = $MIN_DATE"
-		LOG_MSG "[INFO]:-Partition maximum date   = $MAX_DATE"
+		LOG_MSG "[INFO]:-Partition minimum date   = $MIN_DATE" 1
+		LOG_MSG "[INFO]:-Partition maximum date   = $MAX_DATE" 1
 	else
 		if [ $CHILD_RULE_ARRAY_COUNT -eq 0 ];then
-			LOG_MSG "[WARN]:-Unable to process rule table as no rules defined for partitioning"
+			LOG_MSG "[WARN]:-Unable to process rule table as no rules defined for partitioning" 1
 		else
-			LOG_MSG "[WARN]:-Unable to process rule table as #rules <> #child tables"
+			LOG_MSG "[WARN]:-Unable to process rule table as #rules <> #child tables" 1
 		fi
 		EXIT_STATUS=1
 		((LAST=$CHILD_NAME_ARRAY_COUNT-1))
@@ -359,12 +362,12 @@ GATHER_INFO () {
 				MAX_DATE=`$ECHO ${CHILD_NAME_ARRAY[${LAST}]}|$AWK -F"_" '{print $(NF-2)$(NF-1)}'`	
 				;;
 		esac
-		LOG_MSG "[INFO]:-Min date from child name array is $MIN_DATE"
-		LOG_MSG "[INFO]:-Max date from child name array is $MAX_DATE"
+		LOG_MSG "[INFO]:-Min date from child name array is $MIN_DATE" 1
+		LOG_MSG "[INFO]:-Max date from child name array is $MAX_DATE" 1
 	fi	
 	PARENT_TABLE_COUNT=`$EXPORT_LIB_PATH; $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from only $PARENT_TABLE_NAME;"`
 	ERROR_CHK $? "obtain parent record count" 2
-	LOG_MSG "[INFO]:-Parent table $PARENT_TABLE_NAME has $PARENT_TABLE_COUNT records"
+	LOG_MSG "[INFO]:-Parent table $PARENT_TABLE_NAME has $PARENT_TABLE_COUNT records" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -373,7 +376,7 @@ COMPUTE_WINDOW () {
 	#Calculate rolling window period
 	CURRENT_DB_DATE=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select date(now());"`
 	ERROR_CHK $? "obtain current database date" 2
-	LOG_MSG "[INFO]:-Current database date is $CURRENT_DB_DATE"
+	LOG_MSG "[INFO]:-Current database date is $CURRENT_DB_DATE" 1
 	case $TYPE_NAME in
 		hour)
 			PROCESS_HOUR ;;
@@ -390,15 +393,15 @@ COMPUTE_WINDOW () {
 			CHILD_REC_COUNT=`$EXPORT_LIB_PATH; $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from ${SCHEMA_NAME}.$C_NAME ;"`
 			if [ $CHILD_REC_COUNT -ne 0 ];then
 				CHILD_WITH_REC_ARRAY=(${CHILD_WITH_REC_ARRAY[@]} ${SCHEMA_NAME}.$C_NAME)
-				LOG_MSG "[INFO]:-Child table $C_NAME has record count = $CHILD_REC_COUNT"
+				LOG_MSG "[INFO]:-Child table $C_NAME has record count = $CHILD_REC_COUNT" 1
 			fi
 		done
 		if [ ${#CHILD_WITH_REC_ARRAY[@]} -ne 0 ] && [ x"" == x"$ARCHIVE_TABLE" ];then
-			LOG_MSG "[WARN]:-${#CHILD_WITH_REC_ARRAY[@]} child tables contain records and no archive table name supplied"
-                	LOG_MSG "[WARN]:-Data will be lost following child table deletion"
+			LOG_MSG "[WARN]:-${#CHILD_WITH_REC_ARRAY[@]} child tables contain records and no archive table name supplied" 1
+                	LOG_MSG "[WARN]:-Data will be lost following child table deletion" 1
                 	EXIT_STATUS=1
         	else
-                	LOG_MSG "[INFO]:-Records detected in child tables, will secure to $ARCHIVE_TABLE"
+                	LOG_MSG "[INFO]:-Records detected in child tables, will secure to $ARCHIVE_TABLE" 1
         	fi
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -414,7 +417,7 @@ PROCESS_HOUR () {
 		CHILD_NUM=`$ECHO $C_NAME|$AWK -F"_" '{print $(NF-4)$(NF-3)$(NF-2)}'`
 		if [ $CHILD_NUM -le $WINDOW_START_NUM ];then
 			CHILD_DELETE_ARRAY=(${CHILD_DELETE_ARRAY[@]} $C_NAME)
-			LOG_MSG "[INFO]:-Marked $C_NAME table for deletion"
+			LOG_MSG "[INFO]:-Marked $C_NAME table for deletion" 1
 		fi
 	done	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -431,7 +434,7 @@ PROCESS_DAILY () {
 		CHILD_NUM=`$ECHO $C_NAME|$AWK -F"_" '{print $(NF-3)$(NF-2)$(NF-1)}'`
 		if [ $CHILD_NUM -le $WINDOW_START_NUM ];then
 			CHILD_DELETE_ARRAY=(${CHILD_DELETE_ARRAY[@]} $C_NAME)
-			LOG_MSG "[INFO]:-Marked $C_NAME table for deletion"
+			LOG_MSG "[INFO]:-Marked $C_NAME table for deletion" 1
 		fi
 	done	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -459,10 +462,10 @@ PROCESS_MONTHLY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	CURRENT_MONTH=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select LPAD(extract (month from date('now()')),2, '0');"`
 	ERROR_CHK $? "obtain current month" 2
-	LOG_MSG "[INFO]:-Current month is $CURRENT_MONTH"
+	LOG_MSG "[INFO]:-Current month is $CURRENT_MONTH" 1
 	CURRENT_YEAR=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select extract (year from date('now()'));"`	
 	ERROR_CHK $? "obtain current year" 2
-	LOG_MSG "[INFO]:-Current year is $CURRENT_YEAR"
+	LOG_MSG "[INFO]:-Current year is $CURRENT_YEAR" 1
 	COUNT=1
 	#Now get the year going back $DELETION_WINDOW months
 	DELETE_YEAR=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select extract (year from (select now() - interval '$DELETION_WINDOW months'));"`
@@ -492,7 +495,7 @@ PROCESS_DELETION () {
 		ERROR_CHK $? "delete of child table $C_NAME" 1	
 	done
 	if [ $ARCHIVE -eq 1 ] && [ ${#CHILD_WITH_REC_ARRAY[@]} -ne 0 ];then
-		LOG_MSG "[INFO]:-Running analyze on $ARCHIVE_TABLE"
+		LOG_MSG "[INFO]:-Running analyze on $ARCHIVE_TABLE" 1
 		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"analyze $ARCHIVE_TABLE;"
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -500,10 +503,10 @@ PROCESS_DELETION () {
 
 SECURE_RECORDS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Securing records to archive table $ARCHIVE_TABLE"
+	LOG_MSG "[INFO]:-Securing records to archive table $ARCHIVE_TABLE" 1
 	for SAVE_NAME in ${CHILD_WITH_REC_ARRAY[@]}
 	do
-		LOG_MSG "[INFO]:-Securing records from $SAVE_NAME to $ARCHIVE_TABLE"
+		LOG_MSG "[INFO]:-Securing records from $SAVE_NAME to $ARCHIVE_TABLE" 1
 		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"insert into $ARCHIVE_TABLE (select * from ${SCHEMA_NAME}.$SAVE_NAME);"
 	ERROR_CHK $? "secure ${SCHEMA_NAME}.$SAVE_NAME records to $ARCHIVE_TABLE" 2
 	done
@@ -515,7 +518,7 @@ SECURE_RECORDS () {
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt:'?'aql:d:x:r:s:f!" opt;do
+		while getopts ":vt:'?'aql:d:x:r:s:f!D" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) PARENT_TABLE_NAME=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
@@ -530,6 +533,7 @@ if [ $# -ne 0 ]; then
 						r ) DELETION_WINDOW=$OPTARG ;;
 						s ) ARCHIVE_TABLE=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
 						f ) FORCE_DELETE=1 ;;
+						D ) DEBUG_LEVEL=1 ;;
 						* ) USAGE ;;
 				esac
 		done	
@@ -537,7 +541,7 @@ fi
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
 	if [ $EXISTS -eq 1 ]; then
-		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
 	else
 		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
 	fi
@@ -557,7 +561,7 @@ VALIDATE_PROCESS
 GATHER_INFO
 COMPUTE_WINDOW
 if [ ${#CHILD_DELETE_ARRAY[@]} -eq 0 ];then
-	LOG_MSG "[INFO]:-No child tables marked for deletion"
+	LOG_MSG "[INFO]:-No child tables marked for deletion" 1
 else
 	if [ x"" != x"$INTERACTIVE" ];then
 		PROMPT_CONTINUE

@@ -77,6 +77,7 @@ USAGE () {
 		$ECHO "      Logging options:"
 		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
 		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
+		$ECHO "      -D, set log output to debug level, shows all function calls"
 		$ECHO
 		$ECHO "      Connection options:"
 		$ECHO "      -d, <Master instance directory> name of alternative Master instance to report status of [optional]"
@@ -129,11 +130,14 @@ DISPLAY_PARAM () {
 }
 
 GET_FAIL_SETTING () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	FAIL_TYPE=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"show mpp_fault_action;"`
 	ERROR_CHK $? "obtain fault action setting" 2
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_STANDBY_SETTING () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	MASTER_STANDBY_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and dbid<>1;"`
 	ERROR_CHK $? "Obtain standby hostname" 1
 	if [ x"" == x"$MASTER_STANDBY_HOSTNAME" ];then
@@ -145,10 +149,11 @@ GET_STANDBY_SETTING () {
 		else
 			STANDBY_STATE="Standby host passive";fi
 	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 DATABASE_STATUS () {
-		#MPP converted 21/07/2005
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		QD_STATE_COUNT=0
 		QD_FAILED_COUNT=0
 		QD_VALID_COUNT=0
@@ -180,26 +185,26 @@ DATABASE_STATUS () {
 						MIRROR_CONFIG=on
 					fi
 				fi
-				LOG_MSG "[INFO]:-Master Configuration & Status"
-				LOG_MSG "[INFO]:--------------------------"
-				LOG_MSG "[INFO]:-Master host                   = $QD_NAME" 
-				LOG_MSG "[INFO]:-Master Postmaster process PID = $QD_PID" 
-				LOG_MSG "[INFO]:-Master data directory         = $MASTER_DATA_DIRECTORY"
-				LOG_MSG "[INFO]:-Database name                 = $QD_DBNAME "
-				LOG_MSG "[INFO]:-Master port                   = $MASTER_PORT"
-				LOG_MSG "[INFO]:-Master current role           = $QD_ROLE"
-				LOG_MSG "[INFO]:-MPP initdb version            = $MPP_INIT_VERSION"
-				LOG_MSG "[INFO]:-MPP current version           = $MPP_VERSION"
-				LOG_MSG "[INFO]:-Postgres version              = $QD_PG_VERSION"
-				LOG_MSG "[INFO]:-MPP failure action            = $FAIL_TYPE"
-				LOG_MSG "[INFO]:-MPP mirroring status          = $MIRROR_CONFIG"
-				LOG_MSG "[INFO]:-MPP master standby            = $STANDBY_CONFIGURED"
-				LOG_MSG "[INFO]:-MPP master standby state      = $STANDBY_STATE"
-				LOG_MSG "[INFO]:-Segment instance status"
+				LOG_MSG "[INFO]:-Master Configuration & Status" 1
+				LOG_MSG "[INFO]:--------------------------" 1
+				LOG_MSG "[INFO]:-Master host                   = $QD_NAME"  1
+				LOG_MSG "[INFO]:-Master Postmaster process PID = $QD_PID"  1
+				LOG_MSG "[INFO]:-Master data directory         = $MASTER_DATA_DIRECTORY" 1
+				LOG_MSG "[INFO]:-Database name                 = $QD_DBNAME " 1
+				LOG_MSG "[INFO]:-Master port                   = $MASTER_PORT" 1
+				LOG_MSG "[INFO]:-Master current role           = $QD_ROLE" 1
+				LOG_MSG "[INFO]:-MPP initdb version            = $MPP_INIT_VERSION" 1
+				LOG_MSG "[INFO]:-MPP current version           = $MPP_VERSION" 1
+				LOG_MSG "[INFO]:-Postgres version              = $QD_PG_VERSION" 1
+				LOG_MSG "[INFO]:-MPP failure action            = $FAIL_TYPE" 1
+				LOG_MSG "[INFO]:-MPP mirroring status          = $MIRROR_CONFIG" 1
+				LOG_MSG "[INFO]:-MPP master standby            = $STANDBY_CONFIGURED" 1
+				LOG_MSG "[INFO]:-MPP master standby state      = $STANDBY_STATE" 1
+				LOG_MSG "[INFO]:-Segment instance status" 1
 				if [ ${#QE_ARRAY[@]} -eq 0 ]; then
-						LOG_MSG "[WARN]:-Could not obtain any segment instance host details"
+						LOG_MSG "[WARN]:-Could not obtain any segment instance host details" 1
 				else
-						LOG_MSG "[INFO]:-----------------------"
+						LOG_MSG "[INFO]:-----------------------" 1
 						for TNODE in "${QE_ARRAY[@]}"
 								do
 								QE_NAME=`$ECHO $TNODE|$CUT -d"|" -f1`
@@ -215,61 +220,63 @@ DATABASE_STATUS () {
 								QE_PID=`$TRUSTED_SHELL $QE_NAME "if [ -f $QE_DIR/$PG_PID ]; then $HEAD -1 $QE_DIR/$PG_PID;else echo 0; fi"` 2>> $LOG_FILE
 						RETVAL=$?
 						if [ $RETVAL -ne 0 ]; then
-								LOG_MSG "[WARN]:-Request for PID for $QE_NAME returned error code $RETVAL"
+								LOG_MSG "[WARN]:-Request for PID for $QE_NAME returned error code $RETVAL" 1
 								QE_PID=0
 						fi
 						GET_PG_PID_ACTIVE $QE_PORT $QE_NAME
 						QE_PID_ACTUAL=$PID
-						LOG_MSG "[INFO]:-Segment Instance Physical PID for $QE_NAME port $QE_PORT       = $QE_PID_ACTUAL"
+						LOG_MSG "[INFO]:-Segment Instance Physical PID for $QE_NAME port $QE_PORT       = $QE_PID_ACTUAL" 1
 						STATUS=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};export PGPORT=${QE_PORT};$PG_CTL status -D $QE_DIR"|$HEAD -1|$GREP -c PID` 2>> $LOG_FILE
 						RETVAL=$?
 						if [ $RETVAL -ne 0 ]; then
-								LOG_MSG "[WARN]:-pg_ctl status from $QE_NAME port = $QE_PORT returned error code $RETVAL"
+								LOG_MSG "[WARN]:-pg_ctl status from $QE_NAME port = $QE_PORT returned error code $RETVAL" 1
 								((QD_FAILED_COUNT=$QD_FAILED_COUNT+1))	
 								STATUS=0
 						fi
 						if [ $QE_PID -eq 0 ]; then
-								LOG_MSG "[WARN]:-Segment instance $TYPE $QE_NAME port $QE_PORT postmaster PID = NOT RUNNING"
+								LOG_MSG "[WARN]:-Segment instance $TYPE $QE_NAME port $QE_PORT postmaster PID = NOT RUNNING" 1
 								EXIT_STATUS=1
 						else
-								LOG_MSG "[INFO]:-Segment instance $TYPE $QE_NAME port $QE_PORT postmaster PID = $QE_PID" 
+								LOG_MSG "[INFO]:-Segment instance $TYPE $QE_NAME port $QE_PORT postmaster PID = $QE_PID"  1
 						fi
 						if [ $STATUS -eq 1 ]; then
-								LOG_MSG "[INFO]:-Segment instance $TYPE $QE_NAME port $QE_PORT pg_ctl status  = Active"
+								LOG_MSG "[INFO]:-Segment instance $TYPE $QE_NAME port $QE_PORT pg_ctl status  = Active" 1
 								((QD_STATE_COUNT=$QD_STATE_COUNT+1))
 						else
-								LOG_MSG "[WARN]:-Segment instance $TYPE $QE_NAME port $QE_PORT pg_ctl status  = Failed"
+								LOG_MSG "[WARN]:-Segment instance $TYPE $QE_NAME port $QE_PORT pg_ctl status  = Failed" 1
 								EXIT_STATUS=1
 						fi
 						if [ "$QE_VALID" == "t" ]; then
 							((QD_VALID_COUNT=$QD_VALID_COUNT+1))
-							LOG_MSG "[INFO]:-Segment instance $TYPE $QE_NAME port $QE_PORT segment status = Valid"
+							LOG_MSG "[INFO]:-Segment instance $TYPE $QE_NAME port $QE_PORT segment status = Valid" 1
 						else
 							((QD_NOTVALID_COUNT=$QD_NOTVALID_COUNT+1))
-							LOG_MSG "[WARN]:-Segment instance $TYPE $QE_NAME port $QE_PORT segment status = Invalid"
+							LOG_MSG "[WARN]:-Segment instance $TYPE $QE_NAME port $QE_PORT segment status = Invalid" 1
 							EXIT_STATUS=1
 						fi
 						$ECHO
 				done
 		fi
-		LOG_MSG "[INFO]:-Segment Instance Status Report"
-		LOG_MSG "[INFO]:-------------------------------"
-		LOG_MSG "[INFO]:-Segment instance's reported active via pg_ctl = $QD_STATE_COUNT "
+		LOG_MSG "[INFO]:-Segment Instance Status Report" 1
+		LOG_MSG "[INFO]:-------------------------------" 1
+		LOG_MSG "[INFO]:-Segment instance's reported active via pg_ctl = $QD_STATE_COUNT " 1
 		if [ $QD_FAILED_COUNT -ne 0 ];then
-		LOG_MSG "[WARN]:-Segment instance's reported failed via pg_ctl = $QD_FAILED_COUNT <<<<<<<<<<"
+		LOG_MSG "[WARN]:-Segment instance's reported failed via pg_ctl = $QD_FAILED_COUNT <<<<<<<<<<" 1
 		else
-		LOG_MSG "[INFO]:-Segment instance's reported failed via pg_ctl = $QD_FAILED_COUNT"
+		LOG_MSG "[INFO]:-Segment instance's reported failed via pg_ctl = $QD_FAILED_COUNT" 1
 		fi
-		LOG_MSG "[INFO]:-Segment instance's marked as valid            = $QD_VALID_COUNT"
+		LOG_MSG "[INFO]:-Segment instance's marked as valid            = $QD_VALID_COUNT" 1
 		if [ $QD_NOTVALID_COUNT -ne 0 ];then
-		LOG_MSG "[WARN]:-Segment instance's marked as invalid          = $QD_NOTVALID_COUNT <<<<<<<<<<"
+		LOG_MSG "[WARN]:-Segment instance's marked as invalid          = $QD_NOTVALID_COUNT <<<<<<<<<<" 1
 		else
-		LOG_MSG "[INFO]:-Segment instance's marked as invalid          = $QD_NOTVALID_COUNT"
+		LOG_MSG "[INFO]:-Segment instance's marked as invalid          = $QD_NOTVALID_COUNT" 1
 		fi
 fi
+LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 VERSION_INFO () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_QE_DETAILS
 	MASTER_POSTGRES_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"show server_version;"`
 	ERROR_CHK $? "obtain master postgres server version" 1
@@ -277,40 +284,41 @@ VERSION_INFO () {
 	ERROR_CHK $? "obtain master initdb version" 1
 	MASTER_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"select version();" `
 	ERROR_CHK $? "obtain master current version" 1
-	LOG_MSG "[INFO]:-Master segment version details"
-	LOG_MSG "[INFO]:-------------------------------"
-	LOG_MSG "[INFO]:-Master segment      = $MASTER_DATA_DIRECTORY"
-	LOG_MSG "[INFO]:-Postgres version    = $MASTER_POSTGRES_VERSION"
-	LOG_MSG "[INFO]:-MPP initdb version  = $MASTER_INITDB_VERSION"
-	LOG_MSG "[INFO]:-MPP current version = $MASTER_VERSION"
-	LOG_MSG "[INFO]:-Segment instance version details"
-	LOG_MSG "[INFO]:---------------------------------"
+	LOG_MSG "[INFO]:-Master segment version details" 1
+	LOG_MSG "[INFO]:-------------------------------" 1
+	LOG_MSG "[INFO]:-Master segment      = $MASTER_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Postgres version    = $MASTER_POSTGRES_VERSION" 1
+	LOG_MSG "[INFO]:-MPP initdb version  = $MASTER_INITDB_VERSION" 1
+	LOG_MSG "[INFO]:-MPP current version = $MASTER_VERSION" 1
+	LOG_MSG "[INFO]:-Segment instance version details" 1
+	LOG_MSG "[INFO]:---------------------------------" 1
 	for TNODE in "${QE_ARRAY[@]}"
 	do
 		SET_VAR
 		POSTGRES_VERSION=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -A -t -p $QE_PORT $DEFAULTDB -c\"show server_version;\""`
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-			LOG_MSG "[WARN]:-Unable to connect to $QE_NAME on port $QE_PORT"
+			LOG_MSG "[WARN]:-Unable to connect to $QE_NAME on port $QE_PORT" 1
 			ERROR_EXIT=1
 		else
-			LOG_MSG "[INFO]:-$QE_NAME segment    = $QE_DIR"
-			LOG_MSG "[INFO]:-Postgres version    = $POSTGRES_VERSION"
+			LOG_MSG "[INFO]:-$QE_NAME segment    = $QE_DIR" 1
+			LOG_MSG "[INFO]:-Postgres version    = $POSTGRES_VERSION" 1
 		fi
 		QE_INITDB_VERSION=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -A -t -p $QE_PORT $DEFAULTDB -c\"select productversion from $MPP_INITDB_VER_TABLE;\""|$TR '$' ' '|$TR -s ' '`
 		ERROR_CHK $? "obtain segment initdb version" 1
 		QE_VERSION=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -A -t -p $QE_PORT $DEFAULTDB -c\"select version();\""`
 		ERROR_CHK $? "obtain segment current version" 1
-		LOG_MSG "[INFO]:-MPP initdb version  = $QE_INITDB_VERSION"
-		LOG_MSG "[INFO]:-MPP current version = $QE_VERSION"
+		LOG_MSG "[INFO]:-MPP initdb version  = $QE_INITDB_VERSION" 1
+		LOG_MSG "[INFO]:-MPP current version = $QE_VERSION" 1
 	done
-
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 MIRROR_LIST () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QE_MIRROR_DETAILS
 		EXIT_STATUS=0
-		LOG_MSG "[INFO]:-Mirror list"
+		LOG_MSG "[INFO]:-Mirror list" 1
 		if [ ${#QE_MIRROR_ARRAY[@]} -ne 0 ]; then
 				for MNODE in "${QE_MIRROR_ARRAY[@]}"
 						do
@@ -336,23 +344,27 @@ MIRROR_LIST () {
 								EXIT_STATUS=1
 							fi
 						fi
-						$ECHO "[$LM]:-Mirror  = $QE_NAME data directory = $QE_DIR port = $QE_PORT status = $STATUS $TAG"
+						$ECHO "[$LM]:-Mirror  = $QE_NAME data directory = $QE_DIR port = $QE_PORT status = $STATUS $TAG" | $TEE -a $LOG_FILE
 				done
 		else
-				LOG_MSG "[WARN]:-No mirrors defined"
+				LOG_MSG "[WARN]:-No mirrors defined" 1
 				EXIT_STATUS=1
 		fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 SET_VAR () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		QE_NAME=`$ECHO $TNODE|$CUT -d"|" -f1`
 		QE_DIR=`$ECHO $TNODE|$CUT -d"|" -f2`
 		QE_PORT=`$ECHO $TNODE|$CUT -d"|" -f3`
 		QE_VALID=`$ECHO $TNODE|$CUT -d"|" -f4`
 		QE_PRIMARY=`$ECHO $TNODE|$CUT -d"|" -f5`
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 SUMMARY_STATUS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		QE_PRIMARY_STATE_COUNT=0
 		QE_PRIMARY_FAILED_COUNT=0
 		QE_MIRROR_STATE_COUNT=0
@@ -370,7 +382,7 @@ SUMMARY_STATUS () {
 				GET_QE_MIRROR_DETAILS
 				GET_TRANS_READ
 		fi
-		LOG_MSG "[INFO]:-Processing status request, please wait"
+		LOG_MSG "[INFO]:-Processing status request, please wait..." 1
 		GET_STANDBY_DETAILS
 		if [ ${#STANDBY_ARRAY[@]} -eq 0 ];then
 			STANDBY_TEXT="NOT CONFIGURED"
@@ -387,6 +399,7 @@ SUMMARY_STATUS () {
 		for TNODE in "${QE_PRIMARY_ARRAY[@]}"
 				do
 				SET_VAR
+				if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 				if [ "$QE_VALID" == "t" ]; then
 					((QE_PRIMARY_VALID=$QE_PRIMARY_VALID+1))
 				else
@@ -413,7 +426,8 @@ SUMMARY_STATUS () {
 		((QE_COUNT=$QE_COUNT+1))
 done
 for TNODE in "${QE_MIRROR_ARRAY[@]}"
-		do
+		do	
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		SET_VAR
 		QE_VALID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME  -A -t -c"select valid from $MPP_PG_VIEW where dbid in (select dbid from $CONFIG_TABLE where port=$QE_PORT and datadir='${QE_DIR}');"`
 		QE_PRIMARY=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME  -A -t -c"select isprimary from $MPP_PG_VIEW where dbid in (select dbid from $CONFIG_TABLE where port=$QE_PORT and datadir='${QE_DIR}');"`
@@ -444,54 +458,57 @@ else
 		fi
 fi
 ((QE_COUNT=$QE_COUNT+1))
-		done
-		LOG_MSG "[INFO]:-MPP instance status summary"
-		LOG_MSG "[INFO]:-------------------------------------------------------"
-		LOG_MSG "[INFO]:-Master instance                               = Active" 
-		LOG_MSG "[INFO]:-Master instance read-only                     = $TRANS_STATE"
-		LOG_MSG "[INFO]:-Master instance standby                       = $STANDBY_TEXT"
-		LOG_MSG "[INFO]:---------------------------"
-		LOG_MSG "[INFO]:-Total segment instance count from meta data   = $QE_COUNT"
-		LOG_MSG "[INFO]:-Total segment instance primary PID active     = $QE_PRIMARY_STATE_COUNT"
+done
+if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+		LOG_MSG "[INFO]:-MPP instance status summary" 1
+		LOG_MSG "[INFO]:-------------------------------------------------------" 1
+		LOG_MSG "[INFO]:-Master instance                               = Active"  1
+		LOG_MSG "[INFO]:-Master instance read-only                     = $TRANS_STATE" 1
+		LOG_MSG "[INFO]:-Master instance standby                       = $STANDBY_TEXT" 1
+		LOG_MSG "[INFO]:---------------------------" 1
+		LOG_MSG "[INFO]:-Total segment instance count from meta data   = $QE_COUNT" 1
+		LOG_MSG "[INFO]:-Total segment instance primary PID active     = $QE_PRIMARY_STATE_COUNT" 1
 		if [ $QE_PRIMARY_FAILED_COUNT -eq 0 ]; then
-				LOG_MSG "[INFO]:-Total segment instance primary PID failed     = $QE_PRIMARY_FAILED_COUNT"
+				LOG_MSG "[INFO]:-Total segment instance primary PID failed     = $QE_PRIMARY_FAILED_COUNT" 1
 		else
-				LOG_MSG "[WARN]:-Total segment instance primary PID failed     = $QE_PRIMARY_FAILED_COUNT <<<<<<<<<<"
+				LOG_MSG "[WARN]:-Total segment instance primary PID failed     = $QE_PRIMARY_FAILED_COUNT <<<<<<<<<<" 1
 				EXIT_STATUS=1
 		fi	
-		LOG_MSG "[INFO]:-Total segment instance primary db active      = $QE_PRIMARY_VALID"
+		LOG_MSG "[INFO]:-Total segment instance primary db active      = $QE_PRIMARY_VALID" 1
 		if [ $QE_PRIMARY_INVALID -eq 0 ]; then
-			LOG_MSG "[INFO]:-Total segment instance primary db failed      = $QE_PRIMARY_INVALID"
+			LOG_MSG "[INFO]:-Total segment instance primary db failed      = $QE_PRIMARY_INVALID" 1
 		else
-			LOG_MSG "[WARN]:-Total segment instance primary db failed      = $QE_PRIMARY_INVALID <<<<<<<<<<"
+			LOG_MSG "[WARN]:-Total segment instance primary db failed      = $QE_PRIMARY_INVALID <<<<<<<<<<" 1
 			EXIT_STATUS=1
 		fi
-		LOG_MSG "[INFO]:-Total segment instance mirror PID active      = $QE_MIRROR_STATE_COUNT"
+		LOG_MSG "[INFO]:-Total segment instance mirror PID active      = $QE_MIRROR_STATE_COUNT" 1
 		if [ $QE_MIRROR_FAILED_COUNT -eq 0 ]; then
-				LOG_MSG "[INFO]:-Total segment instance mirror PID failed      = $QE_MIRROR_FAILED_COUNT"
+				LOG_MSG "[INFO]:-Total segment instance mirror PID failed      = $QE_MIRROR_FAILED_COUNT" 1
 		else
-				LOG_MSG "[WARN]:-Total segment instance mirror PID failed      = $QE_MIRROR_FAILED_COUNT <<<<<<<<<<"
+				LOG_MSG "[WARN]:-Total segment instance mirror PID failed      = $QE_MIRROR_FAILED_COUNT <<<<<<<<<<" 1
 				EXIT_STATUS=1
 		fi
 		if [ $QE_MIRROR_ACTIVE -ne 0 ];then
-			LOG_MSG "[WARN]:-Total segment instance mirror active primary  = $QE_MIRROR_ACTIVE <<<<<<<<<<"
+			LOG_MSG "[WARN]:-Total segment instance mirror active primary  = $QE_MIRROR_ACTIVE <<<<<<<<<<" 1
 			EXIT_STATUS=1
 		else
-			LOG_MSG "[INFO]:-Total segment instance mirror active primary  = $QE_MIRROR_ACTIVE"
+			LOG_MSG "[INFO]:-Total segment instance mirror active primary  = $QE_MIRROR_ACTIVE" 1
 		fi
 		if [ $QE_MIRROR_FAILED -ne 0 ];then
-			LOG_MSG "[WARN]:-Total segment instance mirror failed          = $QE_MIRROR_FAILED <<<<<<<<<<"
+			LOG_MSG "[WARN]:-Total segment instance mirror failed          = $QE_MIRROR_FAILED <<<<<<<<<<" 1
 		else
-			LOG_MSG "[INFO]:-Total segment instance mirror failed          = $QE_MIRROR_FAILED"
+			LOG_MSG "[INFO]:-Total segment instance mirror failed          = $QE_MIRROR_FAILED" 1
 		fi
-		LOG_MSG "[INFO]:-Total segment instance mirror passive primary = $QE_MIRROR_PASSIVE"
+		LOG_MSG "[INFO]:-Total segment instance mirror passive primary = $QE_MIRROR_PASSIVE" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CLUSTER_CONFIG () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QE_PRIMARY_DETAILS
 		GET_QE_MIRROR_DETAILS
 		if [ ${#QE_MIRROR_ARRAY[@]} -ne 0 ]; then
-				LOG_MSG "[INFO]:-Primary to mirror mapping "
+				LOG_MSG "[INFO]:-Primary to mirror mapping " 1
 				ARRAY_MAX=${#QE_MIRROR_ARRAY[@]}
 				COUNT=0
 				while [ $COUNT -lt $ARRAY_MAX ]
@@ -502,68 +519,76 @@ CLUSTER_CONFIG () {
 						MHOST=`$ECHO ${QE_MIRROR_ARRAY[$COUNT]}|$CUT -d"|" -f1`
 						MDIR=`$ECHO ${QE_MIRROR_ARRAY[$COUNT]}|$CUT -d"|" -f2`
 						MPORT=`$ECHO ${QE_MIRROR_ARRAY[$COUNT]}|$CUT -d"|" -f3`
-						$ECHO "[INFO]:-Primary $PHOST  $PDIR  $PPORT  mirror $MHOST  $MDIR  $MPORT"
+						$ECHO "[INFO]:-Primary $PHOST  $PDIR  $PPORT  mirror $MHOST  $MDIR  $MPORT" | $TEE -a $LOG_FILE
 						((COUNT=$COUNT+1))
 				done
 
 		else
-				LOG_MSG "[INFO]:-Primary list [Mirroring not implemented]"
+				LOG_MSG "[INFO]:-Primary list [Mirroring not implemented]" 1
 				for PNODE in "${QE_PRIMARY_ARRAY[@]}"
 						do
 						PHOST=`$ECHO $PNODE|$CUT -d "|" -f1`
 						PDIR=`$ECHO $PNODE|$CUT -d "|" -f2`
 						PPORT=`$ECHO $PNODE|$CUT -d "|" -f3`
-						$ECHO "[INFO]:-Primary $PHOST  $PDIR  $PPORT"
+						$ECHO "[INFO]:-Primary $PHOST  $PDIR  $PPORT" | $TEE -a $LOG_FILE
 				done
 		fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 LIST_MPP_PORTS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		PORT_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, port, datadir from $CONFIG_TABLE where content<>-1;" `)
 		ERROR_CHK $? "obtain port assignments" 2
-		LOG_MSG "[INFO]:-Master segment instance  $MASTER_DATA_DIRECTORY  port = $MASTER_PORT"
-		LOG_MSG "[INFO]:-Segment instance port assignments"
-		LOG_MSG "[INFO]:----------------------------------"
+		LOG_MSG "[INFO]:-Master segment instance  $MASTER_DATA_DIRECTORY  port = $MASTER_PORT" 1
+		LOG_MSG "[INFO]:-Segment instance port assignments" 1
+		LOG_MSG "[INFO]:----------------------------------" 1
 		for PMODE in "${PORT_ARRAY[@]}"
 				do
 				HOST=`$ECHO $PMODE|$CUT -d"|" -f1`
 				PORT=`$ECHO $PMODE|$CUT -d"|" -f2`
 				DIR=`$ECHO $PMODE|$CUT -d"|" -f3`
-				LOG_MSG "[INFO]:-Segment instance $HOST $DIR  port = $PORT"
+				LOG_MSG "[INFO]:-Segment instance $HOST $DIR  port = $PORT" 1
 		done
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 LIST_MPP_LOGS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		LOG_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select hostname, datadir from $CONFIG_TABLE where content<>-1 ;" 2>|/dev/null`)
 		ERROR_CHK $? "obtain log assignments" 2
-		LOG_MSG "[INFO]:-Master segment instance $MASTER_DATA_DIRECTORY logfile ${MASTER_DATA_DIRECTORY}.log"
-		LOG_MSG "[INFO]:-Segment instance database logfiles"
-		LOG_MSG "[INFO]:-----------------------------------"
+		LOG_MSG "[INFO]:-Master segment instance $MASTER_DATA_DIRECTORY logfile ${MASTER_DATA_DIRECTORY}.log" 1
+		LOG_MSG "[INFO]:-Segment instance database logfiles" 1
+		LOG_MSG "[INFO]:-----------------------------------" 1
 		for LOGCHK in "${LOG_ARRAY[@]}"
 				do
 				HOST=`$ECHO $LOGCHK|$CUT -d"|" -f1`
 				DIR=`$ECHO $LOGCHK|$CUT -d"|" -f2`
 				if [ $TAIL_LOGS ]; then
-					LOG_MSG "[INFO]:-$HOST $DIR log file tail START---------------"
-					$ECHO "$HOST Logfile name ${DIR}.log"
+					LOG_MSG "[INFO]:-$HOST $DIR log file tail" 1
+					LOG_MSG "[INFO]:----------START----------------------" 1
+#					$ECHO "$HOST Logfile name ${DIR}.log" | $TEE -a $LOG_FILE
 					if [ x'' == x'$GREP_STRING' ];then
 						$TRUSTED_SHELL $HOST "$TAIL -$TLINES ${DIR}.log"|$TEE -a $LOG_FILE
 					else
 						$TRUSTED_SHELL $HOST "$TAIL -$TLINES ${DIR}.log|$EGREP '$GREP_STRING'"|$TEE -a $LOG_FILE
 					fi
-						$ECHO
-						LOG_MSG "[INFO]:-$HOST $DIR log file tail END-----------------"
+#						$ECHO
+						LOG_MSG "[INFO]:-$HOST $DIR log file tail" 1
+					LOG_MSG "[INFO]:-----------END-----------------------" 1
 				else
-						LOG_MSG "[INFO]:-$HOST $DIR logfile ${DIR}.log"
+						LOG_MSG "[INFO]:-$HOST $DIR logfile ${DIR}.log" 1
 				fi
 		done	
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 
 STANDBY_HOST_DETAILS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_STANDBY_DETAILS
 	if [ ${#STANDBY_ARRAY[@]} -eq 0 ];then
-		LOG_MSG "[INFO]:-Standby master instance not configured"
+		LOG_MSG "[INFO]:-Standby master instance not configured" 1
 	else
 		MASTER_STANDBY_HOSTNAME=`$ECHO $STANDBY_ARRAY|$CUT -d"|" -f1`
 		MASTER_STANDBY_DIR=`$ECHO $STANDBY_ARRAY|$CUT -d"|" -f2`
@@ -573,33 +598,40 @@ STANDBY_HOST_DETAILS () {
 		else
 			STANDBY_STATE="Standby host passive";fi
 		GET_PG_PID_ACTIVE $MASTER_STANDBY_PORT $MASTER_STANDBY_HOSTNAME
-		LOG_MSG "[INFO]:-Standby master details"
-		LOG_MSG "[INFO]:-----------------------"
-		LOG_MSG "[INFO]:-Standby hostname        = $MASTER_STANDBY_HOSTNAME"
-		LOG_MSG "[INFO]:-Standby data directory  = $MASTER_STANDBY_DIR"
-		LOG_MSG "[INFO]:-Standby port            = $MASTER_STANDBY_PORT"
-		LOG_MSG "[INFO]:-Standby PID             = $PID"
-		LOG_MSG "[INFO]:-Standby status          = $STANDBY_STATE"
+		LOG_MSG "[INFO]:-Standby master details" 1
+		LOG_MSG "[INFO]:-----------------------" 1
+		LOG_MSG "[INFO]:-Standby hostname        = $MASTER_STANDBY_HOSTNAME" 1
+		LOG_MSG "[INFO]:-Standby data directory  = $MASTER_STANDBY_DIR" 1
+		LOG_MSG "[INFO]:-Standby port            = $MASTER_STANDBY_PORT" 1
+		LOG_MSG "[INFO]:-Standby PID             = $PID" 1
+		LOG_MSG "[INFO]:-Standby status          = $STANDBY_STATE" 1
 	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_MPP_VERSION () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		MPP_INIT_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from mpp_version_at_initdb limit 1;" 2>/dev/null`
 		ERROR_CHK $? "obtain MPP initdb version information" 2
 		MPP_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select version();" 2>/dev/null`
 		ERROR_CHK $? "obtain MPP version information" 2
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 NOT_ACTIVE () {
-		LOG_MSG "[WARN]:-This fucntion not supported at this MPP release, see -? for help"
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		LOG_MSG "[WARN]:-This fucntion not supported at this MPP release, see -? for help" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 DISPLAY_RO_MASTER () {
-	LOG_MSG "[INFO]:----------------------------------------"
-	LOG_MSG "[INFO]:-Master read only hostname = `$HOSTNAME`"
-	LOG_MSG "[INFO]:-Master read only port     = $MASTER_PORT"
-	LOG_MSG "[INFO]:-Master read only status   = Active"
-	LOG_MSG "[INFO]:----------------------------------------"
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:----------------------------------------" 1
+	LOG_MSG "[INFO]:-Master read only hostname = `$HOSTNAME`" 1
+	LOG_MSG "[INFO]:-Master read only port     = $MASTER_PORT" 1
+	LOG_MSG "[INFO]:-Master read only status   = Active" 1
+	LOG_MSG "[INFO]:----------------------------------------" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 #******************************************************************************
 # Main Section
@@ -608,7 +640,7 @@ DISPLAY_RO_MASTER () {
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 SELECT=1
 if [ $# -ne 0 ]; then
-		while getopts ":vtbl:d:nieqsmcpf'?'r:g:!" opt;do
+		while getopts ":vtbl:d:nieqsmcpf'?'r:g:!D" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -630,6 +662,7 @@ if [ $# -ne 0 ]; then
 						r ) TLINES=$OPTARG ;;
 						l ) LOG_DIR=$OPTARG ;;
 						g ) GREP_STRING=$OPTARG ;;
+						D ) DEBUG_LEVEL=1 ;;
 						* ) UNKNOWN_OPTION ;;
 				esac
 		done	
@@ -637,7 +670,7 @@ fi
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
 	if [ $EXISTS -eq 1 ]; then
-		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
 		EXIT_STATUS=1
 else
 	LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log

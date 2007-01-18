@@ -69,6 +69,7 @@ USAGE () {
 	$ECHO
 	$ECHO "      Logging options:"
 	$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
+	$ECHO "      -D, set log output to debug level, shows all function calls"
 	$ECHO
 	$ECHO "      Delete options:"
 	$ECHO "      -d, <Master database directory> directory to be deleted along with all segment instances [mandatory]"
@@ -93,7 +94,7 @@ CHECK_PARAM () {
 	#Check that we have a master data directory on this host
 	CHK_DIR $DELETE_MASTER_DATA_DIRECTORY
 	if [ $EXISTS -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Directory $DELETE_MASTER_DATA_DIRECTORY does not exist on this host";fi
+		ERROR_EXIT "[FATAL]:-Directory $DELETE_MASTER_DATA_DIRECTORY does not exist on this host" 2;fi
 	if [ ! -f ${DELETE_MASTER_DATA_DIRECTORY}/postmaster.pid ];then
 		ERROR_EXIT "[FATAL]:-MPP instance not running, activate instance to be able to progress instance deletion" 2
 	fi
@@ -116,8 +117,9 @@ OBTAIN_PARAM () {
 	else
 		STANDBY_HOSTNAME="Not configured"
 	fi
-	LOG_MSG "[INFO]:-Checking for database dump files"
+	LOG_MSG "[INFO]:-Checking for database dump files, please wait..." 1
 	DB_DUMP_CHK
+	LOG_MSG "[INFO]:-Completed check for database dump files" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -127,61 +129,66 @@ DB_DUMP_CHK () {
 	LOG_MSG "[INFO]:-Checking Master instance for dump files"
 	DUMP_COUNT=`$FIND $MASTER_DATA_DIRECTORY -name 'mpp_dump*' -print|$WC -l`
 	if [ $DUMP_COUNT -ne 0 ] && [ $FORCE -eq 0 ];then
-		LOG_MSG "[FATAL]:-Located possible database dump file on Master instance host" 
-		LOG_MSG "[FATAL]:-In directory $MASTER_DATA_DIRECTORY"
+		LOG_MSG "[FATAL]:-Located possible database dump file on Master instance host" 1
+		LOG_MSG "[FATAL]:-In directory $MASTER_DATA_DIRECTORY"1
 		ERROR_EXIT "[FATAL]:-To override database dump file checking use -f option" 2
 	else
-		LOG_MSG "[INFO]:-Complete Master instance dump file check"
+		LOG_MSG "[INFO]:-Completed Master instance dump file check" 1
 	fi	
+	LOG_MSG "[INFO]:-Checking segment instances for dump files" 1
 	for DELETE_SEG in "${QE_ARRAY[@]}"
 	do
+		if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO ".\c";fi
 		SET_VAR $DELETE_SEG
 		LOG_MSG "[INFO]:-Checking host=$DELETE_HOSTNAME Data directory=$DELETE_DATADIR"
 		DUMP_COUNT=`$TRUSTED_SHELL $DELETE_HOSTNAME "$FIND $DELETE_DATADIR -name 'mpp_dump*' -print|$WC -l"`
 		if [ $DUMP_COUNT -ne 0 ] && [ $FORCE -eq 0 ];then
-			LOG_MSG "[FATAL]:-Located possible database dump file on $DELETE_HOSTNAME"
-			LOG_MSG "[FATAL]:-In directory $DELETE_DATADIR"
+			LOG_MSG "[FATAL]:-Located possible database dump file on $DELETE_HOSTNAME" 1
+			LOG_MSG "[FATAL]:-In directory $DELETE_DATADIR" 1
 			ERROR_EXIT "[FATAL]:-To override database dump file checking use -f option" 2
 		else
 			LOG_MSG "[INFO]:-Complete $DELETE_HOSTNAME dump file check"
 		fi 
 	done
+	$ECHO
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 SET_VAR () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	DELETE_HOSTNAME=`$ECHO $1|$CUT -d"|" -f1`
 	DELETE_DATADIR=`$ECHO $1|$CUT -d"|" -f2`
 	DELETE_PORT=`$ECHO $1|$CUT -d"|" -f3`	
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-MPP Instance Deletion Parameters"
-	LOG_MSG "[INFO]:--------------------------------"
-	LOG_MSG "[INFO]:-MPP Master hostname               = $MASTER_HOSTNAME"
-	LOG_MSG "[INFO]:-MPP Master data directory         = $MASTER_DATA_DIRECTORY"
-	LOG_MSG "[INFO]:-MPP Master port                   = $MASTER_PORT"
-	LOG_MSG "[INFO]:-MPP Master standby host           = $STANDBY_HOSTNAME"
+	LOG_MSG "[INFO]:-MPP Instance Deletion Parameters" 1
+	LOG_MSG "[INFO]:--------------------------------" 1
+	LOG_MSG "[INFO]:-MPP Master hostname               = $MASTER_HOSTNAME" 1
+	LOG_MSG "[INFO]:-MPP Master data directory         = $MASTER_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-MPP Master port                   = $MASTER_PORT" 1
+	LOG_MSG "[INFO]:-MPP Master standby host           = $STANDBY_HOSTNAME" 1
 	if [ $FORCE -eq 1 ];then
-		LOG_MSG "[WARN]:-MPP Force delete of dump files    = ON"
+		LOG_MSG "[WARN]:-MPP Force delete of dump files    = ON" 1
 	else
-		LOG_MSG "[INFO]:-MPP Force delete of dump files    = Off"
+		LOG_MSG "[INFO]:-MPP Force delete of dump files    = Off" 1
 	fi	
 	if [ $STANDBY_COUNT -ne 0 ];then
-	LOG_MSG "[INFO]:-MPP Master standby data directory = $STANDBY_DATADIR"
-	LOG_MSG "[INFO]:-MPP Master standby port           = $STANDBY_PORT"
+	LOG_MSG "[INFO]:-MPP Master standby data directory = $STANDBY_DATADIR" 1
+	LOG_MSG "[INFO]:-MPP Master standby port           = $STANDBY_PORT" 1
 	fi
 	if [ $FAIL_PRI_SEG ];then
-	LOG_MSG "[INFO]:-MPP RO Master deletion            = On"
+	LOG_MSG "[INFO]:-MPP RO Master deletion            = On" 1
 	fi
-	LOG_MSG "[INFO]:-------------------------------"
-	LOG_MSG "[INFO]:-Segment Instance List"
-	LOG_MSG "[INFO]:-------------------------------"
+	LOG_MSG "[INFO]:-------------------------------" 1
+	LOG_MSG "[INFO]:-Segment Instance List" 1
+	LOG_MSG "[INFO]:-------------------------------" 1
 	for DELETE_SEG in "${QE_ARRAY[@]}"
 	do
 		SET_VAR $DELETE_SEG
-	LOG_MSG "[INFO]:-Host=$DELETE_HOSTNAME Data directory=$DELETE_DATADIR Port=$DELETE_PORT"
+	LOG_MSG "[INFO]:-Host=$DELETE_HOSTNAME Data directory=$DELETE_DATADIR Port=$DELETE_PORT" 1
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 	if [ -z $NOINTERACTIVE ];then
@@ -196,50 +203,53 @@ DISPLAY_PARAM () {
 		read REPLY
 		CHK_REPLY
 	else
-		LOG_MSG "[INFO]:-Non-interactive mode selected"
+		LOG_MSG "[INFO]:-Non-interactive mode selected" 1
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CHK_REPLY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ -z $REPLY ]; then
-		LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 		EXIT_STATUS=1
 		exit $EXIT_STATUS
 	fi
 	if [ $REPLY != Y ] && [ $REPLY != y ]; then
-		LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 		EXIT_STATUS=1
 		exit $EXIT_STATUS
 	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 DELETE_CLUSTER () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Closing down instance"
+	LOG_MSG "[INFO]:-Closing down instance" 1
 	if [ -f $MPPSTOP ];then
 		$MPPSTOP -zqaf -d $DELETE_MASTER_DATA_DIRECTORY
 	else
 		ERROR_EXIT "[FATAL]:-Unable to locate $MPPSTOP" 2
 	fi
-	LOG_MSG "[INFO]:-Deleting segment data directories"
+	LOG_MSG "[INFO]:-Deleting segment data directories, please wait..." 1
 	for DELETE_SEG in "${QE_ARRAY[@]}"
 	do
+		if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO ".\c";fi
 		SET_VAR $DELETE_SEG
 		LOG_MSG "[INFO]:-Processing host=$DELETE_HOSTNAME Data directory=$DELETE_DATADIR"
 		RUN_COMMAND_REMOTE $DELETE_HOSTNAME "$RM -Rf $DELETE_DATADIR"
 		RUN_COMMAND_REMOTE $DELETE_HOSTNAME "$RM -f ${DELETE_DATADIR}.log"
 	done
+	$ECHO
 	if [ $STANDBY_COUNT -ne 0 ];then
-		LOG_MSG "[INFO]:-Processing Master standby host $STANDBY_HOSTNAME"
-		STOP_SYNC_PROCESS $STANDBY_HOSTNAME $STANDBY_DATADIR
+		LOG_MSG "[INFO]:-Processing Master standby host $STANDBY_HOSTNAME" 1
 		RUN_COMMAND_REMOTE $STANDBY_HOSTNAME "$RM -Rf $STANDBY_DATADIR"
 		RUN_COMMAND_REMOTE $STANDBY_HOSTNAME "$RM -f ${STANDBY_DATADIR}.log"
 	fi
-	LOG_MSG "[INFO]:-Processing Master host $MASTER_HOSTNAME"
+	LOG_MSG "[INFO]:-Processing Master host $MASTER_HOSTNAME" 1
 	RUN_COMMAND "$RM -Rf $MASTER_DATA_DIRECTORY"
 	RUN_COMMAND "$RM -f ${MASTER_DATA_DIRECTORY}.log"
-	LOG_MSG "[INFO]:-The MPP instance on Master host $MASTER_HOSTNAME, has been deleted"
+	LOG_MSG "[INFO]:-The MPP instance on Master host $MASTER_HOSTNAME, has been deleted" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -249,10 +259,10 @@ DELETE_RO_MASTER () {
 	if [ $RETVAL -eq 0 ];then
 		GET_PG_PID_ACTIVE $MASTER_PORT $FAIL_PRI_SEG
 		if [ $PID -ne 0 ];then
-			LOG_MSG "[INFO]:-Master read only host process active, calling shutdown"
+			LOG_MSG "[INFO]:-Master read only host process active, calling shutdown" 1
 			$TRUSTED_SHELL $FAIL_PRI_SEG "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$MPPSTOP -d $MASTER_DATA_DIRECTORY -m"
 		fi
-		LOG_MSG "[INFO]:-Deleting Master read only directory and log file"
+		LOG_MSG "[INFO]:-Deleting Master read only directory and log file" 1
 		$TRUSTED_SHELL $FAIL_PRI_SEG "if [ -d $MASTER_DATA_DIRECTORY ];then $RM -Rf $MASTER_DATA_DIRECTORY; $RM -f ${MASTER_DATA_DIRECTORY}.log;fi"
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -262,7 +272,7 @@ DELETE_RO_MASTER () {
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ];then
-        while getopts ":v'?'fr:d:l:" opt;do
+        while getopts ":v'?'fr:d:l:D" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
                 '?' ) USAGE ;;
@@ -270,6 +280,7 @@ if [ $# -ne 0 ];then
 		l ) LOG_DIR=$OPTARG ;;
 		f ) FORCE=1 ;;
 		r ) FAIL_PRI_SEG=$OPTARG ;;
+		D ) DEBUG_LEVEL=1 ;;
                 * ) UNKNOWN_OPTION ;;
         esac
         done
@@ -279,14 +290,14 @@ fi
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
 	if [ $EXISTS -eq 1 ]; then
-		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
 		EXIT_STATUS=1
 else
 	LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
 	fi
 fi
 if [ x"" == x"$DELETE_MASTER_DATA_DIRECTORY" ];then
-	ERROR_EXIT "[FATAL]:-Must supply -d option"
+	ERROR_EXIT "[FATAL]:-Must supply -d option" 2
 fi
 CHK_ON_PASSIVE_STANDBY
 CHECK_PARAM

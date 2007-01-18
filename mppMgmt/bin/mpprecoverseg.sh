@@ -79,6 +79,7 @@ USAGE () {
 		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
 		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
 		$ECHO "      -a, don't ask to confirm recovery [default:- ask]"
+		$ECHO "      -D, set log output to debug level, shows all function calls"
 		$ECHO 
 		$ECHO "      Recovery options:"
 		$ECHO "      -p <hostname> recover to spare pool node"
@@ -122,47 +123,47 @@ GET_SETTING () {
 		#Get a list of dbid's that are marked as invalid
 		CHK_MIRRORS_CONFIGURED
 		if [ $MIRROR_COUNT -eq 1 ];then
-			LOG_MSG "[FATAL]:-There are no mirrors configured for this MPP instance"
-			LOG_MSG "[FATAL]:-The failed segment(s) with dbid's ${FAILED_INST_LIST[@]} will"
-			LOG_MSG "[FATAL]:-need to be recovered manually, or a complete database restore"
-			LOG_MSG "[FATAL]:-will need to be undertaken"
+			LOG_MSG "[FATAL]:-There are no mirrors configured for this MPP instance" 1
+			LOG_MSG "[FATAL]:-The failed segment(s) with dbid's ${FAILED_INST_LIST[@]} will" 1
+			LOG_MSG "[FATAL]:-need to be recovered manually, or a complete database restore" 1
+			LOG_MSG "[FATAL]:-will need to be undertaken" 1
 			$MPPSTOP -maq
 			ERROR_CHK $? "shutdown master database from admin mode" 2
 			ERROR_EXIT "[FATAL]:-No further progress can be made" 2
 		else
-			LOG_MSG "[WARN]:-Unable to establish if any instances marked as invalid"
-			LOG_MSG "[WARN]:-as master database started in admin mode"
-			LOG_MSG "[INFO]:-Restart the database and re-run this utility to check for failures"
-			LOG_MSG "[INFO]:-Commencing shutdown from admin mode"
+			LOG_MSG "[WARN]:-Unable to establish if any instances marked as invalid" 1
+			LOG_MSG "[WARN]:-as master database started in admin mode" 1
+			LOG_MSG "[INFO]:-Restart the database and re-run this utility to check for failures" 1
+			LOG_MSG "[INFO]:-Commencing shutdown from admin mode" 1
 			$MPPSTOP -maq
 			ERROR_CHK $? "shutdown master database from admin mode" 2
 			ERROR_EXIT "[FATAL]:-No further progress can be made" 2
 		fi
 	else
-		LOG_MSG "[INFO]:-Fault tolerance is set to $FAIL_TYPE"
+		LOG_MSG "[INFO]:-Fault tolerance is set to $FAIL_TYPE" 1
 		CHK_MIRRORS_CONFIGURED
 		if [ $MIRROR_COUNT -eq 1 ];then
-			LOG_MSG "[FATAL]:-There are no mirrors configured for this MPP instance"
-			LOG_MSG "[FATAL]:-The MPP instance will need to be recovered manually"
-			LOG_MSG "[FATAL]:-See mpp_restore command"
+			LOG_MSG "[FATAL]:-There are no mirrors configured for this MPP instance" 1
+			LOG_MSG "[FATAL]:-The MPP instance will need to be recovered manually" 1
+			LOG_MSG "[FATAL]:-See mpp_restore command" 1
 			ERROR_EXIT "[FATAL]:-No further progress can be made" 2
 		fi
 		FAILED_INST_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where valid='f';"`)
 		RET_STATUS=$?
 		ERROR_CHK $RET_STATUS "obtain failed instance dbid's" 1
-		LOG_MSG "[INFO]:-There are ${#FAILED_INST_LIST[@]} failed segment(s)"
+		LOG_MSG "[INFO]:-There are ${#FAILED_INST_LIST[@]} failed segment(s)" 1
 		if [ $FAIL_TYPE != "readonly" ] && [ $FAIL_TYPE != "continue" ];then
-			LOG_MSG "[FATAL]:-Parameter mpp_fault_action is not set to either readonly or continue"
-			LOG_MSG "[FATAL]:-MPP fault tolerance is not set"
-			LOG_MSG "[FATAL]:-Unable to determine if there are actual segment failures"
+			LOG_MSG "[FATAL]:-Parameter mpp_fault_action is not set to either readonly or continue" 1
+			LOG_MSG "[FATAL]:-MPP fault tolerance is not set" 1
+			LOG_MSG "[FATAL]:-Unable to determine if there are actual segment failures" 1
 			INFO_TEXT
 			ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		else
 			case $FAIL_TYPE in
 				readonly ) STOPDB=0 
-					   LOG_MSG "[INFO]:-Setting STOPDB to false" ;;
+					   LOG_MSG "[INFO]:-Setting STOPDB to false" 1 ;;
 				continue ) STOPDB=1
-					   LOG_MSG "[INFO]:-Setting STOPDB to true" ;;
+					   LOG_MSG "[INFO]:-Setting STOPDB to true" 1 ;;
 			esac
 		fi
 	fi
@@ -174,10 +175,10 @@ GET_SETTING () {
 		COUNT_TYPE_ACTIVE_ARRAY=${#TYPE_ACTIVE_ARRAY[@]}
 		case $COUNT_TYPE_ACTIVE_ARRAY in
 			0)
-			LOG_MSG "[INFO]:-Mirror type is separate hosts, no active segments on pool host"
+			LOG_MSG "[INFO]:-Mirror type is separate hosts, no active segments on pool host" 1
 			;;
 			1)
-			LOG_MSG "[INFO]:-Mirror type is separate hosts, active type on pool host = ${TYPE_ACTIVE_ARRAY[@]}"
+			LOG_MSG "[INFO]:-Mirror type is separate hosts, active type on pool host = ${TYPE_ACTIVE_ARRAY[@]}" 1
 			PRI_COUNT=0;MIR_COUNT=0
 			for DBID in ${FAILED_INST_LIST[@]}
 			do
@@ -191,25 +192,25 @@ GET_SETTING () {
 				esac
 			done
 			if [ ${TYPE_ACTIVE_ARRAY[@]} == 't' ] && [ $MIR_COUNT -ne 0 ];then
-				LOG_MSG "[INFO]:-****************************************************************"
-				LOG_MSG "[WARN]:-About to locate failed mirror to pool host with primary segments"
-				LOG_MSG "[WARN]:-Current array mirror type is separate hosts"
-				LOG_MSG "[WARN]:-Recovery will break this mirror configuration"
-				LOG_MSG "[INFO]:-****************************************************************"
+				LOG_MSG "[INFO]:-****************************************************************" 1
+				LOG_MSG "[WARN]:-About to locate failed mirror to pool host with primary segments" 1
+				LOG_MSG "[WARN]:-Current array mirror type is separate hosts" 1
+				LOG_MSG "[WARN]:-Recovery will break this mirror configuration" 1
+				LOG_MSG "[INFO]:-****************************************************************" 1
 				EXIT_STATUS=1
 			fi
 			if [ ${TYPE_ACTIVE_ARRAY[@]} == 'f' ] && [ $PRI_COUNT -ne 0 ];then
-				LOG_MSG "[INFO]:-****************************************************************"
-				LOG_MSG "[WARN]:-About to locate failed primary to pool host with mirror segments"
-				LOG_MSG "[WARN]:-Current array mirror type is separate hosts"
-				LOG_MSG "[WARN]:-Recovery will break this mirror configuration"
-				LOG_MSG "[INFO]:-****************************************************************"
+				LOG_MSG "[INFO]:-****************************************************************" 1
+				LOG_MSG "[WARN]:-About to locate failed primary to pool host with mirror segments" 1
+				LOG_MSG "[WARN]:-Current array mirror type is separate hosts" 1
+				LOG_MSG "[WARN]:-Recovery will break this mirror configuration" 1
+				LOG_MSG "[INFO]:-****************************************************************" 1
 				EXIT_STATUS=1
 			fi
 			;;
 			2)
-			LOG_MSG "[WARN]:-Mirror type is separate hosts, active type on pool host = ${TYPE_ACTIVE_ARRAY[@]}"
-			LOG_MSG "[WARN]:-Have primary and mirror segment instances active on pool host"
+			LOG_MSG "[WARN]:-Mirror type is separate hosts, active type on pool host = ${TYPE_ACTIVE_ARRAY[@]}" 1
+			LOG_MSG "[WARN]:-Have primary and mirror segment instances active on pool host" 1
 			EXIT_STATUS=1
 			;;
 		esac
@@ -218,47 +219,49 @@ GET_SETTING () {
 }
 
 INFO_TEXT () {
-	LOG_MSG "[INFO]:-To be able to progress this issue, complete the following steps"
-	LOG_MSG "[INFO]:-Step 1 Shutdown the MPP instance with mppstop.sh -zfa"
-	LOG_MSG "[INFO]:-Step 2 Edit the Master postgresql.conf file and set mpp_fault_action=readonly"
-	LOG_MSG "[INFO]:-Step 3 Restart the MPP instance mppstart.sh -a"
-	LOG_MSG "[INFO]:-Step 4 Re-run this utility"
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-To be able to progress this issue, complete the following steps" 1
+	LOG_MSG "[INFO]:-Step 1 Shutdown the MPP instance with mppstop.sh -zfa" 1
+	LOG_MSG "[INFO]:-Step 2 Edit the Master postgresql.conf file and set mpp_fault_action=readonly" 1
+	LOG_MSG "[INFO]:-Step 3 Restart the MPP instance mppstart.sh -a" 1
+	LOG_MSG "[INFO]:-Step 4 Re-run this utility" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_MIRROR () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	FAILED_INST_COUNT=${#FAILED_INST_LIST[@]}
 	if [ $FAILED_INST_COUNT -eq 0 ]; then
-		LOG_MSG "[INFO]:-No invalid segment instances located"
-		LOG_MSG "[INFO]:-Commencing general user access check"
+		LOG_MSG "[INFO]:-No invalid segment instances located" 1
+		LOG_MSG "[INFO]:-Commencing general user database access check" 1
 		$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"show mpp_fault_action;" >> $LOG_FILE 2>&1
 		RET_STATUS=$?
 		if [ $RET_STATUS -ne 0 ];then
-			LOG_MSG "[WARN]:-Issue with general access to the database"
+			LOG_MSG "[WARN]:-Issue with general access to the database" 1
 			if [ $FAIL_TYPE != "readonly" ];then
-				LOG_MSG "[INFO]:-Fault tolerance is set to $FAIL_TYPE"
-				LOG_MSG "[INFO]:-Please review the following"
+				LOG_MSG "[INFO]:-Fault tolerance is set to $FAIL_TYPE" 1
+				LOG_MSG "[INFO]:-Please review the following" 1
 				INFO_TEXT
 				ERROR_EXIT "[FATAL]:-Unable to continue" 2
 			fi
 		else
-			LOG_MSG "[INFO]:-General access checked passed"
+			LOG_MSG "[INFO]:-General access checked passed" 1
 		fi
 		exit 0
 	else
-		LOG_MSG "[INFO]:-Located $FAILED_INST_COUNT invalid segment instances"
+		LOG_MSG "[INFO]:-Located $FAILED_INST_COUNT invalid segment instances" 1
 	fi
 	#Now check to make sure that we can initiate recovery
 	TOTAL_INST_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid) from $CONFIG_TABLE where content<>-1;"`
 	ERROR_CHK $? "obtain total segement count from master instance" 2
 	if [ $FAILED_INST_COUNT -gt $TOTAL_INST_COUNT ]; then
-		LOG_MSG "[FATAL]:-Insufficient remaining active instances to be able to recover instance"
+		LOG_MSG "[FATAL]:-Insufficient remaining active instances to be able to recover instance" 1
 		ERROR_EXIT "[FATAL]:-Unable to continue" 2
 	else
-		LOG_MSG "[INFO]:-Sufficient active instances to be able to start recovery"
+		LOG_MSG "[INFO]:-Sufficient active instances to be able to start recovery" 1
 	fi
 	#Now obtain details of failed instances and also their associated mirrors
-	LOG_MSG "[INFO]:-Obtaining recovery information"
+	LOG_MSG "[INFO]:-Obtaining recovery information" 1
 	ARRAY_INDEX=0
 	for DBID in ${FAILED_INST_LIST[@]}
 	do
@@ -274,97 +277,101 @@ GET_MIRROR () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-MPP instance recovery parameters"
-	LOG_MSG "[INFO]:---------------------------------"
-	LOG_MSG "[INFO]:-Fault tolerance setting       = $FAIL_TYPE"
+	LOG_MSG "[INFO]:-MPP instance recovery parameters" 1
+	LOG_MSG "[INFO]:---------------------------------" 1
+	LOG_MSG "[INFO]:-Fault tolerance setting       = $FAIL_TYPE" 1
 	if [ x"" != x"$POOL_HOST" ];then
-	LOG_MSG "[INFO]:-Recovery type                 = Pool Host"
-	LOG_MSG "[INFO]:-Pool host for recovery        = $POOL_HOST"
+	LOG_MSG "[INFO]:-Recovery type                 = Pool Host" 1
+	LOG_MSG "[INFO]:-Pool host for recovery        = $POOL_HOST" 1
 	TYPE_TEXT="Pool    "
 	fi
 	if [ x"" != x"$POOL_DIR_SET" ];then
-	LOG_MSG "[INFO]:-Recovery type                 = Pool Directory"
-	LOG_MSG "[INFO]:-Primary pool directory        = $PRI_POOL_DATADIR"
-	LOG_MSG "[INFO]:-Mirror pool directory         = $MIR_POOL_DATADIR"
+	LOG_MSG "[INFO]:-Recovery type                 = Pool Directory" 1
+	LOG_MSG "[INFO]:-Primary pool directory        = $PRI_POOL_DATADIR" 1
+	LOG_MSG "[INFO]:-Mirror pool directory         = $MIR_POOL_DATADIR" 1
 	TYPE_TEXT="Pool dir"
 	fi
 	if [ x"" == x"$POOL_HOST" ] && [ x"" == x"$POOL_DIR_SET" ];then
-	LOG_MSG "[INFO]:-Recovery type                 = Standard"
+	LOG_MSG "[INFO]:-Recovery type                 = Standard" 1
 	TYPE_TEXT="Failed  "
 	fi
 	COUNT=0
 	if [ $EXIT_STATUS -ne 0 ];then
-	LOG_MSG "[WARN]:-Warnings have been generated    <<<<<<<<<<<<<"
-	LOG_MSG "[INFO]:-But recovery can continue"
+	LOG_MSG "[WARN]:-Warnings have been generated    <<<<<<<<<<<<<" 1
+	LOG_MSG "[INFO]:-But recovery can continue" 1
 	fi
 	while [ $COUNT -lt $ARRAY_INDEX ]
 	do
 		((REC_COUNT=$COUNT+1))
-		LOG_MSG "[INFO]:-Recovery $REC_COUNT of $ARRAY_INDEX"
-		LOG_MSG "[INFO]:------------------------------"
+		LOG_MSG "[INFO]:-Recovery $REC_COUNT of $ARRAY_INDEX" 1
+		LOG_MSG "[INFO]:------------------------------" 1
 		if [ x"" != x"$POOL_DIR_SET" ] || [ x"" != x"$POOL_HOST" ];then
 			FAIL_SET_VAR ${POOL_FAILED_INSTANCE_ARRAY[$COUNT]}
 		else
 			FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
 		fi
 		MIR_SET_VAR ${ACTIVE_INSTANCE_ARRAY[$COUNT]}
-		LOG_MSG "[INFO]:-$TYPE_TEXT instance host        = $FAIL_QE_HOST"
-		LOG_MSG "[INFO]:-$TYPE_TEXT instance directory   = $FAIL_QE_DIR"
-		LOG_MSG "[INFO]:-$TYPE_TEXT instance port        = $FAIL_QE_PORT"
-		LOG_MSG "[INFO]:-Recovery instance host        = $MIR_QE_HOST"
-		LOG_MSG "[INFO]:-Recovery instance directory   = $MIR_QE_DIR"
-		LOG_MSG "[INFO]:-Recovery instance port        = $MIR_QE_PORT"
-		LOG_MSG "[INFO]:------------------------------"
+		LOG_MSG "[INFO]:-$TYPE_TEXT instance host        = $FAIL_QE_HOST" 1
+		LOG_MSG "[INFO]:-$TYPE_TEXT instance directory   = $FAIL_QE_DIR" 1
+		LOG_MSG "[INFO]:-$TYPE_TEXT instance port        = $FAIL_QE_PORT" 1
+		LOG_MSG "[INFO]:-Recovery instance host        = $MIR_QE_HOST" 1
+		LOG_MSG "[INFO]:-Recovery instance directory   = $MIR_QE_DIR" 1
+		LOG_MSG "[INFO]:-Recovery instance port        = $MIR_QE_PORT" 1
+		LOG_MSG "[INFO]:------------------------------" 1
 		((COUNT=$COUNT+1))
 	done
 	$ECHO
 	if [ $STOPDB -eq 1 ]; then
-		LOG_MSG "[INFO]:-Procedure will STOP database as mpp_fault_action=$FAIL_TYPE"
+		LOG_MSG "[INFO]:-Procedure will STOP database as mpp_fault_action=$FAIL_TYPE" 1
 	else
 		if [ $FORCESTOP -eq 1 ];then
-			LOG_MSG "[INFO]:-Procedure will STOP database as -f option supplied"
+			LOG_MSG "[INFO]:-Procedure will STOP database as -f option supplied" 1
 		else
-			LOG_MSG "[INFO]:-Procedure can continue without database interruption"
-			LOG_MSG "[INFO]:-as mpp_fault_action=$FAIL_TYPE"
+			LOG_MSG "[INFO]:-Procedure can continue without database interruption" 1
+			LOG_MSG "[INFO]:-as mpp_fault_action=$FAIL_TYPE" 1
 		fi
 	fi
 	$ECHO
         $ECHO "Continue with recovery procedure yY|nN >"
         read REPLY
 	if [ x"" == x"$REPLY" ];then
-		LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 		$RM -f $TMP_FILE
 		exit 1;fi
         if [ $REPLY != Y ] && [ $REPLY != y ];then
-                LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+                LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 		$RM -f $TMP_FILE
                 exit 1;fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 FAIL_SET_VAR () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	FAIL_QE_HOST=`$ECHO $1|$CUT -d"|" -f1`
 	FAIL_QE_PORT=`$ECHO $1|$CUT -d"|" -f2`
 	FAIL_QE_DIR=`$ECHO $1|$CUT -d"|" -f3`
 	FAIL_QE_DBID=`$ECHO $1|$CUT -d"|" -f4`
 	FAIL_QE_CONTENTID=`$ECHO $1|$CUT -d"|" -f5`
 	FAIL_QE_TOP_DIR=`$DIRNAME $FAIL_QE_DIR`
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 MIR_SET_VAR () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	MIR_QE_HOST=`$ECHO $1|$CUT -d"|" -f1`
 	MIR_QE_PORT=`$ECHO $1|$CUT -d"|" -f2`
 	MIR_QE_DIR=`$ECHO $1|$CUT -d"|" -f3`
 	MIR_QE_DBID=`$ECHO $1|$CUT -d"|" -f4`
 	MIR_QE_TOP_DIR=`$DIRNAME $MIR_QE_DIR`
-
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 TEST_ACCESS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Testing remote access"
-	LOG_MSG "[INFO]:-Trusted shell = $TRUSTED_SHELL"
-	LOG_MSG "[IMFO]:-Trusted copy  = $TRUSTED_COPY"
+	LOG_MSG "[INFO]:-Testing remote access" 1
+	LOG_MSG "[INFO]:-Trusted shell = $TRUSTED_SHELL" 1
+	LOG_MSG "[IMFO]:-Trusted copy  = $TRUSTED_COPY" 1
+	LOG_MSG "[INFO]:-Please wait..." 1
 	COUNT=0
 	while [ $COUNT -lt $ARRAY_INDEX ]
 	do
@@ -385,6 +392,7 @@ TEST_ACCESS () {
 		RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$RM -f /tmp/remote_test2.$$" 
 		((COUNT=$COUNT+1))	
 	done
+	LOG_MSG "[INFO]:-Remote access checks completed" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 STOP_DATABASE () { 
@@ -394,33 +402,33 @@ STOP_DATABASE () {
         	if [ $EXISTS -ne 0 ];then
                 	ERROR_EXIT "[FATAL]:-Could not locate $MPPSTOP script"
 		fi
-        	LOG_MSG "[INFO]:-Shutting down the instance ... Please wait ..."
+        	LOG_MSG "[INFO]:-Shutting down the instance ... Please wait ..." 1
         	$MPPSTOP -zfa
 		if [ x"" == x"$FORCE_RECOVER_STRING" ];then
         		ERROR_CHK $? "shutdown master instance" 2
 		else
-			LOG_MSG "[INFO]:-Ignoring shutdown errors as force option selected"
+			LOG_MSG "[INFO]:-Ignoring shutdown errors as force option selected" 1
 		fi
-        	LOG_MSG "[INFO]:-Successfully shutdown the MPP instance"
+        	LOG_MSG "[INFO]:-Successfully shutdown the MPP instance" 1
 	else
 		COUNT=0
 		while [ $COUNT -lt $FAILED_INST_COUNT ]
 		do
 			FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
-			LOG_MSG "[INFO]:-Forcing shutdown of $FAIL_QE_HOST for port=$FAIL_QE_PORT "
+			LOG_MSG "[INFO]:-Forcing shutdown of $FAIL_QE_HOST for port=$FAIL_QE_PORT " 1
 			$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m immediate -l ${FAIL_QE_DIR}.log"
 			ERROR_CHK $? "force shutdown of $FAIL_QE_DIR on $FAIL_QE_HOST" 1
-			LOG_MSG "[INFO]:-Checking for postmaster process on $FAIL_QE_HOST port $FAIL_QE_PORT"
+			LOG_MSG "[INFO]:-Checking for postmaster process on $FAIL_QE_HOST port $FAIL_QE_PORT" 1
 			GET_PG_PID_ACTIVE $FAIL_QE_PORT $FAIL_QE_HOST
 			if [ $PID -ne 0 ];then
-				LOG_MSG "[WARN]:-Found postmaster process on $FAIL_QE_HOST port $FAIL_QE_PORT"
-				LOG_MSG "[WARN]:-Will kill process $PID"
+				LOG_MSG "[WARN]:-Found postmaster process on $FAIL_QE_HOST port $FAIL_QE_PORT" 1
+				LOG_MSG "[WARN]:-Will kill process $PID" 1
 				$TRUSTED_SHELL $FAIL_QE_HOST "$KILL -9 $PID"
 				ERROR_CHK $? "$TRUSTED_SHELL $FAIL_QE_HOST $KILL -9 $PID" 1
 			else
-				LOG_MSG "[INFO]:-No postmaster process on $FAIL_QE_HOST port $FAIL_QE_PORT"
+				LOG_MSG "[INFO]:-No postmaster process on $FAIL_QE_HOST port $FAIL_QE_PORT" 1
 			fi
-			LOG_MSG "[INFO]:-Clearing /tmp/lock files for $FAIL_QE_HOST for port=$FAIL_QE_PORT "
+			LOG_MSG "[INFO]:-Clearing /tmp/lock files for $FAIL_QE_HOST for port=$FAIL_QE_PORT " 1
 			$TRUSTED_SHELL $FAIL_QE_HOST "$RM -f /tmp/.s.PGSQL.${FAIL_QE_PORT}.lock /tmp/.s.PGSQL.${FAIL_QE_PORT}"
 			ERROR_CHK $? "remove of /tmp lockfiles for $FAIL_QE_HOST" 1
 			
@@ -437,42 +445,42 @@ RECOVER_DATA () {
 	do
 		FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
 		MIR_SET_VAR ${ACTIVE_INSTANCE_ARRAY[$COUNT]}
-		LOG_MSG "[INFO]:-Checking for invalid postmaster process on port ${FAIL_QE_HOST}"
+		LOG_MSG "[INFO]:-Checking for invalid postmaster process on port ${FAIL_QE_HOST}" 1
 		GET_PG_PID_ACTIVE $FAIL_QE_PORT $FAIL_QE_HOST
 		if [ $PID -ne 0 ]; then
-			LOG_MSG "[INFO]:-Orphaned PID located on $FAIL_QE_PORT clearing down"
+			LOG_MSG "[INFO]:-Orphaned PID located on $FAIL_QE_PORT clearing down" 1
 			$TRUSTED_SHELL $FAIL_QE_HOST "$KILL -9 $PID" >> $LOG_FILE 2>&1
 			$TRUSTED_SHELL $FAIL_QE_HOST "$RM -f /tmp/.s.PGSQL.${FAIL_QE_PORT}" >> $LOG_FILE 2>&1
 			$TRUSTED_SHELL $FAIL_QE_HOST "$RM -f /tmp/.s.PGSQL.${FAIL_QE_PORT}.lock" >> $LOG_FILE 2>&1
 		else
-			LOG_MSG "[INFO]:-No active pid found for $FAIL_QE_HOST for port=$FAIL_QE_PORT"
+			LOG_MSG "[INFO]:-No active pid found for $FAIL_QE_HOST for port=$FAIL_QE_PORT" 1
 		fi
-		LOG_MSG "[INFO]:-Deleting failed database directory on ${FAIL_QE_HOST}"
+		LOG_MSG "[INFO]:-Deleting failed database directory on ${FAIL_QE_HOST}" 1
 		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -Rf ${FAIL_QE_DIR}" 
-		LOG_MSG "[INFO]:-Deleting failed database log file on ${FAIL_QE_HOST}"
+		LOG_MSG "[INFO]:-Deleting failed database log file on ${FAIL_QE_HOST}" 1
 		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -Rf ${FAIL_QE_DIR}.log"
 		#Run a checkpoint if STOPDB=0
 		if [ $STOPDB -eq 0 ] && [ $FORCESTOP -eq 0 ]; then
-			LOG_MSG "[INFO]:-Issuing checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT"
+			LOG_MSG "[INFO]:-Issuing checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT" 1
 			$TRUSTED_SHELL $MIR_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIR_QE_PORT $DEFAULTDB -c \"checkpoint;\""
 			ERROR_CHK $? "instance checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT" 1
 		fi
 		if [ x"" != x"$POOL_DIR_SET" ] || [ x"" != x"$POOL_HOST" ];then
 			FAIL_SET_VAR ${POOL_FAILED_INSTANCE_ARRAY[$COUNT]}
 		fi
-		LOG_MSG "[INFO]:-Recovering data directory from ${MIR_QE_HOST} to ${FAIL_QE_HOST}"
-		LOG_MSG "[INFO]:-This could take some time depending on data volume"
+		LOG_MSG "[INFO]:-Recovering data directory from ${MIR_QE_HOST} to ${FAIL_QE_HOST}" 1
+		LOG_MSG "[INFO]:-This could take some time depending on data volume" 1
 		KB_COPY=`$TRUSTED_SHELL ${MIR_QE_HOST} "$DU -k -s $DU_TXT ${MIR_QE_DIR}|$TAIL -1"|$AWK '{print $1}'`
-		LOG_MSG "[INFO]:-Copy will transfer $KB_COPY KBytes of data" 
-		LOG_MSG "[INFO]:-Commencing data transfer"
-		LOG_MSG "[INFO]:-Please Wait ..."
+		LOG_MSG "[INFO]:-Copy will transfer $KB_COPY KBytes of data"  1
+		LOG_MSG "[INFO]:-Commencing data transfer" 1
+		LOG_MSG "[INFO]:-Please Wait ..." 1
 		RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$TRUSTED_COPY -pr ${MIR_QE_DIR} ${FAIL_QE_HOST}:${FAIL_QE_DIR}" 
-		LOG_MSG "[INFO]:-Setting recovered port to ${FAIL_QE_PORT} on ${FAIL_QE_HOST}" 
+		LOG_MSG "[INFO]:-Setting recovered port to ${FAIL_QE_PORT} on ${FAIL_QE_HOST}"  1
 		ED_FILE ${FAIL_QE_DIR}/$PG_CONF "port=" "port=${FAIL_QE_PORT}" 0 ${FAIL_QE_HOST}
-		LOG_MSG "[INFO]:-Clearing old postmaster.opts file"
+		LOG_MSG "[INFO]:-Clearing old postmaster.opts file" 1
 		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -f ${FAIL_QE_DIR}/postmaster.opts"
 		if [ $STOPDB -eq 0 ] && [ $FORCESTOP -eq 0 ]; then
-			LOG_MSG "[INFO]:-Clearing old postmaster.pid file"
+			LOG_MSG "[INFO]:-Clearing old postmaster.pid file" 1
 			RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -f ${FAIL_QE_DIR}/postmaster.pid"
 		fi
 		((COUNT=$COUNT+1))
@@ -491,15 +499,15 @@ UPDATE_MPP_MPP () {
 			FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
 		fi
 		((COUNT=$COUNT+1))
-		LOG_MSG "[INFO]:-Updating instance catalog on $FAIL_QE_HOST port=$FAIL_QE_PORT"
-		LOG_MSG "[INFO]:-Starting instance on $FAIL_QE_HOST port=$FAIL_QE_PORT"
+		LOG_MSG "[INFO]:-Updating instance catalog on $FAIL_QE_HOST port=$FAIL_QE_PORT" 1
+		LOG_MSG "[INFO]:-Starting instance on $FAIL_QE_HOST port=$FAIL_QE_PORT" 1
 		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w -D $FAIL_QE_DIR -l ${FAIL_QE_DIR}.log -o \"-i -p $FAIL_QE_PORT \" start" 
 		ERROR_CHK $? "segment start $FAIL_QE_HOST instance $FAIL_QE_DIR port=$FAIL_QE_PORT" 2
 		# Update table
 		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $DEFAULTDB -c \"update $MPP_MPP_TABLE set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\""
 		ERROR_CHK $? "update segment $MPP_MPP_TABLE on $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT" 2
 		if [ $STOPDB -eq 1 ] || [ $FORCESTOP -eq 1 ]; then
-				LOG_MSG "[INFO]:-Commencing shutdown of $FAIL_QE_HOST port=$FAIL_QE_PORT"
+				LOG_MSG "[INFO]:-Commencing shutdown of $FAIL_QE_HOST port=$FAIL_QE_PORT" 1
 				$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m smart -l ${FAIL_QE_DIR}.log"
 				ERROR_CHK $? "segment instance stop $FAIL_QE_HOST port=$FAIL_QE_PORT" 2
 		fi
@@ -520,28 +528,28 @@ RESET_QE_CONNECT () {
 
 START_DATABASE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Starting up the MPP instance in admin mode... Please wait..."
+	LOG_MSG "[INFO]:-Starting up the MPP instance in admin mode... Please wait..." 1
 	$MPPSTART -m
 	ERROR_CHK $? "start MPP instance in admin mode" 2
-	LOG_MSG "[INFO]:-Resetting invalid segment status values"
+	LOG_MSG "[INFO]:-Resetting invalid segment status values" 1
 	for DBID in ${FAILED_INST_LIST[@]}
 	do
 		env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set valid='t' where dbid=${DBID}"
 		ERROR_CHK $? "reset dbid $DBID as valid" 1
 	done
-	LOG_MSG "[INFO]:-Commencing shutdown of the MPP instance from admin mode... Please wait..."
+	LOG_MSG "[INFO]:-Commencing shutdown of the MPP instance from admin mode... Please wait..." 1
 	$MPPSTOP -m
 	ERROR_CHK $? "stop MPP instance from admin mode" 2
-        LOG_MSG "[INFO]:-Starting up the MPP instance... Please wait..."
+        LOG_MSG "[INFO]:-Starting up the MPP instance... Please wait..." 1
         $MPPSTART -a
         RETVAL=$?
         if [ $RETVAL -ne 0 ];then
-		LOG_MSG "[WARN]:-The $MPPSTART script returned a non zero return code"
-		LOG_MSG "[INFO]:-Check the $MPPSTART log file for more information on cause"
-		LOG_MSG "[INFO]:-Run mppstate.sh to check current status of instance"
+		LOG_MSG "[WARN]:-The $MPPSTART script returned a non zero return code" 1
+		LOG_MSG "[INFO]:-Check the $MPPSTART log file for more information on cause" 1
+		LOG_MSG "[INFO]:-Run mppstate.sh to check current status of instance" 1
                 ERROR_EXIT "[FATAL]:-Issue with master database startup." 2
 	fi
-        LOG_MSG "[INFO]:-Successfully started the master instance"
+        LOG_MSG "[INFO]:-Successfully started the master instance" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -613,54 +621,54 @@ VALIDATE_PARAMS () {
 
 CHK_POOL_DIR_AVAILABLE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Primary segment pool directory set as $PRI_POOL_DATADIR"
-	LOG_MSG "[INFO]:-Mirror segment pool directory set as $MIR_POOL_DATADIR"
+	LOG_MSG "[INFO]:-Primary segment pool directory set as $PRI_POOL_DATADIR" 1
+	LOG_MSG "[INFO]:-Mirror segment pool directory set as $MIR_POOL_DATADIR" 1
 	SEG_PREFIX=`$ECHO $MASTER_DATA_DIRECTORY|$AWK -F'/' '{print $NF}'|$SED -e 's/-[0-9]//g'`
-	LOG_MSG "[INFO]:-MPP instance segment prefix is $SEG_PREFIX"
+	LOG_MSG "[INFO]:-MPP instance segment prefix is $SEG_PREFIX" 1
 	#For each host see how many are active
 	ACTIVE_PRI_POOL_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where datadir like '${PRI_POOL_DATADIR}/${SEG_PREFIX}%' and content<>-1;"`)
 	ERROR_CHK $? "obtain active primary pool directory count" 2
-	LOG_MSG "[INFO]:-There are ${#ACTIVE_PRI_POOL_ARRAY[@]} primary directory pools active"
+	LOG_MSG "[INFO]:-There are ${#ACTIVE_PRI_POOL_ARRAY[@]} primary directory pools active" 1
 	ACTIVE_MIR_POOL_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where datadir like '${MIR_POOL_DATADIR}/${SEG_PREFIX}%' and content<>-1;"`)
 	ERROR_CHK $? "obtain active mirror pool directory count" 2
-	LOG_MSG "[INFO]:-There are ${#ACTIVE_MIR_POOL_ARRAY[@]} mirror directory pools active"
+	LOG_MSG "[INFO]:-There are ${#ACTIVE_MIR_POOL_ARRAY[@]} mirror directory pools active" 1
 	#Maximum pool directory usage will be defined by number of primary QE hosts in the array
 	POOL_DIR_LIMIT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(distinct(hostname)) from $CONFIG_TABLE where content<>-1 and definedprimary='t';"`
 	ERROR_CHK $? "obtain pool directory maximum limit" 2
-	LOG_MSG "[INFO]:-Maximum pool usage limit is $POOL_DIR_LIMIT for this MPP instance"
+	LOG_MSG "[INFO]:-Maximum pool usage limit is $POOL_DIR_LIMIT for this MPP instance" 1
 	#Now see if we can continue
 	GET_FAIL_COUNT_TYPE
 	if [ $PRI_FAIL_COUNT -ne 0 ];then
 	#Check to see if have a spare primary pool directory
 		((PRI_FREE=$POOL_DIR_LIMIT-${#ACTIVE_PRI_POOL_ARRAY[@]}))
 		if [ $PRI_FREE -lt $PRI_FAIL_COUNT ];then
-			LOG_MSG "[FATAL]:-There are insufficient spare primary pool directories"
-			LOG_MSG "[FATAL]:-Required=$PRI_FAIL_COUNT Free=$PRI_FREE Used=${#ACTIVE_PRI_POOL_ARRAY[@]}"
-			LOG_MSG "[INFO]:-Consider using a pool host with -p option to this utility"
-			LOG_MSG "[INFO]:-Or supply different directory names to -s option, if available"
-			LOG_MSG "[INFO]:-If host with failed segment instance still online try"
-			LOG_MSG "[INFO]:-mpprecoverseg.sh without any options to attempt recovery"
-			LOG_MSG "[INFO]:-to original segment instance directory"
+			LOG_MSG "[FATAL]:-There are insufficient spare primary pool directories" 1
+			LOG_MSG "[FATAL]:-Required=$PRI_FAIL_COUNT Free=$PRI_FREE Used=${#ACTIVE_PRI_POOL_ARRAY[@]}" 1
+			LOG_MSG "[INFO]:-Consider using a pool host with -p option to this utility" 1
+			LOG_MSG "[INFO]:-Or supply different directory names to -s option, if available" 1
+			LOG_MSG "[INFO]:-If host with failed segment instance still online try" 1
+			LOG_MSG "[INFO]:-mpprecoverseg.sh without any options to attempt recovery" 1
+			LOG_MSG "[INFO]:-to original segment instance directory" 1
 			ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		else
-			LOG_MSG "[INFO]:-Sufficient spare primary pool directories"
-			LOG_MSG "[INFO]:-Required=$PRI_FAIL_COUNT Free=$PRI_FREE Used=${#ACTIVE_PRI_POOL_ARRAY[@]}"
+			LOG_MSG "[INFO]:-Sufficient spare primary pool directories" 1
+			LOG_MSG "[INFO]:-Required=$PRI_FAIL_COUNT Free=$PRI_FREE Used=${#ACTIVE_PRI_POOL_ARRAY[@]}" 1
 		fi
 	fi
 	if [ $MIR_FAIL_COUNT -ne 0 ];then
 		((MIR_FREE=$POOL_DIR_LIMIT-${#ACTIVE_MIR_POOL_ARRAY[@]}))
 		if [ $MIR_FREE -lt $MIR_FAIL_COUNT ];then
-			LOG_MSG "[FATAL]:-There are insufficient spare mirror pool directories"
-			LOG_MSG "[FATAL]:-Required=$MIR_FAIL_COUNT Free=$MIR_FREE Used=${#ACTIVE_MIR_POOL_ARRAY[@]}"
-			LOG_MSG "[INFO]:-Consider using a pool host with -p option to this utility"
-			LOG_MSG "[INFO]:-Or supply different directory names to -s option, if available"
-			LOG_MSG "[INFO]:-If host with failed segment instance still online try"
-			LOG_MSG "[INFO]:-mpprecoverseg.sh without any options to attempt recovery"
-			LOG_MSG "[INFO]:-to original segment instance directory"
+			LOG_MSG "[FATAL]:-There are insufficient spare mirror pool directories" 1
+			LOG_MSG "[FATAL]:-Required=$MIR_FAIL_COUNT Free=$MIR_FREE Used=${#ACTIVE_MIR_POOL_ARRAY[@]}" 1
+			LOG_MSG "[INFO]:-Consider using a pool host with -p option to this utility" 1
+			LOG_MSG "[INFO]:-Or supply different directory names to -s option, if available" 1
+			LOG_MSG "[INFO]:-If host with failed segment instance still online try" 1
+			LOG_MSG "[INFO]:-mpprecoverseg.sh without any options to attempt recovery" 1
+			LOG_MSG "[INFO]:-to original segment instance directory" 1
 			ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		else
-			LOG_MSG "[INFO]:-Sufficient spare mirror pool directories"
-			LOG_MSG "[INFO]:-Required=$MIR_FAIL_COUNT Free=$MIR_FREE Used=${#ACTIVE_MIR_POOL_ARRAY[@]}"
+			LOG_MSG "[INFO]:-Sufficient spare mirror pool directories" 1
+			LOG_MSG "[INFO]:-Required=$MIR_FAIL_COUNT Free=$MIR_FREE Used=${#ACTIVE_MIR_POOL_ARRAY[@]}" 1
 		fi
 	fi
 	#Now obtain port assignment information
@@ -693,8 +701,8 @@ GET_FAIL_COUNT_TYPE () {
 			f ) ((MIR_FAIL_COUNT=$MIR_FAIL_COUNT+1)) ;;
 		esac
 	done		
-	LOG_MSG "[INFO]:-Number of primary segments failed = $PRI_FAIL_COUNT"
-	LOG_MSG "[INFO]:-Number of mirror segments failed  = $MIR_FAIL_COUNT"
+	LOG_MSG "[INFO]:-Number of primary segments failed = $PRI_FAIL_COUNT" 1
+	LOG_MSG "[INFO]:-Number of mirror segments failed  = $MIR_FAIL_COUNT" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -707,31 +715,31 @@ POOL_DIR_VALIDATION () {
 	ERROR_CHK $? "obtain mirror segment hostname list" 2
 	for QE_HOST in ${PRI_POOL_DIR_HOST_ARRAY[@]}
 	do
-		LOG_MSG "[INFO]:-Checking access to primary host $QE_HOST"
+		LOG_MSG "[INFO]:-Checking access to primary host $QE_HOST" 1
 		PING_HOST $QE_HOST
 		if [ $RETVAL -eq 0 ];then
 			PRI_POOL_DIR_HOST_CHK_ARRAY=(${PRI_POOL_DIR_HOST_CHK_ARRAY[@]} $QE_HOST)
 		else
-			LOG_MSG "[WARN]:-Failed to establish network contact with $QE_HOST"
+			LOG_MSG "[WARN]:-Failed to establish network contact with $QE_HOST" 1
 		fi
 		#Now check to ensure have pool directories
 		CHK_DIR $PRI_POOL_DATADIR $QE_HOST
 		if [ $EXISTS -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-Directory $PRI_POOL_DATADIR does not exist on $QE_HOST"
+			ERROR_EXIT "[FATAL]:-Directory $PRI_POOL_DATADIR does not exist on $QE_HOST" 2
 		fi
 	done
 	for QE_HOST in ${MIR_POOL_DIR_HOST_ARRAY[@]}
 	do
-		LOG_MSG "[INFO]:-Checking access to mirror host $QE_HOST"
+		LOG_MSG "[INFO]:-Checking access to mirror host $QE_HOST" 1
 		PING_HOST $QE_HOST
 		if [ $RETVAL -eq 0 ];then
 			MIR_POOL_DIR_HOST_CHK_ARRAY=(${MIR_POOL_DIR_HOST_CHK_ARRAY[@]} $QE_HOST)
 		else
-			LOG_MSG "[WARN]:-Failed to establish network contact with $QE_HOST"
+			LOG_MSG "[WARN]:-Failed to establish network contact with $QE_HOST" 1
 		fi
 		CHK_DIR $MIR_POOL_DATADIR $QE_HOST
 		if [ $EXISTS -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-Directory $MIR_POOL_DATADIR does not exist on $QE_HOST"
+			ERROR_EXIT "[FATAL]:-Directory $MIR_POOL_DATADIR does not exist on $QE_HOST" 2
 		fi
 	done
 	#Now process the failed instance list
@@ -784,7 +792,7 @@ GET_HOST () {
 	#Get the host that contains the primary/mirror segment for this mirror
 	PARTNER_HOST=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select hostname from $CONFIG_TABLE where content=${FAIL_QE_CONTENTID} and definedprimary<>'${SEG_TYPE}';"`
 	ERROR_CHK $? "obtain partner hostname" 2
-	LOG_MSG "[INFO]:-Partner host for $FAIL_QE_HOST is $PARTNER_HOST"
+	LOG_MSG "[INFO]:-Partner host for $FAIL_QE_HOST is $PARTNER_HOST" 1
 	NEW_HOST=UNKNOWN
 	if [ $SEG_TYPE == 't' ];then
 		CHK_PARTNER_ARRAY=(${PRI_POOL_DIR_HOST_CHK_ARRAY[@]})
@@ -801,16 +809,16 @@ GET_HOST () {
 			#Hostname not used at present
 			if [ $CHK_HOST != $PARTNER_HOST ];then
 				#Found a host we can use, check to ensure that datadir not in use
-				LOG_MSG "[INFO]:-Checking host $CHK_HOST to see if pool directory active"
+				LOG_MSG "[INFO]:-Checking host $CHK_HOST to see if pool directory active" 1
 				IS_USED=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${CHK_HOST}' and datadir like '${DIR_CHK}%';"`
 				if [ $IS_USED -eq 0 ];then
 					NEW_HOST=$CHK_HOST
 					break
 				else
-					LOG_MSG "[INFO]:-Host $CHK_HOST has an active pool directory, looking for alternative"
+					LOG_MSG "[INFO]:-Host $CHK_HOST has an active pool directory, looking for alternative" 1
 				fi
 			else
-				LOG_MSG "[INFO]:-Possible host $CHK_HOST is a partner, checking for another alternative host"
+				LOG_MSG "[INFO]:-Possible host $CHK_HOST is a partner, checking for another alternative host" 1
 			fi
 		fi
 	done
@@ -819,23 +827,23 @@ GET_HOST () {
 		#Make sure that pool directory not in use
 		IS_USED=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${PARTNER_HOST}' and datadir like '${DIR_CHK}%';"`
 		if [ $IS_USED -eq 0 ];then
-			LOG_MSG "[INFO]:**************************************************"
-			LOG_MSG "[WARN]:-Have to locate segment on partner host $PRI_HOST"
-			LOG_MSG "[INFO]:-If host containing failed segment instance is"
-			LOG_MSG "[INFO]:-still active, consider use of mpprecoverseg.sh"
-			LOG_MSG "[INFO]:-without options to attempt recovery to original"
-			LOG_MSG "[INFO]:-segment instance directory"
-			LOG_MSG "[INFO]:**************************************************"
+			LOG_MSG "[INFO]:**************************************************" 1
+			LOG_MSG "[WARN]:-Have to locate segment on partner host $PRI_HOST" 1
+			LOG_MSG "[INFO]:-If host containing failed segment instance is" 1
+			LOG_MSG "[INFO]:-still active, consider use of mpprecoverseg.sh" 1
+			LOG_MSG "[INFO]:-without options to attempt recovery to original" 1
+			LOG_MSG "[INFO]:-segment instance directory" 1
+			LOG_MSG "[INFO]:**************************************************" 1
 			NEW_HOST=$PARTNER_HOST
 			EXIT_STATUS=1
 		else
-			LOG_MSG "[FATAL]:-Unable to locate a pool directory host for recovery"
-			LOG_MSG "[INFO]:-Consider use of mpprecoverseg.sh without any options"
-			LOG_MSG "[INFO]:-Or use mpprecoverseg.sh -p <pool host name>"
+			LOG_MSG "[FATAL]:-Unable to locate a pool directory host for recovery" 1
+			LOG_MSG "[INFO]:-Consider use of mpprecoverseg.sh without any options" 1
+			LOG_MSG "[INFO]:-Or use mpprecoverseg.sh -p <pool host name>" 1
 			ERROR_EXIT "[FATAL]:-unable to continue" 2
 		fi
 	else
-		LOG_MSG "[INFO]:-Identified a non-partner host $NEW_HOST"
+		LOG_MSG "[INFO]:-Identified a non-partner host $NEW_HOST" 1
 	fi 
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -846,7 +854,7 @@ CHK_FREE_PORT () {
 	FREE_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${1}' and port=${FAIL_QE_PORT};"`
 	ERROR_CHK $? "obtain failed port usage" 2
 	if [ $FREE_COUNT -eq 0 ] && [ `$ECHO ${POOL_PORT_IN_USE[@]}|$GREP -c $FAIL_QE_PORT` -eq 0 ];then
-		LOG_MSG "[INFO]:-Failed port $FAIL_QE_PORT not in use on $1, will re-use"
+		LOG_MSG "[INFO]:-Failed port $FAIL_QE_PORT not in use on $1, will re-use" 1
 		FREE_PORT=$FAIL_QE_PORT
 	else
 		FREE_PORT=0;START_PORT=$2
@@ -854,7 +862,7 @@ CHK_FREE_PORT () {
 		do
 			FREE_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${1}' and port=${START_PORT};" `
 			ERROR_CHK $? "obtain free port count" 2
-			LOG_MSG "[INFO]:-Free port count for $START_PORT is $FREE_COUNT"
+			LOG_MSG "[INFO]:-Free port count for $START_PORT is $FREE_COUNT" 1
 			if [ $FREE_COUNT -eq 0 ] && [ `$ECHO ${POOL_PORT_IN_USE[@]}|$GREP -c $START_PORT` -eq 0 ];then
 				FREE_PORT=$START_PORT
 				break
@@ -862,7 +870,7 @@ CHK_FREE_PORT () {
 			((START_PORT=$START_PORT+1))
 		done
 	fi
-	LOG_MSG "[INFO]:-Free port value current set at $FREE_PORT"
+	LOG_MSG "[INFO]:-Free port value current set at $FREE_PORT" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -871,10 +879,10 @@ POOL_CATALOG_UPDATE () {
 	if [ ! -f $TMP_FILE ];then
 		ERROR_EXIT "[FATAL]:-SQL update file $TMP_FILE deleted" 2
 	fi	
-	LOG_MSG "[INFO]:-Dumping MPP configuration to log file"
+	LOG_MSG "[INFO]:-Dumping MPP configuration to log file" 1
 	$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -c"select * from mpp_configuration;" >> $LOG_FILE
-	LOG_MSG "[INFO]:-Configuration dump complete"
-	LOG_MSG "[INFO]:-Commencing system catalog update"
+	LOG_MSG "[INFO]:-Configuration dump complete" 1
+	LOG_MSG "[INFO]:-Commencing system catalog update" 1
 	$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -f $TMP_FILE 2>&1 > /dev/null
 	ERROR_CHK $? "update system catalog" 2
 	$RM -f $TMP_FILE
@@ -888,10 +896,10 @@ CHK_POOL_HOST () {
 	if [ $RETVAL -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Issue with network access to $POOL_HOST" 2
 	else
-		LOG_MSG "[INFO]:-Established network connection to $POOL_HOST"
+		LOG_MSG "[INFO]:-Established network connection to $POOL_HOST" 1
 	fi
 	#Check ssh access
-	LOG_MSG "[INFO]:-Checking ssh access as user $USER to $POOL_HOST"
+	LOG_MSG "[INFO]:-Checking ssh access as user $USER to $POOL_HOST" 1
 	$TRUSTED_SHELL $POOL_HOST "ls /tmp > /dev/null"
 	ERROR_CHK $? "ssh access check to $POOL_HOST" 2
 	#Check for $MPPHOME directory on pool host
@@ -899,66 +907,66 @@ CHK_POOL_HOST () {
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Issue with $MPPHOME directory on $POOL_HOST" 2
 	else
-		LOG_MSG "[INFO]:-Check for directory $MPPHOME passed"
+		LOG_MSG "[INFO]:-Check for directory $MPPHOME passed" 1
 	fi
 	#Check that correct software and OS versions installed
 	QD_INITDB_VERSION=`$INITDB -V`
 	ERROR_CHK $? "obtain master initdb version" 2
-	LOG_MSG "[INFO]:-Master initdb version = $QD_INITDB_VERSION"	
+	LOG_MSG "[INFO]:-Master initdb version = $QD_INITDB_VERSION"	 1
 	POOL_INITDB_VERSION=`$TRUSTED_SHELL $POOL_HOST "$INITDB -V"`
 	ERROR_CHK $? "obtain pool host initdb version" 2
-	LOG_MSG "[INFO]:-Pool host initdb version = $POOL_INITDB_VERSION"
+	LOG_MSG "[INFO]:-Pool host initdb version = $POOL_INITDB_VERSION" 1
 	if [ "$QD_INITDB_VERSION" != "$POOL_INITDB_VERSION" ];then
 		ERROR_EXIT "[FATAL]:-Initdb version mismatch between master and $POOL_HOST" 2
 	else
-		LOG_MSG "[INFO]:-Initdb version check passed"
+		LOG_MSG "[INFO]:-Initdb version check passed" 1
 	fi
 	GET_FAIL_COUNT_TYPE
 	#Check for directories in use
 	PRI_POOL_HOST_IN_USE=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datadir from $CONFIG_TABLE where hostname='$POOL_HOST' and definedprimary='t';"`)
 	ERROR_CHK $? "obtain pool host primary in use" 2
-	LOG_MSG "[INFO]:-Pool host $POOL_HOST active primary segment count = ${#PRI_POOL_HOST_IN_USE[@]}"
+	LOG_MSG "[INFO]:-Pool host $POOL_HOST active primary segment count = ${#PRI_POOL_HOST_IN_USE[@]}" 1
 	MIR_POOL_HOST_IN_USE=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datadir from $CONFIG_TABLE where hostname='$POOL_HOST' and definedprimary='f';"`)
 	ERROR_CHK $? "obtain pool host mirror in use" 2
-	LOG_MSG "[INFO]:-Pool host $POOL_HOST active mirror segment count  = ${#MIR_POOL_HOST_IN_USE[@]}"
+	LOG_MSG "[INFO]:-Pool host $POOL_HOST active mirror segment count  = ${#MIR_POOL_HOST_IN_USE[@]}" 1
 	#Get number of primary and mirror segments on a standard host
 	POOL_HOST_LIMIT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(distinct port) from $CONFIG_TABLE where definedprimary='t' and content<>-1;"`
 	ERROR_CHK $? "Obtain Array segment per host" 2
-	LOG_MSG "[INFO]:-Pool host segment limit is $POOL_HOST_LIMIT"
+	LOG_MSG "[INFO]:-Pool host segment limit is $POOL_HOST_LIMIT" 1
 	((PRI_FREE=$POOL_HOST_LIMIT-${#PRI_POOL_HOST_IN_USE[@]}))	
 	if [ $PRI_FREE -lt $PRI_FAIL_COUNT ];then
-		LOG_MSG "[FATAL]:-There are insufficient spare primary pool directories"
-		LOG_MSG "[FATAL]:-Required=$PRI_FAIL_COUNT Free=$PRI_FREE Used=${#PRI_POOL_HOST_IN_USE[@]}"
-		LOG_MSG "[INFO]:-Consider using mpprecoverseg.sh with -s option"
+		LOG_MSG "[FATAL]:-There are insufficient spare primary pool directories" 1
+		LOG_MSG "[FATAL]:-Required=$PRI_FAIL_COUNT Free=$PRI_FREE Used=${#PRI_POOL_HOST_IN_USE[@]}" 1
+		LOG_MSG "[INFO]:-Consider using mpprecoverseg.sh with -s option" 1
 		ERROR_EXIT "[FATAL]:-Unable to continue" 2
 	else
-		LOG_MSG "[INFO]:-Sufficient spare primary pool directories"
-		LOG_MSG "[INFO]:-Required=$PRI_FAIL_COUNT Free=$PRI_FREE Used=${#PRI_POOL_HOST_IN_USE[@]}"
+		LOG_MSG "[INFO]:-Sufficient spare primary pool directories" 1
+		LOG_MSG "[INFO]:-Required=$PRI_FAIL_COUNT Free=$PRI_FREE Used=${#PRI_POOL_HOST_IN_USE[@]}" 1
 	fi
 	((MIR_FREE=$POOL_HOST_LIMIT-${#MIR_POOL_HOST_IN_USE[@]}))	
 	if [ $MIR_FREE -lt $MIR_FAIL_COUNT ];then
-		LOG_MSG "[FATAL]:-There are insufficient spare mirror pool directories"
-		LOG_MSG "[FATAL]:-Required=$MIR_FAIL_COUNT Free=$MIR_FREE Used=${#MIR_POOL_HOST_IN_USE[@]}"
-		LOG_MSG "[INFO]:-Consider using mpprecoverseg.sh with -s option"
+		LOG_MSG "[FATAL]:-There are insufficient spare mirror pool directories" 1
+		LOG_MSG "[FATAL]:-Required=$MIR_FAIL_COUNT Free=$MIR_FREE Used=${#MIR_POOL_HOST_IN_USE[@]}" 1
+		LOG_MSG "[INFO]:-Consider using mpprecoverseg.sh with -s option" 1
 		ERROR_EXIT "[FATAL]:-Unable to continue" 2
 	else
-		LOG_MSG "[INFO]:-Sufficient spare mirror pool directories"
-		LOG_MSG "[INFO]:-Required=$MIR_FAIL_COUNT Free=$MIR_FREE Used=${#MIR_POOL_HOST_IN_USE[@]}"
+		LOG_MSG "[INFO]:-Sufficient spare mirror pool directories" 1
+		LOG_MSG "[INFO]:-Required=$MIR_FAIL_COUNT Free=$MIR_FREE Used=${#MIR_POOL_HOST_IN_USE[@]}" 1
 	fi
 	SEG_PREFIX=`$ECHO $MASTER_DATA_DIRECTORY|$AWK -F'/' '{print $NF}'|$SED -e 's/-[0-9]//g'`
-	LOG_MSG "[INFO]:-MPP instance segment prefix is $SEG_PREFIX"
-	LOG_MSG "[INFO]:-Obtaining a list of primary segment datadir prefixes"
+	LOG_MSG "[INFO]:-MPP instance segment prefix is $SEG_PREFIX" 1
+	LOG_MSG "[INFO]:-Obtaining a list of primary segment datadir prefixes" 1
 	PRI_DATA_DIR_PREFIX_ARRAY=(`for DIR in \`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='t';"\`;do $DIRNAME $DIR;done|$SORT -u|$TR '\n' ' '`)
 	ERROR_CHK $? "obtain primary segment prefixes" 2
-	LOG_MSG "[INFO]:-Commencing primary directory checks"
+	LOG_MSG "[INFO]:-Commencing primary directory checks" 1
 	for PRI_DIR in ${PRI_DATA_DIR_PREFIX_ARRAY[@]}
 	do
 		CHK_WRITE_DIR $PRI_DIR $POOL_HOST
 	done
-	LOG_MSG "[INFO]:-Obtaining a list of mirror segment datadir prefixes"
+	LOG_MSG "[INFO]:-Obtaining a list of mirror segment datadir prefixes" 1
 	MIR_DATA_DIR_PREFIX_ARRAY=(`for DIR in \`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='f';"\`;do $DIRNAME $DIR;done|$SORT -u|$TR '\n' ' '`)
 	ERROR_CHK $? "obtain mirror segment prefixes" 2
-	LOG_MSG "[INFO]:-Commencing mirror directory checks"
+	LOG_MSG "[INFO]:-Commencing mirror directory checks" 1
 	for MIR_DIR in ${MIR_DATA_DIR_PREFIX_ARRAY[@]}
 	do
 		CHK_WRITE_DIR $MIR_DIR $POOL_HOST
@@ -1018,7 +1026,7 @@ POOL_HOST_DIR_VALIDATION () {
 
 GET_FREE_DIR () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Checking to see if $FAIL_QE_DIR in use on $POOL_HOST"
+	LOG_MSG "[INFO]:-Checking to see if $FAIL_QE_DIR in use on $POOL_HOST" 1
 	QE_DIRNAME=`$DIRNAME $FAIL_QE_DIR`
 	if [ `$ECHO ${DIR_USED_LIST[@]}|$GREP -c $QE_DIRNAME` -eq 1 ];then
 		LOG_MSG "[INFO]:-Directory $QE_DIRNAME on pool host already allocated, looking for alternative"
@@ -1026,15 +1034,15 @@ GET_FREE_DIR () {
 		for DIR in ${DIR_CHK_LIST[@]}
 		do
 			if [ `$ECHO ${DIR_USED_LIST[@]}|$GREP -c $DIR` -ne 0 ];then
-				LOG_MSG "[INFO]:-Directory $DIR used, looking for alternative"
+				LOG_MSG "[INFO]:-Directory $DIR used, looking for alternative" 1
 			else
 				NEW_DIR=${DIR}/${SEG_PREFIX}$FAIL_QE_CONTENTID
-				LOG_MSG "[INFO]:-Setting recovery directory to $NEW_DIR"
+				LOG_MSG "[INFO]:-Setting recovery directory to $NEW_DIR" 1
 				break
 			fi
 		done
 	else
-		LOG_MSG "[INFO]:-Original directory not in use, will re-use $QE_DIRNAME"
+		LOG_MSG "[INFO]:-Original directory not in use, will re-use $QE_DIRNAME" 1
 		NEW_DIR=$FAIL_QE_DIR
 	fi			
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -1043,18 +1051,18 @@ GET_FREE_DIR () {
 UPDATE_STATUS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	COUNT=0
-	LOG_MSG "[INFO]:-Starting master database in utility mode"
+	LOG_MSG "[INFO]:-Starting master database in utility mode" 1
 	$MPPSTART -m
 	while [ $COUNT -lt $ARRAY_INDEX ]
 	do
 		FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
-		LOG_MSG "[INFO]:-Setting $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT as active"
+		LOG_MSG "[INFO]:-Setting $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT as active" 1
 		 env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c "BEGIN; update $CONFIG_TABLE set valid = 't' where dbid = CAST($FAIL_QE_DBID AS smallint); update $CONFIG_TABLE set isprimary = definedprimary where content = CAST($FAIL_QE_CONTENTID AS smallint); COMMIT;" > /dev/null 2>&1
 		RETVAL=$?
 		ERROR_CHK $RETVAL "update status on Master database" 2
 		((COUNT=$COUNT+1))
 	done
-	LOG_MSG "[INFO]:-Shutting down master database in utility mode"
+	LOG_MSG "[INFO]:-Shutting down master database in utility mode" 1
 	$MPPSTOP -m
 LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -1063,7 +1071,7 @@ LOG_MSG "[INFO]:-End Function $FUNCNAME"
 # Main Section
 #******************************************************************************
 trap '$RM -f $TMP_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
-while getopts ":v'?'qfal:d:z:p:s:" opt;do
+while getopts ":v'?'qfal:d:z:p:s:D" opt;do
     case $opt in
         v ) VERSION_INFO ;;
       '?' ) USAGE ;;
@@ -1077,13 +1085,14 @@ while getopts ":v'?'qfal:d:z:p:s:" opt;do
 	    exit $EXIT_STATUS ;;
 	p ) POOL_HOST=$OPTARG ;;
 	s ) POOL_DIR_SET=$OPTARG ;;
+	D ) DEBUG_LEVEL=1 ;;
         * ) USAGE ;;
     esac
 done
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
 	if [ $EXISTS -eq 1 ]; then
-		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
 		EXIT_STATUS=1
 else
 	LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
@@ -1120,6 +1129,6 @@ if [ $STOPDB -eq 1 ] || [ $FORCESTOP -ne 0 ];then
 else
 	RESET_QE_CONNECT
 fi
-LOG_MSG "[INFO]:-Recovery completed successfully"
-LOG_MSG "[INFO]:-End MAIN"
+LOG_MSG "[INFO]:-Recovery completed successfully" 1
+LOG_MSG "[INFO]:-End Main"
 

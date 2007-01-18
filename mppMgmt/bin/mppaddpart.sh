@@ -91,6 +91,7 @@ USAGE () {
 		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
 		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
 		$ECHO "      -a, don't ask to confirm generation process [default:- ask]"
+		$ECHO "      -D, set log output to debug level, shows all function calls"
 		$ECHO
 		$ECHO "      Connection options:"
 		$ECHO "      -d, <Master instance directory> name of alternative Master instance to run against [optional]"
@@ -123,55 +124,57 @@ UNKNOWN_OPTION () {
 }
 
 PROMPT_CONTINUE () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		SUFFIX_COUNT=${#SUFFIX_ARRAY[@]}
-		LOG_MSG "[INFO]:-Partitioning generation parameters:"
-		LOG_MSG "[INFO]:------------------------------------"
-		LOG_MSG "[INFO]:-Database                   = $QD_DBNAME"
-		LOG_MSG "[INFO]:-Parent table               = $PARENT_TABLE_NAME"
-		LOG_MSG "[INFO]:-Partition column number    = $PART_COLUMN_NUM"
-		LOG_MSG "[INFO]:-Partition type             = $TYPE_NAME"
+		LOG_MSG "[INFO]:-Partitioning generation parameters:" 1
+		LOG_MSG "[INFO]:------------------------------------" 1
+		LOG_MSG "[INFO]:-Database                   = $QD_DBNAME" 1
+		LOG_MSG "[INFO]:-Parent table               = $PARENT_TABLE_NAME" 1
+		LOG_MSG "[INFO]:-Partition column number    = $PART_COLUMN_NUM" 1
+		LOG_MSG "[INFO]:-Partition type             = $TYPE_NAME" 1
 		case $TYPE_NAME in
                 hour|daily|week|month )
-		LOG_MSG "[INFO]:-Max date obtained          = $MAX_DATE_TEXT"
-		LOG_MSG "[INFO]:-End date calculated        = $CORRECTED_END_DATE"
+		LOG_MSG "[INFO]:-Max date obtained          = $MAX_DATE_TEXT" 1
+		LOG_MSG "[INFO]:-End date calculated        = $CORRECTED_END_DATE" 1
 		;;
 		range )
-		LOG_MSG "[INFO]:-Range max value obtained   = $MAX_RANGE"
-		LOG_MSG "[INFO]:-Range step value obtained  = $RANGE_GAP"
+		LOG_MSG "[INFO]:-Range max value obtained   = $MAX_RANGE" 1
+		LOG_MSG "[INFO]:-Range step value obtained  = $RANGE_GAP" 1
 		;;
 		list )
-		LOG_MSG "[INFO]:-New list items             "
+		LOG_MSG "[INFO]:-New list items             " 1
 		for ITEM in ${PART_LIST_ARRAY[@]}
 		do
-		LOG_MSG "[INFO]:-Will add list item         = $ITEM"
+		LOG_MSG "[INFO]:-Will add list item         = $ITEM" 1
 		done
 		;;
 		esac
-		LOG_MSG "[INFO]:-Partition depth            = $DEPTH"
-		LOG_MSG "[INFO]:-Number of new child tables = ${#SUFFIX_ARRAY[@]}"
+		LOG_MSG "[INFO]:-Partition depth            = $DEPTH" 1
+		LOG_MSG "[INFO]:-Number of new child tables = ${#SUFFIX_ARRAY[@]}" 1
 		if [ $RULE_GEN -eq 0 ];then
-		LOG_MSG "[INFO]:-Rule generation            = Off"
+		LOG_MSG "[INFO]:-Rule generation            = Off" 1
 		else
-		LOG_MSG "[INFO]:-Rule generation            = On";fi
+		LOG_MSG "[INFO]:-Rule generation            = On" 1;fi
 		if [ $INDEX_GEN -eq 0 ];then
-		LOG_MSG "[INFO]:-Index generation           = Off"
+		LOG_MSG "[INFO]:-Index generation           = Off" 1
 		else
-		LOG_MSG "[INFO]:-Index generation           = On";fi
+		LOG_MSG "[INFO]:-Index generation           = On" 1;fi
 		if [ $COPY_REC -eq 1 ] && [ $PROCESS_COPY_REC -eq 1 ];then
-		LOG_MSG "[INFO]:-Parent table copy back     = On"
+		LOG_MSG "[INFO]:-Parent table copy back     = On" 1
 		else
-		LOG_MSG "[INFO]:-Parent table copy back     = Off";fi
+		LOG_MSG "[INFO]:-Parent table copy back     = Off" 1;fi
 		$ECHO
 		$ECHO "Continue with child generation process yY|nN >"
 		read REPLY
 		if [ -z $REPLY ]; then
-				LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 				exit 1
 		fi
 		if [ $REPLY != Y ] && [ $REPLY != y ]; then
-				LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 				exit 1
 		fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }	
 
 CHK_PARAM () {
@@ -213,7 +216,7 @@ VALIDATE_PARAMS () {
 	HAS_CHILD_TABLES=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relhassubclass from pg_class where relname = '$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}');"`
 	ERROR_CHK $? "check for child tables for $TABLE_NAME" 2
 	if [ $HAS_CHILD_TABLES != 't' ];then
-		LOG_MSG "[FATAL]:-Table $PARENT_TABLE_NAME does not have any child tables defined." 
+		LOG_MSG "[FATAL]:-Table $PARENT_TABLE_NAME does not have any child tables defined."  1
 		ERROR_EXIT "[FATAL]:-Use mppcreatepart.sh to create child tables" 2
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -228,7 +231,7 @@ PROCESS_CHILD_NAME () {
 	CHILD_NAME=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select relname from pg_class where oid in (select inhrelid from pg_inherits where inhparent in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}'))) limit 1;"`
 	ERROR_CHK $? "obtain child table name" 2
 	TYPE_NAME=`$ECHO $CHILD_NAME|$AWK -F"_" '{print $NF}'`
-	LOG_MSG "[INFO]:-Child table partition type is $TYPE_NAME"
+	LOG_MSG "[INFO]:-Child table partition type is $TYPE_NAME" 1
 	DEPTH=`$ECHO $CHILD_NAME|$SED -e s/\$CHILD_TABLE_ID//g|$AWK -F"" '{print $2}'|$AWK -F"_" '{print $1}'`
 	CUR_TYPES=`$ECHO $CHILD_NAME|$SED -e s/\$CHILD_TABLE_ID//g|$AWK -F"" '{print $2}'|$AWK -F"_" '{print $2}'`
 	case $TYPE_NAME in
@@ -249,7 +252,7 @@ PROCESS_CHILD_NAME () {
 				;;
 		* )
 				
-				LOG_MSG "[FATAL]:-Obtained type as $TYPE_NAME expected hour, daily, week, month, range or list"
+				ERROR_EXIT "[FATAL]:-Obtained type as $TYPE_NAME expected hour, daily, week, month, range or list" 2
 				;;
 		esac
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -259,10 +262,10 @@ PROCESS_CHILD_INDEX () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	CHILD_INDEX_COL_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select indexdef from pg_indexes where tablename='$CHILD_NAME' and schemaname='$SCHEMA_NAME';"|$AWK '{print $NF}'|$TR '\n' ' '|$TR -d '"'`)
 	ERROR_CHK $? "obtain index column array for $CHILD_NAME " 2
-	LOG_MSG "[INFO]:-Child table $CHILD_NAME has indexing on columns"
+	LOG_MSG "[INFO]:-Child table $CHILD_NAME has indexing on columns" 1
 	for IDX in  ${CHILD_INDEX_COL_ARRAY[@]}
 	do
-		LOG_MSG "[INFO]:-Column $IDX"
+		LOG_MSG "[INFO]:-Column $IDX" 1
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -293,29 +296,29 @@ GATHER_INFO () {
 	CHILD_RULE_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select count(*) from pg_rules where tablename='$TABLE_NAME' and schemaname='${SCHEMA_NAME}';"`
 	ERROR_CHK $? "obtain rule count" 2
 	if [ $CHILD_RULE_COUNT -ne 0 ];then
-		LOG_MSG "[INFO]:-Table $TABLE_NAME has $CHILD_RULE_COUNT rules"
+		LOG_MSG "[INFO]:-Table $TABLE_NAME has $CHILD_RULE_COUNT rules" 1
 		RULE_GEN=1
-		LOG_MSG "[INFO]:-Set rule generation = On"
+		LOG_MSG "[INFO]:-Set rule generation = On" 1
 	else
-		LOG_MSG "[INFO]:-Table $TABLE_NAME has $CHILD_RULE_COUNT rules"
-		LOG_MSG "[INFO]:-Set rule generation = Off"
+		LOG_MSG "[INFO]:-Table $TABLE_NAME has $CHILD_RULE_COUNT rules" 1
+		LOG_MSG "[INFO]:-Set rule generation = Off" 1
 	fi
 	CHILD_NAME_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select relname from pg_class where oid in (select inhrelid from pg_inherits where inhparent in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')));"`)
 	ERROR_CHK $? "obtain child name array" 2
 	#***********************************************
 	#		INDEXES
 	#***********************************************
-	LOG_MSG "[INFO]:-Checking for indexes on child tables"
+	LOG_MSG "[INFO]:-Checking for indexes on child tables" 1
 	CHILD_INDEX_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select count(*) from pg_indexes where tablename='$CHILD_NAME' and schemaname='${SCHEMA_NAME}';"`
 	ERROR_CHK $? "obtain index count for $CHILD_NAME child table" 2
 	if [ $CHILD_INDEX_COUNT -gt 0 ];then
-		LOG_MSG "[INFO]:-Child table $CHILD_NAME has indexing"
+		LOG_MSG "[INFO]:-Child table $CHILD_NAME has indexing" 1
 		INDEX_GEN=1
-		LOG_MSG "[INFO]:-Set index generation = On"
+		LOG_MSG "[INFO]:-Set index generation = On" 1
 		PROCESS_CHILD_INDEX	
 	else
-		LOG_MSG "[INFO]:-Child table $CHILD_NAME has no indexing"
-		LOG_MSG "[INFO]:-Set index generation = Off"
+		LOG_MSG "[INFO]:-Child table $CHILD_NAME has no indexing" 1
+		LOG_MSG "[INFO]:-Set index generation = Off" 1
 	fi
 	#**********************************************
 	#		CONSTRAINTS
@@ -339,7 +342,7 @@ GATHER_INFO () {
 					MAX_DATE_TEXT=$DATE_TEXT
 				fi
 			done
-			LOG_MSG "[INFO]:-Obtained max date as $MAX_DATE_TEXT"
+			LOG_MSG "[INFO]:-Obtained max date as $MAX_DATE_TEXT" 1
 		      	;;
 		range )
 			MAX_RANGE=0
@@ -353,29 +356,29 @@ GATHER_INFO () {
 			done
 			RANGE_OP=`$ECHO $CHILD_CONSTRAINT_TEXT|$TR -d ')'|$AWK '{print $(NF-1)}'`
 			RANGE_GAP=`$ECHO $CHILD_CONSTRAINT_TEXT|$TR -d ')'|$AWK '{print $NF-$3}'`
-			LOG_MSG "[INFO]:-Obtained max range value as $MAX_RANGE"
-			LOG_MSG "[INFO]:-Obtained max range operator as $RANGE_OP"	
-			LOG_MSG "[INFO]:-Obtained range step count as $RANGE_GAP"
+			LOG_MSG "[INFO]:-Obtained max range value as $MAX_RANGE" 1
+			LOG_MSG "[INFO]:-Obtained max range operator as $RANGE_OP"	 1
+			LOG_MSG "[INFO]:-Obtained range step count as $RANGE_GAP" 1
 			;;
 	esac
 	PART_COLUMN_NUM=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select conkey from pg_constraint where conrelid in (select oid from pg_class where relname='${CHILD_NAME_ARRAY[0]}' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`
 	ERROR_CHK $? "obtained partition column" 2
 	COLUMN_CONSTRAINT_TEXT=$CHILD_CONSTRAINT_TEXT	
-	LOG_MSG "[INFO]:-Obtained partition column number as $PART_COLUMN_NUM"
-	LOG_MSG "[INFO]:-Partition constraint is $COLUMN_CONSTRAINT_TEXT"
+	LOG_MSG "[INFO]:-Obtained partition column number as $PART_COLUMN_NUM" 1
+	LOG_MSG "[INFO]:-Partition constraint is $COLUMN_CONSTRAINT_TEXT" 1
 	PARENT_TABLE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from only $PARENT_TABLE_NAME;"`
 	ERROR_CHK $? "obtain parent only record count" 1
 	if [ $PARENT_TABLE_COUNT -gt 0 ];then
-		LOG_MSG "[INFO]:-Parent table $TABLE_NAME has $PARENT_TABLE_COUNT records"
+		LOG_MSG "[INFO]:-Parent table $TABLE_NAME has $PARENT_TABLE_COUNT records" 1
 		if [ $COPY_REC -eq 1 ];then
 			PROCESS_COPY_REC=1
-			LOG_MSG "[INFO]:-Option -c applied, will re-insert records after successful child table creation"
+			LOG_MSG "[INFO]:-Option -c applied, will re-insert records after successful child table creation" 1
 		else
-			LOG_MSG "[WARN]:-Option -c not supplied, will not re-insert records after successful child table creation"
+			LOG_MSG "[WARN]:-Option -c not supplied, will not re-insert records after successful child table creation" 1
 			EXIT_STATUS=1
 		fi
 	else
-		 LOG_MSG "[INFO]:-Parent table $TABLE_NAME has $PARENT_TABLE_COUNT records"
+		 LOG_MSG "[INFO]:-Parent table $TABLE_NAME has $PARENT_TABLE_COUNT records" 1
 	fi
 	#Now check to see if rule has a timestamp in it
 	case $TYPE_NAME in 
@@ -405,7 +408,7 @@ VALIDATE_LIST_TYPE () {
 	#Now check to ensure that if the type is list that we do not already have the values in the current
 	#constraints
 	if [ x"" == x"$PART_LIST" ];then
-		ERROR_EXIT "[FATAL]:-Partition type is list, but no -o option supplied"
+		ERROR_EXIT "[FATAL]:-Partition type is list, but no -o option supplied" 2
 	else
 		PART_LIST_ARRAY=(`$ECHO $PART_LIST|$TR ',' ' '`)
 	fi
@@ -420,11 +423,11 @@ VALIDATE_LIST_TYPE () {
 			fi
 		done
 	done
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 VALIDATE_RANGE_TYPE () {
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ $END_RANGE -le $MAX_RANGE ];then
 		ERROR_EXIT "[FATAL]:-Range value supplied <= current max range value" 2
 	fi
@@ -453,10 +456,11 @@ PROCESS_HOURLY () {
         HOUR_ARRAY=(00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23)
         HOUR_VECTOR=0
 	((HOUR_GENERATION_COUNT=$GENERATION_COUNT*24))
-        LOG_MSG "[INFO]:-Please wait generating hourly array..."
+        LOG_MSG "[INFO]:-Generating hourly array, please wait..." 1
         START_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$MAX_DATE_TEXT' +1;"`
         while [ $VECTOR -le $HOUR_GENERATION_COUNT ]
         do
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
                 SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "`$ECHO $START_DATE|$TR '-' '_'`_${HOUR_ARRAY[$HOUR_VECTOR]}_${TYPE_NAME}")
 		if [ $RULE_GEN -eq 1 ];then
 			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/\'${START_DATE}~${HOUR_ARRAY[$HOUR_VECTOR]}:00:00\'/g|$SED -e s/~SWAP2/\'$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:59:59\'/g|$TR ' ' '~'`
@@ -470,6 +474,7 @@ PROCESS_HOURLY () {
                         ((HOUR_VECTOR=$HOUR_VECTOR+1))
                 fi
         done
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
         END_DATE=$START_DATE
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -477,10 +482,11 @@ PROCESS_HOURLY () {
 PROCESS_DAILY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
         VECTOR=1
-        LOG_MSG "[INFO]:-Please wait generating daily array..."
+        LOG_MSG "[INFO]:-Generating daily array, please wait..." 1
         START_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$MAX_DATE_TEXT' +1;"`
         while [ $VECTOR -le $GENERATION_COUNT ]
         do
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
                 SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "`$ECHO $START_DATE|$TR '-' '_'`_${TYPE_NAME}")
 		if [ $RULE_GEN -eq 1 ];then
 			if [ $DATE_TYPE -eq 0 ];then
@@ -493,6 +499,7 @@ PROCESS_DAILY () {
                 START_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$START_DATE' +1;"`
                 ((VECTOR=$VECTOR+1))
         done
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
         END_DATE=$START_DATE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -502,10 +509,11 @@ PROCESS_WEEKLY () {
         START_WEEK_NUM=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(extract (week from date '$MAX_DATE_TEXT'),2,'0');"`
         START_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$MAX_DATE_TEXT' +1;"`
         WEEK_START_DATE=$START_DATE
-        LOG_MSG "[INFO]:-Please wait generating weekly array..."
+        LOG_MSG "[INFO]:-Generating weekly array, please wait..." 1
         VECTOR=1
         while [ $VECTOR -le $GENERATION_COUNT ]
         do
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
                 PREV_DATE=$START_DATE
                 START_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$START_DATE' +1;"`
                 CURRENT_WEEK_NUM=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(extract (week from date '$START_DATE'),2,'0');"`
@@ -525,19 +533,21 @@ PROCESS_WEEKLY () {
                         ((VECTOR=$VECTOR+1))
                 fi
         done
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
         END_DATE=$WEEK_START_DATE
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 PROCESS_MONTHLY () {
         LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-        LOG_MSG "[INFO]:-Please wait generating monthy array..."
+        LOG_MSG "[INFO]:-Generating monthy array, please wait..." 1
         START_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$MAX_DATE_TEXT' +1;"`
         CURRENT_MONTH=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(EXTRACT(MONTH FROM DATE '$START_DATE'),2,'0');"`
         VECTOR=1
         DAY_COUNT=1
         while [ $VECTOR -le $GENERATION_COUNT ]
         do
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
                 NEXT_MONTH=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(EXTRACT(MONTH FROM DATE '$START_DATE' +$DAY_COUNT),2,'0');"`
                 while [ "$CURRENT_MONTH" == "$NEXT_MONTH" ]
                 do
@@ -557,27 +567,31 @@ PROCESS_MONTHLY () {
                 CURRENT_MONTH="$NEXT_MONTH"
                 ((VECTOR=$VECTOR+1))
         done
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 PROCESS_LIST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-        LOG_MSG "[INFO]:-Please wait generating list array..."
+        LOG_MSG "[INFO]:-Generating list array, please wait..." 1
 	for LIST_ITEM in ${PART_LIST_ARRAY[@]}
 	do
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${LIST_ITEM}_${TYPE_NAME}")
 		NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/\'$LIST_ITEM\'/g|$TR ' ' '~'`
 		RULE_ARRAY=(${RULE_ARRAY[@]} "$NEW_RULE")
 	done
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 PROCESS_RANGE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-        LOG_MSG "[INFO]:-Please wait generating range array..."
+        LOG_MSG "[INFO]:-Generating range array, please wait..." 1
 	((COUNT=$MAX_RANGE+1))
 	while [ $COUNT -le $END_RANGE ]
 	do
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		CURRENT_COUNT=$COUNT
 		((COUNT=$COUNT+$RANGE_GAP+1))
 		TO=$CURRENT_COUNT
@@ -586,12 +600,13 @@ PROCESS_RANGE () {
 		NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/SWAP1/$TO/g|$SED -e s/SWAP2/$FROM/g|$TR ' ' '~'`
 		RULE_ARRAY=(${RULE_ARRAY[@]} "$NEW_RULE")
 	done	
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GENERATE_SQL () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-        LOG_MSG "[INFO]:-Generating SQL file to build child tables"
+        LOG_MSG "[INFO]:-Generating SQL file to build child tables" 1
         CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}//g|$AWK -F"" '{print $1}'`
         VECTOR=0
         ((COL_COUNT=${#PARENT_COLUMN_LIST[@]}-1))
@@ -634,7 +649,7 @@ GENERATE_SQL () {
                         fi
                 else
                         ABORT=1
-                        LOG_MSG "[WARN]:-Table $CHILD_TAB_FULL already exists"
+                        LOG_MSG "[WARN]:-Table $CHILD_TAB_FULL already exists" 1
                 fi
         done
         $ECHO "COMMIT;" >> $TMP_FILE
@@ -643,44 +658,44 @@ GENERATE_SQL () {
                 RM_TMP_FILE
                 ERROR_EXIT "[FATAL]:-Unable to contine, some child tables already exist." 2
         fi
-        LOG_MSG "[INFO]:-Completed generation of SQL file to build child tables"
+        LOG_MSG "[INFO]:-Completed generation of SQL file to build child tables" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 SECURE_PARENT_REC () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Creating temporary holding table"
+	LOG_MSG "[INFO]:-Creating temporary holding table" 1
 	SECURE_TABLE_NAME=${PARENT_TABLE_NAME}_part_temp_$$
 	$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "create table ${SECURE_TABLE_NAME} (like ${PARENT_TABLE_NAME});" >> $LOG_FILE 2>&1
 	ERROR_CHK $? "create temporary holding table" 2
-	LOG_MSG "[INFO]:-Transferring records"
+	LOG_MSG "[INFO]:-Transferring records" 1
 	$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into ${SECURE_TABLE_NAME} (select * from only ${PARENT_TABLE_NAME});"	 >> $LOG_FILE 2>&1
 	if [ $? -ne 0 ];then
 		$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "drop table ${SECURE_TABLE_NAME};" >> $LOG_FILE 2>&1
 		ERROR_EXIT "[FATAL]:-Failed to copy records to ${SECURE_TABLE_NAME}" 2
 	else
-		LOG_MSG "[INFO]:-Completed record transfer"
+		LOG_MSG "[INFO]:-Completed record transfer" 1
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 RESTORE_PARENT_REC () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Deleting records held in parent table"
+	LOG_MSG "[INFO]:-Deleting records held in parent table" 1
 	$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "delete from only ${PARENT_TABLE_NAME};" >> $LOG_FILE 2>&1
 	ERROR_CHK $? "delete records from ${PARENT_TABLE_NAME}" 1
-	LOG_MSG "[INFO]:-Starting parent record insert from secured table"
+	LOG_MSG "[INFO]:-Starting parent record insert from secured table" 1
 	$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into ${PARENT_TABLE_NAME} (select * from ${SECURE_TABLE_NAME});" >> $LOG_FILE 2>&1
 	ERROR_CHK $? "copy records into ${PARENT_TABLE_NAME} from ${SECURE_TABLE_NAME}" 2
 	REMAIN_COUNT=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(*) from only ${PARENT_TABLE_NAME}"`
 	ERROR_CHK $? "obtain parent table record count" 1
 	if [ $REMAIN_COUNT -ne 0 ];then
-		LOG_MSG "[WARN]:-Parent table ${PARENT_TABLE_NAME} has $REMAIN_COUNT records"
-		LOG_MSG "[INFO]:-Parent table had $PARENT_TABLE_COUNT records prior to addition of new child tables"
-		LOG_MSG "[INFO]:-Additional child tables may be required"
+		LOG_MSG "[WARN]:-Parent table ${PARENT_TABLE_NAME} has $REMAIN_COUNT records" 1
+		LOG_MSG "[INFO]:-Parent table had $PARENT_TABLE_COUNT records prior to addition of new child tables" 1
+		LOG_MSG "[INFO]:-Additional child tables may be required" 1
 		EXIT_STATUS=1
 	fi
-	LOG_MSG "[INFO]:-Dropping temporary holding table"
+	LOG_MSG "[INFO]:-Dropping temporary holding table" 1
 	$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "drop table ${SECURE_TABLE_NAME};"  >> $LOG_FILE 2>&1
 	ERROR_CHK $? "drop table ${SECURE_TABLE_NAME}" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -688,44 +703,50 @@ RESTORE_PARENT_REC () {
 
 RUN_GENERATE_SQL () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Running generated SQL file"
+	LOG_MSG "[INFO]:-Running generated SQL file" 1
 	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -f $TMP_FILE > $TMP_OUTPUT_FILE 2>&1
 	if [ `$GREP -ci ERROR $TMP_OUTPUT_FILE` -ne 0 ];then
-		LOG_MSG "[FATAL]:-Error generated from SQL file, dumping out to log file"
+		LOG_MSG "[FATAL]:-Error generated from SQL file, dumping out to log file" 1
 		$CAT $TMP_OUTPUT_FILE >> $LOG_FILE
 		RM_TMP_FILE
 	else
-		LOG_MSG "[INFO]:-Completed run of generated SQL file"
+		LOG_MSG "[INFO]:-Completed run of generated SQL file" 1
 	fi			
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 RUN_INDEX_SQL () {
         LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-        LOG_MSG "[INFO]:-Running generated index creation SQL file"
+        LOG_MSG "[INFO]:-Running generated index creation SQL file" 1
         $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -f $IDX_TMP_FILE >> $LOG_FILE 2>&1
         if [ $? -ne 0 ];then
                 RM_TMP_FILE
                 ERROR_EXIT "[FATAL]:-Failed to run index creation SQL file, check log file for error messages." 2
         else
-                LOG_MSG "[INFO]:-Completed run of generated SQL file"
+                LOG_MSG "[INFO]:-Completed run of generated SQL file" 1
         fi
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 RM_TMP_FILE () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
         $RM -f $TMP_FILE
         $RM -f $IDX_TMP_FILE
 	$RM -f $TMP_OUTPUT_FILE
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 ANALYZE_CHILD_TABLES () {
         LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Commencing analyze of child tables, please wait..." 1
         for SUFFIX in "${SUFFIX_ARRAY[@]}"
         do
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		CHILD_TAB_FULL=${SCHEMA_NAME}.${CHILD_STRING}${CHILD_TABLE_ID}${DEPTH}_${CUR_TYPES}_$SUFFIX
         	$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "ANALYZE $CHILD_TAB_FULL;" >> $LOG_FILE 2>&1
         done
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+	LOG_MSG "[INFO]:-Completed analyze of child tables" 1
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -734,7 +755,7 @@ ANALYZE_CHILD_TABLES () {
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt:'?'aql:d:x:n:co:s:!" opt;do
+		while getopts ":vt:'?'aql:d:x:n:co:s:!D" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) PARENT_TABLE_NAME=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
@@ -750,6 +771,7 @@ if [ $# -ne 0 ]; then
 						c ) COPY_REC=1 ;;
 						o ) PART_LIST=$OPTARG ;;
 						s ) END_RANGE=$OPTARG ;;
+						D ) DEBUG_LEVEL=1 ;;
 						* ) USAGE ;;
 				esac
 		done	
@@ -757,7 +779,7 @@ fi
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
 	if [ $EXISTS -eq 1 ]; then
-		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
 	else
 		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
 	fi

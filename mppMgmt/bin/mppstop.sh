@@ -81,6 +81,7 @@ USAGE () {
 		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
 		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
 		$ECHO "      -a, don't ask to confirm shutdown [default:- ask]"
+		$ECHO "      -D, set log output to debug level, shows all function calls"
 		$ECHO
 		$ECHO "      Connection options:"
 		$ECHO "      -d, <Master instance directory> name of alternative Master instance to shutdown [optional]"
@@ -148,6 +149,7 @@ DISPLAY_PARAM () {
 }
 
 STOP_ADMIN () {
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		##MPP Disabled call to this function 22/07/2005
 		LOG_MSG "[INFO]:-Stopping the Master instance in admin mode"
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
@@ -155,9 +157,11 @@ STOP_ADMIN () {
 		fi
 		env PGOPTIONS="-c mpp_session_role=utility" $PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE      >/dev/null 2>&1
 		ERROR_CHK $? "shutdown Master instance from admin mode" 2
+		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CHK_QD_DB_RUNNING () {
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[FATAL]:- No $PG_PID file, is MPP instance already stopped?" 2
 		else
@@ -166,44 +170,46 @@ CHK_QD_DB_RUNNING () {
 			#Now check to see if the QD_PID is active
 			GET_PG_PID_ACTIVE $MASTER_PORT
 			if [ $PID -eq 0 ];then
-				LOG_MSG "[WARN]:-Have a $PG_PID file but no Master segment process running"
+				LOG_MSG "[WARN]:-Have a $PG_PID file but no Master segment process running" 1
 				EXIT_STATUS=1
-				LOG_MSG "[INFO]:-Clearing $PG_PID and /tmp lock files" 	
+				LOG_MSG "[INFO]:-Clearing $PG_PID and /tmp lock files" 	 1
 				$RM -f $MASTER_DATA_DIRECTORY/$PG_PID
 				ERROR_CHK $? "delete Master $PG_PID" 2
 				$RM -f /tmp/.s.PGSQL.${MASTER_PORT}*
 				ERROR_CHK $? "delete Master /tmp lock files" 2
-				LOG_MSG "[INFO]:-Starting recovery procedure"
-				LOG_MSG "[INFO]:-Starting Master instance in utility mode"
+				LOG_MSG "[INFO]:-Starting recovery procedure" 1
+				LOG_MSG "[INFO]:-Starting Master instance in utility mode" 1
 				$MPPSTART -mq -d $MASTER_DATA_DIRECTORY
-				LOG_MSG "[INFO]:-Setting recovery parameters"
+				LOG_MSG "[INFO]:-Setting recovery parameters" 1
 				MODE=fast
 				unset INTERACTIVE
 				STOP_INVALID=1
-				LOG_MSG "[INFO]:-Commencing forced shutdown"
+				LOG_MSG "[INFO]:-Commencing forced shutdown" 1
 			fi
 		fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 PROMPT_CONTINUE () {
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		$ECHO
-		LOG_MSG "[INFO]:-Master instance parameters:"
-		LOG_MSG "[INFO]:----------------------------"
-		LOG_MSG "[INFO]:-Master MPP instance process active PID = $QD_PID"
-		LOG_MSG "[INFO]:-Database                               = $QD_DBNAME"
-		LOG_MSG "[INFO]:-Master port                            = $MASTER_PORT"
-		LOG_MSG "[INFO]:-Master directory                       = $MASTER_DATA_DIRECTORY"
-		LOG_MSG "[INFO]:-Shutdown mode                          = $MODE"
+		LOG_MSG "[INFO]:-Master instance parameters:" 1
+		LOG_MSG "[INFO]:----------------------------" 1
+		LOG_MSG "[INFO]:-Master MPP instance process active PID = $QD_PID" 1
+		LOG_MSG "[INFO]:-Database                               = $QD_DBNAME" 1
+		LOG_MSG "[INFO]:-Master port                            = $MASTER_PORT" 1
+		LOG_MSG "[INFO]:-Master directory                       = $MASTER_DATA_DIRECTORY" 1
+		LOG_MSG "[INFO]:-Shutdown mode                          = $MODE" 1
 		if [ x"" == x"$STOP_SYNC" ];then
-		LOG_MSG "[INFO]:-Shutdown Master standby host           = Off"
+		LOG_MSG "[INFO]:-Shutdown Master standby host           = Off" 1
 		else
-		LOG_MSG "[INFO]:-Shutdown Master standby host           = On"
+		LOG_MSG "[INFO]:-Shutdown Master standby host           = On" 1
 		fi
-		LOG_MSG "[INFO]:-Segment instances that will be shutdown:"
-		LOG_MSG "[INFO]:-----------------------------------------"
+		LOG_MSG "[INFO]:-Segment instances that will be shutdown:" 1
+		LOG_MSG "[INFO]:-----------------------------------------" 1
 		if [ ${#QE_ARRAY[@]} -eq 0 ]; then
-				LOG_MSG "[WARN]:-Failed to obtain any Segment instance details, will only be able to shutdown Master host"
-				LOG_MSG "[WARN]:-This may indicate an inconsistent MPP database state"
+				LOG_MSG "[WARN]:-Failed to obtain any Segment instance details, will only be able to shutdown Master host" 1
+				LOG_MSG "[WARN]:-This may indicate an inconsistent MPP database state" 1
 				EXIT_STATUS=1
 		else
 				COUNT=1
@@ -213,7 +219,7 @@ PROMPT_CONTINUE () {
 						QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
 						QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
 						QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
-						LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT"
+						LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT" 1
 						((COUNT=$COUNT+1))
 				done
 		fi
@@ -222,23 +228,25 @@ PROMPT_CONTINUE () {
 		read REPLY
 		if [ ! -z $REPLY ]; then
 				if [ $REPLY != Y ] && [ $REPLY != y ]; then
-						LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+						LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 						exit 1
 				fi
 		else
-				LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 				exit 1
 		fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }	
 
 PROCESS_SHUTDOWN () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [ $MODE == "smart" ]; then
 #		count connected processes, but don't count ourself.
 		CONNECTED=` env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c "select count(*) from pg_stat_activity where procpid != pg_backend_pid();"`
 			if [ $CONNECTED -gt 0 ];then
-				LOG_MSG "[WARN]:-There are other connections to this instance, shutdown mode smart aborted"
-				LOG_MSG "[WARN]:-Either remove connections, or use mppstop.sh -f or -i."
-				LOG_MSG "[WARN]:-See mppstop.sh -? for all options"
+				LOG_MSG "[WARN]:-There are other connections to this instance, shutdown mode smart aborted" 1
+				LOG_MSG "[WARN]:-Either remove connections, or use mppstop.sh -f or -i." 1
+				LOG_MSG "[WARN]:-See mppstop.sh -? for all options" 1
 				ERROR_EXIT "[FATAL]:-Shutdown options will not close instance database" 2
 			else
 			LOG_MSG "[INFO]:-No current instance connections identified, will continue with shutdown"
@@ -259,7 +267,7 @@ PROCESS_SHUTDOWN () {
 				QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 				if [ "$QE_VALID" == "t" ] || [ $STOP_INVALID -eq 1 ];then
-					LOG_MSG "[INFO]:-Stopping Segment Instance $QE_NAME directory $QE_DIR"
+					LOG_MSG "[INFO]:-Stopping Segment Instance $QE_NAME directory $QE_DIR" 1
 					$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};$PG_CTL $WAIT stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log " 
 					ERROR_CHK $? "shutdown of $QE_NAME on port=$QE_PORT" 1
 					if [ $STOP_INVALID -eq 1 ]; then       
@@ -267,30 +275,34 @@ PROCESS_SHUTDOWN () {
 					fi
 					((QD_STOP_COUNT=$QD_STOP_COUNT+1))
 				else
-					LOG_MSG "[WARN]:-Not processing $QE_NAME directory $QE_DIR marked invalid"
+					LOG_MSG "[WARN]:-Not processing $QE_NAME directory $QE_DIR marked invalid" 1
 					EXIT_STATUS=1
 				fi
 		done
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 FORCE_CLEAR () {
-	LOG_MSG "[INFO]:-Killing postmaster process on $QE_NAME for port=$QE_PORT"
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Killing postmaster process on $QE_NAME for port=$QE_PORT" 1
 	GET_PG_PID_ACTIVE $QE_PORT $QE_NAME
 	if [ $PID -ne 0 ]; then
 		$TRUSTED_SHELL $QE_NAME "$KILL -9 $PID" > $LOG_FILE 2>&1
 	else
 		LOG_MSG "[INFO]:-No active pid found for $QE_NAME for port=$QE_PORT"
 	fi
-	LOG_MSG "[INFO]:-Clearing lock files on $QE_NAME for directory $QE_DIR"
+	LOG_MSG "[INFO]:-Clearing lock files on $QE_NAME for directory $QE_DIR" 1
 	$TRUSTED_SHELL $QE_NAME "$RM -f /tmp/.s.PGSQL.${QE_PORT}.lock /tmp/.s.PGSQL.${QE_PORT}"
 	ERROR_CHK $? "removal of lock files on $QE_NAME for directory $QE_DIR" 1
-	LOG_MSG "[INFO]:-Clearing postmaster.pid file"
+	LOG_MSG "[INFO]:-Clearing postmaster.pid file" 1
 	$TRUSTED_SHELL $QE_NAME "$RM -f ${QE_DIR}/postmaster.pid"
 	ERROR_CHK $? "clearing postmaster.pid file on $QE_NAME for directory $QE_DIR" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 STOP_STANDBY_SERVER () {
-	LOG_MSG "[INFO]:-Processing standby server shutdown"
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Processing standby server shutdown" 1
 	GET_STANDBY_COUNT
 	if [ $STANDBY_COUNT -ne 0 ];then
 		GET_STANDBY_DETAILS
@@ -298,13 +310,16 @@ STOP_STANDBY_SERVER () {
 		STANDBY_DATADIR=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f2`
 		STOP_SYNC_PROCESS $STANDBY_HOSTNAME $STANDBY_DATADIR
 	else
-		LOG_MSG "[INFO]:-No standby master host configured"
+		LOG_MSG "[INFO]:-No standby master host configured" 1
 	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 RELOAD_PSQL_PARAM () {
-	LOG_MSG "[INFO]:-Signalling Master postmaster process to reload"
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Signalling Master postmaster process to reload" 1
 	$PG_CTL reload -D $MASTER_DATA_DIRECTORY 
 	ERROR_CHK $? "signal master postmaster process" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 #******************************************************************************
@@ -314,7 +329,7 @@ trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 #Check to see if we have a parameter supplied to script
 if [ $# -ne 0 ]; then
 		##MPP	while getopts ":viskft'?'aqnml:d:" opt;do
-		while getopts ":vuyrmiskzft'?'aqbnl:d:!" opt;do
+		while getopts ":vuyrmiskzft'?'aqbnl:d:!D" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						i ) MODE=immediate ;;
@@ -335,6 +350,7 @@ if [ $# -ne 0 ]; then
 						y ) unset STOP_SYNC ;;
 						! ) SCRIPT_USAGE=1
       						    USAGE ;;
+						D ) DEBUG_LEVEL=1 ;;
 						* ) UNKNOWN_OPTION ;;
 				esac
 		done	
@@ -342,7 +358,7 @@ fi
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
 	if [ $EXISTS -eq 1 ]; then
-		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
 		EXIT_STATUS=1
 else
 	LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
@@ -387,7 +403,7 @@ if [ $RESTART ]; then
 			fi
 		fi
 	else
-		LOG_MSG "[FATAL]:-No $MPPSTART" 2
+		ERROR_EXIT "[FATAL]:-No $MPPSTART" 2
 	fi
 fi
 LOG_MSG "[INFO]:-End Main"

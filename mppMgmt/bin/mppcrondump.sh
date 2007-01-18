@@ -94,6 +94,7 @@ USAGE () {
 		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
 		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
 		$ECHO "      -a, don't ask to confirm database dump [default:- ask]"
+		$ECHO "      -D, set log output to debug level, shows all function calls"
 		$ECHO
 		$ECHO "      Connection options:"
 		$ECHO "      -d, <Master instance directory> name of alternative Master instance to start up [optional]"
@@ -155,16 +156,18 @@ UNKNOWN_OPTION () {
 }
 
 CHK_QD_DB_RUNNING () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [  -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 			LOG_MSG "[INFO]:-$PG_PID file exists on Master" 
 		else
-			ERROR_EXIT "[FATAL]:-No Master segment $PG_PID"
+			ERROR_EXIT "[FATAL]:-No Master segment $PG_PID" 2
 		fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 VACUUM_PROCESS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Processing vacuum request for database $DUMP_DATABASE"
+	LOG_MSG "[INFO]:-Processing vacuum request for database $DUMP_DATABASE" 1
 	$PSQL -p $MASTER_PORT $DUMP_DATABASE -c"vacuum;"
 	ERROR_CHK $? "complete vacuum on database $DUMP_DATABASE" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -173,14 +176,14 @@ VACUUM_PROCESS () {
 GET_DUMP_LIST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	case $DUMP_TYPE in
-		0) LOG_MSG "[INFO]:-Gathering dbid data for dump type all"
+		0) LOG_MSG "[INFO]:-Gathering dbid data for dump type all" 1
 		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where content<>-1;"`)  ;;
-		1) LOG_MSG "[INFO]:-Gathering dbid data for dump type primary" 
+		1) LOG_MSG "[INFO]:-Gathering dbid data for dump type primary"  1
 		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where content<>-1 and definedprimary='t';"`)  ;;
 	
-		2) LOG_MSG "[INFO]:-Gathering dbid data for dump type mirror"
+		2) LOG_MSG "[INFO]:-Gathering dbid data for dump type mirror" 1
 		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where content<>-1 and definedprimary='f';"`)  ;;
-		3) LOG_MSG "[WARN]:-Gathering dbid data for dump type available active" 
+		3) LOG_MSG "[WARN]:-Gathering dbid data for dump type available active"  1
 		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where content<>-1 and isprimary='t';"`) ;;
 	esac
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -197,8 +200,10 @@ CHK_DATA () {
 
 CHK_DUMP_DIR () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Commencing dump directory checks, please wait..." 1
 	for DBID in ${DBID_LIST[@]}
 	do
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		CHK_DATA
 		LOG_MSG "[INFO]:-Checking for $DUMP_SUB_DIR for dbid = $DBID"
 		CHK_DIR ${DIR}/$DUMP_SUB_DIR $DIR_HOST
@@ -218,10 +223,12 @@ CHK_DUMP_DIR () {
                         fi
 		fi
 	done	
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+	LOG_MSG "[INFO]:-Completed dump directory checks"
 	LOG_MSG "[INFO]:-Checking for $DUMP_SUB_DIR on Master segment"
 	CHK_DIR $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR
 	if [ $EXISTS -ne 0 ];then
-		LOG_MSG "[INFO]:-$MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR does not exist, will try to create"
+		LOG_MSG "[INFO]:-$MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR does not exist, will try to create" 1
 		$MKDIR $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR
 		ERROR_CHK $? "make dump directory $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR on Master segment" 2
 	else
@@ -247,14 +254,14 @@ DUMP_MIR_CHK () {
 	CHK_MIRRORS_CONFIGURED
 	if [ $MIRROR_COUNT -ne 2 ];then
 		if [ $DUMP_TYPE -eq 2 ];then
-			LOG_MSG "[WARN]:-Option -m supplied, but MPP instance not mirrored"
-			LOG_MSG "[INFO]:-Set dump type to primary"
+			LOG_MSG "[WARN]:-Option -m supplied, but MPP instance not mirrored" 1
+			LOG_MSG "[INFO]:-Set dump type to primary" 1
 			DUMP_TYPE=1
 			EXIT_STATUS=1
 		fi
 		if [ $DUMP_TYPE -eq 0 ];then
-			LOG_MSG "[WARN]:-Default option for primary and mirror segments invalid, MPP instance not mirrored"
-			LOG_MSG "[INFO]:-Set dump type to primary"
+			LOG_MSG "[WARN]:-Default option for primary and mirror segments invalid, MPP instance not mirrored" 1
+			LOG_MSG "[INFO]:-Set dump type to primary" 1
 			DUMP_TYPE=1
 			EXIT_STATUS=1
 		fi
@@ -267,16 +274,16 @@ CHK_PARAM () {
 	CHK_MIRRORS_CONFIGURED
 	if [ $MIRROR_COUNT -ne 2 ];then
 		if [ $DUMP_TYPE -eq 0 ]||[ $DUMP_TYPE -eq 2 ];then
-			LOG_MSG "[WARN]:-Dump type selected not supported as mirroring not configured"
-			LOG_MSG "[INFO]:-Setting dump type to primary segment only"
+			LOG_MSG "[WARN]:-Dump type selected not supported as mirroring not configured" 1
+			LOG_MSG "[INFO]:-Setting dump type to primary segment only" 1
 			DUMP_TYPE=1
 		fi
 	else
-		LOG_MSG "[INFO]:-MPP array has mirroring implemented"
+		LOG_MSG "[INFO]:-MPP array has mirroring implemented" 1
 	fi
 	#Check to see if there are any segment failures
 	if [ x"" != x"$SCHEMA_NAME" ];then
-		LOG_MSG "[INFO]:-Schema option -n $SCHEMA_NAME supplied, checking for schema in database $DUMP_DATABASE"
+		LOG_MSG "[INFO]:-Schema option -n $SCHEMA_NAME supplied, checking for schema in database $DUMP_DATABASE" 1
 		SCHEMA_COUNT=`$PSQL -p $MASTER_PORT $DUMP_DATABASE -R" " -A -t -c"select count(*) from pg_namespace where nspname='${SCHEMA_NAME}';"`
 		if [ $SCHEMA_COUNT -eq 0 ];then
 			ERROR_EXIT "[FATAL]:-Schema $SCHEMA_NAME does not exist in database $DUMP_DATABASE" 2
@@ -284,36 +291,36 @@ CHK_PARAM () {
 	fi
 	FAILED_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $MPP_PG_VIEW where valid='f';"`
 	if [ $FAILED_COUNT -eq 0 ];then
-		LOG_MSG "[INFO]:-No failed segment instances detected"
+		LOG_MSG "[INFO]:-No failed segment instances detected" 1
 	else
-		LOG_MSG "[WARN]:-Failed segment instances detected, analyzing dump options"
+		LOG_MSG "[WARN]:-Failed segment instances detected, analyzing dump options" 1
 		FAILED_MIRROR_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $MPP_PG_VIEW where content <> -1 and definedprimary='f' and valid='f';"`
 		ERROR_CHK $? "obtained failed mirror count" 2
 		FAILED_PRIMARY_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $MPP_PG_VIEW where content <> -1 and definedprimary='t' and valid='f';"`
 		ERROR_CHK $? "obtained failed primary count" 2
 		if [ $FAILED_MIRROR_COUNT -ne 0 ] && [ $FAILED_PRIMARY_COUNT  -ne 0 ];then
-			LOG_MSG "[WARN]:-Have detected both primary and mirror segment failures"
-			LOG_MSG "[INFO]:-Configuring options to dump current active primary segments"
+			LOG_MSG "[WARN]:-Have detected both primary and mirror segment failures" 1
+			LOG_MSG "[INFO]:-Configuring options to dump current active primary segments" 1
 			EXIT_STATUS=1
 			DUMP_TYPE=3
 		fi
 		if [ $FAILED_MIRROR_COUNT -ne 0 ] && [ $DUMP_TYPE -eq 2 ];then	
-			LOG_MSG "[WARN]:-Detected failed mirror count of $FAILED_MIRROR_COUNT, -m option changed to -p"
+			LOG_MSG "[WARN]:-Detected failed mirror count of $FAILED_MIRROR_COUNT, -m option changed to -p" 1
 			EXIT_STATUS=1
 			DUMP_TYPE=1
 		fi
 		if [ $FAILED_PRIMARY_COUNT -ne 0 ] && [ $DUMP_TYPE -eq 1 ];then
-			LOG_MSG "[WARN]:-Detected failed primary count of $FAILED_PRIMARY_COUNT, -p option changed to -m" 
+			LOG_MSG "[WARN]:-Detected failed primary count of $FAILED_PRIMARY_COUNT, -p option changed to -m"  1
 			EXIT_STATUS=1
 			DUMP_TYPE=2
 		fi
 		if [ $FAILED_MIRROR_COUNT -ne 0 ] && [ $DUMP_TYPE -eq 0 ];then
-			LOG_MSG "[WARN]:-Detected failed mirror count of $FAILED_MIRROR_COUNT, will dump active segments"
+			LOG_MSG "[WARN]:-Detected failed mirror count of $FAILED_MIRROR_COUNT, will dump active segments" 1
 			EXIT_STATUS=1
 			DUMP_TYPE=3
 		fi
 		if [ $FAILED_PRIMARY_COUNT -ne 0 ] && [ $DUMP_TYPE -eq 0 ];then
-			LOG_MSG "[WARN]:-Detected failed primary count of $FAILED_PRIMARY_COUNT, will dump active segments"
+			LOG_MSG "[WARN]:-Detected failed primary count of $FAILED_PRIMARY_COUNT, will dump active segments" 1
 			EXIT_STATUS=1
 			DUMP_TYPE=3
 		fi
@@ -357,12 +364,14 @@ CALC_NO_COMPRESSION () {
 }
 CHK_DUMP_SPACE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Commencing free disk space checks, please wait..." 1
 	#Check to see if we have sufficient space to be able to dump data to disks
 	LOG_MSG "[INFO]:-Obtaining $DUMP_DATABASE disk allocation"
 	ACTUAL_DB_SIZE=(`$MPPSIZECALC -x $DUMP_DATABASE -fq|$GREP '|'`)
 	LOG_MSG "[INFO]:-Checking free space on segment instances"	
 	for DBID in ${DBID_LIST[@]}
 	do
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		CHK_DATA
 		DIR_HOST_FREE_K=`$TRUSTED_SHELL $DIR_HOST "$DF -k $DIR|$TAIL -1|$TR -s ' '|$TR ' ' '\n'|$TAIL -3|$HEAD -1"`
 		LOG_MSG "[INFO]:-Host $DIR_HOST Directory $DIR has free space $DIR_HOST_FREE_K K"
@@ -376,13 +385,15 @@ CHK_DUMP_SPACE () {
 			CALC_NO_COMPRESSION			
 		fi 
 	done
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 	if [ $TRY_COMPRESSION -eq 1 ];then
-		LOG_MSG "[INFO]:--------------------------------------------------------"
-		LOG_MSG "[INFO]:-Checking to see if sufficient space if compression used"
-		LOG_MSG "[INFO]:--------------------------------------------------------"
+		LOG_MSG "[INFO]:--------------------------------------------------------" 1
+		LOG_MSG "[INFO]:-Checking to see if sufficient space if compression used" 1
+		LOG_MSG "[INFO]:--------------------------------------------------------" 1
 		COMPRESSION=1
 		for DBID in ${DBID_LIST[@]}
 		do
+			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 			CHK_DATA
 			DIR_HOST_FREE_K=`$TRUSTED_SHELL $DIR_HOST "$DF -k $DIR|$TAIL -1|$AWK '{print \\$4}'"`
 			LOG_MSG "[INFO]:-Host $DIR_HOST Directory $DIR has free space $DIR_HOST_FREE_K K"
@@ -391,95 +402,103 @@ CHK_DUMP_SPACE () {
 			LOG_MSG "[INFO]:-Host $DIR_HOST Directory $DIR Database $DUMP_DATABASE has used $DIR_HOST_USED_K K"
 			CALC_COMPRESSION
 		done
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 	fi				
+	LOG_MSG "[INFO]:-Completed free disk space checks" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 SET_DUMP_TYPE_TEXT () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	case $DUMP_TYPE in
 		0 ) TYPE="Primary and Mirror segments" ;;
 		1 ) TYPE="Primary segments only" ;;
 		2 ) TYPE="Mirror segments only" ;;
 		3 ) TYPE="Available active segments" ;;
 	esac
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 SET_VAC_TXT () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	case $VACUUM_MODE in
 		0) VAC_TXT=Off ;;
 		1) VAC_TXT="Before database dump" ;;
 		2) VAC_TXT="After database dump" ;;
 	esac
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 PROMPT_CONTINUE () {
-		LOG_MSG "[INFO]:-Master MPP Instance dump parameters:"
-		LOG_MSG "[INFO]:-------------------------------------"
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		LOG_MSG "[INFO]:-Master MPP Instance dump parameters:" 1
+		LOG_MSG "[INFO]:-------------------------------------" 1
 		if [ $MULTIDB -eq 1 ];then
-		LOG_MSG "[INFO]:-Dump type                  = Multiple database"
+		LOG_MSG "[INFO]:-Dump type                  = Multiple database" 1
 		else
-		LOG_MSG "[INFO]:-Dump type                  = Single database"
+		LOG_MSG "[INFO]:-Dump type                  = Single database" 1
 		fi
-		LOG_MSG "[INFO]:-Database to be dumped      = $DUMP_DATABASE"
+		LOG_MSG "[INFO]:-Database to be dumped      = $DUMP_DATABASE" 1
 		if [ x"" != x"$SCHEMA_NAME" ];then
-		LOG_MSG "[INFO]:-Schema to dump             = $SCHEMA_NAME"
+		LOG_MSG "[INFO]:-Schema to dump             = $SCHEMA_NAME" 1
 		fi
-		LOG_MSG "[INFO]:-Master Port                = $MASTER_PORT"
-		LOG_MSG "[INFO]:-Master directory           = $MASTER_DATA_DIRECTORY"
+		LOG_MSG "[INFO]:-Master Port                = $MASTER_PORT" 1
+		LOG_MSG "[INFO]:-Master directory           = $MASTER_DATA_DIRECTORY" 1
 		SET_DUMP_TYPE_TEXT
-		LOG_MSG "[INFO]:-MPP Instance dump type     = $TYPE"
+		LOG_MSG "[INFO]:-MPP Instance dump type     = $TYPE" 1
 		if [ $FAILED_PRIMARY_COUNT -ne 0 ];then
-			LOG_MSG "[WARN]:-Failed primary count       = $FAILED_PRIMARY_COUNT"
+			LOG_MSG "[WARN]:-Failed primary count       = $FAILED_PRIMARY_COUNT" 1
 		else
-			LOG_MSG "[INFO]:-Failed primary count       = $FAILED_PRIMARY_COUNT"
+			LOG_MSG "[INFO]:-Failed primary count       = $FAILED_PRIMARY_COUNT" 1
 		fi
 		if [ $FAILED_MIRROR_COUNT -ne 0 ];then
-			LOG_MSG "[WARN]:-Failed mirror count        = $FAILED_MIRROR_COUNT"
+			LOG_MSG "[WARN]:-Failed mirror count        = $FAILED_MIRROR_COUNT" 1
 		else
-			LOG_MSG "[INFO]:-Failed mirror count        = $FAILED_MIRROR_COUNT"
+			LOG_MSG "[INFO]:-Failed mirror count        = $FAILED_MIRROR_COUNT" 1
 		fi	
 		if [ $ROLLBACK -eq 0 ];then
-			LOG_MSG "[INFO]:-Rollback dumps             = Off"
+			LOG_MSG "[INFO]:-Rollback dumps             = Off" 1
 		else
-			LOG_MSG "[INFO]:-Rollback dumps             = On"
+			LOG_MSG "[INFO]:-Rollback dumps             = On" 1
 		fi
 		if [ $COMPRESSION ];then
-			LOG_MSG "[INFO]:-Dump file compression      = On"
+			LOG_MSG "[INFO]:-Dump file compression      = On" 1
 		else
-			LOG_MSG "[INFO]:-Dump file compression      = Off"
+			LOG_MSG "[INFO]:-Dump file compression      = Off" 1
 		fi
 		if [ $TRY_COMPRESSION -eq 1 ];then
-			LOG_MSG "[INFO]:-Compression override       = On"
+			LOG_MSG "[INFO]:-Compression override       = On" 1
 		else
-			LOG_MSG "[INFO]:-Compression override       = Off"
+			LOG_MSG "[INFO]:-Compression override       = Off" 1
 		fi
 		if [ $CLEAR_DUMPS -eq 1 ];then
-			LOG_MSG "[INFO]:-Clear old dump files       = On"
+			LOG_MSG "[INFO]:-Clear old dump files       = On" 1
 		else
-			LOG_MSG "[INFO]:-Clear old dump files       = Off"
+			LOG_MSG "[INFO]:-Clear old dump files       = Off" 1
 		fi	
 		if [ x"" != x"$ADD_DUMP_OPTIONS" ];then
-			LOG_MSG "[INFO]:-Additional options         = $ADD_DUMP_OPTIONS"
+			LOG_MSG "[INFO]:-Additional options         = $ADD_DUMP_OPTIONS" 1
 		fi
 		SET_VAC_TXT
-		LOG_MSG "[INFO]:-Vacuum mode type           = $VAC_TXT"
-		LOG_MSG "[INFO]:-Disk free percent value    = $FREE_SPACE_PERCENT %"
+		LOG_MSG "[INFO]:-Vacuum mode type           = $VAC_TXT" 1
+		LOG_MSG "[INFO]:-Disk free percent value    = $FREE_SPACE_PERCENT %" 1
 		$ECHO
 		$ECHO "Continue with MPP instance dump yY|nN >"
 		read REPLY
 		if [ -z $REPLY ]; then
-				LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 				exit 1
 		fi
 		if [ $REPLY != Y ] && [ $REPLY != y ]; then
-				LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 				exit 1
 		fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }	
 
 PROCESS_DUMP_CONFIG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Securing masster configuration files"
+	LOG_MSG "[INFO]:-Securing master configuration files" 1
 	$TAR cf ${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/${DUMP_DATE}/${CONFIG_BACKUP_FILE} ${MASTER_DATA_DIRECTORY}/*.conf
 	ERROR_CHK $? "dump config files" 1
 	DUMP_CONFIG=0
@@ -488,7 +507,7 @@ PROCESS_DUMP_CONFIG () {
 
 PROCESS_DUMP_PG_DUMP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Commencing pg_catalog dump for database $DUMP_DATABASE"
+	LOG_MSG "[INFO]:-Commencing pg_catalog dump for database $DUMP_DATABASE" 1
 	$PG_DUMP -f ${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/${DUMP_DATE}/${DUMP_DATABASE}_${CATALOG}_$DUMP_DATE -n $CATALOG $DUMP_DATABASE
 	ERROR_CHK $? "dump $CATALOG" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -496,31 +515,31 @@ PROCESS_DUMP_PG_DUMP () {
 
 PROCESS_DUMP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Setting dump running flag"
+	LOG_MSG "[INFO]:-Setting dump running flag" 1
 	$TOUCH $IS_RUNNING_FLAG
-	LOG_MSG "[INFO]:-Building dump command line"
+	LOG_MSG "[INFO]:-Building dump command line" 1
 	DUMP_TEXT="$MPP_DUMP -p $MASTER_PORT -U $LOGNAME --mpp-d=${DUMP_SUB_DIR}/$DUMP_DATE --mpp-r=${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/$DUMP_DATE --mpp-s=i[1,`$ECHO ${DBID_LIST[@]}|$TR ' ' ','`] $ADD_DUMP_OPTIONS"		
 	if [ $COMPRESSION ];then
-		LOG_MSG "[INFO]:-Adding compression parameter"
+		LOG_MSG "[INFO]:-Adding compression parameter" 1
 		DUMP_TEXT=$DUMP_TEXT" --mpp-c"
 	fi
 	if [ x"" != x"$SCHEMA_NAME" ];then
-		LOG_MSG "[INFO]:-Adding schema name $SCHEMA_NAME"
+		LOG_MSG "[INFO]:-Adding schema name $SCHEMA_NAME" 1
 		DUMP_TEXT=$DUMP_TEXT" -s $SCHEMA_NAME"
 	fi
 	DUMP_TEXT=$DUMP_TEXT" $DUMP_DATABASE"
-	LOG_MSG "[INFO]:-Dump command line $DUMP_TEXT"
-	LOG_MSG "[INFO]:-Starting dump process"
+	LOG_MSG "[INFO]:-Dump command line $DUMP_TEXT" 1
+	LOG_MSG "[INFO]:-Starting dump process" 1
 	TIME_START=`$DATE +%H":"%M":"%S`
 	$DUMP_TEXT
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
-		LOG_MSG "[WARN]:-Dump process returned exit code $RETVAL"
+		LOG_MSG "[WARN]:-Dump process returned exit code $RETVAL" 1
 	else
-		LOG_MSG "[INFO]:-Dump process returned exit code $RETVAL"
+		LOG_MSG "[INFO]:-Dump process returned exit code $RETVAL" 1
 	fi
 	TIME_END=`$DATE +%H":"%M":"%S`
-	LOG_MSG "[INFO]:-Deleting dump running flag"
+	LOG_MSG "[INFO]:-Deleting dump running flag" 1
 	$RM -f $IS_RUNNING_FLAG
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -530,23 +549,23 @@ CHK_POST_DUMP () {
 	#Get the latest report file name on Master segment instance
 	MASTER_DUMP_RPT=`$LS -altr ${MASTER_DATA_DIRECTORY}/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_*.rpt|$TAIL -1 |$AWK '{print \$NF}'`
 	if [ x"" == x"$MASTER_DUMP_RPT" ];then
-		LOG_MSG "[WARN]:-Could not locate a report file on Master segment dump directory"
+		LOG_MSG "[WARN]:-Could not locate a report file on Master segment dump directory" 1
 		EXIT_STATUS=1
-		LOG_MSG "[INFO]:-Checking to see if can locate a status file on dbid ${DBID_LIST[1]}"
+		LOG_MSG "[INFO]:-Checking to see if can locate a status file on dbid ${DBID_LIST[1]}" 1
 		DBID=${DBID_LIST[1]}
 		CHK_DATA
 		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$DUMP_DATE* ];then $ECHO 0;else $ECHO 1;fi"`
 		if [ $EXISTS -eq 0 ];then
-			LOG_MSG "[INFO]:-Located dump status file on $DIR_HOST"
+			LOG_MSG "[INFO]:-Located dump status file on $DIR_HOST" 1
 			TIMESTAMP_KEY=`$TRUSTED_SHELL $DIR_HOST "$LS $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$DUMP_DATE*|$CUT -d'_' -f7"`
-			LOG_MSG "[INFO]:-Time stamp key = $TIMESTAMP_KEY"
+			LOG_MSG "[INFO]:-Time stamp key = $TIMESTAMP_KEY" 1
 		else
-			LOG_MSG "[WARN]:-Failed to locate a dump status file on $DIR_HOST in directory $DIR"
+			LOG_MSG "[WARN]:-Failed to locate a dump status file on $DIR_HOST in directory $DIR" 1
 		fi
 	else	
-		LOG_MSG "[INFO]:-Obtained latest dump report name $MASTER_DUMP_RPT"
+		LOG_MSG "[INFO]:-Obtained latest dump report name $MASTER_DUMP_RPT" 1
 		TIMESTAMP_KEY=`$GREP "Timestamp Key:" $MASTER_DUMP_RPT|$AWK '{print \$NF}'`
-		LOG_MSG "[INFO]:-Time stamp key = $TIMESTAMP_KEY"
+		LOG_MSG "[INFO]:-Time stamp key = $TIMESTAMP_KEY" 1
 	fi
 	CHK_DB_LIST=(1 ${DBID_LIST[@]})
 #	for DBID in ${DBID_LIST[@]}
@@ -556,21 +575,21 @@ CHK_POST_DUMP () {
 		LOG_MSG "[INFO]:-Checking dump status for $DIR_HOST segment directory $DIR/$DUMP_SUB_DIR/$DUMP_DATE"
 		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$TIMESTAMP_KEY  ];then $ECHO 0;else $ECHO 1;fi"`
 		if [ $EXISTS -eq 1 ];then
-			LOG_MSG "[WARN]:-Could not locate status report file"
+			LOG_MSG "[WARN]:-Could not locate status report file" 1
 			ROLLBACK_DUMPS=1
 			EXIT_STATUS=1
 			FAILED_REPORT=(${FAILED_REPORT[@]}" "$DIR_HOST"|"$DIR)
 		else
-			LOG_MSG "[INFO]:-Located status report file"
+			LOG_MSG "[INFO]:-Located status report file" 1
 			STATUS=`$TRUSTED_SHELL $DIR_HOST "$GREP -c \"Finished successfully\" $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$TIMESTAMP_KEY"`
 			if [ $STATUS -eq 1 ];then
 				LOG_MSG "[INFO]:-Status report file indicates dump successful"
 			else
-				LOG_MSG "[WARN]:-Status report file indicates dump failure"
-				LOG_MSG "[INFO]:-Status log file contents"
-				LOG_MSG "[INFO]:-------------------------"
+				LOG_MSG "[WARN]:-Status report file indicates dump failure" 1
+				LOG_MSG "[INFO]:-Status log file contents" 1
+				LOG_MSG "[INFO]:-------------------------" 1
 				$TRUSTED_SHELL $DIR_HOST "$CAT $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$TIMESTAMP_KEY" | $TEE -a $LOG_FILE
-				LOG_MSG "[INFO]:-------------------------"
+				LOG_MSG "[INFO]:-------------------------" 1
 				ROLLBACK_DUMPS=1
 				EXIT_STATUS=1
 			fi
@@ -578,7 +597,7 @@ CHK_POST_DUMP () {
 		#Checking for dump file
 		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_?_${DBID}_$TIMESTAMP_KEY*  ];then $ECHO 0;else $ECHO 1;fi"`
 		if [ $EXISTS -eq 1 ];then
-			LOG_MSG "[WARN]:-Could not locate dump file"
+			LOG_MSG "[WARN]:-Could not locate dump file" 1
 			EXIT_STATUS=1
 			ROLLBACK_DUMPS=1
 			FAILED_DUMP=(${FAILED_DUMP[@]}" "$DIR_HOST"|"$DIR)
@@ -591,20 +610,20 @@ CHK_POST_DUMP () {
 
 REPORT_FAILED_DUMPS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Missing status files list"
-	LOG_MSG "[INFO]:--------------------------"
+	LOG_MSG "[INFO]:-Missing status files list" 1
+	LOG_MSG "[INFO]:--------------------------" 1
 	for REP in ${FAILED_REPORT[@]}
 	do
-		LOG_MSG "[INFO]:-No status file for $REP"
+		LOG_MSG "[INFO]:-No status file for $REP" 1
 	done
-	LOG_MSG "[INFO]:--------------------------"
-	LOG_MSG "[INFO]:-Missing dump files list"
-	LOG_MSG "[INFO]:------------------------"
+	LOG_MSG "[INFO]:--------------------------" 1
+	LOG_MSG "[INFO]:-Missing dump files list" 1
+	LOG_MSG "[INFO]:------------------------" 1
 	for DFILE in ${FAILED_DUMP[@]}
 	do
-		LOG_MSG "[INFO]:-No dump file for $DFILE"
+		LOG_MSG "[INFO]:-No dump file for $DFILE" 1
 	done
-	LOG_MSG "[INFO]:------------------------"
+	LOG_MSG "[INFO]:------------------------" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }	
 DELETE_CURRENT_DUMP () {
@@ -612,11 +631,10 @@ DELETE_CURRENT_DUMP () {
 	for DBID in ${DBID_LIST[@]}
 	do
 		CHK_DATA
-		
-		LOG_MSG "[INFO]:-Deleting dump files on $DIR_HOST segment dir $DIR"
+		LOG_MSG "[INFO]:-Deleting dump files on $DIR_HOST segment dir $DIR" 1
 		$TRUSTED_SHELL $DIR_HOST "$RM -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump*$TIMESTAMP_KEY*"
 	done
-	LOG_MSG "[INFO]:-Deleting Master segment dump files"
+	LOG_MSG "[INFO]:-Deleting Master segment dump files" 1
 	$RM -f $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_1*$TIMESTAMP_KEY*
 	$RM -f $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/$DUMP_DATE/mpp_c*$TIMESTAMP_KEY
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -630,10 +648,10 @@ DELETE_OLD_DUMPS () {
 	for DBID in ${DBID_LIST[@]}
 	do
 		CHK_DATA
-		LOG_MSG "[INFO]:-Processing $DIR_HOST segment directory $DIR"
+		LOG_MSG "[INFO]:-Processing $DIR_HOST segment directory $DIR" 1
 		DEL_DIR=`$TRUSTED_SHELL $DIR_HOST "$LS $DIR/$DUMP_SUB_DIR|$TR ' ' '\n'|$GREP -v $DUMP_DATE|$SORT|$HEAD -1"`
 		if [ x"" == x"$DEL_DIR" ];then
-			LOG_MSG "[INFO]:-No previous old dump directories located $DIR_HOST in segment directory $DIR"
+			LOG_MSG "[INFO]:-No previous old dump directories located $DIR_HOST in segment directory $DIR" 1
 		else
 			DEL_ARRAY[$COUNT]=$DEL_DIR
 		fi
@@ -643,17 +661,17 @@ DELETE_OLD_DUMPS () {
 		for DBID in ${DBID_LIST[@]}
 		do
 			CHK_DATA
-			LOG_MSG "[INFO]:-Preparing to remove $DEL_SET on $DIR_HOST segment directory $DIR"
+			LOG_MSG "[INFO]:-Preparing to remove $DEL_SET on $DIR_HOST segment directory $DIR" 1
 			$TRUSTED_SHELL $DIR_HOST "$RM -Rf $DIR/$DUMP_SUB_DIR/$DEL_SET"
 			ERROR_CHK $? "delete $DEL_SET on $DIR_HOST segment directory $DIR" 1
 		done
-		LOG_MSG "[INFO]:-Processing Master segment instance"
+		LOG_MSG "[INFO]:-Processing Master segment instance" 1
 		DEL_DIR=$MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/$DEL_SET
-		LOG_MSG "[INFO]:-Preparing to remove $DEL_DIR on Master segment instance"	
+		LOG_MSG "[INFO]:-Preparing to remove $DEL_DIR on Master segment instance"	 1
 		$RM -Rf $DEL_DIR
 		ERROR_CHK $? "delete $DEL_DIR on Master segment instance" 1
 	else
-		LOG_MSG "[INFO]:-No old backup sets to remove"
+		LOG_MSG "[INFO]:-No old backup sets to remove" 1
 		DEL_SET="None Located"
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -661,47 +679,47 @@ DELETE_OLD_DUMPS () {
 
 STATUS_REPORT () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Dump status report"
-	LOG_MSG "[INFO]:--------------------------------------------"
-	LOG_MSG "[INFO]:-Target database                    = $DUMP_DATABASE"
-	LOG_MSG "[INFO]:-Dump sub directory                 = $DUMP_DATE"
+	LOG_MSG "[INFO]:-Dump status report" 1
+	LOG_MSG "[INFO]:--------------------------------------------" 1
+	LOG_MSG "[INFO]:-Target database                    = $DUMP_DATABASE" 1
+	LOG_MSG "[INFO]:-Dump sub directory                 = $DUMP_DATE" 1
 	if [ $CLEAR_DUMPS -eq 1 ];then
-	LOG_MSG "[INFO]:-Clear old dump directories         = On"
-	LOG_MSG "[INFO]:-Backup set deleted                 = $DEL_SET"
+	LOG_MSG "[INFO]:-Clear old dump directories         = On" 1
+	LOG_MSG "[INFO]:-Backup set deleted                 = $DEL_SET" 1
 	else
-	LOG_MSG "[INFO]:-Clear old dump directories         = Off"
+	LOG_MSG "[INFO]:-Clear old dump directories         = Off" 1
 	fi
-	LOG_MSG "[INFO]:-Dump type                          = $TYPE"
-	LOG_MSG "[INFO]:-Dump start time                    = $TIME_START"
-	LOG_MSG "[INFO]:-Dump end time                      = $TIME_END"
-	LOG_MSG "[INFO]:-Number of segments dumped          = ${#DBID_LIST[@]}"
+	LOG_MSG "[INFO]:-Dump type                          = $TYPE" 1
+	LOG_MSG "[INFO]:-Dump start time                    = $TIME_START" 1
+	LOG_MSG "[INFO]:-Dump end time                      = $TIME_END" 1
+	LOG_MSG "[INFO]:-Number of segments dumped          = ${#DBID_LIST[@]}" 1
 	if [ $ROLLBACK_DUMPS ] && [ $ROLLBACK -eq 1 ];then
-	LOG_MSG "[WARN]:-Status                             = FAILED, Rollback Called"
-	LOG_MSG "[INFO]:-See dump log file for errors"
-	LOG_MSG "[WARN]:-Dump key                           = Not Applicable"
+	LOG_MSG "[WARN]:-Status                             = FAILED, Rollback Called" 1
+	LOG_MSG "[INFO]:-See dump log file for errors" 1
+	LOG_MSG "[WARN]:-Dump key                           = Not Applicable" 1
 	else
 		if [ $ROLLBACK_DUMPS ] && [ $ROLLBACK -eq 0 ];then 
-		LOG_MSG "[WARN]:-Status                             = FAILED, Rollback Not Called"
-		LOG_MSG "[INFO]:-See dump log file for errors"
-		LOG_MSG "[WARN]:-Dump key                           = Not Applicable"
+		LOG_MSG "[WARN]:-Status                             = FAILED, Rollback Not Called" 1
+		LOG_MSG "[INFO]:-See dump log file for errors" 1
+		LOG_MSG "[WARN]:-Dump key                           = Not Applicable" 1
 		else
-		LOG_MSG "[INFO]:-Status                             = COMPLETED"
-		LOG_MSG "[INFO]:-Dump key                           = $TIMESTAMP_KEY"
+		LOG_MSG "[INFO]:-Status                             = COMPLETED" 1
+		LOG_MSG "[INFO]:-Dump key                           = $TIMESTAMP_KEY" 1
 		fi
 	fi
 	if [ $COMPRESSION ];then
-	LOG_MSG "[INFO]:-Dump file compression              = On"
+	LOG_MSG "[INFO]:-Dump file compression              = On" 1
 	else
-	LOG_MSG "[INFO]:-Dump file compression              = Off"
+	LOG_MSG "[INFO]:-Dump file compression              = Off" 1
 	fi
 	SET_VAC_TXT
-	LOG_MSG "[INFO]:-Vacuum mode type                   = $VAC_TXT"
+	LOG_MSG "[INFO]:-Vacuum mode type                   = $VAC_TXT" 1
 	if [ $EXIT_STATUS -ne 0 ];then
-	LOG_MSG "[WARN]:-Exit code not zero, check log file"
+	LOG_MSG "[WARN]:-Exit code not zero, check log file" 1
 	else
-	LOG_MSG "[INFO]:-Exit code zero, no warnings generated"
+	LOG_MSG "[INFO]:-Exit code zero, no warnings generated" 1
 	fi
-	LOG_MSG "[INFO]:--------------------------------------------"
+	LOG_MSG "[INFO]:--------------------------------------------" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 #******************************************************************************
@@ -709,7 +727,7 @@ STATUS_REPORT () {
 #******************************************************************************
 trap '$RM -f ${IS_RUNNING_FLAG};ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgtC!" opt;do
+		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgtC!D" opt;do
 			case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
@@ -742,19 +760,20 @@ if [ $# -ne 0 ]; then
 				g ) DUMP_CONFIG=1 ;;
 				t ) DUMP_PG_DUMP=1 ;;
 				C ) ADD_DUMP_OPTIONS="$ADD_DUMP_OPTIONS -c" ;;
+				D ) DEBUG_LEVEL=1 ;;
 				* ) USAGE ;;
 				esac
 		done	
 fi
 #Check to see if we have another dump running
 if [ -f $IS_RUNNING_FLAG ];then
-	LOG_MSG "[FATAL]:-Located $IS_RUNNING_FLAG file, which indicates another dump in progress"
+	LOG_MSG "[FATAL]:-Located $IS_RUNNING_FLAG file, which indicates another dump in progress" 1
 	ERROR_EXIT "[FATAL]:-If dump not running delete $IS_RUNNING_FLAG and restart dump" 2
 fi
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
 	if [ $EXISTS -eq 1 ]; then
-		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
 	else
 		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
 	fi
@@ -782,7 +801,7 @@ if [ `$ECHO $DUMP_DATABASE|$GREP -c ","` -ne 0 ];then
 	DUMP_DATABASE_LIST=(`$ECHO $DUMP_DATABASE|$TR ',' ' '`)
 else
 	MULTIDB=0
-	LOG_MSG "[INFO]:-Configuring for multiple database dump"
+	LOG_MSG "[INFO]:-Configuring for multiple database dump" 1
 	DUMP_DATABASE_LIST=($DUMP_DATABASE)
 fi
 #Check that all databases exist
@@ -790,7 +809,7 @@ for DUMP_DATABASE in ${DUMP_DATABASE_LIST[@]}
 do
 	DB_THERE=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select oid from pg_database where datname='${DUMP_DATABASE}';"`
 	if [ x"" == x"$DB_THERE" ];then
-		ERROR_EXIT "[FATAL]:-Database $DUMP_DATABASE does not exist"
+		ERROR_EXIT "[FATAL]:-Database $DUMP_DATABASE does not exist" 2
 	fi
 done
 for DUMP_DATABASE in ${DUMP_DATABASE_LIST[@]}
@@ -805,12 +824,12 @@ do
 		CHK_PARAM
 	else
 		DUMP_MIR_CHK
-		LOG_MSG "[WARN]:-Parameter check phase bypassed, -i option supplied"
+		LOG_MSG "[WARN]:-Parameter check phase bypassed, -i option supplied" 1
 	fi
 	if [ x"" == x"$DISK_BYPASS" ];then
 		CHK_DUMP_SPACE
 	else
-		LOG_MSG "[WARN]:-Disk space check bypassed, -b option supplied"
+		LOG_MSG "[WARN]:-Disk space check bypassed, -b option supplied" 1
 		GET_DUMP_LIST
 	fi
 	if [ $INTERACTIVE ]; then
@@ -819,7 +838,7 @@ do
 		SET_DUMP_TYPE_TEXT
 	fi
 	if [ $VACUUM_MODE -eq 1 ];then
-		LOG_MSG "[INFO]:-Vacuum before database dump option selected"
+		LOG_MSG "[INFO]:-Vacuum before database dump option selected" 1
 		VACUUM_PROCESS
 	fi
 	if [ $DUMP_CONFIG -eq 1 ];then
@@ -832,13 +851,13 @@ do
 	CHK_POST_DUMP
 	if [ $ROLLBACK_DUMPS ];then
 		if [ $ROLLBACK -eq 1 ];then
-			LOG_MSG "[WARN]:-Dump request was incomplete, rolling back dump"
+			LOG_MSG "[WARN]:-Dump request was incomplete, rolling back dump" 1
 			DELETE_CURRENT_DUMP
 			REPORT_FAILED_DUMPS
 			EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 			ERROR_EXIT "[FATAL]:-Dump incomplete, completed rollback" 2
 		else
-			LOG_MSG "[WARN]:-Dump request was incomplete, not rolling back dump as -r option not supplied"
+			LOG_MSG "[WARN]:-Dump request was incomplete, not rolling back dump as -r option not supplied" 1
 			REPORT_FAILED_DUMPS
 			EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files not rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 			ERROR_EXIT "[FATAL]:-Dump incomplete, rollback not processed" 2
@@ -848,7 +867,7 @@ do
 		DELETE_OLD_DUMPS
 	fi
 	if [ $VACUUM_MODE -eq 2 ];then
-		LOG_MSG "[INFO]:-Vacuum after database dump option selected"
+		LOG_MSG "[INFO]:-Vacuum after database dump option selected" 1
 		VACUUM_PROCESS
 	fi
 	STATUS_REPORT
