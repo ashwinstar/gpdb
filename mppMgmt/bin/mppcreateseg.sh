@@ -121,10 +121,10 @@ PROCESS_QE () {
 		PARA_EXIT $RETVAL "Update listen address"
 		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $MPP_HOSTNAME
 		PARA_EXIT $RETVAL "Update checkpoint segments"
-		LOG_MSG "[INFO]:-Setting Segment instance maximum connections to ${QE_MAX_CONNECT}"
+		LOG_MSG "[INFO][$INST_COUNT]:-Setting Segment instance maximum connections to ${QE_MAX_CONNECT}"
                 ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${QE_MAX_CONNECT}" 0 $MPP_HOSTNAME
                 PARA_EXIT $RETVAL "set max_connections=${QE_MAX_CONNECT} in ${MPP_DIR}/$PG_CONF"
-                LOG_MSG "[INFO]:-Setting Segment shared buffers to ${QE_SHARED_BUFFERS}"
+                LOG_MSG "[INFO][$INST_COUNT]:-Setting Segment shared buffers to ${QE_SHARED_BUFFERS}"
                 ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${QE_SHARED_BUFFERS}" 0 $MPP_HOSTNAME
                 PARA_EXIT $RETVAL "set shared_buffers=${QE_SHARED_BUFFERS} in ${MPP_DIR}/$PG_CONF"
 		if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
