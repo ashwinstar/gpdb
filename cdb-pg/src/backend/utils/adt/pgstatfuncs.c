@@ -487,7 +487,7 @@ pg_stat_get_backend_client_addr(PG_FUNCTION_ARGS)
 
 #ifdef HAVE_IPV6	
 	/* Special for broken MAC IPv6 stuff */
-	if (strchr(remote_host,'%') != NULL)
+	if (remote_host && strchr(remote_host,'%') != NULL)
 	{
 		strchr(remote_host,'%')[0]='\0';
 	}
