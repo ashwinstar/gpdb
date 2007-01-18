@@ -485,6 +485,14 @@ pg_stat_get_backend_client_addr(PG_FUNCTION_ARGS)
 	if (ret)
 		PG_RETURN_NULL();
 
+#ifdef HAVE_IPV6	
+	/* Special for broken MAC IPv6 stuff */
+	if (strchr(remote_host,'%') != NULL)
+	{
+		strchr(remote_host,'%')[0]='\0';
+	}
+#endif
+
 	PG_RETURN_INET_P(DirectFunctionCall1(inet_in,
 										 CStringGetDatum(remote_host)));
 }
