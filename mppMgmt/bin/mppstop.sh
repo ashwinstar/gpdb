@@ -56,6 +56,9 @@ ADMIN=0
 STOP_INVALID=0
 STANDBY_COUNT=0
 STOP_SYNC=1
+MPPSEGSTOP=mppsegstop.sh
+PARALLEL_STATUS_FILE=/tmp/mppstop_parallel_status_file.$$
+WAIT_LIMIT=600
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -90,7 +93,6 @@ USAGE () {
 		$ECHO "      -f, Fast shutdown, active transactions interrupted and rolled back"
 		$ECHO "      -i, Immediate shutdown, active transaction aborted [Use this option with care]"
 		$ECHO "      -s, Smart shutdown, wait for active transaction to complete [default]"
-		$ECHO "      -n, Do not wait for shutdown return code of each segment instance [default:- wait]"
 		$ECHO "      -z, Force shutdown of segment instances marked as invalid. Kill postmaster PID,"
 		$ECHO "          delete /tmp lock files and remove segment instance postmaster.pid file."
 		$ECHO "      -r, Restart MPP instance after successful mppstop.sh."
@@ -139,18 +141,12 @@ DISPLAY_PARAM () {
 		else
 				$ECHO "Verbose                        = False"
 		fi 
-		if [ "$WAIT" == "-w" ]; then
-				$ECHO "Wait for shutdown              = True            [Override with -n]"
-		else
-				$ECHO "Wait for shutdown              = False"
-		fi 
 		$ECHO
 		exit 0
 }
 
 STOP_ADMIN () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		##MPP Disabled call to this function 22/07/2005
 		LOG_MSG "[INFO]:-Stopping the Master instance in admin mode"
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[FATAL]:- No $PG_PID file, is instance already stopped?" 1
@@ -227,13 +223,13 @@ PROMPT_CONTINUE () {
 		$ECHO "Continue with MPP instance shutdown yY|nN >"
 		read REPLY
 		if [ ! -z $REPLY ]; then
-				if [ $REPLY != Y ] && [ $REPLY != y ]; then
-						LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
-						exit 1
-				fi
-		else
+			if [ $REPLY != Y ] && [ $REPLY != y ]; then
 				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
 				exit 1
+			fi
+		else
+			LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
+			exit 1
 		fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }	
@@ -243,14 +239,14 @@ PROCESS_SHUTDOWN () {
 		if [ $MODE == "smart" ]; then
 #		count connected processes, but don't count ourself.
 		CONNECTED=` env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c "select count(*) from pg_stat_activity where procpid != pg_backend_pid();"`
-			if [ $CONNECTED -gt 0 ];then
-				LOG_MSG "[WARN]:-There are other connections to this instance, shutdown mode smart aborted" 1
-				LOG_MSG "[WARN]:-Either remove connections, or use mppstop.sh -f or -i." 1
-				LOG_MSG "[WARN]:-See mppstop.sh -? for all options" 1
-				ERROR_EXIT "[FATAL]:-Shutdown options will not close instance database" 2
-			else
+		if [ $CONNECTED -gt 0 ];then
+			LOG_MSG "[WARN]:-There are other connections to this instance, shutdown mode smart aborted" 1
+			LOG_MSG "[WARN]:-Either remove connections, or use mppstop.sh -f or -i." 1
+			LOG_MSG "[WARN]:-See mppstop.sh -? for all options" 1
+			ERROR_EXIT "[FATAL]:-Shutdown options will not close instance database" 2
+		else
 			LOG_MSG "[INFO]:-No current instance connections identified, will continue with shutdown"
-			fi	
+		fi	
 		fi
 		#Shutdown QD hosts first
 		if [ x"" != x"$STOP_SYNC" ];then
@@ -260,6 +256,9 @@ PROCESS_SHUTDOWN () {
 		$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
 		ERROR_CHK $? "shutdown Master instance on $QD_NAME" 2
 		QD_STOP_COUNT=0
+		$TOUCH $PARALLEL_STATUS_FILE
+		export PARALLEL_STATUS_FILE=$PARALLEL_STATUS_FILE
+		LOG_MSG "[INFO]:-Commencing parallel segment instance shutdown, please wait.." 1
 		for QNODE in "${QE_ARRAY[@]}"
 				do
 				QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
@@ -267,36 +266,44 @@ PROCESS_SHUTDOWN () {
 				QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 				if [ "$QE_VALID" == "t" ] || [ $STOP_INVALID -eq 1 ];then
-					LOG_MSG "[INFO]:-Stopping Segment Instance $QE_NAME directory $QE_DIR" 1
-					$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};$PG_CTL $WAIT stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log " 
-					ERROR_CHK $? "shutdown of $QE_NAME on port=$QE_PORT" 1
-					if [ $STOP_INVALID -eq 1 ]; then       
-						FORCE_CLEAR
-					fi
+					$MPPSEGSTOP $$ $STOP_INVALID $QE_NAME $QE_PORT $QE_DIR $QE_VALID $MODE $QD_STOP_COUNT $LOG_FILE &
 					((QD_STOP_COUNT=$QD_STOP_COUNT+1))
 				else
 					LOG_MSG "[WARN]:-Not processing $QE_NAME directory $QE_DIR marked invalid" 1
 					EXIT_STATUS=1
 				fi
 		done
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-FORCE_CLEAR () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Killing postmaster process on $QE_NAME for port=$QE_PORT" 1
-	GET_PG_PID_ACTIVE $QE_PORT $QE_NAME
-	if [ $PID -ne 0 ]; then
-		$TRUSTED_SHELL $QE_NAME "$KILL -9 $PID" > $LOG_FILE 2>&1
-	else
-		LOG_MSG "[INFO]:-No active pid found for $QE_NAME for port=$QE_PORT"
+	PARALLEL_WAIT
+	DUMP_STAT=0
+	if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO;fi
+	KILLED_COUNT=`$GREP -c "KILLED:" $PARALLEL_STATUS_FILE`
+	if [ $KILLED_COUNT -ne 0 ];then
+		LOG_MSG "[WARN]:-$KILLED_COUNT parallel process where killed" 1
+		EXIT_STATUS=1;DUMP_STAT=1
 	fi
-	LOG_MSG "[INFO]:-Clearing lock files on $QE_NAME for directory $QE_DIR" 1
-	$TRUSTED_SHELL $QE_NAME "$RM -f /tmp/.s.PGSQL.${QE_PORT}.lock /tmp/.s.PGSQL.${QE_PORT}"
-	ERROR_CHK $? "removal of lock files on $QE_NAME for directory $QE_DIR" 1
-	LOG_MSG "[INFO]:-Clearing postmaster.pid file" 1
-	$TRUSTED_SHELL $QE_NAME "$RM -f ${QE_DIR}/postmaster.pid"
-	ERROR_CHK $? "clearing postmaster.pid file on $QE_NAME for directory $QE_DIR" 1
+	FORCE_CLEAR_WARN=`$GREP -c ":FORCE_CLEAR_WARN" $PARALLEL_STATUS_FILE`
+	if [ $FORCE_CLEAR_WARN -ne 0 ];then
+		LOG_MSG "[WARN]:-Failed to force clear $FORCE_CLEAR_WARN segment instances" 1
+		EXIT_STATUS=1;DUMP_STAT=1
+	fi
+	NO_FORCE_CLEAR=`$GREP -c ":NO_FORCE_CLEAR" $PARALLEL_STATUS_FILE`
+	if [ $NO_FORCE_CLEAR -ne 0 ];then
+		LOG_MSG "[WARN]:-Failed to pg_ctl shutdown $NO_FORCE_CLEAR segment instances" 1
+		EXIT_STATUS=1;DUMP_STAT=1
+	fi
+	NO_ERROR=`$GREP -c "COMPLETED:" $PARALLEL_STATUS_FILE`
+	LOG_MSG "[INFO]:-Successfuly shutdown $NO_ERROR of $QD_STOP_COUNT segment instances" 1
+	if [ $DUMP_STAT -ne 0 ];then
+                LOG_MSG "[INFO]:-Securing contents of parallel status file to log file" 1
+                $CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
+                LOG_MSG "[INFO]:--------------------------------------------------------" 1
+                LOG_MSG "[INFO]:-Error messages contained within status file" 1
+                $CAT $PARALLEL_STATUS_FILE|$GREP -v "COMPLETED:"
+                LOG_MSG "[INFO]:--------------------------------------------------------" 1
+        else
+                LOG_MSG "[INFO]:-No errors generated from segment instance shutdown" 1
+        fi
+        $RM -f $PARALLEL_STATUS_FILE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -322,6 +329,25 @@ RELOAD_PSQL_PARAM () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+PARALLEL_WAIT () {
+        LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+        LOG_MSG "[INFO]:-Waiting for $QD_STOP_COUNT parallel processes to complete" 1
+        SLEEP_COUNT=0
+        while [ `$WC -l $PARALLEL_STATUS_FILE|$AWK '{print $1}'` -ne $QD_STOP_COUNT ]
+        do
+                if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO ".\c";fi
+                $SLEEP 1
+                ((SLEEP_COUNT=$SLEEP_COUNT+1))
+                if [ $WAIT_LIMIT -lt $SLEEP_COUNT ];then
+                        if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO;fi
+                        LOG_MSG "[FATAL]:-Failed to stop this batch of segments within $WAIT_LIMIT seconds" 1
+                        LOG_MSG "[INFO]:-Review contents of $LOG_FILE" 1
+                        ERROR_EXIT "[FATAL]:-Stop timeout failure" 2
+                fi
+        done
+        LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 #******************************************************************************
 # Main Section
 #******************************************************************************
@@ -329,7 +355,7 @@ trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 #Check to see if we have a parameter supplied to script
 if [ $# -ne 0 ]; then
 		##MPP	while getopts ":viskft'?'aqnml:d:" opt;do
-		while getopts ":vuyrmiskzft'?'aqbnl:d:!D" opt;do
+		while getopts ":vuyrmiskzft'?'aqbl:d:!D" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						i ) MODE=immediate ;;
@@ -343,7 +369,6 @@ if [ $# -ne 0 ]; then
 						q ) unset VERBOSE ;;
 						m ) ADMIN=1 ;;
 						z ) STOP_INVALID=1 ;;
-						n ) WAIT="-W" ;; 
 						l ) LOG_DIR=$OPTARG ;;
 						r ) RESTART=1 ;;
 						b ) CHK_STANDBY=1 ;;
@@ -383,6 +408,9 @@ if [ x"" != x"$RELOAD_PARAM" ];then
 	exit
 fi
 GET_QE_DETAILS
+if [ ! -f $MPPSEGSTOP ];then
+	ERROR_EXIT "[FATAL]:-No $MPPSEGSTOP program" 2
+fi
 if [ $INTERACTIVE ]; then
 		PROMPT_CONTINUE
 fi
