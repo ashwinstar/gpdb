@@ -217,7 +217,6 @@ MPP_PG_VIEW=mpp_pgdatabase
 MPP_INITDB_VER_TABLE=mpp_version_at_initdb
 DEFAULT_CHK_PT_SEG=8
 DEFAULT_IP_ALLOW="0.0.0.0/0"
-DEFAULT_LOCALE_SETTING=en_US.utf8
 DEFAULT_QD_MAX_CONNECT=25
 QE_CONNECT_FACTOR=5
 DEFAULT_BUFFERS=16000
@@ -1044,6 +1043,7 @@ case $OS_TYPE in
 		PG_METHOD=trust
 		HOST_ARCH_TYPE="uname -i"
 		NOLINE_ECHO=$ECHO
+		DEFAULT_LOCALE_SETTING=en_US.utf-8
 		DU_TXT="-s" ;;
 	linux ) IFCONFIG_TXT=""
 		PS_TXT="ax"
@@ -1051,6 +1051,7 @@ case $OS_TYPE in
 		PG_METHOD="ident sameuser"
 		HOST_ARCH_TYPE="uname -i"
 		NOLINE_ECHO="$ECHO -e"
+		DEFAULT_LOCALE_SETTING=en_US.utf8
 		DU_TXT="-c" ;;
 	darwin ) IFCONFIG_TXT=""
 		PS_TXT="ax"
@@ -1058,6 +1059,7 @@ case $OS_TYPE in
 		PG_METHOD="ident sameuser"
 		HOST_ARCH_TYPE="uname -m"
 		NOLINE_ECHO=$ECHO
+		DEFAULT_LOCALE_SETTING=en_US.utf-8
 		DU_TXT="-c" ;;	
 	freebsd ) IFCONFIG_TXT=""
 		PS_TXT="ax"
@@ -1065,6 +1067,7 @@ case $OS_TYPE in
 		PG_METHOD="ident sameuser"
 		HOST_ARCH_TYPE="uname -m"
 		NOLINE_ECHO="$ECHO -e"
+		DEFAULT_LOCALE_SETTING=en_US.utf8
 		DU_TXT="-c" ;;	
 	* ) echo unknown ;;
 esac
