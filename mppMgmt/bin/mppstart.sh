@@ -62,6 +62,9 @@ STANDBY_COUNT=0
 FORCE=0
 START_SYNC=1
 STOP_PROG=$MPPSTOP
+PARALLEL_STATUS_FILE=/tmp/mppstart_parallel_status_file.$$
+MPPSEGSTART=mppsegstart.sh
+WAIT_LIMIT=600
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -94,7 +97,6 @@ USAGE () {
 		$ECHO "      -d, <Master instance directory> name of alternative Master instance to start up [optional]"
 		$ECHO
 		$ECHO "      Database startup options:"
-		$ECHO "      -n, do not wait for startup return code of each segment instance [default:- wait]"
 		$ECHO "      -m, start master instance only in maintenance mode [default:- full MPP startup]"
 		$ECHO "      -z, force startup of segment instance marked as invalid"
 		$ECHO "      -y, do not start master standby server [default:- start standby server process]"
@@ -281,7 +283,7 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Master standby start       = Off" 1
 		fi
 		LOG_MSG "[INFO]:-Segment instances that will be started:" 1
-		LOG_MSG "[INFO]:----------------------------------------"
+		LOG_MSG "[INFO]:----------------------------------------" 1
 		COUNT=1
 		for QNODE in "${QE_ARRAY[@]}"
 				do
@@ -328,147 +330,147 @@ PROCESS_STARTUP () {
 			SYNC_STATUS=0
 			fi
 		fi
-		INDEX=0
-		QE_START_COUNT=0
-		for QNODE in "${QE_ARRAY[@]}"
-				do
-				QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
-				QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
-				QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
-				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
-				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
-				if [ "$QE_VALID" == "t" ] || [ $START_INVALID -eq 1 ];then
-				if [ x"" != x"$SWITCH_QE_LOG" ];then
-					LOG_MSG "[INFO]:-Processing switch log request for $QE_NAME ${QE_DIR}.log"
-					IS_THERE=`$TRUSTED_SHELL $QE_NAME "if [ -f ${QE_DIR}.log_$CUR_DATE ]; then $ECHO 1;else $ECHO 0;fi"`
-					if [ $IS_THERE -eq 0 ];then
-						LOG_MSG "[INFO]:-Moving log file to ${QE_DIR}.log_$CUR_DATE"
-						$TRUSTED_SHELL $QE_NAME "$MV ${QE_DIR}.log ${QE_DIR}.log_$CUR_DATE"
-						ERROR_CHK $? "move ${QE_DIR}.log ${QE_DIR}.log_$CUR_DATE" 1
-					else
-						LOG_MSG "[INFO]:-Appending log file to ${QE_DIR}.log_$CUR_DATE"
-						$TRUSTED_SHELL $QE_NAME "$CAT ${QE_DIR}.log >> ${QE_DIR}.log_$CUR_DATE"
-						ERROR_CHK $? "append ${QE_DIR}.log to ${QE_DIR}.log_$CUR_DATE" 1
-						$TRUSTED_SHELL $QE_NAME "$RM ${QE_DIR}.log;$TOUCH ${QE_DIR}.log"
-						ERROR_CHK $? "clear down ${QE_DIR}.log" 1
-					fi
-				fi
-				LOG_MSG "[INFO]:-Starting Segment instance $QE_NAME directory $QE_DIR" 1
-				$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" 
-				RETVAL=$?
-				if [ $RETVAL -ne 0 ]; then
-					((FAILED_COUNT=$FAILED_COUNT+1))
-					LOG_MSG "[WARN]:-Startup request returned error code $RETVAL" 1
-					LOG_MSG "[INFO]:-Start diagnostic data dump" 1
-					LOG_MSG "[INFO]:-------------------------------------------------" 1
-					LOG_MSG "[INFO]:-Command string called" 1
-					LOG_MSG "[INFO]:-$TRUSTED_SHELL $QE_NAME ${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start"  1
-					LOG_MSG "[INFO]:-Tail'ing Segment instance log file" 1
-					$TRUSTED_SHELL $QE_NAME "$LS $QE_DIR" > /dev/null 2>&1
-					if [ $? -ne 0 ]; then
-						LOG_MSG "[WARN]:-Segment directory $QE_DIR on $QE_NAME does not exist" 1
-						EXIT_STATUS=1
-					else
-						$TRUSTED_SHELL $QE_NAME "$TAIL ${QE_DIR}.log"|$TEE -a $LOG_FILE
-						LOG_MSG "[WARN]:-Issue with $TRUSTED_SHELL to $QE_NAME for $QE_DIR database" 1
-						EXIT_STATUS=1
-					fi
-					LOG_MSG "[INFO]:-End of diagnostic data dump" 1
-					LOG_MSG "[INFO]:-------------------------------------------------" 1
-				else
-					LOG_MSG "[INFO]:-Successfully started Segment instance $QE_NAME on port=$QE_PORT" 1
-				fi
-				#Now check status of postmaster on the segment instance
-				LOG_MSG "[INFO]:-Checking status via pg_ctl"
-				RET_TEXT=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};$PG_CTL status -D $QE_DIR"`
-				RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
-				if [ $RUNNING -ne 0 ]; then
-					LOG_MSG "[WARN]:-Command pg_ctl reports $QE_NAME for directory $QE_DIR port $QE_PORT not running" 1
-					EXIT_STATUS=1
-				fi
-				if [ $RUNNING -eq 0 ] && [ $RETVAL -ne 0 ]; then
-					LOG_MSG "[WARN]:-Could not start instance, BUT pg_ctl reports instance active, check instance log file via mppstate.sh -e" 1
-					EXIT_STATUS=1
-				fi
-				if [ $RUNNING -eq 0 ] && [ $RETVAL -eq 0 ] && [ "$WAIT" == "-w" ]; then
-					LOG_MSG "[INFO]:-Command pg_ctl indicates started Segment instance $QE_NAME database"
-					QD_LC_COLLATE=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"show lc_collate;\""`
-					ERROR_CHK $? "obtain segment lc_collate info" 1
-					QD_LC_MONETARY=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"show lc_monetary;\""`
-					ERROR_CHK $? "obtain segment lc_monetary info" 1
-					QD_LC_NUMERIC=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"show lc_numeric;\""`	
-					ERROR_CHK $? "obtain segment lc_numeric info" 1
-					if [ $LC_COLLATE != $QD_LC_COLLATE ];then
-						COL_ARRAY_ERROR=(${COL_ARRAY_ERROR[@]} lc_collate:$QE_NAME:$QE_PORT:$LC_COLLATE:$QD_LC_COLLATE);fi
-					if [ $LC_MONETARY != $QD_LC_MONETARY ];then
-						COL_ARRAY_ERROR=(${COL_ARRAY_ERROR[@]} lc_monetary:$QE_NAME:$QE_PORT:$LC_MONETARY:$QD_LC_COLLATE);fi
-					if [ $LC_NUMERIC != $QD_LC_NUMERIC ];then
-						COL_ARRAY_ERROR=(${COL_ARRAY_ERROR[@]} lc_numeric:$QE_NAME:$QE_PORT:$LC_NUMERIC:$QD_LC_NUMERIC);fi
-				fi
-				((QE_START_COUNT=$QE_START_COUNT+1))
-				((INDEX=$INDEX+1))
-				else
-					LOG_MSG "[WARN]:-Segment instance $QE_NAME directory $QE_DIR invalid will not start" 1
-					EXIT_STATUS=1
-				fi
-		done
-fi
-		LOG_MSG "[INFO]:-Starting Master instance $QD_NAME directory $MASTER_DATA_DIRECTORY" 1
-		if [ $WAIT == "-W" ]; then
-				$SLEEP 2
+	fi
+	LOG_MSG "[INFO]:-Commencing parallel segment instance startup, please wait..." 1
+	$TOUCH $PARALLEL_STATUS_FILE
+	export PARALLEL_STATUS_FILE=$PARALLEL_STATUS_FILE
+	export LC_COLLATE=$LC_COLLATE
+	export LC_MONETARY=$LC_MONETARY
+	export LC_NUMERIC=$LC_NUMERIC
+	QE_START_COUNT=0
+	if [ x"" == x"$SWITCH_QE_LOG" ];then
+		SWITCH_QE_LOG=0
+	fi
+	for QNODE in "${QE_ARRAY[@]}"
+	do
+		QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
+		QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
+		QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
+		QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
+		QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
+		if [ $START_INVALID -eq 1 ] && [ $QE_VALID == 'f' ];then
+			$MPPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID 1 $QE_START_COUNT $LOG_FILE &
+			((QE_START_COUNT=$QE_START_COUNT+1))
 		fi
-		export PGPORT=${MASTER_PORT}
-		export PGPATH=${APP_PATH}
-		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -E -p $MASTER_PORT " start -m $MODE  
-		ERROR_CHK $? "startup Master instance" 2
-		RET_TEXT=`$PG_CTL status -D $MASTER_DATA_DIRECTORY`
-		RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
-		if [ $RUNNING -ne 0 ]; then
-			LOG_MSG "[WARN]:-Command pg_ctl reports $QD_NAME for directory $MASTER_DATA_DIRECTORY port $MASTER_PORT not running" 1
-						EXIT_STATUS=1
-		else
-			LOG_MSG "[INFO]:-Command pg_ctl reports Master $QD_NAME instance active"
+		if [ $START_INVALID -eq 1 ] && [ $QE_VALID == 't' ];then
+			$MPPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID 0 $QE_START_COUNT $LOG_FILE &
+			((QE_START_COUNT=$QE_START_COUNT+1))
 		fi
-		$PSQL -p $MASTER_PORT $DEFAULTDB -c"\l" >/dev/null 2>&1
-		if [ $FAILED_COUNT -ne 0 ]; then
-			LOG_MSG "[WARN]:-Failed to start $FAILED_COUNT of a total of $QE_COUNT Segment instances" 1
+		if [ $START_INVALID -eq 0 ] && [ $QE_VALID == 't' ];then
+			$MPPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID 0 $QE_START_COUNT $LOG_FILE &
+			((QE_START_COUNT=$QE_START_COUNT+1))
 		else
-			LOG_MSG "[INFO]:----------------------------------------------------------"
-			LOG_MSG "[INFO]:-Successfully started the Master instance"
-			if [ x"" != x"$START_SYNC" ] && [ $STANDBY_COUNT -ne 0 ];then
-				if [ $SYNC_STATUS -ne 0 ];then
-					LOG_MSG "[WARN]:-Failed to start Master standby instance" 1
-				else
-					LOG_MSG "[INFO]:-Successfully started the Master standby instance" 1
-				fi
+			if [ $START_INVALID -eq 0 ] && [ $QE_VALID == 'f' ];then
+				LOG_MSG "[INFO]:-Skipping startup of $QE_NAME $QE_DIR as marked as invalid" 1
 			fi
-				LOG_MSG "[INFO]:-Successfully started $QE_START_COUNT Segment instances" 1
 		fi
+	done
+	PARALLEL_WAIT
+	if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO;fi
+	DUMP_STAT=0
+	#Now check the status of the segment responses in the status file
+	KILLED_COUNT=`$GREP -c "KILLED:" $PARALLEL_STATUS_FILE`
+	if [ $KILLED_COUNT -ne 0 ];then
+		LOG_MSG "[WARN]:-$KILLED_COUNT parallel process where killed" 1
+		EXIT_STATUS=1
+		DUMP_STAT=1
+	fi
+	INVALID_START_FAIL=`$GREP -c ":INVALID_START_FAIL" $PARALLEL_STATUS_FILE`
+	if [ $INVALID_START_FAIL -ne 0 ];then
+		LOG_MSG "[WARN]:-Parallel startup failed to start $INVALID_START_FAIL invalid segments, check logfile" 1
+		EXIT_STATUS=1
+		DUMP_STAT=1
+	fi
+	VALID_START_FAIL=`$GREP -c ":VALID_START_FAIL" $PARALLEL_STATUS_FILE`
+	if [ $VALID_START_FAIL -ne 0 ];then
+		LOG_MSG "[WARN]:-Parallel startup failed to start $VALID_START_FAIL valid segments, check logfile" 1
+		EXIT_STATUS=1
+		DUMP_STAT=1
+	fi
+	PG_CTL_NO_RUNNING=`$GREP -c ":PG_CTL_NO_RUNNING" $PARALLEL_STATUS_FILE`
+	if [ $PG_CTL_NO_RUNNING -ne 0 ];then
+		LOG_MSG "[WARN]:-Parallel startup status check reports $PG_CTL_NO_RUNNING segments not running via pg_ctl" 1
+		EXIT_STATUS=1
+		DUMP_STAT=1
+	fi
+	PG_CTL_THERE_START_FAILED=`$GREP -c ":PG_CTL_THERE_START_FAILED" $PARALLEL_STATUS_FILE`
+	if [ $PG_CTL_THERE_START_FAILED -ne 0 ];then
+		LOG_MSG "[WARN]:-Parallel startup status check reports $PG_CTL_THERE_START_FAILED running but startup failed" 1
+		EXIT_STATUS=1
+		DUMP_STAT=1
+	fi
+	LC_ERROR=`$GREP -c ":LC_ERROR" $PARALLEL_STATUS_FILE`
+	if [ $LC_ERROR -ne 0 ];then
+		LOG_MSG "[WARN]:-Parallel segment check indicates that $LC_ERROR segments failed collation checks" 1
+		EXIT_STATUS=1
+		DUMP_STAT=1
+	fi
+	if [ x"" != x"$START_SYNC" ] && [ $STANDBY_COUNT -ne 0 ];then
+		if [ $SYNC_STATUS -ne 0 ];then
+			LOG_MSG "[WARN]:-Failed to start Master standby instance" 1
+		else
+			LOG_MSG "[INFO]:-Successfully started the Master standby instance" 1
+		fi
+	fi
+	if [ $DUMP_STAT -ne 0 ];then
+		LOG_MSG "[INFO]:-Securing contents of parallel status file to log file" 1
+		$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
+		LOG_MSG "[INFO]:--------------------------------------------------------" 1
+		LOG_MSG "[INFO]:-Error messages contained within status file" 1
+		$CAT $PARALLEL_STATUS_FILE|$GREP -v "COMPLETED:"
+		LOG_MSG "[INFO]:--------------------------------------------------------" 1
+	else
+		LOG_MSG "[INFO]:-No errors generated from segment instance startup" 1
+	fi
+	$RM -f $PARALLEL_STATUS_FILE
+	LOG_MSG "[INFO]:-Starting Master instance $QD_NAME directory $MASTER_DATA_DIRECTORY" 1
+	export PGPORT=${MASTER_PORT}
+	export PGPATH=${APP_PATH}
+	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -E -p $MASTER_PORT " start -m $MODE  > /dev/null 2>&1
+	ERROR_CHK $? "startup Master instance" 2
+	RET_TEXT=`$PG_CTL status -D $MASTER_DATA_DIRECTORY`
+	RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
+	if [ $RUNNING -ne 0 ]; then
+		LOG_MSG "[WARN]:-Command pg_ctl reports $QD_NAME for directory $MASTER_DATA_DIRECTORY port $MASTER_PORT not running" 1
+		EXIT_STATUS=1
+	else
+		LOG_MSG "[INFO]:-Command pg_ctl reports Master $QD_NAME instance active" 1
+	fi
+	$PSQL -p $MASTER_PORT $DEFAULTDB -c"\l" >/dev/null 2>&1
+	if [ $DUMP_STAT -ne 1 ] && [ $EXIT_STATUS -eq 0 ];then
+		LOG_MSG "[INFO]:-Database successfully started with no errors reported" 1
+	else
+		LOG_MSG "[WARN]:-Database started but warnings, please check log file" 1
+	fi 
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-COLLATE_ERROR () {
+PARALLEL_WAIT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	COL_TYPE=`$ECHO $1|$CUT -d":" -f1`
-	COL_SEG=`$ECHO $1|$CUT -d":" -f2`
-	COL_PORT=`$ECHO $1|$CUT -d":" -f3`
-	COL_QD=`$ECHO $1|$CUT -d":" -f4`
-	COL_QE=`$ECHO $1|$CUT -d":" -f5`	
-	LOG_MSG "[WARN]:-*******************************************" 1
-	LOG_MSG "[WARN]:-Master instance $COL_TYPE variation" 1
-	LOG_MSG "[WARN]:-Segment instance $COL_SEG on port $COL_PORT" 1
-	LOG_MSG "[WARN]:-Master  $COL_TYPE = $COL_QD" 1
-	LOG_MSG "[WARN]:-Segment $COL_TYPE = $COL_QE"	 1
-	LOG_MSG "[WARN]:-*******************************************" 1
-	EXIT_STATUS=1
+	LOG_MSG "[INFO]:-Waiting for $QE_START_COUNT parallel processes to complete" 1
+	SLEEP_COUNT=0
+	while [ `$WC -l $PARALLEL_STATUS_FILE|$AWK '{print $1}'` -ne $QE_START_COUNT ]
+	do
+		if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO ".\c";fi
+		$SLEEP 1
+		((SLEEP_COUNT=$SLEEP_COUNT+1))
+		if [ $WAIT_LIMIT -lt $SLEEP_COUNT ];then
+			if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO;fi
+			LOG_MSG "[FATAL]:-Failed to start this batch of segments within $WAIT_LIMIT seconds" 1
+			LOG_MSG "[INFO]:-Start Master instance with mppstart.sh -m and then" 1
+			LOG_MSG "[INFO]:-undertake a forced shutdown with mppstop.sh -zfa" 1
+			LOG_MSG "[INFO]:-Then review contents of $LOG_FILE" 1
+			ERROR_EXIT "[FATAL]:-Start timeout failure" 2
+		fi
+	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 #******************************************************************************
 # Main Section
 #******************************************************************************
-trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
+trap '$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt'?'abqyznsml:d:e!D" opt;do
+		while getopts ":vt'?'abqyzsml:d:e!D" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -476,7 +478,6 @@ if [ $# -ne 0 ]; then
 						d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
 						a ) unset INTERACTIVE ;;
 						q ) unset VERBOSE ;;
-						n ) WAIT="-W" ;; 
 						m ) ADMIN=1 ;;
 						s ) SWITCH_LOG=1 ;;
 						e ) SWITCH_QE_LOG=1 ;;
@@ -519,12 +520,9 @@ GET_DETAILS
 if [ $INTERACTIVE ]; then
 	PROMPT_CONTINUE
 fi
-PROCESS_STARTUP
-if [ ${#COL_ARRAY_ERROR[@]} -ne 0 ];then
-	for I in ${COL_ARRAY_ERROR[@]}
-	do
-		COLLATE_ERROR $I
-	done
+if [ ! -f ${WORKDIR}/$MPPSEGSTART ];then
+	ERROR_EXIT "[FATAL]:-Parallel mode selected by no ${WORKDIR}/$MPPSEGSTART exists" 2
 fi
+PROCESS_STARTUP
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS
