@@ -1596,8 +1596,8 @@ create_nestloop_plan(CreatePlanContext *ctx,
 
 		alternate_plan = create_subplan(ctx, alternate_path);
 
-		anl_plan = make_adaptivenestloop(tlist, 
-                                         (Plan *)join_plan, 
+		anl_plan = make_adaptivenestloop(tlist,
+                                         (Plan *)join_plan,
                                          alternate_plan,
                                          best_path->outer_lookahead_rows);
 		copy_path_costsize((Plan *)anl_plan, &best_path->jpath.path);
@@ -1741,10 +1741,10 @@ create_hashjoin_plan(CreatePlanContext *ctx,
 	otherclauses = order_qual_clauses(ctx->root, otherclauses);
 	hashclauses = order_qual_clauses(ctx->root, hashclauses);
 
-	disuse_physical_tlist(inner_plan, best_path->jpath.innerjoinpath);
 	/* We don't want any excess columns in the hashed tuples, or in the outer either! */
 	disuse_physical_tlist(inner_plan, best_path->jpath.innerjoinpath);
-	disuse_physical_tlist(outer_plan, best_path->jpath.outerjoinpath);
+    if (outer_plan)
+	    disuse_physical_tlist(outer_plan, best_path->jpath.outerjoinpath);
 
 	/*
 	 * Build the hash node and hash join node.
