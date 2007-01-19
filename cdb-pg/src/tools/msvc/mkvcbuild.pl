@@ -191,6 +191,10 @@ else {
 	push @contrib_excludes,'xml2';
 }
 
+if (!$solution->{options}->{openssl}) {
+   push @contrib_excludes,'sslinfo';
+}
+
 # Pgcrypto makefile too complex to parse....
 my $pgcrypto = $solution->AddProject('pgcrypto','dll','crypto');
 $pgcrypto->AddFiles('contrib\pgcrypto','pgcrypto.c','px.c','px-hmac.c','px-crypt.c',

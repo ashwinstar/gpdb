@@ -23,7 +23,7 @@ sub new {
         includes        => '',
         defines         => ';',
 		solution        => $solution,
-        disablewarnings => '4018;4244',
+        disablewarnings => '4018;4244;4273',
     };
 
 	bless $self;
@@ -107,6 +107,7 @@ sub AddIncludeDir {
 sub AddDefine {
 	my ($self, $def) = @_;
 
+	$def =~ s/"/&quot;&quot;/g;
 	$self->{defines} .= $def . ';';
 }
 

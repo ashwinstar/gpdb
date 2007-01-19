@@ -1,4 +1,6 @@
-@echo on
+@echo off
+if exist src\tools\msvc\buildenv.bat call src\tools\msvc\buildenv.bat
+
 SET BV=
 for /F "tokens=4 usebackq" %%f in (`bison -V`) do if "!BV!"=="" SET BV=%%f
 if "%BV%"=="" goto novarexp
@@ -17,7 +19,7 @@ exit 1
 
 :generate
 SET fn=%1
-bison -v -d %fn%
+bison -d %fn%
 if errorlevel 1 exit 1
 rem copy /y %fn:~0,-2%.tab.c %2
 copy /y %~n1.tab.c %2

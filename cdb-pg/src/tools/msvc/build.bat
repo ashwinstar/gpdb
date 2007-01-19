@@ -1,5 +1,7 @@
 @echo off
 SET STARTDIR=%CD%
+if exist src\tools\msvc\buildenv.bat call src\tools\msvc\buildenv.bat
+if exist buildenv.bat call buildenv.bat
 
 perl mkvcbuild.pl
 if errorlevel 1 goto :eof
@@ -16,7 +18,7 @@ copy src\include\catalog\mpp_version.in src\include\catalog\mpp_version.h
 copy src\backend\catalog\cdb_schema.in src\backend\catalog\cdb_schema.sql
 
 
-if "%1" == "" msbuild pgsql.sln /p:Configuration=%CONFIG%
+if "%1" == "" msbuild pgsql.sln /verbosity:detailed /p:Configuration=%CONFIG%
 if not "%1" == "" vcbuild %1.vcproj %CONFIG%
 
 cd %STARTDIR%
