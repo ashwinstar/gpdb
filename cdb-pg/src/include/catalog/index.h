@@ -14,10 +14,45 @@
 #ifndef INDEX_H
 #define INDEX_H
 
-#include "nodes/execnodes.h"
+#include "access/relscan.h"     /* Relation, Snapshot */
+#include "executor/tuptable.h"  /* TupTableSlot */
 
+struct EState;                  /* #include "nodes/execnodes.h" */
 
 #define DEFAULT_INDEX_TYPE	"btree"
+
+/* ----------------
+ *	  IndexInfo information
+ *
+ *		this struct holds the information needed to construct new index
+ *		entries for a particular index.  Used for both index_build and
+ *		retail creation of index entries.
+ *
+ *		NumIndexAttrs		number of columns in this index
+ *		KeyAttrNumbers		underlying-rel attribute numbers used as keys
+ *							(zeroes indicate expressions)
+ *		Expressions			expr trees for expression entries, or NIL if none
+ *		ExpressionsState	exec state for expressions, or NIL if none
+ *		Predicate			partial-index predicate, or NIL if none
+ *		PredicateState		exec state for predicate, or NIL if none
+ *		Unique				is it a unique index?
+ *		Concurrent			are we doing a concurrent index build?
+ *
+ *      CDB: Moved this declaration from nodes/execnodes.h into catalog/index.h
+ * ----------------
+ */
+typedef struct IndexInfo
+{
+	NodeTag		type;
+	int			ii_NumIndexAttrs;
+	AttrNumber	ii_KeyAttrNumbers[INDEX_MAX_KEYS];
+	List	   *ii_Expressions; /* list of Expr */
+	List	   *ii_ExpressionsState;	/* list of ExprState */
+	List	   *ii_Predicate;	/* list of Expr */
+	List	   *ii_PredicateState;		/* list of ExprState */
+	bool		ii_Unique;
+	bool		ii_Concurrent;
+} IndexInfo;
 
 /* Typedef for callback function for IndexBuildHeapScan */
 typedef void (*IndexBuildCallback) (Relation index,
@@ -31,7 +66,7 @@ typedef void (*IndexBuildCallback) (Relation index,
 extern Oid index_create(Oid heapRelationId,
 			 const char *indexRelationName,
 			 Oid indexRelationId,
-			 IndexInfo *indexInfo,
+			 struct IndexInfo *indexInfo,
 			 Oid accessMethodObjectId,
 			 Oid tableSpaceId,
 			 Oid *classObjectId,
@@ -44,11 +79,11 @@ extern Oid index_create(Oid heapRelationId,
 
 extern void index_drop(Oid indexId);
 
-extern IndexInfo *BuildIndexInfo(Relation index);
+extern struct IndexInfo *BuildIndexInfo(Relation index);
 
-extern void FormIndexDatum(IndexInfo *indexInfo,
+extern void FormIndexDatum(struct IndexInfo *indexInfo,
 			   TupleTableSlot *slot,
-			   EState *estate,
+			   struct EState *estate,
 			   Datum *values,
 			   bool *isnull);
 
@@ -58,12 +93,12 @@ extern Oid setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode);
 
 extern void index_build(Relation heapRelation,
 			Relation indexRelation,
-			IndexInfo *indexInfo,
+			struct IndexInfo *indexInfo,
 			bool isprimary);
 
 extern double IndexBuildHeapScan(Relation heapRelation,
 				   Relation indexRelation,
-				   IndexInfo *indexInfo,
+				   struct IndexInfo *indexInfo,
 				   IndexBuildCallback callback,
 				   void *callback_state);
 

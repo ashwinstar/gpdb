@@ -24,6 +24,7 @@
 
 #include "catalog/namespace.h"
 #include "commands/variable.h"
+#include "nodes/execnodes.h"    /* CdbProcess, Slice, SliceTable */
 #include "postmaster/postmaster.h"
 
 extern int	CommitDelay;
@@ -35,7 +36,6 @@ extern char *session_authorization_string;
 #include "cdb/cdbconn.h"		/* SegmentDatabaseDescriptor */
 #include "cdb/cdbfts.h"
 #include "cdb/cdbgang.h"		/* me */
-#include "cdb/cdbmotion.h"		/* CdbProcess */
 #include "cdb/cdbtm.h"			/* discardDtxTransaction() */
 #include "cdb/cdbutil.h"		/* CdbComponentDatabaseInfo */
 #include "cdb/cdbvars.h"		/* Mpp_role, etc. */
@@ -2291,7 +2291,7 @@ gangsExist(void)
  * here to gain access to the interesting static variables.
  */
 void
-SetSeqServerInfo(QueryDesc *queryDesc)
+SetSeqServerInfo(struct QueryDesc *queryDesc)
 {
 	CdbComponentDatabaseInfo *qdinfo;
 	EState	   *estate = queryDesc->estate;

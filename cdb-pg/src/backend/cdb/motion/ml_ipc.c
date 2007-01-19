@@ -10,6 +10,7 @@
  */
 #include "postgres.h"
 
+#include "nodes/execnodes.h"            /* Slice, SliceTable */
 #include "nodes/pg_list.h"
 #include "nodes/print.h"
 #include "utils/memutils.h"
@@ -642,7 +643,7 @@ GetSeqServerFD(void)
 
 
 void
-SetupSequenceServer(SliceTable *mySliceTable)
+SetupSequenceServer(struct SliceTable *mySliceTable)
 {
 	if( mySliceTable != NULL )
 	{
@@ -672,7 +673,7 @@ TeardownSequenceServer(void)
 /* See ml_ipc.h */
 void
 SetupInterconnect(ChunkTransportState **ppTransportStates,
-				  SliceTable * mySliceTable,
+				  struct SliceTable * mySliceTable,
 				  int mySliceId,
 				  MotionLayerState *mlStates)
 {

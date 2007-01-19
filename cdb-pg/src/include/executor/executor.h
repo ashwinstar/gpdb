@@ -4,7 +4,7 @@
  *	  support for the POSTGRES executor module
  *
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -16,6 +16,8 @@
 #define EXECUTOR_H
 
 #include "executor/execdesc.h"
+#include "nodes/execnodes.h"
+#include "utils/tuplestore.h"
 
 #include "cdb/cdbdef.h"                 /* CdbVisitOpt */
 

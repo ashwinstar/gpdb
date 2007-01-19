@@ -14,7 +14,7 @@
 #ifndef NODEFUNCTIONSCAN_H
 #define NODEFUNCTIONSCAN_H
 
-#include "nodes/execnodes.h"
+#include "executor/executor.h"
 
 extern int	ExecCountSlotsFunctionScan(FunctionScan *node);
 extern FunctionScanState *ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags);

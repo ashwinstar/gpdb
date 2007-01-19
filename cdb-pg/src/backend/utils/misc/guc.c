@@ -37,6 +37,7 @@
 #include "commands/async.h"
 #include "commands/vacuum.h"
 #include "commands/variable.h"
+#include "executor/executor.h"          /* TupOutputState, TupleDesc */
 #include "funcapi.h"
 #include "libpq/auth.h"
 #include "libpq/pqformat.h"

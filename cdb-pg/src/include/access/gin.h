@@ -12,7 +12,7 @@
 #define GIN_H
 
 #include "access/relscan.h"
-#include "access/skey.h"
+#include "access/sdir.h"
 #include "access/xlog.h"
 #include "access/xlogdefs.h"
 #include "storage/bufpage.h"

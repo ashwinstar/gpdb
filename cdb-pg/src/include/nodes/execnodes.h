@@ -21,48 +21,23 @@
 
 #include "access/relscan.h"
 #include "cdb/cdbhash.h"
-//#include "executor/tuptable.h"
-//#include "fmgr.h"
-//#include "nodes/bitmapset.h"
+#include "fmgr.h"                       /* ExprDoneCond, SetFunctionReturnMode */
 #include "nodes/params.h"
 #include "nodes/plannodes.h"
 #include "nodes/tidbitmap.h"
 #include "utils/hsearch.h"
 #include "utils/tuplesort.h"
-#include "utils/tuplestore.h"
 
 struct CdbDispatchResults;              /* in cdbdispatchresult.h */
+struct Tuplestorestate;                 /* #include "utils/tuplestore.h" */
+struct IndexInfo;                       /* #include "catalog/index.h" */
 
 /* ----------------
  *	  IndexInfo information
  *
- *		this struct holds the information needed to construct new index
- *		entries for a particular index.  Used for both index_build and
- *		retail creation of index entries.
- *
- *		NumIndexAttrs		number of columns in this index
- *		KeyAttrNumbers		underlying-rel attribute numbers used as keys
- *							(zeroes indicate expressions)
- *		Expressions			expr trees for expression entries, or NIL if none
- *		ExpressionsState	exec state for expressions, or NIL if none
- *		Predicate			partial-index predicate, or NIL if none
- *		PredicateState		exec state for predicate, or NIL if none
- *		Unique				is it a unique index?
- *		Concurrent			are we doing a concurrent index build?
+ *		CDB: Moved declaration into "catalog/index.h" from "nodes/execnodes.h"
  * ----------------
  */
-typedef struct IndexInfo
-{
-	NodeTag		type;
-	int			ii_NumIndexAttrs;
-	AttrNumber	ii_KeyAttrNumbers[INDEX_MAX_KEYS];
-	List	   *ii_Expressions; /* list of Expr */
-	List	   *ii_ExpressionsState;	/* list of ExprState */
-	List	   *ii_Predicate;	/* list of Expr */
-	List	   *ii_PredicateState;		/* list of ExprState */
-	bool		ii_Unique;
-	bool		ii_Concurrent;
-} IndexInfo;
 
 /* ----------------
  *	  ExprContext_CB
@@ -138,47 +113,15 @@ typedef struct ExprContext
 	ExprContext_CB *ecxt_callbacks;
 } ExprContext;
 
-/*
- * Set-result status returned by ExecEvalExpr()
+/* ----------------
+ *		Support for functions that might return sets (multiple rows)
+ *
+ *      CDB: Moved these declarations into "fmgr.h" from "nodes/execnodes.h"...
+ *          enum ExprDoneCond;
+ *          enum SetFunctionReturnMode;
+ *          struct ReturnSetInfo;
+ * ----------------
  */
-typedef enum
-{
-	ExprSingleResult,			/* expression does not return a set */
-	ExprMultipleResult,			/* this result is an element of a set */
-	ExprEndResult				/* there are no more elements in the set */
-} ExprDoneCond;
-
-/*
- * Return modes for functions returning sets.  Note values must be chosen
- * as separate bits so that a bitmask can be formed to indicate supported
- * modes.
- */
-typedef enum
-{
-	SFRM_ValuePerCall = 0x01,	/* one value returned per call */
-	SFRM_Materialize = 0x02		/* result set instantiated in Tuplestore */
-} SetFunctionReturnMode;
-
-/*
- * When calling a function that might return a set (multiple rows),
- * a node of this type is passed as fcinfo->resultinfo to allow
- * return status to be passed back.  A function returning set should
- * raise an error if no such resultinfo is provided.
- */
-typedef struct ReturnSetInfo
-{
-	NodeTag		type;
-	/* values set by caller: */
-	ExprContext *econtext;		/* context function is being called in */
-	TupleDesc	expectedDesc;	/* tuple descriptor expected by caller */
-	int			allowedModes;	/* bitmask: return modes caller can handle */
-	/* result status from function (but pre-initialized by caller): */
-	SetFunctionReturnMode returnMode;	/* actual return mode */
-	ExprDoneCond isDone;		/* status for ValuePerCall mode */
-	/* fields filled by function in Materialize return mode: */
-	Tuplestorestate *setResult; /* holds the complete returned tuple set */
-	TupleDesc	setDesc;		/* actual descriptor for returned tuples */
-} ReturnSetInfo;
 
 /* ----------------
  *		ProjectionInfo node information
@@ -285,7 +228,7 @@ typedef struct ResultRelInfo
 	Relation	ri_RelationDesc;
 	int			ri_NumIndices;
 	RelationPtr ri_IndexRelationDescs;
-	IndexInfo **ri_IndexRelationInfo;
+	struct IndexInfo  **ri_IndexRelationInfo;
 	TriggerDesc *ri_TrigDesc;
 	FmgrInfo   *ri_TrigFunctions;
 	struct Instrumentation *ri_TrigInstrument;
@@ -1239,7 +1182,7 @@ typedef struct FunctionScanState
 {
 	ScanState	ss;				/* its first field is NodeTag */
 	TupleDesc	tupdesc;
-	Tuplestorestate *tuplestorestate;
+	struct Tuplestorestate *tuplestorestate;
 	ExprState  *funcexpr;
     bool        cdb_want_ctid;  /* true => ctid is referenced in targetlist */
     ItemPointerData cdb_fake_ctid;

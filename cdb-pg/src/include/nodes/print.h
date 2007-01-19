@@ -4,6 +4,7 @@
  *	  definitions for nodes/print.c
  *
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -15,8 +16,10 @@
 #define PRINT_H
 
 #include "nodes/parsenodes.h"
-#include "nodes/execnodes.h"
 
+struct Plan;                            /* #include "nodes/plannodes.h" */
+struct Query;                           /* #include "nodes/plannodes.h" */
+struct TupleTableSlot;                  /* #include "executor/tuptable.h" */
 
 #define nodeDisplay(x)		pprint(x)
 
@@ -30,9 +33,9 @@ extern void print_rt(List *rtable);
 extern void print_expr(Node *expr, List *rtable);
 extern void print_pathkeys(List *pathkeys, List *rtable);
 extern void print_tl(List *tlist, List *rtable);
-extern void print_slot(TupleTableSlot *slot);
-extern void print_plan_recursive(Plan *p, Query *parsetree,
+extern void print_slot(struct TupleTableSlot *slot);
+extern void print_plan_recursive(struct Plan *p, struct Query *parsetree,
 					 int indentLevel, char *label);
-extern void print_plan(Plan *p, Query *parsetree);
+extern void print_plan(struct Plan *p, struct Query *parsetree);
 
 #endif   /* PRINT_H */

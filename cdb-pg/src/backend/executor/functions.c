@@ -18,6 +18,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/trigger.h"
+#include "executor/executor.h"          /* ExecutorStart, ExecutorRun, etc */
 #include "executor/functions.h"
 #include "funcapi.h"
 #include "parser/parse_coerce.h"

@@ -11,14 +11,15 @@
 
 #include "nodes/primnodes.h"
 #include "cdb/tupchunklist.h"
-#include "nodes/execnodes.h"
 #include "access/htup.h"
 #include "cdb/htupfifo.h"
 #include "cdb/tupser.h"
 #include "cdb/tupchunk.h"
 #include "cdb/tupchunklist.h"
-#include "nodes/primnodes.h"
-#include "nodes/execnodes.h" //SliceTable
+
+struct CdbProcess;                          /* #include "nodes/execnodes.h" */
+struct Slice;                               /* #include "nodes/execnodes.h" */
+struct SliceTable;                          /* #include "nodes/execnodes.h" */
 
 typedef enum MotionConnState
 {
@@ -62,7 +63,7 @@ typedef struct MotionConn
 	
     int         wakeup_ms;
 	
-    CdbProcess *cdbProc;
+    struct CdbProcess  *cdbProc;
     int			remoteContentId;
     char        remoteHostAndPort[64];
     char        localHostAndPort[64];
@@ -95,8 +96,8 @@ typedef struct ChunkTransportStateEntry
     int         scanStart;
 	
     /* slice table entries */
-    Slice      *sendSlice;
-    Slice      *recvSlice;
+    struct Slice   *sendSlice;
+    struct Slice   *recvSlice;
 	
     /* setup info */
     int         outgoingPortRetryCount;
@@ -119,7 +120,7 @@ typedef struct ChunkTransportState
 	List	   *incompleteConns;
 	
 	/*slice table stuff. */
-	SliceTable *sliceTable;
+	struct SliceTable  *sliceTable;
 	int			sliceId;
 	
 	

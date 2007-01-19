@@ -11,12 +11,11 @@
 #ifndef _CDBGANG_H_
 #define _CDBGANG_H_
 
-#include "nodes/primnodes.h"
-#include "nodes/execnodes.h"
 #include "cdb/cdbutil.h"
 #include "executor/execdesc.h"
 
 struct Port;                    /* #include "libpq/libpq-be.h" */
+struct QueryDesc;               /* #include "executor/execdesc.h" */
 
 /*
  * A gang represents a single worker on each connected segDB
@@ -62,7 +61,7 @@ bool
 reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB);
 
 extern void
-SetSeqServerInfo(QueryDesc *queryDesc);
+SetSeqServerInfo(struct QueryDesc *queryDesc);
 
 /*
  * cdbgang_parse_mppqeid_params

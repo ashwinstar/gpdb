@@ -464,7 +464,7 @@ Oid
 index_create(Oid heapRelationId,
 			 const char *indexRelationName,
 			 Oid indexRelationId,
-			 IndexInfo *indexInfo,
+			 struct IndexInfo *indexInfo,
 			 Oid accessMethodObjectId,
 			 Oid tableSpaceId,
 			 Oid *classObjectId,
@@ -935,7 +935,7 @@ index_drop(Oid indexId)
  * just once per command, and then use it for (potentially) many tuples.
  * ----------------
  */
-IndexInfo *
+struct IndexInfo *
 BuildIndexInfo(Relation index)
 {
 	IndexInfo  *ii = makeNode(IndexInfo);
@@ -987,9 +987,9 @@ BuildIndexInfo(Relation index)
  * ----------------
  */
 void
-FormIndexDatum(IndexInfo *indexInfo,
+FormIndexDatum(struct IndexInfo *indexInfo,
 			   TupleTableSlot *slot,
-			   EState *estate,
+			   struct EState *estate,
 			   Datum *values,
 			   bool *isnull)
 {
@@ -1567,7 +1567,7 @@ index_build(Relation heapRelation,
 double
 IndexBuildHeapScan(Relation heapRelation,
 				   Relation indexRelation,
-				   IndexInfo *indexInfo,
+				   struct IndexInfo *indexInfo,
 				   IndexBuildCallback callback,
 				   void *callback_state)
 {

@@ -12,6 +12,8 @@
 #include "cdb/cdbinterconnect.h"
 #include "cdb/cdbmotion.h"
 
+struct SliceTable;                          /* #include "nodes/execnodes.h" */
+
 /*
  * Registration message
  *
@@ -81,7 +83,7 @@ extern int  GetSeqServerFD(void);
  *
  */
 extern void SetupInterconnect(ChunkTransportState **transportStates, 
-							  SliceTable * mySliceTable, 
+							  struct SliceTable * mySliceTable, 
 							  int mySliceId,
 							  MotionLayerState *mlStates);
 
@@ -101,7 +103,7 @@ extern void TeardownInterconnect(ChunkTransportState *transportStates,
 
 
 
-extern void SetupSequenceServer(SliceTable *mySliceTable);
+extern void SetupSequenceServer(struct SliceTable *mySliceTable);
 
 extern void TeardownSequenceServer(void);
 

@@ -13,8 +13,10 @@
 #ifndef PREPARE_H
 #define PREPARE_H
 
-#include "executor/executor.h"
+#include "executor/execdesc.h"
 #include "utils/timestamp.h"
+
+struct TupOutputState;                  /* #include "executor/executor.h" */
 
 /*
  * The data structure representing a prepared statement
@@ -47,7 +49,7 @@ extern void ExecuteQuery(ExecuteStmt *stmt, ParamListInfo params,
 			 DestReceiver *dest, char *completionTag);
 extern void DeallocateQuery(DeallocateStmt *stmt);
 extern void ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
-					TupOutputState *tstate);
+					struct TupOutputState *tstate);
 
 /* Low-level access to stored prepared statements */
 extern void StorePreparedStatement(const char *stmt_name,

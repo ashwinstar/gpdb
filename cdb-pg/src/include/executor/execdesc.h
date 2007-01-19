@@ -5,6 +5,7 @@
  *	  and related modules.
  *
  *
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -15,9 +16,12 @@
 #ifndef EXECDESC_H
 #define EXECDESC_H
 
-#include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
+#include "nodes/plannodes.h"
 #include "tcop/dest.h"
+
+struct EState;                  /* #include "nodes/execnodes.h" */
+struct PlanState;               /* #include "nodes/execnodes.h" */
 
 
 /* ----------------
@@ -41,8 +45,8 @@ typedef struct QueryDesc
 
 	/* These fields are set by ExecutorStart */
 	TupleDesc	tupDesc;		/* descriptor for result tuples */
-	EState	   *estate;			/* executor's query-wide state */
-	PlanState  *planstate;		/* tree of per-plan-node state */
+	struct EState      *estate;			/* executor's query-wide state */
+	struct PlanState   *planstate;		/* tree of per-plan-node state */
 	
 	/* This field is set by ExecutorEnd after collecting cdbdisp results */
 	uint32		es_processed;	/* # of tuples processed */

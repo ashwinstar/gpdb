@@ -15,7 +15,6 @@
 #ifndef RESSCHEDULER_H
 #define RESSCHEDULER_H
 
-#include "executor/executor.h"
 #include "storage/lock.h"
 #include "tcop/dest.h"
 #include "utils/resowner.h"

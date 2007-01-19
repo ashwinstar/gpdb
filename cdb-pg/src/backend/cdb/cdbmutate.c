@@ -29,6 +29,7 @@
 #include "catalog/pg_type.h"
 
 #include "cdb/cdbfts.h"         /* isFTSEnabled() */
+#include "cdb/cdbhash.h"        /* isMppHashable() */
 #include "cdb/cdbllize.h"
 #include "cdb/cdbmutate.h"
 #include "cdb/cdbplan.h"

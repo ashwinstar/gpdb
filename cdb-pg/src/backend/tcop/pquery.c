@@ -19,6 +19,7 @@
 #include "commands/prepare.h"
 #include "commands/trigger.h"
 #include "cdb/cdbvars.h"
+#include "executor/executor.h"          /* ExecutorStart, ExecutorRun, etc */
 #include "miscadmin.h"
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"

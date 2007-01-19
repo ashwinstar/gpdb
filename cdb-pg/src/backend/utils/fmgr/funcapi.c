@@ -17,6 +17,7 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "executor/executor.h"          /* ReturnSetInfo, RegisterExprContextCallback */
 #include "funcapi.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"

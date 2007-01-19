@@ -50,6 +50,8 @@
 #include "utils/resowner.h"
 #include "utils/timestamp.h"
 
+struct Tuplestorestate;                 /* #include "utils/tuplestore.h" */
+
 /*
  * We have several execution strategies for Portals, depending on what
  * query or queries are to be executed.  (Note: in all cases, a Portal
@@ -167,7 +169,7 @@ typedef struct PortalData
 	 * PORTAL_UTIL_SELECT query.  (A cursor held past the end of its
 	 * transaction no longer has any active executor state.)
 	 */
-	Tuplestorestate *holdStore; /* store for holdable cursors */
+	struct Tuplestorestate *holdStore; /* store for holdable cursors */
 	MemoryContext holdContext;	/* memory containing holdStore */
 
 	/*

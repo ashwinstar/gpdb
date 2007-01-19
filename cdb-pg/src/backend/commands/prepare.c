@@ -21,6 +21,7 @@
 #include "catalog/pg_type.h"
 #include "commands/explain.h"
 #include "commands/prepare.h"
+#include "executor/executor.h"
 #include "funcapi.h"
 #include "rewrite/rewriteHandler.h"
 #include "tcop/pquery.h"

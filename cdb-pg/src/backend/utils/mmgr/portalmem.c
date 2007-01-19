@@ -24,10 +24,12 @@
 #include "commands/portalcmds.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "nodes/execnodes.h"            /* EState */
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/portal.h"
 #include "utils/resscheduler.h"
+#include "utils/tuplestore.h"           /* tuplestore_begin_heap, etc */
 #include "cdb/cdbvars.h"
 
 /*

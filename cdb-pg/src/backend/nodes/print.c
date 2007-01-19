@@ -20,6 +20,7 @@
 #include "postgres.h"
 
 #include "access/printtup.h"
+#include "nodes/plannodes.h"            /* Plan, Query */
 #include "nodes/print.h"
 #include "optimizer/clauses.h"
 #include "parser/parsetree.h"
@@ -470,7 +471,7 @@ print_tl(List *tlist, List *rtable)
  *	  print out the tuple with the given TupleTableSlot
  */
 void
-print_slot(TupleTableSlot *slot)
+print_slot(struct TupleTableSlot *slot)
 {
 	if (TupIsNull(slot))
 		printf("tuple is null.\n");
@@ -550,7 +551,7 @@ plannode_type(Plan *p)
  * Recursively prints a simple text description of the plan tree
  */
 void
-print_plan_recursive(Plan *p, Query *parsetree, int indentLevel, char *label)
+print_plan_recursive(struct Plan *p, struct Query *parsetree, int indentLevel, char *label)
 {
 	int			i;
 	char		extraInfo[NAMEDATALEN + 100];
@@ -647,7 +648,7 @@ print_plan_recursive(Plan *p, Query *parsetree, int indentLevel, char *label)
  * prints just the plan node types
  */
 void
-print_plan(Plan *p, Query *parsetree)
+print_plan(struct Plan *p, struct Query *parsetree)
 {
 	print_plan_recursive(p, parsetree, 0, "");
 }

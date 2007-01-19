@@ -48,6 +48,7 @@
 #include "libpq/pqformat.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
+#include "nodes/execnodes.h"            /* Slice, SliceTable */
 #include "nodes/print.h"
 #include "optimizer/planner.h"
 #include "parser/analyze.h"
