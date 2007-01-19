@@ -3297,8 +3297,12 @@ plan_pushdown_tlist(Plan *plan, List *tlist)
 					elog(ERROR, "Cannot find sort column in pre-projection targetlist during tlist pullup");
 
 				new_tle = tlist_member((Node *)old_tle->expr, tlist);
+				/* for some datatypes we may not find this ? And that's OK ?! see MPP-1132 */
 				if (!new_tle)
-					elog(ERROR, "Cannot find sort column in post-projection targetlist during tlist pullup");
+				{
+					elog(LOG, "Cannot find sort column in post-projection targetlist during tlist pullup");
+					break;
+				}
 
 				plan->flow->sortColIdx[i] = new_tle->resno;
 			}
