@@ -408,7 +408,7 @@ if [ x"" != x"$RELOAD_PARAM" ];then
 	exit
 fi
 GET_QE_DETAILS
-if [ ! -f $MPPSEGSTOP ];then
+if [ ! -f ${WORKDIR}/$MPPSEGSTOP ];then
 	ERROR_EXIT "[FATAL]:-No $MPPSEGSTOP program" 2
 fi
 if [ $INTERACTIVE ]; then
