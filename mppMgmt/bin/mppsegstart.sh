@@ -220,6 +220,7 @@ QE_VALID=$1;shift		#Status of segment either t or f
 START_INVALID=$1;shift	#0=Normal valid startup 1=attempt to start a segment marked as invalid
 INST_COUNT=$1;shift		#Unique number for this parallel script, starts at 0
 LOG_FILE=$1;shift
+QD_DBNAME=$1;shift
 QE_LINE="${QE_NAME}:${QE_PORT}:${QE_DIR}"
 LOG_MSG "[INFO][$INST_COUNT]:-Start Main"
 LOG_MSG "[INFO][$INST_COUNT]:-Command line options passed to utility = $*"
