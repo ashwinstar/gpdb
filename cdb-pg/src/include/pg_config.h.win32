@@ -189,7 +189,7 @@
 #define HAVE_INT_TIMEZONE 
 
 /* Define to 1 if you have support for IPv6. */
-//#define HAVE_IPV6 1
+#define HAVE_IPV6 1
 
 /* Define to 1 if you have isinf(). */
 #define HAVE_ISINF 1
