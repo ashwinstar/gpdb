@@ -1482,6 +1482,7 @@ create_nestloop_plan(CreatePlanContext *ctx,
 	List		*joinclauses;
 	List		*otherclauses;
 	NestLoop	*join_plan;
+	Plan		*new_inner = inner_plan;
 
 	if (IsA(best_path->jpath.innerjoinpath, IndexPath))
 	{
@@ -1561,11 +1562,26 @@ create_nestloop_plan(CreatePlanContext *ctx,
 	joinclauses = order_qual_clauses(ctx->root, joinclauses);
 	otherclauses = order_qual_clauses(ctx->root, otherclauses);
 
+	/* MPP-1140: until hash-aggs can handle rescans; we have to insert
+	 * a materialize: note we just copy the original inner plans costs. */
+	if (IsA(best_path->jpath.innerjoinpath, UniquePath))
+	{
+		UniquePath *up = (UniquePath *)best_path->jpath.innerjoinpath;
+
+		if (up->umethod == UNIQUE_PATH_HASH)
+		{
+			new_inner = (Plan *)make_material(inner_plan);
+			/* fake costs */
+			copy_path_costsize(new_inner, (Path *) best_path->jpath.innerjoinpath);
+			join_plan->join.prefetch_inner = true;
+		}
+	}
+
 	join_plan = make_nestloop(tlist,
 							  joinclauses,
 							  otherclauses,
 							  outer_plan,
-							  inner_plan,
+							  new_inner,
 							  best_path->jpath.jointype);
 
 	copy_path_costsize(&join_plan->join.plan, &best_path->jpath.path);

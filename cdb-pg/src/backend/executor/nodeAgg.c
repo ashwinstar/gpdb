@@ -1594,6 +1594,12 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 
 	if (((Agg *) node->ss.ps.plan)->aggstrategy == AGG_HASHED)
 	{
+		/* MPP-1140 */
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Illegal rescan of hashagg node: invalid plan."),
+				 errhint("likely caused by bad NL-join, try setting enable_nestloop off, or disabling hashagg")));
+
 		/*
 		 * In the hashed case, if we haven't yet built the hash table then we
 		 * can just return; nothing done yet, so nothing to undo. If subnode's
