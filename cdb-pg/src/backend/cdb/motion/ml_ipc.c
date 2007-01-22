@@ -17,6 +17,7 @@
 #include "utils/hsearch.h"
 #include "miscadmin.h"
 #include "libpq/libpq-be.h"
+#include "libpq/ip.h"
 #include "utils/builtins.h"
 
 #include "cdb/cdbselect.h"
@@ -3068,13 +3069,19 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
     else if (sa->sa_family == AF_INET6)
     {
         struct sockaddr_in6    *sin6 = (struct sockaddr_in6 *)sa;
+		char remote_port[20];
 
         if (bufsize > 8)
         {
-            inet_ntop(AF_INET6, &sin6->sin6_addr, buf, bufsize - 8);
+			
+            //inet_ntop(AF_INET6, &sin6->sin6_addr, buf, bufsize - 8);
+			pg_getnameinfo_all(&sin6->sin6_addr, sizeof(sin6->sin6_addr),
+											 buf, bufsize-8,
+											 remote_port, sizeof(remote_port),
+											 NI_NUMERICHOST | NI_NUMERICSERV);
             buf += strlen(buf);
         }
-        snprintf(buf, 8, ":%d", ntohs(sin6->sin6_port));
+        snprintf(buf, 8, ":%s", remote_port);
     }
 #endif
     else
