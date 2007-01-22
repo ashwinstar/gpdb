@@ -24,11 +24,12 @@ our @pgportfiles = qw(
 my $libpgport = $solution->AddProject('libpgport','lib','misc');
 $libpgport->AddDefine('FRONTEND');
 $libpgport->AddFiles('src\port',@pgportfiles);
+$libpgport->AddLibrary('wsock32.lib');
 
 my $libpq = $solution->AddProject('libpq','dll','interfaces','src\interfaces\libpq');
 $libpq->AddDefine('FRONTEND');
 $libpq->AddIncludeDir('src\port');
-$libpq->AddLibrary('wsock32.lib');
+$libpq->AddLibrary('wsock32.lib  ws2_32.lib');
 $libpq->AddLibrary('wldap32.lib') if ($solution->{options}->{ldap});
 $libpq->AddLibrary($config->{'pthread'} . '\pthreadVC2.lib');
 $libpq->UseDef('src\interfaces\libpq\libpqdll.def');
@@ -104,7 +105,7 @@ $libecpg->AddDefine('FRONTEND');
 $libecpg->AddIncludeDir('src\interfaces\ecpg\include');
 $libecpg->AddIncludeDir('src\interfaces\libpq');
 $libecpg->AddIncludeDir('src\port');
-$libecpg->AddLibrary('wsock32.lib');
+$libecpg->AddLibrary('wsock32.lib ws2_32.lib');
 $libecpg->AddLibrary($config->{'pthread'} . '\pthreadVC2.lib');
 $libecpg->AddReference($libpq,$pgtypes);
 
@@ -125,6 +126,8 @@ $ecpg->AddReference($libpgport);
 
 # src/bin
 my $initdb = AddSimpleFrontend('initdb', 1);
+$initdb->AddReference($libpgport);
+$initdb->AddLibrary('wsock32.lib ws2_32.lib');
 
 my $pgconfig = AddSimpleFrontend('pg_config');
 
