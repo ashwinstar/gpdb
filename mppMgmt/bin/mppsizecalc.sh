@@ -292,7 +292,7 @@ CALC_TOTAL_SIZE () {
 		PORT=`$ECHO $I|$CUT -d'|' -f3`
 		if [ $DISPLAY_TYPE -eq 1 ];then
 			if [ $VERBOSE ];then
-				LOG_MSG "[INFO]:-Host $HOST Port $PORT Segment $SEG Space Used = $SIZE ${TXT_SCALE}"
+				LOG_MSG "[INFO]:-Host $HOST Port $PORT Segment $SEG Space Used = $SIZE ${TXT_SCALE}" 1
 			else
 				$ECHO $I
 				$ECHO $I >> $LOG_FILE
@@ -402,7 +402,13 @@ if [ $READ_COUNT -ne 0 ];then
 fi
 case $SIZE_TARGET in 
 	0) GET_QE_DETAILS 
-	   TYPE_TEXT="Primary and Mirror Segments" ;;
+	   GET_MIRROR_TYPE
+	   if [ $MIR_NUM -eq 0 ];then
+	   TYPE_TEXT="Pirmary [No mirrors configured]"
+	   else
+	   TYPE_TEXT="Primary and Mirror Segments" 
+	   fi
+		;;
 	1) GET_QE_PRIMARY_DETAILS
 	   QE_ARRAY=(${QE_PRIMARY_ARRAY[@]}) 
 	   TYPE_TEXT="Primary Segments Only" ;;
