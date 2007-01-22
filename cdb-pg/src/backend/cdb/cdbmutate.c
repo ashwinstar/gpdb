@@ -3,7 +3,7 @@
  * cdbmutate.c
  *	  Parallelize a PostgreSQL sequential plan tree.
  *
- * Copyright (c) 2004-2006, Greenplum
+ * Copyright (c) 2004-2007, Greenplum
  *
  * IDENTIFICATION
  *	  $Id$
@@ -1132,8 +1132,6 @@ getExprListFromTargetList(List         *tlist,
 
 	for (i = 0; i < numCols; i++)
 	{
-		Var		   *new_var = NULL;
-
 		/* Find expr in TargetList */
 		AttrNumber	n = colIdx[i];
 
@@ -1144,27 +1142,7 @@ getExprListFromTargetList(List         *tlist,
 
         /* After set_plan_references(), make a Var referencing subplan tlist. */
         if (useExecutorVarFormat)
-        {
-            /* If subplan expr is a Var, copy to preserve its EXPLAIN info. */
-            if (IsA(target->expr, Var))
-            {
-                new_var = copyObject(target->expr);
-                new_var->varno = OUTER;
-                new_var->varattno = n;
-            }
-
-            /*
-	         * Make a Var that references the target list entry at this offset,
-	         * using OUTER as the varno
-	         */
-            else
-		        new_var = makeVar(OUTER,
-                                  n,
-                                  exprType((Node *) target->expr),
-                                  exprTypmod((Node *) target->expr),
-                                  0);
-            elist = lappend(elist, new_var);
-        }
+            elist = lappend(elist, cdbpullup_makeVar(OUTER, n, NULL, target->expr));
 
         /* Before set_plan_references(), copy the subplan's result expr. */
         else

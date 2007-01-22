@@ -3,7 +3,7 @@
  * cdbllize.c
  *	  Parallelize a PostgreSQL sequential plan tree.
  *
- * Copyright (c) 2005-2006, greenplum inc
+ * Copyright (c) 2005-2007, greenplum inc
  *
  * IDENTIFICATION
  *	  $Id$
@@ -546,9 +546,13 @@ makeFlow(FlowType flotype)
 
 
 /*
- * Create a flow for the given Plan node based on the flow in it's
+ * Create a flow for the given Plan node based on the flow in its
  * lefttree (outer) plan.  Partitioning information is preserved.
  * Sort specifications are preserved only if withSort is true.
+ *
+ * NB: At one time this function was called during cdbparallelize(), after
+ * transformation of the plan by set_plan_references().  Later, calls were
+ * added upstream of set_plan_references(); only these remain at present.
  */
 Flow *
 pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
@@ -569,11 +573,9 @@ pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
     else if (model_flow->flotype == FLOW_PARTITIONED &&
              model_flow->hashExpr)
 	{
-		if (is_projection_capable_plan(plan))
-            new_flow->hashExpr = (List *)cdbpullup_expr((Expr *)model_flow->hashExpr,
-                                                        plan->targetlist,
-                                                        OUTER);
-        else
+		if (!is_projection_capable_plan(plan) ||
+            cdbpullup_isExprCoveredByTargetlist((Expr *)model_flow->hashExpr,
+                                                plan->targetlist))
             new_flow->hashExpr = copyObject(model_flow->hashExpr);
 	}
 

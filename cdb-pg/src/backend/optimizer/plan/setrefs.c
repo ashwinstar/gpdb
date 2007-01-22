@@ -4,7 +4,7 @@
  *	  Post-processing of a completed plan tree: fix references to subplan
  *	  vars, and compute regproc values for operators
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -23,6 +23,8 @@
 #include "parser/parse_expr.h"
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
+
+#include "cdb/cdbpullup.h"      /* cdbpullup_make_var() */
 
 
 typedef struct
@@ -445,25 +447,8 @@ cdb_build_identity_tlist(List *newtlist, Plan *subplan, Index subvarno)
         TargetEntry    *newtle;
         Var            *newvar;
 
-        if (IsA(subtle->expr, Var))
-        {
-            Var    *subvar = (Var *)subtle->expr;
-
-            newvar = (Var *)copyObject(subvar);
-            newvar->varno = subvarno;
-            newvar->varattno = subtle->resno;
-            newvar->varlevelsup = 0;
-        }
-        else
-        {
-		    newvar = makeVar(subvarno,
-						     subtle->resno,
-						     exprType((Node *)subtle->expr),
-						     exprTypmod((Node *)subtle->expr),
-						     0);
-		    newvar->varnoold = 0;   /* wasn't ever a plain Var */
-		    newvar->varoattno = 0;
-        }
+        /* Make a Var node referencing the subplan's targetlist. */
+        newvar = cdbpullup_makeVar(subvarno, subtle->resno, NULL, subtle->expr);
 
 		/* Append new targetlist entry. */
         newtle = flatCopyTargetEntry(subtle);

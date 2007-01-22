@@ -1460,7 +1460,7 @@ create_tidscan_path(PlannerInfo *root, RelOptInfo *rel, List *tidquals)
  *	  pathnode.
  */
 AppendPath *
-create_append_path(RelOptInfo *rel, List *subpaths)
+create_append_path(PlannerInfo *root, RelOptInfo *rel, List *subpaths)
 {
 	AppendPath *pathnode = makeNode(AppendPath);
 	ListCell   *l;
@@ -1478,11 +1478,25 @@ create_append_path(RelOptInfo *rel, List *subpaths)
 	pathnode->path.total_cost = 0;
 	foreach(l, subpaths)
 	{
-		Path	   *subpath = (Path *) lfirst(l);
+		Path	       *subpath = (Path *) lfirst(l);
+        CdbPathLocus    projectedlocus;
 
 		if (l == list_head(subpaths))	/* first node? */
 			pathnode->path.startup_cost = subpath->startup_cost;
 		pathnode->path.total_cost += subpath->total_cost;
+
+        /* Transform subpath locus into the appendrel's space for comparison. */
+        if (subpath->parent == rel ||
+            subpath->parent->reloptkind != RELOPT_OTHER_MEMBER_REL)
+            projectedlocus = subpath->locus;
+        else
+            projectedlocus =
+                cdbpathlocus_pull_above_projection(root,
+                                                   subpath->locus,
+                                                   subpath->parent->relids,
+                                                   subpath->parent->reltargetlist,
+                                                   rel->reltargetlist,
+                                                   rel->relid);
 
         /*
          * CDB: This function is called only when combining rel scans in an
@@ -1497,12 +1511,12 @@ create_append_path(RelOptInfo *rel, List *subpaths)
          * distributed can be joined in place.
          */
         if (l == list_head(subpaths))
-            pathnode->path.locus = subpath->locus;
+            pathnode->path.locus = projectedlocus;
         else if (cdbpathlocus_compare(CdbPathLocus_Comparison_Equal,
-                                      pathnode->path.locus, subpath->locus))
+                                      pathnode->path.locus, projectedlocus))
         {}
         else if (CdbPathLocus_IsPartitioned(pathnode->path.locus) &&
-                 CdbPathLocus_IsPartitioned(subpath->locus))
+                 CdbPathLocus_IsPartitioned(projectedlocus))
             CdbPathLocus_MakeStrewn(&pathnode->path.locus);
         else
             ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
@@ -1872,7 +1886,7 @@ create_unique_rowid_path(PlannerInfo *root,
  * discarding all but the first row of the given subpath's result.
  *
  * If a row's duplicates might occur in more than one partition, a Motion
- * operator will be inserted to bring them together.  
+ * operator will be inserted to bring them together.
  */
 UniquePath *
 create_limit1_path(PlannerInfo *root, Path *subpath)
@@ -1887,7 +1901,7 @@ create_limit1_path(PlannerInfo *root, Path *subpath)
     if (CdbPathLocus_IsPartitioned(subpath->locus))
     {
         CdbPathLocus_MakeSingleQE(&singleQE);
-        subpath = cdbpath_create_motion_path(root, (Path *)uniquepath, NIL, 
+        subpath = cdbpath_create_motion_path(root, (Path *)uniquepath, NIL,
                                              false, singleQE);
 
         /* Assume no motion deadlock hazard when limited to 1 row. */

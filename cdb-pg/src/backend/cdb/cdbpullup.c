@@ -3,7 +3,7 @@
  * cdbpullup.c
  *    Provides routines supporting plan tree manipulation.
  *
- * Copyright (c)2006, greenplum inc
+ * Copyright (c)2006-2007, greenplum inc
  *
  * IDENTIFICATION
  *    $Id$
@@ -14,6 +14,7 @@
 #include "postgres.h"
 
 #include "nodes/makefuncs.h"            /* makeVar() */
+#include "nodes/plannodes.h"            /* Plan */
 #include "optimizer/clauses.h"          /* expression_tree_walker/mutator */
 #include "optimizer/tlist.h"            /* tlist_member() */
 #include "parser/parse_expr.h"          /* exprType() and exprTypmod() */
@@ -43,8 +44,8 @@
  * Var nodes were found in the plan's targetlist.
  */
 int
-cdbpullup_colIdx(Plan          *plan,
-                 Plan          *subplan,
+cdbpullup_colIdx(struct Plan   *plan,
+                 struct Plan   *subplan,
                  int            numCols,
                  AttrNumber    *subplanColIdx,
                  AttrNumber   **pProjectedColIdx)
@@ -69,8 +70,8 @@ cdbpullup_colIdx(Plan          *plan,
      */
     useExecutorVarFormat = cdbpullup_exprHasSubplanRef((Expr *)plan->targetlist);
 
-    /* 
-     * Translate the column index array. 
+    /*
+     * Translate the column index array.
      */
     for (i = 0; i < numCols; i++)
     {
@@ -127,9 +128,23 @@ cdbpullup_colIdx(Plan          *plan,
  *      expr -> X0, the expr in terms of the subplan S's targetlist
  *      targetlist -> TL (a List of TargetEntry), the plan P's targetlist
  *              (or can be a List of Expr)
- *      newvarno = varno to be used in new Var nodes in executor format
- *              (should usually be OUTER; but specify 0 when the expr will
- *              be used in the targetlist of an Agg or Group node)
+ *      newvarlist -> an optional List of Expr which may contain Var nodes
+ *              referencing the result of the projection.  The Var nodes in
+ *              the new expr are copied from ones in this list if possible,
+ *              to get their varnoold and varoattno settings.
+ *      newvarno = varno to be used in new Var nodes
+ *
+ * When calling this function on an expr which has NOT yet been transformed
+ * by set_plan_references(), newvarno should be the RTE index assigned to
+ * the result of the projection.
+ *
+ * When calling this function on an expr which HAS been transformed by
+ * set_plan_references(), newvarno should usually be OUTER; or 0 if the
+ * expr is to be used in the targetlist of an Agg or Group node.
+ *
+ * At present this function doesn't support pull-up from a subquery into a
+ * containing query: there is no provision for adjusting the varlevelsup
+ * field in Var nodes for outer references.  This could be added if needed.
  *
  * Returns X1, the expr recast in terms of the given targetlist; or
  * NULL if X0 references a column of S that is not projected in TL.
@@ -137,17 +152,17 @@ cdbpullup_colIdx(Plan          *plan,
 struct pullUpExpr_context
 {
     List   *targetlist;
-    Var    *notfound;
+    List   *newvarlist;
     Index   newvarno;
+    Var    *notfound;
 };
 
-/* pullUpExpr_mutator pulls up Var nodes in executor format */
 static Node*
 pullUpExpr_mutator(Node *node, void *context)
 {
     struct pullUpExpr_context  *ctx = (struct pullUpExpr_context *)context;
-    Var            *var;
     TargetEntry    *tle;
+    Var            *var;
 
     if (!node ||
         ctx->notfound)
@@ -156,104 +171,102 @@ pullUpExpr_mutator(Node *node, void *context)
     /* Pull up Var. */
     if (IsA(node, Var))
     {
-        /* Look for a matching Var in the targetlist. */
         var = (Var *)node;
-        tle = cdbpullup_findSubplanRefInTargetList(var->varattno, ctx->targetlist);
 
-        /* Fail if P's result does not include this column. */
-        if (!tle)
+        /* Outer reference?  Just copy it. */
+        if (var->varlevelsup > 0)
+            var = (Var *)copyObject(var);
+
+        if (!ctx->targetlist)
+            goto fail;
+
+        /* Is targetlist a List of TargetEntry?  (Plan nodes use this format) */
+        Assert(IsA(ctx->targetlist, List));
+        if (IsA(linitial(ctx->targetlist), TargetEntry))
         {
-            ctx->notfound = var;
-            return NULL;
+
+            /* After set_plan_references(), search on varattno only. */
+            if (var->varno == OUTER ||
+                var->varno == INNER ||
+                var->varno == 0)
+                tle = cdbpullup_findSubplanRefInTargetList(var->varattno,
+                                                           ctx->targetlist);
+            /* Before set_plan_references(), search for exact match. */
+            else
+                tle = tlist_member((Node *)var, ctx->targetlist);
+
+            /* Fail if P's result does not include this column. */
+            if (!tle)
+                goto fail;
+
+            /* Substitute a Var node referencing the targetlist entry. */
+            var = cdbpullup_makeVar(ctx->newvarno,
+                                    tle->resno,
+                                    ctx->newvarlist,
+                                    (Expr *)var);
         }
 
-        /* Substitute a Var node referencing the targetlist entry. */
-        var = (Var *)copyObject(tle->expr);
-        var->varno = ctx->newvarno;
-        var->varattno = tle->resno;
+        /* Planner's RelOptInfo targetlists don't have TargetEntry nodes. */
+        else
+        {
+            ListCell   *cell;
+            AttrNumber  targetindex = 1;
+
+            foreach(cell, ctx->targetlist)
+            {
+	            if (equal(lfirst(cell), var))
+                    break;
+                targetindex++;
+            }
+            if (!cell)
+                goto fail;
+
+            /* Substitute a Var node referencing the targetlist entry. */
+            var = cdbpullup_makeVar(ctx->newvarno,
+                                    targetindex,
+                                    ctx->newvarlist,
+                                    (Expr *)var);
+        }
         return (Node *)var;
     }
 
-    /* The whole expr might be in the targetlist. */
+    /* The whole expr might be in the targetlist of a Plan node. */
     else if (!IsA(node, List) &&
+             ctx->targetlist &&
+             IsA(linitial(ctx->targetlist), TargetEntry) &&
              NULL != (tle = tlist_member(node, ctx->targetlist)))
     {
         /* Replace expr with a Var node referencing the targetlist entry. */
-        var = makeVar(ctx->newvarno,
-                      tle->resno,
-                      exprType((Node *) tle->expr),
-                      exprTypmod((Node *) tle->expr),
-                      0);
+        var = cdbpullup_makeVar(ctx->newvarno,
+                                tle->resno,
+                                ctx->newvarlist,
+                                tle->expr);
         return (Node *)var;
     }
 
     return expression_tree_mutator(node, pullUpExpr_mutator, context);
+
+    /* Fail if P's result does not include a referenced column. */
+fail:
+    ctx->notfound = var;
+    return NULL;
 }                               /* pullUpExpr_mutator */
 
 Expr *
-cdbpullup_expr(Expr *expr, List *targetlist, Index newvarno)
+cdbpullup_expr(Expr *expr, List *targetlist, List *newvarlist, Index newvarno)
 {
-    ListCell   *cell;
-    Expr       *newexpr = NULL;
-    bool        useExecutorVarFormat;
+    Expr       *newexpr;
+    struct pullUpExpr_context   ctx;
 
-    /*
-     * Above the Scan strata in a plan, we can tell by looking at any Var's 
-     * varno whether or not set_plan_references() has converted the expr's 
-     * Var nodes from parser format to executor format.  If so, we should
-     * conform to the executor format.
-     */
-    useExecutorVarFormat = cdbpullup_exprHasSubplanRef((Expr *)targetlist);
+    ctx.targetlist = targetlist;
+    ctx.newvarlist = newvarlist;
+    ctx.newvarno = newvarno;
+    ctx.notfound = NULL;
 
-    /*
-     * Executor format: in each Var node, the varno is either 0 or OUTER (or
-     * INNER, but we don't expect that here).  The varattno is the resno of 
-     * an entry in the subplan's targetlist.
-     */
-    if (useExecutorVarFormat)
-    {
-        struct pullUpExpr_context   ctx;
+    newexpr = (Expr *)pullUpExpr_mutator((Node *)expr, &ctx);
 
-        ctx.targetlist = targetlist;
-        ctx.notfound = NULL;
-        ctx.newvarno = newvarno;
-
-        newexpr = (Expr *)pullUpExpr_mutator((Node *)expr, &ctx);
-
-        if (ctx.notfound)
-            newexpr = NULL;
-    }
-
-    /*
-     * Parser format: in each Var node, the varno is an RTE index, >= 1.
-     * The meaning of an expr is the same anywhere in the Query, so all
-     * we have to do is copy it.  However, if it uses a Var that is not
-     * in the targetlist, return NULL instead.
-     */
-    else
-    {
-        /* List of Expr?  Verify that all items are projected. */
-        if (IsA(expr, List))
-        {
-            foreach(cell, (List *)expr)
-            {
-                Expr   *item = (Expr *)lfirst(cell);
-
-                /* The whole expr or all of its Vars must be in targetlist. */
-                if (cdbpullup_missing_var_walker((Node *)item, targetlist) &&
-                    !tlist_member((Node *)item, targetlist))
-                    return NULL;
-            }
-        }
-
-        /* The whole expr or all of its Vars must be in targetlist. */
-        else if (cdbpullup_missing_var_walker((Node *)expr, targetlist) &&
-                 !tlist_member((Node *)expr, targetlist))
-            return NULL;
-
-        /* ok, copy it */
-        newexpr = copyObject(expr);
-    }
+    if (ctx.notfound)
+        newexpr = NULL;
 
     return newexpr;
 }                               /* cdbpullup_expr */
@@ -267,11 +280,11 @@ cdbpullup_expr(Expr *expr, List *targetlist, Index newvarno)
  * assumed that the Plan node and associated exprs have been processed
  * by set_plan_references(), and its Var nodes are in executor format.
  *
- * Returns false otherwise, which implies no conclusion about whether or 
- * not set_plan_references() has been done.  
+ * Returns false otherwise, which implies no conclusion about whether or
+ * not set_plan_references() has been done.
  *
- * Note that a Var node that belongs to a Scan operator and refers to the 
- * Scan's source relation or index, doesn't have its varno changed by 
+ * Note that a Var node that belongs to a Scan operator and refers to the
+ * Scan's source relation or index, doesn't have its varno changed by
  * set_plan_references() to OUTER/INNER/0.  Think twice about using this
  * unless you know that the expr comes from an upper Plan node.
  */
@@ -302,6 +315,99 @@ cdbpullup_exprHasSubplanRef(Expr *expr)
            var->varno == INNER ||
            var->varno == 0;
 }                               /* cdbpullup_exprHasSubplanRef */
+
+
+/*
+ * cdbpullup_findPathKeyItemInTargetList
+ *
+ * Searches the equivalence class 'pathkey' for a PathKeyItem that
+ * uses no rels outside the 'relids' set, and either is a member of
+ * 'targetlist', or uses no Vars that are not in 'targetlist'.
+ *
+ * If found, returns the chosen PathKeyItem and sets the output variables.
+ * - If the item's Vars (if any) are in targetlist, but the item itself is not:
+ *      *ptargetindex = 0
+ * - Else if the targetlist is a List of TargetEntry nodes:
+ *      *ptargetindex gets the matching TargetEntry's resno (which is the
+ *          1-based position of the TargetEntry in the targetlist); or 0.
+ * - Else if the targetlist is a plain List of Expr without TargetEntry nodes:
+ *      *ptargetindex gets the 1-based position of the matching entry in the
+ *          targetlist, or 0 if the expr is not in the targetlist.
+ *
+ * Otherwise returns NULL and sets *ptargetindex = 0.
+ *
+ * 'pathkey' is a List of PathKeyItem.
+ * 'relids' is the set of relids that may occur in the targetlist exprs.
+ * 'targetlist' is a List of TargetEntry or merely a List of Expr.
+ */
+PathKeyItem *
+cdbpullup_findPathKeyItemInTargetList(List         *pathkey,
+                                      Relids        relids,
+                                      List         *targetlist,
+                                      AttrNumber   *ptargetindex)   // OUT (optional)
+{
+    ListCell   *pathkeycell;
+
+    if (ptargetindex)
+       *ptargetindex = 0;
+    if (!targetlist)
+        return NULL;
+
+    foreach(pathkeycell, pathkey)
+    {
+        PathKeyItem    *item = (PathKeyItem *)lfirst(pathkeycell);
+        TargetEntry    *tle;
+
+        Assert(IsA(item, PathKeyItem));
+
+        /* Constant expr?  Return it. */
+        if (item->cdb_num_relids == 0)
+            return item;
+
+        /* Consider this item if all of its rels are in 'relids'. */
+        if (bms_is_subset(item->cdb_key_relids, relids))
+        {
+            /* Return this item if the whole expr is in targetlist. */
+            if (IsA(linitial(targetlist), TargetEntry))
+            {
+                /* This targetlist is a List of TargetEntry. */
+                tle = tlist_member(item->key, targetlist);
+                if (tle)
+                {
+                    if (ptargetindex)
+                        *ptargetindex = tle->resno;
+                    return item;
+                }
+            }
+
+            /* Planner's RelOptInfo targetlists don't have TargetEntry nodes. */
+            else
+            {
+                ListCell   *cell;
+                AttrNumber  targetindex = 1;
+
+                foreach(cell, targetlist)
+                {
+                    Expr   *expr = (Expr *)lfirst(cell);
+
+		            if (equal(expr, item->key))
+                    {
+                        if (ptargetindex)
+                            *ptargetindex = targetindex;
+                        return item;
+                    }
+                    targetindex++;
+                }
+            }
+
+            /* Return this item if all referenced Vars are in targetlist. */
+            if (!IsA(item->key, Var) &&
+                !cdbpullup_missingVarWalker(item->key, targetlist))
+                return item;
+        }
+    }
+    return NULL;
+}                               /* cdbpullup_findPathKeyItemInTargetList */
 
 
 /*
@@ -339,13 +445,130 @@ cdbpullup_findSubplanRefInTargetList(AttrNumber varattno, List *targetlist)
 
 
 /*
- * cdbpullup_missing_var_walker
+ * cdbpullup_isExprCoveredByTargetlist
+ *
+ * Returns true if 'expr' is in 'targetlist', or if 'expr' contains no
+ * Var node of the current query level that is not in 'targetlist'.
+ *
+ * If 'expr' is a List, returns false if the above condition is false for
+ * some member of the list.
+ *
+ * 'targetlist' is a List of TargetEntry.
+ *
+ * See also: cdbpullup_missing_var_walker
+ */
+bool
+cdbpullup_isExprCoveredByTargetlist(Expr *expr, List *targetlist)
+{
+    ListCell   *cell;
+
+    /* List of Expr?  Verify that all items are covered. */
+    if (IsA(expr, List))
+    {
+        foreach(cell, (List *)expr)
+        {
+            Expr   *item = (Expr *)lfirst(cell);
+
+            /* The whole expr or all of its Vars must be in targetlist. */
+            if (cdbpullup_missingVarWalker((Node *)item, targetlist) &&
+                !tlist_member((Node *)item, targetlist))
+                return false;
+        }
+    }
+
+    /* The whole expr or all of its Vars must be in targetlist. */
+    else if (cdbpullup_missingVarWalker((Node *)expr, targetlist) &&
+             !tlist_member((Node *)expr, targetlist))
+        return false;
+
+    /* expr is evaluable on rows projected thru targetlist */
+    return true;
+}                               /* cdbpullup_isExprCoveredByTlist */
+
+
+/*
+ * cdbpullup_make_var
+ *
+ * Returns a new Var node with given 'varno' and 'varattno', and varlevelsup=0.
+ *
+ * The caller may optionally provide a 'newvarlist' which may contain a
+ * suitable Var node (perhaps beneath a TargetEntry node).  If so, that
+ * Var node is copied and returned.
+ *
+ * Otherwise NULL is returned, unless the caller has provided an 'oldexpr'
+ * from which the vartype and vartypmod can be obtained to create a new
+ * Var node.  (If oldexpr is a Var node, all fields are copied except for
+ * varno, varattno and varlevelsup.)
+ *
+ * Copying an existing Var node preserves its varnoold and varoattno fields,
+ * which are used by EXPLAIN to display the table and column name.
+ * Also these fields are tested by equal(), so they may need to be set
+ * correctly for successful lookups by list_member(), tlist_member(),
+ * make_canonical_pathkey(), etc.
+ */
+Var *
+cdbpullup_makeVar(Index varno, AttrNumber varattno, List *newvarlist, Expr *oldexpr)
+{
+    ListCell   *newvarlistcell;
+    Var        *var;
+
+    /* Is there a matching new Var node in caller's newvarlist? */
+    foreach(newvarlistcell, newvarlist)
+    {
+        Expr   *nvexpr = (Expr *)lfirst(newvarlistcell);
+
+        if (IsA(nvexpr, TargetEntry))
+            nvexpr = ((TargetEntry *)nvexpr)->expr;
+
+        if (IsA(nvexpr, Var))
+        {
+            var = (Var *)nvexpr;
+            if (var->varattno == varattno &&
+                var->varno == varno &&
+                var->varlevelsup == 0)
+            {
+                return copyObject(var);
+            }
+        }
+    }
+
+    if (!oldexpr)
+        return NULL;
+
+    /* If caller provided an old Var node, copy and modify it. */
+    if (IsA(oldexpr, Var))
+    {
+        var = (Var *)copyObject(oldexpr);
+        var->varno = varno;
+        var->varattno = varattno;
+        var->varlevelsup = 0;
+    }
+
+    /* Make a new Var node. */
+    else
+    {
+        var = makeVar(varno,
+                      varattno,
+                      exprType((Node *)oldexpr),
+                      exprTypmod((Node *)oldexpr),
+                      0);
+        var->varnoold = 0;      /* assuming it wasn't ever a plain Var */
+        var->varoattno = 0;
+    }
+    return var;
+}                               /* cdbpullup_make_var */
+
+
+/*
+ * cdbpullup_missingVarWalker
  *
  * Returns true if some Var in expr is not in targetlist.
  * 'targetlist' is a List of TargetEntry.
+ *
+ * See also: cdbpullup_isExprCoveredByTargetlist
  */
 bool
-cdbpullup_missing_var_walker(Node *node, void *targetlist)
+cdbpullup_missingVarWalker(Node *node, void *targetlist)
 {
     if (!node)
         return false;
@@ -357,8 +580,8 @@ cdbpullup_missing_var_walker(Node *node, void *targetlist)
         return true;            /* Var is not in targetlist - quit the walk */
     }
 
-    return expression_tree_walker(node, cdbpullup_missing_var_walker, targetlist);
-}                               /* cdbpullup_missing_var_walker */
+    return expression_tree_walker(node, cdbpullup_missingVarWalker, targetlist);
+}                               /* cdbpullup_missingVarWalker */
 
 
 /*
@@ -374,10 +597,10 @@ cdbpullup_missing_var_walker(Node *node, void *targetlist)
  *          position in P's targetlist).
  *      newvarno should be OUTER; except it should be 0 if P is an Agg or
  *          Group node.  It is ignored if useExecutorVarFormat is false.
- *      useExecutorVarFormat must be true if called after optimization, 
- *          when set_plan_references() has been called and Var nodes have 
- *          been adjusted to refer to items in the subplan's targetlist.  
- *          It must be false before the end of optimization, when Var 
+ *      useExecutorVarFormat must be true if called after optimization,
+ *          when set_plan_references() has been called and Var nodes have
+ *          been adjusted to refer to items in the subplan's targetlist.
+ *          It must be false before the end of optimization, when Var
  *          nodes are still in parser format, referring to RTE items.
  */
 TargetEntry *
@@ -392,33 +615,14 @@ cdbpullup_targetentry(TargetEntry  *subplan_targetentry,
     /* After optimization, a Var's referent depends on the owning Plan node. */
     if (useExecutorVarFormat)
     {
-        Expr   *kidexpr = kidtle->expr;
-        Var    *var;
+        /* Copy the subplan's TargetEntry, without its expr. */
+        newtle = flatCopyTargetEntry(kidtle);
 
-        /* If subplan target expr is Var, copy to preserve its EXPLAIN info. */
-        if (IsA(kidexpr, Var))
-        {
-            newtle = copyObject(kidtle);
-            var = (Var *)newtle->expr;
-            var->varno = newvarno;
-            var->varattno = kidtle->resno;
-        }
-
-        /* General expr */        
-        else
-        {
-            /* Copy the subplan's TargetEntry, without its expr. */
-            kidtle->expr = NULL;
-            newtle = copyObject(kidtle);
-            kidtle->expr = kidexpr;
-
-            /* Make a Var node referencing the subplan's targetlist entry. */
-            newtle->expr = (Expr *)makeVar(newvarno,
-                                           kidtle->resno,
-                                           exprType((Node *)kidexpr),
-                                           exprTypmod((Node *)kidexpr),
-                                           0);
-        }       
+        /* Make a Var node referencing the subplan's targetlist entry. */
+        newtle->expr = (Expr *)cdbpullup_makeVar(newvarno,
+                                                 kidtle->resno,
+                                                 NULL,
+                                                 kidtle->expr);
     }
 
     /* Until then, a Var's referent is the same anywhere in a Query. */
@@ -437,7 +641,7 @@ cdbpullup_targetentry(TargetEntry  *subplan_targetentry,
  * the same projection as the given subplan.
  */
 List *
-cdbpullup_targetlist(Plan *subplan, bool useExecutorVarFormat)
+cdbpullup_targetlist(struct Plan *subplan, bool useExecutorVarFormat)
 {
     ListCell   *cell;
     List       *targetlist = NIL;
@@ -446,8 +650,8 @@ cdbpullup_targetlist(Plan *subplan, bool useExecutorVarFormat)
     foreach(cell, subplan->targetlist)
     {
         TargetEntry    *kidtle = (TargetEntry *)lfirst(cell);
-        TargetEntry    *newtle = cdbpullup_targetentry(kidtle, 
-                                                       resno++, 
+        TargetEntry    *newtle = cdbpullup_targetentry(kidtle,
+                                                       resno++,
                                                        OUTER,
                                                        useExecutorVarFormat);
 

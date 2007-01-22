@@ -18,6 +18,7 @@
 #include "optimizer/var.h"              /* contain_vars_of_level_or_above() */
 #include "parser/parse_oper.h"          /* make_op() */
 #include "parser/parse_relation.h"      /* addRangeTableEntryForSubquery() */
+#include "parser/parsetree.h"           /* rt_fetch() */
 #include "rewrite/rewriteManip.h"
 #include "utils/lsyscache.h"            /* get_op_btree_interpretation() */
 
@@ -33,7 +34,8 @@ pull_up_IN_clauses(PlannerInfo *root, List** rtrlist_inout, Node *node);
 void
 cdbsubselect_flatten_sublinks(struct PlannerInfo *root, struct Node *jtnode)
 {
-    List   *rtrlist = NIL;
+    List       *rtrlist = NIL;
+    ListCell   *cell;
 
     if (jtnode == NULL)
         return;
@@ -44,7 +46,7 @@ cdbsubselect_flatten_sublinks(struct PlannerInfo *root, struct Node *jtnode)
         {
             Query   *query = (Query *)jtnode;
 
-            /* Flatten sublinks in FROM and WHERE clauses. */
+            /* Flatten sublinks in JOIN...ON and WHERE search conditions. */
             cdbsubselect_flatten_sublinks(root, (Node *)query->jointree);
             break;
         }
@@ -53,24 +55,39 @@ cdbsubselect_flatten_sublinks(struct PlannerInfo *root, struct Node *jtnode)
         {
             FromExpr   *fromexpr = (FromExpr *)jtnode;
 
-            /* Flatten sublinks in WHERE clause. */
+            /* Flatten sublinks in JOIN...ON search conditions. */
+            foreach(cell, fromexpr->fromlist)
+                cdbsubselect_flatten_sublinks(root, (Node *)lfirst(cell));
+
+            /* Flatten sublinks in WHERE search condition. */
             fromexpr->quals = pull_up_IN_clauses(root, &rtrlist, fromexpr->quals);
 
-            /* Add any new RangeTblRef nodes to the FROM clause. */
+            /* Append any new RangeTblRef nodes to the FROM clause. */
             if (rtrlist)
                 fromexpr->fromlist = list_concat(fromexpr->fromlist, rtrlist);
             break;
         }
-#if 0
+ 
         case T_JoinExpr:
+        {
+            JoinExpr   *joinexpr = (JoinExpr *)jtnode;
+
+            /* CDB TODO: Handle outer joins. */
+            if (joinexpr->jointype != JOIN_INNER)
+                break;
+
+            /*$$$$$$$$$$*/
+
             break;
+        }
+
         case T_RangeTblRef:
             break;
-#endif
+
         default:
             Assert(0);
     }
-}                               /* flatten_sublinks */
+}                               /* cdbsubselect_flatten_sublinks */
 
 
 /*
@@ -109,21 +126,57 @@ cdbsubselect_drop_orderby(Query *subselect)
 
 
 /*
+ * cdbsubselect_add_rte_and_ininfo
+ */
+static InClauseInfo *
+cdbsubselect_add_rte_and_ininfo(PlannerInfo    *root, 
+                                List          **rtrlist_inout, 
+                                Query          *subselect,
+                                const char     *aliasname)
+{
+	InClauseInfo   *ininfo;
+	RangeTblEntry  *rte;
+    RangeTblRef    *rtr;
+	int			    rtindex;
+
+    /* Build an InClauseInfo struct. */
+	ininfo = makeNode(InClauseInfo);
+    ininfo->sub_targetlist = NULL;
+
+    /* Determine the index of the subquery RTE that we'll create below. */
+	rtindex = list_length(root->parse->rtable) + 1;
+	ininfo->righthand = bms_make_singleton(rtindex);
+
+    /* Tell join planner to quell duplication of outer query result rows. */
+	root->in_info_list = lappend(root->in_info_list, ininfo);
+
+    /* Make a subquery RTE in the current query level. */
+    rte = addRangeTableEntryForSubquery(NULL,
+										subselect,
+										makeAlias(aliasname, NIL),
+										false);
+	root->parse->rtable = lappend(root->parse->rtable, rte);
+
+    /* Tell caller to augment the jointree with a reference to the new RTE. */
+    rtr = makeNode(RangeTblRef);
+	rtr->rtindex = rtindex;
+    *rtrlist_inout = lappend(*rtrlist_inout, rtr);
+
+    return ininfo;
+}                               /* cdbsubselect_add_rte_and_ininfo */
+
+
+/*
  * convert_EXISTS_to_join
  */
 static Node *
 convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
 {
-	Query	       *parse = root->parse;
 	Query	       *subselect = (Query *)sublink->subselect;
-	InClauseInfo   *ininfo;
     Node           *limitqual = NULL;
     Node           *lnode;
     Node           *rnode;
     Node           *node;
-	RangeTblEntry  *rte;
-    RangeTblRef    *rtr;
-	int			    rtindex;
 
     Assert(IsA(subselect, Query));
 
@@ -217,31 +270,9 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
     }
 
     /*
-     * Build an InClauseInfo struct.
+     * Build subquery RTE, InClauseInfo, etc.
      */
-	ininfo = makeNode(InClauseInfo);
-    ininfo->sub_targetlist = NULL;
-
-    /* Determine the index of the subquery RTE that we'll create below. */
-	rtindex = list_length(parse->rtable) + 1;
-	ininfo->righthand = bms_make_singleton(rtindex);
-
-    /* Tell join planner to quell duplication of outer query result rows. */
-	root->in_info_list = lappend(root->in_info_list, ininfo);
-
-    /*
-     * Make a subquery RTE in the current query level.
-     */
-    rte = addRangeTableEntryForSubquery(NULL,
-										subselect,
-										makeAlias("EXISTS_subquery", NIL),
-										false);
-	parse->rtable = lappend(parse->rtable, rte);
-
-    /* Tell caller to augment the jointree with a reference to the new RTE. */
-    rtr = makeNode(RangeTblRef);
-	rtr->rtindex = rtindex;
-    *rtrlist_inout = lappend(*rtrlist_inout, rtr);
+    cdbsubselect_add_rte_and_ininfo(root, rtrlist_inout, subselect, "EXISTS_subquery");
 
 #if 0
     /*
@@ -281,11 +312,8 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
 static Node *
 convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
 {
-	Query	   *parse = root->parse;
 	Query	   *subselect = (Query *) sublink->subselect;
 	int			rtindex;
-	RangeTblEntry *rte;
-    RangeTblRef    *rtr;
 	InClauseInfo *ininfo;
     bool        correlated;
 
@@ -320,14 +348,18 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
 #endif
 
     /*
-     * Build an InClauseInfo struct.
-     */
-	ininfo = makeNode(InClauseInfo);
-    ininfo->sub_targetlist = NULL;
+	 * Okay, pull up the sub-select into top range table and jointree.
+	 *
+	 * We rely here on the assumption that the outer query has no references
+	 * to the inner (necessarily true, other than the Vars that we build
+	 * below). Therefore this is a lot easier than what pull_up_subqueries has
+	 * to go through.
+	 */
+    ininfo = cdbsubselect_add_rte_and_ininfo(root, rtrlist_inout, subselect, "IN_subquery");
 
-    /* Determine the index of the subquery RTE that we'll create below. */
-	rtindex = list_length(parse->rtable) + 1;
-	ininfo->righthand = bms_make_singleton(rtindex);
+    /* Get the index of the subquery RTE that was just created. */
+	rtindex = list_length(root->parse->rtable);
+    Assert(rt_fetch(rtindex, root->parse->rtable)->subquery == subselect);
 
     /*
      * Uncorrelated "=ANY" subqueries can use JOIN_UNIQUE dedup technique.  We
@@ -354,28 +386,6 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
 	    else if (and_clause(sublink->testexpr))
 		    ininfo->try_join_unique = true;
     }
-
-    /* Tell join planner to quell duplication of outer query result rows. */
-	root->in_info_list = lappend(root->in_info_list, ininfo);
-
-    /*
-	 * Okay, pull up the sub-select into top range table and jointree.
-	 *
-	 * We rely here on the assumption that the outer query has no references
-	 * to the inner (necessarily true, other than the Vars that we build
-	 * below). Therefore this is a lot easier than what pull_up_subqueries has
-	 * to go through.
-	 */
-	rte = addRangeTableEntryForSubquery(NULL,
-										subselect,
-										makeAlias("IN_subquery", NIL),
-										false);
-	parse->rtable = lappend(parse->rtable, rte);
-
-    /* Tell caller to augment the jointree with a reference to the new RTE. */
-    rtr = makeNode(RangeTblRef);
-	rtr->rtindex = rtindex;
-    *rtrlist_inout = lappend(*rtrlist_inout, rtr);
 
 	/*
 	 * Build the result qual expression.  As a side effect,

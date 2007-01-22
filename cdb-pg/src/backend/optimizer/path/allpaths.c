@@ -252,7 +252,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
         /* Obviously won't produce more than one row. */
         rel->onerow = true;
 
-		add_path(root, rel, (Path *) create_append_path(rel, NIL));
+		add_path(root, rel, (Path *) create_append_path(root, rel, NIL));
 
 		/* Select cheapest path (pretty easy in this case...) */
 		set_cheapest(root, rel);
@@ -440,7 +440,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	 * the parent rel.	(Note: this is correct even if we have zero or one
 	 * live subpath due to constraint exclusion.)
 	 */
-	add_path(root, rel, (Path *) create_append_path(rel, subpaths));
+	add_path(root, rel, (Path *) create_append_path(root, rel, subpaths));
 
 	/* Select cheapest path (pretty easy in this case...) */
 	set_cheapest(root, rel);

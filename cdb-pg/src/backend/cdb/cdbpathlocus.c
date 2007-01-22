@@ -2,7 +2,7 @@
  *
  * cdbpathlocus.c
  *
- * Copyright (c) 2005-2006, greenplum inc
+ * Copyright (c) 2005-2007, greenplum inc
  *
  * $Id$
  *
@@ -315,47 +315,6 @@ cdbpathlocus_from_subquery(struct PlannerInfo  *root,
 
 
 /*
- * cdbpathlocus_get_pathkeyitem
- *
- * Searches the equivalence class 'pathkey' for a PathKeyItem that
- * uses no rels outside the 'relids' set, and either is a member of
- * 'targetlist', or uses no Vars that are not in 'targetlist'.
- * Returns  NULL if not found.
- */
-static PathKeyItem *
-cdbpathlocus_get_pathkeyitem(List          *pathkey,
-                             Relids         relids,
-                             List          *targetlist)
-{
-    ListCell   *pathkeycell;
-
-    foreach(pathkeycell, pathkey)
-    {
-        PathKeyItem    *item = (PathKeyItem *)lfirst(pathkeycell);
-        Assert(IsA(item, PathKeyItem));
-
-        /* Constant expr?  Return it. */
-        if (item->cdb_num_relids == 0)
-            return item;
-
-        /* Consider this item if all of its rels are in 'relids'. */
-        if (bms_is_subset(item->cdb_key_relids, relids))
-        {
-            /* Return this item if the whole expr is in targetlist. */
-            if (tlist_member(item->key, targetlist))
-                return item;
-
-            /* Return this item if all referenced Vars are in targetlist. */
-            if (!IsA(item->key, Var) &&
-                !cdbpullup_missing_var_walker(item->key, targetlist))
-                return item;
-        }
-    }
-    return NULL;
-}                               /* cdbpathlocus_get_pathkeyitem */
-
-
-/*
  * cdbpathlocus_get_partkey_exprs
  *
  * Returns a List with one Expr for each partkey column.  Each item either is
@@ -378,7 +337,10 @@ cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
         if (CdbPathLocus_IsHashed(locus))
         {
             pathkey = (List *)lfirst(partkeycell);
-            item = cdbpathlocus_get_pathkeyitem(pathkey, relids, targetlist);
+            item = cdbpullup_findPathKeyItemInTargetList(pathkey,
+                                                         relids,
+                                                         targetlist,
+                                                         NULL);
         }
         else if (CdbPathLocus_IsHashedOJ(locus))
         {
@@ -387,9 +349,10 @@ cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
             foreach(pathkeylistcell, pathkeylist)
             {
                 pathkey = (List *)lfirst(pathkeylistcell);
-                item = cdbpathlocus_get_pathkeyitem(pathkey,
-                                                    relids,
-                                                    targetlist);
+                item = cdbpullup_findPathKeyItemInTargetList(pathkey,
+                                                             relids,
+                                                             targetlist,
+                                                             NULL);
                 if (item)
                     break;
             }
@@ -405,6 +368,105 @@ cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
     }
     return result;
 }                               /* cdbpathlocus_get_partkey_exprs */
+
+
+/*
+ * cdbpathlocus_pull_above_projection
+ *
+ * Given a targetlist, and a locus evaluable before the projection is
+ * applied, returns an equivalent locus evaluable after the projection.
+ * Returns a strewn locus if the necessary inputs are not projected.
+ *
+ * 'relids' is the set of relids that may occur in the targetlist exprs.
+ * 'targetlist' specifies the projection.  It is a List of TargetEntry
+ *      or merely a List of Expr.
+ * 'newvarlist' is an optional List of Expr which may contain Var nodes
+ *      referencing the result of the projection.  The Var nodes in the
+ *      new partkey are copied from ones in this list if possible, to
+ *      ensure successful equal() comparison when finding matching pathkeys.
+ * 'newrelid' is the RTE index of the projected result, for finding or
+ *      building Var nodes that reference the projected columns.
+ */
+CdbPathLocus
+cdbpathlocus_pull_above_projection(struct PlannerInfo  *root,
+                                   CdbPathLocus         locus,
+                                   Bitmapset           *relids,
+                                   List                *targetlist,
+                                   List                *newvarlist,
+                                   Index                newrelid)
+{
+    CdbPathLocus    newlocus;
+    ListCell       *partkeycell;
+    List           *newpartkey = NIL;
+
+    if (!CdbPathLocus_IsHashed(locus) &&
+        !CdbPathLocus_IsHashedOJ(locus))
+    {
+        Assert(CdbLocusType_IsValid(locus.locustype));
+        return locus;
+    }
+
+    /* For each column of the partitioning key... */
+    foreach(partkeycell, locus.partkey)
+    {
+        List   *oldpathkey;
+        List   *newpathkey = NIL;
+
+        /* Get pathkey for key expr rewritten in terms of projection cols. */
+        if (CdbPathLocus_IsHashed(locus))
+        {
+            oldpathkey = (List *)lfirst(partkeycell);
+            newpathkey = cdb_pull_up_pathkey(root,
+                                             oldpathkey,
+                                             relids,
+                                             targetlist,
+                                             newvarlist,
+                                             newrelid);
+        }
+
+        else if (CdbPathLocus_IsHashedOJ(locus))
+        {
+            List       *pathkeylist = (List *)lfirst(partkeycell);
+            ListCell   *pathkeylistcell;
+            foreach(pathkeylistcell, pathkeylist)
+            {
+                oldpathkey = (List *)lfirst(pathkeylistcell);
+                newpathkey = cdb_pull_up_pathkey(root,
+                                                 oldpathkey,
+                                                 relids,
+                                                 targetlist,
+                                                 newvarlist,
+                                                 newrelid);
+                if (newpathkey)
+                    break;
+            }
+            /*
+             * NB: Targetlist might include columns from both sides of
+             * outer join "=" comparison, in which case cdb_pull_up_pathkey
+             * might succeed on pathkeys from more than one pathkeylist.
+             * The pulled-up locus could then be a HashedOJ locus, perhaps
+             * saving a Motion when an outer join is followed by UNION ALL
+             * followed by a join or aggregate.  For now, don't bother.
+             */
+        }
+        else
+            Assert(0);
+
+        /* Fail if can't evaluate partkey in the context of this targetlist. */
+        if (!newpathkey)
+        {
+            CdbPathLocus_MakeStrewn(&newlocus);
+            return newlocus;
+        }
+
+        /* Assemble new partkey. */
+        newpartkey = lappend(newpartkey, newpathkey);
+    }
+
+    /* Build new locus. */
+    CdbPathLocus_MakeHashed(&newlocus, newpartkey);
+    return newlocus;
+}                               /* cdbpathlocus_pull_above_projection */
 
 
 /*
@@ -628,4 +690,3 @@ cdbpathlocus_is_hashed_on_relids(CdbPathLocus locus, Bitmapset *relids)
     /* Every column of the partkey contains a Var whose varno is in relids. */
     return true;
 }                               /* cdbpathlocus_is_hashed_on_relids */
-

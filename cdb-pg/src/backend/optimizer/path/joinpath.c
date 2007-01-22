@@ -846,7 +846,7 @@ best_appendrel_indexscan(PlannerInfo *root, RelOptInfo *rel,
 		return NULL;
 
 	/* Form and return the completed Append path. */
-	return (Path *) create_append_path(rel, append_paths);
+	return (Path *) create_append_path(root, rel, append_paths);
 }
 
 /*

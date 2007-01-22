@@ -144,6 +144,13 @@ cdb_build_distribution_pathkeys(PlannerInfo      *root,
                                 RelOptInfo *rel,
                                 int         nattrs,
                                 AttrNumber *attrs);
+List *
+cdb_pull_up_pathkey(PlannerInfo    *root,
+                    List           *pathkey,
+                    Relids          relids,
+                    List           *targetlist,
+                    List           *newvarlist,
+                    Index           newrelid);
 
 extern List *make_pathkeys_for_sortclauses(List *sortclauses,
 							  List *tlist);

@@ -7,7 +7,7 @@
  * the nature and use of path keys.
  *
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -33,6 +33,7 @@
 #include "utils/memutils.h"
 
 #include "cdb/cdbdef.h"         /* CdbSwap() */
+#include "cdb/cdbpullup.h"      /* cdbpullup_expr(), cdbpullup_make_var() */
 
 static PathKeyItem *makePathKeyItem(Node *key, Oid sortop, bool checkType);
 static void generate_outer_join_implications(PlannerInfo *root,
@@ -1339,6 +1340,94 @@ cdb_build_distribution_pathkeys(PlannerInfo      *root,
     list_free_deep(eq);
 	return retval;
 }                               /* cdb_build_distribution_pathkeys */
+
+
+/*
+ * cdb_pull_up_pathkey
+ *
+ * Given a pathkey, finds a PathKeyItem whose key expr can be projected
+ * thru a given targetlist.  If found, builds the transformed key expr
+ * and returns the canonical pathkey representing its equivalence class.
+ *
+ * Returns NULL if the given pathkey does not have a PathKeyItem whose
+ * key expr can be rewritten in terms of the projected output columns.
+ *
+ * Note that this function does not unite the pre- and post-projection
+ * equivalence classes.  Equivalences known on one side of the projection
+ * are not made known on the other side.  Although that might be useful,
+ * it would have to be done at an earlier point in the planner.
+ *
+ * At present this function doesn't support pull-up from a subquery into a
+ * containing query: there is no provision for adjusting the varlevelsup
+ * field in Var nodes for outer references.  This could be added if needed.
+ *
+ * 'pathkey' is a List of PathKeyItem.
+ * 'relids' is the set of relids that may occur in the targetlist exprs.
+ * 'targetlist' specifies the projection.  It is a List of TargetEntry
+ *      or merely a List of Expr.
+ * 'newvarlist' is an optional List of Expr which may contain Var nodes
+ *      referencing the result of the projection.  The Var nodes in the
+ *      new partkey are copied from ones in this list if possible, to
+ *      ensure successful equal() comparison when finding matching pathkeys.
+ * 'newrelid' is the RTE index of the projected result, for finding or
+ *      building Var nodes that reference the projected columns.
+ */
+List *
+cdb_pull_up_pathkey(PlannerInfo    *root,
+                    List           *pathkey,
+                    Relids          relids,
+                    List           *targetlist,
+                    List           *newvarlist,
+                    Index           newrelid)
+{
+    PathKeyItem    *item;
+    Expr           *newexpr;
+
+    Assert(pathkey);
+
+    /* Use constant expr if available.  Will be at head of list. */
+    if (CdbPathkeyEqualsConstant(pathkey))
+    {
+        item = (PathKeyItem *)linitial(pathkey);
+        newexpr = (Expr *)copyObject(item->key);
+    }
+
+    /* New vars for old! */
+    else
+    {
+        AttrNumber  targetindex;
+
+        /* Find an expr that we can rewrite to use the projected columns. */
+        item = cdbpullup_findPathKeyItemInTargetList(pathkey,
+                                                     relids,
+                                                     targetlist,
+                                                     &targetindex); // OUT
+        if (!item)
+            return NULL;
+
+        /* If found matching targetlist item, make a Var that references it. */
+        if (targetindex > 0)
+            newexpr = (Expr *)cdbpullup_makeVar(newrelid,
+                                                targetindex,
+                                                newvarlist,
+                                                (Expr *)item->key);
+
+        /* Replace expr's Var nodes with new ones referencing the targetlist. */
+        else
+            newexpr = cdbpullup_expr((Expr *)item->key,
+                                     targetlist,
+                                     newvarlist,
+                                     newrelid);
+    }
+    Insist(newexpr);
+
+    /* Make new PathKeyItem, keeping same sortop. */
+    item = makePathKeyItem((Node *)newexpr, item->sortop, false);
+
+    /* Find or create the equivalence class for the transformed expr. */
+    return make_canonical_pathkey(root, item);
+}                               /* cdb_pull_up_pathkey */
+
 
 
 /****************************************************************************
