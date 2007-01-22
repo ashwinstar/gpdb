@@ -113,7 +113,7 @@ ExecNestLoop(NestLoopState *node)
 		if (TupIsNull(innerTupleSlot))
 		{
             /* CDB: Quit if empty inner implies no outer rows can match. */
-            if (node->nl_QuitIfEmptyInner)
+            if (!IS_OUTER_JOIN(node->js.jointype))
             {
                 ExecSquelchNode(outerPlan);
                 return NULL;
@@ -123,6 +123,7 @@ ExecNestLoop(NestLoopState *node)
 		ExecReScan(innerPlan, econtext);
 		ResetExprContext(econtext);
 
+		node->nl_Untouched = false;
 		node->prefetch_inner = false;
 	}
 
