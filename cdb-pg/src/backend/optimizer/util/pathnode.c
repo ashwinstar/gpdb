@@ -2343,7 +2343,9 @@ create_nestloop_path(PlannerInfo *root,
 
     pathnode->jpath.path.locus = join_locus;
     pathnode->jpath.path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
-    pathnode->jpath.path.rescannable = outer_path->rescannable;
+
+	/* we're only as rescannable as our child plans */
+    pathnode->jpath.path.rescannable = outer_path->rescannable && inner_path->rescannable;
 
 	pathnode->alternate = NULL;
     pathnode->outer_lookahead_rows = 0;
