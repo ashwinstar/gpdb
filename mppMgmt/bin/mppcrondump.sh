@@ -825,6 +825,7 @@ do
 	if [ x"" == x"$CHK_PARAM_BYPASS" ];then
 		CHK_PARAM
 	else
+		GET_DUMP_LIST
 		DUMP_MIR_CHK
 		LOG_MSG "[WARN]:-Parameter check phase bypassed, -i option supplied" 1
 	fi
