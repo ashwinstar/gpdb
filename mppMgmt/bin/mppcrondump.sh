@@ -376,8 +376,8 @@ CHK_DUMP_SPACE () {
 		DIR_HOST_FREE_K=`$TRUSTED_SHELL $DIR_HOST "$DF -k $DIR|$TAIL -1|$TR -s ' '|$TR ' ' '\n'|$TAIL -3|$HEAD -1"`
 		LOG_MSG "[INFO]:-Host $DIR_HOST Directory $DIR has free space $DIR_HOST_FREE_K K"
 		SEG=`$BASENAME $DIR`
-		DIR_HOST_USED_B=`$ECHO ${ACTUAL_DB_SIZE[@]}|$GREP $DIR_HOST|$GREP $SEG|$AWK -F'|' '{print $NF}'`
-		((DIR_HOST_USED_K=$DIR_HOST_USED_B/1024))
+		DIR_HOST_USED_B=`$ECHO ${ACTUAL_DB_SIZE[@]}|$TR ' ' '\n'|$TR '|' '~'|$GREP "${DIR_HOST}~${SEG}~"|$TR '~' '|'|$AWK -F'|' '{print $NF}'`
+		((DIR_HOST_USED_K=${DIR_HOST_USED_B}/1024))
 		LOG_MSG "[INFO]:-Host $DIR_HOST Directory $DIR Database $DUMP_DATABASE has used $DIR_HOST_USED_K K"
 		if [ $COMPRESSION ];then
 			CALC_COMPRESSION
@@ -580,7 +580,7 @@ CHK_POST_DUMP () {
 			EXIT_STATUS=1
 			FAILED_REPORT=(${FAILED_REPORT[@]}" "$DIR_HOST"|"$DIR)
 		else
-			LOG_MSG "[INFO]:-Located status report file" 1
+			LOG_MSG "[INFO]:-Located status report file $DIR_HOST DBID=$DBID" 1
 			STATUS=`$TRUSTED_SHELL $DIR_HOST "$GREP -c \"Finished successfully\" $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$TIMESTAMP_KEY"`
 			if [ $STATUS -eq 1 ];then
 				LOG_MSG "[INFO]:-Status report file indicates dump successful"
@@ -645,6 +645,7 @@ DELETE_OLD_DUMPS () {
 	#Get a list of all dbids
 	DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where content<>-1;"`)
 	COUNT=0
+set -x
 	for DBID in ${DBID_LIST[@]}
 	do
 		CHK_DATA
@@ -656,6 +657,7 @@ DELETE_OLD_DUMPS () {
 			DEL_ARRAY[$COUNT]=$DEL_DIR
 		fi
 	done
+set +x
 			DEL_SET=`$ECHO ${DEL_ARRAY[@]}|$TR ' ' '\n'|$SORT|$HEAD -1`
 	if [ x"" != x"$DEL_SET" ];then
 		for DBID in ${DBID_LIST[@]}
