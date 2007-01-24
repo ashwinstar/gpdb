@@ -819,9 +819,9 @@ dotrim(const char *string, int stringlen,
 				}
 			}
 
-			pfree(stringchars);
+			pfree((void *)stringchars);
 			pfree(stringmblen);
-			pfree(setchars);
+			pfree((void *)setchars);
 			pfree(setmblen);
 		}
 		else
