@@ -3073,9 +3073,16 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
 
         if (bufsize > 8)
         {
-			
-            //inet_ntop(AF_INET6, &sin6->sin6_addr, buf, bufsize - 8);
-			pg_getnameinfo_all(&sin6->sin6_addr, sizeof(sin6->sin6_addr),
+			/*
+			 * inet_ntop isn't portable.
+             * //inet_ntop(AF_INET6, &sin6->sin6_addr, buf, bufsize - 8);
+			 * 
+			 * postgres has a standard routine for converting addresses to printable format,
+			 * which works for IPv6, IPv4, and Unix domain sockets.  I've changed this 
+			 * routine to use that, but I think the entire format_sockaddr routine could
+			 * be replaced with it.
+			 */
+			pg_getnameinfo_all((const struct sockaddr_storage *)&sin6->sin6_addr, sizeof(sin6->sin6_addr),
 											 buf, bufsize-8,
 											 remote_port, sizeof(remote_port),
 											 NI_NUMERICHOST | NI_NUMERICSERV);
