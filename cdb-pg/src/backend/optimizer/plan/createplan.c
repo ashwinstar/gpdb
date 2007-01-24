@@ -1481,7 +1481,7 @@ create_nestloop_plan(CreatePlanContext *ctx,
 	List		*joinrestrictclauses = best_path->jpath.joinrestrictinfo;
 	List		*joinclauses;
 	List		*otherclauses;
-	NestLoop	*join_plan;
+	NestLoop	*join_plan = NULL;
 	Plan		*new_inner = inner_plan;
 
 	if (IsA(best_path->jpath.innerjoinpath, IndexPath))
