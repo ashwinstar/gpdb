@@ -389,11 +389,12 @@ getCdbComponentInfo(void)
 
 			oldContext = MemoryContextSwitchTo(TopMemoryContext);
 			/* Max number of nodes is the size of the segment array (plus up to two QDs) */
-			segment_ip_cache_limit = segment_array_size + 2;
+			segment_ip_cache_limit = segment_array_size + 10;   /* memory is cheap */
 			segment_ip_cache = palloc0(segment_ip_cache_limit * sizeof(char *));
 			MemoryContextSwitchTo(oldContext);
 		}
 
+        /* Note dbid is 1-based, so segment_ip_cache[0] is unused */
 		Assert(dbid < segment_ip_cache_limit);
 		if (segment_ip_cache[dbid] == NULL)
 		{
