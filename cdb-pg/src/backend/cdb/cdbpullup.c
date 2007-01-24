@@ -563,7 +563,7 @@ cdbpullup_makeVar(Index varno, AttrNumber varattno, List *newvarlist, Expr *olde
  * cdbpullup_missingVarWalker
  *
  * Returns true if some Var in expr is not in targetlist.
- * 'targetlist' is a List of TargetEntry.
+ * 'targetlist' is either a List of TargetEntry, or a plain List of Expr.
  *
  * See also: cdbpullup_isExprCoveredByTargetlist
  */
@@ -575,8 +575,20 @@ cdbpullup_missingVarWalker(Node *node, void *targetlist)
 
     if (IsA(node, Var))
     {
-        if (tlist_member(node, (List *)targetlist))
+        if (!targetlist)
+            return true;
+
+        /* is targetlist a List of TargetEntry? */
+        if (IsA(linitial(targetlist), TargetEntry))
+        {
+            if (tlist_member(node, (List *)targetlist))
+                return false;   /* this Var ok - go on to check rest of expr */
+        }
+
+        /* targetlist must be a List of Expr */
+        else if (list_member((List *)targetlist, node))
             return false;       /* this Var ok - go on to check rest of expr */
+
         return true;            /* Var is not in targetlist - quit the walk */
     }
 

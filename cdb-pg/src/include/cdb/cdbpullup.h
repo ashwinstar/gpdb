@@ -190,7 +190,7 @@ cdbpullup_makeVar(Index varno, AttrNumber varattno, List *newvarlist, Expr *olde
  * cdbpullup_missingVarWalker
  *
  * Returns true if some Var in expr is not in targetlist.
- * 'targetlist' is a List of TargetEntry.
+ * 'targetlist' is either a List of TargetEntry, or a plain List of Expr.
  *
  * See also: cdbpullup_isExprCoveredByTargetlist
  */
