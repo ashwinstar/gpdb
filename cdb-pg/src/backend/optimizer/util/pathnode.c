@@ -1724,18 +1724,28 @@ create_unique_path(PlannerInfo *root,
 		}
 	}
 
-    /* Hash or sort implies materialization and breaks deadlock cycle.
-     *  (NB: Must not reset motionHazard when sort is eliminated due to
-     *  existing ordering; but Unique sort is never optimized away at present.)
-     */
-    pathnode->path.motionHazard = false;
+	/* see MPP-1140 */
+	if (pathnode->umethod == UNIQUE_PATH_HASH)
+	{
+		/* hybrid hash agg is not rescannable, and may present a motion hazard */
+		pathnode->path.motionHazard = subpath->motionHazard;
+		pathnode->path.rescannable = false;
+	}
+	else
+	{
+		/* sort or plain implies materialization and breaks deadlock cycle.
+		 *  (NB: Must not reset motionHazard when sort is eliminated due to
+		 *  existing ordering; but Unique sort is never optimized away at present.)
+		 */
+		pathnode->path.motionHazard = false;
 	
-	/* Same reasoning applies to rescanablilty.  If no actual sort is placed
-	 * in the plan, then rescannable is set correctly to the subpath value.
-	 * If hash or sort intervenes, it should be set to true.  We depend
-	 * on the above claim that sort will always intervene.
-	 */
-    pathnode->path.rescannable = true;
+		/* Same reasoning applies to rescanablilty.  If no actual sort is placed
+		 * in the plan, then rescannable is set correctly to the subpath value.
+		 * If sort intervenes, it should be set to true.  We depend
+		 * on the above claim that sort will always intervene.
+		 */
+		pathnode->path.rescannable = true;
+	}
 
 	return pathnode;
 }                               /* create_unique_path */
