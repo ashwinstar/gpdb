@@ -43,6 +43,7 @@ static void* threadProc(void *arg);
 static bool restoreMaster( InputOptions* pInputOpts, PGconn *pConn, SegmentDatabase *sSegDB, SegmentDatabase *tSegDB, ThreadParm* pParm );
 static void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const const RestorePairArray *restorePair, ThreadParmArray* pParmAr );
 static int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMasterParm, const ThreadParmArray* pParmAr );
+static int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMasterParm);
 static bool g_b_SendCancelMessage = false;
 typedef struct option optType;
 
@@ -128,7 +129,11 @@ main(int argc, char **argv)
 	if(!dataOnly && found_master)
 	{
 		if ( !restoreMaster( &inputOpts, pConn, sourceSegDB, targetSegDB, &masterParm ) )
+		{
+			failCount = reportMasterError( inputOpts.pszReportDirectory, &masterParm);
 			goto cleanup;
+		}
+			
 	} 
     
 	/* restore segdbs. However, if we restore schema only, skip segdbs */
@@ -145,10 +150,11 @@ main(int argc, char **argv)
 		}
 	}
 	
+
 	/* Produce results report */
 	failCount = reportRestoreResults( inputOpts.pszReportDirectory, &masterParm, &parmAr );
 	
-cleanup:	
+cleanup:
 	FreeInputOptions( &inputOpts );
 	if ( opts != NULL )
 		free( opts );
@@ -1097,7 +1103,7 @@ bool restoreMaster( InputOptions* pInputOpts,
 	else
 	{
 		if ( pParm->pszErrorMsg != NULL )
-			mpp_err_msg(logError, pszProgName, "with error: \n{%s}\n", pParm->pszErrorMsg );
+			mpp_err_msg(logError, pszProgName, "see error report for details\n");
 		else
 		{
 			mpp_err_msg(logError, pszProgName,  "Failed to restore master database: host %s port %d database %s\n",
@@ -1271,9 +1277,9 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 	
 	/* See whether we can create the file in the report directory */
 	if ( pszReportDirectory[ strlen(pszReportDirectory) - 1] != '/'  )
-		pszFormat = "%s/mpp_dump_%s.rpt";
+		pszFormat = "%s/mpp_restore_%s.rpt";
 	else
-		pszFormat = "%smpp_dump_%s.rpt";
+		pszFormat = "%smpp_restore_%s.rpt";
 	
 	pszReportPathName = MakeString( pszFormat, pszReportDirectory, pParmAr->pData[0].pOptionsData->pszKey );
 	
@@ -1366,4 +1372,126 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
     return failCount;
 }
 
+/*
+ * the same as reportRestoreResults but only for the master. This is a little
+ * since we repeat some of the code but we need a majoy overhaul in dump/restore
+ * anyone - so it will do for now.
+ */
+int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMasterParm)
+{
+	InputOptions* pOptions;
+	PQExpBuffer	reportBuf = NULL;
+	FILE* fRptFile = NULL;
+	char* pszReportPathName = NULL;
+	char* pszFormat;
+    int failCount;
+	const ThreadParm* pParm;
+	char* pszStatus;
+	char* pszMsg;
+	
+	assert(pMasterParm != NULL );
+	
+	if (pMasterParm->pOptionsData == NULL )
+	{
+		mpp_err_msg(logInfo, pszProgName,  "No results to report." );
+		return 0;
+	}
+	
+	pOptions = pMasterParm->pOptionsData;	
+	
+	/*
+	 * Set the report directory if not set by user (with --mpp-r)
+	 */
+	if ( pszReportDirectory == NULL || *pszReportDirectory == '\0' )
+	{
+		
+		if (getenv("MASTER_DATA_DIRECTORY") != NULL)
+		{
+			/* report directory not set by user - default to $MASTER_DATA_DIRECTORY */
+            pszReportDirectory = Safe_strdup(getenv("MASTER_DATA_DIRECTORY"));			
+		}
+		else
+		{
+			/* $MASTER_DATA_DIRECTORY not set. Default to current directory */
+			pszReportDirectory = "./";			
+		}
+	}
+	
+	/* See whether we can create the file in the report directory */
+	if ( pszReportDirectory[ strlen(pszReportDirectory) - 1] != '/'  )
+		pszFormat = "%s/mpp_restore_%s.rpt";
+	else
+		pszFormat = "%smpp_restore_%s.rpt";
+	
+	pszReportPathName = MakeString( pszFormat, pszReportDirectory, pOptions->pszKey );
+	
+	fRptFile = fopen( pszReportPathName, "w" );
+	if ( fRptFile == NULL )
+		mpp_err_msg(logWarn, pszProgName, "Cannot open report file %s for writing.  Will use stdout instead.\n",
+					pszReportPathName );
+	
+	/* buffer to store the complete restore report */
+	reportBuf = createPQExpBuffer();
+	
+	/* Write to buffer a report showing the timestamp key, what the command line options were,
+		* which segment databases were backed up, to where, and any errors that occurred.
+		*/
+	appendPQExpBuffer(reportBuf, "MPP Restore Report\n" );
+	appendPQExpBuffer(reportBuf, "Timestamp Key: %s\n", pOptions->pszKey );
+	
+	appendPQExpBuffer(reportBuf, "mpp_restore Command Line: %s\n",  
+					  StringNotNull( pOptions->pszCmdLineParms, "None" ) );
+	
+	appendPQExpBuffer(reportBuf, "Pass through Command Line Options: %s\n",  
+					  StringNotNull( pOptions->pszPassThroughParms, "None" ) );
+	
+	appendPQExpBuffer(reportBuf, "Compression Program: %s\n", 
+					  StringNotNull( pOptions->pszCompressionProgram, "None" ) );
+	
+	appendPQExpBuffer(reportBuf, "\n" );
+	appendPQExpBuffer(reportBuf, "Individual Results\n" );
+	
+ 
+	failCount=1;
+
+	pParm = pMasterParm;
+		
+	pszStatus = pParm->bSuccess ? "Succeeded" : "Failed with error: \n{";
+	pszMsg = pParm->pszErrorMsg;
+	if ( pszMsg == NULL )
+		pszMsg = "";
+	
+	appendPQExpBuffer(reportBuf, "\tRestore of %s on Master database (%s:%d) from file on dbid %d (%s:%d) %s: %s %s%s\n",   
+					  pParm->pTargetSegDBData->pszDBName, 
+					  StringNotNull( pParm->pTargetSegDBData->pszHost, "localhost"),
+					  pParm->pTargetSegDBData->port,
+					  pParm->pSourceSegDBData->dbid, 
+					  StringNotNull( pParm->pSourceSegDBData->pszHost, "localhost"),
+					  pParm->pSourceSegDBData->port,
+					  StringNotNull( pParm->pszRemoteBackupPath, ""),
+					  pszStatus,
+					  pszMsg,
+					  (strcmp(pszMsg,"")==0)?"":"}"
+					  );
+    
+    appendPQExpBuffer(reportBuf, "\n%s  utility finished unsuccessfully with 1 failure.\n", pszProgName);
+	
+    /* write report to report file */
+	if ( fRptFile != NULL )
+	{
+		mpp_msg( logInfo, pszProgName, "Report results also written to %s.\n", pszReportPathName );
+		fprintf(fRptFile, reportBuf->data);
+		fclose( fRptFile );
+	}
+	
+	/* write report to stdout */
+	fprintf(stdout, reportBuf->data);
+	
+	if ( pszReportPathName != NULL )
+		free( pszReportPathName );
+	
+	destroyPQExpBuffer(reportBuf);
+	
+    return failCount;
+}
 
