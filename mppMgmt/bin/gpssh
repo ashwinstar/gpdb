@@ -3,15 +3,15 @@
 '''
 gpssh -- ssh access to multiple hosts at once
 
-Usage: gpssh [-?vbt] [-d dir] [-p port] [-u user] [-h h] [-f hostfile] cmd
+Usage: gpssh [-?vb] [-d dir] [-p port] [-u user] [-h host] [-f hostfile] cmd
 
              -?      : print this help screen
 	     -v	     : verbose mode
        	     -b	     : cmd should be run in the background
 	     -d	dir  : cmd should be run in the directory dir
 	     -p port : ssh port to use 
-	     -u user : ssh user to run command
-	     -h host : ssh host to connect to (multiple -h is okay)
+	     -u user : the user to run command
+	     -h host : the host to connect to (multiple -h is okay)
 	     -f file : a file listing all hosts to connect to
 
 Author: cktan@greenplum.com
