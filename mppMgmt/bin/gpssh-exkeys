@@ -1,0 +1,294 @@
+#!/usr/bin/env python
+'''
+gpssh-exkeys -- exchange keys
+
+Usage: gpssh-exkeys [-?v] [-u user] [-h host] [-f hostfile]
+
+Author: cktan@greenplum.com
+'''
+
+import os, sys, getopt, time
+
+if sys.version_info < (2, 3): 
+    sys.exit("Error: gpssh-exkeys is supported on Python versions 2.3 or greater\n"
+             + "Please upgrade python installed on this machine.")
+
+sys.path.append(sys.path[0] + '/lib')
+try:
+    import pexpect, pxssh
+except ImportError, e:
+    sys.exit('Error: unable to import module: ' + str(e))
+
+
+def usage(exitarg):
+    print __doc__
+    sys.exit(exitarg)
+
+opt = {}
+opt['-v'] = False
+opt['-p'] = 22
+opt['-u'] = os.environ.get('LOGNAME') or os.environ.get('USER')
+opt['-h'] = []
+opt['-f'] = False
+passwd = []
+authorizedKeys = {}
+
+def parseCommandLine():
+    global opt
+    try:
+	(options, args) = getopt.getopt(sys.argv[1:], '?vp:u:h:f:')
+    except Exception, e:
+	usage('Error: invalid option')
+
+
+    for (switch, val) in options:
+	if (switch == '-?'): 
+	    usage(0)
+	elif (switch == '-v'):
+	    opt[switch] = True
+	elif (switch[1] in 'uf'):
+	    opt[switch] = val
+	elif (switch == '-h'):
+	    opt[switch].append(val)
+#	elif (switch == '-p'):
+#	    try:
+#		opt[switch] = int(val)
+#	    except:
+#		usage('Error: please specify port number for -p switch')
+
+    hf = (len(opt['-h']) and 1) + (opt['-f'] and 1)
+    if hf != 1:
+        usage('Error: please specify at least one of -h or -f args, but not both')
+
+
+def parseHostLine(line):
+    '''Parse line into (user, host, port) tuple'''
+    t = line.strip().split('@')
+    if not t[0]: return None 
+    if (len(t) > 2): raise RuntimeError
+    if (len(t) == 1): t = [opt['-u'], t[0]]
+    t[1] = t[1].split(':')
+    if (len(t[1]) == 1):
+        t[1] = [t[1][0], opt['-p']]
+    else:   
+        t[1] = [t[1][0], int(t[1][1])]
+    return [t[0], t[1][0], t[1][1]]
+
+def readHostFile():
+    global opt
+    hostlines = []
+    if opt['-f']:
+        try:
+            fd = open(opt['-f'], 'r')
+            hostlines = fd.readlines()
+            fd.close()
+        except IOError, e:
+            sys.exit('Error: cannot read host file' + opt['-f'])
+    
+    host = {}
+    line = 0 
+    for h in hostlines:
+        try:
+            line = line + 1
+            h = parseHostLine(h)
+            if not h: continue
+	    key = '%s@%s' % (h[0], h[1])
+            if host.has_key(key): continue     # ignore duplicate hosts
+            host[key] = h
+            opt['-h'].append(h)
+        except KeyboardInterrupt:
+            raise
+        except:
+            print ('Error: while parsing line %d of host file %s' % (line, opt['-f']))      
+            raise
+
+
+###  create local id_rsa
+def createLocalID():
+    file = '%s/.ssh/id_rsa' % os.environ.get('HOME')
+    cmd = 'ssh-keygen -t rsa -N \"\" -f %s' % file
+    if opt['-v']: print '[Info] executing', cmd
+    p = pexpect.spawn(cmd)
+    if not p: 
+	sys.exit('unable to run ssh-keygen')
+
+    ok = False
+    i = p.expect([pexpect.EOF, 'Overwrite'])
+    if i == 0: 
+	p.close()
+	ok = (p.exitstatus == 0)
+    if i == 1:
+	time.sleep(0.1)
+	p.sendline('n')
+	i = p.expect(pexpect.EOF)
+	p.close()
+	ok = True
+
+    if not ok:
+	sys.exit('ssh-keygen failed')
+
+    file = file + '.pub'
+    f = open(file, 'r')
+    if not f: 
+	sys.exit('ssh-keygen failed - unable to find the generated file ' + file)
+
+    line = f.readline()
+    f.close()
+    return line.strip()
+
+    
+
+###  copy local id_rsa.pub to remote. Also create remote id_rsa.pub and return it
+def copyID2Remote(h, ID):
+    global passwd
+    IDKey = ID.split()
+    IDKey = len(IDKey) == 3 and IDKey[2] or None
+    if not IDKey: sys.exit('Invalid ID Key')
+    p = pxssh.pxssh()
+    ok = p.login(h[1], h[0])
+    if not ok:
+	for pwd in passwd:
+	    ok = p.login(h[1], h[0], pwd)
+	    if ok: break
+	while True:
+	    print
+	    print ('Please enter password for %s@%s: ' % (h[0], h[1])),
+	    pwd = raw_input()
+	    ok = p.login(h[1], h[0], pwd)
+	    if ok: 
+		passwd.append(pwd)
+		break
+
+    print 'copying to %s@%s' % (h[0], h[1])
+    cmd = 'mkdir .ssh; chmod 0700 .ssh; cd .ssh'
+    if opt['-v']: print '[Info %s@%s]: %s' % (h[0], h[1], cmd)
+    p.sendline(cmd)
+    p.prompt()
+    p.sendline('pwd')
+    p.prompt()
+    cwd = p.before.strip()
+    print 'cwd = ', cwd
+    if cwd and len(cwd) > 5 and cwd[-5:] == '/.ssh':
+	pass
+    else:
+	print p.before
+	p.logout()
+	sys.exit('Unable to create .ssh dir at %s@%s' % (h[0], h[1]))
+
+    # cmd = 'touch authorized_keys; grep -v %s authorized_keys > tt; mv tt authorized_keys' % IDKey
+    # if opt['-v']: print '[Info %s@%s]: %s' % (h[0], h[1], cmd)
+    # p.sendline(cmd)
+    # p.prompt()
+    cmd = 'echo %s >> authorized_keys' % ID
+    if opt['-v']: print '[Info %s@%s]: %s' % (h[0], h[1], cmd)
+    p.sendline(cmd)
+    p.prompt()
+
+    cmd = 'ssh-keygen -t rsa -N \"\" -f id_rsa; echo done done done'
+    if opt['-v']: print '[Info %s@%s]: %s' % (h[0], h[1], cmd)
+    p.sendline(cmd)
+    i = p.expect(['done done done'])
+    i = p.expect(['done done done', 'Overwrite'])
+    if (i == 1):
+	time.sleep(0.1)
+	p.sendline('y')
+	i = p.expect(['done done done'])
+    
+    remoteID = None
+    if i == 0:
+	p.prompt()
+	p.sendline('cat id_rsa.pub')
+	p.prompt()
+	line = p.before
+	line = line.split('\n')
+	for l in line:
+	    l = l.strip()
+	    if len(l) > 8 and l[:8] == 'ssh-rsa ':
+		remoteID = l
+		break
+
+    p.logout()
+    return remoteID
+
+
+def readAuthorizedKeys():
+    global authorizedKeys;
+    try:
+	fname = '%s/.ssh/authorized_keys' % os.environ['HOME']
+	f = open(fname, 'rw')
+	for line in f:
+	    rec = line.split()
+	    if len(rec) == 3: authorizedKeys[rec[2]] = line
+	f.close()
+    except IOError:
+	pass
+
+
+def writeAuthorizedKeys():
+    global authorizedKeys
+
+    fname = '%s/.ssh/authorized_keys' % os.environ['HOME']
+    f = open(fname, 'w')
+    for IDKey in authorizedKeys:
+	line = authorizedKeys[IDKey]
+	f.write(line)
+	f.write('\n')
+    f.close()
+
+
+def addRemoteID(ID):
+    global authorizedKeys;
+    IDKey = ID.split()
+    IDKey = len(IDKey) == 3 and IDKey[2] or None
+    if not IDKey: return False
+    authorizedKeys[IDKey] = ID
+    return True
+
+try:
+    parseCommandLine()
+    tab = []
+    for h in opt['-h']: tab.append(parseHostLine(h))
+    opt['-h'] = tab
+    readHostFile()
+
+    print 'opt = ', opt
+
+    localID = createLocalID()
+    print 'localID', localID
+
+    for h in opt['-h']:
+	remoteID = copyID2Remote(h, localID)
+	h.append(remoteID)
+
+    readAuthorizedKeys()
+    errmsg = ''
+    for h in opt['-h']:
+	if not addRemoteID(h[3]):
+	    errmsg = errmsg + "Error: missing remote id_rsa.pub from %s@%s\n" % (h[0], h[1])
+    addRemoteID(localID)
+    writeAuthorizedKeys()
+
+    if len(errmsg):
+	sys.exit(errmsg)
+
+    errmsg = ''
+    fname = '%s/.ssh/authorized_keys' % os.environ['HOME']
+    for h in opt['-h']:
+	cmd = 'scp -q %s %s@%s:.ssh/authorized_keys' % (fname, h[0], h[1])
+	if opt['-v']: print '[Info]', cmd
+	f = os.popen(cmd)
+	h.append(f)
+
+    for h in opt['-h']:
+	ok = False
+	if h[4]: 
+	    h[4].read()
+	    ok = not h[4].close() 
+	if not ok: 
+	    errmsg = errmsg + "Error: unable to copy authorized_keys to %s@%s\n" % (h[0],h[1])
+    
+    if len(errmsg):
+	sys.exit(errmsg)
+
+except KeyboardInterrupt:
+    sys.exit('Interrupted...')
