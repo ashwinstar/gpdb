@@ -43,7 +43,7 @@ static void* threadProc(void *arg);
 static bool restoreMaster( InputOptions* pInputOpts, PGconn *pConn, SegmentDatabase *sSegDB, SegmentDatabase *tSegDB, ThreadParm* pParm );
 static void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const const RestorePairArray *restorePair, ThreadParmArray* pParmAr );
 static int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMasterParm, const ThreadParmArray* pParmAr );
-static int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMasterParm);
+static int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMasterParm, const char *localMsg);
 static bool g_b_SendCancelMessage = false;
 typedef struct option optType;
 
@@ -99,7 +99,13 @@ main(int argc, char **argv)
 								inputOpts.pszPGPort, inputOpts.pszUserName, 
 								bForcePassword, bIgnoreVersion, true);
 	if ( pConn == NULL )
+	{
+		masterParm.pOptionsData	= &inputOpts;
+		failCount = reportMasterError( inputOpts.pszReportDirectory, &masterParm,
+									   "connection to specified database failed");
 		goto cleanup;
+		
+	}
 
 	/* Read mpp segment databases configuration from the master */
 	mpp_err_msg(logInfo, pszProgName,  "Reading mpp configuration info from master segment database.\n");
@@ -130,7 +136,7 @@ main(int argc, char **argv)
 	{
 		if ( !restoreMaster( &inputOpts, pConn, sourceSegDB, targetSegDB, &masterParm ) )
 		{
-			failCount = reportMasterError( inputOpts.pszReportDirectory, &masterParm);
+			failCount = reportMasterError( inputOpts.pszReportDirectory, &masterParm, NULL);
 			goto cleanup;
 		}
 			
@@ -1373,11 +1379,11 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 }
 
 /*
- * the same as reportRestoreResults but only for the master. This is a little
+ * the same as reportRestoreResults but only for the master. This is a little ugly
  * since we repeat some of the code but we need a majoy overhaul in dump/restore
  * anyone - so it will do for now.
  */
-int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMasterParm)
+int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMasterParm, const char *localMsg)
 {
 	InputOptions* pOptions;
 	PQExpBuffer	reportBuf = NULL;
@@ -1456,19 +1462,16 @@ int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMaster
 
 	pParm = pMasterParm;
 		
-	pszStatus = pParm->bSuccess ? "Succeeded" : "Failed with error: \n{";
-	pszMsg = pParm->pszErrorMsg;
+	pszStatus = "Failed with error: \n{";
+	if(localMsg != NULL)
+		pszMsg = (char *)localMsg;
+	else
+		pszMsg = pParm->pszErrorMsg;
 	if ( pszMsg == NULL )
 		pszMsg = "";
 	
-	appendPQExpBuffer(reportBuf, "\tRestore of %s on Master database (%s:%d) from file on dbid %d (%s:%d) %s: %s %s%s\n",   
-					  pParm->pTargetSegDBData->pszDBName, 
-					  StringNotNull( pParm->pTargetSegDBData->pszHost, "localhost"),
-					  pParm->pTargetSegDBData->port,
-					  pParm->pSourceSegDBData->dbid, 
-					  StringNotNull( pParm->pSourceSegDBData->pszHost, "localhost"),
-					  pParm->pSourceSegDBData->port,
-					  StringNotNull( pParm->pszRemoteBackupPath, ""),
+	appendPQExpBuffer(reportBuf, "\tRestore of database \"%s\" on Master database: %s%s%s\n",   
+					  pOptions->pszDBName,
 					  pszStatus,
 					  pszMsg,
 					  (strcmp(pszMsg,"")==0)?"":"}"
@@ -1494,4 +1497,5 @@ int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMaster
 	
     return failCount;
 }
+
 
