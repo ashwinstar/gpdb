@@ -691,9 +691,11 @@ GET_QD_DB_NAME () {
 			ERROR_CHK $? "check for $PGDATABASE" 2
 			if [ $QD_DBNAME_THERE -eq 1 ];then
 				QD_DBNAME=$PGDATABASE
+			else
+				QD_DBNAME_THERE=""
 			fi
 		fi
-		if [ $QD_DBNAME_THERE -eq 0 ];then
+		if [ x"" = x"$QD_DBNAME_THERE" ];then
 			LOG_MSG "[INFO]:-Checking for a non-system database"
 			QD_DBNAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" 2>/dev/null|$GREP -v postgres|$GREP -v template0|$HEAD -1|$CUT -d"|" -f1`
 			ERROR_CHK $? "obtain database name" 2
