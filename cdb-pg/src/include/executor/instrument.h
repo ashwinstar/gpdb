@@ -4,7 +4,7 @@
  *	  definitions for run-time statistics collection
  *
  *
- * Portions Copyright (c) 2006, greenplum inc
+ * Portions Copyright (c) 2006-2007, greenplum inc
  * Copyright (c) 2001-2006, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/include/executor/instrument.h,v 1.16 2006/06/09 19:30:56 tgl Exp $
@@ -54,8 +54,6 @@ GetTimerFrequency(void)
 #endif   /* WIN32 */
 
 
-#define INSTR_GDB_ALLSTATS 1    /* true if collecting all worker stats */
-
 typedef struct Instrumentation
 {
 	/* Info about current plan cycle: */
@@ -69,6 +67,7 @@ typedef struct Instrumentation
 	double		total;			/* Total total time (in seconds) */
 	double		ntuples;		/* Total tuples produced */
 	double		nloops;			/* # of run cycles for this node */
+    char       *notes;          /* CDB: extra message text */
     /* CDB: Which process were these stats taken from? */
     int         cdbSegIndex;    /* segment id of qExec, or -1 if qDisp */
     /* CDB: Gang totals */
@@ -76,10 +75,9 @@ typedef struct Instrumentation
     double      cdbGangTuples;  /* sum of ntuples over all workers */
 	/* CDB: first start */
 	instr_time	firststart;		/* Start time of first iteration of node */
-#ifdef INSTR_GDB_ALLSTATS
+    /* CDB: for collecting all worker stats... */
 	int         numStats;	
 	void       *pAllStats;      /* list of all stats */
-#endif
 } Instrumentation;
 
 extern Instrumentation *InstrAlloc(int n);

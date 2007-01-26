@@ -3,7 +3,7 @@
  * cdbexplain.h
  *    Functions supporting the MPP EXPLAIN command
  *
- * Copyright (c) 2006, greenplum inc
+ * Copyright (c) 2006-2007, greenplum inc
  *
  * $Id$
  *
@@ -15,6 +15,7 @@
 struct CdbDispatchResults;              /* #include "cdb/cdbdispatchresult.h" */
 struct PlanState;                       /* #include "nodes/execnodes.h" */
 struct QueryDesc;                       /* #include "executor/execdesc.h" */
+struct Slice;                           /* #include "nodes/execnodes.h" */
 struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 struct Instrumentation;                 /* #include "executor/instrument.h" */
 
@@ -50,6 +51,8 @@ cdbexplain_format_time(char* outbuf, double totalmsecs);
 void
 cdbexplain_showExecStats(struct PlanState      *planstate,
                          struct StringInfoData *str,
+                         struct StringInfoData *workbuf,
+                         struct Slice          *slice,
                          int                    indent,
 						 /* pass instrumentation to track first start time */
 						 struct Instrumentation *pFirst);

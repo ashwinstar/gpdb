@@ -3,7 +3,7 @@
  * cdbexplain.c
  *    Functions supporting the MPP EXPLAIN command
  *
- * Copyright (c) 2006, greenplum inc
+ * Copyright (c) 2006-2007, greenplum inc
  *
  * IDENTIFICATION
  *    $Id$
@@ -36,6 +36,8 @@ typedef struct CdbExplain_StatInst
     double      total;          /* Total total time (in seconds) */
     double      ntuples;        /* Total tuples produced */
     double      nloops;         /* # of run cycles for this node */
+    int         bnotes;         /* Offset to beginning of node's extra text */
+    int         enotes;         /* Offset to end of node's extra text */
 } CdbExplain_StatInst;
 
 
@@ -44,9 +46,13 @@ typedef struct CdbExplain_StatHdr
 {
     int         segindex;       /* segment id */
     int         nInst;          /* num of StatInst entries following StatHdr */
+    int         bnotes;         /* offset to extra text area */
+    int         enotes;         /* offset to end of extra text area */
 
     /* Array [0..ninst-1] of StatInst entries is appended starting here */
     CdbExplain_StatInst inst[1];
+
+    /* extra text is appended after that */
 } CdbExplain_StatHdr;
 
 
@@ -54,6 +60,7 @@ typedef struct CdbExplain_StatHdr
 typedef struct CdbExplain_SendStatCtx
 {
     StringInfoData      buf;
+    StringInfoData      notebuf;
     CdbExplain_StatHdr  hdr;
 } CdbExplain_SendStatCtx;
 
@@ -76,6 +83,7 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context);
 
 static int
 cdbexplain_diff_time(char* outbuf, instr_time starttime, instr_time endtime);
+
 
 /*
  * cdbexplain_sendExecStats
@@ -117,6 +125,9 @@ cdbexplain_sendExecStats(QueryDesc *queryDesc)
     ctx.hdr.segindex = Mpp_segment;
     ctx.hdr.nInst = 0;
 
+    /* Allocate a separate buffer where nodes can append extra message text. */
+    initStringInfo(&ctx.notebuf);
+
     /* Reserve buffer space for the message header (excluding 'inst' array). */
     pq_beginmessage(&ctx.buf, 'Y');
     hoff = ctx.buf.len;
@@ -124,6 +135,12 @@ cdbexplain_sendExecStats(QueryDesc *queryDesc)
 
     /* Append statistics from each PlanState node in this slice. */
     ExecStateTreeWalker(planstate, cdbexplain_sendStatWalker, NULL, &ctx);
+
+    /* Append the extra message text. */
+    ctx.hdr.bnotes = ctx.buf.len - hoff;
+    appendBinaryStringInfo(&ctx.buf, ctx.notebuf.data, ctx.notebuf.len);
+    ctx.hdr.enotes = ctx.buf.len - hoff;
+    pfree(ctx.notebuf.data);
 
     /* Move the message header into the buffer. */
     memcpy(ctx.buf.data+hoff, (char *)&ctx.hdr, sizeof(ctx.hdr) - sizeof(ctx.hdr.inst));
@@ -189,22 +206,17 @@ cdbexplain_recvExecStats(struct PlanState          *planstate,
         hdr = (CdbExplain_StatHdr *)pgresult->cdbStatBuf;
         if ((size_t)pgresult->cdbStatLen < sizeof(*hdr) ||
             (size_t)pgresult->cdbStatLen != sizeof(*hdr) - sizeof(hdr->inst) +
-                                                hdr->nInst * sizeof(hdr->inst) ||
-            hdr->segindex < 0 ||
+                                                hdr->nInst * sizeof(hdr->inst) +
+                                                hdr->enotes - hdr->bnotes ||
+            pgresult->cdbStatLen != hdr->enotes ||
+            hdr->segindex < -1 ||
             hdr->segindex >= mppSegmentCount)
         {
-			int segindex;
-
-			if (!dispatchResult->segdbDesc)
-				segindex = -1;
-			else
-				segindex = dispatchResult->segdbDesc->segindex;
-
             ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
                             errmsg_internal("Invalid execution statistics "
                                             "response returned from seg%d.  "
                                             "length=%d",
-                                            segindex,
+                                            hdr->segindex,
                                             pgresult->cdbStatLen),
                             errhint("Please verify that all instances are using "
                                     "the correct %s software version.",
@@ -249,9 +261,7 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context)
     CdbExplain_StatInst    *siMax;
     int                     imsgptr;
     double                  ntMax;
-#ifdef INSTR_GDB_ALLSTATS
-	CdbExplain_StatInst    *pAllStats;
-#endif
+	CdbExplain_StatInst    *pAllStats = NULL;
 
     /* If slice was dispatched to qExecs, and stats came back, grab 'em. */
     if (ctx->nmsgptr > 0)
@@ -268,8 +278,6 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context)
         instr->cdbWorkers = (siMax->ntuples > 0) ? 1 : 0;
 
         Insist(siMax->pstype == planstate->type);
-
-#ifdef INSTR_GDB_ALLSTATS
 
 		instr->numStats = ctx->nmsgptr;
 
@@ -295,7 +303,6 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context)
 			}
 
 		}
-#endif
 
         /* Examine the statistics from the rest of the qExecs. */
         for (imsgptr = 1; imsgptr < ctx->nmsgptr; imsgptr++)
@@ -306,19 +313,15 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context)
 
             Insist(siMax->pstype == si->pstype);
 
-#ifdef INSTR_GDB_ALLSTATS
-			{
-				pAllStats[imsgptr].starttime = si->starttime;
-				pAllStats[imsgptr].firststart = si->firststart;
-				pAllStats[imsgptr].counter = si->counter;
-				pAllStats[imsgptr].firsttuple = si->firsttuple;
+			pAllStats[imsgptr].starttime = si->starttime;
+			pAllStats[imsgptr].firststart = si->firststart;
+			pAllStats[imsgptr].counter = si->counter;
+			pAllStats[imsgptr].firsttuple = si->firsttuple;
 
-				pAllStats[imsgptr].startup = si->startup;
-				pAllStats[imsgptr].total = si->total;
-				pAllStats[imsgptr].ntuples = si->ntuples;
-				pAllStats[imsgptr].nloops = si->nloops;
-			}
-#endif
+			pAllStats[imsgptr].startup = si->startup;
+			pAllStats[imsgptr].total = si->total;
+			pAllStats[imsgptr].ntuples = si->ntuples;
+			pAllStats[imsgptr].nloops = si->nloops;
 
             /* Update gang totals. */
             if (si->ntuples > 0)
@@ -331,7 +334,7 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context)
             if (nt < ntMax)
                 continue;
             if (nt == ntMax &&
-                si->total <= siMax->total)
+                sh->segindex > shMax->segindex)
                 continue;
 
             shMax = sh;
@@ -339,7 +342,8 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context)
             ntMax = nt;
         }
 
-		instr->starttime = siMax->starttime;
+        /* Transfer winner's stats into qDisp PlanState's Instrument node. */
+        instr->starttime = siMax->starttime;
 		instr->firststart = siMax->firststart;
 		instr->counter = siMax->counter;
 		instr->firsttuple = siMax->firsttuple;
@@ -348,6 +352,15 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context)
         instr->total = siMax->total;
         instr->ntuples = siMax->ntuples;
         instr->nloops = siMax->nloops;
+
+        /* Compute ptr to winner's extra message text (if any). */
+        instr->notes = NULL;
+        if (siMax->bnotes < siMax->enotes)
+        {
+            instr->notes = (char *)shMax + shMax->bnotes + siMax->bnotes;
+            Insist(shMax->bnotes + siMax->enotes < shMax->enotes &&
+                   instr->notes[siMax->enotes-siMax->bnotes] == '\0');
+        }
 
         /* Store segment id of the winning qExec. */
         instr->cdbSegIndex = shMax->segindex;
@@ -398,8 +411,17 @@ cdbexplain_sendStatWalker(PlanState *planstate, void *context)
     si->ntuples = instr->ntuples;
     si->nloops = instr->nloops;
 
-	elog(DEBUG4, "sending QEx statistics: total %f ntuples %f nloops %f",
-		 si->total, si->ntuples, si->nloops);
+    /* Give node a chance to append its extra message text. */
+    if (planstate->cdbexplainmsg)
+    {
+        si->bnotes = ctx->notebuf.len;
+        planstate->cdbexplainmsg(planstate, &ctx->notebuf);
+        if (si->bnotes < ctx->notebuf.len)
+        {
+            si->enotes = ctx->notebuf.len;
+            appendStringInfoChar(&ctx->notebuf, '\0');
+        }
+    }
 
     /* Append to message. */
     appendBinaryStringInfo(&ctx->buf, (char *)si, sizeof(*si));
@@ -430,7 +452,7 @@ cdbexplain_diff_time(char* outbuf, instr_time starttime, instr_time endtime)
 {
 	if (INSTR_TIME_IS_ZERO(endtime))
 	{
-        sprintf(outbuf, "0.0 ms");			
+        sprintf(outbuf, "0 ms");			
 		return 0;
 	}
 
@@ -460,7 +482,7 @@ cdbexplain_diff_time(char* outbuf, instr_time starttime, instr_time endtime)
 #endif
 		
 		/* get time in seconds, convert to msec */
-		myoffset = 1000.0 * INSTR_TIME_GET_DOUBLE(timediff); 
+		myoffset = 1000.0 * INSTR_TIME_GET_DOUBLE(timediff);
 
 		cdbexplain_format_time(outbuf, myoffset);
 	}
@@ -470,10 +492,16 @@ cdbexplain_diff_time(char* outbuf, instr_time starttime, instr_time endtime)
 /*
  * cdbexplain_showExecStats
  *    Called by qDisp process to format a node's EXPLAIN ANALYZE statistics.
+ *
+ * 'str' is the output buffer.
+ * 'workbuf' is a scratch buffer for string manipulation.
+ * 'slice' is the current node's slice table entry.
  */
 void
 cdbexplain_showExecStats(struct PlanState      *planstate,
                          struct StringInfoData *str,
+                         struct StringInfoData *workbuf,
+                         struct Slice          *slice,
                          int                    indent,
 						 Instrumentation       *pFirst)
 {
@@ -482,7 +510,9 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
     double      total = instr->total * 1000.0;      /* convert secs to ms */
     char        firstbuf[32];
     char        totalbuf[32];
+    char       *notes;
     int         i;
+    int         saveworkbuflen = workbuf->len;
 	/* get the query's start time from pFirst */
 	instr_time	firststart = pFirst->firststart;
 
@@ -526,7 +556,7 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
         appendStringInfo(str, " of %.0f scans", instr->nloops);
 	
 	/* if the current node has started (firststart != 0), determine
-	 * when it started in relation to the start of the query 
+	 * when it started in relation to the start of the query
 	 */
 	if (!(INSTR_TIME_IS_ZERO(instr->firststart)))
 	{
@@ -554,18 +584,16 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
 #endif
 		
 		/* get time in seconds, convert to msec */
-		myoffset = 1000.0 * INSTR_TIME_GET_DOUBLE(timediff); 
+		myoffset = 1000.0 * INSTR_TIME_GET_DOUBLE(timediff);
 
 		cdbexplain_format_time(diffbuf, myoffset);
-		appendStringInfo(str, ", start offset by %s", diffbuf); 
-
-#ifdef INSTR_GDB_ALLSTATS
+		appendStringInfo(str, ", start offset by %s", diffbuf);
 
 		/* XXX XXX: why is instr->numStats = 26? */
 		if (mpp_enable_explain_allstat && instr->numStats && instr->pAllStats)
 		{
 			int ii;
-			CdbExplain_StatInst *pAllStats = 
+			CdbExplain_StatInst *pAllStats =
 					(CdbExplain_StatInst*) instr->pAllStats;
 
 			/* create a header for all stats: separate each individual
@@ -580,7 +608,7 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
 			{
 				char tbuf[32];
 
-				cdbexplain_diff_time(tbuf, firststart, 
+				cdbexplain_diff_time(tbuf, firststart,
 									 pAllStats[ii].firststart);
 				appendStringInfo(str, "/%s_%f",
 								 tbuf, pAllStats[ii].ntuples
@@ -589,15 +617,60 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
 			}
 			appendStringInfo(str, " end all stats");
 		}
-
-
-#endif
-
-
 		
 	} /* end if started */
 
-
     appendStringInfoString(str, ".\n");
+
+    /* If slice was executed here on qDisp, get node's extra message text. */
+    notes = instr->notes;
+    if (planstate->cdbexplainmsg &&
+        !sliceRunsOnQE(slice))
+    {
+        int     bnotes = workbuf->len;
+
+        planstate->cdbexplainmsg(planstate, workbuf);
+
+        if (bnotes < workbuf->len)
+            notes = (char *)workbuf->data + bnotes;
+        else
+            notes = NULL;
+    }
+
+    /* Display extra message text. */
+    if (notes)
+    {
+        char   *cp = notes;
+
+        /* Could be more than one line... */
+        for (;;)
+        {
+            char   *nlp = strchr(cp, '\n');
+            char   *dp = nlp ? nlp : cp + strlen(cp);
+
+            /* Strip trailing whitespace. */
+            while (cp < dp &&
+                   isspace(dp[-1]))
+                dp--;
+
+            /* Add to output buffer. */
+            if (cp < dp)
+            {
+                for (i = 0; i < indent; i++)
+                    appendStringInfo(str, "  ");
+                if (instr->cdbWorkers > 1)
+                    appendStringInfo(str, "(seg%d): ", instr->cdbSegIndex);
+                appendBinaryStringInfo(str, cp, dp-cp);
+                appendStringInfoChar(str, '\n');
+            }
+
+            if (!nlp)
+                break;
+            cp = nlp+1;
+        }
+    }
+
+    /* Clean up workbuf. */
+    truncateStringInfo(workbuf, saveworkbuflen);
 }                               /* cdbexplain_showExecStats */
 

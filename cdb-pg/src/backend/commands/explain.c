@@ -3,7 +3,7 @@
  * explain.c
  *	  Explain query execution plans
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
@@ -46,7 +46,9 @@ typedef struct ExplainState
 
     /* CDB */
     QueryDesc  *queryDesc;
-	instr_time	firststart;    /* start time of query */
+	instr_time	firststart;     /* start time of query */
+    Slice      *currentSlice;   /* slice whose nodes we are visiting */
+    StringInfoData  workbuf;    /* a scratch buffer */
 } ExplainState;
 
 static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
@@ -271,7 +273,10 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	/* call ExecutorStart to prepare the plan for execution */
 	ExecutorStart(queryDesc, eflags);
 
-	/* Execute the plan for statistics if asked for */
+    /* CDB: Find slice table entry for the root slice. */
+    es->currentSlice = getCurrentSlice(queryDesc->estate);
+
+    /* Execute the plan for statistics if asked for */
 	if (stmt->analyze)
 	{
 		/* run the plan */
@@ -332,8 +337,13 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	}
 
 	initStringInfo(&buf);
+    initStringInfo(&es->workbuf);
+
 	explain_outNode(&buf, queryDesc->plantree, queryDesc->planstate,
 					NULL, 0, es);
+
+    pfree(es->workbuf.data);
+    memset(&es->workbuf, 0, sizeof(es->workbuf));
 
 	/*
 	 * If we ran the command, run any AFTER triggers it queued.  (Note this
@@ -420,7 +430,7 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 						 1000.0 * totaltime);
 	do_text_output_multiline(tstate, buf.data);
 
-	pfree(buf.data);
+    pfree(buf.data);
 }
 
 /* Compute elapsed time in seconds since given timestamp */
@@ -465,6 +475,7 @@ explain_outNode(StringInfo str,
 				int indent, ExplainState *es)
 {
 	char	   *pname = NULL;
+    Slice      *currentSlice = es->currentSlice;    /* save */
 	int			i;
 	bool		skip_outer=false;
 
@@ -807,7 +818,12 @@ explain_outNode(StringInfo str,
         /* CDB: Show actual row count, etc. */
 		iFirst.firststart = es->firststart;
 
-        cdbexplain_showExecStats(planstate, str, indent+1, &iFirst);
+        cdbexplain_showExecStats(planstate,
+                                 str,
+                                 &es->workbuf,
+                                 es->currentSlice,
+                                 indent+1,
+                                 &iFirst);
     }
 
     /* quals, sort keys, etc */
@@ -978,6 +994,7 @@ explain_outNode(StringInfo str,
 		case T_Motion:
 			{
 				Motion	   *pMotion = (Motion *) plan;
+                SliceTable *sliceTable = planstate->state->es_sliceTable;
 
                 if (pMotion->sendSorted ||
                     pMotion->motionType == MOTIONTYPE_HASH)
@@ -987,6 +1004,11 @@ explain_outNode(StringInfo str,
 								     pMotion->sortColIdx,
                                      "Merge Key",
 								     str, indent, es);
+
+                /* Descending into a new slice. */
+                if (sliceTable)
+                    es->currentSlice = (Slice *)list_nth(sliceTable->slices,
+                                                         pMotion->motionID);
 			}
 			break;
 		default:
@@ -996,6 +1018,7 @@ explain_outNode(StringInfo str,
 	/* initPlan-s */
 	if (plan->initPlan)
 	{
+        Slice      *saved_slice = es->currentSlice;
 		List	   *saved_rtable = es->rtable;
 		ListCell   *lst;
 
@@ -1003,13 +1026,20 @@ explain_outNode(StringInfo str,
 		{
 			SubPlanState *sps = (SubPlanState *) lfirst(lst);
 			SubPlan    *sp = (SubPlan *) sps->xprstate.expr;
+            SliceTable *sliceTable = planstate->state->es_sliceTable;
+
+            /* Subplan might have its own root slice */
+            if (sliceTable &&
+                sp->qDispSliceId > 0)
+                es->currentSlice = (Slice *)list_nth(sliceTable->slices,
+                                                     sp->qDispSliceId);
 
 		    for (i = 0; i < indent; i++)
 			    appendStringInfo(str, "  ");
 		    appendStringInfo(str, "  InitPlan  (slice%d)\n", sp->qDispSliceId);
 
 			es->rtable = sp->rtable;
-			for (i = 0; i < indent; i++)
+            for (i = 0; i < indent; i++)
 				appendStringInfo(str, "  ");
 			appendStringInfo(str, "    ->  ");
 			explain_outNode(str, sp->plan,
@@ -1017,6 +1047,7 @@ explain_outNode(StringInfo str,
 							NULL,
 							indent + 4, es);
 		}
+        es->currentSlice = saved_slice;
 		es->rtable = saved_rtable;
 	}
 
@@ -1184,7 +1215,10 @@ explain_outNode(StringInfo str,
 		}
 		es->rtable = saved_rtable;
 	}
-}
+
+    es->currentSlice = currentSlice;    /* restore */
+}                               /* explain_outNode */
+
 
 /*
  * Show a qualifier expression for a scan plan node

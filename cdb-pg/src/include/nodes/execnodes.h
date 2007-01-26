@@ -4,7 +4,7 @@
  *	  definitions for executor state nodes
  *
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -29,8 +29,11 @@
 #include "utils/tuplesort.h"
 
 struct CdbDispatchResults;              /* in cdbdispatchresult.h */
-struct Tuplestorestate;                 /* #include "utils/tuplestore.h" */
+struct HashJoinTableStats;              /* #include "executor/hashjoin.h" */
 struct IndexInfo;                       /* #include "catalog/index.h" */
+struct StringInfoData;                  /* #include "lib/stringinfo.h" */
+struct Tuplestorestate;                 /* #include "utils/tuplestore.h" */
+
 
 /* ----------------
  *	  IndexInfo information
@@ -892,6 +895,7 @@ typedef struct DomainConstraintState
  * abstract superclass for all PlanState-type nodes.
  * ----------------
  */
+
 typedef struct PlanState
 {
 	NodeTag		type;
@@ -904,6 +908,8 @@ typedef struct PlanState
 
 	struct Instrumentation *instrument; /* Optional runtime stats for this
 										 * plan node */
+    void      (*cdbexplainmsg)(struct PlanState *planstate, struct StringInfoData *buf);
+                                /* optional EXPLAIN ANALYZE reporting callback */
 
 	/*
 	 * Common structural data for all Plan types.  These links to subsidiary
@@ -1504,6 +1510,7 @@ typedef struct HashState
 	HashJoinTable hashtable;	/* hash table for the hashjoin */
 	List	   *hashkeys;		/* list of ExprState nodes */
 	/* hashkeys is same as parent's hj_InnerHashKeys */
+    struct HashJoinTableStats  *tablestats; /* CDB: EXPLAIN ANALYZE stats */
 } HashState;
 
 /* ----------------
