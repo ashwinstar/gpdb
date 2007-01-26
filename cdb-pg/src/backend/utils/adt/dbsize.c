@@ -47,7 +47,7 @@ get_size_from_segDBs(const char * cmd)
 
 	initStringInfo(&errbuf);
 
-	results = cdbdisp_dispatchRMCommand(cmd, true, true, &errbuf, &resultCount);
+	results = cdbdisp_dispatchRMCommand(cmd, true, false, &errbuf, &resultCount);
 
 	if (errbuf.len > 0)
 		ereport(ERROR, (errmsg("dbsize error (gathered %d results from cmd '%s')", resultCount, cmd),
