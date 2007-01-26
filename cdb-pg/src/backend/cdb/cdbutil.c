@@ -246,7 +246,7 @@ getCdbComponentInfo(void)
 	/*
 	 * Initial size for info arrays.
 	 */
-	int			segment_array_size = 128;
+	int			segment_array_size = 500;
 	int			entry_array_size = 4;
 
 	/*
