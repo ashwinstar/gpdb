@@ -3071,12 +3071,11 @@ ProcessInterrupts(void)
 		 * Make sure threads get cleaned up: FATAL will fast-track
 		 * exit, it will not be caught by the executor cleanup code,
 		 * so if we want the QEs to get a cancel notification we need
-		 * to call CdbCheckDispatchResult().
+		 * to call CdbCheckDispatchResult(). Also we're about to
+		 * yank the carpet out from under any dispatched threads!
 		 */
-		/* TODO: support clean-up like described above. We can't do it
-			     with a call to CdbCheckDispatchResult anymore...
 		if (Mpp_role == MPP_ROLE_DISPATCH)
-			CdbCheckDispatchResult(true);*/
+			CdbShutdownPortals();
 
 		ereport(FATAL,
 				(errcode(ERRCODE_ADMIN_SHUTDOWN),

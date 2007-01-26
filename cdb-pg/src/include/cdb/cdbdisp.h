@@ -374,6 +374,10 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads);
 char *
 serializeSnapshot(int * size);
 
+
+/* this is used for dire cleanup emergencies (in portalmem.c) */
+void
+CdbShutdownPortals(void);
 /*--------------------------------------------------------------------*/
 
 #endif   /* CDBDISP_H */
