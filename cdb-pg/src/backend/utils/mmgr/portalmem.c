@@ -30,6 +30,8 @@
 #include "utils/portal.h"
 #include "utils/resscheduler.h"
 #include "utils/tuplestore.h"           /* tuplestore_begin_heap, etc */
+
+#include "cdb/cdbdisp.h"                /* CdbShutdownPortals, CdbCheckDispatchResult */
 #include "cdb/cdbvars.h"
 
 /*
