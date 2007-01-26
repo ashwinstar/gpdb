@@ -1045,7 +1045,7 @@ case $OS_TYPE in
 		PG_METHOD=trust
 		HOST_ARCH_TYPE="uname -i"
 		NOLINE_ECHO=$ECHO
-		DEFAULT_LOCALE_SETTING=en_US.utf-8
+		DEFAULT_LOCALE_SETTING=en_US.UTF-8
 		DU_TXT="-s" ;;
 	linux ) IFCONFIG_TXT=""
 		PS_TXT="ax"
