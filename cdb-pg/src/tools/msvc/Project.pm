@@ -23,7 +23,8 @@ sub new {
         includes        => '',
         defines         => ';',
 		solution        => $solution,
-        disablewarnings => '4018;4244;4273',
+        disablewarnings => '4018;4244;4273;4102',
+        disablelinkerwarnings => ''
     };
 
 	bless $self;
@@ -242,6 +243,13 @@ sub AddResourceFile {
 	$self->AddFile("$dir\\win32ver.rc");
 }
 
+sub DisableLinkerWarnings {
+   my ($self, $warnings) = @_;
+
+   $self->{disablelinkerwarnings} .= ';' unless ($self->{disablelinkerwarnings} eq '');
+   $self->{disablelinkerwarnings} .= $warnings;
+}
+
 sub Save {
 	my ($self) = @_;
 
@@ -367,6 +375,8 @@ sub WriteConfiguration
 	}
 	$libs =~ s/ $//;
 	$libs =~ s/__CFGNAME__/$cfgname/g;
+	my $pth = $self->{solution}->{options}->{pthread};
+	$pth = '' unless $pth;
 	print $f <<EOF;
   <Configuration Name="$cfgname|Win32" OutputDirectory=".\\$cfgname\\$self->{name}" IntermediateDirectory=".\\$cfgname\\$self->{name}"
 	ConfigurationType="$cfgtype" UseOfMFC="0" ATLMinimizesCRunTimeLibraryUsage="FALSE" CharacterSet="2" WholeProgramOptimization="$p->{wholeopt}">
@@ -388,6 +398,9 @@ EOF
 		GenerateMapFile="FALSE" MapFileName=".\\$cfgname\\$self->{name}\\$self->{name}.map"
 		SubSystem="1" TargetMachine="1"
 EOF
+   if ($self->{disablelinkerwarnings}) {
+      print $f "\t\tAdditionalOptions=\"/ignore:$self->{disablelinkerwarnings}\"\n";
+   }
 	if ($self->{implib}) {
 		my $l = $self->{implib};
 		$l =~ s/__CFGNAME__/$cfgname/g;
