@@ -29,7 +29,6 @@
 #include "utils/tuplesort.h"
 
 struct CdbDispatchResults;              /* in cdbdispatchresult.h */
-struct HashJoinTableStats;              /* #include "executor/hashjoin.h" */
 struct IndexInfo;                       /* #include "catalog/index.h" */
 struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 struct Tuplestorestate;                 /* #include "utils/tuplestore.h" */
@@ -906,11 +905,6 @@ typedef struct PlanState
 								 * nodes point to one EState for the whole
 								 * top-level plan */
 
-	struct Instrumentation *instrument; /* Optional runtime stats for this
-										 * plan node */
-    void      (*cdbexplainmsg)(struct PlanState *planstate, struct StringInfoData *buf);
-                                /* optional EXPLAIN ANALYZE reporting callback */
-
 	/*
 	 * Common structural data for all Plan types.  These links to subsidiary
 	 * state trees parallel links in the associated plan tree (except for the
@@ -936,6 +930,15 @@ typedef struct PlanState
 	TupleTableSlot *ps_ResultTupleSlot; /* slot for my result tuples */
 	ExprContext *ps_ExprContext;	/* node's expression-evaluation context */
 	ProjectionInfo *ps_ProjInfo;	/* info for doing tuple projection */
+
+    /* 
+     * EXPLAIN ANALYZE statistics collection 
+     */
+    struct Instrumentation *instrument;     /* runtime stats for this node */
+    struct StringInfoData  *cdbexplainbuf;  /* EXPLAIN ANALYZE report buf */
+    void      (*cdbexplainfun)(struct PlanState *planstate, struct StringInfoData *buf);
+                                            /* callback before ExecutorEnd */
+
 } PlanState;
 
 /* ----------------
@@ -1510,7 +1513,6 @@ typedef struct HashState
 	HashJoinTable hashtable;	/* hash table for the hashjoin */
 	List	   *hashkeys;		/* list of ExprState nodes */
 	/* hashkeys is same as parent's hj_InnerHashKeys */
-    struct HashJoinTableStats  *tablestats; /* CDB: EXPLAIN ANALYZE stats */
 } HashState;
 
 /* ----------------

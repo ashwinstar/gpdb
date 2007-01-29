@@ -722,7 +722,16 @@ ExecEndNode(PlanState *node)
 		node->chgParam = NULL;
 	}
 
-	switch (nodeTag(node))
+    /* Free EXPLAIN ANALYZE buffer */
+    if (node->cdbexplainbuf)
+    {
+        if (node->cdbexplainbuf->data)
+            pfree(node->cdbexplainbuf->data);
+        pfree(node->cdbexplainbuf);
+        node->cdbexplainbuf = NULL;
+    }
+
+    switch (nodeTag(node))
 	{
 			/*
 			 * control nodes

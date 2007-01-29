@@ -82,6 +82,8 @@ static CdbVisitOpt
 cdbexplain_recvStatWalker(PlanState *planstate, void *context);
 
 static int
+cdbexplain_appendExtraText(PlanState *planstate, StringInfo notebuf);
+static int
 cdbexplain_diff_time(char* outbuf, instr_time starttime, instr_time endtime);
 
 
@@ -391,6 +393,7 @@ cdbexplain_sendStatWalker(PlanState *planstate, void *context)
     CdbExplain_SendStatCtx *ctx = (CdbExplain_SendStatCtx *)context;
     CdbExplain_StatInst    *si = &ctx->hdr.inst[0];
     Instrumentation        *instr = planstate->instrument;
+    int                     notelen;
 
     Insist(instr);
 
@@ -411,19 +414,16 @@ cdbexplain_sendStatWalker(PlanState *planstate, void *context)
     si->ntuples = instr->ntuples;
     si->nloops = instr->nloops;
 
-    /* Give node a chance to append its extra message text. */
-    if (planstate->cdbexplainmsg)
+    /* Add this node's extra message text to notebuf. */
+    notelen = cdbexplain_appendExtraText(planstate, &ctx->notebuf);
+    if (notelen > 0)
     {
-        si->bnotes = ctx->notebuf.len;
-        planstate->cdbexplainmsg(planstate, &ctx->notebuf);
-        if (si->bnotes < ctx->notebuf.len)
-        {
-            si->enotes = ctx->notebuf.len;
-            appendStringInfoChar(&ctx->notebuf, '\0');
-        }
+        si->enotes = ctx->notebuf.len;
+        si->bnotes = si->enotes - notelen;
+        appendStringInfoChar(&ctx->notebuf, '\0');
     }
 
-    /* Append to message. */
+    /* Append StatInst instance to message. */
     appendBinaryStringInfo(&ctx->buf, (char *)si, sizeof(*si));
     ctx->hdr.nInst++;
 
@@ -433,6 +433,47 @@ cdbexplain_sendStatWalker(PlanState *planstate, void *context)
 
     return CdbVisit_Walk;
 }                               /* cdbexplain_sendStatWalker */
+
+
+/*
+ * cdbexplain_appendExtraText
+ *    Allow a node to supply additional text for its EXPLAIN ANALYZE report.
+ *
+ * Returns the number of bytes appended to the caller's buffer.
+ */
+int
+cdbexplain_appendExtraText(PlanState *planstate, StringInfo notebuf)
+{
+    int     bnotes = notebuf->len;
+
+    /*
+     * Invoke node's callback.  It may append to our notebuf and/or its own
+     * cdbexplainbuf.
+     */
+    if (planstate->cdbexplainfun)
+        planstate->cdbexplainfun(planstate, notebuf);
+
+    /*
+     * Append contents of node's extra message buffer.  This allows nodes to
+     * contribute EXPLAIN ANALYZE info without having to set up a callback.
+     */
+    if (planstate->cdbexplainbuf &&
+        planstate->cdbexplainbuf->len > 0)
+    {
+        /* If callback added to notebuf, make sure text ends with a newline. */
+        if (bnotes < notebuf->len &&
+            notebuf->data[notebuf->len-1] != '\n')
+            appendStringInfoChar(notebuf, '\n');
+
+        appendBinaryStringInfo(notebuf, planstate->cdbexplainbuf->data,
+                               planstate->cdbexplainbuf->len);
+
+        truncateStringInfo(planstate->cdbexplainbuf, 0);
+    }
+
+    return notebuf->len - bnotes;
+}                               /* cdbexplain_appendExtraText */
+
 
 /*
  * cdbexplain_format_time
@@ -622,17 +663,17 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
 
     appendStringInfoString(str, ".\n");
 
-    /* If slice was executed here on qDisp, get node's extra message text. */
-    notes = instr->notes;
-    if (planstate->cdbexplainmsg &&
-        !sliceRunsOnQE(slice))
+    /* Already have node's extra text if the slice was dispatched to a qExec. */
+    if (sliceRunsOnQE(slice))
+        notes = instr->notes;
+
+    /* Get extra message text now if node was executed here in qDisp process. */
+    else
     {
-        int     bnotes = workbuf->len;
+        int     notelen = cdbexplain_appendExtraText(planstate, workbuf);
 
-        planstate->cdbexplainmsg(planstate, workbuf);
-
-        if (bnotes < workbuf->len)
-            notes = (char *)workbuf->data + bnotes;
+        if (notelen > 0)
+            notes = (char *)workbuf->data + workbuf->len - notelen;
         else
             notes = NULL;
     }
