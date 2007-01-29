@@ -1,7 +1,8 @@
 # $PostgreSQL: pgsql/contrib/xlogdump/Makefile,v 1.14 2005/09/27 17:13:08 tgl Exp $
 
 PROGRAM = xlogdump
-OBJS    = xlogdump.o ../../src/port/sprompt.o ../../src/backend/utils/hash/pg_crc.o
+OBJS    = xlogdump.o  pg_crc.o
+
 
 PG_CPPFLAGS = -I$(libpq_srcdir)
 PG_LIBS = $(libpq_pgport)
@@ -17,3 +18,7 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
+
+
+pg_crc.c: $(top_srcdir)/src/backend/utils/hash/pg_crc.c
+	rm -f $@ && $(LN_S) $< .

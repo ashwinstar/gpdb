@@ -724,7 +724,7 @@ dumpXLogRecord(XLogRecord *record)
 	uint8	info = record->xl_info & ~XLR_INFO_MASK;
 
 	/* check if the user wants a specific rmid */
-	if(strcmp("ALL  ", rmname) && strcasecmp(RM_names[record->xl_rmid], rmname))
+	if(strcmp("ALL  ", rmname) && pg_strcasecmp(RM_names[record->xl_rmid], rmname))
 		return;
 
 	printf("%u/%08X: prv %u/%08X",
