@@ -9723,7 +9723,7 @@ dumpDatabaseDefinition()
 	encoding = PQgetvalue(res, 0, i_encoding);
 	tablespace = PQgetvalue(res, 0, i_tablespace);
 	
-	appendPQExpBuffer(creaQry, "CREATE DATABASE %s WITH TEMPLATE = template1",
+	appendPQExpBuffer(creaQry, "CREATE DATABASE %s WITH TEMPLATE = template0",
 					  fmtId(datname));
 	if (strlen(encoding) > 0)
 	{
