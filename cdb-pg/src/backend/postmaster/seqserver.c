@@ -356,7 +356,7 @@ seqserver_forkexec(void)
 	int			ac = 0;
 
 	av[ac++] = "postgres";
-	av[ac++] = "-forkseqserver";
+	av[ac++] = "--forkseqserver";
 	av[ac++] = NULL;			/* filled in by postmaster_forkexec */
 	av[ac] = NULL;
 

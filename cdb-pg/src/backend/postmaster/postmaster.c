@@ -129,6 +129,8 @@
 
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
+void
+SeqServerMain(int argc, char *argv[]);
 #endif
 
 
@@ -3564,6 +3566,25 @@ SubPostmasterMain(int argc, char *argv[])
 		SysLoggerMain(argc, argv);
 		proc_exit(0);
 	}
+	if (strcmp(argv[1], "--forkseqserver") == 0)
+	{
+		/* Close the postmaster's sockets */
+		ClosePostmasterPorts(false);
+
+		/* Restore basic shared memory pointers */
+		InitShmemAccess(UsedShmemSegAddr);
+
+		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
+		InitDummyProcess();
+
+		/* Attach process to shared data structures */
+		CreateSharedMemoryAndSemaphores(false, 0);
+
+		SeqServerMain(argc - 2, argv + 2);
+		proc_exit(0);
+	}
+
+
 
 	return 1;					/* shouldn't get here */
 }
