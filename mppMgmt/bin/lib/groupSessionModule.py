@@ -62,6 +62,7 @@ except ImportError, e:
     print "Error Importing necessary modules: %s " % str(e)
     raise SystemExit, -1
 
+
 try:
     import readline
     #Read in the saved command history, if any
@@ -73,8 +74,8 @@ try:
     except IOError:
         pass
     atexit.register(readline.write_history_file, histfile)
-except:
-    pass
+except Exception, e:
+    print "Note: command history unsupported on this machine ..."
 
 class groupSession(cmd.Cmd):
     "A group of sessions attached to a set of remote hosts"
