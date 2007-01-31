@@ -48,6 +48,10 @@ def usage(exitarg):
     print __doc__
     sys.exit(exitarg)
 
+def parsePort(val): 
+    try: return int(val)
+    except ValueError: return 0
+
 
 #############
 def parseCommandLine():
@@ -58,21 +62,14 @@ def parseCommandLine():
 	usage('Error: invalid option')
 
     for (switch, val) in options:
-	if (switch == '-?'):
-	    usage(0)
-	elif (switch[1] in 'bv'):
-	    opt[switch] = True
-	elif (switch[1] in 'duf'):
-	    opt[switch] = val
-	elif (switch[1] == 'h'):
-	    opt[switch].append(val)
-	elif (switch[1] == 'p'):
-	    try:
-		opt[switch] = int(val)
-	    except:
-		usage('Error: please specify port number for -p switch')
+	if (switch == '-?'):	     usage(0)
+	elif (switch[1] in 'bv'):    opt[switch] = True
+	elif (switch[1] in 'duf'):   opt[switch] = val
+	elif (switch == '-h'):       opt[switch].append(val)
+	elif (switch == '-p'):       opt[switch] = parsePort(val)
 
     if (len(args) < 1): usage('Error: please specify command')
+    if not opt['-p'] > 0: usage('Error: please specify port number for -p switch')
 
     hf = (len(opt['-h']) and 1) + (opt['-f'] and 1)
     if hf != 1:

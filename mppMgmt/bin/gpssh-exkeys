@@ -35,6 +35,9 @@ authorized_keys_fname = '%s/.ssh/authorized_keys' % os.environ['HOME']
 known_hosts_fname = '%s/.ssh/known_hosts' % os.environ['HOME']
 hostList = []
 
+def parsePort(val): 
+    try: return int(val)
+    except ValueError: return 0
 
 class Host: 
     def __init__(self, user, host):
@@ -53,6 +56,9 @@ class Host:
     def popen_cmd(self): return self.m_popen_cmd;
 
     def login(self, passwd):
+	'''SSH Login. passwd - in-out: a list of possible passwords. If password is required, first try those
+	in passwd[], then ask the user for password. If the user provided a valid password, save in passwd[].
+	Return the pxssh handle, or None if error.'''
 	if self.m_pxssh: return self.m_pxssh
 	p = pxssh.pxssh()
 	ok = False
@@ -81,10 +87,12 @@ class Host:
 	return self.m_pxssh 
 
     def logout(self):
+	'SSH logout'
 	if self.m_pxssh: self.m_pxssh.logout()
 	self.m_pxssh = None
 
     def sendLocalID(self, ID):
+	'Send local ID to remote over SSH, and append to authorized_key'
 	if not self.m_pxssh: return False
 	p = self.m_pxssh
 	cmd = 'mkdir .ssh; chmod 0700 .ssh; cd .ssh'
@@ -109,6 +117,7 @@ class Host:
 	return False
 
     def startRemoteKeygen(self):
+	'Start ssh-keygen on remote machine over SSH.'
 	if not self.m_pxssh: return False
 	p = self.m_pxssh
 	cmd = 'ssh-keygen -t rsa -N \"\" -f id_rsa; echo done done done'
@@ -117,6 +126,7 @@ class Host:
 	return 0 == p.expect(['done done done'])
 
     def waitRemoteKeygen(self):
+	'Wait for ssh-keygen to finish on remote machine over SSH.'
 	if not self.m_pxssh: return False
 	p = self.m_pxssh
 	i = p.expect(['done done done', 'Overwrite'])
@@ -127,6 +137,7 @@ class Host:
 	return i == 0
 
     def popen(self, cmd):
+	'Run a command and save popen handle in this Host instance.'
 	if self.m_popen: self.m_popen.close()
 	if opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
 	self.m_popen = os.popen(cmd)
@@ -134,12 +145,14 @@ class Host:
 	return self.m_popen
 
     def pclose(self):
+	'Close the popen handle'
 	if not self.m_popen: return (False, None)
 	content = self.m_popen.read()
 	ok = not self.m_popen.close()
 	return (ok, content)
 
     def setRemoteID(self, ID):
+	'Save the remote ID'
 	self.m_remoteID = ID
 
 
@@ -151,20 +164,14 @@ def parseCommandLine():
 	usage('[ERROR] invalid option')
 
     for (switch, val) in options:
-	if (switch == '-?'): 
-	    usage(0)
-	elif (switch == '-v'):
-	    opt[switch] = True
-	elif (switch[1] in 'uf'):
-	    opt[switch] = val
-	elif (switch == '-h'):
-	    opt[switch].append(val)
-#	elif (switch == '-p'):
-#	    try:
-#		opt[switch] = int(val)
-#	    except:
-#		usage('[ERROR] please specify port number for -p switch')
+	if (switch == '-?'):      usage(0)
+	elif (switch == '-v'):    opt[switch] = True
+	elif (switch[1] in 'uf'): opt[switch] = val
+	elif (switch == '-h'):    opt[switch].append(val)
+#	elif (switch == '-p'):    opt[switch] = parsePort(val)
 
+    if not (opt['-p'] > 0): 
+	usage('[ERROR] please specify valid port number for -p switch')
     hf = (len(opt['-h']) and 1) + (opt['-f'] and 1)
     if hf != 1:
         usage('[ERROR] please specify at least one of -h or -f args, but not both')
@@ -172,46 +179,38 @@ def parseCommandLine():
 
 def parseHostLine(line):
     '''Parse line into (user, host, port) tuple'''
-    res = None
-    t = line.strip().split('@')
-    cnt = len(t)
-    if len(line) and line[0] == '#': pass
-    elif cnt == 1: res = [opt['-u'], t[0], opt['-p']]
-    elif cnt == 2: 
-	tt = t[1].split(':')
-	cnt = len(tt)
-	if cnt == 1: res = [t[0], tt[0], opt['-p']]
-	elif cnt == 2:
-	    try: res = [t[0], tt[0], int(tt[1])]
-	    except: pass
-    return res
-
-def readHostFile():
-    global opt
-    hostlines = []
-    if opt['-f']:
-        try:
-            fd = open(opt['-f'], 'r')
-            hostlines = fd.readlines()
-            fd.close()
-        except IOError, e:
-            sys.exit('[ERROR] cannot read host file' + opt['-f'])
-    
-    host = {}
-    line = 0 
     try:
-	for h in hostlines:
-            line = line + 1
-            h = parseHostLine(h)
-            if not h: continue
-	    key = '%s@%s' % (h[0], h[1])
-            if host.has_key(key): continue     # ignore duplicate hosts
-            host[key] = h
-            opt['-h'].append(h)
-    except KeyboardInterrupt:
-	raise
-    except:
-	sys.exit('[ERROR] while parsing line %d of host file %s' % (line, opt['-f']))
+	t = line.strip().split('@')
+	cnt = len(t)
+	if t[0][0] == '#': return None
+        if cnt == 1: return [opt['-u'], t[0], opt['-p']]
+	if cnt == 2: 
+	    tt = t[1].split(':')
+	    cnt = len(tt)
+	    if cnt == 1: return [t[0], tt[0], opt['-p']]
+	    elif cnt == 2: return [t[0], tt[0], int(tt[1])]
+    except ValueError: pass
+    except IndexError: pass
+    return None
+
+def readHostFile(fname, retList):
+    if not fname: return
+    f = None; lno = 0; host = {}
+    try:
+	try:
+	    f = open(fname, 'r')
+	    for line in f:
+		lno = lno + 1
+		h = parseHostLine(line)
+		if not h: continue
+		key = '%s@%s' % (h[0], h[1])
+		host[key] = h
+	    for n in host: retList.append(host[n])
+	except IOError:
+	    sys.exit('[ERROR] cannot read host file ' + fname 
+		     + (lno > 0 and (' (line %d)' % lno) or ''))
+    finally:
+	if f: f.close()
 
 
 ###  create local id_rsa
@@ -223,59 +222,48 @@ def createLocalID():
     if not p: 
 	sys.exit('[ERROR] unable to run ssh-keygen')
 
-    ok = False
     i = p.expect([pexpect.EOF, 'Overwrite'])
-    if i == 0: 
-	p.close()
-	ok = (p.exitstatus == 0)
-    if i == 1:
+    if i == 0: pass
+    elif i == 1:
 	time.sleep(0.1)
-	p.sendline('n')
+	p.sendline('y')
 	i = p.expect(pexpect.EOF)
-	p.close()
-	ok = True
 
-    if not ok:
-	sys.exit('[ERROR] ssh-keygen failed')
+    p.close()
+    if p.exitstatus: sys.exit('[ERROR] ssh-keygen failed')
 
-    file = file + '.pub'
-    f = open(file, 'r')
-    if not f: 
-	sys.exit('[ERROR] ssh-keygen failed - unable to find the generated file ' + file)
+    f = None; pubfile = file + '.pub'
+    try:
+	try: 
+	    f = open(pubfile, 'r'); 
+	    return f.readline().strip()
+	except IOError:
+	    sys.exit('[ERROR] ssh-keygen failed - unable to read the generated file ' + pubfile)
+    finally:
+	if f: f.close()
 
-    line = f.readline()
-    f.close()
-    return line.strip()
 
 def authorizeLocalID(localID):
     cmd = 'cd ~/.ssh && echo %s >> authorized_keys' % localID
-    f = os.popen(cmd)
-    i = f.read();
-    ok = not f.close()
+    f = os.popen(cmd); i = f.read(); ok = not f.close()
     if not ok: 
 	sys.exit('[ERROR] while in authorizeLocalID() -  %s' % cmd)
 
     tt = localID.split()
-    h = parseHostLine(tt[2])
-    h = Host(h[0], h[1])
-    if h.login({}):
-	h.logout()
-    else:
-	sys.exit('[ERROR] while in authorizeLocalID() -  %s' % cmd)
+    tt = parseHostLine(tt[2]) 
+    h = Host(tt[0], tt[1])
+    if h.login({}): h.logout()
+    else: sys.exit('[ERROR] while in authorizeLocalID() -  %s' % cmd)
 
 
 def addRemoteID(tab, line):
-    if not line: return False
-    line = line.strip()
-    if len(line) == 0 or line[0] == '#': return False
-    IDKey = line.split()
-    IDKey = len(IDKey) == 3 and IDKey[2] or None
-    if not IDKey: return False
-    tab[IDKey] = line
-    return tab
+    IDKey = line.strip().split()
+    if not (len(IDKey) == 3 and line[0] != '#'): return False
+    tab[IDKey[2]] = line
+    return True
 
-def readAuthorizedKeys():
-    tab = {}
+
+def readAuthorizedKeys(tab):
     f = None
     try:
 	f = open(authorized_keys_fname, 'w+')
@@ -290,19 +278,18 @@ def writeAuthorizedKeys(tab):
     try: 
 	f = open(authorized_keys_fname, 'w')
 	for IDKey in tab: f.write(tab[IDKey] + '\n')
-	return tab
     finally:
 	if f: f.close()
 
 
 def addKnownHosts(tab, host):
     cmd = 'cd ~/.ssh && grep -v %s known_hosts > known_hosts.tmp' % host
-    f = os.popen(cmd)
+    f = os.popen(cmd) 
     i = f.read();
     ok = not f.close()
     if ok: 
 	cmd = 'cd ~/.ssh && ssh-keyscan -t rsa %s >> known_hosts.tmp && mv -f known_hosts.tmp known_hosts' % host
-	f = os.popen(cmd)
+	f = os.popen(cmd) 
 	i = f.read()
 	ok = not f.close()
     return ok
@@ -313,14 +300,11 @@ try:
     tab = []
     for h in opt['-h']: 
 	h = parseHostLine(h)
-	if h: 
-	    tab.append(h)
-	else:
-	    usage('[ERROR] invalid -h parameter')
+	if h: tab.append(h)
+	else: usage('[ERROR] invalid -h parameter')
 
     opt['-h'] = tab
-    readHostFile()
-
+    readHostFile(opt['-f'], opt['-h'])
     for h in opt['-h']: hostList.append(Host(h[0], h[1]))
 
     print '[STEP 1 of 6] create local ID'
@@ -351,8 +335,8 @@ try:
 		print errmsg
 
     for h in hostList: h.logout()
-    if errmsg: 
-	sys.exit(1)
+
+    if errmsg: sys.exit(1)
 
     print; print '[STEP 3 of 6] obtain remote ID'  # parallel
 
@@ -363,23 +347,21 @@ try:
 
     for h in hostList: 
 	print '  ... ssh to %s for id_rsa.pub' % h.name()
-	cmd = 'ssh -o \"NumberOfPasswordPrompts 0\" %s@%s cat ~%s/.ssh/id_rsa.pub' % (h.user(), h.host(), h.user())
+	cmd = 'ssh -o \"NumberOfPasswordPrompts 0\" %s@%s cat .ssh/id_rsa.pub' % (h.user(), h.host())
 	h.popen(cmd)
 
     for h in hostList:
 	(ok, content) = h.pclose()
-	if ok: 
-	    h.setRemoteID(content)
+	if ok: h.setRemoteID(content)
 	else:
 	    errmsg = '[ERROR %s] command failed: %s\n%s' % (h.name(), h.popen_cmd(), content)
 	    print errmsg
 
-    if errmsg: 
-	sys.exit(1)
+    if errmsg: sys.exit(1)
 
     print; print '[STEP 4 of 6] merge authorized keys locally'
     try:
-	tab = readAuthorizedKeys()
+	tab = readAuthorizedKeys({})
     except IOError: 
 	sys.exit('[ERROR] cannot read authorized_keys file')
 
@@ -390,14 +372,13 @@ try:
 	    errmsg = "[ERROR] missing remote id_rsa.pub from %s" % h.name()
 	    print errmsg
     
-    try:
-	if not errmsg: writeAuthorizedKeys(tab)
-    except IOError:
-	errmsg = "[ERROR] unable to write authroized_keys file"
-	print errmsg
+    if not errmsg:
+	try: writeAuthorizedKeys(tab)
+        except IOError:
+	    errmsg = "[ERROR] unable to write authroized_keys file"
+	    print errmsg
 
-    if errmsg:
-	sys.exit(1)
+    if errmsg: sys.exit(1)
 
     print; print '[STEP 5 of 6] merge known_hosts locally'
     for h in hostList:
@@ -413,15 +394,14 @@ try:
 
     for h in hostList:
 	(ok, content) = h.pclose()
-	if ok: 
-	    print '[INFO] finished key exchange with', h.name()
+	if ok: print '[INFO] finished key exchange with', h.name()
 	else:
 	    errmsg = "[ERROR] unable to copy authorized_keys to %s" % h.name()
 	    print errmsg
     
-    if errmsg:
-	sys.exit(1)
+    if errmsg: sys.exit(1)
 
     print; print '[INFO] Key exchange completed successfully.'
+
 except KeyboardInterrupt:
     sys.exit('\n\nInterrupted...')
