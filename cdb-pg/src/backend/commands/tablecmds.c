@@ -845,11 +845,19 @@ truncate_check_rel(Relation rel)
 {
 	/* Only allow truncate on regular tables */
 	if (rel->rd_rel->relkind != RELKIND_RELATION)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is not a table",
-						RelationGetRelationName(rel))));
-
+	{
+		if (rel->rd_rel->relkind == RELKIND_EXTERNAL)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("\"%s\" is an external relation and can't be truncated",
+							RelationGetRelationName(rel))));
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("\"%s\" is not a table",
+							RelationGetRelationName(rel))));
+	}
+	
 	/* Permissions checks */
 	if (!pg_class_ownercheck(RelationGetRelid(rel), GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
@@ -3134,7 +3142,15 @@ ATSimplePermissions(Relation rel, bool allowView)
 {
 	if (rel->rd_rel->relkind != RELKIND_RELATION)
 	{
-		if (allowView)
+		if (rel->rd_rel->relkind == RELKIND_EXTERNAL)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("\"%s\" is an external relation and can't be altered",
+							RelationGetRelationName(rel)),
+					 errhint("drop the external relation and re-create it with your changes")));
+		}		
+		else if (allowView)
 		{
 			if (rel->rd_rel->relkind != RELKIND_VIEW)
 				ereport(ERROR,

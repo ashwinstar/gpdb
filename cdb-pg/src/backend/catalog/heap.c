@@ -245,6 +245,7 @@ heap_create(const char *relname,
 	{
 		case RELKIND_VIEW:
 		case RELKIND_COMPOSITE_TYPE:
+		case RELKIND_EXTERNAL:
 			create_storage = false;
 
 			/*
@@ -1300,7 +1301,8 @@ heap_drop_with_catalog(Oid relid)
 	 * Schedule unlinking of the relation's physical file at commit.
 	 */
 	if (rel->rd_rel->relkind != RELKIND_VIEW &&
-		rel->rd_rel->relkind != RELKIND_COMPOSITE_TYPE)
+		rel->rd_rel->relkind != RELKIND_COMPOSITE_TYPE &&
+		rel->rd_rel->relkind != RELKIND_EXTERNAL)
 	{
 		RelationOpenSmgr(rel);
 		smgrscheduleunlink(rel->rd_smgr, rel->rd_isLocalBuf);

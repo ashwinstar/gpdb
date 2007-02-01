@@ -1140,6 +1140,12 @@ DoCopyTo(CopyState cstate)
 						 errmsg("cannot copy from view \"%s\"",
 								RelationGetRelationName(cstate->rel)),
 						 errhint("Try the COPY (SELECT ...) TO variant.")));
+			else if (cstate->rel->rd_rel->relkind == RELKIND_EXTERNAL)
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("cannot copy from external relation \"%s\"",
+								RelationGetRelationName(cstate->rel)),
+						 errhint("Try the COPY (SELECT ...) TO variant.")));			
 			else if (cstate->rel->rd_rel->relkind == RELKIND_SEQUENCE)
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),

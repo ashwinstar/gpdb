@@ -148,5 +148,6 @@ DESCR("");
 #define		  RELKIND_TOASTVALUE	  't'		/* moved off huge values */
 #define		  RELKIND_VIEW			  'v'		/* view */
 #define		  RELKIND_COMPOSITE_TYPE  'c'		/* composite type */
+#define		  RELKIND_EXTERNAL		  'x'		/* external relation */
 
 #endif   /* PG_CLASS_H */

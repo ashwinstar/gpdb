@@ -1210,6 +1210,7 @@ plpgsql_parse_dblwordtype(char *word)
 	 * It must be a relation, sequence, view, or type
 	 */
 	if (classStruct->relkind != RELKIND_RELATION &&
+		classStruct->relkind != RELKIND_EXTERNAL &&
 		classStruct->relkind != RELKIND_SEQUENCE &&
 		classStruct->relkind != RELKIND_VIEW &&
 		classStruct->relkind != RELKIND_COMPOSITE_TYPE)

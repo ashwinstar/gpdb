@@ -2063,6 +2063,10 @@ getRelationDescription(StringInfo buffer, Oid relid)
 			appendStringInfo(buffer, _("table %s"),
 							 relname);
 			break;
+		case RELKIND_EXTERNAL:
+			appendStringInfo(buffer, _("external table %s"),
+							 relname);
+			break;			
 		case RELKIND_INDEX:
 			appendStringInfo(buffer, _("index %s"),
 							 relname);
