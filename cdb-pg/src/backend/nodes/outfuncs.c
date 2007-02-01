@@ -2315,31 +2315,16 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(resultRelations);
 	WRITE_NODE_FIELD(returningLists); /* TODO Merge issue */
 	
-	/*
-     * CDB: This field was added after the MPP 2.1p2 release.
-     * This got left out by mistake, but is needed by CTAS.
-     * It doesn't need to get stored in the catalog if false.
-     */
-    //if (node->intoHasOids)
-	//	WRITE_BOOL_FIELD(intoHasOids);
-	/*
-     * CDB: This field was added after the MPP 2.1p2 release.  Upstream of
-     * the planner, it's unused and zero, in which case we skip writing it
-     * because we don't want it written into the catalog.  Allows downward
-     * compatibility in case the database is opened using an older release.
-     */
-    if (node->intoOidInfo.relOid != 0)
-    {
-		appendStringInfo(str, " :intoOid %d", (int)node->intoOidInfo.relOid);
-	 
-		WRITE_OID_FIELD(intoOidInfo.comptypeOid);
-	
-		WRITE_OID_FIELD(intoOidInfo.toastOid);
-	
-		WRITE_OID_FIELD(intoOidInfo.toastIndexOid);
-	
-		WRITE_OID_FIELD(intoOidInfo.toastComptypeOid);
-    }
+	WRITE_OID_FIELD(intoOidInfo.relOid);
+ 
+	WRITE_OID_FIELD(intoOidInfo.comptypeOid);
+
+	WRITE_OID_FIELD(intoOidInfo.toastOid);
+
+	WRITE_OID_FIELD(intoOidInfo.toastIndexOid);
+
+	WRITE_OID_FIELD(intoOidInfo.toastComptypeOid);
+
 	
 }
 

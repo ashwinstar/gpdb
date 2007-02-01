@@ -40,6 +40,8 @@
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
 #include "catalog/toasting.h"
+#include "catalog/catalog.h"
+#include "catalog/pg_type.h"
 #include "commands/tablespace.h"
 #include "commands/trigger.h"
 #include "executor/execdebug.h"
@@ -164,7 +166,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	Assert(queryDesc != NULL);
 	Assert(queryDesc->estate == NULL);
 
-Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
+	Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
 	
 	/*
 	 * If the transaction is read-only, we need to check if any writes are
@@ -217,6 +219,32 @@ Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPol
 
 		/* set our global sliceid variable for elog. */
 		currentSliceId = estate->es_cur_slice_idx;
+		
+		/* Determin OIDs for into relation, if any */
+		if (queryDesc->parsetree->into != NULL)
+		{
+			Relation	pg_class_desc;
+			Relation	pg_type_desc;
+
+			Oid reltablespace = GetDefaultTablespace();
+		
+			pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+			pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
+			
+								
+			queryDesc->parsetree->intoOidInfo.relOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			elog(DEBUG3,"ExecutorStart assigned new intoOidInfo.relOid = %d",queryDesc->parsetree->intoOidInfo.relOid);
+			
+			queryDesc->parsetree->intoOidInfo.comptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+			
+			queryDesc->parsetree->intoOidInfo.toastOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			
+			queryDesc->parsetree->intoOidInfo.toastComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+			
+			heap_close(pg_class_desc, RowExclusiveLock);
+			heap_close(pg_type_desc, RowExclusiveLock);
+			
+		}
 	}
 	else if (Mpp_role == MPP_ROLE_EXECUTE)
 	{

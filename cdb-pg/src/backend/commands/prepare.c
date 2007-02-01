@@ -215,28 +215,6 @@ ExecuteQuery(ExecuteStmt *stmt, ParamListInfo params,
 		query->intoPolicy->ptype = POLICYTYPE_PARTITIONED;
 		query->intoPolicy->attrs[0] = 1;
 
-		/* This probably should be done somewhere better */
-				{
-					Relation	pg_class_desc;
-					Relation	pg_type_desc;
-
-					Oid reltablespace = GetDefaultTablespace();
-				
-					pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
-					pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
-										
-					query->intoOidInfo.relOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-					
-					query->intoOidInfo.comptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
-					
-					query->intoOidInfo.toastOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-					
-					query->intoOidInfo.toastComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
-					
-					heap_close(pg_class_desc, RowExclusiveLock);
-					heap_close(pg_type_desc, RowExclusiveLock);
-					
-				}
 		MemoryContextSwitchTo(oldContext);
 	}
 
