@@ -80,45 +80,41 @@ def parseCommandLine():
 
 ################
 def parseHostLine(line):
-    t = line.strip().split('@')
-    if not t[0]: return None
-    if (len(t) > 2): raise RuntimeError
-    if (len(t) == 1): t = [opt['-u'], t[0]]
-    t[1] = t[1].split(':')
-    if (len(t[1]) == 1): 
-	t[1] = [t[1][0], opt['-p']]
-    else:
-	t[1] = [t[1][0], int(t[1][1])]
-    return (t[0], t[1][0], t[1][1])
-
+    '''Parse line into (user, host, port) tuple'''
+    try:
+	t = line.strip().split('@')
+	cnt = len(t)
+	if t[0][0] == '#': return None
+        if cnt == 1: return (opt['-u'], t[0], opt['-p'])
+	if cnt == 2: 
+	    tt = t[1].split(':')
+	    cnt = len(tt)
+	    if cnt == 1: return (t[0], tt[0], opt['-p'])
+	    elif cnt == 2: return (t[0], tt[0], int(tt[1]))
+    except ValueError: pass
+    except IndexError: pass
+    return None
 
 #############
-def readHostFile():
-    global opt
-    hostlines = []
-    if opt['-f']:
+def readHostFile(fname, retList):
+    if not fname: return
+    f = None; lno = 0; host = {}
+    try:
 	try:
-	    fd = open(opt['-f'], 'r')
-	    hostlines = fd.readlines()
-	    fd.close()
-	except IOError, e:
-	    sys.exit('Error: cannot read host file' + opt['-f'])
+	    f = open(fname, 'r')
+	    for line in f:
+		lno = lno + 1
+		h = parseHostLine(line)
+		if not h: continue
+		key = '%s@%s' % (h[0], h[1])
+		host[key] = h
+	    for n in host: retList.append(host[n])
+	except IOError:
+	    sys.exit('[ERROR] cannot read host file ' + fname 
+		     + (lno > 0 and (' (line %d)' % lno) or ''))
+    finally:
+	if f: f.close()
 
-    host = {}
-    line = 0
-    for h in hostlines:
-	try:
-	    line = line + 1
-	    h = parseHostLine(h)
-	    if not h: continue
-	    if host.has_key(h[1]): continue     # ignore duplicate hosts
-	    host[h[1]] = h
-	    opt['-h'].append(h)
-	except KeyboardInterrupt:
-	    raise
-	except:
-	    print ('Error: while parsing line %d of host file %s' % (line, opt['-f']))
-	    raise
 
 #############
 def createSession():
@@ -170,10 +166,14 @@ try:
     
     parseCommandLine()
     tab = []
-    for h in opt['-h']: tab.append(parseHostLine(h))
-    opt['-h'] = tab
+    for h in opt['-h']: 
+	h = parseHostLine(h)
+	if h: tab.append(h)
+        else: usage('Error: invalid -h argument')
 
-    readHostFile()
+    opt['-h'] = tab
+    readHostFile(opt['-f'], opt['-h'])
+
     createSession()
     shcmd = buildCommand()
     for s in session:
@@ -186,4 +186,4 @@ try:
 	    print '[%s] %s' % (s.name, line),
 
 except KeyboardInterrupt:
-    sys.exit('Interrupted...')
+    sys.exit('\nInterrupted...')

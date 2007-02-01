@@ -282,16 +282,11 @@ def writeAuthorizedKeys(tab):
 	if f: f.close()
 
 
-def addKnownHosts(tab, host):
-    cmd = 'cd ~/.ssh && grep -v %s known_hosts > known_hosts.tmp' % host
+def addKnownHosts(user, host):
+    cmd = 'ssh -q -o "StrictHostKeyChecking no" -o "BatchMode yes" %s@%s echo' % (user, host)
     f = os.popen(cmd) 
     i = f.read();
     ok = not f.close()
-    if ok: 
-	cmd = 'cd ~/.ssh && ssh-keyscan -t rsa %s >> known_hosts.tmp && mv -f known_hosts.tmp known_hosts' % host
-	f = os.popen(cmd) 
-	i = f.read()
-	ok = not f.close()
     return ok
 
 
@@ -382,14 +377,16 @@ try:
 
     print; print '[STEP 5 of 6] merge known_hosts locally'
     for h in hostList:
-	if not addKnownHosts(tab, h.host()): 
+	if not addKnownHosts(h.user(), h.host()):
 	    errmsg = "[WARNING] unable to add %s to known_hosts file" % h.host()
 	    print errmsg
 
     print; print '[STEP 6 of 6] copy authorized_keys and known_hosts to all remote hosts'
     errmsg = None
     for h in hostList:
-	cmd = 'scp -q %s %s %s@%s:.ssh/' % (authorized_keys_fname, known_hosts_fname, h.user(), h.host())
+	cmd = 'scp -q -o "BatchMode yes" %s %s %s@%s:.ssh/' % (authorized_keys_fname, 
+							       known_hosts_fname, 
+							       h.user(), h.host())
 	h.popen(cmd)
 
     for h in hostList:
@@ -401,7 +398,7 @@ try:
     
     if errmsg: sys.exit(1)
 
-    print; print '[INFO] Key exchange completed successfully.'
+    print; print '[INFO] completed successfully'
 
 except KeyboardInterrupt:
     sys.exit('\n\nInterrupted...')
