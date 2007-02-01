@@ -810,21 +810,7 @@ explain_outNode(StringInfo str,
 	 * haven't done ExecutorEnd yet.  This is pretty grotty ...
 	 */
 	if (planstate->instrument)
-    {
-		Instrumentation iFirst;
-
         InstrEndLoop(planstate->instrument);
-
-        /* CDB: Show actual row count, etc. */
-		iFirst.firststart = es->firststart;
-
-        cdbexplain_showExecStats(planstate,
-                                 str,
-                                 &es->workbuf,
-                                 es->currentSlice,
-                                 indent+1,
-                                 &iFirst);
-    }
 
     /* quals, sort keys, etc */
 	switch (nodeTag(plan))
@@ -1014,6 +1000,20 @@ explain_outNode(StringInfo str,
 		default:
 			break;
 	}
+
+    /* CDB: Show actual row count, etc. */
+	if (planstate->instrument)
+    {
+		Instrumentation iFirst;
+
+		iFirst.firststart = es->firststart;
+        cdbexplain_showExecStats(planstate,
+                                 str,
+                                 &es->workbuf,
+                                 es->currentSlice,
+                                 indent+1,
+                                 &iFirst);
+    }
 
 	/* initPlan-s */
 	if (plan->initPlan)
