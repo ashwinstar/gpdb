@@ -1883,6 +1883,7 @@ CopyToDispatch(CopyState cstate)
 	{
 		/* Generate trailer for a binary copy */
 		CopySendInt16(cstate, -1);
+		CopyToDispatchFlush(cstate);
 	}
 	
 	pfree(cdbcopy_cmd.data);
