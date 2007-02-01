@@ -60,6 +60,9 @@ def parseMemorySize(line):
     except:
 	return 0
 
+def parsePort(val): 
+    try: return int(val)
+    except ValueError: return 0
 
 #############
 def parseCommandLine():
@@ -74,10 +77,11 @@ def parseCommandLine():
 	elif (switch[1] in 'vV'): opt[switch] = True
 	elif (switch == '-d'): opt[switch].append(val)
 	elif (switch == '-r'): opt[switch] = val
-	elif (switch == '-p'):
-	    try: opt[switch] = int(val)
-	    except: sys.exit('Error: please specify a number for %s switch' % switch)
+	elif (switch == '-p'): opt[switch] = parsePort(val)
 	elif (switch[1] in 'BS'): opt[switch] = parseMemorySize(val)
+
+    if not (opt['-p'] > 0): 
+	usage('Error: please specify port number for -p switch')
 
     if (len(opt['-d']) == 0): 
 	usage('Error: please specify at least one segdir (-d switch)')

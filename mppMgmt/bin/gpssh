@@ -7,8 +7,6 @@ Usage: gpssh [-?vb] [-d dir] [-p port] [-u user] [-h host] [-f hostfile] cmd
 
              -?      : print this help screen
 	     -v	     : verbose mode
-       	     -b	     : cmd should be run in the background
-	     -d	dir  : cmd should be run in the directory dir
 	     -p port : ssh port to use 
 	     -u user : the user to run command
 	     -h host : the host to connect to (multiple -h is okay)
@@ -17,7 +15,7 @@ Usage: gpssh [-?vb] [-d dir] [-p port] [-u user] [-h host] [-f hostfile] cmd
 Author: cktan@greenplum.com
 '''
 
-import os, sys, getopt, logging
+import os, sys, getopt, popen2
 
 if sys.version_info < (2, 3):
     sys.exit("Error: gpssh is supported on Python versions 2.3 or greater\n"
@@ -25,7 +23,8 @@ if sys.version_info < (2, 3):
 
 sys.path.append(sys.path[0] + '/lib')
 try:
-    import paramiko
+    pass
+    #    import paramiko
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -33,9 +32,7 @@ except ImportError, e:
 # all the command line options
 #
 opt = {}
-opt['-b'] = False
 opt['-v'] = False
-opt['-d'] = '~/'
 opt['-p'] = 22
 opt['-u'] = os.environ.get('LOGNAME') or os.environ.get('USER')
 opt['-h'] = []
@@ -57,14 +54,14 @@ def parsePort(val):
 def parseCommandLine():
     global opt, cmd
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?bvtd:p:u:h:f:')
+	(options, args) = getopt.getopt(sys.argv[1:], '?vp:u:h:f:')
     except Exception, e:
 	usage('Error: invalid option')
 
     for (switch, val) in options:
 	if (switch == '-?'):	     usage(0)
-	elif (switch[1] in 'bv'):    opt[switch] = True
-	elif (switch[1] in 'duf'):   opt[switch] = val
+	elif (switch == '-v'):       opt[switch] = True
+	elif (switch[1] in 'uf'):    opt[switch] = val
 	elif (switch == '-h'):       opt[switch].append(val)
 	elif (switch == '-p'):       opt[switch] = parsePort(val)
 
@@ -75,7 +72,7 @@ def parseCommandLine():
     if hf != 1:
 	usage('Error: please specify at least one of -h or -f args, but not both')
 
-    cmd = args
+    cmd = " ".join(args)
 
 
 ################
@@ -117,53 +114,41 @@ def readHostFile(fname, retList):
 
 
 #############
-def createSession():
-    global opt, session
+def createSession(cmd):
+    session = []
     user = {}
-    port = {}
-    for h in opt['-h']: user[h[0]] = port[h[2]] = h
-    sameUser = len(user) == 1
-    samePort = len(port) == 1
+    for h in opt['-h']: user[h[0]] = h
+    sameUser = (len(user) == 1)
+    
     for h in opt['-h']:
-	try:
-	    s = paramiko.SSHClient()
-	    s.load_system_host_keys()
-	    s.connect(h[1], h[2], h[0])
-	    s.name = ''
-	    if not sameUser: s.name = h[0] + '@'
-	    s.name = s.name + h[1]
-	    if not samePort: s.name = s.name + ':' + h[2]
-	    if opt['-v']: print 'Info: connected to', s.name
-	    session.append(s)
-	except paramiko.SSHException, e:
-	    print 'SSH Connect Failed: %s@%s:%d' % h,
-	    print ' -', e
-	    sys.exit(100)
-	except KeyboardInterrupt:
-	    raise
-	except:
-	    print ('Error: while connecting to %s@%s:%d' % h)
-	    raise
+	ssh = 'ssh -p %d -o "BatchMode yes" -o "StrictHostKeyChecking no" %s@%s' % (h[2], h[0], h[1])
+	ssh = ssh + ' "%s" ' % cmd
+	if opt['-v']: print '[INFO %s@%s] %s' % (h[0], h[1], cmd)
+	p = popen2.Popen4(ssh)
+	p.x_user = h[0]; p.x_host = h[1]
+	p.x_cmd = cmd;   p.x_ssh = ssh
+	p.x_peer = sameUser and h[1] or ('%s@%s' % (h[0], h[1]))
+	p.tochild.close()
+	session.append(p)
+    
+    return session
 
+def waitSession(session):
+    errmsg = None
+    for p in session:
+	for out in p.fromchild:
+	    if len(out) > 1: 
+		print '[%s] %s' % (p.x_peer, out[:-1])
+	status = p.wait()
+	if status:
+	    errmsg = '[ERROR %s] failed %d' % (p.x_peer, status)
+	    print errmsg
 
-#############
-def buildCommand():
-    shcmd = 'cd ' + opt['-d']
-    shcmd = shcmd + ' && ' + ' '.join(cmd)
-    shcmd = shcmd.encode('string_escape')
-    t = shcmd.split('"')
-    shcmd = '\\"'.join(t)
-    shcmd = 'bash -c "%s" 2>&1' % shcmd
-    if (opt['-b']): shcmd = shcmd + ' &'
-    return shcmd
-
+    if errmsg: sys.exit(1)
 
 
 #############
 try:
-    nullFile = logging.FileHandler('/dev/null')
-    logging.getLogger('paramiko.transport').addHandler(nullFile)
-    
     parseCommandLine()
     tab = []
     for h in opt['-h']: 
@@ -174,16 +159,9 @@ try:
     opt['-h'] = tab
     readHostFile(opt['-f'], opt['-h'])
 
-    createSession()
-    shcmd = buildCommand()
-    for s in session:
-	if (opt['-v']): print ('Info: exec %s on %s' % (shcmd, s.name))
-	stdin, stdout, stderr = s.exec_command(shcmd)
-	s.mystdout = stdout
-
-    for s in session:
-	for line in s.mystdout: 
-	    print '[%s] %s' % (s.name, line),
+    session = createSession(cmd)
+    waitSession(session)
+    if opt['-v']: print '[INFO] completed successfully'
 
 except KeyboardInterrupt:
     sys.exit('\nInterrupted...')

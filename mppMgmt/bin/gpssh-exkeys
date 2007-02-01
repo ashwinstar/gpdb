@@ -73,6 +73,8 @@ class Host:
 		    pwd = getpass.getpass('  *** Enter password for %s@%s: ' % (self.m_user, self.m_host))
 		    if pwd: ok = p.login(self.m_host, self.m_user, pwd)
 		    if ok: passwd.append(pwd)
+	except KeyboardInterrupt: 
+	    raise
 	except:
 	    if p.before and p.before.find('Connection refused') >= 0:
 		# sshd not running or not acccepting connection
@@ -100,7 +102,7 @@ class Host:
 	p.sendline(cmd); p.prompt()
 	p.sendline('pwd'); p.prompt()
 	dir = p.before.strip()
-	if dir and len(dir) > 5 and dir[-5:] == '/.ssh':
+	if dir and dir.find('/.ssh') > 0:
 	    pass
 	else:
 	    return False

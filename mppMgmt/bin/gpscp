@@ -60,7 +60,7 @@ def parseCommandLine():
 	elif (switch == '-h'):      opt[switch].append(val)
 	elif (switch == '-p'):      opt[switch] = parsePort(val)
 
-    if not opt['-p'] > 0: usage('Error: please specify port number for -p switch')
+    if not (opt['-p'] > 0): usage('Error: please specify port number for -p switch')
 
     if (len(args) != 2):
 	usage('Error: please specify local and remote file paths')
@@ -135,17 +135,18 @@ try:
 	p.x_cmd = cmd
 	p.x_user = user
 	p.x_host = host
+	p.x_peer = '%s@%s' % (user, host)
+	p.tochild.close()
 	proc.append(p)
 
     errmsg = None
     for p in proc:
-	p.tochild.close()
-	out = "  ... ".join(p.fromchild.readlines())
-	if p.wait():
-	    errmsg = '[ERROR %s@%s]:' % (p.x_user, p.x_host)
-	    errmsg = errmsg + "\n  ... " + out
+	for out in p.fromchild: 
+	    print '[OUT %s] %s' % (p.x_peer, out)
+	status = p.wait()
+	if status:
+	    errmsg = '[ERROR %s] failed %d' % (p.x_peer, status)
 	    print errmsg
-	    ok = False
 
     if errmsg: sys.exit(1)
     if opt['-v']: print '[INFO] completed successfully'
