@@ -3,7 +3,7 @@
  * nodeHashjoin.c
  *	  Routines to handle hash join nodes
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -157,6 +157,12 @@ ExecHashJoin(HashJoinState *node)
 										node->hj_HashOperators);
 		node->hj_HashTable = hashtable;
 
+        /* 
+         * CDB: Offer extra info for EXPLAIN ANALYZE. 
+         */
+        if (estate->es_instrument)
+            ExecHashTableExplainInit(node, hashNode, hashtable);
+
 		/*
 		 * execute the Hash node, to build the hash table
 		 */
@@ -192,7 +198,9 @@ ExecHashJoin(HashJoinState *node)
 		 */
 		node->hj_OuterNotEmpty = false;
 
+#ifdef HJDEBUG
 		elog(DEBUG4, "HashJoin built table with %f tuples", hashtable->totalTuples);
+#endif
 	}
 
 	/*
@@ -630,6 +638,12 @@ start_over:
 	nbatch = hashtable->nbatch;
 	curbatch = hashtable->curbatch;
 
+    if (curbatch >= nbatch)
+        return nbatch;
+
+    if (hashtable->stats)
+        ExecHashTableExplainBatchEnd(hashtable);
+
 	if (curbatch > 0)
 	{
 		/*
@@ -682,10 +696,13 @@ start_over:
 		curbatch++;
 	}
 
+    hashtable->curbatch = curbatch;     /* CDB: upd before return, even if no
+                                         * more data, so stats logic can see
+                                         * whether join was run to completion 
+                                         */
+
 	if (curbatch >= nbatch)
 		return curbatch;		/* no more batches */
-
-	hashtable->curbatch = curbatch;
 
 	/*
 	 * Reload the hash table with the new inner batch (which could be empty)

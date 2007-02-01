@@ -3,6 +3,7 @@
  * buffile.c
  *	  Management of large buffered files, primarily temporary files.
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -550,6 +551,15 @@ BufFileTell(BufFile *file, int *fileno, long *offset)
 	*fileno = file->curFile;
 	*offset = file->curOffset + file->pos;
 }
+
+/*
+ * BufFileTell64 --- return current 64-bit offset from beginning of virtual file
+ */
+uint64
+BufFileTell64(BufFile *file)
+{
+	return file->curOffset + file->pos + MAX_PHYSICAL_FILESIZE * (uint64)file->curFile;
+}                               /* BufFileTell64 */
 
 /*
  * BufFileSeekBlock --- block-oriented seek

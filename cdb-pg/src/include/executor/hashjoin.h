@@ -4,6 +4,7 @@
  *	  internal structures for hash joins
  *
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -16,6 +17,9 @@
 
 #include "fmgr.h"
 #include "storage/buffile.h"
+
+struct StringInfoData;                  /* #include "lib/stringinfo.h" */
+
 
 /* ----------------------------------------------------------------
  *				hash-join hash table structures
@@ -73,6 +77,31 @@ typedef struct HashJoinTupleData
 	((MinimalTuple) ((char *) (hjtup) + HJTUPLE_OVERHEAD))
 
 
+/* Statistics collection workareas for EXPLAIN ANALYZE */
+typedef struct HashJoinBatchStats
+{
+    uint64      outerfilesize;
+    uint64      innerfilesize;
+} HashJoinBatchStats;
+
+typedef struct HashJoinTableStats
+{
+    struct StringInfoData  *joinexplainbuf; /* Join operator's report buf */
+    struct StringInfoData  *hashexplainbuf; /* Hash operator's report buf */
+    HashJoinBatchStats     *batchstats;     /* -> array[0..nbatchstats-1] */
+    int                     nbatchstats;    /* num of batchstats slots */
+    int                     endedbatch;     /* index of last batch ended */
+
+    /* These statistics are cumulative over all nontrivial batches... */
+    int                     nonemptybatches;    /* num of nontrivial batches */
+    int                     nonemptybuckets;    /* num of hash buckets used */
+    int                     chainlength_max;    /* longest hash chain */
+    double                  chainlength_sum;    /* num of hash tuples */
+    uint64                  innerbytes_sum;     /* work_mem to hold whole rel */
+    Size                    workmem_max;        /* work_mem high water mark */
+} HashJoinTableStats;
+
+
 typedef struct HashJoinTableData
 {
 	int			nbuckets;		/* # buckets in the in-memory hash table */
@@ -108,11 +137,14 @@ typedef struct HashJoinTableData
 	 */
 	FmgrInfo   *hashfunctions;	/* lookup data for hash functions */
 
-	Size		spaceUsed;		/* memory space currently used by tuples */
+	Size		spaceUsed;		/* total memory space used by tuples */
 	Size		spaceAllowed;	/* upper limit for space used */
+    Size        spaceFreed;     /* memory space released by spilling */
 
 	MemoryContext hashCxt;		/* context for whole-hash-join storage */
 	MemoryContext batchCxt;		/* context for this-batch-only storage */
+
+    HashJoinTableStats *stats;  /* statistics workarea for EXPLAIN ANALYZE */
 } HashJoinTableData;
 
 #endif   /* HASHJOIN_H */
