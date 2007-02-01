@@ -426,7 +426,7 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 			break;
 		}
 	}
-nbatch = 1;   /*$$$$$$$$$$$$$*/
+
 	*numbuckets = nbuckets;
 	*numbatches = nbatch;
 }
