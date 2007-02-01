@@ -87,6 +87,40 @@ typedef struct IndexScanDescData
 
 typedef IndexScanDescData *IndexScanDesc;
 
+/*
+ * used for scan of external relations with the file protocol
+ */
+typedef struct FileScanDescData
+{
+	/* scan parameters */
+	Relation	fs_rd;			/* target relation descriptor */
+	FILE	   *fs_file;		/* the external data file we scan */
+	char	   *fs_filename;
+	int			fs_nkeys;		/* number of scan keys */
+	ScanKey		fs_key;			/* array of scan key descriptors */
+	
+	/* current file parse state */
+	struct CopyStateData *fs_pstate;
+	
+	Form_pg_attribute *attr;
+	AttrNumber	num_phys_attrs;
+	Datum	   *values;
+	char	   *nulls;
+	int		   *attr_offsets;
+	FmgrInfo   *in_functions;
+	Oid		   *typioparams;
+	Oid			in_func_oid;
+	ErrorContextCallback errcontext;
+	
+	/* current file scan state */
+	bool		fs_inited;		/* false = scan not init'd yet */
+	TupleDesc	fs_tupDesc;
+	HeapTupleData fs_ctup;		/* current tuple in scan, if any */
+	Buffer		fs_cbuf;		/* always invalid buffer */
+	
+}	FileScanDescData;
+
+typedef FileScanDescData *FileScanDesc;
 
 /*
  * HeapScanIsValid
