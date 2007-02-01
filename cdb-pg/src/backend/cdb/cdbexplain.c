@@ -700,7 +700,7 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
                 for (i = 0; i < indent; i++)
                     appendStringInfo(str, "  ");
                 if (instr->cdbWorkers > 1)
-                    appendStringInfo(str, "(seg%d): ", instr->cdbSegIndex);
+                    appendStringInfo(str, "[seg%d] ", instr->cdbSegIndex);
                 appendBinaryStringInfo(str, cp, dp-cp);
                 appendStringInfoChar(str, '\n');
             }
