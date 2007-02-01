@@ -241,18 +241,25 @@ _readQuery(void)
 	READ_NODE_FIELD(resultRelations);
 	READ_NODE_FIELD(returningLists);
 	
+	/*
+	 * systems that we initdb's using prior versions don't have these field, so to avoid
+	 * making the developers do an initdb, we will check.
+	 * 
+	 * This shouldn't matter for anyone who does an initDB in the future (with our production 2.4 release).
+     */
+    if (pg_strtok_peek_fldname("intoOidInfo.relOid"))
+    {                            
+        READ_OID_FIELD(intoOidInfo.relOid);
+     
+        READ_OID_FIELD(intoOidInfo.comptypeOid);
+                             
+        READ_OID_FIELD(intoOidInfo.toastOid);
+                             
+        READ_OID_FIELD(intoOidInfo.toastIndexOid);
                             
-    READ_OID_FIELD(intoOidInfo.relOid);
+        READ_OID_FIELD(intoOidInfo.toastComptypeOid);
  
-    READ_OID_FIELD(intoOidInfo.comptypeOid);
-                         
-    READ_OID_FIELD(intoOidInfo.toastOid);
-                         
-    READ_OID_FIELD(intoOidInfo.toastIndexOid);
-                        
-    READ_OID_FIELD(intoOidInfo.toastComptypeOid);
- 
-
+    }
 	local_node->intoPolicy = NULL;
 	
 
