@@ -298,6 +298,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	CdbDispatchCmdThreads     *dispatchThreads = NULL;
 	
     Oid reloid = 0;
+    Assert(stmt->relation->schemaname == NULL || strlen(stmt->relation->schemaname)>0);
 
     PG_TRY();
     {
@@ -500,6 +501,7 @@ DefineRelation_int(CreateStmt *stmt,
 		Relation	pg_type_desc;
 		Oid 		comptypeOid = InvalidOid;
 		Oid			toastIndexId = InvalidOid;
+		MemoryContext oldContext;
 	
 		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 		pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
@@ -528,7 +530,10 @@ DefineRelation_int(CreateStmt *stmt,
 		stmt->oidInfo.toastComptypeOid = GetNewRelFileNode(tablespaceId, false,  pg_type_desc);
 		
 		stmt->relKind = relkind;
+		
+		oldContext = MemoryContextSwitchTo(CacheMemoryContext);
 		stmt->relation->schemaname = get_namespace_name(namespaceId);	
+		MemoryContextSwitchTo(oldContext);
 		
 		heap_close(pg_type_desc, RowExclusiveLock);
 	}
