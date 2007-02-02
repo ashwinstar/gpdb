@@ -287,7 +287,9 @@ extern void ExecAssignScanTypeFromOuterPlan(ScanState *scanstate);
 extern bool ExecRelationIsTargetRelation(EState *estate, Index scanrelid);
 
 extern Relation ExecOpenScanRelation(EState *estate, Index scanrelid);
+extern Relation ExecOpenScanExternalRelation(EState *estate, Index scanrelid);
 extern void ExecCloseScanRelation(Relation scanrel);
+extern void ExecCloseScanExternalRelation(Relation scanrel);
 
 extern void ExecOpenIndices(ResultRelInfo *resultRelInfo);
 extern void ExecCloseIndices(ResultRelInfo *resultRelInfo);

@@ -346,6 +346,27 @@ typedef struct ValuesScan
 	/* no other fields needed at present */
 } ValuesScan;
 
+/* ----------------
+* External Scan node
+* 
+* Field scan.scanrelid is the index of the RTE_EXTERNAL RTE for
+* this node.
+*
+* Field filenames is a list of N string node pointers (or NULL)
+* where N is number of segments in the array. The pointer in
+* position I is NULL or points to the string node containing the
+* file name for segment I.
+* ----------------
+*/
+typedef struct ExternalScan
+{
+	Scan		scan;
+	List		*fileNames; /* file name or null for each segment */
+	List		*fmtOpts;   /* data format options                */
+	bool		isText;     /* true for text false for csv        */
+	
+} ExternalScan;
+
 /*
  * ==========
  * Join nodes

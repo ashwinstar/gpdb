@@ -1229,6 +1229,20 @@ typedef struct ValuesScanState
     Oid         cdb_fake_tableoid;
 } ValuesScanState;
 
+/* ----------------
+ *	 ExternalScanState information
+ *
+ *		ExternalScan nodes are used to scan external tables
+ *
+ *		ess_ScanDesc		the state of the file data scan
+ * ----------------
+ */
+typedef struct ExternalScanState
+{
+	ScanState	ss;
+	FileScanDesc	ess_ScanDesc;
+} ExternalScanState;
+
 /* ----------------------------------------------------------------
  *				 Join State Information
  * ----------------------------------------------------------------
