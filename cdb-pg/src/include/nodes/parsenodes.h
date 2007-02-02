@@ -558,7 +558,8 @@ typedef enum RTEKind
 	RTE_SPECIAL,				/* special rule relation (NEW or OLD) */
 	RTE_FUNCTION,				/* function in FROM */
 	RTE_VALUES,					/* VALUES (<exprlist>), (<exprlist>), ... */
-    RTE_VOID                    /* CDB: deleted RTE */
+    RTE_VOID,                   /* CDB: deleted RTE */
+	RTE_EXTERNAL				/* external table reference */
 } RTEKind;
 
 typedef struct RangeTblEntry

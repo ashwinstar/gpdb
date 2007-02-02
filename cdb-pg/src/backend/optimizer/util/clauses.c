@@ -3534,6 +3534,7 @@ range_table_walker(List *rtable,
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
+			case RTE_EXTERNAL:
 			case RTE_SPECIAL:
             case RTE_VOID:
 				/* nothing to do */
@@ -4097,6 +4098,7 @@ range_table_mutator(List *rtable,
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
+			case RTE_EXTERNAL:
 			case RTE_SPECIAL:
             case RTE_VOID:
 				/* we don't bother to copy eref, aliases, etc; OK? */

@@ -387,6 +387,7 @@ use_physical_tlist(RelOptInfo *rel)
 	 * and values scans (but not for, eg, joins).
 	 */
 	if (rel->rtekind != RTE_RELATION &&
+		rel->rtekind != RTE_EXTERNAL &&
 		rel->rtekind != RTE_SUBQUERY &&
 		rel->rtekind != RTE_FUNCTION &&
 		rel->rtekind != RTE_VALUES)

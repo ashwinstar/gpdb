@@ -816,7 +816,7 @@ ExecCheckRTEPerms(RangeTblEntry *rte)
 	 * checked by init_fcache when the function is prepared for execution.
 	 * Join and special RTEs need no checks.
 	 */
-	if (rte->rtekind != RTE_RELATION)
+	if (rte->rtekind != RTE_RELATION && rte->rtekind != RTE_EXTERNAL)
 		return;
 
 	/*
@@ -884,7 +884,7 @@ ExecCheckXactReadOnly(Query *parsetree)
 			continue;
 		}
 
-		if (rte->rtekind != RTE_RELATION)
+		if (rte->rtekind != RTE_RELATION && rte->rtekind != RTE_EXTERNAL)
 			continue;
 
 		if ((rte->requiredPerms & (~ACL_SELECT)) == 0)

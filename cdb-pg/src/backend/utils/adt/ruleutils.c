@@ -2681,7 +2681,7 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
 	/* Exceptions occur only if the RTE is alias-less */
 	if (rte->alias == NULL)
 	{
-		if (rte->rtekind == RTE_RELATION)
+		if (rte->rtekind == RTE_RELATION || rte->rtekind == RTE_EXTERNAL)
 		{
 			/*
 			 * It's possible that use of the bare refname would find another
@@ -2805,6 +2805,7 @@ get_name_for_var_field(Var *var, int fieldno,
 	switch (rte->rtekind)
 	{
 		case RTE_RELATION:
+		case RTE_EXTERNAL:
 		case RTE_VALUES:
 
 			/*
@@ -4441,6 +4442,7 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
+			case RTE_EXTERNAL:
 				/* Normal relation RTE */
 				appendStringInfo(buf, "%s%s",
 								 only_marker(rte),
@@ -4472,7 +4474,7 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 							 quote_identifier(rte->alias->aliasname));
 			gavealias = true;
 		}
-		else if (rte->rtekind == RTE_RELATION &&
+		else if ((rte->rtekind == RTE_RELATION || rte->rtekind == RTE_EXTERNAL) &&
 				 strcmp(rte->eref->aliasname, get_rel_name(rte->relid)) != 0)
 		{
 			/*

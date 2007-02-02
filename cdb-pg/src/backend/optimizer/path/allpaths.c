@@ -206,7 +206,7 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti)
 	else
 	{
 		/* Plain relation */
-		Assert(rel->rtekind == RTE_RELATION);
+		Assert(rel->rtekind == RTE_RELATION || rel->rtekind == RTE_EXTERNAL);
 		set_plain_rel_pathlist(root, rel, rte);
 	}
 
