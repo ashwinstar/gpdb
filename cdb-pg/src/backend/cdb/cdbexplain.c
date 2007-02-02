@@ -167,6 +167,7 @@ cdbexplain_recvExecStats(struct PlanState          *planstate,
     CdbDispatchResult      *dispatchResultBeg;
     CdbDispatchResult      *dispatchResultEnd;
     CdbExplain_RecvStatCtx  ctx;
+    MemoryContext           oldcxt;
     int                     mppSegmentCount = getMPPSegmentCount();
     int                     iDispatch;
     int                     nDispatch;
@@ -237,8 +238,19 @@ cdbexplain_recvExecStats(struct PlanState          *planstate,
         ctx.nmsgptr++;
     }
 
+    /*
+     * Note that the caller may free the CdbDispatchResults upon return, maybe
+     * before EXPLAIN ANALYZE examines the PlanState tree.  Consequently we
+     * must not return ptrs into the dispatch result buffers, but must copy any
+     * needed information into a sufficiently long-lived memory context.
+     */
+    oldcxt = MemoryContextSwitchTo(planstate->state->es_query_cxt);
+
     /* Stuff statistics into each PlanState node's Instrumentation node. */
     ExecStateTreeWalker(planstate, cdbexplain_recvStatWalker, NULL, &ctx);
+
+    /* Restore caller's memory context. */
+    MemoryContextSwitchTo(oldcxt);
 
     /* Make sure we visited the right number of PlanState nodes. */
     Insist(ctx.iStatInst == ctx.nStatInst);
@@ -355,13 +367,15 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context)
         instr->ntuples = siMax->ntuples;
         instr->nloops = siMax->nloops;
 
-        /* Compute ptr to winner's extra message text (if any). */
+        /* Grab winner's extra message text (if any). */
         instr->notes = NULL;
         if (siMax->bnotes < siMax->enotes)
         {
-            instr->notes = (char *)shMax + shMax->bnotes + siMax->bnotes;
+            char   *notes = (char *)shMax + shMax->bnotes + siMax->bnotes;
+
             Insist(shMax->bnotes + siMax->enotes < shMax->enotes &&
-                   instr->notes[siMax->enotes-siMax->bnotes] == '\0');
+                   notes[siMax->enotes-siMax->bnotes] == '\0');
+            instr->notes = pstrdup(notes);
         }
 
         /* Store segment id of the winning qExec. */
