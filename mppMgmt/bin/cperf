@@ -96,26 +96,33 @@ def parseCommandLine():
     GPSSH = 'gpssh -p %d -f %s %s ' % (opt['-p'], hostfile, opt['-V'] and '-v' or '')
     GPSCP = 'gpscp -p %d -f %s ' % (opt['-p'], hostfile)
 
+    # strip the last '/' from the dir
+    dd = []
+    for d in opt['-d']:
+	if d and d[-1] == '/': d = d[:-1]
+	dd.append(d)
+    opt['-d'] = dd
+
 #############
 def run(cmd):
     f = None
     ok = False
     out = ''
     try:
-	if opt['-v']: print '[Info]', cmd
-	f = os.popen(cmd)
-	out = f.read()
-	ok = not f.close()
-	f = None
-    except KeyboardInterrupt:
-	raise
-    except:
+	try:
+	    if opt['-v']: print '[Info]', cmd
+	    f = os.popen(cmd)
+	    out = f.read()
+	    ok = not f.close()
+	    f = None
+	except KeyboardInterrupt:
+	    raise
+    finally:
 	if f: f.close()
-	ok = False
 
     if opt['-v'] and out and out != '': print out
 
-    if out and out.find('SSH Connect Failed') >= 0: 
+    if out and out.find('Permission denied') >= 0 and out.find('publickey') >= 0 : 
 	if not opt['-v']: print out
 	print 'Please use groupSession to exchange keys ...'
 	sys.exit(1)
