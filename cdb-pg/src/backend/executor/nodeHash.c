@@ -920,21 +920,21 @@ ExecHashTableExplainInit(HashJoinState *hjstate,
     MemoryContext   oldcxt;
     int             nbatch = hashtable->nbatch;
 
+    /* Switch to a memory context that survives until ExecutorEnd. */
+    oldcxt = MemoryContextSwitchTo(hjstate->js.ps.state->es_query_cxt);
+
     /* On first call, set EXPLAIN ANALYZE hooks in the PlanState nodes. */
     if (!hjstate->js.ps.cdbexplainbuf)
     {
         Assert(!hashstate->ps.cdbexplainbuf && !hjstate->js.ps.cdbexplainfun);
 
-	    /* Allocate string buffers in executor's per-query memory context. */
+	    /* Allocate string buffers. */
         hashstate->ps.cdbexplainbuf = makeStringInfo();
         hjstate->js.ps.cdbexplainbuf = makeStringInfo();
 
         /* Request a callback at end of query. */
         hjstate->js.ps.cdbexplainfun = ExecHashTableExplainEnd;
     }
-
-    /* Switch to memory context that lasts as long as the hash table. */
-    oldcxt = MemoryContextSwitchTo(hashtable->hashCxt);
 
     /* Create workarea and attach it to the HashJoinTable. */
     hashtable->stats = (HashJoinTableStats *)palloc0(sizeof(*hashtable->stats));
@@ -947,6 +947,7 @@ ExecHashTableExplainInit(HashJoinState *hjstate,
         (HashJoinBatchStats *)palloc0(nbatch * sizeof(hashtable->stats->batchstats[0]));
     hashtable->stats->nbatchstats = nbatch;
 
+    /* Restore caller's memory context. */
     MemoryContextSwitchTo(oldcxt);
 }                               /* ExecHashTableExplainInit */
 
