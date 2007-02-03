@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/elog.h,v 1.82 2006/03/05 15:59:07 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/elog.h,v 1.81 2005/10/15 02:49:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -178,6 +178,7 @@ extern int	geterrposition(void);
 extern int	getinternalerrposition(void);
 
 int errOmitLocation(bool omitLocation);   /*CDB*/
+
 
 /*----------
  * Old-style error reporting API: to be used in this way:
@@ -356,5 +357,12 @@ write_stderr(const char *fmt,...)
 /* This extension allows gcc to check the format string for consistency with
    the supplied arguments. */
 __attribute__((format(printf, 1, 2)));
+
+#if defined(pg_on_solaris)
+#if !defined(__OPTIMIZE__)
+extern size_t backtrace(void **buffer, int size);
+extern char **backtrace_symbols(void *const *buffer, int size);
+#endif
+#endif
 
 #endif   /* ELOG_H */

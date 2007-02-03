@@ -74,6 +74,8 @@
 #include "cdb/cdbvars.h"  /*Mpp_segment */
 #include "utils/ps_status.h"    /* get_ps_display_username() */
 
+#include "utils/elog.h" /* backtrace() prototype for solaris */
+
 /* Global variables */
 ErrorContextCallback *error_context_stack = NULL;
 
@@ -126,7 +128,7 @@ static const char *useful_strerror(int errnum);
 static const char *error_severity(int elevel);
 static void append_with_tabs(StringInfo buf, const char *str);
 
-#if (!defined(__darwin__)) && (!defined(__solaris__))
+#if (!defined(__darwin__)) && (!defined(pg_on_solaris))
 #if defined(__GLIBC__)
 #include <execinfo.h>
 #endif
@@ -322,8 +324,8 @@ errstart(int elevel, const char *filename, int lineno,
 	/* errno is saved here so that error parameter eval can't change it */
 	edata->saved_errno = errno;
 
-#if (!defined(__darwin__)) && (!defined(__solaris__))
-#if defined(__GLIBC__)
+#if (!defined(__darwin__))
+#if defined(__GLIBC__) || defined(pg_on_solaris)
 #if !defined(__OPTIMIZE__)
 		
 	edata->stacktracesize = backtrace(edata->stacktracearray, 30);
@@ -966,8 +968,8 @@ elog_start(const char *filename, int lineno, const char *funcname)
 	/* errno is saved now so that error parameter eval can't change it */
 	edata->saved_errno = errno;
 	
-#if (!defined(__darwin__)) && (!defined(__solaris__))
-#if defined(__GLIBC__)
+#if (!defined(__darwin__))
+#if defined(__GLIBC__) || defined(pg_on_solaris)
 #if !defined(__OPTIMIZE__)
 		
 	edata->stacktracesize = backtrace(edata->stacktracearray, 30);
@@ -2062,8 +2064,8 @@ send_message_to_server_log(ErrorData *edata)
 		appendStringInfoChar(&buf, '\n');
 	}
 
-#if (!defined(__darwin__)) && (!defined(__solaris__))
-#if defined(__GLIBC__)
+#if (!defined(__darwin__))
+#if defined(__GLIBC__) || defined(pg_on_solaris)
 #if !defined(__OPTIMIZE__)
 		
 	if (edata->elevel >= ERROR &&
@@ -2535,3 +2537,112 @@ write_stderr(const char *fmt,...)
 #endif
 	va_end(ap);
 }
+
+#if defined(pg_on_solaris)
+#if !defined(__OPTIMIZE__)
+/* Use the Solaris stack-walker to build a (sort of) glibc compatible
+ * backtrace */
+#include <ucontext.h>
+#include <dlfcn.h>
+
+struct frame_info
+{
+	int frame;
+	int max;
+	void **addr;
+};
+
+static int
+get_stack_frames(uintptr_t fp, int sig, void *context)
+{
+	struct frame_info *fi = (struct frame_info *)context;
+	int cur = fi->frame;
+
+	/* stop filling in after we've hit the limit */
+	if (cur == fi->max)
+		return 0;
+
+	fi->addr[cur] = (void *)fp;
+	fi->frame++;
+
+	return 0;
+}
+
+size_t
+backtrace(void **buffer, int size)
+{
+	ucontext_t uc;
+	struct frame_info fi;
+
+	if (getcontext(&uc) != 0)
+		return 0;
+
+	fi.addr = buffer;
+	fi.max = size;
+	fi.frame = 0;
+
+	if (walkcontext(&uc, get_stack_frames, &fi) != 0)
+		return 0;
+
+	return fi.frame;
+}
+
+char **
+backtrace_symbols(void *const *buffer, int size)
+{
+	char **result;
+	size_t bufsize;
+	int i;
+
+	bufsize = size * sizeof(char *);
+
+	/* Calculate exact size */
+	for (i=0; i < size; i++)
+	{
+		Dl_info dli;
+
+		if (dladdr(buffer[i], &dli) == 0)
+		{
+			bufsize += snprintf(NULL, 0, "%p: <not found>", buffer[i]) + 1;
+		}
+		else
+		{
+			bufsize += snprintf(NULL, 0, "%p: %s %s+0x%ld", buffer[i], 
+						dli.dli_fname, dli.dli_sname,
+						(char *)(buffer[i]) - (char *)(dli.dli_saddr)) + 1;
+		}
+	}
+
+	result = malloc(bufsize);
+
+	/* now fill it in */
+	if (result != NULL)
+	{
+		int n;
+		char *cur = (char *)(result + size);
+
+		memset(result, 0, bufsize);
+
+		for (i=0; i < size; i++)
+		{
+			Dl_info dli;
+
+			if (dladdr(buffer[i], &dli) == 0)
+			{
+				n = sprintf(cur, "%p: <not found>", buffer[i]);
+			}
+			else
+			{
+				n = sprintf(cur, "%p: %s %s+0x%ld", buffer[i], 
+							dli.dli_fname, dli.dli_sname,
+							(char *)(buffer[i]) - (char *)(dli.dli_saddr));
+			}
+
+			result[i] = cur;
+			cur += n + 1;
+		}
+	}
+	return result;
+}
+#endif
+#endif

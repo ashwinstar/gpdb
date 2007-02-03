@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/error/assert.c,v 1.32 2006/03/05 15:58:46 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/error/assert.c,v 1.31 2005/10/15 02:49:32 momjian Exp $
  *
  * NOTE
  *	  This should eventually work with elog()
@@ -18,13 +18,15 @@
  */
 #include "postgres.h"
 
+#include "utils/elog.h" /* backtrace() prototype for solaris */
 #include <unistd.h>
 
-#if (!defined(__darwin__)) && (!defined(__solaris__))
+#if (!defined(__darwin__)) && (!defined(pg_on_solaris))
 #if defined(__GLIBC__)
 #include <execinfo.h>
 #endif
 #endif
+
 
 /*
  * ExceptionalCondition - Handles the failure of an Assert()
@@ -47,8 +49,8 @@ ExceptionalCondition(const char *conditionName,
 	}
     fflush(stdout);
 	
-#if (!defined(__darwin__)) && (!defined(__solaris__))
-#if defined(__GLIBC__)
+#if (!defined(__darwin__))
+#if defined(__GLIBC__) || defined(pg_on_solaris)
 #if !defined(__OPTIMIZE__)
 		
 	{
