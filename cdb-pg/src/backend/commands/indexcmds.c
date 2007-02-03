@@ -441,7 +441,7 @@ DefineIndex(RangeVar *heapRelation,
 	{
 		if (stmt)
 		{
-			Assert(stmt->idxOid == 0);
+
 			stmt->idxOid = indexRelationId;
 		}
 
