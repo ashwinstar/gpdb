@@ -734,6 +734,7 @@ _copyRangeVar(RangeVar *from)
 {
 	RangeVar   *newnode = makeNode(RangeVar);
 
+	Assert(from->schemaname == NULL || strlen(from->schemaname)>0);
 	COPY_STRING_FIELD(catalogname);
 	COPY_STRING_FIELD(schemaname);
 	COPY_STRING_FIELD(relname);
@@ -2073,7 +2074,12 @@ _copyCreateStmt(CreateStmt *from)
 	COPY_SCALAR_FIELD(oidInfo.toastIndexOid);
 	COPY_SCALAR_FIELD(oidInfo.toastComptypeOid);
 	COPY_SCALAR_FIELD(relKind);
-	COPY_POINTER_FIELD(policy,sizeof(MppPolicy) + from->policy->nattrs*sizeof(from->policy->attrs[0]));
+	if (from->policy)
+	{
+		COPY_POINTER_FIELD(policy,sizeof(MppPolicy) + from->policy->nattrs*sizeof(from->policy->attrs[0]));
+	}
+	else
+		newnode->policy = NULL;
 
 	return newnode;
 }
