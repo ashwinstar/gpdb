@@ -3,7 +3,7 @@
  * readfuncs.c
  *	  Reader functions for Postgres tree nodes.
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -12,10 +12,17 @@
  *	  $PostgreSQL: pgsql/src/backend/nodes/readfuncs.c,v 1.195 2006/08/12 02:52:04 tgl Exp $
  *
  * NOTES
- *	  Path and Plan nodes do not have any readfuncs support, because we
- *	  never have occasion to read them in.	(There was once code here that
- *	  claimed to read them, but it was broken as well as unused.)  We
- *	  never read executor state trees, either.
+ *	  Path and Plan nodes do not need to have any readfuncs support, because we
+ *	  never have occasion to read them in.	 We never read executor state trees, either.
+ *    
+ *    But due to the use of this routine in older version of CDB/MPP/GPDB, 
+ *    there are routines that do read those types of nodes (unlike PostgreSQL)
+ *    Those routines never actually get called.
+ * 
+ *    We could go back and remove them, but they don't hurt anything.
+ * 
+ *    The purpose of these routines is to read serialized trees that were stored 
+ *    in the catalog, and reconstruct the trees.
  *
  *-------------------------------------------------------------------------
  */
@@ -262,6 +269,14 @@ _readQuery(void)
     }
 	local_node->intoPolicy = NULL;
 	
+	/*
+	 * If the Query was a CTAS, and the CTAS was stored in the catalog as part of a rule, we
+	 * don't want to remember the OIDs assigned in the past.
+	 * Not sure we can ever have that happen.
+	 */
+	Assert(local_node->intoOidInfo.relOid == InvalidOid);
+	
+	local_node->intoOidInfo.relOid = InvalidOid;
 
 	READ_DONE();
 }
@@ -993,7 +1008,7 @@ _readOpExpr(void)
 	 * (We don't currently support an ALTER OPERATOR command, but might
 	 * someday.)
 	 */
-/*	local_node->opfuncid = InvalidOid; */
+	local_node->opfuncid = InvalidOid;
 
 	READ_OID_FIELD(opresulttype);
 	READ_BOOL_FIELD(opretset);
@@ -1021,7 +1036,7 @@ _readDistinctExpr(void)
 	 * (We don't currently support an ALTER OPERATOR command, but might
 	 * someday.)
 	 */
-	/*local_node->opfuncid = InvalidOid;*/
+	local_node->opfuncid = InvalidOid;
 
 	READ_OID_FIELD(opresulttype);
 	READ_BOOL_FIELD(opretset);
@@ -1049,7 +1064,7 @@ _readScalarArrayOpExpr(void)
 	 * (We don't currently support an ALTER OPERATOR command, but might
 	 * someday.)
 	 */
-	/*local_node->opfuncid = InvalidOid;*/
+	local_node->opfuncid = InvalidOid;
 
 	READ_BOOL_FIELD(useOr);
 	READ_NODE_FIELD(args);
@@ -1099,7 +1114,7 @@ _readSubLink(void)
 }
 
 /*
- * _readSubPlan
+ * _readSubPlan is not needed since it doesn't appear in stored rules.
  */
 static SubPlan *
 _readSubPlan(void)
@@ -1327,7 +1342,7 @@ _readNullIfExpr(void)
 	 * (We don't currently support an ALTER OPERATOR command, but might
 	 * someday.)
 	 */
-	/*local_node->opfuncid = InvalidOid;*/
+	local_node->opfuncid = InvalidOid;
 
 	READ_OID_FIELD(opresulttype);
 	READ_BOOL_FIELD(opretset);
@@ -1589,6 +1604,7 @@ _readRangeTblEntry(void)
 
 /*
  * MPP additions for serialization support
+ * These are currently not used (see outfastc ad readfast.c) 
  */
 #include "nodes/plannodes.h"
 
