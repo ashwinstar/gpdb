@@ -60,7 +60,7 @@ def parseMemorySize(line):
     except:
 	return 0
 
-def parsePort(val): 
+def parseInt(val): 
     try: return int(val)
     except ValueError: return 0
 
@@ -77,7 +77,7 @@ def parseCommandLine():
 	elif (switch[1] in 'vV'): opt[switch] = True
 	elif (switch == '-d'): opt[switch].append(val)
 	elif (switch == '-r'): opt[switch] = val
-	elif (switch == '-p'): opt[switch] = parsePort(val)
+	elif (switch == '-p'): opt[switch] = parseInt(val)
 	elif (switch[1] in 'BS'): opt[switch] = parseMemorySize(val)
 
     if not (opt['-p'] > 0): 
@@ -93,7 +93,7 @@ def parseCommandLine():
 
     hostfile = args[0]
     if opt['-V']: opt['-v'] = True
-    GPSSH = 'gpssh -p %d -f %s %s ' % (opt['-p'], hostfile, opt['-V'] and '-v' or '')
+    GPSSH = 'gpssh -p %d -f %s ' % (opt['-p'], hostfile)
     GPSCP = 'gpscp -p %d -f %s ' % (opt['-p'], hostfile)
 
     # strip the last '/' from the dir
@@ -130,7 +130,10 @@ def run(cmd):
     return (ok, out)
 
 #############
+runTeardown_torndown = False
 def runTeardown():
+    global runTeardown_torndown
+    if runTeardown_torndown: return
     if opt['-v']:
 	print '--------------------'
 	print '  TEARDOWN'
@@ -142,6 +145,7 @@ def runTeardown():
 	(ok, out) = run(cmd)
     except:
 	pass
+    runTeardown_torndown = True
 
 #############
 def runSetup():
@@ -314,17 +318,19 @@ def printResult(title, result):
 
     avgTime = totTime / len(result)
 
-    if (totTime > 0): print '''\
-      %s avg time (sec): %3.2f''' % (title, avgTime)
-    if (totBytes > 0): print '''\
-           %s tot bytes: %d''' % (title, totBytes)
-    print '''\
-%s tot bandwidth (MB/s): %3.2f''' % (title, totMBPS)
-    print '''\
-%s min bandwidth (MB/s): %3.2f [%s]''' % (title, min, minHost)
-    print '''\
-%s max bandwidth (MB/s): %3.2f [%s]''' % (title, max, maxHost)
     print
+    if (totTime > 0): print ' %s avg time (sec): %3.2f' % (title, avgTime)
+    if (totBytes > 0): print ' %s tot bytes: %d' % (title, totBytes)
+    print ' %s tot bandwidth (MB/s): %3.2f' % (title, totMBPS)
+    print ' %s min bandwidth (MB/s): %3.2f [%s]' % (title, min, minHost)
+    print ' %s max bandwidth (MB/s): %3.2f [%s]' % (title, max, maxHost)
+    if opt['-v']:
+	print ' -- per host bandwidth --'
+	for h in result:
+	    (mbps, time, bytes) = result[h]
+	    print '    %s bandwidth (MB/s): %3.2f [%s]' % (title, mbps, h)
+    print
+
 
 ################
 try:
@@ -341,7 +347,6 @@ try:
 	if opt['-r'].find('s') >= 0:
 	    streamResult = runStreamTest()
 
-	tornDown = True
 	runTeardown()
 
     finally:
@@ -354,7 +359,7 @@ try:
 	if streamResult:
 	    printResult('stream', streamResult)
 
-	if not tornDown: runTeardown()
+	runTeardown()
 
 except KeyboardInterrupt:
     print '[Abort] Keyboard Interrupt ...'
