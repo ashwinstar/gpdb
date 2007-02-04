@@ -55,6 +55,12 @@
 //#undef recv
 //#undef send
 
+#ifndef _WIN32
+#define mythread() ((unsigned int) pthread_self())
+#else
+#define mythread() ((unsigned int) pthread_self().p)
+#endif 
+
 /*
  * Static Helper functions
  */
@@ -412,6 +418,8 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	}
 
 	(*dispatchThreads)->threadCount += newThreads;
+	elog(DEBUG4, "dispatchToGang: Total threads now %d",
+			 (*dispatchThreads)->threadCount);
 }	/* cdbdisp_dispatchToGang */
 
 
@@ -598,13 +606,8 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 
 		pthread_err = pthread_join(pParms->thread, NULL);
 		if (pthread_err != 0)
-#ifndef _WIN32
 			elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (0x%x) of %d (returned %d attempting to join to 0x%x)",
-				 i + 1, (unsigned int) pParms->thread, dispatchThreads->threadCount, pthread_err, (unsigned int) pthread_self());
-#else
-			elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (0x%x) of %d (returned %d attempting to join to 0x%x)",
-				 i + 1, (unsigned int) pParms->thread.p, dispatchThreads->threadCount, pthread_err, (unsigned int) pthread_self().p);
-#endif
+				 i + 1, (unsigned int) pParms->thread, dispatchThreads->threadCount, pthread_err, mythread());
 
 		memset(&pParms->thread, 0, sizeof(pParms->thread));
 
@@ -1229,7 +1232,7 @@ thread_DispatchCommand(void *arg)
 	{
 		/* Don't use elog, it's not thread-safe */
 		if (DEBUG5 >= log_min_messages)
-			write_stderr("thread_DispatchCommand working on %d of %d commands\n",
+			write_stderr("Thread %u: thread_DispatchCommand working on %d of %d commands\n",mythread(),
                          i + 1, db_count);
 
 		dispatchResult = pParms->dispatchResultPtrArray[i];
@@ -1242,13 +1245,16 @@ thread_DispatchCommand(void *arg)
         {
             /* Don't dispatch if cancellation pending or no connection. */
             dispatchResult->stillRunning = false;
+            if (PQisBusy(dispatchResult->segdbDesc->conn))
+					write_stderr("Thread %u: We thought we were done, because !shouldStillDispatchCommand(), but we are still busy\n",mythread());
         }
         else
         {
             /* Kick off the command over the libpq connection.
              * If unsuccessful, proceed anyway, and check for lost connection below.
              */
-
+			if (PQisBusy(dispatchResult->segdbDesc->conn))
+					write_stderr("Thread %u: Trying to send to busy connection %s  %d %d %d\n",mythread(),dispatchResult->segdbDesc->whoami,i,db_count,dispatchResult->segdbDesc->conn->asyncStatus);
             dispatchCommand(dispatchResult, pParms->query_text, pParms->query_text_len, pParms->strCommand);
             dispatchResult->hasDispatched = true;
         }
@@ -1355,6 +1361,9 @@ thread_DispatchCommand(void *arg)
 			/* Skip if already finished or didn't dispatch. */
 			if (!dispatchResult->stillRunning)
 				continue;
+				
+			if (DEBUG4 >= log_min_messages)
+				write_stderr("Thread %u: looking for results from %d\n",mythread(),i+1);
 
 			/* Skip this connection if it has no input available. */
 			sock = PQsocket(segdbDesc->conn);
@@ -1362,12 +1371,18 @@ thread_DispatchCommand(void *arg)
 				!MPP_FD_ISSET(sock, &pParms->mask))
 				continue;
 
+			if (DEBUG4 >= log_min_messages)
+				write_stderr("Thread %u: PQsocket says there are results from %d\n",mythread(),i+1);
 			/* Receive and process results from this QE. */
 			finished = processResults(dispatchResult);
 
 			/* Are we through with this QE now? */
 			if (finished)
+			{
 				dispatchResult->stillRunning = false;
+				if (PQisBusy(dispatchResult->segdbDesc->conn))
+					write_stderr("We thought we were done, because finished==true, but we are still busy\n");
+			}
 		}						/* input available; receive and process it */
 
 	}							/* some QEs running */
@@ -1408,7 +1423,7 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 		if (DEBUG4 >= log_min_messages)
 		{
 			/* Don't use elog, it's not thread-safe */
-			write_stderr("Lost connection: %s\n", segdbDesc->whoami);
+			write_stderr("Thread %u: Lost connection: %s\n", mythread(), segdbDesc->whoami);
 		}
 
 		/* Free the PGconn object at once whenever we notice it's gone bad. */
@@ -1431,7 +1446,7 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 			if (DEBUG4 >= log_min_messages)
 			{
 				/* Don't use elog, it's not thread-safe */
-				write_stderr("Error cleanup in progress; command not sent to %s\n",
+				write_stderr("Thread %u: Error cleanup in progress; command not sent to %s\n", mythread(),
 						     segdbDesc->whoami);
 			}
 			return false;
@@ -1447,7 +1462,7 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 	{
 		dispatchResult->wasCanceled = true;
 		if (DEBUG4 >= log_min_messages)
-			write_stderr("Cancellation request pending; command not sent to %s\n",
+			write_stderr("Thread %u: Cancellation request pending; command not sent to %s\n",mythread(),
 					     segdbDesc->whoami);
 		return false;
 	}
@@ -1473,7 +1488,7 @@ dispatchCommand(CdbDispatchResult  *dispatchResult,
 
 	/* Don't use elog, it's not thread-safe */
 	if (DEBUG3 >= log_min_messages)
-		write_stderr("%s <- %.120s\n", segdbDesc->whoami, strCommand);
+		write_stderr("Thread %u: %s <- %.120s\n", mythread(), segdbDesc->whoami, strCommand);
 
 	/*
 	 * Submit the command asynchronously.
@@ -1481,6 +1496,9 @@ dispatchCommand(CdbDispatchResult  *dispatchResult,
 	
 	if (PQsendMppQuery_shared(conn, (char *)query_text, query_text_len) == 0)
 	{
+		if (DEBUG3 >= log_min_messages)
+			write_stderr("Thread %u: PQsendMPPQuery_shared error %s %s \n", mythread(),segdbDesc->whoami,
+							  PQerrorMessage(conn));
 		/* Note the error. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
 							  ERRCODE_MPP_INTERCONNECTION_ERROR,
@@ -1515,7 +1533,7 @@ handleSelectError(DispatchCommandParms * pParms,
 	if (LOG >= log_min_messages)
 	{
 		/* Don't use elog, it's not thread-safe */
-		write_stderr("thread_DispatchCommand select() failed; errno=%d\n",
+		write_stderr("Thread %u: thread_DispatchCommand select() failed; errno=%d\n",mythread(),
 				     sock_errno);
 	}
 
@@ -1543,6 +1561,8 @@ handleSelectError(DispatchCommandParms * pParms,
 
 		/* We're done with this QE, sadly. */
 		dispatchResult->stillRunning = false;
+		if (PQisBusy(dispatchResult->segdbDesc->conn))
+					write_stderr("Thread %u: We thought we were done, because of an error, but we are still busy\n",mythread());
 	}
 
 	/* No point in trying to cancel the other QEs with select() broken. */
@@ -1697,6 +1717,7 @@ processResults(CdbDispatchResult * dispatchResult)
 	/* If PQconsumeInput fails, we're hosed. */
 	if (rc == 0)
 	{							/* handle PQconsumeInput error */
+		write_stderr("Thread %u: PQconsumeInput failed\n",mythread());
 		errorMessage = PQerrorMessage(segdbDesc->conn);
 
 		/* Save error info for later. */
@@ -1713,6 +1734,9 @@ processResults(CdbDispatchResult * dispatchResult)
 		return true;			/* done; stick a fork in it */
 	}							/* handle PQconsumeInput error */
 
+	if (DEBUG4 >= log_min_messages && PQisBusy(segdbDesc->conn))
+			write_stderr("Thread %u: PQisBusy\n",mythread());
+			
 	/* If we have received one or more complete messages, process them. */
 	while (!PQisBusy(segdbDesc->conn))
 	{							/* loop to call PQgetResult; won't block */
@@ -1720,6 +1744,8 @@ processResults(CdbDispatchResult * dispatchResult)
 		ExecStatusType resultStatus;
 		int			resultIndex = cdbdisp_numPGresult(dispatchResult);
 
+		if (DEBUG4 >= log_min_messages)
+			write_stderr("Thread %u: PQgetResult\n",mythread());
 		/* Get one message. */
 		pRes = PQgetResult(segdbDesc->conn);
 
@@ -1735,7 +1761,7 @@ processResults(CdbDispatchResult * dispatchResult)
 			if (DEBUG4 >= log_min_messages)
 			{
 				/* Don't use elog, it's not thread-safe */
-				write_stderr("%s -> idle\n", segdbDesc->whoami);
+				write_stderr("Thread %u: %s -> idle\n", mythread(), segdbDesc->whoami);
 			}
 			return true;		/* this is normal end of command */
 		}						/* end of results */
