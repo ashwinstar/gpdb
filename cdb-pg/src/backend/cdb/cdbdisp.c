@@ -877,7 +877,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 		}
 	}
 
-	/* serialized a version of our snapshot */
+	/* Serialize a version of our snapshot */
 	if (withSnapshot)
 		serializedSnapshot = serializeSnapshot(&serializedSnapshotlen);
 	else
@@ -1230,12 +1230,14 @@ thread_DispatchCommand(void *arg)
 	 */
 	for (i = 0; i < db_count; i++)
 	{
-		/* Don't use elog, it's not thread-safe */
-		if (DEBUG5 >= log_min_messages)
-			write_stderr("Thread %u: thread_DispatchCommand working on %d of %d commands\n",mythread(),
-                         i + 1, db_count);
+		
 
 		dispatchResult = pParms->dispatchResultPtrArray[i];
+		
+		/* Don't use elog, it's not thread-safe */
+		if (DEBUG5 >= log_min_messages)
+			write_stderr("Thread %u: thread_DispatchCommand working on %d of %d commands.  asyncStatus %d\n",mythread(),
+                         i + 1, db_count, dispatchResult->segdbDesc->conn->asyncStatus);
 
         dispatchResult->hasDispatched = false;
         dispatchResult->requestedCancel = false;
@@ -1246,7 +1248,7 @@ thread_DispatchCommand(void *arg)
             /* Don't dispatch if cancellation pending or no connection. */
             dispatchResult->stillRunning = false;
             if (PQisBusy(dispatchResult->segdbDesc->conn))
-					write_stderr("Thread %u: We thought we were done, because !shouldStillDispatchCommand(), but we are still busy\n",mythread());
+				write_stderr("Thread %u: We thought we were done, because !shouldStillDispatchCommand(), but we are still busy\n",mythread());
         }
         else
         {
@@ -1254,7 +1256,10 @@ thread_DispatchCommand(void *arg)
              * If unsuccessful, proceed anyway, and check for lost connection below.
              */
 			if (PQisBusy(dispatchResult->segdbDesc->conn))
-					write_stderr("Thread %u: Trying to send to busy connection %s  %d %d %d\n",mythread(),dispatchResult->segdbDesc->whoami,i,db_count,dispatchResult->segdbDesc->conn->asyncStatus);
+			{
+				write_stderr("Thread %u: Trying to send to busy connection %s  %d %d asyncStatus %d\n",mythread(),dispatchResult->segdbDesc->whoami,i,db_count,dispatchResult->segdbDesc->conn->asyncStatus);
+				PQgetResult(dispatchResult->segdbDesc->conn);
+			}
             dispatchCommand(dispatchResult, pParms->query_text, pParms->query_text_len, pParms->strCommand);
             dispatchResult->hasDispatched = true;
         }
@@ -1363,7 +1368,7 @@ thread_DispatchCommand(void *arg)
 				continue;
 				
 			if (DEBUG4 >= log_min_messages)
-				write_stderr("Thread %u: looking for results from %d\n",mythread(),i+1);
+				write_stderr("Thread %u: looking for results from %d of %d\n",mythread(),i+1,db_count);
 
 			/* Skip this connection if it has no input available. */
 			sock = PQsocket(segdbDesc->conn);
@@ -1379,10 +1384,15 @@ thread_DispatchCommand(void *arg)
 			/* Are we through with this QE now? */
 			if (finished)
 			{
+				if (DEBUG4 >= log_min_messages)
+					write_stderr("Thread %u: processResults says we are finished with %d:  %s\n",mythread(),i+1,segdbDesc->whoami);
 				dispatchResult->stillRunning = false;
 				if (PQisBusy(dispatchResult->segdbDesc->conn))
 					write_stderr("We thought we were done, because finished==true, but we are still busy\n");
 			}
+			else
+				if (DEBUG4 >= log_min_messages)
+					write_stderr("Thread %u: processResults says we have more to do with %d: %s\n",mythread(),i+1,segdbDesc->whoami);
 		}						/* input available; receive and process it */
 
 	}							/* some QEs running */
@@ -1562,7 +1572,7 @@ handleSelectError(DispatchCommandParms * pParms,
 		/* We're done with this QE, sadly. */
 		dispatchResult->stillRunning = false;
 		if (PQisBusy(dispatchResult->segdbDesc->conn))
-					write_stderr("Thread %u: We thought we were done, because of an error, but we are still busy\n",mythread());
+				write_stderr("Thread %u: We thought we were done, because of an error, but we are still busy\n",mythread());
 	}
 
 	/* No point in trying to cancel the other QEs with select() broken. */
@@ -1584,7 +1594,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 	CdbDispatchResults *meleeResults;
 	SegmentDatabaseDescriptor *segdbDesc;
 	int			i;
-
+	
 	/*
 	 * Are there any QEs that should be canceled?
 	 *
@@ -1596,7 +1606,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 	{							/* loop to check connection status */
 		dispatchResult = pParms->dispatchResultPtrArray[i];
 		segdbDesc = dispatchResult->segdbDesc;
-		meleeResults = dispatchResult->meleeResults;
+		meleeResults = dispatchResult->meleeResults;		
 
 		/* Already finished with this QE? */
 		if (!dispatchResult->stillRunning)
@@ -1654,11 +1664,14 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 		bool		sampling = true;
 
 		*timeoutCounter = 0;
-
+		
 		for (i = 0; i < db_count; i++)
 		{
 			dispatchResult = pParms->dispatchResultPtrArray[i];
 			segdbDesc = dispatchResult->segdbDesc;
+			
+			if (DEBUG5 >= log_min_messages)
+				write_stderr("Thread %u: checking status %d of %d     %s stillRunning %d \n", mythread(),i+1,db_count,segdbDesc->whoami,dispatchResult->stillRunning);
 
 			/* Skip if already finished or didn't dispatch. */
 			if (!dispatchResult->stillRunning)
@@ -1667,6 +1680,10 @@ handleSelectTimeout(DispatchCommandParms * pParms,
             /* Skip the entry db. */
             if (segdbDesc->segindex < 0)
                 continue;
+                
+            if (DEBUG5 >= log_min_messages)
+				write_stderr("Thread %u: testing connection %d of %d     %s stillRunning %d \n", mythread(),i+1,db_count,segdbDesc->whoami,dispatchResult->stillRunning);
+            
 
 			if (!FtsTestConnection(segdbDesc->segment_database_info, segdbDesc->username, segdbDesc->dbname))
 			{
@@ -1710,6 +1727,9 @@ processResults(CdbDispatchResult * dispatchResult)
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 	char	   *errorMessage;
 	int			rc;
+	
+	if (DEBUG5 >= log_min_messages)
+		write_stderr("Thread %u: processResults.  isBusy = %d\n",mythread(),PQisBusy(segdbDesc->conn));
 
 	/* Receive input from QE. */
 	rc = PQconsumeInput(segdbDesc->conn);
@@ -1735,7 +1755,7 @@ processResults(CdbDispatchResult * dispatchResult)
 	}							/* handle PQconsumeInput error */
 
 	if (DEBUG4 >= log_min_messages && PQisBusy(segdbDesc->conn))
-			write_stderr("Thread %u: PQisBusy\n",mythread());
+		write_stderr("Thread %u: PQisBusy\n",mythread());
 			
 	/* If we have received one or more complete messages, process them. */
 	while (!PQisBusy(segdbDesc->conn))
