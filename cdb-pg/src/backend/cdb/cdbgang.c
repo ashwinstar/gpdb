@@ -3,7 +3,7 @@
  * cdbgang.c
  *	  Query Executor Factory for gangs of QEs
  *
- * Copyright (c) 2005-2006, greenplum inc
+ * Copyright (c) 2005-2007, greenplum inc
  *
  * $Id$
  *
@@ -808,7 +808,13 @@ thread_DoConnect(void *arg)
 		appendPQExpBuffer(&buffer, " -c mpp_is_callback=%d",mpp_is_callback);
 		appendPQExpBuffer(&buffer, " -c mpp_qd_proc_offset=%ld",(long)MAKE_OFFSET(MyProc));
 		
-		/* user-settable GUC variables */
+		/*
+         * user-settable GUC variables
+         */
+
+#ifdef USE_ASSERT_CHECKING
+		appendPQExpBuffer(&buffer, " -c mpp_debug_linger=%d", mpp_debug_linger);
+#endif
 
 		/*
 		 * It doesn't seem to work to quote the entire search path,
@@ -958,9 +964,11 @@ thread_DoConnect(void *arg)
 		}
 		*/
 
+		/*
+         * some super-user settable gucs
+         */
 		if (superuser())
 		{
-			/* some super-user settable gucs */
 			switch (log_min_messages)
 			{
 				case DEBUG5:
@@ -1072,7 +1080,8 @@ thread_DoConnect(void *arg)
 
 			if (mpp_set_read_only)
 				appendPQExpBuffer(&buffer, " -c mpp_set_read_only=true");
-		}
+
+        }                       /* some super-user settable gucs */
 
 		appendPQExpBuffer(&buffer, "' ");
 

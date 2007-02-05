@@ -6,7 +6,7 @@
  * See src/backend/utils/misc/README for more information.
  *
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Copyright (c) 2000-2006, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
@@ -1887,6 +1887,18 @@ static struct config_int ConfigureNamesInt[] =
 		4, 1, INT_MAX, assign_mpp_connections_per_thread, show_mpp_connections_per_thread
 	},
 	
+#ifdef USE_ASSERT_CHECKING
+	{
+		{"mpp_debug_linger", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Number of seconds for QD/QE process to linger upon fatal internal error."),
+			gettext_noop("Allows an opportunity to debug the backend process before it terminates."),
+			GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL | GUC_UNIT_S
+		},
+		&mpp_debug_linger,
+		30, 0, 3600, NULL, NULL
+	},
+#endif
+
 	{
 		{"mpp_segment", PGC_BACKEND, UNGROUPED,
 			gettext_noop("The segment (content) controlled by this instance."),

@@ -4,7 +4,7 @@
  *	  Provides storage areas and processing routines for MPP variables
  *	  managed by GUC.
  *
- * Copyright (c) 2003-2006, Greenplum
+ * Copyright (c) 2003-2007, Greenplum
  *
  *
  * IDENTIFICATION
@@ -106,6 +106,21 @@ bool		mpp_enable_explain_allstat = FALSE;
 bool		mpp_enable_sort_limit = FALSE;
 bool		mpp_enable_sort_distinct = FALSE;
 int			mpp_sort_flags = 0;
+
+
+/* --------------------------------------------------------------------------------------------------
+ * Server debugging
+ */
+
+/*
+ * mpp_debug_linger (integer)
+ *
+ * Upon an error with severity FATAL and error code ERRCODE_INTERNAL_ERROR,
+ * errfinish() will sleep() for the specified number of seconds before
+ * termination, to let the user attach a debugger.
+ */
+int  mpp_debug_linger = 30;
+
 
 /* ----------------
  * Non-GUC globals

@@ -37,7 +37,7 @@
  * overflow.)
  *
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -127,6 +127,7 @@ static char *expand_fmt_string(const char *fmt, ErrorData *edata);
 static const char *useful_strerror(int errnum);
 static const char *error_severity(int elevel);
 static void append_with_tabs(StringInfo buf, const char *str);
+static void elog_debug_linger(ErrorData *edata);
 
 #if (!defined(__darwin__)) && (!defined(pg_on_solaris))
 #if defined(__GLIBC__)
@@ -421,8 +422,18 @@ errfinish(int dummy,...)
 	if (elevel >= FATAL && whereToSendOutput == DestRemote)
 		pq_endcopyout(true);
 
+#ifdef USE_ASSERT_CHECKING
+    /* If fatal internal error, linger so user can attach a debugger. */
+    if (elevel == FATAL &&
+        edata->sqlerrcode == ERRCODE_INTERNAL_ERROR &&
+        mpp_debug_linger > 0)
+        elog_debug_linger(edata);
+    else
+	    EmitErrorReport();
+#else
 	/* Emit the message to the right places */
 	EmitErrorReport();
+#endif
 
 	/* Now free up subsidiary data attached to stack entry, and release it */
 	if (edata->message)
@@ -2537,6 +2548,59 @@ write_stderr(const char *fmt,...)
 #endif
 	va_end(ap);
 }
+
+
+/*
+ * elog_debug_linger
+ */
+#ifdef USE_ASSERT_CHECKING
+void
+elog_debug_linger(ErrorData *edata)
+{
+    int     seconds_to_linger = mpp_debug_linger;
+    int     seconds_lingered = 0;
+
+    /* Don't linger again in the event of another error. */
+    mpp_debug_linger = 0;
+
+    /* A word of explanation to the user... */
+    errhint("Process %d will wait for mpp_debug_linger=%d seconds before termination.\n"
+            "Note that its locks and other resources will not be released until then.",
+            MyProcPid, seconds_to_linger);
+
+    /* Log the error and notify the client. */
+    EmitErrorReport();
+	fflush(stdout);
+	fflush(stderr);
+
+    /* Terminate the client connection. */
+    pq_comm_close_fatal();  
+
+    while (seconds_lingered < seconds_to_linger)
+    {
+        int     seconds_left = seconds_to_linger - seconds_lingered;
+        int     minutes_left = seconds_left / 60;
+        int     setproctitle_seconds = (minutes_left <= 1) ? 5
+                                     : (minutes_left <= 5) ? 30
+                                     : 60;
+        int     sleep_seconds;
+        char    buf[50];
+
+        /* Update 'ps' display. */
+        snprintf(buf, sizeof(buf)-1,
+                 "error exit in %dm %ds",
+                 minutes_left,
+                 seconds_left - minutes_left * 60);
+        set_ps_display(buf, true);
+
+        /* Sleep. */
+        sleep_seconds = Min(seconds_left, setproctitle_seconds);
+        pg_usleep(sleep_seconds * 1000000L);
+        seconds_lingered += sleep_seconds;
+    }
+}                               /* elog_debug_linger */
+#endif  /* USE_ASSERT_CHECKING */
+
 
 #if defined(pg_on_solaris)
 #if !defined(__OPTIMIZE__)

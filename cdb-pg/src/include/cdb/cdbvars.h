@@ -3,7 +3,7 @@
  * cdbvars.h
  *	  definitions for MPP global variables
  *
- * Copyright (c) 2003-2006, Greenplum
+ * Copyright (c) 2003-2007, Greenplum
  *
  *
  * IDENTIFICATION
@@ -445,6 +445,20 @@ extern int mpp_sort_flags;
  * would.
  */
 extern double mpp_hashagg_rewrite_limit;
+
+
+/* --------------------------------------------------------------------------------------------------
+ * Server debugging
+ */
+
+/*
+ * mpp_debug_linger (integer)
+ *
+ * Upon an error with severity FATAL and error code ERRCODE_INTERNAL_ERROR,
+ * errfinish() will sleep() for the specified number of seconds before
+ * termination, to let the user attach a debugger.
+ */
+extern int  mpp_debug_linger;
 
 
 /* --------------------------------------------------------------------------------------------------

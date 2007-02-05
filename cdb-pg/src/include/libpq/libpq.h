@@ -52,6 +52,7 @@ extern void StreamClose(int sock);
 extern void TouchSocketFile(void);
 extern void pq_init(void);
 extern void pq_comm_reset(void);
+extern void pq_comm_close_fatal(void);                                  /*CDB*/
 extern int	pq_getbytes(char *s, size_t len);
 extern int	pq_getstring(StringInfo s);
 extern int	pq_getmessage(StringInfo s, int maxlen);

@@ -192,6 +192,24 @@ pq_close(int code, Datum arg)
 	}
 }
 
+/* --------------------------------
+ *		pq_comm_close_fatal - shutdown libpq at backend fatal error exit
+ * --------------------------------
+ */
+void
+pq_comm_close_fatal(void)
+{
+	if (MyProcPort != NULL)
+	{
+		/* Cleanly shut down SSL layer */
+		secure_close(MyProcPort);
+
+		if (MyProcPort->sock >= 0)
+            closesocket(MyProcPort->sock);
+        
+		MyProcPort->sock = -1;
+	}
+}                               /* pq_comm_close_fatal */
 
 
 /*
