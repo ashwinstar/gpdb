@@ -601,9 +601,12 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 							(errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 							 errmsg("Reader qExec timed out waiting for Writer to set the shared snapshot."),
 							 errdetail("We are waiting for the shared snapshot to have XID: %d but the value "
-									   "is currently: %d. Our slotindex is: %d \n"
+									   "is currently: %d." 
+									   " waiting for cid to be %d but is currently %d.  ready=%d."
+									   " Our slotindex is: %d \n"
 									   "Dump of all sharedsnapshots in shmem: %s",
 									   QDSentXID, SharedLocalSnapshotSlot->QDxid,
+									   QDSentSnapshot->curcid, SharedLocalSnapshotSlot->QDcid,  SharedLocalSnapshotSlot->ready,
 									   SharedLocalSnapshotSlot->slotindex, SharedSnapshotDump())));
 			}
 		}
