@@ -222,6 +222,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 
 	for (i = 0; i < threadCount; i++)
 	{
+		int pthread_err;
 		DoConnectParms *pParms = &doConnectParmsAr[i];
 
 		/* set the gangType. */
@@ -231,11 +232,30 @@ createGang(GangType type, int size, int content, char *portal_name)
 		    elog(DEBUG5, "createGang creating thread %d of %d for libpq connections",
 			     i + 1, threadCount);
 
-		if (0 != pthread_create(&pParms->thread, NULL, thread_DoConnect, pParms))
+		pthread_err = pthread_create(&pParms->thread, NULL, thread_DoConnect, pParms);
+		if (pthread_err != 0)
 		{
-			elog(FATAL, "createGang: Failed to create thread %d of %d",
-				 i + 1, threadCount);
+			int j;
+
+			/* Error during thread create (this should be caused by
+			 * resource constraints). If we leave the threads running,
+			 * they'll immediately have some problems -- so we need to
+			 * join them, and *then* we can issue our FATAL error */
+
+			for (j = 0; j < threadCount + (i - 1); j++)
+			{
+				DoConnectParms *pParms;
+
+				pParms = &doConnectParmsAr[j];
+				pthread_join(pParms->thread, NULL);
+			}
+
+			ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
+							errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount),
+							errdetail("pthread_create() failed with err %d mpp_connections_per_thread %d", pthread_err, mpp_connections_per_thread),
+							errhint("mpp_connections_per_thread controls the number of threads created during MPP dispatch, current setting is %d increase the setting to spawn fewer threads", mpp_connections_per_thread)));
 		}
+
 	}
 
 	/*
