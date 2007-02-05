@@ -112,7 +112,7 @@ typedef struct SharedSnapshotStruct
 
 static SharedSnapshotStruct *sharedSnapshotArray;
 
-SharedSnapshotSlot *SharedLocalSnapshotSlot;
+volatile SharedSnapshotSlot *SharedLocalSnapshotSlot;
 static Size slotSize;
 
 

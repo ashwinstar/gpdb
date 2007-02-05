@@ -92,16 +92,16 @@ typedef struct SharedSnapshotSlot
 	TransactionId	xid;
 	CommandId       cid;
 	TimestampTz		startTimestamp;
-	TransactionId   QDxid;
-	CommandId		QDcid;
-	bool			ready;
+	volatile TransactionId   QDxid;
+	volatile CommandId		QDcid;
+	volatile bool			ready;
 	uint32		    subcnt;		/* # of subtransaction ids in subxids[] */
 	TransactionId   subxids[MaxMppSavePoints];
 	SnapshotData	snapshot;
 
 } SharedSnapshotSlot;
 
-extern SharedSnapshotSlot *SharedLocalSnapshotSlot;
+extern volatile SharedSnapshotSlot *SharedLocalSnapshotSlot;
 
 
 
