@@ -1257,8 +1257,26 @@ thread_DispatchCommand(void *arg)
              */
 			if (PQisBusy(dispatchResult->segdbDesc->conn))
 			{
+				PGresult   *pRes;
+				ExecStatusType resultStatus;
+				
 				write_stderr("Thread %u: Trying to send to busy connection %s  %d %d asyncStatus %d\n",mythread(),dispatchResult->segdbDesc->whoami,i,db_count,dispatchResult->segdbDesc->conn->asyncStatus);
-				PQgetResult(dispatchResult->segdbDesc->conn);
+				/*
+				 * We weren't expecting the session to be in use!, let's see what it says 
+				 */
+				pRes = PQgetResult(dispatchResult->segdbDesc->conn);
+				if (pRes != NULL) /* null is OK ? */
+				{
+					resultStatus = PQresultStatus(pRes);
+					write_stderr("Thread %u: ResultStatus = %s\n",mythread(),PQresStatus(resultStatus));
+					write_stderr("%s",PQerrorMessage(dispatchResult->segdbDesc->conn));
+				}
+				else
+				{
+					write_stderr("Thread %u: result was null\n",mythread());
+					write_stderr("%s",PQerrorMessage(dispatchResult->segdbDesc->conn));
+					Assert(!PQisBusy(dispatchResult->segdbDesc->conn));
+				}
 			}
             dispatchCommand(dispatchResult, pParms->query_text, pParms->query_text_len, pParms->strCommand);
             dispatchResult->hasDispatched = true;
