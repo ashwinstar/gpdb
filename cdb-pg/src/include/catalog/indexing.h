@@ -98,6 +98,9 @@ DECLARE_UNIQUE_INDEX(pg_resqueue_oid_index, 6027, on pg_resqueue using btree(oid
 DECLARE_UNIQUE_INDEX(pg_resqueue_rsqname_index, 6028, on pg_resqueue using btree(rsqname name_ops));
 #define ResQueueRsqnameIndexId	6028
 
+DECLARE_UNIQUE_INDEX(pg_exttable_reloid_index, 6041, on pg_exttable using btree(reloid oid_ops));
+#define ExtTableRelOidIndexId  6041
+
 DECLARE_UNIQUE_INDEX(pg_autovacuum_vacrelid_index, 1250, on pg_autovacuum using btree(vacrelid oid_ops));
 #define AutovacuumRelidIndexId	1250
 

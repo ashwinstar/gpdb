@@ -46,6 +46,7 @@ extern void set_cheapest(PlannerInfo *root, RelOptInfo *parent_rel);    /*CDB*/
 extern void add_path(PlannerInfo *root, RelOptInfo *parent_rel, Path *new_path);
 
 extern Path *create_seqscan_path(PlannerInfo *root, RelOptInfo *rel);
+extern ExternalPath *create_external_path(PlannerInfo *root, RelOptInfo *rel);
 extern IndexPath *create_index_path(PlannerInfo *root,
 				  IndexOptInfo *index,
 				  List *clause_groups,

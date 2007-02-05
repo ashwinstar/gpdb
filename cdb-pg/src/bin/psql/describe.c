@@ -441,7 +441,7 @@ permissionsList(const char *pattern)
 					  "  c.relacl as \"%s\"\n"
 					  "FROM pg_catalog.pg_class c\n"
 	   "     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n"
-					  "WHERE c.relkind IN ('r', 'v', 'S')\n",
+					  "WHERE c.relkind IN ('r', 'v', 'S', 'x')\n",
 					  _("Schema"), _("Name"), _("table"), _("view"), _("sequence"), _("Type"), _("Access privileges"));
 
 	/*
@@ -571,7 +571,7 @@ objectDescription(const char *pattern)
 					  "  AS pg_catalog.text) as object\n"
 					  "  FROM pg_catalog.pg_class c\n"
 	 "       LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n"
-					  "  WHERE c.relkind IN ('r', 'v', 'i', 'S')\n",
+					  "  WHERE c.relkind IN ('r', 'x', 'v', 'i', 'S')\n",
 					  _("table"), _("view"), _("index"), _("sequence"));
 	processSQLNamePattern(pset.db, &buf, pattern, true, false,
 						  "n.nspname", "c.relname", NULL,
@@ -785,7 +785,7 @@ describeOneTableDetails(const char *schemaname,
 	headers[1] = _("Type");
 	cols = 2;
 
-	if (tableinfo.relkind == 'r' || tableinfo.relkind == 'v')
+	if (tableinfo.relkind == 'r' || tableinfo.relkind == 'v' || tableinfo.relkind == 'x')
 	{
 		show_modifiers = true;
 		cols++;

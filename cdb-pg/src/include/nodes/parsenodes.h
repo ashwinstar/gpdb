@@ -855,6 +855,7 @@ typedef enum ObjectType
 	OBJECT_SCHEMA,
 	OBJECT_SEQUENCE,
 	OBJECT_TABLE,
+	OBJECT_EXTTABLE,
 	OBJECT_TABLESPACE,
 	OBJECT_TRIGGER,
 	OBJECT_TYPE,
@@ -1092,6 +1093,20 @@ typedef struct CreateStmt
 	char	    relKind;         /* CDB: force relkind to this */
 	MppPolicy  *policy;
 } CreateStmt;
+
+/* ----------------------
+ *		Create External Table Statement
+ * ----------------------
+ */
+typedef struct CreateExternalStmt
+{
+	NodeTag		type;
+	RangeVar   *relation;		/* exteranl relation to create */
+	List	   *tableElts;		/* column definitions (list of ColumnDef) */
+	List	   *locations;      /* LOCATION uri list */
+	char	   *format;			/* data format name */
+	List	   *formatOpts;		/* List of DefElem nodes for data format */
+} CreateExternalStmt;
 
 /* ----------
  * Definitions for plain (non-FOREIGN KEY) constraints in CreateStmt

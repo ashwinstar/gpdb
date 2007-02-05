@@ -576,6 +576,9 @@ explain_outNode(StringInfo str,
 		case T_SeqScan:
 			pname = "Seq Scan";
 			break;
+		case T_ExternalScan:
+			pname = "External Scan";
+			break;						
 		case T_IndexScan:
 			pname = "Index Scan";
 			break;
@@ -707,6 +710,7 @@ explain_outNode(StringInfo str,
 			  quote_identifier(get_rel_name(((IndexScan *) plan)->indexid)));
 			/* FALL THRU */
 		case T_SeqScan:
+		case T_ExternalScan:
 		case T_BitmapHeapScan:
 		case T_TidScan:
 			if (((Scan *) plan)->scanrelid > 0)
@@ -843,6 +847,7 @@ explain_outNode(StringInfo str,
 						   str, indent, es);
 			/* FALL THRU */
 		case T_SeqScan:
+		case T_ExternalScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:
 		case T_ValuesScan:

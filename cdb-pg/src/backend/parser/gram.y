@@ -152,7 +152,7 @@ static void doNegateFloat(Value *v);
 		AlterTableStmt AlterUserStmt AlterUserSetStmt AlterRoleStmt 
 		AlterRoleSetStmt AnalyzeStmt ClosePortalStmt ClusterStmt 
 		CommentStmt ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
-		CreateDomainStmt CreateGroupStmt CreateOpClassStmt CreatePLangStmt
+		CreateDomainStmt CreateExternalStmt CreateGroupStmt CreateOpClassStmt CreatePLangStmt
 		CreateQueueStmt CreateSchemaStmt CreateSeqStmt CreateStmt 
 		CreateTableSpaceStmt CreateAssertStmt CreateTrigStmt 
 		CreateUserStmt CreateRoleStmt
@@ -184,9 +184,9 @@ static void doNegateFloat(Value *v);
 %type <dbehavior>	opt_drop_behavior
 
 %type <list>	createdb_opt_list alterdb_opt_list copy_opt_list
-				transaction_mode_list
+				format_opt_list transaction_mode_list
 %type <defelt>	createdb_opt_item alterdb_opt_item copy_opt_item
-				transaction_mode_item
+				format_opt_item transaction_mode_item
 
 %type <ival>	opt_lock lock_type cast_context
 %type <boolean>	opt_force opt_or_replace
@@ -230,10 +230,11 @@ static void doNegateFloat(Value *v);
 %type <chr> 	TriggerOneEvent
 
 %type <list>	stmtblock stmtmulti
-				OptTableElementList TableElementList OptInherit definition
+				OptTableElementList OptExtTableElementList TableElementList ExtTableElementList
+				OptInherit definition
 				OptWith opt_distinct opt_definition func_args func_args_list
 				func_as createfunc_opt_list alterfunc_opt_list
-				aggr_args aggr_args_list old_aggr_definition old_aggr_list
+				aggr_args aggr_args_list location_list old_aggr_definition old_aggr_list
 				oper_argtypes RuleActionList RuleActionMulti
 				cdb_string_list
 				opt_mirror_location
@@ -294,8 +295,8 @@ static void doNegateFloat(Value *v);
 
 %type <vsetstmt> set_rest
 
-%type <node>	TableElement ConstraintElem TableFuncElement
-%type <node>	columnDef
+%type <node>	TableElement ExtTableElement ConstraintElem TableFuncElement
+%type <node>	columnDef ExtcolumnDef
 %type <node>	cdb_string
 %type <defelt>	def_elem old_aggr_elem
 %type <node>	def_arg columnElem where_clause
@@ -386,7 +387,7 @@ static void doNegateFloat(Value *v);
 	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ESCAPE EXCEPT EXCLUDING
 	EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
 
-	FALSE_P FETCH FIRST_P FLOAT_P FOR FORCE FOREIGN FORWARD
+	FALSE_P FETCH FIRST_P FLOAT_P FOR FORCE FOREIGN FORMAT FORWARD
 	FREEZE FROM FULL FUNCTION
 
 	GLOBAL GRANT GRANTED GREATEST GROUP_P
@@ -546,6 +547,7 @@ stmt :
 			| CreateCastStmt
 			| CreateConversionStmt
 			| CreateDomainStmt
+			| CreateExternalStmt
 			| CreateFunctionStmt
 			| CreateGroupStmt
 			| CreateOpClassStmt
@@ -2419,6 +2421,111 @@ CreateAsElement:
 /*****************************************************************************
  *
  *		QUERY :
+ *				CREATE EXTERNAL TABLE relname
+ *
+ *****************************************************************************/
+	
+CreateExternalStmt:	CREATE EXTERNAL OptTemp TABLE qualified_name '(' OptExtTableElementList ')' 
+					LOCATION '(' location_list ')' FORMAT Sconst '(' format_opt_list ')'
+						{
+							CreateExternalStmt *n = makeNode(CreateExternalStmt);
+							$5->istemp = $3;
+							n->relation = $5;
+							n->tableElts = $7;
+							n->locations = $11;
+							n->format = $14;
+							n->formatOpts = $16;
+							$$ = (Node *)n;
+							
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("External tables are not yet supported")));
+							
+						}
+						;
+
+location_list:  	
+			Sconst								{ $$ = list_make1($1); }
+			| location_list ',' Sconst			{ $$ = lappend($1, $3); }
+			;
+
+format_opt_list:
+			format_opt_list format_opt_item		{ $$ = lappend($1, $2); }
+			| /* EMPTY */						{ $$ = NIL; }
+			;
+
+
+format_opt_item:
+			DELIMITER opt_as Sconst
+			{
+				$$ = makeDefElem("delimiter", (Node *)makeString($3));
+			}
+			| NULL_P opt_as Sconst
+			{
+				$$ = makeDefElem("null", (Node *)makeString($3));
+			}
+			| CSV
+			{
+				$$ = makeDefElem("csv", (Node *)makeInteger(TRUE));
+			}
+			| HEADER_P
+			{
+				$$ = makeDefElem("header", (Node *)makeInteger(TRUE));
+			}
+			| QUOTE opt_as Sconst
+			{
+				$$ = makeDefElem("quote", (Node *)makeString($3));
+			}
+			| ESCAPE opt_as Sconst
+			{
+				$$ = makeDefElem("escape", (Node *)makeString($3));
+			}
+			| FORCE QUOTE columnList
+			{
+				$$ = makeDefElem("force_quote", (Node *)$3);
+			}
+			| FORCE NOT NULL_P columnList
+			{
+				$$ = makeDefElem("force_notnull", (Node *)$4);
+			}
+		;
+
+OptExtTableElementList:
+			ExtTableElementList				{ $$ = $1; }
+			| /*EMPTY*/						{ $$ = NIL; }
+			;
+
+ExtTableElementList:
+			ExtTableElement
+			{
+				$$ = list_make1($1);
+			}
+			| ExtTableElementList ',' ExtTableElement
+			{
+				$$ = lappend($1, $3);
+			}
+			;
+
+ExtTableElement:
+			ExtcolumnDef					{ $$ = $1; }
+			;
+
+/* column def for ext table - doesn't have room for constraints */
+ExtcolumnDef:	ColId Typename
+		{
+			ColumnDef *n = makeNode(ColumnDef);
+			n->colname = $1;
+			n->typname = $2;
+			n->is_local = true;
+			n->is_not_null = false;
+			n->constraints = NIL;
+			$$ = (Node *)n;
+		}
+		;
+
+/*****************************************************************************
+ *
+ *		QUERY :
  *				CREATE SEQUENCE seqname
  *				ALTER SEQUENCE seqname
  *
@@ -3196,6 +3303,7 @@ DropStmt:	DROP drop_type IF_P EXISTS any_name_list opt_drop_behavior
 
 
 drop_type:	TABLE									{ $$ = OBJECT_TABLE; }
+			| EXTERNAL TABLE						{ $$ = OBJECT_EXTTABLE; }
 			| SEQUENCE								{ $$ = OBJECT_SEQUENCE; }
 			| VIEW									{ $$ = OBJECT_VIEW; }
 			| INDEX									{ $$ = OBJECT_INDEX; }
@@ -8763,6 +8871,7 @@ unreserved_keyword:
 			| FETCH
 			| FIRST_P
 			| FORCE
+			| FORMAT
 			| FORWARD
 			| FUNCTION
 			| GLOBAL

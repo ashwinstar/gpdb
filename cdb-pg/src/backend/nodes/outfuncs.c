@@ -1406,6 +1406,9 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 	WRITE_UINT_FIELD(pages);
 	WRITE_FLOAT_FIELD(tuples, "%.0f");
 	WRITE_NODE_FIELD(subplan);
+	WRITE_NODE_FIELD(locationlist);
+	WRITE_CHAR_FIELD(fmttype);
+	WRITE_STRING_FIELD(fmtopts);	
 	WRITE_NODE_FIELD(baserestrictinfo);
 	WRITE_NODE_FIELD(joininfo);
 	WRITE_BITMAPSET_FIELD(index_outer_relids);
@@ -1567,6 +1570,18 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_OID_FIELD(oidInfo.toastIndexOid);
 	WRITE_OID_FIELD(oidInfo.toastComptypeOid);
 	WRITE_CHAR_FIELD(relKind);
+}
+
+static void
+_outCreateExternalStmt(StringInfo str, CreateExternalStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEEXTERNALSTMT");
+	
+	WRITE_NODE_FIELD(relation);
+	WRITE_NODE_FIELD(tableElts);
+	WRITE_NODE_FIELD(locations);
+	WRITE_STRING_FIELD(format);
+	WRITE_NODE_FIELD(formatOpts);
 }
 
 static void
@@ -2228,6 +2243,7 @@ _outQuery(StringInfo str, Query *node)
 		switch (nodeTag(node->utilityStmt))
 		{
 			case T_CreateStmt:
+			case T_CreateExternalStmt:
 			case T_DropStmt:
 			case T_DropPropertyStmt:
 			case T_TruncateStmt:
@@ -3046,6 +3062,10 @@ _outNode(StringInfo str, void *obj)
 			case T_CreateStmt:
 				_outCreateStmt(str, obj);
 				break;
+			case T_CreateExternalStmt:
+				_outCreateExternalStmt(str, obj);
+				break;
+				
 			case T_IndexStmt:
 				_outIndexStmt(str, obj);
 				break;

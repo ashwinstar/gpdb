@@ -151,6 +151,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"for", FOR},
 	{"force", FORCE},
 	{"foreign", FOREIGN},
+	{"format", FORMAT},
 	{"forward", FORWARD},
 	{"freeze", FREEZE},
 	{"from", FROM},

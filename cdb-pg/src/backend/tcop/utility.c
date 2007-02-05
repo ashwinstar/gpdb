@@ -81,7 +81,7 @@ static const struct msgstrings msgstringarray[] = {
 		ERRCODE_UNDEFINED_TABLE,
 		gettext_noop("table \"%s\" does not exist"),
 		gettext_noop("table \"%s\" does not exist, skipping"),
-		gettext_noop("\"%s\" is not a table"),
+		gettext_noop("\"%s\" is not a base table"),
 	gettext_noop("Use DROP TABLE to remove a table.")},
 	{RELKIND_EXTERNAL,
 		ERRCODE_UNDEFINED_TABLE,
@@ -343,6 +343,7 @@ check_xact_readonly(Node *parsetree)
 		case T_CreateSchemaStmt:
 		case T_CreateSeqStmt:
 		case T_CreateStmt:
+		case T_CreateExternalStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreateTrigStmt:
 		case T_CompositeTypeStmt:
@@ -588,6 +589,10 @@ ProcessUtility(Node *parsetree,
 			}
 			break;
 
+		case T_CreateExternalStmt:
+			DefineExternalRelation((CreateExternalStmt *) parsetree);
+			break;
+			
 		case T_CreateTableSpaceStmt:
 			CreateTableSpace((CreateTableSpaceStmt *) parsetree);
 			break;
@@ -614,6 +619,14 @@ ProcessUtility(Node *parsetree,
 													 stmt->missing_ok))
 								RemoveRelation(rel, stmt->behavior);
 							break;
+
+						case OBJECT_EXTTABLE:
+							rel = makeRangeVarFromNameList(names);
+							if (CheckDropPermissions(rel, RELKIND_EXTERNAL,
+													 stmt->missing_ok))
+								RemoveExternalRelation(rel, stmt->behavior);
+							break;
+							
 
 						case OBJECT_SEQUENCE:
 							rel = makeRangeVarFromNameList(names);
@@ -1542,6 +1555,10 @@ CreateCommandTag(Node *parsetree)
 		case T_CreateStmt:
 			tag = "CREATE TABLE";
 			break;
+			
+		case T_CreateExternalStmt:
+			tag = "CREATE EXTERNAL TABLE";
+			break;			
 
 		case T_CreateTableSpaceStmt:
 			tag = "CREATE TABLESPACE";
@@ -1557,6 +1574,9 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_TABLE:
 					tag = "DROP TABLE";
 					break;
+				case OBJECT_EXTTABLE:
+					tag = "DROP EXTERNAL TABLE";
+					break;					
 				case OBJECT_SEQUENCE:
 					tag = "DROP SEQUENCE";
 					break;
@@ -2102,6 +2122,10 @@ GetCommandLogLevel(Node *parsetree)
 		case T_CreateStmt:
 			lev = LOGSTMT_DDL;
 			break;
+			
+		case T_CreateExternalStmt:
+			lev = LOGSTMT_DDL;
+			break;			
 
 		case T_CreateTableSpaceStmt:
 			lev = LOGSTMT_DDL;

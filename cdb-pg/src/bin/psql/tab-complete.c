@@ -248,7 +248,7 @@ static const SchemaQuery Query_for_list_of_tables = {
 	/* catname */
 	"pg_catalog.pg_class c",
 	/* selcondition */
-	"c.relkind IN ('r')",
+	"c.relkind IN ('r' , 'x')",
 	/* viscondition */
 	"pg_catalog.pg_table_is_visible(c.oid)",
 	/* namespace */
@@ -263,7 +263,7 @@ static const SchemaQuery Query_for_list_of_tisv = {
 	/* catname */
 	"pg_catalog.pg_class c",
 	/* selcondition */
-	"c.relkind IN ('r', 'i', 'S', 'v')",
+	"c.relkind IN ('r', 'i', 'S', 'v' , 'x')",
 	/* viscondition */
 	"pg_catalog.pg_table_is_visible(c.oid)",
 	/* namespace */
@@ -278,7 +278,7 @@ static const SchemaQuery Query_for_list_of_tsv = {
 	/* catname */
 	"pg_catalog.pg_class c",
 	/* selcondition */
-	"c.relkind IN ('r', 'S', 'v')",
+	"c.relkind IN ('r', 'S', 'v' , 'x')",
 	/* viscondition */
 	"pg_catalog.pg_table_is_visible(c.oid)",
 	/* namespace */

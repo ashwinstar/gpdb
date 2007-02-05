@@ -916,6 +916,18 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 }
 
 static bool
+_equalCreateExternalStmt(CreateExternalStmt *a, CreateExternalStmt *b)
+{
+	COMPARE_NODE_FIELD(relation);
+	COMPARE_NODE_FIELD(tableElts);
+	COMPARE_NODE_FIELD(locations);
+	COMPARE_STRING_FIELD(format);
+	COMPARE_NODE_FIELD(formatOpts);
+	
+	return true;
+}
+
+static bool
 _equalInhRelation(InhRelation *a, InhRelation *b)
 {
 	COMPARE_NODE_FIELD(relation);
@@ -2140,6 +2152,9 @@ equal(void *a, void *b)
 		case T_CreateStmt:
 			retval = _equalCreateStmt(a, b);
 			break;
+		case T_CreateExternalStmt:
+			retval = _equalCreateExternalStmt(a, b);
+			break;						
 		case T_InhRelation:
 			retval = _equalInhRelation(a, b);
 			break;

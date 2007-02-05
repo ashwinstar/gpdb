@@ -35,6 +35,7 @@
 #include "catalog/pg_resqueue.h"
 #include "catalog/pg_authid.h"
 #include "catalog/toasting.h"
+#include "catalog/pg_exttable.h"
 #include "commands/cluster.h"
 #include "commands/defrem.h"
 #include "commands/tablecmds.h"
@@ -66,6 +67,7 @@
 #include "utils/memutils.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "utils/uri.h"
 
 
 #include "cdb/cdbdisp.h"
@@ -275,6 +277,10 @@ static void update_ri_trigger_args(Oid relid,
 					   const char *newname,
 					   bool fk_scan,
 					   bool update_relname);
+static void StoreExternalRelation(Oid tbloid, Datum locations, Datum formatopts, char formattype);
+static Datum transformLocationUris(List *locs);
+static char transformFormatType(char *formatname);
+static Datum transformFormatOpts(char formattype, List *formatOpts);
 static Oid
 DefineRelation_int(CreateStmt *stmt,
                    char        relkind,
@@ -691,9 +697,65 @@ DefineRelation_int(CreateStmt *stmt,
 	return relationId;
 }
 
+extern void	DefineExternalRelation(CreateExternalStmt *stmt)
+{
+	
+	CreateStmt *createStmt = makeNode(CreateStmt);
+	Oid			extRelOid;
+	Datum		locationUris;
+	Datum		formatOptStr;
+	char		formattype;
+	
+	/*
+	 * Only superusers allowed to create an external table
+	 */
+	if(!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser to create an external table")));
+	
+	/*
+	 * now set the parameters for keys/inheritance etc. Most of these are
+	 * uninteresting for external relations...
+	 */
+	createStmt->relation = stmt->relation;
+	createStmt->tableElts = stmt->tableElts;
+	createStmt->inhRelations = NIL;
+	createStmt->constraints = NIL;
+	createStmt->options = NIL;
+	createStmt->oncommit = ONCOMMIT_NOOP;
+	createStmt->tablespacename = NULL;
+	
+	
+	/*
+	 * Parse and validate URI strings (LOCATION clause).
+	 */
+	locationUris = transformLocationUris(stmt->locations);
+	
+	/*
+	 * Parse and validate FORMAT clause.
+	 */
+	formattype = transformFormatType(stmt->format);
+	formatOptStr = transformFormatOpts(formattype, stmt->formatOpts);
+	
+	/*
+	 * Create the relation (pg_class, pg_type).
+	 */
+	extRelOid = DefineRelation(createStmt, RELKIND_EXTERNAL);
+	
+	/*
+	 * add an entry into pg_exttable using the reloid from DefineRelation.
+	 */
+	StoreExternalRelation(extRelOid, locationUris, formatOptStr, formattype);
+	
+}
+
 /*
  * RemoveRelation
  *		Deletes a relation.
+ *
+ * NOTE: if you change this code make sure to reflect the
+ * change in RemoveExternalRelation() as well!
  */
 void
 RemoveRelation(const RangeVar *relation, DropBehavior behavior)
@@ -708,6 +770,83 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior)
 	object.objectSubId = 0;
 
 	performDeletion(&object, behavior);
+}
+
+/*
+ * RemoveExternalRelation
+ *		Deletes an external relation.
+ *
+ * Since we don't record catalog table dependencies in greenplum DB
+ * do the DROP is 2 distincts steps: first delete the pg_class entry
+ * along with its dependencies, and then remove the pg_exttable entry.
+ */
+void
+RemoveExternalRelation(const RangeVar *relation, DropBehavior behavior)
+{
+	Oid			relOid;
+	ObjectAddress object;
+	Relation	pg_exttable_rel;
+	TupleDesc	pg_exttable_dsc;
+	HeapTuple	tuple;
+	ScanKeyData	key;
+	SysScanDesc	extscan;	
+	
+	/*
+	 * this part corresponds to RemoveRelation()
+	 */
+	relOid = RangeVarGetRelid(relation, false);
+	
+	object.classId = RelationRelationId;
+	object.objectId = relOid;
+	object.objectSubId = 0;
+	
+	performDeletion(&object, behavior);
+	
+	/*
+	 * now remove the pg_exttable entry
+	 */
+	
+	/* Permission check - only superuser can drop external tables. */
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser to drop external table")));
+	
+	
+	/*
+	 * Check the pg_exttable relation to be certain the ext table 
+	 * is there. 
+	 */
+	pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
+	pg_exttable_dsc = RelationGetDescr(pg_exttable_rel);
+	
+	ScanKeyInit(&key,
+				Anum_pg_exttable_reloid,
+				BTEqualStrategyNumber,
+				F_OIDEQ,
+				ObjectIdGetDatum(relOid));
+	
+    extscan = systable_beginscan(pg_exttable_rel, ExtTableRelOidIndexId, true,
+								 SnapshotNow, 1, &key);
+	
+    tuple = systable_getnext(extscan);
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("external table object id \"%d\" does not exist",
+						relOid)));
+	
+	/*
+	 * Delete the external table entry from the catalog (pg_exttable).
+	 */
+	simple_heap_delete(pg_exttable_rel, &tuple->t_self);
+	
+	
+	/* Finish up scan and close exttable catalog. */
+	systable_endscan(extscan);
+	
+	heap_close(pg_exttable_rel, NoLock);
+	
 }
 
 /*
@@ -7505,3 +7644,352 @@ AtEOSubXact_on_commit_actions(bool isCommit, SubTransactionId mySubid,
 		}
 	}
 }
+
+/*
+ * Adds an entry into the pg_exttable catalog table. The entry
+ * includes the reloid of the external relation that was created
+ * in pg_class and a text array of external location URIs.
+ */
+static void
+StoreExternalRelation(Oid tbloid, Datum locations, Datum formatopts, char formattype)
+{
+	Relation	pg_exttable_rel;
+	HeapTuple	pg_exttable_tuple = NULL;
+	char		nulls[Natts_pg_exttable];
+	Datum		values[Natts_pg_exttable];
+	
+ 	MemSet(values, 0, sizeof(values));
+	MemSet(nulls, ' ', sizeof(nulls));
+	
+    /*
+     * Open and lock the mpp_distribution_policy catalog.
+     */
+	pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
+	
+	values[Anum_pg_exttable_reloid - 1] = ObjectIdGetDatum(tbloid);
+	values[Anum_pg_exttable_location - 1] = locations;
+	values[Anum_pg_exttable_fmtcode - 1] = CharGetDatum(formattype);
+	values[Anum_pg_exttable_fmtopts - 1] = formatopts;
+	
+	pg_exttable_tuple = heap_formtuple(RelationGetDescr(pg_exttable_rel), 
+									   values, nulls);
+	
+	simple_heap_insert(pg_exttable_rel, pg_exttable_tuple);
+	
+	CatalogUpdateIndexes(pg_exttable_rel, pg_exttable_tuple);
+	
+	/*
+     * Close the mpp_distribution_policy relcache entry without unlocking.
+     * We have updated the catalog: consequently the lock must be held until
+     * end of transaction.
+     */
+    heap_close(pg_exttable_rel, NoLock);
+}
+
+/*
+ * Transform the URI string list into a text array (the form that is
+ * used in the catalog table pg_exttable). While at it we validate
+ * the URI strings. 
+ *
+ * The result is a text array but we declare it as Datum to avoid 
+ * including array.h in analyze.h.
+ */
+static Datum transformLocationUris(List *locs)
+{
+	ListCell   *cell;
+	ArrayBuildState *astate;
+	Datum		result;
+	
+	/* Parser should not let this happen */
+	Assert(locs != NIL);
+	
+	/* We build new array using accumArrayResult */
+	astate = NULL;
+	
+	/*
+	 * iterate through the user supplied URI list from LOCATION clause.
+	 */
+	foreach(cell, locs)
+	{
+		Uri			*uri;
+		text		*t;
+		const char	*uri_str = (char *) lfirst(cell);
+		Size		len;
+		
+		uri = ParseUriString(uri_str);
+		
+		if(uri->protocol != URI_FILE)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("unsupported URI protocol for \'%s\'", uri_str),
+					 errhint("Use 'file' protocol instead.")));
+		}
+		
+		len = VARHDRSZ + strlen(uri_str);
+		
+		/* +1 leaves room for sprintf's trailing null */
+		t = (text *) palloc(len + 1);
+		VARATT_SIZEP(t) = len;
+		sprintf((char *) VARATT_DATA(t), "%s", uri_str);
+		
+		
+		astate = accumArrayResult(astate, PointerGetDatum(t),
+								  false, TEXTOID,
+								  CurrentMemoryContext);
+		
+		pfree(uri);
+	}
+	
+	if (astate)
+		result = makeArrayResult(astate, CurrentMemoryContext);
+	else
+		result = (Datum) 0;
+	
+	return result;	
+	
+}
+
+/*
+ * transform format name to format code and validate that
+ * the format is supported. Currently the only supported formats
+ * are "text" (type 't') and "csv" (type 'c')
+ */
+static char transformFormatType(char *formatname)
+{
+	char	result = '\0';
+	
+	if(pg_strcasecmp(formatname, "text") == 0)
+		result = 't';
+	else if(pg_strcasecmp(formatname, "csv") == 0)
+		result = 'c';
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("unsupported format '%s'", formatname),
+				 errhint("available formats are \"text\" or \"csv\"")));
+	
+	return result;
+}
+
+
+/*
+ * Transform the FORMAT options into a text field. Parse the
+ * options and validate them for their respective format type.
+ *
+ * NOTE: Lot's of code here is duplicated with parts of DoCopy (copy.c).
+ * However, when we switch over to user defined formats this function
+ * won't be necessary anymore, as the SQL parser will not parse
+ * the format options at all but instead will already treat them
+ * as one string.
+ *
+ * The result is a text field that includes the format string.
+ */
+static Datum transformFormatOpts(char formattype, List *formatOpts)
+{
+	ListCell   *option;
+	Datum		result;
+	char *format_str = NULL;
+	char *delim = NULL;
+	char *null_print = NULL;
+	char *quote = NULL;
+	char *escape = NULL;
+	bool header_line = false;
+	bool csv_mode;
+	Size len;
+	
+	Assert(formattype == 'c' || formattype == 't');
+	
+	csv_mode = (formattype == 'c' ? true : false);
+	
+	/* Extract options from the statement node tree */
+	foreach(option, formatOpts)
+	{
+		DefElem    *defel = (DefElem *) lfirst(option);
+		
+		if (strcmp(defel->defname, "delimiter") == 0)
+		{
+			if (delim)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			delim = strVal(defel->arg);
+		}
+		else if (strcmp(defel->defname, "null") == 0)
+		{
+			if (null_print)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			null_print = strVal(defel->arg);
+		}
+		else if (strcmp(defel->defname, "header") == 0)
+		{
+			if (header_line)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			header_line = intVal(defel->arg);
+		}
+		else if (strcmp(defel->defname, "quote") == 0)
+		{
+			if (quote)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			quote = strVal(defel->arg);
+		}
+		else if (strcmp(defel->defname, "escape") == 0)
+		{
+			if (escape)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			escape = strVal(defel->arg);
+		}
+		else
+			elog(ERROR, "option \"%s\" not recognized",
+				 defel->defname);
+	}
+	
+	/* 
+		* Set defaults 
+	 */	
+	if (!delim)
+		delim = csv_mode ? "," : "\t";
+	
+	if (!null_print)
+		null_print = csv_mode ? "" : "\\N";
+	
+	if (csv_mode)
+	{
+		if (!quote)
+			quote = "\"";
+		if (!escape)
+			escape = quote;
+	}
+	
+	if (!csv_mode && !escape)
+		escape = "off";			/* default escape for text mode */
+	
+	/*
+	 * Only single-character delimiter strings are supported.
+	 */
+	if (strlen(delim) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("delimiter must be a single character")));
+	
+	/* Disallow end-of-line characters */
+	if (strchr(delim, '\r') != NULL ||
+	    strchr(delim, '\n') != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("delimiter cannot be newline or carriage return")));
+	
+	if (strchr(null_print, '\r') != NULL ||
+		strchr(null_print, '\n') != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("null representation cannot use newline or carriage return")));
+	
+	/* Disallow backslash in non-CSV mode */
+	if (!csv_mode && strchr(delim, '\\') != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("delimiter cannot be backslash")));
+	
+	/* Check header */
+	if (!csv_mode && header_line)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("HEADER available only in CSV mode")));
+	
+	/*
+	 * Check quote
+	 */
+	if (!csv_mode && quote != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("quote available only in CSV mode")));
+	
+	if (csv_mode && strlen(quote) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("quote must be a single character")));
+	
+	/*
+	 * Check escape
+	 */	
+	if (csv_mode && strlen(escape) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("escape in CSV format must be a single character")));
+	
+	if (!csv_mode && strlen(escape) != 1)
+	{
+		if (pg_strcasecmp(escape, "off") != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("escape must be a single character, or [OFF/off] to disable escapes")));
+	}
+	
+	/*
+	 * Don't allow the delimiter to appear in the null string.
+	 */
+	if (strchr(null_print, delim[0]) != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("delimiter must not appear in the NULL specification")));
+	
+	/*
+	 * Don't allow the csv quote char to appear in the null string.
+	 */
+	if (csv_mode && strchr(null_print, quote[0]) != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("CSV quote character must not appear in the NULL specification")));
+	
+	
+	/*
+	 * build the format option string that will get stored in the catalog.
+	 */
+	
+	len =	9 + 1 + 3 +							/* "delimiter 'x'"		*/
+		1 +										/* space				*/
+		4 + 1 + 1 + strlen(null_print) + 1 +	/* "null 'str'"			*/
+		1 +										/* space				*/
+		6 + 1 + 1 + strlen(escape) + 1;			/* "escape 'c' or 'off' */
+	
+	if (formattype == 'c')
+		len +=	1 +								/* space			*/
+			5 + 1 + 3 +							/* "quote 'x'"		*/
+			(header_line ? 1 + 6 : 0);			/* " header"		*/
+	
+	/* +1 leaves room for sprintf's trailing null */
+	format_str = (char *) palloc(len + 1);
+	
+	switch(formattype)
+	{
+		case 't':
+			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s'", 
+					delim, null_print, escape);			
+			break;	
+			
+		case 'c':
+			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s' quote '%s'%s", 
+					delim, null_print, escape, quote, (header_line ? " header" : "") );
+			break;
+			
+		default:
+			/* should never happen */
+			Assert(false);
+	}
+	
+	/* convert c string to text datum */
+	result = DirectFunctionCall1(textin, CStringGetDatum(format_str));
+	
+	return result;
+	
+}
+

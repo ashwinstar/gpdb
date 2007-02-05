@@ -21,6 +21,9 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "catalog/pg_inherits.h"
+#include "catalog/pg_exttable.h"
+#include "catalog/indexing.h"
+#include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/plancat.h"
@@ -34,6 +37,9 @@
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "utils/array.h"
+#include "utils/fmgroids.h"
+#include "utils/builtins.h"
 #include "catalog/catalog.h"
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
@@ -286,6 +292,115 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 	rel->indexlist = indexinfos;
 
 	heap_close(relation, NoLock);
+}
+
+/*
+ * Update RelOptInfo to include the external specifications (file URI list
+ * and data format) from the pg_exttable catalog.
+ */
+void
+get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
+						   RelOptInfo *rel)
+{
+	
+	Relation	pg_exttable_rel;
+	TupleDesc	pg_exttable_dsc;
+	HeapTuple	tuple;
+	ScanKeyData	key;
+	SysScanDesc	extscan;
+	Datum		locations;
+	Datum		fmttype;
+	Datum		fmtopts;
+	bool		isNull;
+	Datum	   *elems;
+	int			nelems;
+	int			i;
+	
+	
+	/*
+	 * Check the pg_exttable relation to be certain the ext table 
+	 * is there. 
+	 */
+	pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
+	pg_exttable_dsc = RelationGetDescr(pg_exttable_rel);
+	
+	ScanKeyInit(&key,
+				Anum_pg_exttable_reloid,
+				BTEqualStrategyNumber,
+				F_OIDEQ,
+				ObjectIdGetDatum(relationObjectId));
+	
+    extscan = systable_beginscan(pg_exttable_rel, 
+								 ExtTableRelOidIndexId, 
+								 true,
+								 SnapshotNow, 
+								 1, 
+								 &key);
+	
+    tuple = systable_getnext(extscan);
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("external table object id \"%d\" does not exist",
+						relationObjectId)));
+	
+	/*
+	 * get the location text array from the catalog (pg_exttable).
+	 */
+	locations = heap_getattr(tuple, 
+							 Anum_pg_exttable_location, 
+							 pg_exttable_rel->rd_att, 
+							 &isNull);
+	
+	/*
+	 * Get distribution keys only if this table has a policy.
+	 */
+	if (isNull)
+	{
+		/* should not happen, TODO: error */
+	}
+	else
+	{
+		deconstruct_array(DatumGetArrayTypeP(locations),
+						  TEXTOID, -1, false, 'i',
+						  &elems, NULL, &nelems);
+		
+		for (i = 0; i < nelems; i++)
+		{
+			char *uri_str = DatumGetCString(DirectFunctionCall1(textout, elems[i]));
+			
+			/* append to a list of Value nodes, size nelems */
+			rel->locationlist = lappend(rel->locationlist, makeString(pstrdup(uri_str)));
+		}
+	}
+	
+	/*
+	 * Now get the format type
+	 */
+	fmttype = heap_getattr(tuple, 
+						   Anum_pg_exttable_fmtcode, 
+						   pg_exttable_rel->rd_att, 
+						   &isNull);
+	
+	rel->fmttype = DatumGetChar(fmttype);
+	Assert(rel->fmttype == 'c' || rel->fmttype == 't');
+	
+	/*
+	 * And the format string
+	 */
+	fmtopts = heap_getattr(tuple, 
+						   Anum_pg_exttable_fmtopts, 
+						   pg_exttable_rel->rd_att, 
+						   &isNull);
+	
+	rel->fmtopts = DatumGetCString(DirectFunctionCall1(textout, fmtopts));
+	Assert(rel->fmtopts != NULL);
+	
+	
+	/* Finish up scan and close exttable catalog. */
+	systable_endscan(extscan);
+	
+	heap_close(pg_exttable_rel, RowExclusiveLock);
 }
 
 /*

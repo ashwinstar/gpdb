@@ -20,6 +20,7 @@
 #include "executor/nodeBitmapHeapscan.h"
 #include "executor/nodeBitmapIndexscan.h"
 #include "executor/nodeBitmapOr.h"
+#include "executor/nodeExternalscan.h"
 #include "executor/nodeFunctionscan.h"
 #include "executor/nodeGroup.h"
 #include "executor/nodeGroup.h"
@@ -126,6 +127,10 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 		case T_IndexScanState:
 			ExecIndexReScan((IndexScanState *) node, exprCtxt);
 			break;
+			
+		case T_ExternalScanState:
+			ExecExternalReScan((ExternalScanState *) node, exprCtxt);
+			break;			
 
 		case T_BitmapIndexScanState:
 			ExecBitmapIndexReScan((BitmapIndexScanState *) node, exprCtxt);
@@ -232,6 +237,10 @@ ExecMarkPos(PlanState *node)
 		case T_IndexScanState:
 			ExecIndexMarkPos((IndexScanState *) node);
 			break;
+			
+		case T_ExternalScanState:
+			elog(ERROR, "Marking scan position for external relation is not supported");
+			break;			
 
 		case T_TidScanState:
 			ExecTidMarkPos((TidScanState *) node);
@@ -293,6 +302,10 @@ ExecRestrPos(PlanState *node)
 		case T_IndexScanState:
 			ExecIndexRestrPos((IndexScanState *) node);
 			break;
+			
+		case T_ExternalScanState:
+			elog(ERROR, "Restoring scan position is not yet supported for external relation scan");
+			break;			
 
 		case T_TidScanState:
 			ExecTidRestrPos((TidScanState *) node);

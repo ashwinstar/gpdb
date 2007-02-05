@@ -18,9 +18,12 @@
 #include <ctype.h>
 
 #include "access/heapam.h"
+#include "access/genam.h"
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_exttable.h"
+#include "catalog/indexing.h"
 #include "funcapi.h"
 #include "nodes/makefuncs.h"
 #include "parser/parsetree.h"
@@ -30,6 +33,8 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "utils/array.h"
+#include "utils/fmgroids.h"
 
 
 /* GUC parameter */

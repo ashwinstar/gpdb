@@ -33,6 +33,7 @@
 #include "parser/parse_expr.h"
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
+#include "utils/uri.h"
 
 #include "cdb/cdbgroup.h"       /* adapt_flow_to_targetlist() */
 #include "cdb/cdbllize.h"       /* pull_up_Flow() */
@@ -60,6 +61,8 @@ static Plan *create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path);
 static Plan *create_motion_plan(CreatePlanContext *ctx, CdbMotionPath *path);
 static SeqScan *create_seqscan_plan(CreatePlanContext *ctx, Path *best_path,
 					List *tlist, List *scan_clauses);
+static ExternalScan *create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
+											  List *tlist, List *scan_clauses);
 static IndexScan *create_indexscan_plan(CreatePlanContext *ctx, IndexPath *best_path,
 					  List *tlist, List *scan_clauses,
 					  List **nonlossy_clauses);
@@ -94,6 +97,12 @@ static List *order_qual_clauses(PlannerInfo *root, List *clauses);
 static void copy_path_costsize(Plan *dest, Path *src);
 static void copy_plan_costsize(Plan *dest, Plan *src);
 static SeqScan *make_seqscan(List *qptlist, List *qpqual, Index scanrelid);
+static ExternalScan *make_externalscan(List *qptlist,
+									   List *qpqual,
+									   Index scanrelid,
+									   List *filenames,
+									   List *fmtopts,
+									   bool istext);
 static IndexScan *make_indexscan(List *qptlist, List *qpqual, Index scanrelid,
 			   Oid indexid, List *indexqual, List *indexqualorig,
 			   List *indexstrategy, List *indexsubtype,
@@ -193,6 +202,7 @@ create_subplan(CreatePlanContext *ctx, Path *best_path)
 	{
 		case T_SeqScan:
 		case T_IndexScan:
+		case T_ExternalScan:
 		case T_BitmapHeapScan:
 		case T_TidScan:
 		case T_SubqueryScan:
@@ -287,6 +297,13 @@ create_scan_plan(CreatePlanContext *ctx, Path *best_path)
 												scan_clauses);
 			break;
 
+		case T_ExternalScan:
+			plan = (Plan *) create_externalscan_plan(ctx,
+													 best_path,
+													 tlist,
+													 scan_clauses);
+			break;
+			
 		case T_IndexScan:
 			plan = (Plan *) create_indexscan_plan(ctx,
 												  (IndexPath *) best_path,
@@ -896,6 +913,68 @@ create_seqscan_plan(CreatePlanContext *ctx, Path *best_path,
 
 	copy_path_costsize(&scan_plan->plan, best_path);
 
+	return scan_plan;
+}
+
+/*
+ * create_externalscan_plan
+ *	 Returns an externalscan plan for the base relation scanned by 'best_path'
+ *	 with restriction clauses 'scan_clauses' and targetlist 'tlist'.
+ */
+static ExternalScan *
+create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
+						 List *tlist, List *scan_clauses)
+{
+	ExternalScan    *scan_plan;
+	Index			scan_relid = best_path->parent->relid;
+	RelOptInfo		*rel = best_path->parent;
+	List			*filenames = NIL;
+	List			*fmtopts = NIL;
+	ListCell		*cell;
+	bool			istext;
+	
+	/* it should be an external rel... */
+	Assert(scan_relid > 0);
+	Assert(rel->rtekind == RTE_EXTERNAL);
+	
+	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
+	scan_clauses = extract_actual_clauses(scan_clauses, false);
+	
+	/* Sort clauses into best execution order */
+	scan_clauses = order_qual_clauses(ctx->root, scan_clauses);
+	
+	/*
+	 * Executor needs external locations and format information.
+	 */
+	
+	/* extract file path and name from URI strings */
+	Assert(rel->locationlist != NIL);
+	
+	foreach(cell, rel->locationlist)
+	{
+		Uri			*uri;
+		const char	*uri_str = (char *) strVal(lfirst(cell));
+		
+		uri = ParseUriString(uri_str);
+		
+		/* append the filename and path to the list */
+		filenames = lappend(filenames, makeString(pstrdup(uri->path)));
+	}
+	
+	/* data format description */
+	istext = (rel->fmttype == 't' ? true : false);	
+	Assert(rel->fmtopts);
+	fmtopts = lappend(fmtopts, makeString(pstrdup(rel->fmtopts)));
+	
+	scan_plan = make_externalscan(tlist,
+								  scan_clauses,
+								  scan_relid,
+								  filenames,
+								  fmtopts,
+								  istext);
+	
+	copy_path_costsize(&scan_plan->scan.plan, best_path);
+	
 	return scan_plan;
 }
 
@@ -2174,6 +2253,32 @@ make_seqscan(List *qptlist,
 	plan->righttree = NULL;
 	node->scanrelid = scanrelid;
 
+	return node;
+}
+
+static ExternalScan *
+make_externalscan(List *qptlist,
+				  List *qpqual,
+				  Index scanrelid,
+				  List *filenames,
+				  List *fmtopts,
+				  bool istext)
+{
+	ExternalScan    *node = makeNode(ExternalScan);
+	Plan	   *plan = &node->scan.plan;
+	
+	/* cost should be inserted by caller */
+	plan->targetlist = qptlist;
+	plan->qual = qpqual;
+	plan->lefttree = NULL;
+	plan->righttree = NULL;
+	node->scan.scanrelid = scanrelid;
+	
+	/* external specifictions */
+	node->fileNames = filenames;
+	node->fmtOpts = fmtopts;
+	node->isText = istext;
+	
 	return node;
 }
 

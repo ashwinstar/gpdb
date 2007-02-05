@@ -81,6 +81,9 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	rel->pages = 0;
 	rel->tuples = 0;
 	rel->subplan = NULL;
+	rel->locationlist = NIL;
+	rel->fmttype = '\0';
+	rel->fmtopts = NULL;	
 	rel->baserestrictinfo = NIL;
 	rel->baserestrictcost.startup = 0;
 	rel->baserestrictcost.per_tuple = 0;
@@ -91,6 +94,14 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	/* Check type of rtable entry */
 	switch (rte->rtekind)
 	{
+		case RTE_EXTERNAL:
+			
+			/* 
+			* External Table --- retrieve locations and format from 
+			 * the exttable system catalog 
+			 */
+			get_external_relation_info(root, rte->relid, rte->inh, rel);
+			/* fallthrough */
 		case RTE_RELATION:
 			/* Table --- retrieve statistics from the system catalogs */
 			get_relation_info(root, rte->relid, rte->inh, rel);

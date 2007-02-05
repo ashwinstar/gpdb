@@ -276,6 +276,19 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
      * in a temporary list, then add them.
 	 */
 
+	/*
+	 * If the relation is external, create an external path for
+	 * it and select it (only external path is considered for
+	 * an external base rel.
+	 */
+	if(rel->rtekind == RTE_EXTERNAL)
+	{
+		add_path(root, rel, (Path *) create_external_path(root, rel));
+		
+		set_cheapest(root, rel);
+		return;
+	}
+	
 	/* Consider sequential scan */
 	pathlist = lappend(pathlist, create_seqscan_path(root, rel));
 

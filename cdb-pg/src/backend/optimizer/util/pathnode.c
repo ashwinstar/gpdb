@@ -1214,6 +1214,30 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel)
 	return pathnode;
 }
 
+/* 
+* Create a path for scanning an external table
+ */
+ExternalPath *
+create_external_path(PlannerInfo *root, RelOptInfo *rel)
+{
+	ExternalPath   *pathnode = makeNode(ExternalPath);
+	
+	pathnode->pathtype = T_ExternalScan;
+	pathnode->parent = rel;
+	pathnode->pathkeys = NIL;	/* external scan has unordered result */
+	
+	/* TODO...
+    pathnode->locus = cdbpathlocus_from_baserel(root, rel); 
+    pathnode->motionHazard = false;
+	pathnode->rescannable = true;
+	*/
+
+	cost_externalscan(pathnode, root, rel);
+	
+	return pathnode;
+}
+
+
 /*
  * create_index_path
  *	  Creates a path node for an index scan.

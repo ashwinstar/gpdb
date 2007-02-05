@@ -161,6 +161,7 @@ set_plan_references(Plan *plan, List *rtable)
 	switch (nodeTag(plan))
 	{
 		case T_SeqScan:
+		case T_ExternalScan:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                 return cdb_insert_result_node(plan, rtable);
 			fix_expr_references(plan, (Node *) plan->targetlist);

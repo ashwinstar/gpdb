@@ -88,6 +88,7 @@
 #include "executor/nodeBitmapHeapscan.h"
 #include "executor/nodeBitmapIndexscan.h"
 #include "executor/nodeBitmapOr.h"
+#include "executor/nodeExternalscan.h"
 #include "executor/nodeFunctionscan.h"
 #include "executor/nodeGroup.h"
 #include "executor/nodeHash.h"
@@ -178,6 +179,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			result = (PlanState *) ExecInitSeqScan((SeqScan *) node,
 												   estate, eflags);
 			break;
+			
+		case T_ExternalScan:
+			result = (PlanState *) ExecInitExternalScan((ExternalScan *) node,
+														estate, eflags);
+			break;			
 
 		case T_IndexScan:
 			result = (PlanState *) ExecInitIndexScan((IndexScan *) node,
@@ -380,6 +386,10 @@ ExecProcNode(PlanState *node)
 			result = ExecIndexScan((IndexScanState *) node);
 			break;
 
+		case T_ExternalScanState:
+			result = ExecExternalScan((ExternalScanState *) node);
+			break;
+			
 			/* BitmapIndexScanState does not yield tuples */
 
 		case T_BitmapHeapScanState:
@@ -565,6 +575,9 @@ ExecCountSlotsNode(Plan *node)
 			 */
 		case T_SeqScan:
 			return ExecCountSlotsSeqScan((SeqScan *) node);
+
+		case T_ExternalScan:
+			return ExecCountSlotsExternalScan((ExternalScan *) node);
 
 		case T_IndexScan:
 			return ExecCountSlotsIndexScan((IndexScan *) node);
@@ -762,6 +775,10 @@ ExecEndNode(PlanState *node)
 		case T_IndexScanState:
 			ExecEndIndexScan((IndexScanState *) node);
 			break;
+			
+		case T_ExternalScanState:
+			ExecEndExternalScan((ExternalScanState *) node);
+			break;			
 
 		case T_BitmapIndexScanState:
 			ExecEndBitmapIndexScan((BitmapIndexScanState *) node);

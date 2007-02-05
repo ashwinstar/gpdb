@@ -289,6 +289,11 @@ typedef struct RelOptInfo
     bool        cdb_default_stats_used; /* true if ANALYZE needed */
 	struct Plan *subplan;		/* if subquery */
 
+	/* used by external scan */
+	List		*locationlist;
+	char		fmttype;
+	char		*fmtopts;
+	
 	/* used by various scans and joins: */
 	List	   *baserestrictinfo;		/* RestrictInfo structures (if base
 										 * rel) */
@@ -499,6 +504,23 @@ typedef struct Path
 	List	   *pathkeys;		/* sort ordering of path's output */
 	/* pathkeys is a List of Lists of PathKeyItem nodes; see above */
 } Path;
+
+/* TODO: this is redundant. Factor out with Path */
+typedef struct ExternalPath
+{
+	NodeTag		type;
+	
+	NodeTag		pathtype;		/* tag identifying scan/join method */
+	
+	RelOptInfo *parent;			/* the relation this path can build */
+	
+	/* estimated execution costs for path (see costsize.c for more info) */
+	Cost		startup_cost;	/* cost expended before fetching any tuples */
+	Cost		total_cost;		/* total cost (assuming all tuples fetched) */
+	
+	List	   *pathkeys;		/* sort ordering of path's output */
+	/* pathkeys is a List of Lists of PathKeyItem nodes; see above */
+} ExternalPath;
 
 /*----------
  * IndexPath represents an index scan over a single index.
