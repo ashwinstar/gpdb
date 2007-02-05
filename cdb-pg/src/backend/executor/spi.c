@@ -1496,7 +1496,7 @@ SPI_cursor_open(const char *name, void *plan,
 	{
 		/* try to give a good error message */
 		Query	   *queryTree;
-		
+
 		if (list_length(spiplan->qtlist) != 1)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
@@ -1602,6 +1602,11 @@ SPI_cursor_open(const char *name, void *plan,
 		portal->cursorOptions |= CURSOR_OPT_NO_SCROLL;
 
 	/*
+	 * MPP needs this
+	 */
+	portal->is_cursor = true;
+	
+	/*
 	 * Set up the snapshot to use.	(PortalStart will do CopySnapshot, so we
 	 * skip that here.)
 	 */
@@ -1613,6 +1618,15 @@ SPI_cursor_open(const char *name, void *plan,
 		snapshot = GetTransactionSnapshot();
 	}
 
+	/*
+	 * Before starting this portal, we need to make sure that the shared
+	 * snapshot is already set by a writer gang, or the cursor query readers
+	 * will timeout waiting for one that may not exist (in some cases).
+	 * Therefore we insert a small hack here and dispatch a SET query that
+	 * will do it for us. This is also done in the bind-execute protocol.
+	 */
+	verify_shared_snapshot_ready();
+	
 	/*
 	 * Start portal execution.
 	 */
@@ -2030,6 +2044,8 @@ _SPI_prepare_plan(const char *src, _SPI_plan *plan)
 
 	plan->qtlist = query_list_list;
 	plan->ptlist = plan_list;
+	
+	elog_node_display(DEBUG5,"_SPI_prepare_plan queryTree",plan->qtlist,true);
 
 	/*
 	 * Pop the error context stack
@@ -2058,7 +2074,6 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 	volatile int res = 0;
 	Snapshot	saveActiveSnapshot;
 
-	
 	/* Be sure to restore ActiveSnapshot on error exit */
 	saveActiveSnapshot = ActiveSnapshot;
 	
@@ -2627,6 +2642,9 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 	 */
 	
 	elog(DEBUG1,"_SPI_execute_plan local: %s",plan->query);
+	/*elog_node_display(DEBUG5,"_SPI_execute_plan queryTree",plan->qtlist,true);*/
+	
+	debug_query_string = plan->query;
 	
 	PG_TRY();
 	{
@@ -2843,7 +2861,7 @@ _SPI_pquery(QueryDesc *queryDesc, long tcount)
 {
 	int			operation = queryDesc->operation;
 	int			res;
-	
+
 	switch (operation)
 	{
 		case CMD_SELECT:
@@ -2904,7 +2922,7 @@ _SPI_pquery(QueryDesc *queryDesc, long tcount)
 	if (!cdbpathlocus_querysegmentcatalogs)
 	/* Take care of any queued AFTER triggers */
 	AfterTriggerEndQuery(queryDesc->estate);
-	
+
 	ExecutorEnd(queryDesc);
 	
 	_SPI_current->processed = queryDesc->es_processed; /* Mpp: Dispatched queries fill in this at Executor End */

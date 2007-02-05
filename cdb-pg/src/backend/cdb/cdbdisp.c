@@ -1248,7 +1248,7 @@ thread_DispatchCommand(void *arg)
             /* Don't dispatch if cancellation pending or no connection. */
             dispatchResult->stillRunning = false;
             if (PQisBusy(dispatchResult->segdbDesc->conn))
-				write_stderr("Thread %u: We thought we were done, because !shouldStillDispatchCommand(), but we are still busy\n",mythread());
+				write_stderr("Thread %u: We thought we were done, because !shouldStillDispatchCommand(), but libpq says we are still busy\n",mythread());
         }
         else
         {
@@ -1384,7 +1384,7 @@ thread_DispatchCommand(void *arg)
 			/* Skip if already finished or didn't dispatch. */
 			if (!dispatchResult->stillRunning)
 				continue;
-				
+
 			if (DEBUG4 >= log_min_messages)
 				write_stderr("Thread %u: looking for results from %d of %d\n",mythread(),i+1,db_count);
 
@@ -1406,7 +1406,7 @@ thread_DispatchCommand(void *arg)
 					write_stderr("Thread %u: processResults says we are finished with %d:  %s\n",mythread(),i+1,segdbDesc->whoami);
 				dispatchResult->stillRunning = false;
 				if (PQisBusy(dispatchResult->segdbDesc->conn))
-					write_stderr("We thought we were done, because finished==true, but we are still busy\n");
+					write_stderr("We thought we were done, because finished==true, but libpq says we are still busy\n");
 			}
 			else
 				if (DEBUG4 >= log_min_messages)
@@ -1612,7 +1612,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 	CdbDispatchResults *meleeResults;
 	SegmentDatabaseDescriptor *segdbDesc;
 	int			i;
-	
+
 	/*
 	 * Are there any QEs that should be canceled?
 	 *
@@ -1624,7 +1624,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 	{							/* loop to check connection status */
 		dispatchResult = pParms->dispatchResultPtrArray[i];
 		segdbDesc = dispatchResult->segdbDesc;
-		meleeResults = dispatchResult->meleeResults;		
+		meleeResults = dispatchResult->meleeResults;
 
 		/* Already finished with this QE? */
 		if (!dispatchResult->stillRunning)
@@ -1682,12 +1682,12 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 		bool		sampling = true;
 
 		*timeoutCounter = 0;
-		
+
 		for (i = 0; i < db_count; i++)
 		{
 			dispatchResult = pParms->dispatchResultPtrArray[i];
 			segdbDesc = dispatchResult->segdbDesc;
-			
+
 			if (DEBUG5 >= log_min_messages)
 				write_stderr("Thread %u: checking status %d of %d     %s stillRunning %d \n", mythread(),i+1,db_count,segdbDesc->whoami,dispatchResult->stillRunning);
 
@@ -1698,7 +1698,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
             /* Skip the entry db. */
             if (segdbDesc->segindex < 0)
                 continue;
-                
+
             if (DEBUG5 >= log_min_messages)
 				write_stderr("Thread %u: testing connection %d of %d     %s stillRunning %d \n", mythread(),i+1,db_count,segdbDesc->whoami,dispatchResult->stillRunning);
             
@@ -1745,7 +1745,7 @@ processResults(CdbDispatchResult * dispatchResult)
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 	char	   *errorMessage;
 	int			rc;
-	
+
 	if (DEBUG5 >= log_min_messages)
 		write_stderr("Thread %u: processResults.  isBusy = %d\n",mythread(),PQisBusy(segdbDesc->conn));
 
@@ -2860,6 +2860,8 @@ serializeSnapshot(int * size)
 			memcpy(p,&snapshot->xip[i],sizeof(TransactionId)); p += sizeof(TransactionId);
 		}
 		memcpy(p,&snapshot->curcid,sizeof(CommandId)); p += sizeof(CommandId);
+		
+		elog(DEBUG5,"serializeSnapshot:  txnId %d, curcid %d",currentTransactionId,snapshot->curcid);
 		
 	}
 	else
