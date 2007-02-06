@@ -791,6 +791,12 @@ RemoveExternalRelation(const RangeVar *relation, DropBehavior behavior)
 	ScanKeyData	key;
 	SysScanDesc	extscan;	
 	
+	/* Permission check - only superuser can drop external tables. */
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+	 			errmsg("must be superuser to drop external table")));
+	
 	/*
 	 * this part corresponds to RemoveRelation()
 	 */
@@ -803,49 +809,45 @@ RemoveExternalRelation(const RangeVar *relation, DropBehavior behavior)
 	performDeletion(&object, behavior);
 	
 	/*
-	 * now remove the pg_exttable entry
+	 * now remove the pg_exttable entry (for now it's only on the QD)
 	 */
-	
-	/* Permission check - only superuser can drop external tables. */
-	if (!superuser())
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to drop external table")));
-	
-	
-	/*
-	 * Check the pg_exttable relation to be certain the ext table 
-	 * is there. 
-	 */
-	pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
-	pg_exttable_dsc = RelationGetDescr(pg_exttable_rel);
-	
-	ScanKeyInit(&key,
-				Anum_pg_exttable_reloid,
-				BTEqualStrategyNumber,
-				F_OIDEQ,
-				ObjectIdGetDatum(relOid));
-	
-    extscan = systable_beginscan(pg_exttable_rel, ExtTableRelOidIndexId, true,
-								 SnapshotNow, 1, &key);
-	
-    tuple = systable_getnext(extscan);
-	if (!HeapTupleIsValid(tuple))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("external table object id \"%d\" does not exist",
-						relOid)));
-	
-	/*
-	 * Delete the external table entry from the catalog (pg_exttable).
-	 */
-	simple_heap_delete(pg_exttable_rel, &tuple->t_self);
-	
-	
-	/* Finish up scan and close exttable catalog. */
-	systable_endscan(extscan);
-	
-	heap_close(pg_exttable_rel, NoLock);
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		
+		/*
+		 * Check the pg_exttable relation to be certain the ext table 
+		 * is there. 
+		 */
+		pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
+		pg_exttable_dsc = RelationGetDescr(pg_exttable_rel);
+
+		ScanKeyInit(&key,
+					Anum_pg_exttable_reloid,
+					BTEqualStrategyNumber,
+					F_OIDEQ,
+					ObjectIdGetDatum(relOid));
+
+		extscan = systable_beginscan(pg_exttable_rel, ExtTableRelOidIndexId, true,
+									 SnapshotNow, 1, &key);
+
+		tuple = systable_getnext(extscan);
+		if (!HeapTupleIsValid(tuple))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("external table object id \"%d\" does not exist",
+							relOid)));
+
+		/*
+		 * Delete the external table entry from the catalog (pg_exttable).
+		 */
+		simple_heap_delete(pg_exttable_rel, &tuple->t_self);
+
+
+		/* Finish up scan and close exttable catalog. */
+		systable_endscan(extscan);
+
+		heap_close(pg_exttable_rel, NoLock);
+	}
 	
 }
 
