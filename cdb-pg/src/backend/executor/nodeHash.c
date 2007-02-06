@@ -1011,7 +1011,7 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
 
     /* Report actual work_mem high water mark. */
     appendStringInfo(hbuf, "Used %dK bytes of work_mem.  ",
-                     (stats->workmem_max + 1023) / 1024);
+                     (int)((stats->workmem_max + 1023) / 1024));
 
     /* Report hash bucket statistics. */
     total_buckets = stats->nonemptybatches * hashtable->nbuckets;
