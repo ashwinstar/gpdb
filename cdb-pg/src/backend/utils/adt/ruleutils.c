@@ -2729,8 +2729,18 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
 			 * If the subplan tlist provides a name, use it, but usually we'll
 			 * end up with "?columnN?".
 			 */
-			List	   *tlist = ((Plan *) rte->funcexpr)->targetlist;
-			TargetEntry *tle = get_tle_by_resno(tlist, attnum);
+			List           *tlist = NULL;
+			TargetEntry    *tle = NULL;
+			if (rte->funcexpr == NULL)
+			{
+				/* TODO why do we ever get here?  Kurt, check on this. */
+				elog(DEBUG1,"RTE_SPECIAL funcexpr null when we expected it can't be null");
+			}
+			else
+			{
+				tlist = ((Plan *) rte->funcexpr)->targetlist;
+				tle = get_tle_by_resno(tlist, attnum);
+			}
 
 			if (tle && tle->resname)
 			{
