@@ -219,7 +219,7 @@ DEFAULT_CHK_PT_SEG=8
 DEFAULT_IP_ALLOW="0.0.0.0/0"
 DEFAULT_QD_MAX_CONNECT=25
 QE_CONNECT_FACTOR=5
-DEFAULT_BUFFERS=16000
+DEFAULT_BUFFERS="128MB"
 DEBUG_LEVEL=0
 #******************************************************************************
 # Functions

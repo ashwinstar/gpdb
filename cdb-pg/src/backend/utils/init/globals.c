@@ -96,7 +96,7 @@ int			work_mem = 32768;
 int			maintenance_work_mem = 65536;
 
 /* Primary determinants of sizes of shared-memory structures: */
-int			NBuffers = 16000;
+int			NBuffers = 4096;
 int			MaxBackends = 200;
 
 int			VacuumCostPageHit = 1;		/* GUC parameters for vacuum */
