@@ -1222,14 +1222,14 @@ create_external_path(PlannerInfo *root, RelOptInfo *rel)
 {
 	ExternalPath   *pathnode = makeNode(ExternalPath);
 	
-	pathnode->pathtype = T_ExternalScan;
-	pathnode->parent = rel;
-	pathnode->pathkeys = NIL;	/* external scan has unordered result */
+	pathnode->path.pathtype = T_ExternalScan;
+	pathnode->path.parent = rel;
+	pathnode->path.pathkeys = NIL;	/* external scan has unordered result */
+	pathnode->path.rescannable = true;
 	
 	/* TODO...
-    pathnode->locus = cdbpathlocus_from_baserel(root, rel); 
-    pathnode->motionHazard = false;
-	pathnode->rescannable = true;
+    pathnode->path.locus = cdbpathlocus_from_baserel(root, rel); 
+    pathnode->path.motionHazard = false;
 	*/
 
 	cost_externalscan(pathnode, root, rel);

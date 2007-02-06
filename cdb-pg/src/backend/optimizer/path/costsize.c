@@ -182,8 +182,8 @@ cost_externalscan(ExternalPath *path, PlannerInfo *root,
 	cpu_per_tuple = cpu_tuple_cost + baserel->baserestrictcost.per_tuple;
 	run_cost += cpu_per_tuple * baserel->tuples;
 	
-	path->startup_cost = startup_cost;
-	path->total_cost = startup_cost + run_cost;
+	path->path.startup_cost = startup_cost;
+	path->path.total_cost = startup_cost + run_cost;
 }
 
 /*
