@@ -1386,6 +1386,7 @@ _readRangeTblEntry(const char ** str)
 	switch (local_node->rtekind)
 	{
 		case RTE_RELATION:
+        case RTE_EXTERNAL:
 		case RTE_SPECIAL:
 			READ_OID_FIELD(relid);
 			break;
@@ -1457,12 +1458,12 @@ _readCreateStmt(const char ** str)
 	 * during serialization/deserialization
 	 */
 	Assert(local_node->relKind == RELKIND_INDEX || 
-			local_node->relKind == RELKIND_INDEX || 
 			local_node->relKind == RELKIND_RELATION || 
 			local_node->relKind == RELKIND_SEQUENCE || 
 			local_node->relKind == RELKIND_UNCATALOGED || 
 			local_node->relKind == RELKIND_TOASTVALUE || 
-			local_node->relKind == RELKIND_VIEW || 
+			local_node->relKind == RELKIND_VIEW ||
+			local_node->relKind == RELKIND_EXTERNAL || 
 			local_node->relKind == RELKIND_COMPOSITE_TYPE); 
 	Assert(local_node->oncommit <= ONCOMMIT_DROP);
 
