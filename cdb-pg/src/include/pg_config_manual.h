@@ -23,7 +23,7 @@
  *
  * Changing BLCKSZ requires an initdb.
  */
-#define BLCKSZ	8192
+#define BLCKSZ	32768
 
 /*
  * RELSEG_SIZE is the maximum number of blocks allowed in one disk
@@ -41,7 +41,7 @@
  *
  * Changing RELSEG_SIZE requires an initdb.
  */
-#define RELSEG_SIZE (0x40000000 / BLCKSZ)
+#define RELSEG_SIZE (0x80000000 / BLCKSZ)
 
 /*
  * Size of a WAL file block.  This need have no particular relation to BLCKSZ.
@@ -51,7 +51,7 @@
  *
  * Changing XLOG_BLCKSZ requires an initdb.
  */
-#define XLOG_BLCKSZ		8192
+#define XLOG_BLCKSZ		32768
 
 /*
  * XLOG_SEG_SIZE is the size of a single WAL file.	This must be a power of 2
@@ -60,7 +60,7 @@
  *
  * Changing XLOG_SEG_SIZE requires an initdb.
  */
-#define XLOG_SEG_SIZE	(16*1024*1024)
+#define XLOG_SEG_SIZE	(64*1024*1024)
 
 /*
  * Maximum number of arguments to a function.
@@ -151,7 +151,7 @@
  * is aligned on a larger-than-MAXALIGN boundary.  Ideally this should be
  * a platform-dependent value, but for now we just hard-wire it.
  */
-#define ALIGNOF_BUFFER	32
+#define ALIGNOF_BUFFER	64
 
 /*
  * Disable UNIX sockets for those operating system.
