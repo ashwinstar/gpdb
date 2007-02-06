@@ -1182,6 +1182,16 @@ static struct config_bool ConfigureNamesBool[] =
     	false, NULL, NULL
     },
 
+    {
+    	{"mpp_reraise_signal", PGC_SUSET, UNGROUPED,
+    		gettext_noop("Do we attempt to dump core when a serious problem occurs."),
+    		NULL,
+    		GUC_NOT_IN_SAMPLE
+    	},
+    	&mpp_reraise_signal,
+    	true, NULL, NULL
+    },
+
 	{
 		{"resource_scheduler", PGC_POSTMASTER, RESOURCES_MGM,
 			gettext_noop("Enable resource scheduling."),

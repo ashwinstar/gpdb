@@ -120,6 +120,8 @@ extern char *mpp_role_string;	/* Use by guc.c as staging area for value. */
 extern const char *assign_mpp_role(const char *newval, bool doit, GucSource source);
 extern const char *show_mpp_role(void);
 
+extern bool mpp_reraise_signal; /* try to force a core dump ?*/
+
 /* Parameter mpp_is_primary
  *
  * This run_time parameter indicates whether session is associated with the

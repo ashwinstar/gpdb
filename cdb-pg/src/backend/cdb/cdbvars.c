@@ -75,6 +75,8 @@ int			Mpp_segment = UNDEF_SEGMENT;		/* What content this QE is
 bool		Mpp_write_shared_snapshot;	/* tell the writer QE to write the
 										 * shared snapshot */
 
+bool		mpp_reraise_signal=true;	/* try to dump core when we get SIGABRT & SIGSEGV */
+
 /*
  * TCP port the Interconnect listens on for incoming connections from other
  * backends.  Assigned by initMotionLayerIPC() at process startup.  This port
