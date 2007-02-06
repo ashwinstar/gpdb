@@ -410,6 +410,7 @@ prescan_walker(Node *node, PlanProfile * context)
 			return false;
 
 		case T_SeqScan:
+		case T_ExternalScan:
 		case T_IndexScan:
 		case T_BitmapIndexScan:
 		case T_BitmapHeapScan:
@@ -642,6 +643,7 @@ is_plan_node(Node *node)
 		case T_Result:
 		case T_Append:
 		case T_SeqScan:
+		case T_ExternalScan:
 		case T_IndexScan:
 		case T_BitmapIndexScan:
 		case T_BitmapHeapScan:
@@ -1064,6 +1066,7 @@ motion_sanity_walker(Node *node, int *result)
 		case T_Result:
 		case T_Append:
 		case T_SeqScan:
+		case T_ExternalScan:
 		case T_IndexScan:
 		case T_BitmapIndexScan:
 		case T_BitmapHeapScan:

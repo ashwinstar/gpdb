@@ -219,6 +219,7 @@ pathnode_walk_kids(Path            *path,
     switch (path->pathtype)
 	{
 	    case T_SeqScan:
+		case T_ExternalScan:
 	    case T_IndexScan:
 	    case T_TidScan:
 	    case T_SubqueryScan:
@@ -1225,12 +1226,10 @@ create_external_path(PlannerInfo *root, RelOptInfo *rel)
 	pathnode->path.pathtype = T_ExternalScan;
 	pathnode->path.parent = rel;
 	pathnode->path.pathkeys = NIL;	/* external scan has unordered result */
-	pathnode->path.rescannable = true;
 	
-	/* TODO...
     pathnode->path.locus = cdbpathlocus_from_baserel(root, rel); 
     pathnode->path.motionHazard = false;
-	*/
+	pathnode->path.rescannable = true;
 
 	cost_externalscan(pathnode, root, rel);
 	

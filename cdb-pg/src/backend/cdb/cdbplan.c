@@ -198,6 +198,7 @@ plan_tree_walker(Node *node,
 			return walk_scan_node_fields((Scan *) node, walker, context);
 
 		case T_SeqScan:
+		case T_ExternalScan:
 		case T_BitmapHeapScan:
 		case T_FunctionScan:
 		case T_ValuesScan:
@@ -618,6 +619,22 @@ plan_tree_mutator(Node *node,
 			}
 			break;
 
+		case T_ExternalScan:
+			{
+				ExternalScan    *extscan = (ExternalScan *) node;
+				ExternalScan    *newextscan;
+				
+				FLATCOPY(newextscan, extscan, ExternalScan);
+				SCANMUTATE(newextscan, extscan);
+				
+				MUTATE(newextscan->fileNames, extscan->fileNames, List *);
+				MUTATE(newextscan->fmtOpts, extscan->fmtOpts, List *);
+				newextscan->isText = extscan->isText;
+				
+				return (Node *) newextscan;
+			}
+			break;
+			
 		case T_IndexScan:
 			{
 				IndexScan  *idxscan = (IndexScan *) node;
