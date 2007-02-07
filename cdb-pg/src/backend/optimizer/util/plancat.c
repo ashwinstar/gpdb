@@ -304,6 +304,7 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 {
 	
 	Relation	pg_exttable_rel;
+	Relation	pg_class_rel;
 	TupleDesc	pg_exttable_dsc;
 	HeapTuple	tuple;
 	ScanKeyData	key;
@@ -316,7 +317,16 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	int			nelems;
 	int			i;
 	
+	pg_class_rel = heap_open(relationObjectId, NoLock);
+
+	/*
+     * CDB: Get partitioning key info for distributed relation.
+	 * (in the external table case it will always be NULL entry).
+     */
+    rel->cdbpolicy = RelationGetPartitioningKey(pg_class_rel);
 	
+	heap_close(pg_class_rel, NoLock);
+
 	/*
 	 * Check the pg_exttable relation to be certain the ext table 
 	 * is there. 
@@ -401,6 +411,7 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	systable_endscan(extscan);
 	
 	heap_close(pg_exttable_rel, RowExclusiveLock);
+		
 }
 
 /*

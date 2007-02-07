@@ -726,6 +726,23 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 	createStmt->oncommit = ONCOMMIT_NOOP;
 	createStmt->tablespacename = NULL;
 	
+	/*
+	 * Policy for external tables is a NULL policy (randomly distributed)
+	 */
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{		
+		createStmt->policy = (MppPolicy *) palloc(sizeof(MppPolicy) + 
+										sizeof(createStmt->policy->attrs[0]));
+		createStmt->policy->ptype = POLICYTYPE_PARTITIONED;
+		createStmt->policy->nattrs = 0;
+		createStmt->policy->attrs[0] = 1;		
+	}
+	else
+	{
+		/* only needed in dispatch mode */
+		createStmt->policy = NULL;
+	}
+	
 	
 	/*
 	 * Parse and validate URI strings (LOCATION clause).

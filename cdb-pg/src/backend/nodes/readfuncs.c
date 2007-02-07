@@ -2117,6 +2117,23 @@ _readSeqScan(void)
 }
 
 /*
+ * _readExternalScan
+ */
+static ExternalScan *
+_readExternalScan(void)
+{
+	READ_LOCALS(ExternalScan);
+	
+	readScanInfo((Scan *)local_node);
+
+	READ_NODE_FIELD(fileNames);
+	READ_NODE_FIELD(fmtOpts);
+	READ_BOOL_FIELD(isText);
+	
+	READ_DONE();
+}
+
+/*
  * _readIndexScan
  */
 static IndexScan *
@@ -2754,6 +2771,7 @@ static ParseNodeInfo infoAr[] =
 	{"DROPPROPSTMT", (ReadFn)_readDropPropertyStmt},
 	{"DROPROLESTMT", (ReadFn)_readDropRoleStmt},
 	{"DROPSTMT", (ReadFn)_readDropStmt},
+	{"EXTERNALSCAN", (ReadFn)_readExternalScan},
 	{"FIELDSELECT", (ReadFn)_readFieldSelect},
 	{"FIELDSTORE", (ReadFn)_readFieldStore},
 	{"FKCONSTRAINT", (ReadFn)_outFkConstraint},

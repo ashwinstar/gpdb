@@ -895,7 +895,8 @@ RelationBuildDesc(Oid targetRelId, Relation oldrelation)
     /*
      * initialize MPP partitioning info
      */
-    if (relation->rd_rel->relkind == RELKIND_RELATION &&
+    if ((relation->rd_rel->relkind == RELKIND_RELATION ||
+		 relation->rd_rel->relkind == RELKIND_EXTERNAL) &&
         !IsSystemRelation(relation))
         relation->rd_cdbpolicy = MppPolicyFetch(CacheMemoryContext, targetRelId);
 

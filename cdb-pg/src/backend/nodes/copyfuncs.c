@@ -244,6 +244,30 @@ _copySeqScan(SeqScan *from)
 }
 
 /*
+ * _copyExternalScan
+ */
+static ExternalScan *
+_copyExternalScan(ExternalScan *from)
+{
+	ExternalScan    *newnode = makeNode(ExternalScan);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyScanFields((Scan *) from, (Scan *) newnode);
+
+	/*
+	 * copy remainder of node
+	 */	
+	COPY_NODE_FIELD(fileNames);
+	COPY_NODE_FIELD(fmtOpts);
+	COPY_SCALAR_FIELD(isText);
+	
+	return newnode;
+}
+
+
+/*
  * _copyIndexScan
  */
 static IndexScan *
@@ -3059,6 +3083,9 @@ copyObject(void *from)
 		case T_SeqScan:
 			retval = _copySeqScan(from);
 			break;
+		case T_ExternalScan:
+			retval = _copyExternalScan(from);
+			break;			
 		case T_IndexScan:
 			retval = _copyIndexScan(from);
 			break;

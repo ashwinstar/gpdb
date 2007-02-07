@@ -939,7 +939,7 @@ heap_create_with_catalog(const char *relname,
     if (policy &&
         Mpp_role == MPP_ROLE_DISPATCH)
     {
-        Assert(relkind == RELKIND_RELATION);
+        Assert(relkind == RELKIND_RELATION || relkind == RELKIND_EXTERNAL);
         new_rel_desc->rd_cdbpolicy = MppPolicyCopy(GetMemoryChunkContext(new_rel_desc), policy);
         MppPolicyStore(relid, policy);
     }

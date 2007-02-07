@@ -375,6 +375,18 @@ _outSeqScan(StringInfo str, SeqScan *node)
 }
 
 static void
+_outExternalScan(StringInfo str, ExternalScan *node)
+{
+	WRITE_NODE_TYPE("EXTERNALSCAN");
+	
+	_outScanInfo(str, (Scan *) node);
+	
+	WRITE_NODE_FIELD(fileNames);
+	WRITE_NODE_FIELD(fmtOpts);
+	WRITE_BOOL_FIELD(isText);
+}
+
+static void
 _outIndexScan(StringInfo str, IndexScan *node)
 {
 	WRITE_NODE_TYPE("INDEXSCAN");
@@ -2794,6 +2806,9 @@ _outNode(StringInfo str, void *obj)
 			case T_SeqScan:
 				_outSeqScan(str, obj);
 				break;
+			case T_ExternalScan:
+				_outExternalScan(str, obj);
+				break;				
 			case T_IndexScan:
 				_outIndexScan(str, obj);
 				break;

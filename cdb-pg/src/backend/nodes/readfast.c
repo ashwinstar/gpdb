@@ -1948,6 +1948,23 @@ _readSeqScan(const char ** str)
 }
 
 /*
+ * _readExternalScan
+ */
+static ExternalScan *
+_readExternalScan(const char ** str)
+{
+	READ_LOCALS(ExternalScan);
+	
+	readScanInfo(str, (Scan *)local_node);
+	
+	READ_NODE_FIELD(fileNames);
+	READ_NODE_FIELD(fmtOpts);
+	READ_BOOL_FIELD(isText);
+	
+	READ_DONE();
+}
+
+/*
  * _readIndexScan
  */
 static IndexScan *
@@ -2625,6 +2642,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_SeqScan:
 				return_value = _readSeqScan(str);
+				break;
+			case T_ExternalScan:
+				return_value = _readExternalScan(str);
 				break;
 			case T_IndexScan:
 				return_value = _readIndexScan(str);
