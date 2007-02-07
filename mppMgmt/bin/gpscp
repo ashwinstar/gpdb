@@ -123,8 +123,9 @@ try:
 	if h: tab.append(h)
 	else: usage('Error: invalid -h argument')
 
+    readHostFile(opt['-f'], tab)
+    tab.sort(lambda x, y: cmp(x[0], y[0]) or cmp(x[1], y[1]))
     opt['-h'] = tab
-    readHostFile(opt['-f'], opt['-h'])
 
     scp = 'scp -o "BatchMode yes" -o "StrictHostKeyChecking no"'
     proc = []

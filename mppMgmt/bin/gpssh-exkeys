@@ -93,15 +93,15 @@ class Host:
 	if self.m_pxssh: self.m_pxssh.logout()
 	self.m_pxssh = None
 
-    def tryParamikoConnect(self, client, pwd = None):
+    def tryParamikoConnect(self, client, pwd = None, silence = False):
 	try:
 	    client.connect(self.m_host, self.m_port, self.m_user, pwd)
 	    return True
 	except paramiko.AuthenticationException:
-	    if pwd: print '[ERROR %s@%s] bad password' % (self.m_user, self.m_host)
+	    if not silence: print '[ERROR %s@%s] bad password' % (self.m_user, self.m_host)
 	    return False
 	except paramiko.SSHException, e:
-	    if pwd: print '[ERROR %s@%s] %s' % (self.m_user, self.m_host, str(e))
+	    if not silence: print '[ERROR %s@%s] %s' % (self.m_user, self.m_host, str(e))
 	    return False
 	
 
@@ -112,10 +112,10 @@ class Host:
 	try:
 	    p = paramiko.SSHClient()
 	    p.load_system_host_keys()
-	    ok = self.tryParamikoConnect(p)
+	    ok = self.tryParamikoConnect(p, silence = True)
 	    if not ok:
 		for pwd in passwd:
-		    ok = self.tryParamikoConnect(p, pwd)
+		    ok = self.tryParamikoConnect(p, pwd, silence = True)
 		    if ok: break
 	    while not ok:
 		print '  ***'
@@ -271,8 +271,7 @@ def localHost(localID):
 
 def authorizeLocalID(localID):
     cmd = 'echo %s >> %s' % (localID, authorized_keys_fname)
-    f = os.popen(cmd); i = f.read(); ok = not f.close()
-    if not ok: 
+    if os.system(cmd):
 	sys.exit('[ERROR] while in authorizeLocalID() -  %s' % cmd)
 
 
@@ -338,8 +337,9 @@ try:
 	if h: tab.append(h)
 	else: usage('[ERROR] invalid -h parameter')
 
+    readHostFile(opt['-f'], tab)
+    tab.sort(lambda x, y: cmp(x[0], y[0]) or cmp(x[1], y[1]))
     opt['-h'] = tab
-    readHostFile(opt['-f'], opt['-h'])
     for h in opt['-h']: hostList.append(Host(h[0], h[1]))
 
 
@@ -439,7 +439,6 @@ try:
 	sys.exit('[ERROR] cannot read authorized_keys file')
 
     errmsg = None
-    addRemoteID(tab, localID)
     for h in hostList:
 	if not addRemoteID(tab, h.remoteID()):
 	    errmsg = "[ERROR] missing remote id_rsa.pub from %s" % h.name()
