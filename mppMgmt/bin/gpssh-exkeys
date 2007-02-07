@@ -15,7 +15,7 @@ if sys.version_info < (2, 3):
 
 sys.path.append(sys.path[0] + '/lib')
 try:
-    import pexpect, pxssh
+    import pexpect, pxssh, paramiko
 except ImportError, e:
     sys.exit('[ERROR] unable to import module: ' + str(e))
 
@@ -43,6 +43,7 @@ class Host:
     def __init__(self, user, host):
 	self.m_user = user
 	self.m_host = host
+	self.m_port = 22
 	self.m_name = '%s@%s' % (user, host)
 	self.m_popen = None
 	self.m_popen_cmd = ''
@@ -55,36 +56,10 @@ class Host:
     def remoteID(self): return self.m_remoteID
     def popen_cmd(self): return self.m_popen_cmd;
 
-    def login(self, passwd):
-	'''SSH Login. passwd - in-out: a list of possible passwords. If password is required, first try those
-	in passwd[], then ask the user for password. If the user provided a valid password, save in passwd[].
-	Return the pxssh handle, or None if error.'''
+    def login(self):
 	if self.m_pxssh: return self.m_pxssh
 	p = pxssh.pxssh()
-	ok = False
-	try:
-	    ok = p.login(self.m_host, self.m_user)
-	    if not ok:
-		for pwd in passwd:
-		    ok = p.login(self.m_host, self.m_user, pwd)
-		    if ok: break
-		while not ok:
-		    print '  ***'
-		    pwd = getpass.getpass('  *** Enter password for %s@%s: ' % (self.m_user, self.m_host))
-		    if pwd: ok = p.login(self.m_host, self.m_user, pwd)
-		    if ok: passwd.append(pwd)
-	except KeyboardInterrupt: 
-	    raise
-	except:
-	    if p.before and p.before.find('Connection refused') >= 0:
-		# sshd not running or not acccepting connection
-		errmsg = '[ERROR %s] connection refused.' % self.m_name
-	    else:
-		errmsg = '[ERROR %s] unable to connect ... is it up and running? ' % self.m_name
-
-	    print errmsg
-	    p = None
-
+	ok = p.login(self.m_host, self.m_user)
 	self.m_pxssh = ok and p or None
 	return self.m_pxssh 
 
@@ -93,36 +68,55 @@ class Host:
 	if self.m_pxssh: self.m_pxssh.logout()
 	self.m_pxssh = None
 
-    def sendLocalID(self, ID):
-	'Send local ID to remote over SSH, and append to authorized_key'
-	if not self.m_pxssh: return False
-	p = self.m_pxssh
-	cmd = 'mkdir .ssh; chmod 0700 .ssh; cd .ssh'
-	if opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
-	p.sendline(cmd); p.prompt()
-	p.sendline('pwd'); p.prompt()
-	dir = p.before.strip()
-	if dir and dir.find('/.ssh') > 0:
-	    pass
-	else:
+    def tryParamikoConnect(self, client, pwd = None):
+	try:
+	    client.connect(self.m_host, self.m_port, self.m_user, pwd)
+	    return True
+	except paramiko.AuthenticationException:
 	    return False
-	    
-	cmd = 'echo %s >> authorized_keys && echo done done done' % ID
-	if opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
-	p.sendline(cmd); 
-	if 0 == p.expect(['done done done']):
-	    if 0 == p.expect(['done done done']):
-		p.prompt()
-		return True
+	
 
-	p.prompt()
-	return False
+    def sendLocalID(self, ID, passwd):
+	'Send local ID to remote over SSH, and append to authorized_key'
+	p = None
+	cin = cout = cerr = None
+	try:
+	    p = paramiko.SSHClient()
+	    p.load_system_host_keys()
+	    ok = self.tryParamikoConnect(p)
+	    if not ok:
+		for pwd in passwd:
+		    ok = self.tryParamikoConnect(p, pwd)
+		    if ok: break
+	    while not ok:
+		print '  ***'
+		pwd = getpass.getpass('  *** Enter password for %s@%s: ' % (self.m_user, self.m_host))
+		if pwd: ok = self.tryParamikoConnect(p, pwd)
+		if ok: passwd.append(pwd)
+
+	    cmd = 'bash -c "mkdir -p .ssh; chmod 0700 .ssh'
+	    if opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
+	    (cin, cout, cerr) = p.exec_command(cmd)
+	    cin.close(); cout.close(); cerr.close()
+
+	    cmd = 'echo %s >> .ssh/authorized_keys && echo ok ok ok || echo fail fail fail' % ID
+	    if opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
+	    (cin, cout, cerr) = p.exec_command(cmd)
+	    cin.close()
+	    line = cout.readline()
+	    cout.close(); cerr.close()
+	    return line.find('ok ok ok') >= 0
+	finally:
+	    if cin: cin.close()
+	    if cout: cout.close()
+	    if cerr: cerr.close()
+	    if p and p._transport: p.close()
 
     def startRemoteKeygen(self):
 	'Start ssh-keygen on remote machine over SSH.'
 	if not self.m_pxssh: return False
 	p = self.m_pxssh
-	cmd = 'ssh-keygen -t rsa -N \"\" -f id_rsa; echo done done done'
+	cmd = 'ssh-keygen -t rsa -N \"\" -f .ssh/id_rsa; echo done done done'
 	if opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
 	p.sendline(cmd); 
 	return 0 == p.expect(['done done done'])
@@ -136,6 +130,7 @@ class Host:
 	    time.sleep(0.1)
 	    p.sendline('y')
 	    i = p.expect(['done done done'])
+	print 'wait: i=', i
 	return i == 0
 
     def popen(self, cmd):
@@ -258,7 +253,7 @@ def authorizeLocalID(localID):
     tt = localID.split()
     tt = parseHostLine(tt[2]) 
     h = Host(tt[0], tt[1])
-    if h.login({}): h.logout()
+    if h.login(): h.logout()
     else: sys.exit('[ERROR] while in authorizeLocalID() -  %s' % cmd)
 
 
@@ -308,10 +303,10 @@ try:
     print; print '[STEP 2 of 5] copy to remote host and generate remote host ID'  # serial
     for h in hostList:
 	print '  ... login to', h.name()
-	if not h.login(passwd): 
-	    errmsg = '[ERROR %s] unable to login' % h.name()
-	elif not h.sendLocalID(localID): 
+	if not h.sendLocalID(localID, passwd): 
 	    errmsg = '[ERROR %s] unable to send local ID' % h.name()
+	if not h.login(): 
+	    errmsg = '[ERROR %s] unable to login' % h.name()
 	if errmsg: print errmsg
 
     if not errmsg: 
