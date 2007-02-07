@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 '''
-gpssh-exkeys -- exchange keys
+gpssh-exkeys -- exchange ssh public keys among friends
 
 Usage: gpssh-exkeys [-?v] [-u user] [-h host] [-f hostfile]
 
@@ -123,7 +123,11 @@ class Host:
 		if pwd: ok = self.tryParamikoConnect(p, pwd)
 		if ok: passwd.append(pwd)
 
-	    cmd = 'mkdir -p .ssh; chmod 0700 .ssh; touch .ssh/authorized_keys && chmod 0600 .ssh/auth* .ssh/id_* && chmod 0644 .ssh/id*pub config'
+	    cmd = ('mkdir -p .ssh; ' +
+		   'chmod 0700 .ssh; ' +
+		   'touch .ssh/authorized_keys; ' +
+		   'chmod 0600 .ssh/auth* .ssh/id_*; ' +
+		   'chmod 0644 .ssh/id*pub config')
 	    if opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
 	    (cin, cout, cerr) = p.exec_command(cmd)
 	    cin.close(); cout.close(); cerr.close()
@@ -339,11 +343,17 @@ try:
     for h in opt['-h']: hostList.append(Host(h[0], h[1]))
 
 
+    ######################
+    #  step 1
+    #
     print '[STEP 1 of 6] create local ID'
     errmsg = None
     localID = createLocalID()
     authorizeLocalID(localID)
 
+    ######################
+    #  step 2
+    #
     print; print '[STEP 2 of 6] keyscan all hosts and update known_hosts file'
     cmd = 'cat | xargs -L 10 -I {} ssh-keyscan -t rsa {} >> %s 2> /dev/null' % known_hosts_fname
     p = os.popen(cmd, 'w')
@@ -358,12 +368,16 @@ try:
     if errmsg:
 	sys.exit(1)
 
+    # eliminate duplicate in known_hosts file
     try:
 	tab = readKnownHosts()
 	writeKnownHosts(tab)
     except IOError:
 	sys.exit('[ERROR] cannot read/write known_hosts file')
 
+    ######################
+    #  step 3
+    #
     print; print '[STEP 3 of 6] copy public key to remote host and generate remote host ID'  # serial
     for h in hostList:
 	print '  ... send to', h.name()
@@ -390,6 +404,9 @@ try:
 
     if errmsg: sys.exit(1)
 
+    ######################
+    #  step 4
+    #
     print; print '[STEP 4 of 6] obtain remote ID'  # parallel
 
     # now, include local ID in hostList so we also obtain our own key
@@ -399,7 +416,8 @@ try:
 
     for h in hostList: 
 	print '  ... ssh to %s for id_rsa.pub' % h.name()
-	cmd = 'ssh -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" %s@%s cat .ssh/id_rsa.pub' % (h.user(), h.host())
+	cmd = ('ssh -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' +
+	       '%s@%s cat .ssh/id_rsa.pub' % (h.user(), h.host()))
 	h.popen(cmd)
 
     for h in hostList:
@@ -411,6 +429,9 @@ try:
 
     if errmsg: sys.exit(1)
 
+    ######################
+    #  step 5
+    #
     print; print '[STEP 5 of 6] merge authorized keys locally'
     try:
 	tab = readAuthorizedKeys()
@@ -433,7 +454,9 @@ try:
     if errmsg: sys.exit(1)
 
 
-
+    ######################
+    #  step 6
+    #
     print; print '[STEP 6 of 6] copy authorized_keys and known_hosts to all remote hosts'
     errmsg = None
     for h in hostList:
