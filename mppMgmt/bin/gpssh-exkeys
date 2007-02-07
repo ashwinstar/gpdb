@@ -241,25 +241,14 @@ def readHostFile(fname, retList):
 ###  create local id_rsa
 def createLocalID():
     file = '%s/.ssh/id_rsa' % homeDir
-    cmd = 'ssh-keygen -t rsa -N \"\" -f %s' % file
+    cmd = 'ssh-keygen -t rsa -N \"\" -f %s < /dev/null > /dev/null || ls %s' % (file, file)
     if opt['-v']: print '[INFO] executing', cmd
-    p = pexpect.spawn(cmd)
-    if not p: 
-	sys.exit('[ERROR] unable to run ssh-keygen')
-
-    fileExists = False
-    i = p.expect([pexpect.EOF, 'Overwrite'])
-    if i == 0: pass
-    elif i == 1:
-	print '  ... ~/.ssh/id_rsa file exists ... skipped'
-	fileExists = True
-	time.sleep(0.1)
-	p.sendline('n')
-	i = p.expect(pexpect.EOF)
-
-    p.close()
-    if fileExists: pass
-    elif p.exitstatus: sys.exit('[ERROR] ssh-keygen failed')
+    f = os.popen(cmd)
+    for line in f: 
+	if line.find(file) >= 0: 
+	    print '  ... ~/.ssh/id_rsa file exists ... skipped'
+    if f.close(): 
+	sys.exit('[ERROR] ssh-keygen failed')
 
     f = None; pubfile = file + '.pub'
     try:
