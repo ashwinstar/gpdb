@@ -15,7 +15,7 @@ if sys.version_info < (2, 3):
 
 sys.path.append(sys.path[0] + '/lib')
 try:
-    import pexpect, pxssh, paramiko
+    import paramiko
 except ImportError, e:
     sys.exit('[ERROR] unable to import module: ' + str(e))
 
@@ -48,7 +48,6 @@ class Host:
 	self.m_name = '%s@%s' % (user, host)
 	self.m_popen = None
 	self.m_popen_cmd = ''
-	self.m_pxssh = None
 	self.m_remoteID = None
 
     def name(self): return self.m_name
@@ -57,41 +56,6 @@ class Host:
     def remoteID(self): return self.m_remoteID
     def popen_cmd(self): return self.m_popen_cmd;
 
-    def login(self):
-	if self.m_pxssh: return self.m_pxssh
-	p = pxssh.pxssh()
-	ok = False
-	try:
-	    ok = p.login(self.m_host, self.m_user)
-	except KeyboardInterrupt: 
-	    raise
-	except:
-	    pass
-
-	if not ok:
-	    errmsg = '[ERROR %s] ' % self.m_name
-	    buf = p.before
-	    if not buf:
-		errmsg += 'unable to connect ... is it running?'
-	    else:
-		buf = buf.lower()
-		if buf.find('connection refused') >= 0:
-		    errmsg += 'connection refused' 
-		elif buf.find('verification failed') >= 0:
-		    errmsg += 'verification failed'
-		else:
-		    errmsg += buf
-	    
-	    print errmsg
-	    p = None
-
-	self.m_pxssh = ok and p or None
-	return self.m_pxssh 
-
-    def logout(self):
-	'SSH logout'
-	if self.m_pxssh: self.m_pxssh.logout()
-	self.m_pxssh = None
 
     def tryParamikoConnect(self, client, pwd = None, silence = False):
 	try:
@@ -145,25 +109,6 @@ class Host:
 	    if cerr: cerr.close()
 	    if p and p._transport: p.close()
 
-    def startRemoteKeygen(self):
-	'Start ssh-keygen on remote machine over SSH.'
-	if not self.m_pxssh: return False
-	p = self.m_pxssh
-	cmd = 'ssh-keygen -t rsa -N \"\" -f .ssh/id_rsa'
-	if opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
-	p.sendline(cmd); 
-	return True
-
-    def waitRemoteKeygen(self):
-	'Wait for ssh-keygen to finish on remote machine over SSH.'
-	if not self.m_pxssh: return False
-	p = self.m_pxssh
-	i = p.expect([p.PROMPT, 'Overwrite'])
-	if i == 1:
-	    time.sleep(0.1)
-	    p.sendline('n')
-	    i = p.expect([p.PROMPT])
-	return i == 0
 
     def popen(self, cmd):
 	'Run a command and save popen handle in this Host instance.'
@@ -384,24 +329,24 @@ try:
 	print '  ... send to', h.name()
 	if not h.sendLocalID(localID, passwd): 
 	    errmsg = '[ERROR %s] unable to send local ID' % h.name()
-	elif not h.login(): 
-	    errmsg = '[ERROR %s] unable to login' % h.name()
-	if errmsg: print errmsg
+	    print errmsg
 
     if not errmsg: 
 	for h in hostList:
 	    print '  ... remote key-gen at', h.name()
-	    if not h.startRemoteKeygen(): 
-		errmsg = '[ERROR %s] unable to ssh-keygen' % h.name()
-		print errmsg
+	    cmd = ('ssh -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' +
+		   '%s@%s "ssh-keygen -t rsa -N \\"\\" -f .ssh/id_rsa < /dev/null > /dev/null || ls .ssh/id_rsa" ' % (h.user(), h.host()))
+	    h.popen(cmd)
 
     if not errmsg: 
 	for h in hostList:
-	    if not h.waitRemoteKeygen(): 
+	    (ok, content) = h.pclose();
+	    if ok: 
+		if content.find('.ssh/id_rsa') >= 0:
+		    print '[INFO %s]  ... id_rsa exists ... skipped' % h.name()
+	    else:
 		errmsg = '[ERROR %s] unable to ssh-keygen' % h.name()
 		print errmsg
-
-    for h in hostList: h.logout()
 
     if errmsg: sys.exit(1)
 
