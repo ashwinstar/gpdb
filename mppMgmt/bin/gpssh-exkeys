@@ -437,9 +437,9 @@ try:
     print; print '[STEP 6 of 6] copy authorized_keys and known_hosts to all remote hosts'
     errmsg = None
     for h in hostList:
-	cmd = 'scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' +
+	cmd = ('scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' +
 	       '%s %s %s@%s:.ssh/' % (authorized_keys_fname, known_hosts_fname, 
-				      h.user(), h.host())
+				      h.user(), h.host()))
 	h.popen(cmd)
 
     for h in hostList:
