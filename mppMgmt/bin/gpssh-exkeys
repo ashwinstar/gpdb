@@ -161,7 +161,7 @@ class Host:
 	i = p.expect([p.PROMPT, 'Overwrite'])
 	if i == 1:
 	    time.sleep(0.1)
-	    p.sendline('y')
+	    p.sendline('n')
 	    i = p.expect([p.PROMPT])
 	return i == 0
 
@@ -355,7 +355,8 @@ try:
     #  step 2
     #
     print; print '[STEP 2 of 6] keyscan all hosts and update known_hosts file'
-    cmd = 'cat | xargs -L 10 -I {} ssh-keyscan -t rsa {} >> %s 2> /dev/null' % known_hosts_fname
+    cmd = 'ssh-keyscan -t rsa -f - >> %s 2> /dev/null' % known_hosts_fname
+    if opt['-v']: print '[INFO]:', cmd
     p = os.popen(cmd, 'w')
     for h in hostList:
 	p.write(h.host() + '\n')
