@@ -121,7 +121,7 @@ class Host:
     def pclose(self):
 	'Close the popen handle'
 	if not self.m_popen: return (False, None)
-	content = self.m_popen.read()
+	content = ''.join(self.m_popen.readlines())
 	ok = not self.m_popen.close()
 	return (ok, content)
 
