@@ -356,7 +356,7 @@ try:
     authorizeLocalID(localID)
 
     print; print '[STEP 2 of 6] keyscan all hosts and update known_hosts file'
-    cmd = 'cat | xargs -i ssh-keyscan -t rsa {} >> %s 2> /dev/null' % known_hosts_fname
+    cmd = 'cat | xargs -L 10 -I {} ssh-keyscan -t rsa {} >> %s 2> /dev/null' % known_hosts_fname
     p = os.popen(cmd, 'w')
     for h in hostList:
 	p.write(h.host() + '\n')
