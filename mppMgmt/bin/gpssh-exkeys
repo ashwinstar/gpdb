@@ -7,7 +7,7 @@ Usage: gpssh-exkeys [-?v] [-u user] [-h host] [-f hostfile]
 Author: cktan@greenplum.com
 '''
 
-import os, sys, getopt, time, getpass
+import os, sys, getopt, time, getpass, logging
 
 if sys.version_info < (2, 3): 
     sys.exit("[ERROR] gpssh-exkeys is supported on Python versions 2.3 or greater\n"
@@ -31,8 +31,9 @@ opt['-u'] = os.environ.get('LOGNAME') or os.environ.get('USER')
 opt['-h'] = []
 opt['-f'] = False
 passwd = []
-authorized_keys_fname = '%s/.ssh/authorized_keys' % os.environ['HOME']
-known_hosts_fname = '%s/.ssh/known_hosts' % os.environ['HOME']
+homeDir = os.environ['HOME']
+authorized_keys_fname = '%s/.ssh/authorized_keys' % homeDir
+known_hosts_fname = '%s/.ssh/known_hosts' % homeDir
 hostList = []
 
 def parsePort(val): 
@@ -59,7 +60,31 @@ class Host:
     def login(self):
 	if self.m_pxssh: return self.m_pxssh
 	p = pxssh.pxssh()
-	ok = p.login(self.m_host, self.m_user)
+	ok = False
+	try:
+	    ok = p.login(self.m_host, self.m_user)
+	except KeyboardInterrupt: 
+	    raise
+	except:
+	    pass
+
+	if not ok:
+	    errmsg = '[ERROR %s] ' % self.m_name
+	    buf = p.before
+	    if not buf:
+		errmsg += 'unable to connect ... is it running?'
+	    else:
+		buf = buf.lower()
+		if buf.find('connection refused') >= 0:
+		    errmsg += 'connection refused' 
+		elif buf.find('verification failed') >= 0:
+		    errmsg += 'verification failed'
+		else:
+		    errmsg += buf
+	    
+	    print errmsg
+	    p = None
+
 	self.m_pxssh = ok and p or None
 	return self.m_pxssh 
 
@@ -73,6 +98,10 @@ class Host:
 	    client.connect(self.m_host, self.m_port, self.m_user, pwd)
 	    return True
 	except paramiko.AuthenticationException:
+	    if pwd: print '[ERROR %s@%s] bad password' % (self.m_user, self.m_host)
+	    return False
+	except paramiko.SSHException, e:
+	    if pwd: print '[ERROR %s@%s] %s' % (self.m_user, self.m_host, str(e))
 	    return False
 	
 
@@ -94,12 +123,12 @@ class Host:
 		if pwd: ok = self.tryParamikoConnect(p, pwd)
 		if ok: passwd.append(pwd)
 
-	    cmd = 'bash -c "mkdir -p .ssh; chmod 0700 .ssh'
+	    cmd = 'mkdir -p .ssh; chmod 0700 .ssh; touch .ssh/authorized_keys && chmod 0600 .ssh/auth* .ssh/id_* && chmod 0644 .ssh/id*pub config'
 	    if opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
 	    (cin, cout, cerr) = p.exec_command(cmd)
 	    cin.close(); cout.close(); cerr.close()
 
-	    cmd = 'echo %s >> .ssh/authorized_keys && echo ok ok ok || echo fail fail fail' % ID
+	    cmd = 'echo %s >> .ssh/authorized_keys && echo ok ok ok' % ID
 	    if opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
 	    (cin, cout, cerr) = p.exec_command(cmd)
 	    cin.close()
@@ -116,21 +145,20 @@ class Host:
 	'Start ssh-keygen on remote machine over SSH.'
 	if not self.m_pxssh: return False
 	p = self.m_pxssh
-	cmd = 'ssh-keygen -t rsa -N \"\" -f .ssh/id_rsa; echo done done done'
+	cmd = 'ssh-keygen -t rsa -N \"\" -f .ssh/id_rsa'
 	if opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
 	p.sendline(cmd); 
-	return 0 == p.expect(['done done done'])
+	return True
 
     def waitRemoteKeygen(self):
 	'Wait for ssh-keygen to finish on remote machine over SSH.'
 	if not self.m_pxssh: return False
 	p = self.m_pxssh
-	i = p.expect(['done done done', 'Overwrite'])
-	if (i == 1):
+	i = p.expect([p.PROMPT, 'Overwrite'])
+	if i == 1:
 	    time.sleep(0.1)
 	    p.sendline('y')
-	    i = p.expect(['done done done'])
-	print 'wait: i=', i
+	    i = p.expect([p.PROMPT])
 	return i == 0
 
     def popen(self, cmd):
@@ -212,7 +240,7 @@ def readHostFile(fname, retList):
 
 ###  create local id_rsa
 def createLocalID():
-    file = '%s/.ssh/id_rsa' % os.environ.get('HOME')
+    file = '%s/.ssh/id_rsa' % homeDir
     cmd = 'ssh-keygen -t rsa -N \"\" -f %s' % file
     if opt['-v']: print '[INFO] executing', cmd
     p = pexpect.spawn(cmd)
@@ -243,18 +271,16 @@ def createLocalID():
     finally:
 	if f: f.close()
 
+def localHost(localID):
+    tt = localID.split()
+    tt = parseHostLine(tt[2]) 
+    return Host(tt[0], tt[1])
 
 def authorizeLocalID(localID):
-    cmd = 'cd ~/.ssh && echo %s >> authorized_keys' % localID
+    cmd = 'echo %s >> %s' % (localID, authorized_keys_fname)
     f = os.popen(cmd); i = f.read(); ok = not f.close()
     if not ok: 
 	sys.exit('[ERROR] while in authorizeLocalID() -  %s' % cmd)
-
-    tt = localID.split()
-    tt = parseHostLine(tt[2]) 
-    h = Host(tt[0], tt[1])
-    if h.login(): h.logout()
-    else: sys.exit('[ERROR] while in authorizeLocalID() -  %s' % cmd)
 
 
 def addRemoteID(tab, line):
@@ -264,8 +290,9 @@ def addRemoteID(tab, line):
     return True
 
 
-def readAuthorizedKeys(tab):
+def readAuthorizedKeys():
     f = None
+    tab = {}
     try:
 	f = open(authorized_keys_fname, 'w+')
 	for line in f: addRemoteID(tab, line)
@@ -278,12 +305,39 @@ def writeAuthorizedKeys(tab):
     f = None
     try: 
 	f = open(authorized_keys_fname, 'w')
-	for IDKey in tab: f.write(tab[IDKey] + '\n')
+	for IDKey in tab: f.write(tab[IDKey])
+    finally:
+	if f: f.close()
+
+def addKnownHost(tab, line):
+    key = line.strip().split()
+    if not (len(key) == 3 and line[0] != '#'): return False
+    tab[key[0]] = line
+    return True
+
+def readKnownHosts():
+    f = None
+    tab = {}
+    try:
+	f = open(known_hosts_fname, 'r')
+	for line in f: addKnownHost(tab, line)
+    finally:
+	if f: f.close()
+    return tab
+
+def writeKnownHosts(tab):
+    f = None
+    try: 
+	f = open(known_hosts_fname, 'w')
+	for key in tab: f.write(tab[key])
     finally:
 	if f: f.close()
 
 
 try:
+    nullFile = logging.FileHandler('/dev/null')
+    logging.getLogger('paramiko.transport').addHandler(nullFile)
+
     parseCommandLine()
     tab = []
     for h in opt['-h']: 
@@ -295,17 +349,38 @@ try:
     readHostFile(opt['-f'], opt['-h'])
     for h in opt['-h']: hostList.append(Host(h[0], h[1]))
 
-    print '[STEP 1 of 5] create local ID'
+
+    print '[STEP 1 of 6] create local ID'
     errmsg = None
     localID = createLocalID()
     authorizeLocalID(localID)
 
-    print; print '[STEP 2 of 5] copy to remote host and generate remote host ID'  # serial
+    print; print '[STEP 2 of 6] keyscan all hosts and update known_hosts file'
+    cmd = 'cat | xargs -i ssh-keyscan -t rsa {} >> %s 2> /dev/null' % known_hosts_fname
+    p = os.popen(cmd, 'w')
     for h in hostList:
-	print '  ... login to', h.name()
+	p.write(h.host() + '\n')
+    h = localHost(localID)
+    p.write(h.host() + '\n')
+    if p.close(): 
+	errmsg = '[ERROR] error in ssh-keyscan'
+	print errmsg
+
+    if errmsg:
+	sys.exit(1)
+
+    try:
+	tab = readKnownHosts()
+	writeKnownHosts(tab)
+    except IOError:
+	sys.exit('[ERROR] cannot read/write known_hosts file')
+
+    print; print '[STEP 3 of 6] copy public key to remote host and generate remote host ID'  # serial
+    for h in hostList:
+	print '  ... send to', h.name()
 	if not h.sendLocalID(localID, passwd): 
 	    errmsg = '[ERROR %s] unable to send local ID' % h.name()
-	if not h.login(): 
+	elif not h.login(): 
 	    errmsg = '[ERROR %s] unable to login' % h.name()
 	if errmsg: print errmsg
 
@@ -326,7 +401,7 @@ try:
 
     if errmsg: sys.exit(1)
 
-    print; print '[STEP 3 of 5] obtain remote ID'  # parallel
+    print; print '[STEP 4 of 6] obtain remote ID'  # parallel
 
     # now, include local ID in hostList so we also obtain our own key
     tt = localID.split()
@@ -347,9 +422,9 @@ try:
 
     if errmsg: sys.exit(1)
 
-    print; print '[STEP 4 of 5] merge authorized keys locally'
+    print; print '[STEP 5 of 6] merge authorized keys locally'
     try:
-	tab = readAuthorizedKeys({})
+	tab = readAuthorizedKeys()
     except IOError: 
 	sys.exit('[ERROR] cannot read authorized_keys file')
 
@@ -363,12 +438,14 @@ try:
     if not errmsg:
 	try: writeAuthorizedKeys(tab)
         except IOError:
-	    errmsg = "[ERROR] unable to write authroized_keys file"
+	    errmsg = "[ERROR] unable to write authorized_keys file"
 	    print errmsg
 
     if errmsg: sys.exit(1)
 
-    print; print '[STEP 5 of 5] copy authorized_keys and known_hosts to all remote hosts'
+
+
+    print; print '[STEP 6 of 6] copy authorized_keys and known_hosts to all remote hosts'
     errmsg = None
     for h in hostList:
 	cmd = 'scp -q -o "BatchMode yes" %s %s %s@%s:.ssh/' % (authorized_keys_fname, 
