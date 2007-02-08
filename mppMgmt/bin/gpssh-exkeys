@@ -34,6 +34,8 @@ passwd = []
 homeDir = os.environ['HOME']
 authorized_keys_fname = '%s/.ssh/authorized_keys' % homeDir
 known_hosts_fname = '%s/.ssh/known_hosts' % homeDir
+id_rsa_fname = '%s/.ssh/id_rsa' % homeDir
+id_rsa_pub_fname = id_rsa_fname + '.pub'
 hostList = []
 
 def parsePort(val): 
@@ -121,7 +123,7 @@ class Host:
     def pclose(self):
 	'Close the popen handle'
 	if not self.m_popen: return (False, None)
-	content = ''.join(self.m_popen.readlines())
+	content = self.m_popen.read()
 	ok = not self.m_popen.close()
 	return (ok, content)
 
@@ -189,23 +191,22 @@ def readHostFile(fname, retList):
 
 ###  create local id_rsa
 def createLocalID():
-    file = '%s/.ssh/id_rsa' % homeDir
-    cmd = 'ssh-keygen -t rsa -N \"\" -f %s < /dev/null > /dev/null || ls %s' % (file, file)
+    cmd = 'ssh-keygen -t rsa -N \"\" -f %s < /dev/null > /dev/null || ls %s' % (id_rsa_fname, id_rsa_fname)
     if opt['-v']: print '[INFO] executing', cmd
     f = os.popen(cmd)
     for line in f: 
-	if line.find(file) >= 0: 
-	    print '  ... ~/.ssh/id_rsa file exists ... skipped'
+	if line.find(id_rsa_fname) >= 0: 
+	    print '  ... %s file exists ... skipped' % id_rsa_fname
     if f.close(): 
 	sys.exit('[ERROR] ssh-keygen failed')
 
-    f = None; pubfile = file + '.pub'
+    f = None; 
     try:
 	try: 
-	    f = open(pubfile, 'r'); 
+	    f = open(id_rsa_pub_fname, 'r'); 
 	    return f.readline().strip()
 	except IOError:
-	    sys.exit('[ERROR] ssh-keygen failed - unable to read the generated file ' + pubfile)
+	    sys.exit('[ERROR] ssh-keygen failed - unable to read the generated file ' + id_rsa_pub_fname)
     finally:
 	if f: f.close()
 
@@ -231,7 +232,7 @@ def readAuthorizedKeys():
     f = None
     tab = {}
     try:
-	f = open(authorized_keys_fname, 'w+')
+	f = open(authorized_keys_fname, 'r')
 	for line in f: addRemoteID(tab, line)
     finally:
 	if f: f.close()
@@ -291,7 +292,7 @@ try:
     ######################
     #  step 1
     #
-    print '[STEP 1 of 6] create local ID'
+    print '[STEP 1 of 5] create local ID'
     errmsg = None
     localID = createLocalID()
     authorizeLocalID(localID)
@@ -299,20 +300,11 @@ try:
     ######################
     #  step 2
     #
-    print; print '[STEP 2 of 6] keyscan all hosts and update known_hosts file'
-    cmd = 'ssh-keyscan -t rsa -f - >> %s 2> /dev/null' % known_hosts_fname
-    if opt['-v']: print '[INFO]:', cmd
-    p = os.popen(cmd, 'w')
+    print; print '[STEP 2 of 5] keyscan all hosts and update known_hosts file'
     for h in hostList:
-	p.write(h.host() + '\n')
-    h = localHost(localID)
-    p.write(h.host() + '\n')
-    if p.close(): 
-	errmsg = '[ERROR] error in ssh-keyscan'
-	print errmsg
-
-    if errmsg:
-	sys.exit(1)
+	cmd = 'ssh-keyscan -t rsa %s >> %s' % (h.host(), known_hosts_fname)
+        if opt['-v']: print '[INFO]', cmd
+	os.system(cmd)
 
     # eliminate duplicate in known_hosts file
     try:
@@ -324,72 +316,26 @@ try:
     ######################
     #  step 3
     #
-    print; print '[STEP 3 of 6] copy public key to remote host and generate remote host ID'  # serial
+    print; print '[STEP 3 of 5] copy public key to remote host'  # serial
     for h in hostList:
 	print '  ... send to', h.name()
 	if not h.sendLocalID(localID, passwd): 
 	    errmsg = '[ERROR %s] unable to send local ID' % h.name()
 	    print errmsg
 
-    if not errmsg: 
-	for h in hostList:
-	    print '  ... remote key-gen at', h.name()
-	    cmd = ('ssh -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' +
-		   '%s@%s "ssh-keygen -t rsa -N \\"\\" -f .ssh/id_rsa < /dev/null > /dev/null || ls .ssh/id_rsa" ' % (h.user(), h.host()))
-	    h.popen(cmd)
-
-    if not errmsg: 
-	for h in hostList:
-	    (ok, content) = h.pclose();
-	    if ok: 
-		if content.find('.ssh/id_rsa') >= 0:
-		    print '[INFO %s]  ... id_rsa exists ... skipped' % h.name()
-	    else:
-		errmsg = '[ERROR %s] unable to ssh-keygen' % h.name()
-		print errmsg
 
     if errmsg: sys.exit(1)
 
     ######################
     #  step 4
     #
-    print; print '[STEP 4 of 6] obtain remote ID'  # parallel
-
-    # now, include local ID in hostList so we also obtain our own key
-    tt = localID.split()
-    h = parseHostLine(tt[2])
-    hostList.append(Host(h[0], h[1]))
-
-    for h in hostList: 
-	print '  ... ssh to %s for id_rsa.pub' % h.name()
-	cmd = ('ssh -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' +
-	       '%s@%s cat .ssh/id_rsa.pub' % (h.user(), h.host()))
-	h.popen(cmd)
-
-    for h in hostList:
-	(ok, content) = h.pclose()
-	if ok: h.setRemoteID(content)
-	else:
-	    errmsg = '[ERROR %s] command failed: %s\n%s' % (h.name(), h.popen_cmd(), content)
-	    print errmsg
-
-    if errmsg: sys.exit(1)
-
-    ######################
-    #  step 5
-    #
-    print; print '[STEP 5 of 6] merge authorized keys locally'
+    print; print '[STEP 4 of 5] merge authorized keys locally'
     try:
 	tab = readAuthorizedKeys()
     except IOError: 
 	sys.exit('[ERROR] cannot read authorized_keys file')
 
     errmsg = None
-    for h in hostList:
-	if not addRemoteID(tab, h.remoteID()):
-	    errmsg = "[ERROR] missing remote id_rsa.pub from %s" % h.name()
-	    print errmsg
-    
     if not errmsg:
 	try: writeAuthorizedKeys(tab)
         except IOError:
@@ -400,14 +346,15 @@ try:
 
 
     ######################
-    #  step 6
+    #  step 5
     #
-    print; print '[STEP 6 of 6] copy authorized_keys and known_hosts to all remote hosts'
+    print; print '[STEP 5 of 5] copy ssh files to all remote hosts'
     errmsg = None
     for h in hostList:
 	cmd = ('scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' +
-	       '%s %s %s@%s:.ssh/' % (authorized_keys_fname, known_hosts_fname, 
-				      h.user(), h.host()))
+	       '%s %s %s %s %s@%s:.ssh/' % (authorized_keys_fname, known_hosts_fname, 
+					    id_rsa_fname, id_rsa_pub_fname,
+					    h.user(), h.host()))
 	h.popen(cmd)
 
     for h in hostList:
