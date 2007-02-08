@@ -3017,16 +3017,16 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
     write_stderr("\nUnexpected internal error: %s %d received signal %s\n\n",
                  pts, MyProcPid, signame);
 
-	/* if we want to re-raise the signal do that, otherwise try to
-	 * clean up nicely -- reraising will give us a coredump */
-	if (mpp_reraise_signal)
-		raise(postgres_signal_arg);
-
     errno = save_errno;
     ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
+                    errFatalReturn(mpp_reraise_signal),
                     errOmitLocation(true),
                     errmsg("Unexpected internal error: %s received signal %s",
                            pts, signame) ));
+
+    /* CDB: Control returns here only if mpp_reraise_signal is true. */
+    raise(postgres_signal_arg);
+    abort();                    /* not reached */
 }                               /* CdbProgramErrorHandler */
 
 

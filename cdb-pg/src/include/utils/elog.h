@@ -4,7 +4,7 @@
  *	  POSTGRES error reporting/logging definitions.
  *
  *
- * Portions Copyright (c) 2006, greenplum inc
+ * Portions Copyright (c) 2006-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -179,6 +179,8 @@ extern int	getinternalerrposition(void);
 
 int errOmitLocation(bool omitLocation);   /*CDB*/
 
+int errFatalReturn(bool fatalReturn);   /* CDB: true => return on FATAL error */
+
 
 /*----------
  * Old-style error reporting API: to be used in this way:
@@ -274,6 +276,7 @@ typedef struct ErrorData
 	bool		output_to_client;		/* will report to client? */
 	bool		show_funcname;	/* true to force funcname inclusion */
     bool        omit_location;  /* CDB: don't add filename:line# */
+    bool        fatal_return;   /* CDB: true => return instead of proc_exit() */
 	const char *filename;		/* __FILE__ of ereport() call */
 	int			lineno;			/* __LINE__ of ereport() call */
 	const char *funcname;		/* __func__ of ereport() call */

@@ -1183,10 +1183,10 @@ static struct config_bool ConfigureNamesBool[] =
     },
 
     {
-    	{"mpp_reraise_signal", PGC_SUSET, UNGROUPED,
+    	{"mpp_reraise_signal", PGC_SUSET, DEVELOPER_OPTIONS,
     		gettext_noop("Do we attempt to dump core when a serious problem occurs."),
     		NULL,
-    		GUC_NOT_IN_SAMPLE
+    		GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL
     	},
     	&mpp_reraise_signal,
     	true, NULL, NULL
@@ -1897,17 +1897,25 @@ static struct config_int ConfigureNamesInt[] =
 		4, 1, INT_MAX, assign_mpp_connections_per_thread, show_mpp_connections_per_thread
 	},
 	
-#ifdef USE_ASSERT_CHECKING
 	{
+#ifdef USE_ASSERT_CHECKING
 		{"mpp_debug_linger", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Number of seconds for QD/QE process to linger upon fatal internal error."),
 			gettext_noop("Allows an opportunity to debug the backend process before it terminates."),
 			GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL | GUC_UNIT_S
 		},
 		&mpp_debug_linger,
-		30, 0, 3600, NULL, NULL
-	},
+		45, 0, 3600, NULL, NULL
+#else
+		{"mpp_debug_linger", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Number of seconds for QD/QE process to linger upon fatal internal error."),
+			gettext_noop("Allows an opportunity to debug the backend process before it terminates."),
+			GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL | GUC_UNIT_S
+		},
+		&mpp_debug_linger,
+		0, 0, 3600, NULL, NULL
 #endif
+	},
 
 	{
 		{"mpp_segment", PGC_BACKEND, UNGROUPED,

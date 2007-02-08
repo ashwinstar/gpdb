@@ -422,18 +422,30 @@ errfinish(int dummy,...)
 	if (elevel >= FATAL && whereToSendOutput == DestRemote)
 		pq_endcopyout(true);
 
-#ifdef USE_ASSERT_CHECKING
-    /* If fatal internal error, linger so user can attach a debugger. */
+    /* CDB: If fatal internal error, linger so user can attach a debugger. */
     if (elevel == FATAL &&
         edata->sqlerrcode == ERRCODE_INTERNAL_ERROR &&
         mpp_debug_linger > 0)
         elog_debug_linger(edata);
+
+    /* Emit the message to the right places */
     else
 	    EmitErrorReport();
-#else
-	/* Emit the message to the right places */
-	EmitErrorReport();
-#endif
+
+    /* 
+     * CDB: Let caller take care of terminating the process, if requested. 
+     * Used by CdbProgramErrorHandler() to re-raise a signal such as SIGSEGV
+     * in order to produce a core file.  We don't want to get involved in
+     * platform dependent signal handling here, so let caller do it.
+     */
+    if (elevel == FATAL &&
+        edata->fatal_return)
+    {
+		fflush(stdout);
+		fflush(stderr);
+        errno = saved_errno;
+        return;
+    }
 
 	/* Now free up subsidiary data attached to stack entry, and release it */
 	if (edata->message)
@@ -943,6 +955,25 @@ errOmitLocation(bool omitLocation)
     return 0;					/* return value does not matter */
 }
 
+
+/*
+ * CDB: errFatalReturn -- set flag indicating errfinish() should return 
+ * to the caller instead of calling proc_exit() after reporting a FATAL 
+ * error.  Allows termination by re-raising a signal in order to obtain
+ * a core dump.
+ */
+int
+errFatalReturn(bool fatalReturn)
+{
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+
+    /* we don't bother incrementing recursion_depth */
+    CHECK_STACK_DEPTH();
+
+    edata->fatal_return = fatalReturn;
+
+    return 0;					/* return value does not matter */
+}
 
 
 /*
@@ -2553,7 +2584,6 @@ write_stderr(const char *fmt,...)
 /*
  * elog_debug_linger
  */
-#ifdef USE_ASSERT_CHECKING
 void
 elog_debug_linger(ErrorData *edata)
 {
@@ -2599,7 +2629,6 @@ elog_debug_linger(ErrorData *edata)
         seconds_lingered += sleep_seconds;
     }
 }                               /* elog_debug_linger */
-#endif  /* USE_ASSERT_CHECKING */
 
 
 #if defined(pg_on_solaris)
