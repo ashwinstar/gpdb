@@ -2916,3 +2916,76 @@ float8_amalg(PG_FUNCTION_ARGS)
 	}
 }
 
+/* amalgamate values for linear regression functions */
+Datum
+float8_regr_amalg(PG_FUNCTION_ARGS)
+{
+	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
+	float8	   *transvalues;
+	float8		aN, bN,
+				aSumX, bSumX,
+				aSumY, bSumY,
+				aSumX2, bSumX2,
+				aSumY2, bSumY2,
+				aSumXY, bSumXY;
+
+	transvalues = check_float8_array(bTransArray, "float8_regr_amalg", 6);
+	bN = transvalues[0];
+	bSumX = transvalues[1];
+	bSumX2 = transvalues[2];
+	bSumY = transvalues[3];
+	bSumY2 = transvalues[4];
+	bSumXY = transvalues[5];
+
+	transvalues = check_float8_array(aTransArray, "float8_regr_amalg", 6);
+	aN = transvalues[0];
+	aSumX = transvalues[1];
+	aSumX2 = transvalues[2];
+	aSumY = transvalues[3];
+	aSumY2 = transvalues[4];
+	aSumXY = transvalues[5];
+
+	aN += bN;
+	aSumX += bSumX;
+	aSumX2 += bSumX2;
+	aSumY += bSumY;
+	aSumY2 += bSumY2;
+	aSumXY += bSumXY;
+
+	/*
+	 * If we're invoked by nodeAgg, we can cheat and modify our first
+	 * parameter in-place to reduce palloc overhead. Otherwise we construct a
+	 * new array with the updated transition data and return it.
+	 */
+	if (fcinfo->context && IsA(fcinfo->context, AggState))
+	{
+		transvalues[0] = aN;
+		transvalues[1] = aSumX;
+		transvalues[2] = aSumX2;
+		transvalues[3] = aSumY;
+		transvalues[4] = aSumY2;
+		transvalues[5] = aSumXY;
+
+		PG_RETURN_ARRAYTYPE_P(aTransArray);
+	}
+	else
+	{
+		Datum		transdatums[6];
+		ArrayType  *result;
+
+		transdatums[0] = Float8GetDatumFast(aN);
+		transdatums[1] = Float8GetDatumFast(aSumX);
+		transdatums[2] = Float8GetDatumFast(aSumX2);
+		transdatums[3] = Float8GetDatumFast(aSumY);
+		transdatums[4] = Float8GetDatumFast(aSumY2);
+		transdatums[5] = Float8GetDatumFast(aSumXY);
+
+		result = construct_array(transdatums, 6,
+								 FLOAT8OID,
+							 sizeof(float8), false /* float8 byval */ , 'd');
+
+		PG_RETURN_ARRAYTYPE_P(result);
+	}
+}
+

@@ -3960,6 +3960,7 @@ DATA(insert OID = 6010 (  float8_amalg	   PGNSP PGUID 12 f f t f i 2 1022 "1022 
 DESCR("aggregate preliminary function");
 DATA(insert OID = 6011 (  interval_amalg   PGNSP PGUID 12 f f t f i 2 1187 "1187 1187" _null_ _null_ _null_ interval_amalg - _null_ ));
 DESCR("aggregate preliminary function");
+DATA(insert OID = 6014 (  float8_regr_amalg	   PGNSP PGUID 12 f f t f i 2 1022 "1022 1022" _null_ _null_ _null_	float8_regr_amalg - _null_ ));
 DATA(insert OID = 6021 (  int8			   PGNSP PGUID 12 f f t f i 1 20 "27" _null_ _null_ _null_	tidtoi8 - _null_ ));
 DESCR("convert tid to int8");
 #define CDB_PROC_TIDTOI8    6021
