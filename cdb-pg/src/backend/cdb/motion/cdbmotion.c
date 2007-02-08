@@ -261,20 +261,32 @@ initMotionLayerStructs(MotionLayerState **mlStates)
 							
 }
 
+static void
+AddMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID)
+{
+	/* increase size of our table */
+	MotionNodeEntry *newTable;
 
+	newTable = repalloc(mlStates->mnEntries, motNodeID * sizeof(MotionNodeEntry));
+	mlStates->mnEntries = newTable;
+	/* zero-out the new piece at the end */
+	memset(&mlStates->mnEntries[mlStates->mneCount],
+		   0,
+		   (motNodeID - mlStates->mneCount) * sizeof(MotionNodeEntry));
+	mlStates->mneCount = motNodeID;
+}
 
-/* Initialize a single motion node.  This is called by the executor when a
- * motion node in the plan tree is being initialized.
+/* Initialize a single motion node.  This is called by the executor
+ * when a to set up a placeholder which will be filled in during plan
+ * initialization.
  *
- * This function is called from:  ExecInitMotion()
+ * This function is called from:  executorStart()
  */
 void
-InitMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
+InitMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID)
 {
 	MemoryContext oldCtxt;
 	MotionNodeEntry *pEntry;
-
-	AssertArg(tupDesc != NULL);
 
 	/*
 	 * Switch to the Motion Layer's memory-context, so that the motion node
@@ -284,16 +296,7 @@ InitMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool preserveOr
 
 	if (motNodeID > mlStates->mneCount)
 	{
-		/* increase size of our table */
-		MotionNodeEntry *newTable;
-
-		newTable = repalloc(mlStates->mnEntries, motNodeID * sizeof(MotionNodeEntry));
-		mlStates->mnEntries = newTable;
-		/* zero-out the new piece at the end */
-		memset(&mlStates->mnEntries[mlStates->mneCount],
-			   0,
-			   (motNodeID - mlStates->mneCount) * sizeof(MotionNodeEntry));
-		mlStates->mneCount = motNodeID;
+		AddMotionLayerNode(mlStates, motNodeID);
 	}
 	do
 	{
@@ -315,6 +318,56 @@ InitMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool preserveOr
 
 	pEntry->valid = true;
 
+	/*
+	 * we'll just set this to 0.  later, ml_ipc will call
+	 * setExpectedReceivers() to set this if we are a "Receiving" motion node.
+	 */
+	pEntry->num_senders = 0;
+
+	/* All done!  Go back to caller memory-context. */
+	MemoryContextSwitchTo(oldCtxt);
+}
+
+/* Initialize a single motion node.  This is called by the executor when a
+ * motion node in the plan tree is being initialized.
+ *
+ * This function is called from:  ExecInitMotion()
+ */
+void
+UpdateMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
+{
+	MemoryContext oldCtxt;
+	MotionNodeEntry *pEntry;
+
+	AssertArg(tupDesc != NULL);
+
+	/*
+	 * Switch to the Motion Layer's memory-context, so that the motion node
+	 * can be reset later.
+	 */
+	oldCtxt = MemoryContextSwitchTo(mlStates->motion_layer_mctx);
+
+	if (motNodeID > mlStates->mneCount)
+	{
+		AddMotionLayerNode(mlStates, motNodeID);
+	}
+
+	pEntry = &mlStates->mnEntries[motNodeID - 1];
+
+	if (!pEntry->valid)
+	{
+		/*
+		 * we'll just set this to 0.  later, ml_ipc will call
+		 * setExpectedReceivers() to set this if we are a "Receiving"
+		 * motion node.
+		 */
+		pEntry->num_senders = 0;
+	}
+
+	pEntry->motion_node_id = motNodeID;
+
+	pEntry->valid = true;
+
 	/* Finish up initialization of the motion node entry. */
 	pEntry->preserve_order = preserveOrder;
 	pEntry->tuple_desc = CreateTupleDescCopy(tupDesc);
@@ -328,11 +381,6 @@ InitMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool preserveOr
 	else
 		pEntry->ready_tuples = NULL;
 
-	/*
-	 * we'll just set this to 0.  later, ml_ipc will call
-	 * setExpectedReceivers() to set this if we are a "Receiving" motion node.
-	 */
-	pEntry->num_senders = 0;
 
 	pEntry->num_stream_ends_recvd = 0;
 

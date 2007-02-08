@@ -319,6 +319,7 @@ execMotionUnsortedReceiver(MotionState * node)
 	AssertState(motion->motionType == MOTIONTYPE_HASH ||
 	 (motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs <= 1));
 
+
 	if (node->stopRequested)
 	{
 		SendStopMessage(node->ps.state->motionlayer_context,
@@ -871,7 +872,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	/*
 	 * Perform per-node initialization in the motion layer.
 	 */
-	InitMotionLayerNode(motionstate->ps.state->motionlayer_context, node->motionID, node->sendSorted, tupDesc);
+	UpdateMotionLayerNode(motionstate->ps.state->motionlayer_context, node->motionID, node->sendSorted, tupDesc);
 
 #ifdef CDB_MOTION_DEBUG
     motionstate->outputFunArray = (Oid *)palloc(tupDesc->natts * sizeof(Oid));

@@ -46,8 +46,11 @@ extern MotionNodeEntry *getMotionNodeEntry(MotionLayerState *mlStates, int16 mot
 extern void initMotionLayerStructs(MotionLayerState **ml_states);
 
 /* Initialization of each motion node in execution plan. */
-extern void InitMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool preserveOrder,
-					TupleDesc tupDesc);
+extern void InitMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID);
+
+/* Initialization of each motion node in execution plan. */
+extern void UpdateMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool preserveOrder,
+								  TupleDesc tupDesc);
 
 /* Cleanup of each motion node in execution plan (normal termination). */
 extern void EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLayer);

@@ -276,10 +276,38 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
             estate->es_instrument = sliceTable->doInstrument;
             queryDesc->doInstrument = sliceTable->doInstrument;
 		}
-    /* calling set_ps_display so that slice number shows during execution */
-    //set_ps_display("MPPEXEC", false); // Should already be in ps display now
+
+		/* InitPlan() will acquire locks by walking the entire plan
+		 * tree -- we'd like to avoid acquiring the locks until
+		 * *after* we've set up the interconnect */
+		if (queryDesc->plantree->nMotionNodes > 0)
+		{
+			int i;
+
+			PG_TRY();
+			{
+				for (i=1; i <= queryDesc->plantree->nMotionNodes; i++)
+				{
+					InitMotionLayerNode(estate->motionlayer_context, i);
 	}
 
+				estate->es_interconnect_is_setup = true;
+				SetupInterconnect((ChunkTransportState **)&estate->interconnect_context,
+								  estate->es_sliceTable, estate->es_cur_slice_idx, estate->motionlayer_context);
+			}
+			PG_CATCH();
+			{
+				mppExecutorCleanup(estate);
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
+		}
+	}
+
+	/* If the interconnect has been set up; we need to catch any
+	 * errors to shut it down -- so we have to wrap InitPlan in a PG_TRY() block. */
+	PG_TRY();
+	{
 	/*
 	 * Initialize the plan state tree
 	 */
@@ -352,8 +380,6 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			     estate->es_cur_root_idx);
 	}
 	
-	PG_TRY();
-	{
 		/*
 		 * Are we going to dispatch this plan parallel?  Only if we're running as
 		 * a QD and the plan is a parallel plan.
@@ -422,15 +448,9 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			estate->es_seqserver_is_setup = true;
 			SetupSequenceServer(estate->es_sliceTable);
 			
-			/* activate the connections, if needed */
+			/* update the connection information, if needed */
 			if (((PlanState *) motionState)->plan->nMotionNodes > 0)
 			{
-				estate->es_interconnect_is_setup = true;
-
-				SetupInterconnect((ChunkTransportState **)&estate->interconnect_context,
-								  estate->es_sliceTable, estate->es_cur_slice_idx,
-								  estate->motionlayer_context);
-
 				ExecUpdateTransportState((PlanState *)motionState,
 										 (ChunkTransportState *)estate->interconnect_context);
 			}
@@ -441,14 +461,16 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			SetupSequenceServer(estate->es_sliceTable);
 			
 			/* Run a root slice. */		
-			if (queryDesc->planstate->plan->nMotionNodes > 0)
+			if (queryDesc->planstate->plan->nMotionNodes > 0 && !estate->es_interconnect_is_setup)
 			{
 				estate->es_interconnect_is_setup = true;
 
 				SetupInterconnect((ChunkTransportState **)&estate->interconnect_context,
 								  estate->es_sliceTable, estate->es_cur_slice_idx,
 								  estate->motionlayer_context);
-
+			}
+			if (estate->es_interconnect_is_setup)
+			{
 				ExecUpdateTransportState(queryDesc->planstate,
 										 (ChunkTransportState *)estate->interconnect_context);
 			}
