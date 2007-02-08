@@ -56,6 +56,9 @@ int			StatementTimeout = 0;
 /* Pointer to this process's PGPROC struct, if any */
 PGPROC	   *MyProc = NULL;
 
+/* Special for MPP reader gangs */
+PGPROC	   *lockHolderProcPtr = NULL;
+
 /*
  * This spinlock protects the freelist of recycled PGPROC structures.
  * We cannot use an LWLock because the LWLock manager depends on already
@@ -239,6 +242,7 @@ InitProcess(void)
 		procglobal->freeProcs = MyProc->links.next;
         mppLocalProcessSerial = ++procglobal->mppLocalProcessCounter;
 		SpinLockRelease(ProcStructLock);
+		lockHolderProcPtr = MyProc;
 	}
 	else
 	{
@@ -412,6 +416,8 @@ InitDummyProcess(void)
 	MyProc = dummyproc;
 
 	SpinLockRelease(ProcStructLock);
+	
+	lockHolderProcPtr = dummyproc;
 
 	/*
 	 * Initialize all fields of MyProc, except for the semaphore which was
@@ -622,6 +628,7 @@ ProcKill(int code, Datum arg)
 
 	/* PGPROC struct isn't mine anymore */
 	MyProc = NULL;
+	lockHolderProcPtr = NULL;
 
 	/* Update shared estimate of spins_per_delay */
 	procglobal->spins_per_delay = update_spins_per_delay(procglobal->spins_per_delay);
@@ -656,6 +663,8 @@ DummyProcKill(int code, Datum arg)
 
 	/* PGPROC struct isn't mine anymore */
 	MyProc = NULL;
+	
+	lockHolderProcPtr = NULL;
 
 	/* Update shared estimate of spins_per_delay */
 	ProcGlobal->spins_per_delay = update_spins_per_delay(ProcGlobal->spins_per_delay);

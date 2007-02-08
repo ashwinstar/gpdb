@@ -512,7 +512,6 @@ LockAcquire(const LOCKTAG *locktag,
 	int			partition;
 	LWLockId	partitionLock;
 	int			status;
-	PGPROC		*lockHolderProcPtr;
 
 	if (lockmethodid <= 0 || lockmethodid >= lengthof(LockMethods))
 		elog(ERROR, "unrecognized lock method: %d", lockmethodid);
@@ -590,31 +589,38 @@ LockAcquire(const LOCKTAG *locktag,
 	 * 
 	 * On the QEs, it should normally be the Writer gang member.
 	 */
-	lockHolderProcPtr = MyProc;
+	if (lockHolderProcPtr == NULL)
+		lockHolderProcPtr = MyProc;
 	
 	if (lockmethodid == DEFAULT_LOCKMETHOD && locktag->locktag_type != LOCKTAG_TRANSACTION)
 	{
 		if (Mpp_role == MPP_ROLE_EXECUTE && (mpp_is_callback || !Mpp_is_writer))
-		{
-		
-			/* Find the guy who should manage our locks */
-			PGPROC * proc = FindProcByMppSessionId(mpp_session_id);
-			
-			if (proc != NULL)
+		{	
+			if (lockHolderProcPtr == NULL || lockHolderProcPtr == MyProc)
 			{
-	
-				elog(DEBUG1,"Found writer proc entry.  My Pid %d, his pid %d", MyProc-> pid, proc->pid);
-				lockHolderProcPtr = proc;
-				
+				/* Find the guy who should manage our locks */
+				PGPROC * proc = FindProcByMppSessionId(mpp_session_id);
+				int count = 0;
+				while(proc==NULL && count < 5)
+				{
+					pg_usleep( /* microseconds */ 2000);
+					count++;
+					CHECK_FOR_INTERRUPTS();
+					proc = FindProcByMppSessionId(mpp_session_id);
+				}
+				if (proc != NULL)
+				{
+					elog(DEBUG1,"Found writer proc entry.  My Pid %d, his pid %d", MyProc-> pid, proc->pid);
+					lockHolderProcPtr = proc;
+				}
+				else
+					elog(DEBUG1,"Could not find writer proc entry!");
+		
+					elog(DEBUG1,"Reader gang member trying to acquire a lock [%u,%u] %s %d",
+						 locktag->locktag_field1, locktag->locktag_field2,
+						 lock_mode_names[lockmode], (int)locktag->locktag_type);
 			}
-			else
-				elog(DEBUG1,"Could not find writer proc entry!");
-	
-				elog(DEBUG1,"Reader gang member trying to acquire a lock [%u,%u] %s %d",
-					 locktag->locktag_field1, locktag->locktag_field2,
-					 lock_mode_names[lockmode], (int)locktag->locktag_type);
-			
-			
+				
 		}
 		else if (mpp_enable_functions && mpp_is_callback && mpp_qd_proc_offset!=-1 && Mpp_role == MPP_ROLE_DISPATCH)
 		{
@@ -727,7 +733,10 @@ LockAcquire(const LOCKTAG *locktag,
 						{	
 							
 							LWLockRelease(partitionLock);
-							elog(DEBUG1,"Another gang member already owns this lock");
+							if (otherProc == lockHolderProcPtr)
+								elog(DEBUG1,"My writer gang member already owns this lock");
+							else
+								elog(DEBUG1,"Another gang member already owns this lock");
 							/*
 							 * Although we don't really take the lock, we set up a 
 							 * fake locallock to keep track of what we've done, so 
@@ -741,7 +750,10 @@ LockAcquire(const LOCKTAG *locktag,
 						{
 							
 							LWLockRelease(partitionLock);
-							elog(DEBUG1,"Another gang member already owns some stronger kind of lock");
+							if (otherProc == lockHolderProcPtr)
+								elog(DEBUG1,"My writer gang member already owns some stronger kind of lock");
+							else
+								elog(DEBUG1,"Another gang member already owns some stronger kind of lock");
 							/* 
 							 * If we are a reader gang member, and we are only trying to get an
 							 * AccessShareLock, we know that such a lock is superseeded by any 
