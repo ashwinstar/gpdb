@@ -1357,6 +1357,7 @@ FlushBuffer(volatile BufferDesc *buf, SMgrRelation reln)
 {
 	XLogRecPtr	recptr;
 	ErrorContextCallback errcontext;
+	XLogRecPtr GistXLogRecPtrForTemp = {1, 1};	/* Magic GIST value */
 
 	/*
 	 * Acquire the buffer's io_in_progress lock.  If StartBufferIO returns
@@ -1382,7 +1383,11 @@ FlushBuffer(volatile BufferDesc *buf, SMgrRelation reln)
 	 * they describe do.
 	 */
 	recptr = BufferGetLSN(buf);
-	XLogFlush(recptr);
+	if (recptr.xlogid != GistXLogRecPtrForTemp.xlogid ||
+		recptr.xrecoff != GistXLogRecPtrForTemp.xrecoff)
+	{
+		XLogFlush(recptr);
+	}
 
 	/*
 	 * Now it's safe to write buffer to disk. Note that no one else should
