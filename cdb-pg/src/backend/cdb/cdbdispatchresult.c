@@ -548,6 +548,7 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
         {
             char   *pri = PQresultErrorField(pgresult, PG_DIAG_MESSAGE_PRIMARY);
             char   *dtl = PQresultErrorField(pgresult, PG_DIAG_MESSAGE_DETAIL);
+            char   *ctx = PQresultErrorField(pgresult, PG_DIAG_CONTEXT);
 
             oneTrailingNewline(buf);
             appendStringInfoString(buf, pri);
@@ -562,6 +563,12 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
             {
                 oneTrailingNewline(buf);
                 appendStringInfo(buf, "\t %s", dtl);
+            }
+			
+            if (ctx)
+            {
+                oneTrailingNewline(buf);
+                appendStringInfo(buf, "\t %s", ctx);
             }
 
             if (!verbose)
