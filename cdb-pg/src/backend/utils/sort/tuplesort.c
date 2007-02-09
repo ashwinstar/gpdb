@@ -560,6 +560,13 @@ cdb_tuplesort_init(Tuplesortstate *state,
 			(state->mppsortflags != 1) ||
 			((state->memtupLIMIT == 0) 
 			 && (!state->noduplicates)); 
+
+	/* force insertion sort */
+	if (2 == state->mppsortflags)
+	{
+			state->standardsort = false;
+	}
+
 }
 
 Tuplesortstate *
@@ -916,7 +923,8 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 				 * fullsort 
 				 */
 
-				if (state->alltupcount == 1000)
+				if ((state->alltupcount == 1000) &&
+					(2 != state->mppsortflags))
 				{
 					int64 discard_ratio = 
 						(state->discardcount * 100)/state->alltupcount;

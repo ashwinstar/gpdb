@@ -1139,15 +1139,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 
 						/* Decorate the Sort node with a Flow node. */
 						mark_sort_locus(result_plan);
-
-						/* CDB */ /* pass DISTINCT to sort */
-						if (IsA(result_plan, Sort) && mpp_enable_sort_distinct)
-						{
-							Sort* pSort = (Sort*)result_plan;
-							pSort->noduplicates = true;
-						}
-
-
 					}
 					aggstrategy = AGG_SORTED;
 
@@ -1192,6 +1183,13 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												 result_plan);
 					current_pathkeys = group_pathkeys;
 					mark_sort_locus(result_plan);
+
+					/* CDB */ /* pass DISTINCT to sort */
+					if (IsA(result_plan, Sort) && mpp_enable_sort_distinct)
+					{
+							Sort* pSort = (Sort*)result_plan;
+							pSort->noduplicates = true;
+					}
 				}
 
 				result_plan = (Plan *) make_group(root,
