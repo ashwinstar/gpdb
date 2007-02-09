@@ -149,17 +149,23 @@ def createOneTimeSession(cmd):
 
 def waitOneTimeSession(session):
     errmsg = None
+    permissionDenied = False
     for p in session:
 	for out in p.fromchild:
 	    if len(out) > 1: 
 		print '[%s] %s' % (p.x_peer, out[:-1])
+		if not permissionDenied:
+		    permissionDenied = (out.find('Permission denied') >= 0)
 	status = p.wait()
 	if status:
-	    errmsg = '[ERROR %s] failed %d' % (p.x_peer, status)
+	    errmsg = '[ERROR %s] Command failed. Exit status = %s' % (p.x_peer, status)
 	    print errmsg
-
+		
+    if permissionDenied:
+	print
+	print 'hint: use gpssh-exkeys to setup public-key authentication between hosts'
+	print
     if errmsg: sys.exit(1)
-
 
 
 #############
@@ -171,6 +177,7 @@ class Session(cmd.Cmd):
 	self.prompt = '=> '
 
     def login(self, hostList):
+	print '\n[Reset ...]'
 	self.clean()
 	user = {}
 	for h in hostList: user[h[0]] = h
@@ -180,6 +187,9 @@ class Session(cmd.Cmd):
 	    if opt['-v']: print '[INFO] login %s@%s' % (h[0], h[1])
 	    if not p.login(h[1], h[0], port=h[2]):
 		print '[ERROR] unable to login to %s@%s' % (h[0], h[1])
+		print
+		print 'hint: use gpssh-exkeys to setup public-key authentication between hosts'
+		print
 		sys.exit(1)
 	    p.x_user = h[0]; p.x_host = h[1]
 	    p.x_peer = sameUser and h[1] or ('%s@%s' % (h[0], h[1]))
@@ -195,9 +205,7 @@ class Session(cmd.Cmd):
 		for p in self.pid:
 		    try:
 			os.kill(p, 9)
-			print 'waiting for', p
 			(pid, status) = os.waitpid(p, 0)
-			print 'wait return %d %d' % (pid, status)
 		    except OSError: pass
 		break
 	    except KeyboardInterrupt:
@@ -239,6 +247,7 @@ def sigint_handle(signum, frame):
 	sigint_time = now
 	raise KeyboardInterrupt
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+    print '\n[Exiting...]'
     sys.exit(1)
 
 
@@ -253,7 +262,7 @@ def interactive():
 	    session.login(opt['-h'])
 	    session.cmdloop()
 	except KeyboardInterrupt:
-	    print '[Interrupt] resetting ...'
+	    print '\n[Interrupt...]'
 	    pass
 
 
