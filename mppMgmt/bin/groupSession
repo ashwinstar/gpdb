@@ -23,13 +23,13 @@ Options:
 -p <port> Connect on a particular port in place of 22
 -s        Disable the setup of trusted hosts key access
 -l <fileName> Log all the messages to this file
--x        Establish trusted key access across all sessions, using ssh-keys. 
 
 
 Runs commands on a list of hosts.  Manages passwords and trusted key access
 using ssh.
 
-Author: Luke Lonergan <llonergan@greenplum.com>"""
+Author: Luke Lonergan <llonergan@greenplum.com>
+"""
 
 # $Id$
 
@@ -61,13 +61,16 @@ except ImportError, e:
     raise SystemExit, -1
 
 
+def usage(exitarg):
+    print __doc__
+    sys.exit(exitarg)
+
 if __name__ == '__main__': 
     # Process options
     verbose = False
     debug   = False
     defaultport = 22
     setupKeys = True
-    exKeys=False
     logFile=''
     logName='groupSession'
 
@@ -76,7 +79,7 @@ if __name__ == '__main__':
         if (switch == '-p'):
             defaultport = val;
         elif (switch == '-x'):
-            exKeys = True 
+	    sys.exit('Error: deprecated feature ... Please use gpssh-exkeys instead')
         elif (switch == '-s'):
             setupKeys = False 
         elif (switch == '-h' or switch == '-?'):
@@ -149,9 +152,6 @@ if __name__ == '__main__':
     try:
         gsession = groupSessionModule.groupSession(hostuserport, setupKeys, \
             verboseOpt=verbose)#, gLogger=gLogger)
-
-        if exKeys:
-            gsession.exchangeKeys()
 
         #Register a signal handler for the TERM signal
         signal.signal(signal.SIGTERM,gsession.handlerTERM)

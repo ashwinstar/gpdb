@@ -158,17 +158,6 @@ class groupSession(cmd.Cmd):
             raise
 
 
-    def do_exchangeKeys(self, line):
-        """ Generate ssh keys with each session, and update public keys 
-            across all sessions.
-        """
-        try:
-            self.exchangeKeys()
-        except KeyboardInterrupt:
-            raise
-        except Exception, e:
-            print "*** Caught exception (%s) message: (%s )" \
-                % (str(e.__class__), str(e))
 
     def do_rcopy(self,line):
         logger=self.logger
@@ -521,117 +510,6 @@ class groupSession(cmd.Cmd):
             except (threadpool.NoResultsPending,KeyboardInterrupt):
                     break
     
-    def exchangeKeys(self, force=False):
-        """ Exchange public keys across all hosts 
-            check if ~/.ssh/id_[rd]sa[_pub] files are present.
-                if any of the files are present, prompt the user.
-            Create ~/.ssh/GSession directory
-                If present empty it.
-            Generate public/private keys for all the hosts.
-            copy the public keys to ~/.ssh/gSession/user@host_id_[rd]sa_pub
-            create gSession.auth
-            copy gSession.auth to all hosts
-            append gSession.auth to ~/.ssh/authorized_keys
-        """
-        # Check if any of the keys are present on the remote hosts
-        if (not force):
-            if( not self.confirmFileRemoval()):
-                return
-        # Create ~/.ssh/gSession/ directoryl
-        lSSHHome=gSessionUtil.getLocalSSHDir()
-        gDir=gSessionUtil.getGSDir(emptyDir=True)
-        if not gDir:
-            print "Error invalid group Session directory "
-            return False
-        for i in range(0,len(self.sessions)):
-            th = self.sessions[i]
-            th.setLocalSSHDir(lSSHHome)
-            th.setLocalGSDir(gDir)
-        #
-        # Generate PublicKeys
-        #
-        print "Generating remote Keys... \n"
-        for i in range(0,len(self.sessions)):
-            th = self.sessions[i]
-            self.pool.putRequest( threadpool.WorkRequest(th.generatePubKeys,
-                None,None,None))
-            #Wait for completion of all in queue, or a keyboard interrupt
-        interrupted=False
-        while True:
-            try:
-                self.pool.poll(block=True)
-            except threadpool.NoResultsPending:
-                interrupted = False
-                break
-            except KeyboardInterrupt:
-                interrupted = True
-                break
-        if interrupted:
-            print
-            print "Command Interrupted"
-            print
-            return False
-        #
-        # Get the public Keys to 
-        #
-        print "Obtaining Remote Public Keys \n"
-        for i in range(0,len(self.sessions)):
-            th = self.sessions[i]
-            self.pool.putRequest( threadpool.WorkRequest(
-                th.obtainRemotePublicKeys, None,None,None))
-            #Wait for completion of all in queue, or a keyboard interrupt
-        interrupted=False
-        while True:
-            try:
-                self.pool.poll(block=True)
-            except threadpool.NoResultsPending:
-                interrupted = False
-                break
-            except KeyboardInterrupt:
-                interrupted = True
-                break
-        if interrupted:
-            print "\n Command Interrupted\n"
-            return False
-        print "\n Generating authorized keys file for all sessions.\n"
-        gsAuth=lSSHHome+'/'+'gSession.pub'
-        catCmd= "cat %s/* > %s" % (gDir, gsAuth)
-        #print "Executing %s" % catCmd
-        cmdOutPut=commands.getoutput(catCmd)
-        if cmdOutPut:
-            print "Error : %s : %s " % (catCmd, cmdOutPut)
-            return False
-        #
-        # Copy and append the file to remote host.
-        #
-        print "\n Updating Remote Authorized Keys with public keys... \n"
-        for i in range(0,len(self.sessions)):
-            th = self.sessions[i]
-            self.pool.putRequest( threadpool.WorkRequest(
-                th.updateAuthorizedKeys, None, None, None))
-            #Wait for completion of all in queue, or a keyboard interrupt
-        interrupted=False
-        while True:
-            try:
-                self.pool.poll(block=True)
-            except threadpool.NoResultsPending:
-                interrupted = False
-                break
-            except KeyboardInterrupt:
-                interrupted = True
-                break
-        if interrupted:
-            print "\nCommand Interrupted\n"
-            return False
-        print "Public keys are exchanged across  all sessions.\n\n"
-        print "\nDo you want to update ~/.ssh/known_hosts entries in all"\
-        " sessions? (Yes/No)",
-        resp= sys.stdin.readline().strip()
-        if(resp == 'Yes' or resp == 'y'  or resp=='Y' or resp == 'YES' or \
-            resp =='yes'):
-            self.updateKnownHosts()
-        return True
-
 
     def confirmFileRemoval(self):
         """ Check if there are files that will be removed.

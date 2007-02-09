@@ -51,7 +51,7 @@ def parseCommandLine():
     try:
 	(options, args) = getopt.getopt(sys.argv[1:], '?vp:u:h:f:')
     except Exception, e:
-	usage('Error: invalid option')
+	usage('Error: ' + str(e))
 
     for (switch, val) in options:
 	if (switch == '-?'): 	    usage(0)
