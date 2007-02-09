@@ -12,6 +12,7 @@ Usage: checkPerf <options> hostfile
     [-?]          print this help text
     [-v]          enable verbose
     [-V]	  enable very verbose
+    [-D]	  print per host disk stats on disk read/write tests
     [-r <flags>]  where flags specifies the tests to run [default=ds]. 
                   Supported test flags are:
                      d: runs only disk tests
@@ -35,6 +36,7 @@ def usage(exitarg):
 
 opt = {}
 opt['-d'] = []
+opt['-D'] = False
 opt['-v'] = False
 opt['-V'] = False
 opt['-r'] = 'ds'
@@ -68,13 +70,13 @@ def parseInt(val):
 def parseCommandLine():
     global opt, hostfile, GPSSH, GPSCP
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?vVd:r:B:S:p:')
+	(options, args) = getopt.getopt(sys.argv[1:], '?vVDd:r:B:S:p:')
     except Exception, e:
 	usage('Error: ' + str(e))
 
     for (switch, val) in options:
 	if (switch == '-?'): usage(0)
-	elif (switch[1] in 'vV'): opt[switch] = True
+	elif (switch[1] in 'vVD'): opt[switch] = True
 	elif (switch == '-d'): opt[switch].append(val)
 	elif (switch == '-r'): opt[switch] = val
 	elif (switch == '-p'): opt[switch] = parseInt(val)
@@ -324,7 +326,7 @@ def printResult(title, result):
     print ' %s tot bandwidth (MB/s): %3.2f' % (title, totMBPS)
     print ' %s min bandwidth (MB/s): %3.2f [%s]' % (title, min, minHost)
     print ' %s max bandwidth (MB/s): %3.2f [%s]' % (title, max, maxHost)
-    if opt['-v']:
+    if opt['-D']:
 	print ' -- per host bandwidth --'
 	for h in result:
 	    (mbps, time, bytes) = result[h]
