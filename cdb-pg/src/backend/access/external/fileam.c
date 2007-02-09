@@ -21,6 +21,8 @@
 #include "miscadmin.h"
 #include "commands/copy.h"
 
+#include "cdb/cdbvars.h"
+
 
 static HeapTuple filegettup(FileScanDesc scan, ScanDirection dir, int nkeys, ScanKey key);
 static void initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, char *filename);
@@ -539,8 +541,8 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
 	 * to parse these parameters. For now we can hardcode
 	 * it for the 2 supported types - text and csv.
 	 */
-	format_str = (char *) strVal(linitial(fmtOpts));
-
+	format_str = pstrdup((char *) strVal(linitial(fmtOpts)));
+	
 	/*
 	 * DELIMITER
 	 */
