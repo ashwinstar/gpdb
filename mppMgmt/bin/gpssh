@@ -178,7 +178,7 @@ class Session(cmd.Cmd):
 	for h in hostList:
 	    p = pxssh.pxssh()
 	    if opt['-v']: print '[INFO] login %s@%s' % (h[0], h[1])
-	    if not p.login(h[1], h[0]):
+	    if not p.login(h[1], h[0], port=h[2]):
 		print '[ERROR] unable to login to %s@%s' % (h[0], h[1])
 		sys.exit(1)
 	    p.x_user = h[0]; p.x_host = h[1]

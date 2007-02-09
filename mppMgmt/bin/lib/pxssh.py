@@ -39,7 +39,8 @@ class pxssh (spawn):
 
     ### TODO: This is getting messy and I'm pretty sure this isn't perfect.
     ### TODO: I need to draw a better flow chart for this.
-    def login (self,server,username,password='',terminal_type='ansi',original_prompts=r"][#$]|~[#$]|bash.*?[#$]|[#$] ",login_timeout=10):
+    ### cktan: added <port> parameter
+    def login (self,server,username,password='',terminal_type='ansi',original_prompts=r"][#$]|~[#$]|bash.*?[#$]|[#$] ",login_timeout=10, port=22):
         """This logs the user into the given server. By default the prompt is
         rather optimistic and should be considered more of an example. It's
         better to try to match the prompt as exactly as possible to prevent
@@ -50,7 +51,7 @@ class pxssh (spawn):
         we could not match it. We still try to reset the prompt to something
         more unique. If that still fails then we return False.
         """
-        cmd = "ssh -l %s %s" % (username, server)
+        cmd = "ssh -p %s -l %s %s" % (port, username, server)
         spawn.__init__(self, cmd, timeout=login_timeout)
         #, "(?i)no route to host"])
         i = self.expect(["(?i)are you sure you want to continue connecting", original_prompts, "(?i)password", "(?i)permission denied", "(?i)terminal type", TIMEOUT, "(?i)connection closed by remote host"])
