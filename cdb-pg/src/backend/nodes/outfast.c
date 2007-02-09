@@ -2265,6 +2265,7 @@ _outRangeTblEntry(StringInfo str, RangeTblEntry *node)
 	switch (node->rtekind)
 	{
 		case RTE_RELATION:
+		case RTE_EXTERNAL:
 		case RTE_SPECIAL:
 			WRITE_OID_FIELD(relid);
 			break;
