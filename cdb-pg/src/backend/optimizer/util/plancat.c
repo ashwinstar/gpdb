@@ -447,6 +447,7 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
         return;
     }
 	
+	
 	/* coerce values in pg_class to more desirable types */
 	relpages = (BlockNumber) rel->rd_rel->relpages;
 	reltuples = (double) rel->rd_rel->reltuples;
@@ -467,11 +468,29 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 	}
 	else
 	{
+		
 		/*
 		 * Let's ask the QEs for the size of the relation.
 		 * In the future, it would be better to send the command to only one QE.
+		 *
+		 * NOTE: External tables (flat files external to the database) have 
+		 * no support for size calculation yet. Skip cdbRelSize as it's 
+		 * expensive and instead use a rough (and usually bad) estimate. This is
+		 * better for the time being.
 		 */
-		size = cdbRelSize(rel->rd_id);
+		if(rel->rd_rel->relkind != RELKIND_EXTERNAL)
+		{
+			size = cdbRelSize(rel->rd_id);			
+		}
+		else
+		{
+			/* 
+			 * Estimate a default of 10 pages. Suggestion taken from
+			 * estimate_rel_size() below (better ideas are welcome...) 
+			 */
+			size = 10 * BLCKSZ;
+		}
+		
 		
 		if (size < 0)
 		{
