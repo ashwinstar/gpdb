@@ -28,19 +28,6 @@ try:
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
-try:
-    import readline
-    #Read in the saved command history, if any
-    histfile = os.path.join(os.environ["HOME"], ".gshist")
-    # Set the maximum number of commands to 100
-    readline.set_history_length(500)
-    try:
-        readline.read_history_file(histfile)
-    except IOError:
-        pass
-    atexit.register(readline.write_history_file, histfile)
-except Exception, e:
-    print "Note: command history unsupported on this machine ..."
 
 #
 # all the command line options
@@ -253,6 +240,20 @@ def sigint_handle(signum, frame):
 
 def interactive():
     global session
+    try:
+	import readline
+        #Read in the saved command history, if any
+	histfile = os.path.join(os.environ["HOME"], ".gshist")
+	# Set the maximum number of commands to 100
+	readline.set_history_length(500)
+	try:
+	    readline.read_history_file(histfile)
+	except IOError:
+	    pass
+	atexit.register(readline.write_history_file, histfile)
+    except Exception, e:
+	print "Note: command history unsupported on this machine ..."
+
     atexit.register(cleanup)
     signal.signal(signal.SIGINT, sigint_handle)
     while True:
