@@ -1529,12 +1529,17 @@ show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
 		    AttrNumber	keyresno = keycols[keyno];
 		    TargetEntry *target = get_tle_by_resno(plan->targetlist, keyresno);
 
-		    if (!target)
-			    elog(ERROR, "no tlist entry for key %d", keyresno);
-
 		    /* Deparse the expression, showing any top-level cast */
-		    exprstr = deparse_expr_sweet((Node *) target->expr, context,
-									     useprefix, true);
+		    if (target)
+		        exprstr = deparse_expr_sweet((Node *) target->expr, context,
+									         useprefix, true);
+            else
+            {
+                elog(WARNING, "Gather Motion %s error: no tlist item %d", 
+                     qlabel, keyresno);
+                exprstr = "*BOGUS*";
+            }
+
 		    /* And add to str */
 		    if (keyno > 0)
 			    appendStringInfoString(str, ", ");
