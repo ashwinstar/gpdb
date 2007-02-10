@@ -4,7 +4,7 @@
  *		CDB additions to support hybrid hash aggregation algorithm.
  *		This file could be merged into nodeAgg.c.  The separation is
  *		only to help isolate MPP-only code from future merges with
- *		PG code.  Note, however, that nodeAgg.c is also modified to 
+ *		PG code.  Note, however, that nodeAgg.c is also modified to
  *		make use of this code.
  *
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
@@ -66,7 +66,7 @@ static Size est_hash_tuple_size(TupleTableSlot *hashslot, List *hash_needed)
 	Form_pg_attribute attr;
 	int natts;
 	ListCell *lc;
-	Size len; 
+	Size len;
 	TupleDesc tupleDescriptor;
 	
 	
@@ -77,7 +77,7 @@ static Size est_hash_tuple_size(TupleTableSlot *hashslot, List *hash_needed)
 	len = offsetof(HeapTupleHeaderData, t_bits);
 	len += BITMAPLEN(natts);
 	
-	if (tupleDescriptor->tdhasoid) 
+	if (tupleDescriptor->tdhasoid)
 		len += sizeof(Oid);
 	
 	len = MAXALIGN(len);
@@ -102,12 +102,12 @@ static Size est_hash_tuple_size(TupleTableSlot *hashslot, List *hash_needed)
 /* Function: create_agg_hash_table
  *
  * Creates and initializes a hash table for the given AggState.  Should be
- * called after the rest of the AggState is initialized.  The resulting table 
+ * called after the rest of the AggState is initialized.  The resulting table
  * should be installed in the AggState.
  *
  * The main control structure for the hash table is allocated in the memory
  * context aggstate->aggcontext as is the bucket array and the items related
- * to overflow files.  The contents of the hash table will be allocated in 
+ * to overflow files.  The contents of the hash table will be allocated in
  * child context aggstate->transcontext to allow quick resets.
  */
 HashAggTable *
@@ -121,13 +121,13 @@ create_agg_hash_table(AggState *aggstate)
 	Agg *agg = (Agg*)aggstate->ss.ps.plan;
 	
 	
-	if ( !calcHashAggTableSizes( 1024.0 * (double)work_mem, 
-								(double)agg->numGroups, 
+	if ( !calcHashAggTableSizes( 1024.0 * (double)work_mem,
+								(double)agg->numGroups,
 								aggstate->numaggs,
 								est_hash_tuple_size(aggstate->ss.ss_ScanTupleSlot, aggstate->hash_needed),
 								agg->transSpace,
-								&est_nbucket, 
-								&est_nentry, 
+								&est_nbucket,
+								&est_nentry,
 								&est_nbatch ) )
 	{
 		elog(ERROR, "unable to implement hashed aggregation strategy");
@@ -141,15 +141,15 @@ create_agg_hash_table(AggState *aggstate)
 	 *				est_nentry = 10;
 	 *				est_nbatch = 2;
 	 *       will provoke queries with more than 20 input and output
-	 *		 tuples to operate in 2 passes and to spill tuples back 
+	 *		 tuples to operate in 2 passes and to spill tuples back
 	 *       and forth between batch files a few times.
 	 *
 	 *				est_nbucket = 10;
 	 *				est_nentry = 100;
 	 *				est_nbatch = 10;
-	 *       will provoke queries with about 1000 input tuples and 
+	 *       will provoke queries with about 1000 input tuples and
 	 *		 100 plus a few output tuples to spread their few overflow
-	 *		 tuples thinly across the 9 primary overflow batches, 
+	 *		 tuples thinly across the 9 primary overflow batches,
 	 *		 probably leaving some batches empty.
 	 *
 	 *		 In actual practice, we want to maximize memory used by the
@@ -159,7 +159,7 @@ create_agg_hash_table(AggState *aggstate)
 	 */
 	
 	elog(HHA_MSG_LVL,
-		"hybrid hash aggregation: initializing nbucket=%d, max_entries=%d, nbatch=%d", 
+		"hybrid hash aggregation: initializing nbucket=%d, max_entries=%d, nbatch=%d",
 		est_nbucket, est_nentry, est_nbatch);
 	
 	oldcontext = MemoryContextSwitchTo(aggstate->aggcontext);
@@ -182,7 +182,7 @@ create_agg_hash_table(AggState *aggstate)
 	ht->lshift = ceil(log(ht->nbucket)/log(2));	/* No log2 function. */
 #else
 	ht->lshift = ceil(log2(ht->nbucket));
-#endif 
+#endif
 	ht->rshift = 32 - ht->lshift;
 	
 	ht->ngroup = ht->ntuple = 0;
@@ -207,7 +207,7 @@ void reset_agg_hash_table(AggState *aggstate)
 	HashAggTable *ht = aggstate->hhashtable;
 	
 	elog(HHA_MSG_LVL,
-		"hybrid hash aggregation: resetting %d-entry hash table", 
+		"hybrid hash aggregation: resetting %d-entry hash table",
 		ht->nentries);
 	
 	MemSet(ht->buckets, 0, ht->nbucket * sizeof(HashAggEntry*));
@@ -230,8 +230,8 @@ void destroy_agg_hash_table(AggState *aggstate)
 		reset_agg_hash_table(aggstate);
 
 		elog(HHA_MSG_LVL,
-			"hybrid hash aggregation: destroying hash table -- ngroup=%ld ntuple=%ld", 
-			aggstate->hhashtable->ngroup, 
+			"hybrid hash aggregation: destroying hash table -- ngroup=%ld ntuple=%ld",
+			aggstate->hhashtable->ngroup,
 			aggstate->hhashtable->ntuple);
 		
 		destroy_batches(aggstate->hhashtable);
@@ -246,13 +246,13 @@ void destroy_agg_hash_table(AggState *aggstate)
 /* Function: agg_hash_initial_pass
  *
  * Performs ExecAgg initialization for the first pass of the hashed case
- * via function exec_hybrid_hash_agg(): 
- * - reads the input tuples, 
- * - builds a hash table with an entry per group, 
- * - spills tuples for groups that won't fit in the hash table to one of 
+ * via function exec_hybrid_hash_agg():
+ * - reads the input tuples,
+ * - builds a hash table with an entry per group,
+ * - spills tuples for groups that won't fit in the hash table to one of
  *   several overflow batches to process during later passes.
  *
- * Note that overflowed input tuples are distributed to batches in such 
+ * Note that overflowed input tuples are distributed to batches in such
  * a way that tuples with matching grouping keys will be in the same
  * batch.
  *
@@ -271,8 +271,8 @@ agg_hash_initial_pass(AggState *aggstate)
 	bool isNew = false;
 	bool spilling = false;
 
-	/* 
-	 * Get state info from node. 
+	/*
+	 * Get state info from node.
 	 */
 	outer_ps = outerPlanState(aggstate);
 	tmpcontext = aggstate->tmpcontext; /* per-input-tuple expr context */
@@ -294,8 +294,8 @@ agg_hash_initial_pass(AggState *aggstate)
 			
 		/* set up for advance_aggregates call */
 		tmpcontext->ecxt_scantuple = outerslot;
-		 
-		/* Find or (if there's room) build a hash table entry for the 
+		
+		/* Find or (if there's room) build a hash table entry for the
 		 * input tuple's group. */
 		entry = lookup_agg_hash_entry(aggstate, outerslot, &hashkey, &isNew);
 
@@ -326,15 +326,15 @@ agg_hash_initial_pass(AggState *aggstate)
 			{
 				/* TODO:  HERE'S A GOOD PLACE TO REEVALUATE DENSITY AND,
 				 *        MAYBE, SHRINK NUMBER OF BATCHES.
-				 
+				
 				 double act_tuples_per_group = ((double)ht->ntuple)/(double)ht->ngroup;
 				 int bs = (int)ceil(ht->ntuple / act_tuples_per_group);
-				 
+				
 				 if ( bs < ht->nbatch )
 				 {
 					ht->nbatch = ( bs > 2 )? bs: 2;
 				 }
-				 
+				
 				 */	
 				elog(HHA_MSG_LVL,
 					"hybrid hash aggregation: initial pass -- beginning to spill to disk");
@@ -351,10 +351,10 @@ agg_hash_initial_pass(AggState *aggstate)
 	init_agg_hash_iter(aggstate->hhashtable);
 	
 	elog(HHA_MSG_LVL,
-		"hybrid hash aggregation: %ld tuples loaded to %ld hash table entries", 
+		"hybrid hash aggregation: %ld tuples loaded to %ld hash table entries",
 		ht->ntuple, ht->ngroup);
 	elog(HHA_MSG_LVL,
-		"hybrid hash aggregation: %ld tuples spilled to disk", 
+		"hybrid hash aggregation: %ld tuples spilled to disk",
 		noverflow);
 }
 
@@ -362,11 +362,11 @@ agg_hash_initial_pass(AggState *aggstate)
 /* Function: agg_hash_next_pass
  *
  * Performs ExecAgg initialization for the second and subsequent passes
- * of the hashed case via function exec_hybrid_hash_agg(): 
+ * of the hashed case via function exec_hybrid_hash_agg():
  * - clears the previous (exhausted) hash table and initialize a new one,
- * - reads the input tuples for the next batch, 
- * - builds a hash table with an entry per group, 
- * - spills tuples for groups that won't fit in the hash table to an 
+ * - reads the input tuples for the next batch,
+ * - builds a hash table with an entry per group,
+ * - spills tuples for groups that won't fit in the hash table to an
  *   overflow batch to process later in the same pass (following a call
  *   to agg_hash_continue_pass).
  */
@@ -378,12 +378,12 @@ agg_hash_next_pass(AggState *aggstate)
 	BatchFileInfo *batches = aggstate->hhashtable->batches;
 	
 	elog(HHA_MSG_LVL,
-		"hybrid hash aggregation: pass %d -- advancing to next pass", 
+		"hybrid hash aggregation: pass %d -- advancing to next pass",
 		aggstate->hhashtable->pass);
 
 	reset_agg_hash_table(aggstate);
 
-	for ( pass++; pass < nbatch; pass++ ) 
+	for ( pass++; pass < nbatch; pass++ )
 	{
 		if ( batches[pass].file != NULL )
 		{
@@ -391,14 +391,14 @@ agg_hash_next_pass(AggState *aggstate)
 			break;
 		}
 	elog(HHA_MSG_LVL,
-		"hybrid hash aggregation: pass %d -- no tuples", 
+		"hybrid hash aggregation: pass %d -- no tuples",
 		pass);
 	}
 
 	if ( pass < nbatch )
 	{
 		elog(HHA_MSG_LVL,
-			"hybrid hash aggregation: pass %d -- %ld spilled tuples", 
+			"hybrid hash aggregation: pass %d -- %ld spilled tuples",
 			pass, batches[pass].ntuples);	
 		
 		aggstate->hhashtable->source = aggstate->hhashtable->pass = pass;
@@ -414,10 +414,10 @@ agg_hash_next_pass(AggState *aggstate)
 /* Function: agg_hash_continue_pass
  *
  * Performs ExecAgg initialization for the later phases (dealing with second
- * level overflow) of a pass of the hashed case via function exec_hybrid_hash_agg(): 
- * - reads the input tuples from the most recent overflow, 
- * - builds a hash table with an entry per group, 
- * - spills tuples for groups that won't fit in the hash table to an 
+ * level overflow) of a pass of the hashed case via function exec_hybrid_hash_agg():
+ * - reads the input tuples from the most recent overflow,
+ * - builds a hash table with an entry per group,
+ * - spills tuples for groups that won't fit in the hash table to an
  *   overflow batch to process later in the pass.
  */
 bool
@@ -426,7 +426,7 @@ agg_hash_continue_pass(AggState *aggstate)
 	int x;
 
 	elog(HHA_MSG_LVL,
-		"hybrid hash aggregation: pass %d -- continuing", 
+		"hybrid hash aggregation: pass %d -- continuing",
 		aggstate->hhashtable->pass);
 	
 	reset_agg_hash_table(aggstate);
@@ -447,10 +447,10 @@ agg_hash_continue_pass(AggState *aggstate)
  * an overflow batch.  Returns true if the batch was non-empty and thus
  * produced some completed hash table entries.  In this case, the hash
  * table's iterator is reinitialized. Returns false if the batch was empty.
- * 
+ *
  * Batch processing accumulates input tuples for as many groups as will fit
  * in the (initially empty) hash table and writes any remaining input to
- * another overflow batch.  Though we use planner estimates to try to avoid 
+ * another overflow batch.  Though we use planner estimates to try to avoid
  * overflowing the same tuple multiple times, we'll do so in a pinch.
  */
 bool
@@ -476,7 +476,7 @@ agg_hash_reload(AggState *aggstate)
 	tmpcontext = aggstate->tmpcontext; /* per-input-tuple expression context */
 
 	elog(HHA_MSG_LVL,
-		"hybrid hash aggregation: pass %d -- reloading hash table, source batch=%d, overflow batch=%d", 
+		"hybrid hash aggregation: pass %d -- reloading hash table, source batch=%d, overflow batch=%d",
 		ht->pass, source, overflow);
 	
 	 /* If batch aggstate->hhashtable->overflow isn't empty, the caller is confused. */
@@ -485,7 +485,7 @@ agg_hash_reload(AggState *aggstate)
 	if ( batches[source].file == NULL )
 	{
 		elog(HHA_MSG_LVL,
-			"hybrid hash aggregation: pass %d -- source batch is empty", 
+			"hybrid hash aggregation: pass %d -- source batch is empty",
 			ht->pass);		
 		return false; /* No more tuples in batch */
 	}	
@@ -528,7 +528,7 @@ agg_hash_reload(AggState *aggstate)
 		}
 		else
 		{			
-			/* Write the input tuple to the overflow. */ 
+			/* Write the input tuple to the overflow. */
 			noverflow++;
 			batch_put_tuple(ht, overflow, outerslot);
 		}
@@ -539,10 +539,10 @@ agg_hash_reload(AggState *aggstate)
 	/* Initialize to walk the hash table */
 	init_agg_hash_iter(ht);	
 	elog(HHA_MSG_LVL,
-		"hybrid hash aggregation: %ld tuples reloaded to %ld hash table entries", 
+		"hybrid hash aggregation: %ld tuples reloaded to %ld hash table entries",
 		ntuple, ngroup);
 	elog(HHA_MSG_LVL,
-		"hybrid hash aggregation: %ld tuples respilled to disk", 
+		"hybrid hash aggregation: %ld tuples respilled to disk",
 		noverflow);
 	
 	return true; /* Got some more tuples. */
@@ -561,7 +561,7 @@ void init_agg_hash_iter(HashAggTable* ht)
 
 /* Function: agg_hash_iter
  *
- * Returns a pointer to the next HashAggEntry on the given HashAggTable's 
+ * Returns a pointer to the next HashAggEntry on the given HashAggTable's
  * iterator and advances the iterator.  Returns NULL when there are no more
  * entries.  Be sure to call init_agg_hash_iter before the first call here.
  */
@@ -589,7 +589,7 @@ HashAggEntry *agg_hash_iter(HashAggTable* ht)
  * Calculate the hash value for the given input tuple.
  *
  * This based on but different from get_hash_value from the dynahash
- * API.  Use a different name to underline that we don't use dynahash.  
+ * API.  Use a different name to underline that we don't use dynahash.
  */
 uint32
 calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
@@ -646,7 +646,7 @@ calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
  *
  * If hashkeyp is non-NULL, (*hashekeyp) is set to the value of the key.
  *
- * If an entry is returned and isNew is non-NULL, (*isNew) is set to true 
+ * If an entry is returned and isNew is non-NULL, (*isNew) is set to true
  * or false depending on whether the returned entry is new.  Note that
  * a new entry will have uninitialized per-group data (Aggref states).
  * Initializing them is the callers responsibility.
@@ -684,13 +684,13 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *has
 
 	/* Get hash key and its bucket index. */
 	hashkey = calc_hash_value(aggstate, inputslot);
-	if ( hashkeyp ) 
+	if ( hashkeyp )
 		*hashkeyp = hashkey;
 	bucket_idx = hashkey % ht->nbucket;
 	
 	/* Search entry chain for the bucket. */
-	for ( entry = ht->buckets[bucket_idx]; 
-		  entry != NULL; 
+	for ( entry = ht->buckets[bucket_idx];
+		  entry != NULL;
 		  entry = entry->next )
 	{
 		match = false;
@@ -747,8 +747,8 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *has
 			/* No matching entry and no room to create one. */
 			entry = NULL;
 			/* Don't change *isNew in this case. */
-		}  
-	} 
+		}
+	}
 	
 	(void) MemoryContextSwitchTo(oldContext);
 	
@@ -759,7 +759,7 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *has
 /* Function: makeHashAggEntry
  *
  * Allocate a new hash agg entry for the given input tuple and hash key
- * of the given AggState. This includes installing the grouping key heap tuple.  
+ * of the given AggState. This includes installing the grouping key heap tuple.
  *
  * It is the caller's responsibility to link the entry into the hash table
  * and to initialize the per group data.
@@ -775,8 +775,8 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 	/* Per query context. */
 	oldContext = MemoryContextSwitchTo(aggstate->ss.ps.state->es_query_cxt);
 
-	/* Move the grouping key into the hash slot by transferring just the 
-	 * needed columns.  (All columns were initialized to null earlier, 
+	/* Move the grouping key into the hash slot by transferring just the
+	 * needed columns.  (All columns were initialized to null earlier,
 	 * so this is sufficient.) */
 	slot_getsomeattrs(inputslot, linitial_int(aggstate->hash_needed));
 	foreach(lc, aggstate->hash_needed)
@@ -789,7 +789,7 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 	
 	/* For now we just allocate single entries, but maybe we should consider
 	 * allocating them all at once (since we know how many we're willing to
-	 * hold in memory) or in blocks (to avoid tying up more virtual memory 
+	 * hold in memory) or in blocks (to avoid tying up more virtual memory
 	 * than necessary).  We should also consider the impact of holding on
 	 * to hash entry memory longer than necessary.  Right now we release the
 	 * contents of the hash table all at once, but (for a bit of extra
@@ -798,10 +798,10 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 	 */
 	MemoryContextSwitchTo(aggstate->transcontext);
 	
-	if (aggstate->numaggs == 0) 
+	if (aggstate->numaggs == 0)
 		entry = (HashAggEntry*)palloc0(sizeof(HashAggEntry));
 	else
-		entry = (HashAggEntry*)palloc0(sizeof(HashAggEntry) + 
+		entry = (HashAggEntry*)palloc0(sizeof(HashAggEntry) +
 						(aggstate->numaggs-1) * sizeof(AggStatePerGroupData));
 	entry->heaptuple = ExecCopySlotTuple(hashslot);
 	entry->hashvalue = hashvalue;
@@ -827,22 +827,22 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
  * (buffile.c:makeBufFile), etc.
  *
  * The approach taken is to try to minimize number of batches (nB)
- * thereby maximizing number of hash entries (nH) within the given 
- * memory quota (usually just work_mem in bytes). 
+ * thereby maximizing number of hash entries (nH) within the given
+ * memory quota (usually just work_mem in bytes).
  *
- * Very roughly, with entry sizes zB and zH and memory quota Q, 
+ * Very roughly, with entry sizes zB and zH and memory quota Q,
  * nH = (Q - zB*nB)/zH.
- * 
+ *
  * Memory used will be zB*nB + zH*nH = zB*nB + (Q-zB*nB).  We want this
- * to approximate Q.  Q =  zB*nB + (Q-zB*nB) is quadratic in nB and may 
+ * to approximate Q.  Q =  zB*nB + (Q-zB*nB) is quadratic in nB and may
  * be solved by formula.
- * 
+ *
  * The actual estimate is a little more complex.
  */
 #define NGROUP_PER_BUCKET 10.0
 #define OVERHEAD_PER_ENTRY ((double)sizeof(uint32))/NGROUP_PER_BUCKET
 
-bool 
+bool
 calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 					   double ngroups,	/* Est # of groups. */
 					   int numaggs,		/* Est # of aggregate functions */
@@ -857,9 +857,9 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	
 	bool force = ( p_nbuckets != NULL || p_nentries != NULL || p_nbatches != NULL );
 
-	int entrywidth = sizeof(HashAggEntry) 
-					+ numaggs * sizeof(AggStatePerGroupData) 
-					+ keywidth 
+	int entrywidth = sizeof(HashAggEntry)
+					+ numaggs * sizeof(AggStatePerGroupData)
+					+ keywidth
 					+ transpace;
 	
 	double nK = ceil(ngroups/NGROUP_PER_BUCKET); /* Buckets */
@@ -879,8 +879,8 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	
 	if ( memquota >= ngroups*zH + 2*zB )
 	{
-		/* Use default strategy when we expect the whole operation to 
-		 * fit in memory.  This strategy hedges its bet by allocating 
+		/* Use default strategy when we expect the whole operation to
+		 * fit in memory.  This strategy hedges its bet by allocating
 		 * 2 batches in case the estimate is low and we overflow anyway.
 		 */		
 		nB = 2;
@@ -888,14 +888,14 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	else
 	{
 		/* The normal stategy expects to spill to disk, so we estimate
-		 * how many passes we expect to need and allocate that many 
-		 * batches.  Since the first pass will load the hash table 
+		 * how many passes we expect to need and allocate that many
+		 * batches.  Since the first pass will load the hash table
 		 * rather than a batch file, this leaves a batch file for
-		 * overflow within a subsequent pass. 
+		 * overflow within a subsequent pass.
 		 */
 		double d = memquota*memquota - 4 * zB * ngroups * zH;
 		
-		/* By default we plan on writing input tuples back to disk 
+		/* By default we plan on writing input tuples back to disk
 		 * once, but the user can increase this.  We creep up to
 		 * user's limit in order the choose the smallest rewrite
 		 * limit that will work.  (This tends to minimize the number
@@ -949,7 +949,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	
 	nK = ceil(nH/NGROUP_PER_BUCKET);
 	
-	Assert( memquota >= nH*zH + nB*zB );
+	Assert( memquota >= floor(nH*zH + nB*zB) );
 	Assert( nK<INT_MAX && nH<INT_MAX && nB<INT_MAX );
 			
 	if (p_nbuckets) *p_nbuckets = (int)nK;
@@ -957,7 +957,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	if (p_nbatches) *p_nbatches = (int)nB;
 	
 	elog(DEBUG2, "hashagg nbuckets = %d, nentries = %d, nbatches = %d", (int)nK, (int)nH, (int)nB);
-	elog(DEBUG1, "hashagg rewrite fudge = %f, expected memory footprint = %d", 
+	elog(DEBUG1, "hashagg rewrite fudge = %f, expected memory footprint = %d",
 		rewrite_fudge,
 		(int)( nH*entrywidth + nK*sizeof(HashAggEntry*) + nB*zB));
 	
@@ -967,7 +967,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 
 /* Function: create_batches
  *
- * Initialize HashAggTable with the specified number of batch file slots. 
+ * Initialize HashAggTable with the specified number of batch file slots.
  */
 void
 create_batches(HashAggTable *hashtable, int nbatch)
@@ -1005,7 +1005,7 @@ destroy_batches(HashAggTable * hashtable)
  *		save a tuple to a batch file.
  *
  * The data recorded in the file for each tuple is just an image of
- * its HeapTupleData (with meaningless t_data pointer) followed by the 
+ * its HeapTupleData (with meaningless t_data pointer) followed by the
  * HeapTupleHeader and tuple data.
  *
  * Note: it is important always to call this in the regular executor
@@ -1077,7 +1077,7 @@ batch_put_tuple(HashAggTable *hashtable,
  * On success the tuple is stored in the given slot.
  */
 TupleTableSlot *
-batch_get_tuple(HashAggTable *hashtable, 
+batch_get_tuple(HashAggTable *hashtable,
 				   int batch,
 				   TupleTableSlot *tupleSlot)
 {
@@ -1162,7 +1162,7 @@ void
 batch_rewind(HashAggTable *hashtable, int batch)
 {
 	int n;
-	BatchFileInfo *info; 
+	BatchFileInfo *info;
 	
 	Assert( hashtable != NULL && 0 <= batch && batch < hashtable->nbatch );
 	
@@ -1184,10 +1184,10 @@ batch_rewind(HashAggTable *hashtable, int batch)
  * batch_close
  *		close a batch file thus releasing its file and memory space
  */
-void 
+void
 batch_close(HashAggTable *hashtable, int batch)
 {
-	BatchFileInfo *info; 
+	BatchFileInfo *info;
 	
 	Assert( hashtable != NULL && 0 <= batch && batch < hashtable->nbatch );
 	
