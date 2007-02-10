@@ -2729,18 +2729,10 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
 			 * If the subplan tlist provides a name, use it, but usually we'll
 			 * end up with "?columnN?".
 			 */
-			List           *tlist = NULL;
 			TargetEntry    *tle = NULL;
-			if (rte->funcexpr == NULL)
-			{
-				/* TODO why do we ever get here?  Kurt, check on this. */
-				elog(DEBUG1,"RTE_SPECIAL funcexpr null when we expected it can't be null");
-			}
-			else
-			{
-				tlist = ((Plan *) rte->funcexpr)->targetlist;
-				tle = get_tle_by_resno(tlist, attnum);
-			}
+
+			if (rte->funcexpr)
+				tle = get_tle_by_resno(((Plan *)rte->funcexpr)->targetlist, attnum);
 
 			if (tle && tle->resname)
 			{
@@ -2895,7 +2887,7 @@ get_name_for_var_field(Var *var, int fieldno,
 				 */
 				Plan	   *subplan = (Plan *) rte->funcexpr;
 
-				for (;;)
+				while (subplan)
 				{
 					TargetEntry *ste;
 
@@ -2916,19 +2908,22 @@ get_name_for_var_field(Var *var, int fieldno,
 						    subplan = innerPlan(subplan);
                             break;
                         default:
-                            subplan = NULL;
-                    }
-					if (!subplan)
-                    {
-                        ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
-                            errmsg_internal("bogus var: varno=%d varattno=%d "
-                                            "subvarno=%d subattno=%d",
-                                            var->varno, var->varattno,
-                                            ((Var *)expr)->varno,
-                                            ((Var *)expr)->varattno) ));
-                        return "*BOGUS*";
+                            ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
+                                errmsg_internal("bogus var: varno=%d varattno=%d "
+                                                "subvarno=%d subattno=%d",
+                                                var->varno, var->varattno,
+                                                ((Var *)expr)->varno,
+                                                ((Var *)expr)->varattno) ));
+                            return "*BOGUS*";
                     }
 				}
+				if (!subplan)
+                {
+                    ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
+                        errmsg_internal("bogus var: varno=%d varattno=%d",
+                                        var->varno, var->varattno) ));
+                    return "*BOGUS*";
+                }
 			}
 			break;
         case RTE_VOID:
