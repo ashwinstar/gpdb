@@ -3669,15 +3669,15 @@ get_rule_expr(Node *node, deparse_context *context,
 						 */
 						if (IsA(w, OpExpr))
 						{
-							Node	   *rhs;
+                            OpExpr     *opexpr = (OpExpr *)w;
+						    Node	   *rhs;
 
-							Assert(IsA(linitial(((OpExpr *) w)->args),
-									   CaseTestExpr) ||
-								   IsA(linitial(((OpExpr *) w)->args),
-									   Const));
-							rhs = (Node *) lsecond(((OpExpr *) w)->args);
-							get_rule_expr(rhs, context, false);
-						}
+                            Assert(IsA(linitial(opexpr->args), CaseTestExpr) ||
+								   IsA(linitial(opexpr->args), Const) ||
+                                   IsA(linitial(opexpr->args), RelabelType));
+							rhs = (Node *) lsecond(opexpr->args);
+						    get_rule_expr(rhs, context, false);
+					    }
 						else if (IsA(w, CaseTestExpr))
 							appendStringInfo(buf, "TRUE");
 						else if (not_clause(w))
