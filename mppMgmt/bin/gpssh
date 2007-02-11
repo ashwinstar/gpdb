@@ -207,14 +207,22 @@ class Session(cmd.Cmd):
     def default(self, line):
 	if line == 'EOF': 
 	    sys.exit(0)
+	line = line.split('\\');
+	line = '\\\\'.join(line);
+	line = line.split('"');
+	line = '\\"'.join(line);
+	line = 'bash -c "' + line + '" < /dev/null';
 	for s in self.pxssh:
 	    s.sendline(line)
 	for s in self.pxssh:
 	    s.prompt()
 	    out = s.before.split('\n')
 	    out = out[1:-1]
-	    for line in out:
-		print '[%s] %s' % (s.x_peer, line)
+	    if len(out) == 0:
+		print '[%s]' % s.x_peer
+	    else:
+		for line in out:
+		    print '[%s] %s' % (s.x_peer, line)
     
 session = None
 def cleanup():
