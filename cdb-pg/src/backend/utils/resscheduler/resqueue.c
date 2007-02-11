@@ -16,6 +16,9 @@
  */
 #include "postgres.h"
 
+#include <time.h>
+
+#include "pgstat.h"
 #include "access/heapam.h"
 #include "access/twophase.h"
 #include "access/twophase_rmgr.h"
@@ -315,6 +318,10 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 
 		LWLockRelease(ResQueueLock);
 
+		/* Note the start time for queue statistics. */
+		pgstat_record_start_queue_exec(incrementSet->portalId,
+									   locktag->locktag_field1);
+
 	}
 	else
 	{
@@ -337,6 +344,12 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 
 		LWLockRelease(ResQueueLock);
 
+		/* Note count and wait time for queue statistics. */
+		pgstat_count_queue_wait(incrementSet->portalId,
+								locktag->locktag_field1);
+		pgstat_record_start_queue_wait(incrementSet->portalId,
+									   locktag->locktag_field1);
+
 		/*
 		 * Sleep till someone wakes me up.
 		 */
@@ -353,6 +366,12 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 
 		/* Reset the portal id. */
 		MyProc->waitPortalId = INVALID_PORTALID;
+
+		/* End wait time and start execute time statistics for this queue. */
+		pgstat_record_end_queue_wait(incrementSet->portalId,
+									 locktag->locktag_field1);
+		pgstat_record_start_queue_exec(incrementSet->portalId,
+									   locktag->locktag_field1);
 
 	}
 
@@ -488,6 +507,10 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	LWLockRelease(ResQueueLock);
 	LWLockRelease(partitionLock);
 
+	/* Update execute statistics for this queue, count and elapsed time. */
+	pgstat_count_queue_exec(resPortalId, locktag->locktag_field1);
+	pgstat_record_end_queue_exec(resPortalId, locktag->locktag_field1);
+		
 	return true;
 }
 

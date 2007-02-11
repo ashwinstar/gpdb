@@ -2922,6 +2922,14 @@ DATA(insert OID = 1944 (  pg_stat_get_db_blocks_fetched PGNSP PGUID 12 f f t f s
 DESCR("Statistics: Blocks fetched for database");
 DATA(insert OID = 1945 (  pg_stat_get_db_blocks_hit		PGNSP PGUID 12 f f t f s 1 20 "26" _null_ _null_ _null_ pg_stat_get_db_blocks_hit - _null_ ));
 DESCR("Statistics: Blocks found in cache for database");
+DATA(insert OID = 6031 (  pg_stat_get_queue_num_exec	PGNSP PGUID 12 f f t f s 1 20 "26" _null_ _null_ _null_ pg_stat_get_queue_num_exec - _null_ ));
+DESCR("Statistics: Number of queries that executed in queue");
+DATA(insert OID = 6032 (  pg_stat_get_queue_num_wait	PGNSP PGUID 12 f f t f s 1 20 "26" _null_ _null_ _null_ pg_stat_get_queue_num_wait - _null_ ));
+DESCR("Statistics: Number of queries that waited in queue");
+DATA(insert OID = 6033 (  pg_stat_get_queue_elapsed_exec	PGNSP PGUID 12 f f t f s 1 20 "26" _null_ _null_ _null_ pg_stat_get_queue_elapsed_exec - _null_ ));
+DESCR("Statistics:  Elapsed seconds for queries that executed in queue");
+DATA(insert OID = 6034 (  pg_stat_get_queue_elapsed_wait	PGNSP PGUID 12 f f t f s 1 20 "26" _null_ _null_ _null_ pg_stat_get_queue_elapsed_wait - _null_ ));
+DESCR("Statistics:  Elapsed seconds for queries that waited in queue");
 
 DATA(insert OID = 1946 (  encode						PGNSP PGUID 12 f f t f i 2 25 "17 25" _null_ _null_ _null_	binary_encode - _null_ ));
 DESCR("Convert bytea value into some ascii-only text string");

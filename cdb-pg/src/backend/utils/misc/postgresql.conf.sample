@@ -385,6 +385,7 @@
 					# (change requires restart)#stats_block_level = off
 #stats_block_level = off
 #stats_row_level = off
+#stats_queue_level = off
 #stats_reset_on_server_start = off	# (change requires restart)
 
 

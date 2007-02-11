@@ -86,6 +86,7 @@
  */
 #define PGSTAT_DB_HASH_SIZE		16
 #define PGSTAT_TAB_HASH_SIZE	512
+#define PGSTAT_QUEUE_HASH_SIZE	8
 
 
 /* ----------
@@ -97,6 +98,7 @@ bool		pgstat_collect_resetonpmstart = false;
 bool		pgstat_collect_tuplelevel = false;
 bool		pgstat_collect_blocklevel = false;
 bool		pgstat_collect_querystring = false;
+bool		pgstat_collect_queuelevel = false;
 
 /* ----------
  * Local data
@@ -132,6 +134,8 @@ static int	pgStatXactRollback = 0;
 
 static TransactionId pgStatDBHashXact = InvalidTransactionId;
 static HTAB *pgStatDBHash = NULL;
+static HTAB *pgStatQueueHash = NULL;		
+static HTAB *localStatPortalHash = NULL;	/* per backend portal queue stats.*/
 static TransactionId pgStatLocalStatusXact = InvalidTransactionId;
 static PgBackendStatus *localBackendStatusTable = NULL;
 static int	localNumBackends = 0;
@@ -154,9 +158,10 @@ static void force_statwrite(SIGNAL_ARGS);
 static void pgstat_beshutdown_hook(int code, Datum arg);
 
 static PgStat_StatDBEntry *pgstat_get_db_entry(Oid databaseid, bool create);
+static PgStat_StatQueueEntry *pgstat_get_queue_entry(Oid queueid, bool create);
 static void pgstat_drop_database(Oid databaseid);
 static void pgstat_write_statsfile(void);
-static void pgstat_read_statsfile(HTAB **dbhash, Oid onlydb);
+static void pgstat_read_statsfile(HTAB **dbhash, HTAB **queuehash, Oid onlydb);
 static void backend_read_statsfile(void);
 static void pgstat_read_current_status(void);
 
@@ -170,6 +175,7 @@ static void pgstat_recv_resetcounter(PgStat_MsgResetcounter *msg, int len);
 static void pgstat_recv_autovac(PgStat_MsgAutovacStart *msg, int len);
 static void pgstat_recv_vacuum(PgStat_MsgVacuum *msg, int len);
 static void pgstat_recv_analyze(PgStat_MsgAnalyze *msg, int len);
+static void pgstat_recv_queuestat(PgStat_MsgQueuestat *msg, int len);
 
 
 /* ------------------------------------------------------------
@@ -442,6 +448,7 @@ startup_failed:
 	pgstat_collect_startcollector = false;
 	pgstat_collect_tuplelevel = false;
 	pgstat_collect_blocklevel = false;
+	pgstat_collect_queuelevel = false;
 }
 
 /*
@@ -1302,6 +1309,7 @@ CreateSharedBackendStatus(void)
  * pgstat_bestart() -
  *
  *	Initialize this backend's entry in the PgBackendStatus array,
+ *  initialize local to backend hash of per-portal stats entries,
  *	and set up an on-proc-exit hook that will clear it again.
  *	Called from InitPostgres.  MyBackendId and MyDatabaseId must be set.
  * ----------
@@ -1365,6 +1373,12 @@ pgstat_bestart(void)
 
 	beentry->st_changecount++;
 	Assert((beentry->st_changecount & 1) == 0);
+
+	/*
+	 * Initialize per-portal statistics hash for resource queues.
+	 */
+	pgstat_init_localportalhash();
+	
 
 	/*
 	 * Set up a process-exit hook to clean up.
@@ -1663,7 +1677,7 @@ PgstatCollectorMain(int argc, char *argv[])
 	 * zero.
 	 */
 	pgStatRunningInCollector = true;
-	pgstat_read_statsfile(&pgStatDBHash, InvalidOid);
+	pgstat_read_statsfile(&pgStatDBHash, &pgStatQueueHash, InvalidOid);
 
 	/*
 	 * Setup the descriptor set for select(2).	Since only one bit in the set
@@ -1822,6 +1836,11 @@ PgstatCollectorMain(int argc, char *argv[])
 					pgstat_recv_analyze((PgStat_MsgAnalyze *) &msg, len);
 					break;
 
+				case PGSTAT_MTYPE_QUEUESTAT:
+					pgstat_recv_queuestat((PgStat_MsgQueuestat *) &msg, len);
+					break;
+
+
 				default:
 					break;
 			}
@@ -1920,6 +1939,42 @@ pgstat_get_db_entry(Oid databaseid, bool create)
 }
 
 
+/*
+ * Lookup the hash table entry for the specified resource queue. If no hash
+ * table entry exists, initialize it, if the create parameter is true.
+ * Else, return NULL.
+ */
+static PgStat_StatQueueEntry *
+pgstat_get_queue_entry(Oid queueid, bool create)
+{
+	PgStat_StatQueueEntry *result;
+	bool		found;
+	HASHACTION	action = (create ? HASH_ENTER : HASH_FIND);
+
+	/* Lookup or create the hash table entry for this queue */
+	result = (PgStat_StatQueueEntry *) hash_search(pgStatQueueHash,
+												   &queueid,
+												   action, &found);
+
+	if (!create && !found)
+		return NULL;
+
+	/* If not found, initialize the new one. */
+	if (!found)
+	{
+		result->queueid = queueid;
+		result->n_queries_exec = 0;
+		result->n_queries_wait = 0;
+		result->elapsed_exec = 0;
+		result->elapsed_wait = 0;
+	}
+
+	return result;
+
+
+}
+
+
 /* ----------
  * pgstat_write_statsfile() -
  *
@@ -1933,6 +1988,7 @@ pgstat_write_statsfile(void)
 	HASH_SEQ_STATUS tstat;
 	PgStat_StatDBEntry *dbentry;
 	PgStat_StatTabEntry *tabentry;
+	PgStat_StatQueueEntry *queueentry;
 	FILE	   *fpout;
 	int32		format_id;
 
@@ -1986,6 +2042,16 @@ pgstat_write_statsfile(void)
 	}
 
 	/*
+	 * Walk through the resource queue table.
+	 */
+	hash_seq_init(&hstat, pgStatQueueHash);
+	while ((queueentry = (PgStat_StatQueueEntry *) hash_seq_search(&hstat)) != NULL)
+	{
+		fputc('Q', fpout);
+		fwrite(queueentry, sizeof(PgStat_StatQueueEntry), 1, fpout);
+	}
+
+	/*
 	 * No more output to be done. Close the temp file and replace the old
 	 * pgstat.stat with it.  The ferror() check replaces testing for error
 	 * after each individual fputc or fwrite above.
@@ -2028,12 +2094,14 @@ pgstat_write_statsfile(void)
  * ----------
  */
 static void
-pgstat_read_statsfile(HTAB **dbhash, Oid onlydb)
+pgstat_read_statsfile(HTAB **dbhash, HTAB **queuehash, Oid onlydb)
 {
 	PgStat_StatDBEntry *dbentry;
 	PgStat_StatDBEntry dbbuf;
 	PgStat_StatTabEntry *tabentry;
 	PgStat_StatTabEntry tabbuf;
+	PgStat_StatQueueEntry *queueentry;
+	PgStat_StatQueueEntry queuebuf;
 	HASHCTL		hash_ctl;
 	HTAB	   *tabhash = NULL;
 	FILE	   *fpin;
@@ -2069,6 +2137,17 @@ pgstat_read_statsfile(HTAB **dbhash, Oid onlydb)
 	hash_ctl.hash = oid_hash;
 	hash_ctl.hcxt = use_mcxt;
 	*dbhash = hash_create("Databases hash", PGSTAT_DB_HASH_SIZE, &hash_ctl,
+						  HASH_ELEM | HASH_FUNCTION | mcxt_flags);
+
+	/*
+	 * Create the Queue hashtable
+	 */
+	memset(&hash_ctl, 0, sizeof(hash_ctl));
+	hash_ctl.keysize = sizeof(Oid);
+	hash_ctl.entrysize = sizeof(PgStat_StatQueueEntry);
+	hash_ctl.hash = oid_hash;
+	hash_ctl.hcxt = use_mcxt;
+	*queuehash = hash_create("Queues hash", PGSTAT_QUEUE_HASH_SIZE, &hash_ctl,
 						  HASH_ELEM | HASH_FUNCTION | mcxt_flags);
 
 	/*
@@ -2197,6 +2276,35 @@ pgstat_read_statsfile(HTAB **dbhash, Oid onlydb)
 				break;
 
 				/*
+				 * 'Q'	A PgStat_StatQueueEntry follows.
+				 */
+			case 'Q':
+				if (fread(&queuebuf, 1, sizeof(PgStat_StatQueueEntry),
+						  fpin) != sizeof(PgStat_StatQueueEntry))
+				{
+					ereport(pgStatRunningInCollector ? LOG : WARNING,
+							(errmsg("corrupted pgstat.stat file")));
+					goto done;
+				}
+
+				/*
+				 * Add it to the queue hash.
+				 */
+				queueentry = (PgStat_StatQueueEntry *) hash_search(*queuehash,
+													(void *) &queuebuf.queueid,
+														 HASH_ENTER, &found);
+				
+				if (found)
+				{
+					ereport(pgStatRunningInCollector ? LOG : WARNING,
+							(errmsg("corrupted pgstat.stat file")));
+					goto done;
+				}
+
+				memcpy(queueentry, &queuebuf, sizeof(PgStat_StatQueueEntry));
+				break;
+
+				/*
 				 * 'E'	The EOF marker of a complete stats file.
 				 */
 			case 'E':
@@ -2234,7 +2342,7 @@ backend_read_statsfile(void)
 		if (pgStatDBHash)
 			return;
 		Assert(!pgStatRunningInCollector);
-		pgstat_read_statsfile(&pgStatDBHash, InvalidOid);
+		pgstat_read_statsfile(&pgStatDBHash, &pgStatQueueHash, InvalidOid);
 	}
 	else
 	{
@@ -2243,7 +2351,8 @@ backend_read_statsfile(void)
 		if (!TransactionIdEquals(pgStatDBHashXact, topXid))
 		{
 			Assert(!pgStatRunningInCollector);
-			pgstat_read_statsfile(&pgStatDBHash, MyDatabaseId);
+			pgstat_read_statsfile(&pgStatDBHash, &pgStatQueueHash,
+								  MyDatabaseId);
 			pgStatDBHashXact = topXid;
 		}
 	}
@@ -2556,3 +2665,169 @@ pgstat_recv_analyze(PgStat_MsgAnalyze *msg, int len)
 	tabentry->n_dead_tuples = msg->m_dead_tuples;
 	tabentry->last_anl_tuples = msg->m_live_tuples + msg->m_dead_tuples;
 }
+
+
+/* ----------
+ * pgstat_recv_queuestat() -
+ *
+ *	Process resource queue activity for a backend.
+ * ----------
+ */
+static void
+pgstat_recv_queuestat(PgStat_MsgQueuestat *msg, int len)
+{
+	PgStat_StatQueueEntry	*queueentry;
+
+	/* Get or create an entry for this resource queue. */
+	queueentry = pgstat_get_queue_entry(msg->m_queueid, true);
+
+	/* Update the metrics. */
+	queueentry->n_queries_exec += msg->m_queries_exec;
+	queueentry->n_queries_wait += msg->m_queries_wait;
+	queueentry->elapsed_exec += msg->m_elapsed_exec;
+	queueentry->elapsed_wait += msg->m_elapsed_wait;
+
+}
+
+
+/* ----------
+ * pgstat_init_localportalhash() -
+ *
+ *  Cache for portal statistics for a backend.
+ * ----------
+ */
+void
+pgstat_init_localportalhash(void)
+{
+
+	HASHCTL		info;
+	int			hash_flags;
+
+
+	info.keysize = sizeof(uint32);
+	info.entrysize = sizeof(PgStat_StatPortalEntry);
+	info.hash = tag_hash;
+	hash_flags = (HASH_ELEM | HASH_FUNCTION);
+
+	localStatPortalHash = hash_create("Local Stat Portal Hash",
+									 1,
+									 &info,
+									 hash_flags);
+
+	return;
+}
+
+
+/* ----------
+ * pgstat_getportalentry() -
+ *
+ *  Return the (PgStat_StatPortalEntry *) for a given portal (and backend).
+ * ----------
+ */
+PgStat_StatPortalEntry *
+pgstat_getportalentry(uint32 portalid, Oid queueid)
+{
+	PgStat_StatPortalEntry	*portalentry;
+	
+	bool					found;
+
+	portalentry = hash_search(localStatPortalHash,
+							  (void *) &portalid,
+							  HASH_ENTER, &found);
+
+	Assert(portalentry != NULL);
+
+	/* Initialize if this we have not seen this portal before! */
+	if (!found)
+	{
+		portalentry->portalid = portalid;
+		portalentry->queueentry.queueid = queueid;
+		portalentry->queueentry.n_queries_exec = 0;
+		portalentry->queueentry.n_queries_wait = 0;
+		portalentry->queueentry.elapsed_exec = 0;
+		portalentry->queueentry.elapsed_wait = 0;
+	}
+	
+	return portalentry;
+}
+
+
+/* ----------
+ * pgstat_report_queuestat() -
+ *
+ *	Called from tcop/postgres.c to send the so far collected
+ *	per resource queue statistics to the collector.
+ * ----------
+ */
+void
+pgstat_report_queuestat()
+{
+	HASH_SEQ_STATUS			hstat;
+	PgStat_StatPortalEntry	*pentry;
+	PgStat_MsgQueuestat		msg;
+
+	if (pgStatSock < 0 || !pgstat_collect_queuelevel)
+	{
+		return;			/* Not collecting queue stats or collector disabled. */
+	}
+
+	
+	/* Do a sequential scan through the local portal/queue hash*/
+	hash_seq_init(&hstat, localStatPortalHash);
+	while ((pentry = (PgStat_StatPortalEntry *) hash_seq_search(&hstat)) != NULL)
+	{
+		/* Skip if message payload will be trivial. */
+		if (pentry->queueentry.n_queries_exec == 0 &&
+			pentry->queueentry.n_queries_wait == 0 &&
+			pentry->queueentry.elapsed_exec == 0 &&
+			pentry->queueentry.elapsed_wait == 0)
+			continue;
+
+		/* Initialize a message to send to the collector. */
+		pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_QUEUESTAT);
+		msg.m_queueid = pentry->queueentry.queueid;
+		msg.m_queries_exec = pentry->queueentry.n_queries_exec;
+		msg.m_queries_wait = pentry->queueentry.n_queries_wait;
+		msg.m_elapsed_exec = pentry->queueentry.elapsed_exec;
+		msg.m_elapsed_wait = pentry->queueentry.elapsed_wait;
+
+		/* Reset the counters for this entry. */
+		pentry->queueentry.n_queries_exec = 0;
+		pentry->queueentry.n_queries_wait = 0;
+		pentry->queueentry.elapsed_exec = 0;
+		pentry->queueentry.elapsed_wait = 0;
+
+		pgstat_send(&msg, sizeof(msg));
+
+	}
+
+
+}
+
+
+/* ----------
+ * pgstat_fetch_stat_queueentry() -
+ *
+ *	Support function for the SQL-callable pgstat* functions. Returns
+ *	the collected statistics for one resource queue or NULL. NULL doesn't mean
+ *	that the queue doesn't exist, it is just not yet known by the
+ *	collector, so the caller is better off to report ZERO instead.
+ * ----------
+ */
+PgStat_StatQueueEntry *
+pgstat_fetch_stat_queueentry(Oid queueid)
+{
+	/*
+	 * If not done for this transaction, read the statistics collector stats
+	 * file into some hash tables.
+	 */
+	backend_read_statsfile();
+
+	/*
+	 * Lookup the requested database; return NULL if not found
+	 */
+	return (PgStat_StatQueueEntry *) hash_search(pgStatQueueHash,
+											  (void *) &queueid,
+											  HASH_FIND, NULL);
+}
+

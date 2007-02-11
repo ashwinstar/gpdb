@@ -30,7 +30,8 @@ typedef enum StatMsgType
 	PGSTAT_MTYPE_RESETCOUNTER,
 	PGSTAT_MTYPE_AUTOVAC_START,
 	PGSTAT_MTYPE_VACUUM,
-	PGSTAT_MTYPE_ANALYZE
+	PGSTAT_MTYPE_ANALYZE,
+	PGSTAT_MTYPE_QUEUESTAT
 } StatMsgType;
 
 /* ----------
@@ -213,6 +214,22 @@ typedef struct PgStat_MsgAnalyze
 
 
 /* ----------
+ * PgStat_MsgQueuestat			Sent by the backend to report resource queue
+ *								activity statistics.
+ * ----------
+ */
+typedef struct PgStat_MsgQueuestat
+{
+	PgStat_MsgHdr m_hdr;
+	Oid			m_queueid;
+	PgStat_Counter	m_queries_exec;
+	PgStat_Counter	m_queries_wait;
+	PgStat_Counter	m_elapsed_exec;
+	PgStat_Counter	m_elapsed_wait;
+} PgStat_MsgQueuestat;
+
+
+/* ----------
  * PgStat_Msg					Union over all possible messages.
  * ----------
  */
@@ -227,6 +244,7 @@ typedef union PgStat_Msg
 	PgStat_MsgAutovacStart msg_autovacuum;
 	PgStat_MsgVacuum msg_vacuum;
 	PgStat_MsgAnalyze msg_analyze;
+	PgStat_MsgQueuestat msg_queuestat;
 } PgStat_Msg;
 
 
@@ -293,6 +311,35 @@ typedef struct PgStat_StatTabEntry
 
 
 /* ----------
+ * PgStat_StatQueueEntry		The collector's data per resource queue
+ * ----------
+ */
+typedef struct PgStat_StatQueueEntry
+{
+	Oid			queueid;
+	PgStat_Counter n_queries_exec;
+	PgStat_Counter n_queries_wait;
+	PgStat_Counter elapsed_exec;
+	PgStat_Counter elapsed_wait;
+} PgStat_StatQueueEntry;
+
+
+/* ----------
+ * PgStat_StatPortalEntry		local backend queue related data for a portal
+ * ----------
+ */
+typedef struct PgStat_StatPortalEntry
+{
+	uint32					portalid;
+	time_t					t_exec_start;
+	time_t					t_exec_end;
+	time_t					t_wait_start;
+	time_t					t_wait_end;
+	PgStat_StatQueueEntry	queueentry;
+} PgStat_StatPortalEntry;
+
+
+/* ----------
  * Shared-memory data structures
  * ----------
  */
@@ -351,6 +398,7 @@ extern bool pgstat_collect_resetonpmstart;
 extern bool pgstat_collect_tuplelevel;
 extern bool pgstat_collect_blocklevel;
 extern bool pgstat_collect_querystring;
+extern bool pgstat_collect_queuelevel;
 
 
 /* ----------
@@ -378,6 +426,7 @@ extern void pgstat_ping(void);
 extern void pgstat_report_tabstat(void);
 extern void pgstat_vacuum_tabstat(void);
 extern void pgstat_drop_relation(Oid relid);
+extern void pgstat_report_queuestat(void);
 
 extern void pgstat_reset_counters(void);
 
@@ -393,6 +442,9 @@ extern void pgstat_report_activity(const char *what);
 extern void pgstat_report_waiting(bool waiting);
 
 extern void pgstat_initstats(PgStat_Info *stats, Relation rel);
+extern void pgstat_init_localportalhash(void);
+extern PgStat_StatPortalEntry *pgstat_getportalentry(uint32 portalid,
+													 Oid queueid);
 
 
 #define pgstat_count_heap_scan(s)										\
@@ -465,7 +517,72 @@ extern void pgstat_initstats(PgStat_Info *stats, Relation rel);
 			}															\
 		}																\
 	} while (0)
-
+/* Resource queue statistics: */
+#define pgstat_count_queue_exec(p, q) 									\
+	do {																\
+		if (pgstat_collect_queuelevel) 									\
+		{																\
+			PgStat_StatPortalEntry  *pentry;							\
+																		\
+			pentry = pgstat_getportalentry(p, q);						\
+			((pentry)->queueentry).n_queries_exec++;					\
+		}																\
+	} while (0)
+#define pgstat_record_start_queue_exec(p, q) 							\
+	do {																\
+		if (pgstat_collect_queuelevel) 									\
+		{																\
+			PgStat_StatPortalEntry  *pentry;							\
+																		\
+			pentry = pgstat_getportalentry(p, q);						\
+			(pentry)->t_exec_start = time(NULL);						\
+		}																\
+	} while (0)
+#define pgstat_record_end_queue_exec(p, q) 								\
+	do {																\
+		if (pgstat_collect_queuelevel) 									\
+		{																\
+			PgStat_StatPortalEntry  *pentry;							\
+																		\
+			pentry = pgstat_getportalentry(p, q);						\
+			(pentry)->t_exec_end = time(NULL);							\
+			((pentry)->queueentry).elapsed_exec += 						\
+				(PgStat_Counter)((pentry)->t_exec_end - (pentry)->t_exec_start);			\
+		}																\
+	} while (0)
+#define pgstat_count_queue_wait(p, q) 									\
+	do {																\
+		if (pgstat_collect_queuelevel) 									\
+		{																\
+			PgStat_StatPortalEntry  *pentry;							\
+																		\
+			pentry = pgstat_getportalentry(p, q);						\
+			((pentry)->queueentry).n_queries_wait++;					\
+		}																\
+	} while (0)
+#define pgstat_record_start_queue_wait(p, q) 							\
+	do {																\
+		if (pgstat_collect_queuelevel) 									\
+		{																\
+			PgStat_StatPortalEntry  *pentry;							\
+																		\
+			pentry = pgstat_getportalentry(p, q);						\
+			(pentry)->t_wait_start = time(NULL);						\
+		}																\
+	} while (0)
+#define pgstat_record_end_queue_wait(p, q) 								\
+	do {																\
+		if (pgstat_collect_queuelevel) 									\
+		{																\
+			PgStat_StatPortalEntry  *pentry;							\
+																		\
+			pentry = pgstat_getportalentry(p, q);						\
+			(pentry)->t_wait_end = time(NULL);							\
+			((pentry)->queueentry).elapsed_wait += 						\
+				(PgStat_Counter)((pentry)->t_wait_end - (pentry)->t_wait_start);			\
+		}																\
+	} while (0)
+	
 
 extern void pgstat_count_xact_commit(void);
 extern void pgstat_count_xact_rollback(void);
@@ -477,6 +594,7 @@ extern void pgstat_count_xact_rollback(void);
  */
 extern PgStat_StatDBEntry *pgstat_fetch_stat_dbentry(Oid dbid);
 extern PgStat_StatTabEntry *pgstat_fetch_stat_tabentry(Oid relid);
+extern PgStat_StatQueueEntry *pgstat_fetch_stat_queueentry(Oid queueid);
 extern PgBackendStatus *pgstat_fetch_stat_beentry(int beid);
 extern int	pgstat_fetch_stat_numbackends(void);
 

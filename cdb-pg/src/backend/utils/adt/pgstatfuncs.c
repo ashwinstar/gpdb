@@ -54,6 +54,10 @@ extern Datum pg_stat_get_db_xact_rollback(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_db_blocks_fetched(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_db_blocks_hit(PG_FUNCTION_ARGS);
 
+extern Datum pg_stat_get_queue_num_exec(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_queue_num_wait(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_queue_elapsed_exec(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_queue_elapsed_wait(PG_FUNCTION_ARGS);
 
 Datum
 pg_stat_get_numscans(PG_FUNCTION_ARGS)
@@ -625,6 +629,70 @@ pg_stat_get_db_blocks_hit(PG_FUNCTION_ARGS)
 		result = 0;
 	else
 		result = (int64) (dbentry->n_blocks_hit);
+
+	PG_RETURN_INT64(result);
+}
+
+
+Datum
+pg_stat_get_queue_num_exec(PG_FUNCTION_ARGS)
+{
+	Oid			queueid = PG_GETARG_OID(0);
+	int64		result;
+	PgStat_StatQueueEntry *queueentry;
+
+	if ((queueentry = pgstat_fetch_stat_queueentry(queueid)) == NULL)
+		result = 0;
+	else
+		result = (int64) (queueentry->n_queries_exec);
+
+	PG_RETURN_INT64(result);
+}
+
+
+Datum
+pg_stat_get_queue_num_wait(PG_FUNCTION_ARGS)
+{
+	Oid			queueid = PG_GETARG_OID(0);
+	int64		result;
+	PgStat_StatQueueEntry *queueentry;
+
+	if ((queueentry = pgstat_fetch_stat_queueentry(queueid)) == NULL)
+		result = 0;
+	else
+		result = (int64) (queueentry->n_queries_wait);
+
+	PG_RETURN_INT64(result);
+}
+
+
+Datum
+pg_stat_get_queue_elapsed_exec(PG_FUNCTION_ARGS)
+{
+	Oid			queueid = PG_GETARG_OID(0);
+	int64		result;
+	PgStat_StatQueueEntry *queueentry;
+
+	if ((queueentry = pgstat_fetch_stat_queueentry(queueid)) == NULL)
+		result = 0;
+	else
+		result = (int64) (queueentry->elapsed_exec);
+
+	PG_RETURN_INT64(result);
+}
+
+
+Datum
+pg_stat_get_queue_elapsed_wait(PG_FUNCTION_ARGS)
+{
+	Oid			queueid = PG_GETARG_OID(0);
+	int64		result;
+	PgStat_StatQueueEntry *queueentry;
+
+	if ((queueentry = pgstat_fetch_stat_queueentry(queueid)) == NULL)
+		result = 0;
+	else
+		result = (int64) (queueentry->elapsed_wait);
 
 	PG_RETURN_INT64(result);
 }

@@ -760,6 +760,15 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"stats_queue_level", PGC_SUSET, STATS_COLLECTOR,
+			gettext_noop("Collects resource queue-level statistics on database activity."),
+			NULL
+		},
+		&pgstat_collect_queuelevel,
+		false, NULL, NULL
+	},
+
+	{
 		{"stats_command_string", PGC_SUSET, STATS_COLLECTOR,
 			gettext_noop("Collects information about executing commands."),
 			gettext_noop("Enables the collection of information on the currently "
