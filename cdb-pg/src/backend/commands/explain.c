@@ -253,10 +253,17 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	StringInfoData buf;
 	Node	   *saved_es_sliceTable;
 	int			eflags;
+    int         nb;
 
 	memset(es, 0, sizeof(*es));
     es->queryDesc = queryDesc;
 
+	initStringInfoOfSize(&buf, 16000);
+    initStringInfoOfSize(&es->workbuf, 1000);
+
+    /* 
+     * Start timing. 
+     */
     INSTR_TIME_SET_CURRENT(starttime);
 	es->firststart = starttime;
 
@@ -336,14 +343,8 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 		}
 	}
 
-	initStringInfo(&buf);
-    initStringInfo(&es->workbuf);
-
 	explain_outNode(&buf, queryDesc->plantree, queryDesc->planstate,
 					NULL, 0, es);
-
-    pfree(es->workbuf.data);
-    memset(&es->workbuf, 0, sizeof(es->workbuf));
 
 	/*
 	 * If we ran the command, run any AFTER triggers it queued.  (Note this
@@ -423,13 +424,27 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	if (stmt->analyze)
 		CommandCounterIncrement();
 
+    /*
+     * Stop timing.
+     */
 	totaltime += elapsed_time(&starttime);
+
+    /* CDB: Show non-default GUC settings that might have affected the plan. */
+    nb = cdb_guc_list_show(&buf, "Settings:  ", "%s=%s; ", PGC_S_DEFAULT, 
+                           cdb_guc_list_for_explain);
+    if (nb > 0)
+    {
+        truncateStringInfo(&buf, buf.len - 2);  /* drop final "; " */
+        appendStringInfoChar(&buf, '\n');
+    }
 
 	if (stmt->analyze)
 		appendStringInfo(&buf, "Total runtime: %.3f ms\n",
 						 1000.0 * totaltime);
+
 	do_text_output_multiline(tstate, buf.data);
 
+    pfree(es->workbuf.data);
     pfree(buf.data);
 }
 
@@ -1535,7 +1550,7 @@ show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
 									         useprefix, true);
             else
             {
-                elog(WARNING, "Gather Motion %s error: no tlist item %d", 
+                elog(WARNING, "Gather Motion %s error: no tlist item %d",
                      qlabel, keyresno);
                 exprstr = "*BOGUS*";
             }

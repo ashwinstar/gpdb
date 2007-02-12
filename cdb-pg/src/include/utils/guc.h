@@ -4,7 +4,8 @@
  * External declarations pertaining to backend/utils/misc/guc.c and
  * backend/utils/misc/guc-file.l
  *
- * Copyright (c) 2000-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2007, greenplum inc
+ * Copyright (c) 2000-2007, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * $PostgreSQL: pgsql/src/include/utils/guc.h,v 1.76 2006/10/19 18:32:47 tgl Exp $
@@ -100,6 +101,10 @@ typedef bool (*GucRealAssignHook) (double newval, bool doit, GucSource source);
 typedef const char *(*GucShowHook) (void);
 
 #define GUC_QUALIFIER_SEPARATOR '.'
+
+/* Set of GUCs to be displayed by EXPLAIN.  (List of int) */
+extern List    *cdb_guc_list_for_explain;
+
 
 /* GUC vars that are actually declared in guc.c, rather than elsewhere */
 extern bool log_duration;
@@ -209,6 +214,11 @@ extern ArrayType *GUCArrayAdd(ArrayType *array, const char *name, const char *va
 extern ArrayType *GUCArrayDelete(ArrayType *array, const char *name);
 
 extern void pg_timezone_abbrev_initialize(void);
+
+extern int  cdb_guc_list_show(StringInfo buf, const char *pfx, const char *fmt,
+                              GucSource excluding, List *gucnums)
+                /* This extension allows gcc to check the format string */
+                __attribute__((format(printf, 3, 0)));
 
 #ifdef EXEC_BACKEND
 extern void write_nondefault_variables(GucContext context);

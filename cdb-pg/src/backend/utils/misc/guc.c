@@ -107,10 +107,17 @@ extern int	CommitSiblings;
 extern char *default_tablespace;
 extern bool fullPageWrites;
 
+/* Set of GUCs to be displayed by EXPLAIN.  (List of int) */
+List       *cdb_guc_list_for_explain;
+
 #ifdef TRACE_SORT
 extern bool trace_sort;
 #endif
 
+
+/*
+ * Assign/Show hook functions defined in this module
+ */
 static const char *assign_log_destination(const char *value,
 					   bool doit, GucSource source);
 
@@ -2763,6 +2770,7 @@ static bool guc_cannotprepare;                        /* TRUE if this transactio
 static bool reporting_enabled;	/* TRUE to enable GUC_REPORT */
 
 
+static void cdb_guc_list_init(void);
 static int	guc_var_compare(const void *a, const void *b);
 static int	guc_name_compare(const char *namea, const char *nameb);
 static void push_old_value(struct config_generic * gconf);
@@ -3961,6 +3969,9 @@ void
 BeginReportingGUCOptions(void)
 {
 	int			i;
+
+    /* Build global lists of GUCs for use by callers of cdb_guc_list_show(). */
+    cdb_guc_list_init();
 
 	/*
 	 * Don't do anything unless talking to an interactive frontend of protocol
@@ -5956,6 +5967,96 @@ _ShowOption(struct config_generic * record, bool use_units)
 
 	return pstrdup(val);
 }
+
+
+/*
+ * cdb_guc_list_init
+ *
+ * Builds global lists of interesting GUC numbers for cdb_guc_list_show()...
+ *
+ * - cdb_guc_list_for_explain: consists of planner GUCs, plus 'work_mem'
+ */
+void
+cdb_guc_list_init(void)
+{
+    int         i;
+
+    if (cdb_guc_list_for_explain)
+    {
+        list_free(cdb_guc_list_for_explain);
+        cdb_guc_list_for_explain = NIL;
+    }
+
+   	for (i = 0; i < num_guc_variables; i++)
+	{
+		struct config_generic  *gconf = guc_variables[i];
+        bool                    explain = false;
+
+        switch (gconf->group)
+        {
+            case QUERY_TUNING:
+            case QUERY_TUNING_METHOD:
+            case QUERY_TUNING_COST:
+            case QUERY_TUNING_GEQO:
+            case QUERY_TUNING_OTHER:
+                explain = true;
+                break;
+
+            case RESOURCES_MEM:
+                if (0 == guc_name_compare(gconf->name, "work_mem"))
+                    explain = true;
+                break;
+
+            default:
+                break;
+        }
+
+        if (explain)
+            cdb_guc_list_for_explain = lappend_int(cdb_guc_list_for_explain, i);
+	}
+}                               /* cdb_guc_list_init */
+
+
+/*
+ * cdb_guc_list_show
+ *
+ * Given a list of GUC option numbers (a List of int), appends the
+ * option names and values to caller's buffer, skipping any whose
+ * source <= 'excluding'.  The 'pfx' string is inserted at the
+ * beginning.  The 'fmt' string must contain two occurrences of "%s",
+ * which are expanded to the GUC name and value, respectively.
+ *
+ * Returns the length of the string appended to the buffer.
+ */
+int
+cdb_guc_list_show(StringInfo buf, const char *pfx, const char *fmt,
+                  GucSource excluding, List *gucnums)
+{
+    int         oldlen = buf->len;
+    ListCell   *cell;
+    char       *value;
+    int         gucnum;
+    struct config_generic  *gconf;
+
+   	foreach(cell, gucnums)
+	{
+        gucnum = lfirst_int(cell);
+        Insist(gucnum >= 0 && gucnum < num_guc_variables);
+		gconf = guc_variables[gucnum];
+		if (gconf->source > excluding)
+        {
+            if (pfx)
+            {
+                appendStringInfoString(buf, pfx);
+                pfx = NULL;
+            }
+            value = _ShowOption(gconf, true);
+            appendStringInfo(buf, fmt, gconf->name, value);
+            pfree(value);
+        }
+	}
+    return buf->len - oldlen;
+}                               /* cdb_guc_list_show */
 
 
 static bool
