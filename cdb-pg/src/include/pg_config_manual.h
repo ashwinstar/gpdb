@@ -41,7 +41,7 @@
  *
  * Changing RELSEG_SIZE requires an initdb.
  */
-#define RELSEG_SIZE (0x80000000 / BLCKSZ)
+#define RELSEG_SIZE (0x40000000 / BLCKSZ)
 
 /*
  * Size of a WAL file block.  This need have no particular relation to BLCKSZ.
