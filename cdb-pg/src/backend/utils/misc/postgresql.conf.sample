@@ -197,19 +197,10 @@
 #cpu_index_tuple_cost = 0.001		# same scale as above
 #cpu_operator_cost = 0.0025		# same scale as above
 #mpp_motion_cost_per_row = 0.0  # (same) (if 0, 2*cpu_tuple_cost is used)
-#effective_cache_size = 4MB		 
-
-# - Genetic Query Optimizer -
-# (These have no effect in MPP)
-
-#geqo = on
-#geqo_threshold = 12
-#geqo_effort = 5			# range 1-10
-#geqo_pool_size = 0			# selects default based on effort
-#geqo_generations = 0			# selects default based on effort
-#geqo_selection_bias = 2.0		# range 1.5-2.0
+#effective_cache_size = 4MB		
 
 # - Other Planner Options -
+
 #default_statistics_target = 25		# range 1 - 1000 (target # of
 					# histogram bins)
 #mpp_analyze_relative_error = 0.25	# range 0.0 - 1.0 (target relative
@@ -248,10 +239,10 @@
 					# or size-driven rotation. Default is
 					# off, meaning append to existing files
 					# in all cases.
-#log_rotation_age = 1d			# Automatic rotation of logfiles will 
-					# happen after that time.  0 to 
+#log_rotation_age = 1d			# Automatic rotation of logfiles will
+					# happen after that time.  0 to
 					# disable.
-#log_rotation_size = 10MB		# Automatic rotation of logfiles will 
+#log_rotation_size = 10MB		# Automatic rotation of logfiles will
 					# happen after that much log
 					# output.  0 to disable.
 
@@ -407,18 +398,18 @@
 #autovacuum_naptime = 1min		# time between autovacuum runs
 #autovacuum_vacuum_threshold = 500	# min # of tuple updates before
 					# vacuum
-#autovacuum_analyze_threshold = 250	# min # of tuple updates before 
+#autovacuum_analyze_threshold = 250	# min # of tuple updates before
 					# analyze
-#autovacuum_vacuum_scale_factor = 0.2	# fraction of rel size before 
+#autovacuum_vacuum_scale_factor = 0.2	# fraction of rel size before
 					# vacuum
-#autovacuum_analyze_scale_factor = 0.1	# fraction of rel size before 
+#autovacuum_analyze_scale_factor = 0.1	# fraction of rel size before
 					# analyze
 #autovacuum_freeze_max_age = 200000000	# maximum XID age before forced vacuum
 					# (change requires restart)
-#autovacuum_vacuum_cost_delay = -1	# default vacuum cost delay for 
-					# autovacuum, -1 means use 
+#autovacuum_vacuum_cost_delay = -1	# default vacuum cost delay for
+					# autovacuum, -1 means use
 					# vacuum_cost_delay
-#autovacuum_vacuum_cost_limit = -1	# default vacuum cost limit for 
+#autovacuum_vacuum_cost_limit = -1	# default vacuum cost limit for
 					# autovacuum, -1 means use
 					# vacuum_cost_limit
 

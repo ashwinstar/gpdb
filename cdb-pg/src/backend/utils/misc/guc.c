@@ -514,10 +514,10 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 	{
-		{"geqo", PGC_USERSET, QUERY_TUNING_GEQO,
-			gettext_noop("Enables genetic query optimization."),
-			gettext_noop("This algorithm attempts to do planning without "
-						 "exhaustive searching.")
+		{"geqo", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+			gettext_noop(PACKAGE_NAME " doesn't use this parameter."),
+			gettext_noop("Syntax check only for PostgreSQL compatibility."),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&enable_geqo,
 		true, NULL, NULL
@@ -1306,33 +1306,37 @@ static struct config_int ConfigureNamesInt[] =
 		8, 1, INT_MAX, NULL, NULL
 	},
 	{
-		{"geqo_threshold", PGC_USERSET, QUERY_TUNING_GEQO,
-			gettext_noop("Sets the threshold of FROM items beyond which GEQO is used."),
-			NULL
+		{"geqo_threshold", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+			gettext_noop(PACKAGE_NAME " doesn't use this parameter."),
+			gettext_noop("Syntax check only for PostgreSQL compatibility."),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&geqo_threshold,
 		12, 2, INT_MAX, NULL, NULL
 	},
 	{
-		{"geqo_effort", PGC_USERSET, QUERY_TUNING_GEQO,
-			gettext_noop("GEQO: effort is used to set the default for other GEQO parameters."),
-			NULL
+		{"geqo_effort", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+			gettext_noop(PACKAGE_NAME " doesn't use this parameter."),
+			gettext_noop("Syntax check only for PostgreSQL compatibility."),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Geqo_effort,
 		DEFAULT_GEQO_EFFORT, MIN_GEQO_EFFORT, MAX_GEQO_EFFORT, NULL, NULL
 	},
 	{
-		{"geqo_pool_size", PGC_USERSET, QUERY_TUNING_GEQO,
-			gettext_noop("GEQO: number of individuals in the population."),
-			gettext_noop("Zero selects a suitable default value.")
+		{"geqo_pool_size", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+			gettext_noop(PACKAGE_NAME " doesn't use this parameter."),
+			gettext_noop("Syntax check only for PostgreSQL compatibility."),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Geqo_pool_size,
 		0, 0, INT_MAX, NULL, NULL
 	},
 	{
-		{"geqo_generations", PGC_USERSET, QUERY_TUNING_GEQO,
-			gettext_noop("GEQO: number of iterations of the algorithm."),
-			gettext_noop("Zero selects a suitable default value.")
+		{"geqo_generations", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+			gettext_noop(PACKAGE_NAME " doesn't use this parameter."),
+			gettext_noop("Syntax check only for PostgreSQL compatibility."),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Geqo_generations,
 		0, 0, INT_MAX, NULL, NULL
@@ -2091,9 +2095,10 @@ static struct config_real ConfigureNamesReal[] =
 	},
 
 	{
-		{"geqo_selection_bias", PGC_USERSET, QUERY_TUNING_GEQO,
-			gettext_noop("GEQO: selective pressure within the population."),
-			NULL
+		{"geqo_selection_bias", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+			gettext_noop(PACKAGE_NAME " doesn't use this parameter."),
+			gettext_noop("Syntax check only for PostgreSQL compatibility."),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Geqo_selection_bias,
 		DEFAULT_GEQO_SELECTION_BIAS, MIN_GEQO_SELECTION_BIAS,
