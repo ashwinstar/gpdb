@@ -325,7 +325,19 @@ typedef struct PgStat_StatQueueEntry
 
 
 /* ----------
- * PgStat_StatPortalEntry		local backend queue related data for a portal
+ * PgStat_StatPortalEntry
+ *
+ * Each backend maintains a hash that contains a PgStat_StatPortalEntry for
+ * each portal. This is so we can easily track elapsed times for execute and
+ * wait, as well as counts for each of these. 
+ *
+ * In order to (hopefully) not cause a performance degradation when queue
+ * statistics are enabled, we only store and caclulate elapsed time to the 
+ * nearest second (via the time() call). This may mean that large numbers of 
+ * sub-second queries get ignored due to roundoff. 
+ *
+ * Note that the collector never sees these structs, the PgStat_StatQueueEntry
+ * is what is sent at report time.
  * ----------
  */
 typedef struct PgStat_StatPortalEntry
