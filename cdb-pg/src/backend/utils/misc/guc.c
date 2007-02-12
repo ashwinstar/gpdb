@@ -6029,8 +6029,11 @@ cdb_guc_list_init(void)
  * Returns the length of the string appended to the buffer.
  */
 int
-cdb_guc_list_show(StringInfo buf, const char *pfx, const char *fmt,
-                  GucSource excluding, List *gucnums)
+cdb_guc_list_show(struct StringInfoData    *buf, 
+                  const char               *pfx, 
+                  const char               *fmt, 
+                  GucSource                 excluding, 
+                  List                     *gucnums)
 {
     int         oldlen = buf->len;
     ListCell   *cell;

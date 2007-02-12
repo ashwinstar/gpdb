@@ -17,6 +17,8 @@
 #include "tcop/dest.h"
 #include "utils/array.h"
 
+struct StringInfoData;                  /* #include "lib/stringinfo.h" */
+
 
 /*
  * Certain options can only be set at certain times. The rules are
@@ -215,8 +217,11 @@ extern ArrayType *GUCArrayDelete(ArrayType *array, const char *name);
 
 extern void pg_timezone_abbrev_initialize(void);
 
-extern int  cdb_guc_list_show(StringInfo buf, const char *pfx, const char *fmt,
-                              GucSource excluding, List *gucnums)
+extern int  cdb_guc_list_show(struct StringInfoData    *buf, 
+                              const char               *pfx, 
+                              const char               *fmt, 
+                              GucSource                 excluding, 
+                              List                     *gucnums)
                 /* This extension allows gcc to check the format string */
                 __attribute__((format(printf, 3, 0)));
 
