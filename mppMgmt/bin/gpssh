@@ -225,6 +225,7 @@ class Session(cmd.Cmd):
 	line = 'bash -c "' + line + '" < /dev/null';
 	for s in self.pxssh:
 	    s.sendline(line)
+	    s.flush()
 	for s in self.pxssh:
 	    s.prompt()
 	    out = s.before.split('\n')
