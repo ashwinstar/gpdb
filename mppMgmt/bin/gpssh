@@ -150,6 +150,7 @@ def waitOneTimeSession(session):
 		
     if permissionDenied:
 	print
+	print 'hint: check if the host is alive'
 	print 'hint: use gpssh-exkeys to setup public-key authentication between hosts'
 	print
     if errmsg: sys.exit(1)
@@ -171,17 +172,19 @@ class Session(cmd.Cmd):
 	sameUser = (len(user) == 1)
 	for h in hostList:
 	    p = pxssh.pxssh()
-	    if opt['-v']: print '[INFO] login %s@%s' % (h[0], h[1])
-	    if not p.login(h[1], h[0], port=h[2]):
-		print '[ERROR] unable to login to %s@%s' % (h[0], h[1])
-		print
-		print 'hint: use gpssh-exkeys to setup public-key authentication between hosts'
-		print
-		sys.exit(1)
+	    p.loginAsync(h[1], h[0], port=h[2])
 	    p.x_user = h[0]; p.x_host = h[1]
 	    p.x_peer = sameUser and h[1] or ('%s@%s' % (h[0], h[1]))
 	    self.pxssh.append(p)
 	    self.pid.append(p.pid)
+	for p in self.pxssh:
+	    print '[INFO] login %s' % p.x_peer
+	    if not p.loginWait():
+		print '[ERROR] unable to login to %s' % p.x_peer
+		print
+		print 'hint: use gpssh-exkeys to setup public-key authentication between hosts'
+		print
+		sys.exit(1)
 
 
     def clean(self):

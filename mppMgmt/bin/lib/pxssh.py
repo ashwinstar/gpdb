@@ -37,69 +37,62 @@ class pxssh (spawn):
         self.PROMPT_SET_SH = "PS1='[PEXPECT]\$ '"
         self.PROMPT_SET_CSH = "set prompt='[PEXPECT]\$ '"
 
+    ### cktan: spawn login process, but don't wait on it
+    def loginAsync (self,server,username,login_timeout=10, port=22):
+	cmd = 'ssh -o "BatchMode yes" -o "StrictHostKeyChecking no"'
+	cmd = cmd + ' -p %s -l %s %s' % (port, username, server)
+        spawn.__init__(self, cmd, timeout=login_timeout)
+
+    ### cktan: wait for login
+    def loginWait(self, terminal_type='ansi',original_prompts=r"][#$]|~[#$]|bash.*?[#$]|[#$] ",login_timeout=10):
+        #, "(?i)no route to host"])
+	exp = [original_prompts, "(?i)permission denied", "(?i)terminal type", 
+	       TIMEOUT, "(?i)connection closed by remote host", 
+	       EOF]
+	try:
+	    i = self.expect(exp)
+	    if i == 2:
+		self.sendline(terminal_type)
+		i = self.expect(exp)
+
+	    if i == 0: 
+		pass
+	    elif i == 1: #permission denied
+		self.close()
+		return False
+	    elif i == 2: #terminal type again? bad bad
+		self.close()
+		return False
+	    elif i == 3: #timeout
+		# This is tricky... presume that we are at the command-line prompt.
+		# It may be that the prompt was so weird that we couldn't match it.
+		pass
+	    elif i == 4: #connection closed by remote host
+		self.close()
+		return False
+	    elif i == 5: #EOF
+		self.close()
+		return False
+	    else:  #unexpected
+		self.close()
+		return False
+	    
+	    if not self.set_unique_prompt():
+		self.close()
+		return False
+
+	    return True
+	except EOF:
+	    self.close()
+	    return False
+
+
     ### TODO: This is getting messy and I'm pretty sure this isn't perfect.
     ### TODO: I need to draw a better flow chart for this.
     ### cktan: added <port> parameter
-    def login (self,server,username,password='',terminal_type='ansi',original_prompts=r"][#$]|~[#$]|bash.*?[#$]|[#$] ",login_timeout=10, port=22):
-        """This logs the user into the given server. By default the prompt is
-        rather optimistic and should be considered more of an example. It's
-        better to try to match the prompt as exactly as possible to prevent
-        any false matches by server strings such as a "Message Of The Day" or
-        something. The closer you can make the original_prompt match your real prompt
-        then the better. A timeout will not necessarily cause the login to fail.
-        In the case of a timeout we assume that the prompt was so weird that
-        we could not match it. We still try to reset the prompt to something
-        more unique. If that still fails then we return False.
-        """
-        cmd = "ssh -p %s -l %s %s" % (port, username, server)
-        spawn.__init__(self, cmd, timeout=login_timeout)
-        #, "(?i)no route to host"])
-        i = self.expect(["(?i)are you sure you want to continue connecting", original_prompts, "(?i)password", "(?i)permission denied", "(?i)terminal type", TIMEOUT, "(?i)connection closed by remote host"])
-        if i==0: # New certificate -- always accept it. This is what you if SSH does not have the remote host's public key stored in the cache.
-            self.sendline("yes")
-            i = self.expect(["(?i)are you sure you want to continue connecting", original_prompts, "(?i)password", "(?i)permission denied", "(?i)terminal type", TIMEOUT])
-        if i==2: # password
-            self.sendline(password)
-            i = self.expect(["(?i)are you sure you want to continue connecting", original_prompts, "(?i)password", "(?i)permission denied", "(?i)terminal type", TIMEOUT])
-        if i==4:
-            self.sendline(terminal_type)
-            i = self.expect(["(?i)are you sure you want to continue connecting", original_prompts, "(?i)password", "(?i)permission denied", "(?i)terminal type", TIMEOUT])
-
-        if i==0:
-            # This is weird. This should not happen twice in a row.
-            self.close()
-            return False
-        elif i==1: # can occur if you have a public key pair set to authenticate. 
-            ### TODO: May NOT be OK if expect() matched a false prompt.
-            pass
-        elif i==2: # password prompt again
-            # For incorrect passwords, some ssh servers will
-            # ask for the password again, others return 'denied' right away.
-            # If we get the password prompt again then this means
-            # we didn't get the password right the first time. 
-            self.close()
-            return False
-        elif i==3: # permission denied -- password was bad.
-            self.close()
-            return False
-        elif i==4: # terminal type again? WTF?
-            self.close()
-            return False
-        elif i==5: # Timeout
-            # This is tricky... presume that we are at the command-line prompt.
-            # It may be that the prompt was so weird that we couldn't match it.
-            pass
-        elif i==6: # Connection closed by remote host
-            self.close()
-            return False
-        else: # Unexpected 
-            self.close()
-            return False
-        # We appear to be in -- reset prompt to something more unique.
-        if not self.set_unique_prompt():
-            self.close()
-            return False
-        return True
+    def login (self,server,username,terminal_type='ansi',original_prompts=r"][#$]|~[#$]|bash.*?[#$]|[#$] ",login_timeout=10, port=22):
+	self.loginAsync(server, username, login_timeout, port)
+	return self.loginWait(terminal_type, original_prompts, login_timeout)
 
     def logout (self):
         """This sends exit. If there are stopped jobs then this sends exit twice.
