@@ -16,7 +16,7 @@ Usage: gpssh [-?v] [-p port] [-u user] [-h host] [-f hostfile] [cmd]
 Author: cktan@greenplum.com
 '''
 
-import os, sys, getopt, popen2, cmd, signal, time, atexit
+import os, sys, getopt, popen2, cmd, signal, time, atexit, threading
 
 if sys.version_info < (2, 3):
     sys.exit("Error: gpssh is supported on Python versions 2.3 or greater\n"
@@ -156,6 +156,15 @@ def waitOneTimeSession(session):
     if errmsg: sys.exit(1)
 
 
+def closePxsshPid(pxssh, pid):
+    pxssh.close(force = True)
+    try:
+	os.kill(pid, 9)
+	(pid, status) = os.waitpid(pid, 0)
+    except OSError: 
+	pass
+
+
 #############
 class Session(cmd.Cmd):
     def __init__(self):
@@ -190,13 +199,12 @@ class Session(cmd.Cmd):
     def clean(self):
 	while True:
 	    try:
-		for s in self.pxssh:
-		    s.close(force = True)
-		for p in self.pid:
-		    try:
-			os.kill(p, 9)
-			(pid, status) = os.waitpid(p, 0)
-		    except OSError: pass
+		for i in xrange(len(self.pxssh)):
+		    t = threading.Thread(target=closePxsshPid, args=(self.pxssh[i], self.pid[i]))
+		    t.start()
+		    self.pxssh[i].x_thread = t
+		for i in xrange(len(self.pxssh)):
+		    self.pxssh[i].x_thread.join()
 		break
 	    except KeyboardInterrupt:
 		pass
@@ -227,6 +235,7 @@ class Session(cmd.Cmd):
 		for line in out:
 		    print '[%s] %s' % (s.x_peer, line)
     
+
 session = None
 def cleanup():
     while True:
@@ -269,10 +278,16 @@ def interactive():
     signal.signal(signal.SIGINT, sigint_handle)
     while True:
 	try:
-	    if session: session.clean(); session = None
+	    if session: 
+		print '\n[Cleanup...]'; 
+		session.clean()
+		session = None
 	    session = Session()
 	    session.login(opt['-h'])
 	    session.cmdloop()
+	except pexpect.EOF:
+	    print '\n[Unexpected EOF from some hosts...]'
+	    pass
 	except KeyboardInterrupt:
 	    print '\n[Interrupt...]'
 	    pass
