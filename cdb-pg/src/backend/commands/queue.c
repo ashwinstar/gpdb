@@ -455,8 +455,8 @@ AlterQueue(AlterQueueStmt *stmt)
 
 		if (!queueok)
 			ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-					errmsg("resource queue cannot be altered as it is in use")));
+				(errcode(ERRCODE_INVALID_LIMIT_VALUE),
+					errmsg("resource queue thresholds cannot be less than current values")));
 	}
 	else
 	{

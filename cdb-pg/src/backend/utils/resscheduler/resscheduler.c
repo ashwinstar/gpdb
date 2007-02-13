@@ -303,7 +303,7 @@ ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
 
 
 /*
- * ResAlterQueue -- Change the thresholds for a resource queue.
+ * ResAlterQueue -- Change the thresholds, overcommit for a resource queue.
  *
  * Notes:
  *	It is expected that the appropriate lightweight lock is held before
@@ -314,7 +314,7 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
 {
 
 	ResQueue		queue = ResQueueHashFind(queueid);
-	bool			allzero = true;
+	bool			allok = true;
 	int				i;
 	
 
@@ -325,13 +325,14 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
 
 	/* 
 	 * Now run through all the possible limit types, checking all the
-	 * current counters are zero.
+	 * intended changes are ok.
 	 */
 	for (i = 0 ; i < NUM_RES_LIMIT_TYPES; i++)
 	{
 		/*
-		 * Specific initializations for the limit types (the current two are
-		 * in fact the same).
+		 * Checks for the limit types (smae for both here). We want to
+		 * ensure that the new thresholds are not less than the current
+		 * values.
 		 */
 		switch (i)
 		{
@@ -339,8 +340,9 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
 			case RES_COST_LIMIT:
 			{
 				
-				if (queue->limits[i].current_value != 0)
-					allzero = false;
+				if ((queue->limits[i].threshold_value != limits[i]) &&
+					(limits[i] <= queue->limits[i].current_value))
+					allok = false;
 			}
 			break;
 		}
@@ -349,15 +351,14 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
 	}
 
 	/*
-	 * No non-zero current values for the queue, we can alter it,
+	 * New thresholds are all > current values, we are ok to alter them.
 	 */
-	if (allzero)
+	if (allok)
 	{
 		for (i = 0 ; i < NUM_RES_LIMIT_TYPES; i++)
 		{
 			/*
-			 * Specific checks for the limit types (the current two are
-			 * in fact the same).
+			 * Assign the new thresholds.
 			 */
 			switch (i)
 			{
