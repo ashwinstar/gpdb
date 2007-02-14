@@ -44,15 +44,16 @@ class pxssh (spawn):
         spawn.__init__(self, cmd, timeout=login_timeout)
 
     ### cktan: wait for login
-    def loginWait(self, terminal_type='ansi',original_prompts=r"][#$]|~[#$]|bash.*?[#$]|[#$] ",login_timeout=10):
+    def loginWait(self, login_timeout=10):
         #, "(?i)no route to host"])
-	exp = [original_prompts, "(?i)permission denied", "(?i)terminal type", 
+	echo = 'hello hello hello hello'
+	self.sendline('echo ' + echo)
+	exp = [echo, "(?i)permission denied", "(?i)terminal type", 
 	       TIMEOUT, "(?i)connection closed by remote host", 
 	       EOF]
 	try:
 	    i = self.expect(exp)
-	    if i == 2:
-		self.sendline(terminal_type)
+	    if i == 0:
 		i = self.expect(exp)
 
 	    if i == 0: 
@@ -60,7 +61,7 @@ class pxssh (spawn):
 	    elif i == 1: #permission denied
 		self.close()
 		return False
-	    elif i == 2: #terminal type again? bad bad
+	    elif i == 2: #terminal type not handled
 		self.close()
 		return False
 	    elif i == 3: #timeout
@@ -87,12 +88,10 @@ class pxssh (spawn):
 	    return False
 
 
-    ### TODO: This is getting messy and I'm pretty sure this isn't perfect.
-    ### TODO: I need to draw a better flow chart for this.
     ### cktan: added <port> parameter
-    def login (self,server,username,terminal_type='ansi',original_prompts=r"][#$]|~[#$]|bash.*?[#$]|[#$] ",login_timeout=10, port=22):
+    def login (self,server,username,login_timeout=10, port=22):
 	self.loginAsync(server, username, login_timeout, port)
-	return self.loginWait(terminal_type, original_prompts, login_timeout)
+	return self.loginWait(login_timeout)
 
     def logout (self):
         """This sends exit. If there are stopped jobs then this sends exit twice.
