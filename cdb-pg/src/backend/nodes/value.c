@@ -60,6 +60,23 @@ makeString(char *str)
 }
 
 /*
+ *	makeNullString
+ *
+ * A customized version of makeString that creates a Value
+ * node for a NULL string.
+ */
+Value *
+makeNullString(void)
+{
+	Value	   *v = makeNode(Value);
+	
+	v->type = T_String;
+	v->val.str = NULL;
+	return v;
+}
+
+
+/*
  *	makeBitString
  *
  * Caller is responsible for passing a palloc'd string.

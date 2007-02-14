@@ -2368,7 +2368,12 @@ _outValue(StringInfo str, Value *value)
 		case T_Float:
 		case T_String:
 		case T_BitString:
-			{ int slen = strlen(value->val.str); appendBinaryStringInfo(str, (const char *)&slen, sizeof(int)); appendBinaryStringInfo(str, value->val.str, slen);}
+			{ 
+				int slen = (value->val.str != NULL ? strlen(value->val.str) : 0); 
+				appendBinaryStringInfo(str, (const char *)&slen, sizeof(int)); 
+				if (slen > 0) 
+					appendBinaryStringInfo(str, value->val.str, slen);
+			}
 			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) value->type);
