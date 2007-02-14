@@ -5,7 +5,7 @@
  *
  * See src/backend/utils/misc/README for design notes.
  *
- * Portions Copyright (c) 2006, greenplum inc
+ * Portions Copyright (c) 2006-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  *
  *	  $PostgreSQL: pgsql/src/include/utils/guc_tables.h,v 1.29 2006/10/03 21:11:55 momjian Exp $
@@ -48,9 +48,9 @@ enum config_group
 	CONN_AUTH_SECURITY,
 	RESOURCES,
 	RESOURCES_MEM,
-	RESOURCES_MGM,
 	RESOURCES_FSM,
 	RESOURCES_KERNEL,
+	RESOURCES_MGM,
 	WAL,
 	WAL_SETTINGS,
 	WAL_CHECKPOINTS,
@@ -64,6 +64,7 @@ enum config_group
 	LOGGING_WHEN,
 	LOGGING_WHAT,
 	STATS,
+    STATS_ANALYZE,                      /*CDB*/
 	STATS_MONITORING,
 	STATS_COLLECTOR,
 	AUTOVACUUM,
@@ -76,6 +77,9 @@ enum config_group
 	COMPAT_OPTIONS_PREVIOUS,
 	COMPAT_OPTIONS_CLIENT,
     COMPAT_OPTIONS_IGNORED,             /*CDB*/
+    CDB_ARRAY_CONFIGURATION,            /*CDB*/
+    CDB_ARRAY_TUNING,                   /*CDB*/
+    CDB_WORKER_IDENTITY,                /*CDB*/
 	PRESET_OPTIONS,
 	CUSTOM_OPTIONS,
 	DEVELOPER_OPTIONS

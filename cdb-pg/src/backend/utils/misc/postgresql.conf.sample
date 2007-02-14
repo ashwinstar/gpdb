@@ -180,40 +180,49 @@
 # - Planner Method Configuration -
 
 #enable_bitmapscan = on
-#enable_hashagg = on
-#enable_hashjoin = on
 #enable_indexscan = on
+#enable_seqscan = on
+#enable_tidscan = on
+
+#enable_hashjoin = on
 #enable_mergejoin = on
 #enable_nestloop = on
-#enable_seqscan = on
+#mpp_enable_adaptive_nestloop = on
+
+#enable_agg_restructure = on
+#enable_groupagg = on
+#enable_hashagg = on
+
 #enable_sort = on
-#enable_tidscan = on
+#mpp_enable_sort_limit = on
+#mpp_enable_sort_distinct = on
 
 # - Planner Cost Constants -
 
 #seq_page_cost = 1.0			# measured on an arbitrary scale
 #random_page_cost = 100			# same scale as above
+
 #cpu_tuple_cost = 0.01			# same scale as above
 #cpu_index_tuple_cost = 0.001		# same scale as above
 #cpu_operator_cost = 0.0025		# same scale as above
 #mpp_motion_cost_per_row = 0.0  # (same) (if 0, 2*cpu_tuple_cost is used)
-#effective_cache_size = 4MB		
+
+#effective_cache_size = 4MB
 
 # - Other Planner Options -
 
-#default_statistics_target = 25		# range 1 - 1000 (target # of
-					# histogram bins)
-#mpp_analyze_relative_error = 0.25	# range 0.0 - 1.0 (target relative
-					# error fraction)
 #constraint_exclusion = on
 #from_collapse_limit = 8
 #join_collapse_limit = 8		# 1 disables collapsing of explicit
 					# JOINs
+#mpp_hashagg_rewrite_limit = 1.0
 #mpp_segments_for_planner = 0     # if 0, actual number of segments is used
 
 #---------------------------------------------------------------------------
 # ERROR REPORTING AND LOGGING
 #---------------------------------------------------------------------------
+
+#mpp_reraise_signal = on
 
 # - Where to Log -
 
@@ -304,11 +313,14 @@
 
 #debug_print_parse = off
 #debug_print_rewritten = off
+#debug_print_prelim_plan = off
+#debug_print_slice_table = off
 #debug_print_plan = off
 #debug_pretty_print = off
 #log_connections = off
 #log_disconnections = off
 #log_duration = off
+#log_hostname = off
 #log_line_prefix = '%t|%u|%d|%p|%I|:-'		# Special values:
 					#   %u = user name
 					#   %d = database name
@@ -354,7 +366,6 @@
 					#		  'qe' if QueryExecutor
 					#		  empty if other.
 #log_statement = 'none'			# none, mod, ddl, all
-#log_hostname = off
 
 #mpp_log_gang = terse                   # off, terse, verbose, debug
                                         #  logging of qExec worker process
@@ -367,18 +378,24 @@
 # RUNTIME STATISTICS
 #---------------------------------------------------------------------------
 
+# - ANALYZE Statistics on Database Contents -
+
+#default_statistics_target = 25		# range 1 - 1000 (target # of
+					# histogram bins)
+#mpp_analyze_relative_error = 0.25	# range 0.0 - 1.0 (target relative
+					# error fraction)
+
 # - Query/Index Statistics Collector -
 
 #stats_command_string = on
 #update_process_title = on
 
 #stats_start_collector = on		# needed for block or row stats
-					# (change requires restart)#stats_block_level = off
+					# (change requires restart)
 #stats_block_level = off
 #stats_row_level = off
 #stats_queue_level = off
 #stats_reset_on_server_start = off	# (change requires restart)
-
 
 # - Statistics Monitoring -
 
@@ -413,6 +430,7 @@
 					# autovacuum, -1 means use
 					# vacuum_cost_limit
 
+
 #---------------------------------------------------------------------------
 # CLIENT CONNECTION DEFAULTS
 #---------------------------------------------------------------------------
@@ -425,6 +443,7 @@
 #check_function_bodies = on
 #default_transaction_isolation = 'read committed'
 #default_transaction_read_only = off
+#mpp_enable_functions = false
 #statement_timeout = 0			# 0 is disabled
 #vacuum_freeze_min_age = 100000000
 
@@ -453,8 +472,9 @@
 
 # - Other Defaults -
 
-#explain_pretty_print = on
 #dynamic_library_path = '$libdir'
+#explain_pretty_print = on
+#gin_fuzzy_search_limit = 0
 #local_preload_libraries = ''
 
 
@@ -500,11 +520,28 @@
 
 
 #---------------------------------------------------------------------------
-# MPP FAULT TOLERANCE OPTIONS
+# GREENPLUM ARRAY CONFIGURATION
 #---------------------------------------------------------------------------
 
 #mpp_fault_action = continue         # none for disabling Fault Tolerance feature,
                                      # other valid parameters are readonly, continue
+#mpp_set_read_only = false           # sets the system read only
+
+
+#---------------------------------------------------------------------------
+# GREENPLUM ARRAY TUNING
+#---------------------------------------------------------------------------
+
+# - Interconnect -
+
+#mpp_interconnect_setup_timeout = 10s
+#mpp_max_packet_size = 8192
+
+# - Worker Process Creation -
+
+#mpp_connections_per_thread = 4
+#mpp_segment_connect_timeout = 60s
+
 
 #---------------------------------------------------------------------------
 # CUSTOMIZED OPTIONS
