@@ -40,7 +40,7 @@
 #include "cdb/cdbpath.h"        /* cdbpath_rows() */
 #include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() etc. */
 #include "cdb/cdbpullup.h"      /* cdbpullup_targetlist() */
-
+#include "cdb/cdbutil.h"        /* cdbComponentDatabase */		
 typedef struct CreatePlanContext
 {
     PlannerInfo    *root;
@@ -920,7 +920,13 @@ create_seqscan_plan(CreatePlanContext *ctx, Path *best_path,
  * create_externalscan_plan
  *	 Returns an externalscan plan for the base relation scanned by 'best_path'
  *	 with restriction clauses 'scan_clauses' and targetlist 'tlist'.
+ *
+ *   The external plan also includes the data format specification and file
+ *   location specification. Here is where we do the mapping of external file
+ *   to segment database and add it to the plan (or bail out of the mapping
+ *   rules are broken)
  */
+
 static ExternalScan *
 create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 						 List *tlist, List *scan_clauses)
@@ -928,10 +934,14 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	ExternalScan    *scan_plan;
 	Index			scan_relid = best_path->parent->relid;
 	RelOptInfo		*rel = best_path->parent;
+	CdbComponentDatabases *db_info;
 	List			*filenames = NIL;
 	List			*fmtopts = NIL;
-	ListCell		*cell;
+	ListCell		*c;
+	char			**segdb_file_map;
 	bool			istext;
+	int				total_primaries = 0;
+	int				i;
 	
 	/* it should be an external rel... */
 	Assert(scan_relid > 0);
@@ -943,22 +953,112 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	/* Sort clauses into best execution order */
 	scan_clauses = order_qual_clauses(ctx->root, scan_clauses);
 	
-	/*
-	 * Executor needs external locations and format information.
-	 */
+	/* get the total valid primary segdb count */
+	db_info = getCdbComponentDatabases();
+	for (i = 0; i < db_info->total_segment_dbs; i++)
+	{
+		CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
+		
+		if(p->isprimary && p->valid)
+			total_primaries++;
+	}
 	
-	/* extract file path and name from URI strings */
+	/*
+	 * initialize a file-to-segdb mapping. segdb_file_map string array indexes
+ 	 * segindex and the entries are the external file path is assigned to this
+ 	 * segment datbase. For example if segdb_file_map[2] has "/tmp/emp.1" then
+ 	 * this file is assigned to primary segdb 2. if an entry has NULL then that
+ 	 * segdb isn't assigned any file.
+ 	 */
+    segdb_file_map = (char **) palloc(total_primaries * sizeof(char *));
+	MemSet(segdb_file_map, 0, total_primaries * sizeof(char *));
+	
 	Assert(rel->locationlist != NIL);
 	
-	foreach(cell, rel->locationlist)
+	/* 
+	 * extract file path and name from URI strings and assign them a primary segdb 
+	 */
+	foreach(c, rel->locationlist)
 	{
 		Uri			*uri;
-		const char	*uri_str = (char *) strVal(lfirst(cell));
+		const char	*uri_str = (char *) strVal(lfirst(c));
+		bool		found_candidate = false;
+		bool		found_match = false;
 		
 		uri = ParseUriString(uri_str);
 		
-		/* append the filename and path to the list */
-		filenames = lappend(filenames, makeString(pstrdup(uri->path)));
+		/*
+		 * look through our segment database list and try to find
+		 * a database that is on the host specified by the uri.
+		 */
+		for (i = 0; i < db_info->total_segment_dbs; i++)
+		{
+			CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
+			int segind = p->segindex;
+			
+			/* 
+			 * Assign mapping of external file to this segdb only if:
+			 * 1) The host of the external file is the host of this segdb.
+			 * 2) This segdb is a valid primary.
+			 * 3) An external file wasn't already assigned to it. 
+			 *
+			 * This logic also guarantees that file that appears first in 
+			 * the external location list for the same host gets assigned
+			 * the segdb with the lowest index for this host.
+			 */			
+			if(pg_strcasecmp(uri->hostname, p->hostname) == 0 && 
+			   p->isprimary && p->valid)	
+			{
+				/* a valid primary segdb exist on this host */
+				found_candidate = true;
+				if(segdb_file_map[segind] == NULL)
+				{
+					/* segdb not taken yet. assign this file to this segdb */
+					segdb_file_map[segind] = pstrdup(uri->path);
+					found_match = true;
+					
+					/* found a home for this file. move on to the next uri */
+					break;					
+				}
+
+				/* too bad. this segdb already has an external file assigned */
+			}
+		}
+		
+		/*
+		 * We failed to find a segdb for this external file.
+		 */
+		if(!found_match)
+		{
+			if(found_candidate)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("Could not assign a segment database for \"%s\". "
+								"There are more external files than primary segment "
+								"databases on host \"%s\"", uri_str, uri->hostname)));				
+			}
+			else
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("Could not assign a segment database for \"%s\". "
+								"There isn't a valid primary segment database "
+								"on host \"%s\"", uri_str, uri->hostname)));
+			}				
+		}		
+	}
+
+   /* 
+    * convert array map to a list so it can be serialized as part of the plan
+    */
+	for (i = 0; i < total_primaries; i++)
+	{
+	    if(segdb_file_map[i] != NULL)
+	    	filenames = lappend(filenames, makeString(segdb_file_map[i]));
+	    else
+			/* no file for this segdb. add a null entry */
+	    	filenames = lappend(filenames, makeNullString()); 
 	}
 	
 	/* data format description */
@@ -974,7 +1074,10 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 								  istext);
 	
 	copy_path_costsize(&scan_plan->scan.plan, best_path);
-	
+
+	pfree(segdb_file_map);
+	freeCdbComponentDatabases(db_info);
+
 	return scan_plan;
 }
 

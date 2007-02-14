@@ -71,7 +71,7 @@ file_beginscan(Relation relation, List *fileNames, List *fmtOpts,
 	FileScanDesc scan;
 	TupleDesc	tupDesc = NULL;
 	int			attnum;
-	ListCell   *cell;
+	char		*filename = NULL;
 
 	/*
 	 * increment relation ref count while scanning relation
@@ -93,23 +93,36 @@ file_beginscan(Relation relation, List *fileNames, List *fmtOpts,
 	scan->fs_cbuf = InvalidBuffer;
 	scan->fs_rd = relation;
 	scan->fs_nkeys = nkeys;
+	scan->fs_noop = false;
 
 	/*
-	 * set our external file name.
-	 * TODO: in the parallel version only get the one for this segdb.
+	 * get the external file name assigned to us. 
 	 */
-	foreach(cell, fileNames)
+	if(Mpp_role == MPP_ROLE_EXECUTE)
+		filename = (char *) strVal(list_nth(fileNames, MppIdentity.segindex));
+	
+	/*
+	 * if an external file is assigned to us - open it. Some executors
+	 * don't have a file to scan (if # of extfiles < # of primary segdbs). 
+	 * in which case filename will be NULL. If that's the case for this 
+	 * segdb set to no-op.
+	 */
+	if(filename)
 	{
-		char	   *filename = (char *) strVal(lfirst(cell));
-
+		/* set external file name */
 		scan->fs_filename = (char *) palloc(strlen(filename) + 1);
 		scan->fs_filename = filename;
-
-		/* for now just get the first file name.... */
-		break;
+		
+		/* open the external file for read */
+		open_external_file(scan);
 	}
-
-
+	else
+	{
+		/* set segdb has no work to do. set to no-op */
+		scan->fs_noop = true;
+		scan->fs_filename = NULL;
+	}
+			
 	/* we only need to set this up once */
 	scan->fs_ctup.t_tableOid = RelationGetRelid(relation);
 
@@ -117,13 +130,7 @@ file_beginscan(Relation relation, List *fileNames, List *fmtOpts,
 		scan->fs_key = (ScanKey) palloc(sizeof(ScanKeyData) * nkeys);
 	else
 		scan->fs_key = NULL;
-
-	/*
-	 * open the external file
-	 */
-	open_external_file(scan);
-
-
+	
 	tupDesc = RelationGetDescr(relation);
 	scan->fs_tupDesc = tupDesc;
 	scan->attr = tupDesc->attrs;
@@ -175,6 +182,7 @@ file_beginscan(Relation relation, List *fileNames, List *fmtOpts,
 void
 file_rescan(FileScanDesc scan, ScanKey key)
 {
+	
 	/* seek to beginning of file so we can start over */
 	fseek(scan->fs_file, 0L, SEEK_SET);
 
@@ -196,6 +204,7 @@ file_rescan(FileScanDesc scan, ScanKey key)
 void
 file_endscan(FileScanDesc scan)
 {
+	
 	/*
 	 * decrement relation reference count and free scan descriptor storage
 	 */
@@ -225,11 +234,11 @@ file_endscan(FileScanDesc scan)
 	 */
 	error_context_stack = scan->errcontext.previous;
 
-
 	/*
 	 * Close the external file
 	 */
-	close_external_file(scan);
+	if(!scan->fs_noop)
+		close_external_file(scan);
 
 	pfree(scan);
 }
@@ -245,7 +254,10 @@ HeapTuple
 file_getnext(FileScanDesc scan, ScanDirection direction)
 {
 	HeapTuple	tuple;
-
+	
+	if(scan->fs_noop)
+		return NULL;
+	
 	/* Note: no locking manipulations needed */
 	FILEDEBUG_1;
 
