@@ -159,13 +159,17 @@ def waitOneTimeSession(session):
     if errmsg: sys.exit(1)
 
 
-def closePxsshPid(pxssh, pid):
-    pxssh.close(force = True)
-    try:
-	os.kill(pid, 9)
-	(pid, status) = os.waitpid(pid, 0)
-    except OSError: 
-	pass
+def closePxsshOne(p):
+    p.close(force = True)
+
+def closePxsshList(list):
+    th = []
+    for p in list:
+	t = threading.Thread(target=closePxsshOne, args=(p,))
+	t.start()
+	th.append(t)
+    for t in th:
+	t.join()
 
 
 #############
@@ -173,8 +177,17 @@ class Session(cmd.Cmd):
     def __init__(self):
 	cmd.Cmd.__init__(self)
 	self.pxssh = []
-	self.pid = []
 	self.prompt = '=> '
+	self.peerStringFormatRaw = None
+
+    def peerStringFormat(self):
+	if self.peerStringFormatRaw: return self.peerStringFormatRaw
+	cnt = 0
+	for p in self.pxssh:
+	    if cnt < len(p.x_peer): cnt = len(p.x_peer)
+	self.peerStringFormatRaw = "[%%%ds]" % cnt
+	return self.peerStringFormatRaw
+	
 
     def login(self, hostList):
 	print '\n[Reset ...]'
@@ -187,8 +200,8 @@ class Session(cmd.Cmd):
 	    p.loginAsync(h[1], h[0], port=h[2])
 	    p.x_user = h[0]; p.x_host = h[1]
 	    p.x_peer = sameUser and h[1] or ('%s@%s' % (h[0], h[1]))
+	    p.x_pid = p.pid
 	    self.pxssh.append(p)
-	    self.pid.append(p.pid)
 	for p in self.pxssh:
 	    print '[INFO] login %s' % p.x_peer
 	    if not p.loginWait():
@@ -200,19 +213,15 @@ class Session(cmd.Cmd):
 
 
     def clean(self):
-	while True:
+	t = None
+	try:
 	    try:
-		for i in xrange(len(self.pxssh)):
-		    t = threading.Thread(target=closePxsshPid, args=(self.pxssh[i], self.pid[i]))
-		    t.start()
-		    self.pxssh[i].x_thread = t
-		for i in xrange(len(self.pxssh)):
-		    self.pxssh[i].x_thread.join()
-		break
-	    except KeyboardInterrupt:
-		pass
+		t = threading.Thread(target=closePxsshList, args=(self.pxssh,))
+	    finally:
+		if t: t.start()
+	finally:
+	    if t: t.join()
 	self.pxssh = []
-	self.pid = []
 
     def emptyline(self):
 	pass
@@ -234,11 +243,12 @@ class Session(cmd.Cmd):
 	    s.prompt()
 	    out = s.before.split('\n')
 	    out = out[1:-1]
+	    print self.peerStringFormat()
 	    if len(out) == 0:
-		print '[%s]' % s.x_peer
+		print (self.peerStringFormat() % s.x_peer)
 	    else:
 		for line in out:
-		    print '[%s] %s' % (s.x_peer, line)
+		    print (self.peerStringFormat() % s.x_peer), line
     
 
 session = None
