@@ -1033,7 +1033,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 			if(found_candidate)
 			{
 				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 						 errmsg("Could not assign a segment database for \"%s\". "
 								"There are more external files than primary segment "
 								"databases on host \"%s\"", uri_str, uri->hostname)));				
@@ -1041,7 +1041,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 			else
 			{
 				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 						 errmsg("Could not assign a segment database for \"%s\". "
 								"There isn't a valid primary segment database "
 								"on host \"%s\"", uri_str, uri->hostname)));
