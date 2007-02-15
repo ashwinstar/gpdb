@@ -7726,6 +7726,26 @@ static Datum transformLocationUris(List *locs)
 	astate = NULL;
 	
 	/*
+	 * first, check for duplicate URI entries
+	 */
+	foreach(cell, locs)
+	{
+		const char	*uri1 = (char *) lfirst(cell);
+		ListCell   *rest;
+		
+		for_each_cell(rest, lnext(cell))
+		{
+			const char	*uri2 = (char *) lfirst(rest);
+			
+			if (strcmp(uri1, uri2) == 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("location uri \"%s\" appears more than once",
+								uri1)));
+		}
+	}
+	
+	/*
 	 * iterate through the user supplied URI list from LOCATION clause.
 	 */
 	foreach(cell, locs)
@@ -7764,7 +7784,7 @@ static Datum transformLocationUris(List *locs)
 		result = makeArrayResult(astate, CurrentMemoryContext);
 	else
 		result = (Datum) 0;
-	
+		
 	return result;	
 	
 }
