@@ -96,8 +96,9 @@ def parseHostLine(line):
     return None
 
 #############
-def readHostFile(fname, retList):
-    if not fname: return
+def readHostFile(fname):
+    retList = []
+    if not fname: return retList
     f = None; lno = 0; host = {}
     try:
 	try:
@@ -114,6 +115,8 @@ def readHostFile(fname, retList):
 		     + (lno > 0 and (' (line %d)' % lno) or ''))
     finally:
 	if f: f.close()
+
+    return retList
 
 
 #############
@@ -318,7 +321,7 @@ try:
 	if h: tab.append(h)
         else: usage('Error: invalid -h argument')
 
-    readHostFile(opt['-f'], tab)
+    tab.extend(readHostFile(opt['-f']))
     tab.sort(lambda x, y: cmp(x[0], y[0]) or cmp(x[1], y[1]))
     opt['-h'] = tab
 

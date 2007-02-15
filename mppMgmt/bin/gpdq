@@ -1,0 +1,336 @@
+#!/usr/bin/env python
+'''
+gpdq -- qualify disk performance
+
+Usage: gpdq <option> descfile
+
+             -?           : print this help screen
+	     -v	          : verbose mode
+	     -p port      : ssh port to use 
+	     -u user      : the user to run command
+	     -n runs      : number of runs per disk
+	     -t threshold : MB/sec 
+	     -h host      : the host to connect to (multiple -h is okay)
+	     -f file      : a file listing all hosts to connect to
+	     descfile     : file describing which disks to work on 
+
+Format of descfile: 
+1. each line is of format "host disk disk disk", where host 
+   and disk are regular expressions that specify the host and 
+   the disks in host to test in parallel
+2. a set of lines specify a group of hosts to test in parallel 
+3. empty line marks end of a group, e.g.:
+
+#first group
+host[0-4][0-9] c0t[0-2]d?  c3t[0-2]d?
+
+#empty line closes a group
+
+#second group
+host[0-4][0-9] c0t[5-8]d?  c3t[5-8]d?
+'''
+
+
+import os, sys, getopt, popen2, re
+
+if sys.version_info < (2, 3):
+    sys.exit("Error: gpssh is supported on Python versions 2.3 or greater\n"
+	     + "Please upgrade python installed on this machine.")
+
+sys.path.append(sys.path[0] + '/lib')
+try:
+    pass
+except ImportError, e:
+    sys.exit('Error: unable to import module: ' + str(e))
+
+opt = {}
+opt['-v'] = False
+opt['-p'] = 22
+opt['-u'] = os.environ.get('LOGNAME') or os.environ.get('USER')
+opt['-h'] = []
+opt['-f'] = False
+opt['-n'] = 1
+opt['-t'] = 0
+descFile = None
+SSH = 'ssh -p %d -o "BatchMode yes" -o "StrictHostKeyChecking no" %s@%s'
+
+
+def usage(exitarg):
+    print __doc__
+    sys.exit(exitarg)
+
+def parseInt(val):
+    try: return int(val)
+    except ValueError: return 0
+
+def parseCommandLine():
+    global opt, descFile
+    try:
+	(options, args) = getopt.getopt(sys.argv[1:], '?vp:u:n:t:h:f:')
+    except Exception, e:
+	usage('Error: ' + str(e))
+
+    for (switch, val) in options:
+	if (switch == '-?'):		usage(0)
+        elif (switch == '-v'):		opt[switch] = True
+        elif (switch[1] in 'pnt'):	opt[switch] = parseInt(val)
+        elif (switch[1] in 'uf'):       opt[switch] = val
+        elif (switch[1] in 'h'):        opt[switch].append(val)
+
+    if not opt['-p'] > 0: usage('Error: please specify port number for -p switch')
+
+    hf = (len(opt['-h']) and 1) + (opt['-f'] and 1)
+    if hf != 1:
+	usage('Error: please specify at least one of -h or -f args, but not both')
+
+    if (len(args) != 1): usage('Please specify a desc file')
+    descFile = args[0]
+
+
+################
+def parseHostLine(line):
+    '''Parse line into (user, host, port) tuple'''
+    try:
+	t = line.strip().split('@')
+	cnt = len(t)
+	if t[0][0] == '#': return None
+        if cnt == 1: return [opt['-u'], t[0], opt['-p']]
+	if cnt == 2: 
+	    tt = t[1].split(':')
+	    cnt = len(tt)
+	    if cnt == 1: return [t[0], tt[0], opt['-p']]
+	    elif cnt == 2: return [t[0], tt[0], int(tt[1])]
+    except ValueError: pass
+    except IndexError: pass
+    return None
+
+#############
+def readHostFile(fname):
+    retList = []
+    if not fname: return retList
+    f = None; lno = 0; host = {}
+    try:
+	try:
+	    f = open(fname, 'r')
+	    for line in f:
+		lno = lno + 1
+		h = parseHostLine(line)
+		if not h: continue
+		key = '%s@%s' % (h[0], h[1])
+		host[key] = h
+	    for n in host: retList.append(host[n])
+	except IOError:
+	    sys.exit('[ERROR] cannot read host file ' + fname 
+		     + (lno > 0 and (' (line %d)' % lno) or ''))
+    finally:
+	if f: f.close()
+
+    return retList
+
+
+
+def getRemoteDisks(hosts):
+    proc = []
+
+    disk = []
+    for c in xrange(9):
+	for t in xrange(8):
+	    disk.append('c%dt%dd0' % (c, t))
+
+    for h in hosts:
+	h.append(disk)
+    return
+
+    try:
+	for i in xrange(len(hosts)):
+	    h = hosts[i]
+	    ssh = SSH % (h[2], h[0], h[1])
+	    ssh = ssh + ' "/usr/sbin/format < /dev/null | grep c.t.d | nawk \'{print $2}\'" '
+	    proc.append((i, os.popen(ssh)))
+	for (i, p) in proc:
+	    h = hosts[i]
+	    d = []
+	    for disk in p:
+		disk = disk.strip()
+		if disk: d.append(disk)
+	    h.append(d)
+    finally:
+	for (i, p) in proc:
+	    p.close()
+
+
+def readDescFile(fname):
+    if not fname: return []
+    f = None; lno = 0; group = []
+    try:
+	try:
+	    f = open(fname, 'r')
+	    g = []
+	    for line in f:
+		lno = lno + 1
+		line = line.split()
+		if len(line) == 0: 
+		    if g: group.append(g)
+		    g = []
+		    continue
+		if line[0][0] == '#': continue
+		if len(line) == 1:
+		    sys.exit('Error: format error (%s:%d)' % (fname, lno))
+
+		lineHost = parseHostLine(line[0])
+		if not lineHost:
+		    sys.exit('Error: bad host name (%s:%d)' % (fname, lno))
+		lineHost = '%s@%s' % (lineHost[0], lineHost[1])
+
+		match = False
+		hlist = []
+		for h in opt['-h']:
+		    if re.match(lineHost, '%s@%s' % (h[0], h[1])):
+			match = True
+			hlist.append([h[0], h[1], h[2], h[3], line[1:]])
+		if not match:
+		    sys.exit('Error: bad host name (%s:%d) - no matching host found' % (fname, lno))
+
+		for h in hlist:
+		    disk = h[3]
+		    reDisk = h[4]
+		    dlist = []
+		    for d1 in reDisk:
+			match = False
+			for d2 in disk:
+			    if re.match(d1, d2):
+				dlist.append(d2)
+				match = True
+			if not match:
+			    sys.exit('Error: bad disk name %s (%s:%d)' % (d1, fname, lno))
+		    h.append(dlist)
+
+		g.extend(hlist)
+
+	    if g: group.append(g)
+	except IOError:
+	    sys.exit('Error: cannot read desc file ' + fname
+		     + (lno > 0 and (' (line %d)' % lno) or ''))
+    finally:
+	if f: f.close()
+    return group
+
+
+script = """#!/usr/sfw/bin/python
+'''
+dq -n runs disk1 disk2 disk3 ...
+'''
+import os, sys, getopt
+
+opt = {}
+opt['-n'] = 1
+disk = []
+
+def usage(exitarg):
+    print __doc__
+    sys.exit(exitarg)
+
+def parseInt(val):
+    try: return int(val)
+    except ValueError: return 0
+
+def parseCommandLine():
+    global opt
+    try:
+	(options, args) = getopt.getopt(sys.argv[1:], 'n:')
+    except Exception, e:
+	usage('Error: ' + str(e))
+
+    for (switch, val) in options:
+	if (switch == '-n'): opt[switch] = parseInt(val)
+    
+    if not opt['-n'] > 0: usage('Error: specify number of runs for -n switch')
+    for d in args:
+	disk.append(d)
+    if len(disk) == 0: usage('Error: specify at least 1 disk')
+
+
+getspeed_long = '''ptime dd if=/dev/rdsk/%ss0 of=/dev/null bs=8k count=12800 seek=26214400 2>&1 | nawk '$1 == "real" { printf("%%.0f\\n", 100 / $2) }' '''
+
+getspeed_short = '''ptime dd if=/dev/rdsk/%ss0 of=/dev/null bs=8k count=1024 seek=13107070 2>&1 | nawk '$1 == "real" { printf("%%.0f\\n", 8 / $2) }' '''
+
+
+def getspeed(cmd):
+    p = None
+    try:
+	#print cmd
+	p = os.popen(cmd)
+	return int(p.readline())
+    finally:
+	if p: p.close()
+
+parseCommandLine()
+for d in disk:
+    cmd = getspeed_short % d
+    x = 0
+    for i in xrange(3): x = x + getspeed(cmd)
+    x = x / 3
+    if x < 49:
+	min = max = avg = x
+    else:
+	cmd = getspeed_long % d
+	min = 100; max = 0; tot = 0
+	runs = opt['-n']
+	for r in xrange(runs):
+	    x = getspeed(cmd)
+	    tot = tot + x
+	    if min > x: min = x
+	    if max < x: max = x
+	avg = tot / runs
+    print d, min, max, avg
+"""
+
+
+def installScript():
+    proc = []
+    try:
+	for h in opt['-h']:
+	    ssh = SSH % (h[2], h[0], h[1])
+	    ssh = ssh + ' "cat > /tmp/dq" '
+	    p = os.popen(ssh, 'w')
+	    proc.append(p)
+	for p in proc:
+	    p.write(script)
+    finally:
+	for p in proc: p.close()
+
+def runScript(g):
+    proc = []
+    try:
+	for h in g:
+	    disk = h[5]
+	    ssh = SSH % (h[2], h[0], h[1])
+	    ssh = ssh + ' /usr/sfw/bin/python /tmp/dq ' + reduce(lambda a, b: a + ' ' + b, disk)
+	    print ssh
+    finally:
+	for p in proc: p.close()
+	    
+try:
+    parseCommandLine()
+    tab = []
+    for h in opt['-h']: 
+	h = parseHostLine(h)
+	if h: tab.append(h)
+        else: usage('Error: invalid -h argument')
+
+    if opt['-f']: tab = readHostFile(opt['-f'])
+
+    tab.sort(lambda x, y: cmp(x[0], y[0]) or cmp(x[1], y[1]))
+    opt['-h'] = tab
+
+    getRemoteDisks(opt['-h'])   # h = [user, host, port, [disk0, disk1, disk2, ...]]
+    group = readDescFile(descFile)
+
+    installScript()
+    for g in group:
+	g.append(runScript(g))
+
+
+except KeyboardInterrupt:
+    sys.exit('\nInterrupted...')
+    
