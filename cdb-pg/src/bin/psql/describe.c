@@ -560,19 +560,19 @@ objectDescription(const char *pattern)
 						  NULL,
 						  "pg_catalog.pg_type_is_visible(t.oid)");
 
-	/* Relation (tables, views, indexes, sequences) descriptions */
+	/* Relation (tables, views, indexes, sequences, external) descriptions */
 	appendPQExpBuffer(&buf,
 					  "UNION ALL\n"
 					  "  SELECT c.oid as oid, c.tableoid as tableoid,\n"
 					  "  n.nspname as nspname,\n"
 					  "  CAST(c.relname AS pg_catalog.text) as name,\n"
 					  "  CAST(\n"
-					  "    CASE c.relkind WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'i' THEN '%s' WHEN 'S' THEN '%s' END"
+					  "    CASE c.relkind WHEN 'x' THEN '%s' WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'i' THEN '%s' WHEN 'S' THEN '%s' END"
 					  "  AS pg_catalog.text) as object\n"
 					  "  FROM pg_catalog.pg_class c\n"
 	 "       LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n"
 					  "  WHERE c.relkind IN ('r', 'x', 'v', 'i', 'S')\n",
-					  _("table"), _("view"), _("index"), _("sequence"));
+					  _("external"), _("table"), _("view"), _("index"), _("sequence"));
 	processSQLNamePattern(pset.db, &buf, pattern, true, false,
 						  "n.nspname", "c.relname", NULL,
 						  "pg_catalog.pg_table_is_visible(c.oid)");
@@ -900,6 +900,10 @@ describeOneTableDetails(const char *schemaname,
 			printfPQExpBuffer(&title, _("Table \"%s.%s\""),
 							  schemaname, relationname);
 			break;
+		case 'x':
+			printfPQExpBuffer(&title,_("External table \"%s.%s\""),
+							  schemaname, relationname);
+			break;
 		case 'v':
 			printfPQExpBuffer(&title, _("View \"%s.%s\""),
 							  schemaname, relationname);
@@ -994,6 +998,56 @@ describeOneTableDetails(const char *schemaname,
 		}
 
 		PQclear(result);
+	}
+	else if (tableinfo.relkind == 'x')
+	{
+		/* Footer information about an external table */
+		PGresult   *result;
+
+		printfPQExpBuffer(&buf,
+						  "SELECT x.location, x.fmttype, x.fmtopts\n"
+						  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c\n"
+		  "WHERE x.reloid = c.oid AND c.oid = '%s'\n",
+						  oid);
+						  
+		result = PSQLexec(buf.data, false);
+		if (!result)
+			goto error_return;
+		else if (PQntuples(result) != 1)
+		{
+			PQclear(result);
+			goto error_return;
+		}
+		else
+		{
+			char	   *location = PQgetvalue(result, 0, 0);
+			char	   *fmttype = PQgetvalue(result, 0, 1);
+			char	   *fmtopts = PQgetvalue(result, 0, 2);
+			int			count_footers = 0;
+
+			footers = pg_malloc_zero(4 * sizeof(*footers));
+			
+			/* format type */
+			printfPQExpBuffer(&tmpbuf, _("Format type: %s"), fmttype[0] == 't' ? "text" : "csv");
+			footers[count_footers++] = pg_strdup(tmpbuf.data);
+			
+			/* format options */
+			printfPQExpBuffer(&tmpbuf, _("Format options: %s"), fmtopts);
+			footers[count_footers++] = pg_strdup(tmpbuf.data);
+			
+			/* location */
+			location[strlen(location) - 1] = '\0'; /* don't print the '}' character */
+			location++; /* don't print the '{' character */
+			printfPQExpBuffer(&tmpbuf, _("External location: %s"), location);
+			footers[count_footers++] = pg_strdup(tmpbuf.data);
+			
+			add_tablespace_footer(tableinfo.relkind, tableinfo.tablespace,
+								  footers, &count_footers, tmpbuf, true);
+			footers[count_footers] = NULL;
+		}
+
+		PQclear(result);
+	
 	}
 	else if (view_def)
 	{
@@ -1561,13 +1615,14 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 	bool		showViews = strchr(tabtypes, 'v') != NULL;
 	bool		showSeq = strchr(tabtypes, 's') != NULL;
 	bool		showSystem = strchr(tabtypes, 'S') != NULL;
+	bool		showExternal = strchr(tabtypes, 'x') != NULL;
 
 	PQExpBufferData buf;
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
 
-	if (!(showTables || showIndexes || showViews || showSeq))
-		showTables = showViews = showSeq = true;
+	if (!(showTables || showIndexes || showViews || showSeq || showExternal))
+		showTables = showViews = showSeq = showExternal = true;
 		
 	if (strchr(tabtypes, 'P') != NULL)
 	{
@@ -1584,10 +1639,10 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 	printfPQExpBuffer(&buf,
 					  "SELECT n.nspname as \"%s\",\n"
 					  "  c.relname as \"%s\",\n"
-					  "  CASE c.relkind WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'i' THEN '%s' WHEN 'S' THEN '%s' WHEN 's' THEN '%s' END as \"%s\",\n"
+					  "  CASE c.relkind WHEN 'x' THEN '%s' WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'i' THEN '%s' WHEN 'S' THEN '%s' WHEN 's' THEN '%s' END as \"%s\",\n"
 					  "  r.rolname as \"%s\"",
 					  _("Schema"), _("Name"),
-					  _("table"), _("view"), _("index"), _("sequence"),
+					  _("external"), _("table"), _("view"), _("index"), _("sequence"),
 					  _("special"), _("Type"), _("Owner"));
 
 	if (showIndexes)
@@ -1618,6 +1673,8 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 		appendPQExpBuffer(&buf, "'i',");
 	if (showSeq)
 		appendPQExpBuffer(&buf, "'S',");
+	if (showExternal)
+		appendPQExpBuffer(&buf, "'x',");
 	if (showSystem && showTables)
 		appendPQExpBuffer(&buf, "'s',");
 	appendPQExpBuffer(&buf, "''");		/* dummy */

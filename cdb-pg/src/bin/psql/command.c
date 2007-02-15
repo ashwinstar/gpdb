@@ -334,7 +334,7 @@ exec_command(const char *cmd,
 					success = describeTableDetails(pattern, show_verbose);
 				else
 					/* standard listing of interesting things */
-					success = listTables("tvs", NULL, show_verbose);
+					success = listTables("tvsx", NULL, show_verbose);
 				break;
 			case 'a':
 				success = describeAggregates(pattern, show_verbose);
@@ -380,6 +380,7 @@ exec_command(const char *cmd,
 			case 'v':
 			case 'i':
 			case 's':
+			case 'x':
 			case 'S':
 			case 'P':
 				success = listTables(&cmd[1], pattern, show_verbose);

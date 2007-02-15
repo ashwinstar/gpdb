@@ -207,9 +207,9 @@ slashUsage(unsigned short int pager)
 	fprintf(output, "\n");
 
 	fprintf(output, _("Informational\n"));
-	fprintf(output, _("  \\d [NAME]      describe table, index, sequence, or view\n"));
-	fprintf(output, _("  \\d{t|i|s|v|S} [PATTERN] (add \"+\" for more detail)\n"
-	"                 list tables/indexes/sequences/views/system tables\n"));
+	fprintf(output, _("  \\d [NAME]      describe table, index, sequence, view or external table\n"));
+	fprintf(output, _("  \\d{t|i|s|v|x|S} [PATTERN] (add \"+\" for more detail)\n"
+	"                 list tables/indexes/sequences/views/external tables/system tables\n"));
 	fprintf(output, _("  \\da [PATTERN]  list aggregate functions\n"));
 	fprintf(output, _("  \\db [PATTERN]  list tablespaces (add \"+\" for more detail)\n"));
 	fprintf(output, _("  \\dc [PATTERN]  list conversions\n"));
@@ -224,6 +224,7 @@ slashUsage(unsigned short int pager)
 	fprintf(output, _("  \\dp [PATTERN]  list table, view, and sequence access privileges\n"));
 	fprintf(output, _("  \\dT [PATTERN]  list data types (add \"+\" for more detail)\n"));
 	fprintf(output, _("  \\du [PATTERN]  list users\n"));
+	fprintf(output, _("  \\dx [PATTERN]  list external tables\n"));
 	fprintf(output, _("  \\l             list all databases (add \"+\" for more detail)\n"));
 	fprintf(output, _("  \\z [PATTERN]   list table, view, and sequence access privileges (same as \\dp)\n"));
 	fprintf(output, "\n");
