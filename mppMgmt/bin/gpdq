@@ -133,26 +133,27 @@ def getRemoteDisks(hosts):
     proc = []
 
     disk = []
-    for c in xrange(9):
-	for t in xrange(8):
-	    disk.append('c%dt%dd0' % (c, t))
+#     for c in xrange(9):
+# 	for t in xrange(8):
+# 	    disk.append('c%dt%dd0' % (c, t))
 
-    for h in hosts:
-	h.append(disk)
-    return
+#     for h in hosts:
+# 	h.append(disk)
+#     return
 
     try:
 	for i in xrange(len(hosts)):
 	    h = hosts[i]
 	    ssh = SSH % (h[2], h[0], h[1])
-	    ssh = ssh + ' "/usr/sbin/format < /dev/null | grep c.t.d | nawk \'{print $2}\'" '
+	    ssh = ssh + ''' "/usr/sbin/format < /dev/null | grep c.t.d " '''
 	    proc.append((i, os.popen(ssh)))
 	for (i, p) in proc:
 	    h = hosts[i]
 	    d = []
-	    for disk in p:
-		disk = disk.strip()
-		if disk: d.append(disk)
+	    for line in p:
+		disk = line.split()
+		if len(disk) > 2 and re.match('c?t?d?', disk[1]): d.append(disk[1])
+	        else: print '[ERROR %s@%s]: getRemoteDisks - %s' % (h[0], h[1], line)
 	    h.append(d)
     finally:
 	for (i, p) in proc:
@@ -198,6 +199,7 @@ def readDescFile(fname):
 		    for d1 in reDisk:
 			match = False
 			for d2 in disk:
+			    #print 'match', d1, d2, re.match(d1, d2)
 			    if re.match(d1, d2):
 				dlist.append(d2)
 				match = True
@@ -250,9 +252,9 @@ def parseCommandLine():
     if len(disk) == 0: usage('Error: specify at least 1 disk')
 
 
-getspeed_long = '''ptime dd if=/dev/rdsk/%ss0 of=/dev/null bs=8k count=12800 seek=26214400 2>&1 | nawk '$1 == "real" { printf("%%.0f\\n", 100 / $2) }' '''
+getspeed_long = '''ptime dd if=/dev/rdsk/%ss0 of=/dev/null bs=8k count=12800 seek=26214400 2>&1 | nawk '$1 == "real" { printf("%%.0f\\\\n", 100 / $2) }' '''
 
-getspeed_short = '''ptime dd if=/dev/rdsk/%ss0 of=/dev/null bs=8k count=1024 seek=13107070 2>&1 | nawk '$1 == "real" { printf("%%.0f\\n", 8 / $2) }' '''
+getspeed_short = '''ptime dd if=/dev/rdsk/%ss0 of=/dev/null bs=8k count=1024 seek=13107070 2>&1 | nawk '$1 == "real" { printf("%%.0f\\\\n", 8 / $2) }' '''
 
 
 def getspeed(cmd):
@@ -299,16 +301,34 @@ def installScript():
     finally:
 	for p in proc: p.close()
 
-def runScript(g):
+def runScript(g, threshold):
     proc = []
+    res = []
     try:
 	for h in g:
 	    disk = h[5]
 	    ssh = SSH % (h[2], h[0], h[1])
-	    ssh = ssh + ' /usr/sfw/bin/python /tmp/dq ' + reduce(lambda a, b: a + ' ' + b, disk)
-	    print ssh
+	    diskText = reduce(lambda a, b: a + ' ' + b, disk)
+	    ssh = ssh + ' /usr/sfw/bin/python /tmp/dq ' + diskText
+	    #print 'running dq on %s@%s %s' % (h[0], h[1], diskText)
+	    proc.append( (h, os.popen(ssh)) )
+
+	for (h, p) in proc:
+	    for line in p:
+		try:
+		    (d, min, max, avg) = line.split()
+		    if (threshold): 
+			t = avg < threshold and "-" or (avg > threshold and '+' or '=')
+		    else:
+			t = ' '
+		    res.append((h[0], h[1], d, min, max, avg, t))
+		except ValueError: 
+		    print 'Error: unexpected output of dq -', line
+		
     finally:
-	for p in proc: p.close()
+	for (h, p) in proc: p.close()
+
+    return res
 	    
 try:
     parseCommandLine()
@@ -324,12 +344,29 @@ try:
     opt['-h'] = tab
 
     getRemoteDisks(opt['-h'])   # h = [user, host, port, [disk0, disk1, disk2, ...]]
+    #print opt['-h']
+
     group = readDescFile(descFile)
 
     installScript()
-    for g in group:
-	g.append(runScript(g))
 
+    res = []
+    for g in group:
+	res.append(runScript(g, opt['-t']))
+
+    user = {}
+    for r in res: user[r[0]] = r
+    sameUser = len(user) == 1
+
+    for g in res:
+	for r in g:
+	    # r = [user, host, disk, min, max, avg, +/-/=]
+	    if sameUser: 
+		print r[1],
+	    else:
+		print ('%s@%s' % r[:2]),
+	
+	    print '%s %s %s %s %s' % r[2:]
 
 except KeyboardInterrupt:
     sys.exit('\nInterrupted...')
