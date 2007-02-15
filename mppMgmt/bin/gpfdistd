@@ -1,0 +1,96 @@
+#!/usr/bin/env python
+'''
+gpfdistd -- file distribution daemon in http protocol
+
+Usage: gpfdistd -p port file
+
+'''
+
+import SocketServer, BaseHTTPServer, os, sys, getopt, threading, time, socket
+
+opt = {}
+opt['-p'] = 8080
+opt['-v'] = False
+distFname = None
+
+def usage(exitarg):
+    print __doc__
+    sys.exit(exitarg)
+
+def parseInt(val):
+    try: return int(val)
+    except ValueError: return 0
+
+def parseCommandLine():
+    global opt, distFname
+    try:
+	(options, args) = getopt.getopt(sys.argv[1:], '?vp:')
+    except Exception, e:
+	usage('Error: ' + str(e))
+
+    for (switch, val) in options:
+	if (switch == '-?'):		usage(0)
+        elif (switch == '-v'):		opt[switch] = True
+        elif (switch[1] in 'p'):	opt[switch] = parseInt(val)
+
+    if not opt['-p'] > 0: usage('Error: please specify port number for -p switch')
+
+    if (len(args) != 1): usage('Please specify a file to distribute')
+    distFname = args[0]
+
+
+parseCommandLine()
+distFile = open(distFname, "r")
+distFileSem = threading.Semaphore(1)
+def readFile():
+    global distFile, distFileSem
+    distFileSem.acquire()
+    if not distFile:
+	lines = []
+    else:
+	lines = distFile.readlines(1024*16)
+	if not lines:
+	    print 'completed'
+	    distFile.close()
+	    distFile = None
+    distFileSem.release()
+    #time.sleep(1)
+    return lines
+
+
+class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+
+    def do_GET(self):
+	self.send_head()
+	while 1:
+	    lines = readFile()
+	    if not lines: break
+	    for line in lines:
+		self.wfile.write(line)
+
+    def send_head(self):
+	self.send_response(200)
+	self.send_header("Content-type", "text/plain")
+	self.end_headers()
+
+
+class GPFDistServer(SocketServer.ThreadingTCPServer):
+    
+    allow_reuse_address = 1
+
+    def server_bind(self):
+	SocketServer.ThreadingTCPServer.server_bind(self)
+	host, port = self.socket.getsockname()[:2]
+	self.server_name = socket.getfqdn(host)
+	self.server_post = port
+
+try:
+    serverAddress = ('', opt['-p'])
+    GPFDistRequestHandler.protocol_version = "HTTP/1.0"
+    httpd = GPFDistServer(serverAddress, GPFDistRequestHandler)
+    sa = httpd.socket.getsockname()
+    print "Serving HTTP on", sa[0], "port", sa[1], "..."
+    httpd.serve_forever()
+except KeyboardInterrupt:
+    print '[Interrupted ...]'
+
