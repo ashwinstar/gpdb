@@ -111,6 +111,17 @@ typedef struct ResPortalTag
 #define GET_RESOURCE_QUEUEID_FOR_LOCK(lock) \
 	((lock->tag).locktag_field1)
 
+/*
+ * Result codes for resource queue alteration.
+ */
+typedef enum
+{
+	ALTERQUEUE_OK,					/* Alteration ok. */
+	ALTERQUEUE_SMALL_THRESHOLD,		/* New thresholds are too small. */
+	ALTERQUEUE_OVERCOMMITTED,		/* Queue is overcommitted state. */
+	ALTERQUEUE_ERROR				/* Internal error. */
+} ResAlterQueueResult;
+
 
 /*
  * Functions in resqueue.c
@@ -163,7 +174,8 @@ extern void InitResPortalIncrementHash(void);
 extern void	InitResQueues(void);
 extern bool ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], 
 						   bool overcommit);
-extern bool ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], 
+extern ResAlterQueueResult ResAlterQueue(Oid queueid, 
+						   Cost limits[NUM_RES_LIMIT_TYPES], 
 						  bool overcommit);
 extern bool ResDestroyQueue(Oid queueid);
 extern bool ResLockPortal(Portal portal);

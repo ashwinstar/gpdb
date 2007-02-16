@@ -269,7 +269,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	DefElem     *dactivelimit = NULL;
 	DefElem     *dcostlimit = NULL;
 	DefElem     *dovercommit = NULL;
-	bool		queueok = false;
+	ResAlterQueueResult		queueok;
 
 
 	/* Permission check - only superuser can alter queues. */
@@ -453,10 +453,23 @@ AlterQueue(AlterQueueStmt *stmt)
 
 		LWLockRelease(ResQueueLock);
 
-		if (!queueok)
-			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_LIMIT_VALUE),
-					errmsg("resource queue thresholds cannot be less than current values")));
+		if (queueok != ALTERQUEUE_OK)
+		{
+			if (queueok == ALTERQUEUE_SMALL_THRESHOLD)
+				ereport(ERROR,
+					(errcode(ERRCODE_INVALID_LIMIT_VALUE),
+						errmsg("thresholds cannot be less than current values")));
+			else if (queueok == ALTERQUEUE_OVERCOMMITTED)
+				ereport(ERROR,
+					(errcode(ERRCODE_INVALID_LIMIT_VALUE),
+						errmsg("disabling overcommit cannot leave queue in overcommitted state")));
+			else
+				ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+						errmsg("queue hash table corrupted")));
+
+		}
+
 	}
 	else
 	{

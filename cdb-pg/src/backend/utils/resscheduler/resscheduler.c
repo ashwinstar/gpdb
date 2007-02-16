@@ -303,24 +303,24 @@ ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
 
 
 /*
- * ResAlterQueue -- Change the thresholds, overcommit for a resource queue.
+ * ResAlterQueue -- Change thresholds, overcommit for a resource queue.
  *
  * Notes:
  *	It is expected that the appropriate lightweight lock is held before
  *	calling this.
  */
-bool
+ResAlterQueueResult
 ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
 {
 
 	ResQueue		queue = ResQueueHashFind(queueid);
-	bool			allok = true;
+	bool			result = ALTERQUEUE_OK;
 	int				i;
 	
 
 	/* Handed an Oid for something other than a queue, bail out! */
 	if (queue == NULL)
-		return false;
+		return ALTERQUEUE_ERROR;
 
 
 	/* 
@@ -329,20 +329,40 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
 	 */
 	for (i = 0 ; i < NUM_RES_LIMIT_TYPES; i++)
 	{
+		/* Don't sanity check thresholds if that are about to be disabled. */
+		if (limits[i] == INVALID_RES_LIMIT_THRESHOLD)
+			continue;
+
 		/*
-		 * Checks for the limit types (smae for both here). We want to
-		 * ensure that the new thresholds are not less than the current
-		 * values.
+		 * Sanity checks for the limit types: 
+		 * We want to ensure that the new thresholds are not less than the 
+		 * current values. 
+		 * For overcommittable limits we need to ensure the queue is not in 
+		 * an overcommited state if we about to turn overcommit off.
 		 */
 		switch (i)
 		{
+
 			case RES_COUNT_LIMIT:
-			case RES_COST_LIMIT:
 			{
-				
+				/* Don't change a threshold to below the current value. */
 				if ((queue->limits[i].threshold_value != limits[i]) &&
 					(limits[i] <= queue->limits[i].current_value))
-					allok = false;
+					result = ALTERQUEUE_SMALL_THRESHOLD;
+			}
+			break;
+
+			case RES_COST_LIMIT:
+			{
+				/* Don't change a threshold to below the current value. */
+				if ((queue->limits[i].threshold_value != limits[i]) &&
+					(limits[i] <= queue->limits[i].current_value))
+					result = ALTERQUEUE_SMALL_THRESHOLD;
+
+				/* Don't turn overcommit off if queue is overcommitted. */
+				if (queue->overcommit && !overcommit && 
+					(limits[i] < queue->limits[i].current_value ))
+					result = ALTERQUEUE_OVERCOMMITTED;
 			}
 			break;
 		}
@@ -351,9 +371,9 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
 	}
 
 	/*
-	 * New thresholds are all > current values, we are ok to alter them.
+	 * If threshold and overcommit alterations are all ok, do the the changes.
 	 */
-	if (allok)
+	if (result == ALTERQUEUE_OK)
 	{
 		for (i = 0 ; i < NUM_RES_LIMIT_TYPES; i++)
 		{
@@ -374,16 +394,12 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
 	
 		}
 
-		/* alter the overcommit if that has changed. */
+		/* Set overcommit if that has changed. */
 		if (queue->overcommit != overcommit)
 			queue->overcommit = overcommit;
+	}
 	
-		return true;
-	}
-	else
-	{
-		return false;
-	}
+	return result;
 	
 }
 
