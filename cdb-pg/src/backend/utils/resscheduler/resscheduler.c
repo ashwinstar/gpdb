@@ -359,9 +359,15 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
 					(limits[i] <= queue->limits[i].current_value))
 					result = ALTERQUEUE_SMALL_THRESHOLD;
 
-				/* Don't turn overcommit off if queue is overcommitted. */
-				if (queue->overcommit && !overcommit && 
-					(limits[i] < queue->limits[i].current_value ))
+				/* 
+				 * Don't turn overcommit off if queue could be overcommitted.
+				 * We err on the side of caution in this case and demand that
+				 * the queue is idle - we don't want to leave a query waiting 
+				 * forever in the wait queue. We use the same roundoff limit
+				 * value (0.1) as ResLockCheckLimit does.
+				 */
+				if (!overcommit && queue->overcommit && 
+					(queue->limits[i].current_value > 0.1))
 					result = ALTERQUEUE_OVERCOMMITTED;
 			}
 			break;

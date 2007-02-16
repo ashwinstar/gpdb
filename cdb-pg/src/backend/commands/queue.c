@@ -462,7 +462,7 @@ AlterQueue(AlterQueueStmt *stmt)
 			else if (queueok == ALTERQUEUE_OVERCOMMITTED)
 				ereport(ERROR,
 					(errcode(ERRCODE_INVALID_LIMIT_VALUE),
-						errmsg("disabling overcommit cannot leave queue in overcommitted state")));
+						errmsg("disabling overcommit cannot leave queue in possibly overcommitted state")));
 			else
 				ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
