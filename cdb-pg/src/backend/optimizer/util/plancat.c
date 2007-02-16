@@ -898,7 +898,6 @@ build_physical_tlist(PlannerInfo *root, RelOptInfo *rel)
 	switch (rte->rtekind)
 	{
 		case RTE_RELATION:
-		case RTE_EXTERNAL:
 			/* Assume we already have adequate lock */
 			relation = heap_open(rte->relid, NoLock);
 

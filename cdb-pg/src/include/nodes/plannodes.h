@@ -349,7 +349,7 @@ typedef struct ValuesScan
 /* ----------------
 * External Scan node
 * 
-* Field scan.scanrelid is the index of the RTE_EXTERNAL RTE for
+* Field scan.scanrelid is the index of the external relation for
 * this node.
 *
 * Field filenames is a list of N string node pointers (or NULL)

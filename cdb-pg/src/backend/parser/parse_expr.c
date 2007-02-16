@@ -1442,7 +1442,6 @@ transformWholeRowRef(ParseState *pstate, char *schemaname, char *relname,
 	switch (rte->rtekind)
 	{
 		case RTE_RELATION:
-		case RTE_EXTERNAL:
 			/* relation: the rowtype is a named composite type */
 			toid = get_rel_type_id(rte->relid);
 			if (!OidIsValid(toid))

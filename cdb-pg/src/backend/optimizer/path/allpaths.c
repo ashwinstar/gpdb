@@ -34,6 +34,7 @@
 #include "parser/parse_expr.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
+#include "utils/lsyscache.h"
 
 #include "cdb/cdbpath.h"                    /* cdbpath_rows() */
 
@@ -206,7 +207,7 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti)
 	else
 	{
 		/* Plain relation */
-		Assert(rel->rtekind == RTE_RELATION || rel->rtekind == RTE_EXTERNAL);
+		Assert(rel->rtekind == RTE_RELATION);
 		set_plain_rel_pathlist(root, rel, rte);
 	}
 
@@ -281,7 +282,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 * it and select it (only external path is considered for
 	 * an external base rel.
 	 */
-	if(rel->rtekind == RTE_EXTERNAL)
+	if(get_rel_relkind(rte->relid) == RELKIND_EXTERNAL)
 	{
 		add_path(root, rel, (Path *) create_external_path(root, rel));
 		

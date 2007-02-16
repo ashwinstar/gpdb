@@ -1386,7 +1386,6 @@ _readRangeTblEntry(const char ** str)
 	switch (local_node->rtekind)
 	{
 		case RTE_RELATION:
-        case RTE_EXTERNAL:
 		case RTE_SPECIAL:
 			READ_OID_FIELD(relid);
 			break;

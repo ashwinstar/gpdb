@@ -267,7 +267,6 @@ print_rt(List *rtable)
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
-			case RTE_EXTERNAL:
 				printf("%d\t%s\t%u",
 					   i, name, rte->relid);
 				break;

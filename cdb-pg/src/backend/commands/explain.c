@@ -735,7 +735,7 @@ explain_outNode(StringInfo str,
 				char	   *relname;
 
 				/* Assume it's on a real relation */
-				Assert(rte->rtekind == RTE_RELATION  || rte->rtekind == RTE_EXTERNAL);
+				Assert(rte->rtekind == RTE_RELATION);
 
 				/* We only show the rel name, not schema name */
 				relname = get_rel_name(rte->relid);

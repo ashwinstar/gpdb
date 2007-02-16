@@ -114,7 +114,6 @@ AcquireRewriteLocks(Query *parsetree)
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
-			case RTE_EXTERNAL:
 
 				/*
 				 * Grab the appropriate lock type for the relation, and do not
@@ -1184,7 +1183,7 @@ markQueryForLocking(Query *qry, bool forUpdate, bool noWait, bool skipOldNew)
 			(rti == PRS2_OLD_VARNO || rti == PRS2_NEW_VARNO))
 			continue;
 
-		if (rte->rtekind == RTE_RELATION || rte->rtekind == RTE_EXTERNAL)
+		if (rte->rtekind == RTE_RELATION)
 		{
 			applyLockingClause(qry, rti, forUpdate, noWait);
 			rte->requiredPerms |= ACL_SELECT_FOR_UPDATE;
@@ -1276,7 +1275,7 @@ fireRIRrules(Query *parsetree, List *activeRIRs)
 		/*
 		 * Joins and other non-relation RTEs can be ignored completely.
 		 */
-		if (rte->rtekind != RTE_RELATION && rte->rtekind != RTE_EXTERNAL)
+		if (rte->rtekind != RTE_RELATION)
 			continue;
 
 		/*

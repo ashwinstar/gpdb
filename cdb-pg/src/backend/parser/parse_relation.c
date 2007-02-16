@@ -169,7 +169,7 @@ scanNameSpaceForRelid(ParseState *pstate, Oid relid)
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(l);
 
 		/* yes, the test for alias == NULL should be there... */
-		if ((rte->rtekind == RTE_RELATION || rte->rtekind == RTE_EXTERNAL) &&
+		if (rte->rtekind == RTE_RELATION &&
 			rte->relid == relid &&
 			rte->alias == NULL)
 		{
@@ -214,7 +214,7 @@ searchRangeTable(ParseState *pstate, RangeVar *relation)
 			RangeTblEntry *rte = (RangeTblEntry *) lfirst(l);
 
 			if (OidIsValid(relId) &&
-				(rte->rtekind == RTE_RELATION || rte->rtekind == RTE_EXTERNAL) &&
+				rte->rtekind == RTE_RELATION &&
 				rte->relid == relId)
 				return rte;
 			if (rte->eref != NULL &&
@@ -257,8 +257,8 @@ checkNameSpaceConflicts(ParseState *pstate, List *namespace1,
 
 			if (strcmp(rte2->eref->aliasname, aliasname1) != 0)
 				continue;		/* definitely no conflict */
-			if ((rte1->rtekind == RTE_RELATION || rte1->rtekind == RTE_EXTERNAL) && rte1->alias == NULL &&
-				(rte2->rtekind == RTE_RELATION || rte2->rtekind == RTE_EXTERNAL) && rte2->alias == NULL &&
+			if (rte1->rtekind == RTE_RELATION && rte1->alias == NULL &&
+				rte2->rtekind == RTE_RELATION && rte2->alias == NULL &&
 				rte1->relid != rte2->relid)
 				continue;		/* no conflict per SQL92 rule */
 			ereport(ERROR,
@@ -385,7 +385,7 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 	/*
 	 * If the RTE represents a real table, consider system column names.
 	 */
-	if (rte->rtekind == RTE_RELATION || rte->rtekind == RTE_EXTERNAL)
+	if (rte->rtekind == RTE_RELATION)
 	{
 		/* quick check to see if name could be a system column */
 		attnum = specialAttNum(colname);
@@ -644,16 +644,13 @@ addRangeTableEntry(ParseState *pstate,
 	lockSourceRel(rel, pstate, refname);        /*CDB*/
 	rte->relid = RelationGetRelid(rel);
 	rte->alias = alias;
+	rte->rtekind = RTE_RELATION;
 	
+	/* external tables don't allow inheritance */
 	if(rel->rd_rel->relkind == RELKIND_EXTERNAL)
-	{
-		rte->rtekind = RTE_EXTERNAL;
 		inh = false;
-	}
-	else
-		rte->rtekind = RTE_RELATION;
-	
 
+	
 	/*
 	 * Build the list of effective column names using user-supplied aliases
 	 * and/or actual column names.
@@ -1219,7 +1216,6 @@ expandRTE(RangeTblEntry *rte, int rtindex, int sublevels_up,
 	switch (rte->rtekind)
 	{
 		case RTE_RELATION:
-		case RTE_EXTERNAL:
 			/* Ordinary relation RTE */
 			expandRelation(rte->relid, rte->eref, rtindex, sublevels_up,
 						   include_dropped, colnames, colvars);
@@ -1609,7 +1605,6 @@ get_rte_attribute_type(RangeTblEntry *rte, AttrNumber attnum,
 	switch (rte->rtekind)
 	{
 		case RTE_RELATION:
-		case RTE_EXTERNAL:
 			{
 				/* Plain relation RTE --- get the attribute's type info */
 				HeapTuple	tp;
@@ -1754,7 +1749,6 @@ get_rte_attribute_is_dropped(RangeTblEntry *rte, AttrNumber attnum)
 	switch (rte->rtekind)
 	{
 		case RTE_RELATION:
-		case RTE_EXTERNAL:
 			{
 				/*
 				 * Plain relation RTE --- get the attribute's catalog entry

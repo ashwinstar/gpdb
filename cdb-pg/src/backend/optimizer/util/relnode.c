@@ -21,6 +21,8 @@
 #include "optimizer/restrictinfo.h"
 #include "parser/parsetree.h"
 #include "utils/hsearch.h"
+#include "utils/lsyscache.h"
+
 
 
 typedef struct JoinHashEntry
@@ -94,16 +96,13 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	/* Check type of rtable entry */
 	switch (rte->rtekind)
 	{
-		case RTE_EXTERNAL:
-			
-			/* 
-			* External Table --- retrieve locations and format from 
-			 * the exttable system catalog 
-			 */
-			get_external_relation_info(root, rte->relid, rte->inh, rel);
-			/* fallthrough */
 		case RTE_RELATION:
 			/* Table --- retrieve statistics from the system catalogs */
+			
+			/* if external table - get locations and format from catalog */
+			if(get_rel_relkind(rte->relid) == RELKIND_EXTERNAL)
+				get_external_relation_info(root, rte->relid, rte->inh, rel);
+			
 			get_relation_info(root, rte->relid, rte->inh, rel);
 			break;
 		case RTE_SUBQUERY:

@@ -167,7 +167,7 @@ cost_externalscan(ExternalPath *path, PlannerInfo *root,
 	
 	/* Should only be applied to external relations */
 	Assert(baserel->relid > 0);
-	Assert(baserel->rtekind == RTE_EXTERNAL);
+	Assert(baserel->rtekind == RTE_RELATION);
 	
 	if (!enable_seqscan)
 		startup_cost += disable_cost;

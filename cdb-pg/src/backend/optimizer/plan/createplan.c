@@ -404,7 +404,6 @@ use_physical_tlist(RelOptInfo *rel)
 	 * and values scans (but not for, eg, joins).
 	 */
 	if (rel->rtekind != RTE_RELATION &&
-		rel->rtekind != RTE_EXTERNAL &&
 		rel->rtekind != RTE_SUBQUERY &&
 		rel->rtekind != RTE_FUNCTION &&
 		rel->rtekind != RTE_VALUES)
@@ -945,7 +944,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	
 	/* it should be an external rel... */
 	Assert(scan_relid > 0);
-	Assert(rel->rtekind == RTE_EXTERNAL);
+	Assert(rel->rtekind == RTE_RELATION);
 	
 	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
 	scan_clauses = extract_actual_clauses(scan_clauses, false);

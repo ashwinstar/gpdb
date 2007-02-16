@@ -3447,7 +3447,7 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 			 * try to derive some kind of combined statistics?
 			 */
 		}
-		else if (rte->rtekind == RTE_RELATION || rte->rtekind == RTE_EXTERNAL)
+		else if (rte->rtekind == RTE_RELATION)
 		{
 			vardata->statsTuple = SearchSysCache(STATRELATT,
 												 ObjectIdGetDatum(rte->relid),
