@@ -22,12 +22,12 @@ Format of descfile:
 3. empty line marks end of a group, e.g.:
 
 #first group
-host[0-4][0-9] c0t[0-2]d?  c3t[0-2]d?
+host[0-4][0-9] c0t[0-2]d?  c4t[0-2]d?
 
 #empty line closes a group
 
 #second group
-host[0-4][0-9] c0t[5-8]d?  c3t[5-8]d?
+host[0-4][0-9] c0t[5-8]d?  c4t[5-8]d?
 '''
 
 
@@ -204,7 +204,12 @@ def readDescFile(fname):
 				dlist.append(d2)
 				match = True
 			if not match:
-			    sys.exit('Error: bad disk name %s (%s:%d)' % (d1, fname, lno))
+			    print 'available disks on %s is: ' % h[1]
+			    for i in xrange(len(disk)):
+				print disk[i], ' ',
+				if i % 8 == 7: print
+			    print 'Error: bad disk name %s (%s:%d)' % (d1, fname, lno)
+			    sys.exit(1)
 		    h.append(dlist)
 
 		g.extend(hlist)
@@ -310,13 +315,14 @@ def runScript(g, threshold):
 	    ssh = SSH % (h[2], h[0], h[1])
 	    diskText = reduce(lambda a, b: a + ' ' + b, disk)
 	    ssh = ssh + ' /usr/sfw/bin/python /tmp/dq ' + diskText
-	    #print 'running dq on %s@%s %s' % (h[0], h[1], diskText)
+	    if ['-v']: print 'running dq on %s@%s %s' % (h[0], h[1], diskText)
 	    proc.append( (h, os.popen(ssh)) )
 
 	for (h, p) in proc:
 	    for line in p:
 		try:
 		    (d, min, max, avg) = line.split()
+		    min = int(min); max = int(max); avg = int(avg)
 		    if (threshold): 
 			t = avg < threshold and "-" or (avg > threshold and '+' or '=')
 		    else:
@@ -351,7 +357,10 @@ try:
     installScript()
 
     res = []
+    gno = 0
     for g in group:
+	gno = gno + 1
+	if ['-v']: print '--- group %d ---' % gno
 	res.append(runScript(g, opt['-t']))
 
     user = {}
@@ -361,6 +370,7 @@ try:
     for g in res:
 	for r in g:
 	    # r = [user, host, disk, min, max, avg, +/-/=]
+	    print '! ',
 	    if sameUser: 
 		print r[1],
 	    else:
