@@ -327,11 +327,9 @@ errstart(int elevel, const char *filename, int lineno,
 
 #if (!defined(__darwin__))
 #if defined(__GLIBC__) || defined(pg_on_solaris)
-#if !defined(__OPTIMIZE__)
 		
 	edata->stacktracesize = backtrace(edata->stacktracearray, 30);
 		
-#endif
 #endif
 #endif
 
@@ -1012,11 +1010,9 @@ elog_start(const char *filename, int lineno, const char *funcname)
 	
 #if (!defined(__darwin__))
 #if defined(__GLIBC__) || defined(pg_on_solaris)
-#if !defined(__OPTIMIZE__)
 		
 	edata->stacktracesize = backtrace(edata->stacktracearray, 30);
 		
-#endif
 #endif
 #endif
 }
@@ -2108,7 +2104,6 @@ send_message_to_server_log(ErrorData *edata)
 
 #if (!defined(__darwin__))
 #if defined(__GLIBC__) || defined(pg_on_solaris)
-#if !defined(__OPTIMIZE__)
 		
 	if (edata->elevel >= ERROR &&
         (edata->elevel > ERROR || !edata->omit_location) &&
@@ -2127,7 +2122,6 @@ send_message_to_server_log(ErrorData *edata)
 		}
 		free(strings);
 	}
-#endif
 #endif
 #endif
 
@@ -2632,7 +2626,6 @@ elog_debug_linger(ErrorData *edata)
 
 
 #if defined(pg_on_solaris)
-#if !defined(__OPTIMIZE__)
 /* Use the Solaris stack-walker to build a (sort of) glibc compatible
  * backtrace */
 #include <ucontext.h>
@@ -2737,5 +2730,4 @@ backtrace_symbols(void *const *buffer, int size)
 	}
 	return result;
 }
-#endif
 #endif

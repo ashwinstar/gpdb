@@ -362,10 +362,8 @@ write_stderr(const char *fmt,...)
 __attribute__((format(printf, 1, 2)));
 
 #if defined(pg_on_solaris)
-#if !defined(__OPTIMIZE__)
 extern size_t backtrace(void **buffer, int size);
 extern char **backtrace_symbols(void *const *buffer, int size);
-#endif
 #endif
 
 #endif   /* ELOG_H */

@@ -51,7 +51,6 @@ ExceptionalCondition(const char *conditionName,
 	
 #if (!defined(__darwin__))
 #if defined(__GLIBC__) || defined(pg_on_solaris)
-#if !defined(__OPTIMIZE__)
 		
 	{
 		void	   *array[20];
@@ -60,13 +59,15 @@ ExceptionalCondition(const char *conditionName,
 		size_t		i;
 	
 		size = backtrace(array, 20);
-		strings = backtrace_symbols(array, size);
-		for (i = 0; i < size; i++)
+		if (size > 0)
 		{
-			write_stderr("%s\n",strings[i]);
+			strings = backtrace_symbols(array, size);
+			for (i = 0; i < size; i++)
+			{
+				write_stderr("%s\n",strings[i]);
+			}
 		}
 	}
-#endif
 #endif
 #endif
 
