@@ -34,7 +34,7 @@ host[0-4][0-9] c0t[5-8]d?  c4t[5-8]d?
 import os, sys, getopt, popen2, re
 
 if sys.version_info < (2, 3):
-    sys.exit("Error: gpssh is supported on Python versions 2.3 or greater\n"
+    sys.exit("Error: gpdq is supported on Python versions 2.3 or greater\n"
 	     + "Please upgrade python installed on this machine.")
 
 sys.path.append(sys.path[0] + '/lib')
@@ -364,7 +364,8 @@ try:
 	res.append(runScript(g, opt['-t']))
 
     user = {}
-    for r in res: user[r[0]] = r
+    for g in res: 
+	for r in g: user[r[0]] = r; 
     sameUser = len(user) == 1
 
     for g in res:
