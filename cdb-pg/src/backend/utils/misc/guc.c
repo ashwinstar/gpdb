@@ -107,8 +107,9 @@ extern int	CommitSiblings;
 extern char *default_tablespace;
 extern bool fullPageWrites;
 
-/* Set of GUCs to be displayed by EXPLAIN.  (List of int) */
+/* GUC lists for cdb_guc_list_show().  (List of struct config_generic) */
 List       *cdb_guc_list_for_explain;
+List       *cdb_guc_list_for_no_plan;
 
 #ifdef TRACE_SORT
 extern bool trace_sort;
@@ -528,7 +529,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&enable_geqo,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 	{
 		/* Not for general use --- used by SET SESSION AUTHORIZATION */
@@ -5972,9 +5973,10 @@ _ShowOption(struct config_generic * record, bool use_units)
 /*
  * cdb_guc_list_init
  *
- * Builds global lists of interesting GUC numbers for cdb_guc_list_show()...
+ * Builds global lists of interesting GUCs for use with cdb_guc_list_show()...
  *
  * - cdb_guc_list_for_explain: consists of planner GUCs, plus 'work_mem'
+ * - cdb_guc_list_for_no_plan: planner method enables for cdb_no_plan_for_query().
  */
 void
 cdb_guc_list_init(void)
@@ -5986,23 +5988,36 @@ cdb_guc_list_init(void)
         list_free(cdb_guc_list_for_explain);
         cdb_guc_list_for_explain = NIL;
     }
+    if (cdb_guc_list_for_no_plan)
+    {
+        list_free(cdb_guc_list_for_no_plan);
+        cdb_guc_list_for_no_plan = NIL;
+    }
 
    	for (i = 0; i < num_guc_variables; i++)
 	{
 		struct config_generic  *gconf = guc_variables[i];
-        bool                    explain = false;
+        bool    explain = false;
+        bool    no_plan = false;
 
         switch (gconf->group)
         {
             case QUERY_TUNING:
-            case QUERY_TUNING_METHOD:
             case QUERY_TUNING_COST:
-#if 0                                       /* geqo not used in greenplum db */
-            case QUERY_TUNING_GEQO:
-#endif
             case QUERY_TUNING_OTHER:
                 explain = true;
                 break;
+
+            case QUERY_TUNING_METHOD:
+                explain = true;
+                no_plan = true;
+                break;
+
+#if 0                                       /* geqo not used in greenplum db */
+            case QUERY_TUNING_GEQO:
+                explain = true;
+                break;
+#endif
 
             case RESOURCES_MEM:
                 if (0 == guc_name_compare(gconf->name, "work_mem"))
@@ -6014,7 +6029,9 @@ cdb_guc_list_init(void)
         }
 
         if (explain)
-            cdb_guc_list_for_explain = lappend_int(cdb_guc_list_for_explain, i);
+            cdb_guc_list_for_explain = lappend(cdb_guc_list_for_explain, gconf);
+        if (no_plan)
+            cdb_guc_list_for_no_plan = lappend(cdb_guc_list_for_no_plan, gconf);
 	}
 }                               /* cdb_guc_list_init */
 
@@ -6022,7 +6039,7 @@ cdb_guc_list_init(void)
 /*
  * cdb_guc_list_show
  *
- * Given a list of GUC option numbers (a List of int), appends the
+ * Given a list of GUCs (a List of struct config_generic), appends the
  * option names and values to caller's buffer, skipping any whose
  * source <= 'excluding'.  The 'pfx' string is inserted at the
  * beginning.  The 'fmt' string must contain two occurrences of "%s",
@@ -6035,19 +6052,16 @@ cdb_guc_list_show(struct StringInfoData    *buf,
                   const char               *pfx,
                   const char               *fmt,
                   GucSource                 excluding,
-                  List                     *gucnums)
+                  List                     *guclist)
 {
     int         oldlen = buf->len;
     ListCell   *cell;
     char       *value;
-    int         gucnum;
     struct config_generic  *gconf;
 
-   	foreach(cell, gucnums)
+   	foreach(cell, guclist)
 	{
-        gucnum = lfirst_int(cell);
-        Insist(gucnum >= 0 && gucnum < num_guc_variables);
-		gconf = guc_variables[gucnum];
+		gconf = (struct config_generic *)lfirst(cell);
 		if (gconf->source > excluding)
         {
             if (pfx)

@@ -104,8 +104,9 @@ typedef const char *(*GucShowHook) (void);
 
 #define GUC_QUALIFIER_SEPARATOR '.'
 
-/* Set of GUCs to be displayed by EXPLAIN.  (List of int) */
+/* GUC lists for cdb_guc_list_show().  (List of struct config_generic) */
 extern List    *cdb_guc_list_for_explain;
+extern List    *cdb_guc_list_for_no_plan;
 
 
 /* GUC vars that are actually declared in guc.c, rather than elsewhere */
@@ -221,7 +222,7 @@ extern int  cdb_guc_list_show(struct StringInfoData    *buf,
                               const char               *pfx, 
                               const char               *fmt, 
                               GucSource                 excluding, 
-                              List                     *gucnums)
+                              List                     *guclist)
                 /* This extension allows gcc to check the format string */
                 __attribute__((format(printf, 3, 0)));
 
