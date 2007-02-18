@@ -42,6 +42,8 @@
 bool		enable_geqo = false;	/* just in case GUC doesn't set it */
 int			geqo_threshold;
 
+/* Other globals */
+bool        enable_nestloop_override;
 
 static void set_base_rel_pathlists(PlannerInfo *root);
 static void set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti);
@@ -789,7 +791,8 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels)
 	List	  **joinitems;
 	int			lev;
 	RelOptInfo *rel;
-    bool        save_enable_nestloop = enable_nestloop;
+
+    enable_nestloop_override = false;
 
 	/*
 	 * We employ a simple "dynamic programming" algorithm: we first find all
@@ -846,11 +849,11 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels)
         if (!joinitems[lev] &&
             !enable_nestloop)
         {
-            enable_nestloop = true;
+            enable_nestloop_override = true;
             lev--;
         }
         else
-            enable_nestloop = save_enable_nestloop;
+            enable_nestloop_override = false;
 	}
 
 	/*

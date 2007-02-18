@@ -357,7 +357,7 @@ match_unsorted_outer(PlannerInfo *root,
 			break;
 	}
 
-    if (!enable_nestloop)
+    if (!enable_nestloop && !enable_nestloop_override)
         nestjoinOK = false;
 
     /*

@@ -23,6 +23,7 @@
  */
 extern bool enable_geqo;
 extern int	geqo_threshold;
+extern bool enable_nestloop_override;   /*CDB*/
 
 extern RelOptInfo *make_one_rel(PlannerInfo *root, List *joinlist);
 
