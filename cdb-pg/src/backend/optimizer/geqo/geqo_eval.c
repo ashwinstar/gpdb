@@ -207,6 +207,11 @@ gimme_tree(Gene *tour, int num_gene, GeqoEvalData *evaldata)
 			RelOptInfo *outer_rel = stack[stack_depth - 2];
 			RelOptInfo *inner_rel = stack[stack_depth - 1];
 
+            /* CDB: Can't join a rel with no paths. */
+            if (!outer_rel->cheapest_total_path ||
+                !inner_rel->cheapest_total_path)
+                break;
+
 			/*
 			 * Don't pop if heuristics say not to join now.  However, once we
 			 * have exhausted the input, the heuristics can't prevent popping.
@@ -234,6 +239,9 @@ gimme_tree(Gene *tour, int num_gene, GeqoEvalData *evaldata)
 	        oldcontext = MemoryContextSwitchTo(GetMemoryChunkContext(joinrel));
 			set_cheapest(evaldata->root, joinrel);
             MemoryContextSwitchTo(oldcontext);
+
+            if (!joinrel->cheapest_total_path)
+                break;
 
 			/* Pop the stack and replace the inputs with their join */
 			stack_depth--;

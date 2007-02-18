@@ -3,7 +3,7 @@
  * joinpath.c
  *	  Routines to find all possible paths for processing a set of joins
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -75,21 +75,21 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * interested in doing a mergejoin.  However, mergejoin is currently our
 	 * only way of implementing full outer joins, so override mergejoin
 	 * disable if it's a full join.
+     *
+     * CDB: Always build mergeclause_list.  We need it for motion planning.
 	 */
-#if 0  /*CDB*/
-	if (enable_mergejoin || jointype == JOIN_FULL)
-#endif /*CDB*/
-		mergeclause_list = select_mergejoin_clauses(outerrel,
-													innerrel,
-													restrictlist,
-													jointype);
+	mergeclause_list = select_mergejoin_clauses(outerrel,
+												innerrel,
+												restrictlist,
+												jointype);
 
 	/*
 	 * 1. Consider mergejoin paths where both relations must be explicitly
 	 * sorted.
 	 */
-	sort_inner_and_outer(root, joinrel, outerrel, innerrel,
-						 restrictlist, mergeclause_list, jointype);
+    if (enable_mergejoin || jointype == JOIN_FULL)
+	    sort_inner_and_outer(root, joinrel, outerrel, innerrel,
+						     restrictlist, mergeclause_list, jointype);
 
 	/*
 	 * 2. Consider paths where the outer relation need not be explicitly
@@ -357,6 +357,9 @@ match_unsorted_outer(PlannerInfo *root,
 			break;
 	}
 
+    if (!enable_nestloop)
+        nestjoinOK = false;
+
     /*
      * For NJ there may be some special inner paths we should try.
      */
@@ -486,7 +489,7 @@ match_unsorted_outer(PlannerInfo *root,
 		 * supports FULL JOIN, it's necessary to generate a clauseless
 		 * mergejoin path instead.
 		 */
-		if (mergeclauses == NIL)
+		if (mergeclauses == NIL || !enable_mergejoin)
 		{
 			if (jointype == JOIN_FULL)
 				 /* okay to try for mergejoin */ ;

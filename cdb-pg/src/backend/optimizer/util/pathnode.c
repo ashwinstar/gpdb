@@ -449,8 +449,12 @@ set_cheapest(PlannerInfo *root, RelOptInfo *parent_rel)
         }
     }
 
+    /* CDB: Empty pathlist is possible if user set some enable_xxx = off. */
     if (!parent_rel->pathlist)
-		elog(ERROR, "could not devise a query plan for the given query");
+    {
+        parent_rel->cheapest_startup_path = parent_rel->cheapest_total_path = NULL;
+        return;
+    }
 
     cheapest_startup_path = cheapest_total_path = (Path *) linitial(parent_rel->pathlist);
 
@@ -1738,7 +1742,7 @@ create_unique_path(PlannerInfo *root,
 					 subpath->startup_cost,
 					 subpath->total_cost,
 					 rel->rows);
-			if (agg_path.total_cost < sort_path.total_cost)
+			if (agg_path.total_cost < sort_path.total_cost || !enable_sort)
             {
                 pathnode->umethod = UNIQUE_PATH_HASH;
 		        pathnode->path.startup_cost = agg_path.startup_cost;
@@ -1841,7 +1845,7 @@ create_unique_exprlist_path(PlannerInfo    *root,
         Insist(subpath);
     }
 
-    /* Create the UniquePath node. */
+    /* Create the UniquePath node.  (Might return NULL if enable_sort = off.) */
     uniquepath = create_unique_path(root, subpath, distinct_on_exprs, NULL);
 
 	return uniquepath;
@@ -1879,8 +1883,10 @@ create_unique_rowid_path(PlannerInfo *root,
 
     Assert(!bms_is_empty(distinct_relids));
 
-    /* Create the UniquePath node. */
+    /* Create the UniquePath node.  (Might return NULL if enable_sort = off.) */
     uniquepath = create_unique_path(root, subpath, NIL, distinct_relids);
+    if (!uniquepath)
+        return NULL;
 
     /* Add repartitioning cost if duplicates might be on different QEs. */
     if (!CdbPathLocus_IsBottleneck(subpath->locus) &&
@@ -2475,6 +2481,13 @@ create_mergejoin_path(PlannerInfo *root,
 	if (innermotionkeys &&
 		inner_path->pathkeys)
 		innersortkeys = NIL;
+
+    /* If user doesn't want sort, but this MJ would need to sort, fail. */
+    if (!enable_sort)
+    {
+        if (outersortkeys || innersortkeys)
+            return NULL;
+    }
 
     pathnode = makeNode(MergePath);
 

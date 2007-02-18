@@ -505,6 +505,11 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	/* This is a convenient place to check for query cancel. */
 	CHECK_FOR_INTERRUPTS();
 
+    Insist(rel1 &&
+           rel2 &&
+           rel1->cheapest_total_path && 
+           rel2->cheapest_total_path);
+
 	/* We should never try to join two overlapping sets of rels. */
 	Assert(!bms_overlap(rel1->relids, rel2->relids));
 

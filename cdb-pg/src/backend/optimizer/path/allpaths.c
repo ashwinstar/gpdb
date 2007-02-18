@@ -71,6 +71,10 @@ static void subquery_push_qual(Query *subquery,
 				   RangeTblEntry *rte, Index rti, Node *qual);
 static void recurse_push_qual(Node *setOp, Query *topquery,
 				  RangeTblEntry *rte, Index rti, Node *qual);
+#ifdef _MSC_VER
+__declspec(noreturn)
+#endif
+static void cdb_no_path_for_query(void) __attribute__((__noreturn__));
 
 
 /*
@@ -113,6 +117,11 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 	 * Generate access paths for the entire join tree.
 	 */
 	rel = make_rel_from_joinlist(root, joinlist);
+
+    /* CDB: No path might be found if user set enable_xxx = off */
+    if (!rel ||
+        !rel->cheapest_total_path)
+        cdb_no_path_for_query();    /* raise error - no return */
 
 	/*
 	 * The result should join all and only the query's base rels.
@@ -290,14 +299,19 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		return;
 	}
 	
-	/* Consider sequential scan */
-	pathlist = lappend(pathlist, create_seqscan_path(root, rel));
-
-	/* Consider index scans */
+	/* Consider index and bitmap scans */
 	create_index_paths(root, rel, &pathlist);
 
 	/* Consider TID scans */
-	create_tidscan_paths(root, rel, &pathlist);
+    if (enable_tidscan)
+	    create_tidscan_paths(root, rel, &pathlist);
+
+	/* 
+     * Consider sequential scan.  If no other path was found, use 
+     * sequential scan even if enable_seqscan = off.
+     */
+    if (enable_seqscan || !pathlist)
+	    pathlist = lappend(pathlist, create_seqscan_path(root, rel));
 
     /* Add them, now that we know whether the quals specify a unique key. */
     foreach(cell, pathlist)
@@ -725,6 +739,11 @@ make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
 			thisrel = NULL;		/* keep compiler quiet */
 		}
 
+        /* CDB: Fail if no path could be built due to set enable_xxx = off. */
+        if (!thisrel ||
+            !thisrel->cheapest_total_path)
+            return NULL;
+
 		initial_rels = lappend(initial_rels, thisrel);
 	}
 
@@ -770,6 +789,7 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels)
 	List	  **joinitems;
 	int			lev;
 	RelOptInfo *rel;
+    bool        save_enable_nestloop = enable_nestloop;
 
 	/*
 	 * We employ a simple "dynamic programming" algorithm: we first find all
@@ -787,7 +807,9 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels)
 
 	for (lev = 2; lev <= levels_needed; lev++)
 	{
+		ListCell   *w = NULL;
 		ListCell   *x;
+        ListCell   *y;
 
 		/*
 		 * Determine all possible pairs of relations to be joined at this
@@ -799,29 +821,48 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels)
 		/*
 		 * Do cleanup work on each just-processed rel.
 		 */
-		foreach(x, joinitems[lev])
+		for (x = list_head(joinitems[lev]); x; x = y)   /* cannot use foreach */
 		{
+            y = lnext(x);
 			rel = (RelOptInfo *) lfirst(x);
 
 			/* Find and save the cheapest paths for this rel */
 			set_cheapest(root, rel);
 
+            /* CDB: Prune this rel if it has no path. */
+            if (!rel->cheapest_total_path)
+                joinitems[lev] = list_delete_cell(joinitems[lev], x, w);
+
+            /* Keep this rel. */
+            else
+                w = x;
+
 #ifdef OPTIMIZER_DEBUG
 			debug_print_rel(root, rel);
 #endif
 		}
+
+        /* If no paths found because enable_nestloop=false, enable & retry. */
+        if (!joinitems[lev] &&
+            !enable_nestloop)
+        {
+            enable_nestloop = true;
+            lev--;
+        }
+        else
+            enable_nestloop = save_enable_nestloop;
 	}
 
 	/*
 	 * We should have a single rel at the final level.
 	 */
 	if (joinitems[levels_needed] == NIL)
-		elog(ERROR, "failed to build any %d-way joins", levels_needed);
+		return NULL;
 	Assert(list_length(joinitems[levels_needed]) == 1);
 
 	rel = (RelOptInfo *) linitial(joinitems[levels_needed]);
 
-	return rel;
+    return rel;
 }
 
 /*****************************************************************************
@@ -1147,6 +1188,33 @@ recurse_push_qual(Node *setOp, Query *topquery,
 			 (int) nodeTag(setOp));
 	}
 }
+
+
+/*
+ * cdb_no_path_for_query 
+ *
+ * Raise error when the set of allowable paths for a query is empty.
+ * Does not return.
+ */
+void 
+cdb_no_path_for_query(void)
+{
+    StringInfoData  buf;
+
+    initStringInfo(&buf);
+    if (cdb_guc_list_show(&buf, NULL, "%s=%s; ", PGC_S_DEFAULT, cdb_guc_list_for_no_plan))
+        ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_CONFIGURED),
+                        errmsg("Query requires a feature that has been disabled "
+                               "by a configuration setting."),
+                        errdetail("Could not devise a query plan for the given query."),
+                        errhint("Current settings:  %s", buf.data)
+                ));
+    else
+        elog(ERROR, "Could not devise a query plan for the given query.");
+    Insist(0);                  /* not reached */
+}                               /* cdb_no_path_for_query */
+
+
 
 /*****************************************************************************
  *			DEBUG SUPPORT

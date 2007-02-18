@@ -188,12 +188,17 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel, List** ppathlist)
             ipath->indexinfo->unique)
             rel->onerow = true;
 
-		*ppathlist = lappend(*ppathlist, ipath);
+        if (enable_indexscan)
+            *ppathlist = lappend(*ppathlist, ipath);
 
 		if (ipath->indexselectivity < 1.0 &&
 			!ScanDirectionIsBackward(ipath->indexscandir))
 			bitindexpaths = lappend(bitindexpaths, ipath);
 	}
+
+    /* CDB: Bail now if user doesn't want bitmap paths. */
+    if (!enable_bitmapscan)
+        return;
 
 	/*
 	 * Generate BitmapOrPaths for any suitable OR-clauses present in the
@@ -1489,11 +1494,16 @@ best_inner_indexscan(PlannerInfo *root, RelOptInfo *rel,
 	 */
 	bitindexpaths = list_concat(bitindexpaths, list_copy(indexpaths));
 
+    /* Exclude plain index paths if user doesn't want them. */
+    if (!enable_indexscan)
+        indexpaths = NIL;
+
 	/*
 	 * If we found anything usable, generate a BitmapHeapPath for the most
 	 * promising combination of bitmap index paths.
 	 */
-	if (bitindexpaths != NIL)
+	if (bitindexpaths != NIL &&
+        enable_bitmapscan)
 	{
 		Path	   *bitmapqual;
 		BitmapHeapPath *bpath;

@@ -50,7 +50,7 @@
  * the non-cost fields of the passed XXXPath to be filled in.
  *
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -133,9 +133,6 @@ cost_seqscan(Path *path, PlannerInfo *root,
 	Assert(baserel->relid > 0);
 	Assert(baserel->rtekind == RTE_RELATION);
 
-	if (!enable_seqscan)
-		startup_cost += disable_cost;
-
 	/*
 	 * disk costs
 	 */
@@ -168,9 +165,6 @@ cost_externalscan(ExternalPath *path, PlannerInfo *root,
 	/* Should only be applied to external relations */
 	Assert(baserel->relid > 0);
 	Assert(baserel->rtekind == RTE_RELATION);
-	
-	if (!enable_seqscan)
-		startup_cost += disable_cost;
 	
 	/*
 	 * disk costs
@@ -234,9 +228,6 @@ cost_index(IndexPath *path, PlannerInfo *root,
 		   IsA(index, IndexOptInfo));
 	Assert(baserel->relid > 0);
 	Assert(baserel->rtekind == RTE_RELATION);
-
-	if (!enable_indexscan)
-		startup_cost += disable_cost;
 
 	/*
 	 * Call index-access-method-specific code to estimate the processing cost
@@ -580,9 +571,6 @@ cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	Assert(baserel->relid > 0);
 	Assert(baserel->rtekind == RTE_RELATION);
 
-	if (!enable_bitmapscan)
-		startup_cost += disable_cost;
-
 	/*
 	 * Fetch total cost of obtaining the bitmap, as well as its total
 	 * selectivity.
@@ -805,9 +793,6 @@ cost_tidscan(Path *path, PlannerInfo *root,
 	Assert(baserel->relid > 0);
 	Assert(baserel->rtekind == RTE_RELATION);
 
-	if (!enable_tidscan)
-		startup_cost += disable_cost;
-
 	/* Count how many tuples we expect to retrieve */
 	ntuples = 0;
 	foreach(l, tidquals)
@@ -975,9 +960,6 @@ cost_sort(Path *path, PlannerInfo *root,
 	Cost		run_cost = 0;
 	double		nbytes = relation_byte_size(tuples, width);
 	long		work_mem_bytes = work_mem * 1024L;
-
-	if (!enable_sort)
-		startup_cost += disable_cost;
 
 	/*
 	 * We want to be sure the cost of a sort is never estimated as zero, even
@@ -1219,9 +1201,6 @@ cost_nestloop(NestPath *path, PlannerInfo *root)
 	double		ntuples;
 	Selectivity joininfactor;
 
-	if (!enable_nestloop)
-		startup_cost += disable_cost;
-
 	/*
 	 * If we're doing JOIN_IN then we will stop scanning inner tuples for an
 	 * outer tuple as soon as we have one match.  Account for the effects of
@@ -1312,9 +1291,6 @@ cost_mergejoin(MergePath *path, PlannerInfo *root)
 				innerscansel;
 	Selectivity joininfactor;
 	Path		sort_path;		/* dummy for result of cost_sort */
-
-	if (!enable_mergejoin)
-		startup_cost += disable_cost;
 
 	/*
 	 * Compute cost and selectivity of the mergequals and qpquals (other

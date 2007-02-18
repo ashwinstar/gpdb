@@ -9,7 +9,7 @@
  * shorn of features like subselects, inheritance, aggregates, grouping,
  * and so on.  (Those are the things planner.c deals with.)
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -201,8 +201,9 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	 */
 	final_rel = make_one_rel(root, joinlist);
 
-	if (!final_rel || !final_rel->cheapest_total_path)
-		elog(ERROR, "failed to construct the join relation");
+	Insist(final_rel &&
+           final_rel->cheapest_startup_path &&
+           final_rel->cheapest_total_path);
 
     /*
      * CDB: Subquery duplicate suppression should be all finished by now.
