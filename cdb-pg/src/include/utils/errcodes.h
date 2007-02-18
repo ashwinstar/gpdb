@@ -9,7 +9,7 @@
  * string is determined by the MAKE_SQLSTATE() macro, which is not defined
  * in this file; it can be defined by the caller for special purposes.
  *
- * Portions Copyright (c) 2005-2006, Greenplum Inc.
+ * Portions Copyright (c) 2005-2007, Greenplum Inc.
  * Copyright (c) 2003-2006, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/include/utils/errcodes.h,v 1.20 2006/06/16 23:29:26 tgl Exp $
@@ -68,7 +68,7 @@
 #define ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED		MAKE_SQLSTATE('0','1', '0','0','6')
 #define ERRCODE_WARNING_STRING_DATA_RIGHT_TRUNCATION	MAKE_SQLSTATE('0','1', '0','0','4')
 #define ERRCODE_WARNING_DEPRECATED_FEATURE	MAKE_SQLSTATE('0','1', 'P','0','1')
-#define ERRCODE_WARNING_MPP_INTERIM_FEATURE	MAKE_SQLSTATE('0','1', 'M','0','1')
+/*                        no longer used    MAKE_SQLSTATE('0','1', 'M','0','1') */
 #define ERRCODE_WARNING_MPP_INTERCONNECTION MAKE_SQLSTATE('0','1', 'M','0','2')
 
 /* Class 02 - No Data --- this is also a warning class per SQL99 */
@@ -98,6 +98,7 @@
 #define ERRCODE_FEATURE_NOT_SUPPORTED		MAKE_SQLSTATE('0','A', '0','0','0')
 #define ERRCODE_MPP_FEATURE_NOT_SUPPORTED	MAKE_SQLSTATE('0','A', 'M','0','0')
 #define ERRCODE_MPP_FEATURE_NOT_YET			MAKE_SQLSTATE('0','A', 'M','0','1')
+#define ERRCODE_MPP_FEATURE_NOT_CONFIGURED  MAKE_SQLSTATE('0','A', 'M','0','2')
 
 /* Class 0B - Invalid Transaction Initiation */
 #define ERRCODE_INVALID_TRANSACTION_INITIATION		MAKE_SQLSTATE('0','B', '0','0','0')
@@ -318,7 +319,7 @@
 #define ERRCODE_STATEMENT_TOO_COMPLEX		MAKE_SQLSTATE('5','4', '0','0','1')
 #define ERRCODE_TOO_MANY_COLUMNS			MAKE_SQLSTATE('5','4', '0','1','1')
 #define ERRCODE_TOO_MANY_ARGUMENTS			MAKE_SQLSTATE('5','4', '0','2','3')
-#define ERRCODE_MPP_SUBTRANS_LIMIT_EXCEEDED	MAKE_SQLSTATE('5','4', '0','3','0')
+#define ERRCODE_MPP_SUBTRANS_LIMIT_EXCEEDED	MAKE_SQLSTATE('5','4', 'M','3','0')
 
 /* Class 55 - Object Not In Prerequisite State (class borrowed from DB2) */
 #define ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE	MAKE_SQLSTATE('5','5', '0','0','0')
