@@ -87,7 +87,9 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * 1. Consider mergejoin paths where both relations must be explicitly
 	 * sorted.
 	 */
-    if (enable_mergejoin || jointype == JOIN_FULL)
+    if (enable_mergejoin ||
+        mpp_trying_fallback_plan ||
+        jointype == JOIN_FULL)
 	    sort_inner_and_outer(root, joinrel, outerrel, innerrel,
 						     restrictlist, mergeclause_list, jointype);
 
@@ -120,7 +122,7 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * 4. Consider paths where both outer and inner relations must be hashed
 	 * before being joined.
 	 */
-	if (enable_hashjoin)
+	if (enable_hashjoin || mpp_trying_fallback_plan)
 		hash_inner_and_outer(root, joinrel, outerrel, innerrel,
 							 restrictlist, mergeclause_list, jointype);
 }
@@ -357,7 +359,7 @@ match_unsorted_outer(PlannerInfo *root,
 			break;
 	}
 
-    if (!enable_nestloop && !enable_nestloop_override)
+    if (!enable_nestloop && !mpp_trying_fallback_plan)
         nestjoinOK = false;
 
     /*
@@ -489,7 +491,8 @@ match_unsorted_outer(PlannerInfo *root,
 		 * supports FULL JOIN, it's necessary to generate a clauseless
 		 * mergejoin path instead.
 		 */
-		if (mergeclauses == NIL || !enable_mergejoin)
+		if (mergeclauses == NIL || 
+            (!enable_mergejoin && !mpp_trying_fallback_plan))
 		{
 			if (jointype == JOIN_FULL)
 				 /* okay to try for mergejoin */ ;

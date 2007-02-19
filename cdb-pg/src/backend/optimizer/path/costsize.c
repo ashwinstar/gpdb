@@ -95,16 +95,7 @@ int			effective_cache_size = DEFAULT_EFFECTIVE_CACHE_SIZE;
 
 Cost		disable_cost = 100000000.0;
 
-bool		enable_seqscan = true;
-bool		enable_indexscan = true;
-bool		enable_bitmapscan = true;
-bool		enable_tidscan = true;
-bool		enable_sort = true;
-bool		enable_hashagg = true;
-bool		enable_groupagg = true;
-bool		enable_nestloop = true;
-bool		enable_mergejoin = true;
-bool		enable_hashjoin = true;
+/* CDB: The enable_xxx globals have been moved to allpaths.c */
 
 
 static bool cost_qual_eval_walker(Node *node, QualCost *total);

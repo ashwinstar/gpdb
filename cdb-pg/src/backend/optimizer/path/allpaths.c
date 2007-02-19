@@ -39,11 +39,22 @@
 #include "cdb/cdbpath.h"                    /* cdbpath_rows() */
 
 /* These parameters are set by GUC */
+bool		enable_seqscan = true;
+bool		enable_indexscan = true;
+bool		enable_bitmapscan = true;
+bool		enable_tidscan = true;
+bool		enable_sort = true;
+bool		enable_hashagg = true;
+bool		enable_groupagg = true;
+bool		enable_nestloop = true;
+bool		enable_mergejoin = true;
+bool		enable_hashjoin = true;
+bool		mpp_enable_fallback_plan = true;
 bool		enable_geqo = false;	/* just in case GUC doesn't set it */
 int			geqo_threshold;
 
 /* Other globals */
-bool        enable_nestloop_override;
+bool        mpp_trying_fallback_plan;
 
 static void set_base_rel_pathlists(PlannerInfo *root);
 static void set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti);
@@ -235,6 +246,10 @@ static void
 set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
     List       *pathlist = NIL;
+    List       *indexpathlist = NIL;
+    List       *bitmappathlist = NIL;
+    List       *tidpathlist = NIL;
+    Path       *seqpath;
     ListCell   *cell;
 
 	/* Mark rel with estimated output rows, width, etc */
@@ -301,23 +316,42 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		return;
 	}
 	
+	/* Consider sequential scan. */
+    seqpath = create_seqscan_path(root, rel);
+    if (enable_seqscan)
+        pathlist = lappend(pathlist, seqpath);
+
 	/* Consider index and bitmap scans */
-	create_index_paths(root, rel, &pathlist);
+	create_index_paths(root, rel, &indexpathlist, &bitmappathlist);
+    if (indexpathlist && enable_indexscan)
+        pathlist = list_concat(pathlist, indexpathlist);
+    if (bitmappathlist && enable_bitmapscan)
+        pathlist = list_concat(pathlist, bitmappathlist);
 
 	/* Consider TID scans */
-    if (enable_tidscan)
-	    create_tidscan_paths(root, rel, &pathlist);
+    create_tidscan_paths(root, rel, &tidpathlist);
+    if (tidpathlist && enable_tidscan)
+        pathlist = list_concat(pathlist, tidpathlist);
 
-	/* 
-     * Consider sequential scan.  If no other path was found, use 
-     * sequential scan even if enable_seqscan = off.
-     */
-    if (enable_seqscan || !pathlist)
-	    pathlist = lappend(pathlist, create_seqscan_path(root, rel));
+    /* If no enabled path was found, consider disabled paths. */
+    if (!pathlist)
+    {
+        pathlist = lappend(pathlist, seqpath);
+        if (mpp_enable_fallback_plan)
+        {
+            pathlist = list_concat(pathlist, indexpathlist);
+            pathlist = list_concat(pathlist, bitmappathlist);
+            pathlist = list_concat(pathlist, tidpathlist);
+        }
+    }
 
     /* Add them, now that we know whether the quals specify a unique key. */
     foreach(cell, pathlist)
         add_path(root, rel, (Path *)lfirst(cell));
+
+	/* Consider sequential scan. */
+    if (enable_seqscan || !pathlist)
+        add_path(root, rel, create_seqscan_path(root, rel));
 
 	/* Now find the cheapest of the paths for this rel */
 	set_cheapest(root, rel);
@@ -792,7 +826,7 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels)
 	int			lev;
 	RelOptInfo *rel;
 
-    enable_nestloop_override = false;
+    mpp_trying_fallback_plan = false;
 
 	/*
 	 * We employ a simple "dynamic programming" algorithm: we first find all
@@ -845,15 +879,16 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels)
 #endif
 		}
 
-        /* If no paths found because enable_nestloop=false, enable & retry. */
+        /* If no paths found because enable_xxx=false, enable all & retry. */
         if (!joinitems[lev] &&
-            !enable_nestloop)
+            mpp_enable_fallback_plan &&
+            !mpp_trying_fallback_plan)
         {
-            enable_nestloop_override = true;
+            mpp_trying_fallback_plan = true;
             lev--;
         }
         else
-            enable_nestloop_override = false;
+            mpp_trying_fallback_plan = false;
 	}
 
 	/*
@@ -1194,12 +1229,12 @@ recurse_push_qual(Node *setOp, Query *topquery,
 
 
 /*
- * cdb_no_path_for_query 
+ * cdb_no_path_for_query
  *
  * Raise error when the set of allowable paths for a query is empty.
  * Does not return.
  */
-void 
+void
 cdb_no_path_for_query(void)
 {
     StringInfoData  buf;

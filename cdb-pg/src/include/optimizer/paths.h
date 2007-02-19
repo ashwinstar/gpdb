@@ -21,9 +21,21 @@
 /*
  * allpaths.c
  */
+extern bool enable_seqscan;
+extern bool enable_indexscan;
+extern bool enable_bitmapscan;
+extern bool enable_tidscan;
+extern bool enable_sort;
+extern bool enable_hashagg;
+extern bool enable_groupagg;
+extern bool enable_nestloop;
+extern bool enable_mergejoin;
+extern bool enable_hashjoin;
+extern bool mpp_enable_fallback_plan;
 extern bool enable_geqo;
 extern int	geqo_threshold;
-extern bool enable_nestloop_override;   /*CDB*/
+
+extern bool mpp_trying_fallback_plan;
 
 extern RelOptInfo *make_one_rel(PlannerInfo *root, List *joinlist);
 
@@ -43,7 +55,8 @@ typedef enum
 	SAOP_REQUIRE				/* Require ScalarArrayOpExpr */
 } SaOpControl;
 
-extern void create_index_paths(PlannerInfo *root, RelOptInfo *rel, List** ppathlist);
+extern void create_index_paths(PlannerInfo *root, RelOptInfo *rel,
+                               List **pindexpathlist, List **pbitmappathlist);
 extern List *generate_bitmap_or_paths(PlannerInfo *root, RelOptInfo *rel,
 						 List *clauses, List *outer_clauses,
 						 RelOptInfo *outer_rel);

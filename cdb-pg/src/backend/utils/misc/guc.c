@@ -514,6 +514,16 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 	{
+		{"mpp_enable_fallback_plan", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Plan types which are not enabled may be used when a "
+                         "query would be infeasible without them."),
+			gettext_noop("If false, planner rejects queries that cannot be "
+                         "satisfied using only the enabled plan types.")
+		},
+		&mpp_enable_fallback_plan,
+		true, NULL, NULL
+	},
+	{
 		{"constraint_exclusion", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Enables the planner to use constraints to optimize queries."),
 			gettext_noop("Child table scans will be skipped if their "

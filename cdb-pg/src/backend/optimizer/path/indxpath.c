@@ -139,10 +139,11 @@ static Const *string_to_const(const char *str, Oid datatype);
  * Note: check_partial_indexes() must have been run previously for this rel.
  *
  * CDB: Instead of handing the paths to add_path(), we append them to a List
- * (*ppathlist) belonging to the caller.
+ * (*pindexpathlist or *pbitmappathlist) belonging to the caller.
  */
 void
-create_index_paths(PlannerInfo *root, RelOptInfo *rel, List** ppathlist)
+create_index_paths(PlannerInfo *root, RelOptInfo *rel,
+                   List **pindexpathlist, List **pbitmappathlist)
 {
 	List	   *indexpaths;
 	List	   *bitindexpaths;
@@ -188,17 +189,13 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel, List** ppathlist)
             ipath->indexinfo->unique)
             rel->onerow = true;
 
-        if (enable_indexscan)
-            *ppathlist = lappend(*ppathlist, ipath);
+        /* Add index path to caller's list. */
+        *pindexpathlist = lappend(*pindexpathlist, ipath);
 
 		if (ipath->indexselectivity < 1.0 &&
 			!ScanDirectionIsBackward(ipath->indexscandir))
 			bitindexpaths = lappend(bitindexpaths, ipath);
 	}
-
-    /* CDB: Bail now if user doesn't want bitmap paths. */
-    if (!enable_bitmapscan)
-        return;
 
 	/*
 	 * Generate BitmapOrPaths for any suitable OR-clauses present in the
@@ -229,7 +226,7 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel, List** ppathlist)
 
 		bitmapqual = choose_bitmap_and(root, rel, bitindexpaths, NULL);
 		bpath = create_bitmap_heap_path(root, rel, bitmapqual, NULL);
-		*ppathlist = lappend(*ppathlist, bpath);
+		*pbitmappathlist = lappend(*pbitmappathlist, bpath);
 	}
 }
 
@@ -1495,7 +1492,7 @@ best_inner_indexscan(PlannerInfo *root, RelOptInfo *rel,
 	bitindexpaths = list_concat(bitindexpaths, list_copy(indexpaths));
 
     /* Exclude plain index paths if user doesn't want them. */
-    if (!enable_indexscan)
+    if (!enable_indexscan && !mpp_trying_fallback_plan)
         indexpaths = NIL;
 
 	/*
@@ -1503,7 +1500,7 @@ best_inner_indexscan(PlannerInfo *root, RelOptInfo *rel,
 	 * promising combination of bitmap index paths.
 	 */
 	if (bitindexpaths != NIL &&
-        enable_bitmapscan)
+        (enable_bitmapscan || mpp_trying_fallback_plan))
 	{
 		Path	   *bitmapqual;
 		BitmapHeapPath *bpath;

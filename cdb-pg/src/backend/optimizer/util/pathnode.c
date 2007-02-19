@@ -484,7 +484,7 @@ set_cheapest(PlannerInfo *root, RelOptInfo *parent_rel)
     /* CDB: If cheapest path is NJ, consider adaptive NJ/HJ. */
     if (IsA(cheapest_total_path, NestPath) &&
         ((NestPath *)cheapest_total_path)->alternate == NULL &&
-        enable_adaptive_nestloop)
+        (enable_adaptive_nestloop || mpp_trying_fallback_plan))
     {
         Path   *new_path = create_adaptive_join_path(root, cheapest_total_path);
 
@@ -1723,7 +1723,7 @@ create_unique_path(PlannerInfo *root,
         hashable = true;
     if (distinct_on_rowid_relids)
         hashable = true;
-	if (hashable && enable_hashagg)
+	if (hashable && (enable_hashagg || mpp_trying_fallback_plan))
 	{
 		/*
 		 * Estimate the overhead per hashtable entry at 64 bytes (same as in
@@ -1742,7 +1742,8 @@ create_unique_path(PlannerInfo *root,
 					 subpath->startup_cost,
 					 subpath->total_cost,
 					 rel->rows);
-			if (agg_path.total_cost < sort_path.total_cost || !enable_sort)
+			if (agg_path.total_cost < sort_path.total_cost || 
+                (!enable_sort && !mpp_trying_fallback_plan))
             {
                 pathnode->umethod = UNIQUE_PATH_HASH;
 		        pathnode->path.startup_cost = agg_path.startup_cost;
@@ -2482,8 +2483,9 @@ create_mergejoin_path(PlannerInfo *root,
 		inner_path->pathkeys)
 		innersortkeys = NIL;
 
-    /* If user doesn't want sort, but this MJ would need to sort, fail. */
-    if (!enable_sort)
+    /* If user doesn't want sort, but this MJ requires a sort, fail. */
+    if (!enable_sort &&
+        !mpp_trying_fallback_plan)
     {
         if (outersortkeys || innersortkeys)
             return NULL;
@@ -2753,7 +2755,7 @@ create_adaptive_join_path(PlannerInfo *root, Path *oldpath)
 
     /* Use HJ non-adaptively. */
 nonadaptive_hj:
-    if (enable_hashjoin)
+    if (enable_hashjoin || mpp_trying_fallback_plan)
         return (Path *)altjoin;
 
     /* No dice. Stick with NJ. */

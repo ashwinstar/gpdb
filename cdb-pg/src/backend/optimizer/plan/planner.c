@@ -226,6 +226,7 @@ subquery_planner(Query *parse, double tuple_fraction,
 	root->append_rel_list = NIL;
 
     /* CDB: Initialize globals */
+    mpp_trying_fallback_plan = false;
     if (Mpp_role != MPP_ROLE_DISPATCH)
         cdbpath_segments = 1;
     else
