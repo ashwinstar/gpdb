@@ -40,7 +40,7 @@ def parseCommandLine():
 
 
 parseCommandLine()
-distFile = open(distFname, "r")
+distFile = open(distFname, "r", 1024*256)
 distFileSem = threading.Semaphore(1)
 def readFile():
     global distFile, distFileSem
