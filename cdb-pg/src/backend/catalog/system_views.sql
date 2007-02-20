@@ -387,4 +387,13 @@ CREATE VIEW pg_resqueue_status AS
 				queuewaiters int4,
 				queueholders int4)
 			ON (s.queueid = q.oid);
+			
+-- External table views
+
+CREATE VIEW pg_max_external_files AS
+    SELECT   hostname, count(*) as maxfiles
+    FROM     mpp_configuration
+    WHERE    content >= 0 
+    AND      isprimary
+    GROUP BY hostname;
 
