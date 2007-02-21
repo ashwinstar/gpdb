@@ -126,8 +126,8 @@ static void setupOutgoingConnection(ChunkTransportState *transportStates, ChunkT
 static void updateOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn, int errnoSave);
 #ifdef UNUSED
 static int  getOutgoingPort(ChunkTransportStateEntry *pEntry);
-#endif
 static void zapOutgoingPort(ChunkTransportStateEntry *pEntry);
+#endif
 
 static void sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn * conn);
 static bool readRegisterMessage(ChunkTransportState *transportStates,
@@ -806,13 +806,12 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
                 ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
                               errmsg("Interconnect timeout: Connection "
                                      "to seg%d %s from local port %s was not "
-                                     "complete after %d ms.  Will retry.",
+                                     "complete after %d ms %d elapsed.  Will retry.",
                                      conn->remoteContentId,
                                      conn->remoteHostAndPort,
                                      conn->localHostAndPort,
-                                     CONNECT_RETRY_MS)
+                                     conn->wakeup_ms, (elapsed_ms + 20))
 							));
-                zapOutgoingPort(sendingChunkTransportState);
                 conn->state = mcsSetupOutgoingConnection;
             }
 
@@ -2025,8 +2024,6 @@ getOutgoingPort(ChunkTransportStateEntry *pEntry)
                              outgoingPort) ));
     return outgoingPort;
 }                               /* getOutgoingPort */
-#endif  /*UNUSED*/
-
 
 /*
  * zapOutgoingPort
@@ -2049,7 +2046,7 @@ zapOutgoingPort(ChunkTransportStateEntry *pEntry)
                 ));
     }
 }                               /* zapOutgoingPort */
-
+#endif  /*UNUSED*/
 
 /* Function sendRegisterMessage() used to send a Register message to the
  * remote destination on the other end of the provided conn.
