@@ -527,6 +527,17 @@ apply_motion(Plan *plan, Query *query)
 	else
         warn_ctid_without_segid(query, result);
 
+    /* Discard subtrees of Query node that aren't needed for execution. */
+    query->jointree = NULL;
+    query->targetList = NIL;
+    query->groupClause = NIL;
+    query->havingQual = NULL;
+    query->distinctClause = NIL;
+    query->sortClause = NIL;
+    query->limitCount = NULL;
+    query->limitOffset = NULL;
+    query->setOperations = NULL;
+
 	return result;
 }
 
