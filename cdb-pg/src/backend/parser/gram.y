@@ -2435,12 +2435,7 @@ CreateExternalStmt:	CREATE EXTERNAL OptTemp TABLE qualified_name '(' OptExtTable
 							n->locations = $11;
 							n->format = $14;
 							n->formatOpts = $16;
-							$$ = (Node *)n;
-							
-							ereport(ERROR,
-									(errcode(ERRCODE_SYNTAX_ERROR),
-									 errmsg("External tables are not yet supported")));
-							
+							$$ = (Node *)n;							
 						}
 						;
 
