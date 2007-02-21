@@ -891,7 +891,8 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
                                           outgoing_count, expectedTotalOutgoing,
                                           interconnect_setup_timeout)
 							));
-            timeout_ms = Min(timeout_ms, to - elapsed_ms);
+			/* don't wait for more than 500ms */
+            timeout_ms = Min(500, Min(timeout_ms, to - elapsed_ms));
         }
 
         /*
@@ -932,11 +933,9 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 		 */
         if (timeout_ms > 0)
         {
-			int select_ms = Min(500, timeout_ms);
-
-            timeout.tv_sec = select_ms / 1000; /* 0 */
-            timeout.tv_usec = (select_ms - (timeout.tv_sec * 1000)) * 1000;
-            Assert(select_ms == timeout.tv_sec*1000 + timeout.tv_usec/1000);
+            timeout.tv_sec = timeout_ms / 1000; /* 0 */
+            timeout.tv_usec = (timeout_ms - (timeout.tv_sec * 1000)) * 1000;
+            Assert(timeout_ms == timeout.tv_sec*1000 + timeout.tv_usec/1000);
         }
         else
             timeout.tv_sec = timeout.tv_usec = 0;
