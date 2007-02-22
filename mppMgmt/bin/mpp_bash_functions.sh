@@ -812,7 +812,7 @@ GET_PG_PID_ACTIVE () {
 		PG_LOCK_FILE="/tmp/.s.PGSQL.${PORT}.lock"
 		if [ x"" == x"$HOST" ];then
 			#See if we have a netstat entry for this local host
-			PG_LOCK_NETSTAT=`$NETSTAT -an|$GREP ".s.PGSQL.${PORT}"|$AWK '{print $NF}'|$HEAD -1`
+			PG_LOCK_NETSTAT=`$NETSTAT -an 2>/dev/null |$GREP ".s.PGSQL.${PORT}"|$AWK '{print $NF}'|$HEAD -1`
 			#See if we have a lock file in /tmp
 			if [ -f ${PG_LOCK_FILE} ];then
 				PG_LOCK_TMP=1
@@ -859,7 +859,7 @@ GET_PG_PID_ACTIVE () {
 				PID=0
 				EXIT_STATUS=1
 			else	
-				PG_LOCK_NETSTAT=`$TRUSTED_SHELL $HOST "$NETSTAT -an|$GREP ".s.PGSQL.${PORT}" 2>/dev/null"|$AWK '{print $NF}'|$HEAD -1`
+				PG_LOCK_NETSTAT=`$TRUSTED_SHELL $HOST "$NETSTAT -an 2>/dev/null |$GREP ".s.PGSQL.${PORT}" 2>/dev/null"|$AWK '{print $NF}'|$HEAD -1`
 				PG_LOCK_TMP=`$TRUSTED_SHELL $HOST "$LS ${PG_LOCK_FILE} 2>/dev/null"|$WC -l`
 				if [ x"" == x"$PG_LOCK_NETSTAT" ] && [ $PG_LOCK_TMP -eq 0 ];then
 					PID=0
