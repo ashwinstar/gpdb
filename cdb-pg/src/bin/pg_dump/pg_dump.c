@@ -1352,6 +1352,11 @@ getTableData(TableInfo *tblinfo, int numTables, bool oids)
 		/* Skip VIEWs (no data to dump) */
 		if (tblinfo[i].relkind == RELKIND_VIEW)
 			continue;
+		/* START MPP ADDITION */
+		/* Skip EXTERNAL TABLESs */
+		if (tblinfo[i].relkind == RELKIND_EXTERNAL)
+			continue;
+		/* END MPP ADDITION */		
 		/* Skip SEQUENCEs (handled elsewhere) */
 		if (tblinfo[i].relkind == RELKIND_SEQUENCE)
 			continue;
@@ -2829,12 +2834,13 @@ getTables(int *numTables)
 						  "d.classid = c.tableoid and d.objid = c.oid and "
 						  "d.objsubid = 0 and "
 						  "d.refclassid = c.tableoid and d.deptype = 'a') "
-						  "where relkind in ('%c', '%c', '%c', '%c') "
+						  "where relkind in ('%c', '%c', '%c', '%c', '%c') "
 						  "order by c.oid",
 						  username_subquery,
 						  RELKIND_SEQUENCE,
 						  RELKIND_RELATION, RELKIND_SEQUENCE,
-						  RELKIND_VIEW, RELKIND_COMPOSITE_TYPE);
+						  RELKIND_VIEW, RELKIND_COMPOSITE_TYPE,
+						  RELKIND_EXTERNAL); /* MPP ADDITION - external tbl */
 	}
 	else if (g_fout->remoteVersion >= 80000)
 	{
@@ -7324,6 +7330,99 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 		PQclear(res);
 	}
+    /* START MPP ADDITION */
+    else if(tbinfo->relkind == RELKIND_EXTERNAL)
+    {
+        char       *locations;
+        char       *location;
+        char       *fmttype;
+        char       *fmtopts;
+        
+        reltypename = "TABLE";
+        /*
+         * DROP must be fully qualified in case same name appears in
+         * pg_catalog
+         */
+        appendPQExpBuffer(delq, "DROP EXTERNAL TABLE %s.",
+                          fmtId(tbinfo->dobj.namespace->dobj.name));
+        appendPQExpBuffer(delq, "%s;\n",
+                          fmtId(tbinfo->dobj.name));
+        
+        appendPQExpBuffer(q, "CREATE EXTERNAL TABLE %s (",
+                          fmtId(tbinfo->dobj.name));
+        actual_atts = 0;
+        for (j = 0; j < tbinfo->numatts; j++)
+        {
+            /* Is this one of the table's own attrs, and not dropped ? */
+            if (!tbinfo->inhAttrs[j] && !tbinfo->attisdropped[j])
+            {
+                /* Format properly if not first attr */
+                if (actual_atts > 0)
+                    appendPQExpBuffer(q, ",");
+                appendPQExpBuffer(q, "\n    ");
+                
+                /* Attribute name */
+                appendPQExpBuffer(q, "%s ",
+                                  fmtId(tbinfo->attnames[j]));
+                
+                /* Attribute type */
+                appendPQExpBuffer(q, "%s",
+                                  tbinfo->atttypnames[j]);
+                
+                actual_atts++;
+            }
+        }
+        
+        appendPQExpBuffer(q, "\n)");
+        
+        /* Now get required information from pg_exttable */
+        appendPQExpBuffer(query,
+                          "SELECT x.location, x.fmttype, x.fmtopts "
+                          "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
+                          "WHERE x.reloid = c.oid AND c.oid = '%u'::oid",
+                          tbinfo->dobj.catId.oid);
+        
+        res = PQexec(g_conn, query->data);
+        check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+        
+        if (PQntuples(res) != 1)
+        {
+            if (PQntuples(res) < 1)
+                write_msg(NULL, "query to obtain definition of external table "
+                          "\"%s\" returned no data\n",
+                          tbinfo->dobj.name);
+            else
+                write_msg(NULL, "query to obtain definition of external table "
+                          "\"%s\" returned more than one definition\n",
+                          tbinfo->dobj.name);
+            exit_nicely();
+            
+        }
+        
+        locations = PQgetvalue(res, 0, 0);
+        fmttype = PQgetvalue(res, 0, 1);
+        fmtopts = PQgetvalue(res, 0, 2);
+                
+        /* add LOCATION clause */
+        locations[strlen(locations)-1] = '\0';
+        locations++;
+        location = nextToken(&locations, ",");
+        appendPQExpBuffer(q, " LOCATION (\n    '%s'", location);
+        for (; (location = nextToken(&locations, ",")) != NULL;)
+        {
+            appendPQExpBuffer(q, ",\n    '%s'", location);
+        }
+        appendPQExpBuffer(q, "\n) ");
+
+        /* add FORMAT clause */
+        appendPQExpBuffer(q, "FORMAT '%s' (%s);\n", 
+                          fmttype[0] == 't' ? "text" : "csv",
+                          fmtopts);
+        
+        PQclear(res);
+        
+    }
+    /* END MPP ADDITION */
 	else
 	{
 		/* START MPP ADDITION */
