@@ -102,7 +102,7 @@ USAGE () {
 		$ECHO "      -c, copy any records in parent table back into parent table after successful child"
 		$ECHO "          table creation [default do not copy]"
 		$ECHO "      -n, <# to generate> number of child tables to generate"
-		$ECHO "          [mandatory if partition type hour, daily, week or month]"
+		$ECHO "          [mandatory if partition type hour, daily, week, month or year]"
 		$ECHO "      -o, <value list> comma separated list of values, example -c CA,MS,NY,WS to be added"
 		$ECHO "          [mandatory if partition type list]"
 		$ECHO "      -s, <new range value> new upper range value to be applied to a range partition type"
@@ -133,7 +133,7 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Partition column number    = $PART_COLUMN_NUM" 1
 		LOG_MSG "[INFO]:-Partition type             = $TYPE_NAME" 1
 		case $TYPE_NAME in
-                hour|daily|week|month )
+                hour|daily|week|month|year )
 		LOG_MSG "[INFO]:-Max date obtained          = $MAX_DATE_TEXT" 1
 		LOG_MSG "[INFO]:-End date calculated        = $CORRECTED_END_DATE" 1
 		;;
@@ -235,7 +235,7 @@ PROCESS_CHILD_NAME () {
 	DEPTH=`$ECHO $CHILD_NAME|$SED -e s/\$CHILD_TABLE_ID//g|$AWK -F"" '{print $2}'|$AWK -F"_" '{print $1}'`
 	CUR_TYPES=`$ECHO $CHILD_NAME|$SED -e s/\$CHILD_TABLE_ID//g|$AWK -F"" '{print $2}'|$AWK -F"_" '{print $2}'`
 	case $TYPE_NAME in
-		hour|daily|week|month )
+		hour|daily|week|month|year )
 				if [ x"" == x"$GENERATION_COUNT" ];then
 					ERROR_EXIT "[FATAL]:-Partition type is $TYPE_NAME and -n parameter null" 2
 				fi
@@ -252,7 +252,7 @@ PROCESS_CHILD_NAME () {
 				;;
 		* )
 				
-				ERROR_EXIT "[FATAL]:-Obtained type as $TYPE_NAME expected hour, daily, week, month, range or list" 2
+				ERROR_EXIT "[FATAL]:-Obtained type as $TYPE_NAME expected hour, daily, week, month, year, range or list" 2
 				;;
 		esac
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -326,7 +326,7 @@ GATHER_INFO () {
 	PROCESS_CHILD_CONSTRAINT
 	#Now gather information specific to each partition type
 	case $TYPE_NAME in
-		hour|daily|week|month ) 
+		hour|daily|week|month|year ) 
 			MAX_DATE_TEXT=''
 			MAX_DATE_NUMBER=0
 			for CHILD_ITEM in "${CHILD_NAME_ARRAY[@]}"
@@ -382,7 +382,7 @@ GATHER_INFO () {
 	fi
 	#Now check to see if rule has a timestamp in it
 	case $TYPE_NAME in 
-		hour|daily|week|month)
+		hour|daily|week|month|year)
 		DATE_TYPE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select definition from pg_rules where tablename='$TABLE_NAME' limit 1;"|$GREP -ci "::timestamp"`
 		ERROR_CHK $? "timestamp PSQL check" 1
 		;;
@@ -440,11 +440,12 @@ PROCESS_DATA () {
 		daily ) PROCESS_DAILY ;;
 		week  ) PROCESS_WEEKLY ;;
 		month ) PROCESS_MONTHLY ;;
+		year  ) PROCESS_YEARLY ;;
 		range ) PROCESS_RANGE ;;
 		list  ) PROCESS_LIST ;;
 	esac
 	case $TYPE_NAME in
-		hour|daily|week|month )
+		hour|daily|week|month|year )
 		CORRECTED_END_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$END_DATE' -1;"` ;;
 	esac
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -571,6 +572,30 @@ PROCESS_MONTHLY () {
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+PROCESS_YEARLY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Generating yearly array, please wait..." 1
+	START_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$MAX_DATE_TEXT' +1;"`
+	START_YEAR=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(EXTRACT(YEAR FROM DATE '$START_DATE'),4,'0');"`
+	VECTOR=1
+	while [ $VECTOR -le $GENERATION_COUNT ]
+	do
+		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "$START_YEAR"_"${TYPE_NAME}")
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+		((RULE_END_YEAR=$START_YEAR+1))
+		if [ $DATE_TYPE -eq 0 ];then
+			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/\'$START_YEAR-01-01\'/g|$SED -e s/~SWAP2/\'$RULE_END_YEAR-01-01\'/g|$TR ' ' '~'`
+		else
+			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/\'$START_YEAR-01-01~00:00:00\'/g|$SED -e s/~SWAP2/\'$RULE_END_YEAR-01-01~00:00:00\'/g|$TR ' ' '~'`
+		fi
+		RULE_ARRAY=(${RULE_ARRAY[@]} "$NEW_RULE")
+		((START_YEAR=$START_YEAR+1))
+		((VECTOR=$VECTOR+1))
+	done
+	END_DATE="$START_YEAR-01-01"
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}		
 PROCESS_LIST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
         LOG_MSG "[INFO]:-Generating list array, please wait..." 1

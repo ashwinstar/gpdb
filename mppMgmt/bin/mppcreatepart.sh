@@ -123,7 +123,7 @@ USAGE () {
 		$ECHO "      Date range partitioning options:"
 		$ECHO "      Use this partitioning policy for date, timestamp and timestamp with time zone columns"
 		$ECHO "      Unless -m <conversion command> has been supplied and performs a compatible conversion"
-		$ECHO "      -c, <Constraint type> m (monthly), w (weekly), d (daily) or h (hourly) [mandatory]"
+		$ECHO "      -c, <Constraint type> y (yearly), m (monthly), w (weekly), d (daily) or h (hourly) [mandatory]"
 		$ECHO "          Only use hourly if partition column is of type timestamp, or a suitable -m"
 		$ECHO "          conversion command has been supplied"
 		$ECHO "      -s, <start date> date to commence from format YYYY-MM-DD [mandatory]"
@@ -365,6 +365,7 @@ VALIDATE_PARAM () {
 	case $PART_TYPE in
 		d ) #Validate date range options
 			case $CONSTRAINT_TYPE in
+				y ) CONSTRAINT_TXT=Yearly ;;
 				m ) CONSTRAINT_TXT=Monthly ;;
 				w ) CONSTRAINT_TXT=Weekly ;;
 				d ) CONSTRAINT_TXT=Daily ;;
@@ -422,6 +423,8 @@ VALIDATE_PROCESS () {
 	else
 		LOG_MSG "[INFO]:-Table $PARENT_TABLE_NAME has 0 (zero) records" 1
 	fi
+	SECURE_TABLE_NAME="${PARENT_TABLE_NAME}_part_temp_$$"
+	#Determine if the source table has random distribution
 	#Now validate the columns to ensure that they are the correct data type for the partitioning requested
 	#First get column type
 	PART_COL_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select typname from pg_type where oid in (select atttypid from pg_attribute where attname='${PART_COLUMN}'and attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')));"`
@@ -498,6 +501,8 @@ SELECT_PROCESS_TYPE () {
 			LOG_MSG "[INFO]:-Selected process type date partitioning" 1
 			START_DATE=$START_DATE_OR_VALUE
 			case $CONSTRAINT_TYPE in
+				y ) TYPE_NAME=year
+				    PROCESS_YEARLY ;;
 				m ) TYPE_NAME=month
 				    PROCESS_MONTHLY ;;
 				d ) TYPE_NAME=daily
@@ -708,13 +713,48 @@ PROCESS_MONTHLY () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+PROCESS_YEARLY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Generating yearly array, please wait..." 1
+	START_YEAR=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(EXTRACT(YEAR FROM DATE '$START_DATE'),4,'0');"`
+	#((END_YEAR=$START_YEAR+$GENERATION_COUNT))
+	VECTOR=1
+	while [ $VECTOR -le $GENERATION_COUNT ]
+	do
+		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "$START_YEAR"_"${TYPE_NAME}")
+		((RULE_END_YEAR=$START_YEAR+1))
+		if [ $DATE_TYPE -eq 0 ];then
+			if [ $PROCESS_CONVERSION -eq 1 ];then
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}(${PART_COLUMN})~>=~'$START_YEAR-01-01'~AND~${CONVERSION_CMD}($PART_COLUMN)~<~'$RULE_END_YEAR-01-01'")
+			else
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${PART_COLUMN}~>=~'$START_YEAR-01-01'~AND~$PART_COLUMN~<~'$RULE_END_YEAR-01-01'")
+			fi
+		else
+			if [ $PROCESS_CONVERSION -eq 1 ];then
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}(${PART_COLUMN})~>=~'$START_YEAR-01-01~00:00:00'~AND~${CONVERSION_CMD}($PART_COLUMN)~<~'$RULE_END_YEAR-01-01~00:00:00'")
+			else
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${PART_COLUMN}~>=~'$START_YEAR-01-01~00:00:00'~AND~$PART_COLUMN~<~'$RULE_END_YEAR-01-01~00:00:00'")
+			fi
+		fi
+		((START_YEAR=$START_YEAR+1))
+		((VECTOR=$VECTOR+1))
+	done
+		END_DATE="${START_YEAR}-01-01"
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
 SECURE_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Creating temporary holding table to secure records" 1
-	SECURE_TABLE_NAME="${PARENT_TABLE_NAME}_part_temp_$$"
 	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "create table ${SECURE_TABLE_NAME} (like $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
-	ERROR_CHK $? "create temporary holding table" 2
+	#TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select oid from pg_class where relname='$SECURE_TAB' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+	#SOURCE_TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select oid from pg_class where relname='$SOURCE_TAB' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+	#ATTNUM_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(attrnums) from mpp_distribution_policy where localoid=$SOURCE_TAB_OID ;"`
+	#ERROR_CHK $? "create temporary holding table" 2
 	LOG_MSG "[INFO]:-Commencing record transfer, please wait..." 1
+	#if [ $ATTNUM_COUNT -eq 0 ];then
+	#	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "update mpp_distribution_policy set attrnums='{}' where localoid=$TAB_OID;"
+	#fi
 	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into ${SECURE_TABLE_NAME} (select * from only $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
 	ERROR_CHK $? "secure records to temporary table" 2
 	SECURE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(*) from only $PARENT_TABLE_NAME;"`
@@ -722,7 +762,7 @@ SECURE_DATA () {
 	SECURE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(*) from ${SECURE_TABLE_NAME};"`
 	LOG_MSG "[INFO]:-Secure table has $SECURE_COUNT records" 1
 	LOG_MSG "[INFO]:-Clearing down $PARENT_TABLE_NAME" 1
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "truncate table $PARENT_TABLE_NAME;" >/dev/null 2>&1
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "truncate table $PARENT_TABLE_NAME;" # >/dev/null 2>&1
 	ERROR_CHK $? "truncate $PARENT_TABLE_NAME" 2
 	STEP_BACK=1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -765,6 +805,9 @@ REVERT_BACK () {
 
 GENERATE_SQL () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select oid from pg_class where relname='$SECURE_TAB' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+	SOURCE_TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select oid from pg_class where relname='$SOURCE_TAB' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+	#ATTNUM_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(attrnums) from mpp_distribution_policy where localoid=$SOURCE_TAB_OID ;"`
 	LOG_MSG "[INFO]:-Generating SQL file to build child tables, please wait" 1
 	VECTOR=0
 	((COL_COUNT=${#PARENT_COLUMN_LIST[@]}-1))
@@ -784,6 +827,9 @@ GENERATE_SQL () {
 				;;
 			month )
 				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_month$//g`
+				;;
+			year )
+				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_year$//g`
 				;;
 			list )
 				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[a-z]*[A-Z]*_list$//g`
@@ -931,7 +977,7 @@ DISPLAY_COUNTS () {
 		CHILD_TAB_FULL=${SCHEMA_NAME}.${CHILD_STRING}${CHILD_TABLE_ID}${DEPTH}_${CUR_TYPES}_$SUFFIX
 		SUFFIX_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT COUNT(*) from $CHILD_TAB_FULL;"`
 		if [ $SUFFIX_COUNT -gt 0 ];then
-		LOG_MSG "[INFO]:-Table suffix $CHILD_TAB_FULL has record count = $SUFFIX_COUNT" 1
+		LOG_MSG "[INFO]:-Table $CHILD_TAB_FULL records = $SUFFIX_COUNT" 1
 		fi
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
