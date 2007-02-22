@@ -76,7 +76,7 @@ USAGE () {
 		$ECHO "      `basename $0`"
 		$ECHO
 		$ECHO "      Deletes child tables that are outside of the rolling window (see -r option)"
-		$ECHO "      Will delete child tables that are -r days/weeks/months old from current date"
+		$ECHO "      Will delete child tables that are -r days/weeks/months/years old from current date"
 		$ECHO "      Requires that the partitioning field is of type date or timestamp"
 		$ECHO "      At this stage only supports date type range partitioning"
 		$ECHO "      Assumes that current child tables, rules and indexes initially created "
@@ -141,6 +141,7 @@ PROMPT_CONTINUE () {
 			hour|daily) WINDOW_TEXT="Day(s)" ;;
 			week) WINDOW_TEXT="Week(s)" ;;
 			month) WINDOW_TEXT="Month(s)" ;;
+			year) WINDOW_TEXT="Year(s)" ;;
 		esac	
 		LOG_MSG "[INFO]:-Window to keep on line     = $DELETION_WINDOW $WINDOW_TEXT" 1
 		if [ ${#CHILD_IS_PARENT_ARRAY[@]} -ne 0 ];then
@@ -261,7 +262,7 @@ VALIDATE_PROCESS () {
         ERROR_CHK $? "obtain child table name" 2
         TYPE_NAME=`$ECHO $CHILD_NAME|$AWK -F"_" '{print $NF}'`
 	case $TYPE_NAME in
-		hour|daily|week|month )
+		hour|daily|week|month|year )
 			LOG_MSG "[INFO]:-Partition type is $TYPE_NAME" 1
 			;;
 		range|list )
@@ -325,7 +326,7 @@ GATHER_INFO () {
 		MIN_DATE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -d $QD_DBNAME -A -t -c"select definition from pg_rules where tablename='$TABLE_NAME' and schemaname='$SCHEMA_NAME';"|$AWK -F"'" '{print $2}'|$GREP "-"|$SORT|$HEAD -1|$AWK '{print $1}'`
 		ERROR_CHK $? "obtain start partition date " 2
 		case $TYPE_NAME in
-			hour|week|month )
+			hour|week|month|year )
 			MAX_DATE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -d $QD_DBNAME -A -t -c"select definition from pg_rules where tablename='$TABLE_NAME' and schemaname='$SCHEMA_NAME';"|$AWK -F"'" '{print $4}'|$GREP "-"|$SORT|$TAIL -1|$AWK '{print $1}'`
 			ERROR_CHK $? "obtain end partition date " 2
 			;;
@@ -361,6 +362,10 @@ GATHER_INFO () {
 				MIN_DATE=`$ECHO ${CHILD_NAME_ARRAY[0]}|$AWK -F"_" '{print $(NF-2)$(NF-1)}'`	
 				MAX_DATE=`$ECHO ${CHILD_NAME_ARRAY[${LAST}]}|$AWK -F"_" '{print $(NF-2)$(NF-1)}'`	
 				;;
+			year )
+				MIN_DATE=`$ECHO ${CHILD_NAME_ARRAY[0]}|$AWK -F"_" '{print $(NF-1)}'`
+				MAX_DATE=`$ECHO ${CHILD_NAME_ARRAY[${LAST}]}|$AWK -F"_" '{print $(NF-1)}'`
+				;;
 		esac
 		LOG_MSG "[INFO]:-Min date from child name array is $MIN_DATE" 1
 		LOG_MSG "[INFO]:-Max date from child name array is $MAX_DATE" 1
@@ -386,6 +391,8 @@ COMPUTE_WINDOW () {
 			PROCESS_WEEKLY ;;
 		month) 
 			PROCESS_MONTHLY ;;
+		year)
+			PROCESS_YEARLY ;;
 	esac
 	if [ ${#CHILD_DELETE_ARRAY[@]} -ne 0 ];then
 		for C_NAME in ${CHILD_DELETE_ARRAY[@]}
@@ -483,6 +490,24 @@ PROCESS_MONTHLY () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+PROCESS_YEARLY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	CURRENT_YEAR=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select LPAD(extract (year from date('now()')),4, '0');"`
+	ERROR_CHK $? "obtain current year" 2
+	LOG_MSG "[INFO]:-Current year is $CURRENT_YEAR" 1
+	COUNT=1
+	((DELETE_YEAR=$CURRENT_YEAR-$DELETION_WINDOW))
+	WINDOW_DEL_SUFFIX=$DELETE_YEAR
+	for C_NAME in ${CHILD_NAME_ARRAY[@]}
+	do
+		CHILD_NUM=`$ECHO $C_NAME|$AWK -F"_" '{print $(NF-1)}'`
+		if [ $CHILD_NUM -le $WINDOW_DEL_SUFFIX ];then
+			CHILD_DELETE_ARRAY=(${CHILD_DELETE_ARRAY[@]} $C_NAME)
+		fi
+	done
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 PROCESS_DELETION () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ $ARCHIVE -eq 1 ] && [ ${#CHILD_WITH_REC_ARRAY[@]} -ne 0 ];then
@@ -507,7 +532,7 @@ SECURE_RECORDS () {
 	for SAVE_NAME in ${CHILD_WITH_REC_ARRAY[@]}
 	do
 		LOG_MSG "[INFO]:-Securing records from $SAVE_NAME to $ARCHIVE_TABLE" 1
-		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"insert into $ARCHIVE_TABLE (select * from ${SCHEMA_NAME}.$SAVE_NAME);"
+		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"insert into $ARCHIVE_TABLE (select * from $SAVE_NAME);"
 	ERROR_CHK $? "secure ${SCHEMA_NAME}.$SAVE_NAME records to $ARCHIVE_TABLE" 2
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
