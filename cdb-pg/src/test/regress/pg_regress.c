@@ -8,10 +8,10 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2007, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/test/regress/pg_regress.c,v 1.23 2006/10/04 00:30:14 momjian Exp $
+ * $PostgreSQL: pgsql/src/test/regress/pg_regress.c,v 1.31 2007/02/08 19:48:28 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -23,6 +23,11 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <unistd.h>
+
+#ifdef HAVE_SYS_RESOURCE_H
+#include <sys/time.h>
+#include <sys/resource.h>
+#endif
 
 #include "getopt_long.h"
 #include "pg_config_paths.h"
@@ -62,7 +67,9 @@ static char *bindir = PGBINDIR;
 static char *libdir = LIBDIR;
 static char *datadir = PGSHAREDIR;
 static char *host_platform = HOST_TUPLE;
+#ifndef WIN32_ONLY_COMPILER
 static char *makeprog = MAKEPROG;
+#endif
 
 #ifndef WIN32					/* not used in WIN32 case */
 static char *shellprog = SHELLPROG;
@@ -91,6 +98,7 @@ static char *psqldir = NULL;
 static char *hostname = NULL;
 static int	port = -1;
 static char *user = NULL;
+static char *srcdir = NULL;
 
 /* internal variables */
 static const char *progname;
@@ -107,6 +115,11 @@ static int	success_count = 0;
 static int	fail_count = 0;
 static int	fail_ignore_count = 0;
 
+static bool
+directory_exists(const char *dir);
+static void
+make_directory(const char *dir);
+
 static void
 header(const char *fmt,...)
 /* This extension allows gcc to check the format string for consistency with
@@ -122,6 +135,37 @@ psql_command(const char *database, const char *query,...)
 /* This extension allows gcc to check the format string for consistency with
    the supplied arguments. */
 __attribute__((format(printf, 2, 3)));
+
+#ifdef WIN32
+typedef BOOL(WINAPI * __CreateRestrictedToken) (HANDLE, DWORD, DWORD, PSID_AND_ATTRIBUTES, DWORD, PLUID_AND_ATTRIBUTES, DWORD, PSID_AND_ATTRIBUTES, PHANDLE);
+
+/* Windows API define missing from MingW headers */
+#define DISABLE_MAX_PRIVILEGE	0x1
+#endif
+
+/*
+ * allow core files if possible.
+ */
+#if defined(HAVE_GETRLIMIT) && defined(RLIMIT_CORE)
+static void 
+unlimit_core_size(void)
+{
+	struct rlimit lim;
+	getrlimit(RLIMIT_CORE,&lim);
+	if (lim.rlim_max == 0)
+	{
+		fprintf(stderr,
+				_("%s: cannot set core size,: disallowed by hard limit.\n"), 
+				progname);
+		return;
+	}
+	else if (lim.rlim_max == RLIM_INFINITY || lim.rlim_cur < lim.rlim_max)
+	{
+		lim.rlim_cur = lim.rlim_max;
+		setrlimit(RLIMIT_CORE,&lim);
+	}	
+}
+#endif
 
 
 /*
@@ -303,6 +347,163 @@ string_matches_pattern(const char *str, const char *pattern)
 }
 
 /*
+ * Replace all occurances of a string in a string with a different string.
+ * NOTE: Assumes there is enough room in the target buffer!
+ */
+static void
+replace_string(char *string, char *replace, char *replacement)
+{
+	char *ptr;
+
+	while ((ptr = strstr(string, replace)) != NULL) 
+	{
+		char *dup = strdup(string);
+
+		strlcpy(string, dup, ptr - string + 1);
+		strcat(string, replacement);
+		strcat(string, dup + (ptr - string) + strlen(replace));
+		free(dup);
+	}
+}
+
+/*
+ * Convert *.source found in the "source" directory, replacing certain tokens
+ * in the file contents with their intended values, and put the resulting files
+ * in the "dest" directory, replacing the ".source" prefix in their names with
+ * the given suffix.
+ */
+static void
+convert_sourcefiles_in(char *source, char *dest, char *suffix)
+{
+	char	abs_srcdir[MAXPGPATH];
+	char	abs_builddir[MAXPGPATH];
+	char	testtablespace[MAXPGPATH];
+	char	indir[MAXPGPATH];
+	char  **name;
+	char  **names;
+	int		count = 0;
+#ifdef WIN32
+	char *c;
+#endif
+
+	if (!getcwd(abs_builddir, sizeof(abs_builddir)))
+	{
+		fprintf(stderr, _("%s: could not get current directory: %s\n"),
+			progname, strerror(errno));
+		exit_nicely(2);
+	}
+
+	/*
+	 * in a VPATH build, use the provided source directory; otherwise, use
+	 * the current directory.
+	 */
+	if (srcdir)
+		strcpy(abs_srcdir, srcdir);
+	else
+		strcpy(abs_srcdir, abs_builddir);
+
+	snprintf(indir, MAXPGPATH, "%s/%s", abs_srcdir, source);
+	names = pgfnames(indir);
+	if (!names)
+		/* Error logged in pgfnames */
+		exit_nicely(2);
+
+#ifdef WIN32
+	/* in Win32, replace backslashes with forward slashes */
+	for (c = abs_builddir; *c; c++)
+		if (*c == '\\')
+			*c = '/';
+	for (c = abs_srcdir; *c; c++)
+		if (*c == '\\')
+			*c = '/';
+#endif
+
+	/* try to create the test tablespace dir if it doesn't exist */
+	snprintf(testtablespace, MAXPGPATH, "%s/testtablespace", abs_builddir);
+	if (directory_exists(testtablespace))
+		rmtree(testtablespace, true);
+	make_directory(testtablespace);
+
+	/* finally loop on each file and do the replacement */
+	for (name = names; *name; name++)
+	{
+		char	srcfile[MAXPGPATH];
+		char	destfile[MAXPGPATH];
+		char	prefix[MAXPGPATH];
+		FILE   *infile,
+			   *outfile;
+		char	line[1024];
+
+		/* reject filenames not finishing in ".source" */
+		if (strlen(*name) < 8)
+			continue;
+		if (strcmp(*name + strlen(*name) - 7, ".source") != 0)
+			continue;
+
+		count++;
+
+		/* build the full actual paths to open */
+		snprintf(prefix, strlen(*name) - 6, "%s", *name);
+		snprintf(srcfile, MAXPGPATH, "%s/%s", indir, *name);
+		snprintf(destfile, MAXPGPATH, "%s/%s.%s", dest, prefix, suffix);
+
+		infile = fopen(srcfile, "r");
+		if (!infile)
+		{
+			fprintf(stderr, _("%s: could not open file \"%s\" for reading: %s\n"),
+					progname, srcfile, strerror(errno));
+			exit_nicely(2);
+		}
+		outfile = fopen(destfile, "w");
+		if (!outfile)
+		{
+			fprintf(stderr, _("%s: could not open file \"%s\" for writing: %s\n"),
+				progname, destfile, strerror(errno));
+			exit_nicely(2);
+		}
+		while (fgets(line, sizeof(line), infile))
+		{
+			replace_string(line, "@abs_srcdir@", abs_srcdir);
+			replace_string(line, "@abs_builddir@", abs_builddir);
+			replace_string(line, "@testtablespace@", testtablespace);
+			replace_string(line, "@DLSUFFIX@", DLSUFFIX);
+			fputs(line, outfile);
+		}
+		fclose(infile);
+		fclose(outfile);
+	}
+
+	/*
+	 * If we didn't process any files, complain because it probably means
+	 * somebody neglected to pass the needed --srcdir argument.
+	 */
+	if (count <= 0)
+	{
+		fprintf(stderr, _("%s: no *.source files found in %s\n"),
+				progname, indir);
+		exit_nicely(2);
+	}
+	
+    pgfnames_cleanup(names);
+}
+
+/* Create the .sql and .out files from the .source files, if any */
+static void
+convert_sourcefiles(void)
+{
+	struct stat	st;
+	int		ret;
+
+	ret = stat("input", &st);
+	if (ret == 0 && S_ISDIR(st.st_mode))
+		convert_sourcefiles_in("input", "sql", "sql");
+
+	ret = stat("output", &st);
+	if (ret == 0 && S_ISDIR(st.st_mode))
+		convert_sourcefiles_in("output", "expected", "out");
+}
+
+/*
  * Scan resultmap file to find which platform-specific expected files to use.
  *
  * The format of each line of the file is
@@ -438,7 +639,7 @@ initialize_environment(void)
 	unsetenv("LC_ALL");
 	unsetenv("LANG");
 	unsetenv("LANGUAGE");
-	/* On Windows the default locale may not be English, so force it */
+	/* On Windows the default locale cannot be English, so force it */
 #if defined(WIN32) || defined(__CYGWIN__)
 	putenv("LANG=en");
 #endif
@@ -565,6 +766,7 @@ initialize_environment(void)
 			printf(_("(using postmaster on Unix socket, default port)\n"));
 	}
 
+	convert_sourcefiles();
 	load_resultmap();
 }
 
@@ -662,16 +864,74 @@ spawn_process(const char *cmdline)
 	return pid;
 #else
 	char	   *cmdline2;
+	BOOL b;
 	STARTUPINFO si;
 	PROCESS_INFORMATION pi;
+	HANDLE origToken;
+	HANDLE restrictedToken;
+	SID_IDENTIFIER_AUTHORITY NtAuthority = {SECURITY_NT_AUTHORITY};
+	SID_AND_ATTRIBUTES dropSids[2];
+	__CreateRestrictedToken _CreateRestrictedToken = NULL;
+	HANDLE Advapi32Handle;
 
 	ZeroMemory(&si, sizeof(si));
 	si.cb = sizeof(si);
+	
+	Advapi32Handle = LoadLibrary("ADVAPI32.DLL");
+	if (Advapi32Handle != NULL)
+	{
+      _CreateRestrictedToken = (__CreateRestrictedToken) GetProcAddress(Advapi32Handle, "CreateRestrictedToken");
+   }
+   
+   if (_CreateRestrictedToken == NULL)
+   {
+      if (Advapi32Handle != NULL)
+      	FreeLibrary(Advapi32Handle);
+      fprintf(stderr, "ERROR: Unable to create restricted tokens on this platform\n");
+      exit_nicely(2);
+   }
+
+   /* Open the current token to use as base for the restricted one */
+   if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &origToken))
+   {
+      fprintf(stderr, "Failed to open process token: %lu\n", GetLastError());
+      exit_nicely(2);
+   }
+
+	/* Allocate list of SIDs to remove */
+	ZeroMemory(&dropSids, sizeof(dropSids));
+	if (!AllocateAndInitializeSid(&NtAuthority, 2,
+			SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &dropSids[0].Sid) ||
+		 !AllocateAndInitializeSid(&NtAuthority, 2,
+		   SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_POWER_USERS, 0, 0, 0, 0, 0, 0, &dropSids[1].Sid))
+   {
+      fprintf(stderr, "Failed to allocate SIDs: %lu\n", GetLastError());
+      exit_nicely(2);
+   }
+	
+	b = _CreateRestrictedToken(origToken,
+          DISABLE_MAX_PRIVILEGE,
+          sizeof(dropSids)/sizeof(dropSids[0]),
+          dropSids,
+          0, NULL,
+          0, NULL,
+          &restrictedToken);
+
+   FreeSid(dropSids[1].Sid);
+   FreeSid(dropSids[0].Sid);
+   CloseHandle(origToken);
+   FreeLibrary(Advapi32Handle);
+   
+   if (!b)
+   {
+      fprintf(stderr, "Failed to create restricted token: %lu\n", GetLastError());
+      exit_nicely(2);
+   }
 
 	cmdline2 = malloc(strlen(cmdline) + 8);
 	sprintf(cmdline2, "cmd /c %s", cmdline);
 
-	if (!CreateProcess(NULL, cmdline2, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
+	if (!CreateProcessAsUser(restrictedToken, NULL, cmdline2, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
 	{
 		fprintf(stderr, _("could not start process for \"%s\": %lu\n"),
 				cmdline2, GetLastError());
@@ -878,7 +1138,8 @@ results_differ(const char *testname)
 			 SYSTEMQUOTE "sed -i -e 's/  (seg.*pid.*)//' %s " SYSTEMQUOTE,
 			 resultsfile);
 	system(cmd);		 
-			 
+
+
 	/* Name to use for temporary diff file */
 	snprintf(diff, sizeof(diff), "%s/results/%s.diff",
 			 outputdir, testname);
@@ -1300,7 +1561,8 @@ help(void)
 	printf(_("  --multibyte=ENCODING      use ENCODING as the multibyte encoding\n"));
 	printf(_("  --outputdir=DIR           place output files in DIR (default \".\")\n"));
 	printf(_("  --schedule=FILE           use test ordering schedule from FILE\n"));
-	printf(_("                            (may be used multiple times to concatenate)\n"));
+	printf(_("                            (can be used multiple times to concatenate)\n"));
+	printf(_("  --srcdir=DIR              absolute path to source directory (for VPATH builds)\n"));
 	printf(_("  --temp-install=DIR        create a temporary installation in DIR\n"));
 	printf(_("  --no-locale               use C locale\n"));
 	printf(_("\n"));
@@ -1348,6 +1610,7 @@ main(int argc, char *argv[])
 		{"port", required_argument, NULL, 14},
 		{"user", required_argument, NULL, 15},
 		{"psqldir", required_argument, NULL, 16},
+		{"srcdir", required_argument, NULL, 17},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -1440,6 +1703,9 @@ main(int argc, char *argv[])
 				if (strlen(optarg))
 					psqldir = strdup(optarg);
 				break;
+			case 17:
+				srcdir = strdup(optarg);
+				break;
 			default:
 				/* getopt_long already emitted a complaint */
 				fprintf(stderr, _("\nTry \"%s -h\" for more information.\n"),
@@ -1466,6 +1732,10 @@ main(int argc, char *argv[])
 	open_result_files();
 
 	initialize_environment();
+
+#if defined(HAVE_GETRLIMIT) && defined(RLIMIT_CORE)
+	unlimit_core_size();
+#endif
 
 	if (temp_install)
 	{
@@ -1495,9 +1765,15 @@ main(int argc, char *argv[])
 			make_directory(buf);
 
 		/* "make install" */
+#ifndef WIN32_ONLY_COMPILER
 		snprintf(buf, sizeof(buf),
 				 SYSTEMQUOTE "\"%s\" -C \"%s\" DESTDIR=\"%s/install\" install with_perl=no with_python=no > \"%s/log/install.log\" 2>&1" SYSTEMQUOTE,
 				 makeprog, top_builddir, temp_install, outputdir);
+#else
+	   snprintf(buf, sizeof(buf),
+	          SYSTEMQUOTE "perl \"%s/src/tools/msvc/install.pl\" \"%s/install\" >\"%s/log/install.log\" 2>&1" SYSTEMQUOTE,
+             top_builddir, temp_install, outputdir);
+#endif
 		if (system(buf))
 		{
 			fprintf(stderr, _("\n%s: installation failed\nExamine %s/log/install.log for the reason.\nCommand was: %s\n"), progname, outputdir, buf);

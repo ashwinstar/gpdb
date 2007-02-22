@@ -3,10 +3,10 @@
  * port.h
  *	  Header for src/port/ compatibility functions.
  *
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2007, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/port.h,v 1.106 2006/11/28 01:12:33 adunstan Exp $
+ * $PostgreSQL: pgsql/src/include/port.h,v 1.110 2007/02/07 00:28:55 petere Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -45,6 +45,10 @@ extern void get_doc_path(const char *my_exec_path, char *ret_path);
 extern void get_man_path(const char *my_exec_path, char *ret_path);
 extern bool get_home_path(char *ret_path);
 extern void get_parent_directory(char *path);
+
+/* port/dirmod.c */
+extern char **pgfnames(char *path);
+extern void pgfnames_cleanup(char **filenames);
 
 /*
  *	is_absolute_path
@@ -339,11 +343,15 @@ extern int	inet_aton(const char *cp, struct in_addr * addr);
 extern char *strdup(const char *str);
 #endif
 
+#if !HAVE_DECL_STRLCAT
+extern size_t strlcat(char *dst, const char *src, size_t siz);
+#endif
+
 #if !HAVE_DECL_STRLCPY
 extern size_t strlcpy(char *dst, const char *src, size_t siz);
 #endif
 
-#ifndef HAVE_RANDOM
+#if !defined(HAVE_RANDOM) && !defined(__BORLANDC__)
 extern long random(void);
 #endif
 
