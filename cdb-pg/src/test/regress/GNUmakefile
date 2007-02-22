@@ -3,10 +3,10 @@
 # GNUmakefile--
 #    Makefile for src/test/regress (the regression tests)
 #
-# Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2007, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
-# $PostgreSQL: pgsql/src/test/regress/GNUmakefile,v 1.62 2006/07/21 00:24:04 tgl Exp $
+# $PostgreSQL: pgsql/src/test/regress/GNUmakefile,v 1.66 2007/02/09 15:56:00 petere Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -14,7 +14,7 @@ subdir = src/test/regress
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-contribdir := $(top_builddir)/contrib
+contribdir = $(top_builddir)/contrib
 
 # port number for temp-installation test postmaster
 TEMP_PORT = 5$(DEF_PGPORT)
@@ -26,13 +26,13 @@ PSQLDIR = $(bindir)
 MULTIBYTE = SQL_ASCII
 
 # maximum simultaneous connections for parallel tests
-MAXCONNOPT :=
+MAXCONNOPT =
 ifdef MAX_CONNECTIONS
 MAXCONNOPT += --max-connections=$(MAX_CONNECTIONS)
 endif
 
 # locale
-NOLOCALE :=
+NOLOCALE =
 ifdef NO_LOCALE
 NOLOCALE += --no-locale
 endif
@@ -40,7 +40,8 @@ endif
 # stuff to pass into build of pg_regress
 EXTRADEFS = '-DHOST_TUPLE="$(host_tuple)"' \
 	'-DMAKEPROG="$(MAKE)"' \
-	'-DSHELLPROG="$(SHELL)"'
+	'-DSHELLPROG="$(SHELL)"' \
+	'-DDLSUFFIX="$(DLSUFFIX)"'
 
 ##
 ## Prepare for tests
@@ -83,13 +84,11 @@ $(NAME)$(DLSUFFIX): $(shlib)
 	rm -f $(NAME)$(DLSUFFIX)
 	$(LN_S) $(shlib) $(NAME)$(DLSUFFIX)
 
-# Build test input and expected files
-
-file_list := copy create_function_1 create_function_2 misc constraints tablespace
+# Test input and expected files.  These are created by pg_regress itself, so we
+# don't have a rule to create them.  We do need rules to clean them however.
+file_list := $(subst .source,, $(notdir $(wildcard $(top_srcdir)/$(subdir)/input/*.source)))
 input_files  := $(foreach file, $(file_list), sql/$(file).sql)
 output_files := $(foreach file, $(file_list), expected/$(file).out)
-
-all: $(input_files) $(output_files)
 
 ifneq ($(PORTNAME),win32)
 abs_srcdir := $(shell cd $(srcdir) && pwd)
@@ -98,22 +97,6 @@ else
 abs_srcdir := $(shell cd $(srcdir) && pwd -W)
 abs_builddir := $(shell pwd -W)
 endif
-
-testtablespace := $(abs_builddir)/testtablespace
-
-
-define sed-command
-sed -e 's,@abs_srcdir@,$(abs_srcdir),g' \
-    -e 's,@abs_builddir@,$(abs_builddir),g' \
-    -e 's,@testtablespace@,$(testtablespace),g' \
-    -e 's/@DLSUFFIX@/$(DLSUFFIX)/g' $< >$@
-endef
-
-$(input_files): sql/%.sql: input/%.source
-	$(sed-command)
-
-$(output_files): expected/%.out: output/%.source
-	$(sed-command)
 
 # When doing a VPATH build, copy over the remaining .sql and .out
 # files so that the driver script can find them.  We have to use an
@@ -134,32 +117,30 @@ endif
 
 # And finally some extra C modules...
 
-#all: all-spi
-all:
+all: all-spi tablespace-setup
 
-#.PHONY: all-spi
-#all-spi:
-#	$(MAKE) -C $(contribdir)/spi refint$(DLSUFFIX) autoinc$(DLSUFFIX)
+.PHONY: all-spi
+all-spi:
+	$(MAKE) -C $(contribdir)/spi refint$(DLSUFFIX) autoinc$(DLSUFFIX)
 
+# Tablespace setup
+.PHONY: tablespace-setup
+tablespace-setup:
+	-rm -rf ./testtablespace
+	mkdir ./testtablespace
 
 ##
 ## Run tests
 ##
 
 check: all
-	-rm -rf ./testtablespace
-	mkdir ./testtablespace
-	./pg_regress --temp-install=./tmp_check --top-builddir=$(top_builddir) --temp-port=$(TEMP_PORT) --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
+	./pg_regress --temp-install=./tmp_check --top-builddir=$(top_builddir) --srcdir=$(abs_srcdir) --temp-port=$(TEMP_PORT) --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
 installcheck: all
-	-rm -rf ./testtablespace
-	mkdir ./testtablespace
-	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/serial_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(NOLOCALE)
+	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/serial_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(NOLOCALE)
 
 installcheck-parallel: all
-	-rm -rf ./testtablespace
-	mkdir ./testtablespace
-	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
+	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
 
 # old interfaces follow...
@@ -168,11 +149,11 @@ runcheck: check
 runtest: installcheck
 runtest-parallel: installcheck-parallel
 
-bigtest:
-	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/serial_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(NOLOCALE) numeric_big 
+bigtest: all
+	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/serial_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(NOLOCALE) numeric_big 
 
-bigcheck:
-	./pg_regress --temp-install=./tmp_check --top-builddir=$(top_builddir) --temp-port=$(TEMP_PORT) --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE) numeric_big
+bigcheck: all
+	./pg_regress --temp-install=./tmp_check --top-builddir=$(top_builddir) --srcdir=$(abs_srcdir) --temp-port=$(TEMP_PORT) --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE) numeric_big
 
 
 ##
@@ -182,7 +163,7 @@ bigcheck:
 clean distclean maintainer-clean: clean-lib
 # things built by `all' target
 	rm -f $(NAME)$(DLSUFFIX) $(OBJS)
-#	$(MAKE) -C $(contribdir)/spi clean
+	$(MAKE) -C $(contribdir)/spi clean
 	rm -f $(output_files) $(input_files) pg_regress.o pg_regress$(X)
 # things created by various check targets
 	rm -rf testtablespace
