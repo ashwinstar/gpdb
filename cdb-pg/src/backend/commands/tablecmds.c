@@ -6150,6 +6150,7 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 	{
 		case RELKIND_RELATION:
 		case RELKIND_VIEW:
+		case RELKIND_EXTERNAL:
 			/* ok to change owner */
 			break;
 		case RELKIND_INDEX:
