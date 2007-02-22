@@ -17,7 +17,7 @@ my $solution = new Solution($config);
 our @pgportfiles = qw(
    crypt.c fseeko.c getrusage.c inet_aton.c random.c srandom.c
    unsetenv.c getaddrinfo.c gettimeofday.c kill.c open.c rand.c
-   snprintf.c strlcpy.c copydir.c dirmod.c exec.c noblock.c path.c pipe.c
+   snprintf.c strlcat.c strlcpy.c copydir.c dirmod.c exec.c noblock.c path.c pipe.c
    pgsleep.c pgstrcasecmp.c qsort.c qsort_arg.c sprompt.c thread.c
    getopt.c getopt_long.c dirent.c rint.c win32error.c);
 
@@ -277,10 +277,17 @@ foreach my $prg (split /\s+/,$1) {
 }
 
 
-# Regression DLLs
+# Regression DLL and EXE
 my $regress = $solution->AddProject('regress','dll','misc');
 $regress->AddFile('src\test\regress\regress.c');
 $regress->AddReference($postgres);
+
+my $pgregress = $solution->AddProject('pg_regress','exe','misc');
+$pgregress->AddFile('src\test\regress\pg_regress.c');
+$pgregress->AddIncludeDir('src\port');
+$pgregress->AddDefine('HOST_TUPLE="i686-pc-win32vc"');
+$pgregress->AddDefine('FRONTEND');
+$pgregress->AddReference($libpgport);
 
 $solution->Save();
 

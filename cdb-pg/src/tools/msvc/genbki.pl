@@ -6,12 +6,12 @@
 #    files.  These .bki files are used to initialize the postgres template
 #    database.
 #
-# Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2007, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/tools/msvc/genbki.pl,v 1.1 2006/11/29 19:49:31 tgl Exp $
+#    $PostgreSQL: pgsql/src/tools/msvc/genbki.pl,v 1.4 2007/02/19 14:05:42 mha Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -24,8 +24,8 @@ my $prefix = shift || Usage();
 $version =~ /^(\d+\.\d+)/ || die "Bad format verison $version\n";
 my $majorversion = $1;
 
-my $pgext = read_file("src/include/postgres_ext.h");
-$pgext =~ /^#define\s+NAMEDATALEN\s+(\d+)$/mg || die "Could not read NAMEDATALEN from postgres_ext.h\n";
+my $pgext = read_file("src/include/pg_config_manual.h");
+$pgext =~ /^#define\s+NAMEDATALEN\s+(\d+)$/mg || die "Could not read NAMEDATALEN from pg_config_manual.h\n";
 my $namedatalen = $1;
 
 my $pgauthid = read_file("src/include/catalog/pg_authid.h");
@@ -80,6 +80,9 @@ foreach my $line (split /\n/, $indata) {
 	   if ($#fields >=4 && $fields[0] eq "insert" && $fields[1] eq "OID" && $fields[2] eq "=") {
 	       $oid = $fields[3];
 	   }
+	   else {
+          $oid = 0;
+      }
 	   $data =~ s/\s{2,}/ /g;
 	   $bki .= $data . "\n";
 	}
