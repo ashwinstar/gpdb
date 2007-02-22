@@ -1525,6 +1525,10 @@ _copyFkConstraint(FkConstraint *from)
 	COPY_SCALAR_FIELD(deferrable);
 	COPY_SCALAR_FIELD(initdeferred);
 	COPY_SCALAR_FIELD(skip_validation);
+	COPY_SCALAR_FIELD(trig1Oid);
+	COPY_SCALAR_FIELD(trig2Oid);
+	COPY_SCALAR_FIELD(trig3Oid);
+	COPY_SCALAR_FIELD(trig4Oid);
 
 	return newnode;
 }

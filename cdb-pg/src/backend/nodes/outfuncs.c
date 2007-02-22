@@ -2647,6 +2647,10 @@ _outFkConstraint(StringInfo str, FkConstraint *node)
 	WRITE_BOOL_FIELD(deferrable);
 	WRITE_BOOL_FIELD(initdeferred);
 	WRITE_BOOL_FIELD(skip_validation);
+	WRITE_OID_FIELD(trig1Oid);
+	WRITE_OID_FIELD(trig2Oid);
+	WRITE_OID_FIELD(trig3Oid);
+	WRITE_OID_FIELD(trig4Oid);
 }
 
 static void

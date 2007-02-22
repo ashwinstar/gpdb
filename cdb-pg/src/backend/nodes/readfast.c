@@ -379,9 +379,14 @@ _readConstraint(const char ** str)
 		
 		case CONSTR_NULL:
 		case CONSTR_NOTNULL:
+		case CONSTR_ATTR_DEFERRABLE:
+		case CONSTR_ATTR_NOT_DEFERRABLE:
+		case CONSTR_ATTR_DEFERRED:
+		case CONSTR_ATTR_IMMEDIATE:
 		break;
+		
 		default:
-			elog(ERROR,"Can't deserialize constraint");
+			elog(WARNING,"Can't deserialize constraint %d",(int)local_node->contype);
 			break;
 	}
 
@@ -1484,6 +1489,10 @@ _readFkConstraint(const char ** str)
 	READ_BOOL_FIELD(deferrable);
 	READ_BOOL_FIELD(initdeferred);
 	READ_BOOL_FIELD(skip_validation);
+	READ_OID_FIELD(trig1Oid);
+	READ_OID_FIELD(trig2Oid);
+	READ_OID_FIELD(trig3Oid);
+	READ_OID_FIELD(trig4Oid);
 	
 	READ_DONE();
 }

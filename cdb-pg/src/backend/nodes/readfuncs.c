@@ -1653,6 +1653,10 @@ _outFkConstraint(void)
 	READ_BOOL_FIELD(deferrable);
 	READ_BOOL_FIELD(initdeferred);
 	READ_BOOL_FIELD(skip_validation);
+	READ_OID_FIELD(trig1Oid);
+	READ_OID_FIELD(trig2Oid);
+	READ_OID_FIELD(trig3Oid);
+	READ_OID_FIELD(trig4Oid);
 	
 	READ_DONE();
 }

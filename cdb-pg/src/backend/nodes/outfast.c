@@ -2462,8 +2462,12 @@ _outConstraint(StringInfo str, Constraint *node)
 
 		case CONSTR_NOTNULL:
 		case CONSTR_NULL:
+		case CONSTR_ATTR_DEFERRABLE:
+		case CONSTR_ATTR_NOT_DEFERRABLE:
+		case CONSTR_ATTR_DEFERRED:
+		case CONSTR_ATTR_IMMEDIATE:
 			break;
-
+			
 		default:
 			elog(WARNING,"serialization doesn't know what to do with this constraint");
 			break;
@@ -2485,6 +2489,10 @@ _outFkConstraint(StringInfo str, FkConstraint *node)
 	WRITE_BOOL_FIELD(deferrable);
 	WRITE_BOOL_FIELD(initdeferred);
 	WRITE_BOOL_FIELD(skip_validation);
+	WRITE_OID_FIELD(trig1Oid);
+	WRITE_OID_FIELD(trig2Oid);
+	WRITE_OID_FIELD(trig3Oid);
+	WRITE_OID_FIELD(trig4Oid);
 }
 
 static void

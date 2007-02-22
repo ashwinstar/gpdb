@@ -619,20 +619,6 @@ DefineRelation_int(CreateStmt *stmt,
 										  allowSystemTableMods,
 										  &stmt->oidInfo.comptypeOid);
 
-	/* It is now safe to dispatch */
-	if (shouldDispatch)
-	{
-		/* Dispatch the statement tree to all primary and mirror segdbs.
-		 * Doesn't wait for the QEs to finish execution.
-		 */
-		cdbdisp_dispatchUtilityStatement((Node *)stmt,
-										 true,      /* cancelOnError */
-										 true,      /* startTransaction */
-										 pPrimaryResults,
-										 pMirrorResults,
-										 pDispatchThreads);
-	}
-
 	StoreCatalogInheritance(relationId, inheritOids);
 
 	/*
@@ -687,6 +673,21 @@ DefineRelation_int(CreateStmt *stmt,
 	 */
 	if (rawDefaults || stmt->constraints)
 		AddRelationRawConstraints(rel, rawDefaults, stmt->constraints);
+		
+	/* It is now safe to dispatch */
+	if (shouldDispatch)
+	{
+
+		/* Dispatch the statement tree to all primary and mirror segdbs.
+		 * Doesn't wait for the QEs to finish execution.
+		 */
+		cdbdisp_dispatchUtilityStatement((Node *)stmt,
+										 true,      /* cancelOnError */
+										 true,      /* startTransaction */
+										 pPrimaryResults,
+										 pMirrorResults,
+										 pDispatchThreads);
+	}
 
 	/*
 	 * Clean up.  We keep lock on new relation (although it shouldn't be
@@ -2426,6 +2427,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 	 * transformations (for example, the same column may have different column
 	 * numbers in different children).
 	 */
+	if (recursing)
 	cmd = copyObject(cmd);
 
 	/*
@@ -5100,11 +5102,13 @@ CreateFKCheckTrigger(RangeVar *myRel, FkConstraint *fkconstraint,
 	{
 		fk_trigger->funcname = SystemFuncName("RI_FKey_check_ins");
 		fk_trigger->actions[0] = 'i';
+		fk_trigger->trigOid = fkconstraint->trig1Oid;
 	}
 	else
 	{
 		fk_trigger->funcname = SystemFuncName("RI_FKey_check_upd");
 		fk_trigger->actions[0] = 'u';
+		fk_trigger->trigOid = fkconstraint->trig2Oid;
 	}
 	fk_trigger->actions[1] = '\0';
 
@@ -5135,6 +5139,11 @@ CreateFKCheckTrigger(RangeVar *myRel, FkConstraint *fkconstraint,
 	}
 
 	trigobj->objectId = CreateTrigger(fk_trigger, true);
+	
+	if (on_insert)
+		fkconstraint->trig1Oid = trigobj->objectId;
+	else
+		fkconstraint->trig2Oid = trigobj->objectId;	
 
 	/* Register dependency from trigger to constraint */
 	recordDependencyOn(trigobj, constrobj, DEPENDENCY_INTERNAL);
@@ -5255,8 +5264,12 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 		fk_trigger->args = lappend(fk_trigger->args, lfirst(fk_attr));
 		fk_trigger->args = lappend(fk_trigger->args, lfirst(pk_attr));
 	}
+	
+	fk_trigger->trigOid = fkconstraint->trig3Oid;
 
 	trigobj.objectId = CreateTrigger(fk_trigger, true);
+	
+	fkconstraint->trig3Oid = trigobj.objectId;
 
 	/* Register dependency from trigger to constraint */
 	recordDependencyOn(&trigobj, &constrobj, DEPENDENCY_INTERNAL);
@@ -5326,7 +5339,11 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 		fk_trigger->args = lappend(fk_trigger->args, lfirst(pk_attr));
 	}
 
+	fk_trigger->trigOid = fkconstraint->trig4Oid;
+	
 	trigobj.objectId = CreateTrigger(fk_trigger, true);
+	
+	fkconstraint->trig4Oid = trigobj.objectId;
 
 	/* Register dependency from trigger to constraint */
 	recordDependencyOn(&trigobj, &constrobj, DEPENDENCY_INTERNAL);

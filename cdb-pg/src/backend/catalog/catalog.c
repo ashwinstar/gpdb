@@ -361,11 +361,11 @@ GetNewOid(Relation relation)
 		{
 			if (Mpp_role == MPP_ROLE_EXECUTE)
 			{
-				elog(DEBUG1,"Allocating Oid %u on relid %u in EXECUTE mode",result,relation->rd_id);
+				elog(DEBUG1,"Allocating Oid %u on relid %u %s in EXECUTE mode",result,relation->rd_id,RelationGetRelationName(relation));
 			}
 			if (Mpp_role == MPP_ROLE_DISPATCH)
 			{
-				elog(DEBUG5,"Allocating Oid %u on relid %u in DISPATCH mode",result,relation->rd_id);
+				elog(DEBUG5,"Allocating Oid %u on relid %u %s in DISPATCH mode",result,relation->rd_id,RelationGetRelationName(relation));
 			}
 		}
 		return result;
@@ -423,13 +423,13 @@ GetNewOidWithIndex(Relation relation, Relation indexrel)
 		if (Mpp_role == MPP_ROLE_EXECUTE)
 		{
 			if (relation->rd_id != 2604 /* pg_attrdef */ && relation->rd_id != 2606 /* pg_constraint */ && relation->rd_id != 2615 /* pg_namespace */) 
-				elog(DEBUG1,"Allocating Oid %u with index on relid %u in EXECUTE mode",newOid,relation->rd_id);
+				elog(DEBUG1,"Allocating Oid %u with index on relid %u %s in EXECUTE mode",newOid,relation->rd_id, RelationGetRelationName(relation));
 			else
-				elog(DEBUG1,"Allocating Oid %u with index in EXECUTE mode",newOid);
+				elog(DEBUG4,"Allocating Oid %u with index on relid %u %s in EXECUTE mode",newOid,relation->rd_id, RelationGetRelationName(relation));
 		}
 		if (Mpp_role == MPP_ROLE_DISPATCH)
 		{
-			elog(DEBUG5,"Allocating Oid %u with index on relid %u in DISPATCH mode",newOid,relation->rd_id);
+			elog(DEBUG5,"Allocating Oid %u with index on relid %u %s in DISPATCH mode",newOid,relation->rd_id,  RelationGetRelationName(relation));
 		}
 	}
 

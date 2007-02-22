@@ -1193,6 +1193,10 @@ typedef struct FkConstraint
 	bool		deferrable;		/* DEFERRABLE */
 	bool		initdeferred;	/* INITIALLY DEFERRED */
 	bool		skip_validation;	/* skip validation of existing rows? */
+	Oid			trig1Oid;
+	Oid			trig2Oid;
+	Oid			trig3Oid;
+	Oid			trig4Oid;
 } FkConstraint;
 
 
