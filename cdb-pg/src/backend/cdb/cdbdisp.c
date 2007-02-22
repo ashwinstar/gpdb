@@ -607,7 +607,13 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 		pthread_err = pthread_join(pParms->thread, NULL);
 		if (pthread_err != 0)
 			elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (0x%x) of %d (returned %d attempting to join to 0x%x)",
-				 i + 1, (unsigned int) pParms->thread, dispatchThreads->threadCount, pthread_err, mythread());
+				 i + 1, 
+#ifndef _WIN32
+				 (unsigned int) pParms->thread, 
+#else
+				 (unsigned int) pParms->thread.p,
+#endif
+				 dispatchThreads->threadCount, pthread_err, mythread());
 
 		memset(&pParms->thread, 0, sizeof(pParms->thread));
 
