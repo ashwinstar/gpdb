@@ -3,7 +3,7 @@
 * pg_exttable.h
 *	  definitions for system wide external relations
 *
-* Copyright (c) 2005-2006, greenplum inc
+* Copyright (c) 2007, greenplum inc
 *
 *-------------------------------------------------------------------------
 */

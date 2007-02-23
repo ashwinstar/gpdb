@@ -2,6 +2,9 @@
 *
 * uriparser.c
 *	  Functions for parsing URI strings
+*
+* Copyright (c) 2007, greenplum inc
+*
 *-------------------------------------------------------------------------
 */
 

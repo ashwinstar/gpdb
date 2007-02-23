@@ -3,6 +3,8 @@
 * uri.h
 *	  Definitions for URI strings
 *
+* Copyright (c) 2007, greenplum inc
+*
 *-------------------------------------------------------------------------
 */
 #ifndef URI_H

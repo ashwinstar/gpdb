@@ -2,6 +2,8 @@
 *
 * filexam.c
 *	  file access method routines
+*       
+* Copyright (c) 2007, greenplum inc
 *
 *-------------------------------------------------------------------------
 */

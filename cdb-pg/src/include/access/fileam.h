@@ -3,6 +3,8 @@
 * fileam.h
 *	  external file access method definitions.
 *
+* Copyright (c) 2007, greenplum inc
+*
 *-------------------------------------------------------------------------
 */
 #ifndef FILEAM_H
