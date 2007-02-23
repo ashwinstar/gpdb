@@ -347,6 +347,7 @@ bool GetCDBBaseTableArray(PGconn* pConn, CDBBaseTableArray* pTableAr)
 							"	WHERE"
 							"	p.localoid = c.oid"
 							" 	AND c.relnamespace = n.oid"
+							"	AND NOT c.relkind = 'x'"
 							"	ORDER BY"
 							"	2");
 
