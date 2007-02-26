@@ -1111,7 +1111,9 @@ testCmdsExist(char *pszCompressionProgram, char *pszBackupProgram)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("%s not found in path:  %s", pszBackupProgram, getenv("PATH"))));
+				 errmsg("%s not found in PGPATH or PATH (PGPATH: %s | PATH:  %s)",
+						pszBackupProgram, getenv("PGPATH"), getenv("PATH")),
+				 errhint("Restart the server and try again")));
 	}
 
 	/* Does compression utility exist? */
@@ -1121,7 +1123,9 @@ testCmdsExist(char *pszCompressionProgram, char *pszBackupProgram)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("%s (compression utility) not found in path", pszCompressionProgram)));
+				 errmsg("%s (compression utility) not found in in PGPATH or "
+						"PATH (PGPATH: %s | PATH:  %s)", 
+						pszCompressionProgram, getenv("PGPATH"), getenv("PATH"))));
 	}
 }
 
@@ -1191,7 +1195,6 @@ testProgramExists(char *pszProgramName)
 	pszEnvPath = getenv("PATH");
 	if (pszEnvPath == NULL)
 		return NULL;
-
 	pszPath = (char *) palloc(strlen(pszEnvPath) + 1);
 	if (pszPath == NULL)
 	{
@@ -1201,7 +1204,6 @@ testProgramExists(char *pszProgramName)
 	}
 
 	strcpy(pszPath, pszEnvPath);
-
 	/* Try to create each level of the hierarchy that doesn't already exist */
 	pColon = pszPath;
 
