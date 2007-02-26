@@ -3,7 +3,7 @@
  * outfuncs.c
  *	  Output functions for Postgres tree nodes.
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Globafl Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -1112,6 +1112,8 @@ _outJoinExpr(StringInfo str, JoinExpr *node)
 	WRITE_BOOL_FIELD(isNatural);
 	WRITE_NODE_FIELD(larg);
 	WRITE_NODE_FIELD(rarg);
+    if (node->subqfromlist)                     /*CDB*/
+        WRITE_NODE_FIELD(subqfromlist);         /*CDB*/
 	WRITE_NODE_FIELD_AS(usingClause, using);    /*CDB*/
 	WRITE_NODE_FIELD(quals);
 	WRITE_NODE_FIELD(alias);

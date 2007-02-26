@@ -553,6 +553,8 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 static void
 preprocess_qual_conditions(PlannerInfo *root, Node *jtnode)
 {
+	ListCell   *l;
+
 	if (jtnode == NULL)
 		return;
 	if (IsA(jtnode, RangeTblRef))
@@ -562,7 +564,6 @@ preprocess_qual_conditions(PlannerInfo *root, Node *jtnode)
 	else if (IsA(jtnode, FromExpr))
 	{
 		FromExpr   *f = (FromExpr *) jtnode;
-		ListCell   *l;
 
 		foreach(l, f->fromlist)
 			preprocess_qual_conditions(root, lfirst(l));
@@ -575,6 +576,9 @@ preprocess_qual_conditions(PlannerInfo *root, Node *jtnode)
 
 		preprocess_qual_conditions(root, j->larg);
 		preprocess_qual_conditions(root, j->rarg);
+
+        foreach(l, j->subqfromlist)
+		    preprocess_qual_conditions(root, lfirst(l));
 
 		j->quals = preprocess_expression(root, j->quals, EXPRKIND_QUAL);
 	}

@@ -3,7 +3,7 @@
  * clauses.c
  *	  routines to manipulate qualification clauses
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -3395,6 +3395,8 @@ expression_tree_walker(Node *node,
 					return true;
 				if (walker(join->rarg, context))
 					return true;
+				if (walker(join->subqfromlist, context))    /*CDB*/
+					return true;                            /*CDB*/
 				if (walker(join->quals, context))
 					return true;
 
@@ -3981,6 +3983,7 @@ expression_tree_mutator(Node *node,
 				FLATCOPY(newnode, join, JoinExpr);
 				MUTATE(newnode->larg, join->larg, Node *);
 				MUTATE(newnode->rarg, join->rarg, Node *);
+				MUTATE(newnode->subqfromlist, join->subqfromlist, List *);  /*CDB*/
 				MUTATE(newnode->quals, join->quals, Node *);
 				/* We do not mutate alias or using by default */
 				return (Node *) newnode;

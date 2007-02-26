@@ -960,6 +960,10 @@ typedef struct RangeTblRef
  * During parse analysis, an RTE is created for the Join, and its index
  * is filled into rtindex.	This RTE is present mainly so that Vars can
  * be created that refer to the outputs of the join.
+ *
+ * CDB: When the planner flattens sublinks in the JOIN...ON clause, it may
+ * attach a list of RangeTblRef nodes ('subqfromlist') which are to be
+ * included in the cross product along with 'larg' and 'rarg'.
  *----------
  */
 typedef struct JoinExpr
@@ -973,6 +977,8 @@ typedef struct JoinExpr
 	Node	   *quals;			/* qualifiers on join, if any */
 	Alias	   *alias;			/* user-written alias clause, if any */
 	int			rtindex;		/* RT index assigned for join */
+    List       *subqfromlist;   /* CDB: List of join subtrees resulting from
+                                 *  flattening of sublinks */
 } JoinExpr;
 
 /*----------

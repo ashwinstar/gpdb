@@ -72,12 +72,19 @@ cdbsubselect_flatten_sublinks(struct PlannerInfo *root, struct Node *jtnode)
         {
             JoinExpr   *joinexpr = (JoinExpr *)jtnode;
 
-            /* CDB TODO: Handle outer joins. */
-            if (joinexpr->jointype != JOIN_INNER)
+            /* Process left and right inputs of JOIN. */
+            cdbsubselect_flatten_sublinks(root, joinexpr->larg);
+            cdbsubselect_flatten_sublinks(root, joinexpr->rarg);
+
+            /* CDB TODO: Handle full outer joins. */
+            if (joinexpr->jointype == JOIN_FULL)
                 break;
 
-            /*$$$$$$$$$$*/
+            /* Flatten sublinks in JOIN...ON search condition. */
+            joinexpr->quals = pull_up_IN_clauses(root, &rtrlist, joinexpr->quals);
 
+            /* Add any new RangeTblRef nodes to the join. */
+            joinexpr->subqfromlist = rtrlist;
             break;
         }
 

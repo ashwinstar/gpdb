@@ -1467,7 +1467,8 @@ _readJoinExpr(void)
 	READ_BOOL_FIELD(isNatural);
 	READ_NODE_FIELD(larg);
 	READ_NODE_FIELD(rarg);
-	READ_NODE_FIELD(usingClause);   /*CDB*/
+    /* CDB: subqfromlist is used only within planner; don't need to read it */
+    READ_NODE_FIELD(usingClause);   /*CDB*/
 	READ_NODE_FIELD(quals);
 	READ_NODE_FIELD(alias);
 	READ_INT_FIELD(rtindex);

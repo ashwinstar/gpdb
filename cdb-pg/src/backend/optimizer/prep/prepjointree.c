@@ -41,6 +41,10 @@ typedef struct reduce_outer_joins_state
 	List	   *sub_states;		/* List of states for subtree components */
 } reduce_outer_joins_state;
 
+static void pull_up_fromlist_subqueries(PlannerInfo    *root,
+                                        List          **inout_fromlist,
+                                        Node          **inout_quals,
+				                        bool            below_outer_join);
 static Node *pull_up_simple_subquery(PlannerInfo *root, Node *jtnode,
 						RangeTblEntry *rte,
 						bool below_outer_join,
@@ -106,7 +110,7 @@ Node *
 pull_up_subqueries(PlannerInfo *root, Node *jtnode,
 				   bool below_outer_join, bool append_rel_member)
 {
-	if (jtnode == NULL)
+    if (jtnode == NULL)
 		return NULL;
 	if (IsA(jtnode, RangeTblRef))
 	{
@@ -157,40 +161,10 @@ pull_up_subqueries(PlannerInfo *root, Node *jtnode,
 	else if (IsA(jtnode, FromExpr))
 	{
 		FromExpr   *f = (FromExpr *) jtnode;
-		ListCell   *l;
 
 		Assert(!append_rel_member);
-        foreach(l, f->fromlist)
-        {
-            Node   *oldkid = (Node *)lfirst(l);
-            Node   *newkid = pull_up_subqueries(root, oldkid,
-												below_outer_join, false);
-
-            /* CDB: Collapse subquery FROM clause into current FROM clause,
-             * so correlated refs from subquery will be in the right scope.
-             * Otherwise deconstruct_jointree() complains about them.
-             */
-            if (IsA(oldkid, RangeTblRef) &&
-                IsA(newkid, FromExpr))
-            {
-                FromExpr   *fkid = (FromExpr *)newkid;
-                ListCell   *lkid;
-
-                /* Replace RangeTblRef with subquery FROM list. */
-                foreach(lkid, fkid->fromlist)
-                {
-                    if (lfirst(l) == oldkid)
-                        lfirst(l) = lfirst(lkid);
-                    else
-                        l = lappend_cell(f->fromlist, l, lfirst(lkid));
-                }
-
-                /* Pull up subquery WHERE clause. */
-                f->quals = make_and_qual(f->quals, fkid->quals);
-            }
-            else
-                lfirst(l) = newkid;
-        }
+        pull_up_fromlist_subqueries(root, &f->fromlist, &f->quals,
+                                    below_outer_join);
 	}
 	else if (IsA(jtnode, JoinExpr))
 	{
@@ -229,12 +203,71 @@ pull_up_subqueries(PlannerInfo *root, Node *jtnode,
 					 (int) j->jointype);
 				break;
 		}
+
+        /*
+         * CDB: If subqueries from the JOIN...ON search condition were
+         * flattened, 'subqfromlist' is a list of RangeTblRef nodes to be
+         * included in the cross product with larg and rarg.  Try to pull up
+         * the referenced subqueries.  For outer joins, let below_outer_join
+         * be true, because the subquery tables belong in the null-augmented
+         * side of the JOIN (right side of LEFT JOIN).
+         */
+        if (j->subqfromlist)
+            pull_up_fromlist_subqueries(root, &j->subqfromlist, &j->quals,
+                                        below_outer_join || (j->jointype != JOIN_INNER));
 	}
 	else
 		elog(ERROR, "unrecognized node type: %d",
 			 (int) nodeTag(jtnode));
 	return jtnode;
 }
+
+
+/*
+ * pull_up_fromlist_subqueries
+ *		Attempt to pull up subqueries in a List of jointree nodes.
+ */
+static void
+pull_up_fromlist_subqueries(PlannerInfo    *root,
+                            List          **inout_fromlist,
+                            Node          **inout_quals,
+				            bool            below_outer_join)
+{
+    ListCell   *l;
+
+    foreach(l, *inout_fromlist)
+    {
+        Node   *oldkid = (Node *)lfirst(l);
+        Node   *newkid = pull_up_subqueries(root, oldkid,
+											below_outer_join, false);
+
+        /* CDB: Collapse subquery FROM list into current FROM list,
+         * so correlated refs from subquery will be in the right scope.
+         * Otherwise deconstruct_jointree() complains about them.
+         */
+        if (IsA(oldkid, RangeTblRef) &&
+            IsA(newkid, FromExpr))
+        {
+            FromExpr   *fkid = (FromExpr *)newkid;
+            ListCell   *lkid;
+
+            /* Replace RangeTblRef with subquery FROM list. */
+            foreach(lkid, fkid->fromlist)
+            {
+                if (lfirst(l) == oldkid)
+                    lfirst(l) = lfirst(lkid);
+                else
+                    l = lappend_cell(*inout_fromlist, l, lfirst(lkid));
+            }
+
+            /* Conjoin subquery WHERE clause with current search condition. */
+            *inout_quals = make_and_qual(*inout_quals, fkid->quals);
+        }
+        else
+            lfirst(l) = newkid;
+    }
+}                               /* pull_up_fromlist_subqueries */
+
 
 /*
  * pull_up_simple_subquery
@@ -334,7 +367,7 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
         AppendRelInfo  *appinfo = (AppendRelInfo *)lfirst(cell);
 
         if (bms_is_member(appinfo->parent_relid, subroot->currlevel_relids))
-            subroot->currlevel_relids = bms_add_member(subroot->currlevel_relids, 
+            subroot->currlevel_relids = bms_add_member(subroot->currlevel_relids,
                                                        appinfo->child_relid);
     }
 
@@ -411,8 +444,8 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	 */
 	parse->rowMarks = list_concat(parse->rowMarks, subquery->rowMarks);
 
-    /* 
-     * CDB: Fix current query level's FROM clause relid set if the subquery 
+    /*
+     * CDB: Fix current query level's FROM clause relid set if the subquery
      * was in the FROM clause of current query (not a flattened sublink).
      */
     if (bms_is_member(varno, root->currlevel_relids))
@@ -869,6 +902,8 @@ static void
 resolvenew_in_jointree(Node *jtnode, int varno,
 					   RangeTblEntry *rte, List *subtlist)
 {
+	ListCell   *l;
+
 	if (jtnode == NULL)
 		return;
 	if (IsA(jtnode, RangeTblRef))
@@ -878,7 +913,6 @@ resolvenew_in_jointree(Node *jtnode, int varno,
 	else if (IsA(jtnode, FromExpr))
 	{
 		FromExpr   *f = (FromExpr *) jtnode;
-		ListCell   *l;
 
 		foreach(l, f->fromlist)
 			resolvenew_in_jointree(lfirst(l), varno, rte, subtlist);
@@ -892,6 +926,8 @@ resolvenew_in_jointree(Node *jtnode, int varno,
 
 		resolvenew_in_jointree(j->larg, varno, rte, subtlist);
 		resolvenew_in_jointree(j->rarg, varno, rte, subtlist);
+		foreach(l, j->subqfromlist)
+			resolvenew_in_jointree(lfirst(l), varno, rte, subtlist);
 		j->quals = ResolveNew(j->quals,
 							  varno, 0, rte,
 							  subtlist, CMD_SELECT, 0);
@@ -962,6 +998,7 @@ static reduce_outer_joins_state *
 reduce_outer_joins_pass1(Node *jtnode)
 {
 	reduce_outer_joins_state *result;
+	ListCell   *l;
 
 	result = (reduce_outer_joins_state *)
 		palloc(sizeof(reduce_outer_joins_state));
@@ -980,7 +1017,6 @@ reduce_outer_joins_pass1(Node *jtnode)
 	else if (IsA(jtnode, FromExpr))
 	{
 		FromExpr   *f = (FromExpr *) jtnode;
-		ListCell   *l;
 
 		foreach(l, f->fromlist)
 		{
@@ -1013,6 +1049,15 @@ reduce_outer_joins_pass1(Node *jtnode)
 										 sub_state->relids);
 		result->contains_outer |= sub_state->contains_outer;
 		result->sub_states = lappend(result->sub_states, sub_state);
+
+		foreach(l, j->subqfromlist)
+		{
+			sub_state = reduce_outer_joins_pass1(lfirst(l));
+			result->relids = bms_add_members(result->relids,
+											 sub_state->relids);
+			result->contains_outer |= sub_state->contains_outer;
+			result->sub_states = lappend(result->sub_states, sub_state);
+		}
 	}
 	else
 		elog(ERROR, "unrecognized node type: %d",
@@ -1034,6 +1079,9 @@ reduce_outer_joins_pass2(Node *jtnode,
 						 PlannerInfo *root,
 						 Relids nonnullable_rels)
 {
+	ListCell   *l;
+	ListCell   *s;
+
 	/*
 	 * pass 2 should never descend as far as an empty subnode or base rel,
 	 * because it's only called on subtrees marked as contains_outer.
@@ -1045,8 +1093,6 @@ reduce_outer_joins_pass2(Node *jtnode,
 	else if (IsA(jtnode, FromExpr))
 	{
 		FromExpr   *f = (FromExpr *) jtnode;
-		ListCell   *l;
-		ListCell   *s;
 		Relids		pass_nonnullable;
 
 		/* Scan quals to see if we can add any nonnullability constraints */
@@ -1072,6 +1118,7 @@ reduce_outer_joins_pass2(Node *jtnode,
 		JoinType	jointype = j->jointype;
 		reduce_outer_joins_state *left_state = linitial(state->sub_states);
 		reduce_outer_joins_state *right_state = lsecond(state->sub_states);
+		reduce_outer_joins_state *sub_state;
 
 		/* Can we simplify this join? */
 		switch (jointype)
@@ -1112,7 +1159,13 @@ reduce_outer_joins_pass2(Node *jtnode,
 		}
 
 		/* Only recurse if there's more to do below here */
-		if (left_state->contains_outer || right_state->contains_outer)
+        foreach(l, state->sub_states)
+        {
+            sub_state = (reduce_outer_joins_state *)lfirst(l);
+            if (sub_state->contains_outer)
+                break;
+        }
+		if (l)
 		{
 			Relids		local_nonnullable;
 			Relids		pass_nonnullable;
@@ -1152,6 +1205,24 @@ reduce_outer_joins_pass2(Node *jtnode,
 				reduce_outer_joins_pass2(j->rarg, right_state, root,
 										 pass_nonnullable);
 			}
+
+            /*
+             * CDB: Simplify outer joins pulled up from flattened subqueries.
+             * For a left or right outer join, the subqfromlist items belong
+             * to the null-augmented side; so we pass local_nonnullable down
+             * regardless of the jointype.  (For FULL JOIN, subqfromlist is
+             * always empty.)
+             */
+            s = lnext(lnext(list_head(state->sub_states)));
+            foreach(l, j->subqfromlist)
+            {
+                sub_state = (reduce_outer_joins_state *)lfirst(s);
+                if (sub_state->contains_outer)
+				    reduce_outer_joins_pass2(lfirst(l), sub_state, root,
+										     local_nonnullable);
+                s = lnext(s);
+            }
+
 			bms_free(local_nonnullable);
 		}
 	}
@@ -1229,6 +1300,7 @@ Relids
 get_relids_in_jointree(Node *jtnode)
 {
 	Relids		result = NULL;
+	ListCell   *l;
 
 	if (jtnode == NULL)
 		return result;
@@ -1241,7 +1313,6 @@ get_relids_in_jointree(Node *jtnode)
 	else if (IsA(jtnode, FromExpr))
 	{
 		FromExpr   *f = (FromExpr *) jtnode;
-		ListCell   *l;
 
 		foreach(l, f->fromlist)
 		{
@@ -1256,6 +1327,9 @@ get_relids_in_jointree(Node *jtnode)
 		/* join's own RT index is not wanted in result */
 		result = get_relids_in_jointree(j->larg);
 		result = bms_join(result, get_relids_in_jointree(j->rarg));
+
+		foreach(l, j->subqfromlist)
+			result = bms_join(result, get_relids_in_jointree((Node *)lfirst(l)));
 	}
 	else
 		elog(ERROR, "unrecognized node type: %d",
@@ -1286,6 +1360,8 @@ get_relids_for_join(PlannerInfo *root, int joinrelid)
 static Node *
 find_jointree_node_for_rel(Node *jtnode, int relid)
 {
+	ListCell   *l;
+
 	if (jtnode == NULL)
 		return NULL;
 	if (IsA(jtnode, RangeTblRef))
@@ -1298,7 +1374,6 @@ find_jointree_node_for_rel(Node *jtnode, int relid)
 	else if (IsA(jtnode, FromExpr))
 	{
 		FromExpr   *f = (FromExpr *) jtnode;
-		ListCell   *l;
 
 		foreach(l, f->fromlist)
 		{
@@ -1319,6 +1394,13 @@ find_jointree_node_for_rel(Node *jtnode, int relid)
 		jtnode = find_jointree_node_for_rel(j->rarg, relid);
 		if (jtnode)
 			return jtnode;
+
+		foreach(l, j->subqfromlist)
+		{
+			jtnode = find_jointree_node_for_rel(lfirst(l), relid);
+			if (jtnode)
+				return jtnode;
+		}
 	}
 	else
 		elog(ERROR, "unrecognized node type: %d",

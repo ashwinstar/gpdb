@@ -3,7 +3,7 @@
  * initsplan.c
  *	  Target list, qualification, joininfo initialization routines
  *
- * Portions Copyright (c) 2006, greenplum inc
+ * Portions Copyright (c) 2006-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -99,9 +99,13 @@ add_base_rels_to_query(PlannerInfo *root, Node *jtnode)
 	else if (IsA(jtnode, JoinExpr))
 	{
 		JoinExpr   *j = (JoinExpr *) jtnode;
+		ListCell   *l;
 
 		add_base_rels_to_query(root, j->larg);
 		add_base_rels_to_query(root, j->rarg);
+
+        foreach(l, j->subqfromlist)
+			add_base_rels_to_query(root, lfirst(l));
 	}
 	else
 		elog(ERROR, "unrecognized node type: %d",
@@ -302,9 +306,10 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 		List	   *leftjoinlist,
 				   *rightjoinlist;
 		OuterJoinInfo *ojinfo;
-		ListCell   *qual;
+        ListCell   *cell;
+        ListCell   *qual;
 
-		/*
+        /*
 		 * Order of operations here is subtle and critical.  First we recurse
 		 * to handle sub-JOINs.  Their join quals will be placed without
 		 * regard for whether this level is an outer join, which is correct.
@@ -325,7 +330,6 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 				rightjoinlist = deconstruct_recurse(root, j->rarg,
 													below_outer_join,
 													&rightids);
-				*qualscope = bms_union(leftids, rightids);
 				/* Inner join adds no restrictions for quals */
 				nonnullable_rels = NULL;
 				break;
@@ -336,7 +340,6 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 				rightjoinlist = deconstruct_recurse(root, j->rarg,
 													true,
 													&rightids);
-				*qualscope = bms_union(leftids, rightids);
 				nonnullable_rels = leftids;
 				break;
 			case JOIN_FULL:
@@ -346,9 +349,8 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 				rightjoinlist = deconstruct_recurse(root, j->rarg,
 													true,
 													&rightids);
-				*qualscope = bms_union(leftids, rightids);
 				/* each side is both outer and inner */
-				nonnullable_rels = *qualscope;
+				nonnullable_rels = bms_union(leftids, rightids);
 				break;
 			case JOIN_RIGHT:
 				/* notice we switch leftids and rightids */
@@ -358,7 +360,6 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 				rightjoinlist = deconstruct_recurse(root, j->rarg,
 													below_outer_join,
 													&leftids);
-				*qualscope = bms_union(leftids, rightids);
 				nonnullable_rels = leftids;
 				break;
 			default:
@@ -368,6 +369,42 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 				leftjoinlist = rightjoinlist = NIL;
 				break;
 		}
+
+        /*
+         * CDB: If subqueries from the JOIN...ON search condition were
+         * flattened, 'subqfromlist' is a list of jointree nodes to be
+         * included in the cross product with larg and rarg.
+         *
+         * For left or right joins, the flattened subquery tables must be
+         * associated with the null-augmented side (right side of LEFT JOIN).
+         * For inner joins either side is ok.  For full outer joins the
+         * subqfromlist is not used at present.
+         */
+        foreach(cell, j->subqfromlist)
+        {
+            List       *sub_joinlist;
+		    Relids		sub_qualscope = NULL;
+
+		    sub_joinlist = deconstruct_recurse(root, lfirst(cell),
+                                               below_outer_join ||
+                                                    (j->jointype != JOIN_INNER),
+										       &sub_qualscope);
+		    rightids = bms_add_members(rightids, sub_qualscope);
+            switch (j->jointype)
+            {
+                case JOIN_INNER:
+                case JOIN_LEFT:
+                    rightjoinlist = list_concat(rightjoinlist, sub_joinlist);
+                    break;
+                case JOIN_RIGHT:
+                    leftjoinlist = list_concat(leftjoinlist, sub_joinlist);
+                    break;
+                default:
+                    Assert(0);
+            }
+        }
+
+        *qualscope = bms_union(leftids, rightids);
 
 		/*
 		 * For an OJ, form the OuterJoinInfo now, because we need the OJ's
