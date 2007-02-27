@@ -693,6 +693,11 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 			adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
 			adjust_expr_varnos((Node *) plan->qual, rtoffset);
 			break;
+		case T_ExternalScan:
+			((ExternalScan *) plan)->scan.scanrelid += rtoffset;
+			adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
+			adjust_expr_varnos((Node *) plan->qual, rtoffset);
+			break;			
 		case T_IndexScan:
 			((IndexScan *) plan)->scan.scanrelid += rtoffset;
 			adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
