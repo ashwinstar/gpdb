@@ -93,7 +93,7 @@ double		cpu_operator_cost = DEFAULT_CPU_OPERATOR_COST;
 
 int			effective_cache_size = DEFAULT_EFFECTIVE_CACHE_SIZE;
 
-Cost		disable_cost = 100000000.0;
+Cost		disable_cost = 1.0e9;
 
 /* CDB: The enable_xxx globals have been moved to allpaths.c */
 
@@ -1655,9 +1655,11 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
      * 'hashjointuples', i.e. those rows that pass the hashjoin quals.
 	 */
 	startup_cost += hash_qual_cost.startup;
-	run_cost += hash_qual_cost.per_tuple *
-		hashjointuples * inner_path_rows * innerbucketsize *
-		joininfactor;
+	run_cost += hash_qual_cost.per_tuple * hashjointuples;
+
+    /* CDB: Add a small charge for walking the hash chains. */
+    run_cost += 0.05 * cpu_operator_cost * 
+                outer_path_rows * inner_path_rows * innerbucketsize * joininfactor;
 
 	/*
 	 * For each tuple that gets through the hashjoin proper, we charge

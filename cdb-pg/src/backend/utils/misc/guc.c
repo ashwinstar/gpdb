@@ -2173,7 +2173,7 @@ static struct config_real ConfigureNamesReal[] =
                          "expected number of extra passes exceeds limit.")
 		},
 		&mpp_hashagg_rewrite_limit,
-		1.0, 1.0, 100.0, NULL, NULL
+		2.0, 1.0, 100.0, NULL, NULL
 	},
 
 	{
