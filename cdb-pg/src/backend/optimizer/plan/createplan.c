@@ -988,39 +988,64 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		
 		/*
 		 * look through our segment database list and try to find
-		 * a database that is on the host specified by the uri.
+		 * a database that can handle this uri.
 		 */
-		for (i = 0; i < db_info->total_segment_dbs; i++)
+		for (i = 0; i < db_info->total_segment_dbs && !found_match; i++)
 		{
 			CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
 			int segind = p->segindex;
 			
 			/* 
 			 * Assign mapping of external file to this segdb only if:
-			 * 1) The host of the external file is the host of this segdb.
-			 * 2) This segdb is a valid primary.
-			 * 3) An external file wasn't already assigned to it. 
+			 * 1) This segdb is a valid primary.
+			 * 2) An external file wasn't already assigned to it. 
+			 * 3) If 'file' protocol, host of segdb and file must be 
+			 *    the same.
 			 *
 			 * This logic also guarantees that file that appears first in 
 			 * the external location list for the same host gets assigned
 			 * the segdb with the lowest index for this host.
+			 *
+			 * NOTE: if 'file' protocol we assign the path portion of the
+			 * uri string only (so that the executor won't have to parse
+			 * the uri yet again in order to open the local file). If 'http'
+			 * protocol we assign the whole uri string as executor will need
+			 * to use the whole uri to do the libcurl operations.
 			 */			
-			if(pg_strcasecmp(uri->hostname, p->hostname) == 0 && 
-			   p->isprimary && p->valid)	
+			if(p->isprimary && p->valid)	
 			{
-				/* a valid primary segdb exist on this host */
-				found_candidate = true;
-				if(segdb_file_map[segind] == NULL)
+			    if(uri->protocol == URI_FILE)
+			    {
+			        /*
+			         * For local data ('file' protocol) we must make sure
+			         * that the host of the external file is the host of 
+			         * this segdb.
+			         */
+			        if(pg_strcasecmp(uri->hostname, p->hostname) == 0)
+			        {
+						/* a valid primary segdb exist on this host */
+						found_candidate = true;
+						if(segdb_file_map[segind] == NULL)
+						{
+							/* segdb not taken yet. assign this *file* to this segdb */
+							segdb_file_map[segind] = pstrdup(uri->path);
+							found_match = true;					
+						}
+					}
+				}
+				else if(uri->protocol == URI_HTTP)
 				{
-					/* segdb not taken yet. assign this file to this segdb */
-					segdb_file_map[segind] = pstrdup(uri->path);
-					found_match = true;
-					
-					/* found a home for this file. move on to the next uri */
-					break;					
+					/* a valid primary segdb exist on this host */
+					found_candidate = true;
+					if(segdb_file_map[segind] == NULL)
+					{
+						/* segdb not taken yet. assign this *uri* to this segdb */
+						segdb_file_map[segind] = pstrdup(uri_str);
+						found_match = true;					
+					}
 				}
 
-				/* too bad. this segdb already has an external file assigned */
+				/* too bad. this segdb already has an external source assigned */
 			}
 		}
 		
@@ -1029,22 +1054,37 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		 */
 		if(!found_match)
 		{
-			if(found_candidate)
+		    if(uri->protocol == URI_FILE)
+		    {
+				if(found_candidate)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("Could not assign a segment database for \"%s\". "
+									"There are more external files than primary segment "
+									"databases on host \"%s\"", uri_str, uri->hostname)));				
+				}
+				else
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("Could not assign a segment database for \"%s\". "
+									"There isn't a valid primary segment database "
+									"on host \"%s\"", uri_str, uri->hostname)));
+				}
+			}
+			else if(uri->protocol == URI_HTTP)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 						 errmsg("Could not assign a segment database for \"%s\". "
-								"There are more external files than primary segment "
-								"databases on host \"%s\"", uri_str, uri->hostname)));				
+								"There are more URIs than total primary segment "
+								"databases", uri_str)));				
 			}
 			else
 			{
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("Could not assign a segment database for \"%s\". "
-								"There isn't a valid primary segment database "
-								"on host \"%s\"", uri_str, uri->hostname)));
-			}				
+			    Assert(0); /* should never happen */
+			}
 		}		
 	}
 
