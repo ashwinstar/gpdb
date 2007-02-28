@@ -40,19 +40,32 @@ def parseCommandLine():
 
 
 parseCommandLine()
-distFile = open(distFname, "r", 1024*256)
+distFile = open(distFname, "r", 1024*256*4)
 distFileSem = threading.Semaphore(1)
+distFileResidue = None
 def readFile():
-    global distFile, distFileSem
+    global distFile, distFileSem, distFileResidue
     distFileSem.acquire()
+    lines = []
     if not distFile:
-	lines = []
+	print 'completed'
     else:
-	lines = distFile.readlines(1024*16)
-	if not lines:
-	    print 'completed'
-	    distFile.close()
-	    distFile = None
+	if distFileResidue: 
+	    lines.append(distFileResidue);
+	    distFileResidue = None
+	while not distFileResidue and distFile:
+	    chunk = distFile.read(1024*32)
+	    if not chunk:
+		distFile.close()
+		distFile = None
+	    else:
+		i = chunk.find('\n')
+		if i >= 0:
+		    i = i + 1
+		    lines.append(chunk[:i])
+		    distFileResidue = chunk[i:]
+		else:
+		    lines.append(chunk)
     distFileSem.release()
     #time.sleep(1)
     return lines
@@ -63,10 +76,10 @@ class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GET(self):
 	self.send_head()
 	while 1:
-	    lines = readFile()
-	    if not lines: break
-	    for line in lines:
-		self.wfile.write(line)
+	    chunks = readFile()
+	    if not chunks: break
+	    for c in chunks:
+		self.wfile.write(c)
 
     def send_head(self):
 	self.send_response(200)
