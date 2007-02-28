@@ -27,6 +27,8 @@ ParseUriString(const char *uri_str)
 	int			protocol_len,
 				len;
 
+ 	uri->port = -1;
+
 	/*
 	 * parse protocol
 	 */
@@ -88,11 +90,19 @@ ParseUriString(const char *uri_str)
 		}
 		else
 		{
+			char* colon;
+
 			len = end - start;
 
 			uri->hostname = (char *) palloc(len + 1);
 			strncpy(uri->hostname, start, len);
 			uri->hostname[len] = '\0';
+			
+			colon = strchr(uri->hostname, ':');
+			if (colon) {
+				uri->port = atoi(colon + 1);
+				*colon = 0;
+			}
 
 		}
 	}

@@ -7736,6 +7736,8 @@ static Datum transformLocationUris(List *locs)
 	ListCell   *cell;
 	ArrayBuildState *astate;
 	Datum		result;
+	UriProtocol first_protocol;
+	bool		first_uri = true;
 	
 	/* Parser should not let this happen */
 	Assert(locs != NIL);
@@ -7775,12 +7777,28 @@ static Datum transformLocationUris(List *locs)
 		
 		uri = ParseUriString(uri_str);
 		
-		if(uri->protocol != URI_FILE)
+		if(first_uri)
+		{
+		    first_protocol = uri->protocol;
+		    first_uri = false;
+		}
+		
+		if(uri->protocol != first_protocol)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("URI protocols must be the same for all data sources"),
+					 errhint("For remote use 'http', for local use 'file', but don't "
+					         "mix the two protocols in one declaration.")));
+		
+		}
+		
+		if(uri->protocol != URI_FILE && uri->protocol != URI_HTTP)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("unsupported URI protocol for \'%s\'", uri_str),
-					 errhint("Use 'file' protocol instead.")));
+					 errhint("Use 'file' or 'http' protocol instead.")));
 		}
 		
 		len = VARHDRSZ + strlen(uri_str);

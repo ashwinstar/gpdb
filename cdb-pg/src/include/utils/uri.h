@@ -25,6 +25,7 @@ typedef struct Uri
 {
 	UriProtocol protocol;
 	char	   *hostname;
+	int         port;
 	char	   *path;
 }	Uri;
 
