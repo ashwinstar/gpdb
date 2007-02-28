@@ -557,15 +557,9 @@ cdb_tuplesort_init(Tuplesortstate *state,
 	 * elimination */
 
 	state->standardsort = 
-			(state->mppsortflags != 1) ||
+			(state->mppsortflags == 0) ||
 			((state->memtupLIMIT == 0) 
 			 && (!state->noduplicates)); 
-
-	/* force insertion sort */
-	if (2 == state->mppsortflags)
-	{
-			state->standardsort = false;
-	}
 
 }
 
@@ -923,16 +917,22 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 				 * fullsort 
 				 */
 
-				if ((state->alltupcount == 1000) &&
-					(2 != state->mppsortflags))
-				{
-					int64 discard_ratio = 
-						(state->discardcount * 100)/state->alltupcount;
-
-					/* don't bother for LIMIT case... */
-					if (!state->memtupLIMIT && (discard_ratio < 50))
-						state->standardsort = true;
-				}
+                if (!state->memtupLIMIT)
+                {
+                    /*
+                     * don't bother if mppsortflags set to "always on"
+                     */
+                    if ((state->mppsortflags > 1)
+                    &&  (state->alltupcount >= state->mppsortflags))
+                    {
+                        int64 discard_ratio =
+                            (state->discardcount * 100)/state->alltupcount;
+                        if (discard_ratio < 50)
+                        {
+                            state->standardsort = true;
+                        }
+                    }
+                }
 			}
 
 			/*
