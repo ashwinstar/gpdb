@@ -1961,7 +1961,7 @@ static struct config_int ConfigureNamesInt[] =
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&mpp_sort_flags,
-		1, 0, INT_MAX, NULL, NULL
+		10000, 0, INT_MAX, NULL, NULL
 	},
 	
 	{
