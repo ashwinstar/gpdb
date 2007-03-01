@@ -1965,7 +1965,7 @@ _readExternalScan(const char ** str)
 	
 	readScanInfo(str, (Scan *)local_node);
 	
-	READ_NODE_FIELD(fileNames);
+	READ_NODE_FIELD(uriList);
 	READ_NODE_FIELD(fmtOpts);
 	READ_BOOL_FIELD(isText);
 	

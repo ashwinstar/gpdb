@@ -2385,7 +2385,7 @@ static ExternalScan *
 make_externalscan(List *qptlist,
 				  List *qpqual,
 				  Index scanrelid,
-				  List *filenames,
+				  List *urilist,
 				  List *fmtopts,
 				  bool istext)
 {
@@ -2400,7 +2400,7 @@ make_externalscan(List *qptlist,
 	node->scan.scanrelid = scanrelid;
 	
 	/* external specifictions */
-	node->fileNames = filenames;
+	node->uriList = urilist;
 	node->fmtOpts = fmtopts;
 	node->isText = istext;
 	

@@ -627,7 +627,7 @@ plan_tree_mutator(Node *node,
 				FLATCOPY(newextscan, extscan, ExternalScan);
 				SCANMUTATE(newextscan, extscan);
 				
-				MUTATE(newextscan->fileNames, extscan->fileNames, List *);
+				MUTATE(newextscan->uriList, extscan->uriList, List *);
 				MUTATE(newextscan->fmtOpts, extscan->fmtOpts, List *);
 				newextscan->isText = extscan->isText;
 				

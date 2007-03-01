@@ -361,7 +361,7 @@ typedef struct ValuesScan
 typedef struct ExternalScan
 {
 	Scan		scan;
-	List		*fileNames; /* file name or null for each segment */
+	List		*uriList;   /* data uri or null for each segment  */
 	List		*fmtOpts;   /* data format options                */
 	bool		isText;     /* true for text false for csv        */
 	

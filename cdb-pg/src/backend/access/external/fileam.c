@@ -67,7 +67,7 @@ elog(DEBUG2, "file_getnext returning tuple")
 * ----------------
 */
 FileScanDesc
-file_beginscan(Relation relation, List *fileNames, List *fmtOpts,
+file_beginscan(Relation relation, List *uriList, List *fmtOpts,
 			   bool isText, int nkeys, ScanKey key)
 {
 	FileScanDesc scan;
@@ -101,7 +101,7 @@ file_beginscan(Relation relation, List *fileNames, List *fmtOpts,
 	 * get the external file name assigned to us. 
 	 */
 	if(Mpp_role == MPP_ROLE_EXECUTE)
-		filename = (char *) strVal(list_nth(fileNames, MppIdentity.segindex));
+		filename = (char *) strVal(list_nth(uriList, MppIdentity.segindex));
 	
 	/*
 	 * if an external file is assigned to us - open it. Some executors

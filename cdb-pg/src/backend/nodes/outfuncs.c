@@ -381,7 +381,7 @@ _outExternalScan(StringInfo str, ExternalScan *node)
 	
 	_outScanInfo(str, (Scan *) node);
 	
-	WRITE_NODE_FIELD(fileNames);
+	WRITE_NODE_FIELD(uriList);
 	WRITE_NODE_FIELD(fmtOpts);
 	WRITE_BOOL_FIELD(isText);
 }

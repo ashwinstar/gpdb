@@ -259,7 +259,7 @@ _copyExternalScan(ExternalScan *from)
 	/*
 	 * copy remainder of node
 	 */	
-	COPY_NODE_FIELD(fileNames);
+	COPY_NODE_FIELD(uriList);
 	COPY_NODE_FIELD(fmtOpts);
 	COPY_SCALAR_FIELD(isText);
 	
