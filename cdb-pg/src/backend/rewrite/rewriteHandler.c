@@ -155,7 +155,7 @@ AcquireRewriteLocks(Query *parsetree)
                 }
 
                 /* FOR UPDATE/SHARE? */
-				else if (list_member_ptr(parsetree->rowMarks, rt_index))
+				else if (get_rowmark(parsetree, rt_index) != NULL)
                     CdbLockRelation(rel, lockmode, false);
 
                 /* Ordinary source relation */
