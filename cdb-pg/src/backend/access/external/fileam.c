@@ -18,19 +18,19 @@
 #include "pgstat.h"
 #include "utils/relcache.h"
 #include "utils/lsyscache.h"
-#include "storage/fd.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "commands/copy.h"
 
 #include "cdb/cdbvars.h"
 
+#include "url.i"
 
 static HeapTuple filegettup(FileScanDesc scan, ScanDirection dir, int nkeys, ScanKey key);
 static void initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, char *filename);
 static void open_external_file(FileScanDesc scan);
 static void close_external_file(FileScanDesc scan);
-static int	file_getdata(FILE *extfile, CopyState pstate, int maxread);
+static int	file_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
 static void file_scan_error_callback(void *arg);
 
 
@@ -325,7 +325,7 @@ filegettup(FileScanDesc scan,
 		/* need to fill our buffer with data? */
 		if (pstate->raw_buf_done)
 		{
-			pstate->bytesread = file_getdata(scan->fs_file, pstate, RAW_BUF_SIZE);
+		    pstate->bytesread = file_getdata((URL_FILE*)scan->fs_file, pstate, RAW_BUF_SIZE);
 			pstate->begloc = pstate->raw_buf;
 			pstate->raw_buf_done = false;
 			pstate->raw_buf_index = 0;
@@ -647,24 +647,13 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
 static void
 open_external_file(FileScanDesc scan)
 {
-	struct stat st;
-
-	scan->fs_file = AllocateFile(scan->fs_filename, PG_BINARY_R);
+	scan->fs_file = (FILE*) url_fopen(scan->fs_filename, PG_BINARY_R);
 
 	if (scan->fs_file == NULL)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not open file \"%s\" for reading: %m",
 						scan->fs_filename)));
-
-	fstat(fileno(scan->fs_file), &st);
-	if (S_ISDIR(st.st_mode))
-	{
-		FreeFile(scan->fs_file);
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is a directory", scan->fs_filename)));
-	}
 
 }
 
@@ -674,7 +663,7 @@ open_external_file(FileScanDesc scan)
 static void
 close_external_file(FileScanDesc scan)
 {
-	if (FreeFile(scan->fs_file))
+    if (url_fclose((URL_FILE*) scan->fs_file))
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not write to file \"%s\": %m",
@@ -685,14 +674,14 @@ close_external_file(FileScanDesc scan)
  * get a chunk of data from the external data file.
  */
 static int
-file_getdata(FILE *extfile, CopyState pstate, int maxread)
+file_getdata(URL_FILE *extfile, CopyState pstate, int maxread)
 {
 	int			bytesread = 0;
 
-	bytesread = fread((void *) pstate->raw_buf, 1, maxread, extfile);
-	if (feof(extfile))
+	bytesread = url_fread((void *) pstate->raw_buf, 1, maxread, extfile);
+	if (url_feof(extfile))
 		pstate->fe_eof = true;
-	if (ferror(extfile))
+	if (bytesread == -1) 
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not read from external file: %m")));

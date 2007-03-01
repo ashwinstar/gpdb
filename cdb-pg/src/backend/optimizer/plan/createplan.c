@@ -1005,12 +1005,6 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 			 * This logic also guarantees that file that appears first in 
 			 * the external location list for the same host gets assigned
 			 * the segdb with the lowest index for this host.
-			 *
-			 * NOTE: if 'file' protocol we assign the path portion of the
-			 * uri string only (so that the executor won't have to parse
-			 * the uri yet again in order to open the local file). If 'http'
-			 * protocol we assign the whole uri string as executor will need
-			 * to use the whole uri to do the libcurl operations.
 			 */			
 			if(p->isprimary && p->valid)	
 			{
@@ -1021,28 +1015,17 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 			         * that the host of the external file is the host of 
 			         * this segdb.
 			         */
-			        if(pg_strcasecmp(uri->hostname, p->hostname) == 0)
-			        {
-						/* a valid primary segdb exist on this host */
-						found_candidate = true;
-						if(segdb_file_map[segind] == NULL)
-						{
-							/* segdb not taken yet. assign this *file* to this segdb */
-							segdb_file_map[segind] = pstrdup(uri->path);
-							found_match = true;					
-						}
-					}
+			        if(pg_strcasecmp(uri->hostname, p->hostname) != 0)
+						continue;
 				}
-				else if(uri->protocol == URI_HTTP)
+				
+				/* a valid primary segdb exist on this host */
+				found_candidate = true;
+				if(segdb_file_map[segind] == NULL)
 				{
-					/* a valid primary segdb exist on this host */
-					found_candidate = true;
-					if(segdb_file_map[segind] == NULL)
-					{
-						/* segdb not taken yet. assign this *uri* to this segdb */
-						segdb_file_map[segind] = pstrdup(uri_str);
-						found_match = true;					
-					}
+					/* segdb not taken yet. assign this URI to this segdb */
+					segdb_file_map[segind] = pstrdup(uri_str);
+					found_match = true;					
 				}
 
 				/* too bad. this segdb already has an external source assigned */

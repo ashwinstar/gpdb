@@ -26,7 +26,7 @@ endif
 OBJS = $(SUBSYSOBJS) $(LOCALOBJS) $(top_builddir)/src/port/libpgport_srv.a
 
 # We put libpgport into OBJS, so remove it from LIBS; also add libldap
-LIBS := $(filter-out -lpgport, $(LIBS)) $(LDAP_LIBS_BE)
+LIBS := $(filter-out -lpgport, $(LIBS)) $(LDAP_LIBS_BE) -lcurl
 
 # The backend doesn't need everything that's in LIBS, however
 LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses, $(LIBS))
