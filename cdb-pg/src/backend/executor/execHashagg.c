@@ -1043,12 +1043,12 @@ batch_put_tuple(HashAggTable *hashtable,
 
 	datalen = heapTuple->t_len - t_data->t_hoff;
 	if (HeapTupleHasNulls(heapTuple))
-		nullslen = BITMAPLEN(t_data->t_natts);
+		nullslen = BITMAPLEN(HeapTupleHeaderGetNatts(t_data));
 	else
 		nullslen = 0;
 
 	hth.tuplen = sizeof(BatchTupleHeader) + nullslen + datalen;
-	hth.natts = t_data->t_natts;
+	hth.natts = HeapTupleHeaderGetNatts(t_data);
 	hth.infomask = t_data->t_infomask;
 
 	written = BufFileWrite(file, (void *)&hth, sizeof(hth));
@@ -1133,7 +1133,7 @@ batch_get_tuple(HashAggTable *hashtable,
 
 	/* reconstruct the HeapTupleHeaderData fields */
 	ItemPointerSetInvalid(&(t_data->t_ctid));
-	t_data->t_natts = hth.natts;
+	HeapTupleHeaderSetNatts(t_data, hth.natts);
 	t_data->t_infomask = (hth.infomask & ~HEAP_XACT_MASK)
 		| (HEAP_XMIN_INVALID | HEAP_XMAX_INVALID);
 	t_data->t_hoff = hoff;

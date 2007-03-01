@@ -361,12 +361,12 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 
 		datalen = tuple->t_len - t_data->t_hoff;
 		if (HeapTupleHasNulls(tuple))
-			nullslen = BITMAPLEN(t_data->t_natts);
+			nullslen = BITMAPLEN(HeapTupleHeaderGetNatts(t_data));
 		else
 			nullslen = 0;
 
 		tsh.tuplen = sizeof(TupSerHeader) + nullslen + datalen;
-		tsh.natts = t_data->t_natts;
+		tsh.natts = HeapTupleHeaderGetNatts(t_data);
 		tsh.infomask = t_data->t_infomask;
 
 		addByteStringToChunkList(tcList, (char *)&tsh, sizeof(TupSerHeader));
@@ -979,7 +979,7 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 
 		/* reconstruct the HeapTupleHeaderData fields */
 		ItemPointerSetInvalid(&(t_data->t_ctid));
-		t_data->t_natts = tshp->natts;
+		HeapTupleHeaderSetNatts(t_data, tshp->natts);
 		t_data->t_infomask = tshp->infomask & ~HEAP_XACT_MASK;
 		t_data->t_infomask |= HEAP_XMIN_INVALID | HEAP_XMAX_INVALID;
 		t_data->t_hoff = hoff;

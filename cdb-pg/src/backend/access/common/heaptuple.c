@@ -297,7 +297,7 @@ DataFill(char *data,
 bool
 heap_attisnull(HeapTuple tup, int attnum)
 {
-	if (attnum > (int) tup->t_data->t_natts)
+	if (attnum > (int) HeapTupleHeaderGetNatts(tup->t_data))
 		return true;
 
 	if (attnum > 0)
@@ -477,6 +477,7 @@ nocachegetattr(HeapTuple tuple,
 	{
 		int			j = 1;
 		long		off;
+		int			natts = HeapTupleHeaderGetNatts(tup);
 
 		/*
 		 * need to set cache for some atts
@@ -491,7 +492,7 @@ nocachegetattr(HeapTuple tuple,
 
 		for (; j <= attnum ||
 		/* Can we compute more?  We will probably need them */
-			 (j < tup->t_natts &&
+			 (j < natts &&
 			  att[j]->attcacheoff == -1 &&
 			  (HeapTupleNoNulls(tuple) || !att_isnull(j, bp)) &&
 			  (HeapTupleAllFixed(tuple) || att[j]->attlen > 0)); j++)
@@ -584,14 +585,18 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 		case MinTransactionIdAttributeNumber:
 			result = TransactionIdGetDatum(HeapTupleHeaderGetXmin(tup->t_data));
 			break;
-		case MinCommandIdAttributeNumber:
-			result = CommandIdGetDatum(HeapTupleHeaderGetCmin(tup->t_data));
-			break;
 		case MaxTransactionIdAttributeNumber:
 			result = TransactionIdGetDatum(HeapTupleHeaderGetXmax(tup->t_data));
 			break;
+		case MinCommandIdAttributeNumber:
 		case MaxCommandIdAttributeNumber:
-			result = CommandIdGetDatum(HeapTupleHeaderGetCmax(tup->t_data));
+			/*
+			 * cmin and cmax are now both aliases for the same field,
+			 * which can in fact also be a combo command id.  XXX perhaps we
+			 * should return the "real" cmin or cmax if possible, that is
+			 * if we are inside the originating transaction?
+			 */
+			result = CommandIdGetDatum(HeapTupleHeaderGetRawCommandId(tup->t_data));
 			break;
 		case TableOidAttributeNumber:
 			result = ObjectIdGetDatum(tup->t_tableOid);
@@ -745,7 +750,7 @@ heap_form_tuple(TupleDesc tupleDescriptor,
 	HeapTupleHeaderSetTypeId(td, tupleDescriptor->tdtypeid);
 	HeapTupleHeaderSetTypMod(td, tupleDescriptor->tdtypmod);
 
-	td->t_natts = numberOfAttributes;
+	HeapTupleHeaderSetNatts(td, numberOfAttributes);
 	td->t_hoff = hoff;
 
 	if (tupleDescriptor->tdhasoid)		/* else leave infomask = 0 */
@@ -852,7 +857,7 @@ heap_formtuple(TupleDesc tupleDescriptor,
 	HeapTupleHeaderSetTypeId(td, tupleDescriptor->tdtypeid);
 	HeapTupleHeaderSetTypMod(td, tupleDescriptor->tdtypmod);
 
-	td->t_natts = numberOfAttributes;
+	HeapTupleHeaderSetNatts(td, numberOfAttributes);
 	td->t_hoff = hoff;
 
 	if (tupleDescriptor->tdhasoid)		/* else leave infomask = 0 */
@@ -1041,7 +1046,7 @@ heap_deform_tuple(HeapTuple tuple, TupleDesc tupleDesc,
 	bits8	   *bp = tup->t_bits;		/* ptr to null bitmap in tuple */
 	bool		slow = false;	/* can we use/set attcacheoff? */
 
-	natts = tup->t_natts;
+	natts = HeapTupleHeaderGetNatts(tup);
 
 	/*
 	 * In inheritance situations, it is possible that the given tuple actually
@@ -1134,7 +1139,7 @@ heap_deformtuple(HeapTuple tuple,
 	bits8	   *bp = tup->t_bits;		/* ptr to null bitmap in tuple */
 	bool		slow = false;	/* can we use/set attcacheoff? */
 
-	natts = tup->t_natts;
+	natts = HeapTupleHeaderGetNatts(tup);
 
 	/*
 	 * In inheritance situations, it is possible that the given tuple actually
@@ -1341,7 +1346,7 @@ slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
 	 * than the tupdesc.)
 	 */
 	tup = tuple->t_data;
-	if (attnum > tup->t_natts)
+	if (attnum > HeapTupleHeaderGetNatts(tup))
 	{
 		*isnull = true;
 		return (Datum) 0;
@@ -1407,7 +1412,7 @@ slot_getallattrs(TupleTableSlot *slot)
 	/*
 	 * load up any slots available from physical tuple
 	 */
-	attnum = tuple->t_data->t_natts;
+	attnum = HeapTupleHeaderGetNatts(tuple->t_data);
 	attnum = Min(attnum, tdesc_natts);
 
 	slot_deform_tuple(slot, attnum);
@@ -1454,7 +1459,7 @@ slot_getsomeattrs(TupleTableSlot *slot, int attnum)
 	/*
 	 * load up any slots available from physical tuple
 	 */
-	attno = tuple->t_data->t_natts;
+	attno = HeapTupleHeaderGetNatts(tuple->t_data);
 	attno = Min(attno, attnum);
 
 	slot_deform_tuple(slot, attno);
@@ -1607,7 +1612,7 @@ heap_form_minimal_tuple(TupleDesc tupleDescriptor,
 	 * And fill in the information.
 	 */
 	tuple->t_len = len;
-	tuple->t_natts = numberOfAttributes;
+	HeapTupleHeaderSetNatts(tuple, numberOfAttributes);
 	tuple->t_hoff = hoff + MINIMAL_TUPLE_OFFSET;
 
 	if (tupleDescriptor->tdhasoid)		/* else leave infomask = 0 */
@@ -1669,7 +1674,7 @@ heap_tuple_from_minimal_tuple(MinimalTuple mtup)
 	result->t_tableOid = InvalidOid;
 	result->t_data = (HeapTupleHeader) ((char *) result + HEAPTUPLESIZE);
 	memcpy((char *) result->t_data + MINIMAL_TUPLE_OFFSET, mtup, mtup->t_len);
-	memset(result->t_data, 0, offsetof(HeapTupleHeaderData, t_natts));
+	memset(result->t_data, 0, offsetof(HeapTupleHeaderData, t_infomask2));
 	return result;
 }
 
@@ -1735,7 +1740,7 @@ heap_addheader(int natts,		/* max domain index */
 
 	/* we don't bother to fill the Datum fields */
 
-	td->t_natts = natts;
+	HeapTupleHeaderSetNatts(td, natts);
 	td->t_hoff = hoff;
 
 	if (withoid)				/* else leave infomask = 0 */

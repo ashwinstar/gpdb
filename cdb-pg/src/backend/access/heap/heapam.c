@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/heap/heapam.c,v 1.222 2006/11/17 18:00:14 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/heap/heapam.c,v 1.223 2007/01/05 22:19:22 momjian Exp $
  *
  *
  * INTERFACE ROUTINES
@@ -1405,8 +1405,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	tup->t_data->t_infomask |= HEAP_XMAX_INVALID;
 	HeapTupleHeaderSetXmin(tup->t_data, xid);
 	HeapTupleHeaderSetCmin(tup->t_data, cid);
-	HeapTupleHeaderSetXmax(tup->t_data, 0);		/* zero out Datum fields */
-	HeapTupleHeaderSetCmax(tup->t_data, 0);		/* for cleanliness */
+	HeapTupleHeaderSetXmax(tup->t_data, 0);		/* for cleanliness */
 	tup->t_tableOid = RelationGetRelid(relation);
 
 	/*
@@ -1455,7 +1454,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 		rdata[0].buffer = InvalidBuffer;
 		rdata[0].next = &(rdata[1]);
 
-		xlhdr.t_natts = heaptup->t_data->t_natts;
+		xlhdr.t_infomask2 = heaptup->t_data->t_infomask2;
 		xlhdr.t_infomask = heaptup->t_data->t_infomask;
 		xlhdr.t_hoff = heaptup->t_data->t_hoff;
 
@@ -1572,6 +1571,7 @@ heap_delete(Relation relation, ItemPointer tid,
 	PageHeader	dp;
 	Buffer		buffer;
 	bool		have_tuple_lock = false;
+	bool		iscombo;
 
 	Assert(ItemPointerIsValid(tid));
 
@@ -1711,6 +1711,9 @@ l1:
 		return result;
 	}
 
+	/* replace cid with a combo cid if necessary */
+	HeapTupleHeaderAdjustCmax(tp.t_data, &cid, &iscombo);
+
 	START_CRIT_SECTION();
 
 	/* store transaction information of xact deleting the tuple */
@@ -1720,7 +1723,7 @@ l1:
 							   HEAP_IS_LOCKED |
 							   HEAP_MOVED);
 	HeapTupleHeaderSetXmax(tp.t_data, xid);
-	HeapTupleHeaderSetCmax(tp.t_data, cid);
+	HeapTupleHeaderSetCmax(tp.t_data, cid, iscombo);
 	/* Make sure there is no forward chain link in t_ctid */
 	tp.t_data->t_ctid = tp.t_self;
 
@@ -1880,6 +1883,7 @@ heap_update(Relation relation, ItemPointer otid, HeapTuple newtup,
 	Size		newtupsize,
 				pagefree;
 	bool		have_tuple_lock = false;
+	bool		iscombo;
 
 	Assert(ItemPointerIsValid(otid));
 
@@ -2045,8 +2049,13 @@ l2:
 	newtup->t_data->t_infomask |= (HEAP_XMAX_INVALID | HEAP_UPDATED);
 	HeapTupleHeaderSetXmin(newtup->t_data, xid);
 	HeapTupleHeaderSetCmin(newtup->t_data, cid);
-	HeapTupleHeaderSetXmax(newtup->t_data, 0);	/* zero out Datum fields */
-	HeapTupleHeaderSetCmax(newtup->t_data, 0);	/* for cleanliness */
+	HeapTupleHeaderSetXmax(newtup->t_data, 0);	/* for cleanliness */
+
+	/*
+	 * Replace cid with a combo cid if necessary.  Note that we already put
+	 * the plain cid into the new tuple.
+	 */
+	HeapTupleHeaderAdjustCmax(oldtup.t_data, &cid, &iscombo);
 
 	/*
 	 * If the toaster needs to be activated, OR if the new tuple will not fit
@@ -2075,7 +2084,7 @@ l2:
 									   HEAP_IS_LOCKED |
 									   HEAP_MOVED);
 		HeapTupleHeaderSetXmax(oldtup.t_data, xid);
-		HeapTupleHeaderSetCmax(oldtup.t_data, cid);
+		HeapTupleHeaderSetCmax(oldtup.t_data, cid, iscombo);
 		/* temporarily make it look not-updated */
 		oldtup.t_data->t_ctid = oldtup.t_self;
 		already_marked = true;
@@ -2170,7 +2179,7 @@ l2:
 									   HEAP_IS_LOCKED |
 									   HEAP_MOVED);
 		HeapTupleHeaderSetXmax(oldtup.t_data, xid);
-		HeapTupleHeaderSetCmax(oldtup.t_data, cid);
+		HeapTupleHeaderSetCmax(oldtup.t_data, cid, iscombo);
 	}
 
 	/* record address of new tuple in t_ctid of old one */
@@ -2674,12 +2683,11 @@ l3:
 	/*
 	 * Store transaction information of xact locking the tuple.
 	 *
-	 * Note: our CID is meaningless if storing a MultiXactId, but no harm in
-	 * storing it anyway.
+	 * Note: Cmax is meaningless in this context, so don't set it; this
+	 * avoids possibly generating a useless combo CID.
 	 */
 	tuple->t_data->t_infomask = new_infomask;
 	HeapTupleHeaderSetXmax(tuple->t_data, xid);
-	HeapTupleHeaderSetCmax(tuple->t_data, cid);
 	/* Make sure there is no forward chain link in t_ctid */
 	tuple->t_data->t_ctid = *tid;
 
@@ -3204,7 +3212,7 @@ log_heap_update(Relation reln, Buffer oldbuf, ItemPointerData from,
 	rdata[1].buffer_std = true;
 	rdata[1].next = &(rdata[2]);
 
-	xlhdr.hdr.t_natts = newtup->t_data->t_natts;
+	xlhdr.hdr.t_infomask2 = newtup->t_data->t_infomask2;
 	xlhdr.hdr.t_infomask = newtup->t_data->t_infomask;
 	xlhdr.hdr.t_hoff = newtup->t_data->t_hoff;
 	if (move)					/* remember xmax & xmin */
@@ -3430,7 +3438,7 @@ heap_xlog_delete(XLogRecPtr lsn, XLogRecord *record)
 						  HEAP_IS_LOCKED |
 						  HEAP_MOVED);
 	HeapTupleHeaderSetXmax(htup, record->xl_xid);
-	HeapTupleHeaderSetCmax(htup, FirstCommandId);
+	HeapTupleHeaderSetCmax(htup, FirstCommandId, false);
 	/* Make sure there is no forward chain link in t_ctid */
 	htup->t_ctid = xlrec->target.tid;
 	PageSetLSN(page, lsn);
@@ -3503,7 +3511,7 @@ heap_xlog_insert(XLogRecPtr lsn, XLogRecord *record)
 		   (char *) xlrec + SizeOfHeapInsert + SizeOfHeapHeader,
 		   newlen);
 	newlen += offsetof(HeapTupleHeaderData, t_bits);
-	htup->t_natts = xlhdr.t_natts;
+	htup->t_infomask2 = xlhdr.t_infomask2;
 	htup->t_infomask = xlhdr.t_infomask;
 	htup->t_hoff = xlhdr.t_hoff;
 	HeapTupleHeaderSetXmin(htup, record->xl_xid);
@@ -3595,7 +3603,7 @@ heap_xlog_update(XLogRecPtr lsn, XLogRecord *record, bool move)
 							  HEAP_IS_LOCKED |
 							  HEAP_MOVED);
 		HeapTupleHeaderSetXmax(htup, record->xl_xid);
-		HeapTupleHeaderSetCmax(htup, FirstCommandId);
+		HeapTupleHeaderSetCmax(htup, FirstCommandId, false);
 		/* Set forward chain link in t_ctid */
 		htup->t_ctid = xlrec->newtid;
 	}
@@ -3666,7 +3674,7 @@ newsame:;
 		   (char *) xlrec + hsize,
 		   newlen);
 	newlen += offsetof(HeapTupleHeaderData, t_bits);
-	htup->t_natts = xlhdr.t_natts;
+	htup->t_infomask2 = xlhdr.t_infomask2;
 	htup->t_infomask = xlhdr.t_infomask;
 	htup->t_hoff = xlhdr.t_hoff;
 
@@ -3748,7 +3756,7 @@ heap_xlog_lock(XLogRecPtr lsn, XLogRecord *record)
 	else
 		htup->t_infomask |= HEAP_XMAX_EXCL_LOCK;
 	HeapTupleHeaderSetXmax(htup, xlrec->locking_xid);
-	HeapTupleHeaderSetCmax(htup, FirstCommandId);
+	HeapTupleHeaderSetCmax(htup, FirstCommandId, false);
 	/* Make sure there is no forward chain link in t_ctid */
 	htup->t_ctid = xlrec->target.tid;
 	PageSetLSN(page, lsn);

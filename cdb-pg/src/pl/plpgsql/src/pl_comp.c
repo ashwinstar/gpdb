@@ -162,7 +162,7 @@ plpgsql_compile(FunctionCallInfo fcinfo, bool forValidator)
 	{
 		/* We have a compiled function, but is it still valid? */
 		if (!(function->fn_xmin == HeapTupleHeaderGetXmin(procTup->t_data) &&
-			  function->fn_cmin == HeapTupleHeaderGetCmin(procTup->t_data)))
+			  ItemPointerEquals(&function->fn_tid, &procTup->t_self)))
 		{
 			/* Nope, drop the function and associated storage */
 			delete_function(function);
@@ -308,7 +308,7 @@ do_compile(FunctionCallInfo fcinfo,
 	function->fn_name = pstrdup(NameStr(procStruct->proname));
 	function->fn_oid = fcinfo->flinfo->fn_oid;
 	function->fn_xmin = HeapTupleHeaderGetXmin(procTup->t_data);
-	function->fn_cmin = HeapTupleHeaderGetCmin(procTup->t_data);
+	function->fn_tid = procTup->t_self;
 	function->fn_functype = functype;
 	function->fn_cxt = func_cxt;
 	function->out_param_varno = -1;		/* set up for no OUT param */

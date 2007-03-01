@@ -38,11 +38,12 @@
 #include "storage/lmgr.h"
 #include "storage/procarray.h"
 #include "storage/smgr.h"
+#include "utils/combocid.h"
 #include "utils/flatfiles.h"
+#include "utils/guc.h"
 #include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
-#include "utils/guc.h"
 #include "utils/resscheduler.h"
 
 #include "cdb/cdbgang.h"
@@ -2003,6 +2004,7 @@ CommitTransaction(void)
 	AtEOXact_Namespace(true);
 	/* smgrcommit already done */
 	AtEOXact_Files();
+	AtEOXact_ComboCid();
 	pgstat_count_xact_commit();
 
 	CurrentResourceOwner = NULL;
@@ -2231,6 +2233,7 @@ PrepareTransaction(void)
 	AtEOXact_Namespace(true);
 	/* smgrcommit already done */
 	AtEOXact_Files();
+	AtEOXact_ComboCid();
 
 	CurrentResourceOwner = NULL;
 	ResourceOwnerDelete(TopTransactionResourceOwner);
@@ -2387,6 +2390,7 @@ AbortTransaction(void)
 	AtEOXact_Namespace(false);
 	smgrabort();
 	AtEOXact_Files();
+	AtEOXact_ComboCid();
 	pgstat_count_xact_rollback();
 
 	/*
