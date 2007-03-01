@@ -88,6 +88,7 @@ mgmtcopy :
 copylibs :
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep readline | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
+	if [ -f /usr/local/lib/libcurl.so.4 ] ; then cp -p /usr/local/lib/libcurl.so.4 $(INSTLOC)/lib; fi
 
 RECONFIG :
 	rm -f $(ISCONFIG)
