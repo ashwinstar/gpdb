@@ -1,8 +1,26 @@
 /*-------------------------------------------------------------------------
 *
-* filexam.c
+* fileam.c
 *	  file access method routines
 *       
+* This access layer mimics the heap access API with respect to how it
+* communicates with its respective scan node (external scan node) but
+* instead of accessing the heap pages, it actually "scans" data by 
+* reading it from a local flat file or a remote data source.
+*
+* The actual data access, whether local or remote, is done with the
+* curl c library ('libcurl') which uses a 'c-file like' API but behind
+* the scenes actually does all the work of parsing the URI and communicating
+* with the target. In this case if the URI uses the file protocol (file://)
+* curl will try to open the specified file locally. If the URI uses the
+* http protocol (http://) then curl will reach out to that address and
+* get the data from there.
+*
+* As data is being read it gets parsed with the COPY command parsing rules,
+* as if it is data meant for COPY. Therefore, currently, with the lack of
+* single row error handling the first error will raise an error and the
+* query will terminate.
+*
 * Copyright (c) 2007, greenplum inc
 *
 *-------------------------------------------------------------------------
@@ -27,7 +45,7 @@
 #include "url.i"
 
 static HeapTuple filegettup(FileScanDesc scan, ScanDirection dir, int nkeys, ScanKey key);
-static void initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, char *filename);
+static void initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, char *uri);
 static void open_external_file(FileScanDesc scan);
 static void close_external_file(FileScanDesc scan);
 static int	file_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
@@ -56,14 +74,6 @@ elog(DEBUG2, "file_getnext returning tuple")
 
 /* ----------------
 *		file_beginscan	- begin file scan
-*
-* Note: heapRelation may be NULL if there is no intention of calling
-* index_getnext on this scan; index_getnext_indexitem will not use the
-* heapRelation link (nor the snapshot).  However, the caller had better
-* be holding some kind of lock on the heap relation in any case, to ensure
-* no one deletes it (or the index) out from under us.	Caller must also
-* be holding a lock on the index.
-
 * ----------------
 */
 FileScanDesc
@@ -73,7 +83,7 @@ file_beginscan(Relation relation, List *uriList, List *fmtOpts,
 	FileScanDesc scan;
 	TupleDesc	tupDesc = NULL;
 	int			attnum;
-	char		*filename = NULL;
+	char		*uri = NULL;
 
 	/*
 	 * increment relation ref count while scanning relation
@@ -98,22 +108,22 @@ file_beginscan(Relation relation, List *uriList, List *fmtOpts,
 	scan->fs_noop = false;
 
 	/*
-	 * get the external file name assigned to us. 
+	 * get the external URI assigned to us. 
 	 */
 	if(Mpp_role == MPP_ROLE_EXECUTE)
-		filename = (char *) strVal(list_nth(uriList, MppIdentity.segindex));
+		uri = (char *) strVal(list_nth(uriList, MppIdentity.segindex));
 	
 	/*
-	 * if an external file is assigned to us - open it. Some executors
-	 * don't have a file to scan (if # of extfiles < # of primary segdbs). 
-	 * in which case filename will be NULL. If that's the case for this 
+	 * if a uri is assigned to us - open it. Some executors
+	 * don't have a uri to scan (if # of uri's < # of primary segdbs). 
+	 * in which case uri will be NULL. If that's the case for this 
 	 * segdb set to no-op.
 	 */
-	if(filename)
+	if(uri)
 	{
-		/* set external file name */
-		scan->fs_filename = (char *) palloc(strlen(filename) + 1);
-		scan->fs_filename = filename;
+		/* set external source (uri) */
+		scan->fs_uri = (char *) palloc(strlen(uri) + 1);
+		scan->fs_uri = uri;
 		
 		/* open the external file for read */
 		open_external_file(scan);
@@ -122,7 +132,7 @@ file_beginscan(Relation relation, List *uriList, List *fmtOpts,
 	{
 		/* set segdb has no work to do. set to no-op */
 		scan->fs_noop = true;
-		scan->fs_filename = NULL;
+		scan->fs_uri = NULL;
 	}
 			
 	/* we only need to set this up once */
@@ -164,7 +174,7 @@ file_beginscan(Relation relation, List *uriList, List *fmtOpts,
 	 * Allocate and init our structure that keeps track of data parsing state
 	 */
 	scan->fs_pstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
-	initParseState(scan->fs_pstate, relation, fmtOpts, isText, scan->fs_filename);
+	initParseState(scan->fs_pstate, relation, fmtOpts, isText, scan->fs_uri);
 
 	/* Set up callback to identify error line number */
 	scan->errcontext.callback = file_scan_error_callback;
@@ -499,7 +509,7 @@ else\
  * (text, csv), encoding converstion information, etc...
  */
 static void
-initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, char *filename)
+initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, char *uri)
 {
 	TupleDesc	tupDesc = NULL;
 	char	   *format_str = NULL;
@@ -521,7 +531,7 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
 	pstate->line_buf_converted = false;
 	pstate->raw_buf_index = 0;
 	pstate->processed = 0;
-	pstate->filename = filename;
+	pstate->filename = uri;
 
 	initStringInfo(&pstate->attribute_buf);
 	initStringInfo(&pstate->line_buf);
@@ -642,18 +652,20 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
 }
 
 /*
- * open the external file for scanning.
+ * open the external source for scanning.
+ *
+ * This could either be a local file or a remote source (via http).
  */
 static void
 open_external_file(FileScanDesc scan)
 {
-	scan->fs_file = (FILE*) url_fopen(scan->fs_filename, PG_BINARY_R);
+	scan->fs_file = (FILE*) url_fopen(scan->fs_uri, PG_BINARY_R);
 
 	if (scan->fs_file == NULL)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not open file \"%s\" for reading: %m",
-						scan->fs_filename)));
+						scan->fs_uri)));
 
 }
 
@@ -667,7 +679,7 @@ close_external_file(FileScanDesc scan)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not write to file \"%s\": %m",
-						scan->fs_filename)));
+						scan->fs_uri)));
 }
 
 /*
@@ -703,7 +715,7 @@ file_scan_error_callback(void *arg)
 		/* error is relevant to a particular column */
 		limit_printout_length(&cstate->attribute_buf);
 
-		errcontext("External table %s, line %d of file %s, column %s",
+		errcontext("External table %s, line %d of %s, column %s",
 				   cstate->cur_relname, cstate->cur_lineno, cstate->filename,
 				   cstate->cur_attname);
 	}
@@ -728,7 +740,7 @@ file_scan_error_callback(void *arg)
 		{
 			limit_printout_length(&cstate->line_buf);
 
-			errcontext("External table %s, line %d of file %s: \"%s\"", cstate->cur_relname, cstate->cur_lineno, cstate->filename, cstate->line_buf.data);
+			errcontext("External table %s, line %d of %s: \"%s\"", cstate->cur_relname, cstate->cur_lineno, cstate->filename, cstate->line_buf.data);
 		}
 		else
 		{

@@ -94,8 +94,8 @@ typedef struct FileScanDescData
 {
 	/* scan parameters */
 	Relation	fs_rd;			/* target relation descriptor */
-	FILE	   *fs_file;		/* the external data file we scan */
-	char	   *fs_filename;
+	FILE	   *fs_file;		/* the file pointer to our URI */
+	char	   *fs_uri;			/* the URI string */
 	bool		fs_noop;		/* no op. this segdb has no file to scan */
 	int			fs_nkeys;		/* number of scan keys */
 	ScanKey		fs_key;			/* array of scan key descriptors */
