@@ -199,11 +199,10 @@ UPDATE_MPP () {
                 LOG_MSG "[INFO][$INST_COUNT]:-Successfully updated mpp system table"
                 LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"
 }
-
 #******************************************************************************
 # Main Section
 #******************************************************************************
-trap 'ERROR_EXIT "[FATAL]:-[$INST_COUNT]-Recieved INT or TERM signal" 2' INT TERM
+trap '$ECHO "KILLED:$SEGMENT_LINE" >> $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-[$INST_COUNT]-Recieved INT or TERM signal" 2' INT TERM
 while getopts ":v'?'aiqe:c:l:p:m:h:on:s:" opt
 	do
 	case $opt in
@@ -216,18 +215,24 @@ done
 #Now process supplied call parameters
 PARENT_PID=$1;shift		#PID of calling mppcreatecluster.sh program
 CHK_CALL
-SEGMENT_LINE=$1;shift		#String used to build segment instance
-SET_VAR $SEGMENT_LINE
-INST_COUNT=$1;shift		#Unique number for this parallel script, starts at 0
-LOG_FILE=$1;shift		#Central logging file
-LOG_MSG "[INFO][$INST_COUNT]:-Start Main"
-LOG_MSG "[INFO][$INST_COUNT]:-Command line options passed to utility = $*"
-TMP_MASTER_IP_ADDRESS=$1;shift	#List of IP addresses for the master instance
-MASTER_IP_ADDRESS=(`$ECHO $TMP_MASTER_IP_ADDRESS|$TR '~' ' '`)
-TMP_QE_IP_ARRAY=$1;shift	#List of segment IP addresses
-QE_IP_ARRAY=(`$ECHO $TMP_QE_IP_ARRAY|$TR '~' ' '`)	
-TMP_STANDBY_IP_ADDRESS=$1;shift #List of IP addresses for standby master
-PROCESS_QE
-$ECHO "COMPLETED:$SEGMENT_LINE" >> $PARALLEL_STATUS_FILE
+TYPE=$1;shift
+case $TYPE in
+	1 )
+		SEGMENT_LINE=$1;shift		#String used to build segment instance
+		SET_VAR $SEGMENT_LINE
+		INST_COUNT=$1;shift		#Unique number for this parallel script, starts at 0
+		BACKOUT_FILE=/tmp/mppsegcreate.sh_backout.$$
+		LOG_FILE=$1;shift		#Central logging file
+		LOG_MSG "[INFO][$INST_COUNT]:-Start Main"
+		LOG_MSG "[INFO][$INST_COUNT]:-Command line options passed to utility = $*"
+		TMP_MASTER_IP_ADDRESS=$1;shift	#List of IP addresses for the master instance
+		MASTER_IP_ADDRESS=(`$ECHO $TMP_MASTER_IP_ADDRESS|$TR '~' ' '`)
+		TMP_QE_IP_ARRAY=$1;shift	#List of segment IP addresses
+		QE_IP_ARRAY=(`$ECHO $TMP_QE_IP_ARRAY|$TR '~' ' '`)	
+		TMP_STANDBY_IP_ADDRESS=$1;shift #List of IP addresses for standby master
+		PROCESS_QE
+		$ECHO "COMPLETED:$SEGMENT_LINE" >> $PARALLEL_STATUS_FILE
+		;;
+esac
 LOG_MSG "[INFO][$INST_COUNT]:-End Main"
 exit $EXIT_STATUS
