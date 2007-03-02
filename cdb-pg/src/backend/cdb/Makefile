@@ -73,7 +73,7 @@ $(pqlibs) : submake-libpq
 
 ifeq ($(PORTNAME),darwin)
 libpq_local.sym.mac: $(top_srcdir)/$(subdir)/libpq_local.sym
-	egrep -v -f mac_exclude_symbols $(top_srcdir)/$(subdir)/libpq_local.sym | sed -e '/^#/!s/^[[:space:]]*/_/' > libpq_local.sym.mac
+	egrep -v -f $(top_srcdir)/$(subdir)/mac_exclude_symbols $(top_srcdir)/$(subdir)/libpq_local.sym | sed -e '/^#/!s/^[[:space:]]*/_/' > libpq_local.sym.mac
 endif	
 
 $(SUBDIROBJS): $(SUBDIRS:%=%-recursive) ;
