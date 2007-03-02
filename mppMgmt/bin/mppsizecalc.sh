@@ -56,6 +56,8 @@ SIZE_TYPE=0 #0=table 1=index
 SIZE_TARGET=0 #0=primary and mirror 1=primary only 2=mirror only
 DO_CHILD=0
 SKIP_INDEX=0
+PARALLEL_STATUS_FILE=/tmp/mppsizecalc_parallel_status_file.$$
+MPPSEGSIZE=mppsegsize.sh
 #***********************************************************************************
 USAGE () {
 if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
@@ -101,6 +103,7 @@ else
 	$ECHO "      -p, obtain size details for primary segment instance only [default both]"
 	$ECHO "      -m, obtain size details for mirror segment instances only [default both]"
 	$ECHO "      -h, display size of child tables if -t <table name> is a partitioned table"
+	$ECHO "      -B, <number> run this batch of stop segment processes in parallel [default $BATCH_DEFAULT]"
 	$ECHO
 	$ECHO "      Return codes:"
 	$ECHO "      0 No problems encountered with requested operation"
@@ -171,41 +174,17 @@ GET_OID_DATA () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-WAIT_COMPLETE () {
-	while [ ! -f $TMPFILE ]
-	do
-		$SLEEP 1
-	done
-	if [ $VERBOSE ];then $ECHO "Waiting for results";fi
-	while [ $LINECOUNT -ne `$WC -l $TMPFILE|$AWK '{print $1}'` ]
-	do
-		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$SLEEP 1
-	done
-	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
-}
-	
 SEND_TABLE_SIZE_REQUEST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	QE_COUNT=${#QE_ARRAY[@]}
-	LOG_MSG "[INFO]:-Please wait, sending request to $QE_COUNT segment instances" 1
-	LINECOUNT=0
+	BATCH_LIMIT=${#QE_ARRAY[@]}
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	for I in "${QE_ARRAY[@]}"
 	do
 		SET_VAR
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		QE_TABLE_OID=`$TRUSTED_SHELL -n $QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"select relfilenode from pg_class where oid=$TABLE_OID ;\""`
-		ERROR_CHK $? "obtain segment instance table oid info" 2
-		LOG_MSG "[INFO]:-Processing $QE_HOST port $QE_PORT Table OID $QE_TABLE_OID"
-		QE_TABLE=${QE_DIR}/base/${DB_OID}/${QE_TABLE_OID}
-		QE_BASE_DIR=`$BASENAME $QE_DIR`
-		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "ls -al ${QE_TABLE}"|$TAIL -1|$AWK '{print \$5}'` >> $TMPFILE &
-		((LINECOUNT=$LINECOUNT+1))
-		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "ls -al ${QE_TABLE}.*|$GREP -v '^d'|$GREP -vi total" 2>/dev/null|$AWK '{total += \$5} END {print total}'` >> $TMPFILE  &
-		((LINECOUNT=$LINECOUNT+1))
+		$MPPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE $TABLE_OID ${DB_OID} 1 $TMPFILE &
+		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done	
-	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO ;fi
-	WAIT_COMPLETE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -217,24 +196,15 @@ SET_VAR () {
 
 SEND_INDEX_SIZE_REQUEST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	QE_COUNT=${#QE_ARRAY[@]}
-	LOG_MSG "[INFO]:-Please wait, sending request to $QE_COUNT segment instances" 1
-	LINECOUNT=0
+	BATCH_LIMIT=${#QE_ARRAY[@]}
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE	
 	for I in "${QE_ARRAY[@]}"
 	do
 		SET_VAR
-		for IDX in `$TRUSTED_SHELL -n $QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"select relfilenode from pg_class where oid in (select indexrelid from pg_index where indrelid in (select oid from pg_class where relname='${TABLE_NAME}'));\""` 
-		do
-			LOG_MSG "[INFO]:-Processing $QE_HOST port $QE_PORT Index OID $IDX"
-			QE_INDEX=${QE_DIR}/base/${DB_OID}/$IDX
-			QE_BASE_DIR=`$BASENAME $QE_DIR`
-			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "ls -al ${QE_INDEX}"|$TAIL -1|$AWK '{print \$5}'` >> $TMPFILE &
-			((LINECOUNT=$LINECOUNT+1))
-			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "ls -al ${QE_INDEX}.*|$GREP -v '^d'|$GREP -vi total" 2>/dev/null|$AWK '{total += \$5} END {print total}'` >> $TMPFILE &
-			((LINECOUNT=$LINECOUNT+1))
-		done
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+		$MPPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE $TABLE_OID ${DB_OID} 1 $TMPFILE $QD_DBNAME &
+		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
-	WAIT_COMPLETE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -258,20 +228,17 @@ CHK_SCHEMA_PREFIX () {
 
 SEND_DB_SIZE_REQUEST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	QE_COUNT=${#QE_ARRAY[@]}
-	LOG_MSG "[INFO]:-Please wait, sending request to $QE_COUNT segment instances" 1
-	LINECOUNT=0
+	BATCH_LIMIT=${#QE_ARRAY[@]}
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE	
 	for I in "${QE_ARRAY[@]}"
 	do
 		QE_HOST=`$ECHO $I|$CUT -d'|' -f1`
 		QE_DIR=`$ECHO $I|$CUT -d'|' -f2`
-		QE_DB=${QE_DIR}/base/${DB_OID}
 		QE_PORT=`$ECHO $I|$CUT -d'|' -f3`
-		QE_BASE_DIR=`$BASENAME $QE_DIR`
-		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "ls -al ${QE_DB}|$GREP -v '^d'|$GREP -vi total 2>/dev/null" |$AWK '{total += \$5} END {print total}'` >> $TMPFILE &
-		((LINECOUNT=$LINECOUNT+1)) 
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+		$MPPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE 0 $DB_OID 3 $TMPFILE $QD_DBNAME &
+		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done	
-	WAIT_COMPLETE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -305,7 +272,8 @@ CALC_TOTAL_SIZE () {
 
 DISPLAY_SIZE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]-------------------------------------------------" 1
+	PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
+	$RM -f $PARALLEL_STATUS_FILE
 	case $SCALE in
 		b ) TXT_SCALE=Bytes ;;
 		k ) TXT_SCALE=KBytes ;;
@@ -337,14 +305,14 @@ DISPLAY_SIZE () {
 		$ECHO $TOTAL_SIZE
 		$ECHO $TOTAL_SIZE >> $LOG_FILE
 	fi
-	LOG_MSG "[INFO]-------------------------------------------------" 1
+	LOG_MSG "[INFO]:------------------------------------------------" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 #***********************************************************************************
-trap '$RM -f $TMPFILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
+trap '$RM -f $TMPFILE $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 CHK_DB_QD_SET
 if [ $# -ne 0 ]; then
-	while getopts ":fvt:'?'ql:mpd:s:a:ix:!hD" opt;do
+	while getopts ":fvt:'?'ql:mpd:s:a:ix:!hDB:" opt;do
 	case $opt in
 		v ) VERSION_INFO ;;
 		t ) TABLE_NAME=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
@@ -363,6 +331,7 @@ if [ $# -ne 0 ]; then
 		x ) SIZE_DB=$OPTARG ;;
 		h ) DO_CHILD=1 ;;
 		D ) DEBUG_LEVEL=1 ;;
+		B ) BATCH_DEFAULT=$OPTARG ;;
 		* ) USAGE ;;
 		esac
 	done
@@ -404,11 +373,11 @@ case $SIZE_TARGET in
 	0) GET_QE_DETAILS 
 	   GET_MIRROR_TYPE
 	   if [ $MIR_NUM -eq 0 ];then
-	   TYPE_TEXT="Pirmary [No mirrors configured]"
+	   TYPE_TEXT="Primary [No mirrors configured]"
 	   else
 	   TYPE_TEXT="Primary and Mirror Segments" 
 	   fi
-		;;
+       	;;
 	1) GET_QE_PRIMARY_DETAILS
 	   QE_ARRAY=(${QE_PRIMARY_ARRAY[@]}) 
 	   TYPE_TEXT="Primary Segments Only" ;;

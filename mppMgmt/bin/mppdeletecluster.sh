@@ -47,11 +47,13 @@ MASTER_HOSTNAME=`hostname`
 EXIT_STATUS=0
 FULL_DISPLAY=0
 FORCE=0
+PARALLEL_STATUS_FILE=/tmp/mppdeletecluster_parallel_status_file.$$
+MPPSEGDELETE=mppsegdelete.sh
 #******************************************************************************
 # Functions
 #******************************************************************************
 USAGE () {
-	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ];then
+	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
 	$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
 	exit 0
 	else
@@ -74,6 +76,7 @@ USAGE () {
 	$ECHO "      Delete options:"
 	$ECHO "      -d, <Master database directory> directory to be deleted along with all segment instances [mandatory]"
 	$ECHO "      -f, force deletion, ignore any database backup files"
+	$ECHO "      -B, <number> run this batch of delete segment processes in parallel [default $BATCH_DEFAULT]"
 	$ECHO
         $ECHO "      Return codes:"
         $ECHO "      0 No problems encountered with requested operation"
@@ -136,21 +139,23 @@ DB_DUMP_CHK () {
 		LOG_MSG "[INFO]:-Completed Master instance dump file check" 1
 	fi	
 	LOG_MSG "[INFO]:-Checking segment instances for dump files" 1
+	BATCH_LIMIT=${#QE_ARRAY[@]}
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	for DELETE_SEG in "${QE_ARRAY[@]}"
 	do
-		if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO ".\c";fi
 		SET_VAR $DELETE_SEG
-		LOG_MSG "[INFO]:-Checking host=$DELETE_HOSTNAME Data directory=$DELETE_DATADIR"
-		DUMP_COUNT=`$TRUSTED_SHELL $DELETE_HOSTNAME "$FIND $DELETE_DATADIR -name 'mpp_dump*' -print|$WC -l"`
-		if [ $DUMP_COUNT -ne 0 ] && [ $FORCE -eq 0 ];then
-			LOG_MSG "[FATAL]:-Located possible database dump file on $DELETE_HOSTNAME" 1
-			LOG_MSG "[FATAL]:-In directory $DELETE_DATADIR" 1
-			ERROR_EXIT "[FATAL]:-To override database dump file checking use -f option" 2
-		else
-			LOG_MSG "[INFO]:-Complete $DELETE_HOSTNAME dump file check"
-		fi 
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+		$MPPSEGDELETE $$ 1 $DELETE_HOSTNAME $DELETE_DATADIR $INST_COUNT $LOG_FILE &
+		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
-	$ECHO
+	DUMP_FILE_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "DUMP_LOCATED"`
+	if [ $DUMP_FILE_COUNT -ne 0 ] && [ $FORCE -eq 0 ];then
+		LOG_MSG "[FATAL]:-Located possible database dump files on segment instance hosts" 1
+		ERROR_EXIT "[FATAL]:-To override database dump file checking use -f option" 2
+	else
+		LOG_MSG "[INFO]:-Complete dump files check"
+	fi
+	$RM -f $PARALLEL_STATUS_FILE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -227,20 +232,41 @@ DELETE_CLUSTER () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Closing down instance" 1
 	if [ -f $MPPSTOP ];then
-		$MPPSTOP -zqaf -d $DELETE_MASTER_DATA_DIRECTORY
+		$MPPSTOP -zaf -d $DELETE_MASTER_DATA_DIRECTORY
 	else
 		ERROR_EXIT "[FATAL]:-Unable to locate $MPPSTOP" 2
 	fi
 	LOG_MSG "[INFO]:-Deleting segment data directories, please wait..." 1
+	BATCH_LIMIT=${#QE_ARRAY[@]}
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	for DELETE_SEG in "${QE_ARRAY[@]}"
 	do
-		if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO ".\c";fi
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		SET_VAR $DELETE_SEG
-		LOG_MSG "[INFO]:-Processing host=$DELETE_HOSTNAME Data directory=$DELETE_DATADIR"
-		RUN_COMMAND_REMOTE $DELETE_HOSTNAME "$RM -Rf $DELETE_DATADIR"
-		RUN_COMMAND_REMOTE $DELETE_HOSTNAME "$RM -f ${DELETE_DATADIR}.log"
+		$MPPSEGDELETE $$ 2 $DELETE_HOSTNAME $DELETE_DATADIR $INST_COUNT $LOG_FILE &
+		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
-	$ECHO
+	COMPLETED_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "COMPLETED"`
+	KILLED_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "KILLED"`
+	DEL_OK_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "DEL_OK"`
+	DEL_FAIL_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "DEL_WARN"`
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Parallel segment delete process exit status" 1
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Total processes marked as completed           = $COMPLETED_COUNT" 1
+	if [ $KILLED_COUNT -ne 0 ];then
+	LOG_MSG "[WARN]:-Total processes marked as killed              = $KILLED_COUNT $WARN_MARK" 1
+	else
+	LOG_MSG "[INFO]:-Total processes marked as killed              = 0" 1
+	fi
+	if [ $DEL_FAIL_COUNT -ne 0 ];then
+	LOG_MSG "[WARN]:-Total processes returned delete warning       = $DEL_FAIL_COUNT $WARN_MARK" 1
+	else
+	LOG_MSG "[INFO]:-Total processes returned delete warning       = 0" 1
+	fi	
+	LOG_MSG "[INFO]:-Total processes returned no delete warning    = $DEL_OK_COUNT" 1
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+	$RM -f $PARALLEL_STATUS_FILE
 	if [ $STANDBY_COUNT -ne 0 ];then
 		LOG_MSG "[INFO]:-Processing Master standby host $STANDBY_HOSTNAME" 1
 		RUN_COMMAND_REMOTE $STANDBY_HOSTNAME "$RM -Rf $STANDBY_DATADIR"
@@ -272,7 +298,7 @@ DELETE_RO_MASTER () {
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ];then
-        while getopts ":v'?'fr:d:l:D" opt;do
+        while getopts ":v'?'fr:d:l:!DB:" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
                 '?' ) USAGE ;;
@@ -281,6 +307,9 @@ if [ $# -ne 0 ];then
 		f ) FORCE=1 ;;
 		r ) FAIL_PRI_SEG=$OPTARG ;;
 		D ) DEBUG_LEVEL=1 ;;
+		B ) BATCH_DEFAULT=$OPTARG ;;
+		! ) SCRIPT_USAGE=1
+		    USAGE ;;
                 * ) UNKNOWN_OPTION ;;
         esac
         done

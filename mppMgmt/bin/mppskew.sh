@@ -60,6 +60,9 @@ DISTRIB=0
 SEG_TYPE=0
 DO_CHILD=0
 RESPONSE_TIME=0
+PARALLEL_STATUS_FILE=/tmp/mppskew_parallel_status_file.$$
+MPPSEGSKEW=mppsegskew.sh
+WAIT_LIMIT=300
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -100,6 +103,7 @@ else
 	$ECHO "      -m, use mirror segment hosts for skew analysis [default primary segments]"
 	$ECHO "      -h, display skew of child tables if -t <table name> is a partitioned table"
 	$ECHO "      -r, display segment instance response times"
+	$ECHO "      -B, <number> run this batch of skew segment processes in parallel [default $BATCH_DEFAULT]"
         $ECHO
         $ECHO "      Return codes:"
         $ECHO "      0 No problems encountered with requested operation"
@@ -181,61 +185,61 @@ GET_NODE_COUNT () {
 	NUM_SEGMENTS=`$PSQL -p $MASTER_PORT  $QD_DBNAME -A -t -c "select count(*) from $CONFIG_TABLE where content<>-1 and isprimary='t';"`
 	ERROR_CHK $? "obtain number of segment instances" 2
 	if [ $NUM_SEGMENTS = 1 ];then
-		ERROR_EXIT "[FATAL]:-Only one node in instance, skew not applicable" 2;fi 
-		if [ $SEG_TYPE -eq 0 ];then
-		  $PSQL -p $MASTER_PORT $QD_DBNAME -t -A -F"," -c"select hostname, port, datadir from $CONFIG_TABLE where content <> -1 and isprimary='t' ;" > $NODELIST
-		  ERROR_CHK $? "obtain list of active segments" 2
-		else
-		  $PSQL -p $MASTER_PORT $QD_DBNAME -t -A -F"," -c"select hostname, port, datadir from $CONFIG_TABLE where content <> -1 and isprimary='f' ;" > $NODELIST
-		  ERROR_CHK $? "obtain list of mirror segments" 2
-		fi
-
-	LOG_MSG "[INFO]:-Sending request to segment instance databases.." 1
-	LOG_MSG "[INFO]:-Please wait.." 1
+		ERROR_EXIT "[FATAL]:-Only one node in instance, skew not applicable" 2
+	fi 
+	if [ $SEG_TYPE -eq 0 ];then
+		GET_QE_PRIMARY_DETAILS
+		QE_ARRAY=(${QE_PRIMARY_ARRAY[@]})
+	else
+		GET_QE_MIRROR_DETAILS
+		QE_ARRAY=(${QE_MIRROR_ARRAY[@]})
+	fi
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	if [ `$ECHO $TARGETTBL|$GREP -c "\."` -eq 0 ];then
 		TARGETTBL="${SCHEMA_NAME}.$TARGETTBL"
 	fi
-	SEGCOUNT=0
-	for NodeInfo in `$CAT $NODELIST`
+	BATCH_LIMIT=${#QE_ARRAY[@]}
+	for QNODE in "${QE_ARRAY[@]}"
 	do
-	SEG_HOST=`$ECHO $NodeInfo|$CUT -d, -f1`
-	SEG_PORT=`$ECHO $NodeInfo|$CUT -d, -f2`
-	SEG_DIR=`$ECHO $NodeInfo|$CUT -d, -f3`
-	SEG_NAME=`$BASENAME $SEG_DIR`
-	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-	ACCESS_TEST=`$TRUSTED_SHELL $SEG_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c\"select version();\""`
-	if [ $? -ne 0 ];then
-		ERROR_EXIT "Failed on test access to $SEG_PORT $QD_DBNAME on $SEG_HOST" 2
-	fi
-	$TRUSTED_SHELL -n $SEG_HOST "${EXPORT_LIB_PATH}; time env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c'select count(*),'\''$SEG_PORT'\'','\''$SEG_NAME'\'','\''$SEG_HOST'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[A-Z][a-z][0-9]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}' >> $TMPFILE &
-	if [ $? -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Failed to send request to $SEG_HOST port $SEG_PORT" 2
-	fi
-	let SEGCOUNT=$SEGCOUNT+1
-	done
-	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO ;fi
-	LOG_MSG "[INFO]:-Requests sent.." 1
-#Now wait until the temporary file contains $SegCount lines
-	LOG_MSG  "[INFO]:-Waiting for results" 1
-	while [ $SEGCOUNT -ne `$WC -l $TMPFILE|$AWK '{print $1}'` ]
-	do
+		QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
+		QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
+		QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
+		QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
+		QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$SLEEP 1
+		$MPPSEGSKEW $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $QD_DBNAME $TARGETTBL &
+		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
-	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
-	REC_COUNT=0
-	for RECS in `cat $TMPFILE|$CUT -d'|' -f1`
+	for RECS in `cat $PARALLEL_STATUS_FILE|$CUT -d'|' -f2`
 	do
 		((REC_COUNT=$REC_COUNT+$RECS))
 	done
 	MinSkew=10000000000000
 	MaxSkew=-1
+	KILLED_COUNT=`$GREP -c KILLED $PARALLEL_STATUS_FILE`
+	FAILED_COUNT=`$GREP -c FAILED $PARALLEL_STATUS_FILE`
+	COMPLETED_COUNT=`$GREP -c COMPLETED $PARALLEL_STATUS_FILE`
+	LOG_MSG "[INFO]:---------------------------------------" 1
+	LOG_MSG "[INFO]:-Parallel process exit status" 1
+	LOG_MSG "[INFO]:---------------------------------------" 1
+	LOG_MSG "[INFO]:-Total processes marked as completed  = $COMPLETED_COUNT" 1
+	if [ $KILLED_COUNT -ne 0 ];then
+	LOG_MSG "[WARN]:-Total processes marked as killed     = $KILLED_COUNT $WARN_MARK" 1
+	else
+	LOG_MSG "[INFO]:-Total processes marked as killed     = 0" 1
+	fi
+	if [ $FAILED_COUNT -ne 0 ];then
+	LOG_MSG "[WARN]:-Total processes marked as failed     = $FAILED_COUNT $WARN_MARK" 1
+	else
+	LOG_MSG "[INFO]:-Total processes marked as failed     = 0" 1
+	fi
+	LOG_MSG "[INFO]:---------------------------------------" 1
 	while read DATA
 	do
-		Port=`$ECHO $DATA|$TAIL -1|$CUT -d'|' -f2`
-		Skew=`$ECHO $DATA|$TAIL -1|$CUT -d'|' -f1`
-		Seg=`$ECHO $DATA|$TAIL -1|$CUT -d'|' -f3`
-		Host=`$ECHO $DATA|$TAIL -1|$CUT -d'|' -f4`
+		Port=`$ECHO $DATA|$TAIL -1|$CUT -d'|' -f3`
+		Skew=`$ECHO $DATA|$TAIL -1|$CUT -d'|' -f2`
+		Seg=`$ECHO $DATA|$TAIL -1|$CUT -d'|' -f4`
+		Host=`$ECHO $DATA|$TAIL -1|$CUT -d'|' -f5`
 		if [ $Skew -gt $MaxSkew ];then
 			MaxSkew=$Skew
 			MaxSeg=$Seg
@@ -248,28 +252,34 @@ GET_NODE_COUNT () {
 			MinHost=$Host
 			MinPort=$Port
 		fi
-	done < $TMPFILE
+	done < $PARALLEL_STATUS_FILE
 	let RecDiff=$MaxSkew-$MinSkew
 	if [ $RESPONSE_TIME -eq 1 ];then
-	LOG_MSG "[INFO]-------------------------------------------------------------" 1
+	LOG_MSG "[INFO]:---------------------------------------" 1
 	LOG_MSG "[INFO]:-Response results for $TYPE_TEXT" 1
 	while read LINE
 	do
-		Host=`$ECHO $LINE|$CUT -d '|' -f4`
-		Time=`$ECHO $LINE|$CUT -d '|' -f5`
-		Seg=`$ECHO $LINE|$CUT -d '|' -f3`
-		Port=`$ECHO $LINE|$CUT -d '|' -f2`
-		LOG_MSG "[INFO]:-Host $Host segment $Seg port $Port responded in time $Time" 1
-	done < $TMPFILE
+		STATUS=`$ECHO $LINE|$CUT -d '|' -f1`
+		Host=`$ECHO $LINE|$CUT -d '|' -f5`
+		Time=`$ECHO $LINE|$CUT -d '|' -f6`
+		Seg=`$ECHO $LINE|$CUT -d '|' -f4`
+		Port=`$ECHO $LINE|$CUT -d '|' -f3`
+		if [ $STATUS == "COMPLETED" ];then
+			LOG_MSG "[INFO]:-$Host $Seg $Port time = $Time" 1
+		else
+			LOG_MSG "[INFO]:-$Host $Seg $Port time = $STATUS $WARN_MARK" 1
+		fi
+	done < $PARALLEL_STATUS_FILE
 	fi
 	if [ $FULL_DISPLAY -eq 1 ] || [ x"" = x"$VERBOSE" ];then
 		$ECHO "Skew for table $TARGETTBL" | $TEE -a $LOG_FILE
-		$CAT $TMPFILE|$SORT | $TEE -a $LOG_FILE
+		$CAT $PARALLEL_STATUS_FILE|$SORT | $TEE -a $LOG_FILE
 	else
-		$CAT $TMPFILE|$SORT >> $LOG_FILE
+		$CAT $PARALLEL_STATUS_FILE|$SORT >> $LOG_FILE
 	fi
-	LOG_MSG "[INFO]-------------------------------------------------------------" 1
-	LOG_MSG "[INFO]:-Results for Table $TARGETTBL in database $QD_DBNAME" 1
+	LOG_MSG "[INFO]:---------------------------------------" 1
+	LOG_MSG "[INFO]:-Results for table name               = $TARGETTBL" 1
+	LOG_MSG "[INFO]:-Database                             = $QD_DBNAME" 1
 	if [ $PARTITIONED == 't' ];then
 	LOG_MSG "[INFO]:-Table type                           = Partitioned and $TAB_TYPE_TXT"
 		PARENT_TABLE_COUNT=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from only $TARGETTBL;"`
@@ -282,14 +292,14 @@ GET_NODE_COUNT () {
 	if [ $TAB_TYPE -eq 1 ];then
 	LOG_MSG "[INFO]:-Parent table list                    = ${TAB_PARENT_NAME[@]}" 1
 	fi
-	LOG_MSG "[INFO]-------------------------------------------------------------" 1
+	LOG_MSG "[INFO]:---------------------------------------" 1
 	LOG_MSG "[INFO]:-DDL number of Distribution Column(s) = $DISTRIB_COLS" 1
 	LOG_MSG "[INFO]:-Distribution Column Name(s)          = `$ECHO ${DIS_COL_ARRAY[@]}`" 1
-	LOG_MSG "[INFO]-------------------------------------------------------------" 1
+	LOG_MSG "[INFO]:---------------------------------------" 1
 	LOG_MSG "[INFO]:-Total records $TOTAL_TXT     = $REC_COUNT" 1
-	LOG_MSG "[INFO]-------------------------------------------------------------" 1
+	LOG_MSG "[INFO]:---------------------------------------" 1
 	LOG_MSG "[INFO]:-Skew calculation target type         = $TYPE_TEXT" 1
-	LOG_MSG "[INFO]-------------------------------------------------------------" 1
+	LOG_MSG "[INFO]:---------------------------------------" 1
 	LOG_MSG "[INFO]:-Skew result" 1
 	LOG_MSG "[INFO]:-Maximum Record Count                 = $MaxSkew" 1
 	LOG_MSG "[INFO]:-Segment instance hostname            = $MaxHost" 1
@@ -298,18 +308,17 @@ GET_NODE_COUNT () {
 	LOG_MSG "[INFO]:-Segment instance hostname            = $MinHost" 1
 	LOG_MSG "[INFO]:-Segment instance name                = $MinSeg" 1
 	LOG_MSG "[INFO]:-Record count variance                = $RecDiff" 1
-	LOG_MSG "[INFO]-------------------------------------------------------------" 1
-	rm -f $TMPFILE
-	rm -f $NODELIST
+	LOG_MSG "[INFO]:---------------------------------------" 1
+	rm -f $PARALLEL_STATUS_FILE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 #******************************************************************************
 # Main Section
 #******************************************************************************
-trap '$RM -f $TMPFILE $NODELIST;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
+trap '$RM -f $TMPFILE $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 CHK_DB_QD_SET
 if [ $# -ne 0 ];then
-        while getopts ":a:vmcqft:'?'d:l:!hrD" opt;do
+        while getopts ":a:vmcqft:'?'d:l:!hrDB:" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
                 t ) TARGETTBL=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
@@ -326,6 +335,7 @@ if [ $# -ne 0 ];then
 		h ) DO_CHILD=1 ;;
 		r ) RESPONSE_TIME=1 ;;
 		D ) DEBUG_LEVEL=1 ;;
+		B ) BATCH_DEFAULT=$OPTARG ;;
                 * ) USAGE ;;
         esac
         done
