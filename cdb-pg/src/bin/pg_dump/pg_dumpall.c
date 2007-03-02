@@ -519,6 +519,7 @@ dumpRoles(PGconn *conn)
 
 	/* note: rolconfig is dumped later */
 	if (server_version >= 80200)
+	{
 		if (resource_queues)
 			printfPQExpBuffer(buf,
 							  "SELECT rolname, rolsuper, rolinherit, "
@@ -530,7 +531,9 @@ dumpRoles(PGconn *conn)
 							  "pg_resqueue.oid = rolresqueue) AS rolqueuename "
 							  "FROM pg_authid "
 							  "ORDER BY 1");
+	}
 	else if (server_version >= 80100)
+	{
 			printfPQExpBuffer(buf,
 							  "SELECT rolname, rolsuper, rolinherit, "
 							  "rolcreaterole, rolcreatedb, rolcatupdate, "
@@ -538,8 +541,9 @@ dumpRoles(PGconn *conn)
 							  "rolvaliduntil, null as rolcomment  "
 							  "FROM pg_authid "
 							  "ORDER BY 1");
-
+	}
 	else
+	{
 		printfPQExpBuffer(buf,
 						  "SELECT usename as rolname, "
 						  "usesuper as rolsuper, "
@@ -569,6 +573,7 @@ dumpRoles(PGconn *conn)
 						  "WHERE NOT EXISTS (SELECT 1 FROM pg_shadow "
 						  " WHERE usename = groname) "
 						  "ORDER BY 1");
+	}
 
 	res = executeQuery(conn, buf->data);
 
