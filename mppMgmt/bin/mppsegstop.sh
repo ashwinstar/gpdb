@@ -64,33 +64,40 @@ FORCE_CLEAR () {
         LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
         LOG_MSG "[INFO][$INST_COUNT]:-Killing postmaster process on $QE_NAME for port=$QE_PORT" 1
 	FORCE_CLEAR_WARN=0
-        GET_PG_PID_ACTIVE $QE_PORT $QE_NAME
-        if [ $PID -ne 0 ]; then
-                $TRUSTED_SHELL $QE_NAME "$KILL -9 $PID" > $LOG_FILE 2>&1
-        else
-                LOG_MSG "[INFO][$INST_COUNT]:-No active pid found for $QE_NAME for port=$QE_PORT"
-        fi
-	IS_THERE=`$TRUSTED_SHELL $QE_NAME "if [ -f /tmp/.s.PGSQL.${QE_PORT}.lock ];then echo 1;else echo 0;fi"`
-	if [ $IS_THERE -eq 1 ];then
-        	LOG_MSG "[INFO][$INST_COUNT]:-Clearing lock files on $QE_NAME for directory $QE_DIR" 1
-        	$TRUSTED_SHELL $QE_NAME "$RM -f /tmp/.s.PGSQL.${QE_PORT}.lock /tmp/.s.PGSQL.${QE_PORT}"
-		if [ $? -ne 0 ];then
-        		LOG_MSG "[WARN][$INST_CONT]:-Issue with removal of lock files on $QE_NAME for directory $QE_DIR" 
-			FORCE_CLEAR_WARN=1
+	PING_HOST $QE_NAME 1
+	if [ $RETVAL -eq 0 ];then
+	#Have contacted host, so continue
+        	GET_PG_PID_ACTIVE $QE_PORT $QE_NAME
+        	if [ $PID -ne 0 ]; then
+                	$TRUSTED_SHELL $QE_NAME "$KILL -9 $PID" > $LOG_FILE 2>&1
+        	else
+                	LOG_MSG "[INFO][$INST_COUNT]:-No active pid found for $QE_NAME for port=$QE_PORT"
+        	fi
+		IS_THERE=`$TRUSTED_SHELL $QE_NAME "if [ -f /tmp/.s.PGSQL.${QE_PORT}.lock ];then echo 1;else echo 0;fi"`
+		if [ $IS_THERE -eq 1 ];then
+        		LOG_MSG "[INFO][$INST_COUNT]:-Clearing lock files on $QE_NAME for directory $QE_DIR" 1
+        		$TRUSTED_SHELL $QE_NAME "$RM -f /tmp/.s.PGSQL.${QE_PORT}.lock /tmp/.s.PGSQL.${QE_PORT}"
+			if [ $? -ne 0 ];then
+        			LOG_MSG "[WARN][$INST_CONT]:-Issue with removal of lock files on $QE_NAME for directory $QE_DIR" 
+				FORCE_CLEAR_WARN=1
+			fi
+		else
+			LOG_MSG "[INFO][$INST_COUNT]:-No /tmp lock file located"
+		fi
+		IS_THERE=`$TRUSTED_SHELL $QE_NAME "if [ -f ${QE_DIR}/postmaster.pid ];then echo 1;else echo 0;fi"`
+		if [ $IS_THERE -eq 1 ];then
+        		LOG_MSG "[INFO][$INST_COUNT]:-Clearing postmaster.pid file" 1
+        		$TRUSTED_SHELL $QE_NAME "$RM -f ${QE_DIR}/postmaster.pid"
+			if [ $? -ne 0 ];then
+        			LOG_MSG  "[WARN][$INST_CONT]:-Issue with clearing postmaster.pid file on $QE_NAME for directory $QE_DIR" 1
+				FORCE_CLEAR_WARN=1
+			fi
+		else
+			LOG_MSG "[INFO][$INST_COUNT]:-No ${QE_DIR}/postmaster.pid file located"
 		fi
 	else
-		LOG_MSG "[INFO][$INST_COUNT]:-No /tmp lock file located"
-	fi
-	IS_THERE=`$TRUSTED_SHELL $QE_NAME "if [ -f ${QE_DIR}/postmaster.pid ];then echo 1;else echo 0;fi"`
-	if [ $IS_THERE -eq 1 ];then
-        	LOG_MSG "[INFO][$INST_COUNT]:-Clearing postmaster.pid file" 1
-        	$TRUSTED_SHELL $QE_NAME "$RM -f ${QE_DIR}/postmaster.pid"
-		if [ $? -ne 0 ];then
-        		LOG_MSG  "[WARN][$INST_CONT]:-Issue with clearing postmaster.pid file on $QE_NAME for directory $QE_DIR" 1
-			FORCE_CLEAR_WARN=1
-		fi
-	else
-		LOG_MSG "[INFO][$INST_COUNT]:-No ${QE_DIR}/postmaster.pid file located"
+		LOG_MSG "[WARN][$INST_COUNT]:-Failed to establish contact with $QE_NAME"
+		FORCE_CLEAR_WARN=1
 	fi
         LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"
 }
