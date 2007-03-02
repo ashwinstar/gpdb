@@ -103,6 +103,7 @@ USAGE () {
 		$ECHO "      -s, switch master log file, moves current logfile to <log file>.YYYYMMDD"
 		$ECHO "      -e, switch segment instance log files, moves current logfile to <log file>.YYYYMMDD"
 		$ECHO "          not applicable in master maintenance mode startup"
+		$ECHO "      -B, <number> run this batch of start segment processes in parallel [default $BATCH_DEFAULT]"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -221,6 +222,31 @@ GET_DETAILS () {
 				GET_STANDBY_DETAILS
 			fi
 		fi
+		if [ $START_INVALID -eq 1 ];then
+			BATCH_LIMIT=$QE_ARRAY_COUNT
+			#Now get value of mpp_fault_action
+			FAULT_ACTION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show mpp_fault_action;"`
+			if [ $FAULT_ACTION == "continue" ];then
+				#Need to update mpp_configuration file to set all segments marked as invalid to valid
+				LOG_MSG "[INFO]:-Utility requested to attempt startup of segments marked as invalid" 1
+				#See if any segments marked as invalid
+				INVALID_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where valid='f' and content<>-1;"` 
+				if [ $INVALID_COUNT -gt 0 ];then
+					LOG_MSG "[INFO]:-There are $INVALID_COUNT segments marked as invalid" 1
+					#Update these to be valid
+					${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"update $CONFIG_TABLE set valid='t' where valid='f' and content<>-1;"
+					${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"update $CONFIG_TABLE set isprimary='t' where definedprimary='t' and isprimary='f' and content<>-1;"
+					LOG_MSG "[INFO]:-Updated configuration table to mark invalid segments as valid" 1
+					#Now reset the associated mirrors
+					${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"update $CONFIG_TABLE set isprimary='f' where definedprimary='f' and isprimary='t' and content<>-1;"
+					LOG_MSG "[INFO]:-Updated configuration table to reset mirrors to passive" 1
+				else
+					LOG_MSG "[INFO]:-No segments marked as invalid" 1
+				fi
+			fi
+		else
+			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $MPP_PG_VIEW where valid ='t' and content<>-1;"`
+		fi
 		#Gather locale information MPP-972
 		LC_COLLATE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show lc_collate;"`
 		ERROR_CHK $? "obtain lc_collate info" 1
@@ -262,6 +288,11 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Database                   = $QD_DBNAME" 1
 		LOG_MSG "[INFO]:-Master Port                = $MASTER_PORT" 1
 		LOG_MSG "[INFO]:-Master directory           = $MASTER_DATA_DIRECTORY" 1
+		if [ $START_INVALID -eq 1 ];then
+		LOG_MSG "[INFO]:-Start invalid segments     = On <<<<<" 1
+		else
+		LOG_MSG "[INFO]:-Start invalid segments     = Off" 1
+		fi
 		if [ x"" == x"$SWITCH_LOG" ];then
 		LOG_MSG "[INFO]:-Master switch log file     = Off" 1
 		else
@@ -295,7 +326,11 @@ PROMPT_CONTINUE () {
 				if [ "$QE_VALID" == "t" ]; then
 					LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME segment = $QE_DIR port = $QE_PORT" 1
 				else
-					LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME segment = $QE_DIR port = $QE_PORT invalid will not start" 1
+					if [ $START_INVALID -eq 0 ];then
+						LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME segment = $QE_DIR port = $QE_PORT invalid will not start" 1
+					else
+						LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME segment = $QE_DIR port = $QE_PORT invalid will attempt forced start" 1
+					fi
 				fi
 				((COUNT=$COUNT+1))
 		done
@@ -331,16 +366,16 @@ PROCESS_STARTUP () {
 			fi
 		fi
 	fi
+	
 	LOG_MSG "[INFO]:-Commencing parallel segment instance startup, please wait..." 1
-	$TOUCH $PARALLEL_STATUS_FILE
-	export PARALLEL_STATUS_FILE=$PARALLEL_STATUS_FILE
 	export LC_COLLATE=$LC_COLLATE
 	export LC_MONETARY=$LC_MONETARY
 	export LC_NUMERIC=$LC_NUMERIC
-	QE_START_COUNT=0
+	INST_COUNT=0
 	if [ x"" == x"$SWITCH_QE_LOG" ];then
 		SWITCH_QE_LOG=0
 	fi
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	for QNODE in "${QE_ARRAY[@]}"
 	do
 		QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
@@ -348,60 +383,60 @@ PROCESS_STARTUP () {
 		QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
 		QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 		QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
-		if [ $START_INVALID -eq 1 ] && [ $QE_VALID == 'f' ];then
-			$MPPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID 1 $QE_START_COUNT $LOG_FILE $QD_DBNAME &
-			((QE_START_COUNT=$QE_START_COUNT+1))
-		fi
-		if [ $START_INVALID -eq 1 ] && [ $QE_VALID == 't' ];then
-			$MPPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID 0 $QE_START_COUNT $LOG_FILE $QD_DBNAME &
-			((QE_START_COUNT=$QE_START_COUNT+1))
-		fi
-		if [ $START_INVALID -eq 0 ] && [ $QE_VALID == 't' ];then
-			$MPPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID 0 $QE_START_COUNT $LOG_FILE $QD_DBNAME &
-			((QE_START_COUNT=$QE_START_COUNT+1))
+		#If valid is false and no request to start invalis segment skip this instance
+		if [ $START_INVALID -eq 0 ] && [ $QE_VALID == 'f' ];then
+			if [ $DEBUG_LEVEL -eq 0 ];then $ECHO;fi
+			LOG_MSG "[INFO]:-Skipping startup of $QE_NAME $QE_DIR as marked as invalid" 1
 		else
-			if [ $START_INVALID -eq 0 ] && [ $QE_VALID == 'f' ];then
-				LOG_MSG "[INFO]:-Skipping startup of $QE_NAME $QE_DIR as marked as invalid" 1
+			if [ $START_INVALID -eq 1 ] && [ $QE_VALID == 'f' ];then
+				VALID_SETTING=1
 			fi
+			if [ $START_INVALID -eq 1 ] && [ $QE_VALID == 't' ];then
+				VALID_SETTING=0
+			fi
+			if [ $START_INVALID -eq 0 ] && [ $QE_VALID == 't' ];then
+				VALID_SETTING=0
+			fi	
+			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+			$MPPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID $VALID_SETTING $INST_COUNT $LOG_FILE $QD_DBNAME &
+			PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 		fi
 	done
-	PARALLEL_WAIT
 	if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO;fi
 	DUMP_STAT=0
 	#Now check the status of the segment responses in the status file
-	KILLED_COUNT=`$GREP -c "KILLED:" $PARALLEL_STATUS_FILE`
+	PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
 	if [ $KILLED_COUNT -ne 0 ];then
-		LOG_MSG "[WARN]:-$KILLED_COUNT parallel process where killed" 1
 		EXIT_STATUS=1
 		DUMP_STAT=1
 	fi
 	INVALID_START_FAIL=`$GREP -c ":INVALID_START_FAIL" $PARALLEL_STATUS_FILE`
 	if [ $INVALID_START_FAIL -ne 0 ];then
-		LOG_MSG "[WARN]:-Parallel startup failed to start $INVALID_START_FAIL invalid segments, check logfile" 1
+		LOG_MSG "[WARN]:-Total processes returned invalid start fail   = $INVALID_START_FAIL $WARN_MARK" 1
 		EXIT_STATUS=1
 		DUMP_STAT=1
 	fi
 	VALID_START_FAIL=`$GREP -c ":VALID_START_FAIL" $PARALLEL_STATUS_FILE`
 	if [ $VALID_START_FAIL -ne 0 ];then
-		LOG_MSG "[WARN]:-Parallel startup failed to start $VALID_START_FAIL valid segments, check logfile" 1
+		LOG_MSG "[WARN]:-Total processes returned valid start fail     = $VALID_START_FAIL $WARN_MARK" 1
 		EXIT_STATUS=1
 		DUMP_STAT=1
 	fi
 	PG_CTL_NO_RUNNING=`$GREP -c ":PG_CTL_NO_RUNNING" $PARALLEL_STATUS_FILE`
 	if [ $PG_CTL_NO_RUNNING -ne 0 ];then
-		LOG_MSG "[WARN]:-Parallel startup status check reports $PG_CTL_NO_RUNNING segments not running via pg_ctl" 1
+		LOG_MSG "[WARN]:-Total processes returned pg_ctl not running   = $PG_CTL_NO_RUNNING $WARN_MARK" 1
 		EXIT_STATUS=1
 		DUMP_STAT=1
 	fi
 	PG_CTL_THERE_START_FAILED=`$GREP -c ":PG_CTL_THERE_START_FAILED" $PARALLEL_STATUS_FILE`
 	if [ $PG_CTL_THERE_START_FAILED -ne 0 ];then
-		LOG_MSG "[WARN]:-Parallel startup status check reports $PG_CTL_THERE_START_FAILED running but startup failed" 1
+		LOG_MSG "[WARN]:-Total processes returned pg_ctl fail          = $PG_CTL_THERE_START_FAILED $WARN_MARK" 1
 		EXIT_STATUS=1
 		DUMP_STAT=1
 	fi
 	LC_ERROR=`$GREP -c ":LC_ERROR" $PARALLEL_STATUS_FILE`
 	if [ $LC_ERROR -ne 0 ];then
-		LOG_MSG "[WARN]:-Parallel segment check indicates that $LC_ERROR segments failed collation checks" 1
+		LOG_MSG "[WARN]:-Total processes returned lc_error             = $LC_ERROR $WARN_MARK" 1
 		EXIT_STATUS=1
 		DUMP_STAT=1
 	fi
@@ -419,9 +454,8 @@ PROCESS_STARTUP () {
 		LOG_MSG "[INFO]:-Error messages contained within status file" 1
 		$CAT $PARALLEL_STATUS_FILE|$GREP -v "COMPLETED:"
 		LOG_MSG "[INFO]:--------------------------------------------------------" 1
-	else
-		LOG_MSG "[INFO]:-No errors generated from segment instance startup" 1
 	fi
+	LOG_MSG "[INFO]:-Successfully started $COMPLETED_COUNT of $BATCH_LIMIT segment instances" 1
 	$RM -f $PARALLEL_STATUS_FILE
 	LOG_MSG "[INFO]:-Starting Master instance $QD_NAME directory $MASTER_DATA_DIRECTORY" 1
 	export PGPORT=${MASTER_PORT}
@@ -445,32 +479,12 @@ PROCESS_STARTUP () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-PARALLEL_WAIT () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Waiting for $QE_START_COUNT parallel processes to complete" 1
-	SLEEP_COUNT=0
-	while [ `$WC -l $PARALLEL_STATUS_FILE|$AWK '{print $1}'` -ne $QE_START_COUNT ]
-	do
-		if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO ".\c";fi
-		$SLEEP 1
-		((SLEEP_COUNT=$SLEEP_COUNT+1))
-		if [ $WAIT_LIMIT -lt $SLEEP_COUNT ];then
-			if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO;fi
-			LOG_MSG "[FATAL]:-Failed to start this batch of segments within $WAIT_LIMIT seconds" 1
-			LOG_MSG "[INFO]:-Start Master instance with mppstart.sh -m and then" 1
-			LOG_MSG "[INFO]:-undertake a forced shutdown with mppstop.sh -zfa" 1
-			LOG_MSG "[INFO]:-Then review contents of $LOG_FILE" 1
-			ERROR_EXIT "[FATAL]:-Start timeout failure" 2
-		fi
-	done
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
 #******************************************************************************
 # Main Section
 #******************************************************************************
 trap '$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt'?'abqyzsml:d:e!D" opt;do
+		while getopts ":vt'?'abqyzsml:d:e!DB:" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -488,6 +502,7 @@ if [ $# -ne 0 ]; then
 						! ) SCRIPT_USAGE=1 
 						    USAGE ;;
 						D ) DEBUG_LEVEL=1 ;;
+						B ) BATCH_DEFAULT=$OPTARG ;;
 						* ) USAGE ;;
 				esac
 		done	
