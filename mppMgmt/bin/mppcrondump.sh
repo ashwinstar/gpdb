@@ -69,6 +69,9 @@ CONFIG_BACKUP_FILE=master_config_files_${DUMP_DATE}.tar
 DUMP_CONFIG=0
 DUMP_PG_DUMP=0
 CATALOG=pg_catalog
+RUN_PROG=0
+PARALLEL_STATUS_FILE=/tmp/mppcrondump_parallel_status_file.$$
+MPPSEGCRON=mppsegcron.sh
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -126,6 +129,8 @@ USAGE () {
 		$ECHO "      -t, use pg_dump to secure pg_catalog schema for database"
 		$ECHO "          Data will be dumped to ${DUMP_SUB_DIR}/$DUMP_DATE/<database name>_${CATALOG}_$DUMP_DATE"
 		$ECHO "      -C, clean (drop) schema prior to create [default do not clean]"
+		$ECHO "      -R, <program name> run named program after successful dump completed, include full path name"
+		$ECHO "      -B, <number> run this batch of state segment processes in parallel [default $BATCH_DEFAULT]"
 		$ECHO
 		$ECHO "      Crontab entry (example):"
 		$ECHO "      SHELL=/bin/bash"
@@ -201,29 +206,50 @@ CHK_DATA () {
 CHK_DUMP_DIR () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing dump directory checks, please wait..." 1
+	BATCH_LIMIT=${#DBID_LIST[@]}
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	for DBID in ${DBID_LIST[@]}
 	do
-		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		CHK_DATA
-		LOG_MSG "[INFO]:-Checking for $DUMP_SUB_DIR for dbid = $DBID"
-		CHK_DIR ${DIR}/$DUMP_SUB_DIR $DIR_HOST
-		if [ $EXISTS -ne 0 ];then
-			LOG_MSG "[INFO]:-Directory ${DIR}/$DUMP_SUB_DIR not found on $DIR_HOST, will try to create"
-			$TRUSTED_SHELL $DIR_HOST "$MKDIR ${DIR}/$DUMP_SUB_DIR"
-			ERROR_CHK $? "make dump directory ${DIR}/$DUMP_SUB_DIR on $DIR_HOST" 2
-		else
-			LOG_MSG "[INFO]:-Directory ${DIR}/$DUMP_SUB_DIR exists on $DIR_HOST"
-			$TRUSTED_SHELL $DIR_HOST "$TOUCH ${DIR}/$DUMP_SUB_DIR/tmp_file_test"
-                        RETVAL=$?
-                        if [ $RETVAL -ne 0 ];then
-                        	ERROR_EXIT "[FATAL]:-Cannot write to ${DIR}/$DUMP_SUB_DIR on $DIR_HOST " 2
-                        else
-                        	$TRUSTED_SHELL $DIR_HOST "$RM -f ${DIR}/$DUMP_SUB_DIR/tmp_file_test"
-                        	LOG_MSG "[INFO]:-Write test passed on $DIR_HOST ${DIR}/$DUMP_SUB_DIR directory"
-                        fi
-		fi
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+		$MPPSEGCRON $$ 2 $DIR_HOST $DIR $DUMP_SUB_DIR $INST_COUNT $LOG_FILE &
+		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done	
-	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+	FAILED_MKDIR_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "FAILED_MKDIR"`
+	FAILED_WRITE_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "FAILED_WRITE"`
+	PASSED_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "PASSED"`
+	KILLED_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "KILLED"`
+	COMPLETED_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "COMPLETED"`
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Parallel dump dir check process exit status" 1
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Total processes marked as completed           = $COMPLETED_COUNT" 1
+	LOG_MSG "[INFO]:-Total processes marked as passed              = $PASSED_COUNT" 1
+	if [ $KILLED_COUNT -ne 0 ];then
+	LOG_MSG "[WARN]:-Total processes marked as killed              = $KILLED_COUNT $WARN_MARK" 1
+	else
+	LOG_MSG "[INFO]:-Total processes marked as killed              = 0" 1
+	fi
+	if [ $FAILED_MKDIR_COUNT -ne 0 ];then
+	LOG_MSG "[WARN]:-Total processes marked as failed to mkdir     = $FAILED_MKDIR_COUNT $WARN_MARK" 1
+	else
+	LOG_MSG "[INFO]:-Total processes marked as failed to mkdir     = 0" 1
+	fi
+	if [ $FAILED_WRITE_COUNT -ne 0 ];then
+	LOG_MSG "[WARN]:-Total processes marked as failed dir write    = $FAILED_WRITE_COUNT $WARN_MARK" 1
+	else
+	LOG_MSG "[INFO]:-Total processes marked as failed dir write    = 0" 1
+	fi
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+	#Now exit if had an error
+	if [ $FAILED_MKDIR_COUNT -ne 0 ] || [ $FAILED_WRITE_COUNT -ne 0 ] || [ $KILLED_COUNT -ne 0 ];then
+		LOG_MSG "[INFO]:-Dumping status file to log file" 1
+		$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
+		$RM -f $PARALLEL_STATUS_FILE
+		LOG_MSG "[FATAL]:-Errors during segment dump directory checks, see log file" 1
+		ERROR_EXIT "[FATAL]:-Unable to contine" 2
+	fi
+	$RM -f $PARALLEL_STATUS_FILE
 	LOG_MSG "[INFO]:-Completed dump directory checks"
 	LOG_MSG "[INFO]:-Checking for $DUMP_SUB_DIR on Master segment"
 	CHK_DIR $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR
@@ -366,45 +392,66 @@ CHK_DUMP_SPACE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing free disk space checks, please wait..." 1
 	#Check to see if we have sufficient space to be able to dump data to disks
-	LOG_MSG "[INFO]:-Obtaining $DUMP_DATABASE disk allocation"
-	ACTUAL_DB_SIZE=(`$MPPSIZECALC -x $DUMP_DATABASE -fq|$GREP '|'`)
+	LOG_MSG "[INFO]:-Obtaining $DUMP_DATABASE disk allocation" 1
+	ACTUAL_DB_SIZE=(`$MPPSIZECALC -x $DUMP_DATABASE -fq|$GREP "|"`)
 	LOG_MSG "[INFO]:-Checking free space on segment instances"	
+	BATCH_LIMIT=${#DBID_LIST[@]}
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	for DBID in ${DBID_LIST[@]}
 	do
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+		if [ $COMPRESSION ];then
+			ZIP_STATE=1
+		else
+			ZIP_STATE=0			
+		fi 
 		CHK_DATA
-		DIR_HOST_FREE_K=`$TRUSTED_SHELL $DIR_HOST "$DF -k $DIR|$TAIL -1|$TR -s ' '|$TR ' ' '\n'|$TAIL -3|$HEAD -1"`
-		LOG_MSG "[INFO]:-Host $DIR_HOST Directory $DIR has free space $DIR_HOST_FREE_K K"
 		SEG=`$BASENAME $DIR`
 		DIR_HOST_USED_B=`$ECHO ${ACTUAL_DB_SIZE[@]}|$TR ' ' '\n'|$TR '|' '~'|$GREP "${DIR_HOST}~${SEG}~"|$TR '~' '|'|$AWK -F'|' '{print $NF}'`
-		((DIR_HOST_USED_K=${DIR_HOST_USED_B}/1024))
-		LOG_MSG "[INFO]:-Host $DIR_HOST Directory $DIR Database $DUMP_DATABASE has used $DIR_HOST_USED_K K"
-		if [ $COMPRESSION ];then
-			CALC_COMPRESSION
-		else
-			CALC_NO_COMPRESSION			
-		fi 
+		$MPPSEGCRON $$ 1 $DIR_HOST $DIR $DIR_HOST_USED_B $INST_COUNT $LOG_FILE $ZIP_STATE $FREE_SPACE_PERCENT $COMPRESSION_FACTOR &
+		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
-	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
-	if [ $TRY_COMPRESSION -eq 1 ];then
-		LOG_MSG "[INFO]:--------------------------------------------------------" 1
-		LOG_MSG "[INFO]:-Checking to see if sufficient space if compression used" 1
-		LOG_MSG "[INFO]:--------------------------------------------------------" 1
-		COMPRESSION=1
-		for DBID in ${DBID_LIST[@]}
-		do
-			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-			CHK_DATA
-			DIR_HOST_FREE_K=`$TRUSTED_SHELL $DIR_HOST "$DF -k $DIR|$TAIL -1|$AWK '{print \\$4}'"`
-			LOG_MSG "[INFO]:-Host $DIR_HOST Directory $DIR has free space $DIR_HOST_FREE_K K"
-			SEG=`$BASENAME $DIR`
-			DIR_HOST_USED_K=`$ECHO ${ACTUAL_DB_SIZE[@]}|$GREP $DIR_HOST|$GREP $SEG|$AWK -F'|' '{print $NF}'`
-			LOG_MSG "[INFO]:-Host $DIR_HOST Directory $DIR Database $DUMP_DATABASE has used $DIR_HOST_USED_K K"
-			CALC_COMPRESSION
-		done
-		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
-	fi				
-	LOG_MSG "[INFO]:-Completed free disk space checks" 1
+	#Now check status file
+	NEED_COMPRESSION_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "NEED_COMPRESSION"`
+	FAILED_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "FAILED"`
+	NO_SPACE_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "NO_SPACE"`
+	KILLED_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "KILLED"`
+	COMPLETED_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "COMPLETED"`
+	SPACE_OK_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "SPACE_OK"`
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Parallel space exit status" 1
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Total processes marked as completed           = $COMPLETED_COUNT" 1
+	if [ $KILLED_COUNT -ne 0 ];then
+	LOG_MSG "[WARN]:-Total processes marked as killed              = $KILLED_COUNT $WARN_MARK" 1
+	else
+	LOG_MSG "[INFO]:-Total processes marked as killed              = 0" 1
+	fi
+	if [ $FAILED_COUNT -ne 0 ];then
+	LOG_MSG "[WARN]:-Total processes marked as failed              = $FAILED_COUNT $WARN_MARK" 1
+	else
+	LOG_MSG "[INFO]:-Total processes marked as failed              = 0" 1
+	fi
+	if [ $NO_SPACE_COUNT -ne 0 ];then
+	LOG_MSG "[WARN]:-Total insufficient dump space reports         = $NO_SPACE_COUNT $WARN_MARK" 1
+	else
+	LOG_MSG "[INFO]:-Total insufficient dump space reports         = 0" 1
+	fi
+	if [ $NEED_COMPRESSION_COUNT -ne 0 ];then
+	LOG_MSG "[WARN]:-Total requests for dump file compression      = $NEED_COMPRESSION_COUNT $WARN_MARK" 1
+	COMPRESSION=1	
+	else
+	LOG_MSG "[INFO]:-Total requests for dump file compression      = 0" 1
+	fi
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+	#Now see if able to continue
+	if [ $FAILED_COUNT -ne 0 ] || [ $NO_SPACE_COUNT -ne 0 ] || [ $KILLED_COUNT -ne 0 ];then
+		LOG_MSG "[INFO]:-Dumping status file to log file" 1
+		$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
+		$RM -f $PARALLEL_STATUS_FILE
+		ERROR_EXIT "[FATAL]:-Unable to continue, see log file" 2
+	fi
+	$RM -f $PARALLEL_STATUS_FILE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -446,6 +493,11 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Master directory           = $MASTER_DATA_DIRECTORY" 1
 		SET_DUMP_TYPE_TEXT
 		LOG_MSG "[INFO]:-MPP Instance dump type     = $TYPE" 1
+		if [ $RUN_PROG != "0" ];then
+		LOG_MSG "[INFO]:-Run post dump program      = $RUN_PROG" 1
+		else
+		LOG_MSG "[INFO]:-Run post dump program      = Off" 1
+		fi
 		if [ $FAILED_PRIMARY_COUNT -ne 0 ];then
 			LOG_MSG "[WARN]:-Failed primary count       = $FAILED_PRIMARY_COUNT" 1
 		else
@@ -568,64 +620,62 @@ CHK_POST_DUMP () {
 		LOG_MSG "[INFO]:-Time stamp key = $TIMESTAMP_KEY" 1
 	fi
 	CHK_DB_LIST=(1 ${DBID_LIST[@]})
-#	for DBID in ${DBID_LIST[@]}
+	BATCH_LIMIT=${#CHK_DB_LIST[@]}
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	for DBID in ${CHK_DB_LIST[@]}
 	do
 		CHK_DATA
-		LOG_MSG "[INFO]:-Checking dump status for $DIR_HOST segment directory $DIR/$DUMP_SUB_DIR/$DUMP_DATE"
-		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$TIMESTAMP_KEY  ];then $ECHO 0;else $ECHO 1;fi"`
-		if [ $EXISTS -eq 1 ];then
-			LOG_MSG "[WARN]:-Could not locate status report file" 1
-			ROLLBACK_DUMPS=1
-			EXIT_STATUS=1
-			FAILED_REPORT=(${FAILED_REPORT[@]}" "$DIR_HOST"|"$DIR)
-		else
-			LOG_MSG "[INFO]:-Located status report file $DIR_HOST DBID=$DBID" 1
-			STATUS=`$TRUSTED_SHELL $DIR_HOST "$GREP -c \"Finished successfully\" $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$TIMESTAMP_KEY"`
-			if [ $STATUS -eq 1 ];then
-				LOG_MSG "[INFO]:-Status report file indicates dump successful"
-			else
-				LOG_MSG "[WARN]:-Status report file indicates dump failure" 1
-				LOG_MSG "[INFO]:-Status log file contents" 1
-				LOG_MSG "[INFO]:-------------------------" 1
-				$TRUSTED_SHELL $DIR_HOST "$CAT $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$TIMESTAMP_KEY" | $TEE -a $LOG_FILE
-				LOG_MSG "[INFO]:-------------------------" 1
-				ROLLBACK_DUMPS=1
-				EXIT_STATUS=1
-			fi
-		fi
-		#Checking for dump file
-		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_?_${DBID}_$TIMESTAMP_KEY*  ];then $ECHO 0;else $ECHO 1;fi"`
-		if [ $EXISTS -eq 1 ];then
-			LOG_MSG "[WARN]:-Could not locate dump file" 1
-			EXIT_STATUS=1
-			ROLLBACK_DUMPS=1
-			FAILED_DUMP=(${FAILED_DUMP[@]}" "$DIR_HOST"|"$DIR)
-		else
-			LOG_MSG "[INFO]:-Located dump file"
-		fi 
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+		$MPPSEGCRON $$ 3 $DIR_HOST $DIR $DUMP_SUB_DIR $DUMP_DATE ${DBID} $TIMESTAMP_KEY $INST_COUNT $LOG_FILE &
+		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done	
+	#Now process status file
+	POST_ERROR=0
+	KILLED_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "KILLED"`
+	COMPLETED_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "COMPLETED"`
+	NO_STATUS_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "NO_STATUS_FILE"`
+	FAILED_STATUS_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "STATUS_FILE_ERROR"`
+	OK_STATUS_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "STATUS_FILE_OK"`
+	NO_DUMP_FILE_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "NO_DUMP_FILE"`
+	DUMP_FILE_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "DUMP_FILE"`
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Parallel post dump checks process exit status" 1
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Total processes marked as completed           = $COMPLETED_COUNT" 1
+	if [ $KILLED_COUNT -ne 0 ];then
+	LOG_MSG "[WARN]:-Total processes marked as killed              = $KILLED_COUNT $WARN_MARK" 1
+	else
+	LOG_MSG "[INFO]:-Total processes marked as killed              = 0" 1
+	fi
+	if [ $NO_STATUS_COUNT -ne 0 ];then
+	LOG_MSG "[WARN]:-Total processes returned no status file       = $NO_STATUS_COUNT $WARN_MARK" 1
+	POST_ERROR=1
+	else
+	LOG_MSG "[INFO]:-Total processes returned no status file       = 0" 1
+	fi
+	if [ $FAILED_STATUS_COUNT -ne 0 ];then
+	LOG_MSG "[WARN]:-Total processes returned error in status file = $FAILED_STATUS_COUNT $WARN_MARK" 1
+	POST_ERROR=1
+	else
+	LOG_MSG "[INFO]:-Total processes returned error in status file = 0" 1
+	fi
+	if [ $NO_DUMP_FILE_COUNT -ne 0 ];then
+	LOG_MSG "[WARN]:-Total processes returned no dump file         = $NO_DUMP_FILE_COUNT $WARN_MARK" 1
+	POST_ERROR=1
+	else
+	LOG_MSG "[INFO]:-Total processes returned no dump file         = 0" 1
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+	fi
+	if [ $POST_ERROR -ne 0 ];then	
+		ROLLBACK_DUMPS=1
+		EXIT_STATUS=1
+		LOG_MSG "[INFO]:-Dumping contents of status file to log file"
+		$CAT  $PARALLEL_STATUS_FILE >> $LOG_FILE
+	fi
+	$RM -f $PARALLEL_STATUS_FILE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-REPORT_FAILED_DUMPS () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Missing status files list" 1
-	LOG_MSG "[INFO]:--------------------------" 1
-	for REP in ${FAILED_REPORT[@]}
-	do
-		LOG_MSG "[INFO]:-No status file for $REP" 1
-	done
-	LOG_MSG "[INFO]:--------------------------" 1
-	LOG_MSG "[INFO]:-Missing dump files list" 1
-	LOG_MSG "[INFO]:------------------------" 1
-	for DFILE in ${FAILED_DUMP[@]}
-	do
-		LOG_MSG "[INFO]:-No dump file for $DFILE" 1
-	done
-	LOG_MSG "[INFO]:------------------------" 1
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}	
 DELETE_CURRENT_DUMP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	for DBID in ${DBID_LIST[@]}
@@ -645,7 +695,6 @@ DELETE_OLD_DUMPS () {
 	#Get a list of all dbids
 	DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where content<>-1;"`)
 	COUNT=0
-set -x
 	for DBID in ${DBID_LIST[@]}
 	do
 		CHK_DATA
@@ -657,7 +706,6 @@ set -x
 			DEL_ARRAY[$COUNT]=$DEL_DIR
 		fi
 	done
-set +x
 			DEL_SET=`$ECHO ${DEL_ARRAY[@]}|$TR ' ' '\n'|$SORT|$HEAD -1`
 	if [ x"" != x"$DEL_SET" ];then
 		for DBID in ${DBID_LIST[@]}
@@ -682,7 +730,7 @@ set +x
 STATUS_REPORT () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Dump status report" 1
-	LOG_MSG "[INFO]:--------------------------------------------" 1
+	LOG_MSG "[INFO]:------------------------------------------------" 1
 	LOG_MSG "[INFO]:-Target database                    = $DUMP_DATABASE" 1
 	LOG_MSG "[INFO]:-Dump sub directory                 = $DUMP_DATE" 1
 	if [ $CLEAR_DUMPS -eq 1 ];then
@@ -721,7 +769,7 @@ STATUS_REPORT () {
 	else
 	LOG_MSG "[INFO]:-Exit code zero, no warnings generated" 1
 	fi
-	LOG_MSG "[INFO]:--------------------------------------------" 1
+	LOG_MSG "[INFO]:------------------------------------------------" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 #******************************************************************************
@@ -729,7 +777,7 @@ STATUS_REPORT () {
 #******************************************************************************
 trap '$RM -f ${IS_RUNNING_FLAG};ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgtC!D" opt;do
+		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgtC!DR:B:" opt;do
 			case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
@@ -763,6 +811,8 @@ if [ $# -ne 0 ]; then
 				t ) DUMP_PG_DUMP=1 ;;
 				C ) ADD_DUMP_OPTIONS="$ADD_DUMP_OPTIONS -c" ;;
 				D ) DEBUG_LEVEL=1 ;;
+				R ) RUN_PROG=$OPTARG ;;
+				B ) BATCH_DEFAULT=$OPTARG ;;
 				* ) USAGE ;;
 				esac
 		done	
@@ -806,6 +856,16 @@ else
 	LOG_MSG "[INFO]:-Configuring for multiple database dump" 1
 	DUMP_DATABASE_LIST=($DUMP_DATABASE)
 fi
+#Check if RUN_PROG has been set
+if [ $RUN_PROG != "0" ];then
+	#Check to see if the file exists
+	if [ -f $RUN_PROG ];then
+		LOG_MSG "[INFO]:-Located $RUN_PROG, will call after dump completed"
+	else
+		LOG_MSG "[WARN]:-Could not locate $RUN_PROG" 1
+		RUN_PROG=0
+	fi
+fi	
 #Check that all databases exist
 for DUMP_DATABASE in ${DUMP_DATABASE_LIST[@]}
 do
@@ -856,12 +916,10 @@ do
 		if [ $ROLLBACK -eq 1 ];then
 			LOG_MSG "[WARN]:-Dump request was incomplete, rolling back dump" 1
 			DELETE_CURRENT_DUMP
-			REPORT_FAILED_DUMPS
 			EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 			ERROR_EXIT "[FATAL]:-Dump incomplete, completed rollback" 2
 		else
 			LOG_MSG "[WARN]:-Dump request was incomplete, not rolling back dump as -r option not supplied" 1
-			REPORT_FAILED_DUMPS
 			EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files not rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 			ERROR_EXIT "[FATAL]:-Dump incomplete, rollback not processed" 2
 		fi
@@ -875,6 +933,10 @@ do
 	fi
 	STATUS_REPORT
 	EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST[COMPLETED]" "Completed for database $DUMP_DATABASE with return code $EXIT_STATUS [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
+	if [ $RUN_PROG != "0" ];then
+		LOG_MSG "[INFO]:-Calling $RUN_PROG"
+		$RUN_PROG
+	fi
 done
 LOG_MSG "[INFO]:-End Main"
 exit $FINAL_EXIT_STATUS
