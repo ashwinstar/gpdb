@@ -7736,7 +7736,7 @@ static Datum transformLocationUris(List *locs)
 	ListCell   *cell;
 	ArrayBuildState *astate;
 	Datum		result;
-	UriProtocol first_protocol;
+	UriProtocol first_protocol = URI_FILE; /* initialize to keep gcc quiet */
 	bool		first_uri = true;
 	
 	/* Parser should not let this happen */
