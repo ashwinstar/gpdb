@@ -73,6 +73,7 @@ TMP_HOSTNAME_FILE=hostname_test_file.$$
 PARALLEL_STATUS_FILE=/tmp/mppcreatecluster_parallel_status_file.$$
 MPPCREATESEG=mppcreateseg.sh
 ULIMIT_WARN=0
+PARALLEL_BUILD=1
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -118,8 +119,8 @@ USAGE () {
 		$ECHO "      -b, shared_buffers value [default $DEFAULT_BUFFERS]"
 		$ECHO "      -e, <password>, password to set for MPP superuser in database [default $MPP_PASSWD]"
 		$ECHO "      -n, <locale>, setting for locale to be set when database initialized [default $DEFAULT_LOCALE_SETTING]"
-		$ECHO "      -r, run utility in parallel mode. This will spawn background processes to build"
-		$ECHO "          the segment instance databases."
+		$ECHO "      -r, run utility in serial mode [default parallel segment instance build"
+		$ECHO "      -B, <number> run this batch of create segment processes in parallel [default $BATCH_DEFAULT]"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 - No problems encountered with requested operation"
@@ -213,7 +214,6 @@ CHK_PARAMS () {
 						LOG_MSG "[INFO]:-Completed check of file $FILE"
 				fi
 		done
-
 		CHK_DUPLICATES
 		#Set up the machine list array
 		LOG_MSG "[INFO]:-Setting up segment instance list array"
@@ -317,8 +317,7 @@ CHK_PARAMS () {
 		fi
 		#MASTER_MAX_CONNECT
 		if [ ! $MASTER_MAX_CONNECT ];then
-			LOG_MSG "[WARN]:-MASTER_MAX_CONNECT not set, will set to default value $DEFAULT_QD_MAX_CONNECT" 1
-			EXIT_STATUS=1
+			LOG_MSG "[INFO]:-MASTER_MAX_CONNECT not set, will set to default value $DEFAULT_QD_MAX_CONNECT" 1
 			MASTER_MAX_CONNECT=$DEFAULT_QD_MAX_CONNECT
 		else
 			if [ $MASTER_MAX_CONNECT -lt 1 ];then
@@ -332,6 +331,7 @@ CHK_PARAMS () {
 			QE_SHARED_BUFFERS=$DEFAULT_BUFFERS
 		else
 			if [ $NEW_BUFFERS -lt 1000 ];then
+				unset NEW_BUFFERS
 				LOG_MSG "[WARN]:-Shared buffers value supplied is too low, using default value" 1
 				MASTER_SHARED_BUFFERS=$DEFAULT_BUFFERS
 				QE_SHARED_BUFFERS=$DEFAULT_BUFFERS
@@ -427,6 +427,7 @@ CHK_DUPLICATES () {
 
 CHK_OPEN_FILES () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Checking $1"
 	OPEN_VALUE=`$TRUSTED_SHELL $1 "ulimit -n"`
 	if [ $OPEN_VALUE -lt $OS_OPENFILES ];then
 		LOG_MSG "[WARN]:-Host $1 open files limit is $OPEN_VALUE should be >= $OS_OPENFILES" 1
@@ -712,6 +713,8 @@ DISPLAY_CONFIG () {
 		else
 				PG_ADD=On
 		fi
+		export QD_DIR=$MPP_DIR
+	if [ x"" != x"$INTERACTIVE" ];then
 		SET_VAR $QD_PRIMARY_ARRAY
 		LOG_MSG "[INFO]:-MPP Creation Parameters" 1
 		LOG_MSG "[INFO]:------------------------" 1
@@ -786,7 +789,7 @@ DISPLAY_CONFIG () {
 			fi
 			LOG_MSG "[INFO]:-MPP Primary Segment Configuration" 1
 			LOG_MSG "[INFO]:----------------------------------" 1
-			export QD_DIR=$MPP_DIR
+#			export QD_DIR=$MPP_DIR
 			for I in "${QE_PRIMARY_ARRAY[@]}"
 			do
 				SET_VAR $I
@@ -802,20 +805,19 @@ DISPLAY_CONFIG () {
 				done
 			fi
 		fi
-		if [ $INTERACTIVE ]; then
-				$ECHO "Continue with MPP creation Yy/Nn>" 
-				read REPLY
-				if [ -z $REPLY ]; then
-						LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
-						EXIT_STATUS=1
-						exit $EXIT_STATUS
-				fi
-				if [ $REPLY != Y ] && [ $REPLY != y ]; then
-						LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
-						EXIT_STATUS=1
-						exit $EXIT_STATUS
-				fi
-		fi
+			$ECHO "Continue with MPP creation Yy/Nn>" 
+			read REPLY
+			if [ -z $REPLY ]; then
+				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
+				EXIT_STATUS=1
+				exit $EXIT_STATUS
+			fi
+			if [ $REPLY != Y ] && [ $REPLY != y ]; then
+				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
+				EXIT_STATUS=1
+				exit $EXIT_STATUS
+			fi
+	fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -893,6 +895,19 @@ CREATE_QD_DB () {
 		UPDATE_MPPCONFIGURATION  $MPP_DBNAME $MPP_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT t  $MPP_HOSTNAME $MPP_PORT $MPP_DIR
 		LOAD_QE_SYSTEM_DATA $DEFAULTDB
 		SET_VAR $QD_PRIMARY_ARRAY
+		#Now check to see if we need to change the DEFAULT_BUFFERS
+		MASTER_BLK_SIZE=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"show block_size;"`
+		LOG_MSG "[INFO]:-Obtained master instance block size as $MASTER_BLK_SIZE Bytes"
+		((CORRECT_BUFFERS=${DEFAULT_BUFFERS}*8192/$MASTER_BLK_SIZE))
+		if [ x"" == x"$NEW_BUFFERS" ];then
+			if [ $MASTER_SHARED_BUFFERS -ne $CORRECT_BUFFERS ];then
+				LOG_MSG "[INFO]:-Changing buffers value from $MASTER_SHARED_BUFFERS to $CORRECT_BUFFERS"
+				MASTER_SHARED_BUFFERS=$CORRECT_BUFFERS
+				QE_SHARED_BUFFERS=$CORRECT_BUFFERS
+				LOG_MSG "[INFO]:-Re-setting Master instance shared buffers to ${MASTER_SHARED_BUFFERS}"
+				ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${MASTER_SHARED_BUFFERS}" 0
+			fi
+		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -973,9 +988,12 @@ UPDATE_MPP () {
 
 CREATE_QES_PRIMARY () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		for I in "${QE_PRIMARY_ARRAY[@]}"
-		do
-			if [ x"" != x"$PARALLEL_BUILD" ];then
+		if [ x"" != x"$PARALLEL_BUILD" ];then
+			LOG_MSG "[INFO]:-Commencing parallel build of primary segment instances" 1
+			BATCH_LIMIT=${#QE_PRIMARY_ARRAY[@]}
+			PARALLEL_SETUP  $PARALLEL_STATUS_FILE
+			for I in "${QE_PRIMARY_ARRAY[@]}"
+			do
 				export PG_CONF_ADD_FILE
 				export STANDBY_HOSTNAME
 				export ENCODING
@@ -988,27 +1006,38 @@ CREATE_QES_PRIMARY () {
 				export CHECK_POINT_SEGMENTS
 				export QE_MAX_CONNECT
 				export QE_SHARED_BUFFERS
-				LOG_MSG "[INFO]:-Spawning primary segment instance build process count = $INST_COUNT" 
-				$MPPCREATESEG $$ $I $INST_COUNT  $LOG_FILE \
+				if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+				$MPPCREATESEG $$ 1 $I $INST_COUNT  $LOG_FILE \
 `$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
 `$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
-				((INST_COUNT=$INST_COUNT+1))
+				PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
+			done
+			PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
+			if [ $REPORT_FAIL -ne 0 ];then
+				$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
+			fi
+			$RM -f $PARALLEL_STATUS_FILE
 			else
+				for I in "${QE_PRIMARY_ARRAY[@]}"
+				do
 				SET_VAR $I
 				LOG_MSG "[INFO]:-Processing segment $MPP_HOSTNAME" 1
 				PROCESS_QE
 				LOG_MSG "[INFO]:-Successfully started segment instance on $MPP_HOSTNAME" 1
 				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+				done
 			fi
-		done
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CREATE_QES_MIRROR () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		for I in  "${QE_MIRROR_ARRAY[@]}"
-		do
-			if [ x"" != x"$PARALLEL_BUILD" ];then
+		if [ x"" != x"$PARALLEL_BUILD" ];then
+			LOG_MSG "[INFO]:-Commencing parallel build of mirror segment instances" 1
+			BATCH_LIMIT=${#QE_MIRROR_ARRAY[@]}
+			PARALLEL_SETUP  $PARALLEL_STATUS_FILE
+			for I in  "${QE_MIRROR_ARRAY[@]}"
+			do
 				export PG_CONF_ADD_FILE
 				export STANDBY_HOSTNAME
 				export ENCODING
@@ -1021,19 +1050,27 @@ CREATE_QES_MIRROR () {
 				export QE_MAX_CONNECT
 				export QE_SHARED_BUFFERS
 				export CHECK_POINT_SEGMENTS
-				LOG_MSG "[INFO]:-Spawning mirror segment instance build process count = $INST_COUNT" 
-				$MPPCREATESEG $$ $I $INST_COUNT  $LOG_FILE \
+				if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+				$MPPCREATESEG $$ 1 $I $INST_COUNT  $LOG_FILE \
 `$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
 `$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
-				((INST_COUNT=$INST_COUNT+1))
-			else
-				SET_VAR $I
-				LOG_MSG "[INFO]:-Processing Mirror segment $MPP_HOSTNAME" 1
-				PROCESS_QE
-				LOG_MSG "[INFO]:-Successfully started segment mirror instance on $MPP_HOSTNAME" 1
-				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+				PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
+			done
+			PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
+			if [ $REPORT_FAIL -ne 0 ];then
+				$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
 			fi
-		done
+			$RM -f $PARALLEL_STATUS_FILE
+			else
+				for I in  "${QE_MIRROR_ARRAY[@]}"
+				do
+					SET_VAR $I
+					LOG_MSG "[INFO]:-Processing Mirror segment $MPP_HOSTNAME" 1
+					PROCESS_QE
+					LOG_MSG "[INFO]:-Successfully started segment mirror instance on $MPP_HOSTNAME" 1
+					UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+				done
+			fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -1102,7 +1139,7 @@ STOP_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		LOG_MSG "[INFO]:-Restarting the MPP instance in production mode" 1
 		if [ -f $MPPSTOP ]; then
-				$MPPSTOP -a -i -d $QD_DIR
+				$MPPSTOP -a -i -d $MASTER_DATA_DIRECTORY
 				RETVAL=$?
 				case $RETVAL in
 				0 ) LOG_MSG "[INFO]:-Successfully shutdown the new MPP instance" ;;
@@ -1143,7 +1180,7 @@ CREATE_STANDBY_QD () {
 START_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [ -f $MPPSTART ]; then
-				$MPPSTART -a -d $QD_DIR
+				$MPPSTART -a -d $MASTER_DATA_DIRECTORY
 				ERROR_CHK $? "start new MPP instance" 2
 		else
 				ERROR_EXIT "[FATAL]:-$MPPSTART not located" 2
@@ -1193,7 +1230,7 @@ SCAN_LOG () {
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
-while getopts ":v'?'aiqe:c:l:p:m:h:on:s:rb:!D" opt
+while getopts ":v'?'aiqe:c:l:p:m:h:on:s:rb:!DB:" opt
 		do
 		case $opt in
 				v ) VERSION_INFO ;;
@@ -1213,8 +1250,9 @@ while getopts ":v'?'aiqe:c:l:p:m:h:on:s:rb:!D" opt
 				o ) QD_ONLY=1 ;;
 				s ) STANDBY_HOSTNAME=$OPTARG ;;
 				n ) REQ_LOCALE_SETTING=$OPTARG ;;
-				r ) PARALLEL_BUILD=1 ;;
+				r ) unset PARALLEL_BUILD ;;
 				D ) DEBUG_LEVEL=1 ;;
+				B ) BATCH_DEFAULT=$OPTARG ;;
 				* ) USAGE ;;
 		esac
 done
@@ -1260,28 +1298,31 @@ if [ $QD_ONLY ]; then
 		exit 0
 fi
 if [ x"" != x"$PARALLEL_BUILD" ];then
-	LOG_MSG "[INFO]:-Processing mode = Parallel" 1
-	$TOUCH $PARALLEL_STATUS_FILE
 	CREATE_QES_PRIMARY
 	if [ $MIRRORING -ne 0 ]; then
 		CREATE_QES_MIRROR
 	fi
-	LOG_MSG "[INFO]:-Waiting for parallel processes to complete..." 1
-	while [ `$WC -l $PARALLEL_STATUS_FILE|$AWK '{print $1}'` -ne $INST_COUNT ]
-	do
-		LOG_MSG "[INFO]:-Waiting... `$WC -l $PARALLEL_STATUS_FILE|$AWK '{print $1}'` of $INST_COUNT have completed" 1
-		$SLEEP 2
-	done
-	#Now check for any errors 
-	if [ `$GREP -c FAILED $PARALLEL_STATUS_FILE` -ne 0 ];then
-		LOG_MSG "[FATAL]:-Errors generated from `$GREP -c FAILED $PARALLEL_STATUS_FILE|$AWK '{print $1}'` parallel processes" 1
-		LOG_MSG "[INFO]:-Dumping contents of status file to the log file" 1
-		cat $PARALLEL_STATUS_FILE >> $LOG_FILE
-		$RM -f $PARALLEL_STATUS_FILE
+	if [ $REPORT_FAIL -ne 0 ];then
+		LOG_MSG "[FATAL]:-Errors generated from parallel processes" 1
+		LOG_MSG "[INFO]:-Dumped contents of status file to the log file" 1
+		#Need to build a central backout file
+		LOG_MSG "[INFO]:-Building composite backout file" 1
+		for I in ls /tmp/mppsegcreate.sh_backout*
+		do
+			$CAT $I >> $BACKOUT_FILE
+			$RM -f $I
+		done
+		$ECHO "$RM -f $BACKOUT_FILE" >> $BACKOUT_FILE
 		ERROR_EXIT "[FATAL]:-Failures detected, see log file for more detail" 2
 	else
+		LOG_MSG "[INFO]:-Deleting distributed backout files" 1
+		for I in ls /tmp/mppsegcreate.sh_backout*
+		do
+			$RM -f $I
+		done
+		LOG_MSG "[INFO]:-Removing back out file" 1
+		$RM -f $BACKOUT_FILE
 		LOG_MSG "[INFO]:-No errors generated from parallel processes" 1
-		$RM -f $PARALLEL_STATUS_FILE
 	fi
 else
 	LOG_MSG "[INFO]:-Processing mode = Serial" 1
@@ -1300,8 +1341,6 @@ else
 	STOP_QD_PRODUCTION
 	START_QD_PRODUCTION
 fi
-LOG_MSG "[INFO]:-Removing back out file" 1
-$RM -f $BACKOUT_FILE
 SCAN_LOG
 LOG_MSG "[INFO]:-MPP instance successfully created" 1
 LOG_MSG "[INFO]:-------------------------------------------------------" 1
@@ -1311,7 +1350,7 @@ LOG_MSG "[INFO]:-1. Ensure that the greenplum_path.sh file is sourced" 1
 LOG_MSG "[INFO]:-2. Add \"export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1\"" 1
 LOG_MSG "[INFO]:-   to access the MPP scripts for this instance:" 1
 LOG_MSG "[INFO]:-   or, use -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 option for the MPP scripts" 1
-LOG_MSG "[INFO]:-   Example ./mppstate.sh -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1" 1
+LOG_MSG "[INFO]:-   Example mppstate.sh -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1" 1
 LOG_MSG "[INFO]:-Script log file = $LOG_FILE" 1
 LOG_MSG "[INFO]:-To remove instance, run mppdeletecluster.sh script" 1
 if [ x"" != x"$STANDBY_HOSTNAME" ];then
