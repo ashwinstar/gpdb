@@ -200,7 +200,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	char		nulls[Natts_pg_tablespace];
 	HeapTuple	tuple;
 	Oid			tablespaceoid;
-	char	   *location;
+	char	   *location = NULL;
 	char	   *linkloc;
 	Oid			ownerId;
 	ListCell   *cell;
@@ -342,6 +342,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		
 	/* Unix-ify the offered path, and strip any trailing slashes */
  
+	Assert(PointerIsValid(location));
 	canonicalize_path(location);
 
 	/* disallow quotes, else CREATE DATABASE would be at risk */

@@ -543,7 +543,8 @@ markSegDBPersistentState(int dbid, bool state)
 	TupleDesc tupdesc;
 	char *tmp, cmd[200];
 	int contentid, hasmirror=0;
-	int partnerid, partnervalid, partnerdefinedprimary, partnerisprimary;
+	int partnerid = 0, partnervalid = 0, partnerdefinedprimary, 
+			partnerisprimary;
 
 	int			count;
 	PGresult   *rs;

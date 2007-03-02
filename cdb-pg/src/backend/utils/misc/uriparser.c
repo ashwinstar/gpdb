@@ -49,6 +49,7 @@ ParseUriString(const char *uri_str)
 	}
 	else
 	{
+		protocol_len = 0; /* shut compiler up */
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("invalid URI \'%s\' : undefined protocol", uri_str)));

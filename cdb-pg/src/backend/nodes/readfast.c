@@ -3165,13 +3165,12 @@ readNodeBinary(const char ** str)
 				break;
 
 			default:
-					elog(ERROR, "could not deserialize unrecognized node type: %d",
+				return_value = NULL; /* keep the compiler silent */
+				elog(ERROR, "could not deserialize unrecognized node type: %d",
 						 (int) nt);
 				
 				break;
 	}
- 
-
 
 	return (Node *)return_value;
 }

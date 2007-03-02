@@ -1299,8 +1299,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		Form_pg_aggregate aggform;
 		Oid			aggtranstype;
 		AclResult	aclresult;
-		Oid			transfn_oid,
-					finalfn_oid;
+		Oid			transfn_oid = InvalidOid,
+					finalfn_oid = InvalidOid;
 		Expr	   *transfnexpr,
 				   *finalfnexpr;
 		Datum		textInitVal;

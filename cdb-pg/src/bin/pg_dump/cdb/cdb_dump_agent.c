@@ -841,6 +841,8 @@ main(int argc, char **argv)
 		
 		/*RestoreArchive(g_fout, ropt);*/
 	}
+	else
+		ropt = NULL; /* silence compiler */
 	
 	
 	/* is this the catalog dumper that was forked earlier? */

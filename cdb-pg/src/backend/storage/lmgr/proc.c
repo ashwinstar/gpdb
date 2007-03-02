@@ -252,6 +252,7 @@ InitProcess(void)
 		 * error message.
 		 */
 		SpinLockRelease(ProcStructLock);
+		mppLocalProcessSerial = 0; /* shut compiler up */
 		ereport(FATAL,
 				(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 				 errmsg("sorry, too many clients already")));

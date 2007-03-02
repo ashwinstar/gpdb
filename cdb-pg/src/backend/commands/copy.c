@@ -1871,7 +1871,7 @@ CopyFromDispatch(CopyState cstate)
 	Form_pg_attribute *attr;
 	AttrNumber	num_phys_attrs,
 				attr_count,
-				extra_attr_count, /* count extra attributes we add in the dispatcher COPY
+				extra_attr_count = 0, /* count extra attributes we add in the dispatcher COPY
 							         usually non constant defaults we pre-evaluate in here */
 				num_defaults;
 	FmgrInfo   *in_functions;
@@ -4567,7 +4567,7 @@ CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 	bool		in_quote = false;
 	bool		saw_quote = false;
 	int			attnum;			/* attribute number being parsed */
-	int			m;				/* attribute index being parsed */
+	int			m = 0;			/* attribute index being parsed */
 	ListCell   *cur;			/* cursor to attribute list used for this COPY */
 	int			attribute;
 
