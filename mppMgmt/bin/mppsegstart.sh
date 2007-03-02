@@ -103,6 +103,15 @@ START_SEG () {
 	#*************************************************************************************************************
 	# Start of segment startup section
 	#*************************************************************************************************************
+	if [ $START_INVALID -eq 1 ];then
+		#Check to see if there is a stale postmaster.pid file
+		IS_THERE=`$TRUSTED_SHELL $QE_NAME "if [ -f ${QE_DIR}/$PG_PID ];then echo 1;else echo 0;fi"`
+		if [ $IS_THERE -eq 1 ];then
+			LOG_MSG "[WARN][$INST_COUNT]:-Located stale $PG_PID on $QE_NAME in ${QE_DIR} directory"
+			LOG_MSG "[INFO][$INST_COUNT]:-Removing $PG_PID on $QE_NAME in ${QE_DIR} directory"
+			$TRUSTED_SHELL $QE_NAME "$RM -f ${QE_DIR}/$PG_PID"
+		fi
+	fi
 	LOG_MSG "[INFO][$INST_COUNT]:-Starting Segment instance $QE_NAME directory $QE_DIR"
 	$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start >/dev/null 2>&1"
 	RETVAL=$?
