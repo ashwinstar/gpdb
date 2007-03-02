@@ -58,6 +58,9 @@ PG_PID=postmaster.pid
 EXIT_STATUS=0
 FORCESTOP=0
 TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}.$$
+PARALLEL_STATUS_FILE=/tmp/mppstate_parallel_status_file.$$
+MPPSEGREC=mppsegrec.sh
+BATCH_DEFAULT=4 #Specific limit for segment recovery
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -99,6 +102,7 @@ USAGE () {
 		$ECHO "          even though no instance segments are marked as invalid on the Master"
 		$ECHO "          CAUTION:-USE THIS OPTION WITH CARE!"
         	$ECHO "          example $0 -z /dbfast1/segment1:localhost"
+		$ECHO "      -B, <number> run this batch of recovery segment processes in parallel [default $BATCH_DEFAULT]"
         	$ECHO
 		$ECHO "      Connection options:"
 		$ECHO "      -d, <Master database directory> name of alternative Master database to start up [optional]"
@@ -296,6 +300,7 @@ DISPLAY_PARAM () {
 	TYPE_TEXT="Failed  "
 	fi
 	COUNT=0
+	LOG_MSG "[INFO]:-Recovery parallel batch value = $BATCH_DEFAULT" 1
 	if [ $EXIT_STATUS -ne 0 ];then
 	LOG_MSG "[WARN]:-Warnings have been generated    <<<<<<<<<<<<<" 1
 	LOG_MSG "[INFO]:-But recovery can continue" 1
@@ -416,14 +421,14 @@ STOP_DATABASE () {
 		do
 			FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
 			LOG_MSG "[INFO]:-Forcing shutdown of $FAIL_QE_HOST for port=$FAIL_QE_PORT " 1
-			$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m immediate -l ${FAIL_QE_DIR}.log"
+			$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m immediate -l ${FAIL_QE_DIR}.log 2>/dev/null"
 			ERROR_CHK $? "force shutdown of $FAIL_QE_DIR on $FAIL_QE_HOST" 1
 			LOG_MSG "[INFO]:-Checking for postmaster process on $FAIL_QE_HOST port $FAIL_QE_PORT" 1
 			GET_PG_PID_ACTIVE $FAIL_QE_PORT $FAIL_QE_HOST
 			if [ $PID -ne 0 ];then
 				LOG_MSG "[WARN]:-Found postmaster process on $FAIL_QE_HOST port $FAIL_QE_PORT" 1
 				LOG_MSG "[WARN]:-Will kill process $PID" 1
-				$TRUSTED_SHELL $FAIL_QE_HOST "$KILL -9 $PID"
+				$TRUSTED_SHELL $FAIL_QE_HOST "$KILL -9 $PID 2>/dev/null"
 				ERROR_CHK $? "$TRUSTED_SHELL $FAIL_QE_HOST $KILL -9 $PID" 1
 			else
 				LOG_MSG "[INFO]:-No postmaster process on $FAIL_QE_HOST port $FAIL_QE_PORT" 1
@@ -440,51 +445,29 @@ STOP_DATABASE () {
 
 RECOVER_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
+	BATCH_LIMIT=${#FAILED_INSTANCE_ARRAY[@]}
 	COUNT=0
 	while [ $COUNT -lt $ARRAY_INDEX ]
 	do
 		FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
 		MIR_SET_VAR ${ACTIVE_INSTANCE_ARRAY[$COUNT]}
-		LOG_MSG "[INFO]:-Checking for invalid postmaster process on port ${FAIL_QE_HOST}" 1
-		GET_PG_PID_ACTIVE $FAIL_QE_PORT $FAIL_QE_HOST
-		if [ $PID -ne 0 ]; then
-			LOG_MSG "[INFO]:-Orphaned PID located on $FAIL_QE_PORT clearing down" 1
-			$TRUSTED_SHELL $FAIL_QE_HOST "$KILL -9 $PID" >> $LOG_FILE 2>&1
-			$TRUSTED_SHELL $FAIL_QE_HOST "$RM -f /tmp/.s.PGSQL.${FAIL_QE_PORT}" >> $LOG_FILE 2>&1
-			$TRUSTED_SHELL $FAIL_QE_HOST "$RM -f /tmp/.s.PGSQL.${FAIL_QE_PORT}.lock" >> $LOG_FILE 2>&1
-		else
-			LOG_MSG "[INFO]:-No active pid found for $FAIL_QE_HOST for port=$FAIL_QE_PORT" 1
-		fi
-		LOG_MSG "[INFO]:-Deleting failed database directory on ${FAIL_QE_HOST}" 1
-		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -Rf ${FAIL_QE_DIR}" 
-		LOG_MSG "[INFO]:-Deleting failed database log file on ${FAIL_QE_HOST}" 1
-		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -Rf ${FAIL_QE_DIR}.log"
-		#Run a checkpoint if STOPDB=0
-		if [ $STOPDB -eq 0 ] && [ $FORCESTOP -eq 0 ]; then
-			LOG_MSG "[INFO]:-Issuing checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT" 1
-			$TRUSTED_SHELL $MIR_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIR_QE_PORT $DEFAULTDB -c \"checkpoint;\""
-			ERROR_CHK $? "instance checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT" 1
-		fi
 		if [ x"" != x"$POOL_DIR_SET" ] || [ x"" != x"$POOL_HOST" ];then
-			FAIL_SET_VAR ${POOL_FAILED_INSTANCE_ARRAY[$COUNT]}
+			POOL_ARRAY=${POOL_FAILED_INSTANCE_ARRAY[$COUNT]}
+		else
+			POOL_ARRAY=0
 		fi
-		LOG_MSG "[INFO]:-Recovering data directory from ${MIR_QE_HOST} to ${FAIL_QE_HOST}" 1
-		LOG_MSG "[INFO]:-This could take some time depending on data volume" 1
-		KB_COPY=`$TRUSTED_SHELL ${MIR_QE_HOST} "$DU -k -s $DU_TXT ${MIR_QE_DIR}|$TAIL -1"|$AWK '{print $1}'`
-		LOG_MSG "[INFO]:-Copy will transfer $KB_COPY KBytes of data"  1
-		LOG_MSG "[INFO]:-Commencing data transfer" 1
-		LOG_MSG "[INFO]:-Please Wait ..." 1
-		RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$TRUSTED_COPY -pr ${MIR_QE_DIR} ${FAIL_QE_HOST}:${FAIL_QE_DIR}" 
-		LOG_MSG "[INFO]:-Setting recovered port to ${FAIL_QE_PORT} on ${FAIL_QE_HOST}"  1
-		ED_FILE ${FAIL_QE_DIR}/$PG_CONF "port=" "port=${FAIL_QE_PORT}" 0 ${FAIL_QE_HOST}
-		LOG_MSG "[INFO]:-Clearing old postmaster.opts file" 1
-		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -f ${FAIL_QE_DIR}/postmaster.opts"
-		if [ $STOPDB -eq 0 ] && [ $FORCESTOP -eq 0 ]; then
-			LOG_MSG "[INFO]:-Clearing old postmaster.pid file" 1
-			RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -f ${FAIL_QE_DIR}/postmaster.pid"
-		fi
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+		$MPPSEGREC $$ $FAIL_QE_HOST $FAIL_QE_PORT $FAIL_QE_DIR $FAIL_QE_DBID $FAIL_QE_CONTENTID $FAIL_QE_TOP_DIR \
+ $MIR_QE_HOST $MIR_QE_PORT $MIR_QE_DIR $MIR_QE_DBID $MIR_QE_TOP_DIR $INST_COUNT $LOG_FILE $STOPDB $FORCESTOP $POOL_ARRAY &
+		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT 
 		((COUNT=$COUNT+1))
 	done
+	PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
+	if [ $FAILED_COUNT -ne 0 ] || [ $KILLED_COUNT -ne 0 ];then
+		LOG_MSG "[FATAL]:-Parallel processes report failure(s), check log file" 1
+		ERROR_EXIT "[FATAL]:-Unable to continue, script exits" 2
+	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -1071,7 +1054,7 @@ LOG_MSG "[INFO]:-End Function $FUNCNAME"
 # Main Section
 #******************************************************************************
 trap '$RM -f $TMP_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
-while getopts ":v'?'qfal:d:z:p:s:D" opt;do
+while getopts ":v'?'qfal:d:z:p:s:DB:" opt;do
     case $opt in
         v ) VERSION_INFO ;;
       '?' ) USAGE ;;
@@ -1086,6 +1069,7 @@ while getopts ":v'?'qfal:d:z:p:s:D" opt;do
 	p ) POOL_HOST=$OPTARG ;;
 	s ) POOL_DIR_SET=$OPTARG ;;
 	D ) DEBUG_LEVEL=1 ;;
+	B ) BATCH_DEFAULT=$OPTARG ;;
         * ) USAGE ;;
     esac
 done
