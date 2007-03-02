@@ -219,8 +219,15 @@ DEFAULT_CHK_PT_SEG=8
 DEFAULT_IP_ALLOW="0.0.0.0/0"
 DEFAULT_QD_MAX_CONNECT=25
 QE_CONNECT_FACTOR=5
-DEFAULT_BUFFERS="128MB"
+#Do not change the value of DEFAULT_BUFFERS as mppcreatecluster.sh now calculates
+#a revised value based upon the master instance block size.
+#Eg, if block size 32KB, will set shared_buffers=4000
+#if block size 8KB, will set shared_buffers=16000
+DEFAULT_BUFFERS=16000
 DEBUG_LEVEL=0
+BATCH_DEFAULT=60
+WAIT_LIMIT=300
+WARN_MARK="<<<<<"
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -746,6 +753,7 @@ GET_QE_DETAILS () {
 				LOG_MSG "[WARN]:-Unable to obtain segment instance host details from Master db, error code $RETVAL returned" 1
 				EXIT_STATUS=1
 		fi
+		QE_ARRAY_COUNT=${#QE_ARRAY[@]}
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -864,6 +872,7 @@ GET_PG_PID_ACTIVE () {
 				if [ x"" == x"$PG_LOCK_NETSTAT" ] && [ $PG_LOCK_TMP -eq 0 ];then
 					PID=0
 					LOG_MSG "[INFO]:-No socket connection or lock file $PG_LOCK_FILE found for port=${PORT}"
+					EXIT_STATUS=1
 				else
 				#Now check the failure combinations
 					if [ $PG_LOCK_TMP -eq 0 ] && [ x"" != x"$PG_LOCK_NETSTAT" ];then
@@ -879,7 +888,6 @@ GET_PG_PID_ACTIVE () {
 							PID=`$TRUSTED_SHELL $HOST "$CAT ${PG_LOCK_FILE}|$HEAD -1 2>/dev/null"|$AWK '{print $1}'`
 						else
 							LOG_MSG "[WARN]:-Unable to access ${PG_LOCK_FILE} on $HOST" 1
-							PID=1
 						fi
 						LOG_MSG "[WARN]:-Have lock file $PG_LOCK_FILE but no process running on port $PORT on $HOST" 1
 						EXIT_STATUS=1
@@ -891,7 +899,6 @@ GET_PG_PID_ACTIVE () {
 							PID=`$TRUSTED_SHELL $HOST "$CAT ${PG_LOCK_FILE}|$HEAD -1 2>/dev/null"|$AWK '{print $1}'`
 						else
 							LOG_MSG "[WARN]:-Unable to access ${PG_LOCK_FILE} on $HOST" 1	
-							PID=1
 							EXIT_STATUS=1
 						fi
 						LOG_MSG "[INFO]:-Have lock file $PG_LOCK_FILE and a process running on port $PORT on $HOST"
@@ -1016,6 +1023,89 @@ STOP_SYNC_PROCESS () {
 	$TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "$EXPORT_LIB_PATH;$PG_CTL stop -D $MASTER_STANDBY_DATA_DIRECTORY -m immediate"
 	RETVAL=$?
 	ERROR_CHK $RETVAL "immediate shutdown of sync process on ${MASTER_STANDBY_HOSTNAME}" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+PARALLEL_SETUP () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	PARALLEL_STATUS_FILE=$1
+	$TOUCH $PARALLEL_STATUS_FILE
+	export PARALLEL_STATUS_FILE=$PARALLEL_STATUS_FILE
+	LOG_MSG "[INFO]:-Spawning parallel processes    batch [1], please wait..." 1
+	BATCH_COUNT=0
+	INST_COUNT=0
+	BATCH_DONE=1
+	BATCH_TOTAL=0
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+PARALLEL_COUNT () {
+        LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	if [ $# -ne 2 ];then ERROR_EXIT "[FATAL]:-Incorrect number of parameters passed to $FUNCNAME" 2;fi
+	BATCH_LIMIT=$1
+	BATCH_DEFAULT=$2
+	((INST_COUNT=$INST_COUNT+1))
+	((BATCH_COUNT=$BATCH_COUNT+1))
+	((BATCH_TOTAL=$BATCH_TOTAL+1))
+	if [ $BATCH_COUNT -eq $BATCH_DEFAULT ] || [ $BATCH_LIMIT -eq $BATCH_TOTAL ];then
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+		PARALLEL_WAIT
+		((BATCH_DONE=$BATCH_DONE+1))
+		BATCH_COUNT=0
+		if [ $BATCH_LIMIT -ne $BATCH_TOTAL ];then
+			LOG_MSG "[INFO]:-Spawning parallel processes    batch [$BATCH_DONE], please wait..." 1
+		fi
+	fi
+        LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+PARALLEL_WAIT () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Waiting for parallel processes batch [$BATCH_DONE], please wait..." 1
+	SLEEP_COUNT=0
+	while [ `$WC -l $PARALLEL_STATUS_FILE|$AWK '{print $1}'` -ne $INST_COUNT ]
+	do
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+		$SLEEP 1
+		((SLEEP_COUNT=$SLEEP_COUNT+1))
+		if [ $WAIT_LIMIT -lt $SLEEP_COUNT ];then
+			if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO ".\c";fi
+			LOG_MSG "[FATAL]:-Failed to process this batch of segments within $WAIT_LIMIT seconds" 1
+			LOG_MSG "[INFO]:-Review contents of $LOG_FILE" 1
+			ERROR_EXIT "[FATAL]:-Process timeout failure" 2
+		fi
+	done
+	if [ $DEBUG_LEVEL -eq 0 ];then $ECHO;fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+PARALLEL_SUMMARY_STATUS_REPORT () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"	
+	REPORT_FAIL=0
+	if [ -f $1 ];then
+	        KILLED_COUNT=`$GREP -c "KILLED:" $PARALLEL_STATUS_FILE`
+                COMPLETED_COUNT=`$GREP -c "COMPLETED:" $PARALLEL_STATUS_FILE`
+                FAILED_COUNT=`$GREP -c "FAILED:" $PARALLEL_STATUS_FILE`
+                LOG_MSG "[INFO]:------------------------------------------------" 1
+                LOG_MSG "[INFO]:-Parallel process exit status" 1
+                LOG_MSG "[INFO]:------------------------------------------------" 1
+                LOG_MSG "[INFO]:-Total processes marked as completed           = $COMPLETED_COUNT" 1
+                if [ $KILLED_COUNT -ne 0 ];then
+                LOG_MSG "[WARN]:-Total processes marked as killed              = $KILLED_COUNT $WARN_MARK" 1
+		REPORT_FAIL=1
+                else
+                LOG_MSG "[INFO]:-Total processes marked as killed              = 0" 1
+                fi
+                if [ $FAILED_COUNT -ne 0 ];then
+                LOG_MSG "[WARN]:-Total processes marked as failed              = $FAILED_COUNT $WARN_MARK" 1
+		REPORT_FAIL=1
+                else
+                LOG_MSG "[INFO]:-Total processes marked as failed              = 0" 1
+                fi
+                LOG_MSG "[INFO]:------------------------------------------------" 1
+	else
+		 LOG_MSG "[WARN]:-Could not locate status file $1" 1
+	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 #******************************************************************************
