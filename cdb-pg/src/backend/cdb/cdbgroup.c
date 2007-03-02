@@ -442,29 +442,23 @@ cdb_grouping_planner(PlannerInfo* root,
 	ctx.agg_counts = agg_counts;
 	ctx.tuple_fraction = tuple_fraction;
 	ctx.dNumGroups = dNumGroups;
+	ctx.current_pathkeys = NIL; /* Initialize to be tidy. */
 
 	/* Call appropriate planner. */
-	if ( group_type == MPP_GRP_TYPE_BASEPLAN )
+	if (group_type == MPP_GRP_TYPE_BASEPLAN)
 	{
-		if ( group_prep != MPP_GRP_PREP_NONE )
-		{
+		if (group_prep != MPP_GRP_PREP_NONE)
 			result_plan = make_one_stage_agg_plan(root, &ctx);
-		}
 		else
-		{
 			result_plan = NULL; /* allow sequential planner to do the work. */
-		}
 	}
-	else if ( group_type == MPP_GRP_TYPE_PLAIN_2STAGE || group_type == MPP_GRP_TYPE_GROUPED_2STAGE )
-	{
+	else if (group_type == MPP_GRP_TYPE_PLAIN_2STAGE || 
+			 group_type == MPP_GRP_TYPE_GROUPED_2STAGE)
 		result_plan = make_two_stage_agg_plan(root, &ctx);
-	}
 	else
-	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				errmsg("no parallel plan for aggregation")));	
-	}
 	
 	*pcurrent_pathkeys = ctx.current_pathkeys;
 	return result_plan;
@@ -502,7 +496,6 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	
 	Plan       *result_plan;
 	
-	ctx->current_pathkeys = NIL; /* Initialize to be tidy. */
 
 	/*
 	 * The argument to the "lower" Agg node will use a "flattened" tlist
@@ -757,8 +750,6 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	motion_cost_per_row = (mpp_motion_cost_per_row > 0.0) ?
 				mpp_motion_cost_per_row :
 				2.0 * cpu_tuple_cost;
-
-	ctx->current_pathkeys = NIL;
 
 	/* Create the base plan which will serve as the outer plan (argument)
 	 * of the partial Agg node.
