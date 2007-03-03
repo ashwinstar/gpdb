@@ -633,10 +633,16 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 			if (Mpp_role == MPP_ROLE_EXECUTE)
 			{
 				ParamListInfo paramInfo = econtext->ecxt_param_list_info;
-				int nx = paramInfo->numParams;
-				int ni = 
-					econtext->ecxt_estate->es_topPlan == NULL ? 0 : econtext->ecxt_estate->es_topPlan->nParamExec;
-				
+				int ni, nx = paramInfo->numParams;
+
+				/* if we're in a subquery, we may not have a valid
+				 * topPlan ptr!  and in the case of a subquery, we'll
+				 * have the correct unadjusted parameter index */
+				if (econtext->ecxt_estate->es_topPlan != NULL)
+					ni = econtext->ecxt_estate->es_topPlan->nParamExec;
+				else
+					ni = nx;
+
 				if (paramInfo && thisParamId <= ni )
 				{
 					ParamExternData *prm = &paramInfo->params[thisParamId+nx-ni];
