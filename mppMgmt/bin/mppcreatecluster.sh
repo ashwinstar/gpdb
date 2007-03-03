@@ -631,6 +631,7 @@ CREATE_QE_ARRAY () {
 		((QDDB_COUNT=$DB_COUNT-1))
 		((QDCONTENT_COUNT=$CONTENT_COUNT-1))
 		QD_PRIMARY_ARRAY=${MASTER_HOSTNAME}:${QDHOSTID_COUNT}:${QD_LISTNERID}:${MASTER_PORT}:${MASTER_DIRECTORY}/${SEG_PREFIX}${QDCONTENT_COUNT}:${QDDBID_COUNT}:${DATABASE_NAME}${QDCONTENT_COUNT}:${QDCONTENT_COUNT}
+		MAS_DIR=${MASTER_DIRECTORY}/${SEG_PREFIX}${QDCONTENT_COUNT}
 		QE_NAME_INDEX=0
 		for QE_NAME in "${MACHINE_LIST[@]}"
 		do
@@ -1139,7 +1140,7 @@ STOP_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		LOG_MSG "[INFO]:-Restarting the MPP instance in production mode" 1
 		if [ -f $MPPSTOP ]; then
-				$MPPSTOP -a -i -d $MASTER_DATA_DIRECTORY
+				$MPPSTOP -a -i -d $MAS_DIR
 				RETVAL=$?
 				case $RETVAL in
 				0 ) LOG_MSG "[INFO]:-Successfully shutdown the new MPP instance" ;;
@@ -1180,7 +1181,7 @@ CREATE_STANDBY_QD () {
 START_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [ -f $MPPSTART ]; then
-				$MPPSTART -a -d $MASTER_DATA_DIRECTORY
+				$MPPSTART -a -d $MAS_DIR
 				ERROR_CHK $? "start new MPP instance" 2
 		else
 				ERROR_EXIT "[FATAL]:-$MPPSTART not located" 2
