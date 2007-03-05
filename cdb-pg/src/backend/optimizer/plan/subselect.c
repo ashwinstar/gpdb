@@ -1117,6 +1117,7 @@ finalize_plan(Plan *plan, List *rtable,
 		case T_Hash:
 		case T_Agg:
 		case T_SeqScan:
+		case T_ExternalScan:
 		case T_Material:
 		case T_Sort:
 		case T_Unique:
