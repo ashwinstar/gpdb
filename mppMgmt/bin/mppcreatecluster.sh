@@ -856,8 +856,8 @@ CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Setting Master instance maximum connections to ${MASTER_MAX_CONNECT}"
 		ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${MASTER_MAX_CONNECT}" 0
 		ERROR_CHK $? "set max_connections=${MASTER_MAX_CONNECT} in ${MPP_DIR}/$PG_CONF" 1
-		LOG_MSG "[INFO]:-Setting Master instance shared buffers to ${MASTER_SHARED_BUFFERS}"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${MASTER_SHARED_BUFFERS}" 0
+		#LOG_MSG "[INFO]:-Setting Master instance shared buffers to ${MASTER_SHARED_BUFFERS}"
+		#ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${MASTER_SHARED_BUFFERS}" 0
 		LOG_MSG "[INFO]:-Setting Master instance check point segments"
 		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" "checkpoint_segments=$CHECK_POINT_SEGMENTS" 0
 		ERROR_CHK $? "set checkpoint_segments=$CHECK_POINT_SEGMENTS in ${MPP_DIR}/$PG_CONF" 1
@@ -905,8 +905,8 @@ CREATE_QD_DB () {
 				LOG_MSG "[INFO]:-Changing buffers value from $MASTER_SHARED_BUFFERS to $CORRECT_BUFFERS"
 				MASTER_SHARED_BUFFERS=$CORRECT_BUFFERS
 				QE_SHARED_BUFFERS=$CORRECT_BUFFERS
-				LOG_MSG "[INFO]:-Re-setting Master instance shared buffers to ${MASTER_SHARED_BUFFERS}"
-				ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${MASTER_SHARED_BUFFERS}" 0
+				#LOG_MSG "[INFO]:-Re-setting Master instance shared buffers to ${MASTER_SHARED_BUFFERS}"
+				#ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${MASTER_SHARED_BUFFERS}" 0
 			fi
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -1090,8 +1090,8 @@ PROCESS_QE () {
                 ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${QE_MAX_CONNECT}" 0 $MPP_HOSTNAME
                 ERROR_CHK $? "set max_connections=${QE_MAX_CONNECT} in ${MPP_DIR}/$PG_CONF" 1
                 LOG_MSG "[INFO]:-Setting Segment shared buffers to ${QE_SHARED_BUFFERS}"
-                ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${QE_SHARED_BUFFERS}" 0 $MPP_HOSTNAME
-                ERROR_CHK $? "set shared_buffers=${QE_SHARED_BUFFERS} in ${MPP_DIR}/$PG_CONF" 1
+                #ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${QE_SHARED_BUFFERS}" 0 $MPP_HOSTNAME
+                #ERROR_CHK $? "set shared_buffers=${QE_SHARED_BUFFERS} in ${MPP_DIR}/$PG_CONF" 1
 		if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
 			LOG_MSG "[INFO]:-Processing additional configuration parameters"
 			for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
