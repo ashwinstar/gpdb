@@ -917,20 +917,17 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 				 * fullsort 
 				 */
 
-                if (!state->memtupLIMIT)
+                /*
+                 * don't bother if mppsortflags set to "always on"
+                 */
+                if ((state->mppsortflags > 1)
+                &&  (state->alltupcount >= state->mppsortflags))
                 {
-                    /*
-                     * don't bother if mppsortflags set to "always on"
-                     */
-                    if ((state->mppsortflags > 1)
-                    &&  (state->alltupcount >= state->mppsortflags))
+                    int64 discard_ratio =
+                        (state->discardcount * 100)/state->alltupcount;
+                    if (discard_ratio < 50)
                     {
-                        int64 discard_ratio =
-                            (state->discardcount * 100)/state->alltupcount;
-                        if (discard_ratio < 50)
-                        {
-                            state->standardsort = true;
-                        }
+                         state->standardsort = true;
                     }
                 }
 			}
