@@ -1032,6 +1032,14 @@ typedef struct ScanState
 	Relation	ss_currentRelation;
 	HeapScanDesc ss_currentScanDesc;
 	TupleTableSlot *ss_ScanTupleSlot;
+	/* CKTAN */
+	struct {
+		HeapTupleData item[512];
+		int bot, top;
+		HeapTuple last;
+		int seen_EOS;
+	} ss_heapTupleData;
+	
 } ScanState;
 
 /*
