@@ -90,7 +90,27 @@ SeqNext(SeqScanState *node)
 	/*
 	 * get the next tuple from the access methods
 	 */
-	tuple = heap_getnext(scandesc, direction);
+	/* CKTAN- */
+	if (node->ss_heapTupleData.bot == node->ss_heapTupleData.top 
+		&& !node->ss_heapTupleData.seen_EOS)
+	{
+		node->ss_heapTupleData.last = NULL;
+		node->ss_heapTupleData.bot = 0;
+		node->ss_heapTupleData.top = lengthof(node->ss_heapTupleData.item);
+		heap_getnextx(scandesc, direction, node->ss_heapTupleData.item,
+					  &node->ss_heapTupleData.top, 
+					  &node->ss_heapTupleData.seen_EOS);
+	}
+	if (node->ss_heapTupleData.bot < node->ss_heapTupleData.top)
+	{
+		node->ss_heapTupleData.last = &node->ss_heapTupleData.item[node->ss_heapTupleData.bot++];
+		if (node->ss_heapTupleData.bot >= lengthof(node->ss_heapTupleData.item))
+			node->ss_heapTupleData.bot = 0;
+	}
+	else {
+		node->ss_heapTupleData.last = 0;
+	}
+	tuple = node->ss_heapTupleData.last;
 
 	/*
 	 * save the tuple and the buffer returned to us by the access methods in
@@ -158,6 +178,10 @@ InitScanRelation(SeqScanState *node, EState *estate)
 
 	node->ss_currentRelation = currentRelation;
 	node->ss_currentScanDesc = currentScanDesc;
+	/* CKTAN- */
+	node->ss_heapTupleData.bot = node->ss_heapTupleData.top 
+		= node->ss_heapTupleData.seen_EOS = 0;
+	node->ss_heapTupleData.last = NULL;
 
 	ExecAssignScanType(node, RelationGetDescr(currentRelation));
 }
@@ -266,6 +290,10 @@ ExecEndSeqScan(SeqScanState *node)
 	 * close heap scan
 	 */
 	heap_endscan(scanDesc);
+	/* CKTAN */
+	node->ss_heapTupleData.bot = node->ss_heapTupleData.top = 0;
+	node->ss_heapTupleData.seen_EOS = 1;
+	node->ss_heapTupleData.last = NULL;
 
 	/*
 	 * close the heap relation.
@@ -308,6 +336,10 @@ ExecSeqReScan(SeqScanState *node, ExprContext *exprCtxt)
 
 	heap_rescan(scan,			/* scan desc */
 				NULL);			/* new scan keys */
+	/* CKTAN */
+	node->ss_heapTupleData.bot = node->ss_heapTupleData.top 
+		= node->ss_heapTupleData.seen_EOS = 0;
+	node->ss_heapTupleData.last = NULL;
 }
 
 /* ----------------------------------------------------------------
@@ -321,7 +353,10 @@ ExecSeqMarkPos(SeqScanState *node)
 {
 	HeapScanDesc scan = node->ss_currentScanDesc;
 
+	/* CKTAN
 	heap_markpos(scan);
+	*/
+	heap_markposx(scan, node->ss_heapTupleData.last);
 }
 
 /* ----------------------------------------------------------------
