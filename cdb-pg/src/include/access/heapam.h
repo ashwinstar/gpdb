@@ -144,6 +144,9 @@ extern HeapScanDesc heap_beginscan(Relation relation, Snapshot snapshot,
 extern void heap_rescan(HeapScanDesc scan, ScanKey key);
 extern void heap_endscan(HeapScanDesc scan);
 extern HeapTuple heap_getnext(HeapScanDesc scan, ScanDirection direction);
+extern void heap_getnextx(HeapScanDesc scan, ScanDirection direction,
+			  HeapTupleData tdata[], int *tdatacnt,
+			  int *seen_EOS);
 
 extern bool heap_fetch(Relation relation, Snapshot snapshot,
 		   HeapTuple tuple, Buffer *userbuf, bool keep_buf,
@@ -179,6 +182,7 @@ extern void simple_heap_update(Relation relation, ItemPointer otid,
 				   HeapTuple tup);
 
 extern void heap_markpos(HeapScanDesc scan);
+extern void heap_markposx(HeapScanDesc scan, HeapTuple tuple);
 extern void heap_restrpos(HeapScanDesc scan);
 
 extern void heap_redo(XLogRecPtr lsn, XLogRecord *rptr);
