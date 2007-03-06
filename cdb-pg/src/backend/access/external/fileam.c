@@ -36,6 +36,7 @@
 #include "pgstat.h"
 #include "utils/relcache.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "commands/copy.h"
@@ -233,6 +234,11 @@ file_endscan(FileScanDesc scan)
 	if (scan->typioparams)
 		pfree(scan->typioparams);
 
+    /*
+     * delete the row context
+     */
+    MemoryContextDelete(scan->fs_pstate->rowcontext);
+    
 	/*
 	 * free parse state memory
 	 */
@@ -240,8 +246,8 @@ file_endscan(FileScanDesc scan)
 	pfree(scan->fs_pstate->line_buf.data);
 	pfree(scan->fs_pstate->attr_offsets);
 	pfree(scan->fs_pstate);
-
-	/*
+	
+    /*
 	 * clean up error context
 	 */
 	error_context_stack = scan->errcontext.previous;
@@ -313,6 +319,8 @@ filegettup(FileScanDesc scan,
 	bool		isnull;
 	ListCell   *cur;
 	CopyState	pstate = scan->fs_pstate;
+    MemoryContext oldcontext;
+    
 
 	Assert(ScanDirectionIsForward(dir));
 
@@ -370,6 +378,8 @@ filegettup(FileScanDesc scan,
 				else
 					CopyReadAttributesText(pstate, scan->nulls, pstate->attr_offsets, scan->num_phys_attrs, scan->attr);
 
+                oldcontext = MemoryContextSwitchTo(pstate->rowcontext);
+
 				/*
 				 * Loop to read the user attributes on the line.
 				 */
@@ -399,6 +409,8 @@ filegettup(FileScanDesc scan,
 					}
 				}
 
+                MemoryContextSwitchTo(oldcontext);
+
 				/* we can reset line buffer now. */
 				pstate->line_buf.len = 0;
 				pstate->line_buf.data[0] = '\0';
@@ -407,6 +419,7 @@ filegettup(FileScanDesc scan,
 				/* convert to heap tuple */
 				tuple = heap_formtuple(scan->fs_tupDesc, scan->values, scan->nulls);
 
+                MemoryContextReset(pstate->rowcontext);
 
 				/*
 				 * We ignore anything that has to do with tuple visibility and
@@ -648,6 +661,19 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
 
 	/* Generate or convert list of attributes to process */
 	pstate->attnumlist = CopyGetAttnums(tupDesc, relation, NIL);
+    
+    /*
+	 * Create a temporary memory context that we can reset once per row to
+	 * recover palloc'd memory.  This avoids any problems with leaks inside
+	 * datatype input routines, and should be faster than retail pfree's
+	 * anyway.
+	 */
+	pstate->rowcontext = AllocSetContextCreate(CurrentMemoryContext,
+											   "ExternalScanMemCtxt",
+											   ALLOCSET_DEFAULT_MINSIZE,
+											   ALLOCSET_DEFAULT_INITSIZE,
+											   ALLOCSET_DEFAULT_MAXSIZE);
+    
 
 }
 
