@@ -101,15 +101,10 @@ SeqNext(SeqScanState *node)
 					  &node->ss_heapTupleData.top, 
 					  &node->ss_heapTupleData.seen_EOS);
 	}
-	if (node->ss_heapTupleData.bot < node->ss_heapTupleData.top)
-	{
-		node->ss_heapTupleData.last = &node->ss_heapTupleData.item[node->ss_heapTupleData.bot++];
-		if (node->ss_heapTupleData.bot >= lengthof(node->ss_heapTupleData.item))
-			node->ss_heapTupleData.bot = 0;
-	}
-	else {
-		node->ss_heapTupleData.last = 0;
-	}
+	node->ss_heapTupleData.last = 
+		((node->ss_heapTupleData.bot < node->ss_heapTupleData.top) 
+		 ? &node->ss_heapTupleData.item[node->ss_heapTupleData.bot++]
+		 : 0);
 	tuple = node->ss_heapTupleData.last;
 
 	/*
