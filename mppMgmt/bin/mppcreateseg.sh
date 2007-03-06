@@ -92,7 +92,7 @@ SET_VAR () {
 
 PARA_EXIT () {
 	if [ $1 -ne 0 ];then
-		$ECHO "FAILED|$SEGMENT_LINE" >> $PARALLEL_STATUS_FILE
+		$ECHO "FAILED:$SEGMENT_LINE" >> $PARALLEL_STATUS_FILE
 		LOG_MSG "[FATAL][$INST_COUNT]:-Failed $2"
 		exit 2
 	else
@@ -107,7 +107,7 @@ PROCESS_QE () {
 		RETVAL=$?
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
-		PARA_EXIT $RETVAL "Failed to start segment instance database $MPP_HOSTNAME $MPP_DIR"
+		PARA_EXIT $RETVAL "to start segment instance database $MPP_HOSTNAME $MPP_DIR"
 		LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_CONF"
 		$TRUSTED_SHELL ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
 		RETVAL=$?
@@ -165,8 +165,8 @@ PROCESS_QE () {
 			BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
 			BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 			$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
-			$ECHO "FAILED|$SEGMENT_LINE" >> $PARALLEL_STATUS_FILE
-			LOG_MSG "[FATAL][$INST_COUNT]:-Failed to start segment Mirror instance database"
+			$ECHO "FAILED:$SEGMENT_LINE" >> $PARALLEL_STATUS_FILE
+			LOG_MSG "[FATAL][$INST_COUNT]:-to start segment Mirror instance database"
 			exit 2
 		fi	
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
