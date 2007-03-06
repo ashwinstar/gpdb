@@ -81,6 +81,13 @@
 #include <netdb.h>
 #include <limits.h>
 
+/* headers required for process affinity bindings */
+#if defined(pg_on_solaris)
+#include <sys/types.h>
+#include <sys/processor.h>
+#include <sys/procset.h>
+#endif
+
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
 #endif
@@ -285,6 +292,8 @@ static void SignalChildren(int signal);
 static int	CountChildren(void);
 static bool CreateOptsFile(int argc, char *argv[], char *fullprogname);
 static pid_t StartChildProcess(int xlop);
+
+static void setProcAffinity(int id);
 
 #ifdef EXEC_BACKEND
 
@@ -650,6 +659,18 @@ PostmasterMain(int argc, char *argv[])
 	 */
 	if (!SelectConfigFiles(userDoption, progname))
 		ExitPostmaster(2);
+
+	/*
+	 * CDB/MPP/GPDB: Set the processor affinity (may be a no-op on
+	 * some platforms). The port number is nice to use because we know
+	 * that different segments on a single host will not have the same
+	 * port numbers.
+	 *
+	 * We want to do this as early as we can -- so that the OS knows
+	 * about our binding, and all of our child processes will inherit
+	 * the same binding.
+ 	 */
+	setProcAffinity(PostPortNumber);
 
 	/* Verify that DataDir looks reasonable */
 	checkDataDir();
@@ -4383,3 +4404,49 @@ win32_sigchld_waiter(LPVOID param)
 }
 
 #endif   /* WIN32 */
+
+
+#if defined(pg_on_solaris)
+static void
+setProcAffinity(int id)
+{
+	int i, r;
+	processor_info_t info;
+	int cpu_count=0;
+	int cpus[64];
+
+	int proc_to_bind;
+
+	memset(cpus, 0, sizeof(cpus));
+
+	/* first we figure out how many processors we're dealing with (up
+	 * to 64). Note: we can't just assume that when we see the first
+	 * failure that we're done -- The Solaris documentation claims
+	 * that there can be "gaps." */
+	for (i=0; i < 64; i++)
+	{
+		r = processor_info(i, &info);
+		if (r == 0)
+		{
+			cpu_count++;
+			cpus[cpu_count - 1] = i;
+		}
+	}
+
+	/* now we use the id our caller provided to pick a processor. */
+	proc_to_bind = cpus[id % cpu_count];
+
+	r = processor_bind(P_PID, P_MYID, proc_to_bind, NULL);
+	/* ignore an error -- we'll just stay with out old (default
+	 * binding) */
+
+	return;
+}
+
+#else
+static void
+setProcAffinity(int id)
+{
+	return;
+}
+#endif
