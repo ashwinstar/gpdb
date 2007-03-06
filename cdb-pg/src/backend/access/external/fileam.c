@@ -37,6 +37,7 @@
 #include "utils/relcache.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/uri.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "commands/copy.h"
@@ -421,7 +422,7 @@ filegettup(FileScanDesc scan,
 
                 MemoryContextReset(pstate->rowcontext);
 
-				/*
+                /*
 				 * We ignore anything that has to do with tuple visibility and
 				 * snapshot. Each external tuple will always have one version.
 				 */
@@ -685,8 +686,29 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
 static void
 open_external_file(FileScanDesc scan)
 {
-	scan->fs_file = (FILE*) url_fopen(scan->fs_uri, PG_BINARY_R);
+    Uri *uri;
+    
+    /*
+     * Open the url with url_open().
+     *
+     * If this happens to be a local file we pass only the path
+     * and name of the file and not the complete url ("file://...").
+     * We *could* actually pass the complete url but then the file
+     * will be treated with more complexity and the external scan
+     * will be much slower. By passing the path+filename only we
+     * let url_fopen use fopen() successfully and declare this url
+     * as CFTYPE_FILE instead of CFTYPE_CURL, which makes data 
+     * processing much faster.
+     */
+    uri = ParseUriString(scan->fs_uri);
+    if(uri->protocol != URI_FILE)
+        
+        scan->fs_file = (FILE*) url_fopen(scan->fs_uri, PG_BINARY_R);
+    else
+        scan->fs_file = (FILE*) url_fopen(uri->path, PG_BINARY_R);
 
+    pfree(uri);
+    
 	if (scan->fs_file == NULL)
 		ereport(ERROR,
 				(errcode_for_file_access(),
