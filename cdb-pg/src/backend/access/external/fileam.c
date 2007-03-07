@@ -687,6 +687,7 @@ static void
 open_external_file(FileScanDesc scan)
 {
     Uri *uri;
+    char *filename = NULL;
     
     /*
      * Open the url with url_open().
@@ -701,11 +702,10 @@ open_external_file(FileScanDesc scan)
      * processing much faster.
      */
     uri = ParseUriString(scan->fs_uri);
-    if(uri->protocol != URI_FILE)
+    if(uri->protocol == URI_FILE)
+        filename = uri->path;
         
-        scan->fs_file = (FILE*) url_fopen(scan->fs_uri, PG_BINARY_R);
-    else
-        scan->fs_file = (FILE*) url_fopen(uri->path, PG_BINARY_R);
+    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, filename, PG_BINARY_R);
 
     pfree(uri);
     
