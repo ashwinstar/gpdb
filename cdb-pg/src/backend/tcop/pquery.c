@@ -37,7 +37,7 @@ Portal		ActivePortal = NULL;
 
 static void ProcessQuery(Query *parsetree,
 			 Plan *plan,
-			 ParamListInfo params,
+             ParamListInfo params,
 			 DestReceiver *dest,
 			 char *completionTag);
 static void FillPortalStore(Portal portal);
@@ -114,6 +114,7 @@ FreeQueryDesc(QueryDesc *qdesc)
  *		Execute a single plannable query within a PORTAL_MULTI_QUERY
  *		or PORTAL_ONE_RETURNING portal
  *
+ *  portal: the portal
  *	parsetree: the query tree
  *	plan: the plan tree for the query
  *	params: any parameters needed
@@ -129,7 +130,7 @@ FreeQueryDesc(QueryDesc *qdesc)
 static void
 ProcessQuery(Query *parsetree,
 			 Plan *plan,
-			 ParamListInfo params,
+             ParamListInfo params,
 			 DestReceiver *dest,
 			 char *completionTag)
 {
@@ -364,7 +365,9 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 	AssertState(portal->queryContext != NULL);	/* query defined? */
 	AssertState(portal->status == PORTAL_NEW);	/* else extra PortalStart */
 
-	/*
+    portal->releaseResLock = false;
+    
+    /*
 	 * Set up global portal context pointers.  (Should we set QueryContext?)
 	 */
 	saveActivePortal = ActivePortal;
@@ -425,6 +428,13 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 					queryDesc->cursor_query = true;
 					queryDesc->portal_name = (portal->name ? pstrdup(portal->name) : (char *) NULL);
 				}
+
+	            /*
+	             * If resource scheduling is enabled, lock the portal here.
+	             * Skip this if we are superuser!
+	             */
+	            if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler && !superuser())
+		            portal->releaseResLock = ResLockPortal(portal, queryDesc->plantree);
 
 				/*
 				 * We do *not* call AfterTriggerBeginQuery() here.	We assume
@@ -608,7 +618,6 @@ PortalRun(Portal portal, long count,
 		  char *completionTag)
 {
 	bool		result;
-	bool		releaseResourceLock = false;
 	ResourceOwner saveTopTransactionResourceOwner;
 	MemoryContext saveTopTransactionContext;
 	Portal		saveActivePortal;
@@ -640,36 +649,6 @@ PortalRun(Portal portal, long count,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("portal \"%s\" cannot be run", portal->name)));
 	portal->status = PORTAL_ACTIVE;
-
-	/*
-	 * If resource scheduling is enabled, lock the portal here.
-	 * Skip this if we are superuser!
-	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler && !superuser())
-	{
-		/* If we throw an error inside ResLockPortal -- we have to
-		 * clean up after ourselves, this portal may have dispatched
-		 * to the QEs already! */
-		PG_TRY();
-		{
-			releaseResourceLock = ResLockPortal(portal);
-		}
-		PG_CATCH();
-		{
-			QueryDesc  *queryDesc;
-
-			queryDesc = PortalGetQueryDesc(portal);
-
-			if (queryDesc)
-			{
-				mppExecutorCleanup(queryDesc->estate);
-				ReleaseGangs(queryDesc);
-			}
-
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
-	}
 
 	/*
 	 * Set up global portal context pointers.
@@ -791,13 +770,12 @@ PortalRun(Portal portal, long count,
 
 	/*
 	 * If resource scheduling is enabled, release the resource lock here.
-	 * Skip if we are superuser!
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler && !superuser())
-	{
-		if (releaseResourceLock)
-			ResUnLockPortal(portal);
-	}
+	if (portal->releaseResLock)
+    {
+        portal->releaseResLock = false;
+        ResUnLockPortal(portal);
+    }
 
 	if (saveMemoryContext == saveTopTransactionContext)
 		MemoryContextSwitchTo(TopTransactionContext);

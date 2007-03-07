@@ -15,8 +15,10 @@
 #ifndef RESSCHEDULER_H
 #define RESSCHEDULER_H
 
+#include "nodes/plannodes.h"
 #include "storage/lock.h"
 #include "tcop/dest.h"
+#include "utils/resowner.h"
 #include "utils/resowner.h"
 
 /*
@@ -178,7 +180,7 @@ extern ResAlterQueueResult ResAlterQueue(Oid queueid,
 						   Cost limits[NUM_RES_LIMIT_TYPES], 
 						  bool overcommit);
 extern bool ResDestroyQueue(Oid queueid);
-extern bool ResLockPortal(Portal portal);
+extern bool ResLockPortal(Portal portal, Plan *plan);
 extern void ResUnLockPortal(Portal portal);
 extern void ResCheckPortalType(Portal portal);
 extern Oid	GetResQueueForRole(Oid roleid);

@@ -487,18 +487,10 @@ ResDestroyQueue(Oid queueid)
  * Returns:
  *	true if the lock has been taken
  *	false if the lock has been skipped.
- *
- * Bugs:
- *	server side cursors are not handled well (need to push down the taking of 
- *	the lock for that case).
  */
 bool
-ResLockPortal(Portal portal)
+ResLockPortal(Portal portal, Plan *plan)
 {
-
-	Cost		cost = 0;
-	ListCell	*planlist_item;	
-	Plan		*plan;
 	bool		returnReleaseOk = false;	/* Release resource lock? */
 	bool		takeLock;					/* Take resource lock? */
 	LOCKTAG		tag;
@@ -541,33 +533,13 @@ ResLockPortal(Portal portal)
 
 			case T_SelectStmt:
 			{
-		
-				/*
-				 * Get the cost from the first element with a plan - the queries
-				 * added by various rules have the complete cost charged to them
-				 * (TODO Check this formally).
-				 */
-				foreach(planlist_item, portal->planTrees)
-				{
-					plan = (Plan *) lfirst(planlist_item);
-			
-	
-					if (plan)
-					{
-						cost += plan->total_cost;
-						break;
-					}
-	
-				}
-	
-	
 				/*
 				 * Setup the resource portal increments, ready to be added.
 				 */
 				incData.pid = MyProc->pid;
 				incData.portalId = portal->portalId;
 				incData.increments[RES_COUNT_LIMIT] = 1;
-				incData.increments[RES_COST_LIMIT] =  cost;
+				incData.increments[RES_COST_LIMIT] = plan->total_cost;
 	
 				takeLock = true;
 				returnReleaseOk = true;
@@ -580,42 +552,13 @@ ResLockPortal(Portal portal)
 			 */
 			case T_DeclareCursorStmt:
 			{
-	
-				DeclareCursorStmt	*stmt = (DeclareCursorStmt *)((Query *)linitial(portal->parseTrees))->utilityStmt;
-				Query		*query;
-				List		*rewritten;
-	
 				/*
-				 * We plan the query here, this is wasteful, as it will get 
-				 * done again during ProcessUtility, but we need the plan now!
-				 * (TODO push taking the lock down further for this case).
-				 */
-				query = copyObject(stmt->query);
-	
-				AcquireRewriteLocks(query);
-				rewritten = QueryRewrite(query);
-				query = (Query *) linitial(rewritten);
-				plan = planner(query, true, stmt->options, NULL);
-	
-				cost = plan->total_cost;
-	
-	
-				/*
-				 * Update this unnamed portal with the (yet to be created) 
-				 * cursor portal's id (we *know* that the cursor's portal is 
-				 * created immediately after this, so we just give it the next 
-				 * possible portal id). (TODO verify)
-				 */
-				portal->portalId = ResCreatePortalId("dummy", false);
-	
-	
-				/*
-				 * Setup the resource increments and add them.
+				 * Setup the resource portal increments, ready to be added.
 				 */
 				incData.pid = MyProc->pid;
 				incData.portalId = portal->portalId;
 				incData.increments[RES_COUNT_LIMIT] = 1;
-				incData.increments[RES_COST_LIMIT] = cost;
+				incData.increments[RES_COST_LIMIT] = plan->total_cost;
 	
 	
 				takeLock = true;
@@ -629,34 +572,6 @@ ResLockPortal(Portal portal)
 			 */
 			case T_ClosePortalStmt:
 			{
-	 			Query		*query;
-	 			ClosePortalStmt	*stmt;
-	 			Portal		cursorPortal;
-	 
-	 
-	 			/* Find the named portal for this cursor. */
-	 			query = (Query *)(linitial(portal->parseTrees));
-	 			stmt = (ClosePortalStmt *) (query->utilityStmt);
-	 
-	 			cursorPortal = GetPortalByName(stmt->portalname);
-	 			if (!PortalIsValid(cursorPortal))
-	 			{
-	 				ereport(ERROR,
-	 						(errcode(ERRCODE_UNDEFINED_CURSOR),
-	 						 errmsg("cursor \"%s\" does not exist", 
-	 								stmt->portalname)));
-	 			}       
-	 
-	 
-	 			/* 
-				 * Update this unnamed portal with the cursor portal's id
-				 * and queue id, so we can find the cursor's increments 
-				 * and subtract then off the various limit counters for the
-				 * correct queue.
-				 */
-	 			portal->portalId = cursorPortal->portalId;
-				portal->queueId = cursorPortal->queueId;
-	
 				takeLock = false;
 				returnReleaseOk = true;
 			}

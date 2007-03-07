@@ -155,6 +155,7 @@ typedef struct PortalData
 
 	/* Status data */
 	PortalStatus status;		/* see above */
+	bool	releaseResLock;	/* true => resscheduler lock must be released */
 
 	/* If not NULL, Executor is active; call ExecutorEnd eventually: */
 	QueryDesc  *queryDesc;		/* info needed for executor invocation */
