@@ -1,33 +1,35 @@
 #!/usr/bin/env python
 """
-checkPerf -- Check the hardware for MPP software
+cperf -- Check the hardware for Greenplum Database
 
-Usage: checkPerf <options> hostfile 
+Usage: cperf <options>
 
-    -d <segdir>   where segdir is a directory on which to test I/O performance. 
-    		  Multiple -d flags may be specified for multiple directories
-		  on each host. These will typically be your Greenplum primary
-		  (and/or mirror) data directories. 
-                  e.g. -d /dbfast1 -d /dbfast2
-    [-?]          print this help text
-    [-v]          enable verbose
-    [-V]	  enable very verbose
-    [-D]	  print per host disk stats on disk read/write tests
-    [-r <flags>]  where flags specifies the tests to run [default=ds]. 
-                  Supported test flags are:
-                     d: runs only disk tests
-                     s: runs only stream benchmark
-    [-B <size>]   where size specifies the block size for disk performance tests
-                  [default=8KB] e.g. 1KB, 4MB
-    [-S <size>]   where size specifies the file size for disk performance tests
-    	 	  [default=2X Memory] e.g. 500MB, 16GB
-    [-p <port>]   where port is the ssh port number [default=22]
+    -d segdir  : where segdir is a directory on which to test I/O performance. 
+                 Multiple -d flags may be specified for multiple directories
+                 on each host. These will typically be your Greenplum primary
+                 (and/or mirror) data directories. 
+                 e.g. -d /dbfast1 -d /dbfast2
+    -?         : print this help text
+    -v         : enable verbose
+    -V         : enable very verbose
+    -D         : print per host disk stats on disk read/write tests
+    -r flags   : where flags specifies the tests to run [default=ds]. 
+                 Supported test flags are:
+                       d: runs only disk tests
+                       s: runs only stream benchmark
+    -B size    : where size specifies the block size for disk performance tests
+                 [default=8KB] e.g. 1KB, 4MB
+    -S size    : where size specifies the file size for disk performance tests
+                 [default=2X Memory] e.g. 500MB, 16GB
+    -p port    : where port is the ssh port number [default=22]
+    -h host    : the host to connect to (multiple -h is okay)
+    -f file    : a file listing all hosts to connect to
 
 """
 import os, sys, getopt, math, StringIO, stat
 
 if sys.version_info < (2, 3):
-    sys.exit("Error: groupSession is supported on Python versions 2.3 or greater\n"
+    sys.exit("Error: cperf is supported on Python versions 2.3 or greater\n"
 	     + "Please upgrade python installed on this machine.")
 
 def usage(exitarg):
@@ -43,9 +45,24 @@ opt['-r'] = 'ds'
 opt['-B'] = 1024 * 8
 opt['-S'] = 0
 opt['-p'] = 22
-hostfile = ''
-GPSSH = ''
-GPSCP = ''
+opt['-h'] = []
+opt['-f'] = False
+
+def gpssh(cmd):
+    s = 'gpssh '
+    if (opt['-f']):
+	s = s + ' -f ' + opt['-f']
+    else:
+	for h in opt['-h']: s = s + ' -h ' + h
+    return s + ' ' + cmd
+
+def gpscp(cmd):
+    s = 'gpscp '
+    if (opt['-f']):
+	s = s + ' -f ' + opt['-f']
+    else:
+	for h in opt['-h']: s = s + ' -h ' + h
+    return s + ' ' + cmd
 
 
 ################
@@ -68,17 +85,17 @@ def parseInt(val):
 
 #############
 def parseCommandLine():
-    global opt, hostfile, GPSSH, GPSCP
+    global opt
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?vVDd:r:B:S:p:')
+	(options, args) = getopt.getopt(sys.argv[1:], '?vVDd:r:B:S:p:h:f:')
     except Exception, e:
 	usage('Error: ' + str(e))
 
     for (switch, val) in options:
 	if (switch == '-?'): usage(0)
 	elif (switch[1] in 'vVD'): opt[switch] = True
-	elif (switch == '-d'): opt[switch].append(val)
-	elif (switch == '-r'): opt[switch] = val
+	elif (switch[1] in 'dh'): opt[switch].append(val)
+	elif (switch[1] in 'rf'): opt[switch] = val
 	elif (switch == '-p'): opt[switch] = parseInt(val)
 	elif (switch[1] in 'BS'): opt[switch] = parseMemorySize(val)
 
@@ -91,12 +108,11 @@ def parseCommandLine():
     if not (0 <= opt['-B'] and 0 <= opt['-S']):
 	usage('Error: please enter valid memory sizes for -B or -S switches')
 
-    if (len(args) < 1):	usage('Error: please specify hostfile')
+    hf = (len(opt['-h']) and 1) + (opt['-f'] and 1)
+    if hf != 1:
+	usage('Error: please specify at least one of -h or -f args, but not both')
 
-    hostfile = args[0]
     if opt['-V']: opt['-v'] = True
-    GPSSH = 'gpssh -p %d -f %s ' % (opt['-p'], hostfile)
-    GPSCP = 'gpscp -p %d -f %s ' % (opt['-p'], hostfile)
 
     # strip the last '/' from the dir
     dd = []
@@ -126,7 +142,7 @@ def run(cmd):
 
     if out and out.find('Permission denied') >= 0 and out.find('publickey') >= 0 : 
 	if not opt['-v']: print out
-	print 'Please use groupSession to exchange keys ...'
+	print 'Please use gpssh-exkeys to exchange keys ...'
 	sys.exit(1)
 
     return (ok, out)
@@ -141,9 +157,9 @@ def runTeardown():
 	print '  TEARDOWN'
 	print '--------------------'
     dirs = ''
-    for d in opt['-d']: dirs = '%s %s/checkPerf' % (dirs, d)
+    for d in opt['-d']: dirs = '%s %s/cperf' % (dirs, d)
     try:
-	cmd = GPSSH + 'rm -rf ' + dirs
+	cmd = gpssh('rm -rf ' + dirs)
 	(ok, out) = run(cmd)
     except:
 	pass
@@ -159,21 +175,21 @@ def runSetup():
     try:
 	#check python reachable
 	if opt['-v']: print '[Info] verify python interpreter exists'
-	cmd = GPSSH + 'python -c print'
+	cmd = gpssh('python -c print')
 	(ok, out) = run(cmd)
 	if not ok:
 	    if not opt['-v']: print out
 	    sys.exit("[Error] unable to find python interpreter on some hosts\n"
 		     +"        verify PATH variables on the hosts")
 
-	#mkdir checkPerf
-	if opt['-v']: print '[Info] making checkPerf directory on all hosts ... '
+	#mkdir cperf
+	if opt['-v']: print '[Info] making cperf directory on all hosts ... '
 	dirs = ''
-	for d in opt['-d']: dirs = '%s %s/checkPerf' % (dirs, d)
-	cmd = GPSSH + ('"(rm -rf %s && mkdir -p %s)"' % (dirs, dirs))
+	for d in opt['-d']: dirs = '%s %s/cperf' % (dirs, d)
+	cmd = gpssh('"(rm -rf %s && mkdir -p %s)"' % (dirs, dirs))
 	(ok, out) = run(cmd)
 	if not ok: 
-	    sys.exit("[Error] unable to make checkPerf directory. \n"
+	    sys.exit("[Error] unable to make cperf directory. \n"
 		   + "        command failed: " + cmd)
 
     except:
@@ -185,7 +201,7 @@ def copyExecOver(fname):
 
     #copy to this dir
     d = opt['-d'][0]
-    target = '%s/checkPerf/%s' % (d, fname)
+    target = '%s/cperf/%s' % (d, fname)
     path = '%s/lib/%s' % (sys.path[0], fname)
 
     if opt['-v']: print '[Info] copy local %s to remote %s' % (path, target)
@@ -195,12 +211,12 @@ def copyExecOver(fname):
     if not stat.S_ISREG(pathStat.st_mode): sys.exit('[Error] invalid file ' + path)
     if not pathStat.st_mode & os.X_OK: sys.exit('[Exit] file not executable: ' + path)
 
-    cmd = GPSCP + ('%s %s' % (path, target))
+    cmd = gpscp('%s %s' % (path, target))
     (ok, out) = run(cmd)
     if not ok: sys.exit('[Error] command failed: ' + cmd)
     
     #chmod +x file
-    cmd = GPSSH + ('chmod +x %s' % target)
+    cmd = gpssh('chmod +x %s' % target)
     (ok, out) = run(cmd)
     if not ok: sys.exit('[Error] command failed: ' + cmd)
     
@@ -246,10 +262,10 @@ def runDiskWriteTest(multidd):
     
     cmd = 'time -p ' + multidd
     for d in opt['-d']:
-	cmd = cmd + (' -i /dev/zero -o %s/checkPerf/ddfile' % d)
+	cmd = cmd + (' -i /dev/zero -o %s/cperf/ddfile' % d)
     if opt['-B']: cmd = cmd + (' -B %d' % opt['-B'])
     if opt['-S']: cmd = cmd + (' -S %d' % opt['-S'])
-    cmd = GPSSH + cmd
+    cmd = gpssh(cmd)
     (ok, out) = run(cmd)
     if not ok:
 	sys.exit('[Error] command failed: ' + cmd)
@@ -265,10 +281,10 @@ def runDiskReadTest(multidd):
 
     cmd = 'time -p ' + multidd
     for d in opt['-d']:
-	cmd = cmd + (' -o /dev/null -i %s/checkPerf/ddfile' % d)
+	cmd = cmd + (' -o /dev/null -i %s/cperf/ddfile' % d)
     if opt['-B']: cmd = cmd + (' -B %d' % opt['-B'])
     if opt['-S']: cmd = cmd + (' -S %d' % opt['-S'])
-    cmd = GPSSH + cmd
+    cmd = gpssh(cmd)
     (ok, out) = run(cmd)
     if not ok:
 	sys.exit('[Error] command failed: ' + cmd)
@@ -283,7 +299,7 @@ def runStreamTest():
 	print '--------------------'
 
     rmtPath = copyExecOver('stream')
-    cmd = GPSSH + rmtPath
+    cmd = gpssh(rmtPath)
     (ok, out) = run(cmd)
     if not ok: sys.exit('[Error] command failed: ' + cmd)
     out = StringIO.StringIO(out)
