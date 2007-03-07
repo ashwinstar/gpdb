@@ -39,7 +39,7 @@ where <replaceable class="PARAMETER">option</replaceable> can be:
     | ADMIN <replaceable class="PARAMETER">rolename</replaceable> [, ...]
     | USER <replaceable class="PARAMETER">rolename</replaceable> [, ...]
     | SYSID <replaceable class="PARAMETER">uid</replaceable> 
-	| RESOURCE QUEUE <replaceable class="PARAMETER">queuename</replaceable>
+    | RESOURCE QUEUE <replaceable class="PARAMETER">queuename</replaceable>
 </synopsis>
  </refsynopsisdiv>
 
