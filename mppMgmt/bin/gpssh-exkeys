@@ -2,7 +2,14 @@
 '''
 gpssh-exkeys -- exchange ssh public keys among friends
 
-Usage: gpssh-exkeys [-?v] [-u user] [-h host] [-f hostfile]
+Usage: gpssh-exkeys [-?v] [-p port] [-u user] [-h host] [-f hostfile]
+
+             -?      : print this help screen
+	     -v	     : verbose mode
+	     -p port : ssh port to use 
+	     -u user : the user to run command
+	     -h host : the host to connect to (multiple -h is okay)
+	     -f file : a file listing all hosts to connect to
 
 Author: cktan@greenplum.com
 '''
@@ -43,10 +50,10 @@ def parsePort(val):
     except ValueError: return 0
 
 class Host: 
-    def __init__(self, user, host):
+    def __init__(self, user, host, port):
 	self.m_user = user
 	self.m_host = host
-	self.m_port = 22
+	self.m_port = int(port)
 	self.m_name = '%s@%s' % (user, host)
 	self.m_popen = None
 	self.m_popen_cmd = ''
@@ -55,6 +62,7 @@ class Host:
     def name(self): return self.m_name
     def user(self): return self.m_user
     def host(self): return self.m_host
+    def port(self): return self.m_port
     def remoteID(self): return self.m_remoteID
     def popen_cmd(self): return self.m_popen_cmd;
 
@@ -144,7 +152,7 @@ def parseCommandLine():
 	elif (switch == '-v'):    opt[switch] = True
 	elif (switch[1] in 'uf'): opt[switch] = val
 	elif (switch == '-h'):    opt[switch].append(val)
-#	elif (switch == '-p'):    opt[switch] = parsePort(val)
+	elif (switch == '-p'):    opt[switch] = parsePort(val)
 
     if not (opt['-p'] > 0): 
 	usage('[ERROR] please specify valid port number for -p switch')
@@ -213,7 +221,7 @@ def createLocalID():
 def localHost(localID):
     tt = localID.split()
     tt = parseHostLine(tt[2]) 
-    return Host(tt[0], tt[1])
+    return Host(tt[0], tt[1], tt[2])
 
 def authorizeLocalID(localID):
     cmd = 'echo %s >> %s' % (localID, authorized_keys_fname)
@@ -286,7 +294,7 @@ try:
     readHostFile(opt['-f'], tab)
     tab.sort(lambda x, y: cmp(x[0], y[0]) or cmp(x[1], y[1]))
     opt['-h'] = tab
-    for h in opt['-h']: hostList.append(Host(h[0], h[1]))
+    for h in opt['-h']: hostList.append(Host(h[0], h[1], h[2]))
 
 
     ######################
@@ -352,7 +360,7 @@ try:
     errmsg = None
     for h in hostList:
 	cmd = ('scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' +
-	       '%s %s %s %s %s@%s:.ssh/' % (authorized_keys_fname, known_hosts_fname, 
+	       '-P %d %s %s %s %s %s@%s:.ssh/' % (h.port(), authorized_keys_fname, known_hosts_fname, 
 					    id_rsa_fname, id_rsa_pub_fname,
 					    h.user(), h.host()))
 	h.popen(cmd)
