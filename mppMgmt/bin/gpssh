@@ -231,7 +231,8 @@ class Session(cmd.Cmd):
 
 
     def default(self, line):
-	if line == 'EOF': 
+	line = line.strip();
+	if line == 'EOF' or line == 'exit':
 	    sys.exit(0)
 	line = line.split('\\');
 	line = '\\\\'.join(line);
@@ -246,7 +247,6 @@ class Session(cmd.Cmd):
 	    s.prompt()
 	    out = s.before.split('\n')
 	    out = out[1:-1]
-	    print self.peerStringFormat()
 	    if len(out) == 0:
 		print (self.peerStringFormat() % s.x_peer)
 	    else:
