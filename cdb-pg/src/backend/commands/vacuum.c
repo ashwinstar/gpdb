@@ -423,9 +423,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 		q->canSetTag = true;	/* ? */
 
 		pszVacuum = serializeNode((Node *) q, &pszVacuum_len);
-
 		Assert(pszVacuum != NULL);
-
 
 		/*
 		 * Our rule is that VACUUM gets dispatched to primaries and mirrors
@@ -446,15 +444,11 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 		 */
 		if((vacstmt->vacuum && !vacstmt->analyze) || (!vacstmt->vacuum && vacstmt->analyze))
 		{
-			
-			
 			/* statement is either VACUUM with no ANALYZE, or ANALYZE with no VACUUM */
 			
 			bool dispatchToMirrors = vacstmt->vacuum;
 			
 			/* Mpp-895 stagger vacuum dispatch to primaries first, then mirrors, to avoid i/o contention */
-			
-						 
 			cdbdisp_dispatchCommand((vacstmt->vacuum ? "vacuum" : "analyze"), pszVacuum, pszVacuum_len, true, /*no txn */false, 
 							/* withSnapshot */true, /* mirrors */ false, /* primaries */ true,
 							&primaryResults, &mirrorResults, &dispatchThreads);
@@ -463,13 +457,16 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			/*
 			 * Wait for all QEs to finish. If not all of our QEs were successful,
 			 * report the error and throw up.
+			 *
+			 * NOTE: this has the side-effect of calling pfree() on
+			 * pszVacuum! (we re-serialize for our mirrors below).
 			 */
 			cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
 			
-			
-			
 			if (dispatchToMirrors)
 			{
+				pszVacuum = serializeNode((Node *) q, &pszVacuum_len);
+				Assert(pszVacuum != NULL);
 
 				cdbdisp_dispatchCommand((vacstmt->vacuum ? "vacuum" : "analyze"), pszVacuum, pszVacuum_len, true, /*no txn */false, 
 							/* withSnapshot */true, /* mirrors */ true, /* primaries */ false,
@@ -481,13 +478,12 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 		}
 		else
 		{
-			/* the statement is VACUUM [OPTIONS] ANALYZE */
-			
+			/* the statement is VACUUM [OPTIONS] ANALYZE */			
 			char	   *pszVacuumNoAnalyze;
 			int			pszVacuumNoAnalyze_len;
-			
+
 			/* 
-			 * dispatch the full statment to primaries only 
+			 * dispatch the full statement to primaries only 
 			 */
 			cdbdisp_dispatchCommand("vacuum analyze", pszVacuum, pszVacuum_len, true, /*no txn */false, 
 							/* withSnapshot */true, /* mirrors */ false, /* primaries */ true,
@@ -523,17 +519,11 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			((VacuumStmt *)q->utilityStmt)->analyze = true; 
 			
 			cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
-			
-			 
 		}
-		
+
 		pfree(q);
-		 
 	}
 	
-	
-
-
 	/*
 	 * vacuum_rel expects to be entered with no transaction active; it will
 	 * start and commit its own transaction.  But we are called by an SQL
