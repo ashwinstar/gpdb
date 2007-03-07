@@ -19,7 +19,6 @@
 #include "storage/lock.h"
 #include "tcop/dest.h"
 #include "utils/resowner.h"
-#include "utils/resowner.h"
 
 /*
  * GUC variables.
