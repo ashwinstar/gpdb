@@ -203,8 +203,8 @@ void
 file_rescan(FileScanDesc scan, ScanKey key)
 {
 	
-	/* seek to beginning of file so we can start over */
-	fseek(scan->fs_file, 0L, SEEK_SET);
+	/* seek to beginning of data source so we can start over */
+	url_rewind((URL_FILE*)scan->fs_file);
 
 	/* reset some parse state variables */
 	scan->fs_pstate->fe_eof = false;
