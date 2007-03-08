@@ -596,7 +596,7 @@ printUpdate(xl_heap_update *xlrecord, uint32 datalen)
 	   and the tuple null bitmap into nullBitMap */
 	memcpy(&hhead, (char *) xlrecord + SizeOfHeapUpdate, SizeOfHeapHeader);
 	memcpy(&data, (char *) xlrecord + hhead.t_hoff + 4, datalen);
-	memcpy(&nullBitMap, (bits8 *) xlrecord + SizeOfHeapUpdate + SizeOfHeapHeader, BITMAPLEN(hhead.t_natts) * sizeof(bits8));
+	memcpy(&nullBitMap, (bits8 *) xlrecord + SizeOfHeapUpdate + SizeOfHeapHeader, BITMAPLEN(HeapTupleHeaderGetNatts(&hhead)) * sizeof(bits8));
 
 	printf("UPDATE \"%s\" SET ", relName);
 
@@ -664,7 +664,7 @@ printInsert(xl_heap_insert *xlrecord, uint32 datalen)
 	   and the tuple null bitmap into nullBitMap */
 	memcpy(&hhead, (char *) xlrecord + SizeOfHeapInsert, SizeOfHeapHeader);
 	memcpy(&data, (char *) xlrecord + hhead.t_hoff - 4, datalen);
-	memcpy(&nullBitMap, (bits8 *) xlrecord + SizeOfHeapInsert + SizeOfHeapHeader, BITMAPLEN(hhead.t_natts) * sizeof(bits8));
+	memcpy(&nullBitMap, (bits8 *) xlrecord + SizeOfHeapInsert + SizeOfHeapHeader, BITMAPLEN(HeapTupleHeaderGetNatts(&hhead)) * sizeof(bits8));
 	
 	printf("INSERT INTO \"%s\" (", relName);
 	
