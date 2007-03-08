@@ -33,7 +33,13 @@ if sys.version_info < (2, 3):
 	     + "Please upgrade python installed on this machine.")
 
 def usage(exitarg):
-    print __doc__
+    help_path = os.path.join(sys.path[0], '..', 'doc', 'cperf_help');
+    try:
+	f = open(help_path);
+	for line in f: 
+	    print line,
+    except:
+        print __doc__
     sys.exit(exitarg)
 
 opt = {}
