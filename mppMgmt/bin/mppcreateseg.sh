@@ -153,11 +153,8 @@ PROCESS_QE () {
 		fi
 		for QE_IP in "${QE_IP_ARRAY[@]}"
 		do
-			THERE=`$TRUSTED_SHELL ${MPP_HOSTNAME} "$GREP -c \"$QE_IP\" ${MPP_DIR}/$PG_HBA"`
-			if [ $THERE -eq 0 ];then
 				$TRUSTED_SHELL ${MPP_HOSTNAME} "$ECHO host  all     all     ${QE_IP}/32 trust >> ${MPP_DIR}/$PG_HBA"
 				PARA_EXIT $? "Update $PG_HBA for segment IP address ${QE_IP}"
-			fi
 		done
 		LOG_MSG "[INFO][$INST_COUNT]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
 		$TRUSTED_SHELL ${MPP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
