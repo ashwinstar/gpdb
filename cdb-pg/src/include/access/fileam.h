@@ -25,5 +25,7 @@ extern FileScanDesc file_beginscan(Relation relation, List *uriList, List *fmtOp
 extern void file_rescan(FileScanDesc scan, ScanKey key);
 extern void file_endscan(FileScanDesc scan);
 extern HeapTuple file_getnext(FileScanDesc scan, ScanDirection direction);
+extern void close_external_file(FILE *dataSource, char *dataSourceName);
+extern void AtAbort_ExtTables(void);
 
 #endif   /* FILEAM_H */

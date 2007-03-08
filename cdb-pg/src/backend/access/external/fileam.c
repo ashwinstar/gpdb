@@ -49,7 +49,6 @@
 static HeapTuple filegettup(FileScanDesc scan, ScanDirection dir, int nkeys, ScanKey key);
 static void initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, char *uri);
 static void open_external_file(FileScanDesc scan);
-static void close_external_file(FileScanDesc scan);
 static int	file_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
 static void file_scan_error_callback(void *arg);
 
@@ -72,6 +71,13 @@ elog(DEBUG2, "file_getnext returning tuple")
 #define FILEDEBUG_2
 #define FILEDEBUG_3
 #endif   /* !defined(FILEDEBUGALL) */
+
+/*
+ * A global reference to our data source so it could be freed
+ * from the outside during an error/abort (in AbortTransaction).
+ */
+static FILE *g_dataSource = NULL;
+static char *g_dataSourceName = NULL;
 
 
 /* ----------------
@@ -218,7 +224,6 @@ file_rescan(FileScanDesc scan, ScanKey key)
 void
 file_endscan(FileScanDesc scan)
 {
-	
 	/*
 	 * decrement relation reference count and free scan descriptor storage
 	 */
@@ -257,7 +262,7 @@ file_endscan(FileScanDesc scan)
 	 * Close the external file
 	 */
 	if(!scan->fs_noop)
-		close_external_file(scan);
+		close_external_file(scan->fs_file, scan->fs_uri);
 
 	pfree(scan);
 }
@@ -355,7 +360,7 @@ filegettup(FileScanDesc scan,
 			/* while there is still data in our buffer */
 			while (!pstate->raw_buf_done)
 			{
-				CHECK_FOR_INTERRUPTS();
+				//CHECK_FOR_INTERRUPTS();
 
 				/* Initialize all values for row to NULL */
 				MemSet(scan->values, 0, scan->num_phys_attrs * sizeof(Datum));
@@ -707,6 +712,14 @@ open_external_file(FileScanDesc scan)
         
     scan->fs_file = (FILE*) url_fopen(scan->fs_uri, filename, PG_BINARY_R);
 
+	/*
+	 * Get a global reference to the file pointer, so we can free it from
+	 * AbortTransaction in the case of an error or abort. We don't use it 
+	 * for anything else.
+	 */
+	g_dataSource = scan->fs_file;
+	g_dataSourceName = scan->fs_uri;
+	
     pfree(uri);
     
 	if (scan->fs_file == NULL)
@@ -720,14 +733,18 @@ open_external_file(FileScanDesc scan)
 /*
  * close the external file.
  */
-static void
-close_external_file(FileScanDesc scan)
+void
+close_external_file(FILE *dataSource, char *dataSourceName)
 {
-    if (url_fclose((URL_FILE*) scan->fs_file))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not write to file \"%s\": %m",
-						scan->fs_uri)));
+	
+	if(dataSource)
+		if (url_fclose((URL_FILE*) dataSource))
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					errmsg("could not close file \"%s\": %m",
+							dataSourceName)));
+	
+	g_dataSource = dataSource = NULL;
 }
 
 /*
@@ -804,4 +821,12 @@ file_scan_error_callback(void *arg)
 		}
 	}
 
+}
+
+/*
+ * Free external resources on Abort.
+ */
+void AtAbort_ExtTables(void)
+{
+    close_external_file(g_dataSource, g_dataSourceName);
 }

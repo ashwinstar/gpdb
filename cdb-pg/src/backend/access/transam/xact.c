@@ -26,6 +26,7 @@
 #include "access/twophase.h"
 #include "access/xact.h"
 #include "access/xlogutils.h"
+#include "access/fileam.h"
 #include "catalog/namespace.h"
 #include "commands/async.h"
 #include "commands/tablecmds.h"
@@ -2327,6 +2328,8 @@ AbortTransaction(void)
 	/* Perform any Resource Scheduler abort procesing. */
 	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
 		AtAbort_ResScheduler();
+		
+	AtAbort_ExtTables();
 
 	AtEOXact_LargeObject(false);	/* 'false' means it's abort */
 	AtAbort_Notify();
