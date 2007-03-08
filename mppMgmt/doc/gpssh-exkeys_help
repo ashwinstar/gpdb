@@ -72,3 +72,41 @@ remote host. If not specified, defaults to port 22
 
 -u <os_user>
 
+Specifies the default operating system user account to use 
+when exchanging public keys. If not specified, defaults to 
+the currently logged in user (or the user specified in the 
+host file, if any).
+
+
+-? (help)
+
+Displays the online help.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Exchange SSH keys between all hosts listed in the file host_file:
+
+gpssh-exkeys -f host_file
+
+
+Exchange SSH keys between all hosts listed in the file host_file 
+as the user gpadmin:
+
+gpssh-exkeys -f host_file -u gpadmin
+
+
+Exchange SSH keys between the hosts thumper0, thumper1, and 
+thumper2 as the currently logged in user:
+
+gpssh-exkeys -h thumper0 -h thumper1 -h thumper2 -u gpadmin
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+gpssh, gpscp
+
