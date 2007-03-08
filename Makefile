@@ -10,7 +10,7 @@ TARBALL=/tmp/$(MPPDIR).tar.gz
 
 DEFPORT=5432
 
-OPTFLAGS="-O3 -finline-limit=1800 -funroll-loops -fomit-frame-pointer -fargument-noalias-global $(COPTX) -g"
+OPTFLAGS="-O3 -finline-limit=1800 -funroll-loops -fargument-noalias-global $(COPTX) -g"
 DEBUGFLAGS="-O0 -g"
 
 DISTPATH=$(BIZHOME)/$(MPPDIR)
