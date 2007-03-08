@@ -4439,6 +4439,10 @@ setProcAffinity(int id)
 	r = processor_bind(P_PID, P_MYID, proc_to_bind, NULL);
 	/* ignore an error -- we'll just stay with out old (default
 	 * binding) */
+	if (r == 0)
+		elog(LOG, "Bound postmaster to processor %d", proc_to_bind);
+	else
+		elog(LOG, "process_bind() failed, will remain unbound");
 
 	return;
 }
