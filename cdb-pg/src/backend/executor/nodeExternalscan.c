@@ -56,33 +56,7 @@ ExternalNext(ExternalScanState *node)
 	scanrelid = ((ExternalScan *) node->ss.ps.plan)->scan.scanrelid;
 	direction = estate->es_direction;
 	slot = node->ss.ss_ScanTupleSlot;
-	
-	/*
-	 * Check if we are evaluating PlanQual for tuple of this relation.
-	 * Additional checking is not good, but no other way for now. We could
-	 * introduce new nodes for this case and handle SeqScan --> NewNode
-	 * switching in Init/ReScan plan...
-	 */
-	if (estate->es_evTuple != NULL &&
-		estate->es_evTuple[scanrelid - 1] != NULL)
-	{
-		if (estate->es_evTupleNull[scanrelid - 1])
-			return ExecClearTuple(slot);
 		
-		ExecStoreTuple(estate->es_evTuple[scanrelid - 1],
-					   slot, InvalidBuffer, false);
-		
-		/*
-		 * Note that unlike IndexScan, SeqScan never use keys in
-		 * heap_beginscan (and this is very bad) - so, here we do not check
-		 * are keys ok or not.
-		 */
-		
-		/* Flag for the next call that no more tuples */
-		estate->es_evTupleNull[scanrelid - 1] = true;
-		return slot;
-	}
-	
 	/*
 	 * get the next tuple from the file access methods
 	 */
