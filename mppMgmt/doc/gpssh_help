@@ -1,0 +1,158 @@
+COMMAND NAME: gpssh
+
+Provides ssh access to multiple hosts at once.
+
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+gpssh { -f <host_file> | - h <hostname> [-h <hostname> ...] } 
+      [-p <ssh_port>] [-u <os_user>] [-v] [-e] [<bash_command>]
+
+gpssh -?
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The gpssh utility allows you to run bash shell commands on 
+multiple hosts at once using SSH (secure shell). You can execute 
+a single command by specifying it on the command-line, or omit 
+the command to enter into an interactive command-line session. 
+
+To specify the hosts involved in the SSH session, use the -f 
+option to specify a file containing a list of host names, or use 
+the -h option to name single host names on the command-line. At 
+least one host name (-h) or a host file (-f) is required. Note that 
+the current host is not included in the session by default  to 
+include the local host, you must explicitly declare it in the 
+list of hosts involved in the session.
+
+The gpssh utility requires Python 2.3 or higher. Python is installed 
+with most operating systems by default. If you have an older version 
+of Python, you must upgrade to 2.3 or higher (and make sure Python is 
+in your $PATH) in order to use gpssh.
+
+Before using gpssh, you must have a trusted host setup between 
+the hosts involved in the SSH session. You can use the utility 
+gpssh-exkeys to update the known host files and exchange public 
+keys between hosts if you have not done so already.
+
+If you do not specify a command on the command-line, gpssh will 
+go into interactive mode. At the gpssh command prompt (=>), you 
+can enter a command as you would in a regular bash terminal command-line, 
+and the command will be executed on all hosts involved in the session. 
+To end an interactive session, press CTRL+D on the keyboard or type exit.
+
+If a user name is not specified in the host list file or with the 
+-u option, gpssh will execute commands as the currently logged in user. 
+To determine the currently logged in user, do a whoami command. By default, 
+gpssh goes to $HOME of the session user on the remote hosts after login. 
+To ensure commands are executed correctly on all remote hosts, you should 
+always enter absolute paths.
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-f <host_file>
+
+Specifies the name of a file that contains a list of hosts that 
+will participate in this SSH session. The host name is required, 
+and you can optionally specify an alternate user name and/or SSH port 
+number per host. The syntax of the host file is one host per line 
+as follows:
+[<username>@]<hostname>[:<ssh_port>]
+
+
+-h <hostname>
+
+Specifies a single host name that will participate in this SSH session. 
+You can use the -h option multiple times to specify multiple host names.
+
+
+-p <ssh_port>
+
+Specifies the default SSH port to use when logging in to a remote host. 
+If not specified, defaults to port 22 (or the port specified in the 
+host file, if any).
+
+
+-u <os_user>
+
+Specifies the default operating system user account to use when 
+executing commands in this session. If not specified, defaults to 
+the currently logged in user (or the user specified in the 
+host file, if any).
+
+
+-v (verbose mode)
+
+Optional. Reports additional messages in addition to the command 
+output when running in non-interactive mode.
+
+
+-e (echo)
+
+Optional. Echoes the commands passed to each host and their 
+resulting output while running in non-interactive mode.
+
+
+<bash_command>
+
+A bash shell command to execute on all hosts involved in this 
+session (optionally enclosed in quotes). If not specified, gpssh 
+will start an interactive session.
+
+
+-? (help)
+
+Displays the online help.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Start an interactive group SSH session with all hosts listed 
+in the file host_file:
+
+gpssh -f host_file
+
+
+At the gpssh interactive command prompt, run a shell command 
+on all the hosts involved in this session.
+
+=> ls -a /dbfast1/gpdb-1
+
+Exit an interactive session:
+
+=> exit
+
+
+Start a non-interactive group SSH session with the hosts named 
+thumper1 and thumper2 and pass a file containing several commands 
+named command_file to gpssh:
+
+gpssh -h thumper1 -h thumper2 -v -e < command_file
+
+
+Execute single commands in non-interactive mode on hosts 
+thumper1 and localhost:
+
+gpssh -h thumper1 -h localhost -v -e ls -a /dbfast1/gpdb-1
+
+gpssh -h thumper1 -h localhost -v -e 'echo "blah,blah,blah"'
+
+gpssh -h thumper1 -h localhost -v -e 'ls -1 | wc -l'
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+gpssh-exkeys, gpscp
+
