@@ -14,6 +14,7 @@
 #include <unistd.h>				/* getpid() */
 #include <arpa/inet.h>			/* inet_ntoa() */
 #include <pthread.h>
+#include <limits.h>
 
 #include "libpq-fe.h"
 #include "miscadmin.h"			/* MyDatabaseId */
@@ -225,6 +226,9 @@ createGang(GangType type, int size, int content, char *portal_name)
 		int pthread_err;
 		DoConnectParms *pParms = &doConnectParmsAr[i];
 
+		/* attributes of the thread we're creating */
+		pthread_attr_t t_atts;
+
 		/* set the gangType. */
 		pParms->type = type;
 
@@ -232,7 +236,19 @@ createGang(GangType type, int size, int content, char *portal_name)
 		    elog(DEBUG5, "createGang creating thread %d of %d for libpq connections",
 			     i + 1, threadCount);
 
+		/* save ourselves some memory: the defaults for thread stack
+		 * size are large (1M+) */
+		pthread_attr_init(&t_atts);
+#ifdef pg_on_solaris
+		/* Solaris doesn't have PTHREAD_STACK_MIN ? */
+		pthread_attr_setstacksize(&t_atts, (64*1024));
+#else
+		pthread_attr_setstacksize(&t_atts, Max(PTHREAD_STACK_MIN, (64*1024)));
+#endif
+
 		pthread_err = pthread_create(&pParms->thread, NULL, thread_DoConnect, pParms);
+
+		pthread_attr_destroy(&t_atts);
 		if (pthread_err != 0)
 		{
 			int j;
