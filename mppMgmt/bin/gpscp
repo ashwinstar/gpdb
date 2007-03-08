@@ -38,7 +38,13 @@ session = []
 
 ################
 def usage(exitarg):
-    print __doc__
+    help_path = os.path.join(sys.path[0], '..', 'doc', 'gpscp_help');
+    try:
+	f = open(help_path);
+	for line in f: 
+	    print line,
+    except:
+        print __doc__
     sys.exit(exitarg)
 
 def parsePort(val): 
