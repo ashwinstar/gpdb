@@ -114,7 +114,6 @@ FreeQueryDesc(QueryDesc *qdesc)
  *		Execute a single plannable query within a PORTAL_MULTI_QUERY
  *		or PORTAL_ONE_RETURNING portal
  *
- *  portal: the portal
  *	parsetree: the query tree
  *	plan: the plan tree for the query
  *	params: any parameters needed
