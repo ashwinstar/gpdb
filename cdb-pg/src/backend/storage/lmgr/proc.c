@@ -1504,24 +1504,6 @@ ResLockWaitCancel(void)
 {
 	LWLockId	partitionLock;
 
-	if (lockAwaited == NULL && MyProc->waitPortalId != INVALID_PORTALID)
-	{
-		/*
-		 * Dangling portal increment, possibly left by overcommit check
-		 * so clean it here.
-		 */
-		ResPortalTag	portalTag;
-
-		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
-
-		MemSet(&portalTag, 0, sizeof(ResPortalTag));
-		portalTag.pid = MyProc->pid;
-		portalTag.portalId = MyProc->waitPortalId;
-		ResIncrementRemove(&portalTag);
-
-		LWLockRelease(ResQueueLock);
-	}
-
 	if (lockAwaited != NULL)
 	{
 		/* Unlink myself from the wait queue, if on it  */

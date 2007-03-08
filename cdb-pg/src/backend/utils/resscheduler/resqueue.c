@@ -293,12 +293,22 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		 * some of the thresholds for the corrosponding queue, and overcommit
 		 * is not enabled for them. So abort and clean up.
 		 */
+		ResPortalTag		portalTag;
 
-		/* Set bitmask of locks like we are going to wait. */
-		MyProc->heldLocks = proclock->holdMask; 
+		/* Adjust the counters as we no longer want this lock. */
+		lock->nRequested--;
+		lock->requested[lockmode]--;
+		Assert((lock->nRequested >= 0) && (lock->requested[lockmode] >= 0));
 
-		/* Set the wait portalId so the increments get cleaned up.  */
-		MyProc->waitPortalId = incrementSet->portalId;
+		/* Clean up this lock. */
+		RemoveLocalLock(locallock);
+		ResCleanUpLock(lock, proclock, hashcode);
+
+		/* Kill off the increment. */
+		MemSet(&portalTag, 0, sizeof(ResPortalTag));
+		portalTag.pid = incrementSet->pid;
+		portalTag.portalId = incrementSet->portalId;
+		ResIncrementRemove(&portalTag);
 
 		LWLockRelease(ResQueueLock);
 		LWLockRelease(partitionLock);
