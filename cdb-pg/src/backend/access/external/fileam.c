@@ -114,6 +114,7 @@ file_beginscan(Relation relation, List *uriList, List *fmtOpts,
 	scan->fs_rd = relation;
 	scan->fs_nkeys = nkeys;
 	scan->fs_noop = false;
+	scan->fs_file = NULL;
 
 	/*
 	 * get the external URI assigned to us. 
@@ -122,7 +123,7 @@ file_beginscan(Relation relation, List *uriList, List *fmtOpts,
 		uri = (char *) strVal(list_nth(uriList, MppIdentity.segindex));
 	
 	/*
-	 * if a uri is assigned to us - open it. Some executors
+	 * if a uri is assigned to us - save a copy of it. Some executors
 	 * don't have a uri to scan (if # of uri's < # of primary segdbs). 
 	 * in which case uri will be NULL. If that's the case for this 
 	 * segdb set to no-op.
@@ -133,12 +134,11 @@ file_beginscan(Relation relation, List *uriList, List *fmtOpts,
 		scan->fs_uri = (char *) palloc(strlen(uri) + 1);
 		scan->fs_uri = uri;
 		
-		/* open the external file for read */
-		open_external_file(scan);
+		/* NOTE: we delayactually opening the data source until file_getnext() */
 	}
 	else
 	{
-		/* set segdb has no work to do. set to no-op */
+		/* segdb has no work to do. set to no-op */
 		scan->fs_noop = true;
 		scan->fs_uri = NULL;
 	}
@@ -282,6 +282,20 @@ file_getnext(FileScanDesc scan, ScanDirection direction)
 	if(scan->fs_noop)
 		return NULL;
 	
+	/* 
+	 * open the external source (local file or http).
+	 *
+	 * NOTE: file_beginscan() seems like the natural place for this call. However,
+	 * in queries with more than one gang each gang will initialized all the nodes
+	 * of the plan (but actually executed only the nodes in it's local slice)
+	 * This means that file_beginscan() (and file_endscan() too) will get called 
+	 * more than needed and we'll end up opening too many http connections when 
+	 * they are not expected (see MPP-1261). Therefore we instead do it here on the 
+	 * first time around only.
+	 */
+	if(!scan->fs_file)
+		open_external_file(scan);
+
 	/* Note: no locking manipulations needed */
 	FILEDEBUG_1;
 
