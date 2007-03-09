@@ -164,7 +164,7 @@ heap_fill_tuple(TupleDesc tupleDesc,
 				*infomask |= HEAP_HASEXTERNAL;
 			if (VARATT_IS_COMPRESSED(values[i]))
 				*infomask |= HEAP_HASCOMPRESSED;
-			data_length = VARATT_SIZE(DatumGetPointer(values[i]));
+			data_length = VARSIZE(DatumGetPointer(values[i]));
 			memcpy(data, DatumGetPointer(values[i]), data_length);
 		}
 		else if (att[i]->attlen == -2)
@@ -263,7 +263,7 @@ DataFill(char *data,
 				*infomask |= HEAP_HASEXTERNAL;
 			if (VARATT_IS_COMPRESSED(values[i]))
 				*infomask |= HEAP_HASCOMPRESSED;
-			data_length = VARATT_SIZE(DatumGetPointer(values[i]));
+			data_length = VARSIZE(DatumGetPointer(values[i]));
 			memcpy(data, DatumGetPointer(values[i]), data_length);
 		}
 		else if (att[i]->attlen == -2)

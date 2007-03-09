@@ -295,7 +295,7 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 				/* not a nan */
 			{
 				buf = num->n_data;
-				len = (num->varlen - NUMERIC_HDRSZ);
+				len = (VARSIZE(num) - NUMERIC_HDRSZ);
 			}
 
 			break;

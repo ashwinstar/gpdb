@@ -114,7 +114,7 @@ bpchar_input(const char *s, size_t len, int32 atttypmod)
 	}
 
 	result = (BpChar *) palloc(maxlen + VARHDRSZ);
-	VARATT_SIZEP(result) = maxlen + VARHDRSZ;
+	SET_VARSIZE(result, maxlen + VARHDRSZ);
 	r = VARDATA(result);
 	memcpy(r, s, len);
 
@@ -273,7 +273,7 @@ bpchar(PG_FUNCTION_ARGS)
 	s = VARDATA(source);
 
 	result = palloc(maxlen);
-	VARATT_SIZEP(result) = maxlen;
+	SET_VARSIZE(result, maxlen);
 	r = VARDATA(result);
 
 	memcpy(r, s, len - VARHDRSZ);
@@ -297,7 +297,7 @@ char_bpchar(PG_FUNCTION_ARGS)
 
 	result = (BpChar *) palloc(VARHDRSZ + 1);
 
-	VARATT_SIZEP(result) = VARHDRSZ + 1;
+	SET_VARSIZE(result, VARHDRSZ + 1);
 	*(VARDATA(result)) = c;
 
 	PG_RETURN_BPCHAR_P(result);
@@ -354,7 +354,7 @@ name_bpchar(PG_FUNCTION_ARGS)
 	len = strlen(NameStr(*s));
 	result = (BpChar *) palloc(VARHDRSZ + len);
 	memcpy(VARDATA(result), NameStr(*s), len);
-	VARATT_SIZEP(result) = len + VARHDRSZ;
+	SET_VARSIZE(result, VARHDRSZ + len);
 
 	PG_RETURN_BPCHAR_P(result);
 }
@@ -406,7 +406,7 @@ varchar_input(const char *s, size_t len, int32 atttypmod)
 	}
 
 	result = (VarChar *) palloc(len + VARHDRSZ);
-	VARATT_SIZEP(result) = len + VARHDRSZ;
+	SET_VARSIZE(result, len + VARHDRSZ);
 	memcpy(VARDATA(result), s, len);
 
 	return result;
@@ -530,7 +530,7 @@ varchar(PG_FUNCTION_ARGS)
 
 	len = maxmblen + VARHDRSZ;
 	result = palloc(len);
-	VARATT_SIZEP(result) = len;
+	SET_VARSIZE(result, len);
 	memcpy(VARDATA(result), VARDATA(source), len - VARHDRSZ);
 
 	PG_RETURN_VARCHAR_P(result);

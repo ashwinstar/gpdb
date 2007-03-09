@@ -116,7 +116,7 @@ typedef struct HeapTupleFields
 
 typedef struct DatumTupleFields
 {
-	int32		datum_len;		/* required to be a varlena type */
+	int32		datum_len_;		/* varlena header (do not touch directly!) */
 
 	int32		datum_typmod;	/* -1, or identifier of a record type */
 
@@ -261,14 +261,10 @@ do { \
 } while (0)
 
 #define HeapTupleHeaderGetDatumLength(tup) \
-( \
-	(tup)->t_choice.t_datum.datum_len \
-)
+	VARSIZE(tup)
 
 #define HeapTupleHeaderSetDatumLength(tup, len) \
-( \
-	(tup)->t_choice.t_datum.datum_len = (len) \
-)
+	SET_VARSIZE(tup, len)
 
 #define HeapTupleHeaderGetTypeId(tup) \
 ( \

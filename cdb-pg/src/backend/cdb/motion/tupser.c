@@ -675,7 +675,7 @@ DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup)
 					pText = (text *) palloc(textSize + VARHDRSZ);
 #endif
 
-					VARATT_SIZEP(pText) = textSize + VARHDRSZ;
+					SET_VARSIZE(pText, textSize + VARHDRSZ);
 					pq_copymsgbytes(serialTup, VARDATA(pText), textSize);
 					pSerInfo->values[i] = PointerGetDatum(pText);
 					break;
@@ -716,7 +716,7 @@ DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup)
 					num = (Numeric) palloc(numSize + VARHDRSZ);
 #endif
 
-					VARATT_SIZEP(num) = numSize + VARHDRSZ;
+					SET_VARSIZE(num, numSize + VARHDRSZ);
 					pq_copymsgbytes(serialTup, VARDATA(num), numSize);
 					pSerInfo->values[i] = NumericGetDatum(num);
 					break;

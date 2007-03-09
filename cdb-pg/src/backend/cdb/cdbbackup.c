@@ -278,7 +278,7 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 	}
 
 	/* Set size of result string... */
-	VARATT_SIZEP(result) = len;
+	SET_VARSIZE(result, len);
 
 	/* Fill data field of result string... */
 	ptr = VARDATA(result);
@@ -526,7 +526,7 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 	}
 
 	/* Set size of result string... */
-	VARATT_SIZEP(result) = len;
+	SET_VARSIZE(result, len);
 
 	/* Fill data field of result string... */
 	ptr = VARDATA(result);
@@ -657,7 +657,7 @@ mpp_read_backup_file__(PG_FUNCTION_ARGS)
 	}
 
 	/* Set size of result string... */
-	VARATT_SIZEP(result) = len;
+	SET_VARSIZE(result, len);
 
 	/* Fill data field of result string... */
 	ptr = VARDATA(result);
@@ -762,7 +762,7 @@ mpp_write_backup_file__(PG_FUNCTION_ARGS)
 	}
 	
 	/* Set size of result string... */
-	VARATT_SIZEP(result) = len;
+	SET_VARSIZE(result, len);
 	
 	/* Fill data field of result string... */
 	ptr = VARDATA(result);

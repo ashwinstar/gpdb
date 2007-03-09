@@ -117,7 +117,7 @@ Datum ml_ipc_getMsg__text1(PG_FUNCTION_ARGS)
     text* result = (text *)palloc(len);
     
     /* set size of result string... */
-    VARATT_SIZEP(result) = len;
+    SET_VARSIZE(result, len);
 
 	/* Fill data field of result string... */
 	char* ptr = VARDATA(result);

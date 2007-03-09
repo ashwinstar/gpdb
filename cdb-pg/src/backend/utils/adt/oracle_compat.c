@@ -142,7 +142,7 @@ wcstotext(const wchar_t *str, int ncodes)
 
 	Assert(nbytes <= (size_t) (ncodes * MB_CUR_MAX));
 
-	VARATT_SIZEP(result) = nbytes + VARHDRSZ;
+	SET_VARSIZE(result, nbytes + VARHDRSZ);
 
 	return result;
 }
@@ -227,7 +227,7 @@ win32_utf8_wcstotext(const wchar_t *str)
 				 errmsg("UTF-16 to UTF-8 translation failed: %lu",
 						GetLastError())));
 
-	VARATT_SIZEP(result) = nbytes + VARHDRSZ - 1;		/* -1 to ignore null */
+	SET_VARSIZE(result, nbytes + VARHDRSZ - 1);		/* -1 to ignore null */
 
 	return result;
 }
@@ -563,7 +563,7 @@ lpad(PG_FUNCTION_ARGS)
 		ptr1 += mlen;
 	}
 
-	VARATT_SIZEP(ret) = ptr_ret - (char *) ret;
+	SET_VARSIZE(ret, ptr_ret - (char *) ret);
 
 	PG_RETURN_TEXT_P(ret);
 }
@@ -659,7 +659,7 @@ rpad(PG_FUNCTION_ARGS)
 			ptr2 = VARDATA(string2);
 	}
 
-	VARATT_SIZEP(ret) = ptr_ret - (char *) ret;
+	SET_VARSIZE(ret, ptr_ret - (char *) ret);
 
 	PG_RETURN_TEXT_P(ret);
 }
@@ -868,7 +868,7 @@ dotrim(const char *string, int stringlen,
 
 	/* Return selected portion of string */
 	result = (text *) palloc(VARHDRSZ + stringlen);
-	VARATT_SIZEP(result) = VARHDRSZ + stringlen;
+	SET_VARSIZE(result, VARHDRSZ + stringlen);
 	memcpy(VARDATA(result), string, stringlen);
 
 	return result;
@@ -941,7 +941,7 @@ byteatrim(PG_FUNCTION_ARGS)
 	}
 
 	ret = (bytea *) palloc(VARHDRSZ + m);
-	VARATT_SIZEP(ret) = VARHDRSZ + m;
+	SET_VARSIZE(ret, VARHDRSZ + m);
 	memcpy(VARDATA(ret), ptr, m);
 
 	PG_RETURN_BYTEA_P(ret);
@@ -1147,7 +1147,7 @@ translate(PG_FUNCTION_ARGS)
 		m -= source_len;
 	}
 
-	VARATT_SIZEP(result) = retlen + VARHDRSZ;
+	SET_VARSIZE(result, retlen + VARHDRSZ);
 
 	/*
 	 * There may be some wasted space in the result if deletions occurred, but
@@ -1199,13 +1199,13 @@ ascii(PG_FUNCTION_ARGS)
  ********************************************************************/
 
 Datum
-chr			(PG_FUNCTION_ARGS)
+chr(PG_FUNCTION_ARGS)
 {
 	int32		cvalue = PG_GETARG_INT32(0);
 	text	   *result;
 
 	result = (text *) palloc(VARHDRSZ + 1);
-	VARATT_SIZEP(result) = VARHDRSZ + 1;
+	SET_VARSIZE(result, VARHDRSZ + 1);
 	*VARDATA(result) = (char) cvalue;
 
 	PG_RETURN_TEXT_P(result);
@@ -1256,7 +1256,7 @@ repeat(PG_FUNCTION_ARGS)
 
 	result = (text *) palloc(tlen);
 
-	VARATT_SIZEP(result) = tlen;
+	SET_VARSIZE(result, tlen);
 	cp = VARDATA(result);
 	for (i = 0; i < count; i++)
 	{

@@ -198,7 +198,7 @@ cdb_serialize_plan(PG_FUNCTION_ARGS)
 	}
 
 	/* Set size of result string... */
-	VARATT_SIZEP(result) = len;
+	SET_VARSIZE(result, len);
 
 	/* Fill data field of result string... */
 	char* ptr = VARDATA(result);
@@ -308,7 +308,7 @@ cdb_serialize_query(PG_FUNCTION_ARGS)
 	}
 
 	/* Set size of result string... */
-	VARATT_SIZEP(result) = len;
+	SET_VARSIZE(result, len);
 
 	/* Fill data field of result string... */
 	char* ptr = VARDATA(result);

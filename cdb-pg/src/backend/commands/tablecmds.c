@@ -2235,7 +2235,7 @@ update_ri_trigger_args(Oid relid,
 		for (i = 0; i < tgnargs; i++)
 			newlen += strlen(arga[i]) + 1;
 		newtgargs = (bytea *) palloc(newlen);
-		VARATT_SIZEP(newtgargs) = newlen;
+		SET_VARSIZE(newtgargs, newlen);
 		newlen = VARHDRSZ;
 		for (i = 0; i < tgnargs; i++)
 		{
@@ -7805,8 +7805,8 @@ static Datum transformLocationUris(List *locs)
 		
 		/* +1 leaves room for sprintf's trailing null */
 		t = (text *) palloc(len + 1);
-		VARATT_SIZEP(t) = len;
-		sprintf((char *) VARATT_DATA(t), "%s", uri_str);
+		SET_VARSIZE(t, len);
+		sprintf((char *) VARDATA(t), "%s", uri_str);
 		
 		
 		astate = accumArrayResult(astate, PointerGetDatum(t),

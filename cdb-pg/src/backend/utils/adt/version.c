@@ -31,7 +31,7 @@ pgsql_version(PG_FUNCTION_ARGS)
 		
 	ret = (text *) palloc(n + VARHDRSZ);
 
-	VARATT_SIZEP(ret) = n + VARHDRSZ;
+	SET_VARSIZE(ret,  n + VARHDRSZ);
 	memcpy(VARDATA(ret), version, n);
 
 	PG_RETURN_TEXT_P(ret);
