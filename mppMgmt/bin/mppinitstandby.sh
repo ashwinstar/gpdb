@@ -152,7 +152,8 @@ CHECK_PARAM () {
 			LOG_MSG "[INFO]:-Manually remove this process on $MASTER_STANDBY_HOSTNAME and re-run this utility" 1
 			ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		fi
-		if [ $EXIT_STATUS -ne 0 ];then
+		if [ $PG_LOCK_TMP -ne 0 ] || [ x"" != x"$PG_LOCK_NETSTAT" ];then
+		#Either have a lock file or a netstat entry
 			LOG_MSG "[FATAL]:-No $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME but, have a possible" 1
 			LOG_MSG "[FATAL]:-Warm master standby process on $MASTER_STANDBY_HOSTNAME" 1
 			LOG_MSG "[INFO]:-Manually remove this process on $MASTER_STANDBY_HOSTNAME and re-run this utility" 1
