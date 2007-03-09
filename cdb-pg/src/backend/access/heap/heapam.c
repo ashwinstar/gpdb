@@ -150,7 +150,7 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 		const int   rimax = lengthof(scan->rs_rahead);
 
 		/*
-		 *  This will fill the first 2 quarters of read ahead on a miss
+		 *  This will fill up to the first 2 quarters of read ahead 
 		 */
 		for (i = 0; i < rimax / 2; i++) 
 		{
@@ -166,8 +166,9 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 			/*elog(LOG, "heapgetpage: 1 [%d] read %d at %x", ri, pg, scan->rs_rahead[ri].buffer);*/
 		}
 #ifdef UNDEF
+		/* THIS MAY ONLY BE HELPFUL WITH AIO */
 		/*
-		 *  This will fill the 3nd quarter of read ahead provided that it is not filled
+		 *  This will fill the 3rd quarter of read ahead provided that it is not filled
 		 */
 		for (i = rimax / 2; i < rimax * 3 / 4; i++)
 		{
