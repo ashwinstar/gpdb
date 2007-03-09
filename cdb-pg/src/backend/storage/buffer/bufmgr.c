@@ -93,9 +93,10 @@ static void TerminateBufferIO(volatile BufferDesc *buf, bool clear_dirty,
 				  int set_flag_bits);
 static void buffer_write_error_callback(void *arg);
 static volatile BufferDesc *BufferAlloc(Relation reln, BlockNumber blockNum,
-			bool *foundPtr);
+										bool *foundPtr, BufferDesc* availBufHdr);
 static void FlushBuffer(volatile BufferDesc *buf, SMgrRelation reln);
 static void AtProcExit_Buffers(int code, Datum arg);
+static Buffer ReadBuffer_Ex(Relation reln, BlockNumber blockNum, BufferDesc* availBufHdr);
 
 
 /*
@@ -116,7 +117,13 @@ static void AtProcExit_Buffers(int code, Datum arg);
 Buffer
 ReadBuffer(Relation reln, BlockNumber blockNum)
 {
-	volatile BufferDesc *bufHdr;
+	return ReadBuffer_Ex(reln, blockNum, NULL);
+}
+
+static Buffer
+ReadBuffer_Ex(Relation reln, BlockNumber blockNum, BufferDesc* availBufHdr)
+{
+	volatile BufferDesc* bufHdr;
 	Block		bufBlock;
 	bool		found;
 	bool		isExtend;
@@ -152,7 +159,7 @@ ReadBuffer(Relation reln, BlockNumber blockNum)
 		 * lookup the buffer.  IO_IN_PROGRESS is set if the requested block is
 		 * not currently in memory.
 		 */
-		bufHdr = BufferAlloc(reln, blockNum, &found);
+		bufHdr = BufferAlloc(reln, blockNum, &found, availBufHdr);
 		if (found)
 			BufferHitCount++;
 	}
@@ -167,10 +174,7 @@ ReadBuffer(Relation reln, BlockNumber blockNum)
 			/* Just need to update stats before we exit */
 			pgstat_count_buffer_hit(&reln->pgstat_info, reln);
 
-			if (VacuumCostActive)
-				VacuumCostBalance += VacuumCostPageHit;
-
-			return BufferDescriptorGetBuffer(bufHdr);
+			goto done;
 		}
 
 		/*
@@ -285,8 +289,12 @@ ReadBuffer(Relation reln, BlockNumber blockNum)
 		TerminateBufferIO(bufHdr, false, BM_VALID);
 	}
 
+	done:
 	if (VacuumCostActive)
 		VacuumCostBalance += VacuumCostPageMiss;
+
+	if (availBufHdr && availBufHdr != bufHdr)
+		StrategyFreeBuffer(availBufHdr, true);
 
 	return BufferDescriptorGetBuffer(bufHdr);
 }
@@ -309,7 +317,8 @@ ReadBuffer(Relation reln, BlockNumber blockNum)
 static volatile BufferDesc *
 BufferAlloc(Relation reln,
 			BlockNumber blockNum,
-			bool *foundPtr)
+			bool *foundPtr,
+			BufferDesc* availBufHdr)
 {
 	BufferTag	newTag;			/* identity of requested block */
 	uint32		newHash;		/* hash value for newTag */
@@ -379,13 +388,27 @@ BufferAlloc(Relation reln,
 	/* Loop here in case we have to try another victim buffer */
 	for (;;)
 	{
-		/*
-		 * Select a victim buffer.	The buffer is returned with its header
-		 * spinlock still held!  Also the BufFreelistLock is still held, since
-		 * it would be bad to hold the spinlock while possibly waking up other
-		 * processes.
-		 */
-		buf = StrategyGetBuffer();
+		bool unlockBufFreeList = false;
+		if (availBufHdr) 
+		{
+			/*
+			 *  If caller gave us a victim buffer, then try to use it! 
+			 */
+			buf = availBufHdr;
+			LockBufHdr(buf);	/* PinBuffer_Locked will unlock this */
+			availBufHdr = NULL;
+		}
+		else 
+		{
+			/*
+			 * Select a victim buffer.	The buffer is returned with its header
+			 * spinlock still held!  Also the BufFreelistLock is still held, since
+			 * it would be bad to hold the spinlock while possibly waking up other
+			 * processes.
+			 */
+			buf = StrategyGetBuffer();
+			unlockBufFreeList = true;
+		}
 
 		Assert(buf->refcount == 0);
 
@@ -396,7 +419,8 @@ BufferAlloc(Relation reln,
 		PinBuffer_Locked(buf);
 
 		/* Now it's safe to release the freelist lock */
-		LWLockRelease(BufFreelistLock);
+		if (unlockBufFreeList)
+			LWLockRelease(BufFreelistLock);
 
 		/*
 		 * If the buffer was dirty, try to write it out.  There is a race
@@ -616,9 +640,14 @@ BufferAlloc(Relation reln,
  *
  * The buffer could get reclaimed by someone else while we are waiting
  * to acquire the necessary locks; if so, don't mess it up.
+ *
+ * Return true if buffer is indeed invalidated, false otherwise. Returning
+ * false is usally not consequential as it means that the buf cannot be 
+ * invalidated because someone else is using it. Caller should just forget
+ * about this buf.
  */
-static void
-InvalidateBuffer(volatile BufferDesc *buf)
+static bool
+InvalidateBuffer(volatile BufferDesc *buf, bool putInFreeList)
 {
 	BufferTag	oldTag;
 	uint32		oldHash;		/* hash value for oldTag */
@@ -654,7 +683,7 @@ retry:
 	{
 		UnlockBufHdr(buf);
 		LWLockRelease(oldPartitionLock);
-		return;
+		return false;
 	}
 
 	/*
@@ -702,7 +731,10 @@ retry:
 	/*
 	 * Insert the buffer at the head of the list of free buffers.
 	 */
-	StrategyFreeBuffer(buf, true);
+	if (putInFreeList)
+		StrategyFreeBuffer(buf, true);
+
+	return true;
 }
 
 /*
@@ -797,6 +829,48 @@ ReleaseAndReadBuffer(Buffer buffer,
 	}
 
 	return ReadBuffer(relation, blockNum);
+}
+
+
+Buffer
+KillAndReadBuffer(Buffer buffer,
+					 Relation relation,
+					 BlockNumber blockNum)
+{
+	BufferDesc* bufHdr;
+	if (!BufferIsValid(buffer) || BufferIsLocal(buffer)) 
+	{
+		return ReleaseAndReadBuffer(buffer, relation, blockNum);
+	}
+
+	/* buffer is valid and it is not local */
+	Assert(PrivateRefCount[buffer - 1] > 0);
+	bufHdr = &BufferDescriptors[buffer - 1];
+	/* we have pin, so it's ok to examine tag without spinlock */
+	if (bufHdr->tag.blockNum == blockNum 
+		&& RelFileNodeEquals(bufHdr->tag.rnode, relation->rd_node))
+		return buffer;
+
+
+	/* don't kill the buffer if someone else is using it or used it recently, 
+	   or if it's dirty */
+	UnpinBuffer(bufHdr, true, true);
+	LockBufHdr(bufHdr);
+	if (PrivateRefCount[buffer - 1] > 0 
+		|| bufHdr->refcount > 0
+		|| bufHdr->usage_count > 1 
+		|| (bufHdr->flags & (BM_IO_IN_PROGRESS | BM_DIRTY)))  
+	{
+		UnlockBufHdr(bufHdr);
+		return ReadBuffer(relation, blockNum);
+	}
+
+	/* now, invalidate the buffer, but don't put on freelist */
+	if (! InvalidateBuffer(bufHdr, false)) /* this will unlock bufhdr */
+		return ReadBuffer(relation, blockNum);
+
+	/* reuse the freed buffer to read the new page if possible */
+	return ReadBuffer_Ex(relation, blockNum, bufHdr);
 }
 
 /*
@@ -1495,7 +1569,7 @@ DropRelFileNodeBuffers(RelFileNode rnode, bool isLocalBuf,
 		LockBufHdr(bufHdr);
 		if (RelFileNodeEquals(bufHdr->tag.rnode, rnode) &&
 			bufHdr->tag.blockNum >= firstDelBlock)
-			InvalidateBuffer(bufHdr);	/* releases spinlock */
+			InvalidateBuffer(bufHdr, true);	/* releases spinlock */
 		else
 			UnlockBufHdr(bufHdr);
 	}
@@ -1528,7 +1602,7 @@ DropDatabaseBuffers(Oid dbid)
 		bufHdr = &BufferDescriptors[i];
 		LockBufHdr(bufHdr);
 		if (bufHdr->tag.rnode.dbNode == dbid)
-			InvalidateBuffer(bufHdr);	/* releases spinlock */
+			InvalidateBuffer(bufHdr, true);	/* releases spinlock */
 		else
 			UnlockBufHdr(bufHdr);
 	}

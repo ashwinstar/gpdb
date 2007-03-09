@@ -72,6 +72,8 @@ static XLogRecPtr log_heap_update(Relation reln, Buffer oldbuf,
 static void
 initscan(HeapScanDesc scan, ScanKey key)
 {
+	int i;
+
 	/*
 	 * Determine the number of blocks we have to scan.
 	 *
@@ -86,6 +88,11 @@ initscan(HeapScanDesc scan, ScanKey key)
 	ItemPointerSetInvalid(&scan->rs_ctup.t_self);
 	scan->rs_cbuf = InvalidBuffer;
 	scan->rs_cblock = InvalidBlockNumber;
+	for (i = 0; i < lengthof(scan->rs_rahead); i++) 
+	{
+		scan->rs_rahead[i].buffer = InvalidBuffer;
+		scan->rs_rahead[i].block = InvalidBlockNumber;
+	}
 
 	/* we don't have a marked position... */
 	ItemPointerSetInvalid(&(scan->rs_mctid));
@@ -109,7 +116,7 @@ initscan(HeapScanDesc scan, ScanKey key)
  * which tuples on the page are visible.
  */
 static void
-heapgetpage(HeapScanDesc scan, BlockNumber page)
+heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 {
 	Buffer		buffer;
 	Snapshot	snapshot;
@@ -118,16 +125,77 @@ heapgetpage(HeapScanDesc scan, BlockNumber page)
 	int			ntup;
 	OffsetNumber lineoff;
 	ItemId		lpp;
+	const bool  do_prefetch = true;
 
 	Assert(page < scan->rs_nblocks);
 
-	scan->rs_cbuf = ReleaseAndReadBuffer(scan->rs_cbuf,
-										 scan->rs_rd,
-										 page);
-	scan->rs_cblock = page;
-
-	if (!scan->rs_pageatatime)
+	if (! scan->rs_pageatatime) 
+	{
+		scan->rs_cbuf = ReleaseAndReadBuffer(scan->rs_cbuf,
+											 scan->rs_rd,
+											 page);
+		scan->rs_cblock = page;
 		return;
+	}
+
+	if (! do_prefetch) 
+	{
+		scan->rs_cbuf = ReleaseAndReadBuffer(scan->rs_cbuf, scan->rs_rd, page);
+		scan->rs_cblock = page;
+	}
+	else
+	{
+		int         ri, i;
+		const int   incr = backward ? -1 : 1;
+		const int   rimax = lengthof(scan->rs_rahead);
+
+		/*
+		 *  This will fill the first 2 quarters of read ahead on a miss
+		 */
+		for (i = 0; i < rimax / 2; i++) 
+		{
+			const int pg = page + incr * i;
+			if (! (0 <= pg && pg < scan->rs_nblocks))
+				break;
+			ri = pg % rimax;
+			if (scan->rs_rahead[ri].block == pg)
+				break;
+			scan->rs_rahead[ri].block = pg;
+			scan->rs_rahead[ri].buffer 
+				= KillAndReadBuffer(scan->rs_rahead[ri].buffer, scan->rs_rd, pg);
+			/*elog(LOG, "heapgetpage: 1 [%d] read %d at %x", ri, pg, scan->rs_rahead[ri].buffer);*/
+		}
+#ifdef UNDEF
+		/*
+		 *  This will fill the 3nd quarter of read ahead provided that it is not filled
+		 */
+		for (i = rimax / 2; i < rimax * 3 / 4; i++)
+		{
+			const int pg = page + incr * i;
+			if (! (0 <= pg && pg < scan->rs_nblocks))
+				break;
+			ri = pg % rimax;
+			if (scan->rs_rahead[ri].block == pg)
+				break;
+			scan->rs_rahead[ri].block = pg;
+			scan->rs_rahead[ri].buffer 
+				= KillAndReadBuffer(scan->rs_rahead[ri].buffer, scan->rs_rd, pg);
+			/*elog(LOG, "heapgetpage: 2 [%d] read %d at %x", ri, pg, scan->rs_rahead[ri].buffer);*/
+		}
+#endif
+		ri = page % rimax;
+		if (scan->rs_rahead[ri].block != page)
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("page number mismatch, expect %d, but got %d", 
+							page, scan->rs_rahead[ri].block)));
+
+		if (BufferIsValid(scan->rs_cbuf))
+			ReleaseBuffer(scan->rs_cbuf);
+		scan->rs_cbuf = scan->rs_rahead[ri].buffer;
+		scan->rs_cblock = page;
+		IncrBufferRefCount(scan->rs_cbuf);
+	}
 
 	buffer = scan->rs_cbuf;
 	snapshot = scan->rs_snapshot;
@@ -224,7 +292,7 @@ heapgettup(HeapScanDesc scan,
 				return;
 			}
 			page = 0;			/* first page */
-			heapgetpage(scan, page);
+			heapgetpage(scan, page, ScanDirectionIsBackward(dir));
 			lineoff = FirstOffsetNumber;		/* first offnum */
 			scan->rs_inited = true;
 		}
@@ -258,7 +326,7 @@ heapgettup(HeapScanDesc scan,
 				return;
 			}
 			page = scan->rs_nblocks - 1;		/* final page */
-			heapgetpage(scan, page);
+			heapgetpage(scan, page, ScanDirectionIsBackward(dir));
 		}
 		else
 		{
@@ -299,7 +367,7 @@ heapgettup(HeapScanDesc scan,
 
 		page = ItemPointerGetBlockNumber(&(tuple->t_self));
 		if (page != scan->rs_cblock)
-			heapgetpage(scan, page);
+			heapgetpage(scan, page, ScanDirectionIsBackward(dir));
 
 		/* Since the tuple was previously fetched, needn't lock page here */
 		dp = (Page) BufferGetPage(scan->rs_cbuf);
@@ -385,7 +453,7 @@ heapgettup(HeapScanDesc scan,
 
 		page = backward ? (page - 1) : (page + 1);
 
-		heapgetpage(scan, page);
+		heapgetpage(scan, page, ScanDirectionIsBackward(dir));
 
 		LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
 
@@ -451,7 +519,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 				return;
 			}
 			page = 0;			/* first page */
-			heapgetpage(scan, page);
+			heapgetpage(scan, page, ScanDirectionIsBackward(dir));
 			lineindex = 0;
 			scan->rs_inited = true;
 		}
@@ -482,7 +550,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 				return;
 			}
 			page = scan->rs_nblocks - 1;		/* final page */
-			heapgetpage(scan, page);
+			heapgetpage(scan, page, ScanDirectionIsBackward(dir));
 		}
 		else
 		{
@@ -520,7 +588,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 
 		page = ItemPointerGetBlockNumber(&(tuple->t_self));
 		if (page != scan->rs_cblock)
-			heapgetpage(scan, page);
+			heapgetpage(scan, page, ScanDirectionIsBackward(dir));
 
 		/* Since the tuple was previously fetched, needn't lock page here */
 		dp = (Page) BufferGetPage(scan->rs_cbuf);
@@ -604,7 +672,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 		}
 
 		page = backward ? (page - 1) : (page + 1);
-		heapgetpage(scan, page);
+		heapgetpage(scan, page, ScanDirectionIsBackward(dir));
 
 		dp = (Page) BufferGetPage(scan->rs_cbuf);
 		lines = scan->rs_ntuples;
@@ -967,11 +1035,15 @@ void
 heap_rescan(HeapScanDesc scan,
 			ScanKey key)
 {
+	int i;
 	/*
 	 * unpin scan buffers
 	 */
 	if (BufferIsValid(scan->rs_cbuf))
 		ReleaseBuffer(scan->rs_cbuf);
+	for (i = 0; i < lengthof(scan->rs_rahead); i++) 
+		if (BufferIsValid(scan->rs_rahead[i].buffer)) 
+			ReleaseBuffer(scan->rs_rahead[i].buffer);
 
 	/*
 	 * reinitialize scan descriptor
@@ -989,6 +1061,7 @@ heap_rescan(HeapScanDesc scan,
 void
 heap_endscan(HeapScanDesc scan)
 {
+	int i;
 	/* Note: no locking manipulations needed */
 
 	/*
@@ -996,7 +1069,9 @@ heap_endscan(HeapScanDesc scan)
 	 */
 	if (BufferIsValid(scan->rs_cbuf))
 		ReleaseBuffer(scan->rs_cbuf);
-
+	for (i = 0; i < lengthof(scan->rs_rahead); i++) 
+		if (BufferIsValid(scan->rs_rahead[i].buffer)) 
+			ReleaseBuffer(scan->rs_rahead[i].buffer);
 	/*
 	 * decrement relation reference count and free scan descriptor storage
 	 */
