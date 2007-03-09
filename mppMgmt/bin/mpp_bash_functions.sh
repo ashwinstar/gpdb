@@ -223,7 +223,7 @@ QE_CONNECT_FACTOR=5
 #a revised value based upon the master instance block size.
 #Eg, if block size 32KB, will set shared_buffers=4000
 #if block size 8KB, will set shared_buffers=16000
-DEFAULT_BUFFERS=16000
+DEFAULT_BUFFERS=4000
 DEBUG_LEVEL=0
 BATCH_DEFAULT=60
 WAIT_LIMIT=300
