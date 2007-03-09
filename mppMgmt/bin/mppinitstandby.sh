@@ -249,7 +249,7 @@ STOP_MASTER_DB () {
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-MPP standby master initialization parameters" 1
-	LOG_MSG "--------------------------------------------" 1
+	LOG_MSG "[INFO]:---------------------------------------------" 1
 	LOG_MSG "[INFO]:-MPP Master hostname               = $MASTER_HOSTNAME" 1
 	LOG_MSG "[INFO]:-MPP Master data directory         = $MASTER_DATA_DIRECTORY" 1
 	LOG_MSG "[INFO]:-MPP Master port                   = $MASTER_PORT" 1
@@ -439,6 +439,11 @@ if [ $FAIL_PRI_SEG ];then
 	FAIL_PRIMARY_SEGMENTS
 	LOG_MSG "[INFO]:------------------------------------------------" 1
 	LOG_MSG "[INFO]:-Successfully created a read only master standby" 1
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+else
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Successfully created master standby host on $MASTER_STANDBY_HOSTNAME " 1
+	LOG_MSG "[INFO]:------------------------------------------------" 1
 fi
-LOG_MSG "[INFO]:-End Main"
+LOG_MSG "[INFO]:-End Main" 
 exit $EXIT_STATUS
