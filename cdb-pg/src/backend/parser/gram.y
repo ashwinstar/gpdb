@@ -3915,7 +3915,7 @@ IndexStmt:	CREATE index_opt_unique INDEX index_name
 					n->options = $11;
 					n->tableSpace = $12;
 					n->whereClause = $13;
-					n->idxOid = 0;
+					n->idxOids = NULL;
 					$$ = (Node *)n;
 				}
 			| CREATE index_opt_unique INDEX CONCURRENTLY index_name

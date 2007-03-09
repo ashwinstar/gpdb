@@ -411,7 +411,7 @@ _readIndexStmt(const char ** str)
 	READ_BOOL_FIELD(primary);
 	READ_BOOL_FIELD(isconstraint);
 	READ_BOOL_FIELD(concurrent);
-	READ_OID_FIELD(idxOid);
+	READ_NODE_FIELD(idxOids);
 
 	READ_DONE();
 }

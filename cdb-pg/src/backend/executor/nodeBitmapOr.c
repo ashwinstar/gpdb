@@ -113,7 +113,7 @@ MultiExecBitmapOr(BitmapOrState *node)
 	PlanState **bitmapplans;
 	int			nplans;
 	int			i;
-	TIDBitmap  *result = NULL;
+	HashBitmap *hbm = NULL;
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
@@ -131,55 +131,61 @@ MultiExecBitmapOr(BitmapOrState *node)
 	for (i = 0; i < nplans; i++)
 	{
 		PlanState  *subnode = bitmapplans[i];
-		TIDBitmap  *subresult;
+		Node	   *subresult = NULL;
 
-		/*
-		 * We can special-case BitmapIndexScan children to avoid an explicit
-		 * tbm_union step for each child: just pass down the current result
-		 * bitmap and let the child OR directly into it.
-		 */
 		if (IsA(subnode, BitmapIndexScanState))
+			((BitmapIndexScanState *) subnode)->bitmap = node->bitmap;
+
+		subresult = MultiExecProcNode(subnode);
+
+		if(subresult == NULL)
+			continue;
+
+		if (!(IsA(subresult, HashBitmap) ||
+			  IsA(subresult, StreamBitmap)))
+			elog(ERROR, "unrecognized result from subplan");
+
+		if (IsA(subresult, HashBitmap))
 		{
-			if (result == NULL) /* first subplan */
+			if (hbm == NULL)
+				hbm = (HashBitmap *)subresult;
+			else
 			{
-				/* XXX should we use less than work_mem for this? */
-				result = tbm_create(work_mem * 1024L);
+				tbm_union(hbm, (HashBitmap *)subresult);
+				tbm_free((HashBitmap *)subresult);
 			}
-
-			((BitmapIndexScanState *) subnode)->biss_result = result;
-
-			subresult = (TIDBitmap *) MultiExecProcNode(subnode);
-
-			if (subresult != result)
-				elog(ERROR, "unrecognized result from subplan");
 		}
 		else
 		{
-			/* standard implementation */
-			subresult = (TIDBitmap *) MultiExecProcNode(subnode);
-
-			if (!subresult || !IsA(subresult, TIDBitmap))
-				elog(ERROR, "unrecognized result from subplan");
-
-			if (result == NULL)
-				result = subresult;		/* first subplan */
-			else
+			if(node->bitmap)
 			{
-				tbm_union(result, subresult);
-				tbm_free(subresult);
+				if(node->bitmap != subresult)
+				{
+					StreamBitmap *s = (StreamBitmap *)subresult;
+					stream_add_node((StreamBitmap *)node->bitmap, 
+									s->opaque, BMS_OR);
+				}
 			}
+			else
+				node->bitmap = subresult;
 		}
 	}
 
-	/* We could return an empty result set here? */
-	if (result == NULL)
-		elog(ERROR, "BitmapOr doesn't support zero inputs");
+	/* check to see if we have any hash bitmaps */
+	if (hbm != NULL)
+	{
+		if(node->bitmap && IsA(node->bitmap, StreamBitmap))
+			stream_add_node((StreamBitmap *)node->bitmap, 
+						tbm_create_stream_node(hbm), BMS_OR);
+		else
+			node->bitmap = (Node *)hbm;
+	}
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
 		InstrStopNode(node->ps.instrument, 0 /* XXX */ );
 
-	return (Node *) result;
+	return node->bitmap;
 }
 
 /* ----------------------------------------------------------------

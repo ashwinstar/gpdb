@@ -1616,7 +1616,7 @@ _outIndexStmt(StringInfo str, IndexStmt *node)
 	WRITE_BOOL_FIELD(primary);
 	WRITE_BOOL_FIELD(isconstraint);
 	WRITE_BOOL_FIELD(concurrent);
-	WRITE_OID_FIELD(idxOid);
+	WRITE_NODE_FIELD(idxOids);
 }
 
 static void

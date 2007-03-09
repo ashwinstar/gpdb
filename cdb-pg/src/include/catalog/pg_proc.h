@@ -659,7 +659,7 @@ DESCR("convert float4 to int4");
 
 DATA(insert OID = 330 (  btgettuple		   PGNSP PGUID 12 f f t f v 2 16 "2281 2281" _null_ _null_ _null_  btgettuple - _null_ ));
 DESCR("btree(internal)");
-DATA(insert OID = 636 (  btgetmulti		   PGNSP PGUID 12 f f t f v 4 16 "2281 2281 2281 2281" _null_ _null_ _null_  btgetmulti - _null_ ));
+DATA(insert OID = 636 (  btgetbitmap		   PGNSP PGUID 12 f f t f v 2 2281 "2281 2281" _null_ _null_ _null_  btgetbitmap - _null_ ));
 DESCR("btree(internal)");
 DATA(insert OID = 331 (  btinsert		   PGNSP PGUID 12 f f t f v 6 16 "2281 2281 2281 2281 2281 2281" _null_ _null_ _null_	btinsert - _null_ ));
 DESCR("btree(internal)");
@@ -778,7 +778,7 @@ DESCR("convert char(n) to name");
 
 DATA(insert OID = 440 (  hashgettuple	   PGNSP PGUID 12 f f t f v 2 16 "2281 2281" _null_ _null_ _null_  hashgettuple - _null_ ));
 DESCR("hash(internal)");
-DATA(insert OID = 637 (  hashgetmulti	   PGNSP PGUID 12 f f t f v 4 16 "2281 2281 2281 2281" _null_ _null_ _null_  hashgetmulti - _null_ ));
+DATA(insert OID = 637 (  hashgetbitmap	   PGNSP PGUID 12 f f t f v 2 2281 "2281 2281" _null_ _null_ _null_  hashgetbitmap - _null_ ));
 DESCR("hash(internal)");
 DATA(insert OID = 441 (  hashinsert		   PGNSP PGUID 12 f f t f v 6 16 "2281 2281 2281 2281 2281 2281" _null_ _null_ _null_	hashinsert - _null_ ));
 DESCR("hash(internal)");
@@ -1049,7 +1049,7 @@ DESCR("smaller of two");
 
 DATA(insert OID = 774 (  gistgettuple	   PGNSP PGUID 12 f f t f v 2 16 "2281 2281" _null_ _null_ _null_  gistgettuple - _null_ ));
 DESCR("gist(internal)");
-DATA(insert OID = 638 (  gistgetmulti	   PGNSP PGUID 12 f f t f v 4 16 "2281 2281 2281 2281" _null_ _null_ _null_  gistgetmulti - _null_ ));
+DATA(insert OID = 638 (  gistgetbitmap	   PGNSP PGUID 12 f f t f v 2 2281 "2281 2281" _null_ _null_ _null_  gistgetbitmap - _null_ ));
 DESCR("gist(internal)");
 DATA(insert OID = 775 (  gistinsert		   PGNSP PGUID 12 f f t f v 6 16 "2281 2281 2281 2281 2281 2281" _null_ _null_ _null_	gistinsert - _null_ ));
 DESCR("gist(internal)");
@@ -3924,7 +3924,7 @@ DESCR("GiST support");
 /* GIN */
 DATA(insert OID = 2730 (  gingettuple	   PGNSP PGUID 12 f f t f v 2 16 "2281 2281" _null_ _null_ _null_  gingettuple - _null_ ));
 DESCR("gin(internal)");
-DATA(insert OID = 2731 (  gingetmulti	   PGNSP PGUID 12 f f t f v 4 16 "2281 2281 2281 2281" _null_ _null_ _null_  gingetmulti - _null_ ));
+DATA(insert OID = 2731 (  gingetbitmap	   PGNSP PGUID 12 f f t f v 2 2281 "2281 2281" _null_ _null_ _null_  gingetbitmap - _null_ ));
 DESCR("gin(internal)");
 DATA(insert OID = 2732 (  gininsert		   PGNSP PGUID 12 f f t f v 6 16 "2281 2281 2281 2281 2281 2281" _null_ _null_ _null_	gininsert - _null_ ));
 DESCR("gin(internal)");
@@ -4015,6 +4015,33 @@ DATA(insert OID = 2891 (  pg_advisory_unlock_shared		PGNSP PGUID 12 f f t f v 2 
 DESCR("release shared advisory lock");
 DATA(insert OID = 2892 (  pg_advisory_unlock_all		PGNSP PGUID 12 f f t f v 0 2278 "" _null_ _null_ _null_ pg_advisory_unlock_all - _null_ ));
 DESCR("release all advisory locks");
+
+/* the bitmap index access method routines */
+DATA(insert OID = 3050 (  bmgettuple		   PGNSP PGUID 12 f f t f v 2 16 "2281 2281" _null_ _null_ _null_  bmgettuple - _null_ ));
+DESCR("bitmap(internal)");
+DATA(insert OID = 3051 (  bmgetbitmap		   PGNSP PGUID 12 f f t f v 2 2281 "2281 2281" _null_ _null_ _null_  bmgetbitmap - _null_ ));
+DESCR("bitmap(internal)");
+DATA(insert OID = 3001 (  bminsert		   PGNSP PGUID 12 f f t f v 6 16 "2281 2281 2281 2281 2281 2281" _null_ _null_ _null_	bminsert - _null_ ));
+DESCR("bitmap(internal)");
+DATA(insert OID = 3002 (  bmbeginscan	   PGNSP PGUID 12 f f t f v 3 2281 "2281 2281 2281" _null_ _null_ _null_	bmbeginscan - _null_ ));
+DESCR("bitmap(internal)");
+DATA(insert OID = 3003 (  bmrescan		   PGNSP PGUID 12 f f t f v 2 2278 "2281 2281" _null_ _null_ _null_	bmrescan - _null_ ));
+DESCR("bitmap(internal)");
+DATA(insert OID = 3004 (  bmendscan		   PGNSP PGUID 12 f f t f v 1 2278 "2281" _null_ _null_ _null_	bmendscan - _null_ ));
+DESCR("bitmap(internal)");
+DATA(insert OID = 3005 (  bmmarkpos		   PGNSP PGUID 12 f f t f v 1 2278 "2281" _null_ _null_ _null_	bmmarkpos - _null_ ));
+DESCR("bitmap(internal)");
+DATA(insert OID = 3006 (  bmrestrpos		   PGNSP PGUID 12 f f t f v 1 2278 "2281" _null_ _null_ _null_	bmrestrpos - _null_ ));
+DESCR("bitmap(internal)");
+DATA(insert OID = 3007 (  bmbuild		   PGNSP PGUID 12 f f t f v 3 2281 "2281 2281 2281" _null_ _null_ _null_ bmbuild - _null_ ));
+DESCR("bitmap(internal)");
+DATA(insert OID = 3008 (  bmbulkdelete	   PGNSP PGUID 12 f f t f v 4 2281 "2281 2281 2281 2281" _null_ _null_ _null_ bmbulkdelete - _null_ ));
+DESCR("bitmap(internal)");
+DATA(insert OID = 3009 (  bmvacuumcleanup   PGNSP PGUID 12 f f t f v 2 2281 "2281 2281" _null_ _null_ _null_ bmvacuumcleanup - _null_ ));
+DATA(insert OID = 3010 (  bmcostestimate   PGNSP PGUID 12 f f t f v 8 2278 "2281 2281 2281 2281 2281 2281 2281 2281" _null_ _null_ _null_  bmcostestimate - _null_ ));
+DESCR("bitmap(internal)");
+DATA(insert OID = 3011 (  bmoptions		   PGNSP PGUID 12 f f t f s 2 17 "1009 16" _null_ _null_ _null_  bmoptions - _null_ ));
+DESCR("btree(internal)");
 
 /*
  * Symbolic values for provolatile column: these indicate whether the result

@@ -59,10 +59,11 @@ BitmapHeapNext(BitmapHeapScanState *node)
 	ExprContext *econtext;
 	HeapScanDesc scan;
 	Index		scanrelid;
-	TIDBitmap  *tbm;
+	Node  		*tbm;
 	TBMIterateResult *tbmres;
 	OffsetNumber targoffset;
 	TupleTableSlot *slot;
+	bool		more = true;
 
 	/*
 	 * extract necessary information from index scan node
@@ -105,20 +106,20 @@ BitmapHeapNext(BitmapHeapScanState *node)
 	}
 
 	/*
-	 * If we haven't yet performed the underlying index scan, do it, and
-	 * prepare the bitmap to be iterated over.
-	 */
+	 * If we haven't yet performed the underlying index scan, or
+	 * we have used up the bitmaps from the previous scan, do the next scan,
+	 * and prepare the bitmap to be iterated over.
+ 	 */
 	if (tbm == NULL)
 	{
-		tbm = (TIDBitmap *) MultiExecProcNode(outerPlanState(node));
+		tbm = (Node *) MultiExecProcNode(outerPlanState(node));
 
-		if (!tbm || !IsA(tbm, TIDBitmap))
+		if (!tbm || !(IsA(tbm, HashBitmap) ||
+					  IsA(tbm, StreamBitmap)))
 			elog(ERROR, "unrecognized result from subplan");
 
 		node->tbm = tbm;
-		node->tbmres = tbmres = NULL;
-
-		tbm_begin_iterate(tbm);
+	//	node->tbmres = tbmres = NULL;
 	}
 
 	for (;;)
@@ -126,27 +127,26 @@ BitmapHeapNext(BitmapHeapScanState *node)
 		Page		dp;
 		ItemId		lp;
 
-		/*
-		 * Get next page of results if needed
-		 */
-		if (tbmres == NULL)
+		if (tbmres == NULL || tbmres->ntuples == 0)
 		{
-			node->tbmres = tbmres = tbm_iterate(tbm);
-			if (tbmres == NULL)
+			more = tbm_iterate(tbm, tbmres);
+			if (!more)
 			{
 				/* no more entries in the bitmap */
 				break;
 			}
 
 			/*
-			 * Ignore any claimed entries past what we think is the end of the
-			 * relation.  (This is probably not necessary given that we got at
-			 * least AccessShareLock on the table before performing any of the
-			 * indexscans, but let's be safe.)
+			 * Ignore any claimed entries past what we think is the end of
+			 * the relation.  (This is probably not necessary given that we
+			 * got at least AccessShareLock on the table before performing
+			 * any of the indexscans, but let's be safe.)
 			 */
 			if (tbmres->blockno >= scan->rs_nblocks)
 			{
-				node->tbmres = tbmres = NULL;
+				more = false;
+				tbmres->ntuples = 0;
+//				node->tbmres = tbmres = NULL;
 				continue;
 			}
 
@@ -156,8 +156,8 @@ BitmapHeapNext(BitmapHeapScanState *node)
 			bitgetpage(scan, tbmres);
 
 			/*
-			 * Set rs_cindex to first slot to examine
-			 */
+		 	* Set rs_cindex to first slot to examine
+		 	*/
 			scan->rs_cindex = 0;
 		}
 		else
@@ -166,6 +166,7 @@ BitmapHeapNext(BitmapHeapScanState *node)
 			 * Continuing in previously obtained page; advance rs_cindex
 			 */
 			scan->rs_cindex++;
+			tbmres->ntuples--;
 		}
 
 		/*
@@ -173,7 +174,8 @@ BitmapHeapNext(BitmapHeapScanState *node)
 		 */
 		if (scan->rs_cindex < 0 || scan->rs_cindex >= scan->rs_ntuples)
 		{
-			node->tbmres = tbmres = NULL;
+			more = false;
+			tbmres->ntuples = 0;
 			continue;
 		}
 
@@ -192,8 +194,8 @@ BitmapHeapNext(BitmapHeapScanState *node)
 		pgstat_count_heap_fetch(&scan->rs_pgstat_info);
 
 		/*
-		 * Set up the result slot to point to this tuple. Note that the slot
-		 * acquires a pin on the buffer.
+		 * Set up the result slot to point to this tuple. Note that the
+		 * slot acquires a pin on the buffer.
 		 */
 		ExecStoreTuple(&scan->rs_ctup,
 					   slot,
@@ -201,8 +203,8 @@ BitmapHeapNext(BitmapHeapScanState *node)
 					   false);
 
 		/*
-		 * If we are using lossy info, we have to recheck the qual conditions
-		 * at every tuple.
+		 * If we are using lossy info, we have to recheck the qual
+		 * conditions at every tuple.
 		 */
 		if (tbmres->ntuples < 0)
 		{
@@ -213,7 +215,7 @@ BitmapHeapNext(BitmapHeapScanState *node)
 			{
 				/* Fails recheck, so drop it and loop back for another */
 				ExecClearTuple(slot);
-				continue;
+					continue;
 			}
 		}
 
@@ -364,7 +366,7 @@ ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtxt)
 	estate = node->ss.ps.state;
 	scanrelid = ((BitmapHeapScan *) node->ss.ps.plan)->scan.scanrelid;
 
-	/*node->ss.ps.ps_TupFromTlist = false;*/
+	/* node->ss.ps.ps_TupFromTlist = false; */
 
 	/*
 	 * If we are being passed an outer tuple, link it into the "regular"
@@ -391,10 +393,26 @@ ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtxt)
 	/* undo bogus "seq scan" count (see notes in ExecInitBitmapHeapScan) */
 	pgstat_discount_heap_scan(&node->ss.ss_currentScanDesc->rs_pgstat_info);
 
-	if (node->tbm)
-		tbm_free(node->tbm);
+	if (node->tbm != NULL)
+	{
+		if(IsA(node->tbm, HashBitmap))
+		{
+			tbm_free((HashBitmap *)node->tbm);
+			node->tbm = NULL;
+		}
+		else if(IsA(node->tbm, StreamBitmap))
+		{
+			StreamBitmap *s = (StreamBitmap *)node->tbm;
+			if(s->opaque)
+			{
+				bitmap_stream_free(s->opaque);
+				s->opaque = NULL;
+			}
+		}
+	}
 	node->tbm = NULL;
-	node->tbmres = NULL;
+	node->tbmres->ntuples = 0;
+//	node->tbmres = NULL;
 
 	/*
 	 * Always rescan the input immediately, to ensure we can pass down any
@@ -436,11 +454,27 @@ ExecEndBitmapHeapScan(BitmapHeapScanState *node)
 	ExecEndNode(outerPlanState(node));
 
 	/*
-	 * release bitmap if any
+	 * Free up bitmaps
 	 */
-	if (node->tbm)
-		tbm_free(node->tbm);
-
+#ifdef NOT_USED
+	if (node->tbm != NULL)
+	{
+		if(IsA(node->tbm, HashBitmap))
+		{
+			tbm_free((HashBitmap *)node->tbm);
+			node->tbm = NULL;
+		}
+		else if(IsA(node->tbm, StreamBitmap))
+		{
+			StreamBitmap *s = (StreamBitmap *)node->tbm;
+			if(s->opaque)
+			{
+				bitmap_stream_free(s->opaque);
+				s->opaque = NULL;
+			}
+		}
+	}
+#endif
 	/*
 	 * close heap scan
 	 */
@@ -450,6 +484,8 @@ ExecEndBitmapHeapScan(BitmapHeapScanState *node)
 	 * close the heap relation.
 	 */
 	ExecCloseScanRelation(relation);
+
+	pfree(node->tbmres);
 }
 
 /* ----------------------------------------------------------------
@@ -481,7 +517,8 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 	scanstate->ss.ps.state = estate;
 
 	scanstate->tbm = NULL;
-	scanstate->tbmres = NULL;
+	scanstate->tbmres = palloc(sizeof(TBMIterateResult) +
+							   MAX_TUPLES_PER_PAGE * sizeof(OffsetNumber));
 
 	/*
 	 * Miscellaneous initialization
@@ -490,7 +527,7 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 	 */
 	ExecAssignExprContext(estate, &scanstate->ss.ps);
 
-	/*scanstate->ss.ps.ps_TupFromTlist = false;*/
+	/* scanstate->ss.ps.ps_TupFromTlist = false;*/
 
 	/*
 	 * initialize child expressions

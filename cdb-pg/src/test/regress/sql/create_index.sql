@@ -259,3 +259,90 @@ COMMIT;
 \d concur_heap
 
 DROP TABLE concur_heap;
+
+
+
+SET enable_seqscan = OFF;
+SET enable_indexscan = ON;
+SET enable_bitmapscan = ON;
+
+create table bm_test (i int, t text);
+insert into bm_test select i % 10, (i % 10)::text  from generate_series(1, 100) i;
+create index bm_test_idx on bm_test using bitmap (i);
+select count(*) from bm_test where i=1;
+select count(*) from bm_test where i in(1, 2);
+select * from bm_test where i > 10;
+reindex index bm_test_idx;
+select count(*) from bm_test where i in(1, 2);
+drop index bm_test_idx;
+create index bm_test_multi_idx on bm_test using bitmap(i, t);
+select * from bm_test where i=5 and t='5';
+select * from bm_test where i=5 or t='6';
+select * from bm_test where i between 1 and 10 and i::text = t;
+drop table bm_test;
+
+-- test a bunch of different data types
+create table bm_test (i2 int2, i4 int4, i8 int8, f4 float4, f8 float8,
+	n numeric(10, 3), t1 varchar(3), t2 char(3), t3 text, a int[2],
+	ip inet, b bytea, t timestamp, d date, g bool);
+
+insert into bm_test values(1, 1, 1, 1.0, 1.0, 1000.333, '1', '1', '1',
+    array[1, 3], '127.0.0.1', E'\001', '2007-01-01 01:01:01',
+    '2007-01-01', 't');
+
+insert into bm_test values(2, 2, 2, 2.0, 2.0, 2000.333, '2', '2', 'foo',
+    array[2, 6], '127.0.0.2', E'\002', '2007-01-02 01:01:01',
+    '2007-01-02', 'f');
+
+insert into bm_test default values; -- test nulls
+
+create index bm_i2_idx on bm_test using bitmap(i2);
+create index bm_i4_idx on bm_test using bitmap(i4);
+create index bm_i8_idx on bm_test using bitmap(i8);
+
+create index bm_f4_idx on bm_test using bitmap(f4);
+create index bm_f8_idx on bm_test using bitmap(f8);
+
+create index bm_n_idx on bm_test using bitmap(n);
+
+create index bm_t1_idx on bm_test using bitmap(t1);
+create index bm_t2_idx on bm_test using bitmap(t2);
+create index bm_t3_idx on bm_test using bitmap(t3);
+
+create index bm_a_idx on bm_test using bitmap(a);
+
+create index bm_ip_idx on bm_test using bitmap(ip);
+
+create index bm_b_idx on bm_test using bitmap(b);
+
+create index bm_t_idx on bm_test using bitmap(t);
+
+create index bm_d_idx on bm_test using bitmap(d);
+
+create index bm_g_idx on bm_test using bitmap(g);
+
+create index bm_t3_upper_idx on bm_test using bitmap(upper(t3));
+create index bm_n_null_idx on bm_test using bitmap(n) WHERE n ISNULL;
+-- Try some cross type stuff
+select a.t from bm_test a, bm_test b where a.i2 = b.i2;
+select a.t from bm_test a, bm_test b where a.i2 = b.i4;
+select a.t from bm_test a, bm_test b where a.i2 = b.i8;
+select a.t from bm_test a, bm_test b where b.f4 = a.f8 and a.f8 = '2.0';
+
+-- some range queries
+select a.t from bm_test a, bm_test b where a.n < b.n;
+select a.t from bm_test a, bm_test b where a.ip < b.ip;
+
+-- or queries
+select a.t from bm_test a, bm_test b where a.ip=b.ip OR a.b = b.b;
+
+-- and
+select a.t from bm_test a, bm_test b where a.ip=b.ip and a.b = b.b and a.i2=1;
+
+-- subquery
+select a.t from bm_test a where d in(select d from bm_test b where a.g=b.g);
+
+-- functional and predicate indexes
+select t from bm_test where upper(t3) = 'FOO';
+select t from bm_test where n ISNULL;
+drop table bm_test;

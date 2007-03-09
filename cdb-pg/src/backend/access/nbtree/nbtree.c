@@ -17,7 +17,7 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
-
+#include "miscadmin.h"
 #include "access/genam.h"
 #include "access/nbtree.h"
 #include "catalog/index.h"
@@ -25,7 +25,7 @@
 #include "storage/freespace.h"
 #include "storage/lmgr.h"
 #include "utils/memutils.h"
-
+#include "nodes/tidbitmap.h"
 
 /* Working state for btbuild and its callback */
 typedef struct
@@ -278,46 +278,43 @@ btgettuple(PG_FUNCTION_ARGS)
 }
 
 /*
- * btgetmulti() -- get multiple tuples at once
- *
- * In the current implementation there seems no strong reason to stop at
- * index page boundaries; we just press on until we fill the caller's buffer
- * or run out of matches.
+ * btgetbitmap() -- construct a HashBitmap.
  */
 Datum
-btgetmulti(PG_FUNCTION_ARGS)
+btgetbitmap(PG_FUNCTION_ARGS)
 {
 	IndexScanDesc scan = (IndexScanDesc) PG_GETARG_POINTER(0);
-	ItemPointer tids = (ItemPointer) PG_GETARG_POINTER(1);
-	int32		max_tids = PG_GETARG_INT32(2);
-	int32	   *returned_tids = (int32 *) PG_GETARG_POINTER(3);
+	Node *n = (Node *)PG_GETARG_POINTER(1);
+	HashBitmap	*hashBitmap;
+
 	BTScanOpaque so = (BTScanOpaque) scan->opaque;
 	bool		res = true;
-	int32		ntids = 0;
 
-	if (max_tids <= 0)			/* behave correctly in boundary case */
-		PG_RETURN_BOOL(true);
-
+	if (n == NULL || IsA(n, StreamBitmap))
+	{
+		/* XXX should we use less than work_mem for this? */
+		hashBitmap = tbm_create(work_mem * 1024L);
+	}
+	else
+	{
+		hashBitmap = (HashBitmap *)n;
+	}
 	/* If we haven't started the scan yet, fetch the first page & tuple. */
 	if (!BTScanPosIsValid(so->currPos))
 	{
 		res = _bt_first(scan, ForwardScanDirection);
-		if (!res)
+		if (res)
 		{
-			/* empty scan */
-			*returned_tids = ntids;
-			PG_RETURN_BOOL(res);
+			/* Save tuple ID, and continue scanning */
+			tbm_add_tuples(hashBitmap, &(scan->xs_ctup.t_self), 1);
 		}
-		/* Save tuple ID, and continue scanning */
-		tids[ntids] = scan->xs_ctup.t_self;
-		ntids++;
 	}
 
-	while (ntids < max_tids)
+	while (res)
 	{
 		/*
-		 * Advance to next tuple within page.  This is the same as the easy
-		 * case in _bt_next().
+		 * Advance to next tuple within page.  This is the same as the
+		 * easy case in _bt_next().
 		 */
 		if (++so->currPos.itemIndex > so->currPos.lastItem)
 		{
@@ -328,12 +325,18 @@ btgetmulti(PG_FUNCTION_ARGS)
 		}
 
 		/* Save tuple ID, and continue scanning */
-		tids[ntids] = so->currPos.items[so->currPos.itemIndex].heapTid;
-		ntids++;
+		tbm_add_tuples(hashBitmap,
+					   &(so->currPos.items[so->currPos.itemIndex].heapTid),
+					   1);
 	}
 
-	*returned_tids = ntids;
-	PG_RETURN_BOOL(res);
+	if(n && IsA(n, StreamBitmap))
+	{
+		stream_add_node((StreamBitmap *)n,
+			tbm_create_stream_node(hashBitmap), BMS_OR);
+		PG_RETURN_POINTER(n);
+	}
+	PG_RETURN_POINTER(hashBitmap);
 }
 
 /*

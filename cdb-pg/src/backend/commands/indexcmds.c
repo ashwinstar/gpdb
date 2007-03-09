@@ -31,6 +31,7 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_resqueue.h"
 #include "catalog/pg_authid.h"
+#include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/tablecmds.h"
@@ -430,6 +431,7 @@ DefineIndex(RangeVar *heapRelation,
 	indexInfo->ii_PredicateState = NIL;
 	indexInfo->ii_Unique = unique;
 	indexInfo->ii_Concurrent = concurrent;
+	indexInfo->opaque = (void*)palloc0(sizeof(IndexInfoOpaque));
 
 	classObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
 	ComputeIndexAttrs(indexInfo, classObjectId, attributeList,
@@ -441,8 +443,10 @@ DefineIndex(RangeVar *heapRelation,
 	{
 		if (stmt)
 		{
-
-			stmt->idxOid = indexRelationId;
+			Assert(stmt->idxOids == 0);
+			stmt->idxOids = NIL;
+			if (OidIsValid(indexRelationId))
+				stmt->idxOids = lappend_oid(stmt->idxOids, indexRelationId);
 		}
 
 		/*
@@ -506,8 +510,23 @@ DefineIndex(RangeVar *heapRelation,
 	{
 		if (stmt)
 		{
-			indexRelationId = stmt->idxOid;
-			Assert(stmt->idxOid != 0);
+			IndexInfoOpaque *iio = (IndexInfoOpaque *)indexInfo->opaque;
+
+			/* stmt->idxOids can have 4 oids currently. */
+			Assert(list_length(stmt->idxOids) == 4);
+
+ 			indexRelationId = linitial_oid(stmt->idxOids);
+ 			Assert(OidIsValid(indexRelationId));
+
+ 			iio->comptypeOid = lsecond_oid(stmt->idxOids);
+ 			Assert(OidIsValid(iio->comptypeOid));
+
+ 			iio->heapOid = lthird_oid(stmt->idxOids);
+ 			Assert(OidIsValid(iio->heapOid));
+
+ 			iio->indexOid = lfourth_oid(stmt->idxOids);
+ 			Assert(OidIsValid(iio->indexOid));
+
 			quiet = true;
 		}
 	}
@@ -529,23 +548,37 @@ DefineIndex(RangeVar *heapRelation,
 
    	if (shouldDispatch)
 	{
+		IndexInfoOpaque *iiopaque = (IndexInfoOpaque*)(indexInfo->opaque);
+
 		if (!OidIsValid(indexRelationId))
 		{
 			Relation pg_class;
+			Relation pg_type;
 			
 			pg_class = heap_open(RelationRelationId, RowExclusiveLock);
 			
 			indexRelationId = GetNewRelFileNode(tablespaceId, false, pg_class);
-			
+		    iiopaque->heapOid = GetNewRelFileNode(tablespaceId, false, pg_class);
+			iiopaque->indexOid = GetNewRelFileNode(tablespaceId, false, pg_class);
+
 			/* done with pg_class */
 			heap_close(pg_class, RowExclusiveLock);
+
+			pg_type = heap_open(TypeRelationId, RowExclusiveLock);
+			iiopaque->comptypeOid = GetNewOid(pg_type);
+			heap_close(pg_type, RowExclusiveLock);			
 		}
 	
 		/* create the index on the QEs first, so we can get their stats when we create on the QD */
 		if (stmt)
 		{
-			Assert(stmt->idxOid == 0);
-			stmt->idxOid = indexRelationId;
+			Assert(stmt->idxOids == 0 ||
+				   stmt->idxOids == (List*)NULL);
+			stmt->idxOids = NIL;
+			stmt->idxOids = lappend_oid(stmt->idxOids, indexRelationId);
+			stmt->idxOids = lappend_oid(stmt->idxOids, iiopaque->comptypeOid);
+			stmt->idxOids = lappend_oid(stmt->idxOids, iiopaque->heapOid);
+			stmt->idxOids = lappend_oid(stmt->idxOids, iiopaque->indexOid);
 		}
         /*
          * Dispatch the command to all primary and mirror segment dbs.

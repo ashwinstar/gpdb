@@ -1550,7 +1550,8 @@ typedef struct IndexStmt
 	bool		primary;		/* is index on primary key? */
 	bool		isconstraint;	/* is it from a CONSTRAINT clause? */
 	bool		concurrent;		/* should this be a concurrent index build? */
-	Oid			idxOid;			/* MPP */
+	List		*idxOids;		/* For MPP. We use List here because the bitmap index
+								   needs 3 additional oids. */
 } IndexStmt;
 
 /* ----------------------

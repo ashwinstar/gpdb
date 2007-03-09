@@ -112,7 +112,8 @@ MultiExecBitmapAnd(BitmapAndState *node)
 	PlanState **bitmapplans;
 	int			nplans;
 	int			i;
-	TIDBitmap  *result = NULL;
+	bool		empty = false;
+	HashBitmap *hbm = NULL;
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
@@ -124,26 +125,16 @@ MultiExecBitmapAnd(BitmapAndState *node)
 	bitmapplans = node->bitmapplans;
 	nplans = node->nplans;
 
+
 	/*
 	 * Scan all the subplans and AND their result bitmaps
-	 */
+ 	 */
 	for (i = 0; i < nplans; i++)
 	{
-		PlanState  *subnode = bitmapplans[i];
-		TIDBitmap  *subresult;
+		PlanState	*subnode = bitmapplans[i];
+		Node		*subresult = NULL;
 
-		subresult = (TIDBitmap *) MultiExecProcNode(subnode);
-
-		if (!subresult || !IsA(subresult, TIDBitmap))
-			elog(ERROR, "unrecognized result from subplan");
-
-		if (result == NULL)
-			result = subresult; /* first subplan */
-		else
-		{
-			tbm_intersect(result, subresult);
-			tbm_free(subresult);
-		}
+		subresult = MultiExecProcNode(subnode);
 
 		/*
 		 * If at any stage we have a completely empty bitmap, we can fall out
@@ -152,18 +143,77 @@ MultiExecBitmapAnd(BitmapAndState *node)
 		 * the subplans by selectivity should make this case more likely to
 		 * occur.)
 		 */
-		if (tbm_is_empty(result))
+		if (subresult == NULL)
+		{
+			empty = true;
 			break;
-	}
+		}
 
-	if (result == NULL)
-		elog(ERROR, "BitmapAnd doesn't support zero inputs");
+		if (!(IsA(subresult, HashBitmap) ||
+			  IsA(subresult, StreamBitmap)))
+			elog(ERROR, "unrecognized result from subplan");
+
+		/*
+		 * If this is a hash bitmap, intersect it now with other hash bitmaps.
+		 * If we encounter some streamed bitmaps we'll add this hash bitmap
+		 * as a stream to it.
+		 */
+		if (IsA(subresult, HashBitmap))
+		{
+			/* first subplan that generates a hash bitmap */
+			if (hbm == NULL)
+				hbm = (HashBitmap *) subresult;
+			else
+			{
+				tbm_intersect(hbm, (HashBitmap *)subresult);
+				tbm_free((HashBitmap *)subresult);
+			}
+
+			/* If tbm is empty, short circuit, per logic outlined above */
+			if (tbm_is_empty(hbm))
+			{
+				empty = true;
+				break;
+			}
+		}
+		else
+		{
+			/*
+			 * result is a streamed bitmap, add it as a node to the existing
+			 * stream -- or initialize one otherwise.
+			 */
+			if (node->bitmap)
+			{
+				if (node->bitmap != subresult)
+   				{
+	   				StreamBitmap *s = (StreamBitmap *)subresult;
+		   			stream_add_node((StreamBitmap *)node->bitmap,
+									s->opaque, BMS_AND);
+			   	}
+			}
+   			else
+	   			node->bitmap = subresult;
+		}
+	}
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
 		InstrStopNode(node->ps.instrument, 0 /* XXX */ );
 
-	return (Node *) result;
+	if (empty)
+		return (Node*) NULL;
+
+	/* check to see if we have any hash bitmaps */
+	if (hbm != NULL)
+	{
+		if(node->bitmap && IsA(node->bitmap, StreamBitmap))
+			stream_add_node((StreamBitmap *)node->bitmap,
+						tbm_create_stream_node(hbm), BMS_AND);
+		else
+			node->bitmap = (Node *)hbm;
+	}
+
+	return (Node *) node->bitmap;
 }
 
 /* ----------------------------------------------------------------

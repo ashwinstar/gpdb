@@ -16,6 +16,8 @@
 
 #include "access/gist_private.h"
 #include "executor/execdebug.h"
+#include "miscadmin.h"    /* work_mem */
+#include "nodes/tidbitmap.h"
 #include "pgstat.h"
 #include "utils/memutils.h"
 
@@ -120,16 +122,34 @@ gistgettuple(PG_FUNCTION_ARGS)
 }
 
 Datum
-gistgetmulti(PG_FUNCTION_ARGS)
+gistgetbitmap(PG_FUNCTION_ARGS)
 {
 	IndexScanDesc scan = (IndexScanDesc) PG_GETARG_POINTER(0);
-	ItemPointer tids = (ItemPointer) PG_GETARG_POINTER(1);
-	int32		max_tids = PG_GETARG_INT32(2);
-	int32	   *returned_tids = (int32 *) PG_GETARG_POINTER(3);
+	Node		   *n = (Node *) PG_GETARG_POINTER(1);
+	HashBitmap	   *hashBitmap;
+	ItemPointer tids;
+	int32 max_tids;
+	int ntids;
 
-	*returned_tids = gistnext(scan, ForwardScanDirection, tids, max_tids, false);
+	if (n == NULL || IsA(n, StreamBitmap))
+		hashBitmap = tbm_create(work_mem * 1024L);
+	else
+		hashBitmap = (HashBitmap *)n;
 
-	PG_RETURN_BOOL(*returned_tids == max_tids);
+#define MAX_TIDS 1024
+	tids = (ItemPointer)palloc0(MAX_TIDS * sizeof(ItemPointerData));
+	max_tids = PG_GETARG_INT32(2);
+
+	while ((ntids = gistnext(scan, ForwardScanDirection, tids, max_tids, false)) > 0)
+		tbm_add_tuples(hashBitmap, tids, ntids);
+
+	if(n && IsA(n, StreamBitmap))
+	{
+		stream_add_node((StreamBitmap *)n,
+			tbm_create_stream_node(hashBitmap), BMS_OR);
+		PG_RETURN_POINTER(n);
+	}
+	PG_RETURN_POINTER(hashBitmap);
 }
 
 /*

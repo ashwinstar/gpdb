@@ -964,6 +964,8 @@ BuildIndexInfo(Relation index)
 	ii->ii_Unique = indexStruct->indisunique;
 	ii->ii_Concurrent = false;	/* assume normal case */
 
+	ii->opaque = NULL;
+
 	return ii;
 }
 

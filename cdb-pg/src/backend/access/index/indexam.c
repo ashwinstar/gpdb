@@ -14,14 +14,15 @@
  *		index_open		- open an index relation by relation OID
  *		index_close		- close an index relation
  *		index_beginscan - start a scan of an index with amgettuple
- *		index_beginscan_multi - start a scan of an index with amgetmulti
+ *      index_beginscan_bitmap - start a scan of an index with 
+ *                               amgetbitmap
  *		index_rescan	- restart a scan of an index
  *		index_endscan	- end a scan
  *		index_insert	- insert an index tuple into a relation
  *		index_markpos	- mark a scan position
  *		index_restrpos	- restore a scan position
  *		index_getnext	- get the next tuple from a scan
- *		index_getmulti	- get multiple tuples from a scan
+ *      index_getbitmap - get the next bitmap from a scan
  *		index_bulk_delete	- bulk deletion of index tuples
  *		index_vacuum_cleanup	- post-deletion cleanup of an index
  *		index_getprocid - get a support procedure OID
@@ -226,7 +227,7 @@ index_beginscan(Relation heapRelation,
 	 * Save additional parameters into the scandesc.  Everything else was set
 	 * up by RelationGetIndexScan.
 	 */
-	scan->is_multiscan = false;
+	scan->is_bitmapscan = false;
 	scan->heapRelation = heapRelation;
 	scan->xs_snapshot = snapshot;
 
@@ -234,29 +235,36 @@ index_beginscan(Relation heapRelation,
 }
 
 /*
- * index_beginscan_multi - start a scan of an index with amgetmulti
+ * index_beginscan_bitmap - start a scan of an index 
+ * 							with amgetbitmap
  *
  * As above, caller had better be holding some lock on the parent heap
  * relation, even though it's not explicitly mentioned here.
  */
 IndexScanDesc
-index_beginscan_multi(Relation indexRelation,
-					  Snapshot snapshot,
-					  int nkeys, ScanKey key)
+index_beginscan_bitmap(Relation indexRelation,
+					   Snapshot snapshot,
+					   int nkeys, ScanKey key)
 {
 	IndexScanDesc scan;
 
 	scan = index_beginscan_internal(indexRelation, nkeys, key);
+	/*
+	 * Save additional parameters into the scandesc.  Everything else was
+	 * set up by RelationGetIndexScan.
+	 */
+	scan->xs_snapshot = snapshot;
 
 	/*
-	 * Save additional parameters into the scandesc.  Everything else was set
-	 * up by RelationGetIndexScan.
+	 * Save additional parameters into the scandesc.  Everything else was
+	 * set up by RelationGetIndexScan.
 	 */
-	scan->is_multiscan = true;
+	scan->is_bitmapscan = true;
 	scan->xs_snapshot = snapshot;
 
 	return scan;
 }
+
 
 /*
  * index_beginscan_internal --- common code for index_beginscan variants
@@ -507,45 +515,30 @@ index_getnext_indexitem(IndexScanDesc scan,
 	return found;
 }
 
-/* ----------------
- *		index_getmulti - get multiple tuples from an index scan
- *
- * Collects the TIDs of multiple heap tuples satisfying the scan keys.
- * Since there's no interlock between the index scan and the eventual heap
- * access, this is only safe to use with MVCC-based snapshots: the heap
- * item slot could have been replaced by a newer tuple by the time we get
- * to it.
- *
- * A TRUE result indicates more calls should occur; a FALSE result says the
- * scan is done.  *returned_tids could be zero or nonzero in either case.
- * ----------------
+/*
+ *		index_getbitmap - get the next bitmap from an index scan.
  */
-bool
-index_getmulti(IndexScanDesc scan,
-			   ItemPointer tids, int32 max_tids,
-			   int32 *returned_tids)
+Node *
+index_getbitmap(IndexScanDesc scan, Node *bitmap)
 {
 	FmgrInfo   *procedure;
-	bool		found;
+	Node		*bm;
 
 	SCAN_CHECKS;
-	GET_SCAN_PROCEDURE(amgetmulti);
+	GET_SCAN_PROCEDURE(amgetbitmap);
 
 	/* just make sure this is false... */
 	scan->kill_prior_tuple = false;
 
 	/*
-	 * have the am's getmulti proc do all the work.
+	 * have the am's getbitmap proc do all the work. 
+	 * index_beginscan_bitmap already set up fn_getbitmap.
 	 */
-	found = DatumGetBool(FunctionCall4(procedure,
-									   PointerGetDatum(scan),
-									   PointerGetDatum(tids),
-									   Int32GetDatum(max_tids),
-									   PointerGetDatum(returned_tids)));
+	bm = (Node *)DatumGetPointer(FunctionCall2(procedure,
+									  PointerGetDatum(scan),
+									  PointerGetDatum(bitmap)));
 
-	pgstat_count_index_tuples(&scan->xs_pgstat_info, *returned_tids);
-
-	return found;
+	return bm;
 }
 
 /* ----------------

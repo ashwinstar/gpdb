@@ -52,7 +52,19 @@ typedef struct IndexInfo
 	List	   *ii_PredicateState;		/* list of ExprState */
 	bool		ii_Unique;
 	bool		ii_Concurrent;
+
+	void       *opaque; /* Additional info needed by index creation.
+						   Only used for bitmap index to store oids that
+						   are needed for lov heap and lov index. */
+
 } IndexInfo;
+
+typedef struct IndexInfoOpaque
+{
+	Oid        comptypeOid; /* the complex type oid for the lov heap. */
+	Oid        heapOid;  /* Oid for the lov heap in the bitmap index. */
+	Oid        indexOid; /* Oid for the lov index in the bitmap index. */
+} IndexInfoOpaque;
 
 /* Typedef for callback function for IndexBuildHeapScan */
 typedef void (*IndexBuildCallback) (Relation index,

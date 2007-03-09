@@ -50,7 +50,7 @@ typedef HeapScanDescData *HeapScanDesc;
 
 /*
  * We use the same IndexScanDescData structure for both amgettuple-based
- * and amgetmulti-based index scans.  Some fields are only relevant in
+ * and amgetbitmap-based index scans.  Some fields are only relevant in
  * amgettuple-based scans.
  */
 typedef struct IndexScanDescData
@@ -61,7 +61,7 @@ typedef struct IndexScanDescData
 	Snapshot	xs_snapshot;	/* snapshot to see */
 	int			numberOfKeys;	/* number of scan keys */
 	ScanKey		keyData;		/* array of scan key descriptors */
-	bool		is_multiscan;	/* TRUE = using amgetmulti */
+	bool		is_bitmapscan;	/* TRUE = using amgetmulti */
 
 	/* signaling to index AM about killing index tuples */
 	bool		kill_prior_tuple;		/* last-returned tuple is dead */

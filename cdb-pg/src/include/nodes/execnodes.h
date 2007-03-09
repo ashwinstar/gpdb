@@ -994,6 +994,7 @@ typedef struct BitmapAndState
 	PlanState	ps;				/* its first field is NodeTag */
 	PlanState **bitmapplans;	/* array of PlanStates for my inputs */
 	int			nplans;			/* number of input plans */
+	Node	   *bitmap;	/* output stream bitmap */
 } BitmapAndState;
 
 /* ----------------
@@ -1005,6 +1006,7 @@ typedef struct BitmapOrState
 	PlanState	ps;				/* its first field is NodeTag */
 	PlanState **bitmapplans;	/* array of PlanStates for my inputs */
 	int			nplans;			/* number of input plans */
+	Node 	   *bitmap;			/* output bitmap */
 } BitmapOrState;
 
 /* ----------------------------------------------------------------
@@ -1116,7 +1118,7 @@ typedef struct IndexScanState
 typedef struct BitmapIndexScanState
 {
 	ScanState	ss;				/* its first field is NodeTag */
-	TIDBitmap  *biss_result;
+	Node 	   *bitmap;			/* output bitmap */
 	ScanKey		biss_ScanKeys;
 	int			biss_NumScanKeys;
 	IndexRuntimeKeyInfo *biss_RuntimeKeys;
@@ -1141,7 +1143,7 @@ typedef struct BitmapHeapScanState
 {
 	ScanState	ss;				/* its first field is NodeTag */
 	List	   *bitmapqualorig;
-	TIDBitmap  *tbm;
+	Node  *tbm;
 	TBMIterateResult *tbmres;
 } BitmapHeapScanState;
 

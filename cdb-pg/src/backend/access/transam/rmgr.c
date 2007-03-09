@@ -11,6 +11,7 @@
 #include "access/gin.h"
 #include "access/gist_private.h"
 #include "access/hash.h"
+#include "access/bitmap.h"
 #include "access/heapam.h"
 #include "access/multixact.h"
 #include "access/nbtree.h"
@@ -38,5 +39,6 @@ const RmgrData RmgrTable[RM_MAX_ID + 1] = {
 	{"Hash", hash_redo, hash_desc, NULL, NULL, NULL},
 	{"Gin", gin_redo, gin_desc, gin_xlog_startup, gin_xlog_cleanup, gin_safe_restartpoint},
 	{"Gist", gist_redo, gist_desc, gist_xlog_startup, gist_xlog_cleanup, gist_safe_restartpoint},
-	{"Sequence", seq_redo, seq_desc, NULL, NULL, NULL}
+	{"Sequence", seq_redo, seq_desc, NULL, NULL, NULL},
+	{"Bitmap", bitmap_redo, bitmap_desc, bitmap_xlog_startup, bitmap_xlog_cleanup, bitmap_safe_restartpoint}
 };

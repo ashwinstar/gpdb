@@ -17,12 +17,12 @@
  */
 
 #include "postgres.h"
-
+#include "miscadmin.h"
 #include "access/genam.h"
 #include "access/hash.h"
 #include "catalog/index.h"
 #include "commands/vacuum.h"
-
+#include "nodes/tidbitmap.h"
 
 /* Working state for hashbuild and its callback */
 typedef struct
@@ -237,25 +237,22 @@ hashgettuple(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(res);
 }
 
-
 /*
- *	hashgetmulti() -- get multiple tuples at once
- *
- * This is a somewhat generic implementation: it avoids lock reacquisition
- * overhead, but there's no smarts about picking especially good stopping
- * points such as index page boundaries.
+ * hashgetbitmap() -- get the next bitmap for the scan.
  */
 Datum
-hashgetmulti(PG_FUNCTION_ARGS)
+hashgetbitmap(PG_FUNCTION_ARGS)
 {
-	IndexScanDesc scan = (IndexScanDesc) PG_GETARG_POINTER(0);
-	ItemPointer tids = (ItemPointer) PG_GETARG_POINTER(1);
-	int32		max_tids = PG_GETARG_INT32(2);
-	int32	   *returned_tids = (int32 *) PG_GETARG_POINTER(3);
-	HashScanOpaque so = (HashScanOpaque) scan->opaque;
-	Relation	rel = scan->indexRelation;
-	bool		res = true;
-	int32		ntids = 0;
+	IndexScanDesc 	scan = (IndexScanDesc) PG_GETARG_POINTER(0);
+	Node		   *n = (Node *) PG_GETARG_POINTER(1);
+	HashBitmap	   *hashBitmap;
+	HashScanOpaque	so = (HashScanOpaque) scan->opaque;
+	Relation		rel = scan->indexRelation;
+
+	if (n == NULL || IsA(n, StreamBitmap))
+		hashBitmap = tbm_create(work_mem * 1024L);
+	else
+		hashBitmap = (HashBitmap *)n;
 
 	/*
 	 * We hold pin but not lock on current buffer while outside the hash AM.
@@ -264,8 +261,9 @@ hashgetmulti(PG_FUNCTION_ARGS)
 	if (BufferIsValid(so->hashso_curbuf))
 		_hash_chgbufaccess(rel, so->hashso_curbuf, HASH_NOLOCK, HASH_READ);
 
-	while (ntids < max_tids)
+	while (true)
 	{
+		bool res;
 		/*
 		 * Start scan, or advance to next tuple.
 		 */
@@ -295,18 +293,25 @@ hashgetmulti(PG_FUNCTION_ARGS)
 		if (!res)
 			break;
 		/* Save tuple ID, and continue scanning */
-		tids[ntids] = scan->xs_ctup.t_self;
-		ntids++;
+		tbm_add_tuples(hashBitmap, &(scan->xs_ctup.t_self), 1);
 	}
 
 	/* Release read lock on current buffer, but keep it pinned */
 	if (BufferIsValid(so->hashso_curbuf))
 		_hash_chgbufaccess(rel, so->hashso_curbuf, HASH_READ, HASH_NOLOCK);
 
-	*returned_tids = ntids;
-	PG_RETURN_BOOL(res);
-}
+	tbm_begin_iterate(hashBitmap);
 
+	if(n && IsA(n, StreamBitmap))
+	{
+		stream_add_node((StreamBitmap *)n,
+			tbm_create_stream_node(hashBitmap), BMS_OR);
+		PG_RETURN_POINTER(n);
+	}
+
+
+	PG_RETURN_POINTER(hashBitmap);
+}
 
 /*
  *	hashbeginscan() -- start a scan on a hash index

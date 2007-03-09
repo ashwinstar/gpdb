@@ -37,13 +37,9 @@
 Node *
 MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 {
-#define MAX_TIDS	1024
-	TIDBitmap  *tbm;
 	IndexScanDesc scandesc;
-	ItemPointerData tids[MAX_TIDS];
-	int32		ntids;
-	double		nTuples = 0;
 	bool		doscan;
+	Node 		*bitmap = NULL;
 
 	/* must provide our own instrumentation support */
 	if (node->ss.ps.instrument)
@@ -57,7 +53,7 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	/*
 	 * If we have runtime keys and they've not already been set up, do it now.
 	 * Array keys are also treated as runtime keys; note that if ExecReScan
-	 * returns with biss_RuntimeKeysReady still false, then there is an empty
+	 * returns with biss_RuntimeKeysReady still false, then there is an empty 
 	 * array key so we should do nothing.
 	 */
 	if (!node->biss_RuntimeKeysReady &&
@@ -69,52 +65,32 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	else
 		doscan = true;
 
-	/*
-	 * Prepare the result bitmap.  Normally we just create a new one to pass
-	 * back; however, our parent node is allowed to store a pre-made one into
-	 * node->biss_result, in which case we just OR our tuple IDs into the
-	 * existing bitmap.  (This saves needing explicit UNION steps.)
-	 */
-	if (node->biss_result)
-	{
-		tbm = node->biss_result;
-		node->biss_result = NULL;		/* reset for next time */
-	}
-	else
-	{
-		/* XXX should we use less than work_mem for this? */
-		tbm = tbm_create(work_mem * 1024L);
-	}
 
-	/*
-	 * Get TIDs from index and insert into bitmap
-	 */
+	/* Get bitmap from index */
 	while (doscan)
 	{
-		bool		more = index_getmulti(scandesc, tids, MAX_TIDS, &ntids);
+		bitmap = index_getbitmap(scandesc, node->bitmap);
 
-		if (ntids > 0)
-		{
-			tbm_add_tuples(tbm, tids, ntids);
-			nTuples += ntids;
-		}
+		if ((bitmap != NULL) &&
+			!(IsA(bitmap, HashBitmap) ||
+			  IsA(bitmap, StreamBitmap)))
+			elog(ERROR, "unrecognized result from bitmap index scan");
 
 		CHECK_FOR_INTERRUPTS();
 
-		if (!more)
-		{
-			doscan = ExecIndexAdvanceArrayKeys(node->biss_ArrayKeys,
+		if(node->bitmap == NULL)
+			node->bitmap = (Node *)bitmap;
+		doscan = ExecIndexAdvanceArrayKeys(node->biss_ArrayKeys,
 											   node->biss_NumArrayKeys);
-			if (doscan)			/* reset index scan */
-				index_rescan(node->biss_ScanDesc, node->biss_ScanKeys);
-		}
+		if (doscan)			/* reset index scan */
+			index_rescan(node->biss_ScanDesc, node->biss_ScanKeys);
 	}
 
 	/* must provide our own instrumentation support */
 	if (node->ss.ps.instrument)
-		InstrStopNode(node->ss.ps.instrument, nTuples);
+		InstrStopNode(node->ss.ps.instrument, 0 /* XXX */);
 
-	return (Node *) tbm;
+	return (Node *) bitmap;
 }
 
 /* ----------------------------------------------------------------
@@ -152,8 +128,8 @@ ExecBitmapIndexReScan(BitmapIndexScanState *node, ExprContext *exprCtxt)
 	 * If we are doing runtime key calculations (ie, the index keys depend on
 	 * data from an outer scan), compute the new key values.
 	 *
-	 * Array keys are also treated as runtime keys; note that if we return
-	 * with biss_RuntimeKeysReady still false, then there is an empty array
+	 * Array keys are also treated as runtime keys; note that if we return 
+	 * with biss_RuntimeKeysReady still false, then there is an empty array 
 	 * key so no index scan is needed.
 	 */
 	if (node->biss_NumRuntimeKeys != 0)
@@ -171,6 +147,19 @@ ExecBitmapIndexReScan(BitmapIndexScanState *node, ExprContext *exprCtxt)
 	/* reset index scan */
 	if (node->biss_RuntimeKeysReady)
 		index_rescan(node->biss_ScanDesc, node->biss_ScanKeys);
+
+	/* reset hashBitmap */
+	if(node->bitmap && IsA(node->bitmap, HashBitmap))
+	{
+		tbm_free((HashBitmap *)node->bitmap);
+		node->bitmap = NULL;
+	}
+	else
+	{
+		/* XXX: we leak here */
+		/* XXX: put in own memory context? */
+		node->bitmap = NULL;
+	}
 }
 
 /* ----------------------------------------------------------------
@@ -201,7 +190,24 @@ ExecEndBitmapIndexScan(BitmapIndexScanState *node)
 	 * close the index relation
 	 */
 	index_endscan(indexScanDesc);
+
 	index_close(indexRelationDesc, NoLock);
+#ifdef NOT_USED
+	if (node->bitmap != NULL)
+	{
+		if(IsA(node->bitmap, HashBitmap))
+			tbm_free((HashBitmap *)node->bitmap);
+		else if(IsA(node->bitmap, StreamBitmap))
+		{
+			StreamBitmap *s = (StreamBitmap *)node->bitmap;
+			if(s->opaque)
+			{
+				bitmap_stream_free(s->opaque);
+				s->opaque = NULL;
+			}
+		}
+	}
+#endif
 }
 
 /* ----------------------------------------------------------------
@@ -226,9 +232,6 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 	indexstate->ss.ps.plan = (Plan *) node;
 	indexstate->ss.ps.state = estate;
 
-	/* normally we don't make the result bitmap till runtime */
-	indexstate->biss_result = NULL;
-
 	/*
 	 * Miscellaneous initialization
 	 *
@@ -249,7 +252,7 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 
 	/*
 	 * We do not open or lock the base relation here.  We assume that an
-	 * ancestor BitmapHeapScan node is holding AccessShareLock (or better) on
+	 * ancestor BitmapHeapScan node is holding AccessShareLock (or better) on 
 	 * the heap relation throughout the execution of the plan tree.
 	 */
 
@@ -311,11 +314,10 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 	 * Initialize scan descriptor.
 	 */
 	indexstate->biss_ScanDesc =
-		index_beginscan_multi(indexstate->biss_RelationDesc,
-							  estate->es_snapshot,
-							  indexstate->biss_NumScanKeys,
-							  indexstate->biss_ScanKeys);
-
+		index_beginscan_bitmap(indexstate->biss_RelationDesc,
+							   estate->es_snapshot,
+							   indexstate->biss_NumScanKeys,
+							   indexstate->biss_ScanKeys);
 	/*
 	 * all done.
 	 */

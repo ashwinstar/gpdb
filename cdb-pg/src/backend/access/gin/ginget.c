@@ -14,8 +14,10 @@
 
 #include "postgres.h"
 #include "access/gin.h"
+#include "miscadmin.h"
 #include "catalog/index.h"
 #include "utils/memutils.h"
+#include "nodes/tidbitmap.h"
 
 static OffsetNumber
 findItemInPage(Page page, ItemPointer item, OffsetNumber off)
@@ -422,31 +424,42 @@ scanGetItem(IndexScanDesc scan, ItemPointerData *item)
 #define GinIsNewKey(s)		( ((GinScanOpaque) scan->opaque)->keys == NULL )
 
 Datum
-gingetmulti(PG_FUNCTION_ARGS)
+gingetbitmap(PG_FUNCTION_ARGS)
 {
 	IndexScanDesc scan = (IndexScanDesc) PG_GETARG_POINTER(0);
-	ItemPointer tids = (ItemPointer) PG_GETARG_POINTER(1);
-	int32		max_tids = PG_GETARG_INT32(2);
-	int32	   *returned_tids = (int32 *) PG_GETARG_POINTER(3);
-
+	Node 		   *n = (Node *) PG_GETARG_POINTER(1);
+	HashBitmap	   *hashBitmap;
+ 
+	if (n == NULL || IsA(n, StreamBitmap))
+		/* XXX should we use less than work_mem for this? */
+		hashBitmap = tbm_create(work_mem * 1024L);
+	else
+		hashBitmap = (HashBitmap *)n;
+ 
 	if (GinIsNewKey(scan))
 		newScanKey(scan);
-
+ 
 	startScan(scan);
-
-	*returned_tids = 0;
-
-	do
+ 
+	while (true)
 	{
-		if (scanGetItem(scan, tids + *returned_tids))
-			(*returned_tids)++;
-		else
-			break;
-	} while (*returned_tids < max_tids);
-
+		ItemPointerData	tid;
+		if (scanGetItem(scan,&tid))
+			tbm_add_tuples(hashBitmap, &tid, 1);
+ 		else
+ 			break;
+	}	
+ 
 	stopScan(scan);
+ 
+	if(n && IsA(n, StreamBitmap))
+	{
+		stream_add_node((StreamBitmap *)n,
+			tbm_create_stream_node(hashBitmap), BMS_OR);
+		PG_RETURN_POINTER(n);
+	}
 
-	PG_RETURN_BOOL(*returned_tids == max_tids);
+	PG_RETURN_POINTER(hashBitmap);
 }
 
 Datum
