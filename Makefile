@@ -16,7 +16,7 @@ DEBUGFLAGS="-O0 -g"
 DISTPATH=$(BIZHOME)/$(MPPDIR)
 DEVPATH=$(HOME)/$(MPPDIR)
 
-CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT)
+CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) --enable-depend 
 
 ifeq (true, ${PG_LANG})
 CONFIGFLAGS+=--with-python --with-perl --with-tcl
