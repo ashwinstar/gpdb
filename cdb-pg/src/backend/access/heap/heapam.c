@@ -159,13 +159,12 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 				break;
 			ri = pg % rimax;
 			if (scan->rs_rahead[ri].block == pg)
-				break;
+				continue;
 			scan->rs_rahead[ri].block = pg;
 			scan->rs_rahead[ri].buffer 
 				= KillAndReadBuffer(scan->rs_rahead[ri].buffer, scan->rs_rd, pg);
 			/*elog(LOG, "heapgetpage: 1 [%d] read %d at %x", ri, pg, scan->rs_rahead[ri].buffer);*/
 		}
-#ifdef UNDEF
 		/* THIS MAY ONLY BE HELPFUL WITH AIO */
 		/*
 		 *  This will fill the 3rd quarter of read ahead provided that it is not filled
@@ -183,7 +182,7 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 				= KillAndReadBuffer(scan->rs_rahead[ri].buffer, scan->rs_rd, pg);
 			/*elog(LOG, "heapgetpage: 2 [%d] read %d at %x", ri, pg, scan->rs_rahead[ri].buffer);*/
 		}
-#endif
+
 		ri = page % rimax;
 		if (scan->rs_rahead[ri].block != page)
 			ereport(ERROR,
