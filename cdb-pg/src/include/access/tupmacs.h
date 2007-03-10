@@ -118,7 +118,7 @@
 	) \
 	: (((attlen) == -1) ? \
 	( \
-		(cur_offset) + VARSIZE(DatumGetPointer(attval)) \
+		(cur_offset) + VARSIZE_ANY(DatumGetPointer(attval)) \
 	) \
 	: \
 	( \

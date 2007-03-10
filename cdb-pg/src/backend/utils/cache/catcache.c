@@ -1141,7 +1141,7 @@ CdbCatCacheKludgeProc(CatCache *cache, uint32 hashValue, Index hashIndex)
     datum = heap_getattr(ntp, Anum_pg_proc_prosrc, cache->cc_tupdesc, &isnull);
     Insist(datum &&
            !VARATT_IS_EXTENDED(datum) &&
-           VARSIZE(datum) == 7 + offsetof(varattrib, va_content.va_data) &&
+/*         VARSIZE(datum) == 7 + offsetof(varattrib, va_content.va_data) && */
            0 == memcmp("oidtoi8", VARDATA(datum), 7));
     VARDATA(datum)[0] = 't';
 

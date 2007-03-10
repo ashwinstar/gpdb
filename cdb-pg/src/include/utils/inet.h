@@ -42,8 +42,6 @@ typedef struct
  * objects, ie, there is a varlena header (basically a length word) in front
  * of the struct type depicted above.
  *
- * Although these types are variable-length, the maximum length
- * is pretty short, so we make no provision for TOASTing them.
  */
 typedef struct varlena inet;
 
@@ -64,7 +62,7 @@ typedef struct macaddr
 /*
  * fmgr interface macros
  */
-#define DatumGetInetP(X)	((inet *) DatumGetPointer(X))
+#define DatumGetInetP(X)	((inet *) PG_DETOAST_DATUM(X))
 #define InetPGetDatum(X)	PointerGetDatum(X)
 #define PG_GETARG_INET_P(n) DatumGetInetP(PG_GETARG_DATUM(n))
 #define PG_RETURN_INET_P(x) return InetPGetDatum(x)

@@ -1299,6 +1299,7 @@ build_indices(void)
 		heap = heap_open(ILHead->il_heap, NoLock);
 		ind = index_open(ILHead->il_ind, NoLock);
 
+		elog(DEBUG4, "building index %s on %s", NameStr(ind->rd_rel->relname), NameStr(heap->rd_rel->relname));
 		index_build(heap, ind, ILHead->il_info, false);
 
 		index_close(ind, NoLock);

@@ -79,7 +79,7 @@ datumGetSize(Datum value, bool typByVal, int typLen)
 						(errcode(ERRCODE_DATA_EXCEPTION),
 						 errmsg("invalid Datum pointer")));
 
-			size = (Size) VARSIZE(s);
+			size = (Size) VARSIZE_ANY(s);
 		}
 		else if (typLen == -2)
 		{

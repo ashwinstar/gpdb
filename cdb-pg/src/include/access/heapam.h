@@ -202,7 +202,7 @@ extern XLogRecPtr log_heap_freeze(Relation reln, Buffer buffer,
 /* in common/heaptuple.c */
 extern Size heap_compute_data_size(TupleDesc tupleDesc,
 					   Datum *values, bool *isnull);
-extern void heap_fill_tuple(TupleDesc tupleDesc,
+extern Size heap_fill_tuple(TupleDesc tupleDesc,
 				Datum *values, bool *isnull,
 				char *data, uint16 *infomask, bits8 *bit);
 extern bool heap_attisnull(HeapTuple tup, int attnum);

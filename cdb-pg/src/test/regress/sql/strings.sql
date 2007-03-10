@@ -278,6 +278,19 @@ SELECT substr(f1, 99995, 10) from toasttest;
 
 DROP TABLE toasttest;
 
+-- test internally compressing datums
+
+-- note this tests compressing a datum to a very small size which tests a
+-- particular case in the packed varlena where very small compressed datums
+-- must be given a 4-byte header because there are no bits to indicate
+-- compression in a 1-byte header
+
+CREATE TABLE toasttest (c char(2048));
+INSERT INTO toasttest VALUES('x');
+SELECT length(c), c::text FROM toasttest;
+SELECT c FROM toasttest;
+DROP TABLE toasttest;
+
 --
 -- test length
 --

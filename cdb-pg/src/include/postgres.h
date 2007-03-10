@@ -65,50 +65,127 @@ extern "C" {
  * should mess directly with struct varattrib or use the VARATT_FOO macros.
  * ----------------
  */
-typedef struct varattrib
+
+typedef union varattrib
 {
-	int32		va_header_;		/* External/compressed storage */
-	/* flags and item size */
-	union
+	struct {
+		uint8 	va_header;
+		char 	va_data[1];
+	} va_1byte;
+	struct {
+		uint8 	va_header;
+		uint8	va_padding[3];
+		int32	va_rawsize;		/* Plain data size */
+		int32	va_extsize;		/* External saved size */
+		Oid		va_valueid;		/* Unique identifier of value */
+		Oid		va_toastrelid;	/* RelID where to find chunks */
+	} va_external;
+	struct 
 	{
-		struct
-		{
-			int32		va_rawsize;		/* Plain data size */
-			char		va_data[1];		/* Compressed data */
-		}			va_compressed;		/* Compressed stored attribute */
-
-		struct
-		{
-			int32		va_rawsize;		/* Plain data size */
-			int32		va_extsize;		/* External saved size */
-			Oid			va_valueid;		/* Unique identifier of value */
-			Oid			va_toastrelid;	/* RelID where to find chunks */
-		}			va_external;	/* External stored attribute */
-
-		char		va_data[1]; /* Plain stored attribute */
-	}			va_content;
+		uint32 	va_header;
+		uint32	va_rawsize;		/* Plain data size */
+		char	va_data[1];		/* Compressed data */
+	} va_compressed;
+	struct
+	{
+		uint32 	va_header;
+		char 	va_data[1];
+	} va_4byte;
 } varattrib;
 
-#define VARATT_FLAG_EXTERNAL	0x80000000
-#define VARATT_FLAG_COMPRESSED	0x40000000
-#define VARATT_MASK_FLAGS		0xc0000000
-#define VARATT_MASK_SIZE		0x3fffffff
+/* Externally visible macros (do these all belong here?) */
 
-#define VARATT_SIZEP_DEPRECATED(PTR)	(((varattrib *) (PTR))->va_header_)
 
-#define VARATT_IS_EXTENDED(PTR)		\
-				((VARATT_SIZEP_DEPRECATED(PTR) & VARATT_MASK_FLAGS) != 0)
-#define VARATT_IS_EXTERNAL(PTR)		\
-				((VARATT_SIZEP_DEPRECATED(PTR) & VARATT_FLAG_EXTERNAL) != 0)
-#define VARATT_IS_COMPRESSED(PTR)	\
-				((VARATT_SIZEP_DEPRECATED(PTR) & VARATT_FLAG_COMPRESSED) != 0)
+#define VARDATA(PTR)						VARDATA_4B((varattrib*)(PTR))
+#define VARSIZE(PTR) 						VARSIZE_4B((varattrib*)(PTR))
 
-/* These macros are the ones for non-TOAST code to use */
+/* these are used by tuptoaster.c */
+#define VARHDRSZ_SHORT 						1
+#define VARSIZE_SHORT(PTR)					VARSIZE_1B((varattrib*)(PTR))
+#define VARDATA_SHORT(PTR)					VARDATA_1B((varattrib*)(PTR))
+#define SET_VARSIZE(PTR, len)				SET_VARSIZE_4B  ((varattrib*)(PTR), (len))
+#define SET_VARSIZE_SHORT(PTR, len) 		SET_VARSIZE_1B  ((varattrib*)(PTR), (len))
+#define SET_VARSIZE_COMPRESSED(PTR, len) 	SET_VARSIZE_4B_C((varattrib*)(PTR), (len))
+#define SET_VARSIZE_EXTERNAL(PTR) 			SET_VARSIZE_1B_E((varattrib*)(PTR))
 
-#define VARSIZE(PTR)	(VARATT_SIZEP_DEPRECATED(PTR) & VARATT_MASK_SIZE)
-#define VARDATA(PTR)	(((varattrib *) (PTR))->va_content.va_data)
+/* Do we want to rename these? */
+#define VARATT_IS_COMPRESSED(PTR) 			VARATT_IS_4B_C((varattrib*)(PTR))
+#define VARATT_IS_EXTERNAL(PTR) 			VARATT_IS_1B_E((varattrib*)(PTR))
+#define VARATT_IS_SHORT(PTR) 				VARATT_IS_1B((varattrib*)(PTR))
+#define VARATT_SET_COMPRESSED(PTR)			SET_VARSIZE_C((varattrib*)(PTR))
+/* XXX */
+#define VARATT_IS_EXTENDED(PTR)				(!VARATT_IS_4B_U((varattrib*)(PTR)))
 
-#define SET_VARSIZE(PTR,SIZE)	(VARATT_SIZEP_DEPRECATED(PTR) = (SIZE))
+#define VARSIZE_EXTERNAL(PTR)				(sizeof(((varattrib*)(PTR))->va_external))
+#define VARATT_EXTERNAL_IS_COMPRESSED(PTR)  (((varattrib*)(PTR))->va_external.va_extsize != \
+											 ((varattrib*)(PTR))->va_external.va_rawsize - VARHDRSZ)
+#define VARSIZE_ANY_EXHDR(PTR)				VARSIZE__ANY__EXHDR((varattrib*)(PTR))
+#define VARSIZE_ANY(PTR)					VARSIZE__ANY((varattrib*)(PTR))
+#define VARDATA_ANY(PTR)					VARDATA__ANY((varattrib*)(PTR))
+
+/* Internal macros used by heap_deform_tuple and tuptoaster.c and anywhere else
+ * that wants to look at toasted tuples without detoasting them.
+ */
+
+/*
+ * Bit patterns used to indicate sort varlena headers:
+ *
+ * 00xxxxxx	4-byte length word, aligned, uncompressed data (up to 1G)
+ * 01xxxxxx	4-byte length word, aligned, *compressed* data (up to 1G)
+ * 10000000	1-byte length word, unaligned, TOAST pointer
+ * 1xxxxxxx	1-byte length word, unaligned, uncompressed data (up to 127b)
+ *
+ * Note: IS_1B is true for external toast records but VARSIZE_1B will return 0
+ * for such records. As a consequence you must always check for for IS_EXTERNAL
+ * before checking for IS_1B.
+ */
+
+#define VARATT_SHORT_MAX		0x7f
+#define VARATT_COULD_SHORT(PTR)	(VARATT_IS_4B_U(PTR) && (VARSIZE(PTR)-VARHDRSZ+VARHDRSZ_SHORT <= VARATT_SHORT_MAX))
+#define VARSIZE_TO_SHORT(PTR)	((char)(VARSIZE(PTR)-VARHDRSZ+VARHDRSZ_SHORT) | 0x80)
+
+#define VARDATA_4B(PTR) 		((PTR)->va_4byte.va_data)
+#define VARDATA_4B_C(PTR) 		((PTR)->va_compressed.va_data)
+#define VARDATA_1B(PTR) 		((PTR)->va_1byte.va_data)
+
+#define VARATT_IS_4B(PTR)		(((PTR)->va_1byte.va_header & 0x80) == 0x00)
+#define VARATT_IS_4B_U(PTR)		(((PTR)->va_1byte.va_header & 0xC0) == 0x00)
+#define VARATT_IS_4B_C(PTR)		(((PTR)->va_1byte.va_header & 0xC0) == 0x40)
+#define VARATT_IS_1B(PTR)		(((PTR)->va_1byte.va_header & 0x80) == 0x80)
+#define VARATT_IS_1B_E(PTR)		(((PTR)->va_1byte.va_header       ) == 0x80)
+
+/* VARSIZE_4B() should only be used on aligned data */
+#define VARSIZE_4B(PTR) 		(ntohl((PTR)->va_4byte.va_header) & 0x3FFFFFFF)
+#define VARSIZE_1B(PTR) 		(     ((PTR)->va_1byte.va_header) & 0x7F)
+
+#define SET_VARSIZE_4B(PTR,len) 	((PTR)->va_4byte.va_header = htonl( (len) & 0x3fffffff ))
+#define SET_VARSIZE_4B_C(PTR,len) 	((PTR)->va_4byte.va_header = htonl( (len) & 0x3fffffff | 0x40000000))
+#define SET_VARSIZE_1B(PTR,len) 	((PTR)->va_1byte.va_header =        (len) | 0x80)
+#define SET_VARSIZE_1B_E(PTR)		((PTR)->va_1byte.va_header = 0x80)
+#define SET_VARSIZE_C(PTR)			((PTR)->va_1byte.va_header |= 0x40)
+
+/* this is a bit weird if you pass in an external toast pointer, VARDATA
+ * returns the original datum and VARSIZE_EXHDR returns the size of the whole
+ * pointer including the header. That might be wrong but it works for the
+ * assertion VARSIZE_EXHDR is being used for.
+ */
+
+#define VARSIZE__ANY__EXHDR(PTR)									\
+	(VARATT_IS_1B_E(PTR) ? sizeof((PTR)->va_external) :				\
+	 (VARATT_IS_1B(PTR) ? VARSIZE_1B(PTR)-1 :						\
+	  VARSIZE_4B(PTR)-4 ))
+
+#define VARSIZE__ANY(PTR)											\
+	(VARATT_IS_1B_E(PTR) ? sizeof((PTR)->va_external) :				\
+	 (VARATT_IS_1B(PTR) ? VARSIZE_1B(PTR) :							\
+	  VARSIZE_4B(PTR) ))
+
+#define VARDATA__ANY(PTR)											\
+	(VARATT_IS_1B_E(PTR) ? (char*)(PTR) :							\
+	 (VARATT_IS_1B(PTR) ? VARDATA_1B(PTR) :							\
+	  VARDATA_4B(PTR) ))
+
+#define VARDATA_COMPRESSED(PTR)	((PTR)->va_compressed.va_data)
 
 
 /* ----------------------------------------------------------------
