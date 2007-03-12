@@ -69,6 +69,8 @@ struct fcurl_data
         FILE *file;
     } handle;                   /* handle */
 
+    struct curl_slist *x_httpheader;
+
     char *buffer;               /* buffer to store cached data*/
     int buffer_len;             /* currently allocated buffers length */
     int buffer_pos;             /* end of data in buffer*/
@@ -246,6 +248,9 @@ url_fopen(char *url, char *filename, const char *operation)
         curl_easy_setopt(file->handle.curl, CURLOPT_WRITEDATA, file);
         curl_easy_setopt(file->handle.curl, CURLOPT_VERBOSE, FALSE);
         curl_easy_setopt(file->handle.curl, CURLOPT_WRITEFUNCTION, write_callback);
+	file->x_httpheader = NULL;
+	file->x_httpheader = curl_slist_append(file->x_httpheader, "X-GPDB-GUID : dummy gpdb guid");
+	curl_easy_setopt(file->handle.curl, CURLOPT_HTTPHEADER, file->x_httpheader);
 
         if(!multi_handle)
             multi_handle = curl_multi_init();
@@ -286,6 +291,8 @@ url_fclose(URL_FILE *file)
         break;
 
     case CFTYPE_CURL:
+	curl_slist_free_all(file->x_httpheader);
+
         /* make sure the easy handle is not in the multi handle anymore */
         curl_multi_remove_handle(multi_handle, file->handle.curl);
 
