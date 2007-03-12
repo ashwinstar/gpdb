@@ -84,6 +84,7 @@ extern int	condCommitDtxTransaction(bool onephase);
 extern int	condRollbackDtxTransaction(void);
 
 extern bool isCurrentDtxDirty(void);
+extern bool isCurrentDtxActive(void);
 
 extern bool dispatchDtxCommand(const char *cmd, bool dispatchToMirrors, bool withSnapshot);
 

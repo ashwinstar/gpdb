@@ -312,6 +312,15 @@ isCurrentDtxDirty(void)
 }
 
 /*
+ * When cleaning up FTS needs to know if there is a transaction active.
+ */
+bool
+isCurrentDtxActive(void)
+{
+	return (currentGxact != NULL);
+}
+
+/*
  * committing a global transaction, called by internal
  * this method does a two-phase commit.
  */

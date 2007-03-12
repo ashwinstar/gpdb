@@ -323,8 +323,10 @@ bool
 FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 {
 	int			i;
+	bool		dtx_active;
+	bool		dtx_dirty;
 	bool		reportError = false;
-    bool     realFaultFound = false;
+    bool		realFaultFound = false;
 
     for (i = 0; i < size; i++)
     {
@@ -384,8 +386,13 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 
 	LWLockRelease(ftsControlLock);
 
+	/* is there a transaction active ? */
+	dtx_active = isCurrentDtxActive();
+	dtx_dirty = isCurrentDtxDirty();
+
     /* rollback current DTM transaction */
-    discardDtxTransaction();
+	if (dtx_active)
+		discardDtxTransaction();
 
 	/*
 	 * error out if this sets read only flag, at this stage the read only
@@ -394,6 +401,24 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 	 */
 	if ((*ftsReadOnlyFlag && !isTMInRecovery()) || reportError)
 		return true;
+
+	/* we are "reconnected" and may be issuing work to the
+	 * reconfigured system -- make sure that the DTM knows we're
+	 * supposed to be in a transaction.
+	 *
+	 * NOTE: we can only get here if reportError is 'false' which
+	 * would mean that gangs didn't exist; but that we may have been
+	 * dispatching write-statements -- so need to mark the dtx dirty
+	 * so it gets committed on mirrors.
+	 */
+	if (dtx_active)
+	{
+		condStartDtxTransaction();
+	}
+	if (dtx_dirty)
+	{
+		setCurrentDtxDirty();
+	}
 
 	return false;
 }
