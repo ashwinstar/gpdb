@@ -82,6 +82,7 @@ FtsShmemInit(void)
 	if (!IsUnderPostmaster)
 	{
 		shared->ControlLock = LWLockAssign();
+		ftsControlLock = shared->ControlLock;
 		ftsQDMirrorInfo->enabled = true; /* set default to true, will be set to
 										  * false if connection failed */
 		memset(ftsQDMirrorInfo->name, 0, sizeof(ftsQDMirrorInfo->name));
@@ -883,7 +884,7 @@ verifyFtsSyncCount(void)
 {
 	bool		ret = true;
 
-	/* synchronzie fts */
+	/* synchronize fts */
 	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
 
 	if (localFtsSyncCount == -1)
