@@ -3,8 +3,7 @@ COMMAND NAME: mppdeletepart.sh
 Drops date partitioned child tables from a parent table that was 
 previously partitioned using mppdeletepart.sh or mppaddpart.sh 
 (used to maintain a rolling window of date partitioned data). 
-This script does not support numeric range partitioned or list 
-partitioned tables.
+This script does not support numeric range or list partitioned tables.
 
 
 *****************************************************
@@ -12,7 +11,7 @@ SYNOPSIS
 *****************************************************
 
 mppdeletepart.sh -t <parent_table> -r <rolling_window_count> 
-[-s <fallback_table_name>] [-f] [-q] [-a] [-l <log_dir>] 
+[-s <fallback_table_name>] [-f] [-q] [-a] [-l <log_dir>] [-D] 
 [-d <master_data_directory>] [-x <database>]
 
 mppdeletepart.sh -? | -v
@@ -24,11 +23,11 @@ DESCRIPTION
 
 The mppdeletepart.sh script drops child tables from a parent table 
 that was partitioned using mppdeletepart.sh or mppaddpart.sh. This is 
-useful if you have a date partitioned table and want to maintain a rolling 
-window of data, for example the last 18 months. The script will drop the 
-oldest child table partitions (and associated indexes and rewrite rules) 
-that are outside of the specified rolling window. The rolling window 
-start date is calculated from the current database date. This script 
+useful if you have a date partitioned table and want to maintain a 
+rolling window of data, for example the last 18 months. The script will 
+drop the oldest child table partitions (and associated indexes and rewrite 
+rules) that are outside of the specified rolling window. The rolling 
+window start date is calculated from the current database date. This script 
 can only be used on date partitioned tables (parent tables partitioned 
 on a timestamp or date column). It does not support numeric range or 
 list partitioned tables. 
@@ -40,59 +39,72 @@ OPTIONS
 
 -t <parent_table>
 
- Required. The name of the parent table from which you want to drop 
- child tables.
+Required. The name of the parent table from which you want to drop 
+child tables.
+
 
 -r <rolling_window_count>
 
- Required. The number of most recent months, days, hours you want to keep. 
- Older child table partitions outside this window will be dropped. The rolling window start 
- date is calculated from the current database date.
+Required. The number of most recent months, days, hours you want to keep. 
+Older child table partitions outside this window will be dropped. The 
+rolling window start date is calculated from the current database date.
+
 
 -s <fallback_table_name>
 
- Specifies the name of a table where child table records will be copied 
- before the child table is dropped. This provides some fall back in case 
- you unintentionally delete partitioned data you wanted to keep.
+Specifies the name of a table where child table records will be copied 
+before the child table is dropped. This provides some fall back in case 
+you unintentionally delete partitioned data you wanted to keep.
+
 
 -f (force cascaded delete)
 
- If you have a nested partition design, this will force the deletion of 
- child tables that are also parents to other tables (DROP CASCADE). The 
- default is to not allow the removal of child tables that are also parents 
- to other tables.
+If you have a nested partition design, this will force the deletion of 
+child tables that are also parents to other tables (DROP CASCADE). 
+The default is to not allow the removal of child tables that are 
+also parents to other tables.
+
 
 -q (no output)
 
- Do not output messages to the screen. Write messages to log file only.
+Do not output messages to the screen. Write messages to log file only.
+
 
 -a (do not prompt)
 
- Do not prompt the user for confirmation.
+Do not prompt the user for confirmation.
+
 
 -l <log_directory>
 
- Specifies an alternative directory to write the log file. By default 
- log files are written to ~/mppAdminLogs.
+Specifies an alternative directory to write the log file. By default 
+log files are written to ~/mppAdminLogs.
+
+
+-D (debug)
+
+Sets logging level to debug.
+
 
 -? (help)
 
- Displays the online help.
+Displays the online help.
+
 
 -v (show script version)
 
- Displays the version, status, last updated date, and check sum of this script.
+Displays the version, status, last updated date, and check sum of this script.
 
 
 *****************************************************
 EXAMPLES
 *****************************************************
 
-Drop all monthly partitioned tables that are outside the 18 month rolling 
-window (and force the deletion of any nested child tables on the months 
-that are dropped).
+Drop all monthly partitioned tables that are outside the 18 month 
+rolling window (and force the deletion of any nested child tables 
+on the months that are dropped).
 
- mppdeletepart.sh -t sales -r 18 -f
+mppdeletepart.sh -t sales -r 18 -f
 
 
 *****************************************************

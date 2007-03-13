@@ -2,47 +2,50 @@
 GREENPLUM DATABASE MANAGEMENT OVERVIEW
 **************************************************
 
-The following Greenplum Database management scripts and utilities are available:
+The following Greenplum Database management scripts and utilities 
+are available. All are located in $MPPHOME/mppMgmt/bin unless 
+otherwise noted.
 
-* checkPerf - Verifies the baseline hardware performance of the specified 
-              hosts. Checks disk I/O and memory bandwidth.
+* cperf - Verifies the baseline hardware performance of the specified 
+          hosts. Checks disk I/O and memory bandwidth.
 
-* groupSession - Performs SSH key exchange between hosts.
-                 Runs an interactive session to execute
-                 commands on multiple hosts at once. Uses
-		 a hosts file to determine the hosts for 
-		 a session.
+* gpscp - Copies a file from the local host to multiple hosts at once.
 
-* mppactivatestandby.sh - Activates the backup master as the active Greenplum master 
-                          instance for a Greenplum Database system and optionally
-                          specifies a new backup master host.
+* gpssh - Provides ssh access to multiple hosts at once.
+
+* gpssh-exkeys - Exchanges SSH public keys between hosts.
+
+* mppactivatestandby.sh - Activates the backup master as the active 
+                          Greenplum master instance for a Greenplum Database
+                          system and optionally specifies a new backup 
+                          master host.
 
 * mppaddpart.sh  - Adds new child table partitions to a parent table that was 
                    previously partitioned using mppcreatepart.sh.
 
-* mppaddmirrors.sh - Adds mirror segments to a Greenplum Database system that was 
-                     initially configured without mirroring.
+* mppaddmirrors.sh - Adds mirror segments to a Greenplum Database system that
+                     was initially configured without mirroring.
 
-* mpp_bash_functions.sh - This is sourced by the other management
-			  scripts and contains global parameters
-			  and functions.
+* mpp_bash_functions.sh - NOT RUN DIRECTLY. This is sourced by the other 
+                          management scripts and contains global parameters 
+                          and functions.
 
 * mppcreatecluster.sh - Initializes a Greenplum Database system using 
 		        values in a configuration file.
 
 * mppcreatepart.sh - Partitions a table by creating inherited child tables, 
                      defining check constraints, creating rewrite rules, and 
-                     moving existing data from the parent table into the correct 
-                     child table.
+                     moving existing data from the parent table into the 
+                     correct child table.
 
 * mppcrondump.sh - A wrapper script for mpp_dump, which allows you to schedule
                    routine database dumps using cron.
 
-* mppdeletecluster.sh - Deletes a Greenplum Database system that was initialized 
-                        using mppcreatecluster.sh.
+* mppdeletecluster.sh - Deletes a Greenplum Database system that was 
+                        initialized using mppcreatecluster.sh.
 
-* mppdeletepart.sh - Drops date partitioned child tables from a parent table that 
-                     was previously partitioned using mppdeletepart.sh or 
+* mppdeletepart.sh - Drops date partitioned child tables from a parent table 
+                     that was previously partitioned using mppdeletepart.sh or 
                      mppaddpart.sh (used to maintain a rolling window of date 
                      partitioned data).
 
@@ -50,23 +53,37 @@ The following Greenplum Database management scripts and utilities are available:
              or SQL script files, which can then be used to restore the 
              database at a later time.
 
-* mppinitstandby.sh - Adds and/or initializes a standby Greenplum master host for 
-                      a Greenplum Database system
+* mppinitstandby.sh - Adds and/or initializes a standby Greenplum master host
+                      for a Greenplum Database system.
 
 * mpprebuildcluster.sh - Rebuilds a Greenplum Database master using a SQL 
                          script file containing the Greenplum Database schema 
                          and Greenplum system catalog information, and then 
                          recreates all of the segment instances using the 
-                         information found in the Greenplum system catalog tables.
+                         information found in the Greenplum system catalog 
+                         tables.
 
-* mpprebuildseg.sh - Rebuilds segment instances from the Greenplum system catalog 
-                     tables of a Greenplum Database master instance.
+* mpprebuildseg.sh - Rebuilds segment instances from the Greenplum system 
+                     catalog tables of a Greenplum Database master.
 
-* mpprecoverseg.sh - Recovers a failed primary or mirror segment
-                     instance.
+* mpprecoverseg.sh - Recovers a failed primary or mirror segment.
 
-* mpp_restore - Located in $MPPHOME/bin. Restores Greenplum Database databases 
-                that were backed up using mpp_dump.
+* mpp_restore - Located in $MPPHOME/bin. Restores Greenplum Database 
+                databases that were backed up using mpp_dump.
+
+* mppsegcron - NOT RUN DIRECTLY. Used by mppcrondump.sh for parallel operations.
+
+* mppsegrec - NOT RUN DIRECTLY. Used by mpprecoverseg.sh for parallel operations
+
+* mppsegsize - NOT RUN DIRECTLY. Used by mppsizecalc.sh for parallel operations.
+
+* mppsegskew - NOT RUN DIRECTLY. Used by mppskew.sh for parallel operations.
+
+* mppsegstart - NOT RUN DIRECTLY. Used by mppstart.sh for parallel operations.
+
+* mppsegstate - NOT RUN DIRECTLY. Used by mppstate.sh for parallel operations.
+
+* mppsegstop - NOT RUN DIRECTLY. Used by mppstop.sh for parallel operations.
 
 * mppsizecalc.sh - Shows the disk space usage for a given database, table, 
                    or index.
@@ -91,16 +108,10 @@ GPHOME or MPPHOME must be set on the Greenplum master host.
 
 MASTER_DATA_DIRECTORY must be set on the Greenplum master host,
 which points to the script-created master data directory
-created by mppcreatecluster.sh (for example: /gpdata/mpp-1)
+created by mppcreatecluster.sh (for example: /gpdata/gp-1)
 
-Use groupSession on the master host to exchange ssh keys 
-between the master and segment hosts.
-
-Some scripts also require ssh key exchanges between the
-segment hosts (such as mpprecoverseg.sh). You can use
-grpSession to copy the Greenplum user's .ssh directory on the
-master host to the Greenplum user's home directory on the 
-segment hosts.
+Use gpssh-exkeys on the master host to exchange ssh keys 
+between the master and all segment hosts.
 
 
 **************************************************
@@ -112,6 +123,8 @@ COMMON OPTIONS
 -l Specify log file location
 -q Run in quiet mode (no output to screen)
 -a Do not prompt user for confirmation
+-D Debug mode
+-B number of segment parallel processes to spawn
 
 
 *************************************************
@@ -131,7 +144,7 @@ The log entry format is:
 RETURN CODES
 *************************************************
 
-All scripts have the following return codes: 
+All bash scripts (*.sh) have the following return codes: 
 
 0 Completed without error 
 1 Completed, but a non fatal warning was encountered 

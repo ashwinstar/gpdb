@@ -1,6 +1,6 @@
 COMMAND NAME: mppinitstandby.sh
 
-Adds and/or initializes a standby  master host for a Greenplum Database system.
+Adds and/or initializes a standby master host for a Greenplum Database system.
 
 
 *****************************************************
@@ -8,44 +8,43 @@ SYNOPSIS
 *****************************************************
 
 mppinitstandby.sh -s <standby_hostname> [-i] [-n] [-a] [-q] 
-[-l <logfile_directory>]
-
-mppinitstandby.sh [-? | -v]
+[-l <logfile_directory>] [-D] [-? | -v]
 
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
-The mppinitstandby.sh script will create a backup  master host 
-if one has not already been created for your Greenplum Database system. Before 
-running this script, make sure that the Greenplum Database software is installed 
-on the backup master host and that you have exchanged SSH keys between 
-hosts. See the "Greenplum Database Administrator Guide" for instructions.
+The mppinitstandby.sh script will create a backup master host if one 
+has not already been created for your Greenplum Database system. Before 
+running this script, make sure that the Greenplum Database software is 
+installed on the backup master host and that you have exchanged SSH 
+keys between hosts. This script should be run on the currently active 
+primary master host. 
 
 The script will perform the following steps:
 
 * Shutdown your Greenplum Database system
 
-* Update the Greenplum system catalog to add the new backup master host 
-  information (use the -n option to skip this step)
+* Update the Greenplum Database system catalog to add the new backup master 
+  host information (use the -n option to skip this step)
 
 * Setup the backup master instance on the alternate master host
 
-* Start the synchronization process (if the -i option is supplied)
+* Start the synchronization process
 
 * Restart your Greenplum Database system
 
-A backup  master host serves as a `warm standby' in the event of 
-the primary  master host becoming unoperational. The backup master 
-is kept up to date by a transaction log replication process (mppsyncmaster), 
+A backup master host serves as a warm standby in the event of the 
+primary master host becoming unoperational. The backup master is kept 
+up to date by a transaction log replication process (mppsyncmaster), 
 which runs on the backup master host and keeps the data between the 
 primary and backup master hosts synchronized. If the primary master fails, 
 the log replication process is shutdown, and the backup master can be 
 activated in its place by using the mppactivatestandby.sh script. Upon 
-activation of the backup master, the replicated logs are used to reconstruct 
-the state of the  master host at the time of the last successfully 
-committed transaction.
+activation of the backup master, the replicated logs are used to 
+reconstruct the state of the master host at the time of the last 
+successfully committed transaction.
 
 
 *****************************************************
@@ -54,61 +53,68 @@ OPTIONS
 
 -s <standby_hostname>
 
-Required. The host name of the standby  master host.
+Required. The host name of the standby master host.
 
--i
 
-This will start the synchronization process (mppsyncmaster) between 
-the backup and primary  master hosts. The default is to not start 
-the synchronization process.
+-i (do not start synchronization)
 
--n
+This will not start the synchronization process (mppsyncmaster) between the 
+backup and primary master hosts. The default is to start the 
+synchronization process.
 
-Use this option if you already have a standby  master configured, 
-and just want to resynchronize the data between the primary and backup 
-master host. The  system catalog tables will not be updated.
 
--a
+-n (do not update catalogs)
+
+Use this option if you already have a standby master configured, and 
+just want to resynchronize the data between the primary and backup master 
+host. The Greenplum system catalog tables will not be updated.
+
+
+-a (do not prompt)
 
 Do not prompt the user for confirmation.
 
--q
 
-Run in quiet mode. Command output is not displayed on the screen, but 
-is still written to the log file.
+-q (no screen output)
+
+Run in quiet mode. Command output is not displayed on the screen, but is 
+still written to the log file.
+
 
 -l <logfile_directory>
 
 The directory to write the log file. Defaults to ~/mppAdminLogs.
 
--?
+
+-D (debug)
+
+Sets logging level to debug.
+
+
+-? (help)
 
 Displays the online help.
 
--v
+
+-v (show script version)
 
 Displays the version, status, last updated date, and check sum of this script.
+
 
 *****************************************************
 EXAMPLES
 *****************************************************
 
-Add a backup  master host to your Greenplum Database system:
+Add a backup master host to your Greenplum Database system and start the 
+synchronization process:
 
 mppinitstandby.sh -s host09
 
 
-Add a backup  master host to your Greenplum Database system and start the data 
-synchronization process with the primary  master host:
+Start an existing backup master host and synchronize the data with the primary master 
+host - do not add a new Greenplum backup master host to the system catalog:
 
-mppinitstandby.sh -s host09 -i
-
-
-Start an existing backup  master host and synchronize the data with 
-the primary master host - do not add a new  backup master host to 
-the system catalog:
-
-mppinitstandby.sh -s host09 -i -n
+mppinitstandby.sh -s host09 -n
 
 
 *****************************************************
@@ -116,3 +122,4 @@ SEE ALSO
 *****************************************************
 
 mppcreatecluster.sh, mppaddmirrors.sh, mppactivatestandby.sh
+

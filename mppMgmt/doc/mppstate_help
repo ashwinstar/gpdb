@@ -6,31 +6,31 @@ Shows the status of a running Greenplum Database system.
 SYNOPSIS
 *****************************************************
 
-mppstate.sh [-d <data_directory>] [-s] [-m] [-c] [-p] [-n] [-b] 
-{[-e] [-r <number>] [-g "search_string"]} [-i] [-f] [-q] [-l <log_directory>]
-
-mppstate.sh [-t | -? | -v]
+mppstate.sh [-d <master_data_directory>] [-B <parallel_processes>] 
+            [-s | -b] [-m] [-c] [-p] [-n] 
+            {[-e] [-r <number>] [-g "<search_string>" [| "<search_string>"]]} 
+            [-i] [-f] [-q] [-l <log_directory>] [-D] [-t | -? | -v]
 
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
-The mppstate.sh script is analogous to functionality offered by the PostgreSQL 
-pg_controldata command, which displays information about a running database 
-server instance. There is additional information you may want to know about a 
-Greenplum Database system, since it is comprised of multiple PostgreSQL 
-database instances spanning multiple machines. The mppstate.sh script provides the 
-following status information for a Greenplum Database system:
+The mppstate.sh script is analogous to functionality offered by the 
+PostgreSQL pg_controldata command, which displays information about a 
+running database server instance. There is additional information you 
+may want to know about a Greenplum Database system, since it is comprised 
+of multiple PostgreSQL database instances spanning multiple machines. 
+The mppstate.sh script provides additional status information for a 
+Greenplum Database system, such as:
 
-* The location of the master data directory.
+* Which segments are down (invalid status).
 
-* The port the master instance is running on.
+* Master and segment configuration information (hosts, data directories, etc.)
 
-* The segment content ID, data directory, port, primary or mirror status, 
-  and valid status for each segment instance in the system.
+* The ports used by the system.
 
-* Log files for each segment instance.
+* Segment log files.
 
 * A mapping of primary segments to their corresponding mirror segments.
 
@@ -39,96 +39,111 @@ following status information for a Greenplum Database system:
 OPTIONS
 *****************************************************
 
--d <data_directory>
+-d <master_data_directory>
 
-Optional. The master host data directory. If not specified, the value set for 
+Optional. The master data directory. If not specified, the value set for 
 $MASTER_DATA_DIRECTORY will be used.
 
 
--s
+-B <parallel_processes>
 
-Optional. Displays status information for the Greenplum Database system such as the 
-master data directory and port, and the segment content ID, data directory, 
-port, primary or mirror status, and valid status for each segment instance 
-in the system. This is the default option.
+The number of segments to check in parallel. If not specified, the script 
+will start up to 60 parallel processes depending on how many segment 
+instances it needs to check.
 
 
--m 
+-s (status)
+
+Optional. Displays detailed status information for the Greenplum Database 
+system.
+
+
+-b (brief status)
+
+Optional. Display a brief summary of the state of the Greenplum Database 
+system. This is the default option.
+
+
+-m (list mirrors)
 
 Optional. List the mirror segment instances in the system.
 
 
--c 
+-c (show primary to mirror mappings)
 
 Optional. Display mapping of primary segments to their corresponding mirror 
 segments.
 
 
--p
+-p (show ports)
 
 List the port numbers used throughout the Greenplum Database system.
 
 
--n
+-n (show log file names)
 
 List the log file names for the master instance and each segment instance.
 
 
--e
+-e (show last lines of segment logs)
 
-Display the end of the log file for the master instance and each segment instance.
-
-
--r <number>
-
-Used in combination with the -e option, retrieves the specified number of log lines. 
-The default is to retrieve the last 10 lines of the log files.
+Display the end of the log file for the master instance and each segment 
+instance.
 
 
--g "<search_string>"
+-r number_of_log_lines
 
-Used in combination with the -e option, retrieves the log lines that match the 
-specified search string.
-
-
--b
-
-Display a brief summary of the state of the Greenplum Database system.
+Used in combination with the -e option, retrieves the specified number of 
+log lines. The default is to retrieve the last 10 lines of the log files.
 
 
--i
-Display the Greenplum software version information.
+-g <log_search_string>
+
+Used in combination with the -e option, retrieves the log lines that match 
+the specified search string. If a search string has spaces, enclose in quotes.
+Use a pipe (|) to separate multiple search strings.
 
 
--f
+-i (show Greenplum Database version)
+
+Display the Greenplum Database software version information.
+
+
+-f (show standby master details)
+
 Display details of the standby master host if configured.
 
 
--q
+-q (no screen output)
 
-Run in quiet mode. Command output is not displayed on the screen, but is still 
-written to the log file.
+Run in quiet mode. Command output is not displayed on the screen, but is 
+still written to the log file.
 
 
--l <logfile_directory>
+-l logfile_directory
 
 The directory to write the log file. Defaults to ~/mppAdminLogs.
 
 
--t
+-D (debug)
 
-Displays the default settings used by the mppstate.sh script such as the master 
-data directory and port.
+Sets logging level to debug.
 
 
--?
+-t (show default script settings)
+
+Display the default settings used by the mppstate.sh script such as the 
+master data directory and port.
+
+
+-? (help)
 
 Displays the online help.
 
--v
+
+-v (show script version)
 
 Displays the version, status, last updated date, and check sum of this script.
-
 
 
 *****************************************************
@@ -139,22 +154,30 @@ Show the complete status information of a Greenplum Database system:
 
 mppstate.sh
 
+
 Show the status summary of a Greenplum Database system:
 
 mppstate.sh -b
+
 
 Show information about mirror segment instances:
 
 mppstate.sh -m -c
 
+
+Show information about the standby master configuration:
+
+mppstate.sh -f
+
+
 Show the last log file message for all segment instances:
 
 mppstate.sh -e
 
+
 Display the online help for the mppstate.sh script:
 
 mppstate.sh -?
-
 
 
 *****************************************************

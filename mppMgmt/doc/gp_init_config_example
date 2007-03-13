@@ -12,7 +12,7 @@
 # A name for the array you are configuring. You can use any name you 
 # like. Enclose the name in quotes if the name contains spaces.
 
-ARRAY_NAME="GreenplumDB"
+ARRAY_NAME="Greenplum Database"
 
 
 # This specifies the file that contains the list of segment host names 
@@ -24,14 +24,13 @@ ARRAY_NAME="GreenplumDB"
 MACHINE_LIST_FILE=/home/gpadmin/host_file
 
 
-# Prefix used to name the data directories on the master and segment
-# instances. The naming convention for data directories in a 
-# Greenplum system is SEG_PREFIXnumber where number starts with 0 
-# (zero) for the segment instances and the master instance is always -1
-# (negative one). So for example, if you choose the prefix gp, your 
+# This specifies a prefix that will be used to name the data directories 
+# of the master and segment instances. The naming convention for data 
+# directories in a Greenplum Database system is SEG_PREFIX<number> 
+# where <number> starts with 0 for segment instances and the master 
+# is always -1. So for example, if you choose the prefix gp, your 
 # master instance data directory would be named gp-1, and the segment 
 # instances would be named gp0, gp1, gp2, gp3, and so on.
-
 
 SEG_PREFIX=gp
 
@@ -40,7 +39,6 @@ SEG_PREFIX=gp
 # started on a segment host. If a host has multiple primary segment 
 # instances, the base port number will be incremented by one for each 
 # additional segment instance started on that host. 
-
 
 PORT_BASE=50000
 
@@ -53,13 +51,11 @@ PORT_BASE=50000
 # per CPU. It is OK to list the same data storage area multiple times 
 # if you want your data directories created in the same location. The 
 # number of data directory locations specified will determine the number 
-# of primary segment instances per host.
- 
+# of primary segment instances created per host.
 # You must make sure that the user who runs mppcreatecluster.sh (for example, 
 # the gpadmin user) has permissions to write to these directories. You 
 # may want to create these directories on the segment hosts before running 
 # mppcreatecluster.sh and chown them to the appropriate user.
-
 
 declare -a DATA_DIRECTORY=(/dbfast1 /dbfast2)
 # declare -a DATA_DIRECTORY=(/gp_primary /gp_primary)
@@ -69,9 +65,9 @@ declare -a DATA_DIRECTORY=(/dbfast1 /dbfast2)
 
 MASTER_HOSTNAME=host01
 
+
 # The location where the data directory will be created on the Greenplum 
 # master host. 
-
 # You must make sure that the user who runs mppcreatecluster.sh
 # has permissions to write to this directory. You may want to 
 # create this directory on the master host before running 
@@ -86,22 +82,14 @@ MASTER_DIRECTORY=/dbfast1
 
 MASTER_PORT=5432
 
-# The IP address(es) of the hosts allowed to connect to a Greenplum 
-# master or segment instance. This adds an entry in the PostgreSQL 
-# pg_hba.conf file on each master and segment instance created. 
-# By default local host connections are already allowed. The following 
-# setting will allow connections from all hosts.
 
-
-IP_ALLOW=0.0.0.0/0
-
-# The shell used the mppcreatecluster.sh script uses to execute 
+# The shell the mppcreatecluster.sh script uses to execute 
 # commands on remote hosts. Allowed value is ssh. You must set up 
 # your trusted host environment before running the mppcreatecluster.sh 
-# script. You can use groupSession to do this.
-
+# script. You can use gpssh-exkeys to do this.
 
 TRUSTED_SHELL=ssh
+
 
 # Maximum distance between automatic write ahead log (WAL) 
 # checkpoints, in log file segments (each segment is normally 16 
@@ -111,9 +99,12 @@ TRUSTED_SHELL=ssh
 
 CHECK_POINT_SEGMENTS=8
 
+
 # The character set encoding to use. Greenplum supports the 
 # same character sets as PostgreSQL. See 'Character Set Support'
-# in the PostgreSQL documentation for allowed character sets. 
+# in the PostgreSQL documentation for allowed character sets.
+# Should correspond to the OS locale specified with the 
+# mppcreatecluster -n option. 
 
 ENCODING=UNICODE
 
@@ -129,14 +120,27 @@ ENCODING=UNICODE
 #DATABASE_NAME=warehouse
 
 
+# Specifies the IP address(es) of client hosts allowed to connect to 
+# the master. This adds an entry in the pg_hba.conf file for 
+# the master instance. By default, local connections are already 
+# allowed using ident authentication and remote connections are 
+# allowed for the Greenplum superuser account only (gpadmin) using
+# md5 password authentication. The following setting will allow 
+# remote connections from all hosts.
+
+#IP_ALLOW=0.0.0.0/0
+
+
 ################################################
 # OPTIONAL PARAMETERS FOR SEGMENT MIRRORING
 ################################################
 
-# Data mirroring is optional. Mirroring must be configured
-# at system initialization time. You can not set up mirrors
-# after Greenplum Database has been set up. Uncomment these
-# parameters to set up mirroring.
+# Uncomment these parameters to set up mirroring at initialization. 
+# If you are using multiple network interfaces per segment host, 
+# do NOT set up mirrors at initialization time. Do so afterwards 
+# using mppaddmirrors.sh
+
+
 
 # The base port number on which mirror segment instances will be 
 # started on a segment host. If a host has multiple mirror segment 

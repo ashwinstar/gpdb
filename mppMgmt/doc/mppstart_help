@@ -6,102 +6,116 @@ Starts a Greenplum Database system.
 SYNOPSIS
 *****************************************************
 
-mppstart.sh [-d <data_directory>] [-n | -z] [-m] [-y] [-s] [-a] [-q] 
-[-l <logfile_directory>]
+mppstart.sh [-d <master_data_directory>] [-B <parallel_processes>] 
+            [-z] [-m] [-y] [-s] [-e] [-a] [-q] [-l <logfile_directory>] 
+            [-D] [-t | -? | -v]
 
-mppstart.sh [-t | -? | -v]
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
-The mppstart.sh script is analogous to functionality offered 
-by the PostgreSQL pg_ctl and postmaster commands, which are used 
-to start the database server. When you start a Greenplum Database
-system, you are actually starting several postmaster database server 
-processes at once (the Greenplum master and all of the segment instances). 
-The mppstart.sh script handles the startup of the individual instances. 
-Each instance is started sequentially by default.
+The mppstart.sh script is analogous to functionality offered by the PostgreSQL 
+pg_ctl and postmaster commands, which are used to start the database server. 
+When you start a Greenplum Database system, you are actually starting several 
+postmaster database server processes at once (the master and all of the 
+segment instances). The mppstart.sh script handles the startup of the 
+individual instances. Each instance is started in parallel.
 
-Before you can start a Greenplum Database system, you must have 
-initialized the system using mppcreatecluster.sh first.
+Before you can start a Greenplum Database system, you must have initialized 
+the system using mppcreatecluster.sh first.
+
 
 *****************************************************
 OPTIONS
 *****************************************************
 
--d <data_directory>
+-d <master_data_directory>
 
-Optional. The master host data directory. If not specified, the 
-value set for $MASTER_DATA_DIRECTORY will be used.
+Optional. The master host data directory. If not specified, the value set for 
+$MASTER_DATA_DIRECTORY will be used.
 
--n
 
-Optional. Starts the segment instances in parallel. In this mode, 
-the startup process does not wait for return codes from the segment instances. 
-The default behavior is to start the segment instances sequentially 
-and wait for their return codes.
+-B <parallel_processes>
 
--z
+The number of segments to start in parallel. If not specified, the script 
+will start up to 60 parallel processes depending on how many segment 
+instances it needs to start.
+
+
+-z (force start)
 
 Optional. Forces the startup of a segment instance with an invalid status. 
-This may be desirable if the segment instance or host as a minor error that 
-prevented startup in the first place. This option will allow you to start the 
-segment instance (after fixing a problem) if it was marked as invalid in a 
-previous startup attempt. The default behavior is to not start segment 
+This may be desirable if the segment instance or host has a minor error that 
+prevented startup in the first place. This option will allow you to start 
+the segment instance (after fixing a problem) if it was marked as invalid 
+in a previous startup attempt. The default behavior is to not start segment 
 instances with an invalid status. If the segment instance is up and running 
-then it will be marked valid again next time the master tries to connect 
-to it.
+then it will be marked valid again next time the Greenplum master tries to 
+connect to it.
 
--m
+
+-m (master only)
 
 Optional. Starts the master instance only, which may be useful for 
 maintenance tasks.
 
--y
 
-Optional. Do not start the standby master host. The default is to start 
-the standby master host and synchronization process.
+-y (do not start standby master)
+
+Optional. Do not start the standby master host. The default is to start the 
+standby master host and synchronization process.
 
 
--s
+-s (rollover master log file)
 
-Rollover the log file for the master instance. Moves the current 
-logfile to <log file>.YYYYMMDD and starts a new log file.
+Rollover the log file for the master instance. Moves the current logfile to 
+<log file>.YYYYMMDD and starts a new log file.
 
--e 
+
+-e (rollover segment log files)
 
 Rollover the log files for the segment instances. Moves the current segment 
 logfile to <log file>.YYYYMMDD and starts a new log file per segment. Not 
 applicable in a master only startup.
 
--a
+
+-a (do not prompt)
 
 Do not prompt the user for confirmation.
 
--q
+
+-q (no screen output)
 
 Run in quiet mode. Command output is not displayed on the screen, but is still 
 written to the log file.
+
 
 -l <logfile_directory>
 
 The directory to write the log file. Defaults to ~/mppAdminLogs.
 
--t
+
+-D (debug)
+
+Sets logging level to debug.
+
+
+-t (show default script settings)
 
 Displays the settings that will be used to start the system, such as the 
 master data directory and port, and the name, data directory, port, valid 
 status, and primary or mirror status of all the segment instances.
 
--?
+
+-? (help)
 
 Displays the online help.
 
--v
 
-Displays the version, status, last updated date, and checksum of this script.
+-v (show script version)
 
+Displays the version, status, last updated date, and check sum of this script.
 
 
 *****************************************************
@@ -117,11 +131,7 @@ previous startup attempt:
 
 mppstart.sh -z
 
-Start all segment instances in parallel (no return code status):
-
-mppstart.sh -n
-
-Start the master instance only:
+Start the Greenplum master instance only:
 
 mppstart.sh -m
 

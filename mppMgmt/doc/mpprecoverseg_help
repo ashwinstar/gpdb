@@ -1,103 +1,155 @@
 COMMAND NAME: mpprecoverseg.sh
 
-Recovers a primary or mirror segment instance that has been marked 
-as invalid (if mirroring is enabled).
+Recovers a primary or mirror segment instance that has been marked as 
+invalid (if mirroring is enabled).
+
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
-mpprecoverseg.sh [-d <data_directory>] [-f] [-z <seg_data_dir:seg_hostname>]
-[-a] [-q] [-l <logfile_directory>]
+mpprecoverseg.sh [-d <master_data_directory>] 
+                 [-p <spare_hostname> | -s <spare_datadir>] 
+                 [-B <parallel_processes>] [-f] 
+                 [-z <seg_data_dir>:<seg_hostname>] [-a] [-q] 
+                 [-l <logfile_directory>] [-D] [-? | -v]
 
-mpprecoverseg.sh [-? | -v]
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
-The mpprecoverseg.sh script recovers a failed segment instance if 
-you have mirroring enabled. A segment instance can fail for several 
-reasons, such as the host goes down, the segment instance process is 
-killed, or the data directory gets corrupted. When a segment instance 
-goes down it is marked as invalid in the Greenplum Database global system 
-catalog. In order to bring the segment instance back into operation 
-again, you must first correct the problem that made it fail in the 
-first place, and then recover the segment instance in the 
-Greenplum Database system.
+The mpprecoverseg.sh script recovers a failed segment instance if you have 
+mirroring enabled. A segment instance can fail for several reasons, such 
+as the host goes down, the segment instance process is killed, or the 
+data directory gets corrupted. When a segment instance goes down it is 
+marked as invalid in the Greenplum Database system catalog. In order to 
+bring the segment instance back into operation again, you must first 
+correct the problem that made it fail in the first place, and then recover 
+the segment instance in the Greenplum Database system.
 
-Greenplum Database can run in two modes with regards to mirroring and fault 
-tolerance  continue (read-write) mode and read-only mode. This mode is 
-set with the mpp_fault_action parameter in postgresql.conf at startup.
+By default, a failed segment is recovered in place, meaning that the 
+system brings the segment back online on the same host and data directory 
+location on which it was originally configured. In some cases, this may 
+not be possible (for example, if a host was physically damaged and cannot 
+be recovered). In this situation, mpprecoverseg.sh allows you to recover 
+failed segments to a completely new host (using -p) or on an alternative 
+data directory location on your remaining live segment hosts (using -s). 
+A spare segment host must be pre-installed with the Greenplum 
+Database software installed and configured exactly the same as the existing 
+segment hosts. A spare data directory location must exist on all currently 
+configured segment hosts and have enough disk space to accomodate the 
+failed segments.
+
+The Greenplum Database can run in two modes with regards to mirroring and 
+fault tolerance  continue (read-write) mode and read-only mode. This mode 
+is set with the mpp_fault_action parameter in postgresql.conf.
 
 If the system is in continue (read-write) mode, this script will shutdown 
 the system, copy the data directory of the active segment to the failed 
-segment, update the segment dbid and port on the failed segment after the 
-copy, mark the failed segment as valid again in the global system catalog, 
-and restart the system.
+segment, update the segment dbid and port on the failed segments local 
+catalog after the copy, mark the failed segment as valid again in the global 
+system catalog, and restart the system.
 
 If the system is in read-only mode, the script will recover the segment 
 without shutting down the system. Since the data is read-only, the active 
-segment and failed segment should not get out-of-sync in the event of a 
-failure.
+segment and failed segment would not get out-of-sync in the event of a failure.
 
-If your system is in shutdown mode, or if you do not have mirroring enabled, 
-you must take manual steps to recover a failed segment instance. To manually 
-mark a segment instance as valid again, run the following function on 
-the master:
+If you do not have mirroring enabled, you must take manual steps to recover 
+a failed segment instance. To manually mark a segment instance as valid 
+again, run the following function on the master:
 
-mpp.mpp_set_segdb_state(<dbid>, true|false)
+SELECT mpp_set_segdb_state(<dbid>, <true|false>);
 
-Where <dbid> is the unique ID for a segment instance. True marks the 
-segment as valid and false marks it as invalid.
+<dbid> is the unique ID for a segment instance. True marks the segment as 
+valid and false marks it as invalid.
+
 
 *****************************************************
 OPTIONS
 *****************************************************
 
--d <data_directory>
+-d <master_data_directory>
 
-Optional. The master host data directory. If not specified, the value 
-set for $MASTER_DATA_DIRECTORY will be used.
+Optional. The master host data directory. If not specified, the value set for 
+$MASTER_DATA_DIRECTORY will be used.
 
--f
+
+-p <spare_hostname>
+
+Specifes a spare hostname outside of the currently configured Greenplum 
+Database array on which to recover invalid segments. This spare host must 
+have the Greenplum Database software installed and configured, and have the 
+same hardware and OS configuration as the current segment hosts (same OS 
+version, locales, gpadmin user account, data directory locations created, 
+ssh keys exchanged, etc.).
+
+
+-s <spare_datadir>
+
+Specifies a spare data directory location on the currently configured 
+segment hosts where you can recover failed segment instances. This file 
+system location must exist on all segment hosts in the array and have 
+sufficient disk space to accomodate recovered segments.
+
+
+-B <parallel_processes>
+
+The number of segments to recover in parallel. If not specified, the script 
+will start up to 4 parallel processes depending on how many segment instances 
+it needs to recover.
+
+
+-f (force shutdown)
 
 Optional. Force shutdown and startup of segment instances marked as invalid.
 
 
--z <seg_data_dir:seg_hostname>
+-z <seg_data_dir>:<seg_hostname> (force recovery of a valid primary)
 
 Forces a recovery of a primary segment instance from its mirror even though 
-the segment has not been marked invalid. Use this option with care.
+the segment has not been marked invalid. Use this option with care!
 
--a
+
+-a (do not prompt)
 
 Do not prompt the user for confirmation.
 
--q
 
-Run in quiet mode. Command output is not displayed on the screen, 
-but is still written to the log file.
+-q (no screen output)
 
--l <logfile_directory>
+Run in quiet mode. Command output is not displayed on the screen, but is still 
+written to the log file.
 
-The directory to write the log file. Defaults to <current_directory>/logs.
+-
+l logfile_directory
 
--?
+The directory to write the log file. Defaults to ~/mppAdminLogs.
+
+
+-? (help)
 
 Displays the online help.
 
--v
+
+-v (version)
 
 Displays the version, status, last updated date, and check sum of this script.
+
 
 *****************************************************
 EXAMPLES
 *****************************************************
 
-Recover and failed segment instances:
+Recover any failed segment instances in place:
 
-./mpprecoverseg.sh
+mpprecoverseg.sh
+
+
+Recover any failed segment instances to a newly configured spare segment host:
+
+mpprecoverseg.sh -p newhostname
+
 
 *****************************************************
 SEE ALSO
