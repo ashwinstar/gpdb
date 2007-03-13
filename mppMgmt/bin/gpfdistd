@@ -74,6 +74,7 @@ def readFile():
 class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_GET(self):
+	print self.headers;
 	self.send_head()
 	while 1:
 	    chunks = readFile()
