@@ -202,6 +202,8 @@ typedef struct JunkFilter
 	TupleTableSlot *jf_resultSlot;
 } JunkFilter;
 
+
+
 /* ----------------
  *	  ResultRelInfo information
  *
@@ -228,6 +230,7 @@ typedef struct ResultRelInfo
 	NodeTag		type;
 	Index		ri_RangeTableIndex;
 	Relation	ri_RelationDesc;
+	struct HeapInsertDesc *ri_HeapInsertDesc;
 	int			ri_NumIndices;
 	RelationPtr ri_IndexRelationDescs;
 	struct IndexInfo  **ri_IndexRelationInfo;

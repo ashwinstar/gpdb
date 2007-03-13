@@ -1516,6 +1516,175 @@ heap_get_latest_tid(Relation relation,
 	}							/* end of loop */
 }
 
+
+HeapInsertDesc*
+heap_begininsert(Relation relation, CommandId cid, bool use_wal, bool use_fsm)
+{
+	HeapInsertDesc *ins = (HeapInsertDesc*) palloc(sizeof(HeapInsertDesc));
+	ins->hi_xid = GetCurrentTransactionId();
+	ins->hi_rel = relation;
+	ins->hi_cid = cid;
+	ins->hi_use_wal = use_wal;
+	ins->hi_use_fsm = use_fsm;
+	return ins;
+}
+
+void heap_endinsert(HeapInsertDesc *ins)
+{
+}
+
+
+Oid
+heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
+{
+	HeapTuple	heaptup;
+	Buffer		buffer;
+
+	if (ins->hi_rel->rd_rel->relhasoids)
+	{
+#ifdef NOT_USED
+		/* this is redundant with an Assert in HeapTupleSetOid */
+		Assert(tup->t_data->t_infomask & HEAP_HASOID);
+#endif
+
+		/*
+		 * If the object id of this tuple has already been assigned, trust the
+		 * caller.	There are a couple of ways this can happen.  At initial db
+		 * creation, the backend program sets oids for tuples. When we define
+		 * an index, we set the oid.  Finally, in the future, we may allow
+		 * users to set their own object ids in order to support a persistent
+		 * object store (objects need to contain pointers to one another).
+		 */
+		if (!OidIsValid(HeapTupleGetOid(tup)))
+			HeapTupleSetOid(tup, GetNewOid(ins->hi_rel));
+	}
+	else
+	{
+		/* check there is not space for an OID */
+		Assert(!(tup->t_data->t_infomask & HEAP_HASOID));
+	}
+
+	tup->t_data->t_infomask &= ~(HEAP_XACT_MASK);
+	tup->t_data->t_infomask |= HEAP_XMAX_INVALID;
+	HeapTupleHeaderSetXmin(tup->t_data, ins->hi_xid);
+	HeapTupleHeaderSetCmin(tup->t_data, ins->hi_cid);
+	HeapTupleHeaderSetXmax(tup->t_data, 0);		/* for cleanliness */
+	tup->t_tableOid = RelationGetRelid(ins->hi_rel);
+
+	/*
+	 * If the new tuple is too big for storage or contains already toasted
+	 * out-of-line attributes from some other relation, invoke the toaster.
+	 *
+	 * Note: below this point, heaptup is the data we actually intend to store
+	 * into the relation; tup is the caller's original untoasted data.
+	 */
+	if (HeapTupleHasExternal(tup) ||
+		(MAXALIGN(tup->t_len) > TOAST_TUPLE_THRESHOLD))
+		heaptup = toast_insert_or_update(ins->hi_rel, tup, NULL);
+	else
+		heaptup = tup;
+
+	/* Find buffer to insert this tuple into */
+	buffer = RelationGetBufferForTuple(ins->hi_rel, heaptup->t_len,
+									   InvalidBuffer, ins->hi_use_fsm);
+
+	/* NO EREPORT(ERROR) from here till changes are logged */
+	START_CRIT_SECTION();
+
+	RelationPutHeapTuple(ins->hi_rel, buffer, heaptup);
+
+	MarkBufferDirty(buffer);
+
+	/* XLOG stuff */
+	if (ins->hi_rel->rd_istemp)
+	{
+		/* No XLOG record, but still need to flag that XID exists on disk */
+		MyXactMadeTempRelUpdate = true;
+	}
+	else if (ins->hi_use_wal)
+	{
+		xl_heap_insert xlrec;
+		xl_heap_header xlhdr;
+		XLogRecPtr	recptr;
+		XLogRecData rdata[3];
+		Page		page = BufferGetPage(buffer);
+		uint8		info = XLOG_HEAP_INSERT;
+
+		xlrec.target.node = ins->hi_rel->rd_node;
+		xlrec.target.tid = heaptup->t_self;
+		rdata[0].data = (char *) &xlrec;
+		rdata[0].len = SizeOfHeapInsert;
+		rdata[0].buffer = InvalidBuffer;
+		rdata[0].next = &(rdata[1]);
+
+		xlhdr.t_infomask2 = heaptup->t_data->t_infomask2;
+		xlhdr.t_infomask = heaptup->t_data->t_infomask;
+		xlhdr.t_hoff = heaptup->t_data->t_hoff;
+
+		/*
+		 * note we mark rdata[1] as belonging to buffer; if XLogInsert decides
+		 * to write the whole page to the xlog, we don't need to store
+		 * xl_heap_header in the xlog.
+		 */
+		rdata[1].data = (char *) &xlhdr;
+		rdata[1].len = SizeOfHeapHeader;
+		rdata[1].buffer = buffer;
+		rdata[1].buffer_std = true;
+		rdata[1].next = &(rdata[2]);
+
+		/* PG73FORMAT: write bitmap [+ padding] [+ oid] + data */
+		rdata[2].data = (char *) heaptup->t_data + offsetof(HeapTupleHeaderData, t_bits);
+		rdata[2].len = heaptup->t_len - offsetof(HeapTupleHeaderData, t_bits);
+		rdata[2].buffer = buffer;
+		rdata[2].buffer_std = true;
+		rdata[2].next = NULL;
+
+		/*
+		 * If this is the single and first tuple on page, we can reinit the
+		 * page instead of restoring the whole thing.  Set flag, and hide
+		 * buffer references from XLogInsert.
+		 */
+		if (ItemPointerGetOffsetNumber(&(heaptup->t_self)) == FirstOffsetNumber &&
+			PageGetMaxOffsetNumber(page) == FirstOffsetNumber)
+		{
+			info |= XLOG_HEAP_INIT_PAGE;
+			rdata[1].buffer = rdata[2].buffer = InvalidBuffer;
+		}
+
+		recptr = XLogInsert(RM_HEAP_ID, info, rdata);
+
+		PageSetLSN(page, recptr);
+		PageSetTLI(page, ThisTimeLineID);
+	}
+
+	END_CRIT_SECTION();
+
+	UnlockReleaseBuffer(buffer);
+
+	/*
+	 * If tuple is cachable, mark it for invalidation from the caches in case
+	 * we abort.  Note it is OK to do this after releasing the buffer, because
+	 * the heaptup data structure is all in local memory, not in the shared
+	 * buffer.
+	 */
+	CacheInvalidateHeapTuple(ins->hi_rel, heaptup);
+
+	pgstat_count_heap_insert(&ins->hi_rel->pgstat_info);
+
+	/*
+	 * If heaptup is a private copy, release it.  Don't forget to copy t_self
+	 * back to the caller's image, too.
+	 */
+	if (heaptup != tup)
+	{
+		tup->t_self = heaptup->t_self;
+		heap_freetuple(heaptup);
+	}
+
+	return HeapTupleGetOid(tup);
+}
+
+
 /*
  *	heap_insert		- insert tuple into a heap
  *

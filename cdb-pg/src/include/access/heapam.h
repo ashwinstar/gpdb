@@ -128,6 +128,18 @@ typedef enum
 	LockTupleExclusive
 } LockTupleMode;
 
+/* CKTAN */
+typedef struct HeapInsertDesc HeapInsertDesc;
+struct HeapInsertDesc
+{
+    TransactionId hi_xid;
+    Relation 	  hi_rel;
+    CommandId 	  hi_cid;
+    bool          hi_use_wal;
+    bool 	  hi_use_fsm;
+};
+
+
 extern Relation relation_open(Oid relationId, LOCKMODE lockmode);
 extern Relation try_relation_open(Oid relationId, LOCKMODE lockmode);
 extern Relation relation_open_nowait(Oid relationId, LOCKMODE lockmode);
@@ -138,6 +150,11 @@ extern Relation heap_open(Oid relationId, LOCKMODE lockmode);
 extern Relation heap_openrv(const RangeVar *relation, LOCKMODE lockmode);
 
 #define heap_close(r,l)  relation_close(r,l)
+
+extern HeapInsertDesc* heap_begininsert(Relation relation, CommandId cid, 
+					bool use_wal, bool use_fsm);
+extern Oid heap_insertnext(HeapInsertDesc *ins, HeapTuple tup);
+extern void heap_endinsert(HeapInsertDesc *ins);
 
 extern HeapScanDesc heap_beginscan(Relation relation, Snapshot snapshot,
 			   int nkeys, ScanKey key);

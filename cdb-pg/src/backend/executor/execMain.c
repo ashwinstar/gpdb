@@ -1541,6 +1541,8 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 	for (i = estate->es_num_result_relations; i > 0; i--)
 	{
 		/* Close indices and then the relation itself */
+		if (resultRelInfo->ri_HeapInsertDesc)
+			heap_endinsert(resultRelInfo->ri_HeapInsertDesc);
 		ExecCloseIndices(resultRelInfo);
 		heap_close(resultRelInfo->ri_RelationDesc, NoLock);
 		resultRelInfo++;
@@ -1896,6 +1898,7 @@ ExecInsert(TupleTableSlot *slot,
 	ResultRelInfo *resultRelInfo;
 	Relation	resultRelationDesc;
 	Oid			newId;
+	const bool  newPath = true;
 
 	/*
 	 * get the heap tuple out of the tuple table slot, making sure we have a
@@ -1950,9 +1953,22 @@ ExecInsert(TupleTableSlot *slot,
 	 * Note: heap_insert returns the tid (location) of the new tuple in the
 	 * t_self field.
 	 */
-	newId = heap_insert(resultRelationDesc, tuple,
-						estate->es_snapshot->curcid,
-						true, true);
+	if (! newPath)
+	{
+		newId = heap_insert(resultRelationDesc, tuple,
+							estate->es_snapshot->curcid,
+							true, true);
+	}
+	else
+	{
+		if (resultRelInfo->ri_HeapInsertDesc == NULL)
+		{
+			resultRelInfo->ri_HeapInsertDesc = heap_begininsert(resultRelationDesc, 
+																estate->es_snapshot->curcid,
+																true, true);
+		}
+		newId = heap_insertnext(resultRelInfo->ri_HeapInsertDesc, tuple);
+	}
 
 	IncrAppended();
 	(estate->es_processed)++;
