@@ -1529,6 +1529,7 @@ heap_begininsert(Relation relation, CommandId cid, bool use_wal, bool use_fsm)
 	ins->hi_use_wal = use_wal;
 	ins->hi_use_fsm = use_fsm;
 	ins->hi_tupcnt = ins->hi_pagecnt = 0;
+	ins->hi_cur = 0;
 
 	ins->hi_targblock = relation->rd_targblock;
 	relation->rd_targblock = InvalidBlockNumber;
