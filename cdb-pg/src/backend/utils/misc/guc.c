@@ -1151,6 +1151,15 @@ static struct config_bool ConfigureNamesBool[] =
         false, assign_mpp_set_read_only, NULL
     },
 
+	{
+		{"mpp_set_proc_affinity", PGC_POSTMASTER, RESOURCES_KERNEL,
+		 gettext_noop("On postmster startup, attempt to bind postmaster to a processor"),
+		 NULL
+		},
+		&mpp_set_proc_affinity,
+        true, NULL, NULL
+	},
+
     {
         {"mpp_enable_adaptive_nestloop", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables the planner's use of the Adaptive Join Choice operator."),

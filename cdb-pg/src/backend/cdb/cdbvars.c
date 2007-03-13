@@ -77,6 +77,8 @@ bool		Mpp_write_shared_snapshot;	/* tell the writer QE to write the
 
 bool		mpp_reraise_signal=true;	/* try to dump core when we get SIGABRT & SIGSEGV */
 
+bool		mpp_set_proc_affinity=true; /* set processor affinity (if platform supports it) */
+
 /*
  * TCP port the Interconnect listens on for incoming connections from other
  * backends.  Assigned by initMotionLayerIPC() at process startup.  This port
