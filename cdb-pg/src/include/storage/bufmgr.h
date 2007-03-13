@@ -112,6 +112,7 @@ extern DLLIMPORT int32 *LocalRefCount;
  */
 extern Buffer ReadBuffer(Relation reln, BlockNumber blockNum);
 extern void ReleaseBuffer(Buffer buffer);
+extern void ReleaseBuffer_Ex(Buffer buffer, bool flushIfDirty);
 extern void UnlockReleaseBuffer(Buffer buffer);
 extern void MarkBufferDirty(Buffer buffer);
 extern void IncrBufferRefCount(Buffer buffer);

@@ -1898,7 +1898,7 @@ ExecInsert(TupleTableSlot *slot,
 	ResultRelInfo *resultRelInfo;
 	Relation	resultRelationDesc;
 	Oid			newId;
-	const bool  newPath = true;
+	const bool  newPath = false;
 
 	/*
 	 * get the heap tuple out of the tuple table slot, making sure we have a

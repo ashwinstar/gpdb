@@ -54,6 +54,7 @@
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "storage/freespace.h"
 
 
 static XLogRecPtr log_heap_update(Relation reln, Buffer oldbuf,
@@ -1521,17 +1522,278 @@ HeapInsertDesc*
 heap_begininsert(Relation relation, CommandId cid, bool use_wal, bool use_fsm)
 {
 	HeapInsertDesc *ins = (HeapInsertDesc*) palloc(sizeof(HeapInsertDesc));
+	int i;
 	ins->hi_xid = GetCurrentTransactionId();
 	ins->hi_rel = relation;
 	ins->hi_cid = cid;
 	ins->hi_use_wal = use_wal;
 	ins->hi_use_fsm = use_fsm;
+	ins->hi_tupcnt = ins->hi_pagecnt = 0;
+
+	ins->hi_targblock = relation->rd_targblock;
+	relation->rd_targblock = InvalidBlockNumber;
+
+	for (i = 0; i < lengthof(ins->hi_buf); i++)
+		ins->hi_buf[i] = InvalidBuffer;
+
 	return ins;
 }
 
 void heap_endinsert(HeapInsertDesc *ins)
 {
+	int i;
+	for (i = 0; i < lengthof(ins->hi_buf); i++)
+	{
+		if (ins->hi_buf[i] != InvalidBuffer)
+		{
+			ReleaseBuffer(ins->hi_buf[i]);
+			ins->hi_buf[i] = InvalidBuffer;
+		}
+	}
 }
+
+
+static Buffer
+heap_insertgetpage(HeapInsertDesc *ins, Size len)
+{
+	Buffer		buffer = InvalidBuffer;
+	Page		pageHeader;
+	Size		pageFreeSpace,
+				saveFreeSpace;
+	BlockNumber targetBlock;
+
+	len = MAXALIGN(len);		/* be conservative */
+
+	/*
+	 * If we're gonna fail for oversize tuple, do it right away
+	 */
+	if (len > MaxTupleSize)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("row is too big: size %lu, maximum size %lu",
+						(unsigned long) len,
+						(unsigned long) MaxTupleSize)));
+
+	/* Compute desired extra freespace due to fillfactor option */
+	saveFreeSpace = RelationGetTargetPageFreeSpace(ins->hi_rel,
+												   HEAP_DEFAULT_FILLFACTOR);
+
+	/*
+	 * We first try to put the tuple on the same page we last inserted a tuple
+	 * on, as cached in the relcache entry.  If that doesn't work, we ask the
+	 * shared Free Space Map to locate a suitable page.  Since the FSM's info
+	 * might be out of date, we have to be prepared to loop around and retry
+	 * multiple times.	(To insure this isn't an infinite loop, we must update
+	 * the FSM with the correct amount of free space on each page that proves
+	 * not to be suitable.)  If the FSM has no record of a page with enough
+	 * free space, we give up and extend the relation.
+	 *
+	 * When use_fsm is false, we either put the tuple onto the existing target
+	 * page or extend the relation.
+	 */
+	if (len + saveFreeSpace <= MaxTupleSize)
+		targetBlock = ins->hi_targblock;
+	else
+	{
+		/* can't fit, don't screw up FSM request tracking by trying */
+		targetBlock = InvalidBlockNumber;
+		ins->hi_use_fsm = false;
+	}
+
+	if (targetBlock == InvalidBlockNumber && ins->hi_use_fsm)
+	{
+		/*
+		 * We have no cached target page, so ask the FSM for an initial
+		 * target.
+		 */
+		targetBlock = GetPageWithFreeSpace(&ins->hi_rel->rd_node,
+										   len + saveFreeSpace);
+
+		/*
+		 * If the FSM knows nothing of the rel, try the last page before we
+		 * give up and extend.	This avoids one-tuple-per-page syndrome during
+		 * bootstrapping or in a recently-started system.
+		 */
+		if (targetBlock == InvalidBlockNumber)
+		{
+			BlockNumber nblocks = RelationGetNumberOfBlocks(ins->hi_rel);
+
+			if (nblocks > 0)
+				targetBlock = nblocks - 1;
+		}
+	}
+
+	while (targetBlock != InvalidBlockNumber)
+	{
+		/*
+		 * Read and exclusive-lock the target block.
+		 */
+		buffer = ReadBuffer(ins->hi_rel, targetBlock);
+		LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
+
+		/*
+		 * Now we can check to see if there's enough free space here. If so,
+		 * we're done.
+		 */
+		pageHeader = (Page) BufferGetPage(buffer);
+		pageFreeSpace = PageGetFreeSpace(pageHeader);
+		if (len + saveFreeSpace <= pageFreeSpace)
+		{
+			/* use this page as future insert target, too */
+			ins->hi_targblock = targetBlock;
+			return buffer;
+		}
+
+		/*
+		 * Not enough space, so we must give up our page locks and pin (if
+		 * any) and prepare to look elsewhere.	We don't care which order we
+		 * unlock the two buffers in, so this can be slightly simpler than the
+		 * code above.
+		 */
+		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
+		ReleaseBuffer(buffer);
+
+		/* Without FSM, always fall out of the loop and extend */
+		if (!ins->hi_use_fsm)
+			break;
+
+		/*
+		 * Update FSM as to condition of this page, and ask for another page
+		 * to try.
+		 */
+		targetBlock = RecordAndGetPageWithFreeSpace(&ins->hi_rel->rd_node,
+													targetBlock,
+													pageFreeSpace,
+													len + saveFreeSpace);
+	}
+
+	ins->hi_targblock = InvalidBlockNumber;
+	return InvalidBuffer;
+}
+
+
+static Buffer
+heap_insertextend(HeapInsertDesc *ins, Size len)
+{
+	bool needLock;
+	Size pageFreeSpace, saveFreeSpace;
+	Buffer buffer;
+	Page pageHeader;
+	
+	len = MAXALIGN(len);		/* be conservative */
+
+	/*
+	 * If we're gonna fail for oversize tuple, do it right away
+	 */
+	if (len > MaxTupleSize)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("row is too big: size %lu, maximum size %lu",
+						(unsigned long) len,
+						(unsigned long) MaxTupleSize)));
+
+	/* Compute desired extra freespace due to fillfactor option */
+	saveFreeSpace = RelationGetTargetPageFreeSpace(ins->hi_rel,
+												   HEAP_DEFAULT_FILLFACTOR);
+
+	if ((buffer = ins->hi_buf[ins->hi_cur]) != InvalidBuffer)
+	{
+		LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
+		/*
+		 * Now we can check to see if there's enough free space here. If so,
+		 * we're done.
+		 */
+		pageHeader = (Page) BufferGetPage(buffer);
+		pageFreeSpace = PageGetFreeSpace(pageHeader);
+		if (len + saveFreeSpace <= pageFreeSpace)
+		{
+			/* Caller will release, but we want to keep it pinned */
+			IncrBufferRefCount(buffer);
+			/*elog(LOG, "   return %u", BufferGetBlockNumber(buffer));*/
+			return buffer;
+		}
+
+		/*
+		 * Not enough space, so we must give up our page locks and pin (if
+		 * any) and prepare to look elsewhere.	We don't care which order we
+		 * unlock the two buffers in, so this can be slightly simpler than the
+		 * code above.
+		 */
+		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
+	}
+
+	if (ins->hi_cur + 1 < lengthof(ins->hi_buf))
+		ins->hi_cur++;
+	else
+	{
+		int i;
+		/* flush */
+		for (i = 0; i < lengthof(ins->hi_buf); i++)
+		{
+			if (ins->hi_buf[i] != InvalidBuffer)
+			{
+				ReleaseBuffer_Ex(ins->hi_buf[i], true);
+				ins->hi_buf[i] = InvalidBuffer;
+			}
+		}
+		ins->hi_cur = 0;
+	}
+
+	/*
+	 * Have to extend the relation.
+	 *
+	 * We have to use a lock to ensure no one else is extending the rel at the
+	 * same time, else we will both try to initialize the same new page.  We
+	 * can skip locking for new or temp relations, however, since no one else
+	 * could be accessing them.
+	 */
+	needLock = !RELATION_IS_LOCAL(ins->hi_rel);
+	if (needLock)
+		LockRelationForExtension(ins->hi_rel, ExclusiveLock);
+		
+	buffer = ins->hi_buf[ins->hi_cur] = ReadBuffer(ins->hi_rel, P_NEW);
+	/*
+	 * Now acquire lock on the new page.
+	 */
+	LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
+
+	/*
+	 * Release the file-extension lock; it's now OK for someone else to extend
+	 * the relation some more.	Note that we cannot release this lock before
+	 * we have buffer lock on the new page, or we risk a race condition
+	 * against vacuumlazy.c --- see comments therein.
+	 */
+	if (needLock)
+		UnlockRelationForExtension(ins->hi_rel, ExclusiveLock);
+
+	/*
+	 * We need to initialize the empty new page.  Double-check that it really
+	 * is empty (this should never happen, but if it does we don't want to
+	 * risk wiping out valid data).
+	 */
+	pageHeader = (Page) BufferGetPage(buffer);
+		
+	if (!PageIsNew((PageHeader) pageHeader))
+		elog(ERROR, "page %u of relation \"%s\" should be empty but is not",
+			 BufferGetBlockNumber(buffer),
+			 RelationGetRelationName(ins->hi_rel));
+
+	PageInit(pageHeader, BufferGetPageSize(buffer), 0);
+
+	if (len > PageGetFreeSpace(pageHeader))
+	{
+		/* We should not get here given the test at the top */
+		elog(PANIC, "tuple is too big: size %lu", (unsigned long) len);
+	}
+
+	/* Caller will release, but we want to keep it pinned */
+	IncrBufferRefCount(buffer);
+
+	/*elog(LOG, "allocated %u", BufferGetBlockNumber(buffer));*/
+
+	return buffer;
+}
+
 
 
 Oid
@@ -1585,8 +1847,10 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
 		heaptup = tup;
 
 	/* Find buffer to insert this tuple into */
-	buffer = RelationGetBufferForTuple(ins->hi_rel, heaptup->t_len,
-									   InvalidBuffer, ins->hi_use_fsm);
+	if (ins->hi_targblock != InvalidBlockNumber)
+		buffer = heap_insertgetpage(ins, heaptup->t_len);
+	else 
+		buffer = heap_insertextend(ins, heaptup->t_len);
 
 	/* NO EREPORT(ERROR) from here till changes are logged */
 	START_CRIT_SECTION();

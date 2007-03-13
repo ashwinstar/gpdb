@@ -1748,6 +1748,12 @@ FlushRelationBuffers(Relation rel)
 void
 ReleaseBuffer(Buffer buffer)
 {
+	ReleaseBuffer_Ex(buffer, false);
+}
+
+void
+ReleaseBuffer_Ex(Buffer buffer, bool flushIfDirty)
+{
 	volatile BufferDesc *bufHdr;
 
 	if (!BufferIsValid(buffer))
@@ -1757,6 +1763,7 @@ ReleaseBuffer(Buffer buffer)
 
 	if (BufferIsLocal(buffer))
 	{
+		/* note: this ignores the flushIfDirty hint */
 		Assert(LocalRefCount[-buffer - 1] > 0);
 		bufHdr = &LocalBufferDescriptors[-buffer - 1];
 		LocalRefCount[-buffer - 1]--;
@@ -1770,11 +1777,26 @@ ReleaseBuffer(Buffer buffer)
 
 	Assert(PrivateRefCount[buffer - 1] > 0);
 
+	if (flushIfDirty)
+	{
+		LockBufHdr(bufHdr);
+		if (bufHdr->flags & BM_DIRTY)
+		{
+			UnlockBufHdr(bufHdr);
+			LWLockAcquire(bufHdr->content_lock, LW_SHARED);
+			FlushBuffer(bufHdr, NULL);
+			LWLockRelease(bufHdr->content_lock);
+		}
+		else
+			UnlockBufHdr(bufHdr);
+	}
+
 	if (PrivateRefCount[buffer - 1] > 1)
 		PrivateRefCount[buffer - 1]--;
 	else
 		UnpinBuffer(bufHdr, false, true);
 }
+
 
 /*
  * UnlockReleaseBuffer -- release the content lock and pin on a buffer

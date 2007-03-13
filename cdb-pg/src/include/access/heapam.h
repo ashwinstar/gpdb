@@ -137,6 +137,11 @@ struct HeapInsertDesc
     CommandId 	  hi_cid;
     bool          hi_use_wal;
     bool 	  hi_use_fsm;
+    unsigned int  hi_tupcnt; 	/* running count of tuples inserted */
+    unsigned int  hi_pagecnt;	/* running count of pages inserted */
+    BlockNumber   hi_targblock;
+    Buffer	  hi_buf[32];	/* extended buffers */
+    int           hi_cur;	/* index into hi_buf[0] */
 };
 
 
