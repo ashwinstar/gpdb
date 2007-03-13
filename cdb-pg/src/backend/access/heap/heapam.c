@@ -1733,7 +1733,8 @@ heap_insertextend(HeapInsertDesc *ins, Size len)
 		{
 			if (ins->hi_buf[i] != InvalidBuffer)
 			{
-				ReleaseBuffer_Ex(ins->hi_buf[i], true);
+			  //ReleaseBuffer_Ex(ins->hi_buf[i], true);
+			    ReleaseBuffer(ins->hi_buf[i]);
 				ins->hi_buf[i] = InvalidBuffer;
 			}
 		}
@@ -1848,9 +1849,10 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
 		heaptup = tup;
 
 	/* Find buffer to insert this tuple into */
+	buffer = InvalidBuffer;
 	if (ins->hi_targblock != InvalidBlockNumber)
 		buffer = heap_insertgetpage(ins, heaptup->t_len);
-	else 
+	if (buffer == InvalidBuffer)
 		buffer = heap_insertextend(ins, heaptup->t_len);
 
 	/* NO EREPORT(ERROR) from here till changes are logged */
