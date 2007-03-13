@@ -401,12 +401,33 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 	}
 	else
 	{
-		/* We expect the hashtable to fit in memory */
+		/* We expect the hashtable to fit in memory, we want to use
+		 * more buckets if we have memory to spare */
+		double		dbuckets_lower;
+		double		dbuckets_upper;
 		double		dbuckets;
 
-		dbuckets = ceil(ntuples / NTUP_PER_BUCKET);
+		/* divide our tuple row-count estimate by our the number of
+		 * tuples we'd like in a bucket: this produces a small bucket
+		 * count independent of our work_mem setting */
+		dbuckets_lower = (double)ntuples / (double)NTUP_PER_BUCKET;
+
+		/* if we have work_mem to spare, we'd like to use it -- so
+		 * divide up our memory evenly (see the spill case above) */
+		dbuckets_upper = (double)hash_table_bytes / ((double)tupsize * NTUP_PER_BUCKET);
+
+		/* we'll use our "lower" work_mem independent guess as a lower
+		 * limit; but if we've got memory to spare we'll take the mean
+		 * of the lower-limit and the upper-limit */
+		if (dbuckets_upper > dbuckets_lower)
+			dbuckets = (dbuckets_lower + dbuckets_upper)/2.0;
+		else
+			dbuckets = dbuckets_lower;
+
+		dbuckets = ceil(dbuckets);
 		dbuckets = Min(dbuckets, INT_MAX);
-		nbuckets = (int) dbuckets;
+
+		nbuckets = (int)dbuckets;
 
 		nbatch = 1;
 	}
