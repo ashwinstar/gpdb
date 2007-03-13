@@ -1522,34 +1522,25 @@ HeapInsertDesc*
 heap_begininsert(Relation relation, CommandId cid, bool use_wal, bool use_fsm)
 {
 	HeapInsertDesc *ins = (HeapInsertDesc*) palloc(sizeof(HeapInsertDesc));
-	int i;
 	ins->hi_xid = GetCurrentTransactionId();
 	ins->hi_rel = relation;
 	ins->hi_cid = cid;
 	ins->hi_use_wal = use_wal;
 	ins->hi_use_fsm = use_fsm;
-	ins->hi_tupcnt = ins->hi_pagecnt = 0;
-	ins->hi_cur = 0;
+	ins->hi_cbuf = InvalidBuffer;
 
 	ins->hi_targblock = relation->rd_targblock;
 	relation->rd_targblock = InvalidBlockNumber;
-
-	for (i = 0; i < lengthof(ins->hi_buf); i++)
-		ins->hi_buf[i] = InvalidBuffer;
 
 	return ins;
 }
 
 void heap_endinsert(HeapInsertDesc *ins)
 {
-	int i;
-	for (i = 0; i < lengthof(ins->hi_buf); i++)
+	if (ins->hi_cbuf != InvalidBuffer)
 	{
-		if (ins->hi_buf[i] != InvalidBuffer)
-		{
-			ReleaseBuffer(ins->hi_buf[i]);
-			ins->hi_buf[i] = InvalidBuffer;
-		}
+		UnlockReleaseBuffer(ins->hi_cbuf);
+		ins->hi_cbuf = InvalidBuffer;
 	}
 }
 
@@ -1677,7 +1668,7 @@ static Buffer
 heap_insertextend(HeapInsertDesc *ins, Size len)
 {
 	bool needLock;
-	Size pageFreeSpace, saveFreeSpace;
+	Size saveFreeSpace;
 	Buffer buffer;
 	Page pageHeader;
 	
@@ -1697,19 +1688,15 @@ heap_insertextend(HeapInsertDesc *ins, Size len)
 	saveFreeSpace = RelationGetTargetPageFreeSpace(ins->hi_rel,
 												   HEAP_DEFAULT_FILLFACTOR);
 
-	if ((buffer = ins->hi_buf[ins->hi_cur]) != InvalidBuffer)
+	if ((buffer = ins->hi_cbuf) != InvalidBuffer)
 	{
-		LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
 		/*
 		 * Now we can check to see if there's enough free space here. If so,
 		 * we're done.
 		 */
 		pageHeader = (Page) BufferGetPage(buffer);
-		pageFreeSpace = PageGetFreeSpace(pageHeader);
-		if (len + saveFreeSpace <= pageFreeSpace)
+		if (len + saveFreeSpace <= PageGetFreeSpace(pageHeader))
 		{
-			/* Caller will release, but we want to keep it pinned */
-			IncrBufferRefCount(buffer);
 			/*elog(LOG, "   return %u", BufferGetBlockNumber(buffer));*/
 			return buffer;
 		}
@@ -1720,25 +1707,7 @@ heap_insertextend(HeapInsertDesc *ins, Size len)
 		 * unlock the two buffers in, so this can be slightly simpler than the
 		 * code above.
 		 */
-		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
-	}
-
-	if (ins->hi_cur + 1 < lengthof(ins->hi_buf))
-		ins->hi_cur++;
-	else
-	{
-		int i;
-		/* flush */
-		for (i = 0; i < lengthof(ins->hi_buf); i++)
-		{
-			if (ins->hi_buf[i] != InvalidBuffer)
-			{
-			  //ReleaseBuffer_Ex(ins->hi_buf[i], true);
-			    ReleaseBuffer(ins->hi_buf[i]);
-				ins->hi_buf[i] = InvalidBuffer;
-			}
-		}
-		ins->hi_cur = 0;
+		UnlockReleaseBuffer(buffer);
 	}
 
 	/*
@@ -1753,7 +1722,7 @@ heap_insertextend(HeapInsertDesc *ins, Size len)
 	if (needLock)
 		LockRelationForExtension(ins->hi_rel, ExclusiveLock);
 		
-	buffer = ins->hi_buf[ins->hi_cur] = ReadBuffer(ins->hi_rel, P_NEW);
+	buffer = ins->hi_cbuf = ReadBuffer(ins->hi_rel, P_NEW);
 	/*
 	 * Now acquire lock on the new page.
 	 */
@@ -1788,11 +1757,10 @@ heap_insertextend(HeapInsertDesc *ins, Size len)
 		elog(PANIC, "tuple is too big: size %lu", (unsigned long) len);
 	}
 
-	/* Caller will release, but we want to keep it pinned */
-	IncrBufferRefCount(buffer);
-
 	/*elog(LOG, "allocated %u", BufferGetBlockNumber(buffer));*/
 
+	/* buffer is locked and pinned */
+	MarkBufferDirty(buffer);
 	return buffer;
 }
 
@@ -1860,7 +1828,8 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
 
 	RelationPutHeapTuple(ins->hi_rel, buffer, heaptup);
 
-	MarkBufferDirty(buffer);
+	if (buffer != ins->hi_cbuf)
+		MarkBufferDirty(buffer);
 
 	/* XLOG stuff */
 	if (ins->hi_rel->rd_istemp)
@@ -1926,7 +1895,8 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
 
 	END_CRIT_SECTION();
 
-	UnlockReleaseBuffer(buffer);
+	if (buffer != ins->hi_cbuf)
+		UnlockReleaseBuffer(buffer);
 
 	/*
 	 * If tuple is cachable, mark it for invalidation from the caches in case
