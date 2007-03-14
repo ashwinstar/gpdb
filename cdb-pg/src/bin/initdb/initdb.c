@@ -122,9 +122,9 @@ static bool output_failed = false;
 static int	output_errno = 0;
 
 /* defaults */
-static int	n_connections = 10;
-static int	n_buffers = 50;
-static int	n_fsm_pages = 20000;
+static int	n_connections = 0;
+static int	n_buffers = 0;
+static int	n_fsm_pages = 0;
 
 /*
  * Warning messages for authentication methods
@@ -1266,11 +1266,20 @@ test_config_settings(void)
 	printf(_("selecting default max_connections ... "));
 	fflush(stdout);
 
+    status = 0;
 	for (i = 0; i < connslen; i++)
 	{
 		test_conns = trial_conns[i];
+        if (n_connections > 0)
+            test_conns = n_connections;
+
 		test_buffs = MIN_BUFS_FOR_CONNS(test_conns);
+        if (n_buffers > 0)
+            test_buffs = n_buffers;
+
 		test_max_fsm = FSM_FOR_BUFS(test_buffs);
+        if (n_fsm_pages > 0)
+            test_max_fsm = n_fsm_pages;
 
 		snprintf(cmd, sizeof(cmd),
 				 "%s\"%s\" --boot -x0 %s "
@@ -1284,29 +1293,36 @@ test_config_settings(void)
 		status = system(cmd);
 		if (status == 0)
 		{
+            n_connections = test_conns;
 			ok_buffers = test_buffs;
 			break;
 		}
 	}
 	if (i >= connslen)
-		i = connslen - 1;
-	n_connections = trial_conns[i];
+    {
+        fprintf(stderr, _("%s: error %d from: %s\n"),
+                progname, status, cmd);
+        exit_nicely();
+    }
 
 	printf("%d\n", n_connections);
 
 	printf(_("selecting default shared_buffers/max_fsm_pages ... "));
 	fflush(stdout);
 
-	for (i = 0; i < bufslen; i++)
+	for (i = 0; i < bufslen && n_buffers <= 0; i++)
 	{
 		/* Use same amount of memory, independent of BLCKSZ */
 		test_buffs = (trial_bufs[i] * 8192) / BLCKSZ;
 		if (test_buffs <= ok_buffers)
 		{
-			test_buffs = ok_buffers;
+			n_buffers = ok_buffers;
 			break;
 		}
+
 		test_max_fsm = FSM_FOR_BUFS(test_buffs);
+        if (n_fsm_pages > 0)
+            test_max_fsm = n_fsm_pages;
 
 		snprintf(cmd, sizeof(cmd),
 				 "%s\"%s\" --boot -x0 %s "
@@ -1324,7 +1340,15 @@ test_config_settings(void)
             break;
         }
 	}
-	n_fsm_pages = FSM_FOR_BUFS(n_buffers);
+    if (i == bufslen)
+    {
+        fprintf(stderr, _("%s: error %d from: %s\n"),
+                progname, status, cmd);
+        exit_nicely();
+    }
+
+    if (n_fsm_pages <= 0)
+        n_fsm_pages = FSM_FOR_BUFS(n_buffers);
 
 	if ((n_buffers * (BLCKSZ/1024)) % 1024 == 0)
 		printf("%dMB/%d\n", (n_buffers * (BLCKSZ/1024)) / 1024, n_fsm_pages);
@@ -2424,6 +2448,75 @@ setlocales(void)
 
 }
 
+
+/*
+ * Try to parse value as an integer.  The accepted formats are the
+ * usual decimal, octal, or hexadecimal formats. 
+ */
+static long
+parse_long(const char *value, bool blckszUnit, const char* optname)
+{
+    long    val;
+    char   *endptr;
+    double  m;
+
+    errno = 0;
+    val = strtol(value, &endptr, 0);
+
+    if (errno ||
+        endptr == value)
+        goto err;
+
+    if (blckszUnit && endptr[0])
+    {
+        switch (endptr[0])
+        {
+            case 'k':
+            case 'K':
+                m = 1024;
+                break;
+
+            case 'm':
+            case 'M':
+                m = 1024*1024;
+                break;
+
+            case 'g':
+            case 'G':
+                m = 1024*1024*1024;
+                break;
+
+            default:
+                goto err;
+        }
+
+        if (endptr[1] != 'b' &&
+            endptr[1] != 'B')
+            goto err;
+
+        endptr += 2;
+        val = (long)(m * val / BLCKSZ);
+	}
+
+    /* error if extra trailing chars */
+    if (endptr[0])
+        goto err;
+
+    return val;
+
+err:
+    if (blckszUnit)
+        fprintf(stderr, _("%s: %s=%s invalid; requires an integer value, "
+                          "optionally followed by kB/MB/GB suffix\n"),
+                progname, optname, value);
+    else
+        fprintf(stderr, _("%s: %s=%s invalid; requires an integer value\n"),
+                progname, optname, value);
+    exit_nicely();
+    return 0;                   /* not reached */
+}                               /* parse_long */
+
+
 #ifdef WIN32
 typedef		BOOL(WINAPI * __CreateRestrictedToken) (HANDLE, DWORD, DWORD, PSID_AND_ATTRIBUTES, DWORD, PLUID_AND_ATTRIBUTES, DWORD, PSID_AND_ATTRIBUTES, PHANDLE);
 
@@ -2535,6 +2628,11 @@ usage(const char *progname)
 	printf(_("  --pwfile=FILE             read password for the new superuser from file\n"));
 	printf(_("  -?, --help                show this help, then exit\n"));
 	printf(_("  -V, --version             output version information, then exit\n"));
+	printf(_("\nShared memory allocation:\n"));
+	printf(_("  --max_connections=MAX-CONNECT  maximum number of allowed connections\n"));
+	printf(_("  --shared_buffers=NBUFFERS number of shared buffers; or, amount of memory for\n"
+			 "                            shared buffers if kB/MB/GB suffix is appended\n"));
+	printf(_("  --max_fsm_pages=MAX-FSM   number of disk pages for which free space is tracked\n"));
 	printf(_("\nLess commonly used options:\n"));
 	printf(_("  -d, --debug               generate lots of debugging output\n"));
 	printf(_("  -s, --show                show internal settings\n"));
@@ -2567,6 +2665,9 @@ main(int argc, char *argv[])
 		{"pwprompt", no_argument, NULL, 'W'},
 		{"pwfile", required_argument, NULL, 9},
 		{"username", required_argument, NULL, 'U'},
+        {"max_connections", required_argument, NULL, 1001},     /*CDB*/
+        {"max_fsm_pages", required_argument, NULL, 1002},       /*CDB*/
+        {"shared_buffers", required_argument, NULL, 1003},      /*CDB*/
 		{"help", no_argument, NULL, '?'},
 		{"version", no_argument, NULL, 'V'},
 		{"debug", no_argument, NULL, 'd'},
@@ -2626,6 +2727,8 @@ main(int argc, char *argv[])
 
 	while ((c = getopt_long(argc, argv, "dD:E:L:nU:WA:sX:", long_options, &option_index)) != -1)
 	{
+        const char *optname = long_options[option_index].name;
+
 		switch (c)
 		{
 			case 'A':
@@ -2686,6 +2789,15 @@ main(int argc, char *argv[])
 				break;
 			case 'X':
 				xlog_dir = xstrdup(optarg);
+				break;
+			case 1001:
+                n_connections = parse_long(optarg, false, optname);
+				break;
+			case 1002:
+                n_fsm_pages = parse_long(optarg, false, optname);
+				break;
+			case 1003:
+                n_buffers = parse_long(optarg, true, optname);
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
