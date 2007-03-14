@@ -21,5 +21,8 @@ copy src\backend\catalog\cdb_schema.in src\backend\catalog\cdb_schema.sql
 
 if "%1" == "" msbuild pgsql.sln /verbosity:detailed /p:Configuration=%CONFIG%
 if not "%1" == "" vcbuild %1.vcproj %CONFIG%
+SET E=%ERRORLEVEL%
 
 cd %STARTDIR%
+
+exit /b %E%
