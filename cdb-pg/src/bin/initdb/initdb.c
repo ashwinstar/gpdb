@@ -1299,7 +1299,8 @@ test_config_settings(void)
 
 	for (i = 0; i < bufslen; i++)
 	{
-		test_buffs = trial_bufs[i];
+		/* Use same amount of memory, independent of BLCKSZ */
+		test_buffs = (trial_bufs[i] * 8192) / BLCKSZ;
 		if (test_buffs <= ok_buffers)
 		{
 			test_buffs = ok_buffers;
