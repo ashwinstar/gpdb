@@ -1898,7 +1898,6 @@ ExecInsert(TupleTableSlot *slot,
 	ResultRelInfo *resultRelInfo;
 	Relation	resultRelationDesc;
 	Oid			newId;
-	const bool  newPath = true;
 
 	/*
 	 * get the heap tuple out of the tuple table slot, making sure we have a
@@ -1953,13 +1952,7 @@ ExecInsert(TupleTableSlot *slot,
 	 * Note: heap_insert returns the tid (location) of the new tuple in the
 	 * t_self field.
 	 */
-	if (! newPath)
-	{
-		newId = heap_insert(resultRelationDesc, tuple,
-							estate->es_snapshot->curcid,
-							true, true);
-	}
-	else
+	if (heap_enableHeapInsertDesc)
 	{
 		if (resultRelInfo->ri_HeapInsertDesc == NULL)
 		{
@@ -1969,7 +1962,12 @@ ExecInsert(TupleTableSlot *slot,
 		}
 		newId = heap_insertnext(resultRelInfo->ri_HeapInsertDesc, tuple);
 	}
-
+	else
+	{
+		newId = heap_insert(resultRelationDesc, tuple,
+							estate->es_snapshot->curcid,
+							true, true);
+	}
 	IncrAppended();
 	(estate->es_processed)++;
 	estate->es_lastoid = newId;

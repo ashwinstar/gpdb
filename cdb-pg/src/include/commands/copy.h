@@ -166,6 +166,10 @@ typedef struct CopyStateData
 								 * buffer */
 	bool		cr_in_prevbuf;	/* CR was last character of the data input
 								 * buffer */
+
+
+	struct HeapInsertDesc *heapInsertDesc;
+
 	/* end MPP specific variables */
 
 } CopyStateData;

@@ -153,6 +153,7 @@ extern Relation heap_openrv(const RangeVar *relation, LOCKMODE lockmode);
 
 #define heap_close(r,l)  relation_close(r,l)
 
+extern bool heap_enableHeapInsertDesc;
 extern HeapInsertDesc* heap_begininsert(Relation relation, CommandId cid, 
 					bool use_wal, bool use_fsm);
 extern Oid heap_insertnext(HeapInsertDesc *ins, HeapTuple tup);
