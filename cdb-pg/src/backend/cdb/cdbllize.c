@@ -334,6 +334,14 @@ prescan_walker(Node *node, PlanProfile * context)
 	if (node == NULL)
 		return false;
 
+    if (is_plan_node(node))
+    {
+        Plan   *plan = (Plan *)node;
+
+        if (plan->dispatch == DISPATCH_PARALLEL)
+            context->dispatchParallel = true;
+    }
+
 	switch (nodeTag(node))
 	{
 		case T_SubPlan:
@@ -409,17 +417,6 @@ prescan_walker(Node *node, PlanProfile * context)
 			context->sliceDepth--;
 			return false;
 
-		case T_SeqScan:
-		case T_ExternalScan:
-		case T_IndexScan:
-		case T_BitmapIndexScan:
-		case T_BitmapHeapScan:
-		case T_TidScan:
-        case T_ValuesScan:
-			if ( ((Plan *)node)->dispatch == DISPATCH_PARALLEL )
-				context->dispatchParallel = TRUE;
-			return plan_tree_walker(node, prescan_walker, context);
-
 		case T_FunctionScan:
         {
             /*
@@ -437,9 +434,6 @@ prescan_walker(Node *node, PlanProfile * context)
 
             Assert(rte->rtekind == RTE_FUNCTION);
 
-			if ( ((Plan *)node)->dispatch == DISPATCH_PARALLEL )
-				context->dispatchParallel = TRUE;
-
             if (rte->funcexpr &&
                 IsA(rte->funcexpr, FuncExpr) &&
                 contain_vars_of_level_or_above(rte->funcexpr, 0))
@@ -454,16 +448,6 @@ prescan_walker(Node *node, PlanProfile * context)
 
 			return plan_tree_walker(node, prescan_walker, context);
         }
-
-		case T_NestLoop:
-		case T_MergeJoin:
-		case T_HashJoin:
-		case T_Hash:
-        case T_AdaptiveNestLoop:
-			/*
-			 * Keep walking in search of subqueries with unfinished plans.
-			 */
-			return plan_tree_walker(node, prescan_walker, context);
 
 		case T_SubqueryScan:
 
@@ -513,16 +497,6 @@ prescan_walker(Node *node, PlanProfile * context)
 			}
 			break;				/* Fall through to report error. */
 
-
-		case T_Result:
-		case T_Material:
-		case T_Sort:
-		case T_Unique:
-		case T_SetOp:
-		case T_Append:
-		case T_Agg:
-		case T_Group:
-		case T_Limit:
 		default:
 			return plan_tree_walker(node, prescan_walker, context);
 	}
