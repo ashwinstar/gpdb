@@ -326,7 +326,6 @@ ifeq ($(enable_rpath), yes)
 LDFLAGS += $(rpath)
 endif
 
-
 ##########################################################################
 #
 # Some variables needed to find some client interfaces
@@ -425,6 +424,10 @@ ifdef PGXS
 override LDFLAGS := -L$(libdir) $(LDFLAGS)
 else
 override LDFLAGS := -L$(top_builddir)/src/port $(LDFLAGS)
+endif
+
+ifeq ($(PORTNAME),linux)
+LIBS += -lnuma
 endif
 
 # to make ws2_32.lib the last library, and always link with shfolder,

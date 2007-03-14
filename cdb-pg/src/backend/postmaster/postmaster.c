@@ -4406,8 +4406,8 @@ win32_sigchld_waiter(LPVOID param)
 
 #endif   /* WIN32 */
 
-
 #if defined(pg_on_solaris)
+/* SOLARIS */
 static void
 setProcAffinity(int id)
 {
@@ -4447,8 +4447,36 @@ setProcAffinity(int id)
 
 	return;
 }
+#elif defined(__linux__)
+/* LINUX */
+#include <numa.h>
 
+static void
+setProcAffinity(int id)
+{
+	int limit;
+	nodemask_t mask;
+
+	if (numa_available() < 0)
+	{
+		elog(LOG, "Numa unavailable, will remain unbound.");
+		return;
+	}
+
+	limit = numa_max_node();
+
+	nodemask_zero(&mask);
+	nodemask_set(&mask, (id % limit));
+
+	elog(LOG, "Numa binding to numa-node %d", (id % limit));
+
+	/* this sets the memory */
+	numa_bind(&mask);
+
+	return;
+}
 #else
+/* UNSUPPORTED */
 static void
 setProcAffinity(int id)
 {

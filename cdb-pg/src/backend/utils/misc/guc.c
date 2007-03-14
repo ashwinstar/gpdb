@@ -1157,7 +1157,7 @@ static struct config_bool ConfigureNamesBool[] =
 		 NULL
 		},
 		&mpp_set_proc_affinity,
-        true, NULL, NULL
+        false, NULL, NULL
 	},
 
     {
