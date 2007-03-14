@@ -1854,10 +1854,7 @@ eqjoinsel(PG_FUNCTION_ARGS)
 		 * determine which var is really on which side of the join. Perhaps
 		 * someday we should pass in more information.
 		 */
-		if (jointype == JOIN_IN ||
-			jointype == JOIN_REVERSE_IN ||
-			jointype == JOIN_UNIQUE_INNER ||
-			jointype == JOIN_UNIQUE_OUTER)
+		if (jointype == JOIN_IN)
 		{
 			float4		oneovern = 1.0 / nd2;
 

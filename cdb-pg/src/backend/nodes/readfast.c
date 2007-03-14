@@ -2471,7 +2471,7 @@ void readJoinInfo(const char ** str, Join *local_node)
 
 	READ_BOOL_FIELD(prefetch_inner);
 
-	READ_ENUM_FIELD(jointype, JoinType); Assert(local_node->jointype <= JOIN_UNIQUE_INNER);
+	READ_ENUM_FIELD(jointype, JoinType);
 	READ_NODE_FIELD(joinqual);
 }
 

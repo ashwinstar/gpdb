@@ -491,6 +491,11 @@ typedef enum JoinType
 	 * These are used for queries like WHERE foo IN (SELECT bar FROM ...).
 	 * Only JOIN_IN is actually implemented in the executor; the others are
 	 * defined for internal use in the planner.
+     *
+     * CDB: We no longer use JOIN_REVERSE_IN, JOIN_UNIQUE_OUTER or
+     * JOIN_UNIQUE_INNER.  The definitions are retained in case they 
+     * might be referenced in the source code of user-defined 
+     * selectivity functions brought over from PostgreSQL.
 	 */
 	JOIN_IN,					/* at most one result per outer row */
 	JOIN_REVERSE_IN,			/* at most one result per inner row */
