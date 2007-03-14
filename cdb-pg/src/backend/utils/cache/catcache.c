@@ -3,7 +3,6 @@
  * catcache.c
  *	  System catalog cache for tuples matching a key.
  *
- * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -32,12 +31,8 @@
 #include "utils/resowner.h"
 #include "utils/syscache.h"
 
-/* CDB temp kludge... delete when no longer needed */
-#include "catalog/heap.h"               /*CDB*/
-#include "catalog/pg_attribute.h"       /*CDB*/
-#include "catalog/pg_proc.h"            /*CDB*/
 
- /* #define CACHEDEBUG */	/* turns DEBUG elogs on */
+/* #define CACHEDEBUG */	/* turns DEBUG elogs on */
 
 /*
  * Given a hash value and the size of the hash table, find the bucket
@@ -1072,95 +1067,6 @@ IndexScanOK(CatCache *cache, ScanKey cur_skey)
 	return true;
 }
 
-
-/*
- * CdbCatCacheKludgeAtt
- *     Fabricate "mpp_segment_id" pg_attribute entry in lieu of catalog upgrade.
- *     (Temporary kludge, remove in next release in which initdb is required)
- */
-static CatCTup *
-CdbCatCacheKludgeAtt(CatCache *cache, Oid relid, uint32 hashValue, Index hashIndex)
-
-{
-	CatCTup            *ct;
-	Form_pg_attribute   attstruct;
-	HeapTuple	        ntp;
-
-    /* Build "mpp_segment_id" pg_attribute tuple from hard-coded prototype. */
-    attstruct = SystemAttributeDefinition(MppSegmentIdAttributeNumber, false);
-    ntp = heap_addheader(Natts_pg_attribute, false, ATTRIBUTE_TUPLE_SIZE,
-                         attstruct);
-    attstruct = (Form_pg_attribute)GETSTRUCT(ntp);
-
-    /* Fill in the relation OID */
-    attstruct->attrelid = relid;
-    attstruct->attstattarget = -1;
-    attstruct->attcacheoff = -1;
-
-    /* Add to cache. */
-    ct = CatalogCacheCreateEntry(cache, ntp, hashValue, hashIndex, false);
-
-    /* immediately set the refcount to 1 */
-    ResourceOwnerEnlargeCatCacheRefs(CurrentResourceOwner);
-    ct->refcount++;
-    ResourceOwnerRememberCatCacheRef(CurrentResourceOwner, &ct->tuple);
-
-	heap_freetuple(ntp);
-    return ct;
-}                               /* CdbCatCacheKludgeAtt */
-
-/*
- * CdbCatCacheKludgeProc
- *     Fabricate "tidtoi8" pg_proc entry in lieu of catalog upgrade.
- *     (Temporary kludge, remove in next release in which initdb is required)
- */
-static CatCTup *
-CdbCatCacheKludgeProc(CatCache *cache, uint32 hashValue, Index hashIndex)
-
-{
-	CatCTup        *ct;
-    Datum           datum;
-	Form_pg_proc    procstruct;
-	HeapTuple	    ntp;
-    bool            isnull;
-
-    /* Fetch a copy of the "oidtoi8" pg_proc tuple. */
-	ntp = SearchSysCacheCopy(cache->id, ObjectIdGetDatum(1288), 0, 0, 0);
-    Insist(HeapTupleIsValid(ntp));
-
-    procstruct = (Form_pg_proc)GETSTRUCT(ntp);
-    Insist(procstruct->prorettype == INT8OID &&
-           procstruct->pronargs == 1 &&
-           procstruct->proargtypes.dim1 == 1 &&
-           procstruct->proargtypes.values[0] == OIDOID);
-
-    /* Change its arg type to tid. */
-    procstruct->proargtypes.values[0] = TIDOID;
-
-    /* Change its entry point name to "tidtoi8". */
-    datum = heap_getattr(ntp, Anum_pg_proc_prosrc, cache->cc_tupdesc, &isnull);
-    Insist(datum &&
-           !VARATT_IS_EXTENDED(datum) &&
-/*         VARSIZE(datum) == 7 + offsetof(varattrib, va_content.va_data) && */
-           0 == memcmp("oidtoi8", VARDATA(datum), 7));
-    VARDATA(datum)[0] = 't';
-
-    /* Change its OID. */
-    HeapTupleSetOid(ntp, CDB_PROC_TIDTOI8);
-
-    /* Add to cache. */
-    ct = CatalogCacheCreateEntry(cache, ntp, hashValue, hashIndex, false);
-
-    /* immediately set the refcount to 1 */
-    ResourceOwnerEnlargeCatCacheRefs(CurrentResourceOwner);
-    ct->refcount++;
-    ResourceOwnerRememberCatCacheRef(CurrentResourceOwner, &ct->tuple);
-
-	heap_freetuple(ntp);
-    return ct;
-}                               /* CdbCatCacheKludgeProc */
-
-
 /*
  *	SearchCatCache
  *
@@ -1286,7 +1192,7 @@ SearchCatCache(CatCache *cache,
 		}
 	}
 
-    /*
+	/*
 	 * Tuple was not found in cache, so we have to try to retrieve it directly
 	 * from the relation.  If found, we will add it to the cache; if not
 	 * found, we will add a negative cache entry instead.
@@ -1328,23 +1234,7 @@ SearchCatCache(CatCache *cache,
 
 	heap_close(relation, AccessShareLock);
 
-    /*
-     * CDB: Fabricate catalog entries in lieu of catalog upgrade.
-     * (Temporary kludge, remove in next release in which initdb is required)
-     */
-    if (ct == NULL &&
-        !IsBootstrapProcessingMode())
-    {
-        if (cache->id == PROCOID &&
-            v1 == ObjectIdGetDatum(CDB_PROC_TIDTOI8))
-            ct = CdbCatCacheKludgeProc(cache, hashValue, hashIndex);
-        else if (cache->id == ATTNUM &&
-                 v2 == Int16GetDatum(MppSegmentIdAttributeNumber))
-            ct = CdbCatCacheKludgeAtt(cache, DatumGetObjectId(v1),
-                                      hashValue, hashIndex);
-    }
-
-    /*
+	/*
 	 * If tuple was not found, we need to build a negative cache entry
 	 * containing a fake tuple.  The fake tuple has the correct key columns,
 	 * but nulls everywhere else.
