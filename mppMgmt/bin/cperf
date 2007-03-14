@@ -55,7 +55,7 @@ opt['-h'] = []
 opt['-f'] = False
 
 def gpssh(cmd):
-    s = 'gpssh '
+    s = 'gpssh -p %d' % opt['-p']
     if (opt['-f']):
 	s = s + ' -f ' + opt['-f']
     else:
@@ -63,7 +63,7 @@ def gpssh(cmd):
     return s + ' ' + cmd
 
 def gpscp(cmd):
-    s = 'gpscp '
+    s = 'gpscp -p %d' % opt['-p']
     if (opt['-f']):
 	s = s + ' -f ' + opt['-f']
     else:
