@@ -58,9 +58,7 @@ EXIT_STATUS=0
 # ED_FILE search text values
 PORT_TXT="#port"
 LOG_STATEMENT_TXT="#log_statement ="
-MAX_CONNECT_TXT="max_connections ="
 LISTEN_ADR_TXT="listen_addresses"
-SHARED_BUFFER_TXT="shared_buffers ="
 CHKPOINT_SEG_TXT="checkpoint_segments"
 LOG_STATS_TXT="stats_command_string="
 INIT_STANDBY_PROG=$MPPINITSTANDBY
@@ -99,7 +97,7 @@ USAGE () {
 		$ECHO "	         Alternative logfile directory"
 		$ECHO "      -D, set log output to debug level, shows all function calls"
 		$ECHO
-	        $ECHO "      Configuration options:"
+		$ECHO "      Configuration options:"
 		$ECHO "      -c, mpp_config_file [mandatory]"
 		$ECHO "          Supplies all MPP configuration information required by this utility."
 		$ECHO "          Full description of all parameters contained within the example file"
@@ -116,7 +114,10 @@ USAGE () {
 		$ECHO "      -i, do not initialize standby sync process [default:- start process]"
 		$ECHO "      -o, create Master only, do not configure Segment instance hosts"
 		$ECHO "      -m, maximum number of connections for master instance [default ${DEFAULT_QD_MAX_CONNECT}]"
-		$ECHO "      -b, shared_buffers value [default $DEFAULT_BUFFERS]"
+		$ECHO "      -b, shared_buffers per instance [default $DEFAULT_BUFFERS]"
+		$ECHO "          Specify either the number of database I/O buffers (without suffix) or the"
+		$ECHO "          amount of memory to use for buffers (with suffix 'kB', 'MB' or 'GB')."
+		$ECHO "          Applies to master and all segments."
 		$ECHO "      -e, <password>, password to set for MPP superuser in database [default $MPP_PASSWD]"
 		$ECHO "      -n, <locale>, setting for locale to be set when database initialized [default $DEFAULT_LOCALE_SETTING]"
 		$ECHO "      -r, run utility in serial mode [default parallel segment instance build"
@@ -330,16 +331,10 @@ CHK_PARAMS () {
 			MASTER_SHARED_BUFFERS=$DEFAULT_BUFFERS
 			QE_SHARED_BUFFERS=$DEFAULT_BUFFERS
 		else
-			if [ $NEW_BUFFERS -lt 1000 ];then
-				unset NEW_BUFFERS
-				LOG_MSG "[WARN]:-Shared buffers value supplied is too low, using default value" 1
-				MASTER_SHARED_BUFFERS=$DEFAULT_BUFFERS
-				QE_SHARED_BUFFERS=$DEFAULT_BUFFERS
-			else
-				MASTER_SHARED_BUFFERS=$NEW_BUFFERS
-				QE_SHARED_BUFFERS=$NEW_BUFFERS
-				LOG_MSG "[INFO]:-Set shared buffers to $NEW_BUFFERS"
-			fi
+			# removed code that forced at least 1000 buffers -kh 3/14/07
+			MASTER_SHARED_BUFFERS=$NEW_BUFFERS
+			QE_SHARED_BUFFERS=$NEW_BUFFERS
+			LOG_MSG "[INFO]:-Set shared buffers to $NEW_BUFFERS"
 		fi
 		#Number of QE hosts in this configuration
 		((NUM_QES=${#MACHINE_LIST[*]}))
@@ -840,7 +835,7 @@ CREATE_QD_DB () {
 		SET_VAR $QD_PRIMARY_ARRAY
 		LOG_MSG "[INFO]:-Initializing Master Postgres instance $MPP_DIR"
 		$EXPORT_LIB_PATH
-		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR --locale=$LOCALE_SETTING"
+		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR --locale=$LOCALE_SETTING --max_connections=$MASTER_MAX_CONNECT --shared_buffers=$MASTER_SHARED_BUFFERS"
 		BACKOUT_COMMAND "$RM -Rf $MPP_DIR"
 		BACKOUT_COMMAND "$ECHO Removing Master data directory files"
 		LOG_MSG "[INFO]:-Completed Master instance initialization"
@@ -853,11 +848,6 @@ CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Setting Master logging option"
 		ED_FILE ${MPP_DIR}/$PG_CONF "$LOG_STATEMENT_TXT" log_statement=all 0
 		ERROR_CHK $? "set log_statement=all in ${MPP_DIR}/$PG_CONF" 1
-		LOG_MSG "[INFO]:-Setting Master instance maximum connections to ${MASTER_MAX_CONNECT}"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${MASTER_MAX_CONNECT}" 0
-		ERROR_CHK $? "set max_connections=${MASTER_MAX_CONNECT} in ${MPP_DIR}/$PG_CONF" 1
-		LOG_MSG "[INFO]:-Setting Master instance shared buffers to ${MASTER_SHARED_BUFFERS}"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${MASTER_SHARED_BUFFERS}" 0
 		LOG_MSG "[INFO]:-Setting Master instance check point segments"
 		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" "checkpoint_segments=$CHECK_POINT_SEGMENTS" 0
 		ERROR_CHK $? "set checkpoint_segments=$CHECK_POINT_SEGMENTS in ${MPP_DIR}/$PG_CONF" 1
@@ -896,19 +886,6 @@ CREATE_QD_DB () {
 		UPDATE_MPPCONFIGURATION  $MPP_DBNAME $MPP_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT t  $MPP_HOSTNAME $MPP_PORT $MPP_DIR
 		LOAD_QE_SYSTEM_DATA $DEFAULTDB
 		SET_VAR $QD_PRIMARY_ARRAY
-		#Now check to see if we need to change the DEFAULT_BUFFERS
-		MASTER_BLK_SIZE=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"show block_size;"`
-		LOG_MSG "[INFO]:-Obtained master instance block size as $MASTER_BLK_SIZE Bytes"
-		((CORRECT_BUFFERS=${DEFAULT_BUFFERS}*8192/$MASTER_BLK_SIZE))
-		if [ x"" == x"$NEW_BUFFERS" ];then
-			if [ $MASTER_SHARED_BUFFERS -ne $CORRECT_BUFFERS ];then
-				LOG_MSG "[INFO]:-Changing buffers value from $MASTER_SHARED_BUFFERS to $CORRECT_BUFFERS"
-				MASTER_SHARED_BUFFERS=$CORRECT_BUFFERS
-				QE_SHARED_BUFFERS=$CORRECT_BUFFERS
-				LOG_MSG "[INFO]:-Re-setting Master instance shared buffers to ${MASTER_SHARED_BUFFERS}"
-				ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${MASTER_SHARED_BUFFERS}" 0
-			fi
-		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -1077,7 +1054,7 @@ CREATE_QES_MIRROR () {
 
 PROCESS_QE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB -E $ENCODING -D $MPP_DIR --locale=$LOCALE_SETTING"
+		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB -E $ENCODING -D $MPP_DIR --locale=$LOCALE_SETTING --max_connections=$QE_MAX_CONNECT --shared_buffers=$QE_SHARED_BUFFERS"
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
 		LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
@@ -1086,12 +1063,6 @@ PROCESS_QE () {
 		ED_FILE ${MPP_DIR}/$PG_CONF "$PORT_TXT" port=$MPP_PORT 0 $MPP_HOSTNAME
 		ED_FILE ${MPP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $MPP_HOSTNAME
 		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $MPP_HOSTNAME
-		LOG_MSG "[INFO]:-Setting Segment instance maximum connections to ${QE_MAX_CONNECT}"
-                ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${QE_MAX_CONNECT}" 0 $MPP_HOSTNAME
-                ERROR_CHK $? "set max_connections=${QE_MAX_CONNECT} in ${MPP_DIR}/$PG_CONF" 1
-                LOG_MSG "[INFO]:-Setting Segment shared buffers to ${QE_SHARED_BUFFERS}"
-                ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${QE_SHARED_BUFFERS}" 0 $MPP_HOSTNAME
-                ERROR_CHK $? "set shared_buffers=${QE_SHARED_BUFFERS} in ${MPP_DIR}/$PG_CONF" 1
 		if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
 			LOG_MSG "[INFO]:-Processing additional configuration parameters"
 			for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`

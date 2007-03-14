@@ -45,17 +45,14 @@ MPP_USER=$USER_NAME
 # System table names
 MPP_TBL=mpp_mpp
 MPP_CONFIGURATION_TBL=mpp_configuration
-MAX_QD_CONNECTIONS=25
 unset PG_CONF_ADD_FILE
 EXIT_STATUS=0
 # ED_FILE search text values
 PORT_TXT="#port"
 LOG_STATEMENT_TXT="#log_statement ="
-MAX_CONNECT_TXT="max_connections ="
 LISTEN_ADR_TXT="listen_addresses"
 CHKPOINT_SEG_TXT="checkpoint_segments"
 LOG_STATS_TXT="stats_command_string="
-SHARED_BUFFER_TXT="shared_buffers ="
 
 TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
 #******************************************************************************
@@ -103,7 +100,7 @@ PARA_EXIT () {
 PROCESS_QE () {
 		LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
 		LOG_MSG "[INFO][$INST_COUNT]:-Processing segment $MPP_HOSTNAME"
-		$TRUSTED_SHELL ${MPP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB -E $ENCODING -D $MPP_DIR --locale=$LOCALE_SETTING" >> $LOG_FILE 2>&1
+		$TRUSTED_SHELL ${MPP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB -E $ENCODING -D $MPP_DIR --locale=$LOCALE_SETTING --max_connections=$QE_MAX_CONNECT --shared_buffers=$QE_SHARED_BUFFERS" >> $LOG_FILE 2>&1
 		RETVAL=$?
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
@@ -121,12 +118,6 @@ PROCESS_QE () {
 		PARA_EXIT $RETVAL "Update listen address"
 		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $MPP_HOSTNAME
 		PARA_EXIT $RETVAL "Update checkpoint segments"
-		LOG_MSG "[INFO][$INST_COUNT]:-Setting Segment instance maximum connections to ${QE_MAX_CONNECT}"
-                ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${QE_MAX_CONNECT}" 0 $MPP_HOSTNAME
-                PARA_EXIT $RETVAL "set max_connections=${QE_MAX_CONNECT} in ${MPP_DIR}/$PG_CONF"
-                LOG_MSG "[INFO][$INST_COUNT]:-Setting Segment shared buffers to ${QE_SHARED_BUFFERS}"
-                ED_FILE ${MPP_DIR}/$PG_CONF "$SHARED_BUFFER_TXT" "shared_buffers=${QE_SHARED_BUFFERS}" 0 $MPP_HOSTNAME
-                PARA_EXIT $RETVAL "set shared_buffers=${QE_SHARED_BUFFERS} in ${MPP_DIR}/$PG_CONF"
 		if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
 			LOG_MSG "[INFO][$INST_COUNT]:-Processing additional configuration parameters"
 			for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
