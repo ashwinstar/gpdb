@@ -120,6 +120,9 @@ def parseCommandLine():
 
     if opt['-V']: opt['-v'] = True
 
+    if (opt['-B']) > 1024*1024:
+	usage('Error: maximum size for -B parameter is 1MB')
+
     # strip the last '/' from the dir
     dd = []
     for d in opt['-d']:
