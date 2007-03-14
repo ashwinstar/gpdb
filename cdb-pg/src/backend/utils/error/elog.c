@@ -2588,9 +2588,12 @@ elog_debug_linger(ErrorData *edata)
     mpp_debug_linger = 0;
 
     /* A word of explanation to the user... */
-    errhint("Process %d will wait for mpp_debug_linger=%d seconds before termination.\n"
+    errhint("%s%sProcess %d will wait for mpp_debug_linger=%d seconds before termination.\n"
             "Note that its locks and other resources will not be released until then.",
-            MyProcPid, seconds_to_linger);
+            edata->hint ? edata->hint : "",
+            edata->hint ? "\n" : "",
+            MyProcPid, 
+            seconds_to_linger);
 
     /* Log the error and notify the client. */
     EmitErrorReport();
