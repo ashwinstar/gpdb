@@ -1537,11 +1537,47 @@ heap_begininsert(Relation relation, CommandId cid, bool use_wal, bool use_fsm)
 	return ins;
 }
 
-void
-heap_endinsert(HeapInsertDesc *ins)
+/*
+ * Log a whole (populated) page at a time to decrease xlog activity. cf. 
+ * copy_relation_data().
+ */
+
+static void 
+heap_logpage(Relation rel, Buffer buf)
+{
+	Page page = BufferGetPage(buf);
+	BlockNumber bno = BufferGetBlockNumber(buf);
+	xl_heap_newpage xlrec;
+	XLogRecPtr recptr;
+	XLogRecData rdata[2];
+
+	START_CRIT_SECTION();
+
+	xlrec.node = rel->rd_node;
+	xlrec.blkno = bno;
+	
+	rdata[0].data = (char*) &xlrec;
+	rdata[0].len = SizeOfHeapNewpage;
+	rdata[0].buffer = InvalidBuffer;
+	rdata[0].next = &rdata[1];
+	
+	rdata[1].data = (char*) page;
+	rdata[1].len = BLCKSZ;
+	rdata[1].buffer = InvalidBuffer;
+	rdata[1].next = NULL;
+
+	recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_NEWPAGE, rdata);
+	PageSetLSN(page, recptr);
+	PageSetTLI(page, ThisTimeLineID);
+
+	END_CRIT_SECTION();
+}
+
+void heap_endinsert(HeapInsertDesc *ins)
 {
 	if (ins->hi_cbuf != InvalidBuffer)
 	{
+		heap_logpage(ins->hi_rel, ins->hi_cbuf);
 		UnlockReleaseBuffer(ins->hi_cbuf);
 		ins->hi_cbuf = InvalidBuffer;
 	}
@@ -1710,6 +1746,7 @@ heap_insertextend(HeapInsertDesc *ins, Size len)
 		 * unlock the two buffers in, so this can be slightly simpler than the
 		 * code above.
 		 */
+		heap_logpage(ins->hi_rel, ins->hi_cbuf);
 		UnlockReleaseBuffer(buffer);
 	}
 
@@ -1844,7 +1881,7 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
 		/* No XLOG record, but still need to flag that XID exists on disk */
 		MyXactMadeTempRelUpdate = true;
 	}
-	else if (ins->hi_use_wal)
+	else if (buffer != ins->hi_cbuf && ins->hi_use_wal)
 	{
 		xl_heap_insert xlrec;
 		xl_heap_header xlhdr;
