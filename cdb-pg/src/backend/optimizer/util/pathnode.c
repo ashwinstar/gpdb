@@ -2313,7 +2313,6 @@ create_nestloop_path(PlannerInfo *root,
 {
 	NestPath       *pathnode;
     CdbPathLocus    join_locus;
-    Path           *unmoved_inner_path = inner_path;
     bool            inner_must_be_local = false;
 
     /* CDB: Change jointype to JOIN_IN from JOIN_INNER (if eligible). */
@@ -2587,9 +2586,6 @@ create_hashjoin_path(PlannerInfo *root,
 	pathnode->jpath.path.pathkeys = NIL;
     pathnode->jpath.path.locus = join_locus;
 
-	/* inner is materialized in the hash, but we may have an outer hazard. */
-	pathnode->jpath.path.motionHazard = outer_path->motionHazard;
-
 	pathnode->path_hashclauses = hashclauses;
 
     /*
@@ -2599,6 +2595,12 @@ create_hashjoin_path(PlannerInfo *root,
      * the hash table.
      */
     pathnode->jpath.path.rescannable = outer_path->rescannable && inner_path->rescannable;
+
+	/* see the comment above; we may have a motion hazard on our inner ?! */
+	if (pathnode->jpath.path.rescannable)
+		pathnode->jpath.path.motionHazard = outer_path->motionHazard;
+	else
+		pathnode->jpath.path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
 
     cost_hashjoin(pathnode, root);
 
