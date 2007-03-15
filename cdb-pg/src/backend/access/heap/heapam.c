@@ -1573,15 +1573,84 @@ heap_logpage(Relation rel, Buffer buf)
 	END_CRIT_SECTION();
 }
 
+static void
+heap_log_tuple_insert(Relation rel, Buffer buffer, HeapTuple tup)
+{
+	xl_heap_insert xlrec;
+	xl_heap_header xlhdr;
+	XLogRecPtr	recptr;
+	XLogRecData rdata[3];
+	Page		page = BufferGetPage(buffer);
+	uint8		info = XLOG_HEAP_INSERT;
+
+	START_CRIT_SECTION();
+
+	xlrec.target.node = rel->rd_node;
+	xlrec.target.tid = tup->t_self;
+	rdata[0].data = (char *) &xlrec;
+	rdata[0].len = SizeOfHeapInsert;
+	rdata[0].buffer = InvalidBuffer;
+	rdata[0].next = &(rdata[1]);
+	
+	xlhdr.t_infomask2 = tup->t_data->t_infomask2;
+	xlhdr.t_infomask = tup->t_data->t_infomask;
+	xlhdr.t_hoff = tup->t_data->t_hoff;
+
+	/*
+	 * note we mark rdata[1] as belonging to buffer; if XLogInsert decides
+	 * to write the whole page to the xlog, we don't need to store
+	 * xl_heap_header in the xlog.
+	 */
+	rdata[1].data = (char *) &xlhdr;
+	rdata[1].len = SizeOfHeapHeader;
+	rdata[1].buffer = buffer;
+	rdata[1].buffer_std = true;
+	rdata[1].next = &(rdata[2]);
+
+	/* PG73FORMAT: write bitmap [+ padding] [+ oid] + data */
+	rdata[2].data = (char *) tup->t_data + offsetof(HeapTupleHeaderData, t_bits);
+	rdata[2].len = tup->t_len - offsetof(HeapTupleHeaderData, t_bits);
+	rdata[2].buffer = buffer;
+	rdata[2].buffer_std = true;
+	rdata[2].next = NULL;
+
+	/*
+	 * If this is the single and first tuple on page, we can reinit the
+	 * page instead of restoring the whole thing.  Set flag, and hide
+	 * buffer references from XLogInsert.
+	 */
+	if (ItemPointerGetOffsetNumber(&(tup->t_self)) == FirstOffsetNumber &&
+		PageGetMaxOffsetNumber(page) == FirstOffsetNumber)
+	{
+		info |= XLOG_HEAP_INIT_PAGE;
+		rdata[1].buffer = rdata[2].buffer = InvalidBuffer;
+	}
+
+	recptr = XLogInsert(RM_HEAP_ID, info, rdata);
+
+	PageSetLSN(page, recptr);
+	PageSetTLI(page, ThisTimeLineID);
+	END_CRIT_SECTION();
+}
+
 void heap_endinsert(HeapInsertDesc *ins)
 {
 	if (ins->hi_cbuf != InvalidBuffer)
 	{
 		if (!ins->hi_rel->rd_istemp && ins->hi_use_wal)
+		{
+			LockBuffer(ins->hi_cbuf, BUFFER_LOCK_SHARE);
 			heap_logpage(ins->hi_rel, ins->hi_cbuf);
+			LockBuffer(ins->hi_cbuf, BUFFER_LOCK_UNLOCK);
+		}
 
-		UnlockReleaseBuffer(ins->hi_cbuf);
+		ReleaseBuffer(ins->hi_cbuf);
 		ins->hi_cbuf = InvalidBuffer;
+	}
+	if (ins->hi_targblock != InvalidBlockNumber 
+		&& ins->hi_rel->rd_targblock == InvalidBlockNumber)
+	{
+		ins->hi_rel->rd_targblock = ins->hi_targblock;
 	}
 }
 
@@ -1735,6 +1804,7 @@ heap_insertextend(HeapInsertDesc *ins, Size len)
 		 * Now we can check to see if there's enough free space here. If so,
 		 * we're done.
 		 */
+		LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
 		pageHeader = (Page) BufferGetPage(buffer);
 		if (len + saveFreeSpace <= PageGetFreeSpace(pageHeader))
 		{
@@ -1866,18 +1936,30 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
 
 	/* Find buffer to insert this tuple into */
 	buffer = InvalidBuffer;
-	if (ins->hi_targblock != InvalidBlockNumber)
+	if (ins->hi_cbuf == InvalidBlockNumber 
+		&& ins->hi_targblock != InvalidBlockNumber)
+	{
 		buffer = heap_insertgetpage(ins, heaptup->t_len);
-	if (buffer == InvalidBuffer)
-		buffer = heap_insertextend(ins, heaptup->t_len);
+	}
 
-	/* NO EREPORT(ERROR) from here till changes are logged */
-	START_CRIT_SECTION();
-
-	RelationPutHeapTuple(ins->hi_rel, buffer, heaptup);
-
-	if (buffer != ins->hi_cbuf)
+	if (buffer != InvalidBuffer)
+	{
+		/* the buffer is Locked and Pinned by heap_insertgetpage */
+		RelationPutHeapTuple(ins->hi_rel, buffer, heaptup);
 		MarkBufferDirty(buffer);
+		if (ins->hi_use_wal)
+			heap_log_tuple_insert(ins->hi_rel, buffer, heaptup);
+		UnlockReleaseBuffer(buffer);
+	}
+	else 
+	{
+		buffer = heap_insertextend(ins, heaptup->t_len);
+		/* buffer is locked, pinned, and marked dirty by heap_insertextend. */
+		RelationPutHeapTuple(ins->hi_rel, buffer, heaptup);
+
+		/* unlock the buffer, but it is kept pinned by ins->cbuf */
+		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
+	}
 
 	/* XLOG stuff */
 	if (ins->hi_rel->rd_istemp)
@@ -1885,66 +1967,6 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
 		/* No XLOG record, but still need to flag that XID exists on disk */
 		MyXactMadeTempRelUpdate = true;
 	}
-	else if (buffer != ins->hi_cbuf && ins->hi_use_wal)
-	{
-		xl_heap_insert xlrec;
-		xl_heap_header xlhdr;
-		XLogRecPtr	recptr;
-		XLogRecData rdata[3];
-		Page		page = BufferGetPage(buffer);
-		uint8		info = XLOG_HEAP_INSERT;
-
-		xlrec.target.node = ins->hi_rel->rd_node;
-		xlrec.target.tid = heaptup->t_self;
-		rdata[0].data = (char *) &xlrec;
-		rdata[0].len = SizeOfHeapInsert;
-		rdata[0].buffer = InvalidBuffer;
-		rdata[0].next = &(rdata[1]);
-
-		xlhdr.t_infomask2 = heaptup->t_data->t_infomask2;
-		xlhdr.t_infomask = heaptup->t_data->t_infomask;
-		xlhdr.t_hoff = heaptup->t_data->t_hoff;
-
-		/*
-		 * note we mark rdata[1] as belonging to buffer; if XLogInsert decides
-		 * to write the whole page to the xlog, we don't need to store
-		 * xl_heap_header in the xlog.
-		 */
-		rdata[1].data = (char *) &xlhdr;
-		rdata[1].len = SizeOfHeapHeader;
-		rdata[1].buffer = buffer;
-		rdata[1].buffer_std = true;
-		rdata[1].next = &(rdata[2]);
-
-		/* PG73FORMAT: write bitmap [+ padding] [+ oid] + data */
-		rdata[2].data = (char *) heaptup->t_data + offsetof(HeapTupleHeaderData, t_bits);
-		rdata[2].len = heaptup->t_len - offsetof(HeapTupleHeaderData, t_bits);
-		rdata[2].buffer = buffer;
-		rdata[2].buffer_std = true;
-		rdata[2].next = NULL;
-
-		/*
-		 * If this is the single and first tuple on page, we can reinit the
-		 * page instead of restoring the whole thing.  Set flag, and hide
-		 * buffer references from XLogInsert.
-		 */
-		if (ItemPointerGetOffsetNumber(&(heaptup->t_self)) == FirstOffsetNumber &&
-			PageGetMaxOffsetNumber(page) == FirstOffsetNumber)
-		{
-			info |= XLOG_HEAP_INIT_PAGE;
-			rdata[1].buffer = rdata[2].buffer = InvalidBuffer;
-		}
-
-		recptr = XLogInsert(RM_HEAP_ID, info, rdata);
-
-		PageSetLSN(page, recptr);
-		PageSetTLI(page, ThisTimeLineID);
-	}
-
-	END_CRIT_SECTION();
-
-	if (buffer != ins->hi_cbuf)
-		UnlockReleaseBuffer(buffer);
 
 	/*
 	 * If tuple is cachable, mark it for invalidation from the caches in case
@@ -2048,9 +2070,6 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	buffer = RelationGetBufferForTuple(relation, heaptup->t_len,
 									   InvalidBuffer, use_fsm);
 
-	/* NO EREPORT(ERROR) from here till changes are logged */
-	START_CRIT_SECTION();
-
 	RelationPutHeapTuple(relation, buffer, heaptup);
 
 	MarkBufferDirty(buffer);
@@ -2063,61 +2082,9 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	}
 	else if (use_wal)
 	{
-		xl_heap_insert xlrec;
-		xl_heap_header xlhdr;
-		XLogRecPtr	recptr;
-		XLogRecData rdata[3];
-		Page		page = BufferGetPage(buffer);
-		uint8		info = XLOG_HEAP_INSERT;
-
-		xlrec.target.node = relation->rd_node;
-		xlrec.target.tid = heaptup->t_self;
-		rdata[0].data = (char *) &xlrec;
-		rdata[0].len = SizeOfHeapInsert;
-		rdata[0].buffer = InvalidBuffer;
-		rdata[0].next = &(rdata[1]);
-
-		xlhdr.t_infomask2 = heaptup->t_data->t_infomask2;
-		xlhdr.t_infomask = heaptup->t_data->t_infomask;
-		xlhdr.t_hoff = heaptup->t_data->t_hoff;
-
-		/*
-		 * note we mark rdata[1] as belonging to buffer; if XLogInsert decides
-		 * to write the whole page to the xlog, we don't need to store
-		 * xl_heap_header in the xlog.
-		 */
-		rdata[1].data = (char *) &xlhdr;
-		rdata[1].len = SizeOfHeapHeader;
-		rdata[1].buffer = buffer;
-		rdata[1].buffer_std = true;
-		rdata[1].next = &(rdata[2]);
-
-		/* PG73FORMAT: write bitmap [+ padding] [+ oid] + data */
-		rdata[2].data = (char *) heaptup->t_data + offsetof(HeapTupleHeaderData, t_bits);
-		rdata[2].len = heaptup->t_len - offsetof(HeapTupleHeaderData, t_bits);
-		rdata[2].buffer = buffer;
-		rdata[2].buffer_std = true;
-		rdata[2].next = NULL;
-
-		/*
-		 * If this is the single and first tuple on page, we can reinit the
-		 * page instead of restoring the whole thing.  Set flag, and hide
-		 * buffer references from XLogInsert.
-		 */
-		if (ItemPointerGetOffsetNumber(&(heaptup->t_self)) == FirstOffsetNumber &&
-			PageGetMaxOffsetNumber(page) == FirstOffsetNumber)
-		{
-			info |= XLOG_HEAP_INIT_PAGE;
-			rdata[1].buffer = rdata[2].buffer = InvalidBuffer;
-		}
-
-		recptr = XLogInsert(RM_HEAP_ID, info, rdata);
-
-		PageSetLSN(page, recptr);
-		PageSetTLI(page, ThisTimeLineID);
+		heap_log_tuple_insert(relation, buffer, heaptup);
 	}
 
-	END_CRIT_SECTION();
 
 	UnlockReleaseBuffer(buffer);
 
