@@ -1577,7 +1577,9 @@ void heap_endinsert(HeapInsertDesc *ins)
 {
 	if (ins->hi_cbuf != InvalidBuffer)
 	{
-		heap_logpage(ins->hi_rel, ins->hi_cbuf);
+		if (!ins->hi_rel->rd_istemp && ins->hi_use_wal)
+			heap_logpage(ins->hi_rel, ins->hi_cbuf);
+
 		UnlockReleaseBuffer(ins->hi_cbuf);
 		ins->hi_cbuf = InvalidBuffer;
 	}
@@ -1746,8 +1748,10 @@ heap_insertextend(HeapInsertDesc *ins, Size len)
 		 * unlock the two buffers in, so this can be slightly simpler than the
 		 * code above.
 		 */
-		heap_logpage(ins->hi_rel, ins->hi_cbuf);
+		if (!ins->hi_rel->rd_istemp && ins->hi_use_wal)
+			heap_logpage(ins->hi_rel, ins->hi_cbuf);
 		UnlockReleaseBuffer(buffer);
+		ins->hi_cbuf = InvalidBuffer;
 	}
 
 	/*
