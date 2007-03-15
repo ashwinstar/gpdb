@@ -523,8 +523,9 @@ AllocSetAlloc(MemoryContext context, Size size)
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory"),
-					 errdetail("Failed on request of size %lu.",
-							   (unsigned long) size)));
+					 errdetail("Failed on request of size %lu for context '%s'.",
+							   (unsigned long) size,
+                               set->header.name) ));
 		}
 		block->aset = set;
 		block->freeptr = block->endptr = ((char *) block) + blksize;
@@ -708,8 +709,9 @@ AllocSetAlloc(MemoryContext context, Size size)
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory"),
-					 errdetail("Failed on request of size %lu.",
-							   (unsigned long) size)));
+					 errdetail("Failed on request of size %lu for context '%s'.",
+							   (unsigned long) size,
+                               set->header.name) ));
 		}
 
 		block->aset = set;
@@ -903,8 +905,9 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory"),
-					 errdetail("Failed on request of size %lu.",
-							   (unsigned long) size)));
+					 errdetail("Failed on request of size %lu for context '%s'.",
+							   (unsigned long) size,
+                               set->header.name) ));
 		}
 		block->freeptr = block->endptr = ((char *) block) + blksize;
 
