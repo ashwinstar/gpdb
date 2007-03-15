@@ -1297,14 +1297,13 @@ test_config_settings(void)
 			ok_buffers = test_buffs;
 			break;
 		}
+        if (n_connections > 0 || i == connslen-1)
+        {
+            fprintf(stderr, _("%s: error %d from: %s\n"),
+                    progname, status, cmd);
+            exit_nicely();
+        }
 	}
-	if (i >= connslen)
-    {
-        fprintf(stderr, _("%s: error %d from: %s\n"),
-                progname, status, cmd);
-        exit_nicely();
-    }
-
 	printf("%d\n", n_connections);
 
 	printf(_("selecting default shared_buffers/max_fsm_pages ... "));
@@ -2506,11 +2505,11 @@ parse_long(const char *value, bool blckszUnit, const char* optname)
 
 err:
     if (blckszUnit)
-        fprintf(stderr, _("%s: %s=%s invalid; requires an integer value, "
+        fprintf(stderr, _("%s: '%s=%s' invalid; requires an integer value, "
                           "optionally followed by kB/MB/GB suffix\n"),
                 progname, optname, value);
     else
-        fprintf(stderr, _("%s: %s=%s invalid; requires an integer value\n"),
+        fprintf(stderr, _("%s: '%s=%s' invalid; requires an integer value\n"),
                 progname, optname, value);
     exit_nicely();
     return 0;                   /* not reached */
@@ -2680,7 +2679,7 @@ main(int argc, char *argv[])
 	int			c,
 				i,
 				ret;
-	int			option_index;
+	int			option_index = -1;
 	char	   *short_version;
 	char	   *effective_user;
 	char	   *pgdenv;			/* PGDATA value gotten from and sent to
@@ -2727,7 +2726,24 @@ main(int argc, char *argv[])
 
 	while ((c = getopt_long(argc, argv, "dD:E:L:nU:WA:sX:", long_options, &option_index)) != -1)
 	{
-        const char *optname = long_options[option_index].name;
+        const char *optname;
+        char        shortopt[2];
+
+        /* CDB: Get option name for error reporting.  On Solaris, getopt_long
+         * may leave garbage in option_index after parsing a short option, so
+         * check carefully.
+         */
+        if (isalpha(c))
+        {
+            shortopt[0] = (char)c;
+            shortopt[1] = '\0';
+            optname = shortopt;
+        }
+        else if (option_index >= 0 &&
+                 option_index < sizeof(long_options)/sizeof(long_options[0]) - 1)
+            optname = long_options[option_index].name;
+        else
+            optname = "?!?";
 
 		switch (c)
 		{
