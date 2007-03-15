@@ -1517,12 +1517,13 @@ heap_get_latest_tid(Relation relation,
 	}							/* end of loop */
 }
 
+/* turn heap inserts on ... will be removed after testing */
 bool heap_enableHeapInsertDesc = true;
 
-HeapInsertDesc*
+HeapInsertDesc *
 heap_begininsert(Relation relation, CommandId cid, bool use_wal, bool use_fsm)
 {
-	HeapInsertDesc *ins = (HeapInsertDesc*) palloc(sizeof(HeapInsertDesc));
+	HeapInsertDesc *ins = (HeapInsertDesc *) palloc(sizeof(HeapInsertDesc));
 	ins->hi_xid = GetCurrentTransactionId();
 	ins->hi_rel = relation;
 	ins->hi_cid = cid;
@@ -1536,7 +1537,8 @@ heap_begininsert(Relation relation, CommandId cid, bool use_wal, bool use_fsm)
 	return ins;
 }
 
-void heap_endinsert(HeapInsertDesc *ins)
+void
+heap_endinsert(HeapInsertDesc *ins)
 {
 	if (ins->hi_cbuf != InvalidBuffer)
 	{
@@ -1765,7 +1767,11 @@ heap_insertextend(HeapInsertDesc *ins, Size len)
 	return buffer;
 }
 
-
+/*
+ * Main interface to insert with buffer mechanism. Eventually, this should
+ * be more tightly integrated with heap_insert(). As it currently stands
+ * there's a lot of duplicate code here.
+ */
 
 Oid
 heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)

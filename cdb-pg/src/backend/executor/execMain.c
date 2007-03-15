@@ -1956,9 +1956,10 @@ ExecInsert(TupleTableSlot *slot,
 	{
 		if (resultRelInfo->ri_HeapInsertDesc == NULL)
 		{
-			resultRelInfo->ri_HeapInsertDesc = heap_begininsert(resultRelationDesc, 
-																estate->es_snapshot->curcid,
-																true, true);
+			resultRelInfo->ri_HeapInsertDesc = 
+				heap_begininsert(resultRelationDesc,
+								 estate->es_snapshot->curcid,
+								 true, true);
 		}
 		newId = heap_insertnext(resultRelInfo->ri_HeapInsertDesc, tuple);
 	}

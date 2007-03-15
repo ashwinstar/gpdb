@@ -831,7 +831,6 @@ ReleaseAndReadBuffer(Buffer buffer,
 	return ReadBuffer(relation, blockNum);
 }
 
-
 Buffer
 KillAndReadBuffer(Buffer buffer,
 					 Relation relation,
