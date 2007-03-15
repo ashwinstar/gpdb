@@ -127,6 +127,12 @@ extern void appendStringInfoChar(StringInfo str, char ch);
 	 (void)((str)->data[(str)->len] = (ch), (str)->data[++(str)->len] = '\0'))
 
 /*------------------------
+ * appendStringInfoFill
+ * Append a single byte, repeated 0 or more times, to str.
+ */
+extern void appendStringInfoFill(StringInfo str, int occurrences, char ch);
+
+/*------------------------
  * appendBinaryStringInfo
  * Append arbitrary binary data to a StringInfo, allocating more space
  * if necessary.
