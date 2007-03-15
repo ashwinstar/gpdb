@@ -1801,7 +1801,7 @@ PrepareToInvalidateCacheTuple(Relation relation,
  * that resowner.c can call them.
  */
 void
-PrintCatCacheLeakWarning(HeapTuple tuple)
+PrintCatCacheLeakWarning(HeapTuple tuple, const char *resOwnerName)
 {
 	CatCTup    *ct = (CatCTup *) (((char *) tuple) -
 								  offsetof(CatCTup, tuple));
@@ -1809,17 +1809,19 @@ PrintCatCacheLeakWarning(HeapTuple tuple)
 	/* Safety check to ensure we were handed a cache entry */
 	Assert(ct->ct_magic == CT_MAGIC);
 
-	elog(WARNING, "cache reference leak: cache %s (%d), tuple %u/%u has count %d",
+	elog(WARNING, "cache reference leak: cache %s (%d), tuple %u/%u (oid %d) has count %d, resowner '%s'",
 		 ct->my_cache->cc_relname, ct->my_cache->id,
 		 ItemPointerGetBlockNumber(&(tuple->t_self)),
 		 ItemPointerGetOffsetNumber(&(tuple->t_self)),
-		 ct->refcount);
+         tuple->t_data ? HeapTupleGetOid(tuple) : 0,
+		 ct->refcount,
+         resOwnerName);
 }
 
 void
-PrintCatCacheListLeakWarning(CatCList *list)
+PrintCatCacheListLeakWarning(CatCList *list, const char *resOwnerName)
 {
-	elog(WARNING, "cache reference leak: cache %s (%d), list %p has count %d",
+	elog(WARNING, "cache reference leak: cache %s (%d), list %p has count %d, resowner '%s'",
 		 list->my_cache->cc_relname, list->my_cache->id,
-		 list, list->refcount);
+		 list, list->refcount, resOwnerName);
 }

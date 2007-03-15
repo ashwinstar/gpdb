@@ -280,14 +280,16 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 		while (owner->ncatrefs > 0)
 		{
 			if (isCommit)
-				PrintCatCacheLeakWarning(owner->catrefs[owner->ncatrefs - 1]);
+				PrintCatCacheLeakWarning(owner->catrefs[owner->ncatrefs - 1],
+                                         owner->name);
 			ReleaseCatCache(owner->catrefs[owner->ncatrefs - 1]);
 		}
 		/* Ditto for catcache lists */
 		while (owner->ncatlistrefs > 0)
 		{
 			if (isCommit)
-				PrintCatCacheListLeakWarning(owner->catlistrefs[owner->ncatlistrefs - 1]);
+				PrintCatCacheListLeakWarning(owner->catlistrefs[owner->ncatlistrefs - 1],
+                                             owner->name);
 			ReleaseCatCacheList(owner->catlistrefs[owner->ncatlistrefs - 1]);
 		}
 		/* Ditto for tupdesc references */

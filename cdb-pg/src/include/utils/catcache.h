@@ -186,7 +186,7 @@ extern void PrepareToInvalidateCacheTuple(Relation relation,
 							  HeapTuple tuple,
 						   void (*function) (int, uint32, ItemPointer, Oid));
 
-extern void PrintCatCacheLeakWarning(HeapTuple tuple);
-extern void PrintCatCacheListLeakWarning(CatCList *list);
+extern void PrintCatCacheLeakWarning(HeapTuple tuple, const char *resOwnerName);
+extern void PrintCatCacheListLeakWarning(CatCList *list, const char *resOwnerName);
 
 #endif   /* CATCACHE_H */
