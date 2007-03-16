@@ -568,19 +568,19 @@
 #define PACKAGE_NAME "Greenplum Database"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "Greenplum Database 8.2.1"
+#define PACKAGE_STRING "Greenplum Database 8.2.3"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "8.2.1"
+#define PACKAGE_VERSION "8.2.3"
 
 /* PostgreSQL version as a string */
-#define PG_VERSION "8.2.1"
+#define PG_VERSION "8.2.3"
 
 /* PostgreSQL version as a number */
-#define PG_VERSION_NUM 80201
+#define PG_VERSION_NUM 80203
 
 /* Define to the one symbol short name of this package. */
-#define PACKAGE_TARNAME "greenplum-database"
+#define PACKAGE_TARNAME "postgresql"
 
 /* Define to the name of the default PostgreSQL service principal in Kerberos.
    (--with-krb-srvnam=NAME) */

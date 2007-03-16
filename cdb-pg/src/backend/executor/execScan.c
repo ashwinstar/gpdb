@@ -13,7 +13,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/execScan.c,v 1.38 2006/03/05 15:58:26 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/execScan.c,v 1.38.2.2 2007/02/02 00:07:27 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -164,7 +164,8 @@ ExecAssignScanProjectionInfo(ScanState *node)
 							  node->ss_ScanTupleSlot->tts_tupleDescriptor))
 		node->ps.ps_ProjInfo = NULL;
 	else
-		ExecAssignProjectionInfo(&node->ps);
+		ExecAssignProjectionInfo(&node->ps,
+								 node->ss_ScanTupleSlot->tts_tupleDescriptor);
 }
 
 static bool
@@ -186,13 +187,13 @@ tlist_matches_tupdesc(PlanState *ps, List *tlist, Index varno, TupleDesc tupdesc
 		var = (Var *) ((TargetEntry *) lfirst(tlist_item))->expr;
 		if (!var || !IsA(var, Var))
 			return false;		/* tlist item not a Var */
+		/* if these Asserts fail, planner messed up */
 		Assert(var->varno == varno);
 		Assert(var->varlevelsup == 0);
 		if (var->varattno != attrno)
 			return false;		/* out of order */
 		if (att_tup->attisdropped)
 			return false;		/* table contains dropped columns */
-
 		/*
 		 * Note: usually the Var's type should match the tupdesc exactly,
 		 * but in situations involving unions of columns that have different
@@ -203,9 +204,11 @@ tlist_matches_tupdesc(PlanState *ps, List *tlist, Index varno, TupleDesc tupdesc
 		 * projection steps just to convert from specific typmod to typmod -1,
 		 * which is pretty silly.
 		 */
-		Assert(var->vartype == att_tup->atttypid);
-		Assert(var->vartypmod == att_tup->atttypmod || var->vartypmod == -1);
-
+		if (var->vartype != att_tup->atttypid ||
+			(var->vartypmod != att_tup->atttypmod &&
+			 var->vartypmod != -1))
+			return false;		/* type mismatch */
+			
 		tlist_item = lnext(tlist_item);
 	}
 

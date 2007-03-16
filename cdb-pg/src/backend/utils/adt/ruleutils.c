@@ -2,7 +2,7 @@
  * ruleutils.c	- Functions to convert stored expressions/querytrees
  *				back to source text
  *
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/ruleutils.c,v 1.235 2006/11/10 22:59:29 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/ruleutils.c,v 1.235.2.2 2007/01/30 02:32:05 momjian Exp $
  **********************************************************************/
 
 #include "postgres.h"
@@ -521,8 +521,7 @@ pg_get_triggerdef(PG_FUNCTION_ARGS)
 		char	   *p;
 		int			i;
 
-		val = (bytea *)
-			DatumGetPointer(fastgetattr(ht_trig,
+		val = DatumGetByteaP(fastgetattr(ht_trig,
 										Anum_pg_trigger_tgargs,
 										tgrel->rd_att, &isnull));
 		if (isnull)
@@ -1235,6 +1234,8 @@ pg_get_userbyid(PG_FUNCTION_ARGS)
  * pg_get_serial_sequence
  *		Get the name of the sequence used by a serial column,
  *		formatted suitably for passing to setval, nextval or currval.
+ *		First parameter is not treated as double-quoted, second parameter
+ *		is --- see documentation for reason.
  */
 Datum
 pg_get_serial_sequence(PG_FUNCTION_ARGS)
