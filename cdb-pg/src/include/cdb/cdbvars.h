@@ -475,6 +475,9 @@ extern int	currentSliceId;
 /* Segment id where singleton gangs are to be dispatched. */
 extern int  mpp_singleton_segindex;
 
+extern int cdb_total_plans;
+extern int cdb_total_slices;
+extern int cdb_max_slices;
 
 /* --------------------------------------------------------------------------------------------------
  * Structure for row of mpp.mpp table

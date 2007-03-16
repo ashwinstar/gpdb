@@ -36,6 +36,7 @@
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbgang.h"
+#include "cdb/cdbdisp.h"
 #include "cdb/ml_ipc.h"			/* listener_setup */
 #include "cdb/cdbtm.h"
 #include "cdb/cdbfts.h"
@@ -672,6 +673,15 @@ cdb_cleanup(int code, Datum arg)
 	disconnectAndDestroyAllGangs();
 
 	disconnectMirrorQD();
+
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		if (cdb_total_plans > 0)
+			elog(DEBUG1, "session dispatched %d plans %d slices (%f), largest plan %d",
+				 cdb_total_plans, cdb_total_slices,
+				 ((double)cdb_total_slices/(double)cdb_total_plans),
+				 cdb_max_slices);
+	}
 
 	if (Mpp_role != MPP_ROLE_UTILITY)
 	{

@@ -2508,6 +2508,11 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * dispatch without starting a global xact.
 	 */
 	txnOptions = generateTxnOptions(planRequiresTxn);
+
+	cdb_total_plans++;
+	cdb_total_slices += nSlices;
+	if (nSlices > cdb_max_slices)
+		cdb_max_slices = nSlices;
 	
 	/*
 	 * Now we need to call CDBDispatchCommand once per slice.  Each such
