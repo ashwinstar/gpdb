@@ -1633,7 +1633,8 @@ heap_log_tuple_insert(Relation rel, Buffer buffer, HeapTuple tup)
 	END_CRIT_SECTION();
 }
 
-void heap_endinsert(HeapInsertDesc *ins)
+void
+heap_endinsert(HeapInsertDesc *ins)
 {
 	if (ins->hi_cbuf != InvalidBuffer)
 	{
