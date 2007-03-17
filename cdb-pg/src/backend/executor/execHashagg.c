@@ -1,29 +1,33 @@
 /*-------------------------------------------------------------------------
  *
- * execBatch.c
+ * execHashagg.c
  *		CDB additions to support hybrid hash aggregation algorithm.
  *		This file could be merged into nodeAgg.c.  The separation is
  *		only to help isolate MPP-only code from future merges with
  *		PG code.  Note, however, that nodeAgg.c is also modified to
  *		make use of this code.
  *
+ * Portions Copyright (c) 2006-2007, Greenplum
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- * Portions Copyright (c) 2006, Greenplum
  *
  * IDENTIFICATION
- *	  $ID$
+ *    $Id$
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
+#include <math.h>                           /* log2 */
+
 #include "fmgr.h"
 #include "miscadmin.h" /* work_mem */
 #include "nodes/execnodes.h"
 #include "executor/executor.h"
+#include "executor/instrument.h"            /* Instrumentation */
 #include "executor/tuptable.h"
 #include "executor/nodeAgg.h"
+#include "lib/stringinfo.h"                 /* StringInfo */
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -114,9 +118,7 @@ HashAggTable *
 create_agg_hash_table(AggState *aggstate)
 {
 	HashAggTable *ht;
-	int est_nbucket;
-	int est_nentry;
-	int est_nbatch;
+    HashAggTableSizes   hats;
 	MemoryContext oldcontext;
 	Agg *agg = (Agg*)aggstate->ss.ps.plan;
 	
@@ -126,9 +128,8 @@ create_agg_hash_table(AggState *aggstate)
 								aggstate->numaggs,
 								est_hash_tuple_size(aggstate->ss.ss_ScanTupleSlot, aggstate->hash_needed),
 								agg->transSpace,
-								&est_nbucket,
-								&est_nentry,
-								&est_nbatch ) )
+                                true,
+								&hats ) )
 	{
 		elog(ERROR, "unable to implement hashed aggregation strategy");
 	}
@@ -158,21 +159,17 @@ create_agg_hash_table(AggState *aggstate)
 	 *		 function calcHashAggTableSizes is for.
 	 */
 	
-	elog(HHA_MSG_LVL,
-		"hybrid hash aggregation: initializing nbucket=%d, max_entries=%d, nbatch=%d",
-		est_nbucket, est_nentry, est_nbatch);
-	
 	oldcontext = MemoryContextSwitchTo(aggstate->aggcontext);
 	
 	ht = (HashAggTable*)palloc0(sizeof(HashAggTable));
 	
-	ht->nbucket = est_nbucket;
+    ht->nbucket = hats.nbuckets;
 	ht->buckets = (HashAggEntry**)palloc0(ht->nbucket * sizeof(HashAggEntry*));
 	
-	ht->max_entries = est_nentry;
+	ht->max_entries = hats.nentries;
 	ht->nentries = 0;
 	
-	create_batches(ht, est_nbatch);
+	create_batches(ht, hats.nbatches);
 	
 	/* To calculate a batch index, we use the hash key after rotating
 	 * the bits used in calculating the bucket to the front.  These
@@ -194,7 +191,9 @@ create_agg_hash_table(AggState *aggstate)
 	
 	init_agg_hash_iter(ht);
 	
-	return ht;
+    ht->hats = hats;
+
+    return ht;
 }
 
 
@@ -356,6 +355,28 @@ agg_hash_initial_pass(AggState *aggstate)
 	elog(HHA_MSG_LVL,
 		"hybrid hash aggregation: %ld tuples spilled to disk",
 		noverflow);
+
+    /* CDB: Report statistics for EXPLAIN ANALYZE. */
+    if (aggstate->ss.ps.instrument)
+    {
+        Instrumentation    *instr = aggstate->ss.ps.instrument;
+        StringInfo          hbuf = aggstate->ss.ps.cdbexplainbuf;
+        Size                workmemused;
+
+        if (noverflow > 0)
+            appendStringInfo(hbuf,
+                             "pass %d: %ld groups made from %ld rows; "
+                             "%ld rows written to workfile\n",
+                             ht->pass,
+                             ht->ngroup,
+                             ht->ntuple,
+                             noverflow);
+
+        /* work_mem quota to accommodate number of entries in initial pass */
+        workmemused = ht->ngroup * ht->hats.workmem_per_entry +
+                      ht->hats.workmem_initial;
+        instr->workmemused = Max(instr->workmemused, workmemused);
+    }
 }
 
 
@@ -373,6 +394,7 @@ agg_hash_initial_pass(AggState *aggstate)
 bool
 agg_hash_next_pass(AggState *aggstate)
 {
+	HashAggTable *ht = aggstate->hhashtable;
 	int pass = aggstate->hhashtable->pass;
 	int nbatch = aggstate->hhashtable->nbatch;
 	BatchFileInfo *batches = aggstate->hhashtable->batches;
@@ -408,6 +430,22 @@ agg_hash_next_pass(AggState *aggstate)
 	
 	elog(HHA_MSG_LVL,
 		"hybrid hash aggregation: end of passes");	
+
+    /* CDB: Report statistics for EXPLAIN ANALYZE. */
+    if (aggstate->ss.ps.instrument)
+    {
+        Instrumentation    *instr = aggstate->ss.ps.instrument;
+        Size                workmemwanted;
+
+        /* work_mem setting that would suffice to hold all groups in memory */
+        if (ht->ngroup > ht->max_entries)
+        {
+            workmemwanted = ht->ngroup * ht->hats.workmem_per_entry +
+                            ht->hats.workmem_initial;
+            instr->workmemwanted = Max(instr->workmemwanted, workmemwanted);
+        }
+    }
+
 	return false;
 }
 
@@ -545,6 +583,30 @@ agg_hash_reload(AggState *aggstate)
 		"hybrid hash aggregation: %ld tuples respilled to disk",
 		noverflow);
 	
+    /* CDB: Report statistics for EXPLAIN ANALYZE. */
+    if (aggstate->ss.ps.instrument)
+    {
+        Instrumentation    *instr = aggstate->ss.ps.instrument;
+        StringInfo          hbuf = aggstate->ss.ps.cdbexplainbuf;
+        Size                workmemused;
+
+        appendStringInfo(hbuf,
+                         "pass %d: %ld groups made from %ld rows",
+                         ht->pass,
+                         ngroup,
+                         ntuple);
+        if (noverflow > 0)
+            appendStringInfo(hbuf,
+                             "; %ld rows rewritten to workfile",
+                             noverflow);
+        appendStringInfoChar(hbuf, '\n');
+
+        /* work_mem quota to accommodate number of entries in this pass */
+        workmemused = ngroup * ht->hats.workmem_per_entry +
+                      ht->hats.workmem_initial;
+        instr->workmemused = Max(instr->workmemused, workmemused);
+    }
+
 	return true; /* Got some more tuples. */
 }
 
@@ -848,15 +910,12 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 					   int numaggs,		/* Est # of aggregate functions */
 					   int keywidth,	/* Est per entry size of hash key. */
 					   int transpace,	/* Est per entry size of by-ref values. */
-					   int *p_nbuckets,	/* Calculated # of hash buckets. */
-					   int *p_nentries,	/* Calculated # of hash entries. */
-					   int *p_nbatches	/* Calculated # of passes. */
+                       bool force,      /* true => succeed even if work_mem too small */
+                       HashAggTableSizes   *out_hats
 					   )
 {
 	double rewrite_fudge = 1.0;
 	
-	bool force = ( p_nbuckets != NULL || p_nentries != NULL || p_nbatches != NULL );
-
 	int entrywidth = sizeof(HashAggEntry)
 					+ numaggs * sizeof(AggStatePerGroupData)
 					+ keywidth
@@ -952,9 +1011,14 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	Assert( memquota >= floor(nH*zH + nB*zB) );
 	Assert( nK<INT_MAX && nH<INT_MAX && nB<INT_MAX );
 			
-	if (p_nbuckets) *p_nbuckets = (int)nK;
-	if (p_nentries) *p_nentries = (int)nH;
-	if (p_nbatches) *p_nbatches = (int)nB;
+    if (out_hats)
+    {
+        out_hats->nbuckets = (int)nK;
+        out_hats->nentries = (int)nH;
+        out_hats->nbatches = (int)nB;
+        out_hats->workmem_initial = (int)(nB*zB);
+        out_hats->workmem_per_entry = (int)zH;
+    }
 	
 	elog(DEBUG2, "hashagg nbuckets = %d, nentries = %d, nbatches = %d", (int)nK, (int)nH, (int)nB);
 	elog(DEBUG1, "hashagg rewrite fudge = %f, expected memory footprint = %d",

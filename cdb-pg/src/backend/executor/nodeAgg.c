@@ -63,6 +63,7 @@
  *	  data copy step when the previous transition value pointer is returned.
  *
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -81,6 +82,7 @@
 #include "executor/executor.h"
 #include "executor/execHashagg.h"
 #include "executor/nodeAgg.h"
+#include "lib/stringinfo.h"             /* StringInfo */
 #include "miscadmin.h"
 #include "optimizer/clauses.h"
 #include "parser/parse_agg.h"
@@ -210,6 +212,8 @@ static bool find_unaggregated_cols_walker(Node *node, Bitmapset **colnos);
 static TupleTableSlot *agg_retrieve_direct(AggState *aggstate);
 static TupleTableSlot *agg_retrieve_hash_table(AggState *aggstate);
 static Datum GetAggInitVal(Datum textInitVal, Oid transtype);
+static void ExecAggExplainEnd(PlanState *planstate, struct StringInfoData *buf);
+
 
 /*
  * Initialize all aggregates for a new group of input values.
@@ -245,6 +249,17 @@ initialize_aggregates(AggState *aggstate,
 				tuplesort_begin_datum(peraggstate->inputType,
 									  peraggstate->sortOperator,
 									  work_mem, false);
+
+            /* 
+             * CDB: If EXPLAIN ANALYZE, let all of our tuplesort operations
+             * share our Instrumentation object and message buffer.
+             */
+            if (aggstate->ss.ps.instrument)
+                tuplesort_set_instrument(peraggstate->sortstate,
+                                         aggstate->ss.ps.instrument,
+                                         aggstate->ss.ps.cdbexplainbuf);
+
+            /* CDB: Set enhanced sort options. */
 			{
 				int64 		limit = 0;
 				int64 		offset = 0;
@@ -1196,6 +1211,18 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		ExecInitExpr((Expr *) node->plan.qual,
 					 (PlanState *) aggstate);
 
+    /* 
+     * CDB: Offer extra info for EXPLAIN ANALYZE. 
+     */
+    if (estate->es_instrument)
+    {
+	    /* Allocate string buffer. */
+        aggstate->ss.ps.cdbexplainbuf = makeStringInfo();        
+        
+        /* Request a callback at end of query. */
+        aggstate->ss.ps.cdbexplainfun = ExecAggExplainEnd;
+    }
+
 	/*
 	 * initialize child nodes
 	 *
@@ -1549,10 +1576,9 @@ ExecCountSlotsAgg(Agg *node)
 		AGG_NSLOTS;
 }
 
-void
-ExecEndAgg(AggState *node)
+static void
+ExecEndAgg_internal(AggState *node)
 {
-	PlanState  *outerPlan;
 	int			aggno;
 
 	/* Make sure we have closed any open tuplesorts */
@@ -1561,9 +1587,20 @@ ExecEndAgg(AggState *node)
 		AggStatePerAgg peraggstate = &node->peragg[aggno];
 
 		if (peraggstate->sortstate)
-			tuplesort_end(peraggstate->sortstate);
+        {
+            tuplesort_end(peraggstate->sortstate);
+            peraggstate->sortstate = NULL;
+        }
 	}
-	
+}
+
+void
+ExecEndAgg(AggState *node)
+{
+	PlanState  *outerPlan;
+
+    ExecEndAgg_internal(node);
+
 	/* Clean up hybrid hash agg. */
 	if ( ((Agg*)node->ss.ps.plan)->aggstrategy == AGG_HASHED)
 		destroy_agg_hash_table(node);
@@ -1666,6 +1703,24 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 	if (((PlanState *) node)->lefttree->chgParam == NULL)
 		ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
 }
+
+
+/*
+ * ExecAggExplainEnd
+ *      Called before ExecutorEnd to finish EXPLAIN ANALYZE reporting.
+ */
+void
+ExecAggExplainEnd(PlanState *planstate, struct StringInfoData *buf)
+{
+    /*
+     * Some of the cleanup that ordinarily would occur during ExecEndAgg()
+     * needs to be done earlier (i.e. now) in order to report statistics to 
+     * EXPLAIN ANALYZE.  Note that ExecEndAgg_internal() may be called twice:
+     * first here, and again when ExecEndAgg is called during ExecutorEnd().
+     */
+    ExecEndAgg_internal((AggState *)planstate);
+}                               /* ExecAggExplainEnd */
+
 
 /*
  * aggregate_dummy - dummy execution routine for aggregate functions

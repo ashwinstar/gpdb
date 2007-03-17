@@ -87,7 +87,6 @@ typedef struct HashJoinBatchStats
 typedef struct HashJoinTableStats
 {
     struct StringInfoData  *joinexplainbuf; /* Join operator's report buf */
-    struct StringInfoData  *hashexplainbuf; /* Hash operator's report buf */
     HashJoinBatchStats     *batchstats;     /* -> array[0..nbatchstats-1] */
     int                     nbatchstats;    /* num of batchstats slots */
     int                     endedbatch;     /* index of last batch ended */

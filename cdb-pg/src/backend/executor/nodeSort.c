@@ -3,6 +3,7 @@
  * nodeSort.c
  *	  Routines to handle sorting of relations.
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -17,9 +18,13 @@
 
 #include "executor/execdebug.h"
 #include "executor/nodeSort.h"
+#include "lib/stringinfo.h"             /* StringInfo */
 #include "miscadmin.h"
 #include "utils/tuplesort.h"
 #include "cdb/cdbvars.h" /* CDB *//* mpp_sort_flags */
+
+static void ExecSortExplainEnd(PlanState *planstate, struct StringInfoData *buf);
+
 
 /* ----------------------------------------------------------------
  *		ExecSort
@@ -137,6 +142,11 @@ ExecSort(SortState *node)
 							   sort_flags);
 		}
 
+        /* If EXPLAIN ANALYZE, share our Instrumentation object with sort. */
+        if (node->ss.ps.instrument)
+            tuplesort_set_instrument(tuplesortstate,
+                                     node->ss.ps.instrument,
+                                     node->ss.ps.cdbexplainbuf);
 
 		/*
 		 * Scan the subplan and feed all the tuples to tuplesort.
@@ -242,7 +252,6 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	 * ExecQual or ExecProject.
 	 */
 
-
 #define SORT_NSLOTS 2
 
 	/*
@@ -252,6 +261,18 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	 */
 	ExecInitResultTupleSlot(estate, &sortstate->ss.ps);
 	ExecInitScanTupleSlot(estate, &sortstate->ss);
+
+    /* 
+     * CDB: Offer extra info for EXPLAIN ANALYZE.
+     */
+    if (estate->es_instrument)
+    {
+	    /* Allocate string buffer. */
+        sortstate->ss.ps.cdbexplainbuf = makeStringInfo();
+
+        /* Request a callback at end of query. */
+        sortstate->ss.ps.cdbexplainfun = ExecSortExplainEnd;
+    }
 
 	/*
 	 * initialize child nodes
@@ -289,8 +310,8 @@ ExecCountSlotsSort(Sort *node)
  *		ExecEndSort(node)
  * ----------------------------------------------------------------
  */
-void
-ExecEndSort(SortState *node)
+static void
+ExecEndSort_internal(SortState *node)
 {
 	SO1_printf("ExecEndSort: %s\n",
 			   "shutting down sort node");
@@ -304,10 +325,19 @@ ExecEndSort(SortState *node)
 
 	/*
 	 * Release tuplesort resources
+     *
+     * CDB: For EXPLAIN ANALYZE, tuplesort_end() may update statistics in our
+     * Instrumentation object via a ptr saved by tuplesort_set_instrument().
 	 */
 	if (node->tuplesortstate != NULL)
 		tuplesort_end((Tuplesortstate *) node->tuplesortstate);
 	node->tuplesortstate = NULL;
+}
+
+void
+ExecEndSort(SortState *node)
+{
+    ExecEndSort_internal(node);
 
 	/*
 	 * shut down the subplan
@@ -394,3 +424,20 @@ ExecReScanSort(SortState *node, ExprContext *exprCtxt)
 	else
 		tuplesort_rescan((Tuplesortstate *) node->tuplesortstate);
 }
+
+
+/*
+ * ExecSortExplainEnd
+ *      Called before ExecutorEnd to finish EXPLAIN ANALYZE reporting.
+ */
+void
+ExecSortExplainEnd(PlanState *planstate, struct StringInfoData *buf)
+{
+    /*
+     * Some of the cleanup that ordinarily would occur during ExecEndSort()
+     * needs to be done earlier (i.e. now) in order to report statistics to 
+     * EXPLAIN ANALYZE.  Note that ExecEndSort_internal() may be called twice:
+     * first here, and again when ExecEndSort is called during ExecutorEnd().
+     */
+    ExecEndSort_internal((SortState *)planstate);
+}                               /* ExecSortExplainEnd */

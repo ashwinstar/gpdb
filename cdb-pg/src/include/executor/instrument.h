@@ -16,6 +16,7 @@
 
 #include <sys/time.h>
 
+struct CdbExplain_NodeSummary;          /* private def in cdb/cdbexplain.c */
 
 /*
  * gettimeofday() does not have sufficient resolution on Windows,
@@ -33,6 +34,69 @@ typedef struct timeval instr_time;
 #define INSTR_TIME_SET_CURRENT(t)	gettimeofday(&(t), NULL)
 #define INSTR_TIME_GET_DOUBLE(t) \
 	(((double) (t).tv_sec) + ((double) (t).tv_usec) / 1000000.0)
+
+static inline void
+InstrTimeAdd(instr_time *sum, const instr_time *a, const instr_time *b)
+{
+	sum->tv_sec = a->tv_sec + b->tv_sec;
+	sum->tv_usec = a->tv_usec + b->tv_usec;
+	/* Normalize afterward to avoid overflow/underflow of tv_usec */
+}
+
+static inline void
+InstrTimeSubtract(instr_time *diff, const instr_time *t1, const instr_time *t0)
+{
+	diff->tv_sec = t1->tv_sec - t0->tv_sec;
+	diff->tv_usec = t1->tv_usec - t0->tv_usec;
+	/* Normalize afterward to avoid overflow/underflow of tv_usec */
+}
+
+static inline void
+InstrTimeNormalize(instr_time *t)
+{
+	while (t->tv_usec < 0)
+	{
+		t->tv_usec += 1000000;
+		t->tv_sec--;
+	}
+	while (t->tv_usec >= 1000000)
+	{
+		t->tv_usec -= 1000000;
+		t->tv_sec++;
+	}
+}
+
+static inline void
+InstrTimeAddDifference(instr_time *sum, const instr_time *t1, const instr_time *t0)
+{
+    sum->tv_sec += t1->tv_sec - t0->tv_sec;
+    sum->tv_usec += t1->tv_usec - t0->tv_usec;
+    InstrTimeNormalize(sum);
+}
+
+static inline bool
+InstrTimeIsLess(const instr_time *a, const instr_time *b)
+{
+    return a->tv_sec < b->tv_sec ||
+            (a->tv_sec == b->tv_sec &&
+             a->tv_usec < b->tv_usec);
+}
+
+static inline bool
+InstrTimeIsLessOrEqual(const instr_time *a, const instr_time *b)
+{
+    return a->tv_sec < b->tv_sec ||
+            (a->tv_sec == b->tv_sec &&
+             a->tv_usec <= b->tv_usec);
+}
+
+static inline bool
+InstrTimeIsEqual(const instr_time *a, const instr_time *b)
+{
+    return a->tv_usec == b->tv_usec &&
+           a->tv_sec == b->tv_sec;
+}
+
 #else							/* WIN32 */
 
 typedef LARGE_INTEGER instr_time;
@@ -43,16 +107,62 @@ typedef LARGE_INTEGER instr_time;
 #define INSTR_TIME_GET_DOUBLE(t) \
 	(((double) (t).QuadPart) / GetTimerFrequency())
 
+extern double InstrTimerFrequency;
+
 static __inline__ double
 GetTimerFrequency(void)
 {
-	LARGE_INTEGER f;
+    if (InstrTimerFrequency == 0.0)
+    {
+	    LARGE_INTEGER f;
 
-	QueryPerformanceFrequency(&f);
-	return (double) f.QuadPart;
+        QueryPerformanceFrequency(&f);
+	    InstrTimerFrequency = (double)f.QuadPart;
+    }
+    return InstrTimerFrequency;
 }
-#endif   /* WIN32 */
 
+static inline void
+InstrTimeAdd(instr_time *sum, const instr_time *a, const instr_time *b)
+{
+	sum->QuadPart = a->QuadPart + b->QuadPart;
+}
+
+static inline void
+InstrTimeSubtract(instr_time *diff, const instr_time *t1, const instr_time *t0)
+{
+	diff->QuadPart = t1->QuadPart - t0->QuadPart;
+}
+
+static inline void
+InstrTimeNormalize(instr_time *t)
+{}
+
+static inline void
+InstrTimeAddDifference(instr_time *sum, const instr_time *t1, const instr_time *t0)
+{
+    sum->QuadPart += t1->QuadPart - t0->QuadPart;
+}
+
+static inline bool
+InstrTimeIsLess(const instr_time *a, const instr_time *b)
+{
+    return a->QuadPart < b->QuadPart;
+}
+
+static inline bool
+InstrTimeIsLessOrEqual(const instr_time *a, const instr_time *b)
+{
+    return a->QuadPart <= b->QuadPart;
+}
+
+static inline bool
+InstrTimeIsEqual(const instr_time *a, const instr_time *b)
+{
+    return a->QuadPart == b->QuadPart;
+}
+
+#endif   /* WIN32 */
 
 typedef struct Instrumentation
 {
@@ -67,17 +177,10 @@ typedef struct Instrumentation
 	double		total;			/* Total total time (in seconds) */
 	double		ntuples;		/* Total tuples produced */
 	double		nloops;			/* # of run cycles for this node */
-    char       *notes;          /* CDB: extra message text */
-    /* CDB: Which process were these stats taken from? */
-    int         cdbSegIndex;    /* segment id of qExec, or -1 if qDisp */
-    /* CDB: Gang totals */
-    int         cdbWorkers;     /* # of processes reporting ntuples > 0 */
-    double      cdbGangTuples;  /* sum of ntuples over all workers */
-	/* CDB: first start */
-	instr_time	firststart;		/* Start time of first iteration of node */
-    /* CDB: for collecting all worker stats... */
-	int         numStats;	
-	void       *pAllStats;      /* list of all stats */
+    double      workmemused;    /* CDB: work_mem actually used (bytes) */
+    double      workmemwanted;  /* CDB: work_mem to avoid scratch i/o (bytes) */
+	instr_time	firststart;		/* CDB: Start time of first iteration of node */
+    struct CdbExplain_NodeSummary  *cdbNodeSummary; /* stats from all qExecs */
 } Instrumentation;
 
 extern Instrumentation *InstrAlloc(int n);

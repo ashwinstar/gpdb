@@ -4,7 +4,7 @@
  *	 functions for instrumentation of plan execution
  *
  *
- * Portions Copyright (c) 2006, greenplum inc
+ * Portions Copyright (c) 2006-2007, greenplum inc
  * Copyright (c) 2001-2006, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
@@ -18,20 +18,18 @@
 
 #include "executor/instrument.h"
 
+/* Globals */
+#ifdef WIN32
+double InstrTimerFrequency;
+#endif
 
 /* Allocate new instrumentation structure(s) */
 Instrumentation *
 InstrAlloc(int n)
 {
 	Instrumentation *instr = palloc0(n * sizeof(Instrumentation));
-    int i;
 
 	/* we don't need to do any initialization except zero 'em */
-
-    for (i = 0; i < n; i++)
-    {
-	    instr[i].cdbSegIndex = -1;
-    }
 
 	return instr;
 }
@@ -51,7 +49,6 @@ void
 InstrStopNode(Instrumentation *instr, double nTuples)
 {
 	instr_time	endtime;
-	instr_time	starttime;
 
 	/* count the returned tuples */
 	instr->tuplecount += nTuples;
@@ -62,29 +59,8 @@ InstrStopNode(Instrumentation *instr, double nTuples)
 		return;
 	}
 
-	starttime = instr->starttime;
 	INSTR_TIME_SET_CURRENT(endtime);
-
-#ifndef WIN32
-	instr->counter.tv_sec += endtime.tv_sec - instr->starttime.tv_sec;
-	instr->counter.tv_usec += endtime.tv_usec - instr->starttime.tv_usec;
-
-	/* Normalize after each add to avoid overflow/underflow of tv_usec */
-	while (instr->counter.tv_usec < 0)
-	{
-		instr->counter.tv_usec += 1000000;
-		instr->counter.tv_sec--;
-	}
-	while (instr->counter.tv_usec >= 1000000)
-	{
-		instr->counter.tv_usec -= 1000000;
-		instr->counter.tv_sec++;
-	}
-#else							/* WIN32 */
-	instr->counter.QuadPart += (endtime.QuadPart - instr->starttime.QuadPart);
-#endif
-
-	INSTR_TIME_SET_ZERO(instr->starttime);
+    InstrTimeAddDifference(&instr->counter, &endtime, &instr->starttime);
 
 	/* Is this the first tuple of this cycle? */
 	if (!instr->running)
@@ -92,8 +68,10 @@ InstrStopNode(Instrumentation *instr, double nTuples)
 		instr->running = true;
 		instr->firsttuple = INSTR_TIME_GET_DOUBLE(instr->counter);
 		/* CDB: save this start time as the first start */
-		instr->firststart = starttime;
+		instr->firststart = instr->starttime;
 	}
+
+	INSTR_TIME_SET_ZERO(instr->starttime);
 }
 
 /* Finish a run cycle for a plan node */

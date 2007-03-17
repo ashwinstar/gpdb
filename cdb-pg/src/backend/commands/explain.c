@@ -8,6 +8,7 @@
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * IDENTIFICATION
+ *    $Id$
  *	  $PostgreSQL: pgsql/src/backend/commands/explain.c,v 1.152 2006/10/04 00:29:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
@@ -46,9 +47,10 @@ typedef struct ExplainState
 
     /* CDB */
     QueryDesc  *queryDesc;
-	instr_time	firststart;     /* start time of query */
     Slice      *currentSlice;   /* slice whose nodes we are visiting */
+    StringInfo  extratextbuf;   /* -> buffer for extra message text */
     StringInfoData  workbuf;    /* a scratch buffer */
+	instr_time	starttime;      /* start time of query */
 } ExplainState;
 
 static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
@@ -250,7 +252,8 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	double		totaltime = 0;
 	ExplainState    explainState;
     ExplainState   *es = &explainState;
-	StringInfoData buf;
+	StringInfoData  buf;
+    StringInfoData  extratextbuf;
 	Node	   *saved_es_sliceTable;
 	int			eflags;
     int         nb;
@@ -261,11 +264,18 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	initStringInfoOfSize(&buf, 16000);
     initStringInfoOfSize(&es->workbuf, 1000);
 
+    /* Allocate a buffer in which we can collect any extra message text. */
+    es->extratextbuf = &extratextbuf;
+    if (stmt->analyze)
+        initStringInfoOfSize(&extratextbuf, 4000);
+    else
+        memset(&extratextbuf, 0, sizeof(extratextbuf));
+
     /* 
      * Start timing. 
      */
     INSTR_TIME_SET_CURRENT(starttime);
-	es->firststart = starttime;
+	es->starttime = starttime;
 
 	/* If analyzing, we need to cope with queued triggers */
 	if (stmt->analyze)
@@ -300,7 +310,8 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
             /* Fill in the plan's Instrumentation with stats from qExecs. */
             cdbexplain_recvExecStats(queryDesc->planstate,
                                      queryDesc->estate->primaryResults,
-                                     queryDesc->estate->es_cur_slice_idx);
+                                     queryDesc->estate->es_cur_slice_idx,
+                                     es->extratextbuf);
         }
 
         /* We can't clean up 'till we're done printing the stats... */
@@ -354,7 +365,6 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	if (stmt->analyze)
 	{
 		INSTR_TIME_SET_CURRENT(starttime);
-		es->firststart = starttime;
 		AfterTriggerEndQuery(queryDesc->estate);
 		totaltime += elapsed_time(&starttime);
 	}
@@ -444,6 +454,8 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 
 	do_text_output_multiline(tstate, buf.data);
 
+    if (extratextbuf.data)
+        pfree(extratextbuf.data);
     pfree(es->workbuf.data);
     pfree(buf.data);
 }
@@ -455,19 +467,7 @@ elapsed_time(instr_time *starttime)
 	instr_time	endtime;
 
 	INSTR_TIME_SET_CURRENT(endtime);
-
-#ifndef WIN32
-	endtime.tv_sec -= starttime->tv_sec;
-	endtime.tv_usec -= starttime->tv_usec;
-	while (endtime.tv_usec < 0)
-	{
-		endtime.tv_usec += 1000000;
-		endtime.tv_sec--;
-	}
-#else							/* WIN32 */
-	endtime.QuadPart -= starttime->QuadPart;
-#endif
-
+    InstrTimeSubtract(&endtime, &endtime, starttime);
 	return INSTR_TIME_GET_DOUBLE(endtime);
 }
 
@@ -1039,21 +1039,16 @@ explain_outNode(StringInfo str,
 
     /* CDB: Show actual row count, etc. */
 	if (planstate->instrument)
-    {
-		Instrumentation iFirst;
-
-		iFirst.firststart = es->firststart;
         cdbexplain_showExecStats(planstate,
                                  str,
-                                 &es->workbuf,
-                                 es->currentSlice,
                                  indent+1,
-                                 &iFirst);
-    }
+                                 es->extratextbuf,
+                                 es->starttime);
 
 	/* initPlan-s */
 	if (plan->initPlan)
 	{
+        StringInfo  saved_extratextbuf = es->extratextbuf;
         Slice      *saved_slice = es->currentSlice;
 		List	   *saved_rtable = es->rtable;
 		ListCell   *lst;
@@ -1074,14 +1069,26 @@ explain_outNode(StringInfo str,
 			    appendStringInfo(str, "  ");
 		    appendStringInfo(str, "  InitPlan  (slice%d)\n", sp->qDispSliceId);
 
-			es->rtable = sp->rtable;
-            for (i = 0; i < indent; i++)
+            /* 
+             * If subplan was dispatched to qExecs, ExecSetParamPlan() 
+             * should have allocated its own extratextbuf in which to 
+             * receive the qExecs' extra message text when it called 
+             * cdbexplain_recvExecStats().  (This way seemed easier than
+             * passing our own extratextbuf down to ExecSetParamPlan).
+             */
+            if (sps->cdbextratextbuf)
+                es->extratextbuf = sps->cdbextratextbuf;
+
+            es->rtable = sp->rtable;
+			for (i = 0; i < indent; i++)
 				appendStringInfo(str, "  ");
 			appendStringInfo(str, "    ->  ");
 			explain_outNode(str, sp->plan,
 							sps->planstate,
 							NULL,
 							indent + 4, es);
+
+            es->extratextbuf = saved_extratextbuf;
 		}
         es->currentSlice = saved_slice;
 		es->rtable = saved_rtable;
@@ -1239,6 +1246,8 @@ explain_outNode(StringInfo str,
 		{
 			SubPlanState *sps = (SubPlanState *) lfirst(lst);
 			SubPlan    *sp = (SubPlan *) sps->xprstate.expr;
+
+            Assert(!sps->cdbextratextbuf);
 
 			es->rtable = sp->rtable;
 			for (i = 0; i < indent; i++)

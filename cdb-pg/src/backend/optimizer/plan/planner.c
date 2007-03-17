@@ -1717,8 +1717,7 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 			/* The following estimate is very rough but good enough for planning. */
 			sizeof(HeapTupleData) + sizeof(HeapTupleHeaderData) + cheapest_path_width,
 			agg_counts->transitionSpace,
-			NULL,
-			NULL,
+            false,
 			NULL )
 		)
 		return false;

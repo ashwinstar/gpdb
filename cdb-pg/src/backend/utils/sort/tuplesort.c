@@ -87,6 +87,7 @@
  * above.  Nonetheless, with large workMem we can have many tapes.
  *
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -102,6 +103,8 @@
 #include "access/nbtree.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_operator.h"
+#include "executor/instrument.h"        /* Instrumentation */
+#include "lib/stringinfo.h"             /* StringInfo */
 #include "miscadmin.h"
 #include "utils/datum.h"
 #include "utils/logtape.h"
@@ -189,6 +192,7 @@ struct Tuplesortstate
 	int			nKeys;			/* number of columns in sort key */
 	bool		randomAccess;	/* did caller request random access? */
 	long		availMem;		/* remaining memory available, in bytes */
+    long        availMemMin;    /* CDB: availMem low water mark (bytes) */
 	long		allowedMem;		/* total memory allowed, in bytes */
 	int			maxTapes;		/* number of tapes (Knuth's T) */
 	int			tapeRange;		/* maxTapes-1 (Knuth's P) */
@@ -346,6 +350,13 @@ struct Tuplesortstate
 	int			datumTypeLen;
 	bool		datumTypeByVal;
 
+    /*
+     * CDB: EXPLAIN ANALYZE reporting interface and statistics.
+     */
+    struct Instrumentation *instrument;
+    struct StringInfoData  *explainbuf;
+    int64       spilledBytes;
+
 	/*
 	 * Resource snapshot for time of sort start.
 	 */
@@ -360,7 +371,14 @@ struct Tuplesortstate
 #define READTUP(state,stup,tape,len) ((*(state)->readtup) (state, stup, tape, len))
 #define LACKMEM(state)		((state)->availMem < 0)
 #define USEMEM(state,amt)	((state)->availMem -= (amt))
-#define FREEMEM(state,amt)	((state)->availMem += (amt))
+
+static inline void
+FREEMEM(Tuplesortstate *state, int amt)
+{
+    if (state->availMemMin > state->availMem)
+        state->availMemMin = state->availMem;
+    state->availMem += amt;
+}
 
 /*
  * NOTES about on-tape representation of tuples:
@@ -462,6 +480,9 @@ static void readtup_datum(Tuplesortstate *state, SortTuple *stup,
  * (The normal value of this parameter is work_mem, but some callers use
  * other values.)  Each variant also has a randomAccess parameter specifying
  * whether the caller needs non-sequential access to the sort result.
+ *
+ * CDB: During EXPLAIN ANALYZE, after tuplesort_begin_xxx() the caller should
+ * use tuplesort_set_instrument() (q.v.) to enable statistical reporting.
  */
 
 static Tuplesortstate *
@@ -497,7 +518,7 @@ tuplesort_begin_common(int workMem, bool randomAccess)
 	state->status = TSS_INITIAL;
 	state->randomAccess = randomAccess;
 	state->allowedMem = workMem * 1024L;
-	state->availMem = state->allowedMem;
+	state->availMemMin = state->availMem = state->allowedMem;
 	state->sortcontext = sortcontext;
 	state->tapeset = NULL;
 
@@ -736,6 +757,20 @@ tuplesort_end(Tuplesortstate *state)
 	if (state->tapeset)
 		LogicalTapeSetClose(state->tapeset);
 
+    /* 
+     * CDB: Report statistics to EXPLAIN ANALYZE. 
+     */ 
+    if (state->instrument)
+    {
+        double  workmemused;
+
+        /* How close did we come to the work_mem limit? */
+        FREEMEM(state, 0);              /* update low-water mark */
+        workmemused = state->allowedMem - state->availMemMin;
+        if (state->instrument->workmemused < workmemused)
+            state->instrument->workmemused = workmemused;
+    }
+
 #ifdef TRACE_SORT
 	if (trace_sort)
 	{
@@ -756,6 +791,29 @@ tuplesort_end(Tuplesortstate *state)
 	 */
 	MemoryContextDelete(state->sortcontext);
 }
+
+
+/*
+ * tuplesort_set_instrument
+ *
+ * May be called after tuplesort_begin_xxx() to enable reporting of
+ * statistics and events for EXPLAIN ANALYZE.
+ *
+ * The 'instr' and 'explainbuf' ptrs are retained in the 'state' object for
+ * possible use anytime during the sort, up to and including tuplesort_end().
+ * The caller must ensure that the referenced objects remain allocated and
+ * valid for the life of the Tuplestorestate object; or if they are to be
+ * freed early, disconnect them by calling again with NULL pointers.
+ */
+void 
+tuplesort_set_instrument(Tuplesortstate            *state,
+                         struct Instrumentation    *instrument,
+                         struct StringInfoData     *explainbuf)
+{
+    state->instrument = instrument;
+    state->explainbuf = explainbuf;
+}                               /* tuplesort_set_instrument */
+
 
 /*
  * Grow the memtuples[] array, if possible within our memory constraint.
@@ -1026,6 +1084,12 @@ tuplesort_performsort(Tuplesortstate *state)
 			 * mergeruns sets the correct state->status.
 			 */
 			dumptuples(state, true);
+
+            /* CDB: How much work_mem would be needed to sort in memory? */
+            if (state->instrument)
+                state->instrument->workmemwanted = 
+                    Max(state->instrument->workmemwanted, state->spilledBytes);
+
 			mergeruns(state);
 			state->eof_reached = false;
 			state->markpos_block = 0L;
@@ -1205,7 +1269,7 @@ tuplesort_gettuple_common(Tuplesortstate *state, bool forward,
 				if (stup->tuple)
 				{
 					tuplen = GetMemoryChunkSpace(stup->tuple);
-					state->availMem += tuplen;
+					FREEMEM(state, tuplen);
 					state->mergeavailmem[srcTape] += tuplen;
 				}
 				tuplesort_heap_siftup(state, false, 0);
@@ -1907,7 +1971,8 @@ mergeprereadone(Tuplesortstate *state, int srcTape)
 static void
 dumptuples(Tuplesortstate *state, bool alltuples)
 {
-	int bDumped = 0;
+	int     bDumped = 0;
+    long    spilledBytes = state->availMem;
 
 	while (alltuples ||
 		   (LACKMEM(state) && state->memtupcount > 1) ||
@@ -1954,6 +2019,11 @@ dumptuples(Tuplesortstate *state, bool alltuples)
 	}
 
 	if (bDumped) state->dumpcount++;
+
+    /* CDB: Accumulate total size of spilled tuples. */
+    spilledBytes = state->availMem - spilledBytes;
+    if (spilledBytes > 0)
+        state->spilledBytes += spilledBytes;
 }
 
 /*

@@ -1,14 +1,15 @@
 /*-------------------------------------------------------------------------
  *
- *  execBatch.h
+ *  execHashagg.h
  *		CDB addition to support hybrid hash aggregation algorithm.
  *
  *
+ * Portions Copyright (c) 2006-2007, Greenplum
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- * Portions Copyright (c) 2006, Greenplum
  *
- * $ID$
+ * IDENTIFICATION
+ *    $Id$
  *
  *-------------------------------------------------------------------------
  */
@@ -54,6 +55,16 @@ typedef struct HashAggEntry
 } HashAggEntry;
 
 
+typedef struct HashAggTableSizes
+{
+    int             nbuckets;   /* Calculated # of hash buckets. */
+    int             nentries;   /* Calculated # of hash entries. */
+    int             nbatches;   /* Calculated # of passes. */
+    int             workmem_initial;    /* estimated work_mem bytes at #entries=0 */
+    int             workmem_per_entry;  /* additional work_mem bytes per entry */
+} HashAggTableSizes;
+
+
 typedef enum HashAggState
 {
 	HASHAGG_BEFORE_FIRST_PASS,
@@ -97,6 +108,9 @@ typedef struct HashAggTable
 	/* Hash table iterator */
 	int				curr_bucket_idx;
 	HashAggEntry   *next_entry;	
+
+    /* CDB: Statistics for EXPLAIN ANALYZE */
+    HashAggTableSizes   hats;
 } HashAggTable;
 
 extern HashAggTable *create_agg_hash_table(AggState *aggstate);
@@ -116,9 +130,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 					   int numaggs,		/* Est # of aggregate functions */
 					   int keywidth,	/* Est per entry size of hash key. */
 					   int transpace,	/* Est per entry size of by-ref values. */
-					   int *p_nbuckets,	/* Calculated # of hash buckets. */
-					   int *p_nentries,	/* Calculated # of hash entries. */
-					   int *p_nbatches	/* Calculated # of passes. */
-					   );
+                       bool force,      /* true => succeed even if work_mem too small */
+                       HashAggTableSizes   *out_hats);
 					   
 #endif   /* EXECHASHAGG_H */

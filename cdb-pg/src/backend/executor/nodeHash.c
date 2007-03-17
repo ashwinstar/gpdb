@@ -633,14 +633,14 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
         StringInfo  buf = hashtable->stats->joinexplainbuf;
 
         appendStringInfo(buf, "Hash table > work_mem.  ");
-        appendStringInfo(buf, "%ld rows (%ldK bytes) of inner table shifted",
+        appendStringInfo(buf, "Shifted %ld inner rows (%ldK bytes)",
                          nfreed,
                          (long)((spaceFreed+1023)/1024));
         if (batchnomin < batchnomax)
-            appendStringInfo(buf, " into batches %d..%d", batchnomin, batchnomax);
+            appendStringInfo(buf, " to batches %d..%d", batchnomin, batchnomax);
         else if (batchnomax >= 0)
-            appendStringInfo(buf, " into batch %d", batchnomax);
-        appendStringInfo(buf, ", leaving %ld rows (%ldK bytes) in batch %d.\n",
+            appendStringInfo(buf, " to batch %d", batchnomax);
+        appendStringInfo(buf, " leaving %ld rows (%ldK bytes) in batch %d.\n",
                          ninmemory - nfreed,
                          (long)((hashtable->spaceUsed - hashtable->spaceFreed -
                                     spaceFreed + 1023)/1024),
@@ -944,13 +944,12 @@ ExecHashTableExplainInit(HashJoinState *hjstate,
     /* Switch to a memory context that survives until ExecutorEnd. */
     oldcxt = MemoryContextSwitchTo(hjstate->js.ps.state->es_query_cxt);
 
-    /* On first call, set EXPLAIN ANALYZE hooks in the PlanState nodes. */
+    /* On first call, set EXPLAIN ANALYZE hooks in the HashJoinState node. */
     if (!hjstate->js.ps.cdbexplainbuf)
     {
         Assert(!hashstate->ps.cdbexplainbuf && !hjstate->js.ps.cdbexplainfun);
 
-	    /* Allocate string buffers. */
-        hashstate->ps.cdbexplainbuf = makeStringInfo();
+	    /* Allocate string buffer. */
         hjstate->js.ps.cdbexplainbuf = makeStringInfo();
 
         /* Request a callback at end of query. */
@@ -960,7 +959,6 @@ ExecHashTableExplainInit(HashJoinState *hjstate,
     /* Create workarea and attach it to the HashJoinTable. */
     hashtable->stats = (HashJoinTableStats *)palloc0(sizeof(*hashtable->stats));
     hashtable->stats->joinexplainbuf = hjstate->js.ps.cdbexplainbuf;
-    hashtable->stats->hashexplainbuf = hashstate->ps.cdbexplainbuf;
     hashtable->stats->endedbatch = -1;
 
     /* Create per-batch statistics array. */
@@ -983,19 +981,19 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
     HashJoinState      *hjstate = (HashJoinState *)planstate;
     HashJoinTable       hashtable = hjstate->hj_HashTable;
     HashJoinTableStats *stats;
-    StringInfo          hbuf;
-    StringInfo          jbuf;
+    Instrumentation    *jinstrument = hjstate->js.ps.instrument;
+    StringInfo          jbuf = hjstate->js.ps.cdbexplainbuf;
+    int                 savelen;
     int                 total_buckets;
     int                 i;
 
     if (!hashtable ||
         !hashtable->stats ||
-        hashtable->nbatch < 1)
+        hashtable->nbatch < 1 ||
+        !jinstrument)
         return;
 
     stats = hashtable->stats;
-    hbuf = stats->hashexplainbuf;
-    jbuf = stats->joinexplainbuf;
 
     /* Report on batch in progress, in case the join is being ended early. */
     ExecHashTableExplainBatchEnd(hashtable);
@@ -1004,13 +1002,14 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
     if (hashtable->nbatch > 1)
     {
         /* If quitting before end of join, make an estimate. */
-        if (hashtable->curbatch < hashtable->nbatch &&
-            stats->nbatchstats >= hashtable->nbatch)
+        if (hashtable->curbatch < hashtable->nbatch)
         {
             int64       innerbytes = stats->innerbytes_sum;
 
             /* Add size of spilled batches not processed yet. */
-            for (i = hashtable->curbatch + 1; i < hashtable->nbatch; i++)
+            for (i = hashtable->curbatch + 1;
+                 i < hashtable->nbatch && i < stats->nbatchstats;
+                 i++)
                 innerbytes += stats->batchstats[i].innerfilesize;
 
             /* Don't guess less than the actual high-water mark. */
@@ -1018,32 +1017,36 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
                 innerbytes = stats->workmem_max;
 
             /* Probably an underestimate because tuples are smaller on disk. */
-            appendStringInfo(jbuf, "Suggest increasing work_mem above "
-                             INT64_FORMAT "K bytes to reduce workfile I/O.",
-                             (innerbytes + 1023) / 1024);
+            if (innerbytes > 0)
+                jinstrument->workmemwanted =
+                    Max(jinstrument->workmemwanted, innerbytes);
         }
 
         /* Exact work_mem requirement is known if join was run to completion. */
-        else
-            appendStringInfo(jbuf, "Would need work_mem = "
-                             INT64_FORMAT "K bytes to avoid workfile I/O.",
-                             (stats->innerbytes_sum + 1023) / 1024);
+        else if (stats->innerbytes_sum > work_mem * 1024L)
+            jinstrument->workmemwanted =
+                Max(jinstrument->workmemwanted, stats->innerbytes_sum);
     }
 
     /* Report actual work_mem high water mark. */
-    appendStringInfo(hbuf, "Used %dK bytes of work_mem.  ",
-                     (int)((stats->workmem_max + 1023) / 1024));
+    jinstrument->workmemused = Max(jinstrument->workmemused, stats->workmem_max);
 
     /* Report hash bucket statistics. */
+    savelen = jbuf->len;
     total_buckets = stats->nonemptybatches * hashtable->nbuckets;
     if (total_buckets > 0)
-        appendStringInfo(hbuf,
-                         "Hash chain length %.2f avg, %d max.  "
-                         "%d nonempty buckets (of %d).",
+        appendStringInfo(jbuf, "chain length %.1f avg, %d max, using "
+                         "%d of %d buckets.  ",
                          stats->chainlength_sum / stats->nonemptybuckets,
                          stats->chainlength_max,
                          stats->nonemptybuckets,
                          total_buckets);
+    if (hashtable->nbatch > 1)
+        appendStringInfo(jbuf, "%d batches nonempty, %d total.  ",
+                         stats->nonemptybatches,
+                         hashtable->nbatch);
+    if (savelen < jbuf->len)
+        appendStringInfoChar(jbuf, '\n');
 }                               /* ExecHashTableExplainEnd */
 
 
@@ -1070,13 +1073,6 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
         return;
     stats->endedbatch = curbatch;
 
-    /* Keep quiet if empty inner rel or empty inner batch. */
-    if (hashtable->nbatch == 0 ||
-        hashtable->totalTuples == 0)
-        return;
-
-    stats->nonemptybatches++;
-
     /* Update high-water mark for work_mem actually used at one time. */
     if (stats->workmem_max < innerbytes)
         stats->workmem_max = innerbytes;
@@ -1096,8 +1092,6 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
 
         Assert(batchstats &&
                hashtable->nbatch <= stats->nbatchstats);
-
-        appendStringInfo(jbuf, "batch %d ", curbatch);
 
         /* How much was read from workfiles for current batch? */
         if (curbatch > 0 &&
@@ -1130,6 +1124,9 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
         }
         wrsome = (owrbytes > 0 || iwrbytes > 0);
 
+        if (rdsome || wrsome)
+            appendStringInfo(jbuf, "batch %d: ", curbatch);
+
         if (rdsome)
             appendStringInfo(jbuf,
                              "read "
@@ -1145,24 +1142,34 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
                              rdsome ? "; " : "",
                              (owrbytes + 1023)/1024,
                              (iwrbytes + 1023)/1024);
-        appendStringInfoChar(jbuf, '\n');
+
+        if (rdsome || wrsome)
+            appendStringInfoChar(jbuf, '\n');
     }                           /* give workfile I/O statistics */
 
     /* Collect hash chain statistics. */
-    for (i = 0; i < hashtable->nbuckets; i++)
+    if (hashtable->totalTuples > 0)
     {
-        HashJoinTuple   hashtuple = hashtable->buckets[i];
-        int             chainlength;
-
-        if (hashtuple)
+        for (i = 0; i < hashtable->nbuckets; i++)
         {
-            nonemptybuckets++;
-            for (chainlength = 0; hashtuple; hashtuple = hashtuple->next)
-                chainlength++;
-            chainlength_sum += chainlength;
-            if (chainlength_max < chainlength)
-                chainlength_max = chainlength;
+            HashJoinTuple   hashtuple = hashtable->buckets[i];
+            int             chainlength;
+
+            if (hashtuple)
+            {
+                nonemptybuckets++;
+                for (chainlength = 0; hashtuple; hashtuple = hashtuple->next)
+                    chainlength++;
+                chainlength_sum += chainlength;
+                if (chainlength_max < chainlength)
+                    chainlength_max = chainlength;
+            }
         }
+        stats->nonemptybuckets += nonemptybuckets;
+        stats->chainlength_sum += chainlength_sum;
+        if (stats->chainlength_max < chainlength_max)
+            stats->chainlength_max = chainlength_max;
+        stats->nonemptybatches++;
     }
     stats->nonemptybuckets += nonemptybuckets;
     stats->chainlength_sum += chainlength_sum;

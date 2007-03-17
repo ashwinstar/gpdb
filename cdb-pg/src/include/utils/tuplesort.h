@@ -10,6 +10,7 @@
  * amounts are sorted using temporary files and a standard external sort
  * algorithm.
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -22,6 +23,10 @@
 
 #include "access/itup.h"
 #include "executor/tuptable.h"
+
+struct Instrumentation;                 /* #include "executor/instrument.h" */
+struct StringInfoData;                  /* #include "lib/stringinfo.h" */
+
 
 
 /* Tuplesortstate is an opaque type whose details are not known outside
@@ -88,6 +93,23 @@ extern int	tuplesort_merge_order(long allowedMem);
 extern void tuplesort_rescan(Tuplesortstate *state);
 extern void tuplesort_markpos(Tuplesortstate *state);
 extern void tuplesort_restorepos(Tuplesortstate *state);
+
+/*
+ * tuplesort_set_instrument
+ *
+ * May be called after tuplesort_begin_xxx() to enable reporting of
+ * statistics and events for EXPLAIN ANALYZE.
+ *
+ * The 'instr' and 'explainbuf' ptrs are retained in the 'state' object for
+ * possible use anytime during the sort, up to and including tuplesort_end().
+ * The caller must ensure that the referenced objects remain allocated and
+ * valid for the life of the Tuplestorestate object; or if they are to be
+ * freed early, disconnect them by calling again with NULL pointers.
+ */
+void 
+tuplesort_set_instrument(Tuplesortstate            *state,
+                         struct Instrumentation    *instrument,
+                         struct StringInfoData     *explainbuf);
 
 /*
  * This routine selects an appropriate sorting function to implement
