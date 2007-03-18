@@ -502,8 +502,10 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	/*
 	 * Set "raw tuples" count equal to "rows" for the appendrel; needed
 	 * because some places assume rel->tuples is valid for any baserel.
+     *
+     * CDB: Already set rel->tuples accurately above.
 	 */
-	rel->tuples = rel->rows;
+	/* rel->tuples = rel->rows; */
 
 	/*
 	 * Finally, build Append path and install it as the only access path for
