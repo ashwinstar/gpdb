@@ -114,8 +114,8 @@ BitmapHeapNext(BitmapHeapScanState *node)
 	{
 		tbm = (Node *) MultiExecProcNode(outerPlanState(node));
 
-		if (!tbm || !(IsA(tbm, HashBitmap) ||
-					  IsA(tbm, StreamBitmap)))
+		if (tbm != NULL && (!(IsA(tbm, HashBitmap) ||
+							  IsA(tbm, StreamBitmap))))
 			elog(ERROR, "unrecognized result from subplan");
 
 		node->tbm = tbm;
@@ -129,7 +129,11 @@ BitmapHeapNext(BitmapHeapScanState *node)
 
 		if (tbmres == NULL || tbmres->ntuples == 0)
 		{
-			more = tbm_iterate(tbm, tbmres);
+			if (tbm == NULL)
+				more = false;
+			else
+				more = tbm_iterate(tbm, tbmres);
+
 			if (!more)
 			{
 				/* no more entries in the bitmap */
