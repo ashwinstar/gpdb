@@ -239,6 +239,9 @@ DECLARE_UNIQUE_INDEX(mpp_configuration_dbid_index, 2858, on mpp_configuration us
 DECLARE_UNIQUE_INDEX(mpp_policy_localoid_index, 2859, on mpp_distribution_policy using btree(localoid oid_ops));
 #define MppPolicyLocalOidIndexId  2859
 
+DECLARE_UNIQUE_INDEX(pg_window_fnoid_index, 5005, on pg_window using btree(winfnoid oid_ops));
+#define WindowFnoidIndexId  5005
+
 
 /* last step of initialization script: build the indexes declared above */
 BUILD_INDICES

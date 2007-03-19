@@ -127,6 +127,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 										 pltemplate->tmplhandler,
 										 pltemplate->tmpllibrary,
 										 false, /* isAgg */
+										 false, /* isWin */
 										 false, /* security_definer */
 										 false, /* isStrict */
 										 PROVOLATILE_VOLATILE,
@@ -158,6 +159,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 										 pltemplate->tmplvalidator,
 										 pltemplate->tmpllibrary,
 										 false, /* isAgg */
+										 false, /* isWin */
 										 false, /* security_definer */
 										 false, /* isStrict */
 										 PROVOLATILE_IMMUTABLE,

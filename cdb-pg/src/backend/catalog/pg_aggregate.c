@@ -78,7 +78,9 @@ AggregateCreateWithOid(const char *aggName,
 	Datum		values[Natts_pg_aggregate];
 	Form_pg_proc proc;
 	Oid			transfn;
+	Oid			invtransfn = InvalidOid; /* MPP windowing optimization */
 	Oid			prelimfn = InvalidOid;	/* if omitted, disables MPP 2-stage for this aggregate */
+	Oid			invprelimfn = InvalidOid; /* MPP windowing optimization */
 	Oid			finalfn = InvalidOid;	/* can be omitted */
 	Oid			sortop = InvalidOid;	/* can be omitted */
 	bool		hasPolyArg;
@@ -268,6 +270,7 @@ AggregateCreateWithOid(const char *aggName,
 							  "aggregate_dummy",		/* placeholder proc */
 							  "-",		/* probin */
 							  true,		/* isAgg */
+							  false,	/* isWin */
 							  false,	/* security invoker (currently not
 										 * definable for agg) */
 							  false,	/* isStrict (not needed for agg) */
@@ -291,7 +294,9 @@ AggregateCreateWithOid(const char *aggName,
 	}
 	values[Anum_pg_aggregate_aggfnoid - 1] = ObjectIdGetDatum(procOid);
 	values[Anum_pg_aggregate_aggtransfn - 1] = ObjectIdGetDatum(transfn);
+	values[Anum_pg_aggregate_agginvtransfn - 1] = ObjectIdGetDatum(invtransfn); 
 	values[Anum_pg_aggregate_aggprelimfn - 1] = ObjectIdGetDatum(prelimfn);
+	values[Anum_pg_aggregate_agginvprelimfn - 1] = ObjectIdGetDatum(invprelimfn);
 	values[Anum_pg_aggregate_aggfinalfn - 1] = ObjectIdGetDatum(finalfn);
 	values[Anum_pg_aggregate_aggsortop - 1] = ObjectIdGetDatum(sortop);
 	values[Anum_pg_aggregate_aggtranstype - 1] = ObjectIdGetDatum(aggTransType);
@@ -326,11 +331,29 @@ AggregateCreateWithOid(const char *aggName,
 	referenced.objectSubId = 0;
 	recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 
-	/* Depends on prelim function, if any */
+	/* Depends on inverse transition function, if any */
+	if (OidIsValid(prelimfn))
+	{
+		referenced.classId = ProcedureRelationId;
+		referenced.objectId = invtransfn;
+		referenced.objectSubId = 0;
+		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+	}
+
+	/* Depends on preliminary aggregation function, if any */
 	if (OidIsValid(prelimfn))
 	{
 		referenced.classId = ProcedureRelationId;
 		referenced.objectId = prelimfn;
+		referenced.objectSubId = 0;
+		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+	}
+
+	/* Depends on inverse preliminary aggregation function, if any */
+	if (OidIsValid(invprelimfn))
+	{
+		referenced.classId = ProcedureRelationId;
+		referenced.objectId = invprelimfn;
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 	}

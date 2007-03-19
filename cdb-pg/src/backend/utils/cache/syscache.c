@@ -39,6 +39,7 @@
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_window.h"
 #include "utils/syscache.h"
 
 
@@ -513,6 +514,18 @@ static const struct cachedesc cacheinfo[] = {
 			0
 		},
 		1024
+	},
+	{WindowRelationId,		/* WINFNOID */
+		WindowFnoidIndexId,
+		0,
+		1,
+		{
+			Anum_pg_window_winfnoid,
+			0,
+			0,
+			0
+		},
+		32
 	}
 };
 

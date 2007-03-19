@@ -66,6 +66,7 @@ ProcedureCreate(const char *procedureName,
 				const char *prosrc,
 				const char *probin,
 				bool isAgg,
+				bool isWin,
 				bool security_definer,
 				bool isStrict,
 				char volatility,
@@ -222,6 +223,7 @@ ProcedureCreate(const char *procedureName,
 	values[Anum_pg_proc_proowner - 1] = ObjectIdGetDatum(GetUserId());
 	values[Anum_pg_proc_prolang - 1] = ObjectIdGetDatum(languageObjectId);
 	values[Anum_pg_proc_proisagg - 1] = BoolGetDatum(isAgg);
+	values[Anum_pg_proc_proiswin - 1] = BoolGetDatum(isWin);
 	values[Anum_pg_proc_prosecdef - 1] = BoolGetDatum(security_definer);
 	values[Anum_pg_proc_proisstrict - 1] = BoolGetDatum(isStrict);
 	values[Anum_pg_proc_proretset - 1] = BoolGetDatum(returnsSet);
@@ -307,7 +309,7 @@ ProcedureCreate(const char *procedureName,
 						 errhint("Use DROP FUNCTION first.")));
 		}
 
-		/* Can't change aggregate status, either */
+		/* Can't change aggregate or window status, either */
 		if (oldproc->proisagg != isAgg)
 		{
 			if (oldproc->proisagg)
@@ -319,6 +321,19 @@ ProcedureCreate(const char *procedureName,
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("function \"%s\" is not an aggregate",
+								procedureName)));
+		}
+		if (oldproc->proiswin != isWin)
+		{
+			if (oldproc->proiswin)
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("function \"%s\" is a window function",
+								procedureName)));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("function \"%s\" is not a window function",
 								procedureName)));
 		}
 

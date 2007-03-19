@@ -670,6 +670,7 @@ CreateFunction(CreateFunctionStmt *stmt)
 					prosrc_str, /* converted to text later */
 					probin_str, /* converted to text later */
 					false,		/* not an aggregate */
+					false,		/* not a window function */
 					security,
 					isStrict,
 					volatility,
