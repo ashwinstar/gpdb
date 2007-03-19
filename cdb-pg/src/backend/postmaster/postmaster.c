@@ -32,7 +32,7 @@
  *	  clients.
  *
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -158,12 +158,20 @@ typedef struct bkend
 
 static Dllist *BackendList;
 
+/* CDB */
+typedef enum pmsub_type
+{
+	SeqServerProc = 0,
+	MaxPMSubType  = 1 /* must always be last */
+} PMSubType;
+
 #ifdef EXEC_BACKEND
 /*
  * Number of entries in the backend table. Twice the number of backends,
- * plus five other subprocesses (stats, bgwriter, autovac, logger, seqserver).
+ * plus four other subprocesses (stats, bgwriter, autovac, logger).
+ * plus CDB subprocs (eg seqserver)
  */
-#define NUM_BACKENDARRAY_ELEMS (2*MaxBackends + 5)
+#define NUM_BACKENDARRAY_ELEMS (2*MaxBackends + 4 + MaxPMSubType)
 static Backend *ShmemBackendArray;
 #endif
 
@@ -221,8 +229,18 @@ static pid_t StartupPID = 0,
 			AutoVacPID = 0,
 			PgArchPID = 0,
 			PgStatPID = 0,
-			SeqServerPID = 0,
+/*			SeqServerPID = 0, */
 			SysLoggerPID = 0;
+
+/* CDB */
+
+typedef struct pmsubproc
+{
+	pid_t		pid;			/* process id */	  
+	PMSubType   procType;       /* process type */
+} PMSubProc;
+
+static PMSubProc PMSubProcList[MaxPMSubType] = {{0, SeqServerProc}};
 
 /* Startup/shutdown state */
 #define			NoShutdown		0
@@ -1342,9 +1360,9 @@ ServerLoop(void)
 			PgStatPID = pgstat_start();
 		
 		/* MPP: If we have lost the sequence Server, try to start a new one */
-		if (SeqServerPID == 0 && Mpp_entry_postmaster &&
+		if (PMSubProcList[SeqServerProc].pid == 0 && Mpp_entry_postmaster &&
 			StartupPID == 0 && !FatalError && Shutdown == NoShutdown && !SyncMaster)
-			SeqServerPID = seqserver_start();
+			PMSubProcList[SeqServerProc].pid = seqserver_start();
 
 		/*
 		 * Touch the socket and lock file every 58 minutes, to ensure that
@@ -1867,6 +1885,20 @@ ClosePostmasterPorts(bool am_syslogger)
 		}
 	}
 
+
+/* XXX XXX: 
+#ifndef WIN32
+#define INVALID_PIPE_VAL -1
+#else
+#define INVALID_PIPE_VAL 0
+#endif
+
+		if (syslogPipe[0] > INVALID_PIPE_VAL)
+			close(syslogPipe[0]);
+		syslogPipe[0] = INVALID_PIPE_VAL;
+*/
+
+
 	/* If using syslogger, close the read side of the pipe */
 	if (!am_syslogger)
 	{
@@ -1923,8 +1955,8 @@ SIGHUP_handler(SIGNAL_ARGS)
 			signal_child(AutoVacPID, SIGHUP);
 		if (PgArchPID != 0)
 			signal_child(PgArchPID, SIGHUP);
-		if (SeqServerPID != 0)
-			signal_child(SeqServerPID, SIGHUP);		
+		if (PMSubProcList[SeqServerProc].pid != 0)
+			signal_child(PMSubProcList[SeqServerProc].pid, SIGHUP);		
 		if (SysLoggerPID != 0)
 			signal_child(SysLoggerPID, SIGHUP);
 		/* PgStatPID does not currently need SIGHUP */
@@ -2002,8 +2034,8 @@ pmdie(SIGNAL_ARGS)
 			if (PgArchPID != 0)
 				signal_child(PgArchPID, SIGQUIT);
 			/* Tell seqserver to shut down too; nothing left for it to do */
-			if (SeqServerPID != 0)
-				signal_child(SeqServerPID, SIGQUIT);
+			if (PMSubProcList[SeqServerProc].pid != 0)
+				signal_child(PMSubProcList[SeqServerProc].pid, SIGQUIT);
 			/* Tell pgstat to shut down too; nothing left for it to do */
 			if (PgStatPID != 0)
 				signal_child(PgStatPID, SIGQUIT);
@@ -2060,8 +2092,8 @@ pmdie(SIGNAL_ARGS)
 			if (PgArchPID != 0)
 				signal_child(PgArchPID, SIGQUIT);
 			/* Tell seqserver to shut down too; nothing left for it to do */
-			if (SeqServerPID != 0)
-				signal_child(SeqServerPID, SIGQUIT);
+			if (PMSubProcList[SeqServerProc].pid != 0)
+				signal_child(PMSubProcList[SeqServerProc].pid, SIGQUIT);
 			/* Tell pgstat to shut down too; nothing left for it to do */
 			if (PgStatPID != 0)
 				signal_child(PgStatPID, SIGQUIT);
@@ -2085,8 +2117,8 @@ pmdie(SIGNAL_ARGS)
 				signal_child(AutoVacPID, SIGQUIT);
 			if (PgArchPID != 0)
 				signal_child(PgArchPID, SIGQUIT);
-			if (SeqServerPID != 0)
-				signal_child(SeqServerPID, SIGQUIT);
+			if (PMSubProcList[SeqServerProc].pid != 0)
+				signal_child(PMSubProcList[SeqServerProc].pid, SIGQUIT);
 			if (PgStatPID != 0)
 				signal_child(PgStatPID, SIGQUIT);
 			if (DLGetHead(BackendList))
@@ -2201,8 +2233,8 @@ reaper(SIGNAL_ARGS)
 					PgArchPID = pgarch_start();
 				if (PgStatPID == 0)
 					PgStatPID = pgstat_start();
-				if (SeqServerPID == 0 && Mpp_entry_postmaster )
-					SeqServerPID = seqserver_start();
+				if (PMSubProcList[SeqServerProc].pid == 0 && Mpp_entry_postmaster )
+					PMSubProcList[SeqServerProc].pid = seqserver_start();
 			}
 
 			continue;
@@ -2294,14 +2326,14 @@ reaper(SIGNAL_ARGS)
 		 * no need to force reset of the rest of the system. (If fail, we'll
 		 * try again in future cycles of the main loop.)
 		 */
-		if (SeqServerPID != 0 && pid == SeqServerPID && Mpp_entry_postmaster )
+		if (PMSubProcList[SeqServerProc].pid != 0 && pid == PMSubProcList[SeqServerProc].pid && Mpp_entry_postmaster )
 		{
-			SeqServerPID = 0;
+			PMSubProcList[SeqServerProc].pid = 0;
 			if (exitstatus != 0)
 				LogChildExit(LOG, _("seqserver process"),
 							 pid, exitstatus);
 			if (StartupPID == 0 && !FatalError && Shutdown == NoShutdown)
-				SeqServerPID = seqserver_start();
+				PMSubProcList[SeqServerProc].pid = seqserver_start();
 			continue;
 		}
 		
@@ -2375,8 +2407,8 @@ reaper(SIGNAL_ARGS)
 		if (PgArchPID != 0)
 			signal_child(PgArchPID, SIGQUIT);
 		/* Tell seqserver to shut down too; nothing left for it to do */
-		if (SeqServerPID != 0)
-			signal_child(SeqServerPID, SIGQUIT);
+		if (PMSubProcList[SeqServerProc].pid != 0)
+			signal_child(PMSubProcList[SeqServerProc].pid, SIGQUIT);
 		/* Tell pgstat to shut down too; nothing left for it to do */
 		if (PgStatPID != 0)
 			signal_child(PgStatPID, SIGQUIT);
@@ -2530,15 +2562,15 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		signal_child(PgArchPID, SIGQUIT);
 	}
 	
-	/* Force a power-cyle of the seqserver process too */
+	/* Force a power-cycle of the seqserver process too */
 	/* (Shouldn't be necessary, but just for luck) */
-	if (SeqServerPID != 0 && !FatalError)
+	if (PMSubProcList[SeqServerProc].pid != 0 && !FatalError)
 	{
 		ereport(DEBUG2,
 				(errmsg_internal("sending %s to process %d",
 								 "SIGQUIT",
-								 (int) SeqServerPID)));
-		kill(SeqServerPID, SIGQUIT);
+								 (int) PMSubProcList[SeqServerProc].pid)));
+		kill(PMSubProcList[SeqServerProc].pid, SIGQUIT);
 	}
 
 	/* Force a power-cycle of the pgstat process too */
