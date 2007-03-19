@@ -238,12 +238,15 @@ typedef struct pmsubproc
 {
 	pid_t		pid;			/* process id */	  
 	PMSubType   procType;       /* process type */
-	PMSubStartCallback *procStart; /* server start function */
+	PMSubStartCallback *serverStart; /* server start function */
+	char       *procName;
 } PMSubProc;
 
 static PMSubProc PMSubProcList[MaxPMSubType] = 
 {
-	{0, SeqServerProc, (PMSubStartCallback*)&seqserver_start}
+	{0, SeqServerProc, 
+	 (PMSubStartCallback*)&seqserver_start, 
+	 "seqserver process"}
 };
 
 /* Startup/shutdown state */
@@ -1364,12 +1367,19 @@ ServerLoop(void)
 			PgStatPID = pgstat_start();
 		
 		/* MPP: If we have lost the sequence Server, try to start a new one */
-		if (PMSubProcList[SeqServerProc].pid == 0 && Mpp_entry_postmaster &&
-			StartupPID == 0 && !FatalError && Shutdown == NoShutdown && !SyncMaster)
-			PMSubProcList[SeqServerProc].pid = 
-					(PMSubProcList[SeqServerProc].procStart)();
-/*seqserver_start(); */
+		{
+			int ii;
 
+			for (ii = 0; ii < MaxPMSubType; ii++)
+			{
+				PMSubProc *subProc = &PMSubProcList[ii];
+				if (subProc->pid == 0 && Mpp_entry_postmaster &&
+					StartupPID == 0 && !FatalError && 
+					Shutdown == NoShutdown && !SyncMaster)
+						subProc->pid = 
+							(subProc->serverStart)();
+			}
+		}
 		/*
 		 * Touch the socket and lock file every 58 minutes, to ensure that
 		 * they are not removed by overzealous /tmp-cleaning tasks.  We assume
@@ -1961,8 +1971,18 @@ SIGHUP_handler(SIGNAL_ARGS)
 			signal_child(AutoVacPID, SIGHUP);
 		if (PgArchPID != 0)
 			signal_child(PgArchPID, SIGHUP);
-		if (PMSubProcList[SeqServerProc].pid != 0)
-			signal_child(PMSubProcList[SeqServerProc].pid, SIGHUP);		
+		{
+			int ii;
+
+			for (ii = 0; ii < MaxPMSubType; ii++)
+			{
+				PMSubProc *subProc = &PMSubProcList[ii];
+
+				if (subProc->pid != 0)
+					signal_child(subProc->pid, SIGHUP);		
+			}
+		}
+
 		if (SysLoggerPID != 0)
 			signal_child(SysLoggerPID, SIGHUP);
 		/* PgStatPID does not currently need SIGHUP */
@@ -2040,8 +2060,17 @@ pmdie(SIGNAL_ARGS)
 			if (PgArchPID != 0)
 				signal_child(PgArchPID, SIGQUIT);
 			/* Tell seqserver to shut down too; nothing left for it to do */
-			if (PMSubProcList[SeqServerProc].pid != 0)
-				signal_child(PMSubProcList[SeqServerProc].pid, SIGQUIT);
+			{
+				int ii;
+
+				for (ii = 0; ii < MaxPMSubType; ii++)
+				{
+					PMSubProc *subProc = &PMSubProcList[ii];
+
+					if (subProc->pid != 0)
+						signal_child(subProc->pid, SIGQUIT);		
+				}
+			}
 			/* Tell pgstat to shut down too; nothing left for it to do */
 			if (PgStatPID != 0)
 				signal_child(PgStatPID, SIGQUIT);
@@ -2098,8 +2127,17 @@ pmdie(SIGNAL_ARGS)
 			if (PgArchPID != 0)
 				signal_child(PgArchPID, SIGQUIT);
 			/* Tell seqserver to shut down too; nothing left for it to do */
-			if (PMSubProcList[SeqServerProc].pid != 0)
-				signal_child(PMSubProcList[SeqServerProc].pid, SIGQUIT);
+			{
+				int ii;
+
+				for (ii = 0; ii < MaxPMSubType; ii++)
+				{
+					PMSubProc *subProc = &PMSubProcList[ii];
+
+					if (subProc->pid != 0)
+						signal_child(subProc->pid, SIGQUIT);		
+				}
+			}
 			/* Tell pgstat to shut down too; nothing left for it to do */
 			if (PgStatPID != 0)
 				signal_child(PgStatPID, SIGQUIT);
@@ -2123,8 +2161,17 @@ pmdie(SIGNAL_ARGS)
 				signal_child(AutoVacPID, SIGQUIT);
 			if (PgArchPID != 0)
 				signal_child(PgArchPID, SIGQUIT);
-			if (PMSubProcList[SeqServerProc].pid != 0)
-				signal_child(PMSubProcList[SeqServerProc].pid, SIGQUIT);
+			{
+				int ii;
+
+				for (ii = 0; ii < MaxPMSubType; ii++)
+				{
+					PMSubProc *subProc = &PMSubProcList[ii];
+
+					if (subProc->pid != 0)
+						signal_child(subProc->pid, SIGQUIT);		
+				}
+			}
 			if (PgStatPID != 0)
 				signal_child(PgStatPID, SIGQUIT);
 			if (DLGetHead(BackendList))
@@ -2239,10 +2286,18 @@ reaper(SIGNAL_ARGS)
 					PgArchPID = pgarch_start();
 				if (PgStatPID == 0)
 					PgStatPID = pgstat_start();
-				if (PMSubProcList[SeqServerProc].pid == 0 && Mpp_entry_postmaster )
-					PMSubProcList[SeqServerProc].pid = 
-					(PMSubProcList[SeqServerProc].procStart)();
-/*seqserver_start(); */
+				{
+					int ii;
+					
+					for (ii = 0; ii < MaxPMSubType; ii++)
+					{
+						PMSubProc *subProc = &PMSubProcList[ii];
+
+						if (subProc->pid == 0 && Mpp_entry_postmaster )
+							subProc->pid = 
+								(subProc->serverStart)();
+					}
+				}
 			}
 
 			continue;
@@ -2334,19 +2389,33 @@ reaper(SIGNAL_ARGS)
 		 * no need to force reset of the rest of the system. (If fail, we'll
 		 * try again in future cycles of the main loop.)
 		 */
-		if (PMSubProcList[SeqServerProc].pid != 0 && pid == PMSubProcList[SeqServerProc].pid && Mpp_entry_postmaster )
 		{
-			PMSubProcList[SeqServerProc].pid = 0;
-			if (exitstatus != 0)
-				LogChildExit(LOG, _("seqserver process"),
-							 pid, exitstatus);
-			if (StartupPID == 0 && !FatalError && Shutdown == NoShutdown)
-				PMSubProcList[SeqServerProc].pid = 
-					(PMSubProcList[SeqServerProc].procStart)();
-/* seqserver_start(); */
+			int ii;
+
+			for (ii = 0; ii < MaxPMSubType; ii++)
+			{
+				PMSubProc *subProc = &PMSubProcList[ii];
+
+				if (subProc->pid != 0 &&
+					pid == subProc->pid && Mpp_entry_postmaster )
+				{
+					subProc->pid = 0;
+
+					if (exitstatus != 0)
+						LogChildExit(LOG, subProc->procName,
+									 pid, exitstatus);
+
+					if (StartupPID == 0 && !FatalError && 
+						Shutdown == NoShutdown)
+					subProc->pid = 
+						(subProc->serverStart)();
+				}
+
+
+			} /* end for */
 			continue;
 		}
-		
+
 		/*
 		 * Was it the statistics collector?  If so, just try to start a new
 		 * one; no need to force reset of the rest of the system.  (If fail,
@@ -2417,8 +2486,17 @@ reaper(SIGNAL_ARGS)
 		if (PgArchPID != 0)
 			signal_child(PgArchPID, SIGQUIT);
 		/* Tell seqserver to shut down too; nothing left for it to do */
-		if (PMSubProcList[SeqServerProc].pid != 0)
-			signal_child(PMSubProcList[SeqServerProc].pid, SIGQUIT);
+		{
+			int ii;
+
+			for (ii = 0; ii < MaxPMSubType; ii++)
+			{
+				PMSubProc *subProc = &PMSubProcList[ii];
+
+				if (subProc->pid != 0)
+					signal_child(subProc->pid, SIGQUIT);		
+			}
+		}
 		/* Tell pgstat to shut down too; nothing left for it to do */
 		if (PgStatPID != 0)
 			signal_child(PgStatPID, SIGQUIT);
@@ -2574,15 +2652,23 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 	
 	/* Force a power-cycle of the seqserver process too */
 	/* (Shouldn't be necessary, but just for luck) */
-	if (PMSubProcList[SeqServerProc].pid != 0 && !FatalError)
 	{
-		ereport(DEBUG2,
-				(errmsg_internal("sending %s to process %d",
-								 "SIGQUIT",
-								 (int) PMSubProcList[SeqServerProc].pid)));
-		kill(PMSubProcList[SeqServerProc].pid, SIGQUIT);
-	}
+		int ii;
 
+		for (ii = 0; ii < MaxPMSubType; ii++)
+		{
+			PMSubProc *subProc = &PMSubProcList[ii];
+
+			if (subProc->pid != 0 && !FatalError)
+			{
+				ereport(DEBUG2,
+						(errmsg_internal("sending %s to process %d",
+										 "SIGQUIT",
+										 (int) subProc->pid)));
+				kill(subProc->pid, SIGQUIT);
+			}
+		}
+	}
 	/* Force a power-cycle of the pgstat process too */
 	/* (Shouldn't be necessary, but just for luck) */
 	if (PgStatPID != 0 && !FatalError)
