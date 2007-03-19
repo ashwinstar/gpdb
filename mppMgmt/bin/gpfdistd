@@ -2,8 +2,14 @@
 '''
 gpfdistd -- file distribution daemon in http protocol
 
-Usage: gpfdistd -p port file
+Usage: gpfdistd [-?v] [-p port] [-d dir]
 
+         -?      : print this help screen
+         -v      : verbose mode
+         -p port : which port to serve HTTP. Default to 8080
+         -d dir  : serve files under the specified directory. 
+                   Default to '.'
+	
 '''
 
 import SocketServer, BaseHTTPServer, os, sys, getopt, threading, time, socket
@@ -11,7 +17,8 @@ import SocketServer, BaseHTTPServer, os, sys, getopt, threading, time, socket
 opt = {}
 opt['-p'] = 8080
 opt['-v'] = False
-distFname = None
+opt['-d'] = '.'
+
 
 def usage(exitarg):
     print __doc__
@@ -22,70 +29,143 @@ def parseInt(val):
     except ValueError: return 0
 
 def parseCommandLine():
-    global opt, distFname
+    global opt
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?vp:')
+	(options, args) = getopt.getopt(sys.argv[1:], '?vp:d:')
     except Exception, e:
 	usage('Error: ' + str(e))
 
     for (switch, val) in options:
 	if (switch == '-?'):		usage(0)
         elif (switch == '-v'):		opt[switch] = True
+        elif (switch == '-d'):          opt[switch] = val
         elif (switch[1] in 'p'):	opt[switch] = parseInt(val)
 
-    if not opt['-p'] > 0: usage('Error: please specify port number for -p switch')
+    if not opt['-p'] > 0: 
+	usage('Error: please specify port number for -p switch')
 
-    if (len(args) != 1): usage('Please specify a file to distribute')
-    distFname = args[0]
+    if not os.path.isdir(opt['-d']):
+	usage('Error: please specify a directory for -d switch')
+
+    opt['-d'] = os.path.abspath(opt['-d'])
+    if (opt['-d'] == '/'):
+	usage('Security Error: cannot run under root (/) directory')
+
+    if len(args) != 0:
+	usage(1)
+	    
+
+class Session:
+    def __init__(self, fd, fname):
+	self.m_fname = fname
+	self.m_fd = fd
+	self.m_sem = threading.Semaphore(1)
+	self.m_residue = None
+
+    def readFile(self):
+	lines = []
+	self.m_sem.acquire()
+	try:
+	    if self.m_fd:
+		if self.m_residue:
+		    lines.append(self.m_residue);
+		    self.m_residue = None
+		while not self.m_residue and self.m_fd:
+		    chunk = self.m_fd.read(1024*32)
+		    if not chunk:
+			self.m_fd.close()
+			self.m_fd = None
+		    else:
+			i = chunk.find('\n')
+			if i >= 0:
+			    i = i + 1
+			    lines.append(chunk[:i])
+			    self.m_residue = chunk[i:]
+			else:
+			    lines.append(chunk)
+	finally:
+	    self.m_sem.release()
+
+	return lines
+
+#
+#  Session dictionary 
+#    sess[TID][fname] is a Session object 
+#
+sess = {}
+sessSem = threading.Semaphore(1)
+def findSession(TID, fname):
+    global sess, sessSem
+    sessSem.acquire()
+    try:
+	if TID not in sess:
+	    sess[TID] = {}
+
+	if fname not in sess[TID]:
+	    try:
+		fd = open(fname, 'r', 1024*1024)
+		sess[TID][fname] = Session(fd, fname)
+	    except IOError:
+		return None
+    finally:
+	sessSem.release();
+
+    return sess[TID][fname]
 
 
-parseCommandLine()
-distFile = open(distFname, "r", 1024*256*4)
-distFileSem = threading.Semaphore(1)
-distFileResidue = None
-def readFile():
-    global distFile, distFileSem, distFileResidue
-    distFileSem.acquire()
-    lines = []
-    if not distFile:
-	print 'completed'
-    else:
-	if distFileResidue: 
-	    lines.append(distFileResidue);
-	    distFileResidue = None
-	while not distFileResidue and distFile:
-	    chunk = distFile.read(1024*32)
-	    if not chunk:
-		distFile.close()
-		distFile = None
-	    else:
-		i = chunk.find('\n')
-		if i >= 0:
-		    i = i + 1
-		    lines.append(chunk[:i])
-		    distFileResidue = chunk[i:]
-		else:
-		    lines.append(chunk)
-    distFileSem.release()
-    #time.sleep(1)
-    return lines
-
-
+#
+#  Class to handle individual request
+#
 class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
-    def do_GET(self):
-	print self.headers;
-	self.send_head()
-	while 1:
-	    chunks = readFile()
-	    if not chunks: break
-	    for c in chunks:
-		self.wfile.write(c)
+    counter = 0
 
-    def send_head(self):
-	self.send_response(200)
-	self.send_header("Content-type", "text/plain")
-	self.end_headers()
+    def send400(self, msg):
+	print 'ERROR: %s' % msg
+	self.send_response(400)
+	return None
+
+    def do_GET(self):
+	try:
+	    GPFDistRequestHandler.counter = GPFDistRequestHandler.counter + 1
+	    TID = self.headers.getheader('X-GP-TID')
+	    if not TID:
+		# start an non-transaction session
+		TID = 'auto-xact.' + str(GPFDistRequestHandler.counter)
+
+	    fname = self.path
+	    if fname.find('/') == 0: fname = fname[1:]
+	    fname = os.path.join(opt['-d'], fname)
+	    fname = os.path.normpath(fname)
+	    if fname.find('..') >= 0:
+		msg = 'bad path specified (%s)' % (self.path)
+		return self.send400(msg)
+
+	    s = findSession(TID, fname)
+	    if not s:
+		msg = 'unable to serve TID %s' % TID
+		return self.send400(msg)
+
+	    self.send_response(200)
+	    self.send_header("Content-type", "text/plain")
+	    self.end_headers()
+
+	    bytes = 0
+	    while 1:
+		chunks = s.readFile()
+		if not chunks: break
+		for c in chunks:
+		    self.wfile.write(c)
+		    bytes = bytes + len(c)
+
+		if opt['-v']: print '  %s %d' % (fname, bytes)
+
+	    if opt['-v']: print '  %s done' % fname
+	    if TID.find('auto-xact.') == 0:
+		del sess[TID]
+
+	except socket.error, e:
+	    print 'socket error: ', str(e), 'while serving', self.path
 
 
 class GPFDistServer(SocketServer.ThreadingTCPServer):
@@ -98,12 +178,14 @@ class GPFDistServer(SocketServer.ThreadingTCPServer):
 	self.server_name = socket.getfqdn(host)
 	self.server_post = port
 
+
 try:
+    parseCommandLine()
     serverAddress = ('', opt['-p'])
     GPFDistRequestHandler.protocol_version = "HTTP/1.0"
     httpd = GPFDistServer(serverAddress, GPFDistRequestHandler)
     sa = httpd.socket.getsockname()
-    print "Serving HTTP on", sa[0], "port", sa[1], "..."
+    print "Serving HTTP on %s:%d, directory %s ..." % (sa[0], sa[1], os.path.abspath(opt['-d']))
     httpd.serve_forever()
 
 except KeyboardInterrupt:
