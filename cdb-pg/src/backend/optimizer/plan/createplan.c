@@ -934,10 +934,14 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	Index			scan_relid = best_path->parent->relid;
 	RelOptInfo		*rel = best_path->parent;
 	CdbComponentDatabases *db_info;
+	Uri				*uri;
 	List			*filenames = NIL;
 	List			*fmtopts = NIL;
+	List			*modifiedloclist = NIL;
+	List			*finalUriList = NIL;
 	ListCell		*c;
 	char			**segdb_file_map;
+	char			*first_uri_str;
 	bool			istext;
 	int				total_primaries = 0;
 	int				i;
@@ -974,12 +978,62 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	
 	Assert(rel->locationlist != NIL);
 	
+	/* use rel->locationlis (but this may get overidden if gpfdistd is used) */
+	finalUriList = rel->locationlist;
+	
+	/*
+	 * If we happen to be dealing with URI's with the 'gpfdistd' protocol
+	 * we do an extra step here. We modify the locationlist so that every
+	 * primary segdb will get a URI (therefore we duplicate the existing
+	 * URI's until the list is of size = total_primaries. Then we change
+	 * the URI's to 'http' protocol and assign them an incremental suffix
+	 * since the client daemon gpfdstd will be expecting it.
+	 *
+	 * If however will have 'http' or 'file' protocols to begin with, we
+	 * just skip this step and go straight to URI->segdb mapping.
+	 */
+	first_uri_str = (char *) strVal(lfirst(list_head(rel->locationlist)));
+	uri = ParseUriString(first_uri_str);
+	if(uri->protocol == URI_GPFDISTD)
+	{
+		bool done = false;
+		
+		/* 
+		 * restart location list and fill in new list until number of
+		 * locations equals the number of primary segment databases 
+		 */
+	    while(!done)
+	    {
+			foreach(c, rel->locationlist)
+			{
+				char *uri_str = (char *) strVal(lfirst(c));
+				uri_str[4] = 'h';
+				uri_str[5] = 't';
+				uri_str[6] = 't';
+				uri_str[7] = 'p';
+				uri_str += 4;
+						
+				/* append to a list of Value nodes, size nelems */
+				modifiedloclist = lappend(modifiedloclist, makeString(pstrdup(uri_str)));				
+			
+				if(list_length(modifiedloclist) == total_primaries)
+				{
+					done = true;
+					break;
+				}
+					
+			}
+		}
+		
+		/* use the modified list in the URI to segdb mapping */
+		finalUriList = modifiedloclist;
+	}
+	
 	/* 
 	 * extract file path and name from URI strings and assign them a primary segdb 
 	 */
-	foreach(c, rel->locationlist)
+	foreach(c, finalUriList)
 	{
-		Uri			*uri;
 		const char	*uri_str = (char *) strVal(lfirst(c));
 		bool		found_candidate = false;
 		bool		found_match = false;
@@ -1098,6 +1152,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	copy_path_costsize(&scan_plan->scan.plan, best_path);
 
 	pfree(segdb_file_map);
+	pfree(finalUriList);
 	freeCdbComponentDatabases(db_info);
 
 	return scan_plan;

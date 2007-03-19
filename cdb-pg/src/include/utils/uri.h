@@ -14,12 +14,14 @@ typedef enum UriProtocol
 {
 	URI_FILE,
 	URI_FTP,
-	URI_HTTP
+	URI_HTTP,
+	URI_GPFDISTD
 }	UriProtocol;
 
 #define PROTOCOL_FILE	"file://"
 #define PROTOCOL_FTP	"ftp://"
 #define PROTOCOL_HTTP	"http://"
+#define PROTOCOL_GPFDISTD	"gpfdistd://"
 
 typedef struct Uri
 {

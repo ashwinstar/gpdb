@@ -7832,17 +7832,18 @@ static Datum transformLocationUris(List *locs)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("URI protocols must be the same for all data sources"),
-					 errhint("For remote use 'http', for local use 'file', but don't "
-					         "mix the two protocols in one declaration.")));
+					 errhint("Available protocols are 'http', 'file' and 'gpfdistd' ")));
 		
 		}
 		
-		if(uri->protocol != URI_FILE && uri->protocol != URI_HTTP)
+		if(uri->protocol != URI_FILE && 
+		   uri->protocol != URI_HTTP &&
+		   uri->protocol != URI_GPFDISTD)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("unsupported URI protocol for \'%s\'", uri_str),
-					 errhint("Use 'file' or 'http' protocol instead.")));
+					 errhint("Use 'file', 'http' or 'gpfdistd' protocol instead.")));
 		}
 		
 		len = VARHDRSZ + strlen(uri_str);

@@ -47,6 +47,11 @@ ParseUriString(const char *uri_str)
 		uri->protocol = URI_HTTP;
 		protocol_len = strlen(PROTOCOL_HTTP);
 	}
+	else if (strncmp(uri_str, PROTOCOL_GPFDISTD, strlen(PROTOCOL_GPFDISTD)) == 0)
+	{
+		uri->protocol = URI_GPFDISTD;
+		protocol_len = strlen(PROTOCOL_GPFDISTD);
+	}
 	else
 	{
 		protocol_len = 0; /* shut compiler up */
@@ -103,6 +108,13 @@ ParseUriString(const char *uri_str)
 			if (colon) {
 				uri->port = atoi(colon + 1);
 				*colon = 0;
+			}
+			else if(uri->protocol == URI_GPFDISTD)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("invalid URI \'%s\' : gpfdistd must indicate a "
+						        "port number", uri_str)));			
 			}
 
 		}
