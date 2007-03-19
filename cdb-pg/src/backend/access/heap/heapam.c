@@ -126,7 +126,10 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 	int			ntup;
 	OffsetNumber lineoff;
 	ItemId		lpp;
-	const bool  do_prefetch = true;
+
+	/* don't run prefetching code if the table is small. This has the 
+	   side effect of using the full buffer pool to cache the table */
+	bool        do_prefetch = (scan->rs_nblocks <= (NBuffers * 60 / 100));
 
 	Assert(page < scan->rs_nblocks);
 
