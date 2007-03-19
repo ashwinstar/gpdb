@@ -239,6 +239,8 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			
 			queryDesc->parsetree->intoOidInfo.toastOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
 			
+			queryDesc->parsetree->intoOidInfo.toastIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			
 			queryDesc->parsetree->intoOidInfo.toastComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
 			
 			heap_close(pg_class_desc, RowExclusiveLock);
