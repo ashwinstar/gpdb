@@ -48,7 +48,7 @@ typedef struct NextValResponse
 
 extern void SeqServerShmemInit(void);
 extern int SeqServerShmemSize(void);
-extern int	seqserver_start(void);
+extern int seqserver_start(void);
 
 
 /* used to call nextval on a sequence by going through the seqserver*/

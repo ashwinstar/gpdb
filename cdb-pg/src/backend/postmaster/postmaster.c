@@ -238,9 +238,13 @@ typedef struct pmsubproc
 {
 	pid_t		pid;			/* process id */	  
 	PMSubType   procType;       /* process type */
+	PMSubStartCallback *procStart; /* server start function */
 } PMSubProc;
 
-static PMSubProc PMSubProcList[MaxPMSubType] = {{0, SeqServerProc}};
+static PMSubProc PMSubProcList[MaxPMSubType] = 
+{
+	{0, SeqServerProc, (PMSubStartCallback*)&seqserver_start}
+};
 
 /* Startup/shutdown state */
 #define			NoShutdown		0
@@ -1362,7 +1366,9 @@ ServerLoop(void)
 		/* MPP: If we have lost the sequence Server, try to start a new one */
 		if (PMSubProcList[SeqServerProc].pid == 0 && Mpp_entry_postmaster &&
 			StartupPID == 0 && !FatalError && Shutdown == NoShutdown && !SyncMaster)
-			PMSubProcList[SeqServerProc].pid = seqserver_start();
+			PMSubProcList[SeqServerProc].pid = 
+					(PMSubProcList[SeqServerProc].procStart)();
+/*seqserver_start(); */
 
 		/*
 		 * Touch the socket and lock file every 58 minutes, to ensure that
@@ -2234,7 +2240,9 @@ reaper(SIGNAL_ARGS)
 				if (PgStatPID == 0)
 					PgStatPID = pgstat_start();
 				if (PMSubProcList[SeqServerProc].pid == 0 && Mpp_entry_postmaster )
-					PMSubProcList[SeqServerProc].pid = seqserver_start();
+					PMSubProcList[SeqServerProc].pid = 
+					(PMSubProcList[SeqServerProc].procStart)();
+/*seqserver_start(); */
 			}
 
 			continue;
@@ -2333,7 +2341,9 @@ reaper(SIGNAL_ARGS)
 				LogChildExit(LOG, _("seqserver process"),
 							 pid, exitstatus);
 			if (StartupPID == 0 && !FatalError && Shutdown == NoShutdown)
-				PMSubProcList[SeqServerProc].pid = seqserver_start();
+				PMSubProcList[SeqServerProc].pid = 
+					(PMSubProcList[SeqServerProc].procStart)();
+/* seqserver_start(); */
 			continue;
 		}
 		

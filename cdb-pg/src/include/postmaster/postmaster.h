@@ -47,4 +47,7 @@ extern Size ShmemBackendArraySize(void);
 extern void ShmemBackendArrayAllocation(void);
 #endif
 
+/* CDB */
+typedef int (PMSubStartCallback)(void);
+
 #endif   /* _POSTMASTER_H */
