@@ -48,7 +48,7 @@ static void help(const char* pszProgName);
 static void installSignalHandlers(void);
 static void myHandler(SIGNAL_ARGS);
 static bool parmValNeedsQuotes( const char* Value );
-static int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* pParmAr );
+static int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr );
 static void spinOffThreads( PGconn* pConn, InputOptions* pInputOpts, const SegmentDatabaseArray* psegDBAr, 
 							ThreadParmArray* pParmAr );
 static void* threadProc(void *arg);
@@ -144,12 +144,13 @@ int main( int argc, char** argv)
 	spinOffThreads(master_db_conn, &inputOpts, &segDBAr, &parmAr);
 	
 	mpp_msg( logInfo, pszProgName, "All remote %s programs are finished.\n", pszAgent );
-			
-	/* Produce results report */
-	failCount = reportBackupResults( inputOpts.pszReportDirectory, &parmAr );
-	
+
 	/* Clean-up memory allocated */
 cleanup:	
+			
+	/* Produce results report */
+	failCount = reportBackupResults(inputOpts, &parmAr );
+	
 	freeThreadParmArray( &parmAr );
 	FreeSegmentDatabaseArray( &segDBAr );
 	FreeInputOptions( &inputOpts );
@@ -1028,7 +1029,7 @@ bool parmValNeedsQuotes( const char* Value )
 /*
  * reportBackupResults: This function outputs a summary of the backup results to a file and stdout
  */
-int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* pParmAr )
+int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
 {
 	FILE* fRptFile = NULL;
 	PQExpBuffer	reportBuf = NULL;
@@ -1039,11 +1040,45 @@ int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* 
     int failCount;
 	char* pszStatus;
 	char* pszMsg;
+	char* pszReportDirectory = inputopts.pszReportDirectory;
+	SegmentDatabase* pSegDB;
+	ThreadParm* p;
 	
 	if ( pParmAr == NULL || pParmAr->count == 0 )
 	{
-		mpp_err_msg(logWarn, pszProgName, "No results to report.");
-		return 0;
+		pParmAr->count = 1; /* just use master in this case (early error) */
+		pParmAr->pData = (ThreadParm *)calloc( 1, sizeof(ThreadParm) );
+		
+		if ( pParmAr->pData == NULL )
+		{
+			mpp_err_msg(logError, pszProgName, "Cannot allocate memory for final report\n");
+			return 0;
+		}
+		
+		p = &pParmAr->pData[0];
+		
+		p->thread				= 0;
+		p->pOptionsData = &inputopts;
+		p->pOptionsData->pszKey = GenerateTimestampKey();
+		p->bSuccess		= false;
+		p->pszErrorMsg			= NULL;
+		p->pszRemoteBackupPath	= NULL;
+
+		pSegDB = (SegmentDatabase *) calloc( 1,  sizeof(SegmentDatabase) );
+		pSegDB->dbid = 1; 
+		pSegDB->content	= -1;
+		pSegDB->role = ROLE_MASTER;
+		pSegDB->port = atoi(inputopts.pszPGPort);
+		pSegDB->isValid	= true;
+		pSegDB->isPrimary = true;
+		pSegDB->pszHost	= inputopts.pszPGHost;
+        pSegDB->pszDBName = inputopts.pszDBName;
+		pSegDB->pszDBUser = NULL;
+		pSegDB->pszDBPswd = NULL;
+
+		p->pTargetSegDBData = pSegDB;
+
+		
 	}
 	
 	/*
@@ -1111,7 +1146,13 @@ int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* 
 		pszStatus = pParm->bSuccess ? "Succeeded" : "Failed with error: \n{";
 		pszMsg = pParm->pszErrorMsg;
 		if ( pszMsg == NULL )
-			pszMsg = "";
+		{
+		    /* if we failed pre maturely try to get the predump error */
+		    pszMsg = get_predump_error();
+			if ( pszMsg == NULL )
+				pszMsg = "";
+		}
+			
 		
 		if(pParm->pTargetSegDBData->role == ROLE_MASTER)
 			appendPQExpBuffer(reportBuf, "\tMaster ");

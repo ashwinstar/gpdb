@@ -87,6 +87,8 @@ extern void mpp_msg(const char *loglevel, const char *prog, const char *fmt,...)
 /* writes a status message to a status file with naming convention based on instid, segid, and Key */
 /* extern bool WriteStatusToFile( const char* pszMessage, const char* pszDirectory, const char* pszKey, int instid, int segid, bool bIsBackup ); */
 
+extern char* get_predump_error(void);
+
 /* Base64 Encoding and Decoding Routines */
 /* Base64 Data is assumed to be in a NULL terminated string */
 /* Data is just assumed to be an array of chars, with a length */

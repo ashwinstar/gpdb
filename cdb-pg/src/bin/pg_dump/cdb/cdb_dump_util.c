@@ -17,6 +17,7 @@
 #include "pqexpbuffer.h"
 #include "cdb_dump_util.h"
 
+static char predump_errmsg[512];
 
 /*
  * DoCancelNotifyListen: This function executes a LISTEN or a NOTIFY command, with 
@@ -493,7 +494,12 @@ const char* StringNotNull( const char* pszInput, const char* pszDefault )
 	else
 		return pszInput;
 }
-							
+
+char* get_predump_error(void)
+{
+    return predump_errmsg;
+}	
+						
 /* Simple error logging to stderr  */
 void mpp_err_msg(const char *loglevel, const char *prog, const char *fmt,...)
 {
@@ -502,6 +508,7 @@ void mpp_err_msg(const char *loglevel, const char *prog, const char *fmt,...)
 	va_start(ap, fmt);
 	fprintf(stderr, "%s|%s-[%s]:-", GetTimeNow(), prog, loglevel);
 	vfprintf(stderr, gettext(fmt), ap);
+	vsprintf(predump_errmsg, gettext(fmt), ap); /* cache a copy of the message */
 	va_end(ap);
 }
 
