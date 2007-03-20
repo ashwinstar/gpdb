@@ -2945,7 +2945,7 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 		qry->intoTableSpaceName = stmt->intoTableSpaceName;
 
 		if (stmt->distributedBy && Mpp_role == MPP_ROLE_DISPATCH)
-			setQrySDistributionPolicy(stmt, qry);
+			setQryDistributionPolicy(stmt, qry);
 	}
 
 	qry->rtable = pstate->p_rtable;
