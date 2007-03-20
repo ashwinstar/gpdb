@@ -264,6 +264,7 @@ static void set_var_from_var(NumericVar *value, NumericVar *dest);
 static void init_var_from_var(NumericVar *value, NumericVar *dest);
 static void set_var_from_num(Numeric value, NumericVar *dest);
 static void init_var_from_num(Numeric value, NumericVar *dest);
+static void init_ro_var_from_num(Numeric value, NumericVar *dest);
 static char *get_str_from_var(NumericVar *var, int dscale);
 
 static Numeric make_result(NumericVar *var);
@@ -469,7 +470,7 @@ numeric_send(PG_FUNCTION_ARGS)
 	StringInfoData buf;
 	int			i;
 
-	init_var_from_num(num, &x);
+	init_ro_var_from_num(num, &x);
 
 	pq_begintypsend(&buf);
 
@@ -788,7 +789,7 @@ numeric_ceil(PG_FUNCTION_ARGS)
 	if (NUMERIC_IS_NAN(num))
 		PG_RETURN_NUMERIC(make_result(&const_nan));
 
-	init_var_from_num(num, &result);
+	init_ro_var_from_num(num, &result);
 	ceil_var(&result, &result);
 
 	res = make_result(&result);
@@ -812,7 +813,7 @@ numeric_floor(PG_FUNCTION_ARGS)
 	if (NUMERIC_IS_NAN(num))
 		PG_RETURN_NUMERIC(make_result(&const_nan));
 
-	init_var_from_num(num, &result);
+	init_ro_var_from_num(num, &result);
 	floor_var(&result, &result);
 
 	res = make_result(&result);
@@ -1120,8 +1121,8 @@ numeric_add(PG_FUNCTION_ARGS)
 	 */
 	init_var(&result);
 
-	init_var_from_num(num1, &arg1);
-	init_var_from_num(num2, &arg2);
+	init_ro_var_from_num(num1, &arg1);
+	init_ro_var_from_num(num2, &arg2);
 
 	add_var(&arg1, &arg2, &result);
 
@@ -1160,8 +1161,8 @@ numeric_sub(PG_FUNCTION_ARGS)
 	 */
 	init_var(&result);
 
-	init_var_from_num(num1, &arg1);
-	init_var_from_num(num2, &arg2);
+	init_ro_var_from_num(num1, &arg1);
+	init_ro_var_from_num(num2, &arg2);
 
 	sub_var(&arg1, &arg2, &result);
 
@@ -1204,8 +1205,8 @@ numeric_mul(PG_FUNCTION_ARGS)
 	 */
 	init_var(&result);
 
-	init_var_from_num(num1, &arg1);
-	init_var_from_num(num2, &arg2);
+	init_ro_var_from_num(num1, &arg1);
+	init_ro_var_from_num(num2, &arg2);
 
 	mul_var(&arg1, &arg2, &result, arg1.dscale + arg2.dscale);
 
@@ -1245,8 +1246,8 @@ numeric_div(PG_FUNCTION_ARGS)
 	 */
 	init_var(&result);
 
-	init_var_from_num(num1, &arg1);
-	init_var_from_num(num2, &arg2);
+	init_ro_var_from_num(num1, &arg1);
+	init_ro_var_from_num(num2, &arg2);
 
 	/*
 	 * Select scale for division result
@@ -1287,8 +1288,8 @@ numeric_mod(PG_FUNCTION_ARGS)
 
 	init_var(&result);
 
-	init_var_from_num(num1, &arg1);
-	init_var_from_num(num2, &arg2);
+	init_ro_var_from_num(num1, &arg1);
+	init_ro_var_from_num(num2, &arg2);
 
 	mod_var(&arg1, &arg2, &result);
 
@@ -1451,7 +1452,7 @@ numeric_sqrt(PG_FUNCTION_ARGS)
 	 */
 	init_var(&result);
 
-	init_var_from_num(num, &arg);
+	init_ro_var_from_num(num, &arg);
 
 	/* Assume the input was normalized, so arg.weight is accurate */
 	sweight = (arg.weight + 1) * DEC_DIGITS / 2 - 1;
@@ -1558,7 +1559,7 @@ numeric_ln(PG_FUNCTION_ARGS)
 
 	init_var(&result);
 
-	init_var_from_num(num, &arg);
+	init_ro_var_from_num(num, &arg);
 
 	/* Approx decimal digits before decimal point */
 	dec_digits = (arg.weight + 1) * DEC_DIGITS;
@@ -1610,8 +1611,8 @@ numeric_log(PG_FUNCTION_ARGS)
 	 */
 	init_var(&result);
 
-	init_var_from_num(num1, &arg1);
-	init_var_from_num(num2, &arg2);
+	init_ro_var_from_num(num1, &arg1);
+	init_ro_var_from_num(num2, &arg2);
 
 	/*
 	 * Call log_var() to compute and return the result; note it handles scale
@@ -1655,8 +1656,8 @@ numeric_power(PG_FUNCTION_ARGS)
 	 */
 	init_var(&result);
 
-	init_var_from_num(num1, &arg1);
-	init_var_from_num(num2, &arg2);
+	init_ro_var_from_num(num1, &arg1);
+	init_ro_var_from_num(num2, &arg2);
 	init_var_from_var(&arg2, &arg2_trunc);
 
 	trunc_var(&arg2_trunc, 0);
@@ -2183,7 +2184,7 @@ numeric_stddev_internal(ArrayType *transarray,
 	if (NUMERIC_IS_NAN(N) || NUMERIC_IS_NAN(sumX) || NUMERIC_IS_NAN(sumX2))
 		return make_result(&const_nan);
 
-	init_var_from_num(N, &vN);
+	init_ro_var_from_num(N, &vN);
 
 	/*
 	 * Sample stddev and variance are undefined when N <= 1; population stddev
@@ -2893,6 +2894,22 @@ init_var_from_num(Numeric num, NumericVar *dest)
 	dest->dscale = NUMERIC_DSCALE(num);
 
 	memcpy(dest->digits, num->n_data, ndigits * sizeof(NumericDigit));
+}
+
+/*
+ * init_ro_var_from_num() -
+ *
+ *	Convert the packed db format into a variable
+ */
+static void
+init_ro_var_from_num(Numeric num, NumericVar *dest)
+{
+	dest->ndigits = NUMERIC_NDIGITS(num);
+	dest->weight = num->n_weight;
+	dest->sign = NUMERIC_SIGN(num);
+	dest->dscale = NUMERIC_DSCALE(num);
+	dest->digits = num->n_data;
+	dest->buf = NULL;
 }
 
 
