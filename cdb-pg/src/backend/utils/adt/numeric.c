@@ -220,25 +220,47 @@ static void dump_var(const char *str, NumericVar *var);
 
 #define digitbuf_alloc(ndigits)  \
 	((NumericDigit *) palloc((ndigits) * sizeof(NumericDigit)))
+
 #define digitbuf_free(buf)	\
 	do { \
 		 if ((buf) != NULL) \
 			 pfree(buf); \
 	} while (0)
 
+/*
 #define init_var(v)		MemSetAligned(v, 0, sizeof(NumericVar))
+*/
+#define init_var(v) \
+	do { \
+		(v)->buf = (v)->digits = NULL; \
+		(v)->ndigits = (v)->weight = (v)->sign = (v)->dscale = 0; \
+	} while (0)
+
+#define quick_init_var(v) \
+	do { \
+		(v)->buf = (v)->digits = NULL; \
+		(v)->ndigits = 0; \
+	} while (0)
 
 #define NUMERIC_DIGITS(num) ((NumericDigit *)(num)->n_data)
 #define NUMERIC_NDIGITS(num) \
 	((VARSIZE(num) - NUMERIC_HDRSZ) / sizeof(NumericDigit))
 
 static void alloc_var(NumericVar *var, int ndigits);
-static void free_var(NumericVar *var);
+/*static void free_var(NumericVar *var);*/
+#define free_var_buf(v)	\
+			do {	\
+				digitbuf_free((v)->buf);	\
+				(v)->buf = NULL;	\
+			} while (0)
+
 static void zero_var(NumericVar *var);
 
 static void set_var_from_str(const char *str, NumericVar *dest);
-static void set_var_from_num(Numeric value, NumericVar *dest);
 static void set_var_from_var(NumericVar *value, NumericVar *dest);
+static void init_var_from_var(NumericVar *value, NumericVar *dest);
+static void set_var_from_num(Numeric value, NumericVar *dest);
+static void init_var_from_num(Numeric value, NumericVar *dest);
 static char *get_str_from_var(NumericVar *var, int dscale);
 
 static Numeric make_result(NumericVar *var);
@@ -335,7 +357,6 @@ numeric_in(PG_FUNCTION_ARGS)
 	apply_typmod(&value, typmod);
 
 	res = make_result(&value);
-	free_var(&value);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -367,12 +388,11 @@ numeric_out(PG_FUNCTION_ARGS)
 	 * guarantees there is extra digit space in case we produce a carry out
 	 * from rounding.
 	 */
-	init_var(&x);
-	set_var_from_num(num, &x);
+	init_var_from_num(num, &x);
 
 	str = get_str_from_var(&x, x.dscale);
 
-	free_var(&x);
+	free_var_buf(&x);
 
 	PG_RETURN_CSTRING(str);
 }
@@ -397,7 +417,6 @@ numeric_recv(PG_FUNCTION_ARGS)
 	int			len,
 				i;
 
-	init_var(&value);
 
 	len = (uint16) pq_getmsgint(buf, sizeof(uint16));
 	if (len < 0 || len > NUMERIC_MAX_PRECISION + NUMERIC_MAX_RESULT_SCALE)
@@ -405,6 +424,7 @@ numeric_recv(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
 				 errmsg("invalid length in external \"numeric\" value")));
 
+	quick_init_var(&value);
 	alloc_var(&value, len);
 
 	value.weight = (int16) pq_getmsgint(buf, sizeof(int16));
@@ -431,7 +451,6 @@ numeric_recv(PG_FUNCTION_ARGS)
 	apply_typmod(&value, typmod);
 
 	res = make_result(&value);
-	free_var(&value);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -447,8 +466,7 @@ numeric_send(PG_FUNCTION_ARGS)
 	StringInfoData buf;
 	int			i;
 
-	init_var(&x);
-	set_var_from_num(num, &x);
+	init_var_from_num(num, &x);
 
 	pq_begintypsend(&buf);
 
@@ -459,7 +477,7 @@ numeric_send(PG_FUNCTION_ARGS)
 	for (i = 0; i < x.ndigits; i++)
 		pq_sendint(&buf, x.digits[i], sizeof(NumericDigit));
 
-	free_var(&x);
+	free_var_buf(&x);
 
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }
@@ -529,13 +547,10 @@ numeric		(PG_FUNCTION_ARGS)
 	 * We really need to fiddle with things - unpack the number into a
 	 * variable and let apply_typmod() do it.
 	 */
-	init_var(&var);
 
-	set_var_from_num(num, &var);
+	init_var_from_num(num, &var);
 	apply_typmod(&var, typmod);
 	new = make_result(&var);
-
-	free_var(&var);
 
 	PG_RETURN_NUMERIC(new);
 }
@@ -639,26 +654,23 @@ numeric_sign(PG_FUNCTION_ARGS)
 	if (NUMERIC_IS_NAN(num))
 		PG_RETURN_NUMERIC(make_result(&const_nan));
 
-	init_var(&result);
-
 	/*
 	 * The packed format is known to be totally zero digit trimmed always. So
 	 * we can identify a ZERO by the fact that there are no digits at all.
 	 */
 	if (VARSIZE(num) == NUMERIC_HDRSZ)
-		set_var_from_var(&const_zero, &result);
+		init_var_from_var(&const_zero, &result);
 	else
 	{
 		/*
 		 * And if there are some, we return a copy of ONE with the sign of our
 		 * argument
 		 */
-		set_var_from_var(&const_one, &result);
+		init_var_from_var(&const_one, &result);
 		result.sign = NUMERIC_SIGN(num);
 	}
 
 	res = make_result(&result);
-	free_var(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -694,8 +706,7 @@ numeric_round(PG_FUNCTION_ARGS)
 	/*
 	 * Unpack the argument and round it at the proper digit position
 	 */
-	init_var(&arg);
-	set_var_from_num(num, &arg);
+	init_var_from_num(num, &arg);
 
 	round_var(&arg, scale);
 
@@ -708,7 +719,6 @@ numeric_round(PG_FUNCTION_ARGS)
 	 */
 	res = make_result(&arg);
 
-	free_var(&arg);
 	PG_RETURN_NUMERIC(res);
 }
 
@@ -743,8 +753,7 @@ numeric_trunc(PG_FUNCTION_ARGS)
 	/*
 	 * Unpack the argument and truncate it at the proper digit position
 	 */
-	init_var(&arg);
-	set_var_from_num(num, &arg);
+	init_var_from_num(num, &arg);
 
 	trunc_var(&arg, scale);
 
@@ -757,7 +766,6 @@ numeric_trunc(PG_FUNCTION_ARGS)
 	 */
 	res = make_result(&arg);
 
-	free_var(&arg);
 	PG_RETURN_NUMERIC(res);
 }
 
@@ -777,13 +785,10 @@ numeric_ceil(PG_FUNCTION_ARGS)
 	if (NUMERIC_IS_NAN(num))
 		PG_RETURN_NUMERIC(make_result(&const_nan));
 
-	init_var(&result);
-
-	set_var_from_num(num, &result);
+	init_var_from_num(num, &result);
 	ceil_var(&result, &result);
 
 	res = make_result(&result);
-	free_var(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -804,13 +809,10 @@ numeric_floor(PG_FUNCTION_ARGS)
 	if (NUMERIC_IS_NAN(num))
 		PG_RETURN_NUMERIC(make_result(&const_nan));
 
-	init_var(&result);
-
-	set_var_from_num(num, &result);
+	init_var_from_num(num, &result);
 	floor_var(&result, &result);
 
 	res = make_result(&result);
-	free_var(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -881,8 +883,8 @@ width_bucket_numeric(PG_FUNCTION_ARGS)
 
 	result = numericvar_to_int4(&result_var);
 
-	free_var(&count_var);
-	free_var(&result_var);
+	free_var_buf(&count_var);
+	free_var_buf(&result_var);
 
 	PG_RETURN_INT32(result);
 }
@@ -902,13 +904,9 @@ compute_bucket(Numeric operand, Numeric bound1, Numeric bound2,
 	NumericVar	bound2_var;
 	NumericVar	operand_var;
 
-	init_var(&bound1_var);
-	init_var(&bound2_var);
-	init_var(&operand_var);
-
-	set_var_from_num(bound1, &bound1_var);
-	set_var_from_num(bound2, &bound2_var);
-	set_var_from_num(operand, &operand_var);
+	init_var_from_num(bound1, &bound1_var);
+	init_var_from_num(bound2, &bound2_var);
+	init_var_from_num(operand, &operand_var);
 
 	if (cmp_var(&bound1_var, &bound2_var) < 0)
 	{
@@ -930,9 +928,9 @@ compute_bucket(Numeric operand, Numeric bound1, Numeric bound2,
 	add_var(result_var, &const_one, result_var);
 	floor_var(result_var, result_var);
 
-	free_var(&bound1_var);
-	free_var(&bound2_var);
-	free_var(&operand_var);
+	free_var_buf(&bound1_var);
+	free_var_buf(&bound2_var);
+	free_var_buf(&operand_var);
 }
 
 /* ----------------------------------------------------------------------
@@ -1117,20 +1115,17 @@ numeric_add(PG_FUNCTION_ARGS)
 	/*
 	 * Unpack the values, let add_var() compute the result and return it.
 	 */
-	init_var(&arg1);
-	init_var(&arg2);
 	init_var(&result);
 
-	set_var_from_num(num1, &arg1);
-	set_var_from_num(num2, &arg2);
+	init_var_from_num(num1, &arg1);
+	init_var_from_num(num2, &arg2);
 
 	add_var(&arg1, &arg2, &result);
 
-	res = make_result(&result);
+	free_var_buf(&arg1);
+	free_var_buf(&arg2);
 
-	free_var(&arg1);
-	free_var(&arg2);
-	free_var(&result);
+	res = make_result(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -1160,20 +1155,17 @@ numeric_sub(PG_FUNCTION_ARGS)
 	/*
 	 * Unpack the values, let sub_var() compute the result and return it.
 	 */
-	init_var(&arg1);
-	init_var(&arg2);
 	init_var(&result);
 
-	set_var_from_num(num1, &arg1);
-	set_var_from_num(num2, &arg2);
+	init_var_from_num(num1, &arg1);
+	init_var_from_num(num2, &arg2);
 
 	sub_var(&arg1, &arg2, &result);
 
-	res = make_result(&result);
+	free_var_buf(&arg1);
+	free_var_buf(&arg2);
 
-	free_var(&arg1);
-	free_var(&arg2);
-	free_var(&result);
+	res = make_result(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -1207,20 +1199,17 @@ numeric_mul(PG_FUNCTION_ARGS)
 	 * we request exact representation for the product (rscale = sum(dscale of
 	 * arg1, dscale of arg2)).
 	 */
-	init_var(&arg1);
-	init_var(&arg2);
 	init_var(&result);
 
-	set_var_from_num(num1, &arg1);
-	set_var_from_num(num2, &arg2);
+	init_var_from_num(num1, &arg1);
+	init_var_from_num(num2, &arg2);
 
 	mul_var(&arg1, &arg2, &result, arg1.dscale + arg2.dscale);
 
-	res = make_result(&result);
+	free_var_buf(&arg1);
+	free_var_buf(&arg2);
 
-	free_var(&arg1);
-	free_var(&arg2);
-	free_var(&result);
+	res = make_result(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -1251,12 +1240,10 @@ numeric_div(PG_FUNCTION_ARGS)
 	/*
 	 * Unpack the arguments
 	 */
-	init_var(&arg1);
-	init_var(&arg2);
 	init_var(&result);
 
-	set_var_from_num(num1, &arg1);
-	set_var_from_num(num2, &arg2);
+	init_var_from_num(num1, &arg1);
+	init_var_from_num(num2, &arg2);
 
 	/*
 	 * Select scale for division result
@@ -1268,11 +1255,10 @@ numeric_div(PG_FUNCTION_ARGS)
 	 */
 	div_var(&arg1, &arg2, &result, rscale, true);
 
-	res = make_result(&result);
+	free_var_buf(&arg1);
+	free_var_buf(&arg2);
 
-	free_var(&arg1);
-	free_var(&arg2);
-	free_var(&result);
+	res = make_result(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -1296,20 +1282,17 @@ numeric_mod(PG_FUNCTION_ARGS)
 	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
 		PG_RETURN_NUMERIC(make_result(&const_nan));
 
-	init_var(&arg1);
-	init_var(&arg2);
 	init_var(&result);
 
-	set_var_from_num(num1, &arg1);
-	set_var_from_num(num2, &arg2);
+	init_var_from_num(num1, &arg1);
+	init_var_from_num(num2, &arg2);
 
 	mod_var(&arg1, &arg2, &result);
 
-	res = make_result(&result);
+	free_var_buf(&arg2);
+	free_var_buf(&arg1);
 
-	free_var(&result);
-	free_var(&arg2);
-	free_var(&arg1);
+	res = make_result(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -1336,15 +1319,12 @@ numeric_inc(PG_FUNCTION_ARGS)
 	/*
 	 * Compute the result and return it
 	 */
-	init_var(&arg);
 
-	set_var_from_num(num, &arg);
+	init_var_from_num(num, &arg);
 
 	add_var(&arg, &const_one, &arg);
 
 	res = make_result(&arg);
-
-	free_var(&arg);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -1432,10 +1412,9 @@ numeric_fac(PG_FUNCTION_ARGS)
 		mul_var(&result, &fact, &result, 0);
 	}
 
-	res = make_result(&result);
+	free_var_buf(&fact);
 
-	free_var(&fact);
-	free_var(&result);
+	res = make_result(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -1467,10 +1446,9 @@ numeric_sqrt(PG_FUNCTION_ARGS)
 	 * to give at least NUMERIC_MIN_SIG_DIGITS significant digits; but in any
 	 * case not less than the input's dscale.
 	 */
-	init_var(&arg);
 	init_var(&result);
 
-	set_var_from_num(num, &arg);
+	init_var_from_num(num, &arg);
 
 	/* Assume the input was normalized, so arg.weight is accurate */
 	sweight = (arg.weight + 1) * DEC_DIGITS / 2 - 1;
@@ -1485,10 +1463,9 @@ numeric_sqrt(PG_FUNCTION_ARGS)
 	 */
 	sqrt_var(&arg, &result, rscale);
 
-	res = make_result(&result);
+	free_var_buf(&arg);
 
-	free_var(&result);
-	free_var(&arg);
+	res = make_result(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -1520,10 +1497,9 @@ numeric_exp(PG_FUNCTION_ARGS)
 	 * to give at least NUMERIC_MIN_SIG_DIGITS significant digits; but in any
 	 * case not less than the input's dscale.
 	 */
-	init_var(&arg);
 	init_var(&result);
 
-	set_var_from_num(num, &arg);
+	init_var_from_num(num, &arg);
 
 	/* convert input to float8, ignoring overflow */
 	val = numericvar_to_double_no_overflow(&arg);
@@ -1548,10 +1524,9 @@ numeric_exp(PG_FUNCTION_ARGS)
 	 */
 	exp_var(&arg, &result, rscale);
 
-	res = make_result(&result);
+	free_var_buf(&arg);
 
-	free_var(&result);
-	free_var(&arg);
+	res = make_result(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -1578,10 +1553,9 @@ numeric_ln(PG_FUNCTION_ARGS)
 	if (NUMERIC_IS_NAN(num))
 		PG_RETURN_NUMERIC(make_result(&const_nan));
 
-	init_var(&arg);
 	init_var(&result);
 
-	set_var_from_num(num, &arg);
+	init_var_from_num(num, &arg);
 
 	/* Approx decimal digits before decimal point */
 	dec_digits = (arg.weight + 1) * DEC_DIGITS;
@@ -1599,10 +1573,9 @@ numeric_ln(PG_FUNCTION_ARGS)
 
 	ln_var(&arg, &result, rscale);
 
-	res = make_result(&result);
+	free_var_buf(&arg);
 
-	free_var(&result);
-	free_var(&arg);
+	res = make_result(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -1632,12 +1605,10 @@ numeric_log(PG_FUNCTION_ARGS)
 	/*
 	 * Initialize things
 	 */
-	init_var(&arg1);
-	init_var(&arg2);
 	init_var(&result);
 
-	set_var_from_num(num1, &arg1);
-	set_var_from_num(num2, &arg2);
+	init_var_from_num(num1, &arg1);
+	init_var_from_num(num2, &arg2);
 
 	/*
 	 * Call log_var() to compute and return the result; note it handles scale
@@ -1645,11 +1616,10 @@ numeric_log(PG_FUNCTION_ARGS)
 	 */
 	log_var(&arg1, &arg2, &result);
 
-	res = make_result(&result);
+	free_var_buf(&arg2);
+	free_var_buf(&arg1);
 
-	free_var(&result);
-	free_var(&arg2);
-	free_var(&arg1);
+	res = make_result(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -1680,14 +1650,11 @@ numeric_power(PG_FUNCTION_ARGS)
 	/*
 	 * Initialize things
 	 */
-	init_var(&arg1);
-	init_var(&arg2);
-	init_var(&arg2_trunc);
 	init_var(&result);
 
-	set_var_from_num(num1, &arg1);
-	set_var_from_num(num2, &arg2);
-	set_var_from_var(&arg2, &arg2_trunc);
+	init_var_from_num(num1, &arg1);
+	init_var_from_num(num2, &arg2);
+	init_var_from_var(&arg2, &arg2_trunc);
 
 	trunc_var(&arg2_trunc, 0);
 
@@ -1709,12 +1676,11 @@ numeric_power(PG_FUNCTION_ARGS)
 	 */
 	power_var(&arg1, &arg2, &result);
 
-	res = make_result(&result);
+	free_var_buf(&arg2);
+	free_var_buf(&arg2_trunc);
+	free_var_buf(&arg1);
 
-	free_var(&result);
-	free_var(&arg2);
-	free_var(&arg2_trunc);
-	free_var(&arg1);
+	res = make_result(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -1741,8 +1707,6 @@ int4_numeric(PG_FUNCTION_ARGS)
 
 	res = make_result(&result);
 
-	free_var(&result);
-
 	PG_RETURN_NUMERIC(res);
 }
 
@@ -1761,10 +1725,9 @@ numeric_int4(PG_FUNCTION_ARGS)
 				 errmsg("cannot convert NaN to integer")));
 
 	/* Convert to variable format, then convert to int4 */
-	init_var(&x);
-	set_var_from_num(num, &x);
+	init_var_from_num(num, &x);
 	result = numericvar_to_int4(&x);
-	free_var(&x);
+	free_var_buf(&x);
 	PG_RETURN_INT32(result);
 }
 
@@ -1809,8 +1772,6 @@ int8_numeric(PG_FUNCTION_ARGS)
 
 	res = make_result(&result);
 
-	free_var(&result);
-
 	PG_RETURN_NUMERIC(res);
 }
 
@@ -1829,15 +1790,14 @@ numeric_int8(PG_FUNCTION_ARGS)
 				 errmsg("cannot convert NaN to bigint")));
 
 	/* Convert to variable format and thence to int8 */
-	init_var(&x);
-	set_var_from_num(num, &x);
+	init_var_from_num(num, &x);
 
 	if (!numericvar_to_int8(&x, &result))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("bigint out of range")));
 
-	free_var(&x);
+	free_var_buf(&x);
 
 	PG_RETURN_INT64(result);
 }
@@ -1855,8 +1815,6 @@ int2_numeric(PG_FUNCTION_ARGS)
 	int8_to_numericvar((int64) val, &result);
 
 	res = make_result(&result);
-
-	free_var(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -1877,15 +1835,14 @@ numeric_int2(PG_FUNCTION_ARGS)
 				 errmsg("cannot convert NaN to smallint")));
 
 	/* Convert to variable format and thence to int8 */
-	init_var(&x);
-	set_var_from_num(num, &x);
+	init_var_from_num(num, &x);
 
 	if (!numericvar_to_int8(&x, &val))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("smallint out of range")));
 
-	free_var(&x);
+	free_var_buf(&x);
 
 	/* Down-convert to int2 */
 	result = (int16) val;
@@ -1917,8 +1874,6 @@ float8_numeric(PG_FUNCTION_ARGS)
 
 	set_var_from_str(buf, &result);
 	res = make_result(&result);
-
-	free_var(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -1977,8 +1932,6 @@ float4_numeric(PG_FUNCTION_ARGS)
 
 	set_var_from_str(buf, &result);
 	res = make_result(&result);
-
-	free_var(&result);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -2227,8 +2180,7 @@ numeric_stddev_internal(ArrayType *transarray,
 	if (NUMERIC_IS_NAN(N) || NUMERIC_IS_NAN(sumX) || NUMERIC_IS_NAN(sumX2))
 		return make_result(&const_nan);
 
-	init_var(&vN);
-	set_var_from_num(N, &vN);
+	init_var_from_num(N, &vN);
 
 	/*
 	 * Sample stddev and variance are undefined when N <= 1; population stddev
@@ -2241,7 +2193,7 @@ numeric_stddev_internal(ArrayType *transarray,
 
 	if (cmp_var(&vN, comp) <= 0)
 	{
-		free_var(&vN);
+		free_var_buf(&vN);
 		*is_null = true;
 		return NULL;
 	}
@@ -2249,10 +2201,8 @@ numeric_stddev_internal(ArrayType *transarray,
 	init_var(&vNminus1);
 	sub_var(&vN, &const_one, &vNminus1);
 
-	init_var(&vsumX);
-	set_var_from_num(sumX, &vsumX);
-	init_var(&vsumX2);
-	set_var_from_num(sumX2, &vsumX2);
+	init_var_from_num(sumX, &vsumX);
+	init_var_from_num(sumX2, &vsumX2);
 
 	/* compute rscale for mul_var calls */
 	rscale = vsumX.dscale * 2;
@@ -2277,10 +2227,10 @@ numeric_stddev_internal(ArrayType *transarray,
 		res = make_result(&vsumX);
 	}
 
-	free_var(&vN);
-	free_var(&vNminus1);
-	free_var(&vsumX);
-	free_var(&vsumX2);
+	free_var_buf(&vN);
+	free_var_buf(&vNminus1);
+	free_var_buf(&vsumX);
+	free_var_buf(&vsumX2);
 
 	return res;
 }
@@ -2921,6 +2871,29 @@ set_var_from_num(Numeric num, NumericVar *dest)
 
 
 /*
+ * init_var_from_num() -
+ *
+ *	Convert the packed db format into a variable
+ */
+static void
+init_var_from_num(Numeric num, NumericVar *dest)
+{
+	int			ndigits;
+
+	ndigits = NUMERIC_NDIGITS(num);
+
+	quick_init_var(dest);
+	alloc_var(dest, ndigits);
+
+	dest->weight = num->n_weight;
+	dest->sign = NUMERIC_SIGN(num);
+	dest->dscale = NUMERIC_DSCALE(num);
+
+	memcpy(dest->digits, num->n_data, ndigits * sizeof(NumericDigit));
+}
+
+
+/*
  * set_var_from_var() -
  *
  *	Copy one variable into another
@@ -2939,6 +2912,25 @@ set_var_from_var(NumericVar *value, NumericVar *dest)
 	memmove(dest, value, sizeof(NumericVar));
 	dest->buf = newbuf;
 	dest->digits = newbuf + 1;
+}
+
+
+/*
+ * init_var_from_var() -
+ *
+ *	init one variable from another - they must NOT be the same variable
+ */
+static void
+init_var_from_var(NumericVar *value, NumericVar *dest)
+{
+	dest->dscale = value->dscale;
+	dest->sign = value->sign;
+	dest->weight = value->weight;
+	dest->ndigits = value->ndigits;
+	dest->buf = digitbuf_alloc(dest->ndigits + 1);
+	dest->buf[0] = 0;				/* spare digit for rounding */
+	dest->digits = dest->buf + 1;
+	memcpy(dest->digits, value->digits, dest->ndigits * sizeof(NumericDigit));
 }
 
 
@@ -3104,6 +3096,7 @@ make_result(NumericVar *var)
 
 	if (sign == NUMERIC_NAN)
 	{
+		free_var_buf(var);
 		result = (Numeric) palloc(NUMERIC_HDRSZ);
 
 		SET_VARSIZE(result, NUMERIC_HDRSZ);
@@ -3150,6 +3143,7 @@ make_result(NumericVar *var)
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("value overflows numeric format")));
 
+	free_var_buf(var);
 	dump_numeric("make_result()", result);
 	return result;
 }
@@ -4222,7 +4216,7 @@ mod_var(NumericVar *var1, NumericVar *var2, NumericVar *result)
 
 	round_var(result, Max(var1->dscale, var2->dscale));
 
-	free_var(&tmp);
+	free_var_buf(&tmp);
 }
 
 
@@ -4237,8 +4231,7 @@ ceil_var(NumericVar *var, NumericVar *result)
 {
 	NumericVar	tmp;
 
-	init_var(&tmp);
-	set_var_from_var(var, &tmp);
+	init_var_from_var(var, &tmp);
 
 	trunc_var(&tmp, 0);
 
@@ -4246,7 +4239,7 @@ ceil_var(NumericVar *var, NumericVar *result)
 		add_var(&tmp, &const_one, &tmp);
 
 	set_var_from_var(&tmp, result);
-	free_var(&tmp);
+	free_var_buf(&tmp);
 }
 
 
@@ -4261,8 +4254,7 @@ floor_var(NumericVar *var, NumericVar *result)
 {
 	NumericVar	tmp;
 
-	init_var(&tmp);
-	set_var_from_var(var, &tmp);
+	init_var_from_var(var, &tmp);
 
 	trunc_var(&tmp, 0);
 
@@ -4270,7 +4262,7 @@ floor_var(NumericVar *var, NumericVar *result)
 		sub_var(&tmp, &const_one, &tmp);
 
 	set_var_from_var(&tmp, result);
-	free_var(&tmp);
+	free_var_buf(&tmp);
 }
 
 
@@ -4307,12 +4299,10 @@ sqrt_var(NumericVar *arg, NumericVar *result, int rscale)
 				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION),
 				 errmsg("cannot take square root of a negative number")));
 
-	init_var(&tmp_arg);
 	init_var(&tmp_val);
-	init_var(&last_val);
 
 	/* Copy arg in case it is the same var as result */
-	set_var_from_var(arg, &tmp_arg);
+	init_var_from_var(arg, &tmp_arg);
 
 	/*
 	 * Initialize the result to the first guess
@@ -4324,7 +4314,7 @@ sqrt_var(NumericVar *arg, NumericVar *result, int rscale)
 	result->weight = tmp_arg.weight / 2;
 	result->sign = NUMERIC_POS;
 
-	set_var_from_var(result, &last_val);
+	init_var_from_var(result, &last_val);
 
 	for (;;)
 	{
@@ -4338,9 +4328,9 @@ sqrt_var(NumericVar *arg, NumericVar *result, int rscale)
 		set_var_from_var(result, &last_val);
 	}
 
-	free_var(&last_val);
-	free_var(&tmp_val);
-	free_var(&tmp_arg);
+	free_var_buf(&last_val);
+	free_var_buf(&tmp_val);
+	free_var_buf(&tmp_arg);
 
 	/* Round to requested precision */
 	round_var(result, rscale);
@@ -4369,9 +4359,8 @@ exp_var(NumericVar *arg, NumericVar *result, int rscale)
 	 * done by repeated multiplications in power_var_int.
 	 *----------
 	 */
-	init_var(&x);
 
-	set_var_from_var(arg, &x);
+	init_var_from_var(arg, &x);
 
 	if (x.sign == NUMERIC_NEG)
 	{
@@ -4413,7 +4402,7 @@ exp_var(NumericVar *arg, NumericVar *result, int rscale)
 		exp_var_internal(&const_one, &e, local_rscale);
 		power_var_int(&e, xintval, &e, local_rscale);
 		mul_var(&e, result, result, local_rscale);
-		free_var(&e);
+		free_var_buf(&e);
 	}
 
 	/* Compensate for input sign, and round to requested rscale */
@@ -4422,7 +4411,7 @@ exp_var(NumericVar *arg, NumericVar *result, int rscale)
 	else
 		round_var(result, rscale);
 
-	free_var(&x);
+	free_var_buf(&x);
 }
 
 
@@ -4445,13 +4434,12 @@ exp_var_internal(NumericVar *arg, NumericVar *result, int rscale)
 	int			ndiv2 = 0;
 	int			local_rscale;
 
-	init_var(&x);
 	init_var(&xpow);
 	init_var(&ifac);
 	init_var(&elem);
 	init_var(&ni);
 
-	set_var_from_var(arg, &x);
+	init_var_from_var(arg, &x);
 
 	Assert(x.sign == NUMERIC_POS);
 
@@ -4495,11 +4483,11 @@ exp_var_internal(NumericVar *arg, NumericVar *result, int rscale)
 	while (ndiv2-- > 0)
 		mul_var(result, result, result, local_rscale);
 
-	free_var(&x);
-	free_var(&xpow);
-	free_var(&ifac);
-	free_var(&elem);
-	free_var(&ni);
+	free_var_buf(&x);
+	free_var_buf(&xpow);
+	free_var_buf(&ifac);
+	free_var_buf(&elem);
+	free_var_buf(&ni);
 }
 
 
@@ -4531,14 +4519,12 @@ ln_var(NumericVar *arg, NumericVar *result, int rscale)
 
 	local_rscale = rscale + 8;
 
-	init_var(&x);
 	init_var(&xx);
 	init_var(&ni);
 	init_var(&elem);
-	init_var(&fact);
 
-	set_var_from_var(arg, &x);
-	set_var_from_var(&const_two, &fact);
+	init_var_from_var(arg, &x);
+	init_var_from_var(&const_two, &fact);
 
 	/* Reduce input into range 0.9 < x < 1.1 */
 	while (cmp_var(&x, &const_zero_point_nine) <= 0)
@@ -4591,11 +4577,11 @@ ln_var(NumericVar *arg, NumericVar *result, int rscale)
 	/* Compensate for argument range reduction, round to requested rscale */
 	mul_var(result, &fact, result, rscale);
 
-	free_var(&x);
-	free_var(&xx);
-	free_var(&ni);
-	free_var(&elem);
-	free_var(&fact);
+	free_var_buf(&x);
+	free_var_buf(&xx);
+	free_var_buf(&ni);
+	free_var_buf(&elem);
+	free_var_buf(&fact);
 }
 
 
@@ -4649,8 +4635,8 @@ log_var(NumericVar *base, NumericVar *num, NumericVar *result)
 
 	div_var(&ln_num, &ln_base, result, rscale, true);
 
-	free_var(&ln_num);
-	free_var(&ln_base);
+	free_var_buf(&ln_num);
+	free_var_buf(&ln_base);
 }
 
 
@@ -4679,8 +4665,7 @@ power_var(NumericVar *base, NumericVar *exp, NumericVar *result)
 		int64		expval64;
 
 		/* must copy because numericvar_to_int8() scribbles on input */
-		init_var(&x);
-		set_var_from_var(exp, &x);
+		init_var_from_var(exp, &x);
 		if (numericvar_to_int8(&x, &expval64))
 		{
 			int			expval = (int) expval64;
@@ -4696,11 +4681,11 @@ power_var(NumericVar *base, NumericVar *exp, NumericVar *result)
 
 				power_var_int(base, expval, result, rscale);
 
-				free_var(&x);
+				free_var_buf(&x);
 				return;
 			}
 		}
-		free_var(&x);
+		free_var_buf(&x);
 	}
 
 	init_var(&ln_base);
@@ -4751,8 +4736,8 @@ power_var(NumericVar *base, NumericVar *exp, NumericVar *result)
 
 	exp_var(&ln_num, result, rscale);
 
-	free_var(&ln_num);
-	free_var(&ln_base);
+	free_var_buf(&ln_num);
+	free_var_buf(&ln_base);
 }
 
 /*
@@ -4802,8 +4787,7 @@ power_var_int(NumericVar *base, int exp, NumericVar *result, int rscale)
 
 	local_rscale = rscale + MUL_GUARD_DIGITS * 2;
 
-	init_var(&base_prod);
-	set_var_from_var(base, &base_prod);
+	init_var_from_var(base, &base_prod);
 
 	if (exp & 1)
 		set_var_from_var(base, result);
@@ -4817,7 +4801,7 @@ power_var_int(NumericVar *base, int exp, NumericVar *result, int rscale)
 			mul_var(&base_prod, result, result, local_rscale);
 	}
 
-	free_var(&base_prod);
+	free_var_buf(&base_prod);
 
 	/* Compensate for input sign, and round to requested rscale */
 	if (neg)
