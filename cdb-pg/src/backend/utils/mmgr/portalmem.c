@@ -235,7 +235,7 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 	/* set portal id and queue id if have enabled resource scheduling */
 	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
 	{
-		portal->portalId = ResCreatePortalId(name, true);
+		portal->portalId = ResCreatePortalId(name);
 		portal->queueId = GetResQueueId();
 	}
 	

@@ -52,7 +52,6 @@ bool	ResourceSelectOnly;						/* Only lock SELECT/DECLARE? */
  */
 Oid				MyQueueId;			/* resource queue for current role. */
 static uint32	portalId = 0;		/* id of portal, for tracking cursors. */
-static uint32	lastPortalId = 0;	/* id found by last portal search. */
 
 
 /*
@@ -753,14 +752,9 @@ GetResQueueIdForName(char	*name)
  * 	We return a new id for any named portal, but zero for an un-named one. 
  *	This is because we use the id to track cursors, and there can only be one
  *	un-named portal active.
- *
- *	The "create" flag is used to decide if we should merely return
- *	what will be the next id or actually update the internal portal 
- *	counter. This slightly odd construction is needed because DECLARE CURSOR
- *	is processed *before* the named portal for the cursor is created!
  */
 uint32
-ResCreatePortalId(const char *name, bool create)
+ResCreatePortalId(const char *name)
 {
 
 	uint32				id;
@@ -776,16 +770,8 @@ ResCreatePortalId(const char *name, bool create)
 	}
 
 
-	/* Named portal. */
-	if (create && lastPortalId != 0)
-	{
-		id = lastPortalId;
-		lastPortalId = 0;
-		return id;
-	}
-			
-
 	/* 
+	 * Named portal.
 	 * Search for a id we can re-use from a closed portal - we want to do this
 	 * so we can have MaxResourcePortalsPerXact *open* tracked (named) portals 
 	 * in a transaction.
@@ -797,14 +783,7 @@ ResCreatePortalId(const char *name, bool create)
 		portalTag.portalId = id;
 		if (!ResIncrementFind(&portalTag))
 		{
-			/* 
-			 * If this is a probe to see what the next portal id will be 
-			 * then remember it. Have to do this, as we have no way of knowing 
-			 * which id was free for reuse.
-			 */
 			found = true;
-			if (!create)
-				lastPortalId = id;
 			break;
 		}
 	}
@@ -824,15 +803,7 @@ ResCreatePortalId(const char *name, bool create)
 
 		}
 
-		/* If we are really creating a portal, then update the internal count.*/
-		if (create)
-		{
-			id = (++portalId);
-		}
-		else
-		{
-			id = portalId + 1;
-		}
+		id = (++portalId);
 	}
 
 	return id;

@@ -186,7 +186,7 @@ extern Oid	GetResQueueForRole(Oid roleid);
 extern Oid	GetResQueueId(void);
 extern Oid	GetResQueueIdForName(char *name);
 extern void SetResQueueId(void);
-extern uint32 ResCreatePortalId(const char *name, bool create);
+extern uint32 ResCreatePortalId(const char *name);
 extern void AtCommit_ResScheduler(void);
 extern void AtAbort_ResScheduler(void);
 
