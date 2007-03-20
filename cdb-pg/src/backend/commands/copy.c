@@ -4611,11 +4611,16 @@ CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 		/* finished processing attributes in line */
 		if (cstate->line_buf.cursor >= cstate->line_buf.len - 1)
 		{
-				
-			/* check whether raw input matched null marker */
 			input_len = end_cursor - start_cursor;
-			
-			/* make sure this is not a zero column table*/
+
+			if (cstate->eol_type == EOL_CRNL)
+			{
+				/* ignore the leftover CR */
+				input_len--;
+				cstate->attribute_buf.data[cstate->attribute_buf.cursor - 1] = '\0';
+			}
+
+			/* check whether raw input matched null marker */
 			if(num_phys_attrs > 0)
 			{
 				if (!saw_quote && input_len == cstate->null_print_len &&
