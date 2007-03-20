@@ -150,6 +150,7 @@ static FromExpr *makeFromExpr(List *fromlist, Node *quals);
 static bool check_parameter_resolution_walker(Node *node,
 								check_parameter_resolution_context *context);
 
+static void setQryDistributionPolicy(SelectStmt *stmt, Query *qry);
 
 /*
  * parse_analyze
@@ -2942,6 +2943,9 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 		qry->intoOptions = copyObject(stmt->intoOptions);
 		qry->intoOnCommit = stmt->intoOnCommit;
 		qry->intoTableSpaceName = stmt->intoTableSpaceName;
+
+		if (stmt->distributedBy && Mpp_role == MPP_ROLE_DISPATCH)
+			setQrySDistributionPolicy(stmt, qry);
 	}
 
 	qry->rtable = pstate->p_rtable;
@@ -3106,90 +3110,7 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 			 errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES")));
 		
 	if (stmt->distributedBy && Mpp_role == MPP_ROLE_DISPATCH)
-	{
-		ListCell   *keys = NULL;
-
-		MppPolicy  *policy = NULL;
-		int			colindex = 0;
-		int			maxattrs = 200;
-	 
-		/*
-		 * We have a DISTRIBUTED BY column list specified by the user
-		 * Process it now and set the distribution policy.
-		 */
-		 
-		if (qry->into == NULL)
-		{
-			elog(ERROR,"DISTRIBUTED BY clause in SELECT statement only makes sense for SELECT INTO");
-		}
-		
-		policy = (MppPolicy *) palloc(sizeof(MppPolicy) + maxattrs * sizeof(policy->attrs[0]));
-		policy->ptype = POLICYTYPE_PARTITIONED;
-		policy->nattrs = 0;
-		policy->attrs[0] = 1;
-		 
-		if (stmt->distributedBy->length == 1 && (stmt->distributedBy->head == NULL || stmt->distributedBy->head->data.ptr_value == NULL))
-		{
-			/* distributed randomly */
-			qry->intoPolicy = policy;
-		}
-		foreach(keys, stmt->distributedBy)
-		{
-			char	   *key = strVal(lfirst(keys));
-			bool		found = false;
-		 
-			AttrNumber	n;
-
-			for(n=1;n<=list_length(qry->targetList);n++)
-			{
-								 
-				TargetEntry *target = get_tle_by_resno(qry->targetList, n);
-				colindex = n;
-
-				if (target->resname && strcmp(target->resname, key) == 0)
-				{
-#if 0
-					Oid typeOid = typenameTypeId(target->typname);
-					bool isArray = (target->typname->arrayBounds == NIL ? false : true);
-															
-					/*
-					 * To be a part of a distribution key, this type must be supported
-					 * for hashing internally in mpp. We check if the base type is
-					 * supported for hashing or if it is an array type (we support
-					 * hashing on all array types).
-					 */
-					if(!isMppHashable(typeOid) && !isArray)
-					{
-						ereport(ERROR,
-								(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
-								 errmsg("type \"%s\" can't be a part of a distribution key",
-										strVal(linitial(column->typname->names)))));						
-					}
-#endif 
-
-					found = true;
-					
-				} /*if*/
-				
-				if (found)
-					break;
-					
-			} /*for*/
-			
-			if (!found)
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_COLUMN),
-						 errmsg("column \"%s\" named in 'DISTRIBUTED BY' clause does not exist",
-								key)));
-		
-				
-
-			policy->attrs[policy->nattrs++] = colindex;
-
-		} /*foreach */
-		if (policy->nattrs > 0)
-			qry->intoPolicy = policy;
-	}
+		setQryDistributionPolicy(stmt, qry);
 
 	/* handle any CREATE TABLE AS spec */
 	if (stmt->into)
@@ -4741,4 +4662,97 @@ check_parameter_resolution_walker(Node *node,
 	}
 	return expression_tree_walker(node, check_parameter_resolution_walker,
 								  (void *) context);
+}
+
+static void
+setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
+{
+	ListCell   *keys = NULL;
+
+	MppPolicy  *policy = NULL;
+	int			colindex = 0;
+	int			maxattrs = 200;
+
+	if (Mpp_role != MPP_ROLE_DISPATCH)
+		return;
+
+	Assert(stmt->distributedBy);
+
+	if (stmt->distributedBy)
+	{
+		/*
+		 * We have a DISTRIBUTED BY column list specified by the user
+		 * Process it now and set the distribution policy.
+		 */
+		 
+		if (qry->into == NULL)
+		{
+			elog(ERROR,"DISTRIBUTED BY clause in SELECT statement only makes sense for SELECT INTO");
+		}
+		
+		policy = (MppPolicy *) palloc(sizeof(MppPolicy) + maxattrs * sizeof(policy->attrs[0]));
+		policy->ptype = POLICYTYPE_PARTITIONED;
+		policy->nattrs = 0;
+		policy->attrs[0] = 1;
+		 
+		if (stmt->distributedBy->length == 1 && (stmt->distributedBy->head == NULL || stmt->distributedBy->head->data.ptr_value == NULL))
+		{
+			/* distributed randomly */
+			qry->intoPolicy = policy;
+		}
+		foreach(keys, stmt->distributedBy)
+		{
+			char	   *key = strVal(lfirst(keys));
+			bool		found = false;
+		 
+			AttrNumber	n;
+
+			for(n=1;n<=list_length(qry->targetList);n++)
+			{
+								 
+				TargetEntry *target = get_tle_by_resno(qry->targetList, n);
+				colindex = n;
+
+				if (target->resname && strcmp(target->resname, key) == 0)
+				{
+#if 0
+					Oid typeOid = typenameTypeId(target->typname);
+					bool isArray = (target->typname->arrayBounds == NIL ? false : true);
+															
+					/*
+					 * To be a part of a distribution key, this type must be supported
+					 * for hashing internally in mpp. We check if the base type is
+					 * supported for hashing or if it is an array type (we support
+					 * hashing on all array types).
+					 */
+					if(!isMppHashable(typeOid) && !isArray)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+								 errmsg("type \"%s\" can't be a part of a distribution key",
+										strVal(linitial(column->typname->names)))));						
+					}
+#endif 
+
+					found = true;
+					
+				} /*if*/
+				
+				if (found)
+					break;
+					
+			} /*for*/
+			
+			if (!found)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+						 errmsg("column \"%s\" named in 'DISTRIBUTED BY' clause does not exist",
+								key)));
+		
+			policy->attrs[policy->nattrs++] = colindex;
+
+		} /*foreach */
+		if (policy->nattrs > 0)
+			qry->intoPolicy = policy;
+	}
 }
