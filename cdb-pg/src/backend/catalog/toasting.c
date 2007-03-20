@@ -74,7 +74,7 @@ AlterTableCreateToastTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid, Oid *
 	 */
 	rel = heap_open(relOid, AccessExclusiveLock);
 	
-	Assert(rel->rd_rel->reltoastrelid != 0 || (newOid != 0 && newIndexOid != 0));
+	
 	
 	/* create_toast_table does all the work */
 	(void) create_toast_table(rel, newOid, newIndexOid, comptypeOid);
