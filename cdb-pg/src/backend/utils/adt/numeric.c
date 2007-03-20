@@ -126,6 +126,9 @@ typedef int16 NumericDigit;
  * This is feasible because the digit buffer is separate from the variable.
  * ----------
  */
+#define	NUMERIC_LOCAL_NDIG	33
+#define	NUMERIC_LOCAL_DTXT	128
+
 typedef struct NumericVar
 {
 	int			ndigits;		/* # of digits in digits[] - can be 0! */
@@ -3718,6 +3721,7 @@ mul_var(NumericVar *var1, NumericVar *var2, NumericVar *result,
 	int			var2ndigits = var2->ndigits;
 	NumericDigit *var1digits = var1->digits;
 	NumericDigit *var2digits = var2->digits;
+	int			 tdig[NUMERIC_LOCAL_NDIG];
 
 	if (var1ndigits == 0 || var2ndigits == 0)
 	{
@@ -3780,7 +3784,15 @@ mul_var(NumericVar *var1, NumericVar *var2, NumericVar *result,
 	 * avoid overflow in maxdig itself, it actually represents the max
 	 * possible value divided by NBASE-1.
 	 */
-	dig = (int *) palloc0(res_ndigits * sizeof(int));
+	if (res_ndigits > (NUMERIC_LOCAL_NDIG - 1))
+	{
+		dig = (int *) palloc0(res_ndigits * sizeof(int));
+	}
+	else
+	{
+		dig = tdig;
+		memset(dig, 0, (res_ndigits * sizeof(int)));
+	}
 	maxdig = 0;
 
 	ri = res_ndigits - 1;
@@ -3842,7 +3854,8 @@ mul_var(NumericVar *var1, NumericVar *var2, NumericVar *result,
 	}
 	Assert(carry == 0);
 
-	pfree(dig);
+	if (dig != tdig)
+		pfree(dig);
 
 	/*
 	 * Finally, round the result to the requested precision.
@@ -3889,6 +3902,7 @@ div_var(NumericVar *var1, NumericVar *var2, NumericVar *result,
 	int			var2ndigits = var2->ndigits;
 	NumericDigit *var1digits = var1->digits;
 	NumericDigit *var2digits = var2->digits;
+	int			tdiv[NUMERIC_LOCAL_NDIG];
 
 	/*
 	 * First of all division by zero check; we must not be handed an
@@ -3939,7 +3953,18 @@ div_var(NumericVar *var1, NumericVar *var2, NumericVar *result,
 	 * position of dividend space.	A final pass of carry propagation takes
 	 * care of any mistaken quotient digits.
 	 */
-	div = (int *) palloc0((div_ndigits + 1) * sizeof(int));
+	if (div_ndigits > (NUMERIC_LOCAL_NDIG - 2))
+	{
+		div = (int *) palloc0((div_ndigits + 1) * sizeof(int));
+	}
+	else
+	{
+		div = tdiv;
+		*div = 0;
+		if ((div_ndigits + 1) - var1ndigits)
+			memset(div + var1ndigits, 0,
+				((div_ndigits + 1) - var1ndigits) * sizeof(int));
+	}
 	for (i = 0; i < var1ndigits; i++)
 		div[i + 1] = var1digits[i];
 
@@ -4095,7 +4120,8 @@ div_var(NumericVar *var1, NumericVar *var2, NumericVar *result,
 	}
 	Assert(carry == 0);
 
-	pfree(div);
+	if (div != tdiv)
+		pfree(div);
 
 	/*
 	 * Finally, round the result to the requested precision.
