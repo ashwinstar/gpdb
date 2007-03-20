@@ -225,7 +225,7 @@ url_fopen(char *url, char *filename, const char *operation)
 {
     /* this code checks for URLs or types in the 'url' and
        basicly use the real fopen() for standard files */
-
+    bool  isGpfdistd = false;
     URL_FILE *file;
     (void)operation;
 
@@ -242,15 +242,27 @@ url_fopen(char *url, char *filename, const char *operation)
     else
     {
         file->type = CFTYPE_CURL; /* marked as URL */
+		
+        if(strncmp(url, "gpfdistd", 8) == 0)
+        {
+			isGpfdistd = true;
+			
+            url[4] = 'h';
+            url[5] = 't';
+            url[6] = 't';
+            url[7] = 'p';
+            url += 4;
+        }
+
         file->handle.curl = curl_easy_init();
 
         curl_easy_setopt(file->handle.curl, CURLOPT_URL, url);
         curl_easy_setopt(file->handle.curl, CURLOPT_WRITEDATA, file);
         curl_easy_setopt(file->handle.curl, CURLOPT_VERBOSE, FALSE);
         curl_easy_setopt(file->handle.curl, CURLOPT_WRITEFUNCTION, write_callback);
-	file->x_httpheader = NULL;
-	file->x_httpheader = curl_slist_append(file->x_httpheader, "X-GP-TID: dummy gpdb guid");
-	curl_easy_setopt(file->handle.curl, CURLOPT_HTTPHEADER, file->x_httpheader);
+        file->x_httpheader = NULL;
+        file->x_httpheader = curl_slist_append(file->x_httpheader, "X-GP-TID: dummy gpdb guid");
+        curl_easy_setopt(file->handle.curl, CURLOPT_HTTPHEADER, file->x_httpheader);
 
         if(!multi_handle)
             multi_handle = curl_multi_init();

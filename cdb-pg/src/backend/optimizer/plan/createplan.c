@@ -985,11 +985,9 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	 * If we happen to be dealing with URI's with the 'gpfdistd' protocol
 	 * we do an extra step here. We modify the locationlist so that every
 	 * primary segdb will get a URI (therefore we duplicate the existing
-	 * URI's until the list is of size = total_primaries. Then we change
-	 * the URI's to 'http' protocol and assign them an incremental suffix
-	 * since the client daemon gpfdstd will be expecting it.
+	 * URI's until the list is of size = total_primaries.
 	 *
-	 * If however will have 'http' or 'file' protocols to begin with, we
+	 * If however we have 'http' or 'file' protocols to begin with, we
 	 * just skip this step and go straight to URI->segdb mapping.
 	 */
 	first_uri_str = (char *) strVal(lfirst(list_head(rel->locationlist)));
@@ -1007,11 +1005,6 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 			foreach(c, rel->locationlist)
 			{
 				char *uri_str = (char *) strVal(lfirst(c));
-				uri_str[4] = 'h';
-				uri_str[5] = 't';
-				uri_str[6] = 't';
-				uri_str[7] = 'p';
-				uri_str += 4;
 						
 				/* append to a list of Value nodes, size nelems */
 				modifiedloclist = lappend(modifiedloclist, makeString(pstrdup(uri_str)));				
