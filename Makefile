@@ -123,11 +123,13 @@ HOMEFAIL :
 clean :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, no need to clean"; exit 1; fi
 	@cd $(GPPGDIR); make clean
+	@cd $(GPMGMT)/bin; make clean
 	@rm -f $(TARBALL)
 
 distclean :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, no need to clean"; exit 1; fi
 	@cd $(GPPGDIR); make distclean
+	@cd $(GPMGMT)/bin; make clean
 	
 distprep : $(ISCONFIG)
 	@cd $(GPPGDIR); make distprep
