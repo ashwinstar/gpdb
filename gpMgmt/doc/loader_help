@@ -1,0 +1,317 @@
+COMMAND NAME: loader.sh
+
+Loads large batches of data into a running Greenplum Database.
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+loader.sh [-f '<control_file>'] -h <hostname> -p <port_number> 
+-d <database> -u <username> -P <password> [-c <concurrent_threads>] 
+[--skipheader <number_of_rows>] [--logfile <filename>] [-n | -s] 
+{[-b <batch_size>] [-l <batch_limit> | --noreject] [--badfile <filename>]} 
+[--help | --version]
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+Bizgres Loader is a Java command-line program that is called from a 
+shell script (loader.sh). The functionality of Bizgres Loader is similar 
+to the PostgreSQL COPY command and uses similar data formatting options. 
+However, Bizgres Loader provides several additional features such as 
+parallel loading, error logging, data batching, and enhanced configuration 
+options.
+
+Bizgres Loader takes as input a control file. The control file contains 
+one or more LOAD commands, which are the specifications for loading the 
+data into a table. See Formatting the Control File on page 94 for more 
+information about the control file. In a LOAD command, you must specify 
+the location of your data (either a data file or standard input). This 
+data must be formatted in a way that is compatible with Bizgres Loader. 
+
+Bizgres Loader can be run in batch mode, which means that large quantities 
+of data are loaded into the database in batches. You can specify the number 
+of rows and a size limit that define a batch. If a batch contains data errors,
+the bad batches are written to a bad file so you can go back and troubleshoot 
+the rows that did not get loaded.
+
+After loading data, always run ANALYZE to update the database statistics 
+used by the query planner.
+
+**************************************
+THE CONTROL FILE
+**************************************
+
+The control file contains one or more LOAD commands. LOAD commands are not 
+case-sensitive. A LOAD command is structured as follows:
+
+LOAD [schema.]tablename [(column1,column2,...)]
+
+     FROM {'filename' | STDIN}
+
+     [ [WITH] 
+
+         [DELIMITER [AS] 'delimiter']
+
+         [NULL [AS] 'null string']
+
+         [ESCAPE [AS] 'escape' | 'OFF'] ] ;
+
+
+**************************************
+DATA FILE FORMAT
+**************************************
+
+The data file contains the data to be imported into the database. It 
+must follow a specific field-delimited format, and conform to the 
+following syntax rules:
+
+* Header rows may be added at the beginning of a data file. Use the 
+  --skipheader option when running Bizgres Loader to skip the header 
+  rows when loading the data.
+
+* A row is determined by a line feed character (0x0a). Blank rows in the 
+  data file (a row with a single line feed character) are allowed and will 
+  be ignored by Bizgres Loader.
+
+* The DELIMITER character (as specified in the control file) must only 
+  appear between any two data value fields. Do not place a delimiter at 
+  the beginning or end of a row. For example:
+
+  data value 1 | data value 2 | data value 3
+
+* The order of data columns should correspond to the column list specified 
+  in the control file, or if no column list is specified, the same order 
+  as in the table metadata. 
+
+* NULL values are represented by the NULL string specified in the control 
+  file, or by the default convention of nothing between two delimiters.
+
+* Special characters such as a line feed (0x0a) or the delimiter character 
+  should be escaped (using the escape character specified in the control 
+  file) when used as data values within a field. If there is no need to 
+  escape the data, you can disable escaping by using: ESCAPE 'OFF'.
+
+**************************************
+ESCAPING
+**************************************
+
+The data file has two reserved characters that have special meaning to 
+Bizgres Loader:
+
+* The designated delimiter character (such as a tab or |), which is used 
+  to separate fields in the data file. 
+
+* A line feed (0x0a), which is used to designate a new row in the data file.
+
+If your data contains either of these characters, you must escape the 
+character so Bizgres Loader treats it as data and not as a field separator 
+or new row.
+
+By default, the escape character is a \ (backslash). If you want to use a 
+different escape character, you can do so using the ESCAPE AS clause in 
+the control file. Make sure to choose an escape character 
+that is not used anywhere in your data file as an actual data value. 
+
+If there is no need to escape the data, you can disable escaping by using:
+
+ESCAPE 'OFF'
+
+For example, suppose you have a table with three columns and you want to 
+load the following three fields using Bizgres Loader. 
+
+* percentage sign = %
+
+* vertical bar = |
+
+* exclamation point = !
+
+Your designated delimiter character is | (pipe character), and your designated
+escape character is * (asterisk). The formatted row in your data file would 
+look like this:
+
+ percentage sign = % | vertical bar = *| | exclamation point = !
+
+Notice how the pipe character that is part of the data has been escaped 
+using the asterisk character.
+
+**************************************
+DATA BATCHING
+**************************************
+
+By default data batching is disabled, meaning the entire data load is 
+generally treated as one transaction. Bizgres Loader will batch the 
+data internally if the size limit is reached, which is 8 MB by default or 
+the value specified by the -l option. This dynamic batching feature is 
+enabled by default whether running in batch mode or not. The --noreject 
+option disables dynamic batching as well as the creation of a bad file.
+
+Batching allows you to divide the data records into batches to be loaded 
+into the database in increments. This is useful if you have large 
+quantities of data. With batching enabled, Bizgres Loader does incremental 
+error checking and loading for each batch of records. If Bizgres Loader 
+encounters data errors, it will not load a batch and will write the records 
+from that batch into a bad file for you to review later. If batching is not 
+enabled and one record has a data error, none of the data will be loaded.
+
+Batching is enabled by using the -b option on the command-line when you 
+run Bizgres Loader. This option specifies the number of records or rows 
+that should comprise a batch. 
+
+By default, a bad file is created in the current directory the name 
+LOADER-timestamp-table_name.bad. The bad file contains batch records 
+that were not loaded due to data errors. You can choose your own name for 
+the bad file using the --badfile option (only recommended for control 
+files with a single LOAD command).
+
+For very large batch sizes, you may also want to increase the memory 
+allocated for saving a data batch in memory using the -l option. The default 
+amount of memory is 8 MB. If the memory limit is reached before the number 
+of rows in the batch has been processed, Bizgres Loader will dynamically 
+reduce the batch size to the allowed size limit and commit the data to the 
+database anyways. The --noreject option can be used to disable saving 
+batch data in memory, but this will also disable the bad file, which can 
+make troubleshooting load errors more difficult.
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-f '<control_file>'
+
+ Specifies the full path and file name of the control file to use. The 
+ control file contains one or more LOAD commands, which specify the data 
+ to import along with various details of the data import operation. If the 
+ -f option is omitted, you must then pipe the data file and control file 
+ into Bizgres Loader on the command-line. Your control file should then 
+ specify STDIN as the FROM value.
+
+-h <hostname>
+
+ Required. Specifies the host name of your Greenplum Database server 
+ (master host). If not specified, localhost is used.
+
+-p <port_number>
+
+ Required. Specifies the port number of your Greenplum Database server 
+ (PostgreSQL). If not specified, defaults to 5432.
+
+-d <database>
+
+ Required. If not specified, defaults to template1.
+
+-u <username>
+
+ Required. The name of a database user. If not specified, defaults to 
+ username.
+
+-P <password>
+
+ Required only if using password authentication. The password of the 
+ user used to connect to the database. If not specified, defaults 
+ to password.
+
+-c <number_concurrent_threads>
+
+ Optional. The number of concurrent threads to use when loading the 
+ data into the database. Default is 1 (no concurrency).
+
+--skipheader number_of_rows
+
+ Optional. If the data file to be loaded contains header rows, you must 
+ use the --skipheader option to declare the number of header rows to 
+ ignore at the beginning of a data file. By default Bizgres Loader assumes 
+ the data file contains no header rows, and will load all rows as data.
+
+--logfile <filename>
+
+ Optional. The path and file name of the log file for Bizgres Loader. By 
+ default a log file named loader.log is written to the current directory.
+
+-n (preview mode)
+
+ Optional. Runs the loader in preview mode. The control file and data 
+ are parsed and load statistics are printed, but no data is loaded into 
+ the database. 
+
+-s (create SQL files)
+
+ Optional. Sends the generated SQL commands and data to one or more .sql 
+ files instead of loading into the database. The data and commands in the 
+ .sql files are already modified, escaped, and divided into batches. This 
+ option is overridden by the -n option.
+
+-b batch_size
+
+ Optional. Specifies the batch size (number of rows) to load. Batching is 
+ disabled by default. If the batch size is extremely large, you may need to 
+ adjust the batch limit specified by the -l option. 
+
+-l batch_limit
+
+ Optional. The limit in mega-bytes of batch data to save in memory. Defaults 
+ to 8 MB. This is used as a safety mechanism to limit the amount of batch 
+ data saved in memory. If the loader has reached this limit, but has not yet 
+ reached the number of rows specified by the -b option, it will go ahead and 
+ commit the data to the database anyways. If running Bizgres Loader with 
+ very large batch sizes, increase this value as needed. 
+ This option is overridden by the --noreject option.
+
+--noreject (do not save failed batches)
+
+ Optional. When specified, no memory is set aside for saving batch data. 
+ Bizgres Loader will not save failed or rejected batches into a bad file.
+
+--badfile filename
+
+ Optional. Allows you to specify a path and file name for the bad file. 
+ The bad file contains batch records rejected by Bizgres Loader due to 
+ data errors. If you specify your own file name for the bad file using 
+ this option, make sure a file with the same name does not already exist, 
+ and that your control file does not include multiple load commands that 
+ load data into different tables.
+
+ By default, the bad file is created in the current directory as: 
+ loader-mmddHHMMSS-table_name.bad. The table name is appended to the file 
+ name while the load is in progress. This is done to accommodate control 
+ files with multiple LOAD commands.
+
+--help
+
+ Displays the online help.
+
+--version
+
+ Displays the version of Bizgres Loader.
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+To run Bizgres Loader with the minimal options:
+
+ loader.sh -f '/home/gpadmin/control.txt' -h myhost -p 10000 -d gpdb -u gpadmin
+
+To run Bizgres Loader in regular mode (no batching):
+
+ loader.sh -f '/home/gpadmin/control.txt' -h myhost -p 10000 -d gpdb -u gpadmin --noreject
+
+To run Bizgres Loader when the data file has one header row at the 
+beginning of the file:
+
+ loader.sh -f '/home/gpadmin/control.txt' -h myhost -p 10000 -d gpdb -u gpadmin --skipheader 1
+
+To run Bizgres Loader in batch mode. This command divides the data into 
+batches of 200 rows:
+
+ loader.sh -f '/home/gpadmin/control.txt' -h myhost -p 10000 -d gpdb -u gpadmin -b 200
+
+To run Bizgres Loader in preview mode:
+
+ loader.sh -f '/home/gpadmin/control.txt' -h myhost -p 10000 -d gpdb -u gpadmin -n
+
+A sample of a LOAD command in a control file:
+
+ LOAD customers (id, name, address, phone) FROM /home/gpadmin/ctl.txt WITH DELIMITER AS '|' NULL AS '' ESCAPE AS '^';
+

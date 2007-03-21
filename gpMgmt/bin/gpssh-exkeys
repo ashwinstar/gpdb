@@ -1,0 +1,386 @@
+#!/usr/bin/env python
+'''
+gpssh-exkeys -- exchange ssh public keys among friends
+
+Usage: gpssh-exkeys [-?v] [-p port] [-u user] [-h host] [-f hostfile]
+
+             -?      : print this help screen
+	     -v	     : verbose mode
+	     -p port : ssh port to use 
+	     -u user : the user to run command
+	     -h host : the host to connect to (multiple -h is okay)
+	     -f file : a file listing all hosts to connect to
+
+Author: cktan@greenplum.com
+'''
+
+import os, sys, getopt, time, getpass, logging
+
+if sys.version_info < (2, 3): 
+    sys.exit("[ERROR] gpssh-exkeys is supported on Python versions 2.3 or greater\n"
+             + "Please upgrade python installed on this machine.")
+
+sys.path.append(sys.path[0] + '/lib')
+try:
+    import paramiko
+except ImportError, e:
+    sys.exit('[ERROR] unable to import module: ' + str(e))
+
+
+def usage(exitarg):
+    help_path = os.path.join(sys.path[0], '..', 'doc', 'gpssh-exkeys_help');
+    try:
+	f = open(help_path);
+	for line in f: 
+	    print line,
+    except:
+        print __doc__
+    sys.exit(exitarg)
+
+opt = {}
+opt['-v'] = False
+opt['-p'] = 22
+opt['-u'] = os.environ.get('LOGNAME') or os.environ.get('USER')
+opt['-h'] = []
+opt['-f'] = False
+passwd = []
+homeDir = os.environ['HOME']
+authorized_keys_fname = '%s/.ssh/authorized_keys' % homeDir
+known_hosts_fname = '%s/.ssh/known_hosts' % homeDir
+id_rsa_fname = '%s/.ssh/id_rsa' % homeDir
+id_rsa_pub_fname = id_rsa_fname + '.pub'
+hostList = []
+
+def parsePort(val): 
+    try: return int(val)
+    except ValueError: return 0
+
+class Host: 
+    def __init__(self, user, host, port):
+	self.m_user = user
+	self.m_host = host
+	self.m_port = int(port)
+	self.m_name = '%s@%s' % (user, host)
+	self.m_popen = None
+	self.m_popen_cmd = ''
+	self.m_remoteID = None
+
+    def name(self): return self.m_name
+    def user(self): return self.m_user
+    def host(self): return self.m_host
+    def port(self): return self.m_port
+    def remoteID(self): return self.m_remoteID
+    def popen_cmd(self): return self.m_popen_cmd;
+
+
+    def tryParamikoConnect(self, client, pwd = None, silence = False):
+	try:
+	    client.connect(self.m_host, self.m_port, self.m_user, pwd)
+	    return True
+	except paramiko.AuthenticationException:
+	    if not silence: print '[ERROR %s@%s] bad password' % (self.m_user, self.m_host)
+	    return False
+	except paramiko.SSHException, e:
+	    if not silence: print '[ERROR %s@%s] %s' % (self.m_user, self.m_host, str(e))
+	    return False
+	
+
+    def sendLocalID(self, ID, passwd):
+	'Send local ID to remote over SSH, and append to authorized_key'
+	p = None
+	cin = cout = cerr = None
+	try:
+	    p = paramiko.SSHClient()
+	    p.load_system_host_keys()
+	    ok = self.tryParamikoConnect(p, silence = True)
+	    if not ok:
+		for pwd in passwd:
+		    ok = self.tryParamikoConnect(p, pwd, silence = True)
+		    if ok: break
+	    while not ok:
+		print '  ***'
+		pwd = getpass.getpass('  *** Enter password for %s@%s: ' % (self.m_user, self.m_host))
+		if pwd: ok = self.tryParamikoConnect(p, pwd)
+		if ok: passwd.append(pwd)
+
+	    cmd = ('mkdir -p .ssh; ' +
+		   'chmod 0700 .ssh; ' +
+		   'touch .ssh/authorized_keys; ' +
+		   'chmod 0600 .ssh/auth* .ssh/id_*; ' +
+		   'chmod 0644 .ssh/id*pub config')
+	    if opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
+	    (cin, cout, cerr) = p.exec_command(cmd)
+	    cin.close(); cout.close(); cerr.close()
+
+	    cmd = 'echo %s >> .ssh/authorized_keys && echo ok ok ok' % ID
+	    if opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
+	    (cin, cout, cerr) = p.exec_command(cmd)
+	    cin.close()
+	    line = cout.readline()
+	    cout.close(); cerr.close()
+	    return line.find('ok ok ok') >= 0
+	finally:
+	    if cin: cin.close()
+	    if cout: cout.close()
+	    if cerr: cerr.close()
+	    if p and p._transport: p.close()
+
+
+    def popen(self, cmd):
+	'Run a command and save popen handle in this Host instance.'
+	if self.m_popen: self.m_popen.close()
+	if opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
+	self.m_popen = os.popen(cmd)
+	self.m_popen_cmd = cmd
+	return self.m_popen
+
+    def pclose(self):
+	'Close the popen handle'
+	if not self.m_popen: return (False, None)
+	content = self.m_popen.read()
+	ok = not self.m_popen.close()
+	return (ok, content)
+
+    def setRemoteID(self, ID):
+	'Save the remote ID'
+	self.m_remoteID = ID
+
+
+def parseCommandLine():
+    global opt
+    try:
+	(options, args) = getopt.getopt(sys.argv[1:], '?vp:u:h:f:')
+    except Exception, e:
+	usage('[ERROR] ' + str(e))
+
+    for (switch, val) in options:
+	if (switch == '-?'):      usage(0)
+	elif (switch == '-v'):    opt[switch] = True
+	elif (switch[1] in 'uf'): opt[switch] = val
+	elif (switch == '-h'):    opt[switch].append(val)
+	elif (switch == '-p'):    opt[switch] = parsePort(val)
+
+    if not (opt['-p'] > 0): 
+	usage('[ERROR] please specify valid port number for -p switch')
+    hf = (len(opt['-h']) and 1) + (opt['-f'] and 1)
+    if hf != 1:
+        usage('[ERROR] please specify at least one of -h or -f args, but not both')
+
+
+def parseHostLine(line):
+    '''Parse line into (user, host, port) tuple'''
+    try:
+	t = line.strip().split('@')
+	cnt = len(t)
+	if t[0][0] == '#': return None
+        if cnt == 1: return [opt['-u'], t[0], opt['-p']]
+	if cnt == 2: 
+	    tt = t[1].split(':')
+	    cnt = len(tt)
+	    if cnt == 1: return [t[0], tt[0], opt['-p']]
+	    elif cnt == 2: return [t[0], tt[0], int(tt[1])]
+    except ValueError: pass
+    except IndexError: pass
+    return None
+
+def readHostFile(fname, retList):
+    if not fname: return
+    f = None; lno = 0; host = {}
+    try:
+	try:
+	    f = open(fname, 'r')
+	    for line in f:
+		lno = lno + 1
+		h = parseHostLine(line)
+		if not h: continue
+		key = '%s@%s' % (h[0], h[1])
+		host[key] = h
+	    for n in host: retList.append(host[n])
+	except IOError:
+	    sys.exit('[ERROR] cannot read host file ' + fname 
+		     + (lno > 0 and (' (line %d)' % lno) or ''))
+    finally:
+	if f: f.close()
+
+
+###  create local id_rsa
+def createLocalID():
+    cmd = 'ssh-keygen -t rsa -N \"\" -f %s < /dev/null > /dev/null || ls %s' % (id_rsa_fname, id_rsa_fname)
+    if opt['-v']: print '[INFO] executing', cmd
+    f = os.popen(cmd)
+    for line in f: 
+	if line.find(id_rsa_fname) >= 0: 
+	    print '  ... %s file exists ... skipped' % id_rsa_fname
+    if f.close(): 
+	sys.exit('[ERROR] ssh-keygen failed')
+
+    f = None; 
+    try:
+	try: 
+	    f = open(id_rsa_pub_fname, 'r'); 
+	    return f.readline().strip()
+	except IOError:
+	    sys.exit('[ERROR] ssh-keygen failed - unable to read the generated file ' + id_rsa_pub_fname)
+    finally:
+	if f: f.close()
+
+def localHost(localID):
+    tt = localID.split()
+    tt = parseHostLine(tt[2]) 
+    return Host(tt[0], tt[1], tt[2])
+
+def authorizeLocalID(localID):
+    cmd = 'echo %s >> %s' % (localID, authorized_keys_fname)
+    if os.system(cmd):
+	sys.exit('[ERROR] while in authorizeLocalID() -  %s' % cmd)
+
+
+def addRemoteID(tab, line):
+    IDKey = line.strip().split()
+    if not (len(IDKey) == 3 and line[0] != '#'): return False
+    tab[IDKey[2]] = line
+    return True
+
+
+def readAuthorizedKeys():
+    f = None
+    tab = {}
+    try:
+	f = open(authorized_keys_fname, 'r')
+	for line in f: addRemoteID(tab, line)
+    finally:
+	if f: f.close()
+    return tab
+
+
+def writeAuthorizedKeys(tab):
+    f = None
+    try: 
+	f = open(authorized_keys_fname, 'w')
+	for IDKey in tab: f.write(tab[IDKey])
+    finally:
+	if f: f.close()
+
+def addKnownHost(tab, line):
+    key = line.strip().split()
+    if not (len(key) == 3 and line[0] != '#'): return False
+    tab[key[0]] = line
+    return True
+
+def readKnownHosts():
+    f = None
+    tab = {}
+    try:
+	f = open(known_hosts_fname, 'r')
+	for line in f: addKnownHost(tab, line)
+    finally:
+	if f: f.close()
+    return tab
+
+def writeKnownHosts(tab):
+    f = None
+    try: 
+	f = open(known_hosts_fname, 'w')
+	for key in tab: f.write(tab[key])
+    finally:
+	if f: f.close()
+
+
+try:
+    nullFile = logging.FileHandler('/dev/null')
+    logging.getLogger('paramiko.transport').addHandler(nullFile)
+
+    parseCommandLine()
+    tab = []
+    for h in opt['-h']: 
+	h = parseHostLine(h)
+	if h: tab.append(h)
+	else: usage('[ERROR] invalid -h parameter')
+
+    readHostFile(opt['-f'], tab)
+    tab.sort(lambda x, y: cmp(x[0], y[0]) or cmp(x[1], y[1]))
+    opt['-h'] = tab
+    for h in opt['-h']: hostList.append(Host(h[0], h[1], h[2]))
+
+
+    ######################
+    #  step 1
+    #
+    print '[STEP 1 of 5] create local ID'
+    errmsg = None
+    localID = createLocalID()
+    authorizeLocalID(localID)
+
+    ######################
+    #  step 2
+    #
+    print; print '[STEP 2 of 5] keyscan all hosts and update known_hosts file'
+    for h in hostList:
+	cmd = 'ssh-keyscan -t rsa %s >> %s' % (h.host(), known_hosts_fname)
+        if opt['-v']: print '[INFO]', cmd
+	os.system(cmd)
+
+    # eliminate duplicate in known_hosts file
+    try:
+	tab = readKnownHosts()
+	writeKnownHosts(tab)
+    except IOError:
+	sys.exit('[ERROR] cannot read/write known_hosts file')
+
+    ######################
+    #  step 3
+    #
+    print; print '[STEP 3 of 5] copy public key to remote host'  # serial
+    for h in hostList:
+	print '  ... send to', h.name()
+	if not h.sendLocalID(localID, passwd): 
+	    errmsg = '[ERROR %s] unable to send local ID' % h.name()
+	    print errmsg
+
+
+    if errmsg: sys.exit(1)
+
+    ######################
+    #  step 4
+    #
+    print; print '[STEP 4 of 5] merge authorized keys locally'
+    try:
+	tab = readAuthorizedKeys()
+    except IOError: 
+	sys.exit('[ERROR] cannot read authorized_keys file')
+
+    errmsg = None
+    if not errmsg:
+	try: writeAuthorizedKeys(tab)
+        except IOError:
+	    errmsg = "[ERROR] unable to write authorized_keys file"
+	    print errmsg
+
+    if errmsg: sys.exit(1)
+
+
+    ######################
+    #  step 5
+    #
+    print; print '[STEP 5 of 5] copy ssh files to all remote hosts'
+    errmsg = None
+    for h in hostList:
+	cmd = ('scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' +
+	       '-P %d %s %s %s %s %s@%s:.ssh/' % (h.port(), authorized_keys_fname, known_hosts_fname, 
+					    id_rsa_fname, id_rsa_pub_fname,
+					    h.user(), h.host()))
+	h.popen(cmd)
+
+    for h in hostList:
+	(ok, content) = h.pclose()
+	if ok: print '  ... finished key exchange with', h.name()
+	else:
+	    errmsg = "[ERROR] unable to copy authorized_keys to %s" % h.name()
+	    print errmsg
+    
+    if errmsg: sys.exit(1)
+
+    print; print '[INFO] completed successfully'
+
+except KeyboardInterrupt:
+    sys.exit('\n\nInterrupted...')

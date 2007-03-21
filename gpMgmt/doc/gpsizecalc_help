@@ -1,0 +1,175 @@
+COMMAND NAME: mppsizecalc.sh
+
+Shows the disk space usage for a given database, table, or index.
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+mppsizecalc.sh {-x <database_name> [-p | -m] | {-t <schema>.<table_name> [-h] 
+               [-i] [-a <database_name>]}} [-B <parallel_processes>] 
+               [-d <data_directory>] [-s b|k|m|g] [-f] [-l <logfile_directory>] 
+               [-D] [-q] [-? | -v]
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The mppsizecalc.sh script can be used to determine the disk space usage for a 
+Greenplum database, table, or index. mppsizecalc.sh displays the following 
+information:
+
+* The total disk space usage for a specified database (mirrors and primary 
+  combined).
+
+* The primary disk space usage for a specified table. Note that for 
+  partitioned parent tables, you must use the -h option to inquire about 
+  child tables.
+
+* The primary disk space usage for a specified table index.
+
+* The disk usage per active segment (if -f option is supplied).
+
+If checking disk space usage on a specific table or index, sizing information 
+is shown for active (primary) segments only. If checking size of a database, 
+total sizing is shown by default (primary and mirror).
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-x <database_name>
+
+Either a database name or a table name is required. The database for which 
+you want to see the total disk space usage (primary and mirror segments).
+
+
+-p (primary segments only)
+
+Obtain database sizing information for primary segments only. The default 
+is to show total disk space usage for databases (including mirrors) and to 
+show primary disk space usage only for tables and indexes.
+
+
+-m (mirror segments only)
+
+Obtain database sizing information for mirror segments only. The default is 
+to show total disk space usage for databases (including mirrors) and to show 
+primary disk space usage only for tables and indexes.
+
+
+-t <schema>.<table_name>
+
+Either a database name or a table name is required. The schema qualified 
+table name for which you want to see the disk space usage. For a table, disk 
+space usage is shown for active segments only by default. 
+
+
+-h (show child table hierarchy)
+
+Optional. If the table supplied with the -t option has child tables associated 
+with it, this option will show information for the inherited child tables as 
+well.
+
+
+-i (show index size)
+
+Optional. Shows the index size for the named table.
+
+
+-a <database_name_for_table>
+
+Optional. The name of the database for the specified table. If not supplied, 
+the script uses the default database (which is the most recently created 
+database).
+
+
+-B <parallel_processes>
+
+The number of segments to check in parallel. If not specified, the script 
+will start up to 60 parallel processes depending on how many segment instances 
+for which it needs to check sizing information.
+
+
+-d <master_data_directory>
+
+Optional. The master host data directory. If not specified, the value set for 
+$MASTER_DATA_DIRECTORY will be used.
+
+
+-s b | k | m| g (bytes, kilobytes, megabytes, or gigabytes)
+
+Optional. Display disk usage size information in bytes (b), kilobytes (k), 
+megabytes (m) or gigabytes (g). The default is kilobytes (k).
+
+
+-f (per segment results)
+
+Optional. Displays the disk space usage per active segment. The default is 
+to show total disk space usage for all segments.
+
+
+-l <logfile_directory>
+
+The directory to write the log file. Defaults to ~/gpAdminLogs.
+
+
+-D (show detailed output)
+
+Optional. If supplied will output all script log messages to the screen.
+
+
+-q (no screen output)
+
+Run in quiet mode. Command output is not displayed on the screen, but is still 
+written to the log file.
+
+
+-? (help)
+
+Displays the online help.
+
+
+-v (show script version)
+
+Displays the version, status, last updated date, and check sum of this script.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Show the total disk space usage for a table:
+
+mppsizecalc.sh -t products
+
+
+Show the total disk space usage for a database. Show size in megabytes 
+rather than kilobytes:
+
+mppsizecalc.sh -x gpdb -s m
+
+
+Show the disk space usage per segment for a partitioned table:
+
+mppsizecalc.sh -t products -h -f
+
+
+Show the disk space usage per segment for a database:
+
+mppsizecalc.sh -x gpdb -f
+
+
+Show the index sizes for a table that is in another database besides the 
+default:
+
+mppsizecalc.sh -t products -a gpdb2 -i
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+mppstate.sh, mppskew.sh
+

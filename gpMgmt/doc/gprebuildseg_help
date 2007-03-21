@@ -1,0 +1,95 @@
+COMMAND NAME: mpprebuildseg.sh
+
+Rebuilds segment instances from the Greenplum system catalog tables of a 
+Greenplum Database master instance.
+
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+mpprebuildseg.sh -d <master_data_directory> [-n <locale>] [-a] [-q] 
+[-l <logfile_directory>] [-D] [-? | -v]
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The mpprebuildseg.sh script builds segment instances using configuration 
+information contained in the Greenplum system catalog tables of a Greenplum 
+Database master instance. The use of this script assumes that you have:
+
+1. Built a master instance from a backup file using mpprebuildcluster.sh -m.
+
+2. Have edited the Greenplum system catalog tables on the Greenplum master 
+   instance to reflect your desired system configuration. See the 
+   Greenplum Database Administrator Guide for more information.
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-d <master_data_directory>
+
+Required. The data directory of the Greenplum master instance.
+
+
+-n <locale>
+
+Sets the default locale (character set encoding) for the Greenplum Database 
+system. Defaults to en_US.utf8 (UNICODE). You must make sure that the 
+locale you specify exists on your operating system (locale -a will show 
+which locales are available). See 'Character Set Support' in the 
+PostgreSQL documentation for more information on the supported character 
+set encodings.
+
+
+-a (do not prompt)
+
+Do not prompt the user for confirmation.
+
+
+-q (no screen output)
+
+Run in quiet mode. Command output is not displayed on the screen, but is 
+still written to the log file.
+
+
+-l <logfile_directory>
+
+The directory to write the log file. Defaults to ~/gpAdminLogs.
+
+
+-D (debug)
+
+Sets logging level to debug.
+
+
+-? (help)
+
+Displays the online help.
+
+
+-v (show script version)
+
+Displays the version, status, last updated date, and check sum of this script.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Rebuild the segment instances using the data found in the given Greenplum 
+master:
+
+mpprebuildseg.sh -d /dbfast1/master/gp-1
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+mpprebuildcluster.sh, mppcreatecluster.sh, gp_dump, gp_restore
+

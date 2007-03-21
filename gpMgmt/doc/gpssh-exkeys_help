@@ -1,0 +1,112 @@
+COMMAND NAME: gpssh-exkeys
+
+Exchanges SSH public keys between hosts.
+
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+gpssh-exkeys { -f <host_file> | - h <hostname> [-h <hostname> ...] } 
+             [-p <ssh_port>] [-u <os_user>]
+
+gpssh-exkeys -?
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The gpssh-exkeys utility will exchange SSH keys between the 
+specified hosts. This allows SSH connections between hosts without 
+a password prompt. If a user name is not specified on the 
+command-line (-u) or in the host file, then keys will be exchanged 
+as the currently logged in user. 
+
+To specify the hosts involved in the SSH key exchange, use the 
+-f option to specify a file containing a list of host names, or use 
+the -h option to name single host names on the command-line. At 
+least one host name (-h) or a host file (-f) is required. Note that 
+the current host is included in the key exchange by default.
+
+The gpssh-exkeys utility requires Python 2.3 or higher. Python is 
+installed with most operating systems by default. If you have an 
+older version of Python, you must upgrade to 2.3 or higher (and make 
+sure Python is in your $PATH) in order to use gpssh.
+
+Greenplum recommends performing the key exchange process twice: 
+once as root and once as the gpadmin user (the user designated 
+to own your Greenplum Database installation). The Greenplum Database 
+management scripts require that the same non-root user be created on 
+all hosts in the Greenplum Database system, and the scripts must 
+be able to connect as that user to all hosts without a password prompt.
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-f <host_file>
+
+Specifies the name of a file that contains a list of hosts that 
+will participate in the SSH key exchange. The host name is required, 
+and you can optionally specify an alternate user name and/or SSH port 
+number per host. The syntax of the host file is one host per line 
+as follows:
+[username@]hostname[:ssh_port]
+
+
+-h <hostname>
+
+Specifies a single host name that will participate in the SSH 
+key exchange. You can use the -h option multiple times to 
+specify multiple host names.
+
+
+-p <ssh_port>
+
+Specifies the default SSH port to use when logging in to a 
+remote host. If not specified, defaults to port 22 
+(or the port specified in the host file, if any).
+
+
+-u <os_user>
+
+Specifies the default operating system user account to use 
+when exchanging public keys. If not specified, defaults to 
+the currently logged in user (or the user specified in the 
+host file, if any).
+
+
+-? (help)
+
+Displays the online help.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Exchange SSH keys between all hosts listed in the file host_file:
+
+gpssh-exkeys -f host_file
+
+
+Exchange SSH keys between all hosts listed in the file host_file 
+as the user gpadmin:
+
+gpssh-exkeys -f host_file -u gpadmin
+
+
+Exchange SSH keys between the hosts thumper0, thumper1, and 
+thumper2 as the currently logged in user:
+
+gpssh-exkeys -h thumper0 -h thumper1 -h thumper2 -u gpadmin
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+gpssh, gpscp
+

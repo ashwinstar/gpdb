@@ -1,0 +1,172 @@
+# FILE NAME: mpp_config
+
+# A configuration file is needed by the mppcreatecluster.sh
+# script to tell it how to configure the master and segment 
+# instances in your Greenplum Database system. This file can be named 
+# whatever you like, and is referenced when you run mppcreatecluster.sh. 
+
+################################################
+# REQUIRED PARAMETERS
+################################################
+
+# A name for the array you are configuring. You can use any name you 
+# like. Enclose the name in quotes if the name contains spaces.
+
+ARRAY_NAME="MPP Test"
+
+
+# This specifies the file that contains the list of segment host names 
+# that comprise the Greenplum Database system  the master host is assumed to 
+# be the host from which you are running the script. If the host list 
+# file does not reside in the same directory where the mppcreatecluster.sh 
+# script is executed, specify the absolute path to the file.
+
+MACHINE_LIST_FILE=/home/bgadmin/host_file
+
+
+# Prefix used to name the data directories on the master and segment
+# instances. The naming convention for data directories in a 
+# Greenplum Database system is SEG_PREFIXnumber where number starts with 0 
+# (zero) for the MPP master and is incremented by one for each segment 
+# instance created. So for example, if you choose the prefix mpp, your 
+# master instance data directory would be named mpp0, and the segment 
+# instances would be named mpp1, mpp2, mpp3, mpp4, and so on.
+
+
+SEG_PREFIX=mpp
+
+
+# Base port number on which primary segment instances will be 
+# started on a segment host. If a host has multiple primary segment 
+# instances, the base port number will be incremented by one for each 
+# additional segment instance started on that host. 
+
+
+PORT_BASE=50000
+
+
+# This specifies the data storage location(s) where the script will 
+# create the primary segment data directories. The script creates a 
+# unique data directory for each segment instance. If you want multiple 
+# segment instances per host, list a data storage area for each primary 
+# segment you want created. The recommended number is one primary segment
+# per CPU. It is OK to list the same data storage area multiple times 
+# if you want your data directories created in the same location. The 
+# number of data directory locations specified will determine the number 
+# of primary segment instances per host.
+ 
+# You must make sure that the user who runs mppcreatecluster.sh (for example, 
+# the bgadmin user) has permissions to write to these directories. You 
+# may want to create these directories on the segment hosts before running 
+# mppcreatecluster.sh and chown them to the appropriate user.
+
+
+declare -a DATA_DIRECTORY=(/dbfast1 /dbfast2)
+# declare -a DATA_DIRECTORY=(/mpp_primary /mpp_primary)
+
+
+# The host name of the MPP master instance. Must match the output
+# of the 'hostname' system command
+
+MASTER_HOSTNAME=hostname
+
+# The location where the data directory will be created on the MPP 
+# master host. 
+
+# You must make sure that the user who runs mppcreatecluster.sh
+# has permissions to write to this directory. You may want to 
+# create this directory on the master host before running 
+# mppcreatecluster.sh and chown it to the appropriate user.
+
+MASTER_DIRECTORY=/dbfast1
+
+
+# The port number for the MPP master instance. This is the port number 
+# that users and client connections will use when accessing the 
+# Greenplum Database system.
+
+MASTER_PORT=5432
+
+# This parameter specifies the IP address(es) of the hosts allowed to 
+# connect to a MPP master instance. This adds an entry in the PostgreSQL 
+# pg_hba.conf file for the master instance. By default, local host 
+# connections are already allowed. The segment instances are configured 
+# by default to allow client connections from the master only (not configurable 
+# by this parameter). The default pg_hba.conf file on the MPP master has the 
+# following entries (assuming 0.0.0.0/0 is the IP_ALLOW setting and bgadmin 
+# is the database super user):
+#
+# local     all     bgadmin     ident          sameuser
+# local     all     all        ident           sameuser
+# host      all     bgadmin     127.0.0.0/0     trust
+# host      all     bgadmin     0.0.0.0/0       md5
+# host      all     all         0.0.0.0/0       trust
+
+IP_ALLOW=0.0.0.0/0
+
+# The shell used the mppcreatecluster.sh script uses to execute 
+# commands on remote hosts. Allowed value is ssh. You must set up 
+# your trusted host environment before running the mppcreatecluster.sh 
+# script. You can use groupSession to do this.
+
+
+TRUSTED_SHELL=ssh
+
+# Maximum distance between automatic write ahead log (WAL) 
+# checkpoints, in log file segments (each segment is normally 16 
+# megabytes). This will set the checkpoint_segments parameter 
+# in the postgresql.conf file for each segment instance in the 
+# Greenplum Database system.
+
+CHECK_POINT_SEGMENTS=8
+
+# The character set encoding to use. Greenplum Database supports the 
+# same character sets as PostgreSQL. See 'Character Set Support'
+# in the PostgreSQL documentation for allowed character sets. 
+
+ENCODING=UNICODE
+
+
+################################################
+# OPTIONAL PARAMETERS
+################################################
+
+# Optional. Uncomment to create a database of this name after the
+# system is initialized. You can always create a database later using 
+# the CREATE DATABASE command or the createdb script.
+
+#DATABASE_NAME=warehouse
+
+
+################################################
+# OPTIONAL PARAMETERS FOR SEGMENT MIRRORING
+################################################
+
+# Data mirroring is optional. Mirroring can be configured
+# at system initialization time. 
+# You can also set up mirrors later
+# after Greenplum Database has been set up, using mppaddmirrors.sh. 
+# Uncomment these parameters to set up mirroring.
+
+# The base port number on which mirror segment instances will be 
+# started on a segment host. If a host has multiple mirror segment 
+# instances, the base port number will be incremented by one for 
+# each additional mirror segment instance started on that host. 
+# Be sure to use a different number than the primary PORT_BASE.
+
+#MIRROR_PORT_BASE=60000
+
+# The data directory where mirror segment instances will be
+# created on a host. There must be the same number of data directories 
+# declared for mirror segment instances as for primary segment instances 
+# (see the DATA_DIRECTORY parameter for more information).
+
+# You must make sure that the user who runs mppcreatecluster.sh
+# has permissions to write to these directories. You may want to 
+# create these directories on the segment hosts before running 
+# mppcreatecluster.sh and chown them to the appropriate user.
+
+
+#declare -a MIRROR_DATA_DIRECTORY=(/dbfast3 /dbfast4)
+#declare -a MIRROR_DATA_DIRECTORY=(/mpp_mirror /mpp_mirror)
+
