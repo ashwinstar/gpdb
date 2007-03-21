@@ -452,7 +452,7 @@ main(int argc, char **argv)
 				
 			/* START MPP ADDITION */
 			case 1:
-				/* mpp-format */
+				/* gp-format */
 				dumpPolicy = true;
 				break;
 			/* END MPP ADDITION */

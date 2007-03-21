@@ -286,7 +286,7 @@ main(int argc, char *argv[])
 				
 			/* START MPP ADDITION */
 			case 1:
-				/* mpp-format */
+				/* gp-format */
 				appendPQExpBuffer(pgdumpopts, " --gp-syntax");
 				break;
 			/* END MPP ADDITION */

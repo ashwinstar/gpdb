@@ -226,7 +226,7 @@ static void usage(void)
 	printf(("\nMPP specific options:\n"));
 	printf(("  --gp-c                  use gunzip for in-line de-compression\n"));
 	printf(("  --gp-d=BACKUPFILEDIR    directory where backup files are located\n"));
-	printf(("  --mpp-i                  ignore error\n"));
+	printf(("  --gp-i                  ignore error\n"));
 	printf(("  --gp-k=KEY              date time backup key from gp_backup run\n"));
 	printf(("  --gp-r=REPORTFILEDIR    directory where report file is placed\n"));
 	printf(("  --gp-l=FILELOCATIONS    backup files are on (a)ll databases, (p)rimaries only (default)\n"));
@@ -292,8 +292,8 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 		{"gp-c", no_argument, NULL, 1},
 		//{"gp-cf", required_argument, NULL, 2},
 		{"gp-d", required_argument, NULL, 3},
-		{"mpp-i", no_argument, NULL, 4},
-		//{"mpp-hdb", required_argument, NULL, 5},
+		{"gp-i", no_argument, NULL, 4},
+		//{"gp-hdb", required_argument, NULL, 5},
 		{"gp-k", required_argument, NULL, 6},
 		{"gp-r", required_argument, NULL, 7},
 		{"gp-s", required_argument, NULL, 8},
@@ -574,12 +574,12 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				break;
 				
 			case 4:
-				/* mpp-e on error stop */
+				/* gp-e on error stop */
 				pInputOpts->bOnErrorStop = false;
 				break;
 				
 			case 5:
-				/* mpp-hdb master database name */
+				/* gp-hdb master database name */
 				//pInputOpts->pszMasterDBName = Safe_strdup(optarg);
 				break;
 				
@@ -699,7 +699,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 	if ((dataOnly || schemaOnly) && pInputOpts->backupLocation == FILE_ON_INDIVIDUAL)
 	{
 		mpp_err_msg(logError, pszProgName, "options \"schema only\" (-s) or \"data only\" (-a) cannot be used together with --gp-s=i\n"
-					"If you want to use --mpp-i and dump only data, omit dbid number 1 (master) from the individual dbid list.\n");
+					"If you want to use --gp-i and dump only data, omit dbid number 1 (master) from the individual dbid list.\n");
 		exit(1);
 	}
 

@@ -666,7 +666,7 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
 }
 
 
-/* Special MPP-only method for executing SQL statements.  Specifies a global
+/* Special Greenplum-only method for executing SQL statements.  Specifies a global
  * transaction context that the statement should be executed within.
  *
  * This should *ONLY* ever be used by the MPP Query Dispatcher and NEVER (EVER)

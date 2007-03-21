@@ -813,7 +813,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	if ((dataOnly || schemaOnly) && pInputOpts->actors == SET_INDIVIDUAL)
 	{
 		mpp_err_msg(logError, pszProgName, "options \"schema only\" (-s) or \"data only\" (-a) cannot be used together with --gp-s=i\n"
-										   "If you want to use --mpp-i and dump only data, omit dbid number 1 (master) from the individual dbid list.");
+										   "If you want to use --gp-i and dump only data, omit dbid number 1 (master) from the individual dbid list.");
 		goto cleanup;
 	}
 	

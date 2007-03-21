@@ -355,7 +355,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 	if (!PG_ARGISNULL(7))
 		bOnErrorStop = PG_GETARG_BOOL(7);
 
-	pszOnErrorStop = bOnErrorStop ? "--mpp-e" : "";
+	pszOnErrorStop = bOnErrorStop ? "--gp-e" : "";
 
 	/*
 	 * if BackupDirectory is relative, make it absolute based on the directory
@@ -438,7 +438,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 			+ strlen(pszKeyParm) + 1
 			+ 7 + 1				/* --gp-d */
 			+ strlen(pszBackupDirectory) + 1
-			+ 7 + 1				/* --mpp-e */
+			+ 7 + 1				/* --gp-e */
 			+ 2 + 1				/* -p */
 			+ 5 + 1				/* port */
 			+ 2 + 1				/* -U */

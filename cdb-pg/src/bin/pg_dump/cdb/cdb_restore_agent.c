@@ -181,7 +181,7 @@ main(int argc, char **argv)
          * the following are cdb specific, and don't have an equivalent short option
          */
         {"gp-d", required_argument, NULL, 1},
-        {"mpp-e", no_argument, NULL, 2},
+        {"gp-e", no_argument, NULL, 2},
         {"gp-k", required_argument, NULL, 3},
 	    {"gp-c", required_argument, NULL, 4},
 		{"target-dbid", required_argument, NULL, 5},
@@ -339,7 +339,7 @@ main(int argc, char **argv)
                 g_pszMPPOutputDirectory = strdup(optarg);
                 break;
 
-            case 2:         /* --mpp-e On Error Stop for psql */
+            case 2:         /* --gp-e On Error Stop for psql */
                 g_bOnErrorStop = opts->exit_on_error = true;
                 break;
 
