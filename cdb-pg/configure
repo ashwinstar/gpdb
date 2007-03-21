@@ -32,28 +32,28 @@ else
   as_unset=false
 fi
 
-# Calculate the MPP version string from the CVS tag.
+# Calculate the Greenplum version string from the CVS tag.
 # If there is no version set, get the name from CVS/Tag,
 # otherwise default to the head of cvs.
 RAW_VERSION=
 if [ -z "$RAW_VERSION" ] ; then
     if [ -r CVS/Tag ] ; then
         #Source is from a tag
-        MPP_VERSION=`cat CVS/Tag | sed 's,^[A-Z],,'`
+        GP_VERSION=`cat CVS/Tag | sed 's,^[A-Z],,'`
     else
         #Source is from head
-        MPP_VERSION="cvs Head"
+        GP_VERSION="cvs Head"
     fi
     #Set the buildnumber to a dev build
-    MPP_BUILDNUMBER="dev"
+    GP_BUILDNUMBER="dev"
 else
-    MPP_VERSION=`echo $RAW_VERSION | sed -e 's,Release-,,' -e 's,-build-.*,,' -e 's,_,.,g'`
-    MPP_BUILDNUMBER=`echo $RAW_VERSION | sed -e 's,.*build-,,'`
+    GP_VERSION=`echo $RAW_VERSION | sed -e 's,Release-,,' -e 's,-build-.*,,' -e 's,_,.,g'`
+    GP_BUILDNUMBER=`echo $RAW_VERSION | sed -e 's,.*build-,,'`
 fi
-MPP_VERSION_IN="src/include/catalog/gp_version.in"
-MPP_VERSION_HEADER="src/include/catalog/gp_version.h"
-if grep '\$\$' $MPP_VERSION_IN > /dev/null 2>&1 ; then
-    sed "s,\\$.*\\$\\$,$MPP_VERSION build $MPP_BUILDNUMBER," $MPP_VERSION_IN > $MPP_VERSION_HEADER
+GP_VERSION_IN="src/include/catalog/gp_version.in"
+GP_VERSION_HEADER="src/include/catalog/gp_version.h"
+if grep '\$\$' $GP_VERSION_IN > /dev/null 2>&1 ; then
+    sed "s,\\$.*\\$\\$,$GP_VERSION build $GP_BUILDNUMBER," $GP_VERSION_IN > $GP_VERSION_HEADER
 fi
 
 # Work around bugs in pre-3.0 UWIN ksh.
@@ -3531,7 +3531,7 @@ else
 fi
 
 cat >>confdefs.h <<_ACEOF
-#define PG_VERSION_STR "PostgreSQL $PACKAGE_VERSION (Greenplum Database $MPP_VERSION build $MPP_BUILDNUMBER) on $host, compiled by $cc_string"
+#define PG_VERSION_STR "PostgreSQL $PACKAGE_VERSION (Greenplum Database $GP_VERSION build $GP_BUILDNUMBER) on $host, compiled by $cc_string"
 _ACEOF
 
 
