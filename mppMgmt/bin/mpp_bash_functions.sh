@@ -1115,7 +1115,7 @@ PARALLEL_SUMMARY_STATUS_REPORT () {
 # Setup logging directory
 #******************************************************************************
 CUR_DATE=`$DATE +%Y%m%d`
-DEFLOGDIR=$HOME/mppAdminLogs
+DEFLOGDIR=$HOME/gpAdminLogs
 if [ ! -d $DEFLOGDIR ]; then
 		mkdir $DEFLOGDIR
 fi

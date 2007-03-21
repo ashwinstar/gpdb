@@ -53,7 +53,7 @@ files (created by gp_dump) are present.
 
 -l <logfile_directory>
 
-The directory to write the log file. Defaults to ~/mppAdminLogs.
+The directory to write the log file. Defaults to ~/gpAdminLogs.
 
 
 -D (debug)

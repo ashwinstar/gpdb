@@ -113,7 +113,7 @@ to show total disk space usage for all segments.
 
 -l <logfile_directory>
 
-The directory to write the log file. Defaults to ~/mppAdminLogs.
+The directory to write the log file. Defaults to ~/gpAdminLogs.
 
 
 -D (show detailed output)

@@ -197,7 +197,7 @@ Do not prompt the user for confirmation.
 -l <log_directory>
 
 Specifies an alternative directory to write the log file. By default 
-log files are written to ~/mppAdminLogs.
+log files are written to ~/gpAdminLogs.
 
 
 -D (debug)

@@ -92,7 +92,7 @@ Show data skew for mirror segments. Default is to show primary segments only.
 
 -l <logfile_directory>
 
-The directory to write the log file. Defaults to ~/mppAdminLogs.
+The directory to write the log file. Defaults to ~/gpAdminLogs.
 
 
 -D (debug)

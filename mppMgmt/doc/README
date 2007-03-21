@@ -131,7 +131,7 @@ COMMON OPTIONS
 LOGGING
 *************************************************
 
-Log files are written to ~/mppAdminLogs by default.
+Log files are written to ~/gpAdminLogs by default.
 Use the -l option to change the log file location.
 
 Log files are named <script_name>_<date>.log

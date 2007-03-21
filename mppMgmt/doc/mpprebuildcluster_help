@@ -157,7 +157,7 @@ documentation for more information on the supported character set encodings.
 
 -l <logfile_directory>
 
-The directory to write the log file. Defaults to ~/mppAdminLogs.
+The directory to write the log file. Defaults to ~/gpAdminLogs.
 
 
 -D (debug)
