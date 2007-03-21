@@ -335,7 +335,7 @@ execMotionUnsortedReceiver(MotionState * node)
 	if (recvRC == END_OF_STREAM)
 	{
 #ifdef CDB_MOTION_DEBUG
-        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
 		    elog(DEBUG4, "motionID=%d saw end of stream", motion->motionID);
 #endif
         Assert(node->numTuplesFromAMS == node->numTuplesToParent &&
@@ -555,7 +555,7 @@ execMotionSortedReceiverFirstTime(MotionState * node)
 
 	ReceiveReturnCode recvRC;
 
-	mySegIdx = Mpp_segment;
+	mySegIdx = Gp_segment;
 
 	/*
 	 * We need to get a tuple from every sender, and stick it into the heap.
@@ -796,7 +796,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	estate->es_cur_root_idx = prior_es_cur_root_idx;
 
     if (thisSlice &&
-        mpp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
+        gp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
         ereport(LOG, (errmsg("Motion node %d in slice%d is %s%s %s slice%d",
 		                     node->motionID,
                              thisSlice->sliceIndex,

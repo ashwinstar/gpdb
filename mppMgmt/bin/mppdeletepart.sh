@@ -231,7 +231,7 @@ CHK_PARAM () {
 		fi
 	fi
 	if [ x"" != x"$ALT_DB_NAME" ];then
-		$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $ALT_DB_NAME -l > /dev/null 2>&1
+		$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $ALT_DB_NAME -l > /dev/null 2>&1
 		ERROR_CHK $? "connect to $ALT_DB_NAME database" 2
 		QD_DBNAME=$ALT_DB_NAME
 	fi
@@ -252,13 +252,13 @@ VALIDATE_PROCESS () {
 		fi
 	fi
 	#Check to see if table has any child tables already
-	HAS_CHILD_TABLES=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relhassubclass from pg_class where relname = '$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+	HAS_CHILD_TABLES=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relhassubclass from pg_class where relname = '$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 	ERROR_CHK $? "obtain sub class information" 2
 	if [ $HAS_CHILD_TABLES != 't' ];then
 		ERROR_EXIT "[FATAL]:-Table $PARENT_TABLE_NAME does not have any child tables defined." 2
 	fi
 	#Now get partition type
-	CHILD_NAME=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select relname from pg_class where oid in (select inhrelid from pg_inherits where inhparent in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}'))) limit 1;"`
+	CHILD_NAME=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select relname from pg_class where oid in (select inhrelid from pg_inherits where inhparent in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}'))) limit 1;"`
         ERROR_CHK $? "obtain child table name" 2
         TYPE_NAME=`$ECHO $CHILD_NAME|$AWK -F"_" '{print $NF}'`
 	case $TYPE_NAME in
@@ -279,12 +279,12 @@ VALIDATE_PROCESS () {
 GATHER_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Obtaining child table list"
-	CHILD_NAME_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select relname from pg_class where oid in (select inhrelid from pg_inherits where inhparent in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'))) order by relname;"`)
+	CHILD_NAME_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select relname from pg_class where oid in (select inhrelid from pg_inherits where inhparent in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'))) order by relname;"`)
 	ERROR_CHK $? "child table list" 2
 	CHILD_NAME_ARRAY_COUNT=${#CHILD_NAME_ARRAY[@]}
 	LOG_MSG "[INFO]:-Table $TABLE_NAME has $CHILD_NAME_ARRAY_COUNT child tables" 1
 	LOG_MSG "[INFO]:-Checking for rules on child tables" 1
-	CHILD_RULE_ARRAY_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select count(*) from pg_rules where tablename='$TABLE_NAME' and schemaname='${SCHEMA_NAME}';"`
+	CHILD_RULE_ARRAY_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select count(*) from pg_rules where tablename='$TABLE_NAME' and schemaname='${SCHEMA_NAME}';"`
 	ERROR_CHK $? "obtain count of number of rules" 2
 	if [ $CHILD_RULE_ARRAY_COUNT -ne 0 ];then
 		LOG_MSG "[INFO]:-Table $TABLE_NAME has $CHILD_RULE_ARRAY_COUNT rules" 1
@@ -294,12 +294,12 @@ GATHER_INFO () {
 	fi
 	for C_NAME in ${CHILD_NAME_ARRAY[@]}
 	do
-		CHILD_INDEX=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select indexname from pg_indexes where tablename='$C_NAME' and schemaname='$SCHEMA_NAME';"`
+		CHILD_INDEX=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select indexname from pg_indexes where tablename='$C_NAME' and schemaname='$SCHEMA_NAME';"`
 		ERROR_CHK $? "obtain child index list for $C_NAME" 1
 		CHILD_INDEX_ARRAY=(${CHILD_INDEX_ARRAY[@]} $CHILD_INDEX)
 		#Now check to see if child table is a parent
 		CHILD_TAB_NAME=`$ECHO $C_NAME|$CUT -d"." -f2`
-		CHILD_IS_PARENT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relhassubclass from pg_class where relname = '$CHILD_TAB_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+		CHILD_IS_PARENT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relhassubclass from pg_class where relname = '$CHILD_TAB_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 		ERROR_CHK $? "obtain has sub class for $C_NAME" 1
 		if [ $CHILD_IS_PARENT == 't' ];then
 			LOG_MSG "[WARN]:-Child table $C_NAME is also a parent" 1
@@ -323,15 +323,15 @@ GATHER_INFO () {
 	CHILD_INDEX_ARRAY_COUNT=${#CHILD_INDEX_ARRAY[@]}
 	#Now get the min and max date ranges from the rules table if number of rules <> 0
 	if [ $CHILD_RULE_ARRAY_COUNT -ne 0 ] && [ $CHILD_RULE_ARRAY_COUNT -eq $CHILD_NAME_ARRAY_COUNT ] ;then
-		MIN_DATE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -d $QD_DBNAME -A -t -c"select definition from pg_rules where tablename='$TABLE_NAME' and schemaname='$SCHEMA_NAME';"|$AWK -F"'" '{print $2}'|$GREP "-"|$SORT|$HEAD -1|$AWK '{print $1}'`
+		MIN_DATE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -d $QD_DBNAME -A -t -c"select definition from pg_rules where tablename='$TABLE_NAME' and schemaname='$SCHEMA_NAME';"|$AWK -F"'" '{print $2}'|$GREP "-"|$SORT|$HEAD -1|$AWK '{print $1}'`
 		ERROR_CHK $? "obtain start partition date " 2
 		case $TYPE_NAME in
 			hour|week|month|year )
-			MAX_DATE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -d $QD_DBNAME -A -t -c"select definition from pg_rules where tablename='$TABLE_NAME' and schemaname='$SCHEMA_NAME';"|$AWK -F"'" '{print $4}'|$GREP "-"|$SORT|$TAIL -1|$AWK '{print $1}'`
+			MAX_DATE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -d $QD_DBNAME -A -t -c"select definition from pg_rules where tablename='$TABLE_NAME' and schemaname='$SCHEMA_NAME';"|$AWK -F"'" '{print $4}'|$GREP "-"|$SORT|$TAIL -1|$AWK '{print $1}'`
 			ERROR_CHK $? "obtain end partition date " 2
 			;;
 			daily )
-			MAX_DATE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -d $QD_DBNAME -A -t -c"select definition from pg_rules where tablename='$TABLE_NAME' and schemaname='$SCHEMA_NAME';"|$AWK -F"'" '{print $2}'|$GREP "-"|$SORT|$TAIL -1|$AWK '{print $1}'`
+			MAX_DATE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -d $QD_DBNAME -A -t -c"select definition from pg_rules where tablename='$TABLE_NAME' and schemaname='$SCHEMA_NAME';"|$AWK -F"'" '{print $2}'|$GREP "-"|$SORT|$TAIL -1|$AWK '{print $1}'`
 			ERROR_CHK $? "obtain end partition date " 2
 			;;
 		esac

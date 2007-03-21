@@ -316,7 +316,7 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 	/*
 	 * Special for MPP: Ignore foreign keys for now
 	 */
-	if ((!mpp_enable_functions) && (stmt->isconstraint) && (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE))
+	if ((!gp_enable_functions) && (stmt->isconstraint) && (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE))
 	{
 		/*
 		 * Create the tigger as disabled 

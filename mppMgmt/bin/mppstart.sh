@@ -224,37 +224,37 @@ GET_DETAILS () {
 		fi
 		if [ $START_INVALID -eq 1 ];then
 			BATCH_LIMIT=$QE_ARRAY_COUNT
-			#Now get value of mpp_fault_action
-			FAULT_ACTION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show mpp_fault_action;"`
+			#Now get value of gp_fault_action
+			FAULT_ACTION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show gp_fault_action;"`
 			if [ $FAULT_ACTION == "continue" ];then
 				#Need to update gp_configuration file to set all segments marked as invalid to valid
 				LOG_MSG "[INFO]:-Utility requested to attempt startup of segments marked as invalid" 1
 				#See if any segments marked as invalid
-				INVALID_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where valid='f' and content<>-1;"` 
+				INVALID_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where valid='f' and content<>-1;"` 
 				if [ $INVALID_COUNT -gt 0 ];then
 					LOG_MSG "[INFO]:-There are $INVALID_COUNT segments marked as invalid" 1
 					#Update these to be valid
-					${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"update $CONFIG_TABLE set valid='t' where valid='f' and content<>-1;"
-					${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"update $CONFIG_TABLE set isprimary='t' where definedprimary='t' and isprimary='f' and content<>-1;"
+					${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"update $CONFIG_TABLE set valid='t' where valid='f' and content<>-1;"
+					${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"update $CONFIG_TABLE set isprimary='t' where definedprimary='t' and isprimary='f' and content<>-1;"
 					LOG_MSG "[INFO]:-Updated configuration table to mark invalid segments as valid" 1
 					#Now reset the associated mirrors
-					${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"update $CONFIG_TABLE set isprimary='f' where definedprimary='f' and isprimary='t' and content<>-1;"
+					${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"update $CONFIG_TABLE set isprimary='f' where definedprimary='f' and isprimary='t' and content<>-1;"
 					LOG_MSG "[INFO]:-Updated configuration table to reset mirrors to passive" 1
 				else
 					LOG_MSG "[INFO]:-No segments marked as invalid" 1
 				fi
 			fi
 		else
-			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $MPP_PG_VIEW where valid ='t' and content<>-1;"`
+			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $MPP_PG_VIEW where valid ='t' and content<>-1;"`
 		fi
 		#Gather locale information MPP-972
-		LC_COLLATE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show lc_collate;"`
+		LC_COLLATE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show lc_collate;"`
 		ERROR_CHK $? "obtain lc_collate info" 1
 		LOG_MSG "[INFO]:-Master lc_collate=$LC_COLLATE"
-		LC_MONETARY=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show lc_monetary;"`
+		LC_MONETARY=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show lc_monetary;"`
 		ERROR_CHK $? "obtain lc_monetary info" 1
 		LOG_MSG "[INFO]:-Master lc_monetary=$LC_MONETARY"
-		LC_NUMERIC=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show lc_numeric;"`	
+		LC_NUMERIC=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show lc_numeric;"`	
 		ERROR_CHK $? "obtain lc_numeric info" 1
 		LOG_MSG "[INFO]:-Master lc_numeric=$LC_NUMERIC"
 		#Shutdown the QD database
@@ -271,7 +271,7 @@ START_ADMIN () {
 		fi
 		LOG_MSG "[INFO]:-Starting master instance in admin mode" 1
 		export PGPORT=$MASTER_PORT
-		env PGOPTIONS="-c mpp_session_role=utility" $PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT " start
+		env PGOPTIONS="-c gp_session_role=utility" $PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT " start
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				$TAIL ${MASTER_DATA_DIRECTORY}.log|$TEE -a $LOG_FILE

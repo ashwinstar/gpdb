@@ -2003,7 +2003,7 @@ dumpRMOnlyDtx(HTAB *htab, StringInfoData *buff)
  * query execution since in MPP cursor queries don't use writer
  * gangs. However, it could be used for other purposes as well.
  *
- * See declaration of assign_mpp_write_shared_snapshot(...) for more
+ * See declaration of assign_gp_write_shared_snapshot(...) for more
  * information.
  */
 void verify_shared_snapshot_ready(void)
@@ -2011,7 +2011,7 @@ void verify_shared_snapshot_ready(void)
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
 		char cmdbuf[35];
-		strcpy(cmdbuf, "set mpp_write_shared_snapshot=true" );
+		strcpy(cmdbuf, "set gp_write_shared_snapshot=true" );
 		
 		CdbDoCommand(cmdbuf, true, true, true, true);
 	}
@@ -2019,17 +2019,17 @@ void verify_shared_snapshot_ready(void)
 
 /*
  * Force the writer QE to write the shared snapshot. Will get called
- * after a "set mpp_write_shared_snapshot=<true/false>" is executed 
+ * after a "set gp_write_shared_snapshot=<true/false>" is executed 
  * in dispatch mode.
  *
  * See verify_shared_snapshot_ready(...) for additional information.
  */
 bool
-assign_mpp_write_shared_snapshot(bool newval, bool doit, GucSource source)
+assign_gp_write_shared_snapshot(bool newval, bool doit, GucSource source)
 {
 	
 #if FALSE
-	elog(DEBUG1, "SET mpp_write_shared_snapshot: %s, doit=%s",
+	elog(DEBUG1, "SET gp_write_shared_snapshot: %s, doit=%s",
 		 (newval ? "true" : "false"), (doit ? "true" : "false"));
 #endif
 	/* make sure newval is "true". if it's "false" this could be a part

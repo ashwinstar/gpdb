@@ -136,14 +136,14 @@ DISPLAY_PARAM () {
 
 GET_FAIL_SETTING () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	FAIL_TYPE=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"show mpp_fault_action;"`
+	FAIL_TYPE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"show gp_fault_action;"`
 	ERROR_CHK $? "obtain fault action setting" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_STANDBY_SETTING () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MASTER_STANDBY_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and dbid<>1;"`
+	MASTER_STANDBY_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and dbid<>1;"`
 	ERROR_CHK $? "Obtain standby hostname" 1
 	if [ x"" == x"$MASTER_STANDBY_HOSTNAME" ];then
 		STANDBY_CONFIGURED="No master standby configured"
@@ -181,14 +181,14 @@ DATABASE_STATUS () {
 		GET_MPP_VERSION
 		GET_FAIL_SETTING
 		GET_STANDBY_SETTING
-		QD_PG_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"show server_version;"`
+		QD_PG_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"show server_version;"`
 		ERROR_CHK $? "obtain postgres version" 1
-		QD_ROLE=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"show mpp_session_role;" 2> /dev/null`
+		QD_ROLE=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"show gp_session_role;" 2> /dev/null`
 		if [ $? -ne 0 ];then
-			  QD_ROLE=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"show mpp_session_role;"`
+			  QD_ROLE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"show gp_session_role;"`
 			  ERROR_CHK $? "obtain master current role" 1
 		fi
-		MIRROR_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from $CONFIG_TABLE where content<>-1;" 2> /dev/null `
+		MIRROR_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from $CONFIG_TABLE where content<>-1;" 2> /dev/null `
 		ERROR_CHK $? "obtain mirror count" 1
 		if [ x"" == x"$MIRROR_COUNT" ];then
 			MIRROR_CONFIG=ERROR
@@ -331,11 +331,11 @@ LOG_MSG "[INFO]:-End Function $FUNCNAME"
 VERSION_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_QE_DETAILS
-	MASTER_POSTGRES_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"show server_version;"`
+	MASTER_POSTGRES_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"show server_version;"`
 	ERROR_CHK $? "obtain master postgres server version" 1
-	MASTER_INITDB_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"select productversion from $MPP_INITDB_VER_TABLE limit 1;"|$TR '$' ' '|$TR -s ' '`
+	MASTER_INITDB_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"select productversion from $MPP_INITDB_VER_TABLE limit 1;"|$TR '$' ' '|$TR -s ' '`
 	ERROR_CHK $? "obtain master initdb version" 1
-	MASTER_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"select version();" `
+	MASTER_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"select version();" `
 	ERROR_CHK $? "obtain master current version" 1
 	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	for TNODE in "${QE_ARRAY[@]}"
@@ -685,7 +685,7 @@ CLUSTER_CONFIG () {
 
 LIST_MPP_PORTS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		PORT_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, port, datadir from $CONFIG_TABLE where content<>-1;" `)
+		PORT_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, port, datadir from $CONFIG_TABLE where content<>-1;" `)
 		ERROR_CHK $? "obtain port assignments" 2
 		LOG_MSG "[INFO]:-Master segment instance  $MASTER_DATA_DIRECTORY  port = $MASTER_PORT" 1
 		LOG_MSG "[INFO]:-Segment instance port assignments" 1
@@ -702,7 +702,7 @@ LIST_MPP_PORTS () {
 
 LIST_MPP_LOGS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		LOG_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select hostname, datadir from $CONFIG_TABLE where content<>-1 ;" 2>|/dev/null`)
+		LOG_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select hostname, datadir from $CONFIG_TABLE where content<>-1 ;" 2>|/dev/null`)
 		ERROR_CHK $? "obtain log assignments" 2
 		LOG_MSG "[INFO]:-Master segment instance $MASTER_DATA_DIRECTORY logfile ${MASTER_DATA_DIRECTORY}.log" 1
 		LOG_MSG "[INFO]:-Segment instance database logfiles" 1
@@ -758,9 +758,9 @@ STANDBY_HOST_DETAILS () {
 
 GET_MPP_VERSION () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		MPP_INIT_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from gp_version_at_initdb limit 1;" 2>/dev/null`
+		MPP_INIT_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from gp_version_at_initdb limit 1;" 2>/dev/null`
 		ERROR_CHK $? "obtain MPP initdb version information" 2
-		MPP_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select version();" 2>/dev/null`
+		MPP_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select version();" 2>/dev/null`
 		ERROR_CHK $? "obtain MPP version information" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

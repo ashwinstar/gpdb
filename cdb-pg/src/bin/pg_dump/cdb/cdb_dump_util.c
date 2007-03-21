@@ -264,7 +264,7 @@ PGconn* MakeDBConnection( const SegmentDatabase* pSegDB, bool bDispatch )
 	if ( bDispatch )
         pszOptions = NULL;
     else
-        pszOptions = MakeString( "options='-c mpp_session_role=UTILITY'");
+        pszOptions = MakeString( "options='-c gp_session_role=UTILITY'");
     
     if ( pSegDB->pszHost == NULL || *pSegDB->pszHost == '\0' ) 
 		pszHost = strdup( "host=''" );

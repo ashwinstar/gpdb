@@ -594,19 +594,19 @@ LockAcquire(const LOCKTAG *locktag,
 	
 	if (lockmethodid == DEFAULT_LOCKMETHOD && locktag->locktag_type != LOCKTAG_TRANSACTION)
 	{
-		if (Mpp_role == MPP_ROLE_EXECUTE && (mpp_is_callback || !Mpp_is_writer))
+		if (Mpp_role == MPP_ROLE_EXECUTE && (gp_is_callback || !Gp_is_writer))
 		{	
 			if (lockHolderProcPtr == NULL || lockHolderProcPtr == MyProc)
 			{
 				/* Find the guy who should manage our locks */
-				PGPROC * proc = FindProcByMppSessionId(mpp_session_id);
+				PGPROC * proc = FindProcByMppSessionId(gp_session_id);
 				int count = 0;
 				while(proc==NULL && count < 5)
 				{
 					pg_usleep( /* microseconds */ 2000);
 					count++;
 					CHECK_FOR_INTERRUPTS();
-					proc = FindProcByMppSessionId(mpp_session_id);
+					proc = FindProcByMppSessionId(gp_session_id);
 				}
 				if (proc != NULL)
 				{
@@ -622,9 +622,9 @@ LockAcquire(const LOCKTAG *locktag,
 			}
 				
 		}
-		else if (mpp_enable_functions && mpp_is_callback && mpp_qd_proc_offset!=-1 && Mpp_role == MPP_ROLE_DISPATCH)
+		else if (gp_enable_functions && gp_is_callback && gp_qd_proc_offset!=-1 && Mpp_role == MPP_ROLE_DISPATCH)
 		{
-			lockHolderProcPtr = (PGPROC *)MAKE_PTR(mpp_qd_proc_offset);
+			lockHolderProcPtr = (PGPROC *)MAKE_PTR(gp_qd_proc_offset);
 			elog(DEBUG1,"QD callback trying to acquire a lock [%u,%u] %s %d",
 					 locktag->locktag_field1, locktag->locktag_field2,
 					 lock_mode_names[lockmode], (int)locktag->locktag_type);
@@ -720,7 +720,7 @@ LockAcquire(const LOCKTAG *locktag,
 				{
 					PGPROC		*otherProc = proclocktag.myProc;
 
-					if (otherProc->mppSessionId == mpp_session_id)
+					if (otherProc->mppSessionId == gp_session_id)
 					{
 						/*
 						 * One of the owners of the lock is a member of my own session
@@ -795,7 +795,7 @@ LockAcquire(const LOCKTAG *locktag,
 							}
 							
 							LWLockRelease(partitionLock);
-							if (mpp_is_callback)
+							if (gp_is_callback)
 								elog(ERROR,"Session has deadlocked itself due to function callback");
 							else
 								elog(ERROR,"Session has deadlocked itself");
@@ -1010,7 +1010,7 @@ LockAcquire(const LOCKTAG *locktag,
 		
 		if (Mpp_role == MPP_ROLE_EXECUTE)
 		{
-			if (!Mpp_is_writer)
+			if (!Gp_is_writer)
 				elog(NOTICE,"Reader gang member waiting on a lock [%u,%u] %s",
 					 locktag->locktag_field1, locktag->locktag_field2,
 					 lock_mode_names[lockmode]);
@@ -1020,7 +1020,7 @@ LockAcquire(const LOCKTAG *locktag,
 					 lock_mode_names[lockmode]);
 		}
 
-		if (Mpp_role == MPP_ROLE_EXECUTE && mpp_is_callback && mpp_enable_functions)
+		if (Mpp_role == MPP_ROLE_EXECUTE && gp_is_callback && gp_enable_functions)
 		{
 			elog(NOTICE,"Call back wants to wait on Lock");
 			lock->nRequested--;

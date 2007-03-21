@@ -47,7 +47,7 @@
 #include "utils/timestamp.h"
 
 #include "utils/tqual.h"  /*SharedLocalSnapshotSlot*/
-#include "cdb/cdbvars.h"  /*Mpp_is_writer*/
+#include "cdb/cdbvars.h"  /*Gp_is_writer*/
 
 /* GUC variables */
 int			DeadlockTimeout = 1000;
@@ -286,21 +286,21 @@ InitProcess(void)
     MyProc->mppLocalProcessSerial = mppLocalProcessSerial;
 
     /* 
-     * A nonzero mpp_session_id uniquely identifies an MPP client session 
+     * A nonzero gp_session_id uniquely identifies an MPP client session 
      * over the lifetime of the entry postmaster process.  A qDisp passes
-     * its mpp_session_id down to all of its qExecs.  If this is a qExec,
-     * we have already received the mpp_session_id from the qDisp.
+     * its gp_session_id down to all of its qExecs.  If this is a qExec,
+     * we have already received the gp_session_id from the qDisp.
      */
-    elog(DEBUG1,"InitProcess(): mpp_session_id %d, mpp_is_callback %d",mpp_session_id,mpp_is_callback);
-    Assert(mpp_session_id > 0 || !mpp_is_callback);
-    if (Mpp_role == MPP_ROLE_DISPATCH && mpp_session_id == -1)
-        mpp_session_id = mppLocalProcessSerial;
-    MyProc->mppSessionId = mpp_session_id;
+    elog(DEBUG1,"InitProcess(): gp_session_id %d, gp_is_callback %d",gp_session_id,gp_is_callback);
+    Assert(gp_session_id > 0 || !gp_is_callback);
+    if (Mpp_role == MPP_ROLE_DISPATCH && gp_session_id == -1)
+        gp_session_id = mppLocalProcessSerial;
+    MyProc->mppSessionId = gp_session_id;
     
-    MyProc->mppIsWriter = Mpp_is_writer;
+    MyProc->mppIsWriter = Gp_is_writer;
     
     if (Mpp_role == MPP_ROLE_DISPATCH)
-    	MyProc->mppIsWriter = !mpp_is_callback;
+    	MyProc->mppIsWriter = !gp_is_callback;
 
 	/*
 	 * We might be reusing a semaphore that belonged to a failed process. So
@@ -612,9 +612,9 @@ ProcKill(int code, Datum arg)
 	LWLockReleaseAll();
 
 	/* Remove the shared snapshot slot.  don't need to check for MPP_ROLE_EXECUTE
-	 * since Mpp_is_writer is only set in that role.
+	 * since Gp_is_writer is only set in that role.
 	 */
-	if( Mpp_is_writer )
+	if( Gp_is_writer )
 		SharedSnapshotRemove(SharedLocalSnapshotSlot);
 		
 	SpinLockAcquire(ProcStructLock);

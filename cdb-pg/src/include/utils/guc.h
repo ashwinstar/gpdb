@@ -104,9 +104,9 @@ typedef const char *(*GucShowHook) (void);
 
 #define GUC_QUALIFIER_SEPARATOR '.'
 
-/* GUC lists for cdb_guc_list_show().  (List of struct config_generic) */
-extern List    *cdb_guc_list_for_explain;
-extern List    *cdb_guc_list_for_no_plan;
+/* GUC lists for gp_guc_list_show().  (List of struct config_generic) */
+extern List    *gp_guc_list_for_explain;
+extern List    *gp_guc_list_for_no_plan;
 
 
 /* GUC vars that are actually declared in guc.c, rather than elsewhere */
@@ -218,7 +218,7 @@ extern ArrayType *GUCArrayDelete(ArrayType *array, const char *name);
 
 extern void pg_timezone_abbrev_initialize(void);
 
-extern int  cdb_guc_list_show(struct StringInfoData    *buf, 
+extern int  gp_guc_list_show(struct StringInfoData    *buf, 
                               const char               *pfx, 
                               const char               *fmt, 
                               GucSource                 excluding, 

@@ -122,7 +122,7 @@ cdbdisp_startDtxTransaction(void);
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
  * connections that were established during cdblink_setup.	They are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
- * guc variable mpp_connections_per_thread.
+ * guc variable gp_connections_per_thread.
  *
  * The caller must also provide a serialized Snapshot string to be used to
  * set the global snapshot for the dispatched statement.
@@ -214,7 +214,7 @@ cdbdisp_dispatchRMCommand(const char   *strCommand,
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
  * connections that were established during gang creation.	They are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
- * guc variable mpp_connections_per_thread.
+ * guc variable gp_connections_per_thread.
  *
  * The startTransaction flag is used to express intent on whether the command to
  * be dispatched should be done inside of a global transaction or not.

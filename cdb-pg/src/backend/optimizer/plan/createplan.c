@@ -3315,7 +3315,7 @@ make_unique(Plan *lefttree, List *distinctList)
 	node->uniqColIdx = uniqColIdx;
 
 	/* CDB */ /* pass DISTINCT to sort */
-	if (IsA(lefttree, Sort) && mpp_enable_sort_distinct)
+	if (IsA(lefttree, Sort) && gp_enable_sort_distinct)
 	{
 		Sort* pSort = (Sort*)lefttree;
 		pSort->noduplicates = true;
@@ -3457,7 +3457,7 @@ make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount,
 	node->limitCount = limitCount;
 
 	/* CDB */ /* pass limit struct to sort */
-	if (IsA(lefttree, Sort) && mpp_enable_sort_limit)
+	if (IsA(lefttree, Sort) && gp_enable_sort_limit)
 	{
 		Sort* pSort = (Sort*)lefttree;
 		pSort->limitOffset = copyObject(limitOffset);

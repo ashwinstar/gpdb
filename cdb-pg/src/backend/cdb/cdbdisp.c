@@ -192,7 +192,7 @@ cdbdisp_startDtxTransaction(void)
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
  * connections that were established during cdblink_setup.	They are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
- * guc variable mpp_connections_per_thread.
+ * guc variable gp_connections_per_thread.
  *
  * The caller must provide a CdbDispatchResults object having available
  * resultArray slots sufficient for the number of QEs to be dispatched:
@@ -268,18 +268,18 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	}
 
 	/*
-	 * The most threads we could have is segdb_count / mpp_connections_per_thread, rounded up.
-	 * This is equivalent to 1 + (segdb_count-1) / mpp_connections_per_thread.
+	 * The most threads we could have is segdb_count / gp_connections_per_thread, rounded up.
+	 * This is equivalent to 1 + (segdb_count-1) / gp_connections_per_thread.
 	 * We allocate enough memory for this many DispatchCommandParms structures,
 	 * even though we may not use them all.
 	 *
 	 * We can only use gp->size here if we're not dealing with a
 	 * singleton gang. It is safer to use the actual segment count.
 	 */
-	Assert(mpp_connections_per_thread > 0);
+	Assert(gp_connections_per_thread > 0);
 
 	segdbs_in_thread_pool = 0;
-	max_threads = 1 + (getMPPSegmentCount() - 1) / mpp_connections_per_thread;
+	max_threads = 1 + (getMPPSegmentCount() - 1) / gp_connections_per_thread;
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
@@ -317,7 +317,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	 * Create the thread parms structures based targetSet parameter.
 	 * This will add the segdbDesc pointers appropriate to the
 	 * targetSet into the thread Parms structures, making sure that each thread
-	 * handles mpp_connections_per_thread segdbs.
+	 * handles gp_connections_per_thread segdbs.
 	 */
 	for (x = 0; x < gp->size; x++)
 	{
@@ -358,10 +358,10 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 
 	/*
 	 * Compute the thread count based on how many segdbs were added into the
-	 * thread pool, knowing that each thread handles mpp_connections_per_thread
+	 * thread pool, knowing that each thread handles gp_connections_per_thread
 	 * segdbs.
 	 */
-	newThreads += 1 + (segdbs_in_thread_pool - 1) / mpp_connections_per_thread;
+	newThreads += 1 + (segdbs_in_thread_pool - 1) / gp_connections_per_thread;
 
 	/*
 	 * Create the threads. (which also starts the dispatching).
@@ -414,7 +414,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 			ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
 							errmsg("dispatchToGang: failed to create thread %d of %d", i + 1, newThreads),
 							errdetail("pthread_create() failed with err %d", pthread_err),
-							errhint("mpp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", mpp_connections_per_thread)));
+							errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread)));
 		}
 
 	}
@@ -429,7 +429,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
  * addSegDBToDispatchThreadPool
  * Helper function used to add a segdb's segdbDesc to the thread pool to have commands dispatched to.
  * It figures out which thread will handle it, based on the setting of
- * mpp_connections_per_thread.
+ * gp_connections_per_thread.
  */
 void
 addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
@@ -454,15 +454,15 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 
 	/*
 	 * The proper index into the DispatchCommandParms array is computed, based on
-	 * having mpp_connections_per_thread segdbDesc's in each thread.
+	 * having gp_connections_per_thread segdbDesc's in each thread.
 	 * If it's the first access to an array location, determined
-	 * by (*segdbCount) % mpp_connections_per_thread == 0,
+	 * by (*segdbCount) % gp_connections_per_thread == 0,
 	 * then we initialize the struct members for that array location first.
 	 */
-	ParmsIndex = segdbs_in_thread_pool / mpp_connections_per_thread;
+	ParmsIndex = segdbs_in_thread_pool / gp_connections_per_thread;
 	pParms = &ParmsAr[ParmsIndex];
 
-	if (segdbs_in_thread_pool % mpp_connections_per_thread == 0)
+	if (segdbs_in_thread_pool % gp_connections_per_thread == 0)
 	{
 
 		if (strCommand == NULL || strlen(strCommand) == 0)
@@ -532,10 +532,10 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 		}
 		
 		pParms->txnOptions = txnOptions;
-		pParms->cmdID = mpp_command_count;
+		pParms->cmdID = gp_command_count;
 		pParms->localSlice = sliceId;
 		pParms->dispatchResultPtrArray =
-			(CdbDispatchResult **) palloc0(mpp_connections_per_thread *
+			(CdbDispatchResult **) palloc0(gp_connections_per_thread *
 										   sizeof(CdbDispatchResult *));
 		memset(&pParms->thread, 0, sizeof(pthread_t));
 		pParms->db_count = 0;
@@ -807,7 +807,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
  * connections that were established during gang creation.	They are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
- * guc variable mpp_connections_per_thread.
+ * guc variable gp_connections_per_thread.
  *
  * The CdbDispatchResults objects allocated for the command
  * are returned in *pPrimaryResults and *pMirrorResults.

@@ -213,7 +213,7 @@ VALIDATE_PARAMS () {
 		ERROR_EXIT "[FATAL]:-Parent table $PARENT_TABLE_NAME does not exist in $QD_DBNAME database" 2
 	fi
 	#Check to see if table has any child tables already
-	HAS_CHILD_TABLES=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relhassubclass from pg_class where relname = '$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}');"`
+	HAS_CHILD_TABLES=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relhassubclass from pg_class where relname = '$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}');"`
 	ERROR_CHK $? "check for child tables for $TABLE_NAME" 2
 	if [ $HAS_CHILD_TABLES != 't' ];then
 		LOG_MSG "[FATAL]:-Table $PARENT_TABLE_NAME does not have any child tables defined."  1
@@ -228,7 +228,7 @@ PROCESS_CHILD_NAME () {
 	#<parent_table_name>_child_depth_[$DEPTH]_[$CUR_TYPES]_<range data>_<range_type>
 	#Where range type is
 	# hour, daily, week, month, range or list 
-	CHILD_NAME=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select relname from pg_class where oid in (select inhrelid from pg_inherits where inhparent in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}'))) limit 1;"`
+	CHILD_NAME=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select relname from pg_class where oid in (select inhrelid from pg_inherits where inhparent in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}'))) limit 1;"`
 	ERROR_CHK $? "obtain child table name" 2
 	TYPE_NAME=`$ECHO $CHILD_NAME|$AWK -F"_" '{print $NF}'`
 	LOG_MSG "[INFO]:-Child table partition type is $TYPE_NAME" 1
@@ -260,7 +260,7 @@ PROCESS_CHILD_NAME () {
 
 PROCESS_CHILD_INDEX () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	CHILD_INDEX_COL_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select indexdef from pg_indexes where tablename='$CHILD_NAME' and schemaname='$SCHEMA_NAME';"|$AWK '{print $NF}'|$TR '\n' ' '|$TR -d '"'`)
+	CHILD_INDEX_COL_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select indexdef from pg_indexes where tablename='$CHILD_NAME' and schemaname='$SCHEMA_NAME';"|$AWK '{print $NF}'|$TR '\n' ' '|$TR -d '"'`)
 	ERROR_CHK $? "obtain index column array for $CHILD_NAME " 2
 	LOG_MSG "[INFO]:-Child table $CHILD_NAME has indexing on columns" 1
 	for IDX in  ${CHILD_INDEX_COL_ARRAY[@]}
@@ -272,7 +272,7 @@ PROCESS_CHILD_INDEX () {
 
 PROCESS_CHILD_CONSTRAINT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	CHILD_CONSTRAINT_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`	
+	CHILD_CONSTRAINT_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`	
 	ERROR_CHK $? "obtain child table constraint text" 2
 	#Now process the constraint text to act as a template for new constraints
 	if [ $TYPE_NAME != "range" ];then
@@ -287,13 +287,13 @@ GATHER_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	PROCESS_CHILD_NAME
 	#Obtain list of columns in parent table
-	PARENT_COLUMN_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -R" " $QD_DBNAME -c "select attname from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}' )) and attnum > 0 order by attnum;"`)
+	PARENT_COLUMN_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -R" " $QD_DBNAME -c "select attname from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}' )) and attnum > 0 order by attnum;"`)
         ERROR_CHK $? "obtain parent column list for $TABLE_NAME" 2
 	#***********************************************
 	#		RULES
 	#***********************************************
 	LOG_MSG "[INFO]:-Checking for rules on child tables"
-	CHILD_RULE_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select count(*) from pg_rules where tablename='$TABLE_NAME' and schemaname='${SCHEMA_NAME}';"`
+	CHILD_RULE_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select count(*) from pg_rules where tablename='$TABLE_NAME' and schemaname='${SCHEMA_NAME}';"`
 	ERROR_CHK $? "obtain rule count" 2
 	if [ $CHILD_RULE_COUNT -ne 0 ];then
 		LOG_MSG "[INFO]:-Table $TABLE_NAME has $CHILD_RULE_COUNT rules" 1
@@ -303,13 +303,13 @@ GATHER_INFO () {
 		LOG_MSG "[INFO]:-Table $TABLE_NAME has $CHILD_RULE_COUNT rules" 1
 		LOG_MSG "[INFO]:-Set rule generation = Off" 1
 	fi
-	CHILD_NAME_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select relname from pg_class where oid in (select inhrelid from pg_inherits where inhparent in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')));"`)
+	CHILD_NAME_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select relname from pg_class where oid in (select inhrelid from pg_inherits where inhparent in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')));"`)
 	ERROR_CHK $? "obtain child name array" 2
 	#***********************************************
 	#		INDEXES
 	#***********************************************
 	LOG_MSG "[INFO]:-Checking for indexes on child tables" 1
-	CHILD_INDEX_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select count(*) from pg_indexes where tablename='$CHILD_NAME' and schemaname='${SCHEMA_NAME}';"`
+	CHILD_INDEX_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select count(*) from pg_indexes where tablename='$CHILD_NAME' and schemaname='${SCHEMA_NAME}';"`
 	ERROR_CHK $? "obtain index count for $CHILD_NAME child table" 2
 	if [ $CHILD_INDEX_COUNT -gt 0 ];then
 		LOG_MSG "[INFO]:-Child table $CHILD_NAME has indexing" 1
@@ -331,7 +331,7 @@ GATHER_INFO () {
 			MAX_DATE_NUMBER=0
 			for CHILD_ITEM in "${CHILD_NAME_ARRAY[@]}"
 			do
-				CHILD_CONSTRAINT_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_ITEM' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`	
+				CHILD_CONSTRAINT_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_ITEM' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`	
 				if [ $TYPE_NAME == "daily" ];then
 					DATE_TEXT=`$ECHO $CHILD_CONSTRAINT_TEXT|$CUT -d"'" -f2|awk '{print $1}'`
 				else
@@ -348,7 +348,7 @@ GATHER_INFO () {
 			MAX_RANGE=0
 			for CHILD_ITEM in "${CHILD_NAME_ARRAY[@]}"
 			do
-				CHILD_CONSTRAINT_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_ITEM' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`
+				CHILD_CONSTRAINT_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_ITEM' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`
 				CURRENT_RANGE=`$ECHO $CHILD_CONSTRAINT_TEXT|$TR -d ')'|$AWK '{print $NF}'`
 				if [ $CURRENT_RANGE -gt $MAX_RANGE ];then
 					MAX_RANGE=$CURRENT_RANGE
@@ -361,7 +361,7 @@ GATHER_INFO () {
 			LOG_MSG "[INFO]:-Obtained range step count as $RANGE_GAP" 1
 			;;
 	esac
-	PART_COLUMN_NUM=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select conkey from pg_constraint where conrelid in (select oid from pg_class where relname='${CHILD_NAME_ARRAY[0]}' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`
+	PART_COLUMN_NUM=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select conkey from pg_constraint where conrelid in (select oid from pg_class where relname='${CHILD_NAME_ARRAY[0]}' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`
 	ERROR_CHK $? "obtained partition column" 2
 	COLUMN_CONSTRAINT_TEXT=$CHILD_CONSTRAINT_TEXT	
 	LOG_MSG "[INFO]:-Obtained partition column number as $PART_COLUMN_NUM" 1
@@ -414,7 +414,7 @@ VALIDATE_LIST_TYPE () {
 	fi
 	for CHILD_LIST_ITEM in ${CHILD_NAME_ARRAY[@]}
 	do
-		CHILD_LIST_ITEM_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_LIST_ITEM'and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`
+		CHILD_LIST_ITEM_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_LIST_ITEM'and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`
 		for LIST_ITEM_CHK in ${PART_LIST_ARRAY[@]}
 		do
 			LOG_MSG "[INFO]:-Checking for list item $LIST_ITEM_CHK in $CHILD_LIST_ITEM"

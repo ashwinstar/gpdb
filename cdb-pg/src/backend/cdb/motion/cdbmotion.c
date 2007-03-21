@@ -31,7 +31,7 @@
 /*=========================================================================
  * MOTION NODE INFO DATA STRUCTURES
  */
-int			Mpp_max_tuple_chunk_size;
+int			Gp_max_tuple_chunk_size;
 
 /*=========================================================================
  * CHUNK SORTER DATA STRUCTURES
@@ -139,7 +139,7 @@ RemoveMotionLayer(MotionLayerState *mlStates, bool flushCommLayer)
 
 #ifdef AMS_VERBOSE_LOGGING
 	/* Emit statistics to log */
-	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
+	if (gp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
 		elog(LOG, "RemoveMotionLayer(): dumping stats\n"
 			 "      Sent: %9u chunks %9u total bytes %9u tuple bytes\n"
 			 "  Received: %9u chunks %9u total bytes %9u tuple bytes; "
@@ -184,7 +184,7 @@ initMotionLayerStructs(MotionLayerState **mlStates)
 	if(Mpp_role == MPP_ROLE_UTILITY)
 		return;
 	
-	Mpp_max_tuple_chunk_size = Mpp_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE;
+	Gp_max_tuple_chunk_size = Gp_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE;
 	
 	/*
 	 * Create the memory-contexts that we will use within the Motion Layer.
@@ -457,7 +457,7 @@ SendTuple(MotionLayerState *mlStates,
 	/* Create and store the serialized form, and some stats about it. */
 	oldCtxt = MemoryContextSwitchTo(mlStates->motion_layer_mctx);
 
-	tcList = SerializeTupleIntoChunks(tuple, &pMNEntry->ser_tup_info, Mpp_max_tuple_chunk_size);
+	tcList = SerializeTupleIntoChunks(tuple, &pMNEntry->ser_tup_info, Gp_max_tuple_chunk_size);
 
 	MemoryContextSwitchTo(oldCtxt);
 
@@ -743,7 +743,7 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
 			continue;
 
 		if (pMNEntry->preserve_order &&
-        	mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        	gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
 		{
 			/* Print chunk-sorter entry statistics. */
 
@@ -816,14 +816,14 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
 	pMNEntry->cleanedUp = true;
 
 	/* Clean up the motion-node entry, then remove it from the hash table. */
-	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
+	if (gp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
     {
         if (pMNEntry->stat_total_bytes_sent > 0 ||
             pMNEntry->sel_wr_wait > 0)
         {
             elog(LOG, "Interconnect seg%d slice%d sent %u tuples, "
                  "%u total bytes, %u tuple bytes, %u chunks; waited %u usec.",
-		         Mpp_segment,
+		         Gp_segment,
                  currentSliceId,
 		         pMNEntry->stat_total_sends,
 		         pMNEntry->stat_total_bytes_sent,
@@ -837,7 +837,7 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
         {
             elog(LOG, "Interconnect seg%d slice%d received from slice%d: %u tuples, "
                  "%u total bytes, %u tuple bytes, %u chunks; waited %u usec.",
-                 Mpp_segment,
+                 Gp_segment,
                  currentSliceId,
 		         motNodeID,
 		         pMNEntry->stat_total_recvs,
@@ -939,7 +939,7 @@ getChunkSorterEntry(MotionLayerState *mlStates,
 #endif
 
 		chunkSorterEntry->chunk_list.serialized_data_length = 0;
-		chunkSorterEntry->chunk_list.max_chunk_length = Mpp_max_tuple_chunk_size;
+		chunkSorterEntry->chunk_list.max_chunk_length = Gp_max_tuple_chunk_size;
 		chunkSorterEntry->chunk_list.num_chunks = 0;
 		chunkSorterEntry->chunk_list.p_first = NULL;
 		chunkSorterEntry->chunk_list.p_last = NULL;

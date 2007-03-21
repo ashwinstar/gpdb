@@ -284,7 +284,7 @@ cdbparallelize(Plan *plan,
 	/* Restore the global count of PARAM_EXEC from the top plan node. */
 	plan->nParamExec = nParamExec;
 
-	if (mpp_enable_motion_deadlock_sanity)
+	if (gp_enable_motion_deadlock_sanity)
 		motion_sanity_check(plan);
 
 	return plan;

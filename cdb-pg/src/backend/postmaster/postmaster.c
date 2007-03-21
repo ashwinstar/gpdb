@@ -695,7 +695,7 @@ PostmasterMain(int argc, char *argv[])
 	 * about our binding, and all of our child processes will inherit
 	 * the same binding.
  	 */
-	if (mpp_set_proc_affinity)
+	if (gp_set_proc_affinity)
 		setProcAffinity(PostPortNumber);
 
 	/* Verify that DataDir looks reasonable */

@@ -25,10 +25,10 @@
  */
 
 /*
- * Parameters mpp_session_role and mpp_role
+ * Parameters gp_session_role and gp_role
  *
- * The run-time parameters (GUC variables) mpp_session_role and
- * mpp_role report and provide control over the role assumed by a
+ * The run-time parameters (GUC variables) gp_session_role and
+ * gp_role report and provide control over the role assumed by a
  * postgres process.
  *
  * Valid  roles are the following:
@@ -43,28 +43,28 @@
  * for a user of MPP connecting to a node of  the MPP cluster.
  * Neither parameter appears in the configuration file.
  *
- * mpp_session_role
+ * gp_session_role
  *
  * - does not affect the operation of the backend, and
  * - does not change during the lifetime of PostgreSQL session.
  *
- * mpp_role
+ * gp_role
  *
  * - determines the operating role of the backend, and
  * - may be changed by a superuser via the SET command.
  *
- * The connection time value of mpp_session_role used by a
+ * The connection time value of gp_session_role used by a
  * libpq-based client application can be specified using the
  * environment variable PGOPTIONS.	For example, this is how to
  * invoke psql on database test as a utility:
  *
- *	PGOPTIONS='-c mpp_session_role=utility' psql test
+ *	PGOPTIONS='-c gp_session_role=utility' psql test
  *
  * Alternatively, libpq-based applications can be modified to set
  * the value directly via an argument to one of the libpq functions
  * PQconnectdb, PQsetdbLogin or PQconnectStart.
  *
- * Don't try to set mpp_role this way.  At the time options are
+ * Don't try to set gp_role this way.  At the time options are
  * processed it is unknown whether the user is a superuser, so
  * the attempt will be rejected.
  *
@@ -110,34 +110,34 @@ typedef enum
 
 
 extern MppRoleValue Mpp_session_role;	/* GUC var - server startup mode.  */
-extern char *mpp_session_role_string;	/* Use by guc.c as staging area for
+extern char *gp_session_role_string;	/* Use by guc.c as staging area for
 										 * value. */
-extern const char *assign_mpp_session_role(const char *newval, bool doit, GucSource source);
-extern const char *show_mpp_session_role(void);
+extern const char *assign_gp_session_role(const char *newval, bool doit, GucSource source);
+extern const char *show_gp_session_role(void);
 
 extern MppRoleValue Mpp_role;	/* GUC var - server operating mode.  */
-extern char *mpp_role_string;	/* Use by guc.c as staging area for value. */
-extern const char *assign_mpp_role(const char *newval, bool doit, GucSource source);
-extern const char *show_mpp_role(void);
+extern char *gp_role_string;	/* Use by guc.c as staging area for value. */
+extern const char *assign_gp_role(const char *newval, bool doit, GucSource source);
+extern const char *show_gp_role(void);
 
-extern bool mpp_reraise_signal; /* try to force a core dump ?*/
+extern bool gp_reraise_signal; /* try to force a core dump ?*/
 
-extern bool mpp_set_proc_affinity; /* try to bind postmaster to a processor */
+extern bool gp_set_proc_affinity; /* try to bind postmaster to a processor */
 
-/* Parameter mpp_is_primary
+/* Parameter gp_is_primary
  *
  * This run_time parameter indicates whether session is associated with the
  * primary copy of its database's content or with a mirror.  It defaults to
  * true (primary), but may be specified as false using a connect option, e.g,
  *
- *	  PGOPTIONS='-c mpp_is_primary=false' psql test
+ *	  PGOPTIONS='-c gp_is_primary=false' psql test
  *
  * Though it will ordinarily be set by a QD connecting to a QE, rather than
  * directly.  It may not be reset in a running session.
  */
-extern bool Mpp_is_primary;
+extern bool Gp_is_primary;
 
-/* Parameter Mpp_is_writer
+/* Parameter Gp_is_writer
  *
  * This run_time parameter indicates whether session is a qExec that is a
  * "writer" process.  Only writers are allowed to write changes to the database
@@ -147,33 +147,33 @@ extern bool Mpp_is_primary;
  * This should only ever be set by a QD connecting to a QE, rather than
  * directly.
  */
-extern bool Mpp_is_writer;
+extern bool Gp_is_writer;
 
-/* Parameter mpp_session_id
+/* Parameter gp_session_id
  *
  * This run time parameter indicates a unique id to identify a particular user
  * session throughout the entire MPP array.
  */
-extern int mpp_session_id;
+extern int gp_session_id;
 
 
-/* Parameter mpp_qd_callback_info
+/* Parameter gp_qd_callback_info
  *
  * This is the port of the QD, sent down to the QEs
  */
 
-extern char * mpp_qd_callback_info;
-extern bool mpp_use_snapshop_during_callback;
-extern unsigned long mpp_qd_proc_offset;
+extern char * gp_qd_callback_info;
+extern bool gp_use_snapshop_during_callback;
+extern unsigned long gp_qd_proc_offset;
 
 /*
  * Allow callback query?
  */
-extern bool mpp_enable_functions;
+extern bool gp_enable_functions;
 /*
  * Are we executing a callback query?
  */
-extern bool mpp_is_callback;
+extern bool gp_is_callback;
 
 /* Parameter debug_print_prelim_plan
  *
@@ -196,15 +196,15 @@ extern bool Debug_print_slice_table;
 
 
 /*
- * mpp_command_count
+ * gp_command_count
  *
  * This GUC is 0 at the beginning of a client session and
  * increments for each command received from the client.
  */
-extern int mpp_command_count;
+extern int gp_command_count;
 
 /*
- * Mpp_write_shared_snapshot
+ * Gp_write_shared_snapshot
  *
  * The value of this variable is actually meaningless. We use it simply
  * in order to have a mechanism of dispatching a SET query that will
@@ -213,12 +213,12 @@ extern int mpp_command_count;
  * before DECLARE'ing a cursor, since a cursor query uses only reader
  * gangs. But should be used for other things if it makes sense to do so.
  */
-extern bool Mpp_write_shared_snapshot;
+extern bool Gp_write_shared_snapshot;
 
 /*
- * Parameter mpp_connections_per_thread
+ * Parameter gp_connections_per_thread
  *
- * The run-time parameter (GUC variables) mpp_connections_per_thread
+ * The run-time parameter (GUC variables) gp_connections_per_thread
  * controls how many libpq connections to qExecs are processed in each
  * thread.
  *
@@ -227,7 +227,7 @@ extern bool Mpp_write_shared_snapshot;
  * 1 means each connection has its own thread.
  *
  * This can be set in the config file, or at runtime by a superuser using
- * SQL: set mpp_connections_per_thread = x;
+ * SQL: set gp_connections_per_thread = x;
  *
  * The default is 256.	So, if there are fewer than 256 segdbs, all would be handled
  * by the same thread.
@@ -238,44 +238,44 @@ extern bool Mpp_write_shared_snapshot;
  *		2) In CdbDispatchCommand, when commands are sent from the dispatcher to the qExecs.
  *
  */
-extern int	mpp_connections_per_thread; /* GUC var - server operating mode.  */
-extern bool assign_mpp_connections_per_thread(int newval, bool doit, GucSource source);
-extern const char *show_mpp_connections_per_thread(void);
+extern int	gp_connections_per_thread; /* GUC var - server operating mode.  */
+extern bool assign_gp_connections_per_thread(int newval, bool doit, GucSource source);
+extern const char *show_gp_connections_per_thread(void);
 extern bool assign_interconnect_setup_timeout(int newval, bool doit, GucSource source);
 extern const char *show_interconnect_setup_timeout(void);
-extern bool assign_mpp_write_shared_snapshot(bool newval, bool doit, GucSource source);
+extern bool assign_gp_write_shared_snapshot(bool newval, bool doit, GucSource source);
 
-extern char *mpp_fault_action_string;	/* Use by guc.c as user defined fault
+extern char *gp_fault_action_string;	/* Use by guc.c as user defined fault
 										 * action */
-extern bool mpp_set_read_only;
-extern bool assign_mpp_set_read_only(bool newval, bool doit, GucSource source);
-extern const char *show_mpp_set_read_only(void);
+extern bool gp_set_read_only;
+extern bool assign_gp_set_read_only(bool newval, bool doit, GucSource source);
+extern const char *show_gp_set_read_only(void);
 extern const char *role_to_string(MppRoleValue role);
 
-extern int	mpp_segment_connect_timeout; /* GUC var - timeout specifier for gang creation */
+extern int	gp_segment_connect_timeout; /* GUC var - timeout specifier for gang creation */
 
 /*
- * Parameter Mpp_max_packet_size
+ * Parameter Gp_max_packet_size
  *
- * The run-time parameter mpp_max_packet_size controls the largest packet
+ * The run-time parameter gp_max_packet_size controls the largest packet
  * size that the interconnect will transmit.  In general, the interconnect
  * tries to squeeze as many tuplechunks as possible into a packet without going
  * above this size limit.
  *
  * The largest tuple chunk size that the system will form can be derived
  * from this with:
- *		MAX_CHUNK_SIZE = Mpp_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE
+ *		MAX_CHUNK_SIZE = Gp_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE
  *
  *
  */
-extern int	Mpp_max_packet_size;	/* GUC var */
+extern int	Gp_max_packet_size;	/* GUC var */
 
 #define DEFAULT_PACKET_SIZE 8192
 #define MIN_PACKET_SIZE 512
 #define MAX_PACKET_SIZE 65536
 
 /*
- * Parameter mpp_segment
+ * Parameter gp_segment
  *
  * The segment (content) controlled by this QE
  * content indicator: -1 for entry database, 0, ..., n-1 for segment database
@@ -285,7 +285,7 @@ extern int	Mpp_max_packet_size;	/* GUC var */
  * parameters.	It is not modifiable by any user, ever.
  */
 #define UNDEF_SEGMENT -2
-extern int	Mpp_segment;		/* GUC var */
+extern int	Gp_segment;		/* GUC var */
 
 extern int	getMPPSegmentCount(void);
 
@@ -319,7 +319,7 @@ const char *
 cdbvars_verbosity_to_string(CdbVars_Verbosity verbosity);
 
 /*
- * mpp_log_gang (string)
+ * gp_log_gang (string)
  *
  * Should creation, reallocation and cleanup of gangs of QE processes be logged?
  * "OFF"     -> only errors are logged
@@ -330,15 +330,15 @@ cdbvars_verbosity_to_string(CdbVars_Verbosity verbosity);
  * The messages that are enabled by the TERSE and VERBOSE settings are
  * written with a severity level of LOG.
  */
-extern CdbVars_Verbosity    mpp_log_gang;
+extern CdbVars_Verbosity    gp_log_gang;
 
 const char *
-cdbvars_assign_mpp_log_gang(const char *newval, bool doit, GucSource source);
+cdbvars_assign_gp_log_gang(const char *newval, bool doit, GucSource source);
 const char *
-cdbvars_show_mpp_log_gang(void);
+cdbvars_show_gp_log_gang(void);
 
 /*
- * mpp_log_interconnect (string)
+ * gp_log_interconnect (string)
  *
  * Should connections between internal processes be logged?  (qDisp/qExec/etc)
  * "OFF"     -> connection errors are logged
@@ -349,12 +349,12 @@ cdbvars_show_mpp_log_gang(void);
  * The messages that are enabled by the TERSE and VERBOSE settings are
  * written with a severity level of LOG.
  */
-extern CdbVars_Verbosity    mpp_log_interconnect;
+extern CdbVars_Verbosity    gp_log_interconnect;
 
 const char *
-cdbvars_assign_mpp_log_interconnect(const char *newval, bool doit, GucSource source);
+cdbvars_assign_gp_log_interconnect(const char *newval, bool doit, GucSource source);
 const char *
-cdbvars_show_mpp_log_interconnect(void);
+cdbvars_show_gp_log_interconnect(void);
 
 
 /* --------------------------------------------------------------------------------------------------
@@ -368,20 +368,20 @@ cdbvars_show_mpp_log_interconnect(void);
 extern bool enable_adaptive_nestloop;
 
 /*
- * "mpp_motion_cost_per_row"
+ * "gp_motion_cost_per_row"
  *
  * If >0, the planner uses this value -- instead of 2 * "cpu_tuple_cost" --
  * for Motion operator cost estimation.
  */
-extern double   mpp_motion_cost_per_row;
+extern double   gp_motion_cost_per_row;
 
 /*
- * "mpp_segments_for_planner"
+ * "gp_segments_for_planner"
  *
  * If >0, number of segment dbs for the planner to assume in its cost and size
  * estimates.  If 0, estimates are based on the actual number of segment dbs.
  */
-extern int      mpp_segments_for_planner;
+extern int      gp_segments_for_planner;
 
 /*
  * Unlike some other enable... vars, enable_agg_restruct is not cost based.
@@ -393,7 +393,7 @@ extern bool enable_agg_restruct;
  * Perform a post-planning scan of the final plan looking for motion deadlocks:
  * emit verbose messages about any found.
  */
-extern bool mpp_enable_motion_deadlock_sanity;
+extern bool gp_enable_motion_deadlock_sanity;
 
 /* ----- Experimental Features ----- */
 
@@ -403,7 +403,7 @@ extern bool mpp_enable_motion_deadlock_sanity;
  * The code does not currently use planner estimates for this.  If enabled,
  * the tactic is used whenever possible.
  */
-extern bool mpp_enable_agg_distinct;
+extern bool gp_enable_agg_distinct;
 
 /* May MPP apply Unique operator (and possibly a Sort) in parallel prior
  * to the collocation motion for a Unique operator?  The idea is to reduce
@@ -412,13 +412,13 @@ extern bool mpp_enable_agg_distinct;
  * The code does not currently use planner estimates for this.  If enabled,
  * the tactic is used whenever possible.
  */
-extern bool mpp_enable_preunique;
+extern bool gp_enable_preunique;
 
 /* May MPP dump statistics for all segments as a huge ugly string
  * during EXPLAIN ANALYZE? 
  *
  */
-extern bool mpp_enable_explain_allstat;
+extern bool gp_enable_explain_allstat;
 
 /* May MPP restrict ORDER BY sorts to the first N rows if the ORDER BY
  * is wrapped by a LIMIT clause (where N=OFFSET+LIMIT)?
@@ -426,7 +426,7 @@ extern bool mpp_enable_explain_allstat;
  * The code does not currently use planner estimates for this.  If enabled,
  * the tactic is used whenever possible.
  */
-extern bool mpp_enable_sort_limit;
+extern bool gp_enable_sort_limit;
 
 /* May MPP discard duplicate rows in sort if it is is wrapped by a
  * DISTINCT clause (unique aggregation operator)?
@@ -434,13 +434,13 @@ extern bool mpp_enable_sort_limit;
  * The code does not currently use planner estimates for this.  If enabled,
  * the tactic is used whenever possible.
  */
-extern bool mpp_enable_sort_distinct;
+extern bool gp_enable_sort_distinct;
 
 /* Generic MPP sort flag for testing.
  *
  *
  */
-extern int mpp_sort_flags;
+extern int gp_sort_flags;
 
 /* The maximum number of times on average that the hybrid hashed aggregation
  * algorithm will plan to spill an input row to disk before including it in
@@ -448,7 +448,7 @@ extern int mpp_sort_flags;
  * hybrid hashed aggregation at lower settings of work_mem than it otherwise
  * would.
  */
-extern double mpp_hashagg_rewrite_limit;
+extern double gp_hashagg_rewrite_limit;
 
 
 /* --------------------------------------------------------------------------------------------------
@@ -456,13 +456,13 @@ extern double mpp_hashagg_rewrite_limit;
  */
 
 /*
- * mpp_debug_linger (integer)
+ * gp_debug_linger (integer)
  *
  * Upon an error with severity FATAL and error code ERRCODE_INTERNAL_ERROR,
  * errfinish() will sleep() for the specified number of seconds before
  * termination, to let the user attach a debugger.
  */
-extern int  mpp_debug_linger;
+extern int  gp_debug_linger;
 
 
 /* --------------------------------------------------------------------------------------------------

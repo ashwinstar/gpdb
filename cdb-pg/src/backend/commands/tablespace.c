@@ -313,14 +313,14 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	
 	i = 0;
 	
-	if (Mpp_is_primary)
+	if (Gp_is_primary)
 	{
 	 
 		foreach(cell, stmt->locations)
 		{
 			Value * v = lfirst(cell);
 			location= pstrdup(v->val.str);
-			if (Mpp_segment < 0 || i== (Mpp_segment % numSegsPerHost))
+			if (Gp_segment < 0 || i== (Gp_segment % numSegsPerHost))
 				break;
 			
 		}
@@ -331,7 +331,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		{
 			Value * v = lfirst(cell);
 			location= pstrdup(v->val.str);
-			if (Mpp_segment < 0 || i== (Mpp_segment % numSegsPerHost))
+			if (Gp_segment < 0 || i== (Gp_segment % numSegsPerHost))
 				break;
 			
 		}
@@ -435,10 +435,10 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 
 	
  	tempstr = palloc(MAXPGPATH);
- 	if (Mpp_is_primary)
-		sprintf(tempstr,"%s/seg%d",location,Mpp_segment);
+ 	if (Gp_is_primary)
+		sprintf(tempstr,"%s/seg%d",location,Gp_segment);
 	else
-		sprintf(tempstr,"%s/mir%d",location,Mpp_segment);
+		sprintf(tempstr,"%s/mir%d",location,Gp_segment);
 	location=tempstr;
 	
 	if (mkdir(location, 0700) != 0)
@@ -839,10 +839,10 @@ remove_tablespace_directories(Oid tablespaceoid, bool redo, char *phys)
 	 * location; remove the per-segment location that we built at
 	 * CreateTablespace() time */
  	tempstr = palloc(MAXPGPATH);
- 	if (Mpp_is_primary)
-		sprintf(tempstr,"%s/seg%d",phys,Mpp_segment);
+ 	if (Gp_is_primary)
+		sprintf(tempstr,"%s/seg%d",phys,Gp_segment);
 	else
-		sprintf(tempstr,"%s/mir%d",phys,Mpp_segment);
+		sprintf(tempstr,"%s/mir%d",phys,Gp_segment);
 	
 	if (rmdir(tempstr) < 0)
 		ereport(ERROR,

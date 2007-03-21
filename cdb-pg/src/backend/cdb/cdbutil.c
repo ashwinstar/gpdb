@@ -76,8 +76,8 @@ getGpId(void)
 	if (Mpp_role == MPP_ROLE_UTILITY)
 		elog(DEBUG1, "WARNING: called getGpId when in utility mode");
 
-	if (Mpp_role == MPP_ROLE_DISPATCH && Mpp_segment < -1)
-		Mpp_segment = -1;
+	if (Mpp_role == MPP_ROLE_DISPATCH && Gp_segment < -1)
+		Gp_segment = -1;
 
 	/*
 	 * Release storage for the cdbname if not NULL
@@ -171,21 +171,21 @@ getGpId(void)
 					 )));
 	}
 
-	if (Mpp_role != MPP_ROLE_UTILITY && MppIdentity.segindex != Mpp_segment)
+	if (Mpp_role != MPP_ROLE_UTILITY && MppIdentity.segindex != Gp_segment)
 	{
-		if (Mpp_segment < -1)
+		if (Gp_segment < -1)
 		{
-			Mpp_segment = MppIdentity.segindex;
+			Gp_segment = MppIdentity.segindex;
 			ereport(WARNING,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					 errmsg("gp_id segindex not same as Mpp_segment."
+					 errmsg("gp_id segindex not same as Gp_segment."
 						 )));
 		}
 		else
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					 errmsg("gp_id segindex not same as Mpp_segment."
+					 errmsg("gp_id segindex not same as Gp_segment."
 						 )));
 		}
 	}
@@ -498,7 +498,7 @@ getCdbComponentInfo(void)
 	{
 		CdbComponentDatabaseInfo *pInfo = &component_databases->entry_db_info[i];
 
-		if (pInfo->dbid == MppIdentity.dbid && pInfo->segindex == Mpp_segment)
+		if (pInfo->dbid == MppIdentity.dbid && pInfo->segindex == Gp_segment)
 		{
 			break;
 		}
@@ -508,7 +508,7 @@ getCdbComponentInfo(void)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
 				 errmsg("Cannot locate entry database represented by gp_id row in gp_configuration: dbid %d content %d",
-						MppIdentity.dbid, Mpp_segment)));
+						MppIdentity.dbid, Gp_segment)));
 	}
 
 	/*

@@ -66,13 +66,13 @@ GET_TABLE_COUNT () {
 	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
 	QE_BASE_DIR=`$BASENAME $QE_DIR`
 	#Test access
-	ACCESS_TEST=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"select version();\" 2>/dev/null"`
+	ACCESS_TEST=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"select version();\" 2>/dev/null"`
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 		LOG_MSG "[WARN][$INST_COUNT]:-Failed to get table count on $QE_NAME $QE_DIR QE_PORT"
 		QE_LINE="FAILED|0|${QE_PORT}|${QE_BASE_DIR}|${QE_NAME}|0m0s|"
 	else
-		COUNT_LINE=`$TRUSTED_SHELL -n $QE_NAME "${EXPORT_LIB_PATH}; time env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c'select count(*),'\''$QE_PORT'\'','\''$QE_BASE_DIR'\'','\''$QE_NAME'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[A-Z][a-z][0-9]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}'` 
+		COUNT_LINE=`$TRUSTED_SHELL -n $QE_NAME "${EXPORT_LIB_PATH}; time env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c'select count(*),'\''$QE_PORT'\'','\''$QE_BASE_DIR'\'','\''$QE_NAME'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[A-Z][a-z][0-9]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}'` 
 		QE_LINE="COMPLETED|$COUNT_LINE"
 	fi
 	LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"

@@ -187,13 +187,13 @@ CHK_CATALOG_DATA () {
 	LOG_MSG "[INFO]:-Starting standby master instance in admin mode"
 	$MPPSTART -bm -d $MASTER_STANDBY_DATA_DIRECTORY
 	ERROR_CHK $? "start standby master in admin mode" 2
-	MASTER_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select min(dbid) from $CONFIG_TABLE where content=-1;"`
-	MASTER_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where dbid in ($MASTER_DBID)"`
+	MASTER_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select min(dbid) from $CONFIG_TABLE where content=-1;"`
+	MASTER_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where dbid in ($MASTER_DBID)"`
 	ERROR_CHK $? "obtain master hostname" 1
 	if [ $RETVAL -ne 0 ];then 
 		ADMIN_SHUTDOWN 1
 		ERROR_EXIT "[FATAL]:-Unable to obtain master hostname" 2;fi
-	MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select port from $CONFIG_TABLE where dbid=$MASTER_DBID;"`
+	MASTER_PORT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select port from $CONFIG_TABLE where dbid=$MASTER_DBID;"`
 	ERROR_CHK $? "obtain master port number" 1
 	if [ $RETVAL -ne 0 ];then 
 		ADMIN_SHUTDOWN 1
@@ -208,7 +208,7 @@ CHK_CATALOG_DATA () {
 			ERROR_EXIT "[FATAL]:-Unable to continue, master instance still appears to be active" 2
 		fi
 	fi	
-	MASTER_STANDBY_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select dbid from $CONFIG_TABLE where content=-1 and definedprimary='f' and isprimary='f';"`
+	MASTER_STANDBY_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select dbid from $CONFIG_TABLE where content=-1 and definedprimary='f' and isprimary='f';"`
 	ERROR_CHK $? "obtain standby dbid" 2
 	LOG_MSG "[INFO]:-Obtained standby master dbid as $MASTER_STANDBY_DBID"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -217,16 +217,16 @@ CHK_CATALOG_DATA () {
 UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Master standby: $MASTER_STANDBY_HOSTNAME"
-	MASTER_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select dbid from $CONFIG_TABLE where content=-1 and definedprimary='t' and isprimary='t';"`
+	MASTER_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select dbid from $CONFIG_TABLE where content=-1 and definedprimary='t' and isprimary='t';"`
 	LOG_MSG "[INFO}:-Obtained MASTER_DBID as $MASTER_DBID"
-	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set hostname='$MASTER_STANDBY_HOSTNAME' where dbid=$MASTER_DBID ;"
+	env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set hostname='$MASTER_STANDBY_HOSTNAME' where dbid=$MASTER_DBID ;"
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 	    ADMIN_SHUTDOWN
 	    ERROR_EXIT "[FATAL]:-Unable to contine, unable to update $CONFIG_TABLE catalog" 2
 	fi
 	LOG_MSG "[INFO]:-Deleting original master host details"
-	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"delete from $CONFIG_TABLE where dbid=$MASTER_STANDBY_DBID;"
+	env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"delete from $CONFIG_TABLE where dbid=$MASTER_STANDBY_DBID;"
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 		ADMIN_SHUTDOWN

@@ -30,7 +30,7 @@
 #include "executor/tuptable.h"
 
 #include "catalog/pg_type.h"
-#include "cdb/cdbvars.h"                /* Mpp_segment */
+#include "cdb/cdbvars.h"                /* Gp_segment */
 
 /* ----------------------------------------------------------------
  *						misc support routines
@@ -717,7 +717,7 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 			result = ObjectIdGetDatum(tup->t_tableOid);
 			break;
         case MppSegmentIdAttributeNumber:                       /*CDB*/
-            result = Int32GetDatum(Mpp_segment);
+            result = Int32GetDatum(Gp_segment);
             break;
 		default:
 			elog(ERROR, "invalid attnum: %d", attnum);

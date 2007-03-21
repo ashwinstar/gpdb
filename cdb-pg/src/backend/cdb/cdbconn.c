@@ -25,7 +25,7 @@ extern int	pq_putmessage(char msgtype, const char *s, size_t len);
 #include "cdb/cdbutil.h"            /* CdbComponentDatabaseInfo */
 #include "cdb/cdbvars.h"
 
-int		mpp_segment_connect_timeout = 60;
+int		gp_segment_connect_timeout = 60;
 
 //extern ErrorData  * MppGetErrorData(void);
 static void MPPnoticeReceiver(void * arg, const PGresult * res)
@@ -320,7 +320,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
 
     appendPQExpBuffer(&buffer, "user=%s ", segdbDesc->username);
 
-    appendPQExpBuffer(&buffer, "connect_timeout=%d ", mpp_segment_connect_timeout);
+    appendPQExpBuffer(&buffer, "connect_timeout=%d ", gp_segment_connect_timeout);
 
     /*
      * Call libpq to connect
@@ -344,7 +344,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
                           PQerrorMessage(segdbDesc->conn));
 
         /* Don't use elog, it's not thread-safe */
-        if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+        if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
             write_stderr("%s\n", segdbDesc->error_message.data);
 
         PQfinish(segdbDesc->conn);
@@ -363,7 +363,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
         segdbDesc->motionListener = PQmotionListener(segdbDesc->conn);
 
         /* Don't use elog, it's not thread-safe */
-        if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+        if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
             write_stderr("Connected to %s motionListener=%d with options %s\n",
 						 segdbDesc->whoami,
 						 segdbDesc->motionListener,

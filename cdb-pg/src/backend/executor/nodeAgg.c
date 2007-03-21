@@ -263,8 +263,8 @@ initialize_aggregates(AggState *aggstate,
 			{
 				int64 		limit = 0;
 				int64 		offset = 0;
-				int 		unique = mpp_enable_sort_distinct ? 1 : 0;
-				int 		sort_flags = mpp_sort_flags; /* get the guc */
+				int 		unique = gp_enable_sort_distinct ? 1 : 0;
+				int 		sort_flags = gp_sort_flags; /* get the guc */
 					
 				cdb_tuplesort_init(peraggstate->sortstate, 
 								   offset, limit, unique, 

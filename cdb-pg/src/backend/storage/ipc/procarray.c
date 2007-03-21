@@ -524,13 +524,13 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	 *
 	 */
     /*$$$$$$$ FIX ME $$$$$$$$$*/
-    if (Mpp_segment == -1 && Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
+    if (Gp_segment == -1 && Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer)
     {
         elog(DEBUG5, "GetSnapshotData for entry db singleton QE: Shared snapshot not implemented.  Punt!"); 
     }
     else
     /*$$$$$$$$$$$$$$$$$$$$$$$*/
-	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
+	if (Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer)
 	{
 		int	   	count = 0;
 		/* the pg_usleep() call below is in units of 2ms, interconnect
@@ -782,7 +782,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	 * MPP Addition.  If we are the chief then we'll save our local snapshot
 	 * into the shared snapshot.
 	 */
-	if (Mpp_role == MPP_ROLE_EXECUTE && Mpp_is_writer)
+	if (Mpp_role == MPP_ROLE_EXECUTE && Gp_is_writer)
 	{
 
 		SharedLocalSnapshotSlot->snapshot.xmin = snapshot->xmin;
@@ -1131,13 +1131,13 @@ DisplayXidCache(void)
 
 #endif   /* XIDCACHE_DEBUG */
 
-PGPROC *FindProcByMppSessionId(long mpp_session_id)
+PGPROC *FindProcByMppSessionId(long gp_session_id)
 {
 		/* Find the guy who should manage our locks */
 		ProcArrayStruct *arrayP = procArray;
 		int			index;
 
-		Assert(mpp_session_id > 0);
+		Assert(gp_session_id > 0);
 		
 		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 
@@ -1153,7 +1153,7 @@ PGPROC *FindProcByMppSessionId(long mpp_session_id)
 				
 			//if (proc->pid == 0)
 			//	continue;			 /* skip prepared transactions ? */
-			if (proc->mppSessionId == mpp_session_id)
+			if (proc->mppSessionId == gp_session_id)
 			{
 				 
 				LWLockRelease(ProcArrayLock);

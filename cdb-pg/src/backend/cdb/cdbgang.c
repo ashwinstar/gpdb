@@ -99,7 +99,7 @@ typedef struct DoConnectParms
  * AddSegDBToConnThreadPool
  * Helper function used to add a segdb's segdbDesc to the thread pool to be connected to.
  * It figures out which thread will handle it, based on the setting of
- * mpp_connections_per_thread.
+ * gp_connections_per_thread.
  */
 static void addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 						 SegmentDatabaseDescriptor * segdbDesc);
@@ -171,16 +171,16 @@ createGang(GangType type, int size, int content, char *portal_name)
 
 	segdb_count = newGangDefinition->size;
 
-	Assert(mpp_connections_per_thread > 0);
+	Assert(gp_connections_per_thread > 0);
 	Assert(segdb_count > 0);
 
 	/*
-	 * The most threads we could have is segdb_count / mpp_connections_per_thread, rounded up.
-	 * This is equivalent to 1 + (segdb_count-1) / mpp_connections_per_thread.
+	 * The most threads we could have is segdb_count / gp_connections_per_thread, rounded up.
+	 * This is equivalent to 1 + (segdb_count-1) / gp_connections_per_thread.
 	 * We allocate enough memory for this many DoConnectParms structures,
 	 * even though we may not use them all.
 	 */
-	max_threads = 1 + (segdb_count - 1) / mpp_connections_per_thread;
+	max_threads = 1 + (segdb_count - 1) / gp_connections_per_thread;
 	Assert(max_threads > 0);
 	doConnectParmsAr = (DoConnectParms *)
 		palloc0(max_threads * sizeof(DoConnectParms));
@@ -204,7 +204,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 
 		/*
 		 * This function handles putting the segdbDesc into the proper thread's Parms
-		 * structure, based on mpp_connections_per_thread.
+		 * structure, based on gp_connections_per_thread.
 		 * It does this based on the value of segdbs_in_thread_pool,
 		 * which it increments each time it is called.
 		 */
@@ -219,7 +219,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 	if (segdbs_in_thread_pool == 0)
 		threadCount = 0;
 	else
-		threadCount = 1 + (segdbs_in_thread_pool - 1) / mpp_connections_per_thread;
+		threadCount = 1 + (segdbs_in_thread_pool - 1) / gp_connections_per_thread;
 
 	for (i = 0; i < threadCount; i++)
 	{
@@ -232,7 +232,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 		/* set the gangType. */
 		pParms->type = type;
 
-        if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+        if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 		    elog(DEBUG5, "createGang creating thread %d of %d for libpq connections",
 			     i + 1, threadCount);
 
@@ -268,8 +268,8 @@ createGang(GangType type, int size, int content, char *portal_name)
 
 			ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
 							errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount),
-							errdetail("pthread_create() failed with err %d mpp_connections_per_thread %d", pthread_err, mpp_connections_per_thread),
-							errhint("mpp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", mpp_connections_per_thread)));
+							errdetail("pthread_create() failed with err %d gp_connections_per_thread %d", pthread_err, gp_connections_per_thread),
+							errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread)));
 		}
 
 	}
@@ -281,7 +281,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 	{
 		DoConnectParms *pParms = &doConnectParmsAr[i];
 
-        if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+        if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
     		elog(DEBUG5, "createGang joining to thread %d of %d for libpq connections",
 			     i + 1, threadCount);
 
@@ -353,7 +353,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 				   segdbDesc->errcode == 0 &&
 				   segdbDesc->error_message.len == 0);
 
-            if (mpp_log_gang >= CDBVARS_VERBOSITY_TERSE)
+            if (gp_log_gang >= CDBVARS_VERBOSITY_TERSE)
                 elog(LOG, "Connected to %s motionListenerPort=%d with options %s",
 				     segdbDesc->whoami,
 				     segdbDesc->motionListener,
@@ -470,7 +470,7 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
 	newGangDefinition->active = false;
 	newGangDefinition->portal_name = (portal_name ? pstrdup(portal_name) : (char *) NULL);
 
-    if (mpp_log_gang >= CDBVARS_VERBOSITY_VERBOSE)
+    if (gp_log_gang >= CDBVARS_VERBOSITY_VERBOSE)
     {
         const char *pn1 = "";
         const char *pn2 = "";
@@ -731,7 +731,7 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
  * AddSegDBToConnThreadPool
  * Helper function used to add a segdb's segdbDesc to the thread pool to be connected to.
  * It figures out which thread will handle it, based on the setting of
- * mpp_connections_per_thread.
+ * gp_connections_per_thread.
  */
 void
 addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
@@ -744,19 +744,19 @@ addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 
 	/*
 	 * The proper index into the DoConnectParms array is computed, based on
-	 * having mpp_connections_per_thread segdbDesc's in each thread.
+	 * having gp_connections_per_thread segdbDesc's in each thread.
 	 * If it's the first access to an array location, determined
-	 * by (*segdbCount) % mpp_connections_per_thread == 0,
+	 * by (*segdbCount) % gp_connections_per_thread == 0,
 	 * then we initialize the struct members for that array location first.
 	 */
-	ParmsIndex = (*segdbCount) / mpp_connections_per_thread;
+	ParmsIndex = (*segdbCount) / gp_connections_per_thread;
 	pParms = &ParmsAr[ParmsIndex];
 
-	if ((*segdbCount) % mpp_connections_per_thread == 0)
+	if ((*segdbCount) % gp_connections_per_thread == 0)
 	{
-		Assert(mpp_connections_per_thread > 0);
+		Assert(gp_connections_per_thread > 0);
 		pParms->segdbDescPtrArray =
-			(SegmentDatabaseDescriptor **) palloc0(mpp_connections_per_thread *
+			(SegmentDatabaseDescriptor **) palloc0(gp_connections_per_thread *
 												   sizeof
 												   (SegmentDatabaseDescriptor
 													*));
@@ -829,27 +829,27 @@ thread_DoConnect(void *arg)
 
 		if (pParms->type == GANGTYPE_PRIMARY_WRITER ||
             pParms->type == GANGTYPE_MIRROR_WRITER)
-			appendPQExpBufferStr(&buffer, "-c mpp_is_writer=true ");
+			appendPQExpBufferStr(&buffer, "-c gp_is_writer=true ");
 
 		appendPQExpBuffer(&buffer,
-						  "-c mpp_segment=%d -c mpp_max_packet_size=%d",
-						  q->segindex, Mpp_max_packet_size);
+						  "-c gp_segment=%d -c gp_max_packet_size=%d",
+						  q->segindex, Gp_max_packet_size);
 
 		if (!q->isprimary)
-			appendPQExpBuffer(&buffer, " -c mpp_is_primary=false");
+			appendPQExpBuffer(&buffer, " -c gp_is_primary=false");
 
-		appendPQExpBuffer(&buffer, " -c mpp_enable_functions=%d",mpp_enable_functions);
-		appendPQExpBuffer(&buffer, " -c mpp_qd_callback_info=port=%d",PostPortNumber);
+		appendPQExpBuffer(&buffer, " -c gp_enable_functions=%d",gp_enable_functions);
+		appendPQExpBuffer(&buffer, " -c gp_qd_callback_info=port=%d",PostPortNumber);
 		
-		appendPQExpBuffer(&buffer, " -c mpp_is_callback=%d",mpp_is_callback);
-		appendPQExpBuffer(&buffer, " -c mpp_qd_proc_offset=%ld",(long)MAKE_OFFSET(MyProc));
+		appendPQExpBuffer(&buffer, " -c gp_is_callback=%d",gp_is_callback);
+		appendPQExpBuffer(&buffer, " -c gp_qd_proc_offset=%ld",(long)MAKE_OFFSET(MyProc));
 		
 		/*
          * user-settable GUC variables
          */
 
 #ifdef USE_ASSERT_CHECKING
-		appendPQExpBuffer(&buffer, " -c mpp_debug_linger=%d", mpp_debug_linger);
+		appendPQExpBuffer(&buffer, " -c gp_debug_linger=%d", gp_debug_linger);
 #endif
 
 		/*
@@ -921,13 +921,13 @@ thread_DoConnect(void *arg)
 		appendPQExpBuffer(&buffer, " -c work_mem=%d", work_mem);
 		appendPQExpBuffer(&buffer, " -c maintenance_work_mem=%d", maintenance_work_mem);
 		appendPQExpBuffer(&buffer, " -c temp_buffers=%d", num_temp_buffers);
-        appendPQExpBuffer(&buffer, " -c mpp_log_interconnect=%s",
-                           cdbvars_show_mpp_log_interconnect());
+        appendPQExpBuffer(&buffer, " -c gp_log_interconnect=%s",
+                           cdbvars_show_gp_log_interconnect());
 
-        if (mpp_use_snapshop_during_callback)
-        	appendPQExpBuffer(&buffer, " -c mpp_use_snapshop_during_callback=true");
+        if (gp_use_snapshop_during_callback)
+        	appendPQExpBuffer(&buffer, " -c gp_use_snapshop_during_callback=true");
         else
-        	appendPQExpBuffer(&buffer, " -c mpp_use_snapshop_during_callback=false");
+        	appendPQExpBuffer(&buffer, " -c gp_use_snapshop_during_callback=false");
 
 		if (StatementTimeout != 0)
 			appendPQExpBuffer(&buffer, " -c statement_timeout=%d", StatementTimeout);
@@ -936,9 +936,9 @@ thread_DoConnect(void *arg)
 		if (CommitSiblings != 5)
 			appendPQExpBuffer(&buffer, " -c commit_siblings=%d", CommitSiblings);
 		if (interconnect_setup_timeout != 10)
-			appendPQExpBuffer(&buffer, " -c mpp_interconnect_setup_timeout=%d", interconnect_setup_timeout);
-		if (mpp_hashagg_rewrite_limit != 1.0)
-			appendPQExpBuffer(&buffer, " -c mpp_hashagg_rewrite_limit=%f", mpp_hashagg_rewrite_limit);
+			appendPQExpBuffer(&buffer, " -c gp_interconnect_setup_timeout=%d", interconnect_setup_timeout);
+		if (gp_hashagg_rewrite_limit != 1.0)
+			appendPQExpBuffer(&buffer, " -c gp_hashagg_rewrite_limit=%f", gp_hashagg_rewrite_limit);
 
 		appendPQExpBuffer(&buffer, " -c DateStyle=");
 		switch (DateStyle)
@@ -1114,8 +1114,8 @@ thread_DoConnect(void *arg)
 			*
 			*/
 
-			if (mpp_set_read_only)
-				appendPQExpBuffer(&buffer, " -c mpp_set_read_only=true");
+			if (gp_set_read_only)
+				appendPQExpBuffer(&buffer, " -c gp_set_read_only=true");
 
         }                       /* some super-user settable gucs */
 
@@ -1153,7 +1153,7 @@ build_mppqeid_params(PQExpBuffer buf)
 {
 	appendPQExpBufferStr(buf, "mppqeid=");
 
-	appendPQExpBuffer(buf, "%d;", mpp_session_id);
+	appendPQExpBuffer(buf, "%d;", gp_session_id);
 
 #ifdef HAVE_INT64_TIMESTAMP
 	appendPQExpBuffer(buf, INT64_FORMAT ";", PgStartTime);
@@ -1205,12 +1205,12 @@ cdbgang_parse_mppqeid_params(struct Port *port, const char *mppqeid_value)
 	char	   *np = mppqeid;
 
 	/* The presence of an mppqeid string means this backend is a qExec. */
-	SetConfigOption("mpp_session_role", "execute",
+	SetConfigOption("gp_session_role", "execute",
 					PGC_POSTMASTER, PGC_S_OVERRIDE);
 
-	/* mpp_session_id */
+	/* gp_session_id */
 	if (mppqeid_next_param(&cp, &np))
-		SetConfigOption("mpp_session_id", cp,
+		SetConfigOption("gp_session_id", cp,
 						PGC_POSTMASTER, PGC_S_OVERRIDE);
 
 	/* PgStartTime */
@@ -1228,7 +1228,7 @@ cdbgang_parse_mppqeid_params(struct Port *port, const char *mppqeid_value)
 	if (!cp || np)
 		goto bad;
 
-	if (mpp_session_id <= 0 ||
+	if (gp_session_id <= 0 ||
 		PgStartTime <= 0)
 		goto bad;
 
@@ -1248,12 +1248,12 @@ cdbgang_parse_mppqdid_params(struct Port *port, const char *mppqdid_value)
 	char	   *np = mppqdid;
 
 	/* The presence of an mppqdid string means this is a callback from QE to QD. */
-	SetConfigOption("mpp_is_callback", "true",
+	SetConfigOption("gp_is_callback", "true",
 					PGC_POSTMASTER, PGC_S_OVERRIDE);
 
-	/* mpp_session_id */
+	/* gp_session_id */
 	if (mppqeid_next_param(&cp, &np))
-		SetConfigOption("mpp_session_id", cp,
+		SetConfigOption("gp_session_id", cp,
 						PGC_POSTMASTER, PGC_S_OVERRIDE);
 
 	/* PgStartTime */
@@ -1266,13 +1266,13 @@ cdbgang_parse_mppqdid_params(struct Port *port, const char *mppqdid_value)
 		PgStartTime = strtod(cp, NULL);
 #endif
 	}
-	Assert(mpp_is_callback);
+	Assert(gp_is_callback);
 
 	/* Too few items, or too many? */
 	if (!cp || np)
 		goto bad;
 
-	if (mpp_session_id <= 0 ||
+	if (gp_session_id <= 0 ||
 		PgStartTime <= 0)
 		goto bad;
 
@@ -1347,7 +1347,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 
 	Insist(Mpp_role == MPP_ROLE_DISPATCH);
 
-    if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
         elog(DEBUG4, "allocateGang for portal %s: allocatedReaderGangsN %d, availableReaderGangsN %d",
 		     (portal_name ? portal_name : "<unnamed>"),
 		     list_length(allocatedReaderGangsN),
@@ -1379,7 +1379,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 			}
 			else
 			{
-                if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+                if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 				    elog(DEBUG4, "Reusing an existing primary writer gang");
 				gp = primaryWriterGang;
 			}
@@ -1397,7 +1397,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 			}
 			else
 			{
-                if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+                if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
                     elog(DEBUG4, "Reusing an existing mirror writer gang");
 				gp = mirrorWriterGang;
 			}
@@ -1415,7 +1415,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 				if (availableReaderGangsN != NIL)		/* There are gangs
 														 * already created */
 				{
-                    if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+                    if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 					    elog(DEBUG4, "Reusing an available reader N-gang for %s", (portal_name ? portal_name : "unnamed portal"));
 
 					gp = linitial(availableReaderGangsN);
@@ -1438,7 +1438,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 					 * no pre-created gang exists
 					 */
 				{
-                    if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+                    if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 					    elog(DEBUG4, "Creating a new reader N-gang for %s", (portal_name ? portal_name : "unnamed portal"));
 					gp = createGang(type, size, content, portal_name);
 					/* try again */
@@ -1479,7 +1479,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
                     /* Remove gang from freelist and reuse. */
                     if (cell)
 				    {
-                        if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+                        if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 					        elog(DEBUG4, "reusing an available reader 1-gang for seg%d, portal: %s", content, (portal_name ? portal_name : "unnamed"));
 
                         availableReaderGangs1 =
@@ -1497,7 +1497,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 				}
 				if (gp == NULL) /* no pre-created gang exists */
 				{
-                    if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+                    if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 					    elog(DEBUG4, "creating a new reader 1-gang for seg%d, portal: %s", content, (portal_name ? portal_name : "unnamed"));
 					gp = createGang(type, size, content, portal_name);
 					/* try again */
@@ -1521,7 +1521,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 			break;
 	}
 
-    if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 	    elog(DEBUG4,
 		     "allocateGang on return: allocatedReaderGangsN %d, availableReaderGangsN %d",
 		     list_length(allocatedReaderGangsN),
@@ -1576,9 +1576,9 @@ getCdbProcessList(Gang *gang, int sliceIndex)
 	List	   *list = NIL;
 
 
-	Assert(Mpp_role == MPP_ROLE_DISPATCH && Mpp_is_primary);
+	Assert(Mpp_role == MPP_ROLE_DISPATCH && Gp_is_primary);
 	Assert(gang != NULL);
-    if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 	    elog(DEBUG3, "getCdbProcessList slice%d gangtype=%d gangsize=%d",
              sliceIndex, gang->type, gang->size);
 
@@ -1637,7 +1637,7 @@ getCdbProcessList(Gang *gang, int sliceIndex)
 			process->contentid = segdbDesc->segindex;
 			process->routeid = k++;
 
-            if (mpp_log_gang >= CDBVARS_VERBOSITY_VERBOSE)
+            if (gp_log_gang >= CDBVARS_VERBOSITY_VERBOSE)
                 elog(LOG, "Gang assignment: slice%d %s%d %s:%d pid=%d",
                      sliceIndex,
                      gang->type == GANGTYPE_MIRROR_WRITER ? "mir" : "seg",
@@ -1684,7 +1684,7 @@ getCdbProcessesForQD(int isPrimary)
 	CdbComponentDatabaseInfo *qdinfo;
 	CdbProcess *proc;
 
-	Assert(Mpp_role == MPP_ROLE_DISPATCH && Mpp_is_primary);
+	Assert(Mpp_role == MPP_ROLE_DISPATCH && Gp_is_primary);
 	if (!isPrimary)
 	{
 		elog(FATAL, "getCdbProcessesForQD: unsupported request for QD mirror process");
@@ -1733,7 +1733,7 @@ cleanupGang(Gang * gp)
 	if (gp == NULL)
 		return true;
 
-    if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
         elog(DEBUG4, "cleanupGang: cleaning gang type %d size %d, was used for portal: %s", gp->type, gp->size, (gp->portal_name ? gp->portal_name : "(unnamed)"));
 
 	/* disassociate this gang with any portal that it may have belonged to */
@@ -1811,7 +1811,7 @@ cleanupGang(Gang * gp)
 
 	gp->allocated = false;
 
-    if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 	    elog(DEBUG5, "cleanupGang done");
 	return true;
 }
@@ -1825,7 +1825,7 @@ disconnectAndDestroyGang(Gang * gp)
 	if (gp == NULL)
 		return;
 
-    if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 	    elog(DEBUG5, "disconnectAndDestroyGang entered");
 
 	if (gp->active ||
@@ -1849,7 +1849,7 @@ disconnectAndDestroyGang(Gang * gp)
 			PGTransactionStatusType status =
 				PQtransactionStatus(segdbDesc->conn);
 
-            if (mpp_log_gang >= CDBVARS_VERBOSITY_TERSE)
+            if (gp_log_gang >= CDBVARS_VERBOSITY_TERSE)
             {
                 const char *ts;
 
@@ -1924,7 +1924,7 @@ disconnectAndDestroyGang(Gang * gp)
 	/*
 	 * this is confusing, gp is local variable, no need to null it. gp = NULL;
 	 */
-    if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
         elog(DEBUG5, "disconnectAndDestroyGang done");
 }
 
@@ -1949,7 +1949,7 @@ freeGangsForPortal(char *portal_name)
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
-    if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
         elog(DEBUG4, "freeGangsForPortal '%s'. Reader gang inventory: "
              "allocatedN=%d availableN=%d allocated1=%d available1=%d",
 	    	 (portal_name ? portal_name : "unnamed portal"),
@@ -1994,7 +1994,7 @@ freeGangsForPortal(char *portal_name)
 			
 			if (isTargetPortal(gp->portal_name, portal_name))
 			{
-                if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+                if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 				    elog(DEBUG5, "Returning a reader N-gang to the available list");
 				
 				/* cur_item must be removed */
@@ -2011,7 +2011,7 @@ freeGangsForPortal(char *portal_name)
 			}
 			else
 			{
-                if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+                if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 				    elog(DEBUG5, "Skipping the release of a reader N-gang. It is used by another portal");
 				
 				/* cur_item must be preserved */
@@ -2034,7 +2034,7 @@ freeGangsForPortal(char *portal_name)
 			
 			if (isTargetPortal(gp->portal_name, portal_name))
 			{
-                if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+                if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 				    elog(DEBUG5, "Returning a reader 1-gang to the available list");
 				
 				/* cur_item must be removed */
@@ -2051,7 +2051,7 @@ freeGangsForPortal(char *portal_name)
 			}
 			else
 			{
-                if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+                if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 					elog(DEBUG5, "Skipping the release of a reader 1-gang. It is used by another portal");
 				
 				/* cur_item must be preserved */
@@ -2063,7 +2063,7 @@ freeGangsForPortal(char *portal_name)
 	
 	MemoryContextSwitchTo(oldContext);
 
-    if (mpp_log_gang >= CDBVARS_VERBOSITY_VERBOSE)
+    if (gp_log_gang >= CDBVARS_VERBOSITY_VERBOSE)
     {
         if (allocatedReaderGangsN ||
             availableReaderGangsN ||
@@ -2153,7 +2153,7 @@ disconnectAndDestroyAllReaderGangs(void)
 void
 disconnectAndDestroyAllGangs(void)
 {
-    if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 		elog(DEBUG2, "disconnectAndDestroyAllGangs");
 
 	/* for now, destroy all readers, regardless of the portal that owns them */
@@ -2164,7 +2164,7 @@ disconnectAndDestroyAllGangs(void)
 	disconnectAndDestroyGang(mirrorWriterGang);
 	mirrorWriterGang = NULL;
 
-    if (mpp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 		elog(DEBUG3, "disconnectAndDestroyAllGangs done");
 }
 
@@ -2344,7 +2344,7 @@ SetSeqServerInfo(struct QueryDesc *queryDesc)
 
 	Assert(IsA(sliceTable, SliceTable) && sliceTable->seqServerHost == NULL);
 
-	if (Mpp_role != MPP_ROLE_DISPATCH || !Mpp_is_primary)
+	if (Mpp_role != MPP_ROLE_DISPATCH || !Gp_is_primary)
 	{
 		elog(FATAL, "SetSeqServerInfo: unsupported request");
 	}

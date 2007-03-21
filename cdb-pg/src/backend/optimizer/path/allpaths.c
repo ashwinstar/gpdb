@@ -49,7 +49,7 @@ bool		enable_groupagg = true;
 bool		enable_nestloop = true;
 bool		enable_mergejoin = true;
 bool		enable_hashjoin = true;
-bool		mpp_enable_fallback_plan = true;
+bool		gp_enable_fallback_plan = true;
 bool		enable_geqo = false;	/* just in case GUC doesn't set it */
 int			geqo_threshold;
 
@@ -337,7 +337,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
     if (!pathlist)
     {
         pathlist = lappend(pathlist, seqpath);
-        if (mpp_enable_fallback_plan)
+        if (gp_enable_fallback_plan)
         {
             pathlist = list_concat(pathlist, indexpathlist);
             pathlist = list_concat(pathlist, bitmappathlist);
@@ -889,7 +889,7 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels)
 
         /* If no paths found because enable_xxx=false, enable all & retry. */
         if (!joinitems[lev] &&
-            mpp_enable_fallback_plan &&
+            gp_enable_fallback_plan &&
             !mpp_trying_fallback_plan)
         {
             mpp_trying_fallback_plan = true;
@@ -1248,7 +1248,7 @@ cdb_no_path_for_query(void)
     StringInfoData  buf;
 
     initStringInfo(&buf);
-    if (cdb_guc_list_show(&buf, NULL, "%s=%s; ", PGC_S_DEFAULT, cdb_guc_list_for_no_plan))
+    if (gp_guc_list_show(&buf, NULL, "%s=%s; ", PGC_S_DEFAULT, gp_guc_list_for_no_plan))
         ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_CONFIGURED),
                         errmsg("Query requires a feature that has been disabled "
                                "by a configuration setting."),

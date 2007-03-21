@@ -95,7 +95,7 @@ GET_TABLE_SIZE () {
 
 GET_INDEX_SIZE () {
 	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
-	INDEX_ARRAY=(`$TRUSTED_SHELL -n $QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"select relfilenode from pg_class where oid in (select indexrelid from pg_index where indrelid in (select oid from pg_class where relname='${TABLE_NAME}'));\""`)
+	INDEX_ARRAY=(`$TRUSTED_SHELL -n $QE_HOST "env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT $QD_DBNAME -A -t -c\"select relfilenode from pg_class where oid in (select indexrelid from pg_index where indrelid in (select oid from pg_class where relname='${TABLE_NAME}'));\""`)
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ] || [ ${#INDEX_ARRAY[@]} -eq 0 ];then
 		SIZE_ERROR_EXIT index

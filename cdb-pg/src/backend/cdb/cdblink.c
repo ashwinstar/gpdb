@@ -64,7 +64,7 @@ void
 cdblink_setup(void)
 {
 	/*
-	 * If mpp_role is UTILITY, skip this call.
+	 * If gp_role is UTILITY, skip this call.
 	 */
 	if (Mpp_role == MPP_ROLE_UTILITY)
 		return;

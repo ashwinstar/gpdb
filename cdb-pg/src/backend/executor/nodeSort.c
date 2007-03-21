@@ -21,7 +21,7 @@
 #include "lib/stringinfo.h"             /* StringInfo */
 #include "miscadmin.h"
 #include "utils/tuplesort.h"
-#include "cdb/cdbvars.h" /* CDB *//* mpp_sort_flags */
+#include "cdb/cdbvars.h" /* CDB *//* gp_sort_flags */
 
 static void ExecSortExplainEnd(PlanState *planstate, struct StringInfoData *buf);
 
@@ -102,7 +102,7 @@ ExecSort(SortState *node)
 			int64 		limit = 0;
 			int64 		offset = 0;
 			int 		unique = 0;
-			int 		sort_flags = mpp_sort_flags; /* get the guc */
+			int 		sort_flags = gp_sort_flags; /* get the guc */
 
 			if (node->limitCount)
 			{

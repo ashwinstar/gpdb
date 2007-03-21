@@ -1283,7 +1283,7 @@ connectDatabase(const char *dbname, const char *pghost, const char *pgport,
 	{
 		need_pass = false;
 		conn = PQsetdbLogin(pghost, pgport,
-							"-c mpp_session_role=utility",
+							"-c gp_session_role=utility",
 							NULL, dbname, pguser, password);
 
 		if (!conn)

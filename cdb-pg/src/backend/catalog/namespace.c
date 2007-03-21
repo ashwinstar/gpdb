@@ -1698,7 +1698,7 @@ InitTempTableNamespace(void)
 	if (Mpp_role == MPP_ROLE_UTILITY)
 		snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", MyBackendId);
 	else
-		snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", mpp_session_id);
+		snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", gp_session_id);
 
 	namespaceId = GetSysCacheOid(NAMESPACENAME,
 								 CStringGetDatum(namespaceName),

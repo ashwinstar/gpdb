@@ -30,7 +30,7 @@
 
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 
-extern int Mpp_max_tuple_chunk_size;
+extern int Gp_max_tuple_chunk_size;
 
 typedef struct ChunkedRowState
 {
@@ -143,7 +143,7 @@ Datum GetChunkedRows__text1(PG_FUNCTION_ARGS)
         s_rac_state->rowChunks = NULL;
         s_rac_state->chunkNum = 0;
         
-        s_rac_state->maxChunkDataSize = Mpp_max_tuple_chunk_size;
+        s_rac_state->maxChunkDataSize = Gp_max_tuple_chunk_size;
         
 		InitSerTupInfo(SPI_tuptable->tupdesc, &s_rac_state->serInfo);
 		
@@ -174,7 +174,7 @@ Datum GetChunkedRows__text1(PG_FUNCTION_ARGS)
             s_rac_state->rowChunks =
 				SerializeTupleIntoChunks(SPI_tuptable->vals[s_rac_state->rowIdx],
 								   &s_rac_state->serInfo,
-								   Mpp_max_tuple_chunk_size);
+								   Gp_max_tuple_chunk_size);
 
             s_rac_state->nextChunk = s_rac_state->rowChunks->p_first;
             s_rac_state->chunkNum = 0;

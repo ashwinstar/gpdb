@@ -123,20 +123,20 @@ CHECK_PARAM () {
 	#Get the standby master port number
 	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 	#Check that we are in a active standby situation
-	ACTIVE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where definedprimary='f' and content=-1 and hostname='${MASTER_HOSTNAME}';"`
+	ACTIVE_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where definedprimary='f' and content=-1 and hostname='${MASTER_HOSTNAME}';"`
 	ERROR_CHK $? "obtain active standby count" 2
 	if [ $ACTIVE_COUNT -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Not in master fail-back situation" 2
 	fi
 	#Obtain the fail-back master port number
-	FAILBACK_MASTER_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(dbid) from $CONFIG_TABLE where content=-1;"`
-	FAILBACK_MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select port from $CONFIG_TABLE where dbid in ($FAILBACK_MASTER_DBID);"`
+	FAILBACK_MASTER_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(dbid) from $CONFIG_TABLE where content=-1;"`
+	FAILBACK_MASTER_PORT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select port from $CONFIG_TABLE where dbid in ($FAILBACK_MASTER_DBID);"`
 	ERROR_CHK $? "obtain fail-back master port number" 2
 	#Obtain the fail-back master data directory
-	FAILBACK_MASTER_DATA_DIRECTORY=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where dbid in ($FAILBACK_MASTER_DBID);"`
+	FAILBACK_MASTER_DATA_DIRECTORY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where dbid in ($FAILBACK_MASTER_DBID);"`
 	ERROR_CHK $? "obtain fail-back master data directory" 2
 	#Check to ensure that we have an entry for FAILBACK_MASTER_HOSTNAME in $CONFIG_TABLE table
-##	FAILBACK_MASTER_HOSTID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select 1 from $CONFIG_TABLE where hostname='${FAILBACK_MASTER_HOSTNAME}';"`
+##	FAILBACK_MASTER_HOSTID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select 1 from $CONFIG_TABLE where hostname='${FAILBACK_MASTER_HOSTNAME}';"`
 ##	ERROR_CHK $? "obtain fail-back master check" 2
 	#Check that we are not trying to re-activate on the standby host
 	if [ "$FAILBACK_MASTER_HOSTNAME" == "`$HOSTNAME`" ];then
@@ -239,17 +239,17 @@ PROCESS_REACTIVATION () {
 
 UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	FAILBACK_MASTER_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(dbid) from $CONFIG_TABLE where content=-1;"`
-###	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT -A -t -c"update $CONFIG_TABLE set hostname='$FAILBACK_MASTER_HOSTNAME' where dbid in ($FAILBACK_MASTER_DBID);"
-	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set hostname='$FAILBACK_MASTER_HOSTNAME' where dbid in ($FAILBACK_MASTER_DBID);"
+	FAILBACK_MASTER_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(dbid) from $CONFIG_TABLE where content=-1;"`
+###	env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -A -t -c"update $CONFIG_TABLE set hostname='$FAILBACK_MASTER_HOSTNAME' where dbid in ($FAILBACK_MASTER_DBID);"
+	env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set hostname='$FAILBACK_MASTER_HOSTNAME' where dbid in ($FAILBACK_MASTER_DBID);"
 	if [ $RETVAL -ne 0 ];then
 	    ADMIN_SHUTDOWN
 	    ERROR_EXIT "[FATAL]:-Unable to contine, unable to update $CONFIG_TABLE catalog" 2
 	fi
-	NEW_FAIL_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(dbid)+1 from $CONFIG_TABLE ;"`
+	NEW_FAIL_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(dbid)+1 from $CONFIG_TABLE ;"`
 	LOG_MSG "[INFO]:-Obtained new master standby dbid $NEW_FAIL_DBID"
 	LOG_MSG "Creating new Master standby catalog record"
-	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"insert into $CONFIG_TABLE values (-1,'f',$NEW_FAIL_DBID,'f','t',$MASTER_HOSTNAME,$MASTER_PORT,'$MASTER_DATA_DIRECTORY');"
+	env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"insert into $CONFIG_TABLE values (-1,'f',$NEW_FAIL_DBID,'f','t',$MASTER_HOSTNAME,$MASTER_PORT,'$MASTER_DATA_DIRECTORY');"
 	ERROR_CHECK $? "insert new standby catalog record" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

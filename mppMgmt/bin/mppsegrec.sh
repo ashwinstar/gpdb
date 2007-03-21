@@ -121,7 +121,7 @@ RECOVER_SEGMENT () {
 	fi
 	if [ $STOPDB -eq 0 ] && [ $FORCESTOP -eq 0 ]; then
 		LOG_MSG "[INFO][$INST_COUNT]:-Issuing checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT"
-		$TRUSTED_SHELL $MIR_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIR_QE_PORT $DEFAULTDB -c \"checkpoint;\" > /dev/null 2>&1"
+		$TRUSTED_SHELL $MIR_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MIR_QE_PORT $DEFAULTDB -c \"checkpoint;\" > /dev/null 2>&1"
 		ERROR_CHK $? "instance checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT" 1
 	fi
 	#Now check to see if we are recovering to a pool host or pool directory

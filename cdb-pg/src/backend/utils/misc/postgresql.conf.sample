@@ -190,15 +190,15 @@
 #enable_hashjoin = on
 #enable_mergejoin = on
 #enable_nestloop = on
-#mpp_enable_adaptive_nestloop = on
+#gp_enable_adaptive_nestloop = on
 
 #enable_agg_restructure = on
 #enable_groupagg = on
 #enable_hashagg = on
 
 #enable_sort = on
-#mpp_enable_sort_limit = on
-#mpp_enable_sort_distinct = on
+#gp_enable_sort_limit = on
+#gp_enable_sort_distinct = on
 
 # - Planner Cost Constants -
 
@@ -208,7 +208,7 @@
 #cpu_tuple_cost = 0.01			# same scale as above
 #cpu_index_tuple_cost = 0.001		# same scale as above
 #cpu_operator_cost = 0.0025		# same scale as above
-#mpp_motion_cost_per_row = 0.0  # (same) (if 0, 2*cpu_tuple_cost is used)
+#gp_motion_cost_per_row = 0.0  # (same) (if 0, 2*cpu_tuple_cost is used)
 
 #effective_cache_size = 4MB
 
@@ -218,14 +218,14 @@
 #from_collapse_limit = 8
 #join_collapse_limit = 8		# 1 disables collapsing of explicit
 					# JOINs
-#mpp_hashagg_rewrite_limit = 1.0
-#mpp_segments_for_planner = 0     # if 0, actual number of segments is used
+#gp_hashagg_rewrite_limit = 1.0
+#gp_segments_for_planner = 0     # if 0, actual number of segments is used
 
 #---------------------------------------------------------------------------
 # ERROR REPORTING AND LOGGING
 #---------------------------------------------------------------------------
 
-#mpp_reraise_signal = on
+#gp_reraise_signal = on
 
 # - Where to Log -
 
@@ -346,8 +346,8 @@
 					#   %C  content id (or segment index)
 					#   %I  process description and status.  For example:
 					#		'con99 cmd42'			   QD (query dispatcher or entry process) for
-					#									client connection number 99 (mpp_session_id);
-					#									its 42nd command (mpp_command_count) is
+					#									client connection number 99 (gp_session_id);
+					#									its 42nd command (gp_command_count) is
 					#									in progress or finished
 					#		'con99 cmd42 slice1'	   QD working on slice number 1 of the
 					#									query execution plan for the
@@ -370,10 +370,10 @@
 					#		  empty if other.
 #log_statement = 'none'			# none, mod, ddl, all
 
-#mpp_log_gang = terse                   # off, terse, verbose, debug
+#gp_log_gang = terse                   # off, terse, verbose, debug
                                         #  logging of qExec worker process
                                         #  creation and reallocation events
-#mpp_log_interconnect = terse           # off, terse, verbose, debug
+#gp_log_interconnect = terse           # off, terse, verbose, debug
                                         #  logging of MPP interconnect events
 
 
@@ -385,7 +385,7 @@
 
 #default_statistics_target = 25		# range 1 - 1000 (target # of
 					# histogram bins)
-#mpp_analyze_relative_error = 0.25	# range 0.0 - 1.0 (target relative
+#gp_analyze_relative_error = 0.25	# range 0.0 - 1.0 (target relative
 					# error fraction)
 
 # - Query/Index Statistics Collector -
@@ -446,7 +446,7 @@
 #check_function_bodies = on
 #default_transaction_isolation = 'read committed'
 #default_transaction_read_only = off
-#mpp_enable_functions = false
+#gp_enable_functions = false
 #statement_timeout = 0			# 0 is disabled
 #vacuum_freeze_min_age = 100000000
 
@@ -526,9 +526,9 @@
 # GREENPLUM ARRAY CONFIGURATION
 #---------------------------------------------------------------------------
 
-#mpp_fault_action = continue         # none for disabling Fault Tolerance feature,
+#gp_fault_action = continue         # none for disabling Fault Tolerance feature,
                                      # other valid parameters are readonly, continue
-#mpp_set_read_only = false           # sets the system read only
+#gp_set_read_only = false           # sets the system read only
 
 
 #---------------------------------------------------------------------------
@@ -537,13 +537,13 @@
 
 # - Interconnect -
 
-#mpp_interconnect_setup_timeout = 10s
-#mpp_max_packet_size = 8192
+#gp_interconnect_setup_timeout = 10s
+#gp_max_packet_size = 8192
 
 # - Worker Process Creation -
 
-#mpp_connections_per_thread = 4
-#mpp_segment_connect_timeout = 60s
+#gp_connections_per_thread = 4
+#gp_segment_connect_timeout = 60s
 
 
 #---------------------------------------------------------------------------

@@ -142,7 +142,7 @@ CREATE_TEMP_DB () {
 	export PGPORT=$TEMP_PORT;$PG_CTL -w -D ${TEMP_DATA_DIRECTORY}/parsetemp -l ${TEMP_DATA_DIRECTORY}/parsetemp.log -o "-i -p $TEMP_PORT" start 
 	ERROR_CHK $? "start of temporary database ${TEMP_DATA_DIRECTORY} port = $TEMP_PORT" 2
 	LOG_MSG "[INFO]:-Loading MPP metadata" 1
-	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -f $SQL_FILE
+	env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -f $SQL_FILE
 	ERROR_CHK $? "load schema file $SQL_FILE into $DEFAULTDB database" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -150,30 +150,30 @@ CREATE_TEMP_DB () {
 PARSE_SQL_FILE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Processing $SQL_FILE to obtain re-build parameters"
-	MASTER_HOST=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select hostname from $CONFIG_TABLE where content=-1 and dbid=1;"`
+	MASTER_HOST=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select hostname from $CONFIG_TABLE where content=-1 and dbid=1;"`
 	if [ $? -ne 0 ] || [ ! $MASTER_HOST ];then STOP_BUILD=1;MASTER_HOST=FAILED;fi
 	LOG_MSG "[INFO]:-Obtained Master instance hostname $MASTER_HOST" 1
-	MASTER_DATA_DIRECTORY=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select datadir from $CONFIG_TABLE where content=-1 and dbid=1;"`
+	MASTER_DATA_DIRECTORY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select datadir from $CONFIG_TABLE where content=-1 and dbid=1;"`
 	if [ $? -ne 0 ] || [ ! $MASTER_DATA_DIRECTORY ];then STOP_BUILD=1;MASTER_DATA_DIRECTORY=FAILED;fi
 	LOG_MSG "[INFO]:-Obtained Master instance data directory $MASTER_DATA_DIRECTORY" 1
-	MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select port from $CONFIG_TABLE where content=-1 and dbid=1;"`
+	MASTER_PORT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select port from $CONFIG_TABLE where content=-1 and dbid=1;"`
 	if [ $? -ne 0 ] || [ ! $MASTER_PORT ];then STOP_BUILD=1;MASTER_PORT=FAILED;fi
 	LOG_MSG "[INFO]:-Obtained Master instance port $MASTER_PORT" 1
-	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select gpname from $MPP_MPP_TABLE ;"`
+	MASTER_MPP_NAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select gpname from $MPP_MPP_TABLE ;"`
 	if [ $? -ne 0 ] || [ ! "$MASTER_MPP_NAME" ];then STOP_BUILD=1;MASTER_MPP_NAME=FAILED;fi
 	LOG_MSG "[INFO]:-Obtained Master instance array name $MASTER_MPP_NAME" 1
-	REBUILD_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select hostname, port, datadir, dbid, content, definedprimary from $CONFIG_TABLE where content<>-1;"`)
+	REBUILD_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select hostname, port, datadir, dbid, content, definedprimary from $CONFIG_TABLE where content<>-1;"`)
 	if [ $? -ne 0 ] || [ ! $REBUILD_ARRAY ];then STOP_BUILD=1;fi
 	MASTER_IP_ADDRESS_ALL=(`$IFCONFIG -a |$GREP "inet "|$GREP -v "127."|$AWK '{print $2}'|$CUT -d: -f2`)	
 	ERROR_CHK $? "get master host IP details" 2
 	MASTER_IP_ADDRESS=(`$ECHO ${MASTER_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
-	MASTER_TOTAL_SEG=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select numsegments from $MPP_MPP_TABLE;"`
+	MASTER_TOTAL_SEG=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select numsegments from $MPP_MPP_TABLE;"`
 	if [ $? -ne 0 ] || [ ! $MASTER_TOTAL_SEG ];then STOP_BUILD=1;fi
-	STANDBY_ACTIVE=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select count(*)-1 from $CONFIG_TABLE where content=-1;"`
+	STANDBY_ACTIVE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select count(*)-1 from $CONFIG_TABLE where content=-1;"`
 	if [ $? -ne 0 ] || [ ! $STANDBY_ACTIVE ];then STOP_BUILD=1;STANDBY_ACTIVE=FAILED;fi
 	LOG_MSG "[INFO}:-Obtained Master instance standby count $STANDBY_ACTIVE" 1
 	if [ $STANDBY_ACTIVE -eq 1 ];then
-	STANDBY_HOST_DETAILS=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c"select hostname, datadir, port from $CONFIG_TABLE where content=-1 and dbid<>1 ;"`
+	STANDBY_HOST_DETAILS=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c"select hostname, datadir, port from $CONFIG_TABLE where content=-1 and dbid<>1 ;"`
 	if [ $? -ne 0 ] || [ x"" = x"$STANDBY_HOST_DETAILS" ];then STOP_BUILD=1;STANDBY_HOST_DETAILS=FAILED;fi
 	fi
 	LOG_MSG "[INFO]:-Obtained standby master instace details $STANDBY_HOST_DETAILS" 1
@@ -217,7 +217,7 @@ CHK_PARAM () {
 		MASTER_HOST=`$HOSTNAME`
 		if [ $STANDBY_ACTIVE -ne 0 ];then
 		#Need to ensure that the new hostname is not the same as that of the standby host
-			STANDBY_HOST=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c"select hostname from $CONFIG_TABLE where content=-1 and dbid not in (select min(dbid) from $CONFIG_TABLE where content=-1);"`
+			STANDBY_HOST=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c"select hostname from $CONFIG_TABLE where content=-1 and dbid not in (select min(dbid) from $CONFIG_TABLE where content=-1);"`
 			ERROR_CHK $? "obtain hostname of standby host" 2
 			if [ "$MASTER_HOST" == "$STANDBY_HOST" ];then
 				DELETE_TEMP_DB
@@ -347,19 +347,19 @@ BUILD_MPP_MASTER () {
 	BACKOUT_COMMAND "export PGPORT=$MASTER_PORT;$PG_CTL -D $MASTER_DATA_DIRECTORY stop"
 	BACKOUT_COMMAND "$ECHO Commencing shutdown of Master instance"
 	LOG_MSG "[INFO]:-Loading Master MPP metadata" 1
-	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -f $SQL_FILE
+	env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -f $SQL_FILE
 	ERROR_CHK $? "loading mpp catalog data into $DEFAULTDB on master instance" 2
 	LOG_MSG "[INFO]:-Deleting temporary database" 1
 	DELETE_TEMP_DB
 	if [ x"" != x"$OVERRIDE_MASTER_HOSTNAME" ];then
 		LOG_MSG "[INFO]:-Changing master hostname to $MASTER_HOST in mpp.host table" 1
 		#Check to see if we have a hostname in $CONFIG_TABLE with the new hostname
-		HOSTNAME_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_HOST}' and content=-1 and definedprimary='t';"`
+		HOSTNAME_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_HOST}' and content=-1 and definedprimary='t';"`
 		ERROR_CHK $? "obtain hostname count for ${MASTER_HOST}" 2
 		if [ $HOSTNAME_COUNT -eq 0 ];then
 			#We don't have this hostname so update the master hostname that has been loaded
 			LOG_MSG "[INFO]:-This is a new Master hostname, updating mpp catalog" 1
-			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set hostname=${MASTER_HOST} where content=-1 and definedprimary='t';"
+			env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set hostname=${MASTER_HOST} where content=-1 and definedprimary='t';"
 			ERROR_CHK $? "update $CONFIG_TABLE for ${MASTER_HOST}" 2
 		fi	
 	fi
@@ -419,7 +419,7 @@ BUILD_SEGMENT_INSTANCES () {
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance\""
 		LOG_MSG "[INFO]:-Successfully started segment instance on $SEG_HOSTNAME" 1
 		LOG_MSG "[INFO]:-Updating segment mpp.mpp system table" 1
-		RUN_COMMAND_REMOTE $SEG_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $DEFAULTDB -c \"insert into $MPP_MPP_TABLE values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" 
+		RUN_COMMAND_REMOTE $SEG_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $SEG_PORT $DEFAULTDB -c \"insert into $MPP_MPP_TABLE values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" 
 		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME mpp.mpp system table" 1
 		LOG_MSG "[INFO]:-Commencing shutdown of segment instance on $SEG_HOSTNAME" 1
 		$TRUSTED_SHELL ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" stop" 

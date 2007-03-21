@@ -32,7 +32,7 @@ server_version_num config_file"
 
 ## greenplum db additions to the ignored list
 INTENTIONALLY_NOT_INCLUDED="$INTENTIONALLY_NOT_INCLUDED geqo \
-mpp_enable_agg_distinct mpp_enable_preunique mpp_enable_explain_allstat \
+gp_enable_agg_distinct gp_enable_preunique mpp_enable_explain_allstat \
 mpp_enable_motion_deadlock_sanity mpp_is_primary mpp_is_writer \
 mpp_write_shared_snapshot mpp_use_snapshop_during_callback mpp_is_callback \
 geqo_threshold geqo_effort geqo_pool_size geqo_generations mpp_command_count \

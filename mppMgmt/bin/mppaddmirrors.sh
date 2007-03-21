@@ -168,20 +168,20 @@ CHECK_PARAM () {
 OBTAIN_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Obtain number of segment instances per host
-	PRI_SEG_PER_HOST=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(distinct port) from $CONFIG_TABLE b where content<>-1 and definedprimary='t';"`
+	PRI_SEG_PER_HOST=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(distinct port) from $CONFIG_TABLE b where content<>-1 and definedprimary='t';"`
 	ERROR_CHK $? "obtain primary segments per host" 2
-	MAX_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(dbid)+1 from $CONFIG_TABLE;"`
+	MAX_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(dbid)+1 from $CONFIG_TABLE;"`
 	ERROR_CHK $? "obtain current max dbid" 2
 	CALC_MIRROR_PORT_BASE
-	PRI_HOSTNAME_ARRAY=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c "select distinct hostname from $CONFIG_TABLE where content<>-1 and definedprimary='t' order by hostname;"`
+	PRI_HOSTNAME_ARRAY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c "select distinct hostname from $CONFIG_TABLE where content<>-1 and definedprimary='t' order by hostname;"`
 	ERROR_CHK $? "obtain primary hostname list" 2
 	BAL_HOSTNAME_ARRAY=$PRI_HOSTNAME_ARRAY" "`$ECHO $PRI_HOSTNAME_ARRAY|$CUT -d" " -f1`
 	PRI_HOST_COUNT=`$ECHO $PRI_HOSTNAME_ARRAY|$WC -w`
 	if [ $BALANCE -ne 1 ];then
-	PRI_SEGMENT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir, port, hostname, content from $CONFIG_TABLE where content<>-1 order by hostname;"`)
+	PRI_SEGMENT_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir, port, hostname, content from $CONFIG_TABLE where content<>-1 order by hostname;"`)
 	ERROR_CHK $? "obtain segment instance directory suffix" 2
 	else
-	PRI_SEGMENT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir, port, hostname, content from $CONFIG_TABLE where content<>-1 order by port;"`)
+	PRI_SEGMENT_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir, port, hostname, content from $CONFIG_TABLE where content<>-1 order by port;"`)
 	ERROR_CHK $? "obtain segment instance directory suffix" 2
 	fi
 	PRI_SEGMENT_ARRAY_COUNT=${#PRI_SEGMENT_ARRAY[@]}
@@ -191,7 +191,7 @@ OBTAIN_PARAM () {
 			ERROR_EXIT "[FATAL]:-Insufficient MPP hosts for -s mirroring option" 2
 		fi
 		LOG_MSG "[INFO]:-Sufficient MPP segment hosts for -s option" 1
-		BAL_PORT_BASE=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(port)-$PRI_SEG_PER_HOST from $CONFIG_TABLE where content<>-1;"`
+		BAL_PORT_BASE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(port)-$PRI_SEG_PER_HOST from $CONFIG_TABLE where content<>-1;"`
 		ERROR_CHK $? "obtain current port base" 2
 		LOG_MSG "[INFO]:-Obtained current port base = $BAL_PORT_BASE" 1
 	fi 
@@ -216,7 +216,7 @@ OBTAIN_PARAM () {
 		if [ $MIRROR_COUNT_FILE -ne $PRI_SEGMENT_ARRAY_COUNT ];then
 			ERROR_EXIT "[INFO]:-Mismatch between number of mirror and primary segments" 2
 		fi	
-		PRI_SEGMENT_NAMES=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content<>-1;"`)
+		PRI_SEGMENT_NAMES=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content<>-1;"`)
 		ERROR_CHK $? "obtain primary hostnames from $CONFIG_TABLE" 2
 		MIR_SEGMENT_NAMES=(`$CAT $MIRROR_MACHINE_LIST_FILE|$CUT -d":" -f1|$SORT -u|$TR '\n' ' '`)
 		ALL_MIR_SEGMENT_NAMES=(`$CAT $MIRROR_MACHINE_LIST_FILE|$CUT -d":" -f1|$TR '\n' ' '`)
@@ -249,9 +249,9 @@ OBTAIN_PARAM () {
 
 OBTAIN_CURRENT_PORT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MAX_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(port) from $CONFIG_TABLE where content<>-1;"`
+	MAX_PORT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(port) from $CONFIG_TABLE where content<>-1;"`
 	ERROR_CHK $? "obtain max port number from $CONFIG_TABLE" 2
-	MIN_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(port) from $CONFIG_TABLE where content<>-1;"`
+	MIN_PORT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(port) from $CONFIG_TABLE where content<>-1;"`
 	ERROR_CHK $? "obtain min port number from $CONFIG_TABLE" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -407,7 +407,7 @@ CHK_MIRROR_DIR () {
 			LOG_MSG "[INFO]:-Write test passed MIRROR_DATADIR on Segment host $MIRROR_HOSTNAME"
 		fi
 		#Get the primary hostname
-		PRI_HOST=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content=${MIRROR_CONTENT};"`
+		PRI_HOST=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content=${MIRROR_CONTENT};"`
 		ERROR_CHK $? "obtain primary hostname" 2
 		LOG_MSG "[INFO]:-Checking ssh access from $PRI_HOST to $MIRROR_HOSTNAME"
 		$SSH $PRI_HOST "$SSH $MIRROR_HOSTNAME \"ls /tmp\"" > /dev/null 2>&1
@@ -436,7 +436,7 @@ CONFIG_CATALOG () {
 	for MIRROR_SEG in "${MIRROR_ARRAY[@]}"
 	do
 		SET_VAR $MIRROR_SEG
-		env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"insert into $CONFIG_TABLE (content, definedprimary, dbid, isprimary, valid, hostname, port, datadir)  values (${MIRROR_CONTENT},'f',${MIRROR_DBID},'f','t', '${MIRROR_HOSTNAME}',${MIRROR_PORT},'${MIRROR_DATADIR}' );"
+		env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"insert into $CONFIG_TABLE (content, definedprimary, dbid, isprimary, valid, hostname, port, datadir)  values (${MIRROR_CONTENT},'f',${MIRROR_DBID},'f','t', '${MIRROR_HOSTNAME}',${MIRROR_PORT},'${MIRROR_DATADIR}' );"
 		ERROR_CHK $? "insert $CONFIG_TABLE record for $MIRROR_DATADIR port $MIRROR_PORT" 2
 	done	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -464,7 +464,7 @@ DISPLAY_PARAM () {
 	for MIRROR_SEG in "${MIRROR_ARRAY[@]}"
 	do
 		SET_VAR $MIRROR_SEG
-##		MIRROR_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where dbid=${MIRROR_DBID};"`
+##		MIRROR_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where dbid=${MIRROR_DBID};"`
 	LOG_MSG "[INFO]:-Host $MIRROR_HOSTNAME Segment directory $MIRROR_DATADIR Port $MIRROR_PORT" 1
 	done
 	if [ $INTERACTIVE ];then
@@ -496,24 +496,24 @@ CREATE_MIRRORS () {
 	for MIRROR_SEG in "${MIRROR_ARRAY[@]}"
 	do
 		SET_VAR $MIRROR_SEG
-		MIRROR_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where dbid=${MIRROR_DBID};"`
+		MIRROR_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where dbid=${MIRROR_DBID};"`
 		ERROR_CHK $? "obtain mirror hostname" 2
-		PRIMARY_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content=${MIRROR_CONTENT} and isprimary='t';"`
+		PRIMARY_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content=${MIRROR_CONTENT} and isprimary='t';"`
 		ERROR_CHK $? "obtain primary hostname" 2
-		PRIMARY_DATADIR=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content=$MIRROR_CONTENT and dbid<>${MIRROR_DBID};"`
+		PRIMARY_DATADIR=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content=$MIRROR_CONTENT and dbid<>${MIRROR_DBID};"`
 		ERROR_CHK $? "obtain primary data directory for $PRIMARY_HOSTNAME" 2
 		LOG_MSG "[INFO]:-Commencing primary data directory copy $PRIMARY_HOSTNAME to $MIRROR_HOSTNAME"
 		$TRUSTED_SHELL $PRIMARY_HOSTNAME "$TRUSTED_COPY -pr $PRIMARY_DATADIR ${MIRROR_HOSTNAME}:$MIRROR_DATADIR"
 		ERROR_CHK $? "copy data directory on $PRIMARY_HOSTNAME to $MIRROR_HOSTNAME" 2
 		ED_FILE ${MIRROR_DATADIR}/$PG_CONF "port=" "port=${MIRROR_PORT}" 0 $MIRROR_HOSTNAME
 		LOG_MSG "[INFO]:-Starting mirror segment in admin mode port $MIRROR_PORT $MIRROR_HOSTNAME" 1
-		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w -D $MIRROR_DATADIR -l ${MIRROR_DATADIR}.log -o \"-i -p $MIRROR_PORT \" start"
+		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -w -D $MIRROR_DATADIR -l ${MIRROR_DATADIR}.log -o \"-i -p $MIRROR_PORT \" start"
 		ERROR_CHK $? "start mirror segment port=$MIRROR_PORT host=$MIRROR_HOSTNAME" 2
 		LOG_MSG "[INFO]:-Updating $MPP_MPP_TABLE table for database $DB" 1
-		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIRROR_PORT $DEFAULTDB -c \"update $MPP_MPP_TABLE set dbid=${MIRROR_DBID} where dbid<>${MIRROR_DBID};\""
+		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MIRROR_PORT $DEFAULTDB -c \"update $MPP_MPP_TABLE set dbid=${MIRROR_DBID} where dbid<>${MIRROR_DBID};\""
 		ERROR_CHK $? "update $MPP_MPP_TABLE table on $MIRROR_HOSTNAME $MIRROR_DATADIR database $DB" 2
 		LOG_MSG "[INFO]:-Closing down mirror segment from admin mode" 1
-		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w stop -D $MIRROR_DATADIR -m smart -l ${MIRROR_DATADIR}.log"
+		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -w stop -D $MIRROR_DATADIR -m smart -l ${MIRROR_DATADIR}.log"
 		ERROR_CHK $? "close mirror segment $MIRROR_HOSTNAME $MIRROR_DATADIR" 2	
 	done
 	LOG_MSG "[INFO]:-Completed data directory synchronization" 1

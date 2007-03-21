@@ -56,8 +56,8 @@ cdbpath_cost_motion(CdbMotionPath *motionpath)
     double  recvrows;
     double  sendrows;
 
-    cost_per_row = (mpp_motion_cost_per_row > 0.0)
-                    ? mpp_motion_cost_per_row
+    cost_per_row = (gp_motion_cost_per_row > 0.0)
+                    ? gp_motion_cost_per_row
                     : 2.0 * cpu_tuple_cost;
     sendrows = cdbpath_rows(subpath);
     recvrows = cdbpath_rows((Path *)motionpath);
@@ -1086,7 +1086,7 @@ cdbpath_dedup_fixup_baserel(Path *path, CdbpathDedupFixupContext *ctx)
     var = find_indexkey_var(ctx->root, rel, SelfItemPointerAttributeNumber);
     rowid_vars = lappend(rowid_vars, var);
 
-    /* If rel is partitioned, make a Var node for our 'mpp_segment_id' attr. */
+    /* If rel is partitioned, make a Var node for our 'gp_segment_id' attr. */
     if (CdbPathLocus_IsPartitioned(path->locus))
     {
 	    var = find_indexkey_var(ctx->root, rel, MppSegmentIdAttributeNumber);

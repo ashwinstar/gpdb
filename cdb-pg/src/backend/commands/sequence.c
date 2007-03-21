@@ -719,7 +719,7 @@ currval_oid(PG_FUNCTION_ARGS)
 				 errmsg("currval() not supported")));
 	}
 	
-	if (Mpp_role == MPP_ROLE_EXECUTE  && !Mpp_is_primary)
+	if (Mpp_role == MPP_ROLE_EXECUTE  && !Gp_is_primary)
 	{
 		elog(ERROR,"currval() cannot be used in this statement when mirroring is active");
 	}
@@ -1483,7 +1483,7 @@ cdb_sequence_nextval_proxy(Oid      tablespaceid,
                            int64   *pincrement)
 {
 
-    if (!Mpp_is_primary)
+    if (!Gp_is_primary)
         elog(ERROR,"nextval() cannot be used in this statement when mirroring is active");
 
 
@@ -1492,7 +1492,7 @@ cdb_sequence_nextval_proxy(Oid      tablespaceid,
     					tablespaceid,
     					relid,
     					istemp,
-    					mpp_session_id,
+    					gp_session_id,
     					plast,
     					pcached,
     					pincrement);

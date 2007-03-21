@@ -15,7 +15,7 @@
 #include "cdb/cdbconn.h"                /* SegmentDatabaseDescriptor */
 #include "cdb/cdbdispatchresult.h"      /* CdbDispatchResults */
 #include "cdb/cdbexplain.h"             /* me */
-#include "cdb/cdbvars.h"                /* Mpp_segment */
+#include "cdb/cdbvars.h"                /* Gp_segment */
 #include "executor/executor.h"          /* ExecStateTreeWalker */
 #include "executor/instrument.h"        /* Instrumentation */
 #include "lib/stringinfo.h"             /* StringInfo */
@@ -175,7 +175,7 @@ cdbexplain_sendExecStats(QueryDesc *queryDesc)
 
     /* Start building the message header in our context area. */
     memset(&ctx, 0, sizeof(ctx));
-    ctx.hdr.segindex = Mpp_segment;
+    ctx.hdr.segindex = Gp_segment;
     ctx.hdr.nInst = 0;
 
     /* Allocate a separate buffer where nodes can append extra message text. */
@@ -869,7 +869,7 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
     /*
      * Dump stats for all workers.
      */
-	if (mpp_enable_explain_allstat &&
+	if (gp_enable_explain_allstat &&
         ns->segindex0 >= 0 && 
         ns->nInst > 0)
 	{

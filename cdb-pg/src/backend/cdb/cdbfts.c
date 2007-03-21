@@ -91,12 +91,12 @@ FtsShmemInit(void)
 		/* initialize */
 		shared->ftsSyncCount = 0;
 		shared->ftsSegDBTransientCount = 0;
-		shared->ftsReadOnlyFlag = mpp_set_read_only;
+		shared->ftsReadOnlyFlag = gp_set_read_only;
 
 		if (Mpp_role == MPP_ROLE_DISPATCH)
 		{
-			shared->ftsAction = convertFaultActionValue(mpp_fault_action_string);
-			elog(LOG, "FTS: Fault Tolerance Action is set to : %s", mpp_fault_action_string);
+			shared->ftsAction = convertFaultActionValue(gp_fault_action_string);
+			elog(LOG, "FTS: Fault Tolerance Action is set to : %s", gp_fault_action_string);
 		}
 		shared->ftsEnabled = (*ftsAction != FTS_NONE);
 	}
@@ -112,7 +112,7 @@ CondSetMPPReadonly(void)
 	{
 		elog(LOG, "FTS: Greenplum system is set read only");
 
-		assign_mpp_set_read_only(true, true, PGC_S_DEFAULT);
+		assign_gp_set_read_only(true, true, PGC_S_DEFAULT);
 	}
 }
 
@@ -459,7 +459,7 @@ initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName
 	 */
 	if (utility)
 		appendPQExpBuffer(buffer,
-						  "options='-c mpp_session_role=UTILITY' ");
+						  "options='-c gp_session_role=UTILITY' ");
 
 	if (q->hostname == NULL)
 		appendPQExpBufferStr(buffer, "host='' ");
@@ -471,7 +471,7 @@ initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName
 	appendPQExpBuffer(buffer, "port=%u ", q->port);
 	appendPQExpBuffer(buffer, "dbname=%s ", dbName);
 	appendPQExpBuffer(buffer, "user=%s ", user);
-	appendPQExpBuffer(buffer, "connect_timeout=%d ", mpp_segment_connect_timeout);
+	appendPQExpBuffer(buffer, "connect_timeout=%d ", gp_segment_connect_timeout);
 }
 
 /* set seg db states */
@@ -826,12 +826,12 @@ markSegDBPersistentState(int dbid, bool state)
 }
 
 /*
- * Show hook routine for "mpp_role" option.
+ * Show hook routine for "gp_role" option.
  *
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-show_mpp_set_read_only(void)
+show_gp_set_read_only(void)
 {
 	return *ftsReadOnlyFlag ? "TRUE" : "FALSE";
 }
@@ -850,11 +850,11 @@ FtsCondSetTxnReadOnly(bool *XactFlag)
  * Set Read only
  */
 bool
-assign_mpp_set_read_only(bool newval, bool doit, GucSource source)
+assign_gp_set_read_only(bool newval, bool doit, GucSource source)
 {
 
 #if FALSE
-	elog(DEBUG1, "mpp_set_read_only: %s, doit=%s",
+	elog(DEBUG1, "gp_set_read_only: %s, doit=%s",
 		 newval, (doit ? "true" : "false"));
 #endif
 
@@ -873,11 +873,11 @@ assign_mpp_set_read_only(bool newval, bool doit, GucSource source)
 		if (Mpp_role == MPP_ROLE_DISPATCH)
 		{
 			char cmdbuf[30];
-			strcpy( cmdbuf, "set mpp_set_read_only=" );
+			strcpy( cmdbuf, "set gp_set_read_only=" );
 			strcat( cmdbuf, newval?"true":"false");
 
 			if ( !CdbDoCommandNoTxn(cmdbuf, false, NULL) )
-				elog(PANIC, "mpp_set_read_only failed on QE");
+				elog(PANIC, "gp_set_read_only failed on QE");
 		}
 		*/
 	}
@@ -898,8 +898,8 @@ convertFaultActionValue(char *action)
 		return FTS_NONE;
 	else
 	{
-		elog(LOG, "FTS: Invalid Fault Tolerance Action: %s", mpp_fault_action_string);
-		mpp_fault_action_string = "continue";
+		elog(LOG, "FTS: Invalid Fault Tolerance Action: %s", gp_fault_action_string);
+		gp_fault_action_string = "continue";
 		return FTS_CONTINUE;
 	}
 }
@@ -1005,7 +1005,7 @@ FtsEvaluateTransientState(void)
 	*ftsSegDBTransientCount = 0;
 
 	incFtsSyncCount();
-	assign_mpp_set_read_only(false, true, PGC_S_DEFAULT);
+	assign_gp_set_read_only(false, true, PGC_S_DEFAULT);
 	setRecoverTMOn();
 
 	LWLockRelease(ftsControlLock);

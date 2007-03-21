@@ -77,7 +77,7 @@ static int connect_back_to_qd(void);
 
 static bool can_execute_this_locally(const char * sql);
 
-bool mpp_use_snapshop_during_callback = true;
+bool gp_use_snapshop_during_callback = true;
 
 /* used only in testing in test/libcdbtest ?? */
 extern int
@@ -179,10 +179,10 @@ can_execute_this_locally(const char * src)
 	 * Ok, we have an SQL statement, that probably can only be dispatched by the QD
 	 */
 	 
-	if (!mpp_enable_functions)
+	if (!gp_enable_functions)
 		elog(ERROR, "Functions that execute SQL statements from the segDBs are not yet supported");
 		
-	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_primary && !is_a_select)
+	if (Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_primary && !is_a_select)
 		elog(ERROR, "Functions that execute non-SELECT SQL statements from the mirrorDBs are not supported");
 
 	return false;
@@ -320,7 +320,7 @@ build_mppqdid_params(StringInfoData * buf)
 {
 	appendStringInfo(buf, "mppqdid=");
 
-	appendStringInfo(buf, "%d;", mpp_session_id);
+	appendStringInfo(buf, "%d;", gp_session_id);
 
 #ifdef HAVE_INT64_TIMESTAMP
 	appendStringInfo(buf, INT64_FORMAT ";", PgStartTime);
@@ -360,7 +360,7 @@ int connect_back_to_qd(void)
 	 */
 	appendStringInfo(&buffer, "options='");
 
-	appendStringInfo(&buffer, " -c mpp_qd_proc_offset=%ld",(long)mpp_qd_proc_offset);
+	appendStringInfo(&buffer, " -c gp_qd_proc_offset=%ld",(long)gp_qd_proc_offset);
 	
 	switch (client_min_messages)
 	{
@@ -532,7 +532,7 @@ int connect_back_to_qd(void)
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 		appendStringInfo(&buffer,"port=%d",PostPortNumber);
 	else
-		appendStringInfo(&buffer,mpp_qd_callback_info);
+		appendStringInfo(&buffer,gp_qd_callback_info);
  
 	 
 	
@@ -2098,9 +2098,9 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 		elog(DEBUG1,"_SPI_execute_plan via QD: %s",plan->query);
 		if (Mpp_role == MPP_ROLE_EXECUTE)
 		{
-			if (!Mpp_is_primary)
+			if (!Gp_is_primary)
 				elog(DEBUG1,"Stored procedure running on mirror...");
-			if (!Mpp_is_writer)
+			if (!Gp_is_writer)
 				elog(DEBUG1,"Stored procedure running in reader gang.");
 		}
 		
@@ -2205,7 +2205,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 		 * 
 		 * 
 		 */
-		if (mpp_use_snapshop_during_callback) 
+		if (gp_use_snapshop_during_callback) 
 		{
 			char *serializedSnapshot;
 			int serializedSnapshotlen;
@@ -2312,7 +2312,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				query, strlen(query)+1, 
 				NULL, 0, NULL, 0, NULL, 0, NULL, 0,
 				serializedSnapshot, serializedSnapshotlen, 
-				txnOptions, mpp_command_count, -1, 
+				txnOptions, gp_command_count, -1, 
 				GetSessionUserId(), superuser_arg(GetSessionUserId()), GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
 				&query_text_len);
 			 
@@ -2337,7 +2337,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 			 * Better would be to execute the command with the same snapshot info
 			 * it would have had if it had been run on the QD from the original connection.
 			 */
-			elog(NOTICE,"mpp_use_snapshop_during_callback is false, using standard calls");
+			elog(NOTICE,"gp_use_snapshop_during_callback is false, using standard calls");
 			
 			if (PQtransactionStatus(_QD_conn) != PQTRANS_INTRANS) /* Only BEGIN if not already in txn */
 			{				

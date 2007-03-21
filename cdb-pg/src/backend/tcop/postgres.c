@@ -3019,12 +3019,12 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
 
     errno = save_errno;
     ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
-                    errFatalReturn(mpp_reraise_signal),
+                    errFatalReturn(gp_reraise_signal),
                     errOmitLocation(true),
                     errmsg("Unexpected internal error: %s received signal %s",
                            pts, signame) ));
 
-    /* CDB: Control returns here only if mpp_reraise_signal is true. */
+    /* CDB: Control returns here only if gp_reraise_signal is true. */
     raise(postgres_signal_arg);
     abort();                    /* not reached */
 }                               /* CdbProgramErrorHandler */
@@ -3988,7 +3988,7 @@ PostgresMain(int argc, char *argv[], const char *username)
         /* Reset elog globals */
         currentSliceId = UNSET_SLICE_ID;
         if (Mpp_role == MPP_ROLE_EXECUTE)
-            mpp_command_count = 0;
+            gp_command_count = 0;
 
 		/*
 		 * (1) If we've reached idle state, tell the frontend we're ready for
@@ -4065,7 +4065,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					const char *query_string;
 
                     if (Mpp_role != MPP_ROLE_EXECUTE)
-                        mpp_command_count++;
+                        gp_command_count++;
 
 					/* Set statement_timestamp() */
  					SetCurrentStatementStartTimestamp();
@@ -4111,7 +4111,7 @@ PostgresMain(int argc, char *argv[], const char *username)
  					SetCurrentStatementStartTimestamp();
  					
 					/* get the client command serial# */
-					mpp_command_count = pq_getmsgint(&input_message, 4);
+					gp_command_count = pq_getmsgint(&input_message, 4);
 									
 					/* Get the userid info  (session, outer, current) */	
 					suid = pq_getmsgint(&input_message, 4);	
@@ -4182,7 +4182,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 						 *		 the DTM never gets around to sending them any
 						 *		 explicit commits or anything
 						 */
-						if (Mpp_role == MPP_ROLE_DISPATCH || (Mpp_role == MPP_ROLE_EXECUTE && Mpp_is_writer))
+						if (Mpp_role == MPP_ROLE_DISPATCH || (Mpp_role == MPP_ROLE_EXECUTE && Gp_is_writer))
 						{
 							/* we only need to do this step if we aren't already
 							 * within a transaction
@@ -4285,7 +4285,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					Oid		   *paramTypes = NULL;
 
                     if (Mpp_role != MPP_ROLE_EXECUTE)
-                        mpp_command_count++;
+                        gp_command_count++;
 
 					/* Set statement_timestamp() */
 					SetCurrentStatementStartTimestamp();
@@ -4323,7 +4323,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 				SetCurrentStatementStartTimestamp();
 
                 if (Mpp_role != MPP_ROLE_EXECUTE)
-                    mpp_command_count++;
+                    gp_command_count++;
 
 				/*
 				 * this message is complex enough that it seems best to put
@@ -4338,7 +4338,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					int			max_rows;
 
                     if (Mpp_role != MPP_ROLE_EXECUTE)
-                        mpp_command_count++;
+                        gp_command_count++;
 
 					/* Set statement_timestamp() */
 					SetCurrentStatementStartTimestamp();
@@ -4353,7 +4353,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 			case 'F':			/* fastpath function call */
                 if (Mpp_role != MPP_ROLE_EXECUTE)
-                    mpp_command_count++;
+                    gp_command_count++;
                     
                 /* Set statement_timestamp() */
  				SetCurrentStatementStartTimestamp();

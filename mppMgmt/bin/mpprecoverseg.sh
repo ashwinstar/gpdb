@@ -117,9 +117,9 @@ USAGE () {
 
 GET_SETTING () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	FAIL_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"show mpp_fault_action;"` >> $LOG_FILE 2>&1
+	FAIL_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"show gp_fault_action;"` >> $LOG_FILE 2>&1
 	RET_STATUS=$?
-	ERROR_CHK $RET_STATUS "obtain mpp_fault_action setting" 1
+	ERROR_CHK $RET_STATUS "obtain gp_fault_action setting" 1
 	if [ $RET_STATUS -ne 0 ];then
 		#If get an error, master segment instance may be down, try to start in admin mode
 		$MPPSTART -maq
@@ -152,12 +152,12 @@ GET_SETTING () {
 			LOG_MSG "[FATAL]:-See gp_restore command" 1
 			ERROR_EXIT "[FATAL]:-No further progress can be made" 2
 		fi
-		FAILED_INST_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where valid='f';"`)
+		FAILED_INST_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where valid='f';"`)
 		RET_STATUS=$?
 		ERROR_CHK $RET_STATUS "obtain failed instance dbid's" 1
 		LOG_MSG "[INFO]:-There are ${#FAILED_INST_LIST[@]} failed segment(s)" 1
 		if [ $FAIL_TYPE != "readonly" ] && [ $FAIL_TYPE != "continue" ];then
-			LOG_MSG "[FATAL]:-Parameter mpp_fault_action is not set to either readonly or continue" 1
+			LOG_MSG "[FATAL]:-Parameter gp_fault_action is not set to either readonly or continue" 1
 			LOG_MSG "[FATAL]:-MPP fault tolerance is not set" 1
 			LOG_MSG "[FATAL]:-Unable to determine if there are actual segment failures" 1
 			INFO_TEXT
@@ -174,7 +174,7 @@ GET_SETTING () {
 	GET_MIRROR_TYPE
 	if [ $MIR_TYPE_NUM -eq 3 ] && [ x"" != x"$POOL_HOST" ];then
 	#Mirror type is separate hosts, check to see if pool host is active
-		TYPE_ACTIVE_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select distinct(definedprimary) from $CONFIG_TABLE where hostname='${POOL_HOST}';"`)
+		TYPE_ACTIVE_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select distinct(definedprimary) from $CONFIG_TABLE where hostname='${POOL_HOST}';"`)
 		ERROR_CHK $? "obtain pool host active type" 2
 		COUNT_TYPE_ACTIVE_ARRAY=${#TYPE_ACTIVE_ARRAY[@]}
 		case $COUNT_TYPE_ACTIVE_ARRAY in
@@ -186,7 +186,7 @@ GET_SETTING () {
 			PRI_COUNT=0;MIR_COUNT=0
 			for DBID in ${FAILED_INST_LIST[@]}
 			do
-				CHK_FAIL_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select definedprimary from $CONFIG_TABLE where dbid=${DBID};"`
+				CHK_FAIL_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select definedprimary from $CONFIG_TABLE where dbid=${DBID};"`
 				ERROR_CHK $? "obtain failed segment type" 1
 				case $CHK_FAIL_TYPE in
 					t) ((PRI_COUNT=$PRI_COUNT+1))
@@ -226,7 +226,7 @@ INFO_TEXT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-To be able to progress this issue, complete the following steps" 1
 	LOG_MSG "[INFO]:-Step 1 Shutdown the MPP instance with mppstop.sh -zfa" 1
-	LOG_MSG "[INFO]:-Step 2 Edit the Master postgresql.conf file and set mpp_fault_action=readonly" 1
+	LOG_MSG "[INFO]:-Step 2 Edit the Master postgresql.conf file and set gp_fault_action=readonly" 1
 	LOG_MSG "[INFO]:-Step 3 Restart the MPP instance mppstart.sh -a" 1
 	LOG_MSG "[INFO]:-Step 4 Re-run this utility" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -238,7 +238,7 @@ GET_MIRROR () {
 	if [ $FAILED_INST_COUNT -eq 0 ]; then
 		LOG_MSG "[INFO]:-No invalid segment instances located" 1
 		LOG_MSG "[INFO]:-Commencing general user database access check" 1
-		$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"show mpp_fault_action;" >> $LOG_FILE 2>&1
+		$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"show gp_fault_action;" >> $LOG_FILE 2>&1
 		RET_STATUS=$?
 		if [ $RET_STATUS -ne 0 ];then
 			LOG_MSG "[WARN]:-Issue with general access to the database" 1
@@ -327,13 +327,13 @@ DISPLAY_PARAM () {
 	done
 	$ECHO
 	if [ $STOPDB -eq 1 ]; then
-		LOG_MSG "[INFO]:-Procedure will STOP database as mpp_fault_action=$FAIL_TYPE" 1
+		LOG_MSG "[INFO]:-Procedure will STOP database as gp_fault_action=$FAIL_TYPE" 1
 	else
 		if [ $FORCESTOP -eq 1 ];then
 			LOG_MSG "[INFO]:-Procedure will STOP database as -f option supplied" 1
 		else
 			LOG_MSG "[INFO]:-Procedure can continue without database interruption" 1
-			LOG_MSG "[INFO]:-as mpp_fault_action=$FAIL_TYPE" 1
+			LOG_MSG "[INFO]:-as gp_fault_action=$FAIL_TYPE" 1
 		fi
 	fi
 	$ECHO
@@ -421,7 +421,7 @@ STOP_DATABASE () {
 		do
 			FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
 			LOG_MSG "[INFO]:-Forcing shutdown of $FAIL_QE_HOST for port=$FAIL_QE_PORT " 1
-			$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m immediate -l ${FAIL_QE_DIR}.log 2>/dev/null"
+			$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m immediate -l ${FAIL_QE_DIR}.log 2>/dev/null"
 			ERROR_CHK $? "force shutdown of $FAIL_QE_DIR on $FAIL_QE_HOST" 1
 			LOG_MSG "[INFO]:-Checking for postmaster process on $FAIL_QE_HOST port $FAIL_QE_PORT" 1
 			GET_PG_PID_ACTIVE $FAIL_QE_PORT $FAIL_QE_HOST
@@ -484,14 +484,14 @@ UPDATE_MPP_MPP () {
 		((COUNT=$COUNT+1))
 		LOG_MSG "[INFO]:-Updating instance catalog on $FAIL_QE_HOST port=$FAIL_QE_PORT" 1
 		LOG_MSG "[INFO]:-Starting instance on $FAIL_QE_HOST port=$FAIL_QE_PORT" 1
-		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w -D $FAIL_QE_DIR -l ${FAIL_QE_DIR}.log -o \"-i -p $FAIL_QE_PORT \" start" 
+		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -w -D $FAIL_QE_DIR -l ${FAIL_QE_DIR}.log -o \"-i -p $FAIL_QE_PORT \" start" 
 		ERROR_CHK $? "segment start $FAIL_QE_HOST instance $FAIL_QE_DIR port=$FAIL_QE_PORT" 2
 		# Update table
-		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $DEFAULTDB -c \"update $MPP_MPP_TABLE set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\""
+		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $DEFAULTDB -c \"update $MPP_MPP_TABLE set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\""
 		ERROR_CHK $? "update segment $MPP_MPP_TABLE on $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT" 2
 		if [ $STOPDB -eq 1 ] || [ $FORCESTOP -eq 1 ]; then
 				LOG_MSG "[INFO]:-Commencing shutdown of $FAIL_QE_HOST port=$FAIL_QE_PORT" 1
-				$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m smart -l ${FAIL_QE_DIR}.log"
+				$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m smart -l ${FAIL_QE_DIR}.log"
 				ERROR_CHK $? "segment instance stop $FAIL_QE_HOST port=$FAIL_QE_PORT" 2
 		fi
 	done
@@ -517,7 +517,7 @@ START_DATABASE () {
 	LOG_MSG "[INFO]:-Resetting invalid segment status values" 1
 	for DBID in ${FAILED_INST_LIST[@]}
 	do
-		env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set valid='t' where dbid=${DBID}"
+		env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set valid='t' where dbid=${DBID}"
 		ERROR_CHK $? "reset dbid $DBID as valid" 1
 	done
 	LOG_MSG "[INFO]:-Commencing shutdown of the MPP instance from admin mode... Please wait..." 1
@@ -545,18 +545,18 @@ FORCE_RECOVER () {
 		ERROR_EXIT "[FATAL]:Option -z string $FORCE_RECOVER_STRING incorrect" 2;fi
 	GET_QD_DB_NAME
 	#Obtain hostname for segment instance directory that is to be recovered
-	FAILED_INSTANCE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`
+	FAILED_INSTANCE_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`
 	ERROR_CHK $? "obtain failed instance count" 2
 	if [ $FAILED_INSTANCE_COUNT -eq 0 ];then
 		ERROR_EXIT "[FATAL]:-Could not locate $FAIL_QE_DIR for host $FAIL_QE_HOST" 2;fi
 	if [ $FAILED_INSTANCE_COUNT -gt 1 ];then
 		ERROR_EXIT "[FATAL]:-Found multiple records for $FAIL_QE_DIR for host $FAIL_QE_HOST" 2;fi
-	FAILED_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid, content from $CONFIG_TABLE where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`)
+	FAILED_INSTANCE_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid, content from $CONFIG_TABLE where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`)
 	ERROR_CHK $? "obtain failed segment instance details" 2
 	FAIL_SET_VAR "${FAILED_INSTANCE_ARRAY[@]}" 
 	FAILED_INST_LIST=($FAIL_QE_DBID)
 	#Get active mirror details
-	ACTIVE_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where dbid<>$FAIL_QE_DBID and content in (select content from $CONFIG_TABLE where dbid=${FAIL_QE_DBID});"`)
+	ACTIVE_INSTANCE_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where dbid<>$FAIL_QE_DBID and content in (select content from $CONFIG_TABLE where dbid=${FAIL_QE_DBID});"`)
 	ERROR_CHK $? "obtain recovery segment instance details" 2
 	if [ ${#ACTIVE_INSTANCE_ARRAY[@]} -ne 1 ];then
 		ERROR_EXIT "[FATAL]:-Did not locate 1 recovery segment instance, obtained  ${#ACTIVE_INSTANCE_ARRAY[@]}" 2
@@ -609,14 +609,14 @@ CHK_POOL_DIR_AVAILABLE () {
 	SEG_PREFIX=`$ECHO $MASTER_DATA_DIRECTORY|$AWK -F'/' '{print $NF}'|$SED -e 's/-[0-9]//g'`
 	LOG_MSG "[INFO]:-MPP instance segment prefix is $SEG_PREFIX" 1
 	#For each host see how many are active
-	ACTIVE_PRI_POOL_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where datadir like '${PRI_POOL_DATADIR}/${SEG_PREFIX}%' and content<>-1;"`)
+	ACTIVE_PRI_POOL_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where datadir like '${PRI_POOL_DATADIR}/${SEG_PREFIX}%' and content<>-1;"`)
 	ERROR_CHK $? "obtain active primary pool directory count" 2
 	LOG_MSG "[INFO]:-There are ${#ACTIVE_PRI_POOL_ARRAY[@]} primary directory pools active" 1
-	ACTIVE_MIR_POOL_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where datadir like '${MIR_POOL_DATADIR}/${SEG_PREFIX}%' and content<>-1;"`)
+	ACTIVE_MIR_POOL_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where datadir like '${MIR_POOL_DATADIR}/${SEG_PREFIX}%' and content<>-1;"`)
 	ERROR_CHK $? "obtain active mirror pool directory count" 2
 	LOG_MSG "[INFO]:-There are ${#ACTIVE_MIR_POOL_ARRAY[@]} mirror directory pools active" 1
 	#Maximum pool directory usage will be defined by number of primary QE hosts in the array
-	POOL_DIR_LIMIT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(distinct(hostname)) from $CONFIG_TABLE where content<>-1 and definedprimary='t';"`
+	POOL_DIR_LIMIT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(distinct(hostname)) from $CONFIG_TABLE where content<>-1 and definedprimary='t';"`
 	ERROR_CHK $? "obtain pool directory maximum limit" 2
 	LOG_MSG "[INFO]:-Maximum pool usage limit is $POOL_DIR_LIMIT for this MPP instance" 1
 	#Now see if we can continue
@@ -661,13 +661,13 @@ CHK_POOL_DIR_AVAILABLE () {
 
 PROCESS_PORT_VALUES () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MAX_PRI_PORT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(port) from $CONFIG_TABLE where content<>-1 and definedprimary='t';"`
+	MAX_PRI_PORT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(port) from $CONFIG_TABLE where content<>-1 and definedprimary='t';"`
 	ERROR_CHK $? "obtain max primary port number" 2
-	MIN_PRI_PORT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(port) from $CONFIG_TABLE where content<>-1 and definedprimary='t';"`
+	MIN_PRI_PORT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(port) from $CONFIG_TABLE where content<>-1 and definedprimary='t';"`
 	ERROR_CHK $? "obtain min primary port number" 2
-	MAX_MIR_PORT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(port) from $CONFIG_TABLE where content<>-1 and definedprimary='f';"`
+	MAX_MIR_PORT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(port) from $CONFIG_TABLE where content<>-1 and definedprimary='f';"`
 	ERROR_CHK $? "obtain max mirror port number" 2	
-	MIN_MIR_PORT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(port) from $CONFIG_TABLE where content<>-1 and definedprimary='f';"`
+	MIN_MIR_PORT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(port) from $CONFIG_TABLE where content<>-1 and definedprimary='f';"`
 	ERROR_CHK $? "obtain min mirror port number" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -677,7 +677,7 @@ GET_FAIL_COUNT_TYPE () {
 	PRI_FAIL_COUNT=0;MIR_FAIL_COUNT=0
 	for FAIL_DBID in ${FAILED_INST_LIST[@]}
 	do
-		DBID_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select definedprimary from $MPP_PG_VIEW where dbid=${FAIL_DBID};"`
+		DBID_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select definedprimary from $MPP_PG_VIEW where dbid=${FAIL_DBID};"`
 		ERROR_CHK $? "obtain type for dbid = $FAIL_DBID" 2
 		case $DBID_TYPE in
 			t ) ((PRI_FAIL_COUNT=$PRI_FAIL_COUNT+1)) ;;
@@ -692,9 +692,9 @@ GET_FAIL_COUNT_TYPE () {
 POOL_DIR_VALIDATION () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Now check to see that can use a free pool directory
-	PRI_POOL_DIR_HOST_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select distinct(hostname) from $CONFIG_TABLE where content<>-1 and definedprimary='t' order by hostname;"`)
+	PRI_POOL_DIR_HOST_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select distinct(hostname) from $CONFIG_TABLE where content<>-1 and definedprimary='t' order by hostname;"`)
 	ERROR_CHK $? "obtain primary segment hostname list" 2
-	MIR_POOL_DIR_HOST_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select distinct(hostname) from $CONFIG_TABLE where content<>-1 and definedprimary='f' order by hostname;"`)
+	MIR_POOL_DIR_HOST_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select distinct(hostname) from $CONFIG_TABLE where content<>-1 and definedprimary='f' order by hostname;"`)
 	ERROR_CHK $? "obtain mirror segment hostname list" 2
 	for QE_HOST in ${PRI_POOL_DIR_HOST_ARRAY[@]}
 	do
@@ -733,7 +733,7 @@ POOL_DIR_VALIDATION () {
 	do
 		FAIL_SET_VAR $FAIL_LINE
 		#Now check to see if this a primary or mirror segment
-		SEG_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select definedprimary from $CONFIG_TABLE where dbid=${FAIL_QE_DBID};"`
+		SEG_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select definedprimary from $CONFIG_TABLE where dbid=${FAIL_QE_DBID};"`
 		ERROR_CHK $? "get segment type" 2
 		case $SEG_TYPE in 
 			t ) #Primary segment
@@ -773,7 +773,7 @@ POOL_DIR_VALIDATION () {
 GET_HOST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Get the host that contains the primary/mirror segment for this mirror
-	PARTNER_HOST=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select hostname from $CONFIG_TABLE where content=${FAIL_QE_CONTENTID} and definedprimary<>'${SEG_TYPE}';"`
+	PARTNER_HOST=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select hostname from $CONFIG_TABLE where content=${FAIL_QE_CONTENTID} and definedprimary<>'${SEG_TYPE}';"`
 	ERROR_CHK $? "obtain partner hostname" 2
 	LOG_MSG "[INFO]:-Partner host for $FAIL_QE_HOST is $PARTNER_HOST" 1
 	NEW_HOST=UNKNOWN
@@ -793,7 +793,7 @@ GET_HOST () {
 			if [ $CHK_HOST != $PARTNER_HOST ];then
 				#Found a host we can use, check to ensure that datadir not in use
 				LOG_MSG "[INFO]:-Checking host $CHK_HOST to see if pool directory active" 1
-				IS_USED=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${CHK_HOST}' and datadir like '${DIR_CHK}%';"`
+				IS_USED=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${CHK_HOST}' and datadir like '${DIR_CHK}%';"`
 				if [ $IS_USED -eq 0 ];then
 					NEW_HOST=$CHK_HOST
 					break
@@ -808,7 +808,7 @@ GET_HOST () {
 	if [ $NEW_HOST == "UNKNOWN" ];then
 		#Have been unable to locate another hostname which is not the partner
 		#Make sure that pool directory not in use
-		IS_USED=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${PARTNER_HOST}' and datadir like '${DIR_CHK}%';"`
+		IS_USED=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${PARTNER_HOST}' and datadir like '${DIR_CHK}%';"`
 		if [ $IS_USED -eq 0 ];then
 			LOG_MSG "[INFO]:**************************************************" 1
 			LOG_MSG "[WARN]:-Have to locate segment on partner host $PRI_HOST" 1
@@ -834,7 +834,7 @@ GET_HOST () {
 CHK_FREE_PORT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#First see if the current failed port can be used
-	FREE_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${1}' and port=${FAIL_QE_PORT};"`
+	FREE_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${1}' and port=${FAIL_QE_PORT};"`
 	ERROR_CHK $? "obtain failed port usage" 2
 	if [ $FREE_COUNT -eq 0 ] && [ `$ECHO ${POOL_PORT_IN_USE[@]}|$GREP -c $FAIL_QE_PORT` -eq 0 ];then
 		LOG_MSG "[INFO]:-Failed port $FAIL_QE_PORT not in use on $1, will re-use" 1
@@ -843,7 +843,7 @@ CHK_FREE_PORT () {
 		FREE_PORT=0;START_PORT=$2
 		while [ $START_PORT -le $3 ]
 		do
-			FREE_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${1}' and port=${START_PORT};" `
+			FREE_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${1}' and port=${START_PORT};" `
 			ERROR_CHK $? "obtain free port count" 2
 			LOG_MSG "[INFO]:-Free port count for $START_PORT is $FREE_COUNT" 1
 			if [ $FREE_COUNT -eq 0 ] && [ `$ECHO ${POOL_PORT_IN_USE[@]}|$GREP -c $START_PORT` -eq 0 ];then
@@ -863,10 +863,10 @@ POOL_CATALOG_UPDATE () {
 		ERROR_EXIT "[FATAL]:-SQL update file $TMP_FILE deleted" 2
 	fi	
 	LOG_MSG "[INFO]:-Dumping MPP configuration to log file" 1
-	$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -c"select * from gp_configuration;" >> $LOG_FILE
+	$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -c"select * from gp_configuration;" >> $LOG_FILE
 	LOG_MSG "[INFO]:-Configuration dump complete" 1
 	LOG_MSG "[INFO]:-Commencing system catalog update" 1
-	$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -f $TMP_FILE 2>&1 > /dev/null
+	$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -f $TMP_FILE 2>&1 > /dev/null
 	ERROR_CHK $? "update system catalog" 2
 	$RM -f $TMP_FILE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -906,14 +906,14 @@ CHK_POOL_HOST () {
 	fi
 	GET_FAIL_COUNT_TYPE
 	#Check for directories in use
-	PRI_POOL_HOST_IN_USE=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datadir from $CONFIG_TABLE where hostname='$POOL_HOST' and definedprimary='t';"`)
+	PRI_POOL_HOST_IN_USE=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datadir from $CONFIG_TABLE where hostname='$POOL_HOST' and definedprimary='t';"`)
 	ERROR_CHK $? "obtain pool host primary in use" 2
 	LOG_MSG "[INFO]:-Pool host $POOL_HOST active primary segment count = ${#PRI_POOL_HOST_IN_USE[@]}" 1
-	MIR_POOL_HOST_IN_USE=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datadir from $CONFIG_TABLE where hostname='$POOL_HOST' and definedprimary='f';"`)
+	MIR_POOL_HOST_IN_USE=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datadir from $CONFIG_TABLE where hostname='$POOL_HOST' and definedprimary='f';"`)
 	ERROR_CHK $? "obtain pool host mirror in use" 2
 	LOG_MSG "[INFO]:-Pool host $POOL_HOST active mirror segment count  = ${#MIR_POOL_HOST_IN_USE[@]}" 1
 	#Get number of primary and mirror segments on a standard host
-	POOL_HOST_LIMIT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(distinct port) from $CONFIG_TABLE where definedprimary='t' and content<>-1;"`
+	POOL_HOST_LIMIT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(distinct port) from $CONFIG_TABLE where definedprimary='t' and content<>-1;"`
 	ERROR_CHK $? "Obtain Array segment per host" 2
 	LOG_MSG "[INFO]:-Pool host segment limit is $POOL_HOST_LIMIT" 1
 	((PRI_FREE=$POOL_HOST_LIMIT-${#PRI_POOL_HOST_IN_USE[@]}))	
@@ -939,7 +939,7 @@ CHK_POOL_HOST () {
 	SEG_PREFIX=`$ECHO $MASTER_DATA_DIRECTORY|$AWK -F'/' '{print $NF}'|$SED -e 's/-[0-9]//g'`
 	LOG_MSG "[INFO]:-MPP instance segment prefix is $SEG_PREFIX" 1
 	LOG_MSG "[INFO]:-Obtaining a list of primary segment datadir prefixes" 1
-	PRI_DATA_DIR_PREFIX_ARRAY=(`for DIR in \`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='t';"\`;do $DIRNAME $DIR;done|$SORT -u|$TR '\n' ' '`)
+	PRI_DATA_DIR_PREFIX_ARRAY=(`for DIR in \`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='t';"\`;do $DIRNAME $DIR;done|$SORT -u|$TR '\n' ' '`)
 	ERROR_CHK $? "obtain primary segment prefixes" 2
 	LOG_MSG "[INFO]:-Commencing primary directory checks" 1
 	for PRI_DIR in ${PRI_DATA_DIR_PREFIX_ARRAY[@]}
@@ -947,7 +947,7 @@ CHK_POOL_HOST () {
 		CHK_WRITE_DIR $PRI_DIR $POOL_HOST
 	done
 	LOG_MSG "[INFO]:-Obtaining a list of mirror segment datadir prefixes" 1
-	MIR_DATA_DIR_PREFIX_ARRAY=(`for DIR in \`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='f';"\`;do $DIRNAME $DIR;done|$SORT -u|$TR '\n' ' '`)
+	MIR_DATA_DIR_PREFIX_ARRAY=(`for DIR in \`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='f';"\`;do $DIRNAME $DIR;done|$SORT -u|$TR '\n' ' '`)
 	ERROR_CHK $? "obtain mirror segment prefixes" 2
 	LOG_MSG "[INFO]:-Commencing mirror directory checks" 1
 	for MIR_DIR in ${MIR_DATA_DIR_PREFIX_ARRAY[@]}
@@ -967,7 +967,7 @@ POOL_HOST_DIR_VALIDATION () {
 	do
 		FAIL_SET_VAR $FAIL_LINE
 		#Now check to see if this a primary or mirror segment
-		SEG_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select definedprimary from $CONFIG_TABLE where dbid=${FAIL_QE_DBID};"`
+		SEG_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select definedprimary from $CONFIG_TABLE where dbid=${FAIL_QE_DBID};"`
 		ERROR_CHK $? "get segment type" 2
 		case $SEG_TYPE in 
 			t )	#Primary segment
@@ -1040,7 +1040,7 @@ UPDATE_STATUS () {
 	do
 		FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
 		LOG_MSG "[INFO]:-Setting $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT as active" 1
-		 env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c "BEGIN; update $CONFIG_TABLE set valid = 't' where dbid = CAST($FAIL_QE_DBID AS smallint); update $CONFIG_TABLE set isprimary = definedprimary where content = CAST($FAIL_QE_CONTENTID AS smallint); COMMIT;" > /dev/null 2>&1
+		 env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c "BEGIN; update $CONFIG_TABLE set valid = 't' where dbid = CAST($FAIL_QE_DBID AS smallint); update $CONFIG_TABLE set isprimary = definedprimary where content = CAST($FAIL_QE_CONTENTID AS smallint); COMMIT;" > /dev/null 2>&1
 		RETVAL=$?
 		ERROR_CHK $RETVAL "update status on Master database" 2
 		((COUNT=$COUNT+1))

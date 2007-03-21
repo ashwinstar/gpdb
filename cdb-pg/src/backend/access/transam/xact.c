@@ -49,7 +49,7 @@
 
 #include "cdb/cdbgang.h"
 #include "cdb/cdbtm.h"
-#include "cdb/cdbvars.h"		/* Mpp_role, Mpp_is_writer,
+#include "cdb/cdbvars.h"		/* Mpp_role, Gp_is_writer,
 					   interconnect_setup_timeout */
 
 /*
@@ -519,13 +519,13 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 
 
     /*$$$$$$$ FIX ME $$$$$$$$$*/
-    if (Mpp_segment == -1 && Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
+    if (Gp_segment == -1 && Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer)
     {
         elog(DEBUG5, "GetSnapshotData for entry db singleton QE: Shared snapshot not implemented.  Punt!"); 
     }
     else
     /*$$$$$$$$$$$$$$$$$$$$$$$*/
-	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer &&
+	if (Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer &&
 		SharedLocalSnapshotSlot != NULL && 
 		SharedLocalSnapshotSlot->xid == TopTransactionStateData.transactionId)
 	{
@@ -782,7 +782,7 @@ RecordTransactionCommit(void)
 
 
 		/* Safety check in case our assumption is ever broken. */
-		if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer && !seqXlogWrite)
+		if (Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer && !seqXlogWrite)
 		{
 			/*
 			 * we better only do really minor things on the reader that result
@@ -1455,7 +1455,7 @@ SetSharedTransactionId(void)
 {
 	Assert(SharedLocalSnapshotSlot != NULL);
 
-	if (Mpp_is_writer)
+	if (Gp_is_writer)
 	{
 		elog(DEBUG5, "qExec WRITER setting shared xid to: %d (QDxid %d)", TopTransactionStateData.transactionId, QDSentXID);
 		SharedLocalSnapshotSlot->xid = TopTransactionStateData.transactionId;
@@ -1642,7 +1642,7 @@ StartTransaction(void)
 	 */
 	if (Mpp_role == MPP_ROLE_EXECUTE && QDSentXID != InvalidTransactionId)
 	{
-		if (Mpp_is_writer)
+		if (Gp_is_writer)
 		{
 			/*
 			 * generate a new transaction id
@@ -2479,7 +2479,7 @@ StartTransactionCommand(void)
 			/* There may be reader gangs waiting for us to update the
 			 * QDSentXID -- make sure the state of the sharedsnapshot
 			 * slot properly tracks the qd-xid */
-			if (Mpp_role == MPP_ROLE_EXECUTE && Mpp_is_writer && SharedLocalSnapshotSlot != NULL)
+			if (Mpp_role == MPP_ROLE_EXECUTE && Gp_is_writer && SharedLocalSnapshotSlot != NULL)
 			{
 				SharedLocalSnapshotSlot->xid = s->transactionId;
 				SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;

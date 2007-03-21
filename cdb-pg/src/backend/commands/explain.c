@@ -440,8 +440,8 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	totaltime += elapsed_time(&starttime);
 
     /* CDB: Show non-default GUC settings that might have affected the plan. */
-    nb = cdb_guc_list_show(&buf, "Settings:  ", "%s=%s; ", PGC_S_DEFAULT, 
-                           cdb_guc_list_for_explain);
+    nb = gp_guc_list_show(&buf, "Settings:  ", "%s=%s; ", PGC_S_DEFAULT, 
+                           gp_guc_list_for_explain);
     if (nb > 0)
     {
         truncateStringInfo(&buf, buf.len - 2);  /* drop final "; " */

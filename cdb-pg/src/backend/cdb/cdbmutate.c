@@ -1259,7 +1259,7 @@ doesUpdateAffectPartitionCols(Plan         *plan,
  *
  * warn_ctid_without_segid() warns the user if the plan refers to a
  * partitioned table's ctid column without also referencing its
- * mpp_segment_id column.
+ * gp_segment_id column.
  *
  * hasCtid_outside_tlist() detects a CTID reference outside of simple
  * Var in the targetlist of the top-level plan node.  The use of this
@@ -1316,7 +1316,7 @@ warn_ctid_without_segid(Query *query, Plan *plan)
                                 relname),
                          errdetail("To uniquely identify a row within a "
                                    "distributed table, use the "
-                                   "\"mpp_segment_id\" system column "
+                                   "\"gp_segment_id\" system column "
                                    "together with the \"ctid\" column.")
                          ));
                 if (relname)
@@ -1347,7 +1347,7 @@ ctid_inventory_walker(Node *node, ctid_inv_data * inv)
                 case SelfItemPointerAttributeNumber:    /* ctid */
 				    inv->ctid_relids = bms_add_member(inv->ctid_relids, var->varno);
                     break;
-                case MppSegmentIdAttributeNumber:       /* mpp_segment_id */
+                case MppSegmentIdAttributeNumber:       /* gp_segment_id */
 				    inv->segid_relids = bms_add_member(inv->segid_relids, var->varno);
                     break;
                 default:

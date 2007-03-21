@@ -319,7 +319,7 @@ init_sql_fcache(FmgrInfo *finfo)
 				elog(ERROR,"SQL function %s cannot be executed from the segment databases",NameStr(procedureStruct->proname));		
 		}
 		
-		if (!Mpp_is_primary)
+		if (!Gp_is_primary)
 		{
 			if (procedureStruct->provolatile == PROVOLATILE_VOLATILE)
 				elog(ERROR,"Volatile SQL function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	

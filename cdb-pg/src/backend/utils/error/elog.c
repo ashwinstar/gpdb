@@ -71,7 +71,7 @@
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 
-#include "cdb/cdbvars.h"  /*Mpp_segment */
+#include "cdb/cdbvars.h"  /*Gp_segment */
 #include "utils/ps_status.h"    /* get_ps_display_username() */
 
 #include "utils/elog.h" /* backtrace() prototype for solaris */
@@ -423,7 +423,7 @@ errfinish(int dummy,...)
     /* CDB: If fatal internal error, linger so user can attach a debugger. */
     if (elevel == FATAL &&
         edata->sqlerrcode == ERRCODE_INTERNAL_ERROR &&
-        mpp_debug_linger > 0)
+        gp_debug_linger > 0)
         elog_debug_linger(edata);
 
     /* Emit the message to the right places */
@@ -1882,8 +1882,8 @@ log_line_prefix(StringInfo buf)
 				 * choose to not write anything for the very early log messages
 				 * before GUC variables are set.
 				 */
-				if( Mpp_segment != UNDEF_SEGMENT )
-					appendStringInfo(buf, "%d", Mpp_segment );
+				if( Gp_segment != UNDEF_SEGMENT )
+					appendStringInfo(buf, "%d", Gp_segment );
 				break;
 			case 'I':
 				/* prints a succinct description of an MPP process. */
@@ -1900,14 +1900,14 @@ log_line_prefix(StringInfo buf)
                     break;
                 }
                 j = buf->len;
-                if (mpp_session_id > 0)
-                    appendStringInfo(buf, "con%d ", mpp_session_id);
-                if (mpp_command_count > 0)
-                    appendStringInfo(buf, "cmd%d ", mpp_command_count);
+                if (gp_session_id > 0)
+                    appendStringInfo(buf, "con%d ", gp_session_id);
+                if (gp_command_count > 0)
+                    appendStringInfo(buf, "cmd%d ", gp_command_count);
 				if (Mpp_role == MPP_ROLE_EXECUTE)
                     appendStringInfo(buf, "%s%d ",
-                                     Mpp_is_primary ? "seg" : "mir",
-                                     Mpp_segment);
+                                     Gp_is_primary ? "seg" : "mir",
+                                     Gp_segment);
                 if (currentSliceId > 0)
                     appendStringInfo(buf, "slice%d ", currentSliceId);
                 if (j < buf->len &&
@@ -1917,7 +1917,7 @@ log_line_prefix(StringInfo buf)
 			case 'P':
 				if( Mpp_role == MPP_ROLE_EXECUTE )
 				{
-                    appendStringInfoChar(buf, Mpp_is_primary?'P':'M');
+                    appendStringInfoChar(buf, Gp_is_primary?'P':'M');
 				}
 				break;
 			case 'R':
@@ -2581,14 +2581,14 @@ write_stderr(const char *fmt,...)
 void
 elog_debug_linger(ErrorData *edata)
 {
-    int     seconds_to_linger = mpp_debug_linger;
+    int     seconds_to_linger = gp_debug_linger;
     int     seconds_lingered = 0;
 
     /* Don't linger again in the event of another error. */
-    mpp_debug_linger = 0;
+    gp_debug_linger = 0;
 
     /* A word of explanation to the user... */
-    errhint("%s%sProcess %d will wait for mpp_debug_linger=%d seconds before termination.\n"
+    errhint("%s%sProcess %d will wait for gp_debug_linger=%d seconds before termination.\n"
             "Note that its locks and other resources will not be released until then.",
             edata->hint ? edata->hint : "",
             edata->hint ? "\n" : "",

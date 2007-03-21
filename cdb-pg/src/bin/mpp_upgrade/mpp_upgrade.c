@@ -359,7 +359,7 @@ main(int argc, char **argv)
      
      
 
-     strcat(conninfo , " options='-O -c mpp_session_role=utility'");
+     strcat(conninfo , " options='-O -c gp_session_role=utility'");
      
      printf("gp_upgrade running.\n");
 
@@ -474,7 +474,7 @@ main(int argc, char **argv)
     	for (i = 0; i < segdbcount; i++)
 	    {
 	    	char conninfo[1024];
-	    	sprintf(conninfo,"host=%s port=%s dbname=%s options='-O -c mpp_session_role=utility' ",
+	    	sprintf(conninfo,"host=%s port=%s dbname=%s options='-O -c gp_session_role=utility' ",
 	    		segdbs[i].hostname, segdbs[i].port, databasenames[d]);
 	
 		    /* Make a connection to the database */

@@ -28,9 +28,9 @@ typedef struct cdb_basetable_array
 } CDBBaseTableArray;
 
 /* --------------------------------------------------------------------------------------------------
- * Structure for reading mpp_segment_instance
+ * Structure for reading gp_segment_instance
  */
-typedef struct mpp_segment_instance 
+typedef struct gp_segment_instance 
 {
     int		segid;
     bool     isValid;			
@@ -44,7 +44,7 @@ typedef struct mpp_segment_instance
 /* --------------------------------------------------------------------------------------------------
  * Structure for an array of CDBSegmentInstances
  */
-typedef struct mpp_segment_instance_array 
+typedef struct gp_segment_instance_array 
 {
     int					count;		// count
     CDBSegmentInstance*	pData;		// array of count CDBSegmentInstances
@@ -57,7 +57,7 @@ extern void FreeCDBBaseTableArray( CDBBaseTableArray* pTableAr );
 extern void FreeCDBSegmentInstanceArray( CDBSegmentInstanceArray* pSegmentInstanceAr );
 /* Read all the rows in the join of cdb_basetable, pg_class, and pg_namespace */
 extern bool GetCDBBaseTableArray(PGconn* pConn, CDBBaseTableArray* pTableAr);
-/* Read all the rows in the mpp_segment_instance table */
+/* Read all the rows in the gp_segment_instance table */
 extern bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegmentInstanceArray* pSegmentInstanceAr );
 
 #endif /* CDB_TABLE_H */

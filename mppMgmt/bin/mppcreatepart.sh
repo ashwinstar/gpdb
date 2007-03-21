@@ -324,12 +324,12 @@ VALIDATE_PARAM () {
 		ERROR_EXIT "[FATAL]:-Parent table $PARENT_TABLE_NAME does not exist in $QD_DBNAME database" 2
 	else
 	#Check to see if table has any child tables already
-		HAS_CHILD_TABLES=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relhassubclass from pg_class where relname = '$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}');"`
+		HAS_CHILD_TABLES=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relhassubclass from pg_class where relname = '$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}');"`
 		ERROR_CHK $? "check for child tables" 2
 	if [ $HAS_CHILD_TABLES == 't' ];then
 		LOG_MSG "[WARN]:-Table $PARENT_TABLE_NAME appears to have child tables" 1
 		LOG_MSG "[INFO]:-Checking for child tables" 1
-		CHILD_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_inherits where inhparent in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}'));"`
+		CHILD_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_inherits where inhparent in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}'));"`
 		ERROR_CHK $? "obtain child table count" 2
 		if [ $CHILD_COUNT -ne 0 ] && [ x"" == x"$FORCE_CREATE" ];then
 			LOG_MSG "[FATAL]:-Table $PARENT_TABLE_NAME has $CHILD_COUNT child tables defined." 1
@@ -340,7 +340,7 @@ VALIDATE_PARAM () {
 		fi
 	fi
 	#Check that partition column exists
-	COL_THERE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')) and attname='${PART_COLUMN}' and attnum > 0;"`
+	COL_THERE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')) and attname='${PART_COLUMN}' and attnum > 0;"`
 	ERROR_CHK $? "check for \"$PART_COLUMN\" column" 2
 	if [ $COL_THERE -ne 1 ];then
 		ERROR_EXIT "[FATAL]:-Column $PART_COLUMN does not exist in $PARENT_TABLE_NAME" 2
@@ -354,7 +354,7 @@ VALIDATE_PARAM () {
 		fi
 		for INDEX_NAME in ${INDEX_ARRAY_LIST[@]}
 		do
-		COL_THERE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')) and attname='${INDEX_NAME}' and attnum > 0;"`
+		COL_THERE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')) and attname='${INDEX_NAME}' and attnum > 0;"`
 		ERROR_CHK $? "check for \"$INDEX_NAME\" column in $TABLE_NAME" 2
 		if [ $COL_THERE -ne 1 ];then
 			ERROR_EXIT "[FATAL]:-Column $INDEX_NAME requested for indexing does not exist in $PARENT_TABLE_NAME" 2
@@ -427,7 +427,7 @@ VALIDATE_PROCESS () {
 	#Determine if the source table has random distribution
 	#Now validate the columns to ensure that they are the correct data type for the partitioning requested
 	#First get column type
-	PART_COL_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select typname from pg_type where oid in (select atttypid from pg_attribute where attname='${PART_COLUMN}'and attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')));"`
+	PART_COL_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select typname from pg_type where oid in (select atttypid from pg_attribute where attname='${PART_COLUMN}'and attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')));"`
 	ERROR_CHK $? "get \"$PART_COLUMN\" data type" 2
 	LOG_MSG "[INFO]:-Partition column \"$PART_COLUMN\" is of type $PART_COL_TYPE" 1
 	LOG_MSG "[INFO]:-Validating this data type against partition type selected" 1
@@ -481,7 +481,7 @@ VALIDATE_PROCESS () {
 	#Check to see if an additional conversion command has been applied and if so it is valid for partition column
 	if [ x"" != x"$CONVERSION_CMD" ];then
 		LOG_MSG "[INFO]:-Checking to ensure that $CONVERSION_CMD can be applied to $PART_COLUMN"  1
-		$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select ${CONVERSION_CMD}(${PART_COLUMN}) from $PARENT_TABLE_NAME limit 1;" >/dev/null 2>&1
+		$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select ${CONVERSION_CMD}(${PART_COLUMN}) from $PARENT_TABLE_NAME limit 1;" >/dev/null 2>&1
 		if [ $? -ne 0 ];then
 			ERROR_EXIT "[FATAL]:-Conversion $CONVERSION_CMD fails on column $PART_COLUMN" 2
 		else
@@ -494,7 +494,7 @@ VALIDATE_PROCESS () {
 
 SELECT_PROCESS_TYPE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	PARENT_COLUMN_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -R" " $QD_DBNAME -c "select attname from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}' )) and attnum > 0 order by attnum;"`)
+	PARENT_COLUMN_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -R" " $QD_DBNAME -c "select attname from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}' )) and attnum > 0 order by attnum;"`)
 	ERROR_CHK $? "obtain parent column list for $TABLE_NAME" 2
 	case $PART_TYPE in 
 		d )

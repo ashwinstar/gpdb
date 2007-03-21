@@ -333,7 +333,7 @@ cdb_grouping_planner(PlannerInfo* root,
 			   * defensive since we will have taken an early exit above.
 			   */
 		}
-		else if ( has_groups && agg_counts->numDistinctAggs==1 && !mpp_enable_agg_distinct )
+		else if ( has_groups && agg_counts->numDistinctAggs==1 && !gp_enable_agg_distinct )
 		{
 			; /* If we continue, we'll use an initial redistibute motion to
 			   * allow use of 2-phase aggregation with the lone agg distinct.
@@ -343,7 +343,7 @@ cdb_grouping_planner(PlannerInfo* root,
 			   * Since HashAgg can't handle distinct, the 2-phase plan will be
 			   *    (Agg (Sort (Motion (Agg (Sort (Motion R))))))
 			   * which we probably won't like.  However, the 2-phase approach
-			   * may be enabled using the GUC mpp_enable_agg_distinct.
+			   * may be enabled using the GUC gp_enable_agg_distinct.
 			   */
 		}
 		else /* Pick a 2-stage plan to compare to the 1-stage plan in hand. */
@@ -548,8 +548,8 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	 * cost (doesn't sound right, but that's what to use for now) and a
 	 * per row cost added to total cost (also doubtful).
 	 */
-	motion_cost_per_row = (mpp_motion_cost_per_row > 0.0) ?
-				mpp_motion_cost_per_row :
+	motion_cost_per_row = (gp_motion_cost_per_row > 0.0) ?
+				gp_motion_cost_per_row :
 				2.0 * cpu_tuple_cost;
 
 	switch ( ctx->prep )
@@ -747,8 +747,8 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	                        (ctx->dNumGroups > LONG_MAX) ? LONG_MAX :
 							(long)ctx->dNumGroups;
 	
-	motion_cost_per_row = (mpp_motion_cost_per_row > 0.0) ?
-				mpp_motion_cost_per_row :
+	motion_cost_per_row = (gp_motion_cost_per_row > 0.0) ?
+				gp_motion_cost_per_row :
 				2.0 * cpu_tuple_cost;
 
 	/* Create the base plan which will serve as the outer plan (argument)

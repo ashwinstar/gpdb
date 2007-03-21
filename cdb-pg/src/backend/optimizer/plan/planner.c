@@ -233,14 +233,14 @@ subquery_planner(Query *parse, double tuple_fraction,
     {
         int segmentCount = getMPPSegmentCount();
 
-        if (mpp_segments_for_planner > 0)
-            cdbpath_segments = mpp_segments_for_planner;
+        if (gp_segments_for_planner > 0)
+            cdbpath_segments = gp_segments_for_planner;
         else
             cdbpath_segments = segmentCount;
 
         /* Choose a segdb to which our singleton gangs should be dispatched. */
         if (segmentCount > 0)
-            mpp_singleton_segindex = mpp_session_id % segmentCount;
+            mpp_singleton_segindex = gp_session_id % segmentCount;
     }
 
     /* CDB: Stash current query level's relids before pulling up subqueries. */
@@ -811,8 +811,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
     Path       *best_path = NULL;
 	double		dNumGroups = 0;
 	double		motion_cost_per_row  =
-						(mpp_motion_cost_per_row > 0.0) ?
-						mpp_motion_cost_per_row :
+						(gp_motion_cost_per_row > 0.0) ?
+						gp_motion_cost_per_row :
 						2.0 * cpu_tuple_cost;
 	
 	/* Tweak caller-supplied tuple_fraction if have LIMIT/OFFSET */
@@ -1190,7 +1190,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 					mark_sort_locus(result_plan);
 
 					/* CDB */ /* pass DISTINCT to sort */
-					if (IsA(result_plan, Sort) && mpp_enable_sort_distinct)
+					if (IsA(result_plan, Sort) && gp_enable_sort_distinct)
 					{
 							Sort* pSort = (Sort*)result_plan;
 							pSort->noduplicates = true;
@@ -1254,7 +1254,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		
 			/* Regard input as strewn.  Redistribute on distinct keys. */
 			
-			if ( mpp_enable_preunique ) /* Do we want to pre-unique? */
+			if ( gp_enable_preunique ) /* Do we want to pre-unique? */
 			{
 				/* Reduce the number of rows to move by adding a [Sort and]
 				 * Unique prior to the redistribute Motion. */

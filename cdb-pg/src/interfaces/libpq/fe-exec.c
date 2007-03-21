@@ -677,7 +677,7 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
  * flags    - specifies additional processing instructions to the remote server.
  *			  e.g.  Auto explicitly start a transaction before executing this
  *		      statement.
- * mpp_command_count - Client request serial# to be passed to the qExec.
+ * gp_command_count - Client request serial# to be passed to the qExec.
  */
 /*
  * Our goal is to build one copy of the MPP query stucture, and to
@@ -686,7 +686,7 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
  * So the code below does the same work, roughly as:
  * 
  * 	if (pqPutMsgStart('M', false, conn) < 0 ||
- *		pqPutInt(mpp_command_count, 4, conn ) < 0 ||
+ *		pqPutInt(gp_command_count, 4, conn ) < 0 ||
  *		pqPuts(snapshotInfo, conn ) < 0 ||
  *		pqPutInt(flags, 4, conn ) < 0 ||
  *		pqPuts(command, conn) < 0 ||
@@ -709,7 +709,7 @@ PQbuildMppQueryString(const char  *command,
 					  const char  *snapshotInfo,
 					  int		   snapshotInfo_len,
 					  int          flags,
-					  int          mpp_command_count,
+					  int          gp_command_count,
 					  int		   localSlice,
 					  Oid			sessionUserId,
 					  bool			sessionUserIsSuper,
@@ -743,7 +743,7 @@ PQbuildMppQueryString(const char  *command,
 
 	pos += 4; /* place holder for message length */
 
-	tmp = htonl(mpp_command_count);
+	tmp = htonl(gp_command_count);
 	memcpy(pos, &tmp, 4);
 	pos += 4;
 	

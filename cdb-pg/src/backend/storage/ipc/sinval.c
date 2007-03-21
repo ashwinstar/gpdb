@@ -25,7 +25,7 @@
 #include "storage/sinvaladt.h"
 #include "utils/inval.h"
 
-#include "cdb/cdbvars.h"		/* Mpp_is_writer */
+#include "cdb/cdbvars.h"		/* Gp_is_writer */
 #include "cdb/cdbgang.h"
 
 /*

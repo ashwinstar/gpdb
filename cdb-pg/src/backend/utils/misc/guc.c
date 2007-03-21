@@ -107,9 +107,9 @@ extern int	CommitSiblings;
 extern char *default_tablespace;
 extern bool fullPageWrites;
 
-/* GUC lists for cdb_guc_list_show().  (List of struct config_generic) */
-List       *cdb_guc_list_for_explain;
-List       *cdb_guc_list_for_no_plan;
+/* GUC lists for gp_guc_list_show().  (List of struct config_generic) */
+List       *gp_guc_list_for_explain;
+List       *gp_guc_list_for_no_plan;
 
 #ifdef TRACE_SORT
 extern bool trace_sort;
@@ -249,8 +249,8 @@ static int	max_identifier_length;
 static int	block_size;
 static bool integer_datetimes;
 //static bool standard_conforming_strings;
-static char *mpp_log_gang_str;
-static char *mpp_log_interconnect_str;
+static char *gp_log_gang_str;
+static char *gp_log_interconnect_str;
 
 /* should be static, but commands/variable.c needs to get at these */
 char	   *role_string;
@@ -514,13 +514,13 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 	{
-		{"mpp_enable_fallback_plan", PGC_USERSET, QUERY_TUNING_METHOD,
+		{"gp_enable_fallback_plan", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Plan types which are not enabled may be used when a "
                          "query would be infeasible without them."),
 			gettext_noop("If false, planner rejects queries that cannot be "
                          "satisfied using only the enabled plan types.")
 		},
-		&mpp_enable_fallback_plan,
+		&gp_enable_fallback_plan,
 		true, NULL, NULL
 	},
 	{
@@ -1075,93 +1075,93 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"mpp_enable_agg_distinct", PGC_USERSET, QUERY_TUNING_METHOD,
+		{"gp_enable_agg_distinct", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Experimental feature: 2-phase aggregation with single distinct-qualified aggregate."),
 			NULL,
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&mpp_enable_agg_distinct,
+		&gp_enable_agg_distinct,
 		false, NULL, NULL
 	},
 
 	{
-		{"mpp_enable_preunique", PGC_USERSET, QUERY_TUNING_METHOD,
+		{"gp_enable_preunique", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Experimental feature: 2-phase duplicate removal."),
 			NULL,
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&mpp_enable_preunique,
+		&gp_enable_preunique,
 		false, NULL, NULL
 	},
 
 	{
-		{"mpp_enable_explain_allstat", PGC_USERSET, CLIENT_CONN_OTHER,
+		{"gp_enable_explain_allstat", PGC_USERSET, CLIENT_CONN_OTHER,
 			gettext_noop("Experimental feature: dump stats for all segments in EXPLAIN ANALYZE."),
 			NULL,
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&mpp_enable_explain_allstat,
+		&gp_enable_explain_allstat,
 		false, NULL, NULL
 	},
 
 	{
-		{"mpp_enable_sort_limit", PGC_USERSET, QUERY_TUNING_METHOD,
+		{"gp_enable_sort_limit", PGC_USERSET, QUERY_TUNING_METHOD,
             gettext_noop("Enable LIMIT operation to be performed while sorting."),
 			gettext_noop("Sort more efficiently when plan requires the first <n> rows at most.")
 		},
-		&mpp_enable_sort_limit,
+		&gp_enable_sort_limit,
 		true, NULL, NULL
 	},
 
 	{
-		{"mpp_enable_sort_distinct", PGC_USERSET, QUERY_TUNING_METHOD,
+		{"gp_enable_sort_distinct", PGC_USERSET, QUERY_TUNING_METHOD,
             gettext_noop("Enable duplicate removal to be performed while sorting."),
             gettext_noop("Reduces data handling when plan calls for removing duplicates from sorted rows.")
 		},
-		&mpp_enable_sort_distinct,
+		&gp_enable_sort_distinct,
 		true, NULL, NULL
 	},
 
 	{
-		{"mpp_enable_motion_deadlock_sanity", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"gp_enable_motion_deadlock_sanity", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable verbose check at planning time."),
 			NULL,
             GUC_NO_RESET_ALL | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&mpp_enable_motion_deadlock_sanity,
+		&gp_enable_motion_deadlock_sanity,
 		false, NULL, NULL
 	},
 
 	{
-		{"mpp_is_primary", PGC_BACKEND, CDB_WORKER_IDENTITY,
+		{"gp_is_primary", PGC_BACKEND, CDB_WORKER_IDENTITY,
 			gettext_noop("Reports session type as primary or mirror."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
-		&Mpp_is_primary,
+		&Gp_is_primary,
 		true, NULL, NULL
 	},
 
     {
-        {"mpp_set_read_only", PGC_SUSET, CDB_ARRAY_CONFIGURATION,
+        {"gp_set_read_only", PGC_SUSET, CDB_ARRAY_CONFIGURATION,
             gettext_noop("Sets the system read only"),
             NULL
         },
-        &mpp_set_read_only,
-        false, assign_mpp_set_read_only, NULL
+        &gp_set_read_only,
+        false, assign_gp_set_read_only, NULL
     },
 
 	{
-		{"mpp_set_proc_affinity", PGC_POSTMASTER, RESOURCES_KERNEL,
+		{"gp_set_proc_affinity", PGC_POSTMASTER, RESOURCES_KERNEL,
 		 gettext_noop("On postmster startup, attempt to bind postmaster to a processor"),
 		 NULL
 		},
-		&mpp_set_proc_affinity,
+		&gp_set_proc_affinity,
         false, NULL, NULL
 	},
 
     {
-        {"mpp_enable_adaptive_nestloop", PGC_USERSET, QUERY_TUNING_METHOD,
+        {"gp_enable_adaptive_nestloop", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables the planner's use of the Adaptive Join Choice operator."),
             gettext_noop("During query execution, actual outer row count determines choice of Nested or Hash Join.")
         },
@@ -1170,61 +1170,61 @@ static struct config_bool ConfigureNamesBool[] =
     },
 
     {
-    	{"mpp_is_writer", PGC_BACKEND, CDB_WORKER_IDENTITY,
+    	{"gp_is_writer", PGC_BACKEND, CDB_WORKER_IDENTITY,
     		gettext_noop("True in a worker process which can directly update its local database segment."),
     		NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
     	},
-    	&Mpp_is_writer,
+    	&Gp_is_writer,
     	false, NULL, NULL
     },
 
 	{
-		{"mpp_write_shared_snapshot", PGC_USERSET, UNGROUPED,
+		{"gp_write_shared_snapshot", PGC_USERSET, UNGROUPED,
 			gettext_noop("Forces the writer gang to set the shared snapshot."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
-    	&Mpp_write_shared_snapshot,
-    	false, assign_mpp_write_shared_snapshot, NULL
+    	&Gp_write_shared_snapshot,
+    	false, assign_gp_write_shared_snapshot, NULL
     },
 
     {
-    	{"mpp_enable_functions", PGC_USERSET, CLIENT_CONN_STATEMENT,
+    	{"gp_enable_functions", PGC_USERSET, CLIENT_CONN_STATEMENT,
     		gettext_noop("Enable functions that must use the callback from the QE to QD."),
     		NULL
     	},
-    	&mpp_enable_functions,
+    	&gp_enable_functions,
     	false, NULL, NULL
     },
 	
     {
-    	{"mpp_use_snapshop_during_callback", PGC_USERSET, CLIENT_CONN_STATEMENT,
+    	{"gp_use_snapshop_during_callback", PGC_USERSET, CLIENT_CONN_STATEMENT,
     		gettext_noop("For debugging.. If SPI should try to send snapshot on callback to QD."),
     		NULL,
     		GUC_NOT_IN_SAMPLE
     	},
-    	&mpp_use_snapshop_during_callback,
+    	&gp_use_snapshop_during_callback,
     	true, NULL, NULL
     },
 
     {
-    	{"mpp_is_callback", PGC_BACKEND, CDB_WORKER_IDENTITY,
+    	{"gp_is_callback", PGC_BACKEND, CDB_WORKER_IDENTITY,
     		gettext_noop("True in a worker process executing on behalf of a callback from the QE to QD."),
     		NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
     	},
-    	&mpp_is_callback,
+    	&gp_is_callback,
     	false, NULL, NULL
     },
 
     {
-    	{"mpp_reraise_signal", PGC_SUSET, DEVELOPER_OPTIONS,
+    	{"gp_reraise_signal", PGC_SUSET, DEVELOPER_OPTIONS,
     		gettext_noop("Do we attempt to dump core when a serious problem occurs."),
     		NULL,
     		GUC_NO_RESET_ALL
     	},
-    	&mpp_reraise_signal,
+    	&gp_reraise_signal,
     	true, NULL, NULL
     },
 
@@ -1905,76 +1905,76 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"mpp_max_packet_size", PGC_BACKEND, CDB_ARRAY_TUNING,
+		{"gp_max_packet_size", PGC_BACKEND, CDB_ARRAY_TUNING,
             gettext_noop("Sets the max packet size for the Interconnect."),
             NULL,
         },
-        &Mpp_max_packet_size,
+        &Gp_max_packet_size,
         DEFAULT_PACKET_SIZE, MIN_PACKET_SIZE, MAX_PACKET_SIZE, NULL, NULL
 	},
 	
 	{
-		{"mpp_command_count", PGC_INTERNAL, CLIENT_CONN_OTHER,
+		{"gp_command_count", PGC_INTERNAL, CLIENT_CONN_OTHER,
 			gettext_noop("Shows the number of commands received from the client in this session."),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
-		&mpp_command_count,
+		&gp_command_count,
 		0, 0, INT_MAX, NULL, NULL
 	},
 		
 	{
-		{"mpp_connections_per_thread", PGC_SUSET, CDB_ARRAY_TUNING,
+		{"gp_connections_per_thread", PGC_SUSET, CDB_ARRAY_TUNING,
 			gettext_noop("Sets the number of client connections handled in each thread."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&mpp_connections_per_thread,
-		4, 1, INT_MAX, assign_mpp_connections_per_thread, show_mpp_connections_per_thread
+		&gp_connections_per_thread,
+		4, 1, INT_MAX, assign_gp_connections_per_thread, show_gp_connections_per_thread
 	},
 	
 	{
 #ifdef USE_ASSERT_CHECKING
-		{"mpp_debug_linger", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"gp_debug_linger", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Number of seconds for QD/QE process to linger upon fatal internal error."),
 			gettext_noop("Allows an opportunity to debug the backend process before it terminates."),
 			GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL | GUC_UNIT_S
 		},
-		&mpp_debug_linger,
+		&gp_debug_linger,
 		45, 0, 3600, NULL, NULL
 #else
-		{"mpp_debug_linger", PGC_SUSET, DEVELOPER_OPTIONS,
+		{"gp_debug_linger", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Number of seconds for QD/QE process to linger upon fatal internal error."),
 			gettext_noop("Allows an opportunity to debug the backend process before it terminates."),
 			GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL | GUC_UNIT_S
 		},
-		&mpp_debug_linger,
+		&gp_debug_linger,
 		0, 0, 3600, NULL, NULL
 #endif
 	},
 
 	{
-		{"mpp_segment", PGC_BACKEND, CDB_WORKER_IDENTITY,
+		{"gp_segment", PGC_BACKEND, CDB_WORKER_IDENTITY,
 			gettext_noop("Segment id of the segment db which is local to this worker process."),
 			gettext_noop("-1 for a session's entry process (qDisp) or a worker on the entry db."),
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
-		&Mpp_segment,
+		&Gp_segment,
 		-999, INT_MIN, INT_MAX, NULL, NULL
 	},
 
 	{
-		{"mpp_sort_flags", PGC_USERSET, QUERY_TUNING_OTHER,
+		{"gp_sort_flags", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Experimental feature: Generic sort flags."),
 			NULL,
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&mpp_sort_flags,
+		&gp_sort_flags,
 		10000, 0, INT_MAX, NULL, NULL
 	},
 	
 	{
-		{"mpp_interconnect_setup_timeout", PGC_USERSET, CDB_ARRAY_TUNING,
+		{"gp_interconnect_setup_timeout", PGC_USERSET, CDB_ARRAY_TUNING,
 			gettext_noop("Timeout (in seconds) on interconnect setup that occurs at query start"),
 			gettext_noop("Used by Interconnect to timeout the setup of the communication fabric.")	
 		},
@@ -1983,40 +1983,40 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"mpp_segment_connect_timeout", PGC_USERSET, CDB_ARRAY_TUNING,
+		{"gp_segment_connect_timeout", PGC_USERSET, CDB_ARRAY_TUNING,
 			gettext_noop("Maximum time (in seconds) allowed for a new worker process to start."),
 			gettext_noop("0 indicates 'wait forever'.")	
 		},
-		&mpp_segment_connect_timeout,
+		&gp_segment_connect_timeout,
 		60, 0, INT_MAX, NULL, NULL
 	},
 	
 	{
-		{"mpp_session_id", PGC_BACKEND, CLIENT_CONN_OTHER,
+		{"gp_session_id", PGC_BACKEND, CLIENT_CONN_OTHER,
 			gettext_noop("Global ID used to uniquely identify a particular session in an MPP array"),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
-		&mpp_session_id,
+		&gp_session_id,
 		-1, INT_MIN, INT_MAX, NULL, NULL
 	},
 
 	{
-		{"mpp_segments_for_planner", PGC_USERSET, QUERY_TUNING_COST,
+		{"gp_segments_for_planner", PGC_USERSET, QUERY_TUNING_COST,
             gettext_noop("If >0, number of segment dbs for the planner to assume in its cost and size estimates."),
             gettext_noop("If 0, estimates are based on the actual number of segment dbs.")
 		},
-		&mpp_segments_for_planner,
+		&gp_segments_for_planner,
 		0, 0, INT_MAX, NULL, NULL
 	},
 	
 	{
-		{"mpp_qd_proc_offset", PGC_BACKEND, CDB_WORKER_IDENTITY,
+		{"gp_qd_proc_offset", PGC_BACKEND, CDB_WORKER_IDENTITY,
 			gettext_noop("The shmmem offset of the original QD backend that is handling this query"),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
-		(int *)&mpp_qd_proc_offset,
+		(int *)&gp_qd_proc_offset,
 		-1, -1, INT_MAX, NULL, NULL
 	},
 
@@ -2166,27 +2166,27 @@ static struct config_real ConfigureNamesReal[] =
 	},
 
 	{
-		{"mpp_motion_cost_per_row", PGC_USERSET, QUERY_TUNING_COST,
+		{"gp_motion_cost_per_row", PGC_USERSET, QUERY_TUNING_COST,
 			gettext_noop("Sets the planner's estimate of the cost of "
 						 "moving a row between worker processes."),
             gettext_noop("If >0, the planner uses this value -- instead of double the "
                          "cpu_tuple_cost -- for Motion operator cost estimation.")
 		},
-		&mpp_motion_cost_per_row,
+		&gp_motion_cost_per_row,
 		0, 0, DBL_MAX, NULL, NULL
 	},
 
 	{
-		{"mpp_hashagg_rewrite_limit", PGC_USERSET, QUERY_TUNING_OTHER,
+		{"gp_hashagg_rewrite_limit", PGC_USERSET, QUERY_TUNING_OTHER,
             gettext_noop("Planner will not choose hashed aggregation if "
                          "expected number of extra passes exceeds limit.")
 		},
-		&mpp_hashagg_rewrite_limit,
+		&gp_hashagg_rewrite_limit,
 		2.0, 1.0, 100.0, NULL, NULL
 	},
 
 	{
-		{"mpp_analyze_relative_error", PGC_USERSET, STATS_ANALYZE,
+		{"gp_analyze_relative_error", PGC_USERSET, STATS_ANALYZE,
 		 gettext_noop("target relative error fraction for row sampling during analyze"),
 		 NULL
 		},
@@ -2692,59 +2692,59 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"mpp_session_role", PGC_BACKEND, CDB_WORKER_IDENTITY,
+		{"gp_session_role", PGC_BACKEND, CDB_WORKER_IDENTITY,
 			gettext_noop("Reports the default role for the session."),
 			gettext_noop("Valid values are DISPATCH, EXECUTE, and UTILITY."),
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
-		&mpp_session_role_string,
-		"dispatch", assign_mpp_session_role, show_mpp_session_role
+		&gp_session_role_string,
+		"dispatch", assign_gp_session_role, show_gp_session_role
 	},
 
 	{
-		{"mpp_role", PGC_SUSET, CLIENT_CONN_OTHER,
+		{"gp_role", PGC_SUSET, CLIENT_CONN_OTHER,
 			gettext_noop("Sets the role for the session."),
 			gettext_noop("Valid values are DISPATCH, EXECUTE, and UTILITY."),
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
-		&mpp_role_string,
-		"dispatch", assign_mpp_role, show_mpp_role
+		&gp_role_string,
+		"dispatch", assign_gp_role, show_gp_role
 	},
 
     {
-       {"mpp_fault_action", PGC_POSTMASTER, CDB_ARRAY_CONFIGURATION,
+       {"gp_fault_action", PGC_POSTMASTER, CDB_ARRAY_CONFIGURATION,
            gettext_noop("Sets the fault action for fault tolerance management."),
            gettext_noop("Valid values are CONTINUE, READONLY, and SHUTDOWN.")
        },
-       &mpp_fault_action_string,
+       &gp_fault_action_string,
        "continue", NULL, NULL
     },
 
 	{
-		{"mpp_log_gang", PGC_USERSET, LOGGING_WHAT,
+		{"gp_log_gang", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Sets the verbosity of logged messages pertaining to worker process creation and management."),
 			gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\".")
 		},
-		&mpp_log_gang_str,
-		"terse", cdbvars_assign_mpp_log_gang, cdbvars_show_mpp_log_gang
+		&gp_log_gang_str,
+		"terse", cdbvars_assign_gp_log_gang, cdbvars_show_gp_log_gang
 	},
 	
 	{
-		{"mpp_log_interconnect", PGC_USERSET, LOGGING_WHAT,
+		{"gp_log_interconnect", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Sets the verbosity of logged messages pertaining to connections between worker processes."),
 			gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\".")
 		},
-		&mpp_log_interconnect_str,
-		"terse", cdbvars_assign_mpp_log_interconnect, cdbvars_show_mpp_log_interconnect
+		&gp_log_interconnect_str,
+		"terse", cdbvars_assign_gp_log_interconnect, cdbvars_show_gp_log_interconnect
 	},
 	
 	{
-		{"mpp_qd_callback_info", PGC_BACKEND, CDB_WORKER_IDENTITY,
+		{"gp_qd_callback_info", PGC_BACKEND, CDB_WORKER_IDENTITY,
 			gettext_noop("Sets the QD callback information for the QEs in this session."),
 			gettext_noop("Right now, this is the port information"),
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
-		&mpp_qd_callback_info,
+		&gp_qd_callback_info,
 		"", NULL, NULL
 	},
 
@@ -2790,7 +2790,7 @@ static bool guc_cannotprepare;                        /* TRUE if this transactio
 static bool reporting_enabled;	/* TRUE to enable GUC_REPORT */
 
 
-static void cdb_guc_list_init(void);
+static void gp_guc_list_init(void);
 static int	guc_var_compare(const void *a, const void *b);
 static int	guc_name_compare(const char *namea, const char *nameb);
 static void push_old_value(struct config_generic * gconf);
@@ -3990,8 +3990,8 @@ BeginReportingGUCOptions(void)
 {
 	int			i;
 
-    /* Build global lists of GUCs for use by callers of cdb_guc_list_show(). */
-    cdb_guc_list_init();
+    /* Build global lists of GUCs for use by callers of gp_guc_list_show(). */
+    gp_guc_list_init();
 
 	/*
 	 * Don't do anything unless talking to an interactive frontend of protocol
@@ -5990,27 +5990,27 @@ _ShowOption(struct config_generic * record, bool use_units)
 
 
 /*
- * cdb_guc_list_init
+ * gp_guc_list_init
  *
- * Builds global lists of interesting GUCs for use with cdb_guc_list_show()...
+ * Builds global lists of interesting GUCs for use with gp_guc_list_show()...
  *
- * - cdb_guc_list_for_explain: consists of planner GUCs, plus 'work_mem'
- * - cdb_guc_list_for_no_plan: planner method enables for cdb_no_plan_for_query().
+ * - gp_guc_list_for_explain: consists of planner GUCs, plus 'work_mem'
+ * - gp_guc_list_for_no_plan: planner method enables for cdb_no_plan_for_query().
  */
 void
-cdb_guc_list_init(void)
+gp_guc_list_init(void)
 {
     int         i;
 
-    if (cdb_guc_list_for_explain)
+    if (gp_guc_list_for_explain)
     {
-        list_free(cdb_guc_list_for_explain);
-        cdb_guc_list_for_explain = NIL;
+        list_free(gp_guc_list_for_explain);
+        gp_guc_list_for_explain = NIL;
     }
-    if (cdb_guc_list_for_no_plan)
+    if (gp_guc_list_for_no_plan)
     {
-        list_free(cdb_guc_list_for_no_plan);
-        cdb_guc_list_for_no_plan = NIL;
+        list_free(gp_guc_list_for_no_plan);
+        gp_guc_list_for_no_plan = NIL;
     }
 
    	for (i = 0; i < num_guc_variables; i++)
@@ -6048,15 +6048,15 @@ cdb_guc_list_init(void)
         }
 
         if (explain)
-            cdb_guc_list_for_explain = lappend(cdb_guc_list_for_explain, gconf);
+            gp_guc_list_for_explain = lappend(gp_guc_list_for_explain, gconf);
         if (no_plan)
-            cdb_guc_list_for_no_plan = lappend(cdb_guc_list_for_no_plan, gconf);
+            gp_guc_list_for_no_plan = lappend(gp_guc_list_for_no_plan, gconf);
 	}
-}                               /* cdb_guc_list_init */
+}                               /* gp_guc_list_init */
 
 
 /*
- * cdb_guc_list_show
+ * gp_guc_list_show
  *
  * Given a list of GUCs (a List of struct config_generic), appends the
  * option names and values to caller's buffer, skipping any whose
@@ -6067,7 +6067,7 @@ cdb_guc_list_init(void)
  * Returns the length of the string appended to the buffer.
  */
 int
-cdb_guc_list_show(struct StringInfoData    *buf,
+gp_guc_list_show(struct StringInfoData    *buf,
                   const char               *pfx,
                   const char               *fmt,
                   GucSource                 excluding,
@@ -6094,7 +6094,7 @@ cdb_guc_list_show(struct StringInfoData    *buf,
         }
 	}
     return buf->len - oldlen;
-}                               /* cdb_guc_list_show */
+}                               /* gp_guc_list_show */
 
 
 static bool

@@ -31,7 +31,7 @@
 #include "miscadmin.h"
 #include "utils/ps_status.h"
 
-#include "cdb/cdbvars.h"        /* Mpp_role, Mpp_segment, currentSliceId */
+#include "cdb/cdbvars.h"        /* Mpp_role, Gp_segment, currentSliceId */
 
 extern char **environ;
 bool		update_process_title = true;
@@ -326,8 +326,8 @@ set_ps_display(const char *activity, bool force)
     }
 
     /* Add client session's global id. */
-    if (mpp_session_id > 0)
-        cp += snprintf(cp, ep-cp, "con%d ", mpp_session_id);
+    if (gp_session_id > 0)
+        cp += snprintf(cp, ep-cp, "con%d ", gp_session_id);
 
     /* Add host and port.  (Not very useful for qExecs, so skip.) */
     if (Mpp_role != MPP_ROLE_EXECUTE &&
@@ -336,14 +336,14 @@ set_ps_display(const char *activity, bool force)
 
     /* Which segment is accessed by this qExec? */
     if (Mpp_role == MPP_ROLE_EXECUTE &&
-        Mpp_segment >= -1)
+        Gp_segment >= -1)
         cp += snprintf(cp, ep-cp, "%s%d ",
-                       Mpp_is_primary ? "seg" : "mir",
-                       Mpp_segment);
+                       Gp_is_primary ? "seg" : "mir",
+                       Gp_segment);
 
     /* Add count of commands received from client session. */
-    if (mpp_command_count > 0)
-        cp += snprintf(cp, ep-cp, "cmd%d ", mpp_command_count);
+    if (gp_command_count > 0)
+        cp += snprintf(cp, ep-cp, "cmd%d ", gp_command_count);
 
 	  /* Add slice number information */
  	  if (currentSliceId > 0)

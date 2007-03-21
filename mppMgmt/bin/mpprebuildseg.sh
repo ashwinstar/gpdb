@@ -148,21 +148,21 @@ STOP_MASTER_DB () {
 
 GET_SEGMENT_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select gpname from $MPP_MPP_TABLE;"`
+	MASTER_MPP_NAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select gpname from $MPP_MPP_TABLE;"`
 	ERROR_CHK $? "get master instance instance name" 2
-	REBUILD_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select hostname, port, datadir, dbid, content, definedprimary from $CONFIG_TABLE where content<>-1;"`)
+	REBUILD_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select hostname, port, datadir, dbid, content, definedprimary from $CONFIG_TABLE where content<>-1;"`)
 	ERROR_CHK $? "get instance segment instance details " 2
 	MASTER_IP_ADDRESS_ALL=(`$IFCONFIG |$GREP "inet addr"|$GREP -v addr:127|$AWK '{print $2}'|$CUT -d: -f2`)	
 	ERROR_CHK $? "get master host IP details" 2
 	MASTER_IP_ADDRESS=(`$ECHO ${MASTER_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-	MASTER_TOTAL_SEG=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select numsegments from $MPP_MPP_TABLE;"`
+	MASTER_TOTAL_SEG=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select numsegments from $MPP_MPP_TABLE;"`
 	ERROR_CHK $? "get total instance segments" 2
 	MASTER_HOST=`$HOSTNAME`
-	STANDBY_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select count(*) from gp_configuration where content=-1 and hostname<>'$MASTER_HOST';"`
+	STANDBY_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select count(*) from gp_configuration where content=-1 and hostname<>'$MASTER_HOST';"`
 	if [ $STANDBY_COUNT -eq 1 ];then
 		LOG_MSG "[INFO]:-Master standby found, will process details" 1
-		STANDBY_MASTER_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select hostname from gp_configuration where content=-1 and hostname<>'$MASTER_HOST';"`
+		STANDBY_MASTER_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select hostname from gp_configuration where content=-1 and hostname<>'$MASTER_HOST';"`
 	else
 		LOG_MSG "[INFO]:-No Master standby host found" 1
 	fi
@@ -282,7 +282,7 @@ BUILD_SEGMENT_INSTANCES () {
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance\""
 		LOG_MSG "[INFO]:-Successfully started segment instance on $SEG_HOSTNAME" 1
 		LOG_MSG "[INFO]:-Updating segment $MPP_MPP_TABLE system table" 1
-		RUN_COMMAND_REMOTE $SEG_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $DEFAULTDB -c \"insert into $MPP_MPP_TABLE values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" 
+		RUN_COMMAND_REMOTE $SEG_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $SEG_PORT $DEFAULTDB -c \"insert into $MPP_MPP_TABLE values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" 
 		ERROR_CHK $? "update $SEG_HOSTNAME $MPP_MPP_TABLE record entry with DBID value ${SEG_DBID}" 2
 		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME $MPP_MPP_TABLE system table"
 		LOG_MSG "[INFO]:-Commencing shutdown of segment instance on $SEG_HOSTNAME" 1

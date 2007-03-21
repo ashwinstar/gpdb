@@ -960,11 +960,11 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 		 * limit that will work.  (This tends to minimize the number
 		 * of rewrites at the expense of a larger number of passes.
 		 */
-		while ( d < 0 && rewrite_fudge < mpp_hashagg_rewrite_limit )
+		while ( d < 0 && rewrite_fudge < gp_hashagg_rewrite_limit )
 		{
 			rewrite_fudge++;
-			rewrite_fudge = ( rewrite_fudge > mpp_hashagg_rewrite_limit ) ?
-				mpp_hashagg_rewrite_limit :
+			rewrite_fudge = ( rewrite_fudge > gp_hashagg_rewrite_limit ) ?
+				gp_hashagg_rewrite_limit :
 				rewrite_fudge;
 			
 			d = memquota*memquota - (4 * zB * ngroups * zH)/rewrite_fudge;

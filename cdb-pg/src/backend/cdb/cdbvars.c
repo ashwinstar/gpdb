@@ -37,47 +37,47 @@
 
 
 MppRoleValue Mpp_role;			/* Role paid by this MPP backend */
-char	   *mpp_role_string;	/* Staging area for guc.c */
-char	   *mpp_fault_action_string;	/* Staging area for guc.c */
-bool		mpp_set_read_only;	/* Staging area for guc.c */
+char	   *gp_role_string;	/* Staging area for guc.c */
+char	   *gp_fault_action_string;	/* Staging area for guc.c */
+bool		gp_set_read_only;	/* Staging area for guc.c */
 
 MppRoleValue Mpp_session_role;	/* Role paid by this MPP backend */
-char	   *mpp_session_role_string;	/* Staging area for guc.c */
+char	   *gp_session_role_string;	/* Staging area for guc.c */
 
-bool		Mpp_is_primary;		/* Is this session primary (or mirror) */
+bool		Gp_is_primary;		/* Is this session primary (or mirror) */
 
-bool		Mpp_is_writer; 		/* is this qExec a "writer" process. */
+bool		Gp_is_writer; 		/* is this qExec a "writer" process. */
 
-int 		mpp_session_id;    /* global unique id for session. */
+int 		gp_session_id;    /* global unique id for session. */
 
-char       *mpp_qd_callback_info;	/* info for QE to call back to QD */
+char       *gp_qd_callback_info;	/* info for QE to call back to QD */
 
-bool		mpp_enable_functions; 	/* allow functions that call back from QE to QD */
+bool		gp_enable_functions; 	/* allow functions that call back from QE to QD */
 
-bool 		mpp_is_callback;		/* are we executing a callback query? */
+bool 		gp_is_callback;		/* are we executing a callback query? */
 
-unsigned long mpp_qd_proc_offset;	/* the proc entry for the original backend on the QD */
+unsigned long gp_qd_proc_offset;	/* the proc entry for the original backend on the QD */
 
-int         mpp_command_count;          /* num of commands from client */
+int         gp_command_count;          /* num of commands from client */
 
 bool		Debug_print_prelim_plan;	/* Shall we log argument of
 										 * cdbparallelize? */
 
 bool		Debug_print_slice_table;	/* Shall we log the slice table? */
 
-int			mpp_connections_per_thread; /* How many libpq connections are
+int			gp_connections_per_thread; /* How many libpq connections are
 										 * handled in each thread */
 
 
-int			Mpp_segment = UNDEF_SEGMENT;		/* What content this QE is
+int			Gp_segment = UNDEF_SEGMENT;		/* What content this QE is
 												 * handling. */
 
-bool		Mpp_write_shared_snapshot;	/* tell the writer QE to write the
+bool		Gp_write_shared_snapshot;	/* tell the writer QE to write the
 										 * shared snapshot */
 
-bool		mpp_reraise_signal=true;	/* try to dump core when we get SIGABRT & SIGSEGV */
+bool		gp_reraise_signal=true;	/* try to dump core when we get SIGABRT & SIGSEGV */
 
-bool		mpp_set_proc_affinity=false; /* set processor affinity (if platform supports it) */
+bool		gp_set_proc_affinity=false; /* set processor affinity (if platform supports it) */
 
 /*
  * TCP port the Interconnect listens on for incoming connections from other
@@ -86,7 +86,7 @@ bool		mpp_set_proc_affinity=false; /* set processor affinity (if platform suppor
  */
 int			Mpp_listener_port;
 
-int			Mpp_max_packet_size;	/* max Interconnect packet size */
+int			Gp_max_packet_size;	/* max Interconnect packet size */
 
 int			interconnect_setup_timeout;
 
@@ -96,20 +96,20 @@ int			interconnect_setup_timeout;
  */
 
 bool        enable_adaptive_nestloop = true;
-double      mpp_motion_cost_per_row = 0;
-int         mpp_segments_for_planner = 0;
+double      gp_motion_cost_per_row = 0;
+int         gp_segments_for_planner = 0;
 bool		enable_agg_restruct = TRUE;
-double		mpp_hashagg_rewrite_limit = 1;
+double		gp_hashagg_rewrite_limit = 1;
 
-bool		mpp_enable_motion_deadlock_sanity = FALSE; /* planning time sanity check */
+bool		gp_enable_motion_deadlock_sanity = FALSE; /* planning time sanity check */
 
 /* MPP Experimental Feature GUCs */
-bool		mpp_enable_agg_distinct = FALSE;
-bool		mpp_enable_preunique = FALSE;
-bool		mpp_enable_explain_allstat = FALSE;
-bool		mpp_enable_sort_limit = FALSE;
-bool		mpp_enable_sort_distinct = FALSE;
-int			mpp_sort_flags = 0;
+bool		gp_enable_agg_distinct = FALSE;
+bool		gp_enable_preunique = FALSE;
+bool		gp_enable_explain_allstat = FALSE;
+bool		gp_enable_sort_limit = FALSE;
+bool		gp_enable_sort_distinct = FALSE;
+int			gp_sort_flags = 0;
 
 
 /* --------------------------------------------------------------------------------------------------
@@ -117,13 +117,13 @@ int			mpp_sort_flags = 0;
  */
 
 /*
- * mpp_debug_linger (integer)
+ * gp_debug_linger (integer)
  *
  * Upon an error with severity FATAL and error code ERRCODE_INTERNAL_ERROR,
  * errfinish() will sleep() for the specified number of seconds before
  * termination, to let the user attach a debugger.
  */
-int  mpp_debug_linger = 30;
+int  gp_debug_linger = 30;
 
 
 /* ----------------
@@ -171,7 +171,7 @@ const char *role_to_string(MppRoleValue role);
 
 
 /*
- * Convert a MPP role string (as for mpp_session_role or mpp_role) to an
+ * Convert a MPP role string (as for gp_session_role or gp_role) to an
  * enum value of type MppRoleValue. Return MPP_ROLE_UNDEFINED in case the
  * string is unrecognized.
  */
@@ -197,8 +197,8 @@ string_to_role(const char *string)
 }
 
 /*
- * Convert a MppRoleValue to a role string (as for mpp_session_role or
- * mpp_role).  Return eyecatcher in the unexpected event that the value
+ * Convert a MppRoleValue to a role string (as for gp_session_role or
+ * gp_role).  Return eyecatcher in the unexpected event that the value
  * is unknown or undefined.
  */
 const char *
@@ -220,7 +220,7 @@ role_to_string(MppRoleValue role)
 
 
 /*
- * Assign hook routine for "mpp_session_role" option.  Because this variable
+ * Assign hook routine for "gp_session_role" option.  Because this variable
  * has context PGC_BACKEND, we expect this assigment to happen only during
  * setup of a BACKEND, e.g., based on the role value specified on the connect
  * request.
@@ -228,12 +228,12 @@ role_to_string(MppRoleValue role)
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-assign_mpp_session_role(const char *newval, bool doit, GucSource source)
+assign_gp_session_role(const char *newval, bool doit, GucSource source)
 {
 
 #if FALSE
-	elog(DEBUG1, "assign_mpp_session_role: mpp_session_role=%s, newval=%s, doit=%s",
-		 show_mpp_session_role(), newval, (doit ? "true" : "false"));
+	elog(DEBUG1, "assign_gp_session_role: gp_session_role=%s, newval=%s, doit=%s",
+		 show_gp_session_role(), newval, (doit ? "true" : "false"));
 #endif
 
 	MppRoleValue newrole = string_to_role(newval);
@@ -249,7 +249,7 @@ assign_mpp_session_role(const char *newval, bool doit, GucSource source)
 		Mpp_role = Mpp_session_role;
 
 		if (Mpp_role == MPP_ROLE_DISPATCH)
-			Mpp_segment = -1;
+			Gp_segment = -1;
 	}
 	return newval;
 }
@@ -257,7 +257,7 @@ assign_mpp_session_role(const char *newval, bool doit, GucSource source)
 
 
 /*
- * Assign hook routine for "mpp_role" option.  This variablle has context
+ * Assign hook routine for "gp_role" option.  This variablle has context
  * PGC_SUSET so that is can only be set by a superuser via the SET command.
  * (It can also be set using an option on postmaster start, but this isn't
  * interesting beccause the derived global CdbRole is always set (along with
@@ -266,12 +266,12 @@ assign_mpp_session_role(const char *newval, bool doit, GucSource source)
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-assign_mpp_role(const char *newval, bool doit, GucSource source)
+assign_gp_role(const char *newval, bool doit, GucSource source)
 {
 
 #if FALSE
-	elog(DEBUG1, "assign_mpp_role: mpp_role=%s, newval=%s, doit=%s",
-		 show_mpp_role(), newval, (doit ? "true" : "false"));
+	elog(DEBUG1, "assign_gp_role: gp_role=%s, newval=%s, doit=%s",
+		 show_gp_role(), newval, (doit ? "true" : "false"));
 #endif
 
 
@@ -313,7 +313,7 @@ assign_mpp_role(const char *newval, bool doit, GucSource source)
 			/*
 			 * In case there are problems with the MPP tables or data,
 			 * we catch any error coming out of cdblink_setup so we can set the
-			 * mpp_role back to what it was.  Otherwise we may be left with
+			 * gp_role back to what it was.  Otherwise we may be left with
 			 * inappropriate connections for the new role.
 			 */
 			PG_TRY();
@@ -337,19 +337,19 @@ assign_mpp_role(const char *newval, bool doit, GucSource source)
 
 
 /*
- * Assign hook routine for "mpp_connections_per_thread" option.  This variablle has context
+ * Assign hook routine for "gp_connections_per_thread" option.  This variablle has context
  * PGC_SUSET so that is can only be set by a superuser via the SET command.
  * (It can also be set in config file, but not inside of PGOPTIONS.)
  *
  * See src/backend/util/misc/guc.c for option definition.
  */
 bool
-assign_mpp_connections_per_thread(int newval, bool doit, GucSource source)
+assign_gp_connections_per_thread(int newval, bool doit, GucSource source)
 {
 
 #if FALSE
-	elog(DEBUG1, "assign_mpp_connections_per_thread: mpp_connections_per_thread=%s, newval=%d, doit=%s",
-	   show_mpp_connections_per_thread(), newval, (doit ? "true" : "false"));
+	elog(DEBUG1, "assign_gp_connections_per_thread: gp_connections_per_thread=%s, newval=%d, doit=%s",
+	   show_gp_connections_per_thread(), newval, (doit ? "true" : "false"));
 #endif
 
 	if (doit)
@@ -357,14 +357,14 @@ assign_mpp_connections_per_thread(int newval, bool doit, GucSource source)
 		if (newval < 1)
 			return false;
 
-		mpp_connections_per_thread = newval;
+		gp_connections_per_thread = newval;
 	}
 
 	return true;
 }
 
 /*
- * Assign hook routine for "mpp_interconnect_setup_timeout" option.
+ * Assign hook routine for "gp_interconnect_setup_timeout" option.
  *
  */
 bool
@@ -385,35 +385,35 @@ assign_interconnect_setup_timeout(int newval, bool doit, GucSource source)
 
 
 /*
- * Show hook routine for "mpp_session_role" option.
+ * Show hook routine for "gp_session_role" option.
  *
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-show_mpp_session_role(void)
+show_gp_session_role(void)
 {
 	return role_to_string(Mpp_session_role);
 }
 
 
 /*
- * Show hook routine for "mpp_role" option.
+ * Show hook routine for "gp_role" option.
  *
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-show_mpp_role(void)
+show_gp_role(void)
 {
 	return role_to_string(Mpp_role);
 }
 
 /*
- * Show hook routine for "mpp_connections_per_thread" option.
+ * Show hook routine for "gp_connections_per_thread" option.
  *
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-show_mpp_connections_per_thread(void)
+show_gp_connections_per_thread(void)
 {
 	/*
 	 * We rely on the fact that the memory context will clean up the memory
@@ -423,13 +423,13 @@ show_mpp_connections_per_thread(void)
 
 	initStringInfo(&buffer);
 
-	appendStringInfo(&buffer, "%d", mpp_connections_per_thread);
+	appendStringInfo(&buffer, "%d", gp_connections_per_thread);
 
 	return buffer.data;
 }
 
 /*
- * Show hook routine for "mpp_interconnect_setup_timeout" option.
+ * Show hook routine for "gp_interconnect_setup_timeout" option.
  *
  * See guc.c for option definition.
  *
@@ -457,7 +457,7 @@ show_interconnect_setup_timeout(void)
 
 
 /*
- * mpp_log_gangs (string)
+ * gp_log_gangs (string)
  *
  * Should creation, reallocation and cleanup of gangs of QE processes be logged?
  * "OFF"     -> only errors are logged
@@ -468,10 +468,10 @@ show_interconnect_setup_timeout(void)
  * The messages that are enabled by the TERSE and VERBOSE settings are
  * written with a severity level of LOG.
  */
-CdbVars_Verbosity   mpp_log_gang;
+CdbVars_Verbosity   gp_log_gang;
 
 /*
- * mpp_log_interconnect (string)
+ * gp_log_interconnect (string)
  *
  * Should connections between internal processes be logged?  (qDisp/qExec/etc)
  * "OFF"     -> connection errors are logged
@@ -482,7 +482,7 @@ CdbVars_Verbosity   mpp_log_gang;
  * The messages that are enabled by the TERSE and VERBOSE settings are
  * written with a severity level of LOG.
  */
-CdbVars_Verbosity   mpp_log_interconnect;
+CdbVars_Verbosity   gp_log_interconnect;
 
 
 /*
@@ -531,48 +531,48 @@ cdbvars_verbosity_to_string(CdbVars_Verbosity verbosity)
 
 
 /*
- * cdbvars_assign_mpp_log_gangs
- * cdbvars_show_mpp_log_gangs
+ * cdbvars_assign_gp_log_gangs
+ * cdbvars_show_gp_log_gangs
  */
 const char *
-cdbvars_assign_mpp_log_gang(const char *newval, bool doit, GucSource source)
+cdbvars_assign_gp_log_gang(const char *newval, bool doit, GucSource source)
 {
 	CdbVars_Verbosity v = cdbvars_string_to_verbosity(newval);
 
 	if (v == CDBVARS_VERBOSITY_UNDEFINED)
         return NULL;
 	if (doit)
-		mpp_log_gang = v;
+		gp_log_gang = v;
 	return newval;
-}                               /* cdbvars_assign_mpp_log_gangs */
+}                               /* cdbvars_assign_gp_log_gangs */
 
 const char *
-cdbvars_show_mpp_log_gang(void)
+cdbvars_show_gp_log_gang(void)
 {
-	return cdbvars_verbosity_to_string(mpp_log_gang);
-}                               /* cdbvars_show_mpp_log_gangs */
+	return cdbvars_verbosity_to_string(gp_log_gang);
+}                               /* cdbvars_show_gp_log_gangs */
 
 
 /*
- * cdbvars_assign_mpp_log_interconnect
- * cdbvars_show_mpp_log_interconnect
+ * cdbvars_assign_gp_log_interconnect
+ * cdbvars_show_gp_log_interconnect
  */
 const char *
-cdbvars_assign_mpp_log_interconnect(const char *newval, bool doit, GucSource source)
+cdbvars_assign_gp_log_interconnect(const char *newval, bool doit, GucSource source)
 {
 	CdbVars_Verbosity v = cdbvars_string_to_verbosity(newval);
 
 	if (v == CDBVARS_VERBOSITY_UNDEFINED)
         return NULL;
 	if (doit)
-		mpp_log_interconnect = v;
+		gp_log_interconnect = v;
 	return newval;
-}                               /* cdbvars_assign_mpp_log_interconnect */
+}                               /* cdbvars_assign_gp_log_interconnect */
 
 const char *
-cdbvars_show_mpp_log_interconnect(void)
+cdbvars_show_gp_log_interconnect(void)
 {
-	return cdbvars_verbosity_to_string(mpp_log_interconnect);
-}                               /* cdbvars_show_mpp_log_interconnect */
+	return cdbvars_verbosity_to_string(gp_log_interconnect);
+}                               /* cdbvars_show_gp_log_interconnect */
 
 

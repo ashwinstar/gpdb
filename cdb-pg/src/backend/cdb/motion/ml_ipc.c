@@ -202,7 +202,7 @@ void
 CleanUpMotionLayerIPC(void)
 {
 	
-	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+	if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
     	elog(DEBUG3, "Cleaning Up Motion Layer IPC...");
 
 	/* close down the Interconnect listener socket. */
@@ -323,9 +323,9 @@ SendEosToAMS(MotionLayerState *mlStates,
 
 	pEntry = getChunkTransportState(transportStates, motNodeID);
 
-    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
         elog(DEBUG3, "Interconnect seg%d slice%d sending end-of-stream to slice%d",
-             Mpp_segment, motNodeID, pEntry->recvSlice->sliceIndex);
+             Gp_segment, motNodeID, pEntry->recvSlice->sliceIndex);
 
     /* we want to add our tcItem onto each of the outgoing buffers */
 	doBroadcast(mlStates, transportStates, pEntry, tcItem);
@@ -577,7 +577,7 @@ DeregisterReadInterest(ChunkTransportState *transportStates,
 	pEntry = getChunkTransportState(transportStates, motNodeID);
 	conn = pEntry->conns + srcRoute;
 
-    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
     {
         elog(DEBUG3, "Interconnect finished receiving "
              "from seg%d slice%d %s pid=%d sockfd=%d; %s",
@@ -661,7 +661,7 @@ TeardownSequenceServer(void)
 	 */
 	if (seqserverFd != -1)
 	{
-	    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+	    if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
 		    elog(DEBUG3, "tearing down seqserver connection");
 		shutdown(seqserverFd, SHUT_RDWR);
 		closesocket(seqserverFd);
@@ -748,7 +748,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 		expectedTotalIncoming += pEntry->numConns;
 	}
 
-    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
         ereport(DEBUG1, (errmsg("SetupInterconnect will activate "
                                 "%d incoming, %d outgoing routes.  "
                                 "Listening on port=%d sockfd=%d.",
@@ -872,7 +872,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
             break;
 
         /*
-         * Been here long?  Bail if mpp_interconnect_setup_timeout exceeded.
+         * Been here long?  Bail if gp_interconnect_setup_timeout exceeded.
          */
         if (interconnect_setup_timeout > 0)
         {
@@ -885,7 +885,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
                                        "within time limit."),
                                 errdetail("Completed %d of %d incoming and "
                                           "%d of %d outgoing connections.  "
-                                          "mpp_interconnect_setup_timeout = %d "
+                                          "gp_interconnect_setup_timeout = %d "
                                           "seconds.",
                                           incoming_count, expectedTotalIncoming,
                                           outgoing_count, expectedTotalOutgoing,
@@ -900,7 +900,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
          */
         if (highsock < 0)
         {
-            if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE &&
+            if (gp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE &&
                 (timeout_ms > 0 || iteration > 2))
                 ereport(LOG, (errmsg("SetupInterconnect+%dms:   pause %dms   "
                                      "outgoing_fail=%d iteration=%d",
@@ -940,7 +940,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
         else
             timeout.tv_sec = timeout.tv_usec = 0;
 
-        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
         {
             initStringInfo(&logbuf);
             format_fd_set(&logbuf, highsock+1, rset, "r={", "} ");
@@ -966,9 +966,9 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
         /*
          * Log the select() if requested.
          */
-        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
+        if (gp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
         {
-            if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG ||
+            if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG ||
                 n != expectedTotalIncoming + expectedTotalOutgoing)
             {
                 int elevel = (n == expectedTotalIncoming + expectedTotalOutgoing)
@@ -1134,7 +1134,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 	 */
 	if (list_length((*ppTransportStates)->incompleteConns) != 0)
 	{
-        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
             elog(DEBUG2, "Incomplete connections after known connections done, cleaning %d",
 			     list_length((*ppTransportStates)->incompleteConns));
 
@@ -1160,10 +1160,10 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 
 	(*ppTransportStates)->activated = true;
 
-    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
+    if (gp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
     {
         elapsed_ms = gettime_elapsed_ms(startTime);
-        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE ||
+        if (gp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE ||
             elapsed_ms >= 0.1 * 1000 * interconnect_setup_timeout)
             elog(LOG, "SetupInterconnect+%dms: Activated %d incoming, "
                  "%d outgoing routes.",
@@ -1222,26 +1222,26 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 	mySlice = (Slice *) list_nth(transportStates->sliceTable->slices, transportStates->sliceId);
 
     /* Log the start of TeardownInterconnect. */
-    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
+    if (gp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
     {
         int     elevel = 0;
 
         if (forceEOS || !transportStates->activated)
              elevel = LOG;
-        else if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        else if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
              elevel = DEBUG4;
 
         if (elevel)
             ereport(LOG, (errmsg("Interconnect seg%d slice%d cleanup state: "
                                  "%s; setup was %s",
-                                 Mpp_segment, mySlice->sliceIndex,
+                                 Gp_segment, mySlice->sliceIndex,
                                  forceEOS ? "force" : "normal",
                                  transportStates->activated ? "completed" : "exited")
                     ));
 
 	    /* if setup did not complete, log the slicetable */
         if (!transportStates->activated &&
-            mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+            gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
 		    elog_node_display(DEBUG3, "local slice table", transportStates->sliceTable, true);
     }
 
@@ -1260,7 +1260,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 	 * list as we go.
 	 */
 	if (transportStates->incompleteConns &&
-        mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
     	elog(DEBUG2, "Found incomplete conn. length %d", list_length(transportStates->incompleteConns));
 
 	while ((cell = list_head(transportStates->incompleteConns)) != NULL)
@@ -1299,9 +1299,9 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 	if (mySlice->parentIndex != -1)
 	{
         /* cleanup a Sending motion node. */
-        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
             elog(DEBUG3, "Interconnect seg%d slice%d closing connections to slice%d",
-                 Mpp_segment, mySlice->sliceIndex, mySlice->parentIndex);
+                 Gp_segment, mySlice->sliceIndex, mySlice->parentIndex);
 
 		pEntry = getChunkTransportState(transportStates, mySlice->sliceIndex);
 
@@ -1330,7 +1330,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 
 		pEntry = removeChunkTransportState(transportStates, aSlice->sliceIndex);
 
-        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
             elog(DEBUG3, "Interconnect closing connections from slice%d",
                  aSlice->sliceIndex);
 
@@ -1394,7 +1394,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 	transportStates->sliceTable = NULL;
 
 #ifdef AMS_VERBOSE_LOGGING
-	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+	if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
         elog(DEBUG4, "TeardownInterconnect successful");
 #endif
 }
@@ -1442,7 +1442,7 @@ setupListeningSocket(int backlog, int *listenerSocketFd, int *listenerPort)
 
 	saddr.sin_port = 0;	/* system picks port */
 
-    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
         ereport(DEBUG4, (errmsg("binding listener %s", inet_ntoa(saddr.sin_addr))));
 
 	/*
@@ -1727,9 +1727,9 @@ startOutgoingConnections(ChunkTransportState *transportStates,
 
 	recvSlice = (Slice *) list_nth(transportStates->sliceTable->slices, sendSlice->parentIndex);
 
-    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
         elog(DEBUG4, "Interconnect seg%d slice%d setting up sending motion node",
-             Mpp_segment, sendSlice->sliceIndex);
+             Gp_segment, sendSlice->sliceIndex);
 
 	pEntry = createChunkTransportState(transportStates,
 									   sendSlice,
@@ -1750,7 +1750,7 @@ startOutgoingConnections(ChunkTransportState *transportStates,
         if (cdbProc)
 		{
             conn->cdbProc = cdbProc;
-            conn->pBuff = palloc(Mpp_max_packet_size);
+            conn->pBuff = palloc(Gp_max_packet_size);
             conn->state = mcsSetupOutgoingConnection;
             (*pOutgoingCount)++;
 		}
@@ -1763,7 +1763,7 @@ startOutgoingConnections(ChunkTransportState *transportStates,
         if (cdbProc)
 		{
             conn->cdbProc = cdbProc;
-            conn->pBuff = palloc(Mpp_max_packet_size);
+            conn->pBuff = palloc(Gp_max_packet_size);
             conn->state = mcsSetupOutgoingConnection;
             (*pOutgoingCount)++;
 		}
@@ -1850,7 +1850,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
 	else
 		saddr.sin_addr = ((struct sockaddr_in *)&MyProcPort->laddr.addr)->sin_addr;
 
-    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
         ereport(DEBUG4, (errmsg("bind outbound  %s", inet_ntoa(saddr.sin_addr))));
 
     saddr.sin_port = 0; /* pick any available outbound port */
@@ -1897,7 +1897,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
     format_sockaddr((struct sockaddr *) &saddr, conn->remoteHostAndPort,
                     sizeof(conn->remoteHostAndPort));
 
-    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
         ereport(DEBUG1, (errmsg("Interconnect connecting to seg%d slice%d %s "
                                 "pid=%d sockfd=%d",
                                 conn->remoteContentId,
@@ -2018,7 +2018,7 @@ getOutgoingPort(ChunkTransportStateEntry *pEntry)
         pEntry->outgoingPortRetryCount++;
     }
 
-    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
+    if (gp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
         ereport(LOG, (errmsg("Outgoing connections will use tcp port %d",
                              outgoingPort) ));
     return outgoingPort;
@@ -2077,7 +2077,7 @@ sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEnt
 
         Assert(conn->cdbProc &&
                conn->pBuff &&
-               sizeof(*regMsg) <= Mpp_max_packet_size);
+               sizeof(*regMsg) <= Gp_max_packet_size);
         Assert(pEntry->recvSlice &&
                pEntry->sendSlice &&
                IsA(pEntry->recvSlice, Slice) &&
@@ -2098,7 +2098,7 @@ sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEnt
         format_sockaddr((struct sockaddr *)&localAddr, conn->localHostAndPort,
                         sizeof(conn->localHostAndPort));
 
-    	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
+    	if (gp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
             ereport(LOG, (errmsg("Interconnect sending registration message "
                                  "to seg%d slice%d %s pid=%d "
                                  "from seg%d slice%d %s sockfd=%d",
@@ -2106,7 +2106,7 @@ sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEnt
                                  pEntry->recvSlice->sliceIndex,
                                  conn->remoteHostAndPort,
                                  conn->cdbProc->pid,
-                                 Mpp_segment,
+                                 Gp_segment,
                                  pEntry->sendSlice->sliceIndex,
                                  conn->localHostAndPort,
                                  conn->sockfd)
@@ -2115,11 +2115,11 @@ sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEnt
         regMsg->msgBytes = sizeof(*regMsg);
         regMsg->recvSliceIndex = pEntry->recvSlice->sliceIndex;
         regMsg->sendSliceIndex = pEntry->sendSlice->sliceIndex;
-        regMsg->srcContentId = Mpp_segment;
+        regMsg->srcContentId = Gp_segment;
         regMsg->srcListenerPort = Mpp_listener_port;
         regMsg->srcPid = MyProcPid;
-        regMsg->srcSessionId = mpp_session_id;
-        regMsg->srcCommandCount = mpp_command_count;
+        regMsg->srcSessionId = gp_session_id;
+        regMsg->srcCommandCount = gp_command_count;
 
         conn->state = mcsSendRegMsg;
         conn->msgPos = conn->pBuff;
@@ -2195,7 +2195,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
         conn->msgPos = conn->pBuff;
 
         Assert(conn->pBuff &&
-               sizeof(*regMsg) <= Mpp_max_packet_size);
+               sizeof(*regMsg) <= Gp_max_packet_size);
     }
 
     /* Receive all that is available, up to the expected message size. */
@@ -2274,10 +2274,10 @@ readRegisterMessage(ChunkTransportState *transportStates,
         pEntry->valid &&
         msg.recvSliceIndex == transportStates->sliceId &&
         msg.srcContentId >= -1 &&
-        msg.srcSessionId == mpp_session_id &&
-		msg.srcCommandCount <= mpp_command_count)
+        msg.srcSessionId == gp_session_id &&
+		msg.srcCommandCount <= gp_command_count)
     {
-		if (msg.srcCommandCount < mpp_command_count)
+		if (msg.srcCommandCount < gp_command_count)
 		{
 			/* This is an old connection, which can be safely
 			 * ignored. We get this kind of stuff for cases in which
@@ -2358,11 +2358,11 @@ readRegisterMessage(ChunkTransportState *transportStates,
 	}
 
 	/* message looks good */
-	if (mpp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
+	if (gp_log_interconnect >= CDBVARS_VERBOSITY_VERBOSE)
 	{
 		ereport(LOG, (errmsg("Interconnect seg%d slice%d sockfd=%d accepted "
                              "registration message from seg%d slice%d %s pid=%d",
-                             Mpp_segment,
+                             Gp_segment,
 							 msg.recvSliceIndex,
                              conn->sockfd,
 							 msg.srcContentId,
@@ -2489,7 +2489,7 @@ acceptIncomingConnection(void)
      */
     conn = palloc0(sizeof(MotionConn));
     conn->sockfd = newsockfd;
-    conn->pBuff = palloc(Mpp_max_packet_size);
+    conn->pBuff = palloc(Gp_max_packet_size);
     conn->msgSize = 0;
     conn->recvBytes = 0;
     conn->msgPos = 0;
@@ -2528,7 +2528,7 @@ acceptIncomingConnection(void)
                 ));
     }
 
-    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
         elog(DEBUG4, "Interconnect got incoming connection "
              "from remote=%s to local=%s sockfd=%d",
              conn->remoteHostAndPort, conn->localHostAndPort, newsockfd);
@@ -2555,7 +2555,7 @@ sendChunk(MotionLayerState *mlStates, ChunkTransportState *transportStates, Moti
 	elog(DEBUG5, "sendChunk: msgSize %d this chunk length %d", conn->msgSize, tcItem->chunk_length);
 #endif
 
-	if (conn->msgSize + tcItem->chunk_length > Mpp_max_packet_size)
+	if (conn->msgSize + tcItem->chunk_length > Gp_max_packet_size)
 	{
 		if (!flushBuffer(mlStates, transportStates, conn, motionId))
 			return false;
@@ -2761,7 +2761,7 @@ readPacket(ChunkTransportState *transportStates, MotionConn * conn)
 	mpp_fd_set	rset;
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG5, "readpacket: (fd %d) (max %d) outstanding bytes %d", conn->sockfd, Mpp_max_packet_size, conn->recvBytes);
+	elog(DEBUG5, "readpacket: (fd %d) (max %d) outstanding bytes %d", conn->sockfd, Gp_max_packet_size, conn->recvBytes);
 #endif
 
 	/* do we have a complete message waiting to be processed ? */
@@ -2792,7 +2792,7 @@ readPacket(ChunkTransportState *transportStates, MotionConn * conn)
 	elog(DEBUG5, "readpacket: %s on previous call msgSize %d", gotHeader ? "got header" : "no header", conn->msgSize);
 #endif
 
-	while (!gotPacket && bytesRead < Mpp_max_packet_size)
+	while (!gotPacket && bytesRead < Gp_max_packet_size)
 	{
 		/* see if user canceled and stuff like that */
 		ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
@@ -2802,7 +2802,7 @@ readPacket(ChunkTransportState *transportStates, MotionConn * conn)
 		 * slack above
 		 */
 		if ((n = recv(conn->sockfd, conn->pBuff + bytesRead,
-					  Mpp_max_packet_size - bytesRead, 0)) < 0)
+					  Gp_max_packet_size - bytesRead, 0)) < 0)
 		{
 			if (errno == EINTR)
 				continue;
@@ -2958,7 +2958,7 @@ doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
 
 	pEntry = getChunkTransportState(transportStates, motNodeID);
 
-    if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+    if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
         elog(DEBUG3, "Interconnect needs no more input from slice%d; notifying senders to stop.",
              motNodeID);
 

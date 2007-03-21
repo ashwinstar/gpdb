@@ -80,7 +80,7 @@ do
     do
         echo "Table: mpp_$table"
         echo "**************************"
-        PGOPTIONS="-c mpp_session_role=utility" $MPPPATH/psql -p ${PORTS[$i]} template1 -c  "select * from mpp_"$table
+        PGOPTIONS="-c gp_session_role=utility" $MPPPATH/psql -p ${PORTS[$i]} template1 -c  "select * from mpp_"$table
 	    RETVAL=$?
 	    if [ $RETVAL -ne 0 ]; then
 	        echo "$0 failed."
@@ -93,7 +93,7 @@ do
   do
     echo "Table: mpp_$table"
     echo "**************************"
-    PGOPTIONS="-c mpp_session_role=utility" $MPPPATH/psql -p ${PORTS[$i]} template1 -c \
+    PGOPTIONS="-c gp_session_role=utility" $MPPPATH/psql -p ${PORTS[$i]} template1 -c \
     "select * from mpp_"$table
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ]; then

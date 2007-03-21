@@ -1924,7 +1924,7 @@ CopyFromDispatch(CopyState cstate)
 	/*
 	 * contains a copy of the original COPY command string that was issued by the
 	 * client. This copy of the COPY command string is sent to all the segment
-	 * databases to execute there in mpp_role execute
+	 * databases to execute there in gp_role execute
 	 */
 	StringInfoData cdbcopy_cmd;
 

@@ -374,10 +374,10 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		if (Debug_print_slice_table)
 			elog_node_display(DEBUG3, "slice table", estate->es_sliceTable, true);
 		
-        if (mpp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
 		    elog(DEBUG1, "%s%d executing slice%d under root slice%d",
-			     (Mpp_is_primary ? "seg" : "mir"),
-			     Mpp_segment,
+			     (Gp_is_primary ? "seg" : "mir"),
+			     Gp_segment,
 			     estate->es_cur_slice_idx,
 			     estate->es_cur_root_idx);
 	}
@@ -1056,7 +1056,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 								  rangeTable,
 								  operation,
 								  estate->es_instrument,
-								  (Mpp_role != MPP_ROLE_EXECUTE || Mpp_is_writer));
+								  (Mpp_role != MPP_ROLE_EXECUTE || Gp_is_writer));
 				resultRelInfo++;
 			}
 		}
@@ -1072,7 +1072,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 							  rangeTable,
 							  operation,
 							  estate->es_instrument,
-							  (Mpp_role != MPP_ROLE_EXECUTE || Mpp_is_writer));
+							  (Mpp_role != MPP_ROLE_EXECUTE || Gp_is_writer));
 		}
 
 		estate->es_result_relations = resultRelInfos;
@@ -1348,7 +1348,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 */
 	if (estate->es_select_into && !(eflags & EXEC_FLAG_EXPLAIN_ONLY) && 
 			/* Only create the table if root slice */
-	        (Mpp_role != MPP_ROLE_EXECUTE || Mpp_is_writer) )
+	        (Mpp_role != MPP_ROLE_EXECUTE || Gp_is_writer) )
 		OpenIntoRel(queryDesc);
 }
 
@@ -1607,7 +1607,7 @@ ExecutePlan(EState *estate,
 	/*
 	 * Process BEFORE EACH STATEMENT triggers
 	 */
-	if (Mpp_role != MPP_ROLE_EXECUTE || Mpp_is_writer)
+	if (Mpp_role != MPP_ROLE_EXECUTE || Gp_is_writer)
 	switch (operation)
 	{
 		case CMD_UPDATE:
@@ -1790,7 +1790,7 @@ lnext:	;
 				slot = ExecFilterJunk(junkfilter, slot);
 		}
 		
-		if (operation != CMD_SELECT && Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
+		if (operation != CMD_SELECT && Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer)
 		{
 			elog(ERROR,"Internal Error: INSERT/UPDATE/DELETE must be executed by a writer gang");
 		}
@@ -1842,7 +1842,7 @@ lnext:	;
 	/*
 	 * Process AFTER EACH STATEMENT triggers
 	 */
-	if (Mpp_role != MPP_ROLE_EXECUTE || Mpp_is_writer)
+	if (Mpp_role != MPP_ROLE_EXECUTE || Gp_is_writer)
 	switch (operation)
 	{
 		case CMD_UPDATE:

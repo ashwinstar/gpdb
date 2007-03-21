@@ -378,13 +378,13 @@ Release-0_0_0:  26/Sep/2005  builder
 
 Fixes: mpp-55, mpp-63. Also added ctrl-c support and disabled COPY in 
     read only transactions.
-Added new GUC variable Mpp_max_packet_size.  This specifies the largest packet
+Added new GUC variable Gp_max_packet_size.  This specifies the largest packet
 	size that the interconnect will send messages with.  Like Mpp_session_role, 
 	this can only be set before startup.  The value that is set on the QD is
 	always set on all of the QEs as part of the QE connection process. The 
 	default value is 8 kBytes and valid are from 512-64k bytes.  The GUC 
-	Mpp_max_tuple_chunk_size has been removed.  The tuple chunk size is now
-	derived from Mpp_max_packet_size.
+	Gp_max_tuple_chunk_size has been removed.  The tuple chunk size is now
+	derived from Gp_max_packet_size.
 COPY command integration with DTM completed. COPY now relies on the 
     transaction manager to issue a ROLLBACK if the dispatcher throws
     an error.
