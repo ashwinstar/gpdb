@@ -167,7 +167,7 @@ if [ ! -x "$MPPPATH" ]; then
 fi
 MPPPATH=`dirname $MPPPATH`
 MPPMGMT=$MPPPATH/../gpMgmt/bin
-if [ ! -x $MPPMGMT/mppcreatecluster.sh ]; then
+if [ ! -x $MPPMGMT/gpcreatecluster.sh ]; then
     echo "No mgmt executables found for Greenplum installation in $MPPMGMT"
     exit 1
 fi
@@ -208,7 +208,7 @@ SEG_PREFIX=demoDataDir
 echo "# Set this to anything you like" >> $CLUSTER_CONFIG
 echo "CLUSTER_NAME=\"Demo $HOSTNAME Cluster\"" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
-echo "# This file must exist in the same directory that you execute mppcreatecluster.sh in" >> $CLUSTER_CONFIG
+echo "# This file must exist in the same directory that you execute gpcreatecluster.sh in" >> $CLUSTER_CONFIG
 echo "MACHINE_LIST_FILE=hostfile" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
 echo "# This names the data directories for the Segment Instances and the Entry Postmaster" >> $CLUSTER_CONFIG
@@ -256,4 +256,4 @@ echo "export TRUSTED_SHELL" >> $CLUSTER_CONFIG
 #*****************************************************************************************
 # Create cluster
 #*****************************************************************************************
-$MPPMGMT/mppcreatecluster.sh -q -a -c $CLUSTER_CONFIG
+$MPPMGMT/gpcreatecluster.sh -q -a -c $CLUSTER_CONFIG
