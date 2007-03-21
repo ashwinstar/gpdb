@@ -1,19 +1,19 @@
 17:00 17 Aug 2005
-mppcreatecluster.sh:-	Corrected bug where QD host not in hostlist file, but script still creates 
+gpcreatecluster.sh:-	Corrected bug where QD host not in hostlist file, but script still creates 
 			QE(s) on QD host.
 
 09:00 19 Aug 2005
-mppstop.sh:-		Removed check that did not allow MASTER_DATA_DIRECTORY value to end with /
+gpstop.sh:-		Removed check that did not allow MASTER_DATA_DIRECTORY value to end with /
 gp_bash_fuctions.sh:-	Removed stdout and stderror re-direction to RUN_REMOTE_COMMAND function
 cluster_example:-	Tidy up of comments to ease use
-mppcreatecluster.sh:-	Added to config display which initdb script will use to build the cluster
+gpcreatecluster.sh:-	Added to config display which initdb script will use to build the cluster
 
 12:37 GMT 23 Aug 2005
-mppcreatecluster.sh	Added additional echo to postgresql.conf file during QE instance build to
+gpcreatecluster.sh	Added additional echo to postgresql.conf file during QE instance build to
 			deal with issue of no newline at end of postgresql.conf.sample file.
 
 15:55 PST 20 Sept 2005
-mppcreatecluster.sh	Added simple check for some of the known parameter names that are expected
+gpcreatecluster.sh	Added simple check for some of the known parameter names that are expected
 to be in the cluster config file, if not found, script now exits with a suitable error message.
 
 gp_bash_fuctions.sh	Added egrep parameter.
@@ -21,48 +21,48 @@ gp_bash_fuctions.sh	Added egrep parameter.
 17:10 PST 20 Sept 2005
 gp_bash_fuctions.sh	Updates re standard naiming convention
 
-mppcreatecluster.sh	Updates re standard naiming convention
+gpcreatecluster.sh	Updates re standard naiming convention
 
-mppstart.sh		Updates re standard naiming convention
+gpstart.sh		Updates re standard naiming convention
 
-mppstop.sh		Updates re standard naiming convention
+gpstop.sh		Updates re standard naiming convention
 
-mppstate.sh		Updates re standard naiming convention
+gpstate.sh		Updates re standard naiming convention
 
 cluster_example		Updates re standard naiming convention
 
 14:15 PST 21 Sept 2005
 gp_bash_fuctions.sh	Updates to support below script changes
 
-mppcreatecluster.sh	Update re error messages to screen
+gpcreatecluster.sh	Update re error messages to screen
 
-mppstate.sh		Updates re failed segment processing
+gpstate.sh		Updates re failed segment processing
 
-mppstop.sh		Updates re failed segment processing
+gpstop.sh		Updates re failed segment processing
 
-mppstart.sh		Updates re failed segment processing
+gpstart.sh		Updates re failed segment processing
 
 14:55 PST 21 Sept 2005
-mppstate.sh		Added additional state information re failed segments
+gpstate.sh		Added additional state information re failed segments
 
-mppstart.sh		Added ability to attempt force failed segment startup
+gpstart.sh		Added ability to attempt force failed segment startup
 
-mppstop.sh		Added ability to attempt force failed segment shutdown
+gpstop.sh		Added ability to attempt force failed segment shutdown
 
 17:40 PST 22 Sept 2005
-mppstart.sh		Added -m option to start master db in utility mode
+gpstart.sh		Added -m option to start master db in utility mode
 
-mppstop.sh		added -m option to shutdown master db in utility mode
+gpstop.sh		added -m option to shutdown master db in utility mode
 
 17:55 PST 30 Sept 2005
-mppstart.sh		Minor updates.
+gpstart.sh		Minor updates.
 
-mppstop.sh		Added additional processing to -z option
+gpstop.sh		Added additional processing to -z option
 			Added -r to restart cluster
 
-mppstate.sh		Provided additional status checking and QD postgres version #
+gpstate.sh		Provided additional status checking and QD postgres version #
 
 gp_bash_fuctions.sh	Changes to support above updates and new recovery script.
 
-mpprecoverseg.sh	Script to recover failed primary or mirror segments.
+gprecoverseg.sh	Script to recover failed primary or mirror segments.
 			Still under test at this stage.

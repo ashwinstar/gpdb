@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppcreateseg.sh
+#	Filename:-		gpcreateseg.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$	
 #	Status:-		Released	
@@ -62,7 +62,7 @@ USAGE () {
 		$ECHO
 		$ECHO "      `basename $0`"
 		$ECHO
-		$ECHO "      Script called by mppcreatecluster.sh, this should not"
+		$ECHO "      Script called by gpcreatecluster.sh, this should not"
 		$ECHO "      be run directly"
 		exit $EXIT_STATUS
 }
@@ -201,7 +201,7 @@ while getopts ":v'?'aiqe:c:l:p:m:h:on:s:" opt
 	esac
 done
 #Now process supplied call parameters
-PARENT_PID=$1;shift		#PID of calling mppcreatecluster.sh program
+PARENT_PID=$1;shift		#PID of calling gpcreatecluster.sh program
 CHK_CALL
 TYPE=$1;shift
 case $TYPE in
@@ -209,7 +209,7 @@ case $TYPE in
 		SEGMENT_LINE=$1;shift		#String used to build segment instance
 		SET_VAR $SEGMENT_LINE
 		INST_COUNT=$1;shift		#Unique number for this parallel script, starts at 0
-		BACKOUT_FILE=/tmp/mppsegcreate.sh_backout.$$
+		BACKOUT_FILE=/tmp/gpsegcreate.sh_backout.$$
 		LOG_FILE=$1;shift		#Central logging file
 		LOG_MSG "[INFO][$INST_COUNT]:-Start Main"
 		LOG_MSG "[INFO][$INST_COUNT]:-Command line options passed to utility = $*"

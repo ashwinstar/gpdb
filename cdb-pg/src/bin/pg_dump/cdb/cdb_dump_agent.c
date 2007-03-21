@@ -313,9 +313,9 @@ main(int argc, char **argv)
 	{"help", no_argument, NULL, '?'},
 	{"version", no_argument, NULL, 'V'},
 	/* mpp additions */
-	{"mpp-k", required_argument, NULL, 1},
-	{"mpp-d", required_argument, NULL, 2},
-	{"mpp-catalog-only", no_argument, NULL, 3},
+	{"gp-k", required_argument, NULL, 1},
+	{"gp-d", required_argument, NULL, 2},
+	{"gp-catalog-only", no_argument, NULL, 3},
 	/* end mpp additions */
 		
 	/*
@@ -506,11 +506,11 @@ main(int argc, char **argv)
 					exit(1);
 					break;
 					
-			case 2:         /* --mpp-d CDB Output Directory */
+			case 2:         /* --gp-d CDB Output Directory */
 				g_pszCDBOutputDirectory = strdup(optarg);
 				break;
 						
-			case 3:			/* --mpp-schema-only */
+			case 3:			/* --gp-schema-only */
 				g_gp_catalog_only = true;
 				break;
 							
@@ -562,7 +562,7 @@ main(int argc, char **argv)
 	/* MPP addition start */
 	if ( g_CDBDumpInfo == NULL )
     {
-        mpp_err_msg( logError, progname, "missing required parameter mpp-k (backup key)\n");
+        mpp_err_msg( logError, progname, "missing required parameter gp-k (backup key)\n");
         exit(1);
     }
 	/* MPP addition end */
@@ -1161,8 +1161,8 @@ help(const char *progname)
 	printf(_("  -U, --username=NAME      connect as specified database user\n"));
 	printf(_("  -W, --password           force password prompt (should happen automatically)\n"));
 	printf(("\nGreenplum Database specific options:\n"));
-    printf(("   --mpp-k=BACKUPKEY        key for CDB Backup\n"));
-    printf(("   --mpp-d=OUTPUTDIRECTORY  output directory for backup and error files\n"));
+    printf(("   --gp-k=BACKUPKEY        key for CDB Backup\n"));
+    printf(("   --gp-d=OUTPUTDIRECTORY  output directory for backup and error files\n"));
 	printf(_("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));
 	/*printf(_("Report bugs to <pgsql-bugs@postgresql.org>.\n"));*/
@@ -9627,9 +9627,9 @@ void forkMPPCatalogDumper(void)
         len = 14 + 1 +                            /* gp_dump_agent */
 			2 + 1 + strlen(port) + 1 +          /* -p port */
 			3 + 1 +                             /* -a */
-			18 + 1 +							  /* --mpp-catalog-only */
+			18 + 1 +							  /* --gp-catalog-only */
 			//2 + 1 + 3 + 1 +                     /* -n mpp */
-			7 + 1 + strlen(g_CDBDumpInfo) + 1 + /* --mpp-k key */
+			7 + 1 + strlen(g_CDBDumpInfo) + 1 + /* --gp-k key */
 			strlen(g_SegDB.pszDBName) + 1 +     /* db name */ 
 			1 + 1 +                             /* > */
 			strlen(pszBackupFileName);          /* catalog file */
@@ -9638,9 +9638,9 @@ void forkMPPCatalogDumper(void)
         strcpy( pszCmdLine, "gp_dump_agent -p ");
         strcat( pszCmdLine, port);
         strcat( pszCmdLine, " -a ");
-		strcat( pszCmdLine, " --mpp-catalog-only");
+		strcat( pszCmdLine, " --gp-catalog-only");
 		//strcat( pszCmdLine, " -n mpp");
-        strcat( pszCmdLine, " --mpp-k ");
+        strcat( pszCmdLine, " --gp-k ");
         strcat( pszCmdLine, g_CDBDumpInfo);
 		strcat( pszCmdLine, " ");
 		strcat( pszCmdLine, g_SegDB.pszDBName);

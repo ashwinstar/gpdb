@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppcreatepart.sh
+#	Filename:-		gpcreatepart.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Status:-		Released
@@ -334,7 +334,7 @@ VALIDATE_PARAM () {
 		if [ $CHILD_COUNT -ne 0 ] && [ x"" == x"$FORCE_CREATE" ];then
 			LOG_MSG "[FATAL]:-Table $PARENT_TABLE_NAME has $CHILD_COUNT child tables defined." 1
 			LOG_MSG "[INFO]:-Either use -F option to force child table creation, or" 1
-			ERROR_EXIT "[FATAL]:-Use mppaddpart.sh to increase number of child tables" 2
+			ERROR_EXIT "[FATAL]:-Use gpaddpart.sh to increase number of child tables" 2
 		else
 			LOG_MSG "[INFO]:-Table $PARENT_TABLE_NAME has $CHILD_COUNT child tables, will continue" 1
 		fi

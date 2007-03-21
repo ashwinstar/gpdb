@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppsegrec.sh
+#	Filename:-		gpsegrec.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$	
 #	Status:-		Released	
@@ -49,7 +49,7 @@ USAGE () {
 		$ECHO
 		$ECHO "      `basename $0`"
 		$ECHO
-		$ECHO "      Script called by mpprecoverseg.sh, this should not be run directly"
+		$ECHO "      Script called by gprecoverseg.sh, this should not be run directly"
 		exit $EXIT_STATUS
 }
 
@@ -169,7 +169,7 @@ while getopts ":v'?'" opt
 	esac
 done
 #Now process supplied call parameters
-PARENT_PID=$1;shift		#PID of mppstate.sh process calling this script
+PARENT_PID=$1;shift		#PID of gpstate.sh process calling this script
 CHK_CALL
 FAIL_QE_HOST=$1;shift
 FAIL_QE_PORT=$1;shift

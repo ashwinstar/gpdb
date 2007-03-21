@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppaddmirrors.bsh
+#	Filename:-		gpaddmirrors.bsh
 #	Version:-		$Revision$	
 #	Updated:-		$Date$
 #	Status:-		Released
@@ -421,10 +421,10 @@ CHK_MIRROR_DIR () {
 CONFIG_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing shutdown of Master Instance" 1
-	if [ -f $MPPSTOP ];then
-		$MPPSTOP -qfa -d $MASTER_DATA_DIRECTORY	
+	if [ -f $gpstop ];then
+		$gpstop -qfa -d $MASTER_DATA_DIRECTORY	
 	else
-		ERROR_EXIT "[FATAL]:-Could not locate $MPPSTOP" 2
+		ERROR_EXIT "[FATAL]:-Could not locate $gpstop" 2
 	fi
 	LOG_MSG "[INFO]:-Starting Master instance in admin mode" 1
 	if [ -f $MPPSTART ];then
@@ -581,21 +581,21 @@ if [ $STANDBY_COUNT -ne 0 ];then
 	GET_STANDBY_DETAILS
 	STANDBY_HOSTNAME=`$ECHO $STANDBY_ARRAY|$CUT -d'|' -f1`
 	LOG_MSG "[INFO]:-Obtained standby hostname as $STANDBY_HOSTNAME" 1
-	if [ -f $MPPINITSTANDBY ];then
-		$MPPSTOP -qam -d $MASTER_DATA_DIRECTORY
+	if [ -f $gpinitSTANDBY ];then
+		$gpstop -qam -d $MASTER_DATA_DIRECTORY
 		$MPPSTART -qa -d $MASTER_DATA_DIRECTORY
-		$MPPINITSTANDBY -s $STANDBY_HOSTNAME -n -a
+		$gpinitSTANDBY -s $STANDBY_HOSTNAME -n -a
 	else
-		ERROR_EXIT "[FATAL]:-Could not locate $MPPINITSTANDBY" 2
+		ERROR_EXIT "[FATAL]:-Could not locate $gpinitSTANDBY" 2
 	fi
 else
 	LOG_MSG "[INFO]:-Commencing shutdown of Master instance from admin mode" 1
-	$MPPSTOP -qam -d $MASTER_DATA_DIRECTORY
+	$gpstop -qam -d $MASTER_DATA_DIRECTORY
 	LOG_MSG "[INFO]:-Commencing startup of mirrored Instance" 1
 	$MPPSTART -qa -d $MASTER_DATA_DIRECTORY
 fi
 LOG_MSG "[INFO]:-------------------------------------------------" 1
 LOG_MSG "[INFO]:-Successfully configured mirror segment instances" 1
-LOG_MSG "[INFO]:-Run mppstate.sh -c to display primary/mirror configuration" 1
+LOG_MSG "[INFO]:-Run gpstate.sh -c to display primary/mirror configuration" 1
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS

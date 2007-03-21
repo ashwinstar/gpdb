@@ -677,7 +677,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     numInputSegs = 1;
     if (flow->flow_before_req_move &&
         flow->flow_before_req_move->flotype != FLOW_SINGLETON)
-        numInputSegs = getMPPSegmentCount();
+        numInputSegs = getgpsegmentCount();
 
     /* Add motion atop the copied node, if necessary. */
     switch (flow->req_move)
@@ -889,8 +889,8 @@ make_motion(Plan       *lefttree,
 	node->hashSegIdx = NULL;
 	if (motionType == MOTIONTYPE_HASH)
 	{
-		node->numHashSegs = getMPPSegmentCount();
-		node->hashSegIdx = makeDefaultSegIdxArray(getMPPSegmentCount());
+		node->numHashSegs = getgpsegmentCount();
+		node->hashSegIdx = makeDefaultSegIdxArray(getgpsegmentCount());
 	}
 
     /* Attach a descriptive Flow. */
@@ -1347,7 +1347,7 @@ ctid_inventory_walker(Node *node, ctid_inv_data * inv)
                 case SelfItemPointerAttributeNumber:    /* ctid */
 				    inv->ctid_relids = bms_add_member(inv->ctid_relids, var->varno);
                     break;
-                case MppSegmentIdAttributeNumber:       /* gp_segment_id */
+                case gpsegmentIdAttributeNumber:       /* gp_segment_id */
 				    inv->segid_relids = bms_add_member(inv->segid_relids, var->varno);
                     break;
                 default:

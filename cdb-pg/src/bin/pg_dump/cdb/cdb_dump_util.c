@@ -749,7 +749,7 @@ nextToken(register char **stringp, register const char *delim)
 }
 
 /*
- * Parse the argument of --mpp-s=i[...] . The list of dbid's to dump.
+ * Parse the argument of --gp-s=i[...] . The list of dbid's to dump.
  * Return the number of parsed DBID's or < 1 for failure.
  */
 int  

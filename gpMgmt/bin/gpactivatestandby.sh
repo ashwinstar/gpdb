@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppactivatestandby.sh
+#	Filename:-		gpactivatestandby.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Status:-		Released	
@@ -57,7 +57,7 @@ TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 FORCE_ACTIVATE=0
-unset START_MPPSYNC
+unset START_gpsync
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -71,7 +71,7 @@ USAGE () {
 		$ECHO "      `basename $0 `"
 		$ECHO
 		$ECHO "      Activates a standby master segment instance when the primary instance has"
-		$ECHO "      failed. Will stop the mppsyncprocess, update the system catalog tables and"
+		$ECHO "      failed. Will stop the gpsyncprocess, update the system catalog tables and"
 		$ECHO "      start the instance with the standby master segment instance as the new master."
 		$ECHO
 		$ECHO "      Usage:"
@@ -117,7 +117,7 @@ CHECK_PARAM () {
 		if [ `$GREP -c postmaster $MASTER_STANDBY_DATA_DIRECTORY/$PG_OPT` -ne 0 ];then
 			LOG_MSG "[FATAL]:-Have located a postmaster process on this host"
 			LOG_MSG "[FATAL]:-Has the Master standby instance already been activated"
-			LOG_MSG "[FATAL]:-Check output of mppstate.sh to check"
+			LOG_MSG "[FATAL]:-Check output of gpstate.sh to check"
 			ERROR_EXIT "[FATAL]:-Possible Standby master instance active" 2
 		else
 			LOG_MSG "[INFO]:-No postmaster text found in $PG_OPT"
@@ -151,7 +151,7 @@ CHECK_PARAM () {
 		fi
 	fi	
 	if [ ! -f $MPPSTART ];then ERROR_EXIT "[FATAL $MPPSTART does not exist" 2;fi
-	if [ ! -f $MPPSTOP ];then ERROR_EXIT "[FATAL $MPPSTOP does not exist" 2;fi
+	if [ ! -f $gpstop ];then ERROR_EXIT "[FATAL $gpstop does not exist" 2;fi
 	#Check hostname not the same as the current host if -c option supplied
 	if [ x"" != x"$NEW_STANDBY_MASTER" ] && [ $NEW_STANDBY_MASTER == `$HOSTNAME` ];then
 		ERROR_EXIT "[FATAL]:-New standby hostname supplied is same as current hostname"
@@ -162,7 +162,7 @@ CHECK_PARAM () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-STOP_MPPSYNC_PROCESS () {
+STOP_gpsync_PROCESS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	STOP_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY
 	if [ $RETVAL -ne 0 ] && [ $FORCE_ACTIVATE -eq 0 ] ;then
@@ -173,11 +173,11 @@ STOP_MPPSYNC_PROCESS () {
 ADMIN_SHUTDOWN () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Stopping standby master instance"
-	$MPPSTOP -m -d $MASTER_STANDBY_DATA_DIRECTORY
+	$gpstop -m -d $MASTER_STANDBY_DATA_DIRECTORY
 	ERROR_CHK $? "shutdown standby master instance" 1
 	if [ x"" != x"$1" ];then
 		LOG_MSG "[INFO]:-Re-starting sync process"
-		$MPPSYNCMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -S
+		$gpsyncMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -S
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -242,8 +242,8 @@ STOP_MASTER_DB () {
 		ERROR_EXIT "[FATAL]:-Appears standby instance shutdown during this process, check standby instance log file" 2
 	else
 		LOG_MSG "[INFO]:-Commencing shutdown of standby instance, including a call to shutdown segment instances"
-		LOG_MSG "[INFO]:-Ignore any warning messages if mppstop.sh reports problems with shutdown of segment instances"
-		$MPPSTOP -qfbya -d $MASTER_STANDBY_DATA_DIRECTORY
+		LOG_MSG "[INFO]:-Ignore any warning messages if gpstop.sh reports problems with shutdown of segment instances"
+		$gpstop -qfbya -d $MASTER_STANDBY_DATA_DIRECTORY
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -310,7 +310,7 @@ DISPLAY_INFO () {
 	LOG_MSG "[INFO]:-MASTER_PORT is now $MASTER_STANDBY_PORT, if this has changed, you"
 	LOG_MSG "[INFO]:-may need to make additional configuration changes to allow access"
 	LOG_MSG "[INFO]:-to the MPP instance."
-	LOG_MSG "[INFO]:-When the failed master becomes available, run mppactivatemaster.sh"
+	LOG_MSG "[INFO]:-When the failed master becomes available, run gpactivatemaster.sh"
 	LOG_MSG "[INFO]:-to re-activate the master and return the standby master to its previous"
 	LOG_MSG "[INFO]:-state."
 	LOG_MSG "[INFO]:-Statistics will need to be run against the database"
@@ -362,7 +362,7 @@ CHK_DIR $MASTER_STANDBY_DATA_DIRECTORY
 if [ $EXISTS -eq 1 ];then
         ERROR_EXIT "[FATAL]:-Standby data directory $MASTER_STANDBY_DATA_DIRECTORY does not exist on this host" 2
 fi
-STOP_MPPSYNC_PROCESS
+STOP_gpsync_PROCESS
 CHK_CATALOG_DATA
 UPDATE_CATALOG
 STOP_MASTER_DB
@@ -370,11 +370,11 @@ START_ARRAY
 if [ x"" == x"$NEW_STANDBY_MASTER" ];then
 	LOG_MSG "[WARN]:-New master standby host build request not provided via -c option"
 	LOG_MSG "[WARN]:-MPP Master Instance does not have a fail-over"
-	LOG_MSG "[INFO]:-Run mppinitstandby.sh to create a standby master instance"
+	LOG_MSG "[INFO]:-Run gpinitstandby.sh to create a standby master instance"
 	EXIT_STATUS=1
 else
 	LOG_MSG "[INFO]:-Processing request to create a new standby master instance"
-	$MPPINITSTANDBY -s $NEW_STANDBY_MASTER -a
+	$gpinitSTANDBY -s $NEW_STANDBY_MASTER -a
 fi
 DISPLAY_INFO
 LOG_MSG "[INFO]:-End Main"

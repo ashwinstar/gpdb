@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppsegskew.sh
+#	Filename:-		gpsegskew.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$	
 #	Status:-		Released	
@@ -49,7 +49,7 @@ USAGE () {
 		$ECHO
 		$ECHO "      `basename $0`"
 		$ECHO
-		$ECHO "      Script called by mppskew.sh, this should not be run directly"
+		$ECHO "      Script called by gpskew.sh, this should not be run directly"
 		exit $EXIT_STATUS
 }
 
@@ -92,7 +92,7 @@ while getopts ":v'?'" opt
 	esac
 done
 #Now process supplied call parameters
-PARENT_PID=$1;shift		#PID of mppstate.sh process calling this script
+PARENT_PID=$1;shift		#PID of gpstate.sh process calling this script
 CHK_CALL
 QE_NAME=$1;shift		#Hostname holding database segment
 QE_PORT=$1;shift		#Segment port

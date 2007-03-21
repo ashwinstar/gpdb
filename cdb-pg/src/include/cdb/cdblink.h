@@ -50,7 +50,7 @@ extern void cdblink_setup(void);
  * when utiliy	no mpp catalog tables are read.  An Assert is
  * thrown if Mpp_role = utility.
  */
-extern int	getMPPSegmentCount(void);
+extern int	getgpsegmentCount(void);
 
 extern void buildMirrorQDDefinition(void);
 

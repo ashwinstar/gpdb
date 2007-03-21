@@ -414,7 +414,7 @@ heap_attisnull(HeapTuple tup, int attnum)
 		case MinCommandIdAttributeNumber:
 		case MaxTransactionIdAttributeNumber:
 		case MaxCommandIdAttributeNumber:
-        case MppSegmentIdAttributeNumber:       /*CDB*/
+        case gpsegmentIdAttributeNumber:       /*CDB*/
 			/* these are never null */
 			break;
 
@@ -716,7 +716,7 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 		case TableOidAttributeNumber:
 			result = ObjectIdGetDatum(tup->t_tableOid);
 			break;
-        case MppSegmentIdAttributeNumber:                       /*CDB*/
+        case gpsegmentIdAttributeNumber:                       /*CDB*/
             result = Int32GetDatum(Gp_segment);
             break;
 		default:

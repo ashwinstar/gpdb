@@ -414,10 +414,10 @@ static bool SyncMaster = false;
 /* if we are a QD postmaster or not */
 static bool Mpp_entry_postmaster = false;
 /*
- * MPPSyncMaster main entry point
+ * gpsyncMaster main entry point
  */
 int
-MPPSyncMain(int argc, char *argv[])
+gpsyncMain(int argc, char *argv[])
 {
     SyncMaster = true;
     return PostmasterMain( argc, argv );
@@ -3084,7 +3084,7 @@ BackendInitialize(Port *port)
 	 * title for ps.  It's good to do this as early as possible in startup.
 	 */
     if ( SyncMaster )
-        init_ps_display("mppsyncagent process", "", "", "");
+        init_ps_display("gpsyncagent process", "", "", "");
     else
 	    init_ps_display(port->user_name, port->database_name, remote_ps_data,
 					update_process_title ? "authentication" : "");

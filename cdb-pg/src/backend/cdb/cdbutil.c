@@ -483,12 +483,12 @@ getCdbComponentInfo(void)
 	/*
 	 *	Validate that gp_numsegments == segment_databases->total_segment_dbs
 	 */
-	if (getMPPSegmentCount() != component_databases->total_segments)
+	if (getgpsegmentCount() != component_databases->total_segments)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
 				 errmsg("MPP number of segments inconsistency: count is %d from pg_catalog.%s table, but %d from getCdbComponentDatabases()",
-						getMPPSegmentCount(),  GpIdRelationName, component_databases->total_segments)));
+						getgpsegmentCount(),  GpIdRelationName, component_databases->total_segments)));
 	}
 
 	/*
@@ -516,7 +516,7 @@ getCdbComponentInfo(void)
 	 * and that we hit them all. Since it's sorted, this is relatively easy.
 	 */
 	x = 0;
-	for (i = 0; i < getMPPSegmentCount(); i++)
+	for (i = 0; i < getgpsegmentCount(); i++)
 	{
 		int			this_segindex = -1;
 
@@ -532,7 +532,7 @@ getCdbComponentInfo(void)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_EXCEPTION),
 						 errmsg("Content values not valid in gp_configuration table.  They must be in the range 0 to %d inclusive",
-								getMPPSegmentCount() - 1)));
+								getgpsegmentCount() - 1)));
 			}
 		}
 		if (this_segindex != i)
@@ -540,7 +540,7 @@ getCdbComponentInfo(void)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATA_EXCEPTION),
 					 errmsg("Content values not valid in gp_configuration table.  They must be in the range 0 to %d inclusive",
-							getMPPSegmentCount() - 1)));
+							getgpsegmentCount() - 1)));
 		}
 	}
 

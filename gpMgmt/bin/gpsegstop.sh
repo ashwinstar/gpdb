@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppsegstop.sh
+#	Filename:-		gpsegstop.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$	
 #	Status:-		Released	
@@ -49,7 +49,7 @@ USAGE () {
 		$ECHO
 		$ECHO "      `basename $0`"
 		$ECHO
-		$ECHO "      Script called by mppstop.sh, this should not be run directly"
+		$ECHO "      Script called by gpstop.sh, this should not be run directly"
 		exit $EXIT_STATUS
 }
 
@@ -142,7 +142,7 @@ while getopts ":v'?'" opt
 done
 #Now process supplied call parameters
 LOG_MSG "[INFO][$INST_COUNT]:-Start Main"
-PARENT_PID=$1;shift		#PID of mppstart.sh process calling this script
+PARENT_PID=$1;shift		#PID of gpstart.sh process calling this script
 CHK_CALL
 STOP_INVALID=$1;shift		#0=No 1=Yes
 QE_NAME=$1;shift		#Hostname holding database segment

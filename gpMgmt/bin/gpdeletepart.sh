@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppdeletepart.sh
+#	Filename:-		gpdeletepart.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Status:-		Released
@@ -80,7 +80,7 @@ USAGE () {
 		$ECHO "      Requires that the partitioning field is of type date or timestamp"
 		$ECHO "      At this stage only supports date type range partitioning"
 		$ECHO "      Assumes that current child tables, rules and indexes initially created "
-		$ECHO "      via use of mppcreatepart.sh script, or were added via use of mppaddpart.sh"
+		$ECHO "      via use of gpcreatepart.sh script, or were added via use of gpaddpart.sh"
 		$ECHO "      The current database date is used as the start date from which the rolling"
 		$ECHO "      window is calculated"
 		$ECHO "      Note, that for hour based range partitioning, all tables for a 24hr period"

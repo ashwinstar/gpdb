@@ -90,8 +90,8 @@ static bool bUsePSQL = false;
 static bool bPSQLDone = false;
 static bool bCompUsed = false; /* de-compression is used */
 static char* g_compPg = NULL;   /* de-compression program with full path */
-static char*            g_MPPDumpInfo = NULL;
-static char*            g_MPPDumpKey = NULL;
+static char*            g_gpdumpInfo = NULL;
+static char*            g_gpdumpKey = NULL;
 static int              g_sourceDBID = 0;
 static int              g_targetDBID = 0;
 static char*			g_targetHost = NULL;
@@ -180,10 +180,10 @@ main(int argc, char **argv)
         /*
          * the following are cdb specific, and don't have an equivalent short option
          */
-        {"mpp-d", required_argument, NULL, 1},
+        {"gp-d", required_argument, NULL, 1},
         {"mpp-e", no_argument, NULL, 2},
-        {"mpp-k", required_argument, NULL, 3},
-	    {"mpp-c", required_argument, NULL, 4},
+        {"gp-k", required_argument, NULL, 3},
+	    {"gp-c", required_argument, NULL, 4},
 		{"target-dbid", required_argument, NULL, 5},
 		{"target-host", required_argument, NULL, 6},
 		{"target-port", required_argument, NULL, 7},
@@ -335,7 +335,7 @@ main(int argc, char **argv)
 			case 0:
 				break;
 
-            case 1:         /* --mpp-d MPP Output Directory */
+            case 1:         /* --gp-d MPP Output Directory */
                 g_pszMPPOutputDirectory = strdup(optarg);
                 break;
 
@@ -343,14 +343,14 @@ main(int argc, char **argv)
                 g_bOnErrorStop = opts->exit_on_error = true;
                 break;
 
-            case 3:         /* --mpp-k MPP Dump Info Format is Key_s-dbid_s-role_t-dbid */
-                g_MPPDumpInfo = strdup(optarg);
-                if ( !ParseCDBDumpInfo( pszProgName, g_MPPDumpInfo, &g_MPPDumpKey, &g_role, &g_sourceDBID, &g_MPPPassThroughCredentials ) )
+            case 3:         /* --gp-k MPP Dump Info Format is Key_s-dbid_s-role_t-dbid */
+                g_gpdumpInfo = strdup(optarg);
+                if ( !ParseCDBDumpInfo( pszProgName, g_gpdumpInfo, &g_gpdumpKey, &g_role, &g_sourceDBID, &g_MPPPassThroughCredentials ) )
                 {
                     exit(1);
                 }
                 break;
-			case 4:         /* mpp-c */ 
+			case 4:         /* gp-c */ 
 				g_compPg = strdup(optarg);
 				bCompUsed = true; /* backup data is coming from stdin (piped from gunzip) */
 				break;
@@ -430,9 +430,9 @@ main(int argc, char **argv)
 		}
 	}
 
-    if ( g_MPPDumpInfo == NULL )
+    if ( g_gpdumpInfo == NULL )
     {
-        mpp_err_msg(logInfo, pszProgName, "missing required parameter mpp-k (backup key)\n");
+        mpp_err_msg(logInfo, pszProgName, "missing required parameter gp-k (backup key)\n");
         exit(1);
     }
    
@@ -478,7 +478,7 @@ main(int argc, char **argv)
                    PQdb(g_conn), PQerrorMessage(g_conn));
     }
 
-    if ( g_MPPDumpKey != NULL )
+    if ( g_gpdumpKey != NULL )
     {       
         /*  
          * Open the database again, for writing status info
@@ -816,7 +816,7 @@ usage(const char *progname)
 	printf(_("  -e, --exit-on-error      exit on error, default is to continue\n"));
 
     printf(("\nMPP specific options:\n"));
-    printf(("   --mpp-k=BACKUPKEY        key for MPP Backup\n"));
+    printf(("   --gp-k=BACKUPKEY        key for MPP Backup\n"));
 
 	printf(_("\nIf no input file name is supplied, then standard input is used.\n\n"));
 	printf(_("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
@@ -893,7 +893,7 @@ void* monitorThreadProc(void *arg)
 	mpp_err_msg(logInfo, pszProgName, "Starting monitor thread\n");
 	
 	/* Issue Listen command  */
-	DoCancelNotifyListen( g_conn_status, true, g_MPPDumpKey, g_role, g_sourceDBID, g_targetDBID, NULL );
+	DoCancelNotifyListen( g_conn_status, true, g_gpdumpKey, g_role, g_sourceDBID, g_targetDBID, NULL );
 	
 	// Now wait for a cancel notification
 	sock = PQsocket( g_conn_status );
@@ -912,14 +912,14 @@ void* monitorThreadProc(void *arg)
 		if ( select( sock+1, &input_mask, NULL, NULL, &tv ) < 0 )
 		{
 			mpp_err_msg(logError, pszProgName, "select failed for backup key %s, instid %d, segid %d failed\n",
-					  g_MPPDumpKey, g_role, g_sourceDBID);
+					  g_gpdumpKey, g_role, g_sourceDBID);
 			bGotCancelRequest = true;
 		}
 	
 		if ( PQstatus( g_conn_status ) == CONNECTION_BAD )
 		{
 			mpp_err_msg(logError, pszProgName, "Status Connection went down for backup key %s, instid %d, segid %d\n",
-					  g_MPPDumpKey, g_role, g_sourceDBID);
+					  g_gpdumpKey, g_role, g_sourceDBID);
 			bGotCancelRequest = true;
 		}
 		
@@ -945,7 +945,7 @@ void* monitorThreadProc(void *arg)
 		if ( bGotCancelRequest )
 		{
 			mpp_err_msg(logInfo, pszProgName, "Notification received that we need to cancel for backup key %s, instid %d, segid %d failed\n",
-					  g_MPPDumpKey, g_role, g_sourceDBID);
+					  g_gpdumpKey, g_role, g_sourceDBID);
 			
 			pthread_kill( g_main_tid, SIGINT );
 		}
@@ -954,7 +954,7 @@ void* monitorThreadProc(void *arg)
 		Lock( g_pStatusOpList );
 		while ( NULL != (pOp = TakeFromStatusOpList(g_pStatusOpList)) )
 		{
-			DoCancelNotifyListen( g_conn_status, false, g_MPPDumpKey, g_role, g_sourceDBID, g_targetDBID, pOp->pszSuffix );
+			DoCancelNotifyListen( g_conn_status, false, g_gpdumpKey, g_role, g_sourceDBID, g_targetDBID, pOp->pszSuffix );
 			
 			if ( pOp->TaskID == TASK_FINISH )
 			{

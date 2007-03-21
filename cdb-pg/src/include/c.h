@@ -387,7 +387,7 @@ typedef uint32 MultiXactOffset;
 
 typedef uint32 CommandId;
 
-typedef int32  MppSegmentId;        /* CDB: type of gp_segment_id system col */
+typedef int32  gpsegmentId;        /* CDB: type of gp_segment_id system col */
 
 #define FirstCommandId	((CommandId) 0)
 

@@ -128,12 +128,12 @@ createGang(GangType type, int size, int content, char *portal_name)
 	int			segdbs_in_thread_pool;
 	int			segdb_count;
 
-	Assert(size == 1 || size == getMPPSegmentCount());
+	Assert(size == 1 || size == getgpsegmentCount());
 
 	/*
 	 * We can't allocate more segments than we know about
 	 */
-	Assert(size <= getMPPSegmentCount());
+	Assert(size <= getgpsegmentCount());
 
 
 	/*
@@ -1590,7 +1590,7 @@ getCdbProcessList(Gang *gang, int sliceIndex)
 		int			listsize = 0;
 
 		/*
-		 * Assert( gang->size == 1 || gang->size == getMPPSegmentCount() );
+		 * Assert( gang->size == 1 || gang->size == getgpsegmentCount() );
 		 */
 
 		primary = (gang->type != GANGTYPE_MIRROR_WRITER);
@@ -1651,20 +1651,20 @@ getCdbProcessList(Gang *gang, int sliceIndex)
 		}
 
 		if (gang->type == GANGTYPE_PRIMARY_WRITER &&
-            listsize < getMPPSegmentCount())
+            listsize < getgpsegmentCount())
 			elog(ERROR, "Primary gang smaller than number of segments");
 
 		if (gang->size > 1 ||
             gang->type == GANGTYPE_PRIMARY_WRITER ||
             gang->type == GANGTYPE_MIRROR_WRITER)
 		{
-			while (listsize < getMPPSegmentCount())
+			while (listsize < getgpsegmentCount())
 			{
 				list = lappend(list, NULL);
 				listsize++;
 			}
 		}
-		Assert(listsize == 1 || listsize == getMPPSegmentCount());
+		Assert(listsize == 1 || listsize == getgpsegmentCount());
 	}
 
 	return list;

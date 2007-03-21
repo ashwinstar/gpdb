@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppactivatemaster.sh
+#	Filename:-		gpactivatemaster.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Status:-		Released.
@@ -56,10 +56,10 @@ TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 FORCE_ACTIVATE=0
-unset START_MPPSYNC
+unset START_gpsync
 REMOTE_MPPSTART=$MPPSTART
-REMOTE_MPPSTOP=$MPPSTOP
-REMOTE_INIT_STANDBY=$MPPINITSTANDBY
+REMOTE_gpstop=$gpstop
+REMOTE_INIT_STANDBY=$gpinitSTANDBY
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -162,15 +162,15 @@ CHECK_PARAM () {
 	fi	
 	#Check that we have the required additional scripts
 	if [ ! -f $MPPSTART ];then ERROR_EXIT "[FATAL $MPPSTART does not exist" 2;fi
-	if [ ! -f $MPPSTOP ];then ERROR_EXIT "[FATAL $MPPSTOP does not exist" 2;fi
+	if [ ! -f $gpstop ];then ERROR_EXIT "[FATAL $gpstop does not exist" 2;fi
 	#Also check that we have these on the master host to be re-activated
 	CHK_FILE $REMOTE_MPPSTART $FAILBACK_MASTER_HOSTNAME
 	if [ $EXISTS -eq 1 ];then
 		ERROR_EXIT "[FATAL]:-File $REMOTE_MPPSTART does not exist on $FAILBACK_MASTER_HOSTNAME" 2
 	fi
-	CHK_FILE $REMOTE_MPPSTOP $FAILBACK_MASTER_HOSTNAME
+	CHK_FILE $REMOTE_gpstop $FAILBACK_MASTER_HOSTNAME
 	if [ $EXISTS -eq 1 ];then
-		ERROR_EXIT "[FATAL]:-File $REMOTE_MPPSTOP does not exist on $FAILBACK_MASTER_HOSTNAME" 2
+		ERROR_EXIT "[FATAL]:-File $REMOTE_gpstop does not exist on $FAILBACK_MASTER_HOSTNAME" 2
 	fi
 	CHK_FILE $REMOTE_INIT_STANDBY $FAILBACK_MASTER_HOSTNAME
 	if [ $EXISTS -eq 1 ];then
@@ -209,7 +209,7 @@ DISPLAY_PARAM () {
 PROCESS_REACTIVATION () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing shutdown of instance"
-	$MPPSTOP -qafy
+	$gpstop -qafy
 	ERROR_CHK $? "[FATAL]:-Issues with instance shutdown, please correct and re-run this script" 2
 	LOG_MSG "[INFO]:-Starting master instance in admin mode"
 	$MPPSTART -m
@@ -256,7 +256,7 @@ UPDATE_CATALOG () {
 ADMIN_SHUTDOWN () {
         LOG_MSG "[INFO]:-Start Function $FUNCNAME"
         LOG_MSG "[INFO]:-Stopping master segment instance"
-        $MPPSTOP -m
+        $gpstop -m
         ERROR_CHK $? "shutdown master segment instance" 1
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -266,7 +266,7 @@ ADMIN_SHUTDOWN () {
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 LOG_MSG "[INFO]:-This utility has been deprecated"
-LOG_MSG "[INFO]:-Use mppactivatestandby.sh and mppinitstandby.sh"
+LOG_MSG "[INFO]:-Use gpactivatestandby.sh and gpinitstandby.sh"
 LOG_MSG "[INFO]:-Review usage via -? for both utilities"
 exit 0
 if [ $# -ne 0 ]; then

@@ -34,7 +34,7 @@
 
 #include "cdb/cdbdisp.h"                /* CheckDispatchResult() */
 #include "cdb/cdbexplain.h"             /* cdbexplain_recvExecStats */
-#include "cdb/cdblink.h"                /* getMPPSegmentCount() */
+#include "cdb/cdblink.h"                /* getgpsegmentCount() */
 #include "cdb/cdbpullup.h"              /* cdbpullup_targetlist() */
 
 typedef struct ExplainState
@@ -688,7 +688,7 @@ explain_outNode(StringInfo str,
 						if (nReceivers == 0)
                         {
                             pname = "Broadcast Motion";
-                            nReceivers = getMPPSegmentCount();
+                            nReceivers = getgpsegmentCount();
                         }
 						else
                             pname = "Gather Motion";

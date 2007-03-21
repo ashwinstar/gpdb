@@ -224,11 +224,11 @@ static void usage(void)
 	printf(("  -W, --password           force password prompt (should happen automatically)\n"));
 
 	printf(("\nMPP specific options:\n"));
-	printf(("  --mpp-c                  use gunzip for in-line de-compression\n"));
-	printf(("  --mpp-d=BACKUPFILEDIR    directory where backup files are located\n"));
+	printf(("  --gp-c                  use gunzip for in-line de-compression\n"));
+	printf(("  --gp-d=BACKUPFILEDIR    directory where backup files are located\n"));
 	printf(("  --mpp-i                  ignore error\n"));
-	printf(("  --mpp-k=KEY              date time backup key from gp_backup run\n"));
-	printf(("  --mpp-r=REPORTFILEDIR    directory where report file is placed\n"));
+	printf(("  --gp-k=KEY              date time backup key from gp_backup run\n"));
+	printf(("  --gp-r=REPORTFILEDIR    directory where report file is placed\n"));
 	printf(("  --mpp-l=FILELOCATIONS    backup files are on (a)ll databases, (p)rimaries only (default)\n"));
 	printf(("                           or (i)ndividual segdb (must be followed with a list of dbid's\n"));
 	printf(("                           where backups are located. For example: --mpp-l=i[10,12,15]\n"));
@@ -289,14 +289,14 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 		/*
 		 * the following are mpp specific, and don't have an equivalent short option
 		 */
-		{"mpp-c", no_argument, NULL, 1},
-		//{"mpp-cf", required_argument, NULL, 2},
-		{"mpp-d", required_argument, NULL, 3},
+		{"gp-c", no_argument, NULL, 1},
+		//{"gp-cf", required_argument, NULL, 2},
+		{"gp-d", required_argument, NULL, 3},
 		{"mpp-i", no_argument, NULL, 4},
 		//{"mpp-hdb", required_argument, NULL, 5},
-		{"mpp-k", required_argument, NULL, 6},
-		{"mpp-r", required_argument, NULL, 7},
-		{"mpp-s", required_argument, NULL, 8},
+		{"gp-k", required_argument, NULL, 6},
+		{"gp-r", required_argument, NULL, 7},
+		{"gp-s", required_argument, NULL, 8},
 		{"mpp-l", required_argument, NULL, 9},
 		{NULL, 0, NULL, 0}
 	};
@@ -549,17 +549,17 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				break;
 
 			case 1:
-				/* mpp-c remote compression program */
+				/* gp-c remote compression program */
 				pInputOpts->pszCompressionProgram = "gunzip"; /*Safe_strdup(optarg);*/
 				break;
 
 			case 2:
-				/* mpp-cf control file */
+				/* gp-cf control file */
                  /* temporary disabled
 				if ( bSawCDB_S_Option )
 				{
 					// Ignore gp_s option
-					mpp_err_msg(logInfo, pszProgName,  "ignoring the mpp-s option, since the mpp-cf option is set.\n");
+					mpp_err_msg(logInfo, pszProgName,  "ignoring the gp-s option, since the gp-cf option is set.\n");
 				}
 				
 				if ( !FillCDBSet( &pInputOpts->set, optarg ) )
@@ -569,7 +569,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				break;
 				
 			case 3:
-				/* mpp-d backup remote directory */
+				/* gp-d backup remote directory */
 				pInputOpts->pszBackupDirectory = Safe_strdup(optarg);
 				break;
 				
@@ -584,22 +584,22 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				break;
 				
 			case 6:
-				/* mpp-k backup timestamp key */
+				/* gp-k backup timestamp key */
 				pInputOpts->pszKey = Safe_strdup(optarg);
 				break;
 				
 			case 7:
-				/* mpp-r report directory */
+				/* gp-r report directory */
 				pInputOpts->pszReportDirectory = Safe_strdup(optarg);
 				break;
 			case 8:
-				/* mpp-s backup set specification */
+				/* gp-s backup set specification */
                  /* temporay disabled
 				bSawCDB_S_Option = true;
 				if ( pInputOpts->set.type == SET_INDIVIDUAL )
 				{
 					// Ignore this, as we've already encountered an individual spec
-					mpp_err_msg(logInfo, pszProgName,  "ignoring the mpp-s option, since the mpp-cf option is set.\n");
+					mpp_err_msg(logInfo, pszProgName,  "ignoring the gp-s option, since the gp-cf option is set.\n");
 				}
 				else
                  */
@@ -612,7 +612,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 						pInputOpts->set.type = SET_MASTER_ONLY;
 					else
 					{
-						mpp_err_msg(logInfo, pszProgName,  "invalid mpp-s option %s.  Must be a, t, or h.\n", optarg);
+						mpp_err_msg(logInfo, pszProgName,  "invalid gp-s option %s.  Must be a, t, or h.\n", optarg);
 						exit(1);
 					}
 				}
@@ -686,7 +686,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 
 	if (pInputOpts->pszKey == NULL)
 	{
-		mpp_err_msg(logError, pszProgName,  "%s command line missing the date time backup key parameter (--mpp-k)\n", pszProgName  );
+		mpp_err_msg(logError, pszProgName,  "%s command line missing the date time backup key parameter (--gp-k)\n", pszProgName  );
 		exit(1);
 	}
 
@@ -698,7 +698,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 
 	if ((dataOnly || schemaOnly) && pInputOpts->backupLocation == FILE_ON_INDIVIDUAL)
 	{
-		mpp_err_msg(logError, pszProgName, "options \"schema only\" (-s) or \"data only\" (-a) cannot be used together with --mpp-s=i\n"
+		mpp_err_msg(logError, pszProgName, "options \"schema only\" (-s) or \"data only\" (-a) cannot be used together with --gp-s=i\n"
 					"If you want to use --mpp-i and dump only data, omit dbid number 1 (master) from the individual dbid list.\n");
 		exit(1);
 	}
@@ -1264,7 +1264,7 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 	
 	
 	/*
-	 * Set the report directory if not set by user (with --mpp-r)
+	 * Set the report directory if not set by user (with --gp-r)
 	 */
 	if ( pszReportDirectory == NULL || *pszReportDirectory == '\0' )
 	{
@@ -1406,7 +1406,7 @@ int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMaster
 	pOptions = pMasterParm->pOptionsData;	
 	
 	/*
-	 * Set the report directory if not set by user (with --mpp-r)
+	 * Set the report directory if not set by user (with --gp-r)
 	 */
 	if ( pszReportDirectory == NULL || *pszReportDirectory == '\0' )
 	{

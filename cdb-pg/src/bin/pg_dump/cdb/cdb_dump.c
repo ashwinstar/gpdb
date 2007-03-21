@@ -446,11 +446,11 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		/*
 		 * the following are mpp specific, and don't have an equivalent short option
 		 */
-		{"mpp-c", no_argument, NULL, 1},
-		//{"mpp-cf", required_argument, NULL, 2},
-		{"mpp-d", required_argument, NULL, 3},
-		{"mpp-r", required_argument, NULL, 4},
-		{"mpp-s", required_argument, NULL, 5},
+		{"gp-c", no_argument, NULL, 1},
+		//{"gp-cf", required_argument, NULL, 2},
+		{"gp-d", required_argument, NULL, 3},
+		{"gp-r", required_argument, NULL, 4},
+		{"gp-s", required_argument, NULL, 5},
 		{NULL, 0, NULL, 0}
 	};
 	
@@ -694,17 +694,17 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				break;
 			
 			case 1:
-				/* mpp-c remote compression program */
+				/* gp-c remote compression program */
 				pInputOpts->pszCompressionProgram = "gzip";/*Safe_strdup(optarg);*/
 				break;
 
 			case 2:
-				/* mpp-cf control file */
+				/* gp-cf control file */
                  /* temporary disabled
 				if ( bSawCDB_S_Option )
 				{
 					// Ignore gp_s option
-					mpp_msg( logInfo, pszProgName, "ignoring the mpp-s option, since the mpp-cf option is set.\n");
+					mpp_msg( logInfo, pszProgName, "ignoring the gp-s option, since the gp-cf option is set.\n");
 				}
 				
 				if ( !FillCDBSet( &pInputOpts->set, optarg ) )
@@ -722,16 +722,16 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				break;
 				
 			case 3:
-				/* mpp-d backup remote directory */
+				/* gp-d backup remote directory */
 				pInputOpts->pszBackupDirectory = Safe_strdup(optarg);
 				break;
 				
 			case 4:
-				/* mpp-r report directory */
+				/* gp-r report directory */
 				pInputOpts->pszReportDirectory = Safe_strdup(optarg);
 				break;
 			case 5:
-				/* mpp-s backup set specification */
+				/* gp-s backup set specification */
 				if ( strcasecmp( optarg, "a") == 0 ) 
 				{
 					pInputOpts->actors = SET_ALL;
@@ -749,7 +749,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				}
 				else
 				{
-					mpp_err_msg(logError, pszProgName, "invalid mpp-s option %s.  Must be a for \"all\", p for \"primaries only\", or i[dbid list] for \"individual\".\n", optarg);
+					mpp_err_msg(logError, pszProgName, "invalid gp-s option %s.  Must be a for \"all\", p for \"primaries only\", or i[dbid list] for \"individual\".\n", optarg);
 					goto cleanup;
 				}
               
@@ -812,7 +812,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	
 	if ((dataOnly || schemaOnly) && pInputOpts->actors == SET_INDIVIDUAL)
 	{
-		mpp_err_msg(logError, pszProgName, "options \"schema only\" (-s) or \"data only\" (-a) cannot be used together with --mpp-s=i\n"
+		mpp_err_msg(logError, pszProgName, "options \"schema only\" (-s) or \"data only\" (-a) cannot be used together with --gp-s=i\n"
 										   "If you want to use --mpp-i and dump only data, omit dbid number 1 (master) from the individual dbid list.");
 		goto cleanup;
 	}
@@ -934,12 +934,12 @@ void help(const char *pszProgName)
 	printf(("  -W, --password           force password prompt (should happen automatically)\n"));
 	
 	printf(("\nMPP specific options:\n"));
-	printf(("  --mpp-c                  use gzip for in-line compression\n"));
-	printf(("  --mpp-d=BACKUPFILEDIR    directory where backup files are placed\n"));
-	printf(("  --mpp-r=REPORTFILEDIR    directory where report file is placed\n"));
-	printf(("  --mpp-s=BACKUPSET        backup set indicator - (a)ll, or (p)rimaries only (default)\n"));
+	printf(("  --gp-c                  use gzip for in-line compression\n"));
+	printf(("  --gp-d=BACKUPFILEDIR    directory where backup files are placed\n"));
+	printf(("  --gp-r=REPORTFILEDIR    directory where report file is placed\n"));
+	printf(("  --gp-s=BACKUPSET        backup set indicator - (a)ll, or (p)rimaries only (default)\n"));
 	printf(("                           or (i)ndividual segdb (must be followed with a list of dbid's\n"));
-	printf(("                           to dump. For example: --mpp-s=i[10,12,15]\n"));
+	printf(("                           to dump. For example: --gp-s=i[10,12,15]\n"));
 
 	printf(("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));
@@ -1082,7 +1082,7 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
 	}
 	
 	/*
-	 * Set the report directory if not set by user (with --mpp-r)
+	 * Set the report directory if not set by user (with --gp-r)
 	 */
 	if ( pszReportDirectory == NULL || *pszReportDirectory == '\0' )
 	{

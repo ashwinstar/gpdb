@@ -1,5 +1,5 @@
 #!/bin/bash
-#       Filename:-		mppsizecalc.sh
+#       Filename:-		gpsizecalc.sh
 #       Version:-		$Revision$
 #       Updated:-		$Date$
 #       Status:-		Released
@@ -56,8 +56,8 @@ SIZE_TYPE=0 #0=table 1=index
 SIZE_TARGET=0 #0=primary and mirror 1=primary only 2=mirror only
 DO_CHILD=0
 SKIP_INDEX=0
-PARALLEL_STATUS_FILE=/tmp/mppsizecalc_parallel_status_file.$$
-MPPSEGSIZE=mppsegsize.sh
+PARALLEL_STATUS_FILE=/tmp/gpsizecalc_parallel_status_file.$$
+gpsegSIZE=gpsegsize.sh
 #***********************************************************************************
 USAGE () {
 if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
@@ -182,7 +182,7 @@ SEND_TABLE_SIZE_REQUEST () {
 	do
 		SET_VAR
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$MPPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE $TABLE_OID ${DB_OID} 1 $TMPFILE &
+		$gpsegSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE $TABLE_OID ${DB_OID} 1 $TMPFILE &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -202,7 +202,7 @@ SEND_INDEX_SIZE_REQUEST () {
 	do
 		SET_VAR
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$MPPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE $TABLE_OID ${DB_OID} 1 $TMPFILE $QD_DBNAME &
+		$gpsegSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE $TABLE_OID ${DB_OID} 1 $TMPFILE $QD_DBNAME &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -236,7 +236,7 @@ SEND_DB_SIZE_REQUEST () {
 		QE_DIR=`$ECHO $I|$CUT -d'|' -f2`
 		QE_PORT=`$ECHO $I|$CUT -d'|' -f3`
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$MPPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE 0 $DB_OID 3 $TMPFILE $QD_DBNAME &
+		$gpsegSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE 0 $DB_OID 3 $TMPFILE $QD_DBNAME &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"

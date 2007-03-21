@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mpprebuildcluster.sh
+#	Filename:-		gprebuildcluster.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Status:-		Released.
@@ -57,7 +57,7 @@ EXIT_STATUS=0
 TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
-START_MPPSYNC=1
+START_gpsync=1
 NOCREATEDB=0
 TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
 #******************************************************************************
@@ -78,7 +78,7 @@ USAGE () {
 		$ECHO "      and ready for a user data restore."
 		$ECHO "      Script will not rebuild a default database i.e. template1, it must"
 		$ECHO "      be a user created database. Should this be the case use the"
-		$ECHO "      mppcreatecluster.sh script with the required configuration file to"
+		$ECHO "      gpcreatecluster.sh script with the required configuration file to"
 		$ECHO "      rebuild the MPP instance to a pre user database creation state."
 		$ECHO
 		$ECHO "      Usage:"
@@ -267,7 +267,7 @@ DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-MPP total primary segments     = $MASTER_TOTAL_SEG" 1
 	if [ $STANDBY_ACTIVE -ne 0 ];then
 		LOG_MSG "[INFO]:-MPP Master Standby             = Configured" 1
-		if [ x"" == x"$START_MPPSYNC" ];then
+		if [ x"" == x"$START_gpsync" ];then
 			LOG_MSG "[INFO]:-MPP start sync process         = Off" 1
 		else
 			LOG_MSG "[INFO]:-MPP start sync process         = On" 1
@@ -467,9 +467,9 @@ STANDBY_ACTIVATE () {
 	BACKOUT_COMMAND "$ECHO \"Removing standby data directory log file\""
 	BACKOUT_COMMAND "$TRUSTED_SHELL $STANDBY_HOSTNAME \"$RM -Rf ${STANDBY_DIR}\""
 	BACKOUT_COMMAND "$ECHO \"Removing standby data directory ${STANDBY_DIR}\""
-	if [ x"" != x"$START_MPPSYNC" ];then
+	if [ x"" != x"$START_gpsync" ];then
 		LOG_MSG "[INFO]:-Starting gpsyncmaster on standby host ${STANDBY_HOSTNAME}" 1
-		$TRUSTED_SHELL ${STANDBY_HOSTNAME} "${EXPORT_LIB_PATH};$MPPSYNCMASTER -D ${STANDBY_DIR} -p $STANDBY_PORT -S"
+		$TRUSTED_SHELL ${STANDBY_HOSTNAME} "${EXPORT_LIB_PATH};$gpsyncMASTER -D ${STANDBY_DIR} -p $STANDBY_PORT -S"
 		ERROR_CHK $? "initialize gpsyncmaster on ${STANDBY_HOSTNAME}" 1
 		BACKOUT_COMMAND "$TRUSTED_SHELL $STANDBY_HOSTNAME \"${EXPORT_LIB_PATH};$PG_CTL stop -D ${STANDBY_DIR} -m immediate\""
 		BACKOUT_COMMAND "$ECHO \"Stopping sync process on $STANDBY_HOSTNAME\""
@@ -504,16 +504,16 @@ DISPLAY_INFO () {
 	else
 		LOG_MSG "[INFO]:-------------------------------------------------" 1
 		LOG_MSG "[INFO]:-The MPP master database has been rebuilt" 1
-		LOG_MSG "[INFO]:-Use mpprebuildseg.sh to continue rebuild process" 1
-		LOG_MSG "[INFO]:-To shutdown the master use mppstop.sh -m" 1
-		LOG_MSG "[INFO]:-To start the master use mppstart.sh -m" 1
+		LOG_MSG "[INFO]:-Use gprebuildseg.sh to continue rebuild process" 1
+		LOG_MSG "[INFO]:-To shutdown the master use gpstop.sh -m" 1
+		LOG_MSG "[INFO]:-To start the master use gpstart.sh -m" 1
 		LOG_MSG "[INFO]:-To access the instance set PGOPTIONS for utility mode" 1
 	fi
 	LOG_MSG "[INFO]:-Rebuild details" 1
 	LOG_MSG "[INFO]:-Master database host       = $MASTER_HOST" 1
 	LOG_MSG "[INFO]:-Master data directory      = $MASTER_DATA_DIRECTORY" 1
 	LOG_MSG "[INFO]:-Master database port       = $MASTER_PORT" 1
-	LOG_MSG "[INFO]:-To remove this Instance run mppdeletecluster.sh" 1
+	LOG_MSG "[INFO]:-To remove this Instance run gpdeletecluster.sh" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -537,7 +537,7 @@ if [ $# -ne 0 ]; then
 			c ) CHECK_POINT_SEGMENTS=$OPTARG ;;
 			i ) DEFAULT_IP_ALLOW=$OPTARG ;;
 			p ) TEMP_PORT=$OPTARG ;;
-##			i ) unset START_MPPSYNC ;;
+##			i ) unset START_gpsync ;;
 			m ) MASTER_ONLY=1 
 			    NOCREATEDB=1 ;;
 			n ) LOCALE_SETTING=$OPTARG ;;

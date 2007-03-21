@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppsegdelete.sh
+#	Filename:-		gpsegdelete.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$	
 #	Status:-		Released	
@@ -49,7 +49,7 @@ USAGE () {
 		$ECHO
 		$ECHO "      `basename $0`"
 		$ECHO
-		$ECHO "      Script called by mppdeletecluster.sh, this should not be run directly"
+		$ECHO "      Script called by gpdeletecluster.sh, this should not be run directly"
 		exit $EXIT_STATUS
 }
 
@@ -114,7 +114,7 @@ while getopts ":v'?'" opt
 	esac
 done
 #Now process supplied call parameters
-PARENT_PID=$1;shift		#PID of mppstate.sh process calling this script
+PARENT_PID=$1;shift		#PID of gpstate.sh process calling this script
 CHK_CALL
 TYPE=$1;shift
 DELETE_HOSTNAME=$1;shift

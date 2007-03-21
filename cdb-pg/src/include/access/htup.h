@@ -360,7 +360,7 @@ do { \
 #define MaxTransactionIdAttributeNumber			(-5)
 #define MaxCommandIdAttributeNumber				(-6)
 #define TableOidAttributeNumber					(-7)
-#define MppSegmentIdAttributeNumber			    (-8)    /*CDB*/
+#define gpsegmentIdAttributeNumber			    (-8)    /*CDB*/
 #define FirstLowInvalidHeapAttributeNumber		(-9)    /*CDB*/
 
 

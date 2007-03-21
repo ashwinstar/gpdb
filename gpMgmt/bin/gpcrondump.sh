@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppcrondump.sh
+#	Filename:-		gpcrondump.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Status:-		Released
@@ -70,8 +70,8 @@ DUMP_CONFIG=0
 DUMP_PG_DUMP=0
 CATALOG=pg_catalog
 RUN_PROG=0
-PARALLEL_STATUS_FILE=/tmp/mppcrondump_parallel_status_file.$$
-MPPSEGCRON=mppsegcron.sh
+PARALLEL_STATUS_FILE=/tmp/gpcrondump_parallel_status_file.$$
+gpsegCRON=gpsegcron.sh
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -134,7 +134,7 @@ USAGE () {
 		$ECHO
 		$ECHO "      Crontab entry (example):"
 		$ECHO "      SHELL=/bin/bash"
-		$ECHO "      5 0 * * * . \$HOME/.bashrc;\$MPPUTIL/mppcrondump.sh -x template1 -aq >> <name of cronout file>" 
+		$ECHO "      5 0 * * * . \$HOME/.bashrc;\$MPPUTIL/gpcrondump.sh -x template1 -aq >> <name of cronout file>" 
 		$ECHO "      Set the shell to /bin/bash (default for cron is /bin/sh"
 		$ECHO "      Dump the template1 database, start process 5 minutes past midnight on a daily basis"
 		$ECHO
@@ -212,7 +212,7 @@ CHK_DUMP_DIR () {
 	do
 		CHK_DATA
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$MPPSEGCRON $$ 2 $DIR_HOST $DIR $DUMP_SUB_DIR $INST_COUNT $LOG_FILE &
+		$gpsegCRON $$ 2 $DIR_HOST $DIR $DUMP_SUB_DIR $INST_COUNT $LOG_FILE &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done	
 	FAILED_MKDIR_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "FAILED_MKDIR"`
@@ -393,7 +393,7 @@ CHK_DUMP_SPACE () {
 	LOG_MSG "[INFO]:-Commencing free disk space checks, please wait..." 1
 	#Check to see if we have sufficient space to be able to dump data to disks
 	LOG_MSG "[INFO]:-Obtaining $DUMP_DATABASE disk allocation" 1
-	ACTUAL_DB_SIZE=(`$MPPSIZECALC -x $DUMP_DATABASE -fq|$GREP "|"`)
+	ACTUAL_DB_SIZE=(`$gpsizeCALC -x $DUMP_DATABASE -fq|$GREP "|"`)
 	LOG_MSG "[INFO]:-Checking free space on segment instances"	
 	BATCH_LIMIT=${#DBID_LIST[@]}
 	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
@@ -408,7 +408,7 @@ CHK_DUMP_SPACE () {
 		CHK_DATA
 		SEG=`$BASENAME $DIR`
 		DIR_HOST_USED_B=`$ECHO ${ACTUAL_DB_SIZE[@]}|$TR ' ' '\n'|$TR '|' '~'|$GREP "${DIR_HOST}~${SEG}~"|$TR '~' '|'|$AWK -F'|' '{print $NF}'`
-		$MPPSEGCRON $$ 1 $DIR_HOST $DIR $DIR_HOST_USED_B $INST_COUNT $LOG_FILE $ZIP_STATE $FREE_SPACE_PERCENT $COMPRESSION_FACTOR &
+		$gpsegCRON $$ 1 $DIR_HOST $DIR $DIR_HOST_USED_B $INST_COUNT $LOG_FILE $ZIP_STATE $FREE_SPACE_PERCENT $COMPRESSION_FACTOR &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
 	#Now check status file
@@ -570,10 +570,10 @@ PROCESS_DUMP () {
 	LOG_MSG "[INFO]:-Setting dump running flag" 1
 	$TOUCH $IS_RUNNING_FLAG
 	LOG_MSG "[INFO]:-Building dump command line" 1
-	DUMP_TEXT="$MPP_DUMP -p $MASTER_PORT -U $LOGNAME --mpp-d=${DUMP_SUB_DIR}/$DUMP_DATE --mpp-r=${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/$DUMP_DATE --mpp-s=i[1,`$ECHO ${DBID_LIST[@]}|$TR ' ' ','`] $ADD_DUMP_OPTIONS"		
+	DUMP_TEXT="$MPP_DUMP -p $MASTER_PORT -U $LOGNAME --gp-d=${DUMP_SUB_DIR}/$DUMP_DATE --gp-r=${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/$DUMP_DATE --gp-s=i[1,`$ECHO ${DBID_LIST[@]}|$TR ' ' ','`] $ADD_DUMP_OPTIONS"		
 	if [ $COMPRESSION ];then
 		LOG_MSG "[INFO]:-Adding compression parameter" 1
-		DUMP_TEXT=$DUMP_TEXT" --mpp-c"
+		DUMP_TEXT=$DUMP_TEXT" --gp-c"
 	fi
 	if [ x"" != x"$SCHEMA_NAME" ];then
 		LOG_MSG "[INFO]:-Adding schema name $SCHEMA_NAME" 1
@@ -626,7 +626,7 @@ CHK_POST_DUMP () {
 	do
 		CHK_DATA
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$MPPSEGCRON $$ 3 $DIR_HOST $DIR $DUMP_SUB_DIR $DUMP_DATE ${DBID} $TIMESTAMP_KEY $INST_COUNT $LOG_FILE &
+		$gpsegCRON $$ 3 $DIR_HOST $DIR $DUMP_SUB_DIR $DUMP_DATE ${DBID} $TIMESTAMP_KEY $INST_COUNT $LOG_FILE &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done	
 	#Now process status file
@@ -916,11 +916,11 @@ do
 		if [ $ROLLBACK -eq 1 ];then
 			LOG_MSG "[WARN]:-Dump request was incomplete, rolling back dump" 1
 			DELETE_CURRENT_DUMP
-			EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
+			EVENT_MAIL "Report from gpcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 			ERROR_EXIT "[FATAL]:-Dump incomplete, completed rollback" 2
 		else
 			LOG_MSG "[WARN]:-Dump request was incomplete, not rolling back dump as -r option not supplied" 1
-			EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files not rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
+			EVENT_MAIL "Report from gpcrondump.sh on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files not rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 			ERROR_EXIT "[FATAL]:-Dump incomplete, rollback not processed" 2
 		fi
 	fi
@@ -932,7 +932,7 @@ do
 		VACUUM_PROCESS
 	fi
 	STATUS_REPORT
-	EVENT_MAIL "Report from mppcrondump.sh on host $CUR_HOST[COMPLETED]" "Completed for database $DUMP_DATABASE with return code $EXIT_STATUS [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
+	EVENT_MAIL "Report from gpcrondump.sh on host $CUR_HOST[COMPLETED]" "Completed for database $DUMP_DATABASE with return code $EXIT_STATUS [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 	if [ $RUN_PROG != "0" ];then
 		LOG_MSG "[INFO]:-Calling $RUN_PROG"
 		$RUN_PROG

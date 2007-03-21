@@ -287,7 +287,7 @@ extern int	Gp_max_packet_size;	/* GUC var */
 #define UNDEF_SEGMENT -2
 extern int	Gp_segment;		/* GUC var */
 
-extern int	getMPPSegmentCount(void);
+extern int	getgpsegmentCount(void);
 
 
 /*

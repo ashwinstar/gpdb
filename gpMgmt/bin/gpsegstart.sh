@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppsegstart.sh
+#	Filename:-		gpsegstart.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$	
 #	Status:-		Released	
@@ -50,7 +50,7 @@ USAGE () {
 		$ECHO
 		$ECHO "      `basename $0`"
 		$ECHO
-		$ECHO "      Script called by mppstart.sh, this should not be run directly"
+		$ECHO "      Script called by gpstart.sh, this should not be run directly"
 		exit $EXIT_STATUS
 }
 
@@ -161,13 +161,13 @@ START_SEG () {
 	RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
 	if [ $RUNNING -ne 0 ]; then
 		LOG_MSG "[FATAL][$INST_COUNT]:-Command pg_ctl reports $QE_NAME for directory $QE_DIR port $QE_PORT not running" 1
-		LOG_MSG "[INFO][$INST_COUNT]:-Check status via mppstate.sh" 1
+		LOG_MSG "[INFO][$INST_COUNT]:-Check status via gpstate.sh" 1
 		QE_LINE="${QE_LINE}:PG_CTL_NO_RUNNING"
 		$ECHO "FATAL:$QE_LINE" >> $PARALLEL_STATUS_FILE
 		exit 2
 	fi
 	if [ $RUNNING -eq 0 ] && [ $RETVAL -ne 0 ]; then		
-		LOG_MSG "[WARN][$INST_COUNT]:-Could not start instance, BUT pg_ctl reports instance active, check instance log file via mppstate.sh -e" 1
+		LOG_MSG "[WARN][$INST_COUNT]:-Could not start instance, BUT pg_ctl reports instance active, check instance log file via gpstate.sh -e" 1
 		QE_LINE="${QE_LINE}:PG_CTL_THERE_START_FAILED"
 		$ECHO "WARN:$QE_LINE" >> $PARALLEL_STATUS_FILE
 		exit 1
@@ -219,7 +219,7 @@ while getopts ":v'?'" opt
 	esac
 done
 #Now process supplied call parameters
-PARENT_PID=$1;shift		#PID of mppstart.sh process calling this script
+PARENT_PID=$1;shift		#PID of gpstart.sh process calling this script
 CHK_CALL
 QE_SWITCH_LOG=$1;shift		#0=No switch segment log 1=switch segment log
 QE_NAME=$1;shift		#Hostname holding database segment

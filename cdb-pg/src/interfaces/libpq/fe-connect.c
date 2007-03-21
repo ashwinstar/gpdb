@@ -190,10 +190,10 @@ static const PQconninfoOption PQconninfoOptions[] = {
 
     /* CDB: qExec wants some info from qDisp before GUCs are processed */
     {"mppqeid", NULL, "", NULL,
-	"MPP-Debug-qeid", "D", 40},
+	"gp-debug-qeid", "D", 40},
 	
 	{"mppqdid", NULL, "", NULL,
-	"MPP-Debug-qdid", "D", 40},
+	"gp-debug-qdid", "D", 40},
 	
 
 	/* Terminating entry --- MUST BE LAST */

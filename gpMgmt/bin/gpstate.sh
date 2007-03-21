@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppstate.sh
+#	Filename:-		gpstate.sh
 #	Version:-		$Revision$	
 #	Updated:-		$Date$
 #	Status:-		Released
@@ -53,9 +53,9 @@ QD_NAME=`hostname`
 EXIT_STATUS=0
 TLINES=10
 WAIT_LIMIT=600
-PARALLEL_STATUS_FILE=/tmp/mppstate_parallel_status_file.$$
-TMP_SORT_FILE=/tmp/mppstate_parallel_tmp_sort.$$
-MPPSEGSTATE=mppsegstate.sh
+PARALLEL_STATUS_FILE=/tmp/gpstate_parallel_status_file.$$
+TMP_SORT_FILE=/tmp/gpstate_parallel_tmp_sort.$$
+gpsegSTATE=gpsegstate.sh
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -205,7 +205,7 @@ DATABASE_STATUS () {
 		do
 			SET_VAR
 			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-			$MPPSEGSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 1 &
+			$gpsegSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 1 &
 			PARALLEL_COUNT ${#QE_ARRAY[@]} $BATCH_DEFAULT
 		done
 		SORT_FILE
@@ -342,7 +342,7 @@ VERSION_INFO () {
 	do
 		SET_VAR
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$MPPSEGSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 2 &
+		$gpsegSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 2 &
 		PARALLEL_COUNT ${#QE_ARRAY[@]} $BATCH_DEFAULT
 	done
 	SORT_FILE
@@ -468,7 +468,7 @@ GET_STATUS_INFORMATION () {
 	do
 		SET_VAR
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$MPPSEGSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 1 & 
+		$gpsegSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 1 & 
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
 	if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO;fi

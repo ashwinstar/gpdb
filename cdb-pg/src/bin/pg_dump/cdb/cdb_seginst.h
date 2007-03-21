@@ -35,7 +35,7 @@ typedef struct segment_database
 } SegmentDatabase;
 
 /*----------------------------------------------------------------------------------------------------
- * This structure is helpful when gp_dump used --mpp-s=p and therefore generated backup
+ * This structure is helpful when gp_dump used --gp-s=p and therefore generated backup
  * files only on the primary nodes. In that case --mpp-l=p should be used in gp_restore.
  * This structure will hold the segdb information of the segdb that has the backup
  * file (segdb_source) and the mirror or primary segdb we want to dump it to (segdb_target).

@@ -168,7 +168,7 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		/* Child Process */
 		port = PostPortNumber;
 
-		/* Create the --mpp-k parameter string */
+		/* Create the --gp-k parameter string */
 		pszKeyParm = (char *) palloc(strlen(pszBackupKey) +
 									 strlen(pszPassThroughCredentials) +
 									 3 + 10 + 10 + 1);
@@ -201,9 +201,9 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		 * binary zero at the end.
 		 */
 		len = strlen(bkPg) + 1	/* gp_dump_agent */
-			+ 7 + 1				/* --mpp-k */
+			+ 7 + 1				/* --gp-k */
 			+ strlen(pszKeyParm) + 1
-			+ 7 + 1				/* --mpp-d */
+			+ 7 + 1				/* --gp-d */
 			+ strlen(pszBackupDirectory) + 1
 			+ 2 + 1				/* -p */
 			+ 5 + 1				/* port */
@@ -234,8 +234,8 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 
 			/* gp_dump_agent + options, pipe into compression program, direct
 			 * stdout to backup file and stderr to status file */
-			//sprintf(pszCmdLine, "%s --mpp-k %s --mpp-d %s -p %d -U %s %s %s %s | %s > %s 2> %s",
-			sprintf(pszCmdLine, "%s --mpp-k %s --mpp-d %s -p %d -U %s %s %s %s 2> %s | %s > %s",
+			//sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s | %s > %s 2> %s",
+			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s | %s > %s",
 					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, 
 					pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
 		}
@@ -249,7 +249,7 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 						 errmsg("out of memory")));
 			}
 
-			sprintf(pszCmdLine, "%s --mpp-k %s --mpp-d %s -p %d -U %s %s %s %s > %s 2> %s",
+			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s > %s 2> %s",
 					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
 					pszBackupFileName, pszStatusFileName);
 		}
@@ -413,7 +413,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 		/* Child Process */
 		port = PostPortNumber;
 
-		/* Create the --mpp-k parameter string */
+		/* Create the --gp-k parameter string */
 		pszKeyParm = (char *) palloc(strlen(pszBackupKey) +
 									 strlen(pszPassThroughCredentials) +
 									 3 + 10 + 10 + 1);
@@ -434,9 +434,9 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 		 * binary zero at the end.
 		 */
 		len = strlen(bkPg) + 1	/* gp_restore_agent */
-			+ 7 + 1				/* --mpp-k */
+			+ 7 + 1				/* --gp-k */
 			+ strlen(pszKeyParm) + 1
-			+ 7 + 1				/* --mpp-d */
+			+ 7 + 1				/* --gp-d */
 			+ strlen(pszBackupDirectory) + 1
 			+ 7 + 1				/* --mpp-e */
 			+ 2 + 1				/* -p */
@@ -453,14 +453,14 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 			+ 1;
 
 		/* 
-		 * if compression was requested with --mpp-c
+		 * if compression was requested with --gp-c
 		 */
 		if (pszCompressionProgram[0] != '\0')
 		{
 			len += 4 + strlen(compPg) +
 				+strlen(pszBackupFileName);
 			
-			len += 8; /* pass along "--mpp-c" to tell restore file is compressed */
+			len += 8; /* pass along "--gp-c" to tell restore file is compressed */
 			
 			pszCmdLine = (char *) palloc(len);
 			if (pszCmdLine == NULL)
@@ -474,10 +474,10 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 			 * de-compress backupfile and pipe into stdin of gp_restore_agent along with its
 			 * options. Redirect both stdout and stderr into the status file.
 			 */
-			//sprintf(pszCmdLine, "%s %s | %s --mpp-c --mpp-k %s --mpp-d %s %s -p %d -U %s %s %s -d %s > %s 2>&1",
+			//sprintf(pszCmdLine, "%s %s | %s --gp-c --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s > %s 2>&1",
 			//		compPg, pszBackupFileName, bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
 			//		pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszStatusFileName);
-			sprintf(pszCmdLine, "%s --mpp-c %s --mpp-k %s --mpp-d %s %s -p %d -U %s %s %s -d %s %s > %s 2>&1",
+			sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s > %s 2>&1",
 					bkPg, compPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
 					pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszBackupFileName, pszStatusFileName);
 			
@@ -495,7 +495,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 			}
 
 			/* Format gp_restore_agent with options, and Redirect both stdout and stderr into the status file */
-			sprintf(pszCmdLine, "%s --mpp-k %s --mpp-d %s %s -p %d -U %s %s %s -d %s %s > %s 2>&1",
+			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s > %s 2>&1",
 					bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters, 
 					pszPassThroughTargetInfo, pszDBName, pszBackupFileName, pszStatusFileName);
 		}

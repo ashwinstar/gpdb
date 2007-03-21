@@ -279,7 +279,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	Assert(gp_connections_per_thread > 0);
 
 	segdbs_in_thread_pool = 0;
-	max_threads = 1 + (getMPPSegmentCount() - 1) / gp_connections_per_thread;
+	max_threads = 1 + (getgpsegmentCount() - 1) / gp_connections_per_thread;
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
@@ -647,7 +647,7 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 				/* Allocate storage.  Caller should pfree() it. */
 				if (!*failedSegDB)
 					*failedSegDB = palloc(sizeof(**failedSegDB) *
-										  (2 * getMPPSegmentCount() + 1));
+										  (2 * getgpsegmentCount() + 1));
 
 				/* Append to broken connection list. */
 				(*failedSegDB)[nFailed++] = segdbDesc;
@@ -737,7 +737,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 	 * last entry. The caller must PQclear() each PGresult and free() the
 	 * array.
 	 */
-	nslots = 2 * getMPPSegmentCount() + 1;
+	nslots = 2 * getgpsegmentCount() + 1;
 	resultSets = (struct pg_result **) calloc(nslots, sizeof(*resultSets));
 
 	/* Collect results from primary gang. */
@@ -841,7 +841,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	int		txnOptions;
 	char	*serializedSnapshot = NULL;
 	int		serializedSnapshotlen = 0;
-	int		nsegdb = getMPPSegmentCount();
+	int		nsegdb = getgpsegmentCount();
 	
 	Assert(dispatchToPrimaries || dispatchToMirrors);
 	
@@ -1097,7 +1097,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
     List		*readerGangs;
     ListCell	*le;
 
-    int			nsegdb = getMPPSegmentCount();
+    int			nsegdb = getgpsegmentCount();
 	char		*serializedSnapshot;
 	int			serializedSnapshotlen;
 	int			txnOptions,
@@ -2480,7 +2480,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, sliceLim);
 
 	/* Allocate result array with enough slots for QEs of primary gangs. */
-	*pPrimaryResults = cdbdisp_makeDispatchResults(nSlices * getMPPSegmentCount(),
+	*pPrimaryResults = cdbdisp_makeDispatchResults(nSlices * getgpsegmentCount(),
 												   sliceLim,
 												   cancelOnError);
 
@@ -2491,7 +2491,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 		if (slice->mirrorGang)
 		{
-			*pMirrorResults = cdbdisp_makeDispatchResults(getMPPSegmentCount(),
+			*pMirrorResults = cdbdisp_makeDispatchResults(getgpsegmentCount(),
 														  sliceLim,
 														  cancelOnError);
 		}

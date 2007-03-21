@@ -1396,7 +1396,7 @@ InitRootSlices(QueryDesc *queryDesc)
 					if (queryDesc->parsetree->into != NULL)
 					{
 						slice->gangType = GANGTYPE_PRIMARY_WRITER;
-						slice->gangSize = getMPPSegmentCount();
+						slice->gangSize = getgpsegmentCount();
 					}
 					break;
 
@@ -1404,7 +1404,7 @@ InitRootSlices(QueryDesc *queryDesc)
 				case CMD_UPDATE:
 				case CMD_DELETE:
 					slice->gangType = GANGTYPE_PRIMARY_WRITER;
-					slice->gangSize = getMPPSegmentCount();
+					slice->gangSize = getgpsegmentCount();
 					break;
 
 				default:
@@ -1529,16 +1529,16 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 		{
 			if (i == 0 && !queryDesc->cursor_query)
 			{
-				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_WRITER, getMPPSegmentCount(), 0, queryDesc->portal_name);
+				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_WRITER, getgpsegmentCount(), 0, queryDesc->portal_name);
 				Assert(inv.vecNgangs[i] != NULL);
 				if (inv.writer)
 				{
-					inv.mirrorWriterGang = allocateGang(GANGTYPE_MIRROR_WRITER, getMPPSegmentCount(), 0, queryDesc->portal_name);
+					inv.mirrorWriterGang = allocateGang(GANGTYPE_MIRROR_WRITER, getgpsegmentCount(), 0, queryDesc->portal_name);
 				}
 			}
 			else
 			{
-				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_READER, getMPPSegmentCount(), 0, queryDesc->portal_name);
+				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_READER, getgpsegmentCount(), 0, queryDesc->portal_name);
 			}
 		}
 	}
@@ -1643,13 +1643,13 @@ InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			req->writer = TRUE;
 			/* fall through */
 		case GANGTYPE_PRIMARY_READER:
-			if (slice->gangSize == 1 && getMPPSegmentCount() != 1)
+			if (slice->gangSize == 1 && getgpsegmentCount() != 1)
 			{
 				req->num1gangs_primary_reader++;
 			}
 			else
 			{
-				Assert(slice->gangSize == getMPPSegmentCount());
+				Assert(slice->gangSize == getgpsegmentCount());
 				req->numNgangs++;
 			}
 			break;
@@ -1698,7 +1698,7 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			break;
 
 		case GANGTYPE_PRIMARY_WRITER:
-			Assert(slice->gangSize == getMPPSegmentCount());
+			Assert(slice->gangSize == getgpsegmentCount());
 			Assert(req->numNgangs > 0 && req->nxtNgang == 0 && req->writer);
 			Assert(req->vecNgangs[0] != NULL);
 
@@ -1717,14 +1717,14 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			break;
 
 		case GANGTYPE_PRIMARY_READER:
-			if (slice->gangSize == 1 && getMPPSegmentCount() != 1)
+			if (slice->gangSize == 1 && getgpsegmentCount() != 1)
 			{
 				slice->primaryGang = req->vec1gangs_primary_reader[req->nxt1gang_primary_reader];
 				req->nxt1gang_primary_reader++;
 			}
 			else
 			{
-				Assert(slice->gangSize == getMPPSegmentCount());
+				Assert(slice->gangSize == getgpsegmentCount());
 				slice->primaryGang = req->vecNgangs[req->nxtNgang];
 				req->nxtNgang++;
 			}
@@ -1849,7 +1849,7 @@ getMppExecIdentity(QueryDesc *queryDesc,
 }
 
 /*
- * End the MPP-specific part of the executor.
+ * End the gp-specific part of the executor.
  *
  * In here we collect the dispatch results if there are any, tear
  * down the interconnect if it is set-up, and tear down the sequence
@@ -1924,7 +1924,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 }
 
 /*
- * Cleanup the MPP-specific parts of the query executor.
+ * Cleanup the gp-specific parts of the query executor.
  *
  * Will normally be called after an error from within a CATCH block.
  */

@@ -110,17 +110,17 @@ log_backtrace(void)
  * thrown if Mpp_role = utility.
  */
 int
-getMPPSegmentCount(void)
+getgpsegmentCount(void)
 {
 	if (Mpp_role == MPP_ROLE_UTILITY)
 	{
 		if (MppIdentity.numsegments <= 0)
 		{
-			elog(DEBUG5, "getMPPSegmentCount called when Mpp_role == utility. returning zero segments.");
+			elog(DEBUG5, "getgpsegmentCount called when Mpp_role == utility. returning zero segments.");
 			return 0;
 		}
 
-		elog(DEBUG1, "getMPPSegmentCount called when Mpp_role == utility, but is relying on gp_id info");
+		elog(DEBUG1, "getgpsegmentCount called when Mpp_role == utility, but is relying on gp_id info");
 		/* log_backtrace(); */
 
 	}
@@ -129,17 +129,17 @@ getMPPSegmentCount(void)
 	{
 		if (MppIdentity.numsegments <= 0)
 		{
-			elog(DEBUG5, "getMPPSegmentCount called when Mpp_role == execute. returning zero segments.");
+			elog(DEBUG5, "getgpsegmentCount called when Mpp_role == execute. returning zero segments.");
 			return 0;
 		}
-		elog(DEBUG1, "getMPPSegmentCount called when Mpp_role == execute, but is relying on gp_id info");
+		elog(DEBUG1, "getgpsegmentCount called when Mpp_role == execute, but is relying on gp_id info");
 		/* log_backtrace(); */
 	}
 	/* Assert( Mpp_role != MPP_ROLE_EXECUTE ); */
 
 	if (MppIdentity.numsegments <= 0)
 	{
-		elog(LOG, "getMPPSegmentCount called BEFORE gp_id record has been read in.");
+		elog(LOG, "getgpsegmentCount called BEFORE gp_id record has been read in.");
 		/* log_backtrace(); */
 	}
 

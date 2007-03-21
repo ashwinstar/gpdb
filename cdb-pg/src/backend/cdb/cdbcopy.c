@@ -55,7 +55,7 @@ makeCdbCopy(bool is_copy_in)
 	initStringInfo(&(c->copy_out_buf));	
 	
 	/* init total_segs */
-	c->total_segs = getMPPSegmentCount();
+	c->total_segs = getgpsegmentCount();
 
 	if (c->total_segs < 1)
 		ereport(ERROR,

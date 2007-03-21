@@ -14,7 +14,7 @@
 #include "optimizer/pathnode.h" /* Path */
 #include "optimizer/planmain.h" /* make_sort_from_pathkeys() */
 
-#include "cdb/cdblink.h"        /* getMPPSegmentCount() */
+#include "cdb/cdblink.h"        /* getgpsegmentCount() */
 #include "cdb/cdbllize.h"       /* makeFlow() */
 #include "cdb/cdbmutate.h"      /* make_*_motion() */
 #include "cdb/cdbvars.h"        /* mpp_singleton_segindex */
@@ -102,7 +102,7 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
     if (CdbPathLocus_IsBottleneck(subpath->locus))
         numInputSegs = 1;
     else
-        numInputSegs = getMPPSegmentCount();
+        numInputSegs = getgpsegmentCount();
 
     /*
      * Decorate the subplan with a Flow node telling the plan slicer

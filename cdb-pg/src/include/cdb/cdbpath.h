@@ -12,7 +12,7 @@
 #ifndef CDBPATH_H
 #define CDBPATH_H
 
-#include "cdb/cdbvars.h"        /* getMPPSegmentCount, mpp_opt_segments, etc */
+#include "cdb/cdbvars.h"        /* getgpsegmentCount, mpp_opt_segments, etc */
 
 /* Globals */
 extern Cost     cdbpath_motion_cost_per_row;

@@ -231,7 +231,7 @@ subquery_planner(Query *parse, double tuple_fraction,
         cdbpath_segments = 1;
     else
     {
-        int segmentCount = getMPPSegmentCount();
+        int segmentCount = getgpsegmentCount();
 
         if (gp_segments_for_planner > 0)
             cdbpath_segments = gp_segments_for_planner;

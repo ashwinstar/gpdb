@@ -20,7 +20,7 @@
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 
-#include "cdb/cdblink.h" /* getMPPSegmentCount */
+#include "cdb/cdblink.h" /* getgpsegmentCount */
 #include "cdb/cdbllize.h"
 #include "cdb/cdbmutate.h"
 #include "cdb/cdbsetop.h"
@@ -332,7 +332,7 @@ Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 	Assert(subplan->flow != NULL);
 	Assert(subplan->flow->flotype == FLOW_PARTITIONED);
 	
-	numInputSegs =  (subplan->flow->flotype == FLOW_SINGLETON) ? 1 : getMPPSegmentCount();
+	numInputSegs =  (subplan->flow->flotype == FLOW_SINGLETON) ? 1 : getgpsegmentCount();
 	
 	flow = makeFlow(FLOW_SINGLETON);
 	flow->segindex = segindex;
@@ -403,7 +403,7 @@ Motion* make_motion_hash(PlannerInfo *root, Plan *subplan, List *hashexprs)
 	
 	Assert(subplan->flow != NULL);
 	
-	numInputSegs =  (subplan->flow->flotype == FLOW_SINGLETON) ? 1 : getMPPSegmentCount();
+	numInputSegs =  (subplan->flow->flotype == FLOW_SINGLETON) ? 1 : getgpsegmentCount();
 	
 	flow = makeFlow(FLOW_PARTITIONED);
 	flow->hashExpr = hashexprs;

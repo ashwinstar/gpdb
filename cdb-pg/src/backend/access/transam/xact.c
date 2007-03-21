@@ -65,7 +65,7 @@ int			CommitDelay = 0;	/* precommit delay in microseconds */
 int			CommitSiblings = 5; /* # concurrent xacts needed to sleep */
 
 
-/* MPP-specific
+/* gp-specific
  *
  *
 

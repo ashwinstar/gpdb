@@ -2089,7 +2089,7 @@ AtPrepare_Locks(void)
 		}
 
 		
-		/* MPP-change 
+		/* gp-change 
 		 *
 		 * We allow 2PC commit transactions to include temp objects.  
 		 * After PREPARE we WILL NOT transfer locks on the temp objects

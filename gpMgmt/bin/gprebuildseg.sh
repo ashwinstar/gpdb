@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mpprebuildseg.sh
+#	Filename:-		gprebuildseg.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Status:-		Released.
@@ -56,7 +56,7 @@ EXIT_STATUS=0
 TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
-unset START_MPPSYNC
+unset START_gpsync
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -70,11 +70,11 @@ USAGE () {
 		$ECHO "      `basename $0 `"
 		$ECHO
 		$ECHO "      Builds segment instances from information contained in a Master"
-		$ECHO "      instance that was built via use of mpprebuildcluster.sh with -m"
+		$ECHO "      instance that was built via use of gprebuildcluster.sh with -m"
 		$ECHO "      option. This allows original segment instance hostnames to be "
 		$ECHO "      changed following the Master instance rebuild"
 		$ECHO "      Script expects the master instance to be shutdown, if master active"
-		$ECHO "      use mppstop.sh -m to close down"
+		$ECHO "      use gpstop.sh -m to close down"
 		$ECHO
 		$ECHO "      Usage:"
 		$ECHO "      $0 [OPTIONS]"
@@ -113,7 +113,7 @@ START_MASTER_DB () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Expect the master database instance to be closed down, check for postmaster.pid file
 	if [ -f ${MASTER_DATA_DIRECTORY}/$PG_PID ];then
-			ERROR_EXIT "[FATAL]:-Expected Master to be shutdown, use mppstop.sh -m to shutdown master instance" 2
+			ERROR_EXIT "[FATAL]:-Expected Master to be shutdown, use gpstop.sh -m to shutdown master instance" 2
 	else
 		LOG_MSG "[INFO]:-Starting Master instance in admin mode" 1
 		if [ -f $MPPSTART ];then
@@ -133,14 +133,14 @@ START_MASTER_DB () {
 STOP_MASTER_DB () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ ! -f ${MASTER_DATA_DIRECTORY}/$PG_PID ];then
-		ERROR_EXIT "[FATAL]:-Appears Master instance is operational, shutdown with mppstop.sh -m" 2
+		ERROR_EXIT "[FATAL]:-Appears Master instance is operational, shutdown with gpstop.sh -m" 2
 	else
 		LOG_MSG "[INFO]:-Commencing shutdown of Master instance from admin mode" 1
-		if [ -f $MPPSTOP ];then
-			$MPPSTOP -qam -d $MASTER_DATA_DIRECTORY
+		if [ -f $gpstop ];then
+			$gpstop -qam -d $MASTER_DATA_DIRECTORY
 			ERROR_CHK $? "stop Master instance from admin mode" 2
 		else
-			ERROR_EXIT "[FATAL]:-Unable to locate $MPPSTOP" 2
+			ERROR_EXIT "[FATAL]:-Unable to locate $gpstop" 2
 		fi
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -314,7 +314,7 @@ DISPLAY_INFO () {
 	if [ $STANDBY_COUNT -eq 1 ];then
 	LOG_MSG "[INFO]:-Master standby host        = $MASTER_STANDBY_HOSTNAME" 1
 	fi
-	LOG_MSG "[INFO]:-To remove this instance use mppdeletecluster.sh" 1
+	LOG_MSG "[INFO]:-To remove this instance use gpdeletecluster.sh" 1
 	LOG_MSG "[INFO]:-The databases can now be restored using gp_restore" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -371,7 +371,7 @@ DISPLAY_PARAM
 BUILD_SEGMENT_INSTANCES
 START_ARRAY
 if [ $STANDBY_COUNT -eq 1 ];then
-	$MPPINITSTANDBY -s $STANDBY_MASTER_HOSTNAME -n -a
+	$gpinitSTANDBY -s $STANDBY_MASTER_HOSTNAME -n -a
 fi
 DISPLAY_INFO
 LOG_MSG "[INFO]:-End Main"

@@ -775,7 +775,7 @@ cdbpath_motion_for_join(PlannerInfo    *root,
 
         /* Replicate single rel if cheaper than redistributing both rels. */
         else if (single->ok_to_replicate &&
-                 single->bytes * getMPPSegmentCount() < single->bytes + other->bytes)
+                 single->bytes * getgpsegmentCount() < single->bytes + other->bytes)
             CdbPathLocus_MakeReplicated(&single->move_to);
 
         /* Redistribute both rels on equijoin cols. */
@@ -1089,7 +1089,7 @@ cdbpath_dedup_fixup_baserel(Path *path, CdbpathDedupFixupContext *ctx)
     /* If rel is partitioned, make a Var node for our 'gp_segment_id' attr. */
     if (CdbPathLocus_IsPartitioned(path->locus))
     {
-	    var = find_indexkey_var(ctx->root, rel, MppSegmentIdAttributeNumber);
+	    var = find_indexkey_var(ctx->root, rel, gpsegmentIdAttributeNumber);
 	    rowid_vars = lappend(rowid_vars, var);
     }
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mpprecoverseg.bsh
+#	Filename:-		gprecoverseg.bsh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Status:-		Released
@@ -58,8 +58,8 @@ PG_PID=postmaster.pid
 EXIT_STATUS=0
 FORCESTOP=0
 TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}.$$
-PARALLEL_STATUS_FILE=/tmp/mppstate_parallel_status_file.$$
-MPPSEGREC=mppsegrec.sh
+PARALLEL_STATUS_FILE=/tmp/gpstate_parallel_status_file.$$
+gpsegREC=gpsegrec.sh
 BATCH_DEFAULT=4 #Specific limit for segment recovery
 #******************************************************************************
 # Functions
@@ -131,7 +131,7 @@ GET_SETTING () {
 			LOG_MSG "[FATAL]:-The failed segment(s) with dbid's ${FAILED_INST_LIST[@]} will" 1
 			LOG_MSG "[FATAL]:-need to be recovered manually, or a complete database restore" 1
 			LOG_MSG "[FATAL]:-will need to be undertaken" 1
-			$MPPSTOP -maq
+			$gpstop -maq
 			ERROR_CHK $? "shutdown master database from admin mode" 2
 			ERROR_EXIT "[FATAL]:-No further progress can be made" 2
 		else
@@ -139,7 +139,7 @@ GET_SETTING () {
 			LOG_MSG "[WARN]:-as master database started in admin mode" 1
 			LOG_MSG "[INFO]:-Restart the database and re-run this utility to check for failures" 1
 			LOG_MSG "[INFO]:-Commencing shutdown from admin mode" 1
-			$MPPSTOP -maq
+			$gpstop -maq
 			ERROR_CHK $? "shutdown master database from admin mode" 2
 			ERROR_EXIT "[FATAL]:-No further progress can be made" 2
 		fi
@@ -225,9 +225,9 @@ GET_SETTING () {
 INFO_TEXT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-To be able to progress this issue, complete the following steps" 1
-	LOG_MSG "[INFO]:-Step 1 Shutdown the MPP instance with mppstop.sh -zfa" 1
+	LOG_MSG "[INFO]:-Step 1 Shutdown the MPP instance with gpstop.sh -zfa" 1
 	LOG_MSG "[INFO]:-Step 2 Edit the Master postgresql.conf file and set gp_fault_action=readonly" 1
-	LOG_MSG "[INFO]:-Step 3 Restart the MPP instance mppstart.sh -a" 1
+	LOG_MSG "[INFO]:-Step 3 Restart the MPP instance gpstart.sh -a" 1
 	LOG_MSG "[INFO]:-Step 4 Re-run this utility" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -403,12 +403,12 @@ TEST_ACCESS () {
 STOP_DATABASE () { 
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ $STOPDB -eq 1 ] || [ $FORCESTOP -ne 0 ]; then
-		CHK_FILE $MPPSTOP
+		CHK_FILE $gpstop
         	if [ $EXISTS -ne 0 ];then
-                	ERROR_EXIT "[FATAL]:-Could not locate $MPPSTOP script"
+                	ERROR_EXIT "[FATAL]:-Could not locate $gpstop script"
 		fi
         	LOG_MSG "[INFO]:-Shutting down the instance ... Please wait ..." 1
-        	$MPPSTOP -zfa
+        	$gpstop -zfa
 		if [ x"" == x"$FORCE_RECOVER_STRING" ];then
         		ERROR_CHK $? "shutdown master instance" 2
 		else
@@ -458,7 +458,7 @@ RECOVER_DATA () {
 			POOL_ARRAY=0
 		fi
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$MPPSEGREC $$ $FAIL_QE_HOST $FAIL_QE_PORT $FAIL_QE_DIR $FAIL_QE_DBID $FAIL_QE_CONTENTID $FAIL_QE_TOP_DIR \
+		$gpsegREC $$ $FAIL_QE_HOST $FAIL_QE_PORT $FAIL_QE_DIR $FAIL_QE_DBID $FAIL_QE_CONTENTID $FAIL_QE_TOP_DIR \
  $MIR_QE_HOST $MIR_QE_PORT $MIR_QE_DIR $MIR_QE_DBID $MIR_QE_TOP_DIR $INST_COUNT $LOG_FILE $STOPDB $FORCESTOP $POOL_ARRAY &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT 
 		((COUNT=$COUNT+1))
@@ -521,7 +521,7 @@ START_DATABASE () {
 		ERROR_CHK $? "reset dbid $DBID as valid" 1
 	done
 	LOG_MSG "[INFO]:-Commencing shutdown of the MPP instance from admin mode... Please wait..." 1
-	$MPPSTOP -m
+	$gpstop -m
 	ERROR_CHK $? "stop MPP instance from admin mode" 2
         LOG_MSG "[INFO]:-Starting up the MPP instance... Please wait..." 1
         $MPPSTART -a
@@ -529,7 +529,7 @@ START_DATABASE () {
         if [ $RETVAL -ne 0 ];then
 		LOG_MSG "[WARN]:-The $MPPSTART script returned a non zero return code" 1
 		LOG_MSG "[INFO]:-Check the $MPPSTART log file for more information on cause" 1
-		LOG_MSG "[INFO]:-Run mppstate.sh to check current status of instance" 1
+		LOG_MSG "[INFO]:-Run gpstate.sh to check current status of instance" 1
                 ERROR_EXIT "[FATAL]:-Issue with master database startup." 2
 	fi
         LOG_MSG "[INFO]:-Successfully started the master instance" 1
@@ -630,7 +630,7 @@ CHK_POOL_DIR_AVAILABLE () {
 			LOG_MSG "[INFO]:-Consider using a pool host with -p option to this utility" 1
 			LOG_MSG "[INFO]:-Or supply different directory names to -s option, if available" 1
 			LOG_MSG "[INFO]:-If host with failed segment instance still online try" 1
-			LOG_MSG "[INFO]:-mpprecoverseg.sh without any options to attempt recovery" 1
+			LOG_MSG "[INFO]:-gprecoverseg.sh without any options to attempt recovery" 1
 			LOG_MSG "[INFO]:-to original segment instance directory" 1
 			ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		else
@@ -646,7 +646,7 @@ CHK_POOL_DIR_AVAILABLE () {
 			LOG_MSG "[INFO]:-Consider using a pool host with -p option to this utility" 1
 			LOG_MSG "[INFO]:-Or supply different directory names to -s option, if available" 1
 			LOG_MSG "[INFO]:-If host with failed segment instance still online try" 1
-			LOG_MSG "[INFO]:-mpprecoverseg.sh without any options to attempt recovery" 1
+			LOG_MSG "[INFO]:-gprecoverseg.sh without any options to attempt recovery" 1
 			LOG_MSG "[INFO]:-to original segment instance directory" 1
 			ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		else
@@ -813,7 +813,7 @@ GET_HOST () {
 			LOG_MSG "[INFO]:**************************************************" 1
 			LOG_MSG "[WARN]:-Have to locate segment on partner host $PRI_HOST" 1
 			LOG_MSG "[INFO]:-If host containing failed segment instance is" 1
-			LOG_MSG "[INFO]:-still active, consider use of mpprecoverseg.sh" 1
+			LOG_MSG "[INFO]:-still active, consider use of gprecoverseg.sh" 1
 			LOG_MSG "[INFO]:-without options to attempt recovery to original" 1
 			LOG_MSG "[INFO]:-segment instance directory" 1
 			LOG_MSG "[INFO]:**************************************************" 1
@@ -821,8 +821,8 @@ GET_HOST () {
 			EXIT_STATUS=1
 		else
 			LOG_MSG "[FATAL]:-Unable to locate a pool directory host for recovery" 1
-			LOG_MSG "[INFO]:-Consider use of mpprecoverseg.sh without any options" 1
-			LOG_MSG "[INFO]:-Or use mpprecoverseg.sh -p <pool host name>" 1
+			LOG_MSG "[INFO]:-Consider use of gprecoverseg.sh without any options" 1
+			LOG_MSG "[INFO]:-Or use gprecoverseg.sh -p <pool host name>" 1
 			ERROR_EXIT "[FATAL]:-unable to continue" 2
 		fi
 	else
@@ -920,7 +920,7 @@ CHK_POOL_HOST () {
 	if [ $PRI_FREE -lt $PRI_FAIL_COUNT ];then
 		LOG_MSG "[FATAL]:-There are insufficient spare primary pool directories" 1
 		LOG_MSG "[FATAL]:-Required=$PRI_FAIL_COUNT Free=$PRI_FREE Used=${#PRI_POOL_HOST_IN_USE[@]}" 1
-		LOG_MSG "[INFO]:-Consider using mpprecoverseg.sh with -s option" 1
+		LOG_MSG "[INFO]:-Consider using gprecoverseg.sh with -s option" 1
 		ERROR_EXIT "[FATAL]:-Unable to continue" 2
 	else
 		LOG_MSG "[INFO]:-Sufficient spare primary pool directories" 1
@@ -930,7 +930,7 @@ CHK_POOL_HOST () {
 	if [ $MIR_FREE -lt $MIR_FAIL_COUNT ];then
 		LOG_MSG "[FATAL]:-There are insufficient spare mirror pool directories" 1
 		LOG_MSG "[FATAL]:-Required=$MIR_FAIL_COUNT Free=$MIR_FREE Used=${#MIR_POOL_HOST_IN_USE[@]}" 1
-		LOG_MSG "[INFO]:-Consider using mpprecoverseg.sh with -s option" 1
+		LOG_MSG "[INFO]:-Consider using gprecoverseg.sh with -s option" 1
 		ERROR_EXIT "[FATAL]:-Unable to continue" 2
 	else
 		LOG_MSG "[INFO]:-Sufficient spare mirror pool directories" 1
@@ -1046,7 +1046,7 @@ UPDATE_STATUS () {
 		((COUNT=$COUNT+1))
 	done
 	LOG_MSG "[INFO]:-Shutting down master database in utility mode" 1
-	$MPPSTOP -m
+	$gpstop -m
 LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 

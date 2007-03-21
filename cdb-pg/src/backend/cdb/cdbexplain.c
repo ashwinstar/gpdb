@@ -275,7 +275,7 @@ cdbexplain_recvExecStats(struct PlanState          *planstate,
     CdbDispatchResult      *dispatchResultEnd;
     CdbExplain_RecvStatCtx  ctx;
     MemoryContext           oldcxt;
-    int                     mppSegmentCount = getMPPSegmentCount();
+    int                     gpsegmentCount = getgpsegmentCount();
     int                     iDispatch;
     int                     nDispatch;
 
@@ -318,7 +318,7 @@ cdbexplain_recvExecStats(struct PlanState          *planstate,
                                                 hdr->enotes - hdr->bnotes ||
             pgresult->cdbStatLen != hdr->enotes ||
             hdr->segindex < -1 ||
-            hdr->segindex >= mppSegmentCount)
+            hdr->segindex >= gpsegmentCount)
         {
             ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
                             errmsg_internal("Invalid execution statistics "

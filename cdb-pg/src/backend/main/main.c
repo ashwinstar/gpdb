@@ -195,7 +195,7 @@ main(int argc, char *argv[])
     if (strcmp(get_progname(argv[0]), "gpsyncmaster") == 0)
     {
         /* Called as "postmaster" */
-        exit(MPPSyncMain(argc, argv));
+        exit(gpsyncMain(argc, argv));
     }
 	exit(PostmasterMain(argc, argv));
 }

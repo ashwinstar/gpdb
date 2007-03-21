@@ -163,21 +163,21 @@ SCRIPTDIR="`$DIRNAME $PSQLBIN`/gpMgmt/bin"
 #******************************************************************************
 # MPP Scripts
 #******************************************************************************
-MPPACTIVATEMASTER=$SCRIPTDIR/mppactivatemaster.sh
-MPPACTIVATESTANDBY=$SCRIPTDIR/mppactivatestandby.sh
-MPPADDMIRRORS=$SCRIPTDIR/mppaddmirrors.sh
-MPPCREATECLUSTER=$SCRIPTDIR/mppcreatecluster.sh
-MPPCRONDUMP=$SCRIPTDIR/mppcrondump.sh
-MPPDELETECLUSTER=$SCRIPTDIR/mppdeletecluster.sh
-MPPINITSTANDBY=$SCRIPTDIR/mppinitstandby.sh
-MPPREBUILDCLUSTER=$SCRIPTDIR/mpprebuildcluster.sh
-MPPREBUILDSEG=$SCRIPTDIR/mpprebuildseg.sh
-MPPRECOVERSEG=$SCRIPTDIR/mpprecoverseg.sh
-MPPSIZECALC=$SCRIPTDIR/mppsizecalc.sh
-MPPSKEW=$SCRIPTDIR/mppskew.sh
-MPPSTART=$SCRIPTDIR/mppstart.sh
-MPPSTATE=$SCRIPTDIR/mppstate.sh
-MPPSTOP=$SCRIPTDIR/mppstop.sh
+gpactivateMASTER=$SCRIPTDIR/gpactivatemaster.sh
+gpactivateSTANDBY=$SCRIPTDIR/gpactivatestandby.sh
+gpaddmirrorS=$SCRIPTDIR/gpaddmirrors.sh
+gpcreatecluster=$SCRIPTDIR/gpcreatecluster.sh
+gpcronDUMP=$SCRIPTDIR/gpcrondump.sh
+gpdeleteCLUSTER=$SCRIPTDIR/gpdeletecluster.sh
+gpinitSTANDBY=$SCRIPTDIR/gpinitstandby.sh
+gprebuildCLUSTER=$SCRIPTDIR/gprebuildcluster.sh
+gprebuildSEG=$SCRIPTDIR/gprebuildseg.sh
+gprecoverSEG=$SCRIPTDIR/gprecoverseg.sh
+gpsizeCALC=$SCRIPTDIR/gpsizecalc.sh
+gpskew=$SCRIPTDIR/gpskew.sh
+MPPSTART=$SCRIPTDIR/gpstart.sh
+gpstate=$SCRIPTDIR/gpstate.sh
+gpstop=$SCRIPTDIR/gpstop.sh
 MAILFILE=$SCRIPTDIR/mail_contacts
 HMAILFILE=$HOME/mail_contacts
 MPPDOCDIR=${MPPHOME}/gpMgmt/doc
@@ -192,7 +192,7 @@ PG_RESTORE=$PSQLBIN/pg_restore
 PSQL=$PSQLBIN/psql
 MPP_DUMP=$PSQLBIN/gp_dump
 MPP_RESTORE=$PSQLBIN/gp_restore
-MPPSYNCMASTER=$PSQLBIN/gpsyncmaster
+gpsyncMASTER=$PSQLBIN/gpsyncmaster
 #******************************************************************************
 # MPP OS Settings 
 #******************************************************************************
@@ -207,7 +207,7 @@ PG_CONF=postgresql.conf
 PG_HBA=pg_hba.conf
 if [ x"$TRUSTED_SHELL" = x"" ]; then TRUSTED_SHELL="$SSH"; fi
 if [ x"$TRUSTED_COPY" = x"" ]; then TRUSTED_COPY="$SCP"; fi
-PG_CONF_ADD_FILE=$WORKDIR/postgresql_conf_mpp_additions
+PG_CONF_ADD_FILE=$WORKDIR/postgresql_conf_gp_additions
 RECOVER_FLAG=/tmp/active_recovery_in_progress
 SCHEMA_FILE=cdb_schema.sql
 DEFAULTDB=template1
@@ -600,23 +600,23 @@ GET_MASTER_PORT () {
 
 CHK_ON_PASSIVE_STANDBY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MPPSYNC_COUNT=0
+	gpsync_COUNT=0
 	CHK_DB_QD_SET
 	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 	GET_PG_PID_ACTIVE $MASTER_PORT
 	if [ -f $MASTER_DATA_DIRECTORY/postmaster.opts ];then
-		MPPSYNC_COUNT=`$GREP -c mppsync $MASTER_DATA_DIRECTORY/postmaster.opts`
+		gpsync_COUNT=`$GREP -c gpsync $MASTER_DATA_DIRECTORY/postmaster.opts`
 	fi
-	if [ $PID -ne 0 ] && [ $MPPSYNC_COUNT -ne 0 ];then
+	if [ $PID -ne 0 ] && [ $gpsync_COUNT -ne 0 ];then
 		LOG_MSG "[FATAL]:-Cannot run this script on a passive standby instance" 1
 		LOG_MSG "[FATAL]:-where there is a conflict with the current value of" 1
 		LOG_MSG "[FATAL]:-the MASTER_DATA_DIRECTORY environment variable setting." 1
 		ERROR_EXIT "[FATAL]:-Unable to process requested command" 2
 	fi
-	if [ $MPPSYNC_COUNT -ne 0 ];then
+	if [ $gpsync_COUNT -ne 0 ];then
 		LOG_MSG "[FATAL]:-Cannot run this script on the standby instance" 1
 		LOG_MSG "[FATAL]:-Status indicates that standby instance processs not running" 1
-		LOG_MSG "[FATAL]:-Check standby process status via mppstate.sh -f on Master instance" 1
+		LOG_MSG "[FATAL]:-Check standby process status via gpstate.sh -f on Master instance" 1
 		ERROR_EXIT "[FATAL]:-Unable to process requested command" 2
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -1002,7 +1002,7 @@ START_SYNC_PROCESS () {
 		STOP_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY
 	fi
 	LOG_MSG "[INFO]:-Starting gpsyncmaster on standby host ${MASTER_STANDBY_HOSTNAME}" 1
-        $TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "exec $MPPSYNCMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -i  >> ${MASTER_STANDBY_DATA_DIRECTORY}.log 2>&1 &"
+        $TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "exec $gpsyncMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -i  >> ${MASTER_STANDBY_DATA_DIRECTORY}.log 2>&1 &"
 	$SLEEP 3 #Wait to ensure process has time to start
 	GET_PG_PID_ACTIVE $MASTER_STANDBY_PORT ${MASTER_STANDBY_HOSTNAME}
 	if [ $PID -eq 0 ];then

@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppcreatecluster.sh
+#	Filename:-		gpcreatecluster.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$	
 #	Status:-		Released	
@@ -42,7 +42,7 @@ TIME=`$DATE +%H%M%S`
 PROG_NAME=`$BASENAME $0`
 PROG_NAME=`$BASENAME $0`
 HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
-BACKOUT_FILE=$DEFLOGDIR/backout_mppcreatecluster_${USER_NAME}_${CUR_DATE}_$TIME
+BACKOUT_FILE=$DEFLOGDIR/backout_gpcreatecluster_${USER_NAME}_${CUR_DATE}_$TIME
 # Level of script feedback 0=small 1=verbose
 VERBOSE=1
 INTERACTIVE=1
@@ -61,15 +61,15 @@ LOG_STATEMENT_TXT="#log_statement ="
 LISTEN_ADR_TXT="listen_addresses"
 CHKPOINT_SEG_TXT="checkpoint_segments"
 LOG_STATS_TXT="stats_command_string="
-INIT_STANDBY_PROG=$MPPINITSTANDBY
+INIT_STANDBY_PROG=$gpinitSTANDBY
 START_SYNC="-1"
 QE_MIRROR_ARRAY=""
 MPP_PASSWD=mpparray
 TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
 TMP_FILE=/tmp/cluster_tmp_file.$$
 TMP_HOSTNAME_FILE=hostname_test_file.$$
-PARALLEL_STATUS_FILE=/tmp/mppcreatecluster_parallel_status_file.$$
-MPPCREATESEG=mppcreateseg.sh
+PARALLEL_STATUS_FILE=/tmp/gpcreatecluster_parallel_status_file.$$
+gpcreateSEG=gpcreateseg.sh
 ULIMIT_WARN=0
 PARALLEL_BUILD=1
 #******************************************************************************
@@ -102,12 +102,12 @@ USAGE () {
 		$ECHO "          Supplies all MPP configuration information required by this utility."
 		$ECHO "          Full description of all parameters contained within the example file"
 		$ECHO "          supplied with this distribution."
-		$ECHO "          Also see mppcreatecluster_INSTRUCTIONS file for greater detail on"
+		$ECHO "          Also see gpcreatecluster_INSTRUCTIONS file for greater detail on"
 		$ECHO "          the operation and configuration of this script"
 		$ECHO "      -h, mpp_hostlist_file [optional]"
 		$ECHO "          Contains a list of all segment instance hostnames required to participate in"
 		$ECHO "          the new MPP instance. Normally set in mpp_config_file."
-		$ECHO "      -p, postgresql_conf_mpp_additions [optional]"
+		$ECHO "      -p, postgresql_conf_gp_additions [optional]"
 		$ECHO "          List of additional PostgreSQL parameters to be applied to each Master/Segment"
 		$ECHO "          postgresql.conf file during MPP database initialization."
 		$ECHO "      -s, standby_hostname [optional]"
@@ -200,8 +200,8 @@ CHK_PARAMS () {
 		$LOCALE >> $LOG_FILE
 		LOG_MSG "[INFO]:-End of system locale dump"
 		if [ x"" != x"$PARALLEL_BUILD" ];then
-			if [ ! -f ${WORKDIR}/$MPPCREATESEG ];then
-				ERROR_EXIT "[FATAL]:-Parallel mode selected by no ${WORKDIR}/$MPPCREATESEG exists" 2
+			if [ ! -f ${WORKDIR}/$gpcreateSEG ];then
+				ERROR_EXIT "[FATAL]:-Parallel mode selected by no ${WORKDIR}/$gpcreateSEG exists" 2
 			fi
 		fi
 		#Check the other files that are required to be able to continue
@@ -985,7 +985,7 @@ CREATE_QES_PRIMARY () {
 				export QE_MAX_CONNECT
 				export QE_SHARED_BUFFERS
 				if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-				$MPPCREATESEG $$ 1 $I $INST_COUNT  $LOG_FILE \
+				$gpcreateSEG $$ 1 $I $INST_COUNT  $LOG_FILE \
 `$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
 `$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
 				PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
@@ -1029,7 +1029,7 @@ CREATE_QES_MIRROR () {
 				export QE_SHARED_BUFFERS
 				export CHECK_POINT_SEGMENTS
 				if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-				$MPPCREATESEG $$ 1 $I $INST_COUNT  $LOG_FILE \
+				$gpcreateSEG $$ 1 $I $INST_COUNT  $LOG_FILE \
 `$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
 `$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
 				PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
@@ -1110,8 +1110,8 @@ PROCESS_QE () {
 STOP_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		LOG_MSG "[INFO]:-Restarting the MPP instance in production mode" 1
-		if [ -f $MPPSTOP ]; then
-				$MPPSTOP -a -i -d $MAS_DIR
+		if [ -f $gpstop ]; then
+				$gpstop -a -i -d $MAS_DIR
 				RETVAL=$?
 				case $RETVAL in
 				0 ) LOG_MSG "[INFO]:-Successfully shutdown the new MPP instance" ;;
@@ -1120,7 +1120,7 @@ STOP_QD_PRODUCTION () {
 				2 ) ERROR_EXIT "[FATAL]:-Failed to stop new MPP instance, check log file" 2
 				esac
 		else
-				ERROR_EXIT "[FATAL]:-$MPPSTOP not located" 2
+				ERROR_EXIT "[FATAL]:-$gpstop not located" 2
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -1138,7 +1138,7 @@ CREATE_STANDBY_QD () {
 		RETCODE=$?
 		case $RETCODE in
 			0) LOG_MSG "[INFO]:-Successfully completed standby master initialization" 1 ;;
-			1) LOG_MSG "[WARN]:-Non-fatal issue with standby master initialization, check mppstate.sh -f output" 1 ;;
+			1) LOG_MSG "[WARN]:-Non-fatal issue with standby master initialization, check gpstate.sh -f output" 1 ;;
 			2) ERROR_EXIT "[FATAL]:-Initialization of standby master failed"
 		esac
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${STANDBY_HOSTNAME} \"$RM -Rf ${QD_DIR}\""
@@ -1263,7 +1263,7 @@ if [ $QD_ONLY ]; then
 		LOG_MSG "[INFO]:-----------------------------------------" 1
 		LOG_MSG "[INFO]:-Master build only completed successfully" 1
 		LOG_MSG "[INFO]:-Master segment instance operational in utility mode" 1
-		LOG_MSG "[INFO]:-To stop and start master use mppstart.sh/mppstop.sh with" 1
+		LOG_MSG "[INFO]:-To stop and start master use gpstart.sh/gpstop.sh with" 1
 		LOG_MSG "[INFO]- the -m option" 1
 		LOG_MSG "[INFO]:-Access to the master database must be done in utility mode" 1
 		LOG_MSG "[INFO]:-End Main" 
@@ -1279,7 +1279,7 @@ if [ x"" != x"$PARALLEL_BUILD" ];then
 		LOG_MSG "[INFO]:-Dumped contents of status file to the log file" 1
 		#Need to build a central backout file
 		LOG_MSG "[INFO]:-Building composite backout file" 1
-		for I in ls /tmp/mppsegcreate.sh_backout*
+		for I in ls /tmp/gpsegcreate.sh_backout*
 		do
 			$CAT $I >> $BACKOUT_FILE
 			$RM -f $I
@@ -1288,7 +1288,7 @@ if [ x"" != x"$PARALLEL_BUILD" ];then
 		ERROR_EXIT "[FATAL]:-Failures detected, see log file for more detail" 2
 	else
 		LOG_MSG "[INFO]:-Deleting distributed backout files" 1
-		for I in ls /tmp/mppsegcreate.sh_backout*
+		for I in ls /tmp/gpsegcreate.sh_backout*
 		do
 			$RM -f $I
 		done
@@ -1322,16 +1322,16 @@ LOG_MSG "[INFO]:-1. Ensure that the greenplum_path.sh file is sourced" 1
 LOG_MSG "[INFO]:-2. Add \"export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1\"" 1
 LOG_MSG "[INFO]:-   to access the MPP scripts for this instance:" 1
 LOG_MSG "[INFO]:-   or, use -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 option for the MPP scripts" 1
-LOG_MSG "[INFO]:-   Example mppstate.sh -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1" 1
+LOG_MSG "[INFO]:-   Example gpstate.sh -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1" 1
 LOG_MSG "[INFO]:-Script log file = $LOG_FILE" 1
-LOG_MSG "[INFO]:-To remove instance, run mppdeletecluster.sh script" 1
+LOG_MSG "[INFO]:-To remove instance, run gpdeletecluster.sh script" 1
 if [ x"" != x"$STANDBY_HOSTNAME" ];then
 LOG_MSG "[INFO]:-Standby Master $STANDBY_HOSTNAME has been configured" 1
 LOG_MSG "[INFO]:-To activate the Standby Master Segment in the event of Master" 1
-LOG_MSG "[INFO]:-failure review options for mppactivatestandby.sh" 1
+LOG_MSG "[INFO]:-failure review options for gpactivatestandby.sh" 1
 else
 LOG_MSG "[INFO]:-To initialize a Standby Master Segment for this MPP instance" 1
-LOG_MSG "[INFO]:-Review options for mppinitstandby.sh" 1
+LOG_MSG "[INFO]:-Review options for gpinitstandby.sh" 1
 fi
 LOG_MSG "[INFO]:-------------------------------------------------------" 1
 

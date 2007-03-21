@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppstop.sh
+#	Filename:-		gpstop.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Status:-		Released
@@ -56,8 +56,8 @@ ADMIN=0
 STOP_INVALID=0
 STANDBY_COUNT=0
 STOP_SYNC=1
-MPPSEGSTOP=mppsegstop.sh
-PARALLEL_STATUS_FILE=/tmp/mppstop_parallel_status_file.$$
+gpsegSTOP=gpsegstop.sh
+PARALLEL_STATUS_FILE=/tmp/gpstop_parallel_status_file.$$
 WAIT_LIMIT=600
 BATCH_DEFAULT=60
 #******************************************************************************
@@ -96,7 +96,7 @@ USAGE () {
 		$ECHO "      -s, Smart shutdown, wait for active transaction to complete [default]"
 		$ECHO "      -z, Force shutdown of segment instances marked as invalid. Kill postmaster PID,"
 		$ECHO "          delete /tmp lock files and remove segment instance postmaster.pid file."
-		$ECHO "      -r, Restart MPP instance after successful mppstop.sh."
+		$ECHO "      -r, Restart MPP instance after successful gpstop.sh."
 		$ECHO "      -m, Stop master instance started in maintenance mode"
 		$ECHO "      -y, Do not stop master standby process [Default stop standby process]"
 		$ECHO "      -u, upload new master postgresql.conf settings, does not stop MPP array,"
@@ -253,8 +253,8 @@ PROCESS_SHUTDOWN () {
 		CONNECTED=` env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c "select count(*) from pg_stat_activity where procpid != pg_backend_pid();"`
 		if [ $CONNECTED -gt 0 ];then
 			LOG_MSG "[WARN]:-There are other connections to this instance, shutdown mode smart aborted" 1
-			LOG_MSG "[WARN]:-Either remove connections, or use mppstop.sh -f or -i." 1
-			LOG_MSG "[WARN]:-See mppstop.sh -? for all options" 1
+			LOG_MSG "[WARN]:-Either remove connections, or use gpstop.sh -f or -i." 1
+			LOG_MSG "[WARN]:-See gpstop.sh -? for all options" 1
 			ERROR_EXIT "[FATAL]:-Shutdown options will not close instance database" 2
 		else
 			LOG_MSG "[INFO]:-No current instance connections identified, will continue with shutdown"
@@ -276,7 +276,7 @@ PROCESS_SHUTDOWN () {
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 				if [ "$QE_VALID" == "t" ] || [ $STOP_INVALID -eq 1 ];then
 					if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-					$MPPSEGSTOP $$ $STOP_INVALID $QE_NAME $QE_PORT $QE_DIR $QE_VALID $MODE $INST_COUNT $LOG_FILE &
+					$gpsegSTOP $$ $STOP_INVALID $QE_NAME $QE_PORT $QE_DIR $QE_VALID $MODE $INST_COUNT $LOG_FILE &
 					PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 				else
 					if [ $DEBUG_LEVEL -eq 0 ];then $ECHO;fi
@@ -397,8 +397,8 @@ if [ x"" != x"$RELOAD_PARAM" ];then
 	exit
 fi
 GET_QE_DETAILS
-if [ ! -f ${WORKDIR}/$MPPSEGSTOP ];then
-	ERROR_EXIT "[FATAL]:-No $MPPSEGSTOP program" 2
+if [ ! -f ${WORKDIR}/$gpsegSTOP ];then
+	ERROR_EXIT "[FATAL]:-No $gpsegSTOP program" 2
 fi
 if [ $INTERACTIVE ]; then
 		PROMPT_CONTINUE

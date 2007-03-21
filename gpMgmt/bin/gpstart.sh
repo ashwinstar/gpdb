@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppstart.sh
+#	Filename:-		gpstart.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Status:-		Released
@@ -61,9 +61,9 @@ START_INVALID=0
 STANDBY_COUNT=0
 FORCE=0
 START_SYNC=1
-STOP_PROG=$MPPSTOP
-PARALLEL_STATUS_FILE=/tmp/mppstart_parallel_status_file.$$
-MPPSEGSTART=mppsegstart.sh
+STOP_PROG=$gpstop
+PARALLEL_STATUS_FILE=/tmp/gpstart_parallel_status_file.$$
+gpsegSTART=gpsegstart.sh
 WAIT_LIMIT=600
 #******************************************************************************
 # Functions
@@ -398,7 +398,7 @@ PROCESS_STARTUP () {
 				VALID_SETTING=0
 			fi	
 			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-			$MPPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID $VALID_SETTING $INST_COUNT $LOG_FILE $QD_DBNAME &
+			$gpsegSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID $VALID_SETTING $INST_COUNT $LOG_FILE $QD_DBNAME &
 			PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 		fi
 	done
@@ -535,8 +535,8 @@ GET_DETAILS
 if [ $INTERACTIVE ]; then
 	PROMPT_CONTINUE
 fi
-if [ ! -f ${WORKDIR}/$MPPSEGSTART ];then
-	ERROR_EXIT "[FATAL]:-Parallel mode selected by no ${WORKDIR}/$MPPSEGSTART exists" 2
+if [ ! -f ${WORKDIR}/$gpsegSTART ];then
+	ERROR_EXIT "[FATAL]:-Parallel mode selected by no ${WORKDIR}/$gpsegSTART exists" 2
 fi
 PROCESS_STARTUP
 LOG_MSG "[INFO]:-End Main"

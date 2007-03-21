@@ -1102,7 +1102,7 @@ ValidatePgVersion(const char *path)
 						path),
 				 errdetail("File \"%s\" does not contain valid data.",
 						   full_path),
-				 errhint("You may need to run mpprecoversegment.sh")));
+				 errhint("You may need to run gprecoversegment.sh")));
 
 	FreeFile(file);
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppaddpart.sh
+#	Filename:-		gpaddpart.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Status:-		Released
@@ -78,7 +78,7 @@ USAGE () {
 		$ECHO "      Adds a specified number of child tables for a named parent table"
 		$ECHO "      and associated rules and indexes if in place on current child tables"
 		$ECHO "      Assumes that current child tables, rules and indexes initially created "
-		$ECHO "      via use of mppcreatepart.sh script"
+		$ECHO "      via use of gpcreatepart.sh script"
 		$ECHO
 		$ECHO "      Usage:"
 		$ECHO "      $0 [OPTIONS]"
@@ -217,7 +217,7 @@ VALIDATE_PARAMS () {
 	ERROR_CHK $? "check for child tables for $TABLE_NAME" 2
 	if [ $HAS_CHILD_TABLES != 't' ];then
 		LOG_MSG "[FATAL]:-Table $PARENT_TABLE_NAME does not have any child tables defined."  1
-		ERROR_EXIT "[FATAL]:-Use mppcreatepart.sh to create child tables" 2
+		ERROR_EXIT "[FATAL]:-Use gpcreatepart.sh to create child tables" 2
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

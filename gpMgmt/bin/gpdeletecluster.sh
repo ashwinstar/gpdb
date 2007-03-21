@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		mppdeletecluster.bsh
+#	Filename:-		gpdeletecluster.bsh
 #	Version:-		$Revision$	
 #	Updated:-		$Date$
 #	Status:-		Released
@@ -47,8 +47,8 @@ MASTER_HOSTNAME=`hostname`
 EXIT_STATUS=0
 FULL_DISPLAY=0
 FORCE=0
-PARALLEL_STATUS_FILE=/tmp/mppdeletecluster_parallel_status_file.$$
-MPPSEGDELETE=mppsegdelete.sh
+PARALLEL_STATUS_FILE=/tmp/gpdeletecluster_parallel_status_file.$$
+gpsegDELETE=gpsegdelete.sh
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -145,7 +145,7 @@ DB_DUMP_CHK () {
 	do
 		SET_VAR $DELETE_SEG
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$MPPSEGDELETE $$ 1 $DELETE_HOSTNAME $DELETE_DATADIR $INST_COUNT $LOG_FILE &
+		$gpsegDELETE $$ 1 $DELETE_HOSTNAME $DELETE_DATADIR $INST_COUNT $LOG_FILE &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
 	DUMP_FILE_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "DUMP_LOCATED"`
@@ -231,10 +231,10 @@ CHK_REPLY () {
 DELETE_CLUSTER () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Closing down instance" 1
-	if [ -f $MPPSTOP ];then
-		$MPPSTOP -zaf -d $DELETE_MASTER_DATA_DIRECTORY
+	if [ -f $gpstop ];then
+		$gpstop -zaf -d $DELETE_MASTER_DATA_DIRECTORY
 	else
-		ERROR_EXIT "[FATAL]:-Unable to locate $MPPSTOP" 2
+		ERROR_EXIT "[FATAL]:-Unable to locate $gpstop" 2
 	fi
 	LOG_MSG "[INFO]:-Deleting segment data directories, please wait..." 1
 	BATCH_LIMIT=${#QE_ARRAY[@]}
@@ -243,7 +243,7 @@ DELETE_CLUSTER () {
 	do
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		SET_VAR $DELETE_SEG
-		$MPPSEGDELETE $$ 2 $DELETE_HOSTNAME $DELETE_DATADIR $INST_COUNT $LOG_FILE &
+		$gpsegDELETE $$ 2 $DELETE_HOSTNAME $DELETE_DATADIR $INST_COUNT $LOG_FILE &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
 	COMPLETED_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "COMPLETED"`
@@ -286,7 +286,7 @@ DELETE_RO_MASTER () {
 		GET_PG_PID_ACTIVE $MASTER_PORT $FAIL_PRI_SEG
 		if [ $PID -ne 0 ];then
 			LOG_MSG "[INFO]:-Master read only host process active, calling shutdown" 1
-			$TRUSTED_SHELL $FAIL_PRI_SEG "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$MPPSTOP -d $MASTER_DATA_DIRECTORY -m"
+			$TRUSTED_SHELL $FAIL_PRI_SEG "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$gpstop -d $MASTER_DATA_DIRECTORY -m"
 		fi
 		LOG_MSG "[INFO]:-Deleting Master read only directory and log file" 1
 		$TRUSTED_SHELL $FAIL_PRI_SEG "if [ -d $MASTER_DATA_DIRECTORY ];then $RM -Rf $MASTER_DATA_DIRECTORY; $RM -f ${MASTER_DATA_DIRECTORY}.log;fi"
