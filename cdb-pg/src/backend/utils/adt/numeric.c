@@ -1969,16 +1969,22 @@ text_numeric(PG_FUNCTION_ARGS)
 	int			len;
 	char	   *s;
 	Datum		result;
+	char		ts[NUMERIC_LOCAL_DTXT];
 
 	len = (VARSIZE(str) - VARHDRSZ);
-	s = palloc(len + 1);
+	if (len > (NUMERIC_LOCAL_DTXT - 2))
+		s = palloc(len + 1);
+	else
+		s = ts;
+
 	memcpy(s, VARDATA(str), len);
 	*(s + len) = '\0';
 
 	result = DirectFunctionCall3(numeric_in, CStringGetDatum(s),
 								 ObjectIdGetDatum(0), Int32GetDatum(-1));
 
-	pfree(s);
+	if (s != ts)
+		pfree(s);
 
 	return result;
 }
@@ -2700,6 +2706,7 @@ set_var_from_str(const char *str, NumericVar *dest)
 	int			ndigits;
 	int			offset;
 	NumericDigit *digits;
+	unsigned char tdd[NUMERIC_LOCAL_DTXT];
 
 	/*
 	 * We first parse the string to extract decimal digits and determine the
@@ -2738,7 +2745,11 @@ set_var_from_str(const char *str, NumericVar *dest)
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 			  errmsg("invalid input syntax for type numeric: \"%s\"", str)));
 
-	decdigits = (unsigned char *) palloc(strlen(cp) + DEC_DIGITS * 2);
+	i = strlen(cp) + DEC_DIGITS * 2;
+	if ( i > (NUMERIC_LOCAL_DTXT - 1))
+		decdigits = (unsigned char *) palloc(i);
+	else
+		decdigits = tdd;
 
 	/* leading padding for digit alignment later */
 	memset(decdigits, 0, DEC_DIGITS);
@@ -2845,7 +2856,8 @@ set_var_from_str(const char *str, NumericVar *dest)
 		i += DEC_DIGITS;
 	}
 
-	pfree(decdigits);
+	if (decdigits != tdd)
+		pfree(decdigits);
 
 	/* Strip any leading/trailing zeroes, and normalize weight if zero */
 	strip_var(dest);
@@ -2908,7 +2920,7 @@ init_ro_var_from_num(Numeric num, NumericVar *dest)
 	dest->weight = num->n_weight;
 	dest->sign = NUMERIC_SIGN(num);
 	dest->dscale = NUMERIC_DSCALE(num);
-	dest->digits = num->n_data;
+	dest->digits = (NumericDigit *)num->n_data;
 	dest->buf = NULL;
 }
 
