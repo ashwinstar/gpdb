@@ -3,7 +3,7 @@ GREENPLUM DATABASE MANAGEMENT OVERVIEW
 **************************************************
 
 The following Greenplum Database management scripts and utilities 
-are available. All are located in $MPPHOME/mppMgmt/bin unless 
+are available. All are located in $MPPHOME/gpMgmt/bin unless 
 otherwise noted.
 
 * cperf - Verifies the baseline hardware performance of the specified 
@@ -26,7 +26,7 @@ otherwise noted.
 * mppaddmirrors.sh - Adds mirror segments to a Greenplum Database system that
                      was initially configured without mirroring.
 
-* mpp_bash_functions.sh - NOT RUN DIRECTLY. This is sourced by the other 
+* gp_bash_fuctions.sh - NOT RUN DIRECTLY. This is sourced by the other 
                           management scripts and contains global parameters 
                           and functions.
 

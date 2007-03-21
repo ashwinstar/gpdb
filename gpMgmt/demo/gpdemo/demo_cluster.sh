@@ -166,7 +166,7 @@ if [ ! -x "$MPPPATH" ]; then
     exit 1
 fi
 MPPPATH=`dirname $MPPPATH`
-MPPMGMT=$MPPPATH/../mppMgmt/bin
+MPPMGMT=$MPPPATH/../gpMgmt/bin
 if [ ! -x $MPPMGMT/mppcreatecluster.sh ]; then
     echo "No mgmt executables found for Greenplum installation in $MPPMGMT"
     exit 1
@@ -246,7 +246,7 @@ echo "" >> $CLUSTER_CONFIG
 echo "ENCODING=UNICODE" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
 echo "# Path for Greenplum mgmt utils and Greenplum binaries" >> $CLUSTER_CONFIG
-echo "PATH=$MPPHOME/bin:$MPPHOME/mppMgmt/bin:$PATH" >> $CLUSTER_CONFIG
+echo "PATH=$MPPHOME/bin:$MPPHOME/gpMgmt/bin:$PATH" >> $CLUSTER_CONFIG
 echo "LD_LIBRARY_PATH=$MPPHOME/lib:$LD_LIBRARY_PATH" >> $CLUSTER_CONFIG
 echo "export PATH" >> $CLUSTER_CONFIG
 echo "export LD_LIBRARY_PATH" >> $CLUSTER_CONFIG
