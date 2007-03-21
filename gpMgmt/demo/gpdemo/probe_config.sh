@@ -1,0 +1,107 @@
+#!/bin/bash
+
+#***********************************************************
+# Look for Greenplum executables to find path
+#***********************************************************
+if [ x"$MPPHOME" = x ]; then
+  if [ x"$BIZHOME" = x ]; then
+    echo "Neither MPPHOME or BIZHOME are set.  Set one of these variables to point to the location"
+	echo "of the Greenplum installation directory."
+    echo ""
+	exit 1
+  else
+    MPPSEARCH=$BIZHOME
+  fi
+else
+  MPPSEARCH=$MPPHOME
+fi
+
+MPPPATH=`find $MPPSEARCH -name gp_dump | tail -1`
+RETVAL=$?
+
+if [ "$RETVAL" -ne 0 ]; then
+  echo "Error attempting to find Greenplum executables in $MPPSEARCH"
+  exit 1
+fi
+
+if [ ! -x "$MPPPATH" ]; then
+  echo "No executables found for Greenplum installation in $MPPSEARCH"
+  exit 1
+fi
+MPPPATH=`dirname $MPPPATH`
+#***********************************************************
+
+#***********************************************************
+# Create a list of catalog tables to printout
+#***********************************************************
+declare -a TABLES=(mpp version_at_initdb)
+declare -a TABLESQD=(configuration mpp pgdatabase distribution_policy version_at_initdb)
+
+#***********************************************************
+# Declare the max and min port numbers to probe
+#***********************************************************
+declare -a PORTS=(5432 10001 10002 10003)
+((PORT_MIN=0))
+((PORT_MAX=3))
+
+if [ -z $MASTER_DEMO_PORT ] ; then
+    echo "set MASTER_DEMO_PORT"
+    exit 1
+fi
+
+if [ -z $DEMO_PORT_BASE ] ; then
+    echo "set DEMO_PORT_BASE"
+    exit 1
+fi
+
+
+declare -a PORTS=($MASTER_DEMO_PORT `expr $DEMO_PORT_BASE + 1` \
+    `expr $DEMO_PORT_BASE + 2` `expr $DEMO_PORT_BASE + 3 `)
+
+
+#
+# Check tables on Master
+#
+
+#echo ${PORTS[@]}
+#***********************************************************
+# Loop over all ports and all tables, printing out their
+# contents
+#***********************************************************
+for ((i=PORT_MIN; i<PORT_MAX+1; i++))
+do
+  echo "**********************************************************************"
+  echo "**********************************************************************"
+  echo "Probing segment instance at port number ${PORTS[$i]}"
+  echo "**********************************************************************"
+  echo "**********************************************************************"
+  if [ ${i} -eq 0 ]; then 
+    for table in ${TABLESQD[@]}
+    do
+        echo "Table: mpp_$table"
+        echo "**************************"
+        PGOPTIONS="-c gp_session_role=utility" $MPPPATH/psql -p ${PORTS[$i]} template1 -c  "select * from mpp_"$table
+	    RETVAL=$?
+	    if [ $RETVAL -ne 0 ]; then
+	        echo "$0 failed."
+	        exit 1
+        fi
+    done
+    fi
+
+  for table in ${TABLES[@]}
+  do
+    echo "Table: mpp_$table"
+    echo "**************************"
+    PGOPTIONS="-c gp_session_role=utility" $MPPPATH/psql -p ${PORTS[$i]} template1 -c \
+    "select * from mpp_"$table
+	RETVAL=$?
+	if [ $RETVAL -ne 0 ]; then
+	  echo "$0 failed."
+	  exit 1
+    fi
+  done
+done
+echo "**********************************************************************"
+echo "**********************************************************************"
+
