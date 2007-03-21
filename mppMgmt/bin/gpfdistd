@@ -96,21 +96,22 @@ sess = {}
 sessSem = threading.Semaphore(1)
 def findSession(TID, fname):
     global sess, sessSem
+    key = (TID, fname)
     sessSem.acquire()
     try:
-	if TID not in sess:
-	    sess[TID] = {}
-
-	if fname not in sess[TID]:
+	if key not in sess:
 	    try:
 		fd = open(fname, 'r', 1024*1024)
-		sess[TID][fname] = Session(fd, fname)
+		sess[key] = Session(fd, fname)
+		if opt['-v']: print '[INFO] initiated session', key
 	    except IOError:
 		return None
+	else:
+	    if opt['-v']: print '[INFO] joined session', key
     finally:
 	sessSem.release();
 
-    return sess[TID][fname]
+    return sess[key]
 
 
 #
@@ -131,7 +132,7 @@ class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 	    TID = self.headers.getheader('X-GP-TID')
 	    if not TID:
 		# start an non-transaction session
-		TID = 'auto-xact.' + str(GPFDistRequestHandler.counter)
+		TID = 'auto-tid.' + str(GPFDistRequestHandler.counter)
 
 	    fname = self.path
 	    if fname.find('/') == 0: fname = fname[1:]
@@ -161,8 +162,8 @@ class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 		if opt['-v']: print '  %s %d' % (fname, bytes)
 
 	    if opt['-v']: print '  %s done' % fname
-	    if TID.find('auto-xact.') == 0:
-		del sess[TID]
+	    if TID.find('auto-tid.') == 0:
+		del sess[(TID, fname)]
 
 	except socket.error, e:
 	    print 'socket error: ', str(e), 'while serving', self.path

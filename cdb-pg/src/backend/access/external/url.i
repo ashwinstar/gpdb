@@ -226,6 +226,7 @@ url_fopen(char *url, char *filename, const char *operation)
     /* this code checks for URLs or types in the 'url' and
        basicly use the real fopen() for standard files */
     bool  isGpfdistd = false;
+	char  sessionIDBuf[80];
     URL_FILE *file;
     (void)operation;
 
@@ -260,10 +261,13 @@ url_fopen(char *url, char *filename, const char *operation)
         curl_easy_setopt(file->handle.curl, CURLOPT_WRITEDATA, file);
         curl_easy_setopt(file->handle.curl, CURLOPT_VERBOSE, FALSE);
         curl_easy_setopt(file->handle.curl, CURLOPT_WRITEFUNCTION, write_callback);
-        file->x_httpheader = NULL;
-        file->x_httpheader = curl_slist_append(file->x_httpheader, "X-GP-TID: dummy gpdb guid");
-        curl_easy_setopt(file->handle.curl, CURLOPT_HTTPHEADER, file->x_httpheader);
-
+		if (isGpfdistd) 
+		{
+		    sprintf(sessionIDBuf, "X-GP-TID: %d", gp_session_id);
+            file->x_httpheader = NULL;
+    		file->x_httpheader = curl_slist_append(file->x_httpheader, sessionIDBuf);
+            curl_easy_setopt(file->handle.curl, CURLOPT_HTTPHEADER, file->x_httpheader);
+        }
         if(!multi_handle)
             multi_handle = curl_multi_init();
 
