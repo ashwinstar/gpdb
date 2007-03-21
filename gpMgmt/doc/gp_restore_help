@@ -8,7 +8,7 @@ SYNOPSIS
 
 gp_restore -gp-k=<timestamp_key> -d <database_name> [-i] [-v] 
 [-a | -s] [-c] [-h <hostname>] [-p <port>] [-U <username>] [-W] 
-[--gp-c] [--mpp-i] [--gp-d=<directoryname>] [--gp-r=<reportfile>] 
+[--gp-c] [--gp-i] [--gp-d=<directoryname>] [--gp-r=<reportfile>] 
 [--gp-l=a|p]
 
 gp_restore --help | --version
@@ -166,7 +166,7 @@ server requires password authentication.
 Use gunzip for inline decompression.
 
 
---mpp-i
+--gp-i
 
 Specifies that processing should ignore any errors that occur. Use 
 this option to continue restore processing on errors.

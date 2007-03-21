@@ -96,7 +96,7 @@ USAGE () {
 		$ECHO
 		$ECHO "      Rebuild options:"
 		$ECHO "      -s, /<directory>/<sql catalog dump file name> [mandatory]"
-		$ECHO "          example file name mpp_catalog_1_1_20060512103500"
+		$ECHO "          example file name gp_catalog_1_1_20060512103500"
 		$ECHO "      -d, <temporary data directory name> directory where a temporary database can be created"
 		$ECHO "          to allow parsing of <sql source file name> [mandatory]"
 		$ECHO "          Directory name supplied must exist."
