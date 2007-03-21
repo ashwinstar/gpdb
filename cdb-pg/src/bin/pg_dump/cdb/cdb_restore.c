@@ -229,9 +229,9 @@ static void usage(void)
 	printf(("  --mpp-i                  ignore error\n"));
 	printf(("  --gp-k=KEY              date time backup key from gp_backup run\n"));
 	printf(("  --gp-r=REPORTFILEDIR    directory where report file is placed\n"));
-	printf(("  --mpp-l=FILELOCATIONS    backup files are on (a)ll databases, (p)rimaries only (default)\n"));
+	printf(("  --gp-l=FILELOCATIONS    backup files are on (a)ll databases, (p)rimaries only (default)\n"));
 	printf(("                           or (i)ndividual segdb (must be followed with a list of dbid's\n"));
-	printf(("                           where backups are located. For example: --mpp-l=i[10,12,15]\n"));
+	printf(("                           where backups are located. For example: --gp-l=i[10,12,15]\n"));
 	
 	//printf(("\nIf no input file name is supplied, then standard input is used.\n\n"));
 	//printf(("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
@@ -297,7 +297,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 		{"gp-k", required_argument, NULL, 6},
 		{"gp-r", required_argument, NULL, 7},
 		{"gp-s", required_argument, NULL, 8},
-		{"mpp-l", required_argument, NULL, 9},
+		{"gp-l", required_argument, NULL, 9},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -620,7 +620,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 	*/		
 			case 9:
 				
-				/* mpp-l backup file location */
+				/* gp-l backup file location */
 				if ( strcasecmp( optarg, "a") == 0 ) 
 				{
 					pInputOpts->backupLocation = FILE_ON_ALL;
@@ -638,7 +638,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				}
 				else
 				{
-					mpp_err_msg(logError, pszProgName,  "invalid mpp-l option %s.  Must be a (all), p (primaries only), or i[dbid list] for \"individual\".\n", optarg);
+					mpp_err_msg(logError, pszProgName,  "invalid gp-l option %s.  Must be a (all), p (primaries only), or i[dbid list] for \"individual\".\n", optarg);
 					exit(1);
 				}
 				break;

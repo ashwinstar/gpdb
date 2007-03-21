@@ -81,7 +81,7 @@ USAGE () {
 		exit 0
 	else
 		$ECHO
-		$ECHO "      `basename $0` -c mpp_config_file [OPTIONS]"
+		$ECHO "      `basename $0` -c gp_config_file [OPTIONS]"
 		$ECHO
 		$ECHO "      Creates a new MPP instance on a Master host and a number of"
 		$ECHO "      segment instance hosts."
@@ -98,7 +98,7 @@ USAGE () {
 		$ECHO "      -D, set log output to debug level, shows all function calls"
 		$ECHO
 		$ECHO "      Configuration options:"
-		$ECHO "      -c, mpp_config_file [mandatory]"
+		$ECHO "      -c, gp_config_file [mandatory]"
 		$ECHO "          Supplies all MPP configuration information required by this utility."
 		$ECHO "          Full description of all parameters contained within the example file"
 		$ECHO "          supplied with this distribution."
@@ -106,7 +106,7 @@ USAGE () {
 		$ECHO "          the operation and configuration of this script"
 		$ECHO "      -h, mpp_hostlist_file [optional]"
 		$ECHO "          Contains a list of all segment instance hostnames required to participate in"
-		$ECHO "          the new MPP instance. Normally set in mpp_config_file."
+		$ECHO "          the new MPP instance. Normally set in gp_config_file."
 		$ECHO "      -p, postgresql_conf_gp_additions [optional]"
 		$ECHO "          List of additional PostgreSQL parameters to be applied to each Master/Segment"
 		$ECHO "          postgresql.conf file during MPP database initialization."
