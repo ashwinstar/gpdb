@@ -148,7 +148,7 @@ STOP_MASTER_DB () {
 
 GET_SEGMENT_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select mppname from $MPP_MPP_TABLE;"`
+	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select gpname from $MPP_MPP_TABLE;"`
 	ERROR_CHK $? "get master instance instance name" 2
 	REBUILD_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select hostname, port, datadir, dbid, content, definedprimary from $CONFIG_TABLE where content<>-1;"`)
 	ERROR_CHK $? "get instance segment instance details " 2

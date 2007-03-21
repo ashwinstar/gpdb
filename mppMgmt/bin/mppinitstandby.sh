@@ -182,7 +182,7 @@ CHECK_PARAM () {
 	ERROR_CHK $? "obtain IP address of standby Master host" 2
 	LOG_MSG "[INFO]:-Standby address array = ${STANDBY_IP_ADDRESS_ALL[@]}" 1
 	STANDBY_IP_ADDRESS=(`$ECHO ${STANDBY_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
-	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select mppname from $MPP_MPP_TABLE;"`
+	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select gpname from $MPP_MPP_TABLE;"`
 	ERROR_CHK $? "obtain master array name" 2
 	#Check to see if there are any other MPP host on the proposed standby host
 	IN_USE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' ;"`

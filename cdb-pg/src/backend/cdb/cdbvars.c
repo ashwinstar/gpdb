@@ -140,15 +140,15 @@ int         mpp_singleton_segindex;
 
 
 /* ----------------
- * The single row from mpp_mpp for this database is held in this variable,
+ * The single row from gp_id for this database is held in this variable,
  * which is initialized in cdbutil.c in the function
- * getMppMpp(), which is called from cdblink_setup()
+ * getGpId(), which is called from cdblink_setup()
  * for both dispatch and execute modes.
  *
  * Any code needing the  "numsegments"
  * can simply #include cdbvars.h, and use MppIdentity.numsegments
  */
-MppMpp		MppIdentity = {NULL, 0, -1, -999};
+GpId		MppIdentity = {NULL, 0, -1, -999};
 
 
 /*

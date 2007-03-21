@@ -43,7 +43,7 @@ unset VERBOSE
 # MPP database specific parameters
 MPP_USER=$USER_NAME
 # System table names
-MPP_TBL=gp_gp
+MPP_TBL=gp_id
 MPP_CONFIGURATION_TBL=gp_configuration
 unset PG_CONF_ADD_FILE
 EXIT_STATUS=0
@@ -179,10 +179,10 @@ UPDATE_MPP () {
                 U_HOST=$8
                 if [ $TYPE -eq 0 ]; then
                                 $EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
-                                PARA_EXIT $? "add $U_DBID to Master gp_gp"
+                                PARA_EXIT $? "add $U_DBID to Master gp_id"
                 else
-                                $TRUSTED_SHELL $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $MPP_TBL (mppname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" " >> $LOG_FILE 2>&1
-				PARA_EXIT $? "add $U_DBID to Master gp_gp"
+                                $TRUSTED_SHELL $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $MPP_TBL (gpname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" " >> $LOG_FILE 2>&1
+				PARA_EXIT $? "add $U_DBID to Master gp_id"
                 fi
                 LOG_MSG "[INFO][$INST_COUNT]:-Successfully updated mpp system table"
                 LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"

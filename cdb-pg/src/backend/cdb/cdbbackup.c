@@ -179,7 +179,7 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 					 errmsg("out of memory")));
 		}
 
-		getMppMpp();
+		getGpId();
 		instid = (MppIdentity.segindex == -1) ? 1 : 0;	/* dispatch node */
 		segid = MppIdentity.dbid;
 		
@@ -323,7 +323,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 	char	   *ptr;
 	bool		is_compress;
 
-	getMppMpp();
+	getGpId();
 	instid = (MppIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
 	segid = MppIdentity.dbid;
 
@@ -962,7 +962,7 @@ formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_com
 	int			len;
 	char	   *pszBackupFileName;
 
-	getMppMpp();
+	getGpId();
 	instid = (MppIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
 	segid = MppIdentity.dbid;
 
@@ -1026,7 +1026,7 @@ formStatusFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool bIsBac
 	int			len;
 	char	   *pszFileName;
 
-	getMppMpp();
+	getGpId();
 	instid = (MppIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
 	segid = MppIdentity.dbid;
 

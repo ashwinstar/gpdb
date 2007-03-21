@@ -105,17 +105,17 @@ extern CdbComponentDatabases *getCdbComponentDatabases(void);
 extern void freeCdbComponentDatabases(CdbComponentDatabases *pDBs);
 
 /*
- * getMppMpp() causes the gp_gp table's singleton row to be read into a global structure
+ * getGpId() causes the gp_id table's singleton row to be read into a global structure
  * This is called from cdblink_setup().
  * The global variable is declared in cdbvars.h and defined in cdbvars.c.
  */
-extern void getMppMpp(void);
+extern void getGpId(void);
 
 /*
- * freeMppMpp() causes the global variable holding the gp_gp table's singleton row to be
+ * freeGpId() causes the global variable holding the gp_id table's singleton row to be
  * reinitialized to empty, releasing memory that was allocated when it was loaded.
  */
-extern void freeMppMpp(void);
+extern void freeGpId(void);
 
 
 #endif   /* CDBUTIL_H */

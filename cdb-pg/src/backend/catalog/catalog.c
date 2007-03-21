@@ -265,7 +265,7 @@ IsSharedRelation(Oid relationId)
 		relationId == SharedDependRelationId ||
 		relationId == TableSpaceRelationId ||
 		relationId == GpConfigurationRelationId ||
-		relationId == GpGpRelationId ||
+		relationId == GpIdRelationId ||
 		relationId == GpVersionRelationId ||
 		relationId == ResQueueRelationId)
 		return true;

@@ -51,7 +51,7 @@ INST_COUNT=0
 # MPP database specific parameters
 MPP_USER=$USER_NAME
 # System table names
-MPP_TBL=gp_gp
+MPP_TBL=gp_id
 MPP_CONFIGURATION_TBL=gp_configuration
 unset PG_CONF_ADD_FILE
 EXIT_STATUS=0
@@ -953,9 +953,9 @@ UPDATE_MPP () {
 		U_HOST=$8
 		if [ $TYPE -eq 0 ]; then
 				$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
-				ERROR_CHK $? "add $U_DBID to Master gp_gp" 2
+				ERROR_CHK $? "add $U_DBID to Master gp_id" 2
 		else
-				RUN_COMMAND_REMOTE $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $MPP_TBL (mppname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
+				RUN_COMMAND_REMOTE $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $MPP_TBL (gpname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
 		fi	
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to update mpp system table" 2

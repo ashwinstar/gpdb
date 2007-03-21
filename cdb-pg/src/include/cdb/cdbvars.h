@@ -482,20 +482,20 @@ extern int cdb_max_slices;
 /* --------------------------------------------------------------------------------------------------
  * Structure for row of mpp.mpp table
  */
-typedef struct MppMpp
+typedef struct GpId
 {
-	char	   *mppname;		/* array of SegmentDatabaseInfo's for segment
+	char	   *gpname;		/* array of SegmentDatabaseInfo's for segment
 								 * databases */
 	int4		numsegments;	/* count of distinct segindexes */
 	int4		dbid;			/* the dbid of this database */
 	int4		segindex;		/* content indicator: -1 for entry database,
 								 * 0, ..., n-1 for segment database */
-} MppMpp;
+} GpId;
 
 /* --------------------------------------------------------------------------------------------------
  * Global variable declaration for the data for the single row of mpp.mpp table
  */
-extern MppMpp MppIdentity;
+extern GpId MppIdentity;
 
 
 /* Stores the listener port that this process uses to listen for incoming

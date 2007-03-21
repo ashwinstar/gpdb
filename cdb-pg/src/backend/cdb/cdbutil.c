@@ -54,7 +54,7 @@ static char **segment_ip_cache = NULL;
 static int segment_ip_cache_limit = 0;
 
 /*
- * getMppMpp() causes the gp_mpp table's singleton row to be read into a global structure
+ * getGpId() causes the gp_id table's singleton row to be read into a global structure
  * This is called from cdblink_setup().
  * The global variable is named MppIdentity, and is declared in cdbvars.h and defined in cdbvars.c.
  * There is one member variable that is a string.  It is allocated from the TopMemoryContext
@@ -62,19 +62,19 @@ static int segment_ip_cache_limit = 0;
  * This call is made whether the database is an entry database or a segment database.
  */
 void
-getMppMpp(void)
+getGpId(void)
 {
-	Relation	gp_gp_rel;
-	HeapTuple	gp_gp_tuple = NULL;
-	HeapScanDesc gp_gp_scan;
+	Relation	gp_id_rel;
+	HeapTuple	gp_id_tuple = NULL;
+	HeapScanDesc gp_id_scan;
 	bool		isNull;
 	Datum		attr;
-	Name		mppname;
+	Name		gpname;
 	MemoryContext oldContext;
 	MemoryContext permanentContext = TopMemoryContext;
 
 	if (Mpp_role == MPP_ROLE_UTILITY)
-		elog(DEBUG1, "WARNING: called getMppMpp when in utility mode");
+		elog(DEBUG1, "WARNING: called getGpId when in utility mode");
 
 	if (Mpp_role == MPP_ROLE_DISPATCH && Mpp_segment < -1)
 		Mpp_segment = -1;
@@ -82,31 +82,31 @@ getMppMpp(void)
 	/*
 	 * Release storage for the cdbname if not NULL
 	 */
-	if (MppIdentity.mppname != NULL)
+	if (MppIdentity.gpname != NULL)
 	{
-		pfree(MppIdentity.mppname);
-		MppIdentity.mppname = NULL;
+		pfree(MppIdentity.gpname);
+		MppIdentity.gpname = NULL;
 	}
 
 	/*
 	 * Open the mpp table relation
 	 */
-	gp_gp_rel = heap_open(GpGpRelationId, AccessShareLock);
+	gp_id_rel = heap_open(GpIdRelationId, AccessShareLock);
 
 	/*
-	 * Read the one row table gp_mpp.
+	 * Read the one row table gp_id.
 	 * We currently require that this be there or else we ereport an ERROR.
 	 */
-	gp_gp_scan = heap_beginscan(gp_gp_rel, SnapshotNow, 0, NULL);
-	gp_gp_tuple = heap_getnext(gp_gp_scan, ForwardScanDirection);
-	if (!HeapTupleIsValid(gp_gp_tuple))
+	gp_id_scan = heap_beginscan(gp_id_rel, SnapshotNow, 0, NULL);
+	gp_id_tuple = heap_getnext(gp_id_scan, ForwardScanDirection);
+	if (!HeapTupleIsValid(gp_id_tuple))
 	{
 		ereport(WARNING,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
 				 errmsg("No rows found in pg_catalog.%s.",
-						GpGpRelationName)));
-		heap_endscan(gp_gp_scan);
-		heap_close(gp_gp_rel, AccessShareLock);
+						GpIdRelationName)));
+		heap_endscan(gp_id_scan);
+		heap_close(gp_id_rel, AccessShareLock);
 		return;
 	}
 
@@ -115,47 +115,47 @@ getMppMpp(void)
 	 */
 
 	/*
-	 * mppname
+	 * gpname
 	 */
-	attr = heap_getattr(gp_gp_tuple, Anum_gp_gp_mppname, gp_gp_rel->rd_att, &isNull);
+	attr = heap_getattr(gp_id_tuple, Anum_gp_id_gpname, gp_id_rel->rd_att, &isNull);
 	Assert(!isNull);
-	mppname = DatumGetName(attr);
+	gpname = DatumGetName(attr);
 
 	/*
 	 * Switch to the TopMemoryContext for the cdbname, so it lasts for the life
-	 * of the connection.  It is released in freeMppMpp, which is called from
+	 * of the connection.  It is released in freeGpId, which is called from
 	 * cdblink_disconnect().
 	 */
 	oldContext = MemoryContextSwitchTo(permanentContext);
-	MppIdentity.mppname = pstrdup(mppname->data);
+	MppIdentity.gpname = pstrdup(gpname->data);
 	MemoryContextSwitchTo(oldContext);
 
 	/*
 	 * numsegments
 	 */
-	attr = heap_getattr(gp_gp_tuple, Anum_gp_gp_numsegments, gp_gp_rel->rd_att, &isNull);
+	attr = heap_getattr(gp_id_tuple, Anum_gp_id_numsegments, gp_id_rel->rd_att, &isNull);
 	Assert(!isNull);
 	MppIdentity.numsegments = DatumGetInt16(attr);
 
 	/*
 	 * dbid
 	 */
-	attr = heap_getattr(gp_gp_tuple, Anum_gp_gp_dbid, gp_gp_rel->rd_att, &isNull);
+	attr = heap_getattr(gp_id_tuple, Anum_gp_id_dbid, gp_id_rel->rd_att, &isNull);
 	Assert(!isNull);
 	MppIdentity.dbid = DatumGetInt16(attr);
 
 	/*
 	 * content
 	 */
-	attr = heap_getattr(gp_gp_tuple, Anum_gp_gp_content, gp_gp_rel->rd_att, &isNull);
+	attr = heap_getattr(gp_id_tuple, Anum_gp_id_content, gp_id_rel->rd_att, &isNull);
 	Assert(!isNull);
 	MppIdentity.segindex = DatumGetInt16(attr);
 
 	/*
 	 * End the heapscan and close the relation that we opened.
 	 */
-	heap_endscan(gp_gp_scan);
-	heap_close(gp_gp_rel, AccessShareLock);
+	heap_endscan(gp_id_scan);
+	heap_close(gp_id_rel, AccessShareLock);
 
 	/*
 	 * Validate the gp_role against the content.
@@ -178,14 +178,14 @@ getMppMpp(void)
 			Mpp_segment = MppIdentity.segindex;
 			ereport(WARNING,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					 errmsg("Mpp_Mpp segindex not same as Mpp_segment."
+					 errmsg("gp_id segindex not same as Mpp_segment."
 						 )));
 		}
 		else
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					 errmsg("gp_mpp segindex not same as Mpp_segment."
+					 errmsg("gp_id segindex not same as Mpp_segment."
 						 )));
 		}
 	}
@@ -193,17 +193,17 @@ getMppMpp(void)
 }
 
 /*
- * freeMppMpp() causes the global variable holding the gp_mpp table's singleton row to be
+ * freeGpId() causes the global variable holding the gp_id table's singleton row to be
  * reinitialized to empty, releasing memory that was allocated when it was loaded.
  * It is called from cdblink_disconnect().
  */
 void
-freeMppMpp(void)
+freeGpId(void)
 {
-	if (MppIdentity.mppname != NULL)
+	if (MppIdentity.gpname != NULL)
 	{
-		pfree(MppIdentity.mppname);
-		MppIdentity.mppname = NULL;
+		pfree(MppIdentity.gpname);
+		MppIdentity.gpname = NULL;
 	}
 
 	if (Mpp_role == MPP_ROLE_DISPATCH && segment_ip_cache != NULL)
@@ -473,7 +473,7 @@ getCdbComponentInfo(void)
 	}
 
 
-	if (MppIdentity.numsegments <= 0)	/* gp_mpp not available or not read in yet */
+	if (MppIdentity.numsegments <= 0)	/* gp_id not available or not read in yet */
 	{
 		MppIdentity.numsegments = component_databases->total_segments;
 		MppIdentity.segindex = -1;
@@ -488,7 +488,7 @@ getCdbComponentInfo(void)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
 				 errmsg("MPP number of segments inconsistency: count is %d from pg_catalog.%s table, but %d from getCdbComponentDatabases()",
-						getMPPSegmentCount(),  GpGpRelationName, component_databases->total_segments)));
+						getMPPSegmentCount(),  GpIdRelationName, component_databases->total_segments)));
 	}
 
 	/*
@@ -507,7 +507,7 @@ getCdbComponentInfo(void)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
-				 errmsg("Cannot locate entry database represented by gp_mpp row in gp_configuration: dbid %d content %d",
+				 errmsg("Cannot locate entry database represented by gp_id row in gp_configuration: dbid %d content %d",
 						MppIdentity.dbid, Mpp_segment)));
 	}
 

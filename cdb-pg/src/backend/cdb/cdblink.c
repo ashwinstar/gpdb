@@ -69,7 +69,7 @@ cdblink_setup(void)
 	if (Mpp_role == MPP_ROLE_UTILITY)
 		return;
 
-	getMppMpp();
+	getGpId();
 
 	return;
 }
@@ -120,7 +120,7 @@ getMPPSegmentCount(void)
 			return 0;
 		}
 
-		elog(DEBUG1, "getMPPSegmentCount called when Mpp_role == utility, but is relying on gp_gp info");
+		elog(DEBUG1, "getMPPSegmentCount called when Mpp_role == utility, but is relying on gp_id info");
 		/* log_backtrace(); */
 
 	}
@@ -132,14 +132,14 @@ getMPPSegmentCount(void)
 			elog(DEBUG5, "getMPPSegmentCount called when Mpp_role == execute. returning zero segments.");
 			return 0;
 		}
-		elog(DEBUG1, "getMPPSegmentCount called when Mpp_role == execute, but is relying on gp_gp info");
+		elog(DEBUG1, "getMPPSegmentCount called when Mpp_role == execute, but is relying on gp_id info");
 		/* log_backtrace(); */
 	}
 	/* Assert( Mpp_role != MPP_ROLE_EXECUTE ); */
 
 	if (MppIdentity.numsegments <= 0)
 	{
-		elog(LOG, "getMPPSegmentCount called BEFORE gp_gp record has been read in.");
+		elog(LOG, "getMPPSegmentCount called BEFORE gp_id record has been read in.");
 		/* log_backtrace(); */
 	}
 

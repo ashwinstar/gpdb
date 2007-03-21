@@ -159,7 +159,7 @@ PARSE_SQL_FILE () {
 	MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select port from $CONFIG_TABLE where content=-1 and dbid=1;"`
 	if [ $? -ne 0 ] || [ ! $MASTER_PORT ];then STOP_BUILD=1;MASTER_PORT=FAILED;fi
 	LOG_MSG "[INFO]:-Obtained Master instance port $MASTER_PORT" 1
-	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select mppname from $MPP_MPP_TABLE ;"`
+	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select gpname from $MPP_MPP_TABLE ;"`
 	if [ $? -ne 0 ] || [ ! "$MASTER_MPP_NAME" ];then STOP_BUILD=1;MASTER_MPP_NAME=FAILED;fi
 	LOG_MSG "[INFO]:-Obtained Master instance array name $MASTER_MPP_NAME" 1
 	REBUILD_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select hostname, port, datadir, dbid, content, definedprimary from $CONFIG_TABLE where content<>-1;"`)
