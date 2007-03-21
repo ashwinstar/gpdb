@@ -341,7 +341,7 @@ bool GetCDBBaseTableArray(PGconn* pConn, CDBBaseTableArray* pTableAr)
 							"	c.relname,"  
 							"	n.nspname"
 							"	FROM"
-							"	mpp_distribution_policy p,"
+							"	gp_distribution_policy p,"
 							"	pg_class c,"
 							"	pg_namespace n"
 							"	WHERE"
@@ -355,7 +355,7 @@ bool GetCDBBaseTableArray(PGconn* pConn, CDBBaseTableArray* pTableAr)
 
 	if ( pRes == NULL || PQresultStatus(pRes) != PGRES_TUPLES_OK )
 	{
-		mpp_err_msg("ERROR", "mpp_table","query to obtain list of MPP managed tables failed : %s",
+		mpp_err_msg("ERROR", "mpp_table","query to obtain list of Greenplum managed tables failed : %s",
 				  PQerrorMessage(pConn));
 		goto cleanup;
 	}
@@ -364,7 +364,7 @@ bool GetCDBBaseTableArray(PGconn* pConn, CDBBaseTableArray* pTableAr)
     /*
 	if (ntups <= 0)
 	{
-		write_err_msg("no MPP managed tables for database \"%s\"\n", pszDBName);
+		write_err_msg("no Greenplum managed tables for database \"%s\"\n", pszDBName);
 		goto cleanup;
 	}
     */
@@ -445,7 +445,7 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
 	pRes = PQexec(pConn, pQry->data);
 	if ( pRes == NULL || PQresultStatus(pRes) != PGRES_TUPLES_OK )
 	{
-		mpp_err_msg("ERROR", "mpp_table""query to obtain list of MPP segment databases failed : %s",
+		mpp_err_msg("ERROR", "mpp_table""query to obtain list of Greenplum segment databases failed : %s",
 				  PQerrorMessage(pConn));
 		goto cleanup;
 	}
@@ -453,7 +453,7 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
 	ntups = PQntuples(pRes);
 	if (ntups <= 0)
 	{
-		mpp_err_msg("ERROR", "mpp_table""no MPP segment databases for database \"%s\"\n", pszDBName);
+		mpp_err_msg("ERROR", "mpp_table""no Greenplum segment databases for database \"%s\"\n", pszDBName);
 		goto cleanup;
 	}
 	

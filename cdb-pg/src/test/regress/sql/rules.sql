@@ -768,7 +768,7 @@ drop table cchild;
 --
 -- Check that ruleutils are working
 --
-SELECT viewname, definition FROM pg_views WHERE schemaname <> 'information_schema' AND viewname <> 'pg_roles' AND viewname <> 'mpp_pgdatabase' AND viewname <> 'pg_locks' ORDER BY viewname;
+SELECT viewname, definition FROM pg_views WHERE schemaname <> 'information_schema' AND viewname <> 'pg_roles' AND viewname <> 'gp_pgdatabase' AND viewname <> 'pg_locks' ORDER BY viewname;
 
 SELECT tablename, rulename, definition FROM pg_rules 
 	ORDER BY tablename, rulename;

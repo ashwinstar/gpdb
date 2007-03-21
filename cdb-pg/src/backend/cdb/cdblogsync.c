@@ -114,7 +114,7 @@ cdb_sync_command(const char *cmd)
 		case SYNC_CHECK:
 			/*
 			 * check do nothing, this is used to determine postmaster or
-			 * mppsyncmaster
+			 * gpsyncmaster
 			 */
 			break;
 		case SYNC_CLOSE:
@@ -251,7 +251,7 @@ getCmdArgs(const char *cmdArgs)
 		return;
 	} while (0);
 
-	elog(ERROR, "mppsyncmaster: Cannot parse cmd args '%s'", cmdArgs);
+	elog(ERROR, "gpsyncmaster: Cannot parse cmd args '%s'", cmdArgs);
 	return;
 }
 

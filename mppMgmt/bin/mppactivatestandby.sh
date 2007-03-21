@@ -88,8 +88,8 @@ USAGE () {
 		$ECHO
 		$ECHO "      Standby activation options:"
 		$ECHO "      -d, <standby MASTER_DATA_DIRECTORY> [mandatory]"
-		$ECHO "      -f, force activation if mppsyncmaster process not running [optional]"
-		$ECHO "          Only use this option if it is known that the mppsyncmaster process is not"
+		$ECHO "      -f, force activation if gpsyncmaster process not running [optional]"
+		$ECHO "          Only use this option if it is known that the gpsyncmaster process is not"
 		$ECHO "          running AND the standby master segment is upto date AND consistent"
 		$ECHO "      -c, <new standby master hostname> create a new standby master instance following"
 		$ECHO "          successful activation of the standby master instance"
@@ -141,13 +141,13 @@ CHECK_PARAM () {
 	if [ $EXISTS -eq 1 ];then
 		ERROR_EXIT "[FATAL]:-Directory $MASTER_STANDBY_DATA_DIRECTORY does not exist on $MASTER_STANDBY_HOSTNAME" 2
 	fi
-	#Check to see if the mppsyncmaster process is active
+	#Check to see if the gpsyncmaster process is active
 	CHK_FILE $MASTER_STANDBY_DATA_DIRECTORY/$PG_PID
 	if [ $EXISTS -ne 0 ];then
 		if [ $FORCE_ACTIVATE -eq 1 ];then
-			LOG_MSG "[WARN]:-Forcing standby master activation, even though mppsyncmaster process not running"
+			LOG_MSG "[WARN]:-Forcing standby master activation, even though gpsyncmaster process not running"
 		else
-			ERROR_EXIT "[FATAL]:-No mppsyncmaster process running on $MASTER_STANDBY_HOSTNAME" 2
+			ERROR_EXIT "[FATAL]:-No gpsyncmaster process running on $MASTER_STANDBY_HOSTNAME" 2
 		fi
 	fi	
 	if [ ! -f $MPPSTART ];then ERROR_EXIT "[FATAL $MPPSTART does not exist" 2;fi
@@ -166,7 +166,7 @@ STOP_MPPSYNC_PROCESS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	STOP_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY
 	if [ $RETVAL -ne 0 ] && [ $FORCE_ACTIVATE -eq 0 ] ;then
-		ERROR_EXIT "[FATAL]:-Failed to shutdown mppsyncmaster process" 2;fi
+		ERROR_EXIT "[FATAL]:-Failed to shutdown gpsyncmaster process" 2;fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 

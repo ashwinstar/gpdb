@@ -16,10 +16,10 @@
 
 SET log_min_messages = WARNING;
 
-CREATE VIEW mpp_pgdatabase AS 
+CREATE VIEW gp_pgdatabase AS 
     SELECT *
-      FROM mpp_pgdatabase() AS L(dbid smallint, isprimary boolean, content smallint, valid boolean, definedprimary boolean);
+      FROM gp_pgdatabase() AS L(dbid smallint, isprimary boolean, content smallint, valid boolean, definedprimary boolean);
 
-GRANT SELECT ON mpp_pgdatabase TO PUBLIC;
+GRANT SELECT ON gp_pgdatabase TO PUBLIC;
 
 RESET log_min_messages;

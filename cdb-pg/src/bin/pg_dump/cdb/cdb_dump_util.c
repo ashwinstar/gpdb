@@ -766,7 +766,7 @@ parseDbidSet(int *dbidset, char *dump_set)
 	   dump_set[1] != '[' || 
 	   dump_set[len - 1] != ']')
 	{
-		mpp_err_msg("ERROR", "mpp_dump", "invalid dump set format in %s\n", dump_set);
+		mpp_err_msg("ERROR", "gp_dump", "invalid dump set format in %s\n", dump_set);
 		return -1;		
 	}
 	
@@ -782,7 +782,7 @@ parseDbidSet(int *dbidset, char *dump_set)
 		/* illigal dbid */
 		if(dbid < 1)
 		{
-			mpp_err_msg("ERROR", "mpp_dump", "Invalid dump set entry. Each entry must be separeted by comma and be greater than 0\n");
+			mpp_err_msg("ERROR", "gp_dump", "Invalid dump set entry. Each entry must be separeted by comma and be greater than 0\n");
 			return -1;
 		}
 		

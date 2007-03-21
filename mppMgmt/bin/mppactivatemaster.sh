@@ -113,8 +113,8 @@ UNKNOWN_OPTION () {
 CHECK_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	MASTER_HOSTNAME=`$HOSTNAME`
-	#Check that we don't have an mppsyncmaster process running on this host
-	if [ `$GREP -c mppsyncmaster $MASTER_DATA_DIRECTORY/$PG_OPT` -eq 1 ] && [ -f $MASTER_DATA_DIRECTORY/$PG_PID ]
+	#Check that we don't have an gpsyncmaster process running on this host
+	if [ `$GREP -c gpsyncmaster $MASTER_DATA_DIRECTORY/$PG_OPT` -eq 1 ] && [ -f $MASTER_DATA_DIRECTORY/$PG_PID ]
 	then
 		ERROR_EXIT "[FATAL]:-Sync master process still active on this host" 2
 	fi

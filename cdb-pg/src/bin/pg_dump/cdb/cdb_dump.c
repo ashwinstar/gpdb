@@ -91,7 +91,7 @@ static int nThreadsFinishedLaunch;
 static pthread_cond_t MyCondVar = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t MyMutex = PTHREAD_MUTEX_INITIALIZER;
 static bool g_b_SendCancelMessage = false;
-static const char* pszAgent = "mpp_dump_agent";
+static const char* pszAgent = "gp_dump_agent";
 
 int main( int argc, char** argv)
 {
@@ -169,7 +169,7 @@ cleanup:
 
 /*
  * addPassThroughParm: this function adds to the string of pass-through parameters.  
- * These get sent to each backend and get passed to the mpp_dump_agent program.
+ * These get sent to each backend and get passed to the gp_dump_agent program.
  */
 char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughParmString )
 {
@@ -487,7 +487,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("mpp_dump (Greenplum Database) " PG_VERSION);
+			puts("gp_dump (Greenplum Database) " PG_VERSION);
 			goto cleanup;
 		}
 	}
@@ -570,7 +570,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
 				break;
 				
-/* Invalid for mpp_dump.
+/* Invalid for gp_dump.
 			case 'f':
 				iopt->filename = optarg;
 				break;
@@ -622,7 +622,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
 				break;
 
-/* Invalid for mpp_dump.
+/* Invalid for gp_dump.
 			case 'S':			
 				pInputOpts->pszOutputSuperuser = strdup(optarg);
 				break;
@@ -703,7 +703,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
                  /* temporary disabled
 				if ( bSawCDB_S_Option )
 				{
-					// Ignore mpp_s option
+					// Ignore gp_s option
 					mpp_msg( logInfo, pszProgName, "ignoring the mpp-s option, since the mpp-cf option is set.\n");
 				}
 				
@@ -898,7 +898,7 @@ void help(const char *pszProgName)
 	//printf(("  -f, --file=FILENAME      output file name\n"));
 	//printf(("  -F, --format=c|t|p       output file format (custom, tar, plain text)\n"));
 	printf(("  -i, --ignore-version     proceed even when server version mismatches\n"
-			 "                           mpp_dump version\n"));
+			 "                           gp_dump version\n"));
 	printf(("  -v, --verbose            verbose mode\n"));
 	//printf(("  -Z, --compress=0-9       compression level for compressed formats\n"));
 	printf(("  --help                   show this help, then exit\n"));
@@ -1102,9 +1102,9 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
 	
 	/* See whether we can create the file in the report directory */
 	if ( pszReportDirectory[ strlen(pszReportDirectory) - 1] != '/'  )
-		pszFormat = "%s/mpp_dump_%s.rpt";
+		pszFormat = "%s/gp_dump_%s.rpt";
 	else
-		pszFormat = "%smpp_dump_%s.rpt";
+		pszFormat = "%sgp_dump_%s.rpt";
 	
 	pszReportPathName = MakeString( pszFormat, pszReportDirectory, pParmAr->pData[0].pOptionsData->pszKey );
 	
@@ -1124,7 +1124,7 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
 	appendPQExpBuffer(reportBuf, "\nGreenplum Database Backup Report\n" );
 	appendPQExpBuffer(reportBuf, "Timestamp Key: %s\n", pParm0->pOptionsData->pszKey );
 
-	appendPQExpBuffer(reportBuf, "mpp_dump Command Line: %s\n",  
+	appendPQExpBuffer(reportBuf, "gp_dump Command Line: %s\n",  
 			StringNotNull( pParm0->pOptionsData->pszCmdLineParms, "None" ) );
 
 	appendPQExpBuffer(reportBuf, "Pass through Command Line Options: %s\n",  
@@ -1293,9 +1293,9 @@ void spinOffThreads(PGconn* pConn,
 }
 
 /* threadProc: This function is used to connect to one database that needs to be backed up,
- * make a mpp_backup_launch call to cause the backup process to begin on the instance hosting the
+ * make a gp_backup_launch call to cause the backup process to begin on the instance hosting the
  * database.  Then it waits for notifications from the process.  It receives a notification
- * wnenever the mpp_dump_agent process writes a row into the mpp_backup_status table.  This happens
+ * wnenever the gp_dump_agent process writes a row into the gp_backup_status table.  This happens
  * when the process starts, when it attains the SET_SERIALIZABLE state, and when it finishes.
  */
 void* threadProc(void *arg)
@@ -1359,9 +1359,9 @@ void* threadProc(void *arg)
 	if ( pSegDB->pszDBPswd != NULL && *pSegDB->pszDBPswd != '\0' )
 		pszPassThroughCredentials = DataToBase64( pSegDB->pszDBPswd, strlen(pSegDB->pszDBPswd) );
 	
-	/* form an mpp_backup_launch statement */
+	/* form an gp_backup_launch statement */
 	Qry = createPQExpBuffer();
-	appendPQExpBuffer( Qry, "SELECT * FROM mpp_backup_launch('%s', '%s', '%s', '%s', '%s')", 
+	appendPQExpBuffer( Qry, "SELECT * FROM gp_backup_launch('%s', '%s', '%s', '%s', '%s')", 
 					StringNotNull( pInputOpts->pszBackupDirectory, ""), 
 					pszKey, 
 					StringNotNull( pInputOpts->pszCompressionProgram, ""), 
@@ -1372,7 +1372,7 @@ void* threadProc(void *arg)
 	if ( pszPassThroughCredentials != NULL )
 		free( pszPassThroughCredentials );
  	
-	/* Execute mpp_backup_launch. This will start an mpp_dump agent */
+	/* Execute gp_backup_launch. This will start an gp_dump agent */
 	pRes = PQexec(pConn, Qry->data ); 
 	
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK || PQntuples(pRes) == 0 )

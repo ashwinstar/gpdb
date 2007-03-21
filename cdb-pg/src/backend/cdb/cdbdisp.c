@@ -414,7 +414,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 			ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
 							errmsg("dispatchToGang: failed to create thread %d of %d", i + 1, newThreads),
 							errdetail("pthread_create() failed with err %d", pthread_err),
-							errhint("mpp_connections_per_thread controls the number of threads created during MPP dispatch, current setting is %d increase the setting to spawn fewer threads", mpp_connections_per_thread)));
+							errhint("mpp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", mpp_connections_per_thread)));
 		}
 
 	}

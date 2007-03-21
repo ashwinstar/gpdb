@@ -130,7 +130,7 @@ OBTAIN_PARAM () {
 DB_DUMP_CHK () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Checking Master instance for dump files"
-	DUMP_COUNT=`$FIND $MASTER_DATA_DIRECTORY -name 'mpp_dump*' -print|$WC -l`
+	DUMP_COUNT=`$FIND $MASTER_DATA_DIRECTORY -name 'gp_dump*' -print|$WC -l`
 	if [ $DUMP_COUNT -ne 0 ] && [ $FORCE -eq 0 ];then
 		LOG_MSG "[FATAL]:-Located possible database dump file on Master instance host" 1
 		LOG_MSG "[FATAL]:-In directory $MASTER_DATA_DIRECTORY"1

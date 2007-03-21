@@ -7743,7 +7743,7 @@ StoreExternalRelation(Oid tbloid, Datum locations, Datum formatopts, char format
 	MemSet(nulls, ' ', sizeof(nulls));
 	
     /*
-     * Open and lock the mpp_distribution_policy catalog.
+     * Open and lock the gp_distribution_policy catalog.
      */
 	pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
 	
@@ -7760,7 +7760,7 @@ StoreExternalRelation(Oid tbloid, Datum locations, Datum formatopts, char format
 	CatalogUpdateIndexes(pg_exttable_rel, pg_exttable_tuple);
 	
 	/*
-     * Close the mpp_distribution_policy relcache entry without unlocking.
+     * Close the gp_distribution_policy relcache entry without unlocking.
      * We have updated the catalog: consequently the lock must be held until
      * end of transaction.
      */

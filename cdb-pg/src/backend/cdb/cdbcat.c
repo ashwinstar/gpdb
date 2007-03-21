@@ -46,23 +46,23 @@ MppPolicyCopy(MemoryContext mcxt, const MppPolicy *src)
 /*
  * MppPolicyFetch
  *
- * Looks up a given Oid in the mpp_distribution_policy table.
+ * Looks up a given Oid in the gp_distribution_policy table.
  * If found, returns an MppPolicy object (palloc'd in the specified
- * context) containing the info from the mpp_distribution_policy row.
+ * context) containing the info from the gp_distribution_policy row.
  * Else returns NULL.
  *
  * The caller is responsible for passing in a valid relation oid.  This
  * function does not check and assigns a policy of type POLICYTYPE_ENTRY
- * for any oid not found in mpp_distribution_policy.
+ * for any oid not found in gp_distribution_policy.
  */
 MppPolicy *
 MppPolicyFetch(MemoryContext mcxt, Oid tbloid)
 {
 	MppPolicy  *policy = NULL;	/* The result */
-	Relation	mpp_policy_rel;
+	Relation	gp_policy_rel;
 	ScanKeyData policy_key[1];
-	SysScanDesc mpp_policy_scan;
-	HeapTuple	mpp_policy_tuple = NULL;
+	SysScanDesc gp_policy_scan;
+	HeapTuple	gp_policy_tuple = NULL;
 	size_t		nb;
 
 	/*
@@ -72,21 +72,21 @@ MppPolicyFetch(MemoryContext mcxt, Oid tbloid)
 		return NULL;
 
 	/*
-	 * We need to read the mpp_distribution_policy table
+	 * We need to read the gp_distribution_policy table
 	 */
-	mpp_policy_rel = heap_open(MppPolicyRelationId, AccessShareLock);
+	gp_policy_rel = heap_open(GpPolicyRelationId, AccessShareLock);
 
 	/*
 	 * Set up a ScanKey for the value of the localoid field
 	 */
-	ScanKeyInit(&policy_key[0], Anum_mpp_policy_localoid, BTEqualStrategyNumber,
+	ScanKeyInit(&policy_key[0], Anum_gp_policy_localoid, BTEqualStrategyNumber,
 				F_OIDEQ, ObjectIdGetDatum(tbloid));
 
 	/*
 	 * Begin the scan
 	 */						
-	mpp_policy_scan = systable_beginscan(mpp_policy_rel,
-										 MppPolicyLocalOidIndexId,
+	gp_policy_scan = systable_beginscan(gp_policy_rel,
+										 GpPolicyLocalOidIndexId,
 										 true,
 										 SnapshotNow,
 										 1,
@@ -95,8 +95,8 @@ MppPolicyFetch(MemoryContext mcxt, Oid tbloid)
 	/*
 	 * Read first (and only ) tuple
 	 */
-	mpp_policy_tuple = systable_getnext(mpp_policy_scan);
-	if (HeapTupleIsValid(mpp_policy_tuple))
+	gp_policy_tuple = systable_getnext(gp_policy_scan);
+	if (HeapTupleIsValid(gp_policy_tuple))
 	{
 		bool		isNull;
 		Datum		attr;
@@ -107,7 +107,7 @@ MppPolicyFetch(MemoryContext mcxt, Oid tbloid)
 		/*
 		 * Get the attributes on which to partition.
 		 */
-		attr = heap_getattr(mpp_policy_tuple, Anum_mpp_policy_attrnums, mpp_policy_rel->rd_att, &isNull);
+		attr = heap_getattr(gp_policy_tuple, Anum_gp_policy_attrnums, gp_policy_rel->rd_att, &isNull);
 		
 		/*
 		 * Get distribution keys only if this table has a policy.
@@ -132,8 +132,8 @@ MppPolicyFetch(MemoryContext mcxt, Oid tbloid)
 	/*
 	 * Cleanup the scan and relation objects.
 	 */
-	systable_endscan(mpp_policy_scan);
-	heap_close(mpp_policy_rel, AccessShareLock);
+	systable_endscan(gp_policy_scan);
+	heap_close(gp_policy_rel, AccessShareLock);
 
 	/* Interpret absence of a valid policy row as POLICYTYPE_ENTRY */
 	if (policy == NULL)
@@ -171,15 +171,15 @@ extract_INT2OID_array(Datum array_datum, int *lenp, int16 **vecp)
 }
 
 /*
- * Sets the policy of a table into the mpp_distribution_policy table
+ * Sets the policy of a table into the gp_distribution_policy table
  * from a MppPolicy structure.
  *
  */
 void
 MppPolicyStore(Oid tbloid, const MppPolicy *policy)
 {
-	Relation	mpp_policy_rel;
-	HeapTuple	mpp_policy_tuple = NULL;
+	Relation	gp_policy_rel;
+	HeapTuple	gp_policy_tuple = NULL;
 
 	ArrayType  *attrnums;
 
@@ -189,9 +189,9 @@ MppPolicyStore(Oid tbloid, const MppPolicy *policy)
 	Insist(policy->ptype == POLICYTYPE_PARTITIONED);
 
     /*
-     * Open and lock the mpp_distribution_policy catalog.
+     * Open and lock the gp_distribution_policy catalog.
      */
-	mpp_policy_rel = heap_open(MppPolicyRelationId, RowExclusiveLock);
+	gp_policy_rel = heap_open(GpPolicyRelationId, RowExclusiveLock);
 
 	/*
 	 * Convert C arrays into Postgres arrays.
@@ -221,33 +221,33 @@ MppPolicyStore(Oid tbloid, const MppPolicy *policy)
 	else
 		nulls[1] = 'n';
 
-	mpp_policy_tuple = heap_formtuple(RelationGetDescr(mpp_policy_rel), values, nulls);
+	gp_policy_tuple = heap_formtuple(RelationGetDescr(gp_policy_rel), values, nulls);
 
-	simple_heap_insert(mpp_policy_rel, mpp_policy_tuple);
+	simple_heap_insert(gp_policy_rel, gp_policy_tuple);
 
 	/* update catalog indexes */
-	CatalogUpdateIndexes(mpp_policy_rel, mpp_policy_tuple);
+	CatalogUpdateIndexes(gp_policy_rel, gp_policy_tuple);
 
 	/*
-     * Close the mpp_distribution_policy relcache entry without unlocking.
+     * Close the gp_distribution_policy relcache entry without unlocking.
      * We have updated the catalog: consequently the lock must be held until
      * end of transaction.
      */
-    heap_close(mpp_policy_rel, NoLock);
+    heap_close(gp_policy_rel, NoLock);
 }                               /* MppPolicyStore */
 
 /*
- * Sets the policy of a table into the mpp_distribution_policy table
+ * Sets the policy of a table into the gp_distribution_policy table
  * from a MppPolicy structure.
  *
  */
 void
 MppPolicyReplace(Oid tbloid, const MppPolicy *policy)
 {
-	Relation	mpp_policy_rel;
-	HeapTuple	mpp_policy_tuple = NULL;
+	Relation	gp_policy_rel;
+	HeapTuple	gp_policy_tuple = NULL;
 	ScanKeyData policy_key[1];
-	SysScanDesc mpp_policy_scan;
+	SysScanDesc gp_policy_scan;
 
 	ArrayType  *attrnums;
 
@@ -258,9 +258,9 @@ MppPolicyReplace(Oid tbloid, const MppPolicy *policy)
 	Insist(policy->ptype == POLICYTYPE_PARTITIONED);
 
     /*
-     * Open and lock the mpp_distribution_policy catalog.
+     * Open and lock the gp_distribution_policy catalog.
      */
-	mpp_policy_rel = heap_open(MppPolicyRelationId, RowExclusiveLock);
+	gp_policy_rel = heap_open(GpPolicyRelationId, RowExclusiveLock);
 
 	/*
 	 * Convert C arrays into Postgres arrays.
@@ -298,14 +298,14 @@ MppPolicyReplace(Oid tbloid, const MppPolicy *policy)
 	/*
 	 * Set up a ScanKey for the value of the localoid field
 	 */
-	ScanKeyInit(&policy_key[0], Anum_mpp_policy_localoid, BTEqualStrategyNumber,
+	ScanKeyInit(&policy_key[0], Anum_gp_policy_localoid, BTEqualStrategyNumber,
 				F_OIDEQ, ObjectIdGetDatum(tbloid));
 
 	/*
 	 * Begin the scan
 	 */						
-	mpp_policy_scan = systable_beginscan(mpp_policy_rel,
-										 MppPolicyLocalOidIndexId,
+	gp_policy_scan = systable_beginscan(gp_policy_rel,
+										 GpPolicyLocalOidIndexId,
 										 true,
 										 SnapshotNow,
 										 1,
@@ -314,24 +314,24 @@ MppPolicyReplace(Oid tbloid, const MppPolicy *policy)
 	/*
 	 * Read first (and only ) tuple
 	 */
-	mpp_policy_tuple = systable_getnext(mpp_policy_scan);
-	if (HeapTupleIsValid(mpp_policy_tuple))
+	gp_policy_tuple = systable_getnext(gp_policy_scan);
+	if (HeapTupleIsValid(gp_policy_tuple))
 	{
 		
-		HeapTuple newtuple = heap_modifytuple(mpp_policy_tuple, RelationGetDescr(mpp_policy_rel), values,
+		HeapTuple newtuple = heap_modifytuple(gp_policy_tuple, RelationGetDescr(gp_policy_rel), values,
 								nulls, repl);
 								
-		simple_heap_update(mpp_policy_rel, &mpp_policy_tuple->t_self, newtuple);
+		simple_heap_update(gp_policy_rel, &gp_policy_tuple->t_self, newtuple);
 		/* update catalog indexes */
-		CatalogUpdateIndexes(mpp_policy_rel, newtuple);
+		CatalogUpdateIndexes(gp_policy_rel, newtuple);
 		heap_freetuple(newtuple);
 	}
 	else
 	{
-		mpp_policy_tuple = heap_formtuple(RelationGetDescr(mpp_policy_rel), values, nulls);
-		simple_heap_insert(mpp_policy_rel, mpp_policy_tuple);
+		gp_policy_tuple = heap_formtuple(RelationGetDescr(gp_policy_rel), values, nulls);
+		simple_heap_insert(gp_policy_rel, gp_policy_tuple);
 		/* update catalog indexes */
-		CatalogUpdateIndexes(mpp_policy_rel, mpp_policy_tuple);
+		CatalogUpdateIndexes(gp_policy_rel, gp_policy_tuple);
 	}
 	
 	
@@ -339,14 +339,14 @@ MppPolicyReplace(Oid tbloid, const MppPolicy *policy)
 	/*
 	 * Cleanup the scan and relation objects.
 	 */
-	systable_endscan(mpp_policy_scan);
+	systable_endscan(gp_policy_scan);
 	
 	
 
 	/*
-     * Close the mpp_distribution_policy relcache entry without unlocking.
+     * Close the gp_distribution_policy relcache entry without unlocking.
      * We have updated the catalog: consequently the lock must be held until
      * end of transaction.
      */
-    heap_close(mpp_policy_rel, NoLock);
+    heap_close(gp_policy_rel, NoLock);
 }                               /* MppPolicyReplace */

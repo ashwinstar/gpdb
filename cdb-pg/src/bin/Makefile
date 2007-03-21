@@ -14,8 +14,8 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
 DIRS := initdb ipcclean pg_ctl pg_dump \
-	psql scripts pg_config pg_controldata pg_resetxlog \
-	mpp_upgrade	
+	psql scripts pg_config pg_controldata pg_resetxlog
+
 	
 ifeq ($(PORTNAME), win32)
 DIRS+=pgevent

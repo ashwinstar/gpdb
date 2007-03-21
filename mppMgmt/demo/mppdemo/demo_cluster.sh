@@ -132,7 +132,7 @@ echo "This is a demo of the Greenplum Database module.  We'll perform a local cl
 echo "master instance and 3 segment instances all on this machine."
 echo ""
 echo "In order to run the Greenplum Database module, you must either have the BIZHOME environment variable"
-echo "set, or the MPPHOME environment variable set to the location of the MPP install."
+echo "set, or the MPPHOME environment variable set to the location of the Greenplum install."
 echo "You must also have the following port numbers free ${MASTER_DEMO_PORT} ${DEMO_SEG_PORTS[@]}"
 echo ""
 echo "**************************************************************************************************"
@@ -143,7 +143,7 @@ echo ""
 if [ x"$MPPHOME" = x ]; then
     if [ x"$BIZHOME" = x ]; then
         echo "Neither MPPHOME or BIZHOME are set.  Set one of these variables to point to the location"
-     echo "of the MPP installation directory."
+     echo "of the Greenplum installation directory."
         echo ""
         exit 1
     else
@@ -153,22 +153,22 @@ else
     MPPSEARCH=$MPPHOME
 fi
 
-MPPPATH=`find $MPPSEARCH -name mpp_dump| tail -1`
+MPPPATH=`find $MPPSEARCH -name gp_dump| tail -1`
 RETVAL=$?
 
 if [ "$RETVAL" -ne 0 ]; then
-    echo "Error attempting to find MPP executables in $MPPSEARCH"
+    echo "Error attempting to find Greenplum executables in $MPPSEARCH"
     exit 1
 fi
 
 if [ ! -x "$MPPPATH" ]; then
-    echo "No executables found for MPP installation in $MPPSEARCH"
+    echo "No executables found for Greenplum installation in $MPPSEARCH"
     exit 1
 fi
 MPPPATH=`dirname $MPPPATH`
 MPPMGMT=$MPPPATH/../mppMgmt/bin
 if [ ! -x $MPPMGMT/mppcreatecluster.sh ]; then
-    echo "No mgmt executables found for MPP installation in $MPPMGMT"
+    echo "No mgmt executables found for Greenplum installation in $MPPMGMT"
     exit 1
 fi
 
@@ -214,7 +214,7 @@ echo "" >> $CLUSTER_CONFIG
 echo "# This names the data directories for the Segment Instances and the Entry Postmaster" >> $CLUSTER_CONFIG
 echo "SEG_PREFIX=$SEG_PREFIX" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
-echo "# This is the port at which to contact the resulting MPP database, e.g." >> $CLUSTER_CONFIG
+echo "# This is the port at which to contact the resulting Greenplum database, e.g." >> $CLUSTER_CONFIG
 echo "#   psql -p \$PORT_BASE template1" >> $CLUSTER_CONFIG
 echo "PORT_BASE=${DEMO_PORT_BASE}" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
@@ -245,7 +245,7 @@ echo "CHECK_POINT_SEGMENTS=8" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
 echo "ENCODING=UNICODE" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
-echo "# Path for MPP mgmt utils and MPP binaries" >> $CLUSTER_CONFIG
+echo "# Path for Greenplum mgmt utils and Greenplum binaries" >> $CLUSTER_CONFIG
 echo "PATH=$MPPHOME/bin:$MPPHOME/mppMgmt/bin:$PATH" >> $CLUSTER_CONFIG
 echo "LD_LIBRARY_PATH=$MPPHOME/lib:$LD_LIBRARY_PATH" >> $CLUSTER_CONFIG
 echo "export PATH" >> $CLUSTER_CONFIG

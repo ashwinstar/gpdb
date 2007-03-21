@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbexplain.c
- *    Functions supporting the MPP EXPLAIN command
+ *    Functions supporting the GP EXPLAIN command
  *
  * Copyright (c) 2006-2007, greenplum inc
  *

@@ -151,7 +151,7 @@ static pthread_t       g_monitor_tid = (pthread_t)0;
 static char*           g_pszCDBOutputDirectory = NULL;
 static char*           g_LastMsg = NULL;
 static StatusOpList*   g_pStatusOpList = NULL;
-static bool            g_mpp_catalog_only = false; /* true when agent job is dump mpp schema only */
+static bool            g_gp_catalog_only = false; /* true when agent job is dump mpp schema only */
 
 static const char*     logInfo = "INFO";
 static const char*     logWarn = "WARN";
@@ -511,7 +511,7 @@ main(int argc, char **argv)
 				break;
 						
 			case 3:			/* --mpp-schema-only */
-				g_mpp_catalog_only = true;
+				g_gp_catalog_only = true;
 				break;
 							
 			default:
@@ -543,8 +543,8 @@ main(int argc, char **argv)
 	if (dataOnly && outputClean)
 	{
 		/*
-		 * we already check for this error in mpp_dump (main thread). if we get here now
-		 * it means that user specified '-c' and mpp_dump appended "data only" to the agent
+		 * we already check for this error in gp_dump (main thread). if we get here now
+		 * it means that user specified '-c' and gp_dump appended "data only" to the agent
 		 * of all the segment databases. since '-c' is only needed on the master agent and
 		 * not on the seg databases agents, we just set it to false here.
 		 */
@@ -687,7 +687,7 @@ main(int argc, char **argv)
         g_pStatusOpList = CreateStatusOpList();
         if ( g_pStatusOpList == NULL )
         {
-            exit_horribly(NULL, NULL, "cannot allocate memory for mpp_backup_status operation\n");
+            exit_horribly(NULL, NULL, "cannot allocate memory for gp_backup_status operation\n");
         }
 		
         /* Start monitoring for cancel requests */
@@ -721,7 +721,7 @@ main(int argc, char **argv)
 		/* create an initial status operator that indicates we are STARTing */
         pOp = CreateStatusOp( TASK_START, TASK_RC_SUCCESS, SUFFIX_START, TASK_MSG_SUCCESS );
         if ( pOp == NULL )
-            exit_horribly(g_fout, NULL, "cannot allocate memory for mpp_backup_status operation\n");
+            exit_horribly(g_fout, NULL, "cannot allocate memory for gp_backup_status operation\n");
 		
 		/* add our START status to the operator list */
         AddToStatusOpList( g_pStatusOpList, pOp );
@@ -734,10 +734,10 @@ main(int argc, char **argv)
 		*     (it's not this current process).
 		*
 		* The next master dump process that will come around to this part
-		* of the code will be the catalog dumper and will have g_mpp_catalog_only
+		* of the code will be the catalog dumper and will have g_gp_catalog_only
 		* set to true, therefore skipping this step.
 		*/
-    if (g_role == ROLE_MASTER && !g_mpp_catalog_only && !dataOnly)
+    if (g_role == ROLE_MASTER && !g_gp_catalog_only && !dataOnly)
     {
 		mpp_err_msg( logInfo, progname, "Forking process to dump mpp catalog\n");
         forkMPPCatalogDumper();
@@ -758,7 +758,7 @@ main(int argc, char **argv)
 		StatusOp* pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_FAILURE, SUFFIX_FAIL, "could not set transaction isolation level to serializable"  );
 		if ( pOp == NULL )
 		{
-			exit_horribly(g_fout, NULL, "could not allocate memory for mpp_backup_status operation\n");
+			exit_horribly(g_fout, NULL, "could not allocate memory for gp_backup_status operation\n");
 		}
 		
 		/* add status operator, to let the monitor thread see it */
@@ -779,7 +779,7 @@ main(int argc, char **argv)
 		pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_FAILURE, SUFFIX_FAIL, "could not set transaction isolation level to serializable"  );
 		if ( pOp == NULL )
 		{
-			exit_horribly(g_fout, NULL, "could not allocate memory for mpp_backup_status operation\n");
+			exit_horribly(g_fout, NULL, "could not allocate memory for gp_backup_status operation\n");
 		}
 		
 		/* add status operator, to let the monitor thread see it */
@@ -796,7 +796,7 @@ main(int argc, char **argv)
 	 * In the special case that we are the catalog dumper thread, we don't report success, we 
 	 * only report a failure. Reason is that there are 2 threads doing dump work on the master - 
 	 * the main agent thread that dumps the schema, and the catalog dumper that was forked. if 
-	 * both report success, but the second one failed, mpp_dump will not know it since it had already 
+	 * both report success, but the second one failed, gp_dump will not know it since it had already 
 	 * got a success operator. Therefore we let the catalog dumper only report errors, but not 
 	 * success so we don't report success prematurely. Only the main agent thread may report success.
 	 * TODO: This is a hack, and should be done more cleanly. The good news is that only case scenario which
@@ -804,12 +804,12 @@ main(int argc, char **argv)
 	 * schema dumper thread finished with success. This is *very unlikely* to happen. If it ever does,
 	 * we will end up with a good dump, but bad catalog dump file.
 	 */
-	if (!g_mpp_catalog_only)
+	if (!g_gp_catalog_only)
 	{
 		pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS, SUFFIX_SET_SERIALIZABLE, TASK_MSG_SUCCESS );
 		if ( pOp == NULL )
 		{
-			exit_horribly(g_fout, NULL, "could not allocate memory for mpp_backup_status operation\n");
+			exit_horribly(g_fout, NULL, "could not allocate memory for gp_backup_status operation\n");
 		}
 		
 		/* add status operator, to let the monitor thread see it */
@@ -846,7 +846,7 @@ main(int argc, char **argv)
 	
 	
 	/* is this the catalog dumper that was forked earlier? */
-	if (g_mpp_catalog_only && g_role == ROLE_MASTER)
+	if (g_gp_catalog_only && g_role == ROLE_MASTER)
 	{
 		/* dumping mpp catalog */
 		mpp_err_msg( logInfo, progname, "Dumping mpp catalog from \"%s\"...\n" , g_conn->dbName);
@@ -916,7 +916,7 @@ main(int argc, char **argv)
 	 * master agent thread to do so when it is done (See comment above next to
 	 * CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS... )
 	 */
-	if (!g_mpp_catalog_only)
+	if (!g_gp_catalog_only)
 	{
 		makeSureMonitorThreadEnds( TASK_RC_SUCCESS, TASK_MSG_SUCCESS );
 	}
@@ -935,7 +935,7 @@ main(int argc, char **argv)
 	
 	PQfinish(g_conn);
 	
-	mpp_err_msg(logInfo, progname, (g_mpp_catalog_only ? "Finished mpp catalog dump successfully\n":"Finished successfully\n"));
+	mpp_err_msg(logInfo, progname, (g_gp_catalog_only ? "Finished mpp catalog dump successfully\n":"Finished successfully\n"));
 	
 	exit(0);
 }
@@ -1358,10 +1358,10 @@ selectDumpableTable(TableInfo *tbinfo)
 		* dump and skip the policy table since it has oids and will be populated 
 		* automatically when creating the tables.
 		*/
-	if(g_mpp_catalog_only)
+	if(g_gp_catalog_only)
 	{
-		if(strncmp(tbinfo->dobj.name, "mpp_", 4) == 0 && 
-		   strcmp(tbinfo->dobj.name, "mpp_distribution_policy") != 0)
+		if(strncmp(tbinfo->dobj.name, "gp_", 4) == 0 && 
+		   strcmp(tbinfo->dobj.name, "gp_distribution_policy") != 0)
 			tbinfo->dobj.dump = true;
 		else
 			tbinfo->dobj.dump = false;
@@ -7952,7 +7952,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		/* mpp addition start: dump distributed by clause */
 		
 		appendPQExpBuffer(query,
-						  "SELECT attrnums from pg_namespace as n, pg_class as c, mpp_distribution_policy as p "
+						  "SELECT attrnums from pg_namespace as n, pg_class as c, gp_distribution_policy as p "
 						  "WHERE c.relname = '%s' "
 						  "AND n.nspname='%s' "
 						  "AND c.relnamespace=n.oid " 
@@ -9447,7 +9447,7 @@ check_sql_result(PGresult *res, PGconn *conn, const char *query,
  * for notifications.  A notification only arrives if we are to cancel. 
  * In that case, we cause the interrupt handler to be called by sending ourselves 
  * a SIGINT signal.  The other duty of this thread, since it owns the g_conn_status, 
- * is to periodically examine a linked list of mpp_backup_status insert command 
+ * is to periodically examine a linked list of gp_backup_status insert command 
  * requests.  If any are there, it causes an insert and a notify to be sent.    
  */
 void* monitorThreadProc(void *arg)
@@ -9538,7 +9538,7 @@ void* monitorThreadProc(void *arg)
 		
 		Lock( g_pStatusOpList );
 		
-		/* get the next status operator that mpp_dump_agent put in there */
+		/* get the next status operator that gp_dump_agent put in there */
 		while ( NULL != (pOp = TakeFromStatusOpList(g_pStatusOpList)) )
 		{
 			/* NOTIFY of status change */
@@ -9579,7 +9579,7 @@ void* monitorThreadProc(void *arg)
  * my_handler: This function is the signal handler for both SIGINT and SIGTERM signals.  
  * It checks to see whether there is an active transaction running on the g_conn connection
  * If so, it issues a PQrequestCancel.  This will cause the current statement to fail, which will
- * cause mpp_dump_agent to terminate gracefully.
+ * cause gp_dump_agent to terminate gracefully.
  * If there's no active transaction, it does nothing.
  * This is set up to always run in the context of the main thread.
  */
@@ -9614,7 +9614,7 @@ void forkMPPCatalogDumper(void)
     newpid = fork();
     if ( newpid < 0 )
     {
-        mpp_err_msg( logError, progname, "failed to fork in mpp_backup_agent for catalog\n");
+        mpp_err_msg( logError, progname, "failed to fork in gp_backup_agent for catalog\n");
     }
     else if ( newpid == 0 )
     {
@@ -9624,7 +9624,7 @@ void forkMPPCatalogDumper(void)
         /* Child Process */
         /* launch psql, wait for it to finish */
         
-        len = 14 + 1 +                            /* mpp_dump_agent */
+        len = 14 + 1 +                            /* gp_dump_agent */
 			2 + 1 + strlen(port) + 1 +          /* -p port */
 			3 + 1 +                             /* -a */
 			18 + 1 +							  /* --mpp-catalog-only */
@@ -9635,7 +9635,7 @@ void forkMPPCatalogDumper(void)
 			strlen(pszBackupFileName);          /* catalog file */
 		
         pszCmdLine = (char *) calloc( len+1, 1 );
-        strcpy( pszCmdLine, "mpp_dump_agent -p ");
+        strcpy( pszCmdLine, "gp_dump_agent -p ");
         strcat( pszCmdLine, port);
         strcat( pszCmdLine, " -a ");
 		strcat( pszCmdLine, " --mpp-catalog-only");
@@ -9647,13 +9647,13 @@ void forkMPPCatalogDumper(void)
         strcat( pszCmdLine, " > " );
         strcat( pszCmdLine, pszBackupFileName );
 		
-        putenv( "PGOPTIONS=-c mpp_session_role=UTILITY" );
+        putenv( "PGOPTIONS=-c gp_session_role=UTILITY" );
 		
         mpp_err_msg( logInfo, progname, "Command Line: %s\n", pszCmdLine );
 		
         execl("/bin/sh", "sh", "-c", pszCmdLine, NULL );
 		
-        mpp_err_msg( logError, progname, "Error in mpp_backup_agent - execl of %s with Command Line %s failed",
+        mpp_err_msg( logError, progname, "Error in gp_backup_agent - execl of %s with Command Line %s failed",
 					 "/bin/sh", pszCmdLine );
         exit(127);
     }
@@ -9665,7 +9665,7 @@ void forkMPPCatalogDumper(void)
         if ( WIFEXITED(status) )
         {
             rc = WEXITSTATUS(status);
-            mpp_err_msg( logInfo, progname, "mpp_dump finished with rc %d.\n", rc );
+            mpp_err_msg( logInfo, progname, "gp_dump finished with rc %d.\n", rc );
             if ( rc != 0 )
             {
                 exit_code=2;
@@ -9707,7 +9707,7 @@ char* formGenericFilePathName( char* keyword, char* pszBackupDirectory, char* ps
     int len;
     char* pszBackupFileName;
 	
-    sprintf( szFileNamePrefix, "mpp_%s_%d_%d_", keyword, pszInstID, pszSegID );
+    sprintf( szFileNamePrefix, "gp_%s_%d_%d_", keyword, pszInstID, pszSegID );
 	
     /* Now add up the length of the pieces */
     len = strlen(pszBackupDirectory);
@@ -9780,7 +9780,7 @@ dumpDatabaseDefinition()
     free(pszBackupFileName);
     if ( fcat == NULL )
     {
-        mpp_err_msg( logError, progname, "Error creating file %s in mpp_dump_agent",
+        mpp_err_msg( logError, progname, "Error creating file %s in gp_dump_agent",
 					 pszBackupFileName);
     }
     

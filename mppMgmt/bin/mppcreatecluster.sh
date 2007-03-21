@@ -51,8 +51,8 @@ INST_COUNT=0
 # MPP database specific parameters
 MPP_USER=$USER_NAME
 # System table names
-MPP_TBL=mpp_mpp
-MPP_CONFIGURATION_TBL=mpp_configuration
+MPP_TBL=gp_gp
+MPP_CONFIGURATION_TBL=gp_configuration
 unset PG_CONF_ADD_FILE
 EXIT_STATUS=0
 # ED_FILE search text values
@@ -864,7 +864,7 @@ CREATE_QD_DB () {
 						ERROR_CHK $? "set $NEW_PARAM ${MPP_DIR}/$PG_CONF" 1
 				done
 		fi
-		LOG_MSG "[INFO]:-Adding mpp_dumpall access to $PG_HBA for master host"
+		LOG_MSG "[INFO]:-Adding gp_dumpall access to $PG_HBA for master host"
 		BUILD_MASTER_PG_HBA_FILE $MPP_DIR $IP_ALLOW
 		LOG_MSG "[INFO]:-Starting the Master in admin mode" 1
 		export PGPORT=$MPP_PORT;$PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o "-i -p $MPP_PORT" start
@@ -904,13 +904,13 @@ UPDATE_MPPCONFIGURATION () {
 		
 		U_DB=$DEFAULTDB
 		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $MPP_CONFIGURATION_TBL where content=${U_CONTENT} and definedprimary='${U_PRIMARY}';" 2>/dev/null` >> $LOG_FILE 2>&1
-		ERROR_CHK $? "obtain psql count Master mpp_configuration" 2
+		ERROR_CHK $? "obtain psql count Master gp_configuration" 2
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_CONTENT to system configuration table"				
 				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_CONFIGURATION_TBL (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (${U_DBID},'${U_PRIMARY}',${U_CONTENT},'t', '${U_PRIMARY}','${U_HOSTNAME}',${U_PORT},'${U_DIR}');" >> $LOG_FILE 2>&1
-				ERROR_CHK $? "add $U_CONTENT to Master mpp_configuration" 2
+				ERROR_CHK $? "add $U_CONTENT to Master gp_configuration" 2
 		else
-				LOG_MSG "[INFO]:-Content $U_CONTENT already exists in mpp_configuration system table"
+				LOG_MSG "[INFO]:-Content $U_CONTENT already exists in gp_configuration system table"
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -953,7 +953,7 @@ UPDATE_MPP () {
 		U_HOST=$8
 		if [ $TYPE -eq 0 ]; then
 				$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
-				ERROR_CHK $? "add $U_DBID to Master mpp_mpp" 2
+				ERROR_CHK $? "add $U_DBID to Master gp_gp" 2
 		else
 				RUN_COMMAND_REMOTE $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $MPP_TBL (mppname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
 		fi	

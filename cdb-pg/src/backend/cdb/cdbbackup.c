@@ -46,13 +46,13 @@ typedef enum backup_file_type
 } BackupFileType;
 
 /*
- * mpp_backup_launch__( TEXT, TEXT, TEXT, TEXT, TEXT ) returns TEXT
+ * gp_backup_launch__( TEXT, TEXT, TEXT, TEXT, TEXT ) returns TEXT
  *
- * Called by mpp_dump.c to launch mpp_dump_agent on this host.
+ * Called by gp_dump.c to launch gp_dump_agent on this host.
  */
-PG_FUNCTION_INFO_V1(mpp_backup_launch__);
+PG_FUNCTION_INFO_V1(gp_backup_launch__);
 Datum
-mpp_backup_launch__(PG_FUNCTION_ARGS)
+gp_backup_launch__(PG_FUNCTION_ARGS)
 {
 	/* Fetch the parameters from the argument list. */
 	char	   *pszBackupDirectory = "./";
@@ -111,10 +111,10 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 	validateBackupDirectory(pszBackupDirectory);
 	
 	/*
-	 * Validate existence of mpp_dump_agent and compression program, if
+	 * Validate existence of gp_dump_agent and compression program, if
 	 * possible
 	 */
-	testCmdsExist(pszCompressionProgram, "mpp_dump_agent");	
+	testCmdsExist(pszCompressionProgram, "gp_dump_agent");	
 	
 	/* are we going to use a compression program? */
 	is_compress = (pszCompressionProgram != NULL && *pszCompressionProgram != '\0' ? true : false);
@@ -132,7 +132,7 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("Error creating file %s in mpp_backup_launch",
+				 errmsg("Error creating file %s in gp_backup_launch",
 						pszBackupFileName)));
 	}
 	fclose(ftest);
@@ -151,7 +151,7 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 	if (pszUserName == NULL)
 		pszUserName = "";
 
-	/* Fork off mpp_dump_agent	*/
+	/* Fork off gp_dump_agent	*/
 #ifdef _WIN32
 	exit(1);
 #else
@@ -200,7 +200,7 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 		 * the -p and 1 for the space after the -p	The last 1 is for the
 		 * binary zero at the end.
 		 */
-		len = strlen(bkPg) + 1	/* mpp_dump_agent */
+		len = strlen(bkPg) + 1	/* gp_dump_agent */
 			+ 7 + 1				/* --mpp-k */
 			+ strlen(pszKeyParm) + 1
 			+ 7 + 1				/* --mpp-d */
@@ -232,7 +232,7 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 						 errmsg("out of memory")));
 			}
 
-			/* mpp_dump_agent + options, pipe into compression program, direct
+			/* gp_dump_agent + options, pipe into compression program, direct
 			 * stdout to backup file and stderr to status file */
 			//sprintf(pszCmdLine, "%s --mpp-k %s --mpp-d %s -p %d -U %s %s %s %s | %s > %s 2> %s",
 			sprintf(pszCmdLine, "%s --mpp-k %s --mpp-d %s -p %d -U %s %s %s %s 2> %s | %s > %s",
@@ -254,14 +254,14 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 					pszBackupFileName, pszStatusFileName);
 		}
 
-		elog(LOG, "mpp_dump_agent command line: %s", pszCmdLine),
+		elog(LOG, "gp_dump_agent command line: %s", pszCmdLine),
 
-		/* This execs a shell that runs the mpp_dump_agent program	*/
+		/* This execs a shell that runs the gp_dump_agent program	*/
 			execl("/bin/sh", "sh", "-c", pszCmdLine, NULL);
 
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("Error in mpp_backup_launch - execl of %s with Command Line %s failed",
+				 errmsg("Error in gp_backup_launch - execl of %s with Command Line %s failed",
 						"/bin/sh", pszCmdLine)));
 		_exit(127);
 	}
@@ -288,13 +288,13 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 }
 
 /*
- * mpp_restore_launch__( TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INT, bool ) returns TEXT
+ * gp_restore_launch__( TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INT, bool ) returns TEXT
  *
- * Called by mpp_restore.c to launch mpp_restore_agent on this host.
+ * Called by gp_restore.c to launch gp_restore_agent on this host.
  */
-PG_FUNCTION_INFO_V1(mpp_restore_launch__);
+PG_FUNCTION_INFO_V1(gp_restore_launch__);
 Datum
-mpp_restore_launch__(PG_FUNCTION_ARGS)
+gp_restore_launch__(PG_FUNCTION_ARGS)
 {
 	/* Fetch the parameters from the argument list. */
 	char	   *pszBackupDirectory = "./";
@@ -363,8 +363,8 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 	 */
 	pszBackupDirectory = relativeToAbsolute(pszBackupDirectory);
 
-	/* Validate existence of compression program and mpp_restore_agent program */
-	testCmdsExist(pszCompressionProgram, "mpp_restore_agent");
+	/* Validate existence of compression program and gp_restore_agent program */
+	testCmdsExist(pszCompressionProgram, "gp_restore_agent");
 
 	/* are we going to use a compression program? */
 	is_compress = (pszCompressionProgram != NULL && *pszCompressionProgram != '\0' ? true : false);
@@ -396,7 +396,7 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 	if (pszUserName == NULL)
 		pszUserName = "";
 
-	/* Fork off mpp_restore_agent  */
+	/* Fork off gp_restore_agent  */
 #ifdef _WIN32
 	exit(1);
 #else
@@ -433,7 +433,7 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 		 * the -p and 1 for the space after the -p	The last 1 is for the
 		 * binary zero at the end.
 		 */
-		len = strlen(bkPg) + 1	/* mpp_restore_agent */
+		len = strlen(bkPg) + 1	/* gp_restore_agent */
 			+ 7 + 1				/* --mpp-k */
 			+ strlen(pszKeyParm) + 1
 			+ 7 + 1				/* --mpp-d */
@@ -471,7 +471,7 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 			}
 
 			/* 
-			 * de-compress backupfile and pipe into stdin of mpp_restore_agent along with its
+			 * de-compress backupfile and pipe into stdin of gp_restore_agent along with its
 			 * options. Redirect both stdout and stderr into the status file.
 			 */
 			//sprintf(pszCmdLine, "%s %s | %s --mpp-c --mpp-k %s --mpp-d %s %s -p %d -U %s %s %s -d %s > %s 2>&1",
@@ -494,21 +494,21 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 						 errmsg("out of memory")));
 			}
 
-			/* Format mpp_restore_agent with options, and Redirect both stdout and stderr into the status file */
+			/* Format gp_restore_agent with options, and Redirect both stdout and stderr into the status file */
 			sprintf(pszCmdLine, "%s --mpp-k %s --mpp-d %s %s -p %d -U %s %s %s -d %s %s > %s 2>&1",
 					bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters, 
 					pszPassThroughTargetInfo, pszDBName, pszBackupFileName, pszStatusFileName);
 		}
 
 
-		elog(LOG, "mpp_restore_agent command line: %s", pszCmdLine),
+		elog(LOG, "gp_restore_agent command line: %s", pszCmdLine),
 
-		/* This execs a shell that runs the mpp_restore_agent program  */
+		/* This execs a shell that runs the gp_restore_agent program  */
 			execl("/bin/sh", "sh", "-c", pszCmdLine, NULL);
 
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("Error in mpp_restore_launch - execl of %s with Command Line %s failed",
+				 errmsg("Error in gp_restore_launch - execl of %s with Command Line %s failed",
 						"/bin/sh", pszCmdLine)));
 		_exit(127);
 	}
@@ -536,12 +536,12 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 }
 
 /*
- * mpp_read_backup_file__( TEXT, TEXT, int ) returns TEXT
+ * gp_read_backup_file__( TEXT, TEXT, int ) returns TEXT
  *
  */
-PG_FUNCTION_INFO_V1(mpp_read_backup_file__);
+PG_FUNCTION_INFO_V1(gp_read_backup_file__);
 Datum
-mpp_read_backup_file__(PG_FUNCTION_ARGS)
+gp_read_backup_file__(PG_FUNCTION_ARGS)
 {
 	/* Fetch the parameters from the argument list. */
 	char	   *pszBackupDirectory = "./";
@@ -588,7 +588,7 @@ mpp_read_backup_file__(PG_FUNCTION_ARGS)
 			  suffix or not */
 			ereport(ERROR,
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-					 errmsg("Only status files are currently supported in mpp_read_backup_file")));			
+					 errmsg("Only status files are currently supported in gp_read_backup_file")));			
 			break;
 		case BFT_BACKUP_STATUS:
 		case BFT_RESTORE_STATUS:
@@ -597,7 +597,7 @@ mpp_read_backup_file__(PG_FUNCTION_ARGS)
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-					 errmsg("Invalid filetype %d passed to mpp_read_backup_file", fileType)));
+					 errmsg("Invalid filetype %d passed to gp_read_backup_file", fileType)));
 			break;
 	}
 
@@ -667,14 +667,14 @@ mpp_read_backup_file__(PG_FUNCTION_ARGS)
 }
 
 /*
- * mpp_write_backup_file__( TEXT, TEXT, TEXT ) returns TEXT
+ * gp_write_backup_file__( TEXT, TEXT, TEXT ) returns TEXT
  *
  */
 
 /* NOT IN USE ANYMORE! */
  
 /*
- * mpp_write_backup_file__( TEXT, TEXT, TEXT ) returns TEXT
+ * gp_write_backup_file__( TEXT, TEXT, TEXT ) returns TEXT
  *
  */
 /* 
@@ -684,9 +684,9 @@ mpp_read_backup_file__(PG_FUNCTION_ARGS)
  * isCompressed boolean, which unfortunately will require an initdb for
  * the change to take effect.
  */
-PG_FUNCTION_INFO_V1(mpp_write_backup_file__);
+PG_FUNCTION_INFO_V1(gp_write_backup_file__);
 Datum
-mpp_write_backup_file__(PG_FUNCTION_ARGS)
+gp_write_backup_file__(PG_FUNCTION_ARGS)
 {
 	/* Fetch the parameters from the argument list. */
 	char	   *pszBackupDirectory = "./";
@@ -872,7 +872,7 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 					 errmsg("out of memory")));
 		}
 
-		sprintf(pszRegex, "^mpp_dump_[0-9]+_%d_%s(.gz)?$", segid, pszBackupKey);
+		sprintf(pszRegex, "^gp_dump_[0-9]+_%d_%s(.gz)?$", segid, pszBackupKey);
 		
 		masklen = strlen(pszRegex);
 		mask = (pg_wchar *) palloc((masklen + 1) * sizeof(pg_wchar));
@@ -966,7 +966,7 @@ formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_com
 	instid = (MppIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
 	segid = MppIdentity.dbid;
 
-	sprintf(szFileNamePrefix, "mpp_dump_%d_%d_", instid, segid);
+	sprintf(szFileNamePrefix, "gp_dump_%d_%d_", instid, segid);
 
 	/* Now add up the length of the pieces */
 	len = strlen(pszBackupDirectory);
@@ -1030,7 +1030,7 @@ formStatusFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool bIsBac
 	instid = (MppIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
 	segid = MppIdentity.dbid;
 
-	sprintf(szFileNamePrefix, "mpp_%s_status_%d_%d_", (bIsBackup ? "dump" : "restore"),
+	sprintf(szFileNamePrefix, "gp_%s_status_%d_%d_", (bIsBackup ? "dump" : "restore"),
 			instid, segid);
 
 	/* Now add up the length of the pieces */

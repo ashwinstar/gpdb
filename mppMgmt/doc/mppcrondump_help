@@ -1,6 +1,6 @@
 COMMAND NAME: mppcrondump.sh
 
-A wrapper script for mpp_dump, which can be called from a crontab entry.
+A wrapper script for gp_dump, which can be called from a crontab entry.
 
 
 *****************************************************
@@ -17,7 +17,7 @@ mppcrondump.sh -x <database_name> [-B <parallel_processes>]
 DESCRIPTION
 *****************************************************
 
-mppcrondump.sh is a wrapper script for mpp_dump. It allows you to 
+mppcrondump.sh is a wrapper script for gp_dump. It allows you to 
 schedule routine backups of a Greenplum database using cron (a 
 scheduling utility for Unix operating systems). Cron jobs that 
 call mppcrondump.sh should be scheduled on the master host.
@@ -204,5 +204,5 @@ PATH=/sbin:/bin:/usr/sbin:/usr/bin:$MPPHOME/mppMgmt/bin
 SEE ALSO
 *****************************************************
 
-mpp_dump
+gp_dump
 

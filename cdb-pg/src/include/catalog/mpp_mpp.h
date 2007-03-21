@@ -1,26 +1,26 @@
-#ifndef _MPP_MPP_H_
-#define _MPP_MPP_H_
+#ifndef _GP_GP_H_
+#define _GP_GP_H_
 
 
 /*
- * Defines for mpp_mpp table
+ * Defines for gp_gp table
  */
-#define MppMppRelationName			"mpp_mpp"
+#define GpGpRelationName			"gp_gp"
 
-#define MppMppRelationId	5001
+#define GpGpRelationId	5001
 
-CATALOG(mpp_mpp,5001) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
+CATALOG(gp_gp,5001) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 {
 	NameData	mppname;
 	int2		numsegments;
 	int2		dbid;
 	int2		content;
-} FormData_mpp_mpp;
+} FormData_gp_gp;
 
-#define Natts_mpp_mpp				4
-#define Anum_mpp_mpp_mppname		1
-#define Anum_mpp_mpp_numsegments	2
-#define Anum_mpp_mpp_dbid			3
-#define Anum_mpp_mpp_content		4
+#define Natts_gp_gp				4
+#define Anum_gp_gp_mppname		1
+#define Anum_gp_gp_numsegments	2
+#define Anum_gp_gp_dbid			3
+#define Anum_gp_gp_content		4
 
-#endif /*_MPP_MPP_H_*/
+#endif /*_GP_GP_H_*/

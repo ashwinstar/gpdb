@@ -181,7 +181,7 @@ GET_NODE_COUNT () {
 		T_NAME=`$ECHO $TARGETTBL|$CUT -d. -f2`
 	fi
 	SEGCOUNT=0
-	DIS_COL_ARRAY=(`$PSQL -p $MASTER_PORT  $QD_DBNAME -R" " -A -t -c "select  a.attname from pg_class c,  mpp_distribution_policy d, pg_attribute a where c.oid = d.localoid and a.attrelid = d.localoid and  a.attnum = ANY ( d.attrnums ) and c.relname='$T_NAME' and c.relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`)
+	DIS_COL_ARRAY=(`$PSQL -p $MASTER_PORT  $QD_DBNAME -R" " -A -t -c "select  a.attname from pg_class c,  gp_distribution_policy d, pg_attribute a where c.oid = d.localoid and a.attrelid = d.localoid and  a.attnum = ANY ( d.attrnums ) and c.relname='$T_NAME' and c.relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`)
 	NUM_SEGMENTS=`$PSQL -p $MASTER_PORT  $QD_DBNAME -A -t -c "select count(*) from $CONFIG_TABLE where content<>-1 and isprimary='t';"`
 	ERROR_CHK $? "obtain number of segment instances" 2
 	if [ $NUM_SEGMENTS = 1 ];then

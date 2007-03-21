@@ -159,10 +159,10 @@ GET_SEGMENT_INFO () {
 	MASTER_TOTAL_SEG=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select numsegments from $MPP_MPP_TABLE;"`
 	ERROR_CHK $? "get total instance segments" 2
 	MASTER_HOST=`$HOSTNAME`
-	STANDBY_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select count(*) from mpp_configuration where content=-1 and hostname<>'$MASTER_HOST';"`
+	STANDBY_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select count(*) from gp_configuration where content=-1 and hostname<>'$MASTER_HOST';"`
 	if [ $STANDBY_COUNT -eq 1 ];then
 		LOG_MSG "[INFO]:-Master standby found, will process details" 1
-		STANDBY_MASTER_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select hostname from mpp_configuration where content=-1 and hostname<>'$MASTER_HOST';"`
+		STANDBY_MASTER_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select hostname from gp_configuration where content=-1 and hostname<>'$MASTER_HOST';"`
 	else
 		LOG_MSG "[INFO]:-No Master standby host found" 1
 	fi
@@ -315,7 +315,7 @@ DISPLAY_INFO () {
 	LOG_MSG "[INFO]:-Master standby host        = $MASTER_STANDBY_HOSTNAME" 1
 	fi
 	LOG_MSG "[INFO]:-To remove this instance use mppdeletecluster.sh" 1
-	LOG_MSG "[INFO]:-The databases can now be restored using mpp_restore" 1
+	LOG_MSG "[INFO]:-The databases can now be restored using gp_restore" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 

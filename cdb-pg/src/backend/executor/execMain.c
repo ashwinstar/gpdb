@@ -482,7 +482,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			/* should never happen */
 			ereport(ERROR,
 					(errcode(ERRCODE_MPP_INTERNAL_ERROR),
-					 errmsg("Unsupported MPP execution strategy")));			
+					 errmsg("Unsupported Greeplum parallel execution strategy")));			
 		}
 		
 		if(estate->es_interconnect_is_setup)
@@ -651,7 +651,7 @@ ExecutorRun(QueryDesc *queryDesc,
 			/* should never happen */
 			ereport(ERROR,
 					(errcode(ERRCODE_MPP_INTERNAL_ERROR),
-					 errmsg("Undefined MPP execution strategy")));
+					 errmsg("Undefined Greenplum parallel execution strategy")));
 		}
 		
 		/*

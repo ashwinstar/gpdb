@@ -18,7 +18,7 @@
  * Structure for MPP 2.0 database information
  *
  * The information contained in this structure represents logically a row from
- * mpp_configuration.  It is used to describe either an entry
+ * gp_configuration.  It is used to describe either an entry
  * database or a segment database.
  *
  * Storage for instances of this structure are palloc'd.  Storage for the values
@@ -105,14 +105,14 @@ extern CdbComponentDatabases *getCdbComponentDatabases(void);
 extern void freeCdbComponentDatabases(CdbComponentDatabases *pDBs);
 
 /*
- * getMppMpp() causes the mpp_mpp table's singleton row to be read into a global structure
+ * getMppMpp() causes the gp_gp table's singleton row to be read into a global structure
  * This is called from cdblink_setup().
  * The global variable is declared in cdbvars.h and defined in cdbvars.c.
  */
 extern void getMppMpp(void);
 
 /*
- * freeMppMpp() causes the global variable holding the mpp_mpp table's singleton row to be
+ * freeMppMpp() causes the global variable holding the gp_gp table's singleton row to be
  * reinitialized to empty, releasing memory that was allocated when it was loaded.
  */
 extern void freeMppMpp(void);

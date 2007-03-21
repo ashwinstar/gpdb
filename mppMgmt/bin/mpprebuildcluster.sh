@@ -468,9 +468,9 @@ STANDBY_ACTIVATE () {
 	BACKOUT_COMMAND "$TRUSTED_SHELL $STANDBY_HOSTNAME \"$RM -Rf ${STANDBY_DIR}\""
 	BACKOUT_COMMAND "$ECHO \"Removing standby data directory ${STANDBY_DIR}\""
 	if [ x"" != x"$START_MPPSYNC" ];then
-		LOG_MSG "[INFO]:-Starting mppsyncmaster on standby host ${STANDBY_HOSTNAME}" 1
+		LOG_MSG "[INFO]:-Starting gpsyncmaster on standby host ${STANDBY_HOSTNAME}" 1
 		$TRUSTED_SHELL ${STANDBY_HOSTNAME} "${EXPORT_LIB_PATH};$MPPSYNCMASTER -D ${STANDBY_DIR} -p $STANDBY_PORT -S"
-		ERROR_CHK $? "initialize mppsyncmaster on ${STANDBY_HOSTNAME}" 1
+		ERROR_CHK $? "initialize gpsyncmaster on ${STANDBY_HOSTNAME}" 1
 		BACKOUT_COMMAND "$TRUSTED_SHELL $STANDBY_HOSTNAME \"${EXPORT_LIB_PATH};$PG_CTL stop -D ${STANDBY_DIR} -m immediate\""
 		BACKOUT_COMMAND "$ECHO \"Stopping sync process on $STANDBY_HOSTNAME\""
 	fi

@@ -149,7 +149,7 @@ GET_SETTING () {
 		if [ $MIRROR_COUNT -eq 1 ];then
 			LOG_MSG "[FATAL]:-There are no mirrors configured for this MPP instance" 1
 			LOG_MSG "[FATAL]:-The MPP instance will need to be recovered manually" 1
-			LOG_MSG "[FATAL]:-See mpp_restore command" 1
+			LOG_MSG "[FATAL]:-See gp_restore command" 1
 			ERROR_EXIT "[FATAL]:-No further progress can be made" 2
 		fi
 		FAILED_INST_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where valid='f';"`)
@@ -863,7 +863,7 @@ POOL_CATALOG_UPDATE () {
 		ERROR_EXIT "[FATAL]:-SQL update file $TMP_FILE deleted" 2
 	fi	
 	LOG_MSG "[INFO]:-Dumping MPP configuration to log file" 1
-	$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -c"select * from mpp_configuration;" >> $LOG_FILE
+	$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -c"select * from gp_configuration;" >> $LOG_FILE
 	LOG_MSG "[INFO]:-Configuration dump complete" 1
 	LOG_MSG "[INFO]:-Commencing system catalog update" 1
 	$EXPORT_LIB_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -f $TMP_FILE 2>&1 > /dev/null

@@ -48,7 +48,7 @@ if [ ${#MPPPATH[@]} -eq 0 ];then
 fi
 
 #MPP_UNIQUE_COMMAND is used to identify the binary directory
-MPP_UNIQUE_COMMAND=mppsyncmaster
+MPP_UNIQUE_COMMAND=gpsyncmaster
 
 
 findCmdInPath() {
@@ -190,9 +190,9 @@ PG_CTL=$PSQLBIN/pg_ctl
 PG_DUMP=$PSQLBIN/pg_dump
 PG_RESTORE=$PSQLBIN/pg_restore
 PSQL=$PSQLBIN/psql
-MPP_DUMP=$PSQLBIN/mpp_dump
-MPP_RESTORE=$PSQLBIN/mpp_restore
-MPPSYNCMASTER=$PSQLBIN/mppsyncmaster
+MPP_DUMP=$PSQLBIN/gp_dump
+MPP_RESTORE=$PSQLBIN/gp_restore
+MPPSYNCMASTER=$PSQLBIN/gpsyncmaster
 #******************************************************************************
 # MPP OS Settings 
 #******************************************************************************
@@ -211,10 +211,10 @@ PG_CONF_ADD_FILE=$WORKDIR/postgresql_conf_mpp_additions
 RECOVER_FLAG=/tmp/active_recovery_in_progress
 SCHEMA_FILE=cdb_schema.sql
 DEFAULTDB=template1
-CONFIG_TABLE=mpp_configuration
-MPP_MPP_TABLE=mpp_mpp
-MPP_PG_VIEW=mpp_pgdatabase
-MPP_INITDB_VER_TABLE=mpp_version_at_initdb
+CONFIG_TABLE=gp_configuration
+MPP_MPP_TABLE=gp_gp
+MPP_PG_VIEW=gp_pgdatabase
+MPP_INITDB_VER_TABLE=gp_version_at_initdb
 DEFAULT_CHK_PT_SEG=8
 DEFAULT_IP_ALLOW="0.0.0.0/0"
 DEFAULT_QD_MAX_CONNECT=25
@@ -502,7 +502,7 @@ GET_DISTRIB_COLS () {
 	if [ `$ECHO $1|$GREP -c "\."` -eq 1 ];then
 		T_NAME=`$ECHO $1|$CUT -d"." -f2`
 		S_NAME=`$ECHO $1|$CUT -d"." -f1`
-		DISTRIB_COLS=`${EXPORT_LIB_PATH};$PSQL -p $2 $3 -A -t -c"select attrnums from  mpp_distribution_policy  where localoid in (select oid from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}'));"`
+		DISTRIB_COLS=`${EXPORT_LIB_PATH};$PSQL -p $2 $3 -A -t -c"select attrnums from  gp_distribution_policy  where localoid in (select oid from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}'));"`
 		if [ x"" == x"$DISTRIB_COLS" ];then
 			DISTRIB_COLS='';fi
 	else
@@ -1001,7 +1001,7 @@ START_SYNC_PROCESS () {
 		LOG_MSG "[INFO]:-Standby Master sync process active, will shutdown"
 		STOP_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY
 	fi
-	LOG_MSG "[INFO]:-Starting mppsyncmaster on standby host ${MASTER_STANDBY_HOSTNAME}" 1
+	LOG_MSG "[INFO]:-Starting gpsyncmaster on standby host ${MASTER_STANDBY_HOSTNAME}" 1
         $TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "exec $MPPSYNCMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -i  >> ${MASTER_STANDBY_DATA_DIRECTORY}.log 2>&1 &"
 	$SLEEP 3 #Wait to ensure process has time to start
 	GET_PG_PID_ACTIVE $MASTER_STANDBY_PORT ${MASTER_STANDBY_HOSTNAME}
@@ -1019,7 +1019,7 @@ STOP_SYNC_PROCESS () {
 	if [ $# -ne 2 ];then ERROR_EXIT "[FATAL:-Expected 2 parameters got $# " 2;fi
 	MASTER_STANDBY_HOSTNAME=$1;shift
 	MASTER_STANDBY_DATA_DIRECTORY=$1
-	LOG_MSG "[INFO]:-Stopping mppsyncmaster on standby host ${MASTER_STANDBY_HOSTNAME}" 1
+	LOG_MSG "[INFO]:-Stopping gpsyncmaster on standby host ${MASTER_STANDBY_HOSTNAME}" 1
 	$TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "$EXPORT_LIB_PATH;$PG_CTL stop -D $MASTER_STANDBY_DATA_DIRECTORY -m immediate"
 	RETVAL=$?
 	ERROR_CHK $RETVAL "immediate shutdown of sync process on ${MASTER_STANDBY_HOSTNAME}" 1

@@ -1395,7 +1395,7 @@ describeOneTableDetails(const char *schemaname,
 			/* mpp addition start: dump distributed by clause */
 			printfPQExpBuffer(&buf,
 					 "SELECT attrnums\n"
-							  "FROM pg_catalog.mpp_distribution_policy t\n"
+							  "FROM pg_catalog.gp_distribution_policy t\n"
 							  "WHERE localoid = '%s' ",
 							  oid);
 			

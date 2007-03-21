@@ -26,14 +26,14 @@ typedef struct SegmentDatabaseDescriptor
 	 *
 	 * Points to the SegmentDatabaseInfo structure describing the
 	 * parameters for this segment database.  Information in this structure is
-	 * obtained from the MPP administrative schema tables.
+	 * obtained from the Greenplum administrative schema tables.
 	 */
 	struct CdbComponentDatabaseInfo *segment_database_info;
 	
 	/* segindex
 	 *
 	 * Identifies the segment this group of databases is serving.  This is the
-	 * segindex assigned to the segment in mpp_configuration
+	 * segindex assigned to the segment in gp_configuration
 	 */
 	int4         			segindex;
 	

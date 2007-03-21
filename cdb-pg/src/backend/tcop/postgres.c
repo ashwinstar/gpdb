@@ -4743,7 +4743,7 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 	{
 		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
 		{
-			printf("mppsyncmaster takes the same options as postgres\n");
+			printf("gpsyncmaster takes the same options as postgres\n");
 			exit(0);
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)

@@ -749,11 +749,11 @@ SECURE_DATA () {
 	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "create table ${SECURE_TABLE_NAME} (like $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
 	#TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select oid from pg_class where relname='$SECURE_TAB' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 	#SOURCE_TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select oid from pg_class where relname='$SOURCE_TAB' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
-	#ATTNUM_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(attrnums) from mpp_distribution_policy where localoid=$SOURCE_TAB_OID ;"`
+	#ATTNUM_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(attrnums) from gp_distribution_policy where localoid=$SOURCE_TAB_OID ;"`
 	#ERROR_CHK $? "create temporary holding table" 2
 	LOG_MSG "[INFO]:-Commencing record transfer, please wait..." 1
 	#if [ $ATTNUM_COUNT -eq 0 ];then
-	#	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "update mpp_distribution_policy set attrnums='{}' where localoid=$TAB_OID;"
+	#	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "update gp_distribution_policy set attrnums='{}' where localoid=$TAB_OID;"
 	#fi
 	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into ${SECURE_TABLE_NAME} (select * from only $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
 	ERROR_CHK $? "secure records to temporary table" 2
@@ -807,7 +807,7 @@ GENERATE_SQL () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select oid from pg_class where relname='$SECURE_TAB' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 	SOURCE_TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select oid from pg_class where relname='$SOURCE_TAB' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
-	#ATTNUM_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(attrnums) from mpp_distribution_policy where localoid=$SOURCE_TAB_OID ;"`
+	#ATTNUM_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(attrnums) from gp_distribution_policy where localoid=$SOURCE_TAB_OID ;"`
 	LOG_MSG "[INFO]:-Generating SQL file to build child tables, please wait" 1
 	VECTOR=0
 	((COL_COUNT=${#PARENT_COLUMN_LIST[@]}-1))

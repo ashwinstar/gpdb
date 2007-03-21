@@ -289,7 +289,7 @@ DISPLAY_PARAM () {
 
 STANDBY_ACTIVATE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	#Check if we have a mppsyncmaster process running
+	#Check if we have a gpsyncmaster process running
 	GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
 	if [ $PID -ne 0 ];then
 		LOG_MSG "[INFO]:-Stopping sync process on $MASTER_STANDBY_HOSTNAME" 1
@@ -310,7 +310,7 @@ STANDBY_ACTIVATE () {
 	if [ x"" != x"$START_MPPSYNC" ];then
 		START_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY $MASTER_STANDBY_PORT
 	else
-		LOG_MSG "[INFO]:-Process mppsyncmaster not started on $MASTER_STANDBY_HOSTNAME as -i supplied" 1
+		LOG_MSG "[INFO]:-Process gpsyncmaster not started on $MASTER_STANDBY_HOSTNAME as -i supplied" 1
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -356,10 +356,10 @@ FAIL_PRIMARY_SEGMENTS () {
 	#Now start up the read only master
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$PG_CTL -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log start"
 	ERROR_CHK $? "start readonly master instance" 2
-	#Now force an update of mpp_pgdatabase
+	#Now force an update of gp_pgdatabase
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$PSQL -p $MASTER_PORT $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$PSQL -p $MASTER_PORT $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
-	LOG_MSG "[INFO]:-Forced update of mpp_pgdatabase complete" 1
+	LOG_MSG "[INFO]:-Forced update of gp_pgdatabase complete" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 #******************************************************************************

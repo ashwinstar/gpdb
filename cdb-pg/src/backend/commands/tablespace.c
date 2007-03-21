@@ -281,7 +281,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 			ereport(ERROR,
 				(errcode(ERRCODE_MPP_COMMAND_ERROR),
 				 errmsg("You must specify as many locations as you have segment databases on each host. You specified %d locations but there are %d segments per host.",i,numSegsPerHost),
-				 errhint("Check mpp_configuration for number of primary segment databases on each host")));
+				 errhint("Check gp_configuration for number of primary segment databases on each host")));
 			
 		
 		if (stmt->mirrorlocations)

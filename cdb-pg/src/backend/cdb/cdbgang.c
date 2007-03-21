@@ -269,7 +269,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 			ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
 							errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount),
 							errdetail("pthread_create() failed with err %d mpp_connections_per_thread %d", pthread_err, mpp_connections_per_thread),
-							errhint("mpp_connections_per_thread controls the number of threads created during MPP dispatch, current setting is %d increase the setting to spawn fewer threads", mpp_connections_per_thread)));
+							errhint("mpp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", mpp_connections_per_thread)));
 		}
 
 	}
@@ -436,7 +436,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 
 
 /*
- *	buildGangDefinition: reads the MPP catalog tables and build a CdbComponentDatabases structure.
+ *	buildGangDefinition: reads the GP catalog tables and build a CdbComponentDatabases structure.
  *	It then converts this to a Gang structure and initializes
  *	all the non-connection related fields.
  */
@@ -522,7 +522,7 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
 	if (cdb_component_dbs == NULL || cdb_component_dbs->total_segments <= 0
 		|| cdb_component_dbs->total_segment_dbs <= 0)
 	{
-		elog(ERROR, "building Gang:  MPP schema not populated");
+		elog(ERROR, "building Gang:  GP schema not populated");
 		pfree(username);
 		return NULL;
 	}

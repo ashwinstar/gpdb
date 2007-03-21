@@ -120,7 +120,7 @@ GET_SEGMENT_STATUS () {
 		QE_ACTIVE_PID=$PID
 	fi
 	#*************************************
-	#Process mpp_pgdatabase info
+	#Process gp_pgdatabase info
 	#*************************************
 	QE_MIRROR_ACTIVE=0
 	QE_MIRROR_FAILED=0

@@ -758,7 +758,7 @@ STANDBY_HOST_DETAILS () {
 
 GET_MPP_VERSION () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		MPP_INIT_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from mpp_version_at_initdb limit 1;" 2>/dev/null`
+		MPP_INIT_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from gp_version_at_initdb limit 1;" 2>/dev/null`
 		ERROR_CHK $? "obtain MPP initdb version information" 2
 		MPP_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select version();" 2>/dev/null`
 		ERROR_CHK $? "obtain MPP version information" 2

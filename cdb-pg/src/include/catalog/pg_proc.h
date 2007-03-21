@@ -3952,15 +3952,15 @@ DATA(insert OID = 2788 (  ginoptions	   PGNSP PGUID 12 f f t f s 2 17 f "1009 16
 DESCR("gin(internal)");
 
 /* Greenplum MPP exposed internally-defined functions. */
-DATA(insert OID = 6003 (  mpp_backup_launch    PGNSP PGUID 12 f f f f v 5 25 f "25 25 25 25 25" _null_ _null_ _null_ mpp_backup_launch__  - _null_  ));
+DATA(insert OID = 6003 (  gp_backup_launch    PGNSP PGUID 12 f f f f v 5 25 f "25 25 25 25 25" _null_ _null_ _null_ gp_backup_launch__  - _null_  ));
 DESCR("launch mpp backup on outboard Postgres instances");
-DATA(insert OID = 6004 (  mpp_restore_launch   PGNSP PGUID 12 f f f f v 8 25 f "25 25 25 25 25 25 23 16" _null_ _null_ _null_ mpp_restore_launch__  - _null_  ));
+DATA(insert OID = 6004 (  gp_restore_launch   PGNSP PGUID 12 f f f f v 8 25 f "25 25 25 25 25 25 23 16" _null_ _null_ _null_ gp_restore_launch__  - _null_  ));
 DESCR("launch mpp restore on outboard Postgres instances");
-DATA(insert OID = 6005 (  mpp_read_backup_file PGNSP PGUID 12 f f f f v 3 25 f "25 25 24" _null_ _null_ _null_ mpp_read_backup_file__  - _null_  ));
+DATA(insert OID = 6005 (  gp_read_backup_file PGNSP PGUID 12 f f f f v 3 25 f "25 25 24" _null_ _null_ _null_ gp_read_backup_file__  - _null_  ));
 DESCR("read mpp backup file on outboard Postgres instances");
-DATA(insert OID = 6006 (  mpp_write_backup_file PGNSP PGUID 12 f f f f v 3 25 f "25 25 25" _null_ _null_ _null_ mpp_write_backup_file__  - _null_  ));
+DATA(insert OID = 6006 (  gp_write_backup_file PGNSP PGUID 12 f f f f v 3 25 f "25 25 25" _null_ _null_ _null_ gp_write_backup_file__  - _null_  ));
 DESCR("write mpp backup file on outboard Postgres instances");
-DATA(insert OID = 6007 (  mpp_pgdatabase   PGNSP PGUID 12 f f f t v 0 2249 f "" _null_ _null_ _null_ mpp_pgdatabase__ - _null_ ));
+DATA(insert OID = 6007 (  gp_pgdatabase   PGNSP PGUID 12 f f f t v 0 2249 f "" _null_ _null_ _null_ gp_pgdatabase__ - _null_ ));
 DESCR("view mpp pgdatabase state");
 DATA(insert OID = 6008 (  numeric_amalg    PGNSP PGUID 12 f f t f i 2 1231 f "1231 1231" _null_ _null_ _null_ numeric_amalg - _null_ ));
 DESCR("aggregate preliminary function");

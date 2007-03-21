@@ -116,7 +116,7 @@ main(int argc, char *argv[])
 		{"use-set-session-authorization", no_argument, &use_setsessauth, 1},
 
 		/* START MPP ADDITION */
-		{"mpp-syntax", no_argument, NULL, 1},
+		{"gp-syntax", no_argument, NULL, 1},
 		/* END MPP ADDITION */
 		
 		{NULL, 0, NULL, 0}
@@ -287,7 +287,7 @@ main(int argc, char *argv[])
 			/* START MPP ADDITION */
 			case 1:
 				/* mpp-format */
-				appendPQExpBuffer(pgdumpopts, " --mpp-syntax");
+				appendPQExpBuffer(pgdumpopts, " --gp-syntax");
 				break;
 			/* END MPP ADDITION */
 				
@@ -417,7 +417,7 @@ help(void)
 			 "                           use SESSION AUTHORIZATION commands instead of\n"
 			 "                           OWNER TO commands\n"));
 	/* START MPP ADDITION */
-	printf(_("  --mpp-syntax             dump with Greenplum Database syntax\n"));
+	printf(_("  --gp-syntax             dump with Greenplum Database syntax\n"));
 	/* END MPP ADDITION */
 	
 	printf(_("\nConnection options:\n"));

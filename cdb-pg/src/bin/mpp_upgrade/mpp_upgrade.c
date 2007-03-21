@@ -171,10 +171,10 @@ static void run_sql_command(PGconn * conn, char * cmd)
 static void
 help(void)
 {
-	printf("mpp_upgrade is used to upgrade a Greenplum (Bizgres MPP) 2.2 system to a Greenplum Database 2.3 system.\n\n");
-	printf("mpp_upgrade must be run from the master database node after upgrading the Greenplum Database software.\n\n");
+	printf("gp_upgrade is used to upgrade a Greenplum (Bizgres MPP) 2.2 system to a Greenplum Database 2.3 system.\n\n");
+	printf("gp_upgrade must be run from the master database node after upgrading the Greenplum Database software.\n\n");
 	printf("Usage:\n");
-	printf("  mpp_upgrade [OPTION]...\n");
+	printf("  gp_upgrade [OPTION]...\n");
 
 	printf("\nGeneral options:\n");
 	printf(_("  --help                   show this help, then exit\n"));
@@ -259,7 +259,7 @@ main(int argc, char **argv)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("mpp_upgrade (Greenplum Database) " PG_VERSION);
+			puts("gp_upgrade (Greenplum Database) " PG_VERSION);
 			exit(0);
 		}
 	}
@@ -361,7 +361,7 @@ main(int argc, char **argv)
 
      strcat(conninfo , " options='-O -c mpp_session_role=utility'");
      
-     printf("mpp_upgrade running.\n");
+     printf("gp_upgrade running.\n");
 
     /* Make a connection to the database */
     conn = connect_to_db(conninfo, force_password);
@@ -382,7 +382,7 @@ main(int argc, char **argv)
     	*(strchr(version,')')+1) = '\0';
 
 
-    printf("mpp_upgrade:  Version of system:  %s\n", version);
+    printf("gp_upgrade:  Version of system:  %s\n", version);
 
     if (strstr(version,"Greenplum Database")!= 0 || strstr(version,"Greenplum database")!= 0 || strstr(version,"Bizgres MPP")!= 0)
         isMPP = 1;
@@ -427,10 +427,10 @@ main(int argc, char **argv)
     }
 	PQclear(res);
 
-    res = PQexec(conn, "select * from pg_catalog.mpp_configuration where dbid = 1 or content >= 0 order by content, definedprimary desc, dbid");
+    res = PQexec(conn, "select * from pg_catalog.gp_configuration where dbid = 1 or content >= 0 order by content, definedprimary desc, dbid");
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
     {
-        fprintf(stderr, "select * from mpp_configuration: command failed: %s", PQerrorMessage(conn));
+        fprintf(stderr, "select * from gp_configuration: command failed: %s", PQerrorMessage(conn));
         PQclear(res);
         PQfinish(conn);
    		exit(1);
@@ -462,14 +462,14 @@ main(int argc, char **argv)
     
     segdbs[0].conn = conn;
     
-    printf("mpp_upgrade:  Got configuration information from entry db.\n");
+    printf("gp_upgrade:  Got configuration information from entry db.\n");
 
     for (d = 0; d < databasecount; d++)
     {
     	
     	
     		
-    	printf("mpp_upgrade:  Upgrading database %s\n",databasenames[d]);
+    	printf("gp_upgrade:  Upgrading database %s\n",databasenames[d]);
     	
     	for (i = 0; i < segdbcount; i++)
 	    {

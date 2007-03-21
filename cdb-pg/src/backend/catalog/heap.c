@@ -933,7 +933,7 @@ heap_create_with_catalog(const char *relname,
 
 	/*
      * CDB: If caller gave us a distribution policy, store the distribution
-     * key column list in the mpp_distribution_policy catalog and attach a
+     * key column list in the gp_distribution_policy catalog and attach a
      * copy to the relcache entry.
      */
     if (policy &&

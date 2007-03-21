@@ -255,7 +255,7 @@ init_sql_fcache(FmgrInfo *finfo)
 	 * no functions would be useful.
 	 * 
 	 * We also need to execute certain catalog queries locally.  The Fault-Tolerance system
-	 * does queries of mpp_configuration, and some DDL and Utility commands do selects from the 
+	 * does queries of gp_configuration, and some DDL and Utility commands do selects from the 
 	 * catalog table, etc.    So, if the FROM clause consists only of catalog tables, we 
 	 * will run the query locally.
 	 * 

@@ -54,7 +54,7 @@ static char **segment_ip_cache = NULL;
 static int segment_ip_cache_limit = 0;
 
 /*
- * getMppMpp() causes the mpp_mpp table's singleton row to be read into a global structure
+ * getMppMpp() causes the gp_mpp table's singleton row to be read into a global structure
  * This is called from cdblink_setup().
  * The global variable is named MppIdentity, and is declared in cdbvars.h and defined in cdbvars.c.
  * There is one member variable that is a string.  It is allocated from the TopMemoryContext
@@ -64,9 +64,9 @@ static int segment_ip_cache_limit = 0;
 void
 getMppMpp(void)
 {
-	Relation	mpp_mpp_rel;
-	HeapTuple	mpp_mpp_tuple = NULL;
-	HeapScanDesc mpp_mpp_scan;
+	Relation	gp_gp_rel;
+	HeapTuple	gp_gp_tuple = NULL;
+	HeapScanDesc gp_gp_scan;
 	bool		isNull;
 	Datum		attr;
 	Name		mppname;
@@ -91,22 +91,22 @@ getMppMpp(void)
 	/*
 	 * Open the mpp table relation
 	 */
-	mpp_mpp_rel = heap_open(MppMppRelationId, AccessShareLock);
+	gp_gp_rel = heap_open(GpGpRelationId, AccessShareLock);
 
 	/*
-	 * Read the one row table mpp_mpp.
+	 * Read the one row table gp_mpp.
 	 * We currently require that this be there or else we ereport an ERROR.
 	 */
-	mpp_mpp_scan = heap_beginscan(mpp_mpp_rel, SnapshotNow, 0, NULL);
-	mpp_mpp_tuple = heap_getnext(mpp_mpp_scan, ForwardScanDirection);
-	if (!HeapTupleIsValid(mpp_mpp_tuple))
+	gp_gp_scan = heap_beginscan(gp_gp_rel, SnapshotNow, 0, NULL);
+	gp_gp_tuple = heap_getnext(gp_gp_scan, ForwardScanDirection);
+	if (!HeapTupleIsValid(gp_gp_tuple))
 	{
 		ereport(WARNING,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
 				 errmsg("No rows found in pg_catalog.%s.",
-						MppMppRelationName)));
-		heap_endscan(mpp_mpp_scan);
-		heap_close(mpp_mpp_rel, AccessShareLock);
+						GpGpRelationName)));
+		heap_endscan(gp_gp_scan);
+		heap_close(gp_gp_rel, AccessShareLock);
 		return;
 	}
 
@@ -117,7 +117,7 @@ getMppMpp(void)
 	/*
 	 * mppname
 	 */
-	attr = heap_getattr(mpp_mpp_tuple, Anum_mpp_mpp_mppname, mpp_mpp_rel->rd_att, &isNull);
+	attr = heap_getattr(gp_gp_tuple, Anum_gp_gp_mppname, gp_gp_rel->rd_att, &isNull);
 	Assert(!isNull);
 	mppname = DatumGetName(attr);
 
@@ -133,32 +133,32 @@ getMppMpp(void)
 	/*
 	 * numsegments
 	 */
-	attr = heap_getattr(mpp_mpp_tuple, Anum_mpp_mpp_numsegments, mpp_mpp_rel->rd_att, &isNull);
+	attr = heap_getattr(gp_gp_tuple, Anum_gp_gp_numsegments, gp_gp_rel->rd_att, &isNull);
 	Assert(!isNull);
 	MppIdentity.numsegments = DatumGetInt16(attr);
 
 	/*
 	 * dbid
 	 */
-	attr = heap_getattr(mpp_mpp_tuple, Anum_mpp_mpp_dbid, mpp_mpp_rel->rd_att, &isNull);
+	attr = heap_getattr(gp_gp_tuple, Anum_gp_gp_dbid, gp_gp_rel->rd_att, &isNull);
 	Assert(!isNull);
 	MppIdentity.dbid = DatumGetInt16(attr);
 
 	/*
 	 * content
 	 */
-	attr = heap_getattr(mpp_mpp_tuple, Anum_mpp_mpp_content, mpp_mpp_rel->rd_att, &isNull);
+	attr = heap_getattr(gp_gp_tuple, Anum_gp_gp_content, gp_gp_rel->rd_att, &isNull);
 	Assert(!isNull);
 	MppIdentity.segindex = DatumGetInt16(attr);
 
 	/*
 	 * End the heapscan and close the relation that we opened.
 	 */
-	heap_endscan(mpp_mpp_scan);
-	heap_close(mpp_mpp_rel, AccessShareLock);
+	heap_endscan(gp_gp_scan);
+	heap_close(gp_gp_rel, AccessShareLock);
 
 	/*
-	 * Validate the mpp_role against the content.
+	 * Validate the gp_role against the content.
 	 * If the role is DISPATCH, we must be an entry database,
 	 * If the role is EXECUTE, we can be either a segment database or an
      * entry database.
@@ -185,7 +185,7 @@ getMppMpp(void)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					 errmsg("mpp_mpp segindex not same as Mpp_segment."
+					 errmsg("gp_mpp segindex not same as Mpp_segment."
 						 )));
 		}
 	}
@@ -193,7 +193,7 @@ getMppMpp(void)
 }
 
 /*
- * freeMppMpp() causes the global variable holding the mpp_mpp table's singleton row to be
+ * freeMppMpp() causes the global variable holding the gp_mpp table's singleton row to be
  * reinitialized to empty, releasing memory that was allocated when it was loaded.
  * It is called from cdblink_disconnect().
  */
@@ -240,9 +240,9 @@ getCdbComponentInfo(void)
 {
 	CdbComponentDatabases *component_databases = NULL;
 
-	Relation	mpp_configuration_rel;
-	HeapTuple	mpp_configuration_tuple = NULL;
-	HeapScanDesc mpp_configuration_scan;
+	Relation	gp_configuration_rel;
+	HeapTuple	gp_configuration_tuple = NULL;
+	HeapScanDesc gp_configuration_scan;
 
 	/*
 	 * Initial size for info arrays.
@@ -282,14 +282,14 @@ getCdbComponentInfo(void)
 	component_databases->entry_db_info =
 		(CdbComponentDatabaseInfo *) palloc0(sizeof(CdbComponentDatabaseInfo) * entry_array_size);
 
-	mpp_configuration_rel = heap_open(MppConfigurationRelationId, AccessShareLock);
+	gp_configuration_rel = heap_open(GpConfigurationRelationId, AccessShareLock);
 
-	mpp_configuration_scan = heap_beginscan(mpp_configuration_rel, SnapshotNow, 0, NULL);
+	gp_configuration_scan = heap_beginscan(gp_configuration_rel, SnapshotNow, 0, NULL);
 
-	while (HeapTupleIsValid(mpp_configuration_tuple = heap_getnext(mpp_configuration_scan, ForwardScanDirection)))
+	while (HeapTupleIsValid(gp_configuration_tuple = heap_getnext(gp_configuration_scan, ForwardScanDirection)))
 	{
 		/*
-		 * Grab the fields that we need from mpp_configuration.
+		 * Grab the fields that we need from gp_configuration.
 		 * We do this first, because until we read them, we don't know whether
 		 * this is an entry database row or a segment database row.
 		 */
@@ -298,35 +298,35 @@ getCdbComponentInfo(void)
 		/*
 		 * content
 		 */
-		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_content, mpp_configuration_rel->rd_att, &isNull);
+		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_content, gp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		content = DatumGetInt16(attr);
 
 		/*
 		 * dbid
 		 */
-		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_dbid, mpp_configuration_rel->rd_att, &isNull);
+		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_dbid, gp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		dbid = DatumGetInt16(attr);
 
 		/*
 		 * definedprimary
 		 */
-		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_definedprimary, mpp_configuration_rel->rd_att, &isNull);
+		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_definedprimary, gp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		definedprimary = DatumGetBool(attr);
 
 		/*
 		 * isprimary
 		 */
-		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_isprimary, mpp_configuration_rel->rd_att, &isNull);
+		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_isprimary, gp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		isprimary = DatumGetBool(attr);
 
 		/*
 		 * valid
 		 */
-		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_valid, mpp_configuration_rel->rd_att, &isNull);
+		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_valid, gp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		valid = DatumGetBool(attr);
 
@@ -380,7 +380,7 @@ getCdbComponentInfo(void)
 		/*
 		 * hostname
 		 */
-		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_hostname, mpp_configuration_rel->rd_att, &isNull);
+		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_hostname, gp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		pRow->hostname = pstrdup(DatumGetCString(attr));
 
@@ -419,14 +419,14 @@ getCdbComponentInfo(void)
 		/*
 		 * port
 		 */
-		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_port, mpp_configuration_rel->rd_att, &isNull);
+		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_port, gp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		pRow->port = DatumGetInt32(attr);
 
 		/*
 		 * datadir
 		 */
-		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_datadir, mpp_configuration_rel->rd_att, &isNull);
+		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_datadir, gp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		pRow->datadir = DatumGetCString(DirectFunctionCall1(textout, attr));
 	}
@@ -473,7 +473,7 @@ getCdbComponentInfo(void)
 	}
 
 
-	if (MppIdentity.numsegments <= 0)	/* mpp_mpp not available or not read in yet */
+	if (MppIdentity.numsegments <= 0)	/* gp_mpp not available or not read in yet */
 	{
 		MppIdentity.numsegments = component_databases->total_segments;
 		MppIdentity.segindex = -1;
@@ -481,14 +481,14 @@ getCdbComponentInfo(void)
 	}
 
 	/*
-	 *	Validate that mpp_numsegments == segment_databases->total_segment_dbs
+	 *	Validate that gp_numsegments == segment_databases->total_segment_dbs
 	 */
 	if (getMPPSegmentCount() != component_databases->total_segments)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
 				 errmsg("MPP number of segments inconsistency: count is %d from pg_catalog.%s table, but %d from getCdbComponentDatabases()",
-						getMPPSegmentCount(),  MppMppRelationName, component_databases->total_segments)));
+						getMPPSegmentCount(),  GpGpRelationName, component_databases->total_segments)));
 	}
 
 	/*
@@ -507,7 +507,7 @@ getCdbComponentInfo(void)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
-				 errmsg("Cannot locate entry database represented by mpp_mpp row in mpp_configuration: dbid %d content %d",
+				 errmsg("Cannot locate entry database represented by gp_mpp row in gp_configuration: dbid %d content %d",
 						MppIdentity.dbid, Mpp_segment)));
 	}
 
@@ -531,7 +531,7 @@ getCdbComponentInfo(void)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_EXCEPTION),
-						 errmsg("Content values not valid in mpp_configuration table.  They must be in the range 0 to %d inclusive",
+						 errmsg("Content values not valid in gp_configuration table.  They must be in the range 0 to %d inclusive",
 								getMPPSegmentCount() - 1)));
 			}
 		}
@@ -539,17 +539,17 @@ getCdbComponentInfo(void)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_DATA_EXCEPTION),
-					 errmsg("Content values not valid in mpp_configuration table.  They must be in the range 0 to %d inclusive",
+					 errmsg("Content values not valid in gp_configuration table.  They must be in the range 0 to %d inclusive",
 							getMPPSegmentCount() - 1)));
 		}
 	}
 
 	/*
-	 * Cleanup invoves ending the heap scan of mpp_configuration, and closing all the relations we opened.
+	 * Cleanup invoves ending the heap scan of gp_configuration, and closing all the relations we opened.
 	 */
-	heap_endscan(mpp_configuration_scan);
+	heap_endscan(gp_configuration_scan);
 
-	heap_close(mpp_configuration_rel, AccessShareLock);
+	heap_close(gp_configuration_rel, AccessShareLock);
 
 
 	return component_databases;
@@ -635,11 +635,11 @@ freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi)
 void
 cdb_setup(void)
 {
-	elog(DEBUG1, "Initializing MPP components...");
+	elog(DEBUG1, "Initializing Greenplum components...");
 
 	cdblink_setup();
 
-	/* If mpp_role is UTILITY, skip this call. */
+	/* If gp_role is UTILITY, skip this call. */
 	if (Mpp_role != MPP_ROLE_UTILITY)
 	{
 		/* Initialize the Motion Layer IPC subsystem. */
@@ -668,7 +668,7 @@ cdb_setup(void)
 void
 cdb_cleanup(int code, Datum arg)
 {
-	elog(DEBUG1, "Cleaning up MPP components...");
+	elog(DEBUG1, "Cleaning up Greenplum components...");
 
 	disconnectAndDestroyAllGangs();
 

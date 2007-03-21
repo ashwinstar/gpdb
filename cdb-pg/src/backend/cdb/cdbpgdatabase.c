@@ -16,7 +16,7 @@
 #include "cdb/cdbutil.h"
 #include "cdb/cdbfts.h"
 
-Datum		mpp_pgdatabase__(PG_FUNCTION_ARGS);
+Datum		gp_pgdatabase__(PG_FUNCTION_ARGS);
 
 /* Working status for pg_prepared_xact */
 typedef struct
@@ -30,7 +30,7 @@ typedef struct
  * pgdatabasev - produce a view of pgdatabase to include transient state
  */
 Datum
-mpp_pgdatabase__(PG_FUNCTION_ARGS)
+gp_pgdatabase__(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx;
 	Working_State *mystatus;

@@ -1615,7 +1615,7 @@ recoverInDoubtTransactions(void)
 				"that were not able to be resolved for an unknown reason. "),
 		errdetail("Here is a list of in-doubt transactions in the system: %s",
 				  indoubtBuff.data),
-			errhint("Try restarting the MPP array.  If the problem persists "
+			errhint("Try restarting the Greenplum Database array.  If the problem persists "
 				 " an Administrator will need to resolve these transactions "
 					" manually.")));
 

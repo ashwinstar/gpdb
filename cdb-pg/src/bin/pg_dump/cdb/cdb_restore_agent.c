@@ -372,8 +372,8 @@ main(int argc, char **argv)
 
 	/* backup file name */
 	/* TODO: use findAcceptableBackupFilePathName(...) to look for the file name
-	 *       if user invoked mpp_restore_agent directly without supplying a file name.
-	 *       If the agent is invoked from mpp_restore_launch, then we are ok.
+	 *       if user invoked gp_restore_agent directly without supplying a file name.
+	 *       If the agent is invoked from gp_restore_launch, then we are ok.
 	 */
 	if (optind < argc)
 		inputFileSpec = argv[optind];
@@ -451,7 +451,7 @@ main(int argc, char **argv)
         char* pszDBPswd = Base64ToData( g_MPPPassThroughCredentials, &nBytes );
         if ( pszDBPswd == NULL )
         {
-            mpp_err_msg(logError, pszProgName, "Invalid MPP Credentials:  %s\n", g_MPPPassThroughCredentials );
+            mpp_err_msg(logError, pszProgName, "Invalid Greenplum DB Credentials:  %s\n", g_MPPPassThroughCredentials );
             exit(1);
         }
         if ( nBytes > 0 )
@@ -497,7 +497,7 @@ main(int argc, char **argv)
         g_pStatusOpList = CreateStatusOpList();
         if ( g_pStatusOpList == NULL )
         {
-            exit_horribly(NULL, NULL, "cannot allocate memory for mpp_backup_status operation\n");
+            exit_horribly(NULL, NULL, "cannot allocate memory for gp_backup_status operation\n");
         }
 
         /* Start monitoring for cancel requests */
@@ -533,7 +533,7 @@ main(int argc, char **argv)
         pOp = CreateStatusOp( TASK_START, TASK_RC_SUCCESS, SUFFIX_START, TASK_MSG_SUCCESS );
         if ( pOp == NULL )
         {
-            exit_horribly(NULL, NULL, "cannot allocate memory for mpp_backup_status operation\n");
+            exit_horribly(NULL, NULL, "cannot allocate memory for gp_backup_status operation\n");
         }
         AddToStatusOpList( g_pStatusOpList, pOp );
     }
@@ -638,15 +638,15 @@ main(int argc, char **argv)
             }
 
             if ( g_role == ROLE_SEGDB )
-                putenv( "PGOPTIONS=-c mpp_session_role=UTILITY" );
+                putenv( "PGOPTIONS=-c gp_session_role=UTILITY" );
 			if ( g_role == ROLE_MASTER )
-				putenv( "PGOPTIONS=-c mpp_session_role=DISPATCH" );
+				putenv( "PGOPTIONS=-c gp_session_role=DISPATCH" );
 			
 			mpp_err_msg(logInfo, pszProgName, "Command Line: %s\n", pszCmdLine);
 
             execl("/bin/sh", "sh", "-c", pszCmdLine, NULL );
 
-			mpp_err_msg(logInfo, pszProgName, "Error in mpp_restore_agent - execl of %s with Command Line %s failed",
+			mpp_err_msg(logInfo, pszProgName, "Error in gp_restore_agent - execl of %s with Command Line %s failed",
 			  "/bin/sh", pszCmdLine);
             
 			_exit(127);
@@ -865,7 +865,7 @@ void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
  * It listens using this connection for notifications.  A notification only arrives if we are to 
  * cancel. In that case, we cause the interrupt handler to be called by sending ourselves a SIGINT
  * signal.  The other duty of this thread, since it owns the g_conn_status, is to periodically examine
- * a linked list of mpp_backup_status insert command requests.  If any are there, it causes an insert and a notify
+ * a linked list of gp_backup_status insert command requests.  If any are there, it causes an insert and a notify
  * to be sent.    
  */
 void* monitorThreadProc(void *arg)
@@ -992,7 +992,7 @@ void* monitorThreadProc(void *arg)
  * my_handler: This function is the signal handler for both SIGINT and SIGTERM signals.  
  * It checks to see whether there is an active transaction running on the g_conn connection
  * If so, it issues a PQrequestCancel.  This will cause the current statement to fail, which will
- * cause mpp_dump to terminate gracefully.
+ * cause gp_dump to terminate gracefully.
  * If there's no active transaction, it does nothing.
  * This is set up to always run in the context of the main thread.
  */
@@ -1053,7 +1053,7 @@ void _check_database_version(ArchiveHandle *AH, bool ignoreVersion)
 /*
 bool execMPPCatalogFunction(PGconn* pConn)
 {
-	const char* pszFunctionName		= "restore_mpp_catalog"; 
+	const char* pszFunctionName		= "restore_gp_catalog"; 
 	const char* pszNamespaceName	= "mpp"; 
 	bool		bRtn				= false;
 	PQExpBuffer bufQry				= NULL;

@@ -26,7 +26,7 @@ creating the Greenplum Database schema and loading system catalog data from
 another Greenplum Database installation. There are two ways to get the SQL 
 script file that mpprebuildcluster.sh needs:
 
-* mpp_dump  The mpp_dump operation creates a file on the master host called 
+* gp_dump  The gp_dump operation creates a file on the master host called 
   mpp_catalog_1_<dbid>_<timestamp>.
 
 * pg_dump  PostgreSQL provides a utility called pg_dump, which backs up a 
@@ -66,7 +66,7 @@ OPTIONS
 
 Required. A SQL file containing the Greenplum Database schema and system 
 catalog information. This is the mpp_catalog_0_<dbid>_<timestamp> file 
-created on the Greenplum master host by the mpp_dump operation. You can 
+created on the Greenplum master host by the gp_dump operation. You can 
 also do a pg_dump operation on a Greenplum master host to get a SQL 
 file that can be used by mpprebuildcluster.sh. For example:
 pg_dump -n pg_catalog -p 5432 template1
@@ -201,5 +201,5 @@ mpprebuildcluster.sh -s mpp_catalog_0_1_2005103112453 -d /home/gpadmin/tmp -o -m
 SEE ALSO
 *****************************************************
 
-mpprebuildseg.sh, mppcreatecluster.sh, mpp_dump, mpp_restore
+mpprebuildseg.sh, mppcreatecluster.sh, gp_dump, gp_restore
 

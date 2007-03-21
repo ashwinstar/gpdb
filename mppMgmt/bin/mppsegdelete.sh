@@ -64,7 +64,7 @@ CHK_CALL () {
 CHK_DUMP () {
 	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO][$INST_COUNT]:-Checking host=$DELETE_HOSTNAME Data directory=$DELETE_DATADIR"
-	DUMP_COUNT=`$TRUSTED_SHELL $DELETE_HOSTNAME "$FIND $DELETE_DATADIR -name 'mpp_dump*' -print|$WC -l"`
+	DUMP_COUNT=`$TRUSTED_SHELL $DELETE_HOSTNAME "$FIND $DELETE_DATADIR -name 'gp_dump*' -print|$WC -l"`
 	if [ $DUMP_COUNT -ne 0 ];then 
 		QE_LINE="${QE_LINE}:DUMP_LOCATED"
 	else

@@ -3,7 +3,7 @@
  * cdb_seginst.c
  *
  * Structures and functions to read a join of cdb_seg, cdb_instance, and 
- * mpp_segment_instance tables using libpq
+ * gp_segment_instance tables using libpq
  *
  * Portions Copyright (c) 1996-2003, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
@@ -65,7 +65,7 @@ void FreeRestorePairArray( RestorePairArray* restorePairAr )
 }
 
 /* GetSegmentDatabaseArray: This function reads all active instance segment pairs 
- * from the function mpp_segment_instance_map().
+ * from the function gp_segment_instance_map().
  * It then uses the set specification fo filter out any instid, segid combinations
  * that don't match the set.  bExcludeHead = true is used for restoring, because
  * the head is restored first seperately from the rest of the databases. 
@@ -106,13 +106,13 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 							   " hostname,"
 							   " port"
 							 " FROM"
-							   " mpp_configuration"
+							   " gp_configuration"
 							 " WHERE valid = 't'");
 
 	pRes = PQexec(pConn, pQry->data);
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK)
 	{
-		mpp_err_msg("ERROR", "mpp_dump","query to obtain list of MPP segment databases failed: %s",
+		mpp_err_msg("ERROR", "gp_dump","query to obtain list of Greenplum segment databases failed: %s",
 				  PQerrorMessage(pConn));
 		bRtn = false;
 		goto cleanup;		  
@@ -121,7 +121,7 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 	ntups = PQntuples(pRes);
 	if (ntups <= 0)
 	{
-		mpp_err_msg("ERROR", "mpp_dump","no MPP segment databases found on master segment schema");
+		mpp_err_msg("ERROR", "gp_dump","no Greenplum segment databases found on master segment schema");
 		bRtn = false;
 		goto cleanup;		  
 	}
@@ -134,7 +134,7 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 	pSegDBAr->pData = (SegmentDatabase *) calloc( count,  sizeof(SegmentDatabase) );
 	if ( pSegDBAr->pData == NULL )
 	{
-		mpp_err_msg("ERROR", "mpp_dump","Unable to allocate memory for MPP segment/instances information\n");
+		mpp_err_msg("ERROR", "gp_dump","Unable to allocate memory for Greenplum segment/instances information\n");
 		bRtn = false;
 		goto cleanup;		  
 	}
@@ -159,7 +159,7 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 		
 		if(dbidset == NULL)
 		{
-			mpp_err_msg("ERROR", "mpp_dump","Unable to allocate memory for MPP dbidset information\n");
+			mpp_err_msg("ERROR", "gp_dump","Unable to allocate memory for Greenplum dbidset information\n");
 			bRtn = false;
 			goto cleanup;
 		}
@@ -190,15 +190,15 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 			
 			if(!match)
 			{
-				mpp_err_msg("ERROR", "mpp_dump","Dbid %d is not a correct MPP segment databases entry, or is currently invalid. "
-							"consult mpp_configuration and the isvalid flag\n", dbidset[i]);
+				mpp_err_msg("ERROR", "gp_dump","Dbid %d is not a correct Greenplum segment databases entry, or is currently invalid. "
+							"consult gp_configuration and the isvalid flag\n", dbidset[i]);
 				bRtn = false;
 				goto cleanup;
 			}
 		}
 	}
 	
-	mpp_err_msg("INFO", "mpp_dump","Preparing to dump the following segments:\n");
+	mpp_err_msg("INFO", "gp_dump","Preparing to dump the following segments:\n");
 	
 	/* Read through the results set.  */
 	x = 0;
@@ -252,9 +252,9 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 		pSegDB->pszDBPswd = PQpass(pConn);
 		
 		if(pSegDB->role == ROLE_MASTER)
-			mpp_err_msg("INFO", "mpp_dump", "Master (dbid 1)\n");
+			mpp_err_msg("INFO", "gp_dump", "Master (dbid 1)\n");
 		else
-			mpp_err_msg("INFO", "mpp_dump", "%s segment %d (dbid %d)\n", 
+			mpp_err_msg("INFO", "gp_dump", "%s segment %d (dbid %d)\n", 
 						(pSegDB->isPrimary ? "Primary" : "Mirror"),
 						pSegDB->content,
 						pSegDB->dbid);
@@ -307,7 +307,7 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 					  " hostname,"
 					  " port"
 					  " FROM"
-					  " mpp_configuration"
+					  " gp_configuration"
 					  " WHERE valid = 't'" 
 					  " ORDER BY content, isPrimary DESC"
 					  );
@@ -315,7 +315,7 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 	pRes = PQexec(pConn, pQry->data);
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK)
 	{
-		mpp_err_msg("ERROR", "mpp_restore","query to obtain list of MPP segment databases failed: %s",
+		mpp_err_msg("ERROR", "gp_restore","query to obtain list of Greenplum segment databases failed: %s",
 					  PQerrorMessage(pConn));
 		bRtn = false;
 		goto cleanup;		  
@@ -324,7 +324,7 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 	ntups = PQntuples(pRes);
 	if (ntups <= 0)
 	{
-		mpp_err_msg("ERROR", "mpp_restore","no MPP segment databases found on master segment schema");
+		mpp_err_msg("ERROR", "gp_restore","no Greenplum segment databases found on master segment schema");
 		bRtn = false;
 		goto cleanup;		  
 	}
@@ -336,7 +336,7 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 	restorePairAr->pData = (RestorePair *) calloc( count,  sizeof(RestorePair) );
 	if ( restorePairAr->pData == NULL )
 	{
-		mpp_err_msg("ERROR", "mpp_restore","Unable to allocate memory for MPP segment database information\n");
+		mpp_err_msg("ERROR", "gp_restore","Unable to allocate memory for Greenplum segment database information\n");
 		bRtn = false;
 		goto cleanup;		  
 	}
@@ -361,7 +361,7 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 		
 		if(dbidset == NULL)
 		{
-			mpp_err_msg("ERROR", "mpp_restore","Unable to allocate memory for MPP dbidset information\n");
+			mpp_err_msg("ERROR", "gp_restore","Unable to allocate memory for Greenplum dbidset information\n");
 			bRtn = false;
 			goto cleanup;
 		}
@@ -392,15 +392,15 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 			
 			if(!match)
 			{
-				mpp_err_msg("ERROR", "mpp_restore","Dbid %d is not a correct MPP segment databases entry, or is currently invalid. "
-							"consult mpp_configuration and the isvalid flag\n", dbidset[i]);
+				mpp_err_msg("ERROR", "gp_restore","Dbid %d is not a correct Greenplum segment databases entry, or is currently invalid. "
+							"consult gp_configuration and the isvalid flag\n", dbidset[i]);
 				bRtn = false;
 				goto cleanup;
 			}
 		}
 	}
 
-	mpp_err_msg("INFO", "mpp_restore","Preparing to restore the following segments:\n");
+	mpp_err_msg("INFO", "gp_restore","Preparing to restore the following segments:\n");
 
 	/* Read through the results set.  */
 	x = 0;
@@ -445,9 +445,9 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 		targetSegDB->pszDBPswd = PQpass(pConn);
 		
 		if(targetSegDB->role == ROLE_MASTER)
-			mpp_err_msg("INFO", "mpp_restore", "Master (dbid 1)\n");
+			mpp_err_msg("INFO", "gp_restore", "Master (dbid 1)\n");
 		else
-			mpp_err_msg("INFO", "mpp_restore", "%s segment %d (dbid %d)\n", 
+			mpp_err_msg("INFO", "gp_restore", "%s segment %d (dbid %d)\n", 
 						(isprimary ? "Primary" : "Mirror"),
 						contentid,
 						targetSegDB->dbid);

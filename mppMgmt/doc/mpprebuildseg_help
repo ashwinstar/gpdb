@@ -91,5 +91,5 @@ mpprebuildseg.sh -d /dbfast1/master/gp-1
 SEE ALSO
 *****************************************************
 
-mpprebuildcluster.sh, mppcreatecluster.sh, mpp_dump, mpp_restore
+mpprebuildcluster.sh, mppcreatecluster.sh, gp_dump, gp_restore
 

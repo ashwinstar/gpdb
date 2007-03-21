@@ -84,7 +84,7 @@ USAGE () {
 		$ECHO	
 		$ECHO "      `basename $0`"
 		$ECHO
-		$ECHO "      Dumps a MPP Instance database using mpp_dump utility"
+		$ECHO "      Dumps a MPP Instance database using gp_dump utility"
 		$ECHO
 		$ECHO "      Usage:"
 		$ECHO "      $0 [OPTIONS]"
@@ -599,17 +599,17 @@ PROCESS_DUMP () {
 CHK_POST_DUMP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Get the latest report file name on Master segment instance
-	MASTER_DUMP_RPT=`$LS -altr ${MASTER_DATA_DIRECTORY}/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_*.rpt|$TAIL -1 |$AWK '{print \$NF}'`
+	MASTER_DUMP_RPT=`$LS -altr ${MASTER_DATA_DIRECTORY}/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_*.rpt|$TAIL -1 |$AWK '{print \$NF}'`
 	if [ x"" == x"$MASTER_DUMP_RPT" ];then
 		LOG_MSG "[WARN]:-Could not locate a report file on Master segment dump directory" 1
 		EXIT_STATUS=1
 		LOG_MSG "[INFO]:-Checking to see if can locate a status file on dbid ${DBID_LIST[1]}" 1
 		DBID=${DBID_LIST[1]}
 		CHK_DATA
-		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$DUMP_DATE* ];then $ECHO 0;else $ECHO 1;fi"`
+		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_status_?_${DBID}_$DUMP_DATE* ];then $ECHO 0;else $ECHO 1;fi"`
 		if [ $EXISTS -eq 0 ];then
 			LOG_MSG "[INFO]:-Located dump status file on $DIR_HOST" 1
-			TIMESTAMP_KEY=`$TRUSTED_SHELL $DIR_HOST "$LS $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$DUMP_DATE*|$CUT -d'_' -f7"`
+			TIMESTAMP_KEY=`$TRUSTED_SHELL $DIR_HOST "$LS $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_status_?_${DBID}_$DUMP_DATE*|$CUT -d'_' -f7"`
 			LOG_MSG "[INFO]:-Time stamp key = $TIMESTAMP_KEY" 1
 		else
 			LOG_MSG "[WARN]:-Failed to locate a dump status file on $DIR_HOST in directory $DIR" 1
@@ -682,10 +682,10 @@ DELETE_CURRENT_DUMP () {
 	do
 		CHK_DATA
 		LOG_MSG "[INFO]:-Deleting dump files on $DIR_HOST segment dir $DIR" 1
-		$TRUSTED_SHELL $DIR_HOST "$RM -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump*$TIMESTAMP_KEY*"
+		$TRUSTED_SHELL $DIR_HOST "$RM -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump*$TIMESTAMP_KEY*"
 	done
 	LOG_MSG "[INFO]:-Deleting Master segment dump files" 1
-	$RM -f $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_1*$TIMESTAMP_KEY*
+	$RM -f $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_1*$TIMESTAMP_KEY*
 	$RM -f $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/$DUMP_DATE/mpp_c*$TIMESTAMP_KEY
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

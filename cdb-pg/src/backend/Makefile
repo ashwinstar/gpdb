@@ -173,9 +173,9 @@ endif
 install-bin: postgres $(POSTGRES_IMP) installdirs
 	$(INSTALL_PROGRAM) postgres$(X) '$(DESTDIR)$(bindir)/postgres$(X)'
 ifneq ($(PORTNAME), win32)
-	@rm -f $(DESTDIR)$(bindir)/postmaster$(X) $(DESTDIR)$(bindir)/mppsyncmaster$(X)
+	@rm -f $(DESTDIR)$(bindir)/postmaster$(X) $(DESTDIR)$(bindir)/gpsyncmaster$(X)
 	ln -s postgres$(X) $(DESTDIR)$(bindir)/postmaster$(X)
-	ln -s postgres$(X) $(DESTDIR)$(bindir)/mppsyncmaster$(X)
+	ln -s postgres$(X) $(DESTDIR)$(bindir)/gpsyncmaster$(X)
 else
 	$(INSTALL_PROGRAM) postgres$(X) '$(DESTDIR)$(bindir)/postmaster$(X)'
 endif

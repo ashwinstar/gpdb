@@ -269,7 +269,7 @@ main(int argc, char **argv)
 		
 		/* START MPP ADDITION */
 		/* the following are mpp specific, and don't have an equivalent short option */
-		{"mpp-syntax", no_argument, NULL, 1},
+		{"gp-syntax", no_argument, NULL, 1},
 		/* END MPP ADDITION */
 
 		{NULL, 0, NULL, 0}
@@ -784,7 +784,7 @@ help(const char *progname)
 			 "                              use SESSION AUTHORIZATION commands instead of\n"
 			 "                              ALTER OWNER commands to set ownership\n"));
 	/* START MPP ADDITION */
-	printf(_("  --mpp-syntax             dump with Greenplum Database syntax\n"));
+	printf(_("  --gp-syntax             dump with Greenplum Database syntax\n"));
 	/* END MPP ADDITION */
 
 	printf(_("\nConnection options:\n"));
@@ -7545,7 +7545,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		if(dumpPolicy)
 		{
 			appendPQExpBuffer(query,
-							  "SELECT attrnums from pg_namespace as n, pg_class as c, mpp_distribution_policy as p "
+							  "SELECT attrnums from pg_namespace as n, pg_class as c, gp_distribution_policy as p "
 							  "WHERE c.relname = '%s' "
 							  "AND n.nspname='%s' "
 							  "AND c.relnamespace=n.oid " 

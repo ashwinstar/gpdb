@@ -151,26 +151,26 @@ CHK_DUMP_DIR () {
 
 CHK_POST_DUMP () {
 	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
-	EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$TIMESTAMP_KEY  ];then $ECHO 0;else $ECHO 1;fi"`
+	EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_status_?_${DBID}_$TIMESTAMP_KEY  ];then $ECHO 0;else $ECHO 1;fi"`
 	if [ $EXISTS -eq 1 ];then
 		LOG_MSG "[WARN][$INST_COUNT]:-No Status file in $DIR/$DUMP_SUB_DIR/$DUMP_DATE on $DIR_HOST"
 		QE_LINE="${QE_LINE}:NO_STATUS_FILE"
 	else
 		LOG_MSG "[INFO][$INST_COUNT]:-Located status file in $DIR/$DUMP_SUB_DIR/$DUMP_DATE on $DIR_HOST"
 		LOG_MSG "[INFO][$INST_COUNT]:-Checking for errors"
-		STATUS=`$TRUSTED_SHELL $DIR_HOST "$GREP -c \"Finished successfully\" $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$TIMESTAMP_KEY"`
+		STATUS=`$TRUSTED_SHELL $DIR_HOST "$GREP -c \"Finished successfully\" $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_status_?_${DBID}_$TIMESTAMP_KEY"`
 		if [ $STATUS -eq 1 ];then
 			LOG_MSG "[INFO][$INST_COUNT]:-Status report file indicates dump successful"
 			QE_LINE="${QE_LINE}:STATUS_FILE_OK"
 		else
 			LOG_MSG "[WARN][$INST_COUNT]:-Status report file indicates dump failed"
-			$TRUSTED_SHELL $DIR_HOST "$CAT $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_status_?_${DBID}_$TIMESTAMP_KEY" >> $LOG_FILE
+			$TRUSTED_SHELL $DIR_HOST "$CAT $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_status_?_${DBID}_$TIMESTAMP_KEY" >> $LOG_FILE
 			LOG_MSG "[INFO][$INST_COUNT]:-Status file contents dumped to log file"
 			QE_LINE="${QE_LINE}:STATUS_FILE_ERROR"
 		fi
 	fi
 	LOG_MSG "[INFO][$INST_COUNT]:-Checking for dump file in $DIR/$DUMP_SUB_DIR/$DUMP_DATE on $DIR_HOST"
-	EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_dump_?_${DBID}_$TIMESTAMP_KEY*  ];then $ECHO 0;else $ECHO 1;fi"`
+	EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_?_${DBID}_$TIMESTAMP_KEY*  ];then $ECHO 0;else $ECHO 1;fi"`
 	if [ $EXISTS -eq 1 ];then
 		LOG_MSG "[WARN][$INST_COUNT]:-Could not locate dump file in $DIR/$DUMP_SUB_DIR/$DUMP_DATE on $DIR_HOST"
 		QE_LINE="${QE_LINE}:NO_DUMP_FILE"

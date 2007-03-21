@@ -43,10 +43,10 @@ submake-backend:
 	$(MAKE) -C $(top_builddir)/src/backend/parser keywords.o
 	
 install: all installdirs
-	$(INSTALL_PROGRAM) cdb_dump$(X) $(DESTDIR)$(bindir)/mpp_dump$(X)
-	$(INSTALL_PROGRAM) cdb_restore$(X) $(DESTDIR)$(bindir)/mpp_restore$(X)
-	$(INSTALL_PROGRAM) cdb_dump_agent$(X) $(DESTDIR)$(bindir)/mpp_dump_agent$(X)
-	$(INSTALL_PROGRAM) cdb_restore_agent$(X) $(DESTDIR)$(bindir)/mpp_restore_agent$(X)
+	$(INSTALL_PROGRAM) cdb_dump$(X) $(DESTDIR)$(bindir)/gp_dump$(X)
+	$(INSTALL_PROGRAM) cdb_restore$(X) $(DESTDIR)$(bindir)/gp_restore$(X)
+	$(INSTALL_PROGRAM) cdb_dump_agent$(X) $(DESTDIR)$(bindir)/gp_dump_agent$(X)
+	$(INSTALL_PROGRAM) cdb_restore_agent$(X) $(DESTDIR)$(bindir)/gp_restore_agent$(X)
 
 installdirs:
 	$(mkinstalldirs) $(DESTDIR)$(bindir)

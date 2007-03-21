@@ -110,7 +110,7 @@ CondSetMPPReadonly(void)
 {
 	if (*ftsAction == FTS_READONLY)
 	{
-		elog(LOG, "FTS: MPP system is set read only");
+		elog(LOG, "FTS: Greenplum system is set read only");
 
 		assign_mpp_set_read_only(true, true, PGC_S_DEFAULT);
 	}
@@ -260,7 +260,7 @@ FtsReConfigureMPP(void)
 static void
 CdbShutdown(void)
 {
-	elog(ERROR, "FTS: MPP system is shut down (segment failure)");
+	elog(ERROR, "FTS: Greenplum system is shut down (segment failure)");
 }
 
 void
@@ -507,7 +507,7 @@ markSegDBTransientState(int dbid, bool state)
 		/* set transient state if state is false */
 
 		if (*ftsSegDBTransientCount >= FTS_MAX_TRANSIENT_STATE)
-			elog(ERROR, "FTS: the number of failed segdb exceeds the MPP limit");
+			elog(ERROR, "FTS: the number of failed segdb exceeds the GP limit");
 
 		cdb_component_dbs = getComponentDatabases();
 		ftsSegDBTransientState[*ftsSegDBTransientCount].valid = false;
@@ -551,7 +551,7 @@ markSegDBTransientState(int dbid, bool state)
 			ftsSegDBTransientState[*ftsSegDBTransientCount].id = segDb->dbid;
 
 			if (*ftsSegDBTransientCount >= FTS_MAX_TRANSIENT_STATE)
-				elog(ERROR, "FTS: the number of failed segdb exceeds the MPP limit");
+				elog(ERROR, "FTS: the number of failed segdb exceeds the GP limit");
 
 			(*ftsSegDBTransientCount)++;
 		}
@@ -598,13 +598,13 @@ markSegDBPersistentState(int dbid, bool state)
 	/* We're going to use the content id for some sanity checking, and
 	 * to retrieve the "partner" database. We could get the partner
 	 * database directly: 
-	 * select dbid, valid, isprimary, definedprimary from mpp_configuration
+	 * select dbid, valid, isprimary, definedprimary from gp_configuration
 	 *   where content = 
-	 *			(select content from mpp_configuration where dbid = 2)
+	 *			(select content from gp_configuration where dbid = 2)
 	 *			and dbid != 2;
 	 * but the sanity checks seem worthwhile */
 	if (snprintf(cmd, sizeof(cmd),
-				 "select content from pg_catalog.mpp_configuration where dbid=CAST(%d AS SMALLINT)",
+				 "select content from pg_catalog.gp_configuration where dbid=CAST(%d AS SMALLINT)",
 				 dbid) >= sizeof(cmd))
 	{
 		ereport(ERROR,
@@ -637,7 +637,7 @@ markSegDBPersistentState(int dbid, bool state)
 	}
 
 	if (snprintf(cmd, sizeof(cmd),
-				 "select dbid, isprimary, valid, definedprimary from pg_catalog.mpp_configuration where content = %d and dbid != CAST(%d AS SMALLINT)",
+				 "select dbid, isprimary, valid, definedprimary from pg_catalog.gp_configuration where content = %d and dbid != CAST(%d AS SMALLINT)",
 				 contentid, dbid) >= sizeof(cmd))
 	{
 		ereport(ERROR,
@@ -770,7 +770,7 @@ markSegDBPersistentState(int dbid, bool state)
 
 		/* mark failed db as 'invalid' */
 		if (snprintf(cmd, sizeof(cmd),
-					 "update mpp_configuration set valid='f', isprimary='f' where dbid = CAST(%d AS SMALLINT)",
+					 "update gp_configuration set valid='f', isprimary='f' where dbid = CAST(%d AS SMALLINT)",
 					 dbid) >= sizeof(cmd))
 		{
 			ereport(ERROR,
@@ -789,7 +789,7 @@ markSegDBPersistentState(int dbid, bool state)
 			elog(DEBUG1, "marking mirror partner (%d) as primary for contentid %d", partnerid, contentid);
 
 			if (snprintf(cmd, sizeof(cmd),
-						 "update mpp_configuration set isprimary='t' where dbid = CAST(%d AS SMALLINT)",
+						 "update gp_configuration set isprimary='t' where dbid = CAST(%d AS SMALLINT)",
 						 partnerid) >= sizeof(cmd))
 			{
 				ereport(ERROR,

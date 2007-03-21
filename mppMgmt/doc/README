@@ -38,7 +38,7 @@ otherwise noted.
                      moving existing data from the parent table into the 
                      correct child table.
 
-* mppcrondump.sh - A wrapper script for mpp_dump, which allows you to schedule
+* mppcrondump.sh - A wrapper script for gp_dump, which allows you to schedule
                    routine database dumps using cron.
 
 * mppdeletecluster.sh - Deletes a Greenplum Database system that was 
@@ -49,7 +49,7 @@ otherwise noted.
                      mppaddpart.sh (used to maintain a rolling window of date 
                      partitioned data).
 
-* mpp_dump - Located in $MPPHOME/bin. Writes out a database to archive files
+* gp_dump - Located in $MPPHOME/bin. Writes out a database to archive files
              or SQL script files, which can then be used to restore the 
              database at a later time.
 
@@ -68,8 +68,8 @@ otherwise noted.
 
 * mpprecoverseg.sh - Recovers a failed primary or mirror segment.
 
-* mpp_restore - Located in $MPPHOME/bin. Restores Greenplum Database 
-                databases that were backed up using mpp_dump.
+* gp_restore - Located in $MPPHOME/bin. Restores Greenplum Database 
+                databases that were backed up using gp_dump.
 
 * mppsegcron - NOT RUN DIRECTLY. Used by mppcrondump.sh for parallel operations.
 

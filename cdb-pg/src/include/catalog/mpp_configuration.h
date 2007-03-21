@@ -1,14 +1,14 @@
-#ifndef _MPP_CONFIGURATION_H_
-#define _MPP_CONFIGURATION_H_
+#ifndef _GP_CONFIGURATION_H_
+#define _GP_CONFIGURATION_H_
 
 /*
- * Defines for mpp_configuration table
+ * Defines for gp_configuration table
  */
-#define MppConfigurationRelationName		"mpp_configuration"
+#define GpConfigurationRelationName		"gp_configuration"
 
-#define MppConfigurationRelationId 5000
+#define GpConfigurationRelationId 5000
 
-CATALOG(mpp_configuration,5000) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
+CATALOG(gp_configuration,5000) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 {
 	int2		content;
 	bool		definedprimary;
@@ -18,20 +18,20 @@ CATALOG(mpp_configuration,5000) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 	NameData	hostname;
 	int4		port;
 	text		datadir;
-} FormData_mpp_configuration;
+} FormData_gp_configuration;
 
-#define Natts_mpp_configuration				8
-#define Anum_mpp_configuration_content		1
-#define Anum_mpp_configuration_definedprimary		2
-#define Anum_mpp_configuration_dbid		3
-#define Anum_mpp_configuration_isprimary		4
-#define Anum_mpp_configuration_valid		5
-#define Anum_mpp_configuration_hostname		6
-#define Anum_mpp_configuration_port		7
-#define Anum_mpp_configuration_datadir		8
+#define Natts_gp_configuration				8
+#define Anum_gp_configuration_content		1
+#define Anum_gp_configuration_definedprimary		2
+#define Anum_gp_configuration_dbid		3
+#define Anum_gp_configuration_isprimary		4
+#define Anum_gp_configuration_valid		5
+#define Anum_gp_configuration_hostname		6
+#define Anum_gp_configuration_port		7
+#define Anum_gp_configuration_datadir		8
  
  
-typedef FormData_mpp_configuration *Form_mpp_configuration;
+typedef FormData_gp_configuration *Form_gp_configuration;
 
 
-#endif /*_MPP_CONFIGURATION_H_*/
+#endif /*_GP_CONFIGURATION_H_*/

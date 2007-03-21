@@ -227,7 +227,7 @@ GET_DETAILS () {
 			#Now get value of mpp_fault_action
 			FAULT_ACTION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show mpp_fault_action;"`
 			if [ $FAULT_ACTION == "continue" ];then
-				#Need to update mpp_configuration file to set all segments marked as invalid to valid
+				#Need to update gp_configuration file to set all segments marked as invalid to valid
 				LOG_MSG "[INFO]:-Utility requested to attempt startup of segments marked as invalid" 1
 				#See if any segments marked as invalid
 				INVALID_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where valid='f' and content<>-1;"` 

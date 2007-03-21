@@ -37,7 +37,7 @@ The script will perform the following steps:
 
 A backup master host serves as a warm standby in the event of the 
 primary master host becoming unoperational. The backup master is kept 
-up to date by a transaction log replication process (mppsyncmaster), 
+up to date by a transaction log replication process (gpsyncmaster), 
 which runs on the backup master host and keeps the data between the 
 primary and backup master hosts synchronized. If the primary master fails, 
 the log replication process is shutdown, and the backup master can be 
@@ -58,7 +58,7 @@ Required. The host name of the standby master host.
 
 -i (do not start synchronization)
 
-This will not start the synchronization process (mppsyncmaster) between the 
+This will not start the synchronization process (gpsyncmaster) between the 
 backup and primary master hosts. The default is to start the 
 synchronization process.
 

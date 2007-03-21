@@ -1,12 +1,12 @@
 #!/bin/bash
 
 #***********************************************************
-# Look for MPP executables to find path
+# Look for Greenplum executables to find path
 #***********************************************************
 if [ x"$MPPHOME" = x ]; then
   if [ x"$BIZHOME" = x ]; then
     echo "Neither MPPHOME or BIZHOME are set.  Set one of these variables to point to the location"
-	echo "of the MPP installation directory."
+	echo "of the Greenplum installation directory."
     echo ""
 	exit 1
   else
@@ -16,16 +16,16 @@ else
   MPPSEARCH=$MPPHOME
 fi
 
-MPPPATH=`find $MPPSEARCH -name mpp_dump | tail -1`
+MPPPATH=`find $MPPSEARCH -name gp_dump | tail -1`
 RETVAL=$?
 
 if [ "$RETVAL" -ne 0 ]; then
-  echo "Error attempting to find MPP executables in $MPPSEARCH"
+  echo "Error attempting to find Greenplum executables in $MPPSEARCH"
   exit 1
 fi
 
 if [ ! -x "$MPPPATH" ]; then
-  echo "No executables found for MPP installation in $MPPSEARCH"
+  echo "No executables found for Greenplum installation in $MPPSEARCH"
   exit 1
 fi
 MPPPATH=`dirname $MPPPATH`

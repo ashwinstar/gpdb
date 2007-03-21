@@ -52,7 +52,7 @@ static bool dataOnly = false;
 static bool schemaOnly = false;
 static bool bForcePassword = false;
 static bool bIgnoreVersion = false;
-static const char* pszAgent = "mpp_restore_agent";
+static const char* pszAgent = "gp_restore_agent";
 
 static const char* logInfo = "INFO";
 static const char* logWarn = "WARN";
@@ -181,7 +181,7 @@ cleanup:
 
 static void usage(void)
 {
-	printf(("%s restores a Greenplum Database database from an archive created by mpp_dump.\n\n"), pszProgName );
+	printf(("%s restores a Greenplum Database database from an archive created by gp_dump.\n\n"), pszProgName );
 	printf(("Usage:\n"));
 	printf(("  %s [OPTIONS]\n"), pszProgName );
 
@@ -227,7 +227,7 @@ static void usage(void)
 	printf(("  --mpp-c                  use gunzip for in-line de-compression\n"));
 	printf(("  --mpp-d=BACKUPFILEDIR    directory where backup files are located\n"));
 	printf(("  --mpp-i                  ignore error\n"));
-	printf(("  --mpp-k=KEY              date time backup key from mpp_backup run\n"));
+	printf(("  --mpp-k=KEY              date time backup key from gp_backup run\n"));
 	printf(("  --mpp-r=REPORTFILEDIR    directory where report file is placed\n"));
 	printf(("  --mpp-l=FILELOCATIONS    backup files are on (a)ll databases, (p)rimaries only (default)\n"));
 	printf(("                           or (i)ndividual segdb (must be followed with a list of dbid's\n"));
@@ -343,7 +343,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("mpp_restore (Greenplum Database) " PG_VERSION);
+			puts("gp_restore (Greenplum Database) " PG_VERSION);
 			exit(0);
 		}
 	}
@@ -558,7 +558,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
                  /* temporary disabled
 				if ( bSawCDB_S_Option )
 				{
-					// Ignore mpp_s option
+					// Ignore gp_s option
 					mpp_err_msg(logInfo, pszProgName,  "ignoring the mpp-s option, since the mpp-cf option is set.\n");
 				}
 				
@@ -778,7 +778,7 @@ bool parmValNeedsQuotes( const char* Value )
 
 /*
  * addPassThroughParm: this function adds to the string of pass-through parameters.  These get sent to each
- * backend and get passed to the mpp_dump program.
+ * backend and get passed to the gp_dump program.
  */
 char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughParmString )
 {
@@ -814,9 +814,9 @@ char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughP
 }
 
 /* threadProc: This function is used to connect to one database that needs to be restored,
- * make a mpp_restore_launch call to cause the restore process to begin on the instance hosting the
+ * make a gp_restore_launch call to cause the restore process to begin on the instance hosting the
  * database.  Then it waits for notifications from the process.  It receives a notification
- * wnenever the mpp_restore_agent process signals with a NOTIFY. This happens when the process starts, 
+ * wnenever the gp_restore_agent process signals with a NOTIFY. This happens when the process starts, 
  * and when it finishes.
  */
 void* threadProc(void *arg)
@@ -866,7 +866,7 @@ void* threadProc(void *arg)
 		sSegDB->pszDBName 	= Safe_strdup( pInputOpts->pszDBName );
 	}
 	
-	/* connect to the source segDB to start mpp_dump_agent there */
+	/* connect to the source segDB to start gp_dump_agent there */
 	pConn = MakeDBConnection( sSegDB, false );
 	if ( PQstatus(pConn) == CONNECTION_BAD )
 	{
@@ -885,7 +885,7 @@ void* threadProc(void *arg)
 	
 	mpp_err_msg(logInfo, pszProgName, "Listening for messages from dbid %d server (source) for dbid %d restore\n", sSegDB->dbid, tSegDB->dbid);
 	
-	/* Execute mpp_restore_launch  */
+	/* Execute gp_restore_launch  */
 	
 	/*
 	 * If there is a password associated with this login, we pass it as a base64 encoded string
@@ -899,7 +899,7 @@ void* threadProc(void *arg)
 										  tSegDB->dbid, tSegDB->pszHost, tSegDB->port);
 	
 	Qry = createPQExpBuffer();
-	appendPQExpBuffer( Qry, "SELECT * FROM mpp_restore_launch('%s', '%s', '%s', '%s', '%s', '%s', %d, %s)", 
+	appendPQExpBuffer( Qry, "SELECT * FROM gp_restore_launch('%s', '%s', '%s', '%s', '%s', '%s', %d, %s)", 
 					StringNotNull( pInputOpts->pszBackupDirectory, ""), 
 					pszKey, 
 					StringNotNull( pInputOpts->pszCompressionProgram, ""), 
@@ -1283,9 +1283,9 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 	
 	/* See whether we can create the file in the report directory */
 	if ( pszReportDirectory[ strlen(pszReportDirectory) - 1] != '/'  )
-		pszFormat = "%s/mpp_restore_%s.rpt";
+		pszFormat = "%s/gp_restore_%s.rpt";
 	else
-		pszFormat = "%smpp_restore_%s.rpt";
+		pszFormat = "%sgp_restore_%s.rpt";
 	
 	pszReportPathName = MakeString( pszFormat, pszReportDirectory, pParmAr->pData[0].pOptionsData->pszKey );
 	
@@ -1303,7 +1303,7 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 	appendPQExpBuffer(reportBuf, "MPP Restore Report\n" );
 	appendPQExpBuffer(reportBuf, "Timestamp Key: %s\n", pOptions->pszKey );
 
-	appendPQExpBuffer(reportBuf, "mpp_restore Command Line: %s\n",  
+	appendPQExpBuffer(reportBuf, "gp_restore Command Line: %s\n",  
 			StringNotNull( pOptions->pszCmdLineParms, "None" ) );
 
 	appendPQExpBuffer(reportBuf, "Pass through Command Line Options: %s\n",  
@@ -1425,9 +1425,9 @@ int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMaster
 	
 	/* See whether we can create the file in the report directory */
 	if ( pszReportDirectory[ strlen(pszReportDirectory) - 1] != '/'  )
-		pszFormat = "%s/mpp_restore_%s.rpt";
+		pszFormat = "%s/gp_restore_%s.rpt";
 	else
-		pszFormat = "%smpp_restore_%s.rpt";
+		pszFormat = "%sgp_restore_%s.rpt";
 	
 	pszReportPathName = MakeString( pszFormat, pszReportDirectory, pOptions->pszKey );
 	
@@ -1445,7 +1445,7 @@ int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMaster
 	appendPQExpBuffer(reportBuf, "MPP Restore Report\n" );
 	appendPQExpBuffer(reportBuf, "Timestamp Key: %s\n", pOptions->pszKey );
 	
-	appendPQExpBuffer(reportBuf, "mpp_restore Command Line: %s\n",  
+	appendPQExpBuffer(reportBuf, "gp_restore Command Line: %s\n",  
 					  StringNotNull( pOptions->pszCmdLineParms, "None" ) );
 	
 	appendPQExpBuffer(reportBuf, "Pass through Command Line Options: %s\n",  

@@ -264,9 +264,9 @@ IsSharedRelation(Oid relationId)
 		relationId == SharedDescriptionRelationId ||
 		relationId == SharedDependRelationId ||
 		relationId == TableSpaceRelationId ||
-		relationId == MppConfigurationRelationId ||
-		relationId == MppMppRelationId ||
-		relationId == MppVersionRelationId ||
+		relationId == GpConfigurationRelationId ||
+		relationId == GpGpRelationId ||
+		relationId == GpVersionRelationId ||
 		relationId == ResQueueRelationId)
 		return true;
 	/* These are their indexes (see indexing.h) */
@@ -286,8 +286,8 @@ IsSharedRelation(Oid relationId)
 		relationId == SharedDependReferenceIndexId ||
 		relationId == TablespaceOidIndexId ||
 		relationId == TablespaceNameIndexId ||
-		relationId == MppConfigurationContentDefinedprimaryIndexId ||
-		relationId == MppConfigurationDbidIndexId ||
+		relationId == GpConfigurationContentDefinedprimaryIndexId ||
+		relationId == GpConfigurationDbidIndexId ||
 		relationId == AuthIdRolResQueueIndexId ||
 		relationId == ResQueueOidIndexId ||
 		relationId == ResQueueRsqnameIndexId )
