@@ -1,4 +1,4 @@
-COMMAND NAME: mppcreatecluster.sh
+COMMAND NAME: gpcreatecluster.sh
 
 Initializes a Greenplum Database system by using configuration parameters 
 specified in the gp_init_config file of System Initialization Parameters.
@@ -8,7 +8,7 @@ specified in the gp_init_config file of System Initialization Parameters.
 SYNOPSIS
 *****************************************************
 
-mppcreatecluster.sh -c <gp_init_config_file> [-r | -B <parallel_processes>] 
+gpcreatecluster.sh -c <gp_init_config_file> [-r | -B <parallel_processes>] 
 [-h <host_file>] [-p <postgresql_conf_param_file>] 
 {[-s <standby_master_host>] [-i]} [-o] [-m <max_connections>] 
 [-e <superuser_password>] [-n <locale>] [-a] [-q] [-l <logfile_directory>] 
@@ -19,13 +19,13 @@ mppcreatecluster.sh -c <gp_init_config_file> [-r | -B <parallel_processes>]
 DESCRIPTION
 *****************************************************
 
-The mppcreatecluster.sh script will create a Greenplum Database 
+The gpcreatecluster.sh script will create a Greenplum Database 
 instance using the values defined in a configuration file. 
 (See 'gp_init_config_example') Before running this script, make sure 
 that you have installed the Greenplum Database software on all the 
 hosts in the array.
 
-The functionality of mppcreatecluster.sh is analogous to PostgreSQLs 
+The functionality of gpcreatecluster.sh is analogous to PostgreSQLs 
 'initdb' utility, which creates the data storage directories, generates 
 the shared catalog tables and configuration files, and creates a 
 template database, which is a template used to create other databases. 
@@ -33,11 +33,11 @@ template database, which is a template used to create other databases.
 In a Greenplum Database DBMS, each database instance (the master and all 
 segments) must be initialized across all of the hosts in the system in 
 such a way that they can all work together as a unified DBMS. The 
-mppcreatecluster.sh script takes care of initializing the database on 
+gpcreatecluster.sh script takes care of initializing the database on 
 the master and on each segment instance, and configuring the system 
 as a whole.
 
-Before running mppcreatecluster.sh, you must set the $MPPHOME environment 
+Before running gpcreatecluster.sh, you must set the $MPPHOME environment 
 variable to point to the location of your Greenplum Database server 
 installation on the master host.
 
@@ -182,22 +182,22 @@ EXAMPLES
 
 Initialize a Greenplum Database array:
 
-mppcreatecluster.sh -c gp_init_config -e mypassword
+gpcreatecluster.sh -c gp_init_config -e mypassword
 
 
 Initialize a Greenplum Database array with an optional standby master host:
 
-mppcreatecluster.sh -c gp_init_config -s host09 -e mypassword
+gpcreatecluster.sh -c gp_init_config -s host09 -e mypassword
 
 
-Display the online help for the mppcreatecluster.sh script:
+Display the online help for the gpcreatecluster.sh script:
 
-mppcreatecluster.sh -?
+gpcreatecluster.sh -?
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-mpprebuildcluster.sh, mpprebuildseg.sh, mppdeletecluster.sh
+gprebuildcluster.sh, gprebuildseg.sh, gpdeletecluster.sh
 

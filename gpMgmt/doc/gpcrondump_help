@@ -1,4 +1,4 @@
-COMMAND NAME: mppcrondump.sh
+COMMAND NAME: gpcrondump.sh
 
 A wrapper script for gp_dump, which can be called from a crontab entry.
 
@@ -7,7 +7,7 @@ A wrapper script for gp_dump, which can be called from a crontab entry.
 SYNOPSIS
 *****************************************************
 
-mppcrondump.sh -x <database_name> [-B <parallel_processes>] 
+gpcrondump.sh -x <database_name> [-B <parallel_processes>] 
 [-R <post_dump_script>] [-s <schema_name>] [-d <master_data_directory>] 
 [-p | -m] [-c | -o] [-z] [-r] [-f <free_space_percent>] [-b] [-i] 
 [-j] [-k] [-g] {[-t] [-C]} [-a] [-q] [-l <logfile_directory>] [-D] [-? | -v]
@@ -17,16 +17,16 @@ mppcrondump.sh -x <database_name> [-B <parallel_processes>]
 DESCRIPTION
 *****************************************************
 
-mppcrondump.sh is a wrapper script for gp_dump. It allows you to 
+gpcrondump.sh is a wrapper script for gp_dump. It allows you to 
 schedule routine backups of a Greenplum database using cron (a 
 scheduling utility for Unix operating systems). Cron jobs that 
-call mppcrondump.sh should be scheduled on the master host.
+call gpcrondump.sh should be scheduled on the master host.
 
 Here is an example of the crontab file, which schedules a nightly dump 
 of the customers database at one minute past midnight. Note that the 
 SHELL is set to /bin/bash and the PATH includes the location of the 
 Greenplum Database management scripts  this is required to 
-run mppcrondump.sh. 
+run gpcrondump.sh. 
 
 SHELL=/bin/bash
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:$MPPHOME/gpMgmt/bin
@@ -34,7 +34,7 @@ MAILTO=gpadmin
 HOME=/home/gpadmin
 
 # Greenplum Database nightly database dump job
-01 0 * * * gpadmin mppcrondump.sh -x customers -a -q >> 
+01 0 * * * gpadmin gpcrondump.sh -x customers -a -q >> 
 mpp_custdump.log
 
 
@@ -197,7 +197,7 @@ SHELL=/bin/bash
 
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:$MPPHOME/gpMgmt/bin
 
-01 0 * * * gpadmin mppcrondump.sh -x customers -a -q >> mpp_custdump.log
+01 0 * * * gpadmin gpcrondump.sh -x customers -a -q >> mpp_custdump.log
 
 
 *****************************************************

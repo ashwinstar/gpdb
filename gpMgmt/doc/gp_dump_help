@@ -9,8 +9,8 @@ SYNOPSIS
 
 gp_dump [-a | -s] [-c] [-d] [-D] [-n <schema>] [-o] [-O] 
 [-t <table_name>] [-x] [-h <hostname>] [-p <port>] [-U <username>] 
-[-W] [-i] [-v] [--mpp-c] [--mpp-d=<backup_directory>] 
-[--mpp-r=<reportfile>] [--mpp-s=a|p] <database_name> 
+[-W] [-i] [-v] [--gp-c] [--gp-d=<backup_directory>] 
+[--gp-r=<reportfile>] [--gp-s=a|p] <database_name> 
 
 gp_dump --help | --version
 
@@ -44,13 +44,13 @@ ON THE MASTER HOST
 
 * Dumps the Greenplum schema and system catalog information into a SQL 
   file in the master data directory. The default naming convention of 
-  this file is mpp_catalog_1_<dbid>_<timestamp>. This file can be used 
-  by the mpprebuildcluster.sh script to recover a Greenplum Database system in 
+  this file is gp_catalog_1_<dbid>_<timestamp>. This file can be used 
+  by the gprebuildcluster.sh script to recover a Greenplum Database system in 
   various situations.
 
 * Dumps CREATE DATABASE SQL statements into a file in the master data 
   directory. The default naming convention of this file is 
-  mpp_cdatabase_1_<dbid>_<timestamp>. This can be run on 
+  gp_cdatabase_1_<dbid>_<timestamp>. This can be run on 
   the master instance to recreate the user database(s).
 
 * Dumps the user database schema(s) into a SQL file in the master 
@@ -218,12 +218,12 @@ object comments and start/stop times to the dump file, and progress
 messages to standard error.
 
 
---mpp-c
+--gp-c
 
 Use gzip for inline compression.
 
 
---mpp-d=<directoryname>
+--gp-d=<directoryname>
 
 Specifies the relative or absolute path where the backup files 
 will be placed on each host. If this is a relative path, it is 
@@ -234,7 +234,7 @@ Using this option may be desirable if each segment host has multiple
 segment instances  it will create the dump files in a centralized location.
 
 
---mpp-r=<reportfile>
+--gp-r=<reportfile>
 
 Specifies the full path name where the backup job report files will be 
 placed on each host. If not specified, defaults to the data directory 
@@ -243,7 +243,7 @@ each segment host has multiple segment instances  it will create the
 log files in a centralized location.
 
 
---mpp-s={a|p}
+--gp-s={a|p}
 
 Specifies the set of segment instances to back up - (a)ll or (p)rimaries 
 only. The default is to backup only the primary (or active) segment 
@@ -280,7 +280,7 @@ gp_dump gpdb
 Back up a database, and create dump files in a centralized 
 location on all hosts:
 
-gp_dump --mpp-d=/home/gpadmin/backups gpdb
+gp_dump --gp-d=/home/gpadmin/backups gpdb
 
 
 Back up the Greenplum system catalog tables only:
@@ -292,4 +292,4 @@ gp_dump -n mpp template1
 SEE ALSO
 *****************************************************
 
-gp_restore, mpprebuildcluster.sh, mpprebuildseg.sh
+gp_restore, gprebuildcluster.sh, gprebuildseg.sh

@@ -1,4 +1,4 @@
-COMMAND NAME: mppactivatestandby.sh
+COMMAND NAME: gpactivatestandby.sh
 
 Activates a standby master host and makes it the active master 
 for the Greenplum Database system, or configures a host to be 
@@ -10,7 +10,7 @@ SYNOPSIS
 *****************************************************
 
 
-mppactivatestandby.sh -d <standby_master_datadir> [-c <new_standby_master>] 
+gpactivatestandby.sh -d <standby_master_datadir> [-c <new_standby_master>] 
 [-f] [-a] [-q] [-l <logfile_directory>] [-? | -v]
 
 
@@ -19,12 +19,12 @@ DESCRIPTION
 *****************************************************
 
 
-The mppactivatestandby.sh script activates a backup master host and 
+The gpactivatestandby.sh script activates a backup master host and 
 brings it into operation as the active master instance for a Greenplum 
 Database system. You must run this script from the master host you are 
 activating, not the failed master host you are disabling. Running this 
 script assumes you have a backup master host configured for the system 
-(see mppinitstandby.sh).
+(see gpinitstandby.sh).
 
 The script will perform the following steps:
 
@@ -47,7 +47,7 @@ data between the primary and backup master hosts synchronized.
 
 If the primary master fails, the log replication process is shutdown, 
 and the backup master can be activated in its place by using the 
-mppactivatestandby.sh script. Upon activation of the backup master, the 
+gpactivatestandby.sh script. Upon activation of the backup master, the 
 replicated logs are used to reconstruct the state of the Greenplum master 
 host at the time of the last successfully committed transaction. To specify 
 a new standby master host after making your current standby 
@@ -76,7 +76,7 @@ Optional. After you activate your standby master you may want to specify
 another host to be the new standby, otherwise your Greenplum Database 
 system will no longer have a standby master configured. Use this option 
 to specify the hostname of the new standby master host. You can also use 
-mppinitstandby.sh at a later time to configure a new standby master host.
+gpinitstandby.sh at a later time to configure a new standby master host.
 
 
 -f (force activation)
@@ -86,7 +86,7 @@ synchronization process (gpsyncmaster) is not running. Only use this
 option if you are sure that the backup and primary master hosts are 
 consistent, and you know the gpsyncmaster process is not running on 
 the backup master host. This option may be useful if you have just 
-initialized a new backup master using mppinitstandby.sh, and want to 
+initialized a new backup master using gpinitstandby.sh, and want to 
 activate it immediately.
 
 
@@ -124,17 +124,17 @@ EXAMPLES
 Activate the backup master host and make it the active master instance for a 
 Greenplum Database system (run from backup master host you are activating):
 
-mppactivatestandby.sh -d /mppdata
+gpactivatestandby.sh -d /mppdata
 
 
 Activate the backup master host and at the same time configure another 
 host to be your new standby master:
 
-mppactivatestandby.sh -d /mppdata -c new_standby_hostname
+gpactivatestandby.sh -d /mppdata -c new_standby_hostname
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-mppcreatecluster.sh, mppinitstandby.sh
+gpcreatecluster.sh, gpinitstandby.sh

@@ -1,4 +1,4 @@
-COMMAND NAME: mppskew.sh
+COMMAND NAME: gpskew.sh
 
 Shows data distribution information for a Greenplum Database table.
 
@@ -6,7 +6,7 @@ Shows data distribution information for a Greenplum Database table.
 SYNOPSIS
 *****************************************************
 
-mppskew.sh -t <schema>.<table_name> [-h] [-a <database_name>] [-c] [-r] 
+gpskew.sh -t <schema>.<table_name> [-h] [-a <database_name>] [-c] [-r] 
            [-B <parallel_processes>] [-d <master_data_directory>] [-f ] 
            [-m] [-l <logfile_directory>] [-D] [-? | -v]
 
@@ -15,8 +15,8 @@ mppskew.sh -t <schema>.<table_name> [-h] [-a <database_name>] [-c] [-r]
 DESCRIPTION
 *****************************************************
 
-The mppskew.sh script can be used to determine if table data is equally 
-distributed across all of the active segments. mppskew.sh reports the 
+The gpskew.sh script can be used to determine if table data is equally 
+distributed across all of the active segments. gpskew.sh reports the 
 following information:
 
 * The total number of records in the specified table. Note that for parent 
@@ -116,27 +116,27 @@ EXAMPLES
 
 Show the data distribution for a given table:
 
-mppskew.sh -t myschema.bigtable1
+gpskew.sh -t myschema.bigtable1
 
 
 Show the data distribution for a partitioned table:
 
-mppskew.sh -t myschema.bigtable1 -h
+gpskew.sh -t myschema.bigtable1 -h
 
 
 Show the data distribution for a given table in a given database:
 
-mppskew.sh -t myschema.bigtable1 -a gpdb
+gpskew.sh -t myschema.bigtable1 -a gpdb
 
 
 Show the names of the distribution key columns only for the given table:
 
-mppskew.sh -t myschema.bigtable1 -c
+gpskew.sh -t myschema.bigtable1 -c
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-mppstate.sh, mppsizecalc.sh
+gpstate.sh, gpsizecalc.sh
 

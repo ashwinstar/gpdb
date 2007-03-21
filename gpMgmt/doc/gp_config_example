@@ -1,9 +1,9 @@
-# FILE NAME: mpp_config
+# FILE NAME: gp_config
 
-# A configuration file is needed by the mppcreatecluster.sh
+# A configuration file is needed by the gpcreatecluster.sh
 # script to tell it how to configure the master and segment 
 # instances in your Greenplum Database system. This file can be named 
-# whatever you like, and is referenced when you run mppcreatecluster.sh. 
+# whatever you like, and is referenced when you run gpcreatecluster.sh. 
 
 ################################################
 # REQUIRED PARAMETERS
@@ -18,7 +18,7 @@ ARRAY_NAME="MPP Test"
 # This specifies the file that contains the list of segment host names 
 # that comprise the Greenplum Database system  the master host is assumed to 
 # be the host from which you are running the script. If the host list 
-# file does not reside in the same directory where the mppcreatecluster.sh 
+# file does not reside in the same directory where the gpcreatecluster.sh 
 # script is executed, specify the absolute path to the file.
 
 MACHINE_LIST_FILE=/home/bgadmin/host_file
@@ -55,10 +55,10 @@ PORT_BASE=50000
 # number of data directory locations specified will determine the number 
 # of primary segment instances per host.
  
-# You must make sure that the user who runs mppcreatecluster.sh (for example, 
+# You must make sure that the user who runs gpcreatecluster.sh (for example, 
 # the bgadmin user) has permissions to write to these directories. You 
 # may want to create these directories on the segment hosts before running 
-# mppcreatecluster.sh and chown them to the appropriate user.
+# gpcreatecluster.sh and chown them to the appropriate user.
 
 
 declare -a DATA_DIRECTORY=(/dbfast1 /dbfast2)
@@ -73,10 +73,10 @@ MASTER_HOSTNAME=hostname
 # The location where the data directory will be created on the MPP 
 # master host. 
 
-# You must make sure that the user who runs mppcreatecluster.sh
+# You must make sure that the user who runs gpcreatecluster.sh
 # has permissions to write to this directory. You may want to 
 # create this directory on the master host before running 
-# mppcreatecluster.sh and chown it to the appropriate user.
+# gpcreatecluster.sh and chown it to the appropriate user.
 
 MASTER_DIRECTORY=/dbfast1
 
@@ -104,9 +104,9 @@ MASTER_PORT=5432
 
 IP_ALLOW=0.0.0.0/0
 
-# The shell used the mppcreatecluster.sh script uses to execute 
+# The shell used the gpcreatecluster.sh script uses to execute 
 # commands on remote hosts. Allowed value is ssh. You must set up 
-# your trusted host environment before running the mppcreatecluster.sh 
+# your trusted host environment before running the gpcreatecluster.sh 
 # script. You can use groupSession to do this.
 
 
@@ -145,7 +145,7 @@ ENCODING=UNICODE
 # Data mirroring is optional. Mirroring can be configured
 # at system initialization time. 
 # You can also set up mirrors later
-# after Greenplum Database has been set up, using mppaddmirrors.sh. 
+# after Greenplum Database has been set up, using gpaddmirrors.sh. 
 # Uncomment these parameters to set up mirroring.
 
 # The base port number on which mirror segment instances will be 
@@ -161,10 +161,10 @@ ENCODING=UNICODE
 # declared for mirror segment instances as for primary segment instances 
 # (see the DATA_DIRECTORY parameter for more information).
 
-# You must make sure that the user who runs mppcreatecluster.sh
+# You must make sure that the user who runs gpcreatecluster.sh
 # has permissions to write to these directories. You may want to 
 # create these directories on the segment hosts before running 
-# mppcreatecluster.sh and chown them to the appropriate user.
+# gpcreatecluster.sh and chown them to the appropriate user.
 
 
 #declare -a MIRROR_DATA_DIRECTORY=(/dbfast3 /dbfast4)

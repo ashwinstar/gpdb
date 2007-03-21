@@ -1,4 +1,4 @@
-COMMAND NAME: mppstart.sh
+COMMAND NAME: gpstart.sh
 
 Starts a Greenplum Database system.
 
@@ -6,7 +6,7 @@ Starts a Greenplum Database system.
 SYNOPSIS
 *****************************************************
 
-mppstart.sh [-d <master_data_directory>] [-B <parallel_processes>] 
+gpstart.sh [-d <master_data_directory>] [-B <parallel_processes>] 
             [-z] [-m] [-y] [-s] [-e] [-a] [-q] [-l <logfile_directory>] 
             [-D] [-t | -? | -v]
 
@@ -15,15 +15,15 @@ mppstart.sh [-d <master_data_directory>] [-B <parallel_processes>]
 DESCRIPTION
 *****************************************************
 
-The mppstart.sh script is analogous to functionality offered by the PostgreSQL 
+The gpstart.sh script is analogous to functionality offered by the PostgreSQL 
 pg_ctl and postmaster commands, which are used to start the database server. 
 When you start a Greenplum Database system, you are actually starting several 
 postmaster database server processes at once (the master and all of the 
-segment instances). The mppstart.sh script handles the startup of the 
+segment instances). The gpstart.sh script handles the startup of the 
 individual instances. Each instance is started in parallel.
 
 Before you can start a Greenplum Database system, you must have initialized 
-the system using mppcreatecluster.sh first.
+the system using gpcreatecluster.sh first.
 
 
 *****************************************************
@@ -124,25 +124,25 @@ EXAMPLES
 
 Start a Greenplum Database system:
 
-mppstart.sh
+gpstart.sh
 
 Force start of the system if it has failed segment instances from a 
 previous startup attempt:
 
-mppstart.sh -z
+gpstart.sh -z
 
 Start the Greenplum master instance only:
 
-mppstart.sh -m
+gpstart.sh -m
 
-Display the online help for the mppstart.sh script:
+Display the online help for the gpstart.sh script:
 
-mppstart.sh -?
+gpstart.sh -?
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-mppcreatecluster.sh, mppstop.sh
+gpcreatecluster.sh, gpstop.sh
 

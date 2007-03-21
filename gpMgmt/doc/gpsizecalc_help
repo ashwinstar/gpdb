@@ -1,4 +1,4 @@
-COMMAND NAME: mppsizecalc.sh
+COMMAND NAME: gpsizecalc.sh
 
 Shows the disk space usage for a given database, table, or index.
 
@@ -6,7 +6,7 @@ Shows the disk space usage for a given database, table, or index.
 SYNOPSIS
 *****************************************************
 
-mppsizecalc.sh {-x <database_name> [-p | -m] | {-t <schema>.<table_name> [-h] 
+gpsizecalc.sh {-x <database_name> [-p | -m] | {-t <schema>.<table_name> [-h] 
                [-i] [-a <database_name>]}} [-B <parallel_processes>] 
                [-d <data_directory>] [-s b|k|m|g] [-f] [-l <logfile_directory>] 
                [-D] [-q] [-? | -v]
@@ -16,8 +16,8 @@ mppsizecalc.sh {-x <database_name> [-p | -m] | {-t <schema>.<table_name> [-h]
 DESCRIPTION
 *****************************************************
 
-The mppsizecalc.sh script can be used to determine the disk space usage for a 
-Greenplum database, table, or index. mppsizecalc.sh displays the following 
+The gpsizecalc.sh script can be used to determine the disk space usage for a 
+Greenplum database, table, or index. gpsizecalc.sh displays the following 
 information:
 
 * The total disk space usage for a specified database (mirrors and primary 
@@ -143,33 +143,33 @@ EXAMPLES
 
 Show the total disk space usage for a table:
 
-mppsizecalc.sh -t products
+gpsizecalc.sh -t products
 
 
 Show the total disk space usage for a database. Show size in megabytes 
 rather than kilobytes:
 
-mppsizecalc.sh -x gpdb -s m
+gpsizecalc.sh -x gpdb -s m
 
 
 Show the disk space usage per segment for a partitioned table:
 
-mppsizecalc.sh -t products -h -f
+gpsizecalc.sh -t products -h -f
 
 
 Show the disk space usage per segment for a database:
 
-mppsizecalc.sh -x gpdb -f
+gpsizecalc.sh -x gpdb -f
 
 
 Show the index sizes for a table that is in another database besides the 
 default:
 
-mppsizecalc.sh -t products -a gpdb2 -i
+gpsizecalc.sh -t products -a gpdb2 -i
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
-mppstate.sh, mppskew.sh
+gpstate.sh, gpskew.sh
 

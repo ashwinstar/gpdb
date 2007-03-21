@@ -1,7 +1,7 @@
-COMMAND NAME: mppdeletepart.sh
+COMMAND NAME: gpdeletepart.sh
 
 Drops date partitioned child tables from a parent table that was 
-previously partitioned using mppdeletepart.sh or mppaddpart.sh 
+previously partitioned using gpdeletepart.sh or gpaddpart.sh 
 (used to maintain a rolling window of date partitioned data). 
 This script does not support numeric range or list partitioned tables.
 
@@ -10,19 +10,19 @@ This script does not support numeric range or list partitioned tables.
 SYNOPSIS
 *****************************************************
 
-mppdeletepart.sh -t <parent_table> -r <rolling_window_count> 
+gpdeletepart.sh -t <parent_table> -r <rolling_window_count> 
 [-s <fallback_table_name>] [-f] [-q] [-a] [-l <log_dir>] [-D] 
 [-d <master_data_directory>] [-x <database>]
 
-mppdeletepart.sh -? | -v
+gpdeletepart.sh -? | -v
 
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
-The mppdeletepart.sh script drops child tables from a parent table 
-that was partitioned using mppdeletepart.sh or mppaddpart.sh. This is 
+The gpdeletepart.sh script drops child tables from a parent table 
+that was partitioned using gpdeletepart.sh or gpaddpart.sh. This is 
 useful if you have a date partitioned table and want to maintain a 
 rolling window of data, for example the last 18 months. The script will 
 drop the oldest child table partitions (and associated indexes and rewrite 
@@ -104,12 +104,12 @@ Drop all monthly partitioned tables that are outside the 18 month
 rolling window (and force the deletion of any nested child tables 
 on the months that are dropped).
 
-mppdeletepart.sh -t sales -r 18 -f
+gpdeletepart.sh -t sales -r 18 -f
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-mppcreatepart.sh, mppaddpart.sh
+gpcreatepart.sh, gpaddpart.sh
 

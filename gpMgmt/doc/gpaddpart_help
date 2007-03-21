@@ -1,23 +1,23 @@
-COMMAND NAME: mppaddpart.sh
+COMMAND NAME: gpaddpart.sh
 
 Adds new child table partitions to a parent table that was 
-previously partitioned using mppcreatepart.sh.
+previously partitioned using gpcreatepart.sh.
 
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
-mppaddpart.sh -t <parent_table> -n <new_child_count> [-c] [-q] [-a] 
+gpaddpart.sh -t <parent_table> -n <new_child_count> [-c] [-q] [-a] 
 [-l <log_dir>] [-D] [-d <master_data_directory>] [-x <database>]
 
-mppaddpart.sh -t <parent_table> -s <new_start_value> [-c] [-q] [-a] 
+gpaddpart.sh -t <parent_table> -s <new_start_value> [-c] [-q] [-a] 
 [-l <log_dir>] [-D] [-d <master_data_directory>] [-x <database>]
 
-mppaddpart.sh -t <parent_table> -o <new_list_value>[,<value>,...] [-c] 
+gpaddpart.sh -t <parent_table> -o <new_list_value>[,<value>,...] [-c] 
 [-q] [-a] [-l <log_dir>] [-D] [-d <master_data_directory>] [-x <database>]
 
-mppaddpart.sh -? | -v
+gpaddpart.sh -? | -v
 
 
 
@@ -25,8 +25,8 @@ mppaddpart.sh -? | -v
 DESCRIPTION
 *****************************************************
 
-The mppaddpart.sh script adds additional child tables to a parent table 
-that has already been partitioned using mppcreatepart.sh. This is useful 
+The gpaddpart.sh script adds additional child tables to a parent table 
+that has already been partitioned using gpcreatepart.sh. This is useful 
 if you need to create additional child table partitions for newly added 
 data. It will use the same partitioning scheme (date range, numerical 
 range, or list) as was originally defined when the parent table was 
@@ -147,24 +147,24 @@ Add new partitioned child tables to a parent table that is currently
 range partitioned by salary. You want to increase the top salary 
 range from what it currently is to $1,000,000.
 
-mppaddpart.sh -t employee -s 10000000
+gpaddpart.sh -t employee -s 10000000
 
 
 Add new partitioned child tables to a parent table that is currently 
 list partitioned by region. You want to add a new region for china and india.
 
-mppaddpart.sh -t sales -o china,india
+gpaddpart.sh -t sales -o china,india
 
 
 Add two new partitioned child tables to a parent table that is 
 currently date partitioned by month.
 
-mppaddpart.sh -t sales -n 2
+gpaddpart.sh -t sales -n 2
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-mppcreatepart.sh, mppdeletepart.sh
+gpcreatepart.sh, gpdeletepart.sh
 

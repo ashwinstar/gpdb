@@ -1,14 +1,14 @@
-COMMAND NAME: mppdeletecluster.sh
+COMMAND NAME: gpdeletecluster.sh
 
 Deletes a Greenplum Database system that was initialized 
-using mppcreatecluster.sh.
+using gpcreatecluster.sh.
 
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
-mppdeletecluster.sh -d <master_data_directory> [-B <parallel_processes>] 
+gpdeletecluster.sh -d <master_data_directory> [-B <parallel_processes>] 
 [-f] [-r] [-l <logfile_directory>] [-D] [-? | -v]
 
 
@@ -16,7 +16,7 @@ mppdeletecluster.sh -d <master_data_directory> [-B <parallel_processes>]
 DESCRIPTION
 *****************************************************
 
-The mppdeletecluster.sh script will perform the following actions:
+The gpdeletecluster.sh script will perform the following actions:
 
 * Stop all postmaster processes (the segment instances and master instance).
 
@@ -77,17 +77,17 @@ EXAMPLES
 
 Delete a Greenplum Database system:
 
-mppdeletecluster.sh -d /gpdata/gp-1
+gpdeletecluster.sh -d /gpdata/gp-1
 
 
 Delete a Greenplum Database system even if backup files are present:
 
-mppdeletecluster.sh -d /gpdata/gp-1 -f
+gpdeletecluster.sh -d /gpdata/gp-1 -f
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-mppcreatecluster.sh, gp_dump
+gpcreatecluster.sh, gp_dump
 

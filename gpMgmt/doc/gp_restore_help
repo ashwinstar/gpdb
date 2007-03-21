@@ -6,10 +6,10 @@ Restores Greenplum Database databases that were backed up using gp_dump.
 SYNOPSIS
 *****************************************************
 
-gp_restore -mpp-k=<timestamp_key> -d <database_name> [-i] [-v] 
+gp_restore -gp-k=<timestamp_key> -d <database_name> [-i] [-v] 
 [-a | -s] [-c] [-h <hostname>] [-p <port>] [-U <username>] [-W] 
-[--mpp-c] [--mpp-i] [--mpp-d=<directoryname>] [--mpp-r=<reportfile>] 
-[--mpp-l=a|p]
+[--gp-c] [--mpp-i] [--gp-d=<directoryname>] [--gp-r=<reportfile>] 
+[--gp-l=a|p]
 
 gp_restore --help | --version
 
@@ -34,8 +34,8 @@ by an gp_dump operation. The use of this script assumes:
    the Greenplum system catalog tables to determine the hosts, ports, 
    and data directories for the segment instances it is restoring. If 
    you want to change any of this information (for example, move the 
-   system to a different array of hosts) you must use the mpprebuildcluster.sh 
-   and mpprebuildseg.sh scripts to reconfigure your array before restoring.
+   system to a different array of hosts) you must use the gprebuildcluster.sh 
+   and gprebuildseg.sh scripts to reconfigure your array before restoring.
 
 5. The databases you are restoring have been created in the system.
 
@@ -88,7 +88,7 @@ OPTIONS
 *****************************************************
 
 
--mpp-k=<timestamp_key>
+-gp-k=<timestamp_key>
 
 Required. The 14 digit timestamp key that uniquely identifies the 
 backup set of data to restore. This timestamp can be found in the gp_dump 
@@ -161,7 +161,7 @@ Forces a password prompt. This will happen automatically if the
 server requires password authentication.
 
 
---mpp-c
+--gp-c
 
 Use gunzip for inline decompression.
 
@@ -172,7 +172,7 @@ Specifies that processing should ignore any errors that occur. Use
 this option to continue restore processing on errors.
 
 
---mpp-d=<directoryname>
+--gp-d=<directoryname>
 
 Specifies the relative or absolute path to backup files on the hosts. 
 If this is a relative path, it is considered to be relative to the data 
@@ -181,7 +181,7 @@ being restored. Use this option if you created your backup files in an
 alternate location when running gp_dump.
 
 
---mpp-r=<reportfile>
+--gp-r=<reportfile>
 
 Specifies the full path name where the restore job report file will 
 be placed on each host. If not specified, defaults to the data directory 
@@ -190,7 +190,7 @@ each segment host has multiple segment instances  it will create the
 report files in a centralized location.
 
 
---mpp-l={a|p}
+--gp-l={a|p}
 
 Specifies whether to check for backup files on (a)ll segment instances 
 or only on (p)rimary segment instances. The default is to check for 
@@ -205,7 +205,7 @@ EXAMPLES
 
 Restore a MPP database using backup files created by gp_dump:
 
-gp_restore -mpp-k=2005103112453 -d mppdb
+gp_restore -gp-k=2005103112453 -d mppdb
 
 
 *****************************************************
@@ -213,6 +213,6 @@ SEE ALSO
 *****************************************************
 
 
-gp_dump, mpprebuildcluster.sh, mpprebuildseg.sh
+gp_dump, gprebuildcluster.sh, gprebuildseg.sh
 
 

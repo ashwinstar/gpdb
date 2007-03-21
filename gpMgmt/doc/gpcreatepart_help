@@ -1,4 +1,4 @@
-COMMAND NAME: mppcreatepart.sh
+COMMAND NAME: gpcreatepart.sh
 
 Partitions a table by creating inherited child tables, defining
 check constraints, creating rewrite rules, and moving existing data 
@@ -9,30 +9,30 @@ from the parent table into the correct child table.
 SYNOPSIS
 *****************************************************
 
-mppcreatepart.sh -t <schema>.<parent_table> -f <partition_column> -p d 
+gpcreatepart.sh -t <schema>.<parent_table> -f <partition_column> -p d 
 -c {m|d|h} -s YYYY-MM-DD -n <number_children> [-m <conversion>] [-r] 
 [-b] [-u] [-i <column1>[,<column2>,...]] [-q] [-a] [-l <log_dir>] [-D] 
 [-k] [-F] [-d <master_data_directory>] [-x <database>]
 
-mppcreatepart.sh -t <schema>.<parent_table> -f <partition_column> -p r 
+gpcreatepart.sh -t <schema>.<parent_table> -f <partition_column> -p r 
 -s <range_start_value> -e <range_end_value> -g <range_increment> 
 [-m <conversion>] [-r] [-b] [-u] [-i <column1>[,<column2>,...]] [-q] 
 [-a] [-l <log_dir>] [-D] [-k] [-F] [-d <master_data_directory>] 
 [-x <database>]
 
-mppcreatepart.sh -t <schema>.<parent_table> -f <partition_column> -p l 
+gpcreatepart.sh -t <schema>.<parent_table> -f <partition_column> -p l 
 -o <list_value1>,<list_value2>[,<list_value3>,...] [-m <conversion>] [-r] 
 [-b] [-u] [-i <column1>[,<column2>,...]] [-q] [-a] [-l <log_dir>] [-D] 
 [-k] [-F] [-d <master_data_directory>] [-x <database>]
 
-mppcreatepart.sh -? | -v
+gpcreatepart.sh -? | -v
 
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
-The mppcreatepart.sh script automates the administrative tasks of 
+The gpcreatepart.sh script automates the administrative tasks of 
 partitioning a large parent table into several smaller child tables. 
 It performs the following tasks:
 
@@ -248,14 +248,14 @@ data, you have determined the lowest salary value to be 10000 and the
 highest to be 400000. You want the child tables to be incremented in 
 the ranges of 20000.
 
-mppcreatepart.sh -t hr.employee -f salary -p r -s 10000 -e 400000 -g 20000
+gpcreatepart.sh -t hr.employee -f salary -p r -s 10000 -e 400000 -g 20000
 
 
 Partition the baby.names table based on gender. This will divide the 
 table into two child tables, one for males and one for females. You also 
 want the child tables to be indexed on the name_id column.
 
-mppcreatepart.sh -t baby.names -f gender -p l -o M,F -i name_id
+gpcreatepart.sh -t baby.names -f gender -p l -o M,F -i name_id
 
 
 Partition the sales.sales table based on date range. Create one child 
@@ -263,7 +263,7 @@ table per month for the past 12 months of data. The sale_date column you
 are using for partitioning is currently in numeric format, so you need 
 to convert it to a timestamp format in order to partition it by date.
 
-mppcreatepart.sh -t sales.sales -f sale_date -p d -c m -s 
+gpcreatepart.sh -t sales.sales -f sale_date -p d -c m -s 
 2005-11-01 -n 12 -m to_timestamp
 
 
@@ -271,5 +271,5 @@ mppcreatepart.sh -t sales.sales -f sale_date -p d -c m -s
 SEE ALSO
 *****************************************************
 
-mppaddpart.sh, mppdeletepart.sh
+gpaddpart.sh, gpdeletepart.sh
 
