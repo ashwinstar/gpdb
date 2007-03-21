@@ -50,8 +50,8 @@ else
     MPP_VERSION=`echo $RAW_VERSION | sed -e 's,Release-,,' -e 's,-build-.*,,' -e 's,_,.,g'`
     MPP_BUILDNUMBER=`echo $RAW_VERSION | sed -e 's,.*build-,,'`
 fi
-MPP_VERSION_IN="src/include/catalog/mpp_version.in"
-MPP_VERSION_HEADER="src/include/catalog/mpp_version.h"
+MPP_VERSION_IN="src/include/catalog/gp_version.in"
+MPP_VERSION_HEADER="src/include/catalog/gp_version.h"
 if grep '\$\$' $MPP_VERSION_IN > /dev/null 2>&1 ; then
     sed "s,\\$.*\\$\\$,$MPP_VERSION build $MPP_BUILDNUMBER," $MPP_VERSION_IN > $MPP_VERSION_HEADER
 fi

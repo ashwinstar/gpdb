@@ -20,7 +20,7 @@
 #include "access/transam.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
-#include "catalog/mpp_policy.h"     /* CDB: POLICYTYPE_PARTiITIONED */
+#include "catalog/gp_policy.h"     /* CDB: POLICYTYPE_PARTiITIONED */
 #include "catalog/namespace.h"
 #include "miscadmin.h"
 #include "storage/lmgr.h"

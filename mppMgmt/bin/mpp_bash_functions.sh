@@ -63,7 +63,7 @@ findCmdInPath() {
 				fi
 		done
 		echo $cmdtofind
-		return "Problem in mpp_bash_functions, command '$cmdtofind' not found in COMMAND path. You will need to edit the script named mppbash_functions.sh to properly locate the needed commands for your platform."
+		return "Problem in mpp_bash_functions, command '$cmdtofind' not found in COMMAND path. You will need to edit the script named mpp_bash_functions.sh to properly locate the needed commands for your platform."
 }
 
 findMppPath() {
@@ -635,7 +635,7 @@ BUILD_MASTER_PG_HBA_FILE () {
         $GREP "^#" ${MPP_DIR}/$PG_HBA > $TMP_PG_HBA
         $MV $TMP_PG_HBA ${MPP_DIR}/$PG_HBA
         LOG_MSG "[INFO]:-Setting local access"
-        $ECHO "local    all         $USER_NAME         $PG_METHOD" >> ${MPP_DIR}/$PG_HBA
+        $ECHO "local    all         $USER_NAME         $PG_METHOD" >> ${_DIR}/$PG_HBA
         $ECHO "local    all         all                $PG_METHOD" >> ${MPP_DIR}/$PG_HBA
         LOG_MSG "[INFO]:-Setting local host access"
         $ECHO "host     all         $USER_NAME         127.0.0.1/32    trust" >> ${MPP_DIR}/$PG_HBA

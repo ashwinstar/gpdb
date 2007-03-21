@@ -40,7 +40,7 @@ POSTGRES_BKI_SRCS := $(addprefix $(top_srcdir)/src/include/catalog/,\
 	pg_namespace.h pg_conversion.h pg_depend.h \
 	pg_database.h pg_tablespace.h pg_pltemplate.h \
 	pg_authid.h pg_auth_members.h pg_shdepend.h pg_shdescription.h pg_resqueue.h \
-	mpp_configuration.h mpp_mpp.h mpp_policy.h mpp_version.h \
+	gp_configuration.h gp_id.h gp_policy.h gp_version.h \
 	pg_window.h \
 	pg_exttable.h toasting.h indexing.h \
     )

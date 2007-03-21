@@ -15,7 +15,7 @@ if "%CONFIG%" == "" if "%1" == "RELEASE" set CONFIG=Release
 if not "%CONFIG%" == "" shift
 if "%CONFIG%" == "" set CONFIG=Debug
 
-copy src\include\catalog\mpp_version.in src\include\catalog\mpp_version.h
+copy src\include\catalog\gp_version.in src\include\catalog\gp_version.h
 copy src\backend\catalog\cdb_schema.in src\backend\catalog\cdb_schema.sql
 
 

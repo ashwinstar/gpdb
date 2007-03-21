@@ -29,7 +29,7 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
-#include "catalog/mpp_configuration.h"
+#include "catalog/gp_configuration.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdblink.h"

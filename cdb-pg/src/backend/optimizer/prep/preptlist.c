@@ -25,7 +25,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
-#include "catalog/mpp_policy.h"     /* CDB: POLICYTYPE_PARTITIONED */
+#include "catalog/gp_policy.h"     /* CDB: POLICYTYPE_PARTITIONED */
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/prep.h"

@@ -15,9 +15,9 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "catalog/mpp_configuration.h"
-#include "catalog/mpp_mpp.h"
-#include "catalog/mpp_policy.h"
+#include "catalog/gp_configuration.h"
+#include "catalog/gp_id.h"
+#include "catalog/gp_policy.h"
 
 
 #endif   /* CDBCAT_H */
