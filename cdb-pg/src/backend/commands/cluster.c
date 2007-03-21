@@ -693,7 +693,8 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 										  allowSystemTableMods,
 										  comptypeOid);
 
-	oidInfo->relOid = OIDNewHeap;
+	if(oidInfo)
+		oidInfo->relOid = OIDNewHeap;
 	
 	ReleaseSysCache(tuple);
 

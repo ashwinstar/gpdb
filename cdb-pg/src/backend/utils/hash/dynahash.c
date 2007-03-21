@@ -1049,6 +1049,9 @@ hash_seq_search(HASH_SEQ_STATUS *status)
 	 */
 	curBucket = status->curBucket;
 	hashp = status->hashp;
+	if(!hashp)
+		return NULL;
+
 	hctl = hashp->hctl;
 	ssize = hashp->ssize;
 	max_bucket = hctl->max_bucket;
