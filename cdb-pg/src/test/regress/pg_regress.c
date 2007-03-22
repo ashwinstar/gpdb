@@ -1146,7 +1146,7 @@ results_differ(const char *testname)
 
 	/* OK, run the diff */
 	snprintf(cmd, sizeof(cmd),
-			 SYSTEMQUOTE "diff %s \"%s\" \"%s\" > \"%s\"" SYSTEMQUOTE,
+			 SYSTEMQUOTE "./gpdiff.pl %s \"%s\" \"%s\" > \"%s\"" SYSTEMQUOTE,
 			 basic_diff_opts, expectfile, resultsfile, diff);
 
 	/* Is the diff file empty? */
@@ -1168,7 +1168,7 @@ results_differ(const char *testname)
 			continue;
 
 		snprintf(cmd, sizeof(cmd),
-				 SYSTEMQUOTE "diff %s \"%s\" \"%s\" > \"%s\"" SYSTEMQUOTE,
+				 SYSTEMQUOTE "./gpdiff.pl %s \"%s\" \"%s\" > \"%s\"" SYSTEMQUOTE,
 				 basic_diff_opts, expectfile, resultsfile, diff);
 
 		if (run_diff(cmd, diff) == 0)
@@ -1197,7 +1197,7 @@ results_differ(const char *testname)
 				 inputdir, testname);
 
 		snprintf(cmd, sizeof(cmd),
-				 SYSTEMQUOTE "diff %s \"%s\" \"%s\" > \"%s\"" SYSTEMQUOTE,
+				 SYSTEMQUOTE "./gpdiff.pl %s \"%s\" \"%s\" > \"%s\"" SYSTEMQUOTE,
 				 basic_diff_opts, expectfile, resultsfile, diff);
 
 		if (run_diff(cmd, diff) == 0)
@@ -1221,7 +1221,7 @@ results_differ(const char *testname)
 	 * append to the diffs summary file.
 	 */
 	snprintf(cmd, sizeof(cmd),
-			 SYSTEMQUOTE "diff %s \"%s\" \"%s\" >> \"%s\"" SYSTEMQUOTE,
+			 SYSTEMQUOTE "./gpdiff.pl %s \"%s\" \"%s\" >> \"%s\"" SYSTEMQUOTE,
 			 pretty_diff_opts, best_expect_file, resultsfile, difffilename);
 	run_diff(cmd, difffilename);
 
