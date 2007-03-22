@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -120,7 +120,7 @@ CHECK_PARAM () {
 	PING_HOST $MASTER_STANDBY_HOSTNAME
 	#Check to see if we already have a standby master configured
 	if [ $UPDATE_CATALOG -eq 1 ];then
-	    # there is a function to do this in gp_bash_functions.sh
+	    # there is a function to do this in gp_bash_fuctions.sh
 		STANDBY_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where content=-1 and dbid<>1 ;"`
 		ERROR_CHK $? "obtained standby master host count" 2
 		if [ $STANDBY_COUNT -ne 0 ];then

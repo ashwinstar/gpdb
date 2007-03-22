@@ -21,7 +21,7 @@
 # Prep Code
 #******************************************************************************
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
 if [ -f $FUNCTIONS ];then
 	. $FUNCTIONS
 else

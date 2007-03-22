@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		gp_bash_functions.sh
+#	Filename:-		gp_bash_fuctions.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Updated:-		$Date$
@@ -63,7 +63,7 @@ findCmdInPath() {
 				fi
 		done
 		echo $cmdtofind
-		return "Problem in gp_bash_functions, command '$cmdtofind' not found in COMMAND path. You will need to edit the script named gp_bash_functions.sh to properly locate the needed commands for your platform."
+		return "Problem in gp_bash_fuctions, command '$cmdtofind' not found in COMMAND path. You will need to edit the script named gp_bash_fuctions.sh to properly locate the needed commands for your platform."
 }
 
 findMppPath() {
@@ -154,7 +154,7 @@ CALL_HOST=`$HOSTNAME|$CUT -d. -f1`
 PSQLBIN=`findMppPath`
 
 if [ x"$PSQLBIN" = x"" ];then
-		echo "Problem in gp_bash_functions, command '$MPP_UNIQUE_COMMAND' not found in MPP path. Try setting BIZHOME to the location of your MPP distribution"
+		echo "Problem in gp_bash_fuctions, command '$MPP_UNIQUE_COMMAND' not found in MPP path. Try setting BIZHOME to the location of your MPP distribution"
 		exit 99
 fi
 

@@ -80,7 +80,7 @@ ON THE SEGMENT HOSTS
 Note that the 14 digit timestamp is the number that uniquely identifies the 
 backup job, and is part of the filename for each dump file created by a
 gp_dump operation. This timestamp must be passed to the gp_restore utility 
-when restoring a Bizgres MPP database.
+when restoring a Greenplum database.
 
 *****************************************************
 OPTIONS

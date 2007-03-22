@@ -25,7 +25,7 @@ WORKDIR=`dirname $0`
 # Source required functions file, this required for script to run
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
