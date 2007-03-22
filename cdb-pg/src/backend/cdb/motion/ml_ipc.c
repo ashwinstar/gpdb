@@ -408,7 +408,7 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
 		{
 			if (errno == EINTR)
 				continue;
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							errmsg("Interconnect error receiving an incoming packet."),
 			                errdetail("%m%s", "select")
                     ));
@@ -518,7 +518,7 @@ RecvTupleChunk(ChunkTransportState *transportStates,
 			 * cancellation ? */
 			ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							errmsg("Interconnect error parsing message"),
 							errdetail("tcSize %d >= conn->msgSize %d", tcSize, conn->msgSize)));
 		}
@@ -803,7 +803,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
                 conn->wakeup_ms > 0 &&
                 conn->wakeup_ms <= elapsed_ms + 20)
             {
-                ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                ereport(LOG, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                               errmsg("Interconnect timeout: Connection "
                                      "to seg%d %s from local port %s was not "
                                      "complete after %d ms %d elapsed.  Will retry.",
@@ -879,7 +879,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
             int to = interconnect_setup_timeout * 1000;
 
             if (to <= elapsed_ms + 20)
-                ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                                 errmsg("Interconnect timeout: Unable to "
                                        "complete setup of all connections "
                                        "within time limit."),
@@ -997,7 +997,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 		{
 			if (errno == EINTR)
 				continue;
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 				            errmsg("Interconnect error: %m%s", "select")
 						));
 		}
@@ -1473,7 +1473,7 @@ error:
     if (fd >= 0)
         closesocket(fd);
     errno = errnoSave;
-    ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+    ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 					errmsg("Interconnect Error: Could not set up listener socket."),
 			        errdetail("%m%s", fun)
             ));
@@ -1534,7 +1534,7 @@ createChunkTransportState(ChunkTransportState *transportStates,
 
 	if (pEntry->valid)
 	{
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: A HTAB entry for motion node %d already exists.", motNodeID),
 						errdetail("conns %p numConns %d first sock %d highreadsock %d", pEntry->conns, pEntry->numConns, pEntry->conns[0].sockfd, pEntry->highReadSock)));
 	}
@@ -1601,7 +1601,7 @@ getChunkTransportState(ChunkTransportState *transportState, int motNodeID)
     }
     else
 	{
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 		errmsg("Interconnect Error: Unexpected Motion Node Id: %d.  This means"
 			   " a motion node that wasn't setup is requesting interconnect"
 			   " resources.", motNodeID)));
@@ -1631,7 +1631,7 @@ removeChunkTransportState(ChunkTransportState *transportStates,
 
 	if (motNodeID > transportStates->size || !transportStates->states[motNodeID - 1].valid)
 	{
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove.",
 							   motNodeID)));
 	}
@@ -1664,7 +1664,7 @@ setupSeqServerConnection(char *seqServerHost, int seqServerPort )
 	{
 		if (n == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
 				 errmsg("Interconnect Error: Could not parse remote seqserver"
 						"address: '%s'", seqServerHost),
 					   errdetail("inet_pton() unable to parse address: '%s'",
@@ -1672,7 +1672,7 @@ setupSeqServerConnection(char *seqServerHost, int seqServerPort )
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
 			 errmsg("Interconnect Error: System error occured during parsing"
 				 " of remote seqserver address: '%s'", seqServerHost),
 							errdetail("inet_pton()  (errno: %d) unable to parse address: '%s'",
@@ -1683,14 +1683,14 @@ setupSeqServerConnection(char *seqServerHost, int seqServerPort )
 	addr.sin_port = htons(seqServerPort);
 
 	if ((n = connect(seqserverFd, (struct sockaddr *) & addr, sizeof(addr))) < 0)
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Could not connect to seqserver."),
 		                errdetail("%m%s", "connect")
                 ));
 	
 	/* make socket non-blocking BEFORE we connect. */
 	if (!pg_set_noblock(seqserverFd))
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Could not set seqserver socket"
 						       "to non-blocking mode."),
 			            errdetail("%m%s sockfd=%d", "fcntl", seqserverFd)
@@ -1814,7 +1814,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
      */
     conn->sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (conn->sockfd < 0)
-	    ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+	    ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 			            errmsg("Interconnect error setting up outgoing "
                                "connection."),
 			            errdetail("%m%s", "socket")
@@ -1823,7 +1823,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
     /* make socket non-blocking BEFORE we connect. */
     if (!pg_set_noblock(conn->sockfd))
     {
-        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+        ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 			            errmsg("Interconnect error setting up outgoing "
                                "connection."),
 		                errdetail("%m%s", "fcntl(O_NONBLOCK)")
@@ -1834,7 +1834,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
     sockopt = 1;
     if (setsockopt(conn->sockfd, SOL_SOCKET, SO_REUSEADDR,
                    (void *)&sockopt, sizeof(sockopt)) < 0)
-	    ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+	    ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 			            errmsg("Interconnect error setting up outgoing "
                                "connection."),
 		                errdetail("%m%s", "setsockopt(SO_REUSEADDR)")
@@ -1858,7 +1858,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
     if (bind(conn->sockfd, (struct sockaddr *) &saddr, sizeof(saddr)) < 0)
     {
         /* Should never get EADDRINUSE because we know it's our port. */
-        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+        ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 			            errmsg("Interconnect error setting up outgoing "
                                "connection."),
                         errdetail("Could not bind to local addr %s. %m",
@@ -1876,7 +1876,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
     {
 	    if (n == 0)
 	    {
-		    ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		    ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 			     errmsg("Interconnect Error: Could not parse remote listener"
 					    "address: '%s'", cdbProc->listenerAddr),
 				       errdetail("inet_pton() unable to parse address: '%s'",
@@ -1884,7 +1884,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
 	    }
 	    else
 	    {
-		    ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		    ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 		     errmsg("Interconnect Error: System error occured during parsing"
 			     " of remote listener address '%s'", cdbProc->listenerAddr),
 						    errdetail("%m%s", "inet_pton")
@@ -1958,7 +1958,7 @@ updateOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportSta
                    (void *)&errnoSave, &sizeoferrno))
     {
         /* getsockopt failed */
-        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+        ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                         errmsg("Interconnect could not connect to seg%d %s",
                                conn->remoteContentId,
                                conn->remoteHostAndPort),
@@ -1976,7 +1976,7 @@ updateOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportSta
             return;
         default:
             errno = errnoSave;
-            ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+            ereport(LOG, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 		                  errmsg("Interconnect could not connect to seg%d %s "
                                  "pid=%d; "
                                  "will retry. %m%s",
@@ -2038,7 +2038,7 @@ zapOutgoingPort(ChunkTransportStateEntry *pEntry)
     /* Bail if too many retries. */
     if (pEntry->outgoingPortRetryCount >= MAX_BIND_RETRIES)
     {
-        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+        ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                         errmsg("Interconnect Error: Connection setup abandoned "
                                "after %d retries.",
                                pEntry->outgoingPortRetryCount)
@@ -2087,7 +2087,7 @@ sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEnt
         addrsize = sizeof(localAddr);
 	    if (getsockname(conn->sockfd, (struct sockaddr *)&localAddr, &addrsize))
 	    {
-            ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+            ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 		                    errmsg("Interconnect error after making connection."),
 			                errdetail("%m%s sockfd=%d remote=%s",
 					                  "getsockname",
@@ -2141,7 +2141,7 @@ sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEnt
             ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
         else
         {
-            ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+            ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                             errmsg("Interconnect error writing registration "
                                    "message to seg%d at %s",
                                    conn->remoteContentId,
@@ -2209,7 +2209,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
             conn->msgPos += bytesReceived;
  		else if (bytesReceived == 0)
 		{
-            ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+            ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                             errmsg("Interconnect error reading register message "
                                    "from %s: connection closed",
                                    conn->remoteHostAndPort),
@@ -2223,7 +2223,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
             ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
         else
         {
-            ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+            ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                             errmsg("Interconnect error reading register message "
                                    "from %s", conn->remoteHostAndPort),
                             errdetail("%m%s sockfd=%d local=%s",
@@ -2250,7 +2250,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
     /* Check for valid message format. */
     if (msg.msgBytes != sizeof(*regMsg))
     {
-        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+        ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                         errmsg("Interconnect error reading register message "
                                "from %s: format not recognized",
                                conn->remoteHostAndPort),
@@ -2296,7 +2296,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
     }
     else
 	{
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                         errmsg("Interconnect error: Invalid registration "
                                "message received from %s.",
                                conn->remoteHostAndPort),
@@ -2324,7 +2324,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
         msg.srcListenerPort != cdbproc->listenerPort ||
         msg.srcPid != cdbproc->pid)
     {
-        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+        ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                         errmsg("Interconnect error: Invalid registration "
                                "message received from %s.",
                                conn->remoteHostAndPort),
@@ -2344,7 +2344,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
     if (newConn->sockfd != -1 ||
         newConn->state != mcsNull)
 	{
-        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+        ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                         errmsg("Interconnect error: Duplicate registration "
                                "message received from %s.",
                                conn->remoteHostAndPort),
@@ -2450,7 +2450,7 @@ acceptIncomingConnection(void)
 #endif
             case EOPNOTSUPP:
                 /* Shouldn't get these errors unless there is a bug. */
-                ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                                 errmsg("Interconnect error on listener port %d",
                                        Gp_listener_port),
 			                    errdetail("%m%s sockfd=%d",
@@ -2463,7 +2463,7 @@ acceptIncomingConnection(void)
             case EMFILE:
             case ENOBUFS:
                 /* Out of resources. */
-                ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                                 errmsg("Interconnect error on listener port %d",
                                        Gp_listener_port),
 			                    errdetail("%m%s sockfd=%d",
@@ -2473,7 +2473,7 @@ acceptIncomingConnection(void)
                 break;          /* not reached */
         	default:
                 /* Network problem, connection aborted, etc.  Continue. */
-                ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                ereport(LOG, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                               errmsg("Interconnect connection request not "
                                      "completed on listener port %d",
                                       Gp_listener_port),
@@ -2504,7 +2504,7 @@ acceptIncomingConnection(void)
     addrsize = sizeof(localAddr);
     if (getsockname(newsockfd, (struct sockaddr *)&localAddr, &addrsize))
     {
-        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+        ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                         errmsg("Interconnect error after accepting connection."),
 	                    errdetail("%m%s sockfd=%d remote=%s",
 			                      "getsockname",
@@ -2518,7 +2518,7 @@ acceptIncomingConnection(void)
     /* make socket non-blocking */
     if (!pg_set_noblock(newsockfd))
     {
-        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+        ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                         errmsg("Interconnect error after accepting connection."),
 	                    errdetail("%m%s sockfd=%d remote=%s local=%s",
                                   "fcntl(O_NONBLOCK)",
@@ -2675,7 +2675,7 @@ flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, Mo
 							conn->stillActive = false;
 							return false;
 						}
-						ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+						ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 										errmsg("Interconnect error writing an outgoing packet"),
 						    errdetail("error during select() call (error:%d).\n"
 							"For Remote Connection: contentId=%d at %s",
@@ -2713,7 +2713,7 @@ flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, Mo
 					conn->stillActive = false;
 					return false;
 				}
-				ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 								errmsg("Interconnect error writing an outgoing packet"),
 								errdetail("error during send() call (error:%d).\n"
 										  "For Remote Connection: contentId=%d at %s",
@@ -2822,7 +2822,7 @@ readPacket(ChunkTransportState *transportStates, MotionConn * conn)
 						continue;
 					else if (n < 0)
 					{
-						ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+						ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 										errmsg("Interconnect error reading an incoming packet."),
 						                errdetail("%m%s from seg%d at %s",
 						                          "select",
@@ -2835,7 +2835,7 @@ readPacket(ChunkTransportState *transportStates, MotionConn * conn)
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 					            errmsg("Interconnect error reading an incoming packet."),
 						        errdetail("%m%s from seg%d at %s",
 						                  "read",
@@ -2850,7 +2850,7 @@ readPacket(ChunkTransportState *transportStates, MotionConn * conn)
 			elog(DEBUG5, "readpacket(); breaking in while (fd %d) recvBytes %d msgSize %d", conn->sockfd, conn->recvBytes, conn->msgSize);
 			print_connection(transportStates, conn->sockfd, "interconnect error on");
 #endif
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 				errmsg("Interconnect error: connection closed prematurely."),
 				 errdetail("from Remote Connection: contentId=%d at %s",
 						   conn->remoteContentId, conn->remoteHostAndPort)
@@ -3125,7 +3125,7 @@ flushInterconnectListenerBacklog(void)
 				newfd = accept(listenerFd, (struct sockaddr *)&remoteAddr, &addrsize);
 				if (newfd < 0)
 				{
-                    ereport(DEBUG3, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                    ereport(DEBUG3, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                                      errmsg("Interconnect error while clearing incoming connections."),
                                      errdetail("%m%s sockfd=%d", "accept", newfd)
                             ));
@@ -3138,7 +3138,7 @@ flushInterconnectListenerBacklog(void)
                 addrsize = sizeof(localAddr);
                 if (getsockname(newfd, (struct sockaddr *)&localAddr, &addrsize))
                 {
-                    ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                    ereport(LOG, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                                   errmsg("Interconnect error while clearing incoming connections."),
                                   errdetail("%m%s sockfd=%d remote=%s",
 		                                    "getsockname",
@@ -3165,7 +3165,7 @@ flushInterconnectListenerBacklog(void)
 		}
 		else if (pendingConn < 0 && errno != EINTR)
 		{
-            ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+            ereport(LOG, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                           errmsg("Interconnect error during listener cleanup."),
                           errdetail("%m%s sockfd=%d", "select", listenerFd)
                     ));

@@ -69,7 +69,7 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 
 	if (Gp_role != GP_ROLE_UTILITY && (stmt->options & CURSOR_OPT_SCROLL))
 		ereport(ERROR,
-				(errcode(ERRCODE_MPP_FEATURE_NOT_YET),
+				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
 				 errmsg("scrollable cursors are not yet supported in Greenplum Database")));
 	
 	/*

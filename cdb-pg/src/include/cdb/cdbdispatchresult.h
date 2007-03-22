@@ -57,7 +57,7 @@ typedef struct CdbDispatchResult
     bool                stillRunning;   /* true => busy in dispatch thread */
     bool                requestedCancel; /*true => called PQrequestCancel */
     bool                wasCanceled;    /* true => got any of these errors:
-                                         *  ERRCODE_MPP_OPERATION_CANCELED
+                                         *  ERRCODE_GP_OPERATION_CANCELED
                                          *  ERRCODE_QUERY_CANCELED
                                          */
 

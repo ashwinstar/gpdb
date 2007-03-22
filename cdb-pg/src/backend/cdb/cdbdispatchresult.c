@@ -193,7 +193,7 @@ cdbdisp_seterrcode(int                  errcode,        /* ERRCODE_xxx or 0 */
         errcode = ERRCODE_INTERNAL_ERROR;
 
     /* Was the command canceled? */
-    if (errcode == ERRCODE_MPP_OPERATION_CANCELED ||
+    if (errcode == ERRCODE_GP_OPERATION_CANCELED ||
         errcode == ERRCODE_QUERY_CANCELED)
         dispatchResult->wasCanceled = true;
 
@@ -218,18 +218,18 @@ cdbdisp_seterrcode(int                  errcode,        /* ERRCODE_xxx or 0 */
      * Interconnection errors are given lower precedence because often
      * they are secondary to an earlier and more interesting error.
      */
-    if (errcode == ERRCODE_MPP_OPERATION_CANCELED &&
+    if (errcode == ERRCODE_GP_OPERATION_CANCELED &&
         dispatchResult->requestedCancel)
     {}                          /* nop */
 
     else if (meleeResults->errcode == 0
-            || (  meleeResults->errcode == ERRCODE_MPP_INTERCONNECTION_ERROR
-               && errcode != ERRCODE_MPP_INTERCONNECTION_ERROR ) )
+            || (  meleeResults->errcode == ERRCODE_GP_INTERCONNECTION_ERROR
+               && errcode != ERRCODE_GP_INTERCONNECTION_ERROR ) )
     {
         pthread_mutex_lock(&setErrcodeMutex);
         if (meleeResults->errcode == 0
-           || (  meleeResults->errcode == ERRCODE_MPP_INTERCONNECTION_ERROR
-              && errcode != ERRCODE_MPP_INTERCONNECTION_ERROR ) )
+           || (  meleeResults->errcode == ERRCODE_GP_INTERCONNECTION_ERROR
+              && errcode != ERRCODE_GP_INTERCONNECTION_ERROR ) )
         {
             meleeResults->errcode = errcode;
             meleeResults->iFirstError = dispatchResult->meleeIndex;
@@ -677,7 +677,7 @@ cdbdisp_dumpDispatchResults(struct CdbDispatchResults  *meleeResults,
 {
     CdbDispatchResult  *dispatchResult;
 
-    /* Quick exit if no error (not counting ERRCODE_MPP_OPERATION_CANCELED). */
+    /* Quick exit if no error (not counting ERRCODE_GP_OPERATION_CANCELED). */
     if (!meleeResults ||
         !meleeResults->errcode)
         return 0;

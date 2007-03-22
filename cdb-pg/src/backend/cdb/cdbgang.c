@@ -405,7 +405,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 			/* clean the gang before error out */
 			disconnectAndDestroyGang(newGangDefinition);
 
-			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							errmsg("All segment databases are unavailable")));
 		}
 	}
@@ -1125,7 +1125,7 @@ thread_DoConnect(void *arg)
 		{
 			if (segdbDesc->motionListener == -1)
 			{
-				segdbDesc->errcode = ERRCODE_MPP_INTERNAL_ERROR;
+				segdbDesc->errcode = ERRCODE_GP_INTERNAL_ERROR;
 				appendPQExpBuffer(&segdbDesc->error_message,
 						  "Internal error: No motion listener port for %s\n",
 								  segdbDesc->whoami);

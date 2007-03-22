@@ -1249,7 +1249,7 @@ cdb_no_path_for_query(void)
 
     initStringInfo(&buf);
     if (gp_guc_list_show(&buf, NULL, "%s=%s; ", PGC_S_DEFAULT, gp_guc_list_for_no_plan))
-        ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_CONFIGURED),
+        ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED),
                         errmsg("Query requires a feature that has been disabled "
                                "by a configuration setting."),
                         errdetail("Could not devise a query plan for the given query."),

@@ -3135,7 +3135,7 @@ ProcessInterrupts(void)
 		DisableCatchupInterrupt();
         if (Gp_role == GP_ROLE_EXECUTE)
 		    ereport(ERROR,
-			    	(errcode(ERRCODE_MPP_OPERATION_CANCELED),
+			    	(errcode(ERRCODE_GP_OPERATION_CANCELED),
 				     errmsg("canceling MPP operation")));
         else if (cancel_from_timeout)
 			ereport(ERROR,

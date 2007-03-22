@@ -266,7 +266,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		if (hasMirrors && stmt->mirrorlocations == NULL)
 		{
 			ereport(ERROR,
-				(errcode(ERRCODE_MPP_COMMAND_ERROR),
+				(errcode(ERRCODE_GP_COMMAND_ERROR),
 				 errmsg("Your system is using segment mirroring.  You must specify locations for the mirrors as well as the primaries"),
 				 errhint("Use a MIRROR LOCATION clause after the LOCATION clause")));
 		}
@@ -279,7 +279,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		
 		if (i!=numSegsPerHost)
 			ereport(ERROR,
-				(errcode(ERRCODE_MPP_COMMAND_ERROR),
+				(errcode(ERRCODE_GP_COMMAND_ERROR),
 				 errmsg("You must specify as many locations as you have segment databases on each host. You specified %d locations but there are %d segments per host.",i,numSegsPerHost),
 				 errhint("Check gp_configuration for number of primary segment databases on each host")));
 			
@@ -294,7 +294,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 			
 			if (i!=j)
 				ereport(ERROR,
-				(errcode(ERRCODE_MPP_COMMAND_ERROR),
+				(errcode(ERRCODE_GP_COMMAND_ERROR),
 				 errmsg("You must specify as many mirror locations as primary locations"),
 				 errhint("Your system has mirroring configured, so you must allow for locations for the mirrors as well as primaries")));
 		}

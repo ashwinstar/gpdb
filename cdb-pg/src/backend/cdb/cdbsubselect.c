@@ -205,7 +205,7 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
 
     /* CDB TODO: Set-returning function in tlist could return empty set. */
     if (expression_returns_set((Node *)subselect->targetList))
-        ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_YET),
+        ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),
                         errmsg("Set-returning function in EXISTS subquery: not yet implemented")
                         ));
 

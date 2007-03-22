@@ -336,7 +336,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
     if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
     {
         if (!segdbDesc->errcode)
-            segdbDesc->errcode = ERRCODE_MPP_INTERCONNECTION_ERROR;
+            segdbDesc->errcode = ERRCODE_GP_INTERCONNECTION_ERROR;
         appendPQExpBuffer(&segdbDesc->error_message,
                           "QD unable to connect to %s with options %s: %s\n",
                           segdbDesc->whoami,

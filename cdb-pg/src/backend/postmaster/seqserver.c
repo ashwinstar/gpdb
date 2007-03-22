@@ -221,7 +221,7 @@ sendSequenceRequest(int     sockfd,
 		{
 			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
 			{
-				ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
 								errmsg("Error: Could not write()  message to seqserver: %s",
 								strerror(errno)),
 								errdetail("error during write() call (error:%d) to seqserver on sockfd: %d ",
@@ -249,7 +249,7 @@ sendSequenceRequest(int     sockfd,
 					{
 						saved_err = errno;
 
-						ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
+						ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
 										errmsg("Error: Could not write()  message to seqserver: %s",
 										strerror(errno)),
 										errdetail("error during write() call (error:%d) to seqserver on sockfd: %d ",
@@ -313,7 +313,7 @@ sendSequenceRequest(int     sockfd,
 					{
 						saved_err = errno;
 
-						ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
+						ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
 									    errmsg("Error: Could not read() message from seqserver"),
 										errdetail("error during read() call (error:%d) from remote"
 												  "sockfd = %d", errno, sockfd)));
@@ -801,7 +801,7 @@ listenerSetup(void)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
 						errmsg("SeqServer Error: Could not setup listener socket: %s", strerror(errno)),
 				errdetail("error during socket() call (error:%d).", errno)));
 	}
@@ -822,7 +822,7 @@ listenerSetup(void)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
 			   errmsg("SeqServer Error: Could not setup listener socket"),
 				  errdetail("error during bind() call (error:%d).", errno)));
 		
@@ -834,7 +834,7 @@ listenerSetup(void)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
 						errmsg("SeqServer Error: Could not setup listener socket: %s", strerror(errno)),
 				errdetail("error during listen() call (error:%d).", errno)));
 	}
@@ -848,7 +848,7 @@ listenerSetup(void)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
 						errmsg("SeqServer Error: Could not setup listener socket: %s", strerror(errno)),
 		   errdetail("error during getsockname() call (error:%d).", errno)));
 	}

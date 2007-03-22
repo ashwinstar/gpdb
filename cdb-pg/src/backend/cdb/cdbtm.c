@@ -2064,7 +2064,7 @@ gatherRMInDoubtTransactions(void)
 	/* display error messages */
 	if (errmsgbuf.len > 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 					errmsg("Unable to collect list of prepared transactions "
 						   "from all segment databases."),
 						errdetail("%s", errmsgbuf.data)));

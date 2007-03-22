@@ -320,7 +320,7 @@ cdbexplain_recvExecStats(struct PlanState          *planstate,
             hdr->segindex < -1 ||
             hdr->segindex >= gpsegmentCount)
         {
-            ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+            ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                             errmsg_internal("Invalid execution statistics "
                                             "response returned from seg%d.  "
                                             "length=%d",

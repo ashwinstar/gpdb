@@ -616,7 +616,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 
 				if (segmate_timeout_ms <= 0)
 					ereport(ERROR,
-							(errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+							(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							 errmsg("GetSnapshotData timed out waiting for Writer to set the shared snapshot."),
 							 errdetail("We are waiting for the shared snapshot to have XID: %d but the value "
 									   "is currently: %d." 

@@ -144,7 +144,7 @@ cdbanalyze_callback(StringInfo sqlstmt,
 	 * to initialize their tables, but otherwise we shouldn't see null returned.
 	 */
 	if (!tmp && strcmp(sqlstmt->data,"pg_toast")==0)
-		ereport(NOTICE, (errcode(ERRCODE_MPP_COMMAND_ERROR),
+		ereport(NOTICE, (errcode(ERRCODE_GP_COMMAND_ERROR),
 			   errmsg("NULL returned instead of statistics from segment databases."),
 					  errdetail("Segment db catalog query : %s",
 								sqlstmt->data )));
@@ -173,7 +173,7 @@ cdbanalyze_callback(StringInfo sqlstmt,
 	return;
 
 fail:
-	ereport(WARNING, (errcode(ERRCODE_MPP_COMMAND_ERROR),
+	ereport(WARNING, (errcode(ERRCODE_GP_COMMAND_ERROR),
 			   errmsg("Unable to obtain statistics from segment databases."),
 					  errdetail("Segment db catalog query failed: %s  %d",
 								sqlstmt->data, SPI_result )));
@@ -308,7 +308,7 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 			goto fail;
 			
 		if (isnull)
-			ereport(NOTICE, (errcode(ERRCODE_MPP_COMMAND_ERROR),
+			ereport(NOTICE, (errcode(ERRCODE_GP_COMMAND_ERROR),
 				   errmsg("NULL returned instead of column statistics from segment databases."),
 						  errdetail("Segment db catalog query : %s",
 									sqlstmt->data )));
@@ -541,7 +541,7 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 	return;
 
 fail:
-	ereport(WARNING, (errcode(ERRCODE_MPP_COMMAND_ERROR),
+	ereport(WARNING, (errcode(ERRCODE_GP_COMMAND_ERROR),
 			   errmsg("Unable to obtain column statistics from segment databases."),
 					  errdetail("Segment db catalog query failed: %s  %d   %d",
 								sqlstmt->data, spiresult, SPI_result )));

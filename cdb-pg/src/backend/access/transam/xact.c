@@ -1859,7 +1859,7 @@ StartTransaction(void)
 						 * die
 						 */
 						ereport(FATAL,
-								(errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+								(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 								 errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."),
 								 errdetail("We are waiting for the shared snapshot to have XID: %d but the value "
 							     "is currently: %d. Our slotindex is: %d \n"
@@ -4567,7 +4567,7 @@ PushTransaction(void)
 	currentSavepointTotal++;
 	if (currentSavepointTotal >= MaxMppSavePoints)
 		ereport(ERROR,
-				(errcode(ERRCODE_MPP_SUBTRANS_LIMIT_EXCEEDED),
+				(errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED),
 				 errmsg("cannot have more than 100 subtransactions in a transaction")));
 	
 	/*

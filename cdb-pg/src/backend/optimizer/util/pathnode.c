@@ -1546,7 +1546,7 @@ create_append_path(PlannerInfo *root, RelOptInfo *rel, List *subpaths)
                  CdbPathLocus_IsPartitioned(projectedlocus))
             CdbPathLocus_MakeStrewn(&pathnode->path.locus);
         else
-            ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+            ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
                             errmsg_internal("Table inherits from parent with "
                                             "incompatible distribution") ));
 

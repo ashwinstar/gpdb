@@ -1257,15 +1257,15 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
      * an interconnect error, and a QE hit a more interesting error,
      * we'll let the QE's error report take precedence.
      */
-    if (qderrcode == ERRCODE_MPP_INTERCONNECTION_ERROR)
+    if (qderrcode == ERRCODE_GP_INTERCONNECTION_ERROR)
     {
         if (primaryResults &&
 			primaryResults->errcode &&
-            primaryResults->errcode != ERRCODE_MPP_INTERCONNECTION_ERROR)
+            primaryResults->errcode != ERRCODE_GP_INTERCONNECTION_ERROR)
             useQeError = true;
         else if (mirrorResults &&
 				 mirrorResults->errcode &&
-				 mirrorResults->errcode != ERRCODE_MPP_INTERCONNECTION_ERROR)
+				 mirrorResults->errcode != ERRCODE_GP_INTERCONNECTION_ERROR)
             useQeError = true;
     }
 
@@ -1594,7 +1594,7 @@ thread_DispatchCommand(void *arg)
 
 				/* Save error info for later. */
 				cdbdisp_appendMessage(dispatchResult, DEBUG1,
-									  ERRCODE_MPP_INTERCONNECTION_ERROR,
+									  ERRCODE_GP_INTERCONNECTION_ERROR,
 									  "Lost connection to %s.  %s",
 									  segdbDesc->whoami,
 									  msg ? msg : "");
@@ -1711,7 +1711,7 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 
 		/* Save error info for later. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
-							  ERRCODE_MPP_INTERCONNECTION_ERROR,
+							  ERRCODE_GP_INTERCONNECTION_ERROR,
 							  "Lost connection to %s.  %s",
 							  segdbDesc->whoami,
 							  msg ? msg : "");
@@ -1797,7 +1797,7 @@ dispatchCommandQuery(CdbDispatchResult  *dispatchResult,
 							  PQerrorMessage(conn));
 		/* Note the error. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
-							  ERRCODE_MPP_INTERCONNECTION_ERROR,
+							  ERRCODE_GP_INTERCONNECTION_ERROR,
 						   "Command could not be sent to segment db %s;  %s",
 							  segdbDesc->whoami,
 							  PQerrorMessage(conn));
@@ -1843,7 +1843,7 @@ dispatchCommandDtxProtocol(CdbDispatchResult  *dispatchResult,
 							  PQerrorMessage(conn));
 		/* Note the error. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
-							  ERRCODE_MPP_INTERCONNECTION_ERROR,
+							  ERRCODE_GP_INTERCONNECTION_ERROR,
 						   "Command could not be sent to segment db %s;  %s",
 							  segdbDesc->whoami,
 							  PQerrorMessage(conn));
@@ -1897,7 +1897,7 @@ handleSelectError(DispatchCommandParms * pParms,
 
 		/* Note the error. */
 		cdbdisp_appendMessage(dispatchResult, 0,
-							  ERRCODE_MPP_INTERCONNECTION_ERROR,
+							  ERRCODE_GP_INTERCONNECTION_ERROR,
 							  "System error... select() errno=%d\n",
 							  sock_errno);
 
@@ -2021,7 +2021,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 			{
 				/* Note the error. */
 				cdbdisp_appendMessage(dispatchResult, DEBUG1,
-									  ERRCODE_MPP_INTERCONNECTION_ERROR,
+									  ERRCODE_GP_INTERCONNECTION_ERROR,
 									  "Segment db no longer connected: %s\n",
 									  segdbDesc->whoami);
 
@@ -2098,7 +2098,7 @@ processResults(CdbDispatchResult * dispatchResult)
 
 		/* Save error info for later. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
-							  ERRCODE_MPP_INTERCONNECTION_ERROR,
+							  ERRCODE_GP_INTERCONNECTION_ERROR,
 							  "Error on receive from %s: %s",
 							  segdbDesc->whoami,
 							  errorMessage ? errorMessage : "unknown error");

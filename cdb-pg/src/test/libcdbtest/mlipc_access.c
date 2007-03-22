@@ -70,7 +70,7 @@ Datum ml_ipc_bench(PG_FUNCTION_ARGS)
 	GpRoleValue oldRole = Gp_role;
 	
 	/* temporarily disable this routine. see TODO item below. */
-	ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_YET),
+	ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),
 					errmsg("Interconnect testing through libcdbtest is currently disabled")
 					));
 	

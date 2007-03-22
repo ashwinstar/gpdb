@@ -453,7 +453,7 @@ ProcessUtility(Node *parsetree,
 						if (Gp_role == GP_ROLE_DISPATCH)
 						{
 							ereport(ERROR, (
-											errcode(ERRCODE_MPP_COMMAND_ERROR),
+											errcode(ERRCODE_GP_COMMAND_ERROR),
 									 errmsg("PREPARE TRANSACTION is not yet supported in Greenplum Database.")
 											));
 			
@@ -470,7 +470,7 @@ ProcessUtility(Node *parsetree,
 						if (Gp_role == GP_ROLE_DISPATCH)
 						{
 							ereport(ERROR, (
-											errcode(ERRCODE_MPP_COMMAND_ERROR),
+											errcode(ERRCODE_GP_COMMAND_ERROR),
 									 errmsg("COMMIT PREPARED is not yet supported in Greenplum Database.")
 											));
 			
@@ -483,7 +483,7 @@ ProcessUtility(Node *parsetree,
 						if (Gp_role == GP_ROLE_DISPATCH)
 						{
 							ereport(ERROR, (
-											errcode(ERRCODE_MPP_COMMAND_ERROR),
+											errcode(ERRCODE_GP_COMMAND_ERROR),
 									 errmsg("ROLLBACK PREPARED is not yet supported in Greenplum Database.")
 											));
 			
@@ -967,7 +967,7 @@ ProcessUtility(Node *parsetree,
 				
 				if (Gp_role == GP_ROLE_EXECUTE)
 					ereport(ERROR, (
-								errcode(ERRCODE_MPP_COMMAND_ERROR),
+								errcode(ERRCODE_GP_COMMAND_ERROR),
 						 errmsg("Notify command cannot run in a function running on a segDB.")
 								));
 
@@ -981,7 +981,7 @@ ProcessUtility(Node *parsetree,
 				
 				if (Gp_role == GP_ROLE_EXECUTE)
 					ereport(ERROR, (
-								errcode(ERRCODE_MPP_COMMAND_ERROR),
+								errcode(ERRCODE_GP_COMMAND_ERROR),
 						 errmsg("Listen command cannot run in a function running on a segDB.")
 								));
 
@@ -995,7 +995,7 @@ ProcessUtility(Node *parsetree,
 				
 				if (Gp_role == GP_ROLE_EXECUTE)
 					ereport(ERROR, (
-								errcode(ERRCODE_MPP_COMMAND_ERROR),
+								errcode(ERRCODE_GP_COMMAND_ERROR),
 						 errmsg("Unlisten command cannot run in a function running on a segDB.")
 								));
 

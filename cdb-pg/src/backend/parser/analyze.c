@@ -1965,7 +1965,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
                 /* Partitioned child must have partitioned parents. */
                 if (oldTablePolicy == NULL ||
                      oldTablePolicy->ptype != POLICYTYPE_PARTITIONED)
-                    ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+                    ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
                                     errmsg("Cannot inherit from catalog table \"%s\" to create table \"%s\".",
                                            parent->relname, cxt->relation->relname),
                                     errdetail("An inheritance hierarchy cannot contain a "
@@ -2232,7 +2232,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 						if(!isMppHashable(typeOid) && !isArray)
 						{
 							ereport(ERROR,
-									(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+									(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 									 errmsg("type \"%s\" can't be a part of a distribution key",
 											strVal(linitial(column->typname->names)))));						
 						}
@@ -4728,7 +4728,7 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 					if(!isMppHashable(typeOid) && !isArray)
 					{
 						ereport(ERROR,
-								(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+								(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 								 errmsg("type \"%s\" can't be a part of a distribution key",
 										strVal(linitial(column->typname->names)))));						
 					}
