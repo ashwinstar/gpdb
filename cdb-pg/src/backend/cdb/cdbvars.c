@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbvars.c
- *	  Provides storage areas and processing routines for MPP variables
+ *	  Provides storage areas and processing routines for Greenplum Database variables
  *	  managed by GUC.
  *
  * Copyright (c) 2003-2007, Greenplum
@@ -36,12 +36,12 @@
 
 
 
-GpRoleValue Gp_role;			/* Role paid by this MPP backend */
+GpRoleValue Gp_role;			/* Role paid by this Greenplum Database backend */
 char	   *gp_role_string;	/* Staging area for guc.c */
 char	   *gp_fault_action_string;	/* Staging area for guc.c */
 bool		gp_set_read_only;	/* Staging area for guc.c */
 
-GpRoleValue Gp_session_role;	/* Role paid by this MPP backend */
+GpRoleValue Gp_session_role;	/* Role paid by this Greenplum Database backend */
 char	   *gp_session_role_string;	/* Staging area for guc.c */
 
 bool		Gp_is_primary;		/* Is this session primary (or mirror) */
@@ -92,7 +92,7 @@ int			interconnect_setup_timeout;
 
 
 /*
- * MPP Optimizer GUCs
+ * Greenplum Database Optimizer GUCs
  */
 
 bool        enable_adaptive_nestloop = true;
@@ -103,7 +103,7 @@ double		gp_hashagg_rewrite_limit = 1;
 
 bool		gp_enable_motion_deadlock_sanity = FALSE; /* planning time sanity check */
 
-/* MPP Experimental Feature GUCs */
+/* Greenplum Database Experimental Feature GUCs */
 bool		gp_enable_agg_distinct = FALSE;
 bool		gp_enable_preunique = FALSE;
 bool		gp_enable_explain_allstat = FALSE;
@@ -171,7 +171,7 @@ const char *role_to_string(GpRoleValue role);
 
 
 /*
- * Convert a MPP role string (as for gp_session_role or gp_role) to an
+ * Convert a Greenplum Database role string (as for gp_session_role or gp_role) to an
  * enum value of type GpRoleValue. Return GP_ROLE_UNDEFINED in case the
  * string is unrecognized.
  */
@@ -311,7 +311,7 @@ assign_gp_role(const char *newval, bool doit, GucSource source)
 		if (do_connect)
 		{
 			/*
-			 * In case there are problems with the MPP tables or data,
+			 * In case there are problems with the Greenplum Database tables or data,
 			 * we catch any error coming out of cdblink_setup so we can set the
 			 * gp_role back to what it was.  Otherwise we may be left with
 			 * inappropriate connections for the new role.

@@ -25,29 +25,29 @@ static void extract_INT2OID_array(Datum array_datum, int *lenp, int16 **vecp);
 
 
 /*
- * MppPolicyCopy -- Return a copy of a MppPolicy object.
+ * GpPolicyCopy -- Return a copy of a GpPolicy object.
  *
  * The copy is palloc'ed in the specified context.
  */
-MppPolicy *
-MppPolicyCopy(MemoryContext mcxt, const MppPolicy *src)
+GpPolicy *
+GpPolicyCopy(MemoryContext mcxt, const GpPolicy *src)
 {
-	MppPolicy  *tgt;
+	GpPolicy  *tgt;
 	size_t		nb;
 
 	if (!src)
 		return NULL;
 	nb = sizeof(*src) - sizeof(src->attrs) + src->nattrs * sizeof(src->attrs[0]);
-   	tgt = (MppPolicy *)MemoryContextAlloc(mcxt, nb);
+   	tgt = (GpPolicy *)MemoryContextAlloc(mcxt, nb);
 	memcpy(tgt, src, nb);
 	return tgt;
-}	                            /* MppPolicyCopy */
+}	                            /* GpPolicyCopy */
 
 /*
- * MppPolicyFetch
+ * GpPolicyFetch
  *
  * Looks up a given Oid in the gp_distribution_policy table.
- * If found, returns an MppPolicy object (palloc'd in the specified
+ * If found, returns an GpPolicy object (palloc'd in the specified
  * context) containing the info from the gp_distribution_policy row.
  * Else returns NULL.
  *
@@ -55,10 +55,10 @@ MppPolicyCopy(MemoryContext mcxt, const MppPolicy *src)
  * function does not check and assigns a policy of type POLICYTYPE_ENTRY
  * for any oid not found in gp_distribution_policy.
  */
-MppPolicy *
-MppPolicyFetch(MemoryContext mcxt, Oid tbloid)
+GpPolicy *
+GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 {
-	MppPolicy  *policy = NULL;	/* The result */
+	GpPolicy  *policy = NULL;	/* The result */
 	Relation	gp_policy_rel;
 	ScanKeyData policy_key[1];
 	SysScanDesc gp_policy_scan;
@@ -118,9 +118,9 @@ MppPolicyFetch(MemoryContext mcxt, Oid tbloid)
 			Assert(nattrs >= 0);
 		}
 			
-		/* Create an MppPolicy object. */
+		/* Create an GpPolicy object. */
 		nb = sizeof(*policy) - sizeof(policy->attrs) + nattrs * sizeof(policy->attrs[0]);
-		policy = (MppPolicy *)MemoryContextAlloc(mcxt, nb);
+		policy = (GpPolicy *)MemoryContextAlloc(mcxt, nb);
 		policy->ptype = POLICYTYPE_PARTITIONED;
 		policy->nattrs = nattrs;
 		for (i = 0; i < nattrs; i++)
@@ -139,13 +139,13 @@ MppPolicyFetch(MemoryContext mcxt, Oid tbloid)
 	if (policy == NULL)
 	{
 	    nb = sizeof(*policy) - sizeof(policy->attrs);
-    	policy = (MppPolicy *)MemoryContextAlloc(mcxt, nb);
+    	policy = (GpPolicy *)MemoryContextAlloc(mcxt, nb);
 		policy->ptype = POLICYTYPE_ENTRY;
 		policy->nattrs = 0;
 	}
 
 	return policy;
-}                               /* MppPolicyFetch */
+}                               /* GpPolicyFetch */
 
 
 /*
@@ -172,11 +172,11 @@ extract_INT2OID_array(Datum array_datum, int *lenp, int16 **vecp)
 
 /*
  * Sets the policy of a table into the gp_distribution_policy table
- * from a MppPolicy structure.
+ * from a GpPolicy structure.
  *
  */
 void
-MppPolicyStore(Oid tbloid, const MppPolicy *policy)
+GpPolicyStore(Oid tbloid, const GpPolicy *policy)
 {
 	Relation	gp_policy_rel;
 	HeapTuple	gp_policy_tuple = NULL;
@@ -234,15 +234,15 @@ MppPolicyStore(Oid tbloid, const MppPolicy *policy)
      * end of transaction.
      */
     heap_close(gp_policy_rel, NoLock);
-}                               /* MppPolicyStore */
+}                               /* GpPolicyStore */
 
 /*
  * Sets the policy of a table into the gp_distribution_policy table
- * from a MppPolicy structure.
+ * from a GpPolicy structure.
  *
  */
 void
-MppPolicyReplace(Oid tbloid, const MppPolicy *policy)
+GpPolicyReplace(Oid tbloid, const GpPolicy *policy)
 {
 	Relation	gp_policy_rel;
 	HeapTuple	gp_policy_tuple = NULL;
@@ -349,4 +349,4 @@ MppPolicyReplace(Oid tbloid, const MppPolicy *policy)
      * end of transaction.
      */
     heap_close(gp_policy_rel, NoLock);
-}                               /* MppPolicyReplace */
+}                               /* GpPolicyReplace */

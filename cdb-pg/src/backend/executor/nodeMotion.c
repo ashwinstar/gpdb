@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * nodeMotion.c
- *	  Routines to handle moving tuples around in MPP.
+ *	  Routines to handle moving tuples around in Greenplum Database.
  *
  * Copyright (c) 2005-2006, greenplum inc
  *

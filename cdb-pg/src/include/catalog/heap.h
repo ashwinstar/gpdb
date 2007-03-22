@@ -52,7 +52,7 @@ extern Oid heap_create_with_catalog(const char *relname,
 						 bool oidislocal,
 						 int oidinhcount,
 						 OnCommitAction oncommit,
-                         const struct MppPolicy *policy,    /* MPP */
+                         const struct GpPolicy *policy,    /* MPP */
 						 Datum reloptions,
 						 bool allow_system_table_mods,
 						 Oid *comptypeOid /* MPP */);

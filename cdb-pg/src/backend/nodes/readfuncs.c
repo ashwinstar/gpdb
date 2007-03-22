@@ -1603,7 +1603,7 @@ _readRangeTblEntry(void)
 }
 
 /*
- * MPP additions for serialization support
+ * Greenplum Database additions for serialization support
  * These are currently not used (see outfastc ad readfast.c) 
  */
 #include "nodes/plannodes.h"
@@ -2680,12 +2680,12 @@ _readCreateTrigStmt(void)
 
 }
 /*
- * MPP developers added code to improve performance over the
+ * Greenplum Database developers added code to improve performance over the
  * linear searching that existed in the postgres version of
  * parseNodeString.  We introduced a struct containing
  * the node type string and read function pointer.
  * We created a sorted array of these for all node types supported
- * by parseNodeString, with MPP extensions.
+ * by parseNodeString, with Greenplum Database extensions.
  * This array is searched for a node type string.   If found,
  * the function pointer is excuted.
  */

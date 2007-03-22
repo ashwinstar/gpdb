@@ -5329,9 +5329,9 @@ strip_var(NumericVar *var)
 
 /* ----------------------------------------------------------------------
  *
- * Aggregate functions -- MPP Extensions
+ * Aggregate functions -- Greenplum Database Extensions
  *
- * MPP adds some builtin functions to amalgamate transition type
+ * Greenplum Database adds some builtin functions to amalgamate transition type
  * instances for two-stage aggregation.
  *
  * ----------------------------------------------------------------------

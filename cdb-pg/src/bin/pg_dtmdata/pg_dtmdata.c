@@ -39,7 +39,7 @@ static TmLogFileControlBlock dtmLogFileHeader = {TM_FILE_MAGIC, 0, 0, {0}};
 static void
 usage( const char *progname)
 {
-	printf(_("%s displays dtm log information of an MPP database.\n\n"), progname);
+	printf(_("%s displays dtm log information of a Greenplum Database instance.\n\n"), progname);
 	
 	printf(_("Usage:\n"
 			 "  %s [OPTION] [DATADIR]\n\n"

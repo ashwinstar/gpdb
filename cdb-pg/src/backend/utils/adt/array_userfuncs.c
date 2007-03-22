@@ -467,7 +467,7 @@ create_singleton_array(FunctionCallInfo fcinfo,
 							  typlen, typbyval, typalign);
 }
 
-/* MPP Additions: */
+/* Greenplum Database Additions: */
 
 
 /*-----------------------------------------------------------------------------

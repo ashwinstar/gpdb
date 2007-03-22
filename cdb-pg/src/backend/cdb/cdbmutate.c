@@ -29,7 +29,7 @@
 #include "catalog/pg_type.h"
 
 #include "cdb/cdbfts.h"         /* isFTSEnabled() */
-#include "cdb/cdbhash.h"        /* isMppHashable() */
+#include "cdb/cdbhash.h"        /* isGreenplumDbHashable() */
 #include "cdb/cdbllize.h"
 #include "cdb/cdbmutate.h"
 #include "cdb/cdbplan.h"
@@ -92,7 +92,7 @@ warn_ctid_without_segid(Query *query, Plan *plan);
 
 static bool has_ctid_outside_tlist_walker(Node *node, void* unused);
 
-static bool DoesDistributionHaveDependencies(Oid relOid, MppPolicy * policy);
+static bool DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy);
 
 /* ------------------------------------------------------------------------- *
  * Function apply_motion() and apply_motion_mutator() add motion nodes to
@@ -114,8 +114,8 @@ apply_motion(Plan *plan, Query *query)
 {
 	Plan	           *result;
     ListCell           *cell;
-    MppPolicy          *targetPolicy = NULL;
-    MppPolicyType       targetPolicyType = POLICYTYPE_ENTRY;
+    GpPolicy          *targetPolicy = NULL;
+    GpPolicyType       targetPolicyType = POLICYTYPE_ENTRY;
 	ApplyMotionState    state;
 
     /* Initialize mutator context. */
@@ -141,7 +141,7 @@ apply_motion(Plan *plan, Query *query)
         rte = rt_fetch(query->resultRelation, query->rtable);
 	    Assert(rte->rtekind == RTE_RELATION);
 
-        /* Get a copy of the rel's MppPolicy from the relcache. */
+        /* Get a copy of the rel's GpPolicy from the relcache. */
         relation = relation_open(rte->relid, NoLock);
         targetPolicy = RelationGetPartitioningKey(relation);
         relation_close(relation, NoLock);
@@ -172,7 +172,7 @@ apply_motion(Plan *plan, Query *query)
 				{
 					/* User did not specify a DISTRIBUTED BY clause */
 				
-					targetPolicy = palloc0(sizeof(MppPolicy)- sizeof(targetPolicy->attrs) + maxattrs * sizeof(targetPolicy->attrs[0]));
+					targetPolicy = palloc0(sizeof(GpPolicy)- sizeof(targetPolicy->attrs) + maxattrs * sizeof(targetPolicy->attrs[0]));
 					targetPolicy->nattrs = 0;
 					
 					targetPolicy->ptype = POLICYTYPE_PARTITIONED;
@@ -246,7 +246,7 @@ apply_motion(Plan *plan, Query *query)
 								Oid typeOid = exprType((Node *) target->expr);
 								bool isArray = false;  /* How do I find this out? */
 								
-								if(isMppHashable(typeOid) || isArray)
+								if(isGreenplumDbHashable(typeOid) || isArray)
 								{
 									targetPolicy->attrs[targetPolicy->nattrs++] = i+1;
 									break;
@@ -491,7 +491,7 @@ apply_motion(Plan *plan, Query *query)
         subplan->qDispSliceId = state.nextMotionID++;
     }
 
-	/* Last minute check for MPP badness. */
+	/* Last minute check for Greenplum Database badness. */
 	if (query->commandType == CMD_DELETE ||
         query->commandType == CMD_UPDATE)
 	{
@@ -1190,7 +1190,7 @@ doesUpdateAffectPartitionCols(Plan         *plan,
     Append     *append;
     ListCell   *rticell;
     ListCell   *plancell;
-    MppPolicy  *policy;
+    GpPolicy  *policy;
 
     if (query->resultRelations == NIL)
     {
@@ -1200,7 +1200,7 @@ doesUpdateAffectPartitionCols(Plan         *plan,
         rte = rt_fetch(query->resultRelation, query->rtable);
 	    Assert(rte->rtekind == RTE_RELATION);
 
-        /* Get a copy of the rel's MppPolicy from the relcache. */
+        /* Get a copy of the rel's GpPolicy from the relcache. */
         relation = relation_open(rte->relid, NoLock);
         policy = RelationGetPartitioningKey(relation);
         relation_close(relation, NoLock);
@@ -1238,7 +1238,7 @@ doesUpdateAffectPartitionCols(Plan         *plan,
         rte = rt_fetch(rti, query->rtable);
 	    Assert(rte->rtekind == RTE_RELATION);
 
-        /* Get a copy of the rel's MppPolicy from the relcache. */
+        /* Get a copy of the rel's GpPolicy from the relcache. */
         relation = relation_open(rte->relid, NoLock);
         policy = RelationGetPartitioningKey(relation);
         relation_close(relation, NoLock);
@@ -1264,7 +1264,7 @@ doesUpdateAffectPartitionCols(Plan         *plan,
  * hasCtid_outside_tlist() detects a CTID reference outside of simple
  * Var in the targetlist of the top-level plan node.  The use of this
  * function is pretty much restricted to the case of a UPDATE or DELETE
- * in MPP first release.
+ * in Greenplum Database first release.
  * ----------------------------------------------------------------------- *
  */
 typedef struct ctid_inv_data
@@ -1400,7 +1400,7 @@ has_ctid_outside_tlist_walker(Node *node, void* unused)
 #include "utils/fmgroids.h"
 
 bool
-DoesDistributionHaveDependencies(Oid relOid, MppPolicy * policy)
+DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy)
 {
 
 	Relation	depRel;

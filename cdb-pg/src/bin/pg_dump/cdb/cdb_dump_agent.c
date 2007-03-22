@@ -739,7 +739,7 @@ main(int argc, char **argv)
 		*/
     if (g_role == ROLE_MASTER && !g_gp_catalog_only && !dataOnly)
     {
-		mpp_err_msg( logInfo, progname, "Forking process to dump mpp catalog\n");
+		mpp_err_msg( logInfo, progname, "Forking process to dump Greenplum Database catalog\n");
         forkMPPCatalogDumper();
 		
 		mpp_err_msg( logInfo, progname, "Dumping CREATE DATABASE statement\n");
@@ -849,7 +849,7 @@ main(int argc, char **argv)
 	if (g_gp_catalog_only && g_role == ROLE_MASTER)
 	{
 		/* dumping mpp catalog */
-		mpp_err_msg( logInfo, progname, "Dumping mpp catalog from \"%s\"...\n" , g_conn->dbName);
+		mpp_err_msg( logInfo, progname, "Dumping Greenplum Database catalog from \"%s\"...\n" , g_conn->dbName);
 		dumpMain(oids, dumpencoding, outputBlobs, plainText, ropt);
 	}
 	else 
@@ -935,7 +935,7 @@ main(int argc, char **argv)
 	
 	PQfinish(g_conn);
 	
-	mpp_err_msg(logInfo, progname, (g_gp_catalog_only ? "Finished mpp catalog dump successfully\n":"Finished successfully\n"));
+	mpp_err_msg(logInfo, progname, (g_gp_catalog_only ? "Finished Greenplum Database catalog dump successfully\n":"Finished successfully\n"));
 	
 	exit(0);
 }
@@ -5279,8 +5279,8 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 	/* mpp addition start*/
 	/* skip entries for mpp catalog */
     if (selectSchemaName == NULL)
-        if ((dobj->objType == DO_NAMESPACE && strcmp(dobj->name, "mpp") == 0) ||
-            (dobj->namespace != NULL && strcmp(dobj->namespace->dobj.name, "mpp") == 0))
+        if ((dobj->objType == DO_NAMESPACE && strcmp(dobj->name, "gp_") == 0) ||
+            (dobj->namespace != NULL && strcmp(dobj->namespace->dobj.name, "gp_") == 0))
             return;
     /* end mpp addition */
 	

@@ -455,7 +455,7 @@ DefineIndex(RangeVar *heapRelation,
 		 */
 		if (unique || primary)
 		{
-			MppPolicy  *policy = rel->rd_cdbpolicy;
+			GpPolicy  *policy = rel->rd_cdbpolicy;
 			bool changespolicy = false;
 
 			if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
@@ -487,7 +487,7 @@ DefineIndex(RangeVar *heapRelation,
 					}
 					else
 					{
-						policy = (MppPolicy *) palloc(sizeof(MppPolicy) + numberOfAttributes * sizeof(policy->attrs[0]));
+						policy = (GpPolicy *) palloc(sizeof(GpPolicy) + numberOfAttributes * sizeof(policy->attrs[0]));
 						policy->ptype = POLICYTYPE_PARTITIONED;
 						policy->nattrs = 0;
 						policy->attrs[0] = 1;
@@ -495,7 +495,7 @@ DefineIndex(RangeVar *heapRelation,
 						{
 							policy->attrs[policy->nattrs++] = indexInfo->ii_KeyAttrNumbers[ia];	
 						}
-						MppPolicyReplace(rel->rd_id, policy);
+						GpPolicyReplace(rel->rd_id, policy);
 						if (primary)
 							elog(NOTICE,"Updating distribution policy to match new primary key.");
 						else

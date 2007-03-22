@@ -1601,7 +1601,7 @@ CopyToDispatch(CopyState cstate)
 	}
 	
 	/*
-	 * Start a COPY command in every db of every segment in MPP.
+	 * Start a COPY command in every db of every segment in Greenplum Database.
 	 *
 	 * From this point in the code we need to be extra careful
 	 * about error handling. ereport() must not be called until
@@ -1877,7 +1877,7 @@ CopyFromDispatch(CopyState cstate)
 							         usually non constant defaults we pre-evaluate in here */
 				num_defaults;
 	FmgrInfo   *in_functions;
-	FmgrInfo   *out_functions; /* for handling defaults in mpp */
+	FmgrInfo   *out_functions; /* for handling defaults in Greenplum Database */
 	FmgrInfo	oid_in_function;
 	Oid		   *typioparams;
 	Oid			oid_typioparam;
@@ -1931,7 +1931,7 @@ CopyFromDispatch(CopyState cstate)
 	/*
 	 * Variables for cdbpolicy
 	 */
-	MppPolicy  *policy;			/* the partitioning policy for this table			 */
+	GpPolicy  *policy;			/* the partitioning policy for this table			 */
 	int			p_nattrs;		/* num of partitioning keys in the policy			 */
 
 	/*

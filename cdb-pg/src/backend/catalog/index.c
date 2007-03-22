@@ -1280,7 +1280,7 @@ setNewRelfilenode(Relation relation)
 }
 
 /*
- * MPP specific routine.
+ * Greenplum specific routine.
  *
  * setNewRelfilenodeToOid		- assign a new relfilenode value to the relation
  *

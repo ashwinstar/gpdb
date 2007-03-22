@@ -134,7 +134,7 @@ static void transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
 static void transformIndexConstraints(ParseState *pstate,
 						  CreateStmtContext *cxt);
 static void transformDistributedBy(ParseState *pstate,
-		   CreateStmtContext *cxt, List *distributedBy, MppPolicy ** policy, List *likeDistributedBy);
+		   CreateStmtContext *cxt, List *distributedBy, GpPolicy ** policy, List *likeDistributedBy);
 static void transformFKConstraints(ParseState *pstate,
 					   CreateStmtContext *cxt,
 					   bool skipValidation,
@@ -1006,7 +1006,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 										 (InhRelation *) element);
 
 					/*
-					 * For MPP distributed tables, default to the same distribution as the first LIKE table,
+					 * For Greenplum Database distributed tables, default to the same distribution as the first LIKE table,
 					 * unless we also have INHERITS
 					 */
 					if (Gp_role == GP_ROLE_DISPATCH && stmt->distributedBy == NIL && stmt->inhRelations == NIL && isBeginning && stmt->policy == NULL)
@@ -1014,7 +1014,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 						InhRelation *e = (InhRelation *) element;
 						Oid			relId = RangeVarGetRelid(e->relation, false);
 
-						MppPolicy  *oldTablePolicy = MppPolicyFetch(CurrentMemoryContext, relId);
+						GpPolicy  *oldTablePolicy = GpPolicyFetch(CurrentMemoryContext, relId);
 
 						if (oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
 						{
@@ -1061,7 +1061,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	transformFKConstraints(pstate, &cxt, true, false);
 
 	/*
-	 * Postprocess MPP distribution columns
+	 * Postprocess Greenplum Database distribution columns
 	 */
 	transformDistributedBy(pstate, &cxt, stmt->distributedBy, &stmt->policy, likeDistributedBy);
 
@@ -1810,13 +1810,13 @@ transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt)
 
 /****************stmt->policy*********************/
 static void
-transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distributedBy, MppPolicy ** policyp, List *likeDistributedBy)
+transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distributedBy, GpPolicy ** policyp, List *likeDistributedBy)
 {
 
 
 	ListCell   *keys = NULL;
 
-	MppPolicy  *policy = NULL;
+	GpPolicy  *policy = NULL;
 	int			colindex = 0;
 	int			maxattrs = 200;
 	int			numUniqueIndexes = 0;
@@ -1836,7 +1836,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
  
 
 
-		policy = (MppPolicy *) palloc(sizeof(MppPolicy) + maxattrs * sizeof(policy->attrs[0]));
+		policy = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs * sizeof(policy->attrs[0]));
 		policy->ptype = POLICYTYPE_PARTITIONED;
 		policy->nattrs = 0;
 		policy->attrs[0] = 1;
@@ -1960,7 +1960,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			{
 				RangeVar   *parent = (RangeVar *) lfirst(entry);
 				Oid			relId = RangeVarGetRelid(parent, false);
-				MppPolicy  *oldTablePolicy = MppPolicyFetch(CurrentMemoryContext, relId);
+				GpPolicy  *oldTablePolicy = GpPolicyFetch(CurrentMemoryContext, relId);
 
                 /* Partitioned child must have partitioned parents. */
                 if (oldTablePolicy == NULL ||
@@ -2018,7 +2018,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			/*
 			 * table has one or more attributes and there is still no distribution
 			 * key. pick a default one. the winner is the first attribute that is
-			 * an mpp-hashable data type.
+			 * an Greenplum Database-hashable data type.
 			 */
 			
 			ListCell   *columns;
@@ -2065,7 +2065,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 						if (inhattr->attisdropped)
 							continue;
 						colindex++;
-						if(isMppHashable(typeOid) || isArray)
+						if(isGreenplumDbHashable(typeOid) || isArray)
 						{
 							char	   *inhname = NameStr(inhattr->attname);
 							policy->attrs[0] = colindex;
@@ -2108,7 +2108,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 					 * if we can hash on this type, or if it's an array type (which
 					 * we can always hash) this column with be our default key.
 					 */
-					if(isMppHashable(typeOid) || isArray)
+					if(isGreenplumDbHashable(typeOid) || isArray)
 					{
 						policy->attrs[0] = colindex;
 						assignedDefault = true;
@@ -2225,11 +2225,11 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 												
 						/*
 						 * To be a part of a distribution key, this type must be supported
-						 * for hashing internally in mpp. We check if the base type is
+						 * for hashing internally in Greenplum Database. We check if the base type is
 						 * supported for hashing or if it is an array type (we support
 						 * hashing on all array types).
 						 */
-						if(!isMppHashable(typeOid) && !isArray)
+						if(!isGreenplumDbHashable(typeOid) && !isArray)
 						{
 							ereport(ERROR,
 									(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
@@ -4669,7 +4669,7 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 {
 	ListCell   *keys = NULL;
 
-	MppPolicy  *policy = NULL;
+	GpPolicy  *policy = NULL;
 	int			colindex = 0;
 	int			maxattrs = 200;
 
@@ -4690,7 +4690,7 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 			elog(ERROR,"DISTRIBUTED BY clause in SELECT statement only makes sense for SELECT INTO");
 		}
 		
-		policy = (MppPolicy *) palloc(sizeof(MppPolicy) + maxattrs * sizeof(policy->attrs[0]));
+		policy = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs * sizeof(policy->attrs[0]));
 		policy->ptype = POLICYTYPE_PARTITIONED;
 		policy->nattrs = 0;
 		policy->attrs[0] = 1;
@@ -4721,11 +4721,11 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 															
 					/*
 					 * To be a part of a distribution key, this type must be supported
-					 * for hashing internally in mpp. We check if the base type is
+					 * for hashing internally in Greenplum Database. We check if the base type is
 					 * supported for hashing or if it is an array type (we support
 					 * hashing on all array types).
 					 */
-					if(!isMppHashable(typeOid) && !isArray)
+					if(!isGreenplumDbHashable(typeOid) && !isArray)
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),

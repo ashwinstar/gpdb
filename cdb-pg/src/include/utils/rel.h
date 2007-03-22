@@ -154,7 +154,7 @@ typedef struct RelationData
 	RuleLock   *rd_rules;		/* rewrite rules */
 	MemoryContext rd_rulescxt;	/* private memory cxt for rd_rules, if any */
 	TriggerDesc *trigdesc;		/* Trigger info, or NULL if rel has none */
-    struct MppPolicy *rd_cdbpolicy; /* Partitioning info if distributed rel */
+    struct GpPolicy *rd_cdbpolicy; /* Partitioning info if distributed rel */
     bool        rd_cdbDefaultStatsWarningIssued;
 	bool		rd_isLocalBuf;  /* CDB: true => rel uses the local buffer mgr */
 

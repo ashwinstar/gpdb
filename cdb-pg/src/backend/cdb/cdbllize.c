@@ -117,7 +117,7 @@ static void motion_sanity_check(Plan *plan);
  * already final.
  *
  * The result is [a copy of] the input plan with alterations to make the
- * plan suitable for execution by MPP.
+ * plan suitable for execution by Greenplum Database.
  *
  *
  * TODO: Much investigation remains in the areas of
@@ -207,14 +207,14 @@ cdbparallelize(Plan *plan,
 				 * summary of relations touched. */
 				Oid			reloid;
                 Relation    relation;
-				MppPolicy  *policy = NULL;
+				GpPolicy  *policy = NULL;
 
                 /* Get Oid of target relation. */
                 Insist(query->resultRelation > 0 &&
 				       query->resultRelation <= list_length(localRangeTable(context)));
 				reloid = getrelid(query->resultRelation, localRangeTable(context));
 
-                /* Get a copy of the rel's MppPolicy from the relcache. */
+                /* Get a copy of the rel's GpPolicy from the relcache. */
                 relation = relation_open(reloid, NoLock);
                 policy = RelationGetPartitioningKey(relation);
                 relation_close(relation, NoLock);
@@ -313,7 +313,7 @@ prescan(Plan *plan, PlanProfile * context)
  * Function prescan_walker is the workhorse of prescan.
  *
  * The driving function, prescan(), should be called only once on a
- * plan produced by the MPP optimizer for dispatch on the QD.  There
+ * plan produced by the Greenplum Database optimizer for dispatch on the QD.  There
  * are two main task performed:
  *
  * 1. Since the optimizer isn't in a position to view plan globally,

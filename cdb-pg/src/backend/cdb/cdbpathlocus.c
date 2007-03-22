@@ -14,7 +14,7 @@
 extern "C" {
 #endif
 
-#include "cdb/cdbcat.h"         /* MppPolicy */
+#include "cdb/cdbcat.h"         /* GpPolicy */
 #include "cdb/cdbdef.h"         /* CdbSwap() */
 #include "cdb/cdbpullup.h"      /* cdbpullup_missing_var_walker() */
 #include "nodes/makefuncs.h"    /* makeVar() */
@@ -176,7 +176,7 @@ cdbpathlocus_from_baserel(struct PlannerInfo   *root,
                           struct RelOptInfo    *rel)
 {
     CdbPathLocus result;
-    MppPolicy   *policy = rel->cdbpolicy;
+    GpPolicy   *policy = rel->cdbpolicy;
 	
 	if ( Gp_role != GP_ROLE_DISPATCH )
 	{

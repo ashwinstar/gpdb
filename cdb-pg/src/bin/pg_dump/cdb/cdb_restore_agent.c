@@ -459,7 +459,7 @@ main(int argc, char **argv)
             SegDB.pszDBPswd = malloc( nBytes + 1 );
             if ( SegDB.pszDBPswd == NULL )
             {
-                mpp_err_msg(logInfo, pszProgName, "Cannot allocate memory for MPP Credentials\n" );
+                mpp_err_msg(logInfo, pszProgName, "Cannot allocate memory for Greenplum Database Credentials\n" );
                 exit(1);
             }
 
@@ -815,8 +815,8 @@ usage(const char *progname)
 	printf(_("  -W, --password           force password prompt (should happen automatically)\n"));
 	printf(_("  -e, --exit-on-error      exit on error, default is to continue\n"));
 
-    printf(("\nMPP specific options:\n"));
-    printf(("   --gp-k=BACKUPKEY        key for MPP Backup\n"));
+    printf(("\nGreenplum Database specific options:\n"));
+    printf(("   --gp-k=BACKUPKEY        key for Greenplum Database Backup\n"));
 
 	printf(_("\nIf no input file name is supplied, then standard input is used.\n\n"));
 	printf(_("Report bugs to <pgsql-bugs@postgresql.org>.\n"));

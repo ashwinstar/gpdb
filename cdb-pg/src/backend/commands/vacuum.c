@@ -316,7 +316,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 
 
 	/* 
-     * MPP: send a scary warning message about vacuum full. its not safe
+     * Greenplum Database: send a scary warning message about vacuum full. its not safe
 	 *		for large tables.
 	 */
 	if (vacstmt->vacuum && vacstmt->full)
@@ -412,7 +412,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 		Assert(Gp_role == GP_ROLE_DISPATCH);
 
 		/*
-		 * Serialize the stmt tree, and create the sql statement: mppexec ....
+		 * Serialize the stmt tree, and create the sql statement....
 		 */
 		q = makeNode(Query);
 

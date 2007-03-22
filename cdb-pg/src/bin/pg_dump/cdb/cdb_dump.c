@@ -126,7 +126,7 @@ int main( int argc, char** argv)
 		goto cleanup;
 
 	/* Read mpp segmentDB configuration from the master */
-	mpp_msg( logInfo, pszProgName, "Reading mpp configuration info from master database.\n");
+	mpp_msg( logInfo, pszProgName, "Reading Greenplum Database configuration info from master database.\n");
 	if ( !GetDumpSegmentDatabaseArray(master_db_conn, &segDBAr, inputOpts.actors, inputOpts.pszRawDumpSet, dataOnly, schemaOnly) )
 		goto cleanup;
 
@@ -286,7 +286,7 @@ bool doInitialActions(PGconn* pMasterConn)
     pRes = NULL;
 	resetPQExpBuffer(pQry);
 	
-	mpp_msg( logInfo, pszProgName, "Getting a list of mpp managed tables for database %s.\n", pMasterConn->dbName);
+	mpp_msg( logInfo, pszProgName, "Getting a list of Greenplum Database managed tables for database %s.\n", pMasterConn->dbName);
 	
 	if ( !GetCDBBaseTableArray(pMasterConn, &TableAr) )
 	{
@@ -444,7 +444,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		{"use-set-session-authorization", no_argument, &auth, 1},
 		
 		/*
-		 * the following are mpp specific, and don't have an equivalent short option
+		 * the following are Greenplum Database specific, and don't have an equivalent short option
 		 */
 		{"gp-c", no_argument, NULL, 1},
 		//{"gp-cf", required_argument, NULL, 2},
@@ -713,7 +713,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				// Validate that none of the role's are hosts
 				if ( 0 < CountInstanceHosts( &pInputOpts->set ) )
 				{
-					mpp_msg( logInfo, pszProgName, "The control file %s contains mpp instances specifies as host name or ip address.  This is not allowed.\n",
+					mpp_msg( logInfo, pszProgName, "The control file %s contains Greenplum Database instances specifies as host name or ip address.  This is not allowed.\n",
 									optarg);
 					goto cleanup;
 				}
@@ -933,7 +933,7 @@ void help(const char *pszProgName)
 	printf(("  -U, --username=NAME      connect as specified database user\n"));
 	printf(("  -W, --password           force password prompt (should happen automatically)\n"));
 	
-	printf(("\nMPP specific options:\n"));
+	printf(("\nGreenplum Database specific options:\n"));
 	printf(("  --gp-c                  use gzip for in-line compression\n"));
 	printf(("  --gp-d=BACKUPFILEDIR    directory where backup files are placed\n"));
 	printf(("  --gp-r=REPORTFILEDIR    directory where report file is placed\n"));
@@ -1203,7 +1203,7 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
  * and creates each of the threads. It waits on a condition variable. This 
  * will release when all threads have attained the SET_SERIALIZABLE state
  * (or have failed to do so). It then commits the transaction, which releases 
- * the locks it holds on all the mpp managed tables. It then waits for all 
+ * the locks it holds on all the Greenplum Database managed tables. It then waits for all 
  * threads to finish. 
  */
 void spinOffThreads(PGconn* pConn, 
@@ -1378,7 +1378,7 @@ void* threadProc(void *arg)
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK || PQntuples(pRes) == 0 )
 	{
 		g_b_SendCancelMessage = true;
-		pParm->pszErrorMsg = MakeString( "could not start mpp backup: %s", PQerrorMessage(pConn) );
+		pParm->pszErrorMsg = MakeString( "could not start Greenplum Database backup: %s", PQerrorMessage(pConn) );
 		mpp_err_msg(logFatal, pszProgName,pParm->pszErrorMsg);
 		PQfinish( pConn );
 		decrementFinishedLaunchCount();
@@ -1386,7 +1386,7 @@ void* threadProc(void *arg)
 		return NULL;
 	}
 	
-	mpp_msg(logInfo, pszProgName, "Successfully launched mpp backup on dbid %d server\n", pSegDB->dbid);
+	mpp_msg(logInfo, pszProgName, "Successfully launched Greenplum Database backup on dbid %d server\n", pSegDB->dbid);
 	
 	pParm->pszRemoteBackupPath = strdup( PQgetvalue(pRes, 0, 0) );
 	
@@ -1404,7 +1404,7 @@ void* threadProc(void *arg)
 	if ( pState == NULL )
 	{
 		g_b_SendCancelMessage = true;
-		pParm->pszErrorMsg = "error allocating memory for mpp backup";
+		pParm->pszErrorMsg = "error allocating memory for Greenplum Database backup";
 		mpp_err_msg(logError, pszProgName,pParm->pszErrorMsg);
 		PQfinish( pConn );
 		decrementFinishedLaunchCount();
@@ -1488,7 +1488,7 @@ void* threadProc(void *arg)
 				if ( !AddNotificationtoBackupStateMachine( pState, pNotify) )
 				{
 					g_b_SendCancelMessage = true;
-					pParm->pszErrorMsg = MakeString("error allocating memory for mpp backup\n");
+					pParm->pszErrorMsg = MakeString("error allocating memory for Greenplum Database backup\n");
 					mpp_err_msg(logError, pszProgName, pParm->pszErrorMsg );
 					PQfinish(pConn);
 					DestroyBackupStateMachine(pState);

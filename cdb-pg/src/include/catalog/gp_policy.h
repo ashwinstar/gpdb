@@ -35,47 +35,47 @@ CATALOG(gp_distribution_policy,5002) BKI_WITHOUT_OIDS
 #define Anum_gp_policy_attrnums	2
 
 /*
- * MppPolicyType represents a type of policy under which a relation's
+ * GpPolicyType represents a type of policy under which a relation's
  * tuples may be assigned to a component database.
  */
-typedef enum MppPolicyType
+typedef enum GpPolicyType
 {
 	POLICYTYPE_UNDEFINED,
 	POLICYTYPE_PARTITIONED,		/* Tuples partitioned onto segment database. */
 	POLICYTYPE_ENTRY			/* Tuples stored on enty database. */
-} MppPolicyType;
+} GpPolicyType;
 
 /*
- * MppPolicy represents a Greenplum DB data distribution policy. The ptype field
+ * GpPolicy represents a Greenplum DB data distribution policy. The ptype field
  * is always significant.  Other fields may be specific to a particular
  * type.
  *
- * A MppPolicy is typically palloc'd with space for nattrs integer
- * attribute numbers (attrs) in addition to sizeof(MppPolicy).
+ * A GpPolicy is typically palloc'd with space for nattrs integer
+ * attribute numbers (attrs) in addition to sizeof(GpPolicy).
  */
 typedef
-struct MppPolicy
+struct GpPolicy
 {
-	MppPolicyType ptype;
+	GpPolicyType ptype;
 
 	/* These fields apply to POLICYTYPE_PARTITIONED. */
 	int			nattrs;
 	AttrNumber	attrs[1];		/* the first of nattrs attribute numbers.  */
-} MppPolicy;
+} GpPolicy;
 
 /*
- * MppPolicyCopy -- Return a copy of a MppPolicy object.
+ * GpPolicyCopy -- Return a copy of a GpPolicy object.
  *
  * The copy is palloc'ed in the specified context.
  */
-MppPolicy *
-MppPolicyCopy(MemoryContext mcxt, const MppPolicy *src);
+GpPolicy *
+GpPolicyCopy(MemoryContext mcxt, const GpPolicy *src);
 
 /*
- * MppPolicyFetch
+ * GpPolicyFetch
  *
  * Looks up a given Oid in the gp_distribution_policy table.
- * If found, returns an MppPolicy object (palloc'd in the specified
+ * If found, returns an GpPolicy object (palloc'd in the specified
  * context) containing the info from the gp_distribution_policy row.
  * Else returns NULL.
  *
@@ -83,17 +83,17 @@ MppPolicyCopy(MemoryContext mcxt, const MppPolicy *src);
  * function does not check and assigns a policy of type POLICYTYPE_ENTRY
  * for any oid not found in gp_distribution_policy.
  */
-MppPolicy *
-MppPolicyFetch(MemoryContext mcxt, Oid tbloid);
+GpPolicy *
+GpPolicyFetch(MemoryContext mcxt, Oid tbloid);
 
 /*
- * MppPolicyStore: sets the MppPolicy for a table.
+ * GpPolicyStore: sets the GpPolicy for a table.
  */
 void
-MppPolicyStore(Oid tbloid, const MppPolicy *policy);
+GpPolicyStore(Oid tbloid, const GpPolicy *policy);
 
 void
-MppPolicyReplace(Oid tbloid, const MppPolicy *policy);
+GpPolicyReplace(Oid tbloid, const GpPolicy *policy);
 
 
 #endif /*_GP_POLICY_H_*/

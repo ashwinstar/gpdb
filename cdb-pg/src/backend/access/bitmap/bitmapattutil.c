@@ -58,7 +58,7 @@ _bitmap_create_lov_heapandindex(Relation rel,
 	Oid			idxid;
 	int			indattrs;
 	int			i;
- 	MppPolicy   policy;
+ 	GpPolicy   policy;
 
 	/* create the new names for the new lov heap and index */
 	snprintf(lovHeapName, sizeof(lovHeapName), 

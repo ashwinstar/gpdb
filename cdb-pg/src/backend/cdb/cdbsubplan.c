@@ -157,7 +157,7 @@ preprocess_initplans(QueryDesc *queryDesc)
  * type: PARAM_EXEC_REMOTE.
  *
  * When the query eventually runs (on the QD or a QE), it will have access
- * to the augmented ParamListInfo (locally or through MPPEXEC serialization).
+ * to the augmented ParamListInfo (locally or through serialization).
  *
  * Then, rather than lazily-evaluating the SubPlan to get its value (as for
  * an internal parameter), the plan will just look up the param value in the

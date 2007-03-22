@@ -147,7 +147,7 @@ typedef struct xl_xact_distributed_forget
  * ----------------
  */
 
-/* MPP specific */ 
+/* Greenplum Database specific */ 
 extern void SetSharedTransactionId(void);
 extern void GetSubtransactionsForSharedSnapshot(uint32 *subcnt, TransactionId *subxids);
 extern bool CheckSharedSnapshotForSubtransaction(TransactionId xid);

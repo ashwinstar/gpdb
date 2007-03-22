@@ -66,7 +66,7 @@ typedef struct CdbComponentDatabases
 } CdbComponentDatabases;
 
 /*
- * performs all necessary setup required for initializing MPP components.
+ * performs all necessary setup required for initializing Greenplum Database components.
  *
  * This includes cdblink_setup() and initializing the Motion Layer.
  *
@@ -75,8 +75,8 @@ extern void cdb_setup(void);
 
 
 /*
- * performs all necessary cleanup required when cleaning up MPP components
- * when disabling MPP functionality.
+ * performs all necessary cleanup required when cleaning up Greenplum Database components
+ * when disabling Greenplum Database functionality.
  *
  */
 extern void cdb_cleanup(int code, Datum arg);

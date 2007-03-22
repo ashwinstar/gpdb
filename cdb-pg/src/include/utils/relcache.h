@@ -26,7 +26,7 @@ extern void RelationClose(Relation relation);
 /*
  * Routines to compute/retrieve additional cached information
  */
-struct MppPolicy *RelationGetPartitioningKey(Relation relation);
+struct GpPolicy *RelationGetPartitioningKey(Relation relation);
 extern List *RelationGetIndexList(Relation relation);
 extern Oid	RelationGetOidIndex(Relation relation);
 extern List *RelationGetIndexExpressions(Relation relation);

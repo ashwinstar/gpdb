@@ -64,7 +64,7 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
-#include "cdb/cdbcat.h"         /* MppPolicy */
+#include "cdb/cdbcat.h"         /* GpPolicy */
 #include "cdb/cdbvars.h"        /* Gp_role */
 
 
@@ -893,12 +893,12 @@ RelationBuildDesc(Oid targetRelId, Relation oldrelation)
 	relation->rd_smgr = NULL;
 
     /*
-     * initialize MPP partitioning info
+     * initialize Greenplum Database partitioning info
      */
     if ((relation->rd_rel->relkind == RELKIND_RELATION ||
 		 relation->rd_rel->relkind == RELKIND_EXTERNAL) &&
         !IsSystemRelation(relation))
-        relation->rd_cdbpolicy = MppPolicyFetch(CacheMemoryContext, targetRelId);
+        relation->rd_cdbpolicy = GpPolicyFetch(CacheMemoryContext, targetRelId);
 
     relation->rd_cdbDefaultStatsWarningIssued = false;
 
@@ -2722,16 +2722,16 @@ CheckConstraintFetch(Relation relation)
 
 
 /*
- * RelationGetPartitioningKey -- get MppPolicy struct for distributed relation
+ * RelationGetPartitioningKey -- get GpPolicy struct for distributed relation
  *
- * Returns a copy of the relation's MppPolicy object, palloc'd in
+ * Returns a copy of the relation's GpPolicy object, palloc'd in
  * the caller's context.  Caller should pfree() it.  If NULL is
  * returned, relation should be accessed locally.
  */
-MppPolicy*
+GpPolicy*
 RelationGetPartitioningKey(Relation relation)
 {
-    return MppPolicyCopy(CurrentMemoryContext, relation->rd_cdbpolicy);
+    return GpPolicyCopy(CurrentMemoryContext, relation->rd_cdbpolicy);
 }                                       /* RelationGetPartitioningKey */
 
 

@@ -17,7 +17,7 @@
 #include "nodes/relation.h"
 
 /*
- * MppSetOpType represents a strategy by which to construct a parallel
+ * GpSetOpType represents a strategy by which to construct a parallel
  * execution plan for a set operation.
  *
  * PSETOP_PARALLEL_PARTITIONED
@@ -46,7 +46,7 @@
  *    The plans input to the Append node are all general loci.  The result
  *    of the Append is, therefore general as well.
  */
-typedef enum MppSetOpType
+typedef enum GpSetOpType
 {
 	PSETOP_NONE = 0,
 	PSETOP_PARALLEL_PARTITIONED,
@@ -54,13 +54,13 @@ typedef enum MppSetOpType
 	PSETOP_SEQUENTIAL_QE,
 	PSETOP_PARALLEL_REPLICATED,
 	PSETOP_GENERAL
-} MppSetOpType;
+} GpSetOpType;
 
 extern 
-MppSetOpType choose_setop_type(List *planlist); 
+GpSetOpType choose_setop_type(List *planlist); 
 
 extern
-void adjust_setop_arguments(List *planlist, MppSetOpType setop_type);
+void adjust_setop_arguments(List *planlist, GpSetOpType setop_type);
 
 
 extern
@@ -82,7 +82,7 @@ extern
 Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering);
 
 extern
-void mark_append_locus(Plan *plan, MppSetOpType optype);
+void mark_append_locus(Plan *plan, GpSetOpType optype);
 
 extern
 void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort);

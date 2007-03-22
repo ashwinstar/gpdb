@@ -9,7 +9,7 @@
  *
  *
  * NOTES
- *	  Every node type that can appear in an MPP serialized query or plan
+ *	  Every node type that can appear in an Greenplum Database serialized query or plan
  *    tree must have an output function defined here.  
  *
  * 	  There *MUST* be a one-to-one correspondence between this routine

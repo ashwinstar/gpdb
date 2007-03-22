@@ -769,7 +769,7 @@ heap_create_with_catalog(const char *relname,
 						 bool oidislocal,
 						 int oidinhcount,
 						 OnCommitAction oncommit,
-                         const struct MppPolicy *policy,
+                         const struct GpPolicy *policy,
                          Datum reloptions,
 						 bool allow_system_table_mods,
 						 Oid *comptypeOid)
@@ -940,8 +940,8 @@ heap_create_with_catalog(const char *relname,
         Gp_role == GP_ROLE_DISPATCH)
     {
         Assert(relkind == RELKIND_RELATION || relkind == RELKIND_EXTERNAL);
-        new_rel_desc->rd_cdbpolicy = MppPolicyCopy(GetMemoryChunkContext(new_rel_desc), policy);
-        MppPolicyStore(relid, policy);
+        new_rel_desc->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(new_rel_desc), policy);
+        GpPolicyStore(relid, policy);
     }
 
 	/*

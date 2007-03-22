@@ -161,7 +161,7 @@ typedef struct Query
 	
 	TableOidInfo	intoOidInfo;  /* MPP */
 	 
-	MppPolicy  *intoPolicy;			/* MPP. Used only on the QD... Doesn't need to be serialized */
+	GpPolicy  *intoPolicy;			/* MPP. Used only on the QD... Doesn't need to be serialized */
 
 } Query;
 
@@ -1090,7 +1090,7 @@ typedef struct CreateStmt
 	List       *distributedBy;   /* what columns we distribute the data by */
 	TableOidInfo oidInfo;
 	char	    relKind;         /* CDB: force relkind to this */
-	MppPolicy  *policy;
+	GpPolicy  *policy;
 } CreateStmt;
 
 /* ----------------------

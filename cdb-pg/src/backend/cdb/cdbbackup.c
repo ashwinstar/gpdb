@@ -678,7 +678,7 @@ gp_read_backup_file__(PG_FUNCTION_ARGS)
  *
  */
 /* 
- * MPPTODO: This function assumes the file is not compressed.
+ * Greenplum TODO: This function assumes the file is not compressed.
  * This is not always the case. Therefore it should be used carefully
  * by the caller, until we decide to make the change and pass in an
  * isCompressed boolean, which unfortunately will require an initdb for

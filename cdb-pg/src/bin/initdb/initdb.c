@@ -2076,7 +2076,7 @@ setup_cdb_schema(void)
 	char	  **line;
 	char	  **lines;
 
-	fputs(_("creating MPP schema ... "), stdout);
+	fputs(_("creating Greenplum Database schema ... "), stdout);
 	fflush(stdout);
 
 	lines = readfile(cdb_schema_file);
@@ -3321,7 +3321,7 @@ main(int argc, char *argv[])
 
 	setup_schema();
 	
-	/* sets up the MPP admin schema */
+	/* sets up the Greenplum Database admin schema */
 	setup_cdb_schema();
 
 	vacuum_db();

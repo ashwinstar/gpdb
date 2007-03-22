@@ -2937,7 +2937,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 	DR_intorel *myState;
     Oid         intoOid;
     Oid         intoComptypeOid;
-    MppPolicy          *targetPolicy = parseTree->intoPolicy;
+    GpPolicy          *targetPolicy = parseTree->intoPolicy;
 
 
 	/*

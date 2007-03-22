@@ -269,7 +269,7 @@ generate_union_plan(SetOperationStmt *op, PlannerInfo *root,
 	List	   *planlist;
 	List	   *tlist;
 	Plan	   *plan;
-	MppSetOpType optype = PSETOP_NONE; /* CDB */
+	GpSetOpType optype = PSETOP_NONE; /* CDB */
 
 	/*
 	 * If plain UNION, tell children to fetch all tuples.
@@ -366,7 +366,7 @@ generate_nonunion_plan(SetOperationStmt *op, PlannerInfo *root,
 			   *planlist,
 			   *child_sortclauses;
 	SetOpCmd	cmd;
-	MppSetOpType optype = PSETOP_NONE; /* CDB */
+	GpSetOpType optype = PSETOP_NONE; /* CDB */
 
 	/* Recurse on children, ensuring their outputs are marked */
 	lplan = recurse_set_operations(op->larg, root,

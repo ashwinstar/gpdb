@@ -210,7 +210,7 @@ ExecuteQuery(ExecuteStmt *stmt, ParamListInfo params,
 			query->intoTableSpaceName = pstrdup(stmt->into_tbl_space);
 
 		
-		query->intoPolicy = palloc0(sizeof(MppPolicy)- sizeof(query->intoPolicy->attrs) + 255 * sizeof(query->intoPolicy->attrs[0]));
+		query->intoPolicy = palloc0(sizeof(GpPolicy)- sizeof(query->intoPolicy->attrs) + 255 * sizeof(query->intoPolicy->attrs[0]));
 		query->intoPolicy->nattrs = 1;			
 		query->intoPolicy->ptype = POLICYTYPE_PARTITIONED;
 		query->intoPolicy->attrs[0] = 1;

@@ -2189,7 +2189,7 @@ pmdie(SIGNAL_ARGS)
     {
         shmem_exit(0);
         ereport(LOG,
-                (errmsg("MPP sync master is shut down")));
+                (errmsg("Greenplum Database sync master is shut down")));
         exit(0);
     }
 }

@@ -285,7 +285,7 @@ typedef struct RelOptInfo
 	List	   *indexlist;
 	BlockNumber pages;
 	double		tuples;
-    struct MppPolicy   *cdbpolicy;      /* distribution of stored tuples */
+    struct GpPolicy   *cdbpolicy;      /* distribution of stored tuples */
     bool        cdb_default_stats_used; /* true if ANALYZE needed */
 	struct Plan *subplan;		/* if subquery */
 

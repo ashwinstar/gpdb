@@ -34,12 +34,12 @@ typedef enum
 typedef uint32 CdbHashFn (void *, size_t, uint32);
 
 /*
- * Structure that holds MPP hashing information.
+ * Structure that holds Greenplum Database hashing information.
  */
 typedef struct CdbHash
 {
 	uint32		hash;			/* The result hash value							*/
-	int			numsegs;		/* number of segments in MPP used for
+	int			numsegs;		/* number of segments in Greenplum Database used for
 								 * partitioning  */
 	CdbHashAlg	hashalg;		/* the hashing algorithm							*/
 	CdbHashFn  *hashfn;			/* hashing function for the selected hash
@@ -53,7 +53,7 @@ typedef struct CdbHash
 
 /*
  * Create and initialize a CdbHash in the current memory context.
- * Parameter numsegs - number of segments in MPP.
+ * Parameter numsegs - number of segments in Greenplum Database.
  * Parameter algorithm - the hash algorithm, either HASH_FNV_1 or HASH_FNV_1A
  */
 extern CdbHash *makeCdbHash(int numsegs, CdbHashAlg algorithm);
@@ -84,9 +84,9 @@ extern void cdbhashnokey(CdbHash *h);
 extern unsigned int cdbhashreduce(CdbHash *h);
 
 /*
- * Return true if Oid is hashable internally in MPP.
+ * Return true if Oid is hashable internally in Greenplum Database.
  */
-extern bool isMppHashable(Oid typid);
+extern bool isGreenplumDbHashable(Oid typid);
 
 
 

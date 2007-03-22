@@ -426,7 +426,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 
 		if (errorOut)
 		{
-			elog(ERROR, "MPP detected segment failure(s), system is reconnected in %s mode", isFtsReadOnlySet() ? "read-only" : "read-write");
+			elog(ERROR, "Greenplum Database detected segment failure(s), system is reconnected in %s mode", isFtsReadOnlySet() ? "read-only" : "read-write");
 		}
 
 		newGangDefinition = NULL;
@@ -662,7 +662,7 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
 					/*
 					 * this should not happen, or the pgdatabase info is wrong.
 					 */
-					elog(LOG, "Warning, potential wrong mpp configuration.");
+					elog(LOG, "Warning, potential wrong Greenplum Database configuration.");
 					CondSetMPPReadonly();
 				}
 				else

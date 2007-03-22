@@ -137,12 +137,12 @@ typedef struct CopyStateData
 
 #define RAW_BUF_SIZE 65536
 
-	/* NOTE: raw_buf in MPP is used with different logic than postgres COPY */
+	/* NOTE: raw_buf in Greenplum Database is used with different logic than postgres COPY */
 	char		raw_buf[RAW_BUF_SIZE + 1];		/* extra byte for '\0' */
 	int			raw_buf_index;	/* next byte to process */
 	bool		raw_buf_done;	/* finished processing the current buffer */
 
-	/* MPP specific variables */
+	/* Greenplum Database specific variables */
 	bool		is_copy_in;		/* copy in or out? */
 	char		eol_ch[2];		/* The byte values of the 1 or 2 eol bytes */
 	bool		escape_off;		/* treat backslashes as non-special? */
@@ -170,7 +170,7 @@ typedef struct CopyStateData
 
 	struct HeapInsertDesc *heapInsertDesc;
 
-	/* end MPP specific variables */
+	/* end Greenplum Database specific variables */
 
 } CopyStateData;
 

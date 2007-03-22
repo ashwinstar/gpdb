@@ -1,7 +1,7 @@
 /*--------------------------------------------------------------------------
  *
  * cdbhash.c
- *	  Rrovides hashing routines to support consistant data distribution/location within MPP.
+ *	  Rrovides hashing routines to support consistant data distribution/location within Greenplum Database.
  *
  * Copyright (c) 2005-2006, Greenplum
  *
@@ -81,7 +81,7 @@ int			ispowof2(int numsegs);
  * In here we set the variables that should not change in the scope of the newly created
  * CdbHash, these are:
  *
- * 1 - number of segments in MPP.
+ * 1 - number of segments in Greenplum Database.
  * 2 - hashingalgorithm used.
  * 3 - reduction method.
  *
@@ -157,7 +157,7 @@ cdbhashinit(CdbHash *h)
 /*
  * Add an attribute to the hash calculation.
  * **IMPORTANT: any new hard coded support for a data type in here
- * must be added to isMppHashable() below!
+ * must be added to isGreenplumDbHashable() below!
  */
 void
 cdbhash(CdbHash *h, Datum datum, Oid type)
@@ -633,7 +633,7 @@ cdbhashreduce(CdbHash *h)
 
 	int			result = 0;		/* TODO: what is a good initialization value?
 								 * could we guarantee at this point that there
-								 * will not be a negative segid in MPP and
+								 * will not be a negative segid in Greenplum Database and
 								 * therefore initialize to this value for
 								 * error checking? */
 
@@ -656,7 +656,7 @@ cdbhashreduce(CdbHash *h)
 	return result;
 }
 
-bool isMppHashable(Oid typid)
+bool isGreenplumDbHashable(Oid typid)
 {
 	/*
 	 * if this type is a domain type, get its base type.

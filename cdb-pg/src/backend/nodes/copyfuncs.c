@@ -1851,7 +1851,7 @@ _copyQuery(Query *from)
 	COPY_SCALAR_FIELD(intoOidInfo.toastComptypeOid);
 	if (from->intoPolicy)
 	{
-		COPY_POINTER_FIELD(intoPolicy,sizeof(MppPolicy) + from->intoPolicy->nattrs*sizeof(from->intoPolicy->attrs[0]));
+		COPY_POINTER_FIELD(intoPolicy,sizeof(GpPolicy) + from->intoPolicy->nattrs*sizeof(from->intoPolicy->attrs[0]));
 	}
 	else
 		newnode->intoPolicy = NULL;
@@ -2105,7 +2105,7 @@ _copyCreateStmt(CreateStmt *from)
 	COPY_SCALAR_FIELD(relKind);
 	if (from->policy)
 	{
-		COPY_POINTER_FIELD(policy,sizeof(MppPolicy) + from->policy->nattrs*sizeof(from->policy->attrs[0]));
+		COPY_POINTER_FIELD(policy,sizeof(GpPolicy) + from->policy->nattrs*sizeof(from->policy->attrs[0]));
 	}
 	else
 		newnode->policy = NULL;

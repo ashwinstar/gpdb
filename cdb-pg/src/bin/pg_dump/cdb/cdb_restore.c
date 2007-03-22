@@ -108,7 +108,7 @@ main(int argc, char **argv)
 	}
 
 	/* Read mpp segment databases configuration from the master */
-	mpp_err_msg(logInfo, pszProgName,  "Reading mpp configuration info from master segment database.\n");
+	mpp_err_msg(logInfo, pszProgName,  "Reading Greenplum Database configuration info from master segment database.\n");
 	if ( !GetRestoreSegmentDatabaseArray(pConn, &restorePairAr, inputOpts.backupLocation, inputOpts.pszRawDumpSet, dataOnly) )
 		goto cleanup;
     
@@ -223,7 +223,7 @@ static void usage(void)
 	printf(("  -U, --username=NAME      connect as specified database user\n"));
 	printf(("  -W, --password           force password prompt (should happen automatically)\n"));
 
-	printf(("\nMPP specific options:\n"));
+	printf(("\nGreenplum Database specific options:\n"));
 	printf(("  --gp-c                  use gunzip for in-line de-compression\n"));
 	printf(("  --gp-d=BACKUPFILEDIR    directory where backup files are located\n"));
 	printf(("  --gp-i                  ignore error\n"));
@@ -287,7 +287,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 		//{"disable-triggers", no_argument, &disable_triggers, 1},
 
 		/*
-		 * the following are mpp specific, and don't have an equivalent short option
+		 * the following are Greenplum Database specific, and don't have an equivalent short option
 		 */
 		{"gp-c", no_argument, NULL, 1},
 		//{"gp-cf", required_argument, NULL, 2},
@@ -919,13 +919,13 @@ void* threadProc(void *arg)
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK || PQntuples(pRes) == 0 )
 	{
 		g_b_SendCancelMessage = true;
-		pParm->pszErrorMsg = MakeString( "could not start mpp restore: %s", PQerrorMessage(pConn) );
+		pParm->pszErrorMsg = MakeString( "could not start Greenplum Database restore: %s", PQerrorMessage(pConn) );
 		mpp_err_msg(logError, pszProgName, pParm->pszErrorMsg);
 		PQfinish( pConn );
 		return NULL;
 	}
 	
-	mpp_err_msg(logInfo, pszProgName, "Successfully launched mpp restore on dbid %d to restore dbid %d\n", sSegDB->dbid, tSegDB->dbid);
+	mpp_err_msg(logInfo, pszProgName, "Successfully launched Greenplum Database restore on dbid %d to restore dbid %d\n", sSegDB->dbid, tSegDB->dbid);
 	
 	pParm->pszRemoteBackupPath = strdup( PQgetvalue(pRes, 0, 0) );
 	
@@ -1300,7 +1300,7 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 	/* Write to buffer a report showing the timestamp key, what the command line options were,
 	 * which segment databases were backed up, to where, and any errors that occurred.
 	 */
-	appendPQExpBuffer(reportBuf, "MPP Restore Report\n" );
+	appendPQExpBuffer(reportBuf, "Greenplum Database Restore Report\n" );
 	appendPQExpBuffer(reportBuf, "Timestamp Key: %s\n", pOptions->pszKey );
 
 	appendPQExpBuffer(reportBuf, "gp_restore Command Line: %s\n",  
@@ -1442,7 +1442,7 @@ int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMaster
 	/* Write to buffer a report showing the timestamp key, what the command line options were,
 		* which segment databases were backed up, to where, and any errors that occurred.
 		*/
-	appendPQExpBuffer(reportBuf, "MPP Restore Report\n" );
+	appendPQExpBuffer(reportBuf, "Greenplum Database Restore Report\n" );
 	appendPQExpBuffer(reportBuf, "Timestamp Key: %s\n", pOptions->pszKey );
 	
 	appendPQExpBuffer(reportBuf, "gp_restore Command Line: %s\n",  

@@ -1602,7 +1602,7 @@ SPI_cursor_open(const char *name, void *plan,
 		portal->cursorOptions |= CURSOR_OPT_NO_SCROLL;
 
 	/*
-	 * MPP needs this
+	 * Greenplum Database needs this
 	 */
 	portal->is_cursor = true;
 	

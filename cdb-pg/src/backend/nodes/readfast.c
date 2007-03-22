@@ -1426,7 +1426,7 @@ _readRangeTblEntry(const char ** str)
 }
 
 /*
- * MPP additions for serialization support
+ * Greenplum Database additions for serialization support
  */
 #include "nodes/plannodes.h"
 

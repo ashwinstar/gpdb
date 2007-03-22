@@ -34,7 +34,7 @@ typedef enum
 } GpDispatchCommandType;
 
 /*
- * Parameter structure for MPP Queries
+ * Parameter structure for Greenplum Database Queries
  */
 typedef struct DispatchCommandQueryParms
 {

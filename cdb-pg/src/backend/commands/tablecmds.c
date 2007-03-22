@@ -734,7 +734,7 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{		
-		createStmt->policy = (MppPolicy *) palloc(sizeof(MppPolicy) + 
+		createStmt->policy = (GpPolicy *) palloc(sizeof(GpPolicy) + 
 										sizeof(createStmt->policy->attrs[0]));
 		createStmt->policy->ptype = POLICYTYPE_PARTITIONED;
 		createStmt->policy->nattrs = 0;
@@ -4233,7 +4233,7 @@ ATExecDropColumn(Relation rel, const char *colName,
 	AttrNumber	attnum;
 	List	   *children;
 	ObjectAddress object;
-	MppPolicy  *policy;
+	GpPolicy  *policy;
 
 	/* At top level, permission check was done in ATPrepCmd, else do it */
 	if (recursing)
@@ -4278,8 +4278,8 @@ ATExecDropColumn(Relation rel, const char *colName,
 			if (attnum == policy->attrs[ia])
 			{
 				policy->nattrs = 0;
-				rel->rd_cdbpolicy = MppPolicyCopy(GetMemoryChunkContext(rel), policy);
-				MppPolicyReplace(rel->rd_id, policy);
+				rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel), policy);
+				GpPolicyReplace(rel->rd_id, policy);
 				if (Gp_role != GP_ROLE_EXECUTE)
 				    ereport(NOTICE,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -5213,7 +5213,7 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 				constrobj;
 				
 	/*
-	 * Special for MPP: Ignore foreign keys for now, with warning
+	 * Special for Greenplum Database: Ignore foreign keys for now, with warning
 	 */
 	if ((!gp_enable_functions) && (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE))
 	{
@@ -5609,7 +5609,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	ScanKeyData key[3];
 	SysScanDesc scan;
 	HeapTuple	depTup;
-	MppPolicy * policy = NULL;
+	GpPolicy * policy = NULL;
 	bool		sourceIsInt = false;
 	bool		targetIsInt = false;
 	bool		sourceIsVarlenA = false;
@@ -5952,8 +5952,8 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 			if (attnum == policy->attrs[ia])
 			{
 				policy->nattrs = 0;
-				rel->rd_cdbpolicy = MppPolicyCopy(GetMemoryChunkContext(rel), policy);
-				MppPolicyReplace(rel->rd_id, policy);
+				rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel), policy);
+				GpPolicyReplace(rel->rd_id, policy);
 				if (Gp_role != GP_ROLE_EXECUTE)
 					ereport(NOTICE,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

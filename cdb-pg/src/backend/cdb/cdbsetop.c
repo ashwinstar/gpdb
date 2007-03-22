@@ -48,7 +48,7 @@ static List *makeHashExprsFromNonjunkTargets(List *targetList);
  *
  * See the comments in cdbsetop.h for discussion of types of setop plan.
  */
-MppSetOpType choose_setop_type(List *planlist)
+GpSetOpType choose_setop_type(List *planlist)
 {
 	ListCell *cell;
 	Plan *subplan = NULL;
@@ -107,7 +107,7 @@ MppSetOpType choose_setop_type(List *planlist)
 }
 
 
-void adjust_setop_arguments(List *planlist, MppSetOpType setop_type)
+void adjust_setop_arguments(List *planlist, GpSetOpType setop_type)
 {
 	ListCell *cell;
 	Plan *subplan;
@@ -450,7 +450,7 @@ List *makeHashExprsFromNonjunkTargets(List *targetlist)
  *     Marks an Append plan with its locus based on the set operation
  *     type determined during examination of the arguments.
  */
-void mark_append_locus(Plan *plan, MppSetOpType optype)
+void mark_append_locus(Plan *plan, GpSetOpType optype)
 {
 	switch ( optype  )
 	{

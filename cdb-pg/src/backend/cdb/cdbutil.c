@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbutil.c
- *	  Internal utility support functions for mpp/PostgreSQL.
+ *	  Internal utility support functions for Greenplum Database/PostgreSQL.
  *
  * Copyright (c) 2005-2006, greenplum inc
  *
@@ -88,7 +88,7 @@ getGpId(void)
 	}
 
 	/*
-	 * Open the mpp table relation
+	 * Open the gp_id table relation
 	 */
 	gp_id_rel = heap_open(GpIdRelationId, AccessShareLock);
 
@@ -110,7 +110,7 @@ getGpId(void)
 	}
 
 	/*
-	 * Grab the fields that we need from mpp
+	 * Grab the fields that we need from gp_id
 	 */
 
 	/*
@@ -437,14 +437,14 @@ getCdbComponentInfo(void)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
-				 errmsg("MPP number of segment databases cannot be 0"
+				 errmsg("Greenplum Database number of segment databases cannot be 0"
 					 )));
 	}
 	if (component_databases->total_entry_dbs == 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
-				 errmsg("MPP number of entry databases cannot be 0"
+				 errmsg("Greenplum Database number of entry databases cannot be 0"
 					 )));
 	}
 
@@ -486,7 +486,7 @@ getCdbComponentInfo(void)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
-				 errmsg("MPP number of segments inconsistency: count is %d from pg_catalog.%s table, but %d from getCdbComponentDatabases()",
+				 errmsg("Greenplum Database number of segments inconsistency: count is %d from pg_catalog.%s table, but %d from getCdbComponentDatabases()",
 						getgpsegmentCount(),  GpIdRelationName, component_databases->total_segments)));
 	}
 
@@ -627,7 +627,7 @@ freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi)
 }
 
 /*
- * performs all necessary setup required for mpp mode.
+ * performs all necessary setup required for Greenplum Database mode.
  *
  * This includes cdblink_setup() and initializing the Motion Layer.
  */
@@ -656,7 +656,7 @@ cdb_setup(void)
 
 
 /*
- * performs all necessary cleanup required when leaving mpp mode.  This is also
+ * performs all necessary cleanup required when leaving Greenplum Database mode.  This is also
  * called when the process exits.
  *
  * NOTE: the arguments to this function are here only so that we can

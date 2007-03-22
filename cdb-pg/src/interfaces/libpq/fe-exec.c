@@ -677,7 +677,7 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
 /* Special Greenplum-only method for executing SQL statements.  Specifies a global
  * transaction context that the statement should be executed within.
  *
- * This should *ONLY* ever be used by the MPP Query Dispatcher and NEVER (EVER)
+ * This should *ONLY* ever be used by the Greenplum Database Query Dispatcher and NEVER (EVER)
  * by anyone else.
  *
  * snapshot - serialized form of Snapshot data.
@@ -688,7 +688,7 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
  * gp_command_count - Client request serial# to be passed to the qExec.
  */
 /*
- * Our goal is to build one copy of the MPP query stucture, and to
+ * Our goal is to build one copy of the Greenplum Database query stucture, and to
  * have each dispatcher connection hold pointers into the single copy.
  * query
  * So the code below does the same work, roughly as:
@@ -858,9 +858,9 @@ PQbuildMppQueryString(const char  *command,
 	return shared_query;
 }
 
-/* Special MPP-only method for executing DTX protocol commands.  
+/* Special Greenplum Database-only method for executing DTX protocol commands.  
  *
- * Our goal is to build one copy of the MPP DTX command, and to
+ * Our goal is to build one copy of the Greenplum Database DTX command, and to
  * have each dispatcher connection hold pointers into the single copy.
  * query
  * So the code below does the same work, roughly as:

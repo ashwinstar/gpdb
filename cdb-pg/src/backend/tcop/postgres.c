@@ -350,7 +350,7 @@ SocketBackend(StringInfo inBuf)
 			}
 			break;
 		
-		case 'M':				/* MPP dispatched statement from QD */
+		case 'M':				/* Greenplum Database dispatched statement from QD */
 		
 			doing_extended_query_message = false;
 			
@@ -358,12 +358,12 @@ SocketBackend(StringInfo inBuf)
 			if( PG_PROTOCOL_MAJOR(FrontendProtocol) < 3 )				
 					ereport(COMMERROR,
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("MPP dispatch unsupported for old FrontendProtocols.")));	
+							 errmsg("Greenplum Database dispatch unsupported for old FrontendProtocols.")));	
 
 		
 			break;
 			
-		case 'T':				/* MPP dispatched transaction protocol from QD */
+		case 'T':				/* Greenplum Database dispatched transaction protocol from QD */
 		
 			doing_extended_query_message = false;
 			
@@ -371,7 +371,7 @@ SocketBackend(StringInfo inBuf)
 			if( PG_PROTOCOL_MAJOR(FrontendProtocol) < 3 )				
 					ereport(COMMERROR,
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("MPP dispatch unsupported for old FrontendProtocols.")));	
+							 errmsg("Greenplum Database dispatch unsupported for old FrontendProtocols.")));	
 
 		
 			break;
@@ -423,7 +423,7 @@ SocketBackend(StringInfo inBuf)
 						 errmsg("invalid frontend message type %d", qtype)));
 			break;
 		
-		case 'W':   /* MPP command for transmitting listener port. */
+		case 'W':   /* Greenplum Database command for transmitting listener port. */
 			
 			break;
 

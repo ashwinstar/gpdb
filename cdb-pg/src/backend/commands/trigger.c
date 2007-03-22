@@ -314,7 +314,7 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 	values[Anum_pg_trigger_tgtype - 1] = Int16GetDatum(tgtype);
 	
 	/*
-	 * Special for MPP: Ignore foreign keys for now
+	 * Special for Greenplum Database: Ignore foreign keys for now
 	 */
 	if ((!gp_enable_functions) && (stmt->isconstraint) && (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE))
 	{
