@@ -2767,8 +2767,8 @@ determineDistributedTransactionContext (void)
 		break;
 
 	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
-		elog(NOTICE, "We should have left this transistion state '%s' at the end of the previous command...",
-			 DtxContextToString(DistributedTransactionContext));
+//		elog(NOTICE, "We should have left this transistion state '%s' at the end of the previous command...",
+//			 DtxContextToString(DistributedTransactionContext));
 		Assert (IsTransactionOrTransactionBlock());
 		
 		if (explicitBegin)
