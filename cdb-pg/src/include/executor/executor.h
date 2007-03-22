@@ -152,10 +152,10 @@ void ExecUpdateTransportState(PlanState *node, void *state);
 
 typedef enum
 {
-	MPP_IGNORE,
-	MPP_ROOT_SLICE,
-	MPP_NON_ROOT_ON_QE
-} MppExecIdentity;
+	GP_IGNORE,
+	GP_ROOT_SLICE,
+	GP_NON_ROOT_ON_QE
+} GpExecIdentity;
 
 CdbVisitOpt
 ExecStateTreeWalker(PlanState      *node,
@@ -310,7 +310,7 @@ extern void InitSliceTable(EState *estate, int nMotions, int nSubplans);
 extern void InitRootSlices(QueryDesc *queryDesc);
 extern void AssignGangs(QueryDesc *queryDesc, int utility_segment_index);
 extern void ReleaseGangs(QueryDesc *queryDesc);
-extern MppExecIdentity getMppExecIdentity(QueryDesc *queryDesc,
+extern GpExecIdentity getGpExecIdentity(QueryDesc *queryDesc,
 										  ScanDirection direction,
 										  EState	   *estate);
 extern void mppExecutorFinishup(QueryDesc *queryDesc);

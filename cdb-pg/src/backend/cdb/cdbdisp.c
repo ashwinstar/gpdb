@@ -1436,7 +1436,7 @@ thread_DispatchCommand(void *arg)
 		{
 			DispatchCommandQueryParms *pQueryParms = &pParms->queryParms;
 			
-			pParms->query_text = PQbuildMppQueryString(
+			pParms->query_text = PQbuildGpQueryString(
 						pQueryParms->strCommand, pQueryParms->strCommandlen, 
 						pQueryParms->serializedQuerytree, pQueryParms->serializedQuerytreelen, 
 						pQueryParms->serializedPlantree, pQueryParms->serializedPlantreelen, 
@@ -1453,7 +1453,7 @@ thread_DispatchCommand(void *arg)
 
 	case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
 		{
-			pParms->query_text = PQbuildMppDtxProtocolCommand(
+			pParms->query_text = PQbuildGpDtxProtocolCommand(
 						(int)pParms->dtxProtocolParms.dtxProtocolCommand,
 						pParms->dtxProtocolParms.dtxProtocolCommandLoggingStr,
 						pParms->dtxProtocolParms.gid,
@@ -1790,7 +1790,7 @@ dispatchCommandQuery(CdbDispatchResult  *dispatchResult,
 	 * Submit the command asynchronously.
 	 */
 	
-	if (PQsendMppQuery_shared(conn, (char *)query_text, query_text_len) == 0)
+	if (PQsendGpQuery_shared(conn, (char *)query_text, query_text_len) == 0)
 	{
 		if (DEBUG3 >= log_min_messages)
 			write_stderr("Thread %u: PQsendMPPQuery_shared error %s %s \n", mythread(),segdbDesc->whoami,
@@ -1835,8 +1835,8 @@ dispatchCommandDtxProtocol(CdbDispatchResult  *dispatchResult,
 	 * Submit the command asynchronously.
 	 */
 
-	// UNDONE: Is it ok to use PQsendMppQuery_shared???
-	if (PQsendMppQuery_shared(conn, (char *)query_text, query_text_len) == 0)
+	// UNDONE: Is it ok to use PQsendGpQuery_shared???
+	if (PQsendGpQuery_shared(conn, (char *)query_text, query_text_len) == 0)
 	{
 		if (DEBUG3 >= log_min_messages)
 			write_stderr("Thread %u: PQsendMPPQuery_shared error %s %s \n", mythread(),segdbDesc->whoami,

@@ -159,7 +159,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
 	EState	   *estate;
 	MemoryContext oldcontext;
-	MppExecIdentity exec_identity;
+	GpExecIdentity exec_identity;
 	bool		shouldDispatch, needXact;
 	
 	/* sanity checks: queryDesc must not be started already */
@@ -436,12 +436,12 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		 * Forward scan direction for now just for retrieving the identity.
 		 */
 		if (!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
-			exec_identity = getMppExecIdentity(queryDesc, ForwardScanDirection, estate);
+			exec_identity = getGpExecIdentity(queryDesc, ForwardScanDirection, estate);
 		else
-			exec_identity = MPP_IGNORE;
+			exec_identity = GP_IGNORE;
 		
 		/* non-root on QE */
-		if (exec_identity == MPP_NON_ROOT_ON_QE)
+		if (exec_identity == GP_NON_ROOT_ON_QE)
 		{
 			MotionState *motionState = (estate->es_slice_map[estate->es_cur_slice_idx]);
 			
@@ -457,7 +457,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 										 (ChunkTransportState *)estate->interconnect_context);
 			}
 		}
-		else if (exec_identity == MPP_ROOT_SLICE)
+		else if (exec_identity == GP_ROOT_SLICE)
 		{
 			estate->es_seqserver_is_setup = true;
 			SetupSequenceServer(estate->es_sliceTable);
@@ -477,7 +477,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 										 (ChunkTransportState *)estate->interconnect_context);
 			}
 		}
-		else if (exec_identity != MPP_IGNORE)
+		else if (exec_identity != GP_IGNORE)
 		{
 			/* should never happen */
 			ereport(ERROR,
@@ -536,7 +536,7 @@ ExecutorRun(QueryDesc *queryDesc,
 	 * PG_CATCH block should be declared 'volatile'. (setjmp shenanigans)
 	 */
 	Slice              *currentSlice;
-	MppExecIdentity		exec_identity;
+	GpExecIdentity		exec_identity;
 
 	
 	/* sanity checks */
@@ -598,15 +598,15 @@ ExecutorRun(QueryDesc *queryDesc,
 		 * Here we decide what is our identity -- root slice, non-root
 		 * on QE or other (in which case we do nothing), and then run
 		 * the plan if required. For more information see
-		 * getMppExecIdentity() in execUtils.
+		 * getGpExecIdentity() in execUtils.
 		 */
-		exec_identity = getMppExecIdentity(queryDesc, direction, estate);
+		exec_identity = getGpExecIdentity(queryDesc, direction, estate);
 
-		if (exec_identity == MPP_IGNORE)
+		if (exec_identity == GP_IGNORE)
 		{
 			result = NULL;
 		}
-		else if (exec_identity == MPP_NON_ROOT_ON_QE)
+		else if (exec_identity == GP_NON_ROOT_ON_QE)
 		{
 			/*
 			 * Run a non-root slice on a QE.
@@ -630,7 +630,7 @@ ExecutorRun(QueryDesc *queryDesc,
 								 ForwardScanDirection,
 								 dest);
 		}
-		else if (exec_identity == MPP_ROOT_SLICE)
+		else if (exec_identity == GP_ROOT_SLICE)
 		{
 			/*
 			 * Run a root slice

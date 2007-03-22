@@ -73,7 +73,7 @@ createdb_int(CreatedbStmt *stmt,
 			 struct CdbDispatchCmdThreads        **pDispatchThreads);
 
 static void
-mpp_cleanup_createdb(const char *dbname);
+gp_cleanup_createdb(const char *dbname);
 
 /*
  * CREATE DATABASE
@@ -95,7 +95,7 @@ createdb(CreatedbStmt *stmt)
         if (primaryResults)
 		{
             cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
-			mpp_cleanup_createdb(stmt->dbname);
+			gp_cleanup_createdb(stmt->dbname);
 		}
 
 		/* Carry on with error handling. */
@@ -114,14 +114,14 @@ createdb(CreatedbStmt *stmt)
 	}
 	PG_CATCH();
 	{
-		mpp_cleanup_createdb(stmt->dbname);
+		gp_cleanup_createdb(stmt->dbname);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 }
 
 void
-mpp_cleanup_createdb(const char *dbname)
+gp_cleanup_createdb(const char *dbname)
 {
 	bool cleanup_error = FALSE;
     struct CdbDispatchResults *primaryResults = NULL;

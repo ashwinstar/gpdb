@@ -27,7 +27,6 @@ extern int	pq_putmessage(char msgtype, const char *s, size_t len);
 
 int		gp_segment_connect_timeout = 60;
 
-//extern ErrorData  * MppGetErrorData(void);
 static void MPPnoticeReceiver(void * arg, const PGresult * res)
 {
 	PQExpBufferData             msgbuf;

@@ -2125,7 +2125,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 		 */
 		 
 		/*
-		 * txnOptions is used only if we send the query via PQsendMppQuery
+		 * txnOptions is used only if we send the query via PQsendGpQuery
 		 * Otherwise, we need to do an explicit BEGIN.
 		 */
 		txnOptions = mppTxnOptions(true /* AutoBegin */);
@@ -2191,10 +2191,10 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 		
 		
 		/* 
-		 * It seems that we should use the special PQsendMppQuery, so that we can include the
+		 * It seems that we should use the special PQsendGpQuery, so that we can include the
 		 * snapshot info that we want to use with the request.
 		 * 
-		 * But, this has some issues:  Right now, PQsendMppQuery doesn't support us sending parameters
+		 * But, this has some issues:  Right now, PQsendGpQuery doesn't support us sending parameters
 		 * (it assumes the statement is an MPPEXEC, and the parameters will be encoded special)
 		 * So, the only way we can use it is if we replace the parameter markers with the actual
 		 * string.
@@ -2316,7 +2316,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 			}
 	
 
-			query_text = PQbuildMppQueryString(
+			query_text = PQbuildGpQueryString(
 				query, strlen(query)+1, 
 				NULL, 0, NULL, 0, NULL, 0, NULL, 0,
 				serializedSnapshot, serializedSnapshotlen, 
@@ -2324,8 +2324,8 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				GetSessionUserId(), superuser_arg(GetSessionUserId()), GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
 				&query_text_len);
 			 
-			elog(DEBUG1,"Sending via special PQsendMppQuery");
-			if (PQsendMppQuery_shared(_QD_conn, (char *)query_text, query_text_len) == 0)
+			elog(DEBUG1,"Sending via special PQsendGpQuery");
+			if (PQsendGpQuery_shared(_QD_conn, (char *)query_text, query_text_len) == 0)
 			{
 				/* Note the error. */
 				elog(ERROR,"Command could not be sent to QD %s", PQerrorMessage(_QD_conn));
@@ -2334,7 +2334,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 			pfree(query_text);
 			
 		}
-		/* End special code to use PQsendMppQuery */
+		/* End special code to use PQsendGpQuery */
 		else
 		{
 			/*

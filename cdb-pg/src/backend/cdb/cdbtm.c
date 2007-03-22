@@ -70,18 +70,18 @@ typedef struct InDoubtDtx
  *						   11 serializable
  * bit 4 is for read-only
  */
-#define MPP_OPT_STATEMENT_WANTS_DTX_TRANSACTION         0x0001
+#define GP_OPT_STATEMENT_WANTS_DTX_TRANSACTION         0x0001
 
-#define MPP_OPT_READ_COMMITTED    						0x0002
-#define MPP_OPT_READ_UNCOMMITTED  						0x0004
-#define MPP_OPT_REPEATABLE_READ   						0x0006
-#define MPP_OPT_SERIALIZABLE 	  						0x0008
+#define GP_OPT_READ_COMMITTED    						0x0002
+#define GP_OPT_READ_UNCOMMITTED  						0x0004
+#define GP_OPT_REPEATABLE_READ   						0x0006
+#define GP_OPT_SERIALIZABLE 	  						0x0008
 
-#define MPP_OPT_READ_ONLY         						0x0010
+#define GP_OPT_READ_ONLY         						0x0010
 
-#define MPP_OPT_DIRTY             						0x0020
+#define GP_OPT_DIRTY             						0x0020
 
-#define MPP_OPT_EXPLICT_BEGIN      						0x0040
+#define GP_OPT_EXPLICT_BEGIN      						0x0040
 
 /*
  * These DistributedSnapshotData structs are static to simplify memory allocation
@@ -1084,23 +1084,23 @@ mppTxnOptions(bool statementWantsDtxTransaction)
 	int options = 0;
 
 	if (statementWantsDtxTransaction)
-		options |= MPP_OPT_STATEMENT_WANTS_DTX_TRANSACTION;
+		options |= GP_OPT_STATEMENT_WANTS_DTX_TRANSACTION;
 
 	if (XactIsoLevel == XACT_READ_COMMITTED)
-		options |= MPP_OPT_READ_COMMITTED;
-	else if (XactIsoLevel == MPP_OPT_REPEATABLE_READ)
-		options |= MPP_OPT_REPEATABLE_READ;
-	else if (XactIsoLevel == MPP_OPT_SERIALIZABLE)
-		options |= MPP_OPT_SERIALIZABLE;
+		options |= GP_OPT_READ_COMMITTED;
+	else if (XactIsoLevel == GP_OPT_REPEATABLE_READ)
+		options |= GP_OPT_REPEATABLE_READ;
+	else if (XactIsoLevel == GP_OPT_SERIALIZABLE)
+		options |= GP_OPT_SERIALIZABLE;
 
 	if (XactReadOnly)
-		options |= MPP_OPT_READ_ONLY;
+		options |= GP_OPT_READ_ONLY;
 		
 	if (isDirty)
-		options |= MPP_OPT_DIRTY;
+		options |= GP_OPT_DIRTY;
 
 	if (currentGxact != NULL && currentGxact->explicitBeginRemembered)
-		options |= MPP_OPT_EXPLICT_BEGIN;
+		options |= GP_OPT_EXPLICT_BEGIN;
 
 	return options;
 	
@@ -1115,16 +1115,16 @@ void
 unpackMppTxnOptions(int txnOptions, int *isoLevel, bool *readOnly)
 {
 
-	if (txnOptions & MPP_OPT_READ_COMMITTED)
+	if (txnOptions & GP_OPT_READ_COMMITTED)
 		*isoLevel = XACT_READ_COMMITTED;
-	else if (txnOptions & MPP_OPT_SERIALIZABLE)
+	else if (txnOptions & GP_OPT_SERIALIZABLE)
 		*isoLevel = XACT_SERIALIZABLE;
-	else if( txnOptions & MPP_OPT_REPEATABLE_READ)
+	else if( txnOptions & GP_OPT_REPEATABLE_READ)
 		*isoLevel = XACT_REPEATABLE_READ;
 	else
 		*isoLevel = XACT_READ_UNCOMMITTED;
 
-	if (txnOptions & MPP_OPT_READ_ONLY)
+	if (txnOptions & GP_OPT_READ_ONLY)
 		*readOnly = true;
 	else
 		*readOnly = false;
@@ -1137,7 +1137,7 @@ unpackMppTxnOptions(int txnOptions, int *isoLevel, bool *readOnly)
 bool
 isMppTxOptions_StatementWantsDtxTransaction(int txnOptions)
 {
-	return ((txnOptions & MPP_OPT_STATEMENT_WANTS_DTX_TRANSACTION) != 0);
+	return ((txnOptions & GP_OPT_STATEMENT_WANTS_DTX_TRANSACTION) != 0);
 }
 
 /* isMppTxOptions_Dirty:
@@ -1146,7 +1146,7 @@ isMppTxOptions_StatementWantsDtxTransaction(int txnOptions)
 bool
 isMppTxOptions_Dirty(int txnOptions)
 {
-	return ((txnOptions & MPP_OPT_DIRTY) != 0);
+	return ((txnOptions & GP_OPT_DIRTY) != 0);
 }
 
 /* isMppTxOptions_ExplicitBegin:
@@ -1155,7 +1155,7 @@ isMppTxOptions_Dirty(int txnOptions)
 bool
 isMppTxOptions_ExplicitBegin(int txnOptions)
 {
-	return ((txnOptions & MPP_OPT_EXPLICT_BEGIN) != 0);
+	return ((txnOptions & GP_OPT_EXPLICT_BEGIN) != 0);
 }
 
 

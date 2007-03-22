@@ -412,7 +412,7 @@ static bool SyncMaster = false;
 #define EXIT_STATUS_1(st)  (WIFEXITED(st) && WEXITSTATUS(st) == 1)
 
 /* if we are a QD postmaster or not */
-static bool Mpp_entry_postmaster = false;
+static bool Gp_entry_postmaster = false;
 /*
  * gpsyncMaster main entry point
  */
@@ -508,7 +508,7 @@ PostmasterMain(int argc, char *argv[])
              * fork a seqserver process.
 			 */
 			case 'E':
-				Mpp_entry_postmaster = true;
+				Gp_entry_postmaster = true;
 				/*
 				 * 	SetConfigOption("log_statement", "all", PGC_POSTMASTER, PGC_S_ARGV);
 				 */
@@ -1374,7 +1374,7 @@ ServerLoop(void)
 			{
 				PMSubProc *subProc = &PMSubProcList[ii];
 
-				if (subProc->pid == 0 && Mpp_entry_postmaster &&
+				if (subProc->pid == 0 && Gp_entry_postmaster &&
 					StartupPID == 0 && 
 					!FatalError && Shutdown == NoShutdown && !SyncMaster)
 						subProc->pid = 
@@ -2295,7 +2295,7 @@ reaper(SIGNAL_ARGS)
 					{
 						PMSubProc *subProc = &PMSubProcList[ii];
 
-						if (subProc->pid == 0 && Mpp_entry_postmaster )
+						if (subProc->pid == 0 && Gp_entry_postmaster )
 							subProc->pid = 
 								(subProc->serverStart)();
 					}
@@ -2399,7 +2399,7 @@ reaper(SIGNAL_ARGS)
 				PMSubProc *subProc = &PMSubProcList[ii];
 
 				if (subProc->pid != 0 && 
-					pid == subProc->pid && Mpp_entry_postmaster )
+					pid == subProc->pid && Gp_entry_postmaster )
 				{
 					subProc->pid = 0;
 					if (exitstatus != 0)

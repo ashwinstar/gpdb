@@ -599,14 +599,14 @@ LockAcquire(const LOCKTAG *locktag,
 			if (lockHolderProcPtr == NULL || lockHolderProcPtr == MyProc)
 			{
 				/* Find the guy who should manage our locks */
-				PGPROC * proc = FindProcByMppSessionId(gp_session_id);
+				PGPROC * proc = FindProcByGpSessionId(gp_session_id);
 				int count = 0;
 				while(proc==NULL && count < 5)
 				{
 					pg_usleep( /* microseconds */ 2000);
 					count++;
 					CHECK_FOR_INTERRUPTS();
-					proc = FindProcByMppSessionId(gp_session_id);
+					proc = FindProcByGpSessionId(gp_session_id);
 				}
 				if (proc != NULL)
 				{

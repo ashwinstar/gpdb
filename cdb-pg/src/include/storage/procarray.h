@@ -38,6 +38,6 @@ extern int	CountUserBackends(Oid roleid);
 extern void XidCacheRemoveRunningXids(TransactionId xid,
 						  int nxids, TransactionId *xids);
 						  
-extern PGPROC *FindProcByMppSessionId(long gp_session_id);
+extern PGPROC *FindProcByGpSessionId(long gp_session_id);
 
 #endif   /* PROCARRAY_H */

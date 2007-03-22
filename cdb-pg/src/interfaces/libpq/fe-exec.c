@@ -701,10 +701,10 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
  *		pqPutMsgEnd(conn) < 0)
  *
  * The remaining work (protocol xmit state, mostly) is done by
- * PQsendMppQuery_shared().
+ * PQsendGpQuery_shared().
  */
 char *
-PQbuildMppQueryString(const char  *command,
+PQbuildGpQueryString(const char  *command,
 					  int          command_len,
 					  const char  *querytree,
 					  int          querytree_len,
@@ -870,10 +870,10 @@ PQbuildMppQueryString(const char  *command,
  *		pqPutMsgEnd(conn) < 0)
  *
  * The remaining work (protocol xmit state, mostly) is done by
- * PQsendMppQuery_shared().
+ * PQsendGpQuery_shared().
  */
 char *
-PQbuildMppDtxProtocolCommand(
+PQbuildGpDtxProtocolCommand(
 					  int						dtxProtocolCommand,
 					  char*						dtxProtocolCommandLoggingStr,
 					  char*						gid,
@@ -942,7 +942,7 @@ PQbuildMppDtxProtocolCommand(
 }
 
 int
-PQsendMppQuery_shared(PGconn *conn, char *shared_query, int query_len)
+PQsendGpQuery_shared(PGconn *conn, char *shared_query, int query_len)
 {
 	if (!PQsendQueryStart(conn))
 		return 0;

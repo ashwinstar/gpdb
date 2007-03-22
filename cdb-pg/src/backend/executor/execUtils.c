@@ -1814,8 +1814,8 @@ sliceRunsOnQE(Slice * slice)
  *	 but it does execute the indicated slice down to any fringe
  *	 motion nodes (as in case 2).
  */
-MppExecIdentity
-getMppExecIdentity(QueryDesc *queryDesc,
+GpExecIdentity
+getGpExecIdentity(QueryDesc *queryDesc,
 				   ScanDirection direction,
 				   EState	   *estate)
 {
@@ -1832,19 +1832,19 @@ getMppExecIdentity(QueryDesc *queryDesc,
 	/* select the strategy */
 	if (direction == NoMovementScanDirection)
 	{
-		return MPP_IGNORE;
+		return GP_IGNORE;
 	}
 	else if (Gp_role == GP_ROLE_DISPATCH && sliceRunsOnQE(currentSlice))
 	{
-		return MPP_IGNORE;
+		return GP_IGNORE;
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE && estate->es_cur_slice_idx != estate->es_cur_root_idx)
 	{
-		return MPP_NON_ROOT_ON_QE;
+		return GP_NON_ROOT_ON_QE;
 	}
 	else
 	{
-		return MPP_ROOT_SLICE;
+		return GP_ROOT_SLICE;
 	}
 }
 

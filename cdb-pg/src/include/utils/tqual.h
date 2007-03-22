@@ -18,7 +18,7 @@
 #include "access/htup.h"
 #include "storage/buf.h"
 #include "utils/timestamp.h"  /* TimestampTz */
-#include "access/xact.h"   /* MaxMppSavePoints */
+#include "access/xact.h"   /* MaxGpSavePoints */
 #include "cdb/cdbtm.h"
 
 
@@ -107,7 +107,7 @@ typedef struct SharedSnapshotSlot
 	volatile CommandId		QDcid;
 	volatile bool			ready;
 	uint32		    subcnt;		/* # of subtransaction ids in subxids[] */
-	TransactionId   subxids[MaxMppSavePoints];
+	TransactionId   subxids[MaxGpSavePoints];
 	SnapshotData	snapshot;
 
 } SharedSnapshotSlot;

@@ -257,10 +257,7 @@ PGconn* MakeDBConnection( const SegmentDatabase* pSegDB, bool bDispatch )
 	char* pszConnInfo;
 	PGconn* pConn;
 	
-    /*
-	if ( pSegDB->segid > 0 )
-		pszOptions = MakeString( "options='-c mpp_segid=%d -c mpp_instid=%d'", pSegDB->segid, pSegDB->instid );
-    */
+
 	if ( bDispatch )
         pszOptions = NULL;
     else

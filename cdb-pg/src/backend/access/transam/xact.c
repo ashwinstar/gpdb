@@ -1548,7 +1548,7 @@ GetSubtransactionsForSharedSnapshot(uint32 *subcnt, TransactionId *subxids)
 			if (s->state == TRANS_ABORT)
 				continue;
 
-			Assert(*subcnt <= MaxMppSavePoints);
+			Assert(*subcnt <= MaxGpSavePoints);
 			elog(DEBUG5,"Adding subtransaction xid %u as #%u to shared snapshot",s->transactionId,*subcnt);
 			subxids[(*subcnt)++] = s->transactionId;
 		}
@@ -1557,7 +1557,7 @@ GetSubtransactionsForSharedSnapshot(uint32 *subcnt, TransactionId *subxids)
 		 */
 		foreach(cell, s->childXids)
 		{
-			Assert(*subcnt <= MaxMppSavePoints);
+			Assert(*subcnt <= MaxGpSavePoints);
 			elog(DEBUG5,"Adding subcommitted child xid %u as #%u to shared snapshot",lfirst_xid(cell),*subcnt);
 			subxids[(*subcnt)++] = lfirst_xid(cell);
 		}
@@ -4565,7 +4565,7 @@ PushTransaction(void)
 	Oid			currentUser;
 
 	currentSavepointTotal++;
-	if (currentSavepointTotal >= MaxMppSavePoints)
+	if (currentSavepointTotal >= MaxGpSavePoints)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED),
 				 errmsg("cannot have more than 100 subtransactions in a transaction")));

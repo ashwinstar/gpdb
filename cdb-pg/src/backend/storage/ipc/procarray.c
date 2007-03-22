@@ -1247,7 +1247,7 @@ DisplayXidCache(void)
 
 #endif   /* XIDCACHE_DEBUG */
 
-PGPROC *FindProcByMppSessionId(long gp_session_id)
+PGPROC *FindProcByGpSessionId(long gp_session_id)
 {
 		/* Find the guy who should manage our locks */
 		ProcArrayStruct *arrayP = procArray;

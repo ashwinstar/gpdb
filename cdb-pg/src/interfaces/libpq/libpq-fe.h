@@ -329,7 +329,7 @@ extern PGresult *PQexecPrepared(PGconn *conn,
  * See cdbtm.h for valid flag values.
  */
 
-extern char *PQbuildMppQueryString(const char  *command,
+extern char *PQbuildGpQueryString(const char  *command,
 								   int          command_len,
 								   const char  *querytree,
 								   int          querytree_len,
@@ -351,14 +351,14 @@ extern char *PQbuildMppQueryString(const char  *command,
 					 			   Oid			currentUserId,
 								   int         *final_len);
 
-extern char *PQbuildMppDtxProtocolCommand(
+extern char *PQbuildGpDtxProtocolCommand(
 					  int						dtxProtocolCommand,
 					  char*						dtxProtocolCommandLoggingStr,
 					  char*						gid,
 					  int   					gxid,
 					  int         		    	*final_len);
 
-extern int PQsendMppQuery_shared(PGconn       *conn,
+extern int PQsendGpQuery_shared(PGconn       *conn,
 								 char         *query,
 								 int          query_len);
 
