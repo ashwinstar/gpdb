@@ -59,7 +59,7 @@ typedef int ssize_t;			/* ssize_t doesn't exist in VC (at least not
  * POSTGRES backend dependent Constants.
  */
 #define PQERRORMSG_LENGTH 1024
-#define CMDSTATUS_LEN 40
+#define CMDSTATUS_LEN 49
 
 /*
  * PGresult and the subsidiary types PGresAttDesc, PGresAttValue
@@ -166,6 +166,11 @@ struct pg_result
 	PGNoticeHooks noticeHooks;
 	int			client_encoding;	/* encoding id */
 
+	bool						QEWriter_HaveInfo;
+	DistributedTransactionId 	QEWriter_DistributedTransactionId;
+	CommandId 					QEWriter_CommandId;
+	bool 						QEWriter_Dirty;
+	
 	/*
 	 * Error information (all NULL if not an error result).  errMsg is the
 	 * "overall" error message returned by PQresultErrorMessage.  If we have
@@ -293,6 +298,12 @@ struct pg_conn
 	ConnStatusType status;
 	PGAsyncStatusType asyncStatus;
 	PGTransactionStatusType xactStatus; /* never changes to ACTIVE */
+
+	bool						QEWriter_HaveInfo;
+	DistributedTransactionId 	QEWriter_DistributedTransactionId;
+	CommandId 					QEWriter_CommandId;
+	bool 						QEWriter_Dirty;
+	
 	PGQueryClass queryclass;
 	char	   *last_query;		/* last SQL command, or NULL if unknown */
 	bool		options_valid;	/* true if OK to attempt connection */

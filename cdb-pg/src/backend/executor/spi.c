@@ -2283,23 +2283,31 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				 */
 
 				char * p;
-				TransactionId currentTransactionId = QDSentXID; // The global XID from the QD
 				CommandId currentCommandId = GetCurrentCommandId();  // or QDSentSnapshot->curcid++;
+		        DistributedTransactionId currentDistributedTransactionId;
+		        DistributedTransactionId xminAllDistributedSnapshots;
+                int qdSharedLocalSnapshotSlotId;
+		        DistributedSnapshot distributedSnapshot;
+
+		        getDistributedSnapshotSerializeInfo(&serializedSnapshotlen,
+		                             &currentDistributedTransactionId,
+		                             &xminAllDistributedSnapshots,
+		                             &qdSharedLocalSnapshotSlotId,
+		                             &distributedSnapshot);
+				if (serializedSnapshotlen == 0)
+				{
+					// ????
+					elog(ERROR,"Expecting non-empty snapshot");
+				}
 		
-				serializedSnapshotlen = sizeof(TransactionId)*3 + 
-												sizeof(uint32) + /*xcnt*/
-												snapshot->xcnt*sizeof(TransactionId) + sizeof(CommandId);
 				serializedSnapshot = palloc(serializedSnapshotlen);
 				p = serializedSnapshot;
-				memcpy(p,&currentTransactionId,sizeof(TransactionId)); p += sizeof(TransactionId);
-				memcpy(p,&snapshot->xmin,sizeof(TransactionId)); p += sizeof(TransactionId);
-				memcpy(p,&snapshot->xmax,sizeof(TransactionId)); p += sizeof(TransactionId);
-				memcpy(p,&snapshot->xcnt,sizeof(uint32)); p += sizeof(uint32);
-				for (i = 0; i < snapshot->xcnt; i++)
-				{
-					memcpy(p,&snapshot->xip[i],sizeof(TransactionId)); p += sizeof(TransactionId);
-				}
-				memcpy(p,&currentCommandId,sizeof(CommandId)); p += sizeof(CommandId);
+				serializeDistributedSnapshot(&p, 
+		                             currentDistributedTransactionId,
+		                             xminAllDistributedSnapshots,
+		                             qdSharedLocalSnapshotSlotId,
+		                             distributedSnapshot,
+		                 			 currentCommandId);
 			}
 			else
 			{

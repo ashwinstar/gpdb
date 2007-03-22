@@ -26,6 +26,7 @@
 #include "access/clog.h"
 #include "access/heapam.h"
 #include "access/multixact.h"
+#include "access/cdbdistributedxidmap.h"
 #include "access/subtrans.h"
 #include "access/transam.h"
 #include "access/twophase.h"
@@ -4239,6 +4240,7 @@ BootStrapXLOG(void)
 	BootStrapCLOG();
 	BootStrapSUBTRANS();
 	BootStrapMultiXact();
+	BootStrapDistributedXidMap();
 
 	pfree(buffer);
 }
@@ -4678,6 +4680,9 @@ StartupXLOG(void)
 	XLogRecord *record;
 	uint32		freespace;
 	TransactionId oldestActiveXID;
+	char* 		dtxCheckPointInfo;
+	int			dtmCheckPointInfoSize;
+
 
 	/*
 	 * Read control file and check XLOG status looks valid.
@@ -4782,6 +4787,9 @@ StartupXLOG(void)
 		 * to pg_control is broken, try the next-to-last one.
 		 */
 		checkPointLoc = ControlFile->checkPoint;
+
+		elog(LOG,"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 1) at %X/%X",
+			 checkPointLoc.xlogid, checkPointLoc.xrecoff);
 		record = ReadCheckpointRecord(checkPointLoc, 1);
 		if (record != NULL)
 		{
@@ -4792,6 +4800,8 @@ StartupXLOG(void)
 		else
 		{
 			checkPointLoc = ControlFile->prevCheckPoint;
+			elog(LOG,"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 2) at %X/%X",
+				 checkPointLoc.xlogid, checkPointLoc.xrecoff);
 			record = ReadCheckpointRecord(checkPointLoc, 2);
 			if (record != NULL)
 			{
@@ -4809,6 +4819,13 @@ StartupXLOG(void)
 	LastRec = RecPtr = checkPointLoc;
 	memcpy(&checkPoint, XLogRecGetData(record), sizeof(CheckPoint));
 	wasShutdown = (record->xl_info == XLOG_CHECKPOINT_SHUTDOWN);
+
+	dtmCheckPointInfoSize = record->xl_len - sizeof(CheckPoint);
+	if (dtmCheckPointInfoSize > 0)
+	{
+		dtxCheckPointInfo = XLogRecGetData(record) + sizeof(CheckPoint);
+		redoDtxCheckPoint(dtxCheckPointInfo, dtmCheckPointInfoSize);
+	}
 
 	ereport(LOG,
 	 (errmsg("redo record is at %X/%X; undo record is at %X/%X; shutdown %s",
@@ -5208,6 +5225,7 @@ StartupXLOG(void)
 	StartupCLOG();
 	StartupSUBTRANS(oldestActiveXID);
 	StartupMultiXact();
+	StartupDistributedXidMap();
 
 	/* Reload shared-memory state for prepared transactions */
 	RecoverPreparedTransactions();
@@ -5244,21 +5262,27 @@ static XLogRecord *
 ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 {
 	XLogRecord *record;
+	bool sizeOk;
+	uint32 delta_xl_tot_len;		/* delta of total len of entire record */
+	uint32 delta_xl_len;			/* delta of total len of rmgr data */
+	char * dtxCheckPointInfo;
 
+	elog(LOG,"ReadCheckpointRecord entering...");
+	
 	if (!XRecOffIsValid(RecPtr.xrecoff))
 	{
 		switch (whichChkpt)
 		{
 			case 1:
-				ereport(LOG,
+				ereport(PANIC,
 				(errmsg("invalid primary checkpoint link in control file")));
 				break;
 			case 2:
-				ereport(LOG,
+				ereport(PANIC,
 						(errmsg("invalid secondary checkpoint link in control file")));
 				break;
 			default:
-				ereport(LOG,
+				ereport(PANIC,
 				   (errmsg("invalid checkpoint link in backup_label file")));
 				break;
 		}
@@ -5272,15 +5296,15 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 		switch (whichChkpt)
 		{
 			case 1:
-				ereport(LOG,
+				ereport(PANIC,
 						(errmsg("invalid primary checkpoint record")));
 				break;
 			case 2:
-				ereport(LOG,
+				ereport(PANIC,
 						(errmsg("invalid secondary checkpoint record")));
 				break;
 			default:
-				ereport(LOG,
+				ereport(PANIC,
 						(errmsg("invalid checkpoint record")));
 				break;
 		}
@@ -5291,15 +5315,15 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 		switch (whichChkpt)
 		{
 			case 1:
-				ereport(LOG,
+				ereport(PANIC,
 						(errmsg("invalid resource manager ID in primary checkpoint record")));
 				break;
 			case 2:
-				ereport(LOG,
+				ereport(PANIC,
 						(errmsg("invalid resource manager ID in secondary checkpoint record")));
 				break;
 			default:
-				ereport(LOG,
+				ereport(PANIC,
 				(errmsg("invalid resource manager ID in checkpoint record")));
 				break;
 		}
@@ -5311,35 +5335,54 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 		switch (whichChkpt)
 		{
 			case 1:
-				ereport(LOG,
+				ereport(PANIC,
 				   (errmsg("invalid xl_info in primary checkpoint record")));
 				break;
 			case 2:
-				ereport(LOG,
+				ereport(PANIC,
 				 (errmsg("invalid xl_info in secondary checkpoint record")));
 				break;
 			default:
-				ereport(LOG,
+				ereport(PANIC,
 						(errmsg("invalid xl_info in checkpoint record")));
 				break;
 		}
 		return NULL;
 	}
-	if (record->xl_len != sizeof(CheckPoint) ||
-		record->xl_tot_len != SizeOfXLogRecord + sizeof(CheckPoint))
+	
+	sizeOk = false;
+	if (record->xl_len == sizeof(CheckPoint) &&
+		record->xl_tot_len == SizeOfXLogRecord + sizeof(CheckPoint))
+	{
+		sizeOk = true;
+	}
+	else if (record->xl_len > sizeof(CheckPoint) &&
+		record->xl_tot_len > SizeOfXLogRecord + sizeof(CheckPoint))
+	{
+		delta_xl_len = record->xl_len - sizeof(CheckPoint);
+		delta_xl_tot_len = record->xl_tot_len - (SizeOfXLogRecord + sizeof(CheckPoint));
+
+		if (delta_xl_len == delta_xl_tot_len)
+		{
+			dtxCheckPointInfo = XLogRecGetData(record) + sizeof(CheckPoint);
+			sizeOk = validateRedoDtxCheckPointSize(dtxCheckPointInfo, delta_xl_len);
+		}
+	}
+
+	if (!sizeOk)
 	{
 		switch (whichChkpt)
 		{
 			case 1:
-				ereport(LOG,
-					(errmsg("invalid length of primary checkpoint record")));
+				ereport(PANIC,
+					(errmsg("invalid length of primary checkpoint")));
 				break;
 			case 2:
-				ereport(LOG,
+				ereport(PANIC,
 				  (errmsg("invalid length of secondary checkpoint record")));
 				break;
 			default:
-				ereport(LOG,
+				ereport(PANIC,
 						(errmsg("invalid length of checkpoint record")));
 				break;
 		}
@@ -5455,6 +5498,7 @@ ShutdownXLOG(int code, Datum arg)
 	ShutdownCLOG();
 	ShutdownSUBTRANS();
 	ShutdownMultiXact();
+	ShutdownDistributedXidMap();
 
 	ereport(LOG,
 			(errmsg("database system is shut down")));
@@ -5472,7 +5516,9 @@ CreateCheckPoint(bool shutdown, bool force)
 	CheckPoint	checkPoint;
 	XLogRecPtr	recptr;
 	XLogCtlInsert *Insert = &XLogCtl->Insert;
-	XLogRecData rdata;
+	XLogRecData rdata[2];
+	char* 		dtxCheckPointInfo;
+	int			dtxCheckPointInfoSize;
 	uint32		freespace;
 	uint32		_logId;
 	uint32		_logSeg;
@@ -5639,16 +5685,28 @@ CreateCheckPoint(bool shutdown, bool force)
 	/*
 	 * Now insert the checkpoint record into XLOG.
 	 */
-	rdata.data = (char *) (&checkPoint);
-	rdata.len = sizeof(checkPoint);
-	rdata.buffer = InvalidBuffer;
-	rdata.next = NULL;
+
+	getDtxCheckPointInfoAndLock(&dtxCheckPointInfo, &dtxCheckPointInfoSize);
+
+	rdata[0].data = (char *) (&checkPoint);
+	rdata[0].len = sizeof(checkPoint);
+	rdata[0].buffer = InvalidBuffer;
+	rdata[0].next = &(rdata[1]);
+
+	rdata[1].data = (char *) dtxCheckPointInfo;
+	rdata[1].len = dtxCheckPointInfoSize;
+	rdata[1].buffer = InvalidBuffer;
+	rdata[1].next = NULL;
 
 	recptr = XLogInsert(RM_XLOG_ID,
 						shutdown ? XLOG_CHECKPOINT_SHUTDOWN :
 						XLOG_CHECKPOINT_ONLINE,
-						&rdata);
+						rdata);
 
+	freeDtxCheckPointInfoAndUnlock(dtxCheckPointInfo, dtxCheckPointInfoSize);
+	
+	// UNDONE: Release DTM Lock on checkpoint generation....
+	
 	XLogFlush(recptr);
 
 	/*
@@ -5743,6 +5801,7 @@ CheckPointGuts(XLogRecPtr checkPointRedo)
 	CheckPointCLOG();
 	CheckPointSUBTRANS();
 	CheckPointMultiXact();
+	CheckPointDistributedXidMap();
 	FlushBufferPool();			/* performs all required fsyncs */
 	/* We deliberately delay 2PC checkpointing as long as possible */
 	CheckPointTwoPhase(checkPointRedo);

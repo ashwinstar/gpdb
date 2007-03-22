@@ -11,7 +11,6 @@
 typedef enum
 {
 	SYNC_XLOG,					/* xlog sync */
-	SYNC_TMLOG,					/* tmlog sync */
 	SYNC_CHECK,					/* verification */
 	SYNC_CLOSE					/* close */
 }	syncCommand;

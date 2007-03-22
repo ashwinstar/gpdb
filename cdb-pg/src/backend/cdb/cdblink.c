@@ -38,7 +38,6 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbfts.h"
-#include "cdb/cdbtmlog.h"
 
 
 /*
@@ -422,12 +421,6 @@ write_qd_sync(char *cmd, void *buf, int len)
 						if (!resync_xlog_to_mirror())
 						{
 							elog(LOG, "write_qd_sync: xlog resync failed");
-							break;
-						}
-						if (!resync_tmlog_to_mirror(pfileoff, mfileoff))
-						{
-							elog(LOG, "write_qd_sync: tmlog resync failed poff %d moff %d",
-								 pfileoff, mfileoff);
 							break;
 						}
 

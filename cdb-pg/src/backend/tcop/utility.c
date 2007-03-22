@@ -421,12 +421,6 @@ ProcessUtility(Node *parsetree,
 
 							BeginTransactionBlock();
 							
-							/* start transaction on all QE. the false means we dont
-							 * need a BEGIN to be dispatched at this time. we'll
-							 * let cdbdisp figure it out.
-							 */
-							startDtxTransaction(false);
-						
 							foreach(lc, stmt->options)
 							{
 								DefElem    *item = (DefElem *) lfirst(lc);
@@ -440,6 +434,8 @@ ProcessUtility(Node *parsetree,
 												  list_make1(item->arg),
 												  true);
 							}
+
+							rememberDtxExplicitBegin();
 						}
 						break;
 
@@ -449,11 +445,7 @@ ProcessUtility(Node *parsetree,
 							/* report unsuccessful commit in completionTag */
 							if (completionTag)
 								strcpy(completionTag, "ROLLBACK");
-						}
-						else
-						{							
-							/* commit all QE */
-							commitDtxTransaction();
+							break;
 						}
 						break;
 
@@ -475,13 +467,29 @@ ProcessUtility(Node *parsetree,
 						break;
 
 					case TRANS_STMT_COMMIT_PREPARED:
+						if (Mpp_role == MPP_ROLE_DISPATCH)
+						{
+							ereport(ERROR, (
+											errcode(ERRCODE_MPP_COMMAND_ERROR),
+									 errmsg("COMMIT PREPARED is not yet supported in Greenplum Database.")
+											));
+			
+						}
 						PreventTransactionChain(stmt, "COMMIT PREPARED");
-						FinishPreparedTransaction(stmt->gid, true);
+						FinishPreparedTransaction(stmt->gid, /* isCommit */ true, /* raiseErrorIfNotFound */ true);
 						break;
 
 					case TRANS_STMT_ROLLBACK_PREPARED:
+						if (Mpp_role == MPP_ROLE_DISPATCH)
+						{
+							ereport(ERROR, (
+											errcode(ERRCODE_MPP_COMMAND_ERROR),
+									 errmsg("ROLLBACK PREPARED is not yet supported in Greenplum Database.")
+											));
+			
+						}
 						PreventTransactionChain(stmt, "ROLLBACK PREPARED");
-						FinishPreparedTransaction(stmt->gid, false);
+						FinishPreparedTransaction(stmt->gid, /* isCommit */ false, /* raiseErrorIfNotFound */ true);
 						break;
 
 					case TRANS_STMT_ROLLBACK:
@@ -512,7 +520,7 @@ ProcessUtility(Node *parsetree,
 								 * that the BEGIN has been dispatched
 								 * before we start dispatching our savepoint.
 								 */
-								startDtxTransaction(true);
+								rememberDtxExplicitBegin();
 							}
 
 							DefineSavepoint(name);

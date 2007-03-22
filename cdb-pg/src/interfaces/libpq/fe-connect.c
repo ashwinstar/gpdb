@@ -1864,6 +1864,10 @@ makeEmptyPGconn(void)
 	conn->status = CONNECTION_BAD;
 	conn->asyncStatus = PGASYNC_IDLE;
 	conn->xactStatus = PQTRANS_IDLE;
+	conn->QEWriter_HaveInfo = false;
+	conn->QEWriter_DistributedTransactionId = 0;
+	conn->QEWriter_CommandId = 0;
+	conn->QEWriter_Dirty = false;
 	conn->options_valid = false;
 	conn->nonblocking = false;
 	conn->setenv_state = SETENV_STATE_IDLE;

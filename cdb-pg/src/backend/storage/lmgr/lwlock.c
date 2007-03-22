@@ -23,6 +23,7 @@
 
 #include "access/clog.h"
 #include "access/multixact.h"
+#include "access/cdbdistributedxidmap.h"
 #include "access/subtrans.h"
 #include "miscadmin.h"
 #include "storage/ipc.h"
@@ -179,6 +180,9 @@ NumLWLocks(void)
 	/* multixact.c needs two SLRU areas */
 	numLocks += NUM_MXACTOFFSET_BUFFERS + NUM_MXACTMEMBER_BUFFERS;
 
+	/* cdbdistributedxidmap.c needs one per GlobalXidMap buffer */
+	numLocks += NUM_DISTRIBUTEDXIDMAP_BUFFERS;
+    
 	/*
 	 * Add any requested by loadable modules; for backwards-compatibility
 	 * reasons, allocate at least NUM_USER_DEFINED_LWLOCKS of them even

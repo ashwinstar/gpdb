@@ -549,7 +549,7 @@ cdbCopyStartTransaction(void)
 	/* since we don't use cdbdisp's dispatch services, we need to explicitly
 	 * kick off a BEGIN if its the real start of a transaction
 	 */
-	startDtxTransaction(true);
+	rememberDtxExplicitBegin();
 	
 	/* this txn is gonna be dirty */
 	setCurrentDtxDirty();

@@ -60,6 +60,14 @@ typedef struct CdbDispatchResult
                                          *  ERRCODE_MPP_OPERATION_CANCELED
                                          *  ERRCODE_QUERY_CANCELED
                                          */
+
+	bool						QEIsPrimary;
+	bool						QEWriter_HaveInfo;
+	DistributedTransactionId 	QEWriter_DistributedTransactionId;
+	CommandId 					QEWriter_CommandId;
+	bool 						QEWriter_Dirty;
+
+	
 }   CdbDispatchResult;
 
 

@@ -477,8 +477,6 @@ assign_XactIsoLevel(const char *value, bool doit, GucSource source)
 	{
 		if (doit)
 		{
-			if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE) 
-				elog(ERROR, "Greenplum Database does not support SERIALIZABLE transactions.");
 			XactIsoLevel = XACT_SERIALIZABLE;
 		}
 	}

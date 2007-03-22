@@ -246,7 +246,7 @@ FtsReConfigureMPP(void)
 	allocateGang(GANGTYPE_MIRROR_WRITER, getgpsegmentCount(), -1, NULL);
 
 	/* rollback current DTM transaction */
-	discardDtxTransaction();
+	AbortCurrentTransaction();
 
 	InReConfigure = false;
 	LWLockRelease(ftsControlLock);
@@ -392,7 +392,14 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 
     /* rollback current DTM transaction */
 	if (dtx_active)
-		discardDtxTransaction();
+	{
+		/*
+		 * UNDONE: Since we are always starting a DTX capable transaction
+		 * UNDONE: it is unclear we can do anything here but error out...
+		 */
+	    AbortCurrentTransaction();
+		return true;
+	}
 
 	/*
 	 * error out if this sets read only flag, at this stage the read only
@@ -411,10 +418,10 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 	 * dispatching write-statements -- so need to mark the dtx dirty
 	 * so it gets committed on mirrors.
 	 */
-	if (dtx_active)
-	{
-		condStartDtxTransaction();
-	}
+//	if (dtx_active)
+//	{
+//		condStartDtxTransaction();
+//	}
 	if (dtx_dirty)
 	{
 		setCurrentDtxDirty();

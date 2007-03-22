@@ -42,6 +42,9 @@ typedef struct CheckPoint
 	MultiXactId nextMulti;		/* next free MultiXactId */
 	MultiXactOffset nextMultiOffset;	/* next free MultiXact offset */
 	time_t		time;			/* time stamp of checkpoint */
+
+	/* IN XLOG RECORD, MORE DATA FOLLOWS AT END OF STRUCT FOR DTM CHECKPOINT */
+
 } CheckPoint;
 
 /* XLOG info values for XLOG rmgr */

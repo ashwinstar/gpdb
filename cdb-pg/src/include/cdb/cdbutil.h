@@ -117,5 +117,15 @@ extern void getGpId(void);
  */
 extern void freeGpId(void);
 
+// UNDONE: This was a private procedure... are there any issues in making it public???
+/*
+ * getCdbComponentDatabases
+ *
+ *
+ * Storage for the SegmentInstances block and all subsidiary
+ * strucures are allocated from the caller's context.
+ */
+extern CdbComponentDatabases *getCdbComponentInfo(void);
+
 
 #endif   /* CDBUTIL_H */

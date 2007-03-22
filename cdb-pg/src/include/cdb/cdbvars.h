@@ -514,5 +514,4 @@ typedef struct SeqServerControlBlock
 extern SeqServerControlBlock *seqServerCtl;
 
 
-
 #endif   /* CDBVARS_H */

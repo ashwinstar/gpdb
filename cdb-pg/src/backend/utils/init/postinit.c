@@ -296,6 +296,7 @@ InitPostgres(const char *dbname, const char *username)
 	bool		am_superuser;
 	char	   *fullpath;
 
+
 	/*
 	 * Set up the global variables holding database id and path.  But note we
 	 * won't actually try to touch the database just yet.
@@ -541,34 +542,27 @@ InitPostgres(const char *dbname, const char *username)
 		on_proc_exit( cdb_cleanup, 0 );
     }
     
-    /* MPP SharedSnapshot Setup
-	 *
-	 * If we are in EXECUTE mode AND we are the WRITER then we'll create and register a 
-	 * SharedSnapshotSlot
+    /* 
+     * MPP SharedSnapshot Setup
 	 */
-    /*$$$$$$$ FIX ME $$$$$$$$$*/
-    if (Gp_segment == -1 && Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer)
-    {
-        elog(LOG, "InitPostgres for entry db singleton QE: Shared snapshot not implemented.  Punt!"); 
-    }
-    else
-    /*$$$$$$$$$$$$$$$$$$$$$$$*/
-	if (Mpp_role == MPP_ROLE_EXECUTE)
+	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-		SharedSnapshotSlot *slot;
-		
+		addSharedSnaphot("Query Dispatcher", gp_session_id);
+	}
+    else if (Gp_segment == -1 && Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer)
+    {
+		/* 
+		 * Entry db singleton QE is a user of the shared snapshot -- not a creator.
+		 * The lookup will occur once the distributed snapshot has been received.
+		 */	
+		elog(LOG, "InitPostgres initializing entry db singleton QE -- is QD's slot among %s ???",
+		     SharedSnapshotDump());
+    }
+    else if (Mpp_role == MPP_ROLE_EXECUTE)
+	{
 		if (Gp_is_writer)
 		{
-			slot = SharedSnapshotAdd(gp_session_id);
-
-			if (slot==NULL)
-			{
-				ereport(ERROR,
-					(errmsg("Writer qExec could not set the Shared Local Snapshot!"),
-					 errdetail("Tried to set the shared local snapshot slot with id: %d "
-					 		   "and failed. Shared Local Snapshots dump: %s", gp_session_id,
-					 		   SharedSnapshotDump())));	
-			}
+			addSharedSnaphot("Writer qExec", gp_session_id);
 		}
 		else
 		{
@@ -576,24 +570,9 @@ InitPostgres(const char *dbname, const char *username)
 			 *       the writer.  Need to make sure we always allocate the 
 			 *		 writer qExec first.
 			 */			 			
-			
-			slot = SharedSnapshotLookup(gp_session_id);
-			
-			if (slot == NULL)
-			{
-				ereport(ERROR,
-					(errmsg("Reader qExec could not find Shared Local Snapshot!"),
-					 errdetail("Tried to find a shared snapshot slot with id: %d "
-					 		   "and found none. Shared Local Snapshots dump: %s", gp_session_id,
-					 		   SharedSnapshotDump()),
-					 errhint("Either this Reader qExec was created before the Writer "
-					 		 "qExec or the Writer qExec died.")));			 
-			}					
+			lookupSharedSnaphot("Reader qExec", "Writer qExec", gp_session_id);
 		}
-		
-		SharedLocalSnapshotSlot = slot;
 	}
-	
 
 	/*
 	 * Set up process-exit callback to do pre-shutdown cleanup.  This

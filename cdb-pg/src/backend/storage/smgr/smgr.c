@@ -814,6 +814,28 @@ smgrGetPendingDeletes(bool forCommit, RelFileNode **ptr)
 }
 
 /*
+ * smgrIsPendingDeletes() -- Returns true if there are relations to be deleted.
+ *
+ * Note that the list does not include anything scheduled for termination
+ * by upper-level transactions.
+ */
+bool
+smgrIsPendingDeletes(bool forCommit)
+{
+	int			nestLevel = GetCurrentTransactionNestLevel();
+	PendingRelDelete *pending;
+
+	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
+	{
+		if (pending->nestLevel >= nestLevel && pending->atCommit == forCommit)
+			return true;
+	}
+	return false;
+}
+
+
+
+/*
  * AtSubCommit_smgr() --- Take care of subtransaction commit.
  *
  * Reassign all items in the pending-deletes list to the parent transaction.

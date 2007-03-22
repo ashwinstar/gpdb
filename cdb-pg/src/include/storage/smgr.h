@@ -78,6 +78,7 @@ extern BlockNumber smgrtruncate(SMgrRelation reln, BlockNumber nblocks,
 extern void smgrimmedsync(SMgrRelation reln);
 extern void smgrDoPendingDeletes(bool isCommit);
 extern int	smgrGetPendingDeletes(bool forCommit, RelFileNode **ptr);
+extern bool	smgrIsPendingDeletes(bool forCommit);
 extern void AtSubCommit_smgr(void);
 extern void AtSubAbort_smgr(void);
 extern void PostPrepare_smgr(void);

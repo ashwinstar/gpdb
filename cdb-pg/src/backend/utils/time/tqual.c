@@ -64,7 +64,7 @@
 static SnapshotData SnapshotDirtyData;
 static SnapshotData SerializableSnapshotData;
 static SnapshotData LatestSnapshotData;
-static SnapshotData QDSentSnapshotData;
+//	static SnapshotData QDSentSnapshotData;
 
 /* Externally visible pointers to valid snapshots: */
 Snapshot	SnapshotDirty = &SnapshotDirtyData;
@@ -86,11 +86,19 @@ TransactionId RecentGlobalXmin = InvalidTransactionId;
 /* local functions */
 static bool XidInSnapshot(TransactionId xid, Snapshot snapshot);
 
-/* MPP Addition. Global Snapshot that gets sent in from the QD to processes
+/* MPP Addition. Distributed Snapshot that gets sent in from the QD to processes
  * running in EXECUTE mode.
  */
-Snapshot  QDSentSnapshot = &QDSentSnapshotData;
-TransactionId QDSentXID = InvalidTransactionId;
+DtxContext DistributedTransactionContext = DTX_CONTEXT_LOCAL_ONLY;
+
+DistributedSnapshotData QDSentDistributedSnapshotData;
+DistributedSnapshot QDSentDistributedSnapshot = &QDSentDistributedSnapshotData;
+DistributedTransactionId QDSentDistributedXid = InvalidDistributedTransactionId;
+DistributedTransactionId QDSentXminAllDistributedSnapshots = InvalidDistributedTransactionId;
+int QDSentSharedLocalSnapshotSlotId = 0;
+CommandId QDSentDistributedCommandId = 0;
+
+int QDSentTxnOptions = 0;
 
 /* MPP Shared Snapshot. */
 typedef struct SharedSnapshotStruct
@@ -321,8 +329,10 @@ SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId)
 /* Used by the "writer" qExec to "release" the slot it had been using.
  *
  */
-void SharedSnapshotRemove(SharedSnapshotSlot *slot)
+void SharedSnapshotRemove(SharedSnapshotSlot *slot, char *creatorDescription)
 {
+	int slotId = slot->slotid;
+	
 	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
 		
 	/* determine if we need to modify the next available slot to use.  we
@@ -349,6 +359,56 @@ void SharedSnapshotRemove(SharedSnapshotSlot *slot)
 	sharedSnapshotArray->numSlots--;
 	
 	LWLockRelease(SharedSnapshotLock);
+
+	elog(DEBUG5,"SharedSnapshotRemove removed slot for slotId = %d, creator = %s", 
+		 slotId, creatorDescription);
+}
+
+void
+addSharedSnaphot(char *creatorDescription, int id)
+{
+	SharedSnapshotSlot *slot;
+	
+	slot = SharedSnapshotAdd(id);
+
+	if (slot==NULL)
+	{
+		ereport(ERROR,
+			(errmsg("%s could not set the Shared Local Snapshot!",
+			        creatorDescription),
+			 errdetail("Tried to set the shared local snapshot slot with id: %d "
+			 		   "and failed. Shared Local Snapshots dump: %s", id,
+			 		   SharedSnapshotDump())));	
+	}
+	SharedLocalSnapshotSlot = slot;
+
+	elog(DEBUG5,"%s added Shared Local Snapshot slot for gp_session_id = %d", 
+		 creatorDescription, id);
+}
+
+void
+lookupSharedSnaphot(char *lookerDescription, char *creatorDescription, int id)
+{
+	
+	SharedSnapshotSlot *slot;
+	
+	slot = SharedSnapshotLookup(id);
+	
+	if (slot == NULL)
+	{
+		ereport(ERROR,
+			(errmsg("%s could not find Shared Local Snapshot!", 
+			        lookerDescription),
+			 errdetail("Tried to find a shared snapshot slot with id: %d "
+			 		   "and found none. Shared Local Snapshots dump: %s", id,
+			 		   SharedSnapshotDump()),
+			 errhint("Either this %s was created before the %s or the %s died.", 
+			         lookerDescription, creatorDescription, creatorDescription)));			 
+	}					
+	SharedLocalSnapshotSlot = slot;
+
+	elog(DEBUG5,"%s found Shared Local Snapshot slot for gp_session_id = %d created by %s",
+		 lookerDescription, id, creatorDescription);
 }
 
 

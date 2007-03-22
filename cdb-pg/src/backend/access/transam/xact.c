@@ -46,6 +46,7 @@
 #include "utils/memutils.h"
 #include "utils/relcache.h"
 #include "utils/resscheduler.h"
+#include "access/cdbdistributedxidmap.h"
 
 #include "cdb/cdbgang.h"
 #include "cdb/cdbtm.h"
@@ -226,7 +227,6 @@ typedef struct SubXactCallbackItem
 
 static SubXactCallbackItem *SubXact_callbacks = NULL;
 
-
 /* local function prototypes */
 static void AssignSubTransactionId(TransactionState s);
 static void AbortTransaction(void);
@@ -384,7 +384,7 @@ AssignSubTransactionId(TransactionState s)
 	 * PG_PROC, the subtrans entry is needed to ensure that other backends see
 	 * the Xid as "running".  See GetNewTransactionId.
 	 */
-	s->transactionId = GetNewTransactionId(true);
+	s->transactionId = GetNewTransactionId(true, true);
 
 	SubTransSetParent(s->transactionId, s->parent->transactionId);
 
@@ -521,7 +521,7 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
     /*$$$$$$$ FIX ME $$$$$$$$$*/
     if (Gp_segment == -1 && Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer)
     {
-        elog(DEBUG5, "GetSnapshotData for entry db singleton QE: Shared snapshot not implemented.  Punt!"); 
+         elog(LOG, "TransactionIdIsCurrentTransactionId for entry db singleton QE: Subtransactions not implemented.  Punt!"); 
     }
     else
     /*$$$$$$$$$$$$$$$$$$$$$$$*/
@@ -763,10 +763,14 @@ RecordTransactionCommit(void)
 	RelFileNode *rels;
 	int			nchildren;
 	TransactionId *children;
+	bool		isDtxPrepared;
+	TMGXACT_LOG gxact_log;
 
 	/* Get data needed for commit record */
 	nrels = smgrGetPendingDeletes(true, &rels);
 	nchildren = xactGetCommittedChildren(&children);
+
+	isDtxPrepared = isPreparedDtxTransaction();
 
 	/*
 	 * If we made neither any XLOG entries nor any temp-rel updates, and have
@@ -774,7 +778,7 @@ RecordTransactionCommit(void)
 	 * all.  (This test includes the effects of subtransactions, so the
 	 * presence of committed subxacts need not alone force a write.)
 	 */
-	if (MyXactMadeXLogEntry || MyXactMadeTempRelUpdate || nrels > 0)
+	if (MyXactMadeXLogEntry || MyXactMadeTempRelUpdate || nrels > 0 || isDtxPrepared)
 	{
 		TransactionId xid = GetCurrentTransactionId();
 		bool		madeTCentries;
@@ -826,9 +830,9 @@ RecordTransactionCommit(void)
 		 * We only need to log the commit in XLOG if the transaction made any
 		 * transaction-controlled XLOG entries or will delete files.
 		 */
-		if (madeTCentries || nrels > 0)
+		if (madeTCentries || nrels > 0 || isDtxPrepared)
 		{
-			XLogRecData rdata[3];
+			XLogRecData rdata[4];
 			int			lastrdata = 0;
 			xl_xact_commit xlrec;
 
@@ -856,9 +860,31 @@ RecordTransactionCommit(void)
 				rdata[2].buffer = InvalidBuffer;
 				lastrdata = 2;
 			}
+			/* add global transaction information */
+			if (isDtxPrepared)
+			{
+				getDtxLogInfo(&gxact_log);
+				
+				rdata[lastrdata].next = &(rdata[3]);
+				rdata[3].data = (char *) &gxact_log;
+				rdata[3].len = sizeof(gxact_log);
+				rdata[3].buffer = InvalidBuffer;
+				lastrdata = 3;
+			}
 			rdata[lastrdata].next = NULL;
 
-			recptr = XLogInsert(RM_XACT_ID, XLOG_XACT_COMMIT, rdata);
+			if (isDtxPrepared)
+			{
+				insertingDistributedCommitted();
+				
+				recptr = XLogInsert(RM_XACT_ID, XLOG_XACT_DISTRIBUTED_COMMIT, rdata);
+
+				insertedDistributedCommitted();
+			}
+			else
+			{
+				recptr = XLogInsert(RM_XACT_ID, XLOG_XACT_COMMIT, rdata);
+			}
 		}
 		else
 		{
@@ -894,6 +920,10 @@ RecordTransactionCommit(void)
 				pg_usleep(CommitDelay);
 
 			XLogFlush(recptr);
+			if (isDtxPrepared)
+			{
+				forcedDistributedCommitted();
+			}
 		}
 
 		/*
@@ -931,6 +961,24 @@ RecordTransactionCommit(void)
 		pfree(children);
 }
 
+/*
+ *	RecordDistributedForgetCommitted
+ */
+void
+RecordDistributedForgetCommitted(TMGXACT_LOG *gxact_log)
+{
+	xl_xact_distributed_forget xlrec;
+	XLogRecData rdata[1];
+
+	memcpy(&xlrec.gxact_log, gxact_log, sizeof(TMGXACT_LOG));
+
+	rdata[0].data = (char *) &xlrec;
+	rdata[0].len = sizeof(xl_xact_distributed_forget);
+	rdata[0].buffer = InvalidBuffer;
+	rdata[0].next = NULL;
+
+	XLogInsert(RM_XACT_ID, XLOG_XACT_DISTRIBUTED_FORGET | XLOG_NO_TRAN, rdata);
+}
 
 /*
  *	AtCommit_LocalCache
@@ -1455,20 +1503,23 @@ SetSharedTransactionId(void)
 {
 	Assert(SharedLocalSnapshotSlot != NULL);
 
-	if (Gp_is_writer)
+	if (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE ||
+		DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
+		DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
+		DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT)
 	{
-		elog(DEBUG5, "qExec WRITER setting shared xid to: %d (QDxid %d)", TopTransactionStateData.transactionId, QDSentXID);
+		elog(DEBUG5, "qExec WRITER setting shared xid to: %d (QDSentDistributedXid %d)", TopTransactionStateData.transactionId, QDSentDistributedXid);
 		SharedLocalSnapshotSlot->xid = TopTransactionStateData.transactionId;
 	}
-	else
+	else if (DistributedTransactionContext == DTX_CONTEXT_QE_READER ||
+		     DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON)
 	{
 		TopTransactionStateData.transactionId = SharedLocalSnapshotSlot->xid;
 		currentCommandId = SharedLocalSnapshotSlot->snapshot.curcid;
 
-		elog(DEBUG5, "qExec READER setting local xid to: %d (QDxid %d)", TopTransactionStateData.transactionId, QDSentXID);
+		elog(DEBUG5, "qExec READER setting local xid to: %d (QDSentDistributedXid %d)", TopTransactionStateData.transactionId, QDSentDistributedXid);
 	}
 }
-
 
 /* MPP routine for fetching the currently active subtransaction ids.
  */
@@ -1622,8 +1673,6 @@ StartTransaction(void)
 	{
 		if (XactIsoLevel == XACT_REPEATABLE_READ)
 			elog(ERROR, "Greenplum Database does not support REPEATABLE READ transactions.");
-		else if (XactIsoLevel == XACT_SERIALIZABLE)
-			elog(ERROR, "Greenplum Database does not support SERIALIZABLE transactions.");
 	}
 
 	/*
@@ -1640,19 +1689,75 @@ StartTransaction(void)
 	 * a purely-local transaction.
 	 *
 	 */
-	if (Mpp_role == MPP_ROLE_EXECUTE && QDSentXID != InvalidTransactionId)
+	elog(LOG,"StartTransaction DTX Context = '%s'", DtxContextToString(DistributedTransactionContext));
+	
+	switch (DistributedTransactionContext)
 	{
-		if (Gp_is_writer)
+	case DTX_CONTEXT_LOCAL_ONLY:
 		{
+			/*
+			 * MPP: we're in utility-mode or a QE starting a pure-local
+			 * transaction without any synchronization to segmates!
+			 * (e.g. CatchupInterruptHandler)
+			 */
+
 			/*
 			 * generate a new transaction id
 			 */
-			s->transactionId = GetNewTransactionId(false);
+			s->transactionId = GetNewTransactionId(false, true);
+
+			XactLockTableInsert(s->transactionId);
+			
+			PG_TRACE1(transaction__start, s->transactionId);
 
 			/*
-			 * TODO:  the "writer" will eventually need to take out a lock on the global
-			 *		  XID here too when we get around to having a global snapshot used.
+		 	 * set transaction_timestamp() (a/k/a now()).  We want this to be the
+		 	 * same as the first command's statement_timestamp(), so don't do a
+		 	 * fresh GetCurrentTimestamp() call (which'd be expensive anyway).
+		  	 */
+		  	xactStartTimestamp = stmtStartTimestamp;
+		}
+		break;
+
+	case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+		{
+			/*
+			 * MPP: we're the dispatcher.
 			 */
+
+			/*
+			 * Create distributed transaction which will map the
+			 * distributed transaction to a local transaction id for the
+			 * master database.
+			 */
+			createDtx(&s->transactionId);
+
+			XactLockTableInsert(s->transactionId);
+			
+			PG_TRACE1(transaction__start, s->transactionId);
+
+			/*
+		 	 * set transaction_timestamp() (a/k/a now()).  We want this to be the
+		 	 * same as the first command's statement_timestamp(), so don't do a
+		 	 * fresh GetCurrentTimestamp() call (which'd be expensive anyway).
+		  	 */
+		  	xactStartTimestamp = stmtStartTimestamp;
+		}
+		break;
+
+	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
+		{
+			/*
+			 * MPP: we're a QE Writer.
+			 */
+			 
+			/*
+			 * Use local xid that is mapped to distributed xid.
+			 */
+			AllocOrGetLocalXidForDistributedTransaction(QDSentDistributedXid,&s->transactionId);
+			
 			XactLockTableInsert(s->transactionId);
 			
 			PG_TRACE1(transaction__start, s->transactionId);
@@ -1662,124 +1767,119 @@ StartTransaction(void)
 		  	 */
 		  	xactStartTimestamp = stmtStartTimestamp;
 
-			/*
-			 * NOTE: this is a bit hackish. It appears as though
-			 * StartTransaction() gets called during connection setup before
-			 * we even have time to setup our shared snapshot slot.
-			 */
+			elog(DEBUG4, "qExec writer setting QDSentDistributedXid: %d ready: false", QDSentDistributedXid);
+
 			if (SharedLocalSnapshotSlot != NULL)
 			{
-				elog(DEBUG4, "qExec writer setting QDSentXID: %d ready: false", QDSentXID);
-
 				SharedLocalSnapshotSlot->xid = s->transactionId;
 				SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
-				SharedLocalSnapshotSlot->QDxid = QDSentXID;
+				SharedLocalSnapshotSlot->QDxid = QDSentDistributedXid;
 
 				SharedLocalSnapshotSlot->pid = MyProc->pid;
 
 				SharedLocalSnapshotSlot->ready = false;
 			}
 		}
-		else
+		break;
+
+	case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
+	case DTX_CONTEXT_QE_READER:
 		{
+			bool	done = false;
+			int	   	count = 0;
+			/* the pg_usleep() call below is in units of ms,
+			 * interconnect timeout is in seconds */
+			int     sleep_per_check_ms = 200;
+			int		segmate_timeout_ms = interconnect_setup_timeout * 1000;
+			
+			/*
+			 * MPP: we're a QE Reader.
+			 */
+			if (DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON)
+			{
+				lookupSharedSnaphot("Entry DB Singleton", "Query Dispatcher", QDSentSharedLocalSnapshotSlotId);
+			}
+
+			Assert (SharedLocalSnapshotSlot != NULL);
 			/*
 			 * we want to get our XID from the shared snapshot and not
 			 * generate one ourselves
 			 */
 
-			if (SharedLocalSnapshotSlot == NULL)
-			{
-				s->transactionId = GetNewTransactionId(false);
-			}
-			else
-			{
-				bool	done = false;
-				int	   	count = 0;
-				/* the pg_usleep() call below is in units of 2ms,
-				 * interconnect timeout is in seconds */
-				int		segmate_timeout = interconnect_setup_timeout * 500;
 
-				elog(DEBUG4, "qExec reader: QDSentXID %d sharedlocalsnapshot->QDxid %d sharedsnapshots: %s",
-					 QDSentXID, SharedLocalSnapshotSlot->QDxid, SharedSnapshotDump());
+			elog(DEBUG4, "qExec reader: QDSentDistributedXid %d sharedlocalsnapshot->QDxid %d sharedsnapshots: %s",
+				 QDSentDistributedXid, SharedLocalSnapshotSlot->QDxid, SharedSnapshotDump());
 
-				while (!done)
+			while (!done)
+			{
+				Assert(QDSentDistributedSnapshot != NULL);
+				Assert(SharedLocalSnapshotSlot != NULL);
+
+				/*
+				 * If the QDxid in the SharedLocalSnapshotSlot is the same
+				 * one that the QD sent us... then we know we are both on
+				 * the same page.
+				 */
+				if (QDSentDistributedXid == SharedLocalSnapshotSlot->QDxid)
 				{
-					Assert(QDSentSnapshot != NULL);
-					Assert(SharedLocalSnapshotSlot != NULL);
-
+					s->transactionId = SharedLocalSnapshotSlot->xid;
+					xactStartTimestamp = SharedLocalSnapshotSlot->startTimestamp;
+					done = true;
+				}
+				else
+				{
 					/*
-					 * If the QDxid in the SharedLocalSnapshotSlot is the same
-					 * one that the QD sent us... then we know we are both on
-					 * the same page.
+					 * didn't find it.  we'll sleep for a small amount of
+					 * time and then try again.
+					 *
+					 * TODO: is there a semaphore or something better we can
+					 * do here.
 					 */
-					if (QDSentXID == SharedLocalSnapshotSlot->QDxid)
-					{
-						s->transactionId = SharedLocalSnapshotSlot->xid;
-						xactStartTimestamp = SharedLocalSnapshotSlot->startTimestamp;
-						done = true;
-					}
-					else
+					if (count > 0)
+						elog(LOG,"StartTransaction did not find shared local snapshot information. "
+								 "We are waiting for the shared snapshot to have XID: %d but the value "
+							     "is currently: %d. Our slotindex is: %d. "
+							     "DistributedTransactionContext = %s.",
+							     QDSentDistributedXid, SharedLocalSnapshotSlot->QDxid,
+							     SharedLocalSnapshotSlot->slotindex,
+							     DtxContextToString(DistributedTransactionContext));
+					pg_usleep(sleep_per_check_ms);
+
+					CHECK_FOR_INTERRUPTS();
+
+					count++;
+
+					segmate_timeout_ms -= sleep_per_check_ms;
+
+					if (segmate_timeout_ms <= 0)
 					{
 						/*
-						 * didn't find it.  we'll sleep for a small amount of
-						 * time and then try again.
-						 *
-						 * TODO: is there a semaphore or something better we can
-						 * do here.
+						 * FATAL seems pretty bad... but once we get out
+						 * of sync with the writer qExec we really need to
+						 * die
 						 */
-						pg_usleep( /* microseconds */ 2000);
-
-						CHECK_FOR_INTERRUPTS();
-
-						count++;
-
-						if (count > segmate_timeout)
-						{
-							/*
-							 * FATAL seems pretty bad... but once we get out
-							 * of sync with the writer qExec we really need to
-							 * die
-							 */
-							ereport(FATAL,
-									(errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-									 errmsg("Reader qExec timed out waiting for Writer to set the shared snapshot."),
-									 errdetail("We are waiting for the shared snapshot to have XID: %d but the value "
-								  "is currently: %d. Our slotindex is: %d \n"
-								  "Dump of all sharedsnapshots in shmem: %s",
-								   QDSentXID, SharedLocalSnapshotSlot->QDxid,
-											   SharedLocalSnapshotSlot->slotindex, SharedSnapshotDump())));
-						}
+						ereport(FATAL,
+								(errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+								 errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."),
+								 errdetail("We are waiting for the shared snapshot to have XID: %d but the value "
+							     "is currently: %d. Our slotindex is: %d \n"
+							     "DistributedTransactionContext = %s."
+							     "Dump of all sharedsnapshots in shmem: %s",
+							     QDSentDistributedXid, SharedLocalSnapshotSlot->QDxid,
+							     SharedLocalSnapshotSlot->slotindex, 
+							     DtxContextToString(DistributedTransactionContext),
+							     SharedSnapshotDump())));
 					}
 				}
 			}
 		}
+		break;
+	
+	default:
+		elog(FATAL, "Unrecognized DTX transaction context: %d",
+			(int) DistributedTransactionContext);
+		break;
 	}
-	else
-	{
-		/*
-		 * MPP: we're the dispatcher, utility-mode or a QE starting a
-		 * pure-local transaction without any synchronization to segmates!
-		 * (e.g. CatchupInterruptHandler)
-		 */
-
-		/*
-		 * generate a new transaction id
-		 */
-		s->transactionId = GetNewTransactionId(false);
-
-		XactLockTableInsert(s->transactionId);
-		
-		PG_TRACE1(transaction__start, s->transactionId);
-
-		/*
-	 	 * set transaction_timestamp() (a/k/a now()).  We want this to be the
-	 	 * same as the first command's statement_timestamp(), so don't do a
-	 	 * fresh GetCurrentTimestamp() call (which'd be expensive anyway).
-	  	 */
-	  	xactStartTimestamp = stmtStartTimestamp;
-
-	}
-
 
 	/*
 	 * initialize current transaction state fields
@@ -1886,14 +1986,11 @@ CommitTransaction(void)
 	AtEOXact_UpdateFlatFiles(true);
 
 	/*
-	 * commit all QE commit should have been called from ProcessUtility, need
-	 * to be done before s->state is set to commit.
-	 *
-	 * we did not put QD transaction as part of global transaction this may need
-	 * to be fixed in the future, otherwise a small window may exist causing
-	 * QD got rollback.
+	 * Prepare all QE.
 	 */
-	commitDtxTransaction();
+	prepareDtxTransaction();
+	elog(LOG, "CommitTransaction returns from prepareDtxTransaction in %s state",
+	     TransStateAsString(s->state));
 
 	/* Prevent cancel/die interrupt while cleaning up */
 	HOLD_INTERRUPTS();
@@ -1930,6 +2027,7 @@ CommitTransaction(void)
 		/* Lock ProcArrayLock because that's what GetSnapshotData uses. */
 		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 		MyProc->xid = InvalidTransactionId;
+		MyProc->mppDistributedTransactionId = InvalidDistributedTransactionId;
 		MyProc->xmin = InvalidTransactionId;
 		MyProc->inVacuum = false;		/* must be cleared with xid/xmin */
 
@@ -2022,23 +2120,20 @@ CommitTransaction(void)
 	s->childXids = NIL;
 
 	/*
-	 * To make sure that we're able to check that we've gotten a new QD xid,
-	 * when we finish with one, we set it to InvalidTransactionId. This is
-	 * especially important for Reader-gangs, but shouldn't the primary-writer
-	 * any harm
-	 */
-	if (Mpp_role == MPP_ROLE_EXECUTE)
-	{
-		QDSentXID = InvalidTransactionId;
-	}
-
-	/*
 	 * done with commit processing, set current transaction state back to
 	 * default
 	 */
 	s->state = TRANS_DEFAULT;
 
 	RESUME_INTERRUPTS();
+
+	/*
+	 * Do 2nd phase of commit to all QE.
+	 */
+	elog(LOG,"CommitTransaction calling notifyCommittedDtxTransaction.");
+	notifyCommittedDtxTransaction();
+
+	finishDistributedTransactionContext();
 
 	freeGangsForPortal(NULL);
 }
@@ -2180,6 +2275,7 @@ PrepareTransaction(void)
 	/* Lock ProcArrayLock because that's what GetSnapshotData uses. */
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 	MyProc->xid = InvalidTransactionId;
+	MyProc->mppDistributedTransactionId = InvalidDistributedTransactionId;
 	MyProc->xmin = InvalidTransactionId;
 	MyProc->inVacuum = false;	/* must be cleared with xid/xmin */
 
@@ -2352,6 +2448,7 @@ AbortTransaction(void)
 		/* Lock ProcArrayLock because that's what GetSnapshotData uses. */
 		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 		MyProc->xid = InvalidTransactionId;
+		MyProc->mppDistributedTransactionId = InvalidDistributedTransactionId;
 		MyProc->xmin = InvalidTransactionId;
 		MyProc->inVacuum = false;		/* must be cleared with xid/xmin */
 
@@ -2446,6 +2543,9 @@ CleanupTransaction(void)
 	 * default
 	 */
 	s->state = TRANS_DEFAULT;
+
+	finishDistributedTransactionContext();
+
 }
 
 /*
@@ -2464,7 +2564,21 @@ StartTransactionCommand(void)
 			 */
 		case TBLOCK_DEFAULT:
 			StartTransaction();
-			s->blockState = TBLOCK_STARTED;
+
+			if (DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER)
+			{
+				/*
+				 * Pretend we executed an explicit BEGIN.
+				 */
+				s->blockState = TBLOCK_INPROGRESS;
+			}
+			else
+			{
+				/*
+				 * Normal case.
+				 */
+				s->blockState = TBLOCK_STARTED;
+			}
 			break;
 
 			/*
@@ -2483,7 +2597,7 @@ StartTransactionCommand(void)
 			{
 				SharedLocalSnapshotSlot->xid = s->transactionId;
 				SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
-				SharedLocalSnapshotSlot->QDxid = QDSentXID;
+				SharedLocalSnapshotSlot->QDxid = QDSentDistributedXid;
 			}
 			break;
 
@@ -2512,7 +2626,7 @@ StartTransactionCommand(void)
 		case TBLOCK_SUBRESTART:
 		case TBLOCK_SUBABORT_RESTART:
 		case TBLOCK_PREPARE:
-			elog(ERROR, "StartTransactionCommand: unexpected state %s",
+			elog(ERROR, "StartTransactionCommand: unexpected s[tate %s",
 				 BlockStateAsString(s->blockState));
 			break;
 	}
@@ -2893,6 +3007,9 @@ AbortCurrentTransaction(void)
 			AbortCurrentTransaction();
 			break;
 	}
+	
+	finishDistributedTransactionContext();
+
 }
 
 /*
@@ -3516,7 +3633,7 @@ DefineSavepoint(char *name)
 				 * dispatch a DTX command, in the event of an error, this call
 				 * will either exit via elog()/ereport() or return false
 				 */
-				if (!dispatchDtxCommand(cmd, /* dispatchToMirrors */ true, /* withSnapshot */ false))
+				if (!dispatchDtxCommand(cmd, /* dispatchToMirrors */ true, /* withSnapshot */ false, /* raiseError */ false))
 				{
 					elog(ERROR, "Could not create a new savepoint (%s)", cmd);
 				}
@@ -3648,7 +3765,7 @@ ReleaseSavepoint(List *options)
 		 * dispatch a DTX command, in the event of an error, this call will
 		 * either exit via elog()/ereport() or return false
 		 */
-		if (!dispatchDtxCommand(cmd, /* dispatchToMirrors */ true, /* withSnapshot*/ false))
+		if (!dispatchDtxCommand(cmd, /* dispatchToMirrors */ true, /* withSnapshot*/ false, /* raiseError */ false))
 		{
 			elog(ERROR, "Could not release savepoint (%s)", cmd);
 		}
@@ -3779,7 +3896,7 @@ RollbackToSavepoint(List *options)
 		 * dispatch a DTX command, in the event of an error, this call will
 		 * either exit via elog()/ereport() or return false
 		 */
-		if (!dispatchDtxCommand(cmd, /* dispatchToMirrors */ true, /* withSnapshot */ false))
+		if (!dispatchDtxCommand(cmd, /* dispatchToMirrors */ true, /* withSnapshot */ false, /* raiseError */ false))
 		{
 			elog(ERROR, "Could not rollback to savepoint (%s)", cmd);
 		}
@@ -4032,6 +4149,9 @@ AbortOutOfAnyTransaction(void)
 
 	/* Should be out of all subxacts now */
 	Assert(s->parent == NULL);
+
+	finishDistributedTransactionContext();
+	
 }
 
 /*
@@ -4064,6 +4184,20 @@ IsTransactionOrTransactionBlock(void)
 		return false;
 
 	return true;
+}
+
+/*
+ * Did the transaction do work that requires a commit record to be written?
+ */
+bool
+IsTransactionDirty(void)
+{
+	bool result = (MyXactMadeXLogEntry || MyXactMadeTempRelUpdate || smgrIsPendingDeletes(true));
+
+	elog(DEBUG5, "IsTransactionDirty: TopTransactionId %u, dirty = %s",
+		 GetTopTransactionId(), (result ? "true" : "false"));
+	
+	return result;
 }
 
 /*
@@ -4102,6 +4236,14 @@ TransactionBlockStatusCode(void)
 	elog(FATAL, "invalid transaction block state: %s",
 		 BlockStateAsString(s->blockState));
 	return 0;					/* keep compiler quiet */
+}
+
+void
+TransactionInformationQEWriter(DistributedTransactionId *QEDistributedTransactionId, CommandId *QECommandId, bool *QEDirty)
+{
+	*QEDistributedTransactionId = QDSentDistributedXid;
+	*QECommandId = QDSentDistributedCommandId;
+	*QEDirty = IsTransactionDirty();
 }
 
 /*
@@ -4686,7 +4828,7 @@ xactGetCommittedChildren(TransactionId **ptr)
  *	XLOG support routines
  */
 
-static void
+static char*
 xact_redo_commit(xl_xact_commit *xlrec, TransactionId xid)
 {
 	TransactionId *sub_xids;
@@ -4719,6 +4861,25 @@ xact_redo_commit(xl_xact_commit *xlrec, TransactionId xid)
 		XLogDropRelation(xlrec->xnodes[i]);
 		smgrdounlink(smgropen(xlrec->xnodes[i]), false, true);
 	}
+
+	/*
+	 * MPP: Return end of regular commit information.
+	 */
+	return (char*) &sub_xids[xlrec->nsubxacts];
+}
+
+static void
+xact_redo_distributed_commit(xl_xact_commit *xlrec, TransactionId xid)
+{
+	TMGXACT_LOG *gxact_log;
+
+	/* 
+	 * We put the global transaction information last, so call the regular xact
+	 * commit routine.
+	 */
+	gxact_log = (TMGXACT_LOG *) xact_redo_commit(xlrec, xid);
+
+	redoDistributedCommitRecord(gxact_log);
 }
 
 static void
@@ -4755,6 +4916,13 @@ xact_redo_abort(xl_xact_abort *xlrec, TransactionId xid)
 		smgrdounlink(smgropen(xlrec->xnodes[i]), false, true);
 	}
 }
+
+static void
+xact_redo_distributed_forget(xl_xact_distributed_forget *xlrec, TransactionId xid)
+{
+	redoDistributedForgetCommitRecord(&xlrec->gxact_log);
+}
+
 
 void
 xact_redo(XLogRecPtr lsn, XLogRecord *record)
@@ -4793,15 +4961,28 @@ xact_redo(XLogRecPtr lsn, XLogRecord *record)
 		xact_redo_abort(&xlrec->arec, xlrec->xid);
 		RemoveTwoPhaseFile(xlrec->xid, false);
 	}
+	else if (info == XLOG_XACT_DISTRIBUTED_COMMIT)
+	{
+		xl_xact_commit *xlrec = (xl_xact_commit *) XLogRecGetData(record);
+
+		xact_redo_distributed_commit(xlrec, record->xl_xid);
+	}
+	else if (info == XLOG_XACT_DISTRIBUTED_FORGET)
+	{
+		xl_xact_distributed_forget *xlrec = (xl_xact_distributed_forget *) XLogRecGetData(record);
+
+		xact_redo_distributed_forget(xlrec, record->xl_xid);
+	}
 	else
 		elog(PANIC, "xact_redo: unknown op code %u", info);
 }
 
-static void
+static char*
 xact_desc_commit(StringInfo buf, xl_xact_commit *xlrec)
 {
 	struct tm  *tm = localtime(&xlrec->xtime);
 	int			i;
+	TransactionId *sub_xids;
 
 	appendStringInfo(buf, "%04u-%02u-%02u %02u:%02u:%02u",
 					 tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
@@ -4817,16 +4998,42 @@ xact_desc_commit(StringInfo buf, xl_xact_commit *xlrec)
 							 rnode.spcNode, rnode.dbNode, rnode.relNode);
 		}
 	}
+	
+	sub_xids = (TransactionId *)&xlrec->xnodes[xlrec->nrels];
+
 	if (xlrec->nsubxacts > 0)
 	{
-		TransactionId *xacts = (TransactionId *)
-		&xlrec->xnodes[xlrec->nrels];
-
 		appendStringInfo(buf, "; subxacts:");
 		for (i = 0; i < xlrec->nsubxacts; i++)
-			appendStringInfo(buf, " %u", xacts[i]);
+			appendStringInfo(buf, " %u", sub_xids[i]);
 	}
+	
+	/*
+	 * MPP: Return end of regular commit information.
+	 */
+	return (char*) &sub_xids[xlrec->nsubxacts];
 }
+
+static void
+xact_desc_distributed_commit(StringInfo buf, xl_xact_commit *xlrec)
+{
+	TMGXACT_LOG *gxact_log;
+
+	/* 
+	 * We put the global transaction information last, so call the regular xact
+	 * commit routine.
+	 */
+	gxact_log = (TMGXACT_LOG *) xact_desc_commit(buf, xlrec);
+
+	descDistributedCommitRecord(buf, gxact_log);
+}
+
+static void
+xact_desc_distributed_forget(StringInfo buf, xl_xact_distributed_forget *xlrec)
+{
+	descDistributedCommitRecord(buf, &xlrec->gxact_log);
+}
+
 
 static void
 xact_desc_abort(StringInfo buf, xl_xact_abort *xlrec)
@@ -4895,6 +5102,20 @@ xact_desc(StringInfo buf, uint8 xl_info, char *rec)
 
 		appendStringInfo(buf, "abort %u: ", xlrec->xid);
 		xact_desc_abort(buf, &xlrec->arec);
+	}
+	else if (info == XLOG_XACT_DISTRIBUTED_COMMIT)
+	{
+		xl_xact_commit *xlrec = (xl_xact_commit *) rec;
+
+		appendStringInfo(buf, "distributed commit ");
+		xact_desc_distributed_commit(buf, xlrec);
+	}
+	else if (info == XLOG_XACT_DISTRIBUTED_FORGET)
+	{
+		xl_xact_distributed_forget *xlrec = (xl_xact_distributed_forget *) rec;
+
+		appendStringInfo(buf, "distributed forget ");
+		xact_desc_distributed_forget(buf, xlrec);
 	}
 	else
 		appendStringInfo(buf, "UNKNOWN");

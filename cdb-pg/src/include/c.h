@@ -385,6 +385,10 @@ typedef TransactionId MultiXactId;
 
 typedef uint32 MultiXactOffset;
 
+typedef uint32 DistributedTransactionId;
+#define InvalidDistributedTransactionId	((DistributedTransactionId) 0)
+#define FirstDistributedTransactionId	((DistributedTransactionId) 1)
+
 typedef uint32 CommandId;
 
 typedef int32  gpsegmentId;        /* CDB: type of gp_segment_id system col */

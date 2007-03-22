@@ -16,6 +16,7 @@
 #include "lib/stringinfo.h"         /* StringInfo */
 
 #include "cdb/cdbselect.h"
+#include "cdb/cdbtm.h"
 #include <pthread.h>
 
 struct CdbDispatchResult;           /* #include "cdb/cdbdispatchresult.h" */
@@ -26,10 +27,16 @@ struct Node;                        /* #include "nodes/nodes.h" */
 struct QueryDesc;                   /* #include "executor/execdesc.h" */
 struct SegmentDatabaseDescriptor;   /* #include "cdb/cdbconn.h" */
 
+typedef enum
+{
+	MPP_DISPATCH_COMMAND_TYPE_QUERY,
+	MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL
+} MppDispatchCommandType;
+
 /*
- * Parameter structure for the DispatchCommand threads
+ * Parameter structure for MPP Queries
  */
-typedef struct DispatchCommandParms
+typedef struct DispatchCommandQueryParms
 {
 	/*
 	 * The SQL command
@@ -44,15 +51,44 @@ typedef struct DispatchCommandParms
 	int			serializedParamslen;
 	char		*serializedSliceInfo;
 	int			serializedSliceInfolen;
-
-	char		*query_text;
-	int			query_text_len;
 	
 	/*
 	 * serialized snapshot string
 	 */
 	char		*serializedSnapshot;
 	int			serializedSnapshotlen;
+
+	/*
+	 * options for controlling certain behavior
+	 * on the remote backend before query processing. Like
+	 * explicitly opening a transaction.
+	 */
+	int			txnOptions;
+		
+} DispatchCommandQueryParms;
+
+/*
+ * Parameter structure for DTX protocol commands
+ */
+typedef struct DispatchCommandDtxProtocolParms
+{
+	DtxProtocolCommand			dtxProtocolCommand;
+	char*						dtxProtocolCommandLoggingStr;
+	char						gid[TMGIDSIZE];
+	DistributedTransactionId	gxid;
+} DispatchCommandDtxProtocolParms;
+
+/*
+ * Parameter structure for the DispatchCommand threads
+ */
+typedef struct DispatchCommandParms
+{
+	MppDispatchCommandType			mppDispatchCommandType;
+	DispatchCommandQueryParms		queryParms;
+	DispatchCommandDtxProtocolParms	dtxProtocolParms;
+	
+	char		*query_text;
+	int			query_text_len;
 	
 	int			localSlice;
 	
@@ -108,9 +144,9 @@ typedef struct CdbDispatchCmdThreads
 
 /*--------------------------------------------------------------------*/
 
-/* Start a global transaction and invoke FTS reconfiguration if needed. */
+/* Mark the DTX as distributed and reconfigure the cluster if needed. */
 void
-cdbdisp_startDtxTransaction(void);
+cdbdisp_markDtxAsDistributed(void);
 
 /*--------------------------------------------------------------------*/
 
@@ -125,7 +161,7 @@ cdbdisp_startDtxTransaction(void);
  * guc variable gp_connections_per_thread.
  *
  * The caller must also provide a serialized Snapshot string to be used to
- * set the global snapshot for the dispatched statement.
+ * set the distributed snapshot for the dispatched statement.
  *
  * The caller must provide a CdbDispatchResults object having available
  * resultArray slots sufficient for the number of QEs to be dispatched:
@@ -148,18 +184,8 @@ cdbdisp_startDtxTransaction(void);
  */
 void
 cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads,
-					   const char                  *strCommand,
-					   char				  		   *serializedQuerytree,
-					   int							serializedQuerytreelen,
-					   char 					   *serializedPlantree,
-					   int							serializedPlantreelen,
-					   char				   		   *serializedParams,
-					   int							serializedParamslen,
-					   char						   *serializedSliceInfo,	
-					   int							serializedSliceInfolen,		
-					   char						   *serializedSnapshot,
-					   int							serializedSnapshotlen,
-					   int							txnOptions,
+					   MppDispatchCommandType		mppDispatchCommandType,
+					   void						   *commandTypeParms,
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,
                        int                          sliceIndex,
@@ -203,6 +229,32 @@ cdbdisp_dispatchRMCommand(const char   *strCommand,
 						  bool			dispatchToMirrors,
                           StringInfo    errmsgbuf,
                           int			*numresults);
+
+
+/*--------------------------------------------------------------------*/
+
+/*
+ * cdbdisp_dispatchDtxProtocolCommand:
+ * Sends a non-cancelable command to all segment dbs, primary (and mirrors
+ * if requested).
+ *
+ * Returns a malloc'ed array containing the PGresult objects thus
+ * produced; the caller must PQclear() them and free() the array.
+ * A NULL entry follows the last used entry in the array.
+ *
+ * Any error messages - whether or not they are associated with
+ * PGresult objects - are appended to a StringInfo buffer provided
+ * by the caller.
+ */
+struct pg_result **             /* returns ptr to array of PGresult ptrs */
+cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
+						  char*						dtxProtocolCommandLoggingStr,
+						  char*						gid,
+						  DistributedTransactionId	gxid,
+						  bool						dispatchToMirrors,
+                          StringInfo    			errmsgbuf,
+                          int						*numresults);
+
 
 /*--------------------------------------------------------------------*/
 

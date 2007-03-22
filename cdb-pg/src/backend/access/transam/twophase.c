@@ -359,7 +359,7 @@ MarkAsPrepared(GlobalTransaction gxact)
  *		Locate the prepared transaction and mark it busy for COMMIT or PREPARE.
  */
 static GlobalTransaction
-LockGXact(const char *gid, Oid user)
+LockGXact(const char *gid, Oid user, bool raiseErrorIfNotFound)
 {
 	int			i;
 
@@ -402,12 +402,14 @@ LockGXact(const char *gid, Oid user)
 
 	LWLockRelease(TwoPhaseStateLock);
 
-	ereport(ERROR,
-			(errcode(ERRCODE_UNDEFINED_OBJECT),
-		 errmsg("prepared transaction with identifier \"%s\" does not exist",
-				gid)));
+	if (raiseErrorIfNotFound)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+			 errmsg("prepared transaction with identifier \"%s\" does not exist",
+					gid)));
+	}
 
-	/* NOTREACHED */
 	return NULL;
 }
 
@@ -1101,8 +1103,8 @@ ReadTwoPhaseFile(TransactionId xid)
 /*
  * FinishPreparedTransaction: execute COMMIT PREPARED or ROLLBACK PREPARED
  */
-void
-FinishPreparedTransaction(const char *gid, bool isCommit)
+bool
+FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFound)
 {
 	GlobalTransaction gxact;
 	TransactionId xid;
@@ -1118,7 +1120,12 @@ FinishPreparedTransaction(const char *gid, bool isCommit)
 	 * Validate the GID, and lock the GXACT to ensure that two backends do not
 	 * try to commit the same GID at once.
 	 */
-	gxact = LockGXact(gid, GetUserId());
+	gxact = LockGXact(gid, GetUserId(), raiseErrorIfNotFound);
+	if (!raiseErrorIfNotFound && gxact == NULL)
+	{
+		return false;
+	}
+	
 	xid = gxact->proc.xid;
 
 	/*
@@ -1206,6 +1213,8 @@ FinishPreparedTransaction(const char *gid, bool isCommit)
 	RemoveGXact(gxact);
 
 	pfree(buf);
+
+	return true;
 }
 
 /*

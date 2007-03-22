@@ -39,6 +39,7 @@
 #include "rusagestub.h"
 #endif
 
+#include "access/cdbdistributedxidmap.h"
 #include "access/printtup.h"
 #include "access/xact.h"
 #include "catalog/pg_type.h"
@@ -361,8 +362,20 @@ SocketBackend(StringInfo inBuf)
 
 		
 			break;
+			
+		case 'T':				/* MPP dispatched transaction protocol from QD */
 		
+			doing_extended_query_message = false;
+			
+			/* don't support old protocols with this. */
+			if( PG_PROTOCOL_MAJOR(FrontendProtocol) < 3 )				
+					ereport(COMMERROR,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("MPP dispatch unsupported for old FrontendProtocols.")));	
 
+		
+			break;
+		
 		case 'F':				/* fastpath function call */
 			/* we let fastpath.c cope with old-style input of this */
 			doing_extended_query_message = false;
@@ -1227,6 +1240,34 @@ exec_mpp_query(const char *query_string,
 		ShowUsage("QUERY STATISTICS");
 
 	debug_query_string = NULL;
+}
+
+/*
+ * exec_mpp_query
+ *
+ */
+static void
+exec_mpp_dtx_protocol_command(
+					DtxProtocolCommand 			dtxProtocolCommand,
+					char* 						loggingStr,
+					char* 						gid,
+					DistributedTransactionId 	gxid)
+{
+	CommandDest dest = whereToSendOutput;
+	char* commandTag = loggingStr;
+
+	elog(DEBUG5,"exec_mpp_dtx_protocol_command received the dtxProtocolCommand = %d (%s) gid = %s gxid = %u",
+		 dtxProtocolCommand, loggingStr, gid, gxid);
+
+	set_ps_display(commandTag, false);
+
+	BeginCommand(commandTag, dest);
+
+	performDtxProtocolCommand(dtxProtocolCommand, loggingStr, gid, gxid);
+
+	elog(DEBUG5,"exec_mpp_dtx_protocol_command calling EndCommand for dtxProtocolCommand = %d (%s) gid = %s gxid = %u",
+		 dtxProtocolCommand, loggingStr, gid, gxid);
+	EndCommand(commandTag, dest);
 }
 
 /*
@@ -4018,7 +4059,12 @@ PostgresMain(int argc, char *argv[], const char *username)
 				pgstat_report_activity("<IDLE>");
 			}
 
-			ReadyForQuery(whereToSendOutput);
+			if (Mpp_role == MPP_ROLE_EXECUTE && Gp_is_writer)
+			{
+				ReadyForQuery_QEWriter(whereToSendOutput);
+			}
+			else
+				ReadyForQuery(whereToSendOutput);
 			send_ready_for_query = false;
 		}
 
@@ -4073,6 +4119,8 @@ PostgresMain(int argc, char *argv[], const char *username)
                     query_string = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
 
+					determineDistributedTransactionContext();
+					
 					exec_simple_query(query_string);
 
 					send_ready_for_query = true;
@@ -4098,7 +4146,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 					int serializedParamslen;
 					int serializedSliceInfolen;
 					
-					int 	txnOptions;
 					int		localSlice;
 					Oid 	suid;
 					Oid 	ouid;
@@ -4140,75 +4187,11 @@ PostgresMain(int argc, char *argv[], const char *username)
 					else
 						serializedSnapshot = pq_getmsgbytes(&input_message,serializedSnapshotlen);
 
-					/* a NONE message is sent during an ABORT and so we dont
-					 * need to worry about setting the snapshot info.
-					 */
-					if (serializedSnapshotlen > 0)
-					{			
-						int xipsize;
-						const char * p = serializedSnapshot;		
-							
-						memcpy(&QDSentXID,p,sizeof(TransactionId)); 	p+=sizeof(TransactionId);		
-						
-						memcpy(&QDSentSnapshot->xmin,p,sizeof(TransactionId)); 	p+=sizeof(TransactionId);	
-						memcpy(&QDSentSnapshot->xmax,p,sizeof(TransactionId)); 	p+=sizeof(TransactionId);	
-						memcpy(&QDSentSnapshot->xcnt,p,sizeof(uint32)); 	p+=sizeof(uint32);	
-							
-						xipsize = sizeof(TransactionId)*QDSentSnapshot->xcnt;
-						QDSentSnapshot->xip    = palloc(xipsize);
-						memcpy(QDSentSnapshot->xip,p,xipsize); p += xipsize;
-										
-						memcpy(&QDSentSnapshot->curcid,p,sizeof(CommandId)); 	p+=sizeof(CommandId);	
-						
-						if (Mpp_role == MPP_ROLE_DISPATCH)
-						{
-							elog(DEBUG1,"QD Got snapshot from QE, xid = %d",QDSentXID);
-							ActiveSnapshot = CopySnapshot(QDSentSnapshot);
-						}
-						
-					}
-										
+					getGlobalSnapshot(serializedSnapshot, serializedSnapshotlen);
 					
 					/* get the transaction options */
-					txnOptions = pq_getmsgint(&input_message, 4);
-					
-					if (isMppTxOptionsAutoBegin(txnOptions))
-					{
-						/* TODO: eventually all of the qExecs should really form
-						 *       a verbose BEGIN stmt explicitly calling out
-						 * 		 the desired Isolation level.  But currently the
-						 *		 DTM doesn't handle the reader qexecs very well
-						 * 		 so we need to NOT explicitly begin those since
-						 *		 the DTM never gets around to sending them any
-						 *		 explicit commits or anything
-						 */
-						if (Mpp_role == MPP_ROLE_DISPATCH || (Mpp_role == MPP_ROLE_EXECUTE && Gp_is_writer))
-						{
-							/* we only need to do this step if we aren't already
-							 * within a transaction
-							 */
-							if (!IsTransactionOrTransactionBlock())
-							{
-								/* build the right beginStmt based on the options */
-								char beginStmt[100];
-				
-								int ExplicitIsoLevel;
-								bool ExplicitReadOnly;
-								unpackMppTxnOptions(txnOptions,
-									&ExplicitIsoLevel, &ExplicitReadOnly);
-								
-								sprintf(beginStmt, "BEGIN ISOLATION LEVEL %s, READ %s", 
-									IsoLevelAsUpperString(ExplicitIsoLevel),
-									(ExplicitReadOnly ? "ONLY" : "WRITE"));
-
-								elog(DEBUG5, "Explict %s.",beginStmt);
-
-								/* kick off an explict BEGIN */
-								exec_simple_query(beginStmt);
-							}
-						}
-						
-					}
+					QDSentTxnOptions = pq_getmsgint(&input_message, 4);
+					elog(LOG,"QDSentTxnOptions = 0x%x", QDSentTxnOptions);
 					
 					/* get the query string and kick off processing. */
 					if (query_string_len == 0)
@@ -4240,14 +4223,21 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 					 
 					elog(DEBUG5, "MPP dispatched stmt from QD: %s.",query_string);
+					elog(LOG, "MPP dispatched stmt from QD: %s.",query_string);
+					elog(LOG, "...QDSentDistributedXid = %u, QDSentXminAllDistributedSnapshots = %u, QDSentDistributedSnapshot (xmin = %u, xmax = %u, xcnt = %u), QDSentDistributedCommandId = %d",
+				              QDSentDistributedXid, 
+				              QDSentXminAllDistributedSnapshots, 
+				              QDSentDistributedSnapshot->xmin, QDSentDistributedSnapshot->xmax, QDSentDistributedSnapshot->xcnt,
+				              QDSentDistributedCommandId);
 					 
-					
 					if (suid > 0)				
 						SetSessionAuthorization(suid, suid_is_super);  /* Set the session UserId */
 	
 					if (ouid > 0 && ouid != GetSessionUserId()) 
 						SetCurrentRoleId(ouid, ouid_is_super);		/* Set the outer UserId */
 						
+					determineDistributedTransactionContext();
+					
 					//PG_TRY();
 					{				
 						if (cuid > 0)
@@ -4276,6 +4266,46 @@ PostgresMain(int argc, char *argv[], const char *username)
 					send_ready_for_query = true;
 				}
 				break;
+            case 'T':           /* MPP dispatched dtx protocol command from QD */
+				{
+					DtxProtocolCommand dtxProtocolCommand;
+					
+					int loggingStrLen;
+					char* loggingStr;
+					
+					int gidLen;
+					char* gid;
+
+					DistributedTransactionId gxid;
+					
+					/* get the transaction protocol command # */
+					dtxProtocolCommand = (DtxProtocolCommand) pq_getmsgint(&input_message, 4);
+
+					/* get the logging string length */
+					loggingStrLen = pq_getmsgint(&input_message, 4);
+					
+					/* get the logging string */
+					loggingStr = pq_getmsgbytes(&input_message,loggingStrLen);
+
+					/* get the logging string length */
+					gidLen = pq_getmsgint(&input_message, 4);
+					
+					/* get the logging string */
+					gid = pq_getmsgbytes(&input_message,gidLen);
+
+					/* get the distributed transaction id */
+					gxid = (DistributedTransactionId) pq_getmsgint(&input_message, 4);
+
+					pq_getmsgend(&input_message);
+
+					// Do not touch DTX context.
+
+					exec_mpp_dtx_protocol_command(dtxProtocolCommand, loggingStr, gid, gxid);
+
+					send_ready_for_query = true;
+
+            	}
+				break;
 
 			case 'P':			/* parse */
 				{
@@ -4303,6 +4333,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 					}
 					pq_getmsgend(&input_message);
 
+					determineDistributedTransactionContext();
+					
 					exec_parse_message(query_string, stmt_name,
 									   paramTypes, numParams);
 				}
@@ -4347,6 +4379,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 					max_rows = pq_getmsgint(&input_message, 4);
 					pq_getmsgend(&input_message);
 
+					determineDistributedTransactionContext();
+					
 					exec_execute_message(portal_name, max_rows);
 				}
 				break;
@@ -4361,6 +4395,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 				/* Tell the collector what we're doing */
 				pgstat_report_activity("<FASTPATH> function call");
 
+				determineDistributedTransactionContext();
+					
 				/* start an xact for this function invocation */
 				start_xact_command();
 
@@ -4404,6 +4440,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 					close_type = pq_getmsgbyte(&input_message);
 					close_target = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
+
+					determineDistributedTransactionContext();
 
 					switch (close_type)
 					{
@@ -4456,6 +4494,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 					describe_target = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
 
+					determineDistributedTransactionContext();
+					
 					switch (describe_type)
 					{
 						case 'S':

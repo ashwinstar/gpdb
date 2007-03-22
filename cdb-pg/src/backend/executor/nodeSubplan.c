@@ -1012,9 +1012,9 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			if (needXact)
 			{
 				/*
-				 * Start a global transaction and reconfigure the cluster if needed.
+				 * Mark the DTX as distributed and reconfigure the cluster if needed.
 				 */
-				cdbdisp_startDtxTransaction();
+				cdbdisp_markDtxAsDistributed();
 			}
 		
 			/*

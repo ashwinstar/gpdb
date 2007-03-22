@@ -34,7 +34,7 @@ VariableCache ShmemVariableCache = NULL;
  * Allocate the next XID for my new transaction.
  */
 TransactionId
-GetNewTransactionId(bool isSubXact)
+GetNewTransactionId(bool isSubXact, bool setProcXid)
 {
 	TransactionId xid;
 
@@ -142,7 +142,7 @@ GetNewTransactionId(bool isSubXact)
 	 * window *will* include the parent XID, so they will deliver the correct
 	 * answer later on when someone does have a reason to inquire.)
 	 */
-	if (MyProc != NULL)
+	if (setProcXid && MyProc != NULL)
 	{
 		/*
 		 * Use volatile pointer to prevent code rearrangement; other backends
@@ -154,7 +154,10 @@ GetNewTransactionId(bool isSubXact)
 		volatile PGPROC *myproc = MyProc;
 
 		if (!isSubXact)
+		{
 			myproc->xid = xid;
+			myproc->mppDistributedTransactionId = InvalidDistributedTransactionId;
+		}
 		else
 		{
 			int			nxids = myproc->subxids.nxids;
@@ -172,6 +175,25 @@ GetNewTransactionId(bool isSubXact)
 	LWLockRelease(XidGenLock);
 
 	return xid;
+}
+
+void
+SetProcXid(TransactionId xid, DistributedTransactionId mppDistributedTransactionId)
+{
+	volatile PGPROC *myproc;
+	
+	Assert (MyProc != NULL);
+	
+	LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
+	
+	myproc = MyProc;
+	myproc->xid = xid;
+	myproc->mppDistributedTransactionId = mppDistributedTransactionId;
+
+	LWLockRelease(XidGenLock);
+
+	elog(LOG,"SetProcId pid = %d, xid = %u, distributed xid = %u",
+		 MyProcPid, xid, mppDistributedTransactionId);
 }
 
 /*

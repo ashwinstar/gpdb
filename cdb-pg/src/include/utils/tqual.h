@@ -19,6 +19,7 @@
 #include "storage/buf.h"
 #include "utils/timestamp.h"  /* TimestampTz */
 #include "access/xact.h"   /* MaxMppSavePoints */
+#include "cdb/cdbtm.h"
 
 
 /*
@@ -80,8 +81,18 @@ extern TransactionId TransactionXmin;
 extern TransactionId RecentXmin;
 extern TransactionId RecentGlobalXmin;
 
-extern DLLIMPORT Snapshot QDSentSnapshot;
-extern TransactionId QDSentXID;
+// extern DLLIMPORT Snapshot QDSentSnapshot;
+// extern TransactionId QDSentXID;
+
+extern DtxContext DistributedTransactionContext;
+
+extern DLLIMPORT DistributedSnapshot QDSentDistributedSnapshot;
+extern DistributedTransactionId QDSentDistributedXid;
+extern DistributedTransactionId QDSentXminAllDistributedSnapshots;
+extern int QDSentSharedLocalSnapshotSlotId;
+extern CommandId QDSentDistributedCommandId;
+
+extern int QDSentTxnOptions;
 
 /* MPP Shared Snapshot */
 typedef struct SharedSnapshotSlot
@@ -164,8 +175,9 @@ extern void CreateSharedSnapshotArray(void);
 extern char *SharedSnapshotDump(void);
 extern SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId);
 extern SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId);
-extern void SharedSnapshotRemove(SharedSnapshotSlot *slot);
-
+extern void SharedSnapshotRemove(SharedSnapshotSlot *slot, char *creatorDescription);
+extern void addSharedSnaphot(char *creatorDescription, int id);
+extern void lookupSharedSnaphot(char *lookerDescription, char *creatorDescription, int id);
 
 extern bool HeapTupleSatisfiesItself(HeapTupleHeader tuple, Buffer buffer);
 extern bool HeapTupleSatisfiesNow(HeapTupleHeader tuple, Buffer buffer);

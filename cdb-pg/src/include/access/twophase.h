@@ -47,6 +47,6 @@ extern void RemoveTwoPhaseFile(TransactionId xid, bool giveWarning);
 
 extern void CheckPointTwoPhase(XLogRecPtr redo_horizon);
 
-extern void FinishPreparedTransaction(const char *gid, bool isCommit);
+extern bool FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFound);
 
 #endif   /* TWOPHASE_H */

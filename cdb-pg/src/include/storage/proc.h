@@ -66,6 +66,9 @@ struct PGPROC
 	TransactionId xid;			/* transaction currently being executed by
 								 * this proc */
 
+	DistributedTransactionId mppDistributedTransactionId;
+								/* the current distributed MPP
+								 * transction id. */
 	TransactionId xmin;			/* minimal running XID as it was when we were
 								 * starting our xact, excluding LAZY VACUUM:
 								 * vacuum must not remove tuples deleted by

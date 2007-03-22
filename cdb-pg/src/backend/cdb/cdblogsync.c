@@ -17,22 +17,15 @@
 #include "storage/ipc.h"
 
 #include "cdb/cdblogsync.h"
-#include "cdb/cdbtmlog.h"
 #include "cdb/cdbtm.h"
 
 /*
  * There is a protocol consisting of four messages from primary->mirror:
  *
  * Q xlog filename woffset wlen [resync]
- * Q tmlog filename woffset wlen [resync]
  * Q issyncmaster [resync]
  * Q close [resync]
  */
-
-/* for tmlog */
-static char tmlogfilename[100];
-static int	tmlogfilefd = -1;
-static int	tmlogfileoffset = -1;
 
 /* for xlog */
 static char xlogfilename[100];
@@ -50,15 +43,32 @@ static void *buf = NULL;
 static int	buflen;
 static bool resync = false;
 
-static void cdb_sync_tmlog(void);
 static void cdb_sync_xlog(void);
 static void parseCmd(const char *);
 static void readLogMessage(void *, int);
 static int	getLogFileSize(int fd);
 static void syncWriteLog(int, void *, int, int);
 static void ensureBufferSize(void);
-static bool tmlogOpenFile(void);
 static bool xlogOpenFile(void);
+static void write_with_ereport(int fd, void *data, int len);
+
+
+static void
+write_with_ereport(int fd, void *data, int len)
+{
+	int			write_len;
+
+	write_len = write(fd, data, len);
+
+	if (write_len != len)
+	{
+		close(fd);
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("error writing file: %m")));
+	}
+}
+
 
 /*
  * initialize log sync - create recovery.conf file ready for recovery
@@ -108,9 +118,6 @@ cdb_sync_command(const char *cmd)
 		case SYNC_XLOG:
 			cdb_sync_xlog();
 			break;
-		case SYNC_TMLOG:
-			cdb_sync_tmlog();
-			break;
 		case SYNC_CHECK:
 			/*
 			 * check do nothing, this is used to determine postmaster or
@@ -124,61 +131,6 @@ cdb_sync_command(const char *cmd)
 	releaseTmLock();
 
 	return;
-}
-
-/*
- * cdb_sync_tmlog - process tmlog sync
- */
-static void
-cdb_sync_tmlog(void)
-{
-	bool		fcreated = tmlogOpenFile();
-
-	if (wlen == 0)
-	{
-		/* tmlog validation call */
-		if (woffset != tmlogfileoffset)
-		{
-			if (fcreated)
-				ereport(FATAL,
-						(errcode_for_file_access(),
-						 errmsg("QDSYNC: tmlog is not in sync, primary segdb offset: %d, mirrored segdb offset: %d",
-								woffset, tmlogfileoffset)));
-			else
-			{
-				if (woffset < tmlogfileoffset)
-				{
-					/* XXX: mirror advanced beyond primary ??? */
-					ereport(ERROR,
-							(errcode_for_file_access(),
-					errmsg("QDSYNC: pdboff: %d, mdboff: %d, resync required.",
-						   woffset, tmlogfileoffset)));
-				}
-				else
-				{
-					/*
-					 * primary advanced beyond mirror, this indicates that the
-					 * mirror has failed at some point ? So we'll resync the
-					 * entire log
-					 */
-					ereport(ERROR,
-							(errcode_for_file_access(),
-					errmsg("QDSYNC: pdboff: %d, mdboff: %d, resync required.",
-						   0, woffset)));
-				}
-			}
-		}
-	}
-	else
-	{
-		ensureBufferSize();
-		readLogMessage(buf, wlen);
-		syncWriteLog(tmlogfilefd, buf, woffset, wlen);
-		tmlogfileoffset += wlen;
-	}
-
-	if (resync)
-		elog(LOG, "QDSYNC: resyncing tmlog offset %d len %d", woffset, wlen);
 }
 
 /*
@@ -268,12 +220,6 @@ parseCmd(const char *cmd)
 		cmdtype = SYNC_XLOG;
 		getCmdArgs(cmd + strlen("xlog") + 1);
 	}
-	else if (strncmp(cmd, "tmlog", 5) == 0)
-	{
-		/* tmlog command */
-		cmdtype = SYNC_TMLOG;
-		getCmdArgs(cmd + strlen("tmlog") + 1);
-	}
 	else if (strncmp(cmd, "issyncmaster", 12) == 0)
 	{
 		cmdtype = SYNC_CHECK;
@@ -359,55 +305,6 @@ ensureBufferSize(void)
 			elog(PANIC, "QDSYNC: malloc failed in sync tmlog, possiblly running out of memory");
 		buflen = wlen;
 	}
-}
-
-/*
- * open TM log file, return true if file is created.
- */
-static bool
-tmlogOpenFile(void)
-{
-	char		path[MAXPGPATH];
-	bool		ret = false;
-
-	if (strcmp(tmlogfilename, wfilename) == 0)
-	{
-		return ret;
-	}
-
-	/* the first time or file is changed */
-	snprintf(path, MAXPGPATH, "%s/%s", dtm_dir, wfilename);
-
-	elog(LOG, "QDSYNC: opening tm log file %s", wfilename);
-
-	if (tmlogfilefd >= 0)
-	{
-		close(tmlogfilefd);
-		tmlogfilefd = -1;
-		tmlogfileoffset = -1;
-	}
-
-	tmlogfilefd = open(path, O_RDWR, 0);
-	if (tmlogfilefd < 0)
-	{
-		elog(LOG, "QDSYNC: creating tm log file %s", wfilename);
-		tmlogfilefd = open(path, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
-		if (tmlogfilefd < 0)
-		{
-			ereport(PANIC,
-					(errcode_for_file_access(),
-					 errmsg("QDSYNC: could not create tmlog file \"%s\"",
-							path)));
-		}
-		/* skip the first tm file creation */
-		if (strcmp(tmlogfilename, "00000000") != 0)
-			ret = true;
-	}
-
-	strcpy(tmlogfilename, wfilename);
-	tmlogfileoffset = getLogFileSize(tmlogfilefd);
-
-	return ret;
 }
 
 /*

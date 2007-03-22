@@ -36,6 +36,8 @@
 #include "miscadmin.h"
 #include "storage/procarray.h"
 #include "utils/tqual.h"
+#include "cdb/cdbtm.h"
+
 
 #include "access/xact.h"		/* setting the shared xid */
 
@@ -523,27 +525,28 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	 * its never for a very long time.
 	 *
 	 */
-    /*$$$$$$$ FIX ME $$$$$$$$$*/
-    if (Gp_segment == -1 && Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer)
-    {
-        elog(DEBUG5, "GetSnapshotData for entry db singleton QE: Shared snapshot not implemented.  Punt!"); 
-    }
-    else
-    /*$$$$$$$$$$$$$$$$$$$$$$$*/
-	if (Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer)
+	if (DistributedTransactionContext == DTX_CONTEXT_QE_READER ||
+		DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON)
 	{
 		int	   	count = 0;
-		/* the pg_usleep() call below is in units of 2ms, interconnect
+		/* the pg_usleep() call below is in units of ms, interconnect
 		 * timeout is in seconds */
-		int		segmate_timeout = interconnect_setup_timeout * 500;
+		int     sleep_per_check_ms = 200;
+		int		segmate_timeout_ms = interconnect_setup_timeout * 1000;
+
+
+		if (DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON)
+		{
+			lookupSharedSnaphot("Entry DB Singleton", "Query Dispatcher", QDSentSharedLocalSnapshotSlotId);
+		}
 
 		for (;;)
 		{
 			if (SharedLocalSnapshotSlot == NULL)
 				elog(ERROR, "SharedLocalSnapshotSlot is NULL");
 
-			if (QDSentXID == SharedLocalSnapshotSlot->QDxid &&
-				QDSentSnapshot->curcid == SharedLocalSnapshotSlot->QDcid &&
+			if (QDSentDistributedXid == SharedLocalSnapshotSlot->QDxid &&
+				QDSentDistributedCommandId == SharedLocalSnapshotSlot->QDcid &&
 				SharedLocalSnapshotSlot->ready)
 			{
 				/*
@@ -591,22 +594,37 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 				 *
 				 * TODO: is there a semaphore or something better we can do ehre.
 				 */
-				pg_usleep( /* microseconds */ 2000);
-				count++;
+				if (count > 0)
+					elog(LOG,"GetSnapshotData did not find shared local snapshot information. "
+							 "We are waiting for the shared snapshot to have XID: %d but the value "
+												   "is currently: %d." 
+												   " waiting for cid to be %d but is currently %d.  ready=%d."
+												   " Our slotindex is: %d \n",
+												   QDSentDistributedXid, SharedLocalSnapshotSlot->QDxid,
+												   QDSentDistributedCommandId, SharedLocalSnapshotSlot->QDcid,
+												   SharedLocalSnapshotSlot->ready,
+												   SharedLocalSnapshotSlot->slotindex);
+
+				
+				pg_usleep(sleep_per_check_ms);
 
 				CHECK_FOR_INTERRUPTS();
 
-				if (count >= segmate_timeout)
+				count++;
+
+				segmate_timeout_ms -= sleep_per_check_ms;
+
+				if (segmate_timeout_ms <= 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-							 errmsg("Reader qExec timed out waiting for Writer to set the shared snapshot."),
+							 errmsg("GetSnapshotData timed out waiting for Writer to set the shared snapshot."),
 							 errdetail("We are waiting for the shared snapshot to have XID: %d but the value "
 									   "is currently: %d." 
 									   " waiting for cid to be %d but is currently %d.  ready=%d."
 									   " Our slotindex is: %d \n"
 									   "Dump of all sharedsnapshots in shmem: %s",
-									   QDSentXID, SharedLocalSnapshotSlot->QDxid,
-									   QDSentSnapshot->curcid, SharedLocalSnapshotSlot->QDcid,  SharedLocalSnapshotSlot->ready,
+									   QDSentDistributedXid, SharedLocalSnapshotSlot->QDxid,
+									   QDSentDistributedCommandId, SharedLocalSnapshotSlot->QDcid,  SharedLocalSnapshotSlot->ready,
 									   SharedLocalSnapshotSlot->slotindex, SharedSnapshotDump())));
 			}
 		}
@@ -692,6 +710,66 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 
 	xmax = ReadNewTransactionId();
 
+	if (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
+	{
+		elog(DEBUG5, "GetSnapshotData going to check CurrentDistributedSnapshot in-doubt xids (count = %d)",
+		     CurrentDistributedSnapshot->xcnt);
+		for (index = 0; index < CurrentDistributedSnapshot->xcnt; index++)
+		{
+			DistributedTransactionId dxid = CurrentDistributedSnapshot->xip[index];
+			TransactionId xid = GetLocalXidForDistributedTransaction(dxid);
+
+			if (xid != InvalidTransactionId)
+			{
+				elog(DEBUG5, "GetSnapshotData adding CurrentDistributedSnapshot in-doubt xid = %u as local xid = %u",
+					 dxid, xid);
+				
+				if (TransactionIdPrecedes(xid, xmin))
+					xmin = xid;
+				snapshot->xip[count] = xid;
+				count++;
+			}
+			else
+			{
+				elog(DEBUG5, "GetSnapshotData found CurrentDistributedSnapshot in-doubt xid = %u was invalid",
+					 dxid);
+			}
+
+			// UNDONE: Unclear how to update globalxmin.
+		}
+	}
+	
+	if (DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
+		DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER||
+		DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT)
+	{
+		elog(DEBUG5, "GetSnapshotData going to check QDSentDistributedSnapshot in-doubt xids (count = %d)",
+		     QDSentDistributedSnapshot->xcnt);
+		for (index = 0; index < QDSentDistributedSnapshot->xcnt; index++)
+		{
+			TransactionId dxid = QDSentDistributedSnapshot->xip[index];
+			TransactionId xid = GetLocalXidForDistributedTransaction(dxid);
+
+			if (xid != InvalidTransactionId)
+			{
+				elog(DEBUG5, "GetSnapshotData adding QDSentDistributedSnapshot in-doubt xid = %u as local xid = %u",
+					 dxid, xid);
+				
+				if (TransactionIdPrecedes(xid, xmin))
+					xmin = xid;
+				snapshot->xip[count] = xid;
+				count++;
+			}
+			else
+			{
+				elog(DEBUG5, "GetSnapshotData found QDSentDistributedSnapshot in-doubt xid = %u was invalid",
+					 dxid);
+			}
+
+			// UNDONE: Unclear how to update globalxmin.
+		}
+	}
+
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
 		PGPROC	   *proc = arrayP->procs[index];
@@ -714,6 +792,18 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 			proc->inVacuum)
 			continue;
 
+		elog(DEBUG5, "GetSnapshotData checking proc->pid = %d, xid = %u, mppDistributedTransactionId = %u",
+		     proc->pid, xid, proc->mppDistributedTransactionId);
+		if (proc->mppDistributedTransactionId != InvalidDistributedTransactionId &&
+			(DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE ||
+		     DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
+		     DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT))
+		{
+			elog(DEBUG5, "GetSnapshotData excluding local xid = %u for distributed xid = %u",
+			     xid, proc->mppDistributedTransactionId);
+			continue;
+		}
+		
 		if (TransactionIdPrecedes(xid, xmin))
 			xmin = xid;
 		snapshot->xip[count] = xid;
@@ -780,11 +870,15 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 
 	/*
 	 * MPP Addition.  If we are the chief then we'll save our local snapshot
-	 * into the shared snapshot.
+	 * into the shared snapshot.  Amazingly, we need to use the shared local
+	 * snapshot for the "Local Implicit using Distributed Snapshot" case, too.
 	 */
-	if (Mpp_role == MPP_ROLE_EXECUTE && Gp_is_writer)
+	if (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE ||
+		DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
+		DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
+		(DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT &&
+		 SharedLocalSnapshotSlot != NULL))
 	{
-
 		SharedLocalSnapshotSlot->snapshot.xmin = snapshot->xmin;
 		SharedLocalSnapshotSlot->snapshot.xmax = snapshot->xmax;
 		SharedLocalSnapshotSlot->snapshot.xcnt = snapshot->xcnt;
@@ -796,7 +890,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
         GetSubtransactionsForSharedSnapshot(
         	&SharedLocalSnapshotSlot->subcnt,
         	SharedLocalSnapshotSlot->subxids);
-		elog(DEBUG5,"Writer qExec count of subtransaction ids %u",SharedLocalSnapshotSlot->subcnt);
+		elog(DEBUG5,"GetSnapshotData count of subtransaction ids %u",SharedLocalSnapshotSlot->subcnt);
 
 		/*
 		 * The handling of snapshot->xip looks very strange.  The reason is
@@ -810,14 +904,36 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		SharedLocalSnapshotSlot->snapshot.curcid = snapshot->curcid;
 
 		SetSharedTransactionId();
+		
+		if (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
+		{
+			SharedLocalSnapshotSlot->QDcid = snapshot->curcid;
+			SharedLocalSnapshotSlot->QDxid = getDistributedTransactionId();
+		}
+		else
+		{
+			/*
+			 * Information arrived in distributed snapshot
+			 */
+			Assert(DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
+			       DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
+			       DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT);
 
-		SharedLocalSnapshotSlot->QDcid = QDSentSnapshot->curcid;
-		SharedLocalSnapshotSlot->QDxid = QDSentXID;
+			SharedLocalSnapshotSlot->QDcid = QDSentDistributedCommandId;
+			SharedLocalSnapshotSlot->QDxid = QDSentDistributedXid;
+			
+
+		}
 		SharedLocalSnapshotSlot->ready = true;
-		elog(DEBUG5, "WRITER QE setting shared local Snapshot Data xmin: %d"
-			 " xmax: %d curcid: %d\n", SharedLocalSnapshotSlot->snapshot.xmin,
+		elog(DEBUG5, "GetSnapshotData for DistributedTransactionContext = '%s' setting shared local snapshot xid = %u (xmin: %u xmax: %u xcnt: %u) curcid: %d, QDxid = %u, QDcid = %u", 
+			 DtxContextToString(DistributedTransactionContext),
+			 SharedLocalSnapshotSlot->xid,
+			 SharedLocalSnapshotSlot->snapshot.xmin,
 			 SharedLocalSnapshotSlot->snapshot.xmax,
-			 SharedLocalSnapshotSlot->snapshot.curcid);
+			 SharedLocalSnapshotSlot->snapshot.xcnt,
+			 SharedLocalSnapshotSlot->snapshot.curcid,
+			 SharedLocalSnapshotSlot->QDxid,
+			 SharedLocalSnapshotSlot->QDcid);
 
 	}
 

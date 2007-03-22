@@ -302,6 +302,7 @@ InitProcess(void)
     if (Mpp_role == MPP_ROLE_DISPATCH)
     	MyProc->mppIsWriter = !gp_is_callback;
 
+
 	/*
 	 * We might be reusing a semaphore that belonged to a failed process. So
 	 * be careful and reinitialize its value here.	(This is not strictly
@@ -611,12 +612,27 @@ ProcKill(int code, Datum arg)
 	 */
 	LWLockReleaseAll();
 
-	/* Remove the shared snapshot slot.  don't need to check for MPP_ROLE_EXECUTE
-	 * since Gp_is_writer is only set in that role.
+	/* Remove the shared snapshot slot.
 	 */
-	if( Gp_is_writer )
-		SharedSnapshotRemove(SharedLocalSnapshotSlot);
-		
+	if (SharedLocalSnapshotSlot != NULL)
+	{
+		if(Mpp_role == MPP_ROLE_DISPATCH)
+		{
+			SharedSnapshotRemove(SharedLocalSnapshotSlot, "Query Dispatcher");
+		}
+	    else if (Gp_segment == -1 && Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer)
+	    {
+			/* 
+			 * Entry db singleton QE is a user of the shared snapshot -- not a creator.
+			 */	
+	    }
+		else if (Mpp_role == MPP_ROLE_EXECUTE && Gp_is_writer)
+		{
+			SharedSnapshotRemove(SharedLocalSnapshotSlot, "Writer qExec");
+		}
+		SharedLocalSnapshotSlot = NULL;
+	}
+
 	SpinLockAcquire(ProcStructLock);
 
     MyProc->mppLocalProcessSerial = 0;

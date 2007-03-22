@@ -62,6 +62,7 @@ typedef enum LWLockId
 	BtreeVacuumLock,
 	AddinShmemInitLock,
 	SharedSnapshotLock,
+	DistributedXidMapControlLock,
 	FirstBufMappingLock,
 	FirstLockMgrLock = FirstBufMappingLock + NUM_BUFFER_PARTITIONS,
 	ResQueueLock = FirstLockMgrLock + NUM_LOCK_PARTITIONS,

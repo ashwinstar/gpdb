@@ -170,6 +170,14 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 		result->noticeHooks = conn->noticeHooks;
 		result->client_encoding = conn->client_encoding;
 
+		if (conn->QEWriter_HaveInfo)
+		{
+			result->QEWriter_HaveInfo = true;
+			result->QEWriter_DistributedTransactionId = conn->QEWriter_DistributedTransactionId;
+			result->QEWriter_CommandId= conn->QEWriter_CommandId;
+			result->QEWriter_Dirty = conn->QEWriter_Dirty;
+		}
+
 		/* consider copying conn's errorMessage */
 		switch (status)
 		{
@@ -838,6 +846,89 @@ PQbuildMppQueryString(const char  *command,
 		pos += sliceinfo_len;
 	}
 
+	len = pos - shared_query - 1;
+
+	/* fill in length placeholder */
+	tmp = htonl(len);
+	memcpy(shared_query+1, &tmp, 4);
+
+	if (final_len)
+		*final_len = len + 1;
+
+	return shared_query;
+}
+
+/* Special MPP-only method for executing DTX protocol commands.  
+ *
+ * Our goal is to build one copy of the MPP DTX command, and to
+ * have each dispatcher connection hold pointers into the single copy.
+ * query
+ * So the code below does the same work, roughly as:
+ * 
+ * 	if (pqPutMsgStart('T', false, conn) < 0 ||
+ *		pqPutInt(dtxProtocolCommand, 4, conn ) < 0 ||
+ *		pqPutMsgEnd(conn) < 0)
+ *
+ * The remaining work (protocol xmit state, mostly) is done by
+ * PQsendMppQuery_shared().
+ */
+char *
+PQbuildMppDtxProtocolCommand(
+					  int						dtxProtocolCommand,
+					  char*						dtxProtocolCommandLoggingStr,
+					  char*						gid,
+					  int   					gxid,
+					  int         		    	*final_len)
+{
+	int loggingStrLen;
+	int gidLen;
+	int	tmp, len;
+	int	total_query_len;
+	char *shared_query, *pos;
+
+	loggingStrLen = strlen(dtxProtocolCommandLoggingStr);
+	gidLen = strlen(gid);
+
+	total_query_len = 5 /* overhead */ + 4 /* dtxProtocolCommand */ + 8 /* lengths */ +
+		   loggingStrLen + gidLen + 4 /* gxid */;
+
+	shared_query = malloc(total_query_len);
+	if (shared_query == NULL)
+	{
+		/* tell our caller how much memory we wanted */
+		if (final_len != NULL)
+			*final_len = total_query_len;
+		return NULL;
+	}
+
+	pos = shared_query;
+
+	*pos++ = 'T';
+
+	pos += 4; /* place holder for message length */
+
+	tmp = htonl(dtxProtocolCommand);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(loggingStrLen);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	memcpy(pos, dtxProtocolCommandLoggingStr, loggingStrLen);
+	pos += loggingStrLen;
+	
+	tmp = htonl(gidLen);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	memcpy(pos, gid, gidLen);
+	pos += gidLen;
+	
+	tmp = htonl(gxid);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
 	len = pos - shared_query - 1;
 
 	/* fill in length placeholder */

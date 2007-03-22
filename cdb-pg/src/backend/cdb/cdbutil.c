@@ -48,7 +48,6 @@
  */
 static int	CdbComponentDatabaseInfoCompare(const void *p1, const void *p2);
 static void freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi);
-static CdbComponentDatabases *getCdbComponentInfo(void);
 
 static char **segment_ip_cache = NULL;
 static int segment_ip_cache_limit = 0;
@@ -235,7 +234,7 @@ freeGpId(void)
  * Storage for the SegmentInstances block and all subsidiary
  * strucures are allocated from the caller's context.
  */
-static CdbComponentDatabases *
+CdbComponentDatabases *
 getCdbComponentInfo(void)
 {
 	CdbComponentDatabases *component_databases = NULL;

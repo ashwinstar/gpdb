@@ -2418,7 +2418,7 @@ reaper(SIGNAL_ARGS)
 			if (startstat)
 				continue;
 		}
-		
+				
 		/*
 		 * Was it the statistics collector?  If so, just try to start a new
 		 * one; no need to force reset of the rest of the system.  (If fail,
@@ -3737,8 +3737,6 @@ SubPostmasterMain(int argc, char *argv[])
 		SeqServerMain(argc - 2, argv + 2);
 		proc_exit(0);
 	}
-
-
 
 	return 1;					/* shouldn't get here */
 }

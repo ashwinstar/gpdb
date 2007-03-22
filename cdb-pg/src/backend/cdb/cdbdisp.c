@@ -72,10 +72,16 @@ static bool
 shouldStillDispatchCommand(CdbDispatchResult * dispatchResult);
 
 static
-void dispatchCommand(CdbDispatchResult *dispatchResult,
+void dispatchCommandQuery(CdbDispatchResult *dispatchResult,
                      const char        *query_text,
                      int 			  	query_len,
                      const char        *debug_text);
+							
+static
+void dispatchCommandDtxProtocol(CdbDispatchResult *dispatchResult,
+                     const char        *query_text,
+                     int 			  	query_len,
+                     DtxProtocolCommand dtxProtocolCommand);
 							
 static void
 handleSelectError(DispatchCommandParms *pParms,
@@ -87,6 +93,10 @@ handleSelectTimeout(DispatchCommandParms   *pParms,
                     int                     db_count,
                     int                    *timeoutCounter);
 
+static void
+CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc, CdbDispatchResult * dispatchResult);
+
+
 static bool                     /* returns true if command complete */
 processResults(CdbDispatchResult   *dispatchResult);
 
@@ -94,27 +104,17 @@ processResults(CdbDispatchResult   *dispatchResult);
 static void
 addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
                              int                    segdbs_in_thread_pool,
-							 const char            *strCommand,
-							 char			       *serializedQuerytree,
-							 int					serializedQuerytreelen,
-							 char 		           *serializedPlantree,
-							 int					serializedPlantreelen,
-							 char			       *serializedParams,
-							 int					serializedParamslen,
-							 char			       *serializedSliceInfo,	
-							 int					serializedSliceInfolen,		
-							 char			       *serializedSnapshot,
-							 int					serializedSnapshotlen,
-							 int					txnOptions,
+							 MppDispatchCommandType	mppDispatchCommandType,
+							 void				   *commandTypeParms,
 							 int					sliceId,
 							 CdbDispatchResult     *dispatchResult);
 
 static void
 cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
-						char			   			*serializedQuerytree,
-						int							 serializedQuerytreelen,
-						char	 		   			*serializedPlantree,
-						int							 serializedPlantreelen,
+						char				   		*serializedQuerytree,
+						int							serializedQuerytreelen,
+						char 		   				*serializedPlantree,
+						int							serializedPlantreelen,
                         bool                        cancelOnError,
                         bool						startTransaction,
                         struct CdbDispatchResults **pPrimaryResults,
@@ -134,7 +134,7 @@ typedef struct {
 static int fillSliceVector(SliceTable * sliceTable, int sliceIndex, sliceVec *sliceVector, int len);
 
 /* determines which dispatchOptions need to be set. */
-static int generateTxnOptions( bool shouldStart );
+static int generateTxnOptions(bool statementWantsDtxTransaction);
 
 typedef struct
 {
@@ -156,9 +156,9 @@ static volatile bool pleaseCancel = false; /* (transaction granularity) */
 /*--------------------------------------------------------------------*/
 
 
-/* Start a global transaction and invoke FTS reconfiguration if needed. */
+/* Mark the DTX as going distributed and invoke FTS reconfiguration if needed. */
 void
-cdbdisp_startDtxTransaction(void)
+cdbdisp_markDtxAsDistributed(void)
 {
 	/*
 	 * check fts sync count
@@ -173,11 +173,12 @@ cdbdisp_startDtxTransaction(void)
 	}
 
 	/*
-	 * need to start distributed transaction
+	 * Take our always started and available DTM transaction and
+	 * mark it ready to go distributed to the segments.
 	 */
-	condStartDtxTransaction();
+	markDtxAsDistributed();
 
-}	/* cdbdisp_startDtxTransaction */
+}	/* cdbdisp_markDtxAsDistributed */
 
 
 
@@ -225,18 +226,8 @@ cdbdisp_startDtxTransaction(void)
  */
 void
 cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
-					   const char                  *strCommand,
-					   char						   *serializedQuerytree,
-					   int							serializedQuerytreelen,
-					   char 					   *serializedPlantree,
-					   int							serializedPlantreelen,
-					   char						   *serializedParams,
-					   int							serializedParamslen,
-					   char						   *serializedSliceInfo,
-					   int							serializedSliceInfolen,				
-					   char						   *serializedSnapshot,
-					   int							serializedSnapshotlen,
-					   int							txnOptions,
+					   MppDispatchCommandType		mppDispatchCommandType,
+					   void						   *commandTypeParms,
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,
                        int                          sliceIndex,
@@ -257,14 +248,48 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 		   dispatchResults &&
 		   dispatchResults->resultArray);
 
-	if (DEBUG2 >= log_min_messages)
+	switch (mppDispatchCommandType)
 	{
-		if (sliceIndex >= 0)
-			elog(DEBUG2, "dispatchToGang: sliceIndex=%d gangsize=%d  %.100s",
-				 sliceIndex, gp->size, strCommand);
-		else
-			elog(DEBUG2, "dispatchToGang: gangsize=%d  %.100s",
-				 gp->size, strCommand);
+	case MPP_DISPATCH_COMMAND_TYPE_QUERY:
+		{
+			DispatchCommandQueryParms *pQueryParms = (DispatchCommandQueryParms *) commandTypeParms;
+
+			Assert(pQueryParms->strCommand != NULL);
+
+			if (DEBUG2 >= log_min_messages)
+			{
+				if (sliceIndex >= 0)
+					elog(DEBUG2, "dispatchToGang: sliceIndex=%d gangsize=%d  %.100s",
+						 sliceIndex, gp->size, pQueryParms->strCommand);
+				else
+					elog(DEBUG2, "dispatchToGang: gangsize=%d  %.100s",
+						 gp->size, pQueryParms->strCommand);
+			}
+		}
+		break;
+
+	case MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+		{
+			DispatchCommandDtxProtocolParms *pDtxProtocolParms = (DispatchCommandDtxProtocolParms *) commandTypeParms;
+			
+			Assert(pDtxProtocolParms->dtxProtocolCommandLoggingStr != NULL);
+			Assert(pDtxProtocolParms->gid != NULL);
+			
+			if (DEBUG2 >= log_min_messages)
+			{
+				if (sliceIndex >= 0)
+					elog(DEBUG2, "dispatchToGang: sliceIndex=%d gangsize=%d  dtxProtocol = %s, gid = %s",
+						 sliceIndex, gp->size, pDtxProtocolParms->dtxProtocolCommandLoggingStr, pDtxProtocolParms->gid);
+				else
+					elog(DEBUG2, "dispatchToGang: gangsize=%d  dtxProtocol = %s, gid = %s",
+						 gp->size, pDtxProtocolParms->dtxProtocolCommandLoggingStr, pDtxProtocolParms->gid);
+			}
+		}
+		break;
+
+	default:
+		elog(FATAL, "Unrecognized MPP dispatch command type: %d",
+			(int) mppDispatchCommandType);
 	}
 
 	/*
@@ -325,6 +350,13 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 
 		segdbDesc = &gp->db_descriptors[x];
 
+//		if (mppDispatchCommandType == MPP_DISPATCH_COMMAND_TYPE_QUERY)
+//		{
+//			MarkSendingToSegment(
+//				 segdbDesc->segment_database_info->segindex,
+//				 segdbDesc->segment_database_info->isprimary);
+//		}
+
 		/* Initialize the QE's CdbDispatchResult object. */
 		qeResult = cdbdisp_makeResult(dispatchResults, segdbDesc, sliceIndex);
 
@@ -335,13 +367,8 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 
 		addSegDBToDispatchThreadPool((*dispatchThreads)->dispatchCommandParmsAr + (*dispatchThreads)->threadCount,
 									 x,
-                                     strCommand,
-                                     serializedQuerytree, serializedQuerytreelen,
-									 serializedPlantree, serializedPlantreelen,
-									 serializedParams, serializedParamslen,
-									 serializedSliceInfo, serializedSliceInfolen,
-                                     serializedSnapshot, serializedSnapshotlen,
-                                     txnOptions,
+					   				 mppDispatchCommandType,
+					   				 commandTypeParms,
 									 sliceIndex,
                                      qeResult);
 
@@ -434,18 +461,8 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 void
 addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
                              int                    segdbs_in_thread_pool,
-                             const char        	   *strCommand,
-                             char			   	   *serializedQuerytree,
-                             int					serializedQuerytreelen,
-							 char 		  		   *serializedPlantree,
-							 int					serializedPlantreelen,
-							 char			   	   *serializedParams,
-							 int					serializedParamslen,
-							 char			   	   *serializedSliceInfo,	
-							 int					serializedSliceInfolen,		
-                             char			   	   *serializedSnapshot,
-                             int					serializedSnapshotlen,
-                             int					txnOptions,
+						     MppDispatchCommandType	mppDispatchCommandType,
+						     void				   *commandTypeParms,
                              int					sliceId,
                              CdbDispatchResult     *dispatchResult)
 {
@@ -464,74 +481,100 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 
 	if (segdbs_in_thread_pool % gp_connections_per_thread == 0)
 	{
+		pParms->mppDispatchCommandType = mppDispatchCommandType;
+		
+		switch (mppDispatchCommandType)
+		{
+		case MPP_DISPATCH_COMMAND_TYPE_QUERY:
+			{
+				DispatchCommandQueryParms *pQueryParms = (DispatchCommandQueryParms *) commandTypeParms;
 
-		if (strCommand == NULL || strlen(strCommand) == 0)
-		{	
-			pParms->strCommand = NULL;
-			pParms->strCommandlen = 0;
-		}
-		else
-		{
-			pParms->strCommand = strCommand;
-			pParms->strCommandlen = strlen(strCommand) + 1;
+				if (pQueryParms->strCommand == NULL || strlen(pQueryParms->strCommand) == 0)
+				{	
+					pParms->queryParms.strCommand = NULL;
+					pParms->queryParms.strCommandlen = 0;
+				}
+				else
+				{
+					pParms->queryParms.strCommand = pQueryParms->strCommand;
+					pParms->queryParms.strCommandlen = strlen(pQueryParms->strCommand) + 1;
+				}
+				
+				if (pQueryParms->serializedQuerytree == NULL || pQueryParms->serializedQuerytreelen == 0)
+				{	
+					pParms->queryParms.serializedQuerytree = NULL;
+					pParms->queryParms.serializedQuerytreelen = 0;
+				}
+				else
+				{
+					pParms->queryParms.serializedQuerytree = pQueryParms->serializedQuerytree;			
+					pParms->queryParms.serializedQuerytreelen = pQueryParms->serializedQuerytreelen;
+				}
+				
+				if (pQueryParms->serializedPlantree == NULL || pQueryParms->serializedPlantreelen == 0)
+				{	
+					pParms->queryParms.serializedPlantree = NULL;
+					pParms->queryParms.serializedPlantreelen = 0;
+				}
+				else
+				{
+					pParms->queryParms.serializedPlantree = pQueryParms->serializedPlantree;
+					pParms->queryParms.serializedPlantreelen = pQueryParms->serializedPlantreelen;
+				}
+				
+				if (pQueryParms->serializedParams == NULL || pQueryParms->serializedParamslen == 0)
+				{	
+					pParms->queryParms.serializedParams = NULL;
+					pParms->queryParms.serializedParamslen = 0;
+				}
+				else
+				{
+					pParms->queryParms.serializedParams = pQueryParms->serializedParams;
+					pParms->queryParms.serializedParamslen = pQueryParms->serializedParamslen;
+				}
+				
+				if (pQueryParms->serializedSliceInfo == NULL || pQueryParms->serializedSliceInfolen == 0)
+				{	
+					pParms->queryParms.serializedSliceInfo = NULL;
+					pParms->queryParms.serializedSliceInfolen = 0;
+				}
+				else
+				{
+					pParms->queryParms.serializedSliceInfo = pQueryParms->serializedSliceInfo;
+					pParms->queryParms.serializedSliceInfolen = pQueryParms->serializedSliceInfolen;
+				}
+				
+				if (pQueryParms->serializedSnapshot == NULL || pQueryParms->serializedSnapshotlen == 0)
+				{
+					pParms->queryParms.serializedSnapshot = NULL;
+					pParms->queryParms.serializedSnapshotlen = 0;
+				}
+				else
+				{
+					pParms->queryParms.serializedSnapshot = pQueryParms->serializedSnapshot;
+					pParms->queryParms.serializedSnapshotlen = pQueryParms->serializedSnapshotlen;
+				}
+				
+				pParms->queryParms.txnOptions = pQueryParms->txnOptions;
+			}
+			break;
+		
+		case MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+			{
+				DispatchCommandDtxProtocolParms *pDtxProtocolParms = (DispatchCommandDtxProtocolParms *) commandTypeParms;
+
+				pParms->dtxProtocolParms.dtxProtocolCommand = pDtxProtocolParms->dtxProtocolCommand;
+				pParms->dtxProtocolParms.dtxProtocolCommandLoggingStr = pDtxProtocolParms->dtxProtocolCommandLoggingStr;
+				memcpy(pParms->dtxProtocolParms.gid, pDtxProtocolParms->gid, TMGIDSIZE);
+				pParms->dtxProtocolParms.gxid = pDtxProtocolParms->gxid;
+			}
+			break;
+
+		default:
+			elog(FATAL, "Unrecognized MPP dispatch command type: %d",
+				(int) mppDispatchCommandType);
 		}
 		
-		if (serializedQuerytree == NULL || serializedQuerytreelen == 0)
-		{	
-			pParms->serializedQuerytree = NULL;
-			pParms->serializedQuerytreelen = 0;
-		}
-		else
-		{
-			pParms->serializedQuerytree = serializedQuerytree;			
-			pParms->serializedQuerytreelen = serializedQuerytreelen;
-		}
-		
-		if (serializedPlantree == NULL || serializedPlantreelen == 0)
-		{	
-			pParms->serializedPlantree = NULL;
-			pParms->serializedPlantreelen = 0;
-		}
-		else
-		{
-			pParms->serializedPlantree = serializedPlantree;
-			pParms->serializedPlantreelen = serializedPlantreelen;
-		}
-		
-		if (serializedParams == NULL || serializedParamslen == 0)
-		{	
-			pParms->serializedParams = NULL;
-			pParms->serializedParamslen = 0;
-		}
-		else
-		{
-			pParms->serializedParams = serializedParams;
-			pParms->serializedParamslen = serializedParamslen;
-		}
-		
-		if (serializedSliceInfo == NULL || serializedSliceInfolen == 0)
-		{	
-			pParms->serializedSliceInfo = NULL;
-			pParms->serializedSliceInfolen = 0;
-		}
-		else
-		{
-			pParms->serializedSliceInfo = serializedSliceInfo;
-			pParms->serializedSliceInfolen = serializedSliceInfolen;
-		}
-		
-		if (serializedSnapshot == NULL || serializedSnapshotlen == 0)
-		{
-			pParms->serializedSnapshot = NULL;
-			pParms->serializedSnapshotlen = 0;
-		}
-		else
-		{
-			pParms->serializedSnapshot = serializedSnapshot;
-			pParms->serializedSnapshotlen = serializedSnapshotlen;
-		}
-		
-		pParms->txnOptions = txnOptions;
 		pParms->cmdID = gp_command_count;
 		pParms->localSlice = sliceId;
 		pParms->dispatchResultPtrArray =
@@ -631,6 +674,22 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 
 			segdbDesc = dispatchResult->segdbDesc;
 
+//			if (pParms->mppDispatchCommandType == MPP_DISPATCH_COMMAND_TYPE_QUERY &&
+//				dispatchResult->QEWriter_HaveInfo)
+//			{
+//				elog(LOG,"CdbCheckDispatchResultInt calling MarkSegmentParticipation for segment %d (%s)",
+//				     segdbDesc->segindex,
+//				     (dispatchResult->QEIsPrimary ? "primary" : "mirror"));
+//				elog(LOG,"CdbCheckDispatchResultInt values for QEWriter (DistributedTransactionId = %u, CommandId = %u, Dirty = %s)",
+//					 dispatchResult->QEWriter_DistributedTransactionId,
+//					 dispatchResult->QEWriter_CommandId,
+//					 (dispatchResult->QEWriter_Dirty ? "true" : "false"));
+//				MarkSegmentParticipation(
+//							 segdbDesc->segindex,
+//							 dispatchResult->QEIsPrimary,
+//							 dispatchResult->QEWriter_Dirty);
+//			}
+			
 			/* segdbDesc error message is unlikely here, but check anyway. */
 			if (segdbDesc->errcode ||
 				segdbDesc->error_message.len)
@@ -721,12 +780,171 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 	/* never want to start a global transaction for these */
 	bool		startTransaction = false;
 
+	elog(LOG, "CdbDoCommandOnAllGangs for command = '%s', withSnapshot = %s",
+		 strCommand, (withSnapshot ? "true" : "false"));
+
 	/* Launch the command.	Don't cancel on error. */
 	cdbdisp_dispatchCommand(strCommand, NULL, 0,
 							/* cancelOnError */false,
 							startTransaction, withSnapshot, 
 							dispatchToMirrors, /* disp to primaries*/ true,
 							&primaryResults, &mirrorResults, &dispatchThreads);
+
+	/* Wait for all QEs to finish.	Don't cancel. */
+	CdbCheckDispatchResult(dispatchThreads, false);
+
+	/*
+	 * Allocate result set ptr array. Make room for one PGresult ptr per
+	 * primary or mirror segment db, plus a null terminator slot after the
+	 * last entry. The caller must PQclear() each PGresult and free() the
+	 * array.
+	 */
+	nslots = 2 * getgpsegmentCount() + 1;
+	resultSets = (struct pg_result **) calloc(nslots, sizeof(*resultSets));
+
+	/* Collect results from primary gang. */
+	gangResults = primaryResults;
+	if (gangResults)
+	{
+		totalResultCount = gangResults->resultCount;
+
+		for (i = 0; i < gangResults->resultCount; ++i)
+		{
+			dispatchResult = &gangResults->resultArray[i];
+
+			/* Append error messages to caller's buffer. */
+			cdbdisp_dumpDispatchResult(dispatchResult, false, errmsgbuf);
+
+			/* Take ownership of this QE's PGresult object(s). */
+			nresults += cdbdisp_snatchPGresults(dispatchResult,
+												resultSets + nresults,
+												nslots - nresults - 1);
+		}
+		cdbdisp_destroyDispatchResults(gangResults);
+	}
+
+	/* Collect results from mirror gang. */
+	gangResults = mirrorResults;
+	if (gangResults)
+	{
+		totalResultCount += gangResults->resultCount;
+		for (i = 0; i < gangResults->resultCount; ++i)
+		{
+			dispatchResult = &gangResults->resultArray[i];
+
+			/* Append error messages to caller's buffer. */
+			cdbdisp_dumpDispatchResult(dispatchResult, false, errmsgbuf);
+
+			/* Take ownership of this QE's PGresult object(s). */
+			nresults += cdbdisp_snatchPGresults(dispatchResult,
+												resultSets + nresults,
+												nslots - nresults - 1);
+		}
+		cdbdisp_destroyDispatchResults(gangResults);
+	}
+
+	/* free memory allocated for the dispatch threads struct */
+	cdbdisp_destroyDispatchThreads(dispatchThreads);
+	
+	/* Put a stopper at the end of the array. */
+	Assert(nresults < nslots);
+	resultSets[nresults] = NULL;
+
+	/* If our caller is interested, tell them how many sets we're returning. */
+	if (numresults != NULL)
+		*numresults = totalResultCount;
+
+	return resultSets;
+}	/* cdbdisp_dispatchRMCommand */
+
+/*
+ * cdbdisp_dispatchDtxProtocolCommand:
+ * Sends a non-cancelable command to all segment dbs, primary and mirror.
+ *
+ * Returns a malloc'ed array containing the PGresult objects thus
+ * produced; the caller must PQclear() them and free() the array.
+ * A NULL entry follows the last used entry in the array.
+ *
+ * Any error messages - whether or not they are associated with
+ * PGresult objects - are appended to a StringInfo buffer provided
+ * by the caller.
+ */
+struct pg_result **				/* returns ptr to array of PGresult ptrs */
+cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
+						  char*						dtxProtocolCommandLoggingStr,
+						  char*						gid,
+						  DistributedTransactionId	gxid,
+						  bool dispatchToMirrors,
+						  StringInfo errmsgbuf,
+						  int *numresults)
+
+{
+	CdbDispatchResults *gangResults;
+	CdbDispatchResults *primaryResults;
+	CdbDispatchResults *mirrorResults;
+	CdbDispatchResult *dispatchResult;
+	CdbDispatchCmdThreads  *dispatchThreads;
+	
+	PGresult  **resultSets = NULL;
+	int			nslots;
+	int			nresults = 0;
+	int			i;
+	int			totalResultCount=0;
+	
+	DispatchCommandDtxProtocolParms dtxProtocolParms;
+	Gang	*primaryGang;
+	Gang	*mirrorGang;
+	int		nsegdb = getgpsegmentCount();
+	
+	elog(LOG, "cdbdisp_dispatchDtxProtocolCommand: %s on gid = %s", dtxProtocolCommandLoggingStr, gid);
+
+	memset(&dtxProtocolParms, 0, sizeof(dtxProtocolParms));
+	dtxProtocolParms.dtxProtocolCommand = dtxProtocolCommand;
+	dtxProtocolParms.dtxProtocolCommandLoggingStr = dtxProtocolCommandLoggingStr;
+	memcpy(dtxProtocolParms.gid, gid, TMGIDSIZE);
+	dtxProtocolParms.gxid = gxid;
+	
+	/*
+	 * Allocate a primary and mirror QE for every available segDB in the system.
+	 */
+	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, nsegdb, -1, NULL);
+
+	Assert(primaryGang);
+
+	mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, nsegdb, -1, NULL);
+
+	if (mirrorGang &&
+		(mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))
+	{
+		elog(LOG, "Some segments are down: MIRROR nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, mirrorGang->segdb_count, mirrorGang->size);
+		elog(LOG, "                       PRIMARY nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, primaryGang->segdb_count, primaryGang->size);
+		elog(LOG, "Some segments are down.  Dispatching command %s to remaining segments only", dtxProtocolCommandLoggingStr);
+	}
+
+	/*
+     * Dispatch the command.
+     */
+    dispatchThreads = NULL;
+	
+	primaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, /* cancelOnError */ false);
+	cdbdisp_dispatchToGang(&dispatchThreads, 
+						   MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
+						   &dtxProtocolParms,
+						   primaryGang, primaryResults, -1, 1);
+	
+	if (dispatchToMirrors && mirrorGang)
+    {
+        mirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, /* cancelOnError */ false);
+        cdbdisp_dispatchToGang(&dispatchThreads, 
+							   MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
+							   &dtxProtocolParms,
+							   mirrorGang, mirrorResults, -1, 1);
+    }
+	else
+	{
+		mirrorResults = NULL;
+	}
+
 
 	/* Wait for all QEs to finish.	Don't cancel. */
 	CdbCheckDispatchResult(dispatchThreads, false);
@@ -836,11 +1054,9 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
                         struct CdbDispatchResults **pMirrorResults,     /* OUT */
 						struct CdbDispatchCmdThreads **pDispatchThreads)    /* OUT */
 {
+	DispatchCommandQueryParms queryParms;
 	Gang	*primaryGang;
 	Gang	*mirrorGang;
-	int		txnOptions;
-	char	*serializedSnapshot = NULL;
-	int		serializedSnapshotlen = 0;
 	int		nsegdb = getgpsegmentCount();
 	
 	Assert(dispatchToPrimaries || dispatchToMirrors);
@@ -855,6 +1071,11 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 		*pMirrorResults = NULL;
 
 	*pDispatchThreads = NULL;
+
+	memset(&queryParms, 0, sizeof(queryParms));
+	queryParms.strCommand = strCommand;
+	queryParms.serializedQuerytree = serializedQuerytree;
+	queryParms.serializedQuerytreelen = serializedQuerytreelen;
 	
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
@@ -887,37 +1108,35 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 
 	/* Serialize a version of our snapshot */
 	if (withSnapshot)
-		serializedSnapshot = serializeSnapshot(&serializedSnapshotlen);
+		queryParms.serializedSnapshot = serializeSnapshot(&queryParms.serializedSnapshotlen);
 	else
 	{
-		serializedSnapshot = NULL;
-		serializedSnapshotlen = 0;
+		queryParms.serializedSnapshot = NULL;
+		queryParms.serializedSnapshotlen = 0;
 	}
 
 	/* generate our transactions options. */
-	txnOptions = generateTxnOptions(startTransaction);
-	
+	queryParms.txnOptions = generateTxnOptions(startTransaction);
+
 	/*
      * Dispatch the command.
      */
 	if (dispatchToPrimaries)
 	{
 		*pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-		cdbdisp_dispatchToGang(pDispatchThreads, strCommand, 
-								serializedQuerytree, serializedQuerytreelen, 
-								NULL, 0, NULL, 0, NULL, 0,
-							   serializedSnapshot, serializedSnapshotlen,
-							   txnOptions, primaryGang, *pPrimaryResults, -1, 1);
+		cdbdisp_dispatchToGang(pDispatchThreads, 
+							   MPP_DISPATCH_COMMAND_TYPE_QUERY,
+							   &queryParms,
+							   primaryGang, *pPrimaryResults, -1, 1);
 	}
 	
 	if (dispatchToMirrors && mirrorGang)
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-        cdbdisp_dispatchToGang(pDispatchThreads, strCommand, 
-        						serializedQuerytree, serializedQuerytreelen, 
-        						NULL, 0, NULL, 0, NULL, 0,
-							   serializedSnapshot, serializedSnapshotlen,
-							   txnOptions, mirrorGang, *pMirrorResults, -1, 1);
+        cdbdisp_dispatchToGang(pDispatchThreads, 
+							   MPP_DISPATCH_COMMAND_TYPE_QUERY,
+							   &queryParms,
+							   mirrorGang, *pMirrorResults, -1, 1);
     }
 
 	/*
@@ -1092,25 +1311,29 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
                         struct CdbDispatchResults **pMirrorResults,     /* OUT */
 						struct CdbDispatchCmdThreads **pDispatchThreads)   /* OUT */
 {
+	DispatchCommandQueryParms queryParms;
+	
 	Gang		*primaryGang,
 				*mirrorGang;
     List		*readerGangs;
     ListCell	*le;
 
     int			nsegdb = getgpsegmentCount();
-	char		*serializedSnapshot;
-	int			serializedSnapshotlen;
-	int			txnOptions,
-				gangCount;
+	int			gangCount;
 	
-    elog(DEBUG3, "cdbdisp_dispatchCommandToAllGangs: %.50s", strCommand);
-
     *pPrimaryResults = NULL;
     if (pMirrorResults)
         *pMirrorResults = NULL;
 	
 	*pDispatchThreads = NULL;
 
+	memset(&queryParms, 0, sizeof(queryParms));
+	queryParms.strCommand = strCommand;
+	queryParms.serializedQuerytree = serializedQuerytree;
+	queryParms.serializedQuerytreelen = serializedQuerytreelen;
+	queryParms.serializedQuerytree = serializedPlantree;
+	queryParms.serializedQuerytreelen = serializedPlantreelen;
+	
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
 	 */
@@ -1143,11 +1366,11 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	}
 
 	/* serialized a version of our snapshot */
-	serializedSnapshot = serializeSnapshot(&serializedSnapshotlen);
+	queryParms.serializedSnapshot = serializeSnapshot(&queryParms.serializedSnapshotlen);
 	
 	/* generate our transactions options. */
-	txnOptions = generateTxnOptions(startTransaction);
-	
+	queryParms.txnOptions = generateTxnOptions(startTransaction);
+
 	readerGangs = getAllReaderGangs();
 	
 	/*
@@ -1155,34 +1378,28 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
      */
 	gangCount = 1 + list_length(readerGangs);
     *pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb * gangCount, 0, cancelOnError);
-    cdbdisp_dispatchToGang(pDispatchThreads, strCommand, 
-	    serializedQuerytree, serializedQuerytreelen, 
-	    serializedPlantree, serializedPlantreelen,
-	    NULL, 0, NULL, 0,
-	    serializedSnapshot, serializedSnapshotlen,
-	    txnOptions, primaryGang, *pPrimaryResults, -1, gangCount);
+    cdbdisp_dispatchToGang(pDispatchThreads, 
+		MPP_DISPATCH_COMMAND_TYPE_QUERY,
+	    &queryParms,
+	    primaryGang, *pPrimaryResults, -1, gangCount);
 
 	if (mirrorGang)
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-        cdbdisp_dispatchToGang(pDispatchThreads, strCommand, 
-	        serializedQuerytree, serializedQuerytreelen, 
-		    serializedPlantree, serializedPlantreelen,
-		    NULL, 0, NULL, 0,
-		    serializedSnapshot, serializedSnapshotlen,
-	        txnOptions, mirrorGang, *pMirrorResults, -1, gangCount);
+        cdbdisp_dispatchToGang(pDispatchThreads, 
+			MPP_DISPATCH_COMMAND_TYPE_QUERY,
+	    	&queryParms,
+	    	mirrorGang, *pMirrorResults, -1, gangCount);
     }
 
 
     foreach(le, readerGangs)
     {
     	Gang  *rg = lfirst(le);
-    	cdbdisp_dispatchToGang(pDispatchThreads, strCommand, 
-	    	serializedQuerytree, serializedQuerytreelen, 
-		    serializedPlantree, serializedPlantreelen,
-		    NULL, 0, NULL, 0,
-		    serializedSnapshot, serializedSnapshotlen,
-	    	txnOptions, rg, *pPrimaryResults, -1, gangCount);
+    	cdbdisp_dispatchToGang(pDispatchThreads, 
+			MPP_DISPATCH_COMMAND_TYPE_QUERY,
+	    	&queryParms,
+	    	rg, *pPrimaryResults, -1, gangCount);
     }
 
 
@@ -1212,18 +1429,44 @@ thread_DispatchCommand(void *arg)
 	CdbDispatchResult			*dispatchResult;
 	int							i, db_count = pParms->db_count;
 	int							timeoutCounter = 0;
-	
-	pParms->query_text = PQbuildMppQueryString(
-				pParms->strCommand, pParms->strCommandlen, 
-				pParms->serializedQuerytree, pParms->serializedQuerytreelen, 
-				pParms->serializedPlantree, pParms->serializedPlantreelen, 
-				pParms->serializedParams, pParms->serializedParamslen, 
-				pParms->serializedSliceInfo, pParms->serializedSliceInfolen, 
-				pParms->serializedSnapshot, pParms->serializedSnapshotlen, 
-				pParms->txnOptions, pParms->cmdID, pParms->localSlice, 
-				GetSessionUserId(), superuser_arg(GetSessionUserId()),
-				GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
-				&pParms->query_text_len);
+
+	switch (pParms->mppDispatchCommandType)
+	{
+	case MPP_DISPATCH_COMMAND_TYPE_QUERY:
+		{
+			DispatchCommandQueryParms *pQueryParms = &pParms->queryParms;
+			
+			pParms->query_text = PQbuildMppQueryString(
+						pQueryParms->strCommand, pQueryParms->strCommandlen, 
+						pQueryParms->serializedQuerytree, pQueryParms->serializedQuerytreelen, 
+						pQueryParms->serializedPlantree, pQueryParms->serializedPlantreelen, 
+						pQueryParms->serializedParams, pQueryParms->serializedParamslen, 
+						pQueryParms->serializedSliceInfo, pQueryParms->serializedSliceInfolen, 
+						pQueryParms->serializedSnapshot, pQueryParms->serializedSnapshotlen, 
+						pQueryParms->txnOptions, 
+						pParms->cmdID, pParms->localSlice, 
+						GetSessionUserId(), superuser_arg(GetSessionUserId()),
+						GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
+						&pParms->query_text_len);
+		}
+		break;
+
+	case MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+		{
+			pParms->query_text = PQbuildMppDtxProtocolCommand(
+						(int)pParms->dtxProtocolParms.dtxProtocolCommand,
+						pParms->dtxProtocolParms.dtxProtocolCommandLoggingStr,
+						pParms->dtxProtocolParms.gid,
+						pParms->dtxProtocolParms.gxid,
+						&pParms->query_text_len);
+		}
+		break;
+
+	default:
+		write_stderr("bad dispatch command type %d\n", (int) pParms->mppDispatchCommandType);
+		pParms->query_text_len = 0;
+		return NULL;
+	}
 
 	if (pParms->query_text == NULL)
 	{
@@ -1286,7 +1529,24 @@ thread_DispatchCommand(void *arg)
 					Assert(!PQisBusy(dispatchResult->segdbDesc->conn));
 				}
 			}
-            dispatchCommand(dispatchResult, pParms->query_text, pParms->query_text_len, pParms->strCommand);
+			
+			switch (pParms->mppDispatchCommandType)
+			{
+			case MPP_DISPATCH_COMMAND_TYPE_QUERY:
+	            dispatchCommandQuery(dispatchResult, pParms->query_text, pParms->query_text_len, pParms->queryParms.strCommand);
+				break;
+				
+			case MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+	            dispatchCommandDtxProtocol(dispatchResult, pParms->query_text, pParms->query_text_len, 
+					                       pParms->dtxProtocolParms.dtxProtocolCommand);
+				break;
+				
+			default:
+				write_stderr("bad dispatch command type %d\n", (int) pParms->mppDispatchCommandType);
+				pParms->query_text_len = 0;
+				return NULL;
+			}
+			
             dispatchResult->hasDispatched = true;
         }
 
@@ -1514,7 +1774,7 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
  *		 thread_DispatchCommand absolutely no elog'ing.
  */
 static void
-dispatchCommand(CdbDispatchResult  *dispatchResult,
+dispatchCommandQuery(CdbDispatchResult  *dispatchResult,
                 const char		   *query_text,
                 int				   query_text_len,
                 const char         *strCommand)
@@ -1530,6 +1790,52 @@ dispatchCommand(CdbDispatchResult  *dispatchResult,
 	 * Submit the command asynchronously.
 	 */
 	
+	if (PQsendMppQuery_shared(conn, (char *)query_text, query_text_len) == 0)
+	{
+		if (DEBUG3 >= log_min_messages)
+			write_stderr("Thread %u: PQsendMPPQuery_shared error %s %s \n", mythread(),segdbDesc->whoami,
+							  PQerrorMessage(conn));
+		/* Note the error. */
+		cdbdisp_appendMessage(dispatchResult, LOG,
+							  ERRCODE_MPP_INTERCONNECTION_ERROR,
+						   "Command could not be sent to segment db %s;  %s",
+							  segdbDesc->whoami,
+							  PQerrorMessage(conn));
+		PQfinish(conn);
+		segdbDesc->conn = NULL;
+	}
+
+	/*
+	 * We'll keep monitoring this QE -- whether or not the command
+	 * was dispatched -- in order to check for a lost connection
+	 * or any other errors that libpq might have in store for us.
+	 */
+}	/* dispatchCommand */
+
+/* Helper function to thread_DispatchCommand that actually kicks off the
+ * command on the libpq connection.
+ *
+ * NOTE: since this is called via a thread, the same rules apply as to
+ *		 thread_DispatchCommand absolutely no elog'ing.
+ */
+static void
+dispatchCommandDtxProtocol(CdbDispatchResult  *dispatchResult,
+                const char		   *query_text,
+                int				   query_text_len,
+                DtxProtocolCommand dtxProtocolCommand)
+{
+	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
+	PGconn	   *conn = segdbDesc->conn;
+
+	/* Don't use elog, it's not thread-safe */
+	if (DEBUG3 >= log_min_messages)
+		write_stderr("Thread %u: %s <- dtx protocol command %d\n", mythread(), segdbDesc->whoami, (int)dtxProtocolCommand);
+
+	/*
+	 * Submit the command asynchronously.
+	 */
+
+	// UNDONE: Is it ok to use PQsendMppQuery_shared???
 	if (PQsendMppQuery_shared(conn, (char *)query_text, query_text_len) == 0)
 	{
 		if (DEBUG3 >= log_min_messages)
@@ -1746,6 +2052,30 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 
 }	/* handleSelectTimeout */
 
+void
+CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc, CdbDispatchResult * dispatchResult)
+{
+	PGconn *conn = segdbDesc->conn;
+	if (conn->QEWriter_HaveInfo)
+	{
+//		write_stderr("Thread %u: %s -> Collected QE Writer transaction info (segment %d (%s), DistributedTransactionId = %u, CommandId = %u, pRes->QEDirty = %s, dispatchResult->QEDirty = %s) \n", 
+//			mythread(), segdbDesc->whoami,
+//			segdbDesc->segment_database_info->segindex,
+//			(segdbDesc->segment_database_info->isprimary ? "primary" : "mirror"),
+//			conn->QEWriter_DistributedTransactionId,
+//			conn->QEWriter_CommandId,
+//			(conn->QEWriter_Dirty ? "true" : "false"),
+//			(dispatchResult->QEWriter_Dirty ? "true" : "false"));
+		dispatchResult->QEIsPrimary = segdbDesc->segment_database_info->isprimary;
+		dispatchResult->QEWriter_HaveInfo = true;
+		dispatchResult->QEWriter_DistributedTransactionId = conn->QEWriter_DistributedTransactionId;
+		dispatchResult->QEWriter_CommandId = conn->QEWriter_CommandId;
+		if (conn->QEWriter_Dirty)
+		{
+			dispatchResult->QEWriter_Dirty = true;
+		}
+	}
+}
 
 bool							/* returns true if command complete */
 processResults(CdbDispatchResult * dispatchResult)
@@ -1794,6 +2124,8 @@ processResults(CdbDispatchResult * dispatchResult)
 			write_stderr("Thread %u: PQgetResult\n",mythread());
 		/* Get one message. */
 		pRes = PQgetResult(segdbDesc->conn);
+
+		CollectQEWriterTransactionInformation(segdbDesc, dispatchResult);
 
 		/*
 		 * Command is complete when PGgetResult() returns NULL. It is critical
@@ -1901,10 +2233,13 @@ CdbDoCommand(const char *strCommand,
 
 	Assert(dispatchToMirrors || dispatchToPrimaries);
 	
+	elog(LOG, "CdbDoCommand for command = '%s', startTransaction = %s",
+		 strCommand, (startTransaction ? "true" : "false"));
+		
 	if (startTransaction)
 	{
-		/* Start a global transaction and reconfigure the cluster if needed. */
-		cdbdisp_startDtxTransaction();
+		/* Mark the DTX as distributed and reconfigure the cluster if needed. */
+		cdbdisp_markDtxAsDistributed();
 		
 		/* mark this txn as dirty */
 		setCurrentDtxDirty();
@@ -1933,10 +2268,15 @@ CdbDoCommandOnAllGangs(const char *strCommand,
 	CdbDispatchResults *mirrorResults;
 	CdbDispatchCmdThreads *dispatchThreads;
 
+
+	elog(LOG, "CdbDoCommandOnAllGangs for command = '%s', startTransaction = %s",
+		 strCommand, (startTransaction ? "true" : "false"));
+		
+
 	if (startTransaction)
 	{
-		/* Start a global transaction and reconfigure the cluster if needed. */
-		cdbdisp_startDtxTransaction();
+		/* Mark the DTX as distributed and reconfigure the cluster if needed. */
+		cdbdisp_markDtxAsDistributed();
 		
 		/* mark this txn as dirty */
 		setCurrentDtxDirty();
@@ -2270,8 +2610,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			   *splan,
 			   *ssliceinfo,
 			   *sparams;
-	char	   *serializedSnapshot;		
-	int			serializedSnapshotlen;
 	int			squery_len,
 				splan_len,
 				ssliceinfo_len,
@@ -2283,7 +2621,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	int			nSlices,
 				sliceLim;
 	int			iSlice;
-	int			txnOptions;
+	
+	DispatchCommandQueryParms queryParms;
  
 	pre_dispatch_function_evaluation_context pcontext;
 
@@ -2497,9 +2836,19 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		}
 	}
 
+	memset(&queryParms, 0, sizeof(queryParms));
+	queryParms.strCommand = debug_query_string;
+	queryParms.serializedQuerytree = squery;
+	queryParms.serializedQuerytreelen = squery_len;
+	queryParms.serializedPlantree = splan;
+	queryParms.serializedPlantreelen = splan_len;
+	queryParms.serializedParams = sparams;
+	queryParms.serializedParamslen = sparams_len;
+	queryParms.serializedSliceInfo = ssliceinfo;
+	queryParms.serializedSliceInfolen= ssliceinfo_len;
 
 	/* serialized a version of our snapshot */
-	serializedSnapshot = serializeSnapshot(&serializedSnapshotlen);
+	queryParms.serializedSnapshot = serializeSnapshot(&queryParms.serializedSnapshotlen);
 	
 	/* 
 	 * Generate our transction isolations.  We generally want Plan
@@ -2507,7 +2856,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * to decide if the special circumstances exist which allow us to
 	 * dispatch without starting a global xact.
 	 */
-	txnOptions = generateTxnOptions(planRequiresTxn);
+	queryParms.txnOptions = generateTxnOptions(planRequiresTxn);
 
 	cdb_total_plans++;
 	cdb_total_slices += nSlices;
@@ -2555,19 +2904,14 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			if (InterruptPending)
 				break;
 		}
-
+			
 		/*
 		 * Dispatch the plan to our primaryGang.
 		 * Doesn't wait for it to finish.
 		 */
 		cdbdisp_dispatchToGang(pDispatchThreads,
-							   debug_query_string,
-							   squery, squery_len,
-							   splan, splan_len,
-							   sparams, sparams_len,
-							   ssliceinfo, ssliceinfo_len, 
-						       serializedSnapshot, serializedSnapshotlen,
-						       txnOptions,
+							   MPP_DISPATCH_COMMAND_TYPE_QUERY,
+							   &queryParms,
                                primaryGang,
                                *pPrimaryResults,
                                slice->sliceIndex, sliceLim);
@@ -2579,13 +2923,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		if (mirrorGang != NULL && (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL))
 		{
             cdbdisp_dispatchToGang(pDispatchThreads,
-								   debug_query_string,
-								   squery, squery_len,
-								   splan, splan_len,
-								   sparams, sparams_len,
-								   ssliceinfo, ssliceinfo_len, 
-							       serializedSnapshot, serializedSnapshotlen,
-            					   txnOptions,
+								   MPP_DISPATCH_COMMAND_TYPE_QUERY,
+							       &queryParms,
                                    mirrorGang,
                                    *pMirrorResults,
                                    slice->sliceIndex, sliceLim);
@@ -2729,6 +3068,9 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	StringInfoData buffer;
 	bool 		dispatchToMirrors = true;
 
+
+	elog(LOG,"cdbdisp_dispatchUtilityStatement debug_query_string = %s", debug_query_string);
+	
 	/* mark the dtx as dirty */
 	setCurrentDtxDirty();
 	
@@ -2784,8 +3126,10 @@ CdbDispatchUtilityStatement(struct Node *stmt)
 	CdbDispatchCmdThreads *dispatchThreads;
 	bool	startTransaction = true;
 	
-	/* Start a global transaction and reconfigure the cluster if needed. */
-	cdbdisp_startDtxTransaction();
+	elog(LOG,"cdbdisp_dispatchUtilityStatement called");
+	
+	/* Mark the DTX as distributed and reconfigure the cluster if needed. */
+	cdbdisp_markDtxAsDistributed();
 
 	cdbdisp_dispatchUtilityStatement(stmt, true, startTransaction, &primaryResults, &mirrorResults, &dispatchThreads);
 
@@ -2855,30 +3199,63 @@ serializeSnapshot(int * size)
 	
 	if (snapshot != NULL)
 	{
-		int i;
 		char * p;
-		TransactionId currentTransactionId = GetCurrentTransactionId();
+		int serializedLen;
+        DistributedTransactionId currentDistributedTransactionId;
+        DistributedTransactionId xminAllDistributedSnapshots;
+        int qdSharedLocalSnapshotSlotId;
+        DistributedSnapshot distributedSnapshot;
 
-		*size = sizeof(TransactionId)*3 + 
-										sizeof(uint32) + /*xcnt*/
-										snapshot->xcnt*sizeof(TransactionId) + sizeof(CommandId);
-		serializedSnapshot = palloc(*size);
-		p = serializedSnapshot;
-		memcpy(p,&currentTransactionId,sizeof(TransactionId)); p += sizeof(TransactionId);
-		memcpy(p,&snapshot->xmin,sizeof(TransactionId)); p += sizeof(TransactionId);
-		memcpy(p,&snapshot->xmax,sizeof(TransactionId)); p += sizeof(TransactionId);
-		memcpy(p,&snapshot->xcnt,sizeof(uint32)); p += sizeof(uint32);
-		for (i = 0; i < snapshot->xcnt; i++)
+        getDistributedSnapshotSerializeInfo(&serializedLen,
+                             &currentDistributedTransactionId,
+                             &xminAllDistributedSnapshots,
+                             &qdSharedLocalSnapshotSlotId,
+                             &distributedSnapshot);
+		if (serializedLen > 0)
 		{
-			memcpy(p,&snapshot->xip[i],sizeof(TransactionId)); p += sizeof(TransactionId);
-		}
-		memcpy(p,&snapshot->curcid,sizeof(CommandId)); p += sizeof(CommandId);
 		
-		elog(DEBUG5,"serializeSnapshot:  txnId %d, curcid %d",currentTransactionId,snapshot->curcid);
+			*size += serializedLen;
+			
+			serializedSnapshot = palloc(*size);
+			p = serializedSnapshot;
+			
+			serializeDistributedSnapshot(&p, 
+	                             currentDistributedTransactionId,
+	                             xminAllDistributedSnapshots,
+	                             qdSharedLocalSnapshotSlotId,
+	                             distributedSnapshot,
+	                 			 snapshot->curcid);
+
+			// UNDONE: Hack
+			if (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE &&
+				SharedLocalSnapshotSlot != NULL)
+			{
+				/*
+				 * Update the command id in the shared local snapshot
+				 * information maintained by the QD...
+				 */
+				int oldQDcid = SharedLocalSnapshotSlot->QDcid;
+				int oldSnapshotCurcid = SharedLocalSnapshotSlot->snapshot.curcid;
+				
+				SharedLocalSnapshotSlot->QDcid = snapshot->curcid;
+			    SharedLocalSnapshotSlot->snapshot.curcid = snapshot->curcid;
+				elog(DEBUG5,"serializeSnapshot updating slotId = %d  QDcid (old %d, new %d), curcid (old %d, new %d)",
+					 SharedLocalSnapshotSlot->slotid,
+					 oldQDcid, SharedLocalSnapshotSlot->QDcid, 
+					 oldSnapshotCurcid, SharedLocalSnapshotSlot->snapshot.curcid);
+			}
+		}
+		else
+		{
+			elog(LOG,"serializeSnapshot local snapshot available, yet distributed one is not!!");
+			serializedSnapshot = NULL;
+			*size=0;
+		}
 		
 	}
 	else
 	{
+		elog(LOG,"serializeSnapshot No Local snapshot available, so don't include distributed one");
 		/* basically this should mean that we have an Abort in progress and
 		 * so can't and don't need to send a serialized snapshot.  so we'll
 		 * send nothing.
@@ -2895,28 +3272,18 @@ serializeSnapshot(int * size)
  * segdb QE process to perform any needed transaction commands before or
  * after the statement.
  *
- * shouldStart - specifies whether this statement even wants a transaction to
+ * statementWantsDtxTransaction - s
+ *               specifies whether this statement even wants a transaction to
  *				 be started.  Certain utility statements dont want to be in a
  *				 distributed transaction.
  */
 static int
-generateTxnOptions( bool shouldStart )
+generateTxnOptions(bool statementWantsDtxTransaction)
 {
-	int options = 0;
+	int options;
 	
-	/*set auto-begin */
-	if (shouldStart)
-	{
-		options = mppTxnOptions(true /* AutoBegin */);
+	options = mppTxnOptions(statementWantsDtxTransaction);
 		
-		/* at this point we've decided that are going to begin a transaction.
-		 * so we need to let the DTM know this so that if anything bad happens
-		 * it can react.
-		 */
-		setTxnBegan();
-		
-	}
-	
 	return options;
 	
 }
@@ -2975,48 +3342,70 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 			free(pParms->query_text);
 			pParms->query_text = NULL;
 		}
-		if (pParms->strCommand)
-		{
-			/* Caller frees if desired */
-			pParms->strCommand = NULL;
-		}
 		
-		if (pParms->serializedSnapshot)
+		switch (pParms->mppDispatchCommandType)
 		{
-			if (i==0)
-				pfree(pParms->serializedSnapshot);
-			pParms->serializedSnapshot = NULL;
-		}
+		case MPP_DISPATCH_COMMAND_TYPE_QUERY:
+			{
+				DispatchCommandQueryParms *pQueryParms = &pParms->queryParms;
+
+				if (pQueryParms->strCommand)
+				{
+					/* Caller frees if desired */
+					pQueryParms->strCommand = NULL;
+				}
+				
+				if (pQueryParms->serializedSnapshot)
+				{
+					if (i==0)
+						pfree(pQueryParms->serializedSnapshot);
+					pQueryParms->serializedSnapshot = NULL;
+				}
+				
+				if (pQueryParms->serializedSliceInfo)
+				{
+					if (i==0)
+						pfree(pQueryParms->serializedSliceInfo);
+					pQueryParms->serializedSliceInfo = NULL;
+				}
+				
+				if (pQueryParms->serializedQuerytree)
+				{
+					if (i==0)
+						pfree(pQueryParms->serializedQuerytree);
+					pQueryParms->serializedQuerytree = NULL;
+				}
+				
+				if (pQueryParms->serializedPlantree)
+				{
+					if (i==0)
+						pfree(pQueryParms->serializedPlantree);
+					pQueryParms->serializedPlantree = NULL;
+				}
+				
+				if (pQueryParms->serializedParams)
+				{
+					if (i==0)
+						pfree(pQueryParms->serializedParams);
+					pQueryParms->serializedParams = NULL;
+				}
+				
+				pQueryParms->txnOptions = 0;
+			}
+			break;
 		
-		if (pParms->serializedSliceInfo)
-		{
-			if (i==0)
-				pfree(pParms->serializedSliceInfo);
-			pParms->serializedSliceInfo = NULL;
+		case MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+			{
+				DispatchCommandDtxProtocolParms *pDtxProtocolParms = &pParms->dtxProtocolParms;
+
+				pDtxProtocolParms->dtxProtocolCommand = 0;
+			}
+			break;
+
+		default:
+			elog(FATAL, "Unrecognized MPP dispatch command type: %d",
+				(int) pParms->mppDispatchCommandType);
 		}
-		
-		if (pParms->serializedQuerytree)
-		{
-			if (i==0)
-				pfree(pParms->serializedQuerytree);
-			pParms->serializedQuerytree = NULL;
-		}
-		
-		if (pParms->serializedPlantree)
-		{
-			if (i==0)
-				pfree(pParms->serializedPlantree);
-			pParms->serializedPlantree = NULL;
-		}
-		
-		if (pParms->serializedParams)
-		{
-			if (i==0)
-				pfree(pParms->serializedParams);
-			pParms->serializedParams = NULL;
-		}
-		
-		pParms->txnOptions = 0;
 	}
 	
 	pfree(dThreads->dispatchCommandParmsAr);	

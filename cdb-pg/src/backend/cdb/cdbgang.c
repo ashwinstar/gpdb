@@ -400,7 +400,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 			/*
 			 * cleanup and rollback current DTM transaction
 			 */
-			discardDtxTransaction();
+			AbortCurrentTransaction();
 
 			/* clean the gang before error out */
 			disconnectAndDestroyGang(newGangDefinition);
@@ -1846,6 +1846,11 @@ disconnectAndDestroyGang(Gang * gp)
 
 		if (segdbDesc->conn && PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 		{
+
+			elog(LOG,"disconnectAndDestroyGang: got QEDistributedTransactionId = %u, QECommandId = %u, and QEDirty = %s",
+			     segdbDesc->conn->QEWriter_DistributedTransactionId, 
+			     segdbDesc->conn->QEWriter_CommandId, (segdbDesc->conn->QEWriter_Dirty ? "true" : "false"));
+		
 			PGTransactionStatusType status =
 				PQtransactionStatus(segdbDesc->conn);
 

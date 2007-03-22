@@ -18,7 +18,7 @@
 #include "nodes/pg_list.h"
 #include "storage/relfilenode.h"
 #include "utils/timestamp.h"
-
+#include "cdb/cdbtm.h"
 
 /*
  * Xact isolation levels
@@ -78,6 +78,8 @@ typedef void (*SubXactCallback) (SubXactEvent event, SubTransactionId mySubid,
 #define XLOG_XACT_ABORT				0x20
 #define XLOG_XACT_COMMIT_PREPARED	0x30
 #define XLOG_XACT_ABORT_PREPARED	0x40
+#define XLOG_XACT_DISTRIBUTED_COMMIT 0x50
+#define XLOG_XACT_DISTRIBUTED_FORGET 0x60
 
 typedef struct xl_xact_commit
 {
@@ -128,6 +130,12 @@ typedef struct xl_xact_abort_prepared
 
 #define MinSizeOfXactAbortPrepared offsetof(xl_xact_abort_prepared, arec.xnodes)
 
+typedef struct xl_xact_distributed_forget
+{
+	TMGXACT_LOG gxact_log;
+} xl_xact_distributed_forget;
+
+
 /*
  * Maximum number of subtransactions per transaction allowed under MPP until
  * we can move away from a static length SharedSnaphot structure.
@@ -171,9 +179,11 @@ extern void RollbackToSavepoint(List *options);
 extern void BeginInternalSubTransaction(char *name);
 extern void ReleaseCurrentSubTransaction(void);
 extern void RollbackAndReleaseCurrentSubTransaction(void);
+extern void TransactionInformationQEWriter(DistributedTransactionId *QEDistributedTransactionId, CommandId *QECommandId, bool *QEDirty);
 extern bool IsSubTransaction(void);
 extern bool IsTransactionBlock(void);
 extern bool IsTransactionOrTransactionBlock(void);
+extern bool IsTransactionDirty(void);
 extern char TransactionBlockStatusCode(void);
 extern void AbortOutOfAnyTransaction(void);
 extern void PreventTransactionChain(void *stmtNode, const char *stmtType);
@@ -185,6 +195,7 @@ extern void RegisterSubXactCallback(SubXactCallback callback, void *arg);
 extern void UnregisterSubXactCallback(SubXactCallback callback, void *arg);
 
 extern void RecordTransactionCommit(void);
+extern void RecordDistributedForgetCommitted(TMGXACT_LOG *gxact_log);
 
 extern int	xactGetCommittedChildren(TransactionId **ptr);
 

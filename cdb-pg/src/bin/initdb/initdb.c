@@ -2699,7 +2699,7 @@ main(int argc, char *argv[])
 		"pg_twophase",
 		"pg_multixact/members",
 		"pg_multixact/offsets",
-        "pg_dtm",
+		"pg_distributedxidmap",
 		"base",
 		"base/1",
 		"pg_tblspc"

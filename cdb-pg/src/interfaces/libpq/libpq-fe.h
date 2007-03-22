@@ -351,6 +351,13 @@ extern char *PQbuildMppQueryString(const char  *command,
 					 			   Oid			currentUserId,
 								   int         *final_len);
 
+extern char *PQbuildMppDtxProtocolCommand(
+					  int						dtxProtocolCommand,
+					  char*						dtxProtocolCommandLoggingStr,
+					  char*						gid,
+					  int   					gxid,
+					  int         		    	*final_len);
+
 extern int PQsendMppQuery_shared(PGconn       *conn,
 								 char         *query,
 								 int          query_len);

@@ -19,6 +19,7 @@
 #include "access/nbtree.h"
 #include "access/subtrans.h"
 #include "access/twophase.h"
+#include "access/cdbdistributedxidmap.h"
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -114,6 +115,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, SUBTRANSShmemSize());
 		size = add_size(size, TwoPhaseShmemSize());
 		size = add_size(size, MultiXactShmemSize());
+		size = add_size(size, DistributedXidMapShmemSize());
 		size = add_size(size, LWLockShmemSize());
 		size = add_size(size, ProcArrayShmemSize());
 		size = add_size(size, BackendStatusShmemSize());
@@ -148,6 +150,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		 */
 		numSemas = ProcGlobalSemas();
 		numSemas += SpinlockSemas();
+//		numSemas += FtsProcessSemas();
 		PGReserveSemaphores(numSemas, port);
 	}
 	else
@@ -190,6 +193,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	SUBTRANSShmemInit();
 	TwoPhaseShmemInit();
 	MultiXactShmemInit();
+	DistributedXidMapShmemInit();
     FtsShmemInit();
     tmShmemInit();
 	InitBufferPool();

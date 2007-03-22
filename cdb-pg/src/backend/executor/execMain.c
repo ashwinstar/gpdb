@@ -417,9 +417,9 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			if (needXact)
 			{
 				/*
-				 * Start a global transaction and reconfigure the cluster if needed.
+				 * Mark the DTX as distributed and reconfigure the cluster if needed.
 				 */
-				cdbdisp_startDtxTransaction();
+				cdbdisp_markDtxAsDistributed();
 			}
 						
 			/*

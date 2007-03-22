@@ -181,11 +181,11 @@ main(int argc, char *argv[])
 		else if (header->recType == TM_LOG_CHECKPOINT)
 		{
 			/* read the body of the checkpoint record */
-			int dataToRead = sizeof(TMGXACT) * header->numberOfParticipants;
+			int dataToRead = sizeof(TMGXACT_LOG) * header->numberOfParticipants;
 			
 			if (dataToRead > 0)
 			{
-				TMGXACT *xacts = malloc(dataToRead);
+				TMGXACT_LOG *xacts = malloc(dataToRead);
 				
 				int len = read(fd, xacts, dataToRead);
 				
