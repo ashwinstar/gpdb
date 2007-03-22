@@ -2475,10 +2475,6 @@ format_opt_item:
 			{
 				$$ = makeDefElem("escape", (Node *)makeString($3));
 			}
-			| FORCE QUOTE columnList
-			{
-				$$ = makeDefElem("force_quote", (Node *)$3);
-			}
 			| FORCE NOT NULL_P columnList
 			{
 				$$ = makeDefElem("force_notnull", (Node *)$4);
