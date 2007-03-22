@@ -1,0 +1,170 @@
+COMMAND NAME: gpaddpart.sh
+
+Adds new child table partitions to a parent table that was 
+previously partitioned using gpcreatepart.sh.
+
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+gpaddpart.sh -t <parent_table> -n <new_child_count> [-c] [-q] [-a] 
+[-l <log_dir>] [-D] [-d <master_data_directory>] [-x <database>]
+
+gpaddpart.sh -t <parent_table> -s <new_start_value> [-c] [-q] [-a] 
+[-l <log_dir>] [-D] [-d <master_data_directory>] [-x <database>]
+
+gpaddpart.sh -t <parent_table> -o <new_list_value>[,<value>,...] [-c] 
+[-q] [-a] [-l <log_dir>] [-D] [-d <master_data_directory>] [-x <database>]
+
+gpaddpart.sh -? | -v
+
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The gpaddpart.sh script adds additional child tables to a parent table 
+that has already been partitioned using gpcreatepart.sh. This is useful 
+if you need to create additional child table partitions for newly added 
+data. It will use the same partitioning scheme (date range, numerical 
+range, or list) as was originally defined when the parent table was 
+first partitioned. It performs the following tasks:
+
+* Creates new child tables that inherit all attributes from the parent 
+  table (columns, constraints, distribution key, etc.), as well as the 
+  original partitioning attributes. Note that permissions are not inherited. 
+ 
+* Defines CHECK constraints on the child tables based on the new date 
+  range, numeric range, or list value specified. The child table names 
+  are created using a predefined naming convention of:
+  <top_level_parent>_child_depth_<#>_<partition_type>_<data_range>_<type>
+
+* If the existing child tables have rewrite rules, it will create the 
+  appropriate rewrite rules on the parent table so that INSERT statements 
+  are automatically redirected to the correct child table. The rewrite 
+  rules are created using a predefined naming convention of:
+  rule_<child_table_name>
+
+* If the existing child tables have indexes, it will create the 
+  corresponding indexes on the new child tables. Indexes are created 
+  with a predefined naming convention of:
+  idx_<column_number>_<child_table_name>
+
+* If the parent table contains data, it moves partitioned records 
+  from the parent table and inserts them into the correct child table 
+  based on the CHECK constraints.
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-t <parent_table>
+
+Required. The name of the parent table that for which you want to 
+create new partitioned child tables.
+
+
+-s <new_start_value>
+
+Required for numeric range partitioning. Specifies the numeric value 
+to use as the starting point for creating additional child tables.
+
+
+-n <new_children_count>
+
+Required for date range partitioning. Specifies the number of additional 
+year, month, day, or hour child tables to create from where the partitioning 
+scheme last left off.
+
+
+-o <new_list_values>
+
+Required for list partitioning. A comma separated list of values for 
+which to create new list partitioned child tables. Make sure there are 
+no spaces between list values and comma separators. To add a null check 
+constraint add the text NULL to the list.
+
+
+-c (leave data in parent table)
+
+Copies the newly partitioned records back into the parent table after 
+the child tables have been created. The default behavior is to remove 
+records from the parent table and put them into the correct child table.
+
+
+-q (no output)
+
+Do not output messages to the screen. Write messages to log file only.
+
+
+-a (do not prompt)
+
+Do not prompt the user for confirmation.
+
+
+-l <log_directory>
+
+Specifies an alternative directory to write the log file. By default 
+log files are written to ~/gpAdminLogs.
+
+
+-D (debug)
+
+Sets log output to debug level.
+
+
+-x database_name
+
+Optional. The name of the database where the parent table resides. If 
+not supplied, the script uses the default database (which is the most 
+recently created database).
+
+
+-d <master_data_directory>
+
+Optional. The master data directory. If not specified, the value set for 
+$MASTER_DATA_DIRECTORY will be used.
+
+
+-? (help)
+
+Displays the online help.
+
+
+-v (show script version)
+
+Displays the version, status, last updated date, and check sum of this script.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Add new partitioned child tables to a parent table that is currently 
+range partitioned by salary. You want to increase the top salary 
+range from what it currently is to $1,000,000.
+
+gpaddpart.sh -t employee -s 10000000
+
+
+Add new partitioned child tables to a parent table that is currently 
+list partitioned by region. You want to add a new region for china and india.
+
+gpaddpart.sh -t sales -o china,india
+
+
+Add two new partitioned child tables to a parent table that is 
+currently date partitioned by month.
+
+gpaddpart.sh -t sales -n 2
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+gpcreatepart.sh, gpdeletepart.sh
+
