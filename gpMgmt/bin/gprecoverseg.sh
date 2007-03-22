@@ -59,7 +59,7 @@ EXIT_STATUS=0
 FORCESTOP=0
 TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}.$$
 PARALLEL_STATUS_FILE=/tmp/gpstate_parallel_status_file.$$
-gpsegREC=gpsegrec.sh
+GPSEGREC=gpsegrec.sh
 BATCH_DEFAULT=4 #Specific limit for segment recovery
 #******************************************************************************
 # Functions
@@ -131,7 +131,7 @@ GET_SETTING () {
 			LOG_MSG "[FATAL]:-The failed segment(s) with dbid's ${FAILED_INST_LIST[@]} will" 1
 			LOG_MSG "[FATAL]:-need to be recovered manually, or a complete database restore" 1
 			LOG_MSG "[FATAL]:-will need to be undertaken" 1
-			$gpstop -maq
+			$GPSTOP -maq
 			ERROR_CHK $? "shutdown master database from admin mode" 2
 			ERROR_EXIT "[FATAL]:-No further progress can be made" 2
 		else
@@ -139,7 +139,7 @@ GET_SETTING () {
 			LOG_MSG "[WARN]:-as master database started in admin mode" 1
 			LOG_MSG "[INFO]:-Restart the database and re-run this utility to check for failures" 1
 			LOG_MSG "[INFO]:-Commencing shutdown from admin mode" 1
-			$gpstop -maq
+			$GPSTOP -maq
 			ERROR_CHK $? "shutdown master database from admin mode" 2
 			ERROR_EXIT "[FATAL]:-No further progress can be made" 2
 		fi
@@ -403,12 +403,12 @@ TEST_ACCESS () {
 STOP_DATABASE () { 
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ $STOPDB -eq 1 ] || [ $FORCESTOP -ne 0 ]; then
-		CHK_FILE $gpstop
+		CHK_FILE $GPSTOP
         	if [ $EXISTS -ne 0 ];then
-                	ERROR_EXIT "[FATAL]:-Could not locate $gpstop script"
+                	ERROR_EXIT "[FATAL]:-Could not locate $GPSTOP script"
 		fi
         	LOG_MSG "[INFO]:-Shutting down the instance ... Please wait ..." 1
-        	$gpstop -zfa
+        	$GPSTOP -zfa
 		if [ x"" == x"$FORCE_RECOVER_STRING" ];then
         		ERROR_CHK $? "shutdown master instance" 2
 		else
@@ -458,7 +458,7 @@ RECOVER_DATA () {
 			POOL_ARRAY=0
 		fi
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$gpsegREC $$ $FAIL_QE_HOST $FAIL_QE_PORT $FAIL_QE_DIR $FAIL_QE_DBID $FAIL_QE_CONTENTID $FAIL_QE_TOP_DIR \
+		$GPSEGREC $$ $FAIL_QE_HOST $FAIL_QE_PORT $FAIL_QE_DIR $FAIL_QE_DBID $FAIL_QE_CONTENTID $FAIL_QE_TOP_DIR \
  $MIR_QE_HOST $MIR_QE_PORT $MIR_QE_DIR $MIR_QE_DBID $MIR_QE_TOP_DIR $INST_COUNT $LOG_FILE $STOPDB $FORCESTOP $POOL_ARRAY &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT 
 		((COUNT=$COUNT+1))
@@ -521,7 +521,7 @@ START_DATABASE () {
 		ERROR_CHK $? "reset dbid $DBID as valid" 1
 	done
 	LOG_MSG "[INFO]:-Commencing shutdown of the MPP instance from admin mode... Please wait..." 1
-	$gpstop -m
+	$GPSTOP -m
 	ERROR_CHK $? "stop MPP instance from admin mode" 2
         LOG_MSG "[INFO]:-Starting up the MPP instance... Please wait..." 1
         $GPSTART -a
@@ -1046,7 +1046,7 @@ UPDATE_STATUS () {
 		((COUNT=$COUNT+1))
 	done
 	LOG_MSG "[INFO]:-Shutting down master database in utility mode" 1
-	$gpstop -m
+	$GPSTOP -m
 LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 

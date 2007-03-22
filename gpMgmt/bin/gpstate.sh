@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -55,7 +55,7 @@ TLINES=10
 WAIT_LIMIT=600
 PARALLEL_STATUS_FILE=/tmp/gpstate_parallel_status_file.$$
 TMP_SORT_FILE=/tmp/gpstate_parallel_tmp_sort.$$
-gpsegSTATE=gpsegstate.sh
+GPSEGSTATE=gpsegstate.sh
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -205,7 +205,7 @@ DATABASE_STATUS () {
 		do
 			SET_VAR
 			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-			$gpsegSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 1 &
+			$GPSEGSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 1 &
 			PARALLEL_COUNT ${#QE_ARRAY[@]} $BATCH_DEFAULT
 		done
 		SORT_FILE
@@ -342,7 +342,7 @@ VERSION_INFO () {
 	do
 		SET_VAR
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$gpsegSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 2 &
+		$GPSEGSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 2 &
 		PARALLEL_COUNT ${#QE_ARRAY[@]} $BATCH_DEFAULT
 	done
 	SORT_FILE
@@ -468,7 +468,7 @@ GET_STATUS_INFORMATION () {
 	do
 		SET_VAR
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$gpsegSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 1 & 
+		$GPSEGSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 1 & 
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
 	if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO;fi

@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -57,7 +57,7 @@ TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 FORCE_ACTIVATE=0
-unset START_gpsync
+unset START_GPSYNC
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -151,7 +151,7 @@ CHECK_PARAM () {
 		fi
 	fi	
 	if [ ! -f $GPSTART ];then ERROR_EXIT "[FATAL $GPSTART does not exist" 2;fi
-	if [ ! -f $gpstop ];then ERROR_EXIT "[FATAL $gpstop does not exist" 2;fi
+	if [ ! -f $GPSTOP ];then ERROR_EXIT "[FATAL $GPSTOP does not exist" 2;fi
 	#Check hostname not the same as the current host if -c option supplied
 	if [ x"" != x"$NEW_STANDBY_MASTER" ] && [ $NEW_STANDBY_MASTER == `$HOSTNAME` ];then
 		ERROR_EXIT "[FATAL]:-New standby hostname supplied is same as current hostname"
@@ -162,7 +162,7 @@ CHECK_PARAM () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-STOP_gpsync_PROCESS () {
+STOP_GPSYNC_PROCESS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	STOP_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY
 	if [ $RETVAL -ne 0 ] && [ $FORCE_ACTIVATE -eq 0 ] ;then
@@ -173,7 +173,7 @@ STOP_gpsync_PROCESS () {
 ADMIN_SHUTDOWN () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Stopping standby master instance"
-	$gpstop -m -d $MASTER_STANDBY_DATA_DIRECTORY
+	$GPSTOP -m -d $MASTER_STANDBY_DATA_DIRECTORY
 	ERROR_CHK $? "shutdown standby master instance" 1
 	if [ x"" != x"$1" ];then
 		LOG_MSG "[INFO]:-Re-starting sync process"
@@ -243,7 +243,7 @@ STOP_MASTER_DB () {
 	else
 		LOG_MSG "[INFO]:-Commencing shutdown of standby instance, including a call to shutdown segment instances"
 		LOG_MSG "[INFO]:-Ignore any warning messages if gpstop.sh reports problems with shutdown of segment instances"
-		$gpstop -qfbya -d $MASTER_STANDBY_DATA_DIRECTORY
+		$GPSTOP -qfbya -d $MASTER_STANDBY_DATA_DIRECTORY
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -362,7 +362,7 @@ CHK_DIR $MASTER_STANDBY_DATA_DIRECTORY
 if [ $EXISTS -eq 1 ];then
         ERROR_EXIT "[FATAL]:-Standby data directory $MASTER_STANDBY_DATA_DIRECTORY does not exist on this host" 2
 fi
-STOP_gpsync_PROCESS
+STOP_GPSYNC_PROCESS
 CHK_CATALOG_DATA
 UPDATE_CATALOG
 STOP_MASTER_DB

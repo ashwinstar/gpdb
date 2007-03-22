@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -57,7 +57,7 @@ EXIT_STATUS=0
 TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
-START_gpsync=1
+START_GPSYNC=1
 NOCREATEDB=0
 TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
 #******************************************************************************
@@ -267,7 +267,7 @@ DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-MPP total primary segments     = $MASTER_TOTAL_SEG" 1
 	if [ $STANDBY_ACTIVE -ne 0 ];then
 		LOG_MSG "[INFO]:-MPP Master Standby             = Configured" 1
-		if [ x"" == x"$START_gpsync" ];then
+		if [ x"" == x"$START_GPSYNC" ];then
 			LOG_MSG "[INFO]:-MPP start sync process         = Off" 1
 		else
 			LOG_MSG "[INFO]:-MPP start sync process         = On" 1
@@ -467,7 +467,7 @@ STANDBY_ACTIVATE () {
 	BACKOUT_COMMAND "$ECHO \"Removing standby data directory log file\""
 	BACKOUT_COMMAND "$TRUSTED_SHELL $STANDBY_HOSTNAME \"$RM -Rf ${STANDBY_DIR}\""
 	BACKOUT_COMMAND "$ECHO \"Removing standby data directory ${STANDBY_DIR}\""
-	if [ x"" != x"$START_gpsync" ];then
+	if [ x"" != x"$START_GPSYNC" ];then
 		LOG_MSG "[INFO]:-Starting gpsyncmaster on standby host ${STANDBY_HOSTNAME}" 1
 		$TRUSTED_SHELL ${STANDBY_HOSTNAME} "${EXPORT_LIB_PATH};$GPSYNCMASTER -D ${STANDBY_DIR} -p $STANDBY_PORT -S"
 		ERROR_CHK $? "initialize gpsyncmaster on ${STANDBY_HOSTNAME}" 1
@@ -537,7 +537,7 @@ if [ $# -ne 0 ]; then
 			c ) CHECK_POINT_SEGMENTS=$OPTARG ;;
 			i ) DEFAULT_IP_ALLOW=$OPTARG ;;
 			p ) TEMP_PORT=$OPTARG ;;
-##			i ) unset START_gpsync ;;
+##			i ) unset START_GPSYNC ;;
 			m ) MASTER_ONLY=1 
 			    NOCREATEDB=1 ;;
 			n ) LOCALE_SETTING=$OPTARG ;;

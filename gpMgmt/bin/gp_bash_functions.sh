@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		gp_bash_fuctions.sh
+#	Filename:-		gp_bash_functions.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Updated:-		$Date$
@@ -63,7 +63,7 @@ findCmdInPath() {
 				fi
 		done
 		echo $cmdtofind
-		return "Problem in gp_bash_fuctions, command '$cmdtofind' not found in COMMAND path. You will need to edit the script named gp_bash_fuctions.sh to properly locate the needed commands for your platform."
+		return "Problem in gp_bash_functions, command '$cmdtofind' not found in COMMAND path. You will need to edit the script named gp_bash_functions.sh to properly locate the needed commands for your platform."
 }
 
 findMppPath() {
@@ -154,7 +154,7 @@ CALL_HOST=`$HOSTNAME|$CUT -d. -f1`
 PSQLBIN=`findMppPath`
 
 if [ x"$PSQLBIN" = x"" ];then
-		echo "Problem in gp_bash_fuctions, command '$MPP_UNIQUE_COMMAND' not found in MPP path. Try setting BIZHOME to the location of your MPP distribution"
+		echo "Problem in gp_bash_functions, command '$MPP_UNIQUE_COMMAND' not found in MPP path. Try setting BIZHOME to the location of your MPP distribution"
 		exit 99
 fi
 
@@ -600,20 +600,20 @@ GET_MASTER_PORT () {
 
 CHK_ON_PASSIVE_STANDBY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	gpsync_COUNT=0
+	GPSYNC_COUNT=0
 	CHK_DB_QD_SET
 	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 	GET_PG_PID_ACTIVE $MASTER_PORT
 	if [ -f $MASTER_DATA_DIRECTORY/postmaster.opts ];then
-		gpsync_COUNT=`$GREP -c gpsync $MASTER_DATA_DIRECTORY/postmaster.opts`
+		GPSYNC_COUNT=`$GREP -c gpsync $MASTER_DATA_DIRECTORY/postmaster.opts`
 	fi
-	if [ $PID -ne 0 ] && [ $gpsync_COUNT -ne 0 ];then
+	if [ $PID -ne 0 ] && [ $GPSYNC_COUNT -ne 0 ];then
 		LOG_MSG "[FATAL]:-Cannot run this script on a passive standby instance" 1
 		LOG_MSG "[FATAL]:-where there is a conflict with the current value of" 1
 		LOG_MSG "[FATAL]:-the MASTER_DATA_DIRECTORY environment variable setting." 1
 		ERROR_EXIT "[FATAL]:-Unable to process requested command" 2
 	fi
-	if [ $gpsync_COUNT -ne 0 ];then
+	if [ $GPSYNC_COUNT -ne 0 ];then
 		LOG_MSG "[FATAL]:-Cannot run this script on the standby instance" 1
 		LOG_MSG "[FATAL]:-Status indicates that standby instance processs not running" 1
 		LOG_MSG "[FATAL]:-Check standby process status via gpstate.sh -f on Master instance" 1
@@ -1163,11 +1163,11 @@ case $OS_TYPE in
 		DU_TXT="-c" ;;	
 	* ) echo unknown ;;
 esac
-#Set up MPP_LIBRARY_PATH
-MPP_LIBRARY_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/lib
-export LD_LIBRARY_PATH=$MPP_LIBRARY_PATH:$LD_LIBRARY_PATH
+#Set up GP_LIBRARY_PATH
+GP_LIBRARY_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/lib
+export LD_LIBRARY_PATH=$GP_LIBRARY_PATH:$LD_LIBRARY_PATH
 SHARE_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/share
 SCRIPTS_DIR=`$DIRNAME \` $DIRNAME $INITDB\``/gpMgmt/bin
 
-export $LIB_TYPE=$MPP_LIBRARY_PATH:\$$LIB_TYPE
-EXPORT_LIB_PATH='export '${LIB_TYPE}'='$MPP_LIBRARY_PATH':$'$LIB_TYPE
+export $LIB_TYPE=$GP_LIBRARY_PATH:\$$LIB_TYPE
+EXPORT_LIB_PATH='export '${LIB_TYPE}'='$GP_LIBRARY_PATH':$'$LIB_TYPE

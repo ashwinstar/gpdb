@@ -61,7 +61,7 @@ SEG_TYPE=0
 DO_CHILD=0
 RESPONSE_TIME=0
 PARALLEL_STATUS_FILE=/tmp/gpskew_parallel_status_file.$$
-gpsegSKEW=gpsegskew.sh
+GPSEGSKEW=gpsegskew.sh
 WAIT_LIMIT=300
 #******************************************************************************
 # Functions
@@ -209,7 +209,7 @@ GET_NODE_COUNT () {
 		QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 		QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$gpsegSKEW $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $QD_DBNAME $TARGETTBL &
+		$GPSEGSKEW $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $QD_DBNAME $TARGETTBL &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
 	for RECS in `cat $PARALLEL_STATUS_FILE|$CUT -d'|' -f2`

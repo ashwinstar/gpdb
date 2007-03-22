@@ -21,7 +21,7 @@
 # Prep Code
 #******************************************************************************
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ];then
 	. $FUNCTIONS
 else
@@ -421,10 +421,10 @@ CHK_MIRROR_DIR () {
 CONFIG_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing shutdown of Master Instance" 1
-	if [ -f $gpstop ];then
-		$gpstop -qfa -d $MASTER_DATA_DIRECTORY	
+	if [ -f $GPSTOP ];then
+		$GPSTOP -qfa -d $MASTER_DATA_DIRECTORY	
 	else
-		ERROR_EXIT "[FATAL]:-Could not locate $gpstop" 2
+		ERROR_EXIT "[FATAL]:-Could not locate $GPSTOP" 2
 	fi
 	LOG_MSG "[INFO]:-Starting Master instance in admin mode" 1
 	if [ -f $GPSTART ];then
@@ -582,7 +582,7 @@ if [ $STANDBY_COUNT -ne 0 ];then
 	STANDBY_HOSTNAME=`$ECHO $STANDBY_ARRAY|$CUT -d'|' -f1`
 	LOG_MSG "[INFO]:-Obtained standby hostname as $STANDBY_HOSTNAME" 1
 	if [ -f $GPINITSTANDBY ];then
-		$gpstop -qam -d $MASTER_DATA_DIRECTORY
+		$GPSTOP -qam -d $MASTER_DATA_DIRECTORY
 		$GPSTART -qa -d $MASTER_DATA_DIRECTORY
 		$GPINITSTANDBY -s $STANDBY_HOSTNAME -n -a
 	else
@@ -590,7 +590,7 @@ if [ $STANDBY_COUNT -ne 0 ];then
 	fi
 else
 	LOG_MSG "[INFO]:-Commencing shutdown of Master instance from admin mode" 1
-	$gpstop -qam -d $MASTER_DATA_DIRECTORY
+	$GPSTOP -qam -d $MASTER_DATA_DIRECTORY
 	LOG_MSG "[INFO]:-Commencing startup of mirrored Instance" 1
 	$GPSTART -qa -d $MASTER_DATA_DIRECTORY
 fi

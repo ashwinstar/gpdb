@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -56,7 +56,7 @@ ADMIN=0
 STOP_INVALID=0
 STANDBY_COUNT=0
 STOP_SYNC=1
-gpsegSTOP=gpsegstop.sh
+GPSEGSTOP=gpsegstop.sh
 PARALLEL_STATUS_FILE=/tmp/gpstop_parallel_status_file.$$
 WAIT_LIMIT=600
 BATCH_DEFAULT=60
@@ -276,7 +276,7 @@ PROCESS_SHUTDOWN () {
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 				if [ "$QE_VALID" == "t" ] || [ $STOP_INVALID -eq 1 ];then
 					if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-					$gpsegSTOP $$ $STOP_INVALID $QE_NAME $QE_PORT $QE_DIR $QE_VALID $MODE $INST_COUNT $LOG_FILE &
+					$GPSEGSTOP $$ $STOP_INVALID $QE_NAME $QE_PORT $QE_DIR $QE_VALID $MODE $INST_COUNT $LOG_FILE &
 					PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 				else
 					if [ $DEBUG_LEVEL -eq 0 ];then $ECHO;fi
@@ -397,8 +397,8 @@ if [ x"" != x"$RELOAD_PARAM" ];then
 	exit
 fi
 GET_QE_DETAILS
-if [ ! -f ${WORKDIR}/$gpsegSTOP ];then
-	ERROR_EXIT "[FATAL]:-No $gpsegSTOP program" 2
+if [ ! -f ${WORKDIR}/$GPSEGSTOP ];then
+	ERROR_EXIT "[FATAL]:-No $GPSEGSTOP program" 2
 fi
 if [ $INTERACTIVE ]; then
 		PROMPT_CONTINUE

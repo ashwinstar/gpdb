@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -56,7 +56,7 @@ EXIT_STATUS=0
 TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
-START_gpsync=1
+START_GPSYNC=1
 UPDATE_CATALOG=1
 #******************************************************************************
 # Functions
@@ -120,7 +120,7 @@ CHECK_PARAM () {
 	PING_HOST $MASTER_STANDBY_HOSTNAME
 	#Check to see if we already have a standby master configured
 	if [ $UPDATE_CATALOG -eq 1 ];then
-	    # there is a function to do this in gp_bash_fuctions.sh
+	    # there is a function to do this in gp_bash_functions.sh
 		STANDBY_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where content=-1 and dbid<>1 ;"`
 		ERROR_CHK $? "obtained standby master host count" 2
 		if [ $STANDBY_COUNT -ne 0 ];then
@@ -141,7 +141,7 @@ CHECK_PARAM () {
 		if [ $PID -ne 0 ] && [ x"" != x"$FAIL_PRI_SEG" ];then
 			LOG_MSG "[WARN]:-Active read only master detected on $MASTER_STANDBY_HOSTNAME" 1
 			LOG_MSG "[INFO]:-Calling close down routine" 1
-			$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$gpstop -d $MASTER_DATA_DIRECTORY -m"
+			$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
 		fi
 	else
 		#Do not have a directory, but check to ensure we do not have a sync process
@@ -235,11 +235,11 @@ STOP_MASTER_DB () {
 		ERROR_EXIT "[FATAL]:-Appears Master instance shutdown during this process, check Master instance log file" 2
 	else
 		LOG_MSG "[INFO]:-Commencing shutdown of Master instance" 1
-		if [ -f $gpstop ];then
-			$gpstop -d $MASTER_DATA_DIRECTORY -af
+		if [ -f $GPSTOP ];then
+			$GPSTOP -d $MASTER_DATA_DIRECTORY -af
 			ERROR_CHK $? "stop Master instance" 1
 		else
-			ERROR_EXIT "[FATAL]:-Unable to locate $gpstop" 2
+			ERROR_EXIT "[FATAL]:-Unable to locate $GPSTOP" 2
 		fi
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -257,7 +257,7 @@ DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-MPP Master standby port           = $MASTER_STANDBY_PORT" 1
 	LOG_MSG "[INFO]:-MPP Array name                    = $MASTER_MPP_NAME" 1
 	LOG_MSG "[INFO]:-MPP Master standby data directory = $MASTER_STANDBY_DATA_DIRECTORY" 1
-	if [ x"" == x"$START_gpsync" ];then
+	if [ x"" == x"$START_GPSYNC" ];then
 		LOG_MSG "[INFO]:-MPP Start mppsynmaster process    = Off" 1
 	else
 		LOG_MSG "[INFO]:-MPP Start mppsynmaster process    = On" 1
@@ -307,7 +307,7 @@ STANDBY_ACTIVATE () {
 	C_DIR=`pwd`;cd ${MASTER_DATA_DIRECTORY};sync;cd $C_DIR
 	$TRUSTED_COPY -pr $MASTER_DATA_DIRECTORY ${MASTER_STANDBY_HOSTNAME}:${MASTER_STANDBY_DATA_DIRECTORY} 2>>$LOG_FILE
 	ERROR_CHK $? "remote copy of $MASTER_DATA_DIRECTORY to $MASTER_STANDBY_HOSTNAME" 2
-	if [ x"" != x"$START_gpsync" ];then
+	if [ x"" != x"$START_GPSYNC" ];then
 		START_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY $MASTER_STANDBY_PORT
 	else
 		LOG_MSG "[INFO]:-Process gpsyncmaster not started on $MASTER_STANDBY_HOSTNAME as -i supplied" 1
@@ -334,9 +334,9 @@ FAIL_PRIMARY_SEGMENTS () {
         if [ $EXISTS -eq 1 ];then
                 ERROR_EXIT "[FATAL]:-File $GPSTART does not exist on $MASTER_STANDBY_HOSTNAME" 2
         fi
-	CHK_FILE $gpstop $MASTER_STANDBY_HOSTNAME
+	CHK_FILE $GPSTOP $MASTER_STANDBY_HOSTNAME
         if [ $EXISTS -eq 1 ];then
-                ERROR_EXIT "[FATAL]:-File $gpstop does not exist on $MASTER_STANDBY_HOSTNAME" 2
+                ERROR_EXIT "[FATAL]:-File $GPSTOP does not exist on $MASTER_STANDBY_HOSTNAME" 2
         fi
 	#Start the readonly master segment in utility mode
 	LOG_MSG "[INFO]:-Starting read only master segment instance in utility mode" 1
@@ -352,7 +352,7 @@ FAIL_PRIMARY_SEGMENTS () {
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" update $CONFIG_TABLE set hostname='$MASTER_STANDBY_HOSTNAME' where content=-1;\""
 	ERROR_CHK $? "update master instance hostname" 2
 	#Now shutdown the read only master from utility mode
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$gpstop -d $MASTER_DATA_DIRECTORY -m"
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
 	#Now start up the read only master
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$PG_CTL -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log start"
 	ERROR_CHK $? "start readonly master instance" 2
@@ -377,7 +377,7 @@ if [ $# -ne 0 ]; then
 			a ) unset INTERACTIVE ;;
 			q ) unset VERBOSE ;;
 			l ) LOG_DIR=$OPTARG ;;
-			i ) unset START_gpsync ;;
+			i ) unset START_GPSYNC ;;
 			n ) UPDATE_CATALOG=0 ;;
 			f ) FAIL_PRI_SEG=1 ;;
 			D ) DEBUG_LEVEL=1 ;;
@@ -403,9 +403,9 @@ if [ $FAIL_PRI_SEG ] && [ $UPDATE_CATALOG -eq 1 ];then
 	LOG_MSG "[INFO]:-Option -f supplied setting update catalog to off" 1
 	UPDATE_CATALOG=0
 fi
-if [ $FAIL_PRI_SEG ] && [ $START_gpsync ];then
+if [ $FAIL_PRI_SEG ] && [ $START_GPSYNC ];then
 	LOG_MSG "[INFO]:-Option -f supplied setting start gpsync process to off"
-	unset START_gpsync
+	unset START_GPSYNC
 fi
 CHK_ON_PASSIVE_STANDBY
 MASTER_HOSTNAME=`$HOSTNAME`

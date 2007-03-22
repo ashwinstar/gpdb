@@ -25,7 +25,7 @@
 # as required.
 WORKDIR=`dirname $0`
 CWORKDIR=`pwd`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -56,9 +56,9 @@ TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 FORCE_ACTIVATE=0
-unset START_gpsync
+unset START_GPSYNC
 REMOTE_GPSTART=$GPSTART
-REMOTE_gpstop=$gpstop
+REMOTE_GPSTOP=$GPSTOP
 REMOTE_INIT_STANDBY=$GPINITSTANDBY
 #******************************************************************************
 # Functions
@@ -162,15 +162,15 @@ CHECK_PARAM () {
 	fi	
 	#Check that we have the required additional scripts
 	if [ ! -f $GPSTART ];then ERROR_EXIT "[FATAL $GPSTART does not exist" 2;fi
-	if [ ! -f $gpstop ];then ERROR_EXIT "[FATAL $gpstop does not exist" 2;fi
+	if [ ! -f $GPSTOP ];then ERROR_EXIT "[FATAL $GPSTOP does not exist" 2;fi
 	#Also check that we have these on the master host to be re-activated
 	CHK_FILE $REMOTE_GPSTART $FAILBACK_MASTER_HOSTNAME
 	if [ $EXISTS -eq 1 ];then
 		ERROR_EXIT "[FATAL]:-File $REMOTE_GPSTART does not exist on $FAILBACK_MASTER_HOSTNAME" 2
 	fi
-	CHK_FILE $REMOTE_gpstop $FAILBACK_MASTER_HOSTNAME
+	CHK_FILE $REMOTE_GPSTOP $FAILBACK_MASTER_HOSTNAME
 	if [ $EXISTS -eq 1 ];then
-		ERROR_EXIT "[FATAL]:-File $REMOTE_gpstop does not exist on $FAILBACK_MASTER_HOSTNAME" 2
+		ERROR_EXIT "[FATAL]:-File $REMOTE_GPSTOP does not exist on $FAILBACK_MASTER_HOSTNAME" 2
 	fi
 	CHK_FILE $REMOTE_INIT_STANDBY $FAILBACK_MASTER_HOSTNAME
 	if [ $EXISTS -eq 1 ];then
@@ -209,7 +209,7 @@ DISPLAY_PARAM () {
 PROCESS_REACTIVATION () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing shutdown of instance"
-	$gpstop -qafy
+	$GPSTOP -qafy
 	ERROR_CHK $? "[FATAL]:-Issues with instance shutdown, please correct and re-run this script" 2
 	LOG_MSG "[INFO]:-Starting master instance in admin mode"
 	$GPSTART -m
@@ -231,7 +231,7 @@ PROCESS_REACTIVATION () {
 	LOG_MSG "[INFO]:-Removing standby postmaster.opts file"
 	$RM -f $MASTER_DATA_DIRECTORY/$PG_OPT
 ##	LOG_MSG "[INFO]:-Restarting sync process on $MASTER_HOSTNAME"
-##	RUN_COMMAND_REMOTE $FAILBACK_MASTER_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;. $SCRIPTDIR/gp_bash_fuctions.sh; START_SYNC_PROCESS $MASTER_HOSTNAME $MASTER_DATA_DIRECTORY $MASTER_PORT"
+##	RUN_COMMAND_REMOTE $FAILBACK_MASTER_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;. $SCRIPTDIR/gp_bash_functions.sh; START_SYNC_PROCESS $MASTER_HOSTNAME $MASTER_DATA_DIRECTORY $MASTER_PORT"
 	LOG_MSG "[INFO]:-Starting MPP instance on $FAILBACK_MASTER_HOSTNAME"
 	RUN_COMMAND_REMOTE $FAILBACK_MASTER_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$REMOTE_GPSTART -d $FAILBACK_MASTER_DATA_DIRECTORY -a"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -256,7 +256,7 @@ UPDATE_CATALOG () {
 ADMIN_SHUTDOWN () {
         LOG_MSG "[INFO]:-Start Function $FUNCNAME"
         LOG_MSG "[INFO]:-Stopping master segment instance"
-        $gpstop -m
+        $GPSTOP -m
         ERROR_CHK $? "shutdown master segment instance" 1
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

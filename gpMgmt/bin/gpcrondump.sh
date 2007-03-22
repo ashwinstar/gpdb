@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -71,7 +71,7 @@ DUMP_PG_DUMP=0
 CATALOG=pg_catalog
 RUN_PROG=0
 PARALLEL_STATUS_FILE=/tmp/gpcrondump_parallel_status_file.$$
-gpsegCRON=gpsegcron.sh
+GPSEGCRON=gpsegcron.sh
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -212,7 +212,7 @@ CHK_DUMP_DIR () {
 	do
 		CHK_DATA
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$gpsegCRON $$ 2 $DIR_HOST $DIR $DUMP_SUB_DIR $INST_COUNT $LOG_FILE &
+		$GPSEGCRON $$ 2 $DIR_HOST $DIR $DUMP_SUB_DIR $INST_COUNT $LOG_FILE &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done	
 	FAILED_MKDIR_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "FAILED_MKDIR"`
@@ -408,7 +408,7 @@ CHK_DUMP_SPACE () {
 		CHK_DATA
 		SEG=`$BASENAME $DIR`
 		DIR_HOST_USED_B=`$ECHO ${ACTUAL_DB_SIZE[@]}|$TR ' ' '\n'|$TR '|' '~'|$GREP "${DIR_HOST}~${SEG}~"|$TR '~' '|'|$AWK -F'|' '{print $NF}'`
-		$gpsegCRON $$ 1 $DIR_HOST $DIR $DIR_HOST_USED_B $INST_COUNT $LOG_FILE $ZIP_STATE $FREE_SPACE_PERCENT $COMPRESSION_FACTOR &
+		$GPSEGCRON $$ 1 $DIR_HOST $DIR $DIR_HOST_USED_B $INST_COUNT $LOG_FILE $ZIP_STATE $FREE_SPACE_PERCENT $COMPRESSION_FACTOR &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
 	#Now check status file
@@ -626,7 +626,7 @@ CHK_POST_DUMP () {
 	do
 		CHK_DATA
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$gpsegCRON $$ 3 $DIR_HOST $DIR $DUMP_SUB_DIR $DUMP_DATE ${DBID} $TIMESTAMP_KEY $INST_COUNT $LOG_FILE &
+		$GPSEGCRON $$ 3 $DIR_HOST $DIR $DUMP_SUB_DIR $DUMP_DATE ${DBID} $TIMESTAMP_KEY $INST_COUNT $LOG_FILE &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done	
 	#Now process status file

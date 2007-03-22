@@ -25,7 +25,7 @@ WORKDIR=`dirname $0`
 # Source required functions file, this required for script to run
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -69,7 +69,7 @@ TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
 TMP_FILE=/tmp/cluster_tmp_file.$$
 TMP_HOSTNAME_FILE=hostname_test_file.$$
 PARALLEL_STATUS_FILE=/tmp/gpcreatecluster_parallel_status_file.$$
-gpcreateSEG=gpcreateseg.sh
+GPCREATESEG=gpcreateseg.sh
 ULIMIT_WARN=0
 PARALLEL_BUILD=1
 #******************************************************************************
@@ -200,8 +200,8 @@ CHK_PARAMS () {
 		$LOCALE >> $LOG_FILE
 		LOG_MSG "[INFO]:-End of system locale dump"
 		if [ x"" != x"$PARALLEL_BUILD" ];then
-			if [ ! -f ${WORKDIR}/$gpcreateSEG ];then
-				ERROR_EXIT "[FATAL]:-Parallel mode selected by no ${WORKDIR}/$gpcreateSEG exists" 2
+			if [ ! -f ${WORKDIR}/$GPCREATESEG ];then
+				ERROR_EXIT "[FATAL]:-Parallel mode selected by no ${WORKDIR}/$GPCREATESEG exists" 2
 			fi
 		fi
 		#Check the other files that are required to be able to continue
@@ -464,12 +464,12 @@ CHK_QES () {
 						LOG_MSG "[INFO]:-$QE_ID $DIR checked"
 					fi
 				done
-				#Check that we have a MPP_LIBRARY_PATH directory on the QE
-				CHK_DIR $MPP_LIBRARY_PATH $QE_ID
+				#Check that we have a GP_LIBRARY_PATH directory on the QE
+				CHK_DIR $GP_LIBRARY_PATH $QE_ID
 				if [ $EXISTS -ne 0 ]; then
-					ERROR_EXIT "[FATAL]:-No $MPP_LIBRARY_PATH on segment instance $QE_ID" 2
+					ERROR_EXIT "[FATAL]:-No $GP_LIBRARY_PATH on segment instance $QE_ID" 2
 				else
-					LOG_MSG "[INFO]:-Segment instance $QE_ID $MPP_LIBRARY_PATH checked"
+					LOG_MSG "[INFO]:-Segment instance $QE_ID $GP_LIBRARY_PATH checked"
 				fi
 			done
 			#Check to ensure that instance directories do not exist on hosts
@@ -712,9 +712,9 @@ DISPLAY_CONFIG () {
 		export QD_DIR=$MPP_DIR
 	if [ x"" != x"$INTERACTIVE" ];then
 		SET_VAR $QD_PRIMARY_ARRAY
-		LOG_MSG "[INFO]:-MPP Creation Parameters" 1
+		LOG_MSG "[INFO]:-Greenplum Database Creation Parameters" 1
 		LOG_MSG "[INFO]:------------------------" 1
-		LOG_MSG "[INFO]:-Master Primary MPP Configuration" 1
+		LOG_MSG "[INFO]:-Master Primary Greenplum Database Configuration" 1
 		LOG_MSG "[INFO]:---------------------------------" 1
 		LOG_MSG "[INFO]:-Master instance name = $ARRAY_NAME" 1
 		LOG_MSG "[INFO]:-Master hostname      = $MPP_HOSTNAME" 1
@@ -732,7 +732,7 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Encoding             = $ENCODING" 1
 		LOG_MSG "[INFO]:-Pg Conf add file     = $PG_ADD" 1
 		LOG_MSG "[INFO]:-Initdb to be used    = $INITDB" 1
-		LOG_MSG "[INFO]:-MPP_LIBRARY_PATH is  = $MPP_LIBRARY_PATH" 1
+		LOG_MSG "[INFO]:-GP_LIBRARY_PATH is  = $GP_LIBRARY_PATH" 1
 		if [ $ULIMIT_WARN -eq 1 ];then
 		LOG_MSG "[WARN]:-Ulimit check         = Warnings generated, see log file" 1
 		else
@@ -985,7 +985,7 @@ CREATE_QES_PRIMARY () {
 				export QE_MAX_CONNECT
 				export QE_SHARED_BUFFERS
 				if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-				$gpcreateSEG $$ 1 $I $INST_COUNT  $LOG_FILE \
+				$GPCREATESEG $$ 1 $I $INST_COUNT  $LOG_FILE \
 `$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
 `$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
 				PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
@@ -1029,7 +1029,7 @@ CREATE_QES_MIRROR () {
 				export QE_SHARED_BUFFERS
 				export CHECK_POINT_SEGMENTS
 				if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-				$gpcreateSEG $$ 1 $I $INST_COUNT  $LOG_FILE \
+				$GPCREATESEG $$ 1 $I $INST_COUNT  $LOG_FILE \
 `$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
 `$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
 				PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
@@ -1110,8 +1110,8 @@ PROCESS_QE () {
 STOP_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		LOG_MSG "[INFO]:-Restarting the MPP instance in production mode" 1
-		if [ -f $gpstop ]; then
-				$gpstop -a -i -d $MAS_DIR
+		if [ -f $GPSTOP ]; then
+				$GPSTOP -a -i -d $MAS_DIR
 				RETVAL=$?
 				case $RETVAL in
 				0 ) LOG_MSG "[INFO]:-Successfully shutdown the new MPP instance" ;;
@@ -1120,7 +1120,7 @@ STOP_QD_PRODUCTION () {
 				2 ) ERROR_EXIT "[FATAL]:-Failed to stop new MPP instance, check log file" 2
 				esac
 		else
-				ERROR_EXIT "[FATAL]:-$gpstop not located" 2
+				ERROR_EXIT "[FATAL]:-$GPSTOP not located" 2
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

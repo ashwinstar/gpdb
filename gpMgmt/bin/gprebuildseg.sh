@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -56,7 +56,7 @@ EXIT_STATUS=0
 TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
-unset START_gpsync
+unset START_GPSYNC
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -136,11 +136,11 @@ STOP_MASTER_DB () {
 		ERROR_EXIT "[FATAL]:-Appears Master instance is operational, shutdown with gpstop.sh -m" 2
 	else
 		LOG_MSG "[INFO]:-Commencing shutdown of Master instance from admin mode" 1
-		if [ -f $gpstop ];then
-			$gpstop -qam -d $MASTER_DATA_DIRECTORY
+		if [ -f $GPSTOP ];then
+			$GPSTOP -qam -d $MASTER_DATA_DIRECTORY
 			ERROR_CHK $? "stop Master instance from admin mode" 2
 		else
-			ERROR_EXIT "[FATAL]:-Unable to locate $gpstop" 2
+			ERROR_EXIT "[FATAL]:-Unable to locate $GPSTOP" 2
 		fi
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
