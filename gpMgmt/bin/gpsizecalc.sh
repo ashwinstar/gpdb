@@ -60,8 +60,8 @@ PARALLEL_STATUS_FILE=/tmp/gpsizecalc_parallel_status_file.$$
 GPSEGSIZE=gpsegsize.sh
 #***********************************************************************************
 USAGE () {
-if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-	$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+	$MORE ${GPDOCDIR}/$HELP_DOC_NAME
 	exit 0
 else
 	if [ x"" == x"$PGDATABASE" ];then

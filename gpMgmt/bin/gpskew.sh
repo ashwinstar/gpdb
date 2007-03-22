@@ -67,8 +67,8 @@ WAIT_LIMIT=300
 # Functions
 #******************************************************************************
 USAGE () {
-if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-	$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+	$MORE ${GPDOCDIR}/$HELP_DOC_NAME
 	exit 0
 else
 	GET_QD_DB_NAME >/dev/null 2>&1

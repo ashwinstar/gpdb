@@ -9,7 +9,7 @@
 #	Release stat:-		Greenplum Co internal
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
 #                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Starts the MPP instance.
+#	Brief descn:-		Starts the Greenplum instance.
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -70,14 +70,14 @@ WAIT_LIMIT=600
 #******************************************************************************
 #
 USAGE () {
-	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then		
-		$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then		
+		$MORE ${GPDOCDIR}/$HELP_DOC_NAME
 		exit 0
 	else
 		$ECHO	
 		$ECHO "      `basename $0`"
 		$ECHO
-		$ECHO "      Starts the full MPP instance, or Master instance only in utility mode"
+		$ECHO "      Starts the full Greenplum Database instance, or Master instance only in utility mode"
 		$ECHO
 		$ECHO "      Usage:"
 		$ECHO "      $0 [OPTIONS]"
@@ -97,7 +97,7 @@ USAGE () {
 		$ECHO "      -d, <Master instance directory> name of alternative Master instance to start up [optional]"
 		$ECHO
 		$ECHO "      Database startup options:"
-		$ECHO "      -m, start master instance only in maintenance mode [default:- full MPP startup]"
+		$ECHO "      -m, start master instance only in maintenance mode [default:- full Greenplum database startup]"
 		$ECHO "      -z, force startup of segment instance marked as invalid"
 		$ECHO "      -y, do not start master standby server [default:- start standby server process]"
 		$ECHO "      -s, switch master log file, moves current logfile to <log file>.YYYYMMDD"
@@ -127,8 +127,8 @@ DISPLAY_PARAM () {
 		$ECHO
 		$ECHO "Current Default Startup Parameters"
 		$ECHO "----------------------------------"
-		$ECHO "MPP Master instance port        = $MASTER_PORT      [Override with -p <port number>]"
-		$ECHO "MPP Master instance directory   = $MASTER_DATA_DIRECTORY [Override with -d <Master directory>]"
+		$ECHO "Greenplum Master instance port        = $MASTER_PORT      [Override with -p <port number>]"
+		$ECHO "Greenplum Master instance directory   = $MASTER_DATA_DIRECTORY [Override with -d <Master directory>]"
 		if [ $INTERACTIVE ]; then
 				$ECHO "Interactive                 = True            [Override with -a]"
 		else
@@ -212,7 +212,7 @@ GET_DETAILS () {
 		READ_CHK
 		if [ $READ_COUNT -ne 0 ];then
 			unset INTERACTIVE;fi
-		LOG_MSG "[INFO]:-Obtaining MPP Master catalog information"
+		LOG_MSG "[INFO]:-Obtaining Greenplum Master catalog information"
 		#Now get tail details
 		GET_QE_DETAILS
 		QE_COUNT=${#QE_ARRAY[@]}
@@ -335,7 +335,7 @@ PROMPT_CONTINUE () {
 				((COUNT=$COUNT+1))
 		done
 		$ECHO
-		$ECHO "Continue with MPP instance startup yY|nN >"
+		$ECHO "Continue with Greenplum instance startup yY|nN >"
 		read REPLY
 		if [ -z $REPLY ]; then
 				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1

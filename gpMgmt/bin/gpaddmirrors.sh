@@ -56,8 +56,8 @@ INTERACTIVE=1
 # Functions
 #******************************************************************************
 USAGE () {
-	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-		$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+		$MORE ${GPDOCDIR}/$HELP_DOC_NAME
 		exit 0
 	else
 	$ECHO
@@ -444,18 +444,18 @@ CONFIG_CATALOG () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-MPP Instance Mirror Parameters" 1
+	LOG_MSG "[INFO]:-Greenplum Instance Mirror Parameters" 1
 	LOG_MSG "[INFO]:------------------------------" 1
-	LOG_MSG "[INFO]:-MPP Master hostname               = $MASTER_HOSTNAME" 1
-	LOG_MSG "[INFO]:-MPP Master data directory         = $MASTER_DATA_DIRECTORY" 1
-	LOG_MSG "[INFO]:-MPP Master port                   = $MASTER_PORT" 1
+	LOG_MSG "[INFO]:-Greenplum Master hostname               = $MASTER_HOSTNAME" 1
+	LOG_MSG "[INFO]:-Greenplum Master data directory         = $MASTER_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Greenplum Master port                   = $MASTER_PORT" 1
 	if [ x"" != x"$MIRROR_MACHINE_LIST_FILE" ];then
-	LOG_MSG "[INFO]:-MPP mirror type                   = Separate Hosts" 1
+	LOG_MSG "[INFO]:-Greenplum mirror type                   = Separate Hosts" 1
 	else
 	if [ $BALANCE -eq 0 ];then
-	LOG_MSG "[INFO]:-MPP mirror type                   = Group" 1
+	LOG_MSG "[INFO]:-Greenplum mirror type                   = Group" 1
 	else
-	LOG_MSG "[INFO]:-MPP mirror type                   = Spread" 1
+	LOG_MSG "[INFO]:-Greenplum mirror type                   = Spread" 1
 	fi
 	fi
 	LOG_MSG "[INFO]:-------------------------------" 1

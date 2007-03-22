@@ -77,14 +77,14 @@ GPSEGCRON=gpsegcron.sh
 #******************************************************************************
 #
 USAGE () {
-	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-		$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+		$MORE ${GPDOCDIR}/$HELP_DOC_NAME
 		exit 0
 	else
 		$ECHO	
 		$ECHO "      `basename $0`"
 		$ECHO
-		$ECHO "      Dumps a MPP Instance database using gp_dump utility"
+		$ECHO "      Dumps a Greenplum Database Instance database using gp_dump utility"
 		$ECHO
 		$ECHO "      Usage:"
 		$ECHO "      $0 [OPTIONS]"
@@ -280,13 +280,13 @@ DUMP_MIR_CHK () {
 	CHK_MIRRORS_CONFIGURED
 	if [ $MIRROR_COUNT -ne 2 ];then
 		if [ $DUMP_TYPE -eq 2 ];then
-			LOG_MSG "[WARN]:-Option -m supplied, but MPP instance not mirrored" 1
+			LOG_MSG "[WARN]:-Option -m supplied, but Greenplum instance not mirrored" 1
 			LOG_MSG "[INFO]:-Set dump type to primary" 1
 			DUMP_TYPE=1
 			EXIT_STATUS=1
 		fi
 		if [ $DUMP_TYPE -eq 0 ];then
-			LOG_MSG "[WARN]:-Default option for primary and mirror segments invalid, MPP instance not mirrored" 1
+			LOG_MSG "[WARN]:-Default option for primary and mirror segments invalid, Greenplum instance not mirrored" 1
 			LOG_MSG "[INFO]:-Set dump type to primary" 1
 			DUMP_TYPE=1
 			EXIT_STATUS=1
@@ -305,7 +305,7 @@ CHK_PARAM () {
 			DUMP_TYPE=1
 		fi
 	else
-		LOG_MSG "[INFO]:-MPP array has mirroring implemented" 1
+		LOG_MSG "[INFO]:-Greenplum array has mirroring implemented" 1
 	fi
 	#Check to see if there are any segment failures
 	if [ x"" != x"$SCHEMA_NAME" ];then
@@ -478,7 +478,7 @@ SET_VAC_TXT () {
 
 PROMPT_CONTINUE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		LOG_MSG "[INFO]:-Master MPP Instance dump parameters:" 1
+		LOG_MSG "[INFO]:-Master Greenplum Instance dump parameters:" 1
 		LOG_MSG "[INFO]:-------------------------------------" 1
 		if [ $MULTIDB -eq 1 ];then
 		LOG_MSG "[INFO]:-Dump type                  = Multiple database" 1
@@ -492,7 +492,7 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Master Port                = $MASTER_PORT" 1
 		LOG_MSG "[INFO]:-Master directory           = $MASTER_DATA_DIRECTORY" 1
 		SET_DUMP_TYPE_TEXT
-		LOG_MSG "[INFO]:-MPP Instance dump type     = $TYPE" 1
+		LOG_MSG "[INFO]:-Greenplum Instance dump type     = $TYPE" 1
 		if [ $RUN_PROG != "0" ];then
 		LOG_MSG "[INFO]:-Run post dump program      = $RUN_PROG" 1
 		else
@@ -535,7 +535,7 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Vacuum mode type           = $VAC_TXT" 1
 		LOG_MSG "[INFO]:-Disk free percent value    = $FREE_SPACE_PERCENT %" 1
 		$ECHO
-		$ECHO "Continue with MPP instance dump yY|nN >"
+		$ECHO "Continue with Greenplum instance dump yY|nN >"
 		read REPLY
 		if [ -z $REPLY ]; then
 				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1

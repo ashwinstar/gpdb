@@ -9,7 +9,7 @@
 #	Release stat:-		Greenplum Co internal
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
 #                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Stops the MPP instance.
+#	Brief descn:-		Stops the Greenplum instance.
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -65,14 +65,14 @@ BATCH_DEFAULT=60
 #******************************************************************************
 #
 USAGE () {
-	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-		$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+		$MORE ${GPDOCDIR}/$HELP_DOC_NAME
 		exit 0
 	else
 		$ECHO	
 		$ECHO "      `basename $0` "
 		$ECHO
-		$ECHO "      Stops the MPP instance, or stops the Master instance from maintenance mode"
+		$ECHO "      Stops the Greenplum Database instance, or stops the Master instance from maintenance mode"
 		$ECHO
 		$ECHO "      $0 [OPTIONS]"
 		$ECHO
@@ -96,10 +96,10 @@ USAGE () {
 		$ECHO "      -s, Smart shutdown, wait for active transaction to complete [default]"
 		$ECHO "      -z, Force shutdown of segment instances marked as invalid. Kill postmaster PID,"
 		$ECHO "          delete /tmp lock files and remove segment instance postmaster.pid file."
-		$ECHO "      -r, Restart MPP instance after successful gpstop.sh."
+		$ECHO "      -r, Restart Greenplum Database instance after successful gpstop.sh."
 		$ECHO "      -m, Stop master instance started in maintenance mode"
 		$ECHO "      -y, Do not stop master standby process [Default stop standby process]"
-		$ECHO "      -u, upload new master postgresql.conf settings, does not stop MPP array,"
+		$ECHO "      -u, upload new master postgresql.conf settings, does not stop Greenplum array,"
 		$ECHO "          issues a signal to the master segment postmaster process to reload"
 		$ECHO "      -B, <number> run this batch of stop segment processes in parallel [default $BATCH_DEFAULT]"
 		$ECHO
@@ -161,7 +161,7 @@ STOP_ADMIN () {
 CHK_QD_DB_RUNNING () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
-				ERROR_EXIT "[FATAL]:- No $PG_PID file, is MPP instance already stopped?" 2
+				ERROR_EXIT "[FATAL]:- No $PG_PID file, is Greenplum instance already stopped?" 2
 		else
 			QD_PID=`$HEAD -1 $MASTER_DATA_DIRECTORY/$PG_PID`
 			QD_PID_DIR=`$HEAD -2 $MASTER_DATA_DIRECTORY/$PG_PID|$TAIL -1`
@@ -193,7 +193,7 @@ PROMPT_CONTINUE () {
 		$ECHO
 		LOG_MSG "[INFO]:-Master instance parameters:" 1
 		LOG_MSG "[INFO]:----------------------------" 1
-		LOG_MSG "[INFO]:-Master MPP instance process active PID = $QD_PID" 1
+		LOG_MSG "[INFO]:-Master Greenplum instance process active PID = $QD_PID" 1
 		LOG_MSG "[INFO]:-Database                               = $QD_DBNAME" 1
 		LOG_MSG "[INFO]:-Master port                            = $MASTER_PORT" 1
 		LOG_MSG "[INFO]:-Master directory                       = $MASTER_DATA_DIRECTORY" 1
@@ -212,7 +212,7 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-----------------------------------------" 1
 		if [ ${#QE_ARRAY[@]} -eq 0 ]; then
 				LOG_MSG "[WARN]:-Failed to obtain any Segment instance details, will only be able to shutdown Master host" 1
-				LOG_MSG "[WARN]:-This may indicate an inconsistent MPP database state" 1
+				LOG_MSG "[WARN]:-This may indicate an inconsistent Greenplum database state" 1
 				EXIT_STATUS=1
 		else
 				COUNT=1
@@ -227,7 +227,7 @@ PROMPT_CONTINUE () {
 				done
 		fi
 		$ECHO
-		$ECHO "Continue with MPP instance shutdown yY|nN >"
+		$ECHO "Continue with Greenplum instance shutdown yY|nN >"
 		read REPLY
 		if [ ! -z $REPLY ]; then
 			if [ $REPLY != Y ] && [ $REPLY != y ]; then

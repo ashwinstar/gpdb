@@ -63,8 +63,8 @@ UPDATE_CATALOG=1
 #******************************************************************************
 #
 USAGE () {
-	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-		$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+		$MORE ${GPDOCDIR}/$HELP_DOC_NAME
 		exit 0
 	else
 		$ECHO	
@@ -206,16 +206,16 @@ UPDATE_PG_HBA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	for TNODE in "${QE_ARRAY[@]}"
 	do
-		MPP_HOSTNAME=`$ECHO $TNODE|$CUT -d'|' -f1`
-		MPP_DIR=`$ECHO $TNODE|$CUT -d'|' -f2`
+		GP_HOSTNAME=`$ECHO $TNODE|$CUT -d'|' -f1`
+		GP_DIR=`$ECHO $TNODE|$CUT -d'|' -f2`
 		for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
 		do
-			CHK_COUNT=`$TRUSTED_SHELL $MPP_HOSTNAME "$GREP -c \"${STANDBY_IP}/32\" ${MPP_DIR}/$PG_HBA"`
+			CHK_COUNT=`$TRUSTED_SHELL $GP_HOSTNAME "$GREP -c \"${STANDBY_IP}/32\" ${GP_DIR}/$PG_HBA"`
 			if [ $CHK_COUNT -eq 0 ];then
-			LOG_MSG "[INFO]:-Adding address of $MASTER_STANDBY_HOSTNAME to $MPP_HOSTNAME $PG_HBA file" 1
-			RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host  all     all     ${STANDBY_IP}/32        trust >> ${MPP_DIR}/$PG_HBA"
+			LOG_MSG "[INFO]:-Adding address of $MASTER_STANDBY_HOSTNAME to $GP_HOSTNAME $PG_HBA file" 1
+			RUN_COMMAND_REMOTE ${GP_HOSTNAME} "$ECHO host  all     all     ${STANDBY_IP}/32        trust >> ${GP_DIR}/$PG_HBA"
 			else
-			LOG_MSG "[INFO]:-Standby IP address already exists in $MPP_HOSTNAME ${MPP_DIR}/$PG_HBA" 1
+			LOG_MSG "[INFO]:-Standby IP address already exists in $GP_HOSTNAME ${GP_DIR}/$PG_HBA" 1
 			fi
 		done
 	done	
@@ -248,27 +248,27 @@ STOP_MASTER_DB () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-MPP standby master initialization parameters" 1
+	LOG_MSG "[INFO]:-Greenplum standby master initialization parameters" 1
 	LOG_MSG "[INFO]:---------------------------------------------" 1
-	LOG_MSG "[INFO]:-MPP Master hostname               = $MASTER_HOSTNAME" 1
-	LOG_MSG "[INFO]:-MPP Master data directory         = $MASTER_DATA_DIRECTORY" 1
-	LOG_MSG "[INFO]:-MPP Master port                   = $MASTER_PORT" 1
-	LOG_MSG "[INFO]:-MPP Master standby hostname       = $MASTER_STANDBY_HOSTNAME" 1
-	LOG_MSG "[INFO]:-MPP Master standby port           = $MASTER_STANDBY_PORT" 1
-	LOG_MSG "[INFO]:-MPP Array name                    = $MASTER_MPP_NAME" 1
-	LOG_MSG "[INFO]:-MPP Master standby data directory = $MASTER_STANDBY_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Greenplum Master hostname               = $MASTER_HOSTNAME" 1
+	LOG_MSG "[INFO]:-Greenplum Master data directory         = $MASTER_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Greenplum Master port                   = $MASTER_PORT" 1
+	LOG_MSG "[INFO]:-Greenplum Master standby hostname       = $MASTER_STANDBY_HOSTNAME" 1
+	LOG_MSG "[INFO]:-Greenplum Master standby port           = $MASTER_STANDBY_PORT" 1
+	LOG_MSG "[INFO]:-Greenplum Array name                    = $MASTER_MPP_NAME" 1
+	LOG_MSG "[INFO]:-Greenplum Master standby data directory = $MASTER_STANDBY_DATA_DIRECTORY" 1
 	if [ x"" == x"$START_GPSYNC" ];then
-		LOG_MSG "[INFO]:-MPP Start mppsynmaster process    = Off" 1
+		LOG_MSG "[INFO]:-Greenplum Start mppsynmaster process    = Off" 1
 	else
-		LOG_MSG "[INFO]:-MPP Start mppsynmaster process    = On" 1
+		LOG_MSG "[INFO]:-Greenplum Start mppsynmaster process    = On" 1
 	fi
 	if [ $UPDATE_CATALOG -eq 1 ];then
-		LOG_MSG "[INFO]:-MPP update system catalog         = On" 1
+		LOG_MSG "[INFO]:-Greenplum update system catalog         = On" 1
 	else
-		LOG_MSG "[INFO]:-MPP update system catalog         = Off" 1
+		LOG_MSG "[INFO]:-Greenplum update system catalog         = Off" 1
 	fi
 	if [ x"" != x"$FAIL_PRI_SEG" ];then
-		LOG_MSG "[INFO]:-MPP standby build type            = Dual active Read Only" 1
+		LOG_MSG "[INFO]:-Greenplum standby build type            = Dual active Read Only" 1
 	fi
 	if [ $INTERACTIVE ]; then
 		$ECHO  "Continue with MPP Master standby initialization Yy/Nn>"

@@ -63,8 +63,8 @@ unset START_GPSYNC
 #******************************************************************************
 #
 USAGE () {
-	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-		$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+		$MORE ${GPDOCDIR}/$HELP_DOC_NAME
 		exit 0
 	else
 		$ECHO	
@@ -251,16 +251,16 @@ STOP_MASTER_DB () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-MPP standby master activation parameters"
+	LOG_MSG "[INFO]:-Greenplum standby master activation parameters"
 	LOG_MSG "[INFO]:-----------------------------------------"
-	LOG_MSG "[INFO]:-MPP Master standby hostname       = $MASTER_STANDBY_HOSTNAME"
-	LOG_MSG "[INFO]:-MPP Master standby port           = $MASTER_STANDBY_PORT"
-	LOG_MSG "[INFO]:-MPP Master standby data directory = $MASTER_STANDBY_DATA_DIRECTORY"
+	LOG_MSG "[INFO]:-Greenplum Master standby hostname       = $MASTER_STANDBY_HOSTNAME"
+	LOG_MSG "[INFO]:-Greenplum Master standby port           = $MASTER_STANDBY_PORT"
+	LOG_MSG "[INFO]:-Greenplum Master standby data directory = $MASTER_STANDBY_DATA_DIRECTORY"
 	if [ x"" == x"$NEW_STANDBY_MASTER" ];then
-		LOG_MSG "[WARN]:-MPP Build new Master standby      = Off"
+		LOG_MSG "[WARN]:-Greenplum Build new Master standby      = Off"
 	else
-		LOG_MSG "[INFO]:-MPP Build new Master standby      = On"
-		LOG_MSG "[INFO]:-MPP new Master standby hostname   = $NEW_STANDBY_MASTER"
+		LOG_MSG "[INFO]:-Greenplum Build new Master standby      = On"
+		LOG_MSG "[INFO]:-Greenplum new Master standby hostname   = $NEW_STANDBY_MASTER"
 	fi
 	if [ $FORCE_ACTIVATE -eq 1 ];then
 		LOG_MSG "[WARN]:-Force Master standby activation   = On"
@@ -268,7 +268,7 @@ DISPLAY_PARAM () {
 		LOG_MSG "[INFO]:-Force Master standby activation   = Off"
 	fi
 	if [ $INTERACTIVE ]; then
-		$ECHO  "Continue with MPP Master standby activation Yy/Nn>"
+		$ECHO  "Continue with Greenplum Master standby activation Yy/Nn>"
 		read REPLY
 		if [ -z $REPLY ]; then
 			LOG_MSG "[WARN]:-User abort requested, Script Exits!"
@@ -286,7 +286,7 @@ DISPLAY_PARAM () {
 
 START_ARRAY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Starting the MPP instance"
+	LOG_MSG "[INFO]:-Starting the Greenplum Database instance"
 	$GPSTART -d $MASTER_STANDBY_DATA_DIRECTORY -ay
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -309,7 +309,7 @@ DISPLAY_INFO () {
 	fi
 	LOG_MSG "[INFO]:-MASTER_PORT is now $MASTER_STANDBY_PORT, if this has changed, you"
 	LOG_MSG "[INFO]:-may need to make additional configuration changes to allow access"
-	LOG_MSG "[INFO]:-to the MPP instance."
+	LOG_MSG "[INFO]:-to the Greenplum instance."
 	LOG_MSG "[INFO]:-When the failed master becomes available, run gpactivatemaster.sh"
 	LOG_MSG "[INFO]:-to re-activate the master and return the standby master to its previous"
 	LOG_MSG "[INFO]:-state."
@@ -369,7 +369,7 @@ STOP_MASTER_DB
 START_ARRAY
 if [ x"" == x"$NEW_STANDBY_MASTER" ];then
 	LOG_MSG "[WARN]:-New master standby host build request not provided via -c option"
-	LOG_MSG "[WARN]:-MPP Master Instance does not have a fail-over"
+	LOG_MSG "[WARN]:-Greenplum Master Instance does not have a fail-over"
 	LOG_MSG "[INFO]:-Run gpinitstandby.sh to create a standby master instance"
 	EXIT_STATUS=1
 else

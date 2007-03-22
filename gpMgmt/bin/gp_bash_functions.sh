@@ -39,16 +39,16 @@
 declare -a CMDPATH
 CMDPATH=(/usr/kerberos/bin /usr/sfw/bin /opt/sfw/bin /usr/local/bin /bin /usr/bin /sbin /usr/sbin /usr/ucb)
 
-#MPPPATH is the list of possible locations for the Bizgres binaries, in precedence order
-declare -a MPPPATH
-MPPPATH=( $MPPHOME $BIZHOME )
-if [ ${#MPPPATH[@]} -eq 0 ];then
-	echo "[FATAL]:-MPPHOME and BIZHOME are not set, need to set at least one of these within environment"
+#GPPATH is the list of possible locations for the Greenplum Database binaries, in precedence order
+declare -a GPPATH
+GPPATH=( $MPPHOME $GPHOME $BIZHOME )
+if [ ${#GPPATH[@]} -eq 0 ];then
+	echo "[FATAL]:-MPPHOME and GPHOME are not set, need to set at least one of these within environment"
 	exit 2
 fi
 
-#MPP_UNIQUE_COMMAND is used to identify the binary directory
-MPP_UNIQUE_COMMAND=gpsyncmaster
+#GP_UNIQUE_COMMAND is used to identify the binary directory
+GP_UNIQUE_COMMAND=gpsyncmaster
 
 
 findCmdInPath() {
@@ -67,9 +67,9 @@ findCmdInPath() {
 }
 
 findMppPath() {
-		cmdtofind=$MPP_UNIQUE_COMMAND
+		cmdtofind=$GP_UNIQUE_COMMAND
 
-		for pathel in ${MPPPATH[@]}
+		for pathel in ${GPPATH[@]}
 				do
 				CMD=`find $pathel -name $cmdtofind | tail -1`
 				if [ x"$CMD" != x"" ] && [ -f $CMD ]; then
@@ -149,19 +149,19 @@ PROG_NAME=`$BASENAME $PROG_NAME`
 CALL_HOST=`$HOSTNAME|$CUT -d. -f1`
 
 #******************************************************************************
-# Locate the postgres routines from the MPP release
+# Locate the postgres routines from the Greenplum release
 #******************************************************************************
 PSQLBIN=`findMppPath`
 
 if [ x"$PSQLBIN" = x"" ];then
-		echo "Problem in gp_bash_functions, command '$MPP_UNIQUE_COMMAND' not found in MPP path. Try setting BIZHOME to the location of your MPP distribution"
+		echo "Problem in gp_bash_functions, command '$GP_UNIQUE_COMMAND' not found in Greenplum path. Try setting GPHOME to the location of your Greenplum distribution"
 		exit 99
 fi
 
 PSQLBIN=`$DIRNAME $PSQLBIN`
 SCRIPTDIR="`$DIRNAME $PSQLBIN`/gpMgmt/bin"
 #******************************************************************************
-# MPP Scripts
+# Greenplum Scripts
 #******************************************************************************
 GPACTIVATEMASTER=$SCRIPTDIR/gpactivatemaster.sh
 GPACTIVATESTANDBY=$SCRIPTDIR/gpactivatestandby.sh
@@ -180,9 +180,9 @@ GPSTATE=$SCRIPTDIR/gpstate.sh
 GPSTOP=$SCRIPTDIR/gpstop.sh
 MAILFILE=$SCRIPTDIR/mail_contacts
 HMAILFILE=$HOME/mail_contacts
-MPPDOCDIR=${MPPHOME}/gpMgmt/doc
+GPDOCDIR=${MPPHOME}/gpMgmt/doc
 #******************************************************************************
-# MPP Command Variables
+# Greenplum Command Variables
 #******************************************************************************
 INITDB=$PSQLBIN/initdb
 MPPLOADER=$CMDBIN/loader.sh
@@ -194,7 +194,7 @@ GP_DUMP=$PSQLBIN/gp_dump
 GP_RESTORE=$PSQLBIN/gp_restore
 GPSYNCMASTER=$PSQLBIN/gpsyncmaster
 #******************************************************************************
-# MPP OS Settings 
+# Greenplum OS Settings 
 #******************************************************************************
 OS_OPENFILES=65535
 #******************************************************************************
@@ -281,7 +281,7 @@ ERROR_EXIT () {
 		DEBUG_LEVEL=1
 		if [ $BACKOUT_FILE ]; then
 				if [ -s $BACKOUT_FILE ]; then
-						LOG_MSG "[WARN]:-Script has left MPP configuration in an incomplete state"
+						LOG_MSG "[WARN]:-Script has left Greenplum Database configuration in an incomplete state"
 						LOG_MSG "[WARN]:-Run command /bin/bash $BACKOUT_FILE to remove these changes"
 						BACKOUT_COMMAND "if [ $MASTER_HOSTNAME != \`$HOSTNAME\` ];then $ECHO \"[FATAL]:-Not on original master host $MASTER_HOSTNAME, backout script exiting!\";exit 2;fi"
 						$ECHO "$RM -f $BACKOUT_FILE" >> $BACKOUT_FILE
@@ -625,44 +625,44 @@ CHK_ON_PASSIVE_STANDBY () {
 BUILD_MASTER_PG_HBA_FILE () {
         LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ $# -eq 0 ];then ERROR_EXIT "[FATAL]:-Passed zero parameters, expected at least 1" 2;fi
-	MPP_DIR=$1
+	GP_DIR=$1
 	if [ x"" == x"$2" ];then
 		IP_ALLOW=$DEFAULT_IP_ALLOW
 	else
 		IP_ALLOW=$2
 	fi
         LOG_MSG "[INFO]:-Clearing values in Master $PG_HBA"
-        $GREP "^#" ${MPP_DIR}/$PG_HBA > $TMP_PG_HBA
-        $MV $TMP_PG_HBA ${MPP_DIR}/$PG_HBA
+        $GREP "^#" ${GP_DIR}/$PG_HBA > $TMP_PG_HBA
+        $MV $TMP_PG_HBA ${GP_DIR}/$PG_HBA
         LOG_MSG "[INFO]:-Setting local access"
-        $ECHO "local    all         $USER_NAME         $PG_METHOD" >> ${_DIR}/$PG_HBA
-        $ECHO "local    all         all                $PG_METHOD" >> ${MPP_DIR}/$PG_HBA
+        $ECHO "local    all         $USER_NAME         $PG_METHOD" >> ${GP_DIR}/$PG_HBA
+        $ECHO "local    all         all                $PG_METHOD" >> ${GP_DIR}/$PG_HBA
         LOG_MSG "[INFO]:-Setting local host access"
-        $ECHO "host     all         $USER_NAME         127.0.0.1/32    trust" >> ${MPP_DIR}/$PG_HBA
+        $ECHO "host     all         $USER_NAME         127.0.0.1/32    trust" >> ${GP_DIR}/$PG_HBA
 
-        $ECHO "#Master IP addresses " >> ${MPP_DIR}/$PG_HBA
+        $ECHO "#Master IP addresses " >> ${GP_DIR}/$PG_HBA
         for ADDR in "${MASTER_IP_ADDRESS_ALL[@]}"
         do
-        	$ECHO "host     all         $USER_NAME         $ADDR/32       trust" >> ${MPP_DIR}/$PG_HBA
+        	$ECHO "host     all         $USER_NAME         $ADDR/32       trust" >> ${GP_DIR}/$PG_HBA
         done
 
-        $ECHO "#Standby Master IP addressess " >> ${MPP_DIR}/$PG_HBA
+        $ECHO "#Standby Master IP addressess " >> ${GP_DIR}/$PG_HBA
         for ADDR in "${STANDBY_IP_ADDRESS_ALL[@]}"
         do
-        	$ECHO "host     all         $USER_NAME         $ADDR/32       trust" >> ${MPP_DIR}/$PG_HBA
+        	$ECHO "host     all         $USER_NAME         $ADDR/32       trust" >> ${GP_DIR}/$PG_HBA
         done
 
         # Add all local IPV6 addresses
-        $ECHO "#IPV6 local" >> ${MPP_DIR}/$PG_HBA
+        $ECHO "#IPV6 local" >> ${GP_DIR}/$PG_HBA
         for ADDR in "${MASTER_IPV6_LOCAL_ADDRESS_ALL[@]}"
         do
-        	$ECHO "host     all         $USER_NAME         $ADDR/128       trust" >> ${MPP_DIR}/$PG_HBA
+        	$ECHO "host     all         $USER_NAME         $ADDR/128       trust" >> ${GP_DIR}/$PG_HBA
         done
-        $ECHO "#other " >> ${MPP_DIR}/$PG_HBA
+        $ECHO "#other " >> ${GP_DIR}/$PG_HBA
 
 
-        $ECHO "host     all         $USER_NAME         $IP_ALLOW       md5" >> ${MPP_DIR}/$PG_HBA
-        $ECHO "host     all         all                $IP_ALLOW       trust" >> ${MPP_DIR}/$PG_HBA
+        $ECHO "host     all         $USER_NAME         $IP_ALLOW       md5" >> ${GP_DIR}/$PG_HBA
+        $ECHO "host     all         all                $IP_ALLOW       trust" >> ${GP_DIR}/$PG_HBA
         LOG_MSG "[INFO]:-Complete Master $PG_HBA configuration"
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

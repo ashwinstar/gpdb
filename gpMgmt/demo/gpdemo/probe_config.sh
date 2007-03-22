@@ -10,25 +10,25 @@ if [ x"$MPPHOME" = x ]; then
     echo ""
 	exit 1
   else
-    MPPSEARCH=$BIZHOME
+    GPSEARCH=$BIZHOME
   fi
 else
-  MPPSEARCH=$MPPHOME
+  GPSEARCH=$MPPHOME
 fi
 
-MPPPATH=`find $MPPSEARCH -name gp_dump | tail -1`
+GPPATH=`find $GPSEARCH -name gp_dump | tail -1`
 RETVAL=$?
 
 if [ "$RETVAL" -ne 0 ]; then
-  echo "Error attempting to find Greenplum executables in $MPPSEARCH"
+  echo "Error attempting to find Greenplum executables in $GPSEARCH"
   exit 1
 fi
 
-if [ ! -x "$MPPPATH" ]; then
-  echo "No executables found for Greenplum installation in $MPPSEARCH"
+if [ ! -x "$GPPATH" ]; then
+  echo "No executables found for Greenplum installation in $GPSEARCH"
   exit 1
 fi
-MPPPATH=`dirname $MPPPATH`
+GPPATH=`dirname $GPPATH`
 #***********************************************************
 
 #***********************************************************
@@ -80,7 +80,7 @@ do
     do
         echo "Table: mpp_$table"
         echo "**************************"
-        PGOPTIONS="-c gp_session_role=utility" $MPPPATH/psql -p ${PORTS[$i]} template1 -c  "select * from mpp_"$table
+        PGOPTIONS="-c gp_session_role=utility" $GPPATH/psql -p ${PORTS[$i]} template1 -c  "select * from mpp_"$table
 	    RETVAL=$?
 	    if [ $RETVAL -ne 0 ]; then
 	        echo "$0 failed."
@@ -93,7 +93,7 @@ do
   do
     echo "Table: mpp_$table"
     echo "**************************"
-    PGOPTIONS="-c gp_session_role=utility" $MPPPATH/psql -p ${PORTS[$i]} template1 -c \
+    PGOPTIONS="-c gp_session_role=utility" $GPPATH/psql -p ${PORTS[$i]} template1 -c \
     "select * from mpp_"$table
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ]; then

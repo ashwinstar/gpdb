@@ -181,14 +181,14 @@ CHECK_PARAM () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-MPP Master Segment re-activation parameters"
+	LOG_MSG "[INFO]:-Greenplum Master Segment re-activation parameters"
 	LOG_MSG "[INFO]:--------------------------------------------"
-	LOG_MSG "[INFO]:-MPP Master standby hostname       = $MASTER_HOSTNAME"
-	LOG_MSG "[INFO]:-MPP Master standby port           = $MASTER_PORT"
-	LOG_MSG "[INFO]:-MPP Master standby data directory = $MASTER_DATA_DIRECTORY"
-	LOG_MSG "[INFO]:-MPP Master re-activate hostname   = $FAILBACK_MASTER_HOSTNAME"
-	LOG_MSG "[INFO]:-MPP Master re-activate port       = $FAILBACK_MASTER_PORT"
-	LOG_MSG "[INFO]:-MPP Master re-activate directory  = $FAILBACK_MASTER_DATA_DIRECTORY"
+	LOG_MSG "[INFO]:-Greenplum Master standby hostname       = $MASTER_HOSTNAME"
+	LOG_MSG "[INFO]:-Greenplum Master standby port           = $MASTER_PORT"
+	LOG_MSG "[INFO]:-Greenplum Master standby data directory = $MASTER_DATA_DIRECTORY"
+	LOG_MSG "[INFO]:-Greenplum Master re-activate hostname   = $FAILBACK_MASTER_HOSTNAME"
+	LOG_MSG "[INFO]:-Greenplum Master re-activate port       = $FAILBACK_MASTER_PORT"
+	LOG_MSG "[INFO]:-Greenplum Master re-activate directory  = $FAILBACK_MASTER_DATA_DIRECTORY"
 	if [ $INTERACTIVE ]; then
 		$ECHO  "Continue with MPP Master re-activation Yy/Nn>"
 		read REPLY

@@ -8,7 +8,7 @@
 #	Release date:-		March 2006
 #	Release stat:-		Released
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
-#                               Copyright MPP database cluster
+#                               Copyright Greenplum database cluster
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -48,8 +48,8 @@ VERBOSE=1
 INTERACTIVE=1
 MIRRORING=0
 INST_COUNT=0
-# MPP database specific parameters
-MPP_USER=$USER_NAME
+# Greenplum database specific parameters
+GP_USER=$USER_NAME
 # System table names
 GP_TBL=gp_id
 GP_CONFIGURATION_TBL=gp_configuration
@@ -64,7 +64,7 @@ LOG_STATS_TXT="stats_command_string="
 INIT_STANDBY_PROG=$GPINITSTANDBY
 START_SYNC="-1"
 QE_MIRROR_ARRAY=""
-MPP_PASSWD=mpparray
+GP_PASSWD=mpparray
 TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
 TMP_FILE=/tmp/cluster_tmp_file.$$
 TMP_HOSTNAME_FILE=hostname_test_file.$$
@@ -76,14 +76,14 @@ PARALLEL_BUILD=1
 # Functions
 #******************************************************************************
 USAGE () {
-	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-		$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+		$MORE ${GPDOCDIR}/$HELP_DOC_NAME
 		exit 0
 	else
 		$ECHO
 		$ECHO "      `basename $0` -c gp_config_file [OPTIONS]"
 		$ECHO
-		$ECHO "      Creates a new MPP instance on a Master host and a number of"
+		$ECHO "      Creates a new Greenplum Database instance on a Master host and a number of"
 		$ECHO "      segment instance hosts."
 		$ECHO
 		$ECHO "      General options:"
@@ -99,17 +99,17 @@ USAGE () {
 		$ECHO
 		$ECHO "      Configuration options:"
 		$ECHO "      -c, gp_config_file [mandatory]"
-		$ECHO "          Supplies all MPP configuration information required by this utility."
+		$ECHO "          Supplies all Greenplum configuration information required by this utility."
 		$ECHO "          Full description of all parameters contained within the example file"
 		$ECHO "          supplied with this distribution."
 		$ECHO "          Also see gpcreatecluster_INSTRUCTIONS file for greater detail on"
 		$ECHO "          the operation and configuration of this script"
-		$ECHO "      -h, mpp_hostlist_file [optional]"
+		$ECHO "      -h, gp_hostlist_file [optional]"
 		$ECHO "          Contains a list of all segment instance hostnames required to participate in"
-		$ECHO "          the new MPP instance. Normally set in gp_config_file."
+		$ECHO "          the new Greenplum instance. Normally set in gp_config_file."
 		$ECHO "      -p, postgresql_conf_gp_additions [optional]"
 		$ECHO "          List of additional PostgreSQL parameters to be applied to each Master/Segment"
-		$ECHO "          postgresql.conf file during MPP database initialization."
+		$ECHO "          postgresql.conf file during Greenplum database initialization."
 		$ECHO "      -s, standby_hostname [optional]"
 		$ECHO "      -i, do not initialize standby sync process [default:- start process]"
 		$ECHO "      -o, create Master only, do not configure Segment instance hosts"
@@ -118,7 +118,7 @@ USAGE () {
 		$ECHO "          Specify either the number of database I/O buffers (without suffix) or the"
 		$ECHO "          amount of memory to use for buffers (with suffix 'kB', 'MB' or 'GB')."
 		$ECHO "          Applies to master and all segments."
-		$ECHO "      -e, <password>, password to set for MPP superuser in database [default $MPP_PASSWD]"
+		$ECHO "      -e, <password>, password to set for Greenplum superuser in database [default $GP_PASSWD]"
 		$ECHO "      -n, <locale>, setting for locale to be set when database initialized [default $DEFAULT_LOCALE_SETTING]"
 		$ECHO "      -r, run utility in serial mode [default parallel segment instance build"
 		$ECHO "      -B, <number> run this batch of create segment processes in parallel [default $BATCH_DEFAULT]"
@@ -150,7 +150,7 @@ CHK_PARAMS () {
 		fi
 		#Make sure that script has been supplied a config file
 		if [ x"" = x"$CLUSTER_CONFIG" ]; then
-				ERROR_EXIT "[FATAL]:-MPP configuration filename [-c] option not provided." 2
+				ERROR_EXIT "[FATAL]:-Greenplum configuration filename [-c] option not provided." 2
 		fi
 
 		#Check that we have a non-zero configuration file
@@ -170,7 +170,7 @@ CHK_PARAMS () {
 		$CAT $CLUSTER_CONFIG|$GREP -v "^#" >> $LOG_FILE
 		LOG_MSG "[INFO]:-Completed $CLUSTER_CONFIG dump to logfile"
 		#Source the cluster configuration file
-		LOG_MSG "[INFO]:-Reading MPP configuration file $CLUSTER_CONFIG"
+		LOG_MSG "[INFO]:-Reading Greenplum configuration file $CLUSTER_CONFIG"
 		. $CLUSTER_CONFIG
 		if [ x"" != x"$REQ_LOCALE_SETTING" ];then LOCALE_SETTING=$REQ_LOCALE_SETTING;fi
 		if [ x"" != x"$MACHINE_LIST_FILE_ALT" ];then
@@ -224,7 +224,7 @@ CHK_PARAMS () {
 		if [ ! "$ARRAY_NAME" ]; then
 				LOG_MSG "[WARN]:-ARRAY_NAME variable not set, will provide default value" 1
 				EXIT_STATUS=1
-				ARRAY_NAME="MPP Instance"
+				ARRAY_NAME="Greenplum Instance"
 		fi
 		export ARRAY_NAME
 
@@ -436,13 +436,13 @@ CHK_QES () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		LOG_MSG "[INFO]:-Checking Master host" 1
 		SET_VAR $QD_PRIMARY_ARRAY
-                CHK_DIR $MPP_DIR
+                CHK_DIR $GP_DIR
                 if [ $EXISTS -eq 0 ]; then
-                                ERROR_EXIT "[FATAL]:-Master directory $MPP_DIR already exists" 2
+                                ERROR_EXIT "[FATAL]:-Master directory $GP_DIR already exists" 2
                 fi
-		GET_PG_PID_ACTIVE $MPP_PORT
+		GET_PG_PID_ACTIVE $GP_PORT
 		if [ $PID -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-Found indication of postmaster process on port $MPP_PORT on Master host" 2
+			ERROR_EXIT "[FATAL]:-Found indication of postmaster process on port $GP_PORT on Master host" 2
 		fi
 		LOG_MSG "[INFO]:-Checking new segment hosts, please wait..." 1
 		if [ x"" == x"$QD_ONLY" ];then
@@ -451,7 +451,7 @@ CHK_QES () {
 				PING_HOST $QE_ID 
 				GET_IP_ADDRESS 
 				CHK_LOCALE_KNOWN $QE_ID
-				CHK_OPEN_FILES $MPP_HOSTNAME
+				CHK_OPEN_FILES $GP_HOSTNAME
 				#Check to ensure have required QE directories
 				for DIR in "${DATA_DIRECTORY[@]}"
 				do
@@ -478,32 +478,32 @@ CHK_QES () {
 			do
 				if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 				SET_VAR $I
-				LOG_MSG "[INFO]:-Checking $MPP_HOSTNAME for dir $MPP_DIR"
-				CHK_DIR $MPP_DIR $MPP_HOSTNAME
+				LOG_MSG "[INFO]:-Checking $GP_HOSTNAME for dir $GP_DIR"
+				CHK_DIR $GP_DIR $GP_HOSTNAME
 				if [ $EXISTS -eq 0 ]; then
-					ERROR_EXIT "[FATAL]:-Instance directory $MPP_DIR exists on segment instance $MPP_HOSTNAME" 2
+					ERROR_EXIT "[FATAL]:-Instance directory $GP_DIR exists on segment instance $GP_HOSTNAME" 2
 				fi
 				# Check that the hostname is not associated with local host
-				LOG_MSG "[INFO]:-Checking $MPP_HOSTNAME $HOSTFILE for localhost set as $MPP_HOSTNAME"
-				LOCAL_COUNT=`$TRUSTED_SHELL $MPP_HOSTNAME "$GREP $MPP_HOSTNAME $HOSTFILE|$GREP -c localhost"`
+				LOG_MSG "[INFO]:-Checking $GP_HOSTNAME $HOSTFILE for localhost set as $GP_HOSTNAME"
+				LOCAL_COUNT=`$TRUSTED_SHELL $GP_HOSTNAME "$GREP $GP_HOSTNAME $HOSTFILE|$GREP -c localhost"`
 				if [ $LOCAL_COUNT -ne 0 ];then
 					LOG_MSG "[WARN]:-----------------------------------------------------------" 1
-					LOG_MSG "[WARN]:-Host $MPP_HOSTNAME is assigned as localhost in $HOSTFILE"  1
+					LOG_MSG "[WARN]:-Host $GP_HOSTNAME is assigned as localhost in $HOSTFILE"  1
 					LOG_MSG "[WARN]:-This will cause segment->master communication failures" 1
-					LOG_MSG "[WARN]:-Remove $MPP_HOSTNAME from local host line in /etc/hosts" 1
+					LOG_MSG "[WARN]:-Remove $GP_HOSTNAME from local host line in /etc/hosts" 1
 					LOG_MSG "[WARN]:-----------------------------------------------------------" 1
 					EXIT_STATUS=1
 				fi
                                 # Check that we can write to the QE directory
-                                W_DIR=`$DIRNAME $MPP_DIR`
-                                LOG_MSG "[INFO]:-Checking write access to $W_DIR on $MPP_HOSTNAME"
-                                $TRUSTED_SHELL $MPP_HOSTNAME "$TOUCH ${W_DIR}/tmp_file_test"
+                                W_DIR=`$DIRNAME $GP_DIR`
+                                LOG_MSG "[INFO]:-Checking write access to $W_DIR on $GP_HOSTNAME"
+                                $TRUSTED_SHELL $GP_HOSTNAME "$TOUCH ${W_DIR}/tmp_file_test"
                                 RETVAL=$?
                                 if [ $RETVAL -ne 0 ];then
-                       		         ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on $MPP_HOSTNAME " 2
+                       		         ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on $GP_HOSTNAME " 2
                                 else
-                                         $TRUSTED_SHELL $MPP_HOSTNAME "$RM -f ${W_DIR}/tmp_file_test"
-                                         LOG_MSG "[INFO]:-Write test passed on $MPP_HOSTNAME $W_DIR directory"
+                                         $TRUSTED_SHELL $GP_HOSTNAME "$RM -f ${W_DIR}/tmp_file_test"
+                                         LOG_MSG "[INFO]:-Write test passed on $GP_HOSTNAME $W_DIR directory"
                                 fi
 
 			done
@@ -514,21 +514,21 @@ CHK_QES () {
 				do
 					if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 					SET_VAR $I
-					LOG_MSG "[INFO]:-Checking $MPP_HOSTNAME for dir $MPP_DIR"
-					CHK_DIR $MPP_DIR $MPP_HOSTNAME
+					LOG_MSG "[INFO]:-Checking $GP_HOSTNAME for dir $GP_DIR"
+					CHK_DIR $GP_DIR $GP_HOSTNAME
 					if [ $EXISTS -eq 0 ]; then
-						ERROR_EXIT "[FATAL]:-Instance directory $MPP_DIR exists on segment instance $MPP_HOSTNAME" 2
+						ERROR_EXIT "[FATAL]:-Instance directory $GP_DIR exists on segment instance $GP_HOSTNAME" 2
 					fi
                                 # Check that we can write to the QE directory
-                       			W_DIR=`$DIRNAME $MPP_DIR`
-                                        LOG_MSG "[INFO]:-Checking write access to $W_DIR on $MPP_HOSTNAME"
-                                        $TRUSTED_SHELL $MPP_HOSTNAME "$TOUCH ${W_DIR}/tmp_file_test"
+                       			W_DIR=`$DIRNAME $GP_DIR`
+                                        LOG_MSG "[INFO]:-Checking write access to $W_DIR on $GP_HOSTNAME"
+                                        $TRUSTED_SHELL $GP_HOSTNAME "$TOUCH ${W_DIR}/tmp_file_test"
                                         RETVAL=$?
                                         if [ $RETVAL -ne 0 ];then
-                                                ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on $MPP_HOSTNAME " 2
+                                                ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on $GP_HOSTNAME " 2
                                         else
-                                                $TRUSTED_SHELL $MPP_HOSTNAME "$RM -f ${W_DIR}/tmp_file_test"
-                                                LOG_MSG "[INFO]:-Write test passed on $MPP_HOSTNAME $W_DIR directory"
+                                                $TRUSTED_SHELL $GP_HOSTNAME "$RM -f ${W_DIR}/tmp_file_test"
+                                                LOG_MSG "[INFO]:-Write test passed on $GP_HOSTNAME $W_DIR directory"
 					fi
 				done
 			else
@@ -537,7 +537,7 @@ CHK_QES () {
 			if [ x"" != x"$STANDBY_HOSTNAME" ];then
 				PING_HOST $STANDBY_HOSTNAME 
 				CHK_LOCALE_KNOWN $STANDBY_HOSTNAME
-				CHK_OPEN_FILES $MPP_HOSTNAME
+				CHK_OPEN_FILES $GP_HOSTNAME
 				#Check standby host directory
 				CHK_DIR $MASTER_DIRECTORY $STANDBY_HOSTNAME
 				if [ $EXISTS -ne 0 ];then
@@ -633,19 +633,19 @@ CREATE_QE_ARRAY () {
 			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 			QE_DIR_INDEX=0
 			QE_MIR_VECTOR=0
-			for MPP_DIR in "${DATA_DIRECTORY[@]}"
+			for GP_DIR in "${DATA_DIRECTORY[@]}"
 			do
 				GET_HOST_ID $QE_NAME
-				((MPP_PORT=$PORT_BASE+$PORT_COUNT))
-				QE_PRIMARY_ARRAY[$ARRAY_INDEX]=${QE_NAME}:${MPP_INDEX}:${LISTENERID_COUNT}:${MPP_PORT}:${MPP_DIR}/${SEG_PREFIX}${SEG_COUNT}:${DBID_COUNT}:${DATABASE_PREFIX}${DB_COUNT}:$CONTENT_COUNT
-				POSTGRES_PORT_CHK $MPP_PORT $QE_NAME
+				((GP_PORT=$PORT_BASE+$PORT_COUNT))
+				QE_PRIMARY_ARRAY[$ARRAY_INDEX]=${QE_NAME}:${MPP_INDEX}:${LISTENERID_COUNT}:${GP_PORT}:${GP_DIR}/${SEG_PREFIX}${SEG_COUNT}:${DBID_COUNT}:${DATABASE_PREFIX}${DB_COUNT}:$CONTENT_COUNT
+				POSTGRES_PORT_CHK $GP_PORT $QE_NAME
 				((LISTENERID_COUNT=$LISTENERID_COUNT+1))
 				((DIR_INDEX=$DIR_INDEX+1))
-				((MPP_DIR_INDEX=$MPP_DIR_INDEX+1))
+				((GP_DIR_INDEX=$GP_DIR_INDEX+1))
 				if [ $MIRRORING -eq 1 ]; then
 				#Have mirroring configured, process mirror QE's
 					LOG_MSG "[INFO]:-Configuring mirror for segment instance $QE_NAME"
-					MPP_DIR=${MIRROR_DATA_DIRECTORY[$QE_MIR_VECTOR]}/${SEG_PREFIX}${SEG_COUNT}
+					GP_DIR=${MIRROR_DATA_DIRECTORY[$QE_MIR_VECTOR]}/${SEG_PREFIX}${SEG_COUNT}
 					if [ $NUM_QE_HOSTS -eq 1 ]; then
 						MIR_IDX=0
 					else
@@ -659,10 +659,10 @@ CREATE_QE_ARRAY () {
 					HOST_INDEX=0
 					GET_HOST_ID $MIR_QE_NAME
 					((HOST_INDEX=$HOST_INDEX+1))
-					((MIRROR_MPP_PORT=$MIRROR_PORT_BASE+$PORT_COUNT))
+					((MIRROR_GP_PORT=$MIRROR_PORT_BASE+$PORT_COUNT))
 					((DBID_COUNT=$DBID_COUNT+1))
-					QE_MIRROR_ARRAY[$ARRAY_INDEX]=${MIR_QE_NAME}:${MPP_INDEX}:${LISTENERID_COUNT}:${MIRROR_MPP_PORT}:${MPP_DIR}:${DBID_COUNT}:${DATABASE_PREFIX}${DB_COUNT}:$CONTENT_COUNT
-					POSTGRES_PORT_CHK $MIRROR_MPP_PORT $MIR_QE_NAME
+					QE_MIRROR_ARRAY[$ARRAY_INDEX]=${MIR_QE_NAME}:${MPP_INDEX}:${LISTENERID_COUNT}:${MIRROR_GP_PORT}:${GP_DIR}:${DBID_COUNT}:${DATABASE_PREFIX}${DB_COUNT}:$CONTENT_COUNT
+					POSTGRES_PORT_CHK $MIRROR_GP_PORT $MIR_QE_NAME
 					((LISTENERID_COUNT=$LISTENERID_COUNT+1))
 					((QE_DIR_INDEX=$QE_DIR_INDEX+1))
 					((QE_MIR_VECTOR=$QE_MIR_VECTOR+1))
@@ -709,7 +709,7 @@ DISPLAY_CONFIG () {
 		else
 				PG_ADD=On
 		fi
-		export QD_DIR=$MPP_DIR
+		export QD_DIR=$GP_DIR
 	if [ x"" != x"$INTERACTIVE" ];then
 		SET_VAR $QD_PRIMARY_ARRAY
 		LOG_MSG "[INFO]:-Greenplum Database Creation Parameters" 1
@@ -717,11 +717,11 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Master Primary Greenplum Database Configuration" 1
 		LOG_MSG "[INFO]:---------------------------------" 1
 		LOG_MSG "[INFO]:-Master instance name = $ARRAY_NAME" 1
-		LOG_MSG "[INFO]:-Master hostname      = $MPP_HOSTNAME" 1
+		LOG_MSG "[INFO]:-Master hostname      = $GP_HOSTNAME" 1
 		LOG_MSG "[INFO]:-Master port          = $MASTER_PORT" 1
-		LOG_MSG "[INFO]:-Master instance dir  = $MPP_DIR" 1
+		LOG_MSG "[INFO]:-Master instance dir  = $GP_DIR" 1
 		LOG_MSG "[INFO]:-Master LOCALE        = $LOCALE_SETTING" 1
-		LOG_MSG "[INFO]:-MPP segment prefix   = $SEG_PREFIX" 1
+		LOG_MSG "[INFO]:-Greenplum segment prefix   = $SEG_PREFIX" 1
 		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME" 1
 		LOG_MSG "[INFO]:-Master connections   = $MASTER_MAX_CONNECT" 1
 		LOG_MSG "[INFO]:-Master buffers       = $MASTER_SHARED_BUFFERS" 1
@@ -771,7 +771,7 @@ DISPLAY_CONFIG () {
 				LOG_MSG "[INFO]:-Standby IP address   = $STANDBY_IP" 1
 				done
 			fi
-			LOG_MSG "[INFO]:-Total MPP segments   = $TOTAL_SEG" 1
+			LOG_MSG "[INFO]:-Total Greenplum Database segments   = $TOTAL_SEG" 1
 			LOG_MSG "[INFO]:-Trusted shell        = $TRUSTED_SHELL" 1
 			((NUM_QES=${#MACHINE_LIST[*]}))
 			LOG_MSG "[INFO]:-Number segment hosts = $NUM_QES" 1
@@ -783,25 +783,25 @@ DISPLAY_CONFIG () {
 			else
 				LOG_MSG "[INFO]:-Mirroring config     = OFF" 1
 			fi
-			LOG_MSG "[INFO]:-MPP Primary Segment Configuration" 1
+			LOG_MSG "[INFO]:-Greenplum Primary Segment Configuration" 1
 			LOG_MSG "[INFO]:----------------------------------" 1
-#			export QD_DIR=$MPP_DIR
+#			export QD_DIR=$GP_DIR
 			for I in "${QE_PRIMARY_ARRAY[@]}"
 			do
 				SET_VAR $I
-				LOG_MSG  "[INFO]:-Primary segment on $MPP_HOSTNAME $MPP_PORT $MPP_DIR $MPP_HOSTID $MPP_LISTENID $MPP_DBID $MPP_CONTENT" 1
+				LOG_MSG  "[INFO]:-Primary segment on $GP_HOSTNAME $GP_PORT $GP_DIR $MPP_HOSTID $MPP_LISTENID $MPP_DBID $MPP_CONTENT" 1
 			done
 			if [ $MIRRORING -ne 0 ]; then
-				LOG_MSG "[INFO]:-MPP Mirror Segment Configuration" 1
+				LOG_MSG "[INFO]:-Greenplum Mirror Segment Configuration" 1
 				LOG_MSG "[INFO]:---------------------------------" 1
 				for I in  "${QE_MIRROR_ARRAY[@]}"
 				do
 					SET_VAR $I
-					LOG_MSG  "[INFO]:-Mirror segment on $MPP_HOSTNAME $MPP_PORT $MPP_DIR $MPP_HOSTID $MPP_LISTENID $MPP_DBID $MPP_CONTENT" 1
+					LOG_MSG  "[INFO]:-Mirror segment on $GP_HOSTNAME $GP_PORT $GP_DIR $MPP_HOSTID $MPP_LISTENID $MPP_DBID $MPP_CONTENT" 1
 				done
 			fi
 		fi
-			$ECHO "Continue with MPP creation Yy/Nn>" 
+			$ECHO "Continue with Greenplum creation Yy/Nn>" 
 			read REPLY
 			if [ -z $REPLY ]; then
 				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
@@ -819,11 +819,11 @@ DISPLAY_CONFIG () {
 
 SET_VAR () {
 		I=$1
-		MPP_HOSTNAME=`$ECHO $I|$CUT -d: -f1`
+		GP_HOSTNAME=`$ECHO $I|$CUT -d: -f1`
 		MPP_HOSTID=`$ECHO $I|$CUT -d: -f2`
 		MPP_LISTENID=`$ECHO $I|$CUT -d: -f3`
-		MPP_PORT=`$ECHO $I|$CUT -d: -f4`
-		MPP_DIR=`$ECHO $I|$CUT -d: -f5`
+		GP_PORT=`$ECHO $I|$CUT -d: -f4`
+		GP_DIR=`$ECHO $I|$CUT -d: -f5`
 		MPP_DBID=`$ECHO $I|$CUT -d: -f6`
 		MPP_DBNAME=`$ECHO $I|$CUT -d: -f7`
 		MPP_CONTENT=`$ECHO $I|$CUT -d: -f8`
@@ -833,26 +833,26 @@ CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		LOG_MSG "[INFO]:-Building the Master segment database, please wait..." 1
 		SET_VAR $QD_PRIMARY_ARRAY
-		LOG_MSG "[INFO]:-Initializing Master Postgres instance $MPP_DIR"
+		LOG_MSG "[INFO]:-Initializing Master Postgres instance $GP_DIR"
 		$EXPORT_LIB_PATH
-		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR --locale=$LOCALE_SETTING --max_connections=$MASTER_MAX_CONNECT --shared_buffers=$MASTER_SHARED_BUFFERS"
-		BACKOUT_COMMAND "$RM -Rf $MPP_DIR"
+		RUN_COMMAND "$INITDB -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING --max_connections=$MASTER_MAX_CONNECT --shared_buffers=$MASTER_SHARED_BUFFERS"
+		BACKOUT_COMMAND "$RM -Rf $GP_DIR"
 		BACKOUT_COMMAND "$ECHO Removing Master data directory files"
 		LOG_MSG "[INFO]:-Completed Master instance initialization"
-		$ECHO "#MPP specific configuration parameters for Master instance database" >> ${MPP_DIR}/$PG_CONF
-		$ECHO "#--------------------------------------------------------------" >> ${MPP_DIR}/$PG_CONF
-		LOG_MSG "[INFO]:-Setting the Master port to $MPP_PORT"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$PORT_TXT" port=$MPP_PORT 0
-		ERROR_CHK $? "set Master port=$MPP_PORT in $PG_CONF" 2
+		$ECHO "#Greenplum specific configuration parameters for Master instance database" >> ${GP_DIR}/$PG_CONF
+		$ECHO "#------------------------------------------------------------------------" >> ${GP_DIR}/$PG_CONF
+		LOG_MSG "[INFO]:-Setting the Master port to $GP_PORT"
+		ED_FILE ${GP_DIR}/$PG_CONF "$PORT_TXT" port=$GP_PORT 0
+		ERROR_CHK $? "set Master port=$GP_PORT in $PG_CONF" 2
 		LOG_MSG "[INFO]:-Completed setting the Master port to $MASTER_PORT"
 		LOG_MSG "[INFO]:-Setting Master logging option"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$LOG_STATEMENT_TXT" log_statement=all 0
-		ERROR_CHK $? "set log_statement=all in ${MPP_DIR}/$PG_CONF" 1
+		ED_FILE ${GP_DIR}/$PG_CONF "$LOG_STATEMENT_TXT" log_statement=all 0
+		ERROR_CHK $? "set log_statement=all in ${GP_DIR}/$PG_CONF" 1
 		LOG_MSG "[INFO]:-Setting Master instance check point segments"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" "checkpoint_segments=$CHECK_POINT_SEGMENTS" 0
-		ERROR_CHK $? "set checkpoint_segments=$CHECK_POINT_SEGMENTS in ${MPP_DIR}/$PG_CONF" 1
+		ED_FILE ${GP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" "checkpoint_segments=$CHECK_POINT_SEGMENTS" 0
+		ERROR_CHK $? "set checkpoint_segments=$CHECK_POINT_SEGMENTS in ${GP_DIR}/$PG_CONF" 1
 		LOG_MSG "[INFO]:-Setting Master instance stats string to on"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$LOG_STATS_TXT" "stats_command_string=on" 0
+		ED_FILE ${GP_DIR}/$PG_CONF "$LOG_STATS_TXT" "stats_command_string=on" 0
 		ERROR_CHK $? "set stats_command_string to on" 1
 		if [  x"" != x"$PG_CONF_ADD_FILE" ]; then
 				LOG_MSG "[INFO]:-Processing additional configuration parameters"
@@ -860,30 +860,30 @@ CREATE_QD_DB () {
 						do
 						LOG_MSG "[INFO]:-Adding config $NEW_PARAM to Master"
 						SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
-						ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0
-						ERROR_CHK $? "set $NEW_PARAM ${MPP_DIR}/$PG_CONF" 1
+						ED_FILE ${GP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0
+						ERROR_CHK $? "set $NEW_PARAM ${GP_DIR}/$PG_CONF" 1
 				done
 		fi
 		LOG_MSG "[INFO]:-Adding gp_dumpall access to $PG_HBA for master host"
-		BUILD_MASTER_PG_HBA_FILE $MPP_DIR $IP_ALLOW
+		BUILD_MASTER_PG_HBA_FILE $GP_DIR $IP_ALLOW
 		LOG_MSG "[INFO]:-Starting the Master in admin mode" 1
-		export PGPORT=$MPP_PORT;$PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o "-i -p $MPP_PORT" start
-		RET_TEXT="`$PG_CTL status -D $MPP_DIR`"
+		export PGPORT=$GP_PORT;$PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o "-i -p $GP_PORT" start
+		RET_TEXT="`$PG_CTL status -D $GP_DIR`"
 		RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
 		if [ $RUNNING -ne 0 ]; then
-				$CAT ${MPP_DIR}.log|$TEE -a $LOG_FILE
+				$CAT ${GP_DIR}.log|$TEE -a $LOG_FILE
 				ERROR_EXIT "[FATAL]:-Failed to start the Master database in admin mode" 2
 		fi
-		BACKOUT_COMMAND "$RM -f /tmp/.s.PGSQL.${MPP_PORT}*"
+		BACKOUT_COMMAND "$RM -f /tmp/.s.PGSQL.${GP_PORT}*"
 		BACKOUT_COMMAND "$ECHO \"Removing Master lock files\""
-		BACKOUT_COMMAND "$RM -f ${MPP_DIR}.log"
+		BACKOUT_COMMAND "$RM -f ${GP_DIR}.log"
 		BACKOUT_COMMAND "$ECHO Removing Master log file"
-		BACKOUT_COMMAND "$EXPORT_LIB_PATH;export PGPORT=$MPP_PORT;$PG_CTL -D $MPP_DIR stop"
+		BACKOUT_COMMAND "$EXPORT_LIB_PATH;export PGPORT=$GP_PORT;$PG_CTL -D $GP_DIR stop"
 		BACKOUT_COMMAND "$ECHO \"Stopping Master instance\""
 		LOG_MSG "[INFO]:-Compleleted starting the Master in admin mode"
 		$SLEEP 2
-		UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 0 X
-		UPDATE_MPPCONFIGURATION  $MPP_DBNAME $MPP_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT t  $MPP_HOSTNAME $MPP_PORT $MPP_DIR
+		UPDATE_MPP $MPP_DBNAME $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 0 X
+		UPDATE_MPPCONFIGURATION  $MPP_DBNAME $GP_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT t  $GP_HOSTNAME $GP_PORT $GP_DIR
 		LOAD_QE_SYSTEM_DATA $DEFAULTDB
 		SET_VAR $QD_PRIMARY_ARRAY
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -924,17 +924,17 @@ LOAD_QE_SYSTEM_DATA () {
 		for I in "${QE_PRIMARY_ARRAY[@]}"
 				do
 				SET_VAR $I
-				LOG_MSG "[INFO]:-Adding segment $MPP_HOSTNAME to Master system tables"
-				UPDATE_MPPCONFIGURATION $QD_DBNAME $MASTER_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT t $MPP_HOSTNAME $MPP_PORT $MPP_DIR
-				LOG_MSG "[INFO]:-Successfully added segment $MPP_HOSTNAME to Master system tables"
+				LOG_MSG "[INFO]:-Adding segment $GP_HOSTNAME to Master system tables"
+				UPDATE_MPPCONFIGURATION $QD_DBNAME $MASTER_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT t $GP_HOSTNAME $GP_PORT $GP_DIR
+				LOG_MSG "[INFO]:-Successfully added segment $GP_HOSTNAME to Master system tables"
 		done
 		if [ $MIRRORING -eq 1 ]; then
 				for I in "${QE_MIRROR_ARRAY[@]}"
 				do
 					SET_VAR $I
-					LOG_MSG "[INFO]:-Adding segment $MPP_HOSTNAME to Master system tables as mirror"
-					UPDATE_MPPCONFIGURATION $QD_DBNAME $MASTER_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT f  $MPP_HOSTNAME $MPP_PORT $MPP_DIR
-					LOG_MSG "[INFO]:-Successfully added segment $MPP_HOSTNAME to Master system tables as mirror"
+					LOG_MSG "[INFO]:-Adding segment $GP_HOSTNAME to Master system tables as mirror"
+					UPDATE_MPPCONFIGURATION $QD_DBNAME $MASTER_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT f  $GP_HOSTNAME $GP_PORT $GP_DIR
+					LOG_MSG "[INFO]:-Successfully added segment $GP_HOSTNAME to Master system tables as mirror"
 				done
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -958,9 +958,9 @@ UPDATE_MPP () {
 				RUN_COMMAND_REMOTE $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $GP_TBL (gpname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
 		fi	
 		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Failed to update mpp system table" 2
+				ERROR_EXIT "[FATAL]:-Failed to update Greenplum system table" 2
 		fi
-		LOG_MSG "[INFO]:-Successfully updated mpp system table"
+		LOG_MSG "[INFO]:-Successfully updated Greenplum system table"
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -999,10 +999,10 @@ CREATE_QES_PRIMARY () {
 				for I in "${QE_PRIMARY_ARRAY[@]}"
 				do
 				SET_VAR $I
-				LOG_MSG "[INFO]:-Processing segment $MPP_HOSTNAME" 1
+				LOG_MSG "[INFO]:-Processing segment $GP_HOSTNAME" 1
 				PROCESS_QE
-				LOG_MSG "[INFO]:-Successfully started segment instance on $MPP_HOSTNAME" 1
-				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+				LOG_MSG "[INFO]:-Successfully started segment instance on $GP_HOSTNAME" 1
+				UPDATE_MPP $MPP_DBNAME $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $GP_HOSTNAME
 				done
 			fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -1043,10 +1043,10 @@ CREATE_QES_MIRROR () {
 				for I in  "${QE_MIRROR_ARRAY[@]}"
 				do
 					SET_VAR $I
-					LOG_MSG "[INFO]:-Processing Mirror segment $MPP_HOSTNAME" 1
+					LOG_MSG "[INFO]:-Processing Mirror segment $GP_HOSTNAME" 1
 					PROCESS_QE
-					LOG_MSG "[INFO]:-Successfully started segment mirror instance on $MPP_HOSTNAME" 1
-					UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+					LOG_MSG "[INFO]:-Successfully started segment mirror instance on $GP_HOSTNAME" 1
+					UPDATE_MPP $MPP_DBNAME $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $GP_HOSTNAME
 				done
 			fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -1054,22 +1054,22 @@ CREATE_QES_MIRROR () {
 
 PROCESS_QE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB -E $ENCODING -D $MPP_DIR --locale=$LOCALE_SETTING --max_connections=$QE_MAX_CONNECT --shared_buffers=$QE_SHARED_BUFFERS"
-		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
-		BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
+		RUN_COMMAND_REMOTE ${GP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING --max_connections=$QE_MAX_CONNECT --shared_buffers=$QE_SHARED_BUFFERS"
+		BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTNAME} \"$RM -rf $GP_DIR\""
+		BACKOUT_COMMAND "$ECHO \"removing directory $GP_DIR on $GP_HOSTNAME\""
 		LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
-		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
-		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#----------------------\" >> ${MPP_DIR}/$PG_CONF"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$PORT_TXT" port=$MPP_PORT 0 $MPP_HOSTNAME
-		ED_FILE ${MPP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $MPP_HOSTNAME
-		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $MPP_HOSTNAME
+		RUN_COMMAND_REMOTE ${GP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${GP_DIR}/$PG_CONF"
+		RUN_COMMAND_REMOTE ${GP_HOSTNAME} "$ECHO \"#----------------------\" >> ${GP_DIR}/$PG_CONF"
+		ED_FILE ${GP_DIR}/$PG_CONF "$PORT_TXT" port=$GP_PORT 0 $GP_HOSTNAME
+		ED_FILE ${GP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $GP_HOSTNAME
+		ED_FILE ${GP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $GP_HOSTNAME
 		if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
 			LOG_MSG "[INFO]:-Processing additional configuration parameters"
 			for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
 			do
 				LOG_MSG "[INFO]:-Adding config $NEW_PARAM to segment"
 				SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
-				ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0 $MPP_HOSTNAME
+				ED_FILE ${GP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0 $GP_HOSTNAME
 			done
 		fi
 
@@ -1077,47 +1077,47 @@ PROCESS_QE () {
 		LOG_MSG "[INFO]:-Configuring segment $PG_HBA"
 		for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
 		do
-			RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
+			RUN_COMMAND_REMOTE ${GP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${GP_DIR}/$PG_HBA"
 		done
 		if [ x"" != x"$STANDBY_HOSTNAME" ];then
 			LOG_MSG "[INFO]:-Processing Standby master IP address for segment instances"
 			for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
 			do
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${STANDBY_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
+				RUN_COMMAND_REMOTE ${GP_HOSTNAME} "$ECHO host	all	all	${STANDBY_IP}/32	trust >> ${GP_DIR}/$PG_HBA"
 			done
 		fi
 		for QE_IP in "${QE_IP_ARRAY[@]}"
 		do
-			THERE=`$TRUSTED_SHELL ${MPP_HOSTNAME} "$GREP -c \"$QE_IP\" ${MPP_DIR}/$PG_HBA"`
+			THERE=`$TRUSTED_SHELL ${GP_HOSTNAME} "$GREP -c \"$QE_IP\" ${GP_DIR}/$PG_HBA"`
 			if [ $THERE -eq 0 ];then
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host  all     all     ${QE_IP}/32 trust >> ${MPP_DIR}/$PG_HBA"
+				RUN_COMMAND_REMOTE ${GP_HOSTNAME} "$ECHO host  all     all     ${QE_IP}/32 trust >> ${GP_DIR}/$PG_HBA"
 			fi
 		done
-		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}" 1
-		$TRUSTED_SHELL ${MPP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start"
+		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${GP_HOSTNAME}" 1
+		$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o \"-i -p ${GP_PORT}\" start"
 		if [ $? -ne 0 ]; then
-			BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-			BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
-			$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
+			BACKOUT_COMMAND "$ECHO \"Removing segment log file ${GP_DIR}.log on segment $GP_HOSTNAME\""
+			BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
+			$TRUSTED_SHELL ${GP_HOSTNAME} "$CAT ${GP_DIR}.log "|$TEE -a $LOG_FILE
 			ERROR_EXIT "[FATAL]:-Failed to start segment Mirror instance database" 2
 		fi	
-		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
-		BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
-		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $MPP_HOSTNAME\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTNAME} \"$RM -f ${GP_DIR}.log\""
+		BACKOUT_COMMAND "$ECHO \"Removing segment log file ${GP_DIR}.log on segment $GP_HOSTNAME\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
+		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $GP_HOSTNAME\""
 }
 
 STOP_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		LOG_MSG "[INFO]:-Restarting the MPP instance in production mode" 1
+		LOG_MSG "[INFO]:-Restarting the Greenplum instance in production mode" 1
 		if [ -f $GPSTOP ]; then
 				$GPSTOP -a -i -d $MAS_DIR
 				RETVAL=$?
 				case $RETVAL in
-				0 ) LOG_MSG "[INFO]:-Successfully shutdown the new MPP instance" ;;
-				1 ) LOG_MSG "[WARN]:-Non fatal error from MPP instance shutdown, check log files, will continue"
+				0 ) LOG_MSG "[INFO]:-Successfully shutdown the new Greenplum instance" ;;
+				1 ) LOG_MSG "[WARN]:-Non fatal error from Greenplum instance shutdown, check log files, will continue"
 				    EXIT_STATUS=1 ;;
-				2 ) ERROR_EXIT "[FATAL]:-Failed to stop new MPP instance, check log file" 2
+				2 ) ERROR_EXIT "[FATAL]:-Failed to stop new Greenplum instance, check log file" 2
 				esac
 		else
 				ERROR_EXIT "[FATAL]:-$GPSTOP not located" 2
@@ -1153,24 +1153,24 @@ START_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [ -f $GPSTART ]; then
 				$GPSTART -a -d $MAS_DIR
-				ERROR_CHK $? "start new MPP instance" 2
+				ERROR_CHK $? "start new Greenplum instance" 2
 		else
 				ERROR_EXIT "[FATAL]:-$GPSTART not located" 2
 		fi
-		LOG_MSG "[INFO]:-Completed restart of MPP instance in production mode" 1
+		LOG_MSG "[INFO]:-Completed restart of Greenplum instance in production mode" 1
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
-SET_MPP_USER_PW () {
+SET_GP_USER_PW () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	$PSQL -p $MASTER_PORT $DEFAULTDB -c"alter user $USER_NAME password '$MPP_PASSWD';"
-	ERROR_CHK $? "update mpp superuser password" 1
+	$PSQL -p $MASTER_PORT $DEFAULTDB -c"alter user $USER_NAME password '$GP_PASSWD';"
+	ERROR_CHK $? "update Greenplum superuser password" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CREATE_DATABASE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		SET_VAR $QD_PRIMARY_ARRAY
-		$PSQL -p $MPP_PORT $DEFAULTDB -c"create database ${DATABASE_NAME};" >> $LOG_FILE 2>&1
+		$PSQL -p $GP_PORT $DEFAULTDB -c"create database ${DATABASE_NAME};" >> $LOG_FILE 2>&1
 		ERROR_CHK $? "create database $DATABASE_NAME" 2
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -1214,7 +1214,7 @@ while getopts ":v'?'aiqe:c:l:p:m:h:on:s:rb:!DB:" opt
 				i ) START_SYNC="" ;;
 				c ) CLUSTER_CONFIG=$OPTARG ;;
 				l ) LOG_DIR=$OPTARG ;;
-				e ) MPP_PASSWD=$OPTARG ;;
+				e ) GP_PASSWD=$OPTARG ;;
 				p ) PG_CONF_ADD_FILE=$OPTARG ;;
 				h ) MACHINE_LIST_FILE_ALT=$OPTARG ;;
 				m ) MASTER_MAX_CONNECT=$OPTARG ;;
@@ -1303,7 +1303,7 @@ else
 		CREATE_QES_MIRROR
 	fi
 fi
-SET_MPP_USER_PW
+SET_GP_USER_PW
 if [ x"" != x"$DATABASE_NAME" ]; then
 	CREATE_DATABASE
 fi
@@ -1314,14 +1314,14 @@ else
 	START_QD_PRODUCTION
 fi
 SCAN_LOG
-LOG_MSG "[INFO]:-MPP instance successfully created" 1
+LOG_MSG "[INFO]:-Greenplum instance successfully created" 1
 LOG_MSG "[INFO]:-------------------------------------------------------" 1
 LOG_MSG "[INFO]:-To complete the environment configuration, please " 1
 LOG_MSG "[INFO]:-update $USER_NAME .bashrc file with the following" 1
 LOG_MSG "[INFO]:-1. Ensure that the greenplum_path.sh file is sourced" 1
 LOG_MSG "[INFO]:-2. Add \"export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1\"" 1
-LOG_MSG "[INFO]:-   to access the MPP scripts for this instance:" 1
-LOG_MSG "[INFO]:-   or, use -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 option for the MPP scripts" 1
+LOG_MSG "[INFO]:-   to access the Greenplum scripts for this instance:" 1
+LOG_MSG "[INFO]:-   or, use -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 option for the Greenplum scripts" 1
 LOG_MSG "[INFO]:-   Example gpstate.sh -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1" 1
 LOG_MSG "[INFO]:-Script log file = $LOG_FILE" 1
 LOG_MSG "[INFO]:-To remove instance, run gpdeletecluster.sh script" 1
@@ -1330,7 +1330,7 @@ LOG_MSG "[INFO]:-Standby Master $STANDBY_HOSTNAME has been configured" 1
 LOG_MSG "[INFO]:-To activate the Standby Master Segment in the event of Master" 1
 LOG_MSG "[INFO]:-failure review options for gpactivatestandby.sh" 1
 else
-LOG_MSG "[INFO]:-To initialize a Standby Master Segment for this MPP instance" 1
+LOG_MSG "[INFO]:-To initialize a Standby Master Segment for this Greenplum instance" 1
 LOG_MSG "[INFO]:-Review options for gpinitstandby.sh" 1
 fi
 LOG_MSG "[INFO]:-------------------------------------------------------" 1

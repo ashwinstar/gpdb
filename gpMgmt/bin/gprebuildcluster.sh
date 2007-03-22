@@ -65,8 +65,8 @@ TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
 #******************************************************************************
 #
 USAGE () {
-	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-		$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+		$MORE ${GPDOCDIR}/$HELP_DOC_NAME
 	exit 0
 	else
 		$ECHO	
@@ -239,43 +239,43 @@ CHK_PARAM () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-MPP rebuild parameters" 1
+	LOG_MSG "[INFO]:-Greenplum rebuild parameters" 1
 	LOG_MSG "[INFO]:-----------------------" 1
-	LOG_MSG "[INFO]:-MPP rebuild key                = $REBUILD_KEY" 1
-	LOG_MSG "[INFO]:-MPP recover directory          = $RECOVER_FILE_DIR" 1
+	LOG_MSG "[INFO]:-Greenplum rebuild key                = $REBUILD_KEY" 1
+	LOG_MSG "[INFO]:-Greenplum recover directory          = $RECOVER_FILE_DIR" 1
 	if [ $CREATE_DB -eq 1 ] && [ $NOCREATEDB -eq 0 ];then
-	LOG_MSG "[INFO]:-MPP create database            = Configured" 1
+	LOG_MSG "[INFO]:-Greenplum create database            = Configured" 1
 	else
-	LOG_MSG "[INFO]:-MPP create database            = Not configured" 1
+	LOG_MSG "[INFO]:-Greenplum create database            = Not configured" 1
 	fi
-	LOG_MSG "[INFO]:-MPP restore file count         = $RESTORE_FILE_COUNT" 1
+	LOG_MSG "[INFO]:-Greenplum restore file count         = $RESTORE_FILE_COUNT" 1
 	if [ x"" != x"$MASTER_ONLY" ];then
-	LOG_MSG "[INFO]:-MPP Master build only          = On" 1
+	LOG_MSG "[INFO]:-Greenplum Master build only          = On" 1
 	else
-	LOG_MSG "[INFO]:-MPP Master build only          = Off" 1
+	LOG_MSG "[INFO]:-Greenplum Master build only          = Off" 1
 	fi
-	LOG_MSG "[INFO]:-MPP Master hostname            = $MASTER_HOST" 1
+	LOG_MSG "[INFO]:-Greenplum Master hostname            = $MASTER_HOST" 1
 	if [ x"" == x"$OVERRIDE_MASTER_HOSTNAME" ];then
-	LOG_MSG "[INFO]:-MPP Master change name         = Off" 1
+	LOG_MSG "[INFO]:-Greenplum Master change name         = Off" 1
 	else
-	LOG_MSG "[INFO]:-MPP Master change name         = On" 1
-	LOG_MSG "[INFO]:-MPP previous host name         = $PREV_MASTER_HOST" 1
+	LOG_MSG "[INFO]:-Greenplum Master change name         = On" 1
+	LOG_MSG "[INFO]:-Greenplum previous host name         = $PREV_MASTER_HOST" 1
 	fi
-	LOG_MSG "[INFO]:-MPP Master data directory      = $MASTER_DATA_DIRECTORY" 1
-	LOG_MSG "[INFO]:-MPP Master port                = $MASTER_PORT" 1
-	LOG_MSG "[INFO]:-MPP array name                 = $MASTER_MPP_NAME" 1
-	LOG_MSG "[INFO]:-MPP total primary segments     = $MASTER_TOTAL_SEG" 1
+	LOG_MSG "[INFO]:-Greenplum Master data directory      = $MASTER_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Greenplum Master port                = $MASTER_PORT" 1
+	LOG_MSG "[INFO]:-Greenplum array name                 = $MASTER_MPP_NAME" 1
+	LOG_MSG "[INFO]:-Greenplum total primary segments     = $MASTER_TOTAL_SEG" 1
 	if [ $STANDBY_ACTIVE -ne 0 ];then
-		LOG_MSG "[INFO]:-MPP Master Standby             = Configured" 1
+		LOG_MSG "[INFO]:-Greenplum Master Standby             = Configured" 1
 		if [ x"" == x"$START_GPSYNC" ];then
-			LOG_MSG "[INFO]:-MPP start sync process         = Off" 1
+			LOG_MSG "[INFO]:-Greenplum start sync process         = Off" 1
 		else
-			LOG_MSG "[INFO]:-MPP start sync process         = On" 1
+			LOG_MSG "[INFO]:-Greenplum start sync process         = On" 1
 		fi
 	else
-		LOG_MSG "[INFO]:-MPP Master Standby             = Not Configured" 1
+		LOG_MSG "[INFO]:-Greenplum Master Standby             = Not Configured" 1
 	fi 
-		LOG_MSG "[INFO]:-MPP Master IP Allow            = $DEFAULT_IP_ALLOW" 1
+		LOG_MSG "[INFO]:-Greenplum Master IP Allow            = $DEFAULT_IP_ALLOW" 1
 	if [ x"" != x"$MASTER_ONLY" ];then
 		LOG_MSG "[INFO]:-Segment build = OFF -m option supplied" 1
 		LOG_MSG "[INFO]:---------------------------------------" 1
@@ -283,7 +283,7 @@ DISPLAY_PARAM () {
 		LOG_MSG "[INFO]:-Below segments will also be built" 1
 		LOG_MSG "[INFO]:-----------------------------------" 1
 	fi	
-	LOG_MSG "[INFO]:-MPP Segment instance list" 1
+	LOG_MSG "[INFO]:-Greenplum Segment instance list" 1
 	LOG_MSG "[INFO]:--------------------------" 1
 	if [ x"" != x"$MASTER_ONLY" ];then
 		LOG_MSG "[INFO]:-NOTE:-List supplied for information only" 1

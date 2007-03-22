@@ -9,7 +9,7 @@
 #	Release stat:-		Greenplum Co Internal
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
 #                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Deletes an MPP instance.
+#	Brief descn:-		Deletes an Greenplum instance.
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -53,14 +53,14 @@ GPSEGDELETE=gpsegdelete.sh
 # Functions
 #******************************************************************************
 USAGE () {
-	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-	$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+	$MORE ${GPDOCDIR}/$HELP_DOC_NAME
 	exit 0
 	else
 	$ECHO
         $ECHO "      `basename $0`"
 	$ECHO
-        $ECHO "      Deletes a MPP instance, use with caution, script is destructive"
+        $ECHO "      Deletes a Greenplum instance, use with caution, script is destructive"
         $ECHO
         $ECHO "      Usage:"
         $ECHO "      $0 [OPTIONS]"
@@ -99,7 +99,7 @@ CHECK_PARAM () {
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Directory $DELETE_MASTER_DATA_DIRECTORY does not exist on this host" 2;fi
 	if [ ! -f ${DELETE_MASTER_DATA_DIRECTORY}/postmaster.pid ];then
-		ERROR_EXIT "[FATAL]:-MPP instance not running, activate instance to be able to progress instance deletion" 2
+		ERROR_EXIT "[FATAL]:-Greenplum instance not running, activate instance to be able to progress instance deletion" 2
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -169,23 +169,23 @@ SET_VAR () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-MPP Instance Deletion Parameters" 1
+	LOG_MSG "[INFO]:-Greenplum Instance Deletion Parameters" 1
 	LOG_MSG "[INFO]:--------------------------------" 1
-	LOG_MSG "[INFO]:-MPP Master hostname               = $MASTER_HOSTNAME" 1
-	LOG_MSG "[INFO]:-MPP Master data directory         = $MASTER_DATA_DIRECTORY" 1
-	LOG_MSG "[INFO]:-MPP Master port                   = $MASTER_PORT" 1
-	LOG_MSG "[INFO]:-MPP Master standby host           = $STANDBY_HOSTNAME" 1
+	LOG_MSG "[INFO]:-Greenplum Master hostname               = $MASTER_HOSTNAME" 1
+	LOG_MSG "[INFO]:-Greenplum Master data directory         = $MASTER_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Greenplum Master port                   = $MASTER_PORT" 1
+	LOG_MSG "[INFO]:-Greenplum Master standby host           = $STANDBY_HOSTNAME" 1
 	if [ $FORCE -eq 1 ];then
-		LOG_MSG "[WARN]:-MPP Force delete of dump files    = ON" 1
+		LOG_MSG "[WARN]:-Greenplum Force delete of dump files    = ON" 1
 	else
-		LOG_MSG "[INFO]:-MPP Force delete of dump files    = Off" 1
+		LOG_MSG "[INFO]:-Greenplum Force delete of dump files    = Off" 1
 	fi	
 	if [ $STANDBY_COUNT -ne 0 ];then
-	LOG_MSG "[INFO]:-MPP Master standby data directory = $STANDBY_DATADIR" 1
-	LOG_MSG "[INFO]:-MPP Master standby port           = $STANDBY_PORT" 1
+	LOG_MSG "[INFO]:-Greenplum Master standby data directory = $STANDBY_DATADIR" 1
+	LOG_MSG "[INFO]:-Greenplum Master standby port           = $STANDBY_PORT" 1
 	fi
 	if [ $FAIL_PRI_SEG ];then
-	LOG_MSG "[INFO]:-MPP RO Master deletion            = On" 1
+	LOG_MSG "[INFO]:-Greenplum RO Master deletion            = On" 1
 	fi
 	LOG_MSG "[INFO]:-------------------------------" 1
 	LOG_MSG "[INFO]:-Segment Instance List" 1
@@ -197,14 +197,14 @@ DISPLAY_PARAM () {
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 	if [ -z $NOINTERACTIVE ];then
-		$ECHO  "Continue with MPP instance deletion Yy/Nn>"
+		$ECHO  "Continue with Greenplum instance deletion Yy/Nn>"
 		read REPLY
 		CHK_REPLY
-		$ECHO "FINAL WARNING, you are about to delete the MPP instance on Master host $MASTER_HOSTNAME"
+		$ECHO "FINAL WARNING, you are about to delete the Greenplum instance on Master host $MASTER_HOSTNAME"
 		if [ $DUMP_COUNT -ne 0 ] && [ $FORCE -eq 1 ];then
 		$ECHO "There are database dump files, these will be DELETED if you continue!"
 		fi
-		$ECHO "Continue with MPP deletion Yy/Nn>"
+		$ECHO "Continue with Greenplum deletion Yy/Nn>"
 		read REPLY
 		CHK_REPLY
 	else
@@ -275,7 +275,7 @@ DELETE_CLUSTER () {
 	LOG_MSG "[INFO]:-Processing Master host $MASTER_HOSTNAME" 1
 	RUN_COMMAND "$RM -Rf $MASTER_DATA_DIRECTORY"
 	RUN_COMMAND "$RM -f ${MASTER_DATA_DIRECTORY}.log"
-	LOG_MSG "[INFO]:-The MPP instance on Master host $MASTER_HOSTNAME, has been deleted" 1
+	LOG_MSG "[INFO]:-The Greenplum instance on Master host $MASTER_HOSTNAME, has been deleted" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 

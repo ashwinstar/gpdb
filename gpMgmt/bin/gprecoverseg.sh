@@ -281,7 +281,7 @@ GET_MIRROR () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-MPP instance recovery parameters" 1
+	LOG_MSG "[INFO]:-Greenplum instance recovery parameters" 1
 	LOG_MSG "[INFO]:---------------------------------" 1
 	LOG_MSG "[INFO]:-Fault tolerance setting       = $FAIL_TYPE" 1
 	if [ x"" != x"$POOL_HOST" ];then
@@ -607,7 +607,7 @@ CHK_POOL_DIR_AVAILABLE () {
 	LOG_MSG "[INFO]:-Primary segment pool directory set as $PRI_POOL_DATADIR" 1
 	LOG_MSG "[INFO]:-Mirror segment pool directory set as $MIR_POOL_DATADIR" 1
 	SEG_PREFIX=`$ECHO $MASTER_DATA_DIRECTORY|$AWK -F'/' '{print $NF}'|$SED -e 's/-[0-9]//g'`
-	LOG_MSG "[INFO]:-MPP instance segment prefix is $SEG_PREFIX" 1
+	LOG_MSG "[INFO]:-Greenplum instance segment prefix is $SEG_PREFIX" 1
 	#For each host see how many are active
 	ACTIVE_PRI_POOL_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where datadir like '${PRI_POOL_DATADIR}/${SEG_PREFIX}%' and content<>-1;"`)
 	ERROR_CHK $? "obtain active primary pool directory count" 2
@@ -937,7 +937,7 @@ CHK_POOL_HOST () {
 		LOG_MSG "[INFO]:-Required=$MIR_FAIL_COUNT Free=$MIR_FREE Used=${#MIR_POOL_HOST_IN_USE[@]}" 1
 	fi
 	SEG_PREFIX=`$ECHO $MASTER_DATA_DIRECTORY|$AWK -F'/' '{print $NF}'|$SED -e 's/-[0-9]//g'`
-	LOG_MSG "[INFO]:-MPP instance segment prefix is $SEG_PREFIX" 1
+	LOG_MSG "[INFO]:-Greenplum instance segment prefix is $SEG_PREFIX" 1
 	LOG_MSG "[INFO]:-Obtaining a list of primary segment datadir prefixes" 1
 	PRI_DATA_DIR_PREFIX_ARRAY=(`for DIR in \`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='t';"\`;do $DIRNAME $DIR;done|$SORT -u|$TR '\n' ' '`)
 	ERROR_CHK $? "obtain primary segment prefixes" 2

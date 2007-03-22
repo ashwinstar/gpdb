@@ -40,7 +40,7 @@ TIME=`$DATE +%H%M%S`
 PROG_NAME=`$BASENAME $0`
 # Level of script feedback 0=small 1=verbose
 unset VERBOSE
-MPP_USER=$USER_NAME
+GP_USER=$USER_NAME
 EXIT_STATUS=0
 #******************************************************************************
 # Functions

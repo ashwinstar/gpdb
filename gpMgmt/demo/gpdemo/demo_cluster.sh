@@ -147,28 +147,28 @@ if [ x"$MPPHOME" = x ]; then
         echo ""
         exit 1
     else
-        MPPSEARCH=$BIZHOME
+        GPSEARCH=$BIZHOME
     fi
 else
-    MPPSEARCH=$MPPHOME
+    GPSEARCH=$MPPHOME
 fi
 
-MPPPATH=`find $MPPSEARCH -name gp_dump| tail -1`
+GPPATH=`find $GPSEARCH -name gp_dump| tail -1`
 RETVAL=$?
 
 if [ "$RETVAL" -ne 0 ]; then
-    echo "Error attempting to find Greenplum executables in $MPPSEARCH"
+    echo "Error attempting to find Greenplum executables in $GPSEARCH"
     exit 1
 fi
 
-if [ ! -x "$MPPPATH" ]; then
-    echo "No executables found for Greenplum installation in $MPPSEARCH"
+if [ ! -x "$GPPATH" ]; then
+    echo "No executables found for Greenplum installation in $GPSEARCH"
     exit 1
 fi
-MPPPATH=`dirname $MPPPATH`
-MPPMGMT=$MPPPATH/../gpMgmt/bin
-if [ ! -x $MPPMGMT/gpcreatecluster.sh ]; then
-    echo "No mgmt executables found for Greenplum installation in $MPPMGMT"
+GPPATH=`dirname $GPPATH`
+GPMGMT=$GPPATH/../gpMgmt/bin
+if [ ! -x $GPMGMT/gpcreatecluster.sh ]; then
+    echo "No mgmt executables found for Greenplum installation in $GPMGMT"
     exit 1
 fi
 
@@ -256,4 +256,4 @@ echo "export TRUSTED_SHELL" >> $CLUSTER_CONFIG
 #*****************************************************************************************
 # Create cluster
 #*****************************************************************************************
-$MPPMGMT/gpcreatecluster.sh -q -a -c $CLUSTER_CONFIG
+$GPMGMT/gpcreatecluster.sh -q -a -c $CLUSTER_CONFIG

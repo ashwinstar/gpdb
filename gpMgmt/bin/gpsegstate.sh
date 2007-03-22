@@ -24,7 +24,7 @@ WORKDIR=`dirname $0`
 # Source required functions file, this required for script to run
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -40,7 +40,7 @@ TIME=`$DATE +%H%M%S`
 PROG_NAME=`$BASENAME $0`
 # Level of script feedback 0=small 1=verbose
 unset VERBOSE
-MPP_USER=$USER_NAME
+GP_USER=$USER_NAME
 EXIT_STATUS=0
 #******************************************************************************
 # Functions

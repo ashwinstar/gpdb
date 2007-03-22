@@ -24,7 +24,7 @@ WORKDIR=`dirname $0`
 # Source required functions file, this required for script to run
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -41,7 +41,7 @@ PROG_NAME=`$BASENAME $0`
 # Level of script feedback 0=small 1=verbose
 unset VERBOSE
 # MPP database specific parameters
-MPP_USER=$USER_NAME
+GP_USER=$USER_NAME
 # System table names
 GP_TBL=gp_id
 GP_CONFIGURATION_TBL=gp_configuration
@@ -77,11 +77,11 @@ CHK_CALL () {
 
 SET_VAR () {
                 I=$1
-                MPP_HOSTNAME=`$ECHO $I|$CUT -d: -f1`
+                GP_HOSTNAME=`$ECHO $I|$CUT -d: -f1`
                 MPP_HOSTID=`$ECHO $I|$CUT -d: -f2`
                 MPP_LISTENID=`$ECHO $I|$CUT -d: -f3`
-                MPP_PORT=`$ECHO $I|$CUT -d: -f4`
-                MPP_DIR=`$ECHO $I|$CUT -d: -f5`
+                GP_PORT=`$ECHO $I|$CUT -d: -f4`
+                GP_DIR=`$ECHO $I|$CUT -d: -f5`
                 MPP_DBID=`$ECHO $I|$CUT -d: -f6`
                 MPP_DBNAME=`$ECHO $I|$CUT -d: -f7`
                 MPP_CONTENT=`$ECHO $I|$CUT -d: -f8`
@@ -99,24 +99,24 @@ PARA_EXIT () {
 
 PROCESS_QE () {
 		LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
-		LOG_MSG "[INFO][$INST_COUNT]:-Processing segment $MPP_HOSTNAME"
-		$TRUSTED_SHELL ${MPP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB -E $ENCODING -D $MPP_DIR --locale=$LOCALE_SETTING --max_connections=$QE_MAX_CONNECT --shared_buffers=$QE_SHARED_BUFFERS" >> $LOG_FILE 2>&1
+		LOG_MSG "[INFO][$INST_COUNT]:-Processing segment $GP_HOSTNAME"
+		$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING --max_connections=$QE_MAX_CONNECT --shared_buffers=$QE_SHARED_BUFFERS" >> $LOG_FILE 2>&1
 		RETVAL=$?
-		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
-		BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
-		PARA_EXIT $RETVAL "to start segment instance database $MPP_HOSTNAME $MPP_DIR"
+		BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTNAME} \"$RM -rf $GP_DIR\""
+		BACKOUT_COMMAND "$ECHO \"removing directory $GP_DIR on $GP_HOSTNAME\""
+		PARA_EXIT $RETVAL "to start segment instance database $GP_HOSTNAME $GP_DIR"
 		LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_CONF"
-		$TRUSTED_SHELL ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
+		$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${GP_DIR}/$PG_CONF"
 		RETVAL=$?
-		PARA_EXIT $RETVAL "Update ${MPP_DIR}/$PG_CONF file"
-		$TRUSTED_SHELL ${MPP_HOSTNAME} "$ECHO \"#----------------------\" >> ${MPP_DIR}/$PG_CONF"
+		PARA_EXIT $RETVAL "Update ${GP_DIR}/$PG_CONF file"
+		$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO \"#----------------------\" >> ${GP_DIR}/$PG_CONF"
 		RETVAL=$?
-		PARA_EXIT $RETVAL "Update ${MPP_DIR}/$PG_CONF file"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$PORT_TXT" port=$MPP_PORT 0 $MPP_HOSTNAME
-		PARA_EXIT $RETVAL "Update port number to $MPP_PORT"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $MPP_HOSTNAME
+		PARA_EXIT $RETVAL "Update ${GP_DIR}/$PG_CONF file"
+		ED_FILE ${GP_DIR}/$PG_CONF "$PORT_TXT" port=$GP_PORT 0 $GP_HOSTNAME
+		PARA_EXIT $RETVAL "Update port number to $GP_PORT"
+		ED_FILE ${GP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $GP_HOSTNAME
 		PARA_EXIT $RETVAL "Update listen address"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $MPP_HOSTNAME
+		ED_FILE ${GP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $GP_HOSTNAME
 		PARA_EXIT $RETVAL "Update checkpoint segments"
 		if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
 			LOG_MSG "[INFO][$INST_COUNT]:-Processing additional configuration parameters"
@@ -124,45 +124,45 @@ PROCESS_QE () {
 			do
 				LOG_MSG "[INFO][$INST_COUNT]:-Adding config $NEW_PARAM to segment"
 				SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
-				ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0 $MPP_HOSTNAME
+				ED_FILE ${GP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0 $GP_HOSTNAME
 				PARA_EXIT $RETVAL "Update $PG_CONF $SEARCH_TXT $NEW_PARAM"
 			done
 		fi
 		LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_HBA"
 		for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
 		do
-			$TRUSTED_SHELL ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
+			$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${GP_DIR}/$PG_HBA"
 			PARA_EXIT $? "Update $PG_HBA for master IP address ${MASTER_IP}"
 		done
 		if [ x"" != x"$STANDBY_HOSTNAME" ];then
 			LOG_MSG "[INFO][$INST_COUNT]:-Processing Standby master IP address for segment instances"
 			for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
 			do
-				$TRUSTED_SHELL ${MPP_HOSTNAME} "$ECHO host	all	all	${STANDBY_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
+				$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO host	all	all	${STANDBY_IP}/32	trust >> ${GP_DIR}/$PG_HBA"
 				PARA_EXIT $? "Update $PG_HBA for master standby address ${STANDBY_IP}"
 			done
 		fi
 		for QE_IP in "${QE_IP_ARRAY[@]}"
 		do
-				$TRUSTED_SHELL ${MPP_HOSTNAME} "$ECHO host  all     all     ${QE_IP}/32 trust >> ${MPP_DIR}/$PG_HBA"
+				$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO host  all     all     ${QE_IP}/32 trust >> ${GP_DIR}/$PG_HBA"
 				PARA_EXIT $? "Update $PG_HBA for segment IP address ${QE_IP}"
 		done
-		LOG_MSG "[INFO][$INST_COUNT]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
-		$TRUSTED_SHELL ${MPP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
+		LOG_MSG "[INFO][$INST_COUNT]:-Starting Functioning instance on segment ${GP_HOSTNAME}"
+		$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o \"-i -p ${GP_PORT}\" start" >> $LOG_FILE 2>&1
 		if [ $? -ne 0 ]; then
-			BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-			BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
-			$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
+			BACKOUT_COMMAND "$ECHO \"Removing segment log file ${GP_DIR}.log on segment $GP_HOSTNAME\""
+			BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
+			$TRUSTED_SHELL ${GP_HOSTNAME} "$CAT ${GP_DIR}.log "|$TEE -a $LOG_FILE
 			$ECHO "FAILED:$SEGMENT_LINE" >> $PARALLEL_STATUS_FILE
 			LOG_MSG "[FATAL][$INST_COUNT]:-to start segment Mirror instance database"
 			exit 2
 		fi	
-		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
-		BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
-		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $MPP_HOSTNAME\""
-		LOG_MSG "[INFO][$INST_COUNT]:-Successfully started segment instance on $MPP_HOSTNAME"
-		UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+		BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTNAME} \"$RM -f ${GP_DIR}.log\""
+		BACKOUT_COMMAND "$ECHO \"Removing segment log file ${GP_DIR}.log on segment $GP_HOSTNAME\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
+		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $GP_HOSTNAME\""
+		LOG_MSG "[INFO][$INST_COUNT]:-Successfully started segment instance on $GP_HOSTNAME"
+		UPDATE_MPP $MPP_DBNAME $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $GP_HOSTNAME
 		LOG_MSG "[INFO]:-[$INST_COUNT]-End Function $FUNCNAME"
 }
 

@@ -9,7 +9,7 @@
 #	Release stat:-		Greenplum Co internal
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
 #                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Provides state of the MPP instance.
+#	Brief descn:-		Provides state of the Greenplum instance.
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -61,14 +61,14 @@ GPSEGSTATE=gpsegstate.sh
 #******************************************************************************
 #
 USAGE () {
-	if [ -f ${MPPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-		$MORE ${MPPDOCDIR}/$HELP_DOC_NAME
+	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+		$MORE ${GPDOCDIR}/$HELP_DOC_NAME
 		exit 0
 	else
 		$ECHO
 		$ECHO "      `basename $0`"
 		$ECHO
-		$ECHO "      Reports on the state of the MPP instance"
+		$ECHO "      Reports on the state of the Greenplum Database instance"
 		$ECHO
 		$ECHO "      Usage:"
 		$ECHO "      $0 [OPTIONS]"
@@ -87,10 +87,10 @@ USAGE () {
 		$ECHO "      -d, <Master instance directory> name of alternative Master instance to report status of [optional]"
 		$ECHO
 		$ECHO "      Status options:"
-		$ECHO "      -s, Display detailed MPP instance status"
-		$ECHO "      -m, List mirror segments of MPP database"
-		$ECHO "      -c, List primary/mirror segment instance mapping of MPP database"
-		$ECHO "      -p, List MPP instance ports"
+		$ECHO "      -s, Display detailed Greenplum instance status"
+		$ECHO "      -m, List mirror segments of Greenplum database"
+		$ECHO "      -c, List primary/mirror segment instance mapping of Greenplum database"
+		$ECHO "      -p, List Greenplum instance ports"
 		$ECHO "      -n, List instance log file names"
 		$ECHO "      -e, Display end of each segment instance log file"
 		$ECHO "          Additional log display options"
@@ -98,7 +98,7 @@ USAGE () {
 		$ECHO "          default is to display $TLINES lines from log to screen"
 		$ECHO "          -g, <string> Search for <string> in log, enclose space separated words within \" \""
 		$ECHO "          To seach for multiple words, separate each with a pipe (|) symbol"
-		$ECHO "      -b, Display a brief MPP instance status summary [default]"
+		$ECHO "      -b, Display a brief Greenplum instance status summary [default]"
 		$ECHO "      -i, Display system version information"
 		$ECHO "      -f, Display details of standby master host if configured"
 		$ECHO "      -B, <number> run this batch of state segment processes in parallel [default $BATCH_DEFAULT]"
@@ -123,8 +123,8 @@ DISPLAY_PARAM () {
 		$ECHO
 		$ECHO "Current Default State Parameters"
 		$ECHO "--------------------------------"
-		$ECHO "MPP Master instance port      = $MASTER_PORT"
-		$ECHO "MPP Master instance directory = $MASTER_DATA_DIRECTORY [Override with -d <master instance directory>]"
+		$ECHO "Greenplum Master instance port      = $MASTER_PORT"
+		$ECHO "Greenplum Master instance directory = $MASTER_DATA_DIRECTORY [Override with -d <master instance directory>]"
 		if [ $VERBOSE ]; then
 				$ECHO "Verbose                       = True             [Override with -q]"
 		else
@@ -178,7 +178,7 @@ DATABASE_STATUS () {
 		QD_PID=`$HEAD -1 $MASTER_DATA_DIRECTORY/$PG_PID`
 		GET_PG_PID_ACTIVE $MASTER_PORT
 		GET_QE_DETAILS
-		GET_MPP_VERSION
+		GET_GP_VERSION
 		GET_FAIL_SETTING
 		GET_STANDBY_SETTING
 		QD_PG_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"show server_version;"`
@@ -219,13 +219,13 @@ DATABASE_STATUS () {
 	LOG_MSG "[INFO]:-Database name                 = $QD_DBNAME " 1
 	LOG_MSG "[INFO]:-Master port                   = $MASTER_PORT" 1
 	LOG_MSG "[INFO]:-Master current role           = $QD_ROLE" 1
-	LOG_MSG "[INFO]:-MPP initdb version            = $MPP_INIT_VERSION" 1
-	LOG_MSG "[INFO]:-MPP current version           = $MPP_VERSION" 1
+	LOG_MSG "[INFO]:-Greenplum initdb version            = $GP_INIT_VERSION" 1
+	LOG_MSG "[INFO]:-Greenplum current version           = $GP_VERSION" 1
 	LOG_MSG "[INFO]:-Postgres version              = $QD_PG_VERSION" 1
-	LOG_MSG "[INFO]:-MPP failure action            = $FAIL_TYPE" 1
-	LOG_MSG "[INFO]:-MPP mirroring status          = $MIRROR_CONFIG" 1
-	LOG_MSG "[INFO]:-MPP master standby            = $STANDBY_CONFIGURED" 1
-	LOG_MSG "[INFO]:-MPP master standby state      = $STANDBY_STATE" 1
+	LOG_MSG "[INFO]:-Greenplum failure action            = $FAIL_TYPE" 1
+	LOG_MSG "[INFO]:-Greenplum mirroring status          = $MIRROR_CONFIG" 1
+	LOG_MSG "[INFO]:-Greenplum master standby            = $STANDBY_CONFIGURED" 1
+	LOG_MSG "[INFO]:-Greenplum master standby state      = $STANDBY_STATE" 1
 	LOG_MSG "[INFO]:-Segment instance status" 1
 	PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
 	LOG_MSG "[INFO]:------------------------------------------------" 1
@@ -351,7 +351,7 @@ VERSION_INFO () {
 	LOG_MSG "[INFO]:-Master segment                                  = $MASTER_DATA_DIRECTORY" 1
 	LOG_MSG "[INFO]:-Postgres version                                = $MASTER_POSTGRES_VERSION" 1
 	LOG_MSG "[INFO]:-Software application version                    = $MASTER_INITDB_VERSION" 1
-	LOG_MSG "[INFO]:-MPP current version                             = $MASTER_VERSION" 1
+	LOG_MSG "[INFO]:-Greenplum current version                             = $MASTER_VERSION" 1
 	LOG_MSG "[INFO]:-Segment instance version details" 1
 	LOG_MSG "[INFO]:---------------------------------" 1
 	while read QE_LINE
@@ -380,9 +380,9 @@ VERSION_INFO () {
 			LOG_MSG "[INFO]:-Software application version   = $INIT_VERSION" 1
 		fi
 		if [ "$QE_VERSION" == "Failed" ];then
-			LOG_MSG "[WARN]:-MPP current version            = $QE_VERSION <<<<<" 1
+			LOG_MSG "[WARN]:-Greenplum current version            = $QE_VERSION <<<<<" 1
 		else
-			LOG_MSG "[INFO]:-MPP current version            = $QE_VERSION" 1
+			LOG_MSG "[INFO]:-Greenplum current version            = $QE_VERSION" 1
 		fi
 		LOG_MSG "[INFO]:-----------------------------------------" 1
 	done < $PARALLEL_STATUS_FILE
@@ -541,7 +541,7 @@ SUMMARY_REPORT () {
 	$RM -f $PARALLEL_STATUS_FILE	
 	WARN_MARK="<<<<<<"
 	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
-		LOG_MSG "[INFO]:-MPP instance status summary" 1
+		LOG_MSG "[INFO]:-Greenplum instance status summary" 1
 		LOG_MSG "[INFO]:------------------------------------------------" 1
 		LOG_MSG "[INFO]:-Master instance                               = Active"  1
 		LOG_MSG "[INFO]:-Master instance read-only                     = $TRANS_STATE" 1
@@ -683,7 +683,7 @@ CLUSTER_CONFIG () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-LIST_MPP_PORTS () {
+LIST_GP_PORTS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		PORT_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, port, datadir from $CONFIG_TABLE where content<>-1;" `)
 		ERROR_CHK $? "obtain port assignments" 2
@@ -756,12 +756,12 @@ STANDBY_HOST_DETAILS () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-GET_MPP_VERSION () {
+GET_GP_VERSION () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		MPP_INIT_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from gp_version_at_initdb limit 1;" 2>/dev/null`
-		ERROR_CHK $? "obtain MPP initdb version information" 2
-		MPP_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select version();" 2>/dev/null`
-		ERROR_CHK $? "obtain MPP version information" 2
+		GP_INIT_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from gp_version_at_initdb limit 1;" 2>/dev/null`
+		ERROR_CHK $? "obtain Greenplum initdb version information" 2
+		GP_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select version();" 2>/dev/null`
+		ERROR_CHK $? "obtain Greenplum version information" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -834,7 +834,7 @@ case $SELECT in
 		1 ) DATABASE_STATUS ;; 
 		2 ) MIRROR_LIST ;;
 		3 ) CLUSTER_CONFIG ;;
-		4 ) LIST_MPP_PORTS ;;
+		4 ) LIST_GP_PORTS ;;
 		5 ) LIST_MPP_LOGS ;;
 		6 ) GET_STATUS_INFORMATION ;;
 		7 ) VERSION_INFO ;;
