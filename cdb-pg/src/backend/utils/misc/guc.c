@@ -369,11 +369,11 @@ const char *const config_group_names[] =
 	gettext_noop("Version and Platform Compatibility / Other Platforms and Clients"),
     /* COMPAT_OPTIONS_IGNORED */
     gettext_noop("Version and Platform Compatibility / Ignored"),
-    /* CDB_ARRAY_CONFIGURATION */
+    /* GP_ARRAY_CONFIGURATION */
     gettext_noop(PACKAGE_NAME " / Array Configuration"),
-    /* CDB_ARRAY_TUNING */
+    /* GP_ARRAY_TUNING */
     gettext_noop(PACKAGE_NAME " / Array Tuning"),
-    /* CDB_WORKER_IDENTITY */
+    /* GP_WORKER_IDENTITY */
     gettext_noop(PACKAGE_NAME " / Worker Process Identity"),
 	/* PRESET_OPTIONS */
 	gettext_noop("Preset Options"),
@@ -1133,7 +1133,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_is_primary", PGC_BACKEND, CDB_WORKER_IDENTITY,
+		{"gp_is_primary", PGC_BACKEND, GP_WORKER_IDENTITY,
 			gettext_noop("Reports session type as primary or mirror."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
@@ -1143,7 +1143,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
     {
-        {"gp_set_read_only", PGC_SUSET, CDB_ARRAY_CONFIGURATION,
+        {"gp_set_read_only", PGC_SUSET, GP_ARRAY_CONFIGURATION,
             gettext_noop("Sets the system read only"),
             NULL
         },
@@ -1170,7 +1170,7 @@ static struct config_bool ConfigureNamesBool[] =
     },
 
     {
-    	{"gp_is_writer", PGC_BACKEND, CDB_WORKER_IDENTITY,
+    	{"gp_is_writer", PGC_BACKEND, GP_WORKER_IDENTITY,
     		gettext_noop("True in a worker process which can directly update its local database segment."),
     		NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
@@ -1209,7 +1209,7 @@ static struct config_bool ConfigureNamesBool[] =
     },
 
     {
-    	{"gp_is_callback", PGC_BACKEND, CDB_WORKER_IDENTITY,
+    	{"gp_is_callback", PGC_BACKEND, GP_WORKER_IDENTITY,
     		gettext_noop("True in a worker process executing on behalf of a callback from the QE to QD."),
     		NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
@@ -1905,7 +1905,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"gp_max_packet_size", PGC_BACKEND, CDB_ARRAY_TUNING,
+		{"gp_max_packet_size", PGC_BACKEND, GP_ARRAY_TUNING,
             gettext_noop("Sets the max packet size for the Interconnect."),
             NULL,
         },
@@ -1924,7 +1924,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 		
 	{
-		{"gp_connections_per_thread", PGC_SUSET, CDB_ARRAY_TUNING,
+		{"gp_connections_per_thread", PGC_SUSET, GP_ARRAY_TUNING,
 			gettext_noop("Sets the number of client connections handled in each thread."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
@@ -1954,7 +1954,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"gp_segment", PGC_BACKEND, CDB_WORKER_IDENTITY,
+		{"gp_segment", PGC_BACKEND, GP_WORKER_IDENTITY,
 			gettext_noop("Segment id of the segment db which is local to this worker process."),
 			gettext_noop("-1 for a session's entry process (qDisp) or a worker on the entry db."),
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
@@ -1974,7 +1974,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 	
 	{
-		{"gp_interconnect_setup_timeout", PGC_USERSET, CDB_ARRAY_TUNING,
+		{"gp_interconnect_setup_timeout", PGC_USERSET, GP_ARRAY_TUNING,
 			gettext_noop("Timeout (in seconds) on interconnect setup that occurs at query start"),
 			gettext_noop("Used by Interconnect to timeout the setup of the communication fabric.")	
 		},
@@ -1983,7 +1983,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"gp_segment_connect_timeout", PGC_USERSET, CDB_ARRAY_TUNING,
+		{"gp_segment_connect_timeout", PGC_USERSET, GP_ARRAY_TUNING,
 			gettext_noop("Maximum time (in seconds) allowed for a new worker process to start."),
 			gettext_noop("0 indicates 'wait forever'.")	
 		},
@@ -1993,7 +1993,7 @@ static struct config_int ConfigureNamesInt[] =
 	
 	{
 		{"gp_session_id", PGC_BACKEND, CLIENT_CONN_OTHER,
-			gettext_noop("Global ID used to uniquely identify a particular session in an MPP array"),
+			gettext_noop("Global ID used to uniquely identify a particular session in an Greenplum Database array"),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
@@ -2011,7 +2011,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 	
 	{
-		{"gp_qd_proc_offset", PGC_BACKEND, CDB_WORKER_IDENTITY,
+		{"gp_qd_proc_offset", PGC_BACKEND, GP_WORKER_IDENTITY,
 			gettext_noop("The shmmem offset of the original QD backend that is handling this query"),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
@@ -2692,7 +2692,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"gp_session_role", PGC_BACKEND, CDB_WORKER_IDENTITY,
+		{"gp_session_role", PGC_BACKEND, GP_WORKER_IDENTITY,
 			gettext_noop("Reports the default role for the session."),
 			gettext_noop("Valid values are DISPATCH, EXECUTE, and UTILITY."),
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
@@ -2712,7 +2712,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 
     {
-       {"gp_fault_action", PGC_POSTMASTER, CDB_ARRAY_CONFIGURATION,
+       {"gp_fault_action", PGC_POSTMASTER, GP_ARRAY_CONFIGURATION,
            gettext_noop("Sets the fault action for fault tolerance management."),
            gettext_noop("Valid values are CONTINUE, READONLY, and SHUTDOWN.")
        },
@@ -2726,7 +2726,7 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\".")
 		},
 		&gp_log_gang_str,
-		"terse", cdbvars_assign_gp_log_gang, cdbvars_show_gp_log_gang
+		"terse", gpvars_assign_gp_log_gang, gpvars_show_gp_log_gang
 	},
 	
 	{
@@ -2735,11 +2735,11 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\".")
 		},
 		&gp_log_interconnect_str,
-		"terse", cdbvars_assign_gp_log_interconnect, cdbvars_show_gp_log_interconnect
+		"terse", gpvars_assign_gp_log_interconnect, gpvars_show_gp_log_interconnect
 	},
 	
 	{
-		{"gp_qd_callback_info", PGC_BACKEND, CDB_WORKER_IDENTITY,
+		{"gp_qd_callback_info", PGC_BACKEND, GP_WORKER_IDENTITY,
 			gettext_noop("Sets the QD callback information for the QEs in this session."),
 			gettext_noop("Right now, this is the port information"),
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE

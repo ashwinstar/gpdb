@@ -344,7 +344,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
                           PQerrorMessage(segdbDesc->conn));
 
         /* Don't use elog, it's not thread-safe */
-        if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+        if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
             write_stderr("%s\n", segdbDesc->error_message.data);
 
         PQfinish(segdbDesc->conn);
@@ -363,7 +363,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
         segdbDesc->motionListener = PQmotionListener(segdbDesc->conn);
 
         /* Don't use elog, it's not thread-safe */
-        if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
+        if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
             write_stderr("Connected to %s motionListener=%d with options %s\n",
 						 segdbDesc->whoami,
 						 segdbDesc->motionListener,

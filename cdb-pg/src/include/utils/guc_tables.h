@@ -77,9 +77,9 @@ enum config_group
 	COMPAT_OPTIONS_PREVIOUS,
 	COMPAT_OPTIONS_CLIENT,
     COMPAT_OPTIONS_IGNORED,             /*CDB*/
-    CDB_ARRAY_CONFIGURATION,            /*CDB*/
-    CDB_ARRAY_TUNING,                   /*CDB*/
-    CDB_WORKER_IDENTITY,                /*CDB*/
+    GP_ARRAY_CONFIGURATION,            /*CDB*/
+    GP_ARRAY_TUNING,                   /*CDB*/
+    GP_WORKER_IDENTITY,                /*CDB*/
 	PRESET_OPTIONS,
 	CUSTOM_OPTIONS,
 	DEVELOPER_OPTIONS

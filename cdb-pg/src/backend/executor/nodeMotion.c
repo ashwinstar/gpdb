@@ -335,7 +335,7 @@ execMotionUnsortedReceiver(MotionState * node)
 	if (recvRC == END_OF_STREAM)
 	{
 #ifdef CDB_MOTION_DEBUG
-        if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 		    elog(DEBUG4, "motionID=%d saw end of stream", motion->motionID);
 #endif
         Assert(node->numTuplesFromAMS == node->numTuplesToParent &&
@@ -796,7 +796,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	estate->es_cur_root_idx = prior_es_cur_root_idx;
 
     if (thisSlice &&
-        gp_log_interconnect >= CDBVARS_VERBOSITY_TERSE)
+        gp_log_interconnect >= GPVARS_VERBOSITY_TERSE)
         ereport(LOG, (errmsg("Motion node %d in slice%d is %s%s %s slice%d",
 		                     node->motionID,
                              thisSlice->sliceIndex,

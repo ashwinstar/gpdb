@@ -314,7 +314,7 @@ Motion* make_motion_gather_to_QD(Plan *subplan, bool keep_ordering)
  */
 Motion* make_motion_gather_to_QE(Plan *subplan, bool keep_ordering)
 {
-	return make_motion_gather(subplan, mpp_singleton_segindex, keep_ordering);
+	return make_motion_gather(subplan, gp_singleton_segindex, keep_ordering);
 }	
 
 /*

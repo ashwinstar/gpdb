@@ -15,8 +15,8 @@
  *-------------------------------------------------------------------------
  */
 
-#ifndef CDBVARS_H
-#define CDBVARS_H
+#ifndef GPVARS_H
+#define GPVARS_H
 
 #include "utils/guc.h"
 
@@ -304,19 +304,19 @@ extern int	interconnect_setup_timeout;
  * Logging
  */
 
-typedef enum CdbVars_Verbosity
+typedef enum GpVars_Verbosity
 {
-	CDBVARS_VERBOSITY_UNDEFINED = 0,
-    CDBVARS_VERBOSITY_OFF,
-	CDBVARS_VERBOSITY_TERSE,	
-	CDBVARS_VERBOSITY_VERBOSE,
-    CDBVARS_VERBOSITY_DEBUG,
-} CdbVars_Verbosity;
+	GPVARS_VERBOSITY_UNDEFINED = 0,
+    GPVARS_VERBOSITY_OFF,
+	GPVARS_VERBOSITY_TERSE,	
+	GPVARS_VERBOSITY_VERBOSE,
+    GPVARS_VERBOSITY_DEBUG,
+} GpVars_Verbosity;
 
-CdbVars_Verbosity
-cdbvars_string_to_verbosity(const char *s);
+GpVars_Verbosity
+gpvars_string_to_verbosity(const char *s);
 const char *
-cdbvars_verbosity_to_string(CdbVars_Verbosity verbosity);
+gpvars_verbosity_to_string(GpVars_Verbosity verbosity);
 
 /*
  * gp_log_gang (string)
@@ -330,12 +330,12 @@ cdbvars_verbosity_to_string(CdbVars_Verbosity verbosity);
  * The messages that are enabled by the TERSE and VERBOSE settings are
  * written with a severity level of LOG.
  */
-extern CdbVars_Verbosity    gp_log_gang;
+extern GpVars_Verbosity    gp_log_gang;
 
 const char *
-cdbvars_assign_gp_log_gang(const char *newval, bool doit, GucSource source);
+gpvars_assign_gp_log_gang(const char *newval, bool doit, GucSource source);
 const char *
-cdbvars_show_gp_log_gang(void);
+gpvars_show_gp_log_gang(void);
 
 /*
  * gp_log_interconnect (string)
@@ -349,12 +349,12 @@ cdbvars_show_gp_log_gang(void);
  * The messages that are enabled by the TERSE and VERBOSE settings are
  * written with a severity level of LOG.
  */
-extern CdbVars_Verbosity    gp_log_interconnect;
+extern GpVars_Verbosity    gp_log_interconnect;
 
 const char *
-cdbvars_assign_gp_log_interconnect(const char *newval, bool doit, GucSource source);
+gpvars_assign_gp_log_interconnect(const char *newval, bool doit, GucSource source);
 const char *
-cdbvars_show_gp_log_interconnect(void);
+gpvars_show_gp_log_interconnect(void);
 
 
 /* --------------------------------------------------------------------------------------------------
@@ -473,7 +473,7 @@ extern int  gp_debug_linger;
 extern int	currentSliceId;
 
 /* Segment id where singleton gangs are to be dispatched. */
-extern int  mpp_singleton_segindex;
+extern int  gp_singleton_segindex;
 
 extern int cdb_total_plans;
 extern int cdb_total_slices;
@@ -501,7 +501,7 @@ extern GpId GpIdentity;
 /* Stores the listener port that this process uses to listen for incoming
  * Interconnect connections from other Motion nodes.
  */
-extern int	Mpp_listener_port;
+extern int	Gp_listener_port;
 
 
 
@@ -514,4 +514,4 @@ typedef struct SeqServerControlBlock
 extern SeqServerControlBlock *seqServerCtl;
 
 
-#endif   /* CDBVARS_H */
+#endif   /* GPVARS_H */

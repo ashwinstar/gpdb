@@ -29,9 +29,9 @@ struct SegmentDatabaseDescriptor;   /* #include "cdb/cdbconn.h" */
 
 typedef enum
 {
-	MPP_DISPATCH_COMMAND_TYPE_QUERY,
-	MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL
-} MppDispatchCommandType;
+	GP_DISPATCH_COMMAND_TYPE_QUERY,
+	GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL
+} GpDispatchCommandType;
 
 /*
  * Parameter structure for MPP Queries
@@ -83,7 +83,7 @@ typedef struct DispatchCommandDtxProtocolParms
  */
 typedef struct DispatchCommandParms
 {
-	MppDispatchCommandType			mppDispatchCommandType;
+	GpDispatchCommandType			mppDispatchCommandType;
 	DispatchCommandQueryParms		queryParms;
 	DispatchCommandDtxProtocolParms	dtxProtocolParms;
 	
@@ -184,7 +184,7 @@ cdbdisp_markDtxAsDistributed(void);
  */
 void
 cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads,
-					   MppDispatchCommandType		mppDispatchCommandType,
+					   GpDispatchCommandType		mppDispatchCommandType,
 					   void						   *commandTypeParms,
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,

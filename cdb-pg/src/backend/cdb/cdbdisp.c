@@ -104,7 +104,7 @@ processResults(CdbDispatchResult   *dispatchResult);
 static void
 addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
                              int                    segdbs_in_thread_pool,
-							 MppDispatchCommandType	mppDispatchCommandType,
+							 GpDispatchCommandType	mppDispatchCommandType,
 							 void				   *commandTypeParms,
 							 int					sliceId,
 							 CdbDispatchResult     *dispatchResult);
@@ -226,7 +226,7 @@ cdbdisp_markDtxAsDistributed(void)
  */
 void
 cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
-					   MppDispatchCommandType		mppDispatchCommandType,
+					   GpDispatchCommandType		mppDispatchCommandType,
 					   void						   *commandTypeParms,
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,
@@ -250,7 +250,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 
 	switch (mppDispatchCommandType)
 	{
-	case MPP_DISPATCH_COMMAND_TYPE_QUERY:
+	case GP_DISPATCH_COMMAND_TYPE_QUERY:
 		{
 			DispatchCommandQueryParms *pQueryParms = (DispatchCommandQueryParms *) commandTypeParms;
 
@@ -268,7 +268,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 		}
 		break;
 
-	case MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+	case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
 		{
 			DispatchCommandDtxProtocolParms *pDtxProtocolParms = (DispatchCommandDtxProtocolParms *) commandTypeParms;
 			
@@ -350,7 +350,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 
 		segdbDesc = &gp->db_descriptors[x];
 
-//		if (mppDispatchCommandType == MPP_DISPATCH_COMMAND_TYPE_QUERY)
+//		if (mppDispatchCommandType == GP_DISPATCH_COMMAND_TYPE_QUERY)
 //		{
 //			MarkSendingToSegment(
 //				 segdbDesc->segment_database_info->segindex,
@@ -461,7 +461,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 void
 addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
                              int                    segdbs_in_thread_pool,
-						     MppDispatchCommandType	mppDispatchCommandType,
+						     GpDispatchCommandType	mppDispatchCommandType,
 						     void				   *commandTypeParms,
                              int					sliceId,
                              CdbDispatchResult     *dispatchResult)
@@ -485,7 +485,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 		
 		switch (mppDispatchCommandType)
 		{
-		case MPP_DISPATCH_COMMAND_TYPE_QUERY:
+		case GP_DISPATCH_COMMAND_TYPE_QUERY:
 			{
 				DispatchCommandQueryParms *pQueryParms = (DispatchCommandQueryParms *) commandTypeParms;
 
@@ -559,7 +559,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 			}
 			break;
 		
-		case MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+		case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
 			{
 				DispatchCommandDtxProtocolParms *pDtxProtocolParms = (DispatchCommandDtxProtocolParms *) commandTypeParms;
 
@@ -674,7 +674,7 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 
 			segdbDesc = dispatchResult->segdbDesc;
 
-//			if (pParms->mppDispatchCommandType == MPP_DISPATCH_COMMAND_TYPE_QUERY &&
+//			if (pParms->mppDispatchCommandType == GP_DISPATCH_COMMAND_TYPE_QUERY &&
 //				dispatchResult->QEWriter_HaveInfo)
 //			{
 //				elog(LOG,"CdbCheckDispatchResultInt calling MarkSegmentParticipation for segment %d (%s)",
@@ -928,7 +928,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	
 	primaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, /* cancelOnError */ false);
 	cdbdisp_dispatchToGang(&dispatchThreads, 
-						   MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
+						   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
 						   &dtxProtocolParms,
 						   primaryGang, primaryResults, -1, 1);
 	
@@ -936,7 +936,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
     {
         mirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, /* cancelOnError */ false);
         cdbdisp_dispatchToGang(&dispatchThreads, 
-							   MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
+							   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
 							   &dtxProtocolParms,
 							   mirrorGang, mirrorResults, -1, 1);
     }
@@ -1125,7 +1125,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	{
 		*pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
 		cdbdisp_dispatchToGang(pDispatchThreads, 
-							   MPP_DISPATCH_COMMAND_TYPE_QUERY,
+							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
 							   primaryGang, *pPrimaryResults, -1, 1);
 	}
@@ -1134,7 +1134,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
         cdbdisp_dispatchToGang(pDispatchThreads, 
-							   MPP_DISPATCH_COMMAND_TYPE_QUERY,
+							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
 							   mirrorGang, *pMirrorResults, -1, 1);
     }
@@ -1379,7 +1379,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	gangCount = 1 + list_length(readerGangs);
     *pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb * gangCount, 0, cancelOnError);
     cdbdisp_dispatchToGang(pDispatchThreads, 
-		MPP_DISPATCH_COMMAND_TYPE_QUERY,
+		GP_DISPATCH_COMMAND_TYPE_QUERY,
 	    &queryParms,
 	    primaryGang, *pPrimaryResults, -1, gangCount);
 
@@ -1387,7 +1387,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
         cdbdisp_dispatchToGang(pDispatchThreads, 
-			MPP_DISPATCH_COMMAND_TYPE_QUERY,
+			GP_DISPATCH_COMMAND_TYPE_QUERY,
 	    	&queryParms,
 	    	mirrorGang, *pMirrorResults, -1, gangCount);
     }
@@ -1397,7 +1397,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
     {
     	Gang  *rg = lfirst(le);
     	cdbdisp_dispatchToGang(pDispatchThreads, 
-			MPP_DISPATCH_COMMAND_TYPE_QUERY,
+			GP_DISPATCH_COMMAND_TYPE_QUERY,
 	    	&queryParms,
 	    	rg, *pPrimaryResults, -1, gangCount);
     }
@@ -1432,7 +1432,7 @@ thread_DispatchCommand(void *arg)
 
 	switch (pParms->mppDispatchCommandType)
 	{
-	case MPP_DISPATCH_COMMAND_TYPE_QUERY:
+	case GP_DISPATCH_COMMAND_TYPE_QUERY:
 		{
 			DispatchCommandQueryParms *pQueryParms = &pParms->queryParms;
 			
@@ -1451,7 +1451,7 @@ thread_DispatchCommand(void *arg)
 		}
 		break;
 
-	case MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+	case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
 		{
 			pParms->query_text = PQbuildMppDtxProtocolCommand(
 						(int)pParms->dtxProtocolParms.dtxProtocolCommand,
@@ -1532,11 +1532,11 @@ thread_DispatchCommand(void *arg)
 			
 			switch (pParms->mppDispatchCommandType)
 			{
-			case MPP_DISPATCH_COMMAND_TYPE_QUERY:
+			case GP_DISPATCH_COMMAND_TYPE_QUERY:
 	            dispatchCommandQuery(dispatchResult, pParms->query_text, pParms->query_text_len, pParms->queryParms.strCommand);
 				break;
 				
-			case MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+			case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
 	            dispatchCommandDtxProtocol(dispatchResult, pParms->query_text, pParms->query_text_len, 
 					                       pParms->dtxProtocolParms.dtxProtocolCommand);
 				break;
@@ -2910,7 +2910,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		 * Doesn't wait for it to finish.
 		 */
 		cdbdisp_dispatchToGang(pDispatchThreads,
-							   MPP_DISPATCH_COMMAND_TYPE_QUERY,
+							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
                                primaryGang,
                                *pPrimaryResults,
@@ -2923,7 +2923,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		if (mirrorGang != NULL && (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL))
 		{
             cdbdisp_dispatchToGang(pDispatchThreads,
-								   MPP_DISPATCH_COMMAND_TYPE_QUERY,
+								   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							       &queryParms,
                                    mirrorGang,
                                    *pMirrorResults,
@@ -3345,7 +3345,7 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 		
 		switch (pParms->mppDispatchCommandType)
 		{
-		case MPP_DISPATCH_COMMAND_TYPE_QUERY:
+		case GP_DISPATCH_COMMAND_TYPE_QUERY:
 			{
 				DispatchCommandQueryParms *pQueryParms = &pParms->queryParms;
 
@@ -3394,7 +3394,7 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 			}
 			break;
 		
-		case MPP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+		case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
 			{
 				DispatchCommandDtxProtocolParms *pDtxProtocolParms = &pParms->dtxProtocolParms;
 

@@ -326,13 +326,13 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			 * Since we intend to execute the plan, inventory the slice tree,
 			 * allocate gangs, and associate them with slices.
 			 *
-			 * For now, always use segment 'mpp_singleton_segindex' for
+			 * For now, always use segment 'gp_singleton_segindex' for
              * singleton gangs.
 			 *
 			 * On return, gangs have been allocated and CDBProcess lists have
 			 * been filled in in the slice table.)
 			 */
-			AssignGangs(queryDesc, mpp_singleton_segindex);
+			AssignGangs(queryDesc, gp_singleton_segindex);
 			
 			/* Add sequence server info to the plan's SliceTable. */
 			SetSeqServerInfo(queryDesc);
@@ -374,7 +374,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		if (Debug_print_slice_table)
 			elog_node_display(DEBUG3, "slice table", estate->es_sliceTable, true);
 		
-        if (gp_log_interconnect >= CDBVARS_VERBOSITY_DEBUG)
+        if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 		    elog(DEBUG1, "%s%d executing slice%d under root slice%d",
 			     (Gp_is_primary ? "seg" : "mir"),
 			     Gp_segment,

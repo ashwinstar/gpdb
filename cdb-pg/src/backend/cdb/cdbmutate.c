@@ -1051,14 +1051,14 @@ validateMotionNodeParms(MotionType motionType,
 
 			/*
 			 * Fixed motion node must have output Segs info specified.
-             * Singleton destination must be QD or mpp_singleton_segindex.
+             * Singleton destination must be QD or gp_singleton_segindex.
 			 */
 			Assert((numOutputSegs == 0              /* destination: broadcast */
                      && outputSegIdx == NULL) ||
 				   (numOutputSegs == 1              /* destination: singleton */
                      && outputSegIdx != NULL
                      && (outputSegIdx[0] == -1 ||
-                         outputSegIdx[0] == mpp_singleton_segindex)));
+                         outputSegIdx[0] == gp_singleton_segindex)));
 
 			/*
 			 *	A Fixed motion node shouldn't have HashMotionDefn specified.

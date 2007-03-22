@@ -240,7 +240,7 @@ subquery_planner(Query *parse, double tuple_fraction,
 
         /* Choose a segdb to which our singleton gangs should be dispatched. */
         if (segmentCount > 0)
-            mpp_singleton_segindex = gp_session_id % segmentCount;
+            gp_singleton_segindex = gp_session_id % segmentCount;
     }
 
     /* CDB: Stash current query level's relids before pulling up subqueries. */

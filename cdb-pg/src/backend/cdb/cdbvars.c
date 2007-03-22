@@ -84,7 +84,7 @@ bool		gp_set_proc_affinity=false; /* set processor affinity (if platform support
  * backends.  Assigned by initMotionLayerIPC() at process startup.  This port
  * is used for the duration of this process and should never change.
  */
-int			Mpp_listener_port;
+int			Gp_listener_port;
 
 int			Gp_max_packet_size;	/* max Interconnect packet size */
 
@@ -136,7 +136,7 @@ int			currentSliceId = UNSET_SLICE_ID;	/* used by elog to show the
 SeqServerControlBlock *seqServerCtl;
 
 /* Segment id where singleton gangs are to be dispatched. */
-int         mpp_singleton_segindex;
+int         gp_singleton_segindex;
 
 
 /* ----------------
@@ -468,7 +468,7 @@ show_interconnect_setup_timeout(void)
  * The messages that are enabled by the TERSE and VERBOSE settings are
  * written with a severity level of LOG.
  */
-CdbVars_Verbosity   gp_log_gang;
+GpVars_Verbosity   gp_log_gang;
 
 /*
  * gp_log_interconnect (string)
@@ -482,97 +482,97 @@ CdbVars_Verbosity   gp_log_gang;
  * The messages that are enabled by the TERSE and VERBOSE settings are
  * written with a severity level of LOG.
  */
-CdbVars_Verbosity   gp_log_interconnect;
+GpVars_Verbosity   gp_log_interconnect;
 
 
 /*
- * cdbvars_string_to_verbosity
+ * gpvars_string_to_verbosity
  */
-CdbVars_Verbosity
-cdbvars_string_to_verbosity(const char *s)
+GpVars_Verbosity
+gpvars_string_to_verbosity(const char *s)
 {
-	CdbVars_Verbosity result;
+	GpVars_Verbosity result;
 
 	if (!s ||
         !s[0] ||
         !pg_strcasecmp("terse", s))
-		result = CDBVARS_VERBOSITY_TERSE;
+		result = GPVARS_VERBOSITY_TERSE;
 	else if (!pg_strcasecmp("off", s))
-		result = CDBVARS_VERBOSITY_OFF;
+		result = GPVARS_VERBOSITY_OFF;
 	else if (!pg_strcasecmp("verbose", s))
-		result = CDBVARS_VERBOSITY_VERBOSE;
+		result = GPVARS_VERBOSITY_VERBOSE;
 	else if (!pg_strcasecmp("debug", s))
-		result = CDBVARS_VERBOSITY_DEBUG;
+		result = GPVARS_VERBOSITY_DEBUG;
     else
-        result = CDBVARS_VERBOSITY_UNDEFINED;
+        result = GPVARS_VERBOSITY_UNDEFINED;
 	return result;
-}                               /* cdbvars_string_to_verbosity */
+}                               /* gpvars_string_to_verbosity */
 
 /*
- * cdbvars_verbosity_to_string
+ * gpvars_verbosity_to_string
  */
 const char *
-cdbvars_verbosity_to_string(CdbVars_Verbosity verbosity)
+gpvars_verbosity_to_string(GpVars_Verbosity verbosity)
 {
 	switch (verbosity)
 	{
-		case CDBVARS_VERBOSITY_OFF:
+		case GPVARS_VERBOSITY_OFF:
 			return "off";
-		case CDBVARS_VERBOSITY_TERSE:
+		case GPVARS_VERBOSITY_TERSE:
 			return "terse";
-		case CDBVARS_VERBOSITY_VERBOSE:
+		case GPVARS_VERBOSITY_VERBOSE:
 			return "verbose";
-		case CDBVARS_VERBOSITY_DEBUG:
+		case GPVARS_VERBOSITY_DEBUG:
 			return "debug";
 		default:
 			return "*undefined*";
 	}
-}                               /* cdbvars_verbosity_to_string */
+}                               /* gpvars_verbosity_to_string */
 
 
 /*
- * cdbvars_assign_gp_log_gangs
- * cdbvars_show_gp_log_gangs
+ * gpvars_assign_gp_log_gangs
+ * gpvars_show_gp_log_gangs
  */
 const char *
-cdbvars_assign_gp_log_gang(const char *newval, bool doit, GucSource source)
+gpvars_assign_gp_log_gang(const char *newval, bool doit, GucSource source)
 {
-	CdbVars_Verbosity v = cdbvars_string_to_verbosity(newval);
+	GpVars_Verbosity v = gpvars_string_to_verbosity(newval);
 
-	if (v == CDBVARS_VERBOSITY_UNDEFINED)
+	if (v == GPVARS_VERBOSITY_UNDEFINED)
         return NULL;
 	if (doit)
 		gp_log_gang = v;
 	return newval;
-}                               /* cdbvars_assign_gp_log_gangs */
+}                               /* gpvars_assign_gp_log_gangs */
 
 const char *
-cdbvars_show_gp_log_gang(void)
+gpvars_show_gp_log_gang(void)
 {
-	return cdbvars_verbosity_to_string(gp_log_gang);
-}                               /* cdbvars_show_gp_log_gangs */
+	return gpvars_verbosity_to_string(gp_log_gang);
+}                               /* gpvars_show_gp_log_gangs */
 
 
 /*
- * cdbvars_assign_gp_log_interconnect
- * cdbvars_show_gp_log_interconnect
+ * gpvars_assign_gp_log_interconnect
+ * gpvars_show_gp_log_interconnect
  */
 const char *
-cdbvars_assign_gp_log_interconnect(const char *newval, bool doit, GucSource source)
+gpvars_assign_gp_log_interconnect(const char *newval, bool doit, GucSource source)
 {
-	CdbVars_Verbosity v = cdbvars_string_to_verbosity(newval);
+	GpVars_Verbosity v = gpvars_string_to_verbosity(newval);
 
-	if (v == CDBVARS_VERBOSITY_UNDEFINED)
+	if (v == GPVARS_VERBOSITY_UNDEFINED)
         return NULL;
 	if (doit)
 		gp_log_interconnect = v;
 	return newval;
-}                               /* cdbvars_assign_gp_log_interconnect */
+}                               /* gpvars_assign_gp_log_interconnect */
 
 const char *
-cdbvars_show_gp_log_interconnect(void)
+gpvars_show_gp_log_interconnect(void)
 {
-	return cdbvars_verbosity_to_string(gp_log_interconnect);
-}                               /* cdbvars_show_gp_log_interconnect */
+	return gpvars_verbosity_to_string(gp_log_interconnect);
+}                               /* gpvars_show_gp_log_interconnect */
 
 
