@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		gp_bash_fuctions.sh
+#	Filename:-		gp_bash_functions.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Updated:-		$Date$
@@ -63,7 +63,7 @@ findCmdInPath() {
 				fi
 		done
 		echo $cmdtofind
-		return "Problem in gp_bash_fuctions, command '$cmdtofind' not found in COMMAND path. You will need to edit the script named gp_bash_fuctions.sh to properly locate the needed commands for your platform."
+		return "Problem in gp_bash_functions, command '$cmdtofind' not found in COMMAND path. You will need to edit the script named gp_bash_functions.sh to properly locate the needed commands for your platform."
 }
 
 findMppPath() {
@@ -154,7 +154,7 @@ CALL_HOST=`$HOSTNAME|$CUT -d. -f1`
 PSQLBIN=`findMppPath`
 
 if [ x"$PSQLBIN" = x"" ];then
-		echo "Problem in gp_bash_fuctions, command '$MPP_UNIQUE_COMMAND' not found in MPP path. Try setting BIZHOME to the location of your MPP distribution"
+		echo "Problem in gp_bash_functions, command '$MPP_UNIQUE_COMMAND' not found in MPP path. Try setting BIZHOME to the location of your MPP distribution"
 		exit 99
 fi
 
@@ -163,21 +163,21 @@ SCRIPTDIR="`$DIRNAME $PSQLBIN`/gpMgmt/bin"
 #******************************************************************************
 # MPP Scripts
 #******************************************************************************
-gpactivateMASTER=$SCRIPTDIR/gpactivatemaster.sh
-gpactivateSTANDBY=$SCRIPTDIR/gpactivatestandby.sh
-gpaddmirrorS=$SCRIPTDIR/gpaddmirrors.sh
-gpcreatecluster=$SCRIPTDIR/gpcreatecluster.sh
-gpcronDUMP=$SCRIPTDIR/gpcrondump.sh
-gpdeleteCLUSTER=$SCRIPTDIR/gpdeletecluster.sh
-gpinitSTANDBY=$SCRIPTDIR/gpinitstandby.sh
-gprebuildCLUSTER=$SCRIPTDIR/gprebuildcluster.sh
-gprebuildSEG=$SCRIPTDIR/gprebuildseg.sh
-gprecoverSEG=$SCRIPTDIR/gprecoverseg.sh
-gpsizeCALC=$SCRIPTDIR/gpsizecalc.sh
-gpskew=$SCRIPTDIR/gpskew.sh
-MPPSTART=$SCRIPTDIR/gpstart.sh
-gpstate=$SCRIPTDIR/gpstate.sh
-gpstop=$SCRIPTDIR/gpstop.sh
+GPACTIVATEMASTER=$SCRIPTDIR/gpactivatemaster.sh
+GPACTIVATESTANDBY=$SCRIPTDIR/gpactivatestandby.sh
+GPADDMIRRORS=$SCRIPTDIR/gpaddmirrors.sh
+GPCREATECLUSTER=$SCRIPTDIR/gpcreatecluster.sh
+GPCRONDUMP=$SCRIPTDIR/gpcrondump.sh
+GPDELETECLUSTER=$SCRIPTDIR/gpdeletecluster.sh
+GPINITSTANDBY=$SCRIPTDIR/gpinitstandby.sh
+GPREBUILDCLUSTER=$SCRIPTDIR/gprebuildcluster.sh
+GPREBUILDSEG=$SCRIPTDIR/gprebuildseg.sh
+GPRECOVERSEG=$SCRIPTDIR/gprecoverseg.sh
+GPSIZECALC=$SCRIPTDIR/gpsizecalc.sh
+GPSKEW=$SCRIPTDIR/gpskew.sh
+GPSTART=$SCRIPTDIR/gpstart.sh
+GPSTATE=$SCRIPTDIR/gpstate.sh
+GPSTOP=$SCRIPTDIR/gpstop.sh
 MAILFILE=$SCRIPTDIR/mail_contacts
 HMAILFILE=$HOME/mail_contacts
 MPPDOCDIR=${MPPHOME}/gpMgmt/doc
@@ -190,9 +190,9 @@ PG_CTL=$PSQLBIN/pg_ctl
 PG_DUMP=$PSQLBIN/pg_dump
 PG_RESTORE=$PSQLBIN/pg_restore
 PSQL=$PSQLBIN/psql
-MPP_DUMP=$PSQLBIN/gp_dump
-MPP_RESTORE=$PSQLBIN/gp_restore
-gpsyncMASTER=$PSQLBIN/gpsyncmaster
+GP_DUMP=$PSQLBIN/gp_dump
+GP_RESTORE=$PSQLBIN/gp_restore
+GPSYNCMASTER=$PSQLBIN/gpsyncmaster
 #******************************************************************************
 # MPP OS Settings 
 #******************************************************************************
@@ -212,9 +212,9 @@ RECOVER_FLAG=/tmp/active_recovery_in_progress
 SCHEMA_FILE=cdb_schema.sql
 DEFAULTDB=template1
 CONFIG_TABLE=gp_configuration
-MPP_MPP_TABLE=gp_id
-MPP_PG_VIEW=gp_pgdatabase
-MPP_INITDB_VER_TABLE=gp_version_at_initdb
+GP_ID_TABLE=gp_id
+GP_PG_VIEW=gp_pgdatabase
+GP_INITDB_VER_TABLE=gp_version_at_initdb
 DEFAULT_CHK_PT_SEG=8
 DEFAULT_IP_ALLOW="0.0.0.0/0"
 DEFAULT_QD_MAX_CONNECT=25
@@ -747,7 +747,7 @@ GET_TRANS_READ () {
 GET_QE_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.definedprimary from $CONFIG_TABLE a, $MPP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1;"`) > /dev/null 2>&1
+		QE_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.definedprimary from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1;"`) > /dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				LOG_MSG "[WARN]:-Unable to obtain segment instance host details from Master db, error code $RETVAL returned" 1
@@ -789,7 +789,7 @@ GET_MIRROR_TYPE () {
 GET_QE_PRIMARY_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_PRIMARY_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.isprimary from $CONFIG_TABLE a, $MPP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 and  a.definedprimary='t' order by a.content;" 2>/dev/null`) > /dev/null 2>&1
+		QE_PRIMARY_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.isprimary from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 and  a.definedprimary='t' order by a.content;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -802,7 +802,7 @@ GET_QE_PRIMARY_DETAILS () {
 GET_QE_MIRROR_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_MIRROR_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.isprimary from $CONFIG_TABLE a, $MPP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 and a.definedprimary='f' order by a.content;" 2>/dev/null`) > /dev/null 2>&1
+		QE_MIRROR_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.isprimary from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 and a.definedprimary='f' order by a.content;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -1002,7 +1002,7 @@ START_SYNC_PROCESS () {
 		STOP_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY
 	fi
 	LOG_MSG "[INFO]:-Starting gpsyncmaster on standby host ${MASTER_STANDBY_HOSTNAME}" 1
-        $TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "exec $gpsyncMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -i  >> ${MASTER_STANDBY_DATA_DIRECTORY}.log 2>&1 &"
+        $TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "exec $GPSYNCMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -i  >> ${MASTER_STANDBY_DATA_DIRECTORY}.log 2>&1 &"
 	$SLEEP 3 #Wait to ensure process has time to start
 	GET_PG_PID_ACTIVE $MASTER_STANDBY_PORT ${MASTER_STANDBY_HOSTNAME}
 	if [ $PID -eq 0 ];then

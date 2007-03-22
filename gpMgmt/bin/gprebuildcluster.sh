@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -159,7 +159,7 @@ PARSE_SQL_FILE () {
 	MASTER_PORT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select port from $CONFIG_TABLE where content=-1 and dbid=1;"`
 	if [ $? -ne 0 ] || [ ! $MASTER_PORT ];then STOP_BUILD=1;MASTER_PORT=FAILED;fi
 	LOG_MSG "[INFO]:-Obtained Master instance port $MASTER_PORT" 1
-	MASTER_MPP_NAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select gpname from $MPP_MPP_TABLE ;"`
+	MASTER_MPP_NAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select gpname from $GP_ID_TABLE ;"`
 	if [ $? -ne 0 ] || [ ! "$MASTER_MPP_NAME" ];then STOP_BUILD=1;MASTER_MPP_NAME=FAILED;fi
 	LOG_MSG "[INFO]:-Obtained Master instance array name $MASTER_MPP_NAME" 1
 	REBUILD_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select hostname, port, datadir, dbid, content, definedprimary from $CONFIG_TABLE where content<>-1;"`)
@@ -167,7 +167,7 @@ PARSE_SQL_FILE () {
 	MASTER_IP_ADDRESS_ALL=(`$IFCONFIG -a |$GREP "inet "|$GREP -v "127."|$AWK '{print $2}'|$CUT -d: -f2`)	
 	ERROR_CHK $? "get master host IP details" 2
 	MASTER_IP_ADDRESS=(`$ECHO ${MASTER_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
-	MASTER_TOTAL_SEG=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select numsegments from $MPP_MPP_TABLE;"`
+	MASTER_TOTAL_SEG=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select numsegments from $GP_ID_TABLE;"`
 	if [ $? -ne 0 ] || [ ! $MASTER_TOTAL_SEG ];then STOP_BUILD=1;fi
 	STANDBY_ACTIVE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select count(*)-1 from $CONFIG_TABLE where content=-1;"`
 	if [ $? -ne 0 ] || [ ! $STANDBY_ACTIVE ];then STOP_BUILD=1;STANDBY_ACTIVE=FAILED;fi
@@ -419,7 +419,7 @@ BUILD_SEGMENT_INSTANCES () {
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance\""
 		LOG_MSG "[INFO]:-Successfully started segment instance on $SEG_HOSTNAME" 1
 		LOG_MSG "[INFO]:-Updating segment mpp.mpp system table" 1
-		RUN_COMMAND_REMOTE $SEG_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $SEG_PORT $DEFAULTDB -c \"insert into $MPP_MPP_TABLE values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" 
+		RUN_COMMAND_REMOTE $SEG_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $SEG_PORT $DEFAULTDB -c \"insert into $GP_ID_TABLE values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" 
 		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME mpp.mpp system table" 1
 		LOG_MSG "[INFO]:-Commencing shutdown of segment instance on $SEG_HOSTNAME" 1
 		$TRUSTED_SHELL ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" stop" 
@@ -469,7 +469,7 @@ STANDBY_ACTIVATE () {
 	BACKOUT_COMMAND "$ECHO \"Removing standby data directory ${STANDBY_DIR}\""
 	if [ x"" != x"$START_gpsync" ];then
 		LOG_MSG "[INFO]:-Starting gpsyncmaster on standby host ${STANDBY_HOSTNAME}" 1
-		$TRUSTED_SHELL ${STANDBY_HOSTNAME} "${EXPORT_LIB_PATH};$gpsyncMASTER -D ${STANDBY_DIR} -p $STANDBY_PORT -S"
+		$TRUSTED_SHELL ${STANDBY_HOSTNAME} "${EXPORT_LIB_PATH};$GPSYNCMASTER -D ${STANDBY_DIR} -p $STANDBY_PORT -S"
 		ERROR_CHK $? "initialize gpsyncmaster on ${STANDBY_HOSTNAME}" 1
 		BACKOUT_COMMAND "$TRUSTED_SHELL $STANDBY_HOSTNAME \"${EXPORT_LIB_PATH};$PG_CTL stop -D ${STANDBY_DIR} -m immediate\""
 		BACKOUT_COMMAND "$ECHO \"Stopping sync process on $STANDBY_HOSTNAME\""
@@ -485,12 +485,12 @@ UPDATE_BACKOUT_FILE () {
 
 START_ARRAY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	CHK_FILE $MPPSTART
+	CHK_FILE $GPSTART
 	if [ $EXISTS -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Could not locate $MPPSTART to start MPP instance" 2
+		ERROR_EXIT "[FATAL]:-Could not locate $GPSTART to start MPP instance" 2
 	else
 		LOG_MSG "[INFO]:-Starting the MPP Instance" 1
-		$MPPSTART -d $MASTER_DATA_DIRECTORY -a
+		$GPSTART -d $MASTER_DATA_DIRECTORY -a
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

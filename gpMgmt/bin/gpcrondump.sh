@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -182,14 +182,14 @@ GET_DUMP_LIST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	case $DUMP_TYPE in
 		0) LOG_MSG "[INFO]:-Gathering dbid data for dump type all" 1
-		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where content<>-1;"`)  ;;
+		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $GP_PG_VIEW where content<>-1;"`)  ;;
 		1) LOG_MSG "[INFO]:-Gathering dbid data for dump type primary"  1
-		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where content<>-1 and definedprimary='t';"`)  ;;
+		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $GP_PG_VIEW where content<>-1 and definedprimary='t';"`)  ;;
 	
 		2) LOG_MSG "[INFO]:-Gathering dbid data for dump type mirror" 1
-		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where content<>-1 and definedprimary='f';"`)  ;;
+		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $GP_PG_VIEW where content<>-1 and definedprimary='f';"`)  ;;
 		3) LOG_MSG "[WARN]:-Gathering dbid data for dump type available active"  1
-		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where content<>-1 and isprimary='t';"`) ;;
+		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $GP_PG_VIEW where content<>-1 and isprimary='t';"`) ;;
 	esac
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -315,14 +315,14 @@ CHK_PARAM () {
 			ERROR_EXIT "[FATAL]:-Schema $SCHEMA_NAME does not exist in database $DUMP_DATABASE" 2
 		fi
 	fi
-	FAILED_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $MPP_PG_VIEW where valid='f';"`
+	FAILED_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $GP_PG_VIEW where valid='f';"`
 	if [ $FAILED_COUNT -eq 0 ];then
 		LOG_MSG "[INFO]:-No failed segment instances detected" 1
 	else
 		LOG_MSG "[WARN]:-Failed segment instances detected, analyzing dump options" 1
-		FAILED_MIRROR_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $MPP_PG_VIEW where content <> -1 and definedprimary='f' and valid='f';"`
+		FAILED_MIRROR_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $GP_PG_VIEW where content <> -1 and definedprimary='f' and valid='f';"`
 		ERROR_CHK $? "obtained failed mirror count" 2
-		FAILED_PRIMARY_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $MPP_PG_VIEW where content <> -1 and definedprimary='t' and valid='f';"`
+		FAILED_PRIMARY_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $GP_PG_VIEW where content <> -1 and definedprimary='t' and valid='f';"`
 		ERROR_CHK $? "obtained failed primary count" 2
 		if [ $FAILED_MIRROR_COUNT -ne 0 ] && [ $FAILED_PRIMARY_COUNT  -ne 0 ];then
 			LOG_MSG "[WARN]:-Have detected both primary and mirror segment failures" 1
@@ -393,7 +393,7 @@ CHK_DUMP_SPACE () {
 	LOG_MSG "[INFO]:-Commencing free disk space checks, please wait..." 1
 	#Check to see if we have sufficient space to be able to dump data to disks
 	LOG_MSG "[INFO]:-Obtaining $DUMP_DATABASE disk allocation" 1
-	ACTUAL_DB_SIZE=(`$gpsizeCALC -x $DUMP_DATABASE -fq|$GREP "|"`)
+	ACTUAL_DB_SIZE=(`$GPSIZECALC -x $DUMP_DATABASE -fq|$GREP "|"`)
 	LOG_MSG "[INFO]:-Checking free space on segment instances"	
 	BATCH_LIMIT=${#DBID_LIST[@]}
 	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
@@ -570,7 +570,7 @@ PROCESS_DUMP () {
 	LOG_MSG "[INFO]:-Setting dump running flag" 1
 	$TOUCH $IS_RUNNING_FLAG
 	LOG_MSG "[INFO]:-Building dump command line" 1
-	DUMP_TEXT="$MPP_DUMP -p $MASTER_PORT -U $LOGNAME --gp-d=${DUMP_SUB_DIR}/$DUMP_DATE --gp-r=${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/$DUMP_DATE --gp-s=i[1,`$ECHO ${DBID_LIST[@]}|$TR ' ' ','`] $ADD_DUMP_OPTIONS"		
+	DUMP_TEXT="$GP_DUMP -p $MASTER_PORT -U $LOGNAME --gp-d=${DUMP_SUB_DIR}/$DUMP_DATE --gp-r=${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/$DUMP_DATE --gp-s=i[1,`$ECHO ${DBID_LIST[@]}|$TR ' ' ','`] $ADD_DUMP_OPTIONS"		
 	if [ $COMPRESSION ];then
 		LOG_MSG "[INFO]:-Adding compression parameter" 1
 		DUMP_TEXT=$DUMP_TEXT" --gp-c"
@@ -693,7 +693,7 @@ DELETE_CURRENT_DUMP () {
 DELETE_OLD_DUMPS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Get a list of all dbids
-	DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where content<>-1;"`)
+	DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $GP_PG_VIEW where content<>-1;"`)
 	COUNT=0
 	for DBID in ${DBID_LIST[@]}
 	do

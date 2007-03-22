@@ -25,7 +25,7 @@ WORKDIR=`dirname $0`
 # Source required functions file, this required for script to run
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -51,8 +51,8 @@ INST_COUNT=0
 # MPP database specific parameters
 MPP_USER=$USER_NAME
 # System table names
-MPP_TBL=gp_id
-MPP_CONFIGURATION_TBL=gp_configuration
+GP_TBL=gp_id
+GP_CONFIGURATION_TBL=gp_configuration
 unset PG_CONF_ADD_FILE
 EXIT_STATUS=0
 # ED_FILE search text values
@@ -61,7 +61,7 @@ LOG_STATEMENT_TXT="#log_statement ="
 LISTEN_ADR_TXT="listen_addresses"
 CHKPOINT_SEG_TXT="checkpoint_segments"
 LOG_STATS_TXT="stats_command_string="
-INIT_STANDBY_PROG=$gpinitSTANDBY
+INIT_STANDBY_PROG=$GPINITSTANDBY
 START_SYNC="-1"
 QE_MIRROR_ARRAY=""
 MPP_PASSWD=mpparray
@@ -903,11 +903,11 @@ UPDATE_MPPCONFIGURATION () {
 		U_DIR=$9
 		
 		U_DB=$DEFAULTDB
-		CHK_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $MPP_CONFIGURATION_TBL where content=${U_CONTENT} and definedprimary='${U_PRIMARY}';" 2>/dev/null` >> $LOG_FILE 2>&1
+		CHK_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $GP_CONFIGURATION_TBL where content=${U_CONTENT} and definedprimary='${U_PRIMARY}';" 2>/dev/null` >> $LOG_FILE 2>&1
 		ERROR_CHK $? "obtain psql count Master gp_configuration" 2
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_CONTENT to system configuration table"				
-				env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_CONFIGURATION_TBL (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (${U_DBID},'${U_PRIMARY}',${U_CONTENT},'t', '${U_PRIMARY}','${U_HOSTNAME}',${U_PORT},'${U_DIR}');" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $GP_CONFIGURATION_TBL (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (${U_DBID},'${U_PRIMARY}',${U_CONTENT},'t', '${U_PRIMARY}','${U_HOSTNAME}',${U_PORT},'${U_DIR}');" >> $LOG_FILE 2>&1
 				ERROR_CHK $? "add $U_CONTENT to Master gp_configuration" 2
 		else
 				LOG_MSG "[INFO]:-Content $U_CONTENT already exists in gp_configuration system table"
@@ -952,10 +952,10 @@ UPDATE_MPP () {
 		TYPE=$7
 		U_HOST=$8
 		if [ $TYPE -eq 0 ]; then
-				$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
+				$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $GP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
 				ERROR_CHK $? "add $U_DBID to Master gp_id" 2
 		else
-				RUN_COMMAND_REMOTE $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $MPP_TBL (gpname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
+				RUN_COMMAND_REMOTE $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $GP_TBL (gpname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
 		fi	
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to update mpp system table" 2
@@ -1151,11 +1151,11 @@ CREATE_STANDBY_QD () {
 
 START_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		if [ -f $MPPSTART ]; then
-				$MPPSTART -a -d $MAS_DIR
+		if [ -f $GPSTART ]; then
+				$GPSTART -a -d $MAS_DIR
 				ERROR_CHK $? "start new MPP instance" 2
 		else
-				ERROR_EXIT "[FATAL]:-$MPPSTART not located" 2
+				ERROR_EXIT "[FATAL]:-$GPSTART not located" 2
 		fi
 		LOG_MSG "[INFO]:-Completed restart of MPP instance in production mode" 1
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"

@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -150,7 +150,7 @@ CHECK_PARAM () {
 			ERROR_EXIT "[FATAL]:-No gpsyncmaster process running on $MASTER_STANDBY_HOSTNAME" 2
 		fi
 	fi	
-	if [ ! -f $MPPSTART ];then ERROR_EXIT "[FATAL $MPPSTART does not exist" 2;fi
+	if [ ! -f $GPSTART ];then ERROR_EXIT "[FATAL $GPSTART does not exist" 2;fi
 	if [ ! -f $gpstop ];then ERROR_EXIT "[FATAL $gpstop does not exist" 2;fi
 	#Check hostname not the same as the current host if -c option supplied
 	if [ x"" != x"$NEW_STANDBY_MASTER" ] && [ $NEW_STANDBY_MASTER == `$HOSTNAME` ];then
@@ -177,7 +177,7 @@ ADMIN_SHUTDOWN () {
 	ERROR_CHK $? "shutdown standby master instance" 1
 	if [ x"" != x"$1" ];then
 		LOG_MSG "[INFO]:-Re-starting sync process"
-		$gpsyncMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -S
+		$GPSYNCMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -S
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -185,7 +185,7 @@ ADMIN_SHUTDOWN () {
 CHK_CATALOG_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Starting standby master instance in admin mode"
-	$MPPSTART -bm -d $MASTER_STANDBY_DATA_DIRECTORY
+	$GPSTART -bm -d $MASTER_STANDBY_DATA_DIRECTORY
 	ERROR_CHK $? "start standby master in admin mode" 2
 	MASTER_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select min(dbid) from $CONFIG_TABLE where content=-1;"`
 	MASTER_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where dbid in ($MASTER_DBID)"`
@@ -287,7 +287,7 @@ DISPLAY_PARAM () {
 START_ARRAY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Starting the MPP instance"
-	$MPPSTART -d $MASTER_STANDBY_DATA_DIRECTORY -ay
+	$GPSTART -d $MASTER_STANDBY_DATA_DIRECTORY -ay
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -374,7 +374,7 @@ if [ x"" == x"$NEW_STANDBY_MASTER" ];then
 	EXIT_STATUS=1
 else
 	LOG_MSG "[INFO]:-Processing request to create a new standby master instance"
-	$gpinitSTANDBY -s $NEW_STANDBY_MASTER -a
+	$GPINITSTANDBY -s $NEW_STANDBY_MASTER -a
 fi
 DISPLAY_INFO
 LOG_MSG "[INFO]:-End Main"

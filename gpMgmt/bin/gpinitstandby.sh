@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -120,7 +120,7 @@ CHECK_PARAM () {
 	PING_HOST $MASTER_STANDBY_HOSTNAME
 	#Check to see if we already have a standby master configured
 	if [ $UPDATE_CATALOG -eq 1 ];then
-	    # there is a function to do this in gp_bash_fuctions.sh
+	    # there is a function to do this in gp_bash_functions.sh
 		STANDBY_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where content=-1 and dbid<>1 ;"`
 		ERROR_CHK $? "obtained standby master host count" 2
 		if [ $STANDBY_COUNT -ne 0 ];then
@@ -182,7 +182,7 @@ CHECK_PARAM () {
 	ERROR_CHK $? "obtain IP address of standby Master host" 2
 	LOG_MSG "[INFO]:-Standby address array = ${STANDBY_IP_ADDRESS_ALL[@]}" 1
 	STANDBY_IP_ADDRESS=(`$ECHO ${STANDBY_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
-	MASTER_MPP_NAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select gpname from $MPP_MPP_TABLE;"`
+	MASTER_MPP_NAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select gpname from $GP_ID_TABLE;"`
 	ERROR_CHK $? "obtain master array name" 2
 	#Check to see if there are any other MPP host on the proposed standby host
 	IN_USE_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' ;"`
@@ -318,21 +318,21 @@ STANDBY_ACTIVATE () {
 
 START_ARRAY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	CHK_FILE $MPPSTART
+	CHK_FILE $GPSTART
 	if [ $EXISTS -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Could not locate $MPPSTART to start MPP instance" 2
+		ERROR_EXIT "[FATAL]:-Could not locate $GPSTART to start MPP instance" 2
 	else
 		LOG_MSG "[INFO]:-Starting the MPP instance" 1
-		$MPPSTART -d $MASTER_DATA_DIRECTORY -a
+		$GPSTART -d $MASTER_DATA_DIRECTORY -a
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 FAIL_PRIMARY_SEGMENTS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	CHK_FILE $MPPSTART $MASTER_STANDBY_HOSTNAME
+	CHK_FILE $GPSTART $MASTER_STANDBY_HOSTNAME
         if [ $EXISTS -eq 1 ];then
-                ERROR_EXIT "[FATAL]:-File $MPPSTART does not exist on $MASTER_STANDBY_HOSTNAME" 2
+                ERROR_EXIT "[FATAL]:-File $GPSTART does not exist on $MASTER_STANDBY_HOSTNAME" 2
         fi
 	CHK_FILE $gpstop $MASTER_STANDBY_HOSTNAME
         if [ $EXISTS -eq 1 ];then
@@ -340,7 +340,7 @@ FAIL_PRIMARY_SEGMENTS () {
         fi
 	#Start the readonly master segment in utility mode
 	LOG_MSG "[INFO]:-Starting read only master segment instance in utility mode" 1
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$MPPSTART -d $MASTER_DATA_DIRECTORY -m"
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$GPSTART -d $MASTER_DATA_DIRECTORY -m"
 	ERROR_CHK $? "start read only master segment instance" 2
 	#Now set primary segment instances port numbers to a negative number
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" update $CONFIG_TABLE set port=dbid*-1 where definedprimary='t' and content<>-1;\""

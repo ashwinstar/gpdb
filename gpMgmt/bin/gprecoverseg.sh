@@ -26,7 +26,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ];then
         . $FUNCTIONS
 else
@@ -122,7 +122,7 @@ GET_SETTING () {
 	ERROR_CHK $RET_STATUS "obtain gp_fault_action setting" 1
 	if [ $RET_STATUS -ne 0 ];then
 		#If get an error, master segment instance may be down, try to start in admin mode
-		$MPPSTART -maq
+		$GPSTART -maq
 		ERROR_CHK $? "start master database in admin mode" 2
 		#Get a list of dbid's that are marked as invalid
 		CHK_MIRRORS_CONFIGURED
@@ -152,7 +152,7 @@ GET_SETTING () {
 			LOG_MSG "[FATAL]:-See gp_restore command" 1
 			ERROR_EXIT "[FATAL]:-No further progress can be made" 2
 		fi
-		FAILED_INST_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $MPP_PG_VIEW where valid='f';"`)
+		FAILED_INST_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $GP_PG_VIEW where valid='f';"`)
 		RET_STATUS=$?
 		ERROR_CHK $RET_STATUS "obtain failed instance dbid's" 1
 		LOG_MSG "[INFO]:-There are ${#FAILED_INST_LIST[@]} failed segment(s)" 1
@@ -271,7 +271,7 @@ GET_MIRROR () {
 	do
 		FAILED_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid, content from $CONFIG_TABLE where dbid=${DBID};"`
 		ERROR_CHK $? "obtain failed segment details from master instance" 2
-		ACTIVE_DBID=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select dbid from $MPP_PG_VIEW where content in (select content from $MPP_PG_VIEW where dbid=${DBID}) and dbid<>${DBID};"`
+		ACTIVE_DBID=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select dbid from $GP_PG_VIEW where content in (select content from $GP_PG_VIEW where dbid=${DBID}) and dbid<>${DBID};"`
 		ACTIVE_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where valid='t' and content in (select content from $CONFIG_TABLE where dbid=${ACTIVE_DBID}) and dbid<>${DBID};"`
 		ERROR_CHK $? "obtain recovery segment details from master instance" 2
 		((ARRAY_INDEX=$ARRAY_INDEX+1))
@@ -487,8 +487,8 @@ UPDATE_MPP_MPP () {
 		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -w -D $FAIL_QE_DIR -l ${FAIL_QE_DIR}.log -o \"-i -p $FAIL_QE_PORT \" start" 
 		ERROR_CHK $? "segment start $FAIL_QE_HOST instance $FAIL_QE_DIR port=$FAIL_QE_PORT" 2
 		# Update table
-		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $DEFAULTDB -c \"update $MPP_MPP_TABLE set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\""
-		ERROR_CHK $? "update segment $MPP_MPP_TABLE on $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT" 2
+		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $DEFAULTDB -c \"update $GP_ID_TABLE set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\""
+		ERROR_CHK $? "update segment $GP_ID_TABLE on $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT" 2
 		if [ $STOPDB -eq 1 ] || [ $FORCESTOP -eq 1 ]; then
 				LOG_MSG "[INFO]:-Commencing shutdown of $FAIL_QE_HOST port=$FAIL_QE_PORT" 1
 				$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m smart -l ${FAIL_QE_DIR}.log"
@@ -505,14 +505,14 @@ RESET_QE_CONNECT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	TABLE_NAME=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select relname from pg_class where relkind='r' order by reltype desc limit(1);"`
 	$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from ${TABLE_NAME};" >> $LOG_FILE 2>&1
-	$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select * from ${MPP_PG_VIEW};" >> $LOG_FILE 2>&1
+	$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select * from ${GP_PG_VIEW};" >> $LOG_FILE 2>&1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 START_DATABASE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Starting up the MPP instance in admin mode... Please wait..." 1
-	$MPPSTART -m
+	$GPSTART -m
 	ERROR_CHK $? "start MPP instance in admin mode" 2
 	LOG_MSG "[INFO]:-Resetting invalid segment status values" 1
 	for DBID in ${FAILED_INST_LIST[@]}
@@ -524,11 +524,11 @@ START_DATABASE () {
 	$gpstop -m
 	ERROR_CHK $? "stop MPP instance from admin mode" 2
         LOG_MSG "[INFO]:-Starting up the MPP instance... Please wait..." 1
-        $MPPSTART -a
+        $GPSTART -a
         RETVAL=$?
         if [ $RETVAL -ne 0 ];then
-		LOG_MSG "[WARN]:-The $MPPSTART script returned a non zero return code" 1
-		LOG_MSG "[INFO]:-Check the $MPPSTART log file for more information on cause" 1
+		LOG_MSG "[WARN]:-The $GPSTART script returned a non zero return code" 1
+		LOG_MSG "[INFO]:-Check the $GPSTART log file for more information on cause" 1
 		LOG_MSG "[INFO]:-Run gpstate.sh to check current status of instance" 1
                 ERROR_EXIT "[FATAL]:-Issue with master database startup." 2
 	fi
@@ -677,7 +677,7 @@ GET_FAIL_COUNT_TYPE () {
 	PRI_FAIL_COUNT=0;MIR_FAIL_COUNT=0
 	for FAIL_DBID in ${FAILED_INST_LIST[@]}
 	do
-		DBID_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select definedprimary from $MPP_PG_VIEW where dbid=${FAIL_DBID};"`
+		DBID_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select definedprimary from $GP_PG_VIEW where dbid=${FAIL_DBID};"`
 		ERROR_CHK $? "obtain type for dbid = $FAIL_DBID" 2
 		case $DBID_TYPE in
 			t ) ((PRI_FAIL_COUNT=$PRI_FAIL_COUNT+1)) ;;
@@ -1035,7 +1035,7 @@ UPDATE_STATUS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	COUNT=0
 	LOG_MSG "[INFO]:-Starting master database in utility mode" 1
-	$MPPSTART -m
+	$GPSTART -m
 	while [ $COUNT -lt $ARRAY_INDEX ]
 	do
 		FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}

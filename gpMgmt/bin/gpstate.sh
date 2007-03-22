@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -333,7 +333,7 @@ VERSION_INFO () {
 	GET_QE_DETAILS
 	MASTER_POSTGRES_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"show server_version;"`
 	ERROR_CHK $? "obtain master postgres server version" 1
-	MASTER_INITDB_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"select productversion from $MPP_INITDB_VER_TABLE limit 1;"|$TR '$' ' '|$TR -s ' '`
+	MASTER_INITDB_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"select productversion from $GP_INITDB_VER_TABLE limit 1;"|$TR '$' ' '|$TR -s ' '`
 	ERROR_CHK $? "obtain master initdb version" 1
 	MASTER_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"select version();" `
 	ERROR_CHK $? "obtain master current version" 1

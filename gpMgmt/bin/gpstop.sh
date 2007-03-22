@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -177,7 +177,7 @@ CHK_QD_DB_RUNNING () {
 				ERROR_CHK $? "delete Master /tmp lock files" 2
 				LOG_MSG "[INFO]:-Starting recovery procedure" 1
 				LOG_MSG "[INFO]:-Starting Master instance in utility mode" 1
-				$MPPSTART -mq -d $MASTER_DATA_DIRECTORY
+				$GPSTART -mq -d $MASTER_DATA_DIRECTORY
 				LOG_MSG "[INFO]:-Setting recovery parameters" 1
 				MODE=fast
 				unset INTERACTIVE
@@ -246,7 +246,7 @@ PROCESS_SHUTDOWN () {
 		if [ $STOP_INVALID -eq 1 ];then
 			BATCH_LIMIT=$QE_ARRAY_COUNT
 		else
-			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $MPP_PG_VIEW where valid ='t' and content<>-1;"`
+			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $GP_PG_VIEW where valid ='t' and content<>-1;"`
 		fi
 		if [ $MODE == "smart" ]; then
 #		count connected processes, but don't count ourself.
@@ -405,22 +405,22 @@ if [ $INTERACTIVE ]; then
 fi
 PROCESS_SHUTDOWN
 if [ $RESTART ]; then
-	if [ -f $MPPSTART ]; then
+	if [ -f $GPSTART ]; then
 		if [ x"" == x"$VERBOSE" ];then
 			if [ x"" == x"$STOP_SYNC" ];then
-			$MPPSTART -aqy -B $BATCH_DEFAULT
+			$GPSTART -aqy -B $BATCH_DEFAULT
 			else
-			$MPPSTART -aq -B $BATCH_DEFAULT
+			$GPSTART -aq -B $BATCH_DEFAULT
 			fi
 		else
 			if [ x"" == x"$STOP_SYNC" ];then
-			$MPPSTART -ay -B $BATCH_DEFAULT
+			$GPSTART -ay -B $BATCH_DEFAULT
 			else
-			$MPPSTART -a -B $BATCH_DEFAULT
+			$GPSTART -a -B $BATCH_DEFAULT
 			fi
 		fi
 	else
-		ERROR_EXIT "[FATAL]:-No $MPPSTART" 2
+		ERROR_EXIT "[FATAL]:-No $GPSTART" 2
 	fi
 fi
 LOG_MSG "[INFO]:-End Main"

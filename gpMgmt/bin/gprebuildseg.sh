@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -116,15 +116,15 @@ START_MASTER_DB () {
 			ERROR_EXIT "[FATAL]:-Expected Master to be shutdown, use gpstop.sh -m to shutdown master instance" 2
 	else
 		LOG_MSG "[INFO]:-Starting Master instance in admin mode" 1
-		if [ -f $MPPSTART ];then
-			$MPPSTART -qam -d $MASTER_DATA_DIRECTORY
+		if [ -f $GPSTART ];then
+			$GPSTART -qam -d $MASTER_DATA_DIRECTORY
 			if [ $? -eq 2 ];then
 			ERROR_CHK $? "start Master instance in admin mode" 2
 			else
 			ERROR_CHK $? "start Master instance in admin mode" 1
 			fi
 		else
-			ERROR_EXIT "[FATAL]:-Unable to locate $MPPSTART" 2
+			ERROR_EXIT "[FATAL]:-Unable to locate $GPSTART" 2
 		fi		
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -148,7 +148,7 @@ STOP_MASTER_DB () {
 
 GET_SEGMENT_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MASTER_MPP_NAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select gpname from $MPP_MPP_TABLE;"`
+	MASTER_MPP_NAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select gpname from $GP_ID_TABLE;"`
 	ERROR_CHK $? "get master instance instance name" 2
 	REBUILD_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select hostname, port, datadir, dbid, content, definedprimary from $CONFIG_TABLE where content<>-1;"`)
 	ERROR_CHK $? "get instance segment instance details " 2
@@ -156,7 +156,7 @@ GET_SEGMENT_INFO () {
 	ERROR_CHK $? "get master host IP details" 2
 	MASTER_IP_ADDRESS=(`$ECHO ${MASTER_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-	MASTER_TOTAL_SEG=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select numsegments from $MPP_MPP_TABLE;"`
+	MASTER_TOTAL_SEG=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select numsegments from $GP_ID_TABLE;"`
 	ERROR_CHK $? "get total instance segments" 2
 	MASTER_HOST=`$HOSTNAME`
 	STANDBY_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select count(*) from gp_configuration where content=-1 and hostname<>'$MASTER_HOST';"`
@@ -281,10 +281,10 @@ BUILD_SEGMENT_INSTANCES () {
 		BACKOUT_COMMAND "$TRUSTED_SHELL $SEG_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" -m immediate  stop\""
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance\""
 		LOG_MSG "[INFO]:-Successfully started segment instance on $SEG_HOSTNAME" 1
-		LOG_MSG "[INFO]:-Updating segment $MPP_MPP_TABLE system table" 1
-		RUN_COMMAND_REMOTE $SEG_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $SEG_PORT $DEFAULTDB -c \"insert into $MPP_MPP_TABLE values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" 
-		ERROR_CHK $? "update $SEG_HOSTNAME $MPP_MPP_TABLE record entry with DBID value ${SEG_DBID}" 2
-		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME $MPP_MPP_TABLE system table"
+		LOG_MSG "[INFO]:-Updating segment $GP_ID_TABLE system table" 1
+		RUN_COMMAND_REMOTE $SEG_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $SEG_PORT $DEFAULTDB -c \"insert into $GP_ID_TABLE values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" 
+		ERROR_CHK $? "update $SEG_HOSTNAME $GP_ID_TABLE record entry with DBID value ${SEG_DBID}" 2
+		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME $GP_ID_TABLE system table"
 		LOG_MSG "[INFO]:-Commencing shutdown of segment instance on $SEG_HOSTNAME" 1
 		$TRUSTED_SHELL ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" stop" 
 		ERROR_CHK $? "shutdown of instance on port $SEG_PORT data directory $SEG_DATADIR host $SEG_HOSTNAME" 2
@@ -294,12 +294,12 @@ BUILD_SEGMENT_INSTANCES () {
 
 START_ARRAY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	CHK_FILE $MPPSTART
+	CHK_FILE $GPSTART
 	if [ $EXISTS -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Could not locate $MPPSTART to start MPP instance" 2
+		ERROR_EXIT "[FATAL]:-Could not locate $GPSTART to start MPP instance" 2
 	else
 		LOG_MSG "[INFO]:-Starting the MPP instance" 1
-		$MPPSTART -d $MASTER_DATA_DIRECTORY -a
+		$GPSTART -d $MASTER_DATA_DIRECTORY -a
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -371,7 +371,7 @@ DISPLAY_PARAM
 BUILD_SEGMENT_INSTANCES
 START_ARRAY
 if [ $STANDBY_COUNT -eq 1 ];then
-	$gpinitSTANDBY -s $STANDBY_MASTER_HOSTNAME -n -a
+	$GPINITSTANDBY -s $STANDBY_MASTER_HOSTNAME -n -a
 fi
 DISPLAY_INFO
 LOG_MSG "[INFO]:-End Main"

@@ -26,7 +26,7 @@ otherwise noted.
 * gpaddmirrors.sh - Adds mirror segments to a Greenplum Database system that
                      was initially configured without mirroring.
 
-* gp_bash_fuctions.sh - NOT RUN DIRECTLY. This is sourced by the other 
+* gp_bash_functions.sh - NOT RUN DIRECTLY. This is sourced by the other 
                           management scripts and contains global parameters 
                           and functions.
 

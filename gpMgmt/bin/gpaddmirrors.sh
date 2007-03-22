@@ -21,7 +21,7 @@
 # Prep Code
 #******************************************************************************
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ];then
 	. $FUNCTIONS
 else
@@ -427,10 +427,10 @@ CONFIG_CATALOG () {
 		ERROR_EXIT "[FATAL]:-Could not locate $gpstop" 2
 	fi
 	LOG_MSG "[INFO]:-Starting Master instance in admin mode" 1
-	if [ -f $MPPSTART ];then
-		$MPPSTART -qam -d $MASTER_DATA_DIRECTORY
+	if [ -f $GPSTART ];then
+		$GPSTART -qam -d $MASTER_DATA_DIRECTORY
 	else
-		ERROR_EXIT "[FATAL]:-Could not locate $MPPSTART" 2
+		ERROR_EXIT "[FATAL]:-Could not locate $GPSTART" 2
 	fi
 	LOG_MSG "[INFO]:-Processing database $DEFAULTDB" 1
 	for MIRROR_SEG in "${MIRROR_ARRAY[@]}"
@@ -509,9 +509,9 @@ CREATE_MIRRORS () {
 		LOG_MSG "[INFO]:-Starting mirror segment in admin mode port $MIRROR_PORT $MIRROR_HOSTNAME" 1
 		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -w -D $MIRROR_DATADIR -l ${MIRROR_DATADIR}.log -o \"-i -p $MIRROR_PORT \" start"
 		ERROR_CHK $? "start mirror segment port=$MIRROR_PORT host=$MIRROR_HOSTNAME" 2
-		LOG_MSG "[INFO]:-Updating $MPP_MPP_TABLE table for database $DB" 1
-		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MIRROR_PORT $DEFAULTDB -c \"update $MPP_MPP_TABLE set dbid=${MIRROR_DBID} where dbid<>${MIRROR_DBID};\""
-		ERROR_CHK $? "update $MPP_MPP_TABLE table on $MIRROR_HOSTNAME $MIRROR_DATADIR database $DB" 2
+		LOG_MSG "[INFO]:-Updating $GP_ID_TABLE table for database $DB" 1
+		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MIRROR_PORT $DEFAULTDB -c \"update $GP_ID_TABLE set dbid=${MIRROR_DBID} where dbid<>${MIRROR_DBID};\""
+		ERROR_CHK $? "update $GP_ID_TABLE table on $MIRROR_HOSTNAME $MIRROR_DATADIR database $DB" 2
 		LOG_MSG "[INFO]:-Closing down mirror segment from admin mode" 1
 		$TRUSTED_SHELL $MIRROR_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -w stop -D $MIRROR_DATADIR -m smart -l ${MIRROR_DATADIR}.log"
 		ERROR_CHK $? "close mirror segment $MIRROR_HOSTNAME $MIRROR_DATADIR" 2	
@@ -581,18 +581,18 @@ if [ $STANDBY_COUNT -ne 0 ];then
 	GET_STANDBY_DETAILS
 	STANDBY_HOSTNAME=`$ECHO $STANDBY_ARRAY|$CUT -d'|' -f1`
 	LOG_MSG "[INFO]:-Obtained standby hostname as $STANDBY_HOSTNAME" 1
-	if [ -f $gpinitSTANDBY ];then
+	if [ -f $GPINITSTANDBY ];then
 		$gpstop -qam -d $MASTER_DATA_DIRECTORY
-		$MPPSTART -qa -d $MASTER_DATA_DIRECTORY
-		$gpinitSTANDBY -s $STANDBY_HOSTNAME -n -a
+		$GPSTART -qa -d $MASTER_DATA_DIRECTORY
+		$GPINITSTANDBY -s $STANDBY_HOSTNAME -n -a
 	else
-		ERROR_EXIT "[FATAL]:-Could not locate $gpinitSTANDBY" 2
+		ERROR_EXIT "[FATAL]:-Could not locate $GPINITSTANDBY" 2
 	fi
 else
 	LOG_MSG "[INFO]:-Commencing shutdown of Master instance from admin mode" 1
 	$gpstop -qam -d $MASTER_DATA_DIRECTORY
 	LOG_MSG "[INFO]:-Commencing startup of mirrored Instance" 1
-	$MPPSTART -qa -d $MASTER_DATA_DIRECTORY
+	$GPSTART -qa -d $MASTER_DATA_DIRECTORY
 fi
 LOG_MSG "[INFO]:-------------------------------------------------" 1
 LOG_MSG "[INFO]:-Successfully configured mirror segment instances" 1

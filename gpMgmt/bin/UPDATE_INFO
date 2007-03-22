@@ -4,7 +4,7 @@ gpcreatecluster.sh:-	Corrected bug where QD host not in hostlist file, but scrip
 
 09:00 19 Aug 2005
 gpstop.sh:-		Removed check that did not allow MASTER_DATA_DIRECTORY value to end with /
-gp_bash_fuctions.sh:-	Removed stdout and stderror re-direction to RUN_REMOTE_COMMAND function
+gp_bash_functions.sh:-	Removed stdout and stderror re-direction to RUN_REMOTE_COMMAND function
 cluster_example:-	Tidy up of comments to ease use
 gpcreatecluster.sh:-	Added to config display which initdb script will use to build the cluster
 
@@ -16,10 +16,10 @@ gpcreatecluster.sh	Added additional echo to postgresql.conf file during QE insta
 gpcreatecluster.sh	Added simple check for some of the known parameter names that are expected
 to be in the cluster config file, if not found, script now exits with a suitable error message.
 
-gp_bash_fuctions.sh	Added egrep parameter.
+gp_bash_functions.sh	Added egrep parameter.
 
 17:10 PST 20 Sept 2005
-gp_bash_fuctions.sh	Updates re standard naiming convention
+gp_bash_functions.sh	Updates re standard naiming convention
 
 gpcreatecluster.sh	Updates re standard naiming convention
 
@@ -32,7 +32,7 @@ gpstate.sh		Updates re standard naiming convention
 cluster_example		Updates re standard naiming convention
 
 14:15 PST 21 Sept 2005
-gp_bash_fuctions.sh	Updates to support below script changes
+gp_bash_functions.sh	Updates to support below script changes
 
 gpcreatecluster.sh	Update re error messages to screen
 
@@ -62,7 +62,7 @@ gpstop.sh		Added additional processing to -z option
 
 gpstate.sh		Provided additional status checking and QD postgres version #
 
-gp_bash_fuctions.sh	Changes to support above updates and new recovery script.
+gp_bash_functions.sh	Changes to support above updates and new recovery script.
 
 gprecoverseg.sh	Script to recover failed primary or mirror segments.
 			Still under test at this stage.

@@ -22,7 +22,7 @@
 # Prep Code
 # Source required functions file, this required for script to run
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
                 . $FUNCTIONS
 else

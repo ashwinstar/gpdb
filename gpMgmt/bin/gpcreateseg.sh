@@ -24,7 +24,7 @@ WORKDIR=`dirname $0`
 # Source required functions file, this required for script to run
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -43,8 +43,8 @@ unset VERBOSE
 # MPP database specific parameters
 MPP_USER=$USER_NAME
 # System table names
-MPP_TBL=gp_id
-MPP_CONFIGURATION_TBL=gp_configuration
+GP_TBL=gp_id
+GP_CONFIGURATION_TBL=gp_configuration
 unset PG_CONF_ADD_FILE
 EXIT_STATUS=0
 # ED_FILE search text values
@@ -178,10 +178,10 @@ UPDATE_MPP () {
                 TYPE=$7
                 U_HOST=$8
                 if [ $TYPE -eq 0 ]; then
-                                $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
+                                $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $GP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
                                 PARA_EXIT $? "add $U_DBID to Master gp_id"
                 else
-                                $TRUSTED_SHELL $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $MPP_TBL (gpname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" " >> $LOG_FILE 2>&1
+                                $TRUSTED_SHELL $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $GP_TBL (gpname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" " >> $LOG_FILE 2>&1
 				PARA_EXIT $? "add $U_DBID to Master gp_id"
                 fi
                 LOG_MSG "[INFO][$INST_COUNT]:-Successfully updated mpp system table"
