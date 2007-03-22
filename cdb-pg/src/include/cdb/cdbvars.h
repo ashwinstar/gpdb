@@ -71,7 +71,7 @@
  * ----------
  *
  * MPP Developers can access the values of these parameters via the
- * global variables Mpp_session_role and Mpp_role of type
+ * global variables Gp_session_role and Mpp_role of type
  * MppRoleValue. For example
  *
  *	#include "cdb/cdbvars.h"
@@ -96,7 +96,7 @@
  * superuser privileges) by setting it to one of the three valid
  * values, however this must be well documented to avoid
  * disagreements between modules.  Don't modify the value  of
- * Mpp_session_role.
+ * Gp_session_role.
  *
  */
 
@@ -109,7 +109,7 @@ typedef enum
 } MppRoleValue;
 
 
-extern MppRoleValue Mpp_session_role;	/* GUC var - server startup mode.  */
+extern MppRoleValue Gp_session_role;	/* GUC var - server startup mode.  */
 extern char *gp_session_role_string;	/* Use by guc.c as staging area for
 										 * value. */
 extern const char *assign_gp_session_role(const char *newval, bool doit, GucSource source);

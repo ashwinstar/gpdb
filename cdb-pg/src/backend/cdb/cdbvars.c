@@ -41,7 +41,7 @@ char	   *gp_role_string;	/* Staging area for guc.c */
 char	   *gp_fault_action_string;	/* Staging area for guc.c */
 bool		gp_set_read_only;	/* Staging area for guc.c */
 
-MppRoleValue Mpp_session_role;	/* Role paid by this MPP backend */
+MppRoleValue Gp_session_role;	/* Role paid by this MPP backend */
 char	   *gp_session_role_string;	/* Staging area for guc.c */
 
 bool		Gp_is_primary;		/* Is this session primary (or mirror) */
@@ -245,8 +245,8 @@ assign_gp_session_role(const char *newval, bool doit, GucSource source)
 
 	if (doit)
 	{
-		Mpp_session_role = newrole;
-		Mpp_role = Mpp_session_role;
+		Gp_session_role = newrole;
+		Mpp_role = Gp_session_role;
 
 		if (Mpp_role == MPP_ROLE_DISPATCH)
 			Gp_segment = -1;
@@ -392,7 +392,7 @@ assign_interconnect_setup_timeout(int newval, bool doit, GucSource source)
 const char *
 show_gp_session_role(void)
 {
-	return role_to_string(Mpp_session_role);
+	return role_to_string(Gp_session_role);
 }
 
 
