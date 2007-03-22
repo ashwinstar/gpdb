@@ -1985,24 +1985,24 @@ build_startup_packet(const PGconn *conn, char *packet,
 	}
 
 	/* CDB: Add qExec startup data */
-	if (conn->mppqeid && conn->mppqeid[0])
+	if (conn->gpqeid && conn->gpqeid[0])
 	{
 		if (packet)
-			strcpy(packet + packet_len, "mppqeid");
-		packet_len += strlen("mppqeid") + 1;
+			strcpy(packet + packet_len, "gpqeid");
+		packet_len += strlen("gpqeid") + 1;
 		if (packet)
-			strcpy(packet + packet_len, conn->mppqeid);
-		packet_len += strlen(conn->mppqeid) + 1;
+			strcpy(packet + packet_len, conn->gpqeid);
+		packet_len += strlen(conn->gpqeid) + 1;
 	}
 	/* CDB: Add qExec startup data */
-	if (conn->mppqdid && conn->mppqdid[0])
+	if (conn->gpqdid && conn->gpqdid[0])
 	{
 		if (packet)
-			strcpy(packet + packet_len, "mppqdid");
-		packet_len += strlen("mppqdid") + 1;
+			strcpy(packet + packet_len, "gpqdid");
+		packet_len += strlen("gpqdid") + 1;
 		if (packet)
-			strcpy(packet + packet_len, conn->mppqdid);
-		packet_len += strlen(conn->mppqdid) + 1;
+			strcpy(packet + packet_len, conn->gpqdid);
+		packet_len += strlen(conn->gpqdid) + 1;
 	}
 
 	/* Add any environment-driven GUC settings needed */

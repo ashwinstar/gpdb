@@ -189,10 +189,10 @@ static const PQconninfoOption PQconninfoOptions[] = {
 #endif
 
     /* CDB: qExec wants some info from qDisp before GUCs are processed */
-    {"mppqeid", NULL, "", NULL,
+    {"gpqeid", NULL, "", NULL,
 	"gp-debug-qeid", "D", 40},
 	
-	{"mppqdid", NULL, "", NULL,
+	{"gpqdid", NULL, "", NULL,
 	"gp-debug-qdid", "D", 40},
 	
 
@@ -425,11 +425,11 @@ connectOptions1(PGconn *conn, const char *conninfo)
 	tmp = conninfo_getval(connOptions, "krbsrvname");
 	conn->krbsrvname = tmp ? strdup(tmp) : NULL;
 #endif
-	tmp = conninfo_getval(connOptions, "mppqeid");
-	conn->mppqeid = tmp ? strdup(tmp) : NULL;
+	tmp = conninfo_getval(connOptions, "gpqeid");
+	conn->gpqeid = tmp ? strdup(tmp) : NULL;
 	
-	tmp = conninfo_getval(connOptions, "mppqdid");
-	conn->mppqdid = tmp ? strdup(tmp) : NULL;
+	tmp = conninfo_getval(connOptions, "gpqdid");
+	conn->gpqdid = tmp ? strdup(tmp) : NULL;
 
 	/*
 	 * Free the option info - all is in conn now
@@ -1963,10 +1963,10 @@ freePGconn(PGconn *conn)
 	if (conn->krbsrvname)
 		free(conn->krbsrvname);
 #endif
-    if (conn->mppqeid)          /* CDB */
-        free(conn->mppqeid);
-    if (conn->mppqdid)          /* CDB */
-        free(conn->mppqdid);
+    if (conn->gpqeid)          /* CDB */
+        free(conn->gpqeid);
+    if (conn->gpqdid)          /* CDB */
+        free(conn->gpqdid);
 
 	/* Note that conn->Pfdebug is not ours to close or free */
 	if (conn->last_query)

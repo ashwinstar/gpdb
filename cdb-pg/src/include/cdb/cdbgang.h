@@ -64,9 +64,9 @@ extern void
 SetSeqServerInfo(struct QueryDesc *queryDesc);
 
 /*
- * cdbgang_parse_mppqeid_params
+ * cdbgang_parse_gpqeid_params
  *
- * Called very early in backend initialization, to interpret the "mppqeid"
+ * Called very early in backend initialization, to interpret the "gpqeid"
  * parameter value that a qExec receives from its qDisp.
  *
  * At this point, client authentication has not been done; the backend
@@ -74,8 +74,8 @@ SetSeqServerInfo(struct QueryDesc *queryDesc);
  * inherited from the postmaster; etc; so don't try to do too much in here.
  */
 void
-cdbgang_parse_mppqeid_params(struct Port *port, const char* mppqeid_value);
+cdbgang_parse_gpqeid_params(struct Port *port, const char* gpqeid_value);
 
 void
-cdbgang_parse_mppqdid_params(struct Port *port, const char* mppqdid_value);
+cdbgang_parse_gpqdid_params(struct Port *port, const char* gpqdid_value);
 #endif   /* _CDBGANG_H_ */

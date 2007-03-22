@@ -131,7 +131,7 @@
 #include "utils/ps_status.h"
 #include "utils/resscheduler.h"
 
-#include "cdb/cdbgang.h"                /* cdbgang_parse_mppqeid_params */
+#include "cdb/cdbgang.h"                /* cdbgang_parse_gpqeid_params */
 #include "cdb/cdblogsync.h"
 
 #ifdef EXEC_BACKEND
@@ -1442,8 +1442,8 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 	void	   *buf;
 	ProtocolVersion proto;
 	MemoryContext oldcontext;
-    char       *mppqeid = NULL;
-    char       *mppqdid = NULL;
+    char       *gpqeid = NULL;
+    char       *gpqdid = NULL;
 
 	if (pq_getbytes((char *) &len, 4) == EOF)
 	{
@@ -1598,10 +1598,10 @@ retry1:
 				port->user_name = pstrdup(valptr);
 			else if (strcmp(nameptr, "options") == 0)
 				port->cmdline_options = pstrdup(valptr);
-			else if (strcmp(nameptr, "mppqeid") == 0)
-				mppqeid = valptr;
-			else if (strcmp(nameptr, "mppqdid") == 0)
-				mppqdid = valptr;
+			else if (strcmp(nameptr, "gpqeid") == 0)
+				gpqeid = valptr;
+			else if (strcmp(nameptr, "gpqdid") == 0)
+				gpqdid = valptr;
 			else
 			{
 				/* Assume it's a generic GUC option */
@@ -1687,12 +1687,12 @@ retry1:
 		port->user_name[NAMEDATALEN - 1] = '\0';
 
     /*
-     * CDB: Process "mppqeid" parameter string for qExec startup.
+     * CDB: Process "gpqeid" parameter string for qExec startup.
      */
-    if (mppqeid)
-        cdbgang_parse_mppqeid_params(port, mppqeid);
-    else if (mppqdid)
-    	cdbgang_parse_mppqdid_params(port, mppqdid);
+    if (gpqeid)
+        cdbgang_parse_gpqeid_params(port, gpqeid);
+    else if (gpqdid)
+    	cdbgang_parse_gpqdid_params(port, gpqdid);
 
 	/*
 	 * Done putting stuff in TopMemoryContext.

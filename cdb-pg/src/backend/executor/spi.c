@@ -316,9 +316,9 @@ SPI_finish(void)
 
 /* for callback to QD */
 static void
-build_mppqdid_params(StringInfoData * buf)
+build_gpqdid_params(StringInfoData * buf)
 {
-	appendStringInfo(buf, "mppqdid=");
+	appendStringInfo(buf, "gpqdid=");
 
 	appendStringInfo(buf, "%d;", gp_session_id);
 
@@ -331,7 +331,7 @@ build_mppqdid_params(StringInfoData * buf)
 	/* change last semicolon to space */
 	Assert(buf->data[buf->len - 1] == ';');
 	buf->data[buf->len - 1] = ' ';
-}	/* build_mppqdid_params */
+}	/* build_gpqdid_params */
 
 
 
@@ -353,7 +353,7 @@ int connect_back_to_qd(void)
 	initStringInfo(&buffer);
 		
 		
-	build_mppqdid_params(&buffer);
+	build_gpqdid_params(&buffer);
 		
 	/*
 	 * Setting options is mostly just to help with debugging.

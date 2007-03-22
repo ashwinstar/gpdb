@@ -46,7 +46,7 @@ extern char *session_authorization_string;
  *	thread_DoConnect is the thread proc used to perform the connection to one of the qExecs.
  */
 static void *thread_DoConnect(void *arg);
-static void build_mppqeid_params(PQExpBuffer buf);
+static void build_gpqeid_params(PQExpBuffer buf);
 
 static Gang *createGang(GangType type, int size, int content, char *portal_name);
 
@@ -823,7 +823,7 @@ thread_DoConnect(void *arg)
 		/*
 		 * Build the connection string
 		 */
-		build_mppqeid_params(&buffer);
+		build_gpqeid_params(&buffer);
 
 		appendPQExpBufferStr(&buffer, "options='");
 
@@ -1142,16 +1142,16 @@ thread_DoConnect(void *arg)
 
 
 /*
- * build_mppqeid_params
+ * build_gpqeid_params
  *
- * Called from the qDisp process to create the "mppqeid" parameter string
+ * Called from the qDisp process to create the "gpqeid" parameter string
  * to be passed to a qExec that is being started.  NB: Can be called in a
  * thread, so mustn't use palloc/elog/ereport/etc.
  */
 static void
-build_mppqeid_params(PQExpBuffer buf)
+build_gpqeid_params(PQExpBuffer buf)
 {
-	appendPQExpBufferStr(buf, "mppqeid=");
+	appendPQExpBufferStr(buf, "gpqeid=");
 
 	appendPQExpBuffer(buf, "%d;", gp_session_id);
 
@@ -1168,13 +1168,13 @@ build_mppqeid_params(PQExpBuffer buf)
 	/* change last semicolon to space */
 	Assert(buf->data[buf->len - 1] == ';');
 	buf->data[buf->len - 1] = ' ';
-}	/* build_mppqeid_params */
+}	/* build_gpqeid_params */
 
 
 /*
- * cdbgang_parse_mppqeid_params
+ * cdbgang_parse_gpqeid_params
  *
- * Called very early in backend initialization, to interpret the "mppqeid"
+ * Called very early in backend initialization, to interpret the "gpqeid"
  * parameter value that a qExec receives from its qDisp.
  *
  * At this point, client authentication has not been done; the backend
@@ -1182,7 +1182,7 @@ build_mppqeid_params(PQExpBuffer buf)
  * inherited from the postmaster; etc; so don't try to do too much in here.
  */
 static bool
-mppqeid_next_param(char **cpp, char **npp)
+gpqeid_next_param(char **cpp, char **npp)
 {
 	*cpp = *npp;
 	if (!*cpp)
@@ -1198,23 +1198,23 @@ mppqeid_next_param(char **cpp, char **npp)
 }
 
 void
-cdbgang_parse_mppqeid_params(struct Port *port, const char *mppqeid_value)
+cdbgang_parse_gpqeid_params(struct Port *port, const char *gpqeid_value)
 {
-	char	   *mppqeid = pstrdup(mppqeid_value);
+	char	   *gpqeid = pstrdup(gpqeid_value);
 	char	   *cp;
-	char	   *np = mppqeid;
+	char	   *np = gpqeid;
 
-	/* The presence of an mppqeid string means this backend is a qExec. */
+	/* The presence of an gpqeid string means this backend is a qExec. */
 	SetConfigOption("gp_session_role", "execute",
 					PGC_POSTMASTER, PGC_S_OVERRIDE);
 
 	/* gp_session_id */
-	if (mppqeid_next_param(&cp, &np))
+	if (gpqeid_next_param(&cp, &np))
 		SetConfigOption("gp_session_id", cp,
 						PGC_POSTMASTER, PGC_S_OVERRIDE);
 
 	/* PgStartTime */
-	if (mppqeid_next_param(&cp, &np))
+	if (gpqeid_next_param(&cp, &np))
 	{
 #ifdef HAVE_INT64_TIMESTAMP
 		if (!scanint8(cp, true, &PgStartTime))
@@ -1232,32 +1232,32 @@ cdbgang_parse_mppqeid_params(struct Port *port, const char *mppqeid_value)
 		PgStartTime <= 0)
 		goto bad;
 
-	pfree(mppqeid);
+	pfree(gpqeid);
 	return;
 
 bad:
-	elog(FATAL, "QE dispatched with invalid option: 'mppqeid=%s'", mppqeid_value);
-}	/* cdbgang_parse_mppqeid_params */
+	elog(FATAL, "QE dispatched with invalid option: 'gpqeid=%s'", gpqeid_value);
+}	/* cdbgang_parse_gpqeid_params */
 
 
 void
-cdbgang_parse_mppqdid_params(struct Port *port, const char *mppqdid_value)
+cdbgang_parse_gpqdid_params(struct Port *port, const char *gpqdid_value)
 {
-	char	   *mppqdid = pstrdup(mppqdid_value);
+	char	   *gpqdid = pstrdup(gpqdid_value);
 	char	   *cp;
-	char	   *np = mppqdid;
+	char	   *np = gpqdid;
 
-	/* The presence of an mppqdid string means this is a callback from QE to QD. */
+	/* The presence of an gpqdid string means this is a callback from QE to QD. */
 	SetConfigOption("gp_is_callback", "true",
 					PGC_POSTMASTER, PGC_S_OVERRIDE);
 
 	/* gp_session_id */
-	if (mppqeid_next_param(&cp, &np))
+	if (gpqeid_next_param(&cp, &np))
 		SetConfigOption("gp_session_id", cp,
 						PGC_POSTMASTER, PGC_S_OVERRIDE);
 
 	/* PgStartTime */
-	if (mppqeid_next_param(&cp, &np))
+	if (gpqeid_next_param(&cp, &np))
 	{
 #ifdef HAVE_INT64_TIMESTAMP
 		if (!scanint8(cp, true, &PgStartTime))
@@ -1276,12 +1276,12 @@ cdbgang_parse_mppqdid_params(struct Port *port, const char *mppqdid_value)
 		PgStartTime <= 0)
 		goto bad;
 
-	pfree(mppqdid);
+	pfree(gpqdid);
 	return;
 
 bad:
-	elog(FATAL, "QD callback dispatched with invalid option: 'mppqdid=%s'", mppqdid_value);
-}	/* cdbgang_parse_mppqeid_params */
+	elog(FATAL, "QD callback dispatched with invalid option: 'gpqdid=%s'", gpqdid_value);
+}	/* cdbgang_parse_gpqeid_params */
 
 
 
