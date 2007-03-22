@@ -4291,9 +4291,9 @@ ceil_var(NumericVar *var, NumericVar *result)
 	trunc_var(&tmp, 0);
 
 	if (var->sign == NUMERIC_POS && cmp_var(var, &tmp) != 0)
-		add_var(&tmp, &const_one, &tmp);
-
-	set_var_from_var(&tmp, result);
+		add_var(&tmp, &const_one, result);
+	else
+		set_var_from_var(&tmp, result);
 	free_var_buf(&tmp);
 }
 
@@ -4314,9 +4314,9 @@ floor_var(NumericVar *var, NumericVar *result)
 	trunc_var(&tmp, 0);
 
 	if (var->sign == NUMERIC_NEG && cmp_var(var, &tmp) != 0)
-		sub_var(&tmp, &const_one, &tmp);
-
-	set_var_from_var(&tmp, result);
+		sub_var(&tmp, &const_one, result);
+	else
+		set_var_from_var(&tmp, result);
 	free_var_buf(&tmp);
 }
 
