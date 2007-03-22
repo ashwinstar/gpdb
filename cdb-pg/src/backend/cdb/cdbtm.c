@@ -59,7 +59,7 @@ typedef struct InDoubtDtx
 
 
 /* here are some flag options relationed to the txnOptions field of 
- * PQsendMppQuery
+ * PQsendGpQuery
  */
  
 /* bit 1 is for statement wants DTX transaction
