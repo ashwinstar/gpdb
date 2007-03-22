@@ -69,7 +69,7 @@
 #define ERRCODE_WARNING_STRING_DATA_RIGHT_TRUNCATION	MAKE_SQLSTATE('0','1', '0','0','4')
 #define ERRCODE_WARNING_DEPRECATED_FEATURE	MAKE_SQLSTATE('0','1', 'P','0','1')
 /*                        no longer used    MAKE_SQLSTATE('0','1', 'M','0','1') */
-#define ERRCODE_WARNING_MPP_INTERCONNECTION MAKE_SQLSTATE('0','1', 'M','0','2')
+#define ERRCODE_WARNING_GP_INTERCONNECTION MAKE_SQLSTATE('0','1', 'M','0','2')
 
 /* Class 02 - No Data --- this is also a warning class per SQL99 */
 /* (do not use this class for failure conditions!) */

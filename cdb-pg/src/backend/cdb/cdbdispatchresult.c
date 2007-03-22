@@ -330,7 +330,7 @@ cdbdisp_appendResult(CdbDispatchResult *dispatchResult,
     /* Attach the QE identification string to the PGresult */
     if (dispatchResult->segdbDesc &&
         dispatchResult->segdbDesc->whoami)
-        pqSaveMessageField(res, PG_DIAG_MPP_PROCESS_TAG,
+        pqSaveMessageField(res, PG_DIAG_GP_PROCESS_TAG,
                            dispatchResult->segdbDesc->whoami);
 
     appendBinaryPQExpBuffer(dispatchResult->resultbuf, (char *)&res, sizeof(res));
@@ -427,7 +427,7 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
     {                           /* for each PGresult */
         PGresult       *pgresult = cdbdisp_getPGresult(dispatchResult, ires);
         ExecStatusType  resultStatus = PQresultStatus(pgresult);
-        char   *whoami = PQresultErrorField(pgresult, PG_DIAG_MPP_PROCESS_TAG);
+        char   *whoami = PQresultErrorField(pgresult, PG_DIAG_GP_PROCESS_TAG);
 
         if (!whoami)
             whoami = "no process id";
@@ -526,7 +526,7 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
     {                           /* for each PGresult */
         PGresult       *pgresult = cdbdisp_getPGresult(dispatchResult, ires);
         ExecStatusType  resultStatus = PQresultStatus(pgresult);
-        char   *whoami = PQresultErrorField(pgresult, PG_DIAG_MPP_PROCESS_TAG);
+        char   *whoami = PQresultErrorField(pgresult, PG_DIAG_GP_PROCESS_TAG);
 
         /* QE success */
         if (resultStatus == PGRES_COMMAND_OK ||

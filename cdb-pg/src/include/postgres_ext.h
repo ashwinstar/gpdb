@@ -65,6 +65,6 @@ typedef unsigned int Oid;
 #define PG_DIAG_SOURCE_FILE		'F'
 #define PG_DIAG_SOURCE_LINE		'L'
 #define PG_DIAG_SOURCE_FUNCTION 'R'
-#define PG_DIAG_MPP_PROCESS_TAG 'g'
+#define PG_DIAG_GP_PROCESS_TAG 'g'
 
 #endif

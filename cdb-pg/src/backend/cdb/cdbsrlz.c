@@ -32,7 +32,7 @@ static char *uncompress_string(const char *src, int size, int * uncompressed_len
  */
 static
 unsigned long 
-mpp_compressBound(unsigned long sourceLen)
+gp_compressBound(unsigned long sourceLen)
 {
   return sourceLen + (sourceLen >> 12) + (sourceLen >> 14) + 11;
 }
@@ -131,7 +131,7 @@ compress_string(const char *src, int uncompressed_size, int *size)
 		return NULL;
 	}
 	
-	compressed_size = mpp_compressBound(uncompressed_size);  /* worst case */
+	compressed_size = gp_compressBound(uncompressed_size);  /* worst case */
 	
 	result = palloc(compressed_size + sizeof(int));
 	memcpy(result,&uncompressed_size,sizeof(int)); 		/* save the original length */

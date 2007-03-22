@@ -215,7 +215,7 @@ buildMirrorQDDefinition(void)
 		/* if it is set to invalid, do not connect */
 		if (!mirrorDb->valid)
 		{
-			ereport(LOG, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+			ereport(LOG, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION),
 						  errmsg("QD Mirroring disabled for entry db "
 								 "because it is not marked 'valid'.")));
 			return;
@@ -230,7 +230,7 @@ buildMirrorQDDefinition(void)
 		{
 			//disableQDMirroring();
 
-			ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+			ereport(WARNING, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION),
 							  errmsg("QD Mirroring failed for entry db.  %s",
 									 cdb_mirrored_entry_db->error_message.data)
 						));
@@ -285,7 +285,7 @@ parseOffsetsFromMessage(char *buf, int *pfileoff, int *mfileoff)
 	} while (0);
 
 	/* error ! */
-	ereport(ERROR, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+	ereport(ERROR, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION),
 					errmsg("QD Mirroring: parse error on message returned from standby-QD (%s)", buf)));
 }
 
@@ -318,7 +318,7 @@ buildQDMirrorFromShmem(void)
 	/* connect to mirrored QD */
 	if (!cdblink_connectQD(cdb_mirrored_entry_db))
 	{
-		ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+		ereport(WARNING, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION),
 						  errmsg("QD Mirroring failed for entry db.  %s",
 								 cdb_mirrored_entry_db->error_message.data)
 					));

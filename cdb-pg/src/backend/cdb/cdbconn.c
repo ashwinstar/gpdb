@@ -109,7 +109,7 @@ static void MPPnoticeReceiver(void * arg, const PGresult * res)
 			case PG_DIAG_SOURCE_FUNCTION:
 				func = pfield->contents;
 				break;
-			case PG_DIAG_MPP_PROCESS_TAG:
+			case PG_DIAG_GP_PROCESS_TAG:
 				break;
 			default:
 				break;

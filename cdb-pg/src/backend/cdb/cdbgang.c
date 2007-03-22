@@ -336,7 +336,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 			 */
 			ereport(LOG, (errcode(segdbDesc->errcode),
 					  errmsg("Warning: %s", segdbDesc->error_message.data)));
-			ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+			ereport(WARNING, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION),
 							  errmsg("%s", segdbDesc->error_message.data)));
 			if (segdbDesc->errcode == 0 && segdbDesc->error_message.len == 0)
 				elog(ERROR, "Connection is null, but no error code or error message, for segDB %d", i);
